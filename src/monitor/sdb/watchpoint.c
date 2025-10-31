@@ -22,7 +22,8 @@ typedef struct watchpoint {
   struct watchpoint *next;
 
   /* TODO: Add more members if necessary */
-
+  char expr[32];//The expression for monitoring
+  uint32_t old_val;//The value of the last time
 } WP;
 
 static WP wp_pool[NR_WP] = {};
@@ -40,4 +41,25 @@ void init_wp_pool() {
 }
 
 /* TODO: Implement the functionality of watchpoint */
-
+/**
+ * @brief Print all currently set watchpoint information
+ *
+ * Traverse the linked list of active watchpoints and print each watchpoint's
+ * index, expression, and current value.
+ * If no watchpoints are set, print a message indicating this.
+ */
+void PrintWatchPoint(){
+  if (head == NULL) {
+    printf("monitor watchpoint file PrintWatchPoint function check, detect head==NULL\n");
+    printf("No watchpoints are set.\n");
+    return;//this return can direct return this function.
+  }
+  printf("Num\tExpr\t\tValue\n");
+  printf("----\t----\t\t-----\n");
+  WP *p = head;
+  while (p!=NULL)
+  {
+    printf("%d\t%s\t\t0x%08x\n", p->NO, p->expr, p->old_val);
+    p = p->next;
+  }
+}

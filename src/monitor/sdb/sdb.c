@@ -18,6 +18,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include "sdb.h"
+#include"../../../src/isa/riscv32/local-include/reg.h"
 
 static int is_batch_mode = false;
 
@@ -56,6 +57,8 @@ static int cmd_help(char *args);
 
 static int cmd_si(char *args);
 
+static int cmd_info(char *args);
+
 static struct {
   const char *name;
   const char *description;
@@ -66,7 +69,8 @@ static struct {
   { "q", "Exit NEMU", cmd_q },
 
   /* TODO: Add more commands */
-  {"si","Single step execution [N], default Single step execution",cmd_si}
+  {"si","Single step execution [N], default Single step execution",cmd_si},
+  { "info", "Print program status", cmd_info }
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -176,6 +180,34 @@ static int cmd_si(char *args){
   else
   {
     printf("I do not know monitor cmd_si executing happened something.if and else if do not run\n");
+    return -1;
+  }
+  return 0;
+}
+static int cmd_info(char *args){
+  if (args==NULL)
+  {
+    printf("nemu monitor sdb cmd_info function check args, detect args==NULL, this args need parameter input\n");
+    printf("  r - print register status\n");
+    printf("  w - print watchpoint information\n");
+    return 0;
+  }else if(args!=NULL){
+    if (strcmp(args,"r"==0))//Subcommand 'r': Print register status
+    {
+      isa_reg_display();
+    }
+    else if (strcmp(args,"w"==0))//Subcommand 'w': Print monitor point information
+    {
+      PrintWatchPoints();
+    }
+    else
+    {
+      printf("cmd_info function args happend unknow something.\n");
+    }
+    
+    return 0;
+  }else{
+    printf("I do not know monitor cmd_info executing happened something.if and else if do not run\n");
     return -1;
   }
   return 0;
