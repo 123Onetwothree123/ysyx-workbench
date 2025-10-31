@@ -54,6 +54,8 @@ static int cmd_q(char *args) {
 
 static int cmd_help(char *args);
 
+static int cmd_si(char *args);
+
 static struct {
   const char *name;
   const char *description;
@@ -64,7 +66,7 @@ static struct {
   { "q", "Exit NEMU", cmd_q },
 
   /* TODO: Add more commands */
-
+  {"si","Single step execution [N], default Single step execution",cmd_si}
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -140,4 +142,41 @@ void init_sdb() {
 
   /* Initialize the watchpoint pool. */
   init_wp_pool();
+}
+
+static int cmd_si(char *args){
+  //int steps = 1;//default step=1 execute si.
+  int steps;
+  if (args == NULL)
+  {
+    printf("monitor cmd_si arg==NULL, so default step=1, executed one\n");
+    steps=1;
+    return 0;
+  }
+  else if (args != NULL)//check args is not null, it have value.
+  {
+    char *StorageEndAddressPointer;
+    long Int32BitStoreTemporaryStep=strtol(args,&StorageEndAddressPointer,10);//because this nemu default RISC-V 32bit
+    //because need all direct pass check, can not single check or a large number of nested if statements, so write if.
+    if (*StorageEndAddressPointer!='\0')//check string is a pure number
+    {
+      printf("Error: Invalid argument '%s' for 'si'. Argument must be a positive integer.\n", args);
+      printf("I think should usage: si [N]\n");
+      return 0;//can not return -1, need to return 0 and do nothing.
+    }
+    if (Int32BitStoreTemporaryStep>INT32_MAX||Int32BitStoreTemporaryStep<INT32_MIN)//nemu default RISC-V 32bit
+    {
+      printf("Error: Argument for 'si' must be a positive integer, but got %ld.\n",Int32BitStoreTemporaryStep);
+      return 0;
+    }
+    steps=(int)Int32BitStoreTemporaryStep;
+    cpu_exec(steps);
+    return 0;
+  }
+  else
+  {
+    printf("I do not know monitor cmd_si executing happened something.if and else if do not run\n");
+    return -1;
+  }
+  return 0;
 }
