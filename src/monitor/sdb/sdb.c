@@ -192,13 +192,14 @@ static int cmd_info(char *args){
     printf("  w - print watchpoint information\n");
     return 0;
   }else if(args!=NULL){
-    if (strcmp(args,"r"==0))//Subcommand 'r': Print register status
+    if (strcmp(args,"r")==0)//Subcommand 'r': Print register status
     {
       isa_reg_display();
     }
-    else if (strcmp(args,"w"==0))//Subcommand 'w': Print monitor point information
+    else if (strcmp(args,"w")==0)//Subcommand 'w': Print monitor point information
     {
-      PrintWatchPoints();
+      //PrintWatchPoints();
+      //TODO
     }
     else
     {
