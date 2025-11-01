@@ -66,6 +66,8 @@ static int cmd_info(char *args);
 
 static int cmd_x(char *args);
 
+static int cmd_p(char *args);
+
 static struct
 {
   const char *name;
@@ -79,7 +81,9 @@ static struct
     /* TODO: Add more commands */
     {"si", "Single step execution [N], default Single step execution", cmd_si},
     {"info", "Print program status", cmd_info},
-    {"x", "Examine memory", cmd_x}};
+    {"x", "Examine memory", cmd_x},
+    { "p", "Evaluate expression", cmd_p }
+  };
 
 #define NR_CMD ARRLEN(cmd_table)
 
@@ -306,4 +310,20 @@ static int cmd_x(char *args)
   }
   return 0;
 }
-//
+static int cmd_p(char *args){
+  if (args==NULL)
+  {
+    printf("cmd_p checked args==NULL, need input parameter.\n");
+    return 0;
+  }
+  else if (args!=NULL)
+  {
+    
+  }
+  else
+  {
+    printf("cmd_p args unknow error.\n");
+    return 0;
+  }
+
+}
