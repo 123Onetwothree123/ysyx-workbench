@@ -19,7 +19,7 @@
 #include <readline/history.h>
 #include "sdb.h"
 #include "../../../src/isa/riscv32/local-include/reg.h"
-#include<memory/paddr.h>
+#include <memory/paddr.h>
 
 static int is_batch_mode = false;
 
@@ -82,8 +82,7 @@ static struct
     {"si", "Single step execution [N], default Single step execution", cmd_si},
     {"info", "Print program status", cmd_info},
     {"x", "Examine memory", cmd_x},
-    { "p", "Evaluate expression", cmd_p }
-  };
+    {"p", "Evaluate expression", cmd_p}};
 
 #define NR_CMD ARRLEN(cmd_table)
 
@@ -310,20 +309,34 @@ static int cmd_x(char *args)
   }
   return 0;
 }
-static int cmd_p(char *args){
-  if (args==NULL)
+static int cmd_p(char *args)
+{
+  if (args == NULL)
   {
     printf("cmd_p checked args==NULL, need input parameter.\n");
+    printf("Usage: p EXPR\n");
+    printf("Example: p 5 + 4 * 3 / 2 - 1\n");
     return 0;
   }
-  else if (args!=NULL)
+  else if (args != NULL)
   {
-    
+    bool success = true;
+    word_t result = expr(args, &success);
+
+    if (success)
+    {
+      printf("Dec: %u\n", result);     // 十进制显示
+      printf("Hex: 0x%08x\n", result); // 十六进制显示
+    }
+    else
+    {
+      printf("Expression evaluation failed!\n");
+    }
+    return 0;
   }
   else
   {
     printf("cmd_p args unknow error.\n");
     return 0;
   }
-
 }
