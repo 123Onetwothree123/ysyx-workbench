@@ -25,6 +25,7 @@
 #include <common.h>
 #include <../../../src/isa/riscv32/local-include/reg.h>
 #include "sdb.h"
+#include <cpu/cpu.h>
 bool needs_operator_decomposition(int p, int q);
 int get_operator_precedence(int type);
 int find_main_operator(int p, int q);
@@ -357,8 +358,17 @@ word_t eval(int p, int q)
     case TK_HEX:
       value = strtol(tokens[p].str, NULL, 16);
     case TK_REG:
-      //value = isa_reg_get(tokens[p].str + 1);
+    {
+      // value = isa_reg_get(tokens[p].str + 1);
+      bool reg_success = true;
+      value = isa_reg_str2val(tokens[p].str + 1, &reg_success); // because tokens[p].str is "$ra", so we need send "ra"
+      if (!reg_success)
+      {
+        // if fail
+        printf("Error: Invalid register name '%s'\n", tokens[p].str);
+      }
       break;
+    }
     default:
       printf("Error: Invalid token type %d at position %d\n", tokens[p].type, p);
       return 0;
