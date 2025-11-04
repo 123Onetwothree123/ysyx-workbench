@@ -29,4 +29,6 @@ typedef uint32_t paddr_t;
 #include "isa.h"
 #include "protocol.h"
 
+// myself write
+typedef int32_t sword_t;  // signed word type
 #endif

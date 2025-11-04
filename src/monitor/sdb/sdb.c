@@ -287,7 +287,8 @@ static int cmd_x(char *args)
       return 0;
     }
     bool success = true;
-    word_t addr = expr(expr_str, &success);
+    sword_t addr_signed = expr(expr_str, &success);
+    word_t addr = (word_t)addr_signed;
     // if fail
     if (!success)
     {
@@ -325,8 +326,12 @@ static int cmd_p(char *args)
 
     if (success)
     {
-      printf("Dec: %u\n", result);     // 十进制显示
-      printf("Hex: 0x%08x\n", result); // 十六进制显示
+      printf("Dec: %u\n", result);     // Dec display
+      printf("Hex: 0x%08x\n", (uint32_t)result); // Hex display
+      if (result < 0)
+    {
+      printf("Unsigned: %u\n", (uint32_t)result);
+    }
     }
     else
     {

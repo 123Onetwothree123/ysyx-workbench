@@ -26,6 +26,7 @@
 #include <../../../src/isa/riscv32/local-include/reg.h>
 #include "sdb.h"
 #include <cpu/cpu.h>
+static void identify_unary_operators();
 bool needs_operator_decomposition(int p, int q);
 int get_operator_precedence(int type);
 int find_main_operator(int p, int q);
@@ -35,7 +36,7 @@ typedef struct
   bool ExcuteState;
 } ExprResult;
 ExprResult check_parenthese(int, int);
-word_t eval(int, int);
+sword_t eval(int, int);
 enum
 {
   TK_NOTYPE = 256,
@@ -164,7 +165,7 @@ static bool make_token(char *e)
   return true;
 }
 
-word_t expr(char *e, bool *success)
+sword_t expr(char *e, bool *success)
 {
   if (!make_token(e))
   {
@@ -174,6 +175,7 @@ word_t expr(char *e, bool *success)
 
   /* TODO: Insert codes to evaluate the expression. */
   // TODO();
+  identify_unary_operators(); // Identify and mark unary operators
   ExprResult paren_check = check_parenthese(0, nr_token - 1);
   if (!paren_check.ExcuteState)
   {
@@ -183,9 +185,8 @@ word_t expr(char *e, bool *success)
   }
   // If the check passed (ExcuteState is true), we can proceed with evaluation.
   // The eval function itself will handle other cases like single tokens, operators, etc.
-  word_t result = eval(0, nr_token - 1);
+  sword_t result = eval(0, nr_token - 1);
   *success = true;
-
   return result;
 }
 
@@ -338,7 +339,7 @@ int find_main_operator(int p, int q)
   }
   return op_pos;
 }
-word_t eval(int p, int q)
+sword_t eval(int p, int q)
 {
   // invalid
   if (p > q)
@@ -349,20 +350,19 @@ word_t eval(int p, int q)
   else if (p == q)
   {
     // single token
-    word_t value = 0;
+    sword_t value = 0;
     switch (tokens[p].type)
     {
     case TK_NUM:
-      value = strtol(tokens[p].str, NULL, 10);
+      value = (sword_t)strtol(tokens[p].str, NULL, 10);
       break;
     case TK_HEX:
-      value = strtol(tokens[p].str, NULL, 16);
+      value = (sword_t)strtol(tokens[p].str, NULL, 16);
     case TK_REG:
     {
       // value = isa_reg_get(tokens[p].str + 1);
-
       bool reg_success = true;
-      value = isa_reg_str2val(tokens[p].str + 1, &reg_success); // because tokens[p].str is "$ra", so we need send "ra"
+      value = (sword_t)isa_reg_str2val(tokens[p].str + 1, &reg_success); // because tokens[p].str is "$ra", so we need send "ra"
       if (!reg_success)
       {
         // if fail
@@ -399,6 +399,20 @@ word_t eval(int p, int q)
     printf("The check_parenthese function return type ExprResult result and ExcuteState==false\n");
     return 0;
   }
+  else if (tokens[p].type == TK_MINUS)
+  {
+    // unary operator
+    sword_t val = eval(p + 1, q);
+    return -val;
+  }
+  else if (tokens[p].type == TK_POINTER)
+  {
+    // Pointer dereference - the address should be unsigned
+    sword_t addr_signed = eval(p + 1, q);
+    // Dereference Operator for Pointers
+    word_t addr = (word_t)addr_signed; // Convert to an unsigned address
+    return paddr_read(addr, 4);
+  }
   else if (needs_operator_decomposition(p, q))
   {
     int op = find_main_operator(p, q);
@@ -411,8 +425,8 @@ word_t eval(int p, int q)
     val1 = eval(p, op - 1);
     val2 = eval(op + 1, q);
     */
-    word_t left_val = eval(p, op - 1);
-    word_t right_val = eval(op + 1, q);
+    sword_t left_val = eval(p, op - 1);
+    sword_t right_val = eval(op + 1, q);
     switch (tokens[op].type)
     {
     case '+':
@@ -439,22 +453,55 @@ word_t eval(int p, int q)
       break;
     }
   }
-  else if (tokens[p].type == TK_MINUS)
-  {
-    // unary operator
-    word_t val = eval(p + 1, q);
-    return -val;
-  }
-  else if (tokens[p].type == TK_POINTER)
-  {
-    // Dereference Operator for Pointers
-    word_t addr = eval(p + 1, q);
-    return paddr_read(addr, 4);
-  }
   // Default situation: Unrecognizable expressions
   else
   {
     printf("Error: Unrecognized expression from token %d to %d\n", p, q);
     return 0;
+  }
+}
+static void identify_unary_operators()
+{
+  for (int i = 0; i < nr_token; i++)
+  {
+    if (tokens[i].type == '-' || tokens[i].type == '*')
+    {
+      bool is_unary;
+      if (i == 0)
+      {
+        // At the beginning, it must be a unary operator
+        is_unary = true;
+      }
+      else
+      {
+        int prev_type = tokens[i - 1].type;
+        // The operator or the left parenthesis is in front
+        if (prev_type == '+' || prev_type == '-' ||
+            prev_type == '*' || prev_type == '/' ||
+            prev_type == TK_EQ || prev_type == TK_NEQ ||
+            prev_type == '(')
+        {
+          is_unary = true;
+        }
+      }
+      // Marked as a unary operator
+      if (is_unary)
+      {
+        if (tokens[i].type == '-')
+        {
+          tokens[i].type = TK_MINUS; // minus
+          Log("Token %d: '-' identified as unary minus (TK_MINUS)", i);
+        }
+        else if (tokens[i].type == '*')
+        {
+          tokens[i].type = TK_POINTER;
+          Log("Token %d: '*' identified as pointer dereference (TK_POINTER)", i);
+        }
+        else
+        {
+          printf("I unknow identify_unary_operators() happend something.\n");
+        }
+      }
+    }
   }
 }
