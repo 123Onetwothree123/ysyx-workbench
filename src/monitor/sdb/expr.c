@@ -360,7 +360,7 @@ word_t eval(int p, int q)
     case TK_REG:
     {
       // value = isa_reg_get(tokens[p].str + 1);
-      
+
       bool reg_success = true;
       value = isa_reg_str2val(tokens[p].str + 1, &reg_success); // because tokens[p].str is "$ra", so we need send "ra"
       if (!reg_success)
@@ -369,8 +369,8 @@ word_t eval(int p, int q)
         printf("Error: Invalid register name '%s'\n", tokens[p].str);
         return 0;
       }
-      
-      //value = isa_reg_str2val(tokens[p].str + 1, &success);
+
+      // value = isa_reg_str2val(tokens[p].str + 1, &success);
       break;
     }
     default:
@@ -380,21 +380,21 @@ word_t eval(int p, int q)
     }
     return value;
   }
-  else if (check_parenthese(p, q).result == true || check_parenthese(p, q).ExcuteState == true)
+  else if (check_parenthese(p, q).result == true && check_parenthese(p, q).ExcuteState == true)
   {
     return eval(p + 1, q - 1);
   }
-  else if (check_parenthese(p, q).result == true || check_parenthese(p, q).ExcuteState == false)
+  else if (check_parenthese(p, q).result == true && check_parenthese(p, q).ExcuteState == false)
   {
     printf("Error: Parentheses mismatch\n");
     return 0;
   }
-  else if (check_parenthese(p, q).result == false || check_parenthese(p, q).ExcuteState == true)
+  else if (check_parenthese(p, q).result == false && check_parenthese(p, q).ExcuteState == true)
   {
     printf("The check_parenthese function return type ExprResult result==false.\n");
     return 0;
   }
-  else if (check_parenthese(p, q).result == false || check_parenthese(p, q).ExcuteState == false)
+  else if (check_parenthese(p, q).result == false && check_parenthese(p, q).ExcuteState == false)
   {
     printf("The check_parenthese function return type ExprResult result and ExcuteState==false\n");
     return 0;
