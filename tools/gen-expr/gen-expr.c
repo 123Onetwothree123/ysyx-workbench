@@ -73,7 +73,7 @@ static void gen_num()
   gen_space();
   char num_buf[32];
   // Generate a number, e.g., up to 100
-  sprintf(num_buf, "%u", (unsigned)choose(101));
+  sprintf(num_buf, "%uU", (unsigned)choose(101));
   gen(num_buf);
   gen_space();
 }
@@ -82,7 +82,7 @@ static void gen_positive_num()
   gen_space();
   char num_buf[32];
   // Generate a number from 1 to 100
-  sprintf(num_buf, "%u", (unsigned)choose(100) + 1);
+  sprintf(num_buf, "%uU", (unsigned)choose(100) + 1);
   gen(num_buf);
   gen_space();
 }
@@ -184,8 +184,11 @@ int main(int argc, char *argv[])
   int i;
   for (i = 0; i < loop; i++)
   {
+    buf[0] = '\0'; // Reset buffer for each iteration
+    buf_end = buf;
     gen_rand_expr();
 
+    *buf_end = '\0'; // Ensure the buffer is null-terminated
     sprintf(code_buf, code_format, buf);
 
     FILE *fp = fopen("/tmp/.code.c", "w");
@@ -200,10 +203,19 @@ int main(int argc, char *argv[])
     fp = popen("/tmp/.expr", "r");
     assert(fp != NULL);
 
-    int result;
+    // int result;
+    unsigned int result;
+    /*
     ret = fscanf(fp, "%d", &result);
+    */
+    // 以下if判断语句由chatglm 4.6提出修改
+    if (fscanf(fp, "%u", &result) != 1)
+    {
+      // If the expression crashed (e.g., still a div-by-zero from (x-x)), skip it
+      pclose(fp);
+      continue;
+    }
     pclose(fp);
-
     printf("%u %s\n", result, buf);
   }
   return 0;
