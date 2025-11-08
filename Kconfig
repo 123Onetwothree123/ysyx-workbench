@@ -151,6 +151,13 @@ config ITRACE_COND
   string "Only trace instructions when the condition is true"
   default "true"
 
+  #WATCHPOINT is myself writing
+config WATCHPOINT
+  bool "Enable watchpoint support"
+  default y
+  help
+    Enable watchpoint functionality to monitor expression values.
+    When disabled, improves performance by skipping watchpoint checks.
 
 config DIFFTEST
   depends on TARGET_NATIVE_ELF
