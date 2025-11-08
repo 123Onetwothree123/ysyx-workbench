@@ -68,6 +68,10 @@ static int cmd_x(char *args);
 
 static int cmd_p(char *args);
 
+static int cmd_w(char *args);
+
+static int cmd_d(char *args);
+
 static struct
 {
   const char *name;
@@ -82,7 +86,10 @@ static struct
     {"si", "Single step execution [N], default Single step execution", cmd_si},
     {"info", "Print program status", cmd_info},
     {"x", "Examine memory", cmd_x},
-    {"p", "Evaluate expression", cmd_p}};
+    {"p", "Evaluate expression", cmd_p},
+    {"w", "Set watchpoint for an expression", cmd_w},
+    {"d", "Delete watchpoint by ID", cmd_d},
+};
 
 #define NR_CMD ARRLEN(cmd_table)
 
@@ -326,12 +333,12 @@ static int cmd_p(char *args)
 
     if (success)
     {
-      printf("Dec: %u\n", result);     // Dec display
+      printf("Dec: %u\n", result);               // Dec display
       printf("Hex: 0x%08x\n", (uint32_t)result); // Hex display
       if (result < 0)
-    {
-      printf("Unsigned: %u\n", (uint32_t)result);
-    }
+      {
+        printf("Unsigned: %u\n", (uint32_t)result);
+      }
     }
     else
     {
@@ -344,4 +351,25 @@ static int cmd_p(char *args)
     printf("cmd_p args unknow error.\n");
     return 0;
   }
+}
+static int cmd_w(char *args)
+{
+  // check NULL
+  if (args == NULL || strlen(args) == 0)
+  {
+    printf("Error: Missing expression for watchpoint\n");
+    printf("Usage: w <expression>\n");
+    printf("Examples:\n");
+    printf("  w $eax           - Watch register eax\n");
+    printf("  w 0x80100000     - Watch memory address\n");
+    printf("  w *0x80100000    - Watch dereferenced memory\n");
+    return 0;
+  }
+  //tmp
+  return 0;
+}
+static int cmd_d(char *args)
+{
+  //tmp
+  return 0;
 }
