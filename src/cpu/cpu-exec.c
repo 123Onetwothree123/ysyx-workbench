@@ -155,10 +155,10 @@ void cpu_exec(uint64_t n)
   }
 }
 
-void set_watchpoint(const char *expr)
+void set_watchpoint(const char *expression)
 {
   // check safe
-  if (expr == NULL || strlen(expr) == 0)
+  if (expression == NULL || strlen(expression) == 0)
   {
     printf("Invalid expression for watchpoint.\n");
     return;
@@ -167,6 +167,20 @@ void set_watchpoint(const char *expr)
   if (wp == NULL)
   {
     printf("Failed to create new watchpoint: no available slots.\n");
+    return;
+  }
+  wp_set_expr(wp, expression);
+  bool success;
+  word_t value = expr((char *)expression, &success);
+  if (success)
+  {
+    wp_set_value(wp, value);
+    printf("Watchpoint %d: %s = 0x%x\n", wp_get_no(wp), wp_get_expr(wp), value);
+  }
+  else
+  {
+    printf("Failed to evaluate expression: %s\n", expression);
+    free_wp(wp); // The expression is invalid. free the monitor point
     return;
   }
 }
