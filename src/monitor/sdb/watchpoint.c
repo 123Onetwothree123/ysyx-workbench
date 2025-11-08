@@ -178,3 +178,11 @@ bool wp_check_triggered(const WP *wp)
   // todo, now set and return bool false
   return false;
 }
+int get_max_watchpoints(void)
+{
+  return NR_WP;
+}
+WP *wp_get_head(void)
+{
+  return head;
+}

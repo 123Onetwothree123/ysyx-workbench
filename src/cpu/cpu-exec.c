@@ -47,6 +47,43 @@ static void trace_and_difftest(Decode *_this, vaddr_t dnpc)
     IFDEF(CONFIG_ITRACE, puts(_this->logbuf));
   }
   IFDEF(CONFIG_DIFFTEST, difftest_step(_this->pc, dnpc));
+#ifdef CONFIG_WATCHPOINT
+  // myself writing
+  WP *wp = wp_get_head();
+  bool triggered = false;
+  // Check all monitor points until one is triggered
+  while (wp != NULL && !triggered)
+  {
+    bool success = false; // default false
+    sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
+    word_t current_val = (word_t)current_val_signed;
+    // if false
+    if (!success)
+    {
+      printf("Warning: Failed to evaluate watchpoint %d expression: %s\n",
+             wp_get_no(wp), wp_get_expr(wp));
+      wp = wp_get_next(wp);
+      continue;
+    }
+    // if change
+    if (current_val != wp_get_value(wp))
+    {
+      if (!triggered)
+      {
+        //if first, print
+        printf("\nWatchpoint triggered:\n");
+      }
+      printf("\nWatchpoint %d: %s\n", wp_get_no(wp), wp_get_expr(wp));
+      printf("Old value = 0x%08x\n", wp_get_value(wp));
+      printf("New value = 0x%08x\n", current_val);
+      printf("Program stopped.\n");
+      wp_set_value(wp, current_val);
+      nemu_state.state = NEMU_STOP;
+      triggered = true;
+    }
+    wp = wp_get_next(wp);
+  }
+  #endif
 }
 
 static void exec_once(Decode *s, vaddr_t pc)
@@ -83,7 +120,6 @@ static void exec_once(Decode *s, vaddr_t pc)
               MUXDEF(CONFIG_ISA_x86, s->snpc, s->pc), (uint8_t *)&s->isa.inst, ilen);
 #endif
 }
-
 static void execute(uint64_t n)
 {
   Decode s;

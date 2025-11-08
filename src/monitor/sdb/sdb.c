@@ -365,11 +365,28 @@ static int cmd_w(char *args)
     printf("  w *0x80100000    - Watch dereferenced memory\n");
     return 0;
   }
-  //tmp
+  WP *wp = new_wp();
+  if (wp == NULL)
+  {
+    printf("Error: No free watchpoint slots (maximum: %d)\n", get_max_watchpoints());
+    return 0;
+  }
+  wp_set_expr(wp, args);
+  // get exprssion default value
+  bool success;
+  word_t value = expr(args, &success);
+  if (!success)
+  {
+    printf("Error: Invalid expression '%s'\n", args);
+    free_wp(wp);
+    return 0;
+  }
+  wp_set_value(wp, value);
+  printf("Watchpoint %d: %s = 0x%08x\n", wp_get_no(wp), wp_get_expr(wp), value);
   return 0;
 }
 static int cmd_d(char *args)
 {
-  //tmp
+  // tmp
   return 0;
 }
