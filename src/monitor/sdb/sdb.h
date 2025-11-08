@@ -19,5 +19,21 @@
 #include <common.h>
 
 sword_t expr(char *e, bool *success);
+typedef struct watchpoint WP;
+WP *new_wp();
+void free_wp(WP *wp);
 void PrintWatchPoint();
+
+//Accessor function
+void wp_set_expr(WP *wp, const char *expr);
+const char *wp_get_expr(const WP *wp);
+void wp_set_value(WP *wp, uint32_t value);
+uint32_t wp_get_value(const WP *wp);
+void wp_set_no(WP *wp, int no);
+int wp_get_no(const WP *wp);
+//Linked list operation
+void wp_set_next(WP *wp, WP *next);
+WP *wp_get_next(const WP *wp);
+//maybe need this function
+bool wp_check_triggered(const WP *wp);
 #endif

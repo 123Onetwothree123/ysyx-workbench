@@ -121,3 +121,60 @@ void free_wp(WP *wp)
   wp->next = free_;
   free_ = wp;
 }
+void wp_set_expr(WP *wp, const char *expr)
+{
+  if (wp && expr)
+  {
+    strncpy(wp->expr, expr, sizeof(wp->expr) - 1);
+    wp->expr[sizeof(wp->expr) - 1] = '\0';
+  }
+}
+
+const char *wp_get_expr(const WP *wp)
+{
+  return wp ? wp->expr : NULL;
+}
+
+void wp_set_value(WP *wp, uint32_t value)
+{
+  if (wp)
+  {
+    wp->old_val = value;
+  }
+}
+
+uint32_t wp_get_value(const WP *wp)
+{
+  return wp ? wp->old_val : 0;
+}
+
+void wp_set_no(WP *wp, int no)
+{
+  if (wp)
+  {
+    wp->NO = no;
+  }
+}
+
+int wp_get_no(const WP *wp)
+{
+  return wp ? wp->NO : -1;
+}
+
+void wp_set_next(WP *wp, WP *next)
+{
+  if (wp)
+  {
+    wp->next = next;
+  }
+}
+
+WP *wp_get_next(const WP *wp)
+{
+  return wp ? wp->next : NULL;
+}
+bool wp_check_triggered(const WP *wp)
+{
+  // todo, now set and return bool false
+  return false;
+}
