@@ -47,6 +47,8 @@ static void trace_and_difftest(Decode *_this, vaddr_t dnpc)
     IFDEF(CONFIG_ITRACE, puts(_this->logbuf));
   }
   IFDEF(CONFIG_DIFFTEST, difftest_step(_this->pc, dnpc));
+
+// myself writing
 #ifdef CONFIG_WATCHPOINT
   // myself writing
   WP *wp = wp_get_head();
@@ -70,7 +72,7 @@ static void trace_and_difftest(Decode *_this, vaddr_t dnpc)
     {
       if (!triggered)
       {
-        //if first, print
+        // if first, print
         printf("\nWatchpoint triggered:\n");
       }
       printf("\nWatchpoint %d: %s\n", wp_get_no(wp), wp_get_expr(wp));
@@ -83,7 +85,7 @@ static void trace_and_difftest(Decode *_this, vaddr_t dnpc)
     }
     wp = wp_get_next(wp);
   }
-  #endif
+#endif
 }
 
 static void exec_once(Decode *s, vaddr_t pc)

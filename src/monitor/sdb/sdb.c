@@ -245,6 +245,20 @@ static int cmd_info(char *args)
     }
     else if (strcmp(args, "w") == 0) // Subcommand 'w': Print monitor point information
     {
+      if (wp_get_head() == NULL)
+      {
+        printf("No watchpoints.\n");
+      }
+      else
+      {
+        printf("Num     Type         Disp Enb Address    What\n");
+        WP *wp = wp_get_head();
+        while (wp != NULL)
+        {
+          printf("%-8d  watchpoint   keep y  0x%08x  %s\n", wp_get_no(wp), wp_get_value(wp), wp_get_expr(wp));
+          wp = wp_get_next(wp);
+        }
+      }
       PrintWatchPoint();
     }
     else
