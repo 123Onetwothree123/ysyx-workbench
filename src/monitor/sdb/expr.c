@@ -26,6 +26,7 @@
 #include <../../../src/isa/riscv32/local-include/reg.h>
 #include "sdb.h"
 #include <cpu/cpu.h>
+static bool eval_success = true;
 static void identify_unary_operators();
 bool needs_operator_decomposition(int p, int q);
 int get_operator_precedence(int type);
@@ -167,6 +168,7 @@ static bool make_token(char *e)
 
 sword_t expr(char *e, bool *success)
 {
+  *success = false;
   if (!make_token(e))
   {
     *success = false;
@@ -185,8 +187,9 @@ sword_t expr(char *e, bool *success)
   }
   // If the check passed (ExcuteState is true), we can proceed with evaluation.
   // The eval function itself will handle other cases like single tokens, operators, etc.
+  eval_success = true; // Reset and call eval
   sword_t result = eval(0, nr_token - 1);
-  *success = true;
+  *success = eval_success;
   return result;
 }
 
@@ -345,6 +348,7 @@ sword_t eval(int p, int q)
   if (p > q)
   {
     printf("Error: Invalid expression range\n");
+    eval_success = false;
     return 0;
   }
   else if (p == q)
@@ -404,12 +408,18 @@ sword_t eval(int p, int q)
   {
     // unary operator
     sword_t val = eval(p + 1, q);
+    if (!eval_success)
+      return 0;
     return -val;
   }
   else if (tokens[p].type == TK_POINTER)
   {
     // Pointer dereference - the address should be unsigned
     sword_t addr_signed = eval(p + 1, q);
+    if (!eval_success)
+    {
+      return 0;
+    }
     // Dereference Operator for Pointers
     word_t addr = (word_t)addr_signed; // Convert to an unsigned address
     return paddr_read(addr, 4);
@@ -420,6 +430,7 @@ sword_t eval(int p, int q)
     if (op == -1) // if not found main operator
     {
       printf("Error: No valid operator found in expression from token %d to %d\n", p, q);
+      eval_success = false;
       return 0;
     }
     /*
@@ -427,7 +438,15 @@ sword_t eval(int p, int q)
     val2 = eval(op + 1, q);
     */
     sword_t left_val = eval(p, op - 1);
+    if (!eval_success)
+    {
+      return 0;
+    }
     sword_t right_val = eval(op + 1, q);
+    if (!eval_success)
+    {
+      return 0;
+    }
     switch (tokens[op].type)
     {
     case '+':
@@ -441,6 +460,7 @@ sword_t eval(int p, int q)
       if (right_val == 0)
       {
         printf("Error: Division by zero\n");
+        eval_success = false;
         return 0;
       }
       return left_val / right_val;
@@ -450,6 +470,7 @@ sword_t eval(int p, int q)
       return left_val != right_val;
     default:
       printf("Error: Unsupported operator type %d at position %d\n", tokens[op].type, op);
+      eval_success = false;
       return 0;
       break;
     }
