@@ -358,6 +358,7 @@ sword_t eval(int p, int q)
       break;
     case TK_HEX:
       value = (sword_t)strtol(tokens[p].str, NULL, 16);
+      break;
     case TK_REG:
     {
       // value = isa_reg_get(tokens[p].str + 1);
