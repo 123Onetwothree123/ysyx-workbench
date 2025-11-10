@@ -307,13 +307,29 @@ static int cmd_x(char *args)
       printf("Error: Missing expression EXPR\n");
       return 0;
     }
-    bool success = true;
+    bool success = false;
     sword_t addr_signed = expr(expr_str, &success);
     word_t addr = (word_t)addr_signed;
     // if fail
     if (!success)
     {
       printf("Error: Invalid expression\n");
+      return 0;
+    }
+    // Check the validity of the memory address
+    const word_t MEM_START = 0x80000000;
+    const word_t MEM_END = 0x87ffffff;
+    if (addr < MEM_START || addr > MEM_END)
+    {
+      printf("Error: Address 0x%08x is out of valid memory range [0x%08x, 0x%08x]\n",
+             addr, MEM_START, MEM_END);
+      return 0;
+    }
+    // Check if there will be any cross-border visits
+    if (addr + (n - 1) * 4 > MEM_END)
+    {
+      printf("Error: Scanning %ld words from 0x%08x would exceed memory bounds\n",
+             n, addr);
       return 0;
     }
     // print

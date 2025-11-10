@@ -372,6 +372,7 @@ sword_t eval(int p, int q)
       {
         // if fail
         printf("Error: Invalid register name '%s'\n", tokens[p].str);
+        eval_success = false;
         return 0;
       }
 
