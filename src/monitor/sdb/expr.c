@@ -51,6 +51,8 @@ enum
   TK_MINUS,   // negative sign or Sign for Subtraction
   TK_POINTER, // Dereference Operator for Pointers
   TK_NEQ,     //!=, Not equal to
+  TK_LE,      // <=
+  TK_AND,     // &&
 };
 
 static struct rule
@@ -75,6 +77,8 @@ static struct rule
     {"0x[0-9a-fA-F]+", TK_HEX},  // hexadecimal
     {"[0-9]+", TK_NUM},          // decimal
     {"\\$[a-zA-Z0-9]+", TK_REG}, // register
+    {"<=", TK_LE},               // less equal
+    {"&&", TK_AND},              // logical and
 };
 
 #define NR_REGEX ARRLEN(rules)
@@ -299,6 +303,10 @@ int get_operator_precedence(int type)
   case '*':
   case '/':
     return 3;
+  case TK_LE:
+    return 1;
+  case TK_AND:
+    return 0;
   default:
     return 0; // It is not a binocular operator
   }
@@ -332,6 +340,8 @@ int find_main_operator(int p, int q)
               (tokens[i - 1].type == '+' || tokens[i - 1].type == '-' ||
                tokens[i - 1].type == '*' || tokens[i - 1].type == '/' ||
                tokens[i - 1].type == TK_EQ || tokens[i - 1].type == TK_NEQ ||
+               tokens[i - 1].type == TK_LE ||
+               tokens[i - 1].type == TK_AND ||
                tokens[i - 1].type == '('))
           {
             continue;
@@ -474,6 +484,10 @@ sword_t eval(int p, int q)
       return left_val == right_val;
     case TK_NEQ:
       return left_val != right_val;
+    case TK_LE:
+      return left_val <= right_val;
+    case TK_AND:
+      return left_val && right_val;
     default:
       printf("Error: Unsupported operator type %d at position %d\n", tokens[op].type, op);
       eval_success = false;
@@ -507,6 +521,8 @@ static void identify_unary_operators()
         if (prev_type == '+' || prev_type == '-' ||
             prev_type == '*' || prev_type == '/' ||
             prev_type == TK_EQ || prev_type == TK_NEQ ||
+            prev_type == TK_LE ||
+            prev_type == TK_AND ||
             prev_type == '(')
         {
           is_unary = true;
