@@ -31,6 +31,7 @@ static void identify_unary_operators();
 bool needs_operator_decomposition(int p, int q);
 int get_operator_precedence(int type);
 int find_main_operator(int p, int q);
+static inline bool is_operator_token(int type);
 typedef struct
 {
   bool result;
@@ -313,36 +314,30 @@ int get_operator_precedence(int type)
 }
 int find_main_operator(int p, int q)
 {
-  int op_pos = -1;     // main operator default is 0, meaning is not found
-  int min_prec = 4;    // found lowest, default is higher than all the operators
-  int paren_level = 0; // The current nested level of parentheses
+  int op_pos = -1;           // main operator default is 0, meaning is not found
+  int min_prec = UINT32_MAX; // found lowest, default is higher than all the operators
+  int paren_level = 0;       // The current nested level of parentheses
   for (int i = p; i <= q; i++)
   { // Handle parentheses, and update nested hierarchy
-    if (tokens[i].type == '(')
+    int type = tokens[i].type;
+    if (type == '(')
     {
       paren_level++;
       continue;
     }
-    if (tokens[i].type == ')')
+    if (type == ')')
     {
       paren_level--;
       continue;
     }
     if (paren_level == 0) // Search for the operator only in the outermost layer (paren level == 0)
     {
-      int type = tokens[i].type;
       int prec = get_operator_precedence(type);
       if (prec > 0) // If it is a valid binocular operator
       {
         if (type == '-' || type == '*') // If it is a '-' or '*', you need to check whether it is a unary operator
         {
-          if (i == p ||
-              (tokens[i - 1].type == '+' || tokens[i - 1].type == '-' ||
-               tokens[i - 1].type == '*' || tokens[i - 1].type == '/' ||
-               tokens[i - 1].type == TK_EQ || tokens[i - 1].type == TK_NEQ ||
-               tokens[i - 1].type == TK_LE ||
-               tokens[i - 1].type == TK_AND ||
-               tokens[i - 1].type == '('))
+          if ((type == '-' || type == '*') && (i == p || is_operator_token(tokens[i - 1].type) || tokens[i - 1].type == '('))
           {
             continue;
           }
@@ -503,50 +498,41 @@ sword_t eval(int p, int q)
     return 0;
   }
 }
+static inline bool is_operator_token(int type)
+{
+  return type == '+' || type == '-' || type == '*' || type == '/' ||
+         type == TK_EQ || type == TK_NEQ || type == TK_LE || type == TK_AND ||
+         type == TK_MINUS || type == TK_POINTER;
+}
 static void identify_unary_operators()
 {
   for (int i = 0; i < nr_token; i++)
   {
-    if (tokens[i].type == '-' || tokens[i].type == '*')
+    if (tokens[i].type != '-' && tokens[i].type != '*')
     {
-      bool is_unary;
-      if (i == 0)
+      continue;
+    }
+    bool is_unary = false;
+    // if expr start
+    if (i == 0)
+    {
+      is_unary = true;
+    }
+    // if a token before is a operator or left parenthesis
+    else
+    {
+      int prev_type = tokens[i - 1].type;
+      if (prev_type == '(' || is_operator_token(prev_type))
       {
-        // At the beginning, it must be a unary operator
         is_unary = true;
       }
-      else
-      {
-        int prev_type = tokens[i - 1].type;
-        // The operator or the left parenthesis is in front
-        if (prev_type == '+' || prev_type == '-' ||
-            prev_type == '*' || prev_type == '/' ||
-            prev_type == TK_EQ || prev_type == TK_NEQ ||
-            prev_type == TK_LE ||
-            prev_type == TK_AND ||
-            prev_type == '(')
-        {
-          is_unary = true;
-        }
-      }
-      // Marked as a unary operator
-      if (is_unary)
-      {
-        if (tokens[i].type == '-')
-        {
-          tokens[i].type = TK_MINUS; // minus
-          Log("Token %d: '-' identified as unary minus (TK_MINUS)", i);
-        }
-        else if (tokens[i].type == '*')
-        {
-          tokens[i].type = TK_POINTER;
-          Log("Token %d: '*' identified as pointer dereference (TK_POINTER)", i);
-        }
-        else
-        {
-          printf("I unknow identify_unary_operators() happend something.\n");
-        }
-      }
+    }
+    if (is_unary)
+    {
+      tokens[i].type = (tokens[i].type == '-') ? TK_MINUS : TK_POINTER;
+      Log("Token %d: '%c' identified as unary %s", i,
+          tokens[i].type == TK_MINUS ? '-' : '*',
+          tokens[i].type == TK_MINUS ? "minus" : "pointer");
     }
   }
 }
