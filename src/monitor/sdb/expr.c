@@ -34,7 +34,7 @@ int find_main_operator(int p, int q);
 typedef struct
 {
   bool result;
-  bool ExcuteState;
+  bool ExecuteState;
 } ExprResult;
 ExprResult check_parenthese(int, int);
 sword_t eval(int, int);
@@ -188,7 +188,7 @@ sword_t expr(char *e, bool *success)
   // TODO();
   identify_unary_operators(); // Identify and mark unary operators
   ExprResult paren_check = check_parenthese(0, nr_token - 1);
-  if (!paren_check.ExcuteState)
+  if (!paren_check.ExecuteState)
   {
     // If ExcuteState is false, it means there was a critical error during the check (e.g., mismatched parentheses).
     *success = false;
@@ -208,7 +208,7 @@ ExprResult check_parenthese(int p, int q)
   if (p > q)
   {
     // fail
-    result.ExcuteState = false;
+    result.ExecuteState = false;
     return result;
   }
   if (p == q)
@@ -233,7 +233,7 @@ ExprResult check_parenthese(int p, int q)
     // Check if the parentheses match
     if (counter < 0)
     {
-      result.ExcuteState = false;
+      result.ExecuteState = false;
       return result;
     }
     // If the counter returns to zero before q, it means it's not the outermost parentheses
@@ -249,12 +249,12 @@ ExprResult check_parenthese(int p, int q)
   else if (counter > 0)
   {
     printf("more left parenthesis than right parenthesis.\n");
-    result.ExcuteState = false;
+    result.ExecuteState = false;
   }
   else
   {
     printf("more right parenthesis than left parenthesis.\n");
-    result.ExcuteState = false;
+    result.ExecuteState = false;
   }
   return result;
 }
@@ -402,21 +402,21 @@ sword_t eval(int p, int q)
     }
     return value;
   }
-  else if (parenthese_result.result == true && parenthese_result.ExcuteState == true)
+  else if (parenthese_result.ExecuteState == true && parenthese_result.result == true)
   {
     return eval(p + 1, q - 1);
   }
-  else if (parenthese_result.result == true && parenthese_result.ExcuteState == false)
-  {
-    printf("Error: Parentheses mismatch\n");
-    return 0;
-  }
-  else if (parenthese_result.result == false && parenthese_result.ExcuteState == true)
+  else if (parenthese_result.ExecuteState == true && parenthese_result.result == false)
   {
     printf("The check_parenthese function return type ExprResult result==false.\n");
     return 0;
   }
-  else if (parenthese_result.result == false && parenthese_result.ExcuteState == false)
+  else if (parenthese_result.ExecuteState == false && parenthese_result.result == true)
+  {
+    printf("Error: Parentheses mismatch\n");
+    return 0;
+  }
+  else if (parenthese_result.ExecuteState == false && parenthese_result.result == false)
   {
     printf("The check_parenthese function return type ExprResult result and ExcuteState==false\n");
     return 0;
@@ -550,4 +550,3 @@ static void identify_unary_operators()
     }
   }
 }
-////
