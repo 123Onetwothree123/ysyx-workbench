@@ -359,6 +359,7 @@ int find_main_operator(int p, int q)
 }
 sword_t eval(int p, int q)
 {
+  ExprResult parenthese_result = check_parenthese(p, q);
   // invalid
   if (p > q)
   {
@@ -401,21 +402,21 @@ sword_t eval(int p, int q)
     }
     return value;
   }
-  else if (check_parenthese(p, q).result == true && check_parenthese(p, q).ExcuteState == true)
+  else if (parenthese_result.result == true && parenthese_result.ExcuteState == true)
   {
     return eval(p + 1, q - 1);
   }
-  else if (check_parenthese(p, q).result == true && check_parenthese(p, q).ExcuteState == false)
+  else if (parenthese_result.result == true && parenthese_result.ExcuteState == false)
   {
     printf("Error: Parentheses mismatch\n");
     return 0;
   }
-  else if (check_parenthese(p, q).result == false && check_parenthese(p, q).ExcuteState == true)
+  else if (parenthese_result.result == false && parenthese_result.ExcuteState == true)
   {
     printf("The check_parenthese function return type ExprResult result==false.\n");
     return 0;
   }
-  else if (check_parenthese(p, q).result == false && check_parenthese(p, q).ExcuteState == false)
+  else if (parenthese_result.result == false && parenthese_result.ExcuteState == false)
   {
     printf("The check_parenthese function return type ExprResult result and ExcuteState==false\n");
     return 0;
