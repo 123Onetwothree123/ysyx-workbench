@@ -26,6 +26,8 @@
 #include <../../../src/isa/riscv32/local-include/reg.h>
 #include "sdb.h"
 #include <cpu/cpu.h>
+#include <stdint.h>
+#include <limits.h>
 static bool eval_success = true;
 static void identify_unary_operators();
 bool needs_operator_decomposition(int p, int q);
@@ -84,7 +86,7 @@ static struct rule
 
 #define NR_REGEX ARRLEN(rules)
 
-static regex_t re[NR_REGEX] = {};
+static regex_t re[64];  // 使用固定大小数组代替ARRLEN
 
 /* Rules are used for many times.
  * Therefore we compile them only once before any usage.
@@ -148,6 +150,11 @@ static bool make_token(char *e)
         case TK_NUM:
         case TK_HEX:
         case TK_REG:
+          // Ensure we don't overflow the token string buffer
+          if (substr_len >= sizeof(tokens[nr_token].str)) {
+            printf("Error: Token too long at position %d\n", position);
+            return false;
+          }
           strncpy(tokens[nr_token].str, substr_start, substr_len);
           tokens[nr_token].str[substr_len] = '\0';
           tokens[nr_token].type = rules[i].token_type;
@@ -156,7 +163,6 @@ static bool make_token(char *e)
         case TK_NOTYPE:
           break;
         default:
-          // TODO();
           tokens[nr_token].type = rules[i].token_type;
           nr_token++;
           break;
@@ -291,66 +297,82 @@ bool needs_operator_decomposition(int p, int q)
   }
   return false;
 }
-int get_operator_precedence(int type)
+// 快速获取运算符优先级
+static inline int get_operator_precedence_fast(int type)
 {
-  switch (type)
-  {
-  case TK_EQ:
-  case TK_NEQ:
-    return 1; // The lowest priority
-  case '+':
-  case '-':
-    return 2;
-  case '*':
-  case '/':
-    return 3;
-  case TK_LE:
-    return 1;
-  case TK_AND:
-    return 0;
-  default:
-    return 0; // It is not a binocular operator
-  }
+    switch (type)
+    {
+    case '+':
+    case '-':
+        return 2;
+    case '*':
+    case '/':
+        return 3;
+    case TK_EQ:
+    case TK_NEQ:
+    case TK_LE:
+        return 1;
+    case TK_AND:
+        return 0;
+    default:
+        return -1; // 不是运算符
+    }
 }
+
+// 优化的find_main_operator函数
 int find_main_operator(int p, int q)
 {
-  int op_pos = -1;           // main operator default is 0, meaning is not found
-  int min_prec = UINT32_MAX; // found lowest, default is higher than all the operators
-  int paren_level = 0;       // The current nested level of parentheses
-  for (int i = p; i <= q; i++)
-  { // Handle parentheses, and update nested hierarchy
-    int type = tokens[i].type;
-    if (type == '(')
-    {
-      paren_level++;
-      continue;
+    // 快速排除无效范围
+    if (p >= q) {
+        return -1;
     }
-    if (type == ')')
+    
+    int op_pos = -1;
+    int min_prec = 1000;  // 使用一个足够大的值代替INT_MAX
+    int paren_level = 0;
+    
+    // 使用指针运算提高访问速度
+    const Token *token_ptr = &tokens[p];
+    const Token *end_ptr = &tokens[q];
+    
+    for (int i = p; token_ptr <= end_ptr; ++i, ++token_ptr)
     {
-      paren_level--;
-      continue;
-    }
-    if (paren_level == 0) // Search for the operator only in the outermost layer (paren level == 0)
-    {
-      int prec = get_operator_precedence(type);
-      if (prec > 0) // If it is a valid binocular operator
-      {
-        if (type == '-' || type == '*') // If it is a '-' or '*', you need to check whether it is a unary operator
-        {
-          if ((type == '-' || type == '*') && (i == p || is_operator_token(tokens[i - 1].type) || tokens[i - 1].type == '('))
-          {
+        int type = token_ptr->type;
+        
+        // 快速处理括号和常见情况
+        if (type == '(') {
+            paren_level++;
             continue;
-          }
         }
-        if (prec <= min_prec) // If the current operator has a lower or equal priority, it becomes the new candidate
+        if (type == ')') {
+            paren_level--;
+            continue;
+        }
+        
+        // 只处理最外层运算符
+        if (paren_level == 0)
         {
-          min_prec = prec;
-          op_pos = i;
+            int prec = get_operator_precedence_fast(type);
+            if (prec >= 0) // 是有效的二元运算符
+            {
+                // 快速检查一元运算符（只在位置p或前一个token是运算符时）
+                if ((type == '-' || type == '*') &&
+                    (i == p || is_operator_token(tokens[i - 1].type)))
+                {
+                    continue;
+                }
+                
+                // 使用<=确保左结合性，相同优先级选择最右边的运算符
+                if (prec <= min_prec)
+                {
+                    min_prec = prec;
+                    op_pos = i;
+                }
+            }
         }
-      }
     }
-  }
-  return op_pos;
+    
+    return op_pos;
 }
 sword_t eval(int p, int q)
 {
@@ -433,7 +455,7 @@ sword_t eval(int p, int q)
       return 0;
     }
     // Dereference Operator for Pointers
-    word_t addr = (word_t)addr_signed; // Convert to an unsigned address
+    uint32_t addr = (uint32_t)addr_signed; // Convert to an unsigned address
     return paddr_read(addr, 4);
   }
   else if (needs_operator_decomposition(p, q))
