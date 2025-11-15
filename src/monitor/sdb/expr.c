@@ -295,21 +295,20 @@ int get_operator_precedence(int type)
 {
   switch (type)
   {
-  case TK_EQ:
-  case TK_NEQ:
-    return 1; // The lowest priority
-  case '+':
-  case '-':
-    return 2;
-  case '*':
-  case '/':
-    return 3;
-  case TK_LE:
+  case TK_AND:      // Logical AND (&&) - lowest priority
     return 1;
-  case TK_AND:
-    return 0;
+  case TK_EQ:       // Equal (==)
+  case TK_NEQ:      // Not equal (!=)
+  case TK_LE:       // Less equal (<=)
+    return 2;       // Comparison operators
+  case '+':         // Addition
+  case '-':         // Subtraction
+    return 3;       // Addition/Subtraction
+  case '*':         // Multiplication
+  case '/':         // Division
+    return 4;       // Multiplication/Division - highest priority
   default:
-    return 0; // It is not a binocular operator
+    return 0;       // Not a binary operator
   }
 }
 int find_main_operator(int p, int q)
