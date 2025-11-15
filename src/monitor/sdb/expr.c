@@ -425,7 +425,9 @@ sword_t eval(int p, int q)
     // unary operator
     sword_t val = eval(p + 1, q);
     if (!eval_success)
+    {
       return 0;
+    }
     return -val;
   }
   else if (tokens[p].type == TK_POINTER)
@@ -438,6 +440,12 @@ sword_t eval(int p, int q)
     }
     // Dereference Operator for Pointers
     word_t addr = (word_t)addr_signed; // Convert to an unsigned address
+    if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
+    {
+      printf("Error: Invalid memory address 0x%08x\n", addr);
+      eval_success = false;
+      return 0;
+    }
     return paddr_read(addr, 4);
   }
   else if (needs_operator_decomposition(p, q))
