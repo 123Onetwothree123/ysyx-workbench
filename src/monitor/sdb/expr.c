@@ -295,20 +295,20 @@ int get_operator_precedence(int type)
 {
   switch (type)
   {
-  case TK_AND:      // Logical AND (&&) - lowest priority
+  case TK_AND: // Logical AND (&&) - lowest priority
     return 1;
-  case TK_EQ:       // Equal (==)
-  case TK_NEQ:      // Not equal (!=)
-  case TK_LE:       // Less equal (<=)
-    return 2;       // Comparison operators
-  case '+':         // Addition
-  case '-':         // Subtraction
-    return 3;       // Addition/Subtraction
-  case '*':         // Multiplication
-  case '/':         // Division
-    return 4;       // Multiplication/Division - highest priority
+  case TK_EQ:  // Equal (==)
+  case TK_NEQ: // Not equal (!=)
+  case TK_LE:  // Less equal (<=)
+    return 2;  // Comparison operators
+  case '+':    // Addition
+  case '-':    // Subtraction
+    return 3;  // Addition/Subtraction
+  case '*':    // Multiplication
+  case '/':    // Division
+    return 4;  // Multiplication/Division - highest priority
   default:
-    return 0;       // Not a binary operator
+    return 0; // Not a binary operator
   }
 }
 int find_main_operator(int p, int q)
@@ -334,12 +334,9 @@ int find_main_operator(int p, int q)
       int prec = get_operator_precedence(type);
       if (prec > 0) // If it is a valid binocular operator
       {
-        if (type == '-' || type == '*') // If it is a '-' or '*', you need to check whether it is a unary operator
+        if ((type == '-' || type == '*') && (i == p || is_operator_token(tokens[i - 1].type) || tokens[i - 1].type == '('))
         {
-          if ((type == '-' || type == '*') && (i == p || is_operator_token(tokens[i - 1].type) || tokens[i - 1].type == '('))
-          {
-            continue;
-          }
+          continue;
         }
         if (prec <= min_prec) // If the current operator has a lower or equal priority, it becomes the new candidate
         {
