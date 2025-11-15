@@ -318,7 +318,7 @@ int find_main_operator(int p, int q)
     return -1;
   }
   int op_pos = -1;           // main operator default is 0, meaning is not found
-  int min_prec = UINT32_MAX; // found lowest, default is higher than all the operators
+  int min_prec = INT32_MAX; // found lowest, default is higher than all the operators
   int paren_level = 0;       // The current nested level of parentheses
   for (int i = p; i <= q; i++)
   { // Handle parentheses, and update nested hierarchy
@@ -346,7 +346,7 @@ int find_main_operator(int p, int q)
         {
           continue;
         }
-        if (prec <= min_prec) // If the current operator has a lower or equal priority, it becomes the new candidate
+        if (prec < min_prec) // If the current operator has a lower or equal priority, it becomes the new candidate
         {
           min_prec = prec;
           op_pos = i;
