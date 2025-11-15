@@ -313,6 +313,10 @@ int get_operator_precedence(int type)
 }
 int find_main_operator(int p, int q)
 {
+  if (p >= q)
+  {
+    return -1;
+  }
   int op_pos = -1;           // main operator default is 0, meaning is not found
   int min_prec = UINT32_MAX; // found lowest, default is higher than all the operators
   int paren_level = 0;       // The current nested level of parentheses
