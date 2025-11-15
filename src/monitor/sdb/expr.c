@@ -336,6 +336,10 @@ int find_main_operator(int p, int q)
     if (paren_level == 0) // Search for the operator only in the outermost layer (paren level == 0)
     {
       int prec = get_operator_precedence(type);
+      if (prec <= 0)
+      {
+        continue;
+      }
       if (prec > 0) // If it is a valid binocular operator
       {
         if ((type == '-' || type == '*') && (i == p || is_operator_token(tokens[i - 1].type) || tokens[i - 1].type == '('))
