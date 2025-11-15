@@ -507,6 +507,7 @@ sword_t eval(int p, int q)
   else
   {
     printf("Error: Unrecognized expression from token %d to %d\n", p, q);
+    eval_success = false;
     return 0;
   }
 }
