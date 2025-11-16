@@ -28,7 +28,6 @@
 #include <cpu/cpu.h>
 static bool eval_success = true;
 static void identify_unary_operators();
-bool needs_operator_decomposition(int p, int q);
 int find_main_operator(int p, int q);
 static inline bool is_operator_token(int type);
 static bool validate_parentheses();
@@ -242,19 +241,6 @@ sword_t expr(char *e, bool *success)
   sword_t result = eval(0, nr_token - 1);
   *success = eval_success;
   return result;
-}
-bool needs_operator_decomposition(int p, int q)
-{
-  // Iterate through all tokens to find binary operators
-  for (int i = p; i <= q; i++)
-  {
-    int type = tokens[i].type;
-    if (type == '+' || type == '-' || type == '*' || type == '/' || type == TK_EQ || type == TK_NEQ || type == TK_LE || type == TK_AND)
-    {
-      return true;
-    }
-  }
-  return false;
 }
 int find_main_operator(int p, int q)
 {
