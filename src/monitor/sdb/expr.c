@@ -231,7 +231,8 @@ sword_t expr(char *e, bool *success)
   /* TODO: Insert codes to evaluate the expression. */
   // TODO();
   identify_unary_operators(); // Identify and mark unary operators
-  if (!validate_parentheses()) {
+  if (!validate_parentheses())
+  {
     *success = false;
     return 0;
   }
@@ -478,7 +479,9 @@ static bool validate_parentheses()
 static bool is_enclosed_in_parentheses(int p, int q)
 {
   if (p >= q)
+  {
     return false;
+  }
   if (tokens[p].type != '(' || tokens[q].type != ')')
   {
     return false;
@@ -493,11 +496,6 @@ static bool is_enclosed_in_parentheses(int p, int q)
     else if (tokens[i].type == ')')
     {
       counter--;
-    }
-    else
-    {
-      printf("expr.c is_enclosed_in_parentheses function unknow execute false.\n");
-      return false;
     }
     if (counter == 0) // It is closed before q and is not the outermost layer
     {
