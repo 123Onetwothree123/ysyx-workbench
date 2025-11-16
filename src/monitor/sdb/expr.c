@@ -307,7 +307,7 @@ bool needs_operator_decomposition(int p, int q)
     int type = tokens[i].type;
     // Check if it is a binary operator
     if (type == '+' || type == '-' || type == '*' || type == '/' ||
-        type == TK_EQ || type == TK_NEQ)
+        type == TK_EQ || type == TK_NEQ || type == TK_LE || type == TK_AND)
     {
       if (i == p)
       {
@@ -321,7 +321,8 @@ bool needs_operator_decomposition(int p, int q)
       {
         int prev_type = tokens[i - 1].type;
         if (prev_type == '+' || prev_type == '-' || prev_type == '*' ||
-            prev_type == '/' || prev_type == TK_EQ || prev_type == TK_NEQ)
+            prev_type == '/' || prev_type == TK_EQ || prev_type == TK_NEQ ||
+            prev_type == TK_LE || prev_type == TK_AND)
         {
           continue;
         }
