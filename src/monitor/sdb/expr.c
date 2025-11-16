@@ -191,6 +191,11 @@ static bool make_token(char *e)
         case TK_NUM:
         case TK_HEX:
         case TK_REG:
+          if (substr_len >= sizeof(tokens[nr_token].str))
+          {
+            printf("Error: Token too long at position %d\n", position);
+            return false;
+          }
           strncpy(tokens[nr_token].str, substr_start, substr_len);
           tokens[nr_token].str[substr_len] = '\0';
           tokens[nr_token].type = rules[i].token_type;
