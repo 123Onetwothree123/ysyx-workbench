@@ -37,6 +37,12 @@ typedef struct
   bool result;
   bool ExecuteState;
 } ExprResult;
+typedef struct
+{
+  int precedence;
+  bool is_right_assoc;
+} OperatorInfo;
+
 ExprResult check_parenthese(int, int);
 sword_t eval(int, int);
 enum
@@ -81,7 +87,41 @@ static struct rule
     {"<=", TK_LE},               // less equal
     {"&&", TK_AND},              // logical and
 };
-
+static inline OperatorInfo get_op_info(int type)
+{
+  switch (type)
+  {
+  // left
+  case '+':
+    return (OperatorInfo){3, false};
+  case '-':
+    return (OperatorInfo){3, false};
+  case '*':
+    return (OperatorInfo){4, false};
+  case '/':
+    return (OperatorInfo){4, false};
+  case TK_EQ:
+    return (OperatorInfo){2, false};
+  case TK_NEQ:
+    return (OperatorInfo){2, false};
+  case TK_LE:
+    return (OperatorInfo){2, false};
+  case TK_AND:
+    return (OperatorInfo){1, false};
+  // right
+  case TK_MINUS:
+    return (OperatorInfo){5, true};
+  case TK_POINTER:
+    return (OperatorInfo){5, true};
+  default:
+    return (OperatorInfo){0, false}; // default return false, because this is not operator
+  }
+}
+// judge operator
+static inline bool is_operator_token(int type)
+{
+  return get_op_info(type).precedence > 0 || type == '(' || type == ')';
+}
 #define NR_REGEX ARRLEN(rules)
 
 static regex_t re[NR_REGEX] = {};
@@ -317,9 +357,9 @@ int find_main_operator(int p, int q)
   {
     return -1;
   }
-  int op_pos = -1;           // main operator default is 0, meaning is not found
+  int op_pos = -1;          // main operator default is -1, meaning is not found
   int min_prec = INT32_MAX; // found lowest, default is higher than all the operators
-  int paren_level = 0;       // The current nested level of parentheses
+  int paren_level = 0;      // The current nested level of parentheses
   for (int i = p; i <= q; i++)
   { // Handle parentheses, and update nested hierarchy
     int type = tokens[i].type;
@@ -333,25 +373,20 @@ int find_main_operator(int p, int q)
       paren_level--;
       continue;
     }
-    if (paren_level == 0) // Search for the operator only in the outermost layer (paren level == 0)
+    if (paren_level != 0)
     {
-      int prec = get_operator_precedence(type);
-      if (prec <= 0)
-      {
-        continue;
-      }
-      if (prec > 0) // If it is a valid binocular operator
-      {
-        if ((type == '-' || type == '*') && (i == p || is_operator_token(tokens[i - 1].type) || tokens[i - 1].type == '('))
-        {
-          continue;
-        }
-        if (prec < min_prec) // If the current operator has a lower or equal priority, it becomes the new candidate
-        {
-          min_prec = prec;
-          op_pos = i;
-        }
-      }
+      continue;
+    }
+    OperatorInfo info = get_op_info(type);
+    if (info.precedence == 0)
+    {
+      continue;
+    }
+    if (info.precedence < min_prec ||
+        (info.precedence == min_prec && info.is_right_assoc))
+    {
+      min_prec = info.precedence;
+      op_pos = i;
     }
   }
   return op_pos;
@@ -510,12 +545,6 @@ sword_t eval(int p, int q)
     eval_success = false;
     return 0;
   }
-}
-static inline bool is_operator_token(int type)
-{
-  return type == '+' || type == '-' || type == '*' || type == '/' ||
-         type == TK_EQ || type == TK_NEQ || type == TK_LE || type == TK_AND ||
-         type == TK_MINUS || type == TK_POINTER;
 }
 static void identify_unary_operators()
 {
