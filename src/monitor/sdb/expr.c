@@ -181,7 +181,11 @@ static bool make_token(char *e)
          * to record the token in the array `tokens'. For certain types
          * of tokens, some extra actions should be performed.
          */
-
+        if (rules[i].token_type != TK_NOTYPE && nr_token >= 32)
+        {
+          printf("Error: Expression too complex: maximum 32 tokens exceeded\n");
+          return false;
+        }
         switch (rules[i].token_type)
         {
         case TK_NUM:
