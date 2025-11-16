@@ -29,7 +29,6 @@
 static bool eval_success = true;
 static void identify_unary_operators();
 bool needs_operator_decomposition(int p, int q);
-int get_operator_precedence(int type);
 int find_main_operator(int p, int q);
 static inline bool is_operator_token(int type);
 typedef struct
@@ -331,26 +330,6 @@ bool needs_operator_decomposition(int p, int q)
     }
   }
   return false;
-}
-int get_operator_precedence(int type)
-{
-  switch (type)
-  {
-  case TK_AND: // Logical AND (&&) - lowest priority
-    return 1;
-  case TK_EQ:  // Equal (==)
-  case TK_NEQ: // Not equal (!=)
-  case TK_LE:  // Less equal (<=)
-    return 2;  // Comparison operators
-  case '+':    // Addition
-  case '-':    // Subtraction
-    return 3;  // Addition/Subtraction
-  case '*':    // Multiplication
-  case '/':    // Division
-    return 4;  // Multiplication/Division - highest priority
-  default:
-    return 0; // Not a binary operator
-  }
 }
 int find_main_operator(int p, int q)
 {
