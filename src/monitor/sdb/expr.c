@@ -359,7 +359,9 @@ sword_t eval(int p, int q)
       return 0;
     sword_t right_val = eval(op_pos + 1, q);
     if (!eval_success)
+    {
       return 0;
+    }
     switch (tokens[op_pos].type)
     {
     case '+':
