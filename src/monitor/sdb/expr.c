@@ -424,12 +424,6 @@ sword_t eval(int p, int q)
   {
     return eval(p + 1, q - 1);
   }
-  else if (parenthese_result.ExecuteState == true && parenthese_result.result == false)
-  {
-    printf("The check_parenthese function return type ExprResult result==false.\n");
-    eval_success = false;
-    return 0;
-  }
   else if (parenthese_result.ExecuteState == false && parenthese_result.result == true)
   {
     printf("Error: Parentheses mismatch\n");
