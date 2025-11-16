@@ -419,7 +419,7 @@ sword_t eval(int p, int q)
       eval_success = false;
       return 0;
     }
-    return (sword_t)paddr_read(addr, 4);
+    return (sword_t)paddr_read(addr, sizeof(word_t));
   }
   printf("Error: Cannot evaluate expression from token %d to %d\n", p, q);
   eval_success = false;
