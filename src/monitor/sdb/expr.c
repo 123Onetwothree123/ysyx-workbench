@@ -268,6 +268,10 @@ int find_main_operator(int p, int q)
     {
       continue;
     }
+    if (type == TK_MINUS || type == TK_POINTER)
+    {
+      continue; // Skip the unary minus sign and unary dereference
+    }
     OperatorInfo info = get_op_info(type);
     if (info.precedence == 0)
     {
@@ -382,7 +386,9 @@ sword_t eval(int p, int q)
   {
     sword_t addr_signed = eval(p + 1, q);
     if (!eval_success)
+    {
       return 0;
+    }
     word_t addr = (word_t)addr_signed;
     if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
     {
@@ -407,6 +413,10 @@ static void identify_unary_operators()
     bool is_unary = false;
     // if expr start
     if (i == 0)
+    {
+      is_unary = true;
+    }
+    else if (tokens[i - 1].type == '(')
     {
       is_unary = true;
     }
