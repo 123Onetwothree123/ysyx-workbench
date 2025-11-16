@@ -346,38 +346,9 @@ sword_t eval(int p, int q)
   {
     return eval(p + 1, q - 1);
   }
-  // Handle unary operators (which must be at the beginning of the expression)
-  if (tokens[p].type == TK_MINUS)
+  int op_pos = find_main_operator(p, q);
+  if (op_pos != -1)
   {
-    sword_t val = eval(p + 1, q);
-    if (!eval_success)
-      return 0;
-    return -val;
-  }
-  if (tokens[p].type == TK_POINTER)
-  {
-    sword_t addr_signed = eval(p + 1, q);
-    if (!eval_success)
-      return 0;
-    word_t addr = (word_t)addr_signed;
-    if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
-    {
-      printf("Error: Invalid memory address 0x%08x\n", addr);
-      eval_success = false;
-      return 0;
-    }
-    return (sword_t)paddr_read(addr, 4);
-  }
-  if (needs_operator_decomposition(p, q))
-  {
-    int op_pos = find_main_operator(p, q);
-    if (op_pos == -1)
-    {
-      printf("Error: No valid operator found in tokens [%d, %d]\n", p, q);
-      eval_success = false;
-      return 0;
-    }
-
     sword_t left_val = eval(p, op_pos - 1);
     if (!eval_success)
       return 0;
@@ -409,13 +380,33 @@ sword_t eval(int p, int q)
     case TK_AND:
       return left_val && right_val;
     default:
-      printf("Error: Unsupported operator %d at position %d\n",
-             tokens[op_pos].type, op_pos);
+      printf("Error: Unsupported binary operator %d\n", tokens[op_pos].type);
       eval_success = false;
       return 0;
     }
   }
-  printf("Error: Unrecognized expression structure from token %d to %d\n", p, q);
+  if (tokens[p].type == TK_MINUS)
+  {
+    sword_t val = eval(p + 1, q);
+    if (!eval_success)
+      return 0;
+    return -val;
+  }
+  if (tokens[p].type == TK_POINTER)
+  {
+    sword_t addr_signed = eval(p + 1, q);
+    if (!eval_success)
+      return 0;
+    word_t addr = (word_t)addr_signed;
+    if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
+    {
+      printf("Error: Invalid memory address 0x%08x\n", addr);
+      eval_success = false;
+      return 0;
+    }
+    return (sword_t)paddr_read(addr, 4);
+  }
+  printf("Error: Cannot evaluate expression from token %d to %d\n", p, q);
   eval_success = false;
   return 0;
 }
