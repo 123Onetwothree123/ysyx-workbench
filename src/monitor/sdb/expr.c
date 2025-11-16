@@ -287,8 +287,9 @@ int find_main_operator(int p, int q)
     {
       continue;
     }
+    // kimi k2 turbo thinking:关键修复：左结合运算符(!is_right_assoc)应选择最右边的
     if (info.precedence < min_prec ||
-        (info.precedence == min_prec && info.is_right_assoc))
+        (info.precedence == min_prec && !info.is_right_assoc))
     {
       min_prec = info.precedence;
       op_pos = i;
@@ -436,7 +437,7 @@ static void identify_unary_operators()
     else
     {
       int prev_type = tokens[i - 1].type;
-      if (prev_type == '(' || is_operator_token(prev_type))
+      if (prev_type == '(' || (is_operator_token(prev_type) && prev_type != ')'))
       {
         is_unary = true;
       }
