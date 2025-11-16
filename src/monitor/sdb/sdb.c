@@ -197,6 +197,7 @@ static int cmd_si(char *args)
   {
     printf("monitor cmd_si arg==NULL, so default step=1, executed one\n");
     steps = 1;
+    cpu_exec(steps);
     return 0;
   }
   else if (args != NULL) // check args is not null, it have value.
