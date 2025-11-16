@@ -320,7 +320,6 @@ sword_t eval(int p, int q)
         eval_success = false;
         return 0;
       }
-
       // value = isa_reg_str2val(tokens[p].str + 1, &success);
       break;
     }
@@ -344,19 +343,26 @@ sword_t eval(int p, int q)
     {
       sword_t left_val = eval(p, op_pos - 1);
       if (!eval_success)
+      {
         return 0;
+      }
       if (left_val == 0)
+      {
         return 0; // Left operand is false, short-circuit return
-
+      }
       sword_t right_val = eval(op_pos + 1, q);
       if (!eval_success)
+      {
         return 0;
+      }
       return right_val != 0; // Left is true, return the truth value of the right operand
     }
     // [Non-short-circuit operator] Evaluate left and right operands first
     sword_t left_val = eval(p, op_pos - 1);
     if (!eval_success)
+    {
       return 0;
+    }
     sword_t right_val = eval(op_pos + 1, q);
     if (!eval_success)
     {
@@ -394,7 +400,9 @@ sword_t eval(int p, int q)
   {
     sword_t val = eval(p + 1, q);
     if (!eval_success)
+    {
       return 0;
+    }
     return -val;
   }
   if (tokens[p].type == TK_POINTER)
