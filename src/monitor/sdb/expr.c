@@ -339,6 +339,21 @@ sword_t eval(int p, int q)
   int op_pos = find_main_operator(p, q);
   if (op_pos != -1)
   {
+    // [Short-circuit evaluation] Check before evaluating the right operand
+    if (tokens[op_pos].type == TK_AND)
+    {
+      sword_t left_val = eval(p, op_pos - 1);
+      if (!eval_success)
+        return 0;
+      if (left_val == 0)
+        return 0; // Left operand is false, short-circuit return
+
+      sword_t right_val = eval(op_pos + 1, q);
+      if (!eval_success)
+        return 0;
+      return right_val != 0; // Left is true, return the truth value of the right operand
+    }
+    // [Non-short-circuit operator] Evaluate left and right operands first
     sword_t left_val = eval(p, op_pos - 1);
     if (!eval_success)
       return 0;
@@ -367,8 +382,6 @@ sword_t eval(int p, int q)
       return left_val != right_val;
     case TK_LE:
       return left_val <= right_val;
-    case TK_AND:
-      return left_val && right_val;
     default:
       printf("Error: Unsupported binary operator %d\n", tokens[op_pos].type);
       eval_success = false;
