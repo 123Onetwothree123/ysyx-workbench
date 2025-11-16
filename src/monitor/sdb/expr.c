@@ -31,18 +31,13 @@ static void identify_unary_operators();
 bool needs_operator_decomposition(int p, int q);
 int find_main_operator(int p, int q);
 static inline bool is_operator_token(int type);
-typedef struct
-{
-  bool result;
-  bool ExecuteState;
-} ExprResult;
+static bool validate_parentheses();
+static bool is_enclosed_in_parentheses(int p, int q);
 typedef struct
 {
   int precedence;
   bool is_right_assoc;
 } OperatorInfo;
-
-ExprResult check_parenthese(int, int);
 sword_t eval(int, int);
 enum
 {
@@ -236,10 +231,7 @@ sword_t expr(char *e, bool *success)
   /* TODO: Insert codes to evaluate the expression. */
   // TODO();
   identify_unary_operators(); // Identify and mark unary operators
-  ExprResult paren_check = check_parenthese(0, nr_token - 1);
-  if (!paren_check.ExecuteState)
-  {
-    // If ExcuteState is false, it means there was a critical error during the check (e.g., mismatched parentheses).
+  if (!validate_parentheses()) {
     *success = false;
     return 0;
   }
@@ -250,91 +242,14 @@ sword_t expr(char *e, bool *success)
   *success = eval_success;
   return result;
 }
-
-ExprResult check_parenthese(int p, int q)
-{
-  ExprResult result = {false, true};
-  if (p > q)
-  {
-    // fail
-    result.ExecuteState = false;
-    return result;
-  }
-  if (p == q)
-  {
-    return result; // result keep false，ExcuteState keep true
-  }
-  if (tokens[p].type != '(' || tokens[q].type != ')')
-  {
-    return result; // result keep false，ExcuteState keep true
-  }
-  int counter = 0; // use counter check parentheses matche
-  for (int i = p; i <= q; i++)
-  {
-    if (tokens[i].type == '(')
-    {
-      counter++;
-    }
-    else if (tokens[i].type == ')')
-    {
-      counter--;
-    }
-    // Check if the parentheses match
-    if (counter < 0)
-    {
-      result.ExecuteState = false;
-      return result;
-    }
-    // If the counter returns to zero before q, it means it's not the outermost parentheses
-    if (counter == 0 && i < q)
-    {
-      return result; // result remains false, ExcuteState remains true
-    }
-  }
-  if (counter == 0)
-  {
-    result.result = true;
-  }
-  else if (counter > 0)
-  {
-    printf("more left parenthesis than right parenthesis.\n");
-    result.ExecuteState = false;
-  }
-  else
-  {
-    printf("more right parenthesis than left parenthesis.\n");
-    result.ExecuteState = false;
-  }
-  return result;
-}
 bool needs_operator_decomposition(int p, int q)
 {
   // Iterate through all tokens to find binary operators
   for (int i = p; i <= q; i++)
   {
     int type = tokens[i].type;
-    // Check if it is a binary operator
-    if (type == '+' || type == '-' || type == '*' || type == '/' ||
-        type == TK_EQ || type == TK_NEQ || type == TK_LE || type == TK_AND)
+    if (type == '+' || type == '-' || type == '*' || type == '/' || type == TK_EQ || type == TK_NEQ || type == TK_LE || type == TK_AND)
     {
-      if (i == p)
-      {
-        if (type == '-' || type == '*')
-        {
-          continue;
-        }
-      }
-      // Check if the previous token is an operator
-      if (i > p)
-      {
-        int prev_type = tokens[i - 1].type;
-        if (prev_type == '+' || prev_type == '-' || prev_type == '*' ||
-            prev_type == '/' || prev_type == TK_EQ || prev_type == TK_NEQ ||
-            prev_type == TK_LE || prev_type == TK_AND)
-        {
-          continue;
-        }
-      }
       return true;
     }
   }
@@ -382,7 +297,6 @@ int find_main_operator(int p, int q)
 }
 sword_t eval(int p, int q)
 {
-  ExprResult parenthese_result = check_parenthese(p, q);
   // invalid
   if (p > q)
   {
@@ -420,83 +334,58 @@ sword_t eval(int p, int q)
     }
     default:
       printf("Error: Invalid token type %d at position %d\n", tokens[p].type, p);
+      eval_success = false;
       return 0;
       break;
     }
     return value;
   }
-  else if (parenthese_result.ExecuteState == true && parenthese_result.result == true)
+  if (is_enclosed_in_parentheses(p, q))
   {
     return eval(p + 1, q - 1);
   }
-  else if (parenthese_result.ExecuteState == false && parenthese_result.result == true)
+  // Handle unary operators (which must be at the beginning of the expression)
+  if (tokens[p].type == TK_MINUS)
   {
-    printf("Error: Parentheses mismatch\n");
-    eval_success = false;
-    return 0;
-  }
-  else if (parenthese_result.ExecuteState == false && parenthese_result.result == false)
-  {
-    printf("The check_parenthese function return type ExprResult result and ExcuteState==false\n");
-    eval_success = false;
-    return 0;
-  }
-  else if (tokens[p].type == TK_MINUS)
-  {
-    // unary operator
     sword_t val = eval(p + 1, q);
     if (!eval_success)
-    {
       return 0;
-    }
     return -val;
   }
-  else if (tokens[p].type == TK_POINTER)
+  if (tokens[p].type == TK_POINTER)
   {
-    // Pointer dereference - the address should be unsigned
     sword_t addr_signed = eval(p + 1, q);
     if (!eval_success)
-    {
       return 0;
-    }
-    // Dereference Operator for Pointers
-    word_t addr = (word_t)addr_signed; // Convert to an unsigned address
+    word_t addr = (word_t)addr_signed;
     if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
     {
       printf("Error: Invalid memory address 0x%08x\n", addr);
       eval_success = false;
       return 0;
     }
-    return paddr_read(addr, 4);
+    return (sword_t)paddr_read(addr, 4);
   }
-  else if (needs_operator_decomposition(p, q))
+  if (needs_operator_decomposition(p, q))
   {
-    int op = find_main_operator(p, q);
-    if (op == -1) // if not found main operator
+    int op_pos = find_main_operator(p, q);
+    if (op_pos == -1)
     {
-      printf("Error: No valid operator found in expression from token %d to %d\n", p, q);
+      printf("Error: No valid operator found in tokens [%d, %d]\n", p, q);
       eval_success = false;
       return 0;
     }
-    /*
-    val1 = eval(p, op - 1);
-    val2 = eval(op + 1, q);
-    */
-    sword_t left_val = eval(p, op - 1);
+
+    sword_t left_val = eval(p, op_pos - 1);
     if (!eval_success)
-    {
       return 0;
-    }
-    sword_t right_val = eval(op + 1, q);
+    sword_t right_val = eval(op_pos + 1, q);
     if (!eval_success)
-    {
       return 0;
-    }
-    switch (tokens[op].type)
+    switch (tokens[op_pos].type)
     {
     case '+':
       return left_val + right_val;
-      break;
     case '-':
       return left_val - right_val;
     case '*':
@@ -518,19 +407,15 @@ sword_t eval(int p, int q)
     case TK_AND:
       return left_val && right_val;
     default:
-      printf("Error: Unsupported operator type %d at position %d\n", tokens[op].type, op);
+      printf("Error: Unsupported operator %d at position %d\n",
+             tokens[op_pos].type, op_pos);
       eval_success = false;
       return 0;
-      break;
     }
   }
-  // Default situation: Unrecognizable expressions
-  else
-  {
-    printf("Error: Unrecognized expression from token %d to %d\n", p, q);
-    eval_success = false;
-    return 0;
-  }
+  printf("Error: Unrecognized expression structure from token %d to %d\n", p, q);
+  eval_success = false;
+  return 0;
 }
 static void identify_unary_operators()
 {
@@ -563,4 +448,61 @@ static void identify_unary_operators()
           tokens[i].type == TK_MINUS ? "minus" : "pointer");
     }
   }
+}
+static bool validate_parentheses()
+{
+  int counter = 0;
+  for (int i = 0; i < nr_token; i++)
+  {
+    if (tokens[i].type == '(')
+    {
+      counter++;
+    }
+    else if (tokens[i].type == ')')
+    {
+      counter--;
+      if (counter < 0)
+      {
+        printf("Error: Unmatched closing parenthesis at token %d\n", i);
+        return false;
+      }
+    }
+  }
+  if (counter != 0)
+  {
+    printf("Error: %d unmatched opening parenthesis(es)\n", counter);
+    return false;
+  }
+  return true;
+}
+static bool is_enclosed_in_parentheses(int p, int q)
+{
+  if (p >= q)
+    return false;
+  if (tokens[p].type != '(' || tokens[q].type != ')')
+  {
+    return false;
+  }
+  int counter = 1; // Start matching from p+1
+  for (int i = p + 1; i < q; i++)
+  {
+    if (tokens[i].type == '(')
+    {
+      counter++;
+    }
+    else if (tokens[i].type == ')')
+    {
+      counter--;
+    }
+    else
+    {
+      printf("expr.c is_enclosed_in_parentheses function unknow execute false.\n");
+      return false;
+    }
+    if (counter == 0) // It is closed before q and is not the outermost layer
+    {
+      return false;
+    }
+  }
+  return counter == 1;
 }
