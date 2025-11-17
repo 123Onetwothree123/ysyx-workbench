@@ -176,6 +176,7 @@ WP *wp_get_next(const WP *wp)
 {
   return wp ? wp->next : NULL;
 }
+/*
 bool wp_check_triggered(const WP *wp)
 {
   if (!check_null_pointer(wp, "watchpoint"))
@@ -185,6 +186,7 @@ bool wp_check_triggered(const WP *wp)
   // todo, now set and return bool false
   return false;
 }
+*/
 int get_max_watchpoints(void)
 {
   return NR_WP;
