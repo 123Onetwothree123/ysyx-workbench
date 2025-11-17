@@ -37,6 +37,7 @@ WP *wp_get_next(const WP *wp);
 
 int get_max_watchpoints(void);
 WP *wp_get_head(void);
+
 WP *find_wp_by_id(int id);
 
 // check function
