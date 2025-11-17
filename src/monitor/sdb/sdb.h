@@ -34,8 +34,6 @@ int wp_get_no(const WP *wp);
 // Linked list operation
 void wp_set_next(WP *wp, WP *next);
 WP *wp_get_next(const WP *wp);
-// maybe need this function
-bool wp_check_triggered(const WP *wp);
 
 int get_max_watchpoints(void);
 WP *wp_get_head(void);
