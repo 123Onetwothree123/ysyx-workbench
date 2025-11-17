@@ -59,13 +59,29 @@ word_t isa_reg_str2val(const char *s, bool *success)
     }
   }
   int num_regs = sizeof(regs) / sizeof(regs[0]);
+  if (num_regs > sizeof(cpu.gpr) / sizeof(cpu.gpr[0]))
+  {
+    printf("Error: Register array size mismatch\n");
+    if (success)
+      *success = false;
+    return 0;
+  }
   // direct traverse
   for (int i = 0; i < num_regs; i++)
   {
     if (strcmp(s, regs[i]) == 0)
     {
-      *success = true;
-      return cpu.gpr[i];
+      if (i >= 0 && i < sizeof(cpu.gpr) / sizeof(cpu.gpr[0]))
+      {
+        *success = true;
+        return cpu.gpr[i];
+      }
+      else
+      {
+        printf("Error: Register index %d out of bounds\n", i);
+        *success = false;
+        return 0;
+      }
     }
   }
   return 0;
