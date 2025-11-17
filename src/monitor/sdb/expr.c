@@ -145,8 +145,7 @@ typedef struct token
   char str[32];
 } Token;
 
-#define MAX_TOKENS 32
-static Token tokens[MAX_TOKENS] __attribute__((used)) = {};
+static Token tokens[32] __attribute__((used)) = {};
 static int nr_token __attribute__((used)) = 0;
 
 static bool make_token(char *e)
@@ -178,17 +177,8 @@ static bool make_token(char *e)
          */
         if (rules[i].token_type != TK_NOTYPE && nr_token >= 32)
         {
-          if (!check_array_bounds(nr_token, MAX_TOKENS))
-          {
-            printf("Error: Expression too complex: maximum %d tokens exceeded\n", MAX_TOKENS);
-            return false;
-          }
-          if (substr_len >= sizeof(tokens[nr_token].str))
-          {
-            printf("Error: Token too long at position %d (max %zu chars)\n",
-                   position, sizeof(tokens[nr_token].str) - 1);
-            return false;
-          }
+          printf("Error: Expression too complex: maximum 32 tokens exceeded\n");
+          return false;
         }
         switch (rules[i].token_type)
         {
@@ -422,12 +412,13 @@ sword_t eval(int p, int q)
     {
       return 0;
     }
-    if (!check_memory_address((word_t)addr_signed))
+    word_t addr = (word_t)addr_signed;
+    if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
     {
+      printf("Error: Invalid memory address 0x%08x\n", addr);
       eval_success = false;
       return 0;
     }
-    word_t addr = (word_t)addr_signed;
     return (sword_t)paddr_read(addr, sizeof(word_t));
   }
   printf("Error: Cannot evaluate expression from token %d to %d\n", p, q);
