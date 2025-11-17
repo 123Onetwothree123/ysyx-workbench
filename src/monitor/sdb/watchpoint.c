@@ -184,6 +184,9 @@ WP *wp_get_next(const WP *wp)
 }
 bool wp_check_triggered(const WP *wp)
 {
+  if(!check_null_pointer(wp,"watchpoint")){
+    return false;
+  }
   // todo, now set and return bool false
   return false;
 }
@@ -198,7 +201,7 @@ WP *wp_get_head(void)
 
 WP *find_wp_by_id(int id)
 {
-  if (id < 0 || id >= NR_WP)
+  if (!check_array_bounds(id,NR_WP))
   {
     return NULL;
   }
