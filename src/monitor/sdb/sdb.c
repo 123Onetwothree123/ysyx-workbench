@@ -464,3 +464,37 @@ static int cmd_d(char *args)
   printf("Deleted watchpoint %ld\n", id);
   return 0;
 }
+bool check_array_bounds(int index, int array_size)
+{
+  return index >= 0 && index < array_size;
+}
+bool check_null_pointer(const void *ptr, const char *name)
+{
+  if (ptr == NULL)
+  {
+    printf("Error: NULL pointer detected for %s\n", name);
+    return false;
+  }
+  return true;
+}
+bool check_memory_address(word_t addr)
+{
+  if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
+  {
+    printf("Error: Invalid memory address " FMT_PADDR "\n", addr);
+    return false;
+  }
+  return true;
+}
+bool check_string_length(const char *str, size_t max_len, const char *name)
+{
+  if (str == NULL)
+    return false;
+  size_t len = strlen(str);
+  if (len >= max_len)
+  {
+    printf("Error: %s too long (%zu >= %zu)\n", name, len, max_len);
+    return false;
+  }
+  return true;
+}
