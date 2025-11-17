@@ -123,11 +123,20 @@ void free_wp(WP *wp)
 }
 void wp_set_expr(WP *wp, const char *expr)
 {
-  if (wp && expr)
+  if (wp == NULL || expr == NULL)
   {
-    strncpy(wp->expr, expr, sizeof(wp->expr) - 1);
-    wp->expr[sizeof(wp->expr) - 1] = '\0';
+    printf("watchpoint.c wp_set_expr function wp or expr ==NULL\n");
+    return;
   }
+  size_t dest_size = sizeof(wp->expr);
+  size_t src_len = strlen(expr);
+  if (src_len >= dest_size)
+  {
+    printf("Warning: Expression truncated from %zu to %zu characters\n", src_len, dest_size - 1);
+    src_len = dest_size - 1;
+  }
+  memcpy(wp->expr, expr, src_len);
+  wp->expr[src_len] = '\0';
 }
 
 const char *wp_get_expr(const WP *wp)
