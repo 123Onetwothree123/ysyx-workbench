@@ -186,3 +186,22 @@ WP *wp_get_head(void)
 {
   return head;
 }
+
+WP *find_wp_by_id(int id)
+{
+  if (id < 0 || id >= NR_WP)
+  {
+    return NULL;
+  }
+  WP *target_wp = &wp_pool[id];
+  WP *current = head;
+  while (current != NULL)
+  {
+    if (current == target_wp)
+    {
+      return target_wp;
+    }
+    current = current->next;
+  }
+  return NULL;
+}

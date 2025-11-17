@@ -418,6 +418,49 @@ static int cmd_w(char *args)
 }
 static int cmd_d(char *args)
 {
-  // tmp
+  // check, need safe function execute
+  if (args == NULL || strlen(args) == 0)
+  {
+    printf("Error: Missing watchpoint ID\n");
+    printf("Usage: d <watchpoint_id>\n");
+    printf("Example: d 1\n");
+    return 0;
+  }
+  char *endptr;
+  long id = strtol(args, &endptr, 10);
+  if (*endptr != '\0')
+  {
+    printf("Error: Invalid watchpoint ID '%s'. ID must be a number.\n", args);
+    printf("Usage: d <watchpoint_id>\n");
+    return 0;
+  }
+  if (id < 0)
+  {
+    printf("Error: Watchpoint ID must be a non-negative integer, but got %ld.\n", id);
+    return 0;
+  }
+  if (id >= get_max_watchpoints())
+  {
+    printf("Error: Watchpoint ID %ld exceeds maximum allowed ID (%d).\n", id, get_max_watchpoints() - 1);
+    return 0;
+  }
+  WP *WpToDelete = NULL;
+  WP *current = wp_get_head();
+  while (current != NULL)
+  {
+    if (wp_get_no(current) == id)
+    {
+      WpToDelete = current;
+      break;
+    }
+    current = wp_get_next(current);
+  }
+  if (WpToDelete == NULL)
+  {
+    printf("Error: Watchpoint %ld not found\n", id);
+    return 0;
+  }
+  free_wp(WpToDelete);
+  printf("Deleted watchpoint %ld\n", id);
   return 0;
 }
