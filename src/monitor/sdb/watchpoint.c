@@ -138,12 +138,10 @@ void wp_set_expr(WP *wp, const char *expr)
   memcpy(wp->expr, expr, src_len);
   wp->expr[src_len] = '\0';
 }
-
 const char *wp_get_expr(const WP *wp)
 {
   return wp ? wp->expr : NULL;
 }
-
 void wp_set_value(WP *wp, uint32_t value)
 {
   if (wp)
@@ -151,12 +149,10 @@ void wp_set_value(WP *wp, uint32_t value)
     wp->old_val = value;
   }
 }
-
 uint32_t wp_get_value(const WP *wp)
 {
   return wp ? wp->old_val : 0;
 }
-
 void wp_set_no(WP *wp, int no)
 {
   if (wp)
@@ -164,7 +160,6 @@ void wp_set_no(WP *wp, int no)
     wp->NO = no;
   }
 }
-
 int wp_get_no(const WP *wp)
 {
   return wp ? wp->NO : -1;
@@ -177,14 +172,14 @@ void wp_set_next(WP *wp, WP *next)
     wp->next = next;
   }
 }
-
 WP *wp_get_next(const WP *wp)
 {
   return wp ? wp->next : NULL;
 }
 bool wp_check_triggered(const WP *wp)
 {
-  if(!check_null_pointer(wp,"watchpoint")){
+  if (!check_null_pointer(wp, "watchpoint"))
+  {
     return false;
   }
   // todo, now set and return bool false
@@ -201,7 +196,7 @@ WP *wp_get_head(void)
 
 WP *find_wp_by_id(int id)
 {
-  if (!check_array_bounds(id,NR_WP))
+  if (!check_array_bounds(id, NR_WP))
   {
     return NULL;
   }
