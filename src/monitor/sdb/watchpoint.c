@@ -230,3 +230,6 @@ bool check_watchpoints(void)
   }
   return any_triggered;
 }
+void update_watchpoint_values(void){
+  
+}
