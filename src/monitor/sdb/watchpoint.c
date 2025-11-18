@@ -200,3 +200,33 @@ WP *find_wp_by_id(int id)
   }
   return NULL;
 }
+bool check_watchpoints(void)
+{
+  WP *wp = wp_get_head();
+  bool any_triggered = false;
+  while (wp != NULL)
+  {
+    bool success = false;
+    sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
+    word_t current_val = (word_t)current_val_signed;
+    if (!success)
+    {
+      printf("Warning: Failed to evaluate watchpoint %d: %s\n", wp_get_no(wp), wp_get_expr(wp));
+      wp = wp_get_next(wp);
+      continue;
+    }
+    if (current_val != wp_get_value(wp))
+    {
+      if (!any_triggered)
+      {
+        printf("\nWatchpoint triggered:\n");
+      }
+      printf("\nWatchpoint %d: %s\n", wp_get_no(wp), wp_get_expr(wp));
+      printf("Old value = 0x%08x\n", wp_get_value(wp));
+      printf("New value = 0x%08x\n", current_val);
+      any_triggered = true;
+    }
+    wp = wp_get_next(wp);
+  }
+  return any_triggered;
+}
