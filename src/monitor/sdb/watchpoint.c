@@ -128,15 +128,12 @@ void wp_set_expr(WP *wp, const char *expr)
     printf("watchpoint.c wp_set_expr function wp or expr ==NULL\n");
     return;
   }
-  size_t dest_size = sizeof(wp->expr);
-  size_t src_len = strlen(expr);
-  if (src_len >= dest_size)
+  strncpy(wp->expr, expr, sizeof(wp->expr) - 1);
+  wp->expr[sizeof(wp->expr) - 1] = '\0';
+  if (strlen(expr) >= sizeof(wp->expr))
   {
-    printf("Warning: Expression truncated from %zu to %zu characters\n", src_len, dest_size - 1);
-    src_len = dest_size - 1;
+    printf("Warning: Expression truncated to %zu characters\n", sizeof(wp->expr) - 1);
   }
-  memcpy(wp->expr, expr, src_len);
-  wp->expr[src_len] = '\0';
 }
 const char *wp_get_expr(const WP *wp)
 {
