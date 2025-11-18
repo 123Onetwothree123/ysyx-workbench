@@ -327,7 +327,7 @@ static int cmd_x(char *args)
       return 0;
     }
     // Check if there will be any cross-border visits
-    if (addr + (n - 1) * 4 > MEM_END)
+    if (n == 0 || n - 1 > (MEM_END - addr) / 4)
     {
       printf("Error: Scanning %ld words from 0x%08x would exceed memory bounds\n",
              n, addr);
@@ -435,15 +435,15 @@ static int cmd_d(char *args)
     return 0;
   }
   if (id < 0 || id > INT32_MAX)
-{
+  {
     printf("Error: Watchpoint ID must be between 0 and %d, but got %ld.\n", INT32_MAX, id);
     return 0;
-}
-if (!check_array_bounds((int)id, get_max_watchpoints()))
-{
+  }
+  if (!check_array_bounds((int)id, get_max_watchpoints()))
+  {
     printf("Error: Watchpoint ID %ld exceeds maximum allowed ID (%d).\n", id, get_max_watchpoints() - 1);
     return 0;
-}
+  }
   WP *WpToDelete = NULL;
   WP *current = wp_get_head();
   while (current != NULL)
