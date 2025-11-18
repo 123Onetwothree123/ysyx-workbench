@@ -434,16 +434,16 @@ static int cmd_d(char *args)
     printf("Usage: d <watchpoint_id>\n");
     return 0;
   }
-  if (id < 0)
-  {
-    printf("Error: Watchpoint ID must be a non-negative integer, but got %ld.\n", id);
+  if (id < 0 || id > INT32_MAX)
+{
+    printf("Error: Watchpoint ID must be between 0 and %d, but got %ld.\n", INT32_MAX, id);
     return 0;
-  }
-  if (!check_array_bounds(id, get_max_watchpoints()))
-  {
+}
+if (!check_array_bounds((int)id, get_max_watchpoints()))
+{
     printf("Error: Watchpoint ID %ld exceeds maximum allowed ID (%d).\n", id, get_max_watchpoints() - 1);
     return 0;
-  }
+}
   WP *WpToDelete = NULL;
   WP *current = wp_get_head();
   while (current != NULL)
