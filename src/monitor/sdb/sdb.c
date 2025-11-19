@@ -302,7 +302,15 @@ static int cmd_x(char *args)
       printf("Error: N must be a positive integer\n");
       return 0;
     }
-    char *expr_str = strtok(NULL, " ");
+    char *expr_str = N_str + strlen(N_str) + 1;
+    while (*expr_str == ' ') {
+        expr_str++;
+    }
+    if (*expr_str == '\0')
+    {
+      printf("Error: Missing expression EXPR\n");
+      return 0;
+    }
     if (expr_str == NULL)
     {
       printf("Error: Missing expression EXPR\n");
