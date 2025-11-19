@@ -188,43 +188,43 @@ void init_sdb()
   /* Initialize the watchpoint pool. */
   init_wp_pool();
 }
-
 static int cmd_si(char *args)
 {
-  // int steps = 1;//default step=1 execute si.
-  int steps;
-  if (args == NULL)
+  // default to 1 step if the user is lazy and doesn't type a number
+  uint64_t steps = 1;
+  // did the user actually type something? Let's parse it
+  if (args != NULL)
   {
-    printf("monitor cmd_si arg==NULL, so default step=1, executed one\n");
-    steps = 1;
-    cpu_exec(steps);
-    return 0;
-  }
-  else if (args != NULL) // check args is not null, it have value.
-  {
-    char *StorageEndAddressPointer;
-    long Int32BitStoreTemporaryStep = strtol(args, &StorageEndAddressPointer, 10); // because this nemu default RISC-V 32bit
-    // because need all direct pass check, can not single check or a large number of nested if statements, so write if.
-    if (*StorageEndAddressPointer != '\0') // check string is a pure number
+    char *endptr;
+    // try to convert the string to a number
+    long n = strtol(args, &endptr, 10);
+    // check if strtol actually found any digits
+    // if args equals endptr, it means no number was found at the start
+    if (args == endptr)
     {
-      printf("Error: Invalid argument '%s' for 'si'. Argument must be a positive integer.\n", args);
-      printf("I think should usage: si [N]\n");
-      return 0; // can not return -1, need to return 0 and do nothing.
-    }
-    if (Int32BitStoreTemporaryStep > INT32_MAX || Int32BitStoreTemporaryStep < INT32_MIN) // nemu default RISC-V 32bit
-    {
-      printf("Error: Argument for 'si' must be a positive integer, but got %ld.\n", Int32BitStoreTemporaryStep);
+      printf("Error: Invalid argument '%s'. Usage: si [N]\n", args);
       return 0;
     }
-    steps = (int)Int32BitStoreTemporaryStep;
-    cpu_exec(steps);
-    return 0;
+    // make sure the step count makes sense
+    // negative steps or zero don't really work here
+    if (n <= 0)
+    {
+      printf("Error: Steps must be a positive integer, got %ld\n", n);
+      return 0;
+    }
+    // handle trailing spaces nicely
+    // users might type "si 10 " (with a space), and we shouldn't crash
+    while (*endptr == ' ')
+      endptr++;
+    // if there's still junk left after the number and spaces, complain
+    if (*endptr != '\0')
+    {
+      printf("Error: Trailing garbage '%s' in argument\n", endptr);
+      return 0;
+    }
+    steps = (uint64_t)n;
   }
-  else
-  {
-    printf("I do not know monitor cmd_si executing happened something.if and else if do not run\n");
-    return -1;
-  }
+  cpu_exec(steps);
   return 0;
 }
 static int cmd_info(char *args)
@@ -303,8 +303,9 @@ static int cmd_x(char *args)
       return 0;
     }
     char *expr_str = N_str + strlen(N_str) + 1;
-    while (*expr_str == ' ') {
-        expr_str++;
+    while (*expr_str == ' ')
+    {
+      expr_str++;
     }
     if (*expr_str == '\0')
     {
