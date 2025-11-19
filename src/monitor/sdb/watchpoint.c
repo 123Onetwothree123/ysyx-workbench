@@ -230,6 +230,18 @@ bool check_watchpoints(void)
   }
   return any_triggered;
 }
-void update_watchpoint_values(void){
-  
+void update_watchpoint_values(void)
+{
+  WP *wp = wp_get_head();
+  while (wp != NULL)
+  {
+    bool success = false;
+    sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
+    word_t current_val = (word_t)current_val_signed;
+    if (success)
+    {
+      wp_set_value(wp, current_val);
+    }
+    wp = wp_get_next(wp);
+  }
 }
