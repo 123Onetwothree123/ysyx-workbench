@@ -311,11 +311,6 @@ static int cmd_x(char *args)
       printf("Error: Missing expression EXPR\n");
       return 0;
     }
-    if (expr_str == NULL)
-    {
-      printf("Error: Missing expression EXPR\n");
-      return 0;
-    }
     bool success = false;
     sword_t addr_signed = expr(expr_str, &success);
     word_t addr = (word_t)addr_signed;

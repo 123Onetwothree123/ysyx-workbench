@@ -69,7 +69,12 @@ word_t isa_reg_str2val(const char *s, bool *success)
   // direct traverse
   for (int i = 0; i < num_regs; i++)
   {
-    if (strcmp(s, regs[i]) == 0)
+    const char *reg_name_in_array = regs[i];
+    if (reg_name_in_array[0] == '$') {
+        reg_name_in_array++; 
+    }
+
+    if (strcmp(s, reg_name_in_array) == 0)
     {
       if (i >= 0 && i < sizeof(cpu.gpr) / sizeof(cpu.gpr[0]))
       {
