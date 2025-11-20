@@ -322,7 +322,7 @@ static int cmd_x(char *args)
       return 0;
     }
     // Check the validity of the memory address
-    
+
     if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
     {
       printf("Error: Address 0x%08x is out of valid memory range [0x%08x, 0x%08x)\n",
@@ -447,17 +447,7 @@ static int cmd_d(char *args)
     printf("Error: Watchpoint ID %ld exceeds maximum allowed ID (%d).\n", id, get_max_watchpoints() - 1);
     return 0;
   }
-  WP *WpToDelete = NULL;
-  WP *current = wp_get_head();
-  while (current != NULL)
-  {
-    if (wp_get_no(current) == id)
-    {
-      WpToDelete = current;
-      break;
-    }
-    current = wp_get_next(current);
-  }
+  WP *WpToDelete = find_wp_by_id((int)id);
   if (WpToDelete == NULL)
   {
     printf("Error: Watchpoint %ld not found\n", id);
@@ -471,6 +461,7 @@ bool check_array_bounds(int index, int array_size)
 {
   return index >= 0 && index < array_size;
 }
+
 bool check_null_pointer(const void *ptr, const char *name)
 {
   if (ptr == NULL)
