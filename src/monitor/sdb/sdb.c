@@ -212,7 +212,6 @@ static int cmd_si(char *args)
       printf("Error: Steps must be a positive integer, got %ld\n", n);
       return 0;
     }
-    // handle trailing spaces nicely
     // users might type "si 10 " (with a space), and we shouldn't crash
     while (*endptr == ' ')
       endptr++;
