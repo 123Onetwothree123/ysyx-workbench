@@ -66,6 +66,10 @@ void PrintWatchPoint()
 }
 WP *new_wp()
 {
+  if (free_ == NULL)
+  {
+    printf("free_ == NULL, I need use assert(free_ != NULL) end this program\n");
+  }
   // check NULL
   assert(free_ != NULL);
   WP *wp = free_;
