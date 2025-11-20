@@ -49,20 +49,33 @@ void init_wp_pool()
 
 void PrintWatchPoint()
 {
-  if (head == NULL)
+  WP *wp = head;
+  if (wp == NULL)
   {
-    printf("monitor watchpoint file PrintWatchPoint function check, detect head==NULL\n");
-    printf("No watchpoints are set.\n");
-    return; // this return can direct return this function.
+    printf("Watchpoint List is empty.\n");
+    return;
   }
-  printf("Num\tExpr\t\tValue\n");
-  printf("----\t----\t\t-----\n");
-  WP *p = head;
-  while (p != NULL)
+  printf("----------------------------------------------------------------\n");
+  printf("| %-4s | %-12s | %-10s | %-30s |\n", "ID", "OLD VALUE", "NEW VALUE", "EXPRESSION");
+  printf("----------------------------------------------------------------\n");
+  while (wp != NULL)
   {
-    printf("%d\t%s\t\t0x%08x\n", p->NO, p->expr, p->old_val);
-    p = p->next;
+    bool success = false;
+    sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
+    word_t current_val = (word_t)current_val_signed;
+    char val_str[12];
+    if (success)
+    {
+      snprintf(val_str, 12, "0x%08x", current_val);
+    }
+    else
+    {
+      snprintf(val_str, 12, "Error");
+    }
+    printf("| %-4d | 0x%08x | %-10s | %-30s |\n", wp_get_no(wp), wp_get_value(wp), val_str, wp_get_expr(wp));
+    wp = wp_get_next(wp);
   }
+  printf("----------------------------------------------------------------\n");
 }
 WP *new_wp()
 {
