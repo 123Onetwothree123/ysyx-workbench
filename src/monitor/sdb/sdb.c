@@ -322,16 +322,15 @@ static int cmd_x(char *args)
       return 0;
     }
     // Check the validity of the memory address
-    const word_t MEM_START = 0x80000000;
-    const word_t MEM_END = 0x87ffffff;
-    if (addr < MEM_START || addr > MEM_END)
+    
+    if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
     {
-      printf("Error: Address 0x%08x is out of valid memory range [0x%08x, 0x%08x]\n",
-             addr, MEM_START, MEM_END);
+      printf("Error: Address 0x%08x is out of valid memory range [0x%08x, 0x%08x)\n",
+             addr, CONFIG_MBASE, CONFIG_MBASE + CONFIG_MSIZE);
       return 0;
     }
     // Check if there will be any cross-border visits
-    if (n == 0 || n - 1 > (MEM_END - addr) / 4)
+    if (n == 0 || n > (CONFIG_MBASE + CONFIG_MSIZE - addr) / 4)
     {
       printf("Error: Scanning %ld words from 0x%08x would exceed memory bounds\n",
              n, addr);
