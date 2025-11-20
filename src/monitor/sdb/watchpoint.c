@@ -241,24 +241,10 @@ bool check_watchpoints(void)
       printf("\nWatchpoint %d: %s\n", wp_get_no(wp), wp_get_expr(wp));
       printf("Old value = 0x%08x\n", wp_get_value(wp));
       printf("New value = 0x%08x\n", current_val);
+      wp_set_value(wp, current_val);
       any_triggered = true;
     }
     wp = wp_get_next(wp);
   }
   return any_triggered;
-}
-void update_watchpoint_values(void)
-{
-  WP *wp = wp_get_head();
-  while (wp != NULL)
-  {
-    bool success = false;
-    sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
-    word_t current_val = (word_t)current_val_signed;
-    if (success)
-    {
-      wp_set_value(wp, current_val);
-    }
-    wp = wp_get_next(wp);
-  }
 }
