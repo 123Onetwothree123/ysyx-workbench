@@ -264,7 +264,7 @@ static int cmd_info(char *args)
 }
 static int cmd_x(char *args)
 {
-  if (args == NULL)
+  if (args == NULL || *args == '\0')
   {
     printf("nemu monitor sdb cmd_x function check args, detect args==NULL, this args need parameter input\n");
     printf("Usage: x N EXPR\n");
@@ -273,21 +273,21 @@ static int cmd_x(char *args)
   }
   else if (args != NULL)
   {
-    char *N_str = strtok(args, " "); // check args null string, return the first split substring.
-    if (N_str == NULL)
+    
+    char *StringEndPointer;
+    long n = strtol(args, &StringEndPointer, 10);
+    // Check whether N is a valid positive integer
+    if (StringEndPointer == args) 
     {
-      printf("Error: Missing argument N\n");
+      printf("Error: Missing argument N\n"); 
       return 0;
     }
-    char *StringEndPointer;
-    long n = strtol(N_str, &StringEndPointer, 10);
-    // Check whether N is a valid positive integer
-    if (*StringEndPointer != '\0' || n <= 0)
+    if ( ( *StringEndPointer != '\0' && *StringEndPointer != ' ') || n <= 0)
     {
       printf("Error: N must be a positive integer\n");
       return 0;
     }
-    char *expr_str = N_str + strlen(N_str) + 1;
+    char *expr_str = StringEndPointer;
     while (*expr_str == ' ')
     {
       expr_str++;
