@@ -1,0 +1,10 @@
+top=decode24
+
+# 2-bit input x connected to switches SW0 and SW1
+x (SW0, SW1)
+
+# Enable signal connected to switch SW2
+en SW2
+
+# 4-bit output y connected to LEDs LD0-LD3
+y (LD0, LD1, LD2, LD3)
