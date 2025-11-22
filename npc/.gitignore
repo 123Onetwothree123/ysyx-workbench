@@ -6,7 +6,10 @@
 !*.[cSh]
 !*.v
 !*.cc
-!*.cpp
+!*.cppt
+!*.vh
+!*.nxdc
+!*.hex
 !.gitignore
 !README.md
 build/
