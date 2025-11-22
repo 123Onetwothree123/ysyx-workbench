@@ -1,6 +1,7 @@
 *.*
 *
 !*/
+<<<<<<< HEAD
 !/nemu/*
 !/nexus-am/*
 !/nanos-lite/*
@@ -11,3 +12,15 @@
 !.gitignore
 !init.sh
 /nvboard
+/fceux-am
+=======
+!Makefile
+!*.mk
+!*.[cSh]
+!*.cc
+!.gitignore
+!README.md
+!Kconfig
+include/config
+include/generated
+>>>>>>> 31dd552 (NJU-ProjectN/nemu ics2024 initialized)
