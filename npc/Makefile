@@ -1,8 +1,3 @@
-all:
-	@echo "Write this Makefile by your self."
-
-sim:
-	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "Write this Makefile by your self."
-
-include ../Makefile
+NAME = minirvEMU
+SRCS = main.cpp Decoder.cpp ImmGen.cpp minirvEMU.cpp ProgramLoader.cpp
+include $(AM_HOME)/Makefile
