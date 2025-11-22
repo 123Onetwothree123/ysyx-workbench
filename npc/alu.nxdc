@@ -1,0 +1,18 @@
+top=alu
+
+# 操作数 A 映射到 SW3-SW0 (拨码开关)
+A (SW3, SW2, SW1, SW0)
+
+# 操作数 B 映射到 SW7-SW4 (拨码开关)
+B (SW7, SW6, SW5, SW4)
+
+# 功能选择 ALU_Sel 映射到 SW10-SW8 (拨码开关)
+ALU_Sel (SW10, SW9, SW8)
+
+# 运算结果 Result 映射到 LD3-LD0 (LED灯)
+Result (LD3, LD2, LD1, LD0)
+
+# 状态标志位映射到 LED灯
+Zero LD4
+Carry LD5
+Overflow LD6
