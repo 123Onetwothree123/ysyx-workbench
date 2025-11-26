@@ -33,6 +33,7 @@ static int next_wp_no = 0;
 
 WP *new_wp();
 void free_wp(WP *wp);
+extern const char *expr_get_error_msg();
 void init_wp_pool()
 {
   int i;
@@ -53,30 +54,48 @@ void PrintWatchPoint()
   WP *wp = head;
   if (wp == NULL)
   {
-    printf("Watchpoint List is empty.\n");
+    printf("No watchpoints.\n");
     return;
   }
-  printf("----------------------------------------------------------------\n");
-  printf("| %-4s | %-12s | %-10s | %-30s |\n", "ID", "OLD VALUE", "NEW VALUE", "EXPRESSION");
-  printf("----------------------------------------------------------------\n");
+  printf("--------------------------------------------------------------------------------------\n");
+  printf("| %-4s | %-16s | %-16s | %-20s | %-20s |\n",
+         "NO", "OLD VALUE", "NEW VALUE", "STATUS", "EXPRESSION");
+  printf("--------------------------------------------------------------------------------------\n");
   while (wp != NULL)
   {
     bool success = false;
     sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
     word_t current_val = (word_t)current_val_signed;
-    char val_str[12];
-    if (success)
+    word_t old_val = wp_get_value(wp);
+    char old_str[32];
+    char cur_str[32];
+    const char *status_str;
+
+    snprintf(old_str, 32, "0x%08x", old_val);
+
+    if (!success)
     {
-      snprintf(val_str, 12, "0x%08x", current_val);
+      snprintf(cur_str, 32, "N/A");
+      status_str = expr_get_error_msg();
     }
     else
     {
-      snprintf(val_str, 12, "Error");
+      snprintf(cur_str, 32, "0x%08x", current_val);
+      if (current_val != old_val)
+      {
+        status_str = "\033[1;33mCHANGED\033[0m"; // yellow
+      }
+      else
+      {
+        status_str = "\033[1;32mOK\033[0m"; // green
+      }
     }
-    printf("| %-4d | 0x%08x | %-10s | %-30s |\n", wp_get_no(wp), wp_get_value(wp), val_str, wp_get_expr(wp));
+    printf("| %-4d | %-16s | %-16s | %-20s | %-20s |\n",
+           wp_get_no(wp), old_str, cur_str, status_str, wp_get_expr(wp));
+
     wp = wp_get_next(wp);
   }
-  printf("----------------------------------------------------------------\n");
+  printf("--------------------------------------------------------------------------------------\n");
 }
 WP *new_wp()
 {

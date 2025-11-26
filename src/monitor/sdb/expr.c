@@ -37,6 +37,35 @@ typedef struct
   int precedence;
   bool is_right_assoc;
 } OperatorInfo;
+typedef enum
+{
+  EXP_OK = 0,
+  EXP_SYNTAX,   // Syntax/lexical error
+  EXP_PAREN,    // Parenthesis mismatch
+  EXP_DIV_ZERO, // Division by zero
+  EXP_BAD_REG,  // Invalid register
+  EXP_BAD_MEM,  // Invalid address
+  EXP_UNKNOWN
+} ExprError;
+static ExprError g_internal_error = EXP_OK;
+const char *expr_get_error_msg()
+{
+  switch (g_internal_error)
+  {
+  case EXP_SYNTAX:
+    return "\033[1;31mSyntax Error\033[0m"; // red
+  case EXP_PAREN:
+    return "\033[1;31mParen Error\033[0m";
+  case EXP_DIV_ZERO:
+    return "\033[1;31mDiv By Zero\033[0m";
+  case EXP_BAD_REG:
+    return "\033[1;31mInvalid Reg\033[0m";
+  case EXP_BAD_MEM:
+    return "\033[1;31mInvalid Addr\033[0m";
+  default:
+    return "\033[1;31mUnknown Err\033[0m";
+  }
+}
 sword_t eval(int, int);
 enum
 {
@@ -220,10 +249,12 @@ static bool make_token(char *e)
 
 sword_t expr(char *e, bool *success)
 {
+  g_internal_error = EXP_OK;
   *success = false;
   if (!make_token(e))
   {
     *success = false;
+    g_internal_error = EXP_SYNTAX;
     return 0;
   }
 
@@ -233,6 +264,7 @@ sword_t expr(char *e, bool *success)
   if (!validate_parentheses())
   {
     *success = false;
+    g_internal_error = EXP_PAREN;
     return 0;
   }
   // If the check passed (ExcuteState is true), we can proceed with evaluation.
@@ -240,6 +272,10 @@ sword_t expr(char *e, bool *success)
   eval_success = true; // Reset and call eval
   sword_t result = eval(0, nr_token - 1);
   *success = eval_success;
+  if (!eval_success && g_internal_error == EXP_OK)
+  {
+    g_internal_error = EXP_UNKNOWN;
+  }
   return result;
 }
 int find_main_operator(int p, int q)
