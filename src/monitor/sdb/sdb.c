@@ -307,7 +307,6 @@ static int cmd_x(char *args)
       return 0;
     }
     // Check the validity of the memory address
-
     if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
     {
       printf("Error: Address 0x%08x is out of valid memory range [0x%08x, 0x%08x)\n",
