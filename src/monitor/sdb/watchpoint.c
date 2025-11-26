@@ -135,6 +135,7 @@ void free_wp(WP *wp)
   // clear data
   wp->expr[0] = '\0';
   wp->old_val = 0;
+  wp->NO = -1;
   wp->next = free_;
   free_ = wp;
 }
