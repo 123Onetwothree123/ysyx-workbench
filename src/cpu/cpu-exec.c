@@ -53,13 +53,12 @@ static void trace_and_difftest(Decode *_this, vaddr_t dnpc)
   // myself writing
   WP *wp = wp_get_head();
   bool triggered = false;
-  // Check all monitor points until one is triggered
   while (wp != NULL)
   {
-    bool success = false; // default false
+    bool success = false;
     sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
     word_t current_val = (word_t)current_val_signed;
-    // if false
+    
     if (!success)
     {
       printf("Warning: Failed to evaluate watchpoint %d expression: %s\n",
@@ -67,25 +66,35 @@ static void trace_and_difftest(Decode *_this, vaddr_t dnpc)
       wp = wp_get_next(wp);
       continue;
     }
-    // if change
+    // check if value changed
     if (current_val != wp_get_value(wp))
     {
-      if (!triggered)
-      {
-        // if first, print
-        printf("\nWatchpoint triggered:\n");
-        triggered = true;
-      }
-      printf("\nWatchpoint %d: %s\n", wp_get_no(wp), wp_get_expr(wp));
-      printf("Old value = 0x%08x\n", wp_get_value(wp));
-      printf("New value = 0x%08x\n", current_val);
-      printf("Program stopped.\n");
-      wp_set_value(wp, current_val);
+      triggered = true;  // mark watchpoint triggered
     }
+    
     wp = wp_get_next(wp);
   }
   if (triggered)
   {
+    printf("\nWatchpoint triggered:\n");
+    wp = wp_get_head();
+    while (wp != NULL)
+    {
+      bool success = false;
+      sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
+      word_t current_val = (word_t)current_val_signed;
+      
+      if (success && current_val != wp_get_value(wp))
+      {
+        // print watchpoint information
+        printf("\nWatchpoint %d: %s\n", wp_get_no(wp), wp_get_expr(wp));
+        printf("Old value = 0x%08x\n", wp_get_value(wp));
+        printf("New value = 0x%08x\n", current_val);
+        // update old value uniformly to ensure state consistency
+        wp_set_value(wp, current_val);
+      }
+      wp = wp_get_next(wp);
+    }
     printf("Program stopped.\n");
     nemu_state.state = NEMU_STOP;
   }

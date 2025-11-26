@@ -49,6 +49,4 @@ bool check_string_length(const char *str, size_t max_len, const char *name); // 
 //cpu_exec.c function
 // Check all watchpoints, return whether any watchpoint is triggered
 bool check_watchpoints(void);
-// Update the old values of all watchpoints to the current values
-void update_watchpoint_values(void);
 #endif
