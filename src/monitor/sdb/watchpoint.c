@@ -29,6 +29,7 @@ typedef struct watchpoint
 
 static WP wp_pool[NR_WP] = {};
 static WP *head = NULL, *free_ = NULL;
+static int next_wp_no = 0;
 
 WP *new_wp();
 void free_wp(WP *wp);
@@ -87,6 +88,7 @@ WP *new_wp()
   assert(free_ != NULL);
   WP *wp = free_;
   free_ = free_->next;
+  wp->NO = next_wp_no++;
   wp->next = head;
   head = wp;
   return wp;
@@ -102,6 +104,11 @@ void free_wp(WP *wp)
   if (head == NULL)
   {
     printf("Warning: No watchpoints in use, cannot free WP #%d\n", wp->NO);
+    return;
+  }
+  if (wp->NO < 0 || wp->NO >= NR_WP)
+  {
+    printf("Warning: Invalid watchpoint ID %d\n", wp->NO);
     return;
   }
   WP *previous = NULL;
