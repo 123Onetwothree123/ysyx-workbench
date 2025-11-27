@@ -166,7 +166,7 @@ void free_wp(WP *wp)
     assert(0); // direct exit
   }
   // clear data
-  wp->expr[0] = '\0';
+  memset(wp->expr, 0, sizeof(wp->expr));
   wp->old_val = 0;
   wp->NO = -1;
   wp->next = free_;

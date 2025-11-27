@@ -46,7 +46,7 @@ bool check_null_pointer(const void *ptr, const char *name);                  // 
 bool check_memory_address(word_t addr);                                      // check memory address effective
 bool check_string_length(const char *str, size_t max_len, const char *name); // check string length
 
-//cpu_exec.c function
-// Check all watchpoints, return whether any watchpoint is triggered
+// cpu_exec.c function
+//  Check all watchpoints, return whether any watchpoint is triggered
 bool check_watchpoints(void);
 #endif
