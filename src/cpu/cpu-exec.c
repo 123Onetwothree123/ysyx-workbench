@@ -51,7 +51,8 @@ static void trace_and_difftest(Decode *_this, vaddr_t dnpc)
 // myself writing
 #ifdef CONFIG_WATCHPOINT
   // myself writing
-  if (check_watchpoints()) {
+  if (check_watchpoints())
+  {
     printf("Program stopped.\n");
     nemu_state.state = NEMU_STOP;
   }
