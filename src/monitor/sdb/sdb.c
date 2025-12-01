@@ -804,8 +804,7 @@ bool add_custom_memory_region(word_t start, word_t end, MemoryType type,
     {
         if (!(end <= g_memory_regions[i].start || start >= g_memory_regions[i].end))
         {
-            printf("Error: Region overlaps with existing region '%s'\n",
-                   g_memory_regions[i].name);
+            printf("Error: Region overlaps with existing region '%s'\n",g_memory_regions[i].name);
             return false;
         }
     }

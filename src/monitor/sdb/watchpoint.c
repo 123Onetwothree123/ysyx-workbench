@@ -270,8 +270,7 @@ bool check_watchpoints(void)
     sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
     if (!success)
     {
-      printf("Warning: Failed to evaluate watchpoint %d: %s (Error: %s)\n",
-             wp_get_no(wp), wp_get_expr(wp), expr_get_error_msg());
+      printf("Warning: Failed to evaluate watchpoint %d: %s (Error: %s)\n", wp_get_no(wp), wp_get_expr(wp), expr_get_error_msg());
       wp = wp_get_next(wp);
       continue;
     }
@@ -304,15 +303,18 @@ bool check_watchpoints(void)
 }
 bool safe_paddr_read(word_t addr, word_t *result, size_t size)
 {
-  if (result == NULL) {
+  if (result == NULL)
+  {
     printf("Error: NULL result pointer in safe_paddr_read\n");
     return false;
   }
-  if (size == 0 || size > sizeof(word_t)) {
+  if (size == 0 || size > sizeof(word_t))
+  {
     printf("Error: Invalid size %zu in safe_paddr_read\n", size);
     return false;
   }
-  if (addr % size != 0) {
+  if (addr % size != 0)
+  {
     printf("Warning: Unaligned memory access at 0x%08x (size %zu)\n", addr, size);
   }
   if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
