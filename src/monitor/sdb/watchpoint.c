@@ -240,15 +240,14 @@ WP *find_wp_by_id(int id)
   {
     return NULL;
   }
-  WP *target_wp = &wp_pool[id];
   WP *current = head;
   while (current != NULL)
   {
-    if (current == target_wp)
+    if (wp_get_no(current) == id)
     {
-      return target_wp;
+      return current;
     }
-    current = current->next;
+    current = wp_get_next(current);
   }
   return NULL;
 }
