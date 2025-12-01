@@ -30,7 +30,6 @@ typedef struct watchpoint
 
 static WP wp_pool[NR_WP] = {};
 static WP *head = NULL, *free_ = NULL;
-static int next_wp_no = 0;
 
 WP *new_wp();
 void free_wp(WP *wp);
@@ -115,7 +114,7 @@ WP *new_wp()
   assert(free_ != NULL);
   WP *wp = free_;
   free_ = free_->next;
-  wp->NO = next_wp_no++;
+  wp->NO = wp - wp_pool;
   wp->next = head;
   head = wp;
   return wp;
