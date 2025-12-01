@@ -293,10 +293,8 @@ bool check_watchpoints(void)
       wp_set_value(wp, current_val);
       any_triggered = true;
     }
-    
     wp = wp_get_next(wp);
   }
-  
   if (header_printed)
   {
     printf("-----------------------------------------------------------------------\n");
