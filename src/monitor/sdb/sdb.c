@@ -23,6 +23,9 @@
 
 static int is_batch_mode = false;
 
+MemoryRegion g_memory_regions[MAX_MEMORY_REGIONS];
+int g_region_count = 0;
+
 void init_regex();
 void init_wp_pool();
 
@@ -389,6 +392,12 @@ static int cmd_w(char *args)
     printf("Error: No free watchpoint slots (maximum: %d)\n", get_max_watchpoints());
     return 0;
   }
+  if (!validate_expression_memory_access_flexible(args))
+  {
+    printf("Error: Expression contains invalid memory access\n");
+    free_wp(wp);
+    return 0;
+  }
   wp_set_expr(wp, args);
   // get exprssion default value
   bool success;
@@ -497,4 +506,318 @@ bool is_valid_memory_region(word_t addr, size_t size)
     return false;
   }
   return true;
+}
+void auto_configure_memory_regions(void)
+{
+    // clear now config
+    memset(g_memory_regions, 0, sizeof(g_memory_regions));
+    g_region_count = 0;
+
+    printf("Auto-configuring memory regions for ISA: %s\n",
+#ifdef CONFIG_ISA_riscv32
+           "RISC-V 32-bit"
+#elif defined(CONFIG_ISA_riscv64)
+           "RISC-V 64-bit"
+#elif defined(CONFIG_ISA_x86)
+           "x86"
+#elif defined(CONFIG_ISA_mips32)
+           "MIPS32"
+#else
+           "Unknown"
+#endif
+    );
+    if (g_region_count < MAX_MEMORY_REGIONS)
+    {
+        g_memory_regions[g_region_count].start = CONFIG_MBASE;
+        g_memory_regions[g_region_count].end = CONFIG_MBASE + CONFIG_MSIZE;
+        g_memory_regions[g_region_count].type = MEM_TYPE_RAM;
+        g_memory_regions[g_region_count].is_readable = true;
+        g_memory_regions[g_region_count].is_writable = true;
+        g_memory_regions[g_region_count].is_executable = true;
+        g_memory_regions[g_region_count].name = "Main Memory";
+        g_memory_regions[g_region_count].description = "System main memory";
+        g_region_count++;
+
+        printf("  Added RAM: [0x%08x - 0x%08x] Size: %u MB\n",
+               CONFIG_MBASE, CONFIG_MBASE + CONFIG_MSIZE,
+               CONFIG_MSIZE / (1024 * 1024));
+    }
+#ifdef CONFIG_ISA_riscv32
+    if (g_region_count < MAX_MEMORY_REGIONS)
+    {
+        g_memory_regions[g_region_count].start = 0x02000000;
+        g_memory_regions[g_region_count].end = 0x02010000;
+        g_memory_regions[g_region_count].type = MEM_TYPE_MMIO;
+        g_memory_regions[g_region_count].is_readable = true;
+        g_memory_regions[g_region_count].is_writable = true;
+        g_memory_regions[g_region_count].is_executable = false;
+        g_memory_regions[g_region_count].name = "CLINT";
+        g_memory_regions[g_region_count].description = "Core Local Interruptor";
+        g_region_count++;
+    }
+    if (g_region_count < MAX_MEMORY_REGIONS)
+    {
+        // Platform Level Interrupt Controller
+        g_memory_regions[g_region_count].start = 0x0C000000;
+        g_memory_regions[g_region_count].end = 0x10000000;
+        g_memory_regions[g_region_count].type = MEM_TYPE_MMIO;
+        g_memory_regions[g_region_count].is_readable = true;
+        g_memory_regions[g_region_count].is_writable = true;
+        g_memory_regions[g_region_count].is_executable = false;
+        g_memory_regions[g_region_count].name = "PLIC";
+        g_memory_regions[g_region_count].description = "Platform Level Interrupt Controller";
+        g_region_count++;
+    }
+#endif
+#ifdef CONFIG_ISA_x86
+    if (g_region_count < MAX_MEMORY_REGIONS)
+    {
+        // VGA GPU memory
+        g_memory_regions[g_region_count].start = 0x000A0000;
+        g_memory_regions[g_region_count].end = 0x000C0000;
+        g_memory_regions[g_region_count].type = MEM_TYPE_MMIO;
+        g_memory_regions[g_region_count].is_readable = true;
+        g_memory_regions[g_region_count].is_writable = true;
+        g_memory_regions[g_region_count].is_executable = false;
+        g_memory_regions[g_region_count].name = "VGA Memory";
+        g_memory_regions[g_region_count].description = "VGA display memory";
+        g_region_count++;
+    }
+#endif
+    // Add device memory regions based on device configuration
+#ifdef CONFIG_HAS_SERIAL
+    if (g_region_count < MAX_MEMORY_REGIONS)
+    {
+        g_memory_regions[g_region_count].start = CONFIG_SERIAL_MMIO;
+        g_memory_regions[g_region_count].end = CONFIG_SERIAL_MMIO + 0x1000;
+        g_memory_regions[g_region_count].type = MEM_TYPE_MMIO;
+        g_memory_regions[g_region_count].is_readable = true;
+        g_memory_regions[g_region_count].is_writable = true;
+        g_memory_regions[g_region_count].is_executable = false;
+        g_memory_regions[g_region_count].name = "Serial Port";
+        g_memory_regions[g_region_count].description = "Serial controller MMIO";
+        g_region_count++;
+    }
+#endif
+#ifdef CONFIG_HAS_TIMER
+    if (g_region_count < MAX_MEMORY_REGIONS)
+    {
+        g_memory_regions[g_region_count].start = CONFIG_TIMER_MMIO;
+        g_memory_regions[g_region_count].end = CONFIG_TIMER_MMIO + 0x1000;
+        g_memory_regions[g_region_count].type = MEM_TYPE_MMIO;
+        g_memory_regions[g_region_count].is_readable = true;
+        g_memory_regions[g_region_count].is_writable = true;
+        g_memory_regions[g_region_count].is_executable = false;
+        g_memory_regions[g_region_count].name = "Timer";
+        g_memory_regions[g_region_count].description = "Timer MMIO";
+        g_region_count++;
+    }
+#endif
+#ifdef CONFIG_HAS_VGA
+    if (g_region_count < MAX_MEMORY_REGIONS)
+    {
+        g_memory_regions[g_region_count].start = CONFIG_VGA_MMIO;
+        g_memory_regions[g_region_count].end = CONFIG_VGA_MMIO + 0x10000;
+        g_memory_regions[g_region_count].type = MEM_TYPE_MMIO;
+        g_memory_regions[g_region_count].is_readable = true;
+        g_memory_regions[g_region_count].is_writable = true;
+        g_memory_regions[g_region_count].is_executable = false;
+        g_memory_regions[g_region_count].name = "VGA Ctrl";
+        g_memory_regions[g_region_count].description = "VGA controller MMIO";
+        g_region_count++;
+    }
+#endif
+    if (g_region_count < MAX_MEMORY_REGIONS)
+    {
+        // NULL pointer
+        g_memory_regions[g_region_count].start = 0x0;
+        g_memory_regions[g_region_count].end = 0x1000;
+        g_memory_regions[g_region_count].type = MEM_TYPE_RESERVED;
+        g_memory_regions[g_region_count].is_readable = false;
+        g_memory_regions[g_region_count].is_writable = false;
+        g_memory_regions[g_region_count].is_executable = false;
+        g_memory_regions[g_region_count].name = "NULL Pointer";
+        g_memory_regions[g_region_count].description = "NULL pointer protection zone";
+        g_region_count++;
+    }
+    printf("Auto-configuration complete: %d memory regions defined\n", g_region_count);
+}
+const MemoryRegion *query_memory_region(word_t addr)
+{
+    for (int i = 0; i < g_region_count; i++)
+    {
+        if (addr >= g_memory_regions[i].start && addr < g_memory_regions[i].end)
+        {
+            return &g_memory_regions[i];
+        }
+    }
+    return NULL;
+}
+bool validate_address_flexible(word_t addr, size_t size, bool is_write)
+{
+    // Auto-configuration (on first call)
+    static bool initialized = false;
+    if (!initialized)
+    {
+        auto_configure_memory_regions();
+        initialized = true;
+    }
+    // Check address alignment
+    if (addr % size != 0)
+    {
+        printf("Warning: Unaligned access at 0x%08x (size %zu)\n", addr, size);
+        // Some architectures support unaligned access, only warn here
+    }
+    // Query memory region
+    const MemoryRegion *region = query_memory_region(addr);
+    if (region == NULL)
+    {
+        printf("Error: Address 0x%08x not in any configured memory region\n", addr);
+        return false;
+    }
+    // Check if address range is fully within the region
+    if (addr + size > region->end)
+    {
+        printf("Error: Access of size %zu at 0x%08x crosses region boundary\n",
+               size, addr);
+        return false;
+    }
+    // Check permissions
+    if (!region->is_readable)
+    {
+        printf("Error: Address 0x%08x is in non-readable region '%s'\n",
+               addr, region->name);
+        return false;
+    }
+    if (is_write && !region->is_writable)
+    {
+        printf("Error: Address 0x%08x is in read-only region '%s'\n",
+               addr, region->name);
+        return false;
+    }
+    // Special handling for MMIO regions
+    if (region->type == MEM_TYPE_MMIO)
+    {
+        // MMIO regions typically have strict access size requirements
+        if (size != 1 && size != 2 && size != 4 && size != 8)
+        {
+            printf("Error: Invalid access size %zu for MMIO region '%s'\n",
+                   size, region->name);
+            return false;
+        }
+        // Check if aligned to the correct size
+        if (addr % size != 0)
+        {
+            printf("Error: MMIO region '%s' requires %zu-byte alignment\n",
+                   region->name, size);
+            return false;
+        }
+    }
+    // For RAM regions, attempt actual access validation
+    if (region->type == MEM_TYPE_RAM)
+    {
+        word_t test_value;
+        if (!safe_paddr_read(addr, &test_value, size))
+        {
+            printf("Error: Failed to safely read from address 0x%08x\n", addr);
+            return false;
+        }
+    }
+    return true;
+}
+bool validate_expression_memory_access_flexible(const char *expression)
+{
+    if (expression == NULL || strlen(expression) == 0)
+    {
+        printf("Error: Empty expression\n");
+        return false;
+    }
+    printf("Validating expression with flexible memory configuration: %s\n", expression);
+    static bool initialized = false;
+    if (!initialized)
+    {
+        auto_configure_memory_regions();
+        initialized = true;
+    }
+    printf("Current memory layout:\n");
+    for (int i = 0; i < g_region_count; i++)
+    {
+        printf("  [%d] %s: 0x%08x-0x%08x (%s)\n",
+               i,
+               g_memory_regions[i].name,
+               g_memory_regions[i].start,
+               g_memory_regions[i].end,
+               g_memory_regions[i].description);
+    }
+    int depth = 0;
+    const char *ptr = expression;
+
+    while (*ptr && depth < 3)
+    {
+        if (*ptr == '*')
+        {
+            if (strncmp(ptr, "*0x", 3) == 0)
+            {
+                char addr_str[32];
+                int i = 0;
+                ptr += 2;
+                while (isxdigit(*ptr) && i < sizeof(addr_str) - 1)
+                {
+                    addr_str[i++] = *ptr++;
+                }
+                addr_str[i] = '\0';
+                word_t addr = (word_t)strtol(addr_str, NULL, 16);
+                if (!validate_address_flexible(addr, sizeof(word_t), false))
+                {
+                    return false;
+                }
+            }
+        }
+        ptr++;
+    }
+    bool success = false;
+    sword_t result = expr((char *)expression, &success);
+    (void)result;//Intentionally not used, because -Werror
+    if (!success)
+    {
+        printf("Error: Expression evaluation failed\n");
+        return false;
+    }
+    printf("Expression validation passed with flexible configuration\n");
+    return true;
+}
+bool add_custom_memory_region(word_t start, word_t end, MemoryType type,
+                              bool readable, bool writable, bool executable,
+                              const char *name, const char *description)
+{
+    if (g_region_count >= MAX_MEMORY_REGIONS)
+    {
+        printf("Error: Maximum memory regions (%d) exceeded\n", MAX_MEMORY_REGIONS);
+        return false;
+    }
+    if (start >= end)
+    {
+        printf("Error: Invalid region range [0x%08x, 0x%08x)\n", start, end);
+        return false;
+    }
+    for (int i = 0; i < g_region_count; i++)
+    {
+        if (!(end <= g_memory_regions[i].start || start >= g_memory_regions[i].end))
+        {
+            printf("Error: Region overlaps with existing region '%s'\n",
+                   g_memory_regions[i].name);
+            return false;
+        }
+    }
+    g_memory_regions[g_region_count].start = start;
+    g_memory_regions[g_region_count].end = end;
+    g_memory_regions[g_region_count].type = type;
+    g_memory_regions[g_region_count].is_readable = readable;
+    g_memory_regions[g_region_count].is_writable = writable;
+    g_memory_regions[g_region_count].is_executable = executable;
+    g_memory_regions[g_region_count].name = name;
+    g_memory_regions[g_region_count].description = description;
+    g_region_count++;
+    printf("Added custom region: %s [0x%08x-0x%08x]\n", name, start, end);
+    return true;
 }
