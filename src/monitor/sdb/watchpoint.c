@@ -268,36 +268,39 @@ bool check_watchpoints(void)
   {
     bool success = false;
     sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
-    word_t current_val = (word_t)current_val_signed;
     if (!success)
     {
-      printf("Warning: Failed to evaluate watchpoint %d: %s\n",
-             wp_get_no(wp), wp_get_expr(wp));
+      printf("Warning: Failed to evaluate watchpoint %d: %s (Error: %s)\n",
+             wp_get_no(wp), wp_get_expr(wp), expr_get_error_msg());
       wp = wp_get_next(wp);
       continue;
     }
-    if (current_val != wp_get_value(wp))
+    word_t current_val = (word_t)current_val_signed;
+    word_t old_val = wp_get_value(wp);
+    if (current_val != old_val)
     {
       if (!header_printed)
       {
         printf("\nWatchpoint triggered:\n");
         printf("-----------------------------------------------------------------------\n");
-        printf("| %-4s | %-*s | %-*s | %-10s |\n",
-               "NO", COL_WIDTH, "OLD VALUE", COL_WIDTH, "NEW VALUE", "EXPRESSION");
+        printf("| %-4s | %-18s | %-18s | %-10s |\n",
+               "NO", "OLD VALUE", "NEW VALUE", "EXPRESSION");
         printf("-----------------------------------------------------------------------\n");
         header_printed = true;
       }
       printf("| %-4d | " V_FMT " | " V_FMT " | %-10s |\n",
-             wp_get_no(wp), wp_get_value(wp), current_val, wp_get_expr(wp));
-
+             wp_get_no(wp), old_val, current_val, wp_get_expr(wp));
       wp_set_value(wp, current_val);
       any_triggered = true;
     }
+    
     wp = wp_get_next(wp);
   }
+  
   if (header_printed)
   {
     printf("-----------------------------------------------------------------------\n");
+    printf("Program stopped due to watchpoint change.\n");
   }
   return any_triggered;
 }
