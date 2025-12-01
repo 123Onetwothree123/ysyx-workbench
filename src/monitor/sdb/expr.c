@@ -449,13 +449,14 @@ sword_t eval(int p, int q)
       return 0;
     }
     word_t addr = (word_t)addr_signed;
-    if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
+    word_t value;
+    if (!safe_paddr_read(addr, &value, sizeof(word_t)))
     {
-      printf("Error: Invalid memory address 0x%08x\n", addr);
+      printf("Error: Invalid memory access at 0x%08x\n", addr);
       eval_success = false;
       return 0;
     }
-    return (sword_t)paddr_read(addr, sizeof(word_t));
+    return (sword_t)value;
   }
   printf("Error: Cannot evaluate expression from token %d to %d\n", p, q);
   eval_success = false;

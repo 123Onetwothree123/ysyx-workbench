@@ -49,4 +49,6 @@ bool check_string_length(const char *str, size_t max_len, const char *name); // 
 // cpu_exec.c function
 //  Check all watchpoints, return whether any watchpoint is triggered
 bool check_watchpoints(void);
+
+bool safe_paddr_read(word_t addr, word_t *result, size_t size);
 #endif

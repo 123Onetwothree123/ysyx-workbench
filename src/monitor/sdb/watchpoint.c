@@ -14,6 +14,7 @@
  ***************************************************************************************/
 
 #include "sdb.h"
+#include <memory/paddr.h>
 
 #define NR_WP 32
 
@@ -257,41 +258,59 @@ bool check_watchpoints(void)
   bool any_triggered = false;
   bool header_printed = false;
 #ifdef CONFIG_ISA64
-  #define V_FMT "0x%016lx"
-  #define COL_WIDTH 18
+#define V_FMT "0x%016lx"
+#define COL_WIDTH 18
 #else
-  #define V_FMT "0x%08x"
-  #define COL_WIDTH 11
+#define V_FMT "0x%08x"
+#define COL_WIDTH 11
 #endif
-  while (wp != NULL) {
+  while (wp != NULL)
+  {
     bool success = false;
     sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
     word_t current_val = (word_t)current_val_signed;
-    if (!success) {
+    if (!success)
+    {
       printf("Warning: Failed to evaluate watchpoint %d: %s\n",
              wp_get_no(wp), wp_get_expr(wp));
       wp = wp_get_next(wp);
       continue;
     }
-    if (current_val != wp_get_value(wp)) {
-      if (!header_printed) {
+    if (current_val != wp_get_value(wp))
+    {
+      if (!header_printed)
+      {
         printf("\nWatchpoint triggered:\n");
         printf("-----------------------------------------------------------------------\n");
-        printf("| %-4s | %-*s | %-*s | %-10s |\n", 
+        printf("| %-4s | %-*s | %-*s | %-10s |\n",
                "NO", COL_WIDTH, "OLD VALUE", COL_WIDTH, "NEW VALUE", "EXPRESSION");
         printf("-----------------------------------------------------------------------\n");
         header_printed = true;
       }
       printf("| %-4d | " V_FMT " | " V_FMT " | %-10s |\n",
              wp_get_no(wp), wp_get_value(wp), current_val, wp_get_expr(wp));
-      
+
       wp_set_value(wp, current_val);
       any_triggered = true;
     }
     wp = wp_get_next(wp);
   }
-  if (header_printed) {
+  if (header_printed)
+  {
     printf("-----------------------------------------------------------------------\n");
   }
   return any_triggered;
+}
+bool safe_paddr_read(word_t addr, word_t *result, size_t size)
+{
+  if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
+  {
+    return false;
+  }
+  if (addr > CONFIG_MBASE + CONFIG_MSIZE - size)
+  {
+    return false;
+  }
+  *result = paddr_read(addr, size);
+  return true;
 }
