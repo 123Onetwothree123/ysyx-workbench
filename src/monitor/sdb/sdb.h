@@ -51,4 +51,5 @@ bool check_string_length(const char *str, size_t max_len, const char *name); // 
 bool check_watchpoints(void);
 
 bool safe_paddr_read(word_t addr, word_t *result, size_t size);
+bool is_valid_memory_region(word_t addr, size_t size);
 #endif

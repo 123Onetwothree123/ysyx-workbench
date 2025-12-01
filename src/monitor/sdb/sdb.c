@@ -482,3 +482,19 @@ bool check_string_length(const char *str, size_t max_len, const char *name)
   }
   return true;
 }
+bool is_valid_memory_region(word_t addr, size_t size)
+{
+  if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
+  {
+    return false;
+  }
+  if (addr % size != 0)
+  {
+    return false;
+  }
+  if (addr + size > CONFIG_MBASE + CONFIG_MSIZE)
+  {
+    return false;
+  }
+  return true;
+}

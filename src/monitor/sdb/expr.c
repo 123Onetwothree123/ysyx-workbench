@@ -460,6 +460,12 @@ sword_t eval(int p, int q)
     {
       printf("Warning: Unaligned pointer dereference at 0x%08x\n", addr);
     }
+    if (!is_valid_memory_region(addr, sizeof(word_t)))
+    {
+      eval_success = false;
+      g_internal_error = EXP_BAD_MEM;
+      return 0;
+    }
     word_t value;
     if (!safe_paddr_read(addr, &value, sizeof(word_t)))
     {
