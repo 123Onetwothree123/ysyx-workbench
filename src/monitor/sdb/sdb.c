@@ -273,16 +273,16 @@ static int cmd_x(char *args)
   }
   else if (args != NULL)
   {
-    
+
     char *StringEndPointer;
     long n = strtol(args, &StringEndPointer, 10);
     // Check whether N is a valid positive integer
-    if (StringEndPointer == args) 
+    if (StringEndPointer == args)
     {
-      printf("Error: Missing argument N\n"); 
+      printf("Error: Missing argument N\n");
       return 0;
     }
-    if ( ( *StringEndPointer != '\0' && *StringEndPointer != ' ') || n <= 0)
+    if ((*StringEndPointer != '\0' && *StringEndPointer != ' ') || n <= 0)
     {
       printf("Error: N must be a positive integer\n");
       return 0;
@@ -457,9 +457,15 @@ bool check_null_pointer(const void *ptr, const char *name)
 }
 bool check_memory_address(word_t addr)
 {
+  if (addr == 0)
+  {
+    printf("Error: NULL pointer access attempt\n");
+    return false;
+  }
   if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
   {
-    printf("Error: Invalid memory address " FMT_PADDR "\n", addr);
+    printf("Error: Invalid memory address " FMT_PADDR " (valid range: [" FMT_PADDR ", " FMT_PADDR "))\n",
+           addr, CONFIG_MBASE, CONFIG_MBASE + CONFIG_MSIZE);
     return false;
   }
   return true;

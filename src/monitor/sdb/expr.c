@@ -449,11 +449,23 @@ sword_t eval(int p, int q)
       return 0;
     }
     word_t addr = (word_t)addr_signed;
+    if (!check_memory_address(addr))
+    {
+      printf("Error: Invalid memory address 0x%08x in pointer dereference\n", addr);
+      eval_success = false;
+      g_internal_error = EXP_BAD_MEM;
+      return 0;
+    }
+    if (addr % sizeof(word_t) != 0)
+    {
+      printf("Warning: Unaligned pointer dereference at 0x%08x\n", addr);
+    }
     word_t value;
     if (!safe_paddr_read(addr, &value, sizeof(word_t)))
     {
       printf("Error: Invalid memory access at 0x%08x\n", addr);
       eval_success = false;
+      g_internal_error = EXP_BAD_MEM;
       return 0;
     }
     return (sword_t)value;
