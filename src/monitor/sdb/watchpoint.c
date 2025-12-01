@@ -303,12 +303,27 @@ bool check_watchpoints(void)
 }
 bool safe_paddr_read(word_t addr, word_t *result, size_t size)
 {
+  if (result == NULL) {
+    printf("Error: NULL result pointer in safe_paddr_read\n");
+    return false;
+  }
+  if (size == 0 || size > sizeof(word_t)) {
+    printf("Error: Invalid size %zu in safe_paddr_read\n", size);
+    return false;
+  }
+  if (addr % size != 0) {
+    printf("Warning: Unaligned memory access at 0x%08x (size %zu)\n", addr, size);
+  }
   if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
   {
+    printf("Error: Address 0x%08x out of valid memory range [0x%08x, 0x%08x)\n",
+           addr, CONFIG_MBASE, CONFIG_MBASE + CONFIG_MSIZE);
     return false;
   }
   if (addr > CONFIG_MBASE + CONFIG_MSIZE - size)
   {
+    printf("Error: Reading %zu bytes from 0x%08x would exceed memory bounds\n",
+           size, addr);
     return false;
   }
   *result = paddr_read(addr, size);
