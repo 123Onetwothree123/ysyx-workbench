@@ -270,71 +270,74 @@ static int cmd_x(char *args)
   if (args == NULL || *args == '\0')
   {
     printf("nemu monitor sdb cmd_x function check args, detect args==NULL, this args need parameter input\n");
-    printf("Usage: x N EXPR\n");
-    printf("Example: x 10 $esp\n");
+    printf("Usage: x N[b|h|w] EXPR\n");
+    printf("  N: Number of items to examine\n");
+    printf("  [b|h|w]: Optional unit size (default w):\n");
+    printf("    b - byte (1 byte)\n");
+    printf("    h - half-word (2 bytes)\n");
+    printf("    w - word (4 bytes)\n");
+    printf("  EXPR: Expression evaluating to the start address\n");
+    printf("Example: x 10h $esp  (Examine 10 half-words from stack pointer)\n");
+    printf("Example: x 16b 0x80100000 (Examine 16 bytes from 0x80100000)\n");
     return 0;
   }
-  else if (args != NULL)
+  char *StringEndPointer;
+  long n = strtol(args, &StringEndPointer, 10);
+  if (StringEndPointer == args)
   {
-
-    char *StringEndPointer;
-    long n = strtol(args, &StringEndPointer, 10);
-    // Check whether N is a valid positive integer
-    if (StringEndPointer == args)
-    {
-      printf("Error: Missing argument N\n");
-      return 0;
-    }
-    if ((*StringEndPointer != '\0' && *StringEndPointer != ' ') || n <= 0)
-    {
-      printf("Error: N must be a positive integer\n");
-      return 0;
-    }
-    char *expr_str = StringEndPointer;
-    while (*expr_str == ' ')
-    {
-      expr_str++;
-    }
-    if (*expr_str == '\0')
-    {
-      printf("Error: Missing expression EXPR\n");
-      return 0;
-    }
-    bool success = false;
-    sword_t addr_signed = expr(expr_str, &success);
-    word_t addr = (word_t)addr_signed;
-    // if fail
-    if (!success)
-    {
-      printf("Error: Invalid expression\n");
-      return 0;
-    }
-    // Check the validity of the memory address
-    if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
-    {
-      printf("Error: Address 0x%08x is out of valid memory range [0x%08x, 0x%08x)\n",
-             addr, CONFIG_MBASE, CONFIG_MBASE + CONFIG_MSIZE);
-      return 0;
-    }
-    // Check if there will be any cross-border visits
-    if (n == 0 || n > (CONFIG_MBASE + CONFIG_MSIZE - addr) / 4)
-    {
-      printf("Error: Scanning %ld words from 0x%08x would exceed memory bounds\n",
-             n, addr);
-      return 0;
-    }
-    // print
-    printf("Scanning %ld words from address 0x%08x:\n", n, addr);
-    for (int i = 0; i < n; i++)
-    {
-      word_t data = paddr_read(addr + i * 4, 4); // read 4 byte
-      printf("0x%08x: 0x%08x\n", addr + i * 4, data);
-    }
+    printf("Error: Missing argument N\n");
+    return 0;
   }
-  else
+  if (n <= 0)
   {
-    printf("I do not know monitor cmd_x executing happened something.if and else if do not run\n");
-    return -1;
+    printf("Error: N must be a positive integer\n");
+    return 0;
+  }
+  char *expr_str = StringEndPointer;
+  size_t unit_size = 4;
+  while (*expr_str == ' ') { expr_str++; }
+  switch (*expr_str)
+  {
+    case 'b': unit_size = 1; expr_str++; break;
+    case 'h': unit_size = 2; expr_str++; break;
+    case 'w': unit_size = 4; expr_str++; break;
+    default:
+      break;
+  }
+  while (*expr_str == ' ') { expr_str++; }
+
+  if (*expr_str == '\0')
+  {
+    printf("Error: Missing expression EXPR\n");
+    return 0;
+  }
+  bool success = false;
+  sword_t addr_signed = expr(expr_str, &success);
+  if (!success)
+  {
+    printf("Error: Invalid expression: %s\n", expr_get_error_msg());
+    return 0;
+  }
+  word_t addr = (word_t)addr_signed;
+  printf("Scanning %ld items (unit size: %zu byte%s) from address 0x%08x:\n",
+         n, unit_size, (unit_size > 1 ? "s" : ""), addr);
+  word_t data;
+  for (int i = 0; i < n; i++)
+  {
+    word_t current_addr = addr + i * unit_size;
+    if (!safe_paddr_read(current_addr, &data, unit_size))
+    {
+      printf("Error: Failed to read memory at 0x%08x (scan stopped)\n", current_addr);
+      return 0;
+    }
+    printf("0x%08x: ", current_addr);
+    switch (unit_size)
+    {
+      case 1: printf("0x%02x\n", (uint8_t)data); break;
+      case 2: printf("0x%04x\n", (uint16_t)data); break;
+      case 4: printf("0x%08x\n", (uint32_t)data); break;
+      default: printf("0x%08x\n", data);
+    }
   }
   return 0;
 }

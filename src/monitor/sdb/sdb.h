@@ -89,4 +89,6 @@ void auto_configure_memory_regions(void);
 const MemoryRegion *query_memory_region(word_t addr); // Query memory region information at runtime
 bool validate_address_flexible(word_t addr, size_t size, bool is_write);
 bool validate_expression_memory_access_flexible(const char *expression);
+
+const char* expr_get_error_msg();
 #endif
