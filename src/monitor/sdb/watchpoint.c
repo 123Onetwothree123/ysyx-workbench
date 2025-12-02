@@ -268,7 +268,8 @@ bool check_watchpoints(void)
     sword_t current_val_signed = expr((char *)wp_get_expr(wp), &success);
     if (!success)
     {
-      printf("Warning: Failed to evaluate watchpoint %d: %s (Error: %s)\n", wp_get_no(wp), wp_get_expr(wp), expr_get_error_msg());
+      printf("Warning: Failed to evaluate watchpoint %d: %s (Error: %s)\n",
+             wp_get_no(wp), wp_get_expr(wp), expr_get_error_msg());
       wp = wp_get_next(wp);
       continue;
     }
@@ -303,20 +304,20 @@ bool safe_paddr_read(word_t addr, word_t *result, size_t size)
 {
   if (result == NULL)
   {
-    printf("Error: NULL result pointer in safe_paddr_read\n");
+    Log("safe_paddr_read: NULL result pointer");
     return false;
   }
   if (size == 0 || size > sizeof(word_t))
   {
-    printf("Error: Invalid size %zu in safe_paddr_read\n", size);
+    Log("safe_paddr_read: Invalid size %zu", size);
     return false;
   }
-  if (!validate_address_flexible(addr, size, false))
+#ifdef CONFIG_MBASE
+  if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
   {
     return false;
   }
-  *result = paddr_read(addr, size);
-  return true;
+#endif
   *result = paddr_read(addr, size);
   return true;
 }
