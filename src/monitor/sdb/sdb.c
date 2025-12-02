@@ -613,7 +613,7 @@ void auto_configure_memory_regions(void)
     g_memory_regions[g_region_count].description = "Timer MMIO";
     g_region_count++;
   }
-#endif
+#endif 
 #ifdef CONFIG_HAS_VGA
   if (g_region_count < MAX_MEMORY_REGIONS)
   {
