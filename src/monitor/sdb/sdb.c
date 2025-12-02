@@ -328,6 +328,23 @@ static int cmd_x(char *args)
   word_t addr = (word_t)addr_signed;
   printf("Scanning %ld items (unit size: %zu byte%s) from address 0x%08x:\n",
          n, unit_size, (unit_size > 1 ? "s" : ""), addr);
+  if (n > UINT32_MAX / unit_size)
+  {
+    printf("Error: Request too large (would overflow address space)\n");
+    return 0;
+  }
+  word_t total_size = (word_t)n * unit_size;
+  if (addr > UINT32_MAX - total_size)
+  {
+    printf("Error: Address range would overflow (0x%08x + %u bytes)\n",
+           addr, total_size);
+    return 0;
+  }
+
+  word_t end_addr = addr + total_size;
+
+  printf("Scanning %ld items (%zu bytes each) from 0x%08x to 0x%08x:\n",
+         n, unit_size, addr, end_addr - 1);
   word_t data;
   for (int i = 0; i < n; i++)
   {

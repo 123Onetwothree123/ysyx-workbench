@@ -407,6 +407,14 @@ sword_t eval(int p, int q)
     switch (tokens[op_pos].type)
     {
     case '+':
+      if ((right_val > 0 && left_val > INT32_MAX - right_val) ||
+          (right_val < 0 && left_val < INT32_MIN - right_val))
+      {
+        printf("Error: Integer overflow in addition\n");
+        eval_success = false;
+        g_internal_error = EXP_SYNTAX;
+        return 0;
+      }
       return left_val + right_val;
     case '-':
       return left_val - right_val;
