@@ -26,6 +26,8 @@ static int is_batch_mode = false;
 void init_regex();
 void init_wp_pool();
 
+static char *parse_args(char *input, bool preserve_spaces);
+
 static char *rl_gets()
 {
   static char *line_read = NULL;
@@ -375,6 +377,7 @@ static int cmd_x(char *args)
 }
 static int cmd_p(char *args)
 {
+  args = parse_args(args, true);
   if (args == NULL)
   {
     printf("cmd_p checked args==NULL, need input parameter.\n");
@@ -567,4 +570,22 @@ bool validate_expression_syntax(const char *expression)
     }
   }
   return paren_count == 0;
+}
+static char *parse_args(char *input, bool preserve_spaces)
+{
+  if (!input)
+    return NULL;
+  while (*input == ' ')
+    input++;
+  if (preserve_spaces)
+  {
+    char *end = input + strlen(input) - 1;
+    while (end > input && *end == ' ')
+    {
+      *end = '\0';
+      end--;
+    }
+    return input;
+  }
+  return input;
 }
