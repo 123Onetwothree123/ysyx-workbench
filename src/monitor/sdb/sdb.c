@@ -500,7 +500,9 @@ bool check_memory_address(word_t addr)
 bool check_string_length(const char *str, size_t max_len, const char *name)
 {
   if (str == NULL)
+  {
     return false;
+  }
   size_t len = strlen(str);
   if (len >= max_len)
   {
