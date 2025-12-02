@@ -537,12 +537,17 @@ bool validate_expression_syntax(const char *expression)
   for (const char *p = expression; *p; p++)
   {
     if (*p == '(')
+    {
       paren_count++;
+    }
     if (*p == ')')
+    {
       paren_count--;
+    }
     if (paren_count < 0)
+    {
       return false;
+    }
   }
-
   return paren_count == 0;
 }
