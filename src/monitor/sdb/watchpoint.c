@@ -312,6 +312,10 @@ bool safe_paddr_read(word_t addr, word_t *result, size_t size)
     Log("safe_paddr_read: Invalid size %zu", size);
     return false;
   }
+  if ((addr & (size - 1)) != 0 && size != 1) {
+    Log("Unaligned access at address 0x%08x with size %zu", addr, size);
+    return false;
+  }
 #ifdef CONFIG_MBASE
   if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
   {
