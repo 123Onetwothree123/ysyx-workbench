@@ -57,7 +57,6 @@ bool check_string_length(const char *str, size_t max_len, const char *name);
 bool check_watchpoints(void);
 
 bool safe_paddr_read(word_t addr, word_t *result, size_t size);
-bool validate_expression_memory_access_flexible(const char *expression);
 
 /**
  * Check if an expression can be evaluated (syntax check only).
