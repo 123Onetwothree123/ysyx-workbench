@@ -267,9 +267,6 @@ static char first_nonspace_char(const char *s)
  * update_val : when true => update wp->old_val when value changed (check mode)
  * return true if any watchpoint value changed (triggered)
  */
-/* Add at the top of the file (if not already included):
-   #include <stdlib.h>
-*/
 static bool scan_watchpoints(bool show_all, bool update_val)
 {
   WP *wp = head;
