@@ -15,6 +15,7 @@
 
 #include "sdb.h"
 #include <memory/paddr.h>
+#include <stdlib.h>
 
 #define NR_WP 32
 
