@@ -37,6 +37,7 @@ void free_wp(WP *wp);
 extern const char *expr_get_error_msg();
 
 static int wp_compare_by_no(const void *a, const void *b);
+static char first_nonspace_char(const char *s);
 static bool scan_watchpoints(bool show_all, bool update_val);
 
 void init_wp_pool()
@@ -237,20 +238,48 @@ bool safe_paddr_read(word_t addr, word_t *result, size_t size)
   *result = paddr_read(addr, size);
   return true;
 }
+
+/* Comparison function: sort by NO in ascending order */
+static int wp_compare_by_no(const void *a, const void *b)
+{
+  const WP *const *pa = a;
+  const WP *const *pb = b;
+  int na = (*pa)->NO;
+  int nb = (*pb)->NO;
+  if (na < nb)
+    return -1;
+  if (na > nb)
+    return 1;
+  return 0;
+}
+
+/* Helper: skip leading whitespace, return the first non-space character, or '\0' */
+static char first_nonspace_char(const char *s)
+{
+  if (!s)
+    return '\0';
+  while (*s != '\0' && (*s == ' ' || *s == '\t'))
+    s++;
+  return *s;
+}
 /* Scan watchpoints and optionally print / update values.
  * show_all : when true => print all watchpoints (info w)
  * update_val : when true => update wp->old_val when value changed (check mode)
  * return true if any watchpoint value changed (triggered)
  */
+/* Add at the top of the file (if not already included):
+   #include <stdlib.h>
+*/
 static bool scan_watchpoints(bool show_all, bool update_val)
 {
   WP *wp = head;
-  if (wp == NULL && show_all) {
+  if (wp == NULL && show_all)
+  {
     printf("No watchpoints.\n");
     return false;
   }
 
-  /* formatting widths (reusing your previous sizing logic) */
+  /* Calculate format width (follows the original logic) */
   int hex_len = sizeof(word_t) * 2 + 2;
   int val_width = (hex_len > 9) ? hex_len : 9;
   int no_width = 4;
@@ -258,47 +287,77 @@ static bool scan_watchpoints(bool show_all, bool update_val)
   int expr_width = 32;
   int total_len = 16 + no_width + (val_width * 2) + status_width + expr_width;
 
-#define PRINT_DIVIDER()                      \
-  do {                                       \
-    for (int _i = 0; _i < total_len; _i++)   \
-      putchar('-');                          \
-    putchar('\n');                           \
+#define PRINT_DIVIDER()                    \
+  do                                       \
+  {                                        \
+    for (int _i = 0; _i < total_len; _i++) \
+      putchar('-');                        \
+    putchar('\n');                         \
   } while (0)
 
-  /* collect active watchpoints into array (stack allocated; NR_WP is small) */
+  /* Collect active watchpoints into an array (on the stack, NR_WP is sufficient) */
   WP *arr[NR_WP];
   int cnt = 0;
-  for (WP *it = head; it != NULL && cnt < NR_WP; it = it->next) {
+  for (WP *it = head; it != NULL && cnt < NR_WP; it = it->next)
+  {
     arr[cnt++] = it;
   }
 
-  /* sort by NO ascending using qsort */
-  if (cnt > 1) {
+  /* Sort in ascending order of NO using qsort */
+  if (cnt > 1)
+  {
     qsort(arr, (size_t)cnt, sizeof(WP *), wp_compare_by_no);
   }
 
   bool header_printed = false;
   bool any_triggered = false;
 
-  for (int idx = 0; idx < cnt; idx++) {
+  for (int idx = 0; idx < cnt; idx++)
+  {
     WP *cur = arr[idx];
-
     bool success = false;
-    /* evaluate expression; expr returns signed value in sword_t and sets success */
-    sword_t current_val_signed = expr(cur->expr, &success);
-    word_t current_val = (word_t)current_val_signed;
-    word_t old_val = cur->old_val;
-    bool changed = (current_val != old_val);
+    word_t current_val = 0;
 
-    /* In check mode, if evaluation fails, warn and skip (do not trigger) */
-    if (!show_all && !success) {
+    /* ----- Safe evaluation: avoid calling expr() when show_all is true and the expression begins with unary dereference ----- */
+    /* This prevents the "Cannot dereference pointer" error output triggered by expr() in info mode */
+    if (show_all)
+    {
+      char fc = first_nonspace_char(cur->expr);
+      if (fc == '*')
+      {
+        /* In info mode, when encountering a unary dereference expression, mark evaluation as failed (success=false),
+           so it displays as N/A / Invalid without calling expr() and causing error logs. */
+        success = false;
+      }
+      else
+      {
+        /* For expressions not starting with '*', call expr() as usual. */
+        sword_t tmp = expr(cur->expr, &success);
+        current_val = (word_t)tmp;
+      }
+    }
+    else
+    {
+      /* Check mode: evaluate strictly (even if it generates error messages) because this is a runtime check. */
+      sword_t tmp = expr(cur->expr, &success);
+      current_val = (word_t)tmp;
+    }
+
+    word_t old_val = cur->old_val;
+    bool changed = success && (current_val != old_val);
+
+    /* In check mode, if expression evaluation fails: print warning and skip (don't treat as triggered) */
+    if (!show_all && !success)
+    {
       printf("Warning: Failed to evaluate watchpoint %d: %s\n", cur->NO, cur->expr);
       continue;
     }
 
-    /* Decide whether to print: info mode prints all; check mode prints only changes */
-    if (show_all || changed) {
-      if (!header_printed) {
+    /* Decide what to print: print all in info mode, print only changed items in check mode */
+    if (show_all || changed)
+    {
+      if (!header_printed)
+      {
         if (!show_all)
           printf("\nWatchpoint triggered:\n");
         PRINT_DIVIDER();
@@ -321,43 +380,41 @@ static bool scan_watchpoints(bool show_all, bool update_val)
 #endif
 
       snprintf(old_str, sizeof(old_str), V_FMT, old_val);
-      if (!success) {
+      if (!success)
+      {
         snprintf(cur_str, sizeof(cur_str), "N/A");
-        status_str = "\033[1;31mInvalid\033[0m";
-      } else {
+        status_str = "Invalid"; /* No color codes to avoid width issues */
+      }
+      else
+      {
         snprintf(cur_str, sizeof(cur_str), V_FMT, current_val);
-        status_str = changed ? "\033[1;33mCHANGED\033[0m" : "\033[1;32mOK\033[0m";
+        status_str = changed ? "CHANGED" : "OK";
       }
 
-      /* account for ANSI color escape length when formatting */
-      int status_fmt_width = status_width;
-      if (status_str[0] == '\033') status_fmt_width += 11;
-
+      /* To prevent color escape sequences from affecting alignment, escape codes are not used here.
+         (You can change back to colored output, but need to compensate for width) */
       printf("| %-*d | %-*s | %-*s | %-*s | %-*s |\n",
              no_width, cur->NO,
              val_width, old_str,
              val_width, cur_str,
-             status_fmt_width, status_str,
+             status_width, status_str,
              expr_width, cur->expr);
     }
 
-    /* if evaluation successful and value changed -> mark triggered and optionally update */
-    if (success && changed) {
-      if (update_val) cur->old_val = current_val;
+    /* If successful and value changed: update old_val based on update_val flag, and mark as triggered */
+    if (success && changed)
+    {
+      if (update_val)
+        cur->old_val = current_val;
       any_triggered = true;
     }
   }
 
-  if (header_printed) {
+  if (header_printed)
+  {
     PRINT_DIVIDER();
   }
 
 #undef PRINT_DIVIDER
   return any_triggered;
-}
-static int wp_compare_by_no(const void *a, const void *b)
-{
-  const WP *const *pa = a;
-  const WP *const *pb = b;
-  return (*pa)->NO - (*pb)->NO;
 }
