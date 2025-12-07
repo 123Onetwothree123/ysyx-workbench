@@ -276,7 +276,7 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     return false;
   }
 
-  /* Calculate format width (follows the original logic) */
+  /* Calculate format width */
   int hex_len = sizeof(word_t) * 2 + 2;
   int val_width = (hex_len > 9) ? hex_len : 9;
   int no_width = 4;
@@ -292,7 +292,7 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     putchar('\n');                         \
   } while (0)
 
-  /* Collect active watchpoints into an array (on the stack, NR_WP is sufficient) */
+  /* Collect active watchpoints into an array */
   WP *arr[NR_WP];
   int cnt = 0;
   for (WP *it = head; it != NULL && cnt < NR_WP; it = it->next)
@@ -300,7 +300,7 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     arr[cnt++] = it;
   }
 
-  /* Sort in ascending order of NO using qsort */
+  /* Sort in ascending order of NO */
   if (cnt > 1)
   {
     qsort(arr, (size_t)cnt, sizeof(WP *), wp_compare_by_no);
@@ -315,14 +315,11 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     bool success = false;
     word_t current_val = 0;
 
-    /* ----- Safe evaluation: avoid calling expr() when show_all is true and the expression begins with unary dereference ----- */
+    /* Safe evaluation logic */
     if (show_all)
     {
       char fc = first_nonspace_char(cur->expr);
-      if (fc == '*')
-      {
-        success = false;
-      }
+      if (fc == '*') success = false;
       else
       {
         sword_t tmp = expr(cur->expr, &success);
@@ -338,14 +335,13 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     word_t old_val = cur->old_val;
     bool changed = success && (current_val != old_val);
 
-    /* In check mode, if expression evaluation fails: print warning and skip */
     if (!show_all && !success)
     {
       printf("Warning: Failed to evaluate watchpoint %d: %s\n", cur->NO, cur->expr);
       continue;
     }
 
-    /* Decide what to print */
+    /* Print Logic */
     if (show_all || changed)
     {
       if (!header_printed)
@@ -353,12 +349,18 @@ static bool scan_watchpoints(bool show_all, bool update_val)
         if (!show_all)
           printf("\nWatchpoint triggered:\n");
         PRINT_DIVIDER();
+
+        /* 
+         * Header with BLUE Color (\033[1;34m) 
+         * We add 11 to the width: 7 bytes for start code + 4 bytes for reset code 
+         */
         printf("| %-*s | %-*s | %-*s | %-*s | %-*s |\n",
-               no_width, "NO",
-               val_width, "OLD VALUE",
-               val_width, "NEW VALUE",
-               status_width, "STATUS",
-               expr_width, "EXPRESSION");
+               no_width + 11,     "\033[1;34mNO\033[0m",
+               val_width + 11,    "\033[1;34mOLD VALUE\033[0m",
+               val_width + 11,    "\033[1;34mNEW VALUE\033[0m",
+               status_width + 11, "\033[1;34mSTATUS\033[0m",
+               expr_width + 11,   "\033[1;34mEXPRESSION\033[0m");
+               
         PRINT_DIVIDER();
         header_printed = true;
       }
@@ -373,21 +375,19 @@ static bool scan_watchpoints(bool show_all, bool update_val)
 
       snprintf(old_str, sizeof(old_str), V_FMT, old_val);
       
-      // [Restore Colors] Logic combined with current code structure
+      /* Row Colors: Red for Invalid, Yellow/Green for Status */
       if (!success)
       {
         snprintf(cur_str, sizeof(cur_str), "N/A");
-        status_str = "\033[1;31mInvalid\033[0m"; // Red
+        status_str = "\033[1;31mInvalid\033[0m"; 
       }
       else
       {
         snprintf(cur_str, sizeof(cur_str), V_FMT, current_val);
-        status_str = changed ? "\033[1;33mCHANGED\033[0m" : "\033[1;32mOK\033[0m"; // Yellow : Green
+        status_str = changed ? "\033[1;33mCHANGED\033[0m" : "\033[1;32mOK\033[0m";
       }
 
-      // [Restore Width Compensation] 
-      // ANSI codes (\033...m) take bytes but are invisible. 
-      // Add 11 to width if color codes are present to keep table aligned.
+      /* Compensation for row status color codes */
       int status_fmt_width = status_width;
       if (status_str[0] == '\033') status_fmt_width += 11;
 
@@ -399,7 +399,6 @@ static bool scan_watchpoints(bool show_all, bool update_val)
              expr_width, cur->expr);
     }
 
-    /* Trigger handling */
     if (success && changed)
     {
       if (update_val)
