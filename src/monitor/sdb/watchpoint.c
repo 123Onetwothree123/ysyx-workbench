@@ -316,26 +316,21 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     word_t current_val = 0;
 
     /* ----- Safe evaluation: avoid calling expr() when show_all is true and the expression begins with unary dereference ----- */
-    /* This prevents the "Cannot dereference pointer" error output triggered by expr() in info mode */
     if (show_all)
     {
       char fc = first_nonspace_char(cur->expr);
       if (fc == '*')
       {
-        /* In info mode, when encountering a unary dereference expression, mark evaluation as failed (success=false),
-           so it displays as N/A / Invalid without calling expr() and causing error logs. */
         success = false;
       }
       else
       {
-        /* For expressions not starting with '*', call expr() as usual. */
         sword_t tmp = expr(cur->expr, &success);
         current_val = (word_t)tmp;
       }
     }
     else
     {
-      /* Check mode: evaluate strictly (even if it generates error messages) because this is a runtime check. */
       sword_t tmp = expr(cur->expr, &success);
       current_val = (word_t)tmp;
     }
@@ -343,14 +338,14 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     word_t old_val = cur->old_val;
     bool changed = success && (current_val != old_val);
 
-    /* In check mode, if expression evaluation fails: print warning and skip (don't treat as triggered) */
+    /* In check mode, if expression evaluation fails: print warning and skip */
     if (!show_all && !success)
     {
       printf("Warning: Failed to evaluate watchpoint %d: %s\n", cur->NO, cur->expr);
       continue;
     }
 
-    /* Decide what to print: print all in info mode, print only changed items in check mode */
+    /* Decide what to print */
     if (show_all || changed)
     {
       if (!header_printed)
@@ -377,28 +372,34 @@ static bool scan_watchpoints(bool show_all, bool update_val)
 #endif
 
       snprintf(old_str, sizeof(old_str), V_FMT, old_val);
+      
+      // [Restore Colors] Logic combined with current code structure
       if (!success)
       {
         snprintf(cur_str, sizeof(cur_str), "N/A");
-        status_str = "Invalid"; /* No color codes to avoid width issues */
+        status_str = "\033[1;31mInvalid\033[0m"; // Red
       }
       else
       {
         snprintf(cur_str, sizeof(cur_str), V_FMT, current_val);
-        status_str = changed ? "CHANGED" : "OK";
+        status_str = changed ? "\033[1;33mCHANGED\033[0m" : "\033[1;32mOK\033[0m"; // Yellow : Green
       }
 
-      /* To prevent color escape sequences from affecting alignment, escape codes are not used here.
-         (You can change back to colored output, but need to compensate for width) */
+      // [Restore Width Compensation] 
+      // ANSI codes (\033...m) take bytes but are invisible. 
+      // Add 11 to width if color codes are present to keep table aligned.
+      int status_fmt_width = status_width;
+      if (status_str[0] == '\033') status_fmt_width += 11;
+
       printf("| %-*d | %-*s | %-*s | %-*s | %-*s |\n",
              no_width, cur->NO,
              val_width, old_str,
              val_width, cur_str,
-             status_width, status_str,
+             status_fmt_width, status_str,
              expr_width, cur->expr);
     }
 
-    /* If successful and value changed: update old_val based on update_val flag, and mark as triggered */
+    /* Trigger handling */
     if (success && changed)
     {
       if (update_val)
