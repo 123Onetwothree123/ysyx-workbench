@@ -319,7 +319,8 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     if (show_all)
     {
       char fc = first_nonspace_char(cur->expr);
-      if (fc == '*') success = false;
+      if (fc == '*')
+        success = false;
       else
       {
         sword_t tmp = expr(cur->expr, &success);
@@ -350,17 +351,17 @@ static bool scan_watchpoints(bool show_all, bool update_val)
           printf("\nWatchpoint triggered:\n");
         PRINT_DIVIDER();
 
-        /* 
-         * Header with BLUE Color (\033[1;34m) 
-         * We add 11 to the width: 7 bytes for start code + 4 bytes for reset code 
+        /*
+         * Header with BLUE Color (\033[1;34m)
+         * We add 11 to the width: 7 bytes for start code + 4 bytes for reset code
          */
         printf("| %-*s | %-*s | %-*s | %-*s | %-*s |\n",
-               no_width + 11,     "\033[1;34mNO\033[0m",
-               val_width + 11,    "\033[1;34mOLD VALUE\033[0m",
-               val_width + 11,    "\033[1;34mNEW VALUE\033[0m",
+               no_width + 11, "\033[1;34mNO\033[0m",
+               val_width + 11, "\033[1;34mOLD VALUE\033[0m",
+               val_width + 11, "\033[1;34mNEW VALUE\033[0m",
                status_width + 11, "\033[1;34mSTATUS\033[0m",
-               expr_width + 11,   "\033[1;34mEXPRESSION\033[0m");
-               
+               expr_width + 11, "\033[1;34mEXPRESSION\033[0m");
+
         PRINT_DIVIDER();
         header_printed = true;
       }
@@ -372,14 +373,15 @@ static bool scan_watchpoints(bool show_all, bool update_val)
 #else
 #define V_FMT "0x%08x"
 #endif
-
+      char no_str[32];
+      snprintf(no_str, sizeof(no_str), ANSI_FG_CYAN "%d" ANSI_NONE, cur->NO);
       snprintf(old_str, sizeof(old_str), V_FMT, old_val);
-      
+
       /* Row Colors: Red for Invalid, Yellow/Green for Status */
       if (!success)
       {
         snprintf(cur_str, sizeof(cur_str), "N/A");
-        status_str = "\033[1;31mInvalid\033[0m"; 
+        status_str = "\033[1;31mInvalid\033[0m";
       }
       else
       {
@@ -389,10 +391,11 @@ static bool scan_watchpoints(bool show_all, bool update_val)
 
       /* Compensation for row status color codes */
       int status_fmt_width = status_width;
-      if (status_str[0] == '\033') status_fmt_width += 11;
+      if (status_str[0] == '\033')
+        status_fmt_width += 11;
 
       printf("| %-*d | %-*s | %-*s | %-*s | %-*s |\n",
-             no_width, cur->NO,
+             no_width + 11, cur->NO,
              val_width, old_str,
              val_width, cur_str,
              status_fmt_width, status_str,
