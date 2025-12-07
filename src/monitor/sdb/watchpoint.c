@@ -394,8 +394,8 @@ static bool scan_watchpoints(bool show_all, bool update_val)
       if (status_str[0] == '\033')
         status_fmt_width += 11;
 
-      printf("| %-*d | %-*s | %-*s | %-*s | %-*s |\n",
-             no_width + 11, cur->NO,
+      printf("| %-*s | %-*s | %-*s | %-*s | %-*s |\n",
+             no_width + 11, no_str,
              val_width, old_str,
              val_width, cur_str,
              status_fmt_width, status_str,
