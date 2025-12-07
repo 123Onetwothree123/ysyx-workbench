@@ -35,6 +35,7 @@ WP *new_wp();
 void free_wp(WP *wp);
 extern const char *expr_get_error_msg();
 
+static int wp_compare_by_no(const void *a, const void *b);
 static bool scan_watchpoints(bool show_all, bool update_val);
 
 void init_wp_pool()
@@ -235,20 +236,20 @@ bool safe_paddr_read(word_t addr, word_t *result, size_t size)
   *result = paddr_read(addr, size);
   return true;
 }
-// Core reusable function: Scan watchpoints and perform corresponding actions
-// show_all: Whether to show all items (info w mode)
-// update_val: Whether to update old values (check mode)
-// Return value: Whether any watchpoint was triggered (value changed)
+/* Scan watchpoints and optionally print / update values.
+ * show_all : when true => print all watchpoints (info w)
+ * update_val : when true => update wp->old_val when value changed (check mode)
+ * return true if any watchpoint value changed (triggered)
+ */
 static bool scan_watchpoints(bool show_all, bool update_val)
 {
   WP *wp = head;
-  if (wp == NULL && show_all)
-  {
+  if (wp == NULL && show_all) {
     printf("No watchpoints.\n");
     return false;
   }
 
-  // 1. Dynamically calculate table width (reusing previous optimized logic)
+  /* formatting widths (reusing your previous sizing logic) */
   int hex_len = sizeof(word_t) * 2 + 2;
   int val_width = (hex_len > 9) ? hex_len : 9;
   int no_width = 4;
@@ -256,44 +257,49 @@ static bool scan_watchpoints(bool show_all, bool update_val)
   int expr_width = 32;
   int total_len = 16 + no_width + (val_width * 2) + status_width + expr_width;
 
-#define PRINT_DIVIDER()                    \
-  do                                       \
-  {                                        \
-    for (int _i = 0; _i < total_len; _i++) \
-      putchar('-');                        \
-    putchar('\n');                         \
+#define PRINT_DIVIDER()                      \
+  do {                                       \
+    for (int _i = 0; _i < total_len; _i++)   \
+      putchar('-');                          \
+    putchar('\n');                           \
   } while (0)
+
+  /* collect active watchpoints into array (stack allocated; NR_WP is small) */
+  WP *arr[NR_WP];
+  int cnt = 0;
+  for (WP *it = head; it != NULL && cnt < NR_WP; it = it->next) {
+    arr[cnt++] = it;
+  }
+
+  /* sort by NO ascending using qsort */
+  if (cnt > 1) {
+    qsort(arr, (size_t)cnt, sizeof(WP *), wp_compare_by_no);
+  }
 
   bool header_printed = false;
   bool any_triggered = false;
 
-  while (wp != NULL)
-  {
-    bool success = false;
-    sword_t current_val_signed = expr(wp->expr, &success);
-    word_t current_val = (word_t)current_val_signed;
-    word_t old_val = wp->old_val;
+  for (int idx = 0; idx < cnt; idx++) {
+    WP *cur = arr[idx];
 
+    bool success = false;
+    /* evaluate expression; expr returns signed value in sword_t and sets success */
+    sword_t current_val_signed = expr(cur->expr, &success);
+    word_t current_val = (word_t)current_val_signed;
+    word_t old_val = cur->old_val;
     bool changed = (current_val != old_val);
 
-    // If in check mode (!show_all) and expression evaluation fails, print warning but do not treat as triggered
-    if (!show_all && !success)
-    {
-      printf("Warning: Failed to evaluate watchpoint %d: %s\n", wp->NO, wp->expr);
-      wp = wp->next;
+    /* In check mode, if evaluation fails, warn and skip (do not trigger) */
+    if (!show_all && !success) {
+      printf("Warning: Failed to evaluate watchpoint %d: %s\n", cur->NO, cur->expr);
       continue;
     }
 
-    // Decide whether to print this row:
-    // 1. info w mode (show_all = true) -> Always print
-    // 2. check mode (!show_all) -> Only print when value changes
-    if (show_all || changed)
-    {
-      // Delay printing the header: Ensure that in check mode, the header is only printed if actually triggered
-      if (!header_printed)
-      {
+    /* Decide whether to print: info mode prints all; check mode prints only changes */
+    if (show_all || changed) {
+      if (!header_printed) {
         if (!show_all)
-          printf("\nWatchpoint triggered:\n"); // Add a prompt for trigger mode
+          printf("\nWatchpoint triggered:\n");
         PRINT_DIVIDER();
         printf("| %-*s | %-*s | %-*s | %-*s | %-*s |\n",
                no_width, "NO",
@@ -305,58 +311,52 @@ static bool scan_watchpoints(bool show_all, bool update_val)
         header_printed = true;
       }
 
-      // Prepare print content
       char old_str[32], cur_str[32];
       const char *status_str;
-
 #ifdef CONFIG_ISA64
 #define V_FMT "0x%016lx"
 #else
 #define V_FMT "0x%08x"
 #endif
 
-      snprintf(old_str, 32, V_FMT, old_val);
-      if (!success)
-      {
-        snprintf(cur_str, 32, "N/A");
-        status_str = "\033[1;31mInvalid\033[0m"; // Red
-      }
-      else
-      {
-        snprintf(cur_str, 32, V_FMT, current_val);
+      snprintf(old_str, sizeof(old_str), V_FMT, old_val);
+      if (!success) {
+        snprintf(cur_str, sizeof(cur_str), "N/A");
+        status_str = "\033[1;31mInvalid\033[0m";
+      } else {
+        snprintf(cur_str, sizeof(cur_str), V_FMT, current_val);
         status_str = changed ? "\033[1;33mCHANGED\033[0m" : "\033[1;32mOK\033[0m";
       }
 
-      // Color code compensation
+      /* account for ANSI color escape length when formatting */
       int status_fmt_width = status_width;
-      if (status_str[0] == '\033')
-        status_fmt_width += 11;
+      if (status_str[0] == '\033') status_fmt_width += 11;
 
       printf("| %-*d | %-*s | %-*s | %-*s | %-*s |\n",
-             no_width, wp->NO,
+             no_width, cur->NO,
              val_width, old_str,
              val_width, cur_str,
              status_fmt_width, status_str,
-             expr_width, wp->expr);
+             expr_width, cur->expr);
     }
 
-    // Trigger logic processing
-    if (success && changed)
-    {
-      if (update_val)
-      {
-        wp->old_val = current_val; // Update old value
-      }
+    /* if evaluation successful and value changed -> mark triggered and optionally update */
+    if (success && changed) {
+      if (update_val) cur->old_val = current_val;
       any_triggered = true;
     }
-
-    wp = wp->next;
   }
 
-  if (header_printed)
-  {
+  if (header_printed) {
     PRINT_DIVIDER();
   }
+
 #undef PRINT_DIVIDER
   return any_triggered;
+}
+static int wp_compare_by_no(const void *a, const void *b)
+{
+  const WP *const *pa = a;
+  const WP *const *pb = b;
+  return (*pa)->NO - (*pb)->NO;
 }
