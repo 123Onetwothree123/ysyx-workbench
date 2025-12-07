@@ -114,15 +114,11 @@ void PrintWatchPoint()
         status_str = "\033[1;32mOK\033[0m"; // 绿色
       }
     }
-
-    // 4. 处理 ANSI 颜色导致的对齐问题
-    // 如果字符串包含颜色代码（以 ESC 开头），printf 宽度需要增加
-    // 标准颜色格式 \033[...m ... \033[0m 通常包含 11 个不可见字符
+    //Handle alignment issues caused by ANSI colors
     int status_fmt_width = status_width;
     if (status_str && status_str[0] == '\033') {
         status_fmt_width += 11; 
     }
-
     printf("| %-*d | %-*s | %-*s | %-*s | %-*s |\n", 
            no_width, wp_get_no(wp), 
            val_width, old_str, 
