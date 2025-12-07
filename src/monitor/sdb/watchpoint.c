@@ -57,15 +57,28 @@ void PrintWatchPoint()
     printf("No watchpoints.\n");
     return;
   }
-  int hex_len = sizeof(word_t) * 2 + 2;
-  int col_width = (hex_len > 9) ? hex_len : 9;
-  printf("----------------------------------------------------------------------------------\n");
-  printf("| %-4s | %-*s | %-*s | %-20s | %-20s |\n",
-         "NO",
-         col_width, "OLD VALUE",
-         col_width, "NEW VALUE",
-         "STATUS", "EXPRESSION");
-  printf("----------------------------------------------------------------------------------\n");
+  // Define the base width for each column
+  int hex_len = sizeof(word_t) * 2 + 2;        // Length of 0x...
+  int val_width = (hex_len > 9) ? hex_len : 9; // Value column width
+  int no_width = 4;                            // NO column width
+  int status_width = 14;                       // STATUS column width (wide enough to hold "Invalid Addr")
+  int expr_width = 32;                         // EXPRESSION column width
+  //int col_width = (hex_len > 9) ? hex_len : 9;
+  // Calculate the total table length
+  // Format structure: "| NO | OLD | NEW | STATUS | EXPR |"
+  // Separator occupancy: "| " (2) + " | " (3)*4 + " |" (2) = 16 characters
+  int total_len = 16 + no_width + (val_width * 2) + status_width + expr_width;
+  //Helper macro: print a dynamic-length separator line
+  #define PRINT_DIVIDER() do { for(int _i=0; _i<total_len; _i++) putchar('-'); putchar('\n'); } while(0)
+  PRINT_DIVIDER();
+  printf("| %-*s | %-*s | %-*s | %-*s | %-*s |\n",
+         no_width, "NO",
+         val_width, "OLD VALUE",
+         val_width, "NEW VALUE",
+         status_width, "STATUS",
+         expr_width, "EXPRESSION");
+  PRINT_DIVIDER();
+
   while (wp != NULL)
   {
     bool success = false;
@@ -75,11 +88,13 @@ void PrintWatchPoint()
     char old_str[32];
     char cur_str[32];
     const char *status_str;
+
 #ifdef CONFIG_ISA64
 #define V_FMT "0x%016lx"
 #else
 #define V_FMT "0x%08x"
 #endif
+
     snprintf(old_str, 32, V_FMT, old_val);
 
     if (!success)
@@ -92,17 +107,33 @@ void PrintWatchPoint()
       snprintf(cur_str, 32, V_FMT, current_val);
       if (current_val != old_val)
       {
-        status_str = "\033[1;33mCHANGED\033[0m"; // yellow
+        status_str = "\033[1;33mCHANGED\033[0m"; // 黄色
       }
       else
       {
-        status_str = "\033[1;32mOK\033[0m"; // green
+        status_str = "\033[1;32mOK\033[0m"; // 绿色
       }
     }
-    printf("| %-4d | %-*s | %-*s | %-20s | %-20s |\n", wp_get_no(wp), col_width, old_str, col_width, cur_str, status_str, wp_get_expr(wp));
+
+    // 4. 处理 ANSI 颜色导致的对齐问题
+    // 如果字符串包含颜色代码（以 ESC 开头），printf 宽度需要增加
+    // 标准颜色格式 \033[...m ... \033[0m 通常包含 11 个不可见字符
+    int status_fmt_width = status_width;
+    if (status_str && status_str[0] == '\033') {
+        status_fmt_width += 11; 
+    }
+
+    printf("| %-*d | %-*s | %-*s | %-*s | %-*s |\n", 
+           no_width, wp_get_no(wp), 
+           val_width, old_str, 
+           val_width, cur_str, 
+           status_fmt_width, status_str,
+           expr_width, wp_get_expr(wp));
+           
     wp = wp_get_next(wp);
   }
-  printf("----------------------------------------------------------------------------------\n");
+  PRINT_DIVIDER();
+  #undef PRINT_DIVIDER
 }
 WP *new_wp()
 {
