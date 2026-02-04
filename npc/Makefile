@@ -38,6 +38,10 @@ $(BIN): $(VSRCS) $(CSRCS) $(NVBOARD_ARCHIVE)
 all:default
 run: $(BIN)
 	@$^
+clean:
+	rm -rf $(BUILD_DIR)
+	rm -f $(SRC_AUTO_BIND) 2>/dev/null || true
+	@echo "Clean completed."
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "Write this Makefile by your self."
