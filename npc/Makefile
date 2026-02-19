@@ -1,49 +1,86 @@
+# --- 1. 基本配置 ---
 TOPNAME = top
-NXDC_FILES = ./vsrc/npc.nxdc
-VERILATOR = verilator
-VERILATOR_CFLAGS += -MMD --build -cc  \
-				-O3 --x-assign fast --x-initial fast --noassert
+NXDC_FILES = top.nxdc
 BUILD_DIR = ./build
 OBJ_DIR = $(BUILD_DIR)/obj_dir
 BIN = $(BUILD_DIR)/$(TOPNAME)
-default:$(BIN)
+TEST_BIN = $(BUILD_DIR)/$(TOPNAME)_test
 
-$(shell mkdir -p $(BUILD_DIR))
+# --- 2. 工具与 GTest 路径 ---
+VERILATOR = verilator
+NPROC = $(shell nproc 2>/dev/null || echo 4)
 
-# constraint file
-SRC_AUTO_BIND = $(abspath $(BUILD_DIR)/auto_bind.cpp)
-$(SRC_AUTO_BIND): $(NXDC_FILES)
-	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
+# VCPKG 路径 (确保普通用户有权限访问)
+VCPKG_TRIPLET ?= x64-linux
+GTEST_DIR = $(VCPKG_ROOT)/installed/$(VCPKG_TRIPLET)
 
-# project source
-VSRCS = $(shell find $(abspath ./vsrc) -name "*.v")
-CSRCS = $(shell find $(abspath ./csrc) -name "*.c" -or -name "*.cc" -or -name "*.cpp")
-CSRCS += $(SRC_AUTO_BIND)
+# --- 3. 环境变量检查 ---
+ifeq ($(NVBOARD_HOME),)
+$(error NVBOARD_HOME is not set)
+endif
 
-# rules for NVBoard
+# 包含 NVBoard 规则
 include $(NVBOARD_HOME)/scripts/nvboard.mk
 
-# rules for verilator
-INCFLAGS = $(addprefix -I, $(INC_PATH))
-CXXFLAGS += $(INCFLAGS) -DTOP_NAME="\"V$(TOPNAME)\""
+# --- 4. 源文件 ---
+VSRCS = $(shell find $(abspath ./vsrc) -name "*.v")
+CSRCS = $(shell find $(abspath ./csrc) -name "*.cpp")
+SRC_AUTO_BIND = $(BUILD_DIR)/auto_pin_bind.cpp
+# NVBoard 模式需要的完整源文件
+APP_CSRCS = $(CSRCS) $(SRC_AUTO_BIND)
 
-$(BIN): $(VSRCS) $(CSRCS) $(NVBOARD_ARCHIVE)
+# --- 5. 编译选项 ---
+INCFLAGS = $(addprefix -I, $(INC_PATH) $(abspath ./csrc) $(OBJ_DIR))
+CXX_STD = -std=c++20
+
+# 普通模式库链接
+FIXED_LIBS = -L$(NVBOARD_HOME)/build -l:nvboard.a -lSDL2 -lSDL2_image -lSDL2_ttf
+# 测试模式库链接 (注意：不要链接 -lgtest_main，因为我们 main.cpp 里自己写了 main)
+GTEST_LIBS = -L$(GTEST_DIR)/lib -lgtest -lpthread
+GTEST_INC  = -I$(GTEST_DIR)/include
+
+# --- 6. 编译目标 ---
+
+default: $(BIN)
+
+$(SRC_AUTO_BIND): $(NXDC_FILES)
+	@mkdir -p $(@D)
+	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
+
+# 正常 NVBoard 编译
+$(BIN): $(VSRCS) $(APP_CSRCS)
 	@rm -rf $(OBJ_DIR)
-	$(VERILATOR) $(VERILATOR_CFLAGS) \
+	$(VERILATOR) -MMD --build -cc -j $(NPROC) \
+		-I$(abspath ./vsrc) \
+		-O3 --x-assign fast --x-initial fast --noassert \
 		--top-module $(TOPNAME) $^ \
-		$(addprefix -CFLAGS , $(CXXFLAGS)) $(addprefix -LDFLAGS , $(LDFLAGS)) \
+		$(addprefix -CFLAGS , $(INCFLAGS) $(CXX_STD)) \
+		$(addprefix -LDFLAGS , $(FIXED_LIBS)) \
 		--Mdir $(OBJ_DIR) --exe -o $(abspath $(BIN))
-#all:
-#	@echo "Write this Makefile by your self."
-all:default
+
+# GTest 模式编译
+# 关键点：增加 -DTEST_MODE 和 GTEST_INC / GTEST_LIBS
+test-build: $(VSRCS) $(CSRCS)
+	@mkdir -p $(BUILD_DIR)
+	@rm -rf $(OBJ_DIR)_test
+	$(VERILATOR) -MMD --build -cc -j $(NPROC) \
+		-I$(abspath ./vsrc) \
+		--top-module $(TOPNAME) $^ \
+		-DTEST_MODE \
+		$(addprefix -CFLAGS , $(INCFLAGS) $(GTEST_INC) $(CXX_STD) -DTEST_MODE -I$(abspath $(OBJ_DIR)_test)) \
+		$(addprefix -LDFLAGS , $(GTEST_LIBS)) \
+		--Mdir $(OBJ_DIR)_test --exe -o $(abspath $(TEST_BIN))
+
+# --- 7. 快捷指令 ---
+
 run: $(BIN)
-	@$^
+	@$(BIN)
+
+test: test-build
+	@echo "--- RUNNING GTEST ---"
+	@$(TEST_BIN)
+
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -f $(SRC_AUTO_BIND) 2>/dev/null || true
-	@echo "Clean completed."
-sim:
-	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "Write this Makefile by your self."
 
-include ../Makefile
+.PHONY: default run clean test test-build
