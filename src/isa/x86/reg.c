@@ -54,8 +54,41 @@ void reg_test() {
 }
 
 void isa_reg_display() {
+  int i;
+  for (i = R_EAX; i <= R_EDI; i ++) {
+    printf("%-3s\t" FMT_WORD "\n", reg_name(i, 4), reg_l(i));
+  }
+  printf("pc \t" FMT_WORD "\n", cpu.pc);
 }
 
 word_t isa_reg_str2val(const char *s, bool *success) {
+  if (success == NULL) { return 0; }
+  *success = false;
+  if (s == NULL) { return 0; }
+
+  if (s[0] == '$') { s ++; }
+  if (s[0] == '\0') { return 0; }
+
+  if (strcmp(s, "pc") == 0) {
+    *success = true;
+    return cpu.pc;
+  }
+
+  int i;
+  for (i = R_EAX; i <= R_EDI; i ++) {
+    if (strcmp(s, reg_name(i, 4)) == 0) {
+      *success = true;
+      return reg_l(i);
+    }
+    if (strcmp(s, reg_name(i, 2)) == 0) {
+      *success = true;
+      return reg_w(i);
+    }
+    if (strcmp(s, reg_name(i, 1)) == 0) {
+      *success = true;
+      return reg_b(i);
+    }
+  }
+
   return 0;
 }
