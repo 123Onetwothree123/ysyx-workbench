@@ -47,4 +47,9 @@ $(clean-tools):
 clean-tools: $(clean-tools)
 clean-all: clean distclean clean-tools
 
-.PHONY: run gdb run-env clean-tools clean-all $(clean-tools)
+.PHONY: run gdb run-env clean-tools clean-all count $(clean-tools)
+
+#新增的
+count:
+	@git diff --numstat pa0..HEAD -- . \
+	  | awk '$$3 ~ /\.([ch])$$/ {add += $$1; del += $$2} END{print "add",add,"del",del}'
