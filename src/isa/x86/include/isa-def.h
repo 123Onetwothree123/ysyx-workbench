@@ -27,7 +27,6 @@
  */
 
 typedef struct {
-  //chatgpt5.3codex
   union {
     union {
       uint32_t _32;
