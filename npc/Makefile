@@ -72,7 +72,7 @@ test-build: $(VSRCS) $(CSRCS)
 		--Mdir $(OBJ_DIR)_test --exe -o $(abspath $(TEST_BIN))
 
 # --- 7. 快捷指令 ---
-
+all:default
 run: $(BIN)
 	@$(BIN)
 
@@ -82,5 +82,9 @@ test: test-build
 
 clean:
 	rm -rf $(BUILD_DIR)
-
+	rm -f $(SRC_AUTO_BIND) 2>/dev/null || true
+	@echo "Clean completed."
+sim:
+	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
+	@echo "Write this Makefile by your self."
 .PHONY: default run clean test test-build
