@@ -1,81 +1,50 @@
+#include "Vtop.h"
+#include "verilated.h"
+#include "verilated_vcd_c.h"
 #include <iostream>
-#include <format>
-#include <memory>
-#include <verilated.h>
-#include <nvboard.h>
-#include "Valu.h"
 
-#ifdef TEST_MODE
-#include <gtest/gtest.h>
-class ALUTest : public ::testing::Test
-{
-protected:
-    std::unique_ptr<Valu> top;
-    void SetUp() override
-    {
-        top = std::make_unique<Valu>();
-    }
-    void TearDown() override
-    {
-        top->final();
-    }
-    void check_alu(int a, int b, int sel, int exp_res, bool exp_z)
-    {
-        top->A = a & 0xF;
-        top->B = b & 0xF;
-        top->ALU_Sel = sel;
-        top->eval();
-        EXPECT_EQ(exp_res & 0xF, top->Result) << "Result mismatch at Sel=" << sel;
-        EXPECT_EQ(exp_z, top->Zero) << "Zero flag mismatch at Sel=" << sel;
-    }
-};
-TEST_F(ALUTest, BasicArithmetic)
-{
-    check_alu(5, 3, 0, 8, false);
-    check_alu(5, 5, 1, 0, true);
-}
-TEST_F(ALUTest, OverflowLogic)
-{
-    top->A = 7;
-    top->B = 1;
-    top->ALU_Sel = 0;
-    top->eval();
-    EXPECT_EQ(1, top->Overflow);
-    EXPECT_EQ(8, top->Result);
-    top->A = 8;
-    top->B = 1;
-    top->ALU_Sel = 1;
-    top->eval();
-    EXPECT_EQ(1, top->Overflow);
-}
-TEST_F(ALUTest, SignedComparison)
-{
-    top->A = 0xF;
-    top->B = 2;
-    top->ALU_Sel = 6;
-    top->eval();
-    EXPECT_EQ(1, top->Result);
-}
-#endif
-int main(int argc, char *argv[])
-{
-    std::cout << std::format("开始仿真") << std::endl;
-#ifdef TEST_MODE
-    std::cout << std::format("Running GTest Mode...") << std::endl;
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-#else
+int main(int argc, char const *argv[]) {
     Verilated::commandArgs(argc, argv);
-    auto top = std::make_unique<Valu>();
-    nvboard_bind_all_pins(top.get());
-    nvboard_init();
-    std::cout << std::format("ALU Simulator Running... Close the window to exit.") << std::endl;
-    while (!Verilated::gotFinish)
-    {
-        top->eval();
-        nvboard_update();
+    Verilated::traceEverOn(true);
+    Vtop* dut = new Vtop;
+    VerilatedVcdC* vcd = new VerilatedVcdC;
+    dut->trace(vcd, 0);
+    vcd->open("wave.vcd");
+    vluint64_t sim_time = 0;
+    
+    std::cout << "开始测试异或门..." << std::endl;
+
+    // 定义多组测试向量：{a, b}
+    int test_vectors[][2] = {
+        {0, 0},
+        {0, 1},
+        {1, 0},
+        {1, 1}
+    };
+
+    for (int i = 0; i < 4; ++i) {
+        dut->a = test_vectors[i][0];
+        dut->b = test_vectors[i][1];
+        dut->eval();                // 计算输出f
+        
+        // 关键：在每个输入组合上“保持”一段时间（例如10个时间单位）
+        for (int stay = 0; stay < 10; ++stay) {
+            vcd->dump(sim_time);
+            sim_time++;             // 时间前进
+        }
+        
+        // 打印结果到终端
+        std::cout << "a=" << dut->a << ", b=" << dut->b 
+                  << ", f=" << dut->f << std::endl;
     }
-    nvborad_quit();
+
+    // 最后再记录一点时间，方便观察结束状态
+    vcd->dump(sim_time);
+    
+    std::cout << "仿真结束，波形已保存至 wave.vcd" << std::endl;
+    
+    vcd->close();
+    delete dut;
+    delete vcd;
     return 0;
-#endif
 }
