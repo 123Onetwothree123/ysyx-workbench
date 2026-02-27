@@ -1,6 +1,6 @@
 # --- 1. 基本配置 ---
-TOPNAME = top
-NXDC_FILES = top.nxdc
+TOPNAME = alu
+NXDC_FILES = alu.nxdc
 BUILD_DIR = ./build
 OBJ_DIR = $(BUILD_DIR)/obj_dir
 BIN = $(BUILD_DIR)/$(TOPNAME)
@@ -51,7 +51,6 @@ $(SRC_AUTO_BIND): $(NXDC_FILES)
 $(BIN): $(VSRCS) $(APP_CSRCS)
 	@rm -rf $(OBJ_DIR)
 	$(VERILATOR) -MMD --build -cc -j $(NPROC) \
-		-I$(abspath ./vsrc) \
 		-O3 --x-assign fast --x-initial fast --noassert \
 		--top-module $(TOPNAME) $^ \
 		$(addprefix -CFLAGS , $(INCFLAGS) $(CXX_STD)) \
@@ -61,18 +60,15 @@ $(BIN): $(VSRCS) $(APP_CSRCS)
 # GTest 模式编译
 # 关键点：增加 -DTEST_MODE 和 GTEST_INC / GTEST_LIBS
 test-build: $(VSRCS) $(CSRCS)
-	@mkdir -p $(BUILD_DIR)
 	@rm -rf $(OBJ_DIR)_test
 	$(VERILATOR) -MMD --build -cc -j $(NPROC) \
-		-I$(abspath ./vsrc) \
 		--top-module $(TOPNAME) $^ \
-		-DTEST_MODE \
-		$(addprefix -CFLAGS , $(INCFLAGS) $(GTEST_INC) $(CXX_STD) -DTEST_MODE -I$(abspath $(OBJ_DIR)_test)) \
+		$(addprefix -CFLAGS , $(INCFLAGS) $(GTEST_INC) $(CXX_STD) -DTEST_MODE) \
 		$(addprefix -LDFLAGS , $(GTEST_LIBS)) \
 		--Mdir $(OBJ_DIR)_test --exe -o $(abspath $(TEST_BIN))
 
 # --- 7. 快捷指令 ---
-all:default
+
 run: $(BIN)
 	@$(BIN)
 
@@ -82,9 +78,5 @@ test: test-build
 
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -f $(SRC_AUTO_BIND) 2>/dev/null || true
-	@echo "Clean completed."
-sim:
-	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "Write this Makefile by your self."
+
 .PHONY: default run clean test test-build
