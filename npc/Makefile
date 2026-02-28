@@ -82,11 +82,5 @@ test: test-build
 
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -f $(SRC_AUTO_BIND) 2>/dev/null || true
-	@echo "Clean completed."
-sim:
-	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "Write this Makefile by your self."
 
 .PHONY: default run clean test test-build
-include ../Makefile

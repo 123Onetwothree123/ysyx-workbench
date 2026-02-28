@@ -23,21 +23,7 @@ namespace
 void PrepareRomWorkingDir()
 {
   namespace fs = std::filesystem;
-  auto is_valid_rom_file = [&](const fs::path &p) -> bool {
-    if (!fs::exists(p) || !fs::is_regular_file(p))
-    {
-      return false;
-    }
-    std::error_code ec;
-    const auto sz = fs::file_size(p, ec);
-    if (ec)
-    {
-      return false;
-    }
-    return sz > 0;
-  };
-
-  if (is_valid_rom_file("rom_data.hex"))
+  if (fs::exists("rom_data.hex"))
   {
     return;
   }
@@ -47,7 +33,7 @@ void PrepareRomWorkingDir()
   for (const auto &dir : candidates)
   {
     const fs::path src = dir / "rom_data.hex";
-    if (is_valid_rom_file(src))
+    if (fs::exists(src))
     {
       fs::copy_file(src, "rom_data.hex", fs::copy_options::overwrite_existing);
       return;
