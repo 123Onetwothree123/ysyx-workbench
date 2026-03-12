@@ -209,12 +209,10 @@ bool check_watchpoints(void)
 {
   // Mode: Only show changes, update values
   bool triggered = scan_watchpoints(false, true);
-
-  if (triggered)
-  {
-    printf("Program stopped due to watchpoint change.\n");
-  }
   return triggered;
+}
+void print_watchpoint_stop_msg(void){
+  printf("Program stopped due to watchpoint change.\n");
 }
 bool safe_paddr_read(word_t addr, word_t *result, size_t size)
 {

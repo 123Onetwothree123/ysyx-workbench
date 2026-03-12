@@ -66,4 +66,6 @@ bool validate_expression_syntax(const char *expression);
 
 bool check_memory_address(word_t addr);
 const char* expr_get_error_msg();
+
+void print_watchpoint_stop_msg(void);
 #endif
