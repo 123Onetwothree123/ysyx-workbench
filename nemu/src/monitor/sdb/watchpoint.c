@@ -211,7 +211,8 @@ bool check_watchpoints(void)
   bool triggered = scan_watchpoints(false, true);
   return triggered;
 }
-void print_watchpoint_stop_msg(void){
+void print_watchpoint_stop_msg(void)
+{
   printf("Program stopped due to watchpoint change.\n");
 }
 bool safe_paddr_read(word_t addr, word_t *result, size_t size)
@@ -224,6 +225,10 @@ bool safe_paddr_read(word_t addr, word_t *result, size_t size)
   if (size == 0 || size > sizeof(word_t))
   {
     Log("safe_paddr_read: Invalid size %zu", size);
+    return false;
+  }
+  if (!in_pmem_range(addr, size))
+  {
     return false;
   }
 #ifdef CONFIG_MBASE
@@ -302,8 +307,8 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     WP *cur = arr[idx];
     bool success = false;
     word_t current_val = 0;
-      sword_t tmp = expr(cur->expr, &success);
-      current_val = (word_t)tmp;
+    sword_t tmp = expr(cur->expr, &success);
+    current_val = (word_t)tmp;
 
     word_t old_val = cur->old_val;
     bool changed = success && (current_val != old_val);
