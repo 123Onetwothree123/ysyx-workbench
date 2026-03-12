@@ -25,7 +25,7 @@
 #include <generated/autoconf.h>
 #include <common.h>
 
-sword_t expr(char *e, bool *success);
+word_t expr(char *e, bool *success);
 typedef struct watchpoint WP;
 WP *new_wp();
 void free_wp(WP *wp);
