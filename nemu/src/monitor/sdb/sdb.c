@@ -422,7 +422,7 @@ static int cmd_w(char *args)
     return 0;
   }
   if(strlen(args)>=32){
-    printf("The expression is too long.");
+    printf("The expression is too long.\n");
     return 0;
   }
   if (!validate_expression_syntax(args))
