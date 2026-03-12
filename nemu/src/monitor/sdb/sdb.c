@@ -410,7 +410,8 @@ static int cmd_p(char *args)
 static int cmd_w(char *args)
 {
   // check NULL
-  if (args == NULL || strlen(args) == 0)
+  args = parse_args(args, true);
+  if (args == NULL || *args == '\0')
   {
     printf("Error: Missing expression for watchpoint\n");
     printf("Usage: w <expression>\n");
@@ -425,6 +426,14 @@ static int cmd_w(char *args)
     printf("Error: Expression syntax error\n");
     return 0;
   }
+  // get exprssion default value
+  bool success=false;
+  word_t value = expr(args, &success);
+  if (!success)
+  {
+    printf("Warning: Cannot evaluate expression at creation time: %s\n", expr_get_error_msg());
+    return 0;
+  }
   WP *wp = new_wp();
   if (wp == NULL)
   {
@@ -432,20 +441,8 @@ static int cmd_w(char *args)
     return 0;
   }
   wp_set_expr(wp, args);
-  // get exprssion default value
-  bool success;
-  word_t value = expr(args, &success);
-  if (!success)
-  {
-    printf("Warning: Cannot evaluate expression at creation time: %s\n", expr_get_error_msg());
-    printf("Watchpoint %d created, will be evaluated during execution\n", wp_get_no(wp));
-    wp_set_value(wp, 0);
-  }
-  else
-  {
-    wp_set_value(wp, value);
-    printf("Watchpoint %d: %s = 0x%08x\n", wp_get_no(wp), wp_get_expr(wp), value);
-  }
+  wp_set_value(wp, value);
+  printf("Watchpoint %d: %s = 0x%08x\n", wp_get_no(wp), wp_get_expr(wp), value);
   return 0;
 }
 static int cmd_d(char *args)
