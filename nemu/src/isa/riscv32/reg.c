@@ -50,7 +50,19 @@ word_t isa_reg_str2val(const char *s, bool *success)
     return 0;
   }
   *success = false;
-
+  if (*s == '$')
+  {
+    s++;
+  }
+  if (*s == '\0')
+  {
+    return 0;
+  }
+  if (strcmp(s, "pc") == 0)
+  {
+    *success = true;
+    return cpu.pc;
+  }
   for (const char *p = s; *p != '\0'; p++)
   {
     if (!isalnum((unsigned char)*p))
@@ -70,8 +82,9 @@ word_t isa_reg_str2val(const char *s, bool *success)
   for (int i = 0; i < num_regs; i++)
   {
     const char *reg_name_in_array = regs[i];
-    if (reg_name_in_array[0] == '$') {
-        reg_name_in_array++; 
+    if (reg_name_in_array[0] == '$')
+    {
+      reg_name_in_array++;
     }
 
     if (strcmp(s, reg_name_in_array) == 0)

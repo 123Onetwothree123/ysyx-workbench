@@ -37,7 +37,6 @@ void free_wp(WP *wp);
 extern const char *expr_get_error_msg();
 
 static int wp_compare_by_no(const void *a, const void *b);
-static char first_nonspace_char(const char *s);
 static bool scan_watchpoints(bool show_all, bool update_val);
 
 void init_wp_pool()
@@ -253,15 +252,6 @@ static int wp_compare_by_no(const void *a, const void *b)
   return 0;
 }
 
-/* Helper: skip leading whitespace, return the first non-space character, or '\0' */
-static char first_nonspace_char(const char *s)
-{
-  if (!s)
-    return '\0';
-  while (*s != '\0' && (*s == ' ' || *s == '\t'))
-    s++;
-  return *s;
-}
 /* Scan watchpoints and optionally print / update values.
  * show_all : when true => print all watchpoints (info w)
  * update_val : when true => update wp->old_val when value changed (check mode)
@@ -314,24 +304,8 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     WP *cur = arr[idx];
     bool success = false;
     word_t current_val = 0;
-
-    /* Safe evaluation logic */
-    if (show_all)
-    {
-      char fc = first_nonspace_char(cur->expr);
-      if (fc == '*')
-        success = false;
-      else
-      {
-        sword_t tmp = expr(cur->expr, &success);
-        current_val = (word_t)tmp;
-      }
-    }
-    else
-    {
       sword_t tmp = expr(cur->expr, &success);
       current_val = (word_t)tmp;
-    }
 
     word_t old_val = cur->old_val;
     bool changed = success && (current_val != old_val);
