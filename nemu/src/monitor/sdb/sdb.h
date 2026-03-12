@@ -25,7 +25,7 @@
 #include <generated/autoconf.h>
 #include <common.h>
 
-sword_t expr(char *e, bool *success);
+word_t expr(char *e, bool *success);
 typedef struct watchpoint WP;
 WP *new_wp();
 void free_wp(WP *wp);
@@ -66,4 +66,6 @@ bool validate_expression_syntax(const char *expression);
 
 bool check_memory_address(word_t addr);
 const char* expr_get_error_msg();
+
+void print_watchpoint_stop_msg(void);
 #endif

@@ -66,7 +66,7 @@ const char *expr_get_error_msg()
     return "\033[1;31mUnknown Err\033[0m";
   }
 }
-sword_t eval(int, int);
+word_t eval(int, int);
 enum
 {
   TK_NOTYPE = 256,
@@ -103,8 +103,8 @@ static struct rule
     {"-", '-'},                  // minus
     {"\\(", '('},                // left paren
     {"\\)", ')'},                // right paren
-    {"0x[0-9a-fA-F]+", TK_HEX},  // hexadecimal
-    {"[0-9]+", TK_NUM},          // decimal
+    {"0x[0-9a-fA-F]+[uU]?", TK_HEX},  // hexadecimal
+    {"[0-9]+[uU]?", TK_NUM},          // decimal
     {"\\$[a-zA-Z0-9]+", TK_REG}, // register
     {"<=", TK_LE},               // less equal
     {"&&", TK_AND},              // logical and
@@ -247,7 +247,7 @@ static bool make_token(char *e)
   return true;
 }
 
-sword_t expr(char *e, bool *success)
+word_t expr(char *e, bool *success)
 {
   g_internal_error = EXP_OK;
   *success = false;
@@ -270,7 +270,7 @@ sword_t expr(char *e, bool *success)
   // If the check passed (ExcuteState is true), we can proceed with evaluation.
   // The eval function itself will handle other cases like single tokens, operators, etc.
   eval_success = true; // Reset and call eval
-  sword_t result = eval(0, nr_token - 1);
+  word_t result = eval(0, nr_token - 1);
   *success = eval_success;
   if (!eval_success && g_internal_error == EXP_OK)
   {
@@ -323,7 +323,7 @@ int find_main_operator(int p, int q)
   }
   return op_pos;
 }
-sword_t eval(int p, int q)
+word_t eval(int p, int q)
 {
   // invalid
   if (p > q)
@@ -335,28 +335,26 @@ sword_t eval(int p, int q)
   else if (p == q)
   {
     // single token
-    sword_t value = 0;
+    word_t value = 0;
     switch (tokens[p].type)
     {
     case TK_NUM:
-      value = (sword_t)strtol(tokens[p].str, NULL, 10);
+      value = (word_t)strtoul(tokens[p].str, NULL, 10);
       break;
     case TK_HEX:
-      value = (sword_t)strtol(tokens[p].str, NULL, 16);
+      value = (word_t)strtoul(tokens[p].str, NULL, 16);
       break;
     case TK_REG:
     {
-      // value = isa_reg_get(tokens[p].str + 1);
       bool reg_success = true;
-      value = (sword_t)isa_reg_str2val(tokens[p].str + 1, &reg_success); // because tokens[p].str is "$ra", so we need send "ra"
+      value = isa_reg_str2val(tokens[p].str + 1, &reg_success);
       if (!reg_success)
       {
-        // if fail
         printf("Error: Invalid register name '%s'\n", tokens[p].str);
         eval_success = false;
+        g_internal_error = EXP_BAD_REG;
         return 0;
       }
-      // value = isa_reg_str2val(tokens[p].str + 1, &success);
       break;
     }
     default:
@@ -377,7 +375,7 @@ sword_t eval(int p, int q)
     // [Short-circuit evaluation] Check before evaluating the right operand
     if (tokens[op_pos].type == TK_AND)
     {
-      sword_t left_val = eval(p, op_pos - 1);
+      word_t left_val = eval(p, op_pos - 1);
       if (!eval_success)
       {
         return 0;
@@ -386,7 +384,7 @@ sword_t eval(int p, int q)
       {
         return 0; // Left operand is false, short-circuit return
       }
-      sword_t right_val = eval(op_pos + 1, q);
+      word_t right_val = eval(op_pos + 1, q);
       if (!eval_success)
       {
         return 0;
@@ -394,12 +392,12 @@ sword_t eval(int p, int q)
       return right_val != 0; // Left is true, return the truth value of the right operand
     }
     // [Non-short-circuit operator] Evaluate left and right operands first
-    sword_t left_val = eval(p, op_pos - 1);
+    word_t left_val = eval(p, op_pos - 1);
     if (!eval_success)
     {
       return 0;
     }
-    sword_t right_val = eval(op_pos + 1, q);
+    word_t right_val = eval(op_pos + 1, q);
     if (!eval_success)
     {
       return 0;
@@ -407,17 +405,7 @@ sword_t eval(int p, int q)
     switch (tokens[op_pos].type)
     {
     case '+':
-    {
-      if ((right_val > 0 && left_val > INT32_MAX - right_val) ||
-          (right_val < 0 && left_val < INT32_MIN - right_val))
-      {
-        printf("Error: Integer overflow in addition\n");
-        eval_success = false;
-        g_internal_error = EXP_SYNTAX;
-        return 0;
-      }
       return left_val + right_val;
-    }
     case '-':
       return left_val - right_val;
     case '*':
@@ -427,6 +415,7 @@ sword_t eval(int p, int q)
       {
         printf("Error: Division by zero\n");
         eval_success = false;
+        g_internal_error = EXP_DIV_ZERO;
         return 0;
       }
       return left_val / right_val;
@@ -444,7 +433,7 @@ sword_t eval(int p, int q)
   }
   if (tokens[p].type == TK_MINUS)
   {
-    sword_t val = eval(p + 1, q);
+    word_t val = eval(p + 1, q);
     if (!eval_success)
     {
       return 0;
@@ -453,12 +442,11 @@ sword_t eval(int p, int q)
   }
   if (tokens[p].type == TK_POINTER)
   {
-    sword_t addr_signed = eval(p + 1, q);
+    word_t addr = eval(p + 1, q);
     if (!eval_success)
     {
       return 0;
     }
-    word_t addr = (word_t)addr_signed;
     word_t value;
     if (!safe_paddr_read(addr, &value, sizeof(word_t)))
     {
@@ -467,7 +455,7 @@ sword_t eval(int p, int q)
       g_internal_error = EXP_BAD_MEM;
       return 0;
     }
-    return (sword_t)value;
+    return value;
   }
   printf("Error: Cannot evaluate expression from token %d to %d\n", p, q);
   eval_success = false;
