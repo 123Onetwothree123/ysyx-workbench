@@ -421,6 +421,10 @@ static int cmd_w(char *args)
     printf("  w *0x80100000    - Watch dereferenced memory\n");
     return 0;
   }
+  if(strlen(args)>32){
+    printf("The expression is too long.");
+    return 0;
+  }
   if (!validate_expression_syntax(args))
   {
     printf("Error: Expression syntax error\n");
