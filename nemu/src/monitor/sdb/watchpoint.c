@@ -64,9 +64,10 @@ WP *new_wp()
   if (free_ == NULL)
   {
     printf("free_ == NULL, I need use assert(free_ != NULL) end this program\n");
+    fprintf(stderr, "Error: no free watchpoint slots (max = %d)\n", NR_WP);
+    fflush(stderr);
+    assert(free_ != NULL);
   }
-  // check NULL
-  assert(free_ != NULL);
   WP *wp = free_;
   free_ = free_->next;
   wp->NO = wp - wp_pool;
