@@ -577,7 +577,9 @@ bool validate_expression_syntax(const char *expression)
 static char *parse_args(char *input, bool preserve_spaces)
 {
   if (!input)
+  {
     return NULL;
+  }
   while (*input == ' ')
   {
     input++;
