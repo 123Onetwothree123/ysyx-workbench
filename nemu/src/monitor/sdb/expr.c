@@ -23,7 +23,6 @@
 #include <stdbool.h>
 #include <memory/paddr.h>
 #include <common.h>
-#include <../../../src/isa/riscv32/local-include/reg.h>
 #include "sdb.h"
 #include <cpu/cpu.h>
 static bool eval_success = true;

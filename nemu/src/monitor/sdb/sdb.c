@@ -18,7 +18,6 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include "sdb.h"
-#include "../../../src/isa/riscv32/local-include/reg.h"
 #include <memory/paddr.h>
 
 static int is_batch_mode = false;
