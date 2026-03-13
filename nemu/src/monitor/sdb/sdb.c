@@ -420,7 +420,8 @@ static int cmd_w(char *args)
     printf("  w *0x80100000    - Watch dereferenced memory\n");
     return 0;
   }
-  if(strlen(args)>=32){
+  if (strlen(args) >= 32)
+  {
     printf("The expression is too long.\n");
     return 0;
   }
@@ -430,7 +431,7 @@ static int cmd_w(char *args)
     return 0;
   }
   // get exprssion default value
-  bool success=false;
+  bool success = false;
   word_t value = expr(args, &success);
   if (!success)
   {
@@ -460,6 +461,10 @@ static int cmd_d(char *args)
   }
   char *endptr;
   long id = strtol(args, &endptr, 10);
+  while (*endptr == ' ')
+  {
+    endptr++;
+  }
   if (*endptr != '\0')
   {
     printf("Error: Invalid watchpoint ID '%s'. ID must be a number.\n", args);
@@ -574,7 +579,13 @@ static char *parse_args(char *input, bool preserve_spaces)
   if (!input)
     return NULL;
   while (*input == ' ')
+  {
     input++;
+  }
+  if (*input == '\0')
+  {
+    return NULL;
+  }
   if (preserve_spaces)
   {
     char *end = input + strlen(input) - 1;
@@ -583,7 +594,10 @@ static char *parse_args(char *input, bool preserve_spaces)
       *end = '\0';
       end--;
     }
-    return input;
+    if (*input == '\0')
+    {
+      return NULL;
+    };
   }
   return input;
 }
