@@ -14,18 +14,49 @@
 ***************************************************************************************/
 
 #include <common.h>
+#include "monitor/sdb/sdb.h"
 
 void init_monitor(int, char *[]);
 void am_init_monitor();
 void engine_start();
 int is_exit_status_bad();
-
+static int run_expr_test(const char *input_file) {
+  FILE *fp = fopen(input_file, "r");
+  if (fp == NULL) {
+    printf("cannot open %s\n", input_file);
+    return 1;
+  }
+  char line[65536];
+  char expr_buf[65536];
+  uint32_t expected = 0;
+  while (fgets(line, sizeof(line), fp) != NULL) {
+    bool success = false;
+    uint32_t result = 0;
+    if (sscanf(line, "%u %[^\n]", &expected, expr_buf) != 2) {
+      continue;
+    }
+    result = expr(expr_buf, &success);
+    if (!success || result != expected) {
+      printf("failed\n");
+      printf("expected: %u\n", expected);
+      printf("result  : %u\n", result);
+      printf("expr    : %s\n", expr_buf);
+      fclose(fp);
+      return 1;
+    }
+  }
+  fclose(fp);
+  printf("通过了\n");
+  return 0;
+}
 int main(int argc, char *argv[]) {
+
   /* Initialize the monitor. */
 #ifdef CONFIG_TARGET_AM
   am_init_monitor();
 #else
   init_monitor(argc, argv);
+  return run_expr_test("tools/gen-expr/build/input");
 #endif
 
   /* Start engine. */
