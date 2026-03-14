@@ -312,7 +312,7 @@ int find_main_operator(int p, int q)
     {
       continue;
     }
-    // kimi k2 turbo thinking:关键修复：左结合运算符(!is_right_assoc)应选择最右边的
+    // 左结合运算符(!is_right_assoc)应选择最右边的
     if (info.precedence < min_prec ||
         (info.precedence == min_prec && !info.is_right_assoc))
     {

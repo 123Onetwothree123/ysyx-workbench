@@ -208,7 +208,6 @@ int main(int argc, char *argv[])
     /*
     ret = fscanf(fp, "%d", &result);
     */
-    // 以下if判断语句由chatglm 4.6提出修改
     if (fscanf(fp, "%u", &result) != 1)
     {
       // If the expression crashed (e.g., still a div-by-zero from (x-x)), skip it
