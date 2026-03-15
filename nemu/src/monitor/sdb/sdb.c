@@ -581,17 +581,18 @@ static int cmd_history(char *args)
     return 0;
   }
   int n = history_length; // 默认显示全部命令
+  // 如果使用的时候提供了参数，即history 5或者10
   if (args != NULL)
   {
     char *endptr;
     long num = strtol(args, &endptr, 10);
-    while (*endptr == ' ')
+    while (*endptr == ' ') // 跳空格的
     {
       endptr++;
     }
     if (*endptr != '\0')
     {
-      printf("无效参数 '%s'。用法是history [N]\n", args);
+      printf("无效参数 '%s'。用法是history [N]\n", args); // 因为如果跳过空格后还有字符，说明参数格式不对，比如history abc
       return 0;
     }
     if (num <= 0)
@@ -599,10 +600,11 @@ static int cmd_history(char *args)
       printf("N必须是正整数\n");
       return 0;
     }
+    // 如果小于总记录数就按num来显示多少条
     if (num < history_length)
     {
       n = (int)num;
-    }
+    } // 等于或大于等于总记录数，就只打印出总记录数的数量
     else
     {
       n = history_length;
@@ -610,23 +612,26 @@ static int cmd_history(char *args)
   }
   printf("命令历史（显示最近 %d 条，共 %d 条）：\n", n, history_length);
   // 计算起始位置
-  int start = history_length - n;
+  int start = history_length - n; // 计算方式是总记录数-打印数量
+  // 然后根据结果把位置移动到开始的位置，就比如总共10条，显示最近的3条，就直接计算出7，下标7开始，一直打印到最后一条
   for (int i = start; i < history_length; i++)
   {
-    char *line = hist_list[i]->line;
-    // 提取命令名，目前的设计逻辑是看第一个单词
-    char cmd_name[64] = {0};
-    sscanf(line, "%63s", cmd_name);
+    char *line = hist_list[i]->line; // 第i条历史记录的内容
+    // 提取命令名，目前的设计逻辑是看第一个单词，比如si 10就提出si
+    char cmd_name[64] = {0};        // 保险起见，先初始化为0
+    sscanf(line, "%63s", cmd_name); // 最多63，防止溢出
     // 检查命令是否有效
-    int is_valid = 0;
+    int is_valid = 0; // 0是无效，1是有效
+    // 直接便利命令表，检测命令名是否存在，然后NR_CMD是命令行大小，是命令总数
     for (int j = 0; j < NR_CMD; j++)
     {
-      if (strcmp(cmd_name, cmd_table[j].name) == 0)
+      if (strcmp(cmd_name, cmd_table[j].name) == 0) // cmd_table[j]是第j个命令
       {
         is_valid = 1;
         break;
       }
     }
+    //5d的目的是为了右对齐
     if (is_valid)
     {
       printf("%5d  %s\n", i + history_base, line);
