@@ -564,7 +564,7 @@ static int cmd_clear(char *args)
   args = parse_args(args, true);
   if (args != NULL)
   {
-    printf("Usage: clear\n");
+    printf("用法直接输入clear\n");
     return 0;
   }
   printf("\033[H\033[J");
@@ -581,6 +581,7 @@ static int cmd_history(char *args)
     return 0;
   }
   int n = history_length; // 默认显示全部命令
+  //如果使用的时候提供了参数，即history 5或者10
   if (args != NULL)
   {
     char *endptr;
