@@ -573,10 +573,11 @@ static int cmd_clear(char *args)
 }
 static int cmd_history(char *args)
 {
+  // 先从GNU的history这里获得历史记录
   HIST_ENTRY **hist_list = history_list();
   if (hist_list == NULL || history_length == 0)
   {
-    printf("No command history\n");
+    printf("history_list返回了空指针，history_length也是0，没有历史记录\n");
     return 0;
   }
   int n = history_length; // 默认显示全部命令
@@ -590,12 +591,12 @@ static int cmd_history(char *args)
     }
     if (*endptr != '\0')
     {
-      printf("Error: Invalid argument '%s'. Usage: history [N]\n", args);
+      printf("无效参数 '%s'。用法是history [N]\n", args);
       return 0;
     }
     if (num <= 0)
     {
-      printf("Error: N must be a positive integer\n");
+      printf("N必须是正整数\n");
       return 0;
     }
     if (num < history_length)
@@ -607,7 +608,7 @@ static int cmd_history(char *args)
       n = history_length;
     }
   }
-  printf("Command history (showing last %d of %d):\n", n, history_length);
+  printf("命令历史（显示最近 %d 条，共 %d 条）：\n", n, history_length);
   // 计算起始位置
   int start = history_length - n;
   for (int i = start; i < history_length; i++)
