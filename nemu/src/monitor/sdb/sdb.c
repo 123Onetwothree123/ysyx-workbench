@@ -612,7 +612,28 @@ static int cmd_history(char *args)
   int start = history_length - n;
   for (int i = start; i < history_length; i++)
   {
-    printf("%5d  %s\n", i + history_base, hist_list[i]->line);
+    char *line = hist_list[i]->line;
+    // 提取命令名，目前的设计逻辑是看第一个单词
+    char cmd_name[64] = {0};
+    sscanf(line, "%63s", cmd_name);
+    // 检查命令是否有效
+    int is_valid = 0;
+    for (int j = 0; j < NR_CMD; j++)
+    {
+      if (strcmp(cmd_name, cmd_table[j].name) == 0)
+      {
+        is_valid = 1;
+        break;
+      }
+    }
+    if (is_valid)
+    {
+      printf("%5d  %s\n", i + history_base, line);
+    }
+    else
+    {
+      printf("%5d  %s [未知命令]\n", i + history_base, line);
+    }
   }
   return 0;
 }
