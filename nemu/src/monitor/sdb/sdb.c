@@ -115,6 +115,8 @@ static int cmd_d(char *args);
 //自己添加的
 //表达式自动化测试
 static int cmd_exprtest(char *args);
+//清屏
+static int cmd_clear(char *args);
 
 static struct
 {
@@ -134,6 +136,7 @@ static struct
     {"w", "Set watchpoint for an expression", cmd_w},
     {"d", "Delete watchpoint by ID", cmd_d},
     {"exprtest", "Run expression tests", cmd_exprtest},
+    {"clear", "Clear the terminal screen", cmd_clear},
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -544,13 +547,22 @@ static int cmd_exprtest(char *args)
 {
   args = parse_args(args, true);
   const char *input_file = (args == NULL) ? "tools/gen-expr/build/input" : args;
-
   if (run_expr_test(input_file) != 0) {
     printf("Expression test failed\n");
     return 0;
   }
-
   printf("Expression test passed\n");
+  return 0;
+}
+static int cmd_clear(char *args)
+{
+  args = parse_args(args, true);
+  if (args != NULL) {
+    printf("Usage: clear\n");
+    return 0;
+  }
+  printf("\033[H\033[J");
+  fflush(stdout);
   return 0;
 }
 bool check_array_bounds(int index, int array_size)
