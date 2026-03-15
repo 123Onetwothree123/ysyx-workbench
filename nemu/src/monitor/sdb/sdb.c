@@ -51,7 +51,8 @@ static int cmd_c(char *args)
 
 static int cmd_q(char *args)
 {
-  if (nemu_state.state == NEMU_STOP) {
+  if (nemu_state.state == NEMU_STOP)
+  {
     set_nemu_state(NEMU_QUIT, cpu.pc, 0);
   }
   printf("退出\n");
@@ -112,11 +113,13 @@ static int cmd_w(char *args);
 
 static int cmd_d(char *args);
 
-//自己添加的
-//表达式自动化测试
+// 自己添加的
+// 表达式自动化测试
 static int cmd_exprtest(char *args);
-//清屏
+// 清屏
 static int cmd_clear(char *args);
+// 显示历史记录的
+static int cmd_history(char *args);
 
 static struct
 {
@@ -137,6 +140,7 @@ static struct
     {"d", "Delete watchpoint by ID", cmd_d},
     {"exprtest", "Run expression tests", cmd_exprtest},
     {"clear", "Clear the terminal screen", cmd_clear},
+    {"history", "Show command history", cmd_history},
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -547,7 +551,8 @@ static int cmd_exprtest(char *args)
 {
   args = parse_args(args, true);
   const char *input_file = (args == NULL) ? "tools/gen-expr/build/input" : args;
-  if (run_expr_test(input_file) != 0) {
+  if (run_expr_test(input_file) != 0)
+  {
     printf("Expression test failed\n");
     return 0;
   }
@@ -557,12 +562,58 @@ static int cmd_exprtest(char *args)
 static int cmd_clear(char *args)
 {
   args = parse_args(args, true);
-  if (args != NULL) {
+  if (args != NULL)
+  {
     printf("Usage: clear\n");
     return 0;
   }
   printf("\033[H\033[J");
   fflush(stdout);
+  return 0;
+}
+static int cmd_history(char *args)
+{
+  HIST_ENTRY **hist_list = history_list();
+  if (hist_list == NULL || history_length == 0)
+  {
+    printf("No command history\n");
+    return 0;
+  }
+  int n = history_length; // 默认显示全部命令
+  if (args != NULL)
+  {
+    char *endptr;
+    long num = strtol(args, &endptr, 10);
+    while (*endptr == ' ')
+    {
+      endptr++;
+    }
+    if (*endptr != '\0')
+    {
+      printf("Error: Invalid argument '%s'. Usage: history [N]\n", args);
+      return 0;
+    }
+    if (num <= 0)
+    {
+      printf("Error: N must be a positive integer\n");
+      return 0;
+    }
+    if (num < history_length)
+    {
+      n = (int)num;
+    }
+    else
+    {
+      n = history_length;
+    }
+  }
+  printf("Command history (showing last %d of %d):\n", n, history_length);
+  // 计算起始位置
+  int start = history_length - n;
+  for (int i = start; i < history_length; i++)
+  {
+    printf("%5d  %s\n", i + history_base, hist_list[i]->line);
+  }
   return 0;
 }
 bool check_array_bounds(int index, int array_size)
