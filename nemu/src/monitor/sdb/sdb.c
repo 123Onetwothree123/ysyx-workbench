@@ -54,6 +54,7 @@ static int cmd_q(char *args)
   if (nemu_state.state == NEMU_STOP) {
     set_nemu_state(NEMU_QUIT, cpu.pc, 0);
   }
+  printf("退出\n");
   return -1;
 }
 
