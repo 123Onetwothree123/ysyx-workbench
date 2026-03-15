@@ -51,7 +51,52 @@ static int cmd_c(char *args)
 
 static int cmd_q(char *args)
 {
+  if (nemu_state.state == NEMU_STOP)
+  {
+    set_nemu_state(NEMU_QUIT, cpu.pc, 0);
+  }
+  printf("退出\n");
   return -1;
+}
+
+static int run_expr_test(const char *input_file)
+{
+  // 先打开输入文件
+  FILE *fp = fopen(input_file, "r");
+  if (fp == NULL)
+  {
+    printf("cannot open %s\n", input_file);
+    return 1;
+  }
+  char line[65536];      // 行缓冲区大小
+  char expr_buf[65536];  // 表达式缓冲区大小
+  uint32_t expected = 0; // 存储从文件读取的期望值结果
+  // 循环读文件的内容
+  while (fgets(line, sizeof(line), fp) != NULL)
+  {
+    bool success = false; // 拿来看结果的
+    uint32_t result = 0;  // 实际计算结果
+    // 先读取一个无符号整数，再读取其他字符，失败了，也就是说sscanf函数返回的结果不等于2，就直接跳到下一行继续跑
+    if (sscanf(line, "%u %[^\n]", &expected, expr_buf) != 2)
+    {
+      continue;
+    }
+    // 用expr函数返回计算结果
+    result = expr(expr_buf, &success);
+    if (!success || result != expected)
+    {
+      printf("failed\n");
+      printf("expected: %u\n", expected);
+      printf("result  : %u\n", result);
+      printf("expr    : %s\n", expr_buf);
+      fclose(fp);
+      return 1;
+    }
+  }
+  // 关文件
+  fclose(fp);
+  printf("通过了\n");
+  return 0;
 }
 
 static int cmd_help(char *args);
@@ -67,6 +112,14 @@ static int cmd_p(char *args);
 static int cmd_w(char *args);
 
 static int cmd_d(char *args);
+
+// 自己添加的
+// 表达式自动化测试
+static int cmd_exprtest(char *args);
+// 清屏
+static int cmd_clear(char *args);
+// 显示历史记录的
+static int cmd_history(char *args);
 
 static struct
 {
@@ -85,6 +138,9 @@ static struct
     {"p", "Evaluate expression", cmd_p},
     {"w", "Set watchpoint for an expression", cmd_w},
     {"d", "Delete watchpoint by ID", cmd_d},
+    {"exprtest", "Run expression tests", cmd_exprtest},
+    {"clear", "Clear the terminal screen", cmd_clear},
+    {"history", "Show command history", cmd_history},
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -489,6 +545,97 @@ static int cmd_d(char *args)
   }
   free_wp(WpToDelete);
   printf("Deleted watchpoint %ld\n", id);
+  return 0;
+}
+static int cmd_exprtest(char *args)
+{
+  args = parse_args(args, true);
+  const char *input_file = (args == NULL) ? "tools/gen-expr/build/input" : args;
+  if (run_expr_test(input_file) != 0)
+  {
+    printf("Expression test failed\n");
+    return 0;
+  }
+  printf("Expression test passed\n");
+  return 0;
+}
+static int cmd_clear(char *args)
+{
+  args = parse_args(args, true);
+  if (args != NULL)
+  {
+    printf("用法直接输入clear\n");
+    return 0;
+  }
+  printf("\033[H\033[J");
+  fflush(stdout);
+  return 0;
+}
+static int cmd_history(char *args)
+{
+  // 先从GNU的history这里获得历史记录
+  HIST_ENTRY **hist_list = history_list();
+  if (hist_list == NULL || history_length == 0)
+  {
+    printf("history_list返回了空指针，history_length也是0，没有历史记录\n");
+    return 0;
+  }
+  int n = history_length; // 默认显示全部命令
+  if (args != NULL)
+  {
+    char *endptr;
+    long num = strtol(args, &endptr, 10);
+    while (*endptr == ' ')
+    {
+      endptr++;
+    }
+    if (*endptr != '\0')
+    {
+      printf("无效参数 '%s'。用法是history [N]\n", args);
+      return 0;
+    }
+    if (num <= 0)
+    {
+      printf("N必须是正整数\n");
+      return 0;
+    }
+    if (num < history_length)
+    {
+      n = (int)num;
+    }
+    else
+    {
+      n = history_length;
+    }
+  }
+  printf("命令历史（显示最近 %d 条，共 %d 条）：\n", n, history_length);
+  // 计算起始位置
+  int start = history_length - n;
+  for (int i = start; i < history_length; i++)
+  {
+    char *line = hist_list[i]->line;
+    // 提取命令名，目前的设计逻辑是看第一个单词
+    char cmd_name[64] = {0};
+    sscanf(line, "%63s", cmd_name);
+    // 检查命令是否有效
+    int is_valid = 0;
+    for (int j = 0; j < NR_CMD; j++)
+    {
+      if (strcmp(cmd_name, cmd_table[j].name) == 0)
+      {
+        is_valid = 1;
+        break;
+      }
+    }
+    if (is_valid)
+    {
+      printf("%5d  %s\n", i + history_base, line);
+    }
+    else
+    {
+      printf("%5d  %s [未知命令]\n", i + history_base, line);
+    }
+  }
   return 0;
 }
 bool check_array_bounds(int index, int array_size)
