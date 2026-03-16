@@ -93,20 +93,20 @@ static struct rule
      * Pay attention to the precedence level of different rules.
      */
 
-    {" +", TK_NOTYPE},           // spaces
-    {"\\+", '+'},                // plus
-    {"==", TK_EQ},               // equal
-    {"!=", TK_NEQ},              // not equal
-    {"\\*", '*'},                // multiply
-    {"/", '/'},                  // divide
-    {"-", '-'},                  // minus
-    {"\\(", '('},                // left paren
-    {"\\)", ')'},                // right paren
-    {"0x[0-9a-fA-F]+[uU]?", TK_HEX},  // hexadecimal
-    {"[0-9]+[uU]?", TK_NUM},          // decimal
-    {"\\$[a-zA-Z0-9]+", TK_REG}, // register
-    {"<=", TK_LE},               // less equal
-    {"&&", TK_AND},              // logical and
+    {" +", TK_NOTYPE},               // spaces
+    {"\\+", '+'},                    // plus
+    {"==", TK_EQ},                   // equal
+    {"!=", TK_NEQ},                  // not equal
+    {"\\*", '*'},                    // multiply
+    {"/", '/'},                      // divide
+    {"-", '-'},                      // minus
+    {"\\(", '('},                    // left paren
+    {"\\)", ')'},                    // right paren
+    {"0x[0-9a-fA-F]+[uU]?", TK_HEX}, // hexadecimal
+    {"[0-9]+[uU]?", TK_NUM},         // decimal
+    {"\\$[a-zA-Z0-9]+", TK_REG},     // register
+    {"<=", TK_LE},                   // less equal
+    {"&&", TK_AND},                  // logical and
 };
 static inline OperatorInfo get_op_info(int type)
 {
@@ -207,7 +207,7 @@ static bool make_token(char *e)
          */
         if (rules[i].token_type != TK_NOTYPE && nr_token >= MAX_TOKENS)
         {
-          printf("Error: Expression too complex: maximum %d tokens exceeded\n", MAX_TOKENS);
+          printf("错误：表达式过于复杂，超过最大token数 %d\n", MAX_TOKENS);
           return false;
         }
         switch (rules[i].token_type)
@@ -217,7 +217,7 @@ static bool make_token(char *e)
         case TK_REG:
           if (substr_len >= sizeof(tokens[nr_token].str))
           {
-            printf("Error: Token too long at position %d\n", position);
+            printf("错误：位置 %d 处的token过长\n", position);
             return false;
           }
           strncpy(tokens[nr_token].str, substr_start, substr_len);
@@ -240,7 +240,7 @@ static bool make_token(char *e)
 
     if (i == NR_REGEX)
     {
-      printf("no match at position %d\n%s\n%*.s^\n", position, e, position, "");
+      printf("位置 %d 处无匹配\n%s\n%*.s^\n", position, e, position, "");
       return false;
     }
   }
@@ -261,7 +261,7 @@ word_t expr(char *e, bool *success)
 
   /* TODO: Insert codes to evaluate the expression. */
   // TODO();
-  identify_unary_operators(); // Identify and mark unary operators
+  identify_unary_operators(); // 识别并标记一元运算符
   if (!validate_parentheses())
   {
     *success = false;
@@ -285,11 +285,11 @@ int find_main_operator(int p, int q)
   {
     return -1;
   }
-  int op_pos = -1;          // main operator default is -1, meaning is not found
-  int min_prec = INT32_MAX; // found lowest, default is higher than all the operators
-  int paren_level = 0;      // The current nested level of parentheses
+  int op_pos = -1;          // 主运算符默认为-1，表示未找到
+  int min_prec = INT32_MAX; // 找到的最低优先级，默认值高于所有运算符
+  int paren_level = 0;      // 当前括号嵌套层级
   for (int i = p; i <= q; i++)
-  { // Handle parentheses, and update nested hierarchy
+  { // 处理括号，并更新嵌套层级
     int type = tokens[i].type;
     if (type == '(')
     {
@@ -307,7 +307,7 @@ int find_main_operator(int p, int q)
     }
     if (type == TK_MINUS || type == TK_POINTER)
     {
-      continue; // Skip the unary minus sign and unary dereference
+      continue; // 跳过一元负号和一元解引用
     }
     OperatorInfo info = get_op_info(type);
     if (info.precedence == 0)
@@ -315,8 +315,7 @@ int find_main_operator(int p, int q)
       continue;
     }
     // 左结合运算符(!is_right_assoc)应选择最右边的
-    if (info.precedence < min_prec ||
-        (info.precedence == min_prec && !info.is_right_assoc))
+    if (info.precedence < min_prec || (info.precedence == min_prec && !info.is_right_assoc))
     {
       min_prec = info.precedence;
       op_pos = i;
@@ -464,23 +463,26 @@ word_t eval(int p, int q)
 }
 static void identify_unary_operators()
 {
+
+  //目前先简单起见，先用循环统一遍历所有的token
   for (int i = 0; i < nr_token; i++)
-  {
+  {//这里的条件是先处理-和*运算符，其他运算符先跳过
     if (tokens[i].type != '-' && tokens[i].type != '*')
     {
       continue;
     }
     bool is_unary = false;
-    // if expr start
+    // 如果是表达式开头，说明是一元运算符
     if (i == 0)
     {
       is_unary = true;
     }
+    //前面是一个左括号也算是一元运算符
     else if (tokens[i - 1].type == '(')
     {
       is_unary = true;
     }
-    // if a token before is a operator or left parenthesis
+    // 如果前一个token是运算符或左括号并且不是右运算符，也是一元运算符
     else
     {
       int prev_type = tokens[i - 1].type;
@@ -492,9 +494,9 @@ static void identify_unary_operators()
     if (is_unary)
     {
       tokens[i].type = (tokens[i].type == '-') ? TK_MINUS : TK_POINTER;
-      Log("Token %d: '%c' identified as unary %s", i,
+      Log("Token %d: '%c' 被识别为一元%s", i,
           tokens[i].type == TK_MINUS ? '-' : '*',
-          tokens[i].type == TK_MINUS ? "minus" : "pointer");
+          tokens[i].type == TK_MINUS ? "负号" : "解引用");
     }
   }
 }
@@ -512,14 +514,14 @@ static bool validate_parentheses()
       counter--;
       if (counter < 0)
       {
-        printf("Error: Unmatched closing parenthesis at token %d\n", i);
+        printf("错误：token %d 处有多余的右括号\n", i);
         return false;
       }
     }
   }
   if (counter != 0)
   {
-    printf("Error: %d unmatched opening parenthesis(es)\n", counter);
+    printf("错误：有 %d 个未匹配的左括号\n", counter);
     return false;
   }
   return true;
@@ -534,7 +536,7 @@ static bool is_enclosed_in_parentheses(int p, int q)
   {
     return false;
   }
-  int counter = 1; // Start matching from p+1
+  int counter = 1; // 从 p+1 开始匹配
   for (int i = p + 1; i < q; i++)
   {
     if (tokens[i].type == '(')
@@ -545,7 +547,7 @@ static bool is_enclosed_in_parentheses(int p, int q)
     {
       counter--;
     }
-    if (counter == 0) // It is closed before q and is not the outermost layer
+    if (counter == 0) // 在 q 之前已闭合，不是最外层括号
     {
       return false;
     }

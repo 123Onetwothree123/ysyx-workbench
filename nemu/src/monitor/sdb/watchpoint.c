@@ -63,8 +63,8 @@ WP *new_wp()
 {
   if (free_ == NULL)
   {
-    printf("free_ == NULL, I need use assert(free_ != NULL) end this program\n");
-    fprintf(stderr, "Error: no free watchpoint slots (max = %d)\n", NR_WP);
+    printf("free_ == NULL，需要使用 assert(free_ != NULL) 结束此程序\n");
+    fprintf(stderr, "错误：没有空闲的监视点槽位（最大 = %d）\n", NR_WP);
     fflush(stderr);
     assert(free_ != NULL);
   }
@@ -80,36 +80,37 @@ void free_wp(WP *wp)
   // check null args
   if (wp == NULL)
   {
-    printf("Warning: Attempt to free a NULL watchpoint\n");
+    printf("警告：尝试释放空监视点\n");
     return;
   }
   if (head == NULL)
   {
-    printf("Warning: No watchpoints in use, cannot free WP #%d\n", wp->NO);
+    printf("警告：没有正在使用的监视点，无法释放监视点 #%d\n", wp->NO);
     return;
   }
   if (wp->NO < 0 || wp->NO >= NR_WP)
   {
-    printf("Warning: Invalid watchpoint ID %d\n", wp->NO);
+    printf("警告：无效的监视点ID %d\n", wp->NO);
     return;
   }
   WP *previous = NULL;
   WP *current = head;
-  // search goal node and before node
+  // 搜索目标节点和前一个节点
+
   while (current != NULL && current != wp)
   {
     previous = current;
     current = current->next;
   }
-  // if not found this node
+  // 如果未找到此节点
   if (current == NULL)
   {
-    printf("Warning: Watchpoint #%d is not in the active list\n", wp->NO);
+    printf("警告：监视点 #%d 不在活动列表中\n", wp->NO);
     return;
   }
   if (previous == NULL)
   {
-    head = wp->next; // head point next node
+    head = wp->next; // 头指针指向下一个节点
   }
   else if (previous->next == wp)
   {
@@ -117,8 +118,8 @@ void free_wp(WP *wp)
   }
   else
   {
-    printf("I do not know watchpoint.c list happend something\n");
-    printf("Maybe WP#%d not reachable from prev node\n", wp->NO);
+    printf("不知道watchpoint.c链表发生了什么\n");
+    printf("可能监视点 #%d 无法从前一个节点到达\n", wp->NO);
     assert(0); // direct exit
   }
   // clear data
@@ -132,14 +133,14 @@ void wp_set_expr(WP *wp, const char *expr)
 {
   if (wp == NULL || expr == NULL)
   {
-    printf("watchpoint.c wp_set_expr function wp or expr ==NULL\n");
+    printf("watchpoint.c wp_set_expr函数的wp或expr参数为NULL\n");
     return;
   }
   strncpy(wp->expr, expr, sizeof(wp->expr) - 1);
   wp->expr[sizeof(wp->expr) - 1] = '\0';
   if (strlen(expr) >= sizeof(wp->expr))
   {
-    printf("Warning: Expression truncated to %zu characters\n", sizeof(wp->expr) - 1);
+    printf("表达式已被截断为%zu个字符\n", sizeof(wp->expr) - 1);
   }
 }
 const char *wp_get_expr(const WP *wp)
@@ -214,18 +215,18 @@ bool check_watchpoints(void)
 }
 void print_watchpoint_stop_msg(void)
 {
-  printf("Program stopped due to watchpoint change.\n");
+  printf("程序因监视点变化而停止。\n");
 }
 bool safe_paddr_read(word_t addr, word_t *result, size_t size)
 {
   if (result == NULL)
   {
-    Log("safe_paddr_read: NULL result pointer");
+    Log("safe_paddr_read: 结果指针为NULL");
     return false;
   }
   if (size == 0 || size > sizeof(word_t))
   {
-    Log("safe_paddr_read: Invalid size %zu", size);
+    Log("safe_paddr_read: 无效的大小 %zu", size);
     return false;
   }
   if (!in_pmem_range(addr, size))
@@ -266,7 +267,7 @@ static bool scan_watchpoints(bool show_all, bool update_val)
   WP *wp = head;
   if (wp == NULL && show_all)
   {
-    printf("No watchpoints.\n");
+    printf("没有监视点。\n");
     return false;
   }
 
@@ -316,7 +317,7 @@ static bool scan_watchpoints(bool show_all, bool update_val)
 
     if (!show_all && !success)
     {
-      printf("Warning: Failed to evaluate watchpoint %d: %s\n", cur->NO, cur->expr);
+      printf("警告：无法计算监视点 %d 的值：%s\n", cur->NO, cur->expr);
       continue;
     }
 
@@ -326,7 +327,7 @@ static bool scan_watchpoints(bool show_all, bool update_val)
       if (!header_printed)
       {
         if (!show_all)
-          printf("\nWatchpoint triggered:\n");
+          printf("\n监视点已触发：\n");
         PRINT_DIVIDER();
 
         /*
@@ -334,11 +335,11 @@ static bool scan_watchpoints(bool show_all, bool update_val)
          * We add 11 to the width: 7 bytes for start code + 4 bytes for reset code
          */
         printf("| %-*s | %-*s | %-*s | %-*s | %-*s |\n",
-               no_width + 11, "\033[1;34mNO\033[0m",
-               val_width + 11, "\033[1;34mOLD VALUE\033[0m",
-               val_width + 11, "\033[1;34mNEW VALUE\033[0m",
-               status_width + 11, "\033[1;34mSTATUS\033[0m",
-               expr_width + 11, "\033[1;34mEXPRESSION\033[0m");
+               no_width + 11, "\033[1;34m编号\033[0m",
+               val_width + 11, "\033[1;34m旧值\033[0m",
+               val_width + 11, "\033[1;34m新值\033[0m",
+               status_width + 11, "\033[1;34m状态\033[0m",
+               expr_width + 11, "\033[1;34m表达式\033[0m");
 
         PRINT_DIVIDER();
         header_printed = true;
@@ -359,12 +360,12 @@ static bool scan_watchpoints(bool show_all, bool update_val)
       if (!success)
       {
         snprintf(cur_str, sizeof(cur_str), "N/A");
-        status_str = "\033[1;31mInvalid\033[0m";
+        status_str = "\033[1;31m无效\033[0m";
       }
       else
       {
         snprintf(cur_str, sizeof(cur_str), V_FMT, current_val);
-        status_str = changed ? "\033[1;33mCHANGED\033[0m" : "\033[1;32mOK\033[0m";
+        status_str = changed ? "\033[1;33m已变化\033[0m" : "\033[1;32m正常\033[0m";
       }
 
       /* Compensation for row status color codes */
