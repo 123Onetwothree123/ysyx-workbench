@@ -708,9 +708,10 @@ bool validate_expression_syntax(const char *expression)
   {
     return false;
   }
-  int paren_count = 0;
-  for (const char *p = expression; *p; p++)
+  int paren_count = 0;                      // 初始值为0代表没有未闭合的括号
+  for (const char *p = expression; *p; p++) // 当遇到字符串结束符\0时停止，因为\0的ASCII值为0，在布尔上下文中为假
   {
+    //左+1，右-1
     if (*p == '(')
     {
       paren_count++;
@@ -726,10 +727,11 @@ bool validate_expression_syntax(const char *expression)
   }
   return paren_count == 0;
 }
-static char *parse_args(char *input, bool preserve_spaces)
+static char *parse_args(char *input, bool preserve_spaces) // preserve_spaces决定是否保留字符串内部的空格
 {
   if (!input)
   {
+    printf("parse_args检测到字符串指针是空指针");
     return NULL;
   }
   while (*input == ' ')
