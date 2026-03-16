@@ -688,14 +688,16 @@ bool check_string_length(const char *str, size_t max_len, const char *name)
 }
 bool is_valid_memory_region(word_t addr, size_t size)
 {
+  // 检查开始的时候地址边界的
   if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
   {
     return false;
   }
-  if (addr % size != 0)
+  if (addr % size != 0) // 如果内存地址没有对齐就直接返回错误
   {
     return false;
   }
+  // 检查访问有没有越过内存边界
   if (addr + size > CONFIG_MBASE + CONFIG_MSIZE)
   {
     return false;
@@ -711,7 +713,7 @@ bool validate_expression_syntax(const char *expression)
   int paren_count = 0;                      // 初始值为0代表没有未闭合的括号
   for (const char *p = expression; *p; p++) // 当遇到字符串结束符\0时停止，因为\0的ASCII值为0，在布尔上下文中为假
   {
-    //左+1，右-1
+    // 左+1，右-1
     if (*p == '(')
     {
       paren_count++;
