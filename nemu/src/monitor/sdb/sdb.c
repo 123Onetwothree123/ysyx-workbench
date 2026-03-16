@@ -25,7 +25,7 @@ static int is_batch_mode = false;
 void init_regex();
 void init_wp_pool();
 
-static char *parse_args(char *input, bool preserve_spaces);
+static char *parse_args(char *input, bool trim_trailing_spaces);
 
 static char *rl_gets()
 {
@@ -398,8 +398,7 @@ static int cmd_x(char *args)
 
   word_t end_addr = addr + total_size;
 
-  printf("正在扫描 %ld 个项目（每个%zu字节），从 0x%08x 到 0x%08x：\n",
-         n, unit_size, addr, end_addr - 1);
+  printf("正在扫描 %ld 个项目（每个%zu字节），从 0x%08x 到 0x%08x：\n", n, unit_size, addr, end_addr - 1);
   word_t data;
   for (int i = 0; i < n; i++)
   {
@@ -430,7 +429,7 @@ static int cmd_x(char *args)
 }
 static int cmd_p(char *args)
 {
-  args = parse_args(args, true);
+  args = parse_args(args, true); // 开始去除尾部的空格
   if (args == NULL)
   {
     printf("cmd_p检查到args==NULL，需要输入参数。\n");
@@ -441,8 +440,8 @@ static int cmd_p(char *args)
   else if (args != NULL)
   {
     bool success = true;
-    sword_t result_signed = expr(args, &success);
-    word_t result_unsigned = (word_t)result_signed;
+    sword_t result_signed = expr(args, &success);   // 开始计算，编译器自动转换，会从无符号变为有符号模式
+    word_t result_unsigned = (word_t)result_signed; // 获得无符号的结果
 
     if (success)
     {
@@ -688,14 +687,16 @@ bool check_string_length(const char *str, size_t max_len, const char *name)
 }
 bool is_valid_memory_region(word_t addr, size_t size)
 {
+  // 检查开始的时候地址边界的
   if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
   {
     return false;
   }
-  if (addr % size != 0)
+  if (addr % size != 0) // 如果内存地址没有对齐就直接返回错误
   {
     return false;
   }
+  // 检查访问有没有越过内存边界
   if (addr + size > CONFIG_MBASE + CONFIG_MSIZE)
   {
     return false;
@@ -711,7 +712,7 @@ bool validate_expression_syntax(const char *expression)
   int paren_count = 0;                      // 初始值为0代表没有未闭合的括号
   for (const char *p = expression; *p; p++) // 当遇到字符串结束符\0时停止，因为\0的ASCII值为0，在布尔上下文中为假
   {
-    //左+1，右-1
+    // 左+1，右-1
     if (*p == '(')
     {
       paren_count++;
@@ -727,30 +728,32 @@ bool validate_expression_syntax(const char *expression)
   }
   return paren_count == 0;
 }
-static char *parse_args(char *input, bool preserve_spaces) // preserve_spaces决定是否保留字符串内部的空格
+static char *parse_args(char *input, bool trim_trailing_spaces) // trim_trailing_spaces为true时去除尾部空格
 {
   if (!input)
   {
     printf("parse_args检测到字符串指针是空指针");
     return NULL;
   }
+  // 跳过前导空格
   while (*input == ' ')
   {
     input++;
   }
+  // 检测是不是纯空格字符串
   if (*input == '\0')
   {
     return NULL;
   }
-  if (preserve_spaces)
+  if (trim_trailing_spaces)
   {
-    char *end = input + strlen(input) - 1;
-    while (end > input && *end == ' ')
+    char *end = input + strlen(input) - 1; // 指针直接指向最后一个字符
+    while (end > input && *end == ' ')     // 从后向前遍历，然后遇到空格就直接截断
     {
-      *end = '\0';
-      end--;
+      *end = '\0'; // 将空格替换为字符串结束符
+      end--;       // 因为是从后向前遍历，所以是必须设计成向前移动一个位置
     }
-    if (*input == '\0')
+    if (*input == '\0') // 防止字符串只剩下空格
     {
       return NULL;
     };
