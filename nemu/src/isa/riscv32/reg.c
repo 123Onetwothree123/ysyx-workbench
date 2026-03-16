@@ -27,37 +27,43 @@ const char *regs[] = {
 void isa_reg_display()
 {
   printf("pc:0x%08x\n", cpu.pc);
-  // Calculate the length of the register array, so that even if the number of registers changes in the future, the code does not need to be modified.
+  // 计算寄存器数组的长度，这样即使将来寄存器数量发生变化，也不需要修改代码
   int num_regs = sizeof(regs) / sizeof(regs[0]);
-  // Iterate through the loop and print each register.
+  // 循环遍历并打印每个寄存器
   for (int i = 0; i < num_regs; i++)
   {
     printf("%-3s: 0x%08x\t", regs[i], cpu.gpr[i]);
     if ((i + 1) % 4 == 0)
-    { // print 4 to line, because we need clean.
+    { // 每行打印4个寄存器，保持输出整洁
       printf("\n");
     }
   }
-  printf("\n"); // hope command can appear to next line.
+  printf("\n"); // 换行，使命令提示符显示在下一行
 }
 
 word_t isa_reg_str2val(const char *s, bool *success)
 {
+  //如果是空，直接就转换失败
   if (s == NULL || success == NULL)
   {
     if (success)
+    {
       *success = false;
+    }
     return 0;
   }
   *success = false;
+  //检测到是$，就直接开始迭代s变量
   if (*s == '$')
   {
     s++;
   }
+  //末尾
   if (*s == '\0')
   {
     return 0;
   }
+  //如果检测到命令要求输出PC寄存器，就直接返回目前的PC值
   if (strcmp(s, "pc") == 0)
   {
     *success = true;
@@ -67,36 +73,39 @@ word_t isa_reg_str2val(const char *s, bool *success)
   {
     if (!isalnum((unsigned char)*p))
     {
-      return 0; // check wrongful char direct return 0(false)
+      return 0; // 检查到非法字符，直接返回0（失败）
     }
   }
   int num_regs = sizeof(regs) / sizeof(regs[0]);
   if (num_regs > sizeof(cpu.gpr) / sizeof(cpu.gpr[0]))
   {
-    printf("Error: Register array size mismatch\n");
+    printf("错误：寄存器数组大小不匹配\n");
     if (success)
+    {
       *success = false;
+    }
     return 0;
   }
-  // direct traverse
+  // 直接遍历
   for (int i = 0; i < num_regs; i++)
   {
+    //从寄存器组里面取出名字
     const char *reg_name_in_array = regs[i];
     if (reg_name_in_array[0] == '$')
     {
-      reg_name_in_array++;
+      reg_name_in_array++;//跳过$字符
     }
-
+    //检测输入的数据是否和寄存器组里面的名字匹配
     if (strcmp(s, reg_name_in_array) == 0)
     {
       if (i >= 0 && i < sizeof(cpu.gpr) / sizeof(cpu.gpr[0]))
       {
         *success = true;
-        return cpu.gpr[i];
+        return cpu.gpr[i];//返回寄存器中存储的数据
       }
       else
       {
-        printf("Error: Register index %d out of bounds\n", i);
+        printf("错误：寄存器索引 %d 越界\n", i);
         *success = false;
         return 0;
       }

@@ -65,7 +65,7 @@ static int run_expr_test(const char *input_file)
   FILE *fp = fopen(input_file, "r");
   if (fp == NULL)
   {
-    printf("cannot open %s\n", input_file);
+    printf("无法打开 %s\n", input_file);
     return 1;
   }
   char line[65536];      // 行缓冲区大小
@@ -85,10 +85,10 @@ static int run_expr_test(const char *input_file)
     result = expr(expr_buf, &success);
     if (!success || result != expected)
     {
-      printf("failed\n");
-      printf("expected: %u\n", expected);
-      printf("result  : %u\n", result);
-      printf("expr    : %s\n", expr_buf);
+      printf("失败\n");
+      printf("期望值: %u\n", expected);
+      printf("实际值: %u\n", result);
+      printf("表达式: %s\n", expr_buf);
       fclose(fp);
       return 1;
     }
@@ -132,15 +132,15 @@ static struct
     {"q", "Exit NEMU", cmd_q},
 
     /* TODO: Add more commands */
-    {"si", "Single step execution [N], default Single step execution", cmd_si},
-    {"info", "Print program status", cmd_info},
-    {"x", "Examine memory", cmd_x},
-    {"p", "Evaluate expression", cmd_p},
-    {"w", "Set watchpoint for an expression", cmd_w},
-    {"d", "Delete watchpoint by ID", cmd_d},
-    {"exprtest", "Run expression tests", cmd_exprtest},
-    {"clear", "Clear the terminal screen", cmd_clear},
-    {"history", "Show command history", cmd_history},
+    {"si", "单步执行 [N]，默认单步执行", cmd_si},
+    {"info", "打印程序状态", cmd_info},
+    {"x", "检查内存", cmd_x},
+    {"p", "求解表达式", cmd_p},
+    {"w", "为表达式设置监视点", cmd_w},
+    {"d", "根据ID删除监视点", cmd_d},
+    {"exprtest", "运行表达式测试", cmd_exprtest},
+    {"clear", "清除终端屏幕", cmd_clear},
+    {"history", "显示命令历史", cmd_history},
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -242,35 +242,35 @@ void init_sdb()
 }
 static int cmd_si(char *args)
 {
-  // default to 1 step if the user is lazy and doesn't type a number
+  // 默认执行1步
   uint64_t steps = 1;
-  // did the user actually type something? Let's parse it
+  // 检测是否输入内容
   if (args != NULL)
   {
     char *endptr;
-    // try to convert the string to a number
+    // 尝试将字符串转换为数字
     long n = strtol(args, &endptr, 10);
-    // check if strtol actually found any digits
-    // if args equals endptr, it means no number was found at the start
+    // 检查strtol是否真的找到了数字
+    // 如果args等于endptr，说明开头没有找到数字
     if (args == endptr)
     {
-      printf("Error: Invalid argument '%s'. Usage: si [N]\n", args);
+      printf("错误：无效的参数 '%s'。用法：si [N]\n", args);
       return 0;
     }
-    // make sure the step count makes sense
-    // negative steps or zero don't really work here
+    // 确保步数是合理的
+    // 负数或零在这里不太行
     if (n <= 0)
     {
-      printf("Error: Steps must be a positive integer, got %ld\n", n);
+      printf("错误：步数必须是正整数，得到的是 %ld\n", n);
       return 0;
     }
-    // users might type "si 10 " (with a space), and we shouldn't crash
+    // 可能会输入 "si 10 "（带空格），这个时候不应该崩溃
     while (*endptr == ' ')
       endptr++;
-    // if there's still junk left after the number and spaces, complain
+    // 如果数字和空格后面还有垃圾内容，就报错
     if (*endptr != '\0')
     {
-      printf("Error: Trailing garbage '%s' in argument\n", endptr);
+      printf("错误：参数中有尾部垃圾 '%s'\n", endptr);
       return 0;
     }
     steps = (uint64_t)n;
@@ -282,34 +282,34 @@ static int cmd_info(char *args)
 {
   if (args == NULL)
   {
-    printf("nemu monitor sdb cmd_info function check args, detect args==NULL, this args need parameter input\n");
-    printf("  r - print register status\n");
-    printf("  w - print watchpoint information\n");
+    printf("nemu监视器sdb cmd_info函数检查参数，检测到args==NULL，此参数需要输入\n");
+    printf("  r - 打印寄存器状态\n");
+    printf("  w - 打印监视点信息\n");
     return 0;
   }
   else if (args != NULL)
   {
     while (*args == ' ')
       args++;
-    if (strcmp(args, "r") == 0) // Subcommand 'r': Print register status
+    if (strcmp(args, "r") == 0) // 子命令 'r'：打印寄存器状态
     {
       isa_reg_display();
     }
-    else if (strcmp(args, "w") == 0) // Subcommand 'w': Print monitor point information
+    else if (strcmp(args, "w") == 0) // 子命令 'w'：打印监视点信息
     {
       PrintWatchPoint();
     }
     else
     {
-      printf("Unknown info subcommand: %s\n", args);
-      printf("Supported subcommands: r, w\n");
-      printf("cmd_info function args happend unknow something.\n");
+      printf("未知的info子命令：%s\n", args);
+      printf("支持的子命令：r, w\n");
+      printf("cmd_info函数参数发生了未知情况。\n");
     }
     return 0;
   }
   else
   {
-    printf("I do not know monitor cmd_info executing happened something.if and else if do not run\n");
+    printf("我不知道监视器cmd_info执行时发生了什么。if和else if都没有运行\n");
     return -1;
   }
   return 0;
@@ -318,28 +318,28 @@ static int cmd_x(char *args)
 {
   if (args == NULL || *args == '\0')
   {
-    printf("nemu monitor sdb cmd_x function check args, detect args==NULL, this args need parameter input\n");
-    printf("Usage: x N[b|h|w] EXPR\n");
-    printf("  N: Number of items to examine\n");
-    printf("  [b|h|w]: Optional unit size (default w):\n");
-    printf("    b - byte (1 byte)\n");
-    printf("    h - half-word (2 bytes)\n");
-    printf("    w - word (4 bytes)\n");
-    printf("  EXPR: Expression evaluating to the start address\n");
-    printf("Example: x 10h $esp  (Examine 10 half-words from stack pointer)\n");
-    printf("Example: x 16b 0x80100000 (Examine 16 bytes from 0x80100000)\n");
+    printf("nemu监视器sdb cmd_x函数检查参数，检测到args==NULL，此参数需要输入\n");
+    printf("用法：x N[b|h|w] 表达式\n");
+    printf("  N：要检查的项目数量\n");
+    printf("  [b|h|w]：可选的单位大小（默认为w）：\n");
+    printf("    b - 字节（1字节）\n");
+    printf("    h - 半字（2字节）\n");
+    printf("    w - 字（4字节）\n");
+    printf("  表达式：计算起始地址的表达式\n");
+    printf("示例：x 10h $esp  （从栈指针检查10个半字）\n");
+    printf("示例：x 16b 0x80100000 （从0x80100000检查16个字节）\n");
     return 0;
   }
   char *StringEndPointer;
   long n = strtol(args, &StringEndPointer, 10);
   if (StringEndPointer == args)
   {
-    printf("Error: Missing argument N\n");
+    printf("错误：缺少参数N\n");
     return 0;
   }
   if (n <= 0)
   {
-    printf("Error: N must be a positive integer\n");
+    printf("错误：N必须是正整数\n");
     return 0;
   }
   char *expr_str = StringEndPointer;
@@ -372,33 +372,33 @@ static int cmd_x(char *args)
 
   if (*expr_str == '\0')
   {
-    printf("Error: Missing expression EXPR\n");
+    printf("错误：缺少表达式\n");
     return 0;
   }
   bool success = false;
   sword_t addr_signed = expr(expr_str, &success);
   if (!success)
   {
-    printf("Error: Invalid expression: %s\n", expr_get_error_msg());
+    printf("错误：无效的表达式：%s\n", expr_get_error_msg());
     return 0;
   }
   word_t addr = (word_t)addr_signed;
   if (n > UINT32_MAX / unit_size)
   {
-    printf("Error: Request too large (would overflow address space)\n");
+    printf("错误：请求过大（会导致地址空间溢出）\n");
     return 0;
   }
   word_t total_size = (word_t)n * unit_size;
   if (addr > UINT32_MAX - total_size)
   {
-    printf("Error: Address range would overflow (0x%08x + %u bytes)\n",
+    printf("错误：地址范围会溢出（0x%08x + %u 字节）\n",
            addr, total_size);
     return 0;
   }
 
   word_t end_addr = addr + total_size;
 
-  printf("Scanning %ld items (%zu bytes each) from 0x%08x to 0x%08x:\n",
+  printf("正在扫描 %ld 个项目（每个%zu字节），从 0x%08x 到 0x%08x：\n",
          n, unit_size, addr, end_addr - 1);
   word_t data;
   for (int i = 0; i < n; i++)
@@ -406,8 +406,8 @@ static int cmd_x(char *args)
     word_t current_addr = addr + i * unit_size;
     if (!safe_paddr_read(current_addr, &data, unit_size))
     {
-      printf("Error: Memory read failed at 0x%08x (scan stopped)\n", current_addr);
-      printf("Hint: Address may be invalid or inaccessible\n");
+      printf("错误：在 0x%08x 处读取内存失败（扫描已停止）\n", current_addr);
+      printf("提示：地址可能无效或不可访问\n");
       return 0;
     }
     printf("0x%08x: ", current_addr);
@@ -433,9 +433,9 @@ static int cmd_p(char *args)
   args = parse_args(args, true);
   if (args == NULL)
   {
-    printf("cmd_p checked args==NULL, need input parameter.\n");
-    printf("Usage: p EXPR\n");
-    printf("Example: p 5 + 4 * 3 / 2 - 1\n");
+    printf("cmd_p检查到args==NULL，需要输入参数。\n");
+    printf("用法：p 表达式\n");
+    printf("示例：p 5 + 4 * 3 / 2 - 1\n");
     return 0;
   }
   else if (args != NULL)
@@ -446,73 +446,73 @@ static int cmd_p(char *args)
 
     if (success)
     {
-      printf("Signed (Dec):   %d\n", result_signed);
-      printf("Unsigned (Dec): %u\n", result_unsigned);
-      printf("Hex:            0x%08x\n", result_unsigned);
+      printf("有符号（十进制）：   %d\n", result_signed);
+      printf("无符号（十进制）： %u\n", result_unsigned);
+      printf("十六进制：            0x%08x\n", result_unsigned);
     }
     else
     {
-      printf("Expression evaluation failed!\n");
+      printf("表达式计算失败！\n");
     }
     return 0;
   }
   else
   {
-    printf("cmd_p args unknow error.\n");
+    printf("cmd_p参数未知错误。\n");
     return 0;
   }
 }
 static int cmd_w(char *args)
 {
-  // check NULL
+  // 检查空指针
   args = parse_args(args, true);
   if (args == NULL || *args == '\0')
   {
-    printf("Error: Missing expression for watchpoint\n");
-    printf("Usage: w <expression>\n");
-    printf("Examples:\n");
-    printf("  w $eax           - Watch register eax\n");
-    printf("  w 0x80100000     - Watch memory address\n");
-    printf("  w *0x80100000    - Watch dereferenced memory\n");
+    printf("错误：缺少监视点表达式\n");
+    printf("用法：w <表达式>\n");
+    printf("示例：\n");
+    printf("  w $eax           - 监视寄存器eax\n");
+    printf("  w 0x80100000     - 监视内存地址\n");
+    printf("  w *0x80100000    - 监视解引用的内存\n");
     return 0;
   }
   if (strlen(args) >= 32)
   {
-    printf("The expression is too long.\n");
+    printf("表达式过长。\n");
     return 0;
   }
   if (!validate_expression_syntax(args))
   {
-    printf("Error: Expression syntax error\n");
+    printf("错误：表达式语法错误\n");
     return 0;
   }
-  // get exprssion default value
+  // 获取表达式的默认值
   bool success = false;
   word_t value = expr(args, &success);
   if (!success)
   {
-    printf("Warning: Cannot evaluate expression at creation time: %s\n", expr_get_error_msg());
+    printf("警告：创建时无法计算表达式：%s\n", expr_get_error_msg());
     return 0;
   }
   WP *wp = new_wp();
   if (wp == NULL)
   {
-    printf("Error: No free watchpoint slots (maximum: %d)\n", get_max_watchpoints());
+    printf("错误：没有空闲的监视点槽位（最大：%d）\n", get_max_watchpoints());
     return 0;
   }
   wp_set_expr(wp, args);
   wp_set_value(wp, value);
-  printf("Watchpoint %d: %s = 0x%08x\n", wp_get_no(wp), wp_get_expr(wp), value);
+  printf("监视点 %d：%s = 0x%08x\n", wp_get_no(wp), wp_get_expr(wp), value);
   return 0;
 }
 static int cmd_d(char *args)
 {
-  // check, need safe function execute
+  // 检查，需要安全函数执行
   if (args == NULL || strlen(args) == 0)
   {
-    printf("Error: Missing watchpoint ID\n");
-    printf("Usage: d <watchpoint_id>\n");
-    printf("Example: d 1\n");
+    printf("错误：缺少监视点ID\n");
+    printf("用法：d <监视点ID>\n");
+    printf("示例：d 1\n");
     return 0;
   }
   char *endptr;
@@ -523,28 +523,28 @@ static int cmd_d(char *args)
   }
   if (*endptr != '\0')
   {
-    printf("Error: Invalid watchpoint ID '%s'. ID must be a number.\n", args);
-    printf("Usage: d <watchpoint_id>\n");
+    printf("错误：无效的监视点ID '%s'。ID必须是数字。\n", args);
+    printf("用法：d <监视点ID>\n");
     return 0;
   }
   if (id < 0 || id > INT32_MAX)
   {
-    printf("Error: Watchpoint ID must be between 0 and %d, but got %ld.\n", INT32_MAX, id);
+    printf("错误：监视点ID必须在0到%d之间，但得到的是%ld。\n", INT32_MAX, id);
     return 0;
   }
   if (!check_array_bounds((int)id, get_max_watchpoints()))
   {
-    printf("Error: Watchpoint ID %ld exceeds maximum allowed ID (%d).\n", id, get_max_watchpoints() - 1);
+    printf("错误：监视点ID %ld 超出最大允许ID（%d）。\n", id, get_max_watchpoints() - 1);
     return 0;
   }
   WP *WpToDelete = find_wp_by_id((int)id);
   if (WpToDelete == NULL)
   {
-    printf("Error: Watchpoint %ld not found\n", id);
+    printf("错误：未找到监视点 %ld\n", id);
     return 0;
   }
   free_wp(WpToDelete);
-  printf("Deleted watchpoint %ld\n", id);
+  printf("已删除监视点 %ld\n", id);
   return 0;
 }
 static int cmd_exprtest(char *args)
@@ -553,10 +553,10 @@ static int cmd_exprtest(char *args)
   const char *input_file = (args == NULL) ? "tools/gen-expr/build/input" : args;
   if (run_expr_test(input_file) != 0)
   {
-    printf("Expression test failed\n");
+    printf("表达式测试失败\n");
     return 0;
   }
-  printf("Expression test passed\n");
+  printf("表达式测试通过\n");
   return 0;
 }
 static int cmd_clear(char *args)
@@ -564,7 +564,7 @@ static int cmd_clear(char *args)
   args = parse_args(args, true);
   if (args != NULL)
   {
-    printf("用法直接输入clear\n");
+    printf("用法是直接输入clear\n");
     return 0;
   }
   printf("\033[H\033[J");
@@ -631,7 +631,7 @@ static int cmd_history(char *args)
         break;
       }
     }
-    //5d的目的是为了右对齐
+    // 5d的目的是为了右对齐
     if (is_valid)
     {
       printf("%5d  %s\n", i + history_base, line);
@@ -652,7 +652,7 @@ bool check_null_pointer(const void *ptr, const char *name)
 {
   if (ptr == NULL)
   {
-    printf("Error: NULL pointer detected for %s\n", name);
+    printf("错误：检测到 %s 为空指针\n", name);
     return false;
   }
   return true;
@@ -661,12 +661,12 @@ bool check_memory_address(word_t addr)
 {
   if (addr == 0)
   {
-    printf("Error: NULL pointer access attempt\n");
+    printf("错误：尝试访问空指针地址\n");
     return false;
   }
   if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
   {
-    printf("Error: Invalid memory address " FMT_PADDR " (valid range: [" FMT_PADDR ", " FMT_PADDR "))\n",
+    printf("错误：无效的内存地址 " FMT_PADDR "（有效范围：[" FMT_PADDR ", " FMT_PADDR "）\n",
            addr, CONFIG_MBASE, CONFIG_MBASE + CONFIG_MSIZE);
     return false;
   }
@@ -681,7 +681,7 @@ bool check_string_length(const char *str, size_t max_len, const char *name)
   size_t len = strlen(str);
   if (len >= max_len)
   {
-    printf("Error: %s too long (%zu >= %zu)\n", name, len, max_len);
+    printf("错误：%s 过长（%zu >= %zu）\n", name, len, max_len);
     return false;
   }
   return true;
@@ -708,9 +708,10 @@ bool validate_expression_syntax(const char *expression)
   {
     return false;
   }
-  int paren_count = 0;
-  for (const char *p = expression; *p; p++)
+  int paren_count = 0;                      // 初始值为0代表没有未闭合的括号
+  for (const char *p = expression; *p; p++) // 当遇到字符串结束符\0时停止，因为\0的ASCII值为0，在布尔上下文中为假
   {
+    //左+1，右-1
     if (*p == '(')
     {
       paren_count++;
@@ -726,10 +727,11 @@ bool validate_expression_syntax(const char *expression)
   }
   return paren_count == 0;
 }
-static char *parse_args(char *input, bool preserve_spaces)
+static char *parse_args(char *input, bool preserve_spaces) // preserve_spaces决定是否保留字符串内部的空格
 {
   if (!input)
   {
+    printf("parse_args检测到字符串指针是空指针");
     return NULL;
   }
   while (*input == ' ')

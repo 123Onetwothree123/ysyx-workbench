@@ -48,9 +48,10 @@ static void trace_and_difftest(Decode *_this, vaddr_t dnpc)
   }
   IFDEF(CONFIG_DIFFTEST, difftest_step(_this->pc, dnpc));
 
-// myself writing
+// 我自己写的
 #ifdef CONFIG_WATCHPOINT
-  // myself writing
+  // 我自己写的
+  // 本来写的判断条件是if(check_watchpoints())，但是因为监视点持续驱动nemu的bug，所以修改了
   if (nemu_state.state == NEMU_RUNNING && check_watchpoints())
   {
     print_watchpoint_stop_msg();
