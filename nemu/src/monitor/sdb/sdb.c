@@ -25,7 +25,7 @@ static int is_batch_mode = false;
 void init_regex();
 void init_wp_pool();
 
-static char *parse_args(char *input, bool preserve_spaces);
+static char *parse_args(char *input, bool trim_trailing_spaces);
 
 static char *rl_gets()
 {
@@ -729,30 +729,32 @@ bool validate_expression_syntax(const char *expression)
   }
   return paren_count == 0;
 }
-static char *parse_args(char *input, bool preserve_spaces) // preserve_spaces决定是否保留字符串内部的空格
+static char *parse_args(char *input, bool trim_trailing_spaces) // trim_trailing_spaces为true时去除尾部空格
 {
   if (!input)
   {
     printf("parse_args检测到字符串指针是空指针");
     return NULL;
   }
+  // 跳过前导空格
   while (*input == ' ')
   {
     input++;
   }
+  // 检测是不是纯空格字符串
   if (*input == '\0')
   {
     return NULL;
   }
-  if (preserve_spaces)
+  if (trim_trailing_spaces)
   {
-    char *end = input + strlen(input) - 1;
-    while (end > input && *end == ' ')
+    char *end = input + strlen(input) - 1; // 指针直接指向最后一个字符
+    while (end > input && *end == ' ')     // 从后向前遍历，然后遇到空格就直接截断
     {
-      *end = '\0';
-      end--;
+      *end = '\0'; // 将空格替换为字符串结束符
+      end--;       // 因为是从后向前遍历，所以是必须设计成向前移动一个位置
     }
-    if (*input == '\0')
+    if (*input == '\0') // 防止字符串只剩下空格
     {
       return NULL;
     };
