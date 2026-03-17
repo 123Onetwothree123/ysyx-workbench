@@ -432,7 +432,7 @@ static void print_table_cell(const char *text, int width, bool right_align)
     print_spaces(padding);
   }
 
-  printf(" |");
+  printf(" " ANSI_FG_BLUE "|" ANSI_NONE);
 }
 
 static const char *skip_leading_spaces(const char *s)
@@ -742,7 +742,7 @@ static bool scan_watchpoints(bool show_all, bool update_val)
       if (!show_all)
         printf("\n监视点已触发：\n");
       print_table_border(col_widths, ARRLEN(col_widths));
-      putchar('|');
+      fputs(ANSI_FG_BLUE "|" ANSI_NONE, stdout);
       print_table_cell(no_header, no_width, true);
       print_table_cell(type_header, type_width, false);
       print_table_cell(old_header, val_width, true);
@@ -797,7 +797,7 @@ static bool scan_watchpoints(bool show_all, bool update_val)
       }
     }
 
-    putchar('|');
+    fputs(ANSI_FG_BLUE "|" ANSI_NONE, stdout);
     print_table_cell(no_str, no_width, true);
     print_table_cell(type_str, type_width, false);
     print_table_cell(old_str, val_width, true);
