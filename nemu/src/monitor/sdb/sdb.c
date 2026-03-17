@@ -493,15 +493,15 @@ static int cmd_w(char *args)
     printf("警告：创建时无法计算表达式：%s\n", expr_get_error_msg());
     return 0;
   }
-  WP *wp = new_wp();
+  WP *wp = new_wp();//获取监视点
   if (wp == NULL)
   {
     printf("错误：没有空闲的监视点槽位（最大：%d）\n", get_max_watchpoints());
     return 0;
   }
-  wp_set_expr(wp, args);
-  wp_set_value(wp, value);
-  printf("监视点 %d：%s = 0x%08x\n", wp_get_no(wp), wp_get_expr(wp), value);
+  wp_set_expr(wp, args);//存储表达式
+  wp_set_value(wp, value);//存储初始值
+  printf("监视点 %d：%s = " FMT_WORD "\n", wp_get_no(wp), wp_get_expr(wp), value);
   return 0;
 }
 static int cmd_d(char *args)
