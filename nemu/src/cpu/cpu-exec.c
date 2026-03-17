@@ -185,7 +185,7 @@ void set_watchpoint(const char *expression)
   if (success)
   {
     wp_set_value(wp, value);
-    printf("Watchpoint %d: %s = 0x%x\n", wp_get_no(wp), wp_get_expr(wp), value);
+    printf("Watchpoint %d: %s = " FMT_WORD "\n", wp_get_no(wp), wp_get_expr(wp), value);
   }
   else
   {

@@ -14,6 +14,7 @@
  ***************************************************************************************/
 
 #include "sdb.h"
+#include <isa.h>
 #include <memory/paddr.h>
 #include <stdlib.h>
 
@@ -25,8 +26,11 @@ typedef struct watchpoint
   struct watchpoint *next;
 
   /* TODO: Add more members if necessary */
-  char expr[32];    // The expression for monitoring
-  uint32_t old_val; // The value of the last time
+  char expr[32]; // The expression for monitoring
+  word_t old_val;
+  bool enabled;
+  vaddr_t last_trigger_pc;
+  bool has_last_trigger;
 } WP;
 
 static WP wp_pool[NR_WP] = {};
@@ -68,12 +72,17 @@ WP *new_wp()
     fflush(stderr);
     assert(free_ != NULL);
   }
-  WP *wp = free_;
-  free_ = free_->next;
-  wp->NO = wp - wp_pool;
-  wp->next = head;
-  head = wp;
-  return wp;
+  WP *wp = free_;        // 保存要取出的节点
+  free_ = free_->next;   // 移动空闲的链表的头指针
+  wp->NO = wp - wp_pool; // 算监视点的编号
+  wp->next = head;       // 将新的节点指向目前的头节点
+  wp->expr[0] = '\0';
+  wp->old_val = 0;
+  wp->enabled = true;
+  wp->last_trigger_pc = 0;
+  wp->has_last_trigger = false;
+  head = wp;             // 更新头节点
+  return wp;             // 返回监视点指针
 }
 void free_wp(WP *wp)
 {
@@ -125,6 +134,9 @@ void free_wp(WP *wp)
   // clear data
   memset(wp->expr, 0, sizeof(wp->expr));
   wp->old_val = 0;
+  wp->enabled = false;
+  wp->last_trigger_pc = 0;
+  wp->has_last_trigger = false;
   wp->NO = -1;
   wp->next = free_;
   free_ = wp;
@@ -147,14 +159,14 @@ const char *wp_get_expr(const WP *wp)
 {
   return wp ? wp->expr : NULL;
 }
-void wp_set_value(WP *wp, uint32_t value)
+void wp_set_value(WP *wp, word_t value)
 {
   if (wp)
   {
     wp->old_val = value;
   }
 }
-uint32_t wp_get_value(const WP *wp)
+word_t wp_get_value(const WP *wp)
 {
   return wp ? wp->old_val : 0;
 }
@@ -257,10 +269,267 @@ static int wp_compare_by_no(const void *a, const void *b)
   return 0;
 }
 
-/* Scan watchpoints and optionally print / update values.
- * show_all : when true => print all watchpoints (info w)
- * update_val : when true => update wp->old_val when value changed (check mode)
- * return true if any watchpoint value changed (triggered)
+static void print_table_border(const int *widths, int nr_cols)
+{
+  putchar('+');
+  for (int col = 0; col < nr_cols; col++)
+  {
+    for (int i = 0; i < widths[col] + 2; i++)
+      putchar('-');
+    putchar('+');
+  }
+  putchar('\n');
+}
+
+static void print_spaces(int count)
+{
+  for (int i = 0; i < count; i++)
+  {
+    putchar(' ');
+  }
+}
+
+static const unsigned char *skip_ansi_escape(const unsigned char *s)
+{
+  if (s[0] != '\033' || s[1] != '[')
+  {
+    return s;
+  }
+
+  s += 2;
+  while (*s != '\0' && !(*s >= 0x40 && *s <= 0x7e))
+  {
+    s++;
+  }
+  if (*s != '\0')
+  {
+    s++;
+  }
+  return s;
+}
+
+static uint32_t decode_utf8_codepoint(const unsigned char *s, int *bytes)
+{
+  if ((s[0] & 0x80) == 0)
+  {
+    *bytes = 1;
+    return s[0];
+  }
+
+  if ((s[0] & 0xe0) == 0xc0 && s[1] != '\0' && (s[1] & 0xc0) == 0x80)
+  {
+    *bytes = 2;
+    return ((uint32_t)(s[0] & 0x1f) << 6) | (uint32_t)(s[1] & 0x3f);
+  }
+
+  if ((s[0] & 0xf0) == 0xe0 &&
+      s[1] != '\0' && s[2] != '\0' &&
+      (s[1] & 0xc0) == 0x80 && (s[2] & 0xc0) == 0x80)
+  {
+    *bytes = 3;
+    return ((uint32_t)(s[0] & 0x0f) << 12) |
+           ((uint32_t)(s[1] & 0x3f) << 6) |
+           (uint32_t)(s[2] & 0x3f);
+  }
+
+  if ((s[0] & 0xf8) == 0xf0 &&
+      s[1] != '\0' && s[2] != '\0' && s[3] != '\0' &&
+      (s[1] & 0xc0) == 0x80 && (s[2] & 0xc0) == 0x80 && (s[3] & 0xc0) == 0x80)
+  {
+    *bytes = 4;
+    return ((uint32_t)(s[0] & 0x07) << 18) |
+           ((uint32_t)(s[1] & 0x3f) << 12) |
+           ((uint32_t)(s[2] & 0x3f) << 6) |
+           (uint32_t)(s[3] & 0x3f);
+  }
+
+  *bytes = 1;
+  return s[0];
+}
+
+static int codepoint_display_width(uint32_t codepoint)
+{
+  if (codepoint == 0)
+  {
+    return 0;
+  }
+
+  if (codepoint < 0x20 || (codepoint >= 0x7f && codepoint < 0xa0))
+  {
+    return 0;
+  }
+
+  if ((codepoint >= 0x0300 && codepoint <= 0x036f) ||
+      (codepoint >= 0x1ab0 && codepoint <= 0x1aff) ||
+      (codepoint >= 0x1dc0 && codepoint <= 0x1dff) ||
+      (codepoint >= 0x20d0 && codepoint <= 0x20ff) ||
+      (codepoint >= 0xfe20 && codepoint <= 0xfe2f))
+  {
+    return 0;
+  }
+
+  if (codepoint >= 0x1100 &&
+      (codepoint <= 0x115f ||
+       codepoint == 0x2329 || codepoint == 0x232a ||
+       (codepoint >= 0x2e80 && codepoint <= 0xa4cf && codepoint != 0x303f) ||
+       (codepoint >= 0xac00 && codepoint <= 0xd7a3) ||
+       (codepoint >= 0xf900 && codepoint <= 0xfaff) ||
+       (codepoint >= 0xfe10 && codepoint <= 0xfe19) ||
+       (codepoint >= 0xfe30 && codepoint <= 0xfe6f) ||
+       (codepoint >= 0xff00 && codepoint <= 0xff60) ||
+       (codepoint >= 0xffe0 && codepoint <= 0xffe6) ||
+       (codepoint >= 0x20000 && codepoint <= 0x2fffd) ||
+       (codepoint >= 0x30000 && codepoint <= 0x3fffd)))
+  {
+    return 2;
+  }
+
+  return 1;
+}
+
+static int display_width(const char *s)
+{
+  int width = 0;
+  const unsigned char *p = (const unsigned char *)s;
+
+  while (*p != '\0')
+  {
+    if (*p == '\033' && p[1] == '[')
+    {
+      p = skip_ansi_escape(p);
+      continue;
+    }
+
+    int bytes = 1;
+    uint32_t codepoint = decode_utf8_codepoint(p, &bytes);
+    width += codepoint_display_width(codepoint);
+    p += bytes;
+  }
+
+  return width;
+}
+
+static void print_table_cell(const char *text, int width, bool right_align)
+{
+  int padding = width - display_width(text);
+  if (padding < 0)
+  {
+    padding = 0;
+  }
+
+  putchar(' ');
+  if (right_align)
+  {
+    print_spaces(padding);
+  }
+
+  fputs(text, stdout);
+
+  if (!right_align)
+  {
+    print_spaces(padding);
+  }
+
+  printf(" |");
+}
+
+static const char *skip_leading_spaces(const char *s)
+{
+  while (*s != '\0' && isspace((unsigned char)*s))
+  {
+    s++;
+  }
+  return s;
+}
+
+static const char *get_watchpoint_type_name(const char *expr)
+{
+  const char *p = skip_leading_spaces(expr);
+
+  if (*p == '*')
+  {
+    return "解引用";
+  }
+
+  if (*p == '$')
+  {
+    p++;
+    while (*p != '\0' && (isalnum((unsigned char)*p) || *p == '_'))
+    {
+      p++;
+    }
+    p = skip_leading_spaces(p);
+    return (*p == '\0') ? "寄存器" : "表达式";
+  }
+
+  for (; *p != '\0'; p++)
+  {
+    if (strchr("+-*/()=!&|%^<>", *p) != NULL)
+    {
+      return "表达式";
+    }
+  }
+
+  return "常量";
+}
+
+static const char *get_watchpoint_type_color(const char *type_name)
+{
+  if (strcmp(type_name, "寄存器") == 0)
+    return ANSI_FG_CYAN;
+  if (strcmp(type_name, "解引用") == 0)
+    return ANSI_FG_YELLOW;
+  if (strcmp(type_name, "表达式") == 0)
+    return ANSI_FG_MAGENTA;
+  return ANSI_FG_WHITE;
+}
+
+static void format_delta_str(char *buf, size_t size, bool enabled, bool success, word_t old_val, word_t current_val)
+{
+  if (!enabled || !success)
+  {
+    snprintf(buf, size, ANSI_FG_RED "N/A" ANSI_NONE);
+    return;
+  }
+
+  char sign = '+';
+  word_t delta = current_val;
+  const char *color = ANSI_FG_BLUE;
+
+  if (current_val >= old_val)
+  {
+    delta = current_val - old_val;
+    if (delta != 0)
+    {
+      color = ANSI_FG_YELLOW;
+    }
+  }
+  else
+  {
+    sign = '-';
+    delta = old_val - current_val;
+    color = ANSI_FG_MAGENTA;
+  }
+
+  snprintf(buf, size, "%s%c" FMT_WORD ANSI_NONE, color, sign, delta);
+}
+
+static void format_trigger_pc_str(char *buf, size_t size, const WP *wp)
+{
+  if (wp->has_last_trigger)
+  {
+    snprintf(buf, size, ANSI_FG_CYAN FMT_WORD ANSI_NONE, wp->last_trigger_pc);
+  }
+  else
+  {
+    snprintf(buf, size, ANSI_FG_WHITE "-" ANSI_NONE);
+  }
+}
+
+/* 扫描监视点，可选择打印/更新值。
+ * show_all : 为真时 => 打印所有监视点 (info w)
+ * update_val : 为真时 => 当值变化时更新 wp->old_val (检查模式)
+ * 如果有任何监视点的值发生变化（触发），返回 true
  */
 static bool scan_watchpoints(bool show_all, bool update_val)
 {
@@ -271,23 +540,7 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     return false;
   }
 
-  /* Calculate format width */
-  int hex_len = sizeof(word_t) * 2 + 2;
-  int val_width = (hex_len > 9) ? hex_len : 9;
-  int no_width = 4;
-  int status_width = 14;
-  int expr_width = 32;
-  int total_len = 16 + no_width + (val_width * 2) + status_width + expr_width;
-
-#define PRINT_DIVIDER()                    \
-  do                                       \
-  {                                        \
-    for (int _i = 0; _i < total_len; _i++) \
-      putchar('-');                        \
-    putchar('\n');                         \
-  } while (0)
-
-  /* Collect active watchpoints into an array */
+  /* 将活动监视点收集到数组中 */
   WP *arr[NR_WP];
   int cnt = 0;
   for (WP *it = head; it != NULL && cnt < NR_WP; it = it->next)
@@ -295,105 +548,206 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     arr[cnt++] = it;
   }
 
-  /* Sort in ascending order of NO */
+  /* 按编号升序排序 */
   if (cnt > 1)
   {
     qsort(arr, (size_t)cnt, sizeof(WP *), wp_compare_by_no);
   }
 
-  bool header_printed = false;
-  bool any_triggered = false;
+  /* 计算表格宽度。按终端显示宽度计算，并忽略 ANSI 颜色码。 */
+  int word_width = (int)(sizeof(word_t) * 2 + 2);
+  int val_width = word_width;
+  int delta_width = word_width + 1;
+  int no_width = display_width("编号");
+  int type_width = display_width("类型");
+  int enable_width = display_width("启用状态");
+  int status_width = display_width("状态");
+  int trigger_width = display_width("触发位置");
+  int expr_width = display_width("表达式");
+
+  if (display_width("寄存器") > type_width)
+    type_width = display_width("寄存器");
+  if (display_width("解引用") > type_width)
+    type_width = display_width("解引用");
+  if (display_width("表达式") > type_width)
+    type_width = display_width("表达式");
+  if (display_width("常量") > type_width)
+    type_width = display_width("常量");
+
+  if (display_width("启用") > enable_width)
+    enable_width = display_width("启用");
+  if (display_width("禁用") > enable_width)
+    enable_width = display_width("禁用");
+
+  if (display_width("已变化") > status_width)
+    status_width = display_width("已变化");
+  if (display_width("正常") > status_width)
+    status_width = display_width("正常");
+  if (display_width("无效") > status_width)
+    status_width = display_width("无效");
+  if (display_width("停用") > status_width)
+    status_width = display_width("停用");
 
   for (int idx = 0; idx < cnt; idx++)
   {
     WP *cur = arr[idx];
-    bool success = false;
-    word_t current_val = 0;
-    sword_t tmp = expr(cur->expr, &success);
-    current_val = (word_t)tmp;
+    char no_plain[32];
+    snprintf(no_plain, sizeof(no_plain), "%d", cur->NO);
 
-    word_t old_val = cur->old_val;
-    bool changed = success && (current_val != old_val);
+    if (display_width(no_plain) > no_width)
+      no_width = display_width(no_plain);
+    if (display_width(get_watchpoint_type_name(cur->expr)) > type_width)
+      type_width = display_width(get_watchpoint_type_name(cur->expr));
+    if (display_width(cur->expr) > expr_width)
+      expr_width = display_width(cur->expr);
+  }
 
-    if (!show_all && !success)
+  if (word_width > trigger_width)
+    trigger_width = word_width;
+
+  int col_widths[] = {
+      no_width,
+      type_width,
+      val_width,
+      val_width,
+      delta_width,
+      enable_width,
+      status_width,
+      trigger_width,
+      expr_width,
+  };
+
+  bool header_printed = false;
+  bool any_triggered = false;
+  word_t old_vals[NR_WP] = {};
+  word_t current_vals[NR_WP] = {};
+  bool eval_success[NR_WP] = {};
+  bool changed_flags[NR_WP] = {};
+
+  for (int idx = 0; idx < cnt; idx++)
+  {
+    WP *cur = arr[idx];
+    old_vals[idx] = cur->old_val;
+
+    if (!cur->enabled)
+    {
+      eval_success[idx] = false;
+      current_vals[idx] = old_vals[idx];
+      changed_flags[idx] = false;
+      continue;
+    }
+
+    sword_t tmp = expr(cur->expr, &eval_success[idx]);
+    current_vals[idx] = (word_t)tmp;
+    changed_flags[idx] = eval_success[idx] && (current_vals[idx] != old_vals[idx]);
+  }
+
+  for (int idx = 0; idx < cnt; idx++)
+  {
+    if (arr[idx]->enabled && eval_success[idx] && changed_flags[idx])
+    {
+      any_triggered = true;
+      if (update_val)
+      {
+        arr[idx]->last_trigger_pc = cpu.pc;
+        arr[idx]->has_last_trigger = true;
+        arr[idx]->old_val = current_vals[idx];
+      }
+    }
+  }
+
+  for (int idx = 0; idx < cnt; idx++)
+  {
+    WP *cur = arr[idx];
+    bool success = eval_success[idx];
+    word_t old_val = old_vals[idx];
+    word_t current_val = current_vals[idx];
+    bool changed = changed_flags[idx];
+    const char *type_name = get_watchpoint_type_name(cur->expr);
+
+    if (cur->enabled && !show_all && !success)
     {
       printf("警告：无法计算监视点 %d 的值：%s\n", cur->NO, cur->expr);
       continue;
     }
 
-    /* Print Logic */
-    if (show_all || changed)
+    if (!(show_all || changed))
     {
-      if (!header_printed)
+      continue;
+    }
+
+    /* 所有表达式先求值完，再统一打印，避免调试日志插入表格中间。 */
+    if (!header_printed)
+    {
+      if (!show_all)
+        printf("\n监视点已触发：\n");
+      print_table_border(col_widths, ARRLEN(col_widths));
+      putchar('|');
+      print_table_cell(ANSI_FMT("编号", ANSI_FG_BLUE), no_width, true);
+      print_table_cell(ANSI_FMT("类型", ANSI_FG_BLUE), type_width, false);
+      print_table_cell(ANSI_FMT("旧值", ANSI_FG_BLUE), val_width, true);
+      print_table_cell(ANSI_FMT("新值", ANSI_FG_BLUE), val_width, true);
+      print_table_cell(ANSI_FMT("变化量", ANSI_FG_BLUE), delta_width, true);
+      print_table_cell(ANSI_FMT("启用状态", ANSI_FG_BLUE), enable_width, false);
+      print_table_cell(ANSI_FMT("状态", ANSI_FG_BLUE), status_width, false);
+      print_table_cell(ANSI_FMT("触发位置", ANSI_FG_BLUE), trigger_width, true);
+      print_table_cell(ANSI_FMT("表达式", ANSI_FG_BLUE), expr_width, false);
+      putchar('\n');
+      print_table_border(col_widths, ARRLEN(col_widths));
+      header_printed = true;
+    }
+
+    char no_str[32], type_str[32], old_str[64], cur_str[64], delta_str[64];
+    char enable_str[32], status_str[32], trigger_str[64], expr_str[64];
+    snprintf(no_str, sizeof(no_str), ANSI_FG_CYAN "%d" ANSI_NONE, cur->NO);
+    snprintf(type_str, sizeof(type_str), "%s%s%s", get_watchpoint_type_color(type_name), type_name, ANSI_NONE);
+    snprintf(old_str, sizeof(old_str), ANSI_FG_WHITE FMT_WORD ANSI_NONE, old_val);
+    snprintf(expr_str, sizeof(expr_str), ANSI_FG_MAGENTA "%s" ANSI_NONE, cur->expr);
+    format_trigger_pc_str(trigger_str, sizeof(trigger_str), cur);
+
+    if (!cur->enabled)
+    {
+      snprintf(cur_str, sizeof(cur_str), ANSI_FG_WHITE "-" ANSI_NONE);
+      snprintf(enable_str, sizeof(enable_str), ANSI_FG_RED "禁用" ANSI_NONE);
+      snprintf(status_str, sizeof(status_str), ANSI_FG_MAGENTA "停用" ANSI_NONE);
+      format_delta_str(delta_str, sizeof(delta_str), false, false, old_val, current_val);
+    }
+    else if (!success)
+    {
+      snprintf(cur_str, sizeof(cur_str), ANSI_FG_RED "N/A" ANSI_NONE);
+      snprintf(enable_str, sizeof(enable_str), ANSI_FG_GREEN "启用" ANSI_NONE);
+      snprintf(status_str, sizeof(status_str), ANSI_FG_RED "无效" ANSI_NONE);
+      format_delta_str(delta_str, sizeof(delta_str), true, false, old_val, current_val);
+    }
+    else
+    {
+      snprintf(enable_str, sizeof(enable_str), ANSI_FG_GREEN "启用" ANSI_NONE);
+      format_delta_str(delta_str, sizeof(delta_str), true, true, old_val, current_val);
+      if (changed)
       {
-        if (!show_all)
-          printf("\n监视点已触发：\n");
-        PRINT_DIVIDER();
-
-        /*
-         * Header with BLUE Color (\033[1;34m)
-         * We add 11 to the width: 7 bytes for start code + 4 bytes for reset code
-         */
-        printf("| %-*s | %-*s | %-*s | %-*s | %-*s |\n",
-               no_width + 11, "\033[1;34m编号\033[0m",
-               val_width + 11, "\033[1;34m旧值\033[0m",
-               val_width + 11, "\033[1;34m新值\033[0m",
-               status_width + 11, "\033[1;34m状态\033[0m",
-               expr_width + 11, "\033[1;34m表达式\033[0m");
-
-        PRINT_DIVIDER();
-        header_printed = true;
-      }
-
-      char old_str[32], cur_str[32];
-      const char *status_str;
-#ifdef CONFIG_ISA64
-#define V_FMT "0x%016lx"
-#else
-#define V_FMT "0x%08x"
-#endif
-      char no_str[32];
-      snprintf(no_str, sizeof(no_str), ANSI_FG_CYAN "%d" ANSI_NONE, cur->NO);
-      snprintf(old_str, sizeof(old_str), V_FMT, old_val);
-
-      /* Row Colors: Red for Invalid, Yellow/Green for Status */
-      if (!success)
-      {
-        snprintf(cur_str, sizeof(cur_str), "N/A");
-        status_str = "\033[1;31m无效\033[0m";
+        snprintf(cur_str, sizeof(cur_str), ANSI_FG_YELLOW FMT_WORD ANSI_NONE, current_val);
+        snprintf(status_str, sizeof(status_str), ANSI_FG_YELLOW "已变化" ANSI_NONE);
       }
       else
       {
-        snprintf(cur_str, sizeof(cur_str), V_FMT, current_val);
-        status_str = changed ? "\033[1;33m已变化\033[0m" : "\033[1;32m正常\033[0m";
+        snprintf(cur_str, sizeof(cur_str), ANSI_FG_GREEN FMT_WORD ANSI_NONE, current_val);
+        snprintf(status_str, sizeof(status_str), ANSI_FG_GREEN "正常" ANSI_NONE);
       }
-
-      /* Compensation for row status color codes */
-      int status_fmt_width = status_width;
-      if (status_str[0] == '\033')
-        status_fmt_width += 11;
-
-      printf("| %-*s | %-*s | %-*s | %-*s | %-*s |\n",
-             no_width + 11, no_str,
-             val_width, old_str,
-             val_width, cur_str,
-             status_fmt_width, status_str,
-             expr_width, cur->expr);
     }
 
-    if (success && changed)
-    {
-      if (update_val)
-        cur->old_val = current_val;
-      any_triggered = true;
-    }
+    putchar('|');
+    print_table_cell(no_str, no_width, true);
+    print_table_cell(type_str, type_width, false);
+    print_table_cell(old_str, val_width, true);
+    print_table_cell(cur_str, val_width, true);
+    print_table_cell(delta_str, delta_width, true);
+    print_table_cell(enable_str, enable_width, false);
+    print_table_cell(status_str, status_width, false);
+    print_table_cell(trigger_str, trigger_width, true);
+    print_table_cell(expr_str, expr_width, false);
+    putchar('\n');
+    print_table_border(col_widths, ARRLEN(col_widths));
   }
 
-  if (header_printed)
-  {
-    PRINT_DIVIDER();
-  }
-
-#undef PRINT_DIVIDER
   return any_triggered;
 }

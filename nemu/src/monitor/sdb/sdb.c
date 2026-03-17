@@ -398,8 +398,7 @@ static int cmd_x(char *args)
 
   word_t end_addr = addr + total_size;
 
-  printf("正在扫描 %ld 个项目（每个%zu字节），从 0x%08x 到 0x%08x：\n",
-         n, unit_size, addr, end_addr - 1);
+  printf("正在扫描 %ld 个项目（每个%zu字节），从 0x%08x 到 0x%08x：\n", n, unit_size, addr, end_addr - 1);
   word_t data;
   for (int i = 0; i < n; i++)
   {
@@ -430,7 +429,7 @@ static int cmd_x(char *args)
 }
 static int cmd_p(char *args)
 {
-  args = parse_args(args, true);
+  args = parse_args(args, true); // 开始去除尾部的空格
   if (args == NULL)
   {
     printf("cmd_p检查到args==NULL，需要输入参数。\n");
@@ -441,8 +440,8 @@ static int cmd_p(char *args)
   else if (args != NULL)
   {
     bool success = true;
-    sword_t result_signed = expr(args, &success);
-    word_t result_unsigned = (word_t)result_signed;
+    sword_t result_signed = expr(args, &success);   // 开始计算，编译器自动转换，会从无符号变为有符号模式
+    word_t result_unsigned = (word_t)result_signed; // 获得无符号的结果
 
     if (success)
     {
@@ -494,15 +493,15 @@ static int cmd_w(char *args)
     printf("警告：创建时无法计算表达式：%s\n", expr_get_error_msg());
     return 0;
   }
-  WP *wp = new_wp();
+  WP *wp = new_wp();//获取监视点
   if (wp == NULL)
   {
     printf("错误：没有空闲的监视点槽位（最大：%d）\n", get_max_watchpoints());
     return 0;
   }
-  wp_set_expr(wp, args);
-  wp_set_value(wp, value);
-  printf("监视点 %d：%s = 0x%08x\n", wp_get_no(wp), wp_get_expr(wp), value);
+  wp_set_expr(wp, args);//存储表达式
+  wp_set_value(wp, value);//存储初始值
+  printf("监视点 %d：%s = " FMT_WORD "\n", wp_get_no(wp), wp_get_expr(wp), value);
   return 0;
 }
 static int cmd_d(char *args)
