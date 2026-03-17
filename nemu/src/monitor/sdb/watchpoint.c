@@ -271,6 +271,7 @@ static int wp_compare_by_no(const void *a, const void *b)
 
 static void print_table_border(const int *widths, int nr_cols)
 {
+  fputs(ANSI_FG_BLUE, stdout);
   putchar('+');
   for (int col = 0; col < nr_cols; col++)
   {
@@ -278,6 +279,7 @@ static void print_table_border(const int *widths, int nr_cols)
       putchar('-');
     putchar('+');
   }
+  fputs(ANSI_NONE, stdout);
   putchar('\n');
 }
 
@@ -430,7 +432,7 @@ static void print_table_cell(const char *text, int width, bool right_align)
     print_spaces(padding);
   }
 
-  printf(" |");
+  printf(" " ANSI_FG_BLUE "|" ANSI_NONE);
 }
 
 static const char *skip_leading_spaces(const char *s)
@@ -481,7 +483,52 @@ static const char *get_watchpoint_type_color(const char *type_name)
     return ANSI_FG_YELLOW;
   if (strcmp(type_name, "表达式") == 0)
     return ANSI_FG_MAGENTA;
+  return ANSI_FG_GREEN;
+}
+
+static const char *get_watchpoint_header_color(const char *title)
+{
+  if (strcmp(title, "编号") == 0)
+    return ANSI_FG_CYAN;
+  if (strcmp(title, "类型") == 0)
+    return ANSI_FG_BLUE;
+  if (strcmp(title, "旧值") == 0)
+    return ANSI_FG_WHITE;
+  if (strcmp(title, "新值") == 0)
+    return ANSI_FG_GREEN;
+  if (strcmp(title, "变化量") == 0)
+    return ANSI_FG_YELLOW;
+  if (strcmp(title, "启用状态") == 0)
+    return ANSI_FG_CYAN;
+  if (strcmp(title, "状态") == 0)
+    return ANSI_FG_MAGENTA;
+  if (strcmp(title, "触发位置") == 0)
+    return ANSI_FG_YELLOW;
+  if (strcmp(title, "表达式") == 0)
+    return ANSI_FG_MAGENTA;
   return ANSI_FG_WHITE;
+}
+
+static const char *get_watchpoint_no_color(bool enabled, bool success, bool changed)
+{
+  if (!enabled)
+    return ANSI_FG_WHITE;
+  if (!success)
+    return ANSI_FG_RED;
+  if (changed)
+    return ANSI_FG_YELLOW;
+  return ANSI_FG_CYAN;
+}
+
+static const char *get_watchpoint_expr_color(const char *type_name, bool enabled, bool success, bool changed)
+{
+  if (!enabled)
+    return ANSI_FG_WHITE;
+  if (!success)
+    return ANSI_FG_RED;
+  if (changed)
+    return ANSI_FG_YELLOW;
+  return get_watchpoint_type_color(type_name);
 }
 
 static void format_delta_str(char *buf, size_t size, bool enabled, bool success, word_t old_val, word_t current_val)
@@ -518,7 +565,7 @@ static void format_trigger_pc_str(char *buf, size_t size, const WP *wp)
 {
   if (wp->has_last_trigger)
   {
-    snprintf(buf, size, ANSI_FG_CYAN FMT_WORD ANSI_NONE, wp->last_trigger_pc);
+    snprintf(buf, size, ANSI_FG_BLUE FMT_WORD ANSI_NONE, wp->last_trigger_pc);
   }
   else
   {
@@ -679,19 +726,32 @@ static bool scan_watchpoints(bool show_all, bool update_val)
     /* 所有表达式先求值完，再统一打印，避免调试日志插入表格中间。 */
     if (!header_printed)
     {
+      char no_header[32], type_header[32], old_header[32], new_header[32], delta_header[32];
+      char enable_header[32], status_header[32], trigger_header[32], expr_header[32];
+
+      snprintf(no_header, sizeof(no_header), "%s编号%s", get_watchpoint_header_color("编号"), ANSI_NONE);
+      snprintf(type_header, sizeof(type_header), "%s类型%s", get_watchpoint_header_color("类型"), ANSI_NONE);
+      snprintf(old_header, sizeof(old_header), "%s旧值%s", get_watchpoint_header_color("旧值"), ANSI_NONE);
+      snprintf(new_header, sizeof(new_header), "%s新值%s", get_watchpoint_header_color("新值"), ANSI_NONE);
+      snprintf(delta_header, sizeof(delta_header), "%s变化量%s", get_watchpoint_header_color("变化量"), ANSI_NONE);
+      snprintf(enable_header, sizeof(enable_header), "%s启用状态%s", get_watchpoint_header_color("启用状态"), ANSI_NONE);
+      snprintf(status_header, sizeof(status_header), "%s状态%s", get_watchpoint_header_color("状态"), ANSI_NONE);
+      snprintf(trigger_header, sizeof(trigger_header), "%s触发位置%s", get_watchpoint_header_color("触发位置"), ANSI_NONE);
+      snprintf(expr_header, sizeof(expr_header), "%s表达式%s", get_watchpoint_header_color("表达式"), ANSI_NONE);
+
       if (!show_all)
         printf("\n监视点已触发：\n");
       print_table_border(col_widths, ARRLEN(col_widths));
-      putchar('|');
-      print_table_cell(ANSI_FMT("编号", ANSI_FG_BLUE), no_width, true);
-      print_table_cell(ANSI_FMT("类型", ANSI_FG_BLUE), type_width, false);
-      print_table_cell(ANSI_FMT("旧值", ANSI_FG_BLUE), val_width, true);
-      print_table_cell(ANSI_FMT("新值", ANSI_FG_BLUE), val_width, true);
-      print_table_cell(ANSI_FMT("变化量", ANSI_FG_BLUE), delta_width, true);
-      print_table_cell(ANSI_FMT("启用状态", ANSI_FG_BLUE), enable_width, false);
-      print_table_cell(ANSI_FMT("状态", ANSI_FG_BLUE), status_width, false);
-      print_table_cell(ANSI_FMT("触发位置", ANSI_FG_BLUE), trigger_width, true);
-      print_table_cell(ANSI_FMT("表达式", ANSI_FG_BLUE), expr_width, false);
+      fputs(ANSI_FG_BLUE "|" ANSI_NONE, stdout);
+      print_table_cell(no_header, no_width, true);
+      print_table_cell(type_header, type_width, false);
+      print_table_cell(old_header, val_width, true);
+      print_table_cell(new_header, val_width, true);
+      print_table_cell(delta_header, delta_width, true);
+      print_table_cell(enable_header, enable_width, false);
+      print_table_cell(status_header, status_width, false);
+      print_table_cell(trigger_header, trigger_width, true);
+      print_table_cell(expr_header, expr_width, false);
       putchar('\n');
       print_table_border(col_widths, ARRLEN(col_widths));
       header_printed = true;
@@ -699,10 +759,12 @@ static bool scan_watchpoints(bool show_all, bool update_val)
 
     char no_str[32], type_str[32], old_str[64], cur_str[64], delta_str[64];
     char enable_str[32], status_str[32], trigger_str[64], expr_str[64];
-    snprintf(no_str, sizeof(no_str), ANSI_FG_CYAN "%d" ANSI_NONE, cur->NO);
+    snprintf(no_str, sizeof(no_str), "%s%d%s",
+             get_watchpoint_no_color(cur->enabled, success, changed), cur->NO, ANSI_NONE);
     snprintf(type_str, sizeof(type_str), "%s%s%s", get_watchpoint_type_color(type_name), type_name, ANSI_NONE);
     snprintf(old_str, sizeof(old_str), ANSI_FG_WHITE FMT_WORD ANSI_NONE, old_val);
-    snprintf(expr_str, sizeof(expr_str), ANSI_FG_MAGENTA "%s" ANSI_NONE, cur->expr);
+    snprintf(expr_str, sizeof(expr_str), "%s%s%s",
+             get_watchpoint_expr_color(type_name, cur->enabled, success, changed), cur->expr, ANSI_NONE);
     format_trigger_pc_str(trigger_str, sizeof(trigger_str), cur);
 
     if (!cur->enabled)
@@ -735,7 +797,7 @@ static bool scan_watchpoints(bool show_all, bool update_val)
       }
     }
 
-    putchar('|');
+    fputs(ANSI_FG_BLUE "|" ANSI_NONE, stdout);
     print_table_cell(no_str, no_width, true);
     print_table_cell(type_str, type_width, false);
     print_table_cell(old_str, val_width, true);
