@@ -116,38 +116,50 @@ word_t isa_reg_str2val(const char *s, bool *success)
 
 isa_reg_set_result_t isa_reg_setval(const char *s, word_t val)
 {
-  if (s == NULL) {
+  if (s == NULL)
+  {
     return ISA_REG_SET_INVALID;
   }
-  if (*s == '$') {
+  if (*s == '$')
+  {
     s++;
   }
-  if (*s == '\0') {
+  if (*s == '\0')
+  {
     return ISA_REG_SET_INVALID;
   }
-  if (strcmp(s, "pc") == 0) {
+  if (strcmp(s, "pc") == 0)
+  {
+    // 本来打算直接设计的后来发现pc不在regs[]里面，所以得单独拉出来设计
     cpu.pc = val;
     return ISA_REG_SET_SUCCESS;
   }
-  for (const char *p = s; *p != '\0'; p++) {
-    if (!isalnum((unsigned char)*p)) {
+  for (const char *p = s; *p != '\0'; p++)
+  {
+    // 拿来过滤非法字符
+    if (!isalnum((unsigned char)*p))
+    {
       return ISA_REG_SET_INVALID;
     }
   }
-  int num_regs = sizeof(regs) / sizeof(regs[0]);
-  for (int i = 0; i < num_regs; i++) {
-    const char *reg_name_in_array = regs[i];
-    if (reg_name_in_array[0] == '$') {
-      reg_name_in_array++;
+  int num_regs = sizeof(regs) / sizeof(regs[0]); // 算数组长度
+  for (int i = 0; i < num_regs; i++)             // 实在是实现不出来高级的设计了，只能用遍历全部的方式来实现功能了
+  {
+    const char *reg_name_in_array = regs[i]; // 通过i获取对应的寄存器的索引的名称的字符串
+    if (reg_name_in_array[0] == '$')
+    {
+      reg_name_in_array++; // 这是为了迭代指针，后移一个字符
     }
-    if (strcmp(s, reg_name_in_array) == 0) {
-      if (i == 0) {
-        cpu.gpr[0] = 0;
+    if (strcmp(s, reg_name_in_array) == 0)
+    {
+      if (i == 0)
+      {
+        cpu.gpr[0] = 0; // 根据手册，0号寄存器不让动，不得写入
         return ISA_REG_SET_READONLY;
       }
-      cpu.gpr[i] = val;
+      cpu.gpr[i] = val; // 直接写入值
       return ISA_REG_SET_SUCCESS;
     }
   }
-  return ISA_REG_SET_INVALID;
+  return ISA_REG_SET_INVALID; // 其他情况直接返回invalid无效
 }

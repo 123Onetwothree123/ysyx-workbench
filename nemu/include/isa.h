@@ -61,7 +61,6 @@ typedef enum {
   ISA_REG_SET_INVALID,
   ISA_REG_SET_READONLY,
 } isa_reg_set_result_t;
-
 isa_reg_set_result_t isa_reg_setval(const char *name, word_t val);
 
 #endif

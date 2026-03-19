@@ -687,13 +687,13 @@ static int cmd_set(char *args)
       return 0;
     }
     bool success = false;
-    word_t val = expr(expr_str, &success);
+    word_t val = expr(expr_str, &success); // 先存储表达式的计算的值
     if (!success)
     {
       printf("表达式求值失败\n");
       return 0;
     }
-    isa_reg_set_result_t ret = isa_reg_setval(reg_name, val);
+    isa_reg_set_result_t ret = isa_reg_setval(reg_name, val); // 执行写寄存器
     if (ret == ISA_REG_SET_INVALID)
     {
       printf("错误：无效的寄存器名 '%s'\n", reg_name);
