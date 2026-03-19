@@ -691,10 +691,17 @@ static int cmd_set(char *args)
     if (!success)
     {
       printf("表达式求值失败\n");
+      return 0;
     }
-    if (!isa_reg_setval(reg_name, val))
+    isa_reg_set_result_t ret = isa_reg_setval(reg_name, val);
+    if (ret == ISA_REG_SET_INVALID)
     {
       printf("错误：无效的寄存器名 '%s'\n", reg_name);
+      return 0;
+    }
+    if (ret == ISA_REG_SET_READONLY)
+    {
+      printf("错误：x0/$0 是只读寄存器，不能修改\n");
       return 0;
     }
   }

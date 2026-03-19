@@ -114,52 +114,40 @@ word_t isa_reg_str2val(const char *s, bool *success)
   return 0;
 }
 
-bool isa_reg_setval(const char *s, word_t val)
+isa_reg_set_result_t isa_reg_setval(const char *s, word_t val)
 {
-  if (s == NULL)
-  {
-    return false;
+  if (s == NULL) {
+    return ISA_REG_SET_INVALID;
   }
-  if (*s == '$')
-  {
+  if (*s == '$') {
     s++;
   }
-  if (*s == '\0')
-  {
-    return false;
+  if (*s == '\0') {
+    return ISA_REG_SET_INVALID;
   }
-  if (strcmp(s, "pc") == 0)
-  {
+  if (strcmp(s, "pc") == 0) {
     cpu.pc = val;
-    return true;
+    return ISA_REG_SET_SUCCESS;
   }
-  for (const char *p = s; *p != '\0'; p++)
-  {
-    if (!isalnum((unsigned char)*p))
-    {
-      return false;
+  for (const char *p = s; *p != '\0'; p++) {
+    if (!isalnum((unsigned char)*p)) {
+      return ISA_REG_SET_INVALID;
     }
   }
   int num_regs = sizeof(regs) / sizeof(regs[0]);
-  for (int i = 0; i < num_regs; i++)
-  {
+  for (int i = 0; i < num_regs; i++) {
     const char *reg_name_in_array = regs[i];
-    if (reg_name_in_array[0] == '$')
-    {
+    if (reg_name_in_array[0] == '$') {
       reg_name_in_array++;
     }
-    if (strcmp(s, reg_name_in_array) == 0)
-    {
-      if (i == 0)
-      {
-        printf("错误：x0/$0 是只读寄存器，不能修改\n");
+    if (strcmp(s, reg_name_in_array) == 0) {
+      if (i == 0) {
         cpu.gpr[0] = 0;
-        return false;
+        return ISA_REG_SET_READONLY;
       }
-
       cpu.gpr[i] = val;
-      return true;
+      return ISA_REG_SET_SUCCESS;
     }
   }
-  return false;
+  return ISA_REG_SET_INVALID;
 }
