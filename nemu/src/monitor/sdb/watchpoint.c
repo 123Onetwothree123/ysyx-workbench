@@ -81,8 +81,8 @@ WP *new_wp()
   wp->enabled = true;
   wp->last_trigger_pc = 0;
   wp->has_last_trigger = false;
-  head = wp;             // 更新头节点
-  return wp;             // 返回监视点指针
+  head = wp; // 更新头节点
+  return wp; // 返回监视点指针
 }
 void free_wp(WP *wp)
 {
@@ -102,11 +102,10 @@ void free_wp(WP *wp)
     printf("警告：无效的监视点ID %d\n", wp->NO);
     return;
   }
-  WP *previous = NULL;
-  WP *current = head;
+  WP *previous = NULL; // 前一个节点
+  WP *current = head;  // 当前节点
   // 搜索目标节点和前一个节点
-
-  while (current != NULL && current != wp)
+  while (current != NULL && current != wp) // 简单做个标记，current == NULL意味着遍历完整个链表都没找到，current == wp则是找到了目标节点
   {
     previous = current;
     current = current->next;
@@ -117,13 +116,13 @@ void free_wp(WP *wp)
     printf("警告：监视点 #%d 不在活动列表中\n", wp->NO);
     return;
   }
-  if (previous == NULL)
+  if (previous == NULL) // 如果删除的是头节点
   {
     head = wp->next; // 头指针指向下一个节点
   }
   else if (previous->next == wp)
   {
-    previous->next = wp->next;
+    previous->next = wp->next; // 现在是删除中间或者是尾部的节点
   }
   else
   {
@@ -148,9 +147,9 @@ void wp_set_expr(WP *wp, const char *expr)
     printf("watchpoint.c wp_set_expr函数的wp或expr参数为NULL\n");
     return;
   }
-  strncpy(wp->expr, expr, sizeof(wp->expr) - 1);
-  wp->expr[sizeof(wp->expr) - 1] = '\0';
-  if (strlen(expr) >= sizeof(wp->expr))
+  strncpy(wp->expr, expr, sizeof(wp->expr) - 1); // 将expr复制的wp的expr中
+  wp->expr[sizeof(wp->expr) - 1] = '\0';         // 加终止符，防止出事，先保证结尾一定是null
+  if (strlen(expr) >= sizeof(wp->expr))          // 太长就直接截断
   {
     printf("表达式已被截断为%zu个字符\n", sizeof(wp->expr) - 1);
   }
@@ -208,16 +207,16 @@ WP *find_wp_by_id(int id)
   {
     return NULL;
   }
-  WP *current = head;
+  WP *current = head; // 先定位到链接的头节点
   while (current != NULL)
   {
     if (wp_get_no(current) == id)
     {
-      return current;
+      return current; // 找到编号的节点就返回指针
     }
-    current = wp_get_next(current);
+    current = wp_get_next(current); // 没找到就移动到下一个节点继续匹配
   }
-  return NULL;
+  return NULL; // 全部没找到就返回空指针
 }
 bool check_watchpoints(void)
 {
