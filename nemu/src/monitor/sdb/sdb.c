@@ -120,6 +120,8 @@ static int cmd_exprtest(char *args);
 static int cmd_clear(char *args);
 // 显示历史记录的
 static int cmd_history(char *args);
+// 设置寄存器或者内存
+static int cmd_set(char *args);
 
 static struct
 {
@@ -141,6 +143,7 @@ static struct
     {"exprtest", "运行表达式测试", cmd_exprtest},
     {"clear", "清除终端屏幕", cmd_clear},
     {"history", "显示命令历史", cmd_history},
+    {"set", "设置寄存器/内存，当前只支持：set reg <name> <expr>", cmd_set},
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -493,14 +496,14 @@ static int cmd_w(char *args)
     printf("警告：创建时无法计算表达式：%s\n", expr_get_error_msg());
     return 0;
   }
-  WP *wp = new_wp();//获取监视点
+  WP *wp = new_wp(); // 获取监视点
   if (wp == NULL)
   {
     printf("错误：没有空闲的监视点槽位（最大：%d）\n", get_max_watchpoints());
     return 0;
   }
-  wp_set_expr(wp, args);//存储表达式
-  wp_set_value(wp, value);//存储初始值
+  wp_set_expr(wp, args);   // 存储表达式
+  wp_set_value(wp, value); // 存储初始值
   printf("监视点 %d：%s = " FMT_WORD "\n", wp_get_no(wp), wp_get_expr(wp), value);
   return 0;
 }
@@ -536,13 +539,13 @@ static int cmd_d(char *args)
     printf("错误：监视点ID %ld 超出最大允许ID（%d）。\n", id, get_max_watchpoints() - 1);
     return 0;
   }
-  WP *WpToDelete = find_wp_by_id((int)id);
+  WP *WpToDelete = find_wp_by_id((int)id); // 找到要删掉的监视点
   if (WpToDelete == NULL)
   {
     printf("错误：未找到监视点 %ld\n", id);
     return 0;
   }
-  free_wp(WpToDelete);
+  free_wp(WpToDelete); // 删掉找到的点
   printf("已删除监视点 %ld\n", id);
   return 0;
 }
@@ -638,6 +641,50 @@ static int cmd_history(char *args)
     else
     {
       printf("%5d  %s [未知命令]\n", i + history_base, line);
+    }
+  }
+  return 0;
+}
+static int cmd_set(char *args)
+{
+  args = parse_args(args, true);
+  if (args == NULL)
+  {
+    printf("cmd_set检测到参数指针为空指针，即无参数\n");
+    printf("用法：set reg <name> <expr>\n");
+    return 0;
+  }
+  char *subcmd = args;                // 指向第一个单词，目标是解析出reg或者memory
+  char *space1 = strchr(subcmd, ' '); // 找到第一个空格，用来切出子命令和后续参数
+  if (space1 == NULL)                 // 如果没有第一个空格，说明只写了一个单词，比如说set reg
+  {
+    printf("错误：参数不完整\n");
+    printf("用法：set reg <name> <expr>\n");
+    return 0;
+  }
+  *space1 = '\0'; // 先把第一个空格改成字符串结束符，然后就能够实现将subcmd变成独立字符串了的操作
+  if (strcmp(subcmd, "reg") == 0)                  // reg部分
+  {
+    char *reg_name = parse_args(space1 + 1, false); // 跳过第一个空格，取第二段内容，理论上这里应该是寄存器名
+    if (reg_name == NULL)
+    {
+      printf("缺少寄存器名\n");
+      printf("用法：set reg <name> <expr>\n");
+      return 0;
+    }
+    char *space2 = strchr(reg_name, ' '); // 在reg_name这段里继续找下一个空格，用来切出寄存器名和表达式
+    if (space2 == NULL)                   // 如果没有第二个空格，就说明没写表达式
+    {
+      printf("错误：缺少表达式\n");
+      printf("用法：set reg <name> <expr>\n");
+      return 0;
+    }
+    *space2 = '\0';                                // 把第二个空格也切断
+    char *expr_str = parse_args(space2 + 1, true); // 取剩下整段作为表达式，并清理前后空格
+    if (expr_str == NULL)
+    {
+      printf("错误：缺少表达式\n");
+      return 0;
     }
   }
   return 0;
