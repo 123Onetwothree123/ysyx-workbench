@@ -662,8 +662,8 @@ static int cmd_set(char *args)
     printf("用法：set reg <name> <expr>\n");
     return 0;
   }
-  *space1 = '\0'; // 先把第一个空格改成字符串结束符，然后就能够实现将subcmd变成独立字符串了的操作
-  if (strcmp(subcmd, "reg") == 0)                  // reg部分
+  *space1 = '\0';                 // 先把第一个空格改成字符串结束符，然后就能够实现将subcmd变成独立字符串了的操作
+  if (strcmp(subcmd, "reg") == 0) // reg部分
   {
     char *reg_name = parse_args(space1 + 1, false); // 跳过第一个空格，取第二段内容，理论上这里应该是寄存器名
     if (reg_name == NULL)
@@ -684,6 +684,17 @@ static int cmd_set(char *args)
     if (expr_str == NULL)
     {
       printf("错误：缺少表达式\n");
+      return 0;
+    }
+    bool success = false;
+    word_t val = expr(expr_str, &success);
+    if (!success)
+    {
+      printf("表达式求值失败\n");
+    }
+    if (!isa_reg_setval(reg_name, val))
+    {
+      printf("错误：无效的寄存器名 '%s'\n", reg_name);
       return 0;
     }
   }

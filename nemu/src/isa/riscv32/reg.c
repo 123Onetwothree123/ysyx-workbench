@@ -43,7 +43,7 @@ void isa_reg_display()
 
 word_t isa_reg_str2val(const char *s, bool *success)
 {
-  //如果是空，直接就转换失败
+  // 如果是空，直接就转换失败
   if (s == NULL || success == NULL)
   {
     if (success)
@@ -53,17 +53,17 @@ word_t isa_reg_str2val(const char *s, bool *success)
     return 0;
   }
   *success = false;
-  //检测到是$，就直接开始迭代s变量
+  // 检测到是$，就直接开始迭代s变量
   if (*s == '$')
   {
     s++;
   }
-  //末尾
+  // 末尾
   if (*s == '\0')
   {
     return 0;
   }
-  //如果检测到命令要求输出PC寄存器，就直接返回目前的PC值
+  // 如果检测到命令要求输出PC寄存器，就直接返回目前的PC值
   if (strcmp(s, "pc") == 0)
   {
     *success = true;
@@ -89,19 +89,19 @@ word_t isa_reg_str2val(const char *s, bool *success)
   // 直接遍历
   for (int i = 0; i < num_regs; i++)
   {
-    //从寄存器组里面取出名字
+    // 从寄存器组里面取出名字
     const char *reg_name_in_array = regs[i];
     if (reg_name_in_array[0] == '$')
     {
-      reg_name_in_array++;//跳过$字符
+      reg_name_in_array++; // 跳过$字符
     }
-    //检测输入的数据是否和寄存器组里面的名字匹配
+    // 检测输入的数据是否和寄存器组里面的名字匹配
     if (strcmp(s, reg_name_in_array) == 0)
     {
       if (i >= 0 && i < sizeof(cpu.gpr) / sizeof(cpu.gpr[0]))
       {
         *success = true;
-        return cpu.gpr[i];//返回寄存器中存储的数据
+        return cpu.gpr[i]; // 返回寄存器中存储的数据
       }
       else
       {
@@ -112,4 +112,54 @@ word_t isa_reg_str2val(const char *s, bool *success)
     }
   }
   return 0;
+}
+
+bool isa_reg_setval(const char *s, word_t val)
+{
+  if (s == NULL)
+  {
+    return false;
+  }
+  if (*s == '$')
+  {
+    s++;
+  }
+  if (*s == '\0')
+  {
+    return false;
+  }
+  if (strcmp(s, "pc") == 0)
+  {
+    cpu.pc = val;
+    return true;
+  }
+  for (const char *p = s; *p != '\0'; p++)
+  {
+    if (!isalnum((unsigned char)*p))
+    {
+      return false;
+    }
+  }
+  int num_regs = sizeof(regs) / sizeof(regs[0]);
+  for (int i = 0; i < num_regs; i++)
+  {
+    const char *reg_name_in_array = regs[i];
+    if (reg_name_in_array[0] == '$')
+    {
+      reg_name_in_array++;
+    }
+    if (strcmp(s, reg_name_in_array) == 0)
+    {
+      if (i == 0)
+      {
+        printf("错误：x0/$0 是只读寄存器，不能修改\n");
+        cpu.gpr[0] = 0;
+        return false;
+      }
+
+      cpu.gpr[i] = val;
+      return true;
+    }
+  }
+  return false;
 }
