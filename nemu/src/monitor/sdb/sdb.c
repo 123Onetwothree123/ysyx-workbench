@@ -333,8 +333,8 @@ static int cmd_x(char *args)
     printf("示例：x 16b 0x80100000 （从0x80100000检查16个字节）\n");
     return 0;
   }
-  char *StringEndPointer;
-  long n = strtol(args, &StringEndPointer, 10);
+  char *StringEndPointer;                       // 指向N之后的字符
+  long n = strtol(args, &StringEndPointer, 10); // 解析十进制数字N
   if (StringEndPointer == args)
   {
     printf("错误：缺少参数N\n");
@@ -345,9 +345,9 @@ static int cmd_x(char *args)
     printf("错误：N必须是正整数\n");
     return 0;
   }
-  char *expr_str = StringEndPointer;
-  size_t unit_size = 4;
-  while (*expr_str == ' ')
+  char *expr_str = StringEndPointer; // 现在expr_str指向N后面的剩余部分
+  size_t unit_size = 4;              // 默认按4字节单位读取，也就是w
+  while (*expr_str == ' ')           // 跳过N后面的空格
   {
     expr_str++;
   }
@@ -366,7 +366,7 @@ static int cmd_x(char *args)
     expr_str++;
     break;
   default:
-    break;
+    break; // 如果不是b/h/w，说明这里就是没写单位，保持默认4字节
   }
   while (*expr_str == ' ')
   {
@@ -378,20 +378,21 @@ static int cmd_x(char *args)
     printf("错误：缺少表达式\n");
     return 0;
   }
-  bool success = false;
+  bool success = false; // 拿来记录expr函数有没有成功的
+  // 把剩余字符串当作表达式求值，得到起始地址，例如$sp、0x80000000、$pc + 4都可以
   sword_t addr_signed = expr(expr_str, &success);
   if (!success)
   {
     printf("错误：无效的表达式：%s\n", expr_get_error_msg());
     return 0;
   }
-  word_t addr = (word_t)addr_signed;
+  word_t addr = (word_t)addr_signed; // 把有符号结果转成机器字宽的无符号地址值
   if (n > UINT32_MAX / unit_size)
   {
     printf("错误：请求过大（会导致地址空间溢出）\n");
     return 0;
   }
-  word_t total_size = (word_t)n * unit_size;
+  word_t total_size = (word_t)n * unit_size; // 总共要读取的字节数，反正就是项目数X每项大小
   if (addr > UINT32_MAX - total_size)
   {
     printf("错误：地址范围会溢出（0x%08x + %u 字节）\n",
@@ -399,32 +400,41 @@ static int cmd_x(char *args)
     return 0;
   }
 
-  word_t end_addr = addr + total_size;
+  word_t end_addr = addr + total_size; // 计算尾后地址，而且真正最后一个被访问的字节地址是end_addr-1
 
   printf("正在扫描 %ld 个项目（每个%zu字节），从 0x%08x 到 0x%08x：\n", n, unit_size, addr, end_addr - 1);
-  word_t data;
-  for (int i = 0; i < n; i++)
+  word_t data;                // 用来接收每次从内存里读出的数据
+  for (int i = 0; i < n; i++) // 循环读取n个项目
   {
+    // 当前这一项的地址
+    // 因为每项大小是 unit_size，所以地址每次加 unit_size
     word_t current_addr = addr + i * unit_size;
+    // 安全读取物理内存paddr，失败返回 false
     if (!safe_paddr_read(current_addr, &data, unit_size))
     {
       printf("错误：在 0x%08x 处读取内存失败（扫描已停止）\n", current_addr);
       printf("提示：地址可能无效或不可访问\n");
       return 0;
     }
-    printf("0x%08x: ", current_addr);
-    switch (unit_size)
+    printf("0x%08x: ", current_addr); // 先打印当前地址前缀
+    switch (unit_size)                // 根据读取单位决定显示格式
     {
     case 1:
-      printf("0x%02x\n", (uint8_t)data);
+      printf("0x%02x\n", (uint8_t)data); // 只取低8位，按2位十六进制打印
       break;
     case 2:
-      printf("0x%04x\n", (uint16_t)data);
+      printf("0x%04x\n", (uint16_t)data); // 只取低16位，按4位十六进制打印
       break;
     case 4:
-      printf("0x%08x\n", (uint32_t)data);
+      printf("0x%08x\n", (uint32_t)data); // 取低32位，按8位十六进制打印
       break;
     default:
+      /*
+      以防万一先搞一个兜底分支，大概可能或许好像也许恐
+      怕估计似乎仿佛大约差不多隐约依稀貌似八成说不定没准
+      兴许约莫大抵多半想来想必看似看上去听起来显得算是几
+      乎应该正常不会走到
+      */
       printf("0x%08x\n", data);
     }
   }
@@ -517,7 +527,7 @@ static int cmd_d(char *args)
     printf("示例：d 1\n");
     return 0;
   }
-  char *endptr;
+  char *endptr; // 用来接收数字解析结束后停在哪里的，给下一行strtol函数用的
   long id = strtol(args, &endptr, 10);
   while (*endptr == ' ')
   {
