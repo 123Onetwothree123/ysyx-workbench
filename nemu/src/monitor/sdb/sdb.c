@@ -527,7 +527,7 @@ static int cmd_d(char *args)
     printf("示例：d 1\n");
     return 0;
   }
-  char *endptr;
+  char *endptr; // 用来接收数字解析结束后停在哪里的，给下一行strtol函数用的
   long id = strtol(args, &endptr, 10);
   while (*endptr == ' ')
   {
