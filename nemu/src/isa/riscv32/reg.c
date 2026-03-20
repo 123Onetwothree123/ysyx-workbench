@@ -276,79 +276,112 @@ static const char *get_reg_desc(const char *arch_name, const char *abi_name)
 static const char *get_reg_header_color(const char *title)
 {
   if (strcmp(title, "编号") == 0)
+  {
     return ANSI_FG_CYAN;
+  }
   if (strcmp(title, "寄存器") == 0)
+  {
     return ANSI_FG_BLUE;
+  }
   if (strcmp(title, "十进制") == 0)
+  {
     return ANSI_FG_WHITE;
+  }
   if (strcmp(title, "十六进制") == 0)
+  {
     return ANSI_FG_GREEN;
+  }
   if (strcmp(title, "说明") == 0)
+  {
     return ANSI_FG_YELLOW;
+  }
   return ANSI_FG_WHITE;
 }
 
 static const char *get_reg_row_color(const char *arch_name, const char *abi_name)
 {
   if (strcmp(arch_name, "pc") == 0)
+  {
     return ANSI_FG_YELLOW;
+  }
   if (strcmp(arch_name, "x0") == 0 || strcmp(abi_name, "$0") == 0)
+  {
     return ANSI_FG_WHITE;
+  }
   if (strcmp(abi_name, "ra") == 0)
+  {
     return ANSI_FG_CYAN;
+  }
   if (strcmp(abi_name, "sp") == 0)
+  {
     return ANSI_FG_YELLOW;
+  }
   if (strcmp(abi_name, "gp") == 0)
+  {
     return ANSI_FG_BLUE;
+  }
   if (strcmp(abi_name, "tp") == 0)
+  {
     return ANSI_FG_MAGENTA;
+  }
   if (abi_name[0] == 'a')
+  {
     return ANSI_FG_GREEN;
+  }
   if (abi_name[0] == 's')
+  {
     return ANSI_FG_CYAN;
+  }
   if (abi_name[0] == 't')
+  {
     return ANSI_FG_MAGENTA;
+  }
   return ANSI_FG_WHITE;
 }
-
+/*
+rom_index是行索引参数，row是指向结构体的市镇，用来输出填充结果的
+*/
 static void fill_reg_row_info(int row_index, reg_row_t *row)
 {
   if (row_index == 0)
-  {
+  { // PC寄存器
+    // 将架构名称设为pc
     snprintf(row->arch_name, sizeof(row->arch_name), "%s", "pc");
     row->abi_name = "pc";
-    row->value = cpu.pc;
+    row->value = cpu.pc; // 直接赋值当前的CPU的PC值
   }
   else
   {
-    snprintf(row->arch_name, sizeof(row->arch_name), "x%d", row_index - 1);
+    snprintf(row->arch_name, sizeof(row->arch_name), "x%d", row_index - 1); // 设成输入的架构名
     row->abi_name = regs[row_index - 1];
-    row->value = cpu.gpr[row_index - 1];
+    row->value = cpu.gpr[row_index - 1]; // 返回寄存器组的寄存器数据
   }
-
+  // 获取中文描述信息
   row->desc = get_reg_desc(row->arch_name, row->abi_name);
 }
 void isa_reg_display()
 {
+  // 计算通用寄存器的数量
   const int nr_gpr = (int)(sizeof(regs) / sizeof(regs[0]));
-  const int nr_rows = nr_gpr + 1;
-
+  const int nr_rows = nr_gpr + 1; // 多了一个PC寄存器
+  // 算宽度数据的
   int id_width = reg_table_display_width("编号");
   int name_width = reg_table_display_width("寄存器");
   int dec_width = reg_table_display_width("十进制");
   int hex_width = reg_table_display_width("十六进制");
   int desc_width = reg_table_display_width("说明");
-
+  // 第一遍遍历，计算每列的最大宽度
   for (int i = 0; i < nr_rows; i++)
   {
-    reg_row_t row;
-    char dec_plain[32];
-    char hex_plain[32];
-
+    reg_row_t row;      // 寄存器行信息结构体
+    char dec_plain[32]; // 存储十进制值的字符串
+    char hex_plain[32]; // 存储十六进制值的字符串
+    // 填充寄存器行信息
     fill_reg_row_info(i, &row);
     snprintf(dec_plain, sizeof(dec_plain), "%" PRIuMAX, (uintmax_t)row.value);
     snprintf(hex_plain, sizeof(hex_plain), FMT_WORD, row.value);
-
+    // 更新各列的最大宽度
+    //  如果当前内容的显示宽度大于已记录的最大宽度，则更新
     if (reg_table_display_width(row.arch_name) > id_width)
     {
       id_width = reg_table_display_width(row.arch_name);
@@ -370,17 +403,17 @@ void isa_reg_display()
       desc_width = reg_table_display_width(row.desc);
     }
   }
-
+  // 将各列宽度存入数组，方便后续统一处理
   int col_widths[] = {id_width, name_width, dec_width, hex_width, desc_width};
   const int nr_cols = (int)(sizeof(col_widths) / sizeof(col_widths[0]));
-
+  // 返回ANSI颜色代码
   char id_header[32], name_header[32], dec_header[32], hex_header[32], desc_header[32];
   snprintf(id_header, sizeof(id_header), "%s编号%s", get_reg_header_color("编号"), ANSI_NONE);
   snprintf(name_header, sizeof(name_header), "%s寄存器%s", get_reg_header_color("寄存器"), ANSI_NONE);
   snprintf(dec_header, sizeof(dec_header), "%s十进制%s", get_reg_header_color("十进制"), ANSI_NONE);
   snprintf(hex_header, sizeof(hex_header), "%s十六进制%s", get_reg_header_color("十六进制"), ANSI_NONE);
   snprintf(desc_header, sizeof(desc_header), "%s说明%s", get_reg_header_color("说明"), ANSI_NONE);
-
+  // 打印表格标题
   printf("寄存器状态：\n");
   reg_table_print_border(col_widths, nr_cols);
   fputs(ANSI_FG_BLUE "|" ANSI_NONE, stdout);
@@ -391,22 +424,23 @@ void isa_reg_display()
   reg_table_print_cell(desc_header, desc_width, false);
   putchar('\n');
   reg_table_print_border(col_widths, nr_cols);
-
+  // 第二遍遍历，打印每个寄存器的实际数据
   for (int i = 0; i < nr_rows; i++)
   {
-    reg_row_t row;
-    const char *row_color;
+    reg_row_t row;         // 寄存器行信息
+    const char *row_color; // 当前行使用的颜色
     char id_str[32], name_str[32], dec_str[64], hex_str[64], desc_str[64];
-
+    // 获取当前寄存器的详细信息
     fill_reg_row_info(i, &row);
+    // 根据寄存器类型获取对应的颜色
     row_color = get_reg_row_color(row.arch_name, row.abi_name);
-
+    // 格式化各列内容，添加颜色代码
     snprintf(id_str, sizeof(id_str), "%s%s%s", row_color, row.arch_name, ANSI_NONE);
     snprintf(name_str, sizeof(name_str), "%s%s%s", row_color, row.abi_name, ANSI_NONE);
     snprintf(dec_str, sizeof(dec_str), ANSI_FG_WHITE "%" PRIuMAX ANSI_NONE, (uintmax_t)row.value);
     snprintf(hex_str, sizeof(hex_str), "%s" FMT_WORD ANSI_NONE, row_color, row.value);
     snprintf(desc_str, sizeof(desc_str), "%s%s%s", row_color, row.desc, ANSI_NONE);
-
+    // 打印当前寄存器行
     fputs(ANSI_FG_BLUE "|" ANSI_NONE, stdout);
     reg_table_print_cell(id_str, id_width, true);
     reg_table_print_cell(name_str, name_width, false);
@@ -414,7 +448,7 @@ void isa_reg_display()
     reg_table_print_cell(hex_str, hex_width, true);
     reg_table_print_cell(desc_str, desc_width, false);
     putchar('\n');
-    reg_table_print_border(col_widths, nr_cols);
+    reg_table_print_border(col_widths, nr_cols); // 行分割线
   }
 }
 
