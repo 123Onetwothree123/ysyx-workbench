@@ -26,11 +26,11 @@ typedef struct watchpoint
   struct watchpoint *next;
 
   /* TODO: Add more members if necessary */
-  char expr[32]; // The expression for monitoring
-  word_t old_val;
-  bool enabled;
-  vaddr_t last_trigger_pc;
-  bool has_last_trigger;
+  char expr[32];           // The expression for monitoring
+  word_t old_val;          // 上次记录的值
+  bool enabled;            // 看这个监视点是否启用
+  vaddr_t last_trigger_pc; // 上次触发这个监视点的时候CPU正在执行的PC
+  bool has_last_trigger;   // 表示last_trigger_pc现在是否有效
 } WP;
 
 static WP wp_pool[NR_WP] = {};
