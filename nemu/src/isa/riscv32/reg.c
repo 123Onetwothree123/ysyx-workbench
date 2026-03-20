@@ -27,12 +27,12 @@ const char *regs[] = {
 // 自己写的
 typedef struct
 {
-  char arch_name[16];
-  const char *abi_name;
-  const char *desc;
-  word_t value;
-}
-reg_row_t;
+  char arch_name[16];   // 架构名称，x0-x31，pc
+  const char *abi_name; // ABI的名称，$0，ra，sp，gp，tp，t0-t6，s0-s11，a0-a7
+  const char *desc;     // 中文描述
+  word_t value;         // 寄存器值
+} reg_row_t;
+// 拿来对其表格列的，计算宽度差补充空格保持对齐
 static void reg_table_print_spaces(int count)
 {
   for (int i = 0; i < count; i++)
@@ -40,38 +40,45 @@ static void reg_table_print_spaces(int count)
     putchar(' ');
   }
 }
+// 用于计算字符串的实际显示宽度
 static const unsigned char *reg_table_skip_ansi_escape(const unsigned char *s)
 {
   if (s[0] != '\033' || s[1] != '[')
   {
-    return s;
+    return s; // 不是ANSI序列，直接返回原指针
   }
-
-  s += 2;
+  s += 2; // 跳过\0ss和[
   while (*s != '\0' && !(*s >= 0x40 && *s <= 0x7e))
   {
-    s++;
+    s++; // 跳过所有参数字符
+    /*
+    跳过参数部分。终止符的 ASCII 范围是 0x40 (@) 到 0x7e (~)，包括：
+
+@ (0x40), A-Z (0x41-0x5A), [ (0x5B), \ (0x5C), ] (0x5D), ^ (0x5E), _ (0x5F)
+` (0x60), a-z (0x61-0x7A), { (0x7B), | (0x7C), } (0x7D), ~ (0x7E)
+    */
   }
   if (*s != '\0')
   {
-    s++;
+    s++; // 跳过终止符
   }
-  return s;
+  return s; // 返回转义序列后的位置
 }
 static uint32_t reg_table_decode_utf8_codepoint(const unsigned char *s, int *bytes)
-{
+{ // 将UTF-8编码的字节序列解码为Unicode码点
+  // 1字节：0xxxxxxx
   if ((s[0] & 0x80) == 0)
   {
     *bytes = 1;
     return s[0];
   }
-
+  // 2字节：110xxxxx 10xxxxxx
   if ((s[0] & 0xe0) == 0xc0 && s[1] != '\0' && (s[1] & 0xc0) == 0x80)
   {
     *bytes = 2;
     return ((uint32_t)(s[0] & 0x1f) << 6) | (uint32_t)(s[1] & 0x3f);
   }
-
+  // 3字节：1110xxxx 10xxxxxx 10xxxxxx (中文在此范围)
   if ((s[0] & 0xf0) == 0xe0 &&
       s[1] != '\0' && s[2] != '\0' &&
       (s[1] & 0xc0) == 0x80 && (s[2] & 0xc0) == 0x80)
@@ -81,7 +88,7 @@ static uint32_t reg_table_decode_utf8_codepoint(const unsigned char *s, int *byt
            ((uint32_t)(s[1] & 0x3f) << 6) |
            (uint32_t)(s[2] & 0x3f);
   }
-
+  // 4字节：11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
   if ((s[0] & 0xf8) == 0xf0 &&
       s[1] != '\0' && s[2] != '\0' && s[3] != '\0' &&
       (s[1] & 0xc0) == 0x80 &&
@@ -94,22 +101,34 @@ static uint32_t reg_table_decode_utf8_codepoint(const unsigned char *s, int *byt
            ((uint32_t)(s[2] & 0x3f) << 6) |
            (uint32_t)(s[3] & 0x3f);
   }
-
   *bytes = 1;
   return s[0];
 }
 static int reg_table_codepoint_width(uint32_t codepoint)
 {
-  if (codepoint == 0)
+  if (codepoint == 0) // 空字符\0不显示，宽度为0
   {
     return 0;
   }
-
+  /*
+  0x00-0x1F	ASCII控制字符（如\n,\t,\r等）
+  0x7F	DEL删除字符
+  0x80-0x9F	C1控制字符（扩展控制字符集）
+  这些字符在终端中不占用可见空间，宽度为0
+  */
   if (codepoint < 0x20 || (codepoint >= 0x7f && codepoint < 0xa0))
   {
     return 0;
   }
-
+  /*
+  组合字符（Combining Characters） 是附加在前一个字符上的修饰符号，如：
+  0x0300-0x036F：组合变音符号（如重音、波浪号等）
+  0x1AB0-0x1AFF：组合变音符号扩展
+  0x1DC0-0x1DFF：组合变音符号补充
+  0x20D0-0x20FF：组合用记号
+  0xFE20-0xFE2F：组合用半记号
+  示例：e + 0x0301（组合重音）= é，重音符号本身宽度为 0
+  */
   if ((codepoint >= 0x0300 && codepoint <= 0x036f) ||
       (codepoint >= 0x1ab0 && codepoint <= 0x1aff) ||
       (codepoint >= 0x1dc0 && codepoint <= 0x1dff) ||
@@ -118,7 +137,22 @@ static int reg_table_codepoint_width(uint32_t codepoint)
   {
     return 0;
   }
-
+  /*
+  这些是 双宽字符（Wide Characters），在终端中占用 2 个字符位置：
+  Unicode 范围	内容
+0x1100-0x115F	韩文字母（Jamo）
+0x2329-0x232A	尖括号⟨⟩
+0x2E80-0xA4CF	CJK 统一汉字、部首补充、康熙部首等（中文主要在此）
+0xAC00-0xD7A3	韩文音节（谚文）
+0xF900-0xFAFF	CJK 兼容汉字
+0xFE10-0xFE19	竖排形式
+0xFE30-0xFE6F	CJK 兼容形式
+0xFF00-0xFF60	全角 ASCII、全角标点
+0xFFE0-0xFFE6	全角符号（￠￡￥）
+0x20000-0x2FFFD	CJK 扩展 A-F（罕见汉字）
+0x30000-0x3FFFD	CJK 扩展 G+
+特殊排除：0x303F（韩文空格）虽然是 CJK 符号但宽度为 1
+  */
   if (codepoint >= 0x1100 &&
       (codepoint <= 0x115f ||
        codepoint == 0x2329 || codepoint == 0x232a ||
@@ -134,90 +168,109 @@ static int reg_table_codepoint_width(uint32_t codepoint)
   {
     return 2;
   }
-
+  // 默认情况
   return 1;
 }
 static int reg_table_display_width(const char *s)
 {
   int width = 0;
-  const unsigned char *p = (const unsigned char *)s;
+  const unsigned char *p = (const unsigned char *)s; // 用指针遍历
 
-  while (*p != '\0')
+  while (*p != '\0') // 全部遍历一遍
   {
     if (*p == '\033' && p[1] == '[')
     {
-      p = reg_table_skip_ansi_escape(p);
-      continue;
+      p = reg_table_skip_ansi_escape(p); // 跳过ANSI序列
+      continue;                          // 处理下一个字符
     }
-
+    // 拿来解码UTF-8字符的
     int bytes = 1;
+    // 拿来记录当前字符占用的字节数的
     uint32_t codepoint = reg_table_decode_utf8_codepoint(p, &bytes);
-    width += reg_table_codepoint_width(codepoint);
-    p += bytes;
+    width += reg_table_codepoint_width(codepoint); // 将字符显示宽度累加起来
+    p += bytes;                                    // 移动指针到下一个字符
   }
-
+  // 现在先返回结果
   return width;
 }
 static void reg_table_print_border(const int *widths, int nr_cols)
 {
-  fputs(ANSI_FG_BLUE, stdout);
-  putchar('+');
-  for (int col = 0; col < nr_cols; col++)
+  fputs(ANSI_FG_BLUE, stdout);            // 先设为蓝色边框
+  putchar('+');                           // 左上角先打印+
+  for (int col = 0; col < nr_cols; col++) // 每一列都遍历
   {
     for (int i = 0; i < widths[col] + 2; i++)
     {
       putchar('-');
     }
-    putchar('+');
+    putchar('+'); //+是分隔符
   }
-  fputs(ANSI_NONE, stdout);
+  fputs(ANSI_NONE, stdout); // 重置颜色
   putchar('\n');
 }
 static void reg_table_print_cell(const char *text, int width, bool right_align)
 {
-  int padding = width - reg_table_display_width(text);
+  int padding = width - reg_table_display_width(text); // 这是拿来计算填充空格数的
   if (padding < 0)
   {
-    padding = 0;
+    padding = 0; // 防止负数
   }
-
+  // 打印左边界空格
   putchar(' ');
+  // 根据对齐方式填充空格
   if (right_align)
   {
-    reg_table_print_spaces(padding);
+    reg_table_print_spaces(padding); // 先用右对齐，因为空格在文本前面
   }
-
+  // 打印实际文本内容
   fputs(text, stdout);
-
   if (!right_align)
   {
-    reg_table_print_spaces(padding);
+    reg_table_print_spaces(padding); // 左对齐的时候就是空格在文本后面
   }
-
+  // 打印有边界，开空格和蓝色的竖线并且重置颜色
   printf(" " ANSI_FG_BLUE "|" ANSI_NONE);
 }
 
 static const char *get_reg_desc(const char *arch_name, const char *abi_name)
 {
   if (strcmp(arch_name, "pc") == 0)
+  {
     return "程序计数器";
+  }
   if (strcmp(arch_name, "x0") == 0)
+  {
     return "零寄存器";
+  }
   if (strcmp(abi_name, "ra") == 0)
+  {
     return "返回地址";
+  }
   if (strcmp(abi_name, "sp") == 0)
+  {
     return "栈指针";
+  }
   if (strcmp(abi_name, "gp") == 0)
+  {
     return "全局指针";
+  }
   if (strcmp(abi_name, "tp") == 0)
+  {
     return "线程指针";
-  if (abi_name[0] == 'a')
+  }
+  if (abi_name[0] == 'a') // 参数寄存器是a0-a7
+  {
     return "参数寄存器";
-  if (abi_name[0] == 's')
+  }
+  if (abi_name[0] == 's') // 保存寄存器是s0-s11
+  {
     return "保存寄存器";
-  if (abi_name[0] == 't')
+  }
+  if (abi_name[0] == 't') // 临时寄存器是t0-t6
+  {
     return "临时寄存器";
-  return "通用寄存器";
+  }
+  return "通用寄存器"; // 默认就是通用寄存器
 }
 
 static const char *get_reg_header_color(const char *title)
