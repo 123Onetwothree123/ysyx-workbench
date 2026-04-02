@@ -1,4 +1,4 @@
-STUID = ysyx_100017119
+STUID = ysyx_26030103
 STUNAME = 林俊杰
 
 # DO NOT modify the following code!!!
