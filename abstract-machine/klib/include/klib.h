@@ -55,8 +55,8 @@ int    snprintf  (char *str, size_t size, const char *format, ...);
 int    vsprintf  (char *str, const char *format, va_list ap);
 int    vsnprintf (char *str, size_t size, const char *format, va_list ap);
 //自己写的
-int vfprintf(FILE *restrict stream, const char *restrict format, va_list ap);
-int fprintf(FILE *restrict stream, const char *restrict format, ...);
+int vfprintf(FILE *__restrict stream, const char *__restrict format, va_list ap);
+int fprintf(FILE *__restrict stream, const char *__restrict format, ...);
 
 // assert.h
 #ifdef NDEBUG
