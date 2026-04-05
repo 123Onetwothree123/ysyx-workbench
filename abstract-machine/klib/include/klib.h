@@ -11,6 +11,10 @@ extern "C" {
 
 //#define __NATIVE_USE_KLIB__
 
+//自己写的
+typedef struct FILE FILE;
+extern FILE *stdout;
+
 // string.h
 void  *memset    (void *s, int c, size_t n);
 void  *memcpy    (void *dst, const void *src, size_t n);
@@ -37,6 +41,9 @@ int    sprintf   (char *str, const char *format, ...);
 int    snprintf  (char *str, size_t size, const char *format, ...);
 int    vsprintf  (char *str, const char *format, va_list ap);
 int    vsnprintf (char *str, size_t size, const char *format, va_list ap);
+//自己写的
+int vfprintf(FILE *restrict stream, const char *restrict format, va_list ap);
+int fprintf(FILE *restrict stream, const char *restrict format, ...);
 
 // assert.h
 #ifdef NDEBUG
