@@ -4,6 +4,19 @@
 #include <am.h>
 #include <stddef.h>
 #include <stdarg.h>
+/*
+https://git.musl-libc.org/cgit/musl/commit/include/stdio.h?id=400c5e5c8307a2ebe44ef1f203f5a15669f20347
+改的，他妈的，来骗来偷袭我一个19岁的老东西
+*/
+#ifndef __restrict
+#if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
+#define __restrict __restrict__
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#define __restrict restrict
+#else
+#define __restrict
+#endif
+#endif
 
 #ifdef __cplusplus
 extern "C" {
