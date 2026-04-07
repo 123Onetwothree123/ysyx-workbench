@@ -44,6 +44,7 @@ static FILE __stdout_FILE = {
     .err = 0,
 };
 FILE *stdout = &__stdout_FILE;
+KFILE *kstdout = (KFILE *)&__stdout_FILE;
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 // 自己写的
@@ -436,6 +437,19 @@ int fprintf(FILE *stream, const char *fmt, ...)
   va_list ap;
   va_start(ap, fmt);
   ret = vfprintf(stream, fmt, ap);
+  va_end(ap);
+  return ret;
+}
+// 他妈的烦死这个兼容选项了
+int kvfprintf(KFILE *stream, const char *fmt, va_list ap)
+{
+  return vfprintf((FILE *)stream, fmt, ap);
+}
+int kfprintf(KFILE *stream, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  int ret = vfprintf((FILE *)stream, fmt, ap);
   va_end(ap);
   return ret;
 }

@@ -25,8 +25,8 @@ extern "C" {
 //#define __NATIVE_USE_KLIB__
 
 //自己写的
-typedef struct FILE FILE;
-extern FILE *stdout;
+typedef struct FILE KFILE;//你妈的傻逼io.h，被迫改名FILE为KFILE
+extern KFILE *kstdout;
 
 // string.h
 void  *memset    (void *s, int c, size_t n);
@@ -55,8 +55,8 @@ int    snprintf  (char *str, size_t size, const char *format, ...);
 int    vsprintf  (char *str, const char *format, va_list ap);
 int    vsnprintf (char *str, size_t size, const char *format, va_list ap);
 //自己写的
-int vfprintf(FILE *__restrict stream, const char *__restrict format, va_list ap);
-int fprintf(FILE *__restrict stream, const char *__restrict format, ...);
+int kvfprintf(KFILE *__restrict stream, const char *__restrict format, va_list ap);
+int kfprintf(KFILE *__restrict stream, const char *__restrict format, ...);
 
 // assert.h
 #ifdef NDEBUG
