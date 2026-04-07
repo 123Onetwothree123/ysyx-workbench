@@ -170,13 +170,13 @@ void set_watchpoint(const char *expression)
   // check safe
   if (expression == NULL || strlen(expression) == 0)
   {
-    printf("Invalid expression for watchpoint.\n");
+    printf("监视点表达式无效\n");
     return;
   }
   WP *wp = new_wp();
   if (wp == NULL)
   {
-    printf("Failed to create new watchpoint: no available slots.\n");
+    printf("创建新监视点失败：没有可用的槽位\n");
     return;
   }
   wp_set_expr(wp, expression);
@@ -185,13 +185,12 @@ void set_watchpoint(const char *expression)
   if (success)
   {
     wp_set_value(wp, value);
-    printf("Watchpoint %d: %s = " FMT_WORD "\n", wp_get_no(wp), wp_get_expr(wp), value);
+    printf("监视点 %d: %s = " FMT_WORD "\n", wp_get_no(wp), wp_get_expr(wp), value);
   }
   else
   {
-    printf("Failed to evaluate expression: %s\n", expression);
-    free_wp(wp); // The expression is invalid. free the monitor point
+    printf("表达式求值失败：%s\n", expression);
+    free_wp(wp); //表达式无效，释放监视点
     return;
   }
 }
-////
