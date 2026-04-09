@@ -729,7 +729,7 @@ static int cmd_iringbuf(char *args)
     printf("用法：iringbuf\n");
     return 0;
   }
-  PrintIringbuf(cpu.pc);
+  PrintIringbuf(0x8000000c);
   return 0;
 }
 bool check_array_bounds(int index, int array_size)
