@@ -126,7 +126,7 @@ void assert_fail_msg()
 {
   isa_reg_display();
   statistic();
-  PrintIringbuf();
+  PrintIringbuf(cpu.pc);
 }
 
 /* Simulate how the CPU works. */

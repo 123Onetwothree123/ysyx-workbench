@@ -53,7 +53,7 @@ __attribute__((noinline)) void invalid_inst(vaddr_t thispc)
                   ANSI_FG_RED),
          isa_logo);
 
-  PrintIringbuf();
+  PrintIringbuf(thispc);
 
   set_nemu_state(NEMU_ABORT, thispc, -1);
 }

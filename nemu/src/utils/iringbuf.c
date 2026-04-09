@@ -30,7 +30,7 @@ void RecordAInstruction(vaddr_t pc, uint32_t instruction, int len)
         GlobalIringbuf.count++;
     }
 }
-void PrintIringbuf(void)
+void PrintIringbuf(vaddr_t err_pc)
 {
     if (GlobalIringbuf.count == 0)
     {
@@ -43,7 +43,9 @@ void PrintIringbuf(void)
     for (size_t i = 0; i < GlobalIringbuf.count; i++)
     {
         int index = (start + i) % CONFIG_IRINGBUF_SIZE;
-        printf("pc = " FMT_WORD ", inst = 0x%08x, len = %d\n",
+        const char *marker = (GlobalIringbuf.buffer[index].pc == err_pc) ? "-->" : "   ";
+        printf("%s pc = " FMT_WORD ", inst = 0x%08x, len = %d\n",
+               marker,
                GlobalIringbuf.buffer[index].pc,
                GlobalIringbuf.buffer[index].instruction,
                GlobalIringbuf.buffer[index].len);

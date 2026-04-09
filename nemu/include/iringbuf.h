@@ -11,10 +11,10 @@ void IringbufInitialization(void);
 // 记录一条命令
 void RecordAInstruction(vaddr_t pc, uint32_t instruction, int len);
 // 打印缓冲区
-void PrintIringbuf(void);
+void PrintIringbuf(vaddr_t err_pc);
 #else
 static inline void IringbufInitialization(void) {}
 static inline void RecordAInstruction(vaddr_t pc, uint32_t instruction, int len) {}
-static inline void PrintIringbuf(void) {}
+static inline void PrintIringbuf(vaddr_t err_pc) { (void)err_pc; }
 #endif
 #endif
