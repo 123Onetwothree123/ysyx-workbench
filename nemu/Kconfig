@@ -158,6 +158,19 @@ config WATCHPOINT
   help
     Enable watchpoint functionality to monitor expression values.
     When disabled, improves performance by skipping watchpoint checks.
+#IRINGBUF和IRINGBUF_SIZE也是我自己写的
+config IRINGBUF
+  depends on TRACE && TARGET_NATIVE_ELF && ENGINE_INTERPRETER
+  bool "Enable instruction ring buffer"
+  default y
+  help
+    Record the latest executed instructions in a ring buffer and
+    print them when NEMU aborts.
+config IRINGBUF_SIZE
+  depends on IRINGBUF
+  int "Instruction ring buffer size"
+  default 16
+
 
 config DIFFTEST
   depends on TARGET_NATIVE_ELF

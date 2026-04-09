@@ -17,6 +17,8 @@
 #include <cpu/decode.h>
 #include <cpu/difftest.h>
 #include <locale.h>
+// 自己的头文件
+#include <iringbuf.h>
 
 #include "../../monitor/sdb/sdb.h"
 /* The assembly code of instructions executed is only output to the screen
@@ -124,6 +126,7 @@ void assert_fail_msg()
 {
   isa_reg_display();
   statistic();
+  PrintIringbuf();
 }
 
 /* Simulate how the CPU works. */
@@ -190,7 +193,7 @@ void set_watchpoint(const char *expression)
   else
   {
     printf("表达式求值失败：%s\n", expression);
-    free_wp(wp); //表达式无效，释放监视点
+    free_wp(wp); // 表达式无效，释放监视点
     return;
   }
 }

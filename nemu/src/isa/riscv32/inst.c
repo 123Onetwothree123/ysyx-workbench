@@ -18,6 +18,8 @@
 #include <cpu/ifetch.h>
 #include <cpu/decode.h>
 
+#include <iringbuf.h>
+
 #define R(i) gpr(i)
 #define Mr vaddr_read
 #define Mw vaddr_write
@@ -192,5 +194,7 @@ static int decode_exec(Decode *s)
 int isa_exec_once(Decode *s)
 {
   s->isa.inst = inst_fetch(&s->snpc, 4);
+  // 自己加的，snpc-pc就是指令长度
+  RecordAInstruction(s->pc, s->isa.inst, s->snpc - s->pc);
   return decode_exec(s);
 }

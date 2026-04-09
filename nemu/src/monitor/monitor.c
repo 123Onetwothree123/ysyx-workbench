@@ -16,6 +16,8 @@
 #include <isa.h>
 #include <memory/paddr.h>
 
+#include <iringbuf.h>
+
 void init_rand();
 void init_log(const char *log_file);
 void init_mem();
@@ -146,6 +148,9 @@ void init_monitor(int argc, char *argv[])
   init_sdb();
 
   IFDEF(CONFIG_ITRACE, init_disasm());
+
+  // 自己的函数
+  IringbufInitialization();
 
   /* Display welcome message. */
   welcome();
