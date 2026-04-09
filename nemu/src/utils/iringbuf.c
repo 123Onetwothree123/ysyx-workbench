@@ -37,17 +37,33 @@ void PrintIringbuf(vaddr_t err_pc)
         printf("iringbuf是空的\n");
         return;
     }
+    void disassemble(char *str, int size, uint64_t pc, uint8_t *code, int nbyte);
     // 先标记一下，本质上是start=head-count，因为最新的写入的是head的前一个位置，最老的那一步是head往前退count步
     int start = (GlobalIringbuf.head - GlobalIringbuf.count + CONFIG_IRINGBUF_SIZE) % CONFIG_IRINGBUF_SIZE;
     printf("打印iringbuf\n");
     for (size_t i = 0; i < GlobalIringbuf.count; i++)
     {
         int index = (start + i) % CONFIG_IRINGBUF_SIZE;
-        const char *marker = (GlobalIringbuf.buffer[index].pc == err_pc) ? "-->" : "   ";
-        printf("%s pc = " FMT_WORD ", inst = 0x%08x, len = %d\n",
+        // 取出这一条指令记录的指针，主要是为了的后面访问可以更方便一些
+        RecordInstruction *entry = &GlobalIringbuf.buffer[index];
+        const char *marker = (entry->pc == err_pc) ? "-->" : "   ";
+        char AsmBuf[128] = {};    // 用来保存capstone反汇编后的字符串
+        char BytesBuf[32] = {};   // 拿来保存机器码按字节展开后的文本的
+        char *pointer = BytesBuf; // 始终指向BytesBuf当前已经写到的位置
+        // 地址强转成字节指针的主要目的：后面既可以拿给disassemble，也可以按字节逐个打印
+        uint8_t *code = (uint8_t *)&entry->instruction;
+        disassemble(AsmBuf, sizeof(AsmBuf), entry->pc, code, entry->len);
+        for (size_t j = entry->len - 1; j >= 0; j--)
+        { /*
+            这里按高字节到低字节的显示顺序输出是因为是RISC-V，sizeof(bytes_buf) - (p - bytes_buf)表示当前缓冲区还剩多少空间，
+            p+=是把写指针往后推
+            */
+            pointer += snprintf(pointer, sizeof(BytesBuf) - (pointer - BytesBuf), " %02x", code[j]);
+        }
+        printf("%s " FMT_WORD ": %-24s%s\n",
                marker,
-               GlobalIringbuf.buffer[index].pc,
-               GlobalIringbuf.buffer[index].instruction,
-               GlobalIringbuf.buffer[index].len);
+               entry->pc,
+               AsmBuf,
+               BytesBuf);
     }
 }

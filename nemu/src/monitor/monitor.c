@@ -151,6 +151,7 @@ void init_monitor(int argc, char *argv[])
 
   // 自己的函数
   IringbufInitialization();
+  IFDEF(CONFIG_IRINGBUF,init_disasm());
 
   /* Display welcome message. */
   welcome();
