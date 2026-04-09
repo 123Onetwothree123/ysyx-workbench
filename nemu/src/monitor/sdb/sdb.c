@@ -19,6 +19,7 @@
 #include <readline/history.h>
 #include "sdb.h"
 #include <memory/paddr.h>
+#include <iringbuf.h>
 
 static int is_batch_mode = false;
 
@@ -123,6 +124,8 @@ static int cmd_history(char *args);
 // 设置寄存器或者内存
 static int cmd_set(char *args);
 
+static int cmd_iringbuf(char *args);
+
 static struct
 {
   const char *name;
@@ -144,6 +147,7 @@ static struct
     {"clear", "清除终端屏幕", cmd_clear},
     {"history", "显示命令历史", cmd_history},
     {"set", "设置寄存器/内存，当前只支持：set reg <name> <expr>", cmd_set},
+    {"iringbuf", "打印最近记录的指令环形缓冲区", cmd_iringbuf},
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -715,6 +719,17 @@ static int cmd_set(char *args)
       return 0;
     }
   }
+  return 0;
+}
+
+static int cmd_iringbuf(char *args)
+{
+  if (args != NULL)
+  {
+    printf("用法：iringbuf\n");
+    return 0;
+  }
+  PrintIringbuf();
   return 0;
 }
 bool check_array_bounds(int index, int array_size)
