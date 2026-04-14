@@ -2,6 +2,8 @@
 #include <readelf.h>
 #include <stdlib.h>
 
+#ifdef CONFIG_FTRACE
+
 FtraceState GlobalFtraceState;
 
 static bool FtraceFrameStackResizeExact(FtraceFrameStack *Stack, size_t NewSize)
@@ -310,3 +312,5 @@ void FtracePrintStatus(const FtraceState *State)
            State->CallStack.Size,
            State->History.Size);
 }
+
+#endif

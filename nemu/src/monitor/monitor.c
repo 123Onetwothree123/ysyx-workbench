@@ -169,11 +169,11 @@ void init_monitor(int argc, char *argv[])
   /* Initialize the simple debugger. */
   init_sdb();
 
-  IFDEF(CONFIG_ITRACE, init_disasm());
-
   // 自己的函数
   IringbufInitialization();
-  IFDEF(CONFIG_IRINGBUF, init_disasm());
+#if defined(CONFIG_ITRACE) || defined(CONFIG_IQUEUE) || defined(CONFIG_IRINGBUF)
+  init_disasm();
+#endif
 #ifdef CONFIG_ReadELF
   Assert(elf_file != NULL, "FTRACE需要一个ELF文件，使用--elf=FILE指定");
   Assert(ReadelfInitialization(elf_file), "从ELF文件'%s'初始化失败", elf_file);

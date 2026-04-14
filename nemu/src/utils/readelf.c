@@ -5,6 +5,8 @@
 #include <stdarg.h>
 #include <wchar.h>
 #include <wctype.h>
+
+#ifdef CONFIG_ReadELF
 typedef MUXDEF(CONFIG_ISA64, Elf64_Half, Elf32_Half) ELF_Half;
 typedef MUXDEF(CONFIG_ISA64, Elf64_Word, Elf32_Word) ELF_Word;
 typedef MUXDEF(CONFIG_ISA64, Elf64_Xword, Elf32_Word) ELF_Xword;
@@ -1277,3 +1279,5 @@ void PrintElfSymbols(void)
                GetSymbolNameByOffset(GlobalSymbolTable[i].st_name));
     }
 }
+
+#endif

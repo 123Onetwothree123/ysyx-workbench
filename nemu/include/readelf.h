@@ -51,19 +51,68 @@ bool CheckElfHeader(const ELF_Ehdr *ElfHeader);
 // 过滤出函数符号表
 bool FilterElfFunctionSymbolTable(const ELF_Sym *ElfSymbolTable, size_t SymbolCount, const char *StringTable, size_t StringTableSize, ElfFunctionSymbol **FunctionSymbolTable, size_t *FunctionCount);
 #else
-static inline bool ReadelfInitialization(const char *ElfFile) { return true; }
+static inline bool ReadelfInitialization(const char *ElfFile) {
+  (void)ElfFile;
+  return true;
+}
 static inline void ReadelfFinalize(void) {}
-static inline bool ReadelfFindFunction(vaddr_t address, ElfFunctionSymbol *out) { return false; }
-static inline const char *ReadelfFindFunctionName(vaddr_t address) { return "CONFIG_FTRACE都关掉了，用不了了这个函数"; }
-static inline bool GetElfHeader(FILE *FilePointer, ELF_Ehdr *ElfHeader) { return false; }
-static inline bool GetElfSectionHeaderTable(FILE *FilePointer, const ELF_Ehdr *ElfHeader, ELF_Shdr **ElfSHT, size_t *Count) { return false; }
-static inline bool GetElfSymbolTable(FILE *FilePointer, const ELF_Shdr *SymbolTableSection, ELF_Sym **ElfSymbolTable, size_t *Count) { return false; }
-static inline bool GetElfStringTable(FILE *FilePointer, const ELF_Shdr *StringTableSection, char **StringTable, size_t *Size) { return false; }
-static inline bool GetElfProgramHeaderTable(FILE *FilePointer, const ELF_Ehdr *ElfHeader, ELF_Phdr **ElfPHT, size_t *Count) { return false; }
+static inline bool ReadelfFindFunction(vaddr_t address, ElfFunctionSymbol *out) {
+  (void)address;
+  (void)out;
+  return false;
+}
+static inline const char *ReadelfFindFunctionName(vaddr_t address) {
+  (void)address;
+  return "CONFIG_FTRACE都关掉了，用不了了这个函数";
+}
+static inline bool GetElfHeader(FILE *FilePointer, ELF_Ehdr *ElfHeader) {
+  (void)FilePointer;
+  (void)ElfHeader;
+  return false;
+}
+static inline bool GetElfSectionHeaderTable(FILE *FilePointer, const ELF_Ehdr *ElfHeader, ELF_Shdr **ElfSHT, size_t *Count) {
+  (void)FilePointer;
+  (void)ElfHeader;
+  (void)ElfSHT;
+  (void)Count;
+  return false;
+}
+static inline bool GetElfSymbolTable(FILE *FilePointer, const ELF_Shdr *SymbolTableSection, ELF_Sym **ElfSymbolTable, size_t *Count) {
+  (void)FilePointer;
+  (void)SymbolTableSection;
+  (void)ElfSymbolTable;
+  (void)Count;
+  return false;
+}
+static inline bool GetElfStringTable(FILE *FilePointer, const ELF_Shdr *StringTableSection, char **StringTable, size_t *Size) {
+  (void)FilePointer;
+  (void)StringTableSection;
+  (void)StringTable;
+  (void)Size;
+  return false;
+}
+static inline bool GetElfProgramHeaderTable(FILE *FilePointer, const ELF_Ehdr *ElfHeader, ELF_Phdr **ElfPHT, size_t *Count) {
+  (void)FilePointer;
+  (void)ElfHeader;
+  (void)ElfPHT;
+  (void)Count;
+  return false;
+}
 static inline void PrintElfFileHeader(void) {}
 static inline void PrintElfSectionHeaders(void) {}
 static inline void PrintElfSymbols(void) {}
-static inline bool CheckElfHeader(const ELF_Ehdr *ElfHeader) { return false; }
-static inline bool FilterElfFunctionSymbolTable(const ELF_Sym *ElfSymbolTable, size_t SymbolCount, const char *StringTable, size_t StringTableSize, ElfFunctionSymbol **FunctionSymbolTable, size_t *FunctionCount) { return false; }
+static inline bool CheckElfHeader(const ELF_Ehdr *ElfHeader) {
+  (void)ElfHeader;
+  return false;
+}
+static inline bool FilterElfFunctionSymbolTable(const ELF_Sym *ElfSymbolTable, size_t SymbolCount, const char *StringTable, size_t StringTableSize, ElfFunctionSymbol **FunctionSymbolTable, size_t *FunctionCount) {
+  (void)ElfSymbolTable;
+  (void)SymbolCount;
+  (void)StringTable;
+  (void)StringTableSize;
+  (void)FunctionSymbolTable;
+  (void)FunctionCount;
+  return false;
+}
 #endif
 #endif

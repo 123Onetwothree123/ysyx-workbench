@@ -1,5 +1,8 @@
 // 自己添加的文件
 #include <iringbuf.h>
+
+#ifdef CONFIG_IRINGBUF
+
 typedef struct RecordInstruction
 {
     vaddr_t pc;
@@ -67,3 +70,5 @@ void PrintIringbuf(vaddr_t err_pc)
                BytesBuf);
     }
 }
+
+#endif

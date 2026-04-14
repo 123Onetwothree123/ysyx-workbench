@@ -14,7 +14,11 @@ void RecordAInstruction(vaddr_t pc, uint32_t instruction, int len);
 void PrintIringbuf(vaddr_t err_pc);
 #else
 static inline void IringbufInitialization(void) {}
-static inline void RecordAInstruction(vaddr_t pc, uint32_t instruction, int len) {}
+static inline void RecordAInstruction(vaddr_t pc, uint32_t instruction, int len) {
+  (void)pc;
+  (void)instruction;
+  (void)len;
+}
 static inline void PrintIringbuf(vaddr_t err_pc) { (void)err_pc; }
 #endif
 #endif
