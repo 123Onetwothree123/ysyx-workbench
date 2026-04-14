@@ -152,11 +152,11 @@ static int decode_exec(Decode *s)
   });
   INSTPAT("??????? ????? ????? 010 ????? 01000 11", sw, S, Mw(src1 + imm, 4, src2));
   INSTPAT("??????? ????? ????? 000 ????? 11001 11", jalr, I, {
-    int rs1 = BITS(s->isa.inst, 19, 15);
     R(rd) = s->pc + 4;
     s->dnpc = (src1 + imm) & ~1;
     //因为jalr既可能call也可能ret
 #ifdef CONFIG_FTRACE
+    int rs1 = BITS(s->isa.inst, 19, 15);
     // 识别 ret，用jalr x0, x1, 0
     if (rd == 0 && rs1 == 1 && imm == 0) {
       FtraceOnReturn(&GlobalFtraceState, s->pc, s->dnpc);
