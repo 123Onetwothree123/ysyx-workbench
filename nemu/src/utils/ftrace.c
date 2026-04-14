@@ -259,6 +259,15 @@ const FtraceEvent *FtraceGetLastEvent(const FtraceState *State)
     }
     return &State->History.Data[State->History.Size - 1];
 }
+
+static void FtracePrintIndent(size_t Level)
+{
+    for (size_t i = 0; i < Level; i++)
+    {
+        printf("  ");
+    }
+}
+
 void FtracePrintCurrentStack(const FtraceState *State)
 {
     if (State == NULL)
@@ -289,14 +298,20 @@ void FtracePrintHistory(const FtraceState *State)
     for (size_t i = 0; i < State->History.Size; i++)
     {
         const FtraceEvent *Event = &State->History.Data[i];
-        const char *Type = (Event->Type == FtraceEventCall) ? "call" : "ret ";
-        printf("  #%zu %s %s @ " FMT_WORD " -> " FMT_WORD " (depth %zu)\n",
-               i,
-               Type,
-               Event->FunctionName ? Event->FunctionName : "???",
-               Event->CurrentPC,
-               Event->TargetPC,
-               Event->Depth);
+        const char *FunctionName = Event->FunctionName ? Event->FunctionName : "???";
+        size_t IndentLevel = (Event->Type == FtraceEventCall)
+                                 ? (Event->Depth > 0 ? Event->Depth - 1 : 0)
+                                 : Event->Depth;
+        printf(FMT_WORD ": ", Event->CurrentPC);
+        FtracePrintIndent(IndentLevel);
+        if (Event->Type == FtraceEventCall)
+        {
+            printf("call [%s@" FMT_WORD "]\n", FunctionName, Event->TargetPC);
+        }
+        else
+        {
+            printf("ret  [%s]\n", FunctionName);
+        }
     }
 }
 void FtracePrintStatus(const FtraceState *State)
