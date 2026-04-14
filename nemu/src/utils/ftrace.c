@@ -6,6 +6,8 @@
 
 FtraceState GlobalFtraceState;
 
+static void FtracePrintEventLine(const FtraceEvent *Event);
+
 static bool FtraceFrameStackResizeExact(FtraceFrameStack *Stack, size_t NewSize)
 {
     if (Stack == NULL)
@@ -190,14 +192,15 @@ bool FtraceOnCall(FtraceState *State, vaddr_t CallPc, vaddr_t FunctionAddress)
     {
         return false;
     }
+    FtraceEvent Event;
+    Event.Type = FtraceEventCall;
+    Event.CurrentPC = CallPc;
+    Event.TargetPC = FunctionAddress;
+    Event.FunctionName = Frame.FunctionName;
+    Event.Depth = State->CallStack.Size;
+    FtracePrintEventLine(&Event);
     if (State->RecordHistory)
     {
-        FtraceEvent Event;
-        Event.Type = FtraceEventCall;
-        Event.CurrentPC = CallPc;
-        Event.TargetPC = FunctionAddress;
-        Event.FunctionName = Frame.FunctionName;
-        Event.Depth = State->CallStack.Size;
         if (!FtraceEventVectorPushExact(&State->History, &Event))
         {
             return false;
@@ -220,14 +223,15 @@ bool FtraceOnReturn(FtraceState *State, vaddr_t CurrentPc, vaddr_t TargetPc)
     {
         return false;
     }
+    FtraceEvent Event;
+    Event.Type = FtraceEventRet;
+    Event.CurrentPC = CurrentPc;
+    Event.TargetPC = TargetPc;
+    Event.FunctionName = Frame.FunctionName;
+    Event.Depth = State->CallStack.Size;
+    FtracePrintEventLine(&Event);
     if (State->RecordHistory)
     {
-        FtraceEvent Event;
-        Event.Type = FtraceEventRet;
-        Event.CurrentPC = CurrentPc;
-        Event.TargetPC = TargetPc;
-        Event.FunctionName = Frame.FunctionName;
-        Event.Depth = State->CallStack.Size;
         if (!FtraceEventVectorPushExact(&State->History, &Event))
         {
             return false;
@@ -268,6 +272,29 @@ static void FtracePrintIndent(size_t Level)
     }
 }
 
+static void FtracePrintEventLine(const FtraceEvent *Event)
+{
+    if (Event == NULL)
+    {
+        return;
+    }
+    const char *FunctionName = Event->FunctionName ? Event->FunctionName : "???";
+    size_t IndentLevel = (Event->Type == FtraceEventCall)
+                             ? (Event->Depth > 0 ? Event->Depth - 1 : 0)
+                             : Event->Depth;
+    printf(FMT_WORD ": ", Event->CurrentPC);
+    FtracePrintIndent(IndentLevel);
+    if (Event->Type == FtraceEventCall)
+    {
+        printf("call [%s@" FMT_WORD "]\n", FunctionName, Event->TargetPC);
+    }
+    else
+    {
+        printf("ret  [%s]\n", FunctionName);
+    }
+    fflush(stdout);
+}
+
 void FtracePrintCurrentStack(const FtraceState *State)
 {
     if (State == NULL)
@@ -297,21 +324,7 @@ void FtracePrintHistory(const FtraceState *State)
     printf("ftrace: history size = %zu\n", State->History.Size);
     for (size_t i = 0; i < State->History.Size; i++)
     {
-        const FtraceEvent *Event = &State->History.Data[i];
-        const char *FunctionName = Event->FunctionName ? Event->FunctionName : "???";
-        size_t IndentLevel = (Event->Type == FtraceEventCall)
-                                 ? (Event->Depth > 0 ? Event->Depth - 1 : 0)
-                                 : Event->Depth;
-        printf(FMT_WORD ": ", Event->CurrentPC);
-        FtracePrintIndent(IndentLevel);
-        if (Event->Type == FtraceEventCall)
-        {
-            printf("call [%s@" FMT_WORD "]\n", FunctionName, Event->TargetPC);
-        }
-        else
-        {
-            printf("ret  [%s]\n", FunctionName);
-        }
+        FtracePrintEventLine(&State->History.Data[i]);
     }
 }
 void FtracePrintStatus(const FtraceState *State)
