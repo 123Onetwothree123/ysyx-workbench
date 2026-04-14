@@ -16,6 +16,7 @@
 #include <isa.h>
 #include <memory/paddr.h>
 #include <stdlib.h>
+#include <locale.h>
 
 #include <iringbuf.h>
 #include <ftrace.h>
@@ -141,6 +142,8 @@ void init_monitor(int argc, char *argv[])
 
   /* Parse arguments. */
   parse_args(argc, argv);
+
+  setlocale(LC_CTYPE, "");
 
   /* Set random seed. */
   init_rand();

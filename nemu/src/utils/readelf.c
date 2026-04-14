@@ -1,7 +1,10 @@
 // 自己设计的文件，目前先只支持ftrace功能
 // 受不了了，注释让ai写的
+#define _XOPEN_SOURCE 700
 #include <readelf.h>
 #include <stdarg.h>
+#include <wchar.h>
+#include <wctype.h>
 typedef MUXDEF(CONFIG_ISA64, Elf64_Half, Elf32_Half) ELF_Half;
 typedef MUXDEF(CONFIG_ISA64, Elf64_Word, Elf32_Word) ELF_Word;
 typedef MUXDEF(CONFIG_ISA64, Elf64_Xword, Elf32_Word) ELF_Xword;
@@ -67,6 +70,39 @@ static void ReadelfDebugPrint(const char *Format, ...)
 
 // 让本文件中的printf按需输出
 #define printf ReadelfDebugPrint
+
+static size_t ReadelfDisplayWidth(const char *S)
+{
+    if (S == NULL)
+    {
+        return 0;
+    }
+    size_t Width = 0;
+    mbstate_t State;
+    memset(&State, 0, sizeof(State));
+    const char *P = S;
+    while (*P != '\0')
+    {
+        wchar_t Wc;
+        size_t Consumed = mbrtowc(&Wc, P, MB_CUR_MAX, &State);
+        if (Consumed == (size_t)-1 || Consumed == (size_t)-2 || Consumed == 0)
+        {
+            // Fallback to single-byte width on invalid sequences
+            memset(&State, 0, sizeof(State));
+            Width += 1;
+            P += 1;
+            continue;
+        }
+        int W = wcwidth(Wc);
+        if (W < 0)
+        {
+            W = 1;
+        }
+        Width += (size_t)W;
+        P += Consumed;
+    }
+    return Width;
+}
 static const char *GetSectionNameByOffset(ELF_Word NameOffset);
 static const char *GetSymbolNameByOffset(ELF_Word NameOffset);
 static void GetSymbolSectionIndexString(ELF_Half SectionIndex, char *Buffer, size_t BufferSize);
@@ -1046,9 +1082,44 @@ void PrintElfFileHeader(void)
         printf("PrintElfHeader失败：ReadELF模块还没有初始化完成\n");
         return;
     }
+    const char *Labels[] = {
+        "Magic (ELF魔数)",
+        "Class (ELF位数)",
+        "Data (数据编码格式)",
+        "Version (ELF标识版本)",
+        "OS/ABI (操作系统/ABI标识)",
+        "ABI Version (ABI版本)",
+        "Type (ELF文件类型)",
+        "Machine (目标架构)",
+        "Version (ELF头版本)",
+        "Entry point address (程序入口地址)",
+        "Start of program headers (程序头表文件偏移)",
+        "Start of section headers (节区头表文件偏移)",
+        "Flags (处理器相关标志)",
+        "Size of this header (ELF头大小)",
+        "Size of program headers (程序头表项大小)",
+        "Number of program headers (程序头表项数量)",
+        "Size of section headers (节区头表项大小)",
+        "Number of section headers (节区头表项数量)",
+        "Section header string table index (节区名字字符串表索引)",
+    };
+    size_t LabelCount = sizeof(Labels) / sizeof(Labels[0]);
+    size_t LabelWidth = 0;
+    size_t LabelWidths[sizeof(Labels) / sizeof(Labels[0])] = {0};
+    for (size_t i = 0; i < LabelCount; i++)
+    {
+        size_t Width = ReadelfDisplayWidth(Labels[i]);
+        LabelWidths[i] = Width;
+        if (Width > LabelWidth)
+        {
+            LabelWidth = Width;
+        }
+    }
+    int Width = (int)LabelWidth;
+
     printf("ELF Header:\n");
-    printf("  %-36s %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
-           "Magic (ELF魔数)",
+    printf("  %s%*s %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+           Labels[0], (int)(Width - LabelWidths[0] + 1), "",
            GlobalElfHeader.e_ident[0],
            GlobalElfHeader.e_ident[1],
            GlobalElfHeader.e_ident[2],
@@ -1065,24 +1136,24 @@ void PrintElfFileHeader(void)
            GlobalElfHeader.e_ident[13],
            GlobalElfHeader.e_ident[14],
            GlobalElfHeader.e_ident[15]);
-    printf("  %-36s %s\n", "Class (ELF位数)", GetElfClassString(GlobalElfHeader.e_ident[EI_CLASS]));
-    printf("  %-36s %s\n", "Data (数据编码格式)", GetElfDataString(GlobalElfHeader.e_ident[EI_DATA]));
-    printf("  %-36s %u\n", "Version (ELF标识版本)", GlobalElfHeader.e_ident[EI_VERSION]);
-    printf("  %-36s %u\n", "OS/ABI (操作系统/ABI标识)", GlobalElfHeader.e_ident[EI_OSABI]);
-    printf("  %-36s %u\n", "ABI Version (ABI版本)", GlobalElfHeader.e_ident[EI_ABIVERSION]);
-    printf("  %-36s %s\n", "Type (ELF文件类型)", GetElfTypeString(GlobalElfHeader.e_type));
-    printf("  %-36s %u\n", "Machine (目标架构)", GlobalElfHeader.e_machine);
-    printf("  %-36s 0x%x\n", "Version (ELF头版本)", GlobalElfHeader.e_version);
-    printf("  %-36s 0x%lx\n", "Entry point address (程序入口地址)", (unsigned long)GlobalElfHeader.e_entry);
-    printf("  %-36s %lu (bytes into file)\n", "Start of program headers (程序头表文件偏移)", (unsigned long)GlobalElfHeader.e_phoff);
-    printf("  %-36s %lu (bytes into file)\n", "Start of section headers (节区头表文件偏移)", (unsigned long)GlobalElfHeader.e_shoff);
-    printf("  %-36s 0x%x\n", "Flags (处理器相关标志)", GlobalElfHeader.e_flags);
-    printf("  %-36s %u (bytes)\n", "Size of this header (ELF头大小)", GlobalElfHeader.e_ehsize);
-    printf("  %-36s %u (bytes)\n", "Size of program headers (程序头表项大小)", GlobalElfHeader.e_phentsize);
-    printf("  %-36s %u\n", "Number of program headers (程序头表项数量)", GlobalElfHeader.e_phnum);
-    printf("  %-36s %u (bytes)\n", "Size of section headers (节区头表项大小)", GlobalElfHeader.e_shentsize);
-    printf("  %-36s %u\n", "Number of section headers (节区头表项数量)", GlobalElfHeader.e_shnum);
-    printf("  %-36s %u\n", "Section header string table index (节区名字字符串表索引)", GlobalElfHeader.e_shstrndx);
+    printf("  %s%*s %s\n", Labels[1], (int)(Width - LabelWidths[1] + 1), "", GetElfClassString(GlobalElfHeader.e_ident[EI_CLASS]));
+    printf("  %s%*s %s\n", Labels[2], (int)(Width - LabelWidths[2] + 1), "", GetElfDataString(GlobalElfHeader.e_ident[EI_DATA]));
+    printf("  %s%*s %u\n", Labels[3], (int)(Width - LabelWidths[3] + 1), "", GlobalElfHeader.e_ident[EI_VERSION]);
+    printf("  %s%*s %u\n", Labels[4], (int)(Width - LabelWidths[4] + 1), "", GlobalElfHeader.e_ident[EI_OSABI]);
+    printf("  %s%*s %u\n", Labels[5], (int)(Width - LabelWidths[5] + 1), "", GlobalElfHeader.e_ident[EI_ABIVERSION]);
+    printf("  %s%*s %s\n", Labels[6], (int)(Width - LabelWidths[6] + 1), "", GetElfTypeString(GlobalElfHeader.e_type));
+    printf("  %s%*s %u\n", Labels[7], (int)(Width - LabelWidths[7] + 1), "", GlobalElfHeader.e_machine);
+    printf("  %s%*s 0x%x\n", Labels[8], (int)(Width - LabelWidths[8] + 1), "", GlobalElfHeader.e_version);
+    printf("  %s%*s 0x%lx\n", Labels[9], (int)(Width - LabelWidths[9] + 1), "", (unsigned long)GlobalElfHeader.e_entry);
+    printf("  %s%*s %lu (bytes into file)\n", Labels[10], (int)(Width - LabelWidths[10] + 1), "", (unsigned long)GlobalElfHeader.e_phoff);
+    printf("  %s%*s %lu (bytes into file)\n", Labels[11], (int)(Width - LabelWidths[11] + 1), "", (unsigned long)GlobalElfHeader.e_shoff);
+    printf("  %s%*s 0x%x\n", Labels[12], (int)(Width - LabelWidths[12] + 1), "", GlobalElfHeader.e_flags);
+    printf("  %s%*s %u (bytes)\n", Labels[13], (int)(Width - LabelWidths[13] + 1), "", GlobalElfHeader.e_ehsize);
+    printf("  %s%*s %u (bytes)\n", Labels[14], (int)(Width - LabelWidths[14] + 1), "", GlobalElfHeader.e_phentsize);
+    printf("  %s%*s %u\n", Labels[15], (int)(Width - LabelWidths[15] + 1), "", GlobalElfHeader.e_phnum);
+    printf("  %s%*s %u (bytes)\n", Labels[16], (int)(Width - LabelWidths[16] + 1), "", GlobalElfHeader.e_shentsize);
+    printf("  %s%*s %u\n", Labels[17], (int)(Width - LabelWidths[17] + 1), "", GlobalElfHeader.e_shnum);
+    printf("  %s%*s %u\n", Labels[18], (int)(Width - LabelWidths[18] + 1), "", GlobalElfHeader.e_shstrndx);
 }
 
 static const char *GetSectionNameByOffset(ELF_Word NameOffset)
