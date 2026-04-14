@@ -55,14 +55,25 @@ void init_mem()
 
 word_t paddr_read(paddr_t addr, int len)
 {
+
   if (likely(in_pmem_range(addr, len)))
   {
-    return pmem_read(addr, len);
+    // return pmem_read(addr, len);
+    word_t PmemRead = pmem_read(addr, len);
+#ifdef CONFIG_MTRACE
+    printf("Memory Read追踪，目前的内存数据=%d", PmemRead);
+#endif
+    return PmemRead;
   }
 #ifdef CONFIG_DEVICE
   if (!in_pmem(addr))
   {
-    return mmio_read(addr, len);
+    // return mmio_read(addr, len);
+    word_t PmemRead = mmio_read(addr, len);
+#ifdef CONFIG_MTRACE
+    printf("Memory Read追踪CONFIG_DEVICE和CONFIG_MTRACE，目前的内存数据=%d", PmemRead);
+#endif
+    return PmemRead;
   }
 #endif
   out_of_bound(addr, len);
@@ -73,15 +84,24 @@ void paddr_write(paddr_t addr, int len, word_t data)
 {
   if (likely(in_pmem_range(addr, len)))
   {
+#ifdef CONFIG_MTRACE
+    printf("Memmory write追踪，目前的内容: addr=" FMT_PADDR ", len=%d, data=" FMT_WORD "\n", addr, len, data);
+#endif
     pmem_write(addr, len, data);
     return;
   }
 #ifdef CONFIG_DEVICE
   if (!in_pmem(addr))
   {
+#ifdef CONFIG_MTRACE
+    printf("Memmory write追踪CONFIG_DEVICE和CONFIG_MTRACE，目前的内容: addr=" FMT_PADDR ", len=%d, data=" FMT_WORD "\n", addr, len, data);
+#endif
     mmio_write(addr, len, data);
     return;
   }
 #endif
-  out_of_bound(addr,len);
+#ifdef CONFIG_MTRACE
+
+#endif
+  out_of_bound(addr, len);
 }

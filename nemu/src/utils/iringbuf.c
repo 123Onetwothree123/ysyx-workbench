@@ -53,7 +53,7 @@ void PrintIringbuf(vaddr_t err_pc)
         // 地址强转成字节指针的主要目的：后面既可以拿给disassemble，也可以按字节逐个打印
         uint8_t *code = (uint8_t *)&entry->instruction;
         disassemble(AsmBuf, sizeof(AsmBuf), entry->pc, code, entry->len);
-        for (size_t j = entry->len - 1; j >= 0; j--)
+        for (int j = entry->len - 1; j >= 0; j--)
         { /*
             这里按高字节到低字节的显示顺序输出是因为是RISC-V，sizeof(bytes_buf) - (p - bytes_buf)表示当前缓冲区还剩多少空间，
             p+=是把写指针往后推

@@ -170,6 +170,24 @@ config IRINGBUF_SIZE
   depends on IRINGBUF
   int "Instruction ring buffer size"
   default 16
+#自己写的
+config MTRACE
+  depends on TRACE
+  bool "Enable Memory Trace"
+  default y
+  help
+    Open Memory trace functional, but this functional need open trace
+#自己写的
+config ReadELF
+  bool "Enable ReadELF"
+  default y
+
+config FTRACE
+  depends on TRACE&&ReadELF
+  bool"Enable Function Trace"
+  default y
+  help
+    Open Function trace functional, but this functional need open trace
 
 
 config DIFFTEST
