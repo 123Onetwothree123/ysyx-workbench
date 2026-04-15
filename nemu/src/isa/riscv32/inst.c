@@ -17,9 +17,8 @@
 #include <cpu/cpu.h>
 #include <cpu/ifetch.h>
 #include <cpu/decode.h>
-#include <ftrace.h>
-
 #include <iringbuf.h>
+#include <ftrace.h>
 
 #define R(i) gpr(i)
 #define Mr vaddr_read
@@ -144,8 +143,8 @@ static int decode_exec(Decode *s)
     R(rd) = s->pc + 4;
     s->dnpc = s->pc + imm;
 #ifdef CONFIG_FTRACE
-    // rd == x0 时是纯跳转，不记录为函数调用
-    if (rd != 0) {
+    // 标准 RISC-V ABI: 只有 jal ra, offset (rd == x1) 才是函数调用
+    if (rd == 1) {
       FtraceOnCall(&GlobalFtraceState, s->pc, s->dnpc);
     }
 #endif
@@ -154,13 +153,14 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 000 ????? 11001 11", jalr, I, {
     R(rd) = s->pc + 4;
     s->dnpc = (src1 + imm) & ~1;
-    //因为jalr既可能call也可能ret
+    // 因为 jalr 既可能 call 也可能 ret
 #ifdef CONFIG_FTRACE
     int rs1 = BITS(s->isa.inst, 19, 15);
-    // 识别 ret，用jalr x0, x1, 0
+    // 标准 RISC-V ABI: ret 为 jalr x0, x1, 0
     if (rd == 0 && rs1 == 1 && imm == 0) {
       FtraceOnReturn(&GlobalFtraceState, s->pc, s->dnpc);
-    } else if (rd != 0) {
+    } else if (rd == 1) {
+      // 标准 RISC-V ABI: 只有 jalr ra, ... (rd == x1) 才是函数调用
       FtraceOnCall(&GlobalFtraceState, s->pc, s->dnpc);
     }
 #endif
