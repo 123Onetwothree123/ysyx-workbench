@@ -189,6 +189,14 @@ config FTRACE
   help
     Open Function trace functional, but this functional need open trace
 
+#自己写的
+config DTRACE
+  depends on TRACE
+  bool "Enable Device Trace"
+  default y
+  help
+    Open Device trace functional, need open trace
+
 
 config DIFFTEST
   depends on TARGET_NATIVE_ELF
