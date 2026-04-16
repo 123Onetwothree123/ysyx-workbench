@@ -385,9 +385,9 @@ BlockHeader *FindFriend(BlockHeader *block)
   就假设当前块的大小是256B对吧
   然后BlockSize=256=0x100
   如果offset=0x00
-  那么BuddyOffset = offset ^ BlockSize=0x100
+  那么FriendOffset = offset ^ BlockSize=0x100
   如果offset=0x100
-  那么BuddyOffset = offset ^ BlockSize=0x000
+  那么FriendOffset = offset ^ BlockSize=0x000
   就反正两个互相映射就正好是一对
   */
   uintptr_t FriendOffset = offset ^ BlockSize;
