@@ -68,6 +68,10 @@ void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl)
       FrameBuffer[(y + RowOffset) * ScreenWidth + (x + ColumnOffset)] = Pixels[RowOffset * w + ColumnOffset];
     }
   }
+  if (ctl->sync)
+  {
+    outl(SYNC_ADDR, 1);
+  }
 }
 
 void __am_gpu_status(AM_GPU_STATUS_T *status)
