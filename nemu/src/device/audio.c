@@ -81,7 +81,10 @@ static void audio_io_handler(uint32_t offset, int len, bool is_write)
     }
     case reg_count:
     {
+      SDL_LockAudio();                 // 防止SDL回调和主线程同时访问count，避免竞态条件导致杂音
       audio_base[reg_count] = count;
+      SDL_UnlockAudio();               // 恢复SDL音频回调
+      break;
     }
     default:
       break;
@@ -136,17 +139,20 @@ static void AudioDoInit(void)
     SDL_CloseAudio();
     AudioOpened = false;
   }
-  // 先复位，把设备的播放的状态都清空
-  count = 0;
-  rpos = 0;
-  audio_base[reg_count] = 0;
-  audio_base[reg_sbuf_size] = CONFIG_SB_SIZE;
-  memset(sbuf, 0, CONFIG_SB_SIZE);
   // 抄native的，直接初始化启动
   int ret = SDL_InitSubSystem(SDL_INIT_AUDIO);
   if (ret == 0)
   {
     SDL_OpenAudio(&s, NULL);
+    // 先复位，把设备的播放的状态都清空
+    // 必须在SDL_OpenAudio之后加锁，防止SDL回调和主线程同时访问共享状态导致杂音
+    SDL_LockAudio();
+    count = 0;
+    rpos = 0;
+    audio_base[reg_count] = 0;
+    audio_base[reg_sbuf_size] = CONFIG_SB_SIZE;
+    memset(sbuf, 0, CONFIG_SB_SIZE);
+    SDL_UnlockAudio();
     SDL_PauseAudio(0);
     AudioOpened = true;
   }
@@ -188,8 +194,10 @@ static void audio_sbuf_io_handler(uint32_t offset, int len, bool is_write)
 {
   if (is_write)
   {
+    SDL_LockAudio();                 // 防止SDL回调和主线程同时访问count，避免竞态条件导致杂音
     count += len;                    // 因为这次向STREAM_BUF中写入了len个字节，所以已用大小增加len
     assert(count <= CONFIG_SB_SIZE); // 因为已用大小不能超过目前整个流缓冲区的容量
     audio_base[reg_count] = count;
+    SDL_UnlockAudio();               // 恢复SDL音频回调
   }
 }
