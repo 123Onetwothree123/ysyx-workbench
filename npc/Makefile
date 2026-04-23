@@ -28,7 +28,7 @@ APP_CSRCS = $(CSRCS)
 # 测试模式：
 #排除普通 main.cpp
 #加入 gtest 目录下的测试文件
-TEST_APP_CSRCS = $(filter-out $(abspath ./csrc)/main.cpp, $(CSRCS)) $(TEST_CSRCS)
+TEST_APP_CSRCS = $(filter-out $(abspath ./csrc)/main.cpp $(abspath ./csrc)/memory.cpp, $(CSRCS)) $(TEST_CSRCS)
 #编译部分了
 COMMON_INCFLAGS = $(addprefix -I, $(INC_PATH) $(abspath ./csrc) $(OBJ_DIR))
 TEST_INCFLAGS = $(COMMON_INCFLAGS) $(addprefix -I, $(abspath ./csrc/gtest) $(TEST_OBJ_DIR))
