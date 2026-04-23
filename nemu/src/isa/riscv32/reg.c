@@ -18,6 +18,41 @@
 #include <cpu/cpu.h>
 
 #include <ctype.h>
+
+#ifdef CONFIG_TARGET_AM
+// 给 AM 构建提供一层 stdio 风格的输出包装，
+// 这样下面原有的格式化输出代码就不用按环境分别改写。
+#ifdef stdout
+#undef stdout
+#endif
+#ifdef fputs
+#undef fputs
+#endif
+#ifdef putchar
+#undef putchar
+#endif
+
+static int reg_table_am_fputs(const char *text, KFILE *stream)
+{
+  (void)stream;
+  while (*text != '\0')
+  {
+    putch(*text++);
+  }
+  return 0;
+}
+
+static int reg_table_am_putchar(int ch)
+{
+  putch((char)ch);
+  return (unsigned char)ch;
+}
+
+#define stdout kstdout
+#define fputs(text, stream) reg_table_am_fputs((text), (stream))
+#define putchar(ch) reg_table_am_putchar((ch))
+#endif
+
 const char *regs[] = {
     "$0", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
     "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
