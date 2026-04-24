@@ -15,12 +15,54 @@ extern "C" int pmem_read(int raddr)
     // 总是读取地址为`raddr & ~0x3u`的4字节返回
     auto addr{static_cast<uint32_t>(raddr)};
     addr &= ~0x3u; // 4字节对齐
-    if (addr == RTC_ADDR)
+    if (addr == RTC_ADDR || addr == RTC_ADDR + 4)
     {
-        auto now{std::chrono::steady_clock::now()}; // 目前的时间
-        // 单位是us微妙
+        auto now{std::chrono::steady_clock::now()};
         auto us{std::chrono::duration_cast<std::chrono::microseconds>(now - boot_time).count()};
-        return static_cast<int>(us & 0xFFFFFFFFu); // 返回低32位
+        if (addr == RTC_ADDR)
+        {
+            return static_cast<int>(us & 0xFFFFFFFFu); // 低32bit
+        }
+        if (addr == RTC_ADDR + 4)
+        {
+            return static_cast<int>((us >> 32) & 0xFFFFFFFFu); // 高32bit
+        }
+    }
+    // 年月日时分秒
+    if (addr == RTC_YEAR_ADDR || addr == RTC_MONTH_ADDR || addr == RTC_DAY_ADDR || addr == RTC_HOUR_ADDR || addr == RTC_MINUTE_ADDR || addr == RTC_SECOND_ADDR)
+    {
+        auto now{std::chrono::system_clock::now()};
+        auto days{std::chrono::floor<std::chrono::days>(now)};
+        auto ymd{std::chrono::year_month_day{days}};
+        auto hms{std::chrono::hh_mm_ss{now - days}};
+        if (addr == RTC_YEAR_ADDR)
+        {
+            return static_cast<int>(ymd.year());
+        }
+        if (addr == RTC_MONTH_ADDR)
+        {
+            return static_cast<unsigned>(ymd.month());
+        }
+        if (addr == RTC_DAY_ADDR)
+        {
+            return static_cast<unsigned>(ymd.day());
+        }
+        if (addr == RTC_HOUR_ADDR)
+        {
+            return hms.hours().count();
+        }
+        if (addr == RTC_MINUTE_ADDR)
+        {
+            return hms.minutes().count();
+        }
+        if (addr == RTC_SECOND_ADDR)
+        {
+            return hms.seconds().count();
+        }
+    }
+    if (addr == SERIAL_PORT)
+    {
+        return 0; // 串口状态，返回0表示空闲和可写
     }
     // 检查地址是否在有效范围内
     if (!check_pmem_range(addr, 4))
