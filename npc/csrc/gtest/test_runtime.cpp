@@ -101,7 +101,7 @@ extern "C" void npc_ebreak(int pc, int code) {
 
 namespace npc::test {
 
-CpuHarness::CpuHarness() : dut_(std::make_unique<Vminirvcpu>()) {
+CpuHarness::CpuHarness() : dut_(std::make_unique<VRV32E32Reg>()) {
     clear_runtime_state();
     dut_->clk = 0;
     dut_->rst = 0;

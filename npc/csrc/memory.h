@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <array>
 #include <filesystem>
+#include <expected>
+#include <string>
 #include "npc.h"
 constexpr uint32_t PMEM_SIZE = 128 * 1024 * 1024; // 抄AM的
 constexpr uint32_t CONFIG_MBASE = 0x80000000;     // 内存基地址
@@ -18,5 +20,5 @@ inline uint32_t guest_to_host(uint32_t gaddr)
     return gaddr - CONFIG_MBASE;
 }
 bool check_pmem_safe_address(uint32_t address, size_t len = 1);
-size_t load_file(const std::filesystem::path &FilePath);
+std::expected<std::size_t, std::string_view> load_file(const std::filesystem::path &FilePath);
 #endif

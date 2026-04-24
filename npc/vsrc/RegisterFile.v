@@ -7,7 +7,10 @@ module RegisterFile #(ADDR_WIDTH = 1, DATA_WIDTH = 1) (
   output [DATA_WIDTH-1:0] rdata1,
   input  [ADDR_WIDTH-1:0] raddr2,
   output [DATA_WIDTH-1:0] rdata2,
-  output [DATA_WIDTH-1:0] ebreakcode_gtest
+  output [DATA_WIDTH-1:0] ebreakcode_gtest,
+  //给sdb的
+  input [ADDR_WIDTH-1:0] debug_raddr,
+  output [DATA_WIDTH-1:0] debug_rdata
 );
   reg [DATA_WIDTH-1:0] rf [2**ADDR_WIDTH-1:0];
   always @(posedge clk) begin
@@ -16,4 +19,6 @@ module RegisterFile #(ADDR_WIDTH = 1, DATA_WIDTH = 1) (
   assign rdata1 = rf[raddr1];
   assign rdata2 = rf[raddr2];
   assign ebreakcode_gtest = rf[10];
+  //sdb的
+  assign debug_rdata = rf[debug_raddr];
 endmodule

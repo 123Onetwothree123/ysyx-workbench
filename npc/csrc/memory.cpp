@@ -6,6 +6,9 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <expected>
+#include <string>
+#include <format>
 
 std::array<uint8_t, PMEM_SIZE> pmem{};                   // 抄am拿数组当内存
 static auto boot_time{std::chrono::steady_clock::now()}; // 启动时间
@@ -132,35 +135,30 @@ bool check_pmem_safe_address(uint32_t address, size_t len)
     auto result{(address + len) <= PMEM_SIZE};
     return result;
 }
-size_t load_file(const std::filesystem::path &FilePath)
+std::expected<std::size_t, std::string_view> load_file(const std::filesystem::path &FilePath)
 {
     if (!std::filesystem::exists(FilePath))
     {
-        std::println(std::cerr, "他妈的文件路径没找到文件{}", FilePath.string());
-        std::abort();
+        return std::unexpected{std::format("他妈的文件路径没找到文件{}", FilePath.string())};
     }
     if (!std::filesystem::is_regular_file(FilePath))
     {
-        std::println(std::cerr, "fuck，不是普通文件{}", FilePath.string());
-        std::abort();
+        return std::unexpected{std::format("fuck，不是普通文件{}", FilePath.string())};
     }
     auto FileSize{std::filesystem::file_size(FilePath)};
     if (FileSize > PMEM_SIZE)
     {
-        std::println(std::cerr, "文件太大了{}", FilePath.string());
-        std::abort();
+        return std::unexpected{std::format("文件太大了{}", FilePath.string())};
     }
     std::ifstream ifs(FilePath, std::ios::binary);
     if (!ifs)
     {
-        std::println(std::cerr, "文件打不开{}", FilePath.string());
-        std::abort();
+        return std::unexpected{std::format("文件打不开{}", FilePath.string())};
     }
     ifs.read(reinterpret_cast<char *>(pmem.data()), static_cast<std::streamsize>(FileSize));
     if (!ifs)
     {
-        std::println(std::cerr, "读文件失败{}", FilePath.string());
-        std::abort();
+        return std::unexpected{std::format("读文件失败{}", FilePath.string())};
     }
     return static_cast<std::size_t>(FileSize);
 }

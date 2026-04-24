@@ -1,5 +1,5 @@
 `include "minirv.vh"
-module minirvcpu (
+module RV32E32Reg (
     input clk,
     input rst
 );
@@ -49,6 +49,9 @@ assign source_data_b = (opcode == `OPCODE_Register) ? rs2_data : immediate;
 assign is_jalr = (opcode == `OPCODE_Immediate_Bxxx) && (funct3 == 3'b000);
 assign is_jump = (opcode == `OPCODE_Jump) || is_jalr;
 assign jump_target = is_jalr ? {alu_result[31:1], 1'b0} : alu_result;
+//sdb
+wire [4:0]  sdb_debug_raddr;
+wire [31:0] sdb_debug_rdata;
 
 PC CPU_PC(
     .clk(clk),
@@ -133,7 +136,10 @@ GPR CPU_GPR(
     .Read2SELECT(rs2),
     .ReadDATA1(rs1_data),
     .ReadDATA2(rs2_data),
-    .EbreakCode_gtest(ebreak_code_gtest)
+    .EbreakCode_gtest(ebreak_code_gtest),
+    //sdb
+    .DebugRaddr(sdb_debug_raddr),
+    .DebugRdata(sdb_debug_rdata)
 );
 
 ROM_DPI_C CPU_ROM(
@@ -156,5 +162,12 @@ EBREAK_DPI_C CPU_EBREAK(
     .valid(is_ebreak_gtest),
     .pc(pc_current),
     .code(ebreak_code_gtest)
+);
+SDB_DPI_C SDB(
+    .DebugRdata(sdb_debug_rdata),
+    .DebugRaddr(sdb_debug_raddr)
+);
+PC_DPI_C PC_DPI(
+    .pc_current(pc_current)
 );
 endmodule
