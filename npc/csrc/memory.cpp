@@ -44,23 +44,23 @@ extern "C" int pmem_read(int raddr)
         }
         if (addr == RTC_MONTH_ADDR)
         {
-            return static_cast<unsigned>(ymd.month());
+            return static_cast<int>(static_cast<unsigned>(ymd.month()));
         }
         if (addr == RTC_DAY_ADDR)
         {
-            return static_cast<unsigned>(ymd.day());
+            return static_cast<int>(static_cast<unsigned>(ymd.day()));
         }
         if (addr == RTC_HOUR_ADDR)
         {
-            return hms.hours().count();
+            return static_cast<int>(hms.hours().count());
         }
         if (addr == RTC_MINUTE_ADDR)
         {
-            return hms.minutes().count();
+            return static_cast<int>(hms.minutes().count());
         }
         if (addr == RTC_SECOND_ADDR)
         {
-            return hms.seconds().count();
+            return static_cast<int>(hms.seconds().count());
         }
     }
     if (addr == SERIAL_PORT)
@@ -90,7 +90,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask)
     auto guest_addr{static_cast<uint32_t>(waddr & ~0x3u)};
     auto data{static_cast<uint32_t>(wdata)};
     auto mask{static_cast<uint8_t>(wmask)};
-    if (waddr == SERIAL_PORT)
+    if (guest_addr == SERIAL_PORT)
     {
         /*
         putchar(static_cast<char>(wdata & 0xff)); //&0xff是为了提取最低字节，屏蔽掉最高24bit
@@ -132,8 +132,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask)
 }
 bool check_pmem_safe_address(uint32_t address, size_t len)
 {
-    auto result{(address + len) <= PMEM_SIZE};
-    return result;
+    return address >= CONFIG_MBASE && (address - CONFIG_MBASE + len) <= PMEM_SIZE;
 }
 std::expected<std::size_t, std::string_view> load_file(const std::filesystem::path &FilePath)
 {

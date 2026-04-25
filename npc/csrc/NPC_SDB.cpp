@@ -93,6 +93,18 @@ void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, size_t &cycles)
                     n = TmpN; // 更新步数了
                 }
             }
+            if (npc_halted)
+            {
+                std::println("NPC已经停止运行了");
+            }
+            else
+            {
+                for (size_t i = 0; i < n && !npc_halted; ++i)
+                {
+                    step_cycle(*top);
+                    ++cycles;
+                }
+            }
         }
         else if (cmd == "c")
         {
@@ -124,15 +136,14 @@ void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, size_t &cycles)
                     if (StringView.size() >= 2 && (StringView[0] == '0' && (StringView[1] == 'x' || StringView[1] == 'X')))
                     {
                         StringView.remove_prefix(2);
-                        auto FromCharResult2{std::from_chars(StringView.data(), StringView.data() + StringView.size(), address, 10)};
-                        if (FromCharResult2.ec != std::errc())
-                        {
-                            std::println("FromCharResult2错误码不是0了，解析失败了，地址清零");
-                            address = 0; // 发现个好办法，可以拿来跳下面的if判断，能少写特殊处理代码了
-                        }
-                        if (address != 0)
+                        auto FromCharResult2{std::from_chars(StringView.data(), StringView.data() + StringView.size(), address, 16)};
+                        if (FromCharResult2.ec == std::errc())
                         {
                             NPCMemoryScan(address, static_cast<size_t>(n));
+                        }
+                        else
+                        {
+                            std::println("地址解析失败");
                         }
                     }
                 }

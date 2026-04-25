@@ -12,7 +12,7 @@ bool npc_halted = false;
 static uint32_t halt_pc{0};  // 记录停止的时候的PC
 static uint32_t halt_ret{0}; // 返回码，0是good，1是bad
 
-void reset_dut(std::unique_ptr<VRV32E32Reg> &top);    // 复位Device Under Test被测设计的
+void reset_dut(std::unique_ptr<VRV32E32Reg> &top); // 复位Device Under Test被测设计的
 
 extern "C" void npc_ebreak(int pc, int code)
 {
@@ -49,7 +49,7 @@ int main(int argc, char const *argv[])
     const auto FileSize{result.value()};
     std::println("文件加载了: {}, size = {} bytes", FilePath.string(), FileSize);
     auto top{std::make_unique<VRV32E32Reg>()}; // 管不了了复制修改以前代码，直接创建顶层的对象然后实例
-    size_t cycles{0};                        // 统计总周期数的
+    size_t cycles{0};                          // 统计总周期数的
     reset_dut(top);
     sdb_main_loop(top, cycles);
     top->final();

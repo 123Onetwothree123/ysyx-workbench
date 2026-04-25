@@ -15,5 +15,4 @@ void NPCMemoryScan(uint32_t addr, size_t count);       // 批量内存扫描
 extern "C" int NPCGetPC();
 uint32_t CPP_NpcGetPC();
 void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, size_t &cycles);
-static void step_cycle(VRV32E32Reg &top);
 #endif
