@@ -1,6 +1,6 @@
 //他妈的烦死了，他妈了个逼的，我他妈的现在看f3和f7还不够，然后实在是干不了了，问了下AIGPT5.4一般怎么做的，结果
 //你妈的告诉老子还得去再判断下是R还是I类型，所以还是得去看opcode
-`include "minirv.vh"
+`include "opcode.vh"
 module ALUControlDecoder(
     input  [1:0] ALUOp,
     input  [6:0] opcode,

@@ -1,4 +1,4 @@
-#include "memory.h"
+#include "memory.hpp"
 #include <print>
 #include <iostream>
 #include <fstream>
@@ -6,6 +6,9 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <expected>
+#include <string>
+#include <format>
 
 std::array<uint8_t, PMEM_SIZE> pmem{};                   // 抄am拿数组当内存
 static auto boot_time{std::chrono::steady_clock::now()}; // 启动时间
@@ -41,23 +44,23 @@ extern "C" int pmem_read(int raddr)
         }
         if (addr == RTC_MONTH_ADDR)
         {
-            return static_cast<unsigned>(ymd.month());
+            return static_cast<int>(static_cast<unsigned>(ymd.month()));
         }
         if (addr == RTC_DAY_ADDR)
         {
-            return static_cast<unsigned>(ymd.day());
+            return static_cast<int>(static_cast<unsigned>(ymd.day()));
         }
         if (addr == RTC_HOUR_ADDR)
         {
-            return hms.hours().count();
+            return static_cast<int>(hms.hours().count());
         }
         if (addr == RTC_MINUTE_ADDR)
         {
-            return hms.minutes().count();
+            return static_cast<int>(hms.minutes().count());
         }
         if (addr == RTC_SECOND_ADDR)
         {
-            return hms.seconds().count();
+            return static_cast<int>(hms.seconds().count());
         }
     }
     if (addr == SERIAL_PORT)
@@ -87,7 +90,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask)
     auto guest_addr{static_cast<uint32_t>(waddr & ~0x3u)};
     auto data{static_cast<uint32_t>(wdata)};
     auto mask{static_cast<uint8_t>(wmask)};
-    if (waddr == SERIAL_PORT)
+    if (guest_addr == SERIAL_PORT)
     {
         /*
         putchar(static_cast<char>(wdata & 0xff)); //&0xff是为了提取最低字节，屏蔽掉最高24bit
@@ -129,38 +132,54 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask)
 }
 bool check_pmem_safe_address(uint32_t address, size_t len)
 {
-    auto result{(address + len) <= PMEM_SIZE};
-    return result;
+    return address >= CONFIG_MBASE && (address - CONFIG_MBASE + len) <= PMEM_SIZE;
 }
-size_t load_file(const std::filesystem::path &FilePath)
+
+std::size_t load_builtin_image()
+{
+    static constexpr std::array<std::uint32_t, 5> BuiltinImage{
+        0x00000297, // auipc t0, 0
+        0x00028823, // sb zero, 16(t0)
+        0x0102c503, // lbu a0, 16(t0)
+        0x00100073, // ebreak
+        0xdeadbeef,
+    };
+
+    auto Offset{guest_to_host(RESET_VECTOR)};
+    for (const auto Word : BuiltinImage)
+    {
+        pmem[Offset++] = static_cast<std::uint8_t>((Word >> 0) & 0xffu);
+        pmem[Offset++] = static_cast<std::uint8_t>((Word >> 8) & 0xffu);
+        pmem[Offset++] = static_cast<std::uint8_t>((Word >> 16) & 0xffu);
+        pmem[Offset++] = static_cast<std::uint8_t>((Word >> 24) & 0xffu);
+    }
+    return BuiltinImage.size() * sizeof(BuiltinImage.front());
+}
+
+std::expected<std::size_t, std::string> load_file(const std::filesystem::path &FilePath)
 {
     if (!std::filesystem::exists(FilePath))
     {
-        std::println(std::cerr, "他妈的文件路径没找到文件{}", FilePath.string());
-        std::abort();
+        return std::unexpected{std::format("他妈的文件路径没找到文件{}", FilePath.string())};
     }
     if (!std::filesystem::is_regular_file(FilePath))
     {
-        std::println(std::cerr, "fuck，不是普通文件{}", FilePath.string());
-        std::abort();
+        return std::unexpected{std::format("fuck，不是普通文件{}", FilePath.string())};
     }
     auto FileSize{std::filesystem::file_size(FilePath)};
     if (FileSize > PMEM_SIZE)
     {
-        std::println(std::cerr, "文件太大了{}", FilePath.string());
-        std::abort();
+        return std::unexpected{std::format("文件太大了{}", FilePath.string())};
     }
     std::ifstream ifs(FilePath, std::ios::binary);
     if (!ifs)
     {
-        std::println(std::cerr, "文件打不开{}", FilePath.string());
-        std::abort();
+        return std::unexpected{std::format("文件打不开{}", FilePath.string())};
     }
     ifs.read(reinterpret_cast<char *>(pmem.data()), static_cast<std::streamsize>(FileSize));
     if (!ifs)
     {
-        std::println(std::cerr, "读文件失败{}", FilePath.string());
-        std::abort();
+        return std::unexpected{std::format("读文件失败{}", FilePath.string())};
     }
     return static_cast<std::size_t>(FileSize);
 }

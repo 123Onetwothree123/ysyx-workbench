@@ -1,4 +1,5 @@
 module Memory_DPI_C(
+    input clk,
     //当前周期是否真的发起了一次数据存储器访问请求，1是本周起LSU进行load或者store，0是本周起没有数据访存需求，就忽略
     //掉其他访存输入信号
     input valid,
@@ -24,12 +25,15 @@ import "DPI-C" function void pmem_write(
 always @(*) begin
   if (valid) begin // 有读写请求时
     rdata = pmem_read(raddr);
-    if (wen) begin // 有写请求时
-      pmem_write(waddr, wdata, {4'b0, wmask});
-    end
   end
   else begin
     rdata = 0;
+  end
+end
+
+always @(posedge clk) begin
+  if (valid && wen) begin
+    pmem_write(waddr, wdata, {4'b0, wmask});
   end
 end
 endmodule

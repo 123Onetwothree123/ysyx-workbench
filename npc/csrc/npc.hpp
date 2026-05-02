@@ -1,6 +1,6 @@
 // 抄nemu.h的，abstract-machine/am/src/platform/nemu/include/nemu.h
-#ifndef NPC_H
-#define NPC_H
+#ifndef NPC_HPP
+#define NPC_HPP
 #define DEVICE_BASE 0xa0000000
 #define RTC_ADDR    (DEVICE_BASE + 0x0000048)
 

@@ -1,7 +1,13 @@
-`include "minirv.vh"
-module minirvcpu (
+`include "opcode.vh"
+module RV32E32Reg (
     input clk,
-    input rst
+    input rst,
+    input        sdb_debug_clk,
+    input        sdb_pc_write_en,
+    input [31:0] sdb_pc_write_data,
+    input        sdb_gpr_write_en,
+    input [4:0]  sdb_gpr_write_addr,
+    input [31:0] sdb_gpr_write_data
 );
 wire [31:0] pc_current;
 wire [31:0] pc_next;
@@ -49,12 +55,18 @@ assign source_data_b = (opcode == `OPCODE_Register) ? rs2_data : immediate;
 assign is_jalr = (opcode == `OPCODE_Immediate_Bxxx) && (funct3 == 3'b000);
 assign is_jump = (opcode == `OPCODE_Jump) || is_jalr;
 assign jump_target = is_jalr ? {alu_result[31:1], 1'b0} : alu_result;
+//sdb
+wire [4:0]  sdb_debug_raddr;
+wire [31:0] sdb_debug_rdata;
 
 PC CPU_PC(
     .clk(clk),
     .rst(rst),
     .NextPC(pc_next),
     .PCEnable(pc_enable),
+    .DebugClk(sdb_debug_clk),
+    .DebugWriteEN(sdb_pc_write_en),
+    .DebugNextPC(sdb_pc_write_data),
     .PC(pc_current)
 );
 
@@ -133,7 +145,14 @@ GPR CPU_GPR(
     .Read2SELECT(rs2),
     .ReadDATA1(rs1_data),
     .ReadDATA2(rs2_data),
-    .EbreakCode_gtest(ebreak_code_gtest)
+    .EbreakCode_gtest(ebreak_code_gtest),
+    //sdb
+    .DebugRaddr(sdb_debug_raddr),
+    .DebugRdata(sdb_debug_rdata),
+    .DebugClk(sdb_debug_clk),
+    .DebugWaddr(sdb_gpr_write_addr),
+    .DebugWdata(sdb_gpr_write_data),
+    .DebugWriteEN(sdb_gpr_write_en)
 );
 
 ROM_DPI_C CPU_ROM(
@@ -142,6 +161,7 @@ ROM_DPI_C CPU_ROM(
 );
 
 Memory_DPI_C CPU_Memory(
+    .clk(clk),
     .valid(mem_valid),
     .wen(mem_we),
     .raddr(mem_addr),
@@ -156,5 +176,39 @@ EBREAK_DPI_C CPU_EBREAK(
     .valid(is_ebreak_gtest),
     .pc(pc_current),
     .code(ebreak_code_gtest)
+);
+SDB_DPI_C SDB(
+    .DebugRdata(sdb_debug_rdata),
+    .DebugRaddr(sdb_debug_raddr)
+);
+PC_DPI_C PC_DPI(
+    .pc_current(pc_current)
+);
+ITRACE_DPI_C ITRACE_DPI(
+    .clk(clk),
+    .rst(rst),
+    .pc(pc_current),
+    .inst(instruction),
+    .snpc(snpc),
+    .valid(pc_enable)
+);
+MTRACE_DPI_C MTRACE_DPI(
+    .clk(clk),
+    .rst(rst),
+    .wen(mem_we),
+    .AccessMemory(mem_valid),
+    .PC(pc_current),
+    .Address(mem_addr),
+    .WriteData(mem_write_data),
+    .ReadData(mem_read_data),
+    .WriteMask(mem_write_mask)
+);
+FTRACE_DPI_C FTRACE_DPI(
+    .clk(clk),
+    .rst(rst),
+    .pc(pc_current),
+    .inst(instruction),
+    .next_pc(pc_next),
+    .valid(pc_enable)
 );
 endmodule

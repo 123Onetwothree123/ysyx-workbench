@@ -1,5 +1,5 @@
 //第一层ALU译码
-`include "minirv.vh"
+`include "opcode.vh"
 module ALUOpDecoder(
     input  [6:0] opcode,
     output reg [1:0] ALUOp
