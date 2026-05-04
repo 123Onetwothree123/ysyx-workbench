@@ -1,5 +1,5 @@
 //IDU(Instruction Decode Unit): 负责对当前指令进行译码, 准备执行阶段需要使用的数据和控制信号
-`include "minirv.vh"
+`include "opcode.vh"
 module IDU(
     input [31:0] Instruction,
     output RegWrite,

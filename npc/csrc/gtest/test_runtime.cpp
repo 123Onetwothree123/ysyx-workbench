@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <print>
 
+#include "SDBDPI.hpp"
+
 namespace {
 
 constexpr std::uint32_t kPmemSize = 1024 * 1024;
@@ -103,9 +105,20 @@ namespace npc::test {
 
 CpuHarness::CpuHarness() : dut_(std::make_unique<VRV32E32Reg>()) {
     clear_runtime_state();
+    dut_->sdb_debug_clk = 0;
+    dut_->sdb_pc_write_en = 0;
+    dut_->sdb_pc_write_data = 0;
+    dut_->sdb_gpr_write_en = 0;
+    dut_->sdb_gpr_write_addr = 0;
+    dut_->sdb_gpr_write_data = 0;
     dut_->clk = 0;
     dut_->rst = 0;
     dut_->eval();
+    SDBDPISetTopScope(dut_->name(), dut_->modelName());
+}
+
+CpuHarness::~CpuHarness() {
+    dut_->final();
 }
 
 void CpuHarness::load_program(const std::span<const std::uint32_t> program_words, const std::uint32_t base_addr) {
@@ -114,8 +127,17 @@ void CpuHarness::load_program(const std::span<const std::uint32_t> program_words
     }
 }
 
+void CpuHarness::load_program(const std::initializer_list<std::uint32_t> program_words, const std::uint32_t base_addr) {
+    load_program(std::span<const std::uint32_t>{program_words.begin(), program_words.size()}, base_addr);
+}
+
 void CpuHarness::write_word(const std::uint32_t addr, const std::uint32_t value) {
     write_word_raw(addr, value);
+}
+
+void CpuHarness::write_half(const std::uint32_t addr, const std::uint16_t value) {
+    write_byte(addr, static_cast<std::uint8_t>(value & 0xffu));
+    write_byte(addr + 1, static_cast<std::uint8_t>((value >> 8) & 0xffu));
 }
 
 void CpuHarness::write_byte(const std::uint32_t addr, const std::uint8_t value) {
@@ -128,6 +150,12 @@ void CpuHarness::write_byte(const std::uint32_t addr, const std::uint8_t value) 
 
 std::uint32_t CpuHarness::read_word(const std::uint32_t addr) const {
     return read_word_raw(addr);
+}
+
+std::uint16_t CpuHarness::read_half(const std::uint32_t addr) const {
+    const auto lo = static_cast<std::uint16_t>(read_byte(addr));
+    const auto hi = static_cast<std::uint16_t>(read_byte(addr + 1));
+    return static_cast<std::uint16_t>(lo | (hi << 8));
 }
 
 std::uint8_t CpuHarness::read_byte(const std::uint32_t addr) const {
@@ -143,6 +171,12 @@ void CpuHarness::reset() {
     g_halt_pc = 0;
     g_halt_code = 0;
 
+    dut_->sdb_debug_clk = 0;
+    dut_->sdb_pc_write_en = 0;
+    dut_->sdb_pc_write_data = 0;
+    dut_->sdb_gpr_write_en = 0;
+    dut_->sdb_gpr_write_addr = 0;
+    dut_->sdb_gpr_write_data = 0;
     dut_->clk = 0;
     dut_->rst = 1;
     dut_->eval();
@@ -161,6 +195,44 @@ void CpuHarness::step() {
 
     dut_->clk = 1;
     dut_->eval();
+}
+
+void CpuHarness::pulse_debug_clock() {
+    dut_->sdb_debug_clk = 0;
+    dut_->eval();
+
+    dut_->sdb_debug_clk = 1;
+    dut_->eval();
+
+    dut_->sdb_debug_clk = 0;
+    dut_->eval();
+}
+
+void CpuHarness::debug_write_gpr(const std::uint8_t reg, const std::uint32_t value) {
+    dut_->sdb_gpr_write_addr = reg & 0x1fu;
+    dut_->sdb_gpr_write_data = value;
+    dut_->sdb_gpr_write_en = 1;
+    pulse_debug_clock();
+    dut_->sdb_gpr_write_en = 0;
+    dut_->eval();
+}
+
+void CpuHarness::debug_write_pc(const std::uint32_t pc) {
+    dut_->sdb_pc_write_data = pc;
+    dut_->sdb_pc_write_en = 1;
+    pulse_debug_clock();
+    dut_->sdb_pc_write_en = 0;
+    dut_->eval();
+}
+
+std::uint32_t CpuHarness::debug_read_gpr(const std::uint8_t reg) {
+    static_cast<void>(CPP_NPCGetGPR(reg));
+    dut_->eval();
+    return CPP_NPCGetGPR(reg);
+}
+
+std::uint32_t CpuHarness::debug_read_pc() {
+    return CPP_NpcGetPC();
 }
 
 RunResult CpuHarness::run(const std::uint64_t max_cycles) {

@@ -1,4 +1,4 @@
-`include "minirv.vh"
+`include "opcode.vh"
 module ImmediateGenerator(
     input  [31:0] Instruction,
     output reg [31:0] Immediate

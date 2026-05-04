@@ -1,4 +1,4 @@
-#include "memory.h"
+#include "memory.hpp"
 #include <print>
 #include <iostream>
 #include <fstream>
@@ -134,7 +134,29 @@ bool check_pmem_safe_address(uint32_t address, size_t len)
 {
     return address >= CONFIG_MBASE && (address - CONFIG_MBASE + len) <= PMEM_SIZE;
 }
-std::expected<std::size_t, std::string_view> load_file(const std::filesystem::path &FilePath)
+
+std::size_t load_builtin_image()
+{
+    static constexpr std::array<std::uint32_t, 5> BuiltinImage{
+        0x00000297, // auipc t0, 0
+        0x00028823, // sb zero, 16(t0)
+        0x0102c503, // lbu a0, 16(t0)
+        0x00100073, // ebreak
+        0xdeadbeef,
+    };
+
+    auto Offset{guest_to_host(RESET_VECTOR)};
+    for (const auto Word : BuiltinImage)
+    {
+        pmem[Offset++] = static_cast<std::uint8_t>((Word >> 0) & 0xffu);
+        pmem[Offset++] = static_cast<std::uint8_t>((Word >> 8) & 0xffu);
+        pmem[Offset++] = static_cast<std::uint8_t>((Word >> 16) & 0xffu);
+        pmem[Offset++] = static_cast<std::uint8_t>((Word >> 24) & 0xffu);
+    }
+    return BuiltinImage.size() * sizeof(BuiltinImage.front());
+}
+
+std::expected<std::size_t, std::string> load_file(const std::filesystem::path &FilePath)
 {
     if (!std::filesystem::exists(FilePath))
     {
