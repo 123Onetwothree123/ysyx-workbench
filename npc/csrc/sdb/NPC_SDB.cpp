@@ -1,6 +1,7 @@
 #include "NPC_SDB.hpp"
 #include "SDBDPI.hpp"
 #include "command/SDBCommandRegistry.hpp"
+#include "command/SDBCommandUtils.hpp"
 #include <iostream>
 #include <print>
 #include <string>
@@ -12,17 +13,6 @@
 
 // 全局状态，true就是表示NPC停止，是EBREAK_DPI-C来设置
 extern bool npc_halted;
-
-namespace
-{
-void step_cycle(VRV32E32Reg &top)
-{
-    top.clk = 0;
-    top.eval();
-    top.clk = 1;
-    top.eval();
-}
-} // namespace
 
 void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, size_t &cycles, bool batch_mode)
 {
@@ -54,7 +44,7 @@ void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, size_t &cycles, bool batch
 #else
     while (!Verilated::gotFinish() && !npc_halted)
     {
-        step_cycle(*top);
+        SDBStepCycle(*top);
         ++cycles;
     }
 #endif

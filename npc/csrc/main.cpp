@@ -10,8 +10,10 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include "difftest.hpp"
 #include "memory.hpp"
 #include "NPC_SDB.hpp"
+#include "SDBDPI.hpp"
 #include "trace.hpp"
 
 bool npc_halted = false;
@@ -26,6 +28,7 @@ namespace
     {
         std::optional<std::filesystem::path> image_file{};
         std::optional<std::filesystem::path> elf_file{};
+        std::optional<std::filesystem::path> diff_ref_so{};
         bool ftrace_enabled{true};
         bool batch_mode{false};
     };
@@ -61,6 +64,18 @@ namespace
             else if (arg == "--batch" || arg == "-b")
             {
                 options.batch_mode = true;
+            }
+            else if (arg == "--diff")
+            {
+                if (i + 1 >= argc)
+                {
+                    return std::unexpected{"--diff 需要跟一个NEMU动态库路径"};
+                }
+                options.diff_ref_so = std::filesystem::path{argv[++i]};
+            }
+            else if (arg.starts_with("--diff="))
+            {
+                options.diff_ref_so = std::filesystem::path{std::string{arg.substr(7)}};
             }
             else if (arg.starts_with("-"))
             {
@@ -151,6 +166,7 @@ int main(int argc, char const *argv[])
         return 1;
     }
     Verilated::commandArgs(argc, argv);
+    std::size_t image_size{0};
     if (options->image_file)
     {
         const auto result{load_file(*options->image_file)};
@@ -159,12 +175,13 @@ int main(int argc, char const *argv[])
             std::println(std::cerr, "{}", result.error());
             return 1;
         }
-        std::println("文件加载了: {}, size = {} bytes", options->image_file->string(), result.value());
+        image_size = result.value();
+        std::println("文件加载了: {}, size = {} bytes", options->image_file->string(), image_size);
     }
     else
     {
-        const auto BuiltinImageSize{load_builtin_image()};
-        std::println("没有指定镜像，使用内置镜像，size = {} bytes", BuiltinImageSize);
+        image_size = load_builtin_image();
+        std::println("没有指定镜像，使用内置镜像，size = {} bytes", image_size);
     }
     auto trace_init{init_trace_from_cli(*options)};
     if (!trace_init)
@@ -176,6 +193,13 @@ int main(int argc, char const *argv[])
     auto top{std::make_unique<VRV32E32Reg>()}; // 管不了了复制修改以前代码，直接创建顶层的对象然后实例
     size_t cycles{0};                          // 统计总周期数的
     reset_dut(top);
+    SDBDPISetTopScope(top->name(), top->modelName());
+    auto difftest_init{DifftestInitialize(options->diff_ref_so, image_size)};
+    if (!difftest_init)
+    {
+        std::println(std::cerr, "{}", difftest_init.error());
+        return 1;
+    }
     sdb_main_loop(top, cycles, options->batch_mode);
     top->final();
     if (npc_halted)

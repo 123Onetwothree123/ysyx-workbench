@@ -49,6 +49,7 @@ CONFIG_ITRACE ?= n
 CONFIG_MTRACE ?= n
 CONFIG_FTRACE ?= n
 CONFIG_SDB    ?= n
+CONFIG_DIFFTEST ?= n
 ifeq ($(CONFIG_ITRACE),y)
 COMMON_CFLAGS += -DCONFIG_ITRACE
 endif
@@ -61,7 +62,11 @@ endif
 ifeq ($(CONFIG_SDB),y)
 COMMON_CFLAGS += -DCONFIG_SDB
 endif
-CONFIG_FLAGS := CONFIG_ITRACE=$(CONFIG_ITRACE) CONFIG_MTRACE=$(CONFIG_MTRACE) CONFIG_FTRACE=$(CONFIG_FTRACE) CONFIG_SDB=$(CONFIG_SDB)
+ifeq ($(CONFIG_DIFFTEST),y)
+COMMON_CFLAGS += -DCONFIG_DIFFTEST
+COMMON_LDFLAGS += -ldl
+endif
+CONFIG_FLAGS := CONFIG_ITRACE=$(CONFIG_ITRACE) CONFIG_MTRACE=$(CONFIG_MTRACE) CONFIG_FTRACE=$(CONFIG_FTRACE) CONFIG_SDB=$(CONFIG_SDB) CONFIG_DIFFTEST=$(CONFIG_DIFFTEST)
 # 测试模式：
 #排除普通 main.cpp
 #加入 gtest 目录下的测试文件
@@ -105,7 +110,7 @@ $(BIN): $(OBJ_DIR)/.std_module_stamp $(CONFIG_STAMP) $(VSRCS) $(APP_CSRCS)
 		-O3 --x-assign fast --x-initial fast --noassert \
 		--top-module $(TOPNAME) $(VSRCS) $(APP_CSRCS) \
 		$(addprefix -CFLAGS , $(COMMON_CFLAGS)) \
-		$(addprefix -LDFLAGS , $(CAPSTONE_LIB) -lreadline) \
+		$(addprefix -LDFLAGS , $(CAPSTONE_LIB) -lreadline $(COMMON_LDFLAGS)) \
 		--Mdir $(OBJ_DIR) --exe -o $(abspath $(BIN))
 
 #GTest模式编译
@@ -122,7 +127,7 @@ test-build: $(TEST_OBJ_DIR)/.std_module_stamp $(VSRCS) $(TEST_APP_CSRCS)
 all: default
 
 run: $(BIN)
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
 GTEST_FILTER ?= *
 GTEST_REPEAT ?= 1

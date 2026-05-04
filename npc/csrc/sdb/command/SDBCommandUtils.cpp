@@ -2,6 +2,8 @@
 
 #include <VRV32E32Reg.h>
 
+#include "difftest.hpp"
+
 std::string_view SDBTrimLeft(std::string_view Text)
 {
     auto First{Text.find_first_not_of(" \t")}; // 找到第一个非空白字符的位置
@@ -32,7 +34,7 @@ std::pair<std::string_view, std::string_view> SDBSplitCommandLine(std::string_vi
     }
     const auto Name{Line.substr(0, CommandEnd)}; // get到命令名
     Line.remove_prefix(CommandEnd);              // 本来不知道怎么做，然后GitHub copilot给的是可以移除命令名和它后面的空白，剩下的就是参数部分
-    return {Name, SDBTrimLeft(Line)};
+    return {Name, SDBTrimRight(SDBTrimLeft(Line))}; // 去掉参数部分的前导和尾部空白
 }
 void SDBStepCycle(VRV32E32Reg &Top)
 {
@@ -40,6 +42,7 @@ void SDBStepCycle(VRV32E32Reg &Top)
     Top.eval();
     Top.clk = 1;
     Top.eval();
+    DifftestStep(Top);
 }
 
 bool SDBValidateExpressionSyntax(std::string_view Expression)

@@ -43,18 +43,32 @@ wire [31:0] load_data;
 wire        addr_misaligned;
 wire        rf_write_en;
 wire [31:0] rf_write_data;
-wire        is_jump;
+wire        is_jal;
 wire        is_jalr;
+wire        is_branch;
+wire        branch_taken;
 wire        is_ebreak_gtest;
-wire [31:0] jump_target;
+wire [31:0] branch_target;
+wire [31:0] jal_target;
+wire [31:0] jalr_target;
+wire        pc_redirect;
+wire [31:0] pc_redirect_target;
 wire [6:0]  opcode = instruction[6:0];
 wire [2:0]  funct3 = instruction[14:12];
+wire        is_lui = (opcode == `OPCODE_UpperImmediate_lui);
 
-assign source_data_a = ((opcode == `OPCODE_UpperImmediate_auipc) || (opcode == `OPCODE_Jump)) ? pc_current : rs1_data;
+assign source_data_a = is_lui ? 32'b0 :
+                       (((opcode == `OPCODE_UpperImmediate_auipc) || (opcode == `OPCODE_Jump)) ? pc_current : rs1_data);
 assign source_data_b = (opcode == `OPCODE_Register) ? rs2_data : immediate;
+assign is_jal = (opcode == `OPCODE_Jump);
 assign is_jalr = (opcode == `OPCODE_Immediate_Bxxx) && (funct3 == 3'b000);
-assign is_jump = (opcode == `OPCODE_Jump) || is_jalr;
-assign jump_target = is_jalr ? {alu_result[31:1], 1'b0} : alu_result;
+assign is_branch = (opcode == `OPCODE_Branch);
+assign branch_target = pc_current + immediate;
+assign jal_target = alu_result;
+assign jalr_target = {alu_result[31:1], 1'b0};
+assign pc_redirect = is_jalr || is_jal || branch_taken;
+assign pc_redirect_target = is_jalr ? jalr_target :
+                            (is_jal ? jal_target : branch_target);
 //sdb
 wire [4:0]  sdb_debug_raddr;
 wire [31:0] sdb_debug_rdata;
@@ -102,6 +116,14 @@ EXU CPU_EXU(
     .ALUResult(alu_result)
 );
 
+BranchComparator CPU_BRANCH_COMP(
+    .A(rs1_data),
+    .B(rs2_data),
+    .Funct3(funct3),
+    .IsBranch(is_branch),
+    .Taken(branch_taken)
+);
+
 LSU CPU_LSU(
     .MemValid(mem_valid),
     .MemWrite(mem_write),
@@ -130,8 +152,8 @@ WBU CPU_WBU(
 
 NPC CPU_NPC(
     .SNPC(snpc),
-    .ALUResult(jump_target),
-    .IsJump(is_jump),
+    .RedirectTarget(pc_redirect_target),
+    .Redirect(pc_redirect),
     .NextPC(pc_next),
     .PCEnable(pc_enable)
 );

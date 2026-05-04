@@ -25,7 +25,7 @@ TEST(SDBCommandUtilsTest, TrimSplitAndExpressionSyntaxHandleShellLikeInput) {
 
     const auto [name, args] = SDBSplitCommandLine(" \t x  4 0x80000000 ");
     EXPECT_EQ(name, "x");
-    EXPECT_EQ(args, "4 0x80000000 ");
+    EXPECT_EQ(args, "4 0x80000000");
 
     const auto [single_name, single_args] = SDBSplitCommandLine("q");
     EXPECT_EQ(single_name, "q");
