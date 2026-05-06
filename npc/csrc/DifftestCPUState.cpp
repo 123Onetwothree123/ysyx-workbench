@@ -8,7 +8,7 @@ std::uint32_t DifftestCPUState::GetGPR(std::size_t Index) const
 {
     if (Index >= gpr.size())
     {
-        throw std::out_of_range{"DifftestCPUState::GetGPR: Index out of range"};
+        throw std::out_of_range{"DifftestCPUState::GetGPR: 索引超出范围"};
     }
     return gpr[Index];
 }
@@ -17,7 +17,7 @@ void DifftestCPUState::SetGPR(std::size_t Index, std::uint32_t Value)
 {
     if (Index >= gpr.size())
     {
-        throw std::out_of_range{"DifftestCPUState::SetGPR: Index out of range"};
+        throw std::out_of_range{"DifftestCPUState::SetGPR: 索引超出范围"};
     }
     gpr[Index] = Value;
 }
@@ -53,7 +53,7 @@ bool DifftestCPUState::CheckRegs(const DifftestCPUState &DUT) const
         if (gpr[Index] != DUT.gpr[Index])
         {
             std::println(stderr,
-                         "DiffTest mismatch: x{} ref = 0x{:08x}, dut = 0x{:08x}, dut pc = 0x{:08x}",
+                         "DiffTest 不匹配: x{} 参考实现 = 0x{:08x}, DUT = 0x{:08x}, DUT pc = 0x{:08x}",
                          Index, gpr[Index], DUT.gpr[Index], DUT.pc);
             return false;
         }
@@ -61,7 +61,7 @@ bool DifftestCPUState::CheckRegs(const DifftestCPUState &DUT) const
     if (pc != DUT.pc)
     {
         std::println(stderr,
-                     "DiffTest mismatch: pc ref = 0x{:08x}, dut = 0x{:08x}",
+                     "DiffTest 不匹配: pc 参考实现 = 0x{:08x}, DUT = 0x{:08x}",
                      pc, DUT.pc);
         return false;
     }
