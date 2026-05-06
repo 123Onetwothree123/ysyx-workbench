@@ -15,6 +15,12 @@
 
 #include <isa.h>
 #include <memory/paddr.h>
+#include <stdlib.h>
+#include <locale.h>
+
+#include <iringbuf.h>
+#include <ftrace.h>
+#include <readelf.h>
 
 void init_rand();
 void init_log(const char *log_file);
@@ -37,6 +43,13 @@ static void welcome()
   // assert(0);
 }
 
+#ifdef CONFIG_FTRACE
+static void FtraceCleanup(void)
+{
+  FtraceStateDestroy(&GlobalFtraceState);
+}
+#endif
+
 #ifndef CONFIG_TARGET_AM
 #include <getopt.h>
 
@@ -45,6 +58,8 @@ void sdb_set_batch_mode();
 static char *log_file = NULL;
 static char *diff_so_file = NULL;
 static char *img_file = NULL;
+// 自己加的
+static char *elf_file = NULL;
 static int difftest_port = 1234;
 
 static long load_img()
@@ -79,6 +94,8 @@ static int parse_args(int argc, char *argv[])
       {"diff", required_argument, NULL, 'd'},
       {"port", required_argument, NULL, 'p'},
       {"help", no_argument, NULL, 'h'},
+      // 自己加的
+      {"elf", required_argument, NULL, 'e'},
       {0, 0, NULL, 0},
   };
   int o;
@@ -98,6 +115,10 @@ static int parse_args(int argc, char *argv[])
     case 'd':
       diff_so_file = optarg;
       break;
+    // 自己加的
+    case 'e':
+      elf_file = optarg;
+      break;
     case 1:
       img_file = optarg;
       return 0;
@@ -107,6 +128,7 @@ static int parse_args(int argc, char *argv[])
       printf("\t-l,--log=FILE           output log to FILE\n");
       printf("\t-d,--diff=REF_SO        run DiffTest with reference REF_SO\n");
       printf("\t-p,--port=PORT          run DiffTest with port PORT\n");
+      printf("\t-e,--elf=FILE           为ftrace加载ELF符号\n");
       printf("\n");
       exit(0);
     }
@@ -120,6 +142,8 @@ void init_monitor(int argc, char *argv[])
 
   /* Parse arguments. */
   parse_args(argc, argv);
+
+  setlocale(LC_CTYPE, "");
 
   /* Set random seed. */
   init_rand();
@@ -145,8 +169,20 @@ void init_monitor(int argc, char *argv[])
   /* Initialize the simple debugger. */
   init_sdb();
 
-  IFDEF(CONFIG_ITRACE, init_disasm());
+  // 自己的函数
+  IringbufInitialization();
+#if defined(CONFIG_ITRACE) || defined(CONFIG_IQUEUE) || defined(CONFIG_IRINGBUF)
+  init_disasm();
+#endif
+#ifdef CONFIG_ReadELF
+  Assert(elf_file != NULL, "FTRACE需要一个ELF文件，使用--elf=FILE指定");
+  Assert(ReadelfInitialization(elf_file), "从ELF文件'%s'初始化失败", elf_file);
+#endif
 
+#ifdef CONFIG_FTRACE
+  Assert(FtraceStateInit(&GlobalFtraceState), "FTRACE初始化失败");
+  atexit(FtraceCleanup);
+#endif
   /* Display welcome message. */
   welcome();
 }

@@ -19,8 +19,15 @@
 #include <readline/history.h>
 #include "sdb.h"
 #include <memory/paddr.h>
+#include <iringbuf.h>
+#include <readelf.h>
+#include <ftrace.h>
 
 static int is_batch_mode = false;
+
+#ifdef CONFIG_FTRACE
+extern FtraceState GlobalFtraceState;
+#endif
 
 void init_regex();
 void init_wp_pool();
@@ -123,6 +130,10 @@ static int cmd_history(char *args);
 // 设置寄存器或者内存
 static int cmd_set(char *args);
 
+static int cmd_iringbuf(char *args);
+static int cmd_readelf(char *args);
+static int cmd_ftrace(char *args);
+
 static struct
 {
   const char *name;
@@ -144,6 +155,9 @@ static struct
     {"clear", "清除终端屏幕", cmd_clear},
     {"history", "显示命令历史", cmd_history},
     {"set", "设置寄存器/内存，当前只支持：set reg <name> <expr>", cmd_set},
+    {"iringbuf", "打印最近记录的指令环形缓冲区", cmd_iringbuf},
+    {"readelf", "查看elf信息的", cmd_readelf},
+    {"ftrace", "开函数跟踪的", cmd_ftrace},
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -716,6 +730,94 @@ static int cmd_set(char *args)
     }
   }
   return 0;
+}
+
+static int cmd_iringbuf(char *args)
+{
+  if (args != NULL)
+  {
+    printf("用法：iringbuf\n");
+    return 0;
+  }
+  PrintIringbuf(cpu.pc);
+  return 0;
+}
+static int cmd_readelf(char *args)
+{
+  args = parse_args(args, true);
+  if (args == NULL || *args == '\0')
+  {
+    printf("用法：readelf -h | -S | -s | -a\n");
+    return 0;
+  }
+  if (strcmp(args, "-h") == 0)
+  {
+    PrintElfFileHeader();
+    return 0;
+  }
+  if (strcmp(args, "-S") == 0)
+  {
+    PrintElfSectionHeaders();
+    return 0;
+  }
+  if (strcmp(args, "-s") == 0)
+  {
+    PrintElfSymbols();
+    return 0;
+  }
+  if (strcmp(args, "-a") == 0)
+  {
+    PrintElfFileHeader();
+    PrintElfSectionHeaders();
+    PrintElfSymbols();
+    return 0;
+  }
+  printf("readelf参数无效：%s\n", args);
+  printf("用法：readelf -h | -S | -s | -a\n");
+  return 0;
+}
+static int cmd_ftrace(char *args)
+{
+  args = parse_args(args, true);
+  if (args == NULL || *args == '\0')
+  {
+    printf("用法：ftrace on | off | status | now | history\n");
+    return 0;
+  }
+#ifndef CONFIG_FTRACE
+  printf("FTRACE没有开启，请在menuconfig里打开CONFIG_FTRACE\n");
+  return 0;
+#else
+  if (strcmp(args, "on") == 0)
+  {
+    FtraceEnable(&GlobalFtraceState);
+    printf("ftrace: 已开启\n");
+    return 0;
+  }
+  if (strcmp(args, "off") == 0)
+  {
+    FtraceDisable(&GlobalFtraceState);
+    printf("ftrace: 已关闭\n");
+    return 0;
+  }
+  if (strcmp(args, "status") == 0)
+  {
+    FtracePrintStatus(&GlobalFtraceState);
+    return 0;
+  }
+  if (strcmp(args, "now") == 0)
+  {
+    FtracePrintCurrentStack(&GlobalFtraceState);
+    return 0;
+  }
+  if (strcmp(args, "history") == 0)
+  {
+    FtracePrintHistory(&GlobalFtraceState);
+    return 0;
+  }
+  printf("参数非法\n");
+  return 0;
+#endif
 }
 bool check_array_bounds(int index, int array_size)
 {

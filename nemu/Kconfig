@@ -158,6 +158,45 @@ config WATCHPOINT
   help
     Enable watchpoint functionality to monitor expression values.
     When disabled, improves performance by skipping watchpoint checks.
+#IRINGBUF和IRINGBUF_SIZE也是我自己写的
+config IRINGBUF
+  depends on TRACE && TARGET_NATIVE_ELF && ENGINE_INTERPRETER
+  bool "Enable instruction ring buffer"
+  default y
+  help
+    Record the latest executed instructions in a ring buffer and
+    print them when NEMU aborts.
+config IRINGBUF_SIZE
+  depends on IRINGBUF
+  int "Instruction ring buffer size"
+  default 16
+#自己写的
+config MTRACE
+  depends on TRACE
+  bool "Enable Memory Trace"
+  default y
+  help
+    Open Memory trace functional, but this functional need open trace
+#自己写的
+config ReadELF
+  bool "Enable ReadELF"
+  default y
+
+config FTRACE
+  depends on TRACE&&ReadELF
+  bool"Enable Function Trace"
+  default y
+  help
+    Open Function trace functional, but this functional need open trace
+
+#自己写的
+config DTRACE
+  depends on TRACE
+  bool "Enable Device Trace"
+  default y
+  help
+    Open Device trace functional, need open trace
+
 
 config DIFFTEST
   depends on TARGET_NATIVE_ELF

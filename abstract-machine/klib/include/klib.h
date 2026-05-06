@@ -4,6 +4,19 @@
 #include <am.h>
 #include <stddef.h>
 #include <stdarg.h>
+/*
+https://git.musl-libc.org/cgit/musl/commit/include/stdio.h?id=400c5e5c8307a2ebe44ef1f203f5a15669f20347
+改的，他妈的，来骗来偷袭我一个19岁的老东西
+*/
+#ifndef __restrict
+#if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
+#define __restrict __restrict__
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#define __restrict restrict
+#else
+#define __restrict
+#endif
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,8 +25,8 @@ extern "C" {
 //#define __NATIVE_USE_KLIB__
 
 //自己写的
-typedef struct FILE FILE;
-extern FILE *stdout;
+typedef struct FILE KFILE;//你妈的傻逼io.h，被迫改名FILE为KFILE
+extern KFILE *kstdout;
 
 // string.h
 void  *memset    (void *s, int c, size_t n);
@@ -42,8 +55,8 @@ int    snprintf  (char *str, size_t size, const char *format, ...);
 int    vsprintf  (char *str, const char *format, va_list ap);
 int    vsnprintf (char *str, size_t size, const char *format, va_list ap);
 //自己写的
-int vfprintf(FILE *restrict stream, const char *restrict format, va_list ap);
-int fprintf(FILE *restrict stream, const char *restrict format, ...);
+int kvfprintf(KFILE *__restrict stream, const char *__restrict format, va_list ap);
+int kfprintf(KFILE *__restrict stream, const char *__restrict format, ...);
 
 // assert.h
 #ifdef NDEBUG

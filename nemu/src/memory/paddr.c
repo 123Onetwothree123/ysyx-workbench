@@ -55,14 +55,25 @@ void init_mem()
 
 word_t paddr_read(paddr_t addr, int len)
 {
+
   if (likely(in_pmem_range(addr, len)))
   {
-    return pmem_read(addr, len);
+    word_t ret = pmem_read(addr, len);
+#ifdef CONFIG_MTRACE
+    Log("mtrace 读内存追踪：pc = " FMT_WORD ", addr = " FMT_PADDR ", len = %d, data = " FMT_WORD,
+        cpu.pc, addr, len, ret);
+#endif
+    return ret;
   }
 #ifdef CONFIG_DEVICE
   if (!in_pmem(addr))
   {
-    return mmio_read(addr, len);
+    word_t ret = mmio_read(addr, len);
+#ifdef CONFIG_MTRACE
+    Log("mtrace 读内存追踪(CONFIG_DEVICE)：pc = " FMT_WORD ", addr = " FMT_PADDR ", len = %d, data = " FMT_WORD,
+        cpu.pc, addr, len, ret);
+#endif
+    return ret;
   }
 #endif
   out_of_bound(addr, len);
@@ -73,15 +84,23 @@ void paddr_write(paddr_t addr, int len, word_t data)
 {
   if (likely(in_pmem_range(addr, len)))
   {
+#ifdef CONFIG_MTRACE
+    Log("mtrace写内存追踪：pc = " FMT_WORD ", addr = " FMT_PADDR ", len = %d, data = " FMT_WORD,
+        cpu.pc, addr, len, data);
+#endif
     pmem_write(addr, len, data);
     return;
   }
 #ifdef CONFIG_DEVICE
   if (!in_pmem(addr))
   {
+#ifdef CONFIG_MTRACE
+    Log("mtrace写内存追踪(CONFIG_DEVICE)：pc = " FMT_WORD ", addr = " FMT_PADDR ", len = %d, data = " FMT_WORD,
+        cpu.pc, addr, len, data);
+#endif
     mmio_write(addr, len, data);
     return;
   }
 #endif
-  out_of_bound(addr,len);
+  out_of_bound(addr, len);
 }

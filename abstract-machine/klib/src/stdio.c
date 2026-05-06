@@ -44,6 +44,7 @@ static FILE __stdout_FILE = {
     .err = 0,
 };
 FILE *stdout = &__stdout_FILE;
+KFILE *kstdout = (KFILE *)&__stdout_FILE;
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 // 自己写的
@@ -56,9 +57,9 @@ int vfprintf(FILE *f, const char *fmt, va_list ap);
 // vfprintf和write之间的中间层，就反正是vfprintf不直接碰sn_write，然后具体怎么写就直接让f->write决定
 static int file_write(FILE *f, const void *buf, size_t len);
 static int file_putc(FILE *f, char ch);       // file_write的1字节包装
-//static int file_pad(FILE *f, char ch, int n); // 连续输出多个填充字符
+static int file_pad(FILE *f, char ch, int n); // 连续输出多个填充字符
 // 负责把一个无符号整数转成字符串，但先倒着存，x是待转换的数值，base是基数，buf是缓冲区，返回 int 类型的实际写入字符个数，即数字的位数
-// static int ull_to_rev(unsigned long long x, unsigned base, char *buf);
+static int ull_to_rev(unsigned long long x, unsigned base, char *buf);
 /*
 太长了，我先用多行注释来记录一下，以免忘记
 目的：以unsigned long long形式传入，将一个无符号整数格式化成指定进制、指定宽度、带前缀、支持负数符号等，并写入文件流
@@ -69,13 +70,13 @@ zero_pad：是否用0填充
 prefix/prefix_len：比如%p需要"0x"
 negative：是否要先输出-
 */
-// static int file_put_uint(FILE *f, unsigned long long x, unsigned base, int width, int zero_pad, const char *prefix, int prefix_len, int negative);
+static int file_put_uint(FILE *f, unsigned long long x, unsigned base, int width, int zero_pad, const char *prefix, int prefix_len, int negative);
 //  解析十进制宽度，比如%08x这里里面的这个8，%123d的这个123，然后因为传入的是fmt指针的地址，所以函数内部可以一边读一边推进指针
-// static int parse_width(const char **ps);
+static int parse_width(const char **ps);
 static int printf_core(FILE *f, const char *fmt, va_list *ap);
-static int print_str(FILE *f, const char *s);
-static int print_uint(FILE *f, unsigned long long x, unsigned base);
-static int print_int(FILE *f, long long x);
+static int print_str(FILE *f, const char *s, int width);
+static int print_uint(FILE *f, unsigned long long x, unsigned base, int width, int zero_pad);
+static int print_int(FILE *f, long long x, int width, int zero_pad);
 static size_t console_write(FILE *f, const unsigned char *s, size_t l);
 int fprintf(FILE *stream, const char *fmt, ...);
 
@@ -196,7 +197,6 @@ static int file_putc(FILE *f, char ch)
 {
   return file_write(f, &ch, 1);
 }
-/*
 static int file_pad(FILE *f, char ch, int n)
 {
   while (n-- > 0)
@@ -206,13 +206,11 @@ static int file_pad(FILE *f, char ch, int n)
   }
   return 0;
 }
-  */
-/*
 static int ull_to_rev(unsigned long long x, unsigned base, char *buf)
 {
   static const char dig[] = "0123456789abcdef"; // 这是为了既支持2进制，也支持16进制
   int n = 0;                                    // 拿来记录已生成的字符数的
-  //他妈的用dowhile是为了保证即使x是0，也会至少执行一次循环，将'0'写入缓冲区，目的就是为了到时候可以将0转换为字符串
+  // 他妈的用dowhile是为了保证即使x是0，也会至少执行一次循环，将'0'写入缓冲区，目的就是为了到时候可以将0转换为字符串
   do
   {
     buf[n++] = dig[x % base]; // x % base是为了取出当前最低位数字，就是0到base-1之间
@@ -220,8 +218,6 @@ static int ull_to_rev(unsigned long long x, unsigned base, char *buf)
   } while (x != 0);
   return n;
 }
-*/
-/*
 static int file_put_uint(FILE *f, unsigned long long x, unsigned base, int width, int zero_pad, const char *prefix, int prefix_len, int negative)
 {
   // char tmp[32];                                       // 缓冲区，用于存放转换后的数字字符，但是得是倒序的
@@ -270,8 +266,6 @@ static int file_put_uint(FILE *f, unsigned long long x, unsigned base, int width
   }
   return 0;
 }
-*/
-/*
 static int parse_width(const char **ps)
 {
   int width = 0;
@@ -283,12 +277,20 @@ static int parse_width(const char **ps)
   }
   return width;
 }
-*/
-static int print_str(FILE *f, const char *s)
+static int print_str(FILE *f, const char *s, int width)
 {
+  int len = 0;
   if (s == NULL)
   {
     s = "(null)";
+  }
+  while (s[len])
+  {
+    len++;
+  }
+  if (width > len && file_pad(f, ' ', width - len) < 0)
+  {
+    return -1;
   }
   while (*s)
   {
@@ -299,41 +301,26 @@ static int print_str(FILE *f, const char *s)
   }
   return 0;
 }
-static int print_uint(FILE *f, unsigned long long x, unsigned base)
+static int print_uint(FILE *f, unsigned long long x, unsigned base, int width, int zero_pad)
 {
-  static const char digits[] = "0123456789abcdef";
-  char buf[32];
-  int n = 0;
-  do
-  {
-    buf[n++] = digits[x % base];
-    x /= base;
-  } while (x != 0);
-  while (n > 0)
-  {
-    if (file_putc(f, buf[--n]) < 0)
-    {
-      return -1;
-    }
-  }
-  return 0;
+  return file_put_uint(f, x, base, width, zero_pad, NULL, 0, 0);
 }
-static int print_int(FILE *f, long long x)
+static int print_int(FILE *f, long long x, int width, int zero_pad)
 {
   if (x < 0)
   {
-    if (file_putc(f, '-') < 0)
-    {
-      return -1;
-    }
-    return print_uint(f, 0ull - (unsigned long long)x, 10);
+    return file_put_uint(f, 0ull - (unsigned long long)x, 10, width, zero_pad, NULL, 0, 1);
   }
-  return print_uint(f, (unsigned long long)x, 10);
+  return file_put_uint(f, (unsigned long long)x, 10, width, zero_pad, NULL, 0, 0);
 }
 static int printf_core(FILE *f, const char *fmt, va_list *ap)
 {
   while (*fmt)
   {
+    const char *spec_begin = fmt;
+    int width = 0;
+    int zero_pad = 0;
+
     // 他妈的烦了，普通字符直接输出
     if (*fmt != '%')
     {
@@ -346,42 +333,59 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap)
     }
     // 跳过%，然后这就直接看真正的格式符
     fmt++;
+    if (*fmt == '0')
+    {
+      zero_pad = 1;
+      fmt++;
+    }
+    if (*fmt >= '0' && *fmt <= '9')
+    {
+      width = parse_width(&fmt);
+    }
     switch (*fmt)
     {
     case '%':
+      if (width > 1 && file_pad(f, zero_pad ? '0' : ' ', width - 1) < 0)
+      {
+        return -1;
+      }
       if (file_putc(f, '%') < 0) // 妈的简单起见,不想管了
       {
         return -1;
       }
       break;
     case 'c':
+      if (width > 1 && file_pad(f, ' ', width - 1) < 0)
+      {
+        return -1;
+      }
       if (file_putc(f, (char)va_arg(*ap, int)) < 0)
       {
         return -1;
       }
       break;
     case 's':
-      if (print_str(f, va_arg(*ap, const char *)) < 0)
+      if (print_str(f, va_arg(*ap, const char *), width) < 0)
       {
         return -1;
       }
       break;
     case 'd':
     case 'i':
-      if (print_int(f, va_arg(*ap, int)) < 0)
+      if (print_int(f, va_arg(*ap, int), width, zero_pad) < 0)
       {
         return -1;
       }
       break;
     case 'u':
-      if (print_uint(f, va_arg(*ap, unsigned int), 10) < 0)
+      if (print_uint(f, va_arg(*ap, unsigned int), 10, width, zero_pad) < 0)
       {
         return -1;
       }
       break;
 
     case 'x':
-      if (print_uint(f, va_arg(*ap, unsigned int), 16) < 0)
+      if (print_uint(f, va_arg(*ap, unsigned int), 16, width, zero_pad) < 0)
       {
         return -1;
       }
@@ -400,19 +404,15 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap)
       break;
       */
     case '\0':
-      // 反正不管怎么样，格式串最后如果是单独一个%，就把它直接就原样输出
-      if (file_putc(f, '%') < 0)
+      // 反正不管怎么样，格式串最后如果只剩一个不完整格式，就把它原样输出
+      if (file_write(f, spec_begin, (size_t)(fmt - spec_begin)) < 0)
       {
         return -1;
       }
       return f->err ? -1 : (int)f->count;
     default:
       // GPT5.4的建议是不认识的格式，原样吐回去，方便调试
-      if (file_putc(f, '%') < 0)
-      {
-        return -1;
-      }
-      if (file_putc(f, *fmt) < 0)
+      if (file_write(f, spec_begin, (size_t)(fmt - spec_begin + 1)) < 0)
       {
         return -1;
       }
@@ -437,6 +437,19 @@ int fprintf(FILE *stream, const char *fmt, ...)
   va_list ap;
   va_start(ap, fmt);
   ret = vfprintf(stream, fmt, ap);
+  va_end(ap);
+  return ret;
+}
+// 他妈的烦死这个兼容选项了
+int kvfprintf(KFILE *stream, const char *fmt, va_list ap)
+{
+  return vfprintf((FILE *)stream, fmt, ap);
+}
+int kfprintf(KFILE *stream, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  int ret = vfprintf((FILE *)stream, fmt, ap);
   va_end(ap);
   return ret;
 }
