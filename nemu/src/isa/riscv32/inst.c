@@ -144,7 +144,8 @@ static int decode_exec(Decode *s)
     s->dnpc = s->pc + imm;
 #ifdef CONFIG_FTRACE
     // 标准 RISC-V ABI: 只有 jal ra, offset (rd == x1) 才是函数调用
-    if (rd == 1) {
+    if (rd == 1)
+    {
       FtraceOnCall(&GlobalFtraceState, s->pc, s->dnpc);
     }
 #endif
@@ -157,9 +158,12 @@ static int decode_exec(Decode *s)
 #ifdef CONFIG_FTRACE
     int rs1 = BITS(s->isa.inst, 19, 15);
     // 标准 RISC-V ABI: ret 为 jalr x0, x1, 0
-    if (rd == 0 && rs1 == 1 && imm == 0) {
+    if (rd == 0 && rs1 == 1 && imm == 0)
+    {
       FtraceOnReturn(&GlobalFtraceState, s->pc, s->dnpc);
-    } else if (rd == 1) {
+    }
+    else if (rd == 1)
+    {
       // 标准 RISC-V ABI: 只有 jalr ra, ... (rd == x1) 才是函数调用
       FtraceOnCall(&GlobalFtraceState, s->pc, s->dnpc);
     }
@@ -191,23 +195,13 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 111 ????? 11000 11", bgeu, B, if (src1 >= src2) s->dnpc = s->pc + imm);
   INSTPAT("??????? ????? ????? 110 ????? 11000 11", bltu, B, if (src1 < src2) s->dnpc = s->pc + imm);
   INSTPAT("0000001 ????? ????? 000 ????? 01100 11", mul, R, R(rd) = src1 * src2);
-  INSTPAT("0000001 ????? ????? 100 ????? 01100 11", div, R, sword_t s1 = (sword_t)src1; sword_t s2 = (sword_t)src2; if (src2 == 0) {
-    R(rd) = ~(word_t)0; } else if (s1 == INT32_MIN && s2 == -1) {
-    R(rd) = (word_t)s1; } else {
-    R(rd) = (word_t)(s1 / s2); });
-  INSTPAT("0000001 ????? ????? 110 ????? 01100 11", rem, R, sword_t s1 = (sword_t)src1; sword_t s2 = (sword_t)src2; if (src2 == 0) {
-    R(rd) = src1; } else if (s1 == INT32_MIN && s2 == -1) {
-    R(rd) = 0; } else {
-    R(rd) = (word_t)(s1 % s2); });
-  INSTPAT("0000001 ????? ????? 111 ????? 01100 11", remu, R, if (src2 == 0) {
-    R(rd) = src1; } else {
-    R(rd) = src1 % src2; });
+  INSTPAT("0000001 ????? ????? 100 ????? 01100 11", div, R, sword_t s1 = (sword_t)src1; sword_t s2 = (sword_t)src2; if (src2 == 0) { R(rd) = ~(word_t)0; } else if (s1 == INT32_MIN && s2 == -1) { R(rd) = (word_t)s1; } else { R(rd) = (word_t)(s1 / s2); });
+  INSTPAT("0000001 ????? ????? 110 ????? 01100 11", rem, R, sword_t s1 = (sword_t)src1; sword_t s2 = (sword_t)src2; if (src2 == 0) { R(rd) = src1; } else if (s1 == INT32_MIN && s2 == -1) { R(rd) = 0; } else { R(rd) = (word_t)(s1 % s2); });
+  INSTPAT("0000001 ????? ????? 111 ????? 01100 11", remu, R, if (src2 == 0) { R(rd) = src1; } else { R(rd) = src1 % src2; });
   INSTPAT("??????? ????? ????? 001 ????? 00000 11", lh, I, R(rd) = SEXT(Mr(src1 + imm, 2), 16));
   INSTPAT("??????? ????? ????? 101 ????? 00000 11", lhu, I, R(rd) = Mr(src1 + imm, 2));
   INSTPAT("0000001 ????? ????? 001 ????? 01100 11", mulh, R, R(rd) = ((int64_t)(sword_t)src1 * (int64_t)(sword_t)src2) >> 32);
-  INSTPAT("0000001 ????? ????? 101 ????? 01100 11", divu, R, if (src2 == 0) {
-    R(rd) = ~(word_t)0; } else {
-    R(rd) = src1 / src2; });
+  INSTPAT("0000001 ????? ????? 101 ????? 01100 11", divu, R, if (src2 == 0) { R(rd) = ~(word_t)0; } else { R(rd) = src1 / src2; });
   INSTPAT("0000001 ????? ????? 011 ????? 01100 11", mulhu, R, R(rd) = ((uint64_t)src1 * (uint64_t)src2) >> 32);
   // 到现在还是看不懂fence的设计，目前简单起见，先保持为空
   INSTPAT("??????? ????? ????? 000 00000 0001111", fence, N, );
@@ -216,6 +210,60 @@ static int decode_exec(Decode *s)
   INSTPAT("0000000 ????? ????? 010 ????? 01100 11", slt, R, R(rd) = ((sword_t)src1 < (sword_t)src2) ? 1 : 0);
   INSTPAT("??????? ????? ????? 010 ????? 00100 11", slti, I, R(rd) = ((sword_t)src1 < (sword_t)imm) ? 1 : 0);
   INSTPAT("0000001 ????? ????? 010 ????? 01100 11", mulhsu, R, R(rd) = ((int64_t)(sword_t)src1 * (uint64_t)src2) >> 32);
+  INSTPAT("0000000 00000 00000 000 00000 11100 11", ecall, N, s->dnpc = isa_raise_intr(11, s->pc));
+  INSTPAT("??????? ????? ????? 001 ????? 11100 11", csrrw, I, {
+    word_t t = 0; // 临时保存的
+    switch (imm)
+    {
+    case 0x341:
+      t = cpu.mepc;
+      cpu.mepc = src1;
+      break;
+    case 0x342:
+      t = cpu.mcause;
+      cpu.mcause = src1;
+      break;
+    case 0x300:
+      t = cpu.mstatus;
+      cpu.mstatus = src1;
+      break;
+    case 0x305:
+      t = cpu.mtvec;
+      cpu.mtvec = src1;
+      break;
+    default:
+      panic("Unknown CSR 0x%x", imm);
+      break;
+    }
+    R(rd) = t;
+  });
+  INSTPAT("??????? ????? ????? 010 ????? 11100 11", csrrs, I, {
+    word_t t = 0;
+    switch (imm)
+    {
+    case 0x341:
+      t = cpu.mepc;
+      cpu.mepc = t | src1;
+      break;
+    case 0x342:
+      t = cpu.mcause;
+      cpu.mcause = t | src1;
+      break;
+    case 0x300:
+      t = cpu.mstatus;
+      cpu.mstatus = t | src1;
+      break;
+    case 0x305:
+      t = cpu.mtvec;
+      cpu.mtvec = t | src1;
+      break;
+    default:
+      panic("Unknown CSR 0x%x", imm);
+      break;
+    }
+    R(rd) = t;
+  });
+  INSTPAT("0011000 00010 00000 000 00000 11100 11", mret, N, s->dnpc = cpu.mepc);
   INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv, N, INV(s->pc));
   INSTPAT_END();
 
