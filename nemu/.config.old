@@ -3,10 +3,18 @@
 # NEMU Configuration Menu
 #
 # CONFIG_ISA_x86 is not set
-CONFIG_ISA_mips32=y
-# CONFIG_ISA_riscv is not set
+# CONFIG_ISA_mips32 is not set
+CONFIG_ISA_riscv=y
 # CONFIG_ISA_loongarch32r is not set
-CONFIG_ISA="mips32"
+CONFIG_ISA="riscv32"
+
+#
+# ISA-dependent Options for riscv
+#
+# CONFIG_RV64 is not set
+# CONFIG_RVE is not set
+# end of ISA-dependent Options for riscv
+
 CONFIG_ENGINE_INTERPRETER=y
 CONFIG_ENGINE="interpreter"
 CONFIG_MODE_SYSTEM=y
