@@ -15,16 +15,22 @@ Context *__am_irq_handle(Context *c)
     case 9:
     case 11:
       c->mepc += 4;
-      if ((intptr_t)c->GPR1 == -1)
+#ifdef __riscv_e
+      if ((intptr_t)c->gpr[15] == -1)
+#else
+      if ((intptr_t)c->gpr[17] == -1)
+#endif
       {
         ev.event = EVENT_YIELD;
       }
       else
       {
-        printf("我也不知道怎么解决，反正mcause跑到11了，但是没进yield事件，osoc文档也没说该怎么去解决\n");
+        printf("我也不知道怎么解决，反正mcause跑到11了，但是没进yield事件，文档也没说该怎么去解决\n");
+        ev.event = EVENT_ERROR;
       }
       break;
     default:
+      printf("RISC-V Privileged Specification文档的Machine Cause Register写的是大于12保留，也不知道怎么做\n");
       ev.event = EVENT_ERROR;
       break;
     }
