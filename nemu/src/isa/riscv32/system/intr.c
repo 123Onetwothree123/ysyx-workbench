@@ -21,6 +21,10 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc)
    * Then return the address of the interrupt/exception vector.
    */
   // return 0;
+#ifdef CONFIG_ETRACE
+  Log("etrace触发异常了, mcause=%d, mepc=" FMT_WORD ", mtvec=" FMT_WORD,
+      NO, epc, cpu.mtvec);
+#endif
   cpu.mepc = epc;
   cpu.mcause = NO;
   return cpu.mtvec;
