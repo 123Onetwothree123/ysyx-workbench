@@ -7,6 +7,7 @@
 #define NR_REGS 32
 #endif
 
+#include <stdint.h>
 struct Context
 {
   // TODO: fix the order of these members to match trap.S

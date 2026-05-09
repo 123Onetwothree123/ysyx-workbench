@@ -22,8 +22,7 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc)
    */
   // return 0;
 #ifdef CONFIG_ETRACE
-  Log("etrace触发异常了, mcause=%d, mepc=" FMT_WORD ", mtvec=" FMT_WORD,
-      NO, epc, cpu.mtvec);
+  Log("etrace触发异常了, mcause=%d, mepc=" FMT_WORD ", mtvec=" FMT_WORD, NO, epc, cpu.mtvec);
 #endif
   cpu.mepc = epc;
   cpu.mcause = NO;
