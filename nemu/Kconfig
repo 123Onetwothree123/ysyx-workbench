@@ -197,6 +197,14 @@ config DTRACE
   help
     Open Device trace functional, need open trace
 
+#自己写的
+config ETRACE
+  depends on TRACE
+  bool "Enable Error Trace"
+  default y
+  help
+    Open Error trace functional, need open trace
+
 
 config DIFFTEST
   depends on TARGET_NATIVE_ELF
