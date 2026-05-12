@@ -342,6 +342,12 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap)
     {
       width = parse_width(&fmt);
     }
+    int long_flag = 0;
+    if (*fmt == 'l')
+    {
+      long_flag = 1;
+      fmt++;
+    }
     switch (*fmt)
     {
     case '%':
@@ -372,24 +378,33 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap)
       break;
     case 'd':
     case 'i':
-      if (print_int(f, va_arg(*ap, int), width, zero_pad) < 0)
+    {
+      long long val = long_flag ? va_arg(*ap, long) : va_arg(*ap, int);
+      if (print_int(f, val, width, zero_pad) < 0)
       {
         return -1;
       }
       break;
+    }
     case 'u':
-      if (print_uint(f, va_arg(*ap, unsigned int), 10, width, zero_pad) < 0)
+    {
+      unsigned long long val = long_flag ? va_arg(*ap, unsigned long) : va_arg(*ap, unsigned int);
+      if (print_uint(f, val, 10, width, zero_pad) < 0)
       {
         return -1;
       }
       break;
+    }
 
     case 'x':
-      if (print_uint(f, va_arg(*ap, unsigned int), 16, width, zero_pad) < 0)
+    {
+      unsigned long long val = long_flag ? va_arg(*ap, unsigned long) : va_arg(*ap, unsigned int);
+      if (print_uint(f, val, 16, width, zero_pad) < 0)
       {
         return -1;
       }
       break;
+    }
       /*
       //妈的，指针问题到现在还没有一个可行的方案，他妈的烦死了，一直报错，一直报错，这个傻逼vscode还虚报错误，脑子有坑
     case 'p':
