@@ -31,8 +31,8 @@ wire [4:0]  rd;
 wire [31:0] rs1_data;
 wire [31:0] rs2_data;
 wire [31:0] ebreak_code_gtest;
-wire [31:0] source_data_a;
-wire [31:0] source_data_b;
+reg [31:0] source_data_a;
+reg [31:0] source_data_b;
 wire [31:0] alu_result;
 wire        mem_we;
 wire [31:0] mem_addr;
@@ -52,14 +52,36 @@ wire [31:0] branch_target;
 wire [31:0] jal_target;
 wire [31:0] jalr_target;
 wire        pc_redirect;
-wire [31:0] pc_redirect_target;
+reg [31:0] pc_redirect_target;
+wire        final_pc_redirect;
+reg [31:0] final_pc_redirect_target;
+wire        is_csrrw;
+wire        is_csrrs;
+wire        is_ecall;
+wire        is_mret;
+wire [11:0] csr_address;
+wire [31:0] csr_rdata;
+wire        csr_valid;
+wire        exception_taken;
+wire [31:0] exception_target;
 wire [6:0]  opcode = instruction[6:0];
 wire [2:0]  funct3 = instruction[14:12];
 wire        is_lui = (opcode == `OPCODE_UpperImmediate_lui);
 
-assign source_data_a = is_lui ? 32'b0 :
-                       (((opcode == `OPCODE_UpperImmediate_auipc) || (opcode == `OPCODE_Jump)) ? pc_current : rs1_data);
-assign source_data_b = (opcode == `OPCODE_Register) ? rs2_data : immediate;
+always@(*)begin
+    if(is_lui)
+        source_data_a=32'b0;
+    else if((opcode==`OPCODE_UpperImmediate_auipc)||(opcode==`OPCODE_Jump))
+        source_data_a=pc_current;
+    else
+        source_data_a=rs1_data;
+end
+always@(*)begin
+    if(opcode==`OPCODE_Register)
+        source_data_b=rs2_data;
+    else
+        source_data_b=immediate;
+end
 assign is_jal = (opcode == `OPCODE_Jump);
 assign is_jalr = (opcode == `OPCODE_Immediate_Bxxx) && (funct3 == 3'b000);
 assign is_branch = (opcode == `OPCODE_Branch);
@@ -67,8 +89,21 @@ assign branch_target = pc_current + immediate;
 assign jal_target = alu_result;
 assign jalr_target = {alu_result[31:1], 1'b0};
 assign pc_redirect = is_jalr || is_jal || branch_taken;
-assign pc_redirect_target = is_jalr ? jalr_target :
-                            (is_jal ? jal_target : branch_target);
+always@(*)begin
+    if(is_jalr)
+        pc_redirect_target=jalr_target;
+    else if(is_jal)
+        pc_redirect_target=jal_target;
+    else
+        pc_redirect_target=branch_target;
+end
+assign final_pc_redirect=exception_taken|pc_redirect;
+always@(*)begin
+    if(exception_taken)
+        final_pc_redirect_target=exception_target;
+    else
+        final_pc_redirect_target=pc_redirect_target;
+end
 //sdb
 wire [4:0]  sdb_debug_raddr;
 wire [31:0] sdb_debug_rdata;
@@ -106,7 +141,12 @@ IDU CPU_IDU(
     .rs1(rs1),
     .rs2(rs2),
     .rd(rd),
-    .IsEbreak_gtest(is_ebreak_gtest)
+    .IsEbreak_gtest(is_ebreak_gtest),
+    .IsCsrrw(is_csrrw),
+    .IsCsrrs(is_csrrs),
+    .IsEcall(is_ecall),
+    .IsMret(is_mret),
+    .CSRAddress(csr_address)
 );
 
 EXU CPU_EXU(
@@ -122,6 +162,23 @@ BranchComparator CPU_BRANCH_COMP(
     .Funct3(funct3),
     .IsBranch(is_branch),
     .Taken(branch_taken)
+);
+
+CSR CPU_CSR(
+    .clk(clk),
+    .rst(rst),
+    .IsCsrrw(is_csrrw),
+    .IsCsrrs(is_csrrs),
+    .IsEcall(is_ecall),
+    .IsMret(is_mret),
+    .CSRAddress(csr_address),
+    .rs1(rs1),
+    .Rs1Data(rs1_data),
+    .pc(pc_current),
+    .CSR_rdata(csr_rdata),
+    .CSRValid(csr_valid),
+    .ExceptionTaken(exception_taken),
+    .ExceptionTarget(exception_target)
 );
 
 LSU CPU_LSU(
@@ -146,14 +203,15 @@ WBU CPU_WBU(
     .ALUResult(alu_result),
     .LoadDATA(load_data),
     .SNPC(snpc),
+    .CSR_rdata(csr_rdata),
     .RegisterFileWriteEN(rf_write_en),
     .RegisterFileWriteDATA(rf_write_data)
 );
 
 NPC CPU_NPC(
     .SNPC(snpc),
-    .RedirectTarget(pc_redirect_target),
-    .Redirect(pc_redirect),
+    .RedirectTarget(final_pc_redirect_target),
+    .Redirect(final_pc_redirect),
     .NextPC(pc_next),
     .PCEnable(pc_enable)
 );
