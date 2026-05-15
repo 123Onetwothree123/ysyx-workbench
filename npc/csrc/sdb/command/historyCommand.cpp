@@ -37,7 +37,7 @@ void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Re
     }
 
     auto total{static_cast<std::size_t>(history_length)};
-    if (n > total)
+    if (n == 0 || n > total)
     {
         n = total;
     }
