@@ -181,5 +181,174 @@ TEST(TraceCppTest, ResetClearsRuntimeTraceButKeepsSwitches) {
     EXPECT_EQ(trace.HistorySize(), 0u);
 }
 
+TEST(TraceCppTest, DefaultFtraceStateIsDisabled) {
+    Ftrace trace;
+    EXPECT_FALSE(trace.IsEnabled());
+    EXPECT_EQ(trace.Depth(), 0u);
+    EXPECT_EQ(trace.HistorySize(), 0u);
+}
+
+TEST(TraceCppTest, EnableThenDisableTogglesState) {
+    Ftrace trace;
+    trace.Enable();
+    EXPECT_TRUE(trace.IsEnabled());
+    trace.Disable();
+    EXPECT_FALSE(trace.IsEnabled());
+}
+
+TEST(TraceCppTest, FunctionCountReturnsZeroWhenNoElf) {
+    Ftrace trace;
+    EXPECT_EQ(trace.FunctionCount(), 0u);
+}
+
+TEST(TraceCppTest, TopFrameIsNullWhenStackIsEmpty) {
+    Ftrace trace;
+    EXPECT_EQ(trace.TopFrame(), nullptr);
+}
+
+TEST(TraceCppTest, HistoryIsEmptyWhenNoEvents) {
+    Ftrace trace;
+    EXPECT_TRUE(trace.History().empty());
+}
+
+TEST(TraceCppTest, OnInstructionNonCallNonReturnIsNoop) {
+    Ftrace trace;
+    trace.Enable();
+
+    ::testing::internal::CaptureStdout();
+    trace.OnInstruction(0x1000, rv32::addi(Reg::a0, Reg::zero, 42), 0x1004);
+    const auto output = ::testing::internal::GetCapturedStdout();
+
+    EXPECT_EQ(trace.Depth(), 0u);
+    EXPECT_EQ(trace.HistorySize(), 0u);
+    EXPECT_EQ(output.find("call"), std::string::npos);
+    EXPECT_EQ(output.find("ret"), std::string::npos);
+}
+
+TEST(TraceCppTest, PrintCurrentStackOnEmptyStackDoesNotCrash) {
+    Ftrace trace;
+    trace.Enable();
+    trace.SetRecordHistory(false);
+
+    ::testing::internal::CaptureStdout();
+    trace.PrintCurrentStack();
+    static_cast<void>(::testing::internal::GetCapturedStdout());
+
+    SUCCEED();
+}
+
+TEST(TraceCppTest, PrintHistoryOnEmptyHistoryDoesNotCrash) {
+    Ftrace trace;
+    trace.Enable();
+    trace.SetRecordHistory(false);
+
+    ::testing::internal::CaptureStdout();
+    trace.PrintHistory();
+    static_cast<void>(::testing::internal::GetCapturedStdout());
+
+    SUCCEED();
+}
+
+TEST(TraceCppTest, PrintStatusShowsEnabledDisabledState) {
+    Ftrace trace;
+    trace.Enable();
+
+    ::testing::internal::CaptureStdout();
+    trace.PrintStatus();
+    const auto output = ::testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(output.find("true"), std::string::npos);
+}
+
+TEST(TraceCppTest, ManualDeepNestedCallsTrackDepthCorrectly) {
+    Ftrace trace;
+    trace.Enable();
+
+    ::testing::internal::CaptureStdout();
+    for (int i = 0; i < 5; ++i) {
+        trace.OnCall(0x1000u + static_cast<std::uint64_t>(i) * 16u,
+                     0x2000u + static_cast<std::uint64_t>(i) * 32u);
+    }
+    const auto output = ::testing::internal::GetCapturedStdout();
+
+    EXPECT_EQ(trace.Depth(), 5u);
+    ASSERT_EQ(trace.HistorySize(), 5u);
+    for (std::size_t i = 0; i < 5; ++i) {
+        EXPECT_EQ(trace.History()[i].GetDepth(), i + 1);
+    }
+}
+
+TEST(TraceCppTest, DeepReturnSequenceUnwindsStackProperly) {
+    Ftrace trace;
+    trace.Enable();
+
+    ::testing::internal::CaptureStdout();
+    trace.OnCall(0x1000, 0x2000);
+    trace.OnCall(0x2008, 0x3000);
+    trace.OnCall(0x3008, 0x4000);
+    trace.OnReturn(0x400c, 0x300c);
+    trace.OnReturn(0x300c, 0x200c);
+    trace.OnReturn(0x200c, 0x1004);
+    const auto output = ::testing::internal::GetCapturedStdout();
+
+    EXPECT_EQ(trace.Depth(), 0u);
+    EXPECT_EQ(trace.HistorySize(), 6u);
+}
+
+TEST(TraceCppTest, DisabledFtraceDoesNotBuildStack) {
+    Ftrace trace;
+    trace.Disable();
+
+    trace.OnCall(0x1000, 0x2000);
+    trace.OnCall(0x2008, 0x3000);
+
+    EXPECT_EQ(trace.Depth(), 0u);
+    EXPECT_EQ(trace.HistorySize(), 0u);
+}
+
+TEST(TraceCppTest, HistoryRecordingCanBeTurnedOff) {
+    Ftrace trace;
+    trace.Enable();
+    trace.SetRecordHistory(false);
+
+    ::testing::internal::CaptureStdout();
+    trace.OnCall(0x1000, 0x2000);
+    trace.OnCall(0x2008, 0x3000);
+    trace.OnReturn(0x300c, 0x200c);
+    trace.OnReturn(0x200c, 0x1004);
+    const auto output = ::testing::internal::GetCapturedStdout();
+
+    EXPECT_EQ(trace.Depth(), 0u);
+    EXPECT_EQ(trace.HistorySize(), 0u);
+}
+
+TEST(TraceCppTest, FtraceEventDefaultConstructor) {
+    FtraceEvent event{};
+    EXPECT_EQ(event.GetType(), FtraceEventType::Call);
+    EXPECT_EQ(event.GetCurrentPC(), 0u);
+    EXPECT_EQ(event.GetTargetPC(), 0u);
+}
+
+TEST(TraceCppTest, FtraceFrameDefaultConstructor) {
+    FtraceFrame frame{};
+    EXPECT_EQ(frame.GetCallPC(), 0u);
+    EXPECT_EQ(frame.GetReturnPC(), 0u);
+    EXPECT_EQ(frame.GetFunctionAddress(), 0u);
+    EXPECT_TRUE(frame.GetFunctionName().empty());
+}
+
+TEST(TraceCppTest, RecordInstructionDefaultConstructor) {
+    RecordInstruction record{};
+    EXPECT_EQ(record.GetPC(), 0u);
+    EXPECT_EQ(record.GetInstruction(), 0u);
+    EXPECT_EQ(record.GetLen(), 0);
+}
+
+TEST(TraceCppTest, ReadelfFunctionSizeForEmptyRange) {
+    constexpr ReadelfFunction function{.name = "empty", .start = 0x1000, .end = 0x1000};
+    EXPECT_EQ(function.size(), 0u);
+    EXPECT_FALSE(function.contains(0x1000));
+}
+
 }  // namespace
 }  // namespace npc::test

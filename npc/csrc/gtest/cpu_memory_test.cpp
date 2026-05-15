@@ -80,6 +80,124 @@ TEST(CpuMemoryTest, LbuUsesSignedOffsetsAcrossAlignedWords) {
     expect_halt(cpu.run(), 0x110u, guest_addr(20));
 }
 
+TEST(CpuMemoryTest, LbSignExtendsAllByteLanes) {
+    struct LbLaneCase {
+        int offset;
+        std::uint32_t expected;
+    };
+
+    const std::array<LbLaneCase, 4> cases{{
+        {0, 0xffff'ff80u},
+        {1, 0xffff'ffffu},
+        {2, 0x0000'0055u},
+        {3, 0xffff'ffaau},
+    }};
+
+    for (const auto &[offset, expected] : cases) {
+        CpuHarness cpu;
+        cpu.write_word(guest_addr(0x100), 0xaa55'ff80u);
+        cpu.load_program({
+            rv32::auipc(Reg::t0, 0),
+            rv32::addi(Reg::t0, Reg::t0, 0x100),
+            rv32::lb(Reg::a0, Reg::t0, offset),
+            rv32::ebreak(),
+        });
+        cpu.reset();
+
+        expect_halt(cpu.run(), expected, guest_addr(12));
+    }
+}
+
+TEST(CpuMemoryTest, LbSignExtendsPositiveByteLanes) {
+    CpuHarness cpu;
+    cpu.write_word(guest_addr(0x100), 0x007f'3c55u);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::lb(Reg::a0, Reg::t0, 0),
+        rv32::lb(Reg::a1, Reg::t0, 1),
+        rv32::lb(Reg::a2, Reg::t0, 2),
+        rv32::lb(Reg::a3, Reg::t0, 3),
+        rv32::add(Reg::a0, Reg::a0, Reg::a1),
+        rv32::add(Reg::a0, Reg::a0, Reg::a2),
+        rv32::add(Reg::a0, Reg::a0, Reg::a3),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(), 0x55u + 0x3cu + 0x7fu + 0x00u, guest_addr(36));
+}
+
+TEST(CpuMemoryTest, LhSignExtendsHalfword) {
+    CpuHarness cpu;
+    cpu.write_word(guest_addr(0x100), 0xffff'8000u);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::lh(Reg::a0, Reg::t0, 0),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(), 0xffff'8000u, guest_addr(12));
+}
+
+TEST(CpuMemoryTest, LhWithPositiveHalfwordDoesNotSignExtend) {
+    CpuHarness cpu;
+    cpu.write_word(guest_addr(0x100), 0x0000'7fffu);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::lh(Reg::a0, Reg::t0, 0),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(), 0x7fffu, guest_addr(12));
+}
+
+TEST(CpuMemoryTest, LhReadsUpperHalfwordWithSignExtend) {
+    CpuHarness cpu;
+    cpu.write_word(guest_addr(0x100), 0x8000'0000u);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::lh(Reg::a0, Reg::t0, 2),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(), 0xffff'8000u, guest_addr(12));
+}
+
+TEST(CpuMemoryTest, LhuZeroExtendsHalfword) {
+    CpuHarness cpu;
+    cpu.write_word(guest_addr(0x100), 0xabcd'8000u);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::lhu(Reg::a0, Reg::t0, 0),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(), 0x8000u, guest_addr(12));
+}
+
+TEST(CpuMemoryTest, LhuReadsUpperHalfwordWithZeroExtend) {
+    CpuHarness cpu;
+    cpu.write_word(guest_addr(0x100), 0xabcd'8000u);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::lhu(Reg::a0, Reg::t0, 2),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(), 0xabcdu, guest_addr(12));
+}
+
 struct StoreByteLaneCase {
     int offset;
     std::uint32_t expected_word;
@@ -136,6 +254,42 @@ TEST(CpuMemoryTest, SbCanCrossToNextAlignedWordWithoutTouchingPreviousWord) {
     expect_halt(cpu.run(), 0x7eu, guest_addr(20));
     EXPECT_EQ(cpu.read_word(data_addr + 0), 0x1122'3344u);
     EXPECT_EQ(cpu.read_word(data_addr + 4), 0xaabb'cc7eu);
+}
+
+TEST(CpuMemoryTest, ShInstructionExecutesWithoutHanging) {
+    CpuHarness cpu;
+    const auto data_addr = guest_addr(0x100);
+    cpu.write_word(data_addr, 0x1122'3344u);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::lui(Reg::t1, 0xbeef'0000u),
+        rv32::addi(Reg::t1, Reg::t1, 0x0),
+        rv32::sh(Reg::t1, Reg::t0, 0),
+        rv32::addi(Reg::a0, Reg::zero, 0),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(), 0u, guest_addr(24));
+}
+
+TEST(CpuMemoryTest, ShWithOffsetExecutesWithoutError) {
+    CpuHarness cpu;
+    const auto data_addr = guest_addr(0x100);
+    cpu.write_word(data_addr, 0x1122'3344u);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::lui(Reg::t1, 0x789a'0000u),
+        rv32::addi(Reg::t1, Reg::t1, 0x0),
+        rv32::sh(Reg::t1, Reg::t0, 2),
+        rv32::addi(Reg::a0, Reg::zero, 0),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(), 0u, guest_addr(24));
 }
 
 TEST(CpuMemoryTest, SwWritesFullWordAndCanBeReadBack) {
@@ -215,6 +369,65 @@ TEST(CpuMemoryTest, ProgramCanCopyWordThenPatchAByte) {
     expect_halt(cpu.run(), 0xcafe'11beu, guest_addr(28));
     EXPECT_EQ(cpu.read_word(source_addr), 0xcafe'babeu);
     EXPECT_EQ(cpu.read_word(dest_addr), 0xcafe'11beu);
+}
+
+TEST(CpuMemoryTest, LoadSequenceCoversByteAndHalfwordWidths) {
+    CpuHarness cpu;
+    const auto data_addr = guest_addr(0x100);
+    cpu.write_word(data_addr, 0x8000'017fu);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::lb(Reg::t1, Reg::t0, 0),
+        rv32::lbu(Reg::t2, Reg::t0, 1),
+        rv32::add(Reg::a0, Reg::t1, Reg::t2),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(), 0x0000'007fu + 0x0000'0001u, guest_addr(20));
+}
+
+TEST(CpuMemoryTest, StoreByteStormThenLoadBack) {
+    CpuHarness cpu;
+    const auto data_addr = guest_addr(0x100);
+    cpu.write_word(data_addr, 0x1122'3344u);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::addi(Reg::t1, Reg::zero, 0xaa),
+        rv32::sb(Reg::t1, Reg::t0, 0),
+        rv32::addi(Reg::t1, Reg::zero, 0xbb),
+        rv32::sb(Reg::t1, Reg::t0, 1),
+        rv32::lw(Reg::a0, Reg::t0, 0),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(), 0x1122'bbaau, guest_addr(28));
+    EXPECT_EQ(cpu.read_word(data_addr), 0x1122'bbaau);
+}
+
+TEST(CpuMemoryTest, ReadAfterWriteAllWidthsInterleaved) {
+    CpuHarness cpu;
+    const auto addr1 = guest_addr(0x200);
+    cpu.write_word(addr1, 0u);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x200),
+        rv32::addi(Reg::t1, Reg::zero, 0x12),
+        rv32::sb(Reg::t1, Reg::t0, 0),
+        rv32::addi(Reg::t1, Reg::t1, 0x22),
+        rv32::sb(Reg::t1, Reg::t0, 1),
+        rv32::addi(Reg::t1, Reg::t1, 0x34),
+        rv32::sh(Reg::t1, Reg::t0, 2),
+        rv32::lw(Reg::a0, Reg::t0, 0),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    const auto result = cpu.run(64);
+    ASSERT_TRUE(result.halted);
 }
 
 }  // namespace

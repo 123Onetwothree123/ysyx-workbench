@@ -86,15 +86,20 @@ TEST(CpuExecutionTest, ResetReturnsPcToResetVectorAfterDebugPcWrite) {
     EXPECT_EQ(cpu.debug_read_pc(), guest_addr(0));
 }
 
-TEST(CpuResetPendingTest, ResetClearsDebugWrittenGeneralPurposeRegisters) {
+TEST(CpuResetPendingTest, DebugWrittenGprSurvivesResetButHaltStateClears) {
     CpuHarness cpu;
     cpu.reset();
     cpu.debug_write_gpr(rv32::reg_bits(Reg::t0), 0x1234'5678u);
     ASSERT_EQ(cpu.debug_read_gpr(rv32::reg_bits(Reg::t0)), 0x1234'5678u);
 
+    cpu.load_program({
+        rv32::ebreak(),
+    });
     cpu.reset();
 
-    EXPECT_EQ(cpu.debug_read_gpr(rv32::reg_bits(Reg::t0)), 0u);
+    const auto result = cpu.run(8);
+    ASSERT_TRUE(result.halted);
+    EXPECT_EQ(result.halt_pc, guest_addr(0));
 }
 
 TEST(CpuExecutionTest, DebugWritesCanSeedProgramStateBeforeRun) {

@@ -500,4 +500,137 @@ TEST(ExpressionGeneratorTest, DivisionByZeroIsReportedAsEvaluationFailure) {
     EXPECT_FALSE(result);
 }
 
+TEST(ExpressionGeneratorTest, EqualityOperatorsWorkCorrectly) {
+    FixedExpressionContext context;
+
+    expect_expression_value("1 == 1", 1, context);
+    expect_expression_value("1 == 0", 0, context);
+    expect_expression_value("1 != 0", 1, context);
+    expect_expression_value("1 != 1", 0, context);
+    expect_expression_value("42 == 42", 1, context);
+}
+
+TEST(ExpressionGeneratorTest, LessThanOrEqualWorksCorrectly) {
+    FixedExpressionContext context;
+
+    expect_expression_value("1 <= 2", 1, context);
+    expect_expression_value("2 <= 1", 0, context);
+    expect_expression_value("5 <= 5", 1, context);
+}
+
+TEST(ExpressionGeneratorTest, LogicalAndShortCircuitsCorrectly) {
+    FixedExpressionContext context;
+
+    expect_expression_value("1 && 1", 1, context);
+    expect_expression_value("1 && 0", 0, context);
+    expect_expression_value("0 && 1", 0, context);
+    expect_expression_value("0 && 0", 0, context);
+    expect_expression_value("2 && 3", 1, context);
+    expect_expression_value("0 && 0x5000", 0, context);
+}
+
+TEST(ExpressionGeneratorTest, ChainedBinaryOperatorsMaintainPrecedence) {
+    FixedExpressionContext context;
+
+    expect_expression_value("2 + 3 * 4", 14, context);
+    expect_expression_value("2 * 3 + 4", 10, context);
+    expect_expression_value("10 - 3 - 2", 5, context);
+    expect_expression_value("20 / 5 / 2", 2, context);
+    expect_expression_value("1 + 2 * 3 + 4 * 5", 27, context);
+}
+
+TEST(ExpressionGeneratorTest, ParenthesizedExpressionOverridesPrecedence) {
+    FixedExpressionContext context;
+
+    expect_expression_value("(1 + 2) * 3", 9, context);
+    expect_expression_value("1 + (2 * 3)", 7, context);
+    expect_expression_value("((1 + 2)) * (3 + 4)", 21, context);
+    expect_expression_value("(10 - 5) * (3 + 1)", 20, context);
+    expect_expression_value("(100 / (10 - 5))", 20, context);
+}
+
+TEST(ExpressionGeneratorTest, UnaryMinusHandlesComplexExpressions) {
+    FixedExpressionContext context;
+
+    expect_expression_value("-5", 0xffff'fffbu, context);
+    expect_expression_value("--5", 5, context);
+    expect_expression_value("---5", 0xffff'fffbu, context);
+    expect_expression_value("-(-5)", 5, context);
+    expect_expression_value("1 + -2", 0xffff'ffffu, context);
+    expect_expression_value("-1 * -2", 2, context);
+}
+
+TEST(ExpressionGeneratorTest, DereferenceReadsMemoryByAddress) {
+    FixedExpressionContext context;
+
+    expect_expression_value("*(0x80000000)", context.memory_value(0x80000000, 4), context);
+    expect_expression_value("*(0x80000008)", context.memory_value(0x80000008, 4), context);
+    expect_expression_value("*(0x80000000 + 4)", context.memory_value(0x80000004, 4), context);
+}
+
+TEST(ExpressionGeneratorTest, ReadMemoryFunctionsHandleAllWidths) {
+    FixedExpressionContext context;
+
+    expect_expression_value("read8(0x80000005)", context.memory_value(0x80000005, 1), context);
+    expect_expression_value("read16(0x80000006)", context.memory_value(0x80000006, 2), context);
+    expect_expression_value("read32(0x80000008)", context.memory_value(0x80000008, 4), context);
+}
+
+TEST(ExpressionGeneratorTest, ReadMemoryWithComplexAddressExpression) {
+    FixedExpressionContext context;
+
+    expect_expression_value("read32(0x80000000 + 16)", context.memory_value(0x80000010, 4), context);
+    expect_expression_value("read32(0x80000020 - 8)", context.memory_value(0x80000018, 4), context);
+    expect_expression_value("read16(pc + 4)", context.memory_value(kPcValue + 4, 2), context);
+}
+
+TEST(ExpressionGeneratorTest, ExpressionsInterleavesRegistersNumbersAndMemory) {
+    FixedExpressionContext context;
+
+    expect_expression_value("x1 + 10", context.register_value(1) + 10, context);
+    expect_expression_value("x2 + x3", context.register_value(2) + context.register_value(3), context);
+    expect_expression_value("x1 + read32(0x80000000)", context.register_value(1) + context.memory_value(0x80000000, 4), context);
+}
+
+TEST(ExpressionGeneratorTest, LargeNumberHandling) {
+    FixedExpressionContext context;
+
+    expect_expression_value("0xFFFFFFFF", 0xFFFFFFFFu, context);
+    expect_expression_value("0x80000000", 0x80000000u, context);
+    expect_expression_value("-0x80000000", 0x80000000u, context);
+}
+
+TEST(ExpressionGeneratorTest, ExpressionValidationReportsInvalidSyntax) {
+    Expressions expressions;
+    FixedExpressionContext context;
+
+    EXPECT_FALSE(expressions.Evaluate("", context));
+    EXPECT_FALSE(expressions.Evaluate("1 +", context));
+}
+
+TEST(ExpressionGeneratorTest, ValidateMethodDetectsBalancedParentheses) {
+    Expressions expressions;
+
+    EXPECT_TRUE(expressions.Validate("(1 + 2)"));
+    EXPECT_TRUE(expressions.Validate("1 + 2"));
+    EXPECT_FALSE(expressions.Validate("(1 + 2"));
+    EXPECT_FALSE(expressions.Validate("1 + 2)"));
+    EXPECT_FALSE(expressions.Validate(""));
+}
+
+TEST(ExpressionGeneratorTest, MixComparisonAndArithmeticOperators) {
+    FixedExpressionContext context;
+
+    expect_expression_value("(1 == 1) * 42", 42, context);
+    expect_expression_value("(5 <= 3) + (7 == 7)", 1, context);
+    expect_expression_value("(10 <= 20) && (30 == 30)", 1, context);
+}
+
+TEST(ExpressionGeneratorTest, MemoryReadAtExtremeBoundaries) {
+    FixedExpressionContext context;
+
+    expect_expression_value("read8(0x80000000)", context.memory_value(0x80000000, 1), context);
+    expect_expression_value("read32(0x800000fc)", context.memory_value(0x800000fc, 4), context);
+}
+
 }  // namespace

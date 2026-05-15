@@ -183,5 +183,226 @@ TEST(SDBDpiTest, CpuHarnessDebugPathReadsAndWritesPcAndGprsThroughVerilatedDpi) 
     EXPECT_EQ(cpu.debug_read_pc(), guest_addr(0x80));
 }
 
+TEST(SDBMemoryTest, MemoryReadHandlesAllValidSizes) {
+    const auto addr = guest_addr(0x500);
+    const auto host = guest_to_host(addr);
+    pmem[host + 0] = 0x01;
+    pmem[host + 1] = 0x02;
+    pmem[host + 2] = 0x03;
+    pmem[host + 3] = 0x04;
+
+    EXPECT_EQ(NPCMemoryRead(addr, 1), 0x01u);
+    EXPECT_EQ(NPCMemoryRead(addr, 2), 0x0201u);
+    EXPECT_EQ(NPCMemoryRead(addr, 4), 0x0403'0201u);
+}
+
+TEST(SDBMemoryTest, MemoryReadRejectsInvalidSizes) {
+    const auto addr = guest_addr(0x500);
+
+    EXPECT_EQ(NPCMemoryRead(addr, 0), 0u);
+    EXPECT_EQ(NPCMemoryRead(addr, 3), 0u);
+    EXPECT_EQ(NPCMemoryRead(addr, 8), 0u);
+}
+
+TEST(SDBMemoryTest, MemoryReadRejectsOutOfRangeAddress) {
+    EXPECT_EQ(NPCMemoryRead(CONFIG_MBASE - 1, 1), 0u);
+    EXPECT_EQ(NPCMemoryRead(CONFIG_MBASE + PMEM_SIZE, 1), 0u);
+}
+
+TEST(SDBMemoryTest, MemoryScanOutputContainsAddressFormat) {
+    const auto addr = guest_addr(0x600);
+    const auto host = guest_to_host(addr);
+    pmem[host + 0] = 0xaa;
+    pmem[host + 1] = 0xbb;
+    pmem[host + 2] = 0xcc;
+    pmem[host + 3] = 0xdd;
+
+    ::testing::internal::CaptureStdout();
+    NPCMemoryScan(addr, 4);
+    const auto output = ::testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(output.find("80000600"), std::string::npos);
+}
+
+TEST(SDBMemoryTest, SafeReadRejectsInvalidSizes) {
+    const auto addr = guest_addr(0x700);
+
+    EXPECT_FALSE(NPCMemoryReadSafe(addr, 0).has_value());
+    EXPECT_FALSE(NPCMemoryReadSafe(addr, 3).has_value());
+    EXPECT_FALSE(NPCMemoryReadSafe(addr, 8).has_value());
+}
+
+TEST(SDBWatchpointTest, MaxWatchpointsReturnsCorrectValue) {
+    WatchpointPool pool{8};
+    EXPECT_EQ(pool.GetMaxWatchpoints(), 8u);
+
+    WatchpointPool default_pool;
+    EXPECT_EQ(default_pool.GetMaxWatchpoints(), 32u);
+}
+
+TEST(SDBWatchpointTest, CreateWatchpointAtMaxCapacityReturnsNull) {
+    WatchpointPool pool{1};
+    auto *wp = pool.CreateWatchpoint("$a0", 1);
+    ASSERT_NE(wp, nullptr);
+
+    ::testing::internal::CaptureStdout();
+    EXPECT_EQ(pool.CreateWatchpoint("$a1", 2), nullptr);
+    static_cast<void>(::testing::internal::GetCapturedStdout());
+}
+
+TEST(SDBWatchpointTest, GetAllWatchpointsReturnsAll) {
+    WatchpointPool pool{4};
+    pool.CreateWatchpoint("$a0", 1);
+    pool.CreateWatchpoint("$a1", 2);
+
+    const auto &all = pool.GetAllWatchpoints();
+    EXPECT_EQ(all.size(), 4u);
+    EXPECT_TRUE(all[0].IsEnabled());
+    EXPECT_TRUE(all[1].IsEnabled());
+    EXPECT_FALSE(all[2].IsEnabled());
+    EXPECT_FALSE(all[3].IsEnabled());
+}
+
+TEST(SDBWatchpointTest, PrintAllWatchpointsDoesNotCrash) {
+    WatchpointPool pool{4};
+    pool.CreateWatchpoint("$a0", 1);
+    pool.CreateWatchpoint("$a1", 2);
+
+    ::testing::internal::CaptureStdout();
+    pool.PrintAllWatchpoints();
+    const auto output = ::testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(output.find("$a0"), std::string::npos);
+    EXPECT_NE(output.find("$a1"), std::string::npos);
+}
+
+TEST(SDBWatchpointTest, PrintAllWhenEmptyShowsMessage) {
+    WatchpointPool pool{4};
+
+    ::testing::internal::CaptureStdout();
+    pool.PrintAllWatchpoints();
+    const auto output = ::testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(output.find("没有监视点"), std::string::npos);
+}
+
+TEST(SDBWatchpointTest, DeleteWatchpointIsIdempotent) {
+    WatchpointPool pool{2};
+    auto *wp = pool.CreateWatchpoint("$a0", 1);
+
+    ASSERT_TRUE(pool.DeleteWatchpoint(0));
+
+    ::testing::internal::CaptureStdout();
+    EXPECT_FALSE(pool.DeleteWatchpoint(0));
+    static_cast<void>(::testing::internal::GetCapturedStdout());
+}
+
+TEST(SDBWatchpointTest, DisabledWatchpointNeverTriggersCheckAll) {
+    CpuHarness cpu;
+    cpu.reset();
+    cpu.debug_write_pc(guest_addr(0x40));
+    cpu.debug_write_gpr(rv32::reg_bits(Reg::t0), 0x10u);
+
+    WatchpointPool pool{2};
+    auto *wp = pool.CreateWatchpoint("$t0", 0x10u);
+    wp->SetEnabled(false);
+
+    cpu.debug_write_gpr(rv32::reg_bits(Reg::t0), 0xffu);
+
+    ::testing::internal::CaptureStdout();
+    EXPECT_FALSE(pool.CheckAll());
+    static_cast<void>(::testing::internal::GetCapturedStdout());
+}
+
+TEST(SDBCommandUtilsTest, TrimLeftPreservesTextWithoutLeadingWhitespace) {
+    EXPECT_EQ(SDBTrimLeft("si 10"), "si 10");
+    EXPECT_EQ(SDBTrimLeft("p"), "p");
+    EXPECT_EQ(SDBTrimLeft(""), "");
+}
+
+TEST(SDBCommandUtilsTest, TrimRightPreservesTextWithoutTrailingWhitespace) {
+    EXPECT_EQ(SDBTrimRight("p $a0"), "p $a0");
+    EXPECT_EQ(SDBTrimRight("q"), "q");
+    EXPECT_EQ(SDBTrimRight(""), "");
+}
+
+TEST(SDBCommandUtilsTest, TrimLeftAllWhitespaceReturnsEmpty) {
+    EXPECT_EQ(SDBTrimLeft("     "), "");
+    EXPECT_EQ(SDBTrimLeft("\t\t\t"), "");
+    EXPECT_EQ(SDBTrimLeft(" \t \t "), "");
+}
+
+TEST(SDBCommandUtilsTest, TrimRightAllWhitespaceReturnsEmpty) {
+    EXPECT_EQ(SDBTrimRight("     "), "");
+    EXPECT_EQ(SDBTrimRight("\t\t\t"), "");
+}
+
+TEST(SDBCommandUtilsTest, SplitHandlesCommandWithMultipleConsecutiveSpaces) {
+    const auto [name, args] = SDBSplitCommandLine("si    10");
+    EXPECT_EQ(name, "si");
+    EXPECT_EQ(args, "10");
+}
+
+TEST(SDBCommandUtilsTest, SplitHandlesTabSeparators) {
+    const auto [name, args] = SDBSplitCommandLine("x\t4\t0x80000000");
+    EXPECT_EQ(name, "x");
+    EXPECT_EQ(args, "4\t0x80000000");
+}
+
+TEST(SDBCommandUtilsTest, ValidateExpressionRejectsMismatchedParens) {
+    EXPECT_TRUE(SDBValidateExpressionSyntax("(a + b) * (c + d)"));
+    EXPECT_FALSE(SDBValidateExpressionSyntax("((a + b)"));
+    EXPECT_FALSE(SDBValidateExpressionSyntax("(a + b))"));
+    EXPECT_FALSE(SDBValidateExpressionSyntax(")a + b("));
+    EXPECT_TRUE(SDBValidateExpressionSyntax("(($a0 + read32(0x80000000)) * ($a1 + 42))"));
+}
+
+TEST(SDBDpiTest, DebugReadOfAllGprsReturnsValues) {
+    CpuHarness cpu;
+    cpu.reset();
+
+    for (std::uint8_t i = 0; i < 32; ++i) {
+        const auto value = cpu.debug_read_gpr(i);
+        cpu.write_byte(guest_addr(i), 0u);
+    }
+
+    cpu.debug_write_gpr(10, 0x5555'5555u);
+    EXPECT_EQ(cpu.debug_read_gpr(10), 0x5555'5555u);
+    EXPECT_EQ(cpu.debug_read_gpr(0), 0u);
+}
+
+TEST(SDBDpiTest, DebugWriteToReg37AliasesToReg5) {
+    CpuHarness cpu;
+    cpu.reset();
+
+    cpu.debug_write_gpr(5, 0xaaaa'bbbbu);
+    EXPECT_EQ(cpu.debug_read_gpr(5), 0xaaaa'bbbbu);
+
+    cpu.debug_write_gpr(37, 0xccdd'eeffu);
+    EXPECT_EQ(cpu.debug_read_gpr(5), 0xccdd'eeffu);
+}
+
+TEST(SDBDpiTest, DebugWriteToReg0AlwaysReturnsZero) {
+    CpuHarness cpu;
+    cpu.reset();
+
+    cpu.debug_write_gpr(0, 0xdead'beefu);
+    EXPECT_EQ(cpu.debug_read_gpr(0), 0u);
+
+    cpu.debug_write_gpr(0, 0x1234'5678u);
+    EXPECT_EQ(cpu.debug_read_gpr(0), 0u);
+}
+
+TEST(SDBDpiTest, DoubleDebugPcWriteReflectsLastValue) {
+    CpuHarness cpu;
+    cpu.reset();
+
+    cpu.debug_write_pc(guest_addr(0x40));
+    EXPECT_EQ(cpu.debug_read_pc(), guest_addr(0x40));
+
+    cpu.debug_write_pc(guest_addr(0x80));
+    EXPECT_EQ(cpu.debug_read_pc(), guest_addr(0x80));
+}
+
 }  // namespace
 }  // namespace npc::test

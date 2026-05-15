@@ -71,9 +71,10 @@ template <typename T, std::size_t N>
 
 GeneratedProgram generate_program(const std::uint32_t seed) {
     std::mt19937 rng{seed};
-    std::uniform_int_distribution<int> op_dist(0, 7);
+    std::uniform_int_distribution<int> op_dist(0, 15);
     std::uniform_int_distribution<int> imm_dist(-2048, 2047);
     std::uniform_int_distribution<std::uint32_t> word_dist(0, 0xffff'ffffu);
+    std::uniform_int_distribution<std::uint32_t> shamt_dist(0, 31);
     std::uniform_int_distribution<std::size_t> byte_offset_dist(0, kDataBytes - 1);
     std::uniform_int_distribution<std::size_t> word_offset_dist(0, (kDataBytes / 4) - 1);
 
@@ -144,10 +145,47 @@ GeneratedProgram generate_program(const std::uint32_t seed) {
             write_word(expected_data, offset, reg_ref(regs, rs1));
             break;
         }
-        default: {
+        case 7: {
             const auto offset = byte_offset_dist(rng);
             generated.words.push_back(rv32::sb(rs1, Reg::t0, static_cast<std::int32_t>(offset)));
             expected_data[offset] = static_cast<std::uint8_t>(reg_ref(regs, rs1) & 0xffu);
+            break;
+        }
+        case 8:
+            generated.words.push_back(rv32::sub(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) - reg_ref(regs, rs2));
+            break;
+        case 9:
+            generated.words.push_back(rv32::xor_(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) ^ reg_ref(regs, rs2));
+            break;
+        case 10:
+            generated.words.push_back(rv32::or_(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) | reg_ref(regs, rs2));
+            break;
+        case 11:
+            generated.words.push_back(rv32::and_(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) & reg_ref(regs, rs2));
+            break;
+        case 12: {
+            const auto imm = imm_dist(rng);
+            generated.words.push_back(rv32::slti(rd, rs1, imm));
+            write_reg(regs, rd, static_cast<std::int32_t>(reg_ref(regs, rs1)) < imm ? 1u : 0u);
+            break;
+        }
+        case 13:
+            generated.words.push_back(rv32::slt(rd, rs1, rs2));
+            write_reg(regs, rd,
+                      static_cast<std::int32_t>(reg_ref(regs, rs1)) < static_cast<std::int32_t>(reg_ref(regs, rs2)) ? 1u : 0u);
+            break;
+        case 14:
+            generated.words.push_back(rv32::sltu(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) < reg_ref(regs, rs2) ? 1u : 0u);
+            break;
+        default: {
+            const auto shamt = shamt_dist(rng) & 0x1fu;
+            generated.words.push_back(rv32::slli(rd, rs1, shamt));
+            write_reg(regs, rd, reg_ref(regs, rs1) << shamt);
             break;
         }
         }
@@ -214,7 +252,17 @@ INSTANTIATE_TEST_SUITE_P(
         0x8000'0000u,
         0xa5a5'5a5au,
         0xc001'd00du,
-        0xffff'ffffu
+        0xffff'ffffu,
+        0x0d00'deadu,
+        0x1234'abcdu,
+        0x5555'5555u,
+        0xaaaa'aaaau,
+        0x1010'1010u,
+        0xf0f0'f0f0u,
+        0x1111'2222u,
+        0x3333'4444u,
+        0x7fff'ffffu,
+        0x3cc0'ffeeu
     )
 );
 
