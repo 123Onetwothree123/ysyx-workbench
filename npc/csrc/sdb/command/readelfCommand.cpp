@@ -18,7 +18,7 @@ SDBCommandUsageList readelfCommand::Usage() const noexcept
 SDBCommandResult readelfCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
     (void)Context;
-    const Readelf *Reader = GlobalFtrace.ElfReader();// 获取这个ELF的读取器
+    const Readelf *Reader{GlobalFtrace.ElfReader()};// 获取这个ELF的读取器
     if (Reader == nullptr)
     {
         std::println("readelf: 还没有加载ELF文件，启动NPC时传 --elf FILE");

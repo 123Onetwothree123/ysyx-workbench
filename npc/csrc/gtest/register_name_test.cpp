@@ -95,8 +95,8 @@ TEST(RegisterNameTest, RegisterNameToIndexInvalidNames) {
 }
 
 TEST(RegisterNameTest, RegisterNameToIndexAllXRegisters) {
-    for (std::uint32_t i = 0; i < 32; ++i) {
-        const auto result = RegisterNameToIndex(std::string(1, 'x') + std::to_string(i));
+    for (std::uint32_t i{0}; i < 32; ++i) {
+        const auto result{RegisterNameToIndex(std::string(1, 'x') + std::to_string(i))};
         ASSERT_TRUE(result.has_value()) << "x" << i << " should be valid";
         EXPECT_EQ(*result, i) << "x" << i << " should map to index " << i;
     }

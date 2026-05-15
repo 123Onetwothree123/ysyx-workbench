@@ -51,9 +51,9 @@ static void reset(Circuit *c) {
 }
 
 static void display(Circuit *c) {
-  static uint16_t last_led = 0;
+  static uint16_t last_led{0};
   if (last_led != c->led) { // only update display when c->led changes
-    for (int i = 0; i < 16; i ++) {
+    for (int i{0}; i < 16; i ++) {
       putchar(BITS(c->led, i, i) ? 'o' : '.');
     }
     putchar('\r');

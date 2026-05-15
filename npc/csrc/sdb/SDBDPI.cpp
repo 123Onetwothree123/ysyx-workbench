@@ -128,8 +128,8 @@ std::uint32_t CPP_NPCGetPC()
  */
 static int display_width(std::string_view s)
 {
-    int w = 0;
-    for (size_t i = 0; i < s.size();)
+    int w{0};
+    for (size_t i{0}; i < s.size();)
     {
         // 跳过 ANSI 转义序列 \033[ ... m
         if (s[i] == '\033' && i + 1 < s.size() && s[i + 1] == '[')
@@ -145,7 +145,7 @@ static int display_width(std::string_view s)
             }
             continue;
         }
-        unsigned char c = static_cast<unsigned char>(s[i]);
+        unsigned char c{static_cast<unsigned char>(s[i])};
         if (c < 0x80)
         {
             w += 1;
@@ -183,7 +183,7 @@ static void print_border(const std::vector<int> &widths)
     std::print("{}+{}", ANSI_FG_BLUE, ANSI_NONE);
     for (int w : widths)
     {
-        for (int i = 0; i < w + 2; i++)
+        for (int i{0}; i < w + 2; i++)
         {
             std::print("{}-{}", ANSI_FG_BLUE, ANSI_NONE);
         }
@@ -200,21 +200,21 @@ static void print_border(const std::vector<int> &widths)
  */
 static void print_cell_colored(std::string_view raw_content, int width, bool center)
 {
-    int content_width = display_width(raw_content);
-    int pad = width - content_width;
+    int content_width{display_width(raw_content)};
+    int pad{width - content_width};
     if (pad < 0)
     {
         pad = 0;
     }
-    int left_pad = center ? pad / 2 : 0;
-    int right_pad = pad - left_pad;
+    int left_pad{center ? pad / 2 : 0};
+    int right_pad{pad - left_pad};
     std::print(" ");
-    for (int i = 0; i < left_pad; i++)
+    for (int i{0}; i < left_pad; i++)
     {
         std::print(" ");
     }
     std::print("{}", raw_content);
-    for (int i = 0; i < right_pad; i++)
+    for (int i{0}; i < right_pad; i++)
     {
         std::print(" ");
     }
@@ -228,7 +228,7 @@ static void print_cell_colored(std::string_view raw_content, int width, bool cen
  */
 static const char *get_reg_abi_name(int idx)
 {
-    static const char *abi[] = {
+    static const char *abi[]{
         "zero", "ra",   "sp",   "gp",   "tp",   "t0",   "t1",   "t2",
         "s0",   "s1",   "a0",   "a1",   "a2",   "a3",   "a4",   "a5",
         "a6",   "a7",   "s2",   "s3",   "s4",   "s5",   "s6",   "s7",
@@ -373,10 +373,10 @@ void PrintGPR()
         const char *desc;
     };
 
-    const int nr_rows = 33; // x0-x31 + pc
+    const int nr_rows{33}; // x0-x31 + pc
     RegRow rows[nr_rows];
 
-    for (int i = 0; i < nr_rows; i++)
+    for (int i{0}; i < nr_rows; i++)
     {
         if (i == 0)
         {
@@ -386,7 +386,7 @@ void PrintGPR()
         }
         else
         {
-            int reg_idx = i - 1;
+            int reg_idx{i - 1};
             rows[i].arch_name = std::format("x{}", reg_idx);
             rows[i].abi_name = get_reg_abi_name(reg_idx);
             rows[i].value = CPP_NPCGetGPR(reg_idx);
@@ -395,15 +395,15 @@ void PrintGPR()
     }
 
     // 计算列宽
-    int id_width = display_width("编号");
-    int name_width = display_width("寄存器");
-    int dec_width = display_width("十进制");
-    int hex_width = display_width("十六进制");
-    int desc_width = display_width("说明");
+    int id_width{display_width("编号")};
+    int name_width{display_width("寄存器")};
+    int dec_width{display_width("十进制")};
+    int hex_width{display_width("十六进制")};
+    int desc_width{display_width("说明")};
 
-    for (int i = 0; i < nr_rows; i++)
+    for (int i{0}; i < nr_rows; i++)
     {
-        int w = display_width(rows[i].arch_name);
+        int w{display_width(rows[i].arch_name)};
         if (w > id_width)
         {
             id_width = w;
@@ -430,7 +430,7 @@ void PrintGPR()
         }
     }
 
-    std::vector<int> col_widths = {id_width, name_width, dec_width, hex_width, desc_width};
+    std::vector<int> col_widths{id_width, name_width, dec_width, hex_width, desc_width};
 
     // 打印表头（带颜色）
     std::println("寄存器状态：");
@@ -445,15 +445,15 @@ void PrintGPR()
     print_border(col_widths);
 
     // 打印每一行（带颜色）
-    for (int i = 0; i < nr_rows; i++)
+    for (int i{0}; i < nr_rows; i++)
     {
-        const char *row_color = get_reg_row_color(rows[i].arch_name.c_str(), rows[i].abi_name);
+        const char *row_color{get_reg_row_color(rows[i].arch_name.c_str(), rows[i].abi_name)};
 
-        std::string id_str   = std::format("{}{}{}", row_color, rows[i].arch_name, ANSI_NONE);
-        std::string name_str = std::format("{}{}{}", row_color, rows[i].abi_name, ANSI_NONE);
-        std::string dec_str  = std::format("{}{}{}", ANSI_FG_WHITE, rows[i].value, ANSI_NONE);
-        std::string hex_str  = std::format("{}0x{:08x}{}", row_color, rows[i].value, ANSI_NONE);
-        std::string desc_str = std::format("{}{}{}", row_color, rows[i].desc, ANSI_NONE);
+        std::string id_str{std::format("{}{}{}", row_color, rows[i].arch_name, ANSI_NONE)};
+        std::string name_str{std::format("{}{}{}", row_color, rows[i].abi_name, ANSI_NONE)};
+        std::string dec_str{std::format("{}{}{}", ANSI_FG_WHITE, rows[i].value, ANSI_NONE)};
+        std::string hex_str{std::format("{}0x{:08x}{}", row_color, rows[i].value, ANSI_NONE)};
+        std::string desc_str{std::format("{}{}{}", row_color, rows[i].desc, ANSI_NONE)};
 
         std::print("{}|{}", ANSI_FG_BLUE, ANSI_NONE);
         print_cell_colored(id_str,   id_width,   true);

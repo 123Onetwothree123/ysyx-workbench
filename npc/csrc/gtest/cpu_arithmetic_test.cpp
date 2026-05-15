@@ -18,7 +18,7 @@ struct AddiCase {
 class CpuAddiTest : public ::testing::TestWithParam<AddiCase> {};
 
 TEST_P(CpuAddiTest, SignExtendsTwelveBitImmediate) {
-    const auto [immediate, expected] = GetParam();
+    const auto [immediate, expected]{GetParam()};
 
     CpuHarness cpu;
     cpu.load_program({

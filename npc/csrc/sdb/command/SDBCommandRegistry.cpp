@@ -113,8 +113,8 @@ const std::vector<std::string> &SDBCommandRegistry::GetHistory() const noexcept
 }
 const SDBCommand *SDBCommandRegistry::FindCommand(std::string_view Name) const
 {
-    const auto CommandIt = std::ranges::find_if(Commands, [Name](const std::unique_ptr<SDBCommand> &Command)
-                                                { return Command->Name() == Name; });
+    const auto CommandIt{std::ranges::find_if(Commands, [Name](const std::unique_ptr<SDBCommand> &Command)
+                                                { return Command->Name() == Name; })};
     if (CommandIt == Commands.end())
     {
         return nullptr;

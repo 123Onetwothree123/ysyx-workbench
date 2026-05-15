@@ -10,7 +10,7 @@ class Laxer
 {
 private:
     std::string_view input;
-    std::size_t position = 0; // 现在扫描到的字符的位置
+    std::size_t position{0}; // 现在扫描到的字符的位置
     std::string error;
     void SkipWhitespace();              // 跳空白
     bool IsAtEnd() const noexcept;      // 扫描完了

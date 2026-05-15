@@ -39,19 +39,19 @@ void iringbuf::print(std::uint64_t ErrorPC) const
         std::println("iringbuf是空的");
         return;
     }
-    const std::size_t start = (head + CONFIG_IRINGBUF_SIZE - count) % CONFIG_IRINGBUF_SIZE;
+    const std::size_t start{(head + CONFIG_IRINGBUF_SIZE - count) % CONFIG_IRINGBUF_SIZE};
     std::println("打印iringbuf");
-    for (std::size_t i = 0; i < count; i++)
+    for (std::size_t i{0}; i < count; i++)
     {
         const std::size_t index{(start + i) % CONFIG_IRINGBUF_SIZE};
-        const RecordInstruction &entry = buffer[index];
+        const RecordInstruction &entry{buffer[index]};
         constexpr std::string_view marker_selected{"-->"};
         constexpr std::string_view marker_normal{"   "};
         std::string_view marker{(entry.GetPC() == ErrorPC) ? marker_selected : marker_normal};
         // 拆出指令机器码字节，小端的
         std::array<std::uint8_t, 4> inst_bytes{};
         auto instruction{entry.GetInstruction()};
-        for (std::size_t j = 0; j < entry.GetLen(); j++)
+        for (std::size_t j{0}; j < entry.GetLen(); j++)
         {
             inst_bytes[j] = static_cast<std::uint8_t>(instruction >> (j * 8));
         }
@@ -63,7 +63,7 @@ void iringbuf::print(std::uint64_t ErrorPC) const
         // 这个是字节码字符串，高字节在前显示
         std::string BytesString;
         BytesString.reserve(static_cast<std::size_t>(entry.GetLen()) * 4); // 避免多次内存分配
-        for (int j = entry.GetLen() - 1; j >= 0; --j)
+        for (int j{entry.GetLen() - 1}; j >= 0; --j)
         {
             std::format_to(std::back_inserter(BytesString), " {:02x}", inst_bytes[j]);
         }

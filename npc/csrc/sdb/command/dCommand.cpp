@@ -39,7 +39,7 @@ SDBCommandResult dCommand::Execute(SDBCommandContext &Context, std::string_view 
         std::println("错误：参数中有尾部垃圾 '{}'。用法：d <NO>", Remainder);
         return SDBCommandResult::Continue;
     }
-    const auto MaxWP = GetGlobalWatchpointPool().GetMaxWatchpoints();
+    const auto MaxWP{GetGlobalWatchpointPool().GetMaxWatchpoints()};
     if (NO >= MaxWP)
     {
         std::println("错误：监视点编号 {} 超出最大允许范围（0-{}）。", NO, MaxWP - 1);

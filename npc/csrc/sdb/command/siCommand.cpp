@@ -49,7 +49,7 @@ SDBCommandResult siCommand::Execute(SDBCommandContext &Context, std::string_view
         std::println("NPC已经停止运行了");
         return SDBCommandResult::Continue;
     }
-    for (std::size_t Index = 0; Index < Count && !npc_halted; ++Index)
+    for (std::size_t Index{0}; Index < Count && !npc_halted; ++Index)
     {
         SDBStepCycle(Context.GetTop());
         ++Context.GetCycles();

@@ -16,7 +16,7 @@
 #include "SDBDPI.hpp"
 #include "trace.hpp"
 
-bool npc_halted = false;
+bool npc_halted{false};
 static uint32_t halt_pc{0};  // 记录停止的时候的PC
 static uint32_t halt_ret{0}; // 返回码，0是good，1是bad
 
@@ -38,7 +38,7 @@ namespace
         CliOptions options;
         std::optional<std::filesystem::path> image_file;
 
-        for (int i = 1; i < argc; ++i)
+        for (int i{1}; i < argc; ++i)
         {
             const std::string_view arg{argv[i]};
             if (arg == "--elf" || arg == "-e")
@@ -95,7 +95,7 @@ namespace
     }
     std::optional<std::filesystem::path> infer_elf_path(const std::filesystem::path &image_file)
     {
-        auto candidate = image_file;
+        auto candidate{image_file};
         candidate.replace_extension(".elf");
         if (candidate != image_file && std::filesystem::exists(candidate))
         {
@@ -105,7 +105,7 @@ namespace
     }
     std::expected<void, std::string> init_trace_from_cli(const CliOptions &options)
     {
-        auto elf_file = options.elf_file;
+        auto elf_file{options.elf_file};
 #ifdef CONFIG_FTRACE
         if (!elf_file && options.ftrace_enabled)
         {
@@ -117,7 +117,7 @@ namespace
 #endif
         if (elf_file)
         {
-            auto result = InitializeFtrace(*elf_file, options.ftrace_enabled);
+            auto result{InitializeFtrace(*elf_file, options.ftrace_enabled)};
             if (!result)
             {
                 return result;

@@ -390,7 +390,7 @@ TEST(CpuControlFlowTest, JalWithZeroRdDoesNotWriteReturnAddress) {
 
 TEST(CpuControlFlowTest, JalCanReachSparseForwardTargetAndPreservesLinkPc) {
     CpuHarness cpu;
-    const auto target_addr = guest_addr(0x80);
+    const auto target_addr{guest_addr(0x80)};
     cpu.load_program({
         rv32::addi(Reg::a0, Reg::zero, 1),
         rv32::jal(Reg::ra, 0x80),
@@ -409,7 +409,7 @@ TEST(CpuControlFlowTest, JalCanReachSparseForwardTargetAndPreservesLinkPc) {
 
 TEST(CpuControlFlowTest, TakenBranchCanReachSparseForwardTargetWithoutExecutingFallthrough) {
     CpuHarness cpu;
-    const auto target_addr = guest_addr(0x60);
+    const auto target_addr{guest_addr(0x60)};
     cpu.load_program({
         rv32::addi(Reg::a0, Reg::zero, 0x11),
         rv32::addi(Reg::t0, Reg::zero, -1),
@@ -442,7 +442,7 @@ TEST(CpuControlFlowTest, BranchWithZeroOffsetCanSpinUntilCycleBudget) {
 
 TEST(CpuControlFlowTest, JalrWithDestinationSameAsBaseUsesOldBaseForTargetAndWritesLink) {
     CpuHarness cpu;
-    const auto target_addr = guest_addr(0x50);
+    const auto target_addr{guest_addr(0x50)};
     cpu.load_program({
         rv32::auipc(Reg::ra, 0),
         rv32::addi(Reg::ra, Reg::ra, 0x50),
@@ -462,7 +462,7 @@ TEST(CpuControlFlowTest, JalrWithDestinationSameAsBaseUsesOldBaseForTargetAndWri
 
 TEST(CpuControlFlowTest, JalrWithZeroDestinationDoesNotClobberZeroRegisterOrLink) {
     CpuHarness cpu;
-    const auto target_addr = guest_addr(0x48);
+    const auto target_addr{guest_addr(0x48)};
     cpu.load_program({
         rv32::addi(Reg::ra, Reg::zero, 0x7b),
         rv32::auipc(Reg::t0, 0),

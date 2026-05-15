@@ -21,7 +21,7 @@ token Laxer::next()
     {
         return token::MakeEnd(position);
     }
-    char current = Peek();
+    char current{Peek()};
     if (current == '0' && position + 1 < input.size() && (input[position + 1] == 'x' || input[position + 1] == 'X'))
     {
         return ScanHexNumber();
@@ -46,7 +46,7 @@ std::expected<token, std::string> Laxer::scan()
     {
         return std::unexpected(error);
     }
-    token Token = next();
+    token Token{next()};
     if (HasError())
     {
         return std::unexpected(error);
@@ -58,7 +58,7 @@ std::expected<std::vector<token>, std::string> Laxer::ScanAll()
     std::vector<token> tokens;
     while (true)
     {
-        auto result = scan();
+        auto result{scan()};
         if (!result)
         {
             return std::unexpected(result.error());
@@ -188,7 +188,7 @@ token Laxer::ScanRegister()
 }
 token Laxer::ScanOperator(){
     auto start{position};
-    char current = Peek();
+    char current{Peek()};
     Advance();
     if (current == '(')
     {

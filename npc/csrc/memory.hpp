@@ -6,9 +6,9 @@
 #include <expected>
 #include <string>
 #include "npc.hpp"
-constexpr uint32_t PMEM_SIZE = 128 * 1024 * 1024; // 抄AM的
-constexpr uint32_t CONFIG_MBASE = 0x80000000;     // 内存基地址
-constexpr uint32_t RESET_VECTOR = CONFIG_MBASE;
+constexpr uint32_t PMEM_SIZE{128 * 1024 * 1024}; // 抄AM的
+constexpr uint32_t CONFIG_MBASE{0x80000000};     // 内存基地址
+constexpr uint32_t RESET_VECTOR{CONFIG_MBASE};
 extern std::array<uint8_t, PMEM_SIZE> pmem;       // 抄am拿数组当内存
 // 检查地址是否在pmem范围内
 inline bool check_pmem_range(uint32_t addr, size_t len = 1)

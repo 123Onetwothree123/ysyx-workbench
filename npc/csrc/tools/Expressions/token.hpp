@@ -25,10 +25,10 @@ private:
         ReadMemory32, // read32
     };
     token(Kind kind, std::string_view text, std::uint32_t value, std::size_t position); // 构造函数
-    Kind kind = Kind::EndOfInput;                                                       // 词法单元类型
+    Kind kind{Kind::EndOfInput};                                                       // 词法单元类型
     std::string_view text;                                                              // 原始文本
-    std::uint32_t value = 0;                                                            // 只有Number是有效的
-    std::size_t position = 0;                                                           // 报错定位
+    std::uint32_t value{0};                                                            // 只有Number是有效的
+    std::size_t position{0};                                                           // 报错定位
 public:
     token() = default;                                                                                   // 默认构造函数
     ~token() = default;                                                                                  // 析构函数

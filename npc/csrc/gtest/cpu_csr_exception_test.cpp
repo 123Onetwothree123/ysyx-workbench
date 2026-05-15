@@ -10,12 +10,12 @@ namespace {
 
 using rv32::Reg;
 
-constexpr std::uint32_t kMstatus = 0x300u;
-constexpr std::uint32_t kMepc = 0x341u;
-constexpr std::uint32_t kMcause = 0x342u;
-constexpr std::uint32_t kMtvec = 0x305u;
-constexpr std::uint32_t kMvendorid = 0xF11u;
-constexpr std::uint32_t kMarchid = 0xF12u;
+constexpr std::uint32_t kMstatus{0x300u};
+constexpr std::uint32_t kMepc{0x341u};
+constexpr std::uint32_t kMcause{0x342u};
+constexpr std::uint32_t kMtvec{0x305u};
+constexpr std::uint32_t kMvendorid{0xF11u};
+constexpr std::uint32_t kMarchid{0xF12u};
 
 TEST(CpuCsrTest, CsrrwAtomicallySwapRegisterAndCSR) {
     CpuHarness cpu;

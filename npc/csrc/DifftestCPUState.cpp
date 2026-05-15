@@ -35,7 +35,7 @@ void DifftestCPUState::SetPC(std::uint32_t Value)
 DifftestCPUState DifftestCPUState::ReadDUTState(VRV32E32Reg &Top)
 {
     DifftestCPUState State{};
-    for (int Index = 0; Index < 32; ++Index)
+    for (int Index{0}; Index < 32; ++Index)
     {
         static_cast<void>(CPP_NPCGetGPR(Index)); // 调用 DPI 获取 GPR 值以触发 Verilator 更新
         Top.eval();                               // 执行 Verilator 组合逻辑求值
@@ -48,7 +48,7 @@ DifftestCPUState DifftestCPUState::ReadDUTState(VRV32E32Reg &Top)
 
 bool DifftestCPUState::CheckRegs(const DifftestCPUState &DUT) const
 {
-    for (std::size_t Index = 0; Index < gpr.size(); ++Index)
+    for (std::size_t Index{0}; Index < gpr.size(); ++Index)
     {
         if (gpr[Index] != DUT.gpr[Index])
         {

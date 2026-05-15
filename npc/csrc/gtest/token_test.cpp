@@ -8,7 +8,7 @@
 namespace {
 
 TEST(TokenTest, NumberTokenFactoryAndAccessors) {
-    const auto t = token::MakeNumber("42", 42, 0);
+    const auto t{token::MakeNumber("42", 42, 0)};
     EXPECT_TRUE(t.IsNumber());
     EXPECT_FALSE(t.IsRegister());
     EXPECT_FALSE(t.IsPlus());
@@ -26,7 +26,7 @@ TEST(TokenTest, NumberTokenFactoryAndAccessors) {
 }
 
 TEST(TokenTest, NumberTokenWithHex) {
-    const auto t = token::MakeNumber("0xff", 255, 5);
+    const auto t{token::MakeNumber("0xff", 255, 5)};
     EXPECT_TRUE(t.IsNumber());
     EXPECT_EQ(t.GetValue(), 255u);
     EXPECT_EQ(t.GetText(), "0xff");
@@ -34,7 +34,7 @@ TEST(TokenTest, NumberTokenWithHex) {
 }
 
 TEST(TokenTest, RegisterTokenFactoryAndAccessors) {
-    const auto t = token::MakeRegister("$a0", 10, 3);
+    const auto t{token::MakeRegister("$a0", 10, 3)};
     EXPECT_TRUE(t.IsRegister());
     EXPECT_FALSE(t.IsNumber());
     EXPECT_EQ(t.GetText(), "$a0");
@@ -42,7 +42,7 @@ TEST(TokenTest, RegisterTokenFactoryAndAccessors) {
 }
 
 TEST(TokenTest, PlusToken) {
-    const auto t = token::MakePlus("+", 1);
+    const auto t{token::MakePlus("+", 1)};
     EXPECT_TRUE(t.IsPlus());
     EXPECT_TRUE(t.IsBinaryOperator());
     EXPECT_EQ(t.GetPrecedence(), 3);
@@ -52,7 +52,7 @@ TEST(TokenTest, PlusToken) {
 }
 
 TEST(TokenTest, MinusToken) {
-    const auto t = token::MakeMinus("-", 2);
+    const auto t{token::MakeMinus("-", 2)};
     EXPECT_TRUE(t.IsMinus());
     EXPECT_TRUE(t.IsBinaryOperator());
     EXPECT_TRUE(t.IsUnaryOperator());
@@ -62,7 +62,7 @@ TEST(TokenTest, MinusToken) {
 }
 
 TEST(TokenTest, StarToken) {
-    const auto t = token::MakeStar(3);
+    const auto t{token::MakeStar(3)};
     EXPECT_TRUE(t.IsStar());
     EXPECT_TRUE(t.IsBinaryOperator());
     EXPECT_TRUE(t.IsUnaryOperator());
@@ -71,7 +71,7 @@ TEST(TokenTest, StarToken) {
 }
 
 TEST(TokenTest, SlashToken) {
-    const auto t = token::MakeSlash(4);
+    const auto t{token::MakeSlash(4)};
     EXPECT_TRUE(t.IsSlash());
     EXPECT_TRUE(t.IsBinaryOperator());
     EXPECT_EQ(t.GetPrecedence(), 4);
@@ -79,7 +79,7 @@ TEST(TokenTest, SlashToken) {
 }
 
 TEST(TokenTest, EqualToken) {
-    const auto t = token::MakeEqual(5);
+    const auto t{token::MakeEqual(5)};
     EXPECT_TRUE(t.IsEqual());
     EXPECT_TRUE(t.IsBinaryOperator());
     EXPECT_EQ(t.GetPrecedence(), 2);
@@ -87,28 +87,28 @@ TEST(TokenTest, EqualToken) {
 }
 
 TEST(TokenTest, NotEqualToken) {
-    const auto t = token::MakeNotEqual(6);
+    const auto t{token::MakeNotEqual(6)};
     EXPECT_TRUE(t.IsNotEqual());
     EXPECT_TRUE(t.IsBinaryOperator());
     EXPECT_EQ(t.GetPrecedence(), 2);
 }
 
 TEST(TokenTest, LessEqualToken) {
-    const auto t = token::MakeLessEqual(7);
+    const auto t{token::MakeLessEqual(7)};
     EXPECT_TRUE(t.IsLessEqual());
     EXPECT_TRUE(t.IsBinaryOperator());
     EXPECT_EQ(t.GetPrecedence(), 2);
 }
 
 TEST(TokenTest, LogicalAndToken) {
-    const auto t = token::MakeLogicalAnd(8);
+    const auto t{token::MakeLogicalAnd(8)};
     EXPECT_TRUE(t.IsLogicalAnd());
     EXPECT_TRUE(t.IsBinaryOperator());
     EXPECT_EQ(t.GetPrecedence(), 1);
 }
 
 TEST(TokenTest, LeftParenToken) {
-    const auto t = token::MakeLeftParen(9);
+    const auto t{token::MakeLeftParen(9)};
     EXPECT_TRUE(t.IsLeftParen());
     EXPECT_TRUE(t.IsParenthesis());
     EXPECT_FALSE(t.IsRightParen());
@@ -116,7 +116,7 @@ TEST(TokenTest, LeftParenToken) {
 }
 
 TEST(TokenTest, RightParenToken) {
-    const auto t = token::MakeRightParen(10);
+    const auto t{token::MakeRightParen(10)};
     EXPECT_TRUE(t.IsRightParen());
     EXPECT_TRUE(t.IsParenthesis());
     EXPECT_FALSE(t.IsLeftParen());
@@ -124,7 +124,7 @@ TEST(TokenTest, RightParenToken) {
 }
 
 TEST(TokenTest, EndToken) {
-    const auto t = token::MakeEnd(11);
+    const auto t{token::MakeEnd(11)};
     EXPECT_TRUE(t.IsEndOfInput());
     EXPECT_FALSE(t.IsNumber());
     EXPECT_FALSE(t.IsRegister());
@@ -133,7 +133,7 @@ TEST(TokenTest, EndToken) {
 }
 
 TEST(TokenTest, ReadMemory8Token) {
-    const auto t = token::MakeReadMemory8(12);
+    const auto t{token::MakeReadMemory8(12)};
     EXPECT_TRUE(t.IsReadMemory8());
     EXPECT_TRUE(t.IsReadMemory());
     EXPECT_FALSE(t.IsReadMemory16());
@@ -142,7 +142,7 @@ TEST(TokenTest, ReadMemory8Token) {
 }
 
 TEST(TokenTest, ReadMemory16Token) {
-    const auto t = token::MakeReadMemory16(13);
+    const auto t{token::MakeReadMemory16(13)};
     EXPECT_TRUE(t.IsReadMemory16());
     EXPECT_TRUE(t.IsReadMemory());
     EXPECT_FALSE(t.IsReadMemory8());
@@ -150,7 +150,7 @@ TEST(TokenTest, ReadMemory16Token) {
 }
 
 TEST(TokenTest, ReadMemory32Token) {
-    const auto t = token::MakeReadMemory32(14);
+    const auto t{token::MakeReadMemory32(14)};
     EXPECT_TRUE(t.IsReadMemory32());
     EXPECT_TRUE(t.IsReadMemory());
     EXPECT_FALSE(t.IsReadMemory8());
@@ -163,14 +163,14 @@ TEST(TokenTest, DefaultTokenIsEndOfInput) {
 }
 
 TEST(TokenTest, AllBinaryOperatorsAreOperators) {
-    const auto plus = token::MakePlus("+", 0);
-    const auto minus = token::MakeMinus("-", 0);
-    const auto star = token::MakeStar(0);
-    const auto slash = token::MakeSlash(0);
-    const auto eq = token::MakeEqual(0);
-    const auto ne = token::MakeNotEqual(0);
-    const auto le = token::MakeLessEqual(0);
-    const auto land = token::MakeLogicalAnd(0);
+    const auto plus{token::MakePlus("+", 0)};
+    const auto minus{token::MakeMinus("-", 0)};
+    const auto star{token::MakeStar(0)};
+    const auto slash{token::MakeSlash(0)};
+    const auto eq{token::MakeEqual(0)};
+    const auto ne{token::MakeNotEqual(0)};
+    const auto le{token::MakeLessEqual(0)};
+    const auto land{token::MakeLogicalAnd(0)};
 
     EXPECT_TRUE(plus.IsOperator());
     EXPECT_TRUE(minus.IsOperator());
@@ -183,8 +183,8 @@ TEST(TokenTest, AllBinaryOperatorsAreOperators) {
 }
 
 TEST(TokenTest, ParenthesisAreNotOperators) {
-    const auto lp = token::MakeLeftParen(0);
-    const auto rp = token::MakeRightParen(0);
+    const auto lp{token::MakeLeftParen(0)};
+    const auto rp{token::MakeRightParen(0)};
     EXPECT_FALSE(lp.IsOperator());
     EXPECT_FALSE(rp.IsOperator());
     EXPECT_TRUE(lp.IsParenthesis());

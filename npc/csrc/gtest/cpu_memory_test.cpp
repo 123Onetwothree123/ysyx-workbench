@@ -12,7 +12,7 @@ using rv32::Reg;
 
 TEST(CpuMemoryTest, LwReadsAlignedWordWithLittleEndianLayout) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_byte(data_addr + 0, 0x12);
     cpu.write_byte(data_addr + 1, 0x34);
     cpu.write_byte(data_addr + 2, 0x56);
@@ -36,7 +36,7 @@ struct ByteLaneCase {
 class CpuLbuLaneTest : public ::testing::TestWithParam<ByteLaneCase> {};
 
 TEST_P(CpuLbuLaneTest, ReadsSelectedByteLaneAndZeroExtends) {
-    const auto [offset, expected] = GetParam();
+    const auto [offset, expected]{GetParam()};
 
     CpuHarness cpu;
     cpu.write_word(guest_addr(0x100), 0x807f'55aau);
@@ -64,7 +64,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST(CpuMemoryTest, LbuUsesSignedOffsetsAcrossAlignedWords) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr + 0, 0x1122'3344u);
     cpu.write_word(data_addr + 4, 0xaabb'ccddu);
     cpu.load_program({
@@ -200,7 +200,7 @@ TEST(CpuMemoryTest, LhuReadsUpperHalfwordWithZeroExtend) {
 
 TEST(CpuMemoryTest, HalfwordLoadsCoverBothLanesAndSignednessInOneProgram) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0x8001'7fffu);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -231,10 +231,10 @@ struct StoreByteLaneCase {
 class CpuSbLaneTest : public ::testing::TestWithParam<StoreByteLaneCase> {};
 
 TEST_P(CpuSbLaneTest, WritesRequestedByteLaneWithoutTouchingNeighbors) {
-    const auto [offset, expected_word] = GetParam();
+    const auto [offset, expected_word]{GetParam()};
 
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0x1122'3344u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -263,7 +263,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST(CpuMemoryTest, SbCanCrossToNextAlignedWordWithoutTouchingPreviousWord) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr + 0, 0x1122'3344u);
     cpu.write_word(data_addr + 4, 0xaabb'ccddu);
     cpu.load_program({
@@ -283,7 +283,7 @@ TEST(CpuMemoryTest, SbCanCrossToNextAlignedWordWithoutTouchingPreviousWord) {
 
 TEST(CpuMemoryTest, ShInstructionExecutesWithoutHanging) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0x1122'3344u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -304,7 +304,7 @@ TEST(CpuMemoryTest, ShInstructionExecutesWithoutHanging) {
 
 TEST(CpuMemoryTest, ShWithOffsetExecutesWithoutError) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0x1122'3344u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -325,7 +325,7 @@ TEST(CpuMemoryTest, ShWithOffsetExecutesWithoutError) {
 
 TEST(CpuMemoryTest, StoreHalfwordImmediateLowBitsPreserveUnaffectedNeighborHalfword) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0xaabb'ccddu);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -345,7 +345,7 @@ TEST(CpuMemoryTest, StoreHalfwordImmediateLowBitsPreserveUnaffectedNeighborHalfw
 
 TEST(CpuMemoryTest, StoreHalfwordUpperLanePreservesLowerNeighborHalfword) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0xaabb'ccddu);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -365,7 +365,7 @@ TEST(CpuMemoryTest, StoreHalfwordUpperLanePreservesLowerNeighborHalfword) {
 
 TEST(CpuMemoryTest, SwWritesFullWordAndCanBeReadBack) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -384,7 +384,7 @@ TEST(CpuMemoryTest, SwWritesFullWordAndCanBeReadBack) {
 
 TEST(CpuMemoryTest, SwUsesSignedNegativeOffsetFromBaseRegister) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -403,7 +403,7 @@ TEST(CpuMemoryTest, SwUsesSignedNegativeOffsetFromBaseRegister) {
 
 TEST(CpuMemoryTest, LoadAndStoreUseSignedOffsetsFromBaseRegister) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0x0102'0304u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -421,8 +421,8 @@ TEST(CpuMemoryTest, LoadAndStoreUseSignedOffsetsFromBaseRegister) {
 
 TEST(CpuMemoryTest, ProgramCanCopyWordThenPatchAByte) {
     CpuHarness cpu;
-    const auto source_addr = guest_addr(0x100);
-    const auto dest_addr = guest_addr(0x104);
+    const auto source_addr{guest_addr(0x100)};
+    const auto dest_addr{guest_addr(0x104)};
     cpu.write_word(source_addr, 0xcafe'babeu);
     cpu.write_word(dest_addr, 0u);
     cpu.load_program({
@@ -444,7 +444,7 @@ TEST(CpuMemoryTest, ProgramCanCopyWordThenPatchAByte) {
 
 TEST(CpuMemoryTest, LoadSequenceCoversByteAndHalfwordWidths) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0x8000'017fu);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -461,7 +461,7 @@ TEST(CpuMemoryTest, LoadSequenceCoversByteAndHalfwordWidths) {
 
 TEST(CpuMemoryTest, StoreByteStormThenLoadBack) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0x1122'3344u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -481,7 +481,7 @@ TEST(CpuMemoryTest, StoreByteStormThenLoadBack) {
 
 TEST(CpuMemoryTest, ReadAfterWriteAllWidthsInterleaved) {
     CpuHarness cpu;
-    const auto addr1 = guest_addr(0x200);
+    const auto addr1{guest_addr(0x200)};
     cpu.write_word(addr1, 0u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -497,7 +497,7 @@ TEST(CpuMemoryTest, ReadAfterWriteAllWidthsInterleaved) {
     });
     cpu.reset();
 
-    const auto result = cpu.run(64);
+    const auto result{cpu.run(64)};
     expect_halt(result, 0x0068'3412u, guest_addr(36));
     EXPECT_EQ(cpu.read_word(addr1), 0x0068'3412u);
     expect_memory_byte(cpu, addr1 + 0, 0x12u);
@@ -507,7 +507,7 @@ TEST(CpuMemoryTest, ReadAfterWriteAllWidthsInterleaved) {
 
 TEST(CpuMemoryTest, BackToBackStoreByteByteLoadAndWordLoadObserveLatestLanes) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x240);
+    const auto data_addr{guest_addr(0x240)};
     cpu.write_word(data_addr, 0xffff'ffffu);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),

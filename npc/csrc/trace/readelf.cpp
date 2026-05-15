@@ -23,13 +23,13 @@
 namespace
 {
 // 本次 NPC 构建所期望的 ELF class 字节。
-constexpr unsigned char ExpectedElfClass = Readelf::is_elf64 ? ELFCLASS64 : ELFCLASS32;
+constexpr unsigned char ExpectedElfClass{Readelf::is_elf64 ? ELFCLASS64 : ELFCLASS32};
 
 // 诊断信息中使用的 `ExpectedElfClass` 的可读形式。
-constexpr std::string_view ExpectedElfClassName = Readelf::is_elf64 ? "ELF64" : "ELF32";
+constexpr std::string_view ExpectedElfClassName{Readelf::is_elf64 ? "ELF64" : "ELF32"};
 
 // 打印虚拟地址时使用的十六进制位数。
-constexpr int AddressWidth = Readelf::is_elf64 ? 16 : 8;
+constexpr int AddressWidth{Readelf::is_elf64 ? 16 : 8};
 
 // 简短的局部别名，使解析器不依赖于预处理器宏。
 using Header = Readelf::header_type;
@@ -157,7 +157,7 @@ template <typename T>
 std::expected<T, std::string> read_object_at(std::ifstream &file, std::uint64_t offset, std::string_view what)
 {
     T object{};
-    auto result = read_exact_at(file, offset, &object, sizeof(T), what);
+    auto result{read_exact_at(file, offset, &object, sizeof(T), what)};
     if (!result)
     {
         return make_error(result.error());
@@ -181,7 +181,7 @@ std::expected<std::vector<T>, std::string> read_array_at(std::ifstream &file,
                                                          std::size_t count,
                                                          std::string_view what)
 {
-    std::size_t bytes = 0;
+    std::size_t bytes{0};
     if (!checked_byte_count(count, sizeof(T), bytes))
     {
         return make_error(std::string(what) + " size overflows size_t");
@@ -193,7 +193,7 @@ std::expected<std::vector<T>, std::string> read_array_at(std::ifstream &file,
         return objects;
     }
 
-    auto result = read_exact_at(file, offset, objects.data(), bytes, what);
+    auto result{read_exact_at(file, offset, objects.data(), bytes, what)};
     if (!result)
     {
         return make_error(result.error());
@@ -320,13 +320,13 @@ std::expected<std::vector<char>, std::string> read_string_table(std::ifstream &f
         return make_error("string table is too large");
     }
 
-    const auto payload_size = static_cast<std::size_t>(section.sh_size);
+    const auto payload_size{static_cast<std::size_t>(section.sh_size)};
     std::vector<char> table(payload_size + 1, '\0');
-    auto result = read_exact_at(file,
+    auto result{read_exact_at(file,
                                 static_cast<std::uint64_t>(section.sh_offset),
                                 table.data(),
                                 payload_size,
-                                "string table");
+                                "string table")};
     if (!result)
     {
         return make_error(result.error());
@@ -364,9 +364,9 @@ std::optional<std::string_view> string_at(std::span<const char> table, std::size
         return std::nullopt;
     }
 
-    const char *begin = table.data() + offset;
-    const auto remaining = table.size() - offset;
-    const void *end = std::memchr(begin, '\0', remaining);
+    const char *begin{table.data() + offset};
+    const auto remaining{table.size() - offset};
+    const void *end{std::memchr(begin, '\0', remaining)};
     if (end == nullptr)
     {
         return std::nullopt;
@@ -454,14 +454,14 @@ std::vector<ReadelfFunction> build_functions(std::span<const Symbol> symbols, st
             continue;
         }
 
-        const auto name = string_at(string_table, static_cast<std::size_t>(symbol.st_name));
+        const auto name{string_at(string_table, static_cast<std::size_t>(symbol.st_name))};
         if (!name)
         {
             continue;
         }
 
-        const auto start = static_cast<std::size_t>(symbol.st_value);
-        const auto size = static_cast<std::size_t>(symbol.st_size);
+        const auto start{static_cast<std::size_t>(symbol.st_value)};
+        const auto size{static_cast<std::size_t>(symbol.st_size)};
         if (size > std::numeric_limits<std::size_t>::max() - start)
         {
             continue;
@@ -623,12 +623,12 @@ std::string_view section_type_name(Word type)
 std::string section_flags(Xword flags)
 {
     std::string result;
-    const auto append_if = [&](Xword mask, char flag) {
+    const auto append_if{[&](Xword mask, char flag) {
         if ((flags & mask) != 0)
         {
             result.push_back(flag);
         }
-    };
+    }};
 
     append_if(SHF_WRITE, 'W');
     append_if(SHF_ALLOC, 'A');
@@ -794,7 +794,7 @@ std::expected<Readelf, std::string> Readelf::load(std::filesystem::path elf_file
     Readelf readelf;
     readelf.path_ = std::move(elf_file);
 
-    auto result = readelf.load_from_file();
+    auto result{readelf.load_from_file()};
     if (!result)
     {
         return make_error(result.error());
@@ -879,13 +879,13 @@ std::optional<ReadelfFunction> Readelf::find_function(std::size_t address) const
         return std::nullopt;
     }
 
-    const auto it = std::ranges::upper_bound(functions_, address, {}, &ReadelfFunction::start);
+    const auto it{std::ranges::upper_bound(functions_, address, {}, &ReadelfFunction::start)};
     if (it == functions_.begin())
     {
         return std::nullopt;
     }
 
-    const ReadelfFunction &candidate = *std::prev(it);
+    const ReadelfFunction &candidate{*std::prev(it)};
     if (!candidate.contains(address))
     {
         return std::nullopt;
@@ -901,7 +901,7 @@ std::optional<ReadelfFunction> Readelf::find_function(std::size_t address) const
  */
 std::optional<std::string_view> Readelf::find_function_name(std::size_t address) const noexcept
 {
-    const auto function = find_function(address);
+    const auto function{find_function(address)};
     if (!function)
     {
         return std::nullopt;
@@ -967,9 +967,9 @@ void Readelf::print_section_headers(std::ostream &os) const
              "  [Nr] Name              Type            Address{}Off    Size   ES Flg Lk Inf Al\n",
              std::string(Readelf::is_elf64 ? 9 : 1, ' '));
 
-    for (std::size_t i = 0; i < section_headers_.size(); ++i)
+    for (std::size_t i{0}; i < section_headers_.size(); ++i)
     {
-        const auto &section = section_headers_[i];
+        const auto &section{section_headers_[i]};
 
         print_to(os,
                  "  [{:2}] {:<17} {:<15} {:0{}x} {:06x} {:06x} {:02x} {:<3} {:2} {:3} {:2}\n",
@@ -1001,15 +1001,15 @@ void Readelf::print_symbols(std::ostream &os) const
         return;
     }
 
-    const int symbol_table_index = symbol_table_section_index();
-    const auto table_name = symbol_table_index >= 0 ? section_name(section_headers_[symbol_table_index].sh_name) : std::string_view("<symtab>");
+    const int symbol_table_index{symbol_table_section_index()};
+    const auto table_name{symbol_table_index >= 0 ? section_name(section_headers_[symbol_table_index].sh_name) : std::string_view("<symtab>")};
 
     print_to(os, "Symbol table '{}' contains {} entries:\n", table_name, symbols_.size());
     print_to(os, "   Num: {:>{}} Size  Type    Bind   Vis      Ndx Name\n", "Value", AddressWidth);
 
-    for (std::size_t i = 0; i < symbols_.size(); ++i)
+    for (std::size_t i{0}; i < symbols_.size(); ++i)
     {
-        const auto &symbol = symbols_[i];
+        const auto &symbol{symbols_[i]};
 
         print_to(os,
                  "  {:4}: {:0{}x} {:5} {:<7} {:<6} {:<8} {:>3} {}\n",
@@ -1051,19 +1051,19 @@ std::expected<void, std::string> Readelf::load_from_file()
         return make_error("failed to open ELF file: " + path_.string());
     }
 
-    auto header = read_object_at<Header>(file, 0, "ELF header");
+    auto header{read_object_at<Header>(file, 0, "ELF header")};
     if (!header)
     {
         return make_error(header.error());
     }
 
-    auto header_check = validate_header(*header);
+    auto header_check{validate_header(*header)};
     if (!header_check)
     {
         return make_error(header_check.error());
     }
 
-    auto sections = read_section_headers(file, *header);
+    auto sections{read_section_headers(file, *header)};
     if (!sections)
     {
         return make_error(sections.error());
@@ -1071,32 +1071,32 @@ std::expected<void, std::string> Readelf::load_from_file()
 
     if (header->e_shstrndx < sections->size() && (*sections)[header->e_shstrndx].sh_type == SHT_STRTAB)
     {
-        auto section_names = read_string_table(file, (*sections)[header->e_shstrndx]);
+        auto section_names{read_string_table(file, (*sections)[header->e_shstrndx])};
         if (section_names)
         {
             section_name_table_ = std::move(*section_names);
         }
     }
 
-    const auto symbol_table = std::ranges::find_if(*sections, [](const SectionHeader &section) {
+    const auto symbol_table{std::ranges::find_if(*sections, [](const SectionHeader &section) {
         return section.sh_type == SHT_SYMTAB;
-    });
+    })};
 
     if (symbol_table != sections->end())
     {
-        const auto string_table_index = static_cast<std::size_t>(symbol_table->sh_link);
+        const auto string_table_index{static_cast<std::size_t>(symbol_table->sh_link)};
         if (string_table_index >= sections->size() || (*sections)[string_table_index].sh_type != SHT_STRTAB)
         {
             return make_error("symbol table has an invalid linked string table");
         }
 
-        auto symbols = read_symbols(file, *symbol_table);
+        auto symbols{read_symbols(file, *symbol_table)};
         if (!symbols)
         {
             return make_error(symbols.error());
         }
 
-        auto strings = read_string_table(file, (*sections)[string_table_index]);
+        auto strings{read_string_table(file, (*sections)[string_table_index])};
         if (!strings)
         {
             return make_error(strings.error());
@@ -1121,7 +1121,7 @@ std::expected<void, std::string> Readelf::load_from_file()
  */
 std::string_view Readelf::section_name(word_type name_offset) const noexcept
 {
-    const auto name = string_at(original_string_bytes(section_name_table_), static_cast<std::size_t>(name_offset));
+    const auto name{string_at(original_string_bytes(section_name_table_), static_cast<std::size_t>(name_offset))};
     if (!name)
     {
         return section_name_table_.empty() ? std::string_view("<no-shstrtab>") : std::string_view("<bad-name>");
@@ -1137,7 +1137,7 @@ std::string_view Readelf::section_name(word_type name_offset) const noexcept
  */
 std::string_view Readelf::symbol_name(word_type name_offset) const noexcept
 {
-    const auto name = string_at(original_string_bytes(string_table_), static_cast<std::size_t>(name_offset));
+    const auto name{string_at(original_string_bytes(string_table_), static_cast<std::size_t>(name_offset))};
     if (!name)
     {
         return string_table_.empty() ? std::string_view("<no-strtab>") : std::string_view("<bad-name>");
@@ -1152,7 +1152,7 @@ std::string_view Readelf::symbol_name(word_type name_offset) const noexcept
  */
 int Readelf::symbol_table_section_index() const noexcept
 {
-    for (std::size_t i = 0; i < section_headers_.size(); ++i)
+    for (std::size_t i{0}; i < section_headers_.size(); ++i)
     {
         if (section_headers_[i].sh_type == SHT_SYMTAB)
         {

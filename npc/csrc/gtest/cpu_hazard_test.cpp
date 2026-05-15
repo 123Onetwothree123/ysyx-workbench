@@ -91,7 +91,7 @@ TEST(CpuHazardTest, LoadStoreForwardThroughSameAddress) {
     });
     cpu.reset();
 
-    const auto result = cpu.run(64);
+    const auto result{cpu.run(64)};
     expect_halt(result, 42u, guest_addr(20));
     expect_memory_word(cpu, guest_addr(0x100), 42u);
     expect_memory_word(cpu, guest_addr(0x104), 42u);
@@ -99,7 +99,7 @@ TEST(CpuHazardTest, LoadStoreForwardThroughSameAddress) {
 
 TEST(CpuHazardTest, LoadUseArithmeticConsumesLoadedValueImmediately) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x140);
+    const auto data_addr{guest_addr(0x140)};
     cpu.write_word(data_addr, 0x0000'0123u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -116,7 +116,7 @@ TEST(CpuHazardTest, LoadUseArithmeticConsumesLoadedValueImmediately) {
 
 TEST(CpuHazardTest, LoadUseBranchConsumesLoadedComparatorImmediately) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x180);
+    const auto data_addr{guest_addr(0x180)};
     cpu.write_word(data_addr, 7u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -135,7 +135,7 @@ TEST(CpuHazardTest, LoadUseBranchConsumesLoadedComparatorImmediately) {
 
 TEST(CpuHazardTest, LoadUseStoreDataWritesLoadedValueImmediately) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x1c0);
+    const auto data_addr{guest_addr(0x1c0)};
     cpu.write_word(data_addr + 0, 0xdead'beefu);
     cpu.write_word(data_addr + 4, 0u);
     cpu.load_program({
@@ -155,8 +155,8 @@ TEST(CpuHazardTest, LoadUseStoreDataWritesLoadedValueImmediately) {
 
 TEST(CpuHazardTest, LoadUseJalrTargetJumpsToLoadedAddressImmediately) {
     CpuHarness cpu;
-    const auto pointer_addr = guest_addr(0x200);
-    const auto target_addr = guest_addr(0x40);
+    const auto pointer_addr{guest_addr(0x200)};
+    const auto target_addr{guest_addr(0x40)};
     cpu.write_word(pointer_addr, target_addr);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),

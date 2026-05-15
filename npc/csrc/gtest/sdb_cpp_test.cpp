@@ -23,11 +23,11 @@ TEST(SDBCommandUtilsTest, TrimSplitAndExpressionSyntaxHandleShellLikeInput) {
     EXPECT_EQ(SDBTrimLeft(" \t"), "");
     EXPECT_EQ(SDBTrimRight(" \t"), "");
 
-    const auto [name, args] = SDBSplitCommandLine(" \t x  4 0x80000000 ");
+    const auto [name, args]{SDBSplitCommandLine(" \t x  4 0x80000000 ")};
     EXPECT_EQ(name, "x");
     EXPECT_EQ(args, "4 0x80000000");
 
-    const auto [single_name, single_args] = SDBSplitCommandLine("q");
+    const auto [single_name, single_args]{SDBSplitCommandLine("q")};
     EXPECT_EQ(single_name, "q");
     EXPECT_TRUE(single_args.empty());
 
@@ -38,18 +38,18 @@ TEST(SDBCommandUtilsTest, TrimSplitAndExpressionSyntaxHandleShellLikeInput) {
 }
 
 TEST(SDBCommandUtilsTest, SplitHandlesEmptyAndWhitespaceOnlyInput) {
-    const auto [empty_name, empty_args] = SDBSplitCommandLine("");
+    const auto [empty_name, empty_args]{SDBSplitCommandLine("")};
     EXPECT_TRUE(empty_name.empty());
     EXPECT_TRUE(empty_args.empty());
 
-    const auto [blank_name, blank_args] = SDBSplitCommandLine(" \t ");
+    const auto [blank_name, blank_args]{SDBSplitCommandLine(" \t ")};
     EXPECT_TRUE(blank_name.empty());
     EXPECT_TRUE(blank_args.empty());
 }
 
 TEST(SDBMemoryTest, SafeReadsUseLittleEndianPhysicalMemoryAndRejectBadRanges) {
-    const auto addr = guest_addr(0x300);
-    const auto host = guest_to_host(addr);
+    const auto addr{guest_addr(0x300)};
+    const auto host{guest_to_host(addr)};
     pmem[host + 0] = 0x11;
     pmem[host + 1] = 0x22;
     pmem[host + 2] = 0x33;
@@ -66,8 +66,8 @@ TEST(SDBMemoryTest, SafeReadsUseLittleEndianPhysicalMemoryAndRejectBadRanges) {
 }
 
 TEST(SDBMemoryTest, SafeReadsAllowExactEndOfMemoryButRejectPastEnd) {
-    const auto last_word_addr = CONFIG_MBASE + PMEM_SIZE - 4;
-    const auto last_word_host = guest_to_host(last_word_addr);
+    const auto last_word_addr{CONFIG_MBASE + PMEM_SIZE - 4};
+    const auto last_word_host{guest_to_host(last_word_addr)};
     pmem[last_word_host + 0] = 0x78;
     pmem[last_word_host + 1] = 0x56;
     pmem[last_word_host + 2] = 0x34;
@@ -101,8 +101,8 @@ TEST(SDBWatchpointTest, WatchpointStoresAndMutatesAllUserVisibleFields) {
 TEST(SDBWatchpointTest, PoolAllocatesDeletesAndReusesNumberedSlots) {
     WatchpointPool pool{2};
 
-    auto *first = pool.CreateWatchpoint("$a0", 1);
-    auto *second = pool.CreateWatchpoint("$a1", 2);
+    auto *first{pool.CreateWatchpoint("$a0", 1)};
+    auto *second{pool.CreateWatchpoint("$a1", 2)};
     ASSERT_NE(first, nullptr);
     ASSERT_NE(second, nullptr);
     EXPECT_EQ(first->GetNO(), 0u);
@@ -117,7 +117,7 @@ TEST(SDBWatchpointTest, PoolAllocatesDeletesAndReusesNumberedSlots) {
     ASSERT_TRUE(pool.DeleteWatchpoint(0));
     EXPECT_FALSE(pool.GetWatchpoint(0)->IsEnabled());
 
-    auto *reused = pool.CreateWatchpoint("$a3", 4);
+    auto *reused{pool.CreateWatchpoint("$a3", 4)};
     ASSERT_NE(reused, nullptr);
     EXPECT_EQ(reused->GetNO(), 0u);
     EXPECT_EQ(reused->GetExpression(), "$a3");
@@ -126,7 +126,7 @@ TEST(SDBWatchpointTest, PoolAllocatesDeletesAndReusesNumberedSlots) {
 
 TEST(SDBWatchpointTest, DeleteRejectsInvalidAndAlreadyFreeSlotsWithoutMutatingUsedOnes) {
     WatchpointPool pool{2};
-    auto *watchpoint = pool.CreateWatchpoint("$a0", 1);
+    auto *watchpoint{pool.CreateWatchpoint("$a0", 1)};
     ASSERT_NE(watchpoint, nullptr);
 
     ::testing::internal::CaptureStdout();
@@ -146,7 +146,7 @@ TEST(SDBWatchpointTest, CheckAllReadsDpiRegistersAndRecordsTriggerPc) {
     cpu.debug_write_gpr(rv32::reg_bits(Reg::t0), 0x10u);
 
     WatchpointPool pool{2};
-    auto *watchpoint = pool.CreateWatchpoint("$t0", 0x10u);
+    auto *watchpoint{pool.CreateWatchpoint("$t0", 0x10u)};
     ASSERT_NE(watchpoint, nullptr);
 
     ::testing::internal::CaptureStdout();
@@ -184,8 +184,8 @@ TEST(SDBDpiTest, CpuHarnessDebugPathReadsAndWritesPcAndGprsThroughVerilatedDpi) 
 }
 
 TEST(SDBMemoryTest, MemoryReadHandlesAllValidSizes) {
-    const auto addr = guest_addr(0x500);
-    const auto host = guest_to_host(addr);
+    const auto addr{guest_addr(0x500)};
+    const auto host{guest_to_host(addr)};
     pmem[host + 0] = 0x01;
     pmem[host + 1] = 0x02;
     pmem[host + 2] = 0x03;
@@ -197,7 +197,7 @@ TEST(SDBMemoryTest, MemoryReadHandlesAllValidSizes) {
 }
 
 TEST(SDBMemoryTest, MemoryReadRejectsInvalidSizes) {
-    const auto addr = guest_addr(0x500);
+    const auto addr{guest_addr(0x500)};
 
     EXPECT_EQ(NPCMemoryRead(addr, 0), 0u);
     EXPECT_EQ(NPCMemoryRead(addr, 3), 0u);
@@ -210,8 +210,8 @@ TEST(SDBMemoryTest, MemoryReadRejectsOutOfRangeAddress) {
 }
 
 TEST(SDBMemoryTest, MemoryScanOutputContainsAddressFormat) {
-    const auto addr = guest_addr(0x600);
-    const auto host = guest_to_host(addr);
+    const auto addr{guest_addr(0x600)};
+    const auto host{guest_to_host(addr)};
     pmem[host + 0] = 0xaa;
     pmem[host + 1] = 0xbb;
     pmem[host + 2] = 0xcc;
@@ -219,13 +219,13 @@ TEST(SDBMemoryTest, MemoryScanOutputContainsAddressFormat) {
 
     ::testing::internal::CaptureStdout();
     NPCMemoryScan(addr, 4);
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_NE(output.find("80000600"), std::string::npos);
 }
 
 TEST(SDBMemoryTest, SafeReadRejectsInvalidSizes) {
-    const auto addr = guest_addr(0x700);
+    const auto addr{guest_addr(0x700)};
 
     EXPECT_FALSE(NPCMemoryReadSafe(addr, 0).has_value());
     EXPECT_FALSE(NPCMemoryReadSafe(addr, 3).has_value());
@@ -242,7 +242,7 @@ TEST(SDBWatchpointTest, MaxWatchpointsReturnsCorrectValue) {
 
 TEST(SDBWatchpointTest, CreateWatchpointAtMaxCapacityReturnsNull) {
     WatchpointPool pool{1};
-    auto *wp = pool.CreateWatchpoint("$a0", 1);
+    auto *wp{pool.CreateWatchpoint("$a0", 1)};
     ASSERT_NE(wp, nullptr);
 
     ::testing::internal::CaptureStdout();
@@ -255,7 +255,7 @@ TEST(SDBWatchpointTest, GetAllWatchpointsReturnsAll) {
     pool.CreateWatchpoint("$a0", 1);
     pool.CreateWatchpoint("$a1", 2);
 
-    const auto &all = pool.GetAllWatchpoints();
+    const auto &all{pool.GetAllWatchpoints()};
     EXPECT_EQ(all.size(), 4u);
     EXPECT_TRUE(all[0].IsEnabled());
     EXPECT_TRUE(all[1].IsEnabled());
@@ -270,7 +270,7 @@ TEST(SDBWatchpointTest, PrintAllWatchpointsDoesNotCrash) {
 
     ::testing::internal::CaptureStdout();
     pool.PrintAllWatchpoints();
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_NE(output.find("$a0"), std::string::npos);
     EXPECT_NE(output.find("$a1"), std::string::npos);
@@ -281,14 +281,14 @@ TEST(SDBWatchpointTest, PrintAllWhenEmptyShowsMessage) {
 
     ::testing::internal::CaptureStdout();
     pool.PrintAllWatchpoints();
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_NE(output.find("没有监视点"), std::string::npos);
 }
 
 TEST(SDBWatchpointTest, DeleteWatchpointIsIdempotent) {
     WatchpointPool pool{2};
-    auto *wp = pool.CreateWatchpoint("$a0", 1);
+    auto *wp{pool.CreateWatchpoint("$a0", 1)};
 
     ASSERT_TRUE(pool.DeleteWatchpoint(0));
 
@@ -304,7 +304,7 @@ TEST(SDBWatchpointTest, DisabledWatchpointNeverTriggersCheckAll) {
     cpu.debug_write_gpr(rv32::reg_bits(Reg::t0), 0x10u);
 
     WatchpointPool pool{2};
-    auto *wp = pool.CreateWatchpoint("$t0", 0x10u);
+    auto *wp{pool.CreateWatchpoint("$t0", 0x10u)};
     wp->SetEnabled(false);
 
     cpu.debug_write_gpr(rv32::reg_bits(Reg::t0), 0xffu);
@@ -338,13 +338,13 @@ TEST(SDBCommandUtilsTest, TrimRightAllWhitespaceReturnsEmpty) {
 }
 
 TEST(SDBCommandUtilsTest, SplitHandlesCommandWithMultipleConsecutiveSpaces) {
-    const auto [name, args] = SDBSplitCommandLine("si    10");
+    const auto [name, args]{SDBSplitCommandLine("si    10")};
     EXPECT_EQ(name, "si");
     EXPECT_EQ(args, "10");
 }
 
 TEST(SDBCommandUtilsTest, SplitHandlesTabSeparators) {
-    const auto [name, args] = SDBSplitCommandLine("x\t4\t0x80000000");
+    const auto [name, args]{SDBSplitCommandLine("x\t4\t0x80000000")};
     EXPECT_EQ(name, "x");
     EXPECT_EQ(args, "4\t0x80000000");
 }
@@ -361,8 +361,8 @@ TEST(SDBDpiTest, DebugReadOfAllGprsReturnsValues) {
     CpuHarness cpu;
     cpu.reset();
 
-    for (std::uint8_t i = 0; i < 32; ++i) {
-        const auto value = cpu.debug_read_gpr(i);
+    for (std::uint8_t i{0}; i < 32; ++i) {
+        const auto value{cpu.debug_read_gpr(i)};
         cpu.write_byte(guest_addr(i), 0u);
     }
 

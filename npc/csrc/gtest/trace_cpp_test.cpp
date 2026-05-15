@@ -43,7 +43,7 @@ TEST(TraceCppTest, ReadelfFunctionUsesHalfOpenAddressRange) {
 }
 
 TEST(TraceCppTest, FtraceFrameAndEventKeepCallMetadata) {
-    constexpr std::string_view name = "worker";
+    constexpr std::string_view name{"worker"};
     const FtraceFrame frame{0x1000, 0x1004, 0x2000, name};
     const FtraceEvent event{FtraceEventType::Call, 0x1000, 0x2000, name, 1};
 
@@ -76,7 +76,7 @@ TEST(TraceCppTest, EnabledFtraceTracksManualCallAndReturn) {
     ::testing::internal::CaptureStdout();
     trace.OnCall(0x1000, 0x2000);
     trace.OnReturn(0x200c, 0x1004);
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_TRUE(trace.IsEnabled());
     EXPECT_EQ(trace.Depth(), 0u);
@@ -94,7 +94,7 @@ TEST(TraceCppTest, FtraceCanDisableHistoryWhileKeepingLiveStack) {
 
     ::testing::internal::CaptureStdout();
     trace.OnCall(0x1000, 0x2000);
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_EQ(trace.Depth(), 1u);
     ASSERT_NE(trace.TopFrame(), nullptr);
@@ -112,7 +112,7 @@ TEST(TraceCppTest, NestedManualCallsReturnInStackOrder) {
     trace.OnCall(0x1000, 0x2000);
     trace.OnCall(0x2008, 0x3000);
     trace.OnReturn(0x300c, 0x200c);
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_EQ(trace.Depth(), 1u);
     ASSERT_NE(trace.TopFrame(), nullptr);
@@ -134,7 +134,7 @@ TEST(TraceCppTest, OnInstructionRecognizesCallReturnAndIgnoresPlainJump) {
     trace.OnInstruction(0x1000, rv32::jal(Reg::zero, 0x40), 0x1040);
     trace.OnInstruction(0x1004, rv32::jal(Reg::ra, 0x20), 0x1024);
     trace.OnInstruction(0x1024, rv32::ret(), 0x1008);
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_EQ(trace.Depth(), 0u);
     ASSERT_EQ(trace.HistorySize(), 2u);
@@ -151,7 +151,7 @@ TEST(TraceCppTest, OnInstructionRecognizesJalrCallUsingAlternateLinkRegister) {
 
     ::testing::internal::CaptureStdout();
     trace.OnInstruction(0x2000, rv32::jalr(Reg::t0, Reg::a0, 12), 0x3000);
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_EQ(trace.Depth(), 1u);
     ASSERT_EQ(trace.HistorySize(), 1u);
@@ -217,7 +217,7 @@ TEST(TraceCppTest, OnInstructionNonCallNonReturnIsNoop) {
 
     ::testing::internal::CaptureStdout();
     trace.OnInstruction(0x1000, rv32::addi(Reg::a0, Reg::zero, 42), 0x1004);
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_EQ(trace.Depth(), 0u);
     EXPECT_EQ(trace.HistorySize(), 0u);
@@ -255,7 +255,7 @@ TEST(TraceCppTest, PrintStatusShowsEnabledDisabledState) {
 
     ::testing::internal::CaptureStdout();
     trace.PrintStatus();
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_NE(output.find("true"), std::string::npos);
 }
@@ -265,15 +265,15 @@ TEST(TraceCppTest, ManualDeepNestedCallsTrackDepthCorrectly) {
     trace.Enable();
 
     ::testing::internal::CaptureStdout();
-    for (int i = 0; i < 5; ++i) {
+    for (int i{0}; i < 5; ++i) {
         trace.OnCall(0x1000u + static_cast<std::uint64_t>(i) * 16u,
                      0x2000u + static_cast<std::uint64_t>(i) * 32u);
     }
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_EQ(trace.Depth(), 5u);
     ASSERT_EQ(trace.HistorySize(), 5u);
-    for (std::size_t i = 0; i < 5; ++i) {
+    for (std::size_t i{0}; i < 5; ++i) {
         EXPECT_EQ(trace.History()[i].GetDepth(), i + 1);
     }
 }
@@ -289,7 +289,7 @@ TEST(TraceCppTest, DeepReturnSequenceUnwindsStackProperly) {
     trace.OnReturn(0x400c, 0x300c);
     trace.OnReturn(0x300c, 0x200c);
     trace.OnReturn(0x200c, 0x1004);
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_EQ(trace.Depth(), 0u);
     EXPECT_EQ(trace.HistorySize(), 6u);
@@ -316,7 +316,7 @@ TEST(TraceCppTest, HistoryRecordingCanBeTurnedOff) {
     trace.OnCall(0x2008, 0x3000);
     trace.OnReturn(0x300c, 0x200c);
     trace.OnReturn(0x200c, 0x1004);
-    const auto output = ::testing::internal::GetCapturedStdout();
+    const auto output{::testing::internal::GetCapturedStdout()};
 
     EXPECT_EQ(trace.Depth(), 0u);
     EXPECT_EQ(trace.HistorySize(), 0u);

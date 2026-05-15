@@ -10,12 +10,12 @@ namespace {
 
 using rv32::Reg;
 
-constexpr std::uint32_t kMstatus = 0x300u;
-constexpr std::uint32_t kMtvec = 0x305u;
-constexpr std::uint32_t kMepc = 0x341u;
-constexpr std::uint32_t kMcause = 0x342u;
-constexpr std::uint32_t kMcycle = 0xB00u;
-constexpr std::uint32_t kMcycleh = 0xB80u;
+constexpr std::uint32_t kMstatus{0x300u};
+constexpr std::uint32_t kMtvec{0x305u};
+constexpr std::uint32_t kMepc{0x341u};
+constexpr std::uint32_t kMcause{0x342u};
+constexpr std::uint32_t kMcycle{0xB00u};
+constexpr std::uint32_t kMcycleh{0xB80u};
 
 TEST(CpuComprehensiveCsrTest, CsrrwAndCsrrsReturnOldValueAndUpdateSupportedCsrs) {
     CpuHarness cpu;
@@ -84,8 +84,8 @@ TEST(CpuComprehensiveCsrTest, McycleLowAndHighCanBeWrittenAndReadIndependently) 
 
 TEST(CpuComprehensiveExceptionTest, EcallWritesPreciseMepcMcauseAndMstatusThenMretRestoresMieAndClearsMpp) {
     CpuHarness cpu;
-    const auto handler_addr = guest_addr(0x80);
-    const auto resume_addr = guest_addr(0x30);
+    const auto handler_addr{guest_addr(0x80)};
+    const auto resume_addr{guest_addr(0x30)};
 
     cpu.load_program({
         rv32::addi(Reg::t0, Reg::zero, 0x8),
@@ -123,7 +123,7 @@ TEST(CpuComprehensiveExceptionTest, EcallWritesPreciseMepcMcauseAndMstatusThenMr
 
 TEST(CpuComprehensiveMemoryTest, StoreHalfwordLowerAndUpperLanesPreciselyUpdateMemoryAndLoads) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0x1122'3344u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -151,7 +151,7 @@ TEST(CpuComprehensiveMemoryTest, StoreHalfwordLowerAndUpperLanesPreciselyUpdateM
 
 TEST(CpuComprehensiveMemoryTest, MisalignedHalfwordAndWordAccessesUseContainingAlignedWordDeterministically) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0x4433'2211u);
     cpu.write_word(data_addr + 4, 0x8877'6655u);
     cpu.load_program({
@@ -171,8 +171,8 @@ TEST(CpuComprehensiveMemoryTest, MisalignedHalfwordAndWordAccessesUseContainingA
 
 TEST(CpuComprehensiveIntegrationTest, EndToEndProgramCoversAluMemoryControlFlowCsrAndWritebackSources) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x180);
-    const auto subroutine_addr = guest_addr(0x60);
+    const auto data_addr{guest_addr(0x180)};
+    const auto subroutine_addr{guest_addr(0x60)};
     cpu.write_word(data_addr, 0x0102'0304u);
 
     cpu.load_program({

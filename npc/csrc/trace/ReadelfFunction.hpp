@@ -17,9 +17,9 @@ struct ReadelfFunction
     // ELF 符号字符串表中存储的函数名称。
     std::string_view name{};
     // 函数的包含性起始虚拟地址。
-    std::size_t start = 0;
+    std::size_t start{0};
     // 函数的排他性结束虚拟地址。
-    std::size_t end = 0;
+    std::size_t end{0};
     /**
      * @brief 返回函数的字节大小。
      *

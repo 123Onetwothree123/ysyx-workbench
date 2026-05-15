@@ -10,14 +10,14 @@ namespace {
 
 using rv32::Reg;
 
-constexpr std::uint32_t kMstatus = 0x300u;
-constexpr std::uint32_t kMepc = 0x341u;
-constexpr std::uint32_t kMcause = 0x342u;
-constexpr std::uint32_t kMtvec = 0x305u;
+constexpr std::uint32_t kMstatus{0x300u};
+constexpr std::uint32_t kMepc{0x341u};
+constexpr std::uint32_t kMcause{0x342u};
+constexpr std::uint32_t kMtvec{0x305u};
 
 TEST(CpuExceptionTest, EcallRedirectsToMtvecHandlerAfterNops) {
     CpuHarness cpu;
-    const auto handler_addr = guest_addr(0x80);
+    const auto handler_addr{guest_addr(0x80)};
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
         rv32::addi(Reg::t0, Reg::t0, 0x80),
@@ -37,13 +37,13 @@ TEST(CpuExceptionTest, EcallRedirectsToMtvecHandlerAfterNops) {
     }, handler_addr);
     cpu.reset();
 
-    const auto result = cpu.run(64);
+    const auto result{cpu.run(64)};
     expect_halt(result, 99u, handler_addr + 4);
 }
 
 TEST(CpuExceptionTest, EcallSetsMcauseInHandler) {
     CpuHarness cpu;
-    const auto handler_addr = guest_addr(0x80);
+    const auto handler_addr{guest_addr(0x80)};
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
         rv32::addi(Reg::t0, Reg::t0, 0x80),
@@ -63,13 +63,13 @@ TEST(CpuExceptionTest, EcallSetsMcauseInHandler) {
     }, handler_addr);
     cpu.reset();
 
-    const auto result = cpu.run(64);
+    const auto result{cpu.run(64)};
     expect_halt(result, 11u, handler_addr + 4);
 }
 
 TEST(CpuExceptionTest, MretWithCsrrwSetMepcRedirectsToTarget) {
     CpuHarness cpu;
-    const auto target_addr = guest_addr(0x40);
+    const auto target_addr{guest_addr(0x40)};
 
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -90,13 +90,13 @@ TEST(CpuExceptionTest, MretWithCsrrwSetMepcRedirectsToTarget) {
     }, target_addr);
     cpu.reset();
 
-    const auto result = cpu.run(64);
+    const auto result{cpu.run(64)};
     expect_halt(result, 77u, target_addr + 4);
 }
 
 TEST(CpuExceptionTest, EcallSavesPcAndHandlerReadsMcause) {
     CpuHarness cpu;
-    const auto handler_addr = guest_addr(0x80);
+    const auto handler_addr{guest_addr(0x80)};
 
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),
@@ -119,7 +119,7 @@ TEST(CpuExceptionTest, EcallSavesPcAndHandlerReadsMcause) {
     }, handler_addr);
     cpu.reset();
 
-    const auto result = cpu.run(64);
+    const auto result{cpu.run(64)};
     expect_halt(result, guest_addr(36) + 11u, handler_addr + 12);
     expect_gpr(cpu, rv32::reg_bits(Reg::a1), guest_addr(36));
     expect_gpr(cpu, rv32::reg_bits(Reg::a2), 11u);
@@ -127,8 +127,8 @@ TEST(CpuExceptionTest, EcallSavesPcAndHandlerReadsMcause) {
 
 TEST(CpuExceptionTest, EcallMretRoundTripCanResumeAtProgrammedMepc) {
     CpuHarness cpu;
-    const auto handler_addr = guest_addr(0x80);
-    const auto resume_addr = guest_addr(0x38);
+    const auto handler_addr{guest_addr(0x80)};
+    const auto resume_addr{guest_addr(0x38)};
 
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),

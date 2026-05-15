@@ -8,7 +8,7 @@ namespace {
 
 TEST(DifftestCPUStateTest, DefaultStateHasZeroRegisters) {
     DifftestCPUState state;
-    for (std::size_t i = 0; i < 32; ++i) {
+    for (std::size_t i{0}; i < 32; ++i) {
         EXPECT_EQ(state.GetGPR(i), 0u) << "GPR " << i;
     }
     EXPECT_EQ(state.GetPC(), 0u);
@@ -95,11 +95,11 @@ TEST(DifftestCPUStateTest, DirectionConstantsAreCorrect) {
 
 TEST(DifftestCPUStateTest, AllRegistersIndependent) {
     DifftestCPUState state;
-    for (std::size_t i = 0; i < 32; ++i) {
+    for (std::size_t i{0}; i < 32; ++i) {
         state.SetGPR(i, 0x100u + static_cast<std::uint32_t>(i));
     }
 
-    for (std::size_t i = 0; i < 32; ++i) {
+    for (std::size_t i{0}; i < 32; ++i) {
         EXPECT_EQ(state.GetGPR(i), 0x100u + static_cast<std::uint32_t>(i)) << "GPR " << i;
     }
 }

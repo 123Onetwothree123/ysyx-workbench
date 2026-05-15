@@ -74,7 +74,7 @@ extern "C" int pmem_read(int raddr)
         std::abort();
     }
     // 地址转换：将guest地址转换为pmem数组索引
-    auto host_addr = guest_to_host(addr);
+    auto host_addr{guest_to_host(addr)};
     uint32_t data{0};
     data |= static_cast<uint32_t>(pmem[host_addr + 0]) << 0;
     data |= static_cast<uint32_t>(pmem[host_addr + 1]) << 8;
@@ -107,7 +107,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask)
         std::abort();
     }
     // 地址转换：将guest物理地址转换为host地址（pmem数组索引）
-    auto host_addr = guest_to_host(guest_addr);
+    auto host_addr{guest_to_host(guest_addr)};
     // 妈的实在是背不下来掩码了，直接注释标记了
     //  检查掩码的第0位，决定是否写入最低字节
     if (mask & 0x01)

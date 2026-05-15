@@ -65,8 +65,8 @@ enum class Opcode : std::uint32_t {
 }
 
 [[nodiscard]] constexpr std::uint32_t bits(const std::uint32_t value, const unsigned high, const unsigned low) {
-    const auto width = high - low + 1u;
-    const auto mask = (std::uint32_t{1} << width) - 1u;
+    const auto width{high - low + 1u};
+    const auto mask{(std::uint32_t{1} << width) - 1u};
     return (value >> low) & mask;
 }
 
@@ -107,7 +107,7 @@ enum class Opcode : std::uint32_t {
     const std::uint32_t funct3,
     const Opcode opcode
 ) {
-    const auto uimm = static_cast<std::uint32_t>(imm) & 0xfffu;
+    const auto uimm{static_cast<std::uint32_t>(imm) & 0xfffu};
     return (((uimm >> 5) & 0x7fu) << 25) |
            (reg_bits(rs2) << 20) |
            (reg_bits(rs1) << 15) |
@@ -122,7 +122,7 @@ enum class Opcode : std::uint32_t {
     const Reg rs1,
     const std::uint32_t funct3
 ) {
-    const auto uimm = static_cast<std::uint32_t>(imm) & 0x1fffu;
+    const auto uimm{static_cast<std::uint32_t>(imm) & 0x1fffu};
     return (((uimm >> 12) & 0x1u) << 31) |
            (((uimm >> 5) & 0x3fu) << 25) |
            (reg_bits(rs2) << 20) |
@@ -148,7 +148,7 @@ enum class Opcode : std::uint32_t {
     const Reg rd,
     const Opcode opcode
 ) {
-    const auto uimm = static_cast<std::uint32_t>(imm) & 0x1fffffu;
+    const auto uimm{static_cast<std::uint32_t>(imm) & 0x1fffffu};
     return (((uimm >> 20) & 0x1u) << 31) |
            (((uimm >> 1) & 0x3ffu) << 21) |
            (((uimm >> 11) & 0x1u) << 20) |
