@@ -46,6 +46,8 @@ module IDU(
 	assign IsEcall=(Instruction==32'h00000073);
 	assign IsMret=(Instruction==32'h30200073);
 	assign CSRAddress=Instruction[31:20];
+	//ebreak指令检测:ebreak=0x00100073
+	assign IsEbreak_gtest=(Instruction==32'h00100073);
 	assign RegWrite=is_R_type|is_I_type|is_U_type|is_J_type|IsCsrrw|IsCsrrs;
 	assign MemValid=is_Load|is_S_type;
 	assign MemWrite=is_S_type;
@@ -63,6 +65,10 @@ module IDU(
 	else//正常写回的普通指令
 		WBSel=WB_ALU;
 	end
+	ImmediateGenerator ImmGen(
+		.Instruction(Instruction),
+		.Immediate(Immediate)
+	);
 	wire[1:0]ALUOp;
 	ALUOpDecoder Decoder1(
 		.opcode(opcode),
@@ -76,10 +82,4 @@ module IDU(
 		.ALUCtrl(ALUCtrl),
 		.Illegal(Illegal)
 	);
-	ImmediateGenerator ImmGen(
-		.Instruction(Instruction),
-		.Immediate(Immediate)
-	);
-	//ebreak指令检测:ebreak=0x00100073
-	assign IsEbreak_gtest=(Instruction==32'h00100073);
 endmodule

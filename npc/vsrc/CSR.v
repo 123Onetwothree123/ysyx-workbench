@@ -38,21 +38,6 @@ module CSR(
     wire [31:0]Mvendorid_rdata=32'h79737978;
     wire [31:0]Marchid_rdata=32'h018d3017;
     wire CsrrsWriteEnable=IsCsrrs&&(rs1!=5'b0);
-    //csrrw时写，cssrs时rs1非零才写
-    wire McycleWenFromCsrrw=IsCsrrw&&McycleAccess;
-    wire McycleWenFromCsrrs=CsrrsWriteEnable&&McycleAccess;
-    wire McycleWen=McycleWenFromCsrrw||McycleWenFromCsrrs;
-    //csrrw直接写rs1，csrrs得写旧值|rs1
-    wire [31:0] Mcycle_rdata;
-    wire [31:0] Mcycle_wdata=IsCsrrw?Rs1Data:(Mcycle_rdata|Rs1Data);
-    mcycle Mcycle(
-        .clk(clk),
-        .rst(rst),
-        .wen(McycleWen),
-        .SelectHigh(McyclehSelect),
-        .wdata(Mcycle_wdata),
-        .rdata(Mcycle_rdata)
-    );
     wire [31:0]Mstatus_rdata;
     // ecall时，MPP写11，MPIE写旧MIE，MIE写0
     //MPP，00是U，01是S，11是M
@@ -137,6 +122,21 @@ module CSR(
         .wen(McauseWen),
         .wdata(Mcause_wdata),
         .rdata(Mcause_rdata)
+    );
+    //csrrw时写，cssrs时rs1非零才写
+    wire McycleWenFromCsrrw=IsCsrrw&&McycleAccess;
+    wire McycleWenFromCsrrs=CsrrsWriteEnable&&McycleAccess;
+    wire McycleWen=McycleWenFromCsrrw||McycleWenFromCsrrs;
+    //csrrw直接写rs1，csrrs得写旧值|rs1
+    wire [31:0] Mcycle_rdata;
+    wire [31:0] Mcycle_wdata=IsCsrrw?Rs1Data:(Mcycle_rdata|Rs1Data);
+    mcycle Mcycle(
+        .clk(clk),
+        .rst(rst),
+        .wen(McycleWen),
+        .SelectHigh(McyclehSelect),
+        .wdata(Mcycle_wdata),
+        .rdata(Mcycle_rdata)
     );
     reg [31:0]CSR_rdataReg;
     reg CSRValidReg;

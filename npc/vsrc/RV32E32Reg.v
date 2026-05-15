@@ -119,6 +119,11 @@ PC CPU_PC(
     .PC(pc_current)
 );
 
+ROM_DPI_C CPU_ROM(
+    .Address(inst_addr),
+    .ReadDATA(inst_data)
+);
+
 IFU CPU_IFU(
     .PC(pc_current),
     .InstructionReadDATA(inst_data),
@@ -147,6 +152,25 @@ IDU CPU_IDU(
     .IsEcall(is_ecall),
     .IsMret(is_mret),
     .CSRAddress(csr_address)
+);
+
+GPR CPU_GPR(
+    .clk(clk),
+    .wdata(rf_write_data),
+    .WriteSELECT(rd),
+    .WriteEN(rf_write_en),
+    .Read1SELECT(rs1),
+    .Read2SELECT(rs2),
+    .ReadDATA1(rs1_data),
+    .ReadDATA2(rs2_data),
+    .EbreakCode_gtest(ebreak_code_gtest),
+    //sdb
+    .DebugRaddr(sdb_debug_raddr),
+    .DebugRdata(sdb_debug_rdata),
+    .DebugClk(sdb_debug_clk),
+    .DebugWaddr(sdb_gpr_write_addr),
+    .DebugWdata(sdb_gpr_write_data),
+    .DebugWriteEN(sdb_gpr_write_en)
 );
 
 EXU CPU_EXU(
@@ -197,6 +221,17 @@ LSU CPU_LSU(
     .AddrMisaligned(addr_misaligned)
 );
 
+Memory_DPI_C CPU_Memory(
+    .clk(clk),
+    .valid(mem_valid),
+    .wen(mem_we),
+    .raddr(mem_addr),
+    .waddr(mem_addr),
+    .wdata(mem_write_data),
+    .wmask(mem_write_mask),
+    .rdata(mem_read_data)
+);
+
 WBU CPU_WBU(
     .RegWrite(reg_write),
     .WBSel(wb_sel),
@@ -214,41 +249,6 @@ NPC CPU_NPC(
     .Redirect(final_pc_redirect),
     .NextPC(pc_next),
     .PCEnable(pc_enable)
-);
-
-GPR CPU_GPR(
-    .clk(clk),
-    .wdata(rf_write_data),
-    .WriteSELECT(rd),
-    .WriteEN(rf_write_en),
-    .Read1SELECT(rs1),
-    .Read2SELECT(rs2),
-    .ReadDATA1(rs1_data),
-    .ReadDATA2(rs2_data),
-    .EbreakCode_gtest(ebreak_code_gtest),
-    //sdb
-    .DebugRaddr(sdb_debug_raddr),
-    .DebugRdata(sdb_debug_rdata),
-    .DebugClk(sdb_debug_clk),
-    .DebugWaddr(sdb_gpr_write_addr),
-    .DebugWdata(sdb_gpr_write_data),
-    .DebugWriteEN(sdb_gpr_write_en)
-);
-
-ROM_DPI_C CPU_ROM(
-    .Address(inst_addr),
-    .ReadDATA(inst_data)
-);
-
-Memory_DPI_C CPU_Memory(
-    .clk(clk),
-    .valid(mem_valid),
-    .wen(mem_we),
-    .raddr(mem_addr),
-    .waddr(mem_addr),
-    .wdata(mem_write_data),
-    .wmask(mem_write_mask),
-    .rdata(mem_read_data)
 );
 
 EBREAK_DPI_C CPU_EBREAK(
