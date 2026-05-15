@@ -3,8 +3,8 @@
 module IDU(
 	input[31:0]Instruction,
 	output RegWrite,
-	output MemValid,
-	output MemWrite,
+	output MemoryValid,
+	output MemoryWrite,
 	output[1:0]WidthSel,//00字节，01半字，10字
 	output LoadSigned,
 	output[3:0]ALUCtrl,
@@ -49,8 +49,8 @@ module IDU(
 	//ebreak指令检测:ebreak=0x00100073
 	assign IsEbreak_gtest=(Instruction==32'h00100073);
 	assign RegWrite=is_R_type|is_I_type|is_U_type|is_J_type|IsCsrrw|IsCsrrs;
-	assign MemValid=is_Load|is_S_type;
-	assign MemWrite=is_S_type;
+	assign MemoryValid=is_Load|is_S_type;
+	assign MemoryWrite=is_S_type;
 	assign WidthSel=(is_Load||is_S_type)?funct3[1:0]:2'b10;
 	assign LoadSigned=is_Load?~funct3[2]:1'b0;
 	always@(*)begin

@@ -108,7 +108,7 @@ std::uint32_t CPP_NPCGetGPR(int RegNum)
  * @brief 获取当前 PC（程序计数器）的值
  * @return 当前 PC 的 32 位值；若无法获取 DPI scope 则返回 0
  */
-std::uint32_t CPP_NpcGetPC()
+std::uint32_t CPP_NPCGetPC()
 {
     if (!SetDPIScope("PC_DPI"))
     {
@@ -136,9 +136,13 @@ static int display_width(std::string_view s)
         {
             i += 2;
             while (i < s.size() && !(s[i] >= 0x40 && s[i] <= 0x7e))
+            {
                 i++;
+            }
             if (i < s.size())
+            {
                 i++;
+            }
             continue;
         }
         unsigned char c = static_cast<unsigned char>(s[i]);
@@ -180,7 +184,9 @@ static void print_border(const std::vector<int> &widths)
     for (int w : widths)
     {
         for (int i = 0; i < w + 2; i++)
+        {
             std::print("{}-{}", ANSI_FG_BLUE, ANSI_NONE);
+        }
         std::print("{}+{}", ANSI_FG_BLUE, ANSI_NONE);
     }
     std::print("\n");
@@ -197,15 +203,21 @@ static void print_cell_colored(std::string_view raw_content, int width, bool cen
     int content_width = display_width(raw_content);
     int pad = width - content_width;
     if (pad < 0)
+    {
         pad = 0;
+    }
     int left_pad = center ? pad / 2 : 0;
     int right_pad = pad - left_pad;
     std::print(" ");
     for (int i = 0; i < left_pad; i++)
+    {
         std::print(" ");
+    }
     std::print("{}", raw_content);
     for (int i = 0; i < right_pad; i++)
+    {
         std::print(" ");
+    }
     std::print(" {}|{}", ANSI_FG_BLUE, ANSI_NONE);
 }
 
@@ -238,23 +250,41 @@ static const char *get_reg_abi_name(int idx)
 static const char *get_reg_desc(const char *arch_name, const char *abi_name)
 {
     if (strcmp(arch_name, "pc") == 0)
+    {
         return "程序计数器";
+    }
     if (strcmp(arch_name, "x0") == 0)
+    {
         return "零寄存器";
+    }
     if (strcmp(abi_name, "ra") == 0)
+    {
         return "返回地址";
+    }
     if (strcmp(abi_name, "sp") == 0)
+    {
         return "栈指针";
+    }
     if (strcmp(abi_name, "gp") == 0)
+    {
         return "全局指针";
+    }
     if (strcmp(abi_name, "tp") == 0)
+    {
         return "线程指针";
+    }
     if (abi_name[0] == 'a')
+    {
         return "参数寄存器";
+    }
     if (abi_name[0] == 's')
+    {
         return "保存寄存器";
+    }
     if (abi_name[0] == 't')
+    {
         return "临时寄存器";
+    }
     return "通用寄存器";
 }
 
@@ -264,15 +294,25 @@ static const char *get_reg_desc(const char *arch_name, const char *abi_name)
 static const char *get_reg_header_color(const char *title)
 {
     if (strcmp(title, "编号") == 0)
+    {
         return ANSI_FG_CYAN;
+    }
     if (strcmp(title, "寄存器") == 0)
+    {
         return ANSI_FG_BLUE;
+    }
     if (strcmp(title, "十进制") == 0)
+    {
         return ANSI_FG_WHITE;
+    }
     if (strcmp(title, "十六进制") == 0)
+    {
         return ANSI_FG_GREEN;
+    }
     if (strcmp(title, "说明") == 0)
+    {
         return ANSI_FG_YELLOW;
+    }
     return ANSI_FG_WHITE;
 }
 
@@ -282,23 +322,41 @@ static const char *get_reg_header_color(const char *title)
 static const char *get_reg_row_color(const char *arch_name, const char *abi_name)
 {
     if (strcmp(arch_name, "pc") == 0)
+    {
         return ANSI_FG_YELLOW;
+    }
     if (strcmp(arch_name, "x0") == 0 || strcmp(abi_name, "zero") == 0)
+    {
         return ANSI_FG_WHITE;
+    }
     if (strcmp(abi_name, "ra") == 0)
+    {
         return ANSI_FG_CYAN;
+    }
     if (strcmp(abi_name, "sp") == 0)
+    {
         return ANSI_FG_YELLOW;
+    }
     if (strcmp(abi_name, "gp") == 0)
+    {
         return ANSI_FG_BLUE;
+    }
     if (strcmp(abi_name, "tp") == 0)
+    {
         return ANSI_FG_MAGENTA;
+    }
     if (abi_name[0] == 'a')
+    {
         return ANSI_FG_GREEN;
+    }
     if (abi_name[0] == 's')
+    {
         return ANSI_FG_CYAN;
+    }
     if (abi_name[0] == 't')
+    {
         return ANSI_FG_MAGENTA;
+    }
     return ANSI_FG_WHITE;
 }
 
@@ -324,7 +382,7 @@ void PrintGPR()
         {
             rows[i].arch_name = "pc";
             rows[i].abi_name = "pc";
-            rows[i].value = CPP_NpcGetPC();
+            rows[i].value = CPP_NPCGetPC();
         }
         else
         {
@@ -347,19 +405,29 @@ void PrintGPR()
     {
         int w = display_width(rows[i].arch_name);
         if (w > id_width)
+        {
             id_width = w;
+        }
         w = display_width(rows[i].abi_name);
         if (w > name_width)
+        {
             name_width = w;
+        }
         w = display_width(std::to_string(rows[i].value));
         if (w > dec_width)
+        {
             dec_width = w;
+        }
         w = display_width(std::format("0x{:08x}", rows[i].value));
         if (w > hex_width)
+        {
             hex_width = w;
+        }
         w = display_width(rows[i].desc);
         if (w > desc_width)
+        {
             desc_width = w;
+        }
     }
 
     std::vector<int> col_widths = {id_width, name_width, dec_width, hex_width, desc_width};

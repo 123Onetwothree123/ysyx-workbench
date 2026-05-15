@@ -232,7 +232,7 @@ std::uint32_t CpuHarness::debug_read_gpr(const std::uint8_t reg) {
 }
 
 std::uint32_t CpuHarness::debug_read_pc() {
-    return CPP_NpcGetPC();
+    return CPP_NPCGetPC();
 }
 
 RunResult CpuHarness::run(const std::uint64_t max_cycles) {

@@ -135,8 +135,8 @@ IFU CPU_IFU(
 IDU CPU_IDU(
     .Instruction(instruction),
     .RegWrite(reg_write),
-    .MemValid(mem_valid),
-    .MemWrite(mem_write),
+    .MemoryValid(mem_valid),
+    .MemoryWrite(mem_write),
     .WidthSel(width_sel),
     .LoadSigned(load_signed),
     .ALUCtrl(alu_ctrl),
@@ -206,17 +206,17 @@ CSR CPU_CSR(
 );
 
 LSU CPU_LSU(
-    .MemValid(mem_valid),
-    .MemWrite(mem_write),
+    .MemoryValid(mem_valid),
+    .MemoryWrite(mem_write),
     .WidthSel(width_sel),
     .ALUResult(alu_result),
     .MemoryReadDATA(mem_read_data),
     .StoreDATA(rs2_data),
     .LoadSigned(load_signed),
-    .MemWE(mem_we),
-    .MemAddr(mem_addr),
-    .MemWriteDATA(mem_write_data),
-    .MemWriteMask(mem_write_mask),
+    .MemoryWE(mem_we),
+    .MemoryAddr(mem_addr),
+    .MemoryWriteDATA(mem_write_data),
+    .MemoryWriteMask(mem_write_mask),
     .LoadDATA(load_data),
     .AddrMisaligned(addr_misaligned)
 );

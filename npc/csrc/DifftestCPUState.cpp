@@ -21,17 +21,17 @@ void DifftestCPUState::SetGPR(std::size_t Index, std::uint32_t Value)
     }
     gpr[Index] = Value;
 }
-
+//一个月前本来打算直接列表的，但是发现跑起来的时候就出现了大量的测试点
 std::uint32_t DifftestCPUState::GetPC() const
 {
     return pc;
 }
-
+//同上
 void DifftestCPUState::SetPC(std::uint32_t Value)
 {
     pc = Value;
 }
-
+//
 DifftestCPUState DifftestCPUState::ReadDUTState(VRV32E32Reg &Top)
 {
     DifftestCPUState State{};
@@ -42,7 +42,7 @@ DifftestCPUState DifftestCPUState::ReadDUTState(VRV32E32Reg &Top)
         State.gpr[static_cast<std::size_t>(Index)] = CPP_NPCGetGPR(Index);
     }
     State.gpr[0] = 0; // x0 寄存器输出恒为 0
-    State.pc = CPP_NpcGetPC();
+    State.pc = CPP_NPCGetPC();
     return State;
 }
 
