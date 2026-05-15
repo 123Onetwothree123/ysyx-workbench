@@ -388,5 +388,98 @@ TEST(CpuControlFlowTest, JalWithZeroRdDoesNotWriteReturnAddress) {
     expect_halt(cpu.run(), 0u, guest_addr(16));
 }
 
+TEST(CpuControlFlowTest, JalCanReachSparseForwardTargetAndPreservesLinkPc) {
+    CpuHarness cpu;
+    const auto target_addr = guest_addr(0x80);
+    cpu.load_program({
+        rv32::addi(Reg::a0, Reg::zero, 1),
+        rv32::jal(Reg::ra, 0x80),
+        rv32::addi(Reg::a0, Reg::zero, 2),
+        rv32::ebreak(),
+    });
+    cpu.load_program({
+        rv32::addi(Reg::a0, Reg::ra, 0),
+        rv32::ebreak(),
+    }, target_addr + 4);
+    cpu.reset();
+
+    expect_halt(cpu.run(80), guest_addr(8), target_addr + 8);
+    expect_gpr(cpu, rv32::reg_bits(Reg::ra), guest_addr(8));
+}
+
+TEST(CpuControlFlowTest, TakenBranchCanReachSparseForwardTargetWithoutExecutingFallthrough) {
+    CpuHarness cpu;
+    const auto target_addr = guest_addr(0x60);
+    cpu.load_program({
+        rv32::addi(Reg::a0, Reg::zero, 0x11),
+        rv32::addi(Reg::t0, Reg::zero, -1),
+        rv32::addi(Reg::t1, Reg::zero, -1),
+        rv32::beq(Reg::t0, Reg::t1, 0x54),
+        rv32::addi(Reg::a0, Reg::zero, 0x22),
+        rv32::ebreak(),
+    });
+    cpu.load_program({
+        rv32::addi(Reg::a0, Reg::a0, 0x33),
+        rv32::ebreak(),
+    }, target_addr);
+    cpu.reset();
+
+    expect_halt(cpu.run(96), 0x44u, target_addr + 4);
+}
+
+TEST(CpuControlFlowTest, BranchWithZeroOffsetCanSpinUntilCycleBudget) {
+    CpuHarness cpu;
+    cpu.load_program({
+        rv32::beq(Reg::zero, Reg::zero, 0),
+        rv32::addi(Reg::a0, Reg::zero, 1),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_timeout(cpu.run(24), 24u);
+    expect_pc(cpu, guest_addr(0));
+}
+
+TEST(CpuControlFlowTest, JalrWithDestinationSameAsBaseUsesOldBaseForTargetAndWritesLink) {
+    CpuHarness cpu;
+    const auto target_addr = guest_addr(0x50);
+    cpu.load_program({
+        rv32::auipc(Reg::ra, 0),
+        rv32::addi(Reg::ra, Reg::ra, 0x50),
+        rv32::jalr(Reg::ra, Reg::ra, 0),
+        rv32::addi(Reg::a0, Reg::zero, 1),
+        rv32::ebreak(),
+    });
+    cpu.load_program({
+        rv32::addi(Reg::a0, Reg::ra, 0),
+        rv32::ebreak(),
+    }, target_addr);
+    cpu.reset();
+
+    expect_halt(cpu.run(80), guest_addr(12), target_addr + 4);
+    expect_gpr(cpu, rv32::reg_bits(Reg::ra), guest_addr(12));
+}
+
+TEST(CpuControlFlowTest, JalrWithZeroDestinationDoesNotClobberZeroRegisterOrLink) {
+    CpuHarness cpu;
+    const auto target_addr = guest_addr(0x48);
+    cpu.load_program({
+        rv32::addi(Reg::ra, Reg::zero, 0x7b),
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x44),
+        rv32::jalr(Reg::zero, Reg::t0, 0),
+        rv32::addi(Reg::a0, Reg::zero, 1),
+        rv32::ebreak(),
+    });
+    cpu.load_program({
+        rv32::addi(Reg::a0, Reg::ra, 0),
+        rv32::ebreak(),
+    }, target_addr);
+    cpu.reset();
+
+    expect_halt(cpu.run(80), 0x7bu, target_addr + 4);
+    expect_gpr(cpu, rv32::reg_bits(Reg::zero), 0u);
+}
+
 }  // namespace
 }  // namespace npc::test

@@ -440,5 +440,110 @@ TEST(CpuArithmeticTest, SltWithZeroSourceReturnsZero) {
     expect_halt(cpu.run(), 0u, guest_addr(4));
 }
 
+TEST(CpuArithmeticTest, RegisterShiftAmountsUseOnlyLowFiveBitsAcrossAllVariants) {
+    CpuHarness cpu;
+    cpu.load_program({
+        rv32::addi(Reg::t0, Reg::zero, 1),
+        rv32::addi(Reg::t1, Reg::zero, 0x3f),
+        rv32::sll(Reg::a1, Reg::t0, Reg::t1),
+        rv32::lui(Reg::t2, 0x8000'0000u),
+        rv32::srl(Reg::a2, Reg::t2, Reg::t1),
+        rv32::sra(Reg::a3, Reg::t2, Reg::t1),
+        rv32::add(Reg::a0, Reg::a1, Reg::a2),
+        rv32::add(Reg::a0, Reg::a0, Reg::a3),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(80), 0x8000'0000u, guest_addr(32));
+    expect_gpr(cpu, rv32::reg_bits(Reg::a1), 0x8000'0000u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a2), 0x0000'0001u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a3), 0xffff'ffffu);
+}
+
+TEST(CpuArithmeticTest, SetLessThanCoversMinIntMaxIntAndUnsignedOrdering) {
+    CpuHarness cpu;
+    cpu.load_program({
+        rv32::lui(Reg::t0, 0x8000'0000u),
+        rv32::addi(Reg::t1, Reg::zero, -1),
+        rv32::slt(Reg::a1, Reg::t0, Reg::t1),
+        rv32::slt(Reg::a2, Reg::t1, Reg::t0),
+        rv32::sltu(Reg::a3, Reg::t0, Reg::t1),
+        rv32::sltu(Reg::a4, Reg::t1, Reg::t0),
+        rv32::add(Reg::a0, Reg::a1, Reg::a2),
+        rv32::add(Reg::a0, Reg::a0, Reg::a3),
+        rv32::add(Reg::a0, Reg::a0, Reg::a4),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(80), 2u, guest_addr(36));
+    expect_gpr(cpu, rv32::reg_bits(Reg::a1), 1u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a2), 0u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a3), 1u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a4), 0u);
+}
+
+TEST(CpuArithmeticTest, ImmediateLogicalOpsUseSignExtendedTwelveBitOperands) {
+    CpuHarness cpu;
+    cpu.load_program({
+        rv32::addi(Reg::t0, Reg::zero, 0x55),
+        rv32::ori(Reg::a1, Reg::t0, -0x100),
+        rv32::andi(Reg::a2, Reg::a1, 0x0ff),
+        rv32::xori(Reg::a3, Reg::a2, -1),
+        rv32::add(Reg::a0, Reg::a1, Reg::a2),
+        rv32::add(Reg::a0, Reg::a0, Reg::a3),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(64), 0xffff'ff54u, guest_addr(24));
+    expect_gpr(cpu, rv32::reg_bits(Reg::a1), 0xffff'ff55u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a2), 0x55u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a3), 0xffff'ffaau);
+}
+
+TEST(CpuArithmeticTest, AddSubWrapAroundAtSignedBoundaries) {
+    CpuHarness cpu;
+    cpu.load_program({
+        rv32::lui(Reg::t0, 0x8000'0000u),
+        rv32::addi(Reg::t0, Reg::t0, -1),
+        rv32::addi(Reg::t1, Reg::zero, 1),
+        rv32::add(Reg::a1, Reg::t0, Reg::t1),
+        rv32::sub(Reg::a2, Reg::a1, Reg::t1),
+        rv32::xor_(Reg::a0, Reg::a1, Reg::a2),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(64), 0xffff'ffffu, guest_addr(24));
+    expect_gpr(cpu, rv32::reg_bits(Reg::a1), 0x8000'0000u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a2), 0x7fff'ffffu);
+}
+
+TEST(CpuArithmeticTest, WritesToZeroRegisterFromAllIntegerAluPathsRemainIgnored) {
+    CpuHarness cpu;
+    cpu.load_program({
+        rv32::addi(Reg::t0, Reg::zero, 0x7f),
+        rv32::addi(Reg::t1, Reg::zero, 0x03),
+        rv32::add(Reg::zero, Reg::t0, Reg::t1),
+        rv32::sub(Reg::zero, Reg::t0, Reg::t1),
+        rv32::or_(Reg::zero, Reg::t0, Reg::t1),
+        rv32::and_(Reg::zero, Reg::t0, Reg::t1),
+        rv32::xor_(Reg::zero, Reg::t0, Reg::t1),
+        rv32::sll(Reg::zero, Reg::t0, Reg::t1),
+        rv32::srl(Reg::zero, Reg::t0, Reg::t1),
+        rv32::sra(Reg::zero, Reg::t0, Reg::t1),
+        rv32::slt(Reg::zero, Reg::t0, Reg::t1),
+        rv32::sltu(Reg::zero, Reg::t0, Reg::t1),
+        rv32::addi(Reg::a0, Reg::zero, 0),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(128), 0u, guest_addr(52));
+    expect_gpr(cpu, rv32::reg_bits(Reg::zero), 0u);
+}
+
 }  // namespace
 }  // namespace npc::test

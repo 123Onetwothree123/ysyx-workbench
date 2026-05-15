@@ -52,11 +52,29 @@ void write_reg(std::array<std::uint32_t, 32> &regs, const Reg reg, const std::ui
            (static_cast<std::uint32_t>(data[offset + 3]) << 24);
 }
 
+[[nodiscard]] std::uint32_t read_half(const std::array<std::uint8_t, kDataBytes> &data, const std::size_t offset) {
+    return (static_cast<std::uint32_t>(data[offset + 0]) << 0) |
+           (static_cast<std::uint32_t>(data[offset + 1]) << 8);
+}
+
+[[nodiscard]] std::uint32_t sign_extend8(const std::uint32_t value) {
+    return (value & 0x80u) != 0u ? (value | 0xffff'ff00u) : value;
+}
+
+[[nodiscard]] std::uint32_t sign_extend16(const std::uint32_t value) {
+    return (value & 0x8000u) != 0u ? (value | 0xffff'0000u) : value;
+}
+
 void write_word(std::array<std::uint8_t, kDataBytes> &data, const std::size_t offset, const std::uint32_t value) {
     data[offset + 0] = static_cast<std::uint8_t>((value >> 0) & 0xffu);
     data[offset + 1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
     data[offset + 2] = static_cast<std::uint8_t>((value >> 16) & 0xffu);
     data[offset + 3] = static_cast<std::uint8_t>((value >> 24) & 0xffu);
+}
+
+void write_half(std::array<std::uint8_t, kDataBytes> &data, const std::size_t offset, const std::uint32_t value) {
+    data[offset + 0] = static_cast<std::uint8_t>((value >> 0) & 0xffu);
+    data[offset + 1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
 }
 
 template <typename T, std::size_t N>
@@ -71,11 +89,12 @@ template <typename T, std::size_t N>
 
 GeneratedProgram generate_program(const std::uint32_t seed) {
     std::mt19937 rng{seed};
-    std::uniform_int_distribution<int> op_dist(0, 15);
+    std::uniform_int_distribution<int> op_dist(0, 29);
     std::uniform_int_distribution<int> imm_dist(-2048, 2047);
     std::uniform_int_distribution<std::uint32_t> word_dist(0, 0xffff'ffffu);
     std::uniform_int_distribution<std::uint32_t> shamt_dist(0, 31);
     std::uniform_int_distribution<std::size_t> byte_offset_dist(0, kDataBytes - 1);
+    std::uniform_int_distribution<std::size_t> half_offset_dist(0, (kDataBytes / 2) - 1);
     std::uniform_int_distribution<std::size_t> word_offset_dist(0, (kDataBytes / 4) - 1);
 
     GeneratedProgram generated;
@@ -182,10 +201,88 @@ GeneratedProgram generate_program(const std::uint32_t seed) {
             generated.words.push_back(rv32::sltu(rd, rs1, rs2));
             write_reg(regs, rd, reg_ref(regs, rs1) < reg_ref(regs, rs2) ? 1u : 0u);
             break;
-        default: {
+        case 15: {
             const auto shamt = shamt_dist(rng) & 0x1fu;
             generated.words.push_back(rv32::slli(rd, rs1, shamt));
             write_reg(regs, rd, reg_ref(regs, rs1) << shamt);
+            break;
+        }
+        case 16: {
+            const auto offset = byte_offset_dist(rng);
+            generated.words.push_back(rv32::lb(rd, Reg::t0, static_cast<std::int32_t>(offset)));
+            write_reg(regs, rd, sign_extend8(expected_data[offset]));
+            break;
+        }
+        case 17: {
+            const auto offset = half_offset_dist(rng) * 2u;
+            generated.words.push_back(rv32::lh(rd, Reg::t0, static_cast<std::int32_t>(offset)));
+            write_reg(regs, rd, sign_extend16(read_half(expected_data, offset)));
+            break;
+        }
+        case 18: {
+            const auto offset = half_offset_dist(rng) * 2u;
+            generated.words.push_back(rv32::lhu(rd, Reg::t0, static_cast<std::int32_t>(offset)));
+            write_reg(regs, rd, read_half(expected_data, offset));
+            break;
+        }
+        case 19: {
+            const auto offset = half_offset_dist(rng) * 2u;
+            generated.words.push_back(rv32::sh(rs1, Reg::t0, static_cast<std::int32_t>(offset)));
+            write_half(expected_data, offset, reg_ref(regs, rs1));
+            break;
+        }
+        case 20: {
+            const auto imm = imm_dist(rng);
+            generated.words.push_back(rv32::sltiu(rd, rs1, imm));
+            write_reg(regs, rd, reg_ref(regs, rs1) < static_cast<std::uint32_t>(imm) ? 1u : 0u);
+            break;
+        }
+        case 21: {
+            const auto imm = imm_dist(rng);
+            generated.words.push_back(rv32::xori(rd, rs1, imm));
+            write_reg(regs, rd, reg_ref(regs, rs1) ^ static_cast<std::uint32_t>(imm));
+            break;
+        }
+        case 22: {
+            const auto imm = imm_dist(rng);
+            generated.words.push_back(rv32::ori(rd, rs1, imm));
+            write_reg(regs, rd, reg_ref(regs, rs1) | static_cast<std::uint32_t>(imm));
+            break;
+        }
+        case 23: {
+            const auto imm = imm_dist(rng);
+            generated.words.push_back(rv32::andi(rd, rs1, imm));
+            write_reg(regs, rd, reg_ref(regs, rs1) & static_cast<std::uint32_t>(imm));
+            break;
+        }
+        case 24: {
+            const auto shamt = shamt_dist(rng) & 0x1fu;
+            generated.words.push_back(rv32::srli(rd, rs1, shamt));
+            write_reg(regs, rd, reg_ref(regs, rs1) >> shamt);
+            break;
+        }
+        case 25: {
+            const auto shamt = shamt_dist(rng) & 0x1fu;
+            generated.words.push_back(rv32::srai(rd, rs1, shamt));
+            write_reg(regs, rd, static_cast<std::uint32_t>(static_cast<std::int32_t>(reg_ref(regs, rs1)) >> shamt));
+            break;
+        }
+        case 26:
+            generated.words.push_back(rv32::sll(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) << (reg_ref(regs, rs2) & 0x1fu));
+            break;
+        case 27:
+            generated.words.push_back(rv32::srl(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) >> (reg_ref(regs, rs2) & 0x1fu));
+            break;
+        case 28:
+            generated.words.push_back(rv32::sra(rd, rs1, rs2));
+            write_reg(regs, rd, static_cast<std::uint32_t>(static_cast<std::int32_t>(reg_ref(regs, rs1)) >> (reg_ref(regs, rs2) & 0x1fu)));
+            break;
+        default: {
+            const auto imm = imm_dist(rng);
+            generated.words.push_back(rv32::addi(Reg::zero, rs1, imm));
+            write_reg(regs, Reg::zero, reg_ref(regs, rs1) + static_cast<std::uint32_t>(imm));
             break;
         }
         }

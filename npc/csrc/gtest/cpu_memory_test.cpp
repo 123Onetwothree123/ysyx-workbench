@@ -198,6 +198,31 @@ TEST(CpuMemoryTest, LhuReadsUpperHalfwordWithZeroExtend) {
     expect_halt(cpu.run(), 0xabcdu, guest_addr(12));
 }
 
+TEST(CpuMemoryTest, HalfwordLoadsCoverBothLanesAndSignednessInOneProgram) {
+    CpuHarness cpu;
+    const auto data_addr = guest_addr(0x100);
+    cpu.write_word(data_addr, 0x8001'7fffu);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::lh(Reg::a1, Reg::t0, 0),
+        rv32::lhu(Reg::a2, Reg::t0, 0),
+        rv32::lh(Reg::a3, Reg::t0, 2),
+        rv32::lhu(Reg::a4, Reg::t0, 2),
+        rv32::add(Reg::a0, Reg::a1, Reg::a2),
+        rv32::add(Reg::a0, Reg::a0, Reg::a3),
+        rv32::add(Reg::a0, Reg::a0, Reg::a4),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(80), 0x0001'0000u, guest_addr(36));
+    expect_gpr(cpu, rv32::reg_bits(Reg::a1), 0x0000'7fffu);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a2), 0x0000'7fffu);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a3), 0xffff'8001u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a4), 0x0000'8001u);
+}
+
 struct StoreByteLaneCase {
     int offset;
     std::uint32_t expected_word;
@@ -272,6 +297,9 @@ TEST(CpuMemoryTest, ShInstructionExecutesWithoutHanging) {
     cpu.reset();
 
     expect_halt(cpu.run(), 0u, guest_addr(24));
+    EXPECT_EQ(cpu.read_word(data_addr), 0x1122'0000u);
+    expect_memory_half(cpu, data_addr + 0, 0x0000u);
+    expect_memory_half(cpu, data_addr + 2, 0x1122u);
 }
 
 TEST(CpuMemoryTest, ShWithOffsetExecutesWithoutError) {
@@ -290,6 +318,49 @@ TEST(CpuMemoryTest, ShWithOffsetExecutesWithoutError) {
     cpu.reset();
 
     expect_halt(cpu.run(), 0u, guest_addr(24));
+    EXPECT_EQ(cpu.read_word(data_addr), 0x0000'3344u);
+    expect_memory_half(cpu, data_addr + 0, 0x3344u);
+    expect_memory_half(cpu, data_addr + 2, 0x0000u);
+}
+
+TEST(CpuMemoryTest, StoreHalfwordImmediateLowBitsPreserveUnaffectedNeighborHalfword) {
+    CpuHarness cpu;
+    const auto data_addr = guest_addr(0x100);
+    cpu.write_word(data_addr, 0xaabb'ccddu);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::addi(Reg::t1, Reg::zero, -0x66),
+        rv32::sh(Reg::t1, Reg::t0, 0),
+        rv32::lhu(Reg::a0, Reg::t0, 0),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(64), 0xff9au, guest_addr(20));
+    EXPECT_EQ(cpu.read_word(data_addr), 0xaabb'ff9au);
+    expect_memory_half(cpu, data_addr + 0, 0xff9au);
+    expect_memory_half(cpu, data_addr + 2, 0xaabbu);
+}
+
+TEST(CpuMemoryTest, StoreHalfwordUpperLanePreservesLowerNeighborHalfword) {
+    CpuHarness cpu;
+    const auto data_addr = guest_addr(0x100);
+    cpu.write_word(data_addr, 0xaabb'ccddu);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x100),
+        rv32::addi(Reg::t1, Reg::zero, 0x7e),
+        rv32::sh(Reg::t1, Reg::t0, 2),
+        rv32::lhu(Reg::a0, Reg::t0, 2),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(64), 0x007eu, guest_addr(20));
+    EXPECT_EQ(cpu.read_word(data_addr), 0x007e'ccddu);
+    expect_memory_half(cpu, data_addr + 0, 0xccddu);
+    expect_memory_half(cpu, data_addr + 2, 0x007eu);
 }
 
 TEST(CpuMemoryTest, SwWritesFullWordAndCanBeReadBack) {
@@ -427,7 +498,38 @@ TEST(CpuMemoryTest, ReadAfterWriteAllWidthsInterleaved) {
     cpu.reset();
 
     const auto result = cpu.run(64);
-    ASSERT_TRUE(result.halted);
+    expect_halt(result, 0x0068'3412u, guest_addr(36));
+    EXPECT_EQ(cpu.read_word(addr1), 0x0068'3412u);
+    expect_memory_byte(cpu, addr1 + 0, 0x12u);
+    expect_memory_byte(cpu, addr1 + 1, 0x34u);
+    expect_memory_half(cpu, addr1 + 2, 0x0068u);
+}
+
+TEST(CpuMemoryTest, BackToBackStoreByteByteLoadAndWordLoadObserveLatestLanes) {
+    CpuHarness cpu;
+    const auto data_addr = guest_addr(0x240);
+    cpu.write_word(data_addr, 0xffff'ffffu);
+    cpu.load_program({
+        rv32::auipc(Reg::t0, 0),
+        rv32::addi(Reg::t0, Reg::t0, 0x240),
+        rv32::addi(Reg::t1, Reg::zero, 0x12),
+        rv32::sb(Reg::t1, Reg::t0, 0),
+        rv32::lbu(Reg::a1, Reg::t0, 0),
+        rv32::addi(Reg::t1, Reg::zero, 0x34),
+        rv32::sb(Reg::t1, Reg::t0, 1),
+        rv32::lbu(Reg::a2, Reg::t0, 1),
+        rv32::lw(Reg::a3, Reg::t0, 0),
+        rv32::add(Reg::a0, Reg::a1, Reg::a2),
+        rv32::add(Reg::a0, Reg::a0, Reg::a3),
+        rv32::ebreak(),
+    });
+    cpu.reset();
+
+    expect_halt(cpu.run(96), 0xffff'3458u, guest_addr(44));
+    expect_gpr(cpu, rv32::reg_bits(Reg::a1), 0x12u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a2), 0x34u);
+    expect_gpr(cpu, rv32::reg_bits(Reg::a3), 0xffff'3412u);
+    EXPECT_EQ(cpu.read_word(data_addr), 0xffff'3412u);
 }
 
 }  // namespace
