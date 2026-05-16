@@ -509,8 +509,8 @@ extern "C" void ftrace_record(std::uint64_t PC, std::uint32_t Instruction, std::
 #ifdef CONFIG_FTRACE
     GlobalFtrace.OnInstruction(PC, Instruction, NextPC);
 #else
-    (void)PC;
-    (void)Instruction;
-    (void)NextPC;
+    static_cast<void>(PC);
+    static_cast<void>(Instruction);
+    static_cast<void>(NextPC);
 #endif
 }

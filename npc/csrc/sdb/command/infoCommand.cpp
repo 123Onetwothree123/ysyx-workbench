@@ -16,7 +16,7 @@ SDBCommandUsageList infoCommand::Usage() const noexcept
 }
 SDBCommandResult infoCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    static_cast<void>(Context);
     if (Args == "r")
     {
         PrintGPR();

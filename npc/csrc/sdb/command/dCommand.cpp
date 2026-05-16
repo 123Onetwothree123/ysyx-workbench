@@ -17,7 +17,7 @@ SDBCommandUsageList dCommand::Usage() const noexcept
 }
 SDBCommandResult dCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    static_cast<void>(Context);
     Args = SDBTrimLeft(Args);
     if (Args.empty())
     {
@@ -42,7 +42,8 @@ SDBCommandResult dCommand::Execute(SDBCommandContext &Context, std::string_view 
     const auto MaxWP{GetGlobalWatchpointPool().GetMaxWatchpoints()};
     if (NO >= MaxWP)
     {
-        std::println("错误：监视点编号 {} 超出最大允许范围（0-{}）。", NO, MaxWP - 1);
+        std::println("错误：监视点编号{}超出最大允许范围（0-{}）。", NO, MaxWP - 1);
+        std::println("目前最大的监视点数量是{}", MaxWP);
         return SDBCommandResult::Continue;
     }
     if (GetGlobalWatchpointPool().DeleteWatchpoint(NO))
@@ -52,6 +53,7 @@ SDBCommandResult dCommand::Execute(SDBCommandContext &Context, std::string_view 
     else
     {
         std::println("删除监视点{}失败", NO);
+        std::println("不知道为什么错误");
     }
     return SDBCommandResult::Continue;
 }

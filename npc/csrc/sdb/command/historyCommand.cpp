@@ -63,15 +63,15 @@ void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Re
         }
     }
 #else
-    (void)n;
-    (void)Registry;
+    static_cast<void>(n);
+    static_cast<void>(Registry);
     std::println("SDB 未开启，无历史记录");
 #endif
 }
 
 SDBCommandResult historyCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    static_cast<void>(Context);
     auto n{std::size_t{0}}; // 0 表示显示全部
     Args = SDBTrimLeft(Args);
     if (!Args.empty())

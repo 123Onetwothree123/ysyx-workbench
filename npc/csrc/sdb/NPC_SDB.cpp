@@ -16,7 +16,7 @@ extern bool npc_halted;
 
 void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, size_t &cycles, bool batch_mode)
 {
-    SDBDPISetTopScope(top->name(), top->modelName());
+    SDBDPISetTopScope(top->name(), top->modelName()); // 先设置作用域
 #ifdef CONFIG_SDB
     SDBCommandRegistry Commands{*top, cycles};
     if (batch_mode)
@@ -24,7 +24,7 @@ void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, size_t &cycles, bool batch
         Commands.Execute("c");
         return;
     }
-    auto line{readline("(npc) ")};
+    auto line{readline("(npc) ")};//唉，到最后还是用了readline
     while (line != nullptr)
     {
         if (line[0] != '\0')

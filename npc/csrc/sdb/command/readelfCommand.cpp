@@ -10,14 +10,17 @@ std::string_view readelfCommand::Name() const noexcept
 SDBCommandUsageList readelfCommand::Usage() const noexcept
 {
     static constexpr SDBCommandUsage Entries[]{
-        {"-h|-S|-s|-a", "打印已加载 ELF 的信息"},
+        {"-h", "看看ELF文件头"},
+        {"-S", "看看ELF里有哪些节区"},
+        {"-s", "看看ELF里的符号表"},
+        {"-a", "把ELF文件头和节区还有符号表都打出来"},
     };
     return Entries;
 }
 
 SDBCommandResult readelfCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    static_cast<void>(Context);
     const Readelf *Reader{GlobalFtrace.ElfReader()};// 获取这个ELF的读取器
     if (Reader == nullptr)
     {

@@ -13,63 +13,63 @@
 
 namespace
 {
-constexpr std::string_view UsageText{"set reg <name> <expr>"};
+    constexpr std::string_view UsageText{"set reg <name> <expr>"};
 
-std::pair<std::string_view, std::string_view> TakeToken(std::string_view Text)
-{
-    Text = SDBTrimLeft(Text);
-    const auto TokenEnd{Text.find_first_of(" \t")};
-    if (TokenEnd == std::string_view::npos)
+    std::pair<std::string_view, std::string_view> TakeToken(std::string_view Text)
     {
-        return {Text, {}};
+        Text = SDBTrimLeft(Text);
+        const auto TokenEnd{Text.find_first_of(" \t")};
+        if (TokenEnd == std::string_view::npos)
+        {
+            return {Text, {}};
+        }
+
+        auto Token{Text.substr(0, TokenEnd)};
+        Text.remove_prefix(TokenEnd);
+        return {Token, SDBTrimLeft(Text)};
     }
 
-    auto Token{Text.substr(0, TokenEnd)};
-    Text.remove_prefix(TokenEnd);
-    return {Token, SDBTrimLeft(Text)};
-}
-
-void ClearDebugWriteInputs(VRV32E32Reg &Top)
-{
-    Top.sdb_debug_clk = 0;
-    Top.sdb_pc_write_en = 0;
-    Top.sdb_pc_write_data = 0;
-    Top.sdb_gpr_write_en = 0;
-    Top.sdb_gpr_write_addr = 0;
-    Top.sdb_gpr_write_data = 0;
-}
-
-void CommitDebugWrite(VRV32E32Reg &Top)
-{
-    Top.sdb_debug_clk = 0;
-    Top.eval();
-    Top.sdb_debug_clk = 1;
-    Top.eval();
-    Top.sdb_debug_clk = 0;
-    Top.eval();
-}
-
-void WriteProgramCounter(VRV32E32Reg &Top, std::uint32_t Value)
-{
-    Top.sdb_pc_write_data = Value;
-    Top.sdb_pc_write_en = 1;
-    CommitDebugWrite(Top);
-    ClearDebugWriteInputs(Top);
-}
-
-bool WriteGeneralRegister(VRV32E32Reg &Top, std::uint32_t Index, std::uint32_t Value)
-{
-    if (Index == 0 || Index >= 32)
+    void ClearDebugWriteInputs(VRV32E32Reg &Top)
     {
-        return false;
+        Top.sdb_debug_clk = 0;
+        Top.sdb_pc_write_en = 0;
+        Top.sdb_pc_write_data = 0;
+        Top.sdb_gpr_write_en = 0;
+        Top.sdb_gpr_write_addr = 0;
+        Top.sdb_gpr_write_data = 0;
     }
-    Top.sdb_gpr_write_addr = static_cast<unsigned char>(Index);
-    Top.sdb_gpr_write_data = Value;
-    Top.sdb_gpr_write_en = 1;
-    CommitDebugWrite(Top);
-    ClearDebugWriteInputs(Top);
-    return true;
-}
+
+    void CommitDebugWrite(VRV32E32Reg &Top)
+    {
+        Top.sdb_debug_clk = 0;
+        Top.eval();
+        Top.sdb_debug_clk = 1;
+        Top.eval();
+        Top.sdb_debug_clk = 0;
+        Top.eval();
+    }
+
+    void WriteProgramCounter(VRV32E32Reg &Top, std::uint32_t Value)
+    {
+        Top.sdb_pc_write_data = Value;
+        Top.sdb_pc_write_en = 1;
+        CommitDebugWrite(Top);
+        ClearDebugWriteInputs(Top);
+    }
+
+    bool WriteGeneralRegister(VRV32E32Reg &Top, std::uint32_t Index, std::uint32_t Value)
+    {
+        if (Index == 0 || Index >= 32)
+        {
+            return false;
+        }
+        Top.sdb_gpr_write_addr = static_cast<unsigned char>(Index);
+        Top.sdb_gpr_write_data = Value;
+        Top.sdb_gpr_write_en = 1;
+        CommitDebugWrite(Top);
+        ClearDebugWriteInputs(Top);
+        return true;
+    }
 } // namespace
 
 std::string_view setCommand::Name() const noexcept
@@ -79,8 +79,11 @@ std::string_view setCommand::Name() const noexcept
 
 SDBCommandUsageList setCommand::Usage() const noexcept
 {
+    std::println("set的话目前是只支持reg，后面memory功能，理论上实现起来不难，但是这太麻烦了，目前就先不做了，反正也不是osoc的文档要求部分功能");
     static constexpr SDBCommandUsage Entries[]{
-        {"reg <name> <expr>", "设置寄存器，支持 pc、x0-x31、ABI 别名"},
+        {"reg pc <expr>", "把pc改成表达式算出来的值"},
+        {"reg x1 <expr>", "把x1到x31改成表达式算出来的值，x0不能改"},
+        {"reg ra <expr>", "也可以用ABI寄存器名，比如ra/sp/a0"},
     };
     return Entries;
 }

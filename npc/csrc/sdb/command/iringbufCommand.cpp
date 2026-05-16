@@ -14,7 +14,7 @@ SDBCommandUsageList iringbufCommand::Usage() const noexcept
 }
 SDBCommandResult iringbufCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    static_cast<void>(Context);
     if (!Args.empty())
     {
         std::println("用法：iringbuf");

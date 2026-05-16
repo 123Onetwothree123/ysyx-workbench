@@ -22,7 +22,7 @@ SDBCommandUsageList pCommand::Usage() const noexcept
 
 SDBCommandResult pCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    static_cast<void>(Context);
     Args = SDBTrimLeft(Args); // 去掉前导空白
     if (Args.empty())
     {

@@ -8,13 +8,20 @@ std::string_view ftraceCommand::Name() const noexcept
 SDBCommandUsageList ftraceCommand::Usage() const noexcept
 {
     static constexpr SDBCommandUsage Entries[]{
-        {"...", "控制或查看函数调用跟踪"},
+        {"[status]", "看一下ftrace现在开没开、记了多少历史、ELF加载没"},
+        {"on", "打开ftrace，后面遇到call或者是ret就会打印出来"},
+        {"off", "关掉ftrace，后面的call或者是ret就不管了"},
+        {"now|stack", "看看现在还在调用栈里的函数"},
+        {"history", "把之前记下来的call或ret历史打印出来"},
+        {"history on", "开始保存ftrace历史"},
+        {"history off", "不保存ftrace历史了，但实时打印还在"},
+        {"reset", "把当前调用栈和ftrace历史都清掉"},
     };
     return Entries;
 }
 SDBCommandResult ftraceCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    static_cast<void>(Context);
 #ifdef CONFIG_FTRACE
     if (Args.empty() || Args == "status")
     {
@@ -63,7 +70,7 @@ SDBCommandResult ftraceCommand::Execute(SDBCommandContext &Context, std::string_
     }
     std::println("用法：ftrace on | off | status | now | history | history on | history off | reset");
 #else
-    (void)Args;
+    static_cast<void>(Args);
     std::println("FTRACE没有开启，请使用 make CONFIG_FTRACE=y");
 #endif
     return SDBCommandResult::Continue;

@@ -14,7 +14,7 @@ SDBCommandUsageList qCommand::Usage() const noexcept
 
 SDBCommandResult qCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
-    (void)Args;
+    static_cast<void>(Context);
+    static_cast<void>(Args);
     return SDBCommandResult::Quit;
 }

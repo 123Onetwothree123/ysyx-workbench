@@ -18,13 +18,16 @@ std::string_view xCommand::Name() const noexcept
 SDBCommandUsageList xCommand::Usage() const noexcept
 {
     static constexpr SDBCommandUsage Entries[]{
-        {"N[b|h|w] EXPR", "从表达式地址开始扫描内存，b=1字节 h=2字节 w=4字节"},
+        {"N EXPR", "从表达式地址开始看N个4字节数据，默认就是这个"},
+        {"Nb EXPR", "从表达式地址开始看N个1字节数据"},
+        {"Nh EXPR", "从表达式地址开始看N个2字节数据"},
+        {"Nw EXPR", "从表达式地址开始看N个4字节数据"},
     };
     return Entries;
 }
 SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    static_cast<void>(Context);
     Args = SDBTrimLeft(Args); // 去掉前导空白
     if (Args.empty())
     {

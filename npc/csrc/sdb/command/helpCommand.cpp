@@ -24,21 +24,22 @@ SDBCommandUsageList helpCommand::Usage() const noexcept
 
 SDBCommandResult helpCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    std::println("NEMU那里后面移植到命令里面的表达式自动测试命令，这里移除了，改到gtest里面去了，跑test的时候，调用gtest文件夹里面的表达式测试");
+    // 本来想要做一个前缀模糊搜索的，但是没有做出来，做不出来
+    static_cast<void>(Context);
     Args = SDBTrimLeft(Args);
     if (Args.empty())
     {
+        std::println("help的子命令都是空的，跑个毛线");
         Registry.PrintHelp();
         return SDBCommandResult::Continue;
     }
-
     const SDBCommand *Command{Registry.FindCommand(Args)};
     if (Command == nullptr)
     {
         std::println("未知命令：{}", Args);
         return SDBCommandResult::Continue;
     }
-
     Registry.PrintHelp(*Command);
     return SDBCommandResult::Continue;
 }
