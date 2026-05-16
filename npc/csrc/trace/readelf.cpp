@@ -22,7 +22,7 @@ namespace
 // 本次NPC构建所期望的ELF class字节。
 constexpr unsigned char ExpectedElfClass{Readelf::is_elf64 ? ELFCLASS64 : ELFCLASS32};
 // 诊断信息中使用的`ExpectedElfClass`的可读形式。
-constexpr auto ExpectedElfClassName{std::string_view{Readelf::is_elf64 ? "ELF64" : "ELF32"}};
+constexpr auto ExpectedElfClassName{std::string_view{Readelf::is_elf64 ? "ELF64(64位)" : "ELF32(32位)"}};
 // 打印虚拟地址时使用的十六进制位数。
 constexpr auto AddressWidth{Readelf::is_elf64 ? 16 : 8};
 // 简短的局部别名，使解析器不依赖于预处理器宏。
@@ -100,26 +100,26 @@ std::expected<void, std::string> read_exact_at(std::ifstream &file,
 {
     if (buffer == nullptr)
     {
-        return make_error("internal error: null read buffer");
+        return make_error("内部错误：读取缓冲区为空(internal error: null read buffer)");
     }
     if (!can_cast_to_streamoff(offset))
     {
-        return make_error(std::string(what) + " offset is too large");
+        return make_error(std::string(what) + "偏移过大(offset is too large)");
     }
     if (!can_cast_to_streamsize(bytes))
     {
-        return make_error(std::string(what) + " size is too large");
+        return make_error(std::string(what) + "大小过大(size is too large)");
     }
     file.clear();
     file.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
     if (!file)
     {
-        return make_error("failed to seek to " + std::string(what));
+        return make_error("无法定位到" + std::string(what) + "(failed to seek)");
     }
     file.read(static_cast<char *>(buffer), static_cast<std::streamsize>(bytes));
     if (file.gcount() != static_cast<std::streamsize>(bytes))
     {
-        return make_error("failed to read complete " + std::string(what));
+        return make_error("无法完整读取" + std::string(what) + "(failed to read complete object)");
     }
     return {};
 }
@@ -160,7 +160,7 @@ std::expected<std::vector<T>, std::string> read_array_at(std::ifstream &file,
     auto bytes{std::size_t{0}};
     if (!checked_byte_count(count, sizeof(T), bytes))
     {
-        return make_error(std::string(what) + " size overflows size_t");
+        return make_error(std::string(what) + "大小溢出size_t(size overflows size_t)");
     }
     std::vector<T> objects(count);
     if (bytes == 0)
@@ -189,31 +189,31 @@ std::expected<void, std::string> validate_header(const Header &header)
         header.e_ident[EI_MAG2] != ELFMAG2 ||
         header.e_ident[EI_MAG3] != ELFMAG3)
     {
-        return make_error("not an ELF file");
+        return make_error("不是ELF文件(not an ELF file)");
     }
     if (header.e_ident[EI_CLASS] != ExpectedElfClass)
     {
-        return make_error("ELF class mismatch: expected " + std::string(ExpectedElfClassName));
+        return make_error("ELF类别不匹配(ELF class mismatch)：期望(expected)" + std::string(ExpectedElfClassName));
     }
     if (header.e_ident[EI_DATA] != ELFDATA2LSB)
     {
-        return make_error("only little-endian ELF files are supported");
+        return make_error("仅支持小端序ELF文件(only little-endian ELF files are supported)");
     }
     if (header.e_ident[EI_VERSION] != EV_CURRENT || header.e_version != EV_CURRENT)
     {
-        return make_error("unsupported ELF version");
+        return make_error("不支持的ELF版本(unsupported ELF version)");
     }
     if (header.e_ehsize != sizeof(Header))
     {
-        return make_error("ELF header size mismatch");
+        return make_error("ELF文件头大小不匹配(ELF header size mismatch)");
     }
     if (header.e_shoff != 0 && header.e_shentsize != sizeof(SectionHeader))
     {
-        return make_error("section header entry size mismatch");
+        return make_error("节头表项大小不匹配(section header entry size mismatch)");
     }
     if (header.e_phoff != 0 && header.e_phnum != 0 && header.e_phentsize != sizeof(Readelf::program_header_type))
     {
-        return make_error("program header entry size mismatch");
+        return make_error("程序头表项大小不匹配(program header entry size mismatch)");
     }
     return {};
 }
@@ -227,12 +227,12 @@ std::expected<std::vector<SectionHeader>, std::string> read_section_headers(std:
 {
     if (header.e_shoff == 0 || header.e_shnum == 0)
     {
-        return make_error("ELF file has no regular section header table");
+        return make_error("ELF文件没有常规节头表(ELF file has no regular section header table)");
     }
     return read_array_at<SectionHeader>(file,
                                         static_cast<std::uint64_t>(header.e_shoff),
                                         static_cast<std::size_t>(header.e_shnum),
-                                        "section header table");
+                                        "节头表(section header table)");
 }
 /**
  * @brief 读取常规的`SHT_SYMTAB`节。
@@ -244,20 +244,20 @@ std::expected<std::vector<Symbol>, std::string> read_symbols(std::ifstream &file
 {
     if (section.sh_type != SHT_SYMTAB)
     {
-        return make_error("section is not SHT_SYMTAB");
+        return make_error("节不是SHT_SYMTAB(section is not SHT_SYMTAB)");
     }
     if (section.sh_offset == 0 || section.sh_size == 0 || section.sh_entsize == 0)
     {
-        return make_error("symbol table section is empty or invalid");
+        return make_error("符号表节为空或无效(symbol table section is empty or invalid)");
     }
     if (section.sh_entsize != sizeof(Symbol) || section.sh_size % section.sh_entsize != 0)
     {
-        return make_error("symbol table entry size mismatch");
+        return make_error("符号表项大小不匹配(symbol table entry size mismatch)");
     }
     return read_array_at<Symbol>(file,
                                  static_cast<std::uint64_t>(section.sh_offset),
                                  static_cast<std::size_t>(section.sh_size / section.sh_entsize),
-                                 "symbol table");
+                                 "符号表(symbol table)");
 }
 /**
  * @brief 读取字符串表并追加一个防御性的尾部NUL字节。
@@ -272,15 +272,15 @@ std::expected<std::vector<char>, std::string> read_string_table(std::ifstream &f
 {
     if (section.sh_type != SHT_STRTAB)
     {
-        return make_error("section is not SHT_STRTAB");
+        return make_error("节不是SHT_STRTAB(section is not SHT_STRTAB)");
     }
     if (section.sh_size == 0)
     {
-        return make_error("string table is empty");
+        return make_error("字符串表为空(string table is empty)");
     }
     if (section.sh_size > static_cast<decltype(section.sh_size)>(std::numeric_limits<std::size_t>::max() - 1))
     {
-        return make_error("string table is too large");
+        return make_error("字符串表过大(string table is too large)");
     }
     const auto payload_size{static_cast<std::size_t>(section.sh_size)};
     std::vector<char> table(payload_size + 1, '\0');
@@ -288,7 +288,7 @@ std::expected<std::vector<char>, std::string> read_string_table(std::ifstream &f
                                 static_cast<std::uint64_t>(section.sh_offset),
                                 table.data(),
                                 payload_size,
-                                "string table")};
+                                "字符串表(string table)")};
     if (!result)
     {
         return make_error(result.error());
@@ -430,19 +430,19 @@ std::string_view elf_class_name(unsigned char elf_class)
     {
     case ELFCLASSNONE:
     {
-        return "none";
+        return "none(无)";
     }
     case ELFCLASS32:
     {
-        return "ELF32";
+        return "ELF32(32位)";
     }
     case ELFCLASS64:
     {
-        return "ELF64";
+        return "ELF64(64位)";
     }
     default:
     {
-        return "unknown";
+        return "unknown(未知)";
     }
     }
 }
@@ -457,19 +457,19 @@ std::string_view elf_data_name(unsigned char data)
     {
     case ELFDATANONE:
     {
-        return "none";
+        return "none(无)";
     }
     case ELFDATA2LSB:
     {
-        return "2's complement, little endian";
+        return "2's complement, little endian(二进制补码，小端序)";
     }
     case ELFDATA2MSB:
     {
-        return "2's complement, big endian";
+        return "2's complement, big endian(二进制补码，大端序)";
     }
     default:
     {
-        return "unknown";
+        return "unknown(未知)";
     }
     }
 }
@@ -484,27 +484,27 @@ std::string_view elf_type_name(Half type)
     {
     case ET_NONE:
     {
-        return "NONE (None)";
+        return "NONE (None)(无)";
     }
     case ET_REL:
     {
-        return "REL (Relocatable file)";
+        return "REL (Relocatable file)(可重定位文件)";
     }
     case ET_EXEC:
     {
-        return "EXEC (Executable file)";
+        return "EXEC (Executable file)(可执行文件)";
     }
     case ET_DYN:
     {
-        return "DYN (Shared object file)";
+        return "DYN (Shared object file)(共享目标文件)";
     }
     case ET_CORE:
     {
-        return "CORE (Core file)";
+        return "CORE (Core file)(核心转储文件)";
     }
     default:
     {
-        return "UNKNOWN";
+        return "UNKNOWN(未知)";
     }
     }
 }
@@ -519,105 +519,105 @@ std::string_view section_type_name(Word type)
     {
     case SHT_NULL:
     {
-        return "NULL";
+        return "NULL(空)";
     }
     case SHT_PROGBITS:
     {
-        return "PROGBITS";
+        return "PROGBITS(程序数据)";
     }
     case SHT_SYMTAB:
     {
-        return "SYMTAB";
+        return "SYMTAB(符号表)";
     }
     case SHT_STRTAB:
     {
-        return "STRTAB";
+        return "STRTAB(字符串表)";
     }
     case SHT_RELA:
     {
-        return "RELA";
+        return "RELA(重定位加数)";
     }
     case SHT_HASH:
     {
-        return "HASH";
+        return "HASH(哈希表)";
     }
     case SHT_DYNAMIC:
     {
-        return "DYNAMIC";
+        return "DYNAMIC(动态链接)";
     }
     case SHT_NOTE:
     {
-        return "NOTE";
+        return "NOTE(备注)";
     }
     case SHT_NOBITS:
     {
-        return "NOBITS";
+        return "NOBITS(无文件数据)";
     }
     case SHT_REL:
     {
-        return "REL";
+        return "REL(重定位)";
     }
     case SHT_SHLIB:
     {
-        return "SHLIB";
+        return "SHLIB(保留)";
     }
     case SHT_DYNSYM:
     {
-        return "DYNSYM";
+        return "DYNSYM(动态符号表)";
     }
     case SHT_INIT_ARRAY:
     {
-        return "INIT_ARRAY";
+        return "INIT_ARRAY(初始化数组)";
     }
     case SHT_FINI_ARRAY:
     {
-        return "FINI_ARRAY";
+        return "FINI_ARRAY(终止数组)";
     }
     case SHT_PREINIT_ARRAY:
     {
-        return "PREINIT_ARRAY";
+        return "PREINIT_ARRAY(预初始化数组)";
     }
     case SHT_GROUP:
     {
-        return "GROUP";
+        return "GROUP(节组)";
     }
     case SHT_SYMTAB_SHNDX:
     {
-        return "SYMTAB SECTION INDICES";
+        return "SYMTAB SECTION INDICES(符号表节索引)";
     }
 #ifdef SHT_GNU_ATTRIBUTES
     case SHT_GNU_ATTRIBUTES:
     {
-        return "GNU_ATTRIBUTES";
+        return "GNU_ATTRIBUTES(GNU属性)";
     }
 #endif
 #ifdef SHT_GNU_HASH
     case SHT_GNU_HASH:
     {
-        return "GNU_HASH";
+        return "GNU_HASH(GNU哈希)";
     }
 #endif
 #ifdef SHT_GNU_verdef
     case SHT_GNU_verdef:
     {
-        return "VERDEF";
+        return "VERDEF(版本定义)";
     }
 #endif
 #ifdef SHT_GNU_verneed
     case SHT_GNU_verneed:
     {
-        return "VERNEED";
+        return "VERNEED(版本需求)";
     }
 #endif
 #ifdef SHT_GNU_versym
     case SHT_GNU_versym:
     {
-        return "VERSYM";
+        return "VERSYM(版本符号)";
     }
 #endif
     default:
     {
-        return "UNKNOWN";
+        return "UNKNOWN(未知)";
     }
     }
 }
@@ -664,25 +664,25 @@ std::string_view symbol_bind_name(unsigned char info)
     {
     case STB_LOCAL:
     {
-        return "LOCAL";
+        return "LOCAL(本地)";
     }
     case STB_GLOBAL:
     {
-        return "GLOBAL";
+        return "GLOBAL(全局)";
     }
     case STB_WEAK:
     {
-        return "WEAK";
+        return "WEAK(弱)";
     }
 #ifdef STB_GNU_UNIQUE
     case STB_GNU_UNIQUE:
     {
-        return "UNIQUE";
+        return "UNIQUE(唯一)";
     }
 #endif
     default:
     {
-        return "UNKNOWN";
+        return "UNKNOWN(未知)";
     }
     }
 }
@@ -697,41 +697,41 @@ std::string_view symbol_type_name(unsigned char info)
     {
     case STT_NOTYPE:
     {
-        return "NOTYPE";
+        return "NOTYPE(无类型)";
     }
     case STT_OBJECT:
     {
-        return "OBJECT";
+        return "OBJECT(对象)";
     }
     case STT_FUNC:
     {
-        return "FUNC";
+        return "FUNC(函数)";
     }
     case STT_SECTION:
     {
-        return "SECTION";
+        return "SECTION(节)";
     }
     case STT_FILE:
     {
-        return "FILE";
+        return "FILE(文件)";
     }
     case STT_COMMON:
     {
-        return "COMMON";
+        return "COMMON(公共)";
     }
     case STT_TLS:
     {
-        return "TLS";
+        return "TLS(线程局部)";
     }
 #ifdef STT_GNU_IFUNC
     case STT_GNU_IFUNC:
     {
-        return "IFUNC";
+        return "IFUNC(间接函数)";
     }
 #endif
     default:
     {
-        return "UNKNOWN";
+        return "UNKNOWN(未知)";
     }
     }
 }
@@ -746,23 +746,23 @@ std::string_view symbol_visibility_name(unsigned char other)
     {
     case STV_DEFAULT:
     {
-        return "DEFAULT";
+        return "DEFAULT(默认)";
     }
     case STV_INTERNAL:
     {
-        return "INTERNAL";
+        return "INTERNAL(内部)";
     }
     case STV_HIDDEN:
     {
-        return "HIDDEN";
+        return "HIDDEN(隐藏)";
     }
     case STV_PROTECTED:
     {
-        return "PROTECTED";
+        return "PROTECTED(受保护)";
     }
     default:
     {
-        return "UNKNOWN";
+        return "UNKNOWN(未知)";
     }
     }
 }
@@ -775,27 +775,139 @@ std::string symbol_section_index(Half section_index)
 {
     if (section_index == SHN_UNDEF)
     {
-        return "UND";
+        return "UND(未定义)";
     }
     if (section_index == SHN_ABS)
     {
-        return "ABS";
+        return "ABS(绝对)";
     }
     if (section_index == SHN_COMMON)
     {
-        return "COM";
+        return "COM(公共)";
     }
     return std::to_string(static_cast<unsigned>(section_index));
 }
-/**
- * @brief 裁剪字符串视图以适应固定宽度的表格列。
- * @param text std::string_view，输入文本。
- * @param max_size std::size_t，最多保留的字节数。
- * @return std::string_view，最多包含`max_size`字节的字符串视图。
- */
-std::string_view clipped(std::string_view text, std::size_t max_size)
+
+std::uint32_t read_utf8_code_point(std::string_view text, std::size_t &index)
 {
-    return text.substr(0, max_size);
+    const auto first{static_cast<unsigned char>(text[index++])};
+    if (first < 0x80u)
+    {
+        return first;
+    }
+    auto need{std::size_t{0}};
+    auto code_point{std::uint32_t{0}};
+    if ((first & 0xe0u) == 0xc0u)
+    {
+        need = 1;
+        code_point = first & 0x1fu;
+    }
+    else if ((first & 0xf0u) == 0xe0u)
+    {
+        need = 2;
+        code_point = first & 0x0fu;
+    }
+    else if ((first & 0xf8u) == 0xf0u)
+    {
+        need = 3;
+        code_point = first & 0x07u;
+    }
+    else
+    {
+        return 0xfffdu;
+    }
+    if (index + need > text.size())
+    {
+        index = text.size();
+        return 0xfffdu;
+    }
+    for (std::size_t i{0}; i < need; ++i)
+    {
+        const auto next{static_cast<unsigned char>(text[index])};
+        if ((next & 0xc0u) != 0x80u)
+        {
+            return 0xfffdu;
+        }
+        ++index;
+        code_point = (code_point << 6u) | (next & 0x3fu);
+    }
+    return code_point;
+}
+
+bool is_wide_code_point(std::uint32_t code_point)
+{
+    return (code_point >= 0x1100u && code_point <= 0x115fu) ||
+           (code_point >= 0x2329u && code_point <= 0x232au) ||
+           (code_point >= 0x2e80u && code_point <= 0xa4cfu) ||
+           (code_point >= 0xac00u && code_point <= 0xd7a3u) ||
+           (code_point >= 0xf900u && code_point <= 0xfaffu) ||
+           (code_point >= 0xfe10u && code_point <= 0xfe19u) ||
+           (code_point >= 0xfe30u && code_point <= 0xfe6fu) ||
+           (code_point >= 0xff00u && code_point <= 0xff60u) ||
+           (code_point >= 0xffe0u && code_point <= 0xffe6u) ||
+           (code_point >= 0x20000u && code_point <= 0x3fffdu);
+}
+
+std::size_t code_point_width(std::uint32_t code_point)
+{
+    if (code_point == 0 || code_point < 0x20u ||
+        (code_point >= 0x7fu && code_point < 0xa0u) ||
+        (code_point >= 0x0300u && code_point <= 0x036fu))
+    {
+        return 0;
+    }
+    return is_wide_code_point(code_point) ? 2u : 1u;
+}
+
+std::size_t display_width(std::string_view text)
+{
+    auto width{std::size_t{0}};
+    for (std::size_t index{0}; index < text.size();)
+    {
+        width += code_point_width(read_utf8_code_point(text, index));
+    }
+    return width;
+}
+
+std::string clip_to_width(std::string_view text, std::size_t width)
+{
+    auto result{std::string{}};
+    auto used{std::size_t{0}};
+    for (std::size_t index{0}; index < text.size();)
+    {
+        const auto begin{index};
+        const auto code_point{read_utf8_code_point(text, index)};
+        const auto next_width{code_point_width(code_point)};
+        if (used + next_width > width)
+        {
+            break;
+        }
+        result.append(text.substr(begin, index - begin));
+        used += next_width;
+    }
+    return result;
+}
+
+std::string pad_right(std::string_view text, std::size_t width)
+{
+    auto result{clip_to_width(text, width)};
+    const auto used{display_width(result)};
+    if (used < width)
+    {
+        result.append(width - used, ' ');
+    }
+    return result;
+}
+
+std::string pad_left(std::string_view text, std::size_t width)
+{
+    auto clipped{clip_to_width(text, width)};
+    const auto used{display_width(clipped)};
+    if (used >= width)
+    {
+        return clipped;
+    }
+    return std::string(width - used, ' ') + clipped;
 }
 std::string format_hex(std::uint64_t value, int width)
 {
@@ -804,6 +916,11 @@ std::string format_hex(std::uint64_t value, int width)
         return std::format("0x{:x}", value);
     }
     return std::format("0x{:0{}x}", value, width);
+}
+void print_header_field(std::ostream &os, std::string_view label, std::string_view value)
+{
+    constexpr auto LabelWidth{std::size_t{60}};
+    print_to(os, "  {} {}\n", pad_right(label, LabelWidth), value);
 }
 } // namespace
 Readelf::Readelf() = default;
@@ -922,34 +1039,42 @@ void Readelf::print_file_header(std::ostream &os) const
 {
     if (!loaded_)
     {
-        print_to(os, "Readelf is not loaded\n");
+        print_to(os, "Readelf尚未加载(Readelf is not loaded)\n");
         return;
     }
-    print_to(os, "ELF Header:\n");
-    print_to(os, "  Magic:  ");
+    print_to(os, "ELF Header:(ELF文件头)\n");
+    auto magic{std::string{}};
     for (unsigned char byte : header_.e_ident)
     {
-        print_to(os, " {:02x}", static_cast<unsigned>(byte));
+        if (!magic.empty())
+        {
+            magic.push_back(' ');
+        }
+        magic += std::format("{:02x}", static_cast<unsigned>(byte));
     }
-    print_to(os, "\n");
-    print_to(os, "  Class:                             {}\n", elf_class_name(header_.e_ident[EI_CLASS]));
-    print_to(os, "  Data:                              {}\n", elf_data_name(header_.e_ident[EI_DATA]));
-    print_to(os, "  Version:                           {}\n", static_cast<unsigned>(header_.e_ident[EI_VERSION]));
-    print_to(os, "  OS/ABI:                            {}\n", static_cast<unsigned>(header_.e_ident[EI_OSABI]));
-    print_to(os, "  ABI Version:                       {}\n", static_cast<unsigned>(header_.e_ident[EI_ABIVERSION]));
-    print_to(os, "  Type:                              {}\n", elf_type_name(header_.e_type));
-    print_to(os, "  Machine:                           {}\n", header_.e_machine);
-    print_to(os, "  Version:                           {}\n", format_hex(header_.e_version, 0));
-    print_to(os, "  Entry point address:               {}\n", format_hex(static_cast<std::uint64_t>(header_.e_entry), AddressWidth));
-    print_to(os, "  Start of program headers:          {} (bytes into file)\n", static_cast<unsigned long long>(header_.e_phoff));
-    print_to(os, "  Start of section headers:          {} (bytes into file)\n", static_cast<unsigned long long>(header_.e_shoff));
-    print_to(os, "  Flags:                             {}\n", format_hex(header_.e_flags, 0));
-    print_to(os, "  Size of this header:               {} (bytes)\n", header_.e_ehsize);
-    print_to(os, "  Size of program headers:           {} (bytes)\n", header_.e_phentsize);
-    print_to(os, "  Number of program headers:         {}\n", header_.e_phnum);
-    print_to(os, "  Size of section headers:           {} (bytes)\n", header_.e_shentsize);
-    print_to(os, "  Number of section headers:         {}\n", header_.e_shnum);
-    print_to(os, "  Section header string table index: {}\n", header_.e_shstrndx);
+    print_header_field(os, "Magic:(魔数)", magic);
+    print_header_field(os, "Class:(类别)", elf_class_name(header_.e_ident[EI_CLASS]));
+    print_header_field(os, "Data:(数据编码)", elf_data_name(header_.e_ident[EI_DATA]));
+    print_header_field(os, "Version:(版本)", std::to_string(static_cast<unsigned>(header_.e_ident[EI_VERSION])));
+    print_header_field(os, "OS/ABI:(操作系统/ABI)", std::to_string(static_cast<unsigned>(header_.e_ident[EI_OSABI])));
+    print_header_field(os, "ABI Version:(ABI版本)", std::to_string(static_cast<unsigned>(header_.e_ident[EI_ABIVERSION])));
+    print_header_field(os, "Type:(类型)", elf_type_name(header_.e_type));
+    print_header_field(os, "Machine:(机器)", std::to_string(header_.e_machine));
+    print_header_field(os, "Version:(版本)", format_hex(header_.e_version, 0));
+    print_header_field(os, "Entry point address:(入口点地址)", format_hex(static_cast<std::uint64_t>(header_.e_entry), AddressWidth));
+    print_header_field(os,
+                       "Start of program headers:(程序头起始位置)",
+                       std::format("{} (bytes into file)(文件内字节偏移)", static_cast<unsigned long long>(header_.e_phoff)));
+    print_header_field(os,
+                       "Start of section headers:(节头起始位置)",
+                       std::format("{} (bytes into file)(文件内字节偏移)", static_cast<unsigned long long>(header_.e_shoff)));
+    print_header_field(os, "Flags:(标志)", format_hex(header_.e_flags, 0));
+    print_header_field(os, "Size of this header:(本文件头大小)", std::format("{} (bytes)(字节)", header_.e_ehsize));
+    print_header_field(os, "Size of program headers:(程序头表项大小)", std::format("{} (bytes)(字节)", header_.e_phentsize));
+    print_header_field(os, "Number of program headers:(程序头数量)", std::to_string(header_.e_phnum));
+    print_header_field(os, "Size of section headers:(节头表项大小)", std::format("{} (bytes)(字节)", header_.e_shentsize));
+    print_header_field(os, "Number of section headers:(节头数量)", std::to_string(header_.e_shnum));
+    print_header_field(os, "Section header string table index:(节头字符串表索引)", std::to_string(header_.e_shstrndx));
 }
 /**
  * @brief 打印类似readelf的节头表。
@@ -959,30 +1084,50 @@ void Readelf::print_section_headers(std::ostream &os) const
 {
     if (!loaded_)
     {
-        print_to(os, "Readelf is not loaded\n");
+        print_to(os, "Readelf尚未加载(Readelf is not loaded)\n");
         return;
     }
-    print_to(os, "Section Headers:\n");
+    print_to(os, "Section Headers:(节头表)\n");
+    constexpr auto IndexWidth{std::size_t{10}};
+    constexpr auto NameWidth{std::size_t{18}};
+    constexpr auto TypeWidth{std::size_t{40}};
+    const auto AddressColumnWidth{std::max<std::size_t>(AddressWidth, display_width("Address(地址)"))};
+    const auto OffsetWidth{std::max<std::size_t>(6, display_width("Off(偏移)"))};
+    const auto SizeWidth{std::max<std::size_t>(6, display_width("Size(大小)"))};
+    const auto EntrySizeWidth{std::max<std::size_t>(2, display_width("ES(项大小)"))};
+    const auto FlagsWidth{std::max<std::size_t>(3, display_width("Flg(标志)"))};
+    const auto LinkWidth{std::max<std::size_t>(2, display_width("Lk(链接)"))};
+    const auto InfoWidth{std::max<std::size_t>(3, display_width("Inf(信息)"))};
+    const auto AlignWidth{std::max<std::size_t>(2, display_width("Al(对齐)"))};
     print_to(os,
-             "  [Nr] Name              Type            Address{}Off    Size   ES Flg Lk Inf Al\n",
-             std::string(Readelf::is_elf64 ? 9 : 1, ' '));
+             "  {} {} {} {} {} {} {} {} {} {} {}\n",
+             pad_right("[Nr](编号)", IndexWidth),
+             pad_right("Name(名称)", NameWidth),
+             pad_right("Type(类型)", TypeWidth),
+             pad_left("Address(地址)", AddressColumnWidth),
+             pad_left("Off(偏移)", OffsetWidth),
+             pad_left("Size(大小)", SizeWidth),
+             pad_left("ES(项大小)", EntrySizeWidth),
+             pad_right("Flg(标志)", FlagsWidth),
+             pad_left("Lk(链接)", LinkWidth),
+             pad_left("Inf(信息)", InfoWidth),
+             pad_left("Al(对齐)", AlignWidth));
     for (std::size_t i{0}; i < section_headers_.size(); ++i)
     {
         const auto &section{section_headers_[i]};
         print_to(os,
-                 "  [{:2}] {:<17} {:<15} {:0{}x} {:06x} {:06x} {:02x} {:<3} {:2} {:3} {:2}\n",
-                 i,
-                 clipped(section_name(section.sh_name), 17),
-                 clipped(section_type_name(section.sh_type), 15),
-                 static_cast<unsigned long long>(section.sh_addr),
-                 AddressWidth,
-                 static_cast<unsigned long long>(section.sh_offset),
-                 static_cast<unsigned long long>(section.sh_size),
-                 static_cast<unsigned long long>(section.sh_entsize),
-                 section_flags(section.sh_flags),
-                 static_cast<unsigned>(section.sh_link),
-                 static_cast<unsigned>(section.sh_info),
-                 static_cast<unsigned long long>(section.sh_addralign));
+                 "  {} {} {} {} {} {} {} {} {} {} {}\n",
+                 pad_right(std::format("[{:2}]", i), IndexWidth),
+                 pad_right(section_name(section.sh_name), NameWidth),
+                 pad_right(section_type_name(section.sh_type), TypeWidth),
+                 pad_left(std::format("{:0{}x}", static_cast<unsigned long long>(section.sh_addr), AddressWidth), AddressColumnWidth),
+                 pad_left(std::format("{:06x}", static_cast<unsigned long long>(section.sh_offset)), OffsetWidth),
+                 pad_left(std::format("{:06x}", static_cast<unsigned long long>(section.sh_size)), SizeWidth),
+                 pad_left(std::format("{:02x}", static_cast<unsigned long long>(section.sh_entsize)), EntrySizeWidth),
+                 pad_right(section_flags(section.sh_flags), FlagsWidth),
+                 pad_left(std::to_string(static_cast<unsigned>(section.sh_link)), LinkWidth),
+                 pad_left(std::to_string(static_cast<unsigned>(section.sh_info)), InfoWidth),
+                 pad_left(std::to_string(static_cast<unsigned long long>(section.sh_addralign)), AlignWidth));
     }
 }
 /**
@@ -993,26 +1138,45 @@ void Readelf::print_symbols(std::ostream &os) const
 {
     if (!loaded_)
     {
-        print_to(os, "Readelf is not loaded\n");
+        print_to(os, "Readelf尚未加载(Readelf is not loaded)\n");
         return;
     }
     const auto symbol_table_index{symbol_table_section_index()};
-    const auto table_name{symbol_table_index >= 0 ? section_name(section_headers_[symbol_table_index].sh_name) : std::string_view("<symtab>")};
-    print_to(os, "Symbol table '{}' contains {} entries:\n", table_name, symbols_.size());
-    print_to(os, "   Num: {:>{}} Size  Type    Bind   Vis      Ndx Name\n", "Value", AddressWidth);
+    const auto table_name{symbol_table_index >= 0 ? section_name(section_headers_[symbol_table_index].sh_name) : std::string_view("<symtab>(<符号表>)")};
+    print_to(os, "Symbol table '{}' contains {} entries:(符号表'{}'包含{}个条目)\n",
+             table_name,
+             symbols_.size(),
+             table_name,
+             symbols_.size());
+    constexpr auto NumWidth{std::size_t{10}};
+    const auto ValueWidth{std::max<std::size_t>(AddressWidth, display_width("Value(值)"))};
+    const auto SizeColumnWidth{std::max<std::size_t>(5, display_width("Size(大小)"))};
+    constexpr auto TypeColumnWidth{std::size_t{18}};
+    constexpr auto BindColumnWidth{std::size_t{14}};
+    constexpr auto VisibilityWidth{std::size_t{18}};
+    constexpr auto SectionIndexWidth{std::size_t{12}};
+    print_to(os,
+             "  {} {} {} {} {} {} {} {}\n",
+             pad_left("Num:(编号)", NumWidth),
+             pad_left("Value(值)", ValueWidth),
+             pad_left("Size(大小)", SizeColumnWidth),
+             pad_right("Type(类型)", TypeColumnWidth),
+             pad_right("Bind(绑定)", BindColumnWidth),
+             pad_right("Vis(可见性)", VisibilityWidth),
+             pad_left("Ndx(节索引)", SectionIndexWidth),
+             "Name(名称)");
     for (std::size_t i{0}; i < symbols_.size(); ++i)
     {
         const auto &symbol{symbols_[i]};
         print_to(os,
-                 "  {:4}: {:0{}x} {:5} {:<7} {:<6} {:<8} {:>3} {}\n",
-                 i,
-                 static_cast<unsigned long long>(symbol.st_value),
-                 AddressWidth,
-                 static_cast<unsigned long long>(symbol.st_size),
-                 symbol_type_name(symbol.st_info),
-                 symbol_bind_name(symbol.st_info),
-                 symbol_visibility_name(symbol.st_other),
-                 symbol_section_index(symbol.st_shndx),
+                 "  {} {} {} {} {} {} {} {}\n",
+                 pad_left(std::format("{:4}:", i), NumWidth),
+                 pad_left(std::format("{:0{}x}", static_cast<unsigned long long>(symbol.st_value), AddressWidth), ValueWidth),
+                 pad_left(std::to_string(static_cast<unsigned long long>(symbol.st_size)), SizeColumnWidth),
+                 pad_right(symbol_type_name(symbol.st_info), TypeColumnWidth),
+                 pad_right(symbol_bind_name(symbol.st_info), BindColumnWidth),
+                 pad_right(symbol_visibility_name(symbol.st_other), VisibilityWidth),
+                 pad_left(symbol_section_index(symbol.st_shndx), SectionIndexWidth),
                  symbol_name(symbol.st_name));
     }
 }
@@ -1036,9 +1200,9 @@ std::expected<void, std::string> Readelf::load_from_file()
     std::ifstream file(path_, std::ios::binary);
     if (!file)
     {
-        return make_error("failed to open ELF file: " + path_.string());
+        return make_error("无法打开ELF文件(failed to open ELF file)：" + path_.string());
     }
-    auto header{read_object_at<Header>(file, 0, "ELF header")};
+    auto header{read_object_at<Header>(file, 0, "ELF文件头(ELF header)")};
     if (!header)
     {
         return make_error(header.error());
@@ -1069,7 +1233,7 @@ std::expected<void, std::string> Readelf::load_from_file()
         const auto string_table_index{static_cast<std::size_t>(symbol_table->sh_link)};
         if (string_table_index >= sections->size() || (*sections)[string_table_index].sh_type != SHT_STRTAB)
         {
-            return make_error("symbol table has an invalid linked string table");
+            return make_error("符号表链接的字符串表无效(symbol table has an invalid linked string table)");
         }
         auto symbols{read_symbols(file, *symbol_table)};
         if (!symbols)
@@ -1100,7 +1264,7 @@ std::string_view Readelf::section_name(word_type name_offset) const noexcept
     const auto name{string_at(original_string_bytes(section_name_table_), static_cast<std::size_t>(name_offset))};
     if (!name)
     {
-        return section_name_table_.empty() ? std::string_view("<no-shstrtab>") : std::string_view("<bad-name>");
+        return section_name_table_.empty() ? std::string_view("<no-shstrtab>(<无节名>)") : std::string_view("<bad-name>(<坏名称>)");
     }
     return *name;
 }
@@ -1114,7 +1278,7 @@ std::string_view Readelf::symbol_name(word_type name_offset) const noexcept
     const auto name{string_at(original_string_bytes(string_table_), static_cast<std::size_t>(name_offset))};
     if (!name)
     {
-        return string_table_.empty() ? std::string_view("<no-strtab>") : std::string_view("<bad-name>");
+        return string_table_.empty() ? std::string_view("<no-strtab>(<无串表>)") : std::string_view("<bad-name>(<坏名称>)");
     }
     return *name;
 }
