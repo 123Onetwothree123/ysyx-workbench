@@ -13,67 +13,67 @@ extern "C" int NPCGetPC();
 
 namespace
 {
-std::string DPIInstanceScope{"TOP"};
-std::string DPITopScope{"TOP"};
+    std::string DPIInstanceScope{"TOP"};
+    std::string DPITopScope{"TOP"};
 
 // ANSI 颜色宏（与 NEMU 保持一致）
-#define ANSI_NONE       "\033[0m"
-#define ANSI_FG_BLACK   "\033[1;30m"
-#define ANSI_FG_RED     "\033[1;31m"
-#define ANSI_FG_GREEN   "\033[1;32m"
-#define ANSI_FG_YELLOW  "\033[1;33m"
-#define ANSI_FG_BLUE    "\033[1;34m"
+#define ANSI_NONE "\033[0m"
+#define ANSI_FG_BLACK "\033[1;30m"
+#define ANSI_FG_RED "\033[1;31m"
+#define ANSI_FG_GREEN "\033[1;32m"
+#define ANSI_FG_YELLOW "\033[1;33m"
+#define ANSI_FG_BLUE "\033[1;34m"
 #define ANSI_FG_MAGENTA "\033[1;35m"
-#define ANSI_FG_CYAN    "\033[1;36m"
-#define ANSI_FG_WHITE   "\033[1;37m"
+#define ANSI_FG_CYAN "\033[1;36m"
+#define ANSI_FG_WHITE "\033[1;37m"
 
-/**
- * @brief 将 Verilated 模型名称转换为 DPI scope 名称
- * @param ModelName 模型名称（通常以 V 开头）
- * @return 去掉前导 V 后的 scope 名称
- */
-std::string VerilatedModelNameToScope(std::string_view ModelName)
-{
-    std::string ScopeName{ModelName};
-    if (ScopeName.size() > 1 && ScopeName.front() == 'V')
+    /**
+     * @brief 将 Verilated 模型名称转换为 DPI scope 名称
+     * @param ModelName 模型名称（通常以 V 开头）
+     * @return 去掉前导 V 后的 scope 名称
+     */
+    std::string VerilatedModelNameToScope(std::string_view ModelName)
     {
-        ScopeName.erase(0, 1);
-    }
-    return ScopeName;
-}
-/**
- * @brief 设置当前 DPI 调用的 SystemVerilog 作用域
- * @param SubScope 目标子模块名称，如 "SDB" 或 "PC_DPI"
- * @return 若成功找到并设置作用域则返回 true，否则返回 false
- *
- * 依次尝试以下候选作用域：
- *   - DPITopScope + "." + SubScope
- *   - DPIInstanceScope + "." + DPITopScope + "." + SubScope
- *   - DPIInstanceScope + "." + SubScope
- *   - SubScope 本身
- */
-bool SetDPIScope(const char *SubScope)
-{
-    const std::array ScopeCandidates{
-        DPITopScope + "." + SubScope,
-        DPIInstanceScope + "." + DPITopScope + "." + SubScope,
-        DPIInstanceScope + "." + SubScope,
-        std::string{SubScope},
-    };
-
-    for (const auto &ScopeName : ScopeCandidates)
-    {
-        const svScope Scope{svGetScopeFromName(ScopeName.c_str())};
-        if (Scope != nullptr)
+        std::string ScopeName{ModelName};
+        if (ScopeName.size() > 1 && ScopeName.front() == 'V')
         {
-            svSetScope(Scope);
-            return true;
+            ScopeName.erase(0, 1);
         }
+        return ScopeName;
     }
-
-    std::println(std::cerr, "找不到DPI scope：{}", ScopeCandidates[0]);
-    return false;
-}
+    /**
+     * @brief 设置当前 DPI 调用的 SystemVerilog 作用域
+     * @param SubScope 目标子模块名称，如 "SDB" 或 "PC_DPI"
+     * @return 若成功找到并设置作用域则返回 true，否则返回 false
+     *
+     * 依次尝试以下候选作用域：
+     *   - DPITopScope + "." + SubScope
+     *   - DPIInstanceScope + "." + DPITopScope + "." + SubScope
+     *   - DPIInstanceScope + "." + SubScope
+     *   - SubScope 本身
+     */
+    bool SetDPIScope(const char *SubScope)
+    {
+        // 这段是AI给的建议写的，就算用数组来构建候选作用域，因为verilator生成的层次路径是不固定的，所以覆盖各种可能的路径组合
+        const std::array ScopeCandidates{
+            DPITopScope + "." + SubScope,
+            DPIInstanceScope + "." + DPITopScope + "." + SubScope,
+            DPIInstanceScope + "." + SubScope,
+            std::string{SubScope},
+        };
+        // 每一个都去查
+        for (const auto &ScopeName : ScopeCandidates)
+        {
+            const svScope Scope{svGetScopeFromName(ScopeName.c_str())};
+            if (Scope != nullptr)
+            {
+                svSetScope(Scope);
+                return true;
+            }
+        }
+        std::println(std::cerr, "找不到DPI scope：{}", ScopeCandidates[0]);
+        return false;
+    }
 } // namespace
 /**
  * @brief 设置 DPI 的顶层作用域
@@ -226,19 +226,48 @@ static void print_cell_colored(std::string_view raw_content, int width, bool cen
  * @param idx 寄存器编号（0-31）
  * @return ABI 名称（如 zero, ra, sp 等）；编号非法时返回空字符串
  */
-static const char *get_reg_abi_name(int idx)
+static constexpr std::string_view get_reg_abi_name(int idx) noexcept
 {
-    static const char *abi[]{
-        "zero", "ra",   "sp",   "gp",   "tp",   "t0",   "t1",   "t2",
-        "s0",   "s1",   "a0",   "a1",   "a2",   "a3",   "a4",   "a5",
-        "a6",   "a7",   "s2",   "s3",   "s4",   "s5",   "s6",   "s7",
-        "s8",   "s9",   "s10",  "s11",  "t3",   "t4",   "t5",   "t6",
+    // 直接用CTAD自动推导了
+    constexpr std::array abi{
+        "zero",
+        "ra",
+        "sp",
+        "gp",
+        "tp",
+        "t0",
+        "t1",
+        "t2",
+        "s0",
+        "s1",
+        "a0",
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6",
+        "a7",
+        "s2",
+        "s3",
+        "s4",
+        "s5",
+        "s6",
+        "s7",
+        "s8",
+        "s9",
+        "s10",
+        "s11",
+        "t3",
+        "t4",
+        "t5",
+        "t6",
     };
-    if (idx >= 0 && idx < 32)
+    if (idx >= 0 && static_cast<std::size_t>(idx) < abi.size())
     {
         return abi[idx];
     }
-    return "";
+    return {};
 }
 
 /**
@@ -247,7 +276,7 @@ static const char *get_reg_abi_name(int idx)
  * @param abi_name ABI 名称（如 pc, zero, ra 等）
  * @return 中文描述字符串（如"程序计数器"、"栈指针"等）
  */
-static const char *get_reg_desc(const char *arch_name, const char *abi_name)
+static const char *get_reg_desc(const char *arch_name, std::string_view abi_name)
 {
     if (strcmp(arch_name, "pc") == 0)
     {
@@ -257,31 +286,31 @@ static const char *get_reg_desc(const char *arch_name, const char *abi_name)
     {
         return "零寄存器";
     }
-    if (strcmp(abi_name, "ra") == 0)
+    if (abi_name == "ra")
     {
         return "返回地址";
     }
-    if (strcmp(abi_name, "sp") == 0)
+    if (abi_name == "sp")
     {
         return "栈指针";
     }
-    if (strcmp(abi_name, "gp") == 0)
+    if (abi_name == "gp")
     {
         return "全局指针";
     }
-    if (strcmp(abi_name, "tp") == 0)
+    if (abi_name == "tp")
     {
         return "线程指针";
     }
-    if (abi_name[0] == 'a')
+    if (!abi_name.empty() && abi_name[0] == 'a')
     {
         return "参数寄存器";
     }
-    if (abi_name[0] == 's')
+    if (!abi_name.empty() && abi_name[0] == 's')
     {
         return "保存寄存器";
     }
-    if (abi_name[0] == 't')
+    if (!abi_name.empty() && abi_name[0] == 't')
     {
         return "临时寄存器";
     }
@@ -319,41 +348,41 @@ static const char *get_reg_header_color(const char *title)
 /**
  * @brief 获取寄存器行的颜色（与 NEMU 一致）
  */
-static const char *get_reg_row_color(const char *arch_name, const char *abi_name)
+static const char *get_reg_row_color(const char *arch_name, std::string_view abi_name)
 {
     if (strcmp(arch_name, "pc") == 0)
     {
         return ANSI_FG_YELLOW;
     }
-    if (strcmp(arch_name, "x0") == 0 || strcmp(abi_name, "zero") == 0)
+    if (strcmp(arch_name, "x0") == 0 || abi_name == "zero")
     {
         return ANSI_FG_WHITE;
     }
-    if (strcmp(abi_name, "ra") == 0)
+    if (abi_name == "ra")
     {
         return ANSI_FG_CYAN;
     }
-    if (strcmp(abi_name, "sp") == 0)
+    if (abi_name == "sp")
     {
         return ANSI_FG_YELLOW;
     }
-    if (strcmp(abi_name, "gp") == 0)
+    if (abi_name == "gp")
     {
         return ANSI_FG_BLUE;
     }
-    if (strcmp(abi_name, "tp") == 0)
+    if (abi_name == "tp")
     {
         return ANSI_FG_MAGENTA;
     }
-    if (abi_name[0] == 'a')
+    if (!abi_name.empty() && abi_name[0] == 'a')
     {
         return ANSI_FG_GREEN;
     }
-    if (abi_name[0] == 's')
+    if (!abi_name.empty() && abi_name[0] == 's')
     {
         return ANSI_FG_CYAN;
     }
-    if (abi_name[0] == 't')
+    if (!abi_name.empty() && abi_name[0] == 't')
     {
         return ANSI_FG_MAGENTA;
     }
@@ -368,7 +397,7 @@ void PrintGPR()
     struct RegRow
     {
         std::string arch_name;
-        const char *abi_name;
+        std::string_view abi_name;
         std::uint32_t value;
         const char *desc;
     };
@@ -456,10 +485,10 @@ void PrintGPR()
         std::string desc_str{std::format("{}{}{}", row_color, rows[i].desc, ANSI_NONE)};
 
         std::print("{}|{}", ANSI_FG_BLUE, ANSI_NONE);
-        print_cell_colored(id_str,   id_width,   true);
+        print_cell_colored(id_str, id_width, true);
         print_cell_colored(name_str, name_width, false);
-        print_cell_colored(dec_str,  dec_width,  true);
-        print_cell_colored(hex_str,  hex_width,  true);
+        print_cell_colored(dec_str, dec_width, true);
+        print_cell_colored(hex_str, hex_width, true);
         print_cell_colored(desc_str, desc_width, false);
         std::print("\n");
         print_border(col_widths);
