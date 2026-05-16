@@ -44,7 +44,6 @@ void SDBStepCycle(VRV32E32Reg &Top)
     Top.eval();
     DifftestStep(Top);
 }
-
 bool SDBValidateExpressionSyntax(std::string_view Expression)
 {
     if (Expression.empty())

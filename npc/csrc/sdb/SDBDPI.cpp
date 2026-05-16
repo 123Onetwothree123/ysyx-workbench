@@ -119,7 +119,6 @@ std::uint32_t CPP_NPCGetPC()
     }
     return static_cast<std::uint32_t>(NPCGetPC());
 }
-
 // ---------------------------------------------------------------------------
 // 寄存器表格辅助函数（与 NEMU 风格一致，支持 ANSI 颜色）
 // ---------------------------------------------------------------------------
@@ -176,7 +175,6 @@ static std::int32_t display_width(std::string_view s)
     }
     return w;
 }
-
 /**
  * @brief 打印 ASCII 表格边框（带颜色）
  * @param widths 各列宽度数组
@@ -194,7 +192,6 @@ static void print_border(const std::vector<std::int32_t> &widths)
     }
     std::print("\n");
 }
-
 /**
  * @brief 打印表格单元格（支持颜色内容，按纯文本计算宽度）
  * @param raw_content 单元格文本内容（可能包含 ANSI 转义码）
@@ -223,7 +220,6 @@ static void print_cell_colored(std::string_view raw_content, std::int32_t width,
     }
     std::print(" {}|{}", ANSI_FG_BLUE, ANSI_NONE);
 }
-
 /**
  * @brief 获取 RISC-V 通用寄存器的 ABI 名称
  * @param idx 寄存器编号（0-31）
@@ -272,7 +268,6 @@ static constexpr std::string_view get_reg_abi_name(std::size_t idx) noexcept
     }
     return {};
 }
-
 /**
  * @brief 获取寄存器的中文功能描述
  * @param arch_name 架构名称（如 pc, x0, x1 等）
@@ -319,7 +314,6 @@ static const char *get_reg_desc(const char *arch_name, std::string_view abi_name
     }
     return "通用寄存器";
 }
-
 /**
  * @brief 获取表头列的颜色（与 NEMU 一致）
  */
@@ -342,7 +336,6 @@ static constexpr const char *get_reg_header_color(std::string_view title) noexce
     }
     return ANSI_FG_WHITE;
 }
-
 /**
  * @brief 获取寄存器行的颜色（与 NEMU 一致）
  */
@@ -386,7 +379,6 @@ static const char *get_reg_row_color(const char *arch_name, std::string_view abi
     }
     return ANSI_FG_WHITE;
 }
-
 /**
  * @brief 打印所有 32 个通用寄存器及 PC 的值（NEMU 风格彩色表格）
  */

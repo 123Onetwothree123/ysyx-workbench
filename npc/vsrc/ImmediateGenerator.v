@@ -33,5 +33,4 @@ always @(*) begin
             Immediate = 32'b0;
     endcase
 end
-
 endmodule

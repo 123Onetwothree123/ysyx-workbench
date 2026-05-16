@@ -11,7 +11,6 @@ std::string_view pCommand::Name() const noexcept
 {
     return "p";
 }
-
 SDBCommandUsageList pCommand::Usage() const noexcept
 {
     static constexpr SDBCommandUsage Entries[]{
@@ -19,7 +18,6 @@ SDBCommandUsageList pCommand::Usage() const noexcept
     };
     return Entries;
 }
-
 SDBCommandResult pCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
     static_cast<void>(Context);

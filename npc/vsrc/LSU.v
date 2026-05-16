@@ -20,7 +20,6 @@ module LSU(
         MemoryWE = MemoryValid && MemoryWrite;
         MemoryWriteDATA = 32'b0;
         MemoryWriteMask = 4'b0;
-
         if (MemoryValid && MemoryWrite) begin
             case (WidthSel)
                 2'b00: begin
@@ -70,7 +69,6 @@ module LSU(
             endcase
         end
     end
-
     always @(*) begin
         LoadDATA = 32'b0;
         if (MemoryValid && !MemoryWrite) begin
@@ -99,7 +97,6 @@ module LSU(
             endcase
         end
     end
-
     always @(*) begin
         if (WidthSel == 2'b10)
             AddrMisaligned = (ALUResult[1:0] != 2'b00);//word直接就检查4字节对齐

@@ -44,7 +44,6 @@ void print_to(std::ostream &os, std::format_string<Args...> format, Args &&...ar
 {
     std::format_to(std::ostreambuf_iterator<char>(os), format, std::forward<Args>(args)...);
 }
-
 /**
  * @brief 以更少的调用点噪声构建 `std::expected` 错误值。
  *
@@ -55,7 +54,6 @@ std::unexpected<std::string> make_error(std::string message)
 {
     return std::unexpected(std::move(message));
 }
-
 /**
  * @brief 检查文件偏移量能否用 `std::streamoff` 表示。
  *
@@ -66,7 +64,6 @@ bool can_cast_to_streamoff(std::uint64_t value)
 {
     return value <= static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max());
 }
-
 /**
  * @brief 检查字节数能否用 `std::streamsize` 表示。
  *
@@ -77,7 +74,6 @@ bool can_cast_to_streamsize(std::size_t value)
 {
     return value <= static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max());
 }
-
 /**
  * @brief 将元素个数与单项大小相乘，并检查溢出。
  *
@@ -95,7 +91,6 @@ bool checked_byte_count(std::size_t count, std::size_t item_size, std::size_t &b
     bytes = count * item_size;
     return true;
 }
-
 /**
  * @brief 从文件的绝对偏移处读取精确的字节范围。
  *
@@ -128,14 +123,12 @@ std::expected<void, std::string> read_exact_at(std::ifstream &file,
     {
         return make_error(std::string(what) + " size is too large");
     }
-
     file.clear();
     file.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
     if (!file)
     {
         return make_error("failed to seek to " + std::string(what));
     }
-
     file.read(static_cast<char *>(buffer), static_cast<std::streamsize>(bytes));
     if (file.gcount() != static_cast<std::streamsize>(bytes))
     {
@@ -143,7 +136,6 @@ std::expected<void, std::string> read_exact_at(std::ifstream &file,
     }
     return {};
 }
-
 /**
  * @brief 从文件中读取一个可平凡复制的 ELF 结构。
  *
@@ -164,7 +156,6 @@ std::expected<T, std::string> read_object_at(std::ifstream &file, std::uint64_t 
     }
     return object;
 }
-
 /**
  * @brief 将同质的 ELF 表读入 vector。
  *
@@ -186,13 +177,11 @@ std::expected<std::vector<T>, std::string> read_array_at(std::ifstream &file,
     {
         return make_error(std::string(what) + " size overflows size_t");
     }
-
     std::vector<T> objects(count);
     if (bytes == 0)
     {
         return objects;
     }
-
     auto result{read_exact_at(file, offset, objects.data(), bytes, what)};
     if (!result)
     {
@@ -200,7 +189,6 @@ std::expected<std::vector<T>, std::string> read_array_at(std::ifstream &file,
     }
     return objects;
 }
-
 /**
  * @brief 在解释其他表之前验证 ELF 头。
  *
@@ -246,7 +234,6 @@ std::expected<void, std::string> validate_header(const Header &header)
     }
     return {};
 }
-
 /**
  * @brief 读取完整的节头表。
  *
@@ -265,7 +252,6 @@ std::expected<std::vector<SectionHeader>, std::string> read_section_headers(std:
                                         static_cast<std::size_t>(header.e_shnum),
                                         "section header table");
 }
-
 /**
  * @brief 读取常规的 `SHT_SYMTAB` 节。
  *
@@ -287,13 +273,11 @@ std::expected<std::vector<Symbol>, std::string> read_symbols(std::ifstream &file
     {
         return make_error("symbol table entry size mismatch");
     }
-
     return read_array_at<Symbol>(file,
                                  static_cast<std::uint64_t>(section.sh_offset),
                                  static_cast<std::size_t>(section.sh_size / section.sh_entsize),
                                  "symbol table");
 }
-
 /**
  * @brief 读取字符串表并追加一个防御性的尾部 NUL 字节。
  *
@@ -319,7 +303,6 @@ std::expected<std::vector<char>, std::string> read_string_table(std::ifstream &f
     {
         return make_error("string table is too large");
     }
-
     const auto payload_size{static_cast<std::size_t>(section.sh_size)};
     std::vector<char> table(payload_size + 1, '\0');
     auto result{read_exact_at(file,
@@ -333,7 +316,6 @@ std::expected<std::vector<char>, std::string> read_string_table(std::ifstream &f
     }
     return table;
 }
-
 /**
  * @brief 仅返回来自 ELF 字符串表节的字节。
  *
@@ -348,7 +330,6 @@ std::span<const char> original_string_bytes(const std::vector<char> &table)
     }
     return {table.data(), table.size() - 1};
 }
-
 /**
  * @brief 将字符串表偏移解析为有界的 `std::string_view`。
  *
@@ -363,7 +344,6 @@ std::optional<std::string_view> string_at(std::span<const char> table, std::size
     {
         return std::nullopt;
     }
-
     const char *begin{table.data() + offset};
     const auto remaining{table.size() - offset};
     const void *end{std::memchr(begin, '\0', remaining)};
@@ -371,10 +351,8 @@ std::optional<std::string_view> string_at(std::span<const char> table, std::size
     {
         return std::nullopt;
     }
-
     return std::string_view(begin, static_cast<const char *>(end) - begin);
 }
-
 /**
  * @brief 从 ELF 符号的 `st_info` 字段中提取绑定位。
  *
@@ -392,7 +370,6 @@ unsigned symbol_bind(unsigned char info)
         return ELF32_ST_BIND(info);
     }
 }
-
 /**
  * @brief 从 ELF 符号的 `st_info` 字段中提取类型位。
  *
@@ -410,7 +387,6 @@ unsigned symbol_type(unsigned char info)
         return ELF32_ST_TYPE(info);
     }
 }
-
 /**
  * @brief 从 ELF 符号的 `st_other` 字段中提取可见性位。
  *
@@ -428,7 +404,6 @@ unsigned symbol_visibility(unsigned char other)
         return ELF32_ST_VISIBILITY(other);
     }
 }
-
 /**
  * @brief 为所有可用的函数符号构建排序后的地址范围。
  *
@@ -444,7 +419,6 @@ std::vector<ReadelfFunction> build_functions(std::span<const Symbol> symbols, st
 {
     std::vector<ReadelfFunction> functions;
     functions.reserve(symbols.size());
-
     for (const auto &symbol : symbols)
     {
         if (symbol_type(symbol.st_info) != STT_FUNC ||
@@ -453,31 +427,26 @@ std::vector<ReadelfFunction> build_functions(std::span<const Symbol> symbols, st
         {
             continue;
         }
-
         const auto name{string_at(string_table, static_cast<std::size_t>(symbol.st_name))};
         if (!name)
         {
             continue;
         }
-
         const auto start{static_cast<std::size_t>(symbol.st_value)};
         const auto size{static_cast<std::size_t>(symbol.st_size)};
         if (size > std::numeric_limits<std::size_t>::max() - start)
         {
             continue;
         }
-
         functions.push_back(ReadelfFunction{
             .name = *name,
             .start = start,
             .end = start + size,
         });
     }
-
     std::ranges::sort(functions, {}, &ReadelfFunction::start);
     return functions;
 }
-
 /**
  * @brief 将 ELF class 字节转换为显示字符串。
  *
@@ -506,7 +475,6 @@ std::string_view elf_class_name(unsigned char elf_class)
     }
     }
 }
-
 /**
  * @brief 将 ELF 端序编码字节转换为显示字符串。
  *
@@ -535,7 +503,6 @@ std::string_view elf_data_name(unsigned char data)
     }
     }
 }
-
 /**
  * @brief 将 ELF 文件类型值转换为显示字符串。
  *
@@ -572,7 +539,6 @@ std::string_view elf_type_name(Half type)
     }
     }
 }
-
 /**
  * @brief 将 ELF 节类型值转换为紧凑的显示字符串。
  *
@@ -687,7 +653,6 @@ std::string_view section_type_name(Word type)
     }
     }
 }
-
 /**
  * @brief 使用 GNU readelf 风格的短字母渲染节标志位。
  *
@@ -703,7 +668,6 @@ std::string section_flags(Xword flags)
             result.push_back(flag);
         }
     }};
-
     append_if(SHF_WRITE, 'W');
     append_if(SHF_ALLOC, 'A');
     append_if(SHF_EXECINSTR, 'X');
@@ -722,7 +686,6 @@ std::string section_flags(Xword flags)
 #endif
     return result;
 }
-
 /**
  * @brief 将符号绑定转换为显示字符串。
  *
@@ -757,7 +720,6 @@ std::string_view symbol_bind_name(unsigned char info)
     }
     }
 }
-
 /**
  * @brief 将符号类型转换为显示字符串。
  *
@@ -808,7 +770,6 @@ std::string_view symbol_type_name(unsigned char info)
     }
     }
 }
-
 /**
  * @brief 将符号可见性值转换为显示字符串。
  *
@@ -841,7 +802,6 @@ std::string_view symbol_visibility_name(unsigned char other)
     }
     }
 }
-
 /**
  * @brief 格式化符号节索引以供显示。
  *
@@ -864,7 +824,6 @@ std::string symbol_section_index(Half section_index)
     }
     return std::to_string(static_cast<unsigned>(section_index));
 }
-
 /**
  * @brief 裁剪字符串视图以适应固定宽度的表格列。
  *
@@ -876,7 +835,6 @@ std::string_view clipped(std::string_view text, std::size_t max_size)
 {
     return text.substr(0, max_size);
 }
-
 std::string format_hex(std::uint64_t value, int width)
 {
     if (width <= 0)
@@ -886,15 +844,10 @@ std::string format_hex(std::uint64_t value, int width)
     return std::format("0x{:0{}x}", value, width);
 }
 } // namespace
-
 Readelf::Readelf() = default;
-
 Readelf::Readelf(Readelf &&) noexcept = default;
-
 Readelf &Readelf::operator=(Readelf &&) noexcept = default;
-
 Readelf::~Readelf() = default;
-
 /**
  * @brief 从路径创建已加载的 `Readelf` 实例。
  *
@@ -905,7 +858,6 @@ std::expected<Readelf, std::string> Readelf::load(std::filesystem::path elf_file
 {
     Readelf readelf;
     readelf.path_ = std::move(elf_file);
-
     auto result{readelf.load_from_file()};
     if (!result)
     {
@@ -913,7 +865,6 @@ std::expected<Readelf, std::string> Readelf::load(std::filesystem::path elf_file
     }
     return readelf;
 }
-
 /**
  * @brief 报告此对象当前是否拥有已解析的 ELF 数据。
  *
@@ -923,7 +874,6 @@ bool Readelf::loaded() const noexcept
 {
     return loaded_;
 }
-
 /**
  * @brief 返回用于加载的源路径。
  *
@@ -933,7 +883,6 @@ const std::filesystem::path &Readelf::path() const noexcept
 {
     return path_;
 }
-
 /**
  * @brief 返回缓存的 ELF 头。
  *
@@ -943,7 +892,6 @@ const Readelf::header_type &Readelf::header() const
 {
     return header_;
 }
-
 /**
  * @brief 返回缓存的节头表。
  *
@@ -953,7 +901,6 @@ std::span<const Readelf::section_header_type> Readelf::section_headers() const n
 {
     return section_headers_;
 }
-
 /**
  * @brief 返回缓存的原始符号表。
  *
@@ -963,7 +910,6 @@ std::span<const Readelf::symbol_type> Readelf::symbols() const noexcept
 {
     return symbols_;
 }
-
 /**
  * @brief 返回派生的函数记录。
  *
@@ -973,7 +919,6 @@ std::span<const ReadelfFunction> Readelf::functions() const noexcept
 {
     return functions_;
 }
-
 /**
  * @brief 查找其半开范围包含 `address` 的函数。
  *
@@ -990,13 +935,11 @@ std::optional<ReadelfFunction> Readelf::find_function(std::size_t address) const
     {
         return std::nullopt;
     }
-
     const auto it{std::ranges::upper_bound(functions_, address, {}, &ReadelfFunction::start)};
     if (it == functions_.begin())
     {
         return std::nullopt;
     }
-
     const ReadelfFunction &candidate{*std::prev(it)};
     if (!candidate.contains(address))
     {
@@ -1004,7 +947,6 @@ std::optional<ReadelfFunction> Readelf::find_function(std::size_t address) const
     }
     return candidate;
 }
-
 /**
  * @brief 仅解析虚拟地址对应的函数名称。
  *
@@ -1020,7 +962,6 @@ std::optional<std::string_view> Readelf::find_function_name(std::size_t address)
     }
     return function->name;
 }
-
 /**
  * @brief 打印类似 readelf 的 ELF 头摘要。
  *
@@ -1033,7 +974,6 @@ void Readelf::print_file_header(std::ostream &os) const
         print_to(os, "Readelf is not loaded\n");
         return;
     }
-
     print_to(os, "ELF Header:\n");
     print_to(os, "  Magic:  ");
     for (unsigned char byte : header_.e_ident)
@@ -1060,7 +1000,6 @@ void Readelf::print_file_header(std::ostream &os) const
     print_to(os, "  Number of section headers:         {}\n", header_.e_shnum);
     print_to(os, "  Section header string table index: {}\n", header_.e_shstrndx);
 }
-
 /**
  * @brief 打印类似 readelf 的节头表。
  *
@@ -1073,16 +1012,13 @@ void Readelf::print_section_headers(std::ostream &os) const
         print_to(os, "Readelf is not loaded\n");
         return;
     }
-
     print_to(os, "Section Headers:\n");
     print_to(os,
              "  [Nr] Name              Type            Address{}Off    Size   ES Flg Lk Inf Al\n",
              std::string(Readelf::is_elf64 ? 9 : 1, ' '));
-
     for (std::size_t i{0}; i < section_headers_.size(); ++i)
     {
         const auto &section{section_headers_[i]};
-
         print_to(os,
                  "  [{:2}] {:<17} {:<15} {:0{}x} {:06x} {:06x} {:02x} {:<3} {:2} {:3} {:2}\n",
                  i,
@@ -1099,7 +1035,6 @@ void Readelf::print_section_headers(std::ostream &os) const
                  static_cast<unsigned long long>(section.sh_addralign));
     }
 }
-
 /**
  * @brief 打印类似 readelf 的原始符号表。
  *
@@ -1112,17 +1047,13 @@ void Readelf::print_symbols(std::ostream &os) const
         print_to(os, "Readelf is not loaded\n");
         return;
     }
-
     const auto symbol_table_index{symbol_table_section_index()};
     const auto table_name{symbol_table_index >= 0 ? section_name(section_headers_[symbol_table_index].sh_name) : std::string_view("<symtab>")};
-
     print_to(os, "Symbol table '{}' contains {} entries:\n", table_name, symbols_.size());
     print_to(os, "   Num: {:>{}} Size  Type    Bind   Vis      Ndx Name\n", "Value", AddressWidth);
-
     for (std::size_t i{0}; i < symbols_.size(); ++i)
     {
         const auto &symbol{symbols_[i]};
-
         print_to(os,
                  "  {:4}: {:0{}x} {:5} {:<7} {:<6} {:<8} {:>3} {}\n",
                  i,
@@ -1136,7 +1067,6 @@ void Readelf::print_symbols(std::ostream &os) const
                  symbol_name(symbol.st_name));
     }
 }
-
 /**
  * @brief 从 `path_` 填充此对象。
  *
@@ -1156,31 +1086,26 @@ std::expected<void, std::string> Readelf::load_from_file()
     string_table_.clear();
     section_name_table_.clear();
     functions_.clear();
-
     std::ifstream file(path_, std::ios::binary);
     if (!file)
     {
         return make_error("failed to open ELF file: " + path_.string());
     }
-
     auto header{read_object_at<Header>(file, 0, "ELF header")};
     if (!header)
     {
         return make_error(header.error());
     }
-
     auto header_check{validate_header(*header)};
     if (!header_check)
     {
         return make_error(header_check.error());
     }
-
     auto sections{read_section_headers(file, *header)};
     if (!sections)
     {
         return make_error(sections.error());
     }
-
     if (header->e_shstrndx < sections->size() && (*sections)[header->e_shstrndx].sh_type == SHT_STRTAB)
     {
         auto section_names{read_string_table(file, (*sections)[header->e_shstrndx])};
@@ -1189,11 +1114,9 @@ std::expected<void, std::string> Readelf::load_from_file()
             section_name_table_ = std::move(*section_names);
         }
     }
-
     const auto symbol_table{std::ranges::find_if(*sections, [](const SectionHeader &section) {
         return section.sh_type == SHT_SYMTAB;
     })};
-
     if (symbol_table != sections->end())
     {
         const auto string_table_index{static_cast<std::size_t>(symbol_table->sh_link)};
@@ -1201,30 +1124,25 @@ std::expected<void, std::string> Readelf::load_from_file()
         {
             return make_error("symbol table has an invalid linked string table");
         }
-
         auto symbols{read_symbols(file, *symbol_table)};
         if (!symbols)
         {
             return make_error(symbols.error());
         }
-
         auto strings{read_string_table(file, (*sections)[string_table_index])};
         if (!strings)
         {
             return make_error(strings.error());
         }
-
         symbols_ = std::move(*symbols);
         string_table_ = std::move(*strings);
         functions_ = build_functions(symbols_, original_string_bytes(string_table_));
     }
-
     header_ = *header;
     section_headers_ = std::move(*sections);
     loaded_ = true;
     return {};
 }
-
 /**
  * @brief 从 `.shstrtab` 解析节名。
  *
@@ -1240,7 +1158,6 @@ std::string_view Readelf::section_name(word_type name_offset) const noexcept
     }
     return *name;
 }
-
 /**
  * @brief 从符号字符串表解析符号名称。
  *
@@ -1256,7 +1173,6 @@ std::string_view Readelf::symbol_name(word_type name_offset) const noexcept
     }
     return *name;
 }
-
 /**
  * @brief 定位第一个常规符号表节。
  *

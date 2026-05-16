@@ -10,7 +10,6 @@
  */
 
 FtraceEvent::FtraceEvent() = default;
-
 /**
  * @brief 构造一条指定信息的历史事件。
  *

@@ -30,7 +30,6 @@ always @(*) begin
     rdata = 0;
   end
 end
-
 always @(posedge clk) begin
   if (valid && wen) begin
     pmem_write(waddr, wdata, {4'b0, wmask});

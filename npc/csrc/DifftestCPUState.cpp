@@ -12,7 +12,6 @@ std::uint32_t DifftestCPUState::GetGPR(std::size_t Index) const
     }
     return gpr[Index];
 }
-
 void DifftestCPUState::SetGPR(std::size_t Index, std::uint32_t Value)
 {
     if (Index >= gpr.size())
@@ -46,7 +45,6 @@ DifftestCPUState DifftestCPUState::ReadDUTState(VRV32E32Reg &Top)
     State.pc = CPP_NPCGetPC();
     return State;
 }
-
 bool DifftestCPUState::CheckRegs(const DifftestCPUState &DUT) const
 {
     for (std::size_t Index{0}; Index < gpr.size(); ++Index)

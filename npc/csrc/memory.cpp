@@ -134,7 +134,6 @@ bool check_pmem_safe_address(std::uint32_t address, std::size_t len)
 {
     return address >= CONFIG_MBASE && (address - CONFIG_MBASE + len) <= PMEM_SIZE;
 }
-
 std::size_t load_builtin_image()
 {
     static constexpr std::array<std::uint32_t, 5> BuiltinImage{
@@ -144,7 +143,6 @@ std::size_t load_builtin_image()
         0x00100073, // ebreak
         0xdeadbeef,
     };
-
     auto Offset{guest_to_host(RESET_VECTOR)};
     for (const auto Word : BuiltinImage)
     {
@@ -155,7 +153,6 @@ std::size_t load_builtin_image()
     }
     return BuiltinImage.size() * sizeof(BuiltinImage.front());
 }
-
 std::expected<std::size_t, std::string> load_file(const std::filesystem::path &FilePath)
 {
     if (!std::filesystem::exists(FilePath))

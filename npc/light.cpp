@@ -44,13 +44,11 @@ static void cycle(Circuit *c) {
   UPDATE(c, led);
   UPDATE(c, count);
 }
-
 static void reset(Circuit *c) {
   c->rst = 1;
   cycle(c);
   c->rst = 0;
 }
-
 static void display(Circuit *c) {
   static std::uint16_t last_led{0};
   if (last_led != c->led) { // only update display when c->led changes
@@ -62,7 +60,6 @@ static void display(Circuit *c) {
     last_led = c->led;
   }
 }
-
 int main() {
   reset(&circuit);
   while (1) {

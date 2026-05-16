@@ -29,11 +29,9 @@ public:
     /// @brief 获取 DIFFTEST_TO_DUT 方向值（用于 difftest_regcpy）
     /// @return 方向常量 0
     [[nodiscard]] static constexpr int GetDirectionToDUT() { return Direction::DIFFTEST_TO_DUT; }
-
     /// @brief 获取 DIFFTEST_TO_REF 方向值（用于 difftest_regcpy）
     /// @return 方向常量 1
     [[nodiscard]] static constexpr int GetDirectionToRef() { return Direction::DIFFTEST_TO_REF; }
-
 private:
     std::array<std::uint32_t, 32> gpr{}; ///< 32 个通用寄存器（x0–x31），值初始化为 0
     std::uint32_t pc{};

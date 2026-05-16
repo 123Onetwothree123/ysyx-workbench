@@ -37,7 +37,6 @@ namespace
     {
         CliOptions options;
         std::optional<std::filesystem::path> image_file;
-
         for (auto i{1}; i < argc; ++i)
         {
             const auto arg{std::string_view{argv[i]}};
@@ -133,7 +132,6 @@ namespace
         return {};
     }
 } // namespace
-
 extern "C" void npc_ebreak(int pc, int code)
 {
     npc_halted = true;

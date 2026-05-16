@@ -74,10 +74,8 @@ public:
 
     // 禁用复制，因为公开的字符串视图可能指向内部存储。
     Readelf(const Readelf &) = delete;
-
     // 禁用复制赋值，因为公开的字符串视图可能指向内部存储。
     Readelf &operator=(const Readelf &) = delete;
-
     // 移动转移缓存的 ELF 数据所有权。
     Readelf(Readelf &&) noexcept;
 

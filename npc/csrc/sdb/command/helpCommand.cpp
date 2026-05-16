@@ -13,7 +13,6 @@ std::string_view helpCommand::Name() const noexcept
 {
     return "help";
 }
-
 SDBCommandUsageList helpCommand::Usage() const noexcept
 {
     static constexpr SDBCommandUsage Entries[]{
@@ -21,7 +20,6 @@ SDBCommandUsageList helpCommand::Usage() const noexcept
     };
     return Entries;
 }
-
 SDBCommandResult helpCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
     std::println("NEMU那里后面移植到命令里面的表达式自动测试命令，这里移除了，改到gtest里面去了，跑test的时候，调用gtest文件夹里面的表达式测试");

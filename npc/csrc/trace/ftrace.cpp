@@ -133,7 +133,6 @@ namespace
         {
             return IsLinkRegister(Rd(Instruction));
         }
-
         return Opcode(Instruction) == OpcodeJalr &&
                Funct3(Instruction) == 0u &&
                IsLinkRegister(Rd(Instruction)) &&
@@ -183,7 +182,6 @@ std::expected<void, std::string> Ftrace::LoadElf(std::filesystem::path ElfFile)
     {
         return std::unexpected{Reader.error()};
     }
-
     Reset();
     Elf.emplace(std::move(*Reader));
     return {};
@@ -287,7 +285,6 @@ void Ftrace::OnCall(std::uint64_t CallPC, std::uint64_t FunctionAddress)
     }
     const auto FunctionName{ResolveFunctionName(FunctionAddress)};
     CallStack.emplace_back(CallPC, CallPC + InstructionBytes, FunctionAddress, FunctionName);
-
     PushEvent(FtraceEvent{
         FtraceEventType::Call,
         CallPC,
@@ -441,7 +438,6 @@ std::string_view Ftrace::ResolveFunctionName(std::uint64_t Address) const noexce
     {
         return {};
     }
-
     const auto Name{Elf->find_function_name(static_cast<std::size_t>(Address))};
     return Name.value_or(std::string_view{});
 }

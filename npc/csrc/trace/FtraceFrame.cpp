@@ -10,7 +10,6 @@
  */
 
 FtraceFrame::FtraceFrame() = default;
-
 /**
  * @brief 构造一条指定信息的栈帧。
  *
