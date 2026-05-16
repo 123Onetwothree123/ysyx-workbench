@@ -3,6 +3,7 @@
 #include <array>
 #include <cstring>
 #include <format>
+#include <utility>
 #include <iostream>
 #include <print>
 #include <string>
@@ -320,27 +321,21 @@ static const char *get_reg_desc(const char *arch_name, std::string_view abi_name
 /**
  * @brief 获取表头列的颜色（与 NEMU 一致）
  */
-static const char *get_reg_header_color(const char *title)
+static constexpr const char *get_reg_header_color(std::string_view title) noexcept
 {
-    if (strcmp(title, "编号") == 0)
+    constexpr std::array<std::pair<const char *, const char *>, 5> colors{{
+        {"编号",    ANSI_FG_CYAN},
+        {"寄存器",  ANSI_FG_BLUE},
+        {"十进制",  ANSI_FG_WHITE},
+        {"十六进制", ANSI_FG_GREEN},
+        {"说明",    ANSI_FG_YELLOW},
+    }};
+    for (const auto &[key, color] : colors)
     {
-        return ANSI_FG_CYAN;
-    }
-    if (strcmp(title, "寄存器") == 0)
-    {
-        return ANSI_FG_BLUE;
-    }
-    if (strcmp(title, "十进制") == 0)
-    {
-        return ANSI_FG_WHITE;
-    }
-    if (strcmp(title, "十六进制") == 0)
-    {
-        return ANSI_FG_GREEN;
-    }
-    if (strcmp(title, "说明") == 0)
-    {
-        return ANSI_FG_YELLOW;
+        if (title == key)
+        {
+            return color;
+        }
     }
     return ANSI_FG_WHITE;
 }
