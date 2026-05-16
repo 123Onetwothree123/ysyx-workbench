@@ -46,7 +46,7 @@ class Readelf final
 {
 public:
     // 当本构建期望 ELF64 文件时为 `true`，ELF32 文件时为 `false`。
-    static constexpr bool is_elf64 = NPC_ISA64 != 0;
+    static constexpr bool is_elf64{NPC_ISA64 != 0};
 
     // 由 `NPC_ISA64` 选择的原生 ELF 文件头类型。
     using header_type = std::conditional_t<is_elf64, Elf64_Ehdr, Elf32_Ehdr>;
@@ -160,7 +160,7 @@ private:
     [[nodiscard]] int symbol_table_section_index() const noexcept;
 
     // 在 `load_from_file()` 填充了完整缓存后为 `true`。
-    bool loaded_ = false;
+    bool loaded_{false};
 
     // 用于诊断与自省的文件路径。
     std::filesystem::path path_{};

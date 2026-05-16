@@ -1,71 +1,71 @@
 //LSU(Load-Store Unit): 负责根据控制信号控制存储器, 从存储器中读出数据, 或将数据写入存储器
 module LSU(
-    //本来不想加这个接口的，本来想只用MemWrite信号的，结果这个新的设计方案logisim画不出来，然后问了几个ai还是要做双信号
-    input MemValid,//当前周期是否发起一次数据访存
-    input MemWrite,
+    //本来不想加这个接口的，本来想只用MemoryWrite信号的，结果这个新的设计方案logisim画不出来，然后问了几个ai还是要做双信号
+    input MemoryValid,//当前周期是否发起一次数据访存
+    input MemoryWrite,
     input [1:0] WidthSel,// 00:字节，01:半字，10:字
     input [31:0] ALUResult,
     input [31:0] MemoryReadDATA,//从内存读的原始数据
     input [31:0] StoreDATA,//这玩意就相当于rs2，store要写的数据
     input LoadSigned,//区分LB/LBU和未来我可能会选择支持的LH/LHU，表示load后要不要做无符号扩展，0是零扩展，1是符号扩展
-    output reg MemWE,//给memory的写使能
-    output [31:0] MemAddr,
-    output reg[31:0] MemWriteDATA,
-    output reg [3:0] MemWriteMask,//按字节写使能，为了支持SB和SW，SH以后再说吧，烦了
+    output reg MemoryWE,//给memory的写使能
+    output [31:0] MemoryAddr,
+    output reg[31:0] MemoryWriteDATA,
+    output reg [3:0] MemoryWriteMask,//按字节写使能，为了支持SB和SW，SH以后再说吧，烦了
     output reg [31:0] LoadDATA,//LSU处理完最终读数据后，送给WBU写回寄存器的
     output reg AddrMisaligned//反正到时候地址未对齐的时候给个异常指示
 );
-    assign MemAddr = ALUResult;
+    assign MemoryAddr = ALUResult;
     always @(*) begin
-        MemWE = MemValid && MemWrite;
-        MemWriteDATA = 32'b0;
-        MemWriteMask = 4'b0;
+        MemoryWE = MemoryValid && MemoryWrite;
+        MemoryWriteDATA = 32'b0;
+        MemoryWriteMask = 4'b0;
 
-        if (MemValid && MemWrite) begin
+        if (MemoryValid && MemoryWrite) begin
             case (WidthSel)
                 2'b00: begin
                     case (ALUResult[1:0])
                         2'b00: begin
-                            MemWriteDATA = {24'b0, StoreDATA[7:0]};
-                            MemWriteMask = 4'b0001;
+                            MemoryWriteDATA = {24'b0, StoreDATA[7:0]};
+                            MemoryWriteMask = 4'b0001;
                         end
                         2'b01: begin
-                            MemWriteDATA = {16'b0, StoreDATA[7:0], 8'b0};
-                            MemWriteMask = 4'b0010;
+                            MemoryWriteDATA = {16'b0, StoreDATA[7:0], 8'b0};
+                            MemoryWriteMask = 4'b0010;
                         end
                         2'b10: begin
-                            MemWriteDATA = {8'b0, StoreDATA[7:0], 16'b0};
-                            MemWriteMask = 4'b0100;
+                            MemoryWriteDATA = {8'b0, StoreDATA[7:0], 16'b0};
+                            MemoryWriteMask = 4'b0100;
                         end
                         2'b11: begin
-                            MemWriteDATA = {StoreDATA[7:0], 24'b0};
-                            MemWriteMask = 4'b1000;
+                            MemoryWriteDATA = {StoreDATA[7:0], 24'b0};
+                            MemoryWriteMask = 4'b1000;
                         end
                         default: begin
-                            MemWriteDATA = 32'b0;
-                            MemWriteMask = 4'b0;
+                            MemoryWriteDATA = 32'b0;
+                            MemoryWriteMask = 4'b0;
                         end
                     endcase
                 end
                 2'b10: begin
-                    MemWriteDATA = StoreDATA;
-                    MemWriteMask = 4'b1111;
+                    MemoryWriteDATA = StoreDATA;
+                    MemoryWriteMask = 4'b1111;
                 end
                 2'b01: begin
                     case (ALUResult[1])
                         1'b0: begin
-                            MemWriteDATA = {16'b0, StoreDATA[15:0]};
-                            MemWriteMask = 4'b0011;
+                            MemoryWriteDATA = {16'b0, StoreDATA[15:0]};
+                            MemoryWriteMask = 4'b0011;
                         end
                         1'b1: begin
-                            MemWriteDATA = {StoreDATA[15:0], 16'b0};
-                            MemWriteMask = 4'b1100;
+                            MemoryWriteDATA = {StoreDATA[15:0], 16'b0};
+                            MemoryWriteMask = 4'b1100;
                         end
                     endcase
                 end
                 default: begin
-                    MemWriteDATA = 32'b0;
-                    MemWriteMask = 4'b0;
+                    MemoryWriteDATA = 32'b0;
+                    MemoryWriteMask = 4'b0;
                 end
             endcase
         end
@@ -73,7 +73,7 @@ module LSU(
 
     always @(*) begin
         LoadDATA = 32'b0;
-        if (MemValid && !MemWrite) begin
+        if (MemoryValid && !MemoryWrite) begin
             case (WidthSel)
                 2'b00: begin
                     case (ALUResult[1:0])

@@ -105,7 +105,7 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
     {
         return std::unexpected{"没开DiffTest"};
     }
-    (void)ImageSize;
+    static_cast<void>(ImageSize);
     return {};
 #endif
 }
@@ -135,7 +135,7 @@ void DifftestStep(VRV32E32Reg &Top)
         npc_ebreak(static_cast<int>(DUTState.GetPC()), 1);
     }
 #else
-    (void)Top;
+    static_cast<void>(Top);
 #endif
 }
 /// @brief 查询 DiffTest 是否已启用

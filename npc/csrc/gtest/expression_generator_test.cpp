@@ -15,9 +15,9 @@
 
 namespace {
 
-constexpr std::uint32_t kMemoryBase = 0x8000'0000u;
-constexpr std::uint32_t kMemorySize = 256u;
-constexpr std::uint32_t kPcValue = 0x8000'0040u;
+constexpr std::uint32_t kMemoryBase{0x8000'0000u};
+constexpr std::uint32_t kMemorySize{256u};
+constexpr std::uint32_t kPcValue{0x8000'0040u};
 
 struct GeneratedExpression {
     std::string text;
@@ -27,7 +27,7 @@ struct GeneratedExpression {
 class FixedExpressionContext final : public EvaluationContext {
 public:
     FixedExpressionContext() {
-        for (std::size_t i = 0; i < registers_.size(); ++i) {
+        for (std::size_t i{0}; i < registers_.size(); ++i) {
             registers_[i] = 0x1020'3000u + static_cast<std::uint32_t>(i * 0x1111u);
         }
         registers_[0] = 0;
@@ -36,7 +36,7 @@ public:
         registers_[30] = kMemoryBase + 0x80u;
         registers_[31] = kMemoryBase + kMemorySize - 4u;
 
-        for (std::size_t i = 0; i < memory_.size(); ++i) {
+        for (std::size_t i{0}; i < memory_.size(); ++i) {
             memory_[i] = static_cast<std::uint8_t>((i * 37u + 0x5au) & 0xffu);
         }
     }
@@ -45,7 +45,7 @@ public:
         if (IsProgramCounterName(name)) {
             return kPcValue;
         }
-        const auto index = RegisterNameToIndex(name);
+        const auto index{RegisterNameToIndex(name)};
         if (index && *index < registers_.size()) {
             return registers_[*index];
         }
@@ -57,13 +57,13 @@ public:
             return 0;
         }
 
-        const auto offset = static_cast<std::size_t>(address - kMemoryBase);
+        const auto offset{static_cast<std::size_t>(address - kMemoryBase)};
         if (offset + size > memory_.size()) {
             return 0;
         }
 
-        std::uint32_t value = 0;
-        for (std::size_t i = 0; i < size; ++i) {
+        std::uint32_t value{0};
+        for (std::size_t i{0}; i < size; ++i) {
             value |= static_cast<std::uint32_t>(memory_[offset + i]) << (i * 8u);
         }
         return value;
@@ -155,7 +155,7 @@ private:
     }
 
     [[nodiscard]] GeneratedExpression generate_number() {
-        const auto value = pick(101);
+        const auto value{pick(101)};
         if (coin()) {
             return GeneratedExpression{.text = std::format("{}0x{:x}{}", maybe_space(), value, maybe_space()),
                                        .value = value};
@@ -164,7 +164,7 @@ private:
     }
 
     [[nodiscard]] GeneratedExpression generate_register() {
-        const auto index = pick(32);
+        const auto index{pick(32)};
         return GeneratedExpression{.text = std::format("{}x{}{}", maybe_space(), index, maybe_space()),
                                    .value = context_.register_value(index)};
     }
@@ -187,9 +187,9 @@ private:
 
     [[nodiscard]] GeneratedExpression generate_memory_read() {
         const std::array<std::size_t, 3> sizes{1, 2, 4};
-        const auto size = sizes[pick(static_cast<std::uint32_t>(sizes.size()))];
-        const auto address = generate_memory_address(size);
-        const auto value = context_.memory_value(address.value, size);
+        const auto size{sizes[pick(static_cast<std::uint32_t>(sizes.size()))]};
+        const auto address{generate_memory_address(size)};
+        const auto value{context_.memory_value(address.value, size)};
 
         return GeneratedExpression{
             .text = std::format("{}read{}({}{}){}", maybe_space(), size * 8u, address.text,
@@ -199,7 +199,7 @@ private:
     }
 
     [[nodiscard]] GeneratedExpression generate_dereference() {
-        const auto address = generate_memory_address(4);
+        const auto address{generate_memory_address(4)};
         return GeneratedExpression{
             .text = std::format("{}*({}{}){}", maybe_space(), address.text, maybe_space(), maybe_space()),
             .value = context_.memory_value(address.value, 4),
@@ -207,7 +207,7 @@ private:
     }
 
     [[nodiscard]] GeneratedExpression generate_memory_address(const std::size_t size) {
-        const auto max_offset = static_cast<std::uint32_t>(kMemorySize - size);
+        const auto max_offset{static_cast<std::uint32_t>(kMemorySize - size)};
 
         switch (pick(5)) {
         case 0:
@@ -224,15 +224,15 @@ private:
     }
 
     [[nodiscard]] GeneratedExpression generate_absolute_address(const std::uint32_t max_offset) {
-        const auto offset = pick(max_offset + 1u);
-        const auto address = kMemoryBase + offset;
+        const auto offset{pick(max_offset + 1u)};
+        const auto address{kMemoryBase + offset};
         return GeneratedExpression{.text = std::format("{}0x{:08x}{}", maybe_space(), address, maybe_space()),
                                    .value = address};
     }
 
     [[nodiscard]] GeneratedExpression generate_base_plus_offset_address(const std::uint32_t max_offset) {
-        const auto offset = pick(max_offset + 1u);
-        const auto address = kMemoryBase + offset;
+        const auto offset{pick(max_offset + 1u)};
+        const auto address{kMemoryBase + offset};
         return GeneratedExpression{
             .text = std::format("{}(0x{:08x} + 0x{:x}){}", maybe_space(), kMemoryBase, offset, maybe_space()),
             .value = address,
@@ -240,10 +240,10 @@ private:
     }
 
     [[nodiscard]] GeneratedExpression generate_pc_relative_address(const std::uint32_t max_offset) {
-        const auto pc_offset = kPcValue - kMemoryBase;
+        const auto pc_offset{kPcValue - kMemoryBase};
         if (coin()) {
-            const auto max_delta = max_offset >= pc_offset ? max_offset - pc_offset : 0u;
-            const auto delta = pick(max_delta + 1u);
+            const auto max_delta{max_offset >= pc_offset ? max_offset - pc_offset : 0u};
+            const auto delta{pick(max_delta + 1u)};
             if (delta == 0) {
                 return generate_pc();
             }
@@ -253,8 +253,8 @@ private:
             };
         }
 
-        const auto max_delta = pc_offset;
-        const auto delta = pick(max_delta + 1u);
+        const auto max_delta{pc_offset};
+        const auto delta{pick(max_delta + 1u)};
         if (delta == 0) {
             return generate_pc();
         }
@@ -277,10 +277,10 @@ private:
             {.name = "x31", .value = kMemoryBase + kMemorySize - 4u},
         }};
 
-        const auto selected = address_registers[pick(static_cast<std::uint32_t>(address_registers.size()))];
-        const auto max_delta = kMemoryBase + max_offset - selected.value;
-        const auto delta_limit = max_delta < 0x10u ? max_delta : 0x10u;
-        const auto delta = pick(delta_limit + 1u);
+        const auto selected{address_registers[pick(static_cast<std::uint32_t>(address_registers.size()))]};
+        const auto max_delta{kMemoryBase + max_offset - selected.value};
+        const auto delta_limit{max_delta < 0x10u ? max_delta : 0x10u};
+        const auto delta{pick(delta_limit + 1u)};
         if (delta == 0 || coin()) {
             return GeneratedExpression{
                 .text = std::format("{}{}{}", maybe_space(), selected.name, maybe_space()),
@@ -295,10 +295,10 @@ private:
     }
 
     [[nodiscard]] GeneratedExpression generate_subtraction_address(const std::uint32_t max_offset) {
-        const auto offset = pick(max_offset + 1u);
-        const auto extra = pick(0x20u);
-        const auto minuend = kMemoryBase + offset + extra;
-        const auto address = kMemoryBase + offset;
+        const auto offset{pick(max_offset + 1u)};
+        const auto extra{pick(0x20u)};
+        const auto minuend{kMemoryBase + offset + extra};
+        const auto address{kMemoryBase + offset};
         return GeneratedExpression{
             .text = std::format("{}(0x{:08x} - 0x{:x}){}", maybe_space(), minuend, extra, maybe_space()),
             .value = address,
@@ -414,7 +414,7 @@ private:
 void expect_expression_value(std::string_view expression, const std::uint32_t expected,
                              const EvaluationContext &context) {
     Expressions expressions;
-    const auto result = expressions.Evaluate(expression, context);
+    const auto result{expressions.Evaluate(expression, context)};
     ASSERT_TRUE(result) << "expression: " << expression << "\nerror: " << result.error();
     EXPECT_EQ(*result, expected) << "expression: " << expression;
 }
@@ -423,8 +423,8 @@ TEST(ExpressionGeneratorTest, NemuStyleRandomArithmeticMatchesReferenceValues) {
     FixedExpressionContext context;
     RandomExpressionGenerator generator(context, 0x4e454d55u);
 
-    for (int i = 0; i < 512; ++i) {
-        const auto expression = generator.generate_nemu_style_expression();
+    for (int i{0}; i < 512; ++i) {
+        const auto expression{generator.generate_nemu_style_expression()};
         expect_expression_value(expression.text, expression.value, context);
     }
 }
@@ -433,8 +433,8 @@ TEST(ExpressionGeneratorTest, NpcRandomExpressionsMatchReferenceValues) {
     FixedExpressionContext context;
     RandomExpressionGenerator generator(context, 0x4e504345u);
 
-    for (int i = 0; i < 1024; ++i) {
-        const auto expression = generator.generate_npc_expression();
+    for (int i{0}; i < 1024; ++i) {
+        const auto expression{generator.generate_npc_expression()};
         expect_expression_value(expression.text, expression.value, context);
     }
 }
@@ -455,7 +455,7 @@ TEST(ExpressionGeneratorTest, OperatorPrecedenceAssociativityAndShortCircuitingW
 TEST(ExpressionGeneratorTest, RegisterAndMemoryAtomsUseEvaluationContext) {
     FixedExpressionContext context;
 
-    for (std::size_t index = 0; index < 32; ++index) {
+    for (std::size_t index{0}; index < 32; ++index) {
         expect_expression_value(std::format("x{}", index), context.register_value(index), context);
     }
     expect_expression_value("x3 + pc", context.register_value(3) + kPcValue, context);
@@ -495,9 +495,142 @@ TEST(ExpressionGeneratorTest, DivisionByZeroIsReportedAsEvaluationFailure) {
     FixedExpressionContext context;
     Expressions expressions;
 
-    const auto result = expressions.Evaluate("1 / (2 - 2)", context);
+    const auto result{expressions.Evaluate("1 / (2 - 2)", context)};
 
     EXPECT_FALSE(result);
+}
+
+TEST(ExpressionGeneratorTest, EqualityOperatorsWorkCorrectly) {
+    FixedExpressionContext context;
+
+    expect_expression_value("1 == 1", 1, context);
+    expect_expression_value("1 == 0", 0, context);
+    expect_expression_value("1 != 0", 1, context);
+    expect_expression_value("1 != 1", 0, context);
+    expect_expression_value("42 == 42", 1, context);
+}
+
+TEST(ExpressionGeneratorTest, LessThanOrEqualWorksCorrectly) {
+    FixedExpressionContext context;
+
+    expect_expression_value("1 <= 2", 1, context);
+    expect_expression_value("2 <= 1", 0, context);
+    expect_expression_value("5 <= 5", 1, context);
+}
+
+TEST(ExpressionGeneratorTest, LogicalAndShortCircuitsCorrectly) {
+    FixedExpressionContext context;
+
+    expect_expression_value("1 && 1", 1, context);
+    expect_expression_value("1 && 0", 0, context);
+    expect_expression_value("0 && 1", 0, context);
+    expect_expression_value("0 && 0", 0, context);
+    expect_expression_value("2 && 3", 1, context);
+    expect_expression_value("0 && 0x5000", 0, context);
+}
+
+TEST(ExpressionGeneratorTest, ChainedBinaryOperatorsMaintainPrecedence) {
+    FixedExpressionContext context;
+
+    expect_expression_value("2 + 3 * 4", 14, context);
+    expect_expression_value("2 * 3 + 4", 10, context);
+    expect_expression_value("10 - 3 - 2", 5, context);
+    expect_expression_value("20 / 5 / 2", 2, context);
+    expect_expression_value("1 + 2 * 3 + 4 * 5", 27, context);
+}
+
+TEST(ExpressionGeneratorTest, ParenthesizedExpressionOverridesPrecedence) {
+    FixedExpressionContext context;
+
+    expect_expression_value("(1 + 2) * 3", 9, context);
+    expect_expression_value("1 + (2 * 3)", 7, context);
+    expect_expression_value("((1 + 2)) * (3 + 4)", 21, context);
+    expect_expression_value("(10 - 5) * (3 + 1)", 20, context);
+    expect_expression_value("(100 / (10 - 5))", 20, context);
+}
+
+TEST(ExpressionGeneratorTest, UnaryMinusHandlesComplexExpressions) {
+    FixedExpressionContext context;
+
+    expect_expression_value("-5", 0xffff'fffbu, context);
+    expect_expression_value("--5", 5, context);
+    expect_expression_value("---5", 0xffff'fffbu, context);
+    expect_expression_value("-(-5)", 5, context);
+    expect_expression_value("1 + -2", 0xffff'ffffu, context);
+    expect_expression_value("-1 * -2", 2, context);
+}
+
+TEST(ExpressionGeneratorTest, DereferenceReadsMemoryByAddress) {
+    FixedExpressionContext context;
+
+    expect_expression_value("*(0x80000000)", context.memory_value(0x80000000, 4), context);
+    expect_expression_value("*(0x80000008)", context.memory_value(0x80000008, 4), context);
+    expect_expression_value("*(0x80000000 + 4)", context.memory_value(0x80000004, 4), context);
+}
+
+TEST(ExpressionGeneratorTest, ReadMemoryFunctionsHandleAllWidths) {
+    FixedExpressionContext context;
+
+    expect_expression_value("read8(0x80000005)", context.memory_value(0x80000005, 1), context);
+    expect_expression_value("read16(0x80000006)", context.memory_value(0x80000006, 2), context);
+    expect_expression_value("read32(0x80000008)", context.memory_value(0x80000008, 4), context);
+}
+
+TEST(ExpressionGeneratorTest, ReadMemoryWithComplexAddressExpression) {
+    FixedExpressionContext context;
+
+    expect_expression_value("read32(0x80000000 + 16)", context.memory_value(0x80000010, 4), context);
+    expect_expression_value("read32(0x80000020 - 8)", context.memory_value(0x80000018, 4), context);
+    expect_expression_value("read16(pc + 4)", context.memory_value(kPcValue + 4, 2), context);
+}
+
+TEST(ExpressionGeneratorTest, ExpressionsInterleavesRegistersNumbersAndMemory) {
+    FixedExpressionContext context;
+
+    expect_expression_value("x1 + 10", context.register_value(1) + 10, context);
+    expect_expression_value("x2 + x3", context.register_value(2) + context.register_value(3), context);
+    expect_expression_value("x1 + read32(0x80000000)", context.register_value(1) + context.memory_value(0x80000000, 4), context);
+}
+
+TEST(ExpressionGeneratorTest, LargeNumberHandling) {
+    FixedExpressionContext context;
+
+    expect_expression_value("0xFFFFFFFF", 0xFFFFFFFFu, context);
+    expect_expression_value("0x80000000", 0x80000000u, context);
+    expect_expression_value("-0x80000000", 0x80000000u, context);
+}
+
+TEST(ExpressionGeneratorTest, ExpressionValidationReportsInvalidSyntax) {
+    Expressions expressions;
+    FixedExpressionContext context;
+
+    EXPECT_FALSE(expressions.Evaluate("", context));
+    EXPECT_FALSE(expressions.Evaluate("1 +", context));
+}
+
+TEST(ExpressionGeneratorTest, ValidateMethodDetectsBalancedParentheses) {
+    Expressions expressions;
+
+    EXPECT_TRUE(expressions.Validate("(1 + 2)"));
+    EXPECT_TRUE(expressions.Validate("1 + 2"));
+    EXPECT_FALSE(expressions.Validate("(1 + 2"));
+    EXPECT_FALSE(expressions.Validate("1 + 2)"));
+    EXPECT_FALSE(expressions.Validate(""));
+}
+
+TEST(ExpressionGeneratorTest, MixComparisonAndArithmeticOperators) {
+    FixedExpressionContext context;
+
+    expect_expression_value("(1 == 1) * 42", 42, context);
+    expect_expression_value("(5 <= 3) + (7 == 7)", 1, context);
+    expect_expression_value("(10 <= 20) && (30 == 30)", 1, context);
+}
+
+TEST(ExpressionGeneratorTest, MemoryReadAtExtremeBoundaries) {
+    FixedExpressionContext context;
+
+    expect_expression_value("read8(0x80000000)", context.memory_value(0x80000000, 1), context);
+    expect_expression_value("read32(0x800000fc)", context.memory_value(0x800000fc, 4), context);
 }
 
 }  // namespace

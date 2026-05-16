@@ -65,8 +65,8 @@ enum class Opcode : std::uint32_t {
 }
 
 [[nodiscard]] constexpr std::uint32_t bits(const std::uint32_t value, const unsigned high, const unsigned low) {
-    const auto width = high - low + 1u;
-    const auto mask = (std::uint32_t{1} << width) - 1u;
+    const auto width{high - low + 1u};
+    const auto mask{(std::uint32_t{1} << width) - 1u};
     return (value >> low) & mask;
 }
 
@@ -107,7 +107,7 @@ enum class Opcode : std::uint32_t {
     const std::uint32_t funct3,
     const Opcode opcode
 ) {
-    const auto uimm = static_cast<std::uint32_t>(imm) & 0xfffu;
+    const auto uimm{static_cast<std::uint32_t>(imm) & 0xfffu};
     return (((uimm >> 5) & 0x7fu) << 25) |
            (reg_bits(rs2) << 20) |
            (reg_bits(rs1) << 15) |
@@ -122,7 +122,7 @@ enum class Opcode : std::uint32_t {
     const Reg rs1,
     const std::uint32_t funct3
 ) {
-    const auto uimm = static_cast<std::uint32_t>(imm) & 0x1fffu;
+    const auto uimm{static_cast<std::uint32_t>(imm) & 0x1fffu};
     return (((uimm >> 12) & 0x1u) << 31) |
            (((uimm >> 5) & 0x3fu) << 25) |
            (reg_bits(rs2) << 20) |
@@ -148,7 +148,7 @@ enum class Opcode : std::uint32_t {
     const Reg rd,
     const Opcode opcode
 ) {
-    const auto uimm = static_cast<std::uint32_t>(imm) & 0x1fffffu;
+    const auto uimm{static_cast<std::uint32_t>(imm) & 0x1fffffu};
     return (((uimm >> 20) & 0x1u) << 31) |
            (((uimm >> 1) & 0x3ffu) << 21) |
            (((uimm >> 11) & 0x1u) << 20) |
@@ -169,6 +169,10 @@ enum class Opcode : std::uint32_t {
     return encode_i(imm, rs1, 0b000, rd, Opcode::load);
 }
 
+[[nodiscard]] constexpr std::uint32_t lh(const Reg rd, const Reg rs1, const std::int32_t imm) {
+    return encode_i(imm, rs1, 0b001, rd, Opcode::load);
+}
+
 [[nodiscard]] constexpr std::uint32_t lw(const Reg rd, const Reg rs1, const std::int32_t imm) {
     return encode_i(imm, rs1, 0b010, rd, Opcode::load);
 }
@@ -177,8 +181,16 @@ enum class Opcode : std::uint32_t {
     return encode_i(imm, rs1, 0b100, rd, Opcode::load);
 }
 
+[[nodiscard]] constexpr std::uint32_t lhu(const Reg rd, const Reg rs1, const std::int32_t imm) {
+    return encode_i(imm, rs1, 0b101, rd, Opcode::load);
+}
+
 [[nodiscard]] constexpr std::uint32_t sb(const Reg rs2, const Reg rs1, const std::int32_t imm) {
     return encode_s(imm, rs2, rs1, 0b000, Opcode::store);
+}
+
+[[nodiscard]] constexpr std::uint32_t sh(const Reg rs2, const Reg rs1, const std::int32_t imm) {
+    return encode_s(imm, rs2, rs1, 0b001, Opcode::store);
 }
 
 [[nodiscard]] constexpr std::uint32_t sw(const Reg rs2, const Reg rs1, const std::int32_t imm) {
@@ -187,6 +199,122 @@ enum class Opcode : std::uint32_t {
 
 [[nodiscard]] constexpr std::uint32_t beq(const Reg rs1, const Reg rs2, const std::int32_t imm) {
     return encode_b(imm, rs2, rs1, 0b000);
+}
+
+[[nodiscard]] constexpr std::uint32_t bne(const Reg rs1, const Reg rs2, const std::int32_t imm) {
+    return encode_b(imm, rs2, rs1, 0b001);
+}
+
+[[nodiscard]] constexpr std::uint32_t blt(const Reg rs1, const Reg rs2, const std::int32_t imm) {
+    return encode_b(imm, rs2, rs1, 0b100);
+}
+
+[[nodiscard]] constexpr std::uint32_t bge(const Reg rs1, const Reg rs2, const std::int32_t imm) {
+    return encode_b(imm, rs2, rs1, 0b101);
+}
+
+[[nodiscard]] constexpr std::uint32_t bltu(const Reg rs1, const Reg rs2, const std::int32_t imm) {
+    return encode_b(imm, rs2, rs1, 0b110);
+}
+
+[[nodiscard]] constexpr std::uint32_t bgeu(const Reg rs1, const Reg rs2, const std::int32_t imm) {
+    return encode_b(imm, rs2, rs1, 0b111);
+}
+
+[[nodiscard]] constexpr std::uint32_t slti(const Reg rd, const Reg rs1, const std::int32_t imm) {
+    return encode_i(imm, rs1, 0b010, rd, Opcode::immediate);
+}
+
+[[nodiscard]] constexpr std::uint32_t sltiu(const Reg rd, const Reg rs1, const std::int32_t imm) {
+    return encode_i(imm, rs1, 0b011, rd, Opcode::immediate);
+}
+
+[[nodiscard]] constexpr std::uint32_t xori(const Reg rd, const Reg rs1, const std::int32_t imm) {
+    return encode_i(imm, rs1, 0b100, rd, Opcode::immediate);
+}
+
+[[nodiscard]] constexpr std::uint32_t ori(const Reg rd, const Reg rs1, const std::int32_t imm) {
+    return encode_i(imm, rs1, 0b110, rd, Opcode::immediate);
+}
+
+[[nodiscard]] constexpr std::uint32_t andi(const Reg rd, const Reg rs1, const std::int32_t imm) {
+    return encode_i(imm, rs1, 0b111, rd, Opcode::immediate);
+}
+
+[[nodiscard]] constexpr std::uint32_t slli(const Reg rd, const Reg rs1, const std::uint32_t shamt) {
+    return encode_i(static_cast<std::int32_t>(shamt & 0x1fu), rs1, 0b001, rd, Opcode::immediate);
+}
+
+[[nodiscard]] constexpr std::uint32_t srli(const Reg rd, const Reg rs1, const std::uint32_t shamt) {
+    return encode_i(static_cast<std::int32_t>(shamt & 0x1fu), rs1, 0b101, rd, Opcode::immediate);
+}
+
+[[nodiscard]] constexpr std::uint32_t srai(const Reg rd, const Reg rs1, const std::uint32_t shamt) {
+    return encode_i(static_cast<std::int32_t>((0b0100000u << 5) | (shamt & 0x1fu)),
+                    rs1, 0b101, rd, Opcode::immediate);
+}
+
+[[nodiscard]] constexpr std::uint32_t xor_(const Reg rd, const Reg rs1, const Reg rs2) {
+    return encode_r(0b0000000, rs2, rs1, 0b100, rd, Opcode::reg);
+}
+
+[[nodiscard]] constexpr std::uint32_t or_(const Reg rd, const Reg rs1, const Reg rs2) {
+    return encode_r(0b0000000, rs2, rs1, 0b110, rd, Opcode::reg);
+}
+
+[[nodiscard]] constexpr std::uint32_t and_(const Reg rd, const Reg rs1, const Reg rs2) {
+    return encode_r(0b0000000, rs2, rs1, 0b111, rd, Opcode::reg);
+}
+
+[[nodiscard]] constexpr std::uint32_t sll(const Reg rd, const Reg rs1, const Reg rs2) {
+    return encode_r(0b0000000, rs2, rs1, 0b001, rd, Opcode::reg);
+}
+
+[[nodiscard]] constexpr std::uint32_t srl(const Reg rd, const Reg rs1, const Reg rs2) {
+    return encode_r(0b0000000, rs2, rs1, 0b101, rd, Opcode::reg);
+}
+
+[[nodiscard]] constexpr std::uint32_t sub(const Reg rd, const Reg rs1, const Reg rs2) {
+    return encode_r(0b0100000, rs2, rs1, 0b000, rd, Opcode::reg);
+}
+
+[[nodiscard]] constexpr std::uint32_t sra(const Reg rd, const Reg rs1, const Reg rs2) {
+    return encode_r(0b0100000, rs2, rs1, 0b101, rd, Opcode::reg);
+}
+
+[[nodiscard]] constexpr std::uint32_t slt(const Reg rd, const Reg rs1, const Reg rs2) {
+    return encode_r(0b0000000, rs2, rs1, 0b010, rd, Opcode::reg);
+}
+
+[[nodiscard]] constexpr std::uint32_t sltu(const Reg rd, const Reg rs1, const Reg rs2) {
+    return encode_r(0b0000000, rs2, rs1, 0b011, rd, Opcode::reg);
+}
+
+[[nodiscard]] constexpr std::uint32_t csrrw(const Reg rd, const Reg rs1, const std::uint32_t csr_addr) {
+    return encode_i(static_cast<std::int32_t>(csr_addr & 0xfffu), rs1, 0b001, rd, Opcode::system);
+}
+
+[[nodiscard]] constexpr std::uint32_t csrrs(const Reg rd, const Reg rs1, const std::uint32_t csr_addr) {
+    return encode_i(static_cast<std::int32_t>(csr_addr & 0xfffu), rs1, 0b010, rd, Opcode::system);
+}
+
+[[nodiscard]] constexpr std::uint32_t csrrc(const Reg rd, const Reg rs1, const std::uint32_t csr_addr) {
+    return encode_i(static_cast<std::int32_t>(csr_addr & 0xfffu), rs1, 0b011, rd, Opcode::system);
+}
+
+[[nodiscard]] constexpr std::uint32_t csrrwi(const Reg rd, const std::uint32_t csr_addr, const std::uint32_t uimm) {
+    return encode_i(static_cast<std::int32_t>(csr_addr & 0xfffu), static_cast<Reg>(uimm & 0x1fu),
+                    0b101, rd, Opcode::system);
+}
+
+[[nodiscard]] constexpr std::uint32_t csrrsi(const Reg rd, const std::uint32_t csr_addr, const std::uint32_t uimm) {
+    return encode_i(static_cast<std::int32_t>(csr_addr & 0xfffu), static_cast<Reg>(uimm & 0x1fu),
+                    0b110, rd, Opcode::system);
+}
+
+[[nodiscard]] constexpr std::uint32_t csrrci(const Reg rd, const std::uint32_t csr_addr, const std::uint32_t uimm) {
+    return encode_i(static_cast<std::int32_t>(csr_addr & 0xfffu), static_cast<Reg>(uimm & 0x1fu),
+                    0b111, rd, Opcode::system);
 }
 
 [[nodiscard]] constexpr std::uint32_t lui(const Reg rd, const std::uint32_t imm) {
@@ -217,6 +345,14 @@ enum class Opcode : std::uint32_t {
     return addi(Reg::zero, Reg::zero, 0);
 }
 
+[[nodiscard]] constexpr std::uint32_t ecall() {
+    return 0x00000073u;
+}
+
+[[nodiscard]] constexpr std::uint32_t mret() {
+    return 0x30200073u;
+}
+
 template <std::same_as<std::uint32_t>... Word>
 [[nodiscard]] constexpr auto program(Word... words) {
     return std::to_array<std::uint32_t>({words...});
@@ -233,5 +369,38 @@ static_assert(lw(Reg::a0, Reg::t0, -4) == 0xffc2a503u);
 static_assert(sw(Reg::t1, Reg::t0, 12) == 0x0062a623u);
 static_assert(jal(Reg::ra, 8) == 0x008000efu);
 static_assert(jalr(Reg::zero, Reg::ra, 0) == 0x00008067u);
+static_assert(lh(Reg::a0, Reg::t0, 4) == 0x00429503u);
+static_assert(lhu(Reg::a0, Reg::t0, -2) == 0xffe2d503u);
+static_assert(sh(Reg::t1, Reg::t0, 0) == 0x00629023u);
+static_assert(bne(Reg::t0, Reg::t1, 8) == 0x00629463u);
+static_assert(blt(Reg::t0, Reg::t1, -4) == 0xfe62cee3u);
+static_assert(bge(Reg::t0, Reg::t1, 16) == 0x0062d863u);
+static_assert(bltu(Reg::t0, Reg::t1, 0) == 0x0062e063u);
+static_assert(bgeu(Reg::t0, Reg::t1, -8) == 0xfe62fce3u);
+static_assert(slti(Reg::a0, Reg::t0, -1) == 0xfff2a513u);
+static_assert(sltiu(Reg::a0, Reg::t0, 42) == 0x02a2b513u);
+static_assert(xori(Reg::a0, Reg::t0, -1) == 0xfff2c513u);
+static_assert(ori(Reg::a0, Reg::t0, 0x7ff) == 0x7ff2e513u);
+static_assert(andi(Reg::a0, Reg::t0, 0x555) == 0x5552f513u);
+static_assert(slli(Reg::a0, Reg::t0, 3) == 0x00329513u);
+static_assert(srli(Reg::a0, Reg::t0, 5) == 0x0052d513u);
+static_assert(srai(Reg::a0, Reg::t0, 2) == 0x4022d513u);
+static_assert(xor_(Reg::a0, Reg::t0, Reg::t1) == 0x0062c533u);
+static_assert(or_(Reg::a0, Reg::t0, Reg::t1) == 0x0062e533u);
+static_assert(and_(Reg::a0, Reg::t0, Reg::t1) == 0x0062f533u);
+static_assert(sll(Reg::a0, Reg::t0, Reg::t1) == 0x00629533u);
+static_assert(srl(Reg::a0, Reg::t0, Reg::t1) == 0x0062d533u);
+static_assert(sub(Reg::a0, Reg::t0, Reg::t1) == 0x40628533u);
+static_assert(sra(Reg::a0, Reg::t0, Reg::t1) == 0x4062d533u);
+static_assert(slt(Reg::a0, Reg::t0, Reg::t1) == 0x0062a533u);
+static_assert(sltu(Reg::a0, Reg::t0, Reg::t1) == 0x0062b533u);
+static_assert(ecall() == 0x00000073u);
+static_assert(mret() == 0x30200073u);
+static_assert(csrrw(Reg::a0, Reg::t0, 0x300) == 0x30029573u);
+static_assert(csrrs(Reg::a0, Reg::t0, 0x300) == 0x3002a573u);
+static_assert(csrrc(Reg::a0, Reg::t0, 0x300) == 0x3002b573u);
+static_assert(csrrwi(Reg::a0, 0x300, 5) == 0x3002d573u);
+static_assert(csrrsi(Reg::a0, 0x300, 5) == 0x3002e573u);
+static_assert(csrrci(Reg::a0, 0x300, 5) == 0x3002f573u);
 
 }  // namespace npc::test::rv32

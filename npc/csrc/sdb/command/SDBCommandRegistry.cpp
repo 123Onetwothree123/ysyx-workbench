@@ -16,6 +16,7 @@
 #include "command/xCommand.hpp"
 #include "command/SDBCommandUtils.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <iostream>
 #include <memory>
 #include <print>
@@ -37,7 +38,7 @@ namespace
 
 [[nodiscard]] std::size_t SDBMaxUsageSyntaxWidth(const SDBCommand &Command) noexcept
 {
-    std::size_t Width{0};
+    auto Width{std::size_t{0}};
     for (const auto &Usage : Command.Usage())
     {
         Width = std::max(Width, SDBUsageSyntaxWidth(Command, Usage));
@@ -47,7 +48,7 @@ namespace
 
 void SDBPrintUsageLine(const SDBCommand &Command, const SDBCommandUsage &Usage, std::size_t SyntaxWidth)
 {
-    std::string Syntax{Command.Name()};
+    auto Syntax{std::string{Command.Name()}};
     if (!Usage.Arguments.empty())
     {
         Syntax.push_back(' ');
@@ -113,8 +114,8 @@ const std::vector<std::string> &SDBCommandRegistry::GetHistory() const noexcept
 }
 const SDBCommand *SDBCommandRegistry::FindCommand(std::string_view Name) const
 {
-    const auto CommandIt = std::ranges::find_if(Commands, [Name](const std::unique_ptr<SDBCommand> &Command)
-                                                { return Command->Name() == Name; });
+    const auto CommandIt{std::ranges::find_if(Commands, [Name](const std::unique_ptr<SDBCommand> &Command)
+                                                { return Command->Name() == Name; })};
     if (CommandIt == Commands.end())
     {
         return nullptr;
@@ -123,7 +124,7 @@ const SDBCommand *SDBCommandRegistry::FindCommand(std::string_view Name) const
 }
 void SDBCommandRegistry::PrintHelp() const
 {
-    std::size_t SyntaxWidth{0};
+    auto SyntaxWidth{std::size_t{0}};
     for (const auto &Command : Commands)
     {
         SyntaxWidth = std::max(SyntaxWidth, SDBMaxUsageSyntaxWidth(*Command));

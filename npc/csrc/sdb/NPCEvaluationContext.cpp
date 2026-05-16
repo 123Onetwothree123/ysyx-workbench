@@ -13,7 +13,7 @@ std::uint32_t NPCEvaluationContext::ReadRegister(std::string_view Name) const
 {
     if (IsProgramCounterName(Name))
     {
-        return CPP_NpcGetPC();
+        return CPP_NPCGetPC();
     }
     const auto RegIndex{RegisterNameToIndex(Name)};
     if (RegIndex)
@@ -32,5 +32,5 @@ std::uint32_t NPCEvaluationContext::ReadMemory(std::uint32_t Address, std::size_
 }
 std::uint32_t NPCEvaluationContext::GetProgramCounter() const
 {
-    return CPP_NpcGetPC();
+    return CPP_NPCGetPC();
 }

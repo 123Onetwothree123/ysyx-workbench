@@ -6,6 +6,7 @@
 #include "tools/Expressions/Expressions.hpp"
 
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <limits>
@@ -18,20 +19,23 @@ std::string_view xCommand::Name() const noexcept
 SDBCommandUsageList xCommand::Usage() const noexcept
 {
     static constexpr SDBCommandUsage Entries[]{
-        {"N[b|h|w] EXPR", "从表达式地址开始扫描内存，b=1字节 h=2字节 w=4字节"},
+        {"N EXPR", "从表达式地址开始看N个4字节数据，默认就是这个"},
+        {"Nb EXPR", "从表达式地址开始看N个1字节数据"},
+        {"Nh EXPR", "从表达式地址开始看N个2字节数据"},
+        {"Nw EXPR", "从表达式地址开始看N个4字节数据"},
     };
     return Entries;
 }
 SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    static_cast<void>(Context);
     Args = SDBTrimLeft(Args); // 去掉前导空白
     if (Args.empty())
     {
         std::println("用法：x N[b|h|w] EXPR");
         return SDBCommandResult::Continue;
     }
-    std::size_t Count{0}; // 扫描的数量
+    auto Count{std::size_t{0}}; // 扫描的数量
     const auto CountResult{std::from_chars(Args.data(), Args.data() + Args.size(), Count, 10)};
     if (CountResult.ec != std::errc() || Count == 0)
     {
@@ -41,25 +45,33 @@ SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view 
     }
     Args.remove_prefix(static_cast<std::size_t>(CountResult.ptr - Args.data())); // 移除已经解析的数量部分
     Args = SDBTrimLeft(Args);
-    std::size_t UnitSize{4}; // 默认按字读取，和原C版一致
+    auto UnitSize{std::size_t{4}}; // 默认按字读取，和原C版一致
     if (!Args.empty())
     {
         switch (Args.front())
         {
         case 'b':
+        {
             UnitSize = 1;
             Args.remove_prefix(1);
             break;
+        }
         case 'h':
+        {
             UnitSize = 2;
             Args.remove_prefix(1);
             break;
+        }
         case 'w':
+        {
             UnitSize = 4;
             Args.remove_prefix(1);
             break;
+        }
         default:
+        {
             break;
+        }
         }
     }
     Args = SDBTrimLeft(Args);
@@ -77,7 +89,7 @@ SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view 
         std::println("表达式错误：{}", AddressResult.error());
         return SDBCommandResult::Continue;
     }
-    const std::uint32_t StartAddress{AddressResult.value()};
+    const auto StartAddress{AddressResult.value()};
     if (Count > std::numeric_limits<std::uint32_t>::max() / UnitSize)
     {
         std::println("错误：请求范围过大");
@@ -101,20 +113,28 @@ SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view 
             std::println(std::cerr, "错误：在 0x{:08x} 处读取内存失败，扫描停止", CurrentAddress);
             break;
         }
-        const std::uint32_t Value{ValueOpt.value()};
+        const auto Value{ValueOpt.value()};
         switch (UnitSize)
         {
         case 1:
+        {
             std::println("0x{:08x}: 0x{:02x}", CurrentAddress, Value & 0xffu);
             break;
+        }
         case 2:
+        {
             std::println("0x{:08x}: 0x{:04x}", CurrentAddress, Value & 0xffffu);
             break;
+        }
         case 4:
+        {
             std::println("0x{:08x}: 0x{:08x}", CurrentAddress, Value);
             break;
+        }
         default:
+        {
             break;
+        }
         }
     }
     return SDBCommandResult::Continue;

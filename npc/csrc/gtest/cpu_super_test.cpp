@@ -13,9 +13,9 @@ namespace {
 
 using rv32::Reg;
 
-constexpr std::uint32_t kDataOffset = 0x400;
-constexpr std::size_t kDataBytes = 64;
-constexpr int kRandomInstructionCount = 96;
+constexpr std::uint32_t kDataOffset{0x400};
+constexpr std::size_t kDataBytes{64};
+constexpr int kRandomInstructionCount{96};
 
 constexpr std::array kWorkingRegs{
     Reg::a1, Reg::a2, Reg::a3, Reg::a4, Reg::a5, Reg::a6, Reg::a7,
@@ -52,11 +52,29 @@ void write_reg(std::array<std::uint32_t, 32> &regs, const Reg reg, const std::ui
            (static_cast<std::uint32_t>(data[offset + 3]) << 24);
 }
 
+[[nodiscard]] std::uint32_t read_half(const std::array<std::uint8_t, kDataBytes> &data, const std::size_t offset) {
+    return (static_cast<std::uint32_t>(data[offset + 0]) << 0) |
+           (static_cast<std::uint32_t>(data[offset + 1]) << 8);
+}
+
+[[nodiscard]] std::uint32_t sign_extend8(const std::uint32_t value) {
+    return (value & 0x80u) != 0u ? (value | 0xffff'ff00u) : value;
+}
+
+[[nodiscard]] std::uint32_t sign_extend16(const std::uint32_t value) {
+    return (value & 0x8000u) != 0u ? (value | 0xffff'0000u) : value;
+}
+
 void write_word(std::array<std::uint8_t, kDataBytes> &data, const std::size_t offset, const std::uint32_t value) {
     data[offset + 0] = static_cast<std::uint8_t>((value >> 0) & 0xffu);
     data[offset + 1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
     data[offset + 2] = static_cast<std::uint8_t>((value >> 16) & 0xffu);
     data[offset + 3] = static_cast<std::uint8_t>((value >> 24) & 0xffu);
+}
+
+void write_half(std::array<std::uint8_t, kDataBytes> &data, const std::size_t offset, const std::uint32_t value) {
+    data[offset + 0] = static_cast<std::uint8_t>((value >> 0) & 0xffu);
+    data[offset + 1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
 }
 
 template <typename T, std::size_t N>
@@ -71,15 +89,17 @@ template <typename T, std::size_t N>
 
 GeneratedProgram generate_program(const std::uint32_t seed) {
     std::mt19937 rng{seed};
-    std::uniform_int_distribution<int> op_dist(0, 7);
+    std::uniform_int_distribution<int> op_dist(0, 29);
     std::uniform_int_distribution<int> imm_dist(-2048, 2047);
     std::uniform_int_distribution<std::uint32_t> word_dist(0, 0xffff'ffffu);
+    std::uniform_int_distribution<std::uint32_t> shamt_dist(0, 31);
     std::uniform_int_distribution<std::size_t> byte_offset_dist(0, kDataBytes - 1);
+    std::uniform_int_distribution<std::size_t> half_offset_dist(0, (kDataBytes / 2) - 1);
     std::uniform_int_distribution<std::size_t> word_offset_dist(0, (kDataBytes / 4) - 1);
 
     GeneratedProgram generated;
     std::array<std::uint32_t, 32> regs{};
-    auto expected_data = generated.initial_data;
+    auto expected_data{generated.initial_data};
 
     for (auto &byte : generated.initial_data) {
         byte = static_cast<std::uint8_t>(word_dist(rng) & 0xffu);
@@ -92,19 +112,19 @@ GeneratedProgram generate_program(const std::uint32_t seed) {
     write_reg(regs, Reg::t0, guest_addr(kDataOffset));
 
     for (const auto reg : kWorkingRegs) {
-        const auto imm = imm_dist(rng);
+        const auto imm{imm_dist(rng)};
         generated.words.push_back(rv32::addi(reg, Reg::zero, imm));
         write_reg(regs, reg, static_cast<std::uint32_t>(imm));
     }
 
-    for (int i = 0; i < kRandomInstructionCount; ++i) {
-        const auto rd = pick(rng, kWorkingRegs);
-        const auto rs1 = pick(rng, kSourceRegs);
-        const auto rs2 = pick(rng, kSourceRegs);
+    for (int i{0}; i < kRandomInstructionCount; ++i) {
+        const auto rd{pick(rng, kWorkingRegs)};
+        const auto rs1{pick(rng, kSourceRegs)};
+        const auto rs2{pick(rng, kSourceRegs)};
 
         switch (op_dist(rng)) {
         case 0: {
-            const auto imm = imm_dist(rng);
+            const auto imm{imm_dist(rng)};
             generated.words.push_back(rv32::addi(rd, rs1, imm));
             write_reg(regs, rd, reg_ref(regs, rs1) + static_cast<std::uint32_t>(imm));
             break;
@@ -114,40 +134,155 @@ GeneratedProgram generate_program(const std::uint32_t seed) {
             write_reg(regs, rd, reg_ref(regs, rs1) + reg_ref(regs, rs2));
             break;
         case 2: {
-            const auto upper = word_dist(rng) & 0xffff'f000u;
+            const auto upper{word_dist(rng) & 0xffff'f000u};
             generated.words.push_back(rv32::lui(rd, upper));
             write_reg(regs, rd, upper);
             break;
         }
         case 3: {
-            const auto upper = word_dist(rng) & 0x000f'f000u;
-            const auto pc = current_guest_pc(generated.words);
+            const auto upper{word_dist(rng) & 0x000f'f000u};
+            const auto pc{current_guest_pc(generated.words)};
             generated.words.push_back(rv32::auipc(rd, upper));
             write_reg(regs, rd, pc + upper);
             break;
         }
         case 4: {
-            const auto offset = word_offset_dist(rng) * 4u;
+            const auto offset{word_offset_dist(rng) * 4u};
             generated.words.push_back(rv32::lw(rd, Reg::t0, static_cast<std::int32_t>(offset)));
             write_reg(regs, rd, read_word(expected_data, offset));
             break;
         }
         case 5: {
-            const auto offset = byte_offset_dist(rng);
+            const auto offset{byte_offset_dist(rng)};
             generated.words.push_back(rv32::lbu(rd, Reg::t0, static_cast<std::int32_t>(offset)));
             write_reg(regs, rd, expected_data[offset]);
             break;
         }
         case 6: {
-            const auto offset = word_offset_dist(rng) * 4u;
+            const auto offset{word_offset_dist(rng) * 4u};
             generated.words.push_back(rv32::sw(rs1, Reg::t0, static_cast<std::int32_t>(offset)));
             write_word(expected_data, offset, reg_ref(regs, rs1));
             break;
         }
-        default: {
-            const auto offset = byte_offset_dist(rng);
+        case 7: {
+            const auto offset{byte_offset_dist(rng)};
             generated.words.push_back(rv32::sb(rs1, Reg::t0, static_cast<std::int32_t>(offset)));
             expected_data[offset] = static_cast<std::uint8_t>(reg_ref(regs, rs1) & 0xffu);
+            break;
+        }
+        case 8:
+            generated.words.push_back(rv32::sub(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) - reg_ref(regs, rs2));
+            break;
+        case 9:
+            generated.words.push_back(rv32::xor_(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) ^ reg_ref(regs, rs2));
+            break;
+        case 10:
+            generated.words.push_back(rv32::or_(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) | reg_ref(regs, rs2));
+            break;
+        case 11:
+            generated.words.push_back(rv32::and_(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) & reg_ref(regs, rs2));
+            break;
+        case 12: {
+            const auto imm{imm_dist(rng)};
+            generated.words.push_back(rv32::slti(rd, rs1, imm));
+            write_reg(regs, rd, static_cast<std::int32_t>(reg_ref(regs, rs1)) < imm ? 1u : 0u);
+            break;
+        }
+        case 13:
+            generated.words.push_back(rv32::slt(rd, rs1, rs2));
+            write_reg(regs, rd,
+                      static_cast<std::int32_t>(reg_ref(regs, rs1)) < static_cast<std::int32_t>(reg_ref(regs, rs2)) ? 1u : 0u);
+            break;
+        case 14:
+            generated.words.push_back(rv32::sltu(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) < reg_ref(regs, rs2) ? 1u : 0u);
+            break;
+        case 15: {
+            const auto shamt{shamt_dist(rng) & 0x1fu};
+            generated.words.push_back(rv32::slli(rd, rs1, shamt));
+            write_reg(regs, rd, reg_ref(regs, rs1) << shamt);
+            break;
+        }
+        case 16: {
+            const auto offset{byte_offset_dist(rng)};
+            generated.words.push_back(rv32::lb(rd, Reg::t0, static_cast<std::int32_t>(offset)));
+            write_reg(regs, rd, sign_extend8(expected_data[offset]));
+            break;
+        }
+        case 17: {
+            const auto offset{half_offset_dist(rng) * 2u};
+            generated.words.push_back(rv32::lh(rd, Reg::t0, static_cast<std::int32_t>(offset)));
+            write_reg(regs, rd, sign_extend16(read_half(expected_data, offset)));
+            break;
+        }
+        case 18: {
+            const auto offset{half_offset_dist(rng) * 2u};
+            generated.words.push_back(rv32::lhu(rd, Reg::t0, static_cast<std::int32_t>(offset)));
+            write_reg(regs, rd, read_half(expected_data, offset));
+            break;
+        }
+        case 19: {
+            const auto offset{half_offset_dist(rng) * 2u};
+            generated.words.push_back(rv32::sh(rs1, Reg::t0, static_cast<std::int32_t>(offset)));
+            write_half(expected_data, offset, reg_ref(regs, rs1));
+            break;
+        }
+        case 20: {
+            const auto imm{imm_dist(rng)};
+            generated.words.push_back(rv32::sltiu(rd, rs1, imm));
+            write_reg(regs, rd, reg_ref(regs, rs1) < static_cast<std::uint32_t>(imm) ? 1u : 0u);
+            break;
+        }
+        case 21: {
+            const auto imm{imm_dist(rng)};
+            generated.words.push_back(rv32::xori(rd, rs1, imm));
+            write_reg(regs, rd, reg_ref(regs, rs1) ^ static_cast<std::uint32_t>(imm));
+            break;
+        }
+        case 22: {
+            const auto imm{imm_dist(rng)};
+            generated.words.push_back(rv32::ori(rd, rs1, imm));
+            write_reg(regs, rd, reg_ref(regs, rs1) | static_cast<std::uint32_t>(imm));
+            break;
+        }
+        case 23: {
+            const auto imm{imm_dist(rng)};
+            generated.words.push_back(rv32::andi(rd, rs1, imm));
+            write_reg(regs, rd, reg_ref(regs, rs1) & static_cast<std::uint32_t>(imm));
+            break;
+        }
+        case 24: {
+            const auto shamt{shamt_dist(rng) & 0x1fu};
+            generated.words.push_back(rv32::srli(rd, rs1, shamt));
+            write_reg(regs, rd, reg_ref(regs, rs1) >> shamt);
+            break;
+        }
+        case 25: {
+            const auto shamt{shamt_dist(rng) & 0x1fu};
+            generated.words.push_back(rv32::srai(rd, rs1, shamt));
+            write_reg(regs, rd, static_cast<std::uint32_t>(static_cast<std::int32_t>(reg_ref(regs, rs1)) >> shamt));
+            break;
+        }
+        case 26:
+            generated.words.push_back(rv32::sll(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) << (reg_ref(regs, rs2) & 0x1fu));
+            break;
+        case 27:
+            generated.words.push_back(rv32::srl(rd, rs1, rs2));
+            write_reg(regs, rd, reg_ref(regs, rs1) >> (reg_ref(regs, rs2) & 0x1fu));
+            break;
+        case 28:
+            generated.words.push_back(rv32::sra(rd, rs1, rs2));
+            write_reg(regs, rd, static_cast<std::uint32_t>(static_cast<std::int32_t>(reg_ref(regs, rs1)) >> (reg_ref(regs, rs2) & 0x1fu)));
+            break;
+        default: {
+            const auto imm{imm_dist(rng)};
+            generated.words.push_back(rv32::addi(Reg::zero, rs1, imm));
+            write_reg(regs, Reg::zero, reg_ref(regs, rs1) + static_cast<std::uint32_t>(imm));
             break;
         }
         }
@@ -155,7 +290,7 @@ GeneratedProgram generate_program(const std::uint32_t seed) {
 
     generated.words.push_back(rv32::addi(Reg::a0, Reg::zero, 0));
     write_reg(regs, Reg::a0, 0);
-    std::uint32_t signature = 0;
+    std::uint32_t signature{0};
 
     for (const auto reg : kWorkingRegs) {
         generated.words.push_back(rv32::add(Reg::a0, Reg::a0, reg));
@@ -163,7 +298,7 @@ GeneratedProgram generate_program(const std::uint32_t seed) {
         write_reg(regs, Reg::a0, signature);
     }
 
-    for (std::size_t offset = 0; offset < kDataBytes; offset += 4) {
+    for (std::size_t offset{0}; offset < kDataBytes; offset += 4) {
         generated.words.push_back(rv32::lw(Reg::t6, Reg::t0, static_cast<std::int32_t>(offset)));
         write_reg(regs, Reg::t6, read_word(expected_data, offset));
         generated.words.push_back(rv32::add(Reg::a0, Reg::a0, Reg::t6));
@@ -180,21 +315,21 @@ GeneratedProgram generate_program(const std::uint32_t seed) {
 class CpuRandomReferenceTest : public ::testing::TestWithParam<std::uint32_t> {};
 
 TEST_P(CpuRandomReferenceTest, RandomImplementedInstructionStreamsMatchReferenceModel) {
-    const auto generated = generate_program(GetParam());
+    const auto generated{generate_program(GetParam())};
     ASSERT_LT(generated.words.size() * sizeof(std::uint32_t), kDataOffset);
 
     CpuHarness cpu;
-    for (std::size_t i = 0; i < generated.initial_data.size(); ++i) {
+    for (std::size_t i{0}; i < generated.initial_data.size(); ++i) {
         cpu.write_byte(guest_addr(kDataOffset + static_cast<std::uint32_t>(i)), generated.initial_data[i]);
     }
     cpu.load_program(generated.words);
     cpu.reset();
 
-    const auto result = cpu.run(generated.words.size() + 32);
+    const auto result{cpu.run(generated.words.size() + 32)};
     expect_halt(result, generated.expected_signature,
                 guest_addr(static_cast<std::uint32_t>((generated.words.size() - 1) * sizeof(std::uint32_t))));
 
-    for (std::size_t offset = 0; offset < kDataBytes; offset += 4) {
+    for (std::size_t offset{0}; offset < kDataBytes; offset += 4) {
         EXPECT_EQ(cpu.read_word(guest_addr(kDataOffset + static_cast<std::uint32_t>(offset))),
                   read_word(generated.expected_data, offset))
             << "offset=" << offset;
@@ -214,7 +349,17 @@ INSTANTIATE_TEST_SUITE_P(
         0x8000'0000u,
         0xa5a5'5a5au,
         0xc001'd00du,
-        0xffff'ffffu
+        0xffff'ffffu,
+        0x0d00'deadu,
+        0x1234'abcdu,
+        0x5555'5555u,
+        0xaaaa'aaaau,
+        0x1010'1010u,
+        0xf0f0'f0f0u,
+        0x1111'2222u,
+        0x3333'4444u,
+        0x7fff'ffffu,
+        0x3cc0'ffeeu
     )
 );
 

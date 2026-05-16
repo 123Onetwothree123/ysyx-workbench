@@ -4,9 +4,9 @@
 static csh handle{};
 void init_disasm()
 {
-    constexpr cs_arch arch = CS_ARCH_RISCV;
-    constexpr cs_mode mode = CS_MODE_RISCV32;
-    if (const cs_err err = cs_open(arch, mode, &handle); err != CS_ERR_OK)
+    constexpr cs_arch arch{CS_ARCH_RISCV};
+    constexpr cs_mode mode{CS_MODE_RISCV32};
+    if (const cs_err err{cs_open(arch, mode, &handle)}; err != CS_ERR_OK)
     {
         std::println(stderr, "cs_open failed: {}", cs_strerror(err));
         std::abort();

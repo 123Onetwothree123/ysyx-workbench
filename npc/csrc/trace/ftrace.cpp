@@ -14,13 +14,13 @@
 #include <utility>
 namespace
 {
-    constexpr std::uint32_t OpcodeMask = 0x7fu;
-    constexpr std::uint32_t OpcodeJal = 0x6fu;
-    constexpr std::uint32_t OpcodeJalr = 0x67u;
-    constexpr std::uint32_t Funct3Mask = 0x7u;
-    constexpr std::uint32_t ReturnRegister = 1u;
-    constexpr std::uint64_t InstructionBytes = 4u;
-    constexpr std::string_view UnknownFunction = "???";
+    constexpr auto OpcodeMask{std::uint32_t{0x7fu}};
+    constexpr auto OpcodeJal{std::uint32_t{0x6fu}};
+    constexpr auto OpcodeJalr{std::uint32_t{0x67u}};
+    constexpr auto Funct3Mask{std::uint32_t{0x7u}};
+    constexpr auto ReturnRegister{std::uint32_t{1u}};
+    constexpr auto InstructionBytes{std::uint64_t{4u}};
+    constexpr auto UnknownFunction{std::string_view{"???"}};
     /**
      * @brief 取出一个整数中指定范围的位。
      *
@@ -31,8 +31,8 @@ namespace
      */
     [[nodiscard]] constexpr std::uint32_t Bits(std::uint32_t Value, unsigned High, unsigned Low) noexcept
     {
-        const auto Width = High - Low + 1u;
-        const auto Mask = (1u << Width) - 1u;
+        const auto Width{High - Low + 1u};
+        const auto Mask{(1u << Width) - 1u};
         return (Value >> Low) & Mask;
     }
     /**
@@ -44,7 +44,7 @@ namespace
      */
     [[nodiscard]] constexpr std::int32_t SignExtend(std::uint32_t Value, unsigned BitCount) noexcept
     {
-        const auto SignBit = 1u << (BitCount - 1u);
+        const auto SignBit{1u << (BitCount - 1u)};
         return static_cast<std::int32_t>((Value ^ SignBit) - SignBit);
     }
     /**
@@ -178,7 +178,7 @@ Ftrace::~Ftrace() = default;
  */
 std::expected<void, std::string> Ftrace::LoadElf(std::filesystem::path ElfFile)
 {
-    auto Reader = Readelf::load(std::move(ElfFile));
+    auto Reader{Readelf::load(std::move(ElfFile))};
     if (!Reader)
     {
         return std::unexpected{Reader.error()};
@@ -285,7 +285,7 @@ void Ftrace::OnCall(std::uint64_t CallPC, std::uint64_t FunctionAddress)
     {
         return;
     }
-    const auto FunctionName = ResolveFunctionName(FunctionAddress);
+    const auto FunctionName{ResolveFunctionName(FunctionAddress)};
     CallStack.emplace_back(CallPC, CallPC + InstructionBytes, FunctionAddress, FunctionName);
 
     PushEvent(FtraceEvent{
@@ -308,7 +308,7 @@ void Ftrace::OnReturn(std::uint64_t CurrentPC, std::uint64_t TargetPC)
     {
         return;
     }
-    auto FunctionName = std::string_view{};
+    auto FunctionName{std::string_view{}};
     if (!CallStack.empty())
     {
         FunctionName = CallStack.back().GetFunctionName();
@@ -393,9 +393,9 @@ const Readelf *Ftrace::ElfReader() const noexcept
 void Ftrace::PrintCurrentStack() const
 {
     std::println("ftrace: call stack depth = {}", CallStack.size());
-    for (std::size_t Index = 0; Index < CallStack.size(); ++Index)
+    for (std::size_t Index{0}; Index < CallStack.size(); ++Index)
     {
-        const auto &Frame = CallStack[Index];
+        const auto &Frame{CallStack[Index]};
         std::println("  #{} {} @ 0x{:08x} (call 0x{:08x}, ret 0x{:08x})",
                      Index,
                      PrintableName(Frame.GetFunctionName()),
@@ -420,7 +420,7 @@ void Ftrace::PrintHistory() const
  */
 void Ftrace::PrintStatus() const
 {
-    const auto ElfName = Elf ? Elf->path().string() : std::string{"<none>"};
+    const auto ElfName{Elf ? Elf->path().string() : std::string{"<none>"}};
     std::println("ftrace: enabled={}, record_history={}, depth={}, history={}, elf={}, functions={}",
                  Enabled,
                  ShouldRecordHistory,
@@ -442,7 +442,7 @@ std::string_view Ftrace::ResolveFunctionName(std::uint64_t Address) const noexce
         return {};
     }
 
-    const auto Name = Elf->find_function_name(static_cast<std::size_t>(Address));
+    const auto Name{Elf->find_function_name(static_cast<std::size_t>(Address))};
     return Name.value_or(std::string_view{});
 }
 /**
@@ -465,7 +465,7 @@ void Ftrace::PushEvent(FtraceEvent Event)
  */
 void Ftrace::PrintEventLine(const FtraceEvent &Event) const
 {
-    const auto Indent = std::string(IndentFor(Event) * 2u, ' ');
+    const auto Indent{std::string(IndentFor(Event) * 2u, ' ')};
     if (Event.GetType() == FtraceEventType::Call)
     {
         std::println("0x{:08x}: {}call [{}@0x{:08x}]",
@@ -489,7 +489,7 @@ void Ftrace::PrintEventLine(const FtraceEvent &Event) const
  */
 std::expected<void, std::string> InitializeFtrace(const std::filesystem::path &ElfFile, bool ShouldEnable)
 {
-    auto Result = GlobalFtrace.LoadElf(ElfFile);
+    auto Result{GlobalFtrace.LoadElf(ElfFile)};
     if (!Result)
     {
         return Result;
@@ -509,8 +509,8 @@ extern "C" void ftrace_record(std::uint64_t PC, std::uint32_t Instruction, std::
 #ifdef CONFIG_FTRACE
     GlobalFtrace.OnInstruction(PC, Instruction, NextPC);
 #else
-    (void)PC;
-    (void)Instruction;
-    (void)NextPC;
+    static_cast<void>(PC);
+    static_cast<void>(Instruction);
+    static_cast<void>(NextPC);
 #endif
 }

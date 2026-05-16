@@ -16,7 +16,7 @@ SDBCommandUsageList cCommand::Usage() const noexcept
 }
 SDBCommandResult cCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Args;
+    static_cast<void>(Args);
     while (!Verilated::gotFinish() && !npc_halted)
     {
         SDBStepCycle(Context.GetTop());

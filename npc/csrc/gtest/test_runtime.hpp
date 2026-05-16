@@ -9,7 +9,7 @@
 
 namespace npc::test {
 
-inline constexpr std::uint32_t kPmemBase = 0x80000000u;
+inline constexpr std::uint32_t kPmemBase{0x80000000u};
 
 [[nodiscard]] constexpr std::uint32_t guest_addr(const std::uint32_t offset) {
     return kPmemBase + offset;

@@ -5,7 +5,8 @@ module EXU(
     input [31:0] SourceDATA_B,
     output [31:0] ALUResult
 );
-    ALU alu_inst(
+//简单起见就直接输入给alu，以后再考虑搞个控制环境吧
+    ALU alu(
         .A(SourceDATA_A),
         .B(SourceDATA_B),
         .ALUCtrl(ALUCtrl),

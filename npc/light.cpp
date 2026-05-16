@@ -1,15 +1,16 @@
 #include <stdio.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #define _CONCAT(x, y) x ## y
 #define CONCAT(x, y)  _CONCAT(x, y)
 #define BITMASK(bits) ((1ull << (bits)) - 1)
 // similar to x[hi:lo] in verilog
 #define BITS(x, hi, lo) (((x) >> (lo)) & BITMASK((hi) - (lo) + 1))
-#define DEF_WIRE(name, w) uint64_t name : w
-#define DEF_REG(name, w)  uint64_t name : w; \
-                          uint64_t CONCAT(name, _next) : w; \
-                          uint64_t CONCAT(name, _update) : 1
+#define DEF_WIRE(name, w) std::uint64_t name : w
+#define DEF_REG(name, w)  std::uint64_t name : w; \
+                          std::uint64_t CONCAT(name, _next) : w; \
+                          std::uint64_t CONCAT(name, _update) : 1
 #define EVAL(c, name, val) do { \
                              c->CONCAT(name, _next) = (val); \
                              c->CONCAT(name, _update) = 1; \
@@ -51,9 +52,9 @@ static void reset(Circuit *c) {
 }
 
 static void display(Circuit *c) {
-  static uint16_t last_led = 0;
+  static std::uint16_t last_led{0};
   if (last_led != c->led) { // only update display when c->led changes
-    for (int i = 0; i < 16; i ++) {
+    for (std::size_t i{0}; i < 16; i ++) {
       putchar(BITS(c->led, i, i) ? 'o' : '.');
     }
     putchar('\r');

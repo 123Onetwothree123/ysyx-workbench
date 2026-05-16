@@ -2,6 +2,7 @@
 #define IRINGBUF_HPP
 #include "RecordInstruction.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <array>
 class iringbuf
 {

@@ -21,34 +21,35 @@ void DifftestCPUState::SetGPR(std::size_t Index, std::uint32_t Value)
     }
     gpr[Index] = Value;
 }
-
+//一个月前本来打算直接列表的，但是发现跑起来的时候就出现了大量的测试点
 std::uint32_t DifftestCPUState::GetPC() const
 {
     return pc;
 }
-
+//同上
 void DifftestCPUState::SetPC(std::uint32_t Value)
 {
     pc = Value;
 }
-
+//
 DifftestCPUState DifftestCPUState::ReadDUTState(VRV32E32Reg &Top)
 {
-    DifftestCPUState State{};
-    for (int Index = 0; Index < 32; ++Index)
+    auto State{DifftestCPUState{}};
+    for (std::size_t Index{0}; Index < State.gpr.size(); ++Index)
     {
-        static_cast<void>(CPP_NPCGetGPR(Index)); // 调用 DPI 获取 GPR 值以触发 Verilator 更新
-        Top.eval();                               // 执行 Verilator 组合逻辑求值
-        State.gpr[static_cast<std::size_t>(Index)] = CPP_NPCGetGPR(Index);
+        const auto RegisterIndex{static_cast<std::int32_t>(Index)};
+        static_cast<void>(CPP_NPCGetGPR(RegisterIndex)); // 调用 DPI 获取 GPR 值以触发 Verilator 更新
+        Top.eval();                                      // 执行 Verilator 组合逻辑求值
+        State.gpr[Index] = CPP_NPCGetGPR(RegisterIndex);
     }
     State.gpr[0] = 0; // x0 寄存器输出恒为 0
-    State.pc = CPP_NpcGetPC();
+    State.pc = CPP_NPCGetPC();
     return State;
 }
 
 bool DifftestCPUState::CheckRegs(const DifftestCPUState &DUT) const
 {
-    for (std::size_t Index = 0; Index < gpr.size(); ++Index)
+    for (std::size_t Index{0}; Index < gpr.size(); ++Index)
     {
         if (gpr[Index] != DUT.gpr[Index])
         {

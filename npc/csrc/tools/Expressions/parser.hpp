@@ -2,6 +2,7 @@
 #define PARSER_HPP
 #include "token.hpp"
 #include "ast.hpp"
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -10,7 +11,7 @@ class parser
 {
 private:
     std::vector<token> tokens;
-    std::size_t position = 0;                                  // 当前解析到的token的位置
+    std::size_t position{0};                                  // 当前解析到的token的位置
     [[nodiscard]] bool IsAtEnd() const noexcept;               // 解析完了
     [[nodiscard]] const token &Current() const;                // 当前token
     [[nodiscard]] const token &Peek(std::size_t offset) const; // 向前看offset个token

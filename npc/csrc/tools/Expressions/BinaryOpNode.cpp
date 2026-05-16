@@ -11,7 +11,7 @@ std::uint32_t BinaryOpNode::Evaluate(const EvaluationContext &context) const
     // 逻辑与
     if (Token.IsLogicalAnd())
     {
-        std::uint32_t LeftValue = Left->Evaluate(context);
+        const auto LeftValue{Left->Evaluate(context)};
         if (LeftValue == 0)
         {
             return 0;
@@ -19,8 +19,8 @@ std::uint32_t BinaryOpNode::Evaluate(const EvaluationContext &context) const
         // 右边不需要求值了，直接看结果就行了
         return Right->Evaluate(context) != 0;
     }
-    std::uint32_t LeftValue = Left->Evaluate(context);
-    std::uint32_t RightValue = Right->Evaluate(context);
+    const auto LeftValue{Left->Evaluate(context)};
+    const auto RightValue{Right->Evaluate(context)};
     if (Token.IsPlus())
     {
         return LeftValue + RightValue;

@@ -12,7 +12,7 @@ namespace {
 
 TEST(TestRuntimeMemoryTest, WordAndByteAccessUseLittleEndianLayout) {
     CpuHarness cpu;
-    const auto addr = guest_addr(0x40);
+    const auto addr{guest_addr(0x40)};
 
     cpu.write_word(addr, 0x7856'3412u);
     EXPECT_EQ(cpu.read_byte(addr + 0), 0x12u);
@@ -26,7 +26,7 @@ TEST(TestRuntimeMemoryTest, WordAndByteAccessUseLittleEndianLayout) {
 
 TEST(TestRuntimeMemoryTest, HalfwordHelpersAccessTwoLittleEndianBytes) {
     CpuHarness cpu;
-    const auto addr = guest_addr(0x44);
+    const auto addr{guest_addr(0x44)};
 
     cpu.write_word(addr, 0u);
     cpu.write_half(addr + 1, 0xbeefu);
@@ -37,7 +37,7 @@ TEST(TestRuntimeMemoryTest, HalfwordHelpersAccessTwoLittleEndianBytes) {
 
 TEST(TestRuntimeMemoryTest, DPIReadAlignsToContainingWord) {
     CpuHarness cpu;
-    const auto addr = guest_addr(0x80);
+    const auto addr{guest_addr(0x80)};
     cpu.write_word(addr, 0x1122'3344u);
 
     EXPECT_EQ(static_cast<std::uint32_t>(pmem_read(static_cast<int>(addr + 0))), 0x1122'3344u);
@@ -46,7 +46,7 @@ TEST(TestRuntimeMemoryTest, DPIReadAlignsToContainingWord) {
 
 TEST(TestRuntimeMemoryTest, DPIWriteMaskUpdatesOnlySelectedByteLanes) {
     CpuHarness cpu;
-    const auto addr = guest_addr(0x84);
+    const auto addr{guest_addr(0x84)};
     cpu.write_word(addr, 0x1122'3344u);
 
     pmem_write(static_cast<int>(addr), static_cast<int>(0xaabb'ccddu), static_cast<char>(0b0101));
@@ -63,10 +63,10 @@ struct DpiWriteLaneCase {
 class DpiWriteLaneTest : public ::testing::TestWithParam<DpiWriteLaneCase> {};
 
 TEST_P(DpiWriteLaneTest, SingleLaneMasksUpdateOnlyTheRequestedByte) {
-    const auto [mask, data, expected] = GetParam();
+    const auto [mask, data, expected]{GetParam()};
 
     CpuHarness cpu;
-    const auto addr = guest_addr(0x90);
+    const auto addr{guest_addr(0x90)};
     cpu.write_word(addr, 0x1122'3344u);
 
     pmem_write(static_cast<int>(addr), static_cast<int>(data), static_cast<char>(mask));
@@ -87,7 +87,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST(TestRuntimeMemoryTest, DPIWriteWithZeroMaskLeavesMemoryUntouched) {
     CpuHarness cpu;
-    const auto addr = guest_addr(0x88);
+    const auto addr{guest_addr(0x88)};
     cpu.write_word(addr, 0x5566'7788u);
 
     pmem_write(static_cast<int>(addr), static_cast<int>(0xffff'ffffu), static_cast<char>(0));
@@ -97,7 +97,7 @@ TEST(TestRuntimeMemoryTest, DPIWriteWithZeroMaskLeavesMemoryUntouched) {
 
 TEST(TestRuntimeMemoryTest, DPIWriteAlignsAddressBeforeApplyingByteMask) {
     CpuHarness cpu;
-    const auto addr = guest_addr(0x8c);
+    const auto addr{guest_addr(0x8c)};
     cpu.write_word(addr, 0x1122'3344u);
 
     pmem_write(static_cast<int>(addr + 3), static_cast<int>(0xaa00'0000u), static_cast<char>(0b1000));
@@ -107,7 +107,7 @@ TEST(TestRuntimeMemoryTest, DPIWriteAlignsAddressBeforeApplyingByteMask) {
 
 TEST(TestRuntimeMemoryTest, LoadProgramCanWriteAtCustomBase) {
     CpuHarness cpu;
-    const auto base = guest_addr(0x200);
+    const auto base{guest_addr(0x200)};
 
     cpu.load_program({0x1111'1111u, 0x2222'2222u, 0x3333'3333u}, base);
 

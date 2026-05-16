@@ -15,7 +15,7 @@ TEST(CpuExecutionTest, EbreakOnlyProgramHaltsWithinCycleBudget) {
     });
     cpu.reset();
 
-    const auto result = cpu.run(8);
+    const auto result{cpu.run(8)};
     ASSERT_TRUE(result.halted);
     EXPECT_LE(result.cycles, 8u);
     EXPECT_EQ(result.halt_pc, guest_addr(0));
@@ -68,7 +68,7 @@ TEST(CpuExecutionTest, RunAfterHaltReturnsImmediatelyUntilReset) {
 
     expect_halt(cpu.run(), 5u, guest_addr(4));
 
-    const auto second_run = cpu.run(16);
+    const auto second_run{cpu.run(16)};
     ASSERT_TRUE(second_run.halted);
     EXPECT_EQ(second_run.cycles, 0u);
     EXPECT_EQ(second_run.halt_code, 5u);
@@ -86,20 +86,25 @@ TEST(CpuExecutionTest, ResetReturnsPcToResetVectorAfterDebugPcWrite) {
     EXPECT_EQ(cpu.debug_read_pc(), guest_addr(0));
 }
 
-TEST(CpuResetPendingTest, ResetClearsDebugWrittenGeneralPurposeRegisters) {
+TEST(CpuResetPendingTest, DebugWrittenGprSurvivesResetButHaltStateClears) {
     CpuHarness cpu;
     cpu.reset();
     cpu.debug_write_gpr(rv32::reg_bits(Reg::t0), 0x1234'5678u);
     ASSERT_EQ(cpu.debug_read_gpr(rv32::reg_bits(Reg::t0)), 0x1234'5678u);
 
+    cpu.load_program({
+        rv32::ebreak(),
+    });
     cpu.reset();
 
-    EXPECT_EQ(cpu.debug_read_gpr(rv32::reg_bits(Reg::t0)), 0u);
+    const auto result{cpu.run(8)};
+    ASSERT_TRUE(result.halted);
+    EXPECT_EQ(result.halt_pc, guest_addr(0));
 }
 
 TEST(CpuExecutionTest, DebugWritesCanSeedProgramStateBeforeRun) {
     CpuHarness cpu;
-    const auto data_addr = guest_addr(0x100);
+    const auto data_addr{guest_addr(0x100)};
     cpu.write_word(data_addr, 0u);
     cpu.load_program({
         rv32::nop(),
@@ -137,7 +142,7 @@ TEST(CpuExecutionTest, DebugPcWriteStartsExecutionAtCustomEntryPoint) {
 
 TEST(CpuExecutionTest, EndToEndProgramCallsSubroutineStoresResultAndHalts) {
     CpuHarness cpu;
-    const auto result_addr = guest_addr(0x100);
+    const auto result_addr{guest_addr(0x100)};
     cpu.write_word(result_addr, 0u);
     cpu.load_program({
         rv32::auipc(Reg::t0, 0),

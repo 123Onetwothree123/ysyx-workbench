@@ -18,7 +18,7 @@ SDBCommandUsageList wCommand::Usage() const noexcept
 }
 SDBCommandResult wCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    (void)Context;
+    static_cast<void>(Context);
     Args = SDBTrimLeft(Args);
     if (Args.empty())
     {
