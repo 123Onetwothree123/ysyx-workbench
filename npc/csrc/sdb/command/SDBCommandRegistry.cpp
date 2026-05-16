@@ -23,7 +23,6 @@
 #include <ranges>
 #include <string>
 #include <utility>
-
 namespace
 {
 [[nodiscard]] std::size_t SDBUsageSyntaxWidth(const SDBCommand &Command, const SDBCommandUsage &Usage) noexcept

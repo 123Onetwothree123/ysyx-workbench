@@ -1,8 +1,6 @@
 #include "RegisterName.hpp"
-
 #include <array>
 #include <cstddef>
-
 std::string_view StripRegisterPrefix(std::string_view Name)
 {
     if (!Name.empty() && Name.front() == '$')

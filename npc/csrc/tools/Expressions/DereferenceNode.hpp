@@ -8,7 +8,6 @@ class DereferenceNode : public AstNode
 private:
     std::unique_ptr<AstNode> address;
     std::size_t size{4}; // 默认4字节
-
 public:
     DereferenceNode(std::unique_ptr<AstNode> address, std::size_t size);
     [[nodiscard]] std::uint32_t Evaluate(const EvaluationContext &context) const override;

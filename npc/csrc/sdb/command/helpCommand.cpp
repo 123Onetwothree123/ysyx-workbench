@@ -1,10 +1,7 @@
 #include "command/helpCommand.hpp"
-
 #include "command/SDBCommandRegistry.hpp"
 #include "command/SDBCommandUtils.hpp"
-
 #include <print>
-
 helpCommand::helpCommand(const SDBCommandRegistry &InputRegistry)
     : Registry(InputRegistry)
 {

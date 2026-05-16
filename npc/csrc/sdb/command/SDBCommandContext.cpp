@@ -1,5 +1,4 @@
 #include "command/SDBCommandContext.hpp"
-
 SDBCommandContext::SDBCommandContext(VRV32E32Reg &Top, std::size_t &Cycles)
     : TopRef(Top), CyclesRef(Cycles)
 {

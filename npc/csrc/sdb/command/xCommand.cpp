@@ -4,7 +4,6 @@
 #include "command/SDBCommandUtils.hpp"
 #include "memory.hpp"
 #include "tools/Expressions/Expressions.hpp"
-
 #include <charconv>
 #include <cstddef>
 #include <cstdint>

@@ -9,10 +9,8 @@
 #include <expected>
 #include <string>
 #include <format>
-
 std::array<std::uint8_t, PMEM_SIZE> pmem{};              // 抄am拿数组当内存
 static auto boot_time{std::chrono::steady_clock::now()}; // 启动时间
-
 extern "C" int pmem_read(int raddr)
 {
     // 总是读取地址为`raddr & ~0x3u`的4字节返回

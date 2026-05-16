@@ -67,7 +67,6 @@ wire [31:0] exception_target;
 wire [6:0]  opcode = instruction[6:0];
 wire [2:0]  funct3 = instruction[14:12];
 wire        is_lui = (opcode == `OPCODE_UpperImmediate_lui);
-
 always@(*)begin
     if(is_lui)
         source_data_a=32'b0;
@@ -107,7 +106,6 @@ end
 //sdb
 wire [4:0]  sdb_debug_raddr;
 wire [31:0] sdb_debug_rdata;
-
 PC CPU_PC(
     .clk(clk),
     .rst(rst),
@@ -118,12 +116,10 @@ PC CPU_PC(
     .DebugNextPC(sdb_pc_write_data),
     .PC(pc_current)
 );
-
 ROM_DPI_C CPU_ROM(
     .Address(inst_addr),
     .ReadDATA(inst_data)
 );
-
 IFU CPU_IFU(
     .PC(pc_current),
     .InstructionReadDATA(inst_data),
@@ -131,7 +127,6 @@ IFU CPU_IFU(
     .InstructionOutput(instruction),
     .SNPC(snpc)
 );
-
 IDU CPU_IDU(
     .Instruction(instruction),
     .RegWrite(reg_write),
@@ -153,7 +148,6 @@ IDU CPU_IDU(
     .IsMret(is_mret),
     .CSRAddress(csr_address)
 );
-
 GPR CPU_GPR(
     .clk(clk),
     .wdata(rf_write_data),
@@ -172,14 +166,12 @@ GPR CPU_GPR(
     .DebugWdata(sdb_gpr_write_data),
     .DebugWriteEN(sdb_gpr_write_en)
 );
-
 EXU CPU_EXU(
     .ALUCtrl(alu_ctrl),
     .SourceDATA_A(source_data_a),
     .SourceDATA_B(source_data_b),
     .ALUResult(alu_result)
 );
-
 BranchComparator CPU_BRANCH_COMP(
     .A(rs1_data),
     .B(rs2_data),
@@ -187,7 +179,6 @@ BranchComparator CPU_BRANCH_COMP(
     .IsBranch(is_branch),
     .Taken(branch_taken)
 );
-
 CSR CPU_CSR(
     .clk(clk),
     .rst(rst),
@@ -204,7 +195,6 @@ CSR CPU_CSR(
     .ExceptionTaken(exception_taken),
     .ExceptionTarget(exception_target)
 );
-
 LSU CPU_LSU(
     .MemoryValid(mem_valid),
     .MemoryWrite(mem_write),
@@ -220,7 +210,6 @@ LSU CPU_LSU(
     .LoadDATA(load_data),
     .AddrMisaligned(addr_misaligned)
 );
-
 Memory_DPI_C CPU_Memory(
     .clk(clk),
     .valid(mem_valid),
@@ -231,7 +220,6 @@ Memory_DPI_C CPU_Memory(
     .wmask(mem_write_mask),
     .rdata(mem_read_data)
 );
-
 WBU CPU_WBU(
     .RegWrite(reg_write),
     .WBSel(wb_sel),
@@ -242,7 +230,6 @@ WBU CPU_WBU(
     .RegisterFileWriteEN(rf_write_en),
     .RegisterFileWriteDATA(rf_write_data)
 );
-
 NPC CPU_NPC(
     .SNPC(snpc),
     .RedirectTarget(final_pc_redirect_target),
@@ -250,7 +237,6 @@ NPC CPU_NPC(
     .NextPC(pc_next),
     .PCEnable(pc_enable)
 );
-
 EBREAK_DPI_C CPU_EBREAK(
     .clk(clk),
     .valid(is_ebreak_gtest),

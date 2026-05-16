@@ -1,10 +1,7 @@
 #include "SDBMemory.hpp"
-
 #include "memory.hpp"
-
 #include <iostream>
 #include <print>
-
 std::uint32_t NPCMemoryRead(std::uint32_t Addr, std::size_t Len)
 {
     if (Len != 1 && Len != 2 && Len != 4)

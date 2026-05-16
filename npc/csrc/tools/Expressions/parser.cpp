@@ -1,12 +1,10 @@
 #include "parser.hpp"
-
 #include "BinaryOpNode.hpp"
 #include "DereferenceNode.hpp"
 #include "NumberNode.hpp"
 #include "ParenthesizedNode.hpp"
 #include "RegisterNode.hpp"
 #include "UnaryMinusNode.hpp"
-
 #include <format>
 #include <memory>
 parser::parser(std::vector<token> InputTokens)

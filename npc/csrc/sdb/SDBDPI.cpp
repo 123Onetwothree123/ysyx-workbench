@@ -10,15 +10,12 @@
 #include <print>
 #include <string>
 #include <vector>
-
 extern "C" int NPCGetGPR(int RegNum);
 extern "C" int NPCGetPC();
-
 namespace
 {
     std::string DPIInstanceScope{"TOP"};
     std::string DPITopScope{"TOP"};
-
 // ANSI颜色宏（与NEMU保持一致）
 #define ANSI_NONE "\033[0m"
 #define ANSI_FG_BLACK "\033[1;30m"
@@ -29,7 +26,6 @@ namespace
 #define ANSI_FG_MAGENTA "\033[1;35m"
 #define ANSI_FG_CYAN "\033[1;36m"
 #define ANSI_FG_WHITE "\033[1;37m"
-
     /**
      * @brief 将Verilated模型名称转换为DPI scope名称
      * @param ModelName 模型名称（通常以V开头）
@@ -48,7 +44,6 @@ namespace
      * @brief 设置当前DPI调用的SystemVerilog作用域
      * @param SubScope 目标子模块名称，如 "SDB" 或 "PC_DPI"
      * @return 若成功找到并设置作用域则返回true，否则返回false
-     *
      * 依次尝试以下候选作用域：
      *   - DPITopScope + "." + SubScope
      *   - DPIInstanceScope + "." + DPITopScope + "." + SubScope
@@ -82,7 +77,6 @@ namespace
  * @brief 设置DPI的顶层作用域
  * @param InstanceScope Verilator实例的作用域名称
  * @param ModelName 顶层模块名称
- *
  * 根据实例作用域和模型名称设置DPI的顶层作用域，以便DPI函数能够直接访问SDB模块。
  */
 void SDBDPISetTopScope(std::string_view InstanceScope, std::string_view ModelName)
@@ -122,7 +116,6 @@ std::uint32_t CPP_NPCGetPC()
 // ---------------------------------------------------------------------------
 // 寄存器表格辅助函数（与NEMU风格一致，支持ANSI颜色）
 // ---------------------------------------------------------------------------
-
 /**
  * @brief 计算字符串的终端显示宽度（跳过ANSI转义序列）
  * @param s 输入字符串

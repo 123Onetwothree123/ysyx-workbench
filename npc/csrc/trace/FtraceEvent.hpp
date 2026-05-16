@@ -1,16 +1,13 @@
 #ifndef FTRACE_EVENT_HPP
 #define FTRACE_EVENT_HPP
-
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
-
 enum class FtraceEventType : std::uint8_t
 {
     Call,   // 函数调用事件
     Return, // 函数返回事件
 };
-
 /*
 历史事件，记录程序运行的时候产生的一次call或ret事件快照
 */
@@ -31,5 +28,4 @@ private:
     std::string_view FunctionName{};             // 当前事件对应的函数名
     std::size_t Depth{};                         // 当前事件的调用深度
 };
-
 #endif

@@ -1,7 +1,5 @@
 #include "Laxer.hpp"
-
 #include <cctype>
-
 Laxer::Laxer(std::string_view input)
 {
     this->input = input;

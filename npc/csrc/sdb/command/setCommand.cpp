@@ -3,18 +3,15 @@
 #include "command/SDBCommandUtils.hpp"
 #include "tools/Expressions/Expressions.hpp"
 #include "tools/Expressions/RegisterName.hpp"
-
 #include <VRV32E32Reg.h>
 #include <cstdint>
 #include <print>
 #include <string>
 #include <string_view>
 #include <utility>
-
 namespace
 {
     constexpr std::string_view UsageText{"set reg <name> <expr>"};
-
     std::pair<std::string_view, std::string_view> TakeToken(std::string_view Text)
     {
         Text = SDBTrimLeft(Text);

@@ -5,9 +5,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
-
 class VRV32E32Reg;
-
 class SDBCommandRegistry final
 {
 public:
@@ -21,12 +19,10 @@ public:
     // 命令历史管理
     void AddHistory(std::string_view Line);                                    // 添加一条命令到历史记录
     [[nodiscard]] const std::vector<std::string> &GetHistory() const noexcept; // 获取命令历史记录
-
 private:
     void RegisterBuiltins(); // 注册内置命令
     SDBCommandContext Context;
     std::vector<std::unique_ptr<SDBCommand>> Commands{}; // 已注册的命令列表
     std::vector<std::string> History{};
 };
-
 #endif

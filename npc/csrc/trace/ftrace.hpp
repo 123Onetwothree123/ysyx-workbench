@@ -1,10 +1,8 @@
 #ifndef FTRACE_HPP
 #define FTRACE_HPP
-
 #include "FtraceEvent.hpp"
 #include "FtraceFrame.hpp"
 #include "readelf.hpp"
-
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -14,7 +12,6 @@
 #include <string>
 #include <string_view>
 #include <vector>
-
 /*
 模块全局状态，负责维护ELF符号、当前调用栈和历史事件
 */

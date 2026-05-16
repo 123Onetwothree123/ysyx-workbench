@@ -9,7 +9,6 @@ private:
     token Token;
     std::unique_ptr<AstNode> Left;
     std::unique_ptr<AstNode> Right;
-
 public:
     BinaryOpNode(token Token, std::unique_ptr<AstNode> Left, std::unique_ptr<AstNode> Right);
     [[nodiscard]] std::uint32_t Evaluate(const EvaluationContext &context) const override;

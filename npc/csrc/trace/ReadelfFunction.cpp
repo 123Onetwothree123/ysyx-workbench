@@ -1,5 +1,4 @@
 #include "ReadelfFunction.hpp"
-
 std::size_t ReadelfFunction::size() const noexcept
 {
     return end - start;

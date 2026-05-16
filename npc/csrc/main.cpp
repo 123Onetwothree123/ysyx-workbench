@@ -15,13 +15,10 @@
 #include "NPC_SDB.hpp"
 #include "SDBDPI.hpp"
 #include "trace.hpp"
-
 bool npc_halted{false};
 static std::uint32_t halt_pc{0};  // 记录停止的时候的PC
 static std::uint32_t halt_ret{0}; // 返回码，0是good，1是bad
-
 void reset_dut(std::unique_ptr<VRV32E32Reg> &top); // 复位Device Under Test被测设计的
-
 namespace
 {
     struct CliOptions
@@ -32,7 +29,6 @@ namespace
         bool ftrace_enabled{true};
         bool batch_mode{false};
     };
-
     std::expected<CliOptions, std::string> parse_cli(int argc, char const *argv[])
     {
         CliOptions options;

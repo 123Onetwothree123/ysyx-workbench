@@ -2,7 +2,6 @@
 #include "Laxer.hpp"
 #include "parser.hpp"
 #include "ast.hpp"
-
 std::expected<std::unique_ptr<AstNode>, std::string> Expressions::Parse(std::string_view expressions)
 {
     Laxer laxer(expressions);

@@ -5,7 +5,6 @@ class RegisterNode : public AstNode
 {
 private:
     std::string name;
-
 public:
     explicit RegisterNode(std::string name);
     [[nodiscard]] std::uint32_t Evaluate(const EvaluationContext &context) const override;

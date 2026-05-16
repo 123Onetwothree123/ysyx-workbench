@@ -23,5 +23,4 @@ module PC (
         end
     end
     assign PC = PCReg;
-
 endmodule

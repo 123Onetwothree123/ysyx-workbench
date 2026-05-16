@@ -1,14 +1,11 @@
 #include "ftrace.hpp"
-
 /**
  * @file ftrace.cpp
  * @brief NPC的函数调用跟踪实现。
- *
  * @details
  * 这个文件负责从已提交指令中识别RISC-V call/ret，维护当前调用栈，
  * 记录历史事件，并把事件按缩进格式打印出来。
  */
-
 #include <print>
 #include <string>
 #include <utility>
@@ -23,7 +20,6 @@ namespace
     constexpr auto UnknownFunction{std::string_view{"???"}};
     /**
      * @brief 取出一个整数中指定范围的位。
-     *
      * @param Value std::uint32_t，原始整数。
      * @param High unsigned，最高位编号。
      * @param Low unsigned，最低位编号。
@@ -37,7 +33,6 @@ namespace
     }
     /**
      * @brief 对指定位宽的立即数做符号扩展。
-     *
      * @param Value std::uint32_t，原始立即数。
      * @param BitCount unsigned，立即数的有效位数。
      * @return std::int32_t，符号扩展后的有符号整数。
@@ -49,7 +44,6 @@ namespace
     }
     /**
      * @brief 取出RISC-V指令的opcode字段。
-     *
      * @param Instruction std::uint32_t，原始指令。
      * @return std::uint32_t，opcode字段。
      */
@@ -59,7 +53,6 @@ namespace
     }
     /**
      * @brief 取出RISC-V指令的rd字段。
-     *
      * @param Instruction std::uint32_t，原始指令。
      * @return std::uint32_t，rd寄存器编号。
      */
@@ -69,7 +62,6 @@ namespace
     }
     /**
      * @brief 取出RISC-V指令的funct3字段。
-     *
      * @param Instruction std::uint32_t，原始指令。
      * @return std::uint32_t，funct3字段。
      */
@@ -79,7 +71,6 @@ namespace
     }
     /**
      * @brief 取出RISC-V指令的rs1字段。
-     *
      * @param Instruction std::uint32_t，原始指令。
      * @return std::uint32_t，rs1寄存器编号。
      */
@@ -89,7 +80,6 @@ namespace
     }
     /**
      * @brief 取出I型指令立即数并做符号扩展。
-     *
      * @param Instruction std::uint32_t，原始指令。
      * @return std::int32_t，符号扩展后的I型立即数。
      */
@@ -99,7 +89,6 @@ namespace
     }
     /**
      * @brief 判断寄存器是否是链接寄存器。
-     *
      * @param Reg std::uint32_t，寄存器编号。
      * @return bool，若是x1/ra或x5/t0则返回true。
      */
@@ -109,7 +98,6 @@ namespace
     }
     /**
      * @brief 判断一条指令是否是ret。
-     *
      * @param Instruction std::uint32_t，原始指令。
      * @return bool，若指令形如`jalr x0, x1, 0`则返回true。
      */
@@ -123,7 +111,6 @@ namespace
     }
     /**
      * @brief 判断一条指令是否是函数调用。
-     *
      * @param Instruction std::uint32_t，原始指令。
      * @return bool，若指令是写链接寄存器的jal/jalr，且不是ret，则返回true。
      */
@@ -140,7 +127,6 @@ namespace
     }
     /**
      * @brief 根据事件类型和深度计算打印缩进。
-     *
      * @param Event const FtraceEvent&，待打印的ftrace事件。
      * @return std::size_t，缩进层级，不是空格数量。
      */
@@ -154,7 +140,6 @@ namespace
     }
     /**
      * @brief 返回适合打印的函数名。
-     *
      * @param Name std::string_view，原始函数名。
      * @return std::string_view，若函数名为空则返回占位字符串，否则返回原函数名。
      */
@@ -171,7 +156,6 @@ Ftrace::Ftrace() = default;
 Ftrace::~Ftrace() = default;
 /**
  * @brief 加载ELF文件并准备函数符号表。
- *
  * @param ElfFile std::filesystem::path，ELF文件路径。
  * @return std::expected<void, std::string>，成功返回空结果，失败返回错误字符串。
  */
@@ -196,7 +180,6 @@ void Ftrace::ClearElf()
 }
 /**
  * @brief 清空调用栈和历史事件。
- *
  * @details
  * 该函数保留已经加载的ELF符号，只清理运行时产生的ftrace状态。
  */
@@ -207,7 +190,6 @@ void Ftrace::Reset()
 }
 /**
  * @brief 开启或关闭ftrace。
- *
  * @param ShouldEnable bool，为true时开启ftrace，为false时关闭ftrace。
  */
 void Ftrace::Enable(bool ShouldEnable) noexcept
@@ -223,7 +205,6 @@ void Ftrace::Disable() noexcept
 }
 /**
  * @brief 返回当前ftrace是否开启。
- *
  * @return bool，当前ftrace开关状态。
  */
 bool Ftrace::IsEnabled() const noexcept
@@ -232,7 +213,6 @@ bool Ftrace::IsEnabled() const noexcept
 }
 /**
  * @brief 设置是否记录完整历史事件。
- *
  * @param ShouldRecord bool，为true时记录历史事件，为false时只打印不保存。
  */
 void Ftrace::SetRecordHistory(bool ShouldRecord) noexcept
@@ -241,7 +221,6 @@ void Ftrace::SetRecordHistory(bool ShouldRecord) noexcept
 }
 /**
  * @brief 返回当前是否记录完整历史事件。
- *
  * @return bool，当前历史记录开关状态。
  */
 bool Ftrace::RecordHistory() const noexcept
@@ -250,7 +229,6 @@ bool Ftrace::RecordHistory() const noexcept
 }
 /**
  * @brief 分析一条已提交指令，识别call或ret事件。
- *
  * @param PC std::uint64_t，当前指令的PC。
  * @param Instruction std::uint32_t，当前指令编码。
  * @param NextPC std::uint64_t，当前指令执行后的下一条PC。
@@ -273,7 +251,6 @@ void Ftrace::OnInstruction(std::uint64_t PC, std::uint32_t Instruction, std::uin
 }
 /**
  * @brief 处理一次函数调用事件并更新栈和历史。
- *
  * @param CallPC std::uint64_t，调用指令所在的PC。
  * @param FunctionAddress std::uint64_t，被调用函数的入口地址。
  */
@@ -295,7 +272,6 @@ void Ftrace::OnCall(std::uint64_t CallPC, std::uint64_t FunctionAddress)
 }
 /**
  * @brief 处理一次函数返回事件并更新栈和历史。
- *
  * @param CurrentPC std::uint64_t，当前ret指令所在的PC。
  * @param TargetPC std::uint64_t，ret跳转到的目标PC。
  */
@@ -325,7 +301,6 @@ void Ftrace::OnReturn(std::uint64_t CurrentPC, std::uint64_t TargetPC)
 }
 /**
  * @brief 获取当前调用深度。
- *
  * @return std::size_t，当前调用栈大小。
  */
 std::size_t Ftrace::Depth() const noexcept
@@ -334,7 +309,6 @@ std::size_t Ftrace::Depth() const noexcept
 }
 /**
  * @brief 获取已记录的历史事件数量。
- *
  * @return std::size_t，历史事件数量。
  */
 std::size_t Ftrace::HistorySize() const noexcept
@@ -343,7 +317,6 @@ std::size_t Ftrace::HistorySize() const noexcept
 }
 /**
  * @brief 获取ELF中已加载的函数符号数量。
- *
  * @return std::size_t，函数符号数量，未加载ELF时返回 0。
  */
 std::size_t Ftrace::FunctionCount() const noexcept
@@ -352,7 +325,6 @@ std::size_t Ftrace::FunctionCount() const noexcept
 }
 /**
  * @brief 获取当前调用栈顶帧。
- *
  * @return const FtraceFrame*，若调用栈非空则返回栈顶帧指针，否则返回nullptr。
  */
 const FtraceFrame *Ftrace::TopFrame() const noexcept
@@ -365,7 +337,6 @@ const FtraceFrame *Ftrace::TopFrame() const noexcept
 }
 /**
  * @brief 获取已记录的历史事件序列。
- *
  * @return std::span<const FtraceEvent>，历史事件的只读视图。
  */
 std::span<const FtraceEvent> Ftrace::History() const noexcept
@@ -374,7 +345,6 @@ std::span<const FtraceEvent> Ftrace::History() const noexcept
 }
 /**
  * @brief 获取当前ELF读取器。
- *
  * @return const Readelf*，若已经加载ELF则返回读取器指针，否则返回nullptr。
  */
 const Readelf *Ftrace::ElfReader() const noexcept
@@ -383,7 +353,6 @@ const Readelf *Ftrace::ElfReader() const noexcept
 }
 /**
  * @brief 打印当前调用栈。
- *
  * @details
  * 按从栈底到栈顶的顺序打印每一层函数调用。
  */
@@ -428,7 +397,6 @@ void Ftrace::PrintStatus() const
 }
 /**
  * @brief 根据地址解析函数名。
- *
  * @param Address std::uint64_t，待解析的虚拟地址。
  * @return std::string_view，找到函数时返回函数名，否则返回空视图。
  */
@@ -443,7 +411,6 @@ std::string_view Ftrace::ResolveFunctionName(std::uint64_t Address) const noexce
 }
 /**
  * @brief 记录并打印一次ftrace事件。
- *
  * @param Event FtraceEvent，待记录的事件。
  */
 void Ftrace::PushEvent(FtraceEvent Event)
@@ -456,7 +423,6 @@ void Ftrace::PushEvent(FtraceEvent Event)
 }
 /**
  * @brief 按当前深度打印一条ftrace事件。
- *
  * @param Event const FtraceEvent&，待打印的事件。
  */
 void Ftrace::PrintEventLine(const FtraceEvent &Event) const
@@ -478,7 +444,6 @@ void Ftrace::PrintEventLine(const FtraceEvent &Event) const
 }
 /**
  * @brief 初始化全局ftrace。
- *
  * @param ElfFile const std::filesystem::path&，ELF文件路径。
  * @param ShouldEnable bool，初始化完成后是否开启ftrace。
  * @return std::expected<void, std::string>，成功返回空结果，失败返回错误字符串。
@@ -495,7 +460,6 @@ std::expected<void, std::string> InitializeFtrace(const std::filesystem::path &E
 }
 /**
  * @brief Verilog DPI-C入口，记录一条已提交指令。
- *
  * @param PC std::uint64_t，当前指令的PC。
  * @param Instruction std::uint32_t，当前指令编码。
  * @param NextPC std::uint64_t，当前指令执行后的下一条PC。

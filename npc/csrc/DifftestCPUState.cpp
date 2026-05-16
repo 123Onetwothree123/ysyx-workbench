@@ -3,7 +3,6 @@
 #include <print>
 #include <stdexcept>
 #include "sdb/SDBDPI.hpp"
-
 std::uint32_t DifftestCPUState::GetGPR(std::size_t Index) const
 {
     if (Index >= gpr.size())
@@ -30,7 +29,6 @@ void DifftestCPUState::SetPC(std::uint32_t Value)
 {
     pc = Value;
 }
-//
 DifftestCPUState DifftestCPUState::ReadDUTState(VRV32E32Reg &Top)
 {
     auto State{DifftestCPUState{}};

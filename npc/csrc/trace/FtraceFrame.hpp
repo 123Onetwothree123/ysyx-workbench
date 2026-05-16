@@ -1,9 +1,7 @@
 #ifndef FTRACE_FRAME_HPP
 #define FTRACE_FRAME_HPP
-
 #include <cstdint>
 #include <string_view>
-
 /*
 栈帧，拿来描述一次函数调用的信息
 */
@@ -22,5 +20,4 @@ private:
     std::uint64_t FunctionAddress{}; // 被调用函数的入口地址
     std::string_view FunctionName{}; // 被调用函数的名字
 };
-
 #endif

@@ -7,7 +7,6 @@
 #include <cctype>
 #include <cstring>
 #include <format>
-
 // ANSI颜色宏（参考NEMU设计）
 #define ANSI_NONE "\033[0m"
 #define ANSI_FG_BLACK "\033[1;30m"
@@ -18,7 +17,6 @@
 #define ANSI_FG_MAGENTA "\033[1;35m"
 #define ANSI_FG_CYAN "\033[1;36m"
 #define ANSI_FG_WHITE "\033[1;37m"
-
 WatchpointPool::WatchpointPool(std::size_t InputMaxWatchpoints)
     : watchpoints(InputMaxWatchpoints)
 {
