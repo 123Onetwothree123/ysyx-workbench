@@ -489,13 +489,21 @@ std::string_view elf_class_name(unsigned char elf_class)
     switch (elf_class)
     {
     case ELFCLASSNONE:
+    {
         return "none";
+    }
     case ELFCLASS32:
+    {
         return "ELF32";
+    }
     case ELFCLASS64:
+    {
         return "ELF64";
+    }
     default:
+    {
         return "unknown";
+    }
     }
 }
 
@@ -510,13 +518,21 @@ std::string_view elf_data_name(unsigned char data)
     switch (data)
     {
     case ELFDATANONE:
+    {
         return "none";
+    }
     case ELFDATA2LSB:
+    {
         return "2's complement, little endian";
+    }
     case ELFDATA2MSB:
+    {
         return "2's complement, big endian";
+    }
     default:
+    {
         return "unknown";
+    }
     }
 }
 
@@ -531,17 +547,29 @@ std::string_view elf_type_name(Half type)
     switch (type)
     {
     case ET_NONE:
+    {
         return "NONE (None)";
+    }
     case ET_REL:
+    {
         return "REL (Relocatable file)";
+    }
     case ET_EXEC:
+    {
         return "EXEC (Executable file)";
+    }
     case ET_DYN:
+    {
         return "DYN (Shared object file)";
+    }
     case ET_CORE:
+    {
         return "CORE (Core file)";
+    }
     default:
+    {
         return "UNKNOWN";
+    }
     }
 }
 
@@ -556,61 +584,107 @@ std::string_view section_type_name(Word type)
     switch (type)
     {
     case SHT_NULL:
+    {
         return "NULL";
+    }
     case SHT_PROGBITS:
+    {
         return "PROGBITS";
+    }
     case SHT_SYMTAB:
+    {
         return "SYMTAB";
+    }
     case SHT_STRTAB:
+    {
         return "STRTAB";
+    }
     case SHT_RELA:
+    {
         return "RELA";
+    }
     case SHT_HASH:
+    {
         return "HASH";
+    }
     case SHT_DYNAMIC:
+    {
         return "DYNAMIC";
+    }
     case SHT_NOTE:
+    {
         return "NOTE";
+    }
     case SHT_NOBITS:
+    {
         return "NOBITS";
+    }
     case SHT_REL:
+    {
         return "REL";
+    }
     case SHT_SHLIB:
+    {
         return "SHLIB";
+    }
     case SHT_DYNSYM:
+    {
         return "DYNSYM";
+    }
     case SHT_INIT_ARRAY:
+    {
         return "INIT_ARRAY";
+    }
     case SHT_FINI_ARRAY:
+    {
         return "FINI_ARRAY";
+    }
     case SHT_PREINIT_ARRAY:
+    {
         return "PREINIT_ARRAY";
+    }
     case SHT_GROUP:
+    {
         return "GROUP";
+    }
     case SHT_SYMTAB_SHNDX:
+    {
         return "SYMTAB SECTION INDICES";
+    }
 #ifdef SHT_GNU_ATTRIBUTES
     case SHT_GNU_ATTRIBUTES:
+    {
         return "GNU_ATTRIBUTES";
+    }
 #endif
 #ifdef SHT_GNU_HASH
     case SHT_GNU_HASH:
+    {
         return "GNU_HASH";
+    }
 #endif
 #ifdef SHT_GNU_verdef
     case SHT_GNU_verdef:
+    {
         return "VERDEF";
+    }
 #endif
 #ifdef SHT_GNU_verneed
     case SHT_GNU_verneed:
+    {
         return "VERNEED";
+    }
 #endif
 #ifdef SHT_GNU_versym
     case SHT_GNU_versym:
+    {
         return "VERSYM";
+    }
 #endif
     default:
+    {
         return "UNKNOWN";
+    }
     }
 }
 
@@ -660,17 +734,27 @@ std::string_view symbol_bind_name(unsigned char info)
     switch (symbol_bind(info))
     {
     case STB_LOCAL:
+    {
         return "LOCAL";
+    }
     case STB_GLOBAL:
+    {
         return "GLOBAL";
+    }
     case STB_WEAK:
+    {
         return "WEAK";
+    }
 #ifdef STB_GNU_UNIQUE
     case STB_GNU_UNIQUE:
+    {
         return "UNIQUE";
+    }
 #endif
     default:
+    {
         return "UNKNOWN";
+    }
     }
 }
 
@@ -685,25 +769,43 @@ std::string_view symbol_type_name(unsigned char info)
     switch (symbol_type(info))
     {
     case STT_NOTYPE:
+    {
         return "NOTYPE";
+    }
     case STT_OBJECT:
+    {
         return "OBJECT";
+    }
     case STT_FUNC:
+    {
         return "FUNC";
+    }
     case STT_SECTION:
+    {
         return "SECTION";
+    }
     case STT_FILE:
+    {
         return "FILE";
+    }
     case STT_COMMON:
+    {
         return "COMMON";
+    }
     case STT_TLS:
+    {
         return "TLS";
+    }
 #ifdef STT_GNU_IFUNC
     case STT_GNU_IFUNC:
+    {
         return "IFUNC";
+    }
 #endif
     default:
+    {
         return "UNKNOWN";
+    }
     }
 }
 
@@ -718,15 +820,25 @@ std::string_view symbol_visibility_name(unsigned char other)
     switch (symbol_visibility(other))
     {
     case STV_DEFAULT:
+    {
         return "DEFAULT";
+    }
     case STV_INTERNAL:
+    {
         return "INTERNAL";
+    }
     case STV_HIDDEN:
+    {
         return "HIDDEN";
+    }
     case STV_PROTECTED:
+    {
         return "PROTECTED";
+    }
     default:
+    {
         return "UNKNOWN";
+    }
     }
 }
 

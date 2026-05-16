@@ -51,19 +51,27 @@ SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view 
         switch (Args.front())
         {
         case 'b':
+        {
             UnitSize = 1;
             Args.remove_prefix(1);
             break;
+        }
         case 'h':
+        {
             UnitSize = 2;
             Args.remove_prefix(1);
             break;
+        }
         case 'w':
+        {
             UnitSize = 4;
             Args.remove_prefix(1);
             break;
+        }
         default:
+        {
             break;
+        }
         }
     }
     Args = SDBTrimLeft(Args);
@@ -109,16 +117,24 @@ SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view 
         switch (UnitSize)
         {
         case 1:
+        {
             std::println("0x{:08x}: 0x{:02x}", CurrentAddress, Value & 0xffu);
             break;
+        }
         case 2:
+        {
             std::println("0x{:08x}: 0x{:04x}", CurrentAddress, Value & 0xffffu);
             break;
+        }
         case 4:
+        {
             std::println("0x{:08x}: 0x{:08x}", CurrentAddress, Value);
             break;
+        }
         default:
+        {
             break;
+        }
         }
     }
     return SDBCommandResult::Continue;
