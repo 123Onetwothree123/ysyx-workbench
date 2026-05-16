@@ -2,6 +2,7 @@
 #include "command/SDBCommandUtils.hpp"
 #include "command/WatchpointPool.hpp"
 #include <charconv>
+#include <cstddef>
 #include <print>
 
 std::string_view dCommand::Name() const noexcept
@@ -24,7 +25,7 @@ SDBCommandResult dCommand::Execute(SDBCommandContext &Context, std::string_view 
         std::println("用法：d <NO>");
         return SDBCommandResult::Continue;
     }
-    std::size_t NO{0};
+    auto NO{std::size_t{0}};
     const auto Result{std::from_chars(Args.data(), Args.data() + Args.size(), NO, 10)};
     if (Result.ec != std::errc())
     {
@@ -32,7 +33,7 @@ SDBCommandResult dCommand::Execute(SDBCommandContext &Context, std::string_view 
         return SDBCommandResult::Continue;
     }
     // 检查尾部垃圾字符（如 "d 1abc"）
-    std::string_view Remainder{Result.ptr, static_cast<std::size_t>(Args.data() + Args.size() - Result.ptr)};
+    auto Remainder{std::string_view{Result.ptr, static_cast<std::size_t>(Args.data() + Args.size() - Result.ptr)}};
     Remainder = SDBTrimLeft(Remainder);
     if (!Remainder.empty())
     {

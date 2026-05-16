@@ -14,7 +14,7 @@
 // 全局状态，true就是表示NPC停止，是EBREAK_DPI-C来设置
 extern bool npc_halted;
 
-void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, size_t &cycles, bool batch_mode)
+void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, std::size_t &cycles, bool batch_mode)
 {
     SDBDPISetTopScope(top->name(), top->modelName()); // 先设置作用域
 #ifdef CONFIG_SDB

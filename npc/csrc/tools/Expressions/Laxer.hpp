@@ -2,6 +2,7 @@
 #define LEXER_HPP
 #include "token.hpp"
 #include <string_view>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>

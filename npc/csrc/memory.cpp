@@ -10,13 +10,13 @@
 #include <string>
 #include <format>
 
-std::array<uint8_t, PMEM_SIZE> pmem{};                   // 抄am拿数组当内存
+std::array<std::uint8_t, PMEM_SIZE> pmem{};              // 抄am拿数组当内存
 static auto boot_time{std::chrono::steady_clock::now()}; // 启动时间
 
 extern "C" int pmem_read(int raddr)
 {
     // 总是读取地址为`raddr & ~0x3u`的4字节返回
-    auto addr{static_cast<uint32_t>(raddr)};
+    auto addr{static_cast<std::uint32_t>(raddr)};
     addr &= ~0x3u; // 4字节对齐
     if (addr == RTC_ADDR || addr == RTC_ADDR + 4)
     {
@@ -75,11 +75,11 @@ extern "C" int pmem_read(int raddr)
     }
     // 地址转换：将guest地址转换为pmem数组索引
     auto host_addr{guest_to_host(addr)};
-    uint32_t data{0};
-    data |= static_cast<uint32_t>(pmem[host_addr + 0]) << 0;
-    data |= static_cast<uint32_t>(pmem[host_addr + 1]) << 8;
-    data |= static_cast<uint32_t>(pmem[host_addr + 2]) << 16;
-    data |= static_cast<uint32_t>(pmem[host_addr + 3]) << 24;
+    auto data{std::uint32_t{0}};
+    data |= static_cast<std::uint32_t>(pmem[host_addr + 0]) << 0;
+    data |= static_cast<std::uint32_t>(pmem[host_addr + 1]) << 8;
+    data |= static_cast<std::uint32_t>(pmem[host_addr + 2]) << 16;
+    data |= static_cast<std::uint32_t>(pmem[host_addr + 3]) << 24;
     return static_cast<int>(data);
 }
 extern "C" void pmem_write(int waddr, int wdata, char wmask)
@@ -87,9 +87,9 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask)
     // 总是往地址为`waddr & ~0x3u`的4字节按写掩码`wmask`写入`wdata`
     // `wmask`中每比特表示`wdata`中1个字节的掩码,
     // 如`wmask = 0x3`代表只写入最低2个字节, 内存中的其它字节保持不变
-    auto guest_addr{static_cast<uint32_t>(waddr & ~0x3u)};
-    auto data{static_cast<uint32_t>(wdata)};
-    auto mask{static_cast<uint8_t>(wmask)};
+    auto guest_addr{static_cast<std::uint32_t>(waddr & ~0x3u)};
+    auto data{static_cast<std::uint32_t>(wdata)};
+    auto mask{static_cast<std::uint8_t>(wmask)};
     if (guest_addr == SERIAL_PORT)
     {
         /*
@@ -112,25 +112,25 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask)
     //  检查掩码的第0位，决定是否写入最低字节
     if (mask & 0x01)
     {
-        pmem[host_addr + 0] = static_cast<uint8_t>(data & 0xFF);
+        pmem[host_addr + 0] = static_cast<std::uint8_t>(data & 0xFF);
     }
     // 检查掩码的第1位，决定是否写入第1字节
     if (mask & 0x02)
     {
-        pmem[host_addr + 1] = static_cast<uint8_t>((data >> 8) & 0xFF);
+        pmem[host_addr + 1] = static_cast<std::uint8_t>((data >> 8) & 0xFF);
     }
     // 检查掩码的第2位，决定是否写入第2字节
     if (mask & 0x04)
     {
-        pmem[host_addr + 2] = static_cast<uint8_t>((data >> 16) & 0xFF);
+        pmem[host_addr + 2] = static_cast<std::uint8_t>((data >> 16) & 0xFF);
     }
     // 检查掩码的第3位，决定是否写入第3字节
     if (mask & 0x08)
     {
-        pmem[host_addr + 3] = static_cast<uint8_t>((data >> 24) & 0xFF);
+        pmem[host_addr + 3] = static_cast<std::uint8_t>((data >> 24) & 0xFF);
     }
 }
-bool check_pmem_safe_address(uint32_t address, size_t len)
+bool check_pmem_safe_address(std::uint32_t address, std::size_t len)
 {
     return address >= CONFIG_MBASE && (address - CONFIG_MBASE + len) <= PMEM_SIZE;
 }

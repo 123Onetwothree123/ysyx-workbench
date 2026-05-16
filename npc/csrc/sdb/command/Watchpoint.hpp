@@ -1,6 +1,6 @@
 #ifndef WATCH_POINT_HPP
 #define WATCH_POINT_HPP
-#include <stdint.h>
+#include <cstddef>
 #include <string>
 #include <print>
 class Watchpoint

@@ -39,11 +39,11 @@ void iringbuf::print(std::uint64_t ErrorPC) const
         std::println("iringbuf是空的");
         return;
     }
-    const std::size_t start{(head + CONFIG_IRINGBUF_SIZE - count) % CONFIG_IRINGBUF_SIZE};
+    const auto start{(head + CONFIG_IRINGBUF_SIZE - count) % CONFIG_IRINGBUF_SIZE};
     std::println("打印iringbuf");
     for (std::size_t i{0}; i < count; i++)
     {
-        const std::size_t index{(start + i) % CONFIG_IRINGBUF_SIZE};
+        const auto index{(start + i) % CONFIG_IRINGBUF_SIZE};
         const RecordInstruction &entry{buffer[index]};
         constexpr std::string_view marker_selected{"-->"};
         constexpr std::string_view marker_normal{"   "};

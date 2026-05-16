@@ -34,12 +34,13 @@ void DifftestCPUState::SetPC(std::uint32_t Value)
 //
 DifftestCPUState DifftestCPUState::ReadDUTState(VRV32E32Reg &Top)
 {
-    DifftestCPUState State{};
-    for (int Index{0}; Index < 32; ++Index)
+    auto State{DifftestCPUState{}};
+    for (std::size_t Index{0}; Index < State.gpr.size(); ++Index)
     {
-        static_cast<void>(CPP_NPCGetGPR(Index)); // 调用 DPI 获取 GPR 值以触发 Verilator 更新
-        Top.eval();                               // 执行 Verilator 组合逻辑求值
-        State.gpr[static_cast<std::size_t>(Index)] = CPP_NPCGetGPR(Index);
+        const auto RegisterIndex{static_cast<std::int32_t>(Index)};
+        static_cast<void>(CPP_NPCGetGPR(RegisterIndex)); // 调用 DPI 获取 GPR 值以触发 Verilator 更新
+        Top.eval();                                      // 执行 Verilator 组合逻辑求值
+        State.gpr[Index] = CPP_NPCGetGPR(RegisterIndex);
     }
     State.gpr[0] = 0; // x0 寄存器输出恒为 0
     State.pc = CPP_NPCGetPC();

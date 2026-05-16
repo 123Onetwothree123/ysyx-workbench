@@ -51,7 +51,7 @@ bool SDBValidateExpressionSyntax(std::string_view Expression)
     {
         return false;
     }
-    int paren_count{0};
+    auto paren_count{0};
     for (const char ch : Expression)
     {
         if (ch == '(')

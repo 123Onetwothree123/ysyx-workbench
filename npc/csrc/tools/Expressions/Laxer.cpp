@@ -156,7 +156,7 @@ token Laxer::ScanHexNumber()
 token Laxer::ScanRegister()
 {
     auto start{position};
-    const bool HasDollarPrefix{Peek() == '$'};
+    const auto HasDollarPrefix{Peek() == '$'};
     if (HasDollarPrefix)
     {
         Advance();

@@ -14,13 +14,13 @@
 #include <utility>
 namespace
 {
-    constexpr std::uint32_t OpcodeMask{0x7fu};
-    constexpr std::uint32_t OpcodeJal{0x6fu};
-    constexpr std::uint32_t OpcodeJalr{0x67u};
-    constexpr std::uint32_t Funct3Mask{0x7u};
-    constexpr std::uint32_t ReturnRegister{1u};
-    constexpr std::uint64_t InstructionBytes{4u};
-    constexpr std::string_view UnknownFunction{"???"};
+    constexpr auto OpcodeMask{std::uint32_t{0x7fu}};
+    constexpr auto OpcodeJal{std::uint32_t{0x6fu}};
+    constexpr auto OpcodeJalr{std::uint32_t{0x67u}};
+    constexpr auto Funct3Mask{std::uint32_t{0x7u}};
+    constexpr auto ReturnRegister{std::uint32_t{1u}};
+    constexpr auto InstructionBytes{std::uint64_t{4u}};
+    constexpr auto UnknownFunction{std::string_view{"???"}};
     /**
      * @brief 取出一个整数中指定范围的位。
      *

@@ -3,6 +3,7 @@
 #include "NPCEvaluationContext.hpp"
 #include "SDBDPI.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <cctype>
 #include <cstring>
 #include <format>
@@ -23,7 +24,7 @@ WatchpointPool::WatchpointPool(std::size_t InputMaxWatchpoints)
 {
     for (std::size_t i{InputMaxWatchpoints}; i > 0; --i)
     {
-        const std::size_t NO{i - 1};
+        const auto NO{i - 1};
         watchpoints[NO].SetNO(NO);
         FreeWatchpointIndices.push_back(NO);
     }
@@ -62,7 +63,7 @@ Watchpoint *WatchpointPool::CreateWatchpoint(const std::string &expression, std:
         std::println("CreateWatchpoint失败，没有空闲的监视点槽位了");
         return nullptr;
     }
-    std::size_t NO{FreeWatchpointIndices.back()};
+    auto NO{FreeWatchpointIndices.back()};
     FreeWatchpointIndices.pop_back();
     UsedWatchpointIndices.push_back(NO);
     Watchpoint &wp{watchpoints[NO]};
@@ -127,10 +128,10 @@ bool WatchpointPool::CheckAll()
 // 辅助函数：计算字符串显示宽度（ASCII=1, CJK等=2）
 static int display_width(std::string_view s)
 {
-    int w{0};
-    for (size_t i{0}; i < s.size();)
+    auto w{0};
+    for (std::size_t i{0}; i < s.size();)
     {
-        unsigned char c{static_cast<unsigned char>(s[i])};
+        const auto c{static_cast<unsigned char>(s[i])};
         if (c < 0x80)
         {
             w += 1;
@@ -172,7 +173,7 @@ static const char *skip_leading_spaces(const char *s)
 // 辅助函数：获取监视点类型名称（参考 NEMU）
 static const char *get_watchpoint_type_name(const char *expr)
 {
-    const char *p{skip_leading_spaces(expr)};
+    auto p{skip_leading_spaces(expr)};
     if (*p == '*')
     {
         return "解引用";
@@ -234,8 +235,8 @@ static void print_border(const std::vector<int> &widths)
 static void print_cell_colored(std::string_view raw_content, int width, bool center)
 {
     // raw_content 可能包含 ANSI 转义码，计算显示宽度时需要跳过
-    int content_width{0};
-    for (size_t i{0}; i < raw_content.size();)
+    auto content_width{0};
+    for (std::size_t i{0}; i < raw_content.size();)
     {
         if (raw_content[i] == '\033' && i + 1 < raw_content.size() && raw_content[i + 1] == '[')
         {
@@ -251,7 +252,7 @@ static void print_cell_colored(std::string_view raw_content, int width, bool cen
             }
             continue;
         }
-        unsigned char c{static_cast<unsigned char>(raw_content[i])};
+        const auto c{static_cast<unsigned char>(raw_content[i])};
         if (c < 0x80)
         {
             content_width += 1;
@@ -278,13 +279,13 @@ static void print_cell_colored(std::string_view raw_content, int width, bool cen
         }
     }
 
-    int pad{width - content_width};
+    auto pad{width - content_width};
     if (pad < 0)
     {
         pad = 0;
     }
-    int left_pad{center ? pad / 2 : 0};
-    int right_pad{pad - left_pad};
+    auto left_pad{center ? pad / 2 : 0};
+    auto right_pad{pad - left_pad};
     std::print(" ");
     for (int i{0}; i < left_pad; i++)
     {
@@ -328,7 +329,7 @@ void WatchpointPool::PrintAllWatchpoints() const
     };
     std::vector<EvalResult> evals(wps.size());
 
-    for (size_t i{0}; i < wps.size(); i++)
+    for (std::size_t i{0}; i < wps.size(); i++)
     {
         const auto *wp{wps[i]};
         if (!wp->IsEnabled())
@@ -339,7 +340,7 @@ void WatchpointPool::PrintAllWatchpoints() const
         auto result{expr_eval.Evaluate(wp->GetExpression(), context)};
         if (result)
         {
-            std::uint32_t val{result.value()};
+            const auto val{result.value()};
             evals[i] = {true, val, val != static_cast<std::uint32_t>(wp->GetOldValue())};
         }
         else
@@ -443,15 +444,15 @@ void WatchpointPool::PrintAllWatchpoints() const
     print_border(col_widths);
 
     // 打印每一行
-    for (size_t i{0}; i < wps.size(); i++)
+    for (std::size_t i{0}; i < wps.size(); i++)
     {
         const auto *wp{wps[i]};
         const auto &eval{evals[i]};
-        const char *type_name{get_watchpoint_type_name(wp->GetExpression().c_str())};
-        const char *type_color{get_type_color(type_name)};
+        const auto type_name{get_watchpoint_type_name(wp->GetExpression().c_str())};
+        const auto type_color{get_type_color(type_name)};
 
         // 编号颜色
-        const char *no_color{ANSI_FG_CYAN};
+        auto no_color{ANSI_FG_CYAN};
         if (!wp->IsEnabled())
         {
             no_color = ANSI_FG_WHITE;
@@ -476,7 +477,7 @@ void WatchpointPool::PrintAllWatchpoints() const
         std::string trigger_str;
 
         // 表达式颜色
-        const char *expr_color{type_color};
+        auto expr_color{type_color};
         if (!wp->IsEnabled())
         {
             expr_color = ANSI_FG_WHITE;
@@ -528,10 +529,10 @@ void WatchpointPool::PrintAllWatchpoints() const
                 status_str = std::format("{}正常{}", ANSI_FG_GREEN, ANSI_NONE);
             }
 
-            std::uint32_t old_val{static_cast<std::uint32_t>(wp->GetOldValue())};
+            const auto old_val{static_cast<std::uint32_t>(wp->GetOldValue())};
             if (eval.current_val >= old_val)
             {
-                std::uint32_t d{eval.current_val - old_val};
+                const auto d{eval.current_val - old_val};
                 if (d == 0)
                 {
                     delta_str = std::format("{}+0x{:08x}{}", ANSI_FG_BLUE, d, ANSI_NONE);
@@ -543,7 +544,7 @@ void WatchpointPool::PrintAllWatchpoints() const
             }
             else
             {
-                std::uint32_t d{old_val - eval.current_val};
+                const auto d{old_val - eval.current_val};
                 delta_str = std::format("{}-0x{:08x}{}", ANSI_FG_MAGENTA, d, ANSI_NONE);
             }
 

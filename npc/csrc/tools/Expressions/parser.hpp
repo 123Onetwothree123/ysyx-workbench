@@ -2,6 +2,7 @@
 #define PARSER_HPP
 #include "token.hpp"
 #include "ast.hpp"
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>

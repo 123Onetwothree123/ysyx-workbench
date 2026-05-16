@@ -17,8 +17,8 @@
 #include "trace.hpp"
 
 bool npc_halted{false};
-static uint32_t halt_pc{0};  // 记录停止的时候的PC
-static uint32_t halt_ret{0}; // 返回码，0是good，1是bad
+static std::uint32_t halt_pc{0};  // 记录停止的时候的PC
+static std::uint32_t halt_ret{0}; // 返回码，0是good，1是bad
 
 void reset_dut(std::unique_ptr<VRV32E32Reg> &top); // 复位Device Under Test被测设计的
 
@@ -38,9 +38,9 @@ namespace
         CliOptions options;
         std::optional<std::filesystem::path> image_file;
 
-        for (int i{1}; i < argc; ++i)
+        for (auto i{1}; i < argc; ++i)
         {
-            const std::string_view arg{argv[i]};
+            const auto arg{std::string_view{argv[i]}};
             if (arg == "--elf" || arg == "-e")
             {
                 if (i + 1 >= argc)
@@ -137,8 +137,8 @@ namespace
 extern "C" void npc_ebreak(int pc, int code)
 {
     npc_halted = true;
-    halt_pc = static_cast<uint32_t>(pc);
-    halt_ret = static_cast<uint32_t>(code);
+    halt_pc = static_cast<std::uint32_t>(pc);
+    halt_ret = static_cast<std::uint32_t>(code);
 }
 void reset_dut(std::unique_ptr<VRV32E32Reg> &top)
 {
@@ -166,7 +166,7 @@ int main(int argc, char const *argv[])
         return 1;
     }
     Verilated::commandArgs(argc, argv);
-    std::size_t image_size{0};
+    auto image_size{std::size_t{0}};
     if (options->image_file)
     {
         const auto result{load_file(*options->image_file)};
@@ -191,7 +191,7 @@ int main(int argc, char const *argv[])
     }
     init_disasm();
     auto top{std::make_unique<VRV32E32Reg>()}; // 管不了了复制修改以前代码，直接创建顶层的对象然后实例
-    size_t cycles{0};                          // 统计总周期数的
+    auto cycles{std::size_t{0}};               // 统计总周期数的
     reset_dut(top);
     SDBDPISetTopScope(top->name(), top->modelName());
     auto difftest_init{DifftestInitialize(options->diff_ref_so, image_size)};

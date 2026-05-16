@@ -2,7 +2,7 @@
 #ifdef CONFIG_MTRACE
 #include <print>
 #endif
-extern "C" void MtraceRecord(uint64_t PC, int Address, int WriteData, int ReadData, uint8_t WriteMask, uint8_t wen)
+extern "C" void MtraceRecord(std::uint64_t PC, int Address, int WriteData, int ReadData, std::uint8_t WriteMask, std::uint8_t wen)
 {
 #ifdef CONFIG_MTRACE
     const auto pc{static_cast<std::uint64_t>(PC)};

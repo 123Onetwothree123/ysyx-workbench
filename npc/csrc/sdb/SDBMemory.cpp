@@ -18,8 +18,8 @@ std::uint32_t NPCMemoryRead(std::uint32_t Addr, std::size_t Len)
         return 0;
     }
 
-    const std::uint32_t HostAddr{guest_to_host(Addr)};
-    std::uint32_t Data{0};
+    const auto HostAddr{guest_to_host(Addr)};
+    auto Data{std::uint32_t{0}};
     for (std::size_t i{0}; i < Len; i++)
     {
         Data |= static_cast<std::uint32_t>(pmem[HostAddr + i]) << (i * 8);
@@ -45,14 +45,14 @@ void NPCMemoryScan(std::uint32_t Addr, std::size_t Count)
     Addr &= ~0x3u; // 4字节对齐
     for (std::size_t i{0}; i < Count; i++)
     {
-        const std::uint32_t Current{Addr + static_cast<std::uint32_t>(i * 4)};
+        const auto Current{Addr + static_cast<std::uint32_t>(i * 4)};
         if (!check_pmem_range(Current, 4))
         {
             std::println(std::cerr, "NPCMemoryScan：地址越界 0x{:08x}", Current);
             break;
         }
 
-        const std::uint32_t Value{NPCMemoryRead(Current, 4)};
+        const auto Value{NPCMemoryRead(Current, 4)};
         if (i % 4 == 0) // 每4个一组
         {
             std::print("0x{:08x}:", Current);

@@ -1,6 +1,7 @@
 #include "SDBDPI.hpp"
 #include <svdpi.h>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -36,7 +37,7 @@ namespace
      */
     std::string VerilatedModelNameToScope(std::string_view ModelName)
     {
-        std::string ScopeName{ModelName};
+        auto ScopeName{std::string{ModelName}};
         if (ScopeName.size() > 1 && ScopeName.front() == 'V')
         {
             ScopeName.erase(0, 1);
@@ -130,7 +131,7 @@ std::uint32_t CPP_NPCGetPC()
  */
 static std::int32_t display_width(std::string_view s)
 {
-    std::int32_t w{0};
+    auto w{std::int32_t{0}};
     for (std::size_t i{0}; i < s.size();)
     {
         // 跳过 ANSI 转义序列 \033[ ... m
@@ -147,7 +148,7 @@ static std::int32_t display_width(std::string_view s)
             }
             continue;
         }
-        unsigned char c{static_cast<unsigned char>(s[i])};
+        const auto c{static_cast<unsigned char>(s[i])};
         if (c < 0x80)
         {
             w += 1;
@@ -398,7 +399,7 @@ void PrintGPR()
         std::uint32_t value;
         const char *desc;
     };
-    constexpr std::size_t nr_rows{33}; // x0-x31 + pc
+    constexpr auto nr_rows{std::size_t{33}}; // x0-x31 + pc
     RegRow rows[nr_rows];
     for (std::size_t i{0}; i < nr_rows; i++)
     {

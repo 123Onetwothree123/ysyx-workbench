@@ -2,6 +2,7 @@
 #define WATCH_POINT_POOL_HPP
 #include "Watchpoint.hpp"
 #include <print>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 class WatchpointPool

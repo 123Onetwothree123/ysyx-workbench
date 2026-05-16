@@ -33,7 +33,7 @@ std::optional<std::uint32_t> RegisterNameToIndex(std::string_view Name)
 
     if (Name.size() >= 2 && Name.front() == 'x')
     {
-        std::uint32_t Index{0};
+        auto Index{std::uint32_t{0}};
         for (std::size_t Pos{1}; Pos < Name.size(); ++Pos)
         {
             if (Name[Pos] < '0' || Name[Pos] > '9')
@@ -56,11 +56,11 @@ std::optional<std::uint32_t> RegisterNameToIndex(std::string_view Name)
         "s8",   "s9", "s10", "s11", "t3", "t4", "t5", "t6",
     };
 
-    for (std::uint32_t Index{0}; Index < AbiNames.size(); ++Index)
+    for (std::size_t Index{0}; Index < AbiNames.size(); ++Index)
     {
         if (Name == AbiNames[Index])
         {
-            return Index;
+            return static_cast<std::uint32_t>(Index);
         }
     }
 

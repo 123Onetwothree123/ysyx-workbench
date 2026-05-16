@@ -1,6 +1,7 @@
 #ifndef DIFFTEST_CPU_STATE_HPP
 #define DIFFTEST_CPU_STATE_HPP
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 class VRV32E32Reg;

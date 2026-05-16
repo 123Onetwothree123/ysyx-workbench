@@ -26,10 +26,10 @@ namespace
 constexpr unsigned char ExpectedElfClass{Readelf::is_elf64 ? ELFCLASS64 : ELFCLASS32};
 
 // 诊断信息中使用的 `ExpectedElfClass` 的可读形式。
-constexpr std::string_view ExpectedElfClassName{Readelf::is_elf64 ? "ELF64" : "ELF32"};
+constexpr auto ExpectedElfClassName{std::string_view{Readelf::is_elf64 ? "ELF64" : "ELF32"}};
 
 // 打印虚拟地址时使用的十六进制位数。
-constexpr int AddressWidth{Readelf::is_elf64 ? 16 : 8};
+constexpr auto AddressWidth{Readelf::is_elf64 ? 16 : 8};
 
 // 简短的局部别名，使解析器不依赖于预处理器宏。
 using Header = Readelf::header_type;
@@ -181,7 +181,7 @@ std::expected<std::vector<T>, std::string> read_array_at(std::ifstream &file,
                                                          std::size_t count,
                                                          std::string_view what)
 {
-    std::size_t bytes{0};
+    auto bytes{std::size_t{0}};
     if (!checked_byte_count(count, sizeof(T), bytes))
     {
         return make_error(std::string(what) + " size overflows size_t");
@@ -1001,7 +1001,7 @@ void Readelf::print_symbols(std::ostream &os) const
         return;
     }
 
-    const int symbol_table_index{symbol_table_section_index()};
+    const auto symbol_table_index{symbol_table_section_index()};
     const auto table_name{symbol_table_index >= 0 ? section_name(section_headers_[symbol_table_index].sh_name) : std::string_view("<symtab>")};
 
     print_to(os, "Symbol table '{}' contains {} entries:\n", table_name, symbols_.size());

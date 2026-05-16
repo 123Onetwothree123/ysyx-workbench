@@ -2,6 +2,7 @@
 #define EVALUATION_CONTEXT_HPP
 #include<string_view>
 #include<print>
+#include<cstddef>
 #include<cstdint>
 class EvaluationContext
 {

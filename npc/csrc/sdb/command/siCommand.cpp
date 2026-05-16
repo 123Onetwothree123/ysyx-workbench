@@ -2,6 +2,7 @@
 #include "command/SDBCommandUtils.hpp"
 #include "command/WatchpointPool.hpp"
 #include <charconv>
+#include <cstddef>
 #include <print>
 extern bool npc_halted;
 std::string_view siCommand::Name() const noexcept
@@ -17,11 +18,11 @@ SDBCommandUsageList siCommand::Usage() const noexcept
 }
 SDBCommandResult siCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
-    std::size_t Count{1};
+    auto Count{std::size_t{1}};
     Args = SDBTrimLeft(Args);
     if (!Args.empty())
     {
-        std::ptrdiff_t ParsedCount{0};
+        auto ParsedCount{std::ptrdiff_t{0}};
         // Result是用来检查转换是否成功的，ParsedCount是用来存储转换结果的
         const auto Result{std::from_chars(Args.data(), Args.data() + Args.size(), ParsedCount, 10)};
         if (Result.ec != std::errc())
@@ -35,7 +36,7 @@ SDBCommandResult siCommand::Execute(SDBCommandContext &Context, std::string_view
             return SDBCommandResult::Continue;
         }
         // 检查尾部垃圾字符（如 "si 10abc"）
-        std::string_view Remainder{Result.ptr, static_cast<std::size_t>(Args.data() + Args.size() - Result.ptr)};
+        auto Remainder{std::string_view{Result.ptr, static_cast<std::size_t>(Args.data() + Args.size() - Result.ptr)}};
         Remainder = SDBTrimLeft(Remainder);
         if (!Remainder.empty())
         {

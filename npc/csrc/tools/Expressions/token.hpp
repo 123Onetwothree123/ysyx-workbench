@@ -1,5 +1,6 @@
 #ifndef TOKEN_HPP
 #define TOKEN_HPP
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 class token
