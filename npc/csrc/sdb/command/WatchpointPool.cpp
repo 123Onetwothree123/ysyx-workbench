@@ -8,7 +8,7 @@
 #include <cstring>
 #include <format>
 
-// ANSI 颜色宏（参考 NEMU 设计）
+// ANSI颜色宏（参考NEMU设计）
 #define ANSI_NONE "\033[0m"
 #define ANSI_FG_BLACK "\033[1;30m"
 #define ANSI_FG_RED "\033[1;31m"
@@ -167,7 +167,7 @@ static const char *skip_leading_spaces(const char *s)
     }
     return s;
 }
-// 辅助函数：获取监视点类型名称（参考 NEMU）
+// 辅助函数：获取监视点类型名称（参考NEMU）
 static const char *get_watchpoint_type_name(const char *expr)
 {
     auto p{skip_leading_spaces(expr)};
@@ -228,13 +228,13 @@ static void print_border(const std::vector<int> &widths)
 // 辅助函数：打印表格单元格（支持颜色内容，按纯文本计算宽度）
 static void print_cell_colored(std::string_view raw_content, int width, bool center)
 {
-    // raw_content 可能包含 ANSI 转义码，计算显示宽度时需要跳过
+    // raw_content可能包含ANSI转义码，计算显示宽度时需要跳过
     auto content_width{0};
     for (std::size_t i{0}; i < raw_content.size();)
     {
         if (raw_content[i] == '\033' && i + 1 < raw_content.size() && raw_content[i + 1] == '[')
         {
-            // 跳过 ANSI 转义序列 \033[ ... m
+            // 跳过ANSI转义序列 \033[ ... m
             i += 2;
             while (i < raw_content.size() && !(raw_content[i] >= 0x40 && raw_content[i] <= 0x7e))
             {
@@ -338,7 +338,7 @@ void WatchpointPool::PrintAllWatchpoints() const
     }
     // 计算各列宽度
     const int val_width{10};   // 0x00000000
-    const int delta_width{11}; // +0x00000000 或 -0x00000000
+    const int delta_width{11}; // +0x00000000或 -0x00000000
     const int trigger_width{10};
     int no_width{display_width("编号")};
     int type_width{display_width("类型")};
@@ -541,7 +541,7 @@ void WatchpointPool::PrintAllWatchpoints() const
         print_border(col_widths);
     }
 }
-// 供 infoCommand 等调用的全局函数
+// 供infoCommand等调用的全局函数
 void PrintWatchpoints()
 {
     GetGlobalWatchpointPool().PrintAllWatchpoints();

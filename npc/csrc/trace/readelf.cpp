@@ -1,12 +1,12 @@
 /**
  * @file readelf.cpp
- * @brief 现代 C++23 NPC ELF 阅读器的实现。
+ * @brief 现代C++23 NPC ELF阅读器的实现。
  *
  * @details
- * 本实现将解析逻辑限定在本翻译单元内部，仅对外暴露声明于 `readelf.hpp` 中的
- * 只移 `Readelf` 对象。文件 I/O 通过 `std::ifstream` 完成；所有可恢复的错误
- * 均以 `std::expected` 形式返回。原始的 ELF 表在生成任何视图或派生函数记录
- * 之前被复制到 vector 中，因此调用者不会持有指向临时文件缓冲区的指针。
+ * 本实现将解析逻辑限定在本翻译单元内部，仅对外暴露声明于`readelf.hpp`中的
+ * 只移`Readelf`对象。文件I/O通过`std::ifstream`完成；所有可恢复的错误
+ * 均以`std::expected`形式返回。原始的ELF表在生成任何视图或派生函数记录
+ * 之前被复制到vector中，因此调用者不会持有指向临时文件缓冲区的指针。
  */
 #include "readelf.hpp"
 
@@ -22,10 +22,10 @@
 
 namespace
 {
-// 本次 NPC 构建所期望的 ELF class 字节。
+// 本次NPC构建所期望的ELF class字节。
 constexpr unsigned char ExpectedElfClass{Readelf::is_elf64 ? ELFCLASS64 : ELFCLASS32};
 
-// 诊断信息中使用的 `ExpectedElfClass` 的可读形式。
+// 诊断信息中使用的`ExpectedElfClass`的可读形式。
 constexpr auto ExpectedElfClassName{std::string_view{Readelf::is_elf64 ? "ELF64" : "ELF32"}};
 
 // 打印虚拟地址时使用的十六进制位数。
@@ -45,30 +45,30 @@ void print_to(std::ostream &os, std::format_string<Args...> format, Args &&...ar
     std::format_to(std::ostreambuf_iterator<char>(os), format, std::forward<Args>(args)...);
 }
 /**
- * @brief 以更少的调用点噪声构建 `std::expected` 错误值。
+ * @brief 以更少的调用点噪声构建`std::expected`错误值。
  *
  * @param message std::string，人类可读的错误信息。
- * @return std::unexpected<std::string>，包含 `message` 的 `std::unexpected<std::string>`。
+ * @return std::unexpected<std::string>，包含`message`的`std::unexpected<std::string>`。
  */
 std::unexpected<std::string> make_error(std::string message)
 {
     return std::unexpected(std::move(message));
 }
 /**
- * @brief 检查文件偏移量能否用 `std::streamoff` 表示。
+ * @brief 检查文件偏移量能否用`std::streamoff`表示。
  *
- * @param value std::uint64_t，无符号 ELF 文件偏移量。
- * @return bool，若可安全传递给 `std::ifstream::seekg()` 则为 `true`。
+ * @param value std::uint64_t，无符号ELF文件偏移量。
+ * @return bool，若可安全传递给`std::ifstream::seekg()`则为`true`。
  */
 bool can_cast_to_streamoff(std::uint64_t value)
 {
     return value <= static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max());
 }
 /**
- * @brief 检查字节数能否用 `std::streamsize` 表示。
+ * @brief 检查字节数能否用`std::streamsize`表示。
  *
  * @param value std::size_t，从流请求的字节数。
- * @return bool，若可安全传递给 `std::ifstream::read()` 则为 `true`。
+ * @return bool，若可安全传递给`std::ifstream::read()`则为`true`。
  */
 bool can_cast_to_streamsize(std::size_t value)
 {
@@ -79,8 +79,8 @@ bool can_cast_to_streamsize(std::size_t value)
  *
  * @param count std::size_t，元素个数。
  * @param item_size std::size_t，单个元素的字节大小。
- * @param[out] bytes std::size_t&，成功时接收 `count * item_size`。
- * @return bool，若乘法结果可用 `std::size_t` 表示则为 `true`。
+ * @param[out] bytes std::size_t&，成功时接收`count * item_size`。
+ * @return bool，若乘法结果可用`std::size_t`表示则为`true`。
  */
 bool checked_byte_count(std::size_t count, std::size_t item_size, std::size_t &bytes)
 {
@@ -94,16 +94,16 @@ bool checked_byte_count(std::size_t count, std::size_t item_size, std::size_t &b
 /**
  * @brief 从文件的绝对偏移处读取精确的字节范围。
  *
- * @param file std::ifstream&，已打开的 ELF 文件流。
+ * @param file std::ifstream&，已打开的ELF文件流。
  * @param offset std::uint64_t，读取前定位到的绝对文件偏移。
  * @param buffer void*，目标缓冲区。
  * @param bytes std::size_t，必须读取的字节数。
- * @param what std::string_view，正在读取的逻辑 ELF 对象的名称，用于诊断信息。
+ * @param what std::string_view，正在读取的逻辑ELF对象的名称，用于诊断信息。
  * @return std::expected<void, std::string>，空的成功值，或解释定位/读取失败的错误。
  *
  * @details
- * 部分读取被视为错误。这比仅检查流的 fail 位更严格，可避免将截断的表
- * 解释为有效的 ELF 数据。
+ * 部分读取被视为错误。这比仅检查流的fail位更严格，可避免将截断的表
+ * 解释为有效的ELF数据。
  */
 std::expected<void, std::string> read_exact_at(std::ifstream &file,
                                                std::uint64_t offset,
@@ -137,10 +137,10 @@ std::expected<void, std::string> read_exact_at(std::ifstream &file,
     return {};
 }
 /**
- * @brief 从文件中读取一个可平凡复制的 ELF 结构。
+ * @brief 从文件中读取一个可平凡复制的ELF结构。
  *
- * @tparam T 由 `NPC_ISA64` 选择的原生 ELF 结构类型。
- * @param file std::ifstream&，已打开的 ELF 文件流。
+ * @tparam T 由`NPC_ISA64`选择的原生ELF结构类型。
+ * @param file std::ifstream&，已打开的ELF文件流。
  * @param offset std::uint64_t，该对象的绝对文件偏移。
  * @param what std::string_view，该对象的诊断名称。
  * @return std::expected<T, std::string>，解码后的对象或错误字符串。
@@ -157,14 +157,14 @@ std::expected<T, std::string> read_object_at(std::ifstream &file, std::uint64_t 
     return object;
 }
 /**
- * @brief 将同质的 ELF 表读入 vector。
+ * @brief 将同质的ELF表读入vector。
  *
- * @tparam T 原生 ELF 表项类型。
- * @param file std::ifstream&，已打开的 ELF 文件流。
+ * @tparam T 原生ELF表项类型。
+ * @param file std::ifstream&，已打开的ELF文件流。
  * @param offset std::uint64_t，该表的绝对文件偏移。
  * @param count std::size_t，表中预期的条目数。
  * @param what std::string_view，该表的诊断名称。
- * @return std::expected<std::vector<T>, std::string>，条目组成的 vector，或错误字符串。
+ * @return std::expected<std::vector<T>, std::string>，条目组成的vector，或错误字符串。
  */
 template <typename T>
 std::expected<std::vector<T>, std::string> read_array_at(std::ifstream &file,
@@ -190,13 +190,13 @@ std::expected<std::vector<T>, std::string> read_array_at(std::ifstream &file,
     return objects;
 }
 /**
- * @brief 在解释其他表之前验证 ELF 头。
+ * @brief 在解释其他表之前验证ELF头。
  *
  * @param header const Header&，从文件偏移零处读取的头。
- * @return std::expected<void, std::string>，空的成功值，或此 ELF 不受支持的原因。
+ * @return std::expected<void, std::string>，空的成功值，或此ELF不受支持的原因。
  *
  * @details
- * 解析器有意仅支持 NPC 所需的常见情况：小端 ELF 文件，且其 32/64 位 class
+ * 解析器有意仅支持NPC所需的常见情况：小端ELF文件，且其 32/64 位class
  * 与构建匹配。条目大小检查可防止对具有不兼容主机结构布局的表进行意外重解释。
  */
 std::expected<void, std::string> validate_header(const Header &header)
@@ -237,9 +237,9 @@ std::expected<void, std::string> validate_header(const Header &header)
 /**
  * @brief 读取完整的节头表。
  *
- * @param file std::ifstream&，已打开的 ELF 文件流。
- * @param header const Header&，已验证的 ELF 头。
- * @return std::expected<std::vector<SectionHeader>, std::string>，节头条目；若 ELF 没有常规表则返回错误。
+ * @param file std::ifstream&，已打开的ELF文件流。
+ * @param header const Header&，已验证的ELF头。
+ * @return std::expected<std::vector<SectionHeader>, std::string>，节头条目；若ELF没有常规表则返回错误。
  */
 std::expected<std::vector<SectionHeader>, std::string> read_section_headers(std::ifstream &file, const Header &header)
 {
@@ -253,9 +253,9 @@ std::expected<std::vector<SectionHeader>, std::string> read_section_headers(std:
                                         "section header table");
 }
 /**
- * @brief 读取常规的 `SHT_SYMTAB` 节。
+ * @brief 读取常规的`SHT_SYMTAB`节。
  *
- * @param file std::ifstream&，已打开的 ELF 文件流。
+ * @param file std::ifstream&，已打开的ELF文件流。
  * @param section const SectionHeader&，描述符号表的节头。
  * @return std::expected<std::vector<Symbol>, std::string>，原始符号条目；若该节格式错误则返回错误。
  */
@@ -279,14 +279,14 @@ std::expected<std::vector<Symbol>, std::string> read_symbols(std::ifstream &file
                                  "symbol table");
 }
 /**
- * @brief 读取字符串表并追加一个防御性的尾部 NUL 字节。
+ * @brief 读取字符串表并追加一个防御性的尾部NUL字节。
  *
- * @param file std::ifstream&，已打开的 ELF 文件流。
- * @param section const SectionHeader&，描述 `SHT_STRTAB` 节的节头。
- * @return std::expected<std::vector<char>, std::string>，字符串表字节加一个额外的 NUL，或错误字符串。
+ * @param file std::ifstream&，已打开的ELF文件流。
+ * @param section const SectionHeader&，描述`SHT_STRTAB`节的节头。
+ * @return std::expected<std::vector<char>, std::string>，字符串表字节加一个额外的NUL，或错误字符串。
  *
  * @details
- * ELF 字符串表应包含位于节负载内的 NUL 终止字符串。额外的终止符不计入
+ * ELF字符串表应包含位于节负载内的NUL终止字符串。额外的终止符不计入
  * 原始文件数据；它仅在验证后使意外显示最后一个字符串更安全。
  */
 std::expected<std::vector<char>, std::string> read_string_table(std::ifstream &file, const SectionHeader &section)
@@ -317,10 +317,10 @@ std::expected<std::vector<char>, std::string> read_string_table(std::ifstream &f
     return table;
 }
 /**
- * @brief 仅返回来自 ELF 字符串表节的字节。
+ * @brief 仅返回来自ELF字符串表节的字节。
  *
- * @param table const std::vector<char>&，缓存的表，包含加载器额外添加的尾部 NUL 字节。
- * @return std::span<const char>，排除合成尾部 NUL 的 span。
+ * @param table const std::vector<char>&，缓存的表，包含加载器额外添加的尾部NUL字节。
+ * @return std::span<const char>，排除合成尾部NUL的span。
  */
 std::span<const char> original_string_bytes(const std::vector<char> &table)
 {
@@ -331,12 +331,12 @@ std::span<const char> original_string_bytes(const std::vector<char> &table)
     return {table.data(), table.size() - 1};
 }
 /**
- * @brief 将字符串表偏移解析为有界的 `std::string_view`。
+ * @brief 将字符串表偏移解析为有界的`std::string_view`。
  *
  * @param table std::span<const char>，原始字符串表字节。
- * @param offset std::size_t，`table` 内的字节偏移。
- * @return std::optional<std::string_view>，NUL 终止字符串的视图；若偏移无效或字符串未在原始字节内终止，
- *         则返回 `std::nullopt`。
+ * @param offset std::size_t，`table`内的字节偏移。
+ * @return std::optional<std::string_view>，NUL终止字符串的视图；若偏移无效或字符串未在原始字节内终止，
+ *         则返回`std::nullopt`。
  */
 std::optional<std::string_view> string_at(std::span<const char> table, std::size_t offset)
 {
@@ -354,10 +354,10 @@ std::optional<std::string_view> string_at(std::span<const char> table, std::size
     return std::string_view(begin, static_cast<const char *>(end) - begin);
 }
 /**
- * @brief 从 ELF 符号的 `st_info` 字段中提取绑定位。
+ * @brief 从ELF符号的`st_info`字段中提取绑定位。
  *
- * @param info unsigned char，原始 `st_info` 字节。
- * @return unsigned，`STB_*` 绑定值。
+ * @param info unsigned char，原始`st_info`字节。
+ * @return unsigned，`STB_*`绑定值。
  */
 unsigned symbol_bind(unsigned char info)
 {
@@ -371,10 +371,10 @@ unsigned symbol_bind(unsigned char info)
     }
 }
 /**
- * @brief 从 ELF 符号的 `st_info` 字段中提取类型位。
+ * @brief 从ELF符号的`st_info`字段中提取类型位。
  *
- * @param info unsigned char，原始 `st_info` 字节。
- * @return unsigned，`STT_*` 符号类型值。
+ * @param info unsigned char，原始`st_info`字节。
+ * @return unsigned，`STT_*`符号类型值。
  */
 unsigned symbol_type(unsigned char info)
 {
@@ -388,10 +388,10 @@ unsigned symbol_type(unsigned char info)
     }
 }
 /**
- * @brief 从 ELF 符号的 `st_other` 字段中提取可见性位。
+ * @brief 从ELF符号的`st_other`字段中提取可见性位。
  *
- * @param other unsigned char，原始 `st_other` 字节。
- * @return unsigned，`STV_*` 可见性值。
+ * @param other unsigned char，原始`st_other`字节。
+ * @return unsigned，`STV_*`可见性值。
  */
 unsigned symbol_visibility(unsigned char other)
 {
@@ -407,12 +407,12 @@ unsigned symbol_visibility(unsigned char other)
 /**
  * @brief 为所有可用的函数符号构建排序后的地址范围。
  *
- * @param symbols std::span<const Symbol>，来自 `SHT_SYMTAB` 的原始条目。
+ * @param symbols std::span<const Symbol>，来自`SHT_SYMTAB`的原始条目。
  * @param string_table std::span<const char>，符号字符串表负载。
  * @return std::vector<ReadelfFunction>，按起始地址排序的函数记录。
  *
  * @details
- * 过滤器保留已定义的、大小非零且名称有效的 `STT_FUNC` 符号。跳过大小为零
+ * 过滤器保留已定义的、大小非零且名称有效的`STT_FUNC`符号。跳过大小为零
  * 的函数，因为它们无法构成有意义的半开地址范围以供追踪。
  */
 std::vector<ReadelfFunction> build_functions(std::span<const Symbol> symbols, std::span<const char> string_table)
@@ -448,10 +448,10 @@ std::vector<ReadelfFunction> build_functions(std::span<const Symbol> symbols, st
     return functions;
 }
 /**
- * @brief 将 ELF class 字节转换为显示字符串。
+ * @brief 将ELF class字节转换为显示字符串。
  *
- * @param elf_class unsigned char，`EI_CLASS` 值。
- * @return std::string_view，用于类似 readelf 输出的稳定字符串字面量。
+ * @param elf_class unsigned char，`EI_CLASS`值。
+ * @return std::string_view，用于类似readelf输出的稳定字符串字面量。
  */
 std::string_view elf_class_name(unsigned char elf_class)
 {
@@ -476,10 +476,10 @@ std::string_view elf_class_name(unsigned char elf_class)
     }
 }
 /**
- * @brief 将 ELF 端序编码字节转换为显示字符串。
+ * @brief 将ELF端序编码字节转换为显示字符串。
  *
- * @param data unsigned char，`EI_DATA` 值。
- * @return std::string_view，用于类似 readelf 输出的稳定字符串字面量。
+ * @param data unsigned char，`EI_DATA`值。
+ * @return std::string_view，用于类似readelf输出的稳定字符串字面量。
  */
 std::string_view elf_data_name(unsigned char data)
 {
@@ -504,10 +504,10 @@ std::string_view elf_data_name(unsigned char data)
     }
 }
 /**
- * @brief 将 ELF 文件类型值转换为显示字符串。
+ * @brief 将ELF文件类型值转换为显示字符串。
  *
- * @param type Half，原始 `e_type` 值。
- * @return std::string_view，用于类似 readelf 输出的稳定字符串字面量。
+ * @param type Half，原始`e_type`值。
+ * @return std::string_view，用于类似readelf输出的稳定字符串字面量。
  */
 std::string_view elf_type_name(Half type)
 {
@@ -540,10 +540,10 @@ std::string_view elf_type_name(Half type)
     }
 }
 /**
- * @brief 将 ELF 节类型值转换为紧凑的显示字符串。
+ * @brief 将ELF节类型值转换为紧凑的显示字符串。
  *
- * @param type Word，原始 `sh_type` 值。
- * @return std::string_view，用于类似 readelf 输出的稳定字符串字面量。
+ * @param type Word，原始`sh_type`值。
+ * @return std::string_view，用于类似readelf输出的稳定字符串字面量。
  */
 std::string_view section_type_name(Word type)
 {
@@ -654,10 +654,10 @@ std::string_view section_type_name(Word type)
     }
 }
 /**
- * @brief 使用 GNU readelf 风格的短字母渲染节标志位。
+ * @brief 使用GNU readelf风格的短字母渲染节标志位。
  *
- * @param flags Xword，原始 `sh_flags` 位集合。
- * @return std::string，如 `WA`、`AX` 或 `MS` 的紧凑字符串。
+ * @param flags Xword，原始`sh_flags`位集合。
+ * @return std::string，如`WA`、`AX`或`MS`的紧凑字符串。
  */
 std::string section_flags(Xword flags)
 {
@@ -689,8 +689,8 @@ std::string section_flags(Xword flags)
 /**
  * @brief 将符号绑定转换为显示字符串。
  *
- * @param info unsigned char，原始 `st_info` 字节。
- * @return std::string_view，用于类似 readelf 输出的稳定字符串字面量。
+ * @param info unsigned char，原始`st_info`字节。
+ * @return std::string_view，用于类似readelf输出的稳定字符串字面量。
  */
 std::string_view symbol_bind_name(unsigned char info)
 {
@@ -723,8 +723,8 @@ std::string_view symbol_bind_name(unsigned char info)
 /**
  * @brief 将符号类型转换为显示字符串。
  *
- * @param info unsigned char，原始 `st_info` 字节。
- * @return std::string_view，用于类似 readelf 输出的稳定字符串字面量。
+ * @param info unsigned char，原始`st_info`字节。
+ * @return std::string_view，用于类似readelf输出的稳定字符串字面量。
  */
 std::string_view symbol_type_name(unsigned char info)
 {
@@ -773,8 +773,8 @@ std::string_view symbol_type_name(unsigned char info)
 /**
  * @brief 将符号可见性值转换为显示字符串。
  *
- * @param other unsigned char，原始 `st_other` 字节。
- * @return std::string_view，用于类似 readelf 输出的稳定字符串字面量。
+ * @param other unsigned char，原始`st_other`字节。
+ * @return std::string_view，用于类似readelf输出的稳定字符串字面量。
  */
 std::string_view symbol_visibility_name(unsigned char other)
 {
@@ -805,8 +805,8 @@ std::string_view symbol_visibility_name(unsigned char other)
 /**
  * @brief 格式化符号节索引以供显示。
  *
- * @param section_index Half，原始 `st_shndx` 值。
- * @return std::string，`UND`、`ABS`、`COM` 或十进制节索引。
+ * @param section_index Half，原始`st_shndx`值。
+ * @return std::string，`UND`、`ABS`、`COM`或十进制节索引。
  */
 std::string symbol_section_index(Half section_index)
 {
@@ -829,7 +829,7 @@ std::string symbol_section_index(Half section_index)
  *
  * @param text std::string_view，输入文本。
  * @param max_size std::size_t，最多保留的字节数。
- * @return std::string_view，最多包含 `max_size` 字节的字符串视图。
+ * @return std::string_view，最多包含`max_size`字节的字符串视图。
  */
 std::string_view clipped(std::string_view text, std::size_t max_size)
 {
@@ -849,7 +849,7 @@ Readelf::Readelf(Readelf &&) noexcept = default;
 Readelf &Readelf::operator=(Readelf &&) noexcept = default;
 Readelf::~Readelf() = default;
 /**
- * @brief 从路径创建已加载的 `Readelf` 实例。
+ * @brief 从路径创建已加载的`Readelf`实例。
  *
  * @param elf_file std::filesystem::path，要解析的文件路径。
  * @return std::expected<Readelf, std::string>，已加载的阅读器，或描述性错误字符串。
@@ -866,9 +866,9 @@ std::expected<Readelf, std::string> Readelf::load(std::filesystem::path elf_file
     return readelf;
 }
 /**
- * @brief 报告此对象当前是否拥有已解析的 ELF 数据。
+ * @brief 报告此对象当前是否拥有已解析的ELF数据。
  *
- * @return bool，成功加载后返回 `true`。
+ * @return bool，成功加载后返回`true`。
  */
 bool Readelf::loaded() const noexcept
 {
@@ -884,7 +884,7 @@ const std::filesystem::path &Readelf::path() const noexcept
     return path_;
 }
 /**
- * @brief 返回缓存的 ELF 头。
+ * @brief 返回缓存的ELF头。
  *
  * @return const Readelf::header_type&，已解析头部的引用。
  */
@@ -895,7 +895,7 @@ const Readelf::header_type &Readelf::header() const
 /**
  * @brief 返回缓存的节头表。
  *
- * @return std::span<const Readelf::section_header_type>，覆盖所有节头的 span。
+ * @return std::span<const Readelf::section_header_type>，覆盖所有节头的span。
  */
 std::span<const Readelf::section_header_type> Readelf::section_headers() const noexcept
 {
@@ -904,7 +904,7 @@ std::span<const Readelf::section_header_type> Readelf::section_headers() const n
 /**
  * @brief 返回缓存的原始符号表。
  *
- * @return std::span<const Readelf::symbol_type>，覆盖 `SHT_SYMTAB` 条目的 span；若不存在常规符号表则为空 span。
+ * @return std::span<const Readelf::symbol_type>，覆盖`SHT_SYMTAB`条目的span；若不存在常规符号表则为空span。
  */
 std::span<const Readelf::symbol_type> Readelf::symbols() const noexcept
 {
@@ -913,20 +913,20 @@ std::span<const Readelf::symbol_type> Readelf::symbols() const noexcept
 /**
  * @brief 返回派生的函数记录。
  *
- * @return std::span<const ReadelfFunction>，按起始地址排序的函数符号 span。
+ * @return std::span<const ReadelfFunction>，按起始地址排序的函数符号span。
  */
 std::span<const ReadelfFunction> Readelf::functions() const noexcept
 {
     return functions_;
 }
 /**
- * @brief 查找其半开范围包含 `address` 的函数。
+ * @brief 查找其半开范围包含`address`的函数。
  *
  * @param address std::size_t，要解析的虚拟地址。
- * @return std::optional<ReadelfFunction>，命中时返回函数记录，否则返回 `std::nullopt`。
+ * @return std::optional<ReadelfFunction>，命中时返回函数记录，否则返回`std::nullopt`。
  *
  * @details
- * 函数记录按起始地址排序，因此查找时先定位起始不大于 `address` 的最后一个
+ * 函数记录按起始地址排序，因此查找时先定位起始不大于`address`的最后一个
  * 函数，再验证结束边界。这样实现简单，且比完整的线性扫描更快。
  */
 std::optional<ReadelfFunction> Readelf::find_function(std::size_t address) const noexcept
@@ -951,7 +951,7 @@ std::optional<ReadelfFunction> Readelf::find_function(std::size_t address) const
  * @brief 仅解析虚拟地址对应的函数名称。
  *
  * @param address std::size_t，要解析的虚拟地址。
- * @return std::optional<std::string_view>，命中时返回名称视图，否则返回 `std::nullopt`。
+ * @return std::optional<std::string_view>，命中时返回名称视图，否则返回`std::nullopt`。
  */
 std::optional<std::string_view> Readelf::find_function_name(std::size_t address) const noexcept
 {
@@ -963,7 +963,7 @@ std::optional<std::string_view> Readelf::find_function_name(std::size_t address)
     return function->name;
 }
 /**
- * @brief 打印类似 readelf 的 ELF 头摘要。
+ * @brief 打印类似readelf的ELF头摘要。
  *
  * @param os std::ostream&，目标流。
  */
@@ -1001,7 +1001,7 @@ void Readelf::print_file_header(std::ostream &os) const
     print_to(os, "  Section header string table index: {}\n", header_.e_shstrndx);
 }
 /**
- * @brief 打印类似 readelf 的节头表。
+ * @brief 打印类似readelf的节头表。
  *
  * @param os std::ostream&，目标流。
  */
@@ -1036,7 +1036,7 @@ void Readelf::print_section_headers(std::ostream &os) const
     }
 }
 /**
- * @brief 打印类似 readelf 的原始符号表。
+ * @brief 打印类似readelf的原始符号表。
  *
  * @param os std::ostream&，目标流。
  */
@@ -1068,14 +1068,14 @@ void Readelf::print_symbols(std::ostream &os) const
     }
 }
 /**
- * @brief 从 `path_` 填充此对象。
+ * @brief 从`path_`填充此对象。
  *
  * @return std::expected<void, std::string>，空的成功值，或描述性的读取/解析错误。
  *
  * @details
- * 此方法首先重置所有缓存状态。在验证 ELF 头和节头之后，它会择机读取
- * `.shstrtab` 以获得更好的节名打印效果。缺少常规符号表不是致命错误：
- * 该对象仍可打印头部，但 `symbols()` 和 `functions()` 将为空。
+ * 此方法首先重置所有缓存状态。在验证ELF头和节头之后，它会择机读取
+ * `.shstrtab`以获得更好的节名打印效果。缺少常规符号表不是致命错误：
+ * 该对象仍可打印头部，但`symbols()`和`functions()`将为空。
  */
 std::expected<void, std::string> Readelf::load_from_file()
 {
@@ -1144,9 +1144,9 @@ std::expected<void, std::string> Readelf::load_from_file()
     return {};
 }
 /**
- * @brief 从 `.shstrtab` 解析节名。
+ * @brief 从`.shstrtab`解析节名。
  *
- * @param name_offset word_type，`sh_name` 中存储的字节偏移。
+ * @param name_offset word_type，`sh_name`中存储的字节偏移。
  * @return std::string_view，节名视图；数据缺失或错误时返回稳定的占位符。
  */
 std::string_view Readelf::section_name(word_type name_offset) const noexcept
@@ -1161,7 +1161,7 @@ std::string_view Readelf::section_name(word_type name_offset) const noexcept
 /**
  * @brief 从符号字符串表解析符号名称。
  *
- * @param name_offset word_type，`st_name` 中存储的字节偏移。
+ * @param name_offset word_type，`st_name`中存储的字节偏移。
  * @return std::string_view，符号名称视图；数据缺失或错误时返回稳定的占位符。
  */
 std::string_view Readelf::symbol_name(word_type name_offset) const noexcept
@@ -1176,7 +1176,7 @@ std::string_view Readelf::symbol_name(word_type name_offset) const noexcept
 /**
  * @brief 定位第一个常规符号表节。
  *
- * @return int，从零开始的节索引；若不存在则返回 `-1`。
+ * @return int，从零开始的节索引；若不存在则返回`-1`。
  */
 int Readelf::symbol_table_section_index() const noexcept
 {

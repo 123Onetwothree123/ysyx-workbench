@@ -2,10 +2,10 @@
 
 /**
  * @file FtraceFrame.cpp
- * @brief ftrace 调用栈帧的实现。
+ * @brief ftrace调用栈帧的实现。
  *
  * @details
- * 这个文件实现 `FtraceFrame`，用来保存一次函数调用的调用PC、
+ * 这个文件实现`FtraceFrame`，用来保存一次函数调用的调用PC、
  * 返回PC、函数入口地址和函数名。
  */
 

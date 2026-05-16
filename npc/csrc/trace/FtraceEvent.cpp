@@ -2,11 +2,11 @@
 
 /**
  * @file FtraceEvent.cpp
- * @brief ftrace 历史事件的实现。
+ * @brief ftrace历史事件的实现。
  *
  * @details
- * 这个文件实现 `FtraceEvent`，用来保存程序运行时产生的一次
- * call 或 ret 事件快照。
+ * 这个文件实现`FtraceEvent`，用来保存程序运行时产生的一次
+ * call或ret事件快照。
  */
 
 FtraceEvent::FtraceEvent() = default;
