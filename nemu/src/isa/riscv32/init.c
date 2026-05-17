@@ -32,8 +32,7 @@ static void restart() {
 
   /* The zero register is always 0. */
   cpu.gpr[0] = 0;
-
-  //ysyx要求的32 0x1800，64是0xa00001800
+  //项目组要求的32 0x1800，64是0xa00001800
   cpu.mstatus = MUXDEF(CONFIG_RV64, 0xa00001800UL, 0x1800UL);
 }
 
