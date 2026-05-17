@@ -24,10 +24,10 @@ public:
     [[nodiscard]] bool CheckRegs(const DifftestCPUState &DUT) const;
     /// @brief 获取DIFFTEST_TO_DUT方向值（用于difftest_regcpy）
     /// @return 方向常量 0
-    [[nodiscard]] static constexpr int GetDirectionToDUT() { return Direction::DIFFTEST_TO_DUT; }
+    [[nodiscard]] static int GetDirectionToDUT();
     /// @brief 获取DIFFTEST_TO_REF方向值（用于difftest_regcpy）
     /// @return 方向常量 1
-    [[nodiscard]] static constexpr int GetDirectionToRef() { return Direction::DIFFTEST_TO_REF; }
+    [[nodiscard]] static int GetDirectionToRef();
 private:
     std::array<std::uint32_t, 32> gpr{}; ///< 32 个通用寄存器（x0–x31），值初始化为 0
     std::uint32_t pc{};

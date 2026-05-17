@@ -64,3 +64,11 @@ bool DifftestCPUState::CheckRegs(const DifftestCPUState &DUT) const
     }
     return true;
 }
+int DifftestCPUState::GetDirectionToDUT()
+{
+    return Direction::DIFFTEST_TO_DUT;
+}
+int DifftestCPUState::GetDirectionToRef()
+{
+    return Direction::DIFFTEST_TO_REF;
+}
