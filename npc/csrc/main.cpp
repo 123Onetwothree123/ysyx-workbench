@@ -4,12 +4,11 @@
 #include <iostream>
 #include <cstdint>
 #include <expected>
-#include <format>
 #include <memory>
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <string_view>
+#include "CliOptions.hpp"
 #include "difftest.hpp"
 #include "memory.hpp"
 #include "NPC_SDB.hpp"
@@ -21,73 +20,6 @@ static std::uint32_t halt_ret{0}; // 返回码，0是good，1是bad
 void reset_dut(std::unique_ptr<VRV32E32Reg> &top); // 复位Device Under Test被测设计的
 namespace
 {
-    struct CliOptions
-    {
-        std::optional<std::filesystem::path> image_file{};
-        std::optional<std::filesystem::path> elf_file{};
-        std::optional<std::filesystem::path> diff_ref_so{};
-        bool ftrace_enabled{true};
-        bool batch_mode{false};
-    };
-    std::expected<CliOptions, std::string> parse_cli(int argc, char const *argv[])
-    {
-        CliOptions options;
-        std::optional<std::filesystem::path> image_file;
-        for (auto i{1}; i < argc; ++i)
-        {
-            const auto arg{std::string_view{argv[i]}};
-            if (arg == "--elf" || arg == "-e")
-            {
-                if (i + 1 >= argc)
-                {
-                    return std::unexpected{"--elf 需要跟一个ELF文件路径"};
-                }
-                options.elf_file = std::filesystem::path{argv[++i]};
-            }
-            else if (arg.starts_with("--elf="))
-            {
-                options.elf_file = std::filesystem::path{std::string{arg.substr(6)}};
-            }
-            else if (arg == "--ftrace")
-            {
-                options.ftrace_enabled = true;
-            }
-            else if (arg == "--no-ftrace")
-            {
-                options.ftrace_enabled = false;
-            }
-            else if (arg == "--batch" || arg == "-b")
-            {
-                options.batch_mode = true;
-            }
-            else if (arg == "--diff")
-            {
-                if (i + 1 >= argc)
-                {
-                    return std::unexpected{"--diff 需要跟一个NEMU动态库路径"};
-                }
-                options.diff_ref_so = std::filesystem::path{argv[++i]};
-            }
-            else if (arg.starts_with("--diff="))
-            {
-                options.diff_ref_so = std::filesystem::path{std::string{arg.substr(7)}};
-            }
-            else if (arg.starts_with("-"))
-            {
-                return std::unexpected{std::format("未知参数: {}", arg)};
-            }
-            else if (!image_file)
-            {
-                image_file = std::filesystem::path{std::string{arg}};
-            }
-            else
-            {
-                return std::unexpected{std::format("多余的镜像文件参数: {}", arg)};
-            }
-        }
-        options.image_file = std::move(image_file);
-        return options;
-    }
     std::optional<std::filesystem::path> infer_elf_path(const std::filesystem::path &image_file)
     {
         auto candidate{image_file};
@@ -100,19 +32,19 @@ namespace
     }
     std::expected<void, std::string> init_trace_from_cli(const CliOptions &options)
     {
-        auto elf_file{options.elf_file};
+        auto elf_file{options.GetElfFile()};
 #ifdef CONFIG_FTRACE
-        if (!elf_file && options.ftrace_enabled)
+        if (!elf_file && options.IsFtraceEnabled())
         {
-            if (options.image_file)
+            if (options.GetImageFile())
             {
-                elf_file = infer_elf_path(*options.image_file);
+                elf_file = infer_elf_path(*options.GetImageFile());
             }
         }
 #endif
         if (elf_file)
         {
-            auto result{InitializeFtrace(*elf_file, options.ftrace_enabled)};
+            auto result{InitializeFtrace(*elf_file, options.IsFtraceEnabled())};
             if (!result)
             {
                 return result;
@@ -120,7 +52,7 @@ namespace
             std::println("ELF加载了: {}, functions = {}", elf_file->string(), GlobalFtrace.FunctionCount());
         }
 #ifdef CONFIG_FTRACE
-        else if (options.ftrace_enabled && options.image_file)
+        else if (options.IsFtraceEnabled() && options.GetImageFile())
         {
             return std::unexpected{"CONFIG_FTRACE=y 需要 --elf FILE，或者镜像旁边存在同名 .elf"};
         }
@@ -153,7 +85,7 @@ void reset_dut(std::unique_ptr<VRV32E32Reg> &top)
 }
 int main(int argc, char const *argv[])
 {
-    auto options{parse_cli(argc, argv)};
+    auto options{CliOptions::Parse(argc, argv)};
     if (!options)
     {
         std::println(std::cerr, "{}", options.error());
@@ -161,16 +93,16 @@ int main(int argc, char const *argv[])
     }
     Verilated::commandArgs(argc, argv);
     auto image_size{std::size_t{0}};
-    if (options->image_file)
+    if (options->GetImageFile())
     {
-        const auto result{load_file(*options->image_file)};
+        const auto result{load_file(*options->GetImageFile())};
         if (!result)
         {
             std::println(std::cerr, "{}", result.error());
             return 1;
         }
         image_size = result.value();
-        std::println("文件加载了: {}, size = {} bytes", options->image_file->string(), image_size);
+        std::println("文件加载了: {}, size = {} bytes", options->GetImageFile()->string(), image_size);
     }
     else
     {
@@ -188,13 +120,13 @@ int main(int argc, char const *argv[])
     auto cycles{std::size_t{0}};               // 统计总周期数的
     reset_dut(top);
     SDBDPISetTopScope(top->name(), top->modelName());
-    auto difftest_init{DifftestInitialize(options->diff_ref_so, image_size)};
+    auto difftest_init{DifftestInitialize(options->GetDiffRefSo(), image_size)};
     if (!difftest_init)
     {
         std::println(std::cerr, "{}", difftest_init.error());
         return 1;
     }
-    sdb_main_loop(top, cycles, options->batch_mode);
+    sdb_main_loop(top, cycles, options->IsBatchMode());
     top->final();
     if (npc_halted)
     {
