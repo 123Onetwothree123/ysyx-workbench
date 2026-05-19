@@ -1,8 +1,8 @@
 #include "command/cCommand.hpp"
+#include "NPCTrap.hpp"
 #include "command/SDBCommandUtils.hpp"
 #include "command/WatchpointPool.hpp"
 #include <verilated.h>
-extern bool npc_halted;
 std::string_view cCommand::Name() const noexcept
 {
     return "c";
@@ -17,13 +17,13 @@ SDBCommandUsageList cCommand::Usage() const noexcept
 SDBCommandResult cCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
     static_cast<void>(Args);
-    while (!Verilated::gotFinish() && !npc_halted)
+    while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         SDBStepCycle(Context.GetTop());
         ++Context.GetCycles();
         if (GetGlobalWatchpointPool().CheckAll())
         {
-            npc_halted = true;
+            NPCTrap::Stop();
             std::println("程序因监视点变化而停止。");
             break;
         }

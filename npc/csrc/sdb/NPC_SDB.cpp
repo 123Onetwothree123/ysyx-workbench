@@ -1,7 +1,10 @@
 #include "NPC_SDB.hpp"
+#include "NPCTrap.hpp"
 #include "SDBDPI.hpp"
 #include "command/SDBCommandRegistry.hpp"
 #include "command/SDBCommandUtils.hpp"
+#include <verilated.h>
+#include <VRV32E32Reg.h>
 #include <iostream>
 #include <print>
 #include <string>
@@ -9,13 +12,11 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #endif
-// 全局状态，true就是表示NPC停止，是EBREAK_DPI-C来设置
-extern bool npc_halted;
-void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, std::size_t &cycles, bool batch_mode)
+void sdb_main_loop(VRV32E32Reg &top, std::size_t &cycles, bool batch_mode)
 {
-    SDBDPISetTopScope(top->name(), top->modelName()); // 先设置作用域
+    SDBDPISetTopScope(top.name(), top.modelName()); // 先设置作用域
 #ifdef CONFIG_SDB
-    SDBCommandRegistry Commands{*top, cycles};
+    SDBCommandRegistry Commands{top, cycles};
     if (batch_mode)
     {
         Commands.Execute("c");
@@ -39,9 +40,9 @@ void sdb_main_loop(std::unique_ptr<VRV32E32Reg> &top, std::size_t &cycles, bool 
         line = readline("(npc) ");
     }
 #else
-    while (!Verilated::gotFinish() && !npc_halted)
+    while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
-        SDBStepCycle(*top);
+        SDBStepCycle(top);
         ++cycles;
     }
 #endif

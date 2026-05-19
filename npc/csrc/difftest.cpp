@@ -1,6 +1,7 @@
 // doxygen是deepseek ai写的
 #include "difftest.hpp"
 #include "DifftestCPUState.hpp"
+#include "NPCTrap.hpp"
 #include <VRV32E32Reg.h>
 #include <cstdint>
 #include <expected>
@@ -13,7 +14,6 @@
 #include "memory.hpp"
 #ifdef CONFIG_DIFFTEST
 #include <dlfcn.h>
-extern "C" void npc_ebreak(int pc, int code);
 #endif
 namespace
 {
