@@ -1,25 +1,20 @@
 #include "DUTControl.hpp"
 #include <VRV32E32Reg.h>
-
 DUTControl::DUTControl() : Top{std::make_unique<VRV32E32Reg>()}
 {
 }
-
 DUTControl::~DUTControl()
 {
     Final();
 }
-
 VRV32E32Reg &DUTControl::GetTop() noexcept
 {
     return *Top;
 }
-
 const VRV32E32Reg &DUTControl::GetTop() const noexcept
 {
     return *Top;
 }
-
 void DUTControl::Reset()
 {
     Top->sdb_debug_clk = 0;
@@ -37,7 +32,6 @@ void DUTControl::Reset()
     Top->rst = 0;
     Top->eval();
 }
-
 void DUTControl::Final()
 {
     if (!Finalized)

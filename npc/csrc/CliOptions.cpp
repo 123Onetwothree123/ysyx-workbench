@@ -2,7 +2,6 @@
 #include <format>
 #include <string_view>
 #include <utility>
-
 std::expected<CliOptions, std::string> CliOptions::Parse(int argc, char const *argv[])
 {
     CliOptions options;
@@ -62,27 +61,22 @@ std::expected<CliOptions, std::string> CliOptions::Parse(int argc, char const *a
     options.ImageFile = std::move(image_file);
     return options;
 }
-
 const std::optional<std::filesystem::path> &CliOptions::GetImageFile() const noexcept
 {
     return ImageFile;
 }
-
 const std::optional<std::filesystem::path> &CliOptions::GetElfFile() const noexcept
 {
     return ElfFile;
 }
-
 const std::optional<std::filesystem::path> &CliOptions::GetDiffRefSo() const noexcept
 {
     return DiffRefSo;
 }
-
 bool CliOptions::IsFtraceEnabled() const noexcept
 {
     return FtraceEnabled;
 }
-
 bool CliOptions::IsBatchMode() const noexcept
 {
     return BatchMode;

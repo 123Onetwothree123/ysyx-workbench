@@ -2,7 +2,6 @@
 #define NPC_TRAP_HPP
 #include <cstddef>
 #include <cstdint>
-
 class NPCTrap final
 {
 public:
@@ -14,7 +13,5 @@ public:
     [[nodiscard]] static std::uint32_t GetCode() noexcept;
     [[nodiscard]] static int PrintResult(std::size_t Cycles);
 };
-
 extern "C" void npc_ebreak(int pc, int code);
-
 #endif

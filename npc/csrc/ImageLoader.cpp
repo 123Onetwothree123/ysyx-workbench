@@ -2,7 +2,6 @@
 #include "CliOptions.hpp"
 #include "memory.hpp"
 #include <print>
-
 std::expected<std::size_t, std::string> ImageLoader::LoadFromCli(const CliOptions &Options)
 {
     const auto &image_file{Options.GetImageFile()};

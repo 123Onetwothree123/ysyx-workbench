@@ -2,7 +2,6 @@
 #include "CliOptions.hpp"
 #include "trace/ftrace.hpp"
 #include <print>
-
 std::optional<std::filesystem::path> TraceInitializer::InferElfPath(const std::filesystem::path &ImageFile)
 {
     auto candidate{ImageFile};
@@ -13,7 +12,6 @@ std::optional<std::filesystem::path> TraceInitializer::InferElfPath(const std::f
     }
     return std::nullopt;
 }
-
 std::expected<void, std::string> TraceInitializer::InitFromCli(const CliOptions &Options)
 {
     auto elf_file{Options.GetElfFile()};

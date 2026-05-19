@@ -12,7 +12,6 @@
 #include "SDBDPI.hpp"
 #include "TraceInitializer.hpp"
 #include "trace.hpp"
-
 int main(int argc, char const *argv[])
 {
     auto options{CliOptions::Parse(argc, argv)};

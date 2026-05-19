@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-
 class CliOptions final
 {
 public:
@@ -14,7 +13,6 @@ public:
     [[nodiscard]] const std::optional<std::filesystem::path> &GetDiffRefSo() const noexcept;
     [[nodiscard]] bool IsFtraceEnabled() const noexcept;
     [[nodiscard]] bool IsBatchMode() const noexcept;
-
 private:
     std::optional<std::filesystem::path> ImageFile{};
     std::optional<std::filesystem::path> ElfFile{};
@@ -22,5 +20,4 @@ private:
     bool FtraceEnabled{true};
     bool BatchMode{false};
 };
-
 #endif
