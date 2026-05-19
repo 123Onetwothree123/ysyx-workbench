@@ -788,7 +788,6 @@ namespace
         }
         return std::to_string(static_cast<unsigned>(section_index));
     }
-
     std::uint32_t read_utf8_code_point(std::string_view text, std::size_t &index)
     {
         const auto first{static_cast<unsigned char>(text[index++])};
@@ -834,7 +833,6 @@ namespace
         }
         return code_point;
     }
-
     bool is_wide_code_point(std::uint32_t code_point)
     {
         return (code_point >= 0x1100u && code_point <= 0x115fu) ||
@@ -848,7 +846,6 @@ namespace
                (code_point >= 0xffe0u && code_point <= 0xffe6u) ||
                (code_point >= 0x20000u && code_point <= 0x3fffdu);
     }
-
     std::size_t code_point_width(std::uint32_t code_point)
     {
         if (code_point == 0 || code_point < 0x20u ||
@@ -859,7 +856,6 @@ namespace
         }
         return is_wide_code_point(code_point) ? 2u : 1u;
     }
-
     std::size_t display_width(std::string_view text)
     {
         auto width{std::size_t{0}};
@@ -869,7 +865,6 @@ namespace
         }
         return width;
     }
-
     std::string clip_to_width(std::string_view text, std::size_t width)
     {
         auto result{std::string{}};
@@ -888,7 +883,6 @@ namespace
         }
         return result;
     }
-
     std::string pad_right(std::string_view text, std::size_t width)
     {
         auto result{clip_to_width(text, width)};
@@ -899,7 +893,6 @@ namespace
         }
         return result;
     }
-
     std::string pad_left(std::string_view text, std::size_t width)
     {
         auto clipped{clip_to_width(text, width)};
