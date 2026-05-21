@@ -1,6 +1,7 @@
 // doxygen是deepseek ai写的
 #include "difftest.hpp"
 #include "DifftestCPUState.hpp"
+#include "NPCTrap.hpp"
 #include <VRV32E32Reg.h>
 #include <cstdint>
 #include <expected>
@@ -13,7 +14,6 @@
 #include "memory.hpp"
 #ifdef CONFIG_DIFFTEST
 #include <dlfcn.h>
-extern "C" void npc_ebreak(int pc, int code);
 #endif
 namespace
 {
@@ -29,7 +29,7 @@ namespace
     REFDifftestExec REFExec{nullptr};
     REFDifftestRaiseIntr REFRaiseIntr{nullptr};
     bool Enabled{false};
-    /// @brief 从 REF .so 中按名称加载符号并转为指定函数指针类型
+    /// @brief 从REF .so中按名称加载符号并转为指定函数指针类型
     /// @tparam Fn 目标函数指针类型
     /// @param Name 符号名称
     /// @return 成功返回函数指针，失败返回错误信息
@@ -46,8 +46,8 @@ namespace
     }
 #endif
 }
-/// @brief 初始化 DiffTest：加载 REF .so、同步内存和寄存器、启用比对
-/// @param REFSoFile REF 动态库路径，为空则不启用
+/// @brief 初始化DiffTest：加载REF .so、同步内存和寄存器、启用比对
+/// @param REFSoFile REF动态库路径，为空则不启用
 /// @param ImageSize 程序镜像大小（字节）
 /// @return 成功返回空，失败返回错误信息
 std::expected<void, std::string> DifftestInitialize(const std::optional<std::filesystem::path> &REFSoFile,
@@ -109,9 +109,9 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
     return {};
 #endif
 }
-/// @brief 执行一步 DiffTest 比对：REF 跑 1 条指令后与 DUT 寄存器对比
-/// @param Top Verilator 顶层模块引用，用于读取 DUT 状态
-/// @note 比对不通过会调用 npc_ebreak 终止仿真
+/// @brief 执行一步DiffTest比对：REF跑 1 条指令后与DUT寄存器对比
+/// @param Top Verilator顶层模块引用，用于读取DUT状态
+/// @note 比对不通过会调用npc_ebreak终止仿真
 void DifftestStep(VRV32E32Reg &Top)
 {
 #ifdef CONFIG_DIFFTEST
@@ -138,8 +138,8 @@ void DifftestStep(VRV32E32Reg &Top)
     static_cast<void>(Top);
 #endif
 }
-/// @brief 查询 DiffTest 是否已启用
-/// @return 已启用返回 true，否则返回 false
+/// @brief 查询DiffTest是否已启用
+/// @return 已启用返回true，否则返回false
 bool DifftestIsEnabled()
 {
 #ifdef CONFIG_DIFFTEST

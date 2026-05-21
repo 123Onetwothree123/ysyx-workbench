@@ -18,5 +18,4 @@ public:
     // 纯语法检查
     [[nodiscard]] bool Validate(std::string_view expression);
 };
-
 #endif

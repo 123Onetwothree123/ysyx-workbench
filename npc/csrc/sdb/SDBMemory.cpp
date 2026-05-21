@@ -1,10 +1,7 @@
 #include "SDBMemory.hpp"
-
 #include "memory.hpp"
-
 #include <iostream>
 #include <print>
-
 std::uint32_t NPCMemoryRead(std::uint32_t Addr, std::size_t Len)
 {
     if (Len != 1 && Len != 2 && Len != 4)
@@ -17,7 +14,6 @@ std::uint32_t NPCMemoryRead(std::uint32_t Addr, std::size_t Len)
         std::println(std::cerr, "NPCMemoryRead:：地址越界 0x{:08x}, len={}", Addr, Len);
         return 0;
     }
-
     const auto HostAddr{guest_to_host(Addr)};
     auto Data{std::uint32_t{0}};
     for (std::size_t i{0}; i < Len; i++)
@@ -26,7 +22,6 @@ std::uint32_t NPCMemoryRead(std::uint32_t Addr, std::size_t Len)
     }
     return Data;
 }
-
 std::optional<std::uint32_t> NPCMemoryReadSafe(std::uint32_t Addr, std::size_t Len)
 {
     if (Len != 1 && Len != 2 && Len != 4)
@@ -39,7 +34,6 @@ std::optional<std::uint32_t> NPCMemoryReadSafe(std::uint32_t Addr, std::size_t L
     }
     return NPCMemoryRead(Addr, Len);
 }
-
 void NPCMemoryScan(std::uint32_t Addr, std::size_t Count)
 {
     Addr &= ~0x3u; // 4字节对齐
@@ -51,7 +45,6 @@ void NPCMemoryScan(std::uint32_t Addr, std::size_t Count)
             std::println(std::cerr, "NPCMemoryScan：地址越界 0x{:08x}", Current);
             break;
         }
-
         const auto Value{NPCMemoryRead(Current, 4)};
         if (i % 4 == 0) // 每4个一组
         {

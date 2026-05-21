@@ -8,7 +8,6 @@
 #include <format>
 #include <string>
 #include <string_view>
-
 std::uint32_t NPCEvaluationContext::ReadRegister(std::string_view Name) const
 {
     if (IsProgramCounterName(Name))

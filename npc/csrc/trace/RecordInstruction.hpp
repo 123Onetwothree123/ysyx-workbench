@@ -7,7 +7,6 @@ private:
     std::uint64_t pc{0};
     std::uint32_t instruction{0};
     int len{0};
-
 public:
     RecordInstruction() noexcept;
     RecordInstruction(std::uint64_t pc, std::uint32_t instruction, int len);

@@ -1,10 +1,10 @@
 #include "command/siCommand.hpp"
+#include "NPCTrap.hpp"
 #include "command/SDBCommandUtils.hpp"
 #include "command/WatchpointPool.hpp"
 #include <charconv>
 #include <cstddef>
 #include <print>
-extern bool npc_halted;
 std::string_view siCommand::Name() const noexcept
 {
     return "si";
@@ -45,18 +45,18 @@ SDBCommandResult siCommand::Execute(SDBCommandContext &Context, std::string_view
         }
         Count = static_cast<std::size_t>(ParsedCount); // 如果转换成功并且是正数的话就使用这个值
     }
-    if (npc_halted)
+    if (NPCTrap::HasHalted())
     {
         std::println("NPC已经停止运行了");
         return SDBCommandResult::Continue;
     }
-    for (std::size_t Index{0}; Index < Count && !npc_halted; ++Index)
+    for (std::size_t Index{0}; Index < Count && !NPCTrap::HasHalted(); ++Index)
     {
         SDBStepCycle(Context.GetTop());
         ++Context.GetCycles();
         if (GetGlobalWatchpointPool().CheckAll())
         {
-            npc_halted = true;
+            NPCTrap::Stop();
             std::println("程序因监视点变化而停止。");
             break;
         }

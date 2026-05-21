@@ -8,7 +8,6 @@ class iringbuf
 {
 public:
     static constexpr std::size_t CONFIG_IRINGBUF_SIZE{16};
-
 private:
     std::array<RecordInstruction, CONFIG_IRINGBUF_SIZE> buffer{};
     std::size_t head{0};  // 下一次写入位置

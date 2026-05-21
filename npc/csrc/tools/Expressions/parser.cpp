@@ -1,12 +1,10 @@
 #include "parser.hpp"
-
 #include "BinaryOpNode.hpp"
 #include "DereferenceNode.hpp"
 #include "NumberNode.hpp"
 #include "ParenthesizedNode.hpp"
 #include "RegisterNode.hpp"
 #include "UnaryMinusNode.hpp"
-
 #include <format>
 #include <memory>
 parser::parser(std::vector<token> InputTokens)
@@ -84,7 +82,7 @@ std::expected<std::unique_ptr<AstNode>, std::string> parser::ParseExpression(int
         }
         token OperatorToken{Current()}; // 保存运算符Token（传给BinaryOpNode）
         Advance();                      // 用运算符
-        // 二元运算符是左结合；一元运算已经在 ParseUnary() 中处理。
+        // 二元运算符是左结合；一元运算已经在ParseUnary() 中处理。
         auto NextMinimum{precedence + 1};
         auto RightResult{ParseExpression(NextMinimum)};
         if (!RightResult)

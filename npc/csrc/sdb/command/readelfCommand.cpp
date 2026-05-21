@@ -6,7 +6,6 @@ std::string_view readelfCommand::Name() const noexcept
 {
     return "readelf";
 }
-
 SDBCommandUsageList readelfCommand::Usage() const noexcept
 {
     static constexpr SDBCommandUsage Entries[]{
@@ -17,7 +16,6 @@ SDBCommandUsageList readelfCommand::Usage() const noexcept
     };
     return Entries;
 }
-
 SDBCommandResult readelfCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
     static_cast<void>(Context);

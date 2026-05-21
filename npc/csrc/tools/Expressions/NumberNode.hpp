@@ -5,7 +5,6 @@ class NumberNode : public AstNode
 {
 private:
     std::uint32_t value;
-
 public:
     explicit NumberNode(std::uint32_t value);
     [[nodiscard]] std::uint32_t Evaluate(const EvaluationContext &context) const override;

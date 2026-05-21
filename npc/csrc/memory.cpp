@@ -9,10 +9,16 @@
 #include <expected>
 #include <string>
 #include <format>
-
 std::array<std::uint8_t, PMEM_SIZE> pmem{};              // 抄am拿数组当内存
 static auto boot_time{std::chrono::steady_clock::now()}; // 启动时间
-
+bool check_pmem_range(std::uint32_t addr, std::size_t len)
+{
+    return addr >= CONFIG_MBASE && (addr - CONFIG_MBASE + len) <= PMEM_SIZE;
+}
+std::size_t guest_to_host(std::uint32_t gaddr)
+{
+    return static_cast<std::size_t>(gaddr - CONFIG_MBASE);
+}
 extern "C" int pmem_read(int raddr)
 {
     // 总是读取地址为`raddr & ~0x3u`的4字节返回
@@ -134,7 +140,6 @@ bool check_pmem_safe_address(std::uint32_t address, std::size_t len)
 {
     return address >= CONFIG_MBASE && (address - CONFIG_MBASE + len) <= PMEM_SIZE;
 }
-
 std::size_t load_builtin_image()
 {
     static constexpr std::array<std::uint32_t, 5> BuiltinImage{
@@ -144,7 +149,6 @@ std::size_t load_builtin_image()
         0x00100073, // ebreak
         0xdeadbeef,
     };
-
     auto Offset{guest_to_host(RESET_VECTOR)};
     for (const auto Word : BuiltinImage)
     {
@@ -155,7 +159,6 @@ std::size_t load_builtin_image()
     }
     return BuiltinImage.size() * sizeof(BuiltinImage.front());
 }
-
 std::expected<std::size_t, std::string> load_file(const std::filesystem::path &FilePath)
 {
     if (!std::filesystem::exists(FilePath))

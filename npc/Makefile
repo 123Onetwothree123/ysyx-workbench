@@ -70,7 +70,7 @@ CONFIG_FLAGS := CONFIG_ITRACE=$(CONFIG_ITRACE) CONFIG_MTRACE=$(CONFIG_MTRACE) CO
 # 测试模式：
 #排除普通 main.cpp
 #加入 gtest 目录下的测试文件
-TEST_APP_CSRCS = $(filter-out $(CSRC_DIR)/main.cpp $(SDB_SRC_DIR)/%.cpp $(CSRC_DIR)/memory.cpp, $(CSRCS)) $(TEST_SDB_CSRCS) $(TEST_CSRCS)
+TEST_APP_CSRCS = $(filter-out $(CSRC_DIR)/main.cpp $(CSRC_DIR)/NPCTrap.cpp $(SDB_SRC_DIR)/%.cpp $(CSRC_DIR)/memory.cpp, $(CSRCS)) $(TEST_SDB_CSRCS) $(TEST_CSRCS)
 #编译部分了
 COMMON_INCFLAGS = $(addprefix -I, $(INC_PATH) $(CSRC_DIR) $(TRACE_SRC_DIR) $(SDB_SRC_DIR) $(OBJ_DIR))
 TEST_INCFLAGS = $(COMMON_INCFLAGS) $(addprefix -I, $(GTEST_SRC_DIR) $(TEST_OBJ_DIR))

@@ -1,9 +1,6 @@
 #include "command/SDBCommandUtils.hpp"
-
 #include <VRV32E32Reg.h>
-
 #include "difftest.hpp"
-
 std::string_view SDBTrimLeft(std::string_view Text)
 {
     auto First{Text.find_first_not_of(" \t")}; // 找到第一个非空白字符的位置
@@ -44,7 +41,6 @@ void SDBStepCycle(VRV32E32Reg &Top)
     Top.eval();
     DifftestStep(Top);
 }
-
 bool SDBValidateExpressionSyntax(std::string_view Expression)
 {
     if (Expression.empty())

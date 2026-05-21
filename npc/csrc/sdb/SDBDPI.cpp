@@ -10,16 +10,13 @@
 #include <print>
 #include <string>
 #include <vector>
-
 extern "C" int NPCGetGPR(int RegNum);
 extern "C" int NPCGetPC();
-
 namespace
 {
     std::string DPIInstanceScope{"TOP"};
     std::string DPITopScope{"TOP"};
-
-// ANSI 颜色宏（与 NEMU 保持一致）
+// ANSI颜色宏（与NEMU保持一致）
 #define ANSI_NONE "\033[0m"
 #define ANSI_FG_BLACK "\033[1;30m"
 #define ANSI_FG_RED "\033[1;31m"
@@ -29,11 +26,10 @@ namespace
 #define ANSI_FG_MAGENTA "\033[1;35m"
 #define ANSI_FG_CYAN "\033[1;36m"
 #define ANSI_FG_WHITE "\033[1;37m"
-
     /**
-     * @brief 将 Verilated 模型名称转换为 DPI scope 名称
-     * @param ModelName 模型名称（通常以 V 开头）
-     * @return 去掉前导 V 后的 scope 名称
+     * @brief 将Verilated模型名称转换为DPI scope名称
+     * @param ModelName 模型名称（通常以V开头）
+     * @return 去掉前导V后的scope名称
      */
     std::string VerilatedModelNameToScope(std::string_view ModelName)
     {
@@ -45,15 +41,14 @@ namespace
         return ScopeName;
     }
     /**
-     * @brief 设置当前 DPI 调用的 SystemVerilog 作用域
+     * @brief 设置当前DPI调用的SystemVerilog作用域
      * @param SubScope 目标子模块名称，如 "SDB" 或 "PC_DPI"
-     * @return 若成功找到并设置作用域则返回 true，否则返回 false
-     *
+     * @return 若成功找到并设置作用域则返回true，否则返回false
      * 依次尝试以下候选作用域：
      *   - DPITopScope + "." + SubScope
      *   - DPIInstanceScope + "." + DPITopScope + "." + SubScope
      *   - DPIInstanceScope + "." + SubScope
-     *   - SubScope 本身
+     *   - SubScope本身
      */
     bool SetDPIScope(const char *SubScope)
     {
@@ -79,11 +74,10 @@ namespace
     }
 } // namespace
 /**
- * @brief 设置 DPI 的顶层作用域
- * @param InstanceScope Verilator 实例的作用域名称
+ * @brief 设置DPI的顶层作用域
+ * @param InstanceScope Verilator实例的作用域名称
  * @param ModelName 顶层模块名称
- *
- * 根据实例作用域和模型名称设置 DPI 的顶层作用域，以便 DPI 函数能够直接访问 SDB 模块。
+ * 根据实例作用域和模型名称设置DPI的顶层作用域，以便DPI函数能够直接访问SDB模块。
  */
 void SDBDPISetTopScope(std::string_view InstanceScope, std::string_view ModelName)
 {
@@ -93,7 +87,7 @@ void SDBDPISetTopScope(std::string_view InstanceScope, std::string_view ModelNam
 /**
  * @brief 获取指定通用寄存器的值
  * @param RegNum 寄存器编号，范围为 0-31
- * @return 寄存器的 32 位值；若 RegNum 不合法或无法获取 DPI scope 则返回 0
+ * @return 寄存器的 32 位值；若RegNum不合法或无法获取DPI scope则返回 0
  */
 std::uint32_t CPP_NPCGetGPR(std::int32_t RegNum)
 {
@@ -108,8 +102,8 @@ std::uint32_t CPP_NPCGetGPR(std::int32_t RegNum)
     return static_cast<std::uint32_t>(NPCGetGPR(RegNum));
 }
 /**
- * @brief 获取当前 PC（程序计数器）的值
- * @return 当前 PC 的 32 位值；若无法获取 DPI scope 则返回 0
+ * @brief 获取当前PC（程序计数器）的值
+ * @return 当前PC的 32 位值；若无法获取DPI scope则返回 0
  */
 std::uint32_t CPP_NPCGetPC()
 {
@@ -119,22 +113,20 @@ std::uint32_t CPP_NPCGetPC()
     }
     return static_cast<std::uint32_t>(NPCGetPC());
 }
-
 // ---------------------------------------------------------------------------
-// 寄存器表格辅助函数（与 NEMU 风格一致，支持 ANSI 颜色）
+// 寄存器表格辅助函数（与NEMU风格一致，支持ANSI颜色）
 // ---------------------------------------------------------------------------
-
 /**
- * @brief 计算字符串的终端显示宽度（跳过 ANSI 转义序列）
+ * @brief 计算字符串的终端显示宽度（跳过ANSI转义序列）
  * @param s 输入字符串
- * @return 显示宽度（ASCII 字符计 1，CJK 等宽字符计 2）
+ * @return 显示宽度（ASCII字符计 1，CJK等宽字符计 2）
  */
 static std::int32_t display_width(std::string_view s)
 {
     auto w{std::int32_t{0}};
     for (std::size_t i{0}; i < s.size();)
     {
-        // 跳过 ANSI 转义序列 \033[ ... m
+        // 跳过ANSI转义序列 \033[ ... m
         if (s[i] == '\033' && i + 1 < s.size() && s[i + 1] == '[')
         {
             i += 2;
@@ -176,9 +168,8 @@ static std::int32_t display_width(std::string_view s)
     }
     return w;
 }
-
 /**
- * @brief 打印 ASCII 表格边框（带颜色）
+ * @brief 打印ASCII表格边框（带颜色）
  * @param widths 各列宽度数组
  */
 static void print_border(const std::vector<std::int32_t> &widths)
@@ -194,12 +185,11 @@ static void print_border(const std::vector<std::int32_t> &widths)
     }
     std::print("\n");
 }
-
 /**
  * @brief 打印表格单元格（支持颜色内容，按纯文本计算宽度）
- * @param raw_content 单元格文本内容（可能包含 ANSI 转义码）
+ * @param raw_content 单元格文本内容（可能包含ANSI转义码）
  * @param width 单元格显示宽度
- * @param center 是否居中对齐（true 居中，false 左对齐）
+ * @param center 是否居中对齐（true居中，false左对齐）
  */
 static void print_cell_colored(std::string_view raw_content, std::int32_t width, bool center)
 {
@@ -223,11 +213,10 @@ static void print_cell_colored(std::string_view raw_content, std::int32_t width,
     }
     std::print(" {}|{}", ANSI_FG_BLUE, ANSI_NONE);
 }
-
 /**
- * @brief 获取 RISC-V 通用寄存器的 ABI 名称
+ * @brief 获取RISC-V通用寄存器的ABI名称
  * @param idx 寄存器编号（0-31）
- * @return ABI 名称（如 zero, ra, sp 等）；编号非法时返回空字符串
+ * @return ABI名称（如zero, ra, sp等）；编号非法时返回空字符串
  */
 static constexpr std::string_view get_reg_abi_name(std::size_t idx) noexcept
 {
@@ -272,11 +261,10 @@ static constexpr std::string_view get_reg_abi_name(std::size_t idx) noexcept
     }
     return {};
 }
-
 /**
  * @brief 获取寄存器的中文功能描述
- * @param arch_name 架构名称（如 pc, x0, x1 等）
- * @param abi_name ABI 名称（如 pc, zero, ra 等）
+ * @param arch_name 架构名称（如pc, x0, x1等）
+ * @param abi_name ABI名称（如pc, zero, ra等）
  * @return 中文描述字符串（如"程序计数器"、"栈指针"等）
  */
 static const char *get_reg_desc(const char *arch_name, std::string_view abi_name)
@@ -319,9 +307,8 @@ static const char *get_reg_desc(const char *arch_name, std::string_view abi_name
     }
     return "通用寄存器";
 }
-
 /**
- * @brief 获取表头列的颜色（与 NEMU 一致）
+ * @brief 获取表头列的颜色（与NEMU一致）
  */
 static constexpr const char *get_reg_header_color(std::string_view title) noexcept
 {
@@ -342,9 +329,8 @@ static constexpr const char *get_reg_header_color(std::string_view title) noexce
     }
     return ANSI_FG_WHITE;
 }
-
 /**
- * @brief 获取寄存器行的颜色（与 NEMU 一致）
+ * @brief 获取寄存器行的颜色（与NEMU一致）
  */
 static const char *get_reg_row_color(const char *arch_name, std::string_view abi_name)
 {
@@ -386,9 +372,8 @@ static const char *get_reg_row_color(const char *arch_name, std::string_view abi
     }
     return ANSI_FG_WHITE;
 }
-
 /**
- * @brief 打印所有 32 个通用寄存器及 PC 的值（NEMU 风格彩色表格）
+ * @brief 打印所有 32 个通用寄存器及PC的值（NEMU风格彩色表格）
  */
 void PrintGPR()
 {

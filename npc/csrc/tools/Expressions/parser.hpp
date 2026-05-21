@@ -23,7 +23,6 @@ private:
     std::expected<std::unique_ptr<AstNode>, std::string> ParseExpression(int MinPrecedence); // MinPrecedence是当前表达式允许的最小优先级
     std::expected<std::unique_ptr<AstNode>, std::string> ParseUnary();                       // 解析一元表达式
     std::expected<std::unique_ptr<AstNode>, std::string> ParsePrimary();                     // 解析原子表达式
-
 public:
     explicit parser(std::vector<token> tokens);
     [[nodiscard]] std::expected<std::unique_ptr<AstNode>, std::string> parse();

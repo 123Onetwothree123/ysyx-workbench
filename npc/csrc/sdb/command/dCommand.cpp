@@ -4,7 +4,6 @@
 #include <charconv>
 #include <cstddef>
 #include <print>
-
 std::string_view dCommand::Name() const noexcept
 {
     return "d";

@@ -1,15 +1,11 @@
 #include "command/historyCommand.hpp"
-
 #include "command/SDBCommandRegistry.hpp"
 #include "command/SDBCommandUtils.hpp"
-
 #include <charconv>
 #include <print>
-
 #ifdef CONFIG_SDB
 #include <readline/history.h>
 #endif
-
 historyCommand::historyCommand(const SDBCommandRegistry &InputRegistry)
     : Registry(InputRegistry)
 {
@@ -18,7 +14,6 @@ std::string_view historyCommand::Name() const noexcept
 {
     return "history";
 }
-
 SDBCommandUsageList historyCommand::Usage() const noexcept
 {
     static constexpr SDBCommandUsage Entries[]{
@@ -26,7 +21,6 @@ SDBCommandUsageList historyCommand::Usage() const noexcept
     };
     return Entries;
 }
-
 void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Registry)
 {
 #ifdef CONFIG_SDB
@@ -35,13 +29,11 @@ void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Re
         std::println("没有历史记录");
         return;
     }
-
     auto total{static_cast<std::size_t>(history_length)};
     if (n == 0 || n > total)
     {
         n = total;
     }
-
     std::println("命令历史（显示最近 {} 条，共 {} 条）：", n, total);
     auto start{history_length - static_cast<int>(n)};
     auto hist_list{history_list()};
@@ -68,7 +60,6 @@ void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Re
     std::println("SDB 未开启，无历史记录");
 #endif
 }
-
 SDBCommandResult historyCommand::Execute(SDBCommandContext &Context, std::string_view Args)
 {
     static_cast<void>(Context);

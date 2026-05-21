@@ -8,7 +8,7 @@ html:
 ## 1. Basic Setup and Checks
 
 ### Default to create a bare-metal kernel image
-ifeq ($(MAKECMDGOALS),)
+ifeq ($(MAKECMDGOALS),)#默认目标是 image，AM 程序默认生成裸机镜像
   MAKECMDGOALS  = image
   .DEFAULT_GOAL = image
 endif
@@ -25,6 +25,7 @@ ifeq ($(wildcard $(AM_HOME)/am/include/am.h),)
 endif
 
 ### Check: environment variable `$ARCH` must be in the supported list
+#根据ARCH的参数选择对应的ISA和硬件部分
 ARCHS = $(basename $(notdir $(shell ls $(AM_HOME)/scripts/*.mk)))
 ifeq ($(filter $(ARCHS), $(ARCH)), )
   $(error Expected $$ARCH in {$(ARCHS)}, Got "$(ARCH)")
@@ -91,7 +92,7 @@ LDFLAGS  += -z noexecstack $(addprefix -T, $(LDSCRIPTS))
 ## 4. Arch-Specific Configurations
 
 ### Paste in arch-specific configurations (e.g., from `scripts/x86_64-qemu.mk`)
--include $(AM_HOME)/scripts/$(ARCH).mk
+-include $(AM_HOME)/scripts/$(ARCH).mk#根据架构选择对应的脚本
 
 ## 5. Compilation Rules
 
@@ -150,7 +151,7 @@ endif
 ### Build order control
 image: image-dep
 archive: $(ARCHIVE)
-image-dep: $(IMAGE).elf
+image-dep: $(IMAGE).elf#生成elf
 .PHONY: image image-dep archive run
 
 ### Force to rebuild a rule

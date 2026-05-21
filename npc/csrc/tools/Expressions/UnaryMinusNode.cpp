@@ -8,7 +8,6 @@ std::uint32_t UnaryMinusNode::Evaluate(const EvaluationContext &context) const
 {
     return std::uint32_t{0} - child->Evaluate(context);
 }
-
 std::string UnaryMinusNode::ToString() const
 {
     return std::format("(-{})", child->ToString());

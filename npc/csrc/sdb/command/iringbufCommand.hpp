@@ -1,8 +1,6 @@
 #ifndef IRINGBUF_COMMAND_HPP
 #define IRINGBUF_COMMAND_HPP
-
 #include "command/SDBCommand.hpp"
-
 class iringbufCommand final : public SDBCommand
 {
 public:
@@ -11,5 +9,4 @@ public:
     [[nodiscard]] SDBCommandUsageList Usage() const noexcept override;
     SDBCommandResult Execute(SDBCommandContext &Context, std::string_view Args) override;
 };
-
 #endif

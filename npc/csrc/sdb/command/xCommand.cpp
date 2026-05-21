@@ -4,7 +4,6 @@
 #include "command/SDBCommandUtils.hpp"
 #include "memory.hpp"
 #include "tools/Expressions/Expressions.hpp"
-
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
@@ -103,7 +102,6 @@ SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view 
     }
     std::println("正在扫描 {} 个项目（每个 {} 字节），从 0x{:08x} 到 0x{:08x}：",
                  Count, UnitSize, StartAddress, StartAddress + TotalBytes - 1);
-
     for (std::size_t Index{0}; Index < Count; ++Index)
     {
         const auto CurrentAddress{StartAddress + static_cast<std::uint32_t>(Index * UnitSize)};

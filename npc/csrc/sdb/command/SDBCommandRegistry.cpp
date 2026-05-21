@@ -23,7 +23,6 @@
 #include <ranges>
 #include <string>
 #include <utility>
-
 namespace
 {
 [[nodiscard]] std::size_t SDBUsageSyntaxWidth(const SDBCommand &Command, const SDBCommandUsage &Usage) noexcept
@@ -35,7 +34,6 @@ namespace
     }
     return Width;
 }
-
 [[nodiscard]] std::size_t SDBMaxUsageSyntaxWidth(const SDBCommand &Command) noexcept
 {
     auto Width{std::size_t{0}};
@@ -45,7 +43,6 @@ namespace
     }
     return Width;
 }
-
 void SDBPrintUsageLine(const SDBCommand &Command, const SDBCommandUsage &Usage, std::size_t SyntaxWidth)
 {
     auto Syntax{std::string{Command.Name()}};
@@ -54,7 +51,6 @@ void SDBPrintUsageLine(const SDBCommand &Command, const SDBCommandUsage &Usage, 
         Syntax.push_back(' ');
         Syntax += Usage.Arguments;
     }
-
     std::print("  {}", Syntax);
     if (Syntax.size() < SyntaxWidth)
     {
@@ -62,7 +58,6 @@ void SDBPrintUsageLine(const SDBCommand &Command, const SDBCommandUsage &Usage, 
     }
     std::println("  {}", Usage.Description);
 }
-
 void SDBPrintCommandUsage(const SDBCommand &Command, std::size_t SyntaxWidth)
 {
     for (const auto &Usage : Command.Usage())
@@ -71,15 +66,12 @@ void SDBPrintCommandUsage(const SDBCommand &Command, std::size_t SyntaxWidth)
     }
 }
 }
-
 SDBCommandRegistry::SDBCommandRegistry(VRV32E32Reg &InputTop, std::size_t &InputCycles)
     : Context(InputTop, InputCycles)
 {
     RegisterBuiltins();
 }
-
 SDBCommandRegistry::~SDBCommandRegistry() = default;
-
 SDBCommandResult SDBCommandRegistry::Execute(std::string_view Line)
 {
     const auto [Name, Args]{SDBSplitCommandLine(Line)};
@@ -129,19 +121,16 @@ void SDBCommandRegistry::PrintHelp() const
     {
         SyntaxWidth = std::max(SyntaxWidth, SDBMaxUsageSyntaxWidth(*Command));
     }
-
     std::println("可用命令：");
     for (const auto &Command : Commands)
     {
         SDBPrintCommandUsage(*Command, SyntaxWidth);
     }
 }
-
 void SDBCommandRegistry::PrintHelp(const SDBCommand &Command) const
 {
     SDBPrintCommandUsage(Command, SDBMaxUsageSyntaxWidth(Command));
 }
-
 void SDBCommandRegistry::RegisterBuiltins()
 {
     RegisterCommand(std::make_unique<siCommand>());

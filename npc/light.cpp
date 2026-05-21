@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <cstddef>
 #include <cstdint>
-
 #define _CONCAT(x, y) x ## y
 #define CONCAT(x, y)  _CONCAT(x, y)
 #define BITMASK(bits) ((1ull << (bits)) - 1)
@@ -20,7 +19,6 @@
                                c->name = c->CONCAT(name, _next); \
                              } \
                            } while (0)
-
 typedef struct {
   DEF_WIRE(clk, 1);
   DEF_WIRE(rst, 1);
@@ -28,7 +26,6 @@ typedef struct {
   DEF_REG (count, 32);
 } Circuit;
 static Circuit circuit;
-
 static void cycle(Circuit *c) {
   c->led_update = 0;
   c->count_update = 0;
@@ -44,13 +41,11 @@ static void cycle(Circuit *c) {
   UPDATE(c, led);
   UPDATE(c, count);
 }
-
 static void reset(Circuit *c) {
   c->rst = 1;
   cycle(c);
   c->rst = 0;
 }
-
 static void display(Circuit *c) {
   static std::uint16_t last_led{0};
   if (last_led != c->led) { // only update display when c->led changes
@@ -62,7 +57,6 @@ static void display(Circuit *c) {
     last_led = c->led;
   }
 }
-
 int main() {
   reset(&circuit);
   while (1) {

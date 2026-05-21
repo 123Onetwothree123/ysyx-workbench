@@ -3,7 +3,6 @@
 #define NPC_HPP
 #define DEVICE_BASE 0xa0000000
 #define RTC_ADDR    (DEVICE_BASE + 0x0000048)
-
 #define RTC_YEAR_ADDR   (RTC_ADDR + 0x10)
 #define RTC_MONTH_ADDR  (RTC_ADDR + 0x14)
 #define RTC_DAY_ADDR    (RTC_ADDR + 0x18)

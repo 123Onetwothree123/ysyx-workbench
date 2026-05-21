@@ -22,7 +22,6 @@ private:
     token ScanHexNumber();              // 16
     token ScanRegister();
     token ScanOperator();
-
 public:
     Laxer() = default;
     ~Laxer() = default;
