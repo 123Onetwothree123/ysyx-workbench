@@ -648,7 +648,7 @@ static int cmd_history(char *args)
     sscanf(line, "%63s", cmd_name); // 最多63，防止溢出
     // 检查命令是否有效
     int is_valid = 0; // 0是无效，1是有效
-    // 直接便利命令表，检测命令名是否存在，然后NR_CMD是命令行大小，是命令总数
+    // 直接遍历命令表，检测命令名是否存在，然后NR_CMD是命令行大小，是命令总数
     for (int j = 0; j < NR_CMD; j++)
     {
       if (strcmp(cmd_name, cmd_table[j].name) == 0) // cmd_table[j]是第j个命令

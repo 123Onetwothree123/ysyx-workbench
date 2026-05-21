@@ -284,7 +284,7 @@ void RemoveFreeBlock(BlockHeader *block)
   // 如果后面还有块，就把后一个块的previous改好
   if (next != NULL)
   {
-    // 就假设A-B-C连着，然后B善后，A.next就是连着C了，然后把C的previous改成A
+    // 就假设A-B-C连着，然后B删后，A.next就是连着C了，然后把C的previous改成A
     next->FreeLink.previous = previous;
   }
   // 断开，指针全部关掉
@@ -309,20 +309,20 @@ void AllocatorInit(void)
   {
     allocator.FreeArea[i] = NULL;
   }
-  // 如果对齐后起点没有小于终点，就是没有对空间了，没有堆空间，理论上来讲应该是初始化完毕了，直接返回
+  // 如果对齐后起点没有小于终点，就是没有堆空间了，没有堆空间，理论上来讲应该是初始化完毕了，直接返回
   if (allocator.start >= allocator.end)
   {
     allocator.initialized = true;
     return;
   }
-  current = allocator.start;                     // 开始调到开头，准备烧苗整段的内存堆了
+  current = allocator.start;                     // 开始调到开头，准备扫描整段的内存堆了
   while (current + MinimumSize <= allocator.end) // 只要current后面还至少放得下一个最小块，就继续分割
   {
     size_t remaining = (size_t)(allocator.end - current); // 还有多少字节可用
     /*
     current相较于a.s的偏移量
     因为一个块要大小合法，还得起始位置也必须按自己的块大小对齐
-    到时候条件判断就可以用offset%block_size==0来看整个地址能不能作为整个块的大小的七点
+    到时候条件判断就可以用offset%block_size==0来看整个地址能不能作为整个块的大小的起点
     唉，Linux的页分配器一个极度简化的模仿都这么难设计，伙伴系统很多东西看都看不懂，Linux那个内存架构和内存
     模型我都不敢想了，C++那个内存模型我都现在都没搞明白，唉
     */
@@ -345,7 +345,7 @@ void AllocatorInit(void)
     }
     if (Grades == MinimumBlock) // 确认一下是否真的是降低到最低等级已经到了降无可降的程度了
     {
-      // 在理论上来说star和end已经按最小对齐的话，这个条件应该是总能成立的
+      // 在理论上来说start和end已经按最小对齐的话，这个条件应该是总能成立的
       size_t BlockSize = Grades_to_Size(Grades);
       if (BlockSize > remaining || (offset % BlockSize) != 0) // 如果连最小块都放不下，就说明扫描该结束了
       {
@@ -371,13 +371,13 @@ BlockHeader *FindFriend(BlockHeader *block)
   {
     return NULL;
   }
-  size_t BlockSize = Grades_to_Size(block->Grades); // 显得出这个块实际大小
+  size_t BlockSize = Grades_to_Size(block->Grades); // 先得出这个块实际大小
   uintptr_t BlockAddress = (uintptr_t)block;        // 用uintptr是为了后面做地址减法还有位运算
   /*
   一种可能性的设想是设计一个全场的内存地址，通过绝对地址，链接wsl Linux，通过核心的函数精确定位，然后进行操作，但是
   我能力有限做不出来
   然后这里也询问了ai，给的一个建议是设计一个相对地址而不是硬地址更好，因为伙伴关系应该建立在当前分配器管理的这段堆空
-  间内部，而且而且而且最重要的一点是现在核心目标是以allocato.start作为统一基准点，我看了下，应该也能达到同样的效果的
+  间内部，而且而且而且最重要的一点是现在核心目标是以allocator.start作为统一基准点，我看了下，应该也能达到同样的效果的
   */
   uintptr_t offset = BlockAddress - allocator.start;
   /*
@@ -433,7 +433,7 @@ BlockHeader *SplitBlock(BlockHeader *block)
   friend->used = false;
   friend->FreeLink.previous = NULL;
   friend->FreeLink.next = NULL;
-  // 新拆出来的friend放回空闲链表取
+  // 新拆出来的friend放回空闲链表去
   PushFreeBlock(friend);
   return block;
 }
@@ -443,7 +443,7 @@ BlockHeader *merge(BlockHeader *block)
   {
     return NULL;
   }
-  // 只要现在的块还没打到最大等级就继续向上合并
+  // 只要现在的块还没达到最大等级就继续向上合并
   while (block->Grades < MaximumBlock)
   {
     BlockHeader *friend = FindFriend(block);

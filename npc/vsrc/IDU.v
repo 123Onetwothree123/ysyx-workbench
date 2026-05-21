@@ -10,7 +10,7 @@ module IDU(
 	output[3:0]ALUCtrl,
 	output Illegal,
 	output[31:0]Immediate,
-	//00：ALUResult，01：LoadDATA，10：SNPC，目前的一个可能性的设想就是让WBSel决定最终协会寄存器的数据来自哪里
+	//00：ALUResult，01：LoadDATA，10：SNPC，目前的一个可能性的设想就是让WBSel决定最终写回寄存器的数据来自哪里
 	output reg[1:0]WBSel,
 	output[4:0]rs1,
 	output[4:0]rs2,
@@ -57,7 +57,7 @@ module IDU(
 	if(IsCsrrw||IsCsrrs)
 		WBSel=WB_CSR;//CSR指令写回CSR读出值
 	else if(is_Load)
-		WBSel=WB_MEM;//load就直接协会访存结果
+		WBSel=WB_MEM;//load就直接写回访存结果
 	else if((opcode==`OPCODE_Immediate_Bxxx)&&(funct3==3'b000))//jalr
 		WBSel=WB_SNPC;
 	else if(is_J_type)//jal
