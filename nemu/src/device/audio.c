@@ -49,7 +49,7 @@ static void audio_io_handler(uint32_t offset, int len, bool is_write)
   assert(len == 4);
   assert(offset % sizeof(uint32_t) == 0);
   // 因为offset是字节偏移，所以要除4，才能知道是哪个寄存器，刚刚疯狂断才知道这offset不是第几个寄存器，而是离控制的寄存器的区域起点
-  // 距离又多少个字节，然后每个寄存器都是4个字节，所以要除法
+  // 距离有多少个字节，然后每个寄存器都是4个字节，所以要除法
   uint32_t reg = offset / sizeof(uint32_t);
   assert(reg < nr_reg); // 搞了半天才知道nr是number的意思，是寄存器数量，最开始还他妈的以为是序号
   if (is_write)

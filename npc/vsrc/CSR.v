@@ -123,7 +123,7 @@ module CSR(
         .wdata(Mcause_wdata),
         .rdata(Mcause_rdata)
     );
-    //csrrw时写，cssrs时rs1非零才写
+    //csrrw时写，csrrs时rs1非零才写
     wire McycleWenFromCsrrw=IsCsrrw&&McycleAccess;
     wire McycleWenFromCsrrs=CsrrsWriteEnable&&McycleAccess;
     wire McycleWen=McycleWenFromCsrrw||McycleWenFromCsrrs;
