@@ -14,15 +14,14 @@
 #include "trace.hpp"
 int main(int argc, char const *argv[])
 {
-    // 为节省PPT空间，部分代码讲解，写入注释中
-    auto options{CliOptions::Parse(argc, argv)}; // 第一步，先解析
+    auto options{CliOptions::Parse(argc, argv)};
     if (!options)
     {
         std::println(std::cerr, "{}", options.error());
         return 1;
     }
     Verilated::commandArgs(argc, argv);
-    const auto image_size{ImageLoader::LoadFromCli(*options)}; // 加载镜像
+    const auto image_size{ImageLoader::LoadFromCli(*options)};
     if (!image_size)
     {
         std::println(std::cerr, "{}", image_size.error());
@@ -35,8 +34,8 @@ int main(int argc, char const *argv[])
         return 1;
     }
     init_disasm();
-    DUTControl dut;              // 建立DUT和刚好利用raii来管理对象，然后DUTC里面封装好了verilator生成的处理器对象
-    auto cycles{std::size_t{0}}; // 统计总周期数的
+    DUTControl dut;
+    auto cycles{std::size_t{0}};
     dut.Reset();
     SDBDPISetTopScope(dut.GetTop().name(), dut.GetTop().modelName()); // 做DPI作用域
     auto difftest_init{DifftestInitialize(options->GetDiffRefSo(), image_size.value())};
@@ -46,9 +45,8 @@ int main(int argc, char const *argv[])
         return 1;
     }
     sdb_main_loop(dut.GetTop(), cycles, options->IsBatchMode());
-    // 最后再给verilator的对象清理和打印结果
     dut.Final();
-    if (NPCTrap::HasHalted()) // 看有没有ebreak指令
+    if (NPCTrap::HasHalted())
     {
         return NPCTrap::PrintResult(cycles);
     }
