@@ -9,5 +9,5 @@ std::uint32_t ParenthesizedNode::Evaluate(const EvaluationContext &context) cons
 }
 std::string ParenthesizedNode::ToString() const
 {
-    return std::format("({})", inner->ToString());
+    return std::format("({0})", inner->ToString());
 }

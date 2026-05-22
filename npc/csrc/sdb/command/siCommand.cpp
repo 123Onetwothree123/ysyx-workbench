@@ -27,12 +27,12 @@ SDBCommandResult siCommand::Execute(SDBCommandContext &Context, std::string_view
         const auto Result{std::from_chars(Args.data(), Args.data() + Args.size(), ParsedCount, 10)};
         if (Result.ec != std::errc())
         {
-            std::println("错误：无效的参数 '{}'。用法：si [N]（N为正整数）", Args);
+            std::println("错误：无效的参数 '{0}'。用法：si [N]（N为正整数）", Args);
             return SDBCommandResult::Continue;
         }
         if (ParsedCount <= 0)
         {
-            std::println("错误：步数必须是正整数，得到的是 {}。用法：si [N]", ParsedCount);
+            std::println("错误：步数必须是正整数，得到的是 {0}。用法：si [N]", ParsedCount);
             return SDBCommandResult::Continue;
         }
         // 检查尾部垃圾字符（如 "si 10abc"）
@@ -40,7 +40,7 @@ SDBCommandResult siCommand::Execute(SDBCommandContext &Context, std::string_view
         Remainder = SDBTrimLeft(Remainder);
         if (!Remainder.empty())
         {
-            std::println("错误：参数中有尾部垃圾 '{}'。用法：si [N]", Remainder);
+            std::println("错误：参数中有尾部垃圾 '{0}'。用法：si [N]", Remainder);
             return SDBCommandResult::Continue;
         }
         Count = static_cast<std::size_t>(ParsedCount); // 如果转换成功并且是正数的话就使用这个值

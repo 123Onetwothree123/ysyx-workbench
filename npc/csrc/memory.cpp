@@ -76,7 +76,7 @@ extern "C" int pmem_read(int raddr)
     // 检查地址是否在有效范围内
     if (!check_pmem_range(addr, 4))
     {
-        std::println(std::cerr, "pmem读取越界，guest_addr = 0x{:x}", addr);
+        std::println(std::cerr, "pmem读取越界，guest_addr = 0x{0:x}", addr);
         std::abort();
     }
     // 地址转换：将guest地址转换为pmem数组索引
@@ -109,7 +109,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask)
     // 检查地址是否在有效范围内
     if (!check_pmem_range(guest_addr, 4))
     {
-        std::println(std::cerr, "pmem写入越界，guest_addr = 0x{:x}", guest_addr);
+        std::println(std::cerr, "pmem写入越界，guest_addr = 0x{0:x}", guest_addr);
         std::abort();
     }
     // 地址转换：将guest物理地址转换为host地址（pmem数组索引）
@@ -163,26 +163,26 @@ std::expected<std::size_t, std::string> load_file(const std::filesystem::path &F
 {
     if (!std::filesystem::exists(FilePath))
     {
-        return std::unexpected{std::format("他妈的文件路径没找到文件{}", FilePath.string())};
+        return std::unexpected{std::format("他妈的文件路径没找到文件{0}", FilePath.string())};
     }
     if (!std::filesystem::is_regular_file(FilePath))
     {
-        return std::unexpected{std::format("fuck，不是普通文件{}", FilePath.string())};
+        return std::unexpected{std::format("fuck，不是普通文件{0}", FilePath.string())};
     }
     auto FileSize{std::filesystem::file_size(FilePath)};
     if (FileSize > PMEM_SIZE)
     {
-        return std::unexpected{std::format("文件太大了{}", FilePath.string())};
+        return std::unexpected{std::format("文件太大了{0}", FilePath.string())};
     }
     std::ifstream ifs(FilePath, std::ios::binary);
     if (!ifs)
     {
-        return std::unexpected{std::format("文件打不开{}", FilePath.string())};
+        return std::unexpected{std::format("文件打不开{0}", FilePath.string())};
     }
     ifs.read(reinterpret_cast<char *>(pmem.data()), static_cast<std::streamsize>(FileSize));
     if (!ifs)
     {
-        return std::unexpected{std::format("读文件失败{}", FilePath.string())};
+        return std::unexpected{std::format("读文件失败{0}", FilePath.string())};
     }
     return static_cast<std::size_t>(FileSize);
 }

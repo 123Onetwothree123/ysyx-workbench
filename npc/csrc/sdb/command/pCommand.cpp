@@ -39,13 +39,13 @@ SDBCommandResult pCommand::Execute(SDBCommandContext &Context, std::string_view 
     {
         const auto unsigned_val{Result.value()};
         const auto signed_val{static_cast<std::int32_t>(unsigned_val)};
-        std::println("有符号（十进制）：   {}", signed_val);
-        std::println("无符号（十进制）： {}", unsigned_val);
-        std::println("十六进制：            0x{:08x}", unsigned_val);
+        std::println("有符号（十进制）：   {0}", signed_val);
+        std::println("无符号（十进制）： {0}", unsigned_val);
+        std::println("十六进制：            0x{0:08x}", unsigned_val);
     }
     else
     {
-        std::println("表达式错误：{}", Result.error());
+        std::println("表达式错误：{0}", Result.error());
     }
     return SDBCommandResult::Continue;
 }

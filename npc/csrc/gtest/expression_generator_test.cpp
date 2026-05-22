@@ -49,7 +49,7 @@ public:
         if (index && *index < registers_.size()) {
             return registers_[*index];
         }
-        throw ExpressionError(std::format("无效的寄存器名: {}", name));
+        throw ExpressionError(std::format("无效的寄存器名: {0}", name));
     }
 
     [[nodiscard]] std::uint32_t ReadMemory(const std::uint32_t address, const std::size_t size) const override {
@@ -157,20 +157,20 @@ private:
     [[nodiscard]] GeneratedExpression generate_number() {
         const auto value{pick(101)};
         if (coin()) {
-            return GeneratedExpression{.text = std::format("{}0x{:x}{}", maybe_space(), value, maybe_space()),
+            return GeneratedExpression{.text = std::format("{0}0x{1:x}{2}", maybe_space(), value, maybe_space()),
                                        .value = value};
         }
-        return GeneratedExpression{.text = std::format("{}{}{}", maybe_space(), value, maybe_space()), .value = value};
+        return GeneratedExpression{.text = std::format("{0}{1}{2}", maybe_space(), value, maybe_space()), .value = value};
     }
 
     [[nodiscard]] GeneratedExpression generate_register() {
         const auto index{pick(32)};
-        return GeneratedExpression{.text = std::format("{}x{}{}", maybe_space(), index, maybe_space()),
+        return GeneratedExpression{.text = std::format("{0}x{1}{2}", maybe_space(), index, maybe_space()),
                                    .value = context_.register_value(index)};
     }
 
     [[nodiscard]] GeneratedExpression generate_pc() {
-        return GeneratedExpression{.text = std::format("{}pc{}", maybe_space(), maybe_space()), .value = kPcValue};
+        return GeneratedExpression{.text = std::format("{0}pc{1}", maybe_space(), maybe_space()), .value = kPcValue};
     }
 
     [[nodiscard]] GeneratedExpression generate_leaf() {
@@ -192,7 +192,7 @@ private:
         const auto value{context_.memory_value(address.value, size)};
 
         return GeneratedExpression{
-            .text = std::format("{}read{}({}{}){}", maybe_space(), size * 8u, address.text,
+            .text = std::format("{0}read{1}({2}{3}){4}", maybe_space(), size * 8u, address.text,
                                 maybe_space(), maybe_space()),
             .value = value,
         };
@@ -201,7 +201,7 @@ private:
     [[nodiscard]] GeneratedExpression generate_dereference() {
         const auto address{generate_memory_address(4)};
         return GeneratedExpression{
-            .text = std::format("{}*({}{}){}", maybe_space(), address.text, maybe_space(), maybe_space()),
+            .text = std::format("{0}*({1}{2}){3}", maybe_space(), address.text, maybe_space(), maybe_space()),
             .value = context_.memory_value(address.value, 4),
         };
     }
@@ -226,7 +226,7 @@ private:
     [[nodiscard]] GeneratedExpression generate_absolute_address(const std::uint32_t max_offset) {
         const auto offset{pick(max_offset + 1u)};
         const auto address{kMemoryBase + offset};
-        return GeneratedExpression{.text = std::format("{}0x{:08x}{}", maybe_space(), address, maybe_space()),
+        return GeneratedExpression{.text = std::format("{0}0x{1:08x}{2}", maybe_space(), address, maybe_space()),
                                    .value = address};
     }
 
@@ -234,7 +234,7 @@ private:
         const auto offset{pick(max_offset + 1u)};
         const auto address{kMemoryBase + offset};
         return GeneratedExpression{
-            .text = std::format("{}(0x{:08x} + 0x{:x}){}", maybe_space(), kMemoryBase, offset, maybe_space()),
+            .text = std::format("{0}(0x{1:08x} + 0x{2:x}){3}", maybe_space(), kMemoryBase, offset, maybe_space()),
             .value = address,
         };
     }
@@ -248,7 +248,7 @@ private:
                 return generate_pc();
             }
             return GeneratedExpression{
-                .text = std::format("{}(pc + 0x{:x}){}", maybe_space(), delta, maybe_space()),
+                .text = std::format("{0}(pc + 0x{1:x}){2}", maybe_space(), delta, maybe_space()),
                 .value = kPcValue + delta,
             };
         }
@@ -259,7 +259,7 @@ private:
             return generate_pc();
         }
         return GeneratedExpression{
-            .text = std::format("{}(pc - 0x{:x}){}", maybe_space(), delta, maybe_space()),
+            .text = std::format("{0}(pc - 0x{1:x}){2}", maybe_space(), delta, maybe_space()),
             .value = kPcValue - delta,
         };
     }
@@ -283,13 +283,13 @@ private:
         const auto delta{pick(delta_limit + 1u)};
         if (delta == 0 || coin()) {
             return GeneratedExpression{
-                .text = std::format("{}{}{}", maybe_space(), selected.name, maybe_space()),
+                .text = std::format("{0}{1}{2}", maybe_space(), selected.name, maybe_space()),
                 .value = selected.value,
             };
         }
 
         return GeneratedExpression{
-            .text = std::format("{}({} + 0x{:x}){}", maybe_space(), selected.name, delta, maybe_space()),
+            .text = std::format("{0}({1} + 0x{2:x}){3}", maybe_space(), selected.name, delta, maybe_space()),
             .value = selected.value + delta,
         };
     }
@@ -300,18 +300,18 @@ private:
         const auto minuend{kMemoryBase + offset + extra};
         const auto address{kMemoryBase + offset};
         return GeneratedExpression{
-            .text = std::format("{}(0x{:08x} - 0x{:x}){}", maybe_space(), minuend, extra, maybe_space()),
+            .text = std::format("{0}(0x{1:08x} - 0x{2:x}){3}", maybe_space(), minuend, extra, maybe_space()),
             .value = address,
         };
     }
 
     [[nodiscard]] GeneratedExpression parenthesize(GeneratedExpression expression) {
-        expression.text = std::format("{}({}{}){}", maybe_space(), expression.text, maybe_space(), maybe_space());
+        expression.text = std::format("{0}({1}{2}){3}", maybe_space(), expression.text, maybe_space(), maybe_space());
         return expression;
     }
 
     [[nodiscard]] GeneratedExpression generate_unary_minus(const GeneratedExpression &operand) {
-        return GeneratedExpression{.text = std::format("{}-{}", maybe_space(), operand.text),
+        return GeneratedExpression{.text = std::format("{0}-{1}", maybe_space(), operand.text),
                                    .value = std::uint32_t{0} - operand.value};
     }
 
@@ -401,7 +401,7 @@ private:
         }
 
         return GeneratedExpression{
-            .text = std::format("{}({}{}{}{}{}){}", maybe_space(), left.text, maybe_space(), op_text(op),
+            .text = std::format("{0}({1}{2}{3}{4}{5}){6}", maybe_space(), left.text, maybe_space(), op_text(op),
                                 maybe_space(), right.text, maybe_space()),
             .value = evaluate_binary(left.value, op, right.value),
         };
@@ -456,7 +456,7 @@ TEST(ExpressionGeneratorTest, RegisterAndMemoryAtomsUseEvaluationContext) {
     FixedExpressionContext context;
 
     for (std::size_t index{0}; index < 32; ++index) {
-        expect_expression_value(std::format("x{}", index), context.register_value(index), context);
+        expect_expression_value(std::format("x{0}", index), context.register_value(index), context);
     }
     expect_expression_value("x3 + pc", context.register_value(3) + kPcValue, context);
     expect_expression_value("read8(0x80000003)", context.memory_value(kMemoryBase + 3, 1), context);

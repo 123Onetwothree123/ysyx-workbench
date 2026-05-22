@@ -83,20 +83,20 @@ SDBCommandResult setCommand::Execute(SDBCommandContext &Context, std::string_vie
     if (Args.empty())
     {
         std::println("cmd_set检测到参数为空，即无参数");
-        std::println("用法：{}", UsageText);
+        std::println("用法：{0}", UsageText);
         return SDBCommandResult::Continue;
     }
     const auto [SubCommand, RestAfterSubCommand]{TakeToken(Args)};
     if (SubCommand.empty() || RestAfterSubCommand.empty())
     {
         std::println("错误：参数不完整");
-        std::println("用法：{}", UsageText);
+        std::println("用法：{0}", UsageText);
         return SDBCommandResult::Continue;
     }
     if (SubCommand != "reg")
     {
-        std::println("错误：未知的 set 子命令 '{}'", SubCommand);
-        std::println("当前只支持：{}", UsageText);
+        std::println("错误：未知的 set 子命令 '{0}'", SubCommand);
+        std::println("当前只支持：{0}", UsageText);
         return SDBCommandResult::Continue;
     }
     const auto [RegisterName, ExpressionTextRaw]{TakeToken(RestAfterSubCommand)};
@@ -104,13 +104,13 @@ SDBCommandResult setCommand::Execute(SDBCommandContext &Context, std::string_vie
     if (RegisterName.empty())
     {
         std::println("缺少寄存器名");
-        std::println("用法：{}", UsageText);
+        std::println("用法：{0}", UsageText);
         return SDBCommandResult::Continue;
     }
     if (ExpressionText.empty())
     {
         std::println("错误：缺少表达式");
-        std::println("用法：{}", UsageText);
+        std::println("用法：{0}", UsageText);
         return SDBCommandResult::Continue;
     }
     if (!SDBValidateExpressionSyntax(ExpressionText))
@@ -123,7 +123,7 @@ SDBCommandResult setCommand::Execute(SDBCommandContext &Context, std::string_vie
     const auto ValueResult{ExpressionsEngine.Evaluate(ExpressionText, EvaluationContext)};
     if (!ValueResult)
     {
-        std::println("表达式求值失败：{}", ValueResult.error());
+        std::println("表达式求值失败：{0}", ValueResult.error());
         return SDBCommandResult::Continue;
     }
     const auto Value{static_cast<std::uint32_t>(ValueResult.value())};
@@ -135,7 +135,7 @@ SDBCommandResult setCommand::Execute(SDBCommandContext &Context, std::string_vie
     const auto RegIndex{RegisterNameToIndex(RegisterName)};
     if (!RegIndex)
     {
-        std::println("错误：无效的寄存器名 '{}'", RegisterName);
+        std::println("错误：无效的寄存器名 '{0}'", RegisterName);
         return SDBCommandResult::Continue;
     }
     if (*RegIndex == 0)
@@ -145,7 +145,7 @@ SDBCommandResult setCommand::Execute(SDBCommandContext &Context, std::string_vie
     }
     if (!WriteGeneralRegister(Context.GetTop(), *RegIndex, Value))
     {
-        std::println("错误：写入寄存器 '{}' 失败", RegisterName);
+        std::println("错误：写入寄存器 '{0}' 失败", RegisterName);
     }
     return SDBCommandResult::Continue;
 }

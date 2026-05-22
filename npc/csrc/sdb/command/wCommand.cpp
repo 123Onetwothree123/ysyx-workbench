@@ -40,7 +40,7 @@ SDBCommandResult wCommand::Execute(SDBCommandContext &Context, std::string_view 
         auto *wp{GetGlobalWatchpointPool().CreateWatchpoint(std::string(Args), InitialValue)};
         if (wp)
         {
-            std::println("监视点 {}: {}", wp->GetNO(), Args);
+            std::println("监视点 {0}: {1}", wp->GetNO(), Args);
         }
         else
         {
@@ -49,7 +49,7 @@ SDBCommandResult wCommand::Execute(SDBCommandContext &Context, std::string_view 
     }
     else
     {
-        std::println("表达式写错了：{}", Result.error());
+        std::println("表达式写错了：{0}", Result.error());
     }
     return SDBCommandResult::Continue;
 }

@@ -12,10 +12,10 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCli(const CliOption
         {
             return std::unexpected{result.error()};
         }
-        std::println("文件加载了: {}, size = {} bytes", image_file->string(), result.value());
+        std::println("文件加载了: {0}, size = {1} bytes", image_file->string(), result.value());
         return result.value();
     }
     const auto image_size{load_builtin_image()};
-    std::println("没有指定镜像，使用内置镜像，size = {} bytes", image_size);
+    std::println("没有指定镜像，使用内置镜像，size = {0} bytes", image_size);
     return image_size;
 }

@@ -59,7 +59,7 @@ std::expected<std::unique_ptr<AstNode>, std::string> parser::parse()
     // 解析完了之后应该没有多余的token了，如果还有，那就是错的
     if (!Current().IsEndOfInput())
     {
-        return std::unexpected(std::format("位置{}处意外的'{}'", Current().GetPosition(), Current().GetText()));
+        return std::unexpected(std::format("位置{0}处意外的'{1}'", Current().GetPosition(), Current().GetText()));
     }
     return expression;
 }
@@ -125,7 +125,7 @@ std::expected<std::unique_ptr<AstNode>, std::string> parser::ParseUnary()
         Advance();
         if (!Current().IsLeftParen())
         {
-            return std::unexpected(std::format("位置{}处read{}后缺少左括号", Current().GetPosition(), size * 8));
+            return std::unexpected(std::format("位置{0}处read{1}后缺少左括号", Current().GetPosition(), size * 8));
         }
         Advance(); // 跳过左括号
         auto address{ParseExpression(0)};
@@ -135,7 +135,7 @@ std::expected<std::unique_ptr<AstNode>, std::string> parser::ParseUnary()
         }
         if (!Current().IsRightParen())
         {
-            return std::unexpected(std::format("位置{}处read{}缺少右括号", Current().GetPosition(), size * 8));
+            return std::unexpected(std::format("位置{0}处read{1}缺少右括号", Current().GetPosition(), size * 8));
         }
         Advance(); // 跳过右括号
         // 构建解引用节点
@@ -167,12 +167,12 @@ std::expected<std::unique_ptr<AstNode>, std::string> parser::ParsePrimary()
         }
         if (!Current().IsRightParen())
         {
-            return std::unexpected(std::format("位置{}处缺少右括号", Current().GetPosition()));
+            return std::unexpected(std::format("位置{0}处缺少右括号", Current().GetPosition()));
         }
         Advance();
         // 构建括号表达式节点
         return std::make_unique<ParenthesizedNode>(std::move(*inner));
     }
     // 其他情况都是错
-    return std::unexpected(std::format("位置{}处意外的'{}'", Token.GetPosition(), Token.GetText()));
+    return std::unexpected(std::format("位置{0}处意外的'{1}'", Token.GetPosition(), Token.GetText()));
 }

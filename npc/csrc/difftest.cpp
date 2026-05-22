@@ -40,7 +40,7 @@ namespace
         auto *Symbol{dlsym(REFHandle, Name)}; // 从REF里面获取符号的地址
         if (const char *Error{dlerror()}; Error != nullptr)
         {
-            return std::unexpected{std::format("加载 DiffTest 符号 {} 失败: {}", Name, Error)};
+            return std::unexpected{std::format("加载 DiffTest 符号 {0} 失败: {1}", Name, Error)};
         }
         return reinterpret_cast<Fn>(Symbol);
     }
@@ -61,7 +61,7 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
     REFHandle = dlopen(REFSoFile->c_str(), RTLD_LAZY); // 打开REF的动态库
     if (REFHandle == nullptr)
     {
-        return std::unexpected{std::format("打开 DiffTest REF 失败: {}", dlerror())};
+        return std::unexpected{std::format("打开 DiffTest REF 失败: {0}", dlerror())};
     }
     auto MemcpySymbol{LoadSymbol<REFDifftestMemcpy>("difftest_memcpy")};
     if (!MemcpySymbol)
@@ -98,7 +98,7 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
     DUTState.SetPC(RESET_VECTOR); // 设置DUT的PC为复位向量
     REFRegcpy(&DUTState, DifftestCPUState::GetDirectionToRef());
     Enabled = true;
-    std::println("DiffTest: ON, REF = {}", REFSoFile->string());
+    std::println("DiffTest: ON, REF = {0}", REFSoFile->string());
     return {};
 #else
     if (REFSoFile)

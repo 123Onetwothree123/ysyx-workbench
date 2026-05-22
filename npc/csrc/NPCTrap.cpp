@@ -34,11 +34,11 @@ int NPCTrap::PrintResult(std::size_t Cycles)
 {
     if (HaltCode == 0)
     {
-        std::println("HIT GOOD TRAP at pc = 0x{:08x}, cycles = {}", HaltPC, Cycles);
+        std::println("HIT GOOD TRAP at pc = 0x{0:08x}, cycles = {1}", HaltPC, Cycles);
         return 0;
     }
     PrintIringbuf(HaltPC);
-    std::println(std::cerr, "HIT BAD TRAP at pc = 0x{:08x}, code = {}, cycles = {}", HaltPC, HaltCode, Cycles);
+    std::println(std::cerr, "HIT BAD TRAP at pc = 0x{0:08x}, code = {1}, cycles = {2}", HaltPC, HaltCode, Cycles);
     return 1;
 }
 extern "C" void npc_ebreak(int pc, int code)

@@ -32,7 +32,7 @@ SDBCommandResult helpCommand::Execute(SDBCommandContext &Context, std::string_vi
     const SDBCommand *Command{Registry.FindCommand(Args)};
     if (Command == nullptr)
     {
-        std::println("未知命令：{}", Args);
+        std::println("未知命令：{0}", Args);
         return SDBCommandResult::Continue;
     }
     Registry.PrintHelp(*Command);

@@ -17,20 +17,20 @@ int main(int argc, char const *argv[])
     auto options{CliOptions::Parse(argc, argv)};
     if (!options)
     {
-        std::println(std::cerr, "{}", options.error());
+        std::println(std::cerr, "{0}", options.error());
         return 1;
     }
     Verilated::commandArgs(argc, argv);
     const auto image_size{ImageLoader::LoadFromCli(*options)};
     if (!image_size)
     {
-        std::println(std::cerr, "{}", image_size.error());
+        std::println(std::cerr, "{0}", image_size.error());
         return 1;
     }
     auto trace_init{TraceInitializer::InitFromCli(*options)};
     if (!trace_init)
     {
-        std::println(std::cerr, "{}", trace_init.error());
+        std::println(std::cerr, "{0}", trace_init.error());
         return 1;
     }
     init_disasm();
@@ -41,7 +41,7 @@ int main(int argc, char const *argv[])
     auto difftest_init{DifftestInitialize(options->GetDiffRefSo(), image_size.value())};
     if (!difftest_init)
     {
-        std::println(std::cerr, "{}", difftest_init.error());
+        std::println(std::cerr, "{0}", difftest_init.error());
         return 1;
     }
     sdb_main_loop(dut.GetTop(), cycles, options->IsBatchMode());

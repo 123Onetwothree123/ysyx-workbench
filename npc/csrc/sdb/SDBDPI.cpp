@@ -69,7 +69,7 @@ namespace
                 return true;
             }
         }
-        std::println(std::cerr, "找不到DPI scope：{}", ScopeCandidates[0]);
+        std::println(std::cerr, "找不到DPI scope：{0}", ScopeCandidates[0]);
         return false;
     }
 } // namespace
@@ -174,14 +174,14 @@ static std::int32_t display_width(std::string_view s)
  */
 static void print_border(const std::vector<std::int32_t> &widths)
 {
-    std::print("{}+{}", ANSI_FG_BLUE, ANSI_NONE);
+    std::print("{0}+{1}", ANSI_FG_BLUE, ANSI_NONE);
     for (std::int32_t w : widths)
     {
         for (std::int32_t i{0}; i < w + 2; i++)
         {
-            std::print("{}-{}", ANSI_FG_BLUE, ANSI_NONE);
+            std::print("{0}-{1}", ANSI_FG_BLUE, ANSI_NONE);
         }
-        std::print("{}+{}", ANSI_FG_BLUE, ANSI_NONE);
+        std::print("{0}+{1}", ANSI_FG_BLUE, ANSI_NONE);
     }
     std::print("\n");
 }
@@ -206,12 +206,12 @@ static void print_cell_colored(std::string_view raw_content, std::int32_t width,
     {
         std::print(" ");
     }
-    std::print("{}", raw_content);
+    std::print("{0}", raw_content);
     for (std::int32_t i{0}; i < right_pad; i++)
     {
         std::print(" ");
     }
-    std::print(" {}|{}", ANSI_FG_BLUE, ANSI_NONE);
+    std::print(" {0}|{1}", ANSI_FG_BLUE, ANSI_NONE);
 }
 /**
  * @brief 获取RISC-V通用寄存器的ABI名称
@@ -397,7 +397,7 @@ void PrintGPR()
         else
         {
             auto reg_idx{i - 1};
-            rows[i].arch_name = std::format("x{}", reg_idx);
+            rows[i].arch_name = std::format("x{0}", reg_idx);
             rows[i].abi_name = get_reg_abi_name(reg_idx);
             rows[i].value = CPP_NPCGetGPR(static_cast<std::int32_t>(reg_idx));
         }
@@ -426,7 +426,7 @@ void PrintGPR()
         {
             dec_width = w;
         }
-        w = display_width(std::format("0x{:08x}", rows[i].value));
+        w = display_width(std::format("0x{0:08x}", rows[i].value));
         if (w > hex_width)
         {
             hex_width = w;
@@ -441,24 +441,24 @@ void PrintGPR()
     // 打印表头（带颜色）
     std::println("寄存器状态：");
     print_border(col_widths);
-    std::print("{}|{}", ANSI_FG_BLUE, ANSI_NONE);
-    print_cell_colored(std::format("{}编号{}", get_reg_header_color("编号"), ANSI_NONE), id_width, true);
-    print_cell_colored(std::format("{}寄存器{}", get_reg_header_color("寄存器"), ANSI_NONE), name_width, false);
-    print_cell_colored(std::format("{}十进制{}", get_reg_header_color("十进制"), ANSI_NONE), dec_width, true);
-    print_cell_colored(std::format("{}十六进制{}", get_reg_header_color("十六进制"), ANSI_NONE), hex_width, true);
-    print_cell_colored(std::format("{}说明{}", get_reg_header_color("说明"), ANSI_NONE), desc_width, false);
+    std::print("{0}|{1}", ANSI_FG_BLUE, ANSI_NONE);
+    print_cell_colored(std::format("{0}编号{1}", get_reg_header_color("编号"), ANSI_NONE), id_width, true);
+    print_cell_colored(std::format("{0}寄存器{1}", get_reg_header_color("寄存器"), ANSI_NONE), name_width, false);
+    print_cell_colored(std::format("{0}十进制{1}", get_reg_header_color("十进制"), ANSI_NONE), dec_width, true);
+    print_cell_colored(std::format("{0}十六进制{1}", get_reg_header_color("十六进制"), ANSI_NONE), hex_width, true);
+    print_cell_colored(std::format("{0}说明{1}", get_reg_header_color("说明"), ANSI_NONE), desc_width, false);
     std::print("\n");
     print_border(col_widths);
     // 打印每一行（带颜色）
     for (std::size_t i{0}; i < nr_rows; i++)
     {
         const auto row_color{get_reg_row_color(rows[i].arch_name.c_str(), rows[i].abi_name)};
-        auto id_str{std::format("{}{}{}", row_color, rows[i].arch_name, ANSI_NONE)};
-        auto name_str{std::format("{}{}{}", row_color, rows[i].abi_name, ANSI_NONE)};
-        auto dec_str{std::format("{}{}{}", ANSI_FG_WHITE, rows[i].value, ANSI_NONE)};
-        auto hex_str{std::format("{}0x{:08x}{}", row_color, rows[i].value, ANSI_NONE)};
-        auto desc_str{std::format("{}{}{}", row_color, rows[i].desc, ANSI_NONE)};
-        std::print("{}|{}", ANSI_FG_BLUE, ANSI_NONE);
+        auto id_str{std::format("{0}{1}{2}", row_color, rows[i].arch_name, ANSI_NONE)};
+        auto name_str{std::format("{0}{1}{2}", row_color, rows[i].abi_name, ANSI_NONE)};
+        auto dec_str{std::format("{0}{1}{2}", ANSI_FG_WHITE, rows[i].value, ANSI_NONE)};
+        auto hex_str{std::format("{0}0x{1:08x}{2}", row_color, rows[i].value, ANSI_NONE)};
+        auto desc_str{std::format("{0}{1}{2}", row_color, rows[i].desc, ANSI_NONE)};
+        std::print("{0}|{1}", ANSI_FG_BLUE, ANSI_NONE);
         print_cell_colored(id_str, id_width, true);
         print_cell_colored(name_str, name_width, false);
         print_cell_colored(dec_str, dec_width, true);

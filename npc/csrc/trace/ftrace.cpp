@@ -358,11 +358,11 @@ const Readelf *Ftrace::ElfReader() const noexcept
  */
 void Ftrace::PrintCurrentStack() const
 {
-    std::println("ftrace: call stack depth = {}", CallStack.size());
+    std::println("ftrace: call stack depth = {0}", CallStack.size());
     for (std::size_t Index{0}; Index < CallStack.size(); ++Index)
     {
         const auto &Frame{CallStack[Index]};
-        std::println("  #{} {} @ 0x{:08x} (call 0x{:08x}, ret 0x{:08x})",
+        std::println("  #{0} {1} @ 0x{2:08x} (call 0x{3:08x}, ret 0x{4:08x})",
                      Index,
                      PrintableName(Frame.GetFunctionName()),
                      Frame.GetFunctionAddress(),
@@ -375,7 +375,7 @@ void Ftrace::PrintCurrentStack() const
  */
 void Ftrace::PrintHistory() const
 {
-    std::println("ftrace: history size = {}", EventHistory.size());
+    std::println("ftrace: history size = {0}", EventHistory.size());
     for (const auto &Event : EventHistory)
     {
         PrintEventLine(Event);
@@ -387,7 +387,7 @@ void Ftrace::PrintHistory() const
 void Ftrace::PrintStatus() const
 {
     const auto ElfName{Elf ? Elf->path().string() : std::string{"<none>"}};
-    std::println("ftrace: enabled={}, record_history={}, depth={}, history={}, elf={}, functions={}",
+    std::println("ftrace: enabled={0}, record_history={1}, depth={2}, history={3}, elf={4}, functions={5}",
                  Enabled,
                  ShouldRecordHistory,
                  CallStack.size(),
@@ -430,14 +430,14 @@ void Ftrace::PrintEventLine(const FtraceEvent &Event) const
     const auto Indent{std::string(IndentFor(Event) * 2u, ' ')};
     if (Event.GetType() == FtraceEventType::Call)
     {
-        std::println("0x{:08x}: {}call [{}@0x{:08x}]",
+        std::println("0x{0:08x}: {1}call [{2}@0x{3:08x}]",
                      Event.GetCurrentPC(),
                      Indent,
                      PrintableName(Event.GetFunctionName()),
                      Event.GetTargetPC());
         return;
     }
-    std::println("0x{:08x}: {}ret  [{}]",
+    std::println("0x{0:08x}: {1}ret  [{2}]",
                  Event.GetCurrentPC(),
                  Indent,
                  PrintableName(Event.GetFunctionName()));

@@ -34,7 +34,7 @@ void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Re
     {
         n = total;
     }
-    std::println("命令历史（显示最近 {} 条，共 {} 条）：", n, total);
+    std::println("命令历史（显示最近 {0} 条，共 {1} 条）：", n, total);
     auto start{history_length - static_cast<int>(n)};
     auto hist_list{history_list()};
     for (auto i{start}; i < history_length; i++)
@@ -47,11 +47,11 @@ void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Re
         auto cmd{Registry.FindCommand(CmdName)};
         if (cmd != nullptr)
         {
-            std::println("{:5}  {}", i + history_base, line);
+            std::println("{0:5}  {1}", i + history_base, line);
         }
         else
         {
-            std::println("{:5}  {} [未知命令]", i + history_base, line);
+            std::println("{0:5}  {1} [未知命令]", i + history_base, line);
         }
     }
 #else
@@ -71,7 +71,7 @@ SDBCommandResult historyCommand::Execute(SDBCommandContext &Context, std::string
         const auto result{std::from_chars(Args.data(), Args.data() + Args.size(), num, 10)};
         if (result.ec != std::errc() || num <= 0)
         {
-            std::println("无效参数 '{}'。用法是 history [N]", Args);
+            std::println("无效参数 '{0}'。用法是 history [N]", Args);
             return SDBCommandResult::Continue;
         }
         n = static_cast<std::size_t>(num);

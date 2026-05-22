@@ -10,5 +10,5 @@ std::uint32_t UnaryMinusNode::Evaluate(const EvaluationContext &context) const
 }
 std::string UnaryMinusNode::ToString() const
 {
-    return std::format("(-{})", child->ToString());
+    return std::format("(-{0})", child->ToString());
 }

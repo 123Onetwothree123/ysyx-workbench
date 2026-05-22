@@ -8,7 +8,7 @@ void init_disasm()
     constexpr cs_mode mode{CS_MODE_RISCV32};
     if (const cs_err err{cs_open(arch, mode, &handle)}; err != CS_ERR_OK)
     {
-        std::println(stderr, "cs_open failed: {}", cs_strerror(err));
+        std::println(stderr, "cs_open failed: {0}", cs_strerror(err));
         std::abort();
     }
 }

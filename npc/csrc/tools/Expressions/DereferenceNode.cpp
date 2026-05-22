@@ -14,11 +14,11 @@ std::string DereferenceNode::ToString() const
 {
     if (size == 1)
     {
-        return std::format("read8({})", address->ToString());
+        return std::format("read8({0})", address->ToString());
     }
     if (size == 2)
     {
-        return std::format("read16({})", address->ToString());
+        return std::format("read16({0})", address->ToString());
     }
-    return std::format("read32({})", address->ToString());
+    return std::format("read32({0})", address->ToString());
 }

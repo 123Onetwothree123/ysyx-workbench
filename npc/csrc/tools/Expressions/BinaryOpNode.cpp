@@ -57,5 +57,5 @@ std::uint32_t BinaryOpNode::Evaluate(const EvaluationContext &context) const
 }
 std::string BinaryOpNode::ToString() const
 {
-    return std::format("({} {} {})", Left->ToString(), Token.GetText(), Right->ToString());
+    return std::format("({0} {1} {2})", Left->ToString(), Token.GetText(), Right->ToString());
 }

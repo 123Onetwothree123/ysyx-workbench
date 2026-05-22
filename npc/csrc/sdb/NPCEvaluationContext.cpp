@@ -23,7 +23,7 @@ std::uint32_t NPCEvaluationContext::ReadRegister(std::string_view Name) const
         }
         return CPP_NPCGetGPR(static_cast<int>(*RegIndex));
     }
-    throw ExpressionError(std::format("无效的寄存器名: {}", std::string(Name)));
+    throw ExpressionError(std::format("无效的寄存器名: {0}", std::string(Name)));
 }
 std::uint32_t NPCEvaluationContext::ReadMemory(std::uint32_t Address, std::size_t Size) const
 {

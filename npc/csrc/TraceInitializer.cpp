@@ -31,7 +31,7 @@ std::expected<void, std::string> TraceInitializer::InitFromCli(const CliOptions 
         {
             return result;
         }
-        std::println("ELF加载了: {}, functions = {}", elf_file->string(), GlobalFtrace.FunctionCount());
+        std::println("ELF加载了: {0}, functions = {1}", elf_file->string(), GlobalFtrace.FunctionCount());
     }
 #ifdef CONFIG_FTRACE
     else if (Options.IsFtraceEnabled() && Options.GetImageFile())

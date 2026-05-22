@@ -51,12 +51,12 @@ void SDBPrintUsageLine(const SDBCommand &Command, const SDBCommandUsage &Usage, 
         Syntax.push_back(' ');
         Syntax += Usage.Arguments;
     }
-    std::print("  {}", Syntax);
+    std::print("  {0}", Syntax);
     if (Syntax.size() < SyntaxWidth)
     {
-        std::print("{}", std::string(SyntaxWidth - Syntax.size(), ' '));
+        std::print("{0}", std::string(SyntaxWidth - Syntax.size(), ' '));
     }
-    std::println("  {}", Usage.Description);
+    std::println("  {0}", Usage.Description);
 }
 void SDBPrintCommandUsage(const SDBCommand &Command, std::size_t SyntaxWidth)
 {
@@ -84,7 +84,7 @@ SDBCommandResult SDBCommandRegistry::Execute(std::string_view Line)
                                               { return Command->Name() == Name; })};
     if (CommandIt == Commands.end())
     {
-        std::println(std::cerr, "鬼知道输入的是什么指令，可能没有实现吧: {}", Line);
+        std::println(std::cerr, "鬼知道输入的是什么指令，可能没有实现吧: {0}", Line);
         return SDBCommandResult::Continue; // 没找到命令的话也继续
     }
     return (*CommandIt)->Execute(Context, Args);

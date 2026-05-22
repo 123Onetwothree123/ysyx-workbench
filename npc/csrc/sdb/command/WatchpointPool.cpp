@@ -32,12 +32,12 @@ bool WatchpointPool::DeleteWatchpoint(std::size_t NO)
     // 删除这个编号的监视点
     if (NO >= watchpoints.size())
     {
-        std::println("DeleteWatchpoint监视点编号{}超出范围", NO);
+        std::println("DeleteWatchpoint监视点编号{0}超出范围", NO);
         return false;
     }
     if (!watchpoints[NO].IsEnabled())
     {
-        std::println("DeleteWatchpoint: 监视点{}不在使用中", NO);
+        std::println("DeleteWatchpoint: 监视点{0}不在使用中", NO);
         return false;
     }
     // watchpoints[NO] = Watchpoint(NO, false, 0, false); ai说不安全，建议别这么写，所以我手动清除
@@ -77,7 +77,7 @@ Watchpoint *WatchpointPool::GetWatchpoint(std::size_t NO)
 {
     if (NO >= watchpoints.size())
     {
-        std::println("GetWatchpoint监视点编号{}超出范围", NO);
+        std::println("GetWatchpoint监视点编号{0}超出范围", NO);
         return nullptr;
     }
     return &watchpoints[NO];
@@ -107,7 +107,7 @@ bool WatchpointPool::CheckAll()
         if (!result)
         {
             std::println("我也不知道为什么，反正表达式求值失败了");
-            std::println("监视点={}，表达式={}", NO, result.error());
+            std::println("监视点={0}，表达式={1}", NO, result.error());
             continue;
         }
         auto NewValue{result.value()};
@@ -117,7 +117,7 @@ bool WatchpointPool::CheckAll()
             wp.SetPC(CurrentPC);
             wp.SetHasPC(true);
             WPTriggered = true;
-            std::println("监视点{}出发了，表达式：{}=0x{:08x}，PC=0x{:08x}", NO, wp.GetExpression(), NewValue, CurrentPC);
+            std::println("监视点{0}出发了，表达式：{1}=0x{2:08x}，PC=0x{3:08x}", NO, wp.GetExpression(), NewValue, CurrentPC);
         }
     }
     return WPTriggered;
@@ -212,14 +212,14 @@ static const char *get_type_color(const char *type_name)
 // 辅助函数：打印表格边框（带颜色）
 static void print_border(const std::vector<int> &widths)
 {
-    std::print("{}+{}", ANSI_FG_BLUE, ANSI_NONE);
+    std::print("{0}+{1}", ANSI_FG_BLUE, ANSI_NONE);
     for (int w : widths)
     {
         for (int i{0}; i < w + 2; i++)
         {
-            std::print("{}-{}", ANSI_FG_BLUE, ANSI_NONE);
+            std::print("{0}-{1}", ANSI_FG_BLUE, ANSI_NONE);
         }
-        std::print("{}+{}", ANSI_FG_BLUE, ANSI_NONE);
+        std::print("{0}+{1}", ANSI_FG_BLUE, ANSI_NONE);
     }
     std::print("\n");
 }
@@ -282,12 +282,12 @@ static void print_cell_colored(std::string_view raw_content, int width, bool cen
     {
         std::print(" ");
     }
-    std::print("{}", raw_content);
+    std::print("{0}", raw_content);
     for (int i{0}; i < right_pad; i++)
     {
         std::print(" ");
     }
-    std::print(" {}|{}", ANSI_FG_BLUE, ANSI_NONE);
+    std::print(" {0}|{1}", ANSI_FG_BLUE, ANSI_NONE);
 }
 void WatchpointPool::PrintAllWatchpoints() const
 {
@@ -406,16 +406,16 @@ void WatchpointPool::PrintAllWatchpoints() const
         enable_width, status_width, trigger_width, expr_width};
     // 打印表头（带颜色）
     print_border(col_widths);
-    std::print("{}|{}", ANSI_FG_BLUE, ANSI_NONE);
-    print_cell_colored(std::format("{}编号{}", ANSI_FG_CYAN, ANSI_NONE), no_width, true);
-    print_cell_colored(std::format("{}类型{}", ANSI_FG_BLUE, ANSI_NONE), type_width, true);
-    print_cell_colored(std::format("{}旧值{}", ANSI_FG_WHITE, ANSI_NONE), val_width, true);
-    print_cell_colored(std::format("{}新值{}", ANSI_FG_GREEN, ANSI_NONE), val_width, true);
-    print_cell_colored(std::format("{}变化量{}", ANSI_FG_YELLOW, ANSI_NONE), delta_width, true);
-    print_cell_colored(std::format("{}启用状态{}", ANSI_FG_CYAN, ANSI_NONE), enable_width, true);
-    print_cell_colored(std::format("{}状态{}", ANSI_FG_MAGENTA, ANSI_NONE), status_width, true);
-    print_cell_colored(std::format("{}触发位置{}", ANSI_FG_YELLOW, ANSI_NONE), trigger_width, true);
-    print_cell_colored(std::format("{}表达式{}", ANSI_FG_MAGENTA, ANSI_NONE), expr_width, false);
+    std::print("{0}|{1}", ANSI_FG_BLUE, ANSI_NONE);
+    print_cell_colored(std::format("{0}编号{1}", ANSI_FG_CYAN, ANSI_NONE), no_width, true);
+    print_cell_colored(std::format("{0}类型{1}", ANSI_FG_BLUE, ANSI_NONE), type_width, true);
+    print_cell_colored(std::format("{0}旧值{1}", ANSI_FG_WHITE, ANSI_NONE), val_width, true);
+    print_cell_colored(std::format("{0}新值{1}", ANSI_FG_GREEN, ANSI_NONE), val_width, true);
+    print_cell_colored(std::format("{0}变化量{1}", ANSI_FG_YELLOW, ANSI_NONE), delta_width, true);
+    print_cell_colored(std::format("{0}启用状态{1}", ANSI_FG_CYAN, ANSI_NONE), enable_width, true);
+    print_cell_colored(std::format("{0}状态{1}", ANSI_FG_MAGENTA, ANSI_NONE), status_width, true);
+    print_cell_colored(std::format("{0}触发位置{1}", ANSI_FG_YELLOW, ANSI_NONE), trigger_width, true);
+    print_cell_colored(std::format("{0}表达式{1}", ANSI_FG_MAGENTA, ANSI_NONE), expr_width, false);
     std::print("\n");
     print_border(col_widths);
     // 打印每一行
@@ -439,9 +439,9 @@ void WatchpointPool::PrintAllWatchpoints() const
         {
             no_color = ANSI_FG_YELLOW;
         }
-        std::string no_str{std::format("{}{}{}", no_color, wp->GetNO(), ANSI_NONE)};
-        std::string type_str{std::format("{}{}{}", type_color, type_name, ANSI_NONE)};
-        std::string old_str{std::format("{}0x{:08x}{}", ANSI_FG_WHITE, wp->GetOldValue(), ANSI_NONE)};
+        std::string no_str{std::format("{0}{1}{2}", no_color, wp->GetNO(), ANSI_NONE)};
+        std::string type_str{std::format("{0}{1}{2}", type_color, type_name, ANSI_NONE)};
+        std::string old_str{std::format("{0}0x{1:08x}{2}", ANSI_FG_WHITE, wp->GetOldValue(), ANSI_NONE)};
         std::string cur_str;
         std::string delta_str;
         std::string enable_str;
@@ -461,42 +461,42 @@ void WatchpointPool::PrintAllWatchpoints() const
         {
             expr_color = ANSI_FG_YELLOW;
         }
-        std::string expr_str{std::format("{}{}{}", expr_color, wp->GetExpression(), ANSI_NONE)};
+        std::string expr_str{std::format("{0}{1}{2}", expr_color, wp->GetExpression(), ANSI_NONE)};
         if (!wp->IsEnabled())
         {
-            cur_str = std::format("{}-{}", ANSI_FG_WHITE, ANSI_NONE);
-            enable_str = std::format("{}禁用{}", ANSI_FG_RED, ANSI_NONE);
-            status_str = std::format("{}停用{}", ANSI_FG_MAGENTA, ANSI_NONE);
-            delta_str = std::format("{}N/A{}", ANSI_FG_RED, ANSI_NONE);
-            trigger_str = std::format("{}-{}", ANSI_FG_WHITE, ANSI_NONE);
+            cur_str = std::format("{0}-{1}", ANSI_FG_WHITE, ANSI_NONE);
+            enable_str = std::format("{0}禁用{1}", ANSI_FG_RED, ANSI_NONE);
+            status_str = std::format("{0}停用{1}", ANSI_FG_MAGENTA, ANSI_NONE);
+            delta_str = std::format("{0}N/A{1}", ANSI_FG_RED, ANSI_NONE);
+            trigger_str = std::format("{0}-{1}", ANSI_FG_WHITE, ANSI_NONE);
         }
         else if (!eval.success)
         {
-            cur_str = std::format("{}N/A{}", ANSI_FG_RED, ANSI_NONE);
-            enable_str = std::format("{}启用{}", ANSI_FG_GREEN, ANSI_NONE);
-            status_str = std::format("{}无效{}", ANSI_FG_RED, ANSI_NONE);
-            delta_str = std::format("{}N/A{}", ANSI_FG_RED, ANSI_NONE);
+            cur_str = std::format("{0}N/A{1}", ANSI_FG_RED, ANSI_NONE);
+            enable_str = std::format("{0}启用{1}", ANSI_FG_GREEN, ANSI_NONE);
+            status_str = std::format("{0}无效{1}", ANSI_FG_RED, ANSI_NONE);
+            delta_str = std::format("{0}N/A{1}", ANSI_FG_RED, ANSI_NONE);
             if (wp->HasValidPC())
             {
-                trigger_str = std::format("{}0x{:08x}{}", ANSI_FG_BLUE, wp->GetPC(), ANSI_NONE);
+                trigger_str = std::format("{0}0x{1:08x}{2}", ANSI_FG_BLUE, wp->GetPC(), ANSI_NONE);
             }
             else
             {
-                trigger_str = std::format("{}-{}", ANSI_FG_WHITE, ANSI_NONE);
+                trigger_str = std::format("{0}-{1}", ANSI_FG_WHITE, ANSI_NONE);
             }
         }
         else
         {
-            enable_str = std::format("{}启用{}", ANSI_FG_GREEN, ANSI_NONE);
+            enable_str = std::format("{0}启用{1}", ANSI_FG_GREEN, ANSI_NONE);
             if (eval.changed)
             {
-                cur_str = std::format("{}0x{:08x}{}", ANSI_FG_YELLOW, eval.current_val, ANSI_NONE);
-                status_str = std::format("{}已变化{}", ANSI_FG_YELLOW, ANSI_NONE);
+                cur_str = std::format("{0}0x{1:08x}{2}", ANSI_FG_YELLOW, eval.current_val, ANSI_NONE);
+                status_str = std::format("{0}已变化{1}", ANSI_FG_YELLOW, ANSI_NONE);
             }
             else
             {
-                cur_str = std::format("{}0x{:08x}{}", ANSI_FG_GREEN, eval.current_val, ANSI_NONE);
-                status_str = std::format("{}正常{}", ANSI_FG_GREEN, ANSI_NONE);
+                cur_str = std::format("{0}0x{1:08x}{2}", ANSI_FG_GREEN, eval.current_val, ANSI_NONE);
+                status_str = std::format("{0}正常{1}", ANSI_FG_GREEN, ANSI_NONE);
             }
             const auto old_val{static_cast<std::uint32_t>(wp->GetOldValue())};
             if (eval.current_val >= old_val)
@@ -504,28 +504,28 @@ void WatchpointPool::PrintAllWatchpoints() const
                 const auto d{eval.current_val - old_val};
                 if (d == 0)
                 {
-                    delta_str = std::format("{}+0x{:08x}{}", ANSI_FG_BLUE, d, ANSI_NONE);
+                    delta_str = std::format("{0}+0x{1:08x}{2}", ANSI_FG_BLUE, d, ANSI_NONE);
                 }
                 else
                 {
-                    delta_str = std::format("{}+0x{:08x}{}", ANSI_FG_YELLOW, d, ANSI_NONE);
+                    delta_str = std::format("{0}+0x{1:08x}{2}", ANSI_FG_YELLOW, d, ANSI_NONE);
                 }
             }
             else
             {
                 const auto d{old_val - eval.current_val};
-                delta_str = std::format("{}-0x{:08x}{}", ANSI_FG_MAGENTA, d, ANSI_NONE);
+                delta_str = std::format("{0}-0x{1:08x}{2}", ANSI_FG_MAGENTA, d, ANSI_NONE);
             }
             if (wp->HasValidPC())
             {
-                trigger_str = std::format("{}0x{:08x}{}", ANSI_FG_BLUE, wp->GetPC(), ANSI_NONE);
+                trigger_str = std::format("{0}0x{1:08x}{2}", ANSI_FG_BLUE, wp->GetPC(), ANSI_NONE);
             }
             else
             {
-                trigger_str = std::format("{}-{}", ANSI_FG_WHITE, ANSI_NONE);
+                trigger_str = std::format("{0}-{1}", ANSI_FG_WHITE, ANSI_NONE);
             }
         }
-        std::print("{}|{}", ANSI_FG_BLUE, ANSI_NONE);
+        std::print("{0}|{1}", ANSI_FG_BLUE, ANSI_NONE);
         print_cell_colored(no_str, no_width, true);
         print_cell_colored(type_str, type_width, true);
         print_cell_colored(old_str, val_width, true);

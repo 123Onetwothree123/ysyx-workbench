@@ -85,7 +85,7 @@ SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view 
     const auto AddressResult{ExpressionsEngine.Evaluate(Args, EvalContext)};
     if (!AddressResult)
     {
-        std::println("表达式错误：{}", AddressResult.error());
+        std::println("表达式错误：{0}", AddressResult.error());
         return SDBCommandResult::Continue;
     }
     const auto StartAddress{AddressResult.value()};
@@ -100,7 +100,7 @@ SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view 
         std::println("错误：地址范围溢出");
         return SDBCommandResult::Continue;
     }
-    std::println("正在扫描 {} 个项目（每个 {} 字节），从 0x{:08x} 到 0x{:08x}：",
+    std::println("正在扫描 {0} 个项目（每个 {1} 字节），从 0x{2:08x} 到 0x{3:08x}：",
                  Count, UnitSize, StartAddress, StartAddress + TotalBytes - 1);
     for (std::size_t Index{0}; Index < Count; ++Index)
     {
@@ -108,7 +108,7 @@ SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view 
         const auto ValueOpt{NPCMemoryReadSafe(CurrentAddress, UnitSize)};
         if (!ValueOpt.has_value())
         {
-            std::println(std::cerr, "错误：在 0x{:08x} 处读取内存失败，扫描停止", CurrentAddress);
+            std::println(std::cerr, "错误：在 0x{0:08x} 处读取内存失败，扫描停止", CurrentAddress);
             break;
         }
         const auto Value{ValueOpt.value()};
@@ -116,17 +116,17 @@ SDBCommandResult xCommand::Execute(SDBCommandContext &Context, std::string_view 
         {
         case 1:
         {
-            std::println("0x{:08x}: 0x{:02x}", CurrentAddress, Value & 0xffu);
+            std::println("0x{0:08x}: 0x{1:02x}", CurrentAddress, Value & 0xffu);
             break;
         }
         case 2:
         {
-            std::println("0x{:08x}: 0x{:04x}", CurrentAddress, Value & 0xffffu);
+            std::println("0x{0:08x}: 0x{1:04x}", CurrentAddress, Value & 0xffffu);
             break;
         }
         case 4:
         {
-            std::println("0x{:08x}: 0x{:08x}", CurrentAddress, Value);
+            std::println("0x{0:08x}: 0x{1:08x}", CurrentAddress, Value);
             break;
         }
         default:

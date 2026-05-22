@@ -909,7 +909,7 @@ namespace
         {
             return std::format("0x{:x}", value);
         }
-        return std::format("0x{:0{}x}", value, width);
+        return std::format("0x{0:0{1}x}", value, width);
     }
     void print_header_field(std::ostream &os, std::string_view label, std::string_view value)
     {
@@ -1058,15 +1058,15 @@ void Readelf::print_file_header(std::ostream &os) const
     print_header_field(os, "Entry point address:(入口点地址)", format_hex(static_cast<std::uint64_t>(header_.e_entry), AddressWidth));
     print_header_field(os,
                        "Start of program headers:(程序头起始位置)",
-                       std::format("{} (bytes into file)(文件内字节偏移)", static_cast<unsigned long long>(header_.e_phoff)));
+                       std::format("{0} (bytes into file)(文件内字节偏移)", static_cast<unsigned long long>(header_.e_phoff)));
     print_header_field(os,
                        "Start of section headers:(节头起始位置)",
-                       std::format("{} (bytes into file)(文件内字节偏移)", static_cast<unsigned long long>(header_.e_shoff)));
+                       std::format("{0} (bytes into file)(文件内字节偏移)", static_cast<unsigned long long>(header_.e_shoff)));
     print_header_field(os, "Flags:(标志)", format_hex(header_.e_flags, 0));
-    print_header_field(os, "Size of this header:(本文件头大小)", std::format("{} (bytes)(字节)", header_.e_ehsize));
-    print_header_field(os, "Size of program headers:(程序头表项大小)", std::format("{} (bytes)(字节)", header_.e_phentsize));
+    print_header_field(os, "Size of this header:(本文件头大小)", std::format("{0} (bytes)(字节)", header_.e_ehsize));
+    print_header_field(os, "Size of program headers:(程序头表项大小)", std::format("{0} (bytes)(字节)", header_.e_phentsize));
     print_header_field(os, "Number of program headers:(程序头数量)", std::to_string(header_.e_phnum));
-    print_header_field(os, "Size of section headers:(节头表项大小)", std::format("{} (bytes)(字节)", header_.e_shentsize));
+    print_header_field(os, "Size of section headers:(节头表项大小)", std::format("{0} (bytes)(字节)", header_.e_shentsize));
     print_header_field(os, "Number of section headers:(节头数量)", std::to_string(header_.e_shnum));
     print_header_field(os, "Section header string table index:(节头字符串表索引)", std::to_string(header_.e_shstrndx));
 }
@@ -1114,7 +1114,7 @@ void Readelf::print_section_headers(std::ostream &os) const
                  pad_right(std::format("[{:2}]", i), IndexWidth),
                  pad_right(section_name(section.sh_name), NameWidth),
                  pad_right(section_type_name(section.sh_type), TypeWidth),
-                 pad_left(std::format("{:0{}x}", static_cast<unsigned long long>(section.sh_addr), AddressWidth), AddressColumnWidth),
+                 pad_left(std::format("{0:0{1}x}", static_cast<unsigned long long>(section.sh_addr), AddressWidth), AddressColumnWidth),
                  pad_left(std::format("{:06x}", static_cast<unsigned long long>(section.sh_offset)), OffsetWidth),
                  pad_left(std::format("{:06x}", static_cast<unsigned long long>(section.sh_size)), SizeWidth),
                  pad_left(std::format("{:02x}", static_cast<unsigned long long>(section.sh_entsize)), EntrySizeWidth),
@@ -1165,7 +1165,7 @@ void Readelf::print_symbols(std::ostream &os) const
         print_to(os,
                  "  {} {} {} {} {} {} {} {}\n",
                  pad_left(std::format("{:4}:", i), NumWidth),
-                 pad_left(std::format("{:0{}x}", static_cast<unsigned long long>(symbol.st_value), AddressWidth), ValueWidth),
+                 pad_left(std::format("{0:0{1}x}", static_cast<unsigned long long>(symbol.st_value), AddressWidth), ValueWidth),
                  pad_left(std::to_string(static_cast<unsigned long long>(symbol.st_size)), SizeColumnWidth),
                  pad_right(symbol_type_name(symbol.st_info), TypeColumnWidth),
                  pad_right(symbol_bind_name(symbol.st_info), BindColumnWidth),

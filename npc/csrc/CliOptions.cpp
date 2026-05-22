@@ -47,7 +47,7 @@ std::expected<CliOptions, std::string> CliOptions::Parse(int argc, char const *a
         }
         else if (arg.starts_with("-"))
         {
-            return std::unexpected{std::format("未知参数: {}", arg)};
+            return std::unexpected{std::format("未知参数: {0}", arg)};
         }
         else if (!image_file)
         {
@@ -55,7 +55,7 @@ std::expected<CliOptions, std::string> CliOptions::Parse(int argc, char const *a
         }
         else
         {
-            return std::unexpected{std::format("多余的镜像文件参数: {}", arg)};
+            return std::unexpected{std::format("多余的镜像文件参数: {0}", arg)};
         }
     }
     options.ImageFile = std::move(image_file);
