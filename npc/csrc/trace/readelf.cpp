@@ -416,7 +416,7 @@ namespace
                 .end = start + size,
             });
         }
-        std::ranges::sort(functions, {}, &ReadelfFunction::start);
+        std::ranges::sort(functions, {}, [](const ReadelfFunction &f) { return f.start; });
         return functions;
     }
     /**
