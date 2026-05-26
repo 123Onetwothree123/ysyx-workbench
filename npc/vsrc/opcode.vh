@@ -1,0 +1,10 @@
+`define OPCODE_Register           7'b0110011
+`define OPCODE_Immediate          7'b0010011
+`define OPCODE_Immediate_Lxxx     7'b0000011
+`define OPCODE_Immediate_Bxxx     7'b1100111
+`define OPCODE_Store              7'b0100011
+`define OPCODE_Branch             7'b1100011
+`define OPCODE_UpperImmediate_lui 7'b0110111
+`define OPCODE_UpperImmediate_auipc 7'b0010111
+`define OPCODE_Jump               7'b1101111
+`define OPCODE_System             7'b1110011
