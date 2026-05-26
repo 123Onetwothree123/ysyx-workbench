@@ -24,3 +24,5 @@ class IDU extends Module {
     val IsMret = Output(Bool())
     val CSRAddress = Output(UInt(12.W))
   })
+  
+}
