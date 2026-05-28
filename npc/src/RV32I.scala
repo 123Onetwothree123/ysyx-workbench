@@ -16,7 +16,7 @@ class RV32I extends Module {
   val lsu = Module(new LSU)
   val wbu = Module(new WBU)
   val NextPc = Module(new NextPC)
-//连线
+//开始连线
   ifu.io.PC := pc.io.PC
   ifu.io.InstructionReadDATA := io.InstructionReadDATA
   io.InstructionAddress := ifu.io.InstructionAddress
