@@ -1,0 +1,3 @@
+[submodule "rt-thread-am"]
+	path = rt-thread-am
+	url = https://github.com/123Onetwothree123/rt-thread-am.git
