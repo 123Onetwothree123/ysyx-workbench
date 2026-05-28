@@ -35,7 +35,7 @@ class ALUControlDecoder extends Module {
       switch(io.opcode) {
         is(OPCODE_Immediate_Lxxx) {
           io.ALUCtrl := ALUCTRL_ADD
-          when(
+          when( // LB，LH，LW，LBU，LHU
             !((io.funct3 === "b000".U(3.W)) || (io.funct3 === "b001"
               .U(3.W)) || (io.funct3 === "b010".U(3.W)) || (io.funct3 === "b100"
               .U(3.W)) || (io.funct3 === "b101".U(3.W)))
@@ -46,7 +46,7 @@ class ALUControlDecoder extends Module {
         }
         is(OPCODE_Store) {
           io.ALUCtrl := ALUCTRL_ADD
-          when(
+          when( // SB，SH，SW
             !((io.funct3 === "b000".U(3.W)) || (io.funct3 === "b001"
               .U(3.W)) || (io.funct3 === "b010".U(3.W)))
           ) {
@@ -54,7 +54,7 @@ class ALUControlDecoder extends Module {
             io.Illegal := true.B
           }
         }
-        is(OPCODE_Immediate_Bxxx) {
+        is(OPCODE_Immediate_Bxxx) { // 我不记得Verilog当初为什么要这么做了，现在直接移植过来，估计是B系列指令
           io.ALUCtrl := ALUCTRL_ADD
           when(!(io.funct3 === "b000".U(3.W))) {
             io.ALUCtrl := ALUCTRL_NOP
@@ -67,12 +67,12 @@ class ALUControlDecoder extends Module {
       }
     }
     is(ALUOP_ARITH) {
-      when(is_immediate) {
+      when(is_immediate) { // I类型
         switch(io.funct3) {
-          is("b000".U(3.W)) {
+          is("b000".U(3.W)) { // ADDI
             io.ALUCtrl := ALUCTRL_ADD
           }
-          is("b001".U(3.W)) {
+          is("b001".U(3.W)) { // SLLI
             when(io.funct7 === "b0000000".U(7.W)) {
               io.ALUCtrl := ALUCTRL_SLL
             }.otherwise {
@@ -81,32 +81,32 @@ class ALUControlDecoder extends Module {
             }
           }
           is("b010".U(3.W)) {
-            io.ALUCtrl := ALUCTRL_SLT
+            io.ALUCtrl := ALUCTRL_SLT // SLTI
           }
           is("b011".U(3.W)) {
-            io.ALUCtrl := ALUCTRL_SLTU
+            io.ALUCtrl := ALUCTRL_SLTU // SLTIU
           }
           is("b100".U(3.W)) {
-            io.ALUCtrl := ALUCTRL_XOR
+            io.ALUCtrl := ALUCTRL_XOR // XORI
           }
           is("b101".U(3.W)) {
             when(io.funct7 === "b0000000".U(7.W)) {
-              io.ALUCtrl := ALUCTRL_SRL
+              io.ALUCtrl := ALUCTRL_SRL // SRLI
             }.elsewhen(io.funct7 === "b0100000".U(7.W)) {
-              io.ALUCtrl := ALUCTRL_SRA
+              io.ALUCtrl := ALUCTRL_SRA // SRAI
             }.otherwise {
               io.ALUCtrl := ALUCTRL_NOP
               io.Illegal := true.B
             }
           }
           is("b110".U(3.W)) {
-            io.ALUCtrl := ALUCTRL_OR
+            io.ALUCtrl := ALUCTRL_OR // ORI
           }
           is("b111".U(3.W)) {
-            io.ALUCtrl := ALUCTRL_AND
+            io.ALUCtrl := ALUCTRL_AND // ANDI
           }
         }
-      }.elsewhen(is_register) {
+      }.elsewhen(is_register) { // R类型
         switch(io.funct3) {
           is("b000".U(3.W)) {
             when(io.funct7 === "b0000000".U(7.W)) {
@@ -184,14 +184,14 @@ class ALUControlDecoder extends Module {
     }
     is(ALUOP_MISC) {
       switch(io.opcode) {
-        is(OPCODE_UpperImmediate_lui) {
+        is(OPCODE_UpperImmediate_lui) { // LUI
           io.ALUCtrl := ALUCTRL_ADD
         }
       }
     }
-    is(ALUOP_BRANCH) {
+    is(ALUOP_BRANCH) { // 分支指令
       io.ALUCtrl := ALUCTRL_SUB
-      when(
+      when( // BEQ，BNE，BLT，BGE，BLTU，BGEU
         !((io.funct3 === "b000".U(3.W)) || (io.funct3 === "b001".U(3.W)) ||
           (io.funct3 === "b100".U(3.W)) || (io.funct3 === "b101".U(3.W)) ||
           (io.funct3 === "b110".U(3.W)) || (io.funct3 === "b111".U(3.W)))

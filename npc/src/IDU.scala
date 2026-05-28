@@ -17,7 +17,7 @@ class IDU extends Module {
     val rs1 = Output(UInt(5.W))
     val rs2 = Output(UInt(5.W))
     val rd = Output(UInt(5.W))
-    val IsEbreak_gtest = Output(Bool())
+    val IsEbreak = Output(Bool())
     val IsCsrrw = Output(Bool())
     val IsCsrrs = Output(Bool())
     val IsEcall = Output(Bool())
@@ -49,6 +49,7 @@ class IDU extends Module {
   val is_Csrrs = IsSystem && (funct3 === "b010".U(3.W))
   io.IsCsrrw := is_Csrrw
   io.IsCsrrs := is_Csrrs
+  io.IsEbreak := (io.Instruction === "h00100073".U(32.W))
   io.IsEcall := (io.Instruction === "h00000073".U(32.W))
   io.IsMret := (io.Instruction === "h30200073".U(32.W))
   io.CSRAddress := io.Instruction(31, 20)
@@ -70,4 +71,18 @@ class IDU extends Module {
   }.otherwise { // 正常写回的普通指令
     io.WBSel := WB_ALU
   }
+  val immGen = Module(new ImmediateGenerator)
+  immGen.io.Instruction := io.Instruction
+  io.Immediate := immGen.io.Immediate
+
+  val decoder1 = Module(new ALUOpDecoder)
+  decoder1.io.opcode := opcode
+
+  val decoder2 = Module(new ALUControlDecoder)
+  decoder2.io.ALUOp := decoder1.io.ALUOp
+  decoder2.io.opcode := opcode
+  decoder2.io.funct3 := funct3
+  decoder2.io.funct7 := funct7
+  io.ALUCtrl := decoder2.io.ALUCtrl
+  io.Illegal := decoder2.io.Illegal
 }

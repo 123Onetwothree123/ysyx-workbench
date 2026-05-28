@@ -30,6 +30,7 @@ class ImmediateGenerator extends Module {
   val s_ext = Cat(Fill(20, s_imm(11)), s_imm)
   val b_ext = Cat(Fill(19, b_imm(12)), b_imm)
   val j_ext = Cat(Fill(11, j_imm(20)), j_imm)
+  io.Immediate := 0.U(32.W)
   switch(opcode) {
     is(OPCODE_Immediate, OPCODE_Immediate_Lxxx, OPCODE_Immediate_Bxxx) {
       io.Immediate := i_ext
