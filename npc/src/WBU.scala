@@ -3,30 +3,27 @@ import chisel3._
 import chisel3.util._
 class WBU extends Module {
   val io = IO(new Bundle {
-    val RegWrite = Input(Bool())
-    val WBSel =
-      Input(UInt(2.W)) // 00是ALUResult，01是LoadDATA，10是SNPC，11是CSR_rdata
-    val ALUResult = Input(UInt(32.W))
-    val LoadDATA = Input(UInt(32.W))
-    val SNPC = Input(UInt(32.W))
-    val CSR_rdata = Input(UInt(32.W))
+    val in = Flipped(Decoupled(new EXUMessage))
+    val RegisterFileWriteSELECT = Output(UInt(5.W))
     val RegisterFileWriteEN = Output(Bool())
     val RegisterFileWriteDATA = Output(UInt(32.W))
   })
-  io.RegisterFileWriteEN := io.RegWrite
+  io.in.ready := true.B
+  io.RegisterFileWriteSELECT := io.in.bits.Rd
+  io.RegisterFileWriteEN := io.in.fire && io.in.bits.RegWrite
   io.RegisterFileWriteDATA := 0.U(32.W)
-  switch(io.WBSel) {
+  switch(io.in.bits.WBSel) {
     is("b00".U) {
-      io.RegisterFileWriteDATA := io.ALUResult
+      io.RegisterFileWriteDATA := io.in.bits.ALUResult
     }
     is("b01".U) {
-      io.RegisterFileWriteDATA := io.LoadDATA
+      io.RegisterFileWriteDATA := io.in.bits.LoadData
     }
     is("b10".U) {
-      io.RegisterFileWriteDATA := io.SNPC
+      io.RegisterFileWriteDATA := io.in.bits.snpc
     }
     is("b11".U) {
-      io.RegisterFileWriteDATA := io.CSR_rdata
+      io.RegisterFileWriteDATA := io.in.bits.CSRReadData
     }
   }
 }

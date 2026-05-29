@@ -5,6 +5,7 @@ class CSR extends Module {
   val io = IO(new Bundle {
     val clk = Input(Clock())
     val rst = Input(Bool())
+    val Enable = Input(Bool())
     // IDU给出的指令译码信号
     val IsCsrrw = Input(Bool())
     val IsCsrrs = Input(Bool())
@@ -43,9 +44,12 @@ class CSR extends Module {
   val McycleAccess = McycleSelect | McyclehSelect // 看目前mcycle是否是正在访问
   val Mvendorid_rdata = "h79737978".U(32.W)
   val Marchid_rdata = "h018d3017".U(32.W)
-  val CsrrsWriteEnable = io.IsCsrrs && (io.rs1 =/= 0.U(5.W))
+  val CsrrwWriteEnable = io.Enable && io.IsCsrrw
+  val CsrrsWriteEnable = io.Enable && io.IsCsrrs && (io.rs1 =/= 0.U(5.W))
   // 真正的ebreak按RISC-V breakpoint异常处理：写mepc/mcause，然后跳mtvec
   val IsException = io.IsEcall || io.IsEbreak
+  val ExceptionCommit = io.Enable && IsException
+  val MretCommit = io.Enable && io.IsMret
   val ExceptionCause = Mux(io.IsEbreak, 3.U(32.W), 11.U(32.W))
   val Mstatus_rdata = Wire(UInt(32.W))
   // ecall/ebreak异常进入时，MPP写11，MPIE写旧MIE，MIE写0
@@ -59,7 +63,7 @@ class CSR extends Module {
     0.U(1.W),
     Mstatus_rdata(2, 0)
   )
-  val MstatusWenFromCsrrw = io.IsCsrrw && MstatusSelect
+  val MstatusWenFromCsrrw = CsrrwWriteEnable && MstatusSelect
   val MstatusWenFromCsrrs = CsrrsWriteEnable && MstatusSelect
   val MstatusCSRWen = MstatusWenFromCsrrw || MstatusWenFromCsrrs
   val MstatusCSRData = Mux(io.IsCsrrw, io.Rs1Data, Mstatus_rdata | io.Rs1Data)
@@ -73,9 +77,9 @@ class CSR extends Module {
     Mstatus_rdata(7),
     Mstatus_rdata(2, 0)
   )
-  val MstatusWen = MstatusCSRWen || IsException || io.IsMret
+  val MstatusWen = MstatusCSRWen || ExceptionCommit || MretCommit
   val Mstatus_wdata =
-    Mux(IsException, MstatusEcallData, Mux(io.IsMret, MstatusMretData, MstatusCSRData))
+    Mux(ExceptionCommit, MstatusEcallData, Mux(MretCommit, MstatusMretData, MstatusCSRData))
   val Mstatus = Module(new mstatus)
   Mstatus.io.clk := io.clk
   Mstatus.io.rst := io.rst
@@ -83,7 +87,7 @@ class CSR extends Module {
   Mstatus.io.wdata := Mstatus_wdata
   Mstatus_rdata := Mstatus.io.rdata
   val Mtvec_rdata = Wire(UInt(32.W))
-  val MtvecWenFromCsrrw = io.IsCsrrw && MtvecSelect
+  val MtvecWenFromCsrrw = CsrrwWriteEnable && MtvecSelect
   val MtvecWenFromCsrrs = CsrrsWriteEnable && MtvecSelect
   val MtvecWen = MtvecWenFromCsrrw || MtvecWenFromCsrrs
   val Mtvec_wdata = Mux(io.IsCsrrw, io.Rs1Data, Mtvec_rdata | io.Rs1Data)
@@ -94,26 +98,26 @@ class CSR extends Module {
   Mtvec.io.wdata := Mtvec_wdata
   Mtvec_rdata := Mtvec.io.rdata
   val Mepc_rdata = Wire(UInt(32.W))
-  val MepcWenFromException = IsException
-  val MepcWenFromCsrrw = io.IsCsrrw && MepcSelect
+  val MepcWenFromException = ExceptionCommit
+  val MepcWenFromCsrrw = CsrrwWriteEnable && MepcSelect
   val MepcWenFromCsrrs = CsrrsWriteEnable && MepcSelect
   val MepcWen = MepcWenFromException || MepcWenFromCsrrw || MepcWenFromCsrrs
-  val Mepc_wdata = Mux(IsException, io.pc, Mux(io.IsCsrrw, io.Rs1Data, Mepc_rdata | io.Rs1Data))
+  val Mepc_wdata = Mux(ExceptionCommit, io.pc, Mux(io.IsCsrrw, io.Rs1Data, Mepc_rdata | io.Rs1Data))
   val Mepc = Module(new mepc)
   Mepc.io.clk := io.clk
   Mepc.io.rst := io.rst
   Mepc.io.wen := MepcWen
-  Mepc.io.ExceptionWE := IsException
+  Mepc.io.ExceptionWE := ExceptionCommit
   Mepc.io.ExceptionData := io.pc
   Mepc.io.wdata := Mepc_wdata
   Mepc_rdata := Mepc.io.rdata
   val Mcause_rdata = Wire(UInt(32.W))
-  val McauseWenFromException = IsException
-  val McauseWenFromCsrrw = io.IsCsrrw && McauseSelect
+  val McauseWenFromException = ExceptionCommit
+  val McauseWenFromCsrrw = CsrrwWriteEnable && McauseSelect
   val McauseWenFromCsrrs = CsrrsWriteEnable && McauseSelect
   val McauseWen = McauseWenFromException || McauseWenFromCsrrw || McauseWenFromCsrrs
   val Mcause_wdata =
-    Mux(IsException, ExceptionCause, Mux(io.IsCsrrw, io.Rs1Data, Mcause_rdata | io.Rs1Data))
+    Mux(ExceptionCommit, ExceptionCause, Mux(io.IsCsrrw, io.Rs1Data, Mcause_rdata | io.Rs1Data))
   val Mcause = Module(new mcause)
   Mcause.io.clk := io.clk
   Mcause.io.rst := io.rst
@@ -121,7 +125,7 @@ class CSR extends Module {
   Mcause.io.wdata := Mcause_wdata
   Mcause_rdata := Mcause.io.rdata
   // csrrw时写，csrrs时rs1非零才写
-  val McycleWenFromCsrrw = io.IsCsrrw && McycleAccess
+  val McycleWenFromCsrrw = CsrrwWriteEnable && McycleAccess
   val McycleWenFromCsrrs = CsrrsWriteEnable && McycleAccess
   val McycleWen = McycleWenFromCsrrw || McycleWenFromCsrrs
   // csrrw直接写rs1，csrrs得写旧值|rs1
@@ -153,6 +157,6 @@ class CSR extends Module {
   io.CSR_rdata := CSR_rdataReg
   io.CSRValid := CSRValidReg
   // ecall和ebreak跳mtvec，mret跳mepc
-  io.ExceptionTaken := IsException || io.IsMret
+  io.ExceptionTaken := ExceptionCommit || MretCommit
   io.ExceptionTarget := Mux(io.IsMret, Mepc_rdata, Cat(Mtvec_rdata(31, 2), 0.U(2.W)))
 }
