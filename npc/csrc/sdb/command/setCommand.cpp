@@ -69,7 +69,7 @@ std::string_view setCommand::Name() const noexcept
 }
 SDBCommandUsageList setCommand::Usage() const noexcept
 {
-    std::println("set的话目前是只支持reg，后面memory功能，理论上实现起来不难，但是这太麻烦了，目前就先不做了，反正也不是osoc的文档要求部分功能");
+    std::println("set的话目前是只支持reg，后面memory功能，理论上实现起来不难，但是这太麻烦了，目前就先不做了");
     static constexpr SDBCommandUsage Entries[]{
         {"reg pc <expr>", "把pc改成表达式算出来的值"},
         {"reg x1 <expr>", "把x1到x31改成表达式算出来的值，x0不能改"},
