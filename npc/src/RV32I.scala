@@ -10,8 +10,11 @@ class RV32I extends Module {
   val gpr = Module(new GPR)
   val exu = Module(new EXU)
   val wbu = Module(new WBU)
+  val rom = Module(new ROM)
+  val memory = Module(new Memory)
 //开始连线
-  ifu.io.InstructionReadDATA := io.InstructionReadDATA
+  rom.io.Address := ifu.io.InstructionAddress
+  ifu.io.InstructionReadDATA := rom.io.ReadDATA
   io.InstructionAddress := ifu.io.InstructionAddress
 
   StageConnect(ifu.io.out, idu.io.in)
@@ -26,7 +29,14 @@ class RV32I extends Module {
   gpr.io.WriteEN := wbu.io.RegisterFileWriteEN
   gpr.io.wdata := wbu.io.RegisterFileWriteDATA
 
-  exu.io.MemoryReadDATA := io.MemoryReadDATA
+  memory.io.valid := true.B
+  memory.io.wen := exu.io.MemWE
+  memory.io.raddr := exu.io.MemAddr
+  memory.io.waddr := exu.io.MemAddr
+  memory.io.wdata := exu.io.MemWriteDATA
+  memory.io.wmask := exu.io.MemWriteMask
+
+  exu.io.MemoryReadDATA := memory.io.rdata
   io.MemWE := exu.io.MemWE
   io.MemAddr := exu.io.MemAddr
   io.MemWriteDATA := exu.io.MemWriteDATA
