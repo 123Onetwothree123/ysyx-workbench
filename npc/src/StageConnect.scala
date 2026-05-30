@@ -3,15 +3,15 @@ import chisel3._
 import chisel3.util._
 
 object StageConnect {
-  private val Arch = "multi"
+  private val arch = "multi"
   def apply[T <: Data](Left: DecoupledIO[T], Right: DecoupledIO[T]): Unit = {
-    if (Arch == "single") {
+    if (arch == "single") {
       Right.bits := Left.bits
       Right.valid := true.B
       Left.ready := true.B
-    } else if (Arch == "multi") {
+    } else if (arch == "multi") {
       Right <> Left
-    } else if (Arch == "pipeline") {
+    } else if (arch == "pipeline") {
       val BitsReg = Reg(chiselTypeOf(Left.bits)) // 实际传输的数据，
       val ValidReg = RegInit(false.B) // 看寄存器是不是空的，0是空的
       val ReadyForInput =
@@ -25,7 +25,7 @@ object StageConnect {
           BitsReg := Left.bits
         }
       }
-    } else if (Arch == "ooo") {
+    } else if (arch == "ooo") {
       Right <> Queue(Left, 16)
     } else {
       Right <> Left
