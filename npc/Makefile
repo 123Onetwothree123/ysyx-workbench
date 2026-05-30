@@ -1,9 +1,13 @@
 BUILD_DIR = ./build
 #仿照Verilog版本的makefile
 TOPNAME=RV32I
-OBJ_DIR=$(BUILD_DIR)/obj_dir#verilator生成C++的中间文件的目录
-BIN=$(BUILD_DIR)/$(TOPNAME)#最后生成的可以执行的文件，给后面的run用的
-VSRCS=$(BUILD_DIR)/$(TOPNAME).sv
+#verilator生成C++的中间文件的目录
+OBJ_DIR=$(BUILD_DIR)/obj_dir_$(TOPNAME)
+#最后生成的可以执行的文件，给后面的run用的
+BIN=$(BUILD_DIR)/$(TOPNAME)
+VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" 2>/dev/null | sort) \
+      $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort)
+VINCDIRS=$(BUILD_DIR) $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort)
 CSRCS=$(shell find ./csrc -name "*.cpp" 2>/dev/null)
 VERILATOR=verilator
 NPROC ?= $(shell nproc 2>/dev/null || echo 4)
@@ -51,6 +55,7 @@ COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) -O3
 $(BIN): verilog $(CSRCS)
 	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) \
 		-O3 --x-assign fast --x-initial fast --noassert \
+		$(addprefix -I,$(VINCDIRS)) \
 		--top-module $(TOPNAME) \
 		$(VSRCS) $(CSRCS) \
 		$(addprefix -CFLAGS , $(COMMON_CFLAGS)) \
@@ -58,6 +63,5 @@ $(BIN): verilog $(CSRCS)
 		--exe -o $(abspath $(BIN))
 run: $(BIN)
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
-
 
 -include ../Makefile
