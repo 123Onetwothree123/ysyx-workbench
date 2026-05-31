@@ -389,6 +389,7 @@ BlockHeader *FindFriend(BlockHeader *block)
   如果offset=0x100
   那么FriendOffset = offset ^ BlockSize=0x000
   就反正两个互相映射就正好是一对
+  
   */
   uintptr_t FriendOffset = offset ^ BlockSize;
   /*

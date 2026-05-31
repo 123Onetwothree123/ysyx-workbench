@@ -2,7 +2,7 @@
 #include "difftest.hpp"
 #include "DifftestCPUState.hpp"
 #include "NPCTrap.hpp"
-#include <VRV32I.h>
+#include <VRV32E32Reg.h>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
@@ -112,7 +112,7 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
 /// @brief 执行一步DiffTest比对：REF跑 1 条指令后与DUT寄存器对比
 /// @param Top Verilator顶层模块引用，用于读取DUT状态
 /// @note 比对不通过会调用npc_ebreak终止仿真
-void DifftestStep(VRV32I &Top)
+void DifftestStep(VRV32E32Reg &Top)
 {
 #ifdef CONFIG_DIFFTEST
     if (!Enabled)

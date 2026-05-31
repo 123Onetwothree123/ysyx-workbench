@@ -1,5 +1,5 @@
 #include "DifftestCPUState.hpp"
-#include <VRV32I.h>
+#include <VRV32E32Reg.h>
 #include <print>
 #include <stdexcept>
 #include "sdb/SDBDPI.hpp"
@@ -29,7 +29,7 @@ void DifftestCPUState::SetPC(std::uint32_t Value)
 {
     pc = Value;
 }
-DifftestCPUState DifftestCPUState::ReadDUTState(VRV32I &Top)
+DifftestCPUState DifftestCPUState::ReadDUTState(VRV32E32Reg &Top)
 {
     auto State{DifftestCPUState{}};
     for (std::size_t Index{0}; Index < State.gpr.size(); ++Index)
