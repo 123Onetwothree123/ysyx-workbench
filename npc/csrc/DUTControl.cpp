@@ -3,14 +3,11 @@
 #include <VRV32I.h>
 #include <cstdio>
 #include <cstdlib>
-#include <cstddef>
 #include <cstdint>
 
 namespace
 {
 constexpr uint32_t SERIAL_PORT{0x10000000u};
-std::size_t debug_cycles{0};
-bool runaway_printed{false};
 
 uint32_t AlignWord(uint32_t addr)
 {
@@ -75,33 +72,19 @@ void DUTControl::Reset()
     Top->clock = 0;
     Top->reset = 0;
     Top->eval();
-    debug_cycles = 0;
-    runaway_printed = false;
 }
 
 void DUTControl::Step()
 {
     Top->clock = 0;
-
+    //临时加的，先把程序跑起来再说，后面会直接删掉的
     const uint32_t pc{Top->io_InstructionAddress};
     const bool pc_valid{CheckPmemRange(pc, 4)};
     Top->io_InstructionReadDATA = pc_valid ? ReadPmemWord(pc) : 0;
-
-    if (!pc_valid)
-    {
-        if (!runaway_printed)
-        {
-            std::fprintf(stderr, "\n=== PC RUNAWAY at cycle %zu: PC=0x%08x ===\n", debug_cycles, pc);
-            runaway_printed = true;
-        }
-    }
-
     // 先让取指/译码/ALU组合逻辑稳定，才能拿到本周期真正的数据访存地址。
     Top->eval();
-
     const uint32_t addr{Top->io_MemAddr};
     Top->io_MemoryReadDATA = (AlignWord(addr) == SERIAL_PORT) ? 0 : ReadPmemWord(addr);
-
     // 再让 load 数据通过 LSU/WBU 组合逻辑，保证上升沿写回寄存器的是新读出的值。
     Top->eval();
 
@@ -109,12 +92,6 @@ void DUTControl::Step()
     const uint32_t waddr{Top->io_MemAddr};
     const uint32_t wdata{Top->io_MemWriteDATA};
     const uint32_t wmask{Top->io_MemWriteMask};
-
-    if (mem_we)
-    {
-        std::fprintf(stderr, "[WRITE cycle %zu] addr=0x%08x data=0x%08x mask=0x%x\n",
-                     debug_cycles, waddr, wdata, wmask);
-    }
 
     Top->clock = 1;
     Top->eval();
@@ -141,7 +118,6 @@ void DUTControl::Step()
 
     Top->clock = 0;
     Top->eval();
-    debug_cycles++;
 }
 void DUTControl::Final()
 {
