@@ -45,13 +45,10 @@ void DUTControl::Step()
     if (CheckPmemRange(addr, 4))
         Top->io_MemoryReadDATA = *(uint32_t *)&pmem[GuestToHost(addr)];
     Top->eval();
-    // 临时调试：打印前50个周期 + 所有写操作
-    if (debug_cycles < 50)
-    {
-        std::fprintf(stderr, "[cycle %zu] PC=0x%08x instr=0x%08x MemWE=%d MemAddr=0x%08x\n",
-                     debug_cycles, pc, Top->io_InstructionReadDATA,
-                     Top->io_MemWE, Top->io_MemAddr);
-    }
+    // 临时调试：持续输出
+    std::fprintf(stderr, "[cycle %zu] PC=0x%08x instr=0x%08x MemWE=%d MemAddr=0x%08x\n",
+                 debug_cycles, pc, Top->io_InstructionReadDATA,
+                 Top->io_MemWE, Top->io_MemAddr);
     if (Top->io_MemWE)
     {
         std::fprintf(stderr, "[WRITE cycle %zu] addr=0x%08x data=0x%08x mask=0x%x\n",
