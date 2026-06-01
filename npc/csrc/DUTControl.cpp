@@ -77,26 +77,23 @@ void DUTControl::Reset()
 void DUTControl::Step()
 {
     Top->clock = 0;
-    //临时加的，先把程序跑起来再说，后面会直接删掉的
-    const uint32_t pc{Top->io_InstructionAddress};
-    const bool pc_valid{CheckPmemRange(pc, 4)};
-    Top->io_InstructionReadDATA = pc_valid ? ReadPmemWord(pc) : 0;
+    //以下这大段是临时加的，先把程序跑起来再说，后面会直接删掉的
+    Top->io_InstructionReadDATA = ReadPmemWord(Top->io_InstructionAddress);
     // 先让取指/译码/ALU组合逻辑稳定，才能拿到本周期真正的数据访存地址。
-    Top->eval();
-    const uint32_t addr{Top->io_MemAddr};
-    Top->io_MemoryReadDATA = (AlignWord(addr) == SERIAL_PORT) ? 0 : ReadPmemWord(addr);
-    // 再让 load 数据通过 LSU/WBU 组合逻辑，保证上升沿写回寄存器的是新读出的值。
-    Top->eval();
-
+    Top->eval();//让verilator重新计算逻辑
+    //临时的，后面接上AXI的时候就换掉
+    const bool mem_valid{static_cast<bool>(Top->io_MemValid)};
     const bool mem_we{static_cast<bool>(Top->io_MemWE)};
+    const uint32_t addr{Top->io_MemAddr};
+    Top->io_MemoryReadDATA = (mem_valid && !mem_we && AlignWord(addr) != SERIAL_PORT) ? ReadPmemWord(addr) : 0;
+    // 再让load数据通过LSU/WBU组合逻辑，保证上升沿写回寄存器的是新读出的值。
+    Top->eval();
     const uint32_t waddr{Top->io_MemAddr};
     const uint32_t wdata{Top->io_MemWriteDATA};
     const uint32_t wmask{Top->io_MemWriteMask};
-
     Top->clock = 1;
     Top->eval();
-
-    if (mem_we)
+    if (mem_valid && mem_we)
     {
         const uint32_t base{AlignWord(waddr)};
         if (base == SERIAL_PORT)
@@ -115,7 +112,6 @@ void DUTControl::Step()
             WritePmemMasked(waddr, wdata, wmask);
         }
     }
-
     Top->clock = 0;
     Top->eval();
 }

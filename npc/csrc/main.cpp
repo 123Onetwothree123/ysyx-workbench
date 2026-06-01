@@ -7,6 +7,7 @@
 #include "ImageLoader.hpp"
 #include "DUTControl.hpp"
 #include "disasm.hpp"
+// #include "difftest.hpp"
 int main(int argc, char const *argv[])
 {
     Verilated::commandArgs(argc, argv);
@@ -26,12 +27,20 @@ int main(int argc, char const *argv[])
     DUTControl dut;
     auto CPUCycles{std::size_t{0}};
     dut.Reset();
+    /*
+    auto DifftestInit{DifftestInitialize(options->GetDiffRefSo(), image_size.value())};
+    if (!DifftestInit)
+    {
+        std::println(std::cerr, "{0}", DifftestInit.error());
+        return 1;
+    }
+    */
     while (!Verilated::gotFinish())
     {
         dut.Step();
         CPUCycles++;
     }
     dut.Final();
-    std::println("仿真结束，{} 个周期", CPUCycles);
+    std::println("仿真结束，{0} 个周期", CPUCycles);
     return 0;
 }

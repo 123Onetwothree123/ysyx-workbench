@@ -30,7 +30,7 @@ class RV32I extends Module {
   gpr.io.WriteEN := wbu.io.RegisterFileWriteEN
   gpr.io.wdata := wbu.io.RegisterFileWriteDATA
 
-  memory.io.valid := true.B
+  memory.io.valid := exu.io.MemValid
   memory.io.wen := exu.io.MemWE
   memory.io.raddr := exu.io.MemAddr
   memory.io.waddr := exu.io.MemAddr
@@ -43,6 +43,7 @@ class RV32I extends Module {
   io.MemAddr := exu.io.MemAddr
   io.MemWriteDATA := exu.io.MemWriteDATA
   io.MemWriteMask := exu.io.MemWriteMask
+  io.MemValid:=exu.io.MemValid
 
   ifu.io.Redirect := exu.io.Redirect
   ifu.io.RedirectTarget := exu.io.RedirectTarget

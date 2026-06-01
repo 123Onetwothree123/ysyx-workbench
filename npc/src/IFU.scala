@@ -23,7 +23,7 @@ class IFU extends Module {
   val StatesIdle = states(0)
   val StatesWait = states(1)
   val state = RegInit(StatesIdle)
-  //他妈的居然防止报警转错，还要手动去给个初始值
+  // 他妈的居然防止报警转错，还要手动去给个初始值
   io.out.valid := false.B
   io.out.bits.Instruction := io.InstructionReadDATA
   io.out.bits.pc := PCModule.io.PC
@@ -36,7 +36,9 @@ class IFU extends Module {
       io.out.valid := true.B
       io.out.bits.Instruction := io.InstructionReadDATA
       io.out.bits.pc := PCModule.io.PC
-      state := StatesIdle
+      when(io.out.valid && io.out.ready) { // 只有IDU真的接走了这条指令，IFU这里才会去进入下一次的取指
+        state := StatesIdle
+      }
     }
   }
   NextPCModule.io.SNPC := snpc
@@ -52,8 +54,4 @@ class IFU extends Module {
   io.InstructionAddress := PCModule.io.PC
   io.InstructionOutput := io.InstructionReadDATA
   io.SNPC := snpc
-
-  io.out.valid := true.B
-  io.out.bits.Instruction := io.InstructionReadDATA
-  io.out.bits.pc := PCModule.io.PC
 }

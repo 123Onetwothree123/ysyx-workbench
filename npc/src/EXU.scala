@@ -15,11 +15,44 @@ class EXU extends Module {
     val RedirectTarget = Output(UInt(32.W))
     val ExceptionTaken = Output(Bool())
     val ExceptionTarget = Output(UInt(32.W))
+    // 临时加的，后面接入AXI会换掉
+    val MemValid = Output(Bool())
   })
-  io.in.ready := io.out.ready
-  io.out.valid := io.in.valid
+  // 状态机，和IFU一样的
+  val states = Enum(2)
+  val StatesIdle = states(0)
+  val StatesWait = states(1)
+  val state = RegInit(StatesIdle)
+  val IsLoad = io.in.valid && io.in.bits.MemValid && !io.in.bits.MemWrite
+  io.in.ready := false.B
+  io.out.valid := false.B
+  switch(state) {
+    is(StatesIdle) {
+      when(IsLoad) {
+        // load类的第一下只发地址，不向WBU去输出结果，然后也不让前一级fire
+        io.in.ready := false.B
+        io.out.valid := false.B
+        state := StatesWait
+      }.otherwise {
+        // 普通指令
+        io.in.ready := io.out.ready
+        io.out.valid := io.in.valid
+      }
+    }
+    is(StatesWait) {
+      // load第二下的时候MemoryReadDATA已经是有效了，然后允许写回
+      io.in.ready := io.out.ready
+      io.out.valid := io.in.valid
+      when(io.out.fire) {
+        state := StatesIdle
+      }
+    }
+  }
 
   val Commit = io.in.fire
+
+  // 临时的
+  val MemAccess = io.in.valid && io.in.bits.MemValid
 
   val ALUUnit = Module(new ALU)
   ALUUnit.io.A := io.in.bits.ALU_A
@@ -33,7 +66,8 @@ class EXU extends Module {
   BranchUnit.io.IsBranch := io.in.bits.IsBranch
 
   val LSUUnit = Module(new LSU)
-  LSUUnit.io.MemoryValid := io.in.bits.MemValid
+  LSUUnit.io.MemoryValid := MemAccess
+  io.MemValid := MemAccess
   LSUUnit.io.MemoryWrite := io.in.bits.MemWrite && Commit
   LSUUnit.io.WidthSel := io.in.bits.WidthSel
   LSUUnit.io.ALUResult := ALUUnit.io.result
@@ -66,7 +100,11 @@ class EXU extends Module {
   val Redirect = io.in.bits.IsJal || io.in.bits.IsJalr || BranchUnit.io.Taken
 
   io.Redirect := Commit && Redirect
-  io.RedirectTarget := Mux(io.in.bits.IsJalr, JalrTarget, Mux(io.in.bits.IsJal, JalTarget, BranchTarget))
+  io.RedirectTarget := Mux(
+    io.in.bits.IsJalr,
+    JalrTarget,
+    Mux(io.in.bits.IsJal, JalTarget, BranchTarget)
+  )
   io.ExceptionTaken := CSRUnit.io.ExceptionTaken
   io.ExceptionTarget := CSRUnit.io.ExceptionTarget
 
