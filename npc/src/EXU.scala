@@ -7,6 +7,7 @@ class EXU extends Module {
     val in = Flipped(Decoupled(new IDUMessage))
     val out = Decoupled(new EXUMessage)
     val MemoryReadDATA = Input(UInt(32.W))
+    val MemRespValid = Input(Bool())
     val MemWE = Output(Bool())
     val MemAddr = Output(UInt(32.W))
     val MemWriteDATA = Output(UInt(32.W))
@@ -19,28 +20,37 @@ class EXU extends Module {
     val MemValid = Output(Bool())
   })
   // 状态机，和IFU一样的
-  val states = Enum(2)
+  val states = Enum(3)
   val StatesIdle = states(0)
-  val StatesWait = states(1)
+  val StatesWaitResp = states(1)
+  val StatesHold = states(2)
   val state = RegInit(StatesIdle)
-  val IsLoad = io.in.valid && io.in.bits.MemValid && !io.in.bits.MemWrite
+  val IsMem = io.in.valid && io.in.bits.MemValid
+  val IssueMemReq = state === StatesIdle && IsMem
+  val loadDataReg = RegInit(0.U(32.W))
+  val loadData = Wire(UInt(32.W))
   io.in.ready := false.B
   io.out.valid := false.B
   switch(state) {
     is(StatesIdle) {
-      when(IsLoad) {
-        // load类的第一下只发地址，不向WBU去输出结果，然后也不让前一级fire
+      when(IsMem) {
+        // 访存指令先只发一次请求，等存储器回复后再提交
         io.in.ready := false.B
         io.out.valid := false.B
-        state := StatesWait
+        state := StatesWaitResp
       }.otherwise {
         // 普通指令
         io.in.ready := io.out.ready
         io.out.valid := io.in.valid
       }
     }
-    is(StatesWait) {
-      // load第二下的时候MemoryReadDATA已经是有效了，然后允许写回
+    is(StatesWaitResp) {
+      when(io.MemRespValid) {
+        loadDataReg := loadData
+        state := StatesHold
+      }
+    }
+    is(StatesHold) {
       io.in.ready := io.out.ready
       io.out.valid := io.in.valid
       when(io.out.fire) {
@@ -67,13 +77,14 @@ class EXU extends Module {
 
   val LSUUnit = Module(new LSU)
   LSUUnit.io.MemoryValid := MemAccess
-  io.MemValid := MemAccess
-  LSUUnit.io.MemoryWrite := io.in.bits.MemWrite && Commit
+  io.MemValid := IssueMemReq
+  LSUUnit.io.MemoryWrite := IssueMemReq && io.in.bits.MemWrite
   LSUUnit.io.WidthSel := io.in.bits.WidthSel
   LSUUnit.io.ALUResult := ALUUnit.io.result
   LSUUnit.io.MemoryReadDATA := io.MemoryReadDATA
   LSUUnit.io.StoreDATA := io.in.bits.StoreData
   LSUUnit.io.LoadSigned := io.in.bits.LoadSigned
+  loadData := LSUUnit.io.LoadDATA
 
   io.MemWE := LSUUnit.io.MemoryWE
   io.MemAddr := LSUUnit.io.MemoryAddr
@@ -112,7 +123,7 @@ class EXU extends Module {
   io.out.bits.RegWrite := io.in.bits.RegWrite
   io.out.bits.WBSel := io.in.bits.WBSel
   io.out.bits.ALUResult := ALUUnit.io.result
-  io.out.bits.LoadData := LSUUnit.io.LoadDATA
+  io.out.bits.LoadData := Mux(state === StatesHold, loadDataReg, loadData)
   io.out.bits.snpc := io.in.bits.snpc
   io.out.bits.CSRReadData := CSRUnit.io.CSR_rdata
 }

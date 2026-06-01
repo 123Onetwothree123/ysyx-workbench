@@ -9,5 +9,9 @@ class RV32IIO extends Bundle {
   val MemWriteDATA = Output(UInt(32.W))
   val MemWriteMask = Output(UInt(4.W))
   val MemoryReadDATA = Input(UInt(32.W))
-  val MemValid=Output(Bool())
+  val MemValid = Output(Bool())
+  //临时总线的设计
+  val InstructionReqValid = Output(Bool())
+  val InstructionRespValid = Input(Bool())
+  val MemRespValid = Input(Bool())
 }

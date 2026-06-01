@@ -8,6 +8,10 @@
 namespace
 {
 constexpr uint32_t SERIAL_PORT{0x10000000u};
+bool instruction_resp_valid{false};
+uint32_t instruction_resp_data{0};
+bool mem_resp_valid{false};
+uint32_t mem_resp_data{0};
 
 uint32_t AlignWord(uint32_t addr)
 {
@@ -62,10 +66,16 @@ const VRV32I &DUTControl::GetTop() const noexcept
 }
 void DUTControl::Reset()
 {
+    instruction_resp_valid = false;
+    instruction_resp_data = 0;
+    mem_resp_valid = false;
+    mem_resp_data = 0;
     Top->clock = 0;
     Top->reset = 1;
     Top->io_InstructionReadDATA = 0;
+    Top->io_InstructionRespValid = 0;
     Top->io_MemoryReadDATA = 0;
+    Top->io_MemRespValid = 0;
     Top->eval();
     Top->clock = 1;
     Top->eval();
@@ -77,20 +87,41 @@ void DUTControl::Reset()
 void DUTControl::Step()
 {
     Top->clock = 0;
-    //以下这大段是临时加的，先把程序跑起来再说，后面会直接删掉的
-    Top->io_InstructionReadDATA = ReadPmemWord(Top->io_InstructionAddress);
-    // 先让取指/译码/ALU组合逻辑稳定，才能拿到本周期真正的数据访存地址。
-    Top->eval();//让verilator重新计算逻辑
-    //临时的，后面接上AXI的时候就换掉
+    Top->io_InstructionRespValid = instruction_resp_valid;
+    Top->io_InstructionReadDATA = instruction_resp_data;
+    Top->io_MemRespValid = mem_resp_valid;
+    Top->io_MemoryReadDATA = mem_resp_data;
+
+    Top->eval(); // 让verilator重新计算逻辑
+
+    const bool instruction_req_valid{static_cast<bool>(Top->io_InstructionReqValid)};
+    const uint32_t instruction_addr{Top->io_InstructionAddress};
     const bool mem_valid{static_cast<bool>(Top->io_MemValid)};
     const bool mem_we{static_cast<bool>(Top->io_MemWE)};
     const uint32_t addr{Top->io_MemAddr};
-    Top->io_MemoryReadDATA = (mem_valid && !mem_we && AlignWord(addr) != SERIAL_PORT) ? ReadPmemWord(addr) : 0;
-    // 再让load数据通过LSU/WBU组合逻辑，保证上升沿写回寄存器的是新读出的值。
-    Top->eval();
     const uint32_t waddr{Top->io_MemAddr};
     const uint32_t wdata{Top->io_MemWriteDATA};
     const uint32_t wmask{Top->io_MemWriteMask};
+
+    bool next_instruction_resp_valid{false};
+    uint32_t next_instruction_resp_data{0};
+    if (instruction_req_valid)
+    {
+        next_instruction_resp_valid = true;
+        next_instruction_resp_data = ReadPmemWord(instruction_addr);
+    }
+
+    bool next_mem_resp_valid{false};
+    uint32_t next_mem_resp_data{0};
+    if (mem_valid)
+    {
+        next_mem_resp_valid = true;
+        if (!mem_we && AlignWord(addr) != SERIAL_PORT)
+        {
+            next_mem_resp_data = ReadPmemWord(addr);
+        }
+    }
+
     Top->clock = 1;
     Top->eval();
     if (mem_valid && mem_we)
@@ -114,6 +145,11 @@ void DUTControl::Step()
     }
     Top->clock = 0;
     Top->eval();
+
+    instruction_resp_valid = next_instruction_resp_valid;
+    instruction_resp_data = next_instruction_resp_data;
+    mem_resp_valid = next_mem_resp_valid;
+    mem_resp_data = next_mem_resp_data;
 }
 void DUTControl::Final()
 {
