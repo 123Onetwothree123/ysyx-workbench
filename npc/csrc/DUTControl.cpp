@@ -33,22 +33,29 @@ void DUTControl::Reset()
 }
 
 static std::size_t debug_cycles{0};
+static bool runaway_printed{false};
 void DUTControl::Step()
 {
     Top->clock = 1;
-    // 临时加的，后面会删掉，临时用C++加载程序，取指令桥接的
+    // 取指桥接
     uint32_t pc{Top->io_InstructionAddress};
     if (CheckPmemRange(pc, 4))
         Top->io_InstructionReadDATA = *(uint32_t *)&pmem[GuestToHost(pc)];
+    else
+        Top->io_InstructionReadDATA = 0;
     // 数据读桥接
     uint32_t addr = Top->io_MemAddr;
     if (CheckPmemRange(addr, 4))
         Top->io_MemoryReadDATA = *(uint32_t *)&pmem[GuestToHost(addr)];
+    else if (addr == 0x10000000)
+        Top->io_MemoryReadDATA = 0;
     Top->eval();
-    // 临时调试：持续输出
-    std::fprintf(stderr, "[cycle %zu] PC=0x%08x instr=0x%08x MemWE=%d MemAddr=0x%08x\n",
-                 debug_cycles, pc, Top->io_InstructionReadDATA,
-                 Top->io_MemWE, Top->io_MemAddr);
+    // 临时调试：PC跑飞时打印前后信息
+    if (!CheckPmemRange(pc, 4) && !runaway_printed)
+    {
+        std::fprintf(stderr, "\n=== PC RUNAWAY at cycle %zu: PC=0x%08x ===\n", debug_cycles, pc);
+        runaway_printed = true;
+    }
     if (Top->io_MemWE)
     {
         std::fprintf(stderr, "[WRITE cycle %zu] addr=0x%08x data=0x%08x mask=0x%x\n",
