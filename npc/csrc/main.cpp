@@ -6,6 +6,7 @@
 #include "CliOptions.hpp"
 #include "ImageLoader.hpp"
 #include "DUTControl.hpp"
+#include "disasm.hpp"
 int main(int argc, char const *argv[])
 {
     Verilated::commandArgs(argc, argv);
