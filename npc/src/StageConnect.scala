@@ -3,7 +3,7 @@ import chisel3._
 import chisel3.util._
 
 object StageConnect {
-  private val arch = "single"
+  private val arch = "multi"
   def apply[T <: Data](Left: DecoupledIO[T], Right: DecoupledIO[T]): Unit = {
     if (arch == "single") {
       Right.bits := Left.bits

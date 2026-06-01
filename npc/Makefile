@@ -59,6 +59,7 @@ $(BIN): verilog $(CSRCS)
 		--top-module $(TOPNAME) \
 		$(VSRCS) $(CSRCS) \
 		$(addprefix -CFLAGS , $(COMMON_CFLAGS)) \
+		-LDFLAGS -lcapstone \
 		--Mdir $(OBJ_DIR) \
 		--exe -o $(abspath $(BIN))
 run: $(BIN)
