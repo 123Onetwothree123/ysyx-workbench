@@ -1,35 +1,39 @@
 #include "DUTControl.hpp"
-#include <VRV32E32Reg.h>
-DUTControl::DUTControl() : Top{std::make_unique<VRV32E32Reg>()}
+#include <VRV32I.h>
+DUTControl::DUTControl() : Top{std::make_unique<VRV32I>()}
 {
 }
 DUTControl::~DUTControl()
 {
     Final();
 }
-VRV32E32Reg &DUTControl::GetTop() noexcept
+VRV32I &DUTControl::GetTop() noexcept
 {
     return *Top;
 }
-const VRV32E32Reg &DUTControl::GetTop() const noexcept
+const VRV32I &DUTControl::GetTop() const noexcept
 {
     return *Top;
 }
 void DUTControl::Reset()
 {
-    Top->sdb_debug_clk = 0;
-    Top->sdb_pc_write_en = 0;
-    Top->sdb_pc_write_data = 0;
-    Top->sdb_gpr_write_en = 0;
-    Top->sdb_gpr_write_addr = 0;
-    Top->sdb_gpr_write_data = 0;
-    Top->clk = 0;
-    Top->rst = 1;
+    Top->clock = 0;
+    Top->reset = 1;
+    Top->io_InstructionReadDATA = 0;
+    Top->io_MemoryReadDATA = 0;
     Top->eval();
-    Top->clk = 1;
+    Top->clock = 1;
     Top->eval();
-    Top->clk = 0;
-    Top->rst = 0;
+    Top->clock = 0;
+    Top->reset = 0;
+    Top->eval();
+}
+
+void DUTControl::Step()
+{
+    Top->clock = 1;
+    Top->eval();
+    Top->clock = 0;
     Top->eval();
 }
 void DUTControl::Final()
