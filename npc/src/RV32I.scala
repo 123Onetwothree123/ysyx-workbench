@@ -16,9 +16,11 @@ class RV32I extends Module {
   rom.io.Address := ifu.io.InstructionAddress
   // ifu.io.InstructionReadDATA := rom.io.ReadDATA  // 原来从内部ROM取指
   ifu.io.InstructionReadDATA := io.InstructionReadDATA // 改为从顶层IO取指，临时C++的pmem桥接上来，反正能临时跑起来就行
+  ifu.io.InstructionReqReady := io.InstructionReqReady
   ifu.io.InstructionRespValid := io.InstructionRespValid
   io.InstructionAddress := ifu.io.InstructionAddress
   io.InstructionReqValid := ifu.io.InstructionReqValid
+  io.InstructionRespReady := ifu.io.InstructionRespReady
 
   StageConnect(ifu.io.out, idu.io.in)
   StageConnect(idu.io.out, exu.io.in)
@@ -41,12 +43,14 @@ class RV32I extends Module {
 
   // exu.io.MemoryReadDATA := memory.io.rdata  // 原来从内部Memory读
   exu.io.MemoryReadDATA := io.MemoryReadDATA // 改为从顶层IO读（C++侧pmem桥接）
+  exu.io.MemReqReady := io.MemReqReady
   exu.io.MemRespValid := io.MemRespValid
   io.MemWE := exu.io.MemWE
   io.MemAddr := exu.io.MemAddr
   io.MemWriteDATA := exu.io.MemWriteDATA
   io.MemWriteMask := exu.io.MemWriteMask
   io.MemValid := exu.io.MemValid
+  io.MemRespReady := exu.io.MemRespReady
 
   ifu.io.Redirect := exu.io.Redirect
   ifu.io.RedirectTarget := exu.io.RedirectTarget

@@ -73,8 +73,10 @@ void DUTControl::Reset()
     Top->clock = 0;
     Top->reset = 1;
     Top->io_InstructionReadDATA = 0;
+    Top->io_InstructionReqReady = 0;
     Top->io_InstructionRespValid = 0;
     Top->io_MemoryReadDATA = 0;
+    Top->io_MemReqReady = 0;
     Top->io_MemRespValid = 0;
     Top->eval();
     Top->clock = 1;
@@ -87,33 +89,44 @@ void DUTControl::Reset()
 void DUTControl::Step()
 {
     Top->clock = 0;
+    Top->io_InstructionReqReady = !instruction_resp_valid;
     Top->io_InstructionRespValid = instruction_resp_valid;
     Top->io_InstructionReadDATA = instruction_resp_data;
+    Top->io_MemReqReady = !mem_resp_valid;
     Top->io_MemRespValid = mem_resp_valid;
     Top->io_MemoryReadDATA = mem_resp_data;
 
     Top->eval(); // 让verilator重新计算逻辑
 
     const bool instruction_req_valid{static_cast<bool>(Top->io_InstructionReqValid)};
+    const bool instruction_req_ready{static_cast<bool>(Top->io_InstructionReqReady)};
+    const bool instruction_resp_ready{static_cast<bool>(Top->io_InstructionRespReady)};
     const uint32_t instruction_addr{Top->io_InstructionAddress};
     const bool mem_valid{static_cast<bool>(Top->io_MemValid)};
+    const bool mem_req_ready{static_cast<bool>(Top->io_MemReqReady)};
+    const bool mem_resp_ready{static_cast<bool>(Top->io_MemRespReady)};
     const bool mem_we{static_cast<bool>(Top->io_MemWE)};
     const uint32_t addr{Top->io_MemAddr};
     const uint32_t waddr{Top->io_MemAddr};
     const uint32_t wdata{Top->io_MemWriteDATA};
     const uint32_t wmask{Top->io_MemWriteMask};
 
-    bool next_instruction_resp_valid{false};
-    uint32_t next_instruction_resp_data{0};
-    if (instruction_req_valid)
+    const bool instruction_req_fire{instruction_req_valid && instruction_req_ready};
+    const bool instruction_resp_fire{instruction_resp_valid && instruction_resp_ready};
+    const bool mem_req_fire{mem_valid && mem_req_ready};
+    const bool mem_resp_fire{mem_resp_valid && mem_resp_ready};
+
+    bool next_instruction_resp_valid{instruction_resp_valid && !instruction_resp_fire};
+    uint32_t next_instruction_resp_data{instruction_resp_data};
+    if (instruction_req_fire)
     {
         next_instruction_resp_valid = true;
         next_instruction_resp_data = ReadPmemWord(instruction_addr);
     }
 
-    bool next_mem_resp_valid{false};
-    uint32_t next_mem_resp_data{0};
-    if (mem_valid)
+    bool next_mem_resp_valid{mem_resp_valid && !mem_resp_fire};
+    uint32_t next_mem_resp_data{mem_resp_data};
+    if (mem_req_fire)
     {
         next_mem_resp_valid = true;
         if (!mem_we && AlignWord(addr) != SERIAL_PORT)
@@ -124,7 +137,7 @@ void DUTControl::Step()
 
     Top->clock = 1;
     Top->eval();
-    if (mem_valid && mem_we)
+    if (mem_req_fire && mem_we)
     {
         const uint32_t base{AlignWord(waddr)};
         if (base == SERIAL_PORT)

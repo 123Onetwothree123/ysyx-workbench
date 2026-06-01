@@ -11,6 +11,8 @@ class IFU extends Module {
     val ExceptionTarget = Input(UInt(32.W))
     val out = Decoupled(new IFUMessage)
     val InstructionReqValid = Output(Bool())
+    val InstructionReqReady = Input(Bool())
+    val InstructionRespReady = Output(Bool())
     val PC = Output(UInt(32.W))
     val InstructionAddress = Output(UInt(32.W))
     val InstructionOutput = Output(UInt(32.W))
@@ -21,15 +23,18 @@ class IFU extends Module {
   val NextPCModule = Module(new NextPC)
   val snpc = PCModule.io.PC + 4.U(32.W)
   // 状态机，我真的是服了，谁能想到wait是scala和Java的object的内置方法，居然还不能用这个做变量名
-  val states = Enum(3)
+  val states = Enum(4)
   val StatesIdle = states(0)
-  val StatesWaitResp = states(1)
-  val StatesHold = states(2)
+  val StatesWaitReq = states(1)
+  val StatesWaitResp = states(2)
+  val StatesHold = states(3)
   val state = RegInit(StatesIdle)
   val instructionReg = RegInit(0.U(32.W))
   val pcReg = RegInit(0.U(32.W))
+  val InstructionRespFire = io.InstructionRespValid && io.InstructionRespReady
   // 他妈的居然防止报警转错，还要手动去给个初始值
   io.InstructionReqValid := false.B
+  io.InstructionRespReady := false.B
   io.out.valid := false.B
   io.out.bits.Instruction := instructionReg
   io.out.bits.pc := pcReg
@@ -37,10 +42,17 @@ class IFU extends Module {
     is(StatesIdle) {
       io.InstructionReqValid := true.B
       pcReg := PCModule.io.PC
-      state := StatesWaitResp
+      state := Mux(io.InstructionReqReady, StatesWaitResp, StatesWaitReq)
+    }
+    is(StatesWaitReq) {
+      io.InstructionReqValid := true.B
+      when(io.InstructionReqReady) {
+        state := StatesWaitResp
+      }
     }
     is(StatesWaitResp) {
-      when(io.InstructionRespValid) {
+      io.InstructionRespReady := true.B
+      when(InstructionRespFire) {
         instructionReg := io.InstructionReadDATA
         state := StatesHold
       }

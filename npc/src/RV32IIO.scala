@@ -12,6 +12,10 @@ class RV32IIO extends Bundle {
   val MemValid = Output(Bool())
   //临时总线的设计
   val InstructionReqValid = Output(Bool())
+  val InstructionReqReady = Input(Bool())
   val InstructionRespValid = Input(Bool())
+  val InstructionRespReady = Output(Bool())
+  val MemReqReady = Input(Bool())
   val MemRespValid = Input(Bool())
+  val MemRespReady = Output(Bool())
 }

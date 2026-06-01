@@ -7,7 +7,9 @@ class EXU extends Module {
     val in = Flipped(Decoupled(new IDUMessage))
     val out = Decoupled(new EXUMessage)
     val MemoryReadDATA = Input(UInt(32.W))
+    val MemReqReady = Input(Bool())
     val MemRespValid = Input(Bool())
+    val MemRespReady = Output(Bool())
     val MemWE = Output(Bool())
     val MemAddr = Output(UInt(32.W))
     val MemWriteDATA = Output(UInt(32.W))
@@ -20,32 +22,41 @@ class EXU extends Module {
     val MemValid = Output(Bool())
   })
   // 状态机，和IFU一样的
-  val states = Enum(3)
+  val states = Enum(4)
   val StatesIdle = states(0)
-  val StatesWaitResp = states(1)
-  val StatesHold = states(2)
+  val StatesWaitReq = states(1)
+  val StatesWaitResp = states(2)
+  val StatesHold = states(3)
   val state = RegInit(StatesIdle)
   val IsMem = io.in.valid && io.in.bits.MemValid
-  val IssueMemReq = state === StatesIdle && IsMem
+  val IssueMemReq = IsMem && (state === StatesIdle || state === StatesWaitReq)
+  val MemRespFire = io.MemRespValid && io.MemRespReady
   val loadDataReg = RegInit(0.U(32.W))
   val loadData = Wire(UInt(32.W))
   io.in.ready := false.B
   io.out.valid := false.B
+  io.MemRespReady := false.B
   switch(state) {
     is(StatesIdle) {
       when(IsMem) {
         // 访存指令先只发一次请求，等存储器回复后再提交
         io.in.ready := false.B
         io.out.valid := false.B
-        state := StatesWaitResp
+        state := Mux(io.MemReqReady, StatesWaitResp, StatesWaitReq)
       }.otherwise {
         // 普通指令
         io.in.ready := io.out.ready
         io.out.valid := io.in.valid
       }
     }
+    is(StatesWaitReq) {
+      when(io.MemReqReady) {
+        state := StatesWaitResp
+      }
+    }
     is(StatesWaitResp) {
-      when(io.MemRespValid) {
+      io.MemRespReady := true.B
+      when(MemRespFire) {
         loadDataReg := loadData
         state := StatesHold
       }
