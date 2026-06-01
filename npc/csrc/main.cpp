@@ -32,6 +32,6 @@ int main(int argc, char const *argv[])
         CPUCycles++;
     }
     dut.Final();
-    std::println("Simulation finished, {} cycles", CPUCycles);
+    std::println("仿真结束，{} 个周期", CPUCycles);
     return 0;
 }

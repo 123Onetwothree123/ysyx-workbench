@@ -14,7 +14,8 @@ class RV32I extends Module {
   val memory = Module(new Memory)
 //开始连线
   rom.io.Address := ifu.io.InstructionAddress
-  ifu.io.InstructionReadDATA := rom.io.ReadDATA
+  // ifu.io.InstructionReadDATA := rom.io.ReadDATA  // 原来从内部ROM取指
+  ifu.io.InstructionReadDATA := io.InstructionReadDATA // 改为从顶层IO取指，临时C++的pmem桥接上来，反正能临时跑起来就行
   io.InstructionAddress := ifu.io.InstructionAddress
 
   StageConnect(ifu.io.out, idu.io.in)
@@ -36,7 +37,8 @@ class RV32I extends Module {
   memory.io.wdata := exu.io.MemWriteDATA
   memory.io.wmask := exu.io.MemWriteMask
 
-  exu.io.MemoryReadDATA := memory.io.rdata
+  // exu.io.MemoryReadDATA := memory.io.rdata  // 原来从内部Memory读
+  exu.io.MemoryReadDATA := io.MemoryReadDATA // 改为从顶层IO读（C++侧pmem桥接）
   io.MemWE := exu.io.MemWE
   io.MemAddr := exu.io.MemAddr
   io.MemWriteDATA := exu.io.MemWriteDATA

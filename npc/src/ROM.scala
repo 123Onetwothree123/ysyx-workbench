@@ -6,13 +6,15 @@ class ROM extends Module {
     val Address = Input(UInt(32.W))
     val ReadDATA = Output(UInt(32.W))
   })
-  val InstructionMemory = Module(
-    new RegisterFile(ADDR_WIDTH = 8, DATA_WIDTH = 32)
-  )
-  InstructionMemory.io.wen := false.B
-  InstructionMemory.io.waddr := 0.U(8.W)
-  InstructionMemory.io.wdata:=0.U(32.W)
-  InstructionMemory.io.raddr1:=io.Address(9,2)
-  InstructionMemory.io.raddr2:=0.U(8.W)
-  io.ReadDATA := RegNext(InstructionMemory.io.rdata1)
+  // 临时
+  io.ReadDATA := 0.U
+  // val InstructionMemory = Module(
+  //   new RegisterFile(ADDR_WIDTH = 8, DATA_WIDTH = 32)
+  // )
+  // InstructionMemory.io.wen := false.B
+  // InstructionMemory.io.waddr := 0.U(8.W)
+  // InstructionMemory.io.wdata:=0.U(32.W)
+  // InstructionMemory.io.raddr1:=io.Address(9,2)
+  // InstructionMemory.io.raddr2:=0.U(8.W)
+  // io.ReadDATA := RegNext(InstructionMemory.io.rdata1)
 }
