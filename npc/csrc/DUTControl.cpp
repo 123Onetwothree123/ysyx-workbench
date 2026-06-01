@@ -2,6 +2,7 @@
 #include "memory.hpp"
 #include <VRV32I.h>
 #include <cstdio>
+#include <cstdlib>
 DUTControl::DUTControl() : Top{std::make_unique<VRV32I>()}
 {
 }
@@ -31,6 +32,7 @@ void DUTControl::Reset()
     Top->eval();
 }
 
+static std::size_t debug_cycles{0};
 void DUTControl::Step()
 {
     Top->clock = 1;
@@ -43,6 +45,13 @@ void DUTControl::Step()
     if (CheckPmemRange(addr, 4))
         Top->io_MemoryReadDATA = *(uint32_t *)&pmem[GuestToHost(addr)];
     Top->eval();
+    // 临时调试：打印前20个周期的信息
+    if (debug_cycles < 20)
+    {
+        std::fprintf(stderr, "[cycle %zu] PC=0x%08x instr=0x%08x MemWE=%d MemAddr=0x%08x\n",
+                     debug_cycles, pc, Top->io_InstructionReadDATA,
+                     Top->io_MemWE, Top->io_MemAddr);
+    }
     // 处理数据写
     if (Top->io_MemWE)
     {
@@ -68,6 +77,7 @@ void DUTControl::Step()
     Top->eval();
     Top->clock = 0;
     Top->eval();
+    debug_cycles++;
 }
 void DUTControl::Final()
 {
