@@ -1,6 +1,5 @@
-package RV32I
+package RV32I.Message
 import chisel3._
-
 class EXUMessage extends Bundle {
   val Rd = UInt(5.W)
   val RegWrite = Bool()
