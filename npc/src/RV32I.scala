@@ -24,9 +24,9 @@ class RV32I(AddressWidth: Int = 32) extends Module {
   lsu.io.DataBus.W <> io.DataBus.W
   lsu.io.DataBus.R <> io.DataBus.R
   lsu.io.DataBus.B <> io.DataBus.B
-  io.DataBus.ACLK := clock
+  io.DataBus.ACLK := clock.asBool
   io.DataBus.ARESETn := ~reset.asBool
-  io.InstructionsBus.ACLK := clock
+  io.InstructionsBus.ACLK := clock.asBool
   io.InstructionsBus.ARESETn := ~reset.asBool
   // 手动连线了
   idu.io.ReadDATA1 := gpr.io.ReadDATA1
