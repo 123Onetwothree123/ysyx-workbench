@@ -127,7 +127,7 @@ class LSU extends Module {
       io.DataBus.R.RREADY := true.B
       when(io.DataBus.R.RVALID) {
         when(io.WidthSelect === "b00".U) {
-          val ByteDATA = Wire(UInt(8.W)) // 他妈的Byte是关键字，还得避开名字，真的是服了
+          val ByteDATA = WireDefault(0.U(8.W)) // 他妈的Byte是关键字，还得避开名字，真的是服了
           switch(io.ALUResult(1, 0)) {
             is("b00".U) {
               ByteDATA := io.DataBus.R.RDATA(7, 0)

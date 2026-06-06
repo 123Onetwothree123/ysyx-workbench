@@ -28,6 +28,18 @@ class RV32I(AddressWidth: Int = 32) extends Module {
   io.DataBus.ARESETn := ~reset.asBool
   io.InstructionsBus.ACLK := clock.asBool
   io.InstructionsBus.ARESETn := ~reset.asBool
+  // 他妈的，还得手动接地，忘记写还直接疯狂爆错，他就不能默认给个接地吗？
+  io.InstructionsBus.AW.AWVALID := false.B
+  io.InstructionsBus.AW.AWADDR  := 0.U
+  io.InstructionsBus.AW.AWPROT  := 0.U
+  io.InstructionsBus.W.WVALID   := false.B
+  io.InstructionsBus.W.WDATA    := 0.U
+  io.InstructionsBus.W.WSTRB    := 0.U
+  io.InstructionsBus.B.BREADY   := false.B
+  ifu.io.InstructionBus.AW.AWREADY := false.B
+  ifu.io.InstructionBus.W.WREADY   := false.B
+  ifu.io.InstructionBus.B.BRESP    := 0.U
+  ifu.io.InstructionBus.B.BVALID   := false.B
   // 手动连线了
   idu.io.ReadDATA1 := gpr.io.ReadDATA1
   idu.io.ReadDATA2 := gpr.io.ReadDATA2

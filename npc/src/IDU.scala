@@ -22,6 +22,8 @@ class IDU extends Module {
   val snpc = pc + 4.U(32.W)
   val Rs1 = Instruction(19, 15)
   val Rs2 = Instruction(24, 20)
+  io.Read1SELECT := Rs1
+  io.Read2SELECT := Rs2
   val Rd = Instruction(11, 7)
   val opcode = Instruction(6, 0)
   val funct3 = Instruction(14, 12)
