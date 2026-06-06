@@ -1,7 +1,7 @@
-package RV32I
+package RV32I.CSR
 import chisel3._
 import chisel3.util._
-class mstatus extends Module {
+class mcause extends Module {
   val io = IO(new Bundle {
     val clk = Input(Clock())
     val rst = Input(Bool())
@@ -9,9 +9,9 @@ class mstatus extends Module {
     val wdata = Input(UInt(32.W))
     val rdata = Output(UInt(32.W))
   })
-  val RegMstatus = withClockAndReset(io.clk, io.rst) { RegInit(0.U(32.W)) }
+  val RegMcause = withClockAndReset(io.clk, io.rst) { RegInit(0.U(32.W)) }
   when(io.wen) {
-    RegMstatus := io.wdata
+    RegMcause := io.wdata
   }
-  io.rdata := RegMstatus
+  io.rdata := RegMcause
 }

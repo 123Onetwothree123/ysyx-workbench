@@ -1,59 +1,71 @@
 package RV32I
 import chisel3._
 import chisel3.util._
+import _root_.RV32I.Message.IFUMessage
+import _root_.RV32I.AXI5Lite._
 class IFU extends Module {
   val io = IO(new Bundle {
-    val InstructionReadDATA = Input(UInt(32.W))
-    val InstructionRespValid = Input(Bool())
-    val RedirectTarget = Input(UInt(32.W))
+    // ok啊，终于把AXI5-Lite总线干出来了，这下这个接口他妈的可以直接连AXI了
+    val InstructionBus = new AXI5LiteIO(32)
+    val RedirectTarget = Input(UInt(32.W)) // 跳转地址
     val Redirect = Input(Bool())
-    val ExceptionTaken = Input(Bool())
+    val ExceptionTaken = Input(Bool()) // 异常或者是中断的信号
     val ExceptionTarget = Input(UInt(32.W))
-    val out = Decoupled(new IFUMessage)
-    val InstructionReqValid = Output(Bool())
-    val InstructionReqReady = Input(Bool())
-    val InstructionRespReady = Output(Bool())
-    val PC = Output(UInt(32.W))
-    val InstructionAddress = Output(UInt(32.W))
-    val InstructionOutput = Output(UInt(32.W))
-    val SNPC = Output(UInt(32.W))
+    val out = Decoupled(new IFUMessage) // 丢给IDU
   })
-
   val PCModule = Module(new PC)
   val NextPCModule = Module(new NextPC)
   val snpc = PCModule.io.PC + 4.U(32.W)
   // 状态机，我真的是服了，谁能想到wait是scala和Java的object的内置方法，居然还不能用这个做变量名
   val states = Enum(4)
   val StatesIdle = states(0)
-  val StatesWaitReq = states(1)
-  val StatesWaitResp = states(2)
+  val StatesWaitRequest = states(1)
+  val StatesWaitResponse = states(2)
   val StatesHold = states(3)
   val state = RegInit(StatesIdle)
-  val instructionReg = RegInit(0.U(32.W))
-  val pcReg = RegInit(0.U(32.W))
-  val InstructionRespFire = io.InstructionRespValid && io.InstructionRespReady
-  // 他妈的居然防止报警转错，还要手动去给个初始值
-  io.InstructionReqValid := false.B
-  io.InstructionRespReady := false.B
+  val InstructionReg = RegInit(0.U(32.W))
+  val PCReg = RegInit(0.U(32.W))
+  val InstructionResponseFire =
+    io.InstructionBus.R.RVALID && io.InstructionBus.R.RREADY
+  // 他妈的居然因为要防止报警转错，还要手动去给个初始值，哪个天才做的编译器
+  // 写通道全关，IFU只读不写
+  io.InstructionBus.AW.AWVALID := false.B
+  io.InstructionBus.AW.AWADDR := 0.U
+  io.InstructionBus.AW.AWPROT := 0.U
+  io.InstructionBus.W.WVALID := false.B
+  io.InstructionBus.W.WDATA := 0.U
+  io.InstructionBus.W.WSTRB := 0.U
+  io.InstructionBus.B.BREADY := false.B
+//只有这些用得到了
+  io.InstructionBus.AR.ARVALID := false.B
+  io.InstructionBus.AR.ARADDR := 0.U
+  io.InstructionBus.AR.ARPROT := 0.U
+  io.InstructionBus.R.RREADY := false.B
   io.out.valid := false.B
-  io.out.bits.Instruction := instructionReg
-  io.out.bits.pc := pcReg
+  io.out.bits.Instruction := InstructionReg
+  io.out.bits.pc := PCReg
   switch(state) {
     is(StatesIdle) {
-      io.InstructionReqValid := true.B
-      pcReg := PCModule.io.PC
-      state := Mux(io.InstructionReqReady, StatesWaitResp, StatesWaitReq)
+      io.InstructionBus.AR.ARVALID := true.B
+      io.InstructionBus.AR.ARADDR := PCModule.io.PC
+      PCReg := PCModule.io.PC
+      state := Mux(
+        io.InstructionBus.AR.ARREADY,
+        StatesWaitResponse,
+        StatesWaitRequest
+      )
     }
-    is(StatesWaitReq) {
-      io.InstructionReqValid := true.B
-      when(io.InstructionReqReady) {
-        state := StatesWaitResp
+    is(StatesWaitRequest) {
+      io.InstructionBus.AR.ARVALID := true.B
+      io.InstructionBus.AR.ARADDR := PCModule.io.PC
+      when(io.InstructionBus.AR.ARREADY) {
+        state := StatesWaitResponse
       }
     }
-    is(StatesWaitResp) {
-      io.InstructionRespReady := true.B
-      when(InstructionRespFire) {
-        instructionReg := io.InstructionReadDATA
+    is(StatesWaitResponse) {
+      io.InstructionBus.R.RREADY := true.B
+      when(InstructionResponseFire) {
+        InstructionReg := io.InstructionBus.R.RDATA
         state := StatesHold
       }
     }
@@ -69,12 +81,9 @@ class IFU extends Module {
   NextPCModule.io.RedirectTarget := io.RedirectTarget
   NextPCModule.io.ExceptionTaken := io.ExceptionTaken
   NextPCModule.io.ExceptionTarget := io.ExceptionTarget
-
+//最开始还是按Verilog的版本写法照抄下来的，后面发现可以这么写，最开始不这么写是怕这样的话，后面的单元不是还没跑完就PC就迭代了
+//后面发现写使能可以直接等时钟周期后再更新。
+//他妈的，vsc插件的格式化文档居然抽风了，独立行没法格式化，不是，自己做的东西，自己没跑过吗
   PCModule.io.NextPC := NextPCModule.io.NextPC
   PCModule.io.PCEnable := NextPCModule.io.PCEnable && io.out.fire
-
-  io.PC := PCModule.io.PC
-  io.InstructionAddress := PCModule.io.PC
-  io.InstructionOutput := instructionReg
-  io.SNPC := snpc
 }

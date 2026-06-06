@@ -1,4 +1,4 @@
-package RV32I
+package RV32I.GPR
 import chisel3._
 class RegisterFile(val ADDR_WIDTH: Int = 1, val DATA_WIDTH: Int = 1)
     extends Module {

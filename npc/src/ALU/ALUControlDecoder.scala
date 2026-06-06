@@ -1,7 +1,8 @@
-package RV32I
+package RV32I.ALU
 import chisel3._
 import chisel3.util._
-import RV32I.opcode._
+import RV32I.General._
+import RV32I.General.opcode._
 class ALUControlDecoder extends Module {
   val io = IO(new Bundle {
     val ALUOp = Input(UInt(2.W))
@@ -11,6 +12,20 @@ class ALUControlDecoder extends Module {
     val ALUCtrl = Output(UInt(4.W))
     val Illegal = Output(Bool()) // 当前未实现或不支持的指令编码标记
   })
+  /*
+  记不住，实在是记不住，懒得来回查文档了，先直接写下来
+  add是加法
+  sub是减法
+  sll是逻辑左移
+  slt是有符号的比较
+  u就是没有符号
+  xor是异或（好像这个不用写，之前焊电路的时候背过）
+  srl是逻辑右移
+  sra是算术右移，就是要补充符号位
+  or
+  and
+  nop是不知道
+  */
   val ALUOP_ADDR = 0.U(2.W)
   val ALUOP_BRANCH = 1.U(2.W)
   val ALUOP_ARITH = 2.U(2.W)

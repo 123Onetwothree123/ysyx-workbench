@@ -1,4 +1,4 @@
-package RV32I
+package RV32I.GPR
 import chisel3._
 class GPR extends Module {
   val io = IO(new Bundle {

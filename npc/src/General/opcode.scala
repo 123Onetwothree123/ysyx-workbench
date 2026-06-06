@@ -1,6 +1,6 @@
-package RV32I
+package RV32I.General
 import chisel3._
-import chisel3.util.BitPat
+import chisel3.util._
 object opcode {
   val OPCODE_Register = "b0110011".U(7.W)
   val OPCODE_Immediate = "b0010011".U(7.W)

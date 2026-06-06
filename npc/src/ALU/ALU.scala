@@ -1,4 +1,4 @@
-package RV32I
+package RV32I.ALU
 import chisel3._
 import chisel3.util._
 class ALU extends Module {

@@ -1,4 +1,4 @@
-package RV32I
+package RV32I.CSR
 import chisel3._
 import chisel3.util._
 class mtvec extends Module {
