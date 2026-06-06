@@ -1,7 +1,7 @@
 package RV32I
 import chisel3._
 import chisel3.util._
-import RV32I.AXI5Lite._
+import _root_.RV32I.AXI5Lite._
 object RV32IIO {
   val bit = 32
 }

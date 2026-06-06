@@ -22,6 +22,8 @@ class CSR extends Module {
     // 异常和返回的跳转控制
     val ExceptionTaken = Output(Bool()) // 需要跳转，ecall到mtvec，mret到mepc
     val ExceptionTarget = Output(UInt(32.W)) // 跳转目标地址
+    // 新加的，真正的处理功能
+    val Interrupt = Input(Bool())
   })
   // mcycle=12'hB00，低32位
   // mcycleh=12'hB80，高32位
@@ -45,16 +47,15 @@ class CSR extends Module {
   // csrrw直接写rs1，csrrs写旧值|rs1
   def CSRWriteData(old: UInt): UInt =
     Mux(io.IsCsrrw, io.Rs1Data, old | io.Rs1Data)
-  // 真正的ebreak按RISC-V breakpoint异常处理：写mepc/mcause，然后跳mtvec
-  val IsException = io.IsEcall || io.IsEbreak
-  val ExceptionCommit = io.Enable && IsException
   val MretCommit = io.Enable && io.IsMret
+  /*
   val ExceptionCause =
     Mux( // 标记一下，English确实是烂，cause是名词（n）翻译是原因，Verilog那边能记住，这里就记不住，服了
       io.IsEbreak,
       3.U(32.W),
       11.U(32.W)
     ) // 如果是ebreak，mcause=3，不然就是ecall，mcause=11
+   */
   val Mstatus = Module(new mstatus)
   val Mtvec = Module(new mtvec)
   val Mepc = Module(new mepc)
@@ -75,6 +76,43 @@ class CSR extends Module {
   val Mepc_rdata = Mepc.io.rdata
   val Mcause_rdata = Mcause.io.rdata
   val Mcycle_rdata = Mcycle.io.rdata
+  // 真正的ebreak按RISC-V breakpoint异常处理：写mepc/mcause，然后跳mtvec
+  val HasInterrupt =
+    io.Interrupt && Mstatus_rdata(3) // mstatus寄存器第3位是MIE，这个是处理器的中断使能，允许中断进来
+  val IsException = io.IsEcall || io.IsEbreak || HasInterrupt
+  /*
+  根据RISCV手册来看，31号bit如果是0那就是异常，而如果是1，那就是中断
+  30号到0号，则是编号，3是异常，7是机器定时器中断（就是Machine Timer），11是ecall
+   */
+  val ExceptionCause = WireDefault(0.U(32.W))
+  when(HasInterrupt) {
+    ExceptionCause := "h80000007".U(32.W) // mcause=7，bit31=1说明这是中断不是异常
+  }.elsewhen(io.IsEbreak) {
+    ExceptionCause := 3.U(32.W) // breakpoint
+  }.otherwise { // 只剩ecall
+    ExceptionCause := 11.U(32.W) // ecall
+  }
+  // 新加的这行代码，irq是Interrupt ReQuest，是中断请求的意思
+  val HasIrqCommit = io.Enable && HasInterrupt
+  val ExceptionCommit = io.Enable && IsException
+  // 以下这段代码是AI编写的
+  /*
+  就是RISCV有两种模式，一种是BASE模式，一种是向量模式
+  基础模式（好像BASE的中文翻译应该是叫基址），bit0=0
+  不管什么原因，比如ecall和ebreak和定时器中断，全往同一个地址跳，然后操作系统这边写一个入口函数，进去后再读mcause，然后判
+  断到底发生了什么
+  就是mtvec存了什么地址，ecall和ebreak和中断就跳到哪个地址
+  向量模式，bit0=1
+  不同原因跳不同的地址，然后跳的地址是BASE+4 x n，
+  就比如说mtvec存0x80000001，BASE是0x80000000
+  ecall和ebreak还是BASE，然后是中断7，所以中断跳的地址是BASE+4x7
+   */
+  val ExceptionTargetBase = Cat(Mtvec_rdata(31, 2), 0.U(2.W)) // mtvec 地址，4 字节对齐
+  when(io.IsMret) {
+    io.ExceptionTarget := Mepc_rdata // mret → 从异常返回，跳 mepc
+  }.otherwise {
+    io.ExceptionTarget := ExceptionTargetBase // 中断/异常 → 统一跳 mtvec
+  }
   // ecall和ebreak异常进入时，MPP写11，MPIE写旧MIE，MIE写0
   // MPP，00是U，01是S，11是M
   // 他妈的又忘记了，先标记一下，MPP是标记现在的等级的，MPIE是专门保存MIE的，MIE在异常的时候要关闭中断（归零）
@@ -82,9 +120,9 @@ class CSR extends Module {
     Mstatus_rdata(31, 13),
     "b11".U(2.W),
     Mstatus_rdata(10, 8),
-    Mstatus_rdata(3),
+    Mstatus_rdata(3), // MPIE赶快把MIE保存下来
     Mstatus_rdata(6, 4),
-    0.U(1.W),
+    0.U(1.W), // MIE赶紧归零，赶快把中断关掉，别到时候又来个新的中断过来，然后他妈的直接打断施法了
     Mstatus_rdata(2, 0)
   )
   val MstatusMretData = Cat(

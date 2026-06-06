@@ -1,26 +1,17 @@
 package RV32I
 import chisel3._
 import chisel3.util._
-import RV32I.Message.IFUMessage
+import _root_.RV32I.Message.IFUMessage
+import _root_.RV32I.AXI5Lite._
 class IFU extends Module {
   val io = IO(new Bundle {
     // ok啊，终于把AXI5-Lite总线干出来了，这下这个接口他妈的可以直接连AXI了
-    val InstructionReadDATA = Input(UInt(32.W))
-    val InstructionResponseValid = Input(Bool()) // 看现在从总线读回来的数据有没有效
+    val InstructionBus = new AXI5LiteIO(32)
     val RedirectTarget = Input(UInt(32.W)) // 跳转地址
     val Redirect = Input(Bool())
     val ExceptionTaken = Input(Bool()) // 异常或者是中断的信号
     val ExceptionTarget = Input(UInt(32.W))
     val out = Decoupled(new IFUMessage) // 丢给IDU
-    // 发给总线的
-    val InstructionRequestValid = Output(Bool())
-    val InstructionRequestReady = Input(Bool())
-    val InstructionResponseReady = Output(Bool())
-    // 和message的pc不一样，也不对，就是理论上一样实际上不一定一样，就是这个pc是都会动的，但是message的pc的来
-    // 源是当时取指的时候的pc，这个pc虽然理论上也应该是IFU跑的时候的pc但是也是，额，算了，就是反正来源不同，实
-    // 际上可能一样可能不一样，我也不知道该不该做这个接口，主要是IFU了，先收了PC再说，接口就先搞一个，反正要删
-    // 后面再删掉，就反正就是这个就是现在pc的最新的状态，就反正不会有时序的差距的就可以
-    val PC = Output(UInt(32.W)) // 后面用AXI发送给外面的存储器，作为要取的指令的地址拿去取数据的
   })
   val PCModule = Module(new PC)
   val NextPCModule = Module(new NextPC)
@@ -35,33 +26,46 @@ class IFU extends Module {
   val InstructionReg = RegInit(0.U(32.W))
   val PCReg = RegInit(0.U(32.W))
   val InstructionResponseFire =
-    io.InstructionResponseValid && io.InstructionResponseReady
+    io.InstructionBus.R.RVALID && io.InstructionBus.R.RREADY
   // 他妈的居然因为要防止报警转错，还要手动去给个初始值，哪个天才做的编译器
-  io.InstructionRequestValid := false.B
-  io.InstructionResponseReady := false.B
+  // 写通道全关，IFU只读不写
+  io.InstructionBus.AW.AWVALID := false.B
+  io.InstructionBus.AW.AWADDR := 0.U
+  io.InstructionBus.AW.AWPROT := 0.U
+  io.InstructionBus.W.WVALID := false.B
+  io.InstructionBus.W.WDATA := 0.U
+  io.InstructionBus.W.WSTRB := 0.U
+  io.InstructionBus.B.BREADY := false.B
+//只有这些用得到了
+  io.InstructionBus.AR.ARVALID := false.B
+  io.InstructionBus.AR.ARADDR := 0.U
+  io.InstructionBus.AR.ARPROT := 0.U
+  io.InstructionBus.R.RREADY := false.B
   io.out.valid := false.B
   io.out.bits.Instruction := InstructionReg
   io.out.bits.pc := PCReg
   switch(state) {
     is(StatesIdle) {
-      io.InstructionRequestValid := true.B
+      io.InstructionBus.AR.ARVALID := true.B
+      io.InstructionBus.AR.ARADDR := PCModule.io.PC
       PCReg := PCModule.io.PC
       state := Mux(
-        io.InstructionRequestReady,
+        io.InstructionBus.AR.ARREADY,
         StatesWaitResponse,
         StatesWaitRequest
       )
     }
     is(StatesWaitRequest) {
-      io.InstructionRequestValid := true.B
-      when(io.InstructionRequestReady) {
+      io.InstructionBus.AR.ARVALID := true.B
+      io.InstructionBus.AR.ARADDR := PCModule.io.PC
+      when(io.InstructionBus.AR.ARREADY) {
         state := StatesWaitResponse
       }
     }
     is(StatesWaitResponse) {
-      io.InstructionResponseReady := true.B
+      io.InstructionBus.R.RREADY := true.B
       when(InstructionResponseFire) {
-        InstructionReg := io.InstructionReadDATA
+        InstructionReg := io.InstructionBus.R.RDATA
         state := StatesHold
       }
     }
@@ -82,6 +86,4 @@ class IFU extends Module {
 //他妈的，vsc插件的格式化文档居然抽风了，独立行没法格式化，不是，自己做的东西，自己没跑过吗
   PCModule.io.NextPC := NextPCModule.io.NextPC
   PCModule.io.PCEnable := NextPCModule.io.PCEnable && io.out.fire
-
-  io.PC := PCModule.io.PC
 }

@@ -1,10 +1,10 @@
 package RV32I
 import chisel3._
 import chisel3.util._
-import RV32I.General.opcode._
-import RV32I.Message.IFUMessage
-import RV32I.Message.IDUMessage
-import RV32I.ALU._
+import _root_.RV32I.General.opcode._
+import _root_.RV32I.Message.IFUMessage
+import _root_.RV32I.Message.IDUMessage
+import _root_.RV32I.ALU._
 class IDU extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new IFUMessage))
@@ -22,6 +22,8 @@ class IDU extends Module {
   val snpc = pc + 4.U(32.W)
   val Rs1 = Instruction(19, 15)
   val Rs2 = Instruction(24, 20)
+  io.Read1SELECT := Rs1
+  io.Read2SELECT := Rs2
   val Rd = Instruction(11, 7)
   val opcode = Instruction(6, 0)
   val funct3 = Instruction(14, 12)

@@ -1,7 +1,7 @@
 package RV32I
 import chisel3._
 import chisel3.util._
-import RV32I.General.opcode._
+import _root_.RV32I.General.opcode._
 class ImmediateGenerator extends Module {
   val io = IO(new Bundle {
     val Instruction = Input(UInt(32.W))
