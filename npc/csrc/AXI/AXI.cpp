@@ -1,5 +1,5 @@
 #include "AXI.hpp"
-#include "NPCTrap.hpp"
+#include "../NPCTrap.hpp"
 AXI::AXI(Memory &memory) : memory(memory) {}
 void AXI::reset(VRV32I &CPU)
 {
