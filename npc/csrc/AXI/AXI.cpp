@@ -84,8 +84,12 @@ void AXI::HandleDataR(VRV32I &CPU)
     if (CPU.io_DataBus_R_RREADY)
     {
         // 临时debug
-        printf("Load 地址=0x%08x 数据=0x%08x\n", DataReadAddress, result.value_or(0));
+        static int load_count = 0;
+        printf("Load[%d] 地址=0x%08x 数据=0x%08x RV=%d RR=%d\n",
+               load_count, DataReadAddress, result.value_or(0),
+               CPU.io_DataBus_R_RVALID, CPU.io_DataBus_R_RREADY);
         fflush(stdout);
+        load_count++;
         DataReadPending = false;
     }
 }
