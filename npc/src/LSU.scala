@@ -162,6 +162,7 @@ class LSU extends Module {
         }.elsewhen(io.WidthSelect === "b10".U) {
           LoadDataReg := io.DataBus.R.RDATA
         }
+        state := StatesDone
       }
     }
     is(StatesWriteRequest) {
