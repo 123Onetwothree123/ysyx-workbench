@@ -53,4 +53,5 @@ std::expected<std::uint32_t, std::string> Memory::LoadWord(std::size_t address) 
     auto byte2 = static_cast<std::uint32_t>(memory[address + 2]);
     auto byte3 = static_cast<std::uint32_t>(memory[address + 3]); // 最高字节
     result = (byte3 << 24) | (byte2 << 16) | (byte1 << 8) | byte0;
+    return result;
 }
