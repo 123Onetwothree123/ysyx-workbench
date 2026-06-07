@@ -86,7 +86,6 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         auto base_address{AlignWord(address)};
         auto value{CPU.io_DataBus_W_WDATA};
         auto mask{static_cast<std::uint8_t>(CPU.io_DataBus_W_WSTRB)};
-
         // 串口输出，AM的putch往0x10000000写字符
         static constexpr std::uint32_t SerialPort = 0x10000000;
         if (address == SerialPort)
