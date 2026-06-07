@@ -41,6 +41,7 @@ void AXI::HandleInstructionR(VRV32I &CPU)
         return;
     }
     auto result{memory.LoadWord(InstructionReadAddress)};
+    CPU.io_InstructionsBus_R_RVALID = true;
     CPU.io_InstructionsBus_R_RDATA = result.value_or(0);
     CPU.io_InstructionsBus_R_RRESP = 0;
     if (CPU.io_InstructionsBus_R_RREADY)
