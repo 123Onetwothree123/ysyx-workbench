@@ -5,7 +5,6 @@
 #include <verilated.h>
 #include "Memory/Memory.hpp"
 #include "VRV32I.h"
-#include "VRV32I___024root.h"  // 临时debug用，读内部状态
 #include "AXI/AXI.hpp"
 #include "DUT.hpp"
 #include "CLIOptions.hpp"
@@ -34,16 +33,6 @@ int main(int argc, char const *argv[])
     while (!NPCTrap::HasHalted())
     {
         dut.step(axi);
-        // 临时加的进度输出，后面要删掉的
-        if (dut.GetCycle() % 100000000 == 0) {
-            std::println(std::cout, "周期数：{}", dut.GetCycle());
-            // 临时debug：看IFU/EXU/LSU状态
-            auto ifu_st = (*dut).rootp->RV32I__DOT__ifu__DOT__state;
-            auto exu_st = (*dut).rootp->RV32I__DOT__exu__DOT__state;
-            auto lsu_st = (*dut).rootp->RV32I__DOT__lsu__DOT__state;
-            printf("状态 IFU=%d EXU=%d LSU=%d\n", ifu_st, exu_st, lsu_st);
-            fflush(stdout);
-        }
     }
     dut.final();
     return NPCTrap::PrintResult(dut.GetCycle());

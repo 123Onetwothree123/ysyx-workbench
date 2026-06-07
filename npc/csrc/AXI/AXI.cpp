@@ -1,8 +1,10 @@
 #include "AXI.hpp"
 #include "../NPCTrap.hpp"
 #include <cstdio>
-// 临时debug计数器，后面删掉
-static int debug_inst_count = 0;
+// 临时debug
+static int debug_inst_cnt = 0;
+static std::uint32_t debug_last_pc = 0;
+
 AXI::AXI(Memory &memory) : memory(memory) {}
 void AXI::reset(VRV32I &CPU)
 {
@@ -25,40 +27,34 @@ void AXI::reset(VRV32I &CPU)
     InstructionReadPending = false;
     DataReadPending = false;
     DataWritePending = false;
+    debug_inst_cnt = 0;
+    debug_last_pc = 0;
 }
 void AXI::HandleInstructionAR(VRV32I &CPU)
 {
-    CPU.io_InstructionsBus_AR_ARREADY = 1; // 临时的，后面改成条件判断，现在就直接接VCC
+    CPU.io_InstructionsBus_AR_ARREADY = 1;
     if (CPU.io_InstructionsBus_AR_ARVALID && CPU.io_InstructionsBus_AR_ARREADY)
     {
-        // 得，scala有fire，C++又得手写
         InstructionReadAddress = CPU.io_InstructionsBus_AR_ARADDR;
         InstructionReadPending = true;
     }
 }
 void AXI::HandleInstructionR(VRV32I &CPU)
 {
-    if (!InstructionReadPending)
-    {
-        // 没需要处理的直接跳
-        return;
-    }
+    if (!InstructionReadPending) return;
     auto result{memory.LoadWord(InstructionReadAddress)};
     CPU.io_InstructionsBus_R_RVALID = true;
     CPU.io_InstructionsBus_R_RDATA = result.value_or(0);
     CPU.io_InstructionsBus_R_RRESP = 0;
     if (CPU.io_InstructionsBus_R_RREADY)
     {
-        // 临时debug：打印每条取指
-        static std::uint32_t debug_last_pc = 0;
-        static int debug_inst_cnt = 0;
-        if (InstructionReadAddress != debug_last_pc + 4) {
-            printf("取指[%d] PC=0x%08x 指令=0x%08x\n",
-                   debug_inst_cnt, InstructionReadAddress, result.value_or(0));
+        if (InstructionReadAddress != debug_last_pc + 4 && InstructionReadAddress != debug_last_pc) {
+            printf("取指[%d] PC=0x%08x 指令=0x%08x\n", debug_inst_cnt,
+                   InstructionReadAddress, result.value_or(0));
+            fflush(stdout);
         }
         debug_last_pc = InstructionReadAddress;
         debug_inst_cnt++;
-        if (debug_inst_cnt > 500) { printf("...\n"); fflush(stdout); exit(0); }
         InstructionReadPending = false;
     }
 }
@@ -69,31 +65,19 @@ void AXI::HandleDataAR(VRV32I &CPU)
     {
         DataReadAddress = CPU.io_DataBus_AR_ARADDR;
         DataReadPending = true;
-        // 临时debug
-        static int ar_count = 0;
-        printf("DataAR[%d] 地址=0x%08x\n", ar_count++, DataReadAddress);
-        fflush(stdout);
     }
 }
 void AXI::HandleDataR(VRV32I &CPU)
 {
-    if (!DataReadPending)
-    {
-        return;
-    }
+    if (!DataReadPending) return;
     CPU.io_DataBus_R_RVALID = true;
     auto result{memory.LoadWord(DataReadAddress)};
     CPU.io_DataBus_R_RDATA = result.value_or(0);
     CPU.io_DataBus_R_RRESP = 0;
     if (CPU.io_DataBus_R_RREADY)
     {
-        // 临时debug
-        static int load_count = 0;
-        printf("Load[%d] 地址=0x%08x 数据=0x%08x RV=%d RR=%d\n",
-               load_count, DataReadAddress, result.value_or(0),
-               CPU.io_DataBus_R_RVALID, CPU.io_DataBus_R_RREADY);
+        printf("Load 地址=0x%08x 数据=0x%08x\n", DataReadAddress, result.value_or(0));
         fflush(stdout);
-        load_count++;
         DataReadPending = false;
     }
 }
@@ -107,14 +91,16 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         auto value{CPU.io_DataBus_W_WDATA};
         auto mask{static_cast<std::uint8_t>(CPU.io_DataBus_W_WSTRB)};
 
-        // 临时debug，看能不能跑到串口输出
+        // 串口输出，AM的putch往0x10000000写字符
         static constexpr std::uint32_t SerialPort = 0x10000000;
         if (address == SerialPort) {
-            printf("SERIAL: addr=0x%08x data=0x%08x char='%c'\n", address, value, static_cast<char>(value & 0xFF));
+            putchar(static_cast<char>(value & 0xFF));
             fflush(stdout);
         }
 
-        // 这是写使能
+        printf("Store 地址=0x%08x 数据=0x%08x 掩码=0x%02x\n", address, value, mask);
+        fflush(stdout);
+
         bool WriteByte0{mask & 0b0001};
         bool WriteByte1{mask & 0b0010};
         bool WriteByte2{mask & 0b0100};
@@ -123,26 +109,15 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         uint8_t Byte1 = static_cast<uint8_t>(value >> 8);
         uint8_t Byte2 = static_cast<uint8_t>(value >> 16);
         uint8_t Byte3 = static_cast<uint8_t>(value >> 24);
-        if (WriteByte0)
-        {
-            memory.StoreByte(address, Byte0);
-        }
-        if (WriteByte1)
-        {
-            memory.StoreByte(address + 1, Byte1);
-        }
-        if (WriteByte2)
-        {
-            memory.StoreByte(address + 2, Byte2);
-        }
-        if (WriteByte3)
-        {
-            memory.StoreByte(address + 3, Byte3);
-        }
+        if (WriteByte0) memory.StoreByte(address, Byte0);
+        if (WriteByte1) memory.StoreByte(address + 1, Byte1);
+        if (WriteByte2) memory.StoreByte(address + 2, Byte2);
+        if (WriteByte3) memory.StoreByte(address + 3, Byte3);
+
         static constexpr std::uint32_t HaltAddress = 0xa0000000;
         if (address == HaltAddress)
         {
-            auto exit_code = static_cast<std::uint32_t>(value & 0xFF); // 这行代码是ai写的，AI：AM 的 halt() 往 0xa0000000 写了一个 32 位数字，最低字节就是退出码
+            auto exit_code = static_cast<std::uint32_t>(value & 0xFF);
             NPCTrap::Halt(0, exit_code);
         }
         DataWritePending = true;
@@ -150,10 +125,7 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
 }
 void AXI::HandleDataB(VRV32I &CPU)
 {
-    if (!DataWritePending)
-    {
-        return;
-    }
+    if (!DataWritePending) return;
     CPU.io_DataBus_B_BVALID = true;
     CPU.io_DataBus_B_BRESP = 0;
     if (CPU.io_DataBus_B_BREADY)
