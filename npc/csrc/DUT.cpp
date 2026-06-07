@@ -21,6 +21,14 @@ void DUT::reset()
     dut->clock = 0;
     dut->reset = 1;
     dut->io_Interrupt = 0;
+    // 同步复位必须有时钟边沿才能生效，先拉高 reset 跑几个周期
+    for (int i = 0; i < 5; ++i)
+    {
+        dut->clock = 0;
+        dut->eval();
+        dut->clock = 1;
+        dut->eval();
+    }
     dut->reset = 0;
     cycle = 0;
 }
