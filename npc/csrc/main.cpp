@@ -34,7 +34,7 @@ int main(int argc, char const *argv[])
     {
         dut.step(axi);
         // 临时加的进度输出，后面要删掉的
-        if (dut.GetCycle() % 100000 == 0)
+        if (dut.GetCycle() % 100000000 == 0)
             std::println(std::cout, "周期数：{}", dut.GetCycle());
     }
     dut.final();
