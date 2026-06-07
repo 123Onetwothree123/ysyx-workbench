@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <iostream>
 #include <verilated.h>
 #include "Memory/Memory.hpp"
 #include "VRV32I.h"
