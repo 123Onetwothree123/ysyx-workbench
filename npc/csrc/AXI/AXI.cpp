@@ -1,5 +1,8 @@
 #include "AXI.hpp"
 #include "../NPCTrap.hpp"
+#include <cstdio>
+// 临时debug计数器，后面删掉
+static int debug_inst_count = 0;
 AXI::AXI(Memory &memory) : memory(memory) {}
 void AXI::reset(VRV32I &CPU)
 {
@@ -46,6 +49,12 @@ void AXI::HandleInstructionR(VRV32I &CPU)
     CPU.io_InstructionsBus_R_RRESP = 0;
     if (CPU.io_InstructionsBus_R_RREADY)
     {
+        // 临时debug，打印前10条取指的地址和数据
+        if (debug_inst_count < 10) {
+            printf("取指 [%d] 地址=0x%08x 指令=0x%08x\n",
+                   debug_inst_count, InstructionReadAddress, result.value_or(0));
+            debug_inst_count++;
+        }
         InstructionReadPending = false;
     }
 }
