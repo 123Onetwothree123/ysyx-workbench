@@ -14,9 +14,9 @@ class RV32I(AddressWidth: Int = 32) extends Module {
   val wbu = Module(new WBU)
   val lsu = Module(new LSU)
   val gpr = Module(new GPR)
-  StageConnect(ifu.io.out, idu.io.in)
-  StageConnect(idu.io.out, exu.io.in)
-  StageConnect(exu.io.out, wbu.io.in)
+  ifu.io.out <> idu.io.in
+  idu.io.out <> exu.io.in
+  exu.io.out <> wbu.io.in
   ifu.io.InstructionBus.AR <> io.InstructionsBus.AR
   ifu.io.InstructionBus.R <> io.InstructionsBus.R
   lsu.io.DataBus.AW <> io.DataBus.AW
