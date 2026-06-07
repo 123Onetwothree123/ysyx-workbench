@@ -25,47 +25,53 @@ class EXU extends Module {
     val LoadSigned = Output(Bool())
   })
   val ALUUnit = Module(new ALU)
-  ALUUnit.io.A := io.in.bits.ALU_A
-  ALUUnit.io.B := io.in.bits.ALU_B
-  ALUUnit.io.ALUCtrl := io.in.bits.ALUCtrl
   val CSRUnit = Module(new CSR)
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
-  CSRUnit.io.IsCsrrw := io.in.bits.IsCsrrw
-  CSRUnit.io.IsCsrrs := io.in.bits.IsCsrrs
-  CSRUnit.io.IsEcall := io.in.bits.IsEcall
-  CSRUnit.io.IsEbreak := io.in.bits.IsEbreak
-  CSRUnit.io.IsMret := io.in.bits.IsMret
-  CSRUnit.io.CSRAddress := io.in.bits.CSRAddress
-  CSRUnit.io.rs1 := io.in.bits.Rs1
-  CSRUnit.io.Rs1Data := io.in.bits.Rs1Data
-  CSRUnit.io.pc := io.in.bits.pc
   CSRUnit.io.Interrupt := io.Interrupt
   val BranchComparatorUnit = Module(new BranchComparator)
-  BranchComparatorUnit.io.A := io.in.bits.BranchA
-  BranchComparatorUnit.io.B := io.in.bits.BranchB
-  BranchComparatorUnit.io.Funct3 := io.in.bits.BranchFunct3
-  BranchComparatorUnit.io.IsBranch := io.in.bits.IsBranch
   // 也是状态机，多周期处理器都是做状态机的吗
   val states = Enum(3)
   val StatesIdle = states(0)
   val StatesWait = states(1)
   val StatesDone = states(2)
   val state = RegInit(StatesIdle)
+  val MemoryInstructionReg = Reg(chiselTypeOf(io.in.bits))
+  val FSM_Is_Idle = state === StatesIdle
+  when(FSM_Is_Idle && io.in.fire && io.in.bits.MemoryValid) {
+    MemoryInstructionReg := io.in.bits
+  }
+  val ActiveInstruction =
+    Mux(FSM_Is_Idle, io.in.bits, MemoryInstructionReg)
+  ALUUnit.io.A := ActiveInstruction.ALU_A
+  ALUUnit.io.B := ActiveInstruction.ALU_B
+  ALUUnit.io.ALUCtrl := ActiveInstruction.ALUCtrl
+  CSRUnit.io.IsCsrrw := ActiveInstruction.IsCsrrw
+  CSRUnit.io.IsCsrrs := ActiveInstruction.IsCsrrs
+  CSRUnit.io.IsEcall := ActiveInstruction.IsEcall
+  CSRUnit.io.IsEbreak := ActiveInstruction.IsEbreak
+  CSRUnit.io.IsMret := ActiveInstruction.IsMret
+  CSRUnit.io.CSRAddress := ActiveInstruction.CSRAddress
+  CSRUnit.io.rs1 := ActiveInstruction.Rs1
+  CSRUnit.io.Rs1Data := ActiveInstruction.Rs1Data
+  CSRUnit.io.pc := ActiveInstruction.pc
+  BranchComparatorUnit.io.A := ActiveInstruction.BranchA
+  BranchComparatorUnit.io.B := ActiveInstruction.BranchB
+  BranchComparatorUnit.io.Funct3 := ActiveInstruction.BranchFunct3
+  BranchComparatorUnit.io.IsBranch := ActiveInstruction.IsBranch
   // 先给fire一个初始值，我是真的没理解为什么要给这个名字
   io.in.ready := false.B
   io.out.valid := false.B
-  val FSM_Is_Idle = state === StatesIdle
   io.MemoryValid := io.in.fire && io.in.bits.MemoryValid && FSM_Is_Idle
   // 真的不知道这么做对不对，但是Immediate到底能不能负数，能不能往前跳啊，反正我之前还想做减法的，然后问AI设计思路的时候
   // deepseek说不需要，因为immgen是输出带符号的，符号应该没事吧，但是我immdiate又是UInt的，但是测试好像成功通过测试了，他
   // 妈的，好烦，我不知道
-  val BranchTarget = io.in.bits.pc + io.in.bits.Immediate
+  val BranchTarget = ActiveInstruction.pc + ActiveInstruction.Immediate
   val JalTarget = ALUUnit.io.result
   // 和logisim一样，最低位换成常量0
   val JalrTarget = Cat(ALUUnit.io.result(31, 1), 0.U(1.W))
   val Redirect =
-    io.in.bits.IsJal || io.in.bits.IsJalr || BranchComparatorUnit.io.Taken
+    ActiveInstruction.IsJal || ActiveInstruction.IsJalr || BranchComparatorUnit.io.Taken
   // val InstructionExecutionDone=FSM_Is_Idle&&io.in.fire
   // 让AI后期二次审核的时候，AI说必须这么写，说我写的是错的，问原因，就说是为了安全，防止误触，因为LSU要几个周期，而且访存指令
   // 本身不会产生跳转
@@ -78,20 +84,20 @@ class EXU extends Module {
     FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
   CSRUnit.io.Enable := FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
   io.Redirect := InstructionExecutionDone && Redirect
-  when(io.in.bits.IsJalr) {
+  when(ActiveInstruction.IsJalr) {
     io.RedirectTarget := JalrTarget
-  }.elsewhen(io.in.bits.IsJal) {
+  }.elsewhen(ActiveInstruction.IsJal) {
     io.RedirectTarget := JalTarget
   }.otherwise {
     io.RedirectTarget := BranchTarget
   }
   io.ExceptionTaken := InstructionExecutionDone && CSRUnit.io.ExceptionTaken
   io.ExceptionTarget := CSRUnit.io.ExceptionTarget
-  io.MemoryWrite := io.in.bits.MemoryWrite
-  io.WidthSelect := io.in.bits.WidthSelect
+  io.MemoryWrite := ActiveInstruction.MemoryWrite
+  io.WidthSelect := ActiveInstruction.WidthSelect
   io.ALUResult_ToLSU := ALUUnit.io.result
-  io.StoreDATA := io.in.bits.StoreData
-  io.LoadSigned := io.in.bits.LoadSigned
+  io.StoreDATA := ActiveInstruction.StoreData
+  io.LoadSigned := ActiveInstruction.LoadSigned
   switch(state) {
     is(StatesIdle) {
       when(io.in.bits.MemoryValid) { // 内存被选中了
@@ -116,11 +122,11 @@ class EXU extends Module {
       }
     }
   }
-  io.out.bits.Rd := io.in.bits.Rd
-  io.out.bits.RegisterWrite := io.in.bits.RegisterWrite
-  io.out.bits.WBSelect := io.in.bits.WBSelect
+  io.out.bits.Rd := ActiveInstruction.Rd
+  io.out.bits.RegisterWrite := ActiveInstruction.RegisterWrite
+  io.out.bits.WBSelect := ActiveInstruction.WBSelect
   io.out.bits.ALUResult := ALUUnit.io.result
   io.out.bits.LoadData := io.LSULoadDATA
-  io.out.bits.snpc := io.in.bits.snpc
+  io.out.bits.snpc := ActiveInstruction.snpc
   io.out.bits.CSRReadData := CSRUnit.io.CSR_rdata
 }

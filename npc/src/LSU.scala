@@ -29,8 +29,8 @@ class LSU extends Module {
   val StatesWriteResponse = StateMachine(4)
   val StatesDone = StateMachine(5)
   val state = RegInit(StatesIdle)
-  val WriteData = WireDefault(0.U(32.W))
-  val WriteMask = WireDefault(0.U(4.W))
+  val WriteData = RegInit(0.U(32.W))
+  val WriteMask = RegInit(0.U(4.W))
   when(io.MemoryValid) {
     switch(io.WidthSelect) {
       is("b00".U) {
@@ -162,6 +162,7 @@ class LSU extends Module {
         }.elsewhen(io.WidthSelect === "b10".U) {
           LoadDataReg := io.DataBus.R.RDATA
         }
+        state := StatesDone
       }
     }
     is(StatesWriteRequest) {
