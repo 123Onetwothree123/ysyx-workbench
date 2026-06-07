@@ -27,7 +27,7 @@ std::expected<void, std::string> Memory::StoreByte(std::size_t address, std::uin
     memory[address] = static_cast<std::byte>(value);
     return {};
 }
-std::expected<void, std::string> Memory::StoreWord(std::size_t address, std::uint32_t value)
+std::expected<void, std::string> Memory::StoreWord(std::size_t address, std::uint32_t value) noexcept
 {
     auto check{CheckMemoryRange(address, 4)}; // ？额？怎么感觉这又变成了和复制粘贴代码差不多？
     if (!check)
@@ -40,7 +40,7 @@ std::expected<void, std::string> Memory::StoreWord(std::size_t address, std::uin
     memory[address + 3] = static_cast<std::byte>(value >> 24);
     return {};
 }
-std::expected<std::uint32_t, std::string> Memory::LoadWord(std::size_t address) const
+std::expected<std::uint32_t, std::string> Memory::LoadWord(std::size_t address) const noexcept
 {
     auto check{CheckMemoryRange(address, 4)}; // 坏了这下真的就复制粘贴了
     if (!check)
