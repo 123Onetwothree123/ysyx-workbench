@@ -49,13 +49,16 @@ void AXI::HandleInstructionR(VRV32I &CPU)
     CPU.io_InstructionsBus_R_RRESP = 0;
     if (CPU.io_InstructionsBus_R_RREADY)
     {
-        // 临时debug，PC变化时打印
+        // 临时debug：打印每条取指
         static std::uint32_t debug_last_pc = 0;
-        if (InstructionReadAddress != debug_last_pc + 4 && InstructionReadAddress != debug_last_pc) {
-            printf("跳 PC=0x%08x 指令=0x%08x\n", InstructionReadAddress, result.value_or(0));
-            fflush(stdout);
+        static int debug_inst_cnt = 0;
+        if (InstructionReadAddress != debug_last_pc + 4) {
+            printf("取指[%d] PC=0x%08x 指令=0x%08x\n",
+                   debug_inst_cnt, InstructionReadAddress, result.value_or(0));
         }
         debug_last_pc = InstructionReadAddress;
+        debug_inst_cnt++;
+        if (debug_inst_cnt > 500) { printf("...\n"); fflush(stdout); exit(0); }
         InstructionReadPending = false;
     }
 }
