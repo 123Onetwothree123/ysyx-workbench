@@ -21,7 +21,8 @@ void putch(char ch)
 
 void halt(int code)
 {
-  asm volatile("ebreak");
+  volatile uint32_t *halt_port = (volatile uint32_t *)0xa0000000;
+  *halt_port = (uint32_t)code;
   while (1)
     ;
 }

@@ -4,6 +4,10 @@
 // 临时debug
 static int debug_inst_cnt = 0;
 static std::uint32_t debug_last_pc = 0;
+static constexpr std::uint32_t AlignWord(std::uint32_t address) noexcept
+{
+    return address & ~0x3u;
+}
 
 AXI::AXI(Memory &memory) : memory(memory) {}
 void AXI::reset(VRV32I &CPU)
@@ -71,7 +75,7 @@ void AXI::HandleDataR(VRV32I &CPU)
 {
     if (!DataReadPending) return;
     CPU.io_DataBus_R_RVALID = true;
-    auto result{memory.LoadWord(DataReadAddress)};
+    auto result{memory.LoadWord(AlignWord(DataReadAddress))};
     CPU.io_DataBus_R_RDATA = result.value_or(0);
     CPU.io_DataBus_R_RRESP = 0;
     if (CPU.io_DataBus_R_RREADY)
@@ -88,6 +92,7 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
     if (CPU.io_DataBus_AW_AWVALID && CPU.io_DataBus_AW_AWREADY && CPU.io_DataBus_W_WVALID && CPU.io_DataBus_W_WREADY)
     {
         auto address{CPU.io_DataBus_AW_AWADDR};
+        auto base_address{AlignWord(address)};
         auto value{CPU.io_DataBus_W_WDATA};
         auto mask{static_cast<std::uint8_t>(CPU.io_DataBus_W_WSTRB)};
 
@@ -109,10 +114,10 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         uint8_t Byte1 = static_cast<uint8_t>(value >> 8);
         uint8_t Byte2 = static_cast<uint8_t>(value >> 16);
         uint8_t Byte3 = static_cast<uint8_t>(value >> 24);
-        if (WriteByte0) memory.StoreByte(address, Byte0);
-        if (WriteByte1) memory.StoreByte(address + 1, Byte1);
-        if (WriteByte2) memory.StoreByte(address + 2, Byte2);
-        if (WriteByte3) memory.StoreByte(address + 3, Byte3);
+        if (WriteByte0) memory.StoreByte(base_address, Byte0);
+        if (WriteByte1) memory.StoreByte(base_address + 1, Byte1);
+        if (WriteByte2) memory.StoreByte(base_address + 2, Byte2);
+        if (WriteByte3) memory.StoreByte(base_address + 3, Byte3);
 
         static constexpr std::uint32_t HaltAddress = 0xa0000000;
         if (address == HaltAddress)
