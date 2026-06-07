@@ -39,7 +39,10 @@ void AXI::HandleInstructionAR(VRV32I &CPU)
 }
 void AXI::HandleInstructionR(VRV32I &CPU)
 {
-    if (!InstructionReadPending) return;
+    if (!InstructionReadPending)
+    {
+        return;
+    }
     auto result{memory.LoadWord(InstructionReadAddress)};
     CPU.io_InstructionsBus_R_RVALID = true;
     CPU.io_InstructionsBus_R_RDATA = result.value_or(0);
@@ -60,7 +63,10 @@ void AXI::HandleDataAR(VRV32I &CPU)
 }
 void AXI::HandleDataR(VRV32I &CPU)
 {
-    if (!DataReadPending) return;
+    if (!DataReadPending)
+    {
+        return;
+    }
     CPU.io_DataBus_R_RVALID = true;
     auto result{memory.LoadWord(AlignWord(DataReadAddress))};
     CPU.io_DataBus_R_RDATA = result.value_or(0);
@@ -80,13 +86,21 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         auto base_address{AlignWord(address)};
         auto value{CPU.io_DataBus_W_WDATA};
         auto mask{static_cast<std::uint8_t>(CPU.io_DataBus_W_WSTRB)};
-
         // 串口输出，AM的putch往0x10000000写字符
         static constexpr std::uint32_t SerialPort = 0x10000000;
-        if (address == SerialPort) {
+        if (address == SerialPort)
+        {
             putchar(static_cast<char>(value & 0xFF));
             fflush(stdout);
         }
+        /*
+        这个是AM的putch函数
+        void putch(char ch)
+{
+  volatile char *serial_port = (volatile char *)0x10000000;
+  *serial_port = ch;
+}
+        */
 
         bool WriteByte0{mask & 0b0001};
         bool WriteByte1{mask & 0b0010};
@@ -96,16 +110,31 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         uint8_t Byte1 = static_cast<uint8_t>(value >> 8);
         uint8_t Byte2 = static_cast<uint8_t>(value >> 16);
         uint8_t Byte3 = static_cast<uint8_t>(value >> 24);
-        if (WriteByte0) memory.StoreByte(base_address, Byte0);
-        if (WriteByte1) memory.StoreByte(base_address + 1, Byte1);
-        if (WriteByte2) memory.StoreByte(base_address + 2, Byte2);
-        if (WriteByte3) memory.StoreByte(base_address + 3, Byte3);
+        if (WriteByte0)
+        {
+            memory.StoreByte(base_address, Byte0);
+        }
+        if (WriteByte1)
+        {
+            memory.StoreByte(base_address + 1, Byte1);
+        }
+        if (WriteByte2)
+        {
+            memory.StoreByte(base_address + 2, Byte2);
+        }
+        if (WriteByte3)
+        {
+            memory.StoreByte(base_address + 3, Byte3);
+        }
         DataWritePending = true;
     }
 }
 void AXI::HandleDataB(VRV32I &CPU)
 {
-    if (!DataWritePending) return;
+    if (!DataWritePending)
+    {
+        return;
+    }
     CPU.io_DataBus_B_BVALID = true;
     CPU.io_DataBus_B_BRESP = 0;
     if (CPU.io_DataBus_B_BREADY)
