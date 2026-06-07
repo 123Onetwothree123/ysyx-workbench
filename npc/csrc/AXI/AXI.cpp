@@ -81,6 +81,14 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         auto address{CPU.io_DataBus_AW_AWADDR};
         auto value{CPU.io_DataBus_W_WDATA};
         auto mask{static_cast<std::uint8_t>(CPU.io_DataBus_W_WSTRB)};
+
+        // 临时的串口输出，AM的putch往0x10000000写字符，这里截下来打到终端，后面要删掉这段
+        static constexpr std::uint32_t SerialPort = 0x10000000;
+        if (address == SerialPort) {
+            putchar(static_cast<char>(value & 0xFF));
+            fflush(stdout);
+        }
+
         // 这是写使能
         bool WriteByte0{mask & 0b0001};
         bool WriteByte1{mask & 0b0010};
