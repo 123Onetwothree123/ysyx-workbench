@@ -1,5 +1,5 @@
 #include "AXI.hpp"
-AXI::AXI() : memory(memory) {}
+AXI::AXI(Memory &memory) : memory(memory) {}
 void AXI::reset(VRV32I &CPU)
 {
     CPU.io_InstructionsBus_AR_ARREADY = 0;
@@ -39,7 +39,6 @@ void AXI::HandleInstructionR(VRV32I &CPU)
         // 没需要处理的直接跳
         return;
     }
-    CPU.io_InstructionsBus_AR_ARVALID = true; // 也是临时的
     auto result{memory.LoadWord(InstructionReadAddress)};
     CPU.io_InstructionsBus_R_RDATA = result.value_or(0);
     CPU.io_InstructionsBus_R_RRESP = 0;
@@ -112,7 +111,7 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
             auto exit_code = static_cast<std::uint32_t>(value & 0xFF); // 这行代码是ai写的，AI：AM 的 halt() 往 0xa0000000 写了一个 32 位数字，最低字节就是退出码
             NPCTrap::Halt(0, exit_code);
         }
-        DataWritePending = false;
+        DataWritePending = true;
     }
 }
 void AXI::HandleDataB(VRV32I &CPU)

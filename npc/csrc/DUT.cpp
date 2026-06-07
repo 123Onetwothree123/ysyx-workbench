@@ -32,3 +32,16 @@ void DUT::step()
     dut->eval();
     ++cycle;
 }
+void DUT::step(AXI &axi)
+{
+    dut->clock = 0;
+    dut->eval();
+    axi.eval(*dut); // 下降沿跑AXI的握手
+    dut->clock = 1;
+    dut->eval(); // 上升沿CPU跑
+    ++cycle;
+}
+std::size_t DUT::GetCycle() const
+{
+    return cycle;
+}

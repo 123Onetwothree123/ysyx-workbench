@@ -7,7 +7,8 @@
 #include "AXI/AXI.hpp"
 #include "DUT.hpp"
 #include "CLIOptions.hpp"
-#include"ImageLoader.hpp"
+#include "ImageLoader.hpp"
+#include "NPCTrap.hpp"
 
 int main(int argc, char const *argv[])
 {
@@ -20,5 +21,18 @@ int main(int argc, char const *argv[])
         std::println(std::cerr, "{}", options.error());
         return 1;
     }
-    return 0;
+    auto load = ImageLoader::LoadFromCLI(*options, memory);
+    if (!load)
+    {
+        std::println(std::cerr, "{}", load.error());
+        return 1;
+    }
+    dut.reset();
+    axi.reset(*dut);
+    while (!NPCTrap::HasHalted())
+    {
+        dut.step(axi);
+    }
+    dut.final();
+    return NPCTrap::PrintResult(dut.GetCycle());
 }
