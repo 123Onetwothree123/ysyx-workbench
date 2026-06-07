@@ -80,14 +80,9 @@ void AXI::HandleDataR(VRV32I &CPU)
     CPU.io_DataBus_R_RRESP = 0;
     if (CPU.io_DataBus_R_RREADY)
     {
-        // 临时debug：打印 load 地址和数据
-        static std::uint32_t debug_data_r_count = 0;
-        if (debug_data_r_count < 20) {
-            printf("Load [%d] 地址=0x%08x 数据=0x%08x\n",
-                   debug_data_r_count, DataReadAddress, result.value_or(0));
-            fflush(stdout);
-            debug_data_r_count++;
-        }
+        // 临时debug
+        printf("Load 地址=0x%08x 数据=0x%08x\n", DataReadAddress, result.value_or(0));
+        fflush(stdout);
         DataReadPending = false;
     }
 }
@@ -101,19 +96,11 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         auto value{CPU.io_DataBus_W_WDATA};
         auto mask{static_cast<std::uint8_t>(CPU.io_DataBus_W_WSTRB)};
 
-        // 临时的串口输出，AM的putch往0x10000000写字符，这里截下来打到终端，后面要删掉这段
+        // 临时debug，看能不能跑到串口输出
         static constexpr std::uint32_t SerialPort = 0x10000000;
         if (address == SerialPort) {
-            putchar(static_cast<char>(value & 0xFF));
+            printf("SERIAL: addr=0x%08x data=0x%08x char='%c'\n", address, value, static_cast<char>(value & 0xFF));
             fflush(stdout);
-        }
-        // 临时debug：打印前20条store
-        static int debug_store_count = 0;
-        if (debug_store_count < 20) {
-            printf("Store [%d] 地址=0x%08x 数据=0x%08x 掩码=0x%02x\n",
-                   debug_store_count, address, value, mask);
-            fflush(stdout);
-            debug_store_count++;
         }
 
         // 这是写使能
