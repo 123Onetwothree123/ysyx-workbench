@@ -69,6 +69,10 @@ void AXI::HandleDataAR(VRV32I &CPU)
     {
         DataReadAddress = CPU.io_DataBus_AR_ARADDR;
         DataReadPending = true;
+        // 临时debug
+        static int ar_count = 0;
+        printf("DataAR[%d] 地址=0x%08x\n", ar_count++, DataReadAddress);
+        fflush(stdout);
     }
 }
 void AXI::HandleDataR(VRV32I &CPU)
