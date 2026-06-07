@@ -30,7 +30,7 @@ int main(int argc, char const *argv[])
     }
     dut.reset();
     axi.reset(*dut);
-    while (!NPCTrap::HasHalted() && dut.GetCycle() < 200000000)
+    while (!NPCTrap::HasHalted())
     {
         dut.step(axi);
         if (dut->io_TrapValid)
