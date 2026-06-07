@@ -5,6 +5,7 @@
 #include <verilated.h>
 #include "Memory/Memory.hpp"
 #include "VRV32I.h"
+#include "VRV32I___024root.h"  // 临时debug用，读内部状态
 #include "AXI/AXI.hpp"
 #include "DUT.hpp"
 #include "CLIOptions.hpp"
