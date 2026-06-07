@@ -49,12 +49,13 @@ void AXI::HandleInstructionR(VRV32I &CPU)
     CPU.io_InstructionsBus_R_RRESP = 0;
     if (CPU.io_InstructionsBus_R_RREADY)
     {
-        // 临时debug，打印前10条取指的地址和数据
-        if (debug_inst_count < 10) {
-            printf("取指 [%d] 地址=0x%08x 指令=0x%08x\n",
-                   debug_inst_count, InstructionReadAddress, result.value_or(0));
-            debug_inst_count++;
+        // 临时debug，PC变化时打印
+        static std::uint32_t debug_last_pc = 0;
+        if (InstructionReadAddress != debug_last_pc + 4 && InstructionReadAddress != debug_last_pc) {
+            printf("跳 PC=0x%08x 指令=0x%08x\n", InstructionReadAddress, result.value_or(0));
+            fflush(stdout);
         }
+        debug_last_pc = InstructionReadAddress;
         InstructionReadPending = false;
     }
 }
@@ -79,6 +80,14 @@ void AXI::HandleDataR(VRV32I &CPU)
     CPU.io_DataBus_R_RRESP = 0;
     if (CPU.io_DataBus_R_RREADY)
     {
+        // 临时debug：打印 load 地址和数据
+        static std::uint32_t debug_data_r_count = 0;
+        if (debug_data_r_count < 20) {
+            printf("Load [%d] 地址=0x%08x 数据=0x%08x\n",
+                   debug_data_r_count, DataReadAddress, result.value_or(0));
+            fflush(stdout);
+            debug_data_r_count++;
+        }
         DataReadPending = false;
     }
 }
@@ -97,6 +106,14 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         if (address == SerialPort) {
             putchar(static_cast<char>(value & 0xFF));
             fflush(stdout);
+        }
+        // 临时debug：打印前20条store
+        static int debug_store_count = 0;
+        if (debug_store_count < 20) {
+            printf("Store [%d] 地址=0x%08x 数据=0x%08x 掩码=0x%02x\n",
+                   debug_store_count, address, value, mask);
+            fflush(stdout);
+            debug_store_count++;
         }
 
         // 这是写使能
