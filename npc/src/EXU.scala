@@ -23,6 +23,8 @@ class EXU extends Module {
     val ALUResult_ToLSU = Output(UInt(32.W))
     val StoreDATA = Output(UInt(32.W))
     val LoadSigned = Output(Bool())
+    val TrapValid = Output(Bool())
+    val TrapPC = Output(UInt(32.W))
   })
   val ALUUnit = Module(new ALU)
   val CSRUnit = Module(new CSR)
@@ -83,6 +85,8 @@ class EXU extends Module {
   val InstructionExecutionDone =
     FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
   CSRUnit.io.Enable := FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
+  io.TrapValid := InstructionExecutionDone && ActiveInstruction.IsEbreak
+  io.TrapPC := ActiveInstruction.pc
   io.Redirect := InstructionExecutionDone && Redirect
   when(ActiveInstruction.IsJalr) {
     io.RedirectTarget := JalrTarget

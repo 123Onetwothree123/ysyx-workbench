@@ -9,6 +9,7 @@ class GPR extends Module {
     val Read2SELECT = Input(UInt(5.W))
     val ReadDATA1 = Output(UInt(32.W))
     val ReadDATA2 = Output(UInt(32.W))
+    val DebugA0 = Output(UInt(32.W))
   })
   val RegisterFile = Module(new RegisterFile(ADDR_WIDTH = 5, DATA_WIDTH = 32))
   val RegisterFileWen = Mux(io.WriteSELECT === 0.U, false.B, io.WriteEN)
@@ -19,4 +20,5 @@ class GPR extends Module {
   RegisterFile.io.raddr2 := io.Read2SELECT
   io.ReadDATA1 := Mux(io.Read1SELECT === 0.U, 0.U(32.W), RegisterFile.io.rdata1)
   io.ReadDATA2 := Mux(io.Read2SELECT === 0.U, 0.U(32.W), RegisterFile.io.rdata2)
+  io.DebugA0 := RegisterFile.io.debug_a0
 }

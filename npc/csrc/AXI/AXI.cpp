@@ -1,9 +1,5 @@
 #include "AXI.hpp"
-#include "../NPCTrap.hpp"
 #include <cstdio>
-// 临时debug
-static int debug_inst_cnt = 0;
-static std::uint32_t debug_last_pc = 0;
 static constexpr std::uint32_t AlignWord(std::uint32_t address) noexcept
 {
     return address & ~0x3u;
@@ -31,8 +27,6 @@ void AXI::reset(VRV32I &CPU)
     InstructionReadPending = false;
     DataReadPending = false;
     DataWritePending = false;
-    debug_inst_cnt = 0;
-    debug_last_pc = 0;
 }
 void AXI::HandleInstructionAR(VRV32I &CPU)
 {
@@ -45,20 +39,16 @@ void AXI::HandleInstructionAR(VRV32I &CPU)
 }
 void AXI::HandleInstructionR(VRV32I &CPU)
 {
-    if (!InstructionReadPending) return;
+    if (!InstructionReadPending)
+    {
+        return;
+    }
     auto result{memory.LoadWord(InstructionReadAddress)};
     CPU.io_InstructionsBus_R_RVALID = true;
     CPU.io_InstructionsBus_R_RDATA = result.value_or(0);
     CPU.io_InstructionsBus_R_RRESP = 0;
     if (CPU.io_InstructionsBus_R_RREADY)
     {
-        if (InstructionReadAddress != debug_last_pc + 4 && InstructionReadAddress != debug_last_pc) {
-            printf("取指[%d] PC=0x%08x 指令=0x%08x\n", debug_inst_cnt,
-                   InstructionReadAddress, result.value_or(0));
-            fflush(stdout);
-        }
-        debug_last_pc = InstructionReadAddress;
-        debug_inst_cnt++;
         InstructionReadPending = false;
     }
 }
@@ -73,15 +63,16 @@ void AXI::HandleDataAR(VRV32I &CPU)
 }
 void AXI::HandleDataR(VRV32I &CPU)
 {
-    if (!DataReadPending) return;
+    if (!DataReadPending)
+    {
+        return;
+    }
     CPU.io_DataBus_R_RVALID = true;
     auto result{memory.LoadWord(AlignWord(DataReadAddress))};
     CPU.io_DataBus_R_RDATA = result.value_or(0);
     CPU.io_DataBus_R_RRESP = 0;
     if (CPU.io_DataBus_R_RREADY)
     {
-        printf("Load 地址=0x%08x 数据=0x%08x\n", DataReadAddress, result.value_or(0));
-        fflush(stdout);
         DataReadPending = false;
     }
 }
@@ -98,13 +89,19 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
 
         // 串口输出，AM的putch往0x10000000写字符
         static constexpr std::uint32_t SerialPort = 0x10000000;
-        if (address == SerialPort) {
+        if (address == SerialPort)
+        {
             putchar(static_cast<char>(value & 0xFF));
             fflush(stdout);
         }
-
-        printf("Store 地址=0x%08x 数据=0x%08x 掩码=0x%02x\n", address, value, mask);
-        fflush(stdout);
+        /*
+        这个是AM的putch函数
+        void putch(char ch)
+{
+  volatile char *serial_port = (volatile char *)0x10000000;
+  *serial_port = ch;
+}
+        */
 
         bool WriteByte0{mask & 0b0001};
         bool WriteByte1{mask & 0b0010};
@@ -114,23 +111,31 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         uint8_t Byte1 = static_cast<uint8_t>(value >> 8);
         uint8_t Byte2 = static_cast<uint8_t>(value >> 16);
         uint8_t Byte3 = static_cast<uint8_t>(value >> 24);
-        if (WriteByte0) memory.StoreByte(base_address, Byte0);
-        if (WriteByte1) memory.StoreByte(base_address + 1, Byte1);
-        if (WriteByte2) memory.StoreByte(base_address + 2, Byte2);
-        if (WriteByte3) memory.StoreByte(base_address + 3, Byte3);
-
-        static constexpr std::uint32_t HaltAddress = 0xa0000000;
-        if (address == HaltAddress)
+        if (WriteByte0)
         {
-            auto exit_code = static_cast<std::uint32_t>(value & 0xFF);
-            NPCTrap::Halt(0, exit_code);
+            memory.StoreByte(base_address, Byte0);
+        }
+        if (WriteByte1)
+        {
+            memory.StoreByte(base_address + 1, Byte1);
+        }
+        if (WriteByte2)
+        {
+            memory.StoreByte(base_address + 2, Byte2);
+        }
+        if (WriteByte3)
+        {
+            memory.StoreByte(base_address + 3, Byte3);
         }
         DataWritePending = true;
     }
 }
 void AXI::HandleDataB(VRV32I &CPU)
 {
-    if (!DataWritePending) return;
+    if (!DataWritePending)
+    {
+        return;
+    }
     CPU.io_DataBus_B_BVALID = true;
     CPU.io_DataBus_B_BRESP = 0;
     if (CPU.io_DataBus_B_BREADY)

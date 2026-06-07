@@ -62,4 +62,7 @@ class RV32I(AddressWidth: Int = 32) extends Module {
   gpr.io.wdata := wbu.io.wdata
   // 临时新加的处理中断的
   exu.io.Interrupt := io.Interrupt
+  io.TrapValid := exu.io.TrapValid
+  io.TrapPC := exu.io.TrapPC
+  io.TrapCode := gpr.io.DebugA0
 }

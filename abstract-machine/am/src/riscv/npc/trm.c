@@ -18,25 +18,16 @@ void putch(char ch)
   volatile char *serial_port = (volatile char *)0x10000000;
   *serial_port = ch;
 }
-
+//抄NEMU的
 void halt(int code)
 {
-  volatile uint32_t *halt_port = (volatile uint32_t *)0xa0000000;
-  *halt_port = (uint32_t)code;
+  asm volatile("mv a0, %0; ebreak" : : "r"(code));
   while (1)
     ;
 }
 
 void _trm_init()
 {
-  uintptr_t mvendorid,marchid,mcycle1,mcycle2;
-  asm volatile("csrr %0,mvendorid":"=r"(mvendorid));
-  asm volatile("csrr %0,marchid":"=r"(marchid));
-  asm volatile("csrr %0,mcycle":"=r"(mcycle1));
-  asm volatile("csrr %0,mcycle":"=r"(mcycle2));
-  printf("mvendorid=0x%x\n",mvendorid);
-  printf("marchid=%d\n",marchid);
-  printf("mcycle=%d,%d\n",mcycle1,mcycle2);
   int ret = main(mainargs);
   halt(ret);
 }

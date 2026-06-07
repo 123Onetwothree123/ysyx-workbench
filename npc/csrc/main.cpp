@@ -33,6 +33,10 @@ int main(int argc, char const *argv[])
     while (!NPCTrap::HasHalted() && dut.GetCycle() < 200000000)
     {
         dut.step(axi);
+        if (dut->io_TrapValid)
+        {
+            NPCTrap::Halt(dut->io_TrapPC, dut->io_TrapCode);
+        }
     }
     dut.final();
     return NPCTrap::PrintResult(dut.GetCycle());
