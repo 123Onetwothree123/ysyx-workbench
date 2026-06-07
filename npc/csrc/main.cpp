@@ -33,6 +33,9 @@ int main(int argc, char const *argv[])
     while (!NPCTrap::HasHalted())
     {
         dut.step(axi);
+        // 临时加的进度输出，后面要删掉的
+        if (dut.GetCycle() % 100000 == 0)
+            std::println("周期数：{}", dut.GetCycle());
     }
     dut.final();
     return NPCTrap::PrintResult(dut.GetCycle());
