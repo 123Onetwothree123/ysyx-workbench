@@ -9,18 +9,14 @@ class AXI
 private:
     Memory &memory;
     // AR到R
-    std::uint32_t InstructionReadAddress{0};
-    std::uint32_t DataReadAddress{0};
-    bool InstructionReadPending{false}; // 发了地址，等数据回来
-    bool DataReadPending{false};        // 同上
-    void HandleInstructionAR(VRV32I &cpu) noexcept;
-    void HandleInstructionR(VRV32I &cpu) noexcept;
-    void HandleDataAR(VRV32I &cpu) noexcept;
-    void HandleDataR(VRV32I &cpu) noexcept;
+    std::uint32_t ReadAddress{0};
+    bool ReadPending{false}; // 发了地址，等数据回来
+    void HandleReadAR(VRV32I &cpu) noexcept;
+    void HandleReadR(VRV32I &cpu) noexcept;
     // AW+W到B
     bool DataWriteResponsePending{false}; // 发了地址和数据，等B回复
-    void HandleDataAW_W(VRV32I &cpu) noexcept;
-    void HandleDataB(VRV32I &cpu) noexcept;
+    void HandleWriteAW_W(VRV32I &cpu) noexcept;
+    void HandleWriteB(VRV32I &cpu) noexcept;
     // 新加的，为了接时间器
     MMIO mmio;
     // 新加的，为了模拟真的AXI，因为刚刚改了LSU，所以现在也加一套接受写入的东西
