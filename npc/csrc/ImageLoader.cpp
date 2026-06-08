@@ -4,7 +4,6 @@
 #include <print>
 #include <filesystem>
 #include <fstream>
-
 std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOptions &Options, Memory &memory)
 {
     const auto &ImageFile{Options.GetImageFile()};
