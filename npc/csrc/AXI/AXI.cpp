@@ -25,7 +25,12 @@ void AXI::reset(VRV32I &CPU)
     CPU.io_DataBus_B_BRESP = 0;
     InstructionReadPending = false;
     DataReadPending = false;
-    DataWritePending = false;
+    DataWriteAddress = 0;
+    DataWriteData = 0;
+    DataWriteMask = 0;
+    DataWriteAddressPending = false;
+    DataWriteDataPending = false;
+    DataWriteResponsePending = false;
 }
 void AXI::HandleInstructionAR(VRV32I &CPU) noexcept
 {
@@ -85,14 +90,25 @@ void AXI::HandleDataR(VRV32I &CPU) noexcept
 }
 void AXI::HandleDataAW_W(VRV32I &CPU) noexcept
 {
-    CPU.io_DataBus_AW_AWREADY = true;
-    CPU.io_DataBus_W_WREADY = true;
-    if (CPU.io_DataBus_AW_AWVALID && CPU.io_DataBus_AW_AWREADY && CPU.io_DataBus_W_WVALID && CPU.io_DataBus_W_WREADY)
+    CPU.io_DataBus_AW_AWREADY = !DataWriteAddressPending && !DataWriteResponsePending;
+    CPU.io_DataBus_W_WREADY = !DataWriteDataPending && !DataWriteResponsePending;
+    if (CPU.io_DataBus_AW_AWVALID && CPU.io_DataBus_AW_AWREADY)
     {
-        auto address{CPU.io_DataBus_AW_AWADDR};
+        DataWriteAddress = CPU.io_DataBus_AW_AWADDR;
+        DataWriteAddressPending = true;
+    }
+    if (CPU.io_DataBus_W_WVALID && CPU.io_DataBus_W_WREADY)
+    {
+        DataWriteData = CPU.io_DataBus_W_WDATA;
+        DataWriteMask = static_cast<std::uint8_t>(CPU.io_DataBus_W_WSTRB);
+        DataWriteDataPending = true;
+    }
+    if (DataWriteAddressPending && DataWriteDataPending && !DataWriteResponsePending)
+    {
+        auto address{DataWriteAddress};
         auto base_address{AlignWord(address)};
-        auto value{CPU.io_DataBus_W_WDATA};
-        auto mask{static_cast<std::uint8_t>(CPU.io_DataBus_W_WSTRB)};
+        auto value{DataWriteData};
+        auto mask{DataWriteMask};
         /*
         这个是AM的putch函数
         void putch(char ch)
@@ -130,12 +146,16 @@ void AXI::HandleDataAW_W(VRV32I &CPU) noexcept
                 memory.StoreByte(base_address + 3, Byte3);
             }
         }
-        DataWritePending = true;
+        DataWriteAddressPending = false;
+        DataWriteDataPending = false;
+        DataWriteResponsePending = true;
     }
 }
 void AXI::HandleDataB(VRV32I &CPU) noexcept
 {
-    if (!DataWritePending)
+    CPU.io_DataBus_B_BVALID = false;
+    CPU.io_DataBus_B_BRESP = 0;
+    if (!DataWriteResponsePending)
     {
         return;
     }
@@ -143,7 +163,7 @@ void AXI::HandleDataB(VRV32I &CPU) noexcept
     CPU.io_DataBus_B_BRESP = 0;
     if (CPU.io_DataBus_B_BREADY)
     {
-        DataWritePending = false;
+        DataWriteResponsePending = false;
     }
 }
 void AXI::eval(VRV32I &CPU)
