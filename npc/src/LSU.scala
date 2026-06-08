@@ -100,8 +100,16 @@ class LSU extends Module {
   }.otherwise {
     io.AddressMisaligned := false.B
   }
+  // 新加的，RTT功能正常跑起来了后，让AI复查代码，提出的安全性建议，因为并没有规定AW和W一定同一个周期握手，所以改成可以独立握手
+  val AWDone = RegInit(false.B)
+  val WDone = RegInit(false.B)
+  val AWfire = io.DataBus.AW.AWVALID && io.DataBus.AW.AWREADY
+  val Wfire = io.DataBus.W.WVALID && io.DataBus.W.WREADY
+  val Bfire = io.DataBus.B.BVALID && io.DataBus.B.BREADY
   switch(state) {
     is(StatesIdle) {
+      AWDone := false.B
+      WDone := false.B
       when(io.MemoryValid) {
         when(io.AddressMisaligned) {
           state := StatesDone
@@ -166,19 +174,29 @@ class LSU extends Module {
       }
     }
     is(StatesWriteRequest) {
-      io.DataBus.AW.AWVALID := true.B
+      val AWAlreadyDone = AWDone
+      val WAlreadyDone = WDone
+      io.DataBus.AW.AWVALID := !AWAlreadyDone
       io.DataBus.AW.AWADDR := io.ALUResult
-      io.DataBus.W.WVALID := true.B
+      io.DataBus.AW.AWPROT := 0.U
+      io.DataBus.W.WVALID := !WAlreadyDone
       io.DataBus.W.WDATA := WriteData
       io.DataBus.W.WSTRB := WriteMask
-      when(io.DataBus.AW.AWREADY && io.DataBus.W.WREADY) {
+      // 握手完毕了就记录写完了
+      when(AWfire) {
+        AWDone := true.B
+      }
+      when(Wfire) {
+        WDone := true.B
+      }
+      when((AWAlreadyDone || AWfire) && (WAlreadyDone || Wfire)) {
         state := StatesWriteResponse
       }
     }
     is(StatesWriteResponse) {
       // 因为是等，所以要用B总线，而不是W线
       io.DataBus.B.BREADY := true.B
-      when(io.DataBus.B.BVALID) {
+      when(Bfire) {
         state := StatesDone
       }
     }
