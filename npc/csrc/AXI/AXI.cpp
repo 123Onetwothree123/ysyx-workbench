@@ -121,29 +121,29 @@ void AXI::HandleDataAW_W(VRV32I &CPU) noexcept
         auto IsMMIOWrite{mmio.StoreWord(base_address, value, mask)};
         if (!IsMMIOWrite)
         {
-            bool WriteByte0{mask & 0b0001};
-            bool WriteByte1{mask & 0b0010};
-            bool WriteByte2{mask & 0b0100};
-            bool WriteByte3{mask & 0b1000};
+            bool WriteByte0{(mask & 0b0001) != 0};
+            bool WriteByte1{(mask & 0b0010) != 0};
+            bool WriteByte2{(mask & 0b0100) != 0};
+            bool WriteByte3{(mask & 0b1000) != 0};
             auto Byte0{static_cast<std::uint8_t>(value >> 0)};
             auto Byte1{static_cast<std::uint8_t>(value >> 8)};
             auto Byte2{static_cast<std::uint8_t>(value >> 16)};
             auto Byte3{static_cast<std::uint8_t>(value >> 24)};
             if (WriteByte0)
             {
-                memory.StoreByte(base_address, Byte0);
+                (void)memory.StoreByte(base_address, Byte0);
             }
             if (WriteByte1)
             {
-                memory.StoreByte(base_address + 1, Byte1);
+                (void)memory.StoreByte(base_address + 1, Byte1);
             }
             if (WriteByte2)
             {
-                memory.StoreByte(base_address + 2, Byte2);
+                (void)memory.StoreByte(base_address + 2, Byte2);
             }
             if (WriteByte3)
             {
-                memory.StoreByte(base_address + 3, Byte3);
+                (void)memory.StoreByte(base_address + 3, Byte3);
             }
         }
         DataWriteAddressPending = false;
