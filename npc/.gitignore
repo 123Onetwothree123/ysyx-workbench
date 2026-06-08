@@ -11,6 +11,9 @@
 !.gitignore
 !.scalafmt.conf
 !README.md
+//新加的
+!*hpp
+
 build/
 
 # mill
