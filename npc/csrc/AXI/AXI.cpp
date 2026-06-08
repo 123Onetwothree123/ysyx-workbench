@@ -67,7 +67,7 @@ void AXI::HandleDataR(VRV32I &CPU) noexcept
         return;
     }
     CPU.io_DataBus_R_RVALID = true;
-    auto address = AlignWord(DataReadAddress);
+    auto address{AlignWord(DataReadAddress)};
     if (auto data = mmio.LoadWord(address))
     {
         CPU.io_DataBus_R_RDATA = *data;
