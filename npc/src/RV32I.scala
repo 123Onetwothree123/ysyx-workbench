@@ -14,32 +14,19 @@ class RV32I(AddressWidth: Int = 32) extends Module {
   val wbu = Module(new WBU)
   val lsu = Module(new LSU)
   val gpr = Module(new GPR)
+  val arbiter = Module(new AXI5LiteArbiter)
   StageConnect(ifu.io.out, idu.io.in)
   StageConnect(idu.io.out, exu.io.in)
   StageConnect(exu.io.out, wbu.io.in)
-  ifu.io.InstructionBus.AR <> io.InstructionsBus.AR
-  ifu.io.InstructionBus.R <> io.InstructionsBus.R
-  lsu.io.DataBus.AW <> io.DataBus.AW
-  lsu.io.DataBus.AR <> io.DataBus.AR
-  lsu.io.DataBus.W <> io.DataBus.W
-  lsu.io.DataBus.R <> io.DataBus.R
-  lsu.io.DataBus.B <> io.DataBus.B
-  io.DataBus.ACLK := clock.asBool
-  io.DataBus.ARESETn := ~reset.asBool
-  io.InstructionsBus.ACLK := clock.asBool
-  io.InstructionsBus.ARESETn := ~reset.asBool
-  // 他妈的，还得手动接地，忘记写还直接疯狂爆错，他就不能默认给个接地吗？
-  io.InstructionsBus.AW.AWVALID := false.B
-  io.InstructionsBus.AW.AWADDR  := 0.U
-  io.InstructionsBus.AW.AWPROT  := 0.U
-  io.InstructionsBus.W.WVALID   := false.B
-  io.InstructionsBus.W.WDATA    := 0.U
-  io.InstructionsBus.W.WSTRB    := 0.U
-  io.InstructionsBus.B.BREADY   := false.B
-  ifu.io.InstructionBus.AW.AWREADY := false.B
-  ifu.io.InstructionBus.W.WREADY   := false.B
-  ifu.io.InstructionBus.B.BRESP    := 0.U
-  ifu.io.InstructionBus.B.BVALID   := false.B
+  arbiter.io.ifu <> ifu.io.InstructionBus
+  arbiter.io.lsu <> lsu.io.DataBus
+  arbiter.io.memory.AW <> io.MemoryBus.AW
+  arbiter.io.memory.AR <> io.MemoryBus.AR
+  arbiter.io.memory.W <> io.MemoryBus.W
+  arbiter.io.memory.R <> io.MemoryBus.R
+  arbiter.io.memory.B <> io.MemoryBus.B
+  io.MemoryBus.ACLK := clock.asBool
+  io.MemoryBus.ARESETn := ~reset.asBool
   // 手动连线了
   idu.io.ReadDATA1 := gpr.io.ReadDATA1
   idu.io.ReadDATA2 := gpr.io.ReadDATA2

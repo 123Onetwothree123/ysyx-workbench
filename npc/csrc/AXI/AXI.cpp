@@ -7,24 +7,16 @@ static constexpr std::uint32_t AlignWord(std::uint32_t address) noexcept
 AXI::AXI(Memory &memory) : memory(memory) {}
 void AXI::reset(VRV32I &CPU)
 {
-    CPU.io_InstructionsBus_AR_ARREADY = 0;
-    CPU.io_InstructionsBus_R_RVALID = 0;
-    CPU.io_InstructionsBus_R_RDATA = 0;
-    CPU.io_InstructionsBus_R_RRESP = 0;
-    CPU.io_InstructionsBus_AW_AWREADY = 0;
-    CPU.io_InstructionsBus_W_WREADY = 0;
-    CPU.io_InstructionsBus_B_BVALID = 0;
-    CPU.io_InstructionsBus_B_BRESP = 0;
-    CPU.io_DataBus_AR_ARREADY = 0;
-    CPU.io_DataBus_R_RVALID = 0;
-    CPU.io_DataBus_R_RDATA = 0;
-    CPU.io_DataBus_R_RRESP = 0;
-    CPU.io_DataBus_AW_AWREADY = 0;
-    CPU.io_DataBus_W_WREADY = 0;
-    CPU.io_DataBus_B_BVALID = 0;
-    CPU.io_DataBus_B_BRESP = 0;
-    InstructionReadPending = false;
-    DataReadPending = false;
+    CPU.io_MemoryBus_AR_ARREADY = 0;
+    CPU.io_MemoryBus_R_RVALID = 0;
+    CPU.io_MemoryBus_R_RDATA = 0;
+    CPU.io_MemoryBus_R_RRESP = 0;
+    CPU.io_MemoryBus_AW_AWREADY = 0;
+    CPU.io_MemoryBus_W_WREADY = 0;
+    CPU.io_MemoryBus_B_BVALID = 0;
+    CPU.io_MemoryBus_B_BRESP = 0;
+    ReadAddress = 0;
+    ReadPending = false;
     DataWriteAddress = 0;
     DataWriteData = 0;
     DataWriteMask = 0;
@@ -32,75 +24,54 @@ void AXI::reset(VRV32I &CPU)
     DataWriteDataPending = false;
     DataWriteResponsePending = false;
 }
-void AXI::HandleInstructionAR(VRV32I &CPU) noexcept
+void AXI::HandleReadAR(VRV32I &CPU) noexcept
 {
-    CPU.io_InstructionsBus_AR_ARREADY = 1;
-    if (CPU.io_InstructionsBus_AR_ARVALID && CPU.io_InstructionsBus_AR_ARREADY)
+    CPU.io_MemoryBus_AR_ARREADY = !ReadPending;
+    if (CPU.io_MemoryBus_AR_ARVALID && CPU.io_MemoryBus_AR_ARREADY)
     {
-        InstructionReadAddress = CPU.io_InstructionsBus_AR_ARADDR;
-        InstructionReadPending = true;
+        ReadAddress = CPU.io_MemoryBus_AR_ARADDR;
+        ReadPending = true;
     }
 }
-void AXI::HandleInstructionR(VRV32I &CPU) noexcept
+void AXI::HandleReadR(VRV32I &CPU) noexcept
 {
-    if (!InstructionReadPending)
+    CPU.io_MemoryBus_R_RVALID = false;
+    CPU.io_MemoryBus_R_RDATA = 0;
+    CPU.io_MemoryBus_R_RRESP = 0;
+    if (!ReadPending)
     {
         return;
     }
-    auto result{memory.LoadWord(InstructionReadAddress)};
-    CPU.io_InstructionsBus_R_RVALID = true;
-    CPU.io_InstructionsBus_R_RDATA = result.value_or(0);
-    CPU.io_InstructionsBus_R_RRESP = 0;
-    if (CPU.io_InstructionsBus_R_RREADY)
-    {
-        InstructionReadPending = false;
-    }
-}
-void AXI::HandleDataAR(VRV32I &CPU) noexcept
-{
-    CPU.io_DataBus_AR_ARREADY = true;
-    if (CPU.io_DataBus_AR_ARVALID && CPU.io_DataBus_AR_ARREADY)
-    {
-        DataReadAddress = CPU.io_DataBus_AR_ARADDR;
-        DataReadPending = true;
-    }
-}
-void AXI::HandleDataR(VRV32I &CPU) noexcept
-{
-    if (!DataReadPending)
-    {
-        return;
-    }
-    CPU.io_DataBus_R_RVALID = true;
-    auto address{AlignWord(DataReadAddress)};
+    CPU.io_MemoryBus_R_RVALID = true;
+    auto address{AlignWord(ReadAddress)};
     if (auto data = mmio.LoadWord(address))
     {
-        CPU.io_DataBus_R_RDATA = *data;
+        CPU.io_MemoryBus_R_RDATA = *data;
     }
     else
     {
-        auto result{memory.LoadWord(AlignWord(DataReadAddress))};
-        CPU.io_DataBus_R_RDATA = result.value_or(0);
+        auto result{memory.LoadWord(address)};
+        CPU.io_MemoryBus_R_RDATA = result.value_or(0);
     }
-    CPU.io_DataBus_R_RRESP = 0;
-    if (CPU.io_DataBus_R_RREADY)
+    CPU.io_MemoryBus_R_RRESP = 0;
+    if (CPU.io_MemoryBus_R_RREADY)
     {
-        DataReadPending = false;
+        ReadPending = false;
     }
 }
-void AXI::HandleDataAW_W(VRV32I &CPU) noexcept
+void AXI::HandleWriteAW_W(VRV32I &CPU) noexcept
 {
-    CPU.io_DataBus_AW_AWREADY = !DataWriteAddressPending && !DataWriteResponsePending;
-    CPU.io_DataBus_W_WREADY = !DataWriteDataPending && !DataWriteResponsePending;
-    if (CPU.io_DataBus_AW_AWVALID && CPU.io_DataBus_AW_AWREADY)
+    CPU.io_MemoryBus_AW_AWREADY = !DataWriteAddressPending && !DataWriteResponsePending;
+    CPU.io_MemoryBus_W_WREADY = !DataWriteDataPending && !DataWriteResponsePending;
+    if (CPU.io_MemoryBus_AW_AWVALID && CPU.io_MemoryBus_AW_AWREADY)
     {
-        DataWriteAddress = CPU.io_DataBus_AW_AWADDR;
+        DataWriteAddress = CPU.io_MemoryBus_AW_AWADDR;
         DataWriteAddressPending = true;
     }
-    if (CPU.io_DataBus_W_WVALID && CPU.io_DataBus_W_WREADY)
+    if (CPU.io_MemoryBus_W_WVALID && CPU.io_MemoryBus_W_WREADY)
     {
-        DataWriteData = CPU.io_DataBus_W_WDATA;
-        DataWriteMask = static_cast<std::uint8_t>(CPU.io_DataBus_W_WSTRB);
+        DataWriteData = CPU.io_MemoryBus_W_WDATA;
+        DataWriteMask = static_cast<std::uint8_t>(CPU.io_MemoryBus_W_WSTRB);
         DataWriteDataPending = true;
     }
     if (DataWriteAddressPending && DataWriteDataPending && !DataWriteResponsePending)
@@ -151,27 +122,25 @@ void AXI::HandleDataAW_W(VRV32I &CPU) noexcept
         DataWriteResponsePending = true;
     }
 }
-void AXI::HandleDataB(VRV32I &CPU) noexcept
+void AXI::HandleWriteB(VRV32I &CPU) noexcept
 {
-    CPU.io_DataBus_B_BVALID = false;
-    CPU.io_DataBus_B_BRESP = 0;
+    CPU.io_MemoryBus_B_BVALID = false;
+    CPU.io_MemoryBus_B_BRESP = 0;
     if (!DataWriteResponsePending)
     {
         return;
     }
-    CPU.io_DataBus_B_BVALID = true;
-    CPU.io_DataBus_B_BRESP = 0;
-    if (CPU.io_DataBus_B_BREADY)
+    CPU.io_MemoryBus_B_BVALID = true;
+    CPU.io_MemoryBus_B_BRESP = 0;
+    if (CPU.io_MemoryBus_B_BREADY)
     {
         DataWriteResponsePending = false;
     }
 }
 void AXI::eval(VRV32I &CPU)
 {
-    HandleDataAR(CPU);
-    HandleDataAW_W(CPU);
-    HandleDataB(CPU);
-    HandleDataR(CPU);
-    HandleInstructionAR(CPU);
-    HandleInstructionR(CPU);
+    HandleReadAR(CPU);
+    HandleWriteAW_W(CPU);
+    HandleWriteB(CPU);
+    HandleReadR(CPU);
 }
