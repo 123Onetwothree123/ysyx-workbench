@@ -27,7 +27,7 @@ void AXI::reset(VRV32I &CPU)
     DataReadPending = false;
     DataWritePending = false;
 }
-void AXI::HandleInstructionAR(VRV32I &CPU)
+void AXI::HandleInstructionAR(VRV32I &CPU) noexcept
 {
     CPU.io_InstructionsBus_AR_ARREADY = 1;
     if (CPU.io_InstructionsBus_AR_ARVALID && CPU.io_InstructionsBus_AR_ARREADY)
@@ -36,7 +36,7 @@ void AXI::HandleInstructionAR(VRV32I &CPU)
         InstructionReadPending = true;
     }
 }
-void AXI::HandleInstructionR(VRV32I &CPU)
+void AXI::HandleInstructionR(VRV32I &CPU) noexcept
 {
     if (!InstructionReadPending)
     {
@@ -51,7 +51,7 @@ void AXI::HandleInstructionR(VRV32I &CPU)
         InstructionReadPending = false;
     }
 }
-void AXI::HandleDataAR(VRV32I &CPU)
+void AXI::HandleDataAR(VRV32I &CPU) noexcept
 {
     CPU.io_DataBus_AR_ARREADY = true;
     if (CPU.io_DataBus_AR_ARVALID && CPU.io_DataBus_AR_ARREADY)
@@ -60,7 +60,7 @@ void AXI::HandleDataAR(VRV32I &CPU)
         DataReadPending = true;
     }
 }
-void AXI::HandleDataR(VRV32I &CPU)
+void AXI::HandleDataR(VRV32I &CPU) noexcept
 {
     if (!DataReadPending)
     {
@@ -83,7 +83,7 @@ void AXI::HandleDataR(VRV32I &CPU)
         DataReadPending = false;
     }
 }
-void AXI::HandleDataAW_W(VRV32I &CPU)
+void AXI::HandleDataAW_W(VRV32I &CPU) noexcept
 {
     CPU.io_DataBus_AW_AWREADY = true;
     CPU.io_DataBus_W_WREADY = true;
@@ -133,7 +133,7 @@ void AXI::HandleDataAW_W(VRV32I &CPU)
         DataWritePending = true;
     }
 }
-void AXI::HandleDataB(VRV32I &CPU)
+void AXI::HandleDataB(VRV32I &CPU) noexcept
 {
     if (!DataWritePending)
     {
