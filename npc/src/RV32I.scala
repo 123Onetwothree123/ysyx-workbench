@@ -15,16 +15,28 @@ class RV32I(AddressWidth: Int = 32) extends Module {
   val lsu = Module(new LSU)
   val gpr = Module(new GPR)
   val arbiter = Module(new AXI5LiteArbiter)
+  val xbar = Module(new AXI5LiteXbar(RV32IIO.bit))
+  val uart = Module(new AXI5LiteUARTSlave)
   StageConnect(ifu.io.out, idu.io.in)
   StageConnect(idu.io.out, exu.io.in)
   StageConnect(exu.io.out, wbu.io.in)
   arbiter.io.ifu <> ifu.io.InstructionBus
   arbiter.io.lsu <> lsu.io.DataBus
-  arbiter.io.memory.AW <> io.MemoryBus.AW
-  arbiter.io.memory.AR <> io.MemoryBus.AR
-  arbiter.io.memory.W <> io.MemoryBus.W
-  arbiter.io.memory.R <> io.MemoryBus.R
-  arbiter.io.memory.B <> io.MemoryBus.B
+  arbiter.io.memory.AW <> xbar.io.in.AW
+  arbiter.io.memory.W <> xbar.io.in.W
+  arbiter.io.memory.B <> xbar.io.in.B
+  arbiter.io.memory.AR <> xbar.io.in.AR
+  arbiter.io.memory.R <> xbar.io.in.R
+  xbar.io.SRAM.AW <> io.MemoryBus.AW
+  xbar.io.SRAM.W <> io.MemoryBus.W
+  xbar.io.SRAM.B <> io.MemoryBus.B
+  xbar.io.SRAM.AR <> io.MemoryBus.AR
+  xbar.io.SRAM.R <> io.MemoryBus.R
+  xbar.io.UART.AW <> uart.io.AW
+  xbar.io.UART.W <> uart.io.W
+  xbar.io.UART.B <> uart.io.B
+  xbar.io.UART.AR <> uart.io.AR
+  xbar.io.UART.R <> uart.io.R
   io.MemoryBus.ACLK := clock.asBool
   io.MemoryBus.ARESETn := ~reset.asBool
   // 手动连线了

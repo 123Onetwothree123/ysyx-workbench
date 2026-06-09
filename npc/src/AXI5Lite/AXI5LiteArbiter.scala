@@ -1,3 +1,4 @@
+//此文件代码由GPT5.5 codex编写的，注释是我自己慢慢理解，写的
 package RV32I.AXI5Lite
 import chisel3._
 import chisel3.util._
@@ -7,7 +8,7 @@ class AXI5LiteArbiter extends Module {
     val lsu = Flipped(new AXI5LiteIO(32))
     val memory = new AXI5LiteIO(32)
   })
-
+//日常状态机
   val states = Enum(5)
   val StatesIdle = states(0)
   val StatesReadRequest = states(1)
@@ -15,14 +16,14 @@ class AXI5LiteArbiter extends Module {
   val StatesWriteRequest = states(3)
   val StatesWriteResponse = states(4)
   val state = RegInit(StatesIdle)
-
-  val GrantIFU = 0.U(1.W)
-  val GrantLSU = 1.U(1.W)
+//grant是用来记住谁在用总线的
+  val GrantIFU = 0.U(1.W) // 0就是授权给IFU使用
+  val GrantLSU = 1.U(1.W) // 1就是授权给LSU使用
   val grant = RegInit(GrantIFU)
-
+//和之前一样也是要两个独立的判断，因为AW和W不一定要一个周期同时实现握手，所以两个是独立的
   val AWDone = RegInit(false.B)
   val WDone = RegInit(false.B)
-
+//都是初始化
   io.ifu.AW.AWREADY := false.B
   io.ifu.W.WREADY := false.B
   io.ifu.B.BRESP := 0.U
@@ -52,7 +53,7 @@ class AXI5LiteArbiter extends Module {
   io.memory.AR.ARADDR := 0.U
   io.memory.AR.ARPROT := 0.U
   io.memory.R.RREADY := false.B
-
+//IFU可以只读，LSU可以又读又写
   val LSUWriteRequest = io.lsu.AW.AWVALID || io.lsu.W.WVALID
   val LSUReadRequest = io.lsu.AR.ARVALID
   val IFUReadRequest = io.ifu.AR.ARVALID
@@ -78,14 +79,14 @@ class AXI5LiteArbiter extends Module {
         io.memory.AR.ARADDR := io.lsu.AR.ARADDR
         io.memory.AR.ARPROT := io.lsu.AR.ARPROT
         io.lsu.AR.ARREADY := io.memory.AR.ARREADY
-      }.otherwise {
+      }.otherwise { // IFU
         io.memory.AR.ARVALID := io.ifu.AR.ARVALID
         io.memory.AR.ARADDR := io.ifu.AR.ARADDR
         io.memory.AR.ARPROT := io.ifu.AR.ARPROT
         io.ifu.AR.ARREADY := io.memory.AR.ARREADY
       }
-      when(io.memory.AR.ARVALID && io.memory.AR.ARREADY) {
-        state := StatesReadResponse
+      when(io.memory.AR.ARVALID && io.memory.AR.ARREADY) { // fire了
+        state := StatesReadResponse // 开始到回复阶段
       }
     }
     is(StatesReadResponse) {
@@ -101,20 +102,24 @@ class AXI5LiteArbiter extends Module {
         io.memory.R.RREADY := io.ifu.R.RREADY
       }
       when(io.memory.R.RVALID && io.memory.R.RREADY) {
-        state := StatesIdle
+        state := StatesIdle // 开新循环
       }
     }
     is(StatesWriteRequest) {
+      // 看AW和W通道之前有没有已经完成握手
       val AWAlreadyDone = AWDone
       val WAlreadyDone = WDone
+      // 必须得没有完成握手应该是怕不会重复握手，后面两个条件就是对标fire
       val AWFire = !AWAlreadyDone && io.lsu.AW.AWVALID && io.memory.AW.AWREADY
       val WFire = !WAlreadyDone && io.lsu.W.WVALID && io.memory.W.WREADY
-
+//只有AW还没完成时才把LSU的AWVALID传递给Memory
       io.memory.AW.AWVALID := io.lsu.AW.AWVALID && !AWAlreadyDone
       io.memory.AW.AWADDR := io.lsu.AW.AWADDR
       io.memory.AW.AWPROT := io.lsu.AW.AWPROT
-      io.lsu.AW.AWREADY := io.memory.AW.AWREADY && !AWAlreadyDone
+      io.lsu.AW.AWREADY := io.memory.AW.AWREADY && !AWAlreadyDone // 也是得AW还没完成
+      // 因为如果AW完成了握手，那么valid和ready都得改为false，防止出现重复握手的情况
 
+//一样，得W没完成
       io.memory.W.WVALID := io.lsu.W.WVALID && !WAlreadyDone
       io.memory.W.WDATA := io.lsu.W.WDATA
       io.memory.W.WSTRB := io.lsu.W.WSTRB
@@ -126,6 +131,7 @@ class AXI5LiteArbiter extends Module {
       when(WFire) {
         WDone := true.B
       }
+      // 都完成了就直接开始回复
       when((AWAlreadyDone || AWFire) && (WAlreadyDone || WFire)) {
         state := StatesWriteResponse
       }
@@ -134,7 +140,7 @@ class AXI5LiteArbiter extends Module {
       io.lsu.B.BRESP := io.memory.B.BRESP
       io.lsu.B.BVALID := io.memory.B.BVALID
       io.memory.B.BREADY := io.lsu.B.BREADY
-      when(io.memory.B.BVALID && io.memory.B.BREADY) {
+      when(io.memory.B.BVALID && io.memory.B.BREADY) { // fire了就开始新轮回
         state := StatesIdle
       }
     }
