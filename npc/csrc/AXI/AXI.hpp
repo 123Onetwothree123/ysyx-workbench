@@ -19,6 +19,7 @@ private:
     void HandleWriteB(VRV32I &cpu) noexcept;
     // 新加的，为了接时间器
     MMIO mmio;
+    std::uint64_t Cycles{0};
     // 新加的，为了模拟真的AXI，因为刚刚改了LSU，所以现在也加一套接受写入的东西
     std::uint32_t DataWriteAddress{0};
     std::uint32_t DataWriteData{0};

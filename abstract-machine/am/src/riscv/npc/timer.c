@@ -2,18 +2,22 @@
 #include <stdint.h>
 
 // 他妈的我也不知道为什么会这样，没办法导入nemu.h，我估计是npc的makefile没有包含nemu的头文件路径，只能手动设定了
-#define RTC_ADDR        0xa0000048
-#define RTC_YEAR_ADDR   (RTC_ADDR + 0x10)
-#define RTC_MONTH_ADDR  (RTC_ADDR + 0x14)
-#define RTC_DAY_ADDR    (RTC_ADDR + 0x18)
-#define RTC_HOUR_ADDR   (RTC_ADDR + 0x1C)
+#define RTC_ADDR 0xa0000048
+#define RTC_YEAR_ADDR (RTC_ADDR + 0x10)
+#define RTC_MONTH_ADDR (RTC_ADDR + 0x14)
+#define RTC_DAY_ADDR (RTC_ADDR + 0x18)
+#define RTC_HOUR_ADDR (RTC_ADDR + 0x1C)
 #define RTC_MINUTE_ADDR (RTC_ADDR + 0x20)
 #define RTC_SECOND_ADDR (RTC_ADDR + 0x24)
+#define SIM_FREQ_ADDR 0xa0000070
+//新加的CLINT的
 #define inl(addr) (*(volatile uint32_t *)(addr))
 
 // 自己写的
 static uint64_t boot_time = 0;
 static uint64_t read_time();
+static uint64_t read_sim_freq();
+static uint64_t ticks_to_us(uint64_t ticks);
 
 void __am_timer_init()
 {
@@ -24,7 +28,7 @@ void __am_timer_init()
 void __am_timer_uptime(AM_TIMER_UPTIME_T *uptime)
 {
   // uptime->us = 0;
-  uptime->us = read_time() - boot_time;
+  uptime->us = ticks_to_us(read_time() - boot_time);
 }
 
 void __am_timer_rtc(AM_TIMER_RTC_T *rtc)
@@ -48,17 +52,39 @@ void __am_timer_rtc(AM_TIMER_RTC_T *rtc)
    rtc->year = tm->tm_year + 1900; // 查了下才知道tm_yea是从1900起的偏移量
    */
   // 从 NPC 的 MMIO 读取 RTC
-  rtc->year   = inl(RTC_YEAR_ADDR);
-  rtc->month  = inl(RTC_MONTH_ADDR);
-  rtc->day    = inl(RTC_DAY_ADDR);
-  rtc->hour   = inl(RTC_HOUR_ADDR);
+  rtc->year = inl(RTC_YEAR_ADDR);
+  rtc->month = inl(RTC_MONTH_ADDR);
+  rtc->day = inl(RTC_DAY_ADDR);
+  rtc->hour = inl(RTC_HOUR_ADDR);
   rtc->minute = inl(RTC_MINUTE_ADDR);
   rtc->second = inl(RTC_SECOND_ADDR);
 }
 
 static uint64_t read_time()
 {
-  uint32_t high = inl(RTC_ADDR + 4);
-  uint32_t low = inl(RTC_ADDR);
-  return ((uint64_t)high << 32) | low;
+  while (1)
+  {
+    uint32_t HighBefore = inl(RTC_ADDR + 4);
+    uint32_t low = inl(RTC_ADDR);
+    uint32_t HighAfter = inl(RTC_ADDR + 4);
+    // 如果两次high一样，说明读low的过程中没有发生32位进位
+    if (HighBefore == HighAfter)
+    {
+      return ((uint64_t)HighBefore << 32) | low;
+    }
+  }
+}
+
+static uint64_t read_sim_freq()
+{
+  uint32_t low = inl(SIM_FREQ_ADDR);
+  uint32_t high = inl(SIM_FREQ_ADDR + 4);
+  uint64_t freq = ((uint64_t)high << 32) | low;
+  return freq == 0 ? 1 : freq;
+}
+
+static uint64_t ticks_to_us(uint64_t ticks)
+{
+  uint64_t freq = read_sim_freq();
+  return (ticks / freq) * 1000000ULL + (ticks % freq) * 1000000ULL / freq;
 }

@@ -23,6 +23,8 @@ void AXI::reset(VRV32I &CPU)
     DataWriteAddressPending = false;
     DataWriteDataPending = false;
     DataWriteResponsePending = false;
+    Cycles = 0;
+    mmio.Reset();
 }
 void AXI::HandleReadAR(VRV32I &CPU) noexcept
 {
@@ -44,7 +46,7 @@ void AXI::HandleReadR(VRV32I &CPU) noexcept
     }
     CPU.io_MemoryBus_R_RVALID = true;
     auto address{AlignWord(ReadAddress)};
-    if (auto data = mmio.LoadWord(address))
+    if (auto data = mmio.LoadWord(address, Cycles))
     {
         CPU.io_MemoryBus_R_RDATA = *data;
     }
@@ -143,4 +145,5 @@ void AXI::eval(VRV32I &CPU)
     HandleWriteAW_W(CPU);
     HandleWriteB(CPU);
     HandleReadR(CPU);
+    ++Cycles;
 }

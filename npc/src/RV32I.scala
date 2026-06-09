@@ -17,6 +17,7 @@ class RV32I(AddressWidth: Int = 32) extends Module {
   val arbiter = Module(new AXI5LiteArbiter)
   val xbar = Module(new AXI5LiteXbar(RV32IIO.bit))
   val uart = Module(new AXI5LiteUARTSlave)
+  val clint = Module(new AXI5LiteCLINTSlave)
   StageConnect(ifu.io.out, idu.io.in)
   StageConnect(idu.io.out, exu.io.in)
   StageConnect(exu.io.out, wbu.io.in)
@@ -37,6 +38,11 @@ class RV32I(AddressWidth: Int = 32) extends Module {
   xbar.io.UART.B <> uart.io.B
   xbar.io.UART.AR <> uart.io.AR
   xbar.io.UART.R <> uart.io.R
+  xbar.io.CLINT.AW <> clint.io.AW
+  xbar.io.CLINT.W <> clint.io.W
+  xbar.io.CLINT.B <> clint.io.B
+  xbar.io.CLINT.AR <> clint.io.AR
+  xbar.io.CLINT.R <> clint.io.R
   io.MemoryBus.ACLK := clock.asBool
   io.MemoryBus.ARESETn := ~reset.asBool
   // 手动连线了

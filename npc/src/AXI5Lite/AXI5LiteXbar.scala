@@ -7,6 +7,7 @@ class AXI5LiteXbar(AddressWidth: Int = 32) extends Module {
     val in = Flipped(new AXI5LiteIO(AddressWidth))
     val SRAM = new AXI5LiteIO(AddressWidth)
     val UART = new AXI5LiteIO(AddressWidth)
+    val CLINT = new AXI5LiteIO(AddressWidth)
   })
   // 我真的是烦死了ARM的命名规则
   val OKAY = "b00".U(2.W)
@@ -16,21 +17,36 @@ class AXI5LiteXbar(AddressWidth: Int = 32) extends Module {
   val UARTEnd = "h10001000".U(32.W)
   val SRAMBase = "h80000000".U(32.W)
   val SRAMEnd = "h88000000".U(32.W)
+  val CLINTBase = "ha0000048".U(32.W)
+  val CLINTEnd = "ha0000050".U(32.W)
+  val CXXMMIOBase = "ha0000050".U(32.W)
+  val CXXMMIOEnd = "ha0000078".U(32.W)
   val TargetSRAM = 0.U(2.W)
   val TargetUART = 1.U(2.W)
-  val TargetDECERR = 2.U(2.W)
+  val TargetCLINT = 2.U(2.W)
+  val TargetDECERR = 3.U(2.W)
+  def IsCLINT(address: UInt): Bool = {
+    address >= CLINTBase && address < CLINTEnd
+  }
   def IsSRAM(address: UInt): Bool = {
     address >= SRAMBase && address < SRAMEnd
+  }
+  def IsCXXMMIO(address: UInt): Bool = {
+    address >= CXXMMIOBase && address < CXXMMIOEnd
   }
   def IsUART(address: UInt): Bool = {
     address >= UARTBase && address < UARTEnd
   }
   def decode(address: UInt): UInt = {
-    Mux(
-      IsSRAM(address),
-      TargetSRAM,
-      Mux(IsUART(address), TargetUART, TargetDECERR)
-    )
+    val target = WireDefault(TargetDECERR)
+    when(IsCLINT(address)) {
+      target := TargetCLINT
+    }.elsewhen(IsSRAM(address) || IsCXXMMIO(address)) {
+      target := TargetSRAM
+    }.elsewhen(IsUART(address)) {
+      target := TargetUART
+    }
+    target
   }
   val states = Enum(8)
   val StateIdle = states(0)
@@ -94,6 +110,17 @@ class AXI5LiteXbar(AddressWidth: Int = 32) extends Module {
   io.UART.AR.ARADDR := 0.U
   io.UART.AR.ARPROT := 0.U
   io.UART.R.RREADY := false.B
+  io.CLINT.AW.AWVALID := false.B
+  io.CLINT.AW.AWADDR := 0.U
+  io.CLINT.AW.AWPROT := 0.U
+  io.CLINT.W.WVALID := false.B
+  io.CLINT.W.WDATA := 0.U
+  io.CLINT.W.WSTRB := 0.U
+  io.CLINT.B.BREADY := false.B
+  io.CLINT.AR.ARVALID := false.B
+  io.CLINT.AR.ARADDR := 0.U
+  io.CLINT.AR.ARPROT := 0.U
+  io.CLINT.R.RREADY := false.B
   val InAWFire = io.in.AW.AWVALID && InAWReady
   val InWFire = io.in.W.WVALID && InWReady
   val InARFire = io.in.AR.ARVALID && InARReady
@@ -217,6 +244,32 @@ class AXI5LiteXbar(AddressWidth: Int = 32) extends Module {
       when((DownstreamAWDone || AWFire) && (DownstreamWDone || WFire)) {
         state := StateWriteResponse
       }
+    }.elsewhen(WriteTargetReg === TargetCLINT) {
+      val SendAW = !DownstreamAWDone
+      val SendW = !DownstreamWDone
+
+      io.CLINT.AW.AWVALID := SendAW
+      io.CLINT.AW.AWADDR := AWAddressReg
+      io.CLINT.AW.AWPROT := AWPROTReg
+
+      io.CLINT.W.WVALID := SendW
+      io.CLINT.W.WDATA := WDataReg
+      io.CLINT.W.WSTRB := WSTRBReg
+
+      val AWFire = SendAW && io.CLINT.AW.AWREADY
+      val WFire = SendW && io.CLINT.W.WREADY
+
+      when(AWFire) {
+        DownstreamAWDone := true.B
+      }
+      when(WFire) {
+        DownstreamWDone := true.B
+      }
+
+      // 下游AW/W都握手完成后，进入B响应阶段
+      when((DownstreamAWDone || AWFire) && (DownstreamWDone || WFire)) {
+        state := StateWriteResponse
+      }
     }.otherwise {
       state := StateWriteDECERR
     }
@@ -240,6 +293,18 @@ class AXI5LiteXbar(AddressWidth: Int = 32) extends Module {
       io.UART.B.BREADY := io.in.B.BREADY
 
       when(io.UART.B.BVALID && io.in.B.BREADY) {
+        AWValidReg := false.B
+        WValidReg := false.B
+        DownstreamAWDone := false.B
+        DownstreamWDone := false.B
+        state := StateIdle
+      }
+    }.elsewhen(WriteTargetReg === TargetCLINT) {
+      io.in.B.BVALID := io.CLINT.B.BVALID
+      io.in.B.BRESP := io.CLINT.B.BRESP
+      io.CLINT.B.BREADY := io.in.B.BREADY
+
+      when(io.CLINT.B.BVALID && io.in.B.BREADY) {
         AWValidReg := false.B
         WValidReg := false.B
         DownstreamAWDone := false.B
@@ -280,6 +345,14 @@ class AXI5LiteXbar(AddressWidth: Int = 32) extends Module {
       when(io.UART.AR.ARREADY) {
         state := StateReadResponse
       }
+    }.elsewhen(ReadTargetReg === TargetCLINT) {
+      io.CLINT.AR.ARVALID := true.B
+      io.CLINT.AR.ARADDR := ARAddressReg
+      io.CLINT.AR.ARPROT := ARPROTReg
+
+      when(io.CLINT.AR.ARREADY) {
+        state := StateReadResponse
+      }
     }.otherwise {
       state := StateReadDECERR
     }
@@ -301,6 +374,15 @@ class AXI5LiteXbar(AddressWidth: Int = 32) extends Module {
       io.UART.R.RREADY := io.in.R.RREADY
 
       when(io.UART.R.RVALID && io.in.R.RREADY) {
+        state := StateIdle
+      }
+    }.elsewhen(ReadTargetReg === TargetCLINT) {
+      io.in.R.RVALID := io.CLINT.R.RVALID
+      io.in.R.RDATA := io.CLINT.R.RDATA
+      io.in.R.RRESP := io.CLINT.R.RRESP
+      io.CLINT.R.RREADY := io.in.R.RREADY
+
+      when(io.CLINT.R.RVALID && io.in.R.RREADY) {
         state := StateIdle
       }
     }.otherwise {
