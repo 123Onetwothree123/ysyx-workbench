@@ -1,13 +1,11 @@
 #ifndef AXI_HPP
 #define AXI_HPP
 #include <cstdint>
-#include "../Memory/Memory.hpp"
 #include "../MMIO/MMIO.hpp"
 #include "VysyxSoCFull.h"
 class AXI
 {
 private:
-    Memory &memory;
     // AR到R
     std::uint32_t ReadAddress{0};
     bool ReadPending{false}; // 发了地址，等数据回来
@@ -29,9 +27,8 @@ private:
     bool DataWriteDataPending{false};
 
 public:
-    AXI() = delete;
+    AXI() = default;
     ~AXI() = default;
-    AXI(Memory &memory);
     void reset(VysyxSoCFull &CPU);
     void eval(VysyxSoCFull &CPU);
 };

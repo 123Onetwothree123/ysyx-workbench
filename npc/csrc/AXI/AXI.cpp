@@ -4,7 +4,7 @@ static constexpr std::uint32_t AlignWord(std::uint32_t address) noexcept
 {
     return address & ~0x3u;
 }
-AXI::AXI(Memory &memory) : memory(memory) {}
+// AXI在SoC模式下不再需要Memory，由Verilog仿真内存
 void AXI::reset(VysyxSoCFull &CPU)
 {
     CPU.io_MemoryBus_AR_ARREADY = 0;
@@ -52,8 +52,8 @@ void AXI::HandleReadR(VysyxSoCFull &CPU) noexcept
     }
     else
     {
-        auto result{memory.LoadWord(address)};
-        CPU.io_MemoryBus_R_RDATA = result.value_or(0);
+        // SoC模式下内存由Verilog仿真，非MMIO地址不应到达这里
+        CPU.io_MemoryBus_R_RDATA = 0;
     }
     CPU.io_MemoryBus_R_RRESP = 0;
     if (CPU.io_MemoryBus_R_RREADY)
@@ -94,30 +94,7 @@ void AXI::HandleWriteAW_W(VysyxSoCFull &CPU) noexcept
         auto IsMMIOWrite{mmio.StoreWord(base_address, value, mask)};
         if (!IsMMIOWrite)
         {
-            bool WriteByte0{(mask & 0b0001) != 0};
-            bool WriteByte1{(mask & 0b0010) != 0};
-            bool WriteByte2{(mask & 0b0100) != 0};
-            bool WriteByte3{(mask & 0b1000) != 0};
-            auto Byte0{static_cast<std::uint8_t>(value >> 0)};
-            auto Byte1{static_cast<std::uint8_t>(value >> 8)};
-            auto Byte2{static_cast<std::uint8_t>(value >> 16)};
-            auto Byte3{static_cast<std::uint8_t>(value >> 24)};
-            if (WriteByte0)
-            {
-                (void)memory.StoreByte(base_address, Byte0);
-            }
-            if (WriteByte1)
-            {
-                (void)memory.StoreByte(base_address + 1, Byte1);
-            }
-            if (WriteByte2)
-            {
-                (void)memory.StoreByte(base_address + 2, Byte2);
-            }
-            if (WriteByte3)
-            {
-                (void)memory.StoreByte(base_address + 3, Byte3);
-            }
+            // SoC模式下内存由Verilog仿真，不需要C++端写内存了
         }
         DataWriteAddressPending = false;
         DataWriteDataPending = false;
