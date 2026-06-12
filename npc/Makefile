@@ -60,7 +60,7 @@ sim:
 CXX?=g++
 GXX_VERSION = $(shell $(CXX) -dumpfullversion 2>/dev/null)
 STD_MODULE_SRC = /usr/include/c++/$(GXX_VERSION)/bits/std.cc
-CXX_STD = -std=c++23 -fmodules
+CXX_STD = -std=c++23
 COMMON_INCFLAGS = $(addprefix -I, $(CSRC_DIR) $(OBJ_DIR))
 COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) -O3
 #verilator的部分
