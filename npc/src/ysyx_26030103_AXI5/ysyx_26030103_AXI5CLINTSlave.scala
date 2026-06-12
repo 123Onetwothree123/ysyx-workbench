@@ -1,6 +1,7 @@
 package ysyx_26030103.ysyx_26030103_AXI5
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.ysyx_26030103_CSR._
 class ysyx_26030103_AXI5CLINTSlave extends Module {
   val io = IO(new ysyx_26030103_AXI5Slave(32))
   io.ACLK := clock.asBool
