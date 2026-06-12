@@ -14,6 +14,10 @@ namespace device
         inline constexpr std::uint32_t RTC_MINUTE_ADDR{RTC_ADDR + 0x20};
         inline constexpr std::uint32_t RTC_SECOND_ADDR{RTC_ADDR + 0x24};
     }
+    namespace SIM
+    {
+        inline constexpr std::uint32_t FREQ_ADDR{DEVICE_BASE + 0x0000070};
+    }
     namespace SerialPort
     {
         inline constexpr std::uint32_t SerialPort{0x10000000};

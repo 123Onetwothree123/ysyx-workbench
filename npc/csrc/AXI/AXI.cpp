@@ -5,7 +5,7 @@ static constexpr std::uint32_t AlignWord(std::uint32_t address) noexcept
     return address & ~0x3u;
 }
 AXI::AXI(Memory &memory) : memory(memory) {}
-void AXI::reset(VRV32I &CPU)
+void AXI::reset(VysyxSoCFull &CPU)
 {
     CPU.io_MemoryBus_AR_ARREADY = 0;
     CPU.io_MemoryBus_R_RVALID = 0;
@@ -23,8 +23,10 @@ void AXI::reset(VRV32I &CPU)
     DataWriteAddressPending = false;
     DataWriteDataPending = false;
     DataWriteResponsePending = false;
+    Cycles = 0;
+    mmio.Reset();
 }
-void AXI::HandleReadAR(VRV32I &CPU) noexcept
+void AXI::HandleReadAR(VysyxSoCFull &CPU) noexcept
 {
     CPU.io_MemoryBus_AR_ARREADY = !ReadPending;
     if (CPU.io_MemoryBus_AR_ARVALID && CPU.io_MemoryBus_AR_ARREADY)
@@ -33,7 +35,7 @@ void AXI::HandleReadAR(VRV32I &CPU) noexcept
         ReadPending = true;
     }
 }
-void AXI::HandleReadR(VRV32I &CPU) noexcept
+void AXI::HandleReadR(VysyxSoCFull &CPU) noexcept
 {
     CPU.io_MemoryBus_R_RVALID = false;
     CPU.io_MemoryBus_R_RDATA = 0;
@@ -44,7 +46,7 @@ void AXI::HandleReadR(VRV32I &CPU) noexcept
     }
     CPU.io_MemoryBus_R_RVALID = true;
     auto address{AlignWord(ReadAddress)};
-    if (auto data = mmio.LoadWord(address))
+    if (auto data = mmio.LoadWord(address, Cycles))
     {
         CPU.io_MemoryBus_R_RDATA = *data;
     }
@@ -59,7 +61,7 @@ void AXI::HandleReadR(VRV32I &CPU) noexcept
         ReadPending = false;
     }
 }
-void AXI::HandleWriteAW_W(VRV32I &CPU) noexcept
+void AXI::HandleWriteAW_W(VysyxSoCFull &CPU) noexcept
 {
     CPU.io_MemoryBus_AW_AWREADY = !DataWriteAddressPending && !DataWriteResponsePending;
     CPU.io_MemoryBus_W_WREADY = !DataWriteDataPending && !DataWriteResponsePending;
@@ -122,7 +124,7 @@ void AXI::HandleWriteAW_W(VRV32I &CPU) noexcept
         DataWriteResponsePending = true;
     }
 }
-void AXI::HandleWriteB(VRV32I &CPU) noexcept
+void AXI::HandleWriteB(VysyxSoCFull &CPU) noexcept
 {
     CPU.io_MemoryBus_B_BVALID = false;
     CPU.io_MemoryBus_B_BRESP = 0;
@@ -137,10 +139,11 @@ void AXI::HandleWriteB(VRV32I &CPU) noexcept
         DataWriteResponsePending = false;
     }
 }
-void AXI::eval(VRV32I &CPU)
+void AXI::eval(VysyxSoCFull &CPU)
 {
     HandleReadAR(CPU);
     HandleWriteAW_W(CPU);
     HandleWriteB(CPU);
     HandleReadR(CPU);
+    ++Cycles;
 }

@@ -4,7 +4,7 @@
 #include <iostream>
 #include <verilated.h>
 #include "Memory/Memory.hpp"
-#include "VRV32I.h"
+#include "VysyxSoCFull.h"
 #include "AXI/AXI.hpp"
 #include "DUT.hpp"
 #include "CLIOptions.hpp"

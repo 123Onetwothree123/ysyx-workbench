@@ -1,10 +1,10 @@
 #include "DUT.hpp"
-DUT::DUT() : dut{std::make_unique<VRV32I>()} {}
-VRV32I &DUT::operator*()
+DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()} {}
+VysyxSoCFull &DUT::operator*()
 {
     return *dut;
 }
-VRV32I *DUT::operator->()
+VysyxSoCFull *DUT::operator->()
 {
     return dut.get();
 }

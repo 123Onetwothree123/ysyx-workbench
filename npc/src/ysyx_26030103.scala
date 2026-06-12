@@ -1,0 +1,103 @@
+package ysyx_26030103
+import chisel3._
+import chisel3.util._
+//他妈的，我们伟大的scala插件和编译器设计专家应该要以死谢罪，是哪个天才想到的，如果直接写ysyx_26030103，因为我这个顶层模块类和包同名了
+//能被解读成ysyx_26030103的ysyx_26030103的AXI模块，还得手动指定从最顶层的根目录去找
+import _root_.ysyx_26030103.ysyx_26030103_AXI5._
+import _root_.ysyx_26030103.ysyx_26030103_GPR._
+
+class ysyx_26030103(AddressWidth: Int = 32) extends Module {
+  val io = IO(new ysyx_26030103_IO)
+  val ifu = Module(new ysyx_26030103_IFU)
+  val idu = Module(new ysyx_26030103_IDU)
+  val exu = Module(new ysyx_26030103_EXU)
+  val wbu = Module(new ysyx_26030103_WBU)
+  val lsu = Module(new ysyx_26030103_LSU)
+  val gpr = Module(new ysyx_26030103_GPR)
+  val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
+  val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
+  val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
+  ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
+  ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
+  ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
+  arbiter.io.ifu <> ifu.io.InstructionBus
+  arbiter.io.lsu <> lsu.io.DataBus
+  arbiter.io.memory.AW <> xbar.io.in.AW
+  arbiter.io.memory.W <> xbar.io.in.W
+  arbiter.io.memory.B <> xbar.io.in.B
+  arbiter.io.memory.AR <> xbar.io.in.AR
+  arbiter.io.memory.R <> xbar.io.in.R
+  val soc = xbar.io.SoCBus
+  io.master_awvalid := soc.AW.AWVALID
+  io.master_awaddr := soc.AW.AWADDR
+  io.master_awid := soc.AW.AWID
+  io.master_awlen := soc.AW.AWLEN
+  io.master_awsize := soc.AW.AWSIZE
+  io.master_awburst := soc.AW.AWBURST
+  soc.AW.AWREADY := io.master_awready
+
+  io.master_wvalid := soc.W.WVALID
+  io.master_wdata := soc.W.WDATA
+  io.master_wstrb := soc.W.WSTRB
+  io.master_wlast := soc.W.WLAST
+  soc.W.WREADY := io.master_wready
+
+  io.master_bready := soc.B.BREADY
+  soc.B.BID := io.master_bid
+  soc.B.BVALID := io.master_bvalid
+  soc.B.BRESP := io.master_bresp
+
+  io.master_arvalid := soc.AR.ARVALID
+  io.master_araddr := soc.AR.ARADDR
+  io.master_arid := soc.AR.ARID
+  io.master_arlen := soc.AR.ARLEN
+  io.master_arsize := soc.AR.ARSIZE
+  io.master_arburst := soc.AR.ARBURST
+  soc.AR.ARREADY := io.master_arready
+
+  io.master_rready := soc.R.RREADY
+  soc.R.RID := io.master_rid
+  soc.R.RVALID := io.master_rvalid
+  soc.R.RRESP := io.master_rresp
+  soc.R.RDATA := io.master_rdata
+  soc.R.RLAST := io.master_rlast
+
+  io.slave_awready := 0.U
+  io.slave_wready := 0.U
+  io.slave_bvalid := 0.U
+  io.slave_bresp := 0.U
+  io.slave_bid := 0.U
+  io.slave_arready := 0.U
+  io.slave_rvalid := 0.U
+  io.slave_rresp := 0.U
+  io.slave_rdata := 0.U
+  io.slave_rlast := 0.U
+  io.slave_rid := 0.U
+  xbar.io.CLINT.AW <> clint.io.AW
+  xbar.io.CLINT.W <> clint.io.W
+  xbar.io.CLINT.B <> clint.io.B
+  xbar.io.CLINT.AR <> clint.io.AR
+  xbar.io.CLINT.R <> clint.io.R
+  // 手动连线了
+  idu.io.ReadDATA1 := gpr.io.ReadDATA1
+  idu.io.ReadDATA2 := gpr.io.ReadDATA2
+  gpr.io.Read1SELECT := idu.io.Read1SELECT
+  gpr.io.Read2SELECT := idu.io.Read2SELECT
+  exu.io.LSU_Complete := lsu.io.Complete
+  exu.io.LSULoadDATA := lsu.io.LoadDATA
+  lsu.io.MemoryValid := exu.io.MemoryValid
+  lsu.io.MemoryWrite := exu.io.MemoryWrite
+  lsu.io.WidthSelect := exu.io.WidthSelect
+  lsu.io.ALUResult := exu.io.ALUResult_ToLSU
+  lsu.io.StoreDATA := exu.io.StoreDATA
+  lsu.io.LoadSigned := exu.io.LoadSigned
+  ifu.io.Redirect := exu.io.Redirect
+  ifu.io.RedirectTarget := exu.io.RedirectTarget
+  ifu.io.ExceptionTaken := exu.io.ExceptionTaken
+  ifu.io.ExceptionTarget := exu.io.ExceptionTarget
+  gpr.io.WriteSELECT := wbu.io.WriteSELECT
+  gpr.io.WriteEN := wbu.io.WriteEN
+  gpr.io.wdata := wbu.io.wdata
+  // 临时新加的处理中断的
+  exu.io.Interrupt := io.interrupt
+}

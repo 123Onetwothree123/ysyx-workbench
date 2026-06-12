@@ -3,7 +3,7 @@
 #include <cstdint>
 #include "../Memory/Memory.hpp"
 #include "../MMIO/MMIO.hpp"
-#include "VRV32I.h"
+#include "VysyxSoCFull.h"
 class AXI
 {
 private:
@@ -11,14 +11,15 @@ private:
     // AR到R
     std::uint32_t ReadAddress{0};
     bool ReadPending{false}; // 发了地址，等数据回来
-    void HandleReadAR(VRV32I &cpu) noexcept;
-    void HandleReadR(VRV32I &cpu) noexcept;
+    void HandleReadAR(VysyxSoCFull &cpu) noexcept;
+    void HandleReadR(VysyxSoCFull &cpu) noexcept;
     // AW+W到B
     bool DataWriteResponsePending{false}; // 发了地址和数据，等B回复
-    void HandleWriteAW_W(VRV32I &cpu) noexcept;
-    void HandleWriteB(VRV32I &cpu) noexcept;
+    void HandleWriteAW_W(VysyxSoCFull &cpu) noexcept;
+    void HandleWriteB(VysyxSoCFull &cpu) noexcept;
     // 新加的，为了接时间器
     MMIO mmio;
+    std::uint64_t Cycles{0};
     // 新加的，为了模拟真的AXI，因为刚刚改了LSU，所以现在也加一套接受写入的东西
     std::uint32_t DataWriteAddress{0};
     std::uint32_t DataWriteData{0};
@@ -31,7 +32,7 @@ public:
     AXI() = delete;
     ~AXI() = default;
     AXI(Memory &memory);
-    void reset(VRV32I &CPU);
-    void eval(VRV32I &CPU);
+    void reset(VysyxSoCFull &CPU);
+    void eval(VysyxSoCFull &CPU);
 };
 #endif

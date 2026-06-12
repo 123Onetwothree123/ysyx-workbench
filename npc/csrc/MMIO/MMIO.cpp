@@ -4,7 +4,11 @@
 #include <iostream>
 #include <print>
 MMIO::MMIO() : BootTime(std::chrono::steady_clock::now()) {}
-std::optional<std::uint32_t> MMIO::LoadWord(std::uint32_t address) const noexcept
+void MMIO::Reset() noexcept
+{
+    BootTime = std::chrono::steady_clock::now();
+}
+std::optional<std::uint32_t> MMIO::LoadWord(std::uint32_t address, std::uint64_t cycles) const noexcept
 {
     address &= ~0x3u; // 4字节对齐
     if (address == device::RTC::RTC_ADDR || address == device::RTC::RTC_ADDR + 4)
@@ -16,6 +20,25 @@ std::optional<std::uint32_t> MMIO::LoadWord(std::uint32_t address) const noexcep
             return static_cast<std::uint32_t>(TimeInterval_us);
         }
         return static_cast<std::uint32_t>(TimeInterval_us >> 32);
+    }
+    if (address == device::SIM::FREQ_ADDR || address == device::SIM::FREQ_ADDR + 4)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const auto elapsed_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now - BootTime).count());
+        std::uint64_t SimFreq = 1;
+        if (elapsed_us != 0 && cycles != 0)
+        {
+            SimFreq = cycles * 1000000ULL / elapsed_us;
+            if (SimFreq == 0)
+            {
+                SimFreq = 1;
+            }
+        }
+        if (address == device::SIM::FREQ_ADDR)
+        {
+            return static_cast<std::uint32_t>(SimFreq);
+        }
+        return static_cast<std::uint32_t>(SimFreq >> 32);
     }
     if (address == device::RTC::RTC_YEAR_ADDR || address == device::RTC::RTC_MONTH_ADDR || address == device::RTC::RTC_DAY_ADDR || address == device::RTC::RTC_HOUR_ADDR || address == device::RTC::RTC_MINUTE_ADDR || address == device::RTC::RTC_SECOND_ADDR)
     {
