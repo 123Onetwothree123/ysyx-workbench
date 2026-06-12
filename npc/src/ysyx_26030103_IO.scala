@@ -1,0 +1,74 @@
+package ysyx_26030103
+import chisel3._
+
+class ysyx_26030103_IO extends Bundle {
+  val interrupt = Input(Bool())
+//写地址的
+  val master_awready = Input(Bool())
+  val master_awvalid = Output(Bool())
+  val master_awaddr = Output(UInt(32.W))
+  val master_awid = Output(UInt(4.W))
+  val master_awlen = Output(UInt(8.W))
+  val master_awsize = Output(UInt(3.W))
+  val master_awburst = Output(UInt(2.W))
+//W写的
+  val master_wready = Input(Bool())
+  val master_wvalid = Output(Bool())
+  val master_wdata = Output(UInt(32.W))
+  val master_wstrb = Output(UInt(4.W))
+  val master_wlast = Output(Bool())
+//B写回的
+  val master_bready = Output(Bool())
+  val master_bvalid = Input(Bool())
+  val master_bresp = Input(UInt(2.W))
+  val master_bid = Input(UInt(4.W))
+//AR的
+  val master_arready = Input(Bool())
+  val master_arvalid = Output(Bool())
+  val master_araddr = Output(UInt(32.W))
+  val master_arid = Output(UInt(4.W))
+  val master_arlen = Output(UInt(8.W))
+  val master_arsize = Output(UInt(3.W))
+  val master_arburst = Output(UInt(2.W))
+//R
+  val master_rready = Output(Bool())
+  val master_rvalid = Input(Bool())
+  val master_rresp = Input(UInt(2.W))
+  val master_rdata = Input(UInt(32.W))
+  val master_rlast = Input(Bool())
+  val master_rid = Input(UInt(4.W))
+//写地址的
+  val slave_awready = Output(Bool())
+  val slave_awvalid = Input(Bool())
+  val slave_awaddr = Input(UInt(32.W))
+  val slave_awid = Input(UInt(4.W))
+  val slave_awlen = Input(UInt(8.W))
+  val slave_awsize = Input(UInt(3.W))
+  val slave_awburst = Input(UInt(2.W))
+//写
+  val slave_wready = Output(Bool())
+  val slave_wvalid = Input(Bool())
+  val slave_wdata = Input(UInt(32.W))
+  val slave_wstrb = Input(UInt(4.W))
+  val slave_wlast = Input(Bool())
+//对面的
+  val slave_bready = Input(Bool())
+  val slave_bvalid = Output(Bool())
+  val slave_bresp = Output(UInt(2.W))
+  val slave_bid = Output(UInt(4.W))
+
+  val slave_arready = Output(Bool())
+  val slave_arvalid = Input(Bool())
+  val slave_araddr = Input(UInt(32.W))
+  val slave_arid = Input(UInt(4.W))
+  val slave_arlen = Input(UInt(8.W))
+  val slave_arsize = Input(UInt(3.W))
+  val slave_arburst = Input(UInt(2.W))
+
+  val slave_rready = Input(Bool())
+  val slave_rvalid = Output(Bool())
+  val slave_rresp = Output(UInt(2.W))
+  val slave_rdata = Output(UInt(32.W))
+  val slave_rlast = Output(Bool())
+  val slave_rid = Output(UInt(4.W))
+}

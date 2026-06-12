@@ -1,10 +1,9 @@
 #include "ImageLoader.hpp"
 #include "CLIOptions.hpp"
-#include "Memory/Memory.hpp"
 #include <print>
 #include <filesystem>
 #include <fstream>
-std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOptions &Options, Memory &memory)
+std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOptions &Options)
 {
     const auto &ImageFile{Options.GetImageFile()};
     if (ImageFile)
@@ -24,17 +23,6 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOption
         if (!ifs)
         {
             return std::unexpected(std::format("文件打不开{0}", path.string()));
-        }
-        std::vector<char> buffer(FileSize); // 读取缓冲区
-        ifs.read(buffer.data(), static_cast<std::streamsize>(FileSize));
-        if (!ifs)
-        {
-            return std::unexpected(std::format("读文件失败{0}", path.string()));
-        }
-        // 灌进Memory
-        for (std::size_t i = 0; i < FileSize; ++i)
-        {
-            memory.StoreByte(0x80000000 + i, static_cast<std::uint8_t>(buffer[i]));
         }
         std::println("文件加载了: {0}, size = {1} bytes", path.string(), FileSize);
         return FileSize;
