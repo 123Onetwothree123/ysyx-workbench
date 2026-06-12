@@ -1,7 +1,6 @@
 #include <memory>
 #include <cstdint>
 #include "VysyxSoCFull.h"
-#include "AXI/AXI.hpp"
 
 class DUT
 {
@@ -18,7 +17,6 @@ public:
     void eval();
     void final();
     void step();
-    void step(AXI &axi);
     void reset();
     std::size_t GetCycle() const;
 };
