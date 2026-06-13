@@ -19,7 +19,8 @@ VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" 2>/dev/null | s
 VINCDIRS=$(BUILD_DIR) \
          $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort) \
          $(YSYXSOC_PERIP_INCDIRS)
-CSRCS=$(shell find ./csrc -name "*.cpp" 2>/dev/null)
+CSRC_DIR=./csrc
+CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
 NPROC ?= $(shell nproc 2>/dev/null || echo 4)
 SIMULATION_THREADS?=$(NPROC)
