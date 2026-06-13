@@ -78,6 +78,6 @@ $(BIN): verilog $(CSRCS)
 		--Mdir $(OBJ_DIR) \
 		--exe -o $(abspath $(BIN))
 run: $(BIN)
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
+	@stdbuf -o0 $(BIN) $(file) $(if $(elf),--elf $(elf),)
 
 -include ../Makefile
