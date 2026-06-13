@@ -80,5 +80,6 @@ $(BIN): verilog $(CSRCS)
 		--autoflush
 run: $(BIN)
 	#@stdbuf -o0 $(BIN) $(file) $(if $(elf),--elf $(elf),)
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
 
 -include ../Makefile
