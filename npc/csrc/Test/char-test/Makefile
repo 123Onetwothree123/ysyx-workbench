@@ -1,13 +1,14 @@
 ifeq ($(ARCH),)
 $(error 没写ARCH跑个毛线啊，虽然目前也就只支持rv32i的NPC，没适配NEMU，所以是ARCH只能写riscv32-npc)
 endif
-
+CXXSRCS := $(wildcard *.cpp)
 run:
 	mkdir -p build
-	riscv32-unknown-elf-gcc -march=rv32i -mabi=ilp32 \
+	riscv32-unknown-elf-g++ -march=rv32i -mabi=ilp32 \
 		-O2 -ffreestanding -nostdlib -nostartfiles \
+		-fno-exceptions -fno-rtti \
 		-Wl,-Ttext=0x20000000 -Wl,-e,_start \
-		-o build/char-test-$(ARCH).elf char-test.c
+		-o build/char-test-$(ARCH).elf $(CXXSRCS)
 	riscv32-unknown-elf-objcopy -j .text -O binary \
 		build/char-test-$(ARCH).elf build/char-test-$(ARCH).bin
 	make -C ../../.. run \
