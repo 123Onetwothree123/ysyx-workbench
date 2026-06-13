@@ -3,6 +3,8 @@ import chisel3._
 
 class ysyx_26030103_IO extends Bundle {
   val interrupt = Input(Bool())
+  val trap_valid = Output(Bool())
+  val trap_pc = Output(UInt(32.W))
 //写地址的
   val master_awready = Input(Bool())
   val master_awvalid = Output(Bool())
