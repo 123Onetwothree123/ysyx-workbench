@@ -1,5 +1,6 @@
 #include <iostream>
 #include <verilated.h>
+#include <print>
 #include "DUT.hpp"
 #include "CLIOptions.hpp"
 #include "ImageLoader.hpp"
@@ -26,6 +27,7 @@ int main(int argc, char const *argv[])
         dut.step();
         if (dut->trap_valid)
         {
+            std::println("trap了");
             NPCTrap::Halt(dut->trap_pc, 0);
         }
     }
