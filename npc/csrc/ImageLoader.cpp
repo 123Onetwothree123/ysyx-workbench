@@ -27,5 +27,7 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOption
         std::println("文件加载了: {0}, size = {1} bytes", path.string(), FileSize);
         return FileSize;
     }
-    return std::unexpected("没有指定镜像文件");
+    //先注释，等下放开，现在是OSOC文档写的是MROM只发ebreak，所以现在也先不传镜像文件
+    //return std::unexpected("没有指定镜像文件");
+    return 0;
 }

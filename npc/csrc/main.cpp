@@ -24,7 +24,10 @@ int main(int argc, char const *argv[])
     while (!NPCTrap::HasHalted())
     {
         dut.step();
-        // TODO: SoC模式下Trap检测方式待定
+        if (dut->trap_valid)
+        {
+            NPCTrap::Halt(dut->trap_pc, 0);
+        }
     }
     dut.final();
     return NPCTrap::PrintResult(dut.GetCycle());
