@@ -1,8 +1,10 @@
 #include "ImageLoader.hpp"
 #include "CLIOptions.hpp"
+#include "ysyxSoC/ysyxSoC.hpp"
 #include <print>
 #include <filesystem>
 #include <fstream>
+#include <format>
 std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOptions &Options)
 {
     const auto &ImageFile{Options.GetImageFile()};
@@ -24,10 +26,14 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOption
         {
             return std::unexpected(std::format("文件打不开{0}", path.string()));
         }
+        mrom.resize(FileSize);
+        ifs.read(reinterpret_cast<char *>(mrom.data()), FileSize);
+        if (!ifs)
+        {
+            return std::unexpected(std::format("读取文件失败{0}", path.string()));
+        }
         std::println("文件加载了: {0}, size = {1} bytes", path.string(), FileSize);
         return FileSize;
     }
-    //先注释，等下放开，现在是OSOC文档写的是MROM只发ebreak，所以现在也先不传镜像文件
-    //return std::unexpected("没有指定镜像文件");
-    return 0;
+    return std::unexpected("没有指定镜像文件");
 }
