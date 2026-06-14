@@ -23,7 +23,7 @@ CSRC_DIR=./csrc
 CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
 NPROC ?= $(shell nproc 2>/dev/null || echo 4)
-SIMULATION_THREADS?=$(NPROC)
+#SIMULATION_THREADS?=$(NPROC)
 
 test:
 	mill -i test
@@ -68,7 +68,7 @@ COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) -O3
 $(BIN): verilog $(CSRCS)
 	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) \
 		-O3 --x-assign fast --x-initial fast --noassert \
-		--threads $(SIMULATION_THREADS) \
+		#--threads $(SIMULATION_THREADS) \
 		--timescale "1ns/1ns" --no-timing \
 		$(addprefix -I,$(VINCDIRS)) \
 		--top-module $(SOC_TOPNAME) \
