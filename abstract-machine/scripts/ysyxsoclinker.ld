@@ -1,0 +1,36 @@
+/*此文件的SECTIONS部分开始都是AI写的，本人编写部分大量参考linker.ld*/
+ENTRY(_start)
+MEMORY {
+    /*我也不知道为什么OSOC的SOC是要分出两套来，而且容量都那么小*/
+  mrom (rx)  : ORIGIN = 0x20000000, LENGTH = 0x1000
+  sram (rw)  : ORIGIN = 0x0f000000, LENGTH = 0x2000
+}
+SECTIONS {
+    /*从MROM起始地址开始链接，保证第一条指令位于0x20000000*/
+    . = ORIGIN(mrom);
+    .text : {/*纯粹的链接器脑子有坑，他妈的居然还得给空格，不然区分不了，这哪个天才写的语法解析器，在没有格式化程序的情况下，还要我手写空格*/
+    *(entry)
+    *(.text*)
+    *(.rodata*)
+    *(.srodata*)
+    } > mrom/*同上脑子有坑*/
+    /*记录代码和只读数据结束的位置*/
+    etext = .;
+    _etext = .;
+    .bss (NOLOAD) : {/*NOLOAD 表示不把它写进.bin镜像*/
+    _bss_start = .;
+    *(.bss*)
+    *(.sbss*)
+    *(.scommon)
+    _bss_end = .;
+  } > sram/*他妈的几百年没更新过吗？C和C++都能做好，为什么这个做不好空格问题，一定要写空格吗？没有格式化文档，我还得自己手改*/
+    /*堆从.bss之后开始，并对齐到4KB*/
+  _heap_start = ALIGN(0x1000);
+  /*SRAM最后4KiB留给栈，堆不能超过_heap_end*/
+  _heap_end = ORIGIN(sram) + LENGTH(sram) - 0x1000;
+   _stack_top = _heap_end;
+   /*初始栈指针放在SRAM顶部，栈向低地址增长*/
+  _stack_pointer = ORIGIN(sram) + LENGTH(sram);
+  end = .;
+  _end = .;
+}
