@@ -76,8 +76,9 @@ $(BIN): verilog $(CSRCS)
 		$(addprefix -CFLAGS , $(COMMON_CFLAGS)) \
 		-LDFLAGS -lcapstone \
 		--Mdir $(OBJ_DIR) \
-		--exe -o $(abspath $(BIN))
+		--exe -o $(abspath $(BIN)) \
+		--autoflush
 run: $(BIN)
-	@stdbuf -o0 $(BIN) $(file) $(if $(elf),--elf $(elf),)
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
 
 -include ../Makefile
