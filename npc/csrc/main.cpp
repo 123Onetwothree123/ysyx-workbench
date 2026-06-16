@@ -23,8 +23,12 @@ int main(int argc, char const *argv[])
     auto load = ImageLoader::LoadFromCLI(*options);
     if (!load)
     {
+#ifdef CONFIG_SDB
+        std::println("未加载镜像文件，进入空 SDB");
+#else
         std::println(std::cerr, "{}", load.error());
         return 1;
+#endif
     }
     dut.reset();
 #ifdef CONFIG_SDB
