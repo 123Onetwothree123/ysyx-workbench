@@ -1,3 +1,5 @@
+#ifndef DUT_HPP
+#define DUT_HPP
 #include <memory>
 #include <cstdint>
 #include <expected>
@@ -24,4 +26,6 @@ public:
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();
+    [[nodiscard]] std::expected<std::uint32_t, std::string> ReadMemory(std::uint32_t addr, std::size_t size);
 };
+#endif

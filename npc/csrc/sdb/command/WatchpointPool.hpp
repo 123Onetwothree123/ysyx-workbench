@@ -22,7 +22,7 @@ public:
     const std::vector<Watchpoint> &GetAllWatchpoints() const noexcept;
     std::size_t GetMaxWatchpoints() const noexcept;
     bool CheckAll(const EvaluationContext &context); // 遍历所有活跃监视点，重新求值表达式，对比旧数值，如果触发了就更新然后返回真
-    void PrintAllWatchpoints() const;                // 目前打算和NEMU一样输出表格的，但是还不知道怎么设计，打算给AI设计了
+    void PrintAllWatchpoints(const EvaluationContext &context) const;
 };
 inline WatchpointPool &GetGlobalWatchpointPool()
 {

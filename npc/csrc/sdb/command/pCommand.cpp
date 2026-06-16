@@ -34,7 +34,6 @@ SDBCommandResult pCommand::execute(SDBCommandContext &context, std::string_view 
     }
     expressions expression;
     NPCEvaluationContext EvaluationContext{context.GetDUT()};
-    const auto result = expression.evaluate(args, EvaluationContext);
     auto result{expression.evaluate(args, EvaluationContext)};
     if (result)
     {
