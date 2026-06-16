@@ -6,7 +6,9 @@
 #include "ImageLoader.hpp"
 #include "NPCTrap.hpp"
 #include "ysyxSoC/ysyxSoC.hpp"
+#ifdef CONFIG_SDB
 #include "sdb/sdb.hpp"
+#endif
 int main(int argc, char const *argv[])
 {
     // 才发现删过头了，忘记写这行代码了
@@ -25,7 +27,19 @@ int main(int argc, char const *argv[])
         return 1;
     }
     dut.reset();
+#ifdef CONFIG_SDB
     SDB::MainLoop(dut);
+#else
+    while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
+    {
+        dut.step();
+        if (dut->trap_valid)
+        {
+            std::println("trap了");
+            NPCTrap::Halt(dut->trap_pc, 0);
+        }
+    }
+#endif
     dut.final();
     return NPCTrap::PrintResult(dut.GetCycle());
 }
