@@ -6,6 +6,9 @@
 #include "ImageLoader.hpp"
 #include "NPCTrap.hpp"
 #include "ysyxSoC/ysyxSoC.hpp"
+#ifdef CONFIG_SDB
+#include "sdb/sdb.hpp"
+#endif
 int main(int argc, char const *argv[])
 {
     // 才发现删过头了，忘记写这行代码了
@@ -20,11 +23,18 @@ int main(int argc, char const *argv[])
     auto load = ImageLoader::LoadFromCLI(*options);
     if (!load)
     {
+#ifdef CONFIG_SDB
+        std::println("未加载镜像文件，进入空 SDB");
+#else
         std::println(std::cerr, "{}", load.error());
         return 1;
+#endif
     }
     dut.reset();
-    while (!NPCTrap::HasHalted())
+#ifdef CONFIG_SDB
+    SDB::MainLoop(dut);
+#else
+    while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
         if (dut->trap_valid)
@@ -33,6 +43,7 @@ int main(int argc, char const *argv[])
             NPCTrap::Halt(dut->trap_pc, 0);
         }
     }
+#endif
     dut.final();
     return NPCTrap::PrintResult(dut.GetCycle());
 }

@@ -61,8 +61,12 @@ CXX?=g++
 GXX_VERSION = $(shell $(CXX) -dumpfullversion 2>/dev/null)
 STD_MODULE_SRC = /usr/include/c++/$(GXX_VERSION)/bits/std.cc
 CXX_STD = -std=c++23
-COMMON_INCFLAGS = $(addprefix -I, $(CSRC_DIR) $(OBJ_DIR))
-COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) -O3
+CONFIG_SDB ?= n
+ifeq ($(CONFIG_SDB),y)
+SDB_CFLAGS = -DCONFIG_SDB
+endif
+COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(OBJ_DIR)))
+COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) -O3
 #verilator的部分
 $(BIN): verilog $(CSRCS)
 	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) \
@@ -72,7 +76,7 @@ $(BIN): verilog $(CSRCS)
 		--top-module $(SOC_TOPNAME) \
 		$(VSRCS) $(CSRCS) \
 		$(addprefix -CFLAGS , $(COMMON_CFLAGS)) \
-		-LDFLAGS -lcapstone \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline \
 		--Mdir $(OBJ_DIR) \
 		--exe -o $(abspath $(BIN)) \
 		--autoflush

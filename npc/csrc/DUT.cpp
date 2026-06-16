@@ -1,5 +1,11 @@
 #include "DUT.hpp"
-DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()} {}
+#include <cstdint>
+#include <format>
+#include <vector>
+DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
+{
+    dut->debug_gpr_raddr = 0;
+}
 VysyxSoCFull &DUT::operator*()
 {
     return *dut;
@@ -20,6 +26,7 @@ void DUT::reset()
 {
     dut->clock = 0;
     dut->reset = 1;
+    dut->debug_gpr_raddr = 0;
     // 同步复位必须有时钟边沿才能生效，先拉高 reset 跑几个周期
     for (int i = 0; i < 5; ++i)
     {
@@ -42,4 +49,44 @@ void DUT::step()
 std::size_t DUT::GetCycle() const
 {
     return cycle;
+}
+std::expected<std::uint32_t, std::string> DUT::ReadGPR(std::uint32_t index)
+{
+    if (index >= 32)
+    {
+        return std::unexpected{std::format("GPR编号都超31号了，跑个毛线啊", index)};
+    }
+    dut->debug_gpr_raddr = static_cast<CData>(index);
+    dut->eval();
+    return static_cast<std::uint32_t>(dut->debug_gpr_rdata);
+}
+std::expected<std::uint32_t, std::string> DUT::ReadPC()
+{
+    dut->eval();
+    return static_cast<std::uint32_t>(dut->debug_pc);
+}
+std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, std::size_t size)
+{
+    if (size != 1 && size != 2 && size != 4)
+    {
+        return std::unexpected{std::format("不支持的内存读取长度：{}", size)};
+    }
+    extern std::vector<std::uint8_t> mrom;
+    constexpr std::uint32_t MROM_BASE{0x20000000};
+    constexpr std::uint32_t MROM_SIZE{0x1000};
+    if (addr >= MROM_BASE && addr + size <= MROM_BASE + MROM_SIZE)
+    {
+        auto offset{addr - MROM_BASE};
+        if (offset + size > mrom.size())
+        {
+            return std::unexpected{std::format("MROM 地址越界：0x{:08x}", addr)};
+        }
+        std::uint32_t value{0};
+        for (std::size_t i{0}; i < size; ++i)
+        {
+            value |= static_cast<std::uint32_t>(mrom[offset + i]) << (i * 8);
+        }
+        return value;
+    }
+    return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 MROM 0x20000000-0x20001000）", addr)};
 }

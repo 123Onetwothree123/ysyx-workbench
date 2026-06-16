@@ -73,4 +73,8 @@ class ysyx_26030103_IO extends Bundle {
   val slave_rdata = Output(UInt(32.W))
   val slave_rlast = Output(Bool())
   val slave_rid = Output(UInt(4.W))
+  // 给sdb用的
+  val debug_gpr_raddr = Input(UInt(5.W))
+  val debug_gpr_rdata = Output(UInt(32.W))
+  val debug_pc = Output(UInt(32.W))
 }

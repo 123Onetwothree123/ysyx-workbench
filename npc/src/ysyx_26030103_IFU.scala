@@ -12,6 +12,7 @@ class ysyx_26030103_IFU extends Module {
     val ExceptionTaken = Input(Bool()) // 异常或者是中断的信号
     val ExceptionTarget = Input(UInt(32.W))
     val out = Decoupled(new ysyx_26030103_IFUMessage) // 丢给ysyx_26030103_IDU
+    val DebugPC = Output(UInt(32.W))
   })
   val PCModule = Module(new ysyx_26030103_PC)
   val NextPCModule = Module(new ysyx_26030103_NextPC)
@@ -80,7 +81,9 @@ class ysyx_26030103_IFU extends Module {
     }
     is(StatesHold) {
       io.out.valid := true.B
-      when(io.out.valid && io.out.ready) { // 只有ysyx_26030103_IDU真的接走了这条指令，ysyx_26030103_IFU这里才会去进入下一次的取指
+      when(
+        io.out.valid && io.out.ready
+      ) { // 只有ysyx_26030103_IDU真的接走了这条指令，ysyx_26030103_IFU这里才会去进入下一次的取指
         state := StatesIdle
       }
     }
@@ -95,4 +98,6 @@ class ysyx_26030103_IFU extends Module {
 //他妈的，vsc插件的格式化文档居然抽风了，独立行没法格式化，不是，自己做的东西，自己没跑过吗
   PCModule.io.ysyx_26030103_NextPC := NextPCModule.io.ysyx_26030103_NextPC
   PCModule.io.PCEnable := NextPCModule.io.PCEnable && io.out.fire
+//sdb
+  io.DebugPC := PCModule.io.ysyx_26030103_PC
 }
