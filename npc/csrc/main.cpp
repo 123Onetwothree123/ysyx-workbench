@@ -9,6 +9,7 @@
 #include "sdb/sdb.hpp"
 int main(int argc, char const *argv[])
 {
+    // 才发现删过头了，忘记写这行代码了
     Verilated::commandArgs(argc, argv);
     DUT dut;
     auto options = CLIOptions::Parse(argc, argv);
