@@ -1,5 +1,6 @@
 #include "BinaryOpNode.hpp"
 #include "ExpressionError.hpp"
+#include <format>
 BinaryOpNode::BinaryOpNode(token Token, std::unique_ptr<ASTNode> Left, std::unique_ptr<ASTNode> Right)
 {
     this->Token = Token;
