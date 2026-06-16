@@ -6,9 +6,9 @@
 #include "ImageLoader.hpp"
 #include "NPCTrap.hpp"
 #include "ysyxSoC/ysyxSoC.hpp"
+#include "sdb/sdb.hpp"
 int main(int argc, char const *argv[])
 {
-    // 才发现删过头了，忘记写这行代码了
     Verilated::commandArgs(argc, argv);
     DUT dut;
     auto options = CLIOptions::Parse(argc, argv);
@@ -24,15 +24,7 @@ int main(int argc, char const *argv[])
         return 1;
     }
     dut.reset();
-    while (!NPCTrap::HasHalted())
-    {
-        dut.step();
-        if (dut->trap_valid)
-        {
-            std::println("trap了");
-            NPCTrap::Halt(dut->trap_pc, 0);
-        }
-    }
+    SDB::MainLoop(dut);
     dut.final();
     return NPCTrap::PrintResult(dut.GetCycle());
 }
