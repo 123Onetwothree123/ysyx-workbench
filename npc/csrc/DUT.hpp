@@ -1,5 +1,7 @@
 #include <memory>
 #include <cstdint>
+#include <expected>
+#include <string>
 #include "VysyxSoCFull.h"
 
 class DUT
@@ -19,4 +21,7 @@ public:
     void step();
     void reset();
     std::size_t GetCycle() const;
+    // 给sdb的
+    [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
+    [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();
 };

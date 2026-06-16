@@ -103,4 +103,8 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
   // 最后删掉的跳转检查还是加回来了，还好当时接入soc的时候，没有删掉exu的那些东西，等等，到时候还得改ysyxsoc的代码？
   io.trap_valid := exu.io.TrapValid
   io.trap_pc := exu.io.TrapPC
+  // sdb
+  gpr.io.DebugRaddr := io.debug_gpr_raddr
+  io.debug_gpr_rdata := gpr.io.DebugRdata
+  io.debug_pc := ifu.io.DebugPC
 }
