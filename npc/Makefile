@@ -61,7 +61,7 @@ CXX?=g++
 GXX_VERSION = $(shell $(CXX) -dumpfullversion 2>/dev/null)
 STD_MODULE_SRC = /usr/include/c++/$(GXX_VERSION)/bits/std.cc
 CXX_STD = -std=c++23
-COMMON_INCFLAGS = $(addprefix -I, $(CSRC_DIR) $(CSRC_DIR)/sdb $(CSRC_DIR)/sdb/command $(CSRC_DIR)/tools/expressions $(OBJ_DIR))
+COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(OBJ_DIR)))
 COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) -O3
 #verilator的部分
 $(BIN): verilog $(CSRCS)
