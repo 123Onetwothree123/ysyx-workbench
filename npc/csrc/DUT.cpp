@@ -62,17 +62,17 @@ void DUT::step()
 #endif
 #ifdef CONFIG_FTRACE
     {
-        static bool hasPrevStep{false};
-        static std::uint32_t prevPC{0};
-        static std::uint32_t prevInst{0};
-        auto currentPC{static_cast<std::uint32_t>(dut->debug_pc)};
-        if (hasPrevStep)
+        static bool HasPreviousStep{false};
+        static std::uint32_t PreviousPC{0};
+        static std::uint32_t PreviousInstructions{0};
+        auto CurrentPC{static_cast<std::uint32_t>(dut->debug_pc)};
+        if (HasPreviousStep)
         {
-            GlobalFtrace.OnInstruction(prevPC, prevInst, currentPC);
+            GlobalFtrace.OnInstruction(PreviousPC, PreviousInstructions, CurrentPC);
         }
-        prevPC = currentPC;
-        prevInst = static_cast<std::uint32_t>(dut->debug_instructions);
-        hasPrevStep = true;
+        PreviousPC = CurrentPC;
+        PreviousInstructions = static_cast<std::uint32_t>(dut->debug_instructions);
+        HasPreviousStep = true;
     }
 #endif
 #ifdef CONFIG_MTRACE

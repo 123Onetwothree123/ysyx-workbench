@@ -8,6 +8,7 @@
 #include "command/siCommand.hpp"
 #include "command/wCommand.hpp"
 #include "command/xCommand.hpp"
+#include "command/clearCommand.hpp"
 #ifdef CONFIG_ITRACE
 #include "command/iringbufCommand.hpp"
 #endif
@@ -144,6 +145,7 @@ void SDBCommandRegistry::RegisterBuiltins()
 #ifdef CONFIG_FTRACE
     RegisterCommand(std::make_unique<ftraceCommand>());
 #endif
+    RegisterCommand(std::make_unique<clearCommand>());
     RegisterCommand(std::make_unique<helpCommand>(*this));
     RegisterCommand(std::make_unique<qCommand>());
 }
