@@ -32,6 +32,13 @@ else
 NPROC_REQ := 0
 endif
 NPROC := $(shell if [ "$(NPROC_REQ)" -eq 0 ] 2>/dev/null || [ "$(NPROC_REQ)" -gt "$(NPROC_MAX)" ] 2>/dev/null; then echo $(NPROC_MAX); else echo $(NPROC_REQ); fi)
+ifneq ($(CONFIG_SIM_THREADS),)
+SIM_THREADS_REQ := $(call remove_quote,$(CONFIG_SIM_THREADS))
+else
+SIM_THREADS_REQ := 1
+endif
+SIM_THREADS := $(shell if [ "$(SIM_THREADS_REQ)" -eq 0 ] 2>/dev/null; then echo $(NPROC_MAX); elif [ "$(SIM_THREADS_REQ)" -gt "$(NPROC_MAX)" ] 2>/dev/null; then echo $(NPROC_MAX); else echo $(SIM_THREADS_REQ); fi)
+VERILATOR_THREADS := $(shell if [ "$(SIM_THREADS)" -gt 1 ] 2>/dev/null; then echo "--threads $(SIM_THREADS)"; fi)
 
 test:
 	mill -i test
@@ -106,7 +113,7 @@ endif
 COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(ASAN_CFLAGS) $(CC_OPT)
 #verilator的部分
 $(BIN): verilog $(CSRCS)
-	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) \
+	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) $(VERILATOR_THREADS) \
 		-O3 --x-assign fast --x-initial fast --noassert \
 		--timescale "1ns/1ns" --no-timing \
 		$(addprefix -I,$(VINCDIRS)) \
