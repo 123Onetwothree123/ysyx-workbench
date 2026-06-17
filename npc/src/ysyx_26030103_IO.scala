@@ -77,4 +77,5 @@ class ysyx_26030103_IO extends Bundle {
   val debug_gpr_raddr = Input(UInt(5.W))
   val debug_gpr_rdata = Output(UInt(32.W))
   val debug_pc = Output(UInt(32.W))
+  val debug_instructions = Output(UInt(32.W))
 }

@@ -8,6 +8,9 @@
 #include "command/siCommand.hpp"
 #include "command/wCommand.hpp"
 #include "command/xCommand.hpp"
+#ifdef CONFIG_ITRACE
+#include "command/iringbufCommand.hpp"
+#endif
 #include "SDBCommandUtils.hpp"
 #include <algorithm>
 #include <cstddef>
@@ -19,46 +22,46 @@
 #include <utility>
 namespace
 {
-[[nodiscard]] std::size_t SDBUsageSyntaxWidth(const SDBCommand &Command, const SDBCommandUsage &Usage) noexcept
-{
-    auto Width{Command.name().size()};
-    if (!Usage.GetArguments().empty())
+    [[nodiscard]] std::size_t SDBUsageSyntaxWidth(const SDBCommand &Command, const SDBCommandUsage &Usage) noexcept
     {
-        Width += 1 + Usage.GetArguments().size();
+        auto Width{Command.name().size()};
+        if (!Usage.GetArguments().empty())
+        {
+            Width += 1 + Usage.GetArguments().size();
+        }
+        return Width;
     }
-    return Width;
-}
-[[nodiscard]] std::size_t SDBMaxUsageSyntaxWidth(const SDBCommand &Command) noexcept
-{
-    auto Width{std::size_t{0}};
-    for (const auto &Usage : Command.usage())
+    [[nodiscard]] std::size_t SDBMaxUsageSyntaxWidth(const SDBCommand &Command) noexcept
     {
-        Width = std::max(Width, SDBUsageSyntaxWidth(Command, Usage));
+        auto Width{std::size_t{0}};
+        for (const auto &Usage : Command.usage())
+        {
+            Width = std::max(Width, SDBUsageSyntaxWidth(Command, Usage));
+        }
+        return Width;
     }
-    return Width;
-}
-void SDBPrintUsageLine(const SDBCommand &Command, const SDBCommandUsage &Usage, std::size_t SyntaxWidth)
-{
-    auto Syntax{std::string{Command.name()}};
-    if (!Usage.GetArguments().empty())
+    void SDBPrintUsageLine(const SDBCommand &Command, const SDBCommandUsage &Usage, std::size_t SyntaxWidth)
     {
-        Syntax.push_back(' ');
-        Syntax += Usage.GetArguments();
+        auto Syntax{std::string{Command.name()}};
+        if (!Usage.GetArguments().empty())
+        {
+            Syntax.push_back(' ');
+            Syntax += Usage.GetArguments();
+        }
+        std::print("  {}", Syntax);
+        if (Syntax.size() < SyntaxWidth)
+        {
+            std::print("{}", std::string(SyntaxWidth - Syntax.size(), ' '));
+        }
+        std::println("  {}", Usage.GetDescription());
     }
-    std::print("  {}", Syntax);
-    if (Syntax.size() < SyntaxWidth)
+    void SDBPrintCommandUsage(const SDBCommand &Command, std::size_t SyntaxWidth)
     {
-        std::print("{}", std::string(SyntaxWidth - Syntax.size(), ' '));
+        for (const auto &Usage : Command.usage())
+        {
+            SDBPrintUsageLine(Command, Usage, SyntaxWidth);
+        }
     }
-    std::println("  {}", Usage.GetDescription());
-}
-void SDBPrintCommandUsage(const SDBCommand &Command, std::size_t SyntaxWidth)
-{
-    for (const auto &Usage : Command.usage())
-    {
-        SDBPrintUsageLine(Command, Usage, SyntaxWidth);
-    }
-}
 }
 SDBCommandRegistry::SDBCommandRegistry(DUT &dut)
     : Context(dut)
@@ -73,8 +76,7 @@ SDBCommandResult SDBCommandRegistry::Execute(std::string_view line)
     {
         return SDBCommandResult::Continue;
     }
-    const auto CommandIt{std::ranges::find_if(Commands, [Name](const std::unique_ptr<SDBCommand> &Command)
-                                              { return Command->name() == Name; })};
+    const auto CommandIt{std::ranges::find_if(Commands, [Name](const std::unique_ptr<SDBCommand> &Command){return Command->name() == Name; })};
     if (CommandIt == Commands.end())
     {
         std::println(std::cerr, "未知命令: {}", line);
@@ -133,6 +135,9 @@ void SDBCommandRegistry::RegisterBuiltins()
     RegisterCommand(std::make_unique<pCommand>());
     RegisterCommand(std::make_unique<wCommand>());
     RegisterCommand(std::make_unique<dCommand>());
+#ifdef CONFIG_ITRACE
+    RegisterCommand(std::make_unique<iringbufCommand>());
+#endif
     RegisterCommand(std::make_unique<helpCommand>(*this));
     RegisterCommand(std::make_unique<qCommand>());
 }

@@ -9,6 +9,9 @@
 #ifdef CONFIG_SDB
 #include "sdb/sdb.hpp"
 #endif
+#ifdef CONFIG_ITRACE
+#include "trace/itrace.hpp"
+#endif
 int main(int argc, char const *argv[])
 {
     // 才发现删过头了，忘记写这行代码了
@@ -31,12 +34,18 @@ int main(int argc, char const *argv[])
 #endif
     }
     dut.reset();
+#ifdef CONFIG_ITRACE
+    init_disasm();
+#endif
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
+#ifdef CONFIG_ITRACE
+        Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
+#endif
         if (dut->trap_valid)
         {
             std::println("trap了");

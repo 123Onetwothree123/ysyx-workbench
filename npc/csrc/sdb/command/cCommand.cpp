@@ -5,6 +5,9 @@
 #include "../SDBCommandContext.hpp"
 #include "WatchpointPool.hpp"
 #include "../NPCEvaluationContext.hpp"
+#ifdef CONFIG_ITRACE
+#include "../../trace/itrace.hpp"
+#endif
 [[nodiscard]] std::string_view cCommand::name() const noexcept
 {
     return "c";
@@ -24,6 +27,9 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
+#ifdef CONFIG_ITRACE
+        Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
+#endif
         if (dut->trap_valid)
         {
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), 0);
