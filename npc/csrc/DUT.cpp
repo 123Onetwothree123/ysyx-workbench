@@ -8,6 +8,9 @@
 #ifdef CONFIG_MTRACE
 #include "trace/mtrace.hpp"
 #endif
+#ifdef CONFIG_FTRACE
+#include "trace/ftrace.hpp"
+#endif
 DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
 {
     dut->debug_gpr_raddr = 0;
@@ -56,6 +59,21 @@ void DUT::step()
     ++cycle;
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
+#endif
+#ifdef CONFIG_FTRACE
+    {
+        static bool hasPrevStep{false};
+        static std::uint32_t prevPC{0};
+        static std::uint32_t prevInst{0};
+        auto currentPC{static_cast<std::uint32_t>(dut->debug_pc)};
+        if (hasPrevStep)
+        {
+            GlobalFtrace.OnInstruction(prevPC, prevInst, currentPC);
+        }
+        prevPC = currentPC;
+        prevInst = static_cast<std::uint32_t>(dut->debug_instructions);
+        hasPrevStep = true;
+    }
 #endif
 #ifdef CONFIG_MTRACE
     if (dut->debug_mtrace_valid)

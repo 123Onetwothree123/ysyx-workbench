@@ -11,6 +11,9 @@
 #ifdef CONFIG_ITRACE
 #include "command/iringbufCommand.hpp"
 #endif
+#ifdef CONFIG_FTRACE
+#include "command/ftraceCommand.hpp"
+#endif
 #include "SDBCommandUtils.hpp"
 #include <algorithm>
 #include <cstddef>
@@ -137,6 +140,9 @@ void SDBCommandRegistry::RegisterBuiltins()
     RegisterCommand(std::make_unique<dCommand>());
 #ifdef CONFIG_ITRACE
     RegisterCommand(std::make_unique<iringbufCommand>());
+#endif
+#ifdef CONFIG_FTRACE
+    RegisterCommand(std::make_unique<ftraceCommand>());
 #endif
     RegisterCommand(std::make_unique<helpCommand>(*this));
     RegisterCommand(std::make_unique<qCommand>());
