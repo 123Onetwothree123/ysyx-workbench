@@ -9,6 +9,7 @@
 #include "command/wCommand.hpp"
 #include "command/xCommand.hpp"
 #include "command/clearCommand.hpp"
+#include "command/historyCommand.hpp"
 #ifdef CONFIG_ITRACE
 #include "command/iringbufCommand.hpp"
 #endif
@@ -147,5 +148,6 @@ void SDBCommandRegistry::RegisterBuiltins()
 #endif
     RegisterCommand(std::make_unique<clearCommand>());
     RegisterCommand(std::make_unique<helpCommand>(*this));
+    RegisterCommand(std::make_unique<historyCommand>(*this));
     RegisterCommand(std::make_unique<qCommand>());
 }
