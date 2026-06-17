@@ -61,6 +61,8 @@ CXX?=g++
 GXX_VERSION = $(shell $(CXX) -dumpfullversion 2>/dev/null)
 STD_MODULE_SRC = /usr/include/c++/$(GXX_VERSION)/bits/std.cc
 CXX_STD = -std=c++23
+# menuconfig 生成的配置（优先），手动传参也仍然有效
+-include include/config/auto.conf
 CONFIG_SDB ?= n
 CONFIG_ITRACE ?= n
 CONFIG_MTRACE ?= n
@@ -94,5 +96,7 @@ $(BIN): verilog $(CSRCS)
 		--autoflush
 run: $(BIN)
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
+
+include scripts/config.mk
 
 -include ../Makefile
