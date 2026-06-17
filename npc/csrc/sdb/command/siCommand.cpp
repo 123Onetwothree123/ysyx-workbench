@@ -8,9 +8,7 @@
 #include <print>
 #include <verilated.h>
 #include "../NPCTrap.hpp"
-#ifdef CONFIG_ITRACE
-#include "../../trace/itrace.hpp"
-#endif
+
 [[nodiscard]] std::string_view siCommand::name() const noexcept
 {
     return "si";
@@ -61,9 +59,6 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
     for (std::size_t index{0}; index < count && !NPCTrap::HasHalted(); ++index)
     {
         dut.step();
-#ifdef CONFIG_ITRACE
-        Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
-#endif
         if (dut->trap_valid)
         {
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), 0);

@@ -63,14 +63,18 @@ STD_MODULE_SRC = /usr/include/c++/$(GXX_VERSION)/bits/std.cc
 CXX_STD = -std=c++23
 CONFIG_SDB ?= n
 CONFIG_ITRACE ?= n
+CONFIG_MTRACE ?= n
 ifeq ($(CONFIG_SDB),y)
 SDB_CFLAGS = -DCONFIG_SDB
 endif
 ifeq ($(CONFIG_ITRACE),y)
 ITRACE_CFLAGS = -DCONFIG_ITRACE
 endif
+ifeq ($(CONFIG_MTRACE),y)
+MTRACE_CFLAGS = -DCONFIG_MTRACE
+endif
 COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(CSRC_DIR)/trace) $(abspath $(OBJ_DIR)))
-COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) -O3
+COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) -O3
 #verilator的部分
 $(BIN): verilog $(CSRCS)
 	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) \

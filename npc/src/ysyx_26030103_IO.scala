@@ -78,4 +78,11 @@ class ysyx_26030103_IO extends Bundle {
   val debug_gpr_rdata = Output(UInt(32.W))
   val debug_pc = Output(UInt(32.W))
   val debug_instructions = Output(UInt(32.W))
+  // mtrace
+  val debug_mtrace_valid = Output(Bool())
+  val debug_mtrace_wen   = Output(Bool())
+  val debug_mtrace_addr  = Output(UInt(32.W))
+  val debug_mtrace_wdata = Output(UInt(32.W))
+  val debug_mtrace_rdata = Output(UInt(32.W))
+  val debug_mtrace_width = Output(UInt(2.W))
 }
