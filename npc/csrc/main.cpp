@@ -9,6 +9,7 @@
 #ifdef CONFIG_SDB
 #include "sdb/sdb.hpp"
 #endif
+
 int main(int argc, char const *argv[])
 {
     // 才发现删过头了，忘记写这行代码了

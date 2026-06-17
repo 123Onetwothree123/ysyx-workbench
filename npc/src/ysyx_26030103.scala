@@ -107,4 +107,12 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
   gpr.io.DebugRaddr := io.debug_gpr_raddr
   io.debug_gpr_rdata := gpr.io.DebugRdata
   io.debug_pc := ifu.io.DebugPC
+  io.debug_instructions := ifu.io.DebugInstructions
+  // mtrace
+  io.debug_mtrace_valid := lsu.io.Complete && exu.io.MemoryValid
+  io.debug_mtrace_wen   := exu.io.MemoryWrite
+  io.debug_mtrace_addr  := exu.io.ALUResult_ToLSU
+  io.debug_mtrace_wdata := exu.io.StoreDATA
+  io.debug_mtrace_rdata := lsu.io.LoadDATA
+  io.debug_mtrace_width := exu.io.WidthSelect
 }

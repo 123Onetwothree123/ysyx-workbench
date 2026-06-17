@@ -8,6 +8,7 @@
 #include <print>
 #include <verilated.h>
 #include "../NPCTrap.hpp"
+
 [[nodiscard]] std::string_view siCommand::name() const noexcept
 {
     return "si";

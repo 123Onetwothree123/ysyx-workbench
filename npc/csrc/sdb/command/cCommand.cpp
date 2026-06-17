@@ -5,6 +5,7 @@
 #include "../SDBCommandContext.hpp"
 #include "WatchpointPool.hpp"
 #include "../NPCEvaluationContext.hpp"
+
 [[nodiscard]] std::string_view cCommand::name() const noexcept
 {
     return "c";

@@ -2,9 +2,21 @@
 #include <cstdint>
 #include <format>
 #include <vector>
+#ifdef CONFIG_ITRACE
+#include "trace/itrace.hpp"
+#endif
+#ifdef CONFIG_MTRACE
+#include "trace/mtrace.hpp"
+#endif
+#ifdef CONFIG_FTRACE
+#include "trace/ftrace.hpp"
+#endif
 DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
 {
     dut->debug_gpr_raddr = 0;
+#ifdef CONFIG_ITRACE
+    init_disasm();
+#endif
 }
 VysyxSoCFull &DUT::operator*()
 {
@@ -45,6 +57,36 @@ void DUT::step()
     dut->clock = 1;
     dut->eval();
     ++cycle;
+#ifdef CONFIG_ITRACE
+    Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
+#endif
+#ifdef CONFIG_FTRACE
+    {
+        static bool HasPreviousStep{false};
+        static std::uint32_t PreviousPC{0};
+        static std::uint32_t PreviousInstructions{0};
+        auto CurrentPC{static_cast<std::uint32_t>(dut->debug_pc)};
+        if (HasPreviousStep)
+        {
+            GlobalFtrace.OnInstruction(PreviousPC, PreviousInstructions, CurrentPC);
+        }
+        PreviousPC = CurrentPC;
+        PreviousInstructions = static_cast<std::uint32_t>(dut->debug_instructions);
+        HasPreviousStep = true;
+    }
+#endif
+#ifdef CONFIG_MTRACE
+    if (dut->debug_mtrace_valid)
+    {
+        MtraceRecord(
+            dut->debug_pc,
+            dut->debug_mtrace_addr,
+            dut->debug_mtrace_wdata,
+            dut->debug_mtrace_rdata,
+            dut->debug_mtrace_width,
+            dut->debug_mtrace_wen);
+    }
+#endif
 }
 std::size_t DUT::GetCycle() const
 {

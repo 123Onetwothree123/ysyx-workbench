@@ -13,6 +13,7 @@ class ysyx_26030103_IFU extends Module {
     val ExceptionTarget = Input(UInt(32.W))
     val out = Decoupled(new ysyx_26030103_IFUMessage) // 丢给ysyx_26030103_IDU
     val DebugPC = Output(UInt(32.W))
+    val DebugInstructions = Output(UInt(32.W))
   })
   val PCModule = Module(new ysyx_26030103_PC)
   val NextPCModule = Module(new ysyx_26030103_NextPC)
@@ -100,4 +101,5 @@ class ysyx_26030103_IFU extends Module {
   PCModule.io.PCEnable := NextPCModule.io.PCEnable && io.out.fire
 //sdb
   io.DebugPC := PCModule.io.ysyx_26030103_PC
+  io.DebugInstructions := InstructionReg
 }
