@@ -58,7 +58,11 @@ sim:
 	@echo "Write this Makefile by yourself."
 
 #C++
+remove_quote = $(patsubst "%",%,$(1))
 CXX?=g++
+ifneq ($(CONFIG_CC),)
+CXX = $(call remove_quote,$(CONFIG_CC))
+endif
 GXX_VERSION = $(shell $(CXX) -dumpfullversion 2>/dev/null)
 STD_MODULE_SRC = /usr/include/c++/$(GXX_VERSION)/bits/std.cc
 CXX_STD = -std=c++23
@@ -81,7 +85,20 @@ ifeq ($(CONFIG_FTRACE),y)
 FTRACE_CFLAGS = -DCONFIG_FTRACE
 endif
 COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(CSRC_DIR)/trace) $(abspath $(OBJ_DIR)))
-COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) -O3
+CC_OPT ?= -O3
+ifneq ($(CONFIG_CC_OPT),)
+CC_OPT = $(call remove_quote,$(CONFIG_CC_OPT))
+endif
+ifeq ($(CONFIG_CC_LTO),y)
+LTO_CFLAGS = -flto
+endif
+ifeq ($(CONFIG_CC_DEBUG),y)
+DEBUG_CFLAGS = -g
+endif
+ifeq ($(CONFIG_CC_ASAN),y)
+ASAN_CFLAGS = -fsanitize=address
+endif
+COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(ASAN_CFLAGS) $(CC_OPT)
 #verilator的部分
 $(BIN): verilog $(CSRCS)
 	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) \
@@ -91,7 +108,7 @@ $(BIN): verilog $(CSRCS)
 		--top-module $(SOC_TOPNAME) \
 		$(VSRCS) $(CSRCS) \
 		$(addprefix -CFLAGS , $(COMMON_CFLAGS)) \
-		-LDFLAGS -lcapstone -LDFLAGS -lreadline \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) \
 		--Mdir $(OBJ_DIR) \
 		--exe -o $(abspath $(BIN)) \
 		--autoflush
