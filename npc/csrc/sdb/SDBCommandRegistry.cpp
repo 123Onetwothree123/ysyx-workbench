@@ -10,6 +10,7 @@
 #include "command/xCommand.hpp"
 #include "command/clearCommand.hpp"
 #include "command/historyCommand.hpp"
+#include "command/readelfCommand.hpp"
 #ifdef CONFIG_ITRACE
 #include "command/iringbufCommand.hpp"
 #endif
@@ -146,6 +147,7 @@ void SDBCommandRegistry::RegisterBuiltins()
 #ifdef CONFIG_FTRACE
     RegisterCommand(std::make_unique<ftraceCommand>());
 #endif
+    RegisterCommand(std::make_unique<readelfCommand>());
     RegisterCommand(std::make_unique<clearCommand>());
     RegisterCommand(std::make_unique<helpCommand>(*this));
     RegisterCommand(std::make_unique<historyCommand>(*this));
