@@ -23,7 +23,15 @@ VINCDIRS=$(BUILD_DIR) \
 CSRC_DIR=./csrc
 CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
-NPROC ?= $(shell nproc 2>/dev/null || echo 4)
+remove_quote = $(patsubst "%",%,$(1))
+-include include/config/auto.conf
+NPROC_MAX := $(shell nproc 2>/dev/null || echo 4)
+ifneq ($(CONFIG_BUILD_THREADS),)
+NPROC_REQ := $(call remove_quote,$(CONFIG_BUILD_THREADS))
+else
+NPROC_REQ := 0
+endif
+NPROC := $(shell if [ "$(NPROC_REQ)" -eq 0 ] 2>/dev/null || [ "$(NPROC_REQ)" -gt "$(NPROC_MAX)" ] 2>/dev/null; then echo $(NPROC_MAX); else echo $(NPROC_REQ); fi)
 
 test:
 	mill -i test
@@ -58,7 +66,6 @@ sim:
 	@echo "Write this Makefile by yourself."
 
 #C++
-remove_quote = $(patsubst "%",%,$(1))
 CXX?=g++
 ifneq ($(CONFIG_CC),)
 CXX = $(call remove_quote,$(CONFIG_CC))
@@ -66,8 +73,6 @@ endif
 GXX_VERSION = $(shell $(CXX) -dumpfullversion 2>/dev/null)
 STD_MODULE_SRC = /usr/include/c++/$(GXX_VERSION)/bits/std.cc
 CXX_STD = -std=c++23
-# menuconfig 生成的配置（优先），手动传参也仍然有效
--include include/config/auto.conf
 CONFIG_SDB ?= n
 CONFIG_ITRACE ?= n
 CONFIG_MTRACE ?= n
