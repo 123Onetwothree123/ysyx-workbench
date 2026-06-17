@@ -1,3 +1,4 @@
+NPC_HOME := $(CURDIR)
 BUILD_DIR = ./build
 YSYXSOC_DIR = ../ysyxSoC
 YSYXSOC_PERIP_DIR = $(YSYXSOC_DIR)/perip

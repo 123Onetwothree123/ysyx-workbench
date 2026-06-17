@@ -7,9 +7,9 @@ $(warning $(COLOR_RED)To build the project, first run 'make menuconfig'.$(COLOR_
 endif
 
 Q            := @
-KCONFIG_PATH := tools/kconfig
-FIXDEP_PATH  := tools/fixdep
-Kconfig      := Kconfig
+KCONFIG_PATH := $(NPC_HOME)/tools/kconfig
+FIXDEP_PATH  := $(NPC_HOME)/tools/fixdep
+Kconfig      := $(NPC_HOME)/Kconfig
 rm-distclean += include/generated include/config .config .config.old
 silent := -s
 
@@ -38,3 +38,17 @@ savedefconfig: $(CONF)
 	$(Q)$< $(silent) --syncconfig $(Kconfig)
 
 .PHONY: menuconfig savedefconfig defconfig
+
+help:
+	@echo  '  menuconfig	  - Update current config utilising a menu based program'
+	@echo  '  savedefconfig   - Save current config as configs/defconfig (minimal config)'
+
+distclean: clean
+	-@rm -rf $(rm-distclean)
+
+.PHONY: help distclean
+
+define call_fixdep
+	@$(FIXDEP) $(1) $(2) unused > $(1).tmp
+	@mv $(1).tmp $(1)
+endef
