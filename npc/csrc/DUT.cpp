@@ -11,6 +11,9 @@
 #ifdef CONFIG_FTRACE
 #include "trace/ftrace.hpp"
 #endif
+#ifdef CONFIG_DIFFTEST
+#include "difftest/difftest.hpp"
+#endif
 DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
 {
     dut->debug_gpr_raddr = 0;
@@ -86,6 +89,9 @@ void DUT::step()
             dut->debug_mtrace_width,
             dut->debug_mtrace_wen);
     }
+#endif
+#ifdef CONFIG_DIFFTEST
+    DifftestStep(*this);
 #endif
 }
 std::size_t DUT::GetCycle() const

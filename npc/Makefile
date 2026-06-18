@@ -96,6 +96,9 @@ endif
 ifeq ($(CONFIG_FTRACE),y)
 FTRACE_CFLAGS = -DCONFIG_FTRACE
 endif
+ifeq ($(CONFIG_DIFFTEST),y)
+DIFFTEST_CFLAGS = -DCONFIG_DIFFTEST
+endif
 COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(CSRC_DIR)/trace) $(abspath $(OBJ_DIR)))
 CC_OPT ?= -O3
 ifneq ($(CONFIG_CC_OPT),)
@@ -110,7 +113,8 @@ endif
 ifeq ($(CONFIG_CC_ASAN),y)
 ASAN_CFLAGS = -fsanitize=address
 endif
-COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(ASAN_CFLAGS) $(CC_OPT)
+COMMON_INCFLAGS += $(addprefix -I, $(abspath $(CSRC_DIR)/difftest))
+COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(DIFFTEST_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(ASAN_CFLAGS) $(CC_OPT)
 #verilator的部分
 $(BIN): verilog $(CSRCS)
 	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) $(VERILATOR_THREADS) \
@@ -120,12 +124,12 @@ $(BIN): verilog $(CSRCS)
 		--top-module $(SOC_TOPNAME) \
 		$(VSRCS) $(CSRCS) \
 		$(addprefix -CFLAGS , $(COMMON_CFLAGS)) \
-		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) \
 		--Mdir $(OBJ_DIR) \
 		--exe -o $(abspath $(BIN)) \
 		--autoflush
 run: $(BIN)
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
 include scripts/config.mk
 
