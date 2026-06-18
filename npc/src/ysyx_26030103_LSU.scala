@@ -18,6 +18,8 @@ class ysyx_26030103_LSU extends Module {
     // Misaligned是未对齐的意思，我不知道必应翻译中译英这个单词对不对
     val AddressMisaligned = Output(Bool())
     val Complete = Output(Bool()) // 看看有没有完成
+    val AccessFault = Output(Bool())
+    val AccessFaultResp = Output(UInt(2.W))
   })
   // 接入ysyxSoC新加的
   val AXISize = WireDefault(2.U(3.W))
@@ -92,6 +94,10 @@ class ysyx_26030103_LSU extends Module {
     }
   }
   val LoadDataReg = RegInit(0.U(32.W))
+  val AccessFaultReg = RegInit(false.B)
+  val AccessFaultRespReg = RegInit(0.U(2.W))
+  io.AccessFault := AccessFaultReg
+  io.AccessFaultResp := AccessFaultRespReg
   // 先给默认值，真的是烦死了，我也不知道vscode那个doctor是干什么的，是JVM的吗？看到是甲骨文的名字，而且这玩意不能捡起来直接用就很烦，他妈的
   io.DataBus.AW.AWVALID := false.B
   io.DataBus.AW.AWID := 0.U
@@ -132,6 +138,8 @@ class ysyx_26030103_LSU extends Module {
     is(StatesIdle) {
       AWDone := false.B
       WDone := false.B
+      AccessFaultReg := false.B
+      AccessFaultRespReg := 0.U
       when(io.MemoryValid) {
         when(io.AddressMisaligned) {
           state := StatesDone
@@ -156,41 +164,46 @@ class ysyx_26030103_LSU extends Module {
     is(StatesReadResponse) {
       io.DataBus.R.RREADY := true.B
       when(io.DataBus.R.RVALID) {
-        when(io.WidthSelect === "b00".U) {
-          val ByteDATA = WireDefault(0.U(8.W)) // 他妈的Byte是关键字，还得避开名字，真的是服了
-          switch(io.ALUResult(1, 0)) {
-            is("b00".U) {
-              ByteDATA := io.DataBus.R.RDATA(7, 0)
+        when(io.DataBus.R.RRESP =/= 0.U) {
+          AccessFaultReg := true.B
+          AccessFaultRespReg := io.DataBus.R.RRESP
+        }.otherwise {
+          when(io.WidthSelect === "b00".U) {
+            val ByteDATA = WireDefault(0.U(8.W)) // 他妈的Byte是关键字，还得避开名字，真的是服了
+            switch(io.ALUResult(1, 0)) {
+              is("b00".U) {
+                ByteDATA := io.DataBus.R.RDATA(7, 0)
+              }
+              is("b01".U) {
+                ByteDATA := io.DataBus.R.RDATA(15, 8)
+              }
+              is("b10".U) {
+                ByteDATA := io.DataBus.R.RDATA(23, 16)
+              }
+              is("b11".U) {
+                ByteDATA := io.DataBus.R.RDATA(31, 24)
+              }
             }
-            is("b01".U) {
-              ByteDATA := io.DataBus.R.RDATA(15, 8)
+            when(io.LoadSigned) {
+              LoadDataReg := Cat(Fill(24, ByteDATA(7)), ByteDATA)
+            }.otherwise {
+              LoadDataReg := Cat(Fill(24, 0.U), ByteDATA)
             }
-            is("b10".U) {
-              ByteDATA := io.DataBus.R.RDATA(23, 16)
+          }.elsewhen(io.WidthSelect === "b01".U) {
+            val HalfWord = Wire(UInt(16.W))
+            when(io.ALUResult(1)) { // 高16bit
+              HalfWord := io.DataBus.R.RDATA(31, 16)
+            }.otherwise {
+              HalfWord := io.DataBus.R.RDATA(15, 0)
             }
-            is("b11".U) {
-              ByteDATA := io.DataBus.R.RDATA(31, 24)
+            when(io.LoadSigned) {
+              LoadDataReg := Cat(Fill(16, HalfWord(15)), HalfWord)
+            }.otherwise {
+              LoadDataReg := Cat(Fill(16, 0.U), HalfWord)
             }
+          }.elsewhen(io.WidthSelect === "b10".U) {
+            LoadDataReg := io.DataBus.R.RDATA
           }
-          when(io.LoadSigned) {
-            LoadDataReg := Cat(Fill(24, ByteDATA(7)), ByteDATA)
-          }.otherwise {
-            LoadDataReg := Cat(Fill(24, 0.U), ByteDATA)
-          }
-        }.elsewhen(io.WidthSelect === "b01".U) {
-          val HalfWord = Wire(UInt(16.W))
-          when(io.ALUResult(1)) { // 高16bit
-            HalfWord := io.DataBus.R.RDATA(31, 16)
-          }.otherwise {
-            HalfWord := io.DataBus.R.RDATA(15, 0)
-          }
-          when(io.LoadSigned) {
-            LoadDataReg := Cat(Fill(16, HalfWord(15)), HalfWord)
-          }.otherwise {
-            LoadDataReg := Cat(Fill(16, 0.U), HalfWord)
-          }
-        }.elsewhen(io.WidthSelect === "b10".U) {
-          LoadDataReg := io.DataBus.R.RDATA
         }
         state := StatesDone
       }
@@ -220,6 +233,10 @@ class ysyx_26030103_LSU extends Module {
       // 因为是等，所以要用B总线，而不是W线
       io.DataBus.B.BREADY := true.B
       when(Bfire) {
+        when(io.DataBus.B.BRESP =/= 0.U) {
+          AccessFaultReg := true.B
+          AccessFaultRespReg := io.DataBus.B.BRESP
+        }
         state := StatesDone
       }
     }

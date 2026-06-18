@@ -14,6 +14,8 @@ class ysyx_26030103_IFU extends Module {
     val out = Decoupled(new ysyx_26030103_IFUMessage) // 丢给ysyx_26030103_IDU
     val DebugPC = Output(UInt(32.W))
     val DebugInstructions = Output(UInt(32.W))
+    val AccessFault = Output(Bool())
+    val AccessFaultResp = Output(UInt(2.W))
   })
   val PCModule = Module(new ysyx_26030103_PC)
   val NextPCModule = Module(new ysyx_26030103_NextPC)
@@ -27,6 +29,10 @@ class ysyx_26030103_IFU extends Module {
   val state = RegInit(StatesIdle)
   val InstructionReg = RegInit(0.U(32.W))
   val PCReg = RegInit(0.U(32.W))
+  val AccessFaultReg = RegInit(false.B)
+  val AccessFaultRespReg = RegInit(0.U(2.W))
+  io.AccessFault := AccessFaultReg
+  io.AccessFaultResp := AccessFaultRespReg
   val InstructionResponseFire =
     io.InstructionBus.R.RVALID && io.InstructionBus.R.RREADY
   // 他妈的居然因为要防止报警转错，还要手动去给个初始值，哪个天才做的编译器
@@ -57,6 +63,8 @@ class ysyx_26030103_IFU extends Module {
   io.out.bits.pc := PCReg
   switch(state) {
     is(StatesIdle) {
+      AccessFaultReg := false.B
+      AccessFaultRespReg := 0.U
       io.InstructionBus.AR.ARVALID := true.B
       io.InstructionBus.AR.ARADDR := PCModule.io.ysyx_26030103_PC
       PCReg := PCModule.io.ysyx_26030103_PC
@@ -76,7 +84,12 @@ class ysyx_26030103_IFU extends Module {
     is(StatesWaitResponse) {
       io.InstructionBus.R.RREADY := true.B
       when(InstructionResponseFire) {
-        InstructionReg := io.InstructionBus.R.RDATA
+        when(io.InstructionBus.R.RRESP =/= 0.U) {
+          AccessFaultReg := true.B
+          AccessFaultRespReg := io.InstructionBus.R.RRESP
+        }.otherwise {
+          InstructionReg := io.InstructionBus.R.RDATA
+        }
         state := StatesHold
       }
     }

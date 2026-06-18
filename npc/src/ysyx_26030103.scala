@@ -95,6 +95,12 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
   ifu.io.RedirectTarget := exu.io.RedirectTarget
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
+  // 取指或访存返回错误时，跳转到地址0
+  val AccessFaultOccurred = ifu.io.AccessFault || lsu.io.AccessFault
+  when(AccessFaultOccurred) {
+    ifu.io.ExceptionTaken := true.B
+    ifu.io.ExceptionTarget := 0.U
+  }
   gpr.io.WriteSELECT := wbu.io.WriteSELECT
   gpr.io.WriteEN := wbu.io.WriteEN
   gpr.io.wdata := wbu.io.wdata
@@ -115,4 +121,7 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
   io.debug_mtrace_wdata := exu.io.StoreDATA
   io.debug_mtrace_rdata := lsu.io.LoadDATA
   io.debug_mtrace_width := exu.io.WidthSelect
+  // Access Fault
+  io.debug_access_fault := AccessFaultOccurred
+  io.debug_access_fault_resp := Mux(ifu.io.AccessFault, ifu.io.AccessFaultResp, lsu.io.AccessFaultResp)
 }

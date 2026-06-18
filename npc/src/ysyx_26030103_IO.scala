@@ -85,4 +85,7 @@ class ysyx_26030103_IO extends Bundle {
   val debug_mtrace_wdata = Output(UInt(32.W))
   val debug_mtrace_rdata = Output(UInt(32.W))
   val debug_mtrace_width = Output(UInt(2.W))
+  // Access Fault
+  val debug_access_fault = Output(Bool())
+  val debug_access_fault_resp = Output(UInt(2.W))
 }
