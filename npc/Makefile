@@ -23,7 +23,22 @@ VINCDIRS=$(BUILD_DIR) \
 CSRC_DIR=./csrc
 CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
-NPROC ?= $(shell nproc 2>/dev/null || echo 4)
+remove_quote = $(patsubst "%",%,$(1))
+-include include/config/auto.conf
+NPROC_MAX := $(shell nproc 2>/dev/null || echo 4)
+ifneq ($(CONFIG_BUILD_THREADS),)
+NPROC_REQ := $(call remove_quote,$(CONFIG_BUILD_THREADS))
+else
+NPROC_REQ := 0
+endif
+NPROC := $(shell if [ "$(NPROC_REQ)" -eq 0 ] 2>/dev/null || [ "$(NPROC_REQ)" -gt "$(NPROC_MAX)" ] 2>/dev/null; then echo $(NPROC_MAX); else echo $(NPROC_REQ); fi)
+ifneq ($(CONFIG_SIM_THREADS),)
+SIM_THREADS_REQ := $(call remove_quote,$(CONFIG_SIM_THREADS))
+else
+SIM_THREADS_REQ := 1
+endif
+SIM_THREADS := $(shell if [ "$(SIM_THREADS_REQ)" -eq 0 ] 2>/dev/null; then echo $(NPROC_MAX); elif [ "$(SIM_THREADS_REQ)" -gt "$(NPROC_MAX)" ] 2>/dev/null; then echo $(NPROC_MAX); else echo $(SIM_THREADS_REQ); fi)
+VERILATOR_THREADS := $(shell if [ "$(SIM_THREADS)" -gt 1 ] 2>/dev/null; then echo "--threads $(SIM_THREADS)"; fi)
 
 test:
 	mill -i test
@@ -59,11 +74,12 @@ sim:
 
 #C++
 CXX?=g++
+ifneq ($(CONFIG_CC),)
+CXX = $(call remove_quote,$(CONFIG_CC))
+endif
 GXX_VERSION = $(shell $(CXX) -dumpfullversion 2>/dev/null)
 STD_MODULE_SRC = /usr/include/c++/$(GXX_VERSION)/bits/std.cc
 CXX_STD = -std=c++23
-# menuconfig 生成的配置（优先），手动传参也仍然有效
--include include/config/auto.conf
 CONFIG_SDB ?= n
 CONFIG_ITRACE ?= n
 CONFIG_MTRACE ?= n
@@ -80,23 +96,40 @@ endif
 ifeq ($(CONFIG_FTRACE),y)
 FTRACE_CFLAGS = -DCONFIG_FTRACE
 endif
+ifeq ($(CONFIG_DIFFTEST),y)
+DIFFTEST_CFLAGS = -DCONFIG_DIFFTEST
+endif
 COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(CSRC_DIR)/trace) $(abspath $(OBJ_DIR)))
-COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) -O3
+CC_OPT ?= -O3
+ifneq ($(CONFIG_CC_OPT),)
+CC_OPT = $(call remove_quote,$(CONFIG_CC_OPT))
+endif
+ifeq ($(CONFIG_CC_LTO),y)
+LTO_CFLAGS = -flto
+endif
+ifeq ($(CONFIG_CC_DEBUG),y)
+DEBUG_CFLAGS = -g
+endif
+ifeq ($(CONFIG_CC_ASAN),y)
+ASAN_CFLAGS = -fsanitize=address
+endif
+COMMON_INCFLAGS += $(addprefix -I, $(abspath $(CSRC_DIR)/difftest))
+COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(DIFFTEST_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(ASAN_CFLAGS) $(CC_OPT)
 #verilator的部分
 $(BIN): verilog $(CSRCS)
-	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) \
+	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) $(VERILATOR_THREADS) \
 		-O3 --x-assign fast --x-initial fast --noassert \
 		--timescale "1ns/1ns" --no-timing \
 		$(addprefix -I,$(VINCDIRS)) \
 		--top-module $(SOC_TOPNAME) \
 		$(VSRCS) $(CSRCS) \
 		$(addprefix -CFLAGS , $(COMMON_CFLAGS)) \
-		-LDFLAGS -lcapstone -LDFLAGS -lreadline \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) \
 		--Mdir $(OBJ_DIR) \
 		--exe -o $(abspath $(BIN)) \
 		--autoflush
 run: $(BIN)
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
 include scripts/config.mk
 

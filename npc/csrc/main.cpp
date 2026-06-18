@@ -9,6 +9,9 @@
 #ifdef CONFIG_SDB
 #include "sdb/sdb.hpp"
 #endif
+#ifdef CONFIG_DIFFTEST
+#include "difftest/difftest.hpp"
+#endif
 
 int main(int argc, char const *argv[])
 {
@@ -31,6 +34,16 @@ int main(int argc, char const *argv[])
         return 1;
 #endif
     }
+#ifdef CONFIG_DIFFTEST
+    if (load)
+    {
+        auto diffResult{DifftestInitialize(options->GetDiffFile(), *load)};
+        if (!diffResult)
+        {
+            std::println(std::cerr, "DiffTest 初始化失败：{}", diffResult.error());
+        }
+    }
+#endif
     dut.reset();
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);

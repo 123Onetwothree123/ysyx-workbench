@@ -1,6 +1,8 @@
 #include "DUT.hpp"
 #include <cstdint>
 #include <format>
+#include <iostream>
+#include <print>
 #include <vector>
 #ifdef CONFIG_ITRACE
 #include "trace/itrace.hpp"
@@ -10,6 +12,9 @@
 #endif
 #ifdef CONFIG_FTRACE
 #include "trace/ftrace.hpp"
+#endif
+#ifdef CONFIG_DIFFTEST
+#include "difftest/difftest.hpp"
 #endif
 DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
 {
@@ -87,6 +92,29 @@ void DUT::step()
             dut->debug_mtrace_wen);
     }
 #endif
+#ifdef CONFIG_DIFFTEST
+    DifftestStep(*this);
+#endif
+    if (dut->debug_access_fault)
+    {
+        auto resp{static_cast<unsigned>(dut->debug_access_fault_resp)};
+        auto pc{static_cast<std::uint32_t>(dut->debug_pc)};
+        if (resp == 2)
+        {
+            std::println(std::cerr, "Access Fault [SLVERR] at PC=0x{:08x}, cycle={}", pc, cycle);
+            std::println(std::cerr, "  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了");
+        }
+        else if (resp == 3)
+        {
+            std::println(std::cerr, "Access Fault [DECERR] at PC=0x{:08x}, cycle={}", pc, cycle);
+            std::println(std::cerr, "  地址译码错误，鬼知道你访问了什么地址，AXI总线根本找不到对应的从设备");
+        }
+        else
+        {
+            std::println(std::cerr, "Access Fault [RESP={}] at PC=0x{:08x}, cycle={}", resp, pc, cycle);
+            std::println(std::cerr, "  这什么AXI响应码，我也不认识");
+        }
+    }
 }
 std::size_t DUT::GetCycle() const
 {

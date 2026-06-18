@@ -26,7 +26,9 @@ __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction)
     return;
   }
   assert(buf != NULL);
-  assert(in_pmem_range(addr, n));
+  // assert(in_pmem_range(addr, n));
+  // 适配新版difftest
+  assert(in_pmem_range(addr, n) || in_mrom(addr) || in_sram(addr));
   if (direction == DIFFTEST_TO_REF)
   {
     memcpy(guest_to_host(addr), buf, n);

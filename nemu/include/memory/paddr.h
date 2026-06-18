@@ -42,6 +42,22 @@ static inline bool in_pmem_range(paddr_t addr, size_t len)
          (paddr_t)len <= CONFIG_MSIZE - offset;
 }
 
+// 哎哟，他妈的上个学期还只会C++，不会C，现在看paddr.h和c，这写的什么代码，我都没不好意思看，现在又不敢乱动，现在还要在这里补充重新适配difftest的代码
+// MROM地址0x20000000，4KB
+#define MROM_BASE 0x20000000u
+#define MROM_SIZE 0x1000u
+// SRAM的地址0x0f000000，8KB
+#define SRAM_BASE 0x0f000000u
+#define SRAM_SIZE 0x2000u
+static inline bool in_mrom(paddr_t addr)
+{
+  return addr - MROM_BASE < MROM_SIZE;
+}
+static inline bool in_sram(paddr_t addr)
+{
+  return addr - SRAM_BASE < SRAM_SIZE;
+}
+
 word_t paddr_read(paddr_t addr, int len);
 void paddr_write(paddr_t addr, int len, word_t data);
 

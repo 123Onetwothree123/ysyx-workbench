@@ -18,13 +18,28 @@
 #include <device/mmio.h>
 #include <isa.h>
 
+// 适配新版本difftest
+static uint8_t mrom[MROM_SIZE] = {};
+static uint8_t sram[SRAM_SIZE] = {};
+
 #if defined(CONFIG_PMEM_MALLOC)
 static uint8_t *pmem = NULL;
 #else // CONFIG_PMEM_GARRAY
 static uint8_t pmem[CONFIG_MSIZE] PG_ALIGN = {};
 #endif
 
-uint8_t *guest_to_host(paddr_t paddr) { return pmem + paddr - CONFIG_MBASE; }
+uint8_t *guest_to_host(paddr_t paddr)
+{
+  if (in_mrom(paddr))
+  {
+    return mrom + paddr - MROM_BASE;
+  }
+  if (in_sram(paddr))
+  {
+    return sram + paddr - SRAM_BASE;
+  }
+  return pmem + paddr - CONFIG_MBASE;
+}
 paddr_t host_to_guest(uint8_t *haddr) { return haddr - pmem + CONFIG_MBASE; }
 
 static word_t pmem_read(paddr_t addr, int len)
@@ -65,6 +80,14 @@ word_t paddr_read(paddr_t addr, int len)
 #endif
     return ret;
   }
+  if (in_mrom(addr))
+  {
+    return host_read(mrom + addr - MROM_BASE, len);
+  }
+  if (in_sram(addr))
+  {
+    return host_read(sram + addr - SRAM_BASE, len);
+  }
 #ifdef CONFIG_DEVICE
   if (!in_pmem(addr))
   {
@@ -89,6 +112,16 @@ void paddr_write(paddr_t addr, int len, word_t data)
         cpu.pc, addr, len, data);
 #endif
     pmem_write(addr, len, data);
+    return;
+  }
+  if (in_mrom(addr))
+  {
+    host_write(mrom + addr - MROM_BASE, len, data);
+    return;
+  }
+  if (in_sram(addr))
+  {
+    host_write(sram + addr - SRAM_BASE, len, data);
     return;
   }
 #ifdef CONFIG_DEVICE
