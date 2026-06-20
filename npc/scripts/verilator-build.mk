@@ -61,12 +61,12 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/tools/expressions/expressions.ixx \
   $(NPC_CSRC_DIR)/sdb/SDBCommandRegistry.ixx \
   $(NPC_CSRC_DIR)/sdb/command/WatchpointPool.ixx \
+  $(NPC_CSRC_DIR)/sdb/command/helpCommand.ixx \
+  $(NPC_CSRC_DIR)/sdb/command/historyCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/cCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/clearCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/dCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/ftraceCommand.ixx \
-  $(NPC_CSRC_DIR)/sdb/command/helpCommand.ixx \
-  $(NPC_CSRC_DIR)/sdb/command/historyCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/infoCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/iringbufCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/pCommand.ixx \

@@ -1,4 +1,5 @@
 module npc.sdb.SDBCommandRegistry;
+import npc.sdb.SDBCommandUsage;
 import npc.sdb.command.cCommand;
 import npc.sdb.command.dCommand;
 import npc.sdb.command.helpCommand;

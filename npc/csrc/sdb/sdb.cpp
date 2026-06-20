@@ -1,4 +1,5 @@
 module;
+#include <cstdio>
 #include <readline/readline.h>
 #include <readline/history.h>
 module npc.sdb.sdb;
