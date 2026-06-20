@@ -98,7 +98,7 @@ ifeq ($(CONFIG_LIBC_MUSL),y)
 ifneq ($(findstring clang,$(CXX)),)
 LIBC_FLAGS = --target=x86_64-linux-musl
 else
-LIBC_FLAGS = -specs /usr/lib/musl/lib/musl-gcc.specs
+LIBC_FLAGS = -specs=/usr/lib/musl/lib/musl-gcc.specs
 endif
 endif
 ifeq ($(CONFIG_CC_CLANG),y)
