@@ -1,4 +1,4 @@
-#include"NumberNode.hpp"
+module npc.expressions.NumberNode;
 NumberNode::NumberNode(std::uint32_t value)
 {
     this->value = value;

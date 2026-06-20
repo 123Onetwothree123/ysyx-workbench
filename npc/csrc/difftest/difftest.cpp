@@ -1,25 +1,17 @@
 // doxygen是deepseek ai写的
-#include "difftest.hpp"
-#include "DifftestCPUState.hpp"
-#include "../NPCTrap.hpp"
-#include "../DUT.hpp"
-#include <cstdint>
-#include <expected>
-#include <filesystem>
-#include <format>
-#include <optional>
-#include <print>
-#include <string>
-#include <cstdio>
-#include "../ysyxSoC/ysyxSoC.hpp"
+module;
+#ifdef CONFIG_DIFFTEST
+#include <dlfcn.h>
+#endif
+module npc.difftest.difftest;
+import npc.difftest.DifftestCPUState;
+import npc.NPCTrap;
+import npc.ysyxSoC;
 #ifndef CONFIG_MBASE
 #define CONFIG_MBASE 0x20000000
 #endif
 #ifndef CONFIG_RESET_PC
 #define CONFIG_RESET_PC 0x20000000
-#endif
-#ifdef CONFIG_DIFFTEST
-#include <dlfcn.h>
 #endif
 namespace
 {

@@ -1,11 +1,11 @@
-#include "historyCommand.hpp"
-#include "../SDBCommandRegistry.hpp"
-#include "../SDBCommandUtils.hpp"
-#include <charconv>
-#include <print>
+module;
 #ifdef CONFIG_SDB
 #include <readline/history.h>
 #endif
+module npc.sdb.command.historyCommand;
+import npc.sdb.SDBCommandRegistry;
+import npc.sdb.SDBCommandUtils;
+
 historyCommand::historyCommand(const SDBCommandRegistry &InputRegistry)
     : Registry(InputRegistry)
 {

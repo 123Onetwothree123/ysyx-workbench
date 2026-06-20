@@ -1,6 +1,4 @@
-#include "NPCTrap.hpp"
-#include <iostream>
-#include <print>
+module npc.NPCTrap;
 namespace
 {
     bool Halted{false};

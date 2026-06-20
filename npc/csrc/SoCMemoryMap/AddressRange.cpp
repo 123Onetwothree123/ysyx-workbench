@@ -1,6 +1,4 @@
-#include "AddressRange.hpp"
-#include <cstdint>
-#include <string>
+module npc.SoCMemoryMap.AddressRange;
 std::string_view AddressRange::GetName() const
 {
     return Name;

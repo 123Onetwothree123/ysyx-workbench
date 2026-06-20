@@ -1,4 +1,5 @@
-#include "Watchpoint.hpp"
+module npc.sdb.command.Watchpoint;
+
 Watchpoint::Watchpoint(std::size_t NO, bool enabled, std::size_t PC, bool HasPC)
 {
     this->NO = NO;

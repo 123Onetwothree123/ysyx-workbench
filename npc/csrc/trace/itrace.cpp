@@ -1,4 +1,4 @@
-#include "itrace.hpp"
+module npc.trace.itrace;
 iringbuf Iringbuf;
 void RecordAInstruction(uint64_t pc, uint32_t instruction, int len)
 {

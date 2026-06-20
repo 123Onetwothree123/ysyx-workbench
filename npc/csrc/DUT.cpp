@@ -1,21 +1,11 @@
-#include "DUT.hpp"
-#include <cstdint>
-#include <format>
-#include <iostream>
-#include <print>
-#include <vector>
-#ifdef CONFIG_ITRACE
-#include "trace/itrace.hpp"
-#endif
-#ifdef CONFIG_MTRACE
-#include "trace/mtrace.hpp"
-#endif
-#ifdef CONFIG_FTRACE
-#include "trace/ftrace.hpp"
-#endif
-#ifdef CONFIG_DIFFTEST
-#include "difftest/difftest.hpp"
-#endif
+module;
+#include "VysyxSoCFull.h"
+module npc.DUT;
+import npc.trace.itrace;
+import npc.trace.mtrace;
+import npc.trace.ftrace;
+import npc.difftest.difftest;
+import npc.ysyxSoC;
 #ifndef CONFIG_MBASE
 #define CONFIG_MBASE 0x20000000
 #endif

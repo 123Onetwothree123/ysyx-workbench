@@ -1,4 +1,4 @@
-#include "RecordInstruction.hpp"
+module npc.trace.RecordInstruction;
 RecordInstruction::RecordInstruction() noexcept = default;
 RecordInstruction::~RecordInstruction() = default;
 RecordInstruction::RecordInstruction(std::uint64_t pc, std::uint32_t instruction, int len)

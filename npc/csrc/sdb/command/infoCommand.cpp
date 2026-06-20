@@ -1,16 +1,8 @@
-#include "command/infoCommand.hpp"
-#include "command/WatchpointPool.hpp"
-#include "../SDBCommandContext.hpp"
-#include "../NPCEvaluationContext.hpp"
-#include "../TablePrinter.hpp"
-#include <array>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <format>
-#include <print>
-#include <string>
-#include <vector>
+module npc.sdb.command.infoCommand;
+import npc.DUT;
+import npc.sdb.NPCEvaluationContext;
+import npc.sdb.TablePrinter;
+import npc.sdb.command.WatchpointPool;
 
 static constexpr std::string_view get_reg_abi_name(std::size_t idx) noexcept
 {

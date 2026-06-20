@@ -1,5 +1,4 @@
-#include "DereferenceNode.hpp"
-#include <format>
+module npc.expressions.DereferenceNode;
 DereferenceNode::DereferenceNode(std::unique_ptr<ASTNode> address, std::size_t size)
 {
     this->address = std::move(address);

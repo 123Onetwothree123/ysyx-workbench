@@ -1,16 +1,9 @@
-#include "command/xCommand.hpp"
-#include "../SDBCommandContext.hpp"
-#include "../SDBCommandUtils.hpp"
-#include "../NPCEvaluationContext.hpp"
+module npc.sdb.command.xCommand;
+import npc.sdb.SDBCommandUtils;
+import npc.expressions.expressions;
+import npc.sdb.NPCEvaluationContext;
+import npc.DUT;
 
-#include "../../tools/expressions/expressions.hpp"
-#include <charconv>
-#include <cstddef>
-#include <cstdint>
-#include <iostream>
-#include <limits>
-#include <print>
-#include <string_view>
 std::string_view xCommand::name() const noexcept
 {
     return "x";

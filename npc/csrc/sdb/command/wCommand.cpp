@@ -1,14 +1,10 @@
-#include "wCommand.hpp"
-#include "SDBCommandUtils.hpp"
-#include "expressions.hpp"
-#include <cstddef>
-#include <cstdint>
-#include <print>
-#include <string>
-#include <string_view>
-#include "NPCEvaluationContext.hpp"
-#include "SDBCommandContext.hpp"
-#include "WatchpointPool.hpp"
+module npc.sdb.command.wCommand;
+import npc.sdb.SDBCommandUtils;
+import npc.expressions.expressions;
+import npc.sdb.NPCEvaluationContext;
+import npc.DUT;
+import npc.sdb.command.WatchpointPool;
+
 std::string_view wCommand::name() const noexcept
 {
     return "w";

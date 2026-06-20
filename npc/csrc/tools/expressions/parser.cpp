@@ -1,12 +1,10 @@
-#include "parser.hpp"
-#include "BinaryOpNode.hpp"
-#include "DereferenceNode.hpp"
-#include "NumberNode.hpp"
-#include "ParenthesizedNode.hpp"
-#include "RegisterNode.hpp"
-#include "UnaryMinusNode.hpp"
-#include <format>
-#include <memory>
+module npc.expressions.parser;
+import npc.expressions.BinaryOpNode;
+import npc.expressions.DereferenceNode;
+import npc.expressions.NumberNode;
+import npc.expressions.ParenthesizedNode;
+import npc.expressions.RegisterNode;
+import npc.expressions.UnaryMinusNode;
 parser::parser(std::vector<token> InputTokens)
 {
     tokens = std::move(InputTokens);

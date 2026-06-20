@@ -1,13 +1,11 @@
-#include "siCommand.hpp"
-#include "../SDBCommandContext.hpp"
-#include "../SDBCommandUtils.hpp"
-#include "WatchpointPool.hpp"
-#include "../NPCEvaluationContext.hpp"
-#include <charconv>
-#include <cstddef>
-#include <print>
+module;
 #include <verilated.h>
-#include "../NPCTrap.hpp"
+module npc.sdb.command.siCommand;
+import npc.NPCTrap;
+import npc.DUT;
+import npc.sdb.SDBCommandUtils;
+import npc.sdb.NPCEvaluationContext;
+import npc.sdb.command.WatchpointPool;
 
 [[nodiscard]] std::string_view siCommand::name() const noexcept
 {

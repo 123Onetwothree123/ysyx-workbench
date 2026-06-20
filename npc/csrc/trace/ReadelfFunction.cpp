@@ -1,4 +1,4 @@
-#include "ReadelfFunction.hpp"
+module npc.trace.ReadelfFunction;
 std::size_t ReadelfFunction::size() const noexcept
 {
     return end - start;

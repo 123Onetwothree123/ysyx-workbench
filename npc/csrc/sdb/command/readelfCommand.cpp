@@ -1,7 +1,7 @@
-#include "readelfCommand.hpp"
-#include "../../trace/ftrace.hpp"
-#include <iostream>
-#include <print>
+module npc.sdb.command.readelfCommand;
+import npc.trace.ftrace;
+import npc.trace.readelf;
+
 std::string_view readelfCommand::name() const noexcept
 {
     return "readelf";

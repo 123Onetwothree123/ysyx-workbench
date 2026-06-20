@@ -1,4 +1,4 @@
-#include "FtraceFrame.hpp"
+module npc.trace.FtraceFrame;
 /**
  * @file FtraceFrame.cpp
  * @brief ftrace调用栈帧的实现。

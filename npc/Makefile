@@ -149,9 +149,7 @@ endif
 ifeq ($(CONFIG_CC_NO_OMIT_FP),y)
 NO_OMIT_FP_CFLAGS = -fno-omit-frame-pointer
 endif
-ifeq ($(CONFIG_CC_MODULE),y)
 MODULE_CFLAGS = -fmodules
-endif
 ifneq ($(CONFIG_MBASE),)
 MBASE_CFLAGS = -DCONFIG_MBASE=$(call remove_quote,$(CONFIG_MBASE))
 endif
@@ -231,7 +229,8 @@ $(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 	$(MAKE) -C $(OBJ_DIR) -f $(VERILATOR_BUILD_WRAPPER) -j $(NPROC) \
 		VERILATOR_GENERATED_MK=$(VERILATOR_GENERATED_MK) \
 		CXX=$(CXX) LINK=$(CXX) \
-		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)'
+		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
+		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
 run: $(BIN)
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 

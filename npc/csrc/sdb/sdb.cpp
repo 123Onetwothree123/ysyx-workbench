@@ -1,9 +1,8 @@
-#include "sdb.hpp"
-#include "SDBCommandRegistry.hpp"
-#include <print>
-#include <string>
+module;
 #include <readline/readline.h>
 #include <readline/history.h>
+module npc.sdb.sdb;
+import npc.sdb.SDBCommandRegistry;
 
 void SDB::MainLoop(DUT &dut, bool batch_mode)
 {

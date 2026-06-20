@@ -1,8 +1,5 @@
-#include "iringbuf.hpp"
-#include <print>
-#include <span>
-#include <iterator>
-#include "disasm.hpp"
+module npc.trace.iringbuf;
+import npc.trace.disasm;
 iringbuf::iringbuf() noexcept = default;
 iringbuf::~iringbuf() noexcept = default;
 bool iringbuf::empty() const

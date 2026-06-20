@@ -1,6 +1,5 @@
-#include "BinaryOpNode.hpp"
-#include "ExpressionError.hpp"
-#include <format>
+module npc.expressions.BinaryOpNode;
+import npc.expressions.ExpressionError;
 BinaryOpNode::BinaryOpNode(token Token, std::unique_ptr<ASTNode> Left, std::unique_ptr<ASTNode> Right)
 {
     this->Token = Token;

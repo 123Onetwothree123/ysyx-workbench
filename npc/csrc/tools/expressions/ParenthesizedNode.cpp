@@ -1,5 +1,4 @@
-#include "ParenthesizedNode.hpp"
-#include <format>
+module npc.expressions.ParenthesizedNode;
 ParenthesizedNode::ParenthesizedNode(std::unique_ptr<ASTNode> inner)
 {
     this->inner = std::move(inner);

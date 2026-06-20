@@ -1,5 +1,4 @@
-#include "lexer.hpp"
-#include <cctype>
+module npc.expressions.lexer;
 lexer::lexer(std::string_view input)
 {
     this->input = input;

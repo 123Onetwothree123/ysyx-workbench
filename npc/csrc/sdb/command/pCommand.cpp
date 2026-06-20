@@ -1,13 +1,9 @@
-#include "pCommand.hpp"
-#include "SDBCommandUtils.hpp"
-#include "expressions.hpp"
-#include <cstddef>
-#include <cstdint>
-#include <print>
-#include <string>
-#include <string_view>
-#include "NPCEvaluationContext.hpp"
-#include "SDBCommandContext.hpp"
+module npc.sdb.command.pCommand;
+import npc.sdb.SDBCommandUtils;
+import npc.expressions.expressions;
+import npc.sdb.NPCEvaluationContext;
+import npc.DUT;
+
 std::string_view pCommand::name() const noexcept
 {
     return "p";

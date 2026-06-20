@@ -1,4 +1,4 @@
-#include "SDBCommandUsage.hpp"
+module npc.sdb.SDBCommandUsage;
 SDBCommandUsage::SDBCommandUsage(std::string_view arguments, std::string_view description) noexcept
     : Arguments(arguments), Description(description)
 {

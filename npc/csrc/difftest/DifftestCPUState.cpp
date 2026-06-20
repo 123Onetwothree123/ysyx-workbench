@@ -1,7 +1,4 @@
-#include "DifftestCPUState.hpp"
-#include "../DUT.hpp"
-#include <print>
-#include <stdexcept>
+module npc.difftest.DifftestCPUState;
 std::uint32_t DifftestCPUState::GetGPR(std::size_t Index) const
 {
     if (Index >= gpr.size())

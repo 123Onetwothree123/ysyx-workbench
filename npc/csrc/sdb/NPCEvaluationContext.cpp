@@ -1,7 +1,6 @@
-#include "NPCEvaluationContext.hpp"
-#include "RegisterName.hpp"
-#include "../tools/expressions/ExpressionError.hpp"
-#include <format>
+module npc.sdb.NPCEvaluationContext;
+import npc.sdb.RegisterName;
+import npc.tools.expressions.ExpressionError;
 NPCEvaluationContext::NPCEvaluationContext(DUT &InputDUT) : dut{InputDUT}
 {
 }

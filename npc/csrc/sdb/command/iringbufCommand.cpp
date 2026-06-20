@@ -1,6 +1,6 @@
-#include "iringbufCommand.hpp"
-#include "../../trace/itrace.hpp"
-#include <print>
+module npc.sdb.command.iringbufCommand;
+import npc.trace.itrace;
+
 std::string_view iringbufCommand::name() const noexcept
 {
     return "iringbuf";

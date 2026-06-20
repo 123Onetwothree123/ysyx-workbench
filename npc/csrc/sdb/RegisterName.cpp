@@ -1,6 +1,4 @@
-#include "RegisterName.hpp"
-#include <array>
-#include <cstddef>
+module npc.sdb.RegisterName;
 std::string_view StripRegisterPrefix(std::string_view name)
 {
     if (!name.empty() && name.front() == '$')

@@ -105,13 +105,6 @@ config CC_NO_OMIT_FP
   bool "保留帧指针-fno-omit-frame-pointer"
   default n
 
-config CC_MODULE
-  bool "仅为用户C++源码启用模块-fmodules"
-  default n
-  help
-    只向csrc中的用户C++翻译单元添加-fmodules
-    不会传给Verilator运行库、预编译头和生成模型
-    这样可以避免GCC把Verilator的传统PCH改为header unit
 
 endmenu
 

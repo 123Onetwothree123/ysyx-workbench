@@ -1,4 +1,4 @@
-#include "RegisterNode.hpp"
+module npc.expressions.RegisterNode;
 RegisterNode::RegisterNode(std::string name)
 {
     this->name = std::move(name);

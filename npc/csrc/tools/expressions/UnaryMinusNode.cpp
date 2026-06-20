@@ -1,5 +1,4 @@
-#include "UnaryMinusNode.hpp"
-#include <format>
+module npc.expressions.UnaryMinusNode;
 UnaryMinusNode::UnaryMinusNode(std::unique_ptr<ASTNode> child)
 {
     this->child = std::move(child);

@@ -1,21 +1,20 @@
-#include <iostream>
 #include <verilated.h>
-#include <print>
-#include "DUT.hpp"
-#include "CLIOptions.hpp"
-#include "ImageLoader.hpp"
-#include "NPCTrap.hpp"
-#include "ysyxSoC/ysyxSoC.hpp"
+#include "VysyxSoCFull.h"
+import std;
+import npc.DUT;
+import npc.CLIOptions;
+import npc.ImageLoader;
+import npc.NPCTrap;
+import npc.ysyxSoC;
 #ifdef CONFIG_SDB
-#include "sdb/sdb.hpp"
+import npc.sdb.sdb;
 #endif
 #ifdef CONFIG_DIFFTEST
-#include "difftest/difftest.hpp"
+import npc.difftest.difftest;
 #endif
 
 int main(int argc, char const *argv[])
 {
-    // 才发现删过头了，忘记写这行代码了
     Verilated::commandArgs(argc, argv);
     DUT dut;
     auto options = CLIOptions::Parse(argc, argv);

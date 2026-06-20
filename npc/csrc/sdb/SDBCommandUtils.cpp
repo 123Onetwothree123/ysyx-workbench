@@ -1,4 +1,4 @@
-#include "SDBCommandUtils.hpp"
+module npc.sdb.SDBCommandUtils;
 [[nodiscard]] std::string_view SDBTrimLeft(std::string_view text)
 {
     auto first{text.find_first_not_of(" \t")};

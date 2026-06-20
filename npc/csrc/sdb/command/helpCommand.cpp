@@ -1,7 +1,7 @@
-#include "helpCommand.hpp"
-#include "../SDBCommandRegistry.hpp"
-#include "SDBCommandUtils.hpp"
-#include <print>
+module npc.sdb.command.helpCommand;
+import npc.sdb.SDBCommandRegistry;
+import npc.sdb.SDBCommandUtils;
+
 helpCommand::helpCommand(const SDBCommandRegistry &InputRegistry) : registry(InputRegistry)
 {
 }

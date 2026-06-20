@@ -1,4 +1,4 @@
-#include "ExpressionError.hpp"
+module npc.expressions.ExpressionError;
 ExpressionError::ExpressionError(std::string InputMessage)
 {
     message = std::move(InputMessage);

@@ -1,5 +1,5 @@
-#include "clearCommand.hpp"
-#include <print>
+module npc.sdb.command.clearCommand;
+
 std::string_view clearCommand::name() const noexcept
 {
     return "clear";

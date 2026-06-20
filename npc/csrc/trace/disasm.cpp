@@ -1,6 +1,6 @@
-#include "disasm.hpp"
-#include <print>
-#include <cassert>
+module;
+#include <capstone/capstone.h>
+module npc.trace.disasm;
 static csh handle{};
 void init_disasm()
 {
