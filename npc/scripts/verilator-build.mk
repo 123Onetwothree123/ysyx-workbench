@@ -85,4 +85,4 @@ NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,
 
 $(VK_USER_OBJS): | .npc_modules_built
 $(VK_USER_OBJS): private CPPFLAGS += $(NPC_USER_CXXFLAGS)
-VK_USER_OBJS += $(NPC_MODULE_OBJS)
+LDFLAGS += $(NPC_MODULE_OBJS)
