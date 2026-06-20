@@ -1,9 +1,12 @@
 module;
 #include <cstdio>
+#include <cstdlib>
 #include <readline/readline.h>
 #include <readline/history.h>
 module npc.sdb.sdb;
 import npc.sdb.SDBCommandRegistry;
+import npc.sdb.SDBCommandResult;
+import npc.NPCTrap;
 
 void SDB::MainLoop(DUT &dut, bool batch_mode)
 {
