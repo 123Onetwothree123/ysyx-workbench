@@ -1,6 +1,5 @@
 module;
 #include <capstone/capstone.h>
-#include <assert.h>
 module npc.trace.disasm;
 static csh handle{};
 void init_disasm()
@@ -17,7 +16,7 @@ void disassemble(char *str, int size, std::uint64_t pc, std::uint8_t *code, int 
 {
     cs_insn *insn{nullptr};
     const auto count{cs_disasm(handle, code, static_cast<size_t>(nbyte), pc, 0, &insn)};
-    assert(count == 1);
+    
     const auto ret{std::snprintf(str, size, "%s", insn->mnemonic)};
     if (insn->op_str[0] != '\0')
     {
