@@ -1,5 +1,3 @@
-module;
-#include <stdio.h>
 module npc.sdb.command.clearCommand;
 
 std::string_view clearCommand::name() const noexcept
@@ -18,6 +16,6 @@ SDBCommandResult clearCommand::execute(SDBCommandContext &context, std::string_v
     static_cast<void>(context);
     static_cast<void>(args);
     std::print("\033[H\033[J");
-    std::fflush(stdout);
+    std::cout.flush();
     return SDBCommandResult::Continue;
 }

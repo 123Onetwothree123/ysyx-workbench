@@ -1,9 +1,5 @@
-module;
-#ifdef CONFIG_SDB
-#include <stdio.h>
-#include <readline/history.h>
-#endif
 module npc.sdb.command.historyCommand;
+import npc.readline;
 import npc.sdb.SDBCommandRegistry;
 import npc.sdb.SDBCommandUtils;
 
