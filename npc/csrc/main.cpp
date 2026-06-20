@@ -16,7 +16,9 @@ import npc.difftest.difftest;
 
 int main(int argc, char const *argv[])
 {
+#if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_init();
+#endif
     Verilated::commandArgs(argc, argv);
     DUT dut;
     auto options = CLIOptions::Parse(argc, argv);
@@ -61,6 +63,8 @@ int main(int argc, char const *argv[])
 #endif
     dut.final();
     auto result = NPCTrap::PrintResult(dut.GetCycle());
+#if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_close();
+#endif
     return result;
 }
