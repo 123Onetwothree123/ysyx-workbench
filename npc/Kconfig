@@ -155,6 +155,21 @@ config CC_LTO
   bool "启用链接时优化-flto"
   default n
 
+choice
+  prompt "PGO配置引导优化"
+  default PGO_OFF
+  help
+    使用方法：先选生成模式编译运行，再选使用模式重新编译
+    1. 选"生成"→编译→运行典型工作负载→产生.gcda/.profraw
+    2. 选"使用"→重新编译→编译器根据profile数据优化
+config PGO_OFF
+  bool "关闭"
+config PGO_GENERATE
+  bool "生成profile数据"
+config PGO_USE
+  bool "使用profile数据优化"
+endchoice
+
 config CC_DEBUG
   bool "生成调试信息-g"
   default n
