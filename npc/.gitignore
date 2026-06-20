@@ -3,6 +3,7 @@
 !*/
 !Makefile
 !*.mk
+!Kconfig
 !*.scala
 !*.[cSh]
 !*.v

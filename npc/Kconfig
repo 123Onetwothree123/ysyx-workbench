@@ -1,0 +1,301 @@
+mainmenu "NPC配置菜单"
+
+menu "编译器/C++选项"
+
+choice
+  prompt "编译器"
+  default CC_GPP
+config CC_GPP
+  bool "g++"
+config CC_CLANG
+  bool "clang++"
+endchoice
+
+config CC
+  string
+  default "g++" if CC_GPP
+  default "clang++" if CC_CLANG
+  default "g++"
+
+choice
+  prompt "用户C++语言标准"
+  default USER_CXX_STD_CXX23
+  help
+    设置csrc目录中用户C++源码使用的语言标准
+    用户源码依赖std::print等特性，最低要求C++23
+config USER_CXX_STD_CXX23
+  bool "C++23"
+config USER_CXX_STD_CXX26
+  bool "C++26"
+endchoice
+
+config USER_CXX_STD
+  string
+  default "c++23" if USER_CXX_STD_CXX23
+  default "c++26" if USER_CXX_STD_CXX26
+  default "c++23"
+
+choice
+  prompt "Verilator生成代码语言标准"
+  default VERILATOR_CXX_STD_CXX20
+  help
+    设置Verilator运行库、预编译头和生成模型使用的语言标准
+    Verilator生成代码不依赖高版本特性，可使用较低标准
+config VERILATOR_CXX_STD_CXX17
+  bool "C++17"
+config VERILATOR_CXX_STD_CXX20
+  bool "C++20"
+config VERILATOR_CXX_STD_CXX23
+  bool "C++23"
+endchoice
+
+config VERILATOR_CXX_STD
+  string
+  default "c++17" if VERILATOR_CXX_STD_CXX17
+  default "c++20" if VERILATOR_CXX_STD_CXX20
+  default "c++23" if VERILATOR_CXX_STD_CXX23
+  default "c++20"
+
+choice
+  prompt "优化级别"
+  default CC_O3
+config CC_O0
+  bool "O0"
+config CC_O1
+  bool "O1"
+config CC_O2
+  bool "O2"
+config CC_O3
+  bool "O3"
+endchoice
+
+config CC_OPT
+  string
+  default "-O0" if CC_O0
+  default "-O1" if CC_O1
+  default "-O2" if CC_O2
+  default "-O3" if CC_O3
+  default "-O3"
+
+config CC_LTO
+  bool "启用链接时优化-flto"
+  default n
+
+config CC_DEBUG
+  bool "生成调试信息-g"
+  default n
+
+config CC_ASAN
+  bool "启用ASan地址错误检测-fsanitize=address"
+  default n
+
+config CC_UBSAN
+  bool "启用UBSan未定义行为检测-fsanitize=undefined"
+  default n
+
+config CC_WALL
+  bool "启用额外警告-Wall -Wextra"
+  default n
+
+config CC_WERROR
+  bool "将警告视为错误-Werror"
+  default n
+
+config CC_NO_OMIT_FP
+  bool "保留帧指针-fno-omit-frame-pointer"
+  default n
+
+config CC_MODULE
+  bool "仅为用户C++源码启用模块-fmodules"
+  default n
+  help
+    只向csrc中的用户C++翻译单元添加-fmodules
+    不会传给Verilator运行库、预编译头和生成模型
+    这样可以避免GCC把Verilator的传统PCH改为header unit
+
+endmenu
+
+menu "Verilator选项"
+
+config BUILD_THREADS
+  int "构建线程数，0 = 使用全部核心"
+  default 0
+  help
+    设置Verilator并行构建的线程数
+    0表示使用所有可用核心
+    超过系统核心数的值将被限制为系统核心数
+
+config SIM_THREADS
+  int "仿真线程数，0 = 全部核心，1 = 单线程"
+  default 1
+  help
+    设置Verilator运行仿真时使用的线程数
+    0表示使用所有可用核心
+    1表示单线程，这是默认值，也是最稳妥的选择
+    超过系统核心数的值将被限制为系统核心数
+    由于存在线程同步开销，多线程仿真不一定更快
+
+choice
+  prompt "波形追踪"
+  default TRACE_NONE
+config TRACE_NONE
+  bool "不生成波形"
+config TRACE_VCD
+  bool "VCD --trace"
+config TRACE_FST
+  bool "FST --trace-fst"
+endchoice
+
+config TRACE_DEPTH
+  int "波形追踪深度，0 = 全部层级"
+  default 0
+  depends on !TRACE_NONE
+  help
+    设置Verilator波形追踪的--trace-depth层级
+    0表示追踪所有层级
+
+choice
+  prompt "Verilator优化级别"
+  default VERILATOR_O3
+config VERILATOR_O0
+  bool "O0"
+config VERILATOR_O1
+  bool "O1"
+config VERILATOR_O2
+  bool "O2"
+config VERILATOR_O3
+  bool "O3"
+endchoice
+
+config VERILATOR_OPT
+  string
+  default "-O0" if VERILATOR_O0
+  default "-O1" if VERILATOR_O1
+  default "-O2" if VERILATOR_O2
+  default "-O3" if VERILATOR_O3
+  default "-O3"
+
+config PROF_CFUNCS
+  bool "启用性能分析--prof-cfuncs"
+  default n
+
+config AUTOFLUSH
+  bool "启用自动刷新--autoflush"
+  default y
+  help
+    每个周期结束后自动刷新输出流
+    禁用此项可能提升性能，但如果仿真崩溃，波形可能不完整
+
+config ASSERT
+  bool "启用SystemVerilog断言--assert"
+  default n
+  help
+    启用RTL设计中的SVA断言
+    为提高性能，默认使用--noassert
+
+choice
+  prompt "X赋值模式--x-assign"
+  default X_ASSIGN_FAST
+config X_ASSIGN_FAST
+  bool "fast"
+config X_ASSIGN_0
+  bool "0"
+config X_ASSIGN_1
+  bool "1"
+config X_ASSIGN_UNIQUE
+  bool "unique"
+endchoice
+
+choice
+  prompt "X初始值模式--x-initial"
+  default X_INITIAL_FAST
+config X_INITIAL_FAST
+  bool "fast"
+config X_INITIAL_0
+  bool "0"
+config X_INITIAL_1
+  bool "1"
+config X_INITIAL_UNIQUE
+  bool "unique"
+endchoice
+
+config COVERAGE
+  bool "启用RTL覆盖率统计--coverage"
+  default n
+
+endmenu
+
+menu "测试与调试"
+
+config SDB
+  bool "启用SDB调试器"
+  default y
+
+config TRACE
+  bool "启用追踪功能（总开关）"
+  default n
+
+config ITRACE
+  bool "启用指令追踪itrace"
+  default n
+  depends on TRACE
+
+config MTRACE
+  bool "启用内存追踪mtrace"
+  default n
+  depends on TRACE
+
+config FTRACE
+  bool "启用函数调用追踪ftrace"
+  default n
+  depends on TRACE
+
+config IRINGBUF
+  bool "启用指令环形缓冲区iringbuf"
+  default n
+  depends on TRACE
+  help
+    在环形缓冲区中记录最近执行的指令，并在NPC异常终止时输出
+
+config IRINGBUF_SIZE
+  int "指令环形缓冲区大小"
+  default 16
+  depends on IRINGBUF
+
+config WATCHPOINT
+  bool "启用监视点"
+  default n
+  help
+    启用监视点功能，用于监控表达式值的变化
+
+config DIFFTEST
+  bool "启用差分测试difftest"
+  default n
+  help
+    启用差分测试，并使用NEMU作为参考模型
+    需要将NEMU编译为.so共享库
+    使用make run diff=/path/to/nemu-so指定参考模型
+
+endmenu
+
+menu "目标体系结构"
+
+config MBASE
+  hex "内存基地址"
+  default 0x20000000
+  help
+    加载程序镜像的内存区域基地址
+
+config MSIZE
+  hex "内存大小"
+  default 0x1000
+  help
+    内存区域的大小，单位为字节
+
+config RESET_PC
+  hex "复位PC地址"
+  default 0x20000000
+  help
+    复位后程序计数器的初始值
+
+endmenu
