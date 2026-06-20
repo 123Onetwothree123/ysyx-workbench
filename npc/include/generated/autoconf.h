@@ -4,6 +4,7 @@
  * NPC配置菜单
  *
  */
+#define CONFIG_CC_IPA_PTA 1
 #define CONFIG_AUTOFLUSH 1
 #define CONFIG_STDLIB_FLAG "-stdlib=libstdc++"
 #define CONFIG_VERILATOR_CXX_STD "c++20"
@@ -23,9 +24,9 @@
 #define CONFIG_MBASE 0x20000000
 #define CONFIG_USER_CXX_STD "c++23"
 #define CONFIG_STDLIB_LIBSTDCXX 1
+#define CONFIG_MARCH_NATIVE 1
 #define CONFIG_CC_OPT "-O3"
 #define CONFIG_LD_DEFAULT 1
-#define CONFIG_MARCH_OFF 1
 #define CONFIG_CC_GPP 1
 #define CONFIG_TRACE_NONE 1
 #define CONFIG_CC "g++"

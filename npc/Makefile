@@ -301,6 +301,20 @@ $(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 run: $(BIN)
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
+.PHONY: pgo
+pgo: verilog
+	@echo "=== PGO Pass 1: 编译插桩版本 ==="
+	@rm -f $(BIN)
+	$(MAKE) PGO_CFLAGS=-fprofile-generate $(BIN)
+	@echo "=== PGO Pass 1: 运行收集profile ==="
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
+	@echo "=== PGO Pass 2: 使用profile重新编译 ==="
+	@find $(OBJ_DIR) -name '*.o' -delete
+	@rm -f $(OBJ_DIR)/.npc_modules_built $(BIN)
+	$(MAKE) PGO_CFLAGS='-fprofile-use -fprofile-correction' $(BIN)
+	@echo "=== PGO 完成，运行优化后的程序 ==="
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
+
 include scripts/config.mk
 
 -include ../Makefile

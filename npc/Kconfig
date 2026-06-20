@@ -169,15 +169,30 @@ choice
   prompt "PGO配置引导优化"
   default PGO_OFF
   help
-    使用方法：先选生成模式编译运行，再选使用模式重新编译
-    1. 选"生成"→编译→运行典型工作负载→产生.gcda/.profraw
-    2. 选"使用"→重新编译→编译器根据profile数据优化
+    Profile-Guided Optimization，基于实际运行数据优化
 config PGO_OFF
   bool "关闭"
 config PGO_GENERATE
-  bool "生成profile数据"
+  bool "手动：生成profile数据"
+  help
+    添加-fprofile-generate，编译后运行产生profile文件
+    之后切到"使用"选项重新编译
 config PGO_USE
-  bool "使用profile数据优化"
+  bool "手动：使用profile数据优化"
+  help
+    添加-fprofile-use，读取之前运行产生的profile文件优化
+    使用前不要make clean，否则profile数据丢失
+config PGO_AUTO
+  bool "自动（一步到位）"
+  help
+    使用make pgo自动完成全部流程：
+      make pgo file=镜像文件.bin
+    内部自动执行：
+      1. 以-fprofile-generate编译插桩版本
+      2. 运行指定的镜像文件收集热点数据
+      3. 以-fprofile-use重新编译，应用profile优化
+      4. 运行最终优化后的程序
+    注意：必须通过file=指定要运行的镜像文件
 endchoice
 
 choice
