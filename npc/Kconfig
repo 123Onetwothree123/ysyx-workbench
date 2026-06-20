@@ -118,6 +118,8 @@ config VERILATOR_CXX_STD_CXX20
   bool "C++20"
 config VERILATOR_CXX_STD_CXX23
   bool "C++23"
+config VERILATOR_CXX_STD_CXX26
+  bool "C++26"
 endchoice
 
 config VERILATOR_CXX_STD
@@ -125,6 +127,7 @@ config VERILATOR_CXX_STD
   default "c++17" if VERILATOR_CXX_STD_CXX17
   default "c++20" if VERILATOR_CXX_STD_CXX20
   default "c++23" if VERILATOR_CXX_STD_CXX23
+  default "c++26" if VERILATOR_CXX_STD_CXX26
   default "c++20"
 
 endmenu
@@ -313,6 +316,12 @@ config CC_TIME_REPORT
   bool "显示编译各阶段耗时-ftime-report"
   default n
 
+config BUILD_TIMESTAMP
+  bool "嵌入构建时间戳"
+  default n
+  help
+    将编译时间嵌入二进制，可在运行时打印版本信息
+
 endmenu
 
 menu "警告"
@@ -358,6 +367,15 @@ config SIM_THREADS
     1表示单线程，这是默认值，也是最稳妥的选择
     超过系统核心数的值将被限制为系统核心数
     由于存在线程同步开销，多线程仿真不一定更快
+
+config OUTPUT_SPLIT
+  int "输出文件拆分大小（行数），0 = 不拆分"
+  default 20000
+  help
+    设置Verilator的--output-split参数
+    将生成的C++文件按行数拆分成多个小文件
+    有助于并行编译加速，建议值20000
+    0表示不拆分
 
 choice
   prompt "波形追踪"
