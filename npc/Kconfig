@@ -127,19 +127,28 @@ choice
   help
     GCC和Clang均支持切换链接器
 config LD_DEFAULT
-  bool "默认（ld）"
+  bool "ld（GNU）"
+config LD_GOLD
+  bool "gold（GNU）"
+  help
+    GNU gold链接器，比ld快2-4倍
+    GCC/Clang通过-fuse-ld=gold使用
 config LD_LLD
   bool "lld（LLVM）"
   help
-    LLVM链接器，比GNU ld快5-10倍
-    GCC通过-fuse-ld=lld使用，Clang同理
-    需要安装lld包（pacman -S lld）
+    LLVM链接器，比ld快5-10倍
+config LD_MOLD
+  bool "mold"
+  help
+    最快的链接器，比ld快10-20倍
 endchoice
 
 config LD_FLAG
   string
   default "" if LD_DEFAULT
+  default "-fuse-ld=gold" if LD_GOLD
   default "-fuse-ld=lld" if LD_LLD
+  default "-fuse-ld=mold" if LD_MOLD
   default ""
 
 config CC_LTO
@@ -157,6 +166,12 @@ config CC_ASAN
 config CC_UBSAN
   bool "启用UBSan未定义行为检测-fsanitize=undefined"
   default n
+
+config CC_TSAN
+  bool "启用TSan线程竞争检测-fsanitize=thread"
+  default n
+  help
+    检测数据竞争，不能与ASan同时使用
 
 config CC_WALL
   bool "启用额外警告-Wall -Wextra"
