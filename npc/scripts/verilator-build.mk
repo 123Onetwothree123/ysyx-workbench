@@ -32,6 +32,7 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/trace/FtraceFrame.ixx \
   $(NPC_CSRC_DIR)/trace/ReadelfFunction.ixx \
   $(NPC_CSRC_DIR)/trace/mtrace.ixx \
+  $(NPC_CSRC_DIR)/trace/capstone.ixx \
   $(NPC_CSRC_DIR)/trace/disasm.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/token.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/ExpressionError.ixx \
