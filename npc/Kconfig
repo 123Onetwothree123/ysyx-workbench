@@ -18,6 +18,24 @@ config CC
   default "g++"
 
 choice
+  prompt "C++标准库"
+  default STDLIB_LIBSTDCXX
+  help
+    选择C++标准库实现
+    GCC和Clang均支持在libstdc++与libc++之间自由切换
+config STDLIB_LIBSTDCXX
+  bool "libstdc++（GNU）"
+config STDLIB_LIBCXX
+  bool "libc++（LLVM）"
+endchoice
+
+config STDLIB_FLAG
+  string
+  default "-stdlib=libstdc++" if STDLIB_LIBSTDCXX
+  default "-stdlib=libc++" if STDLIB_LIBCXX
+  default "-stdlib=libstdc++"
+
+choice
   prompt "用户C++语言标准"
   default USER_CXX_STD_CXX23
   help
