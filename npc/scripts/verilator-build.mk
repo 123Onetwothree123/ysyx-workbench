@@ -38,7 +38,6 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/ysyxSoC/ysyxSoC.ixx \
   $(NPC_CSRC_DIR)/sdb/command/Watchpoint.ixx \
   $(NPC_CSRC_DIR)/SoCMemoryMap/SoCMemoryMap.ixx \
-  $(NPC_CSRC_DIR)/sdb/SDBCommand.ixx \
   $(NPC_CSRC_DIR)/trace/iringbuf.ixx \
   $(NPC_CSRC_DIR)/trace/readelf.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/ASTNode.ixx \
@@ -55,6 +54,7 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/tools/expressions/ParenthesizedNode.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/lexer.ixx \
   $(NPC_CSRC_DIR)/sdb/SDBCommandContext.ixx \
+  $(NPC_CSRC_DIR)/sdb/SDBCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/NPCEvaluationContext.ixx \
   $(NPC_CSRC_DIR)/difftest/difftest.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/parser.ixx \
