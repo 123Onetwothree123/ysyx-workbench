@@ -41,6 +41,31 @@ config STDLIB_FLAG
   default "-stdlib=libstdc++"
 
 choice
+  prompt "C库"
+  default LIBC_GLIBC
+  help
+    选择C运行库实现
+    C库位于C++标准库的下层，提供printf/malloc/pthread等基础设施
+    glibc：GNU默认，功能最全，兼容性最好
+    musl：轻量级，适合静态链接，需安装musl包
+    LLVM libc：实验性质，尚未生产就绪
+config LIBC_GLIBC
+  bool "glibc（GNU）"
+config LIBC_MUSL
+  bool "musl"
+  help
+    使用musl C库
+    GCC通过-specs切换，Clang通过--target切换
+    需要系统安装musl包（Arch: pacman -S musl）
+    注意：C++标准库（libstdc++/libc++）需要对应musl构建版本才能正常工作
+config LIBC_LLVM
+  bool "LLVM libc（实验性）"
+  help
+    LLVM正在开发的C库，目前不完整
+    大多数系统未安装，仅供实验
+endchoice
+
+choice
   prompt "用户C++语言标准"
   default USER_CXX_STD_CXX23
   help
