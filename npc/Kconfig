@@ -27,6 +27,7 @@ choice
     即使手动指向libc++头文件，GCC仍会将标准库include
     重定向到libstdc++的bits/stdc++.h模块基础设施
     因此选择libc++时此选项仅对Clang生效
+    本人补充：日你妈理查德·斯托曼，浪费了我一个下午的时间
 config STDLIB_LIBSTDCXX
   bool "libstdc++（GNU）"
 config STDLIB_LIBCXX
@@ -128,7 +129,7 @@ config VERILATOR_CXX_STD
 
 endmenu
 
-menu "优化"
+menu "性能优化"
 
 choice
   prompt "优化级别"
@@ -199,16 +200,56 @@ config MARCH_CUSTOM_VALUE
 config CC_IPA_PTA
   bool "跨过程指针分析-fipa-pta"
   default n
+  depends on CC_GPP
   help
     允许编译器跨函数分析指针别名，发现更多优化机会
-    会显著增加编译时间
+    会显著增加编译时间（仅GCC支持）
 
 config CC_PREFETCH
   bool "软件预取大数组-fprefetch-loop-arrays"
   default n
+  depends on CC_GPP
   help
     在循环中插入prefetch指令提前加载数据到缓存
-    对遍历大数组的场景有效，对小数据量可能反而变慢
+    对遍历大数组的场景有效，对小数据量可能反而变慢（仅GCC支持）
+
+config CC_PIPE
+  bool "使用管道加速编译-pipe"
+  default n
+  help
+    编译阶段间用管道代替临时文件，减少磁盘IO
+
+config CC_SPLIT_DWARF
+  bool "拆分调试信息加速链接-gsplit-dwarf"
+  default n
+  help
+    将调试信息拆分到.dwo文件，减少链接器处理量
+    需配合-g使用
+
+endmenu
+
+menu "大小优化"
+
+config CC_GC_SECTIONS
+  bool "删除未使用代码和数据-ffunction-sections -fdata-sections"
+  default n
+  help
+    将每个函数和数据放入独立section
+    链接时通过--gc-sections丢弃未引用的section
+
+config CC_STRIP
+  bool "剥离符号表-s"
+  default n
+  help
+    链接时删除所有符号信息，减小二进制体积
+    启用后无法用gdb调试
+
+config CC_VISIBILITY_HIDDEN
+  bool "默认隐藏符号-fvisibility=hidden"
+  default n
+  help
+    所有符号默认不导出，减少动态链接开销
+    对可执行文件无副作用
 
 endmenu
 
@@ -271,6 +312,10 @@ config CC_PEDANTIC
 
 config CC_WCONVERSION
   bool "隐式类型转换警告-Wconversion"
+  default n
+
+config CC_COLOR
+  bool "强制彩色编译输出-fdiagnostics-color=always"
   default n
 
 endmenu
