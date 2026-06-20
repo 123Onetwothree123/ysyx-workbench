@@ -25,6 +25,7 @@
 #define CONFIG_STDLIB_LIBSTDCXX 1
 #define CONFIG_CC_OPT "-O3"
 #define CONFIG_LD_DEFAULT 1
+#define CONFIG_MARCH_OFF 1
 #define CONFIG_CC_GPP 1
 #define CONFIG_TRACE_NONE 1
 #define CONFIG_CC "g++"
