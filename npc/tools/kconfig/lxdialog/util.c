@@ -520,8 +520,11 @@ int first_alpha(const char *string, const char *exempt)
 {
 	int i, in_paren = 0, c;
 
-	for (i = 0; i < strlen(string); i++) {
-		c = tolower(string[i]);
+	for (i = 0; string[i]; i++) {
+		c = (unsigned char)string[i];
+		if (c >= 0x80)
+			continue;
+		c = tolower(c);
 
 		if (strchr("<[(", c))
 			++in_paren;
@@ -532,7 +535,7 @@ int first_alpha(const char *string, const char *exempt)
 			return i;
 	}
 
-	return 0;
+	return -1;
 }
 
 /*

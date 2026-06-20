@@ -12,6 +12,12 @@
 #include <string>
 #include <cstdio>
 #include "../ysyxSoC/ysyxSoC.hpp"
+#ifndef CONFIG_MBASE
+#define CONFIG_MBASE 0x20000000
+#endif
+#ifndef CONFIG_RESET_PC
+#define CONFIG_RESET_PC 0x20000000
+#endif
 #ifdef CONFIG_DIFFTEST
 #include <dlfcn.h>
 #endif
@@ -93,9 +99,9 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
         return std::unexpected{InitSymbol.error()};
     }
     (*InitSymbol)(0);
-    REFMemcpy(0x20000000, mrom.data(), ImageSize, DifftestCPUState::GetDirectionToRef());
+    REFMemcpy(CONFIG_MBASE, mrom.data(), ImageSize, DifftestCPUState::GetDirectionToRef());
     DifftestCPUState DUTState;
-    DUTState.SetPC(0x20000000);
+    DUTState.SetPC(CONFIG_RESET_PC);
     REFRegcpy(&DUTState, DifftestCPUState::GetDirectionToRef());
     Enabled = true;
     std::println("DiffTest: ON, REF = {0}", REFSoFile->string());

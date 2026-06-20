@@ -1,14 +1,24 @@
 /*
  *
  * Automatically generated file; DO NOT EDIT.
- * NPC Configuration Menu
+ * NPC配置菜单
  *
  */
+#define CONFIG_AUTOFLUSH 1
 #define CONFIG_BUILD_THREADS 0
+#define CONFIG_X_INITIAL_FAST 1
+#define CONFIG_RESET_PC 0x20000000
+#define CONFIG_MSIZE 0x1000
+#define CONFIG_VERILATOR_OPT "-O3"
 #define CONFIG_CC_LTO 1
+#define CONFIG_VERILATOR_O3 1
+#define CONFIG_CC_MODULE 1
 #define CONFIG_SDB 1
+#define CONFIG_MBASE 0x20000000
 #define CONFIG_CC_OPT "-O3"
 #define CONFIG_CC_GPP 1
+#define CONFIG_TRACE_NONE 1
 #define CONFIG_CC "g++"
+#define CONFIG_X_ASSIGN_FAST 1
 #define CONFIG_CC_O3 1
 #define CONFIG_SIM_THREADS 1

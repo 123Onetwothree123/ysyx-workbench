@@ -11,7 +11,7 @@ bool iringbuf::empty() const
 }
 bool iringbuf::full() const
 {
-    return count == CONFIG_IRINGBUF_SIZE;
+    return count == IRINGBUF_SIZE;
 }
 std::size_t iringbuf::size() const
 {
@@ -19,15 +19,15 @@ std::size_t iringbuf::size() const
 }
 std::size_t iringbuf::capacity() const
 {
-    return CONFIG_IRINGBUF_SIZE;
+    return IRINGBUF_SIZE;
 }
 void iringbuf::push(std::uint64_t pc, std::uint32_t instruction, int len)
 {
     buffer[head].SetPC(pc);
     buffer[head].SetInstruction(instruction);
     buffer[head].SetLen(len);
-    head = (head + 1) % CONFIG_IRINGBUF_SIZE;
-    if (count < CONFIG_IRINGBUF_SIZE)
+    head = (head + 1) % IRINGBUF_SIZE;
+    if (count < IRINGBUF_SIZE)
     {
         count++;
     }
@@ -39,11 +39,11 @@ void iringbuf::print(std::uint64_t ErrorPC) const
         std::println("iringbuf是空的");
         return;
     }
-    const auto start{(head + CONFIG_IRINGBUF_SIZE - count) % CONFIG_IRINGBUF_SIZE};
+    const auto start{(head + IRINGBUF_SIZE - count) % IRINGBUF_SIZE};
     std::println("打印iringbuf");
     for (std::size_t i{0}; i < count; i++)
     {
-        const auto index{(start + i) % CONFIG_IRINGBUF_SIZE};
+        const auto index{(start + i) % IRINGBUF_SIZE};
         const RecordInstruction &entry{buffer[index]};
         constexpr std::string_view marker_selected{"-->"};
         constexpr std::string_view marker_normal{"   "};

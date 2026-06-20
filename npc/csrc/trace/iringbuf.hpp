@@ -7,9 +7,12 @@
 class iringbuf
 {
 public:
-    static constexpr std::size_t CONFIG_IRINGBUF_SIZE{16};
+#ifndef CONFIG_IRINGBUF_SIZE
+#define CONFIG_IRINGBUF_SIZE 16
+#endif
+    static constexpr std::size_t IRINGBUF_SIZE{CONFIG_IRINGBUF_SIZE};
 private:
-    std::array<RecordInstruction, CONFIG_IRINGBUF_SIZE> buffer{};
+    std::array<RecordInstruction, IRINGBUF_SIZE> buffer{};
     std::size_t head{0};
     std::size_t count{0};
 public:

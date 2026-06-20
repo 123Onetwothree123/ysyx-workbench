@@ -16,6 +16,12 @@
 #ifdef CONFIG_DIFFTEST
 #include "difftest/difftest.hpp"
 #endif
+#ifndef CONFIG_MBASE
+#define CONFIG_MBASE 0x20000000
+#endif
+#ifndef CONFIG_MSIZE
+#define CONFIG_MSIZE 0x1000
+#endif
 DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
 {
     dut->debug_gpr_raddr = 0;
@@ -142,8 +148,8 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
         return std::unexpected{std::format("不支持的内存读取长度：{}", size)};
     }
     extern std::vector<std::uint8_t> mrom;
-    constexpr std::uint32_t MROM_BASE{0x20000000};
-    constexpr std::uint32_t MROM_SIZE{0x1000};
+    constexpr std::uint32_t MROM_BASE{CONFIG_MBASE};
+    constexpr std::uint32_t MROM_SIZE{CONFIG_MSIZE};
     if (addr >= MROM_BASE && addr + size <= MROM_BASE + MROM_SIZE)
     {
         auto offset{addr - MROM_BASE};
@@ -158,5 +164,5 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
         }
         return value;
     }
-    return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 MROM 0x20000000-0x20001000）", addr)};
+    return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 MROM 0x{:08x}-0x{:08x}）", addr, MROM_BASE, MROM_BASE + MROM_SIZE)};
 }

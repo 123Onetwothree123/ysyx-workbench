@@ -87,6 +87,9 @@ CONFIG_FTRACE ?= n
 ifeq ($(CONFIG_SDB),y)
 SDB_CFLAGS = -DCONFIG_SDB
 endif
+ifeq ($(CONFIG_TRACE),y)
+TRACE_CFLAGS = -DCONFIG_TRACE
+endif
 ifeq ($(CONFIG_ITRACE),y)
 ITRACE_CFLAGS = -DCONFIG_ITRACE
 endif
@@ -95,6 +98,15 @@ MTRACE_CFLAGS = -DCONFIG_MTRACE
 endif
 ifeq ($(CONFIG_FTRACE),y)
 FTRACE_CFLAGS = -DCONFIG_FTRACE
+endif
+ifeq ($(CONFIG_IRINGBUF),y)
+IRINGBUF_CFLAGS = -DCONFIG_IRINGBUF
+ifneq ($(CONFIG_IRINGBUF_SIZE),)
+IRINGBUF_CFLAGS += -DCONFIG_IRINGBUF_SIZE=$(call remove_quote,$(CONFIG_IRINGBUF_SIZE))
+endif
+endif
+ifeq ($(CONFIG_WATCHPOINT),y)
+WATCHPOINT_CFLAGS = -DCONFIG_WATCHPOINT
 endif
 ifeq ($(CONFIG_DIFFTEST),y)
 DIFFTEST_CFLAGS = -DCONFIG_DIFFTEST
@@ -113,21 +125,93 @@ endif
 ifeq ($(CONFIG_CC_ASAN),y)
 ASAN_CFLAGS = -fsanitize=address
 endif
+ifeq ($(CONFIG_CC_UBSAN),y)
+UBSAN_CFLAGS = -fsanitize=undefined
+endif
+ifeq ($(CONFIG_CC_WALL),y)
+WALL_CFLAGS = -Wall -Wextra
+endif
+ifeq ($(CONFIG_CC_WERROR),y)
+WERROR_CFLAGS = -Werror
+endif
+ifeq ($(CONFIG_CC_NO_OMIT_FP),y)
+NO_OMIT_FP_CFLAGS = -fno-omit-frame-pointer
+endif
+ifeq ($(CONFIG_CC_MODULE),y)
+MODULE_CFLAGS = -fmodules
+endif
+ifneq ($(CONFIG_MBASE),)
+MBASE_CFLAGS = -DCONFIG_MBASE=$(call remove_quote,$(CONFIG_MBASE))
+endif
+ifneq ($(CONFIG_MSIZE),)
+MSIZE_CFLAGS = -DCONFIG_MSIZE=$(call remove_quote,$(CONFIG_MSIZE))
+endif
+ifneq ($(CONFIG_RESET_PC),)
+RESET_PC_CFLAGS = -DCONFIG_RESET_PC=$(call remove_quote,$(CONFIG_RESET_PC))
+endif
 COMMON_INCFLAGS += $(addprefix -I, $(abspath $(CSRC_DIR)/difftest))
-COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(DIFFTEST_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(ASAN_CFLAGS) $(CC_OPT)
+COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(TRACE_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(IRINGBUF_CFLAGS) $(WATCHPOINT_CFLAGS) $(DIFFTEST_CFLAGS) $(MBASE_CFLAGS) $(MSIZE_CFLAGS) $(RESET_PC_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(ASAN_CFLAGS) $(UBSAN_CFLAGS) $(WALL_CFLAGS) $(WERROR_CFLAGS) $(NO_OMIT_FP_CFLAGS) $(MODULE_CFLAGS) $(CC_OPT)
 #verilator的部分
+VERILATOR_OPT_FLAG ?= -O3
+ifneq ($(CONFIG_VERILATOR_OPT),)
+VERILATOR_OPT_FLAG = $(call remove_quote,$(CONFIG_VERILATOR_OPT))
+endif
+ifeq ($(CONFIG_TRACE_VCD),y)
+VERILATOR_TRACE = --trace
+endif
+ifeq ($(CONFIG_TRACE_FST),y)
+VERILATOR_TRACE = --trace-fst
+endif
+ifneq ($(CONFIG_TRACE_DEPTH),)
+TRACE_DEPTH_VAL := $(call remove_quote,$(CONFIG_TRACE_DEPTH))
+ifneq ($(TRACE_DEPTH_VAL),0)
+VERILATOR_TRACE += --trace-depth $(TRACE_DEPTH_VAL)
+endif
+endif
+ifeq ($(CONFIG_PROF_CFUNCS),y)
+VERILATOR_PROF = --prof-cfuncs
+endif
+ifeq ($(CONFIG_AUTOFLUSH),y)
+VERILATOR_AUTOFLUSH = --autoflush
+endif
+ifeq ($(CONFIG_ASSERT),y)
+VERILATOR_ASSERT = --assert
+else
+VERILATOR_ASSERT = --noassert
+endif
+ifeq ($(CONFIG_X_ASSIGN_0),y)
+VERILATOR_X_ASSIGN = --x-assign 0
+else ifeq ($(CONFIG_X_ASSIGN_1),y)
+VERILATOR_X_ASSIGN = --x-assign 1
+else ifeq ($(CONFIG_X_ASSIGN_UNIQUE),y)
+VERILATOR_X_ASSIGN = --x-assign unique
+else
+VERILATOR_X_ASSIGN = --x-assign fast
+endif
+ifeq ($(CONFIG_X_INITIAL_0),y)
+VERILATOR_X_INITIAL = --x-initial 0
+else ifeq ($(CONFIG_X_INITIAL_1),y)
+VERILATOR_X_INITIAL = --x-initial 1
+else ifeq ($(CONFIG_X_INITIAL_UNIQUE),y)
+VERILATOR_X_INITIAL = --x-initial unique
+else
+VERILATOR_X_INITIAL = --x-initial fast
+endif
+ifeq ($(CONFIG_COVERAGE),y)
+VERILATOR_COVERAGE = --coverage
+endif
 $(BIN): verilog $(CSRCS)
 	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) $(VERILATOR_THREADS) \
-		-O3 --x-assign fast --x-initial fast --noassert \
+		$(VERILATOR_OPT_FLAG) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
+		$(VERILATOR_TRACE) $(VERILATOR_PROF) $(VERILATOR_AUTOFLUSH) $(VERILATOR_COVERAGE) \
 		$(addprefix -I,$(VINCDIRS)) \
 		--top-module $(SOC_TOPNAME) \
 		$(VSRCS) $(CSRCS) \
 		$(addprefix -CFLAGS , $(COMMON_CFLAGS)) \
-		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) \
 		--Mdir $(OBJ_DIR) \
-		--exe -o $(abspath $(BIN)) \
-		--autoflush
+		--exe -o $(abspath $(BIN))
 run: $(BIN)
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
