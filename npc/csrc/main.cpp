@@ -6,6 +6,7 @@ import npc.CLIOptions;
 import npc.ImageLoader;
 import npc.NPCTrap;
 import npc.ysyxSoC;
+import npc.log;
 #ifdef CONFIG_SDB
 import npc.sdb.sdb;
 #endif
@@ -15,6 +16,7 @@ import npc.difftest.difftest;
 
 int main(int argc, char const *argv[])
 {
+    log_init();
     Verilated::commandArgs(argc, argv);
     DUT dut;
     auto options = CLIOptions::Parse(argc, argv);
@@ -58,5 +60,7 @@ int main(int argc, char const *argv[])
     }
 #endif
     dut.final();
-    return NPCTrap::PrintResult(dut.GetCycle());
+    auto result = NPCTrap::PrintResult(dut.GetCycle());
+    log_close();
+    return result;
 }

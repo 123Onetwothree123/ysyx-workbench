@@ -324,6 +324,42 @@ config BUILD_TIMESTAMP
 
 endmenu
 
+menu "日志"
+
+choice
+  prompt "日志级别"
+  default LOG_INFO
+config LOG_SILENT
+  bool "silent（关闭）"
+config LOG_ERROR
+  bool "error"
+config LOG_WARN
+  bool "warn"
+config LOG_INFO
+  bool "info"
+config LOG_DEBUG
+  bool "debug"
+endchoice
+
+config LOG_LEVEL
+  int
+  default 0 if LOG_SILENT
+  default 1 if LOG_ERROR
+  default 2 if LOG_WARN
+  default 3 if LOG_INFO
+  default 4 if LOG_DEBUG
+  default 3
+
+config LOG_TO_FILE
+  bool "日志输出到文件"
+  default y
+  depends on !LOG_SILENT
+  help
+    输出到log目录，文件名为启动时间戳
+    格式：log/YYYYMMDD-HHMMSS.log
+
+endmenu
+
 menu "警告"
 
 config CC_WALL

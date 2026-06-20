@@ -22,6 +22,7 @@ endif
 STD_MODULE_OBJ := std_module.o
 
 NPC_IXX_SRCS := \
+  $(NPC_CSRC_DIR)/log/log.ixx \
   $(NPC_CSRC_DIR)/NPCTrap.ixx \
   $(NPC_CSRC_DIR)/CLIOptions.ixx \
   $(NPC_CSRC_DIR)/SoCMemoryMap/AddressRange.ixx \
