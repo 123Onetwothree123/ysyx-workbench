@@ -17,11 +17,12 @@ static int list_width, check_x, item_x;
  */
 static void print_item(WINDOW * win, int choice, int selected)
 {
-	int i;
+	int i, j, hotkey_x;
 	char *list_item = malloc(list_width + 1);
 
 	strncpy(list_item, item_str(), list_width - item_x);
 	list_item[list_width - item_x] = '\0';
+	j = first_alpha(list_item, "YyNnMmHh");
 
 	/* Clear 'residue' of last item */
 	wattrset(win, dlg.menubox.atr);
@@ -35,10 +36,15 @@ static void print_item(WINDOW * win, int choice, int selected)
 	if (!item_is_tag(':'))
 		wprintw(win, "(%c)", item_is_tag('X') ? 'X' : ' ');
 
-	wattrset(win, selected ? dlg.tag_selected.atr : dlg.tag.atr);
-	mvwaddch(win, choice, item_x, list_item[0]);
 	wattrset(win, selected ? dlg.item_selected.atr : dlg.item.atr);
-	waddstr(win, list_item + 1);
+	mvwaddstr(win, choice, item_x, list_item);
+	if (j >= 0) {
+		wmove(win, choice, item_x);
+		waddnstr(win, list_item, j);
+		hotkey_x = getcurx(win);
+		wattrset(win, selected ? dlg.tag_selected.atr : dlg.tag.atr);
+		mvwaddch(win, choice, hotkey_x, (unsigned char)list_item[j]);
+	}
 	if (selected) {
 		wmove(win, choice, check_x + 1);
 		wrefresh(win);
@@ -104,7 +110,7 @@ static void print_buttons(WINDOW * dialog, int height, int width, int selected)
 int dialog_checklist(const char *title, const char *prompt, int height,
 		     int width, int list_height)
 {
-	int i, x, y, box_x, box_y;
+	int i, j, x, y, box_x, box_y;
 	int key = 0, button = 0, choice = 0, scroll = 0, max_choice;
 	WINDOW *dialog, *list;
 
@@ -197,7 +203,10 @@ do_resize:
 
 		for (i = 0; i < max_choice; i++) {
 			item_set(i + scroll);
-			if (toupper(key) == toupper(item_str()[0]))
+			j = first_alpha(item_str(), "YyNnMmHh");
+			if (j >= 0 && key < 256 &&
+			    toupper((unsigned char)key) ==
+			    toupper((unsigned char)item_str()[j]))
 				break;
 		}
 

@@ -77,15 +77,40 @@ CXX?=g++
 ifneq ($(CONFIG_CC),)
 CXX = $(call remove_quote,$(CONFIG_CC))
 endif
-GXX_VERSION = $(shell $(CXX) -dumpfullversion 2>/dev/null)
-STD_MODULE_SRC = /usr/include/c++/$(GXX_VERSION)/bits/std.cc
-CXX_STD = -std=c++23
+USER_CXX_STD ?= c++23
+ifneq ($(CONFIG_USER_CXX_STD),)
+USER_CXX_STD = $(call remove_quote,$(CONFIG_USER_CXX_STD))
+endif
+VERILATOR_CXX_STD ?= c++20
+ifneq ($(CONFIG_VERILATOR_CXX_STD),)
+VERILATOR_CXX_STD = $(call remove_quote,$(CONFIG_VERILATOR_CXX_STD))
+endif
+USER_CXX_STD_FLAG = -std=$(USER_CXX_STD)
+VERILATOR_CXX_STD_FLAG = -std=$(VERILATOR_CXX_STD)
+STDLIB_FLAG ?=
+ifneq ($(filter clang% icpx%,$(notdir $(CXX))),)
+ifneq ($(CONFIG_STDLIB_FLAG),)
+STDLIB_FLAG = $(call remove_quote,$(CONFIG_STDLIB_FLAG))
+endif
+endif
+
+ifneq ($(filter clang% icpx%,$(notdir $(CXX))),)
+VERILATOR_COMPILER = --compiler clang
+else
+VERILATOR_COMPILER = --compiler gcc
+endif
 CONFIG_SDB ?= n
 CONFIG_ITRACE ?= n
 CONFIG_MTRACE ?= n
 CONFIG_FTRACE ?= n
 ifeq ($(CONFIG_SDB),y)
 SDB_CFLAGS = -DCONFIG_SDB
+endif
+ifeq ($(CONFIG_TRACE),y)
+TRACE_CFLAGS = -DCONFIG_TRACE
+endif
+ifneq ($(CONFIG_TRACE_DEPTH),)
+TRACE_CFLAGS += -DCONFIG_TRACE_DEPTH=$(call remove_quote,$(CONFIG_TRACE_DEPTH))
 endif
 ifeq ($(CONFIG_ITRACE),y)
 ITRACE_CFLAGS = -DCONFIG_ITRACE
@@ -95,6 +120,15 @@ MTRACE_CFLAGS = -DCONFIG_MTRACE
 endif
 ifeq ($(CONFIG_FTRACE),y)
 FTRACE_CFLAGS = -DCONFIG_FTRACE
+endif
+ifeq ($(CONFIG_IRINGBUF),y)
+IRINGBUF_CFLAGS = -DCONFIG_IRINGBUF
+ifneq ($(CONFIG_IRINGBUF_SIZE),)
+IRINGBUF_CFLAGS += -DCONFIG_IRINGBUF_SIZE=$(call remove_quote,$(CONFIG_IRINGBUF_SIZE))
+endif
+endif
+ifeq ($(CONFIG_WATCHPOINT),y)
+WATCHPOINT_CFLAGS = -DCONFIG_WATCHPOINT
 endif
 ifeq ($(CONFIG_DIFFTEST),y)
 DIFFTEST_CFLAGS = -DCONFIG_DIFFTEST
@@ -107,28 +141,202 @@ endif
 ifeq ($(CONFIG_CC_LTO),y)
 LTO_CFLAGS = -flto
 endif
+ifeq ($(CONFIG_PGO_GENERATE),y)
+PGO_CFLAGS = -fprofile-generate
+endif
+ifeq ($(CONFIG_PGO_USE),y)
+PGO_CFLAGS = -fprofile-use -fprofile-correction
+endif
+LD_FLAG ?=
+ifneq ($(CONFIG_LD_FLAG),)
+LD_FLAG = $(call remove_quote,$(CONFIG_LD_FLAG))
+endif
 ifeq ($(CONFIG_CC_DEBUG),y)
 DEBUG_CFLAGS = -g
 endif
 ifeq ($(CONFIG_CC_ASAN),y)
 ASAN_CFLAGS = -fsanitize=address
 endif
+ifeq ($(CONFIG_CC_UBSAN),y)
+UBSAN_CFLAGS = -fsanitize=undefined
+endif
+ifeq ($(CONFIG_CC_TSAN),y)
+TSAN_CFLAGS = -fsanitize=thread
+endif
+ifeq ($(CONFIG_CC_COVERAGE),y)
+COVERAGE_CFLAGS = --coverage
+endif
+ifeq ($(CONFIG_CC_WALL),y)
+WALL_CFLAGS = -Wall -Wextra
+endif
+ifeq ($(CONFIG_CC_WERROR),y)
+WERROR_CFLAGS = -Werror
+endif
+ifeq ($(CONFIG_CC_PEDANTIC),y)
+PEDANTIC_CFLAGS = -Wpedantic
+endif
+ifeq ($(CONFIG_CC_WCONVERSION),y)
+WCONVERSION_CFLAGS = -Wconversion
+endif
+ifeq ($(CONFIG_CC_COLOR),y)
+COLOR_CFLAGS = -fdiagnostics-color=always
+endif
+ifeq ($(CONFIG_CC_PIPE),y)
+PIPE_CFLAGS = -pipe
+endif
+ifeq ($(CONFIG_CC_SPLIT_DWARF),y)
+SPLIT_DWARF_CFLAGS = -gsplit-dwarf
+endif
+ifeq ($(CONFIG_CC_GC_SECTIONS),y)
+GC_SECTIONS_CFLAGS = -ffunction-sections -fdata-sections
+GC_SECTIONS_LDFLAGS = -Wl,--gc-sections
+endif
+ifeq ($(CONFIG_CC_VISIBILITY_HIDDEN),y)
+VISIBILITY_CFLAGS = -fvisibility=hidden
+endif
+ifeq ($(CONFIG_MARCH_NATIVE),y)
+MARCH_CFLAGS = -march=native
+endif
+ifeq ($(CONFIG_MARCH_CUSTOM),y)
+MARCH_CFLAGS = -march=$(call remove_quote,$(CONFIG_MARCH_CUSTOM_VALUE))
+endif
+ifeq ($(CONFIG_CC_IPA_PTA),y)
+IPA_PTA_CFLAGS = -fipa-pta
+endif
+ifeq ($(CONFIG_CC_PREFETCH),y)
+PREFETCH_CFLAGS = -fprefetch-loop-arrays
+endif
+ifeq ($(CONFIG_BUILD_TIMESTAMP),y)
+TIMESTAMP_CFLAGS = -DBUILD_TIMESTAMP='"$(shell date "+%Y-%m-%d %H:%M:%S")"'
+endif
+ifneq ($(CONFIG_LOG_LEVEL),)
+LOG_CFLAGS = -DCONFIG_LOG_LEVEL=$(call remove_quote,$(CONFIG_LOG_LEVEL))
+endif
+ifeq ($(CONFIG_LOG_TO_FILE),y)
+LOG_CFLAGS += -DCONFIG_LOG_TO_FILE
+endif
+ifeq ($(CONFIG_LOG_TIMESTAMP),y)
+LOG_CFLAGS += -DCONFIG_LOG_TIMESTAMP
+endif
+ifeq ($(CONFIG_LOG_SOURCE_LOCATION),y)
+LOG_CFLAGS += -DCONFIG_LOG_SOURCE_LOCATION
+endif
+ifeq ($(CONFIG_CC_GPROF),y)
+GPROF_CFLAGS = -pg
+endif
+ifeq ($(CONFIG_CC_TIME_REPORT),y)
+TIME_REPORT_CFLAGS = -ftime-report
+endif
+ifeq ($(CONFIG_CC_NO_OMIT_FP),y)
+NO_OMIT_FP_CFLAGS = -fno-omit-frame-pointer
+endif
+ifneq ($(filter clang% icpx%,$(notdir $(CXX))),)
+MODULE_CFLAGS =
+else
+MODULE_CFLAGS = -fmodules
+endif
+ifneq ($(CONFIG_MBASE),)
+MBASE_CFLAGS = -DCONFIG_MBASE=$(call remove_quote,$(CONFIG_MBASE))
+endif
+ifneq ($(CONFIG_MSIZE),)
+MSIZE_CFLAGS = -DCONFIG_MSIZE=$(call remove_quote,$(CONFIG_MSIZE))
+endif
+ifneq ($(CONFIG_RESET_PC),)
+RESET_PC_CFLAGS = -DCONFIG_RESET_PC=$(call remove_quote,$(CONFIG_RESET_PC))
+endif
 COMMON_INCFLAGS += $(addprefix -I, $(abspath $(CSRC_DIR)/difftest))
-COMMON_CFLAGS += $(COMMON_INCFLAGS) $(CXX_STD) $(SDB_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(DIFFTEST_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(ASAN_CFLAGS) $(CC_OPT)
+SHARED_CFLAGS += $(COMMON_INCFLAGS) $(SDB_CFLAGS) $(TRACE_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(IRINGBUF_CFLAGS) $(WATCHPOINT_CFLAGS) $(DIFFTEST_CFLAGS) $(MBASE_CFLAGS) $(MSIZE_CFLAGS) $(RESET_PC_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(PGO_CFLAGS) $(ASAN_CFLAGS) $(UBSAN_CFLAGS) $(TSAN_CFLAGS) $(COVERAGE_CFLAGS) $(COLOR_CFLAGS) $(PIPE_CFLAGS) $(SPLIT_DWARF_CFLAGS) $(GC_SECTIONS_CFLAGS) $(VISIBILITY_CFLAGS) $(MARCH_CFLAGS) $(IPA_PTA_CFLAGS) $(PREFETCH_CFLAGS) $(GPROF_CFLAGS) $(TIME_REPORT_CFLAGS) $(TIMESTAMP_CFLAGS) $(LOG_CFLAGS) $(NO_OMIT_FP_CFLAGS) $(STDLIB_FLAG) $(CC_OPT)
+VERILATOR_CFLAGS = $(SHARED_CFLAGS) $(VERILATOR_CXX_STD_FLAG)
+USER_CXXFLAGS = $(USER_CXX_STD_FLAG) $(MODULE_CFLAGS) $(WALL_CFLAGS) $(WERROR_CFLAGS) $(PEDANTIC_CFLAGS) $(WCONVERSION_CFLAGS)
 #verilator的部分
-$(BIN): verilog $(CSRCS)
-	CXX=$(CXX) $(VERILATOR) -MMD --build -cc -j $(NPROC) $(VERILATOR_THREADS) \
-		-O3 --x-assign fast --x-initial fast --noassert \
+VERILATOR_OPT_FLAG ?= -O3
+ifneq ($(CONFIG_VERILATOR_OPT),)
+VERILATOR_OPT_FLAG = $(call remove_quote,$(CONFIG_VERILATOR_OPT))
+endif
+ifeq ($(CONFIG_TRACE_VCD),y)
+VERILATOR_TRACE = --trace
+endif
+ifeq ($(CONFIG_TRACE_FST),y)
+VERILATOR_TRACE = --trace-fst
+endif
+ifneq ($(CONFIG_TRACE_DEPTH),)
+TRACE_DEPTH_VAL := $(call remove_quote,$(CONFIG_TRACE_DEPTH))
+ifneq ($(TRACE_DEPTH_VAL),0)
+VERILATOR_TRACE += --trace-depth $(TRACE_DEPTH_VAL)
+endif
+endif
+ifeq ($(CONFIG_PROF_CFUNCS),y)
+VERILATOR_PROF = --prof-cfuncs
+endif
+ifeq ($(CONFIG_AUTOFLUSH),y)
+VERILATOR_AUTOFLUSH = --autoflush
+endif
+ifeq ($(CONFIG_ASSERT),y)
+VERILATOR_ASSERT = --assert
+else
+VERILATOR_ASSERT = --noassert
+endif
+ifeq ($(CONFIG_X_ASSIGN_0),y)
+VERILATOR_X_ASSIGN = --x-assign 0
+else ifeq ($(CONFIG_X_ASSIGN_1),y)
+VERILATOR_X_ASSIGN = --x-assign 1
+else ifeq ($(CONFIG_X_ASSIGN_UNIQUE),y)
+VERILATOR_X_ASSIGN = --x-assign unique
+else
+VERILATOR_X_ASSIGN = --x-assign fast
+endif
+ifeq ($(CONFIG_X_INITIAL_0),y)
+VERILATOR_X_INITIAL = --x-initial 0
+else ifeq ($(CONFIG_X_INITIAL_1),y)
+VERILATOR_X_INITIAL = --x-initial 1
+else ifeq ($(CONFIG_X_INITIAL_UNIQUE),y)
+VERILATOR_X_INITIAL = --x-initial unique
+else
+VERILATOR_X_INITIAL = --x-initial fast
+endif
+ifeq ($(CONFIG_COVERAGE),y)
+VERILATOR_COVERAGE = --coverage
+endif
+ifneq ($(CONFIG_OUTPUT_SPLIT),)
+OUTPUT_SPLIT_VAL := $(call remove_quote,$(CONFIG_OUTPUT_SPLIT))
+ifneq ($(OUTPUT_SPLIT_VAL),0)
+VERILATOR_OUTPUT_SPLIT = --output-split $(OUTPUT_SPLIT_VAL)
+endif
+endif
+VERILATOR_GENERATED_MK = V$(SOC_TOPNAME).mk
+VERILATOR_BUILD_WRAPPER = $(abspath scripts/verilator-build.mk)
+$(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
+		$(VERILATOR_OPT_FLAG) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
+		$(VERILATOR_TRACE) $(VERILATOR_PROF) $(VERILATOR_AUTOFLUSH) $(VERILATOR_COVERAGE) \
 		$(addprefix -I,$(VINCDIRS)) \
 		--top-module $(SOC_TOPNAME) \
 		$(VSRCS) $(CSRCS) \
-		$(addprefix -CFLAGS , $(COMMON_CFLAGS)) \
-		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) \
+		$(addprefix -CFLAGS , $(VERILATOR_CFLAGS)) \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) \
 		--Mdir $(OBJ_DIR) \
-		--exe -o $(abspath $(BIN)) \
-		--autoflush
+		--exe -o $(abspath $(BIN))
+	$(MAKE) -C $(OBJ_DIR) -f $(VERILATOR_BUILD_WRAPPER) -j $(NPROC) \
+		VERILATOR_GENERATED_MK=$(VERILATOR_GENERATED_MK) \
+		CXX=$(CXX) LINK=$(CXX) \
+		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
+		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
 run: $(BIN)
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
+
+.PHONY: pgo
+pgo: verilog
+	@echo "PGO Pass 1: 编译插桩版本"
+	@rm -f $(BIN)
+	$(MAKE) PGO_CFLAGS=-fprofile-generate $(BIN)
+	@echo "PGO Pass 1: 运行收集profile"
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
+	@echo "PGO Pass 2: 使用profile重新编译"
+	@find $(OBJ_DIR) -name '*.o' -delete
+	@rm -f $(OBJ_DIR)/.npc_modules_built $(BIN)
+	$(MAKE) PGO_CFLAGS='-fprofile-use -fprofile-correction' $(BIN)
+	@echo "PGO 完成，运行优化后的程序"
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
 include scripts/config.mk

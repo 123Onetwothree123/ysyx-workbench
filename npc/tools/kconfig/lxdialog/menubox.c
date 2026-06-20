@@ -53,7 +53,7 @@ static int menu_width, item_x;
 static void do_print_item(WINDOW * win, const char *item, int line_y,
 			  int selected, int hotkey)
 {
-	int j;
+	int j, hotkey_x;
 	char *menu_item = malloc(menu_width + 1);
 
 	strncpy(menu_item, item, menu_width - item_x);
@@ -74,10 +74,13 @@ static void do_print_item(WINDOW * win, const char *item, int line_y,
 #endif
 	wattrset(win, selected ? dlg.item_selected.atr : dlg.item.atr);
 	mvwaddstr(win, line_y, item_x, menu_item);
-	if (hotkey) {
+	if (hotkey && j >= 0) {
+		wmove(win, line_y, item_x);
+		waddnstr(win, menu_item, j);
+		hotkey_x = getcurx(win);
 		wattrset(win, selected ? dlg.tag_key_selected.atr
 			 : dlg.tag_key.atr);
-		mvwaddch(win, line_y, item_x + j, menu_item[j]);
+		mvwaddch(win, line_y, hotkey_x, (unsigned char)menu_item[j]);
 	}
 	if (selected) {
 		wmove(win, line_y, item_x + 1);
@@ -269,8 +272,8 @@ do_resize:
 	while (key != KEY_ESC) {
 		key = wgetch(menu);
 
-		if (key < 256 && isalpha(key))
-			key = tolower(key);
+		if (key < 256 && isalpha((unsigned char)key))
+			key = tolower((unsigned char)key);
 
 		if (strchr("ynmh", key))
 			i = max_choice;
@@ -278,14 +281,16 @@ do_resize:
 			for (i = choice + 1; i < max_choice; i++) {
 				item_set(scroll + i);
 				j = first_alpha(item_str(), "YyNnMmHh");
-				if (key == tolower(item_str()[j]))
+				if (j >= 0 &&
+				    key == tolower((unsigned char)item_str()[j]))
 					break;
 			}
 			if (i == max_choice)
 				for (i = 0; i < max_choice; i++) {
 					item_set(scroll + i);
 					j = first_alpha(item_str(), "YyNnMmHh");
-					if (key == tolower(item_str()[j]))
+					if (j >= 0 &&
+					    key == tolower((unsigned char)item_str()[j]))
 						break;
 				}
 		}

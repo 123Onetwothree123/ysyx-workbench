@@ -1,0 +1,615 @@
+mainmenu "NPC配置菜单"
+
+menu "工具链"
+
+choice
+  prompt "编译器"
+  default CC_GPP
+config CC_GPP
+  bool "g++"
+config CC_CLANG
+  bool "clang++"
+endchoice
+
+config CC
+  string
+  default "g++" if CC_GPP
+  default "clang++" if CC_CLANG
+  default "g++"
+
+choice
+  prompt "C++标准库"
+  default STDLIB_LIBSTDCXX
+  help
+    选择C++标准库实现
+    Clang支持在libstdc++与libc++之间自由切换
+    GCC的-fmodules实现硬编码了libstdc++的模块映射器路径
+    即使手动指向libc++头文件，GCC仍会将标准库include
+    重定向到libstdc++的bits/stdc++.h模块基础设施
+    因此选择libc++时此选项仅对Clang生效
+    本人补充：日你妈理查德·斯托曼，浪费了我一个下午的时间
+config STDLIB_LIBSTDCXX
+  bool "libstdc++（GNU）"
+config STDLIB_LIBCXX
+  bool "libc++（LLVM）"
+endchoice
+
+config STDLIB_FLAG
+  string
+  default "-stdlib=libstdc++" if STDLIB_LIBSTDCXX
+  default "-stdlib=libc++" if STDLIB_LIBCXX
+  default "-stdlib=libstdc++"
+
+choice
+  prompt "C库"
+  default LIBC_GLIBC
+  help
+    C运行库实现，位于C++标准库下层，提供printf/malloc/pthread等
+    musl：Arch的libstdc++和libc++均基于glibc编译，运行时依赖
+    glibc特有符号（__vfprintf_chk、__isoc23_*等），musl不提供
+    需要Alpine Linux等基于musl构建整套C++工具链的发行版才能用
+    LLVM libc：未完成，无Arch包，不可用
+    当前仅glibc可用
+config LIBC_GLIBC
+  bool "glibc（GNU）"
+endchoice
+
+choice
+  prompt "链接器"
+  default LD_DEFAULT
+  help
+    GCC和Clang均支持切换链接器
+config LD_DEFAULT
+  bool "ld（GNU）"
+config LD_GOLD
+  bool "gold（GNU）"
+  help
+    GNU gold链接器，比ld快2-4倍
+    GCC/Clang通过-fuse-ld=gold使用
+config LD_LLD
+  bool "lld（LLVM）"
+  help
+    LLVM链接器，比ld快5-10倍
+config LD_MOLD
+  bool "mold"
+  help
+    最快的链接器，比ld快10-20倍
+endchoice
+
+config LD_FLAG
+  string
+  default "" if LD_DEFAULT
+  default "-fuse-ld=gold" if LD_GOLD
+  default "-fuse-ld=lld" if LD_LLD
+  default "-fuse-ld=mold" if LD_MOLD
+  default ""
+
+endmenu
+
+menu "语言标准"
+
+choice
+  prompt "用户C++语言标准"
+  default USER_CXX_STD_CXX23
+  help
+    设置csrc目录中用户C++源码使用的语言标准
+    用户源码依赖std::print等特性，最低要求C++23
+config USER_CXX_STD_CXX23
+  bool "C++23"
+config USER_CXX_STD_CXX26
+  bool "C++26"
+endchoice
+
+config USER_CXX_STD
+  string
+  default "c++23" if USER_CXX_STD_CXX23
+  default "c++26" if USER_CXX_STD_CXX26
+  default "c++23"
+
+choice
+  prompt "Verilator生成代码语言标准"
+  default VERILATOR_CXX_STD_CXX20
+  help
+    设置Verilator运行库、预编译头和生成模型使用的语言标准
+    Verilator生成代码不依赖高版本特性，可使用较低标准
+config VERILATOR_CXX_STD_CXX17
+  bool "C++17"
+config VERILATOR_CXX_STD_CXX20
+  bool "C++20"
+config VERILATOR_CXX_STD_CXX23
+  bool "C++23"
+config VERILATOR_CXX_STD_CXX26
+  bool "C++26"
+endchoice
+
+config VERILATOR_CXX_STD
+  string
+  default "c++17" if VERILATOR_CXX_STD_CXX17
+  default "c++20" if VERILATOR_CXX_STD_CXX20
+  default "c++23" if VERILATOR_CXX_STD_CXX23
+  default "c++26" if VERILATOR_CXX_STD_CXX26
+  default "c++20"
+
+endmenu
+
+menu "优化"
+
+menu "性能优化"
+
+choice
+  prompt "优化级别"
+  default CC_O3
+config CC_O0
+  bool "O0"
+config CC_O1
+  bool "O1"
+config CC_O2
+  bool "O2"
+config CC_O3
+  bool "O3"
+config CC_OFAST
+  bool "Ofast"
+  help
+    等同于-O3加上-ffast-math
+    放宽IEEE浮点标准合规性换取速度
+    可能导致浮点计算结果与标准不一致
+endchoice
+
+config CC_OPT
+  string
+  default "-O0" if CC_O0
+  default "-O1" if CC_O1
+  default "-O2" if CC_O2
+  default "-O3" if CC_O3
+  default "-Ofast" if CC_OFAST
+  default "-O3"
+
+config CC_LTO
+  bool "启用链接时优化-flto"
+  default n
+
+choice
+  prompt "PGO配置引导优化"
+  default PGO_OFF
+  help
+    Profile-Guided Optimization，基于实际运行数据优化
+config PGO_OFF
+  bool "关闭"
+config PGO_GENERATE
+  bool "手动：生成profile数据"
+  help
+    添加-fprofile-generate，编译后运行产生profile文件
+    之后切到"使用"选项重新编译
+config PGO_USE
+  bool "手动：使用profile数据优化"
+  help
+    添加-fprofile-use，读取之前运行产生的profile文件优化
+    使用前不要make clean，否则profile数据丢失
+config PGO_AUTO
+  bool "自动（一步到位）"
+  help
+    使用make pgo自动完成全部流程：
+      make pgo file=镜像文件.bin
+    内部自动执行：
+      1. 以-fprofile-generate编译插桩版本
+      2. 运行指定的镜像文件收集热点数据
+      3. 以-fprofile-use重新编译，应用profile优化
+      4. 运行最终优化后的程序
+    注意：必须通过file=指定要运行的镜像文件
+endchoice
+
+choice
+  prompt "架构优化-march"
+  default MARCH_OFF
+config MARCH_OFF
+  bool "不指定"
+config MARCH_NATIVE
+  bool "native（本机CPU）"
+config MARCH_CUSTOM
+  bool "手动指定"
+endchoice
+
+config MARCH_CUSTOM_VALUE
+  string "架构名称"
+  default "x86-64-v3"
+  depends on MARCH_CUSTOM
+  help
+    输入GCC/Clang支持的架构名，例如：
+    alderlake, raptorlake, znver4, skylake, x86-64-v3
+
+config CC_IPA_PTA
+  bool "跨过程指针分析-fipa-pta"
+  default n
+  depends on CC_GPP
+  help
+    允许编译器跨函数分析指针别名，发现更多优化机会
+    会显著增加编译时间（仅GCC支持）
+
+config CC_PREFETCH
+  bool "软件预取大数组-fprefetch-loop-arrays"
+  default n
+  depends on CC_GPP
+  help
+    在循环中插入prefetch指令提前加载数据到缓存
+    对遍历大数组的场景有效，对小数据量可能反而变慢（仅GCC支持）
+
+config CC_PIPE
+  bool "使用管道加速编译-pipe"
+  default n
+  help
+    编译阶段间用管道代替临时文件，减少磁盘IO
+
+config CC_SPLIT_DWARF
+  bool "拆分调试信息加速链接-gsplit-dwarf"
+  default n
+  help
+    将调试信息拆分到.dwo文件，减少链接器处理量
+    需配合-g使用
+
+endmenu
+
+menu "大小优化"
+
+config CC_GC_SECTIONS
+  bool "删除未使用代码和数据-ffunction-sections -fdata-sections"
+  default n
+  help
+    将每个函数和数据放入独立section
+    链接时通过--gc-sections丢弃未引用的section
+
+config CC_STRIP
+  bool "剥离符号表-s"
+  default n
+  help
+    链接时删除所有符号信息，减小二进制体积
+    启用后无法用gdb调试
+
+config CC_VISIBILITY_HIDDEN
+  bool "默认隐藏符号-fvisibility=hidden"
+  default n
+  help
+    所有符号默认不导出，减少动态链接开销
+    对可执行文件无副作用
+
+endmenu
+
+endmenu
+
+menu "调试与分析"
+
+config CC_DEBUG
+  bool "生成调试信息-g"
+  default n
+
+config CC_NO_OMIT_FP
+  bool "保留帧指针-fno-omit-frame-pointer"
+  default n
+
+config CC_ASAN
+  bool "启用ASan地址错误检测-fsanitize=address"
+  default n
+
+config CC_UBSAN
+  bool "启用UBSan未定义行为检测-fsanitize=undefined"
+  default n
+
+config CC_TSAN
+  bool "启用TSan线程竞争检测-fsanitize=thread"
+  default n
+  help
+    检测数据竞争，不能与ASan同时使用
+
+config CC_COVERAGE
+  bool "启用代码覆盖率--coverage"
+  default n
+  help
+    编译后运行程序会生成.gcda/.gcno文件
+    用gcov/lcov/genhtml生成覆盖率报告
+
+config CC_GPROF
+  bool "启用gprof性能分析-pg"
+  default n
+  help
+    运行后生成gmon.out，用gprof分析热点函数
+
+config CC_TIME_REPORT
+  bool "显示编译各阶段耗时-ftime-report"
+  default n
+
+config BUILD_TIMESTAMP
+  bool "嵌入构建时间戳"
+  default n
+  help
+    将编译时间嵌入二进制，可在运行时打印版本信息
+
+endmenu
+
+menu "日志"
+
+choice
+  prompt "日志级别"
+  default LOG_INFO
+  help
+    控制哪些日志会输出，从严重到琐碎排列
+    设定某级别后，低于该级别的日志代码直接不编译（零开销）
+    silent：什么都不输出
+    error：只输出错误（程序要崩了）
+    warn：输出警告+错误（有问题但能继续跑）
+    info：输出信息+警告+错误（正常运行状态）
+    debug：全部输出（开发调试用的细节）
+config LOG_SILENT
+  bool "silent（关闭）"
+config LOG_ERROR
+  bool "error"
+config LOG_WARN
+  bool "warn"
+config LOG_INFO
+  bool "info"
+config LOG_DEBUG
+  bool "debug"
+endchoice
+
+config LOG_LEVEL
+  int
+  default 0 if LOG_SILENT
+  default 1 if LOG_ERROR
+  default 2 if LOG_WARN
+  default 3 if LOG_INFO
+  default 4 if LOG_DEBUG
+  default 3
+
+config LOG_TO_FILE
+  bool "日志输出到文件"
+  default y
+  depends on !LOG_SILENT
+  help
+    文件名为启动时间戳，格式：YYYYMMDD-HHMMSS.log
+
+config LOG_DIR
+  string "日志输出目录"
+  default "log"
+  depends on LOG_TO_FILE
+  help
+    日志文件存放的目录路径，相对于npc目录
+
+config LOG_TIMESTAMP
+  bool "日志每行带时间戳"
+  default n
+  depends on !LOG_SILENT
+  help
+    每条日志前加上 [HH:MM:SS.mmm] 时间前缀
+
+config LOG_SOURCE_LOCATION
+  bool "日志带源文件位置"
+  default n
+  depends on !LOG_SILENT
+  help
+    每条日志显示调用处的文件名和行号
+
+endmenu
+
+menu "警告"
+
+config CC_WALL
+  bool "启用额外警告-Wall -Wextra"
+  default n
+
+config CC_WERROR
+  bool "将警告视为错误-Werror"
+  default n
+
+config CC_PEDANTIC
+  bool "严格ISO C++合规警告-Wpedantic"
+  default n
+
+config CC_WCONVERSION
+  bool "隐式类型转换警告-Wconversion"
+  default n
+
+config CC_COLOR
+  bool "强制彩色编译输出-fdiagnostics-color=always"
+  default n
+
+endmenu
+
+menu "Verilator选项"
+
+config BUILD_THREADS
+  int "构建线程数，0 = 使用全部核心"
+  default 0
+  help
+    设置Verilator并行构建的线程数
+    0表示使用所有可用核心
+    超过系统核心数的值将被限制为系统核心数
+
+config SIM_THREADS
+  int "仿真线程数，0 = 全部核心，1 = 单线程"
+  default 1
+  help
+    设置Verilator运行仿真时使用的线程数
+    0表示使用所有可用核心
+    1表示单线程，这是默认值，也是最稳妥的选择
+    超过系统核心数的值将被限制为系统核心数
+    由于存在线程同步开销，多线程仿真不一定更快
+
+config OUTPUT_SPLIT
+  int "输出文件拆分大小（行数），0 = 不拆分"
+  default 20000
+  help
+    设置Verilator的--output-split参数
+    将生成的C++文件按行数拆分成多个小文件
+    有助于并行编译加速，建议值20000
+    0表示不拆分
+
+choice
+  prompt "波形追踪"
+  default TRACE_NONE
+config TRACE_NONE
+  bool "不生成波形"
+config TRACE_VCD
+  bool "VCD --trace"
+config TRACE_FST
+  bool "FST --trace-fst"
+endchoice
+
+config TRACE_DEPTH
+  int "波形追踪深度，0 = 全部层级"
+  default 0
+  depends on !TRACE_NONE
+  help
+    设置Verilator波形追踪的--trace-depth层级
+    0表示追踪所有层级
+
+config TRACE_FILE
+  string "波形输出文件路径"
+  default "oscillogram/waveform.vcd" if TRACE_VCD
+  default "oscillogram/waveform.fst" if TRACE_FST
+  depends on !TRACE_NONE
+  help
+    波形文件的输出路径，相对于npc目录
+
+choice
+  prompt "Verilator优化级别"
+  default VERILATOR_O3
+config VERILATOR_O0
+  bool "O0"
+config VERILATOR_O1
+  bool "O1"
+config VERILATOR_O2
+  bool "O2"
+config VERILATOR_O3
+  bool "O3"
+endchoice
+
+config VERILATOR_OPT
+  string
+  default "-O0" if VERILATOR_O0
+  default "-O1" if VERILATOR_O1
+  default "-O2" if VERILATOR_O2
+  default "-O3" if VERILATOR_O3
+  default "-O3"
+
+config PROF_CFUNCS
+  bool "启用性能分析--prof-cfuncs"
+  default n
+
+config AUTOFLUSH
+  bool "启用自动刷新--autoflush"
+  default y
+  help
+    每个周期结束后自动刷新输出流
+    禁用此项可能提升性能，但如果仿真崩溃，波形可能不完整
+
+config ASSERT
+  bool "启用SystemVerilog断言--assert"
+  default n
+  help
+    启用RTL设计中的SVA断言
+    为提高性能，默认使用--noassert
+
+choice
+  prompt "X赋值模式--x-assign"
+  default X_ASSIGN_FAST
+config X_ASSIGN_FAST
+  bool "fast"
+config X_ASSIGN_0
+  bool "0"
+config X_ASSIGN_1
+  bool "1"
+config X_ASSIGN_UNIQUE
+  bool "unique"
+endchoice
+
+choice
+  prompt "X初始值模式--x-initial"
+  default X_INITIAL_FAST
+config X_INITIAL_FAST
+  bool "fast"
+config X_INITIAL_0
+  bool "0"
+config X_INITIAL_1
+  bool "1"
+config X_INITIAL_UNIQUE
+  bool "unique"
+endchoice
+
+config COVERAGE
+  bool "启用RTL覆盖率统计--coverage"
+  default n
+
+endmenu
+
+menu "测试与调试"
+
+config SDB
+  bool "启用SDB调试器"
+  default y
+
+config TRACE
+  bool "启用追踪功能（总开关）"
+  default n
+
+config ITRACE
+  bool "启用指令追踪itrace"
+  default n
+  depends on TRACE
+
+config MTRACE
+  bool "启用内存追踪mtrace"
+  default n
+  depends on TRACE
+
+config FTRACE
+  bool "启用函数调用追踪ftrace"
+  default n
+  depends on TRACE
+
+config IRINGBUF
+  bool "启用指令环形缓冲区iringbuf"
+  default n
+  depends on TRACE
+  help
+    在环形缓冲区中记录最近执行的指令，并在NPC异常终止时输出
+
+config IRINGBUF_SIZE
+  int "指令环形缓冲区大小"
+  default 16
+  depends on IRINGBUF
+
+config WATCHPOINT
+  bool "启用监视点"
+  default n
+  help
+    启用监视点功能，用于监控表达式值的变化
+
+config DIFFTEST
+  bool "启用差分测试difftest"
+  default n
+  help
+    启用差分测试，并使用NEMU作为参考模型
+    需要将NEMU编译为.so共享库
+    使用make run diff=/path/to/nemu-so指定参考模型
+
+endmenu
+
+menu "目标体系结构"
+
+config MBASE
+  hex "内存基地址"
+  default 0x20000000
+  help
+    加载程序镜像的内存区域基地址
+
+config MSIZE
+  hex "内存大小"
+  default 0x1000
+  help
+    内存区域的大小，单位为字节
+
+config RESET_PC
+  hex "复位PC地址"
+  default 0x20000000
+  help
+    复位后程序计数器的初始值
+
+endmenu

@@ -1,4 +1,4 @@
-#include "ftrace.hpp"
+module npc.trace.ftrace;
 /**
  * @file ftrace.cpp
  * @brief NPC的函数调用跟踪实现。
@@ -6,9 +6,6 @@
  * 这个文件负责从已提交指令中识别RISC-V call/ret，维护当前调用栈，
  * 记录历史事件，并把事件按缩进格式打印出来。
  */
-#include <print>
-#include <string>
-#include <utility>
 namespace
 {
     constexpr auto OpcodeMask{std::uint32_t{0x7fu}};
@@ -458,4 +455,3 @@ std::expected<void, std::string> InitializeFtrace(const std::filesystem::path &E
     GlobalFtrace.Enable(ShouldEnable);
     return {};
 }
-

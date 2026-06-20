@@ -1,7 +1,6 @@
-#include "expressions.hpp"
-#include "lexer.hpp"
-#include "parser.hpp"
-#include <string>
+module npc.expressions.expressions;
+import npc.expressions.lexer;
+import npc.expressions.parser;
 std::expected<std::uint32_t, std::string> expressions::evaluate(std::string_view expression, const EvaluationContext &context)
 {
     lexer lex{expression};

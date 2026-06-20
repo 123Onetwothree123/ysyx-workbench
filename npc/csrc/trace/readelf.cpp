@@ -1,3 +1,6 @@
+module;
+#include <elf.h>
+module npc.trace.readelf;
 /**
  * @file readelf.cpp
  * @brief 现代C++23 NPC ELF阅读器的实现。
@@ -7,25 +10,11 @@
  * 均以`std::expected`形式返回。原始的ELF表在生成任何视图或派生函数记录
  * 之前被复制到vector中，因此调用者不会持有指向临时文件缓冲区的指针。
  */
-#include "readelf.hpp"
-#include <algorithm>
-#include <cstring>
-#include <format>
-#include <fstream>
-#include <iterator>
-#include <limits>
-#include <ostream>
-#include <ranges>
-#include <utility>
 namespace
 {
-    // 本次NPC构建所期望的ELF class字节。
     constexpr unsigned char ExpectedElfClass{Readelf::is_elf64 ? ELFCLASS64 : ELFCLASS32};
-    // 诊断信息中使用的`ExpectedElfClass`的可读形式。
     constexpr auto ExpectedElfClassName{std::string_view{Readelf::is_elf64 ? "ELF64(64位)" : "ELF32(32位)"}};
-    // 打印虚拟地址时使用的十六进制位数。
     constexpr auto AddressWidth{Readelf::is_elf64 ? 16 : 8};
-    // 简短的局部别名，使解析器不依赖于预处理器宏。
     using Header = Readelf::header_type;
     using SectionHeader = Readelf::section_header_type;
     using Symbol = Readelf::symbol_type;

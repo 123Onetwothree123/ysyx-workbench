@@ -3,6 +3,7 @@
 !*/
 !Makefile
 !*.mk
+!Kconfig
 !*.scala
 !*.[cSh]
 !*.v
@@ -13,6 +14,7 @@
 !README.md
 //新加的
 !*hpp
+!*ixx
 
 build/
 

@@ -1,4 +1,4 @@
-#include "FtraceEvent.hpp"
+module npc.trace.FtraceEvent;
 /**
  * @file FtraceEvent.cpp
  * @brief ftrace历史事件的实现。

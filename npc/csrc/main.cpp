@@ -1,21 +1,13 @@
-#include <iostream>
 #include <verilated.h>
-#include <print>
-#include "DUT.hpp"
-#include "CLIOptions.hpp"
-#include "ImageLoader.hpp"
-#include "NPCTrap.hpp"
-#include "ysyxSoC/ysyxSoC.hpp"
-#ifdef CONFIG_SDB
-#include "sdb/sdb.hpp"
-#endif
-#ifdef CONFIG_DIFFTEST
-#include "difftest/difftest.hpp"
-#endif
+#include "VysyxSoCFull.h"
+import std;
+import npc;
 
 int main(int argc, char const *argv[])
 {
-    // 才发现删过头了，忘记写这行代码了
+#if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
+    log_init();
+#endif
     Verilated::commandArgs(argc, argv);
     DUT dut;
     auto options = CLIOptions::Parse(argc, argv);
@@ -59,5 +51,9 @@ int main(int argc, char const *argv[])
     }
 #endif
     dut.final();
-    return NPCTrap::PrintResult(dut.GetCycle());
+    auto result = NPCTrap::PrintResult(dut.GetCycle());
+#if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
+    log_close();
+#endif
+    return result;
 }

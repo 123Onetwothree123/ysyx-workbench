@@ -1,10 +1,5 @@
-#include "ImageLoader.hpp"
-#include "CLIOptions.hpp"
-#include "ysyxSoC/ysyxSoC.hpp"
-#include <print>
-#include <filesystem>
-#include <fstream>
-#include <format>
+module npc.ImageLoader;
+import npc.ysyxSoC;
 std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOptions &Options)
 {
     const auto &ImageFile{Options.GetImageFile()};

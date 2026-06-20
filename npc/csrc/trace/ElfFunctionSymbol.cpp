@@ -1,4 +1,4 @@
-#include "ElfFunctionSymbol.hpp"
+module npc.trace.ElfFunctionSymbol;
 ElfFunctionSymbol::ElfFunctionSymbol() = default;
 ElfFunctionSymbol::~ElfFunctionSymbol() = default;
 ElfFunctionSymbol::ElfFunctionSymbol(std::string_view InputName, std::size_t InputStart, std::size_t InputEnd)

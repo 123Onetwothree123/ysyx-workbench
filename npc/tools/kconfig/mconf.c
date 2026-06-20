@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <locale.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1005,6 +1006,13 @@ int main(int ac, char **av)
 {
 	char *mode;
 	int res;
+
+	if (!setlocale(LC_ALL, ""))
+		fprintf(stderr, "Warning: failed to initialize the system locale\n");
+	if (!setlocale(LC_CTYPE, "C.UTF-8") &&
+	    !setlocale(LC_CTYPE, "C.utf8") &&
+	    !setlocale(LC_CTYPE, "en_US.UTF-8"))
+		fprintf(stderr, "Warning: no UTF-8 locale is available\n");
 
 	signal(SIGINT, sig_handler);
 

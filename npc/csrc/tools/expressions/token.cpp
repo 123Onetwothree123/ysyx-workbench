@@ -1,4 +1,4 @@
-#include "token.hpp"
+module npc.expressions.token;
 token::token(Kind InputKind, std::string_view InputText, std::uint32_t InputValue, std::size_t InputPosition)
 {
     kind = InputKind;

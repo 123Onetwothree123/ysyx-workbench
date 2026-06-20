@@ -1,31 +1,24 @@
-#include "SDBCommandRegistry.hpp"
-#include "command/cCommand.hpp"
-#include "command/dCommand.hpp"
-#include "command/helpCommand.hpp"
-#include "command/infoCommand.hpp"
-#include "command/pCommand.hpp"
-#include "command/qCommand.hpp"
-#include "command/siCommand.hpp"
-#include "command/wCommand.hpp"
-#include "command/xCommand.hpp"
-#include "command/clearCommand.hpp"
-#include "command/historyCommand.hpp"
-#include "command/readelfCommand.hpp"
+module npc.sdb.SDBCommandRegistry;
+import npc.sdb.SDBCommandUsage;
+import npc.sdb.command.cCommand;
+import npc.sdb.command.dCommand;
+import npc.sdb.command.helpCommand;
+import npc.sdb.command.infoCommand;
+import npc.sdb.command.pCommand;
+import npc.sdb.command.qCommand;
+import npc.sdb.command.siCommand;
+import npc.sdb.command.wCommand;
+import npc.sdb.command.xCommand;
+import npc.sdb.command.clearCommand;
+import npc.sdb.command.historyCommand;
+import npc.sdb.command.readelfCommand;
 #ifdef CONFIG_ITRACE
-#include "command/iringbufCommand.hpp"
+import npc.sdb.command.iringbufCommand;
 #endif
 #ifdef CONFIG_FTRACE
-#include "command/ftraceCommand.hpp"
+import npc.sdb.command.ftraceCommand;
 #endif
-#include "SDBCommandUtils.hpp"
-#include <algorithm>
-#include <cstddef>
-#include <iostream>
-#include <memory>
-#include <print>
-#include <ranges>
-#include <string>
-#include <utility>
+import npc.sdb.SDBCommandUtils;
 namespace
 {
     [[nodiscard]] std::size_t SDBUsageSyntaxWidth(const SDBCommand &Command, const SDBCommandUsage &Usage) noexcept

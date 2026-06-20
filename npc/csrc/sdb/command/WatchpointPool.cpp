@@ -1,10 +1,6 @@
-#include "WatchpointPool.hpp"
-#include "../TablePrinter.hpp"
-#include <algorithm>
-#include <cctype>
-#include <cstring>
-#include <format>
-#include <string>
+module npc.sdb.command.WatchpointPool;
+import npc.sdb.TablePrinter;
+
 WatchpointPool::WatchpointPool(std::size_t InputMaxWatchpoints)
     : watchpoints(InputMaxWatchpoints)
 {

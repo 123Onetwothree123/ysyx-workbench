@@ -1,4 +1,4 @@
-#include "SDBCommandContext.hpp"
+module npc.sdb.SDBCommandContext;
 DUT &SDBCommandContext::GetDUT() const noexcept
 {
     return dut;

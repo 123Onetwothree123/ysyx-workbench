@@ -1,10 +1,10 @@
-#include "cCommand.hpp"
-#include "../NPCTrap.hpp"
-#include <print>
+module;
 #include <verilated.h>
-#include "../SDBCommandContext.hpp"
-#include "WatchpointPool.hpp"
-#include "../NPCEvaluationContext.hpp"
+module npc.sdb.command.cCommand;
+import npc.NPCTrap;
+import npc.DUT;
+import npc.sdb.NPCEvaluationContext;
+import npc.sdb.command.WatchpointPool;
 
 [[nodiscard]] std::string_view cCommand::name() const noexcept
 {

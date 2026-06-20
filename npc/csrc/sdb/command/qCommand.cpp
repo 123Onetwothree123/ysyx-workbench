@@ -1,4 +1,5 @@
-#include "command/qCommand.hpp"
+module npc.sdb.command.qCommand;
+
 std::string_view qCommand::name() const noexcept
 {
     return "q";

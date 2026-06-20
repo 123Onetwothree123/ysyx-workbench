@@ -1,6 +1,6 @@
-#include "ftraceCommand.hpp"
-#include "../../trace/ftrace.hpp"
-#include <print>
+module npc.sdb.command.ftraceCommand;
+import npc.trace.ftrace;
+
 std::string_view ftraceCommand::name() const noexcept
 {
     return "ftrace";

@@ -1,7 +1,4 @@
-#include "CLIOptions.hpp"
-#include <format>
-#include <string_view>
-#include <utility>
+module npc.CLIOptions;
 std::expected<CLIOptions, std::string> CLIOptions::Parse(int argc, char const *argv[])
 {
     CLIOptions options;

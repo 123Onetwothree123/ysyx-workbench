@@ -1,6 +1,4 @@
-#include "TablePrinter.hpp"
-#include <cstddef>
-#include <print>
+module npc.sdb.TablePrinter;
 int display_width(std::string_view s)
 {
     auto w{0};

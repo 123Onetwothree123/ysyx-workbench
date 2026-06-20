@@ -1,8 +1,7 @@
-#include "dCommand.hpp"
-#include "../SDBCommandUtils.hpp"
-#include <cstddef>
-#include <print>
-#include "WatchpointPool.hpp"
+module npc.sdb.command.dCommand;
+import npc.sdb.SDBCommandUtils;
+import npc.sdb.command.WatchpointPool;
+
 std::string_view dCommand::name() const noexcept
 {
     return "d";

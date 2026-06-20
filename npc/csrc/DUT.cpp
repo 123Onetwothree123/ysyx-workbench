@@ -1,26 +1,47 @@
-#include "DUT.hpp"
-#include <cstdint>
-#include <format>
-#include <iostream>
-#include <print>
-#include <vector>
-#ifdef CONFIG_ITRACE
-#include "trace/itrace.hpp"
+module;
+#include "VysyxSoCFull.h"
+#ifdef CONFIG_TRACE_VCD
+#include <verilated_vcd_c.h>
 #endif
-#ifdef CONFIG_MTRACE
-#include "trace/mtrace.hpp"
+#ifdef CONFIG_TRACE_FST
+#include <verilated_fst_c.h>
 #endif
-#ifdef CONFIG_FTRACE
-#include "trace/ftrace.hpp"
+module npc.DUT;
+import npc.trace.itrace;
+import npc.trace.mtrace;
+import npc.trace.ftrace;
+import npc.difftest.difftest;
+import npc.ysyxSoC;
+#ifdef CONFIG_TRACE_VCD
+static VerilatedVcdC tfp;
 #endif
-#ifdef CONFIG_DIFFTEST
-#include "difftest/difftest.hpp"
+#ifdef CONFIG_TRACE_FST
+static VerilatedFstC tfp;
+#endif
+#ifndef CONFIG_TRACE_FILE
+#define CONFIG_TRACE_FILE "waveform.vcd"
+#endif
+#ifndef CONFIG_MBASE
+#define CONFIG_MBASE 0x20000000
+#endif
+#ifndef CONFIG_MSIZE
+#define CONFIG_MSIZE 0x1000
 #endif
 DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
 {
     dut->debug_gpr_raddr = 0;
 #ifdef CONFIG_ITRACE
     init_disasm();
+#endif
+#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
+    Verilated::traceEverOn(true);
+#if !defined(CONFIG_TRACE_DEPTH) || CONFIG_TRACE_DEPTH == 0
+    dut->trace(&tfp, 99);
+#else
+    dut->trace(&tfp, CONFIG_TRACE_DEPTH);
+#endif
+    std::filesystem::create_directories(std::filesystem::path{CONFIG_TRACE_FILE}.parent_path());
+    tfp.open(CONFIG_TRACE_FILE);
 #endif
 }
 VysyxSoCFull &DUT::operator*()
@@ -37,6 +58,9 @@ void DUT::eval()
 }
 void DUT::final()
 {
+#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
+    tfp.close();
+#endif
     dut->final();
 }
 void DUT::reset()
@@ -59,8 +83,14 @@ void DUT::step()
 {
     dut->clock = 0;
     dut->eval();
+#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
+    tfp.dump(cycle * 2);
+#endif
     dut->clock = 1;
     dut->eval();
+#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
+    tfp.dump(cycle * 2 + 1);
+#endif
     ++cycle;
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
@@ -141,9 +171,8 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
     {
         return std::unexpected{std::format("不支持的内存读取长度：{}", size)};
     }
-    extern std::vector<std::uint8_t> mrom;
-    constexpr std::uint32_t MROM_BASE{0x20000000};
-    constexpr std::uint32_t MROM_SIZE{0x1000};
+    constexpr std::uint32_t MROM_BASE{CONFIG_MBASE};
+    constexpr std::uint32_t MROM_SIZE{CONFIG_MSIZE};
     if (addr >= MROM_BASE && addr + size <= MROM_BASE + MROM_SIZE)
     {
         auto offset{addr - MROM_BASE};
@@ -158,5 +187,5 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
         }
         return value;
     }
-    return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 MROM 0x20000000-0x20001000）", addr)};
+    return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 MROM 0x{:08x}-0x{:08x}）", addr, MROM_BASE, MROM_BASE + MROM_SIZE)};
 }
