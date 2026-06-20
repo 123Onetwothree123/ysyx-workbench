@@ -15,13 +15,8 @@ static std::string_view level_str(LogLevel level) {
 void log_init() {
 #ifdef CONFIG_LOG_TO_FILE
     std::filesystem::create_directories("log");
-    auto now = std::chrono::system_clock::now();
-    auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-    localtime_r(&time, &tm);
-    auto filename = std::format("log/{:04}{:02}{:02}-{:02}{:02}{:02}.log",
-        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-        tm.tm_hour, tm.tm_min, tm.tm_sec);
+    auto now = std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()};
+    auto filename = std::format("log/{:%Y%m%d-%H%M%S}.log", now);
     log_file.open(filename);
 #endif
 }

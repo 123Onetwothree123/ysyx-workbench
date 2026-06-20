@@ -1,18 +1,7 @@
 #include <verilated.h>
 #include "VysyxSoCFull.h"
 import std;
-import npc.DUT;
-import npc.CLIOptions;
-import npc.ImageLoader;
-import npc.NPCTrap;
-import npc.ysyxSoC;
-import npc.log;
-#ifdef CONFIG_SDB
-import npc.sdb.sdb;
-#endif
-#ifdef CONFIG_DIFFTEST
-import npc.difftest.difftest;
-#endif
+import npc;
 
 int main(int argc, char const *argv[])
 {
