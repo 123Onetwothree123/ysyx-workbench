@@ -12,7 +12,7 @@ void init_disasm()
         std::abort();
     }
 }
-void disassemble(char *str, int size, uint64_t pc, uint8_t *code, int nbyte)
+void disassemble(char *str, int size, std::uint64_t pc, std::uint8_t *code, int nbyte)
 {
     cs_insn *insn{nullptr};
     const auto count{cs_disasm(handle, code, static_cast<size_t>(nbyte), pc, 0, &insn)};

@@ -1,6 +1,6 @@
 module npc.sdb.NPCEvaluationContext;
 import npc.sdb.RegisterName;
-import npc.tools.expressions.ExpressionError;
+import npc.expressions.ExpressionError;
 NPCEvaluationContext::NPCEvaluationContext(DUT &InputDUT) : dut{InputDUT}
 {
 }

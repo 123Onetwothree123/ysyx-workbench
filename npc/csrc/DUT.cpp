@@ -137,7 +137,6 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
     {
         return std::unexpected{std::format("不支持的内存读取长度：{}", size)};
     }
-    extern std::vector<std::uint8_t> mrom;
     constexpr std::uint32_t MROM_BASE{CONFIG_MBASE};
     constexpr std::uint32_t MROM_SIZE{CONFIG_MSIZE};
     if (addr >= MROM_BASE && addr + size <= MROM_BASE + MROM_SIZE)

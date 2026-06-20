@@ -15,7 +15,7 @@ std::uint32_t AddressRange::GetEnd() const
 {
     return Base + Size;
 }
-std::uint32_t AddressRange::OffsetOf(uint32_t Address) const
+std::uint32_t AddressRange::OffsetOf(std::uint32_t Address) const
 {
     return Address - Base;
 }

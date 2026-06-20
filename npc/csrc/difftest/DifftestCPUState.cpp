@@ -1,3 +1,5 @@
+module;
+#include <cstdio>
 module npc.difftest.DifftestCPUState;
 std::uint32_t DifftestCPUState::GetGPR(std::size_t Index) const
 {

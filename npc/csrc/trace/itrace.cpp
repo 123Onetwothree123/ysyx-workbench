@@ -1,10 +1,10 @@
 module npc.trace.itrace;
 iringbuf Iringbuf;
-void RecordAInstruction(uint64_t pc, uint32_t instruction, int len)
+void RecordAInstruction(std::uint64_t pc, std::uint32_t instruction, int len)
 {
     Iringbuf.push(pc, instruction, len);
 }
-void PrintIringbuf(uint64_t err_pc)
+void PrintIringbuf(std::uint64_t err_pc)
 {
     Iringbuf.print(err_pc);
 }
