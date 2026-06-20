@@ -120,7 +120,7 @@ $(STD_MODULE_OBJ): $(NPC_PCM_DIR)/std.pcm
 	@$(foreach src,$(NPC_IXX_SRCS),\
 		MOD_NAME=$$(grep -oP '(?<=export module )\S+(?=;)' $(src)); \
 		echo "  CXX MODULE $(notdir $(src)) [$$MOD_NAME]"; \
-		$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) --precompile $(src) -o $(NPC_PCM_DIR)/$$MOD_NAME.pcm || exit 1; \
+		$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) -x c++-module --precompile $(src) -o $(NPC_PCM_DIR)/$$MOD_NAME.pcm || exit 1; \
 		$(CXX) -c $(NPC_PCM_DIR)/$$MOD_NAME.pcm -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1; \
 	)
 	@touch $@
