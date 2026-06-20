@@ -129,6 +129,8 @@ config VERILATOR_CXX_STD
 
 endmenu
 
+menu "优化"
+
 menu "性能优化"
 
 choice
@@ -250,6 +252,8 @@ config CC_VISIBILITY_HIDDEN
   help
     所有符号默认不导出，减少动态链接开销
     对可执行文件无副作用
+
+endmenu
 
 endmenu
 
