@@ -217,6 +217,9 @@ LOG_CFLAGS = -DCONFIG_LOG_LEVEL=$(call remove_quote,$(CONFIG_LOG_LEVEL))
 endif
 ifeq ($(CONFIG_LOG_TO_FILE),y)
 LOG_CFLAGS += -DCONFIG_LOG_TO_FILE
+ifneq ($(CONFIG_LOG_DIR),)
+LOG_CFLAGS += -DCONFIG_LOG_DIR='"$(call remove_quote,$(CONFIG_LOG_DIR))"'
+endif
 endif
 ifeq ($(CONFIG_LOG_TIMESTAMP),y)
 LOG_CFLAGS += -DCONFIG_LOG_TIMESTAMP

@@ -329,6 +329,14 @@ menu "日志"
 choice
   prompt "日志级别"
   default LOG_INFO
+  help
+    控制哪些日志会输出，从严重到琐碎排列
+    设定某级别后，低于该级别的日志代码直接不编译（零开销）
+    silent：什么都不输出
+    error：只输出错误（程序要崩了）
+    warn：输出警告+错误（有问题但能继续跑）
+    info：输出信息+警告+错误（正常运行状态）
+    debug：全部输出（开发调试用的细节）
 config LOG_SILENT
   bool "silent（关闭）"
 config LOG_ERROR
@@ -355,8 +363,14 @@ config LOG_TO_FILE
   default y
   depends on !LOG_SILENT
   help
-    输出到log目录，文件名为启动时间戳
-    格式：log/YYYYMMDD-HHMMSS.log
+    文件名为启动时间戳，格式：YYYYMMDD-HHMMSS.log
+
+config LOG_DIR
+  string "日志输出目录"
+  default "log"
+  depends on LOG_TO_FILE
+  help
+    日志文件存放的目录路径，相对于npc目录
 
 config LOG_TIMESTAMP
   bool "日志每行带时间戳"

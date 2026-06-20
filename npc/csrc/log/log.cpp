@@ -12,11 +12,15 @@ static std::string_view level_str(LogLevel level) {
     }
 }
 
+#ifndef CONFIG_LOG_DIR
+#define CONFIG_LOG_DIR "log"
+#endif
+
 void log_init() {
 #ifdef CONFIG_LOG_TO_FILE
-    std::filesystem::create_directories("log");
+    std::filesystem::create_directories(CONFIG_LOG_DIR);
     auto now = std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()};
-    auto filename = std::format("log/{:%Y%m%d-%H%M%S}.log", now);
+    auto filename = std::format("{}/{:%Y%m%d-%H%M%S}.log", CONFIG_LOG_DIR, now);
     log_file.open(filename);
 #endif
 }
