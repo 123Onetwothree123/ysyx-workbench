@@ -380,11 +380,11 @@ config TRACE_DEPTH
 
 config TRACE_FILE
   string "波形输出文件路径"
-  default "waveform.vcd" if TRACE_VCD
-  default "waveform.fst" if TRACE_FST
+  default "oscillogram/waveform.vcd" if TRACE_VCD
+  default "oscillogram/waveform.fst" if TRACE_FST
   depends on !TRACE_NONE
   help
-    波形文件的输出路径，相对于运行目录
+    波形文件的输出路径，相对于npc目录
 
 choice
   prompt "Verilator优化级别"

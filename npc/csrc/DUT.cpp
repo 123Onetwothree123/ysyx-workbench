@@ -40,6 +40,7 @@ DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
 #else
     dut->trace(&tfp, CONFIG_TRACE_DEPTH);
 #endif
+    std::filesystem::create_directories(std::filesystem::path{CONFIG_TRACE_FILE}.parent_path());
     tfp.open(CONFIG_TRACE_FILE);
 #endif
 }
