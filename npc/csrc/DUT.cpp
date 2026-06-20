@@ -1,11 +1,26 @@
 module;
 #include "VysyxSoCFull.h"
+#ifdef CONFIG_TRACE_VCD
+#include <verilated_vcd_c.h>
+#endif
+#ifdef CONFIG_TRACE_FST
+#include <verilated_fst_c.h>
+#endif
 module npc.DUT;
 import npc.trace.itrace;
 import npc.trace.mtrace;
 import npc.trace.ftrace;
 import npc.difftest.difftest;
 import npc.ysyxSoC;
+#ifdef CONFIG_TRACE_VCD
+static VerilatedVcdC tfp;
+#endif
+#ifdef CONFIG_TRACE_FST
+static VerilatedFstC tfp;
+#endif
+#ifndef CONFIG_TRACE_FILE
+#define CONFIG_TRACE_FILE "waveform.vcd"
+#endif
 #ifndef CONFIG_MBASE
 #define CONFIG_MBASE 0x20000000
 #endif
@@ -17,6 +32,11 @@ DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
     dut->debug_gpr_raddr = 0;
 #ifdef CONFIG_ITRACE
     init_disasm();
+#endif
+#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
+    Verilated::traceEverOn(true);
+    dut->trace(&tfp, 99);
+    tfp.open(CONFIG_TRACE_FILE);
 #endif
 }
 VysyxSoCFull &DUT::operator*()
@@ -33,6 +53,9 @@ void DUT::eval()
 }
 void DUT::final()
 {
+#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
+    tfp.close();
+#endif
     dut->final();
 }
 void DUT::reset()
@@ -55,8 +78,14 @@ void DUT::step()
 {
     dut->clock = 0;
     dut->eval();
+#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
+    tfp.dump(cycle * 2);
+#endif
     dut->clock = 1;
     dut->eval();
+#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
+    tfp.dump(cycle * 2 + 1);
+#endif
     ++cycle;
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);

@@ -378,6 +378,14 @@ config TRACE_DEPTH
     设置Verilator波形追踪的--trace-depth层级
     0表示追踪所有层级
 
+config TRACE_FILE
+  string "波形输出文件路径"
+  default "waveform.vcd" if TRACE_VCD
+  default "waveform.fst" if TRACE_FST
+  depends on !TRACE_NONE
+  help
+    波形文件的输出路径，相对于运行目录
+
 choice
   prompt "Verilator优化级别"
   default VERILATOR_O3

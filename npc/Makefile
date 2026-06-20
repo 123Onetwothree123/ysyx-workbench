@@ -109,6 +109,9 @@ endif
 ifeq ($(CONFIG_TRACE),y)
 TRACE_CFLAGS = -DCONFIG_TRACE
 endif
+ifneq ($(CONFIG_TRACE_FILE),)
+TRACE_CFLAGS += -DCONFIG_TRACE_FILE='"$(call remove_quote,$(CONFIG_TRACE_FILE))"'
+endif
 ifeq ($(CONFIG_ITRACE),y)
 ITRACE_CFLAGS = -DCONFIG_ITRACE
 endif
@@ -303,16 +306,16 @@ run: $(BIN)
 
 .PHONY: pgo
 pgo: verilog
-	@echo "=== PGO Pass 1: 编译插桩版本 ==="
+	@echo "PGO Pass 1: 编译插桩版本"
 	@rm -f $(BIN)
 	$(MAKE) PGO_CFLAGS=-fprofile-generate $(BIN)
-	@echo "=== PGO Pass 1: 运行收集profile ==="
+	@echo "PGO Pass 1: 运行收集profile"
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),)
-	@echo "=== PGO Pass 2: 使用profile重新编译 ==="
+	@echo "PGO Pass 2: 使用profile重新编译"
 	@find $(OBJ_DIR) -name '*.o' -delete
 	@rm -f $(OBJ_DIR)/.npc_modules_built $(BIN)
 	$(MAKE) PGO_CFLAGS='-fprofile-use -fprofile-correction' $(BIN)
-	@echo "=== PGO 完成，运行优化后的程序 ==="
+	@echo "PGO 完成，运行优化后的程序"
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
 include scripts/config.mk
