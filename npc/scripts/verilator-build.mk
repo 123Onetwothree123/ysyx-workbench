@@ -14,7 +14,7 @@ STD_MODULE_OBJ := std_module.o
 
 gcm.cache/std.gcm: $(STD_MODULE_SRC)
 	@mkdir -p gcm.cache
-	$(CXX) $(NPC_MODULE_CXXFLAGS) $(CPPFLAGS) -x c++ -c $< -o $(STD_MODULE_OBJ)
+	$(CXX) $(CPPFLAGS) $(NPC_MODULE_CXXFLAGS) -x c++ -c $< -o $(STD_MODULE_OBJ)
 
 NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/NPCTrap.ixx \
@@ -80,7 +80,7 @@ NPC_IXX_SRCS := \
 NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))))
 
 .npc_modules_built: gcm.cache/std.gcm $(NPC_IXX_SRCS)
-	@$(foreach src,$(NPC_IXX_SRCS),echo "  CXX MODULE $(notdir $(src))"; $(CXX) $(NPC_MODULE_CXXFLAGS) $(CPPFLAGS) -x c++ -c $(src) -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1;)
+	@$(foreach src,$(NPC_IXX_SRCS),echo "  CXX MODULE $(notdir $(src))"; $(CXX) $(CPPFLAGS) $(NPC_MODULE_CXXFLAGS) -x c++ -c $(src) -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1;)
 	@touch $@
 
 $(VK_USER_OBJS): | .npc_modules_built
