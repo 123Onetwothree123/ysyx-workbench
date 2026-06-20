@@ -153,7 +153,11 @@ endif
 ifeq ($(CONFIG_CC_NO_OMIT_FP),y)
 NO_OMIT_FP_CFLAGS = -fno-omit-frame-pointer
 endif
+ifneq ($(findstring clang,$(CXX)),)
+MODULE_CFLAGS =
+else
 MODULE_CFLAGS = -fmodules
+endif
 ifneq ($(CONFIG_MBASE),)
 MBASE_CFLAGS = -DCONFIG_MBASE=$(call remove_quote,$(CONFIG_MBASE))
 endif

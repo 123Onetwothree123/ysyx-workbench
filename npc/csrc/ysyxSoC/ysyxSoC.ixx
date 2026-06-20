@@ -1,0 +1,6 @@
+export module npc.ysyxSoC;
+import std;
+
+export extern std::vector<std::uint8_t> mrom; // 暂时存的
+export extern "C" void flash_read(std::int32_t addr, std::int32_t *data);
+export extern "C" void mrom_read(std::int32_t addr, std::int32_t *data);
