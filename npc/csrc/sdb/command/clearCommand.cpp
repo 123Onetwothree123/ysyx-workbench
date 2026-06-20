@@ -1,5 +1,5 @@
 module;
-#include <cstdio>
+#include <stdio.h>
 module npc.sdb.command.clearCommand;
 
 std::string_view clearCommand::name() const noexcept

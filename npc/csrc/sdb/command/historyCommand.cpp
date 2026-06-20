@@ -1,6 +1,6 @@
 module;
 #ifdef CONFIG_SDB
-#include <cstdio>
+#include <stdio.h>
 #include <readline/history.h>
 #endif
 module npc.sdb.command.historyCommand;

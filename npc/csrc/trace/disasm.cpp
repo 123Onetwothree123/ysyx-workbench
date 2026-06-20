@@ -1,5 +1,6 @@
 module;
 #include <capstone/capstone.h>
+#include <assert.h>
 module npc.trace.disasm;
 static csh handle{};
 void init_disasm()
