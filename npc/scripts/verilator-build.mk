@@ -7,7 +7,7 @@ endif
 
 include $(VERILATOR_GENERATED_MK)
 
-ifneq ($(findstring clang,$(CXX)),)
+ifneq ($(filter clang% icpx%,$(notdir $(CXX))),)
 NPC_COMPILER := clang
 else
 NPC_COMPILER := gcc

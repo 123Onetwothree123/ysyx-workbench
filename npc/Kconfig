@@ -9,12 +9,18 @@ config CC_GPP
   bool "g++"
 config CC_CLANG
   bool "clang++"
+config CC_ICPX
+  bool "icpx（Intel oneAPI）"
+  help
+    Intel oneAPI DPC++/C++编译器，基于LLVM
+    需要先source /opt/intel/oneapi/setvars.sh
 endchoice
 
 config CC
   string
   default "g++" if CC_GPP
   default "clang++" if CC_CLANG
+  default "icpx" if CC_ICPX
   default "g++"
 
 choice
@@ -45,7 +51,9 @@ choice
   default LIBC_GLIBC
   help
     C运行库实现，位于C++标准库下层，提供printf/malloc/pthread等
-    musl：specs删掉C++头文件路径，缺少musl版libstdc++，不可用
+    musl：Arch的libstdc++和libc++均基于glibc编译，运行时依赖
+    glibc特有符号（__vfprintf_chk、__isoc23_*等），musl不提供
+    需要Alpine Linux等基于musl构建整套C++工具链的发行版才能用
     LLVM libc：未完成，无Arch包，不可用
     当前仅glibc可用
 config LIBC_GLIBC
