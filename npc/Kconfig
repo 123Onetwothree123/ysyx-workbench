@@ -23,7 +23,11 @@ choice
   help
     选择C++标准库实现
     Clang支持在libstdc++与libc++之间自由切换
-    GCC仅支持libstdc++，选择libc++时此选项仅对Clang生效
+    GCC的-fmodules实现硬编码了libstdc++的模块映射器路径
+    即使手动指向libc++头文件，GCC仍会将标准库include
+    重定向到libstdc++的bits/stdc++.h模块基础设施
+    因此选择libc++时此选项仅对Clang生效
+    本人补充：日你妈理查德·斯托曼，浪费了我一个下午的时间
 config STDLIB_LIBSTDCXX
   bool "libstdc++（GNU）"
 config STDLIB_LIBCXX
