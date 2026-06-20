@@ -358,6 +358,20 @@ config LOG_TO_FILE
     输出到log目录，文件名为启动时间戳
     格式：log/YYYYMMDD-HHMMSS.log
 
+config LOG_TIMESTAMP
+  bool "日志每行带时间戳"
+  default n
+  depends on !LOG_SILENT
+  help
+    每条日志前加上 [HH:MM:SS.mmm] 时间前缀
+
+config LOG_SOURCE_LOCATION
+  bool "日志带源文件位置"
+  default n
+  depends on !LOG_SILENT
+  help
+    每条日志显示调用处的文件名和行号
+
 endmenu
 
 menu "警告"

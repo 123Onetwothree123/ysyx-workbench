@@ -10,37 +10,36 @@ export inline constexpr auto CURRENT_LOG_LEVEL = static_cast<LogLevel>(CONFIG_LO
 
 export void log_init();
 export void log_close();
+export void log_write(LogLevel level, std::string_view msg, std::source_location loc);
 
 export template<typename... Args>
-void log_error(std::format_string<Args...> fmt, Args&&... args) {
+void log_error(std::format_string<Args...> fmt, Args&&... args,
+               const std::source_location loc = std::source_location::current()) {
     if constexpr (CURRENT_LOG_LEVEL >= LogLevel::Error) {
-        auto msg = std::format(fmt, std::forward<Args>(args)...);
-        log_write(LogLevel::Error, msg);
+        log_write(LogLevel::Error, std::format(fmt, std::forward<Args>(args)...), loc);
     }
 }
 
 export template<typename... Args>
-void log_warn(std::format_string<Args...> fmt, Args&&... args) {
+void log_warn(std::format_string<Args...> fmt, Args&&... args,
+              const std::source_location loc = std::source_location::current()) {
     if constexpr (CURRENT_LOG_LEVEL >= LogLevel::Warn) {
-        auto msg = std::format(fmt, std::forward<Args>(args)...);
-        log_write(LogLevel::Warn, msg);
+        log_write(LogLevel::Warn, std::format(fmt, std::forward<Args>(args)...), loc);
     }
 }
 
 export template<typename... Args>
-void log_info(std::format_string<Args...> fmt, Args&&... args) {
+void log_info(std::format_string<Args...> fmt, Args&&... args,
+              const std::source_location loc = std::source_location::current()) {
     if constexpr (CURRENT_LOG_LEVEL >= LogLevel::Info) {
-        auto msg = std::format(fmt, std::forward<Args>(args)...);
-        log_write(LogLevel::Info, msg);
+        log_write(LogLevel::Info, std::format(fmt, std::forward<Args>(args)...), loc);
     }
 }
 
 export template<typename... Args>
-void log_debug(std::format_string<Args...> fmt, Args&&... args) {
+void log_debug(std::format_string<Args...> fmt, Args&&... args,
+               const std::source_location loc = std::source_location::current()) {
     if constexpr (CURRENT_LOG_LEVEL >= LogLevel::Debug) {
-        auto msg = std::format(fmt, std::forward<Args>(args)...);
-        log_write(LogLevel::Debug, msg);
+        log_write(LogLevel::Debug, std::format(fmt, std::forward<Args>(args)...), loc);
     }
 }
-
-export void log_write(LogLevel level, std::string_view msg);

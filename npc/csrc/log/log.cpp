@@ -27,11 +27,21 @@ void log_close() {
 #endif
 }
 
-void log_write(LogLevel level, std::string_view msg) {
-    std::println(std::cerr, "[{}] {}", level_str(level), msg);
+void log_write(LogLevel level, std::string_view msg, std::source_location loc) {
+    std::string line;
+#ifdef CONFIG_LOG_TIMESTAMP
+    auto now = std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()};
+    line += std::format("[{:%H:%M:%S}] ", now);
+#endif
+    line += std::format("[{}] ", level_str(level));
+#ifdef CONFIG_LOG_SOURCE_LOCATION
+    line += std::format("{}:{} ", loc.file_name(), loc.line());
+#endif
+    line += msg;
+    std::println(std::cerr, "{}", line);
 #ifdef CONFIG_LOG_TO_FILE
     if (log_file.is_open()) {
-        std::println(log_file, "[{}] {}", level_str(level), msg);
+        std::println(log_file, "{}", line);
     }
 #endif
 }
