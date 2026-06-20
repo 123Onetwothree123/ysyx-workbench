@@ -112,6 +112,9 @@ endif
 ifneq ($(CONFIG_TRACE_FILE),)
 TRACE_CFLAGS += -DCONFIG_TRACE_FILE='"$(call remove_quote,$(CONFIG_TRACE_FILE))"'
 endif
+ifneq ($(CONFIG_TRACE_DEPTH),)
+TRACE_CFLAGS += -DCONFIG_TRACE_DEPTH=$(call remove_quote,$(CONFIG_TRACE_DEPTH))
+endif
 ifeq ($(CONFIG_ITRACE),y)
 ITRACE_CFLAGS = -DCONFIG_ITRACE
 endif

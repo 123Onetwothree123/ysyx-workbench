@@ -35,7 +35,11 @@ DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
 #endif
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
     Verilated::traceEverOn(true);
+#if !defined(CONFIG_TRACE_DEPTH) || CONFIG_TRACE_DEPTH == 0
     dut->trace(&tfp, 99);
+#else
+    dut->trace(&tfp, CONFIG_TRACE_DEPTH);
+#endif
     tfp.open(CONFIG_TRACE_FILE);
 #endif
 }
