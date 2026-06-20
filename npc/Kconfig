@@ -9,18 +9,12 @@ config CC_GPP
   bool "g++"
 config CC_CLANG
   bool "clang++"
-config CC_ICPX
-  bool "icpx（Intel oneAPI）"
-  help
-    Intel oneAPI DPC++/C++编译器，基于LLVM
-    需要先source /opt/intel/oneapi/setvars.sh
 endchoice
 
 config CC
   string
   default "g++" if CC_GPP
   default "clang++" if CC_CLANG
-  default "icpx" if CC_ICPX
   default "g++"
 
 choice
@@ -110,6 +104,12 @@ config CC_O2
   bool "O2"
 config CC_O3
   bool "O3"
+config CC_OFAST
+  bool "Ofast"
+  help
+    等同于-O3加上-ffast-math
+    放宽IEEE浮点标准合规性换取速度
+    可能导致浮点计算结果与标准不一致
 endchoice
 
 config CC_OPT
@@ -118,7 +118,29 @@ config CC_OPT
   default "-O1" if CC_O1
   default "-O2" if CC_O2
   default "-O3" if CC_O3
+  default "-Ofast" if CC_OFAST
   default "-O3"
+
+choice
+  prompt "链接器"
+  default LD_DEFAULT
+  help
+    GCC和Clang均支持切换链接器
+config LD_DEFAULT
+  bool "默认（ld）"
+config LD_LLD
+  bool "lld（LLVM）"
+  help
+    LLVM链接器，比GNU ld快5-10倍
+    GCC通过-fuse-ld=lld使用，Clang同理
+    需要安装lld包（pacman -S lld）
+endchoice
+
+config LD_FLAG
+  string
+  default "" if LD_DEFAULT
+  default "-fuse-ld=lld" if LD_LLD
+  default ""
 
 config CC_LTO
   bool "启用链接时优化-flto"
