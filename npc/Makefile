@@ -88,8 +88,10 @@ endif
 USER_CXX_STD_FLAG = -std=$(USER_CXX_STD)
 VERILATOR_CXX_STD_FLAG = -std=$(VERILATOR_CXX_STD)
 STDLIB_FLAG ?=
+ifneq ($(findstring clang,$(CXX)),)
 ifneq ($(CONFIG_STDLIB_FLAG),)
 STDLIB_FLAG = $(call remove_quote,$(CONFIG_STDLIB_FLAG))
+endif
 endif
 ifeq ($(CONFIG_CC_CLANG),y)
 VERILATOR_COMPILER = --compiler clang

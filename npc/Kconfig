@@ -22,7 +22,8 @@ choice
   default STDLIB_LIBSTDCXX
   help
     选择C++标准库实现
-    GCC和Clang均支持在libstdc++与libc++之间自由切换
+    Clang支持在libstdc++与libc++之间自由切换
+    GCC仅支持libstdc++，选择libc++时此选项仅对Clang生效
 config STDLIB_LIBSTDCXX
   bool "libstdc++（GNU）"
 config STDLIB_LIBCXX
