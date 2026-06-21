@@ -32,6 +32,7 @@ config STDLIB_LIBSTDCXX
   bool "libstdc++（GNU）"
 config STDLIB_LIBCXX
   bool "libc++（LLVM）"
+  depends on CC_CLANG
 endchoice
 
 config STDLIB_FLAG

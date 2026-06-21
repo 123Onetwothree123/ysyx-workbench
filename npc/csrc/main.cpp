@@ -46,7 +46,8 @@ int main(int argc, char const *argv[])
         if (dut->trap_valid)
         {
             std::println("trap了");
-            NPCTrap::Halt(dut->trap_pc, 0);
+            const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
+            NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
         }
     }
 #endif
