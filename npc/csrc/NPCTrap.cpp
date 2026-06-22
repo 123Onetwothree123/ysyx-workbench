@@ -29,6 +29,11 @@ std::uint32_t NPCTrap::GetCode() noexcept
 }
 int NPCTrap::PrintResult(std::size_t Cycles)
 {
+    if (!Halted)
+    {
+        std::println("NPC在未触发陷阱的情况下退出");
+        return 0;
+    }
     if (HaltCode == 0)
     {
         std::println("HIT GOOD TRAP at pc = 0x{0:08x}, cycles = {1}", HaltPC, Cycles);

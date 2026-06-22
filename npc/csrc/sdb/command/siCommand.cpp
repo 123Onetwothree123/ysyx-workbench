@@ -59,7 +59,8 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
         dut.step();
         if (dut->trap_valid)
         {
-            NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), 0);
+            const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
+            NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
             std::println("trap了");
             break;
         }
