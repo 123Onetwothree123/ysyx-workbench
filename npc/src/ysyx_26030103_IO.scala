@@ -88,5 +88,4 @@ class ysyx_26030103_IO extends Bundle {
   // Access Fault
   val debug_access_fault = Output(Bool())
   val debug_access_fault_resp = Output(UInt(2.W))
-  val debug_commit = Output(Bool())
 }
