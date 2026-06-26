@@ -114,6 +114,7 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
   io.debug_gpr_rdata := gpr.io.DebugRdata
   io.debug_pc := ifu.io.DebugPC
   io.debug_instructions := ifu.io.DebugInstructions
+  io.debug_commit := wbu.io.WriteEN
   // mtrace
   io.debug_mtrace_valid := lsu.io.Complete && exu.io.MemoryValid
   io.debug_mtrace_wen := exu.io.MemoryWrite
