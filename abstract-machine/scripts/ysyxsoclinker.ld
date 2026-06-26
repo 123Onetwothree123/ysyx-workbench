@@ -4,8 +4,8 @@
 ENTRY(_start)
 MEMORY {
     /*我也不知道为什么OSOC的SOC是要分出两套来，而且容量都那么小*/
-  mrom (rx)  : ORIGIN = 0x20000000, LENGTH = 0x1000
-  sram (rw)  : ORIGIN = 0x0f000000, LENGTH = 0x2000
+  mrom (rx)  : ORIGIN = 0x20000000, LENGTH = 4K
+  sram (rw)  : ORIGIN = 0x0f000000, LENGTH = 8K
 }
 SECTIONS {
     /*从MROM起始地址开始链接，保证第一条指令位于0x20000000*/
