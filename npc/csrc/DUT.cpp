@@ -8,6 +8,7 @@ module;
 #endif
 module npc.DUT;
 import npc.trace.itrace;
+import npc.trace.disasm;
 import npc.trace.mtrace;
 import npc.trace.ftrace;
 import npc.difftest.difftest;
