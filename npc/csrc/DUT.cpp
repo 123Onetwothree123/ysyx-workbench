@@ -124,14 +124,9 @@ void DUT::step()
     }
 #endif
 #ifdef CONFIG_DIFFTEST
+    if (dut->debug_commit)
     {
-        static std::uint32_t LastDiftestPC{CONFIG_RESET_PC};
-        auto CurrentPC{static_cast<std::uint32_t>(dut->debug_pc)};
-        if (CurrentPC != LastDiftestPC)
-        {
-            DifftestStep(*this);
-            LastDiftestPC = CurrentPC;
-        }
+        DifftestStep(*this);
     }
 #endif
     if (dut->debug_access_fault)
