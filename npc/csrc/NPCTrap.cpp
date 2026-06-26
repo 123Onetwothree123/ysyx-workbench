@@ -1,4 +1,5 @@
 module npc.NPCTrap;
+import npc.trace.itrace;
 namespace
 {
     bool Halted{false};
@@ -40,5 +41,6 @@ int NPCTrap::PrintResult(std::size_t Cycles)
         return 0;
     }
     std::println(std::cerr, "HIT BAD TRAP at pc = 0x{0:08x}, code = {1}, cycles = {2}", HaltPC, HaltCode, Cycles);
+    PrintIringbuf(HaltPC);
     return 1;
 }
