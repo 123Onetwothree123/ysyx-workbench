@@ -9,12 +9,15 @@ config CC_GPP
   bool "g++"
 config CC_CLANG
   bool "clang++"
+config CC_ICPX
+  bool "icpx (Intel)"
 endchoice
 
 config CC
   string
   default "g++" if CC_GPP
   default "clang++" if CC_CLANG
+  default "icpx" if CC_ICPX
   default "g++"
 
 choice
@@ -32,7 +35,7 @@ config STDLIB_LIBSTDCXX
   bool "libstdc++（GNU）"
 config STDLIB_LIBCXX
   bool "libc++（LLVM）"
-  depends on CC_CLANG
+  depends on CC_CLANG || CC_ICPX
 endchoice
 
 config STDLIB_FLAG
@@ -40,6 +43,17 @@ config STDLIB_FLAG
   default "-stdlib=libstdc++" if STDLIB_LIBSTDCXX
   default "-stdlib=libc++" if STDLIB_LIBCXX
   default "-stdlib=libstdc++"
+
+config CC_ICPX_NOSTDINCXX
+  bool "icpx: 跳过Intel内置C++头路径 (-nostdinc++)"
+  depends on CC_ICPX && STDLIB_LIBCXX
+  help
+    傻逼Intel自己的include路径里夹带了一堆自己的私货，他居然包
+    含了自己的 float和limits和math头文件，而且排在 libc++ 路
+    径前面，然后libc++的 include的next的机制被Intel自己的头文
+    件截胡，直接就崩了，卧槽，脑子有坑啊，Intel那个目录的存在纯
+    粹是硬插在include搜索最前面，除了提供Fortran和他死掉的ICC的
+    兼容的头文件之外屁用没有
 
 choice
   prompt "C库"
