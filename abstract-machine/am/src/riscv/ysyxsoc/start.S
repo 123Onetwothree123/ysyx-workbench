@@ -11,10 +11,10 @@ _start:
   la t2, _edata
 1:
   bge t1, t2, 2f
-  lb t3, 0(t0)
-  sb t3, 0(t1)
-  addi t0, t0, 1
-  addi t1, t1, 1
+  lw t3, 0(t0)
+  sw t3, 0(t1)
+  addi t0, t0, 4
+  addi t1, t1, 4
   j 1b
 2:
 
