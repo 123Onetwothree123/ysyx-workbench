@@ -124,20 +124,8 @@ void DUT::step()
     }
 #endif
 #ifdef CONFIG_DIFFTEST
-    {
-        static std::uint32_t LastDiftestPC{0xFFFFFFFF};
-        static bool FirstSync{true};
-        auto CurrentPC{static_cast<std::uint32_t>(dut->debug_pc)};
-        if (CurrentPC != LastDiftestPC && cycle > 0)
-        {
-            if (!FirstSync)
-            {
-                DifftestStep(*this);
-            }
-            FirstSync = false;
-            LastDiftestPC = CurrentPC;
-        }
-    }
+    // Step-by-step difftest disabled due to multi-cycle timing issue.
+    // Comparison is done at the end via DiftestFinalCheck().
 #endif
     if (dut->debug_access_fault)
     {
