@@ -160,6 +160,13 @@ void DiftestFinalCheck(DUT &dut)
     DifftestCPUState REFState;
     REFRegcpy(&REFState, DifftestCPUState::GetDirectionToDUT());
     const auto DUTState{DifftestCPUState::ReadDUTState(dut)};
+    std::println(stderr, "=== Final Check: REF vs DUT ===");
+    std::println(stderr, "  PC: REF=0x{:08x} DUT=0x{:08x}", REFState.GetPC(), DUTState.GetPC());
+    for (std::size_t i{0}; i < 32; i++)
+    {
+        if (REFState.GetGPR(i) != DUTState.GetGPR(i))
+            std::println(stderr, "  x{:<2}: REF=0x{:08x} DUT=0x{:08x} ***", i, REFState.GetGPR(i), DUTState.GetGPR(i));
+    }
     if (!REFState.CheckRegs(DUTState))
     {
         std::println("DUT和REF的寄存器数据对比不一样 - 这是最后的比对");
