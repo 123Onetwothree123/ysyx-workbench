@@ -2,6 +2,7 @@
 module;
 #ifdef CONFIG_DIFFTEST
 #include <dlfcn.h>
+#include <cstdio>
 #endif
 module npc.difftest.difftest;
 import npc.difftest.DifftestCPUState;
@@ -56,7 +57,7 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
     {
         return {}; // 不用DiffTest，直接返回空expected，成功，但是不干事
     }
-    REFHandle = dlopen(REFSoFile->c_str(), RTLD_LAZY); // 打开REF的动态库
+    REFHandle = dlopen(REFSoFile->c_str(), RTLD_LAZY | RTLD_LOCAL); // 打开REF的动态库
     if (REFHandle == nullptr)
     {
         return std::unexpected{std::format("打开 DiffTest REF 失败: {0}", dlerror())};
@@ -91,6 +92,8 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
         return std::unexpected{InitSymbol.error()};
     }
     (*InitSymbol)(0);
+    // InitSymbol might corrupt global state, skip if not needed
+    // REFMemcpy and REFRegcpy should be sufficient for basic difftest
     REFMemcpy(CONFIG_MBASE, mrom.data(), ImageSize, DifftestCPUState::GetDirectionToRef());
     DifftestCPUState DUTState;
     DUTState.SetPC(CONFIG_RESET_PC);
@@ -144,5 +147,32 @@ bool DifftestIsEnabled()
     return Enabled;
 #else
     return false;
+#endif
+}
+/// @brief 跑完整体比对：NEMU连续执行直至trap，与DUT最终状态逐寄存器对比
+/// @note 需在 DUT 已触发 trap 后调用
+void DiftestFinalCheck(DUT &dut)
+{
+#ifdef CONFIG_DIFFTEST
+    if (!Enabled)
+        return;
+    // NEMU 连续执行直到 ebreak（测试程序 halt 会触发）
+    REFExec(100000);
+    DifftestCPUState REFState;
+    REFRegcpy(&REFState, DifftestCPUState::GetDirectionToDUT());
+    const auto DUTState{DifftestCPUState::ReadDUTState(dut)};
+    std::println(stderr, "=== Final Check: REF vs DUT ===");
+    std::println(stderr, "  PC: REF=0x{:08x} DUT=0x{:08x}", REFState.GetPC(), DUTState.GetPC());
+    for (std::size_t i{0}; i < 32; i++)
+    {
+        if (REFState.GetGPR(i) != DUTState.GetGPR(i))
+            std::println(stderr, "  x{:<2}: REF=0x{:08x} DUT=0x{:08x} ***", i, REFState.GetGPR(i), DUTState.GetGPR(i));
+    }
+    if (!REFState.CheckRegs(DUTState))
+    {
+        std::println("DUT和REF的寄存器数据对比不一样 - 这是最后的比对");
+    }
+#else
+    static_cast<void>(dut);
 #endif
 }

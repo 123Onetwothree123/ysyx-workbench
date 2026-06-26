@@ -128,4 +128,5 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
     ifu.io.AccessFaultResp,
     lsu.io.AccessFaultResp
   )
+  io.debug_commit := wbu.io.WriteEN
 }

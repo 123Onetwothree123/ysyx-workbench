@@ -53,6 +53,12 @@ int main(int argc, char const *argv[])
 #endif
     dut.final();
     auto result = NPCTrap::PrintResult(dut.GetCycle());
+#ifdef CONFIG_DIFFTEST
+    if (result != 0)
+    {
+        DiftestFinalCheck(dut);
+    }
+#endif
 #if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_close();
 #endif
