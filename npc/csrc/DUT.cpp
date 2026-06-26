@@ -127,18 +127,24 @@ void DUT::step()
     {
         static std::uint32_t LastDiftestPC{0xFFFFFFFF};
         static bool FirstSync{true};
+        static int DiagCount{0};
         auto CurrentPC{static_cast<std::uint32_t>(dut->debug_pc)};
         if (CurrentPC != LastDiftestPC)
         {
+            if (DiagCount < 5)
+                std::println(stderr, "DIAG: PC changed {}→{} at cycle={}", LastDiftestPC, CurrentPC, cycle);
             if (FirstSync)
             {
                 FirstSync = false;
             }
             else
             {
+                if (DiagCount < 5)
+                    std::println(stderr, "DIAG: calling DifftestStep");
                 DifftestStep(*this);
             }
             LastDiftestPC = CurrentPC;
+            DiagCount++;
         }
     }
 #endif
