@@ -4,35 +4,35 @@
 ENTRY(_start)
 MEMORY {
     /*我也不知道为什么OSOC的SOC是要分出两套来，而且容量都那么小*/
-  mrom (rx)  : ORIGIN = 0x20000000, LENGTH = 4K
-  sram (rw)  : ORIGIN = 0x0f000000, LENGTH = 8K
+  mrom (rx)  : ORIGIN = 0x20000000, LENGTH = 0x1000
+  sram (rw)  : ORIGIN = 0x0f000000, LENGTH = 0x2000
 }
 SECTIONS {
     /*从MROM起始地址开始链接，保证第一条指令位于0x20000000*/
     . = ORIGIN(mrom);
-    .text : {
-      /*纯粹的链接器脑子有坑，他妈的居然还得给空格，不然区分不了，这哪个天才写的语法解析器，在没有格式化程序的情况下，还要我手写空格*/
-    *(entry)
-    *(.text*)
-    } > mrom
-    /*适配bootloader*/
-    .rodata : {
-    *(.rodata*)
-    *(.srodata*)
-    } > mrom
-    /*同上脑子有坑*/
-    /*记录代码和只读数据结束的位置*/
-    etext = .;
-    _etext = .;
-    /*新加的，为了支持实现bootloader*/
-    .data : {
-    *(.data*)
-    *(.sdata*)
-    } > sram AT> mrom
-    _data_lma = LOADADDR(.data);
-    _data_start = ADDR(.data);
-    _edata = _data_start + SIZEOF(.data);
-    .bss (NOLOAD) : {
+     .text : {
+       /*纯粹的链接器脑子有坑，他妈的居然还得给空格，不然区分不了，这哪个天才写的语法解析器，在没有格式化程序的情况下，还要我手写空格*/
+     *(entry)
+     *(.text*)
+     } > mrom
+     /*适配bootloader*/
+     .rodata : {
+     *(.rodata*)
+     *(.srodata*)
+     } > mrom
+     /*同上脑子有坑*/
+     /*记录代码和只读数据结束的位置*/
+     etext = .;
+     _etext = .;
+     /*新加的，为了支持实现bootloader*/
+     .data : {
+     *(.data*)
+     *(.sdata*)
+     } > sram AT> mrom
+     _data_lma = LOADADDR(.data);
+     _data_start = ADDR(.data);
+     _edata = _data_start + SIZEOF(.data);
+     .bss (NOLOAD) : {
       /*NOLOAD 表示不把它写进.bin镜像*/
     _bss_start = .;
     *(.bss*)

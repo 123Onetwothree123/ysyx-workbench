@@ -5,8 +5,7 @@
 _start:
   mv s0, zero
   la sp, _stack_pointer
-/*以下循环汇编是AI写的，真的写不出来*/
-  /* 将 .data 段从 mrom (LMA) 搬运到 sram (VMA) */
+
   la t0, _data_lma
   la t1, _data_start
   la t2, _edata
@@ -19,7 +18,6 @@ _start:
   j 1b
 2:
 
-  /* 清零 .bss 段 */
   la t0, _bss_start
   la t1, _bss_end
 3:
