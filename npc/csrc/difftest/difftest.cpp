@@ -2,6 +2,7 @@
 module;
 #ifdef CONFIG_DIFFTEST
 #include <dlfcn.h>
+#include <cstdio>
 #endif
 module npc.difftest.difftest;
 import npc.difftest.DifftestCPUState;
