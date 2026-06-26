@@ -3,7 +3,7 @@ import std;
 import npc.trace.RecordInstruction;
 
 #ifndef CONFIG_IRINGBUF_SIZE
-#define CONFIG_IRINGBUF_SIZE 16
+#define CONFIG_IRINGBUF_SIZE 512
 #endif
 
 export class iringbuf
