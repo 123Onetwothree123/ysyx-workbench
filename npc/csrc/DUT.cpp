@@ -128,12 +128,13 @@ void DUT::step()
         static std::uint32_t LastDiftestPC{0xFFFFFFFF};
         static bool FirstSync{true};
         auto CurrentPC{static_cast<std::uint32_t>(dut->debug_pc)};
-        if (dut->debug_access_fault && cycle < 30)
-            std::println(stderr, "DIAG: access_fault at cycle={} pc=0x{:08x}", cycle, CurrentPC);
-        if (CurrentPC != LastDiftestPC)
+        if (CurrentPC != LastDiftestPC && cycle > 0)
         {
-            if (FirstSync) { FirstSync = false; }
-            else          { DifftestStep(*this); }
+            if (!FirstSync)
+            {
+                DifftestStep(*this);
+            }
+            FirstSync = false;
             LastDiftestPC = CurrentPC;
         }
     }
