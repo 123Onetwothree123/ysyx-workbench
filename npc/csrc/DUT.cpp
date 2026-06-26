@@ -125,11 +125,19 @@ void DUT::step()
 #endif
 #ifdef CONFIG_DIFFTEST
     {
-        static std::uint32_t LastDiftestPC{CONFIG_RESET_PC};
+        static std::uint32_t LastDiftestPC{0xFFFFFFFF};
+        static bool FirstSync{true};
         auto CurrentPC{static_cast<std::uint32_t>(dut->debug_pc)};
         if (CurrentPC != LastDiftestPC)
         {
-            DifftestStep(*this);
+            if (FirstSync)
+            {
+                FirstSync = false;
+            }
+            else
+            {
+                DifftestStep(*this);
+            }
             LastDiftestPC = CurrentPC;
         }
     }
