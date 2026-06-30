@@ -8,8 +8,11 @@ Area heap = RANGE(&_heap_start, &_heap_end);
 static const char mainargs[MAINARGS_MAX_LEN] = TOSTRING(MAINARGS_PLACEHOLDER);
 void putch(char ch)
 {
-    volatile char *serial_port = (volatile char *)0x10000000;
-    *serial_port = ch;
+    volatile char *tx = (volatile char *)0x10000000;
+    volatile char *lsr = (volatile char *)0x10000005;
+    while (!(*lsr & 0x20))
+        ;
+    *tx = ch;
 }
 void halt(int code)
 {
@@ -19,6 +22,14 @@ void halt(int code)
 }
 void _trm_init()
 {
+    // 给UART16550初始化
+    volatile char *lcr = (volatile char *)0x10000003;
+    volatile char *dll = (volatile char *)0x10000000;
+    volatile char *dlh = (volatile char *)0x10000001;
+    *lcr = 0x80; // DLAB=1, 准备写除数
+    *dll = 0x01; // 除数低字节 = 1
+    *dlh = 0x00; // 除数高字节 = 0
+    *lcr = 0x03; // DLAB=0, 8N1
     int ret = main(mainargs);
     halt(ret);
 }
