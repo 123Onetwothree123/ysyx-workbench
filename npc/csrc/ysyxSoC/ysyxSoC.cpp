@@ -4,6 +4,7 @@ module npc.ysyxSoC;
 #define CONFIG_MBASE 0x20000000u
 #endif
 std::vector<std::uint8_t> mrom;
+std::vector<std::uint8_t> FlashMemory;
 extern "C" void flash_read(std::int32_t addr, std::int32_t *data)
 {
     std::uint32_t offset = static_cast<std::uint32_t>(addr); // 已经是偏移，不用减基址
@@ -11,9 +12,9 @@ extern "C" void flash_read(std::int32_t addr, std::int32_t *data)
     std::uint32_t result{0};
     for (int i = 0; i < 4; i++)
     {
-        if (aligned + i < flash_mem.size())
+        if (aligned + i < FlashMemory.size())
         {
-            result |= static_cast<std::uint32_t>(flash_mem[aligned + i]) << (8 * i);
+            result |= static_cast<std::uint32_t>(FlashMemory[aligned + i]) << (8 * i);
         }
     }
     *data = static_cast<std::int32_t>(result);
