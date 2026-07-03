@@ -1,0 +1,4 @@
+#ifndef FLASH_TEST_HPP
+#define FLASH_TEST_HPP
+#define FLASH_BASE 0x30000000L
+#endif

@@ -36,6 +36,12 @@ int main(int argc, char const *argv[])
         }
     }
 #endif
+    // 初始化FlashMemory，模拟烧录了数据FlashMemory[i] = i
+    FlashMemory.resize(256);
+    for (std::size_t i = 0; i < FlashMemory.size(); i++)
+    {
+        FlashMemory[i] = static_cast<std::uint8_t>(i);
+    }
     dut.reset();
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
