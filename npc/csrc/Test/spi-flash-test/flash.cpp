@@ -15,7 +15,7 @@ std::uint32_t flash_read(std::uint32_t addr)
     spi[SPI_DIVIDER] = 1;
     spi[SPI_SS] = FLASH_SS;
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_TX_NEG | CTRL_LSB;
-    spi[SPI_TX_0] = (addr << 9) | bitrev(FLASH_CMD);
+    spi[SPI_TX_0] = (addr << 10) | bitrev(FLASH_CMD);
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO | CTRL_TX_NEG | CTRL_LSB;
     while (spi[SPI_CTRL] & CTRL_GO);
     auto raw{spi[SPI_RX_1]};
