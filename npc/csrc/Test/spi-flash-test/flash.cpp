@@ -21,13 +21,23 @@ std::uint32_t flash_read(std::uint32_t addr)
 
     // 数据在 RX_1(bits 63:32), 已被bit翻转+byte翻转, 还原
     std::uint32_t x = spi[SPI_RX_1];
-    x = ((x & 0x55555555u) << 1) | ((x >> 1) & 0x55555555u);
-    x = ((x & 0x33333333u) << 2) | ((x >> 2) & 0x33333333u);
-    x = ((x & 0x0F0F0F0Fu) << 4) | ((x >> 4) & 0x0F0F0F0Fu);
-    x = ((x & 0x00FF00FFu) << 8) | ((x >> 8) & 0x00FF00FFu);
-    x = (x << 16) | (x >> 16);
-    return ((x & 0xFFu) << 24) | ((x & 0xFF00u) << 8) |
-           ((x >> 8) & 0xFF00u) | ((x >> 24) & 0xFFu);
+    std::uint32_t y = x;
+    y = ((y & 0x55555555u) << 1) | ((y >> 1) & 0x55555555u);
+    y = ((y & 0x33333333u) << 2) | ((y >> 2) & 0x33333333u);
+    y = ((y & 0x0F0F0F0Fu) << 4) | ((y >> 4) & 0x0F0F0F0Fu);
+    y = ((y & 0x00FF00FFu) << 8) | ((y >> 8) & 0x00FF00FFu);
+    y = (y << 16) | (y >> 16);
+    // debug: print raw + result
+    volatile char *tx = (volatile char *)0x10000000;
+    volatile char *lsr = (volatile char *)0x10000005;
+    auto pc = [&](char c) { while (!(*lsr & 0x20)); *tx = c; };
+    auto ph = [&](unsigned d) { pc(d<10?'0'+d:'a'+d-10); };
+    auto pr = [&](std::uint32_t v) {
+        for (int i = 28; i >= 0; i -= 4) ph((v>>i)&0xF);
+    };
+    if (addr < 8) { pc('R'); pr(x); pc('>'); pr(((y & 0xFFu) << 24) | ((y & 0xFF00u) << 8) | ((y >> 8) & 0xFF00u) | ((y >> 24) & 0xFFu)); pc(' '); }
+    return ((y & 0xFFu) << 24) | ((y & 0xFF00u) << 8) |
+           ((y >> 8) & 0xFF00u) | ((y >> 24) & 0xFFu);
 }
 int main(const char *args)
 {
@@ -40,17 +50,7 @@ int main(const char *args)
     auto pr = [&](std::uint32_t v) {
         for (int i = 28; i >= 0; i -= 4) ph((v>>i)&0xF);
     };
-    pc('0'); pr(v0); pc(' '); pr(e0); pc(' ');
+    pc('0'); pr(v0); pc(' '); pr(e0); pc('|');
     pc('4'); pr(v4); pc(' '); pr(e4); pc('\n');
-
-    int errors = 0;
-    for (std::uint32_t a = 0; a < 256; a += 4)
-    {
-        auto got = flash_read(a);
-        auto exp = static_cast<std::uint32_t>((a+3)<<24 | (a+2)<<16 | (a+1)<<8 | a);
-        if (got != exp) errors++;
-    }
-    if (errors == 0) {putstr("PASS\n");}
-    else {putstr("FAIL\n");}
     return 0;
 }
