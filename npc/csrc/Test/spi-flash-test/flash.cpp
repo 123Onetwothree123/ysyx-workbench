@@ -34,6 +34,20 @@ std::uint32_t flash_read(std::uint32_t addr)
 
 int main(const char *args)
 {
+    auto v0 = flash_read(0); auto e0 = 0x03020100u;
+    auto v4 = flash_read(4); auto e4 = 0x07060504u;
+    auto v8 = flash_read(8); auto e8 = 0x0B0A0908u;
+    volatile char *tx = (volatile char *)0x10000000;
+    volatile char *lsr = (volatile char *)0x10000005;
+    auto pc = [&](char c) { while (!(*lsr & 0x20)); *tx = c; };
+    auto pr = [&](std::uint32_t v) {
+        pc('0'); pc('x');
+        for (int i = 28; i >= 0; i -= 4) { int d = (v >> i) & 0xF; pc(d < 10 ? '0' + d : 'a' + d - 10); }
+    };
+    pc('0'); pr(v0); pc(' '); pr(e0); pc(' ');
+    pc('4'); pr(v4); pc(' '); pr(e4); pc(' ');
+    pc('8'); pr(v8); pc(' '); pr(e8); pc('\n');
+    
     int32_t errors{0};
     for (std::uint32_t addr{0}; addr < 256; addr += 4)
     {
