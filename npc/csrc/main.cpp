@@ -37,11 +37,11 @@ int main(int argc, char const *argv[])
     }
 #endif
     auto CharTests{std::filesystem::path{"csrc/Test/char-test/build/char-test-riscv32-npc.bin"}};
-    if (std::filesystem::exists(ct))
+    if (std::filesystem::exists(CharTests))
     {
         auto size{std::filesystem::file_size(CharTests)};
         FlashMemory.resize(size);
-        std::ifstream ifs{ct, std::ios::binary};
+        std::ifstream ifs{CharTests.string(), std::ios::binary};
         ifs.read(reinterpret_cast<char *>(FlashMemory.data()), size);
     }
     else
