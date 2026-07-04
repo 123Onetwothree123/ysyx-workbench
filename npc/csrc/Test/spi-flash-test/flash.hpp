@@ -17,5 +17,5 @@
 #define FLASH_SS (1 << 0)
 #define FLASH_CMD 0X03
 #include <cstdint>
-std::uint32_t flash_read(std::uint32_t addr, std::uint32_t *rx0_out, std::uint32_t *rx1_out);
+std::uint32_t flash_read(std::uint32_t addr);
 #endif

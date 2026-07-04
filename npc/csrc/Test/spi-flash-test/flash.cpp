@@ -9,7 +9,7 @@ constexpr std::uint8_t bitrev(std::uint8_t b)
     b = ((b & 0xAA) >> 1) | ((b & 0x55) << 1);
     return b;
 }
-std::uint32_t flash_read(std::uint32_t addr, std::uint32_t *rx0_out = nullptr, std::uint32_t *rx1_out = nullptr)
+std::uint32_t flash_read(std::uint32_t addr)
 {
     volatile auto *spi{reinterpret_cast<volatile uint32_t *>(SPI_BASE)};
     spi[SPI_DIVIDER] = 1;
@@ -18,8 +18,6 @@ std::uint32_t flash_read(std::uint32_t addr, std::uint32_t *rx0_out = nullptr, s
     spi[SPI_TX_0] = (addr << 8) | bitrev(FLASH_CMD);
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO | CTRL_TX_NEG | CTRL_LSB;
     while (spi[SPI_CTRL] & CTRL_GO);
-    if (rx0_out) *rx0_out = spi[0];
-    if (rx1_out) *rx1_out = spi[1];
     auto raw{spi[SPI_RX_1]};
     std::uint32_t x = raw;
     x = ((x & 0x55555555u) << 1) | ((x >> 1) & 0x55555555u);
@@ -32,22 +30,6 @@ std::uint32_t flash_read(std::uint32_t addr, std::uint32_t *rx0_out = nullptr, s
 }
 int main(const char *args)
 {
-    std::uint32_t rx0, rx1;
-    auto got0{flash_read(0, &rx0, &rx1)};
-    auto expect0 = static_cast<std::uint32_t>(3 << 24 | 2 << 16 | 1 << 8 | 0);
-    volatile char *tx = (volatile char *)0x10000000;
-    volatile char *lsr = (volatile char *)0x10000005;
-    auto putc = [&](char c) { while (!(*lsr & 0x20)); *tx = c; };
-    auto prt = [&](std::uint32_t v) {
-        putc('0'); putc('x');
-        for (int i = 28; i >= 0; i -= 4) {
-            int d = (v >> i) & 0xF;
-            putc(d < 10 ? '0' + d : 'a' + d - 10);
-        }
-    };
-    putstr("rx0="); prt(rx0); putstr(" rx1="); prt(rx1);
-    putstr(" got="); prt(got0); putstr(" exp="); prt(expect0); putc('\n');
-
     int32_t errors{0};
     for (std::uint32_t addr{0}; addr < 256; addr += 4)
     {
