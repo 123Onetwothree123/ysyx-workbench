@@ -30,6 +30,19 @@ std::uint32_t flash_read(std::uint32_t addr)
 }
 int main(const char *args)
 {
+    std::uint32_t addrs[] = {0u, 4u};
+    for (auto addr : addrs) {
+        auto got{flash_read(addr)};
+        auto expect = static_cast<std::uint32_t>((addr + 3) << 24 | (addr + 2) << 16 | (addr + 1) << 8 | addr);
+        volatile char *ltx = (volatile char *)0x10000000;
+        volatile char *llsr = (volatile char *)0x10000005;
+        auto pc = [&](char c) { while (!(*llsr & 0x20)); *ltx = c; };
+        auto pr = [&](std::uint32_t v) {
+            pc('0'); pc('x');
+            for (int i = 28; i >= 0; i -= 4) { int d = (v >> i) & 0xF; pc(d < 10 ? '0' + d : 'a' + d - 10); }
+        };
+        putstr("a="); pr(addr); putstr(" g="); pr(got); putstr(" e="); pr(expect); pc('\n');
+    }
     int32_t errors{0};
     for (std::uint32_t addr{0}; addr < 256; addr += 4)
     {
