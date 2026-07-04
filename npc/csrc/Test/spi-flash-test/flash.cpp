@@ -13,14 +13,25 @@ std::uint32_t flash_read(std::uint32_t addr)
 {
     volatile auto *spi{reinterpret_cast<volatile uint32_t *>(SPI_BASE)};
     spi[SPI_DIVIDER] = 1;
-    spi[SPI_SS] = 0;         // 拉高SS，复位flash状态机
-    for(volatile int x=0;x<100;x++);  // 等几个周期
-    spi[SPI_SS] = FLASH_SS;  // 重新选中flash
+    spi[SPI_SS] = 0;
+    for(volatile int x=0;x<100;x++);
+    spi[SPI_SS] = FLASH_SS;
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_TX_NEG | CTRL_LSB;
     spi[SPI_TX_0] = (addr << 8) | bitrev(FLASH_CMD);
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO | CTRL_TX_NEG | CTRL_LSB;
     while (spi[SPI_CTRL] & CTRL_GO);
     auto raw{spi[SPI_RX_1]};
+    auto rx0{spi[SPI_RX_0]};
+    // debug
+    volatile char *ltx = (volatile char *)0x10000000;
+    volatile char *llsr = (volatile char *)0x10000005;
+    auto pc = [&](char c) { while (!(*llsr & 0x20)); *ltx = c; };
+    auto pr = [&](std::uint32_t v) {
+        pc('0'); pc('x');
+        for (int i = 28; i >= 0; i -= 4) { int d = (v >> i) & 0xF; pc(d < 10 ? '0' + d : 'a' + d - 10); }
+    };
+    pc('R'); pr(rx0); pc(' '); pr(raw); pc('\n');
+    
     std::uint32_t x = raw;
     x = ((x & 0x55555555u) << 1) | ((x >> 1) & 0x55555555u);
     x = ((x & 0x33333333u) << 2) | ((x >> 2) & 0x33333333u);
