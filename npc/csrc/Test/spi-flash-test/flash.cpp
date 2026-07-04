@@ -33,5 +33,13 @@ int main(const char *args)
             errors++;
         }
     }
+    if (errors == 0)
+    {
+        putstr("PASS\n");
+    }
+    else
+    {
+        putstr("FAIL\n");
+    }
     return 0;
 }
