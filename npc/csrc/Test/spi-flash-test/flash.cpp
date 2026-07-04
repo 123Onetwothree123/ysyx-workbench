@@ -7,7 +7,7 @@ std::uint32_t flash_read(std::uint32_t addr)
     spi[SPI_DIVIDER] = 1;
     spi[SPI_SS] = FLASH_SS;
     spi[SPI_TX_0] = (static_cast<uint32_t>(FLASH_CMD) << 24) | addr;
-    spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO | CTRL_TX_NEG;
+    spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO;
     while (spi[SPI_CTRL] & CTRL_GO)
         ;
     return spi[SPI_RX_0];
