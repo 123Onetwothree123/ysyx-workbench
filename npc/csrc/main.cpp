@@ -36,7 +36,7 @@ int main(int argc, char const *argv[])
         }
     }
 #endif
-    auto CharTests{std::filesystem::path{"csrc/Test/char-test/build/char-test-riscv32e-npc.bin"}};
+    auto CharTests{std::filesystem::path{"csrc/Test/char-test/build/char-test-riscv32-npc.bin"}};
     if (std::filesystem::exists(CharTests))
     {
         auto size{std::filesystem::file_size(CharTests)};
