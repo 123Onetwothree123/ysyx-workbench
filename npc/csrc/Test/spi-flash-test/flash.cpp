@@ -9,14 +9,6 @@ constexpr std::uint8_t bitrev(std::uint8_t b)
     b = ((b & 0xAA) >> 1) | ((b & 0x55) << 1);
     return b;
 }
-constexpr std::uint32_t bit_reverse32(std::uint32_t x)
-{
-    x = ((x & 0x55555555) << 1) | ((x >> 1) & 0x55555555);
-    x = ((x & 0x33333333) << 2) | ((x >> 2) & 0x33333333);
-    x = ((x & 0x0F0F0F0F) << 4) | ((x >> 4) & 0x0F0F0F0F);
-    return (x << 24) | ((x & 0xFF00) << 8) | ((x >> 8) & 0xFF00) | (x >> 24);
-}
-
 std::uint32_t flash_read(std::uint32_t addr)
 {
     volatile auto *spi{reinterpret_cast<volatile uint32_t *>(SPI_BASE)};
@@ -28,7 +20,15 @@ std::uint32_t flash_read(std::uint32_t addr)
     while (spi[SPI_CTRL] & CTRL_GO)
         ;
     auto raw{spi[SPI_RX_1]};
-    return bit_reverse32(raw);
+    // 32-bit bit reverse + byte swap to undo SPI path + flash data_bswap
+    std::uint32_t x = raw;
+    x = ((x & 0x55555555u) << 1) | ((x >> 1) & 0x55555555u);
+    x = ((x & 0x33333333u) << 2) | ((x >> 2) & 0x33333333u);
+    x = ((x & 0x0F0F0F0Fu) << 4) | ((x >> 4) & 0x0F0F0F0Fu);
+    x = ((x & 0x00FF00FFu) << 8) | ((x >> 8) & 0x00FF00FFu);
+    x = (x << 16) | (x >> 16);
+    return ((x & 0xFFu) << 24) | ((x & 0xFF00u) << 8) |
+           ((x >> 8) & 0xFF00u) | ((x >> 24) & 0xFFu);
 }
 int main(const char *args)
 {
