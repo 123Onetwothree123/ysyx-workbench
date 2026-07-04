@@ -9,6 +9,14 @@ constexpr std::uint8_t bitrev(std::uint8_t b)
     b = ((b & 0xAA) >> 1) | ((b & 0x55) << 1);
     return b;
 }
+constexpr std::uint32_t bit_reverse32(std::uint32_t x)
+{
+    x = ((x & 0x55555555) << 1) | ((x >> 1) & 0x55555555);
+    x = ((x & 0x33333333) << 2) | ((x >> 2) & 0x33333333);
+    x = ((x & 0x0F0F0F0F) << 4) | ((x >> 4) & 0x0F0F0F0F);
+    return (x << 24) | ((x & 0xFF00) << 8) | ((x >> 8) & 0xFF00) | (x >> 24);
+}
+
 std::uint32_t flash_read(std::uint32_t addr)
 {
     volatile auto *spi{reinterpret_cast<volatile uint32_t *>(SPI_BASE)};
@@ -19,7 +27,8 @@ std::uint32_t flash_read(std::uint32_t addr)
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO | CTRL_TX_NEG | CTRL_LSB;
     while (spi[SPI_CTRL] & CTRL_GO)
         ;
-    return spi[SPI_RX_0];
+    auto raw{spi[SPI_RX_1]};
+    return bit_reverse32(raw);
 }
 int main(const char *args)
 {
