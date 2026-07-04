@@ -12,7 +12,7 @@ int main(const char *args)
     // 等硬件自动清零
     while (spi[SPI_CTRL] & CTRL_GO)
         ;
-    std::uint32_t rx = spi[SPI_RX_0] & 0xFF;
+    std::uint32_t rx = (spi[SPI_RX_0] >> 8) & 0xFF;
     if (rx == 0x43)
     {
         putstr("PASS\n");
