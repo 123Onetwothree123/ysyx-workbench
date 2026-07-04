@@ -36,11 +36,22 @@ int main(int argc, char const *argv[])
         }
     }
 #endif
-    // 初始化FlashMemory，模拟烧录了数据FlashMemory[i] = i
-    FlashMemory.resize(256);
-    for (std::size_t i = 0; i < FlashMemory.size(); i++)
+    auto CharTests{std::filesystem::path{"csrc/Test/char-test/build/char-test-riscv32-npc.bin"}};
+    if (std::filesystem::exists(CharTests))
     {
-        FlashMemory[i] = static_cast<std::uint8_t>(i);
+        auto size{std::filesystem::file_size(CharTests)};
+        FlashMemory.resize(size);
+        std::ifstream ifs{CharTests.string(), std::ios::binary};
+        ifs.read(reinterpret_cast<char *>(FlashMemory.data()), size);
+    }
+    else
+    {
+        // 初始化FlashMemory，模拟烧录了数据FlashMemory[i] = i
+        FlashMemory.resize(256);
+        for (std::size_t i = 0; i < FlashMemory.size(); i++)
+        {
+            FlashMemory[i] = static_cast<std::uint8_t>(i);
+        }
     }
     dut.reset();
 #ifdef CONFIG_SDB
