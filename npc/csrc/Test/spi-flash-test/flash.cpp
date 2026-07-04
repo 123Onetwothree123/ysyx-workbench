@@ -32,23 +32,28 @@ std::uint32_t flash_read(std::uint32_t addr)
 }
 int main(const char *args)
 {
+    auto got0{flash_read(0)};
+    auto expect0 = static_cast<std::uint32_t>(3 << 24 | 2 << 16 | 1 << 8 | 0);
+    // 打印实际值和期望值用于调试
+    volatile char *tx = (volatile char *)0x10000000;
+    volatile char *lsr = (volatile char *)0x10000005;
+    auto putc = [&](char c) { while (!(*lsr & 0x20)); *tx = c; };
+    auto prt = [&](std::uint32_t v) {
+        putc('0'); putc('x');
+        for (int i = 28; i >= 0; i -= 4) {
+            int d = (v >> i) & 0xF;
+            putc(d < 10 ? '0' + d : 'a' + d - 10);
+        }
+    };
+    putstr("got="); prt(got0); putstr(" exp="); prt(expect0); putc('\n');
+
     int32_t errors{0};
     for (std::uint32_t addr{0}; addr < 256; addr += 4)
     {
         auto got{flash_read(addr)};
         auto expect = static_cast<std::uint32_t>((addr + 3) << 24 | (addr + 2) << 16 | (addr + 1) << 8 | addr);
-        if (got != expect)
-        {
-            errors++;
-        }
+        if (got != expect) errors++;
     }
-    if (errors == 0)
-    {
-        putstr("PASS\n");
-    }
-    else
-    {
-        putstr("FAIL\n");
-    }
+    if (errors == 0) putstr("PASS\n"); else putstr("FAIL\n");
     return 0;
 }
