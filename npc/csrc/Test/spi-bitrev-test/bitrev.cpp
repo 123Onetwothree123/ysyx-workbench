@@ -4,7 +4,7 @@
 #include <cstdint>
 int main(const char *args)
 {
-    auto *spi = reinterpret_cast<volatile std::uint32_t *>(BITREV_BASE);
+    volatile auto *spi {reinterpret_cast<volatile std::uint32_t *>(BITREV_BASE)};
     spi[SPI_DIVIDER] = 1;
     spi[SPI_SS] = BITREV_SS;
     spi[SPI_TX_0] = 0xC2;

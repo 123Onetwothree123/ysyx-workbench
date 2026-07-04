@@ -3,11 +3,12 @@
 #include <klib.h>
 std::uint32_t flash_read(std::uint32_t addr)
 {
-    volatile auto *spi = reinterpret_cast<volatile uint32_t *>(SPI_BASE);
+    volatile auto *spi {reinterpret_cast<volatile uint32_t *>(SPI_BASE)};
     spi[SPI_DIVIDER] = 1;
     spi[SPI_SS] = FLASH_SS;
-    spi[SPI_TX_0] = (static_cast<uint32_t>(FLASH_CMD) << 24) | addr;
-    spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO;
+    spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_TX_NEG | CTRL_LSB;
+    spi[SPI_TX_0] = (addr << 8) | FLASH_CMD;
+    spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO | CTRL_TX_NEG | CTRL_LSB;
     while (spi[SPI_CTRL] & CTRL_GO)
         ;
     return spi[SPI_RX_0];
