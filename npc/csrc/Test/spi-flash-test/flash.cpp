@@ -14,7 +14,8 @@ std::uint32_t flash_read(std::uint32_t addr)
 {
     volatile auto *spi{reinterpret_cast<volatile uint32_t *>(SPI_BASE)};
     spi[SPI_DIVIDER] = 1;
-    spi[SPI_SS] = FLASH_SS;
+    spi[SPI_SS] = 0;           // SS高→flash复位
+    spi[SPI_SS] = FLASH_SS;    // 重新选中flash
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_TX_NEG | CTRL_LSB;
     spi[SPI_TX_0] = (addr << 8) | bitrev(FLASH_CMD);
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO | CTRL_TX_NEG | CTRL_LSB;

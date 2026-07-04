@@ -7,7 +7,7 @@
 #define SPI_CTRL 0x4
 #define SPI_DIVIDER 0x5
 #define SPI_SS 0x6
-#define CTRL_CHAR_LEN 63
+#define CTRL_CHAR_LEN 64
 #define CTRL_GO (1 << 8)
 #define CTRL_RX_NEG (1 << 9)
 #define CTRL_TX_NEG (1 << 10)
