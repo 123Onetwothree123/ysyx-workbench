@@ -3,11 +3,6 @@
 .type _start, @function
 
 _start:
-  # quick UART check
-  li a5, 0x10000000
-  li a4, 0x42
-  sb a4, 0(a5)
-
   mv s0, zero
   la sp, _stack_pointer
 
