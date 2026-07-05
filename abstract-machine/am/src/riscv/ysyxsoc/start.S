@@ -6,6 +6,10 @@ _start:
   mv s0, zero
   la sp, _stack_pointer
 
+  # Bypass _trm_init: go directly to main
+  call main
+  j .
+
   la t0, _data_lma
   la t1, _data_start
   la t2, _edata
