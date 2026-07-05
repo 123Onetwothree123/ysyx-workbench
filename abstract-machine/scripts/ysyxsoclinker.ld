@@ -46,7 +46,7 @@ SECTIONS {
   _heap_end = ORIGIN(sram) + LENGTH(sram) - 0x1000;
    _stack_top = _heap_end;
    /*初始栈指针放在SRAM顶部，栈向低地址增长*/
-   _stack_pointer = ORIGIN(sram) + LENGTH(sram) - 0x10;
+   _stack_pointer = ORIGIN(sram) + LENGTH(sram);
   end = .;
   _end = .;
 }
