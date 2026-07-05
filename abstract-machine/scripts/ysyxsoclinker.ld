@@ -5,7 +5,7 @@ ENTRY(_start)
 MEMORY {
     /*我也不知道为什么OSOC的SOC是要分出两套来，而且容量都那么小*/
   flash_xip (rx)  : ORIGIN = 0x30000000, LENGTH = 256M
-  sram (rw)  : ORIGIN = 0x0f000000, LENGTH = 8K
+  sram (rw)  : ORIGIN = 0x0f000000, LENGTH = 32K
 }
 SECTIONS {
     . = ORIGIN(flash_xip);
@@ -40,10 +40,9 @@ SECTIONS {
     _bss_end = .;
   } > sram
   /*他妈的几百年没更新过吗？C和C++都能做好，为什么这个做不好空格问题，一定要写空格吗？没有格式化文档，我还得自己手改*/
-    /*堆从.bss之后开始，并对齐到4KB*/
-  _heap_start = ALIGN(0x1000);
-  /*SRAM最后4KiB留给栈，堆不能超过_heap_end*/
-  _heap_end = ORIGIN(sram) + LENGTH(sram) - 0x1000;
+    /*堆从.bss之后开始，到栈底结束*/
+  _heap_start = ALIGN(0x10);
+  _heap_end = _stack_pointer;
    _stack_top = _heap_end;
    /*初始栈指针放在SRAM顶部，栈向低地址增长*/
    _stack_pointer = ORIGIN(sram) + LENGTH(sram) - 0x800;
