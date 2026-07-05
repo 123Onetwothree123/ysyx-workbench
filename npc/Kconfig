@@ -611,19 +611,19 @@ menu "目标体系结构"
 
 config MBASE
   hex "内存基地址"
-  default 0x20000000
+  default 0x30000000
   help
     加载程序镜像的内存区域基地址
 
 config MSIZE
   hex "内存大小"
-  default 0x1000
+  default 0x10000000
   help
     内存区域的大小，单位为字节
 
 config RESET_PC
   hex "复位PC地址"
-  default 0x20000000
+  default 0x30000000
   help
     复位后程序计数器的初始值
 

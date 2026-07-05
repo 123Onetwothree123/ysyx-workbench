@@ -94,7 +94,7 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
     (*InitSymbol)(0);
     // InitSymbol might corrupt global state, skip if not needed
     // REFMemcpy and REFRegcpy should be sufficient for basic difftest
-    REFMemcpy(CONFIG_MBASE, mrom.data(), ImageSize, DifftestCPUState::GetDirectionToRef());
+    REFMemcpy(CONFIG_MBASE, FlashMemory.data(), ImageSize, DifftestCPUState::GetDirectionToRef());
     DifftestCPUState DUTState;
     DUTState.SetPC(CONFIG_RESET_PC);
     REFRegcpy(&DUTState, DifftestCPUState::GetDirectionToRef());

@@ -21,8 +21,8 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOption
         {
             return std::unexpected(std::format("文件打不开{0}", path.string()));
         }
-        mrom.resize(FileSize);
-        ifs.read(reinterpret_cast<char *>(mrom.data()), FileSize);
+        FlashMemory.resize(FileSize);
+        ifs.read(reinterpret_cast<char *>(FlashMemory.data()), FileSize);
         if (!ifs)
         {
             return std::unexpected(std::format("读取文件失败{0}", path.string()));

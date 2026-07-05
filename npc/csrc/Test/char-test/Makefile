@@ -7,7 +7,7 @@ run:
 	riscv32-unknown-elf-g++ -march=rv32i -mabi=ilp32 \
 		-O2 -ffreestanding -nostdlib -nostartfiles \
 		-fno-exceptions -fno-rtti \
-		-Wl,-Ttext=0x20000000 -Wl,-e,_start \
+		-Wl,-Ttext=0x30000000 -Wl,-e,_start \
 		-o build/char-test-$(ARCH).elf $(CXXSRCS)
 	riscv32-unknown-elf-objcopy -j .text -O binary \
 		build/char-test-$(ARCH).elf build/char-test-$(ARCH).bin

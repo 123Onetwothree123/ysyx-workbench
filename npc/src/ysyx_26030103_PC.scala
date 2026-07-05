@@ -7,7 +7,7 @@ class ysyx_26030103_PC extends Module {
     val PCEnable = Input(Bool()) // ysyx_26030103_PC写使能
     val ysyx_26030103_PC = Output(UInt(32.W)) // 当前ysyx_26030103_PC值
   })
-  val RESET_ADDR = 0x20000000L
+  val RESET_ADDR = 0x30000000L // 换flash了
   val PCReg = RegInit(RESET_ADDR.U(32.W))
   when(io.PCEnable) {
     PCReg := io.ysyx_26030103_NextPC

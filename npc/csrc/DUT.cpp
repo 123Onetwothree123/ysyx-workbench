@@ -23,10 +23,10 @@ static VerilatedFstC tfp;
 #define CONFIG_TRACE_FILE "waveform.vcd"
 #endif
 #ifndef CONFIG_MBASE
-#define CONFIG_MBASE 0x20000000
+#define CONFIG_MBASE 0x30000000
 #endif
 #ifndef CONFIG_MSIZE
-#define CONFIG_MSIZE 0x1000
+#define CONFIG_MSIZE 0x10000000
 #endif
 DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
 {
@@ -173,21 +173,21 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
     {
         return std::unexpected{std::format("不支持的内存读取长度：{}", size)};
     }
-    constexpr std::uint32_t MROM_BASE{CONFIG_MBASE};
-    constexpr std::uint32_t MROM_SIZE{CONFIG_MSIZE};
-    if (addr >= MROM_BASE && addr + size <= MROM_BASE + MROM_SIZE)
+    constexpr std::uint32_t FLASH_BASE{CONFIG_MBASE};
+    constexpr std::uint32_t FLASH_SIZE{CONFIG_MSIZE};
+    if (addr >= FLASH_BASE && addr + size <= FLASH_BASE + FLASH_SIZE)
     {
-        auto offset{addr - MROM_BASE};
-        if (offset + size > mrom.size())
+        auto offset{addr - FLASH_BASE};
+        if (offset + size > FlashMemory.size())
         {
-            return std::unexpected{std::format("MROM 地址越界：0x{:08x}", addr)};
+            return std::unexpected{std::format("Flash 地址越界：0x{:08x}", addr)};
         }
         std::uint32_t value{0};
         for (std::size_t i{0}; i < size; ++i)
         {
-            value |= static_cast<std::uint32_t>(mrom[offset + i]) << (i * 8);
+            value |= static_cast<std::uint32_t>(FlashMemory[offset + i]) << (i * 8);
         }
         return value;
     }
-    return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 MROM 0x{:08x}-0x{:08x}）", addr, MROM_BASE, MROM_BASE + MROM_SIZE)};
+    return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 Flash 0x{:08x}-0x{:08x}）", addr, FLASH_BASE, FLASH_BASE + FLASH_SIZE)};
 }
