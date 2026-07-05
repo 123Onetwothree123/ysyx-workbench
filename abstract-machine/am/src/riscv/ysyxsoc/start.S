@@ -25,6 +25,16 @@ _start:
   lw t3, 48(t0); sw t3, 48(t1); fence
   lw t3, 52(t0); sw t3, 52(t1); fence
 
+  # BSS zeroing
+  la t0, _bss_start
+  la t1, _bss_end
+1:
+  bge t0, t1, 2f
+  sw zero, 0(t0)
+  addi t0, t0, 4
+  j 1b
+2:
+
   call _trm_init
 
 .size _start, . - _start
