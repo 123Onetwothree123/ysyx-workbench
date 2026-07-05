@@ -23,8 +23,9 @@ SECTIONS {
      /*记录代码和只读数据结束的位置*/
      etext = .;
      _etext = .;
-     /*新加的，为了支持实现bootloader*/
-     .data : {
+      /*新加的，为了支持实现bootloader*/
+      . = ALIGN(4);
+      .data : {
      *(.data*)
      *(.sdata*)
      } > sram AT> flash_xip
