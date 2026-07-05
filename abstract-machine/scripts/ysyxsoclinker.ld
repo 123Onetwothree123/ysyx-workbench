@@ -20,11 +20,13 @@ SECTIONS {
      *(.srodata*)
      } > flash_xip
      /*同上脑子有坑*/
-     /*记录代码和只读数据结束的位置*/
-     etext = .;
-     _etext = .;
-      /*新加的，为了支持实现bootloader*/
-      .data : {
+      /*记录代码和只读数据结束的位置*/
+      etext = .;
+      _etext = .;
+      /* 对齐 flash_xip 位置计数器，保证 .data 的 LMA 是4字节对齐的 */
+      . = ALIGN(4);
+       /*新加的，为了支持实现bootloader*/
+       .data : {
      *(.data*)
      *(.sdata*)
      } > sram AT> flash_xip
