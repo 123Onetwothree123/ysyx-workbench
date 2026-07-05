@@ -6,28 +6,15 @@ _start:
   mv s0, zero
   la sp, _stack_pointer
 
-  li a6, 0x10000000
   la t0, _data_lma
   la t1, _data_start
   la t2, _edata
-1:
-  bge t1, t2, 2f
+
+  # only copy 2 words to test
   lw t3, 0(t0)
   sw t3, 0(t1)
-  sb zero, 0(a6)       # dummy UART write between iter
-  addi t0, t0, 4
-  addi t1, t1, 4
-  j 1b
-2:
-
-  la t0, _bss_start
-  la t1, _bss_end
-3:
-  bge t0, t1, 4f
-  sw zero, 0(t0)
-  addi t0, t0, 4
-  j 3b
-4:
+  lw t3, 4(t0)
+  sw t3, 4(t1)
 
   call _trm_init
 
