@@ -2,7 +2,6 @@
 #include <klib.h>
 int main(const char *args)
 {
-    *(volatile char *)0x10000000L = 'A';
-    while(1);
+    putstr("XIP PASS\n");
     return 0;
 }
