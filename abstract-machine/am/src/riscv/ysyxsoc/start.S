@@ -3,6 +3,11 @@
 .type _start, @function
 
 _start:
+  # Quick UART write to verify flash XIP + UART work BEFORE any SRAM access
+  li a5, 0x10000000
+  li a4, 0x41
+  sb a4, 0(a5)
+
   mv s0, zero
   la sp, _stack_pointer
 
