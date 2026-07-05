@@ -24,7 +24,6 @@ SECTIONS {
      etext = .;
      _etext = .;
       /*新加的，为了支持实现bootloader*/
-      . = ALIGN(4);
       .data : {
      *(.data*)
      *(.sdata*)
