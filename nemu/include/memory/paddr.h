@@ -49,6 +49,13 @@ static inline bool in_pmem_range(paddr_t addr, size_t len)
 // SRAM的地址0x0f000000，8KB
 #define SRAM_BASE 0x0f000000u
 #define SRAM_SIZE 0x2000u
+// flash
+#define FLASH_BASE 0x30000000u
+#define FLASH_SIZE 0x10000000u
+static inline bool in_flash(paddr_t addr)
+{
+  return addr - FLASH_BASE < FLASH_SIZE;
+}
 static inline bool in_mrom(paddr_t addr)
 {
   return addr - MROM_BASE < MROM_SIZE;

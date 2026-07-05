@@ -21,6 +21,8 @@
 // 适配新版本difftest
 static uint8_t mrom[MROM_SIZE] = {};
 static uint8_t sram[SRAM_SIZE] = {};
+// flash
+static uint8_t flash[FLASH_SIZE] = {};
 
 #if defined(CONFIG_PMEM_MALLOC)
 static uint8_t *pmem = NULL;
@@ -88,6 +90,10 @@ word_t paddr_read(paddr_t addr, int len)
   {
     return host_read(sram + addr - SRAM_BASE, len);
   }
+  if (in_flash(addr))
+  {
+    return flash[addr - FLASH_BASE];
+  }
 #ifdef CONFIG_DEVICE
   if (!in_pmem(addr))
   {
@@ -123,6 +129,10 @@ void paddr_write(paddr_t addr, int len, word_t data)
   {
     host_write(sram + addr - SRAM_BASE, len, data);
     return;
+  }
+  if (in_flash(addr))
+  {
+    return flash[addr - FLASH_BASE];
   }
 #ifdef CONFIG_DEVICE
   if (!in_pmem(addr))
