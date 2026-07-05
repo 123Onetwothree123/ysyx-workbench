@@ -6,6 +6,10 @@ _start:
   mv s0, zero
   la sp, _stack_pointer
 
+  # delay to let XIP state machine fully reset
+  nop; nop; nop; nop
+  nop; nop; nop; nop
+
   la t0, _data_lma
   la t1, _data_start
   la t2, _edata
