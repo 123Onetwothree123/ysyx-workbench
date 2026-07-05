@@ -14,22 +14,21 @@ SECTIONS {
      *(entry)
      *(.text*)
      } > flash_xip
-     /*适配bootloader*/
-     .rodata : {
-     *(.rodata*)
-     *(.srodata*)
-     } > flash_xip
-     /*同上脑子有坑*/
+      /*适配bootloader*/
+      .rodata : {
+      *(.rodata*)
+      *(.srodata*)
+      . = ALIGN(4);
+      } > flash_xip
+      /*同上脑子有坑*/
       /*记录代码和只读数据结束的位置*/
       etext = .;
       _etext = .;
-      /* 对齐 flash_xip 位置计数器，保证 .data 的 LMA 是4字节对齐的 */
-      . = ALIGN(4);
        /*新加的，为了支持实现bootloader*/
        .data : {
-     *(.data*)
-     *(.sdata*)
-     } > sram AT> flash_xip
+      *(.data*)
+      *(.sdata*)
+      } > sram AT> flash_xip
      _data_lma = LOADADDR(.data);
      _data_start = ADDR(.data);
      _edata = _data_start + SIZEOF(.data);
