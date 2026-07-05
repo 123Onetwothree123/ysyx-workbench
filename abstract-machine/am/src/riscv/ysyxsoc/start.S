@@ -8,25 +8,22 @@ _start:
 
   la t0, _data_lma
   la t1, _data_start
-  la t2, _edata
-1:
-  bge t1, t2, 2f
-  lw t3, 0(t0)
-  sw t3, 0(t1)
-  fence              # wait for store to complete
-  addi t0, t0, 4
-  addi t1, t1, 4
-  j 1b
-2:
 
-  la t0, _bss_start
-  la t1, _bss_end
-3:
-  bge t0, t1, 4f
-  sw zero, 0(t0)
-  addi t0, t0, 4
-  j 3b
-4:
+  # unrolled data copy - 14 words
+  lw t3,  0(t0); sw t3,  0(t1); fence
+  lw t3,  4(t0); sw t3,  4(t1); fence
+  lw t3,  8(t0); sw t3,  8(t1); fence
+  lw t3, 12(t0); sw t3, 12(t1); fence
+  lw t3, 16(t0); sw t3, 16(t1); fence
+  lw t3, 20(t0); sw t3, 20(t1); fence
+  lw t3, 24(t0); sw t3, 24(t1); fence
+  lw t3, 28(t0); sw t3, 28(t1); fence
+  lw t3, 32(t0); sw t3, 32(t1); fence
+  lw t3, 36(t0); sw t3, 36(t1); fence
+  lw t3, 40(t0); sw t3, 40(t1); fence
+  lw t3, 44(t0); sw t3, 44(t1); fence
+  lw t3, 48(t0); sw t3, 48(t1); fence
+  lw t3, 52(t0); sw t3, 52(t1); fence
 
   call _trm_init
 
