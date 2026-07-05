@@ -13,6 +13,7 @@ _start:
   bge t1, t2, 2f
   lw t3, 0(t0)
   sw t3, 0(t1)
+  fence              # wait for store to complete
   addi t0, t0, 4
   addi t1, t1, 4
   j 1b
