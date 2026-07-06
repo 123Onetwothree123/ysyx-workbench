@@ -40,13 +40,9 @@ int main(int argc, char const *argv[])
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
-    std::uint64_t TotalSteps = 0;
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
-        if (++TotalSteps % 10000 == 0)
-            std::println("[step={} pc=0x{:08x}]", TotalSteps,
-                         static_cast<std::uint32_t>(dut->debug_pc));
         if (dut->trap_valid)
         {
             std::println("trap了");
