@@ -146,6 +146,9 @@ class ysyx_26030103_LSU extends Module {
           // 本来想要做一个异常的新的信号，然后直接让处理器走ysyx_26030103_CSR，但是能力有限，做不出来
           // 只能靠编译器保证不会翻车了，理论上应该不会
         }
+          .elsewhen(io.ALUResult === 0.U) {
+            state := StatesDone
+          }
           .elsewhen(io.MemoryWrite) {
             state := StatesWriteRequest
           }

@@ -28,7 +28,7 @@ class ysyx_26030103_IFU extends Module {
   val StatesHold = states(3)
   val state = RegInit(StatesIdle)
   val InstructionReg = RegInit(0.U(32.W))
-  val PCReg = RegInit(0.U(32.W))
+  val PCReg = RegInit(0x30000000L.U(32.W))
   val AccessFaultReg = RegInit(false.B)
   val AccessFaultRespReg = RegInit(0.U(2.W))
   io.AccessFault := AccessFaultReg
