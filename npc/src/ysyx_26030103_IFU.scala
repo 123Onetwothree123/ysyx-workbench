@@ -98,7 +98,6 @@ class ysyx_26030103_IFU extends Module {
       when(
         io.out.valid && io.out.ready
       ) { // 只有ysyx_26030103_IDU真的接走了这条指令，ysyx_26030103_IFU这里才会去进入下一次的取指
-        printf(cf"[IFU] fire pc=0x${Hexadecimal(PCReg)}\n")
         state := StatesIdle
       }
     }
