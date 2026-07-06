@@ -44,7 +44,7 @@ int main(int argc, char const *argv[])
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
-        if (++TotalSteps % 50000 == 0)
+        if (++TotalSteps % 10000 == 0)
             std::println("[step={} pc=0x{:08x}]", TotalSteps,
                          static_cast<std::uint32_t>(dut->debug_pc));
         if (dut->trap_valid)
