@@ -40,9 +40,15 @@ int main(int argc, char const *argv[])
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
+    uint64_t s = 0; uint32_t last_pc = 0; bool printed = false;
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
-        dut.step();
+        dut.step(); s++;
+        auto pc = static_cast<uint32_t>(dut->debug_pc);
+        if (pc != last_pc) { last_pc = pc; printed = false; }
+        if (!printed && pc >= 0x300000c0 && pc <= 0x300000e8) {
+            std::println("[{}] pc=0x{:08x}", s, pc); printed = true;
+        }
         if (dut->trap_valid)
         {
             std::println("trap了");
