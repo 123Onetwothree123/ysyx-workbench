@@ -68,7 +68,7 @@ class ysyx_26030103_EXU extends Module {
   // 真的不知道这么做对不对，但是Immediate到底能不能负数，能不能往前跳啊，反正我之前还想做减法的，然后问AI设计思路的时候
   // deepseek说不需要，因为immgen是输出带符号的，符号应该没事吧，但是我immdiate又是UInt的，但是测试好像成功通过测试了，他
   // 妈的，好烦，我不知道
-  val BranchTarget = ActiveInstruction.pc - 4.U + ActiveInstruction.Immediate
+  val BranchTarget = ActiveInstruction.pc + ActiveInstruction.Immediate
   val JalTarget = ALUUnit.io.result
   // 和logisim一样，最低位换成常量0
   val JalrTarget = Cat(ALUUnit.io.result(31, 1), 0.U(1.W))
