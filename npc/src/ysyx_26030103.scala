@@ -17,7 +17,7 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
+  idu.io.in <> Queue(ifu.io.out, 1, pipe = false)
   ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
   ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
   arbiter.io.ifu <> ifu.io.InstructionBus
