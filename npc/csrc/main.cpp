@@ -44,11 +44,9 @@ int main(int argc, char const *argv[])
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step(); s++;
-        auto pc = static_cast<uint32_t>(dut->debug_pc);
-        if (pc != last_pc) {
-            last_pc = pc;
-            if (s % 500000 < 5)
-                std::println("[{}]pc=0x{:08x}", s, pc);
+        if (s % 10000 == 0) {
+            auto pc = static_cast<uint32_t>(dut->debug_pc);
+            std::println("[{}]pc=0x{:08x}", s, pc);
         }
         if (dut->trap_valid)
         {
