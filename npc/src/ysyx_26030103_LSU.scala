@@ -144,9 +144,6 @@ class ysyx_26030103_LSU extends Module {
         when(io.AddressMisaligned) {
           state := StatesDone
         }
-          .elsewhen(io.ALUResult === 0.U) {
-            state := StatesDone
-          }
           .elsewhen(io.MemoryWrite) {
             state := StatesWriteRequest
           }
