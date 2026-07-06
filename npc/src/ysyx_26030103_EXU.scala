@@ -95,7 +95,7 @@ class ysyx_26030103_EXU extends Module {
   }.otherwise {
     io.RedirectTarget := BranchTarget
   }
-  io.ExceptionTaken := InstructionExecutionDone && CSRUnit.io.ExceptionTaken && !ActiveInstruction.IsEbreak
+  io.ExceptionTaken := InstructionExecutionDone && CSRUnit.io.ExceptionTaken
   io.ExceptionTarget := CSRUnit.io.ExceptionTarget
   io.MemoryWrite := ActiveInstruction.MemoryWrite
   io.WidthSelect := ActiveInstruction.WidthSelect
