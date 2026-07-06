@@ -47,8 +47,12 @@ int main(int argc, char const *argv[])
         auto pc = static_cast<uint32_t>(dut->debug_pc);
         if (pc != last_pc) {
             last_pc = pc;
-            if (s < 200000)
-                std::println("[{}]pc=0x{:08x}", s, pc);
+            if (pc == 0x300000c8 || pc == 0x300000d0) {
+                auto a0 = dut.ReadGPR(10);
+                auto t0 = dut.ReadGPR(5);
+                auto t1 = dut.ReadGPR(6);
+                std::println("[{}]pc=0x{:08x} a0=0x{:08x} t0=0x{:08x} t1=0x{:08x}", s, pc, a0.value_or(0), t0.value_or(0), t1.value_or(0));
+            }
         }
         if (dut->trap_valid)
         {
