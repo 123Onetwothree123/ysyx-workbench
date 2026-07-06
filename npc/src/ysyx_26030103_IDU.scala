@@ -101,10 +101,7 @@ class ysyx_26030103_IDU extends Module {
       ALU_A := pc
     }
   }
-  val ALU_B = WireDefault(Immediate)
-  when(opcode === OPCODE_Register) {
-    ALU_B := io.ReadDATA2
-  }
+  val ALU_B = Mux(opcode === OPCODE_Register, io.ReadDATA2, Immediate)
   io.out.bits.pc := pc
   io.out.bits.snpc := snpc
   io.out.bits.ALUCtrl := ALUCtrl
