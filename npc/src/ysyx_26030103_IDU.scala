@@ -98,7 +98,7 @@ class ysyx_26030103_IDU extends Module {
       ALU_A := 0.U(32.W)
     }
     is(OPCODE_UpperImmediate_auipc, OPCODE_Jump) {
-      ALU_A := pc
+      ALU_A := pc - 4.U
     }
   }
   val ALU_B = WireDefault(Immediate)
