@@ -95,6 +95,9 @@ class ysyx_26030103_EXU extends Module {
   }.otherwise {
     io.RedirectTarget := BranchTarget
   }
+  when (io.Redirect) {
+    printf(cf"[EXU] redirect tgt=0x${Hexadecimal(io.RedirectTarget)} pc=0x${Hexadecimal(ActiveInstruction.pc)}\n")
+  }
   io.ExceptionTaken := InstructionExecutionDone && CSRUnit.io.ExceptionTaken
   io.ExceptionTarget := CSRUnit.io.ExceptionTarget
   io.MemoryWrite := ActiveInstruction.MemoryWrite
