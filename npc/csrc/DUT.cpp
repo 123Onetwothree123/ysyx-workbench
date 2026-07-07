@@ -147,11 +147,13 @@ void DUT::step()
             std::println(std::cerr, "  这什么AXI响应码，我也不认识");
         }
     }
-    // BNE debug: capture a4(x14) and a3(x13) at bne instructions
+    // BNE debug: capture a4(x14) and a3(x13) when bne resolves
     {
         static std::uint32_t prev_pc = 0;
         auto pc = static_cast<std::uint32_t>(dut->debug_pc);
-        if (prev_pc == 0x30000120 || prev_pc == 0x30000208)
+        // Only fire when PC CHANGES FROM the bne address (branch resolved)
+        if (prev_pc == 0x30000120 && pc != prev_pc && pc != prev_pc + 4 || 
+            prev_pc == 0x30000208 && pc != prev_pc && pc != prev_pc + 4)
         {
             dut->debug_gpr_raddr = 14; dut->eval();
             auto x14 = static_cast<std::uint32_t>(dut->debug_gpr_rdata);
@@ -159,9 +161,8 @@ void DUT::step()
             auto x13 = static_cast<std::uint32_t>(dut->debug_gpr_rdata);
             dut->debug_gpr_raddr = 10; dut->eval();
             auto x10 = static_cast<std::uint32_t>(dut->debug_gpr_rdata);
-            bool taken = (pc != prev_pc + 4);
-            std::println("[BNE_DBG] PC=0x{:08x} x14(a4)=0x{:08x} x13(a3)=0x{:08x} x10(a0)=0x{:08x} taken={}",
-                prev_pc, x14, x13, x10, taken);
+            std::println("[BNE_RESOLVED] from 0x{:08x} to 0x{:08x} x14=0x{:08x} x13=0x{:08x} x10=0x{:08x} {}",
+                prev_pc, pc, x14, x13, x10, pc == prev_pc + 4 ? "NOT_TAKEN" : "TAKEN_TO_FAIL");
         }
         prev_pc = pc;
     }
