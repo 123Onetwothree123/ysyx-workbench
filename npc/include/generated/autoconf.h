@@ -38,4 +38,3 @@
 #define CONFIG_X_ASSIGN_FAST 1
 #define CONFIG_CC_O3 1
 #define CONFIG_SIM_THREADS 1
-#define CONFIG_CC_WALL 1
