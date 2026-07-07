@@ -1,0 +1,17 @@
+--- src/CPU.scala
++++ src/CPU.scala
+@@ -41,6 +41,7 @@ class ysyx_26030103 extends BlackBox {
+     val io_debug_mtrace_width = Output(UInt(2.W))
+     val io_debug_access_fault = Output(Bool())
+     val io_debug_access_fault_resp = Output(UInt(2.W))
++    val io_debug_commit = Output(Bool())
+   })
+ }
+ 
+@@ -102,4 +103,6 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
+     debug_access_fault := cpu.io.io_debug_access_fault
+     val debug_access_fault_resp = IO(Output(UInt(2.W)))
+     debug_access_fault_resp := cpu.io.io_debug_access_fault_resp
++    val debug_commit = IO(Output(Bool()))
++    debug_commit := cpu.io.io_debug_commit
+   }

@@ -19,7 +19,8 @@ class psram_top_apb extends BlackBox {
   val io = IO(new Bundle {
     val clock = Input(Clock())
     val reset = Input(Reset())
-    val in = Flipped(new APBBundle(APBBundleParameters(addrBits = 32, dataBits = 32)))
+    val in =
+      Flipped(new APBBundle(APBBundleParameters(addrBits = 32, dataBits = 32)))
     val qspi = new QSPIIO
   })
 }
@@ -30,17 +31,141 @@ class psram extends BlackBox {
 
 class psramChisel extends RawModule {
   val io = IO(Flipped(new QSPIIO))
-  val di = TriStateInBuf(io.dio, 0.U, false.B) // change this if you need
+  val output = Wire(UInt(4.W))
+  val en = Wire(Bool())
+  val input = TriStateInBuf(io.dio, output, en)
+
+  val idle :: rx_cmd :: rx_addr :: dummy :: tx_data :: rx_data :: Nil = Enum(6)
+  val sck_clock = io.sck.asClock
+  val ce_reset = io.ce_n.asAsyncReset
+
+  val state = withClockAndReset(sck_clock, ce_reset) {
+    RegInit(rx_cmd)
+  }
+  val counter = withClockAndReset(sck_clock, ce_reset) {
+    RegInit(0.U(4.W))
+  }
+  val cmd = withClockAndReset(sck_clock, ce_reset) {
+    RegInit(0.U(8.W))
+  }
+  val addr = withClockAndReset(sck_clock, ce_reset) {
+    RegInit(0.U(24.W))
+  }
+  val wdata = withClockAndReset(sck_clock, ce_reset) {
+    RegInit(0.U(32.W))
+  }
+  val MemoryAddress = addr(21, 0)
+
+  val memory = withClock(sck_clock) { Mem(1 << 22, UInt(8.W)) }
+  val rdata = withClock(sck_clock) {
+    Cat(
+      memory.read(MemoryAddress + 3.U),
+      memory.read(MemoryAddress + 2.U),
+      memory.read(MemoryAddress + 1.U),
+      memory.read(MemoryAddress + 0.U)
+    )
+  }
+  withClockAndReset(sck_clock, ce_reset) {
+    switch(state) {
+      is(idle) {
+        state := idle
+      }
+      is(rx_cmd) {
+        when(counter === 7.U) {
+          counter := 0.U
+          state := rx_addr
+        }.otherwise {
+          counter := counter + 1.U
+        }
+      }
+      is(rx_addr) {
+        when(counter === 5.U) {
+          counter := 0.U
+          state := Mux(
+            cmd === "heb".U,
+            dummy,
+            Mux(cmd === "h38".U, rx_data, idle)
+          )
+        }.otherwise {
+          counter := counter + 1.U
+        }
+      }
+      is(dummy) {
+        when(counter === 5.U) {
+          counter := 0.U
+          state := tx_data
+        }.otherwise {
+          counter := counter + 1.U
+        }
+      }
+      is(tx_data) {
+        when(counter === 7.U) {
+          counter := 0.U
+          state := idle
+        }.otherwise {
+          counter := counter + 1.U
+        }
+      }
+      is(rx_data) {
+        when(counter === 7.U) {
+          counter := 0.U
+          state := idle
+          val final_wdata = Cat(wdata(27, 0), input)
+          memory.write(MemoryAddress, final_wdata(7, 0))
+          memory.write(MemoryAddress + 1.U, final_wdata(15, 8))
+          memory.write(MemoryAddress + 2.U, final_wdata(23, 16))
+          memory.write(MemoryAddress + 3.U, final_wdata(31, 24))
+        }.otherwise {
+          counter := counter + 1.U
+        }
+      }
+    }
+    when(state === rx_cmd) {
+      cmd := Cat(cmd(6, 0), input(0))
+    }
+    when(state === rx_addr) {
+      addr := Cat(addr(19, 0), input)
+    }
+    when(state === rx_data) {
+      wdata := Cat(wdata(27, 0), input)
+    }
+  }
+  output := Mux(
+    state === tx_data,
+    MuxLookup(counter, 0.U)(
+      Seq(
+        0.U -> rdata(7, 4),
+        1.U -> rdata(3, 0),
+        2.U -> rdata(15, 12),
+        3.U -> rdata(11, 8),
+        4.U -> rdata(23, 20),
+        5.U -> rdata(19, 16),
+        6.U -> rdata(31, 28),
+        7.U -> rdata(27, 24)
+      )
+    ),
+    0.U
+  )
+  en := state === tx_data
 }
 
-class APBPSRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyModule {
-  val node = APBSlaveNode(Seq(APBSlavePortParameters(
-    Seq(APBSlaveParameters(
-      address       = address,
-      executable    = true,
-      supportsRead  = true,
-      supportsWrite = true)),
-    beatBytes  = 4)))
+class APBPSRAM(address: Seq[AddressSet])(implicit p: Parameters)
+    extends LazyModule {
+  val node = APBSlaveNode(
+    Seq(
+      APBSlavePortParameters(
+        Seq(
+          APBSlaveParameters(
+            address = address,
+            executable = true,
+            supportsRead = true,
+            supportsWrite = true
+          )
+        ),
+        beatBytes = 4
+      )
+    )
+  )
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {

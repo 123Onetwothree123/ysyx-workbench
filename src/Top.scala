@@ -18,6 +18,7 @@ class ysyxSoCTop extends Module {
   val mdut = Module(dut.module)
   mdut.dontTouchPorts()
   mdut.externalPins := DontCare
+  mdut.debug_gpr_raddr := 0.U
 }
 
 object Elaborate extends App {
