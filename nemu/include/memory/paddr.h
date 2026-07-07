@@ -44,8 +44,8 @@ static inline bool in_pmem_range(paddr_t addr, size_t len)
 
 // 哎哟，他妈的上个学期还只会C++，不会C，现在看paddr.h和c，这写的什么代码，我都没不好意思看，现在又不敢乱动，现在还要在这里补充重新适配difftest的代码
 // MROM地址0x20000000，4KB
-#define MROM_BASE 0x20000000u
-#define MROM_SIZE 0x1000u
+#define MROM_BASE 0x30000000u
+#define MROM_SIZE 0x100000u
 // SRAM的地址0x0f000000，8KB
 #define SRAM_BASE 0x0f000000u
 #define SRAM_SIZE 0x2000u
