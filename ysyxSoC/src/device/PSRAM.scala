@@ -107,16 +107,20 @@ class psramChisel extends RawModule {
         }
       }
       is(rx_data) {
+        val new_wdata = Cat(wdata(27, 0), input)
         when(counter === 7.U) {
           counter := 0.U
           state := idle
-          val final_wdata = Cat(wdata(27, 0), input)
-          memory.write(MemoryAddress, final_wdata(7, 0))
-          memory.write(MemoryAddress + 1.U, final_wdata(15, 8))
-          memory.write(MemoryAddress + 2.U, final_wdata(23, 16))
-          memory.write(MemoryAddress + 3.U, final_wdata(31, 24))
+          memory.write(MemoryAddress,       new_wdata(7, 0))
+          memory.write(MemoryAddress + 1.U, new_wdata(15, 8))
+          memory.write(MemoryAddress + 2.U, new_wdata(23, 16))
+          memory.write(MemoryAddress + 3.U, new_wdata(31, 24))
         }.otherwise {
           counter := counter + 1.U
+          // incremental write: emit each byte as nibbles arrive
+          when(counter === 1.U) { memory.write(MemoryAddress,       new_wdata(7, 0)) }
+          when(counter === 3.U) { memory.write(MemoryAddress + 1.U, new_wdata(7, 0)) }
+          when(counter === 5.U) { memory.write(MemoryAddress + 2.U, new_wdata(7, 0)) }
         }
       }
     }

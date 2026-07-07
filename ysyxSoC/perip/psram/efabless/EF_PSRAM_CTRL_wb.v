@@ -130,14 +130,6 @@ module EF_PSRAM_CTRL_wb (
     assign mr_rd    = ( (state==ST_IDLE ) & wb_re );
     assign mw_wr    = ( (state==ST_IDLE ) & wb_we );
 
-    // DEBUG
-    always @(posedge clk_i) begin
-        if (wb_re)
-            $display("PSRAM_READ  addr=0x%08x", adr_i);
-        if (wb_we)
-            $display("PSRAM_WRITE addr=0x%08x data=0x%08x sel=%b", adr_i, wdata, sel_i);
-    end
-
     PSRAM_READER MR (
         .clk(clk_i),
         .rst_n(~rst_i),
