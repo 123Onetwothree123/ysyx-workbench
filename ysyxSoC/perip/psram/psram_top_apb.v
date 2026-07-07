@@ -38,8 +38,10 @@ module psram_top_apb (
     .douten(douten)
   );
   always @(posedge clock) begin
+    if (in_psel && in_penable && in_pwrite && in_pready)
+      $display("PSRAM_APB_WR  addr=0x%08x data=0x%08x strb=%b", in_paddr, in_pwdata, in_pstrb);
     if (in_psel && in_penable && !in_pwrite && in_pready)
-      $display("PSRAM_APB  addr=0x%08x -> data=0x%08x", in_paddr, in_prdata);
+      $display("PSRAM_APB_RD  addr=0x%08x -> data=0x%08x", in_paddr, in_prdata);
   end
 
   assign in_pready = ack && in_psel;
