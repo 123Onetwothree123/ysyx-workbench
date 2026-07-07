@@ -34,6 +34,10 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
   io.master_awlen := soc.AW.AWLEN
   io.master_awsize := soc.AW.AWSIZE
   io.master_awburst := soc.AW.AWBURST
+  io.master_awlock := 0.U
+  io.master_awcache := 0.U
+  io.master_awprot := 0.U
+  io.master_awqos := 0.U
   soc.AW.AWREADY := io.master_awready
 
   io.master_wvalid := soc.W.WVALID
@@ -53,6 +57,10 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
   io.master_arlen := soc.AR.ARLEN
   io.master_arsize := soc.AR.ARSIZE
   io.master_arburst := soc.AR.ARBURST
+  io.master_arlock := 0.U
+  io.master_arcache := 0.U
+  io.master_arprot := 0.U
+  io.master_arqos := 0.U
   soc.AR.ARREADY := io.master_arready
 
   io.master_rready := soc.R.RREADY

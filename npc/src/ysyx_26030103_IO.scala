@@ -13,6 +13,10 @@ class ysyx_26030103_IO extends Bundle {
   val master_awlen = Output(UInt(8.W))
   val master_awsize = Output(UInt(3.W))
   val master_awburst = Output(UInt(2.W))
+  val master_awlock = Output(Bool())
+  val master_awcache = Output(UInt(4.W))
+  val master_awprot = Output(UInt(3.W))
+  val master_awqos = Output(UInt(4.W))
 //W写的
   val master_wready = Input(Bool())
   val master_wvalid = Output(Bool())
@@ -32,6 +36,10 @@ class ysyx_26030103_IO extends Bundle {
   val master_arlen = Output(UInt(8.W))
   val master_arsize = Output(UInt(3.W))
   val master_arburst = Output(UInt(2.W))
+  val master_arlock = Output(Bool())
+  val master_arcache = Output(UInt(4.W))
+  val master_arprot = Output(UInt(3.W))
+  val master_arqos = Output(UInt(4.W))
 //R
   val master_rready = Output(Bool())
   val master_rvalid = Input(Bool())
@@ -47,6 +55,10 @@ class ysyx_26030103_IO extends Bundle {
   val slave_awlen = Input(UInt(8.W))
   val slave_awsize = Input(UInt(3.W))
   val slave_awburst = Input(UInt(2.W))
+  val slave_awlock = Input(Bool())
+  val slave_awcache = Input(UInt(4.W))
+  val slave_awprot = Input(UInt(3.W))
+  val slave_awqos = Input(UInt(4.W))
 //写
   val slave_wready = Output(Bool())
   val slave_wvalid = Input(Bool())
@@ -66,6 +78,10 @@ class ysyx_26030103_IO extends Bundle {
   val slave_arlen = Input(UInt(8.W))
   val slave_arsize = Input(UInt(3.W))
   val slave_arburst = Input(UInt(2.W))
+  val slave_arlock = Input(Bool())
+  val slave_arcache = Input(UInt(4.W))
+  val slave_arprot = Input(UInt(3.W))
+  val slave_arqos = Input(UInt(4.W))
 
   val slave_rready = Input(Bool())
   val slave_rvalid = Output(Bool())
