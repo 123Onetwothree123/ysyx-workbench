@@ -48,7 +48,7 @@ static inline bool in_pmem_range(paddr_t addr, size_t len)
 #define MROM_SIZE 0x100000u
 // SRAM的地址0x0f000000，8KB
 #define SRAM_BASE 0x0f000000u
-#define SRAM_SIZE 0x2000u
+#define SRAM_SIZE 0x8000u
 // flash
 #define FLASH_BASE 0x30000000u
 #define FLASH_SIZE 0x10000000u
