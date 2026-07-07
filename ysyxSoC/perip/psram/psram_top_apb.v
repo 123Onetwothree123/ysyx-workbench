@@ -37,13 +37,6 @@ module psram_top_apb (
     .dout(dout),
     .douten(douten)
   );
-  always @(posedge clock) begin
-    if (in_psel && in_penable && in_pwrite && in_pready)
-      $display("PSRAM_APB_WR  addr=0x%08x data=0x%08x strb=%b", in_paddr, in_pwdata, in_pstrb);
-    if (in_psel && in_penable && !in_pwrite && in_pready)
-      $display("PSRAM_APB_RD  addr=0x%08x -> data=0x%08x", in_paddr, in_prdata);
-  end
-
   assign in_pready = ack && in_psel;
   assign in_pslverr = 1'b0;
   assign qspi_dio[0] = douten[0] ? dout[0] : 1'bz;
