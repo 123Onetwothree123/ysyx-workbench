@@ -57,6 +57,7 @@ class psramChisel extends RawModule {
   val MemoryAddress = addr(21, 0)
 
   val memory = withClock(sck_clock) { Mem(1 << 22, UInt(8.W)) }
+  printf(cf"psramChisel PATCH_v2 active\n")
   val rdata = withClock(sck_clock) {
     Cat(
       memory.read(MemoryAddress + 3.U),
