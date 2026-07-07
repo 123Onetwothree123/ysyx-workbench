@@ -118,9 +118,9 @@ class psramChisel extends RawModule {
         }.otherwise {
           counter := counter + 1.U
           // incremental write: emit each byte as nibbles arrive
-          when(counter === 1.U) { memory.write(MemoryAddress,       new_wdata(7, 0)) }
-          when(counter === 3.U) { memory.write(MemoryAddress + 1.U, new_wdata(7, 0)) }
-          when(counter === 5.U) { memory.write(MemoryAddress + 2.U, new_wdata(7, 0)) }
+          when(counter === 1.U) { memory.write(MemoryAddress,       new_wdata(7, 0)); printf(cf"PSRAM_W b0 @${MemoryAddress}%x = ${new_wdata(7,0)}%x\n") }
+          when(counter === 3.U) { memory.write(MemoryAddress + 1.U, new_wdata(7, 0)); printf(cf"PSRAM_W b1 @${MemoryAddress + 1.U}%x = ${new_wdata(7,0)}%x\n") }
+          when(counter === 5.U) { memory.write(MemoryAddress + 2.U, new_wdata(7, 0)); printf(cf"PSRAM_W b2 @${MemoryAddress + 2.U}%x = ${new_wdata(7,0)}%x\n") }
         }
       }
     }
