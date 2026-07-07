@@ -161,10 +161,9 @@ class ysyx_26030103_LSU extends Module {
         state := StatesReadResponse
       }
     }
-     is(StatesReadResponse) {
+    is(StatesReadResponse) {
       io.DataBus.R.RREADY := true.B
       when(io.DataBus.R.RVALID) {
-        printf(cf"LSU_RDATA addr=0x${io.ALUResult}%x rdata=0x${io.DataBus.R.RDATA}%x\n")
         when(io.DataBus.R.RRESP =/= 0.U) {
           AccessFaultReg := true.B
           AccessFaultRespReg := io.DataBus.R.RRESP

@@ -113,10 +113,9 @@ module PSRAM_READER (
             saddr <= {addr[23:0]};
 
     // Sample with the negedge of sck
-    wire[7:0] counter_plus_1 = counter + 1;
-    wire[1:0] byte_index = {counter_plus_1[7:1] - 8'd10}[1:0];
+    wire[1:0] byte_index = {counter[7:1] - 8'd10}[1:0];
     always @ (posedge clk)
-        if(counter >= 19 && counter < FINAL_COUNT)
+        if(counter >= 20 && counter <= FINAL_COUNT)
             if(sck)
                 data[byte_index] <= {data[byte_index][3:0], din}; // Optimize!
 
