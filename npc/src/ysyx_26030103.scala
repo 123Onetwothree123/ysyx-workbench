@@ -75,8 +75,6 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
   io.slave_rid := 0.U
   io.master_awlock := 0.U; io.master_awcache := 0.U; io.master_awprot := 0.U; io.master_awqos := 0.U
   io.master_arlock := 0.U; io.master_arcache := 0.U; io.master_arprot := 0.U; io.master_arqos := 0.U
-  io.slave_awlock := 0.U; io.slave_awcache := 0.U; io.slave_awprot := 0.U; io.slave_awqos := 0.U
-  io.slave_arlock := 0.U; io.slave_arcache := 0.U; io.slave_arprot := 0.U; io.slave_arqos := 0.U
   xbar.io.CLINT.AW <> clint.io.AW
   xbar.io.CLINT.W <> clint.io.W
   xbar.io.CLINT.B <> clint.io.B

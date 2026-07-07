@@ -73,15 +73,11 @@ class ysyx_26030103_IO extends Bundle {
   val slave_rdata = Output(UInt(32.W))
   val slave_rlast = Output(Bool())
   val slave_rid = Output(UInt(4.W))
-  // AXI4 extra pins
+  // AXI4 extra master pins
   val master_awlock = Output(Bool()); val master_awcache = Output(UInt(4.W))
   val master_awprot = Output(UInt(3.W)); val master_awqos = Output(UInt(4.W))
   val master_arlock = Output(Bool()); val master_arcache = Output(UInt(4.W))
   val master_arprot = Output(UInt(3.W)); val master_arqos = Output(UInt(4.W))
-  val slave_awlock = Output(Bool()); val slave_awcache = Output(UInt(4.W))
-  val slave_awprot = Output(UInt(3.W)); val slave_awqos = Output(UInt(4.W))
-  val slave_arlock = Output(Bool()); val slave_arcache = Output(UInt(4.W))
-  val slave_arprot = Output(UInt(3.W)); val slave_arqos = Output(UInt(4.W))
   // 给sdb用的
   val debug_gpr_raddr = Input(UInt(5.W))
   val debug_gpr_rdata = Output(UInt(32.W))
