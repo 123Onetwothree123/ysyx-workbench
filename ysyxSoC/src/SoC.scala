@@ -56,15 +56,14 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
   val lvga = LazyModule(new APBVGA(AddressSet.misaligned(0x21000000, 0x200000)))
   val lspi = LazyModule(
     new APBSPI(
-      AddressSet.misaligned(0x10001000, 0x1000) ++ // SPI controller
-        AddressSet.misaligned(0x30000000, 0x10000000) // XIP flash
+      AddressSet.misaligned(0x10001000, 0x1000) // SPI controller (XIP moved to MROM)
     )
   )
   val lpsram = LazyModule(
     new APBPSRAM(AddressSet.misaligned(0x80000000L, 0x400000))
   )
   val lmrom = LazyModule(
-    new AXI4MROM(AddressSet.misaligned(0x20000000, 0x1000))
+    new AXI4MROM(AddressSet.misaligned(0x30000000, 0x10000000))
   )
   val sramNode = AXI4RAM(
     AddressSet.misaligned(0x0f000000, 0x8000).head,
