@@ -39,8 +39,8 @@ module psram_top_apb (
   );
   
   always @(posedge clock) begin
-    if (in_psel && in_penable && !in_pwrite)
-      $display("PSRAM_APB_READ  addr=0x%08x -> data=0x%08x", in_paddr, in_prdata);
+    if (in_psel && in_penable && !in_pwrite && in_pready)
+      $display("PSRAM_APB_READ_DONE  addr=0x%08x -> data=0x%08x", in_paddr, in_prdata);
   end
   
   assign in_pready = ack && in_psel;
