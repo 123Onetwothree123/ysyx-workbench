@@ -99,6 +99,7 @@ class psramChisel extends RawModule {
         }
       }
       is(tx_data) {
+        when(counter === 0.U) { printf(cf"PSRAM_R @${MemoryAddress}%x = ${rdata}%x\n") }
         when(counter === 7.U) {
           counter := 0.U
           state := idle
