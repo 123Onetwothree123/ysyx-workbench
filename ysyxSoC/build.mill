@@ -110,13 +110,13 @@ trait RocketChip extends RocketChipModule with HasThisChisel {
   object cde extends CDE
   trait CDE extends CDEModule {
     override def scalaVersion = Versions.scala
-    override def sources = Task.Sources(dependencyPath / "cde" / "cde" / "src" / "main" / "scala")
+    override def sources = Task.Sources(dependencyPath / "cde" / "cde" / "src")
   }
 
   object diplomacy extends Diplomacy
   trait Diplomacy extends DiplomacyModule {
     override def scalaVersion = Versions.scala
-    override def sources = Task.Sources(dependencyPath / "diplomacy" / "diplomacy" / "src" / "main" / "scala")
+    override def sources = Task.Sources(dependencyPath / "diplomacy" / "diplomacy" / "src")
 
     def chiselModule: Option[ScalaModule] = None
     def chiselPluginJar: Option[PathRef] = None

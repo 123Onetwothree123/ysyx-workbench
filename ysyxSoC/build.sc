@@ -55,6 +55,7 @@ trait RocketChip extends rocketChipCommon.RocketChipModule with HasThisChisel {
   trait CDE extends cdeCommon.CDEModule with ScalaModule {
     def scalaVersion: T[String] = T(defaultScalaVersion)
     override def millSourcePath = dependencyPath / "cde" / "cde"
+    override def sources = Task.Sources(millSourcePath / "src")
   }
 
   object diplomacy extends Diplomacy
@@ -69,6 +70,8 @@ trait RocketChip extends rocketChipCommon.RocketChipModule with HasThisChisel {
 
     def cdeModule = cde
     def sourcecodeIvy = ivy"com.lihaoyi::sourcecode:0.3.1"
+
+    override def sources = Task.Sources(millSourcePath / "src")
   }
 }
 
