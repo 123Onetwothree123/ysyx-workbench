@@ -69,3 +69,10 @@ word_t paddr_read(paddr_t addr, int len);
 void paddr_write(paddr_t addr, int len, word_t data);
 
 #endif
+
+#define PSRAM_BASE 0x80000000u
+#define PSRAM_SIZE 0x400000u
+static inline bool in_psram(paddr_t addr)
+{
+  return addr - PSRAM_BASE < PSRAM_SIZE;
+}

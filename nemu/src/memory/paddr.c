@@ -21,6 +21,7 @@
 // 适配新版本difftest
 static uint8_t mrom[MROM_SIZE] = {};
 static uint8_t sram[SRAM_SIZE] = {};
+static uint8_t psram[PSRAM_SIZE] = {};
 // flash
 static uint8_t flash[FLASH_SIZE] = {};
 
@@ -134,6 +135,11 @@ void paddr_write(paddr_t addr, int len, word_t data)
   if (in_flash(addr))
   {
     flash[addr - FLASH_BASE] = (uint8_t)data;
+  if (in_psram(addr))
+  {
+    host_write(psram + addr - PSRAM_BASE, len, data);
+    return;
+  }
     return;
   }
 #ifdef CONFIG_DEVICE
