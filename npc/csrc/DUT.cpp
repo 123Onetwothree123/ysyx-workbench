@@ -147,6 +147,12 @@ void DUT::step()
             std::println(std::cerr, "  这什么AXI响应码，我也不认识");
         }
     }
+    if (dut->io_master_rvalid && dut->io_master_rready)
+        std::println("MASTER_RDATA  rdata=0x{:08x}  arvalid={}  arready={}  rvalid={}  rready={}",
+            dut->io_master_rdata,
+            dut->io_master_arvalid, dut->io_master_arready,
+            dut->io_master_rvalid, dut->io_master_rready
+        );
 }
 std::size_t DUT::GetCycle() const
 {
