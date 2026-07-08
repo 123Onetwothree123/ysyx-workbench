@@ -74,7 +74,7 @@ module EF_PSRAM_CTRL_wb (
     always @(posedge clk_i or posedge rst_i)
         if(rst_i) begin
             {init_cnt, init_sck, qpi_mode} <= 0;
-            init_active <= 1'b0;   // DEBUG: 跳过QPI init, 1'b1 改 1'b0
+            init_active <= 1'b1;
         end else if(init_active) begin
             init_sck <= ~init_sck;
             if(init_sck && init_cnt < 8)  init_cnt <= init_cnt + 1;
