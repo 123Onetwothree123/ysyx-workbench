@@ -41,6 +41,10 @@ module EF_PSRAM_CTRL_wb (
 
     localparam  ST_IDLE = 1'b0,
                 ST_WAIT = 1'b1;
+    reg qpi_mode;
+    reg init_active;
+    reg init_sck;
+    reg [3:0] init_cnt;
 
     wire        mr_sck;
     wire        mr_ce_n;
@@ -67,7 +71,17 @@ module EF_PSRAM_CTRL_wb (
     wire        wb_we           =   we_i & wb_valid;
     wire        wb_re           =   ~we_i & wb_valid;
     //wire[3:0]   wb_byte_sel     =   sel_i & {4{wb_we}};
-
+    always @(posedge clk_i or posedge rst_i)
+        if(rst_i) begin
+            {init_cnt, init_sck, qpi_mode} <= 0;
+            init_active <= 1'b1;
+        end else if(init_active) begin
+            init_sck <= ~init_sck;
+            if(init_sck && init_cnt < 8)  init_cnt <= init_cnt + 1;
+            if(init_sck && init_cnt == 8) init_active <= 1'b0;
+        end else if(!qpi_mode) begin
+            qpi_mode <= 1'b1;
+        end
     // The FSM
     reg         state, nstate;
     always @ (posedge clk_i or posedge rst_i)
@@ -127,8 +141,8 @@ module EF_PSRAM_CTRL_wb (
                         2'b00;
                       */
 
-    assign mr_rd    = ( (state==ST_IDLE ) & wb_re );
-    assign mw_wr    = ( (state==ST_IDLE ) & wb_we );
+    assign mr_rd = !init_active & (state==ST_IDLE) & wb_re;
+    assign mw_wr = !init_active & (state==ST_IDLE) & wb_we;
 
     PSRAM_READER MR (
         .clk(clk_i),
@@ -143,7 +157,8 @@ module EF_PSRAM_CTRL_wb (
         .ce_n(mr_ce_n),
         .din(mr_din),
         .dout(mr_dout),
-        .douten(mr_doe)
+        .douten(mr_doe),
+        .qpi_mode(qpi_mode)
     );
 
     PSRAM_WRITER MW (
@@ -158,13 +173,14 @@ module EF_PSRAM_CTRL_wb (
         .ce_n(mw_ce_n),
         .din(mw_din),
         .dout(mw_dout),
-        .douten(mw_doe)
+        .douten(mw_doe),
+        .qpi_mode(qpi_mode)
     );
 
-    assign sck  = wb_we ? mw_sck  : mr_sck;
-    assign ce_n = wb_we ? mw_ce_n : mr_ce_n;
-    assign dout = wb_we ? mw_dout : mr_dout;
-    assign douten  = wb_we ? {4{mw_doe}}  : {4{mr_doe}};
+    assign sck  = init_active ? init_sck : (wb_we ? mw_sck  : mr_sck);
+    assign ce_n = init_active ? 1'b0     : (wb_we ? mw_ce_n : mr_ce_n);
+    assign dout = init_active ? {3'b0, 8'h35[7 - init_cnt]} : (wb_we ? mw_dout : mr_dout);
+    assign douten = init_active ? 4'b1111 : (wb_we ? {4{mw_doe}} : {4{mr_doe}});
 
     assign mw_din = din;
     assign mr_din = din;
