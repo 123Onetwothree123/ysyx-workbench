@@ -138,7 +138,11 @@ class psramChisel extends RawModule {
         }
       }
     }
-    when(state === rx_cmd) {
+      when(state === rx_cmd) {
+      printf(cf"PSRAM-DBG: sck_pos, state=rx_cmd, QPI=${QPIMode}, cnt=${counter}, input_reg=${input}, cmd_reg=0x${Hexadecimal(cmd)}\n")
+      when(!QPIMode) {
+        printf(cf"PSRAM-DBG: would check 35h, cmd_lsb=0x${Hexadecimal(Cat(cmd(6,0), input(0)))}\n")
+      }
       when(QPIMode) {
         when(counter === 0.U) { cmd := Cat(input, 0.U(4.W)) }
           .elsewhen(counter === 1.U) {
