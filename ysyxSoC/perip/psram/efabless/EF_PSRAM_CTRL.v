@@ -144,11 +144,17 @@ assign dout = qpi_mode ?
 
     assign done     = (counter == FINAL_COUNT+1);
 
+    wire [31:0] read_result;
     generate
         genvar i;
         for(i=0; i<4; i=i+1)
-            assign line[i*8+7: i*8] = data[i];
+            assign read_result[i*8+7: i*8] = data[i];
     endgenerate
+    assign line = read_result;
+
+    always @(posedge clk)
+        if(done && state == READ)
+            $display("PSRAM-READER: read done, addr=0x%h, line=0x%h, qpi_mode=%d, size=%d, FINAL_COUNT=%d", saddr, read_result, qpi_mode, size, FINAL_COUNT);
 
 
 endmodule
