@@ -147,22 +147,6 @@ void DUT::step()
             std::println(std::cerr, "  这什么AXI响应码，我也不认识");
         }
     }
-    static std::uint32_t prev_pc = 0xffffffff;
-    auto pc = static_cast<std::uint32_t>(dut->debug_pc);
-    if (pc != prev_pc) {
-        if (prev_pc == 0x300001b8) {
-            dut->debug_gpr_raddr = 14; dut->eval();
-            auto a4 = static_cast<std::uint32_t>(dut->debug_gpr_rdata);
-            dut->debug_gpr_raddr = 15; dut->eval();
-            auto a5 = static_cast<std::uint32_t>(dut->debug_gpr_rdata);
-            std::println("[WORD_BNE] from 0x{:08x} to 0x{:08x} a4=0x{:08x} a5=0x{:08x} {}", 
-                prev_pc, pc, a4, a5, pc == prev_pc+4 ? "NOT_TAKEN" : "TAKEN");
-        }
-        if (prev_pc == 0x30000120 || prev_pc == 0x30000130 || prev_pc == 0x300001b8 || 
-            prev_pc == 0x30000208 || prev_pc == 0x300002bc || prev_pc == 0x3000020c)
-            std::println("[PC] 0x{:08x} -> 0x{:08x}", prev_pc, pc);
-        prev_pc = pc;
-    }
 }
 std::size_t DUT::GetCycle() const
 {

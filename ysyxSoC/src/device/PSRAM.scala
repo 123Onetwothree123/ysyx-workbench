@@ -111,10 +111,10 @@ class psramChisel extends RawModule {
         when(counter === 7.U) {
           counter := 0.U
           state := idle
-          memory.write(MemoryAddress,       new_wdata(7, 0))
-          memory.write(MemoryAddress + 1.U, new_wdata(15, 8))
-          memory.write(MemoryAddress + 2.U, new_wdata(23, 16))
-          memory.write(MemoryAddress + 3.U, new_wdata(31, 24))
+          memory.write(MemoryAddress,       new_wdata(31, 24))
+          memory.write(MemoryAddress + 1.U, new_wdata(23, 16))
+          memory.write(MemoryAddress + 2.U, new_wdata(15, 8))
+          memory.write(MemoryAddress + 3.U, new_wdata(7, 0))
         }.otherwise {
           counter := counter + 1.U
           when(counter === 1.U) { memory.write(MemoryAddress,       new_wdata(7, 0)) }
