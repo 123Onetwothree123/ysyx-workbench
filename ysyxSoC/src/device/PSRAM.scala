@@ -54,6 +54,7 @@ class psramChisel extends RawModule {
   val wdata = withClockAndReset(sck_clock, ce_reset) {
     RegInit(0.U(32.W))
   }
+  val QPIMode = WireDefault(true.B)  // 控制器复位后自动初始化为QPI, 无需检测35h
   val MemoryAddress = addr(21, 0)
 
   val memory = withClock(sck_clock) { Mem(1 << 22, UInt(8.W)) }
@@ -71,9 +72,15 @@ class psramChisel extends RawModule {
         state := idle
       }
       is(rx_cmd) {
-        when(counter === 7.U) {
+        val cmd_end = Mux(QPIMode, counter === 1.U, counter === 7.U)
+        when(cmd_end) {
           counter := 0.U
-          state := rx_addr
+          when(!QPIMode && Cat(cmd(6,0), input(0)) === "h35".U) {
+            QPIMode := true.B
+            state := idle
+          }.otherwise {
+            state := rx_addr
+          }
         }.otherwise {
           counter := counter + 1.U
         }
@@ -111,20 +118,31 @@ class psramChisel extends RawModule {
         when(counter === 7.U) {
           counter := 0.U
           state := idle
-          memory.write(MemoryAddress,       new_wdata(31, 24))
+          memory.write(MemoryAddress, new_wdata(31, 24))
           memory.write(MemoryAddress + 1.U, new_wdata(23, 16))
           memory.write(MemoryAddress + 2.U, new_wdata(15, 8))
           memory.write(MemoryAddress + 3.U, new_wdata(7, 0))
         }.otherwise {
           counter := counter + 1.U
-          when(counter === 1.U) { memory.write(MemoryAddress,       new_wdata(7, 0)) }
-          when(counter === 3.U) { memory.write(MemoryAddress + 1.U, new_wdata(7, 0)) }
-          when(counter === 5.U) { memory.write(MemoryAddress + 2.U, new_wdata(7, 0)) }
+          when(counter === 1.U) { memory.write(MemoryAddress, new_wdata(7, 0)) }
+          when(counter === 3.U) {
+            memory.write(MemoryAddress + 1.U, new_wdata(7, 0))
+          }
+          when(counter === 5.U) {
+            memory.write(MemoryAddress + 2.U, new_wdata(7, 0))
+          }
         }
       }
     }
-    when(state === rx_cmd) {
-      cmd := Cat(cmd(6, 0), input(0))
+      when(state === rx_cmd) {
+      when(QPIMode) {
+        when(counter === 0.U) { cmd := Cat(input, 0.U(4.W)) }
+          .elsewhen(counter === 1.U) {
+            cmd := Cat(cmd(7, 4), input)
+          }
+      }.otherwise {
+        cmd := Cat(cmd(6, 0), input(0))
+      }
     }
     when(state === rx_addr) {
       addr := Cat(addr(19, 0), input)
