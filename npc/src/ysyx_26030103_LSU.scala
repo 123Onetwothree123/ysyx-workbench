@@ -161,7 +161,7 @@ class ysyx_26030103_LSU extends Module {
         state := StatesReadResponse
       }
     }
-     is(StatesReadResponse) {
+    is(StatesReadResponse) {
       io.DataBus.R.RREADY := true.B
       when(io.DataBus.R.RVALID) {
         when(io.DataBus.R.RRESP =/= 0.U) {

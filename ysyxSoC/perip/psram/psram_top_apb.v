@@ -37,6 +37,7 @@ module psram_top_apb (
     .dout(dout),
     .douten(douten)
   );
+  
   assign in_pready = ack && in_psel;
   assign in_pslverr = 1'b0;
   assign qspi_dio[0] = douten[0] ? dout[0] : 1'bz;

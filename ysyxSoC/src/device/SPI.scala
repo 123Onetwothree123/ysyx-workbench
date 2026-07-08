@@ -56,7 +56,7 @@ class APBSPI(address: Seq[AddressSet])(implicit p: Parameters)
     val mspi = Module(new spi_top_apb)
     mspi.io.clock := clock
     mspi.io.reset := reset
-    mspi.io.in <> in
+    // mspi.io.in <> in
     spi_bundle <> mspi.io.spi
     // 自己写的
     val SPI_BASE = 0x10001000L.U
