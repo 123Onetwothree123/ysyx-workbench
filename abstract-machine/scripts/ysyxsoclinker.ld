@@ -5,7 +5,7 @@ ENTRY(_start)
 MEMORY {
     /*我也不知道为什么OSOC的SOC是要分出两套来，而且容量都那么小*/
   flash_xip (rx)  : ORIGIN = 0x30000000, LENGTH = 256M
-  sram (rw)  : ORIGIN = 0x0f000000, LENGTH = 8K
+  sram (rw)  : ORIGIN = 0x80000000, LENGTH = 256K
 }
 SECTIONS {
     . = ORIGIN(flash_xip);
