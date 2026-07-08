@@ -77,7 +77,7 @@ class psramChisel extends RawModule {
         val cmd_end = Mux(QPIMode, counter === 1.U, counter === 7.U)
         when(cmd_end) {
           counter := 0.U
-          when(!QPIMode && cmd === "h35".U) {
+          when(!QPIMode && Cat(cmd(6,0), input(0)) === "h35".U) {
             QPIMode := true.B
             state := idle
           }.otherwise {
