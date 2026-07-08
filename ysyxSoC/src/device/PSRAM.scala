@@ -54,7 +54,7 @@ class psramChisel extends RawModule {
   val wdata = withClockAndReset(sck_clock, ce_reset) {
     RegInit(0.U(32.W))
   }
-  val QPIMode = withClockAndReset(sck_clock, ce_reset) {
+  val QPIMode = withClock(sck_clock) {
     RegInit(false.B)
   }
   val MemoryAddress = addr(21, 0)
