@@ -180,7 +180,7 @@ module EF_PSRAM_CTRL_wb (
     assign sck  = init_active ? init_sck : (wb_we ? mw_sck  : mr_sck);
     assign ce_n = init_active ? 1'b0     : (wb_we ? mw_ce_n : mr_ce_n);
     wire [7:0] CMD_35H = 8'h35;
-    aassign dout = init_active ? {3'b0, CMD_35H[7 - init_cnt]} : (wb_we ? mw_dout : mr_dout);
+    assign dout = init_active ? {3'b0, CMD_35H[7 - init_cnt]} : (wb_we ? mw_dout : mr_dout);
     assign douten = init_active ? 4'b1111 : (wb_we ? {4{mw_doe}} : {4{mr_doe}});
 
     assign mw_din = din;
