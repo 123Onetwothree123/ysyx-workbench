@@ -78,7 +78,6 @@ class psramChisel extends RawModule {
           when(!QPIMode && Cat(cmd(6,0), input(0)) === "h35".U) {
             QPIMode := true.B
             state := idle
-            printf(cf"PSRAM-CHISEL: QPI mode enabled (received 35h)\n")
           }.otherwise {
             state := rx_addr
           }
@@ -89,7 +88,6 @@ class psramChisel extends RawModule {
       is(rx_addr) {
         when(counter === 5.U) {
           counter := 0.U
-          printf(cf"PSRAM-CHISEL: cmd=0x${Hexadecimal(cmd)} QPI=${QPIMode} addr=0x${Hexadecimal(addr)}\n")
           state := Mux(
             cmd === "heb".U,
             dummy,
@@ -137,15 +135,10 @@ class psramChisel extends RawModule {
       }
     }
       when(state === rx_cmd) {
-      printf(cf"PSRAM-DBG: sck_pos, state=rx_cmd, QPI=${QPIMode}, cnt=${counter}, input_reg=${input}, cmd_reg=0x${Hexadecimal(cmd)}\n")
-      when(!QPIMode) {
-        printf(cf"PSRAM-DBG: would check 35h, cmd_lsb=0x${Hexadecimal(Cat(cmd(6,0), input(0)))}\n")
-      }
       when(QPIMode) {
         when(counter === 0.U) { cmd := Cat(input, 0.U(4.W)) }
           .elsewhen(counter === 1.U) {
             cmd := Cat(cmd(7, 4), input)
-            printf(cf"PSRAM-CHISEL: QPI rx_cmd received nibbles => cmd=0x${Hexadecimal(cmd(7,4))}${Hexadecimal(input)}\n")
           }
       }.otherwise {
         cmd := Cat(cmd(6, 0), input(0))

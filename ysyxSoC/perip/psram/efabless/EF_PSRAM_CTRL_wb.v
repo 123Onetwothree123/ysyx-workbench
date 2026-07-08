@@ -81,7 +81,6 @@ module EF_PSRAM_CTRL_wb (
             if(init_sck && init_cnt == 8) begin
                 init_active <= 1'b0;
                 qpi_mode <= 1'b1;
-                $display("PSRAM-CTRL: QPI init done, qpi_mode=1");
             end
         end
     // The FSM
@@ -188,7 +187,4 @@ module EF_PSRAM_CTRL_wb (
     assign mw_din = din;
     assign mr_din = din;
     assign ack_o = wb_we ? mw_done :mr_done ;
-    always @(posedge clk_i)
-        if(ack_o)
-            $display("PSRAM-WB: ack, we=%d, addr=0x%h, rdata=0x%h, wdata=0x%h, qpi=%d", we_i, adr_i, dat_o, wdata, qpi_mode);
 endmodule
