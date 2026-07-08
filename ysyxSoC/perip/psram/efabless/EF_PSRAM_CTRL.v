@@ -144,6 +144,11 @@ assign dout = qpi_mode ?
 
     assign done     = (counter == FINAL_COUNT+1);
 
+    always @(posedge clk)
+        if(~ce_n && sck)
+            $display("PSRAM-READER-DBG: counter=%d, dout=%b, din=%b, douten=%d, qpi=%d, state=%d", 
+                counter, dout, din, douten, qpi_mode, state);
+
     wire [31:0] read_result;
     generate
         genvar i;
