@@ -78,9 +78,10 @@ module EF_PSRAM_CTRL_wb (
         end else if(init_active) begin
             init_sck <= ~init_sck;
             if(init_sck && init_cnt < 8)  init_cnt <= init_cnt + 1;
-            if(init_sck && init_cnt == 8) init_active <= 1'b0;
-        end else if(!qpi_mode) begin
-            qpi_mode <= 1'b1;
+            if(init_sck && init_cnt == 8) begin
+                init_active <= 1'b0;
+                qpi_mode <= 1'b1;
+            end
         end
     // The FSM
     reg         state, nstate;
