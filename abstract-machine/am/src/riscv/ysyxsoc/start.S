@@ -30,6 +30,7 @@ _start:
   j 1b
 2:
 
+  ebreak
   call _trm_init
 
 .size _start, . - _start
