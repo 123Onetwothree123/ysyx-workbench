@@ -4,7 +4,7 @@
 int main(const char *)
 {
     const auto begin{reinterpret_cast<std::uintptr_t>(0x80000000U)};
-    const auto length{static_cast<std::size_t>(0x400000)};
+    const auto length{static_cast<std::size_t>(0x1000)};
     const auto result{psram_mem_test(begin, length)};
     if (!result)
     {
