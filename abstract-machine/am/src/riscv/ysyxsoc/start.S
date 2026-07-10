@@ -55,7 +55,8 @@ _start:
   j 1b
 2:
 
-  la t0, _trm_init
+  lui t0, %hi(_trm_init)
+  addi t0, t0, %lo(_trm_init)
   jalr zero, 0(t0)
 
 .size _start, . - _start
