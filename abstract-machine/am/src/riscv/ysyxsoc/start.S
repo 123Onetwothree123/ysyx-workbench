@@ -55,6 +55,7 @@ _start:
   j 1b
 2:
 
+  # absolute jump to SRAM (PSRAM), not PC-relative
   lui t0, %hi(_trm_init)
   addi t0, t0, %lo(_trm_init)
   jalr zero, 0(t0)
