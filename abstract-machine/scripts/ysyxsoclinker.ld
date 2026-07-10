@@ -19,7 +19,7 @@ SECTIONS {
        *(.rodata*)
        *(.srodata*)
        . = ALIGN(4);
-       } > sram AT> flash_xip
+       } > flash_xip
        /*同上脑子有坑*/
        /*记录代码和只读数据结束的位置，用于bootloader拷贝*/
        _text_lma = LOADADDR(.text);

@@ -4,12 +4,16 @@
 
 _start:
   mv s0, zero
-  la sp, _stack_pointer
+  lui sp, %hi(_stack_pointer)
+  addi sp, sp, %lo(_stack_pointer)
 
-  # copy .text from flash to sram
-  la t0, _text_lma
-  la t1, _text_start
-  la t2, _text_end
+  # copy .text from flash to PSRAM
+  lui t0, %hi(_text_lma)
+  addi t0, t0, %lo(_text_lma)
+  lui t1, %hi(_text_start)
+  addi t1, t1, %lo(_text_start)
+  lui t2, %hi(_text_end)
+  addi t2, t2, %lo(_text_end)
 1:
   bge t1, t2, 2f
   lw t3, 0(t0)
@@ -19,10 +23,13 @@ _start:
   j 1b
 2:
 
-  # copy .rodata from flash to sram
-  la t0, _rodata_lma
-  la t1, _rodata_start
-  la t2, _rodata_end
+  # copy .data.extra from flash to PSRAM
+  lui t0, %hi(_data_extra_lma)
+  addi t0, t0, %lo(_data_extra_lma)
+  lui t1, %hi(_data_extra_start)
+  addi t1, t1, %lo(_data_extra_start)
+  lui t2, %hi(_data_extra_end)
+  addi t2, t2, %lo(_data_extra_end)
 1:
   bge t1, t2, 2f
   lw t3, 0(t0)
@@ -32,10 +39,13 @@ _start:
   j 1b
 2:
 
-  # copy .data from flash to sram
-  la t0, _data_lma
-  la t1, _data_start
-  la t2, _edata
+  # copy .data from flash to PSRAM
+  lui t0, %hi(_data_lma)
+  addi t0, t0, %lo(_data_lma)
+  lui t1, %hi(_data_start)
+  addi t1, t1, %lo(_data_start)
+  lui t2, %hi(_edata)
+  addi t2, t2, %lo(_edata)
 1:
   bge t1, t2, 2f
   lw t3, 0(t0)
@@ -46,8 +56,10 @@ _start:
 2:
 
   # BSS zeroing
-  la t0, _bss_start
-  la t1, _bss_end
+  lui t0, %hi(_bss_start)
+  addi t0, t0, %lo(_bss_start)
+  lui t1, %hi(_bss_end)
+  addi t1, t1, %lo(_bss_end)
 1:
   bge t0, t1, 2f
   sw zero, 0(t0)
@@ -55,7 +67,7 @@ _start:
   j 1b
 2:
 
-  # absolute jump to SRAM (PSRAM), not PC-relative
+  # absolute jump to _trm_init in PSRAM
   lui t0, %hi(_trm_init)
   addi t0, t0, %lo(_trm_init)
   jalr zero, 0(t0)
