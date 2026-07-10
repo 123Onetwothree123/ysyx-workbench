@@ -55,6 +55,7 @@ _start:
   j 1b
 2:
 
-  call _trm_init
+  la t0, _trm_init
+  jalr zero, 0(t0)
 
 .size _start, . - _start
