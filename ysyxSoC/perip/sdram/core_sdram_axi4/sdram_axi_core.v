@@ -404,10 +404,14 @@ end
 
 // Record target state
 always @ (posedge clk_i or posedge rst_i)
-if (rst_i)
+if (rst_i) begin
     target_state_q   <= STATE_IDLE;
-else
+    $display("SDRAM-CORE: rst_i asserted");
+end else begin
     target_state_q   <= target_state_r;
+    if (target_state_q != target_state_r)
+        $display("SDRAM-CORE: state %d -> %d", target_state_q, target_state_r);
+end
 
 // Record delayed state
 always @ (posedge clk_i or posedge rst_i)

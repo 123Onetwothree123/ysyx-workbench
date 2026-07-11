@@ -92,6 +92,7 @@ class sdramChisel extends RawModule {
   val BurstCounter = Reg(UInt(8.W)) // SDRAM真的牛逼，居然所有读写操作都是属于突发情况
   output := 0.U
   en := false.B
+  printf(cf"SDRAM: cs=${io.cs} ras=${io.ras} cas=${io.cas} we=${io.we} ba=${io.ba} a=${io.a} dq=${input} dqm=${io.dqm} s=${state}\n")
   switch(state) {
     is(state_idle) {
       when(Command_ACTIVE) {
@@ -114,7 +115,10 @@ class sdramChisel extends RawModule {
         state := state_write
       }
       when(Command_PRECHAREG) {
-        // memory(ActiveMemoryBank)(ActiveROWAddress_In_A_MemoryBank) := ROWBuffer
+        memory(0)(ActiveROWAddress_In_A_MemoryBank) := ROWBuffer
+        when(ActiveMemoryBank === 1.U) { memory(1)(ActiveROWAddress_In_A_MemoryBank) := ROWBuffer }
+        when(ActiveMemoryBank === 2.U) { memory(2)(ActiveROWAddress_In_A_MemoryBank) := ROWBuffer }
+        when(ActiveMemoryBank === 3.U) { memory(3)(ActiveROWAddress_In_A_MemoryBank) := ROWBuffer }
         state := state_idle
       }
       when(Command_AUTO_REFRESH) {
@@ -122,8 +126,10 @@ class sdramChisel extends RawModule {
       }
     }
     is(state_active) {
-      ROWBuffer := MuxLookup(ActiveMemoryBank, memory(0)(ActiveROWAddress_In_A_MemoryBank))(
-        (1 until 4).map(i => i.U -> memory(i)(ActiveROWAddress_In_A_MemoryBank)))
+      ROWBuffer := memory(0)(ActiveROWAddress_In_A_MemoryBank)
+      when(ActiveMemoryBank === 1.U) { ROWBuffer := memory(1)(ActiveROWAddress_In_A_MemoryBank) }
+      when(ActiveMemoryBank === 2.U) { ROWBuffer := memory(2)(ActiveROWAddress_In_A_MemoryBank) }
+      when(ActiveMemoryBank === 3.U) { ROWBuffer := memory(3)(ActiveROWAddress_In_A_MemoryBank) }
       state := state_idle
     }
     is(state_read) {
@@ -147,7 +153,12 @@ class sdramChisel extends RawModule {
       state := state_write_data
     }
     is(state_write_data) {
-      ROWBuffer(ActiveColumnAddress_In_A_MemoryBank + BurstCounter) := input
+      val col = ActiveColumnAddress_In_A_MemoryBank + BurstCounter
+      val old = ROWBuffer(col)
+      ROWBuffer(col) := Cat(
+        Mux(!io.dqm(1), input(15, 8), old(15, 8)),
+        Mux(!io.dqm(0), input(7, 0),  old(7, 0))
+      )
       when(MR_Write_Burst_Mode || BurstCounter === MR_Burst_Length - 1.U) {
         state := state_idle // single write只要一拍
       }.otherwise {
