@@ -5,13 +5,23 @@ ENTRY(_start)
 MEMORY {
     /*我也不知道为什么OSOC的SOC是要分出两套来，而且容量都那么小*/
   flash_xip (rx)  : ORIGIN = 0x30000000, LENGTH = 256M
-  sram (rw)  : ORIGIN = 0x80000000, LENGTH = 4M
+  ocsram (rw)     : ORIGIN = 0x0f000000, LENGTH = 32K
+  sram (rw)       : ORIGIN = 0x80000000, LENGTH = 4M
 }
 SECTIONS {
     . = ORIGIN(flash_xip);
-     .text : {
+     .entry : {
        /*纯粹的链接器脑子有坑，他妈的居然还得给空格，不然区分不了，这哪个天才写的语法解析器，在没有格式化程序的情况下，还要我手写空格*/
      *(entry)
+      } > flash_xip
+       /*FSBL拷贝SSBL用的符号*/
+       .ssbl : {
+     *(.ssbl)
+      } > ocsram AT> flash_xip
+      _ssbl_lma = LOADADDR(.ssbl);
+      _ssbl_start = ADDR(.ssbl);
+      _ssbl_end = _ssbl_start + SIZEOF(.ssbl);
+      .text : {
      *(.text*)
       } > sram AT> flash_xip
        /*适配bootloader*/
@@ -25,9 +35,6 @@ SECTIONS {
        _text_lma = LOADADDR(.text);
        _text_start = ADDR(.text);
        _text_end = _text_start + SIZEOF(.text);
-       _rodata_lma = LOADADDR(.rodata);
-       _rodata_start = ADDR(.rodata);
-       _rodata_end = _rodata_start + SIZEOF(.rodata);
        etext = .;
        _etext = .;
         /*新加的，为了支持实现bootloader*/
@@ -55,4 +62,9 @@ SECTIONS {
     _stack_pointer = ORIGIN(sram) + LENGTH(sram) - 0x800;
    end = .;
    _end = .;
+
+   /* .data_extra 只存在 RT-Thread，默认零长度 */
+   PROVIDE(_data_extra_lma = 0);
+   PROVIDE(_data_extra_start = 0);
+   PROVIDE(_data_extra_end = 0);
 }
