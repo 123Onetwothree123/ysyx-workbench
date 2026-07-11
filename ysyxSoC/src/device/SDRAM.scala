@@ -88,6 +88,7 @@ class sdramChisel extends RawModule {
   val state = RegInit(state_idle)
   val ActiveMemoryBank = Reg(UInt(2.W)) // memory bank中文存储体
   val ActiveROWAddress_In_A_MemoryBank = Reg(UInt(13.W))
+  val ActiveColumnAddress_In_A_MemoryBank = Reg(UInt(9.W))
   val row_addr = ActiveROWAddress_In_A_MemoryBank(4, 0)  // 32 rows
   val col_addr = ActiveColumnAddress_In_A_MemoryBank(3, 0)  // 16 cols
   val BurstCounter = Reg(UInt(8.W)) // SDRAM真的牛逼，居然所有读写操作都是属于突发情况
