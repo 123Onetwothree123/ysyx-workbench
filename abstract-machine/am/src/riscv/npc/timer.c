@@ -2,7 +2,8 @@
 #include <stdint.h>
 
 // 他妈的我也不知道为什么会这样，没办法导入nemu.h，我估计是npc的makefile没有包含nemu的头文件路径，只能手动设定了
-#define RTC_ADDR 0xa0000048
+// RISC-V标准CLINT的mtime基址（0x02000000 + 0xBFF8），从SDRAM窗口(0xa0000000)移出来避免地址重叠
+#define RTC_ADDR 0x0200bff8
 #define RTC_YEAR_ADDR (RTC_ADDR + 0x10)
 #define RTC_MONTH_ADDR (RTC_ADDR + 0x14)
 #define RTC_DAY_ADDR (RTC_ADDR + 0x18)

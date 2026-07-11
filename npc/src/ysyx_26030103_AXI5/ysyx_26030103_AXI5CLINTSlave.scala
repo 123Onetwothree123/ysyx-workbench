@@ -7,8 +7,8 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
   io.ARESETn := !reset.asBool
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
-  val MtimeLowAddress = "ha0000048".U(32.W) // AM的地址
-  val MtimeHighAddress = "ha000004c".U(32.W)
+  val MtimeLowAddress = "h0200bff8".U(32.W) // RISC-V标准CLINT的mtime寄存器
+  val MtimeHighAddress = "h0200bffc".U(32.W)
   val Mtime = Module(new ysyx_26030103_mtime)
   // 日常默认值，都复制粘贴了
   val AWValidReg = RegInit(false.B)
