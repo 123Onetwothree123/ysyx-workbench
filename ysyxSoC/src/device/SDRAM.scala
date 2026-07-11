@@ -90,6 +90,10 @@ class sdramChisel extends RawModule {
     val ActiveROWAddress_In_A_MemoryBank = Reg(UInt(13.W))
     val ActiveColumnAddress_In_A_MemoryBank = Reg(UInt(9.W))
     val BurstCounter = Reg(UInt(8.W)) // SDRAM真的牛逼，居然所有读写操作都是属于突发情况
+    // precharge 的提交延迟一拍，避开最后一次写的读改写竞争
+    val PrechargePending = RegInit(false.B)
+    val PrechargeBank = Reg(UInt(2.W))
+    val PrechargeRow = Reg(UInt(13.W))
     output := 0.U
     en := false.B
     switch(state) {
@@ -125,16 +129,10 @@ class sdramChisel extends RawModule {
           }
         }
         when(Command_PRECHAREG) {
-          memory(0)(ActiveROWAddress_In_A_MemoryBank) := ROWBuffer
-          when(ActiveMemoryBank === 1.U) {
-            memory(1)(ActiveROWAddress_In_A_MemoryBank) := ROWBuffer
-          }
-          when(ActiveMemoryBank === 2.U) {
-            memory(2)(ActiveROWAddress_In_A_MemoryBank) := ROWBuffer
-          }
-          when(ActiveMemoryBank === 3.U) {
-            memory(3)(ActiveROWAddress_In_A_MemoryBank) := ROWBuffer
-          }
+          // 延迟一拍提交：先记下要提交的 bank/row，下一拍 ROWBuffer 稳定后再写回
+          PrechargePending := true.B
+          PrechargeBank := ActiveMemoryBank
+          PrechargeRow := ActiveROWAddress_In_A_MemoryBank
           state := state_idle
         }
         when(Command_AUTO_REFRESH) {
@@ -187,6 +185,14 @@ class sdramChisel extends RawModule {
           BurstCounter := BurstCounter + 1.U
         }
       }
+    }
+    // precharge 延迟提交：上一拍收到 PRECHARGE，这一拍 ROWBuffer 已稳定，写回存储阵列
+    when(PrechargePending) {
+      when(PrechargeBank === 0.U) { memory(0)(PrechargeRow) := ROWBuffer }
+      when(PrechargeBank === 1.U) { memory(1)(PrechargeRow) := ROWBuffer }
+      when(PrechargeBank === 2.U) { memory(2)(PrechargeRow) := ROWBuffer }
+      when(PrechargeBank === 3.U) { memory(3)(PrechargeRow) := ROWBuffer }
+      PrechargePending := false.B
     }
   }
 }

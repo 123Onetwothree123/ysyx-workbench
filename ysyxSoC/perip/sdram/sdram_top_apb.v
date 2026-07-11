@@ -46,7 +46,7 @@ module sdram_top_apb (
   wire is_read  = ((in_psel && !in_penable) || (state == ST_WAIT_ACCEPT)) && !in_pwrite;
 `ifndef SYNTHESIS
   always @(posedge clock) begin
-    if (in_psel && in_penable && in_pready && (in_paddr >= 32'ha0000000) && (in_paddr < 32'ha0000010))
+    if (in_psel && in_penable && in_pready && (in_paddr >= 32'ha00003f8) && (in_paddr <= 32'ha0000400))
       $display("[SDRAM-APB] addr=%08x write=%b pstrb=%b pwdata=%08x prdata=%08x", in_paddr, in_pwrite, in_pstrb, in_pwdata, in_prdata);
   end
 `endif
