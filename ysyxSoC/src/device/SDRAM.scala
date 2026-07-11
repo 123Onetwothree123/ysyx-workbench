@@ -90,10 +90,9 @@ class sdramChisel extends RawModule {
     val ActiveROWAddress_In_A_MemoryBank = Reg(UInt(13.W))
     val ActiveColumnAddress_In_A_MemoryBank = Reg(UInt(9.W))
     val BurstCounter = Reg(UInt(8.W)) // SDRAM真的牛逼，居然所有读写操作都是属于突发情况
-    // precharge 的提交延迟一拍，避开最后一次写的读改写竞争
-    val PrechargePending = RegInit(false.B)
-    val PrechargeBank = Reg(UInt(2.W))
-    val PrechargeRow = Reg(UInt(13.W))
+    // 写直接落进存储阵列（不依赖 precharge 提交），wrEn/wrCol 由写状态设置
+    val wrEn = WireDefault(false.B)
+    val wrCol = WireDefault(0.U(9.W))
     output := 0.U
     en := false.B
     switch(state) {
@@ -114,13 +113,9 @@ class sdramChisel extends RawModule {
         }
         when(Command_WRITE) {
           ActiveColumnAddress_In_A_MemoryBank := io.a(8, 0)
-          // beat0 就在 WRITE 命令这一拍的 dq 上，立即按 dqm 写入 col0
-          val col0 = io.a(8, 0)
-          val old0 = ROWBuffer(col0)
-          ROWBuffer(col0) := Cat(
-            Mux(!io.dqm(1), input(15, 8), old0(15, 8)),
-            Mux(!io.dqm(0), input(7, 0), old0(7, 0))
-          )
+          // beat0 就在 WRITE 命令这一拍的 dq 上
+          wrEn := true.B
+          wrCol := io.a(8, 0)
           BurstCounter := 1.U
           when(MR_Write_Burst_Mode || MR_Burst_Length === 1.U) {
             state := state_idle
@@ -129,10 +124,7 @@ class sdramChisel extends RawModule {
           }
         }
         when(Command_PRECHAREG) {
-          // 延迟一拍提交：先记下要提交的 bank/row，下一拍 ROWBuffer 稳定后再写回
-          PrechargePending := true.B
-          PrechargeBank := ActiveMemoryBank
-          PrechargeRow := ActiveROWAddress_In_A_MemoryBank
+          // 写已直接落盘，PRECHARGE 无需提交，实现成 NOP
           state := state_idle
         }
         when(Command_AUTO_REFRESH) {
@@ -173,12 +165,8 @@ class sdramChisel extends RawModule {
         state := state_write_data
       }
       is(state_write_data) {
-        val col = ActiveColumnAddress_In_A_MemoryBank + BurstCounter
-        val old = ROWBuffer(col)
-        ROWBuffer(col) := Cat(
-          Mux(!io.dqm(1), input(15, 8), old(15, 8)),
-          Mux(!io.dqm(0), input(7, 0), old(7, 0))
-        )
+        wrEn := true.B
+        wrCol := ActiveColumnAddress_In_A_MemoryBank + BurstCounter
         when(MR_Write_Burst_Mode || BurstCounter === MR_Burst_Length - 1.U) {
           state := state_idle // single write只要一拍
         }.otherwise {
@@ -186,13 +174,20 @@ class sdramChisel extends RawModule {
         }
       }
     }
-    // precharge 延迟提交：上一拍收到 PRECHARGE，这一拍 ROWBuffer 已稳定，写回存储阵列
-    when(PrechargePending) {
-      when(PrechargeBank === 0.U) { memory(0)(PrechargeRow) := ROWBuffer }
-      when(PrechargeBank === 1.U) { memory(1)(PrechargeRow) := ROWBuffer }
-      when(PrechargeBank === 2.U) { memory(2)(PrechargeRow) := ROWBuffer }
-      when(PrechargeBank === 3.U) { memory(3)(PrechargeRow) := ROWBuffer }
-      PrechargePending := false.B
+    // 写落盘：同时更新行缓冲(供开行读)和存储阵列(持久化)，按 dqm 做字节掩码
+    when(wrEn) {
+      val old = ROWBuffer(wrCol)
+      val nw = Cat(
+        Mux(!io.dqm(1), input(15, 8), old(15, 8)),
+        Mux(!io.dqm(0), input(7, 0), old(7, 0))
+      )
+      ROWBuffer(wrCol) := nw
+      val wdata = VecInit(Seq.fill(512)(nw))
+      val wmask = (0 until 512).map(i => i.U === wrCol)
+      when(ActiveMemoryBank === 0.U) { memory(0).write(ActiveROWAddress_In_A_MemoryBank, wdata, wmask) }
+      when(ActiveMemoryBank === 1.U) { memory(1).write(ActiveROWAddress_In_A_MemoryBank, wdata, wmask) }
+      when(ActiveMemoryBank === 2.U) { memory(2).write(ActiveROWAddress_In_A_MemoryBank, wdata, wmask) }
+      when(ActiveMemoryBank === 3.U) { memory(3).write(ActiveROWAddress_In_A_MemoryBank, wdata, wmask) }
     }
   }
 }
