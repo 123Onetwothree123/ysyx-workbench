@@ -92,7 +92,6 @@ class sdramChisel extends RawModule {
   val BurstCounter = Reg(UInt(8.W)) // SDRAM真的牛逼，居然所有读写操作都是属于突发情况
   output := 0.U
   en := false.B
-  printf(cf"SDRAM: cs=${io.cs} ras=${io.ras} cas=${io.cas} we=${io.we} ba=${io.ba} a=${io.a} dq=${input} dqm=${io.dqm} s=${state}\n")
   switch(state) {
     is(state_idle) {
       when(Command_ACTIVE) {
