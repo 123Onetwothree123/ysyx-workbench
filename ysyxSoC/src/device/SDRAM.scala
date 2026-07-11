@@ -90,9 +90,9 @@ class sdramChisel extends RawModule {
     val ActiveROWAddress_In_A_MemoryBank = Reg(UInt(13.W))
     val ActiveColumnAddress_In_A_MemoryBank = Reg(UInt(9.W))
     val BurstCounter = Reg(UInt(8.W)) // SDRAM真的牛逼，居然所有读写操作都是属于突发情况
-    // 写直接落进存储阵列（不依赖 precharge 提交），wrEn/wrCol 由写状态设置
-    val wrEn = WireDefault(false.B)
-    val wrCol = WireDefault(0.U(9.W))
+    // 写直接落进存储阵列（不依赖 precharge 提交），WriteEnable/WriteColumn 由写状态设置
+    val WriteEnable = WireDefault(false.B)
+    val WriteColumn = WireDefault(0.U(9.W))
     output := 0.U
     en := false.B
     switch(state) {
@@ -114,8 +114,8 @@ class sdramChisel extends RawModule {
         when(Command_WRITE) {
           ActiveColumnAddress_In_A_MemoryBank := io.a(8, 0)
           // beat0 就在 WRITE 命令这一拍的 dq 上
-          wrEn := true.B
-          wrCol := io.a(8, 0)
+          WriteEnable := true.B
+          WriteColumn := io.a(8, 0)
           BurstCounter := 1.U
           when(MR_Write_Burst_Mode || MR_Burst_Length === 1.U) {
             state := state_idle
@@ -165,8 +165,8 @@ class sdramChisel extends RawModule {
         state := state_write_data
       }
       is(state_write_data) {
-        wrEn := true.B
-        wrCol := ActiveColumnAddress_In_A_MemoryBank + BurstCounter
+        WriteEnable := true.B
+        WriteColumn := ActiveColumnAddress_In_A_MemoryBank + BurstCounter
         when(MR_Write_Burst_Mode || BurstCounter === MR_Burst_Length - 1.U) {
           state := state_idle // single write只要一拍
         }.otherwise {
@@ -175,19 +175,19 @@ class sdramChisel extends RawModule {
       }
     }
     // 写落盘：同时更新行缓冲(供开行读)和存储阵列(持久化)，按 dqm 做字节掩码
-    when(wrEn) {
-      val old = ROWBuffer(wrCol)
-      val nw = Cat(
-        Mux(!io.dqm(1), input(15, 8), old(15, 8)),
-        Mux(!io.dqm(0), input(7, 0), old(7, 0))
+    when(WriteEnable) {
+      val OldWord = ROWBuffer(WriteColumn)
+      val NewWord = Cat(
+        Mux(!io.dqm(1), input(15, 8), OldWord(15, 8)),
+        Mux(!io.dqm(0), input(7, 0), OldWord(7, 0))
       )
-      ROWBuffer(wrCol) := nw
-      val wdata = VecInit(Seq.fill(512)(nw))
-      val wmask = (0 until 512).map(i => i.U === wrCol)
-      when(ActiveMemoryBank === 0.U) { memory(0).write(ActiveROWAddress_In_A_MemoryBank, wdata, wmask) }
-      when(ActiveMemoryBank === 1.U) { memory(1).write(ActiveROWAddress_In_A_MemoryBank, wdata, wmask) }
-      when(ActiveMemoryBank === 2.U) { memory(2).write(ActiveROWAddress_In_A_MemoryBank, wdata, wmask) }
-      when(ActiveMemoryBank === 3.U) { memory(3).write(ActiveROWAddress_In_A_MemoryBank, wdata, wmask) }
+      ROWBuffer(WriteColumn) := NewWord
+      val WriteData = VecInit(Seq.fill(512)(NewWord))
+      val WriteMask = (0 until 512).map(i => i.U === WriteColumn)
+      when(ActiveMemoryBank === 0.U) { memory(0).write(ActiveROWAddress_In_A_MemoryBank, WriteData, WriteMask) }
+      when(ActiveMemoryBank === 1.U) { memory(1).write(ActiveROWAddress_In_A_MemoryBank, WriteData, WriteMask) }
+      when(ActiveMemoryBank === 2.U) { memory(2).write(ActiveROWAddress_In_A_MemoryBank, WriteData, WriteMask) }
+      when(ActiveMemoryBank === 3.U) { memory(3).write(ActiveROWAddress_In_A_MemoryBank, WriteData, WriteMask) }
     }
   }
 }
