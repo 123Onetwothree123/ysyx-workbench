@@ -11,8 +11,9 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   // 我真的是烦死了ARM的命名规则
   val OKAY = "b00".U(2.W)
   val DECERR = "b11".U(2.W)
-  val CLINTBase = "ha0000048".U(32.W)
-  val CLINTEnd = "ha0000050".U(32.W)
+  // RISC-V标准CLINT区间：0x02000000 ~ 0x0200FFFF（64KiB），移出SDRAM窗口(0xa0000000)避免地址重叠
+  val CLINTBase = "h02000000".U(32.W)
+  val CLINTEnd = "h02010000".U(32.W)
   val TargetSoCBus = 0.U(2.W)
   val TargetCLINT = 1.U(2.W)
   val TargetInvalid = 2.U(2.W)
