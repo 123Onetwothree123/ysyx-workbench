@@ -75,7 +75,9 @@ class sdramChisel extends RawModule {
     Command_AUTO_REFRESH := (~io.cs) && (~io.ras) && (~io.cas) && io.we
     Command_LOAD_MODE_REGISTER := (~io.cs) && (~io.ras) && (~io.cas) && (~io.we)
     val memory = Seq.fill(4)(Mem(8192, Vec(512, UInt(16.W))))
-    val ROWBuffer = Reg(Vec(512, UInt(16.W))) // 行缓冲
+    // 真实 SDRAM 有 4 个 bank，每个 bank 各自独立保持一个打开的行
+    val ROWBuffer = Reg(Vec(4, Vec(512, UInt(16.W)))) // 每个 bank 各自的行缓冲
+    val ActiveRow = Reg(Vec(4, UInt(13.W)))           // 每个 bank 各自的激活行
     val ModeRegister = RegInit(0x20.U(13.W))
     val MR_Burst_Length = MuxLookup(ModeRegister(2, 0), 1.U)(
       Seq(0.U -> 1.U, 1.U -> 2.U, 2.U -> 4.U, 3.U -> 8.U, 7.U -> 256.U)
@@ -86,20 +88,20 @@ class sdramChisel extends RawModule {
     val state_idle :: state_active :: state_read :: state_read_data :: state_write :: state_write_data :: Nil =
       Enum(6)
     val state = RegInit(state_idle)
-    val ActiveMemoryBank = Reg(UInt(2.W)) // memory bank中文存储体
-    val ActiveROWAddress_In_A_MemoryBank = Reg(UInt(13.W))
-    val ActiveColumnAddress_In_A_MemoryBank = Reg(UInt(9.W))
+    val CmdBank = Reg(UInt(2.W))  // 当前 ACTIVE/READ/WRITE 命令针对的 bank
+    val CmdCol = Reg(UInt(9.W))   // 当前列地址
     val BurstCounter = Reg(UInt(8.W)) // SDRAM真的牛逼，居然所有读写操作都是属于突发情况
-    // 写直接落进存储阵列（不依赖 precharge 提交），WriteEnable/WriteColumn 由写状态设置
+    // 写直接落进存储阵列（不依赖 precharge 提交）
     val WriteEnable = WireDefault(false.B)
+    val WriteBank = WireDefault(0.U(2.W))
     val WriteColumn = WireDefault(0.U(9.W))
     output := 0.U
     en := false.B
     switch(state) {
       is(state_idle) {
         when(Command_ACTIVE) {
-          ActiveMemoryBank := io.ba
-          ActiveROWAddress_In_A_MemoryBank := io.a
+          ActiveRow(io.ba) := io.a
+          CmdBank := io.ba
           state := state_active
         }
         when(Command_LOAD_MODE_REGISTER) {
@@ -107,14 +109,17 @@ class sdramChisel extends RawModule {
           state := state_idle
         }
         when(Command_READ) {
-          ActiveColumnAddress_In_A_MemoryBank := io.a(8, 0)
+          CmdBank := io.ba
+          CmdCol := io.a(8, 0)
           BurstCounter := 0.U
           state := state_read
         }
         when(Command_WRITE) {
-          ActiveColumnAddress_In_A_MemoryBank := io.a(8, 0)
+          CmdBank := io.ba
+          CmdCol := io.a(8, 0)
           // beat0 就在 WRITE 命令这一拍的 dq 上
           WriteEnable := true.B
+          WriteBank := io.ba
           WriteColumn := io.a(8, 0)
           BurstCounter := 1.U
           when(MR_Write_Burst_Mode || MR_Burst_Length === 1.U) {
@@ -132,16 +137,11 @@ class sdramChisel extends RawModule {
         }
       }
       is(state_active) {
-        ROWBuffer := memory(0)(ActiveROWAddress_In_A_MemoryBank)
-        when(ActiveMemoryBank === 1.U) {
-          ROWBuffer := memory(1)(ActiveROWAddress_In_A_MemoryBank)
-        }
-        when(ActiveMemoryBank === 2.U) {
-          ROWBuffer := memory(2)(ActiveROWAddress_In_A_MemoryBank)
-        }
-        when(ActiveMemoryBank === 3.U) {
-          ROWBuffer := memory(3)(ActiveROWAddress_In_A_MemoryBank)
-        }
+        // 载入命令所指 bank 的行缓冲
+        when(CmdBank === 0.U) { ROWBuffer(0) := memory(0)(ActiveRow(0)) }
+        when(CmdBank === 1.U) { ROWBuffer(1) := memory(1)(ActiveRow(1)) }
+        when(CmdBank === 2.U) { ROWBuffer(2) := memory(2)(ActiveRow(2)) }
+        when(CmdBank === 3.U) { ROWBuffer(3) := memory(3)(ActiveRow(3)) }
         state := state_idle
       }
       is(state_read) {
@@ -154,7 +154,7 @@ class sdramChisel extends RawModule {
       }
       is(state_read_data) {
         en := true.B
-        output := ROWBuffer(ActiveColumnAddress_In_A_MemoryBank + BurstCounter)
+        output := ROWBuffer(CmdBank)(CmdCol + BurstCounter)
         when(BurstCounter === (MR_Burst_Length - 1.U)) {
           state := state_idle
         }.otherwise {
@@ -166,7 +166,8 @@ class sdramChisel extends RawModule {
       }
       is(state_write_data) {
         WriteEnable := true.B
-        WriteColumn := ActiveColumnAddress_In_A_MemoryBank + BurstCounter
+        WriteBank := CmdBank
+        WriteColumn := CmdCol + BurstCounter
         when(MR_Write_Burst_Mode || BurstCounter === MR_Burst_Length - 1.U) {
           state := state_idle // single write只要一拍
         }.otherwise {
@@ -174,20 +175,20 @@ class sdramChisel extends RawModule {
         }
       }
     }
-    // 写落盘：同时更新行缓冲(供开行读)和存储阵列(持久化)，按 dqm 做字节掩码
+    // 写落盘：同时更新对应 bank 的行缓冲(供开行读)和存储阵列(持久化)，按 dqm 做字节掩码
     when(WriteEnable) {
-      val OldWord = ROWBuffer(WriteColumn)
+      val OldWord = ROWBuffer(WriteBank)(WriteColumn)
       val NewWord = Cat(
         Mux(!io.dqm(1), input(15, 8), OldWord(15, 8)),
         Mux(!io.dqm(0), input(7, 0), OldWord(7, 0))
       )
-      ROWBuffer(WriteColumn) := NewWord
+      ROWBuffer(WriteBank)(WriteColumn) := NewWord
       val WriteData = VecInit(Seq.fill(512)(NewWord))
       val WriteMask = (0 until 512).map(i => i.U === WriteColumn)
-      when(ActiveMemoryBank === 0.U) { memory(0).write(ActiveROWAddress_In_A_MemoryBank, WriteData, WriteMask) }
-      when(ActiveMemoryBank === 1.U) { memory(1).write(ActiveROWAddress_In_A_MemoryBank, WriteData, WriteMask) }
-      when(ActiveMemoryBank === 2.U) { memory(2).write(ActiveROWAddress_In_A_MemoryBank, WriteData, WriteMask) }
-      when(ActiveMemoryBank === 3.U) { memory(3).write(ActiveROWAddress_In_A_MemoryBank, WriteData, WriteMask) }
+      when(WriteBank === 0.U) { memory(0).write(ActiveRow(0), WriteData, WriteMask) }
+      when(WriteBank === 1.U) { memory(1).write(ActiveRow(1), WriteData, WriteMask) }
+      when(WriteBank === 2.U) { memory(2).write(ActiveRow(2), WriteData, WriteMask) }
+      when(WriteBank === 3.U) { memory(3).write(ActiveRow(3), WriteData, WriteMask) }
     }
   }
 }
