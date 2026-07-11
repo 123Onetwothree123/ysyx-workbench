@@ -110,18 +110,8 @@ class sdramChisel extends RawModule {
         }
         when(Command_WRITE) {
           ActiveColumnAddress_In_A_MemoryBank := io.a(8, 0)
-          val col0 = io.a(8, 0)
-          val old0 = ROWBuffer(col0)
-          ROWBuffer(col0) := Cat(
-            Mux(!io.dqm(1), input(15, 8), old0(15, 8)),
-            Mux(!io.dqm(0), input(7, 0), old0(7, 0))
-          )
-          BurstCounter := 1.U
-          when(MR_Write_Burst_Mode || MR_Burst_Length === 1.U) {
-            state := state_idle
-          }.otherwise {
-            state := state_write_data
-          }
+          BurstCounter := 0.U
+          state := state_write
         }
         when(Command_PRECHAREG) {
           memory(0)(ActiveROWAddress_In_A_MemoryBank) := ROWBuffer
@@ -171,7 +161,18 @@ class sdramChisel extends RawModule {
         }
       }
       is(state_write) {
-        state := state_write_data
+        val col = ActiveColumnAddress_In_A_MemoryBank + BurstCounter
+        val old = ROWBuffer(col)
+        ROWBuffer(col) := Cat(
+          Mux(!io.dqm(1), input(15, 8), old(15, 8)),
+          Mux(!io.dqm(0), input(7, 0), old(7, 0))
+        )
+        when(MR_Write_Burst_Mode || BurstCounter === MR_Burst_Length - 1.U) {
+          state := state_idle
+        }.otherwise {
+          BurstCounter := BurstCounter + 1.U
+          state := state_write_data
+        }
       }
       is(state_write_data) {
         val col = ActiveColumnAddress_In_A_MemoryBank + BurstCounter
