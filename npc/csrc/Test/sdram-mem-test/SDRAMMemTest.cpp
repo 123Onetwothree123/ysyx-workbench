@@ -22,18 +22,16 @@ std::expected<void, std::uintptr_t> test_width(std::uintptr_t begin, std::size_t
     }
     return {};
 }
-extern "C" std::expected<void, std::uintptr_t> sdram_mem_test_4KiB(std::uintptr_t begin, std::size_t length)
+extern "C" std::expected<void, std::uintptr_t> sdram_mem_test(std::uintptr_t begin, std::size_t length)
 {
     if (auto result = test_width<std::uint8_t>(begin, length); !result)
     {
         return result;
     }
-
     if (auto result = test_width<std::uint16_t>(begin, length); !result)
     {
         return result;
     }
-
     if (auto result = test_width<std::uint32_t>(begin, length); !result)
     {
         return result;
