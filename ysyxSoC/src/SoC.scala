@@ -238,8 +238,23 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     // val psram = Module(new psram)
     val psram = Module(new psramChisel)
     psram.io <> masic.psram
-    val sdram = Module(new sdramChisel)
-    sdram.io <> masic.sdram
+    // 位扩展：实例化 2 个 16 位 SDRAM 颗粒，命令广播、dqm/dq 各接一半
+    val sdram0 = Module(new sdramChisel)
+    val sdram1 = Module(new sdramChisel)
+    Seq(sdram0, sdram1).foreach { s =>
+      s.io.clk := masic.sdram.clk
+      s.io.cke := masic.sdram.cke
+      s.io.cs  := masic.sdram.cs
+      s.io.ras := masic.sdram.ras
+      s.io.cas := masic.sdram.cas
+      s.io.we  := masic.sdram.we
+      s.io.a   := masic.sdram.a
+      s.io.ba  := masic.sdram.ba
+    }
+    sdram0.io.dqm := masic.sdram.dqm(1, 0)
+    sdram1.io.dqm := masic.sdram.dqm(3, 2)
+    chisel3.experimental.attach(sdram0.io.dq(0), masic.sdram.dq(0))
+    chisel3.experimental.attach(sdram1.io.dq(0), masic.sdram.dq(1))
 
     val externalPins = IO(new Bundle {
       val gpio = chiselTypeOf(masic.gpio)
