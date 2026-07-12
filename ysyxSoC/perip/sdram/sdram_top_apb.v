@@ -27,7 +27,7 @@ module sdram_top_apb (
 
   wire sdram_dout_en;
   wire [31:0] sdram_dout;
-  // 位扩展：两根 16 位数据总线，各接一个颗粒；高低 16 位分别驱动
+  // 位扩展：两根 16 位数据总线，各接一个颗粒
   assign sdram_dq_0 = sdram_dout_en ? sdram_dout[15:0]  : 16'bz;
   assign sdram_dq_1 = sdram_dout_en ? sdram_dout[31:16] : 16'bz;
 
