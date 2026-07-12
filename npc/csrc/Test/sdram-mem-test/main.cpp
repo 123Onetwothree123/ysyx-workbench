@@ -13,8 +13,9 @@ int main(const char *)
         printf("4KiB测试失败了 0x%08x\n", result4KiB.error());
         halt(1);
     }
-    if(!result){
-        printf("测试失败了 0x%08x\n", result4KiB.error());
+    if (!result)
+    {
+        printf("测试失败了 0x%08x\n", result.error());
         halt(1);
     }
     printf("测试通过了\n");
