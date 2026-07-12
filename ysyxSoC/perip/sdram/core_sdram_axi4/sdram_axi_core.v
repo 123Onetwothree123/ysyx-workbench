@@ -284,7 +284,16 @@ begin
     //-----------------------------------------
     STATE_WRITE0 :
     begin
-        next_state_r = STATE_WRITE1;
+        // 位扩展后一拍写完，直接回 IDLE（不再走 WRITE1）；接续写时回 WRITE0
+        next_state_r = STATE_IDLE;
+
+        // Another pending write request (with no refresh pending)
+        if (!refresh_q && ram_req_w && (ram_wr_w != 4'b0))
+        begin
+            // Open row hit
+            if (row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w])
+                next_state_r = STATE_WRITE0;
+        end
     end
     //-----------------------------------------
     // STATE_WRITE1
@@ -682,7 +691,7 @@ if (rst_i)
     ack_q   <= 1'b0;
 else
 begin
-    if (state_q == STATE_WRITE1)
+    if (state_q == STATE_WRITE0)
         ack_q <= 1'b1;
     else if (rd_q[SDRAM_READ_LATENCY])
         ack_q <= 1'b1;
