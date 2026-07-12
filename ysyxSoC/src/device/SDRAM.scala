@@ -10,7 +10,7 @@ import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 
-class SDRAMIO extends Bundle {
+class SDRAMIO(DataWidth: Int = 16) extends Bundle {
   val clk = Output(Bool())
   val cke = Output(Bool())
   val cs = Output(Bool())
@@ -19,8 +19,9 @@ class SDRAMIO extends Bundle {
   val we = Output(Bool())
   val a = Output(UInt(13.W))
   val ba = Output(UInt(2.W))
-  val dqm = Output(UInt(2.W))
-  val dq = Analog(16.W)
+  val dqm = Output(UInt((DataWidth / 8).W))
+  // 位扩展：dq 拆成 DataWidth/16 根 16 位 Analog，每根接一个 16 位颗粒
+  val dq = Vec(DataWidth / 16, Analog(16.W))
 }
 
 class sdram_top_axi extends BlackBox {
@@ -32,7 +33,7 @@ class sdram_top_axi extends BlackBox {
         AXI4BundleParameters(addrBits = 32, dataBits = 32, idBits = 4)
       )
     )
-    val sdram = new SDRAMIO
+    val sdram = new SDRAMIO(32)
   })
 }
 
@@ -42,7 +43,7 @@ class sdram_top_apb extends BlackBox {
     val reset = Input(Bool())
     val in =
       Flipped(new APBBundle(APBBundleParameters(addrBits = 32, dataBits = 32)))
-    val sdram = new SDRAMIO
+    val sdram = new SDRAMIO(32)
   })
 }
 
@@ -54,7 +55,7 @@ class sdramChisel extends RawModule {
   val io = IO(Flipped(new SDRAMIO))
   val output = Wire(UInt(16.W))
   val en = Wire(Bool())
-  val input = TriStateInBuf(io.dq, output, en)
+  val input = TriStateInBuf(io.dq(0), output, en)
 
   withClockAndReset(io.clk.asClock, false.B.asAsyncReset) {
     val Command_NO_OPERATION = Wire(Bool())
@@ -216,7 +217,7 @@ class AXI4SDRAM(address: Seq[AddressSet])(implicit p: Parameters)
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {
     val (in, _) = node.in(0)
-    val sdram_bundle = IO(new SDRAMIO)
+    val sdram_bundle = IO(new SDRAMIO(32))
 
     val msdram = Module(new sdram_top_axi)
     msdram.io.clock := clock
@@ -247,7 +248,7 @@ class APBSDRAM(address: Seq[AddressSet])(implicit p: Parameters)
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {
     val (in, _) = node.in(0)
-    val sdram_bundle = IO(new SDRAMIO)
+    val sdram_bundle = IO(new SDRAMIO(32))
 
     val msdram = Module(new sdram_top_apb)
     msdram.io.clock := clock
