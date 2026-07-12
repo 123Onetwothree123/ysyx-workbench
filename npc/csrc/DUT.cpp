@@ -93,6 +93,8 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
+    if (cycle % 20000000 == 0)
+        std::println(std::cerr, "[进度] cycle={} pc=0x{:08x}", cycle, static_cast<std::uint32_t>(dut->debug_pc));
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
 #endif

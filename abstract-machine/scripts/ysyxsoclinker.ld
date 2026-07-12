@@ -24,10 +24,13 @@ SECTIONS {
       _ssbl_end = _ssbl_start + SIZEOF(.ssbl);
       .text : {
      *(.text*)
-     *(.rodata*)
-     *(.srodata*)
-     . = ALIGN(4);
       } > sdram AT> flash_xip
+       /*rodata 留在 flash XIP，不拷进 SDRAM，避免启动时巨量拷贝*/
+       .rodata : {
+       *(.rodata*)
+       *(.srodata*)
+       . = ALIGN(4);
+       } > flash_xip
        /*同上脑子有坑*/
        /*记录代码和只读数据结束的位置，用于bootloader拷贝*/
        _text_lma = LOADADDR(.text);
