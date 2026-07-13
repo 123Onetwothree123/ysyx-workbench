@@ -1,23 +1,23 @@
 #include <am.h>
-#include <klib-macros.h>
+
+static char UARTGetChar()
+{
+    volatile unsigned char *LSR = (volatile unsigned char *)0x10000005;
+    volatile unsigned char *RBR = (volatile unsigned char *)0x10000000;
+    while (!(*LSR & 0x01))
+    {
+    }
+    return (char)*RBR;
+}
 
 int main(const char *)
 {
-    for (const char *p{"UART NB v4\n"}; *p; ++p) putch(*p);
+    for (const char *p{"UART RX Test\n"}; *p; ++p) putch(*p);
     while (1)
     {
-        for (int t = 0; t < 100; t++)
-        {
-            char Ch = io_read(AM_UART_RX).data;
-            if (Ch != (char)-1)
-            {
-                putch('<');
-                putch(Ch);
-                putch('>');
-                break;
-            }
-            for (int i = 0; i < 5000; i++) asm volatile("" : "+r"(i));
-        }
+        char Ch = UARTGetChar();
+        putch(Ch);
+        if (Ch == '\r') putch('\n');
     }
     return 0;
 }
