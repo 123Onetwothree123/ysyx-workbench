@@ -4,7 +4,13 @@
 static uint8_t PS2KbdGetScan()
 {
     volatile uint32_t *RBR = (volatile uint32_t *)0x10011000;
-    return (uint8_t)(*RBR & 0xFF);
+    uint8_t Sc = (uint8_t)(*RBR & 0xFF);
+    if (Sc != 0)
+    {
+        static int Once = 1;
+        if (Once) { Once = 0; putch('K'); }
+    }
+    return Sc;
 }
 
 static int TranslateKey(uint8_t Sc)
