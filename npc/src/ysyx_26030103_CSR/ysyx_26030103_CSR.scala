@@ -36,7 +36,7 @@ class ysyx_26030103_CSR extends Module {
   val CSR_MEPC = 0x341.U(12.W)
   val CSR_MCAUSE = 0x342.U(12.W)
   val Mvendorid_rdata = 0x79737978.U(32.W)
-  val Marchid_rdata = 0x018d3017.U(32.W)
+  val Marchid_rdata = "h018d3017".U(32.W)
   def IsCSRAddress(addr: UInt): Bool = io.CSRAddress === addr
   // csrrw时写，csrrs时rs1非零才写
   val CSRReadCommand =
