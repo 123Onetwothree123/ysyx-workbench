@@ -5,6 +5,8 @@ void __am_timer_rtc(AM_TIMER_RTC_T *);
 void __am_timer_uptime(AM_TIMER_UPTIME_T *);
 void __am_input_keybrd(AM_INPUT_KEYBRD_T *);
 void __am_uart_rx(AM_UART_RX_T *);
+void __am_gpu_config(AM_GPU_CONFIG_T *);
+void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *);
 static void __am_timer_config(AM_TIMER_CONFIG_T *cfg)
 {
     cfg->present = true;
@@ -49,6 +51,9 @@ void ioe_read(int reg, void *buf)
     case AM_UART_RX:
         __am_uart_rx(buf);
         break;
+    case AM_GPU_CONFIG:
+        __am_gpu_config(buf);
+        break;
     default:
         panic("access nonexist register");
     }
@@ -57,6 +62,9 @@ void ioe_write(int reg, void *buf)
 {
     switch (reg)
     {
+    case AM_GPU_FBDRAW:
+        __am_gpu_fbdraw(buf);
+        break;
     default:
         panic("access nonexist register");
     }

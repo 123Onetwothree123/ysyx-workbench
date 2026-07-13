@@ -20,7 +20,9 @@ class VGAIO extends Bundle {
 class VGACtrlIO extends Bundle {
   val clock = Input(Clock())
   val reset = Input(Bool())
-  val in = Flipped(new APBBundle(APBBundleParameters(addrBits = 32, dataBits = 32)))
+  val in = Flipped(
+    new APBBundle(APBBundleParameters(addrBits = 32, dataBits = 32))
+  )
   val vga = new VGAIO
 }
 
@@ -30,23 +32,71 @@ class vga_top_apb extends BlackBox {
 
 class vgaChisel extends Module {
   val io = IO(new VGACtrlIO)
+  val apb = io.in
+  val HFront = 96; val HActive = 144; val HBack = 784; val HTotal = 800
+  val VFront = 2; val VActive = 35; val VBack = 515; val VTotal = 525
+  val XCnt = RegInit(1.U(10.W))
+  val YCnt = RegInit(1.U(10.W))
+  val FrameBuffer = Mem(640 * 480, UInt(32.W))
+  when(reset.asBool) {
+    XCnt := 1.U
+    YCnt := 1.U
+  }.otherwise {
+    XCnt := Mux(XCnt === HTotal.U, 1.U, XCnt + 1.U)
+    YCnt := Mux(
+      YCnt === VTotal.U && XCnt === HTotal.U,
+      1.U,
+      Mux(XCnt === HTotal.U, YCnt + 1.U, YCnt)
+    )
+  }
+  val HValid = XCnt > HActive.U && XCnt <= HBack.U
+  val VValid = YCnt > VActive.U && YCnt <= VBack.U
+  val Valid = HValid && VValid
+  val HAddr = Mux(HValid, XCnt - (HActive + 1).U, 0.U)
+  val VAddr = Mux(VValid, YCnt - (VActive + 1).U, 0.U)
+  val PixIdx = VAddr * 640.U + HAddr
+  val PixData = FrameBuffer(PixIdx)
+  io.vga.hsync := XCnt > HFront.U
+  io.vga.vsync := YCnt > VFront.U
+  io.vga.valid := Valid
+  io.vga.r := Mux(Valid, PixData(23, 16), 0.U)
+  io.vga.g := Mux(Valid, PixData(15, 8), 0.U)
+  io.vga.b := Mux(Valid, PixData(7, 0), 0.U)
+  //拿来APB写帧缓冲的
+  val WriteAddr = (apb.paddr - "h21000000".U)(18, 2)
+  when(apb.psel && apb.penable && apb.pwrite) {
+    FrameBuffer(WriteAddr) := apb.pwdata
+  }
+  apb.prdata := 0.U
+  apb.pready := true.B
+  apb.pslverr := false.B
 }
 
-class APBVGA(address: Seq[AddressSet])(implicit p: Parameters) extends LazyModule {
-  val node = APBSlaveNode(Seq(APBSlavePortParameters(
-    Seq(APBSlaveParameters(
-      address       = address,
-      executable    = true,
-      supportsRead  = true,
-      supportsWrite = true)),
-    beatBytes  = 4)))
+class APBVGA(address: Seq[AddressSet])(implicit p: Parameters)
+    extends LazyModule {
+  val node = APBSlaveNode(
+    Seq(
+      APBSlavePortParameters(
+        Seq(
+          APBSlaveParameters(
+            address = address,
+            executable = true,
+            supportsRead = true,
+            supportsWrite = true
+          )
+        ),
+        beatBytes = 4
+      )
+    )
+  )
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {
     val (in, _) = node.in(0)
     val vga_bundle = IO(new VGAIO)
 
-    val mvga = Module(new vga_top_apb)
+    // val mvga = Module(new vga_top_apb)
+    val mvga = Module(new vgaChisel)
     mvga.io.clock := clock
     mvga.io.reset := reset
     mvga.io.in <> in
