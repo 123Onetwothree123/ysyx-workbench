@@ -1,5 +1,9 @@
 module;
 #include "VysyxSoCFull.h"
+#ifdef CONFIG_NVBOARD
+#include <nvboard.h>
+void nvboard_bind_all_pins(VysyxSoCFull *top);
+#endif
 #ifdef CONFIG_TRACE_VCD
 #include <verilated_vcd_c.h>
 #endif
@@ -44,6 +48,10 @@ DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
     std::filesystem::create_directories(std::filesystem::path{CONFIG_TRACE_FILE}.parent_path());
     tfp.open(CONFIG_TRACE_FILE);
 #endif
+#ifdef CONFIG_NVBOARD
+    nvboard_bind_all_pins(dut.get());
+    nvboard_init();
+#endif
 }
 VysyxSoCFull &DUT::operator*()
 {
@@ -61,6 +69,9 @@ void DUT::final()
 {
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
     tfp.close();
+#endif
+#ifdef CONFIG_NVBOARD
+    nvboard_quit();
 #endif
     dut->final();
 }
@@ -93,6 +104,10 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
+#ifdef CONFIG_NVBOARD
+    if (cycle % CONFIG_NVBOARD_UPDATE_INTERVAL == 0)
+        nvboard_update();
+#endif
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
 #endif
