@@ -12,6 +12,10 @@ static char UARTGetChar()
 
 int main(const char *)
 {
+    for (const char *Prompt{"UART Echo Test\n"}; *Prompt; ++Prompt)
+    {
+        putch(*Prompt);
+    }
     while (true)
     {
         char Ch{UARTGetChar()};
