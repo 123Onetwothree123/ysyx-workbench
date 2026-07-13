@@ -1,28 +1,22 @@
 #include <am.h>
-
-static char UARTGetChar()
-{
-    volatile unsigned char *const LSR{reinterpret_cast<volatile unsigned char *>(0x10000005U)};
-    volatile unsigned char *const RBR{reinterpret_cast<volatile unsigned char *>(0x10000000U)};
-    while (!(*LSR & 0x01))
-    {
-    }
-    return static_cast<char>(*RBR);
-}
+#include <klib-macros.h>
 
 int main(const char *)
 {
-    for (const char *Prompt{"UART Echo Test\n"}; *Prompt; ++Prompt)
+    for (const char *p{"UART Echo Test\n"}; *p; ++p)
     {
-        putch(*Prompt);
+        putch(*p);
     }
     while (true)
     {
-        char Ch{UARTGetChar()};
-        putch(Ch);
-        if (Ch == '\r')
+        char Ch{static_cast<char>(io_read(AM_UART_RX).data)};
+        if (Ch != static_cast<char>(0xff))
         {
-            putch('\n');
+            putch(Ch);
+            if (Ch == '\r')
+            {
+                putch('\n');
+            }
         }
     }
     return 0;
