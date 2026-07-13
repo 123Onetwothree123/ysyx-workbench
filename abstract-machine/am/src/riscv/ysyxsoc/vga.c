@@ -1,4 +1,6 @@
 #include <am.h>
+#include <klib-macros.h>
+#include <klib.h>
 #include <string.h>
 
 void __am_gpu_config(AM_GPU_CONFIG_T *cfg)
@@ -15,6 +17,15 @@ void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl)
     uint32_t *pixels = ctl->pixels;
     if (pixels)
     {
+        static int Once = 1;
+        if (Once)
+        {
+            Once = 0;
+            putch('G');
+            putch('P');
+            putch('U');
+            putch('\n');
+        }
         uint32_t *FB = (uint32_t *)0x21000000ul;
         int X = ctl->x, Y = ctl->y, W = ctl->w, H = ctl->h;
         int Len = sizeof(uint32_t) * W;
