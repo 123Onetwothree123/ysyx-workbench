@@ -1,22 +1,18 @@
 #include <am.h>
-#include <klib-macros.h>
 
 int main(const char *)
 {
-    for (const char *p{"UART Echo Test\n"}; *p; ++p)
+    volatile unsigned char *LSR = (volatile unsigned char *)0x10000005;
+    volatile unsigned int *RBR = (volatile unsigned int *)0x10000000;
+    for (const char *p{"UART RX Test\n"}; *p; ++p) putch(*p);
+    while (1)
     {
-        putch(*p);
-    }
-    while (true)
-    {
-        char Ch{static_cast<char>(io_read(AM_UART_RX).data)};
-        if (Ch != static_cast<char>(0xff))
+        if (*LSR & 0x01)
         {
+            char Ch = (char)(*RBR & 0xff);
+            putch('<');
             putch(Ch);
-            if (Ch == '\r')
-            {
-                putch('\n');
-            }
+            putch('>');
         }
     }
     return 0;
