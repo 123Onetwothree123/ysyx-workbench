@@ -3,30 +3,27 @@
 
 int main(const char *)
 {
-    for (const char *p{"GPU Test\n"}; *p; ++p) putch(*p);
+    for (const char *p{"FB R/W Test\n"}; *p; ++p) putch(*p);
 
-    unsigned int Row[40];
-    for (int Y = 0; Y < 10; ++Y)
+    volatile unsigned int *FB = (volatile unsigned int *)0x21000000U;
+
+    FB[100] = 0x00FF0000U;
+    FB[200] = 0x0000FF00U;
+    FB[300] = 0x000000FFU;
+
+    unsigned int A = FB[100];
+    unsigned int B = FB[200];
+    unsigned int C = FB[300];
+
+    if (A == 0x00FF0000U && B == 0x0000FF00U && C == 0x000000FFU)
     {
-        unsigned int C;
-        switch (Y)
-        {
-        case 0: C = 0x00FF0000U; break;
-        case 1: C = 0x00FF7F00U; break;
-        case 2: C = 0x00FFFF00U; break;
-        case 3: C = 0x0000FF00U; break;
-        case 4: C = 0x000000FFU; break;
-        case 5: C = 0x004B0082U; break;
-        case 6: C = 0x00FF00FFU; break;
-        case 7: C = 0x0000FFFFU; break;
-        case 8: C = 0x00FFFFFFU; break;
-        default: C = 0x00808080U; break;
-        }
-        for (int X = 0; X < 40; ++X) Row[X] = C;
-        io_write(AM_GPU_FBDRAW, 100, 200 + Y, Row, 40, 1, false);
+        for (const char *p{"FB OK\n"}; *p; ++p) putch(*p);
+    }
+    else
+    {
+        for (const char *p{"FB FAIL\n"}; *p; ++p) putch(*p);
     }
 
-    for (const char *p{"GPU Done\n"}; *p; ++p) putch(*p);
     while (1) {}
     return 0;
 }
