@@ -93,6 +93,17 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
+    // TEMP DEBUG: VGA signal probe
+    if (cycle == 10000 || cycle == 20000 || cycle == 50000) {
+        std::println(stderr, "[VGA_DEBUG cycle={}] r={:02x} g={:02x} b={:02x} hsync={} vsync={} valid={}",
+            cycle,
+            static_cast<unsigned>(dut->externalPins_vga_r),
+            static_cast<unsigned>(dut->externalPins_vga_g),
+            static_cast<unsigned>(dut->externalPins_vga_b),
+            static_cast<unsigned>(dut->externalPins_vga_hsync),
+            static_cast<unsigned>(dut->externalPins_vga_vsync),
+            static_cast<unsigned>(dut->externalPins_vga_valid));
+    }
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
 #endif
