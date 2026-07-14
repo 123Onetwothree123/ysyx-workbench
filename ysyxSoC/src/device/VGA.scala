@@ -63,7 +63,7 @@ class vgaChisel extends Module {
   io.vga.g := Mux(Valid, PixData(15, 8), 0.U)
   io.vga.b := Mux(Valid, PixData(7, 0), 0.U)
   //拿来APB写帧缓冲的
-  val WriteAddr = (apb.paddr - "h21000000".U)(18, 2)
+  val WriteAddr = (apb.paddr - "h21000000".U)(20, 2)
   when(apb.psel && apb.penable && apb.pwrite) {
     FrameBuffer(WriteAddr) := apb.pwdata
   }
