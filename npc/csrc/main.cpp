@@ -1,5 +1,9 @@
 #include <verilated.h>
 #include "VysyxSoCFull.h"
+#ifdef CONFIG_NVBOARD
+#include <nvboard.h>
+extern void nvboard_bind_all_pins(VysyxSoCFull* top);
+#endif
 import std;
 import npc;
 
@@ -10,6 +14,10 @@ int main(int argc, char const *argv[])
 #endif
     Verilated::commandArgs(argc, argv);
     DUT dut;
+#ifdef CONFIG_NVBOARD
+    nvboard_bind_all_pins(&*dut);
+    nvboard_init();
+#endif
     auto options = CLIOptions::Parse(argc, argv);
     if (!options)
     {
@@ -43,6 +51,9 @@ int main(int argc, char const *argv[])
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
+#ifdef CONFIG_NVBOARD
+        nvboard_update();
+#endif
         if (dut->trap_valid)
         {
             std::println("trap了");
@@ -52,6 +63,9 @@ int main(int argc, char const *argv[])
     }
 #endif
     dut.final();
+#ifdef CONFIG_NVBOARD
+    nvboard_quit();
+#endif
     auto result = NPCTrap::PrintResult(dut.GetCycle());
 #ifdef CONFIG_DIFFTEST
     if (result != 0)

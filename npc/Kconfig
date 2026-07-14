@@ -628,3 +628,29 @@ config RESET_PC
     复位后程序计数器的初始值
 
 endmenu
+
+menu "外设 / NVBoard"
+
+config NVBOARD
+  bool "启用 NVBoard (LED/数码管/拨码开关可视化)"
+  default n
+  help
+    链接 NVBoard，把 ysyxSoCFull 的 GPIO 引脚绑定到虚拟板卡的
+    LED/数码管/拨码开关。需要 SDL2 (libsdl2-dev libsdl2-image-dev
+    libsdl2-ttf-dev)，且 nvboard.a 要与本工程的 C++ 标准库 ABI 一致。
+
+config NVBOARD_NXDC
+  string "NVBoard 约束文件(.nxdc)路径"
+  depends on NVBOARD
+  default "csrc/nvboard/gpio.nxdc"
+  help
+    描述 RTL 引脚到 NVBoard 组件的绑定关系
+
+config NVBOARD_UPDATE_INTERVAL
+  int "每多少周期刷新一次 NVBoard GUI"
+  depends on NVBOARD
+  default 100
+  help
+    每周期都刷新太慢，隔 N 个周期调用一次 nvboard_update 折中
+
+endmenu

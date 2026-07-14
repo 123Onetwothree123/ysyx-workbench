@@ -1,11 +1,21 @@
 #include <am.h>
 #include <stdint.h>
 
+#define CLINT_MTIME_LO 0x0200bff8
+#define CLINT_MTIME_HI 0x0200bffc
+
 void __am_timer_init() {
 }
 
 void __am_timer_uptime(AM_TIMER_UPTIME_T *uptime) {
-  uptime->us = 0;
+  volatile uint32_t *mtime_lo = (volatile uint32_t *)CLINT_MTIME_LO;
+  volatile uint32_t *mtime_hi = (volatile uint32_t *)CLINT_MTIME_HI;
+  uint32_t hi, lo;
+  do {
+    hi = *mtime_hi;
+    lo = *mtime_lo;
+  } while (hi != *mtime_hi);
+  uptime->us = ((uint64_t)hi << 32) | lo;
 }
 
 void __am_timer_rtc(AM_TIMER_RTC_T *rtc) {
