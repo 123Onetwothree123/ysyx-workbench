@@ -3,16 +3,12 @@
 
 int main(const char *)
 {
-    AM_GPU_CONFIG_T Cfg = io_read(AM_GPU_CONFIG);
-    int W = Cfg.width;
-    int H = Cfg.height;
     for (const char *p{"GPU Test\n"}; *p; ++p) putch(*p);
 
-    unsigned int ColorBuf[W * H];
-    for (int i = 0; i < W * H; ++i)
+    unsigned int Row[80];
+    for (int Y = 0; Y < 480; ++Y)
     {
-        int X = i % W;
-        int Band = X / 100;
+        int Band = Y / 60;
         unsigned int C;
         switch (Band)
         {
@@ -25,9 +21,9 @@ int main(const char *)
         case 6: C = 0x00FF00FFU; break;
         default: C = 0x00FFFFFFU; break;
         }
-        ColorBuf[i] = C;
+        for (int X = 0; X < 80; ++X) Row[X] = C;
+        io_write(AM_GPU_FBDRAW, 0, Y, Row, 80, 1, false);
     }
-    io_write(AM_GPU_FBDRAW, 0, 0, ColorBuf, W, H, true);
 
     for (const char *p{"GPU Done\n"}; *p; ++p) putch(*p);
     while (1) {}
