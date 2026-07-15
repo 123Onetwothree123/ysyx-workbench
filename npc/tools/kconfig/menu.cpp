@@ -1,4 +1,8 @@
+#ifdef __clang__
 import std;
+#else
+#include <bits/stdc++.h>
+#endif
 using namespace std;
 
 // SPDX-License-Identifier: GPL-2.0
