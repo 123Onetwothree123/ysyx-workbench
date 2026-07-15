@@ -1,6 +1,7 @@
 #include "flash.hpp"
 #include <klib-macros.h>
 #include <klib.h>
+
 std::uint32_t flash_read(std::uint32_t addr)
 {
     volatile auto *spi{reinterpret_cast<volatile uint32_t *>(SPI_BASE)};
@@ -13,13 +14,14 @@ std::uint32_t flash_read(std::uint32_t addr)
         }
     }
     spi[SPI_DIVIDER] = 1;
-    spi[SPI_SS] = 0;        // 拉高SS复位flash状态机
-    spi[SPI_SS] = FLASH_SS; // 选中flash
+    spi[SPI_SS] = 0;
+    spi[SPI_SS] = FLASH_SS;
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_TX_NEG | CTRL_LSB;
     spi[SPI_TX_0] = (raddr << 8) | FLASH_CMD;
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO | CTRL_TX_NEG | CTRL_LSB;
     while (spi[SPI_CTRL] & CTRL_GO)
-        ;
+    {
+    }
     std::uint32_t x{spi[SPI_RX_1]};
     x = ((x & 0x55555555u) << 1) | ((x >> 1) & 0x55555555u);
     x = ((x & 0x33333333u) << 2) | ((x >> 2) & 0x33333333u);
@@ -31,7 +33,7 @@ std::uint32_t flash_read(std::uint32_t addr)
 
 int main(const char *args)
 {
-    uint32_t errors{};
+    std::uint32_t errors{};
     for (std::uint32_t a{0}; a < 256; a += 4)
     {
         auto got{flash_read(a)};

@@ -1,11 +1,16 @@
 #include <am.h>
+
 int main(const char *)
 {
-    volatile unsigned int *FB = (volatile unsigned int *)0x21000000U;
-    for (int y = 0; y < 480; ++y)
+    for (const char *p{"Fill\n"}; *p; ++p)
     {
-        unsigned int Color;
-        int Band = y / 60;
+        putch(*p);
+    }
+    volatile unsigned int *FB{reinterpret_cast<volatile unsigned int *>(0x21000000U)};
+    for (int y{0}; y < 480; ++y)
+    {
+        unsigned int Color{};
+        int Band{y / 60};
         switch (Band)
         {
         case 0: Color = 0x00FF0000U; break;
@@ -17,8 +22,10 @@ int main(const char *)
         case 6: Color = 0x00FF00FFU; break;
         default: Color = 0x00FFFFFFU; break;
         }
-        for (int x = 0; x < 640; ++x)
+        for (int x{0}; x < 640; ++x)
+        {
             FB[y * 640 + x] = Color;
+        }
     }
     while (1) {}
     return 0;
