@@ -1,6 +1,7 @@
-#ifndef DECODER_H
-#define DECODER_H
-#include <stdint.h>
+#include <cstdint>
+#ifndef DECODER_HPP
+#define DECODER_HPP
+#include <stdint.hpp>
 
 class Decoder {
 public:
@@ -12,7 +13,7 @@ public:
     enum class Format { R, I, S, B, U, J, UNKNOWN };
 
     Decoder() = default;
-    uint8_t OpDecode(uint32_t inst);
-    static Format GetFormat(uint32_t inst);
+    std::uint8_t OpDecode(std::uint32_t inst);
+    static Format GetFormat(std::uint32_t inst);
 };
 #endif

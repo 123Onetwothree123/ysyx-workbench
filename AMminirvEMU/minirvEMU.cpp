@@ -1,64 +1,65 @@
-#include "minirvEMU.h"
+#include <cstdint>
+#include "minirvEMU.hpp"
 
 // 构造函数定义
 minirvEMU::minirvEMU() {
-    PC = 0;
+    PC {0};
     halted = false;
-    for (int i = 0; i < 16; i++) R[i] = 0;
+    for (int i {0}; i < 16; i++) R[i] {0};
     // 手动清空内存，不依赖 memset
-    for (int i = 0; i < 262144; i++) M[i] = 0;
+    for (int i {0}; i < 262144; i++) M[i] {0};
 }
 
 void minirvEMU::init_vga() { vga.init(); }
 void minirvEMU::update_vga() { vga.update_screen(); }
-uint32_t minirvEMU::GetPC() const { return PC; }
+std::uint32_t minirvEMU::GetPC() const { return PC; }
 bool minirvEMU::IsHalted() const { return halted; }
 
-void minirvEMU::write_word(uint32_t addr, uint32_t value) {
+void minirvEMU::write_word(std::uint32_t addr, std::uint32_t value) {
     if (vga.is_vga_addr(addr)) {
         vga.write_word(addr, value);
         return;
     }
-    uint32_t idx = addr >> 2;
+    std::uint32_t idx = addr >> 2;
     if (idx < 262144) M[idx] = value;
 }
 
-uint32_t minirvEMU::read_word(uint32_t addr) {
-    uint32_t idx = addr >> 2;
+std::uint32_t minirvEMU::read_word(std::uint32_t addr) {
+    std::uint32_t idx = addr >> 2;
     return (idx < 262144) ? M[idx] : 0;
 }
 
-void minirvEMU::write_byte(uint32_t addr, uint8_t value) {
+void minirvEMU::write_byte(std::uint32_t addr, std::uint8_t value) {
     if (vga.is_vga_addr(addr)) {
         vga.write_byte(addr, value); // 关键：调用 VGA 的字节写入
         return;
     }
-    uint32_t idx = addr >> 2;
-    uint32_t offset = (addr % 4) * 8;
+    std::uint32_t idx = addr >> 2;
+    std::uint32_t offset = (addr % 4) * 8;
     if (idx < 262144) {
-        M[idx] = (M[idx] & ~(0xFF << offset)) | ((uint32_t)value << offset);
+        M[idx] = (M[idx] & ~(0xFF << offset)) | ((std::uint32_t)value << offset);
     }
 }
 
-uint8_t minirvEMU::read_byte(uint32_t addr) {
-    uint32_t idx = addr >> 2;
-    uint32_t offset = (addr % 4) * 8;
-    return (idx < 262144) ? (uint8_t)((M[idx] >> offset) & 0xFF) : 0;
+std::uint8_t minirvEMU::read_byte(std::uint32_t addr) {
+    std::uint32_t idx = addr >> 2;
+    std::uint32_t offset = (addr % 4) * 8;
+    return (idx < 262144) ? (std::uint8_t)((M[idx] >> offset) & 0xFF) : 0;
 }
 
 void minirvEMU::step() {
     if (halted) return;
-    uint32_t inst = read_word(PC);
-    uint8_t type = decoder.OpDecode(inst);
-    int32_t imm = immGen.Generate(inst);
-    uint8_t rd = (inst >> 7) & 0x1F;
-    uint8_t rs1 = (inst >> 15) & 0x1F;
-    uint8_t rs2 = (inst >> 20) & 0x1F;
+    std::uint32_t inst = read_word(PC);
+    std::uint8_t type = decoder.OpDecode(inst);
+    std::int32_t imm = immGen.Generate(inst);
+    std::uint8_t rd = (inst >> 7) & 0x1F;
+    std::uint8_t rs1 = (inst >> 15) & 0x1F;
+    std::uint8_t rs2 = (inst >> 20) & 0x1F;
 
-    uint32_t next_pc = PC + 4;
-    uint8_t rd_i = rd % 16;
-    uint8_t rs1_i = rs1 % 16;
-    uint8_t rs2_i = rs2 % 16;
+    std::uint32_t next_pc = PC + 4;
+    std::uint8_t rd_i = rd % 16;
+    std::uint8_t rs1_i = rs1 % 16;
+    std::uint8_t rs2_i = rs2 % 16;
 
     switch (type) {
         case Decoder::INSTR_LUI:   R[rd_i] = imm; break;
@@ -75,6 +76,6 @@ void minirvEMU::step() {
         case Decoder::INSTR_EBREAK: halted = true; return;
         default: break;
     }
-    R[0] = 0;
+    R[0] {0};
     PC = next_pc;
 }

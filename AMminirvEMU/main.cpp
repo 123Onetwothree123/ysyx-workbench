@@ -1,7 +1,7 @@
-#include <am.h>
-#include <klib.h>
-#include "minirvEMU.h"
-#include "ProgramLoader.h"
+#include <am.hpp>
+#include <klib.hpp>
+#include "minirvEMU.hpp"
+#include "ProgramLoader.hpp"
 
 // 解决 AM 宏定义与 C++ static_assert 关键字的冲突
 #ifdef static_assert
@@ -14,13 +14,13 @@ int main(const char *args) {
     emu.init_vga();
 
     BinaryBuffer code = ProgramLoader::GetInternalBinary();
-    for (size_t i = 0; i < code.size; ++i) {
+    for (std::size_t i {0}; i < code.size; ++i) {
         emu.write_byte(i, code.data[i]);
     }
 
     printf("Program Loaded: %u bytes. Start PC: 0x%08x\n", (unsigned int)code.size, (unsigned int)emu.GetPC());
 
-    uint32_t inst_count = 0;
+    std::uint32_t inst_count {0};
     while (!emu.IsHalted()) {
         emu.step();
         

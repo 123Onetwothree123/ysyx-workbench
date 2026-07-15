@@ -1,41 +1,30 @@
-#ifndef DECODER_H
-#define DECODER_H
+#ifndef DECODER_HPP
+#define DECODER_HPP
 #include <cstdint>
+
 class Decoder
 {
-private:
 public:
     enum InstrType
     {
-        // U-type
         INSTR_LUI,
-        // R-type
         INSTR_ADD,
-        // I-type
         INSTR_ADDI,
         INSTR_LW,
         INSTR_LBU,
         INSTR_JALR,
-        // S-type
         INSTR_SW,
         INSTR_SB,
         INSTR_EBREAK,
-        // 错误
         INSTR_UNKNOWN
     };
     enum class Format
     {
-        R,
-        I,
-        S,
-        B,
-        U,
-        J,
-        UNKNOWN
+        R, I, S, B, U, J, UNKNOWN
     };
     Decoder() = default;
     ~Decoder() = default;
-    uint8_t OpDecode(uint32_t inst);
-    static Format GetFormat(uint32_t inst);
+    std::uint8_t OpDecode(std::uint32_t inst);
+    static Format GetFormat(std::uint32_t inst);
 };
 #endif
