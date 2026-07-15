@@ -1,4 +1,5 @@
 import std;
+using namespace std;
 #include <clocale>
 #include <clocale>
 
