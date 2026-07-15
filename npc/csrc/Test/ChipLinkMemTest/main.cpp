@@ -8,9 +8,9 @@ int main(const char *)
     const auto result{ChipLink_mem_test(begin, length)};
     if (!result)
     {
-        printf("ChipLink测试失败了 0x%08x\n", result.error());
+        printf("ChipLink test FAILED 0x%08x\n", result.error());
         halt(1);
     }
-    printf("ChipLink测试通过了\n");
+    printf("ChipLink test PASSED\n");
     return 0;
 }
