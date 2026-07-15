@@ -1,21 +1,17 @@
+import std;
+using namespace std;
+
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
  */
 
-#include <ctype.h>
-#include <limits.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <sys/stat.h>
 #include <sys/time.h>
-#include <errno.h>
 
-#include "lkc.h"
+#include "lkc.hpp"
 
 static void conf(struct menu *menu);
 static void check_conf(struct menu *menu);
@@ -431,7 +427,7 @@ static void check_conf(struct menu *menu)
 						str = sym_get_string_value(sym);
 						str = sym_escape_string_value(str);
 						printf("%s%s=%s\n", CONFIG_, sym->name, str);
-						free((void *)str);
+						free(static_cast<void*>(str);
 					} else {
 						str = sym_get_string_value(sym);
 						printf("%s%s=%s\n", CONFIG_, sym->name, str);
@@ -511,7 +507,7 @@ int main(int ac, char **av)
 			conf_set_message_callback(NULL);
 			continue;
 		}
-		input_mode = (enum input_mode)opt;
+		input_mode = static_cast<enum input_mode>(opt;
 		switch (opt) {
 		case syncconfig:
 			/*

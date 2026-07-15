@@ -1,3 +1,6 @@
+import std;
+using namespace std;
+
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
@@ -5,18 +8,10 @@
 
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <ctype.h>
-#include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
 #include <unistd.h>
 
-#include "lkc.h"
+#include "lkc.hpp"
 
 /* return true if 'path' exists, false otherwise */
 static bool is_present(const char *path)
@@ -300,7 +295,7 @@ static int add_byte(int c, char **lineptr, size_t slen, size_t *n)
 	if (new_size > *n) {
 		new_size += LINE_GROWTH - 1;
 		new_size *= 2;
-		nline = xrealloc(*lineptr, new_size);
+		nline = static_cast<char*>(xrealloc(*lineptr, new_size));
 		if (!nline)
 			return -1;
 
@@ -538,7 +533,7 @@ int conf_read(const char *name)
 					continue;
 				break;
 			default:
-				if (!strcmp(sym->curr.val, sym->def[S_DEF_USER].val))
+				if (!strcmp(static_cast<const char*>(sym->curr.val), static_cast<const char*>(sym->def[S_DEF_USER].val)))
 					continue;
 				break;
 			}
@@ -563,7 +558,7 @@ int conf_read(const char *name)
 			case S_INT:
 			case S_HEX:
 				/* Reset a string value if it's out of range */
-				if (sym_string_within_range(sym, sym->def[S_DEF_USER].val))
+				if (sym_string_within_range(sym, static_cast<const char*>(sym->def[S_DEF_USER].val)))
 					break;
 				sym->flags &= ~(SYMBOL_VALID|SYMBOL_DEF_USER);
 				conf_unsaved++;
@@ -1000,7 +995,7 @@ static int conf_touch_deps(void)
 				case S_HEX:
 				case S_INT:
 					if (!strcmp(sym_get_string_value(sym),
-						    sym->def[S_DEF_AUTO].val))
+						    static_cast<const char*>(sym->def[S_DEF_AUTO].val)))
 						continue;
 					break;
 				default:

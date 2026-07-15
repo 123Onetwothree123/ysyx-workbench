@@ -1,3 +1,6 @@
+import std;
+using namespace std;
+
 // SPDX-License-Identifier: GPL-2.0+
 /*
  *  textbox.c -- implements the text box
@@ -6,7 +9,7 @@
  *  MODIFIED FOR LINUX KERNEL CONFIG BY: William Roadcap (roadcap@cfw.com)
  */
 
-#include "dialog.h"
+#include "dialog.hpp"
 
 static void back_lines(int n);
 static void print_page(WINDOW *win, int height, int width, update_text_fn
@@ -343,53 +346,3 @@ static void print_line(WINDOW * win, int row, int width)
 		for (i = 0; i < width - x; i++)
 			waddch(win, ' ');
 	}
-#else
-	wclrtoeol(win);
-#endif
-}
-
-/*
- * Return current line of text. Called by dialog_textbox() and print_line().
- * 'page' should point to start of current line before calling, and will be
- * updated to point to start of next line.
- */
-static char *get_line(void)
-{
-	int i = 0;
-	static char line[MAX_LEN + 1];
-
-	end_reached = 0;
-	while (*page != '\n') {
-		if (*page == '\0') {
-			end_reached = 1;
-			break;
-		} else if (i < MAX_LEN)
-			line[i++] = *(page++);
-		else {
-			/* Truncate lines longer than MAX_LEN characters */
-			if (i == MAX_LEN)
-				line[i++] = '\0';
-			page++;
-		}
-	}
-	if (i <= MAX_LEN)
-		line[i] = '\0';
-	if (!end_reached)
-		page++;		/* move past '\n' */
-
-	return line;
-}
-
-/*
- * Print current position
- */
-static void print_position(WINDOW * win)
-{
-	int percent;
-
-	wattrset(win, dlg.position_indicator.atr);
-	wbkgdset(win, dlg.position_indicator.atr & A_COLOR);
-	percent = (page - buf) * 100 / strlen(buf);
-	wmove(win, getmaxy(win) - 3, getmaxx(win) - 9);
-	wprintw(win, "(%3d%%)", percent);
-}

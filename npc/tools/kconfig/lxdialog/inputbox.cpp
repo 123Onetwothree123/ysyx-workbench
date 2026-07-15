@@ -1,3 +1,6 @@
+import std;
+using namespace std;
+
 // SPDX-License-Identifier: GPL-2.0+
 /*
  *  inputbox.c -- implements the input box
@@ -6,7 +9,7 @@
  *  MODIFIED FOR LINUX KERNEL CONFIG BY: William Roadcap (roadcap@cfw.com)
  */
 
-#include "dialog.h"
+#include "dialog.hpp"
 
 char dialog_input_result[MAX_LEN + 1];
 

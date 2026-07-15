@@ -1,3 +1,8 @@
+import std;
+using namespace std;
+#include <clocale>
+#include <clocale>
+
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
@@ -8,20 +13,12 @@
  * i18n, 2005, Arnaldo Carvalho de Melo <acme@conectiva.com.br>
  */
 
-#include <ctype.h>
-#include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
-#include <locale.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
-#include <strings.h>
 #include <signal.h>
 #include <unistd.h>
 
-#include "lkc.h"
-#include "lxdialog/dialog.h"
+#include "lkc.hpp"
+#include "lxdialog/dialog.hpp"
 
 static const char mconf_readme[] =
 "Overview\n"
@@ -275,7 +272,6 @@ search_help[] =
 	"\n";
 
 static int indent;
-static struct menu *current_menu;
 static int child_count;
 static int single_menu_mode;
 static int show_all_options;
@@ -332,10 +328,10 @@ static void set_subtitle(void)
 	list_for_each_entry(sp, &trail, entries) {
 		if (sp->text) {
 			if (pos) {
-				pos->next = xcalloc(1, sizeof(*pos));
+				pos->next = static_cast<struct subtitle_list*>(xcalloc(1, sizeof(*pos)));
 				pos = pos->next;
 			} else {
-				subtitles = pos = xcalloc(1, sizeof(*pos));
+				subtitles = pos = static_cast<struct subtitle_list*>(xcalloc(1, sizeof(*pos)));
 			}
 			pos->text = sp->text;
 		}
@@ -364,7 +360,7 @@ struct search_data {
 
 static void update_text(char *buf, size_t start, size_t end, void *_data)
 {
-	struct search_data *data = _data;
+	struct search_data *data = static_cast<struct search_data*>(_data);
 	struct jump_key *pos;
 	int k = 0;
 
@@ -676,8 +672,8 @@ static void conf(struct menu *menu, struct menu *active_menu)
 			if (!item_tag())
 				continue;
 		}
-		submenu = item_data();
-		active_menu = item_data();
+		submenu = static_cast<struct menu*>(item_data());
+		active_menu = static_cast<struct menu*>(item_data());
 		if (submenu)
 			sym = submenu->sym;
 		else
@@ -688,7 +684,7 @@ static void conf(struct menu *menu, struct menu *active_menu)
 			switch (item_tag()) {
 			case 'm':
 				if (single_menu_mode)
-					submenu->data = (void *) (long) !submenu->data;
+					submenu->data = reinterpret_cast<void*>(static_cast<long>(!submenu->data));
 				else
 					conf(submenu, NULL);
 				break;
@@ -832,7 +828,7 @@ static void conf_choice(struct menu *menu)
 		switch (res) {
 		case 0:
 			if (selected) {
-				child = item_data();
+				child = static_cast<struct menu*>(item_data());
 				if (!child->sym)
 					break;
 
@@ -841,7 +837,7 @@ static void conf_choice(struct menu *menu)
 			return;
 		case 1:
 			if (selected) {
-				child = item_data();
+				child = static_cast<struct menu*>(item_data());
 				show_help(child);
 				active = child->sym;
 			} else

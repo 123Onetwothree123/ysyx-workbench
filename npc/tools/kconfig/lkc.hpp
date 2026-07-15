@@ -6,13 +6,13 @@
 #ifndef LKC_H
 #define LKC_H
 
-#include "expr.h"
+#include "expr.hpp"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "lkc_proto.h"
+#include "lkc_proto.hpp"
 
 #define SRCTREE "srctree"
 
@@ -40,7 +40,6 @@ enum conf_def_mode {
 	def_random
 };
 
-extern int yylineno;
 void zconfdump(FILE *out);
 void zconf_starthelp(void);
 FILE *zconf_fopen(const char *name);
@@ -169,5 +168,16 @@ static inline bool sym_has_value(struct symbol *sym)
 #ifdef __cplusplus
 }
 #endif
+
+#ifdef __cplusplus
+extern struct menu *current_entry;
+extern struct menu *current_menu;
+extern struct file *current_file;
+extern struct file *file_list;
+extern void zconf_error(const char *err, ...);
+#endif
+
+extern int yydebug;
+extern int yylineno;
 
 #endif /* LKC_H */

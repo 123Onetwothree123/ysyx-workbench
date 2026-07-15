@@ -1,37 +1,37 @@
+import std;
+using namespace std;
+
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
  */
 
-#include <ctype.h>
-#include <stdlib.h>
-#include <string.h>
 #include <regex.h>
 #include <sys/utsname.h>
 
-#include "lkc.h"
+#include "lkc.hpp"
 
 struct symbol symbol_yes = {
 	.name = "y",
-	.curr = { "y", yes },
+	.curr = { const_cast<char*>("y"), yes },
 	.flags = SYMBOL_CONST|SYMBOL_VALID,
 };
 
 struct symbol symbol_mod = {
 	.name = "m",
-	.curr = { "m", mod },
+	.curr = { const_cast<char*>("m"), mod },
 	.flags = SYMBOL_CONST|SYMBOL_VALID,
 };
 
 struct symbol symbol_no = {
 	.name = "n",
-	.curr = { "n", no },
+	.curr = { const_cast<char*>("n"), no },
 	.flags = SYMBOL_CONST|SYMBOL_VALID,
 };
 
 static struct symbol symbol_empty = {
 	.name = "",
-	.curr = { "", no },
+	.curr = { const_cast<char*>(""), no },
 	.flags = SYMBOL_VALID,
 };
 
@@ -117,7 +117,7 @@ static long long sym_get_range_val(struct symbol *sym, int base)
 	default:
 		break;
 	}
-	return strtoll(sym->curr.val, NULL, base);
+	return strtoll(static_cast<const char*>(sym->curr.val), NULL, base);
 }
 
 static void sym_validate_range(struct symbol *sym)
@@ -140,7 +140,7 @@ static void sym_validate_range(struct symbol *sym)
 	prop = sym_get_range_prop(sym);
 	if (!prop)
 		return;
-	val = strtoll(sym->curr.val, NULL, base);
+	val = strtoll(static_cast<const char*>(sym->curr.val), NULL, base);
 	val2 = sym_get_range_val(prop->expr->left.sym, base);
 	if (val >= val2) {
 		val2 = sym_get_range_val(prop->expr->right.sym, base);
@@ -288,7 +288,7 @@ static struct symbol *sym_calc_choice(struct symbol *sym)
 	sym->flags &= flags | ~SYMBOL_DEF_USER;
 
 	/* is the user choice visible? */
-	def_sym = sym->def[S_DEF_USER].val;
+	def_sym = static_cast<symbol*>(sym->def[S_DEF_USER].val);
 	if (def_sym && def_sym->visible != no)
 		return def_sym;
 
@@ -356,7 +356,7 @@ void sym_calc_value(struct symbol *sym)
 		newval = symbol_no.curr;
 		break;
 	default:
-		sym->curr.val = sym->name;
+		sym->curr.val = const_cast<char*>(sym->name);
 		sym->curr.tri = no;
 		return;
 	}
@@ -670,15 +670,15 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 		sym_set_changed(sym);
 	}
 
-	oldval = sym->def[S_DEF_USER].val;
+	oldval = static_cast<const char*>(sym->def[S_DEF_USER].val);
 	size = strlen(newval) + 1;
 	if (sym->type == S_HEX && (newval[0] != '0' || (newval[1] != 'x' && newval[1] != 'X'))) {
 		size += 2;
-		sym->def[S_DEF_USER].val = val = xmalloc(size);
+		sym->def[S_DEF_USER].val = val = static_cast<char*>(xmalloc(size));
 		*val++ = '0';
 		*val++ = 'x';
 	} else if (!oldval || strcmp(oldval, newval))
-		sym->def[S_DEF_USER].val = val = xmalloc(size);
+		sym->def[S_DEF_USER].val = val = static_cast<char*>(xmalloc(size));
 	else
 		return true;
 
@@ -706,7 +706,7 @@ const char *sym_get_string_default(struct symbol *sym)
 	sym_calc_visibility(sym);
 	sym_calc_value(modules_sym);
 	val = symbol_no.curr.tri;
-	str = symbol_empty.curr.val;
+	str = static_cast<const char*>(symbol_empty.curr.val);
 
 	/* If symbol has a default value look it up */
 	prop = sym_get_default_prop(sym);
@@ -833,7 +833,7 @@ struct symbol *sym_lookup(const char *name, int flags)
 		hash = 0;
 	}
 
-	symbol = xmalloc(sizeof(*symbol));
+	symbol = static_cast<struct symbol*>(xmalloc(sizeof(*symbol)));
 	memset(symbol, 0, sizeof(*symbol));
 	symbol->name = new_name;
 	symbol->type = S_UNKNOWN;
@@ -893,7 +893,7 @@ const char *sym_escape_string_value(const char *in)
 		p++;
 	}
 
-	res = xmalloc(reslen);
+	res = static_cast<char*>(xmalloc(reslen));
 	res[0] = '\0';
 
 	strcat(res, "\"");
@@ -926,8 +926,8 @@ struct sym_match {
  */
 static int sym_rel_comp(const void *sym1, const void *sym2)
 {
-	const struct sym_match *s1 = sym1;
-	const struct sym_match *s2 = sym2;
+	const struct sym_match *s1 = static_cast<const struct sym_match*>(sym1);
+	const struct sym_match *s2 = static_cast<const struct sym_match*>(sym2);
 	int exact1, exact2;
 
 	/* Exact match:
@@ -973,10 +973,10 @@ struct symbol **sym_re_search(const char *pattern)
 		if (cnt >= size) {
 			void *tmp;
 			size += 16;
-			tmp = realloc(sym_match_arr, size * sizeof(struct sym_match));
+			tmp = static_cast<struct sym_match*>(realloc(sym_match_arr, size * sizeof(struct sym_match)));
 			if (!tmp)
 				goto sym_re_search_free;
-			sym_match_arr = tmp;
+			sym_match_arr = static_cast<struct sym_match*>(tmp);
 		}
 		sym_calc_value(sym);
 		/* As regexec returned 0, we know we have a match, so
@@ -988,7 +988,7 @@ struct symbol **sym_re_search(const char *pattern)
 	}
 	if (sym_match_arr) {
 		qsort(sym_match_arr, cnt, sizeof(struct sym_match), sym_rel_comp);
-		sym_arr = malloc((cnt+1) * sizeof(struct symbol *));
+		sym_arr = static_cast<struct symbol**>(malloc((cnt+1) * sizeof(struct symbol *)));
 		if (!sym_arr)
 			goto sym_re_search_free;
 		for (i = 0; i < cnt; i++)

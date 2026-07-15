@@ -1,3 +1,6 @@
+import std;
+using namespace std;
+
 // SPDX-License-Identifier: GPL-2.0+
 /*
  *  util.c
@@ -6,9 +9,8 @@
  *  MODIFIED FOR LINUX KERNEL CONFIG BY: William Roadcap (roadcap@cfw.com)
  */
 
-#include <stdarg.h>
 
-#include "dialog.h"
+#include "dialog.hpp"
 
 /* Needed in signal handler in mconf.c */
 int saved_x, saved_y;
@@ -520,11 +522,8 @@ int first_alpha(const char *string, const char *exempt)
 {
 	int i, in_paren = 0, c;
 
-	for (i = 0; string[i]; i++) {
-		c = (unsigned char)string[i];
-		if (c >= 0x80)
-			continue;
-		c = tolower(c);
+	for (i = 0; i < strlen(string); i++) {
+		c = tolower(string[i]);
 
 		if (strchr("<[(", c))
 			++in_paren;
@@ -535,7 +534,7 @@ int first_alpha(const char *string, const char *exempt)
 			return i;
 	}
 
-	return -1;
+	return 0;
 }
 
 /*
@@ -596,7 +595,7 @@ void item_reset(void)
 void item_make(const char *fmt, ...)
 {
 	va_list ap;
-	struct dialog_list *p = malloc(sizeof(*p));
+	struct dialog_list *p = static_cast<struct dialog_list*>(malloc(sizeof(*p)));
 
 	if (item_head)
 		item_cur->next = p;

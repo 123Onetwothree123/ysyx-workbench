@@ -1,15 +1,13 @@
+import std;
+using namespace std;
+
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
  */
 
-#include <ctype.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
-#include "lkc.h"
+#include "lkc.hpp"
 
 #define DEBUG_EXPR	0
 
@@ -17,7 +15,7 @@ static struct expr *expr_eliminate_yn(struct expr *e);
 
 struct expr *expr_alloc_symbol(struct symbol *sym)
 {
-	struct expr *e = xcalloc(1, sizeof(*e));
+	struct expr *e = static_cast<struct expr*>(xcalloc(1, sizeof(*e)));
 	e->type = E_SYMBOL;
 	e->left.sym = sym;
 	return e;
@@ -25,7 +23,7 @@ struct expr *expr_alloc_symbol(struct symbol *sym)
 
 struct expr *expr_alloc_one(enum expr_type type, struct expr *ce)
 {
-	struct expr *e = xcalloc(1, sizeof(*e));
+	struct expr *e = static_cast<struct expr*>(xcalloc(1, sizeof(*e)));
 	e->type = type;
 	e->left.expr = ce;
 	return e;
@@ -33,7 +31,7 @@ struct expr *expr_alloc_one(enum expr_type type, struct expr *ce)
 
 struct expr *expr_alloc_two(enum expr_type type, struct expr *e1, struct expr *e2)
 {
-	struct expr *e = xcalloc(1, sizeof(*e));
+	struct expr *e = static_cast<struct expr*>(xcalloc(1, sizeof(*e)));
 	e->type = type;
 	e->left.expr = e1;
 	e->right.expr = e2;
@@ -42,7 +40,7 @@ struct expr *expr_alloc_two(enum expr_type type, struct expr *e1, struct expr *e
 
 struct expr *expr_alloc_comp(enum expr_type type, struct symbol *s1, struct symbol *s2)
 {
-	struct expr *e = xcalloc(1, sizeof(*e));
+	struct expr *e = static_cast<struct expr*>(xcalloc(1, sizeof(*e)));
 	e->type = type;
 	e->left.sym = s1;
 	e->right.sym = s2;
@@ -70,7 +68,7 @@ struct expr *expr_copy(const struct expr *org)
 	if (!org)
 		return NULL;
 
-	e = xmalloc(sizeof(*org));
+	e = static_cast<struct expr*>(xmalloc(sizeof(*org)));
 	memcpy(e, org, sizeof(*org));
 	switch (org->type) {
 	case E_SYMBOL:
@@ -1144,7 +1142,7 @@ void expr_print(struct expr *e,
 		return;
 	}
 
-	if (expr_compare_type(prevtoken, e->type) > 0)
+	if (expr_compare_type(static_cast<expr_type>(prevtoken), e->type) > 0)
 		fn(data, NULL, "(");
 	switch (e->type) {
 	case E_SYMBOL:
@@ -1223,13 +1221,13 @@ void expr_print(struct expr *e,
 		break;
 	  }
 	}
-	if (expr_compare_type(prevtoken, e->type) > 0)
+	if (expr_compare_type(static_cast<expr_type>(prevtoken), e->type) > 0)
 		fn(data, NULL, ")");
 }
 
 static void expr_print_file_helper(void *data, struct symbol *sym, const char *str)
 {
-	xfwrite(str, strlen(str), 1, data);
+	xfwrite(str, strlen(str), 1, static_cast<FILE*>(data));
 }
 
 void expr_fprint(struct expr *e, FILE *out)
