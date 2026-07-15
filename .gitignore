@@ -12,6 +12,7 @@
 !/AMminirvEMU/*
 !/HDLcode/*
 !/HDLLearn/*
+!/yosys-sta/*
 !Makefile
 !README.md
 !.gitignore
