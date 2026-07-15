@@ -1,0 +1,18 @@
+[submodule "ics2024"]
+	path = ics2024
+	url = git@github.com:123Onetwothree123/ics2024.git
+[submodule "ics2025"]
+	path = ics2025
+	url = git@github.com:123Onetwothree123/ics2025.git
+[submodule "riscv-tests"]
+	path = riscv-tests
+	url = https://github.com/123Onetwothree123/riscv-tests.git
+[submodule "riscv-tests-am"]
+	path = riscv-tests-am
+	url = https://github.com/123Onetwothree123/riscv-tests-am.git
+[submodule "riscv-arch-test-am"]
+	path = riscv-arch-test-am
+	url = https://github.com/123Onetwothree123/riscv-arch-test-am.git
+[submodule "rt-thread"]
+	path = rt-thread
+	url = https://github.com/123Onetwothree123/rt-thread.git

@@ -13,6 +13,12 @@
 !/HDLcode/*
 !/HDLLearn/*
 !/yosys-sta/*
+!/riscv-arch-test-am
+!/riscv-tests
+!/riscv-tests-am
+!/rt-thread
+!/ics2024
+!/ics2025
 !Makefile
 !README.md
 !.gitignore
