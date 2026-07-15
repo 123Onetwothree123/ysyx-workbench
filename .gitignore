@@ -8,6 +8,10 @@
 !/npc/*
 !/npc/out/*
 !/minirvEMU/*
+!/minirvEMUTestDebug/*
+!/AMminirvEMU/*
+!/HDLcode/*
+!/HDLLearn/*
 !Makefile
 !README.md
 !.gitignore
