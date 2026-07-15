@@ -141,4 +141,7 @@ object `package` extends ysyxSoC {
 trait ysyxSoC extends ysyxSoCModule with HasThisChisel {
   override def scalaVersion = Versions.scala
   override def sources = Task.Sources(workspaceRoot / "src")
+  override def resources = Task.Sources(
+    workspaceRoot / "rocket-chip" / "src" / "main" / "resources"
+  )
 }
