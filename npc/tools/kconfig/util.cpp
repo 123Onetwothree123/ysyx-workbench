@@ -1,13 +1,12 @@
+import std;
+
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2002-2005 Roman Zippel <zippel@linux-m68k.org>
  * Copyright (C) 2002-2005 Sam Ravnborg <sam@ravnborg.org>
  */
 
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
-#include "lkc.h"
+#include "lkc.hpp"
 
 /* file already present in list? If not add it */
 struct file *file_lookup(const char *name)
@@ -20,7 +19,7 @@ struct file *file_lookup(const char *name)
 		}
 	}
 
-	file = xmalloc(sizeof(*file));
+	file = static_cast<struct file*>(xmalloc(sizeof(*file)));
 	memset(file, 0, sizeof(*file));
 	file->name = xstrdup(name);
 	file->next = file_list;
@@ -32,7 +31,7 @@ struct file *file_lookup(const char *name)
 struct gstr str_new(void)
 {
 	struct gstr gs;
-	gs.s = xmalloc(sizeof(char) * 64);
+	gs.s = static_cast<char*>(xmalloc(sizeof(char) * 64));
 	gs.len = 64;
 	gs.max_width = 0;
 	strcpy(gs.s, "\0");
@@ -55,7 +54,7 @@ void str_append(struct gstr *gs, const char *s)
 	if (s) {
 		l = strlen(gs->s) + strlen(s) + 1;
 		if (l > gs->len) {
-			gs->s = xrealloc(gs->s, l);
+			gs->s = static_cast<char*>(xrealloc(gs->s, l));
 			gs->len = l;
 		}
 		strcat(gs->s, s);
@@ -127,3 +126,4 @@ char *xstrndup(const char *s, size_t n)
 	fprintf(stderr, "Out of memory.\n");
 	exit(1);
 }
+int yydebug = 0;

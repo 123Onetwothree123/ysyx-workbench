@@ -1,16 +1,13 @@
+import std;
+
 // SPDX-License-Identifier: GPL-2.0
 //
 // Copyright (C) 2018 Masahiro Yamada <yamada.masahiro@socionext.com>
 
-#include <ctype.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
-#include "list.h"
-#include "lkc.h"
+
+#include "list.hpp"
+#include "lkc.hpp"
 
 #define ARRAY_SIZE(arr)		(sizeof(arr) / sizeof((arr)[0]))
 
@@ -45,7 +42,7 @@ static void env_add(const char *name, const char *value)
 {
 	struct env *e;
 
-	e = xmalloc(sizeof(*e));
+	e = static_cast<struct env*>(xmalloc(sizeof(*e)));
 	e->name = xstrdup(name);
 	e->value = xstrdup(value);
 
@@ -297,7 +294,7 @@ void variable_add(const char *name, const char *value,
 		if (flavor == VAR_APPEND)
 			flavor = VAR_RECURSIVE;
 
-		v = xmalloc(sizeof(*v));
+		v = static_cast<struct variable*>(xmalloc(sizeof(*v)));
 		v->name = xstrdup(name);
 		v->exp_count = 0;
 		list_add_tail(&v->node, &variable_list);
@@ -311,8 +308,8 @@ void variable_add(const char *name, const char *value,
 		new_value = xstrdup(value);
 
 	if (append) {
-		v->value = xrealloc(v->value,
-				    strlen(v->value) + strlen(new_value) + 2);
+		v->value = static_cast<char*>(xrealloc(v->value,
+				    strlen(v->value) + strlen(new_value) + 2));
 		strcat(v->value, " ");
 		strcat(v->value, new_value);
 		free(new_value);
@@ -499,7 +496,7 @@ static char *__expand_string(const char **str, bool (*is_end)(char c),
 	char *expansion, *out;
 	size_t in_len, out_len;
 
-	out = xmalloc(1);
+	out = static_cast<char*>(xmalloc(1));
 	*out = 0;
 	out_len = 1;
 
@@ -511,7 +508,7 @@ static char *__expand_string(const char **str, bool (*is_end)(char c),
 			p++;
 			expansion = expand_dollar_with_args(&p, argc, argv);
 			out_len += in_len + strlen(expansion);
-			out = xrealloc(out, out_len);
+			out = static_cast<char*>(xrealloc(out, out_len));
 			strncat(out, in, in_len);
 			strcat(out, expansion);
 			free(expansion);
@@ -527,7 +524,7 @@ static char *__expand_string(const char **str, bool (*is_end)(char c),
 
 	in_len = p - in;
 	out_len += in_len;
-	out = xrealloc(out, out_len);
+	out = static_cast<char*>(xrealloc(out, out_len));
 	strncat(out, in, in_len);
 
 	/* Advance 'str' to the end character */

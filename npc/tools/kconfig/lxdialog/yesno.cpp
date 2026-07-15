@@ -1,15 +1,19 @@
+import std;
+
 // SPDX-License-Identifier: GPL-2.0+
 /*
- *  yesno.c -> yesno.cpp
+ *  yesno.c -- implements the yes/no box
  *
  *  ORIGINAL AUTHOR: Savio Lam (lam836@cs.cuhk.hk)
  *  MODIFIED FOR LINUX KERNEL CONFIG BY: William Roadcap (roadcap@cfw.com)
  */
 
-#include <cstdlib>
 #include "dialog.hpp"
 
-static void print_buttons(WINDOW *dialog, int height, int width, int selected)
+/*
+ * Display termination buttons
+ */
+static void print_buttons(WINDOW * dialog, int height, int width, int selected)
 {
 	int x = width / 2 - 10;
 	int y = height - 2;
@@ -21,9 +25,12 @@ static void print_buttons(WINDOW *dialog, int height, int width, int selected)
 	wrefresh(dialog);
 }
 
+/*
+ * Display a dialog box with two buttons - Yes and No
+ */
 int dialog_yesno(const char *title, const char *prompt, int height, int width)
 {
-	int key = 0, button = 0;
+	int i, x, y, key = 0, button = 0;
 	WINDOW *dialog;
 
 do_resize:
@@ -32,8 +39,9 @@ do_resize:
 	if (getmaxx(stdscr) < (width + YESNO_WIDTH_MIN))
 		return -ERRDISPLAYTOOSMALL;
 
-	int x = (getmaxx(stdscr) - width) / 2;
-	int y = (getmaxy(stdscr) - height) / 2;
+	/* center dialog box on screen */
+	x = (getmaxx(stdscr) - width) / 2;
+	y = (getmaxy(stdscr) - height) / 2;
 
 	draw_shadow(stdscr, y, x, height, width);
 
@@ -43,11 +51,11 @@ do_resize:
 	draw_box(dialog, 0, 0, height, width,
 		 dlg.dialog.atr, dlg.border.atr);
 	wattrset(dialog, dlg.border.atr);
-	mvwaddch(dialog, height - 3, 0, static_cast<chtype>(ACS_LTEE));
-	for (int i = 0; i < width - 2; i++)
-		waddch(dialog, static_cast<chtype>(ACS_HLINE));
+	mvwaddch(dialog, height - 3, 0, ACS_LTEE);
+	for (i = 0; i < width - 2; i++)
+		waddch(dialog, ACS_HLINE);
 	wattrset(dialog, dlg.dialog.atr);
-	waddch(dialog, static_cast<chtype>(ACS_RTEE));
+	waddch(dialog, ACS_RTEE);
 
 	print_title(dialog, title, width);
 
@@ -91,5 +99,5 @@ do_resize:
 	}
 
 	delwin(dialog);
-	return key;
+	return key;		/* ESC pressed */
 }

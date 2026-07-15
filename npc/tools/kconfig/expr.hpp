@@ -12,7 +12,7 @@ extern "C" {
 
 #include <assert.h>
 #include <stdio.h>
-#include "list.h"
+#include "list.hpp"
 #ifndef __cplusplus
 #include <stdbool.h>
 #endif
@@ -44,9 +44,9 @@ struct expr {
 	union expr_data left, right;
 };
 
-#define EXPR_OR(dep1, dep2)	(((dep1)>(dep2))?(dep1):(dep2))
-#define EXPR_AND(dep1, dep2)	(((dep1)<(dep2))?(dep1):(dep2))
-#define EXPR_NOT(dep)		(2-(dep))
+#define EXPR_OR(dep1, dep2) (static_cast<tristate>(((dep1)>(dep2))?(dep1):(dep2)))
+#define EXPR_AND(dep1, dep2) (static_cast<tristate>(((dep1)<(dep2))?(dep1):(dep2)))
+#define EXPR_NOT(dep) (static_cast<tristate>(2-(dep)))
 
 #define expr_list_for_each_sym(l, e, s) \
 	for (e = (l); e && (s = e->right.sym); e = e->left.expr)
@@ -85,7 +85,7 @@ struct symbol {
 	struct symbol *next;
 
 	/* The name of the symbol, e.g. "FOO" for 'config FOO' */
-	char *name;
+	const char *name;
 
 	/* S_BOOLEAN, S_TRISTATE, ... */
 	enum symbol_type type;

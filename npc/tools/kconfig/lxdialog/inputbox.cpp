@@ -1,17 +1,21 @@
+import std;
+
 // SPDX-License-Identifier: GPL-2.0+
 /*
- *  inputbox.c -> inputbox.cpp
+ *  inputbox.c -- implements the input box
  *
  *  ORIGINAL AUTHOR: Savio Lam (lam836@cs.cuhk.hk)
  *  MODIFIED FOR LINUX KERNEL CONFIG BY: William Roadcap (roadcap@cfw.com)
  */
 
-#include <cstdlib>
-#include <cstring>
-#include <cctype>
 #include "dialog.hpp"
 
-static void print_buttons(WINDOW *dialog, int height, int width, int selected)
+char dialog_input_result[MAX_LEN + 1];
+
+/*
+ *  Print the termination buttons
+ */
+static void print_buttons(WINDOW * dialog, int height, int width, int selected)
 {
 	int x = width / 2 - 11;
 	int y = height - 2;
@@ -23,10 +27,15 @@ static void print_buttons(WINDOW *dialog, int height, int width, int selected)
 	wrefresh(dialog);
 }
 
+/*
+ * Display a dialog box for inputing a string
+ */
 int dialog_inputbox(const char *title, const char *prompt, int height, int width,
 		    const char *init)
 {
+	int i, x, y, box_y, box_x, box_width;
 	int input_x = 0, key = 0, button = -1;
+	int show_x, len, pos;
 	char *instr = dialog_input_result;
 	WINDOW *dialog;
 
@@ -41,8 +50,9 @@ do_resize:
 	if (getmaxx(stdscr) <= (width - INPUTBOX_WIDTH_MIN))
 		return -ERRDISPLAYTOOSMALL;
 
-	int x = (getmaxx(stdscr) - width) / 2;
-	int y = (getmaxy(stdscr) - height) / 2;
+	/* center dialog box on screen */
+	x = (getmaxx(stdscr) - width) / 2;
+	y = (getmaxy(stdscr) - height) / 2;
 
 	draw_shadow(stdscr, y, x, height, width);
 
@@ -52,38 +62,38 @@ do_resize:
 	draw_box(dialog, 0, 0, height, width,
 		 dlg.dialog.atr, dlg.border.atr);
 	wattrset(dialog, dlg.border.atr);
-	mvwaddch(dialog, height - 3, 0, static_cast<chtype>(ACS_LTEE));
-	for (int i = 0; i < width - 2; i++)
-		waddch(dialog, static_cast<chtype>(ACS_HLINE));
+	mvwaddch(dialog, height - 3, 0, ACS_LTEE);
+	for (i = 0; i < width - 2; i++)
+		waddch(dialog, ACS_HLINE);
 	wattrset(dialog, dlg.dialog.atr);
-	waddch(dialog, static_cast<chtype>(ACS_RTEE));
+	waddch(dialog, ACS_RTEE);
 
 	print_title(dialog, title, width);
 
 	wattrset(dialog, dlg.dialog.atr);
 	print_autowrap(dialog, prompt, width - 2, 1, 3);
 
-	int box_width = width - 6;
-	int box_y_dummy, box_x_dummy;
-	getyx(dialog, box_y_dummy, box_x_dummy);
-	int box_y = box_y_dummy + 2;
-	int box_x = (width - box_width) / 2;
-	draw_box(dialog, box_y_dummy + 1, box_x - 1, 3, box_width + 2,
+	/* Draw the input field box */
+	box_width = width - 6;
+	getyx(dialog, y, x);
+	box_y = y + 2;
+	box_x = (width - box_width) / 2;
+	draw_box(dialog, y + 1, box_x - 1, 3, box_width + 2,
 		 dlg.dialog.atr, dlg.border.atr);
 
 	print_buttons(dialog, height, width, 0);
 
+	/* Set up the initial value */
 	wmove(dialog, box_y, box_x);
 	wattrset(dialog, dlg.inputbox.atr);
 
-	int len = strlen(instr);
-	int pos = len;
-	int show_x;
+	len = strlen(instr);
+	pos = len;
 
 	if (len >= box_width) {
 		show_x = len - box_width + 1;
 		input_x = box_width - 1;
-		for (int i = 0; i < box_width - 1; i++)
+		for (i = 0; i < box_width - 1; i++)
 			waddch(dialog, instr[show_x + i]);
 	} else {
 		show_x = 0;
@@ -98,15 +108,15 @@ do_resize:
 	while (key != KEY_ESC) {
 		key = wgetch(dialog);
 
-		if (button == -1) {
+		if (button == -1) {	/* Input box selected */
 			switch (key) {
 			case TAB:
 			case KEY_UP:
 			case KEY_DOWN:
 				break;
 			case KEY_BACKSPACE:
-			case 8:
-			case 127:
+			case 8:   /* ^H */
+			case 127: /* ^? */
 				if (pos) {
 					wattrset(dialog, dlg.inputbox.atr);
 					if (input_x == 0) {
@@ -115,8 +125,8 @@ do_resize:
 						input_x--;
 
 					if (pos < len) {
-						for (int i = pos - 1; i < len; i++) {
-							instr[i] = instr[i + 1];
+						for (i = pos - 1; i < len; i++) {
+							instr[i] = instr[i+1];
 						}
 					}
 
@@ -124,7 +134,7 @@ do_resize:
 					len--;
 					instr[len] = '\0';
 					wmove(dialog, box_y, box_x);
-					for (int i = 0; i < box_width; i++) {
+					for (i = 0; i < box_width; i++) {
 						if (!instr[show_x + i]) {
 							waddch(dialog, ' ');
 							break;
@@ -142,7 +152,7 @@ do_resize:
 					} else if (input_x == 0) {
 						show_x--;
 						wmove(dialog, box_y, box_x);
-						for (int i = 0; i < box_width; i++) {
+						for (i = 0; i < box_width; i++) {
 							if (!instr[show_x + i]) {
 								waddch(dialog, ' ');
 								break;
@@ -161,7 +171,7 @@ do_resize:
 					} else if (input_x == box_width - 1) {
 						show_x++;
 						wmove(dialog, box_y, box_x);
-						for (int i = 0; i < box_width; i++) {
+						for (i = 0; i < box_width; i++) {
 							if (!instr[show_x + i]) {
 								waddch(dialog, ' ');
 								break;
@@ -178,8 +188,8 @@ do_resize:
 					if (len < MAX_LEN) {
 						wattrset(dialog, dlg.inputbox.atr);
 						if (pos < len) {
-							for (int i = len; i > pos; i--)
-								instr[i] = instr[i - 1];
+							for (i = len; i > pos; i--)
+								instr[i] = instr[i-1];
 							instr[pos] = key;
 						} else {
 							instr[len] = key;
@@ -195,7 +205,7 @@ do_resize:
 						}
 
 						wmove(dialog, box_y, box_x);
-						for (int i = 0; i < box_width; i++) {
+						for (i = 0; i < box_width; i++) {
 							if (!instr[show_x + i]) {
 								waddch(dialog, ' ');
 								break;
@@ -205,7 +215,7 @@ do_resize:
 						wmove(dialog, box_y, input_x + box_x);
 						wrefresh(dialog);
 					} else
-						flash();
+						flash();	/* Alarm user about overflow */
 					continue;
 				}
 			}
@@ -223,17 +233,17 @@ do_resize:
 		case KEY_LEFT:
 			switch (button) {
 			case -1:
-				button = 1;
+				button = 1;	/* Indicates "Help" button is selected */
 				print_buttons(dialog, height, width, 1);
 				break;
 			case 0:
-				button = -1;
+				button = -1;	/* Indicates input box is selected */
 				print_buttons(dialog, height, width, 0);
 				wmove(dialog, box_y, box_x + input_x);
 				wrefresh(dialog);
 				break;
 			case 1:
-				button = 0;
+				button = 0;	/* Indicates "OK" button is selected */
 				print_buttons(dialog, height, width, 0);
 				break;
 			}
@@ -243,15 +253,15 @@ do_resize:
 		case KEY_RIGHT:
 			switch (button) {
 			case -1:
-				button = 0;
+				button = 0;	/* Indicates "OK" button is selected */
 				print_buttons(dialog, height, width, 0);
 				break;
 			case 0:
-				button = 1;
+				button = 1;	/* Indicates "Help" button is selected */
 				print_buttons(dialog, height, width, 1);
 				break;
 			case 1:
-				button = -1;
+				button = -1;	/* Indicates input box is selected */
 				print_buttons(dialog, height, width, 0);
 				wmove(dialog, box_y, box_x + input_x);
 				wrefresh(dialog);
@@ -277,5 +287,5 @@ do_resize:
 	}
 
 	delwin(dialog);
-	return KEY_ESC;
+	return KEY_ESC;		/* ESC pressed */
 }

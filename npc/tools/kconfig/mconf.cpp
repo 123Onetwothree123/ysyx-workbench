@@ -1,769 +1,1043 @@
-// SPDX-License-Identifier: GPL-2.0
-// C++23 ncurses menuconfig UI — faithful port of mconf.c + lxdialog
-#include <ncurses.h>
-#include <cctype>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+import std;
 #include <clocale>
-#include <string>
-#include <string_view>
-#include <vector>
-#include <print>
-#include <algorithm>
+#include <clocale>
 
-import npc.kconfig;
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
+ *
+ * Introduced single menu mode (show all sub-menus in one large tree).
+ * 2002-11-06 Petr Baudis <pasky@ucw.cz>
+ *
+ * i18n, 2005, Arnaldo Carvalho de Melo <acme@conectiva.com.br>
+ */
 
-static const char *menu_instructions =
-    "Arrow keys navigate the menu.  <Enter> selects submenus ---> (or empty "
-    "submenus ----).  Highlighted letters are hotkeys.  Pressing <Y> "
-    "includes, <N> excludes, <M> modularizes features.  Press "
-    "<Esc><Esc> to exit, <?> for Help, </> for Search.  "
-    "Legend: [*] built-in  [ ] excluded  <M> module  < > module capable";
+#include <fcntl.h>
+#include <signal.h>
+#include <unistd.h>
+
+#include "lkc.hpp"
+#include "lxdialog/dialog.hpp"
 
 static const char mconf_readme[] =
-    "Overview\n"
-    "--------\n"
-    "This interface lets you select features and parameters for the build.\n"
-    "Features can either be built-in, modularized, or ignored. Parameters\n"
-    "must be entered in as decimal or hexadecimal numbers or text.\n\n"
-    "Menu items beginning with following braces represent features that\n"
-    "  [ ] can be built in or removed\n"
-    "  < > can be built in, modularized or removed\n"
-    "  { } can be built in or modularized (selected by other feature)\n"
-    "  - - are selected by other feature,\n"
-    "while *, M or whitespace inside braces means to build in, build as\n"
-    "a module or to exclude the feature respectively.\n\n"
-    "To change any of these features, highlight it with the cursor\n"
-    "keys and press <Y> to build it in, <M> to make it a module or\n"
-    "<N> to remove it.  You may also press the <Space Bar> to cycle\n"
-    "through the available options (i.e. Y->N->M->Y).\n\n"
-    "Some additional keyboard hints:\n\n"
-    "Menus\n"
-    "----------\n"
-    "o  Use the Up/Down arrow keys (cursor keys) to highlight the item you\n"
-    "   wish to change or the submenu you wish to select and press <Enter>.\n"
-    "   Submenus are designated by \"--->\", empty ones by \"----\".\n\n"
-    "   Shortcut: Press the option's highlighted letter (hotkey).\n"
-    "o  To exit a menu use the cursor keys to highlight the <Exit> button\n"
-    "   and press <ENTER>.\n"
-    "   Shortcut: Press <ESC><ESC> or <E> or <X>.\n"
-    "o  To get help with an item, press <H> or <?>.\n"
-    "o  To toggle the display of hidden options, press <Z>.\n\n"
-    "Radiolists (Choice lists)\n"
-    "-----------\n"
-    "o  Use the cursor keys to select the option you wish to set and press\n"
-    "   <S> or the <SPACE BAR> to select it.\n\n"
-    "Searching\n"
-    "---------\n"
-    "o  Press </> to search forward for a string.\n";
+"Overview\n"
+"--------\n"
+"This interface lets you select features and parameters for the build.\n"
+"Features can either be built-in, modularized, or ignored. Parameters\n"
+"must be entered in as decimal or hexadecimal numbers or text.\n"
+"\n"
+"Menu items beginning with following braces represent features that\n"
+"  [ ] can be built in or removed\n"
+"  < > can be built in, modularized or removed\n"
+"  { } can be built in or modularized (selected by other feature)\n"
+"  - - are selected by other feature,\n"
+"while *, M or whitespace inside braces means to build in, build as\n"
+"a module or to exclude the feature respectively.\n"
+"\n"
+"To change any of these features, highlight it with the cursor\n"
+"keys and press <Y> to build it in, <M> to make it a module or\n"
+"<N> to remove it.  You may also press the <Space Bar> to cycle\n"
+"through the available options (i.e. Y->N->M->Y).\n"
+"\n"
+"Some additional keyboard hints:\n"
+"\n"
+"Menus\n"
+"----------\n"
+"o  Use the Up/Down arrow keys (cursor keys) to highlight the item you\n"
+"   wish to change or the submenu you wish to select and press <Enter>.\n"
+"   Submenus are designated by \"--->\", empty ones by \"----\".\n"
+"\n"
+"   Shortcut: Press the option's highlighted letter (hotkey).\n"
+"             Pressing a hotkey more than once will sequence\n"
+"             through all visible items which use that hotkey.\n"
+"\n"
+"   You may also use the <PAGE UP> and <PAGE DOWN> keys to scroll\n"
+"   unseen options into view.\n"
+"\n"
+"o  To exit a menu use the cursor keys to highlight the <Exit> button\n"
+"   and press <ENTER>.\n"
+"\n"
+"   Shortcut: Press <ESC><ESC> or <E> or <X> if there is no hotkey\n"
+"             using those letters.  You may press a single <ESC>, but\n"
+"             there is a delayed response which you may find annoying.\n"
+"\n"
+"   Also, the <TAB> and cursor keys will cycle between <Select>,\n"
+"   <Exit>, <Help>, <Save>, and <Load>.\n"
+"\n"
+"o  To get help with an item, use the cursor keys to highlight <Help>\n"
+"   and press <ENTER>.\n"
+"\n"
+"   Shortcut: Press <H> or <?>.\n"
+"\n"
+"o  To toggle the display of hidden options, press <Z>.\n"
+"\n"
+"\n"
+"Radiolists  (Choice lists)\n"
+"-----------\n"
+"o  Use the cursor keys to select the option you wish to set and press\n"
+"   <S> or the <SPACE BAR>.\n"
+"\n"
+"   Shortcut: Press the first letter of the option you wish to set then\n"
+"             press <S> or <SPACE BAR>.\n"
+"\n"
+"o  To see available help for the item, use the cursor keys to highlight\n"
+"   <Help> and Press <ENTER>.\n"
+"\n"
+"   Shortcut: Press <H> or <?>.\n"
+"\n"
+"   Also, the <TAB> and cursor keys will cycle between <Select> and\n"
+"   <Help>\n"
+"\n"
+"\n"
+"Data Entry\n"
+"-----------\n"
+"o  Enter the requested information and press <ENTER>\n"
+"   If you are entering hexadecimal values, it is not necessary to\n"
+"   add the '0x' prefix to the entry.\n"
+"\n"
+"o  For help, use the <TAB> or cursor keys to highlight the help option\n"
+"   and press <ENTER>.  You can try <TAB><H> as well.\n"
+"\n"
+"\n"
+"Text Box    (Help Window)\n"
+"--------\n"
+"o  Use the cursor keys to scroll up/down/left/right.  The VI editor\n"
+"   keys h,j,k,l function here as do <u>, <d>, <SPACE BAR> and <B> for\n"
+"   those who are familiar with less and lynx.\n"
+"\n"
+"o  Press <E>, <X>, <q>, <Enter> or <Esc><Esc> to exit.\n"
+"\n"
+"\n"
+"Alternate Configuration Files\n"
+"-----------------------------\n"
+"Menuconfig supports the use of alternate configuration files for\n"
+"those who, for various reasons, find it necessary to switch\n"
+"between different configurations.\n"
+"\n"
+"The <Save> button will let you save the current configuration to\n"
+"a file of your choosing.  Use the <Load> button to load a previously\n"
+"saved alternate configuration.\n"
+"\n"
+"Even if you don't use alternate configuration files, but you find\n"
+"during a Menuconfig session that you have completely messed up your\n"
+"settings, you may use the <Load> button to restore your previously\n"
+"saved settings from \".config\" without restarting Menuconfig.\n"
+"\n"
+"Other information\n"
+"-----------------\n"
+"If you use Menuconfig in an XTERM window, make sure you have your\n"
+"$TERM variable set to point to an xterm definition which supports\n"
+"color.  Otherwise, Menuconfig will look rather bad.  Menuconfig will\n"
+"not display correctly in an RXVT window because rxvt displays only one\n"
+"intensity of color, bright.\n"
+"\n"
+"Menuconfig will display larger menus on screens or xterms which are\n"
+"set to display more than the standard 25 row by 80 column geometry.\n"
+"In order for this to work, the \"stty size\" command must be able to\n"
+"display the screen's current row and column geometry.  I STRONGLY\n"
+"RECOMMEND that you make sure you do NOT have the shell variables\n"
+"LINES and COLUMNS exported into your environment.  Some distributions\n"
+"export those variables via /etc/profile.  Some ncurses programs can\n"
+"become confused when those variables (LINES & COLUMNS) don't reflect\n"
+"the true screen size.\n"
+"\n"
+"Optional personality available\n"
+"------------------------------\n"
+"If you prefer to have all of the options listed in a single menu,\n"
+"rather than the default multimenu hierarchy, run the menuconfig with\n"
+"MENUCONFIG_MODE environment variable set to single_menu. Example:\n"
+"\n"
+"make MENUCONFIG_MODE=single_menu menuconfig\n"
+"\n"
+"<Enter> will then unroll the appropriate category, or enfold it if it\n"
+"is already unrolled.\n"
+"\n"
+"Note that this mode can eventually be a little more CPU expensive\n"
+"(especially with a larger number of unrolled categories) than the\n"
+"default mode.\n"
+"\n"
+"Different color themes available\n"
+"--------------------------------\n"
+"It is possible to select different color themes using the variable\n"
+"MENUCONFIG_COLOR. To select a theme use:\n"
+"\n"
+"make MENUCONFIG_COLOR=<theme> menuconfig\n"
+"\n"
+"Available themes are\n"
+" mono       => selects colors suitable for monochrome displays\n"
+" blackbg    => selects a color scheme with black background\n"
+" classic    => theme with blue background. The classic look\n"
+" bluetitle  => an LCD friendly version of classic. (default)\n"
+"\n",
+menu_instructions[] =
+	"Arrow keys navigate the menu.  "
+	"<Enter> selects submenus ---> (or empty submenus ----).  "
+	"Highlighted letters are hotkeys.  "
+	"Pressing <Y> includes, <N> excludes, <M> modularizes features.  "
+	"Press <Esc><Esc> to exit, <?> for Help, </> for Search.  "
+	"Legend: [*] built-in  [ ] excluded  <M> module  < > module capable",
+radiolist_instructions[] =
+	"Use the arrow keys to navigate this window or "
+	"press the hotkey of the item you wish to select "
+	"followed by the <SPACE BAR>. "
+	"Press <?> for additional information about this option.",
+inputbox_instructions_int[] =
+	"Please enter a decimal value. "
+	"Fractions will not be accepted.  "
+	"Use the <TAB> key to move from the input field to the buttons below it.",
+inputbox_instructions_hex[] =
+	"Please enter a hexadecimal value. "
+	"Use the <TAB> key to move from the input field to the buttons below it.",
+inputbox_instructions_string[] =
+	"Please enter a string value. "
+	"Use the <TAB> key to move from the input field to the buttons below it.",
+setmod_text[] =
+	"This feature depends on another which has been configured as a module.\n"
+	"As a result, this feature will be built as a module.",
+load_config_text[] =
+	"Enter the name of the configuration file you wish to load.  "
+	"Accept the name shown to restore the configuration you "
+	"last retrieved.  Leave blank to abort.",
+load_config_help[] =
+	"\n"
+	"For various reasons, one may wish to keep several different\n"
+	"configurations available on a single machine.\n"
+	"\n"
+	"If you have saved a previous configuration in a file other than the\n"
+	"default one, entering its name here will allow you to modify that\n"
+	"configuration.\n"
+	"\n"
+	"If you are uncertain, then you have probably never used alternate\n"
+	"configuration files. You should therefore leave this blank to abort.\n",
+save_config_text[] =
+	"Enter a filename to which this configuration should be saved "
+	"as an alternate.  Leave blank to abort.",
+save_config_help[] =
+	"\n"
+	"For various reasons, one may wish to keep different configurations\n"
+	"available on a single machine.\n"
+	"\n"
+	"Entering a file name here will allow you to later retrieve, modify\n"
+	"and use the current configuration as an alternate to whatever\n"
+	"configuration options you have selected at that time.\n"
+	"\n"
+	"If you are uncertain what all this means then you should probably\n"
+	"leave this blank.\n",
+search_help[] =
+	"\n"
+	"Search for symbols and display their relations.\n"
+	"Regular expressions are allowed.\n"
+	"Example: search for \"^FOO\"\n"
+	"Result:\n"
+	"-----------------------------------------------------------------\n"
+	"Symbol: FOO [=m]\n"
+	"Type  : tristate\n"
+	"Prompt: Foo bus is used to drive the bar HW\n"
+	"  Location:\n"
+	"    -> Bus options (PCI, PCMCIA, EISA, ISA)\n"
+	"      -> PCI support (PCI [=y])\n"
+	"(1)     -> PCI access mode (<choice> [=y])\n"
+	"  Defined at drivers/pci/Kconfig:47\n"
+	"  Depends on: X86_LOCAL_APIC && X86_IO_APIC || IA64\n"
+	"  Selects: LIBCRC32\n"
+	"  Selected by: BAR [=n]\n"
+	"-----------------------------------------------------------------\n"
+	"o The line 'Type:' shows the type of the configuration option for\n"
+	"  this symbol (bool, tristate, string, ...)\n"
+	"o The line 'Prompt:' shows the text used in the menu structure for\n"
+	"  this symbol\n"
+	"o The 'Defined at' line tells at what file / line number the symbol\n"
+	"  is defined\n"
+	"o The 'Depends on:' line tells what symbols need to be defined for\n"
+	"  this symbol to be visible in the menu (selectable)\n"
+	"o The 'Location:' lines tells where in the menu structure this symbol\n"
+	"  is located\n"
+	"    A location followed by a [=y] indicates that this is a\n"
+	"    selectable menu item - and the current value is displayed inside\n"
+	"    brackets.\n"
+	"    Press the key in the (#) prefix to jump directly to that\n"
+	"    location. You will be returned to the current search results\n"
+	"    after exiting this new menu.\n"
+	"o The 'Selects:' line tells what symbols will be automatically\n"
+	"  selected if this symbol is selected (y or m)\n"
+	"o The 'Selected by' line tells what symbol has selected this symbol\n"
+	"\n"
+	"Only relevant lines are shown.\n"
+	"\n\n"
+	"Search examples:\n"
+	"Examples: USB	=> find all symbols containing USB\n"
+	"          ^USB => find all symbols starting with USB\n"
+	"          USB$ => find all symbols ending with USB\n"
+	"\n";
 
-// ============================================================
-// Data structures
-// ============================================================
-struct MenuItem {
-    std::string text;
-    char tag = 0;           // 't'=toggle, 's'=string, 'm'=menu, ':'=separator
-    menu *data = nullptr;   // associated menu
-    int hotkey = -1;        // hotkey character position
-    bool visible = true;
+static int indent;
+static int child_count;
+static int single_menu_mode;
+static int show_all_options;
+static int save_and_exit;
+static int silent;
+
+static void conf(struct menu *menu, struct menu *active_menu);
+static void conf_choice(struct menu *menu);
+static void conf_string(struct menu *menu);
+static void conf_load(void);
+static void conf_save(void);
+static int show_textbox_ext(const char *title, char *text, int r, int c,
+			    int *keys, int *vscroll, int *hscroll,
+			    update_text_fn update_text, void *data);
+static void show_textbox(const char *title, const char *text, int r, int c);
+static void show_helptext(const char *title, const char *text);
+static void show_help(struct menu *menu);
+
+static char filename[PATH_MAX+1];
+static void set_config_filename(const char *config_filename)
+{
+	static char menu_backtitle[PATH_MAX+128];
+	int size;
+
+	size = snprintf(menu_backtitle, sizeof(menu_backtitle),
+			"%s - %s", config_filename, rootmenu.prompt->text);
+	if (size >= sizeof(menu_backtitle))
+		menu_backtitle[sizeof(menu_backtitle)-1] = '\0';
+	set_dialog_backtitle(menu_backtitle);
+
+	size = snprintf(filename, sizeof(filename), "%s", config_filename);
+	if (size >= sizeof(filename))
+		filename[sizeof(filename)-1] = '\0';
+}
+
+struct subtitle_part {
+	struct list_head entries;
+	const char *text;
+};
+static LIST_HEAD(trail);
+
+static struct subtitle_list *subtitles;
+static void set_subtitle(void)
+{
+	struct subtitle_part *sp;
+	struct subtitle_list *pos, *tmp;
+
+	for (pos = subtitles; pos != NULL; pos = tmp) {
+		tmp = pos->next;
+		free(pos);
+	}
+
+	subtitles = NULL;
+	list_for_each_entry(sp, &trail, entries) {
+		if (sp->text) {
+			if (pos) {
+				pos->next = static_cast<struct subtitle_list*>(xcalloc(1, sizeof(*pos)));
+				pos = pos->next;
+			} else {
+				subtitles = pos = static_cast<struct subtitle_list*>(xcalloc(1, sizeof(*pos)));
+			}
+			pos->text = sp->text;
+		}
+	}
+
+	set_dialog_subtitles(subtitles);
+}
+
+static void reset_subtitle(void)
+{
+	struct subtitle_list *pos, *tmp;
+
+	for (pos = subtitles; pos != NULL; pos = tmp) {
+		tmp = pos->next;
+		free(pos);
+	}
+	subtitles = NULL;
+	set_dialog_subtitles(subtitles);
+}
+
+struct search_data {
+	struct list_head *head;
+	struct menu **targets;
+	int *keys;
 };
 
-struct SearchResult {
-    menu *target;
-    int key;
-};
+static void update_text(char *buf, size_t start, size_t end, void *_data)
+{
+	struct search_data *data = static_cast<struct search_data*>(_data);
+	struct jump_key *pos;
+	int k = 0;
 
-static std::vector<MenuItem> items;
-static int item_idx = 0;        // currently selected item index
-static int vscroll = 0;          // vscroll offset
-static int max_visible = 1;
-static bool show_all = false;
-static bool single_menu_mode = false;
-static int saved_scroll = 0;
-static menu *saved_menu = nullptr;
-static std::string search_str;
-static std::vector<SearchResult> jump_table;
-static int saved_x = 0, saved_y = 0;
-static bool need_resize = false;
-static WINDOW *main_win = nullptr;
-static WINDOW *menu_win = nullptr;
-static WINDOW *help_win = nullptr;
-static menu *current = nullptr;
-static std::vector<const char *> trail;
-static std::string config_filename = ".config";
+	list_for_each_entry(pos, data->head, entries) {
+		if (pos->offset >= start && pos->offset < end) {
+			char header[4];
 
-// ============================================================
-// Color scheme (classic blue theme matching original)
-// ============================================================
-enum ColorPair {
-    COL_SCREEN = 1, SHADOW, DIALOG, TITLE, BORDER,
-    BUTTON_ACTIVE, BUTTON_INACTIVE,
-    BUTTON_KEY_ACTIVE, BUTTON_KEY_INACTIVE,
-    BUTTON_LABEL_ACTIVE, BUTTON_LABEL_INACTIVE,
-    MENUBOX, MENUBOX_BORDER,
-    ITEM, ITEM_SELECTED,
-    TAG, TAG_SELECTED, TAG_KEY, TAG_KEY_SELECTED,
-    CHECK, CHECK_SELECTED,
-    UARROW, DARROW,
-    SEARCHBOX, SEARCHBOX_TITLE, SEARCHBOX_BORDER,
-    POSITION, INPUTBOX, INPUTBOX_BORDER,
-};
+			if (k < JUMP_NB) {
+				int key = '0' + (pos->index % JUMP_NB) + 1;
 
-static void init_colors() {
-    if (!has_colors()) return;
-    start_color();
-    #define PC(p, f, b) init_pair(p, f, b)
-    PC(COL_SCREEN,              COLOR_CYAN,   COLOR_BLUE);
-    PC(SHADOW,              COLOR_BLACK,  COLOR_BLACK);
-    PC(DIALOG,              COLOR_BLACK,  COLOR_WHITE);
-    PC(TITLE,               COLOR_YELLOW, COLOR_WHITE);
-    PC(BORDER,              COLOR_WHITE,  COLOR_WHITE);
-    PC(BUTTON_ACTIVE,       COLOR_WHITE,  COLOR_BLUE);
-    PC(BUTTON_INACTIVE,     COLOR_BLACK,  COLOR_WHITE);
-    PC(BUTTON_KEY_ACTIVE,   COLOR_WHITE,  COLOR_BLUE);
-    PC(BUTTON_KEY_INACTIVE, COLOR_RED,    COLOR_WHITE);
-    PC(BUTTON_LABEL_ACTIVE, COLOR_YELLOW, COLOR_BLUE);
-    PC(BUTTON_LABEL_INACTIVE,COLOR_BLACK,  COLOR_WHITE);
-    PC(MENUBOX,             COLOR_BLACK,  COLOR_WHITE);
-    PC(MENUBOX_BORDER,      COLOR_WHITE,  COLOR_WHITE);
-    PC(ITEM,                COLOR_BLACK,  COLOR_WHITE);
-    PC(ITEM_SELECTED,       COLOR_WHITE,  COLOR_BLUE);
-    PC(TAG,                 COLOR_YELLOW, COLOR_WHITE);
-    PC(TAG_SELECTED,        COLOR_YELLOW, COLOR_BLUE);
-    PC(TAG_KEY,             COLOR_YELLOW, COLOR_WHITE);
-    PC(TAG_KEY_SELECTED,    COLOR_YELLOW, COLOR_BLUE);
-    PC(CHECK,               COLOR_BLACK,  COLOR_WHITE);
-    PC(CHECK_SELECTED,      COLOR_WHITE,  COLOR_BLUE);
-    PC(UARROW,              COLOR_GREEN,  COLOR_WHITE);
-    PC(DARROW,              COLOR_GREEN,  COLOR_WHITE);
-    PC(SEARCHBOX,           COLOR_BLACK,  COLOR_WHITE);
-    PC(SEARCHBOX_TITLE,     COLOR_YELLOW, COLOR_WHITE);
-    PC(SEARCHBOX_BORDER,    COLOR_WHITE,  COLOR_WHITE);
-    PC(POSITION,            COLOR_YELLOW, COLOR_WHITE);
-    PC(INPUTBOX,            COLOR_BLACK,  COLOR_WHITE);
-    PC(INPUTBOX_BORDER,     COLOR_BLACK,  COLOR_WHITE);
-    #undef PC
-}
-static int attr(int pair, bool bold = false) {
-    if (!has_colors()) return bold ? A_BOLD : A_NORMAL;
-    return bold ? (COLOR_PAIR(pair) | A_BOLD) : COLOR_PAIR(pair);
+				sprintf(header, "(%c)", key);
+				data->keys[k] = key;
+				data->targets[k] = pos->target;
+				k++;
+			} else {
+				sprintf(header, "   ");
+			}
+
+			memcpy(buf + pos->offset, header, sizeof(header) - 1);
+		}
+	}
+	data->keys[k] = 0;
 }
 
-// ============================================================
-// Drawing helpers
-// ============================================================
-static void draw_box(WINDOW *win, int y, int x, int h, int w, int border_attr) {
-    wattron(win, border_attr);
-    for (int i = 0; i < h; i++) {
-        mvwaddch(win, y + i, x, ACS_VLINE);
-        mvwaddch(win, y + i, x + w - 1, ACS_VLINE);
-    }
-    for (int i = 0; i < w; i++) {
-        mvwaddch(win, y, x + i, ACS_HLINE);
-        mvwaddch(win, y + h - 1, x + i, ACS_HLINE);
-    }
-    mvwaddch(win, y, x, ACS_ULCORNER);
-    mvwaddch(win, y, x + w - 1, ACS_URCORNER);
-    mvwaddch(win, y + h - 1, x, ACS_LLCORNER);
-    mvwaddch(win, y + h - 1, x + w - 1, ACS_LRCORNER);
-    wattroff(win, border_attr);
+static void search_conf(void)
+{
+	struct symbol **sym_arr;
+	struct gstr res;
+	struct gstr title;
+	char *dialog_input;
+	int dres, vscroll = 0, hscroll = 0;
+	bool again;
+	struct gstr sttext;
+	struct subtitle_part stpart;
+
+	title = str_new();
+	str_printf( &title, "Enter (sub)string or regexp to search for "
+			      "(with or without \"%s\")", CONFIG_);
+
+again:
+	dialog_clear();
+	dres = dialog_inputbox("Search Configuration Parameter",
+			      str_get(&title),
+			      10, 75, "");
+	switch (dres) {
+	case 0:
+		break;
+	case 1:
+		show_helptext("Search Configuration", search_help);
+		goto again;
+	default:
+		str_free(&title);
+		return;
+	}
+
+	/* strip the prefix if necessary */
+	dialog_input = dialog_input_result;
+	if (strncasecmp(dialog_input_result, CONFIG_, strlen(CONFIG_)) == 0)
+		dialog_input += strlen(CONFIG_);
+
+	sttext = str_new();
+	str_printf(&sttext, "Search (%s)", dialog_input_result);
+	stpart.text = str_get(&sttext);
+	list_add_tail(&stpart.entries, &trail);
+
+	sym_arr = sym_re_search(dialog_input);
+	do {
+		LIST_HEAD(head);
+		struct menu *targets[JUMP_NB];
+		int keys[JUMP_NB + 1], i;
+		struct search_data data = {
+			.head = &head,
+			.targets = targets,
+			.keys = keys,
+		};
+		struct jump_key *pos, *tmp;
+
+		res = get_relations_str(sym_arr, &head);
+		set_subtitle();
+		dres = show_textbox_ext("Search Results", (char *)
+					str_get(&res), 0, 0, keys, &vscroll,
+					&hscroll, &update_text, (void *)
+					&data);
+		again = false;
+		for (i = 0; i < JUMP_NB && keys[i]; i++)
+			if (dres == keys[i]) {
+				conf(targets[i]->parent, targets[i]);
+				again = true;
+			}
+		str_free(&res);
+		list_for_each_entry_safe(pos, tmp, &head, entries)
+			free(pos);
+	} while (again);
+	free(sym_arr);
+	str_free(&title);
+	list_del(trail.prev);
+	str_free(&sttext);
 }
 
-static void draw_shadow(WINDOW *win, int y, int x, int h, int w) {
-    if (!has_colors()) return;
-    wattron(win, attr(SHADOW));
-    for (int i = 0; i < h; i++)
-        mvwaddch(win, y + i + 1, x + w, ' ');
-    for (int i = 0; i < w; i++)
-        mvwaddch(win, y + h, x + i + 1, ' ');
-    wattroff(win, attr(SHADOW));
+static void build_conf(struct menu *menu)
+{
+	struct symbol *sym;
+	struct property *prop;
+	struct menu *child;
+	int type, tmp, doint = 2;
+	tristate val;
+	char ch;
+	bool visible;
+
+	/*
+	 * note: menu_is_visible() has side effect that it will
+	 * recalc the value of the symbol.
+	 */
+	visible = menu_is_visible(menu);
+	if (show_all_options && !menu_has_prompt(menu))
+		return;
+	else if (!show_all_options && !visible)
+		return;
+
+	sym = menu->sym;
+	prop = menu->prompt;
+	if (!sym) {
+		if (prop && menu != current_menu) {
+			const char *prompt = menu_get_prompt(menu);
+			switch (prop->type) {
+			case P_MENU:
+				child_count++;
+				if (single_menu_mode) {
+					item_make("%s%*c%s",
+						  menu->data ? "-->" : "++>",
+						  indent + 1, ' ', prompt);
+				} else
+					item_make("   %*c%s  %s",
+						  indent + 1, ' ', prompt,
+						  menu_is_empty(menu) ? "----" : "--->");
+				item_set_tag('m');
+				item_set_data(menu);
+				if (single_menu_mode && menu->data)
+					goto conf_childs;
+				return;
+			case P_COMMENT:
+				if (prompt) {
+					child_count++;
+					item_make("   %*c*** %s ***", indent + 1, ' ', prompt);
+					item_set_tag(':');
+					item_set_data(menu);
+				}
+				break;
+			default:
+				if (prompt) {
+					child_count++;
+					item_make("---%*c%s", indent + 1, ' ', prompt);
+					item_set_tag(':');
+					item_set_data(menu);
+				}
+			}
+		} else
+			doint = 0;
+		goto conf_childs;
+	}
+
+	type = sym_get_type(sym);
+	if (sym_is_choice(sym)) {
+		struct symbol *def_sym = sym_get_choice_value(sym);
+		struct menu *def_menu = NULL;
+
+		child_count++;
+		for (child = menu->list; child; child = child->next) {
+			if (menu_is_visible(child) && child->sym == def_sym)
+				def_menu = child;
+		}
+
+		val = sym_get_tristate_value(sym);
+		if (sym_is_changeable(sym)) {
+			switch (type) {
+			case S_BOOLEAN:
+				item_make("[%c]", val == no ? ' ' : '*');
+				break;
+			case S_TRISTATE:
+				switch (val) {
+				case yes: ch = '*'; break;
+				case mod: ch = 'M'; break;
+				default:  ch = ' '; break;
+				}
+				item_make("<%c>", ch);
+				break;
+			}
+			item_set_tag('t');
+			item_set_data(menu);
+		} else {
+			item_make("   ");
+			item_set_tag(def_menu ? 't' : ':');
+			item_set_data(menu);
+		}
+
+		item_add_str("%*c%s", indent + 1, ' ', menu_get_prompt(menu));
+		if (val == yes) {
+			if (def_menu) {
+				item_add_str(" (%s)", menu_get_prompt(def_menu));
+				item_add_str("  --->");
+				if (def_menu->list) {
+					indent += 2;
+					build_conf(def_menu);
+					indent -= 2;
+				}
+			}
+			return;
+		}
+	} else {
+		if (menu == current_menu) {
+			item_make("---%*c%s", indent + 1, ' ', menu_get_prompt(menu));
+			item_set_tag(':');
+			item_set_data(menu);
+			goto conf_childs;
+		}
+		child_count++;
+		val = sym_get_tristate_value(sym);
+		if (sym_is_choice_value(sym) && val == yes) {
+			item_make("   ");
+			item_set_tag(':');
+			item_set_data(menu);
+		} else {
+			switch (type) {
+			case S_BOOLEAN:
+				if (sym_is_changeable(sym))
+					item_make("[%c]", val == no ? ' ' : '*');
+				else
+					item_make("-%c-", val == no ? ' ' : '*');
+				item_set_tag('t');
+				item_set_data(menu);
+				break;
+			case S_TRISTATE:
+				switch (val) {
+				case yes: ch = '*'; break;
+				case mod: ch = 'M'; break;
+				default:  ch = ' '; break;
+				}
+				if (sym_is_changeable(sym)) {
+					if (sym->rev_dep.tri == mod)
+						item_make("{%c}", ch);
+					else
+						item_make("<%c>", ch);
+				} else
+					item_make("-%c-", ch);
+				item_set_tag('t');
+				item_set_data(menu);
+				break;
+			default:
+				tmp = 2 + strlen(sym_get_string_value(sym)); /* () = 2 */
+				item_make("(%s)", sym_get_string_value(sym));
+				tmp = indent - tmp + 4;
+				if (tmp < 0)
+					tmp = 0;
+				item_add_str("%*c%s%s", tmp, ' ', menu_get_prompt(menu),
+					     (sym_has_value(sym) || !sym_is_changeable(sym)) ?
+					     "" : " (NEW)");
+				item_set_tag('s');
+				item_set_data(menu);
+				goto conf_childs;
+			}
+		}
+		item_add_str("%*c%s%s", indent + 1, ' ', menu_get_prompt(menu),
+			  (sym_has_value(sym) || !sym_is_changeable(sym)) ?
+			  "" : " (NEW)");
+		if (menu->prompt->type == P_MENU) {
+			item_add_str("  %s", menu_is_empty(menu) ? "----" : "--->");
+			return;
+		}
+	}
+
+conf_childs:
+	indent += doint;
+	for (child = menu->list; child; child = child->next)
+		build_conf(child);
+	indent -= doint;
 }
 
-static void print_button(WINDOW *win, const char *label, int y, int x, bool active) {
-    int key_attr, label_attr, btn_attr;
-    if (active) {
-        key_attr = attr(BUTTON_KEY_ACTIVE, true);
-        label_attr = attr(BUTTON_LABEL_ACTIVE, true);
-        btn_attr = attr(BUTTON_ACTIVE, true);
-    } else {
-        key_attr = attr(BUTTON_KEY_INACTIVE, true);
-        label_attr = attr(BUTTON_LABEL_INACTIVE);
-        btn_attr = attr(BUTTON_INACTIVE);
-    }
-    wattron(win, btn_attr);
-    mvwaddstr(win, y, x, " < ");
-    wattroff(win, btn_attr);
-    wattron(win, key_attr);
-    waddch(win, (unsigned char)label[0]);
-    wattroff(win, key_attr);
-    wattron(win, label_attr);
-    waddstr(win, label + 1);
-    wattroff(win, label_attr);
-    wattron(win, btn_attr);
-    waddstr(win, "> ");
-    wattroff(win, btn_attr);
+static void conf(struct menu *menu, struct menu *active_menu)
+{
+	struct menu *submenu;
+	const char *prompt = menu_get_prompt(menu);
+	struct subtitle_part stpart;
+	struct symbol *sym;
+	int res;
+	int s_scroll = 0;
+
+	if (menu != &rootmenu)
+		stpart.text = menu_get_prompt(menu);
+	else
+		stpart.text = NULL;
+	list_add_tail(&stpart.entries, &trail);
+
+	while (1) {
+		item_reset();
+		current_menu = menu;
+		build_conf(menu);
+		if (!child_count)
+			break;
+		set_subtitle();
+		dialog_clear();
+		res = dialog_menu(prompt ? prompt : "Main Menu",
+				  menu_instructions,
+				  active_menu, &s_scroll);
+		if (res == 1 || res == KEY_ESC || res == -ERRDISPLAYTOOSMALL)
+			break;
+		if (item_count() != 0) {
+			if (!item_activate_selected())
+				continue;
+			if (!item_tag())
+				continue;
+		}
+		submenu = static_cast<struct menu*>(item_data());
+		active_menu = static_cast<struct menu*>(item_data());
+		if (submenu)
+			sym = submenu->sym;
+		else
+			sym = NULL;
+
+		switch (res) {
+		case 0:
+			switch (item_tag()) {
+			case 'm':
+				if (single_menu_mode)
+					submenu->data = reinterpret_cast<void*>(static_cast<long>(!submenu->data));
+				else
+					conf(submenu, NULL);
+				break;
+			case 't':
+				if (sym_is_choice(sym) && sym_get_tristate_value(sym) == yes)
+					conf_choice(submenu);
+				else if (submenu->prompt->type == P_MENU)
+					conf(submenu, NULL);
+				break;
+			case 's':
+				conf_string(submenu);
+				break;
+			}
+			break;
+		case 2:
+			if (sym)
+				show_help(submenu);
+			else {
+				reset_subtitle();
+				show_helptext("README", mconf_readme);
+			}
+			break;
+		case 3:
+			reset_subtitle();
+			conf_save();
+			break;
+		case 4:
+			reset_subtitle();
+			conf_load();
+			break;
+		case 5:
+			if (item_is_tag('t')) {
+				if (sym_set_tristate_value(sym, yes))
+					break;
+				if (sym_set_tristate_value(sym, mod))
+					show_textbox(NULL, setmod_text, 6, 74);
+			}
+			break;
+		case 6:
+			if (item_is_tag('t'))
+				sym_set_tristate_value(sym, no);
+			break;
+		case 7:
+			if (item_is_tag('t'))
+				sym_set_tristate_value(sym, mod);
+			break;
+		case 8:
+			if (item_is_tag('t'))
+				sym_toggle_tristate_value(sym);
+			else if (item_is_tag('m'))
+				conf(submenu, NULL);
+			break;
+		case 9:
+			search_conf();
+			break;
+		case 10:
+			show_all_options = !show_all_options;
+			break;
+		}
+	}
+
+	list_del(trail.prev);
 }
 
-// ============================================================
-// Item formatting (matching original build_conf)
-// ============================================================
-static int hotkey_for(const char *s) {
-    const char *hot = strpbrk(s, "YyNnMmHh");
-    return hot ? (int)(hot - s) : -1;
+static int show_textbox_ext(const char *title, char *text, int r, int c, int
+			    *keys, int *vscroll, int *hscroll, update_text_fn
+			    update_text, void *data)
+{
+	dialog_clear();
+	return dialog_textbox(title, text, r, c, keys, vscroll, hscroll,
+			      update_text, data);
 }
 
-static void build_menu_items(menu *m, int level = 0) {
-    if (!m) return;
-    if (!show_all && !menu_is_visible(m)) {
-        if (m->sym && m->sym->type != S_UNKNOWN &&
-            m->sym->name.empty() && m->list) {
-            for (menu *ch = m->list; ch; ch = ch->next)
-                build_menu_items(ch, level);
-        }
-        return;
-    }
-
-    symbol *sym = m->sym;
-    bool has_children = m->list != nullptr;
-
-    if (sym && !sym_is_choice(sym) && m->prompt && m->prompt->type != P_MENU
-        && m->prompt->type != P_COMMENT) {
-
-        symbol_type type = sym_get_type(sym);
-        tristate val = sym_get_tristate_value(sym);
-        const char *prompt = menu_get_prompt(m);
-        int hot = hotkey_for(prompt);
-
-        if (sym_is_changeable(sym)) {
-            MenuItem it;
-            if (type == S_BOOLEAN)
-                it.text = std::format("[{}]", val == no ? ' ' : '*');
-            else if (type == S_TRISTATE) {
-                char ch = (val == yes ? '*' : (val == mod ? 'M' : ' '));
-                it.text = std::format("<{}>", ch);
-            } else {
-                it.text = std::format("({})", sym_get_string_value(sym));
-                it.tag = 's';
-            }
-            if (type == S_BOOLEAN || type == S_TRISTATE)
-                it.tag = 't';
-
-            it.text += std::format("{:{}} {}{}", "", level + 1, prompt,
-                                   sym_has_value(sym) ? "" : " (NEW)");
-            it.data = m;
-            it.hotkey = hot >= 0 ? hot + (int)it.text.size() - (int)strlen(prompt) : -1;
-            items.push_back(it);
-
-            if (val == yes && has_children) {
-                for (menu *ch = m->list; ch; ch = ch->next)
-                    build_menu_items(ch, level + 2);
-            }
-            return;
-        } else {
-            MenuItem it;
-            if (sym_is_choice_value(sym) && val == yes)
-                it.text = "   ";
-            else if (type == S_BOOLEAN) {
-                char c = val == no ? ' ' : '*';
-                it.text = (sym_is_changeable(sym) ? std::format("[{}]", c) : std::format("-{}-", c));
-                it.tag = 't';
-            } else if (type == S_TRISTATE) {
-                char c = (val == yes ? '*' : (val == mod ? 'M' : ' '));
-                if (sym_is_changeable(sym))
-                    it.text = std::format("<{}>", c);
-                else
-                    it.text = std::format("-{}-", c);
-                it.tag = 't';
-            } else {
-                it.text = std::format("({})", sym_get_string_value(sym));
-                it.tag = 's';
-            }
-            it.text += std::format("{:{}} {}", "", level + 1, prompt);
-            it.data = m;
-            it.hotkey = hot >= 0 ? hot + (int)it.text.size() - (int)strlen(prompt) : -1;
-            items.push_back(it);
-            return;
-        }
-    }
-
-    if (m == current) {
-        MenuItem it;
-        it.text = std::format("---{:{}} {}", "", level + 1, menu_get_prompt(m));
-        it.tag = ':';
-        it.data = m;
-        items.push_back(it);
-        if (has_children)
-            for (menu *ch = m->list; ch; ch = ch->next)
-                build_menu_items(ch, level + 2);
-        return;
-    }
-
-    if (m->prompt && m->prompt->type == P_MENU) {
-        if (sym && sym_is_choice(sym)) {
-            if (sym_get_tristate_value(sym) == yes && has_children) {
-                for (menu *ch = m->list; ch; ch = ch->next)
-                    build_menu_items(ch, level);
-            }
-            return;
-        }
-        MenuItem it;
-        it.text = std::format("{:{}} {}  {}", "", level + 1, "",
-                              menu_get_prompt(m));
-        it.text += menu_is_empty(m) ? "----" : "--->";
-        it.tag = 'm';
-        it.data = m;
-        items.push_back(it);
-        return;
-    }
-
-    if (has_children)
-        for (menu *ch = m->list; ch; ch = ch->next)
-            build_menu_items(ch, level);
+static void show_textbox(const char *title, const char *text, int r, int c)
+{
+	show_textbox_ext(title, (char *) text, r, c, (int []) {0}, NULL, NULL,
+			 NULL, NULL);
 }
 
-// ============================================================
-// Rendering
-// ============================================================
-static void render_screen() {
-    int h, w;
-    getmaxyx(main_win, h, w);
-    // Calculate layout
-    int menu_h = h - 10; // 10 for title+border+instruction+buttons
-    if (menu_h < 6) menu_h = 6;
-    int menu_w = w - 4;
-    max_visible = menu_h;
-
-    int visible_count = 0;
-    for (auto &it : items) if (it.visible) visible_count++;
-
-    // Clamp vscroll and item_idx
-    if (item_idx < 0) item_idx = 0;
-    if (item_idx >= visible_count) item_idx = visible_count - 1;
-    if (item_idx < vscroll) vscroll = item_idx;
-    if (item_idx >= vscroll + max_visible) vscroll = item_idx - max_visible + 1;
-    if (vscroll < 0) vscroll = 0;
-    if (visible_count <= max_visible) vscroll = 0;
-
-    werase(main_win);
-
-    // Title bar
-    wattron(main_win, attr(TITLE, true));
-    std::string title = " Linux Kernel Configuration ";
-    if (!trail.empty()) title = std::string(trail.back()) + " - Linux Kernel Configuration";
-    mvwprintw(main_win, 0, (w - (int)title.size()) / 2, "%s", title.c_str());
-    wattroff(main_win, attr(TITLE, true));
-
-    // Breadcrumb
-    std::string crumb;
-    for (size_t i = 0; i < trail.size(); i++) {
-        if (i) crumb += " > ";
-        crumb += trail[i];
-    }
-    if (!crumb.empty()) {
-        wattron(main_win, attr(COL_SCREEN));
-        mvwprintw(main_win, 1, 2, "%s", crumb.c_str());
-        wattroff(main_win, attr(COL_SCREEN));
-    }
-
-    // Menu box
-    int box_y = 2;
-    int box_x = 1;
-    int box_w = menu_w;
-    int box_h = menu_h + 2;
-    draw_shadow(main_win, box_y, box_x, box_h, box_w);
-    draw_box(main_win, box_y, box_x, box_h, box_w, attr(MENUBOX_BORDER));
-
-    // Menu items
-    int disp_row = 0;
-    int skipped = 0;
-    for (size_t i = 0; i < items.size(); i++) {
-        if (!items[i].visible) continue;
-        if (skipped < vscroll) { skipped++; continue; }
-        if (disp_row >= max_visible) break;
-
-        int y = box_y + 1 + disp_row;
-        bool sel = (skipped + disp_row == item_idx);
-
-        if (items[i].tag == ':' && !sel) {
-            wattron(main_win, attr(MENUBOX));
-            mvwprintw(main_win, y, box_x + 2, "%s", items[i].text.c_str());
-            wattroff(main_win, attr(MENUBOX));
-        } else {
-            int item_attr = sel ? ITEM_SELECTED : ITEM;
-            wattron(main_win, attr(item_attr));
-            // Print text with hotkey highlight
-            int hk = items[i].hotkey;
-            if (hk >= 0 && hk < (int)items[i].text.size()) {
-                mvwaddnstr(main_win, y, box_x + 2, items[i].text.c_str(), hk);
-                wattron(main_win, sel ? attr(TAG_KEY_SELECTED, true) : attr(TAG_KEY, true));
-                waddch(main_win, (unsigned char)items[i].text[hk]);
-                wattroff(main_win, sel ? attr(TAG_KEY_SELECTED, true) : attr(TAG_KEY, true));
-                wattron(main_win, attr(item_attr));
-                waddstr(main_win, items[i].text.c_str() + hk + 1);
-            } else {
-                mvwaddstr(main_win, y, box_x + 2, items[i].text.c_str());
-            }
-            wattroff(main_win, attr(item_attr));
-        }
-        disp_row++;
-    }
-
-    // Scroll arrows
-    if (vscroll > 0) {
-        wattron(main_win, attr(UARROW, true));
-        mvwprintw(main_win, box_y, box_x + box_w - 6, "(+)");
-        wattroff(main_win, attr(UARROW, true));
-    }
-    if (vscroll + max_visible < visible_count) {
-        wattron(main_win, attr(DARROW, true));
-        mvwprintw(main_win, box_y + box_h - 1, box_x + box_w - 6, "(+)");
-        wattroff(main_win, attr(DARROW, true));
-    }
-
-    // Instructions
-    wattron(main_win, attr(COL_SCREEN));
-    mvwprintw(main_win, h - 6, 2, "%s", menu_instructions);
-    wattroff(main_win, attr(COL_SCREEN));
-
-    // Search bar
-    if (!search_str.empty()) {
-        wattron(main_win, attr(SEARCHBOX));
-        mvwprintw(main_win, h - 5, 2, "Search: %s", search_str.c_str());
-        wattroff(main_win, attr(SEARCHBOX));
-    }
-
-    // Buttons
-    int btn_y = h - 3, btn_x = (w - 60) / 2;
-    wattron(main_win, attr(BORDER));
-    mvwhline(main_win, h - 4, 1, ACS_HLINE, w - 2);
-    mvwaddch(main_win, h - 4, 1, ACS_LTEE);
-    mvwaddch(main_win, h - 4, w - 2, ACS_RTEE);
-    wattroff(main_win, attr(BORDER));
-
-    // Select/Exit/Help/Save/Load buttons (simplified to Select/Exit/Help)
-    print_button(main_win, "Select", btn_y, btn_x, false);
-    print_button(main_win, " Exit ", btn_y, btn_x + 14, false);
-    print_button(main_win, " Help ", btn_y, btn_x + 28, false);
-
-    wnoutrefresh(main_win);
-    doupdate();
+static void show_helptext(const char *title, const char *text)
+{
+	show_textbox(title, text, 0, 0);
 }
 
-// ============================================================
-// Search
-// ============================================================
-static void do_search() {
-    echo(); curs_set(1);
-    int h, w;
-    getmaxyx(main_win, h, w);
-    WINDOW *search_win = newwin(3, 50, (h - 3) / 2, (w - 50) / 2);
-    draw_box(search_win, 0, 0, 3, 50, attr(SEARCHBOX_BORDER));
-    wattron(search_win, attr(SEARCHBOX_TITLE, true));
-    mvwprintw(search_win, 0, 2, " Search ");
-    wattroff(search_win, attr(SEARCHBOX_TITLE, true));
-    wattron(search_win, attr(SEARCHBOX));
-    mvwprintw(search_win, 1, 2, "Enter search string: ");
-    char buf[256] = {};
-    echo();
-    wmove(search_win, 1, 23);
-    wgetnstr(search_win, buf, 100);
-    noecho(); curs_set(0);
-    delwin(search_win);
-    render_screen();
-
-    search_str = buf;
-    if (search_str.empty()) {
-        for (auto &it : items) it.visible = true;
-    } else {
-        std::string lower = search_str;
-        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-        for (auto &it : items) {
-            std::string tl = it.text;
-            std::transform(tl.begin(), tl.end(), tl.begin(), ::tolower);
-            it.visible = (tl.find(lower) != std::string::npos);
-        }
-    }
-    item_idx = 0; vscroll = 0;
+static void conf_message_callback(const char *s)
+{
+	if (save_and_exit) {
+		if (!silent)
+			printf("%s", s);
+	} else {
+		show_textbox(NULL, s, 6, 60);
+	}
 }
 
-// ============================================================
-// Help
-// ============================================================
-static void show_help(menu *m) {
-    const char *help_text = m ? menu_get_help(m) : nullptr;
-    if (!help_text)
-        help_text = mconf_readme;
-    int h, w;
-    getmaxyx(main_win, h, w);
-    int help_h = h - 6, help_w = w - 6;
-    if (help_h < 8) help_h = 8;
-    if (help_w < 10) help_w = 10;
+static void show_help(struct menu *menu)
+{
+	struct gstr help = str_new();
 
-    int y = (h - help_h) / 2, x = (w - help_w) / 2;
-    WINDOW *help_win = newwin(help_h, help_w, y, x);
-    draw_shadow(main_win, y, x, help_h, help_w);
-    draw_box(help_win, 0, 0, help_h, help_w, attr(BORDER));
-    wattron(help_win, attr(TITLE, true));
-    mvwprintw(help_win, 0, 2, " Help ");
-    wattroff(help_win, attr(TITLE, true));
+	help.max_width = getmaxx(stdscr) - 10;
+	menu_get_ext_help(menu, &help);
 
-    wattron(help_win, attr(DIALOG));
-    // Simple text display — show first screenful
-    const char *p = help_text;
-    for (int i = 0; i < help_h - 3 && *p; i++) {
-        char line[256];
-        int n = 0;
-        while (*p && *p != '\n' && n < help_w - 3) line[n++] = *p++;
-        if (*p == '\n') p++;
-        line[n] = 0;
-        mvwprintw(help_win, i + 1, 2, "%s", line);
-    }
-    wattroff(help_win, attr(DIALOG));
-
-    print_button(help_win, " Exit ", help_h - 2, (help_w - 10) / 2, true);
-    wrefresh(help_win);
-    while (wgetch(help_win) != '\n');
-    delwin(help_win);
-    render_screen();
+	show_helptext(menu_get_prompt(menu), str_get(&help));
+	str_free(&help);
 }
 
-// ============================================================
-// Input box for string values
-// ============================================================
-static std::string input_box(const char *title, const char *prompt, const char *init) {
-    echo(); curs_set(1);
-    int h, w;
-    getmaxyx(main_win, h, w);
-    int dlg_h = 6, dlg_w = std::min(60, w - 4);
-    int y = (h - dlg_h) / 2, x = (w - dlg_w) / 2;
-    auto *dlg = newwin(dlg_h, dlg_w, y, x);
-    draw_shadow(main_win, y, x, dlg_h, dlg_w);
-    draw_box(dlg, 0, 0, dlg_h, dlg_w, attr(INPUTBOX_BORDER));
-    wattron(dlg, attr(TITLE, true));
-    mvwprintw(dlg, 0, 2, " %s ", title);
-    wattroff(dlg, attr(TITLE, true));
-    wattron(dlg, attr(DIALOG));
-    mvwprintw(dlg, 2, 2, "%s", prompt);
-    wattron(dlg, attr(INPUTBOX));
-    mvwprintw(dlg, 3, 2, "[%s]", init ? init : "");
-    wmove(dlg, 3, 2);
-    wclrtoeol(dlg);
-    char buf[256] = {};
-    if (init) strncpy(buf, init, 255);
-    echo();
-    wmove(dlg, 3, 2);
-    waddch(dlg, '[');
-    wgetnstr(dlg, buf, 200);
-    noecho(); curs_set(0);
-    delwin(dlg);
-    render_screen();
-    return buf;
+static void conf_choice(struct menu *menu)
+{
+	const char *prompt = menu_get_prompt(menu);
+	struct menu *child;
+	struct symbol *active;
+
+	active = sym_get_choice_value(menu->sym);
+	while (1) {
+		int res;
+		int selected;
+		item_reset();
+
+		current_menu = menu;
+		for (child = menu->list; child; child = child->next) {
+			if (!menu_is_visible(child))
+				continue;
+			if (child->sym)
+				item_make("%s", menu_get_prompt(child));
+			else {
+				item_make("*** %s ***", menu_get_prompt(child));
+				item_set_tag(':');
+			}
+			item_set_data(child);
+			if (child->sym == active)
+				item_set_selected(1);
+			if (child->sym == sym_get_choice_value(menu->sym))
+				item_set_tag('X');
+		}
+		dialog_clear();
+		res = dialog_checklist(prompt ? prompt : "Main Menu",
+					radiolist_instructions,
+					MENUBOX_HEIGTH_MIN,
+					MENUBOX_WIDTH_MIN,
+					CHECKLIST_HEIGTH_MIN);
+		selected = item_activate_selected();
+		switch (res) {
+		case 0:
+			if (selected) {
+				child = static_cast<struct menu*>(item_data());
+				if (!child->sym)
+					break;
+
+				sym_set_tristate_value(child->sym, yes);
+			}
+			return;
+		case 1:
+			if (selected) {
+				child = static_cast<struct menu*>(item_data());
+				show_help(child);
+				active = child->sym;
+			} else
+				show_help(menu);
+			break;
+		case KEY_ESC:
+			return;
+		case -ERRDISPLAYTOOSMALL:
+			return;
+		}
+	}
 }
 
-// ============================================================
-// Toggle / change item value
-// ============================================================
-static void toggle_item(MenuItem &it) {
-    if (!it.data || !it.data->sym) return;
-    symbol *sym = it.data->sym;
-    if (!sym_is_changeable(sym)) return;
+static void conf_string(struct menu *menu)
+{
+	const char *prompt = menu_get_prompt(menu);
 
-    if (sym_is_choice(sym) && sym_get_tristate_value(sym) == yes) {
-        // Navigate into choice
-        saved_menu = current;
-        current = it.data;
-        trail.push_back(menu_get_prompt(it.data));
-        items.clear(); vscroll = 0; item_idx = 0;
-        build_menu_items(current);
-        return;
-    }
+	while (1) {
+		int res;
+		const char *heading;
 
-    symbol_type type = sym_get_type(sym);
-    if (type == S_BOOLEAN || type == S_TRISTATE) {
-        tristate val = sym_get_tristate_value(sym);
-        if (val == no) val = yes;
-        else if (val == yes && type == S_TRISTATE) val = mod;
-        else val = no;
-        sym_set_tristate_value(sym, val);
-        items.clear();
-        build_menu_items(current);
-    } else if (type == S_INT || type == S_HEX || type == S_STRING) {
-        auto new_val = input_box(menu_get_prompt(it.data), "Enter value:",
-                                 sym_get_string_value(sym));
-        if (!new_val.empty())
-            sym_set_string_value(sym, new_val.c_str());
-        items.clear();
-        build_menu_items(current);
-    }
+		switch (sym_get_type(menu->sym)) {
+		case S_INT:
+			heading = inputbox_instructions_int;
+			break;
+		case S_HEX:
+			heading = inputbox_instructions_hex;
+			break;
+		case S_STRING:
+			heading = inputbox_instructions_string;
+			break;
+		default:
+			heading = "Internal mconf error!";
+		}
+		dialog_clear();
+		res = dialog_inputbox(prompt ? prompt : "Main Menu",
+				      heading, 10, 75,
+				      sym_get_string_value(menu->sym));
+		switch (res) {
+		case 0:
+			if (sym_set_string_value(menu->sym, dialog_input_result))
+				return;
+			show_textbox(NULL, "You have made an invalid entry.", 5, 43);
+			break;
+		case 1:
+			show_help(menu);
+			break;
+		case KEY_ESC:
+			return;
+		}
+	}
 }
 
-// ============================================================
-// Main loop
-// ============================================================
-static void conf(menu *m) {
-    if (m != &rootmenu)
-        trail.push_back(menu_get_prompt(m));
-    current = m;
+static void conf_load(void)
+{
 
-    while (true) {
-        items.clear();
-        item_idx = 0; vscroll = 0;
-        build_menu_items(m);
-        if (items.empty()) break;
-
-        while (true) {
-            render_screen();
-            int key = wgetch(main_win);
-
-            // Count visible items
-            int vis = 0; for (auto &it : items) if (it.visible) vis++;
-
-            if (key == KEY_UP || key == 'k') {
-                if (item_idx > 0) item_idx--;
-            } else if (key == KEY_DOWN || key == 'j') {
-                if (item_idx < vis - 1) item_idx++;
-            } else if (key == KEY_PPAGE || key == KEY_NPAGE) {
-                int pg = max_visible - 1;
-                if (key == KEY_PPAGE) item_idx = std::max(0, item_idx - pg);
-                else item_idx = std::min(vis - 1, item_idx + pg);
-            } else if (key == KEY_HOME) {
-                item_idx = 0;
-            } else if (key == KEY_END) {
-                item_idx = vis - 1;
-            } else if (key == ' ' || key == '\n') {
-                // Find visible item at item_idx
-                int si = 0;
-                for (size_t i = 0; i < items.size(); i++) {
-                    if (!items[i].visible) continue;
-                    if (si == item_idx) {
-                        MenuItem it = items[i];
-                        if (it.tag == 'm') {
-                            if (it.data && !menu_is_empty(it.data)) {
-                                // Navigate into submenu
-                                saved_scroll = vscroll;
-                                conf(it.data);
-                                vscroll = saved_scroll;
-                                items.clear();
-                                build_menu_items(m);
-                                break;
-                            }
-                        } else if (it.tag == 't' || it.tag == 's') {
-                            toggle_item(it);
-                        }
-                        break;
-                    }
-                    si++;
-                }
-            } else if (key == 'y' || key == 'Y') {
-                int si = 0;
-                for (size_t i = 0; i < items.size(); i++) {
-                    if (!items[i].visible) continue;
-                    if (si == item_idx && items[i].tag == 't') {
-                        if (items[i].data && items[i].data->sym)
-                            sym_set_tristate_value(items[i].data->sym, yes);
-                        items.clear(); build_menu_items(m); break;
-                    }
-                    si++;
-                }
-            } else if (key == 'n' || key == 'N') {
-                int si = 0;
-                for (size_t i = 0; i < items.size(); i++) {
-                    if (!items[i].visible) continue;
-                    if (si == item_idx && items[i].tag == 't') {
-                        if (items[i].data && items[i].data->sym)
-                            sym_set_tristate_value(items[i].data->sym, no);
-                        items.clear(); build_menu_items(m); break;
-                    }
-                    si++;
-                }
-            } else if (key == 'm' || key == 'M') {
-                int si = 0;
-                for (size_t i = 0; i < items.size(); i++) {
-                    if (!items[i].visible) continue;
-                    if (si == item_idx && items[i].tag == 't') {
-                        if (items[i].data && items[i].data->sym)
-                            sym_set_tristate_value(items[i].data->sym, mod);
-                        items.clear(); build_menu_items(m); break;
-                    }
-                    si++;
-                }
-            } else if (key == '/') {
-                do_search();
-            } else if (key == '?' || key == 'h' || key == 'H') {
-                int si = 0; menu *hm = nullptr;
-                for (size_t i = 0; i < items.size(); i++) {
-                    if (!items[i].visible) continue;
-                    if (si == item_idx) { hm = items[i].data; break; }
-                    si++;
-                }
-                show_help(hm);
-            } else if (key == 'z' || key == 'Z') {
-                show_all = !show_all;
-                items.clear();
-                build_menu_items(m);
-            } else if (key == 27 || key == 'e' || key == 'E' || key == 'x' || key == 'X') {
-                goto exit_menu;
-            } else if (key == KEY_RESIZE) {
-                items.clear();
-                build_menu_items(m);
-            } else {
-                // Hotkey matching
-                int lower_key = tolower(key);
-                int si = 0; int best = -1;
-                for (size_t i = 0; i < items.size(); i++) {
-                    if (!items[i].visible) continue;
-                    int hk = items[i].hotkey;
-                    if (hk >= 0 && hk < (int)items[i].text.size() &&
-                        tolower((unsigned char)items[i].text[hk]) == lower_key) {
-                        if (si == item_idx && best < 0) best = (int)i;
-                        else if (si > item_idx && best < 0) best = (int)i;
-                    }
-                    si++;
-                }
-                if (best >= 0) {
-                    // Find index
-                    int idx = 0;
-                    for (int i = 0; i < best; i++)
-                        if (items[i].visible) idx++;
-                    item_idx = idx;
-                    // Toggle
-                    MenuItem it = items[best];
-                    if (it.tag == 't' || it.tag == 's') toggle_item(it);
-                    else if (it.tag == 'm' && it.data && !menu_is_empty(it.data))
-                        conf(it.data);
-                }
-            }
-        }
-    }
-exit_menu:
-    if (!trail.empty()) trail.pop_back();
+	while (1) {
+		int res;
+		dialog_clear();
+		res = dialog_inputbox(NULL, load_config_text,
+				      11, 55, filename);
+		switch(res) {
+		case 0:
+			if (!dialog_input_result[0])
+				return;
+			if (!conf_read(dialog_input_result)) {
+				set_config_filename(dialog_input_result);
+				sym_set_change_count(1);
+				return;
+			}
+			show_textbox(NULL, "File does not exist!", 5, 38);
+			break;
+		case 1:
+			show_helptext("Load Alternate Configuration", load_config_help);
+			break;
+		case KEY_ESC:
+			return;
+		}
+	}
 }
 
-// ============================================================
-// Entry point
-// ============================================================
-int main() {
-    setlocale(LC_ALL, "");
-    initscr();
-    cbreak();
-    noecho();
-    keypad(stdscr, TRUE);
-    curs_set(0);
-    init_colors();
+static void conf_save(void)
+{
+	while (1) {
+		int res;
+		dialog_clear();
+		res = dialog_inputbox(NULL, save_config_text,
+				      11, 55, filename);
+		switch(res) {
+		case 0:
+			if (!dialog_input_result[0])
+				return;
+			if (!conf_write(dialog_input_result)) {
+				set_config_filename(dialog_input_result);
+				return;
+			}
+			show_textbox(NULL, "Can't create file!", 5, 60);
+			break;
+		case 1:
+			show_helptext("Save Alternate Configuration", save_config_help);
+			break;
+		case KEY_ESC:
+			return;
+		}
+	}
+}
 
-    int h, w;
-    getmaxyx(stdscr, h, w);
-    main_win = newwin(h, w, 0, 0);
-    keypad(main_win, TRUE);
+static int handle_exit(void)
+{
+	int res;
 
-    conf_read(nullptr);
-    conf(&rootmenu);
+	save_and_exit = 1;
+	reset_subtitle();
+	dialog_clear();
+	if (conf_get_changed())
+		res = dialog_yesno(NULL,
+				   "Do you wish to save your new configuration?\n"
+				     "(Press <ESC><ESC> to continue kernel configuration.)",
+				   6, 60);
+	else
+		res = -1;
 
-    delwin(main_win);
-    endwin();
+	end_dialog(saved_x, saved_y);
 
-    conf_write(nullptr);
-    conf_write_autoconf(1);
-    return 0;
+	switch (res) {
+	case 0:
+		if (conf_write(filename)) {
+			fprintf(stderr, "\n\n"
+					  "Error while writing of the configuration.\n"
+					  "Your configuration changes were NOT saved."
+					  "\n\n");
+			return 1;
+		}
+		conf_write_autoconf(0);
+		/* fall through */
+	case -1:
+		if (!silent)
+			printf("\n\n"
+				 "*** End of the configuration.\n"
+				 "*** Execute 'make' to start the build or try 'make help'."
+				 "\n\n");
+		res = 0;
+		break;
+	default:
+		if (!silent)
+			fprintf(stderr, "\n\n"
+					  "Your configuration changes were NOT saved."
+					  "\n\n");
+		if (res != KEY_ESC)
+			res = 0;
+	}
+
+	return res;
+}
+
+static void sig_handler(int signo)
+{
+	exit(handle_exit());
+}
+
+int main(int ac, char **av)
+{
+	char *mode;
+	int res;
+
+	if (!setlocale(LC_ALL, ""))
+		fprintf(stderr, "Warning: failed to initialize the system locale\n");
+	if (!setlocale(LC_CTYPE, "C.UTF-8") &&
+	    !setlocale(LC_CTYPE, "C.utf8") &&
+	    !setlocale(LC_CTYPE, "en_US.UTF-8"))
+		fprintf(stderr, "Warning: no UTF-8 locale is available\n");
+
+	signal(SIGINT, sig_handler);
+
+	if (ac > 1 && strcmp(av[1], "-s") == 0) {
+		silent = 1;
+		/* Silence conf_read() until the real callback is set up */
+		conf_set_message_callback(NULL);
+		av++;
+	}
+	conf_parse(av[1]);
+	conf_read(NULL);
+
+	mode = getenv("MENUCONFIG_MODE");
+	if (mode) {
+		if (!strcasecmp(mode, "single_menu"))
+			single_menu_mode = 1;
+	}
+
+	if (init_dialog(NULL)) {
+		fprintf(stderr, "Your display is too small to run Menuconfig!\n");
+		fprintf(stderr, "It must be at least 19 lines by 80 columns.\n");
+		return 1;
+	}
+
+	set_config_filename(conf_get_configname());
+	conf_set_message_callback(conf_message_callback);
+	do {
+		conf(&rootmenu, NULL);
+		res = handle_exit();
+	} while (res == KEY_ESC);
+
+	return res;
 }

@@ -1,14 +1,12 @@
+import std;
+
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
  */
 
-#include <ctype.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
 
-#include "lkc.h"
+#include "lkc.hpp"
 
 static const char nohelp_text[] = "There is no help available for this option.";
 
@@ -48,7 +46,7 @@ void menu_add_entry(struct symbol *sym)
 {
 	struct menu *menu;
 
-	menu = xmalloc(sizeof(*menu));
+	menu = static_cast<struct menu*>(xmalloc(sizeof(*menu)));
 	memset(menu, 0, sizeof(*menu));
 	menu->sym = sym;
 	menu->parent = current_menu;
@@ -116,13 +114,13 @@ void menu_set_type(int type)
 	if (sym->type == type)
 		return;
 	if (sym->type == S_UNKNOWN) {
-		sym->type = type;
+		sym->type = static_cast<symbol_type>(type);
 		return;
 	}
 	menu_warn(current_entry,
 		"ignoring type redefinition of '%s' from '%s' to '%s'",
 		sym->name ? sym->name : "<choice>",
-		sym_type_name(sym->type), sym_type_name(type));
+		sym_type_name(sym->type), sym_type_name(static_cast<symbol_type>(type)));
 }
 
 static struct property *menu_add_prop(enum prop_type type, struct expr *expr,
@@ -130,7 +128,7 @@ static struct property *menu_add_prop(enum prop_type type, struct expr *expr,
 {
 	struct property *prop;
 
-	prop = xmalloc(sizeof(*prop));
+	prop = static_cast<struct property*>(xmalloc(sizeof(*prop)));
 	memset(prop, 0, sizeof(*prop));
 	prop->type = type;
 	prop->file = current_file;
@@ -275,7 +273,7 @@ static void sym_check_prop(struct symbol *sym)
 			break;
 		case P_SELECT:
 		case P_IMPLY:
-			use = prop->type == P_SELECT ? "select" : "imply";
+			use = prop->type == P_SELECT ? const_cast<char*>("select") : const_cast<char*>("imply");
 			sym2 = prop_get_symbol(prop);
 			if (sym->type != S_BOOLEAN && sym->type != S_TRISTATE)
 				prop_warn(prop,
@@ -692,7 +690,7 @@ struct menu *menu_get_parent_menu(struct menu *menu)
 	enum prop_type type;
 
 	for (; menu != &rootmenu; menu = menu->parent) {
-		type = menu->prompt ? menu->prompt->type : 0;
+		type = menu->prompt ? static_cast<prop_type>(menu->prompt->type) : static_cast<prop_type>(0);
 		if (type == P_MENU)
 			break;
 	}
@@ -757,7 +755,7 @@ static void get_prompt_str(struct gstr *r, struct property *prop,
 			location = menu;
 	}
 	if (head && location) {
-		jump = xmalloc(sizeof(struct jump_key));
+		jump = static_cast<struct jump_key*>(xmalloc(sizeof(struct jump_key)));
 
 		if (menu_is_visible(prop->menu)) {
 			/*

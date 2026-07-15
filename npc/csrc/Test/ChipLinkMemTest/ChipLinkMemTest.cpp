@@ -26,8 +26,11 @@ std::expected<void, std::uintptr_t> test_width(std::uintptr_t begin, std::size_t
 
 extern "C" std::expected<void, std::uintptr_t> ChipLink_mem_test(std::uintptr_t begin, std::size_t length)
 {
-    if (auto result = test_width<std::uint8_t>(begin, length); !result) return result;
-    if (auto result = test_width<std::uint16_t>(begin, length); !result) return result;
-    if (auto result = test_width<std::uint32_t>(begin, length); !result) return result;
+    if (auto result = test_width<std::uint8_t>(begin, length); !result)
+        return result;
+    if (auto result = test_width<std::uint16_t>(begin, length); !result)
+        return result;
+    if (auto result = test_width<std::uint32_t>(begin, length); !result)
+        return result;
     return test_width<std::uint64_t>(begin, length);
 }

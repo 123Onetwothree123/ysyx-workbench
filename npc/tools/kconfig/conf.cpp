@@ -1,34 +1,21 @@
+import std;
+
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
- *
- * C++ conversion of conf.c
  */
 
-#include <cctype>
-#include <climits>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
 #include <unistd.h>
 #include <getopt.h>
 #include <sys/stat.h>
 #include <sys/time.h>
-#include <cerrno>
-#include <print>
-#include <string>
-#include <string_view>
 
-import npc.kconfig;
+#include "lkc.hpp"
 
-constexpr int LOCAL_PATH_MAX = 4096;
-constexpr std::string_view CONFIG_ = "CONFIG_";
+static void conf(struct menu *menu);
+static void check_conf(struct menu *menu);
 
-static void conf(menu *pmenu);
-static void check_conf(menu *pmenu);
-
-enum class InputMode {
+enum input_mode {
 	oldaskconfig,
 	syncconfig,
 	oldconfig,
@@ -45,32 +32,31 @@ enum class InputMode {
 	yes2modconfig,
 	mod2yesconfig,
 };
-
-static InputMode input_mode = InputMode::oldaskconfig;
+static enum input_mode input_mode = oldaskconfig;
 
 static int indent = 1;
 static int tty_stdio;
 static int sync_kconfig;
 static int conf_cnt;
-static char line[LOCAL_PATH_MAX];
-static menu *rootEntry;
+static char line[PATH_MAX];
+static struct menu *rootEntry;
 
-static void print_help(menu *pmenu)
+static void print_help(struct menu *menu)
 {
-	gstr help = str_new();
+	struct gstr help = str_new();
 
-	menu_get_ext_help(pmenu, &help);
+	menu_get_ext_help(menu, &help);
 
-	std::println("\n{}", str_get(&help));
+	printf("\n%s\n", str_get(&help));
 	str_free(&help);
 }
 
 static void strip(char *str)
 {
 	char *p = str;
-	size_t l;
+	int l;
 
-	while (isspace(*p))
+	while ((isspace(*p)))
 		p++;
 	l = strlen(p);
 	if (p != str)
@@ -78,45 +64,46 @@ static void strip(char *str)
 	if (!l)
 		return;
 	p = str + l - 1;
-	while (isspace(*p))
+	while ((isspace(*p)))
 		*p-- = 0;
 }
 
+/* Helper function to facilitate fgets() by Jean Sacren. */
 static void xfgets(char *str, int size, FILE *in)
 {
 	if (!fgets(str, size, in))
-		std::println(stderr, "\nError in reading or end of file.");
+		fprintf(stderr, "\nError in reading or end of file.\n");
 
 	if (!tty_stdio)
-		std::print("{}", str);
+		printf("%s", str);
 }
 
-static int conf_askvalue(symbol *sym, const char *def)
+static int conf_askvalue(struct symbol *sym, const char *def)
 {
 	enum symbol_type type = sym_get_type(sym);
 
 	if (!sym_has_value(sym))
-		std::print("(NEW) ");
+		printf("(NEW) ");
 
 	line[0] = '\n';
 	line[1] = 0;
 
 	if (!sym_is_changeable(sym)) {
-		std::println("{}", def);
+		printf("%s\n", def);
 		line[0] = '\n';
 		line[1] = 0;
 		return 0;
 	}
 
 	switch (input_mode) {
-	case InputMode::oldconfig:
-	case InputMode::syncconfig:
+	case oldconfig:
+	case syncconfig:
 		if (sym_has_value(sym)) {
-			std::println("{}", def);
+			printf("%s\n", def);
 			return 0;
 		}
-		[[fallthrough]];
-	case InputMode::oldaskconfig:
+		/* fall through */
+	case oldaskconfig:
 		fflush(stdout);
 		xfgets(line, sizeof(line), stdin);
 		return 1;
@@ -128,40 +115,41 @@ static int conf_askvalue(symbol *sym, const char *def)
 	case S_INT:
 	case S_HEX:
 	case S_STRING:
-		std::println("{}", def);
+		printf("%s\n", def);
 		return 1;
 	default:
 		;
 	}
-	std::print("{}", line);
+	printf("%s", line);
 	return 1;
 }
 
-static int conf_string(menu *pmenu)
+static int conf_string(struct menu *menu)
 {
-	symbol *sym = pmenu->sym;
+	struct symbol *sym = menu->sym;
 	const char *def;
 
-	while (true) {
-		std::print("{:{}} {} ", "", indent - 1, pmenu->prompt->text);
-		std::print("({}) ", sym->name);
+	while (1) {
+		printf("%*s%s ", indent - 1, "", menu->prompt->text);
+		printf("(%s) ", sym->name);
 		def = sym_get_string_value(sym);
 		if (sym_get_string_value(sym))
-			std::print("[{}] ", def);
+			printf("[%s] ", def);
 		if (!conf_askvalue(sym, def))
 			return 0;
 		switch (line[0]) {
 		case '\n':
 			break;
 		case '?':
+			/* print help */
 			if (line[1] == '\n') {
-				print_help(pmenu);
-				def = nullptr;
+				print_help(menu);
+				def = NULL;
 				break;
 			}
-			[[fallthrough]];
+			/* fall through */
 		default:
-			line[strlen(line) - 1] = 0;
+			line[strlen(line)-1] = 0;
 			def = line;
 		}
 		if (def && sym_set_string_value(sym, def))
@@ -169,15 +157,15 @@ static int conf_string(menu *pmenu)
 	}
 }
 
-static int conf_sym(menu *pmenu)
+static int conf_sym(struct menu *menu)
 {
-	symbol *sym = pmenu->sym;
+	struct symbol *sym = menu->sym;
 	tristate oldval, newval;
 
-	while (true) {
-		std::print("{:{}} {} ", "", indent - 1, pmenu->prompt->text);
-		if (!sym->name.empty())
-			std::print("({}) ", sym->name);
+	while (1) {
+		printf("%*s%s ", indent - 1, "", menu->prompt->text);
+		if (sym->name)
+			printf("(%s) ", sym->name);
 		putchar('[');
 		oldval = sym_get_tristate_value(sym);
 		switch (oldval) {
@@ -192,12 +180,12 @@ static int conf_sym(menu *pmenu)
 			break;
 		}
 		if (oldval != no && sym_tristate_within_range(sym, no))
-			std::print("/n");
+			printf("/n");
 		if (oldval != mod && sym_tristate_within_range(sym, mod))
-			std::print("/m");
+			printf("/m");
 		if (oldval != yes && sym_tristate_within_range(sym, yes))
-			std::print("/y");
-		std::print("/?] ");
+			printf("/y");
+		printf("/?] ");
 		if (!conf_askvalue(sym, sym_get_string_value(sym)))
 			return 0;
 		strip(line);
@@ -232,20 +220,20 @@ static int conf_sym(menu *pmenu)
 		if (sym_set_tristate_value(sym, newval))
 			return 0;
 help:
-		print_help(pmenu);
+		print_help(menu);
 	}
 }
 
-static int conf_choice(menu *pmenu)
+static int conf_choice(struct menu *menu)
 {
-	symbol *sym, *def_sym;
-	menu *child;
+	struct symbol *sym, *def_sym;
+	struct menu *child;
 	bool is_new;
 
-	sym = pmenu->sym;
+	sym = menu->sym;
 	is_new = !sym_has_value(sym);
 	if (sym_is_changeable(sym)) {
-		conf_sym(pmenu);
+		conf_sym(menu);
 		sym_calc_value(sym);
 		switch (sym_get_tristate_value(sym)) {
 		case no:
@@ -260,62 +248,61 @@ static int conf_choice(menu *pmenu)
 		case no:
 			return 1;
 		case mod:
-			std::println("{:{}} {}", "", indent - 1, menu_get_prompt(pmenu));
+			printf("%*s%s\n", indent - 1, "", menu_get_prompt(menu));
 			return 0;
 		case yes:
 			break;
 		}
 	}
 
-	while (true) {
+	while (1) {
 		int cnt, def;
 
-		std::println("{:{}} {}", "", indent - 1, menu_get_prompt(pmenu));
+		printf("%*s%s\n", indent - 1, "", menu_get_prompt(menu));
 		def_sym = sym_get_choice_value(sym);
 		cnt = def = 0;
 		line[0] = 0;
-		for (child = pmenu->list; child; child = child->next) {
+		for (child = menu->list; child; child = child->next) {
 			if (!menu_is_visible(child))
 				continue;
 			if (!child->sym) {
-				std::println("{:{}}{} {}", "", indent - 1, '*', menu_get_prompt(child));
+				printf("%*c %s\n", indent, '*', menu_get_prompt(child));
 				continue;
 			}
 			cnt++;
 			if (child->sym == def_sym) {
 				def = cnt;
-				std::print("{:{}}", "", indent - 1);
-				std::print(">");
+				printf("%*c", indent, '>');
 			} else
- std::print("{:{}}", "", indent);
-			std::print(" {}. {}", cnt, menu_get_prompt(child));
-			if (!child->sym->name.empty())
-				std::print(" ({})", child->sym->name);
+				printf("%*c", indent, ' ');
+			printf(" %d. %s", cnt, menu_get_prompt(child));
+			if (child->sym->name)
+				printf(" (%s)", child->sym->name);
 			if (!sym_has_value(child->sym))
-				std::print(" (NEW)");
-			std::println("");
+				printf(" (NEW)");
+			printf("\n");
 		}
-		std::print("{:{}}choice", "", indent - 1);
+		printf("%*schoice", indent - 1, "");
 		if (cnt == 1) {
-			std::println("[1]: 1");
+			printf("[1]: 1\n");
 			goto conf_childs;
 		}
-		std::print("[1-{}?]: ", cnt);
+		printf("[1-%d?]: ", cnt);
 		switch (input_mode) {
-		case InputMode::oldconfig:
-		case InputMode::syncconfig:
+		case oldconfig:
+		case syncconfig:
 			if (!is_new) {
 				cnt = def;
-				std::println("{}", cnt);
+				printf("%d\n", cnt);
 				break;
 			}
-			[[fallthrough]];
-		case InputMode::oldaskconfig:
+			/* fall through */
+		case oldaskconfig:
 			fflush(stdout);
 			xfgets(line, sizeof(line), stdin);
 			strip(line);
 			if (line[0] == '?') {
-				print_help(pmenu);
+				print_help(menu);
 				continue;
 			}
 			if (!line[0])
@@ -330,7 +317,7 @@ static int conf_choice(menu *pmenu)
 		}
 
 	conf_childs:
-		for (child = pmenu->list; child; child = child->next) {
+		for (child = menu->list; child; child = child->next) {
 			if (!child->sym || !menu_is_visible(child))
 				continue;
 			if (!--cnt)
@@ -352,34 +339,38 @@ static int conf_choice(menu *pmenu)
 	}
 }
 
-static void conf(menu *pmenu)
+static void conf(struct menu *menu)
 {
-	symbol *sym;
-	property *prop;
-	menu *child;
+	struct symbol *sym;
+	struct property *prop;
+	struct menu *child;
 
-	if (!menu_is_visible(pmenu))
+	if (!menu_is_visible(menu))
 		return;
 
-	sym = pmenu->sym;
-	prop = pmenu->prompt;
+	sym = menu->sym;
+	prop = menu->prompt;
 	if (prop) {
 		const char *prompt;
 
 		switch (prop->type) {
 		case P_MENU:
-			if (input_mode != InputMode::oldaskconfig && rootEntry != pmenu) {
-				check_conf(pmenu);
+			/*
+			 * Except in oldaskconfig mode, we show only menus that
+			 * contain new symbols.
+			 */
+			if (input_mode != oldaskconfig && rootEntry != menu) {
+				check_conf(menu);
 				return;
 			}
-			[[fallthrough]];
+			/* fall through */
 		case P_COMMENT:
-			prompt = menu_get_prompt(pmenu);
+			prompt = menu_get_prompt(menu);
 			if (prompt)
-				std::println("{:{}}\n{:{}} {}\n{:{}}",
-					"", indent, '*',
-					"", indent, '*', prompt,
-					"", indent, '*');
+				printf("%*c\n%*c %s\n%*c\n",
+					indent, '*',
+					indent, '*', prompt,
+					indent, '*');
 		default:
 			;
 		}
@@ -389,7 +380,7 @@ static void conf(menu *pmenu)
 		goto conf_childs;
 
 	if (sym_is_choice(sym)) {
-		conf_choice(pmenu);
+		conf_choice(menu);
 		if (sym->curr.tri != mod)
 			return;
 		goto conf_childs;
@@ -399,161 +390,172 @@ static void conf(menu *pmenu)
 	case S_INT:
 	case S_HEX:
 	case S_STRING:
-		conf_string(pmenu);
+		conf_string(menu);
 		break;
 	default:
-		conf_sym(pmenu);
+		conf_sym(menu);
 		break;
 	}
 
 conf_childs:
 	if (sym)
 		indent += 2;
-	for (child = pmenu->list; child; child = child->next)
+	for (child = menu->list; child; child = child->next)
 		conf(child);
 	if (sym)
 		indent -= 2;
 }
 
-static void check_conf(menu *pmenu)
+static void check_conf(struct menu *menu)
 {
-	symbol *sym;
-	menu *child;
+	struct symbol *sym;
+	struct menu *child;
 
-	if (!menu_is_visible(pmenu))
+	if (!menu_is_visible(menu))
 		return;
 
-	sym = pmenu->sym;
+	sym = menu->sym;
 	if (sym && !sym_has_value(sym)) {
 		if (sym_is_changeable(sym) ||
 		    (sym_is_choice(sym) && sym_get_tristate_value(sym) == yes)) {
-			if (input_mode == InputMode::listnewconfig) {
-				if (!sym->name.empty()) {
+			if (input_mode == listnewconfig) {
+				if (sym->name) {
 					const char *str;
 
 					if (sym->type == S_STRING) {
 						str = sym_get_string_value(sym);
 						str = sym_escape_string_value(str);
-						std::println("{}{}={}", CONFIG_, sym->name, str);
-						free((void *)str);
+						printf("%s%s=%s\n", CONFIG_, sym->name, str);
+						free(static_cast<void*>(str);
 					} else {
 						str = sym_get_string_value(sym);
-						std::println("{}{}={}", CONFIG_, sym->name, str);
+						printf("%s%s=%s\n", CONFIG_, sym->name, str);
 					}
 				}
-			} else if (input_mode == InputMode::helpnewconfig) {
-				std::println("-----");
-				print_help(pmenu);
-				std::println("-----");
+			} else if (input_mode == helpnewconfig) {
+				printf("-----\n");
+				print_help(menu);
+				printf("-----\n");
+
 			} else {
 				if (!conf_cnt++)
-					std::println("*\n* Restart config...\n*");
-				rootEntry = menu_get_parent_menu(pmenu);
+					printf("*\n* Restart config...\n*\n");
+				rootEntry = menu_get_parent_menu(menu);
 				conf(rootEntry);
 			}
 		}
 	}
 
-	for (child = pmenu->list; child; child = child->next)
+	for (child = menu->list; child; child = child->next)
 		check_conf(child);
 }
 
 static struct option long_opts[] = {
-	{"oldaskconfig",    no_argument,       nullptr, (int)InputMode::oldaskconfig},
-	{"oldconfig",       no_argument,       nullptr, (int)InputMode::oldconfig},
-	{"syncconfig",      no_argument,       nullptr, (int)InputMode::syncconfig},
-	{"defconfig",       required_argument, nullptr, (int)InputMode::defconfig},
-	{"savedefconfig",   required_argument, nullptr, (int)InputMode::savedefconfig},
-	{"allnoconfig",     no_argument,       nullptr, (int)InputMode::allnoconfig},
-	{"allyesconfig",    no_argument,       nullptr, (int)InputMode::allyesconfig},
-	{"allmodconfig",    no_argument,       nullptr, (int)InputMode::allmodconfig},
-	{"alldefconfig",    no_argument,       nullptr, (int)InputMode::alldefconfig},
-	{"randconfig",      no_argument,       nullptr, (int)InputMode::randconfig},
-	{"listnewconfig",   no_argument,       nullptr, (int)InputMode::listnewconfig},
-	{"helpnewconfig",   no_argument,       nullptr, (int)InputMode::helpnewconfig},
-	{"olddefconfig",    no_argument,       nullptr, (int)InputMode::olddefconfig},
-	{"yes2modconfig",   no_argument,       nullptr, (int)InputMode::yes2modconfig},
-	{"mod2yesconfig",   no_argument,       nullptr, (int)InputMode::mod2yesconfig},
-	{nullptr, 0, nullptr, 0}
+	{"oldaskconfig",    no_argument,       NULL, oldaskconfig},
+	{"oldconfig",       no_argument,       NULL, oldconfig},
+	{"syncconfig",      no_argument,       NULL, syncconfig},
+	{"defconfig",       required_argument, NULL, defconfig},
+	{"savedefconfig",   required_argument, NULL, savedefconfig},
+	{"allnoconfig",     no_argument,       NULL, allnoconfig},
+	{"allyesconfig",    no_argument,       NULL, allyesconfig},
+	{"allmodconfig",    no_argument,       NULL, allmodconfig},
+	{"alldefconfig",    no_argument,       NULL, alldefconfig},
+	{"randconfig",      no_argument,       NULL, randconfig},
+	{"listnewconfig",   no_argument,       NULL, listnewconfig},
+	{"helpnewconfig",   no_argument,       NULL, helpnewconfig},
+	{"olddefconfig",    no_argument,       NULL, olddefconfig},
+	{"yes2modconfig",   no_argument,       NULL, yes2modconfig},
+	{"mod2yesconfig",   no_argument,       NULL, mod2yesconfig},
+	{NULL, 0, NULL, 0}
 };
 
 static void conf_usage(const char *progname)
 {
-	std::println("Usage: {} [-s] [option] <kconfig-file>", progname);
-	std::println("[option] is _one_ of the following:");
-	std::println("  --listnewconfig         List new options");
-	std::println("  --helpnewconfig         List new options and help text");
-	std::println("  --oldaskconfig          Start a new configuration using a line-oriented program");
-	std::println("  --oldconfig             Update a configuration using a provided .config as base");
-	std::println("  --syncconfig            Similar to oldconfig but generates configuration in\n"
-	       "                          include/{{generated/,config/}}");
-	std::println("  --olddefconfig          Same as oldconfig but sets new symbols to their default value");
-	std::println("  --defconfig <file>      New config with default defined in <file>");
-	std::println("  --savedefconfig <file>  Save the minimal current configuration to <file>");
-	std::println("  --allnoconfig           New config where all options are answered with no");
-	std::println("  --allyesconfig          New config where all options are answered with yes");
-	std::println("  --allmodconfig          New config where all options are answered with mod");
-	std::println("  --alldefconfig          New config with all symbols set to default");
-	std::println("  --randconfig            New config with random answer to all options");
-	std::println("  --yes2modconfig         Change answers from yes to mod if possible");
-	std::println("  --mod2yesconfig         Change answers from mod to yes if possible");
+
+	printf("Usage: %s [-s] [option] <kconfig-file>\n", progname);
+	printf("[option] is _one_ of the following:\n");
+	printf("  --listnewconfig         List new options\n");
+	printf("  --helpnewconfig         List new options and help text\n");
+	printf("  --oldaskconfig          Start a new configuration using a line-oriented program\n");
+	printf("  --oldconfig             Update a configuration using a provided .config as base\n");
+	printf("  --syncconfig            Similar to oldconfig but generates configuration in\n"
+	       "                          include/{generated/,config/}\n");
+	printf("  --olddefconfig          Same as oldconfig but sets new symbols to their default value\n");
+	printf("  --defconfig <file>      New config with default defined in <file>\n");
+	printf("  --savedefconfig <file>  Save the minimal current configuration to <file>\n");
+	printf("  --allnoconfig           New config where all options are answered with no\n");
+	printf("  --allyesconfig          New config where all options are answered with yes\n");
+	printf("  --allmodconfig          New config where all options are answered with mod\n");
+	printf("  --alldefconfig          New config with all symbols set to default\n");
+	printf("  --randconfig            New config with random answer to all options\n");
+	printf("  --yes2modconfig         Change answers from yes to mod if possible\n");
+	printf("  --mod2yesconfig         Change answers from mod to yes if possible\n");
 }
 
 int main(int ac, char **av)
 {
 	const char *progname = av[0];
 	int opt;
-	const char *name = nullptr, *defconfig_file = nullptr;
+	const char *name, *defconfig_file = NULL /* gcc uninit */;
 	int no_conf_write = 0;
 
 	tty_stdio = isatty(0) && isatty(1);
 
-	while ((opt = getopt_long(ac, av, "s", long_opts, nullptr)) != -1) {
+	while ((opt = getopt_long(ac, av, "s", long_opts, NULL)) != -1) {
 		if (opt == 's') {
-			conf_set_message_callback(nullptr);
+			conf_set_message_callback(NULL);
 			continue;
 		}
-		input_mode = static_cast<InputMode>(opt);
+		input_mode = static_cast<enum input_mode>(opt;
 		switch (opt) {
-		case (int)InputMode::syncconfig:
-			conf_set_message_callback(nullptr);
+		case syncconfig:
+			/*
+			 * syncconfig is invoked during the build stage.
+			 * Suppress distracting "configuration written to ..."
+			 */
+			conf_set_message_callback(NULL);
 			sync_kconfig = 1;
 			break;
-		case (int)InputMode::defconfig:
-		case (int)InputMode::savedefconfig:
+		case defconfig:
+		case savedefconfig:
 			defconfig_file = optarg;
 			break;
-		case (int)InputMode::randconfig:
+		case randconfig:
 		{
 			struct timeval now;
 			unsigned int seed;
+			char *seed_env;
 
-			gettimeofday(&now, nullptr);
+			/*
+			 * Use microseconds derived seed,
+			 * compensate for systems where it may be zero
+			 */
+			gettimeofday(&now, NULL);
 			seed = (unsigned int)((now.tv_sec + 1) * (now.tv_usec + 1));
 
-			char *seed_env = getenv("KCONFIG_SEED");
-			if (seed_env && *seed_env) {
+			seed_env = getenv("KCONFIG_SEED");
+			if( seed_env && *seed_env ) {
 				char *endp;
 				int tmp = (int)strtol(seed_env, &endp, 0);
 				if (*endp == '\0') {
 					seed = tmp;
 				}
 			}
-			std::println(stderr, "KCONFIG_SEED=0x{:X}", seed);
+			fprintf( stderr, "KCONFIG_SEED=0x%X\n", seed );
 			srand(seed);
 			break;
 		}
-		case (int)InputMode::oldaskconfig:
-		case (int)InputMode::oldconfig:
-		case (int)InputMode::allnoconfig:
-		case (int)InputMode::allyesconfig:
-		case (int)InputMode::allmodconfig:
-		case (int)InputMode::alldefconfig:
-		case (int)InputMode::listnewconfig:
-		case (int)InputMode::helpnewconfig:
-		case (int)InputMode::olddefconfig:
-		case (int)InputMode::yes2modconfig:
-		case (int)InputMode::mod2yesconfig:
+		case oldaskconfig:
+		case oldconfig:
+		case allnoconfig:
+		case allyesconfig:
+		case allmodconfig:
+		case alldefconfig:
+		case listnewconfig:
+		case helpnewconfig:
+		case olddefconfig:
+		case yes2modconfig:
+		case mod2yesconfig:
 			break;
 		case '?':
 			conf_usage(progname);
@@ -562,64 +564,65 @@ int main(int ac, char **av)
 		}
 	}
 	if (ac == optind) {
-		std::println(stderr, "{}: Kconfig file missing", av[0]);
+		fprintf(stderr, "%s: Kconfig file missing\n", av[0]);
 		conf_usage(progname);
 		exit(1);
 	}
 	name = av[optind];
 	conf_parse(name);
+	//zconfdump(stdout);
 
 	switch (input_mode) {
-	case InputMode::defconfig:
+	case defconfig:
 		if (conf_read(defconfig_file)) {
-			std::println(stderr,
+			fprintf(stderr,
 				"***\n"
-				"*** Can't find default configuration \"{}\"!\n"
-				"***",
+				  "*** Can't find default configuration \"%s\"!\n"
+				  "***\n",
 				defconfig_file);
 			exit(1);
 		}
 		break;
-	case InputMode::savedefconfig:
-	case InputMode::syncconfig:
-	case InputMode::oldaskconfig:
-	case InputMode::oldconfig:
-	case InputMode::listnewconfig:
-	case InputMode::helpnewconfig:
-	case InputMode::olddefconfig:
-	case InputMode::yes2modconfig:
-	case InputMode::mod2yesconfig:
-		conf_read(nullptr);
+	case savedefconfig:
+	case syncconfig:
+	case oldaskconfig:
+	case oldconfig:
+	case listnewconfig:
+	case helpnewconfig:
+	case olddefconfig:
+	case yes2modconfig:
+	case mod2yesconfig:
+		conf_read(NULL);
 		break;
-	case InputMode::allnoconfig:
-	case InputMode::allyesconfig:
-	case InputMode::allmodconfig:
-	case InputMode::alldefconfig:
-	case InputMode::randconfig:
+	case allnoconfig:
+	case allyesconfig:
+	case allmodconfig:
+	case alldefconfig:
+	case randconfig:
 		name = getenv("KCONFIG_ALLCONFIG");
 		if (!name)
 			break;
 		if ((strcmp(name, "") != 0) && (strcmp(name, "1") != 0)) {
 			if (conf_read_simple(name, S_DEF_USER)) {
-				std::println(stderr,
-					"*** Can't read seed configuration \"{}\"!\n",
+				fprintf(stderr,
+					"*** Can't read seed configuration \"%s\"!\n",
 					name);
 				exit(1);
 			}
 			break;
 		}
 		switch (input_mode) {
-		case InputMode::allnoconfig:	name = "allno.config"; break;
-		case InputMode::allyesconfig:	name = "allyes.config"; break;
-		case InputMode::allmodconfig:	name = "allmod.config"; break;
-		case InputMode::alldefconfig:	name = "alldef.config"; break;
-		case InputMode::randconfig:	name = "allrandom.config"; break;
+		case allnoconfig:	name = "allno.config"; break;
+		case allyesconfig:	name = "allyes.config"; break;
+		case allmodconfig:	name = "allmod.config"; break;
+		case alldefconfig:	name = "alldef.config"; break;
+		case randconfig:	name = "allrandom.config"; break;
 		default: break;
 		}
 		if (conf_read_simple(name, S_DEF_USER) &&
 		    conf_read_simple("all.config", S_DEF_USER)) {
-			std::println(stderr,
-				"*** KCONFIG_ALLCONFIG set, but no \"{}\" or \"all.config\" file found\n",
+			fprintf(stderr,
+				"*** KCONFIG_ALLCONFIG set, but no \"%s\" or \"all.config\" file found\n",
 				name);
 			exit(1);
 		}
@@ -632,8 +635,8 @@ int main(int ac, char **av)
 		name = getenv("KCONFIG_NOSILENTUPDATE");
 		if (name && *name) {
 			if (conf_get_changed()) {
-				std::println(stderr,
-					"\n*** The configuration requires explicit update.\n");
+				fprintf(stderr,
+					"\n*** The configuration requires explicit update.\n\n");
 				return 1;
 			}
 			no_conf_write = 1;
@@ -641,66 +644,77 @@ int main(int ac, char **av)
 	}
 
 	switch (input_mode) {
-	case InputMode::allnoconfig:
+	case allnoconfig:
 		conf_set_all_new_symbols(def_no);
 		break;
-	case InputMode::allyesconfig:
+	case allyesconfig:
 		conf_set_all_new_symbols(def_yes);
 		break;
-	case InputMode::allmodconfig:
+	case allmodconfig:
 		conf_set_all_new_symbols(def_mod);
 		break;
-	case InputMode::alldefconfig:
+	case alldefconfig:
 		conf_set_all_new_symbols(def_default);
 		break;
-	case InputMode::randconfig:
+	case randconfig:
+		/* Really nothing to do in this loop */
 		while (conf_set_all_new_symbols(def_random)) ;
 		break;
-	case InputMode::defconfig:
+	case defconfig:
 		conf_set_all_new_symbols(def_default);
 		break;
-	case InputMode::savedefconfig:
+	case savedefconfig:
 		break;
-	case InputMode::yes2modconfig:
+	case yes2modconfig:
 		conf_rewrite_mod_or_yes(def_y2m);
 		break;
-	case InputMode::mod2yesconfig:
+	case mod2yesconfig:
 		conf_rewrite_mod_or_yes(def_m2y);
 		break;
-	case InputMode::oldaskconfig:
+	case oldaskconfig:
 		rootEntry = &rootmenu;
 		conf(&rootmenu);
-		input_mode = InputMode::oldconfig;
-		[[fallthrough]];
-	case InputMode::oldconfig:
-	case InputMode::listnewconfig:
-	case InputMode::helpnewconfig:
-	case InputMode::syncconfig:
+		input_mode = oldconfig;
+		/* fall through */
+	case oldconfig:
+	case listnewconfig:
+	case helpnewconfig:
+	case syncconfig:
+		/* Update until a loop caused no more changes */
 		do {
 			conf_cnt = 0;
 			check_conf(&rootmenu);
 		} while (conf_cnt);
 		break;
-	case InputMode::olddefconfig:
+	case olddefconfig:
 	default:
 		break;
 	}
 
-	if (input_mode == InputMode::savedefconfig) {
+	if (input_mode == savedefconfig) {
 		if (conf_write_defconfig(defconfig_file)) {
-			std::println(stderr, "n*** Error while saving defconfig to: {}\n",
+			fprintf(stderr, "n*** Error while saving defconfig to: %s\n\n",
 				defconfig_file);
 			return 1;
 		}
-	} else if (input_mode != InputMode::listnewconfig && input_mode != InputMode::helpnewconfig) {
-		if (!no_conf_write && conf_write(nullptr)) {
-			std::println(stderr, "\n*** Error during writing of the configuration.\n");
+	} else if (input_mode != listnewconfig && input_mode != helpnewconfig) {
+		if (!no_conf_write && conf_write(NULL)) {
+			fprintf(stderr, "\n*** Error during writing of the configuration.\n\n");
 			exit(1);
 		}
 
+		/*
+		 * Create auto.conf if it does not exist.
+		 * This prevents GNU Make 4.1 or older from emitting
+		 * "include/config/auto.conf: No such file or directory"
+		 * in the top-level Makefile
+		 *
+		 * syncconfig always creates or updates auto.conf because it is
+		 * used during the build.
+		 */
 		if (conf_write_autoconf(sync_kconfig) && sync_kconfig) {
-			std::println(stderr,
-				"\n*** Error during sync of the configuration.\n");
+			fprintf(stderr,
+				"\n*** Error during sync of the configuration.\n\n");
 			return 1;
 		}
 	}
