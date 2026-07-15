@@ -6,6 +6,8 @@
 !/nanos-lite/*
 !/navy-apps/*
 !/npc/*
+!/npc/out/*
+!/minirvEMU/*
 !Makefile
 !README.md
 !.gitignore
