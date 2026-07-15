@@ -1,4 +1,8 @@
+#ifdef __clang__
 import std;
+#else
+#include <bits/stdc++.h>
+#endif
 using namespace std;
 
 // SPDX-License-Identifier: GPL-2.0
@@ -911,7 +915,7 @@ next:
 		sym->flags &= ~SYMBOL_WRITTEN;
 
 	if (*tmpname) {
-		if (is_same(name, tmpname)) {
+		if (::is_same(name, tmpname)) {
 			conf_message("No change to %s", name);
 			unlink(tmpname);
 			sym_set_change_count(0);

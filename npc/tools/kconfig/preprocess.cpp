@@ -1,4 +1,8 @@
+#ifdef __clang__
 import std;
+#else
+#include <bits/stdc++.h>
+#endif
 using namespace std;
 
 // SPDX-License-Identifier: GPL-2.0
@@ -100,7 +104,7 @@ void env_write_dep(FILE *f, const char *autoconfig_name)
 /*
  * Built-in functions
  */
-struct function {
+struct kconfig_func {
 	const char *name;
 	unsigned int min_args;
 	unsigned int max_args;
@@ -185,7 +189,7 @@ static char *do_warning_if(int argc, char *argv[])
 	return xstrdup("");
 }
 
-static const struct function function_table[] = {
+static const struct kconfig_func function_table[] = {
 	/* Name		MIN	MAX	Function */
 	{ "error-if",	2,	2,	do_error_if },
 	{ "filename",	0,	0,	do_filename },
@@ -199,7 +203,7 @@ static const struct function function_table[] = {
 
 static char *function_expand(const char *name, int argc, char *argv[])
 {
-	const struct function *f;
+	const struct kconfig_func *f;
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(function_table); i++) {

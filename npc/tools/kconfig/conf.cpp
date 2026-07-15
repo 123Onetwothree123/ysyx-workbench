@@ -1,4 +1,8 @@
+#ifdef __clang__
 import std;
+#else
+#include <bits/stdc++.h>
+#endif
 using namespace std;
 
 // SPDX-License-Identifier: GPL-2.0
@@ -427,7 +431,7 @@ static void check_conf(struct menu *menu)
 						str = sym_get_string_value(sym);
 						str = sym_escape_string_value(str);
 						printf("%s%s=%s\n", CONFIG_, sym->name, str);
-						free(static_cast<void*>(str);
+						free(const_cast<char*>(str));
 					} else {
 						str = sym_get_string_value(sym);
 						printf("%s%s=%s\n", CONFIG_, sym->name, str);
@@ -507,7 +511,7 @@ int main(int ac, char **av)
 			conf_set_message_callback(NULL);
 			continue;
 		}
-		input_mode = static_cast<enum input_mode>(opt;
+		input_mode = static_cast<enum input_mode>(opt);
 		switch (opt) {
 		case syncconfig:
 			/*

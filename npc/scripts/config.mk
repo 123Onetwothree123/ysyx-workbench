@@ -13,15 +13,16 @@ Kconfig      := $(NPC_HOME)/Kconfig
 rm-distclean += include/generated include/config .config .config.old
 silent := -s
 
-CONF   := $(KCONFIG_PATH)/../build/c_conf       # C++ conf
-MCONF  := $(KCONFIG_PATH)/../build/c_mconf      # C++ mconf
-FIXDEP := $(FIXDEP_PATH)/build/fixdep
+CONF          := $(KCONFIG_PATH)/../build/c_conf
+MCONF         := $(KCONFIG_PATH)/../build/c_mconf
+KCONFIG_BUILD := $(KCONFIG_PATH)/build
+FIXDEP        := $(FIXDEP_PATH)/build/fixdep
 
-$(CONF):
-	$(Q)$(MAKE) $(silent) -f Makefile.cpp -C $(KCONFIG_PATH) NAME=conf
+$(CONF) $(MCONF): $(KCONFIG_BUILD)/CMakeCache.txt
+	$(Q)cmake --build $(KCONFIG_BUILD) $(silent)
 
-$(MCONF):
-	$(Q)$(MAKE) $(silent) -f Makefile.cpp -C $(KCONFIG_PATH) NAME=mconf
+$(KCONFIG_BUILD)/CMakeCache.txt:
+	$(Q)mkdir -p $(KCONFIG_BUILD) && cd $(KCONFIG_BUILD) && cmake .. $(silent)
 
 $(FIXDEP):
 	$(Q)$(MAKE) $(silent) -C $(FIXDEP_PATH)
