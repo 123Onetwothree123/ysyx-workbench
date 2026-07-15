@@ -52,7 +52,7 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
         std::println("NPC已经停止运行了");
         return SDBCommandResult::Continue;
     }
-    auto &dut = context.GetDUT();
+    auto &dut{context.GetDUT()};
     NPCEvaluationContext EvaluationContext{dut};
     for (std::size_t index{0}; index < count && !NPCTrap::HasHalted(); ++index)
     {

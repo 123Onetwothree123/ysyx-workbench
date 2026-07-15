@@ -7,7 +7,7 @@ std::vector<std::uint8_t> mrom;
 std::vector<std::uint8_t> FlashMemory;
 extern "C" void flash_read(std::int32_t addr, std::int32_t *data)
 {
-    std::uint32_t offset = static_cast<std::uint32_t>(addr); // 已经是偏移，不用减基址
+    std::uint32_t offset{static_cast<std::uint32_t>(addr)}; // 已经是偏移，不用减基址
     std::uint32_t aligned{offset & ~3u};
     std::uint32_t result{0};
     for (int i = 0; i < 4; i++)

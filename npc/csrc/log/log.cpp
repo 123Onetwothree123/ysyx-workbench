@@ -19,22 +19,25 @@ static std::string_view level_str(LogLevel level) {
 void log_init() {
 #ifdef CONFIG_LOG_TO_FILE
     std::filesystem::create_directories(CONFIG_LOG_DIR);
-    auto now = std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()};
-    auto filename = std::format("{}/{:%Y%m%d-%H%M%S}.log", CONFIG_LOG_DIR, now);
+    auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
+    auto filename{std::format("{}/{:%Y%m%d-%H%M%S}.log", CONFIG_LOG_DIR, now)};
     log_file.open(filename);
 #endif
 }
 
 void log_close() {
 #ifdef CONFIG_LOG_TO_FILE
-    if (log_file.is_open()) log_file.close();
+    if (log_file.is_open())
+    {
+        log_file.close();
+    }
 #endif
 }
 
 void log_write(LogLevel level, std::string_view msg, std::source_location loc) {
     std::string line;
 #ifdef CONFIG_LOG_TIMESTAMP
-    auto now = std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()};
+    auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
     line += std::format("[{:%H:%M:%S}] ", now);
 #endif
     line += std::format("[{}] ", level_str(level));
