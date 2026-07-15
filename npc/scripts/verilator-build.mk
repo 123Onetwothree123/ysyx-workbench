@@ -7,29 +7,18 @@ endif
 
 include $(VERILATOR_GENERATED_MK)
 
-# === Module compilation delegated to CMake ===
-ifeq ($(filter clang% icpx%,$(notdir $(CXX))),)
-NPC_MODULE_FLAGS = -fmodules
+ifneq ($(filter clang% icpx%,$(notdir $(CXX))),)
+NPC_COMPILER := clang
 else
-NPC_MODULE_FLAGS =
+NPC_COMPILER := gcc
 endif
 
-# CMake builds all .ixx modules + std module into obj_dir
-.npc_modules_built: $(NPC_IXX_SRCS)
-	@mkdir -p $(NPC_CSRC_DIR)/build
-	@cd $(NPC_CSRC_DIR)/build && cmake .. \
-		-DNPC_OBJ_DIR=$(CURDIR) \
-		-DNPC_CSRC_DIR=$(abspath $(NPC_CSRC_DIR)) \
-		-DCMAKE_CXX_COMPILER=$(CXX) \
-		-DCMAKE_CXX_FLAGS="$(CPPFLAGS) $(NPC_USER_CXXFLAGS)" \
-		> /dev/null && cmake --build . > /dev/null
-	@touch $@
-
-$(VK_USER_OBJS): | .npc_modules_built
-$(VK_USER_OBJS): private CPPFLAGS += $(NPC_USER_CXXFLAGS)
-
-# Module objects — same list as Makefile-based build
+ifneq ($(findstring -stdlib=libc++,$(CPPFLAGS)),)
+STD_MODULE_SRC := /usr/share/libc++/v1/std.cppm
+else
 STD_MODULE_SRC := $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
+endif
+
 STD_MODULE_OBJ := std_module.o
 
 NPC_IXX_SRCS := \
@@ -98,5 +87,49 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/npc.ixx
 
 NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))))
+
+# ============ GCC module compilation ============
+ifeq ($(NPC_COMPILER),gcc)
+
+gcm.cache/std.gcm: $(STD_MODULE_SRC)
+	@mkdir -p gcm.cache
+	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++ -c $< -o $(STD_MODULE_OBJ)
+
+.npc_modules_built: gcm.cache/std.gcm $(NPC_IXX_SRCS)
+	@$(foreach src,$(NPC_IXX_SRCS),echo "  CXX MODULE $(notdir $(src))"; $(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++ -c $(src) -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1;)
+	@touch $@
+
+$(VK_USER_OBJS): | .npc_modules_built
+$(VK_USER_OBJS): private CPPFLAGS += $(NPC_USER_CXXFLAGS)
+
+endif
+
+# ============ Clang module compilation ============
+ifeq ($(NPC_COMPILER),clang)
+
+NPC_PCM_DIR := $(CURDIR)/pcm_cache
+NPC_STD_FLAG := $(lastword $(filter -std=%,$(CPPFLAGS) $(NPC_USER_CXXFLAGS)))
+NPC_CLANG_MODULE_FLAGS := -fprebuilt-module-path=$(NPC_PCM_DIR)
+
+$(NPC_PCM_DIR)/std.pcm: $(STD_MODULE_SRC)
+	@mkdir -p $(NPC_PCM_DIR)
+	$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) --precompile $< -o $@
+
+$(STD_MODULE_OBJ): $(NPC_PCM_DIR)/std.pcm
+	@$(CXX) -c $< -o $@
+
+.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_IXX_SRCS)
+	@$(foreach src,$(NPC_IXX_SRCS),\
+		MOD_NAME=$$(grep -oP '(?<=export module )\S+(?=;)' $(src)); \
+		echo "  CXX MODULE $(notdir $(src)) [$$MOD_NAME]"; \
+		$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) -x c++-module --precompile $(src) -o $(NPC_PCM_DIR)/$$MOD_NAME.pcm || exit 1; \
+		$(CXX) -c $(NPC_CLANG_MODULE_FLAGS) $(NPC_PCM_DIR)/$$MOD_NAME.pcm -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1; \
+	)
+	@touch $@
+
+$(VK_USER_OBJS): | .npc_modules_built
+$(VK_USER_OBJS): private CPPFLAGS += $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS)
+
+endif
 
 LDFLAGS += $(NPC_MODULE_OBJS)
