@@ -20,7 +20,7 @@ import npc.sdb.command.WatchpointPool;
 SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view args)
 {
     static_cast<void>(args);
-    auto &dut = context.GetDUT();
+    auto &dut{context.GetDUT()};
     NPCEvaluationContext EvaluationContext{dut};
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {

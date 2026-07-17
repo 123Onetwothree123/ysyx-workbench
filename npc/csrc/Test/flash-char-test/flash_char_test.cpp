@@ -39,7 +39,8 @@ std::uint32_t flash_read(std::uint32_t addr)
     spi[SPI_TX_0] = (bit_reverse_24(addr) << 8) | FLASH_CMD;
     spi[SPI_CTRL] = CTRL_CHAR_LEN | CTRL_GO | CTRL_TX_NEG | CTRL_LSB;
     while (spi[SPI_CTRL] & CTRL_GO)
-        ;
+    {
+    }
     return swap_bits_bytes(spi[SPI_RX_1]);
 }
 

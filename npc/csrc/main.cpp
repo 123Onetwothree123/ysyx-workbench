@@ -18,13 +18,13 @@ int main(int argc, char const *argv[])
     nvboard_bind_all_pins(&*dut);
     nvboard_init();
 #endif
-    auto options = CLIOptions::Parse(argc, argv);
+    auto options{CLIOptions::Parse(argc, argv)};
     if (!options)
     {
         std::println(std::cerr, "{}", options.error());
         return 1;
     }
-    auto load = ImageLoader::LoadFromCLI(*options);
+    auto load{ImageLoader::LoadFromCLI(*options)};
     if (!load)
     {
 #ifdef CONFIG_SDB
@@ -66,7 +66,7 @@ int main(int argc, char const *argv[])
 #ifdef CONFIG_NVBOARD
     nvboard_quit();
 #endif
-    auto result = NPCTrap::PrintResult(dut.GetCycle());
+    auto result{NPCTrap::PrintResult(dut.GetCycle(), dut.GetInsts())};
 #ifdef CONFIG_DIFFTEST
     if (result != 0)
     {

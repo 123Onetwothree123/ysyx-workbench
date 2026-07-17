@@ -1,46 +1,38 @@
-#include <iostream>
-#include <cstdint>
-#include <string>
-#include <cstring>
-#include <fstream>
-#include "ImmGen.h"
-#include "Decoder.h"
-#include "minirvEMU.h"
-#include "ProgramLoader.h"
+#include <cstdio>
+import std;
+import minirvemu.emu;
+import minirvemu.ProgramLoader;
+
 int main(int argc, char const *argv[])
 {
     if (argc < 2)
     {
-        std::cout << "Usage: " << argv[0] << " <filename.bin> [trace_output.csv]" << std::endl;
+        std::println("Usage: {} <filename.bin> [trace_output.csv]", argv[0]);
         return -1;
     }
-    minirvEMU emu;
-    std::filesystem::path binPath = argv[1];
-    std::filesystem::path tracePath = (argc >= 3) ? std::filesystem::path(argv[2]) : std::filesystem::path("runtime_trace.csv");
+    minirvEMU emu{};
+    std::filesystem::path binPath{argv[1]};
+    std::filesystem::path tracePath{(argc >= 3) ? std::filesystem::path{argv[2]} : std::filesystem::path{"runtime_trace.csv"}};
     if (!emu.EnableTrace(tracePath))
     {
-        std::cout << "open trace file fail: " << tracePath << std::endl;
+        std::println(stderr, "open trace file fail: {}", tracePath.string());
         return -1;
     }
-    auto result = ProgramLoader::LoadBinary(binPath);
+    auto result{ProgramLoader::LoadBinary(binPath)};
     if (!result.has_value())
     {
-        std::cout << "load binary fail" << std::endl;
+        std::println(stderr, "load binary fail");
         return -1;
     }
-    const std::vector<uint8_t> &code = result.value(); // 拿来解包数据的
-    for (size_t i = 0; i < code.size(); ++i)
-    {
-        emu.write_byte(static_cast<uint32_t>(i), code[i]);
-    }
-    std::cout << "Loaded " << code.size() << " bytes from " << binPath.filename() << std::endl;
-    std::cout << "Trace output: " << tracePath << std::endl;
+    const auto &code{result.value()};
+    for (std::size_t i{0}; i < code.size(); ++i)
+        emu.write_byte(static_cast<std::uint32_t>(i), code[i]);
+    std::println("Loaded {} bytes from {}", code.size(), binPath.filename().string());
+    std::println("Trace output: {}", tracePath.string());
     while (!emu.IsHalted())
-    {
         emu.step();
-    }
     emu.UpdateVGA();
-    printf("Simulation halted. Press ESC or Ctrl+C to exit (depending on environment).\n");
+    std::println("Simulation halted.");
     emu.PrintState();
     return 0;
 }

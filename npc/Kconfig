@@ -560,6 +560,14 @@ config SDB
   bool "启用SDB调试器"
   default y
 
+config PERF_STATS
+  bool "启用性能统计（IPC/指令数/周期数）"
+  default y
+  help
+    在仿真结束时输出动态指令数、周期数和IPC
+    IPC = 指令数 / 周期数，反映处理器微结构效率
+    开启后每周期读取debug_commit信号计数，开销极低
+
 config TRACE
   bool "启用追踪功能（总开关）"
   default n
