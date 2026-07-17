@@ -19,7 +19,7 @@ KCONFIG_BUILD := $(KCONFIG_PATH)/build
 FIXDEP        := $(FIXDEP_PATH)/build/fixdep
 
 $(CONF) $(MCONF): $(KCONFIG_BUILD)/CMakeCache.txt
-	$(Q)cmake --build $(KCONFIG_BUILD)
+	$(Q)cmake --build $(KCONFIG_BUILD) -j $$(nproc)
 
 $(KCONFIG_BUILD)/CMakeCache.txt:
 	$(Q)mkdir -p $(KCONFIG_BUILD) && cd $(KCONFIG_BUILD) && cmake ..
