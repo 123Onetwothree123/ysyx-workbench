@@ -299,5 +299,8 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     debug_access_fault := masic.debug_access_fault
     val debug_access_fault_resp = IO(Output(UInt(2.W)))
     debug_access_fault_resp := masic.debug_access_fault_resp
+    // IPC
+    val debug_commit = IO(Output(Bool()))
+    debug_commit := masic.debug_commit
   }
 }

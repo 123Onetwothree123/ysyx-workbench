@@ -79,6 +79,9 @@ void DUT::reset()
     }
     dut->reset = 0;
     cycle = 0;
+#ifdef CONFIG_PERF_STATS
+    insts = 0;
+#endif
 }
 void DUT::step()
 {
@@ -93,6 +96,12 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
+#ifdef CONFIG_PERF_STATS
+    if (dut->debug_commit)
+    {
+        ++insts;
+    }
+#endif
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
 #endif
@@ -151,6 +160,10 @@ void DUT::step()
 std::size_t DUT::GetCycle() const
 {
     return cycle;
+}
+std::size_t DUT::GetInsts() const
+{
+    return insts;
 }
 std::expected<std::uint32_t, std::string> DUT::ReadGPR(std::uint32_t index)
 {

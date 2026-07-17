@@ -10,5 +10,5 @@ public:
     [[nodiscard]] static bool HasHalted() noexcept;
     [[nodiscard]] static std::uint32_t GetPC() noexcept;
     [[nodiscard]] static std::uint32_t GetCode() noexcept;
-    [[nodiscard]] static int PrintResult(std::size_t Cycles);
+    [[nodiscard]] static int PrintResult(std::size_t Cycles, std::size_t Insts);
 };

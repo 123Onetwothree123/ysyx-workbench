@@ -66,7 +66,7 @@ int main(int argc, char const *argv[])
 #ifdef CONFIG_NVBOARD
     nvboard_quit();
 #endif
-    auto result{NPCTrap::PrintResult(dut.GetCycle())};
+    auto result{NPCTrap::PrintResult(dut.GetCycle(), dut.GetInsts())};
 #ifdef CONFIG_DIFFTEST
     if (result != 0)
     {

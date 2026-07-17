@@ -28,19 +28,30 @@ std::uint32_t NPCTrap::GetCode() noexcept
 {
     return HaltCode;
 }
-int NPCTrap::PrintResult(std::size_t Cycles)
+int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Insts)
 {
     if (!Halted)
     {
         std::println("NPC在未触发陷阱的情况下退出");
         return 0;
     }
+#ifdef CONFIG_PERF_STATS
+    auto ipc{Cycles > 0 ? static_cast<double>(Insts) / static_cast<double>(Cycles) : 0.0};
+#endif
     if (HaltCode == 0)
     {
+#ifdef CONFIG_PERF_STATS
+        std::println("HIT GOOD TRAP at pc = 0x{0:08x}, cycles = {1}, insts = {2}, ipc = {3:.4f}", HaltPC, Cycles, Insts, ipc);
+#else
         std::println("HIT GOOD TRAP at pc = 0x{0:08x}, cycles = {1}", HaltPC, Cycles);
+#endif
         return 0;
     }
+#ifdef CONFIG_PERF_STATS
+    std::println(std::cerr, "HIT BAD TRAP at pc = 0x{0:08x}, code = {1}, cycles = {2}, insts = {3}, ipc = {4:.4f}", HaltPC, HaltCode, Cycles, Insts, ipc);
+#else
     std::println(std::cerr, "HIT BAD TRAP at pc = 0x{0:08x}, code = {1}, cycles = {2}", HaltPC, HaltCode, Cycles);
+#endif
     PrintIringbuf(HaltPC);
     return 1;
 }

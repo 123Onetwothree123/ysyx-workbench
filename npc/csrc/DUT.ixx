@@ -8,6 +8,7 @@ export class DUT
 private:
     std::unique_ptr<VysyxSoCFull> dut;
     std::size_t cycle{0};
+    std::size_t insts{0};
 
 public:
     DUT();
@@ -20,6 +21,7 @@ public:
     void step();
     void reset();
     std::size_t GetCycle() const;
+    std::size_t GetInsts() const;
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();
