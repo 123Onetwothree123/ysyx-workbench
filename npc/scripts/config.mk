@@ -28,7 +28,7 @@ $(FIXDEP):
 	$(Q)$(MAKE) $(silent) -C $(FIXDEP_PATH)
 
 menuconfig: $(MCONF) $(CONF) $(FIXDEP)
-	$(Q)$(MCONF) $(Kconfig)
+	$(Q)TERM=xterm LC_ALL=C.utf8 $(MCONF) $(Kconfig)
 	$(Q)$(CONF) $(silent) --syncconfig $(Kconfig)
 
 savedefconfig: $(CONF)

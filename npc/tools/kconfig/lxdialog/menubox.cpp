@@ -39,7 +39,18 @@ static void do_print_item(WINDOW * win, const char *item, int line_y,
 	if (hotkey) {
 		wattrset(win, selected ? dlg.tag_key_selected.atr
 			 : dlg.tag_key.atr);
-		mvwaddch(win, line_y, item_x + j, menu_item[j]);
+		int col = 0;
+		mbstate_t state{};
+		for (int k = 0; k < j && menu_item[k];) {
+			wchar_t wc;
+			auto len = mbrtowc(&wc, menu_item + k, MB_CUR_MAX, &state);
+			if (len == static_cast<size_t>(-1) || len == static_cast<size_t>(-2))
+				break;
+			int w = wcwidth(wc);
+			col += (w > 0 ? w : 0);
+			k += static_cast<int>(len);
+		}
+		mvwaddch(win, line_y, item_x + col, menu_item[j]);
 	}
 	if (selected) {
 		wmove(win, line_y, item_x + 1);
