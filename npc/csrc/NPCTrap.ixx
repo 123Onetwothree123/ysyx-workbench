@@ -10,16 +10,16 @@ public:
     [[nodiscard]] static bool HasHalted() noexcept;
     [[nodiscard]] static std::uint32_t GetPC() noexcept;
     [[nodiscard]] static std::uint32_t GetCode() noexcept;
-    [[nodiscard]] static int PrintResult(std::size_t Cycles, std::size_t Insts);
+    [[nodiscard]] static int PrintResult(std::size_t Cycles, std::size_t Instructions);
 #ifdef CONFIG_PERF_STATS
-    static void PrintPerfStats(
-        std::size_t perf_ifu_fetch,
-        std::size_t perf_exu_done,
-        std::size_t perf_lsu_load,
-        std::size_t perf_lsu_store,
-        std::size_t perf_alu_op,
-        std::size_t perf_mem_op,
-        std::size_t perf_csr_op,
-        std::size_t perf_branch_op);
+    static void PrintPerformanceStatistics(
+        std::size_t instruction_fetch,
+        std::size_t execution_complete,
+        std::size_t load_data,
+        std::size_t store_data,
+        std::size_t arithmetic_operation,
+        std::size_t memory_access_operation,
+        std::size_t control_status_register_operation,
+        std::size_t branch_operation);
 #endif
 };

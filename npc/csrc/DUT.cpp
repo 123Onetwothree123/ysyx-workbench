@@ -80,15 +80,15 @@ void DUT::reset()
     dut->reset = 0;
     cycle = 0;
 #ifdef CONFIG_PERF_STATS
-    insts = 0;
-    perf_ifu_fetch_cnt = 0;
-    perf_exu_done_cnt = 0;
-    perf_lsu_load_cnt = 0;
-    perf_lsu_store_cnt = 0;
-    perf_alu_op_cnt = 0;
-    perf_mem_op_cnt = 0;
-    perf_csr_op_cnt = 0;
-    perf_branch_op_cnt = 0;
+    instructions = 0;
+    instruction_fetch_count = 0;
+    execution_complete_count = 0;
+    load_data_count = 0;
+    store_data_count = 0;
+    arithmetic_operation_count = 0;
+    memory_access_operation_count = 0;
+    control_status_register_operation_count = 0;
+    branch_operation_count = 0;
 #endif
 }
 void DUT::step()
@@ -107,16 +107,16 @@ void DUT::step()
 #ifdef CONFIG_PERF_STATS
     if (dut->debug_commit)
     {
-        ++insts;
+        ++instructions;
     }
-    if (dut->perf_ifu_fetch)  ++perf_ifu_fetch_cnt;
-    if (dut->perf_exu_done)   ++perf_exu_done_cnt;
-    if (dut->perf_lsu_load)   ++perf_lsu_load_cnt;
-    if (dut->perf_lsu_store)  ++perf_lsu_store_cnt;
-    if (dut->perf_alu_op)     ++perf_alu_op_cnt;
-    if (dut->perf_mem_op)     ++perf_mem_op_cnt;
-    if (dut->perf_csr_op)     ++perf_csr_op_cnt;
-    if (dut->perf_branch_op)  ++perf_branch_op_cnt;
+    if (dut->perf_ifu_fetch)  ++instruction_fetch_count;
+    if (dut->perf_exu_done)   ++execution_complete_count;
+    if (dut->perf_lsu_load)   ++load_data_count;
+    if (dut->perf_lsu_store)  ++store_data_count;
+    if (dut->perf_alu_op)     ++arithmetic_operation_count;
+    if (dut->perf_mem_op)     ++memory_access_operation_count;
+    if (dut->perf_csr_op)     ++control_status_register_operation_count;
+    if (dut->perf_branch_op)  ++branch_operation_count;
 #endif
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
@@ -177,9 +177,9 @@ std::size_t DUT::GetCycle() const
 {
     return cycle;
 }
-std::size_t DUT::GetInsts() const
+std::size_t DUT::GetInstructions() const
 {
-    return insts;
+    return instructions;
 }
 std::expected<std::uint32_t, std::string> DUT::ReadGPR(std::uint32_t index)
 {

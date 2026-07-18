@@ -28,7 +28,7 @@ std::uint32_t NPCTrap::GetCode() noexcept
 {
     return HaltCode;
 }
-int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Insts)
+int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Instructions)
 {
     if (!Halted)
     {
@@ -36,19 +36,19 @@ int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Insts)
         return 0;
     }
 #ifdef CONFIG_PERF_STATS
-    auto ipc{Cycles > 0 ? static_cast<double>(Insts) / static_cast<double>(Cycles) : 0.0};
+    auto ipc{Cycles > 0 ? static_cast<double>(Instructions) / static_cast<double>(Cycles) : 0.0};
 #endif
     if (HaltCode == 0)
     {
 #ifdef CONFIG_PERF_STATS
-        std::println("HIT GOOD TRAP at pc = 0x{0:08x}, cycles = {1}, insts = {2}, ipc = {3:.4f}", HaltPC, Cycles, Insts, ipc);
+        std::println("HIT GOOD TRAP at pc = 0x{0:08x}, cycles = {1}, instructions = {2}, ipc = {3:.4f}", HaltPC, Cycles, Instructions, ipc);
 #else
         std::println("HIT GOOD TRAP at pc = 0x{0:08x}, cycles = {1}", HaltPC, Cycles);
 #endif
         return 0;
     }
 #ifdef CONFIG_PERF_STATS
-    std::println(std::cerr, "HIT BAD TRAP at pc = 0x{0:08x}, code = {1}, cycles = {2}, insts = {3}, ipc = {4:.4f}", HaltPC, HaltCode, Cycles, Insts, ipc);
+    std::println(std::cerr, "HIT BAD TRAP at pc = 0x{0:08x}, code = {1}, cycles = {2}, instructions = {3}, ipc = {4:.4f}", HaltPC, HaltCode, Cycles, Instructions, ipc);
 #else
     std::println(std::cerr, "HIT BAD TRAP at pc = 0x{0:08x}, code = {1}, cycles = {2}", HaltPC, HaltCode, Cycles);
 #endif
@@ -56,30 +56,30 @@ int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Insts)
     return 1;
 }
 #ifdef CONFIG_PERF_STATS
-void NPCTrap::PrintPerfStats(
-    std::size_t perf_ifu_fetch,
-    std::size_t perf_exu_done,
-    std::size_t perf_lsu_load,
-    std::size_t perf_lsu_store,
-    std::size_t perf_alu_op,
-    std::size_t perf_mem_op,
-    std::size_t perf_csr_op,
-    std::size_t perf_branch_op)
+void NPCTrap::PrintPerformanceStatistics(
+    std::size_t instruction_fetch,
+    std::size_t execution_complete,
+    std::size_t load_data,
+    std::size_t store_data,
+    std::size_t arithmetic_operation,
+    std::size_t memory_access_operation,
+    std::size_t control_status_register_operation,
+    std::size_t branch_operation)
 {
-    std::println("========== 性能计数器 ==========");
-    std::println("IFU取到指令      : {:>12}", perf_ifu_fetch);
-    std::println("EXU完成计算      : {:>12}", perf_exu_done);
-    std::println("LSU取到数据      : {:>12}", perf_lsu_load);
-    std::println("LSU写出数据      : {:>12}", perf_lsu_store);
-    std::println("ALU指令          : {:>12}", perf_alu_op);
-    std::println("访存指令         : {:>12}", perf_mem_op);
-    std::println("CSR指令          : {:>12}", perf_csr_op);
-    std::println("分支/跳转指令    : {:>12}", perf_branch_op);
-    std::println("--------------------------------");
-    auto insts_sum{perf_alu_op + perf_mem_op + perf_csr_op + perf_branch_op};
-    std::println("指令类别合计      : {:>12}  (应与IFU取指一致)", insts_sum);
-    std::println("IFU取指           : {:>12}", perf_ifu_fetch);
-    std::println("EXU完成           : {:>12}  (应与IFU取指接近)", perf_exu_done);
-    auto lsu_sum{perf_lsu_load + perf_lsu_store};
-    std::println("LSU合计           : {:>12}  (应与访存指令一致)", lsu_sum);
+    std::println("性能计数器");
+    std::println("IFU取到指令: {}", instruction_fetch);
+    std::println("EXU完成计算: {}", execution_complete);
+    std::println("LSU取到数据: {}", load_data);
+    std::println("LSU写出数据: {}", store_data);
+    std::println("ALU指令: {}", arithmetic_operation);
+    std::println("访存指令: {}", memory_access_operation);
+    std::println("CSR指令: {}", control_status_register_operation);
+    std::println("分支/跳转指令: {}", branch_operation);
+    auto instruction_type_sum{arithmetic_operation + memory_access_operation + control_status_register_operation + branch_operation};
+    std::println("指令类别合计: {} (应与IFU取指一致)", instruction_type_sum);
+    std::println("IFU取指: {}", instruction_fetch);
+    std::println("EXU完成: {} (应与IFU取指接近)", execution_complete);
+    auto load_store_sum{load_data + store_data};
+    std::println("LSU合计: {} (应与访存指令一致)", load_store_sum);
 }
+#endif

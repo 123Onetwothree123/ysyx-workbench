@@ -8,15 +8,15 @@ export class DUT
 private:
     std::unique_ptr<VysyxSoCFull> dut;
     std::size_t cycle{0};
-    std::size_t insts{0};
-    std::size_t perf_ifu_fetch_cnt{0};
-    std::size_t perf_exu_done_cnt{0};
-    std::size_t perf_lsu_load_cnt{0};
-    std::size_t perf_lsu_store_cnt{0};
-    std::size_t perf_alu_op_cnt{0};
-    std::size_t perf_mem_op_cnt{0};
-    std::size_t perf_csr_op_cnt{0};
-    std::size_t perf_branch_op_cnt{0};
+    std::size_t instructions{0};
+    std::size_t instruction_fetch_count{0};
+    std::size_t execution_complete_count{0};
+    std::size_t load_data_count{0};
+    std::size_t store_data_count{0};
+    std::size_t arithmetic_operation_count{0};
+    std::size_t memory_access_operation_count{0};
+    std::size_t control_status_register_operation_count{0};
+    std::size_t branch_operation_count{0};
 
 public:
     DUT();
@@ -29,15 +29,15 @@ public:
     void step();
     void reset();
     std::size_t GetCycle() const;
-    std::size_t GetInsts() const;
-    std::size_t GetPerfIfuFetch() const  { return perf_ifu_fetch_cnt; }
-    std::size_t GetPerfExuDone() const   { return perf_exu_done_cnt; }
-    std::size_t GetPerfLsuLoad() const   { return perf_lsu_load_cnt; }
-    std::size_t GetPerfLsuStore() const  { return perf_lsu_store_cnt; }
-    std::size_t GetPerfAluOp() const     { return perf_alu_op_cnt; }
-    std::size_t GetPerfMemOp() const     { return perf_mem_op_cnt; }
-    std::size_t GetPerfCsrOp() const     { return perf_csr_op_cnt; }
-    std::size_t GetPerfBranchOp() const  { return perf_branch_op_cnt; }
+    std::size_t GetInstructions() const;
+    std::size_t GetInstructionFetchCount() const           { return instruction_fetch_count; }
+    std::size_t GetExecutionCompleteCount() const          { return execution_complete_count; }
+    std::size_t GetLoadDataCount() const                   { return load_data_count; }
+    std::size_t GetStoreDataCount() const                  { return store_data_count; }
+    std::size_t GetArithmeticOperationCount() const        { return arithmetic_operation_count; }
+    std::size_t GetMemoryAccessOperationCount() const      { return memory_access_operation_count; }
+    std::size_t GetControlStatusRegisterOperationCount() const { return control_status_register_operation_count; }
+    std::size_t GetBranchOperationCount() const            { return branch_operation_count; }
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();
