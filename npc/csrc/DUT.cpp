@@ -89,6 +89,15 @@ void DUT::reset()
     memory_access_operation_count = 0;
     control_status_register_operation_count = 0;
     branch_operation_count = 0;
+    instruction_fetch_stall_pipeline_count = 0;
+    instruction_fetch_stall_axi_count = 0;
+    instruction_fetch_stall_redirect_count = 0;
+    execution_active_cycle_count = 0;
+    arithmetic_operation_active_cycle_count = 0;
+    memory_access_operation_active_cycle_count = 0;
+    control_status_register_operation_active_cycle_count = 0;
+    branch_operation_active_cycle_count = 0;
+    load_store_unit_active_cycle_count = 0;
 #endif
 }
 void DUT::step()
@@ -117,6 +126,15 @@ void DUT::step()
     if (dut->perf_mem_op)     ++memory_access_operation_count;
     if (dut->perf_csr_op)     ++control_status_register_operation_count;
     if (dut->perf_branch_op)  ++branch_operation_count;
+    if (dut->perf_ifu_stall_pipeline) ++instruction_fetch_stall_pipeline_count;
+    if (dut->perf_ifu_stall_axi)      ++instruction_fetch_stall_axi_count;
+    if (dut->perf_ifu_stall_redirect) ++instruction_fetch_stall_redirect_count;
+    if (dut->perf_execution_active)   ++execution_active_cycle_count;
+    if (dut->perf_execution_active && dut->perf_alu_op)    ++arithmetic_operation_active_cycle_count;
+    if (dut->perf_execution_active && dut->perf_mem_op)    ++memory_access_operation_active_cycle_count;
+    if (dut->perf_execution_active && dut->perf_csr_op)    ++control_status_register_operation_active_cycle_count;
+    if (dut->perf_execution_active && dut->perf_branch_op) ++branch_operation_active_cycle_count;
+    if (dut->perf_lsu_active)         ++load_store_unit_active_cycle_count;
 #endif
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);

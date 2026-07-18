@@ -20,6 +20,15 @@ public:
         std::size_t arithmetic_operation,
         std::size_t memory_access_operation,
         std::size_t control_status_register_operation,
-        std::size_t branch_operation);
+        std::size_t branch_operation,
+        std::size_t total_cycles,
+        std::size_t instruction_fetch_stall_pipeline,
+        std::size_t instruction_fetch_stall_axi,
+        std::size_t instruction_fetch_stall_redirect,
+        std::size_t arithmetic_operation_active_cycles,
+        std::size_t memory_access_operation_active_cycles,
+        std::size_t control_status_register_operation_active_cycles,
+        std::size_t branch_operation_active_cycles,
+        std::size_t load_store_unit_active_cycles);
 #endif
 };

@@ -76,7 +76,16 @@ int main(int argc, char const *argv[])
         dut.GetArithmeticOperationCount(),
         dut.GetMemoryAccessOperationCount(),
         dut.GetControlStatusRegisterOperationCount(),
-        dut.GetBranchOperationCount());
+        dut.GetBranchOperationCount(),
+        dut.GetCycle(),
+        dut.GetInstructionFetchStallPipelineCount(),
+        dut.GetInstructionFetchStallAXICount(),
+        dut.GetInstructionFetchStallRedirectCount(),
+        dut.GetArithmeticOperationActiveCycleCount(),
+        dut.GetMemoryAccessOperationActiveCycleCount(),
+        dut.GetControlStatusRegisterOperationActiveCycleCount(),
+        dut.GetBranchOperationActiveCycleCount(),
+        dut.GetLoadStoreUnitActiveCycleCount());
 #endif
 #ifdef CONFIG_DIFFTEST
     if (result != 0)
