@@ -122,10 +122,13 @@ void DUT::step()
     if (dut->perf_exu_done)   ++execution_complete_count;
     if (dut->perf_lsu_load)   ++load_data_count;
     if (dut->perf_lsu_store)  ++store_data_count;
-    if (dut->perf_alu_op)     ++arithmetic_operation_count;
-    if (dut->perf_mem_op)     ++memory_access_operation_count;
-    if (dut->perf_csr_op)     ++control_status_register_operation_count;
-    if (dut->perf_branch_op)  ++branch_operation_count;
+    if (dut->perf_exu_done)
+    {
+        if (dut->perf_alu_op)     ++arithmetic_operation_count;
+        if (dut->perf_mem_op)     ++memory_access_operation_count;
+        if (dut->perf_csr_op)     ++control_status_register_operation_count;
+        if (dut->perf_branch_op)  ++branch_operation_count;
+    }
     if (dut->perf_ifu_stall_pipeline) ++instruction_fetch_stall_pipeline_count;
     if (dut->perf_ifu_stall_axi)      ++instruction_fetch_stall_axi_count;
     if (dut->perf_ifu_stall_redirect) ++instruction_fetch_stall_redirect_count;

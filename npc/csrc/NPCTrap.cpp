@@ -97,25 +97,13 @@ void NPCTrap::PrintPerformanceStatistics(
     {
         auto total_instructions = static_cast<double>(instruction_fetch);
         std::println("ALU指令占比: {:.1f}%", 100.0 * arithmetic_operation / total_instructions);
-        if (arithmetic_operation > 0)
-        {
-            std::println("ALU指令平均周期: {:.2f}", static_cast<double>(arithmetic_operation_active_cycles) / arithmetic_operation);
-        }
         std::println("访存指令占比: {:.1f}%", 100.0 * memory_access_operation / total_instructions);
         if (memory_access_operation > 0)
         {
             std::println("访存指令平均周期: {:.2f}", static_cast<double>(memory_access_operation_active_cycles) / memory_access_operation);
         }
         std::println("CSR指令占比: {:.1f}%", 100.0 * control_status_register_operation / total_instructions);
-        if (control_status_register_operation > 0)
-        {
-            std::println("CSR指令平均周期: {:.2f}", static_cast<double>(control_status_register_operation_active_cycles) / control_status_register_operation);
-        }
         std::println("分支/跳转指令占比: {:.1f}%", 100.0 * branch_operation / total_instructions);
-        if (branch_operation > 0)
-        {
-            std::println("分支/跳转指令平均周期: {:.2f}", static_cast<double>(branch_operation_active_cycles) / branch_operation);
-        }
     }
 
     std::println("");

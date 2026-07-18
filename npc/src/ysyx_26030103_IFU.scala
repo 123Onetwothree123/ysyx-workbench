@@ -37,6 +37,10 @@ class ysyx_26030103_IFU extends Module {
   io.AccessFaultResp := AccessFaultRespReg
   val InstructionResponseFire =
     io.InstructionBus.R.RVALID && io.InstructionBus.R.RREADY
+  val PrefetchValid = RegInit(false.B)
+  val PrefetchInstruction = RegInit(0.U(32.W))
+  val PrefetchPC = RegInit(0.U(32.W))
+  val PrefetchSent = RegInit(false.B)
   // 他妈的居然因为要防止报警转错，还要手动去给个初始值，哪个天才做的编译器
   // 写通道全关，ysyx_26030103_IFU只读不写
   io.InstructionBus.AW.AWVALID := false.B
@@ -63,6 +67,11 @@ class ysyx_26030103_IFU extends Module {
   io.out.valid := false.B
   io.out.bits.Instruction := InstructionReg
   io.out.bits.pc := PCReg
+  // 默认接收 R 通道数据（为 prefetch 做准备）
+  io.InstructionBus.R.RREADY := false.B
+  // 默认不发出 AR 请求
+  io.InstructionBus.AR.ARVALID := false.B
+  io.InstructionBus.AR.ARADDR := NextPCModule.io.ysyx_26030103_NextPC
   switch(state) {
     is(StatesIdle) {
       AccessFaultReg := false.B
@@ -92,15 +101,38 @@ class ysyx_26030103_IFU extends Module {
         }.otherwise {
           InstructionReg := io.InstructionBus.R.RDATA
         }
+        PrefetchSent := false.B
         state := StatesHold
       }
     }
     is(StatesHold) {
       io.out.valid := true.B
-      when(
-        io.out.valid && io.out.ready
-      ) { // 只有ysyx_26030103_IDU真的接走了这条指令，ysyx_26030103_IFU这里才会去进入下一次的取指
-        state := StatesIdle
+      io.InstructionBus.R.RREADY := true.B
+      // 在 Hold 期间发起下一次取指
+      when(!PrefetchSent) {
+        io.InstructionBus.AR.ARVALID := true.B
+        when(io.InstructionBus.AR.ARREADY) {
+          PrefetchSent := true.B
+        }
+      }
+      // R 通道在 Hold 期间返回的是预取的数据
+      when(InstructionResponseFire) {
+        PrefetchInstruction := io.InstructionBus.R.RDATA
+        PrefetchPC := NextPCModule.io.ysyx_26030103_NextPC
+        PrefetchValid := true.B
+      }
+      when(io.out.valid && io.out.ready) {
+        when(PrefetchValid) {
+          InstructionReg := PrefetchInstruction
+          PCReg := PrefetchPC
+          PrefetchValid := false.B
+          PrefetchSent := false.B
+          state := StatesHold
+        }.elsewhen(PrefetchSent) {
+          state := StatesWaitResponse
+        }.otherwise {
+          state := StatesIdle
+        }
       }
     }
   }
@@ -114,6 +146,11 @@ class ysyx_26030103_IFU extends Module {
 //他妈的，vsc插件的格式化文档居然抽风了，独立行没法格式化，不是，自己做的东西，自己没跑过吗
   PCModule.io.ysyx_26030103_NextPC := NextPCModule.io.ysyx_26030103_NextPC
   PCModule.io.PCEnable := NextPCModule.io.PCEnable && io.out.fire
+  // 跳转冲刷时，丢弃预取缓存
+  when(io.Redirect) {
+    PrefetchValid := false.B
+    PrefetchSent := false.B
+  }
 //sdb
   io.DebugPC := PCModule.io.ysyx_26030103_PC
   io.DebugInstructions := InstructionReg
