@@ -8,7 +8,24 @@ export class DUT
 private:
     std::unique_ptr<VysyxSoCFull> dut;
     std::size_t cycle{0};
-    std::size_t insts{0};
+    std::size_t instructions{0};
+    std::size_t instruction_fetch_count{0};
+    std::size_t execution_complete_count{0};
+    std::size_t load_data_count{0};
+    std::size_t store_data_count{0};
+    std::size_t arithmetic_operation_count{0};
+    std::size_t memory_access_operation_count{0};
+    std::size_t control_status_register_operation_count{0};
+    std::size_t branch_operation_count{0};
+    std::size_t instruction_fetch_stall_pipeline_count{0};
+    std::size_t instruction_fetch_stall_axi_count{0};
+    std::size_t instruction_fetch_stall_redirect_count{0};
+    std::size_t execution_active_cycle_count{0};
+    std::size_t arithmetic_operation_active_cycle_count{0};
+    std::size_t memory_access_operation_active_cycle_count{0};
+    std::size_t control_status_register_operation_active_cycle_count{0};
+    std::size_t branch_operation_active_cycle_count{0};
+    std::size_t load_store_unit_active_cycle_count{0};
 
 public:
     DUT();
@@ -21,7 +38,24 @@ public:
     void step();
     void reset();
     std::size_t GetCycle() const;
-    std::size_t GetInsts() const;
+    std::size_t GetInstructions() const;
+    std::size_t GetInstructionFetchCount() const           { return instruction_fetch_count; }
+    std::size_t GetExecutionCompleteCount() const          { return execution_complete_count; }
+    std::size_t GetLoadDataCount() const                   { return load_data_count; }
+    std::size_t GetStoreDataCount() const                  { return store_data_count; }
+    std::size_t GetArithmeticOperationCount() const        { return arithmetic_operation_count; }
+    std::size_t GetMemoryAccessOperationCount() const      { return memory_access_operation_count; }
+    std::size_t GetControlStatusRegisterOperationCount() const { return control_status_register_operation_count; }
+    std::size_t GetBranchOperationCount() const            { return branch_operation_count; }
+    std::size_t GetInstructionFetchStallPipelineCount() const { return instruction_fetch_stall_pipeline_count; }
+    std::size_t GetInstructionFetchStallAXICount() const      { return instruction_fetch_stall_axi_count; }
+    std::size_t GetInstructionFetchStallRedirectCount() const { return instruction_fetch_stall_redirect_count; }
+    std::size_t GetExecutionActiveCycleCount() const          { return execution_active_cycle_count; }
+    std::size_t GetArithmeticOperationActiveCycleCount() const       { return arithmetic_operation_active_cycle_count; }
+    std::size_t GetMemoryAccessOperationActiveCycleCount() const     { return memory_access_operation_active_cycle_count; }
+    std::size_t GetControlStatusRegisterOperationActiveCycleCount() const { return control_status_register_operation_active_cycle_count; }
+    std::size_t GetBranchOperationActiveCycleCount() const           { return branch_operation_active_cycle_count; }
+    std::size_t GetLoadStoreUnitActiveCycleCount() const             { return load_store_unit_active_cycle_count; }
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();

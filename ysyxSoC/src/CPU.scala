@@ -43,6 +43,20 @@ class ysyx_26030103 extends BlackBox {
     val io_debug_access_fault = Output(Bool())
     val io_debug_access_fault_resp = Output(UInt(2.W))
     val io_debug_commit = Output(Bool())
+    // 性能计数器
+    val io_perf_ifu_fetch  = Output(Bool())
+    val io_perf_exu_done   = Output(Bool())
+    val io_perf_lsu_load   = Output(Bool())
+    val io_perf_lsu_store  = Output(Bool())
+    val io_perf_alu_op     = Output(Bool())
+    val io_perf_mem_op     = Output(Bool())
+    val io_perf_csr_op     = Output(Bool())
+    val io_perf_branch_op  = Output(Bool())
+    val io_perf_ifu_stall_pipeline = Output(Bool())
+    val io_perf_ifu_stall_axi      = Output(Bool())
+    val io_perf_ifu_stall_redirect = Output(Bool())
+    val io_perf_execution_active   = Output(Bool())
+    val io_perf_lsu_active         = Output(Bool())
   })
 }
 
@@ -106,5 +120,32 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     debug_access_fault_resp := cpu.io.io_debug_access_fault_resp
     val debug_commit = IO(Output(Bool()))
     debug_commit := cpu.io.io_debug_commit
+    // 性能计数器
+    val perf_ifu_fetch = IO(Output(Bool()))
+    perf_ifu_fetch := cpu.io.io_perf_ifu_fetch
+    val perf_exu_done = IO(Output(Bool()))
+    perf_exu_done := cpu.io.io_perf_exu_done
+    val perf_lsu_load = IO(Output(Bool()))
+    perf_lsu_load := cpu.io.io_perf_lsu_load
+    val perf_lsu_store = IO(Output(Bool()))
+    perf_lsu_store := cpu.io.io_perf_lsu_store
+    val perf_alu_op = IO(Output(Bool()))
+    perf_alu_op := cpu.io.io_perf_alu_op
+    val perf_mem_op = IO(Output(Bool()))
+    perf_mem_op := cpu.io.io_perf_mem_op
+    val perf_csr_op = IO(Output(Bool()))
+    perf_csr_op := cpu.io.io_perf_csr_op
+    val perf_branch_op = IO(Output(Bool()))
+    perf_branch_op := cpu.io.io_perf_branch_op
+    val perf_ifu_stall_pipeline = IO(Output(Bool()))
+    perf_ifu_stall_pipeline := cpu.io.io_perf_ifu_stall_pipeline
+    val perf_ifu_stall_axi = IO(Output(Bool()))
+    perf_ifu_stall_axi := cpu.io.io_perf_ifu_stall_axi
+    val perf_ifu_stall_redirect = IO(Output(Bool()))
+    perf_ifu_stall_redirect := cpu.io.io_perf_ifu_stall_redirect
+    val perf_execution_active = IO(Output(Bool()))
+    perf_execution_active := cpu.io.io_perf_execution_active
+    val perf_lsu_active = IO(Output(Bool()))
+    perf_lsu_active := cpu.io.io_perf_lsu_active
   }
 }

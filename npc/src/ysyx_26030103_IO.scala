@@ -105,4 +105,18 @@ class ysyx_26030103_IO extends Bundle {
   val debug_access_fault = Output(Bool())
   val debug_access_fault_resp = Output(UInt(2.W))
   val debug_commit = Output(Bool())
+  // 性能计数器
+  val perf_ifu_fetch  = Output(Bool())
+  val perf_exu_done   = Output(Bool())
+  val perf_lsu_load   = Output(Bool())
+  val perf_lsu_store  = Output(Bool())
+  val perf_alu_op     = Output(Bool())
+  val perf_mem_op     = Output(Bool())
+  val perf_csr_op     = Output(Bool())
+  val perf_branch_op  = Output(Bool())
+  val perf_ifu_stall_pipeline = Output(Bool())
+  val perf_ifu_stall_axi      = Output(Bool())
+  val perf_ifu_stall_redirect = Output(Bool())
+  val perf_execution_active   = Output(Bool())
+  val perf_lsu_active         = Output(Bool())
 }

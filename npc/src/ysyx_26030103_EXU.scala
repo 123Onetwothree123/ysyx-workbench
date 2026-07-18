@@ -25,6 +25,11 @@ class ysyx_26030103_EXU extends Module {
     val LoadSigned = Output(Bool())
     val TrapValid = Output(Bool())
     val TrapPC = Output(UInt(32.W))
+    val PerfALUOp = Output(Bool())
+    val PerfMemOp = Output(Bool())
+    val PerfCSROp = Output(Bool())
+    val PerfBranchOp = Output(Bool())
+    val PerfExecutionActive = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -133,4 +138,10 @@ class ysyx_26030103_EXU extends Module {
   io.out.bits.LoadData := io.LSULoadDATA
   io.out.bits.snpc := ActiveInstruction.snpc
   io.out.bits.CSRReadData := CSRUnit.io.CSR_rdata
+  io.PerfALUOp := !ActiveInstruction.MemoryValid && !ActiveInstruction.IsCsrrw && !ActiveInstruction.IsCsrrs &&
+    !ActiveInstruction.IsBranch && !ActiveInstruction.IsJal && !ActiveInstruction.IsJalr
+  io.PerfMemOp := ActiveInstruction.MemoryValid
+  io.PerfCSROp := ActiveInstruction.IsCsrrw || ActiveInstruction.IsCsrrs
+  io.PerfBranchOp := ActiveInstruction.IsBranch || ActiveInstruction.IsJal || ActiveInstruction.IsJalr
+  io.PerfExecutionActive := state =/= StatesIdle
 }

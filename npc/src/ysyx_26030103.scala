@@ -137,4 +137,18 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
     lsu.io.AccessFaultResp
   )
   io.debug_commit := wbu.io.WriteEN
+  // 性能计数器
+  io.perf_ifu_fetch := ifu.io.InstructionBus.R.RVALID && ifu.io.InstructionBus.R.RREADY
+  io.perf_exu_done  := exu.io.out.fire
+  io.perf_lsu_load  := lsu.io.Complete && !exu.io.MemoryWrite
+  io.perf_lsu_store := lsu.io.Complete && exu.io.MemoryWrite
+  io.perf_alu_op    := exu.io.PerfALUOp
+  io.perf_mem_op    := exu.io.PerfMemOp
+  io.perf_csr_op    := exu.io.PerfCSROp
+  io.perf_branch_op := exu.io.PerfBranchOp
+  io.perf_ifu_stall_pipeline := ifu.io.StallPipeline
+  io.perf_ifu_stall_axi      := ifu.io.StallAXI
+  io.perf_ifu_stall_redirect := exu.io.Redirect
+  io.perf_execution_active   := exu.io.PerfExecutionActive
+  io.perf_lsu_active         := lsu.io.Active
 }
