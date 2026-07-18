@@ -39,23 +39,23 @@ public:
     void reset();
     std::size_t GetCycle() const;
     std::size_t GetInstructions() const;
-    std::size_t GetInstructionFetchCount() const           { return instruction_fetch_count; }
-    std::size_t GetExecutionCompleteCount() const          { return execution_complete_count; }
-    std::size_t GetLoadDataCount() const                   { return load_data_count; }
-    std::size_t GetStoreDataCount() const                  { return store_data_count; }
-    std::size_t GetArithmeticOperationCount() const        { return arithmetic_operation_count; }
-    std::size_t GetMemoryAccessOperationCount() const      { return memory_access_operation_count; }
+    std::size_t GetInstructionFetchCount() const { return instruction_fetch_count; }
+    std::size_t GetExecutionCompleteCount() const { return execution_complete_count; }
+    std::size_t GetLoadDataCount() const { return load_data_count; }
+    std::size_t GetStoreDataCount() const { return store_data_count; }
+    std::size_t GetArithmeticOperationCount() const { return arithmetic_operation_count; }
+    std::size_t GetMemoryAccessOperationCount() const { return memory_access_operation_count; }
     std::size_t GetControlStatusRegisterOperationCount() const { return control_status_register_operation_count; }
-    std::size_t GetBranchOperationCount() const            { return branch_operation_count; }
+    std::size_t GetBranchOperationCount() const { return branch_operation_count; }
     std::size_t GetInstructionFetchStallPipelineCount() const { return instruction_fetch_stall_pipeline_count; }
-    std::size_t GetInstructionFetchStallAXICount() const      { return instruction_fetch_stall_axi_count; }
+    std::size_t GetInstructionFetchStallAXICount() const { return instruction_fetch_stall_axi_count; }
     std::size_t GetInstructionFetchStallRedirectCount() const { return instruction_fetch_stall_redirect_count; }
-    std::size_t GetExecutionActiveCycleCount() const          { return execution_active_cycle_count; }
-    std::size_t GetArithmeticOperationActiveCycleCount() const       { return arithmetic_operation_active_cycle_count; }
-    std::size_t GetMemoryAccessOperationActiveCycleCount() const     { return memory_access_operation_active_cycle_count; }
+    std::size_t GetExecutionActiveCycleCount() const { return execution_active_cycle_count; }
+    std::size_t GetArithmeticOperationActiveCycleCount() const { return arithmetic_operation_active_cycle_count; }
+    std::size_t GetMemoryAccessOperationActiveCycleCount() const { return memory_access_operation_active_cycle_count; }
     std::size_t GetControlStatusRegisterOperationActiveCycleCount() const { return control_status_register_operation_active_cycle_count; }
-    std::size_t GetBranchOperationActiveCycleCount() const           { return branch_operation_active_cycle_count; }
-    std::size_t GetLoadStoreUnitActiveCycleCount() const             { return load_store_unit_active_cycle_count; }
+    std::size_t GetBranchOperationActiveCycleCount() const { return branch_operation_active_cycle_count; }
+    std::size_t GetLoadStoreUnitActiveCycleCount() const { return load_store_unit_active_cycle_count; }
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();
