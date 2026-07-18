@@ -67,6 +67,17 @@ int main(int argc, char const *argv[])
     nvboard_quit();
 #endif
     auto result{NPCTrap::PrintResult(dut.GetCycle(), dut.GetInsts())};
+#ifdef CONFIG_PERF_STATS
+    NPCTrap::PrintPerfStats(
+        dut.GetPerfIfuFetch(),
+        dut.GetPerfExuDone(),
+        dut.GetPerfLsuLoad(),
+        dut.GetPerfLsuStore(),
+        dut.GetPerfAluOp(),
+        dut.GetPerfMemOp(),
+        dut.GetPerfCsrOp(),
+        dut.GetPerfBranchOp());
+#endif
 #ifdef CONFIG_DIFFTEST
     if (result != 0)
     {

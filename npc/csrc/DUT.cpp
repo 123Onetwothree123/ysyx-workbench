@@ -81,6 +81,14 @@ void DUT::reset()
     cycle = 0;
 #ifdef CONFIG_PERF_STATS
     insts = 0;
+    perf_ifu_fetch_cnt = 0;
+    perf_exu_done_cnt = 0;
+    perf_lsu_load_cnt = 0;
+    perf_lsu_store_cnt = 0;
+    perf_alu_op_cnt = 0;
+    perf_mem_op_cnt = 0;
+    perf_csr_op_cnt = 0;
+    perf_branch_op_cnt = 0;
 #endif
 }
 void DUT::step()
@@ -101,6 +109,14 @@ void DUT::step()
     {
         ++insts;
     }
+    if (dut->perf_ifu_fetch)  ++perf_ifu_fetch_cnt;
+    if (dut->perf_exu_done)   ++perf_exu_done_cnt;
+    if (dut->perf_lsu_load)   ++perf_lsu_load_cnt;
+    if (dut->perf_lsu_store)  ++perf_lsu_store_cnt;
+    if (dut->perf_alu_op)     ++perf_alu_op_cnt;
+    if (dut->perf_mem_op)     ++perf_mem_op_cnt;
+    if (dut->perf_csr_op)     ++perf_csr_op_cnt;
+    if (dut->perf_branch_op)  ++perf_branch_op_cnt;
 #endif
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);

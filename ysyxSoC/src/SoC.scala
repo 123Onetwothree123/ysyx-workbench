@@ -147,6 +147,22 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     debug_access_fault_resp := cpu.module.debug_access_fault_resp
     val debug_commit = IO(Output(Bool()))
     debug_commit := cpu.module.debug_commit
+    val perf_ifu_fetch = IO(Output(Bool()))
+    perf_ifu_fetch := cpu.module.perf_ifu_fetch
+    val perf_exu_done = IO(Output(Bool()))
+    perf_exu_done := cpu.module.perf_exu_done
+    val perf_lsu_load = IO(Output(Bool()))
+    perf_lsu_load := cpu.module.perf_lsu_load
+    val perf_lsu_store = IO(Output(Bool()))
+    perf_lsu_store := cpu.module.perf_lsu_store
+    val perf_alu_op = IO(Output(Bool()))
+    perf_alu_op := cpu.module.perf_alu_op
+    val perf_mem_op = IO(Output(Bool()))
+    perf_mem_op := cpu.module.perf_mem_op
+    val perf_csr_op = IO(Output(Bool()))
+    perf_csr_op := cpu.module.perf_csr_op
+    val perf_branch_op = IO(Output(Bool()))
+    perf_branch_op := cpu.module.perf_branch_op
 
     if (Config.hasChipLink) {
       // connect chiplink slave interface to crossbar
@@ -302,5 +318,21 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     // IPC
     val debug_commit = IO(Output(Bool()))
     debug_commit := masic.debug_commit
+    val perf_ifu_fetch = IO(Output(Bool()))
+    perf_ifu_fetch := masic.perf_ifu_fetch
+    val perf_exu_done = IO(Output(Bool()))
+    perf_exu_done := masic.perf_exu_done
+    val perf_lsu_load = IO(Output(Bool()))
+    perf_lsu_load := masic.perf_lsu_load
+    val perf_lsu_store = IO(Output(Bool()))
+    perf_lsu_store := masic.perf_lsu_store
+    val perf_alu_op = IO(Output(Bool()))
+    perf_alu_op := masic.perf_alu_op
+    val perf_mem_op = IO(Output(Bool()))
+    perf_mem_op := masic.perf_mem_op
+    val perf_csr_op = IO(Output(Bool()))
+    perf_csr_op := masic.perf_csr_op
+    val perf_branch_op = IO(Output(Bool()))
+    perf_branch_op := masic.perf_branch_op
   }
 }

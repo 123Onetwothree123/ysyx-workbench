@@ -55,3 +55,31 @@ int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Insts)
     PrintIringbuf(HaltPC);
     return 1;
 }
+#ifdef CONFIG_PERF_STATS
+void NPCTrap::PrintPerfStats(
+    std::size_t perf_ifu_fetch,
+    std::size_t perf_exu_done,
+    std::size_t perf_lsu_load,
+    std::size_t perf_lsu_store,
+    std::size_t perf_alu_op,
+    std::size_t perf_mem_op,
+    std::size_t perf_csr_op,
+    std::size_t perf_branch_op)
+{
+    std::println("========== 性能计数器 ==========");
+    std::println("IFU取到指令      : {:>12}", perf_ifu_fetch);
+    std::println("EXU完成计算      : {:>12}", perf_exu_done);
+    std::println("LSU取到数据      : {:>12}", perf_lsu_load);
+    std::println("LSU写出数据      : {:>12}", perf_lsu_store);
+    std::println("ALU指令          : {:>12}", perf_alu_op);
+    std::println("访存指令         : {:>12}", perf_mem_op);
+    std::println("CSR指令          : {:>12}", perf_csr_op);
+    std::println("分支/跳转指令    : {:>12}", perf_branch_op);
+    std::println("--------------------------------");
+    auto insts_sum{perf_alu_op + perf_mem_op + perf_csr_op + perf_branch_op};
+    std::println("指令类别合计      : {:>12}  (应与IFU取指一致)", insts_sum);
+    std::println("IFU取指           : {:>12}", perf_ifu_fetch);
+    std::println("EXU完成           : {:>12}  (应与IFU取指接近)", perf_exu_done);
+    auto lsu_sum{perf_lsu_load + perf_lsu_store};
+    std::println("LSU合计           : {:>12}  (应与访存指令一致)", lsu_sum);
+}
