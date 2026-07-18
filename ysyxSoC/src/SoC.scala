@@ -163,6 +163,16 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     perf_csr_op := cpu.module.perf_csr_op
     val perf_branch_op = IO(Output(Bool()))
     perf_branch_op := cpu.module.perf_branch_op
+    val perf_ifu_stall_pipeline = IO(Output(Bool()))
+    perf_ifu_stall_pipeline := cpu.module.perf_ifu_stall_pipeline
+    val perf_ifu_stall_axi = IO(Output(Bool()))
+    perf_ifu_stall_axi := cpu.module.perf_ifu_stall_axi
+    val perf_ifu_stall_redirect = IO(Output(Bool()))
+    perf_ifu_stall_redirect := cpu.module.perf_ifu_stall_redirect
+    val perf_execution_active = IO(Output(Bool()))
+    perf_execution_active := cpu.module.perf_execution_active
+    val perf_lsu_active = IO(Output(Bool()))
+    perf_lsu_active := cpu.module.perf_lsu_active
 
     if (Config.hasChipLink) {
       // connect chiplink slave interface to crossbar
@@ -334,5 +344,15 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     perf_csr_op := masic.perf_csr_op
     val perf_branch_op = IO(Output(Bool()))
     perf_branch_op := masic.perf_branch_op
+    val perf_ifu_stall_pipeline = IO(Output(Bool()))
+    perf_ifu_stall_pipeline := masic.perf_ifu_stall_pipeline
+    val perf_ifu_stall_axi = IO(Output(Bool()))
+    perf_ifu_stall_axi := masic.perf_ifu_stall_axi
+    val perf_ifu_stall_redirect = IO(Output(Bool()))
+    perf_ifu_stall_redirect := masic.perf_ifu_stall_redirect
+    val perf_execution_active = IO(Output(Bool()))
+    perf_execution_active := masic.perf_execution_active
+    val perf_lsu_active = IO(Output(Bool()))
+    perf_lsu_active := masic.perf_lsu_active
   }
 }

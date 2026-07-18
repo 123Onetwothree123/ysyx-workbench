@@ -20,6 +20,7 @@ class ysyx_26030103_LSU extends Module {
     val Complete = Output(Bool()) // 看看有没有完成
     val AccessFault = Output(Bool())
     val AccessFaultResp = Output(UInt(2.W))
+    val Active = Output(Bool())
   })
   // 接入ysyxSoC新加的
   val AXISize = WireDefault(2.U(3.W))
@@ -246,4 +247,5 @@ class ysyx_26030103_LSU extends Module {
     }
   }
   io.LoadDATA := LoadDataReg
+  io.Active := state =/= StatesIdle
 }

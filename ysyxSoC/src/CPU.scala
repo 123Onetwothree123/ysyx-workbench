@@ -52,6 +52,11 @@ class ysyx_26030103 extends BlackBox {
     val io_perf_mem_op     = Output(Bool())
     val io_perf_csr_op     = Output(Bool())
     val io_perf_branch_op  = Output(Bool())
+    val io_perf_ifu_stall_pipeline = Output(Bool())
+    val io_perf_ifu_stall_axi      = Output(Bool())
+    val io_perf_ifu_stall_redirect = Output(Bool())
+    val io_perf_execution_active   = Output(Bool())
+    val io_perf_lsu_active         = Output(Bool())
   })
 }
 
@@ -132,5 +137,15 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     perf_csr_op := cpu.io.io_perf_csr_op
     val perf_branch_op = IO(Output(Bool()))
     perf_branch_op := cpu.io.io_perf_branch_op
+    val perf_ifu_stall_pipeline = IO(Output(Bool()))
+    perf_ifu_stall_pipeline := cpu.io.io_perf_ifu_stall_pipeline
+    val perf_ifu_stall_axi = IO(Output(Bool()))
+    perf_ifu_stall_axi := cpu.io.io_perf_ifu_stall_axi
+    val perf_ifu_stall_redirect = IO(Output(Bool()))
+    perf_ifu_stall_redirect := cpu.io.io_perf_ifu_stall_redirect
+    val perf_execution_active = IO(Output(Bool()))
+    perf_execution_active := cpu.io.io_perf_execution_active
+    val perf_lsu_active = IO(Output(Bool()))
+    perf_lsu_active := cpu.io.io_perf_lsu_active
   }
 }

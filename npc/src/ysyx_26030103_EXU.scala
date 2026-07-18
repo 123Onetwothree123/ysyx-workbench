@@ -29,6 +29,7 @@ class ysyx_26030103_EXU extends Module {
     val PerfMemOp = Output(Bool())
     val PerfCSROp = Output(Bool())
     val PerfBranchOp = Output(Bool())
+    val PerfExecutionActive = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -142,4 +143,5 @@ class ysyx_26030103_EXU extends Module {
   io.PerfMemOp := ActiveInstruction.MemoryValid
   io.PerfCSROp := ActiveInstruction.IsCsrrw || ActiveInstruction.IsCsrrs
   io.PerfBranchOp := ActiveInstruction.IsBranch || ActiveInstruction.IsJal || ActiveInstruction.IsJalr
+  io.PerfExecutionActive := state =/= StatesIdle
 }
