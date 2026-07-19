@@ -50,18 +50,13 @@ void NPCSimResult::Save(
     auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
     auto timestamp{std::format("{:%Y%m%d-%H%M%S}", now)};
 
-    std::string commit{"unknown"};
-    if (auto pipe{popen("git rev-parse --short HEAD 2>/dev/null", "r")})
-    {
-        char buf[32]{};
-        if (fgets(buf, sizeof(buf), pipe))
-        {
-            std::string_view sv{buf};
-            if (auto end{sv.find('\n')}; end != std::string_view::npos)
-                commit = sv.substr(0, end);
-        }
-        pclose(pipe);
-    }
+    std::string commit{
+#ifdef CONFIG_PERF_GIT_COMMIT
+        CONFIG_PERF_GIT_COMMIT
+#else
+        "unknown"
+#endif
+    };
 
     std::string freq{"0 MHz"};
     std::string area{"0 um^2"};
