@@ -568,6 +568,15 @@ config PERF_STATS
     IPC = 指令数 / 周期数，反映处理器微结构效率
     开启后每周期读取debug_commit信号计数，开销极低
 
+config PERF_SAVE
+  bool "启用性能数据自动存档（TSV文件）"
+  default y
+  depends on PERF_STATS
+  help
+    仿真结束后自动把性能数据写入 NPCSimResult/ 目录
+    每次运行生成时间戳命名的 .tsv 和 .log 文件
+    同时追加到 perf.tsv 累计表格
+
 config TRACE
   bool "启用追踪功能（总开关）"
   default n

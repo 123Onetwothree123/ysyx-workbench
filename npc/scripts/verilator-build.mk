@@ -84,6 +84,7 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/sdb/command/wCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/xCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/sdb.ixx \
+  $(NPC_CSRC_DIR)/NPCSimResult/NPCSimResult.ixx \
   $(NPC_CSRC_DIR)/npc.ixx
 
 NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))))

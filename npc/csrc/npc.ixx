@@ -39,5 +39,6 @@ export import npc.expressions.parser;
 export import npc.expressions.ExpressionError;
 export import npc.difftest.difftest;
 export import npc.difftest.DifftestCPUState;
+export import npc.NPCSimResult;
 export import npc.capstone;
 export import npc.readline;

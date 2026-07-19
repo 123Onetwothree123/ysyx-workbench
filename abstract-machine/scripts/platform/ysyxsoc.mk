@@ -24,4 +24,8 @@ image: image-dep
 	@$(OBJCOPY) -S -O binary $(IMAGE).elf $(IMAGE).bin
 run: insert-arg
 	$(MAKE) -C $(NPC_HOME) run file=$(IMAGE).bin elf=$(IMAGE).elf
-.PHONY: insert-arg
+
+perf: insert-arg
+	$(MAKE) -C $(NPC_HOME) perf file=$(IMAGE).bin elf=$(IMAGE).elf
+
+.PHONY: insert-arg perf
