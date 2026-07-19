@@ -119,9 +119,6 @@ class ysyx_26030103_IDU extends Module {
   io.out.bits.RegisterWrite := RegisterWrite
   io.out.bits.WBSelect := WBSelect
   io.out.bits.MemoryValid := MemoryValid
-  when (io.out.valid && MemoryValid) {
-    printf(p"[IDU MEM OP pc=0x${Hexadecimal(io.out.bits.pc)}]\n")
-  }
   io.out.bits.MemoryWrite := MemoryWrite
   io.out.bits.WidthSelect := WidthSelect
   io.out.bits.LoadSigned := LoadSigned

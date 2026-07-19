@@ -121,7 +121,6 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   io.DebugPC := PCModule.io.ysyx_26030103_PC
   io.DebugInstructions := InstructionReg
   io.StallPipeline := state === StatesHold
-  printf(p"[IFU s=${state}]\n")
   io.StallAXI := state === StatesWaitRequest || state === StatesWaitResponse
   io.StallAR := state === StatesWaitRequest
   io.StallR  := state === StatesWaitResponse
