@@ -49,8 +49,6 @@ class riscv32e_npc_AXIRAM extends Module {
         wData  := io.axi.W.WDATA
         wStrb  := io.axi.W.WSTRB
         state  := sWriteResp
-        txn_count := txn_count + 1.U
-        printf(p"[WR ${txn_count} 0x${Hexadecimal(io.axi.AW.AWADDR)} = 0x${Hexadecimal(io.axi.W.WDATA)}]\n")
       }
     }
     is (sReadResp) {
@@ -118,16 +116,6 @@ class riscv32e_npc_SimTop extends Module {
   cpu.io.master_rlast  := ram.io.axi.R.RLAST
   cpu.io.master_rid    := ram.io.axi.R.RID
   ram.io.axi.R.RREADY  := cpu.io.master_rready
-
-  when (cpu.io.master_awvalid && cpu.io.master_awready) {
-    printf(p"[AW 0x${Hexadecimal(cpu.io.master_awaddr)}]\n")
-  }
-  when (cpu.io.master_wvalid && cpu.io.master_wready) {
-    printf(p"[W  0x${Hexadecimal(cpu.io.master_wdata)}]\n")
-  }
-  when (cpu.io.master_awvalid && !cpu.io.master_awready) {
-    printf(p"[AWS 0x${Hexadecimal(cpu.io.master_awaddr)}]\n")
-  }
 
   cpu.io.slave_awvalid := false.B
   cpu.io.slave_awaddr  := 0.U
