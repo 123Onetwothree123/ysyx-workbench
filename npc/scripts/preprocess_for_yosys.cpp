@@ -1,4 +1,10 @@
-import std;
+#include <regex>
+#include <format>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <string>
 
 int main(int argc, char *argv[])
 {
