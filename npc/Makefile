@@ -66,7 +66,7 @@ idea:
 clean:
 	-rm -rf $(BUILD_DIR)
 
-.PHONY: test verilog help reformat checkformat clean synth save perf
+.PHONY: test verilog help reformat checkformat clean synth perf
 
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
@@ -146,6 +146,9 @@ DIFFTEST_CFLAGS = -DCONFIG_DIFFTEST
 endif
 ifeq ($(CONFIG_PERF_STATS),y)
 PERF_STATS_CFLAGS = -DCONFIG_PERF_STATS
+endif
+ifeq ($(CONFIG_PERF_SAVE),y)
+PERF_SAVE_CFLAGS = -DCONFIG_PERF_SAVE
 endif
 COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(CSRC_DIR)/trace) $(abspath $(OBJ_DIR)))
 CC_OPT ?= -O3
@@ -262,7 +265,7 @@ ifneq ($(CONFIG_RESET_PC),)
 RESET_PC_CFLAGS = -DCONFIG_RESET_PC=$(call remove_quote,$(CONFIG_RESET_PC))
 endif
 COMMON_INCFLAGS += $(addprefix -I, $(abspath $(CSRC_DIR)/difftest))
-SHARED_CFLAGS += $(COMMON_INCFLAGS) $(SDB_CFLAGS) $(TRACE_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(IRINGBUF_CFLAGS) $(WATCHPOINT_CFLAGS) $(DIFFTEST_CFLAGS) $(PERF_STATS_CFLAGS) $(MBASE_CFLAGS) $(MSIZE_CFLAGS) $(RESET_PC_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(PGO_CFLAGS) $(ASAN_CFLAGS) $(UBSAN_CFLAGS) $(TSAN_CFLAGS) $(COVERAGE_CFLAGS) $(COLOR_CFLAGS) $(PIPE_CFLAGS) $(SPLIT_DWARF_CFLAGS) $(GC_SECTIONS_CFLAGS) $(VISIBILITY_CFLAGS) $(MARCH_CFLAGS) $(IPA_PTA_CFLAGS) $(PREFETCH_CFLAGS) $(GPROF_CFLAGS) $(TIME_REPORT_CFLAGS) $(TIMESTAMP_CFLAGS) $(LOG_CFLAGS) $(NO_OMIT_FP_CFLAGS) $(ICPX_NOSTDINCXX_CFLAGS) $(STDLIB_FLAG) $(CC_OPT) $(NVBOARD_CFLAGS)
+SHARED_CFLAGS += $(COMMON_INCFLAGS) $(SDB_CFLAGS) $(TRACE_CFLAGS) $(ITRACE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(IRINGBUF_CFLAGS) $(WATCHPOINT_CFLAGS) $(DIFFTEST_CFLAGS) $(PERF_STATS_CFLAGS) $(PERF_SAVE_CFLAGS) $(MBASE_CFLAGS) $(MSIZE_CFLAGS) $(RESET_PC_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(PGO_CFLAGS) $(ASAN_CFLAGS) $(UBSAN_CFLAGS) $(TSAN_CFLAGS) $(COVERAGE_CFLAGS) $(COLOR_CFLAGS) $(PIPE_CFLAGS) $(SPLIT_DWARF_CFLAGS) $(GC_SECTIONS_CFLAGS) $(VISIBILITY_CFLAGS) $(MARCH_CFLAGS) $(IPA_PTA_CFLAGS) $(PREFETCH_CFLAGS) $(GPROF_CFLAGS) $(TIME_REPORT_CFLAGS) $(TIMESTAMP_CFLAGS) $(LOG_CFLAGS) $(NO_OMIT_FP_CFLAGS) $(ICPX_NOSTDINCXX_CFLAGS) $(STDLIB_FLAG) $(CC_OPT) $(NVBOARD_CFLAGS)
 VERILATOR_CFLAGS = $(SHARED_CFLAGS) $(VERILATOR_CXX_STD_FLAG)
 USER_CXXFLAGS = $(USER_CXX_STD_FLAG) $(MODULE_CFLAGS) $(WALL_CFLAGS) $(WERROR_CFLAGS) $(PEDANTIC_CFLAGS) $(WCONVERSION_CFLAGS)
 #verilator的部分
@@ -381,9 +384,6 @@ pgo: verilog
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
 
-PERF_DIR   = NPCSimResult
-PERF_LOG   = $(BUILD_DIR)/perf.log
-PERF_TSV   = $(PERF_DIR)/perf.tsv
 PERF_SYNTH = $(BUILD_DIR)/synth.txt
 
 synth:
@@ -392,62 +392,9 @@ synth:
 	@echo "0" > $(PERF_SYNTH)
 	@echo "0" >> $(PERF_SYNTH)
 
-save:
-	@t=$$(date +%Y%m%d-%H%M%S); \
-	commit=$$(git rev-parse --short HEAD 2>/dev/null || echo "0000000"); \
-	c=$$(sed -n 's/.*cycles = \([0-9]\+\).*/\1/p' $(PERF_LOG) | head -1); \
-	i=$$(sed -n 's/.*instructions = \([0-9]\+\).*/\1/p' $(PERF_LOG) | head -1); \
-	p=$$(sed -n 's/.*ipc = \([0-9.]\+\).*/\1/p' $(PERF_LOG) | head -1); \
-	f=$$(sed -n '1p' $(PERF_SYNTH)); \
-	a=$$(sed -n '2p' $(PERF_SYNTH)); \
-	v1=$$(sed -n 's/IFU取到指令: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v2=$$(sed -n 's/EXU完成计算: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v3=$$(sed -n 's/LSU取到数据: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v4=$$(sed -n 's/LSU写出数据: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v5=$$(sed -n 's/^ALU指令: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v6=$$(sed -n 's/^访存指令: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v7=$$(sed -n 's/^CSR指令: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v8=$$(sed -n 's/^分支\/跳转指令: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v9=$$(sed -n 's/访存指令平均周期: \([0-9.]\+\).*/\1/p' $(PERF_LOG)); \
-	v10=$$(sed -n 's/流水线阻塞.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v11=$$(sed -n 's/AXI总线等待.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v12=$$(sed -n 's/.*AR通道等待.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v13=$$(sed -n 's/.*R通道等待.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v14=$$(sed -n 's/跳转冲刷.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v15=$$(sed -n 's/IFU空闲.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v16=$$(sed -n 's/EXU等待LSU.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v17=$$(sed -n 's/读延迟: \([0-9.]\+\).*/\1/p' $(PERF_LOG)); \
-	v18=$$(sed -n 's/写延迟: \([0-9.]\+\).*/\1/p' $(PERF_LOG)); \
-	v19=$$(sed -n 's/AR等待(读请求握手): \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v20=$$(sed -n 's/R等待(读数据返回):.* \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v21=$$(sed -n 's/AW\/W等待(写请求握手): \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	v22=$$(sed -n 's/B等待(写响应返回):.* \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	row=$$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' \
-		"$$commit" "$$c" "$$i" "$$p" "$$f" "$$a" \
-		"$$v1" "$$v2" "$$v3" "$$v4" "$$v5" "$$v6" "$$v7" "$$v8" "$$v9" \
-		"$$v10" "$$v11" "$$v12" "$$v13" "$$v14" "$$v15" "$$v16" \
-		"$$v17" "$$v18" "$$v19" "$$v20" "$$v21" "$$v22"); \
-	mkdir -p $(PERF_DIR); \
-	if [ ! -f $(PERF_TSV) ]; then \
-		printf 'commit\t周期数\t指令数\tIPC\t综合频率(MHz)\t综合面积(um2)\tIFU取指\tEXU完成\tLSU读\tLSU写\tALU指令\t访存指令\tCSR指令\t分支指令\t访存平均周期\t流水线阻塞\tAXI等待\tAR等待\tR等待\t跳转冲刷\tIFU空闲\tEXU等LSU\t读延迟\t写延迟\tLSU_AR等\tLSU_R等\tLSU写请求等\tLSU_B等\n' > $(PERF_TSV); \
-	fi; \
-	echo "$$row" >> $(PERF_TSV); \
-	cp $(PERF_LOG) $(PERF_DIR)/$$t.log; \
-	echo "$$row" > $(PERF_DIR)/$$t.tsv; \
-	echo ""; \
-	echo "===== 性能数据 (TSV) ====="; \
-	printf '%s\n' "$$row" | tr '\t' '\n' | head -6; \
-	echo "... (共 $$(printf '%s\n' "$$row" | tr '\t' '\n' | wc -l) 列)"; \
-	echo ""; \
-	echo "已追加到 $(PERF_TSV)"; \
-	echo "单次记录: $(PERF_DIR)/$$t.tsv"; \
-	echo "原始日志: $(PERF_DIR)/$$t.log"
-
 perf: synth $(BIN)
-	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 运行仿真 ..."
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_LOG)
-	@$(MAKE) --no-print-directory save
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
 include scripts/config.mk
 

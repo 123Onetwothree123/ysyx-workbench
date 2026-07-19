@@ -97,6 +97,34 @@ int main(int argc, char const *argv[])
         dut.GetLSUStallWriteReqCount(),
         dut.GetLSUStallWriteBCount());
 #endif
+#ifdef CONFIG_PERF_SAVE
+    NPCSimResult::Save(
+        dut.GetCycle(),
+        dut.GetInstructions(),
+        dut.GetInstructionFetchCount(),
+        dut.GetExecutionCompleteCount(),
+        dut.GetLoadDataCount(),
+        dut.GetStoreDataCount(),
+        dut.GetArithmeticOperationCount(),
+        dut.GetMemoryAccessOperationCount(),
+        dut.GetControlStatusRegisterOperationCount(),
+        dut.GetBranchOperationCount(),
+        dut.GetMemoryAccessOperationActiveCycleCount(),
+        dut.GetInstructionFetchStallPipelineCount(),
+        dut.GetInstructionFetchStallAXICount(),
+        dut.GetInstructionFetchStallARCount(),
+        dut.GetInstructionFetchStallRCount(),
+        dut.GetInstructionFetchStallRedirectCount(),
+        dut.GetInstructionFetchStallIdleCount(),
+        dut.GetEXUStallLSUCount(),
+        dut.GetLoadStoreUnitActiveCycleCount(),
+        dut.GetLoadStoreUnitLoadActiveCycleCount(),
+        dut.GetLoadStoreUnitStoreActiveCycleCount(),
+        dut.GetLSUStallReadARCount(),
+        dut.GetLSUStallReadRCount(),
+        dut.GetLSUStallWriteReqCount(),
+        dut.GetLSUStallWriteBCount());
+#endif
 #ifdef CONFIG_DIFFTEST
     if (result != 0)
     {
