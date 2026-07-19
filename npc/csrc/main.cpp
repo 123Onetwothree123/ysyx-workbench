@@ -81,11 +81,21 @@ int main(int argc, char const *argv[])
         dut.GetInstructionFetchStallPipelineCount(),
         dut.GetInstructionFetchStallAXICount(),
         dut.GetInstructionFetchStallRedirectCount(),
+        dut.GetInstructionFetchStallARCount(),
+        dut.GetInstructionFetchStallRCount(),
+        dut.GetInstructionFetchStallIdleCount(),
         dut.GetArithmeticOperationActiveCycleCount(),
         dut.GetMemoryAccessOperationActiveCycleCount(),
         dut.GetControlStatusRegisterOperationActiveCycleCount(),
         dut.GetBranchOperationActiveCycleCount(),
-        dut.GetLoadStoreUnitActiveCycleCount());
+        dut.GetEXUStallLSUCount(),
+        dut.GetLoadStoreUnitActiveCycleCount(),
+        dut.GetLoadStoreUnitLoadActiveCycleCount(),
+        dut.GetLoadStoreUnitStoreActiveCycleCount(),
+        dut.GetLSUStallReadARCount(),
+        dut.GetLSUStallReadRCount(),
+        dut.GetLSUStallWriteAW_WCount(),
+        dut.GetLSUStallWriteBCount());
 #endif
 #ifdef CONFIG_DIFFTEST
     if (result != 0)

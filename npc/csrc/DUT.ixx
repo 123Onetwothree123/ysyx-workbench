@@ -19,13 +19,23 @@ private:
     std::size_t branch_operation_count{0};
     std::size_t instruction_fetch_stall_pipeline_count{0};
     std::size_t instruction_fetch_stall_axi_count{0};
+    std::size_t instruction_fetch_stall_ar_count{0};
+    std::size_t instruction_fetch_stall_r_count{0};
     std::size_t instruction_fetch_stall_redirect_count{0};
+    std::size_t instruction_fetch_stall_idle_count{0};
     std::size_t execution_active_cycle_count{0};
+    std::size_t exu_stall_lsu_count{0};
     std::size_t arithmetic_operation_active_cycle_count{0};
     std::size_t memory_access_operation_active_cycle_count{0};
     std::size_t control_status_register_operation_active_cycle_count{0};
     std::size_t branch_operation_active_cycle_count{0};
     std::size_t load_store_unit_active_cycle_count{0};
+    std::size_t load_store_unit_load_active_cycle_count{0};
+    std::size_t load_store_unit_store_active_cycle_count{0};
+    std::size_t lsu_stall_read_ar_count{0};
+    std::size_t lsu_stall_read_r_count{0};
+    std::size_t lsu_stall_write_aw_w_count{0};
+    std::size_t lsu_stall_write_b_count{0};
 
 public:
     DUT();
@@ -49,13 +59,23 @@ public:
     std::size_t GetBranchOperationCount() const { return branch_operation_count; }
     std::size_t GetInstructionFetchStallPipelineCount() const { return instruction_fetch_stall_pipeline_count; }
     std::size_t GetInstructionFetchStallAXICount() const { return instruction_fetch_stall_axi_count; }
+    std::size_t GetInstructionFetchStallARCount() const { return instruction_fetch_stall_ar_count; }
+    std::size_t GetInstructionFetchStallRCount() const { return instruction_fetch_stall_r_count; }
     std::size_t GetInstructionFetchStallRedirectCount() const { return instruction_fetch_stall_redirect_count; }
+    std::size_t GetInstructionFetchStallIdleCount() const { return instruction_fetch_stall_idle_count; }
     std::size_t GetExecutionActiveCycleCount() const { return execution_active_cycle_count; }
+    std::size_t GetEXUStallLSUCount() const { return exu_stall_lsu_count; }
     std::size_t GetArithmeticOperationActiveCycleCount() const { return arithmetic_operation_active_cycle_count; }
     std::size_t GetMemoryAccessOperationActiveCycleCount() const { return memory_access_operation_active_cycle_count; }
     std::size_t GetControlStatusRegisterOperationActiveCycleCount() const { return control_status_register_operation_active_cycle_count; }
     std::size_t GetBranchOperationActiveCycleCount() const { return branch_operation_active_cycle_count; }
     std::size_t GetLoadStoreUnitActiveCycleCount() const { return load_store_unit_active_cycle_count; }
+    std::size_t GetLoadStoreUnitLoadActiveCycleCount() const { return load_store_unit_load_active_cycle_count; }
+    std::size_t GetLoadStoreUnitStoreActiveCycleCount() const { return load_store_unit_store_active_cycle_count; }
+    std::size_t GetLSUStallReadARCount() const { return lsu_stall_read_ar_count; }
+    std::size_t GetLSUStallReadRCount() const { return lsu_stall_read_r_count; }
+    std::size_t GetLSUStallWriteAW_WCount() const { return lsu_stall_write_aw_w_count; }
+    std::size_t GetLSUStallWriteBCount() const { return lsu_stall_write_b_count; }
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();

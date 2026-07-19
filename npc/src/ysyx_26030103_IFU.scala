@@ -18,6 +18,9 @@ class ysyx_26030103_IFU extends Module {
     val AccessFaultResp = Output(UInt(2.W))
     val StallPipeline = Output(Bool())
     val StallAXI = Output(Bool())
+    val StallAR = Output(Bool())
+    val StallR  = Output(Bool())
+    val StallIdle = Output(Bool())
   })
   val PCModule = Module(new ysyx_26030103_PC)
   val NextPCModule = Module(new ysyx_26030103_NextPC)
@@ -119,4 +122,7 @@ class ysyx_26030103_IFU extends Module {
   io.DebugInstructions := InstructionReg
   io.StallPipeline := state === StatesHold
   io.StallAXI := state === StatesWaitRequest || state === StatesWaitResponse
+  io.StallAR := state === StatesWaitRequest
+  io.StallR  := state === StatesWaitResponse
+  io.StallIdle := state === StatesIdle
 }
