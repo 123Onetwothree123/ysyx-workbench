@@ -4,7 +4,7 @@ import ysyx_26030103.ysyx_26030103
 object ysyx_26030103_Elaborate extends App {
   val targetDir = args(args.indexOf("--target-dir") + 1)
   emitVerilog(new ysyx_26030103, Array("--target-dir", targetDir))
-  emitVerilog(new _root_.ysyx_26030103.riscv32e_npc_SimTop, Array("--target-dir", targetDir))
+  emitVerilog(new _root_.ysyx_26030103.riscv32e_npc_AXIRAM, Array("--target-dir", targetDir))
 
   for (top <- Seq("ysyx_26030103", "riscv32e_npc_SimTop")) {
     val svFile = s"$targetDir/$top.sv"

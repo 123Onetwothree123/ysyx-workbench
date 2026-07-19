@@ -13,7 +13,6 @@ module;
 #include <verilated_fst_c.h>
 #endif
 module npc.DUT;
-import npc.NPCTrap;
 import npc.trace.itrace;
 import npc.trace.disasm;
 import npc.trace.mtrace;
@@ -130,12 +129,6 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
-    if (cycle <= 10) {
-        fprintf(stderr, "[C%zu] trap_valid=%d trap_pc=0x%x perf_exu_done=%d perf_ifu_fetch=%d debug_commit=%d\n",
-            cycle, (int)dut->trap_valid, (unsigned)dut->trap_pc,
-            (int)dut->perf_exu_done, (int)dut->perf_ifu_fetch, (int)dut->debug_commit);
-        fflush(stderr);
-    }
     if (dut->trap_valid) {
         return;
     }
