@@ -57,6 +57,16 @@ class ysyx_26030103 extends BlackBox {
     val io_perf_ifu_stall_redirect = Output(Bool())
     val io_perf_execution_active   = Output(Bool())
     val io_perf_lsu_active         = Output(Bool())
+    val io_perf_ifu_stall_ar       = Output(Bool())
+    val io_perf_ifu_stall_r        = Output(Bool())
+    val io_perf_ifu_stall_idle     = Output(Bool())
+    val io_perf_exu_stall_lsu      = Output(Bool())
+    val io_perf_lsu_load_active    = Output(Bool())
+    val io_perf_lsu_store_active   = Output(Bool())
+    val io_perf_lsu_stall_read_ar  = Output(Bool())
+    val io_perf_lsu_stall_read_r   = Output(Bool())
+    val io_perf_lsu_stall_write_aw_w = Output(Bool())
+    val io_perf_lsu_stall_write_b  = Output(Bool())
   })
 }
 
@@ -147,5 +157,25 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     perf_execution_active := cpu.io.io_perf_execution_active
     val perf_lsu_active = IO(Output(Bool()))
     perf_lsu_active := cpu.io.io_perf_lsu_active
+    val perf_ifu_stall_ar = IO(Output(Bool()))
+    perf_ifu_stall_ar := cpu.io.io_perf_ifu_stall_ar
+    val perf_ifu_stall_r = IO(Output(Bool()))
+    perf_ifu_stall_r := cpu.io.io_perf_ifu_stall_r
+    val perf_ifu_stall_idle = IO(Output(Bool()))
+    perf_ifu_stall_idle := cpu.io.io_perf_ifu_stall_idle
+    val perf_exu_stall_lsu = IO(Output(Bool()))
+    perf_exu_stall_lsu := cpu.io.io_perf_exu_stall_lsu
+    val perf_lsu_load_active = IO(Output(Bool()))
+    perf_lsu_load_active := cpu.io.io_perf_lsu_load_active
+    val perf_lsu_store_active = IO(Output(Bool()))
+    perf_lsu_store_active := cpu.io.io_perf_lsu_store_active
+    val perf_lsu_stall_read_ar = IO(Output(Bool()))
+    perf_lsu_stall_read_ar := cpu.io.io_perf_lsu_stall_read_ar
+    val perf_lsu_stall_read_r = IO(Output(Bool()))
+    perf_lsu_stall_read_r := cpu.io.io_perf_lsu_stall_read_r
+    val perf_lsu_stall_write_aw_w = IO(Output(Bool()))
+    perf_lsu_stall_write_aw_w := cpu.io.io_perf_lsu_stall_write_aw_w
+    val perf_lsu_stall_write_b = IO(Output(Bool()))
+    perf_lsu_stall_write_b := cpu.io.io_perf_lsu_stall_write_b
   }
 }

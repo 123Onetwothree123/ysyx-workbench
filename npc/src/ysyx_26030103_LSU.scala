@@ -24,7 +24,7 @@ class ysyx_26030103_LSU extends Module {
     val IsStore = Output(Bool())
     val StallReadAR    = Output(Bool())
     val StallReadR     = Output(Bool())
-    val StallWriteAW_W = Output(Bool())
+    val StallWriteReq  = Output(Bool())
     val StallWriteB    = Output(Bool())
   })
   // 接入ysyxSoC新加的
@@ -258,6 +258,6 @@ class ysyx_26030103_LSU extends Module {
   io.IsStore := is_store_transaction
   io.StallReadAR    := state === StatesReadRequest
   io.StallReadR     := state === StatesReadResponse
-  io.StallWriteAW_W := state === StatesWriteRequest
+  io.StallWriteReq  := state === StatesWriteRequest
   io.StallWriteB    := state === StatesWriteResponse
 }
