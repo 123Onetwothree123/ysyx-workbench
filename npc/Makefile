@@ -20,6 +20,15 @@ VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" 2>/dev/null | s
 VINCDIRS=$(BUILD_DIR) \
          $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort) \
          $(YSYXSOC_PERIP_INCDIRS)
+
+SIM_TOP ?= npc
+BIN_FAST = $(BUILD_DIR)/$(TOPNAME)_fast
+FAST_OBJ_DIR = $(BUILD_DIR)/obj_dir_$(TOPNAME)_fast
+FAST_VSRCS = $(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" 2>/dev/null | sort) \
+             $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort)
+FAST_VINCDIRS = $(BUILD_DIR) \
+                $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort)
+
 CSRC_DIR=./csrc
 CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
@@ -368,8 +377,31 @@ $(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 		CXX=$(CXX) LINK=$(CXX) \
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
+$(BIN_FAST): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
+		$(VERILATOR_OPT_FLAG) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
+		--timescale "1ns/1ns" --no-timing \
+		$(VERILATOR_TRACE) $(VERILATOR_PROF) $(VERILATOR_AUTOFLUSH) $(VERILATOR_COVERAGE) \
+		$(addprefix -I,$(FAST_VINCDIRS)) \
+		--top-module riscv32e_npc_SimTop \
+		$(FAST_VSRCS) $(CSRCS) \
+		$(addprefix -CFLAGS , $(VERILATOR_CFLAGS)) \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) \
+		--Mdir $(FAST_OBJ_DIR) \
+		--exe -o $(abspath $(BIN_FAST))
+	$(MAKE) -C $(FAST_OBJ_DIR) -f $(VERILATOR_BUILD_WRAPPER) -j $(NPROC) \
+		VERILATOR_GENERATED_MK=$(VERILATOR_GENERATED_MK) \
+		CXX=$(CXX) LINK=$(CXX) \
+		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
+		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
+
+ifeq ($(SIM_TOP),soc)
 run: $(BIN)
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
+else
+run: $(BIN_FAST)
+	@$(BIN_FAST) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
+endif
 
 .PHONY: pgo
 pgo: verilog
@@ -386,6 +418,7 @@ pgo: verilog
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
 
+PERF_DIR   = NPCSimResult
 PERF_SYNTH = $(BUILD_DIR)/synth.txt
 
 synth:
@@ -395,8 +428,9 @@ synth:
 	@echo "0" >> $(PERF_SYNTH)
 
 perf: synth $(BIN)
+	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 运行仿真 ..."
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S).log
 
 include scripts/config.mk
 

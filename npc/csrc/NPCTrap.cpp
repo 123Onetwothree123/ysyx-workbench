@@ -5,7 +5,7 @@ namespace
     bool Halted{false};
     std::uint32_t HaltPC{0};   // 记录停止的时候的PC
     std::uint32_t HaltCode{0}; // 返回码，0是good，1是bad
-} // namespace
+}
 void NPCTrap::Halt(std::uint32_t PC, std::uint32_t Code) noexcept
 {
     Halted = true;

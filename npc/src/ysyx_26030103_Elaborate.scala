@@ -1,9 +1,11 @@
 import chisel3._
 import ysyx_26030103.ysyx_26030103
+import ysyx_26030103.riscv32e_npc_SimTop
 
 object ysyx_26030103_Elaborate extends App {
   val targetDir = args(args.indexOf("--target-dir") + 1)
   emitVerilog(new ysyx_26030103, Array("--target-dir", targetDir))
+  emitVerilog(new riscv32e_npc_SimTop, Array("--target-dir", targetDir))
 
   // firtool会在顶层.sv里生成一些`include "layers-*.sv"`，但emitVerilog有时不会把这些文件拆出来。
   // Verilator看到include却找不到文件就会报错，所以这里给缺失的layers文件补空壳。

@@ -77,7 +77,7 @@ void NPCSimResult::Save(
         }
     }
     auto tsv_row{std::format(
-        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         commit,
         "",
         total_cycles,
@@ -122,9 +122,6 @@ void NPCSimResult::Save(
         }
         out << tsv_row << '\n';
     }
-    std::println("");
-    std::println("性能数据");
-    std::println("{}", tsv_row);
     std::println("");
     std::println("已追加到 {}", perf_tsv.string());
     std::println("单次记录: {}", tsv_file.string());
