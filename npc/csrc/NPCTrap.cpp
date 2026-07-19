@@ -82,7 +82,7 @@ void NPCTrap::PrintPerformanceStatistics(
     std::size_t load_store_unit_store_active_cycles,
     std::size_t lsu_stall_read_ar_cycles,
     std::size_t lsu_stall_read_r_cycles,
-    std::size_t lsu_stall_write_aw_w_cycles,
+    std::size_t lsu_stall_write_req_cycles,
     std::size_t lsu_stall_write_b_cycles)
 {
     std::println("性能计数器");
@@ -159,7 +159,7 @@ void NPCTrap::PrintPerformanceStatistics(
         auto active_total_d = static_cast<double>(lsu_active_total);
         std::println("  AR等待(读请求握手): {} 周期, 占比 {:.1f}%", lsu_stall_read_ar_cycles, 100.0 * lsu_stall_read_ar_cycles / active_total_d);
         std::println("  R等待(读数据返回):  {} 周期, 占比 {:.1f}%", lsu_stall_read_r_cycles, 100.0 * lsu_stall_read_r_cycles / active_total_d);
-        std::println("  AW/W等待(写请求握手): {} 周期, 占比 {:.1f}%", lsu_stall_write_aw_w_cycles, 100.0 * lsu_stall_write_aw_w_cycles / active_total_d);
+        std::println("  AW/W等待(写请求握手): {} 周期, 占比 {:.1f}%", lsu_stall_write_req_cycles, 100.0 * lsu_stall_write_req_cycles / active_total_d);
         std::println("  B等待(写响应返回):  {} 周期, 占比 {:.1f}%", lsu_stall_write_b_cycles, 100.0 * lsu_stall_write_b_cycles / active_total_d);
     }
 }

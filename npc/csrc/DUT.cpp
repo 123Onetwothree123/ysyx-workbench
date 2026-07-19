@@ -106,7 +106,7 @@ void DUT::reset()
     load_store_unit_store_active_cycle_count = 0;
     lsu_stall_read_ar_count = 0;
     lsu_stall_read_r_count = 0;
-    lsu_stall_write_aw_w_count = 0;
+    lsu_stall_write_req_count = 0;
     lsu_stall_write_b_count = 0;
 #endif
 }
@@ -156,7 +156,7 @@ void DUT::step()
     if (dut->perf_lsu_store_active)   ++load_store_unit_store_active_cycle_count;
     if (dut->perf_lsu_stall_read_ar)  ++lsu_stall_read_ar_count;
     if (dut->perf_lsu_stall_read_r)   ++lsu_stall_read_r_count;
-    if (dut->perf_lsu_stall_write_aw_w) ++lsu_stall_write_aw_w_count;
+    if (dut->perf_lsu_stall_write_req) ++lsu_stall_write_req_count;
     if (dut->perf_lsu_stall_write_b)  ++lsu_stall_write_b_count;
 #endif
 #ifdef CONFIG_ITRACE
