@@ -34,7 +34,7 @@ private:
     std::size_t load_store_unit_store_active_cycle_count{0};
     std::size_t lsu_stall_read_ar_count{0};
     std::size_t lsu_stall_read_r_count{0};
-    std::size_t lsu_stall_write_aw_w_count{0};
+    std::size_t lsu_stall_write_req_count{0};
     std::size_t lsu_stall_write_b_count{0};
 
 public:
@@ -74,7 +74,7 @@ public:
     std::size_t GetLoadStoreUnitStoreActiveCycleCount() const { return load_store_unit_store_active_cycle_count; }
     std::size_t GetLSUStallReadARCount() const { return lsu_stall_read_ar_count; }
     std::size_t GetLSUStallReadRCount() const { return lsu_stall_read_r_count; }
-    std::size_t GetLSUStallWriteAW_WCount() const { return lsu_stall_write_aw_w_count; }
+    std::size_t GetLSUStallWriteReqCount() const { return lsu_stall_write_req_count; }
     std::size_t GetLSUStallWriteBCount() const { return lsu_stall_write_b_count; }
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);

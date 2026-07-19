@@ -159,6 +159,6 @@ class ysyx_26030103(AddressWidth: Int = 32) extends Module {
   io.perf_lsu_store_active   := lsu.io.Active && lsu.io.IsStore
   io.perf_lsu_stall_read_ar  := lsu.io.StallReadAR
   io.perf_lsu_stall_read_r   := lsu.io.StallReadR
-  io.perf_lsu_stall_write_aw_w := lsu.io.StallWriteAW_W
+  io.perf_lsu_stall_write_req := lsu.io.StallWriteReq
   io.perf_lsu_stall_write_b  := lsu.io.StallWriteB
 }

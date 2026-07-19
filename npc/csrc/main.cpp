@@ -94,7 +94,7 @@ int main(int argc, char const *argv[])
         dut.GetLoadStoreUnitStoreActiveCycleCount(),
         dut.GetLSUStallReadARCount(),
         dut.GetLSUStallReadRCount(),
-        dut.GetLSUStallWriteAW_WCount(),
+        dut.GetLSUStallWriteReqCount(),
         dut.GetLSUStallWriteBCount());
 #endif
 #ifdef CONFIG_DIFFTEST

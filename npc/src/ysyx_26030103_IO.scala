@@ -127,6 +127,6 @@ class ysyx_26030103_IO extends Bundle {
   val perf_lsu_store_active   = Output(Bool())
   val perf_lsu_stall_read_ar  = Output(Bool())
   val perf_lsu_stall_read_r   = Output(Bool())
-  val perf_lsu_stall_write_aw_w = Output(Bool())
+  val perf_lsu_stall_write_req = Output(Bool())
   val perf_lsu_stall_write_b  = Output(Bool())
 }

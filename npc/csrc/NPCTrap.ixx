@@ -38,7 +38,7 @@ public:
         std::size_t load_store_unit_store_active_cycles,
         std::size_t lsu_stall_read_ar_cycles,
         std::size_t lsu_stall_read_r_cycles,
-        std::size_t lsu_stall_write_aw_w_cycles,
+        std::size_t lsu_stall_write_req_cycles,
         std::size_t lsu_stall_write_b_cycles);
 #endif
 };

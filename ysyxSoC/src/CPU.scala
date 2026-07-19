@@ -65,7 +65,7 @@ class ysyx_26030103 extends BlackBox {
     val io_perf_lsu_store_active   = Output(Bool())
     val io_perf_lsu_stall_read_ar  = Output(Bool())
     val io_perf_lsu_stall_read_r   = Output(Bool())
-    val io_perf_lsu_stall_write_aw_w = Output(Bool())
+    val io_perf_lsu_stall_write_req = Output(Bool())
     val io_perf_lsu_stall_write_b  = Output(Bool())
   })
 }
@@ -173,8 +173,8 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     perf_lsu_stall_read_ar := cpu.io.io_perf_lsu_stall_read_ar
     val perf_lsu_stall_read_r = IO(Output(Bool()))
     perf_lsu_stall_read_r := cpu.io.io_perf_lsu_stall_read_r
-    val perf_lsu_stall_write_aw_w = IO(Output(Bool()))
-    perf_lsu_stall_write_aw_w := cpu.io.io_perf_lsu_stall_write_aw_w
+    val perf_lsu_stall_write_req = IO(Output(Bool()))
+    perf_lsu_stall_write_req := cpu.io.io_perf_lsu_stall_write_req
     val perf_lsu_stall_write_b = IO(Output(Bool()))
     perf_lsu_stall_write_b := cpu.io.io_perf_lsu_stall_write_b
   }
