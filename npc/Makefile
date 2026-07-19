@@ -24,6 +24,7 @@ VINCDIRS=$(BUILD_DIR) \
 SIM_TOP ?= npc
 BIN_FAST = $(BUILD_DIR)/$(TOPNAME)_fast
 FAST_OBJ_DIR = $(BUILD_DIR)/obj_dir_$(TOPNAME)_fast
+FAST_VERILATOR_MK = Vriscv32e_npc_SimTop.mk
 FAST_VSRCS = $(shell find $(BUILD_DIR) -maxdepth 1 \( -name "riscv32e_npc_SimTop.sv" -o -name "layers-riscv32e_npc_SimTop*.sv" \) 2>/dev/null | sort) \
              $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort)
 FAST_VINCDIRS = $(BUILD_DIR) \
@@ -390,7 +391,7 @@ $(BIN_FAST): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 		--Mdir $(FAST_OBJ_DIR) \
 		--exe -o $(abspath $(BIN_FAST))
 	$(MAKE) -C $(FAST_OBJ_DIR) -f $(VERILATOR_BUILD_WRAPPER) -j $(NPROC) \
-		VERILATOR_GENERATED_MK=$(VERILATOR_GENERATED_MK) \
+		VERILATOR_GENERATED_MK=$(FAST_VERILATOR_MK) \
 		CXX=$(CXX) LINK=$(CXX) \
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
