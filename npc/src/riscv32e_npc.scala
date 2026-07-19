@@ -153,9 +153,41 @@ class riscv32e_npc_SimTop extends Module {
 
   io <> cpu.io
 
-  // 去掉 io_ 前缀，使端口名与 ysyxSoCFull 一致
-  import chisel3.experimental.chiselName
-  io.elements.foreach { case (name, data) =>
-    data.suggestName(name)
-  }
+  io.trap_valid.suggestName("trap_valid")
+  io.trap_pc.suggestName("trap_pc")
+  io.debug_gpr_rdata.suggestName("debug_gpr_rdata")
+  io.debug_pc.suggestName("debug_pc")
+  io.debug_instructions.suggestName("debug_instructions")
+  io.debug_mtrace_valid.suggestName("debug_mtrace_valid")
+  io.debug_mtrace_wen.suggestName("debug_mtrace_wen")
+  io.debug_mtrace_addr.suggestName("debug_mtrace_addr")
+  io.debug_mtrace_wdata.suggestName("debug_mtrace_wdata")
+  io.debug_mtrace_rdata.suggestName("debug_mtrace_rdata")
+  io.debug_mtrace_width.suggestName("debug_mtrace_width")
+  io.debug_access_fault.suggestName("debug_access_fault")
+  io.debug_access_fault_resp.suggestName("debug_access_fault_resp")
+  io.debug_commit.suggestName("debug_commit")
+  io.perf_ifu_fetch.suggestName("perf_ifu_fetch")
+  io.perf_exu_done.suggestName("perf_exu_done")
+  io.perf_lsu_load.suggestName("perf_lsu_load")
+  io.perf_lsu_store.suggestName("perf_lsu_store")
+  io.perf_alu_op.suggestName("perf_alu_op")
+  io.perf_mem_op.suggestName("perf_mem_op")
+  io.perf_csr_op.suggestName("perf_csr_op")
+  io.perf_branch_op.suggestName("perf_branch_op")
+  io.perf_ifu_stall_pipeline.suggestName("perf_ifu_stall_pipeline")
+  io.perf_ifu_stall_axi.suggestName("perf_ifu_stall_axi")
+  io.perf_ifu_stall_ar.suggestName("perf_ifu_stall_ar")
+  io.perf_ifu_stall_r.suggestName("perf_ifu_stall_r")
+  io.perf_ifu_stall_redirect.suggestName("perf_ifu_stall_redirect")
+  io.perf_ifu_stall_idle.suggestName("perf_ifu_stall_idle")
+  io.perf_execution_active.suggestName("perf_execution_active")
+  io.perf_exu_stall_lsu.suggestName("perf_exu_stall_lsu")
+  io.perf_lsu_active.suggestName("perf_lsu_active")
+  io.perf_lsu_load_active.suggestName("perf_lsu_load_active")
+  io.perf_lsu_store_active.suggestName("perf_lsu_store_active")
+  io.perf_lsu_stall_read_ar.suggestName("perf_lsu_stall_read_ar")
+  io.perf_lsu_stall_read_r.suggestName("perf_lsu_stall_read_r")
+  io.perf_lsu_stall_write_req.suggestName("perf_lsu_stall_write_req")
+  io.perf_lsu_stall_write_b.suggestName("perf_lsu_stall_write_b")
 }
