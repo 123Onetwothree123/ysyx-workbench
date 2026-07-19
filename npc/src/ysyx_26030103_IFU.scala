@@ -123,7 +123,7 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   val prev_state = RegInit(StatesIdle)
   prev_state := state
   when (state =/= prev_state) {
-    printf(p"[IFU STATE %d->%d]\n", prev_state, state)
+    printf(p"[IFU STATE ${prev_state}->${state}]\n")
   }
   io.StallPipeline := state === StatesHold
   when (state === StatesHold) {
