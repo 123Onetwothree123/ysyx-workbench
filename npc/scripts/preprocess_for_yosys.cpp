@@ -1,10 +1,4 @@
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <string>
-#include <regex>
-#include <format>
+import std;
 
 int main(int argc, char *argv[])
 {
@@ -103,7 +97,6 @@ int main(int argc, char *argv[])
         {
             auto &ri{ml[j]};
 
-            // automatic logic [w] name =  (multi-line)
             std::smatch m1;
             static std::regex p1{R"(^\s*automatic\s+logic\s+((?:\s*\[\S+\]\s*)*)(\w+)\s*=\s*$)"};
             if (std::regex_match(ri, m1, p1))
@@ -125,7 +118,6 @@ int main(int argc, char *argv[])
                     expr += el;
                     k++;
                 }
-                // extract expr content
                 {
                     auto eq{expr.find('=')};
                     if (eq != std::string::npos) expr = expr.substr(eq + 1);
@@ -139,7 +131,6 @@ int main(int argc, char *argv[])
                 continue;
             }
 
-            // automatic logic [w] name = expr;
             std::smatch m2;
             static std::regex p2{R"(^\s*automatic\s+logic\s+((?:\s*\[\S+\]\s*)*)(\w+)\s*=\s*(.+);\s*(//.*)?$)"};
             if (std::regex_match(ri, m2, p2))
@@ -154,7 +145,6 @@ int main(int argc, char *argv[])
                 continue;
             }
 
-            // automatic logic [w] name;
             std::smatch m3;
             static std::regex p3{R"(^\s*automatic\s+logic\s+((?:\s*\[\S+\]\s*)*)(\w+)\s*;\s*(//.*)?$)"};
             if (std::regex_match(ri, m3, p3))
