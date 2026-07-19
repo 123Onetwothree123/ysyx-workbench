@@ -100,7 +100,6 @@ void NPCTrap::PrintPerformanceStatistics(
     std::println("EXU完成: {} (应与IFU取指接近)", execution_complete);
     auto load_store_sum{load_data + store_data};
     std::println("LSU合计: {} (应与访存指令一致)", load_store_sum);
-
     std::println("");
     std::println("指令类别占比与平均周期:");
     if (instruction_fetch > 0)
@@ -115,12 +114,11 @@ void NPCTrap::PrintPerformanceStatistics(
         std::println("CSR指令占比: {:.1f}%", 100.0 * control_status_register_operation / total_instructions);
         std::println("分支/跳转指令占比: {:.1f}%", 100.0 * branch_operation / total_instructions);
     }
-
     std::println("");
     std::println("IFU取不到指令原因分析:");
     if (total_cycles > 0)
     {
-        auto total = static_cast<double>(total_cycles);
+        auto total {static_cast<double>(total_cycles)};
         std::println("流水线阻塞(IFU有数据但下游不接): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_pipeline, 100.0 * instruction_fetch_stall_pipeline / total);
         std::println("AXI总线等待(AR/R通道未就绪): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_axi, 100.0 * instruction_fetch_stall_axi / total);
         std::println("  其中 AR通道等待(请求未接受): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_ar, 100.0 * instruction_fetch_stall_ar / total);
@@ -128,12 +126,11 @@ void NPCTrap::PrintPerformanceStatistics(
         std::println("跳转冲刷(取指结果被丢弃): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_redirect, 100.0 * instruction_fetch_stall_redirect / total);
         std::println("IFU空闲(无取指请求): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_idle, 100.0 * instruction_fetch_stall_idle / total);
     }
-
     std::println("");
     std::println("EXU流水线阻塞分析:");
     if (total_cycles > 0)
     {
-        auto total = static_cast<double>(total_cycles);
+        auto total{static_cast<double>(total_cycles)};
         std::println("EXU等待LSU完成(流水线stall): {} 周期, 占比 {:.1f}%", exu_stall_lsu_cycles, 100.0 * exu_stall_lsu_cycles / total);
     }
     std::println("");
