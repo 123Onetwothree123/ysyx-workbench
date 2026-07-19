@@ -240,4 +240,6 @@ class riscv32e_npc_SimTop extends Module {
   perf_lsu_stall_write_req := cpu.io.perf_lsu_stall_write_req
   val perf_lsu_stall_write_b = IO(Output(Bool()))
   perf_lsu_stall_write_b := cpu.io.perf_lsu_stall_write_b
+
+  printf(p"[TOP perf_exu_stall=${cpu.io.perf_exu_stall_lsu} trap=${cpu.io.trap_valid} pc=0x${Hexadecimal(cpu.io.debug_pc)}]\n")
 }
