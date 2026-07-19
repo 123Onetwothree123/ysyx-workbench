@@ -25,10 +25,24 @@ public:
         std::size_t instruction_fetch_stall_pipeline,
         std::size_t instruction_fetch_stall_axi,
         std::size_t instruction_fetch_stall_redirect,
+        std::size_t instruction_fetch_stall_ar,
+        std::size_t instruction_fetch_stall_r,
+        std::size_t instruction_fetch_stall_idle,
         std::size_t arithmetic_operation_active_cycles,
         std::size_t memory_access_operation_active_cycles,
         std::size_t control_status_register_operation_active_cycles,
         std::size_t branch_operation_active_cycles,
-        std::size_t load_store_unit_active_cycles);
+        std::size_t exu_stall_lsu_cycles,
+        std::size_t memory_access_operation_active_cycles,
+        std::size_t control_status_register_operation_active_cycles,
+        std::size_t branch_operation_active_cycles,
+        std::size_t load_store_unit_active_cycles,
+        std::size_t load_store_unit_load_active_cycles,
+        std::size_t load_store_unit_store_active_cycles,
+        std::size_t lsu_stall_read_ar_cycles,
+        std::size_t lsu_stall_read_r_cycles,
+        std::size_t lsu_stall_write_aw_w_cycles,
+        std::size_t lsu_stall_write_b_cycles);
 #endif
 };
+

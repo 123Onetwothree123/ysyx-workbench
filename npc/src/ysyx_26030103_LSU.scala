@@ -21,6 +21,11 @@ class ysyx_26030103_LSU extends Module {
     val AccessFault = Output(Bool())
     val AccessFaultResp = Output(UInt(2.W))
     val Active = Output(Bool())
+    val IsStore = Output(Bool())
+    val StallReadAR    = Output(Bool())
+    val StallReadR     = Output(Bool())
+    val StallWriteAW_W = Output(Bool())
+    val StallWriteB    = Output(Bool())
   })
   // 接入ysyxSoC新加的
   val AXISize = WireDefault(2.U(3.W))
@@ -97,6 +102,7 @@ class ysyx_26030103_LSU extends Module {
   val LoadDataReg = RegInit(0.U(32.W))
   val AccessFaultReg = RegInit(false.B)
   val AccessFaultRespReg = RegInit(0.U(2.W))
+  val is_store_transaction = RegInit(false.B)
   io.AccessFault := AccessFaultReg
   io.AccessFaultResp := AccessFaultRespReg
   // 先给默认值，真的是烦死了，我也不知道vscode那个doctor是干什么的，是JVM的吗？看到是甲骨文的名字，而且这玩意不能捡起来直接用就很烦，他妈的
@@ -142,6 +148,7 @@ class ysyx_26030103_LSU extends Module {
       AccessFaultReg := false.B
       AccessFaultRespReg := 0.U
       when(io.MemoryValid) {
+        is_store_transaction := io.MemoryWrite
         when(io.AddressMisaligned) {
           state := StatesDone
           // 本来想要做一个异常的新的信号，然后直接让处理器走ysyx_26030103_CSR，但是能力有限，做不出来
@@ -248,4 +255,9 @@ class ysyx_26030103_LSU extends Module {
   }
   io.LoadDATA := LoadDataReg
   io.Active := state =/= StatesIdle
+  io.IsStore := is_store_transaction
+  io.StallReadAR    := state === StatesReadRequest
+  io.StallReadR     := state === StatesReadResponse
+  io.StallWriteAW_W := state === StatesWriteRequest
+  io.StallWriteB    := state === StatesWriteResponse
 }

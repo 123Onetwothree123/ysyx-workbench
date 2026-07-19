@@ -69,11 +69,24 @@ void NPCTrap::PrintPerformanceStatistics(
     std::size_t instruction_fetch_stall_pipeline,
     std::size_t instruction_fetch_stall_axi,
     std::size_t instruction_fetch_stall_redirect,
+    std::size_t instruction_fetch_stall_ar,
+    std::size_t instruction_fetch_stall_r,
+    std::size_t instruction_fetch_stall_idle,
     std::size_t arithmetic_operation_active_cycles,
     std::size_t memory_access_operation_active_cycles,
     std::size_t control_status_register_operation_active_cycles,
     std::size_t branch_operation_active_cycles,
-    std::size_t load_store_unit_active_cycles)
+    std::size_t exu_stall_lsu_cycles,
+    std::size_t memory_access_operation_active_cycles,
+    std::size_t control_status_register_operation_active_cycles,
+    std::size_t branch_operation_active_cycles,
+    std::size_t load_store_unit_active_cycles,
+    std::size_t load_store_unit_load_active_cycles,
+    std::size_t load_store_unit_store_active_cycles,
+    std::size_t lsu_stall_read_ar_cycles,
+    std::size_t lsu_stall_read_r_cycles,
+    std::size_t lsu_stall_write_aw_w_cycles,
+    std::size_t lsu_stall_write_b_cycles)
 {
     std::println("性能计数器");
     std::println("IFU取到指令: {}", instruction_fetch);
@@ -113,15 +126,44 @@ void NPCTrap::PrintPerformanceStatistics(
         auto total = static_cast<double>(total_cycles);
         std::println("流水线阻塞(IFU有数据但下游不接): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_pipeline, 100.0 * instruction_fetch_stall_pipeline / total);
         std::println("AXI总线等待(AR/R通道未就绪): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_axi, 100.0 * instruction_fetch_stall_axi / total);
+        std::println("  其中 AR通道等待(请求未接受): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_ar, 100.0 * instruction_fetch_stall_ar / total);
+        std::println("  其中 R通道等待(数据未返回): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_r, 100.0 * instruction_fetch_stall_r / total);
         std::println("跳转冲刷(取指结果被丢弃): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_redirect, 100.0 * instruction_fetch_stall_redirect / total);
+        std::println("IFU空闲(无取指请求): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_idle, 100.0 * instruction_fetch_stall_idle / total);
     }
 
+    std::println("");
+    std::println("EXU流水线阻塞分析:");
+    if (total_cycles > 0)
+    {
+        auto total = static_cast<double>(total_cycles);
+        std::println("EXU等待LSU完成(流水线stall): {} 周期, 占比 {:.1f}%", exu_stall_lsu_cycles, 100.0 * exu_stall_lsu_cycles / total);
+    }
     std::println("");
     std::println("LSU平均访存延迟:");
     auto load_store_total{load_data + store_data};
     if (load_store_total > 0)
     {
         std::println("平均延迟: {:.2f} 周期", static_cast<double>(load_store_unit_active_cycles) / load_store_total);
+    }
+    if (load_data > 0)
+    {
+        std::println("  读延迟: {:.2f} 周期 ({} 次)", static_cast<double>(load_store_unit_load_active_cycles) / load_data, load_data);
+    }
+    if (store_data > 0)
+    {
+        std::println("  写延迟: {:.2f} 周期 ({} 次)", static_cast<double>(load_store_unit_store_active_cycles) / store_data, store_data);
+    }
+    std::println("");
+    std::println("LSU访存延迟分解:");
+    auto lsu_active_total{load_store_unit_active_cycles};
+    if (lsu_active_total > 0)
+    {
+        auto active_total_d = static_cast<double>(lsu_active_total);
+        std::println("  AR等待(读请求握手): {} 周期, 占比 {:.1f}%", lsu_stall_read_ar_cycles, 100.0 * lsu_stall_read_ar_cycles / active_total_d);
+        std::println("  R等待(读数据返回):  {} 周期, 占比 {:.1f}%", lsu_stall_read_r_cycles, 100.0 * lsu_stall_read_r_cycles / active_total_d);
+        std::println("  AW/W等待(写请求握手): {} 周期, 占比 {:.1f}%", lsu_stall_write_aw_w_cycles, 100.0 * lsu_stall_write_aw_w_cycles / active_total_d);
+        std::println("  B等待(写响应返回):  {} 周期, 占比 {:.1f}%", lsu_stall_write_b_cycles, 100.0 * lsu_stall_write_b_cycles / active_total_d);
     }
 }
 #endif
