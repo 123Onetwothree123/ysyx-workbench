@@ -46,14 +46,14 @@ class riscv32e_npc_AXIRAM extends Module {
         rData  := mem.read(addr)
         state  := sReadResp
         txn_count := txn_count + 1.U
-        printf(c"[RD %d 0x%x]\n", txn_count, io.axi.AR.ARADDR)
+        printf(p"[RD ${txn_count} 0x${Hexadecimal(io.axi.AR.ARADDR)}]\n")
       }.elsewhen (io.axi.AW.AWVALID && io.axi.W.WVALID) {
         awAddr := io.axi.AW.AWADDR
         wData  := io.axi.W.WDATA
         wStrb  := io.axi.W.WSTRB
         state  := sWriteResp
         txn_count := txn_count + 1.U
-        printf(c"[WR %d 0x%x = 0x%x]\n", txn_count, io.axi.AW.AWADDR, io.axi.W.WDATA)
+        printf(p"[WR ${txn_count} 0x${Hexadecimal(io.axi.AW.AWADDR)} = 0x${Hexadecimal(io.axi.W.WDATA)}]\n")
       }
     }
     is (sReadResp) {
