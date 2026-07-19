@@ -428,11 +428,32 @@ pgo: verilog
 PERF_DIR   = NPCSimResult
 PERF_SYNTH = $(BUILD_DIR)/synth.txt
 
-synth:
-	@echo "[perf] 综合 (yosys-sta placeholder) ..."
+YOSYS_STA_HOME ?= $(abspath $(NPC_HOME)/../yosys-sta)
+SYNTH_FREQ ?= 50
+
+ifeq ($(SIM_TOP),soc)
+SYNTH_DESIGN = ysyxSoCFull
+SYNTH_RTL_FILES = $(YSYXSOC_FULL_V) $(BUILD_DIR)/ysyx_26030103.sv $(shell find $(YSYXSOC_PERIP_DIR) -name "*.v" 2>/dev/null)
+else
+SYNTH_DESIGN = ysyx_26030103
+SYNTH_RTL_FILES = $(BUILD_DIR)/ysyx_26030103_npc.sv
+endif
+
+synth: verilog
+	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
+	@$(MAKE) -C $(YOSYS_STA_HOME) syn \
+		DESIGN=$(SYNTH_DESIGN) \
+		RTL_FILES="$(SYNTH_RTL_FILES)" \
+		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
+		O=$(abspath $(YOSYS_STA_HOME))/result
 	@mkdir -p $(BUILD_DIR)
-	@echo "0" > $(PERF_SYNTH)
-	@echo "0" >> $(PERF_SYNTH)
+	@echo $(SYNTH_FREQ) > $(PERF_SYNTH)
+	@SYNTH_STAT="$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz/synth_stat.txt"; \
+	if [ -f "$$SYNTH_STAT" ]; then \
+		awk '/Chip area/ {print $$5}' "$$SYNTH_STAT" >> $(PERF_SYNTH); \
+	else \
+		echo "0" >> $(PERF_SYNTH); \
+	fi
 
 ifeq ($(SIM_TOP),soc)
 perf: synth $(BIN)
