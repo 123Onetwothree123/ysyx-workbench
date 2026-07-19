@@ -433,12 +433,14 @@ save:
 	fi; \
 	echo "$$row" >> $(PERF_TSV); \
 	cp $(PERF_LOG) $(PERF_DIR)/$$t.log; \
+	echo "$$row" > $(PERF_DIR)/$$t.tsv; \
 	echo ""; \
 	echo "===== 性能数据 (TSV) ====="; \
 	printf '%s\n' "$$row" | tr '\t' '\n' | head -6; \
 	echo "... (共 $$(printf '%s\n' "$$row" | tr '\t' '\n' | wc -l) 列)"; \
 	echo ""; \
 	echo "已追加到 $(PERF_TSV)"; \
+	echo "单次记录: $(PERF_DIR)/$$t.tsv"; \
 	echo "原始日志: $(PERF_DIR)/$$t.log"
 
 perf: synth $(BIN)
