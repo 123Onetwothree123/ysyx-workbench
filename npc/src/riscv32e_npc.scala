@@ -16,7 +16,7 @@ class riscv32e_npc_AXIRAM extends Module {
 
   val sIdle :: sReadResp :: sWriteResp :: Nil = Enum(3)
   val state = RegInit(sIdle)
-
+  val txn = RegInit(0.U(32.W))
   val arAddr = Reg(UInt(32.W))
   val rData  = Reg(UInt(32.W))
 
@@ -44,6 +44,15 @@ class riscv32e_npc_AXIRAM extends Module {
         val addr = ((io.axi.AR.ARADDR - 0x80000000L.U) >> 2) & 65535.U(32.W)
         rData  := mem.read(addr)
         state  := sReadResp
+        txn := txn + 1.U
+        printf(cf"RAM RD $txn @0x${Hexadecimal(io.axi.AR.ARADDR)}\n")
+      }.elsewhen (io.axi.AW.AWVALID && io.axi.W.WVALID) {
+        awAddr := io.axi.AW.AWADDR
+        wData  := io.axi.W.WDATA
+        wStrb  := io.axi.W.WSTRB
+        state  := sWriteResp
+        txn := txn + 1.U
+        printf(cf"RAM WR $txn @0x${Hexadecimal(io.axi.AW.AWADDR)} =0x${Hexadecimal(io.axi.W.WDATA)}\n")
       }.elsewhen (io.axi.AW.AWVALID && io.axi.W.WVALID) {
         awAddr := io.axi.AW.AWADDR
         wData  := io.axi.W.WDATA
