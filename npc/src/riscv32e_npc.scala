@@ -75,8 +75,6 @@ class riscv32e_npc_SimTop extends Module {
   val cpu = Module(new ysyx_26030103)
   val ram = Module(new riscv32e_npc_AXIRAM)
 
-  cpu.io.clock    := clock
-  cpu.io.reset    := reset
   cpu.io.interrupt := false.B
 
   cpu.io.master_awready := ram.io.axi.AW.AWREADY
