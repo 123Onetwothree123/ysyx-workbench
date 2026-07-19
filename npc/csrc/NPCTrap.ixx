@@ -33,9 +33,6 @@ public:
         std::size_t control_status_register_operation_active_cycles,
         std::size_t branch_operation_active_cycles,
         std::size_t exu_stall_lsu_cycles,
-        std::size_t memory_access_operation_active_cycles,
-        std::size_t control_status_register_operation_active_cycles,
-        std::size_t branch_operation_active_cycles,
         std::size_t load_store_unit_active_cycles,
         std::size_t load_store_unit_load_active_cycles,
         std::size_t load_store_unit_store_active_cycles,
@@ -45,4 +42,3 @@ public:
         std::size_t lsu_stall_write_b_cycles);
 #endif
 };
-
