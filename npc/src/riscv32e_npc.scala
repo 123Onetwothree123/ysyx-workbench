@@ -112,9 +112,30 @@ class riscv32e_npc_SimTop extends Module {
   ram.io.axi.R.RREADY  := cpu.io.master_rready
 
   cpu.io.slave_awvalid := false.B
+  cpu.io.slave_awaddr  := 0.U
+  cpu.io.slave_awid    := 0.U
+  cpu.io.slave_awlen   := 0.U
+  cpu.io.slave_awsize  := 0.U
+  cpu.io.slave_awburst := 0.U
+  cpu.io.slave_awlock  := false.B
+  cpu.io.slave_awcache := 0.U
+  cpu.io.slave_awprot  := 0.U
+  cpu.io.slave_awqos   := 0.U
   cpu.io.slave_wvalid  := false.B
+  cpu.io.slave_wdata   := 0.U
+  cpu.io.slave_wstrb   := 0.U
+  cpu.io.slave_wlast   := false.B
   cpu.io.slave_bready  := false.B
   cpu.io.slave_arvalid := false.B
+  cpu.io.slave_araddr  := 0.U
+  cpu.io.slave_arid    := 0.U
+  cpu.io.slave_arlen   := 0.U
+  cpu.io.slave_arsize  := 0.U
+  cpu.io.slave_arburst := 0.U
+  cpu.io.slave_arlock  := false.B
+  cpu.io.slave_arcache := 0.U
+  cpu.io.slave_arprot  := 0.U
+  cpu.io.slave_arqos   := 0.U
   cpu.io.slave_rready  := false.B
 
   val trap_valid = IO(Output(Bool()))
