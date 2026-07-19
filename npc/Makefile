@@ -422,17 +422,21 @@ save:
 	v20=$$(sed -n 's/R等待(读数据返回):.* \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
 	v21=$$(sed -n 's/AW\/W等待(写请求握手): \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
 	v22=$$(sed -n 's/B等待(写响应返回):.* \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
-	row="$$commit\t$$c\t$$i\t$$p\t$$f\t$$a\t$$v1\t$$v2\t$$v3\t$$v4\t$$v5\t$$v6\t$$v7\t$$v8\t$$v9\t$$v10\t$$v11\t$$v12\t$$v13\t$$v14\t$$v15\t$$v16\t$$v17\t$$v18\t$$v19\t$$v20\t$$v21\t$$v22"; \
+	row=$$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+		"$$commit" "$$c" "$$i" "$$p" "$$f" "$$a" \
+		"$$v1" "$$v2" "$$v3" "$$v4" "$$v5" "$$v6" "$$v7" "$$v8" "$$v9" \
+		"$$v10" "$$v11" "$$v12" "$$v13" "$$v14" "$$v15" "$$v16" \
+		"$$v17" "$$v18" "$$v19" "$$v20" "$$v21" "$$v22"); \
 	mkdir -p $(PERF_DIR); \
 	if [ ! -f $(PERF_TSV) ]; then \
-		echo "commit\t周期数\t指令数\tIPC\t综合频率(MHz)\t综合面积(um2)\tIFU取指\tEXU完成\tLSU读\tLSU写\tALU指令\t访存指令\tCSR指令\t分支指令\t访存平均周期\t流水线阻塞\tAXI等待\tAR等待\tR等待\t跳转冲刷\tIFU空闲\tEXU等LSU\t读延迟\t写延迟\tLSU_AR等\tLSU_R等\tLSU写请求等\tLSU_B等" > $(PERF_TSV); \
+		printf 'commit\t周期数\t指令数\tIPC\t综合频率(MHz)\t综合面积(um2)\tIFU取指\tEXU完成\tLSU读\tLSU写\tALU指令\t访存指令\tCSR指令\t分支指令\t访存平均周期\t流水线阻塞\tAXI等待\tAR等待\tR等待\t跳转冲刷\tIFU空闲\tEXU等LSU\t读延迟\t写延迟\tLSU_AR等\tLSU_R等\tLSU写请求等\tLSU_B等\n' > $(PERF_TSV); \
 	fi; \
 	echo "$$row" >> $(PERF_TSV); \
 	cp $(PERF_LOG) $(PERF_DIR)/$$t.log; \
 	echo ""; \
 	echo "===== 性能数据 (TSV) ====="; \
-	printf "%s\n" "$$row" | tr '\t' '\n' | head -6; \
-	echo "... (共 $$(printf "%s\n" "$$row" | tr '\t' '\n' | wc -l) 列)"; \
+	printf '%s\n' "$$row" | tr '\t' '\n' | head -6; \
+	echo "... (共 $$(printf '%s\n' "$$row" | tr '\t' '\n' | wc -l) 列)"; \
 	echo ""; \
 	echo "已追加到 $(PERF_TSV)"; \
 	echo "原始日志: $(PERF_DIR)/$$t.log"
