@@ -30,6 +30,18 @@ std::expected<CLIOptions, std::string> CLIOptions::Parse(int argc, char const *a
         {
             options.DiffFile = std::filesystem::path{std::string{arg.substr(7)}};
         }
+        else if (arg == "--result-dir" || arg == "-r")
+        {
+            if (i + 1 >= argc)
+            {
+                return std::unexpected("--result-dir 需要跟一个目录路径");
+            }
+            options.ResultDir = std::filesystem::path{argv[++i]};
+        }
+        else if (arg.starts_with("--result-dir="))
+        {
+            options.ResultDir = std::filesystem::path{std::string{arg.substr(13)}};
+        }
         else if (arg.starts_with("-"))
         {
             return std::unexpected{std::format("未知参数: {0}", arg)};
@@ -57,4 +69,8 @@ const std::optional<std::filesystem::path> &CLIOptions::GetElfFile() const noexc
 const std::optional<std::filesystem::path> &CLIOptions::GetDiffFile() const noexcept
 {
     return DiffFile;
+}
+const std::optional<std::filesystem::path> &CLIOptions::GetResultDir() const noexcept
+{
+    return ResultDir;
 }

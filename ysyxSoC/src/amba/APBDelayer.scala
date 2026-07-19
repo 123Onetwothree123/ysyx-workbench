@@ -25,7 +25,7 @@ class apb_delayer extends BlackBox {
 class APBDelayerChisel extends Module {
   val io = IO(new APBDelayerIO)
   io.out <> io.in
-  val CPU_MHZ = 1200
+  val CPU_MHZ = 450
   val DEVICE_MHZ = 100
   val S = 64
   val RTS = CPU_MHZ * S / DEVICE_MHZ // 因为r * S，整数截断

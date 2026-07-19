@@ -1,6 +1,7 @@
 module npc.NPCSimResult;
 import std;
 void NPCSimResult::Save(
+    std::filesystem::path result_dir,
     std::size_t total_cycles,
     std::size_t total_instructions,
     std::size_t instruction_fetch,
@@ -48,10 +49,7 @@ void NPCSimResult::Save(
     {
         store_avg = static_cast<double>(load_store_unit_store_active) / static_cast<double>(store_data);
     }
-    std::filesystem::path result_dir{"NPCSimResult"};
     std::filesystem::create_directories(result_dir);
-    auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
-    auto timestamp{std::format("{:%Y%m%d-%H%M%S}", now)};
 #define XSTR(s) #s
 #define STR(s) XSTR(s)
 
@@ -107,34 +105,28 @@ void NPCSimResult::Save(
         lsu_stall_read_r,
         lsu_stall_write_req,
         lsu_stall_write_b)};
+
     auto tsv_file{
 #ifdef VRISCV32E_NPC
-        result_dir / std::format("{}_npc.tsv", timestamp)
+        result_dir / "result_npc.tsv"
 #else
-        result_dir / std::format("{}_ysyxsoc.tsv", timestamp)
+        result_dir / "result_ysyxsoc.tsv"
 #endif
     };
-    {
-        auto out{std::ofstream{tsv_file}};
+     {
+        auto out{std::ofstream{tsv_file, std::ios::binary}};
+        out << "\xEF\xBB\xBF";
+        out << "commit\t说明\t仿真周期数\t指令数\tIPC\t综合频率(MHz)\t综合面积(um^2)\t"
+               "IFU取指\tEXU完成\tLSU读\tLSU写\t"
+               "ALU指令\t访存指令\tCSR指令\t分支指令\t"
+               "访存平均周期\t"
+               "IFU流水线阻塞\tIFU_AXI等待\tIFU_AR等待\tIFU_R等待\tIFU跳转冲刷\tIFU空闲\t"
+               "EXU等LSU\t"
+               "LSU读延迟\tLSU写延迟\t"
+               "LSU_AR等待\tLSU_R等待\tLSU_AW/W等待\tLSU_B等待\n";
         out << tsv_row << '\n';
     }
-    auto perf_tsv{
-#ifdef VRISCV32E_NPC
-        result_dir / "perf_npc.tsv"
-#else
-        result_dir / "perf_ysyxsoc.tsv"
-#endif
-    };
-    bool needs_header{!std::filesystem::exists(perf_tsv)};
-    {
-        auto out{std::ofstream{perf_tsv, std::ios::app}};
-        if (needs_header)
-        {
-            out << "commit\t说明\t仿真周期数\t指令数\tIPC\t综合频率\t综合面积\tIFU取指\tEXU完成\tLSU读\tLSU写\tALU指令\t访存指令\tCSR指令\t分支指令\t访存平均周期\t流水线阻塞\tAXI等待\tAR等待\tR等待\t跳转冲刷\tIFU空闲\tEXU等LSU\t读延迟\t写延迟\tLSU_AR等\tLSU_R等\tLSU写请求等\tLSU_B等\n";
-        }
-        out << tsv_row << '\n';
-    }
+
     std::println("");
-    std::println("已追加到 {}", perf_tsv.string());
     std::println("单次记录: {}", tsv_file.string());
 }

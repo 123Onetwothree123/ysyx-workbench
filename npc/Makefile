@@ -13,7 +13,7 @@ SOC_TOPNAME=ysyxSoCFull
 OBJ_DIR=$(BUILD_DIR)/obj_dir_$(TOPNAME)
 #最后生成的可以执行的文件，给后面的run用的
 BIN=$(BUILD_DIR)/$(TOPNAME)
-VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" ! -name "riscv32e_npc*" 2>/dev/null | sort) \
+VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" ! -name "riscv32e_npc*" ! -name "ysyx_*_npc*" 2>/dev/null | sort) \
       $(YSYXSOC_FULL_V) \
       $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort) \
       $(shell find $(YSYXSOC_PERIP_DIR) -type f -name "*.v" 2>/dev/null | sort)
@@ -387,7 +387,7 @@ $(BIN_NPC): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 		$(addprefix -I,$(NPC_VINCDIRS)) \
 		--top-module riscv32e_npc_SimTop \
 		$(NPC_VSRCS) $(CSRCS) \
-		$(addprefix -CFLAGS , $(VERILATOR_CFLAGS) -DVRISCV32E_NPC -DCONFIG_RESET_PC=0x80000000 -DCONFIG_MBASE=0x80000000) \
+		$(addprefix -CFLAGS , $(filter-out -DCONFIG_MBASE=% -DCONFIG_RESET_PC=%,$(VERILATOR_CFLAGS)) -DVRISCV32E_NPC -DCONFIG_RESET_PC=0x80000000 -DCONFIG_MBASE=0x80000000) \
 		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) \
 		--Mdir $(NPC_OBJ_DIR) \
 		--exe -o $(abspath $(BIN_NPC))
@@ -399,11 +399,15 @@ $(BIN_NPC): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 
 ifeq ($(SIM_TOP),soc)
 run: $(BIN)
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_ysyxsoc.log
+	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$RESULT_DIR"; \
+	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
 else
 run: $(BIN_NPC)
-	@od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
-	@$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_npc.log
+	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$RESULT_DIR"; \
+	od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex; \
+	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/npc.log"
 endif
 
 .PHONY: pgo
@@ -424,24 +428,60 @@ pgo: verilog
 PERF_DIR   = NPCSimResult
 PERF_SYNTH = $(BUILD_DIR)/synth.txt
 
-synth:
-	@echo "[perf] 综合 (yosys-sta placeholder) ..."
+YOSYS_STA_HOME ?= $(abspath $(NPC_HOME)/../yosys-sta)
+SYNTH_FREQ ?= 450
+
+ifeq ($(SIM_TOP),soc)
+SYNTH_DESIGN = ysyxSoCFull
+SYNTH_RTL_FILES = $(abspath $(YSYXSOC_FULL_V)) $(abspath $(BUILD_DIR)/ysyx_26030103.sv) $(foreach f,$(shell find $(YSYXSOC_PERIP_DIR) -name "*.v" 2>/dev/null),$(abspath $f))
+else
+SYNTH_DESIGN = ysyx_26030103
+SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
+endif
+
+YOSYS_PP = $(BUILD_DIR)/preprocess_for_yosys
+STD_MODULE_SRC = $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
+$(BUILD_DIR)/gcm.cache/std.gcm: $(STD_MODULE_SRC)
+	@mkdir -p $(@D)
+	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) -x c++ -c $< -o std_module.o
+
+$(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/gcm.cache/std.gcm
+	@mkdir -p $(@D)
+	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -O2 -o $(notdir $@) $(abspath $<)
+
+synth: verilog $(YOSYS_PP)
+	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
+	@$(YOSYS_PP) $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
+	@$(MAKE) -C $(YOSYS_STA_HOME) syn \
+		DESIGN=$(SYNTH_DESIGN) \
+		RTL_FILES="$(abspath $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv)" \
+		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
+		O=$(abspath $(YOSYS_STA_HOME))/result
 	@mkdir -p $(BUILD_DIR)
-	@echo "0" > $(PERF_SYNTH)
-	@echo "0" >> $(PERF_SYNTH)
+	@echo $(SYNTH_FREQ) > $(PERF_SYNTH)
+	@SYNTH_STAT="$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz/synth_stat.txt"; \
+	if [ -f "$$SYNTH_STAT" ]; then \
+		awk '/Chip area/ {print $$5}' "$$SYNTH_STAT" >> $(PERF_SYNTH); \
+	else \
+		echo "0" >> $(PERF_SYNTH); \
+	fi
 
 ifeq ($(SIM_TOP),soc)
 perf: synth $(BIN)
 	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 运行仿真 ..."
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_ysyxsoc.log
+	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$RESULT_DIR"; \
+	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
 else
 perf: synth $(BIN_NPC)
 	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 编译 hex ..."
 	@od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
 	@echo "[perf] 运行仿真 ..."
-	@$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_npc.log
+	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$RESULT_DIR"; \
+	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/npc.log"
 endif
 
 include scripts/config.mk
