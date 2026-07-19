@@ -1,6 +1,5 @@
 module npc.NPCSimResult;
 import std;
-
 void NPCSimResult::Save(
     std::size_t total_cycles,
     std::size_t total_instructions,
@@ -28,28 +27,31 @@ void NPCSimResult::Save(
     std::size_t lsu_stall_write_req,
     std::size_t lsu_stall_write_b)
 {
-    auto ipc{total_cycles > 0
-        ? static_cast<double>(total_instructions) / static_cast<double>(total_cycles)
-        : 0.0};
-
-    double mem_avg{memory_access_operation > 0
-        ? static_cast<double>(memory_access_operation_active_cycles) / static_cast<double>(memory_access_operation)
-        : 0.0};
-
-    double load_avg{load_data > 0
-        ? static_cast<double>(load_store_unit_load_active) / static_cast<double>(load_data)
-        : 0.0};
-
-    double store_avg{store_data > 0
-        ? static_cast<double>(load_store_unit_store_active) / static_cast<double>(store_data)
-        : 0.0};
-
+    double ipc{0.0};
+    if (total_cycles > 0)
+    {
+        ipc = static_cast<double>(total_instructions) / static_cast<double>(total_cycles);
+    }
+    double mem_avg{0.0};
+    if (memory_access_operation > 0)
+    {
+        mem_avg = static_cast<double>(memory_access_operation_active_cycles)
+                / static_cast<double>(memory_access_operation);
+    }
+    double load_avg{0.0};
+    if (load_data > 0)
+    {
+        load_avg = static_cast<double>(load_store_unit_load_active) / static_cast<double>(load_data);
+    }
+    double store_avg{0.0};
+    if (store_data > 0)
+    {
+        store_avg = static_cast<double>(load_store_unit_store_active) / static_cast<double>(store_data);
+    }
     std::filesystem::path result_dir{"NPCSimResult"};
     std::filesystem::create_directories(result_dir);
-
     auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
     auto timestamp{std::format("{:%Y%m%d-%H%M%S}", now)};
-
     std::string commit{
 #ifdef CONFIG_PERF_GIT_COMMIT
         CONFIG_PERF_GIT_COMMIT
@@ -57,20 +59,24 @@ void NPCSimResult::Save(
         "unknown"
 #endif
     };
-
     std::string freq{"0 MHz"};
     std::string area{"0 um^2"};
     if (auto f{std::ifstream{"build/synth.txt"}})
     {
         std::string line;
-        if (std::getline(f, line)) freq = line + " MHz";
-        if (std::getline(f, line)) area = line + " um^2";
+        if (std::getline(f, line))
+        {
+            freq = line + " MHz";
+        }
+        if (std::getline(f, line))
+        {
+            area = line + " um^2";
+        }
     }
-
     auto tsv_row{std::format(
         "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         commit,
-        "",   // 说明
+        "",
         total_cycles,
         total_instructions,
         std::format("{:.4f}", ipc),
@@ -98,13 +104,11 @@ void NPCSimResult::Save(
         lsu_stall_read_r,
         lsu_stall_write_req,
         lsu_stall_write_b)};
-
     auto tsv_file{result_dir / std::format("{}.tsv", timestamp)};
     {
         auto out{std::ofstream{tsv_file}};
         out << tsv_row << '\n';
     }
-
     auto perf_tsv{result_dir / "perf.tsv"};
     bool needs_header{!std::filesystem::exists(perf_tsv)};
     {
@@ -115,9 +119,8 @@ void NPCSimResult::Save(
         }
         out << tsv_row << '\n';
     }
-
     std::println("");
-    std::println("===== 性能数据 =====");
+    std::println("性能数据");
     std::println("{}", tsv_row);
     std::println("");
     std::println("已追加到 {}", perf_tsv.string());

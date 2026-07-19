@@ -1,11 +1,9 @@
 export module npc.NPCSimResult;
 import std;
-
 export class NPCSimResult final
 {
 public:
     NPCSimResult() = delete;
-
     static void Save(
         std::size_t total_cycles,
         std::size_t total_instructions,
