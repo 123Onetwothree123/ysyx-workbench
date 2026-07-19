@@ -58,6 +58,9 @@ class riscv32e_npc_AXIRAM extends Module {
     }
     is (sWriteResp) {
       when (io.axi.B.BREADY) {
+        when (awAddr === 0x10000000L.U) {
+          printf("%c", wData(7, 0))
+        }
         val addr = ((awAddr - 0x80000000L.U) >> 2) & 65535.U(32.W)
         val old  = mem.read(addr)
         val mask = Cat(
