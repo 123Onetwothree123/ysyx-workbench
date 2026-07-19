@@ -6,9 +6,9 @@ import chisel3.util._
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 import _root_.ysyx_26030103.ysyx_26030103_GPR._
 
-class ysyx_26030103(AddressWidth: Int = 32) extends Module {
+class ysyx_26030103(resetAddr: Long = 0x30000000L, AddressWidth: Int = 32) extends Module {
   val io = IO(new ysyx_26030103_IO)
-  val ifu = Module(new ysyx_26030103_IFU)
+  val ifu = Module(new ysyx_26030103_IFU(resetAddr))
   val idu = Module(new ysyx_26030103_IDU)
   val exu = Module(new ysyx_26030103_EXU)
   val wbu = Module(new ysyx_26030103_WBU)

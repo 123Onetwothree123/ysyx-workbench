@@ -3,7 +3,7 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.ysyx_26030103_Message.ysyx_26030103_IFUMessage
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
-class ysyx_26030103_IFU extends Module {
+class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   val io = IO(new Bundle {
     // ok啊，终于把AXI5总线干出来了，这下这个接口他妈的可以直接连AXI了
     val InstructionBus = new ysyx_26030103_AXI5IO(32)
@@ -22,7 +22,7 @@ class ysyx_26030103_IFU extends Module {
     val StallR  = Output(Bool())
     val StallIdle = Output(Bool())
   })
-  val PCModule = Module(new ysyx_26030103_PC)
+  val PCModule = Module(new ysyx_26030103_PC(resetAddr))
   val NextPCModule = Module(new ysyx_26030103_NextPC)
   val snpc = PCModule.io.ysyx_26030103_PC + 4.U(32.W)
   // 状态机，我真的是服了，谁能想到wait是scala和Java的object的内置方法，居然还不能用这个做变量名

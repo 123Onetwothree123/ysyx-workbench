@@ -1,5 +1,11 @@
 module;
+#ifdef VRISCV32E_NPC
+#include "Vriscv32e_npc_SimTop.h"
+#define TOP_MODULE Vriscv32e_npc_SimTop
+#else
 #include "VysyxSoCFull.h"
+#define TOP_MODULE VysyxSoCFull
+#endif
 #ifdef CONFIG_TRACE_VCD
 #include <verilated_vcd_c.h>
 #endif
@@ -28,7 +34,7 @@ static VerilatedFstC tfp;
 #ifndef CONFIG_MSIZE
 #define CONFIG_MSIZE 0x10000000
 #endif
-DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
+DUT::DUT() : dut{std::make_unique<TOP_MODULE>()}
 {
     dut->debug_gpr_raddr = 0;
 #ifdef CONFIG_ITRACE
@@ -45,11 +51,11 @@ DUT::DUT() : dut{std::make_unique<VysyxSoCFull>()}
     tfp.open(CONFIG_TRACE_FILE);
 #endif
 }
-VysyxSoCFull &DUT::operator*()
+TOP_MODULE &DUT::operator*()
 {
     return *dut;
 }
-VysyxSoCFull *DUT::operator->()
+TOP_MODULE *DUT::operator->()
 {
     return dut.get();
 }

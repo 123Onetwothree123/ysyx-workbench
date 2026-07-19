@@ -31,4 +31,7 @@ run: insert-arg
 	#ysyx自带的 echo "TODO: add command here to run simulation"
 	$(MAKE) -C $(NPC_HOME) run file=$(IMAGE).bin elf=$(IMAGE).elf
 
-.PHONY: insert-arg
+perf: insert-arg
+	$(MAKE) -C $(NPC_HOME) perf file=$(IMAGE).bin elf=$(IMAGE).elf
+
+.PHONY: insert-arg perf

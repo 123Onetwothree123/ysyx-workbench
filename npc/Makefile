@@ -13,13 +13,24 @@ SOC_TOPNAME=ysyxSoCFull
 OBJ_DIR=$(BUILD_DIR)/obj_dir_$(TOPNAME)
 #最后生成的可以执行的文件，给后面的run用的
 BIN=$(BUILD_DIR)/$(TOPNAME)
-VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" 2>/dev/null | sort) \
+VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" ! -name "riscv32e_npc*" 2>/dev/null | sort) \
       $(YSYXSOC_FULL_V) \
       $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort) \
       $(shell find $(YSYXSOC_PERIP_DIR) -type f -name "*.v" 2>/dev/null | sort)
 VINCDIRS=$(BUILD_DIR) \
          $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort) \
          $(YSYXSOC_PERIP_INCDIRS)
+
+SIM_TOP ?= npc
+BIN_NPC = $(BUILD_DIR)/$(TOPNAME)_npc
+NPC_OBJ_DIR = $(BUILD_DIR)/obj_dir_$(TOPNAME)_npc
+NPC_VERILATOR_MK = Vriscv32e_npc_SimTop.mk
+NPC_VSRCS = rtl/riscv32e_npc_SimTop.sv \
+             $(shell find $(BUILD_DIR) -maxdepth 1 \( -name "riscv32e_npc_AXIRAM.sv" -o -name "layers-riscv32e_npc_AXIRAM*.sv" -o -name "ysyx_26030103_npc.sv" -o -name "layers-ysyx_26030103_npc*.sv" -o -name "mem_*.sv" \) 2>/dev/null | sort) \
+             $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort)
+NPC_VINCDIRS = $(BUILD_DIR) \
+                $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort)
+
 CSRC_DIR=./csrc
 CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
@@ -368,8 +379,32 @@ $(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 		CXX=$(CXX) LINK=$(CXX) \
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
+$(BIN_NPC): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
+		$(VERILATOR_OPT_FLAG) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
+		--timescale "1ns/1ns" --no-timing \
+		$(VERILATOR_TRACE) $(VERILATOR_PROF) $(VERILATOR_AUTOFLUSH) $(VERILATOR_COVERAGE) \
+		$(addprefix -I,$(NPC_VINCDIRS)) \
+		--top-module riscv32e_npc_SimTop \
+		$(NPC_VSRCS) $(CSRCS) \
+		$(addprefix -CFLAGS , $(VERILATOR_CFLAGS) -DVRISCV32E_NPC -DCONFIG_RESET_PC=0x80000000 -DCONFIG_MBASE=0x80000000) \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) \
+		--Mdir $(NPC_OBJ_DIR) \
+		--exe -o $(abspath $(BIN_NPC))
+	$(MAKE) -C $(NPC_OBJ_DIR) -f $(VERILATOR_BUILD_WRAPPER) -j $(NPROC) \
+		VERILATOR_GENERATED_MK=$(NPC_VERILATOR_MK) \
+		CXX=$(CXX) LINK=$(CXX) \
+		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
+		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
+
+ifeq ($(SIM_TOP),soc)
 run: $(BIN)
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_ysyxsoc.log
+else
+run: $(BIN_NPC)
+	@od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
+	@$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_npc.log
+endif
 
 .PHONY: pgo
 pgo: verilog
@@ -386,6 +421,7 @@ pgo: verilog
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 
 
+PERF_DIR   = NPCSimResult
 PERF_SYNTH = $(BUILD_DIR)/synth.txt
 
 synth:
@@ -394,9 +430,19 @@ synth:
 	@echo "0" > $(PERF_SYNTH)
 	@echo "0" >> $(PERF_SYNTH)
 
+ifeq ($(SIM_TOP),soc)
 perf: synth $(BIN)
+	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 运行仿真 ..."
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(BUILD_DIR)/$$(date +%Y%m%d-%H%M%S).log
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_ysyxsoc.log
+else
+perf: synth $(BIN_NPC)
+	@mkdir -p $(PERF_DIR)
+	@echo "[perf] 编译 hex ..."
+	@od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
+	@echo "[perf] 运行仿真 ..."
+	@$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_npc.log
+endif
 
 include scripts/config.mk
 
