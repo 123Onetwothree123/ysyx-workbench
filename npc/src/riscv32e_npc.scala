@@ -18,7 +18,7 @@ class riscv32e_npc_AXIRAM extends Module {
   val state = RegInit(sIdle)
   val txn = RegInit(0.U(32.W))
   val arAddr = Reg(UInt(32.W))
-  val rd = mem.read(arAddr)
+  val rd = mem.read((arAddr - 0x80000000L.U) >> 2)
 
   val awAddr = Reg(UInt(32.W))
   val wData  = Reg(UInt(32.W))
@@ -66,7 +66,7 @@ class riscv32e_npc_AXIRAM extends Module {
         when (awAddr === 0x10000000L.U) {
           printf("%c", wData(7, 0))
         }
-        val addr = ((awAddr - 0x30000000L.U) >> 2) & 65535.U(32.W)
+        val addr = ((awAddr - 0x80000000L.U) >> 2) & 65535.U(32.W)
         val old  = mem.read(addr)
         val mask = Cat(
           Mux(wStrb(3), 0xff.U(8.W), 0.U(8.W)),

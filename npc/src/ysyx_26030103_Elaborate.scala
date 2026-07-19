@@ -1,12 +1,22 @@
 import chisel3._
 import ysyx_26030103.ysyx_26030103
+import java.io.File
+import java.nio.file.{Files, Paths, StandardCopyOption}
 
 object ysyx_26030103_Elaborate extends App {
   val targetDir = args(args.indexOf("--target-dir") + 1)
+
   emitVerilog(new ysyx_26030103, Array("--target-dir", targetDir))
+  emitVerilog(new ysyx_26030103(0x80000000L), Array("--target-dir", targetDir))
+  Files.move(
+    Paths.get(targetDir, "ysyx_26030103.sv"),
+    Paths.get(targetDir, "ysyx_26030103_fast.sv"),
+    StandardCopyOption.REPLACE_EXISTING)
+  emitVerilog(new ysyx_26030103, Array("--target-dir", targetDir))
+
   emitVerilog(new _root_.ysyx_26030103.riscv32e_npc_AXIRAM, Array("--target-dir", targetDir))
 
-  for (top <- Seq("ysyx_26030103", "riscv32e_npc_SimTop")) {
+  for (top <- Seq("ysyx_26030103", "ysyx_26030103_fast")) {
     val svFile = s"$targetDir/$top.sv"
     val includePattern = """`include "([^"]*layers-[^"]*\.sv)"""".r
     val rvSV = scala.io.Source.fromFile(svFile)
@@ -21,7 +31,7 @@ object ysyx_26030103_Elaborate extends App {
       }
 
     for (file <- layerFiles) {
-      val out = new java.io.File(targetDir + "/" + file)
+      val out = new File(targetDir + "/" + file)
       if (!out.exists()) {
         val name = file.stripSuffix(".sv").replace("-", "_")
         val pw = new java.io.PrintWriter(out)

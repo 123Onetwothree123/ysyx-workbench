@@ -26,7 +26,7 @@ BIN_FAST = $(BUILD_DIR)/$(TOPNAME)_fast
 FAST_OBJ_DIR = $(BUILD_DIR)/obj_dir_$(TOPNAME)_fast
 FAST_VERILATOR_MK = Vriscv32e_npc_SimTop.mk
 FAST_VSRCS = rtl/riscv32e_npc_SimTop.sv \
-             $(shell find $(BUILD_DIR) -maxdepth 1 \( -name "riscv32e_npc_AXIRAM.sv" -o -name "layers-riscv32e_npc_AXIRAM*.sv" -o -name "ysyx_26030103.sv" -o -name "layers-ysyx_26030103*.sv" -o -name "mem_*.sv" \) 2>/dev/null | sort) \
+             $(shell find $(BUILD_DIR) -maxdepth 1 \( -name "riscv32e_npc_AXIRAM.sv" -o -name "layers-riscv32e_npc_AXIRAM*.sv" -o -name "ysyx_26030103_fast.sv" -o -name "layers-ysyx_26030103_fast*.sv" -o -name "mem_*.sv" \) 2>/dev/null | sort) \
              $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort)
 FAST_VINCDIRS = $(BUILD_DIR) \
                 $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort)
