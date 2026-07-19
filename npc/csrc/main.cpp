@@ -54,11 +54,9 @@ int main(int argc, char const *argv[])
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
-    size_t hb = 0;
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
-        if (++hb > 50) { fprintf(stderr, "[STOP]\n"); fflush(stderr); break; }
 #ifdef CONFIG_NVBOARD
         nvboard_update();
 #endif
