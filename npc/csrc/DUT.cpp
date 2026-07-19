@@ -129,10 +129,6 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
-    if (dut->trap_valid) {
-        return;
-    }
-#endif
 #ifdef CONFIG_PERF_STATS
     if (dut->debug_commit)
     {
