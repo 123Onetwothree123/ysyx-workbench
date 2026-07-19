@@ -71,6 +71,12 @@ class ysyx_26030103_EXU extends Module {
   io.in.ready := false.B
   io.out.valid := false.B
   io.MemoryValid := io.in.fire && io.in.bits.MemoryValid && FSM_Is_Idle
+  when (io.MemoryValid && io.MemoryWrite) {
+    printf(p"[EXU STORE pc=0x${Hexadecimal(ActiveInstruction.pc)} addr=0x${Hexadecimal(ALUUnit.io.result)}]\n")
+  }
+  when (FSM_Is_Idle && io.in.valid && io.in.bits.MemoryValid) {
+    printf(p"[EXU GOT MEM OP]\n")
+  }
   // 真的不知道这么做对不对，但是Immediate到底能不能负数，能不能往前跳啊，反正我之前还想做减法的，然后问AI设计思路的时候
   // deepseek说不需要，因为immgen是输出带符号的，符号应该没事吧，但是我immdiate又是UInt的，但是测试好像成功通过测试了，他
   // 妈的，好烦，我不知道
