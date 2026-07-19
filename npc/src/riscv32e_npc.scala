@@ -73,7 +73,7 @@ class riscv32e_npc_AXIRAM extends Module {
 }
 
 class riscv32e_npc_SimTop extends Module {
-  val cpu = Module(new ysyx_26030103)
+  val cpu = Module(new ysyx_26030103(0x80000000L))
   val ram = Module(new riscv32e_npc_AXIRAM)
 
   cpu.io.interrupt := false.B
