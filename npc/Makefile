@@ -24,7 +24,7 @@ VINCDIRS=$(BUILD_DIR) \
 SIM_TOP ?= npc
 BIN_FAST = $(BUILD_DIR)/$(TOPNAME)_fast
 FAST_OBJ_DIR = $(BUILD_DIR)/obj_dir_$(TOPNAME)_fast
-FAST_VSRCS = $(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" 2>/dev/null | sort) \
+FAST_VSRCS = $(shell find $(BUILD_DIR) -maxdepth 1 \( -name "riscv32e_npc_SimTop.sv" -o -name "layers-riscv32e_npc_SimTop*.sv" \) 2>/dev/null | sort) \
              $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort)
 FAST_VINCDIRS = $(BUILD_DIR) \
                 $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort)
