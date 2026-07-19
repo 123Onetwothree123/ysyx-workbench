@@ -128,6 +128,9 @@ class riscv32e_npc_SimTop extends Module {
   when (cpu.io.master_wvalid && cpu.io.master_wready) {
     printf(p"[W  0x${Hexadecimal(cpu.io.master_wdata)}]\n")
   }
+  when (cpu.io.master_awvalid && !cpu.io.master_awready) {
+    printf(p"[AWS 0x${Hexadecimal(cpu.io.master_awaddr)}]\n")
+  }
 
   cpu.io.slave_awvalid := false.B
   cpu.io.slave_awaddr  := 0.U
