@@ -441,9 +441,10 @@ endif
 
 synth: verilog
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
+	@python3 $(NPC_HOME)/scripts/preprocess_for_yosys.py < $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
 	@$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		DESIGN=$(SYNTH_DESIGN) \
-		RTL_FILES="$(SYNTH_RTL_FILES)" \
+		RTL_FILES="$(abspath $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv)" \
 		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
 		O=$(abspath $(YOSYS_STA_HOME))/result
 	@mkdir -p $(BUILD_DIR)
