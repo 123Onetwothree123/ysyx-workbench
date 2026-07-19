@@ -84,6 +84,7 @@ class riscv32e_npc_SimTop extends Module {
   ram.io.axi.AW.AWLEN   := cpu.io.master_awlen
   ram.io.axi.AW.AWSIZE  := cpu.io.master_awsize
   ram.io.axi.AW.AWBURST := cpu.io.master_awburst
+  ram.io.axi.AW.AWPROT  := cpu.io.master_awprot
 
   cpu.io.master_wready := ram.io.axi.W.WREADY
   ram.io.axi.W.WVALID  := cpu.io.master_wvalid
@@ -103,6 +104,7 @@ class riscv32e_npc_SimTop extends Module {
   ram.io.axi.AR.ARLEN   := cpu.io.master_arlen
   ram.io.axi.AR.ARSIZE  := cpu.io.master_arsize
   ram.io.axi.AR.ARBURST := cpu.io.master_arburst
+  ram.io.axi.AR.ARPROT  := cpu.io.master_arprot
 
   cpu.io.master_rvalid := ram.io.axi.R.RVALID
   cpu.io.master_rresp  := ram.io.axi.R.RRESP
