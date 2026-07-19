@@ -120,15 +120,8 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
 //sdb
   io.DebugPC := PCModule.io.ysyx_26030103_PC
   io.DebugInstructions := InstructionReg
-  val prev_state = RegInit(StatesIdle)
-  prev_state := state
-  when (state =/= prev_state) {
-    printf(p"[IFU STATE ${prev_state}->${state}]\n")
-  }
   io.StallPipeline := state === StatesHold
-  when (state === StatesHold) {
-    printf(p"[IFU HOLD pc=0x${Hexadecimal(PCReg)}]\n")
-  }
+  printf(p"[IFU s=${state}]\n")
   io.StallAXI := state === StatesWaitRequest || state === StatesWaitResponse
   io.StallAR := state === StatesWaitRequest
   io.StallR  := state === StatesWaitResponse
