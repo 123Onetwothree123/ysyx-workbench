@@ -129,12 +129,6 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
-#ifdef VRISCV32E_NPC_FAST
-    if (cycle % 200000 == 0) {
-        fprintf(stderr, "[fast] cycle %zu, pc=0x%08x\n", cycle, (unsigned)dut->debug_pc);
-        fflush(stderr);
-    }
-#endif
 #ifdef CONFIG_PERF_STATS
     if (dut->debug_commit)
     {

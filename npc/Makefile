@@ -13,7 +13,7 @@ SOC_TOPNAME=ysyxSoCFull
 OBJ_DIR=$(BUILD_DIR)/obj_dir_$(TOPNAME)
 #最后生成的可以执行的文件，给后面的run用的
 BIN=$(BUILD_DIR)/$(TOPNAME)
-VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" 2>/dev/null | sort) \
+VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" ! -name "riscv32e_npc*" 2>/dev/null | sort) \
       $(YSYXSOC_FULL_V) \
       $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort) \
       $(shell find $(YSYXSOC_PERIP_DIR) -type f -name "*.v" 2>/dev/null | sort)
