@@ -380,6 +380,7 @@ $(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
 $(BIN_FAST): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+	@sed -i '/$$readmemh.*program.hex/a\      $$display("[RAMINIT] mem[0]=0x%x mem[1]=0x%x", Memory[0], Memory[1]);' $(BUILD_DIR)/riscv32e_npc_AXIRAM.sv
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
