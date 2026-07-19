@@ -13,6 +13,7 @@ module;
 #include <verilated_fst_c.h>
 #endif
 module npc.DUT;
+import npc.NPCTrap;
 import npc.trace.itrace;
 import npc.trace.disasm;
 import npc.trace.mtrace;
