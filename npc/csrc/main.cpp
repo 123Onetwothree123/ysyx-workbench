@@ -58,7 +58,7 @@ int main(int argc, char const *argv[])
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
-        if (++hb % 200000 == 0) { fprintf(stderr, "[C%zu]", dut.GetCycle()); fflush(stderr); }
+        if (++hb > 50) { fprintf(stderr, "[STOP]\n"); fflush(stderr); break; }
 #ifdef CONFIG_NVBOARD
         nvboard_update();
 #endif
