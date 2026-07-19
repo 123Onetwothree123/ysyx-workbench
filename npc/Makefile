@@ -433,10 +433,10 @@ SYNTH_FREQ ?= 50
 
 ifeq ($(SIM_TOP),soc)
 SYNTH_DESIGN = ysyxSoCFull
-SYNTH_RTL_FILES = $(YSYXSOC_FULL_V) $(BUILD_DIR)/ysyx_26030103.sv $(shell find $(YSYXSOC_PERIP_DIR) -name "*.v" 2>/dev/null)
+SYNTH_RTL_FILES = $(abspath $(YSYXSOC_FULL_V)) $(abspath $(BUILD_DIR)/ysyx_26030103.sv) $(foreach f,$(shell find $(YSYXSOC_PERIP_DIR) -name "*.v" 2>/dev/null),$(abspath $f))
 else
 SYNTH_DESIGN = ysyx_26030103
-SYNTH_RTL_FILES = $(BUILD_DIR)/ysyx_26030103_npc.sv
+SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
 endif
 
 synth: verilog
