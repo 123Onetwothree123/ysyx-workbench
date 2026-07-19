@@ -114,7 +114,8 @@ void NPCSimResult::Save(
 #endif
     };
      {
-        auto out{std::ofstream{tsv_file}};
+        auto out{std::ofstream{tsv_file, std::ios::binary}};
+        out << "\xEF\xBB\xBF";
         out << "commit\t说明\t仿真周期数\t指令数\tIPC\t综合频率(MHz)\t综合面积(um^2)\t"
                "IFU取指\tEXU完成\tLSU读\tLSU写\t"
                "ALU指令\t访存指令\tCSR指令\t分支指令\t"
