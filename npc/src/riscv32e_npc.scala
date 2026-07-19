@@ -152,4 +152,10 @@ class riscv32e_npc_SimTop extends Module {
   cpu.io.slave_rid     := DontCare
 
   io <> cpu.io
+
+  // 去掉 io_ 前缀，使端口名与 ysyxSoCFull 一致
+  import chisel3.experimental.chiselName
+  io.elements.foreach { case (name, data) =>
+    data.suggestName(name)
+  }
 }
