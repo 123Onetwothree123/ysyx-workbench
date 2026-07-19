@@ -129,6 +129,10 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
+    if (dut->trap_valid) {
+        fprintf(stderr, "[DUT] TRAP cycle=%zu pc=%u\n", cycle, (unsigned)dut->trap_pc);
+        fflush(stderr);
+    }
 #ifdef CONFIG_PERF_STATS
     if (dut->debug_commit)
     {
