@@ -113,8 +113,16 @@ void NPCSimResult::Save(
         result_dir / "result_ysyxsoc.tsv"
 #endif
     };
-    {
+     {
         auto out{std::ofstream{tsv_file}};
+        out << "commit\t说明\t仿真周期数\t指令数\tIPC\t综合频率(MHz)\t综合面积(um^2)\t"
+               "IFU取指\tEXU完成\tLSU读\tLSU写\t"
+               "ALU指令\t访存指令\tCSR指令\t分支指令\t"
+               "访存平均周期\t"
+               "IFU流水线阻塞\tIFU_AXI等待\tIFU_AR等待\tIFU_R等待\tIFU跳转冲刷\tIFU空闲\t"
+               "EXU等LSU\t"
+               "LSU读延迟\tLSU写延迟\t"
+               "LSU_AR等待\tLSU_R等待\tLSU_AW/W等待\tLSU_B等待\n";
         out << tsv_row << '\n';
     }
 

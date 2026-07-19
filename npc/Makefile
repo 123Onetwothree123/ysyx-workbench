@@ -429,7 +429,7 @@ PERF_DIR   = NPCSimResult
 PERF_SYNTH = $(BUILD_DIR)/synth.txt
 
 YOSYS_STA_HOME ?= $(abspath $(NPC_HOME)/../yosys-sta)
-SYNTH_FREQ ?= 50
+SYNTH_FREQ ?= 450
 
 ifeq ($(SIM_TOP),soc)
 SYNTH_DESIGN = ysyxSoCFull
