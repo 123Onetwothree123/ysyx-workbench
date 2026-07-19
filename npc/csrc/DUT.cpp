@@ -129,19 +129,6 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
-    if (dut->trap_valid) {
-        fprintf(stderr, "[DUT] TRAP cycle=%zu pc=0x%x\n", cycle, (unsigned)dut->trap_pc);
-        fflush(stderr);
-    }
-    if (dut->debug_commit) {
-        static unsigned last_pc = 0;
-        unsigned pc = (unsigned)dut->debug_pc;
-        if (pc != last_pc || instructions % 5 == 0) {
-            fprintf(stderr, "[DUT] C%zu commit instr=%u pc=0x%x\n", cycle, (unsigned)instructions, pc);
-            fflush(stderr);
-            last_pc = pc;
-        }
-    }
 #ifdef CONFIG_PERF_STATS
     if (dut->debug_commit)
     {
