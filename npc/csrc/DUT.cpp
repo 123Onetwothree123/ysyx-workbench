@@ -132,6 +132,10 @@ void DUT::step()
     ++cycle;
 #ifdef VRISCV32E_NPC_FAST
     dut->eval();
+    if (cycle % 50000 == 0) {
+        fprintf(stderr, "[C%zu] trap=%d\n", cycle, (int)dut->trap_valid);
+        fflush(stderr);
+    }
     if (dut->trap_valid) {
         NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), 0);
         return;
