@@ -401,6 +401,7 @@ run: $(BIN)
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 else
 run: $(BIN_FAST)
+	@od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
 	@$(BIN_FAST) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
 endif
 

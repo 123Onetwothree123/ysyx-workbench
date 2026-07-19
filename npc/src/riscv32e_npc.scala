@@ -2,6 +2,7 @@ package ysyx_26030103
 
 import chisel3._
 import chisel3.util._
+import chisel3.util.experimental.loadMemoryFromFileInline
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 
 class riscv32e_npc_AXIRAM extends Module {
@@ -11,6 +12,7 @@ class riscv32e_npc_AXIRAM extends Module {
 
   val depth = 65536
   val mem = SyncReadMem(depth, UInt(32.W))
+  loadMemoryFromFileInline(mem, "build/program.hex")
 
   val sIdle :: sReadResp :: sWriteResp :: Nil = Enum(3)
   val state = RegInit(sIdle)
