@@ -1,5 +1,4 @@
 #include <verilated.h>
-#include <cstdio>
 #ifdef VRISCV32E_NPC_FAST
 #include "Vriscv32e_npc_SimTop.h"
 #define TOP_MODULE Vriscv32e_npc_SimTop
@@ -16,7 +15,6 @@ import npc;
 
 int main(int argc, char const *argv[])
 {
-    setvbuf(stdout, NULL, _IONBF, 0);
 #if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_init();
 #endif
