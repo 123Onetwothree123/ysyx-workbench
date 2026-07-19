@@ -10,13 +10,13 @@ object ysyx_26030103_Elaborate extends App {
   emitVerilog(new ysyx_26030103(0x80000000L), Array("--target-dir", targetDir))
   Files.move(
     Paths.get(targetDir, "ysyx_26030103.sv"),
-    Paths.get(targetDir, "ysyx_26030103_fast.sv"),
+    Paths.get(targetDir, "ysyx_26030103_npc.sv"),
     StandardCopyOption.REPLACE_EXISTING)
   emitVerilog(new ysyx_26030103, Array("--target-dir", targetDir))
 
   emitVerilog(new _root_.ysyx_26030103.riscv32e_npc_AXIRAM, Array("--target-dir", targetDir))
 
-  for (top <- Seq("ysyx_26030103", "ysyx_26030103_fast")) {
+  for (top <- Seq("ysyx_26030103", "ysyx_26030103_npc")) {
     val svFile = s"$targetDir/$top.sv"
     val includePattern = """`include "([^"]*layers-[^"]*\.sv)"""".r
     val rvSV = scala.io.Source.fromFile(svFile)

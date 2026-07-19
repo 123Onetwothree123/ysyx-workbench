@@ -1,5 +1,5 @@
 #include <verilated.h>
-#ifdef VRISCV32E_NPC_FAST
+#ifdef VRISCV32E_NPC
 #include "Vriscv32e_npc_SimTop.h"
 #define TOP_MODULE Vriscv32e_npc_SimTop
 #else
