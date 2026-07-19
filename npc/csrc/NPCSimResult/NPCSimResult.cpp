@@ -107,12 +107,24 @@ void NPCSimResult::Save(
         lsu_stall_read_r,
         lsu_stall_write_req,
         lsu_stall_write_b)};
-    auto tsv_file{result_dir / std::format("{}.tsv", timestamp)};
+    auto tsv_file{
+#ifdef VRISCV32E_NPC
+        result_dir / std::format("{}_npc.tsv", timestamp)
+#else
+        result_dir / std::format("{}_ysyxsoc.tsv", timestamp)
+#endif
+    };
     {
         auto out{std::ofstream{tsv_file}};
         out << tsv_row << '\n';
     }
-    auto perf_tsv{result_dir / "perf.tsv"};
+    auto perf_tsv{
+#ifdef VRISCV32E_NPC
+        result_dir / "perf_npc.tsv"
+#else
+        result_dir / "perf_ysyxsoc.tsv"
+#endif
+    };
     bool needs_header{!std::filesystem::exists(perf_tsv)};
     {
         auto out{std::ofstream{perf_tsv, std::ios::app}};
