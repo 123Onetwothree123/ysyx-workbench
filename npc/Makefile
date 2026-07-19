@@ -66,7 +66,7 @@ idea:
 clean:
 	-rm -rf $(BUILD_DIR)
 
-.PHONY: test verilog help reformat checkformat clean
+.PHONY: test verilog help reformat checkformat clean synth save perf
 
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
@@ -379,6 +379,69 @@ pgo: verilog
 	$(MAKE) PGO_CFLAGS='-fprofile-use -fprofile-correction' $(BIN)
 	@echo "PGO 完成，运行优化后的程序"
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
+
+
+PERF_DIR   = NPCSimResult
+PERF_LOG   = $(BUILD_DIR)/perf.log
+PERF_TSV   = $(PERF_DIR)/perf.tsv
+PERF_SYNTH = $(BUILD_DIR)/synth.txt
+
+synth:
+	@echo "[perf] 综合 (yosys-sta placeholder) ..."
+	@mkdir -p $(BUILD_DIR)
+	@echo "0" > $(PERF_SYNTH)
+	@echo "0" >> $(PERF_SYNTH)
+
+save:
+	@t=$$(date +%Y%m%d-%H%M%S); \
+	commit=$$(git rev-parse --short HEAD 2>/dev/null || echo "0000000"); \
+	c=$$(sed -n 's/.*cycles = \([0-9]\+\).*/\1/p' $(PERF_LOG) | head -1); \
+	i=$$(sed -n 's/.*instructions = \([0-9]\+\).*/\1/p' $(PERF_LOG) | head -1); \
+	p=$$(sed -n 's/.*ipc = \([0-9.]\+\).*/\1/p' $(PERF_LOG) | head -1); \
+	f=$$(sed -n '1p' $(PERF_SYNTH)); \
+	a=$$(sed -n '2p' $(PERF_SYNTH)); \
+	v1=$$(sed -n 's/IFU取到指令: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v2=$$(sed -n 's/EXU完成计算: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v3=$$(sed -n 's/LSU取到数据: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v4=$$(sed -n 's/LSU写出数据: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v5=$$(sed -n 's/^ALU指令: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v6=$$(sed -n 's/^访存指令: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v7=$$(sed -n 's/^CSR指令: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v8=$$(sed -n 's/^分支\/跳转指令: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v9=$$(sed -n 's/访存指令平均周期: \([0-9.]\+\).*/\1/p' $(PERF_LOG)); \
+	v10=$$(sed -n 's/流水线阻塞.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v11=$$(sed -n 's/AXI总线等待.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v12=$$(sed -n 's/.*AR通道等待.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v13=$$(sed -n 's/.*R通道等待.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v14=$$(sed -n 's/跳转冲刷.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v15=$$(sed -n 's/IFU空闲.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v16=$$(sed -n 's/EXU等待LSU.*: \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v17=$$(sed -n 's/读延迟: \([0-9.]\+\).*/\1/p' $(PERF_LOG)); \
+	v18=$$(sed -n 's/写延迟: \([0-9.]\+\).*/\1/p' $(PERF_LOG)); \
+	v19=$$(sed -n 's/AR等待(读请求握手): \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v20=$$(sed -n 's/R等待(读数据返回):.* \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v21=$$(sed -n 's/AW\/W等待(写请求握手): \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	v22=$$(sed -n 's/B等待(写响应返回):.* \([0-9]\+\).*/\1/p' $(PERF_LOG)); \
+	row="$$commit\t$$c\t$$i\t$$p\t$$f\t$$a\t$$v1\t$$v2\t$$v3\t$$v4\t$$v5\t$$v6\t$$v7\t$$v8\t$$v9\t$$v10\t$$v11\t$$v12\t$$v13\t$$v14\t$$v15\t$$v16\t$$v17\t$$v18\t$$v19\t$$v20\t$$v21\t$$v22"; \
+	mkdir -p $(PERF_DIR); \
+	if [ ! -f $(PERF_TSV) ]; then \
+		echo "commit\t周期数\t指令数\tIPC\t综合频率(MHz)\t综合面积(um2)\tIFU取指\tEXU完成\tLSU读\tLSU写\tALU指令\t访存指令\tCSR指令\t分支指令\t访存平均周期\t流水线阻塞\tAXI等待\tAR等待\tR等待\t跳转冲刷\tIFU空闲\tEXU等LSU\t读延迟\t写延迟\tLSU_AR等\tLSU_R等\tLSU写请求等\tLSU_B等" > $(PERF_TSV); \
+	fi; \
+	echo "$$row" >> $(PERF_TSV); \
+	cp $(PERF_LOG) $(PERF_DIR)/$$t.log; \
+	echo ""; \
+	echo "===== 性能数据 (TSV) ====="; \
+	printf "%s\n" "$$row" | tr '\t' '\n' | head -6; \
+	echo "... (共 $$(printf "%s\n" "$$row" | tr '\t' '\n' | wc -l) 列)"; \
+	echo ""; \
+	echo "已追加到 $(PERF_TSV)"; \
+	echo "原始日志: $(PERF_DIR)/$$t.log"
+
+perf: synth $(BIN)
+	@mkdir -p $(PERF_DIR)
+	@echo "[perf] 运行仿真 ..."
+	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_LOG)
+	@$(MAKE) --no-print-directory save
 
 include scripts/config.mk
 
