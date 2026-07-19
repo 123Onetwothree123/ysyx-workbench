@@ -129,6 +129,10 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
+    if (cycle == 1) {
+        fprintf(stderr, "[npc] sim started\n");
+        fflush(stderr);
+    }
 #ifdef CONFIG_PERF_STATS
     if (dut->debug_commit)
     {
