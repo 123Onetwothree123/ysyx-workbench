@@ -234,4 +234,10 @@ class riscv32e_npc_SimTop extends Module {
   perf_lsu_stall_write_req := cpu.io.perf_lsu_stall_write_req
   val perf_lsu_stall_write_b = IO(Output(Bool()))
   perf_lsu_stall_write_b := cpu.io.perf_lsu_stall_write_b
+
+  val trap_sticky = RegInit(false.B)
+  when (trap_valid) { trap_sticky := true.B }
+  when (trap_sticky) {
+    printf(p"[SIMTOP TRAP DETECTED pc=0x${Hexadecimal(trap_pc)}]\n")
+  }
 }
