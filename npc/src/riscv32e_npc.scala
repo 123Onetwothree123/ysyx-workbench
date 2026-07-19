@@ -10,6 +10,7 @@ class riscv32e_npc_AXIRAM extends Module {
   })
 
   val depth = 65536
+  val mask  = (depth - 1).U
   val mem = SyncReadMem(depth, UInt(32.W))
 
   val sIdle :: sReadResp :: sWriteResp :: Nil = Enum(3)
@@ -39,7 +40,8 @@ class riscv32e_npc_AXIRAM extends Module {
     is (sIdle) {
       when (io.axi.AR.ARVALID && io.axi.AR.ARREADY) {
         arAddr := io.axi.AR.ARADDR
-        rData  := mem.read((io.axi.AR.ARADDR - 0x80000000L.U) >> 2)
+        val addr = ((io.axi.AR.ARADDR - 0x80000000L.U) >> 2) & mask
+        rData  := mem.read(addr)
         state  := sReadResp
       }.elsewhen (io.axi.AW.AWVALID && io.axi.W.WVALID) {
         awAddr := io.axi.AW.AWADDR
@@ -55,7 +57,7 @@ class riscv32e_npc_AXIRAM extends Module {
     }
     is (sWriteResp) {
       when (io.axi.B.BREADY) {
-        val addr = (awAddr - 0x80000000L.U) >> 2
+        val addr = ((awAddr - 0x80000000L.U) >> 2) & mask
         val old  = mem.read(addr)
         val mask = Cat(
           Mux(wStrb(3), 0xff.U(8.W), 0.U(8.W)),
