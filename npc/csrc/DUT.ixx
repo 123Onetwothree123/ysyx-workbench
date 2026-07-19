@@ -1,12 +1,18 @@
 module;
+#ifdef VRISCV32E_NPC_FAST
+#include "Vriscv32e_npc_SimTop.h"
+#define TOP_MODULE Vriscv32e_npc_SimTop
+#else
 #include "VysyxSoCFull.h"
+#define TOP_MODULE VysyxSoCFull
+#endif
 export module npc.DUT;
 import std;
 
 export class DUT
 {
 private:
-    std::unique_ptr<VysyxSoCFull> dut;
+    std::unique_ptr<TOP_MODULE> dut;
     std::size_t cycle{0};
     std::size_t instructions{0};
     std::size_t instruction_fetch_count{0};
@@ -41,8 +47,8 @@ public:
     DUT();
     ~DUT() = default;
     // 运算符重载，少写点代码
-    VysyxSoCFull &operator*();
-    VysyxSoCFull *operator->();
+    TOP_MODULE &operator*();
+    TOP_MODULE *operator->();
     void eval();
     void final();
     void step();
