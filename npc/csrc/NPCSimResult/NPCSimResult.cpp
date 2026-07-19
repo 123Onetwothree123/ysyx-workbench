@@ -52,9 +52,12 @@ void NPCSimResult::Save(
     std::filesystem::create_directories(result_dir);
     auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
     auto timestamp{std::format("{:%Y%m%d-%H%M%S}", now)};
+#define XSTR(s) #s
+#define STR(s) XSTR(s)
+
     std::string commit{
 #ifdef CONFIG_PERF_GIT_COMMIT
-        CONFIG_PERF_GIT_COMMIT
+        STR(CONFIG_PERF_GIT_COMMIT)
 #else
         "unknown"
 #endif

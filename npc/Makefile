@@ -149,8 +149,8 @@ PERF_STATS_CFLAGS = -DCONFIG_PERF_STATS
 endif
 ifeq ($(CONFIG_PERF_SAVE),y)
 PERF_SAVE_CFLAGS = -DCONFIG_PERF_SAVE
-GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-PERF_SAVE_CFLAGS += -DCONFIG_PERF_GIT_COMMIT='"$(GIT_COMMIT)"'
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "0000000")
+PERF_SAVE_CFLAGS += -DCONFIG_PERF_GIT_COMMIT=$(GIT_COMMIT)
 endif
 COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(CSRC_DIR)/trace) $(abspath $(OBJ_DIR)))
 CC_OPT ?= -O3
