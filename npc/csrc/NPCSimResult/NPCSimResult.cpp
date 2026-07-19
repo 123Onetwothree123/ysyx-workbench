@@ -1,6 +1,7 @@
 module npc.NPCSimResult;
 import std;
 void NPCSimResult::Save(
+    std::filesystem::path result_dir,
     std::size_t total_cycles,
     std::size_t total_instructions,
     std::size_t instruction_fetch,
@@ -48,10 +49,7 @@ void NPCSimResult::Save(
     {
         store_avg = static_cast<double>(load_store_unit_store_active) / static_cast<double>(store_data);
     }
-    std::filesystem::path result_dir{"NPCSimResult"};
     std::filesystem::create_directories(result_dir);
-    auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
-    auto timestamp{std::format("{:%Y%m%d-%H%M%S}", now)};
 #define XSTR(s) #s
 #define STR(s) XSTR(s)
 
@@ -110,9 +108,9 @@ void NPCSimResult::Save(
 
     auto tsv_file{
 #ifdef VRISCV32E_NPC
-        result_dir / std::format("{}_npc.tsv", timestamp)
+        result_dir / "result_npc.tsv"
 #else
-        result_dir / std::format("{}_ysyxsoc.tsv", timestamp)
+        result_dir / "result_ysyxsoc.tsv"
 #endif
     };
     {

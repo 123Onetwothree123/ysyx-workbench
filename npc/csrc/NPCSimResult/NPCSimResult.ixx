@@ -5,6 +5,7 @@ export class NPCSimResult final
 public:
     NPCSimResult() = delete;
     static void Save(
+        std::filesystem::path result_dir,
         std::size_t total_cycles,
         std::size_t total_instructions,
         std::size_t instruction_fetch,

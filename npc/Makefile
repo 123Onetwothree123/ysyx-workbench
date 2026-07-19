@@ -399,11 +399,15 @@ $(BIN_NPC): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 
 ifeq ($(SIM_TOP),soc)
 run: $(BIN)
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_ysyxsoc.log
+	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$RESULT_DIR"; \
+	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
 else
 run: $(BIN_NPC)
-	@od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
-	@$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_npc.log
+	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$RESULT_DIR"; \
+	od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex; \
+	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/npc.log"
 endif
 
 .PHONY: pgo
@@ -434,14 +438,18 @@ ifeq ($(SIM_TOP),soc)
 perf: synth $(BIN)
 	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 运行仿真 ..."
-	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_ysyxsoc.log
+	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$RESULT_DIR"; \
+	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
 else
 perf: synth $(BIN_NPC)
 	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 编译 hex ..."
 	@od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
 	@echo "[perf] 运行仿真 ..."
-	@$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1 | tee $(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)_npc.log
+	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$RESULT_DIR"; \
+	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/npc.log"
 endif
 
 include scripts/config.mk

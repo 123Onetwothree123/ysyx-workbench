@@ -105,6 +105,7 @@ int main(int argc, char const *argv[])
 #endif
 #ifdef CONFIG_PERF_SAVE
     NPCSimResult::Save(
+        options->GetResultDir().value_or("NPCSimResult"),
         dut.GetCycle(),
         dut.GetInstructions(),
         dut.GetInstructionFetchCount(),
