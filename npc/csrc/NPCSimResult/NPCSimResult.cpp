@@ -107,6 +107,7 @@ void NPCSimResult::Save(
         lsu_stall_read_r,
         lsu_stall_write_req,
         lsu_stall_write_b)};
+
     auto tsv_file{
 #ifdef VRISCV32E_NPC
         result_dir / std::format("{}_npc.tsv", timestamp)
@@ -118,23 +119,7 @@ void NPCSimResult::Save(
         auto out{std::ofstream{tsv_file}};
         out << tsv_row << '\n';
     }
-    auto perf_tsv{
-#ifdef VRISCV32E_NPC
-        result_dir / "perf_npc.tsv"
-#else
-        result_dir / "perf_ysyxsoc.tsv"
-#endif
-    };
-    bool needs_header{!std::filesystem::exists(perf_tsv)};
-    {
-        auto out{std::ofstream{perf_tsv, std::ios::app}};
-        if (needs_header)
-        {
-            out << "commit\t说明\t仿真周期数\t指令数\tIPC\t综合频率\t综合面积\tIFU取指\tEXU完成\tLSU读\tLSU写\tALU指令\t访存指令\tCSR指令\t分支指令\t访存平均周期\t流水线阻塞\tAXI等待\tAR等待\tR等待\t跳转冲刷\tIFU空闲\tEXU等LSU\t读延迟\t写延迟\tLSU_AR等\tLSU_R等\tLSU写请求等\tLSU_B等\n";
-        }
-        out << tsv_row << '\n';
-    }
+
     std::println("");
-    std::println("已追加到 {}", perf_tsv.string());
     std::println("单次记录: {}", tsv_file.string());
 }
