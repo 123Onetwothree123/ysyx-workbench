@@ -439,11 +439,14 @@ SYNTH_DESIGN = ysyx_26030103
 SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
 endif
 
-synth: verilog
+YOSYS_PP = $(BUILD_DIR)/preprocess_for_yosys
+$(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp
+	@mkdir -p $(@D)
+	$(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -O2 -o $@ $<
+
+synth: verilog $(YOSYS_PP)
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
-	@cmake -S $(NPC_HOME)/scripts -B $(BUILD_DIR)/yosys_preprocess_build >/dev/null 2>&1 && \
-	cmake --build $(BUILD_DIR)/yosys_preprocess_build >/dev/null 2>&1
-	@$(BUILD_DIR)/yosys_preprocess_build/preprocess_for_yosys $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
+	@$(YOSYS_PP) $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
 	@$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		DESIGN=$(SYNTH_DESIGN) \
 		RTL_FILES="$(abspath $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv)" \
