@@ -1,4 +1,5 @@
 #include <verilated.h>
+#include <cstdio>
 #ifdef VRISCV32E_NPC_FAST
 #include "Vriscv32e_npc_SimTop.h"
 #define TOP_MODULE Vriscv32e_npc_SimTop
@@ -15,6 +16,7 @@ import npc;
 
 int main(int argc, char const *argv[])
 {
+    setvbuf(stdout, NULL, _IONBF, 0);
 #if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_init();
 #endif
@@ -51,12 +53,19 @@ int main(int argc, char const *argv[])
     }
 #endif
     dut.reset();
+    fprintf(stderr, "[npc] sim loop start\n");
+    fflush(stderr);
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
+    std::size_t heartbeat{0};
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
+        if (++heartbeat % 200000 == 0) {
+            fprintf(stderr, "[npc] cycle=%zu\n", dut.GetCycle());
+            fflush(stderr);
+        }
 #ifdef CONFIG_NVBOARD
         nvboard_update();
 #endif
