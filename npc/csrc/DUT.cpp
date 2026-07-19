@@ -130,17 +130,12 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
-#ifdef VRISCV32E_NPC_FAST
-    dut->eval();
-    if (cycle % 50000 == 0) {
-        fprintf(stderr, "[C%zu] trap=%d\n", cycle, (int)dut->trap_valid);
+    if (cycle <= 10) {
+        fprintf(stderr, "[C%zu] trap_valid=%d trap_pc=0x%x perf_exu_done=%d perf_ifu_fetch=%d debug_commit=%d\n",
+            cycle, (int)dut->trap_valid, (unsigned)dut->trap_pc,
+            (int)dut->perf_exu_done, (int)dut->perf_ifu_fetch, (int)dut->debug_commit);
         fflush(stderr);
     }
-    if (dut->trap_valid) {
-        NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), 0);
-        return;
-    }
-#else
     if (dut->trap_valid) {
         return;
     }
