@@ -11,7 +11,7 @@ class riscv32e_npc_AXIRAM extends Module {
 
   val depth = 65536
   val mask  = (depth - 1).U(32.W)
-  val mem = SyncReadMem(depth, UInt(32.W))
+  lazy val mem = SyncReadMem(depth, UInt(32.W))
 
   val sIdle :: sReadResp :: sWriteResp :: Nil = Enum(3)
   val state = RegInit(sIdle)
