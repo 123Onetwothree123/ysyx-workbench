@@ -28,7 +28,7 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOption
             return std::unexpected(std::format("读取文件失败{0}", path.string()));
         }
         mrom = FlashMemory;
-        std::println(std::cerr, "文件加载了: {0}, size = {1} bytes", path.string(), FileSize);
+        std::println("文件加载了: {0}, size = {1} bytes", path.string(), FileSize);
         return FileSize;
     }
     return std::unexpected("没有指定镜像文件");
