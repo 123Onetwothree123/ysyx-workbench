@@ -379,9 +379,13 @@ $(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
 $(BIN_FAST): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+	@sed -i '/^endmodule/i\
+reg [31:0] _dbg_cyc; always @(posedge clock) begin if (reset) _dbg_cyc <= 0; else _dbg_cyc <= _dbg_cyc + 1; if (_dbg_cyc < 10) $$fwrite(32'\''h80000002, "[DBG %d] trap=%d\\n", _dbg_cyc, trap_valid); end' $(BUILD_DIR)/riscv32e_npc_SimTop.sv
+	@sed -n '/DBG/p' $(BUILD_DIR)/riscv32e_npc_SimTop.sv | head -1
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
+		--trace --trace-depth 1 \
 		$(VERILATOR_TRACE) $(VERILATOR_PROF) $(VERILATOR_AUTOFLUSH) $(VERILATOR_COVERAGE) \
 		$(addprefix -I,$(FAST_VINCDIRS)) \
 		--top-module riscv32e_npc_SimTop \
