@@ -161,9 +161,8 @@ endif
 ifeq ($(CONFIG_PERF_SAVE),y)
 PERF_SAVE_CFLAGS = -DCONFIG_PERF_SAVE
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "0000000")
-GIT_MSG := $(shell git log -1 --format=%s 2>/dev/null | tr ',' ';' || echo "")
 PERF_SAVE_CFLAGS += -DCONFIG_PERF_GIT_COMMIT=$(GIT_COMMIT)
-PERF_SAVE_CFLAGS += -DCONFIG_PERF_GIT_MSG=\"$(GIT_MSG)\"
+$(shell git log -1 --format=%s 2>/dev/null > $(BUILD_DIR)/git_msg.txt || echo "" > $(BUILD_DIR)/git_msg.txt)
 endif
 COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(CSRC_DIR)/trace) $(abspath $(OBJ_DIR)))
 CC_OPT ?= -O3

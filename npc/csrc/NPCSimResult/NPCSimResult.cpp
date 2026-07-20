@@ -60,13 +60,12 @@ void NPCSimResult::Save(
         "unknown"
 #endif
     };
-    std::string msg{
-#ifdef CONFIG_PERF_GIT_MSG
-        CONFIG_PERF_GIT_MSG
-#else
-        ""
-#endif
-    };
+    std::string msg;
+    if (auto g{std::ifstream{"build/git_msg.txt"}})
+    {
+        std::getline(g, msg);
+        std::ranges::replace(msg, ',', ';');
+    }
     std::string freq{"0"};
     std::string area{"0"};
     if (auto f{std::ifstream{"build/synth.txt"}})
