@@ -446,9 +446,21 @@ $(BUILD_DIR)/gcm.cache/std.gcm: $(STD_MODULE_SRC)
 	@mkdir -p $(@D)
 	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) -x c++ -c $< -o std_module.o
 
+ifeq ($(filter clang% icpx%,$(notdir $(CXX))),)
+# GCC: preprocessor depends on gcm.cache for std module auto-discovery
 $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/gcm.cache/std.gcm
 	@mkdir -p $(@D)
 	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -O2 -o $(notdir $@) $(abspath $<)
+else
+# Clang: precompile std module to PCM, then compile preprocessor
+$(BUILD_DIR)/std.pcm: $(STD_MODULE_SRC)
+	@mkdir -p $(@D)
+	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) -x c++-module --precompile $< -o std.pcm
+
+$(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
+	@mkdir -p $(@D)
+	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -fprebuilt-module-path=$(BUILD_DIR) -O2 -o $(notdir $@) $(abspath $<)
+endif
 
 synth: verilog $(YOSYS_PP)
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
