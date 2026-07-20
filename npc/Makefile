@@ -32,7 +32,7 @@ NPC_VINCDIRS = $(BUILD_DIR) \
                 $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort)
 
 CSRC_DIR=./csrc
-CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -name "*.cpp" -print 2>/dev/null)
+CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
 remove_quote = $(patsubst "%",%,$(1))
 -include include/config/auto.conf

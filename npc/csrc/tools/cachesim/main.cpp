@@ -1,0 +1,102 @@
+import std;
+import types;
+import cache;
+import trace;
+import stats;
+
+namespace {
+
+void print_usage(const char* prog)
+{
+    std::println("用法: {} [选项] <trace文件>", prog);
+    std::println("");
+    std::println("选项:");
+    std::println("  -b, --block-size <N>     块大小 (字节, 2的幂, 默认 {})", CACHE_BLOCK_SIZE);
+    std::println("  -n, --num-blocks <N>     cache 块总数 (默认 {})", CACHE_NUM_BLOCKS);
+    std::println("  -w, --ways <N>           相联度 (默认 {})", CACHE_WAYS);
+    std::println("  -r, --replacement <策略>  替换策略: fifo / lru / random (默认 fifo)");
+    std::println("  -h, --help               显示帮助信息");
+}
+
+auto parse_repl(const char* s) -> unsigned
+{
+    if (std::strcmp(s, "fifo") == 0 || std::strcmp(s, "FIFO") == 0) return 0;
+    if (std::strcmp(s, "lru") == 0  || std::strcmp(s, "LRU") == 0)  return 1;
+    if (std::strcmp(s, "random") == 0 || std::strcmp(s, "RANDOM") == 0) return 2;
+    std::println(std::cerr, "未知替换策略: {}, 使用默认 FIFO", s);
+    return 0;
+}
+
+} // anonymous namespace
+
+auto main(int argc, char* argv[]) -> int
+{
+    CacheConfig config;
+    const char* trace_path = nullptr;
+
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i][0] != '-') {
+            trace_path = argv[i];
+            continue;
+        }
+
+        std::string_view arg = argv[i];
+        auto is_long = arg.starts_with("--");
+
+        if (arg == "-h" || arg == "--help") {
+            print_usage(argv[0]);
+            return 0;
+        }
+
+        if (is_long ? arg == "--block-size" : arg == "-b") {
+            if (i + 1 < argc) config.block_size = static_cast<unsigned>(std::atoi(argv[++i]));
+        } else if (is_long ? arg == "--num-blocks" : arg == "-n") {
+            if (i + 1 < argc) config.num_blocks = static_cast<unsigned>(std::atoi(argv[++i]));
+        } else if (is_long ? arg == "--ways" : arg == "-w") {
+            if (i + 1 < argc) config.ways = static_cast<unsigned>(std::atoi(argv[++i]));
+        } else if (is_long ? arg == "--replacement" : arg == "-r") {
+            if (i + 1 < argc) config.repl_policy = parse_repl(argv[++i]);
+        } else {
+            std::println(std::cerr, "未知选项: {}", argv[i]);
+            print_usage(argv[0]);
+            return 1;
+        }
+    }
+
+    if (!trace_path) {
+        std::println(std::cerr, "错误: 未指定 trace 文件");
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    // 参数校验
+    if ((config.block_size & (config.block_size - 1)) != 0) {
+        std::println(std::cerr, "错误: 块大小必须是 2 的幂, 当前值 {}", config.block_size);
+        return 1;
+    }
+    if (config.num_blocks == 0 || config.ways == 0) {
+        std::println(std::cerr, "错误: num_blocks 和 ways 必须大于 0");
+        return 1;
+    }
+    if (config.num_blocks % config.ways != 0) {
+        std::println(std::cerr, "错误: num_blocks ({}) 必须能被 ways ({}) 整除", config.num_blocks, config.ways);
+        return 1;
+    }
+
+    CacheSim sim(config);
+
+    try {
+        TraceReader reader(trace_path);
+
+        while (auto addr = reader.next())
+            sim.access(*addr);
+
+        std::println("处理了 {} 条 PC 记录", reader.count());
+    } catch (const std::exception& e) {
+        std::println(std::cerr, "错误: {}", e.what());
+        return 1;
+    }
+
+    print_stats(sim.stats(), sim.config());
+    return 0;
+}
