@@ -10,7 +10,7 @@ object ysyx_26030103_Elaborate extends App {
   emitVerilog(new ysyx_26030103(
     resetAddr     = 0x80000000L,
     CacheableBase = 0x80000000L,
-    CacheableMask = 0xF0000000L
+    CacheableMask = 0x80000000L
   ), Array("--target-dir", targetDir))
   Files.move(
     Paths.get(targetDir, "ysyx_26030103.sv"),
