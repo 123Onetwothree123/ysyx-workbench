@@ -401,11 +401,15 @@ $(BIN_NPC): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 
 ifeq ($(SIM_TOP),soc)
 run: $(BIN)
-	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
+	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$RESULT_DIR"; \
+	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
 else
 run: $(BIN_NPC)
-	od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
-	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
+	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$RESULT_DIR"; \
+	od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex; \
+	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/npc.log"
 endif
 
 .PHONY: pgo

@@ -66,78 +66,76 @@ int main(int argc, char const *argv[])
             std::println("trap了");
             const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
-            result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
-#ifdef CONFIG_PERF_STATS
-            NPCTrap::PrintPerformanceStatistics(
-                dut.GetInstructionFetchCount(),
-                dut.GetExecutionCompleteCount(),
-                dut.GetLoadDataCount(),
-                dut.GetStoreDataCount(),
-                dut.GetArithmeticOperationCount(),
-                dut.GetMemoryAccessOperationCount(),
-                dut.GetControlStatusRegisterOperationCount(),
-                dut.GetBranchOperationCount(),
-                dut.GetCycle(),
-                dut.GetInstructionFetchStallPipelineCount(),
-                dut.GetInstructionFetchStallAXICount(),
-                dut.GetInstructionFetchStallRedirectCount(),
-                dut.GetInstructionFetchStallARCount(),
-                dut.GetInstructionFetchStallRCount(),
-                dut.GetInstructionFetchStallIdleCount(),
-                dut.GetArithmeticOperationActiveCycleCount(),
-                dut.GetMemoryAccessOperationActiveCycleCount(),
-                dut.GetControlStatusRegisterOperationActiveCycleCount(),
-                dut.GetBranchOperationActiveCycleCount(),
-                dut.GetEXUStallLSUCount(),
-                dut.GetLoadStoreUnitActiveCycleCount(),
-                dut.GetLoadStoreUnitLoadActiveCycleCount(),
-                dut.GetLoadStoreUnitStoreActiveCycleCount(),
-                dut.GetLSUStallReadARCount(),
-                dut.GetLSUStallReadRCount(),
-                dut.GetLSUStallWriteReqCount(),
-                dut.GetLSUStallWriteBCount(),
-                dut.GetICacheHitCount(),
-                dut.GetICacheMissCount());
-#endif
-#ifdef CONFIG_PERF_SAVE
-            NPCSimResult::Save(
-                options->GetResultDir().value_or("NPCSimResult"),
-                dut.GetCycle(),
-                dut.GetInstructions(),
-                dut.GetInstructionFetchCount(),
-                dut.GetExecutionCompleteCount(),
-                dut.GetLoadDataCount(),
-                dut.GetStoreDataCount(),
-                dut.GetArithmeticOperationCount(),
-                dut.GetMemoryAccessOperationCount(),
-                dut.GetControlStatusRegisterOperationCount(),
-                dut.GetBranchOperationCount(),
-                dut.GetMemoryAccessOperationActiveCycleCount(),
-                dut.GetInstructionFetchStallPipelineCount(),
-                dut.GetInstructionFetchStallAXICount(),
-                dut.GetInstructionFetchStallARCount(),
-                dut.GetInstructionFetchStallRCount(),
-                dut.GetInstructionFetchStallRedirectCount(),
-                dut.GetInstructionFetchStallIdleCount(),
-                dut.GetEXUStallLSUCount(),
-                dut.GetLoadStoreUnitActiveCycleCount(),
-                dut.GetLoadStoreUnitLoadActiveCycleCount(),
-                dut.GetLoadStoreUnitStoreActiveCycleCount(),
-                dut.GetLSUStallReadARCount(),
-                dut.GetLSUStallReadRCount(),
-                dut.GetLSUStallWriteReqCount(),
-                dut.GetLSUStallWriteBCount(),
-                dut.GetICacheHitCount(),
-                dut.GetICacheMissCount());
-#endif
-            break;
         }
     }
-    std::println("[NPC] loop exited, halting={}", NPCTrap::HasHalted());
 #endif
     dut.final();
 #ifdef CONFIG_NVBOARD
     nvboard_quit();
+#endif
+    result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
+#ifdef CONFIG_PERF_STATS
+    NPCTrap::PrintPerformanceStatistics(
+        dut.GetInstructionFetchCount(),
+        dut.GetExecutionCompleteCount(),
+        dut.GetLoadDataCount(),
+        dut.GetStoreDataCount(),
+        dut.GetArithmeticOperationCount(),
+        dut.GetMemoryAccessOperationCount(),
+        dut.GetControlStatusRegisterOperationCount(),
+        dut.GetBranchOperationCount(),
+        dut.GetCycle(),
+        dut.GetInstructionFetchStallPipelineCount(),
+        dut.GetInstructionFetchStallAXICount(),
+        dut.GetInstructionFetchStallRedirectCount(),
+        dut.GetInstructionFetchStallARCount(),
+        dut.GetInstructionFetchStallRCount(),
+        dut.GetInstructionFetchStallIdleCount(),
+        dut.GetArithmeticOperationActiveCycleCount(),
+        dut.GetMemoryAccessOperationActiveCycleCount(),
+        dut.GetControlStatusRegisterOperationActiveCycleCount(),
+        dut.GetBranchOperationActiveCycleCount(),
+        dut.GetEXUStallLSUCount(),
+        dut.GetLoadStoreUnitActiveCycleCount(),
+        dut.GetLoadStoreUnitLoadActiveCycleCount(),
+        dut.GetLoadStoreUnitStoreActiveCycleCount(),
+        dut.GetLSUStallReadARCount(),
+        dut.GetLSUStallReadRCount(),
+        dut.GetLSUStallWriteReqCount(),
+        dut.GetLSUStallWriteBCount(),
+        dut.GetICacheHitCount(),
+        dut.GetICacheMissCount());
+#endif
+#ifdef CONFIG_PERF_SAVE
+    NPCSimResult::Save(
+        options->GetResultDir().value_or("NPCSimResult"),
+        dut.GetCycle(),
+        dut.GetInstructions(),
+        dut.GetInstructionFetchCount(),
+        dut.GetExecutionCompleteCount(),
+        dut.GetLoadDataCount(),
+        dut.GetStoreDataCount(),
+        dut.GetArithmeticOperationCount(),
+        dut.GetMemoryAccessOperationCount(),
+        dut.GetControlStatusRegisterOperationCount(),
+        dut.GetBranchOperationCount(),
+        dut.GetMemoryAccessOperationActiveCycleCount(),
+        dut.GetInstructionFetchStallPipelineCount(),
+        dut.GetInstructionFetchStallAXICount(),
+        dut.GetInstructionFetchStallARCount(),
+        dut.GetInstructionFetchStallRCount(),
+        dut.GetInstructionFetchStallRedirectCount(),
+        dut.GetInstructionFetchStallIdleCount(),
+        dut.GetEXUStallLSUCount(),
+        dut.GetLoadStoreUnitActiveCycleCount(),
+        dut.GetLoadStoreUnitLoadActiveCycleCount(),
+        dut.GetLoadStoreUnitStoreActiveCycleCount(),
+        dut.GetLSUStallReadARCount(),
+        dut.GetLSUStallReadRCount(),
+        dut.GetLSUStallWriteReqCount(),
+        dut.GetLSUStallWriteBCount(),
+        dut.GetICacheHitCount(),
+        dut.GetICacheMissCount());
 #endif
 #ifdef CONFIG_DIFFTEST
     if (result != 0)
