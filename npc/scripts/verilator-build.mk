@@ -13,18 +13,7 @@ else
 NPC_COMPILER := gcc
 endif
 
-ifneq ($(findstring -stdlib=libc++,$(CPPFLAGS)),)
-STD_MODULE_SRC := /usr/share/libc++/v1/std.cppm
-else
-# Clang需要libc++的std模块，GCC用libstdc++的
-ifeq ($(NPC_COMPILER),clang)
-STD_MODULE_SRC := /usr/share/libc++/v1/std.cppm
-CLANG_STDLIB_FLAG := -stdlib=libc++
-else
 STD_MODULE_SRC := $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
-CLANG_STDLIB_FLAG :=
-endif
-endif
 
 STD_MODULE_OBJ := std_module.o
 
@@ -96,11 +85,7 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/NPCSimResult/NPCSimResult.ixx \
   $(NPC_CSRC_DIR)/npc.ixx
 
-ifeq ($(NPC_COMPILER),clang)
-NPC_MODULE_OBJS := $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))))
-else
 NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))))
-endif
 
 # ============ GCC module compilation ============
 ifeq ($(NPC_COMPILER),gcc)
@@ -129,21 +114,28 @@ ifeq ($(NPC_COMPILER),clang)
 
 NPC_PCM_DIR := $(CURDIR)/pcm_cache
 NPC_STD_FLAG := $(lastword $(filter -std=%,$(CPPFLAGS) $(NPC_USER_CXXFLAGS)))
-NPC_CLANG_MODULE_FLAGS := $(CLANG_STDLIB_FLAG) -fmodules -fimplicit-module-maps -fprebuilt-module-path=$(NPC_PCM_DIR) -Wno-reserved-module-identifier
+NPC_CLANG_MODULE_FLAGS := -fprebuilt-module-path=$(NPC_PCM_DIR) -Wno-reserved-module-identifier
+
+$(NPC_PCM_DIR)/std.pcm: $(STD_MODULE_SRC)
+	@mkdir -p $(NPC_PCM_DIR)
+	$(CXX) $(NPC_STD_FLAG) -x c++-module --precompile $< -o $@
+
+$(STD_MODULE_OBJ): $(NPC_PCM_DIR)/std.pcm
+	@$(CXX) $(NPC_STD_FLAG) -c $< -o $@
 
 # Compile import <xxx>; headers as header units
 NPC_HEADER_PCM := $(foreach h,$(NPC_IMPORT_HEADERS),$(NPC_PCM_DIR)/$(subst /,_,$(h)).pcm)
 $(NPC_HEADER_PCM): $(NPC_PCM_DIR)/%.pcm:
 	@mkdir -p $(NPC_PCM_DIR)
 	@echo "  CXX HEADER <$(subst _,/,$*)>"
-	$(CXX) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) -xc++-system-header $(subst _,/,$*) --precompile -o $@
+	$(CXX) $(NPC_STD_FLAG) -x c++-system-header $(subst _,/,$*) --precompile -o $@
 
-.npc_modules_built: $(NPC_HEADER_PCM) $(NPC_IXX_SRCS)
+.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_HEADER_PCM) $(NPC_IXX_SRCS)
 	@$(foreach src,$(NPC_IXX_SRCS),\
 		MOD_NAME=$$(grep -oP '(?<=export module )\S+(?=;)' $(src)); \
 		echo "  CXX MODULE $(notdir $(src)) [$$MOD_NAME]"; \
 		$(CXX) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) -x c++-module --precompile $(src) -o $(NPC_PCM_DIR)/$$MOD_NAME.pcm || exit 1; \
-		$(CXX) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) -c $(NPC_PCM_DIR)/$$MOD_NAME.pcm -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1; \
+		$(CXX) $(NPC_STD_FLAG) -c $(NPC_CLANG_MODULE_FLAGS) $(NPC_PCM_DIR)/$$MOD_NAME.pcm -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1; \
 	)
 	@touch $@
 

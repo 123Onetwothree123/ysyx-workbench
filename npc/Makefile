@@ -452,14 +452,14 @@ $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/gcm.cache
 	@mkdir -p $(@D)
 	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -O2 -o $(notdir $@) $(abspath $<)
 else
-STD_MODULE_SRC = /usr/share/libc++/v1/std.cppm
+STD_MODULE_SRC = $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
 $(BUILD_DIR)/std.pcm: $(STD_MODULE_SRC)
 	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) -std=c++23 -stdlib=libc++ -x c++-module --precompile $< -o std.pcm
+	cd $(BUILD_DIR) && $(CXX) -std=c++23 -x c++-module --precompile $< -o std.pcm
 
 $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
 	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) -std=c++23 -stdlib=libc++ -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
+	cd $(BUILD_DIR) && $(CXX) -std=c++23 -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
 endif
 
 synth: verilog $(YOSYS_PP)
