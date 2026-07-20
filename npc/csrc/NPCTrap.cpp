@@ -168,7 +168,16 @@ void NPCTrap::PrintPerformanceStatistics(
     std::println("  缺失: {} 次", icache_miss);
     if (icache_hit + icache_miss > 0)
     {
-        std::println("  命中率: {:.1f}%", 100.0 * icache_hit / (icache_hit + icache_miss));
+        double hit_rate = static_cast<double>(icache_hit) / (icache_hit + icache_miss);
+        std::println("  命中率: {:.1f}%", 100.0 * hit_rate);
+        if (icache_miss > 0)
+        {
+            double miss_cycles = static_cast<double>(instruction_fetch_stall_ar + instruction_fetch_stall_r);
+            double miss_avg = miss_cycles / icache_miss;
+            double amat = 1.0 + (1.0 - hit_rate) * miss_avg;
+            std::println("  缺失平均延迟: {:.1f} 周期", miss_avg);
+            std::println("  AMAT: {:.1f} 周期", amat);
+        }
     }
 }
 #endif
