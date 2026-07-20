@@ -309,6 +309,114 @@ std::size_t DUT::GetInstructions() const
 {
     return instructions;
 }
+std::size_t DUT::GetInstructionFetchCount() const
+{
+    return instruction_fetch_count;
+}
+std::size_t DUT::GetExecutionCompleteCount() const
+{
+    return execution_complete_count;
+}
+std::size_t DUT::GetLoadDataCount() const
+{
+    return load_data_count;
+}
+std::size_t DUT::GetStoreDataCount() const
+{
+    return store_data_count;
+}
+std::size_t DUT::GetArithmeticOperationCount() const
+{
+    return arithmetic_operation_count;
+}
+std::size_t DUT::GetMemoryAccessOperationCount() const
+{
+    return memory_access_operation_count;
+}
+std::size_t DUT::GetControlStatusRegisterOperationCount() const
+{
+    return control_status_register_operation_count;
+}
+std::size_t DUT::GetBranchOperationCount() const
+{
+    return branch_operation_count;
+}
+std::size_t DUT::GetInstructionFetchStallPipelineCount() const
+{
+    return instruction_fetch_stall_pipeline_count;
+}
+std::size_t DUT::GetInstructionFetchStallAXICount() const
+{
+    return instruction_fetch_stall_axi_count;
+}
+std::size_t DUT::GetInstructionFetchStallARCount() const
+{
+    return instruction_fetch_stall_ar_count;
+}
+std::size_t DUT::GetInstructionFetchStallRCount() const
+{
+    return instruction_fetch_stall_r_count;
+}
+std::size_t DUT::GetInstructionFetchStallRedirectCount() const
+{
+    return instruction_fetch_stall_redirect_count;
+}
+std::size_t DUT::GetInstructionFetchStallIdleCount() const
+{
+    return instruction_fetch_stall_idle_count;
+}
+std::size_t DUT::GetExecutionActiveCycleCount() const
+{
+    return execution_active_cycle_count;
+}
+std::size_t DUT::GetEXUStallLSUCount() const
+{
+    return exu_stall_lsu_count;
+}
+std::size_t DUT::GetArithmeticOperationActiveCycleCount() const
+{
+    return arithmetic_operation_active_cycle_count;
+}
+std::size_t DUT::GetMemoryAccessOperationActiveCycleCount() const
+{
+    return memory_access_operation_active_cycle_count;
+}
+std::size_t DUT::GetControlStatusRegisterOperationActiveCycleCount() const
+{
+    return control_status_register_operation_active_cycle_count;
+}
+std::size_t DUT::GetBranchOperationActiveCycleCount() const
+{
+    return branch_operation_active_cycle_count;
+}
+std::size_t DUT::GetLoadStoreUnitActiveCycleCount() const
+{
+    return load_store_unit_active_cycle_count;
+}
+std::size_t DUT::GetLoadStoreUnitLoadActiveCycleCount() const
+{
+    return load_store_unit_load_active_cycle_count;
+}
+std::size_t DUT::GetLoadStoreUnitStoreActiveCycleCount() const
+{
+    return load_store_unit_store_active_cycle_count;
+}
+std::size_t DUT::GetLSUStallReadARCount() const
+{
+    return lsu_stall_read_ar_count;
+}
+std::size_t DUT::GetLSUStallReadRCount() const
+{
+    return lsu_stall_read_r_count;
+}
+std::size_t DUT::GetLSUStallWriteReqCount() const
+{
+    return lsu_stall_write_req_count;
+}
+std::size_t DUT::GetLSUStallWriteBCount() const
+{
+    return lsu_stall_write_b_count;
+}
 std::expected<std::uint32_t, std::string> DUT::ReadGPR(std::uint32_t index)
 {
     if (index >= 32)
