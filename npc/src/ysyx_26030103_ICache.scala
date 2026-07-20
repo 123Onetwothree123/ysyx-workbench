@@ -6,8 +6,8 @@ class ysyx_26030103_ICache(
     BlockSizeLog2: Int = 2,
     IndexBits:     Int = 4,
     AddressWidth:  Int = 32,
-    CacheableBase: Long = 0x30000000L,
-    CacheableMask: Long = 0xF0000000L
+    CacheableBase: Long = 0x00000000L,
+    CacheableMask: Long = 0x00000000L
 ) extends Module {
   // addr[BlockSizeLog2-1:0]=offset
   // addr[IndexBits+BlockSizeLog2-1:BlockSizeLog2]=index
