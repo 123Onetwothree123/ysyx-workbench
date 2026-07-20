@@ -125,7 +125,7 @@ ifeq ($(NPC_COMPILER),clang)
 
 NPC_PCM_DIR := $(CURDIR)/pcm_cache
 NPC_STD_FLAG := $(lastword $(filter -std=%,$(CPPFLAGS) $(NPC_USER_CXXFLAGS)))
-NPC_CLANG_MODULE_FLAGS := $(CLANG_STDLIB_FLAG) -fprebuilt-module-path=$(NPC_PCM_DIR) -fimplicit-module-maps -Wno-reserved-module-identifier
+NPC_CLANG_MODULE_FLAGS := $(CLANG_STDLIB_FLAG) -fmodules -fimplicit-module-maps -fprebuilt-module-path=$(NPC_PCM_DIR) -Wno-reserved-module-identifier
 
 $(NPC_PCM_DIR)/std.pcm: $(STD_MODULE_SRC)
 	@mkdir -p $(NPC_PCM_DIR)
