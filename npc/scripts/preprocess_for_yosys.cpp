@@ -2,21 +2,23 @@ import std;
 
 int main(int argc, char *argv[])
 {
-    if (argc < 2)
+    if (argc > 2)
     {
-        std::println(std::cerr, "Usage: {} [input.sv...]", argv[0]);
+        std::println(std::cerr, "Usage: {} [input.sv]", argv[0]);
         return 1;
     }
     std::string text;
     {
-        std::stringstream ss;
-        for (int i = 1; i < argc; ++i)
+        std::istream *in{&std::cin};
+        std::ifstream f;
+        if (argc == 2)
         {
-            std::ifstream f{argv[i]};
-            if (!f) { std::println(std::cerr, "Cannot open {}", argv[i]); return 1; }
-            ss << f.rdbuf();
-            ss << '\n';
+            f.open(argv[1]);
+            if (!f) { std::println(std::cerr, "Cannot open {}", argv[1]); return 1; }
+            in = &f;
         }
+        std::stringstream ss;
+        ss << in->rdbuf();
         text = ss.str();
     }
 
@@ -31,24 +33,12 @@ int main(int argc, char *argv[])
     std::regex mod_start{R"(^\s*module\s)"};
     std::regex mod_end{R"(^\s*endmodule\b)"};
     std::regex always_start{R"(^\s*(always|initial)\b)"};
-    std::regex dpi_import{R"(^\s*import\s+"DPI-C")"};
-    std::regex typedef_line{R"(^\s*typedef\b)"};
 
     std::vector<std::string> out;
     std::size_t i{0}, n{lines.size()};
 
     while (i < n)
     {
-        if (std::regex_search(lines[i], dpi_import))
-        {
-            i++;
-            continue;
-        }
-        if (std::regex_search(lines[i], typedef_line))
-        {
-            i++;
-            continue;
-        }
         if (!std::regex_search(lines[i], mod_start))
         {
             out.push_back(lines[i]);
@@ -163,34 +153,6 @@ int main(int argc, char *argv[])
                 auto width{m3[1].str()};
                 auto name{m3[2].str()};
                 wires.push_back(std::format("{}wire {} {};", indent, width, name));
-                j++;
-                continue;
-            }
-            if (std::regex_search(ri, dpi_import))
-            {
-                j++;
-                continue;
-            }
-            if (std::regex_search(ri, typedef_line))
-            {
-                j++;
-                continue;
-            }
-
-            static std::regex brace_bit{R"(\{([^}]+)\}\[(\d+):(\d+)\])"};
-            std::smatch bbm;
-            if (std::regex_search(ri, bbm, brace_bit))
-            {
-                static int tmpcnt{0};
-                int hi{std::stoi(bbm[2])}, lo{std::stoi(bbm[3])};
-                auto ww{hi - lo};
-                auto tn{std::format("_sv2v_t{:04d}", tmpcnt++)};
-                auto expr{bbm[1].str()};
-                while (!expr.empty() && expr.front() == ' ') expr.erase(0, 1);
-                while (!expr.empty() && expr.back() == ' ') expr.pop_back();
-                wires.push_back(std::format("wire [{}:0] {} = {};", ww, tn, expr));
-                auto repl{std::format("{}[{}:{}]", tn, hi, lo)};
-                cleaned.push_back(std::regex_replace(ri, brace_bit, repl));
                 j++;
                 continue;
             }
