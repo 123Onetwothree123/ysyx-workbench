@@ -73,6 +73,8 @@ int main(int argc, char const *argv[])
     fflush(stderr);
 #endif
     result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
+    fprintf(stderr, "[NPC] printResult done, result=%d\n", result);
+    fflush(stderr);
 #ifdef CONFIG_PERF_STATS
     NPCTrap::PrintPerformanceStatistics(
         dut.GetInstructionFetchCount(),
