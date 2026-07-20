@@ -8,6 +8,7 @@ class ysyx_26030103_ICache(
     IndexBits:     Int = 4,
     AddressWidth:  Int = 32
 ) extends Module {
+  // addr[BlockSizeLog2-1:0] = offset, addr[IndexBits+BlockSizeLog2-1:BlockSizeLog2] = index, addr[31:IndexBits+BlockSizeLog2] = tag
   val TagBits   = AddressWidth - IndexBits - BlockSizeLog2
   val NumBlocks = 1 << IndexBits
 
@@ -31,6 +32,7 @@ class ysyx_26030103_ICache(
     val access_fault_resp = Output(UInt(2.W))
   })
 
+  // 直接映射cache存储阵列: valid + tag + data
   val valid = RegInit(VecInit(Seq.fill(NumBlocks)(false.B)))
   val tag   = Reg(Vec(NumBlocks, UInt(TagBits.W)))
   val data  = Reg(Vec(NumBlocks, UInt(32.W)))
@@ -44,7 +46,7 @@ class ysyx_26030103_ICache(
 
   val index  = io.fetch_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   val reqTag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  val hit    = valid(index) && tag(index) === reqTag
+  val hit    = valid(index) && tag(index) === reqTag // 命中: valid为1且tag匹配
 
   val fetch_addr_reg  = Reg(UInt(AddressWidth.W))
   val fetch_index_reg = Reg(UInt(IndexBits.W))
@@ -107,7 +109,7 @@ class ysyx_26030103_ICache(
     }
     is(state_refill_req) {
       io.axi.AR.ARVALID := true.B
-      io.axi.AR.ARADDR  := Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W))
+      io.axi.AR.ARADDR  := Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W)) // 按块大小对齐
       when(io.axi.AR.ARREADY) {
         state := state_refill_resp
       }
@@ -119,7 +121,7 @@ class ysyx_26030103_ICache(
           access_fault_reg     := true.B
           access_fault_resp_reg := io.axi.R.RRESP
         }.otherwise {
-          valid(fetch_index_reg) := true.B
+          valid(fetch_index_reg) := true.B // 填入cache块，更新元数据
           tag(fetch_index_reg)   := fetch_tag_reg
           data(fetch_index_reg)  := io.axi.R.RDATA
           resp_data_reg          := io.axi.R.RDATA
