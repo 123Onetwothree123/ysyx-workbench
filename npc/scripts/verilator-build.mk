@@ -126,7 +126,7 @@ $(NPC_PCM_DIR)/std.pcm: $(STD_MODULE_SRC)
 	$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) --precompile $< -o $@
 
 $(STD_MODULE_OBJ): $(NPC_PCM_DIR)/std.pcm
-	@$(CXX) $(NPC_STD_FLAG) -c $< -o $@
+	@$(CXX) -c $< -o $@
 
 # Compile import <xxx>; headers as header units
 NPC_HEADER_PCM := $(foreach h,$(NPC_IMPORT_HEADERS),$(NPC_PCM_DIR)/$(subst /,_,$(h)).pcm)
