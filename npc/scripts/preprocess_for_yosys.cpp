@@ -2,23 +2,21 @@ import std;
 
 int main(int argc, char *argv[])
 {
-    if (argc > 2)
+    if (argc < 2)
     {
-        std::println(std::cerr, "Usage: {} [input.sv]", argv[0]);
+        std::println(std::cerr, "Usage: {} [input.sv...]", argv[0]);
         return 1;
     }
     std::string text;
     {
-        std::istream *in{&std::cin};
-        std::ifstream f;
-        if (argc == 2)
-        {
-            f.open(argv[1]);
-            if (!f) { std::println(std::cerr, "Cannot open {}", argv[1]); return 1; }
-            in = &f;
-        }
         std::stringstream ss;
-        ss << in->rdbuf();
+        for (int i = 1; i < argc; ++i)
+        {
+            std::ifstream f{argv[i]};
+            if (!f) { std::println(std::cerr, "Cannot open {}", argv[i]); return 1; }
+            ss << f.rdbuf();
+            ss << '\n';
+        }
         text = ss.str();
     }
 
