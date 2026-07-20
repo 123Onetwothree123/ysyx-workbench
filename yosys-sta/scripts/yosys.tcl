@@ -179,6 +179,13 @@ if { $strategy_type == "DELAY" } {
 #===========================================================
 yosys -import
 
+# set default include directories
+if {$VERILOG_INCLUDE_DIRS ne ""} {
+  foreach d $VERILOG_INCLUDE_DIRS {
+    verilog_defaults -add -I$d
+  }
+}
+
 # read verilog files
 foreach file $VERILOG_FILES {
   if {$VERILOG_INCLUDE_DIRS ne ""} {
