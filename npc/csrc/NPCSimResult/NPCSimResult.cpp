@@ -60,24 +60,30 @@ void NPCSimResult::Save(
         "unknown"
 #endif
     };
-    std::string freq{"0 MHz"};
-    std::string area{"0 um^2"};
+    std::string msg;
+    if (auto g{std::ifstream{"build/git_msg.txt"}})
+    {
+        std::getline(g, msg);
+        std::ranges::replace(msg, ',', ';');
+    }
+    std::string freq{"0"};
+    std::string area{"0"};
     if (auto f{std::ifstream{"build/synth.txt"}})
     {
         std::string line;
         if (std::getline(f, line))
         {
-            freq = line + " MHz";
+            freq = line;
         }
         if (std::getline(f, line))
         {
-            area = line + " um^2";
+            area = line;
         }
     }
-    auto tsv_row{std::format(
-        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+    auto csv_row{std::format(
+        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         commit,
-        "",
+        msg,
         total_cycles,
         total_instructions,
         std::format("{:.4f}", ipc),
@@ -106,27 +112,27 @@ void NPCSimResult::Save(
         lsu_stall_write_req,
         lsu_stall_write_b)};
 
-    auto tsv_file{
+    auto csv_file{
 #ifdef VRISCV32E_NPC
-        result_dir / "result_npc.tsv"
+        result_dir / "result_npc.csv"
 #else
-        result_dir / "result_ysyxsoc.tsv"
+        result_dir / "result_ysyxsoc.csv"
 #endif
     };
      {
-        auto out{std::ofstream{tsv_file, std::ios::binary}};
+        auto out{std::ofstream{csv_file, std::ios::binary}};
         out << "\xEF\xBB\xBF";
-        out << "commit\t说明\t仿真周期数\t指令数\tIPC\t综合频率(MHz)\t综合面积(um^2)\t"
-               "IFU取指\tEXU完成\tLSU读\tLSU写\t"
-               "ALU指令\t访存指令\tCSR指令\t分支指令\t"
-               "访存平均周期\t"
-               "IFU流水线阻塞\tIFU_AXI等待\tIFU_AR等待\tIFU_R等待\tIFU跳转冲刷\tIFU空闲\t"
-               "EXU等LSU\t"
-               "LSU读延迟\tLSU写延迟\t"
-               "LSU_AR等待\tLSU_R等待\tLSU_AW/W等待\tLSU_B等待\n";
-        out << tsv_row << '\n';
+        out << "commit,说明,仿真周期数,指令数,IPC,综合频率(MHz),综合面积(um^2),"
+               "IFU取指,EXU完成,LSU读,LSU写,"
+               "ALU指令,访存指令,CSR指令,分支指令,"
+               "访存平均周期,"
+               "IFU流水线阻塞,IFU_AXI等待,IFU_AR等待,IFU_R等待,IFU跳转冲刷,IFU空闲,"
+               "EXU等LSU,"
+               "LSU读延迟,LSU写延迟,"
+               "LSU_AR等待,LSU_R等待,LSU_AW/W等待,LSU_B等待\n";
+        out << csv_row << '\n';
     }
 
     std::println("");
-    std::println("单次记录: {}", tsv_file.string());
+    std::println("单次记录: {}", csv_file.string());
 }

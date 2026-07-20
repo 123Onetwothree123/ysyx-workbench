@@ -162,6 +162,7 @@ ifeq ($(CONFIG_PERF_SAVE),y)
 PERF_SAVE_CFLAGS = -DCONFIG_PERF_SAVE
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "0000000")
 PERF_SAVE_CFLAGS += -DCONFIG_PERF_GIT_COMMIT=$(GIT_COMMIT)
+$(shell git log -1 --format=%s 2>/dev/null > $(BUILD_DIR)/git_msg.txt || echo "" > $(BUILD_DIR)/git_msg.txt)
 endif
 COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(CSRC_DIR)/trace) $(abspath $(OBJ_DIR)))
 CC_OPT ?= -O3
@@ -461,7 +462,7 @@ synth: verilog $(YOSYS_PP)
 	@echo $(SYNTH_FREQ) > $(PERF_SYNTH)
 	@SYNTH_STAT="$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz/synth_stat.txt"; \
 	if [ -f "$$SYNTH_STAT" ]; then \
-		awk '/Chip area/ {print $$5}' "$$SYNTH_STAT" >> $(PERF_SYNTH); \
+		awk '/Chip area/ {print $$6}' "$$SYNTH_STAT" >> $(PERF_SYNTH); \
 	else \
 		echo "0" >> $(PERF_SYNTH); \
 	fi

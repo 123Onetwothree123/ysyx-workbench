@@ -179,7 +179,7 @@ static unsigned int strhash(const char *str, unsigned int sz)
 /*
  * Lookup a value in the configuration string.
  */
-static int is_defined_config(const char *name, int len, unsigned int hash)
+static int is_defined_config(const char *name, unsigned int len, unsigned int hash)
 {
 	struct item *aux;
 
@@ -194,9 +194,9 @@ static int is_defined_config(const char *name, int len, unsigned int hash)
 /*
  * Add a new value to the configuration string.
  */
-static void define_config(const char *name, int len, unsigned int hash)
+static void define_config(const char *name, unsigned int len, unsigned int hash)
 {
-	struct item *aux = malloc(sizeof(*aux) + len);
+	struct item *aux = (struct item *)malloc(sizeof(*aux) + len);
 
 	if (!aux) {
 		perror("fixdep:malloc");
@@ -258,7 +258,7 @@ static void parse_config_file(const char *p)
 	}
 }
 
-static void *read_file(const char *filename)
+static char *read_file(const char *filename)
 {
 	struct stat st;
 	int fd;
@@ -275,7 +275,7 @@ static void *read_file(const char *filename)
 		perror(filename);
 		exit(2);
 	}
-	buf = malloc(st.st_size + 1);
+	buf = (char *)malloc(st.st_size + 1);
 	if (!buf) {
 		perror("fixdep: malloc");
 		exit(2);
@@ -308,7 +308,7 @@ static void parse_dep_file(char *m, const char *target)
 	int is_last, is_target;
 	int saw_any_target = 0;
 	int is_first_dep = 0;
-	void *buf;
+	char *buf;
 
 	while (1) {
 		/* Skip any "white space" */
@@ -385,7 +385,7 @@ static void parse_dep_file(char *m, const char *target)
 int main(int argc, char *argv[])
 {
 	const char *depfile, *target, *cmdline;
-	void *buf;
+	char *buf;
 
 	if (argc != 4)
 		usage();
