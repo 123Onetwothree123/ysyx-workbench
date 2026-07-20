@@ -51,6 +51,13 @@ void NPCSimResult::Save(
     {
         store_avg = static_cast<double>(load_store_unit_store_active) / static_cast<double>(store_data);
     }
+    double amat{0.0};
+    if (icache_hit + icache_miss > 0 && icache_miss > 0)
+    {
+        auto hit_rate{static_cast<double>(icache_hit) / static_cast<double>(icache_hit + icache_miss)};
+        auto miss_avg{static_cast<double>(instruction_fetch_stall_ar + instruction_fetch_stall_r) / static_cast<double>(icache_miss)};
+        amat = 1.0 + (1.0 - hit_rate) * miss_avg;
+    }
     std::filesystem::create_directories(result_dir);
 #define XSTR(s) #s
 #define STR(s) XSTR(s)
@@ -83,7 +90,7 @@ void NPCSimResult::Save(
         }
     }
     auto csv_row{std::format(
-        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         commit,
         msg,
         total_cycles,
@@ -114,7 +121,8 @@ void NPCSimResult::Save(
         lsu_stall_write_req,
         lsu_stall_write_b,
         icache_hit,
-        icache_miss)};
+        icache_miss,
+        std::format("{:.1f}", amat))};
 
     auto csv_file{
 #ifdef VRISCV32E_NPC
@@ -134,7 +142,7 @@ void NPCSimResult::Save(
                "EXU等LSU,"
                "LSU读延迟,LSU写延迟,"
                "LSU_AR等待,LSU_R等待,LSU_AW/W等待,LSU_B等待,"
-               "ICache命中,ICache缺失\n";
+               "ICache命中,ICache缺失,AMAT\n";
         out << csv_row << '\n';
     }
 
