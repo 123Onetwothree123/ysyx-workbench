@@ -4,8 +4,10 @@ import chisel3.util._
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 class ysyx_26030103_ICache(
     BlockSizeLog2: Int = 2,
-    IndexBits: Int = 4,
-    AddressWidth: Int = 32
+    IndexBits:     Int = 4,
+    AddressWidth:  Int = 32,
+    CacheableBase: Long = 0x00000000L,
+    CacheableMask: Long = 0x00000000L  // 0=全缓存，由上层传入覆盖
 ) extends Module {
   // addr[BlockSizeLog2-1:0]=offset
   // addr[IndexBits+BlockSizeLog2-1:BlockSizeLog2]=index
@@ -40,10 +42,12 @@ class ysyx_26030103_ICache(
   val index = io.fetch_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   val reqTag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
   val hit = valid(index) && tag(index) === reqTag // 命中：valid为1且tag匹配
+  val cacheable = (io.fetch_addr & CacheableMask.U) === CacheableBase.U
   val fetch_addr_reg = Reg(UInt(AddressWidth.W))
   val fetch_index_reg = Reg(UInt(IndexBits.W))
   val fetch_tag_reg = Reg(UInt(TagBits.W))
   val resp_data_reg = Reg(UInt(32.W))
+  val cacheable_reg = RegInit(false.B)
   val access_fault_reg = RegInit(false.B)
   val access_fault_resp_reg = RegInit(0.U(2.W))
   io.access_fault := access_fault_reg
@@ -80,14 +84,15 @@ class ysyx_26030103_ICache(
       access_fault_reg := false.B
       access_fault_resp_reg := 0.U
       io.fetch_ready := true.B
-      io.perf_hit := io.fetch_valid && io.fetch_ready && hit
-      io.perf_miss := io.fetch_valid && io.fetch_ready && !hit
+      io.perf_hit  := io.fetch_valid && io.fetch_ready && cacheable && hit
+      io.perf_miss := io.fetch_valid && io.fetch_ready && cacheable && !hit
       when(io.fetch_valid && io.fetch_ready) {
-        fetch_addr_reg := io.fetch_addr
+        fetch_addr_reg  := io.fetch_addr
         fetch_index_reg := index
-        fetch_tag_reg := reqTag
-        resp_data_reg := data(index)
-        when(hit) {
+        fetch_tag_reg   := reqTag
+        resp_data_reg   := data(index)
+        cacheable_reg   := cacheable
+        when(cacheable && hit) {
           state := state_resp
         }.otherwise {
           state := state_refill_req
@@ -111,10 +116,12 @@ class ysyx_26030103_ICache(
           access_fault_reg := true.B
           access_fault_resp_reg := io.axi.R.RRESP
         }.otherwise {
-          valid(fetch_index_reg) := true.B // 填入cache块，更新元数据
-          tag(fetch_index_reg) := fetch_tag_reg
-          data(fetch_index_reg) := io.axi.R.RDATA
           resp_data_reg := io.axi.R.RDATA
+          when(cacheable_reg) {
+            valid(fetch_index_reg) := true.B // 填入cache块，更新元数据
+            tag(fetch_index_reg)   := fetch_tag_reg
+            data(fetch_index_reg)  := io.axi.R.RDATA
+          }
         }
         state := state_resp
       }
