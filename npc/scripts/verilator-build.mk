@@ -16,7 +16,14 @@ endif
 ifneq ($(findstring -stdlib=libc++,$(CPPFLAGS)),)
 STD_MODULE_SRC := /usr/share/libc++/v1/std.cppm
 else
+# Clang需要libc++的std模块，GCC用libstdc++的
+ifeq ($(NPC_COMPILER),clang)
+STD_MODULE_SRC := /usr/share/libc++/v1/std.cppm
+CLANG_STDLIB_FLAG := -stdlib=libc++
+else
 STD_MODULE_SRC := $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
+CLANG_STDLIB_FLAG :=
+endif
 endif
 
 STD_MODULE_OBJ := std_module.o
@@ -119,28 +126,28 @@ ifeq ($(NPC_COMPILER),clang)
 
 NPC_PCM_DIR := $(CURDIR)/pcm_cache
 NPC_STD_FLAG := $(lastword $(filter -std=%,$(CPPFLAGS) $(NPC_USER_CXXFLAGS)))
-NPC_CLANG_MODULE_FLAGS := -fprebuilt-module-path=$(NPC_PCM_DIR)
+NPC_CLANG_MODULE_FLAGS := $(CLANG_STDLIB_FLAG) -fprebuilt-module-path=$(NPC_PCM_DIR) -fimplicit-module-maps
 
 $(NPC_PCM_DIR)/std.pcm: $(STD_MODULE_SRC)
 	@mkdir -p $(NPC_PCM_DIR)
-	$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) --precompile $< -o $@
+	$(CXX) $(NPC_STD_FLAG) $(CLANG_STDLIB_FLAG) -x c++-module --precompile $< -o $@
 
 $(STD_MODULE_OBJ): $(NPC_PCM_DIR)/std.pcm
-	@$(CXX) -c $< -o $@
+	@$(CXX) $(NPC_STD_FLAG) $(CLANG_STDLIB_FLAG) -c $(NPC_PCM_DIR)/std.pcm -o $@
 
 # Compile import <xxx>; headers as header units
 NPC_HEADER_PCM := $(foreach h,$(NPC_IMPORT_HEADERS),$(NPC_PCM_DIR)/$(subst /,_,$(h)).pcm)
 $(NPC_HEADER_PCM): $(NPC_PCM_DIR)/%.pcm:
 	@mkdir -p $(NPC_PCM_DIR)
 	@echo "  CXX HEADER <$(subst _,/,$*)>"
-	$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) -x c++-system-header $(subst _,/,$*) --precompile -o $@
+	$(CXX) $(NPC_STD_FLAG) $(CLANG_STDLIB_FLAG) -xc++-system-header $(subst _,/,$*) --precompile -o $@
 
 .npc_modules_built: $(STD_MODULE_OBJ) $(NPC_HEADER_PCM) $(NPC_IXX_SRCS)
 	@$(foreach src,$(NPC_IXX_SRCS),\
 		MOD_NAME=$$(grep -oP '(?<=export module )\S+(?=;)' $(src)); \
 		echo "  CXX MODULE $(notdir $(src)) [$$MOD_NAME]"; \
-		$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) -x c++-module --precompile $(src) -o $(NPC_PCM_DIR)/$$MOD_NAME.pcm || exit 1; \
-		$(CXX) -c $(NPC_CLANG_MODULE_FLAGS) $(NPC_PCM_DIR)/$$MOD_NAME.pcm -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1; \
+		$(CXX) $(NPC_STD_FLAG) $(CLANG_STDLIB_FLAG) $(NPC_CLANG_MODULE_FLAGS) -x c++-module --precompile $(src) -o $(NPC_PCM_DIR)/$$MOD_NAME.pcm || exit 1; \
+		$(CXX) $(NPC_STD_FLAG) $(CLANG_STDLIB_FLAG) -c $(NPC_CLANG_MODULE_FLAGS) $(NPC_PCM_DIR)/$$MOD_NAME.pcm -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1; \
 	)
 	@touch $@
 

@@ -58,6 +58,7 @@ verilog:
 	$(call git_commit, "generate verilog")
 	mkdir -p $(BUILD_DIR)
 	mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
+	ln -sf layers-ysyx_26030103-Verification.sv $(BUILD_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
 
 help:
 	mill -i runMain ysyx_26030103_Elaborate --help
@@ -441,6 +442,7 @@ SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
 endif
 
 YOSYS_PP = $(BUILD_DIR)/preprocess_for_yosys
+ifeq ($(filter clang% icpx%,$(notdir $(CXX))),)
 STD_MODULE_SRC = $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
 $(BUILD_DIR)/gcm.cache/std.gcm: $(STD_MODULE_SRC)
 	@mkdir -p $(@D)
@@ -449,6 +451,16 @@ $(BUILD_DIR)/gcm.cache/std.gcm: $(STD_MODULE_SRC)
 $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/gcm.cache/std.gcm
 	@mkdir -p $(@D)
 	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -O2 -o $(notdir $@) $(abspath $<)
+else
+STD_MODULE_SRC = /usr/share/libc++/v1/std.cppm
+$(BUILD_DIR)/std.pcm: $(STD_MODULE_SRC)
+	@mkdir -p $(@D)
+	cd $(BUILD_DIR) && $(CXX) -std=c++23 -stdlib=libc++ -x c++-module --precompile $< -o std.pcm
+
+$(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
+	@mkdir -p $(@D)
+	cd $(BUILD_DIR) && $(CXX) -std=c++23 -stdlib=libc++ -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
+endif
 
 synth: verilog $(YOSYS_PP)
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
