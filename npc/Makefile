@@ -459,7 +459,7 @@ $(BUILD_DIR)/std.pcm: $(STD_MODULE_SRC)
 
 $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
 	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -fprebuilt-module-path=$(BUILD_DIR) -O2 -o $(notdir $@) $(abspath $<)
+	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
 endif
 
 synth: verilog $(YOSYS_PP)
