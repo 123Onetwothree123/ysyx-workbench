@@ -21,8 +21,6 @@ endif
 
 STD_MODULE_OBJ := std_module.o
 
-# ============ import <header>; header units ============
-# Auto-scan all .ixx and .cpp files for import <xxx>; patterns
 NPC_IMPORT_HEADERS := $(shell grep -rhoP '(?<=import <)[^>]+' $(NPC_CSRC_DIR) --include='*.ixx' --include='*.cpp' 2>/dev/null | sort -u)
 
 NPC_IXX_SRCS := \
