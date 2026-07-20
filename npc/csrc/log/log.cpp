@@ -52,16 +52,20 @@ void log_close() {
     fflush(stderr);
     if (saved_stdout_fd >= 0) {
         dup2(saved_stdout_fd, STDOUT_FILENO);
+    }
+    if (saved_stderr_fd >= 0) {
+        dup2(saved_stderr_fd, STDERR_FILENO);
+    }
+    if (tee_thread.joinable()) {
+        tee_thread.join();
+    }
+    if (saved_stdout_fd >= 0) {
         close(saved_stdout_fd);
         saved_stdout_fd = -1;
     }
     if (saved_stderr_fd >= 0) {
-        dup2(saved_stderr_fd, STDERR_FILENO);
         close(saved_stderr_fd);
         saved_stderr_fd = -1;
-    }
-    if (tee_thread.joinable()) {
-        tee_thread.join();
     }
     if (pipefd[0] >= 0) {
         close(pipefd[0]);

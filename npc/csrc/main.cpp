@@ -72,7 +72,7 @@ int main(int argc, char const *argv[])
 #ifdef CONFIG_NVBOARD
     nvboard_quit();
 #endif
-    auto result{NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions())};
+    int result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
 #ifdef CONFIG_PERF_STATS
     NPCTrap::PrintPerformanceStatistics(
         dut.GetInstructionFetchCount(),
@@ -101,7 +101,9 @@ int main(int argc, char const *argv[])
         dut.GetLSUStallReadARCount(),
         dut.GetLSUStallReadRCount(),
         dut.GetLSUStallWriteReqCount(),
-        dut.GetLSUStallWriteBCount());
+        dut.GetLSUStallWriteBCount(),
+        dut.GetICacheHitCount(),
+        dut.GetICacheMissCount());
 #endif
 #ifdef CONFIG_PERF_SAVE
     NPCSimResult::Save(
@@ -130,7 +132,13 @@ int main(int argc, char const *argv[])
         dut.GetLSUStallReadARCount(),
         dut.GetLSUStallReadRCount(),
         dut.GetLSUStallWriteReqCount(),
-        dut.GetLSUStallWriteBCount());
+        dut.GetLSUStallWriteBCount(),
+        dut.GetICacheHitCount(),
+        dut.GetICacheMissCount());
+#endif
+    dut.final();
+#ifdef CONFIG_NVBOARD
+    nvboard_quit();
 #endif
 #ifdef CONFIG_DIFFTEST
     if (result != 0)

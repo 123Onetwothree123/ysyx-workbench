@@ -114,6 +114,8 @@ void DUT::reset()
     lsu_stall_read_r_count = 0;
     lsu_stall_write_req_count = 0;
     lsu_stall_write_b_count = 0;
+    icache_hit_count = 0;
+    icache_miss_count = 0;
 #endif
 }
 void DUT::step()
@@ -244,6 +246,14 @@ void DUT::step()
     if (dut->perf_lsu_stall_write_b)
     {
         ++lsu_stall_write_b_count;
+    }
+    if (dut->perf_icache_hit)
+    {
+        ++icache_hit_count;
+    }
+    if (dut->perf_icache_miss)
+    {
+        ++icache_miss_count;
     }
 #endif
 #ifdef CONFIG_ITRACE
@@ -455,4 +465,12 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
         return value;
     }
     return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 Flash 0x{:08x}-0x{:08x}）", addr, FLASH_BASE, FLASH_BASE + FLASH_SIZE)};
+}
+std::size_t DUT::GetICacheHitCount() const
+{
+    return icache_hit_count;
+}
+std::size_t DUT::GetICacheMissCount() const
+{
+    return icache_miss_count;
 }

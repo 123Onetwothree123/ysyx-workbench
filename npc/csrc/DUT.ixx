@@ -42,6 +42,8 @@ private:
     std::size_t lsu_stall_read_r_count{0};
     std::size_t lsu_stall_write_req_count{0};
     std::size_t lsu_stall_write_b_count{0};
+    std::size_t icache_hit_count{0};
+    std::size_t icache_miss_count{0};
 
 public:
     DUT();
@@ -82,6 +84,8 @@ public:
     std::size_t GetLSUStallReadRCount() const;
     std::size_t GetLSUStallWriteReqCount() const;
     std::size_t GetLSUStallWriteBCount() const;
+    std::size_t GetICacheHitCount() const;
+    std::size_t GetICacheMissCount() const;
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();

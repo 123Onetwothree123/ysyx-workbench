@@ -84,7 +84,9 @@ void NPCTrap::PrintPerformanceStatistics(
     std::size_t lsu_stall_read_ar_cycles,
     std::size_t lsu_stall_read_r_cycles,
     std::size_t lsu_stall_write_req_cycles,
-    std::size_t lsu_stall_write_b_cycles)
+    std::size_t lsu_stall_write_b_cycles,
+    std::size_t icache_hit,
+    std::size_t icache_miss)
 {
     std::println("性能计数器");
     std::println("IFU取到指令: {}", instruction_fetch);
@@ -159,6 +161,14 @@ void NPCTrap::PrintPerformanceStatistics(
         std::println("  R等待(读数据返回):  {} 周期, 占比 {:.1f}%", lsu_stall_read_r_cycles, 100.0 * lsu_stall_read_r_cycles / active_total_d);
         std::println("  AW/W等待(写请求握手): {} 周期, 占比 {:.1f}%", lsu_stall_write_req_cycles, 100.0 * lsu_stall_write_req_cycles / active_total_d);
         std::println("  B等待(写响应返回):  {} 周期, 占比 {:.1f}%", lsu_stall_write_b_cycles, 100.0 * lsu_stall_write_b_cycles / active_total_d);
+    }
+    std::println("");
+    std::println("ICache 性能:");
+    std::println("  命中: {} 次", icache_hit);
+    std::println("  缺失: {} 次", icache_miss);
+    if (icache_hit + icache_miss > 0)
+    {
+        std::println("  命中率: {:.1f}%", 100.0 * icache_hit / (icache_hit + icache_miss));
     }
 }
 #endif

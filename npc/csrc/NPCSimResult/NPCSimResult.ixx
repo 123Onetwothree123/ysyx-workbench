@@ -30,5 +30,7 @@ public:
         std::size_t lsu_stall_read_ar,
         std::size_t lsu_stall_read_r,
         std::size_t lsu_stall_write_req,
-        std::size_t lsu_stall_write_b);
+        std::size_t lsu_stall_write_b,
+        std::size_t icache_hit,
+        std::size_t icache_miss);
 };

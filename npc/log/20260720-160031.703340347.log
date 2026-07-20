@@ -1,0 +1,4 @@
+现在指定了镜像文件
+文件加载了: /home/abc/ysyx-workbench/am-kernels/tests/cpu-tests/build/dummy-riscv32i-ysyxsoc.bin, size = 200 bytes
+%Warning: build/program.hex:0: $readmem file not found
+[NPC-DEBUG] entering loop
