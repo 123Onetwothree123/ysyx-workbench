@@ -1,9 +1,8 @@
 module;
+#include <unistd.h>
 #include <cstdio>
 
 module npc.log;
-
-import <unistd.h>;
 
 static std::ofstream log_file;
 static int saved_stdout_fd{-1};
