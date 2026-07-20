@@ -60,18 +60,18 @@ void NPCSimResult::Save(
         "unknown"
 #endif
     };
-    std::string freq{"0 MHz"};
-    std::string area{"0 um^2"};
+    std::string freq{"0"};
+    std::string area{"0"};
     if (auto f{std::ifstream{"build/synth.txt"}})
     {
         std::string line;
         if (std::getline(f, line))
         {
-            freq = line + " MHz";
+            freq = line;
         }
         if (std::getline(f, line))
         {
-            area = line + " um^2";
+            area = line;
         }
     }
     auto tsv_row{std::format(
