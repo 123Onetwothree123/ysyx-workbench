@@ -28,4 +28,7 @@ run: insert-arg
 perf: insert-arg
 	$(MAKE) -C $(NPC_HOME) perf file=$(IMAGE).bin elf=$(IMAGE).elf SIM_TOP=soc
 
-.PHONY: insert-arg perf
+cachesim: insert-arg
+	$(MAKE) -C $(NPC_HOME) cachesim file=$(IMAGE).bin elf=$(IMAGE).elf SIM_TOP=soc
+
+.PHONY: insert-arg perf cachesim
