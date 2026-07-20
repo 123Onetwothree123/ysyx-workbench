@@ -21,6 +21,8 @@ endif
 
 STD_MODULE_OBJ := std_module.o
 
+NPC_IMPORT_HEADERS := $(shell grep -rhoP '(?<=import <)[^>]+' $(NPC_CSRC_DIR) --include='*.ixx' --include='*.cpp' 2>/dev/null | sort -u)
+
 NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/log/log.ixx \
   $(NPC_CSRC_DIR)/NPCTrap.ixx \
@@ -96,7 +98,14 @@ gcm.cache/std.gcm: $(STD_MODULE_SRC)
 	@mkdir -p gcm.cache
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++ -c $< -o $(STD_MODULE_OBJ)
 
-.npc_modules_built: gcm.cache/std.gcm $(NPC_IXX_SRCS)
+# Compile import <xxx>; headers as header units
+NPC_HEADER_GCM := $(foreach h,$(NPC_IMPORT_HEADERS),gcm.cache/$(h).gcm)
+$(NPC_HEADER_GCM): gcm.cache/%.gcm:
+	@mkdir -p gcm.cache
+	@echo "  CXX HEADER <$*>"
+	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++-system-header $*
+
+.npc_modules_built: gcm.cache/std.gcm $(NPC_HEADER_GCM) $(NPC_IXX_SRCS)
 	@$(foreach src,$(NPC_IXX_SRCS),echo "  CXX MODULE $(notdir $(src))"; $(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++ -c $(src) -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1;)
 	@touch $@
 
@@ -119,7 +128,14 @@ $(NPC_PCM_DIR)/std.pcm: $(STD_MODULE_SRC)
 $(STD_MODULE_OBJ): $(NPC_PCM_DIR)/std.pcm
 	@$(CXX) -c $< -o $@
 
-.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_IXX_SRCS)
+# Compile import <xxx>; headers as header units
+NPC_HEADER_PCM := $(foreach h,$(NPC_IMPORT_HEADERS),$(NPC_PCM_DIR)/$(subst /,_,$(h)).pcm)
+$(NPC_HEADER_PCM): $(NPC_PCM_DIR)/%.pcm:
+	@mkdir -p $(NPC_PCM_DIR)
+	@echo "  CXX HEADER <$(subst _,/,$*)>"
+	$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) -x c++-system-header $(subst _,/,$*) --precompile -o $@
+
+.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_HEADER_PCM) $(NPC_IXX_SRCS)
 	@$(foreach src,$(NPC_IXX_SRCS),\
 		MOD_NAME=$$(grep -oP '(?<=export module )\S+(?=;)' $(src)); \
 		echo "  CXX MODULE $(notdir $(src)) [$$MOD_NAME]"; \

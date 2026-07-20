@@ -1,5 +1,6 @@
 module npc.NPCTrap;
 import npc.trace.itrace;
+import npc.log;
 namespace
 {
     bool Halted{false};
