@@ -60,6 +60,13 @@ void NPCSimResult::Save(
         "unknown"
 #endif
     };
+    std::string msg{
+#ifdef CONFIG_PERF_GIT_MSG
+        CONFIG_PERF_GIT_MSG
+#else
+        ""
+#endif
+    };
     std::string freq{"0"};
     std::string area{"0"};
     if (auto f{std::ifstream{"build/synth.txt"}})
@@ -77,7 +84,7 @@ void NPCSimResult::Save(
     auto csv_row{std::format(
         "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         commit,
-        "",
+        msg,
         total_cycles,
         total_instructions,
         std::format("{:.4f}", ipc),
