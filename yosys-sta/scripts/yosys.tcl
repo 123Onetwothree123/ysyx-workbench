@@ -19,11 +19,7 @@ set DESIGN                  [lindex $argv 0]
 set PDK                     [lindex $argv 1]
 set VERILOG_FILES           [string map {"\"" ""} [lindex $argv 2]]
 set NETLIST_SYN_V           [lindex $argv 3]
-if {[lindex $argv 4] ne ""} {
-  set VERILOG_INCLUDE_DIRS    [lindex $argv 4]
-} else {
-  set VERILOG_INCLUDE_DIRS    ""
-}
+set VERILOG_INCLUDE_DIRS    ""
 set RESULT_DIR              [file dirname $NETLIST_SYN_V]
 
 source "[file dirname [info script]]/common.tcl"
@@ -179,26 +175,9 @@ if { $strategy_type == "DELAY" } {
 #===========================================================
 yosys -import
 
-# set default include directories
-if {$VERILOG_INCLUDE_DIRS ne ""} {
-  foreach d $VERILOG_INCLUDE_DIRS {
-    verilog_defaults -add -I$d
-  }
-}
-
 # read verilog files
 foreach file $VERILOG_FILES {
-  if {$VERILOG_INCLUDE_DIRS ne ""} {
-    set cmd [list read_verilog -sv]
-    foreach d $VERILOG_INCLUDE_DIRS {
-      lappend cmd "-I"
-      lappend cmd $d
-    }
-    lappend cmd $file
-    {*}$cmd
-  } else {
-    read_verilog -sv $file
-  }
+  read_verilog -sv $file
 }
 
 # generic synthesis (coarse)

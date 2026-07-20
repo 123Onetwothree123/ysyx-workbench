@@ -430,8 +430,8 @@ YOSYS_STA_HOME ?= $(abspath $(NPC_HOME)/../yosys-sta)
 SYNTH_FREQ ?= 450
 
 ifeq ($(SIM_TOP),soc)
-SYNTH_DESIGN = ysyxSoCFull
-SYNTH_RTL_FILES = $(abspath $(YSYXSOC_FULL_V)) $(abspath $(BUILD_DIR)/ysyx_26030103.sv) $(foreach f,$(shell find $(YSYXSOC_PERIP_DIR) -name "*.v" 2>/dev/null),$(abspath $f))
+SYNTH_DESIGN = ysyx_26030103
+SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103.sv)
 else
 SYNTH_DESIGN = ysyx_26030103
 SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
@@ -458,29 +458,13 @@ $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
 	cd $(BUILD_DIR) && $(CXX) -std=c++23 -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
 endif
 
-SV2V = sv2v
-
 synth: verilog $(YOSYS_PP)
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
-	@{ \
-		files="$(SYNTH_RTL_FILES)"; \
-		defs=; rest=; \
-		for f in $$files; do \
-			case "$$f" in \
-				*defines*|*defs*) defs="$$defs $$f";; \
-				*) rest="$$rest $$f";; \
-			esac; \
-		done; \
-		cat $$defs $$rest > $(BUILD_DIR)/$(SYNTH_DESIGN)_merged.sv; \
-	}
-	@$(SV2V) $(BUILD_DIR)/$(SYNTH_DESIGN)_merged.sv > $(BUILD_DIR)/$(SYNTH_DESIGN)_sv2v.sv 2>/dev/null && \
-		$(YOSYS_PP) $(BUILD_DIR)/$(SYNTH_DESIGN)_sv2v.sv > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv || \
-		$(YOSYS_PP) $(BUILD_DIR)/$(SYNTH_DESIGN)_merged.sv > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
+	@$(YOSYS_PP) $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
 	@$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		DESIGN=$(SYNTH_DESIGN) \
 		RTL_FILES="$(abspath $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv)" \
 		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
-		VERILOG_INCDIRS="$(abspath $(YSYXSOC_PERIP_DIR))/uart16550/rtl $(abspath $(YSYXSOC_PERIP_DIR))/spi/rtl" \
 		O=$(abspath $(YOSYS_STA_HOME))/result
 	@mkdir -p $(BUILD_DIR)
 	@echo $(SYNTH_FREQ) > $(PERF_SYNTH)
@@ -497,7 +481,7 @@ perf: synth $(BIN)
 	@echo "[perf] 运行仿真 ..."
 	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
 	mkdir -p "$$RESULT_DIR"; \
-	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" +verilator+no-finish-fatal 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
+	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
 else
 perf: synth $(BIN_NPC)
 	@mkdir -p $(PERF_DIR)

@@ -7,7 +7,6 @@ int main(int argc, char *argv[])
         std::println(std::cerr, "Usage: {} [input.sv]", argv[0]);
         return 1;
     }
-    std::regex dollar_error_call{R"(\$error\s*\([^)]*\)\s*;)"};
     std::string text;
     {
         std::istream *in{&std::cin};
@@ -23,8 +22,6 @@ int main(int argc, char *argv[])
         text = ss.str();
     }
 
-    text = std::regex_replace(text, dollar_error_call, ";");
-
     std::vector<std::string> lines;
     {
         std::stringstream ss{text};
@@ -36,44 +33,12 @@ int main(int argc, char *argv[])
     std::regex mod_start{R"(^\s*module\s)"};
     std::regex mod_end{R"(^\s*endmodule\b)"};
     std::regex always_start{R"(^\s*(always|initial)\b)"};
-    std::regex dpi_import{R"(^\s*import\s+"DPI-C")"};
-    std::regex typedef_line{R"(^\s*typedef\b)"};
-    std::regex verilog_include{R"(^\s*`include\s+)"};
-    std::regex ifndef_synth{R"(`ifndef\s+SYNTHESIS)"};
-    std::regex endif_synth{R"(`endif\s+.*SYNTHESIS)"};
-    std::regex dollar_error{R"(\$error\b)"};
-    std::regex dollar_error_call{R"(\$error\s*\([^)]*\)\s*;)"};
 
     std::vector<std::string> out;
     std::size_t i{0}, n{lines.size()};
 
     while (i < n)
     {
-        if (std::regex_search(lines[i], dpi_import))
-        {
-            i++;
-            continue;
-        }
-        if (std::regex_search(lines[i], typedef_line))
-        {
-            i++;
-            continue;
-        }
-        if (std::regex_search(lines[i], verilog_include))
-        {
-            i++;
-            continue;
-        }
-        if (std::regex_search(lines[i], ifndef_synth))
-        {
-            i++;
-            continue;
-        }
-        if (std::regex_search(lines[i], endif_synth))
-        {
-            i++;
-            continue;
-        }
         if (!std::regex_search(lines[i], mod_start))
         {
             out.push_back(lines[i]);
@@ -188,65 +153,6 @@ int main(int argc, char *argv[])
                 auto width{m3[1].str()};
                 auto name{m3[2].str()};
                 wires.push_back(std::format("{}wire {} {};", indent, width, name));
-                j++;
-                continue;
-            }
-            if (std::regex_search(ri, dpi_import))
-            {
-                j++;
-                continue;
-            }
-            if (std::regex_search(ri, typedef_line))
-            {
-                j++;
-                continue;
-            }
-            if (std::regex_search(ri, verilog_include))
-            {
-                j++;
-                continue;
-            }
-            if (std::regex_search(ri, ifndef_synth))
-            {
-                j++;
-                continue;
-            }
-            if (std::regex_search(ri, endif_synth))
-            {
-                j++;
-                continue;
-            }
-
-            static std::regex brace_bit{R"(\{([^{}]+)\}\[(\d+):(\d+)\])"};
-            static std::regex brace_bit1{R"(\{([^{}]+)\}\[(\d+)\])"};
-            std::smatch bbm;
-            if (std::regex_search(ri, bbm, brace_bit))
-            {
-                static int tmpcnt{0};
-                int hi{std::stoi(bbm[2])}, lo{std::stoi(bbm[3])};
-                auto tn{std::format("_sv2v_t{:04d}", tmpcnt++)};
-                auto expr{bbm[1].str()};
-                while (!expr.empty() && expr.front() == ' ') expr.erase(0, 1);
-                while (!expr.empty() && expr.back() == ' ') expr.pop_back();
-                wires.push_back(std::format("wire [{}:0] {} = {};", hi - lo, tn, expr));
-                auto repl{std::format("{}[{}:{}]", tn, hi, lo)};
-                cleaned.push_back(std::regex_replace(ri, brace_bit, repl));
-                j++;
-                continue;
-            }
-
-            std::smatch bbm1;
-            if (std::regex_search(ri, bbm1, brace_bit1))
-            {
-                static int tmpcnt{0};
-                int bit{std::stoi(bbm1[2])};
-                auto tn{std::format("_sv2v_t{:04d}", tmpcnt++)};
-                auto expr{bbm1[1].str()};
-                while (!expr.empty() && expr.front() == ' ') expr.erase(0, 1);
-                while (!expr.empty() && expr.back() == ' ') expr.pop_back();
-                wires.push_back(std::format("wire [{}:0] {} = {};", bit, tn, expr));
-                auto repl{std::format("{}[{}]", tn, bit)};
-                cleaned.push_back(std::regex_replace(ri, brace_bit1, repl));
                 j++;
                 continue;
             }
