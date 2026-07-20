@@ -441,25 +441,24 @@ SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
 endif
 
 YOSYS_PP = $(BUILD_DIR)/preprocess_for_yosys
+ifeq ($(filter clang% icpx%,$(notdir $(CXX))),)
 STD_MODULE_SRC = $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
 $(BUILD_DIR)/gcm.cache/std.gcm: $(STD_MODULE_SRC)
 	@mkdir -p $(@D)
 	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) -x c++ -c $< -o std_module.o
 
-ifeq ($(filter clang% icpx%,$(notdir $(CXX))),)
-# GCC: preprocessor depends on gcm.cache for std module auto-discovery
 $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/gcm.cache/std.gcm
 	@mkdir -p $(@D)
 	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -O2 -o $(notdir $@) $(abspath $<)
 else
-# Clang: precompile std module to PCM, then compile preprocessor
+STD_MODULE_SRC = $(lastword $(wildcard /usr/share/libc++/v1/std.cppm))
 $(BUILD_DIR)/std.pcm: $(STD_MODULE_SRC)
 	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) -x c++-module --precompile $< -o std.pcm
+	cd $(BUILD_DIR) && $(CXX) -std=c++23 -stdlib=libc++ -x c++-module --precompile $< -o std.pcm
 
 $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
 	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
+	cd $(BUILD_DIR) && $(CXX) -std=c++23 -stdlib=libc++ -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
 endif
 
 synth: verilog $(YOSYS_PP)
