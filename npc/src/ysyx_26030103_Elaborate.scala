@@ -1,21 +1,23 @@
 import chisel3._
+import chisel3.stage.ChiselStage
+import circt.stage.FirtoolOption
 import ysyx_26030103.ysyx_26030103
-import circt.stage.{ChiselStage, FirtoolOption}
 import java.io.File
 import java.nio.file.{Files, Paths, StandardCopyOption}
 
 object ysyx_26030103_Elaborate extends App {
   val targetDir = args(args.indexOf("--target-dir") + 1)
 
-  def doEmit(mod: => RawModule, name: String) = {
-    (new ChiselStage).emitSystemVerilog(
+  def doEmit(mod: => RawModule) = {
+    (new ChiselStage).emitVerilog(
       mod,
-      Array("--target-dir", targetDir, "-o", name + ".sv"),
-      firtoolOpts = Array(
-        "--lowering-options=disallowLocalVariables,disallowPackedArrays"
-      )
+      Array("--target-dir", targetDir),
+      Seq(FirtoolOption("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
     )
   }
+
+  doEmit(new ysyx_26030103)
+  doEmit(new ysyx_26030103(0x80000000L))
 
   emitVerilog(new ysyx_26030103, Array("--target-dir", targetDir))
   emitVerilog(new ysyx_26030103(0x80000000L), Array("--target-dir", targetDir))
