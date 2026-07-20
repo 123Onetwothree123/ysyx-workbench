@@ -165,6 +165,25 @@ int main(int argc, char *argv[])
                 j++;
                 continue;
             }
+
+            static std::regex brace_bit{R"(\{([^}]+)\}\[(\d+):(\d+)\])"};
+            std::smatch bbm;
+            if (std::regex_search(ri, bbm, brace_bit))
+            {
+                static int tmpcnt{0};
+                int hi{std::stoi(bbm[2])}, lo{std::stoi(bbm[3])};
+                auto ww{hi - lo};
+                auto tn{std::format("_sv2v_t{:04d}", tmpcnt++)};
+                auto expr{bbm[1].str()};
+                while (!expr.empty() && expr.front() == ' ') expr.erase(0, 1);
+                while (!expr.empty() && expr.back() == ' ') expr.pop_back();
+                wires.push_back(std::format("wire [{}:0] {} = {};", ww, tn, expr));
+                auto repl{std::format("{}[{}:{}]", tn, hi, lo)};
+                cleaned.push_back(std::regex_replace(ri, brace_bit, repl));
+                j++;
+                continue;
+            }
+
             cleaned.push_back(ml[j]);
             j++;
         }
