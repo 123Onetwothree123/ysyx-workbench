@@ -182,11 +182,12 @@ yosys -import
 # read verilog files
 foreach file $VERILOG_FILES {
   if {$VERILOG_INCLUDE_DIRS ne ""} {
-    set inc_args {}
+    set cmd "read_verilog -sv"
     foreach d $VERILOG_INCLUDE_DIRS {
-      lappend inc_args "-I$d"
+      append cmd " -I$d"
     }
-    read_verilog -sv {*}$inc_args $file
+    append cmd " $file"
+    eval $cmd
   } else {
     read_verilog -sv $file
   }
