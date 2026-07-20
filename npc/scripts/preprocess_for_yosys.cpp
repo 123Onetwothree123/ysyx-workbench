@@ -22,6 +22,8 @@ int main(int argc, char *argv[])
         text = ss.str();
     }
 
+    text = std::regex_replace(text, dollar_error_call, ";");
+
     std::vector<std::string> lines;
     {
         std::stringstream ss{text};
@@ -38,6 +40,8 @@ int main(int argc, char *argv[])
     std::regex verilog_include{R"(^\s*`include\s+)"};
     std::regex ifndef_synth{R"(`ifndef\s+SYNTHESIS)"};
     std::regex endif_synth{R"(`endif\s+.*SYNTHESIS)"};
+    std::regex dollar_error{R"(\$error\b)"};
+    std::regex dollar_error_call{R"(\$error\s*\([^)]*\)\s*;)"};
 
     std::vector<std::string> out;
     std::size_t i{0}, n{lines.size()};
