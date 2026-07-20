@@ -120,6 +120,8 @@ class ysyx_26030103_IO extends Bundle {
   val perf_ifu_stall_r        = Output(Bool())
   val perf_ifu_stall_redirect = Output(Bool())
   val perf_ifu_stall_idle     = Output(Bool())
+  val perf_icache_hit         = Output(Bool())
+  val perf_icache_miss        = Output(Bool())
   val perf_execution_active   = Output(Bool())
   val perf_exu_stall_lsu      = Output(Bool())
   val perf_lsu_active         = Output(Bool())

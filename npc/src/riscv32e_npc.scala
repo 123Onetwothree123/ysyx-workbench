@@ -230,6 +230,10 @@ class riscv32e_npc_SimTop extends Module {
   perf_lsu_stall_write_req := cpu.io.perf_lsu_stall_write_req
   val perf_lsu_stall_write_b = IO(Output(Bool()))
   perf_lsu_stall_write_b := cpu.io.perf_lsu_stall_write_b
+  val perf_icache_hit = IO(Output(Bool()))
+  perf_icache_hit := cpu.io.perf_icache_hit
+  val perf_icache_miss = IO(Output(Bool()))
+  perf_icache_miss := cpu.io.perf_icache_miss
 
   val cyc = RegInit(0.U(32.W))
   cyc := cyc + 1.U

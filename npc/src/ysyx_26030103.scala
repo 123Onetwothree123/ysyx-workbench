@@ -14,13 +14,20 @@ class ysyx_26030103(resetAddr: Long = 0x30000000L, AddressWidth: Int = 32) exten
   val wbu = Module(new ysyx_26030103_WBU)
   val lsu = Module(new ysyx_26030103_LSU)
   val gpr = Module(new ysyx_26030103_GPR)
+  val icache = Module(new ysyx_26030103_ICache)
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
   ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
   ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
   ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
-  arbiter.io.ifu <> ifu.io.InstructionBus
+  icache.io.axi <> arbiter.io.ifu
+  icache.io.fetch_addr  := ifu.io.FetchAddr
+  icache.io.fetch_valid := ifu.io.FetchValid
+  ifu.io.FetchReady      := icache.io.fetch_ready
+  ifu.io.RespData        := icache.io.resp_data
+  ifu.io.RespValid       := icache.io.resp_valid
+  icache.io.resp_ready   := ifu.io.RespReady
   arbiter.io.lsu <> lsu.io.DataBus
   arbiter.io.memory.AW <> xbar.io.in.AW
   arbiter.io.memory.W <> xbar.io.in.W
@@ -104,7 +111,7 @@ class ysyx_26030103(resetAddr: Long = 0x30000000L, AddressWidth: Int = 32) exten
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
   // 取指或访存返回错误时，跳转到地址0
-  val AccessFaultOccurred = ifu.io.AccessFault || lsu.io.AccessFault
+  val AccessFaultOccurred = icache.io.access_fault || lsu.io.AccessFault
   when(AccessFaultOccurred) {
     ifu.io.ExceptionTaken := true.B
     ifu.io.ExceptionTarget := 0.U
@@ -132,13 +139,13 @@ class ysyx_26030103(resetAddr: Long = 0x30000000L, AddressWidth: Int = 32) exten
   // Access Fault
   io.debug_access_fault := AccessFaultOccurred
   io.debug_access_fault_resp := Mux(
-    ifu.io.AccessFault,
-    ifu.io.AccessFaultResp,
+    icache.io.access_fault,
+    icache.io.access_fault_resp,
     lsu.io.AccessFaultResp
   )
   io.debug_commit := wbu.io.WriteEN
   // 性能计数器
-  io.perf_ifu_fetch := ifu.io.InstructionBus.R.RVALID && ifu.io.InstructionBus.R.RREADY
+  io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done  := exu.io.out.fire
   io.perf_lsu_load  := lsu.io.Complete && !exu.io.MemoryWrite
   io.perf_lsu_store := lsu.io.Complete && exu.io.MemoryWrite
@@ -147,11 +154,13 @@ class ysyx_26030103(resetAddr: Long = 0x30000000L, AddressWidth: Int = 32) exten
   io.perf_csr_op    := exu.io.PerfCSROp
   io.perf_branch_op := exu.io.PerfBranchOp
   io.perf_ifu_stall_pipeline := ifu.io.StallPipeline
-  io.perf_ifu_stall_axi      := ifu.io.StallAXI
-  io.perf_ifu_stall_ar       := ifu.io.StallAR
-  io.perf_ifu_stall_r        := ifu.io.StallR
+  io.perf_ifu_stall_axi      := ifu.io.StallICache
+  io.perf_ifu_stall_ar       := icache.io.perf_refill_req
+  io.perf_ifu_stall_r        := icache.io.perf_refill_resp
   io.perf_ifu_stall_redirect := exu.io.Redirect
   io.perf_ifu_stall_idle     := ifu.io.StallIdle
+  io.perf_icache_hit  := icache.io.perf_hit
+  io.perf_icache_miss := icache.io.perf_miss
   io.perf_execution_active   := exu.io.PerfExecutionActive
   io.perf_exu_stall_lsu      := exu.io.StallWaitLSU
   io.perf_lsu_active         := lsu.io.Active

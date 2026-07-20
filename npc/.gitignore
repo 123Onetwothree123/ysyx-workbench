@@ -15,6 +15,7 @@
 //新加的
 !*hpp
 !*ixx
+!.gitattributes
 
 build/
 

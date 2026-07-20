@@ -101,7 +101,9 @@ int main(int argc, char const *argv[])
         dut.GetLSUStallReadARCount(),
         dut.GetLSUStallReadRCount(),
         dut.GetLSUStallWriteReqCount(),
-        dut.GetLSUStallWriteBCount());
+        dut.GetLSUStallWriteBCount(),
+        dut.GetICacheHitCount(),
+        dut.GetICacheMissCount());
 #endif
 #ifdef CONFIG_PERF_SAVE
     NPCSimResult::Save(
@@ -130,7 +132,9 @@ int main(int argc, char const *argv[])
         dut.GetLSUStallReadARCount(),
         dut.GetLSUStallReadRCount(),
         dut.GetLSUStallWriteReqCount(),
-        dut.GetLSUStallWriteBCount());
+        dut.GetLSUStallWriteBCount(),
+        dut.GetICacheHitCount(),
+        dut.GetICacheMissCount());
 #endif
 #ifdef CONFIG_DIFFTEST
     if (result != 0)

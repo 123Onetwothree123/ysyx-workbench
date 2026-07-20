@@ -26,7 +26,9 @@ void NPCSimResult::Save(
     std::size_t lsu_stall_read_ar,
     std::size_t lsu_stall_read_r,
     std::size_t lsu_stall_write_req,
-    std::size_t lsu_stall_write_b)
+    std::size_t lsu_stall_write_b,
+    std::size_t icache_hit,
+    std::size_t icache_miss)
 {
     double ipc{0.0};
     if (total_cycles > 0)
@@ -81,7 +83,7 @@ void NPCSimResult::Save(
         }
     }
     auto csv_row{std::format(
-        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         commit,
         msg,
         total_cycles,
@@ -110,7 +112,9 @@ void NPCSimResult::Save(
         lsu_stall_read_ar,
         lsu_stall_read_r,
         lsu_stall_write_req,
-        lsu_stall_write_b)};
+        lsu_stall_write_b,
+        icache_hit,
+        icache_miss)};
 
     auto csv_file{
 #ifdef VRISCV32E_NPC
@@ -129,7 +133,8 @@ void NPCSimResult::Save(
                "IFU流水线阻塞,IFU_AXI等待,IFU_AR等待,IFU_R等待,IFU跳转冲刷,IFU空闲,"
                "EXU等LSU,"
                "LSU读延迟,LSU写延迟,"
-               "LSU_AR等待,LSU_R等待,LSU_AW/W等待,LSU_B等待\n";
+               "LSU_AR等待,LSU_R等待,LSU_AW/W等待,LSU_B等待,"
+               "ICache命中,ICache缺失\n";
         out << csv_row << '\n';
     }
 

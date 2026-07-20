@@ -1,0 +1,2 @@
+NPCSimResult/**/*.csv linguist-vendored
+log/**/*.log linguist-generated
