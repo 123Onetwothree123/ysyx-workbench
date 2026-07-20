@@ -13,7 +13,7 @@ SOC_TOPNAME=ysyxSoCFull
 OBJ_DIR=$(BUILD_DIR)/obj_dir_$(TOPNAME)
 #最后生成的可以执行的文件，给后面的run用的
 BIN=$(BUILD_DIR)/$(TOPNAME)
-VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" ! -name "riscv32e_npc*" ! -name "ysyx_*_npc*" 2>/dev/null | sort) \
+VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" ! -name "riscv32e_npc*" ! -name "ysyx_*_npc*" ! -name "*_yosys*" ! -name "*_merged*" ! -name "*_sv2v*" 2>/dev/null | sort) \
       $(YSYXSOC_FULL_V) \
       $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort) \
       $(shell find $(YSYXSOC_PERIP_DIR) -type f -name "*.v" 2>/dev/null | sort)
@@ -430,8 +430,8 @@ YOSYS_STA_HOME ?= $(abspath $(NPC_HOME)/../yosys-sta)
 SYNTH_FREQ ?= 450
 
 ifeq ($(SIM_TOP),soc)
-SYNTH_DESIGN = ysyxSoCFull
-SYNTH_RTL_FILES = $(abspath $(YSYXSOC_FULL_V)) $(abspath $(BUILD_DIR)/ysyx_26030103.sv) $(foreach f,$(shell find $(YSYXSOC_PERIP_DIR) -name "*.v" 2>/dev/null),$(abspath $f))
+SYNTH_DESIGN = ysyx_26030103
+SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103.sv)
 else
 SYNTH_DESIGN = ysyx_26030103
 SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
