@@ -97,15 +97,9 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/npc.ixx
 
 NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))))
-$(info [verilator-build] NPC_COMPILER=$(NPC_COMPILER) STD_MODULE_SRC=$(STD_MODULE_SRC))
 
 # ============ GCC module compilation ============
 ifeq ($(NPC_COMPILER),gcc)
-
-gcm.cache/std.gcm: $(STD_MODULE_SRC)
-	@mkdir -p gcm.cache
-	$(info Building std module: $(CXX) $(NPC_USER_CXXFLAGS) -x c++ -c $< -o $(STD_MODULE_OBJ))
-	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++ -c $< -o $(STD_MODULE_OBJ)
 
 # Compile import <xxx>; headers as header units
 NPC_HEADER_GCM := $(foreach h,$(NPC_IMPORT_HEADERS),gcm.cache/$(h).gcm)
@@ -114,7 +108,10 @@ $(NPC_HEADER_GCM): gcm.cache/%.gcm:
 	@echo "  CXX HEADER <$*>"
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++-system-header $*
 
-.npc_modules_built: gcm.cache/std.gcm $(NPC_HEADER_GCM) $(NPC_IXX_SRCS)
+.npc_modules_built: $(NPC_HEADER_GCM) $(NPC_IXX_SRCS)
+	@mkdir -p gcm.cache
+	@echo "  CXX MODULE std"
+	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++ -c $(STD_MODULE_SRC) -o $(STD_MODULE_OBJ)
 	@$(foreach src,$(NPC_IXX_SRCS),echo "  CXX MODULE $(notdir $(src))"; $(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++ -c $(src) -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1;)
 	@touch $@
 
