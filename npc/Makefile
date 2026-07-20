@@ -440,9 +440,14 @@ SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
 endif
 
 YOSYS_PP = $(BUILD_DIR)/preprocess_for_yosys
-$(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp
+STD_MODULE_SRC = $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
+$(BUILD_DIR)/gcm.cache/std.gcm: $(STD_MODULE_SRC)
 	@mkdir -p $(@D)
-	$(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -O2 -o $@ $<
+	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) -x c++ -c $< -o std_module.o
+
+$(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/gcm.cache/std.gcm
+	@mkdir -p $(@D)
+	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -O2 -o $(notdir $@) $(abspath $<)
 
 synth: verilog $(YOSYS_PP)
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
@@ -456,7 +461,7 @@ synth: verilog $(YOSYS_PP)
 	@echo $(SYNTH_FREQ) > $(PERF_SYNTH)
 	@SYNTH_STAT="$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz/synth_stat.txt"; \
 	if [ -f "$$SYNTH_STAT" ]; then \
-		awk '/Chip area/ {print $$5}' "$$SYNTH_STAT" >> $(PERF_SYNTH); \
+		awk '/Chip area/ {print $$6}' "$$SYNTH_STAT" >> $(PERF_SYNTH); \
 	else \
 		echo "0" >> $(PERF_SYNTH); \
 	fi
