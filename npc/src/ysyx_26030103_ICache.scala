@@ -4,15 +4,15 @@ import chisel3.util._
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 
 class ysyx_26030103_ICache(
-    blockSizeLog2: Int = 2,
-    indexBits:     Int = 4,
-    addrWidth:     Int = 32
+    BlockSizeLog2: Int = 2,
+    IndexBits:     Int = 4,
+    AddressWidth:  Int = 32
 ) extends Module {
-  val tagBits   = addrWidth - indexBits - blockSizeLog2
-  val numBlocks = 1 << indexBits
+  val TagBits   = AddressWidth - IndexBits - BlockSizeLog2
+  val NumBlocks = 1 << IndexBits
 
   val io = IO(new Bundle {
-    val fetch_addr  = Input(UInt(addrWidth.W))
+    val fetch_addr  = Input(UInt(AddressWidth.W))
     val fetch_valid = Input(Bool())
     val fetch_ready = Output(Bool())
 
@@ -20,7 +20,7 @@ class ysyx_26030103_ICache(
     val resp_valid = Output(Bool())
     val resp_ready = Input(Bool())
 
-    val axi = new ysyx_26030103_AXI5IO(addrWidth)
+    val axi = new ysyx_26030103_AXI5IO(AddressWidth)
 
     val perf_hit        = Output(Bool())
     val perf_miss       = Output(Bool())
@@ -31,24 +31,24 @@ class ysyx_26030103_ICache(
     val access_fault_resp = Output(UInt(2.W))
   })
 
-  val valid = RegInit(VecInit(Seq.fill(numBlocks)(false.B)))
-  val tag   = Reg(Vec(numBlocks, UInt(tagBits.W)))
-  val data  = Reg(Vec(numBlocks, UInt(32.W)))
+  val valid = RegInit(VecInit(Seq.fill(NumBlocks)(false.B)))
+  val tag   = Reg(Vec(NumBlocks, UInt(TagBits.W)))
+  val data  = Reg(Vec(NumBlocks, UInt(32.W)))
 
   val states = Enum(4)
-  val state_Idle       = states(0)
-  val state_RefillReq  = states(1)
-  val state_RefillResp = states(2)
-  val state_Resp       = states(3)
-  val state = RegInit(state_Idle)
+  val state_idle       = states(0)
+  val state_refill_req  = states(1)
+  val state_refill_resp = states(2)
+  val state_resp       = states(3)
+  val state = RegInit(state_idle)
 
-  val index  = io.fetch_addr(indexBits + blockSizeLog2 - 1, blockSizeLog2)
-  val reqTag = io.fetch_addr(addrWidth - 1, indexBits + blockSizeLog2)
+  val index  = io.fetch_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+  val reqTag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
   val hit    = valid(index) && tag(index) === reqTag
 
-  val fetch_addr_reg  = Reg(UInt(addrWidth.W))
-  val fetch_index_reg = Reg(UInt(indexBits.W))
-  val fetch_tag_reg   = Reg(UInt(tagBits.W))
+  val fetch_addr_reg  = Reg(UInt(AddressWidth.W))
+  val fetch_index_reg = Reg(UInt(IndexBits.W))
+  val fetch_tag_reg   = Reg(UInt(TagBits.W))
   val resp_data_reg   = Reg(UInt(32.W))
   val access_fault_reg     = RegInit(false.B)
   val access_fault_resp_reg = RegInit(0.U(2.W))
@@ -83,11 +83,11 @@ class ysyx_26030103_ICache(
   io.resp_data   := 0.U
   io.perf_hit         := false.B
   io.perf_miss        := false.B
-  io.perf_refill_req  := state === state_RefillReq
-  io.perf_refill_resp := state === state_RefillResp
+  io.perf_refill_req  := state === state_refill_req
+  io.perf_refill_resp := state === state_refill_resp
 
   switch(state) {
-    is(state_Idle) {
+    is(state_idle) {
       access_fault_reg     := false.B
       access_fault_resp_reg := 0.U
       io.fetch_ready := true.B
@@ -99,20 +99,20 @@ class ysyx_26030103_ICache(
         fetch_tag_reg   := reqTag
         resp_data_reg   := data(index)
         when(hit) {
-          state := state_Resp
+          state := state_resp
         }.otherwise {
-          state := state_RefillReq
+          state := state_refill_req
         }
       }
     }
-    is(state_RefillReq) {
+    is(state_refill_req) {
       io.axi.AR.ARVALID := true.B
       io.axi.AR.ARADDR  := Cat(fetch_addr_reg(addrWidth - 1, blockSizeLog2), 0.U(blockSizeLog2.W))
       when(io.axi.AR.ARREADY) {
-        state := state_RefillResp
+        state := state_refill_resp
       }
     }
-    is(state_RefillResp) {
+    is(state_refill_resp) {
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RREADY) {
         when(io.axi.R.RRESP =/= 0.U) {
@@ -124,14 +124,14 @@ class ysyx_26030103_ICache(
           data(fetch_index_reg)  := io.axi.R.RDATA
           resp_data_reg          := io.axi.R.RDATA
         }
-        state := state_Resp
+        state := state_resp
       }
     }
-    is(state_Resp) {
+    is(state_resp) {
       io.resp_valid := true.B
       io.resp_data  := resp_data_reg
       when(io.resp_ready) {
-        state := state_Idle
+        state := state_idle
       }
     }
   }
