@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
                 continue;
             }
 
-            static std::regex brace_bit{R"(\{([^}]+)\}\[(\d+):(\d+)\])"};
+            static std::regex brace_bit{R"(\{([^{}]+)\}\[(\d+):(\d+)\])"};
             std::smatch bbm;
             if (std::regex_search(ri, bbm, brace_bit))
             {
@@ -189,7 +189,6 @@ int main(int argc, char *argv[])
                 auto expr{bbm[1].str()};
                 while (!expr.empty() && expr.front() == ' ') expr.erase(0, 1);
                 while (!expr.empty() && expr.back() == ' ') expr.pop_back();
-                if (!expr.empty() && expr.front() == '{') expr.erase(0, 1);
                 wires.push_back(std::format("wire [{}:0] {} = {};", hi - lo, tn, expr));
                 auto repl{std::format("{}[{}:{}]", tn, hi, lo)};
                 cleaned.push_back(std::regex_replace(ri, brace_bit, repl));
