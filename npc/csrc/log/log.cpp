@@ -46,8 +46,8 @@ void log_init() {
 
 void log_close() {
 #ifdef CONFIG_LOG_TO_FILE
-    fflush(stdout);
-    fflush(stderr);
+    std::fflush(std::stdout);
+    std::fflush(std::stderr);
     if (saved_stdout_fd >= 0) {
         dup2(saved_stdout_fd, STDOUT_FILENO);
         close(saved_stdout_fd);
