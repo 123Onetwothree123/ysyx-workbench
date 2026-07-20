@@ -160,7 +160,11 @@ int main(int argc, char *argv[])
                 j++;
                 continue;
             }
-
+            if (std::regex_search(ri, dpi_import))
+            {
+                j++;
+                continue;
+            }
             cleaned.push_back(ml[j]);
             j++;
         }
