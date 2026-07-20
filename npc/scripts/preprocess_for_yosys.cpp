@@ -180,6 +180,7 @@ int main(int argc, char *argv[])
             }
 
             static std::regex brace_bit{R"(\{([^{}]+)\}\[(\d+):(\d+)\])"};
+            static std::regex brace_bit1{R"(\{([^{}]+)\}\[(\d+)\])"};
             std::smatch bbm;
             if (std::regex_search(ri, bbm, brace_bit))
             {
@@ -192,6 +193,22 @@ int main(int argc, char *argv[])
                 wires.push_back(std::format("wire [{}:0] {} = {};", hi - lo, tn, expr));
                 auto repl{std::format("{}[{}:{}]", tn, hi, lo)};
                 cleaned.push_back(std::regex_replace(ri, brace_bit, repl));
+                j++;
+                continue;
+            }
+
+            std::smatch bbm1;
+            if (std::regex_search(ri, bbm1, brace_bit1))
+            {
+                static int tmpcnt{0};
+                int bit{std::stoi(bbm1[2])};
+                auto tn{std::format("_sv2v_t{:04d}", tmpcnt++)};
+                auto expr{bbm1[1].str()};
+                while (!expr.empty() && expr.front() == ' ') expr.erase(0, 1);
+                while (!expr.empty() && expr.back() == ' ') expr.pop_back();
+                wires.push_back(std::format("wire [{}:0] {} = {};", bit, tn, expr));
+                auto repl{std::format("{}[{}]", tn, bit)};
+                cleaned.push_back(std::regex_replace(ri, brace_bit1, repl));
                 j++;
                 continue;
             }
