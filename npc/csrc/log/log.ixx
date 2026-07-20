@@ -13,33 +13,29 @@ export void log_close();
 export void log_write(LogLevel level, std::string_view msg, std::source_location loc);
 
 export template<typename... Args>
-void log_error(std::format_string<Args...> fmt, Args&&... args,
-               const std::source_location loc = std::source_location::current()) {
+void log_error(std::format_string<Args...> fmt, Args&&... args) {
     if constexpr (CURRENT_LOG_LEVEL >= LogLevel::Error) {
-        log_write(LogLevel::Error, std::format(fmt, std::forward<Args>(args)...), loc);
+        log_write(LogLevel::Error, std::format(fmt, std::forward<Args>(args)...), std::source_location::current());
     }
 }
 
 export template<typename... Args>
-void log_warn(std::format_string<Args...> fmt, Args&&... args,
-              const std::source_location loc = std::source_location::current()) {
+void log_warn(std::format_string<Args...> fmt, Args&&... args) {
     if constexpr (CURRENT_LOG_LEVEL >= LogLevel::Warn) {
-        log_write(LogLevel::Warn, std::format(fmt, std::forward<Args>(args)...), loc);
+        log_write(LogLevel::Warn, std::format(fmt, std::forward<Args>(args)...), std::source_location::current());
     }
 }
 
 export template<typename... Args>
-void log_info(std::format_string<Args...> fmt, Args&&... args,
-              const std::source_location loc = std::source_location::current()) {
+void log_info(std::format_string<Args...> fmt, Args&&... args) {
     if constexpr (CURRENT_LOG_LEVEL >= LogLevel::Info) {
-        log_write(LogLevel::Info, std::format(fmt, std::forward<Args>(args)...), loc);
+        log_write(LogLevel::Info, std::format(fmt, std::forward<Args>(args)...), std::source_location::current());
     }
 }
 
 export template<typename... Args>
-void log_debug(std::format_string<Args...> fmt, Args&&... args,
-               const std::source_location loc = std::source_location::current()) {
+void log_debug(std::format_string<Args...> fmt, Args&&... args) {
     if constexpr (CURRENT_LOG_LEVEL >= LogLevel::Debug) {
-        log_write(LogLevel::Debug, std::format(fmt, std::forward<Args>(args)...), loc);
+        log_write(LogLevel::Debug, std::format(fmt, std::forward<Args>(args)...), std::source_location::current());
     }
 }

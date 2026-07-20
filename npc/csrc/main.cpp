@@ -27,16 +27,16 @@ int main(int argc, char const *argv[])
     auto options{CLIOptions::Parse(argc, argv)};
     if (!options)
     {
-        log_error("CLI options parse failed: {}", options.error());
+        std::println(std::cerr, "{}", options.error());
         return 1;
     }
     auto load{ImageLoader::LoadFromCLI(*options)};
     if (!load)
     {
 #ifdef CONFIG_SDB
-        log_warn("未加载镜像文件，进入空 SDB");
+        std::println("未加载镜像文件，进入空 SDB");
 #else
-        log_error("Failed to load image: {}", load.error());
+        std::println(std::cerr, "{}", load.error());
         return 1;
 #endif
     }
@@ -46,7 +46,7 @@ int main(int argc, char const *argv[])
         auto diffResult{DifftestInitialize(options->GetDiffFile(), *load)};
         if (!diffResult)
         {
-            log_error("DiffTest 初始化失败：{}", diffResult.error());
+            std::println(std::cerr, "DiffTest 初始化失败：{}", diffResult.error());
         }
     }
 #endif
@@ -62,7 +62,7 @@ int main(int argc, char const *argv[])
 #endif
         if (dut->trap_valid)
         {
-            log_info("trap了");
+            std::println("trap了");
             const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
         }
