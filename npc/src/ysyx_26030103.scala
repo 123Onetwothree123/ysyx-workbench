@@ -9,8 +9,8 @@ import _root_.ysyx_26030103.ysyx_26030103_GPR._
 class ysyx_26030103(
     resetAddr:      Long = 0x30000000L,
     AddressWidth:   Int  = 32,
-    CacheableBase:  Long = 0x80000000L,
-    CacheableMask:  Long = 0x80000000L
+    CacheableBase:  Long = 0x80000000L, // ysyxsoc default
+    CacheableMask:  Long = 0x80000000L  // ysyxsoc default
 ) extends Module {
   val io = IO(new ysyx_26030103_IO)
   val ifu = Module(new ysyx_26030103_IFU(resetAddr))
