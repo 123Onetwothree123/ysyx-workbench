@@ -54,7 +54,6 @@ int main(int argc, char const *argv[])
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
-    std::println(stderr, "[NPC-DEBUG] entering loop");
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
