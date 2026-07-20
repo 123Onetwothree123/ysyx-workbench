@@ -7,7 +7,11 @@ object ysyx_26030103_Elaborate extends App {
   val targetDir = args(args.indexOf("--target-dir") + 1)
 
   emitVerilog(new ysyx_26030103, Array("--target-dir", targetDir))
-  emitVerilog(new ysyx_26030103(0x80000000L), Array("--target-dir", targetDir))
+  emitVerilog(new ysyx_26030103(
+    resetAddr     = 0x80000000L,
+    CacheableBase = 0x80000000L,
+    CacheableMask = 0xF0000000L
+  ), Array("--target-dir", targetDir))
   Files.move(
     Paths.get(targetDir, "ysyx_26030103.sv"),
     Paths.get(targetDir, "ysyx_26030103_npc.sv"),

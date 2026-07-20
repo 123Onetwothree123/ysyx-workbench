@@ -6,7 +6,12 @@ import chisel3.util._
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 import _root_.ysyx_26030103.ysyx_26030103_GPR._
 
-class ysyx_26030103(resetAddr: Long = 0x30000000L, AddressWidth: Int = 32) extends Module {
+class ysyx_26030103(
+    resetAddr:      Long = 0x30000000L,
+    AddressWidth:   Int  = 32,
+    CacheableBase:  Long = 0x30000000L,
+    CacheableMask:  Long = 0xF0000000L
+) extends Module {
   val io = IO(new ysyx_26030103_IO)
   val ifu = Module(new ysyx_26030103_IFU(resetAddr))
   val idu = Module(new ysyx_26030103_IDU)
@@ -14,7 +19,10 @@ class ysyx_26030103(resetAddr: Long = 0x30000000L, AddressWidth: Int = 32) exten
   val wbu = Module(new ysyx_26030103_WBU)
   val lsu = Module(new ysyx_26030103_LSU)
   val gpr = Module(new ysyx_26030103_GPR)
-  val icache = Module(new ysyx_26030103_ICache)
+  val icache = Module(new ysyx_26030103_ICache(
+    CacheableBase = CacheableBase,
+    CacheableMask = CacheableMask
+  ))
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
