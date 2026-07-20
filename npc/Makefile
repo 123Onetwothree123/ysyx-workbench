@@ -58,6 +58,7 @@ verilog:
 	$(call git_commit, "generate verilog")
 	mkdir -p $(BUILD_DIR)
 	mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
+	ln -sf layers-ysyx_26030103-Verification.sv $(BUILD_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
 
 help:
 	mill -i runMain ysyx_26030103_Elaborate --help
