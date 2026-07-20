@@ -68,10 +68,6 @@ int main(int argc, char const *argv[])
         }
     }
 #endif
-    dut.final();
-#ifdef CONFIG_NVBOARD
-    nvboard_quit();
-#endif
     auto result{NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions())};
 #ifdef CONFIG_PERF_STATS
     NPCTrap::PrintPerformanceStatistics(
@@ -135,6 +131,10 @@ int main(int argc, char const *argv[])
         dut.GetLSUStallWriteBCount(),
         dut.GetICacheHitCount(),
         dut.GetICacheMissCount());
+#endif
+    dut.final();
+#ifdef CONFIG_NVBOARD
+    nvboard_quit();
 #endif
 #ifdef CONFIG_DIFFTEST
     if (result != 0)
