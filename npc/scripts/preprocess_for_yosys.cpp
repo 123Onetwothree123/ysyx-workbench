@@ -7,6 +7,7 @@ int main(int argc, char *argv[])
         std::println(std::cerr, "Usage: {} [input.sv]", argv[0]);
         return 1;
     }
+    std::regex dollar_error_call{R"(\$error\s*\([^)]*\)\s*;)"};
     std::string text;
     {
         std::istream *in{&std::cin};
