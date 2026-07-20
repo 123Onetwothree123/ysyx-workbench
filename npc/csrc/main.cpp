@@ -67,6 +67,7 @@ int main(int argc, char const *argv[])
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
         }
     }
+    std::println("[NPC] loop exited, HasHalted={} gotFinish={}", NPCTrap::HasHalted(), Verilated::gotFinish());
 #endif
     auto result{NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions())};
 #ifdef CONFIG_PERF_STATS
