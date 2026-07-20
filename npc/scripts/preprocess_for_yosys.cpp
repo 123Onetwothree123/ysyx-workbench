@@ -35,7 +35,6 @@ int main(int argc, char *argv[])
     std::regex always_start{R"(^\s*(always|initial)\b)"};
     std::regex dpi_import{R"(^\s*import\s+"DPI-C")"};
     std::regex typedef_line{R"(^\s*typedef\b)"};
-    std::regex verilog_include{R"(^\s*`include\s+)"};
 
     std::vector<std::string> out;
     std::size_t i{0}, n{lines.size()};
@@ -48,11 +47,6 @@ int main(int argc, char *argv[])
             continue;
         }
         if (std::regex_search(lines[i], typedef_line))
-        {
-            i++;
-            continue;
-        }
-        if (std::regex_search(lines[i], verilog_include))
         {
             i++;
             continue;
@@ -180,11 +174,6 @@ int main(int argc, char *argv[])
                 continue;
             }
             if (std::regex_search(ri, typedef_line))
-            {
-                j++;
-                continue;
-            }
-            if (std::regex_search(ri, verilog_include))
             {
                 j++;
                 continue;

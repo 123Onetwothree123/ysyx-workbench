@@ -470,6 +470,7 @@ synth: verilog $(YOSYS_PP)
 		DESIGN=$(SYNTH_DESIGN) \
 		RTL_FILES="$(abspath $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv)" \
 		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
+		VERILOG_INCDIRS="$(abspath $(YSYXSOC_PERIP_DIR))/uart16550/rtl $(abspath $(YSYXSOC_PERIP_DIR))/spi/rtl" \
 		O=$(abspath $(YOSYS_STA_HOME))/result
 	@mkdir -p $(BUILD_DIR)
 	@echo $(SYNTH_FREQ) > $(PERF_SYNTH)
