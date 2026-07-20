@@ -1,7 +1,10 @@
-module;
-#include <cstdio>
 module trace;
 import std;
+
+extern "C" {
+    std::FILE* popen(const char*, const char*);
+    int pclose(std::FILE*);
+}
 
 TraceReader::TraceReader(const std::string& path)
 {
