@@ -403,7 +403,7 @@ ifeq ($(SIM_TOP),soc)
 run: $(BIN)
 	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
 	mkdir -p "$$RESULT_DIR"; \
-	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
+	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" +verilator+no-finish-fatal 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
 else
 run: $(BIN_NPC)
 	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
@@ -485,7 +485,7 @@ perf: synth $(BIN)
 	@echo "[perf] 运行仿真 ..."
 	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
 	mkdir -p "$$RESULT_DIR"; \
-	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
+	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" +verilator+no-finish-fatal 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
 else
 perf: synth $(BIN_NPC)
 	@mkdir -p $(PERF_DIR)
