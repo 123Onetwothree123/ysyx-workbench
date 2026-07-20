@@ -1,6 +1,7 @@
 module npc.log;
 
 #include <unistd.h>
+#include <cstdio>
 
 static std::ofstream log_file;
 static int saved_stdout_fd{-1};
