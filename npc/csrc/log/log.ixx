@@ -1,3 +1,7 @@
+module;
+#include <source_location>
+#include <format>
+
 export module npc.log;
 import std;
 
