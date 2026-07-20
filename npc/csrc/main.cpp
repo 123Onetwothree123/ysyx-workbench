@@ -54,7 +54,6 @@ int main(int argc, char const *argv[])
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
-    int result = 0;
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
@@ -68,13 +67,12 @@ int main(int argc, char const *argv[])
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
         }
     }
-    fprintf(stderr, "[NPC] loop exit: halted=%d gotFinish=%d cycle=%zu\n",
-            NPCTrap::HasHalted(), Verilated::gotFinish(), dut.GetCycle());
-    fflush(stderr);
 #endif
-    result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
-    fprintf(stderr, "[NPC] printResult done, result=%d\n", result);
-    fflush(stderr);
+    dut.final();
+#ifdef CONFIG_NVBOARD
+    nvboard_quit();
+#endif
+    int result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
 #ifdef CONFIG_PERF_STATS
     NPCTrap::PrintPerformanceStatistics(
         dut.GetInstructionFetchCount(),
