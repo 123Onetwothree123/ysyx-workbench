@@ -36,11 +36,11 @@ class ysyx_26030103_ICache(
   val data  = Reg(Vec(numBlocks, UInt(32.W)))
 
   val states = Enum(4)
-  val sIdle       = states(0)
-  val sRefillReq  = states(1)
-  val sRefillResp = states(2)
-  val sResp       = states(3)
-  val state = RegInit(sIdle)
+  val state_Idle       = states(0)
+  val state_RefillReq  = states(1)
+  val state_RefillResp = states(2)
+  val state_Resp       = states(3)
+  val state = RegInit(state_Idle)
 
   val index  = io.fetch_addr(indexBits + blockSizeLog2 - 1, blockSizeLog2)
   val reqTag = io.fetch_addr(addrWidth - 1, indexBits + blockSizeLog2)
@@ -83,11 +83,11 @@ class ysyx_26030103_ICache(
   io.resp_data   := 0.U
   io.perf_hit         := false.B
   io.perf_miss        := false.B
-  io.perf_refill_req  := state === sRefillReq
-  io.perf_refill_resp := state === sRefillResp
+  io.perf_refill_req  := state === state_RefillReq
+  io.perf_refill_resp := state === state_RefillResp
 
   switch(state) {
-    is(sIdle) {
+    is(state_Idle) {
       access_fault_reg     := false.B
       access_fault_resp_reg := 0.U
       io.fetch_ready := true.B
@@ -99,20 +99,20 @@ class ysyx_26030103_ICache(
         fetch_tag_reg   := reqTag
         resp_data_reg   := data(index)
         when(hit) {
-          state := sResp
+          state := state_Resp
         }.otherwise {
-          state := sRefillReq
+          state := state_RefillReq
         }
       }
     }
-    is(sRefillReq) {
+    is(state_RefillReq) {
       io.axi.AR.ARVALID := true.B
       io.axi.AR.ARADDR  := Cat(fetch_addr_reg(addrWidth - 1, blockSizeLog2), 0.U(blockSizeLog2.W))
       when(io.axi.AR.ARREADY) {
-        state := sRefillResp
+        state := state_RefillResp
       }
     }
-    is(sRefillResp) {
+    is(state_RefillResp) {
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RREADY) {
         when(io.axi.R.RRESP =/= 0.U) {
@@ -124,14 +124,14 @@ class ysyx_26030103_ICache(
           data(fetch_index_reg)  := io.axi.R.RDATA
           resp_data_reg          := io.axi.R.RDATA
         }
-        state := sResp
+        state := state_Resp
       }
     }
-    is(sResp) {
+    is(state_Resp) {
       io.resp_valid := true.B
       io.resp_data  := resp_data_reg
       when(io.resp_ready) {
-        state := sIdle
+        state := state_Idle
       }
     }
   }
