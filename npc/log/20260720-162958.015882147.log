@@ -1,0 +1,3 @@
+%Error: COMMAND_LINE:0: Unknown runtime argument: +verilator+no-finish-fatal
+Aborting...
+terminate called without an active exception

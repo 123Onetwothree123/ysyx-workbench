@@ -68,6 +68,9 @@ int main(int argc, char const *argv[])
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
         }
     }
+    fprintf(stderr, "[NPC] loop exit: halted=%d gotFinish=%d cycle=%zu\n",
+            NPCTrap::HasHalted(), Verilated::gotFinish(), dut.GetCycle());
+    fflush(stderr);
 #endif
     dut.final();
 #ifdef CONFIG_NVBOARD
