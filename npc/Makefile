@@ -458,9 +458,15 @@ $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
 	cd $(BUILD_DIR) && $(CXX) -std=c++23 -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
 endif
 
+SV2V = sv2v
+
 synth: verilog $(YOSYS_PP)
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
-	@$(YOSYS_PP) $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
+	@if command -v $(SV2V) >/dev/null 2>&1; then \
+		cat $(SYNTH_RTL_FILES) | $(SV2V) | $(YOSYS_PP) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv; \
+	else \
+		$(YOSYS_PP) $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv; \
+	fi
 	@$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		DESIGN=$(SYNTH_DESIGN) \
 		RTL_FILES="$(abspath $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv)" \
