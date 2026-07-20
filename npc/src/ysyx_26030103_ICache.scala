@@ -107,7 +107,7 @@ class ysyx_26030103_ICache(
     }
     is(state_refill_req) {
       io.axi.AR.ARVALID := true.B
-      io.axi.AR.ARADDR  := Cat(fetch_addr_reg(addrWidth - 1, blockSizeLog2), 0.U(blockSizeLog2.W))
+      io.axi.AR.ARADDR  := Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W))
       when(io.axi.AR.ARREADY) {
         state := state_refill_resp
       }
