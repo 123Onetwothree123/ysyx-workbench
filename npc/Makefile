@@ -462,10 +462,11 @@ SV2V = sv2v
 
 synth: verilog $(YOSYS_PP)
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
-	@if command -v $(SV2V) >/dev/null 2>&1; then \
-		cat $(SYNTH_RTL_FILES) | $(SV2V) | $(YOSYS_PP) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv; \
+	@cat $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_merged.sv
+	@if $(SV2V) $(BUILD_DIR)/$(SYNTH_DESIGN)_merged.sv > $(BUILD_DIR)/$(SYNTH_DESIGN)_sv2v.sv 2>/dev/null; then \
+		$(YOSYS_PP) $(BUILD_DIR)/$(SYNTH_DESIGN)_sv2v.sv > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv; \
 	else \
-		$(YOSYS_PP) $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv; \
+		$(YOSYS_PP) $(BUILD_DIR)/$(SYNTH_DESIGN)_merged.sv > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv; \
 	fi
 	@$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		DESIGN=$(SYNTH_DESIGN) \
