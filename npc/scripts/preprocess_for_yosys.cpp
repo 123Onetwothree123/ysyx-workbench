@@ -32,6 +32,7 @@ int main(int argc, char *argv[])
     std::regex mod_end{R"(^\s*endmodule\b)"};
     std::regex always_start{R"(^\s*(always|initial)\b)"};
     std::regex dpi_import{R"(^\s*import\s+"DPI-C")"};
+    std::regex typedef_line{R"(^\s*typedef\b)"};
 
     std::vector<std::string> out;
     std::size_t i{0}, n{lines.size()};
@@ -39,6 +40,11 @@ int main(int argc, char *argv[])
     while (i < n)
     {
         if (std::regex_search(lines[i], dpi_import))
+        {
+            i++;
+            continue;
+        }
+        if (std::regex_search(lines[i], typedef_line))
         {
             i++;
             continue;
@@ -161,6 +167,11 @@ int main(int argc, char *argv[])
                 continue;
             }
             if (std::regex_search(ri, dpi_import))
+            {
+                j++;
+                continue;
+            }
+            if (std::regex_search(ri, typedef_line))
             {
                 j++;
                 continue;
