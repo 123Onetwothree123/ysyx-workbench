@@ -97,12 +97,14 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/npc.ixx
 
 NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))))
+$(info [verilator-build] NPC_COMPILER=$(NPC_COMPILER) STD_MODULE_SRC=$(STD_MODULE_SRC))
 
 # ============ GCC module compilation ============
 ifeq ($(NPC_COMPILER),gcc)
 
 gcm.cache/std.gcm: $(STD_MODULE_SRC)
 	@mkdir -p gcm.cache
+	$(info Building std module: $(CXX) $(NPC_USER_CXXFLAGS) -x c++ -c $< -o $(STD_MODULE_OBJ))
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++ -c $< -o $(STD_MODULE_OBJ)
 
 # Compile import <xxx>; headers as header units
