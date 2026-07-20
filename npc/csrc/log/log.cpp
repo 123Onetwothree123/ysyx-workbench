@@ -49,6 +49,7 @@ void log_write(LogLevel level, std::string_view msg, std::source_location loc) {
 #ifdef CONFIG_LOG_TO_FILE
     if (log_file.is_open()) {
         std::println(log_file, "{}", line);
+        log_file.flush();
     }
 #endif
 }
