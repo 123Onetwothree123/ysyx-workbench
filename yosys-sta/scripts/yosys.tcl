@@ -184,7 +184,8 @@ foreach file $VERILOG_FILES {
   if {$VERILOG_INCLUDE_DIRS ne ""} {
     set cmd [list read_verilog -sv]
     foreach d $VERILOG_INCLUDE_DIRS {
-      lappend cmd "-I$d"
+      lappend cmd "-I"
+      lappend cmd $d
     }
     lappend cmd $file
     {*}$cmd
