@@ -22,8 +22,4 @@ public:
     void PrintAllWatchpoints(const EvaluationContext &context) const;
 };
 
-export inline WatchpointPool &GetGlobalWatchpointPool()
-{
-    static WatchpointPool GlobalWatchpointPool;
-    return GlobalWatchpointPool;
-}
+export WatchpointPool &GetGlobalWatchpointPool();

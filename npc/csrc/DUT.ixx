@@ -55,33 +55,33 @@ public:
     void reset();
     std::size_t GetCycle() const;
     std::size_t GetInstructions() const;
-    std::size_t GetInstructionFetchCount() const { return instruction_fetch_count; }
-    std::size_t GetExecutionCompleteCount() const { return execution_complete_count; }
-    std::size_t GetLoadDataCount() const { return load_data_count; }
-    std::size_t GetStoreDataCount() const { return store_data_count; }
-    std::size_t GetArithmeticOperationCount() const { return arithmetic_operation_count; }
-    std::size_t GetMemoryAccessOperationCount() const { return memory_access_operation_count; }
-    std::size_t GetControlStatusRegisterOperationCount() const { return control_status_register_operation_count; }
-    std::size_t GetBranchOperationCount() const { return branch_operation_count; }
-    std::size_t GetInstructionFetchStallPipelineCount() const { return instruction_fetch_stall_pipeline_count; }
-    std::size_t GetInstructionFetchStallAXICount() const { return instruction_fetch_stall_axi_count; }
-    std::size_t GetInstructionFetchStallARCount() const { return instruction_fetch_stall_ar_count; }
-    std::size_t GetInstructionFetchStallRCount() const { return instruction_fetch_stall_r_count; }
-    std::size_t GetInstructionFetchStallRedirectCount() const { return instruction_fetch_stall_redirect_count; }
-    std::size_t GetInstructionFetchStallIdleCount() const { return instruction_fetch_stall_idle_count; }
-    std::size_t GetExecutionActiveCycleCount() const { return execution_active_cycle_count; }
-    std::size_t GetEXUStallLSUCount() const { return exu_stall_lsu_count; }
-    std::size_t GetArithmeticOperationActiveCycleCount() const { return arithmetic_operation_active_cycle_count; }
-    std::size_t GetMemoryAccessOperationActiveCycleCount() const { return memory_access_operation_active_cycle_count; }
-    std::size_t GetControlStatusRegisterOperationActiveCycleCount() const { return control_status_register_operation_active_cycle_count; }
-    std::size_t GetBranchOperationActiveCycleCount() const { return branch_operation_active_cycle_count; }
-    std::size_t GetLoadStoreUnitActiveCycleCount() const { return load_store_unit_active_cycle_count; }
-    std::size_t GetLoadStoreUnitLoadActiveCycleCount() const { return load_store_unit_load_active_cycle_count; }
-    std::size_t GetLoadStoreUnitStoreActiveCycleCount() const { return load_store_unit_store_active_cycle_count; }
-    std::size_t GetLSUStallReadARCount() const { return lsu_stall_read_ar_count; }
-    std::size_t GetLSUStallReadRCount() const { return lsu_stall_read_r_count; }
-    std::size_t GetLSUStallWriteReqCount() const { return lsu_stall_write_req_count; }
-    std::size_t GetLSUStallWriteBCount() const { return lsu_stall_write_b_count; }
+    std::size_t GetInstructionFetchCount() const;
+    std::size_t GetExecutionCompleteCount() const;
+    std::size_t GetLoadDataCount() const;
+    std::size_t GetStoreDataCount() const;
+    std::size_t GetArithmeticOperationCount() const;
+    std::size_t GetMemoryAccessOperationCount() const;
+    std::size_t GetControlStatusRegisterOperationCount() const;
+    std::size_t GetBranchOperationCount() const;
+    std::size_t GetInstructionFetchStallPipelineCount() const;
+    std::size_t GetInstructionFetchStallAXICount() const;
+    std::size_t GetInstructionFetchStallARCount() const;
+    std::size_t GetInstructionFetchStallRCount() const;
+    std::size_t GetInstructionFetchStallRedirectCount() const;
+    std::size_t GetInstructionFetchStallIdleCount() const;
+    std::size_t GetExecutionActiveCycleCount() const;
+    std::size_t GetEXUStallLSUCount() const;
+    std::size_t GetArithmeticOperationActiveCycleCount() const;
+    std::size_t GetMemoryAccessOperationActiveCycleCount() const;
+    std::size_t GetControlStatusRegisterOperationActiveCycleCount() const;
+    std::size_t GetBranchOperationActiveCycleCount() const;
+    std::size_t GetLoadStoreUnitActiveCycleCount() const;
+    std::size_t GetLoadStoreUnitLoadActiveCycleCount() const;
+    std::size_t GetLoadStoreUnitStoreActiveCycleCount() const;
+    std::size_t GetLSUStallReadARCount() const;
+    std::size_t GetLSUStallReadRCount() const;
+    std::size_t GetLSUStallWriteReqCount() const;
+    std::size_t GetLSUStallWriteBCount() const;
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();

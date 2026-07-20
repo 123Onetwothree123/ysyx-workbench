@@ -26,3 +26,10 @@ out/
 .idea/
 .idea_modules/
 test_run_dir/
+
+# 性能记录需要纳入版本管理
+!NPCSimResult/
+!NPCSimResult/**/*
+!log/
+!log/**/*
+!*.csv

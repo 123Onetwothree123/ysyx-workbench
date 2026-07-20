@@ -1,6 +1,12 @@
 module npc.sdb.command.WatchpointPool;
 import npc.sdb.TablePrinter;
 
+WatchpointPool &GetGlobalWatchpointPool()
+{
+    static WatchpointPool GlobalWatchpointPool;
+    return GlobalWatchpointPool;
+}
+
 WatchpointPool::WatchpointPool(std::size_t InputMaxWatchpoints)
     : watchpoints(InputMaxWatchpoints)
 {
