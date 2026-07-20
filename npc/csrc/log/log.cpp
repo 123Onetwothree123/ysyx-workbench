@@ -1,6 +1,7 @@
 module npc.log;
 
 import <unistd.h>;
+import <cstdio>;
 
 static std::ofstream log_file;
 static int saved_stdout_fd{-1};
@@ -46,8 +47,8 @@ void log_init() {
 
 void log_close() {
 #ifdef CONFIG_LOG_TO_FILE
-    std::fflush(std::stdout);
-    std::fflush(std::stderr);
+    fflush(stdout);
+    fflush(stderr);
     if (saved_stdout_fd >= 0) {
         dup2(saved_stdout_fd, STDOUT_FILENO);
         close(saved_stdout_fd);
