@@ -189,6 +189,11 @@ int main(int argc, char *argv[])
                 j++;
                 continue;
             }
+            if (std::regex_search(ri, verilog_include))
+            {
+                j++;
+                continue;
+            }
 
             static std::regex brace_bit{R"(\{([^{}]+)\}\[(\d+):(\d+)\])"};
             static std::regex brace_bit1{R"(\{([^{}]+)\}\[(\d+)\])"};

@@ -462,7 +462,17 @@ SV2V = sv2v
 
 synth: verilog $(YOSYS_PP)
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
-	@cat $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_merged.sv
+	@{ \
+		files="$(SYNTH_RTL_FILES)"; \
+		defs=; rest=; \
+		for f in $$files; do \
+			case "$$f" in \
+				*defines*|*defs*) defs="$$defs $$f";; \
+				*) rest="$$rest $$f";; \
+			esac; \
+		done; \
+		cat $$defs $$rest > $(BUILD_DIR)/$(SYNTH_DESIGN)_merged.sv; \
+	}
 	@$(SV2V) $(BUILD_DIR)/$(SYNTH_DESIGN)_merged.sv > $(BUILD_DIR)/$(SYNTH_DESIGN)_sv2v.sv 2>/dev/null && \
 		$(YOSYS_PP) $(BUILD_DIR)/$(SYNTH_DESIGN)_sv2v.sv > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv || \
 		$(YOSYS_PP) $(BUILD_DIR)/$(SYNTH_DESIGN)_merged.sv > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
