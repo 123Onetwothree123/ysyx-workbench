@@ -118,7 +118,7 @@ NPC_CLANG_MODULE_FLAGS := -fprebuilt-module-path=$(NPC_PCM_DIR) -Wno-reserved-mo
 
 $(NPC_PCM_DIR)/std.pcm: $(STD_MODULE_SRC)
 	@mkdir -p $(NPC_PCM_DIR)
-	$(CXX) $(NPC_STD_FLAG) -x c++-module --precompile $< -o $@
+	$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) -x c++-module --precompile $< -o $@
 
 $(STD_MODULE_OBJ): $(NPC_PCM_DIR)/std.pcm
 	@$(CXX) $(NPC_STD_FLAG) -c $< -o $@
@@ -134,7 +134,7 @@ $(NPC_HEADER_PCM): $(NPC_PCM_DIR)/%.pcm:
 	@$(foreach src,$(NPC_IXX_SRCS),\
 		MOD_NAME=$$(grep -oP '(?<=export module )\S+(?=;)' $(src)); \
 		echo "  CXX MODULE $(notdir $(src)) [$$MOD_NAME]"; \
-		$(CXX) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) -x c++-module --precompile $(src) -o $(NPC_PCM_DIR)/$$MOD_NAME.pcm || exit 1; \
+		$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) -x c++-module --precompile $(src) -o $(NPC_PCM_DIR)/$$MOD_NAME.pcm || exit 1; \
 		$(CXX) $(NPC_STD_FLAG) -c $(NPC_CLANG_MODULE_FLAGS) $(NPC_PCM_DIR)/$$MOD_NAME.pcm -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1; \
 	)
 	@touch $@
