@@ -36,6 +36,8 @@ int main(int argc, char *argv[])
     std::regex dpi_import{R"(^\s*import\s+"DPI-C")"};
     std::regex typedef_line{R"(^\s*typedef\b)"};
     std::regex verilog_include{R"(^\s*`include\s+)"};
+    std::regex ifndef_synth{R"(`ifndef\s+SYNTHESIS)"};
+    std::regex endif_synth{R"(`endif\s+.*SYNTHESIS)"};
 
     std::vector<std::string> out;
     std::size_t i{0}, n{lines.size()};
@@ -53,6 +55,16 @@ int main(int argc, char *argv[])
             continue;
         }
         if (std::regex_search(lines[i], verilog_include))
+        {
+            i++;
+            continue;
+        }
+        if (std::regex_search(lines[i], ifndef_synth))
+        {
+            i++;
+            continue;
+        }
+        if (std::regex_search(lines[i], endif_synth))
         {
             i++;
             continue;
@@ -189,7 +201,12 @@ int main(int argc, char *argv[])
                 j++;
                 continue;
             }
-            if (std::regex_search(ri, verilog_include))
+            if (std::regex_search(ri, ifndef_synth))
+            {
+                j++;
+                continue;
+            }
+            if (std::regex_search(ri, endif_synth))
             {
                 j++;
                 continue;
