@@ -5,9 +5,14 @@ import java.nio.file.{Files, Paths, StandardCopyOption}
 
 object ysyx_26030103_Elaborate extends App {
   val targetDir = args(args.indexOf("--target-dir") + 1)
+  val firtoolOpts = Array(
+    "--target-dir", targetDir,
+    "--lowering-options=disallowLocalVariables,disallowPackedArrays",
+    "--verilog"
+  )
 
-  emitVerilog(new ysyx_26030103, Array("--target-dir", targetDir))
-  emitVerilog(new ysyx_26030103(0x80000000L), Array("--target-dir", targetDir))
+  emitVerilog(new ysyx_26030103, firtoolOpts)
+  emitVerilog(new ysyx_26030103(0x80000000L), firtoolOpts)
   Files.move(
     Paths.get(targetDir, "ysyx_26030103.sv"),
     Paths.get(targetDir, "ysyx_26030103_npc.sv"),

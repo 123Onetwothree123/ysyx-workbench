@@ -22,7 +22,7 @@ init:
 syn: $(NETLIST_SYN_V)
 $(NETLIST_SYN_V): $(RTL_FILES) $(SCRIPT_DIR)/yosys.tcl
 	mkdir -p $(@D)
-	echo tcl $(SCRIPT_DIR)/yosys.tcl $(DESIGN) $(PDK) \"$(RTL_FILES)\" $@ $(VERILOG_INCDIRS) | yosys -g -l $(@D)/yosys.log -s -
+	echo tcl $(SCRIPT_DIR)/yosys.tcl $(DESIGN) $(PDK) \"$(RTL_FILES)\" $@ $(VERILOG_INCDIRS) | yosys -g $(addprefix -I,$(VERILOG_INCDIRS)) -l $(@D)/yosys.log -s -
 
 sta: $(TIMING_RPT)
 $(TIMING_RPT): $(SCRIPT_DIR)/sta.tcl $(SDC_FILE) $(NETLIST_SYN_V)
