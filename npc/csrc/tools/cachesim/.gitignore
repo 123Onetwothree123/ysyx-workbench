@@ -1,0 +1,8 @@
+build/
+include/config/
+include/generated/
+.config
+.config.old
+gcm.cache/
+pcm_cache/
+*.o
