@@ -43,14 +43,12 @@ class riscv32e_npc_AXIRAM extends Module {
         arAddr := io.axi.AR.ARADDR
         state  := sReadWait
         txn := txn + 1.U
-        printf(cf"RAM RD $txn @0x${Hexadecimal(io.axi.AR.ARADDR)}\n")
       }.elsewhen (io.axi.AW.AWVALID && io.axi.W.WVALID) {
         awAddr := io.axi.AW.AWADDR
         wData  := io.axi.W.WDATA
         wStrb  := io.axi.W.WSTRB
         state  := sWriteResp
         txn := txn + 1.U
-        printf(cf"RAM WR $txn @0x${Hexadecimal(io.axi.AW.AWADDR)} =0x${Hexadecimal(io.axi.W.WDATA)}\n")
       }
     }
     is (sReadWait) {
@@ -230,6 +228,10 @@ class riscv32e_npc_SimTop extends Module {
   perf_lsu_stall_write_req := cpu.io.perf_lsu_stall_write_req
   val perf_lsu_stall_write_b = IO(Output(Bool()))
   perf_lsu_stall_write_b := cpu.io.perf_lsu_stall_write_b
+  val perf_icache_hit = IO(Output(Bool()))
+  perf_icache_hit := cpu.io.perf_icache_hit
+  val perf_icache_miss = IO(Output(Bool()))
+  perf_icache_miss := cpu.io.perf_icache_miss
 
   val cyc = RegInit(0.U(32.W))
   cyc := cyc + 1.U
