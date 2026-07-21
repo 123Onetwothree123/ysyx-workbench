@@ -46,54 +46,15 @@ class AXI4ToAPB(val aFlow: Boolean = true)(implicit p: Parameters) extends LazyM
     (node.in zip node.out) foreach { case ((in, edgeIn), (out, edgeOut)) =>
       val (ar, r, aw, w, b) = (in.ar, in.r, in.aw, in.w, in.b)
 
-      val s_idle :: s_wait_aw :: s_wait_w :: s_inflight :: s_wait_rready_bready :: Nil = Enum(5)
+      val s_idle :: s_inflight :: s_wait_rready_bready :: Nil = Enum(3)
       val state = RegInit(s_idle)
-      val accept_read    = (state === s_idle) && ar.valid
-      val accept_aw      = (state === s_idle) && aw.valid && !ar.valid
-      val accept_w_first = (state === s_wait_aw) && w.valid
-      val accept_w_after = (state === s_idle) && w.valid && !aw.valid && !ar.valid
-      val accept_aw_after = (state === s_wait_w) && aw.valid
-      val accept_write_reg = RegInit(false.B)
-      val aw_done          = RegInit(false.B)
-      val w_done           = RegInit(false.B)
-      val is_write = accept_aw || accept_aw_after || (aw_done && !w_done) || (aw_done && w_done)
+      val accept_read = (state === s_idle) && ar.valid
+      val accept_write = !accept_read && (state === s_idle) && aw.valid && w.valid
+      val is_write = accept_write holdUnless (state === s_idle)
       switch (state) {
-        is (s_idle) {
-          accept_write_reg := false.B
-          aw_done := false.B
-          w_done  := false.B
-          when(accept_read) {
-            state := s_inflight
-          }.elsewhen(accept_aw) {
-            aw_done := true.B
-            state := s_wait_aw
-          }.elsewhen(accept_w_after) {
-            w_done := true.B
-            state := s_wait_w
-          }
-        }
-        is (s_wait_aw) {
-          when(w.valid) {
-            w_done := true.B
-            accept_write_reg := true.B
-            state := s_inflight
-          }
-        }
-        is (s_wait_w) {
-          when(aw.valid) {
-            aw_done := true.B
-            accept_write_reg := true.B
-            state := s_inflight
-          }
-        }
-        is (s_inflight) {
-          aw_done := false.B
-          w_done := false.B
-          state := Mux(out.pready, Mux(r.fire || b.fire, s_idle, s_wait_rready_bready), s_inflight)
-        }
-        is (s_wait_rready_bready) {
-          state := Mux(r.fire || b.fire, s_idle, s_wait_rready_bready)
-        }
+        is (s_idle)     { state := Mux(ar.valid || (aw.valid && w.valid), s_inflight, s_idle) }
+        is (s_inflight) { state := Mux(out.pready, Mux(r.fire || b.fire, s_idle, s_wait_rready_bready), s_inflight) }
+        is (s_wait_rready_bready) { state := Mux(r.fire || b.fire, s_idle, s_wait_rready_bready) }
       }
 
       // burst is not supported
@@ -104,13 +65,13 @@ class AXI4ToAPB(val aFlow: Boolean = true)(implicit p: Parameters) extends LazyM
       assert(!(aw.valid && aw.bits.size > "b10".U))
 
       val rid_reg    = RegEnable(ar.bits.id, accept_read)
-      val bid_reg    = RegEnable(aw.bits.id, accept_aw || accept_aw_after)
+      val bid_reg    = RegEnable(aw.bits.id, accept_write)
       val araddr_reg = ar.bits.addr holdUnless accept_read
-      val awaddr_reg = aw.bits.addr holdUnless (accept_aw || accept_aw_after)
-      val wdata_reg  =  w.bits.data holdUnless (accept_w_first || accept_w_after)
-      val wstrb_reg  =  w.bits.strb holdUnless (accept_w_first || accept_w_after)
+      val awaddr_reg = aw.bits.addr holdUnless accept_write
+      val wdata_reg  =  w.bits.data holdUnless accept_write
+      val wstrb_reg  =  w.bits.strb holdUnless accept_write
 
-      out.psel    := (accept_read || accept_write_reg) || out.penable
+      out.psel    := (accept_read || accept_write) || out.penable
       out.penable := state === s_inflight
       out.pwrite  := is_write
       out.paddr   := Mux(is_write, awaddr_reg, araddr_reg)
@@ -119,8 +80,8 @@ class AXI4ToAPB(val aFlow: Boolean = true)(implicit p: Parameters) extends LazyM
       out.pstrb   := Mux(is_write, wstrb_reg, 0.U)
 
       ar.ready := accept_read
-      w.ready  := accept_w_first || accept_w_after
-      aw.ready := accept_aw || accept_aw_after
+      w.ready  := accept_write
+      aw.ready := accept_write
 
       val resp = Mux(out.pslverr, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
       val resp_hold = resp holdUnless (state === s_inflight)

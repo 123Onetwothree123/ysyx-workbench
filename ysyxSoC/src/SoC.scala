@@ -92,7 +92,7 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     lvga.node
   ).map(_ := apbxbar)
   List(
-    apbxbar := APBDelayer() := AXI4ToAPB(),
+    apbxbar := APBDelayer() := AXI4ToAPB() := AXI4Buffer(),
     lmrom.node,
     sramNode
   ).map(_ := xbar2)
