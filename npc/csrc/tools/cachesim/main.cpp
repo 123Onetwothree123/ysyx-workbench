@@ -59,8 +59,9 @@ void dse_run(const char* trace_path)
     std::filesystem::create_directories(dir);
 
     auto result_path = std::format("{}/result.csv", dir);
-    auto fp = std::ofstream(result_path);
-
+    auto fp = std::ofstream(result_path, std::ios::binary);
+    // UTF-8 BOM
+    fp << "\xEF\xBB\xBF";
     fp << "块大小,块总数,相联度,替换策略,总访问,命中,缺失,强制缺失,容量缺失,冲突缺失,命中率\n";
 
     for (const auto& r : results) {
