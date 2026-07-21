@@ -80,11 +80,11 @@ class ysyx_26030103_AXI5Arbiter extends Module {
       when(LSUWriteRequest) {
         grant := GrantLSU
         state := StatesWriteRequest
-      }.elsewhen(IFUReadRequest) {
-        grant := GrantIFU
-        state := StatesReadRequest
       }.elsewhen(LSUReadRequest) {
         grant := GrantLSU
+        state := StatesReadRequest
+      }.elsewhen(IFUReadRequest) {
+        grant := GrantIFU
         state := StatesReadRequest
       }
     }
