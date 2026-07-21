@@ -85,7 +85,6 @@ module axi4_delayer(
   assign out_araddr = in_araddr;
   assign out_arlen = in_arlen;
   assign out_arsize = in_arsize;
-  assign out_arburst = in_arburst;
   assign out_rready = in_rready;
   assign in_rvalid = out_rvalid;
   assign in_rid = out_rid;
