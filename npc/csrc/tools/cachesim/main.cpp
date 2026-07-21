@@ -49,11 +49,12 @@ void dse_run(const char* trace_path)
 
     auto results = run_dse(trace_path, block_sizes, num_blocks_list, ways_list, repl_list);
 
-    // 生成结果目录 TestResult/时间戳/
+    // 生成结果目录 cachesim/TestResult/时间戳/
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     auto tm = *std::localtime(&time_t);
-    auto dir = std::format("TestResult/{:04}{:02}{:02}-{:02}{:02}{:02}",
+    auto dir = std::format("{}/TestResult/{:04}{:02}{:02}-{:02}{:02}{:02}",
+        CACHESIM_DIR,
         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     std::filesystem::create_directories(dir);
 
