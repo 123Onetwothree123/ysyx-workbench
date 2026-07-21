@@ -122,6 +122,7 @@ class ysyx_26030103_ICache(
           access_fault_reg := true.B
           access_fault_resp_reg := io.axi.R.RRESP
         }.otherwise {
+          resp_data_reg := io.axi.R.RDATA
           when(cacheable_reg) {
             valid(fetch_index_reg) := true.B
             tag(fetch_index_reg)   := fetch_tag_reg
