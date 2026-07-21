@@ -39,3 +39,4 @@
 #define CONFIG_LOG_DIR "log"
 #define CONFIG_CC_O3 1
 #define CONFIG_SIM_THREADS 1
+#define CONFIG_MTRACE 1
