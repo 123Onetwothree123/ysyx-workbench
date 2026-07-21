@@ -41,8 +41,8 @@ void single_run(CacheConfig config, const char* trace_path)
 
 void dse_run(const char* trace_path)
 {
-    const unsigned block_sizes[] = {4, 8, 16, 32};
-    const unsigned num_blocks_list[] = {16, 32, 64, 128};
+    const unsigned block_sizes[] = {4, 8, 16, 32, 64, 128};
+    const unsigned num_blocks_list[] = {4, 8, 16, 32, 64, 128, 256, 512};
     const unsigned ways_list[] = {1, 2, 4, 8};
     const unsigned repl_list[] = {0, 1, 2}; // fifo, lru, random
     const char* repl_names[] = {"fifo", "lru", "random"};
