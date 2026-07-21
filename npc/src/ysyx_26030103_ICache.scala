@@ -142,8 +142,10 @@ class ysyx_26030103_ICache(
     }
     is(state_resp) {
       io.resp_valid := true.B
-      io.resp_data := Mux(cacheable_reg && !access_fault_reg,
-        data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
+      io.resp_data := Mux(cacheable_reg && fetch_offset_reg === refill_cnt,
+        resp_data_reg,
+        Mux(cacheable_reg && !access_fault_reg,
+          data(fetch_index_reg)(fetch_offset_reg), resp_data_reg))
       when(io.resp_ready) {
         state := state_idle
       }

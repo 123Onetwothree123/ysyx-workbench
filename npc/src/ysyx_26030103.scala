@@ -20,8 +20,7 @@ class ysyx_26030103(
   val lsu = Module(new ysyx_26030103_LSU)
   val gpr = Module(new ysyx_26030103_GPR)
   val icache = Module(new ysyx_26030103_ICache(
-    BlockSizeLog2 = 4,
-    CacheableBase = CacheableBase,
+    BlockSizeLog2 = 4, CacheableBase = CacheableBase,
     CacheableMask = CacheableMask
   ))
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
