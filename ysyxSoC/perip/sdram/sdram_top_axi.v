@@ -52,46 +52,119 @@ module sdram_top_axi(
   inout  [15:0] sdram_dq_1
 );
 
+  // === AXI → Core state machine ===
+  localparam ST_IDLE       = 3'd0;
+  localparam ST_WRITE_REQ  = 3'd1;
+  localparam ST_WRITE_ACK  = 3'd2;
+  localparam ST_READ_REQ   = 3'd3;
+  localparam ST_READ_ACK   = 3'd4;
+  reg [2:0] state;
+
+  reg [31:0] awaddr_reg;
+  reg [3:0]  awid_reg;
+  reg [31:0] wdata_reg;
+  reg [3:0]  wstrb_reg;
+  reg [3:0]  arid_reg;
+  reg [31:0] araddr_reg;
+
+  wire       core_accept;
+  wire       core_ack;
+  wire       core_error;
+  wire [31:0] core_rdata;
+
+  // capture AW
+  wire aw_fire = in_awvalid && in_awready;
+  wire w_fire  = in_wvalid  && in_wready;
+  wire ar_fire = in_arvalid && in_arready;
+
+  wire has_write = (state == ST_IDLE) && in_awvalid && in_wvalid;
+  wire has_read  = (state == ST_IDLE) && in_arvalid && !has_write;
+
+  // AXI ready signals
+  assign in_awready = (state == ST_IDLE) && in_wvalid;
+  assign in_wready  = (state == ST_IDLE) && in_awvalid;
+  assign in_arready = (state == ST_IDLE) && !has_write;
+
+  always @(posedge clock) begin
+    if (reset) begin
+      state <= ST_IDLE;
+    end else begin
+      case (state)
+        ST_IDLE: begin
+          if (has_write) begin
+            awaddr_reg <= in_awaddr;
+            awid_reg   <= in_awid;
+            wdata_reg  <= in_wdata;
+            wstrb_reg  <= in_wstrb;
+            state <= ST_WRITE_REQ;
+          end else if (has_read) begin
+            araddr_reg <= in_araddr;
+            arid_reg   <= in_arid;
+            state <= ST_READ_REQ;
+          end
+        end
+        ST_WRITE_REQ: begin
+          if (core_accept)
+            state <= ST_WRITE_ACK;
+        end
+        ST_WRITE_ACK: begin
+          if (core_ack)
+            state <= ST_IDLE;
+        end
+        ST_READ_REQ: begin
+          if (core_accept)
+            state <= ST_READ_ACK;
+        end
+        ST_READ_ACK: begin
+          if (core_ack)
+            state <= ST_IDLE;
+        end
+        default: state <= ST_IDLE;
+      endcase
+    end
+  end
+
+  // Core request signals
+  wire is_write_req = (state == ST_WRITE_REQ);
+  wire is_read_req  = (state == ST_READ_REQ);
+
+  // B response (combinational from state and core_ack)
+  assign in_bvalid = (state == ST_WRITE_ACK) && core_ack;
+  assign in_bresp  = core_error ? 2'h2 : 2'h0;
+  assign in_bid    = awid_reg;
+
+  // R response
+  assign in_rvalid = (state == ST_READ_ACK) && core_ack;
+  assign in_rresp  = core_error ? 2'h2 : 2'h0;
+  assign in_rdata  = core_rdata;
+  assign in_rid    = arid_reg;
+  assign in_rlast  = 1'b1;
+
+  // SDRAM data bus
   wire sdram_dout_en;
   wire [31:0] sdram_dout;
   assign sdram_dq_0 = sdram_dout_en ? sdram_dout[15:0]  : 16'bz;
   assign sdram_dq_1 = sdram_dout_en ? sdram_dout[31:16] : 16'bz;
-  sdram_axi #(
+
+  sdram_axi_core #(
     .SDRAM_MHZ(100),
     .SDRAM_ADDR_W(24),
     .SDRAM_COL_W(9),
     .SDRAM_READ_LATENCY(2)
-  ) u_sdram_axi(
+  ) u_core (
     .clk_i(clock),
     .rst_i(reset),
-    .inport_awvalid_i(in_awvalid),
-    .inport_awaddr_i(in_awaddr),
-    .inport_awid_i(in_awid),
-    .inport_awlen_i(in_awlen),
-    .inport_awburst_i(in_awburst),
-    .inport_wvalid_i(in_wvalid),
-    .inport_wdata_i(in_wdata),
-    .inport_wstrb_i(in_wstrb),
-    .inport_wlast_i(in_wlast),
-    .inport_bready_i(in_bready),
-    .inport_arvalid_i(in_arvalid),
-    .inport_araddr_i(in_araddr),
-    .inport_arid_i(in_arid),
-    .inport_arlen_i(in_arlen),
-    .inport_arburst_i(in_arburst),
-    .inport_rready_i(in_rready),
 
-    .inport_awready_o(in_awready),
-    .inport_wready_o(in_wready),
-    .inport_bvalid_o(in_bvalid),
-    .inport_bresp_o(in_bresp),
-    .inport_bid_o(in_bid),
-    .inport_arready_o(in_arready),
-    .inport_rvalid_o(in_rvalid),
-    .inport_rdata_o(in_rdata),
-    .inport_rresp_o(in_rresp),
-    .inport_rid_o(in_rid),
-    .inport_rlast_o(in_rlast),
+    .inport_wr_i(is_write_req ? wstrb_reg : 4'b0),
+    .inport_rd_i(is_read_req),
+    .inport_len_i(8'd0),
+    .inport_addr_i(is_write_req ? awaddr_reg : araddr_reg),
+    .inport_write_data_i(wdata_reg),
+    .inport_accept_o(core_accept),
+    .inport_ack_o(core_ack),
+    .inport_error_o(core_error),
+    .inport_read_data_o(core_rdata),
+
     .sdram_clk_o(sdram_clk),
     .sdram_cke_o(sdram_cke),
     .sdram_cs_o(sdram_cs),
