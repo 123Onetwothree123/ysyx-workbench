@@ -140,11 +140,8 @@ class ysyx_26030103_ICache(
     }
     is(state_resp) {
       io.resp_valid := true.B
-      // 从填充好的cache块中取请求的word（处理多word refill后resp_data_reg只剩最后一word的问题）
-      when(cacheable_reg && !access_fault_reg) {
-        resp_data_reg := data(fetch_index_reg)(fetch_offset_reg)
-      }
-      io.resp_data := resp_data_reg
+      io.resp_data := Mux(cacheable_reg && !access_fault_reg,
+        data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
       when(io.resp_ready) {
         state := state_idle
       }
