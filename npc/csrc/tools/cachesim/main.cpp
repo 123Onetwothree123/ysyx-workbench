@@ -62,17 +62,24 @@ void dse_run(const char* trace_path)
     auto fp = std::ofstream(result_path, std::ios::binary);
     // UTF-8 BOM
     fp << "\xEF\xBB\xBF";
-    fp << "块大小,块总数,相联度,替换策略,总访问,命中,缺失,强制缺失,容量缺失,冲突缺失,命中率\n";
+    fp << "块大小,块总数,容量(B),相联度,替换策略,总访问,命中,缺失,强制缺失,容量缺失,冲突缺失,命中率\n";
 
     for (const auto& r : results) {
         auto& s = r.stats;
         auto misses = s.misses();
         auto rate = s.total > 0 ? 100.0 * s.hits / s.total : 0.0;
-        fp << std::format("{},{},{},{},{},{},{},{},{},{},{:.2f}%\n",
-            r.config.block_size, r.config.num_blocks, r.config.ways,
-            repl_names[r.config.repl_policy],
-            s.total, s.hits, misses,
-            s.miss_compulsory, s.miss_capacity, s.miss_conflict, rate);
+        fp << r.config.block_size << ","
+           << r.config.num_blocks << ","
+           << r.config.block_size * r.config.num_blocks << ","
+           << r.config.ways << ","
+           << repl_names[r.config.repl_policy] << ","
+           << s.total << ","
+           << s.hits << ","
+           << misses << ","
+           << s.miss_compulsory << ","
+           << s.miss_capacity << ","
+           << s.miss_conflict << ","
+           << std::fixed << std::setprecision(2) << rate << "%\n";
     }
 
     fp.close();
