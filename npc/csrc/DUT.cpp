@@ -139,6 +139,9 @@ void DUT::step()
     if (dut->perf_ifu_fetch)
     {
         ++instruction_fetch_count;
+#ifdef CONFIG_ITRACE_WRITE_FILE
+        { static auto fp = std::ofstream("itrace.txt", std::ios::app); fp << std::hex << "0x" << static_cast<uint32_t>(dut->debug_pc) << "\n" << std::dec; }
+#endif
     }
     if (dut->perf_exu_done)
     {
@@ -258,9 +261,6 @@ void DUT::step()
 #endif
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
-#endif
-#ifdef CONFIG_ITRACE_WRITE_FILE
-    { static auto fp = std::ofstream("itrace.txt", std::ios::app); fp << std::hex << "0x" << static_cast<uint32_t>(dut->debug_pc) << "\n" << std::dec; }
 #endif
 #ifdef CONFIG_FTRACE
     {
