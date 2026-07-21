@@ -142,6 +142,33 @@ void DUT::step()
         ++instruction_fetch_count;
 #ifdef CONFIG_ITRACE_WRITE_FILE
         { static auto fp = std::ofstream("itrace.txt", std::ios::app); fp << std::hex << "0x" << static_cast<uint32_t>(dut->debug_pc) << "\n" << std::dec; }
+        // 自检：每次取指比较 ICache 返回的指令和内存中实际内容
+        { 
+            static std::vector<uint8_t> img;
+            static bool loaded = false;
+            if (!loaded) {
+                std::ifstream f("build/program.hex");
+                std::string line;
+                while (std::getline(f, line)) {
+                    if (line.empty()) continue;
+                    uint32_t w = static_cast<uint32_t>(std::stoul(line, nullptr, 16));
+                    img.push_back(static_cast<uint8_t>(w & 0xFF));
+                    img.push_back(static_cast<uint8_t>((w>>8) & 0xFF));
+                    img.push_back(static_cast<uint8_t>((w>>16) & 0xFF));
+                    img.push_back(static_cast<uint8_t>((w>>24) & 0xFF));
+                }
+                loaded = true;
+            }
+            uint32_t pc = static_cast<uint32_t>(dut->debug_pc);
+            uint32_t actual = static_cast<uint32_t>(dut->debug_instructions);
+            if (pc >= 0x80000000 && pc - 0x80000000 < img.size() - 3) {
+                uint32_t offset = pc - 0x80000000;
+                uint32_t expected = img[offset] | (img[offset+1]<<8) | (img[offset+2]<<16) | (img[offset+3]<<24);
+                if (actual != expected && actual != 0) {
+                    fprintf(stderr, "ICACHE ERROR: pc=0x%08x expected=0x%08x got=0x%08x\n", pc, expected, actual);
+                }
+            }
+        }
 #endif
     }
     if (dut->perf_exu_done)
