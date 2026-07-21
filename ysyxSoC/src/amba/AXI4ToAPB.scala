@@ -51,16 +51,18 @@ class AXI4ToAPB(val aFlow: Boolean = true)(implicit p: Parameters) extends LazyM
       val accept_read    = (state === s_idle) && ar.valid
       val accept_aw_only = (state === s_idle) && aw.valid && !w.valid && !ar.valid
       val accept_w_only  = (state === s_idle) && w.valid && !aw.valid && !ar.valid
+      val accept_both    = (state === s_idle) && aw.valid && w.valid && !ar.valid
       val accept_aw_wait = (state === s_wait_w) && aw.valid
       val accept_w_wait  = (state === s_wait_aw) && w.valid
-      val accept_write   = accept_aw_wait || accept_w_wait
+      val accept_write   = accept_both || accept_aw_wait || accept_w_wait
       val aw_done = RegInit(false.B)
       val w_done  = RegInit(false.B)
-      val is_write = accept_aw_only || accept_aw_wait || aw_done
+      val is_write = accept_aw_only || accept_both || accept_aw_wait || aw_done
       switch (state) {
         is (s_idle) {
           aw_done := false.B; w_done := false.B
           when(accept_read) { state := s_inflight }
+          .elsewhen(accept_both) { aw_done := true.B; w_done := true.B; state := s_inflight }
           .elsewhen(accept_aw_only) { aw_done := true.B; state := s_wait_aw }
           .elsewhen(accept_w_only)  { w_done  := true.B; state := s_wait_w }
         }
@@ -91,8 +93,8 @@ class AXI4ToAPB(val aFlow: Boolean = true)(implicit p: Parameters) extends LazyM
       out.pstrb   := Mux(is_write, wstrb_reg, 0.U)
 
       ar.ready := accept_read
-      w.ready  := accept_w_only || accept_w_wait
-      aw.ready := accept_aw_only || accept_aw_wait
+      w.ready  := accept_w_only || accept_both || accept_w_wait
+      aw.ready := accept_aw_only || accept_both || accept_aw_wait
 
       val resp = Mux(out.pslverr, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
       val resp_hold = resp holdUnless (state === s_inflight)
