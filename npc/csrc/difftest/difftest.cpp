@@ -165,10 +165,7 @@ void DiftestFinalCheck(DUT &dut)
     std::println(stderr, "  PC: REF=0x{:08x} DUT=0x{:08x}", REFState.GetPC(), DUTState.GetPC());
     for (std::size_t i{0}; i < 32; i++)
     {
-        if (REFState.GetGPR(i)
-        {
-            != DUTState.GetGPR(i));
-        }
+        if (REFState.GetGPR(i) != DUTState.GetGPR(i))
             std::println(stderr, "  x{:<2}: REF=0x{:08x} DUT=0x{:08x} ***", i, REFState.GetGPR(i), DUTState.GetGPR(i));
     }
     if (!REFState.CheckRegs(DUTState))
