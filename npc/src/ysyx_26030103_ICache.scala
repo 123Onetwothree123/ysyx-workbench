@@ -107,7 +107,6 @@ class ysyx_26030103_ICache(
       io.axi.AR.ARVALID := true.B
       io.axi.AR.ARADDR := Cat(
         fetch_addr_reg(AddressWidth - 1, BlockSizeLog2),
-        0.U(BlockSizeLog2.W),
         refill_cnt,
         0.U(2.W)
       ) // 块对齐地址 + refill_cnt × 4
