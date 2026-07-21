@@ -29,15 +29,7 @@ static const uint32_t img[] = {
 static void restart()
 {
   /* Set the initial program counter. */
-  // cpu.pc = RESET_VECTOR;
-
-  /* The zero register is always 0. */
-  // cpu.gpr[0] = 0;
-  // 项目组实现参考文档要求的32 0x1800，64是0xa00001800
-  // cpu.mstatus = MUXDEF(CONFIG_RV64, 0xa00001800UL, 0x1800UL);
-  // 适配新difftest重写代码
-  //适配flash
-  cpu.pc = 0x30000000;
+  cpu.pc = CONFIG_MBASE;
   cpu.gpr[0] = 0;
   cpu.mstatus = 0x1800;
 }
@@ -49,7 +41,6 @@ void init_isa()
 
   /* Initialize this virtual computer system. */
   // restart();
-  // 适配新版本difftest
-  memcpy(guest_to_host(0x30000000), img, sizeof(img));
+  memcpy(guest_to_host(CONFIG_MBASE), img, sizeof(img));
   restart();
 }
