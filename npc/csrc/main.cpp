@@ -106,8 +106,10 @@ int main(int argc, char const *argv[])
         dut.GetICacheMissCount());
 #endif
 #ifdef CONFIG_PERF_SAVE
-    NPCSimResult::Save(
-        options->GetResultDir().value_or("NPCSimResult"),
+    auto result_dir = options->GetResultDir();
+    if (result_dir.has_value()) {
+        NPCSimResult::Save(
+            *result_dir,
         dut.GetCycle(),
         dut.GetInstructions(),
         dut.GetInstructionFetchCount(),
@@ -135,6 +137,7 @@ int main(int argc, char const *argv[])
         dut.GetLSUStallWriteBCount(),
         dut.GetICacheHitCount(),
         dut.GetICacheMissCount());
+    }
 #endif
     dut.final();
 #ifdef CONFIG_NVBOARD
