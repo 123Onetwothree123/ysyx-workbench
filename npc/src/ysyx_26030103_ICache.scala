@@ -48,6 +48,7 @@ class ysyx_26030103_ICache(
   val fetch_addr_reg = Reg(UInt(AddressWidth.W))
   val fetch_index_reg = Reg(UInt(IndexBits.W))
   val fetch_tag_reg = Reg(UInt(TagBits.W))
+  val fetch_offset_reg = Reg(UInt((BlockSizeLog2 - 2).W)) // 请求时块内word偏移
   val resp_data_reg = Reg(UInt(32.W))
   val cacheable_reg = RegInit(false.B)
   val access_fault_reg = RegInit(false.B)
@@ -95,6 +96,7 @@ class ysyx_26030103_ICache(
         fetch_tag_reg   := reqTag
         resp_data_reg   := data(index)(blockOffset)
         cacheable_reg   := cacheable
+        fetch_offset_reg := blockOffset
         refill_cnt      := 0.U
         when(cacheable && hit) {
           state := state_resp
@@ -138,6 +140,10 @@ class ysyx_26030103_ICache(
     }
     is(state_resp) {
       io.resp_valid := true.B
+      // 从填充好的cache块中取请求的word（处理多word refill后resp_data_reg只剩最后一word的问题）
+      when(cacheable_reg && !access_fault_reg) {
+        resp_data_reg := data(fetch_index_reg)(fetch_offset_reg)
+      }
       io.resp_data := resp_data_reg
       when(io.resp_ready) {
         state := state_idle
