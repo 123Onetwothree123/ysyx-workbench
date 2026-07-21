@@ -8,6 +8,10 @@ module sdram_top_axi(
   input  [7:0]  in_awlen,
   input  [2:0]  in_awsize,
   input  [1:0]  in_awburst,
+  input         in_awlock,
+  input  [3:0]  in_awcache,
+  input  [2:0]  in_awprot,
+  input  [3:0]  in_awqos,
   output        in_wready,
   input         in_wvalid,
   input  [31:0] in_wdata,
@@ -24,6 +28,10 @@ module sdram_top_axi(
   input  [7:0]  in_arlen,
   input  [2:0]  in_arsize,
   input  [1:0]  in_arburst,
+  input         in_arlock,
+  input  [3:0]  in_arcache,
+  input  [2:0]  in_arprot,
+  input  [3:0]  in_arqos,
   input         in_rready,
   output        in_rvalid,
   output [1:0]  in_rresp,
@@ -39,13 +47,15 @@ module sdram_top_axi(
   output        sdram_we,
   output [12:0] sdram_a,
   output [ 1:0] sdram_ba,
-  output [ 1:0] sdram_dqm,
-  inout  [15:0] sdram_dq
+  output [ 3:0] sdram_dqm,
+  inout  [15:0] sdram_dq_0,
+  inout  [15:0] sdram_dq_1
 );
 
   wire sdram_dout_en;
-  wire [15:0] sdram_dout;
-  assign sdram_dq = sdram_dout_en ? sdram_dout : 16'bz;
+  wire [31:0] sdram_dout;
+  assign sdram_dq_0 = sdram_dout_en ? sdram_dout[15:0]  : 16'bz;
+  assign sdram_dq_1 = sdram_dout_en ? sdram_dout[31:16] : 16'bz;
   sdram_axi #(
     .SDRAM_MHZ(100),
     .SDRAM_ADDR_W(24),
@@ -91,7 +101,7 @@ module sdram_top_axi(
     .sdram_dqm_o(sdram_dqm),
     .sdram_addr_o(sdram_a),
     .sdram_ba_o(sdram_ba),
-    .sdram_data_input_i(sdram_dq),
+    .sdram_data_input_i({sdram_dq_1, sdram_dq_0}),
     .sdram_data_output_o(sdram_dout),
     .sdram_data_out_en_o(sdram_dout_en)
   );
