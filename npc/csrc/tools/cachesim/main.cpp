@@ -16,6 +16,7 @@ void print_usage(const char* prog)
     std::println("  -n, --num-blocks <N>     cache 块总数 (默认 {})", CACHE_NUM_BLOCKS);
     std::println("  -w, --ways <N>           相联度 (默认 {})", CACHE_WAYS);
     std::println("  -r, --replacement <策略>  替换策略: fifo / lru / random (默认 fifo)");
+    std::println("  --bus-width <N>         总线位宽 (字节, 默认 4, 用于估算缺失代价)");
     std::println("  --dse                    设计空间探索模式");
     std::println("  -h, --help               显示帮助信息");
 }
@@ -39,7 +40,7 @@ void single_run(CacheConfig config, const char* trace_path)
     print_stats(sim.stats(), sim.config());
 }
 
-void dse_run(const char* trace_path)
+void dse_run(const char* trace_path, unsigned bus_width)
 {
     const unsigned block_sizes[] = {4, 8, 16, 32, 64, 128};
     const unsigned num_blocks_list[] = {4, 8, 16, 32, 64, 128, 256, 512};
@@ -62,12 +63,14 @@ void dse_run(const char* trace_path)
     auto fp = std::ofstream(result_path, std::ios::binary);
     // UTF-8 BOM
     fp << "\xEF\xBB\xBF";
-    fp << "块大小,块总数,容量(B),相联度,替换策略,总访问,命中,缺失,强制缺失,容量缺失,冲突缺失,命中率\n";
+    fp << "块大小,块总数,容量(B),相联度,替换策略,总访问,命中,缺失,强制缺失,容量缺失,冲突缺失,命中率,缺失代价(事务数)\n";
 
     for (const auto& r : results) {
         auto& s = r.stats;
         auto misses = s.misses();
         auto rate = s.total > 0 ? 100.0 * s.hits / s.total : 0.0;
+        auto transactions_per_miss = (r.config.block_size + bus_width - 1) / bus_width;
+        auto total_transactions = misses * transactions_per_miss;
         fp << r.config.block_size << ","
            << r.config.num_blocks << ","
            << r.config.block_size * r.config.num_blocks << ","
@@ -79,7 +82,8 @@ void dse_run(const char* trace_path)
            << s.miss_compulsory << ","
            << s.miss_capacity << ","
            << s.miss_conflict << ","
-           << std::fixed << std::setprecision(2) << rate << "%\n";
+           << std::fixed << std::setprecision(2) << rate << "%,"
+           << total_transactions << "\n";
     }
 
     fp.close();
@@ -93,6 +97,7 @@ auto main(int argc, char* argv[]) -> int
     CacheConfig config;
     const char* trace_path = nullptr;
     bool dse_mode = false;
+    unsigned bus_width = 4;
 
     for (int i = 1; i < argc; ++i) {
         if (argv[i][0] != '-') {
@@ -110,6 +115,8 @@ auto main(int argc, char* argv[]) -> int
 
         if (arg == "--dse") {
             dse_mode = true;
+        } else if (is_long ? arg == "--bus-width" : false) {
+            if (i + 1 < argc) bus_width = static_cast<unsigned>(std::atoi(argv[++i]));
         } else if (is_long ? arg == "--block-size" : arg == "-b") {
             if (i + 1 < argc) config.block_size = static_cast<unsigned>(std::atoi(argv[++i]));
         } else if (is_long ? arg == "--num-blocks" : arg == "-n") {
@@ -132,7 +139,7 @@ auto main(int argc, char* argv[]) -> int
     }
 
     if (dse_mode) {
-        dse_run(trace_path);
+        dse_run(trace_path, bus_width);
         return 0;
     }
 

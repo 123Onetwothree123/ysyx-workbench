@@ -9,11 +9,10 @@ class ysyx_26030103_ICache(
     CacheableBase: Long = 0x00000000L,
     CacheableMask: Long = 0x00000000L  // 0=全缓存，由上层传入覆盖
 ) extends Module {
-  // addr[BlockSizeLog2-1:0]=offset
-  // addr[IndexBits+BlockSizeLog2-1:BlockSizeLog2]=index
-  // addr[31:IndexBits+BlockSizeLog2]=tag
   val TagBits = AddressWidth - IndexBits - BlockSizeLog2
   val NumBlocks = 1 << IndexBits
+  val WordsPerBlock = 1 << (BlockSizeLog2 - 2) // 块大小 ÷ 4字节
+  val WordCntBits = log2Ceil(WordsPerBlock)     // 块内字数计数器位宽
   val io = IO(new Bundle {
     val fetch_addr = Input(UInt(AddressWidth.W))
     val fetch_valid = Input(Bool())
@@ -32,7 +31,7 @@ class ysyx_26030103_ICache(
   // 直接映射cache存储阵列：valid+tag+data
   val valid = RegInit(VecInit(Seq.fill(NumBlocks)(false.B)))
   val tag = Reg(Vec(NumBlocks, UInt(TagBits.W)))
-  val data = Reg(Vec(NumBlocks, UInt(32.W)))
+  val data = Reg(Vec(NumBlocks, Vec(WordsPerBlock, UInt(32.W))))
   val states = Enum(4)
   val state_idle = states(0)
   val state_refill_req = states(1)
@@ -40,8 +39,11 @@ class ysyx_26030103_ICache(
   val state_resp = states(3)
   val state = RegInit(state_idle)
   val index = io.fetch_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+  val blockOffset =
+    if (WordsPerBlock > 1) io.fetch_addr(BlockSizeLog2 - 1, 2)
+    else 0.U
   val reqTag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  val hit = valid(index) && tag(index) === reqTag // 命中：valid为1且tag匹配
+  val hit = valid(index) && tag(index) === reqTag
   val cacheable = (io.fetch_addr & CacheableMask.U) === CacheableBase.U
   val fetch_addr_reg = Reg(UInt(AddressWidth.W))
   val fetch_index_reg = Reg(UInt(IndexBits.W))
@@ -50,6 +52,7 @@ class ysyx_26030103_ICache(
   val cacheable_reg = RegInit(false.B)
   val access_fault_reg = RegInit(false.B)
   val access_fault_resp_reg = RegInit(0.U(2.W))
+  val refill_cnt = RegInit(0.U(WordCntBits.W))  // 当前正在填充第几个word
   io.access_fault := access_fault_reg
   io.access_fault_resp := access_fault_resp_reg
   io.axi.AW.AWVALID := false.B
@@ -90,8 +93,9 @@ class ysyx_26030103_ICache(
         fetch_addr_reg  := io.fetch_addr
         fetch_index_reg := index
         fetch_tag_reg   := reqTag
-        resp_data_reg   := data(index)
+        resp_data_reg   := data(index)(blockOffset)
         cacheable_reg   := cacheable
+        refill_cnt      := 0.U
         when(cacheable && hit) {
           state := state_resp
         }.otherwise {
@@ -103,8 +107,10 @@ class ysyx_26030103_ICache(
       io.axi.AR.ARVALID := true.B
       io.axi.AR.ARADDR := Cat(
         fetch_addr_reg(AddressWidth - 1, BlockSizeLog2),
-        0.U(BlockSizeLog2.W)
-      ) // 按块大小对齐
+        0.U(BlockSizeLog2.W),
+        refill_cnt,
+        0.U(2.W)
+      ) // 块对齐地址 + refill_cnt × 4
       when(io.axi.AR.ARREADY) {
         state := state_refill_resp
       }
@@ -116,14 +122,18 @@ class ysyx_26030103_ICache(
           access_fault_reg := true.B
           access_fault_resp_reg := io.axi.R.RRESP
         }.otherwise {
-          resp_data_reg := io.axi.R.RDATA
           when(cacheable_reg) {
-            valid(fetch_index_reg) := true.B // 填入cache块，更新元数据
+            valid(fetch_index_reg) := true.B
             tag(fetch_index_reg)   := fetch_tag_reg
-            data(fetch_index_reg)  := io.axi.R.RDATA
+            data(fetch_index_reg)(refill_cnt) := io.axi.R.RDATA
           }
         }
-        state := state_resp
+        when(refill_cnt === (WordsPerBlock - 1).U) {
+          state := state_resp
+        }.otherwise {
+          refill_cnt := refill_cnt + 1.U
+          state := state_refill_req
+        }
       }
     }
     is(state_resp) {
