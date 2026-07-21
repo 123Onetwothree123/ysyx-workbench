@@ -47,7 +47,8 @@ DUT::DUT() : dut{std::make_unique<TOP_MODULE>()}
 #else
     dut->trace(&tfp, CONFIG_TRACE_DEPTH);
 #endif
-    std::filesystem::create_directories(std::filesystem::path{CONFIG_TRACE_FILE}.parent_path());
+    auto parent = std::filesystem::path{CONFIG_TRACE_FILE}.parent_path();
+    if (!parent.empty()) std::filesystem::create_directories(parent);
     tfp.open(CONFIG_TRACE_FILE);
 #endif
 }
