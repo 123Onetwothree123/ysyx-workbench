@@ -259,6 +259,9 @@ void DUT::step()
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
 #endif
+#ifdef CONFIG_ITRACE_WRITE_FILE
+    { static auto fp = std::ofstream("itrace.txt", std::ios::app); fp << std::hex << "0x" << static_cast<uint32_t>(dut->debug_pc) << "\n" << std::dec; }
+#endif
 #ifdef CONFIG_FTRACE
     {
         static bool HasPreviousStep{false};

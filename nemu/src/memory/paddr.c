@@ -132,7 +132,7 @@ void paddr_write(paddr_t addr, int len, word_t data)
   }
   if (in_flash(addr))
   {
-    return;
+    return flash[addr - FLASH_BASE];
   }
 #ifdef CONFIG_DEVICE
   if (!in_pmem(addr))

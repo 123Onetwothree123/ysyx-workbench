@@ -586,6 +586,11 @@ config ITRACE
   default n
   depends on TRACE
 
+config ITRACE_WRITE_FILE
+  bool "itrace 输出到文件 (itrace.txt)"
+  default n
+  depends on ITRACE
+
 config MTRACE
   bool "启用内存追踪mtrace"
   default n
