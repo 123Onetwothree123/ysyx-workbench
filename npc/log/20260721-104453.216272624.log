@@ -1,0 +1,134 @@
+现在指定了镜像文件
+文件加载了: /home/abc/ysyx-workbench/am-kernels/kernels/hello/build/hello-riscv32e-npc.bin, size = 312 bytes
+Access Fault [SLVERR] at PC=0x80800000, cycle=14416453
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x80800000, cycle=14416454
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=31193676
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=31193677
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=47970899
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=47970900
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=64748122
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=64748123
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=81525345
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=81525346
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=98302568
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=98302569
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=115079791
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=115079792
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=131857014
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=131857015
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=148634237
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=148634238
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=165411460
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=165411461
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=182188683
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=182188684
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=198965906
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=198965907
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=215743129
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=215743130
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=232520352
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=232520353
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=249297575
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=249297576
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=266074798
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=266074799
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=282852021
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=282852022
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=299629244
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=299629245
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=316406467
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=316406468
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=333183690
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=333183691
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=349960913
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=349960914
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=366738136
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=366738137
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=383515359
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=383515360
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=400292582
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=400292583
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=417069805
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=417069806
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=433847028
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=433847029
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=450624251
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=450624252
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=467401474
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=467401475
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=484178697
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=484178698
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=500955920
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=500955921
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=517733143
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=517733144
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=534510366
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=534510367
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=551287589
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
+Access Fault [SLVERR] at PC=0x00800000, cycle=551287590
+  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了
