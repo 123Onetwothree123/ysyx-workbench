@@ -31,7 +31,7 @@ class AXI4DelayerWrapper(implicit p: Parameters) extends LazyModule {
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {
     (node.in zip node.out) foreach { case ((in, edgeIn), (out, edgeOut)) =>
-      val delayer = Module(new axi4_delayer)
+      val delayer = Module(new AXI4DelayerChisel)
       delayer.io.clock := clock
       delayer.io.reset := reset
       delayer.io.in <> in
