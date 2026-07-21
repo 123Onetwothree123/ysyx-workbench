@@ -57,16 +57,16 @@ void dse_run(const char* trace_path)
         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     std::filesystem::create_directories(dir);
 
-    auto result_path = std::format("{}/result.tsv", dir);
+    auto result_path = std::format("{}/result.csv", dir);
     auto fp = std::ofstream(result_path);
 
-    fp << "块大小\t块总数\t相联度\t替换策略\t总访问\t命中\t缺失\t强制缺失\t容量缺失\t冲突缺失\t命中率\n";
+    fp << "块大小,块总数,相联度,替换策略,总访问,命中,缺失,强制缺失,容量缺失,冲突缺失,命中率\n";
 
     for (const auto& r : results) {
         auto& s = r.stats;
         auto misses = s.misses();
         auto rate = s.total > 0 ? 100.0 * s.hits / s.total : 0.0;
-        fp << std::format("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2f}%\n",
+        fp << std::format("{},{},{},{},{},{},{},{},{},{},{:.2f}%\n",
             r.config.block_size, r.config.num_blocks, r.config.ways,
             repl_names[r.config.repl_policy],
             s.total, s.hits, misses,

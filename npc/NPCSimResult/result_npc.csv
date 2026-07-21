@@ -1,0 +1,2 @@
+﻿commit,说明,仿真周期数,指令数,IPC,综合频率(MHz),综合面积(um^2),IFU取指,EXU完成,LSU读,LSU写,ALU指令,访存指令,CSR指令,分支指令,访存平均周期,IFU流水线阻塞,IFU_AXI等待,IFU_AR等待,IFU_R等待,IFU跳转冲刷,IFU空闲,EXU等LSU,LSU读延迟,LSU写延迟,LSU_AR等待,LSU_R等待,LSU_AW/W等待,LSU_B等待,ICache命中,ICache缺失,AMAT
+91d64bea2,update,202,21,0.1040,450,36918.560000,25,25,0,1,19,1,0,5,6.00,25,153,53,75,5,24,5,0.00,5.00,0,0,2,2,0,24,6.3
