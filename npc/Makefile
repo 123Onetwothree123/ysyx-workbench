@@ -92,6 +92,14 @@ cachesim: $(CACHESIM_BIN)
 	@echo "cachesim 结果："
 	@$(CACHESIM_BIN) itrace.txt
 
+.PHONY: cachesim_dse
+cachesim_dse: $(CACHESIM_BIN)
+	@rm -f itrace.txt
+	@$(MAKE) run CONFIG_TRACE=y CONFIG_ITRACE=y CONFIG_ITRACE_WRITE_FILE=y file=$(file)
+	@echo ""
+	@echo "cachesim DSE 探索中..."
+	@$(CACHESIM_BIN) --dse itrace.txt
+
 .PHONY: test verilog help reformat checkformat clean synth perf
 
 sim:
