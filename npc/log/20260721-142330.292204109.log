@@ -1,0 +1,68 @@
+现在指定了镜像文件
+文件加载了: /home/abc/ysyx-workbench/am-kernels/benchmarks/microbench/build/microbench-riscv32i-ysyxsoc.bin, size = 28948 bytes
+======= Running MicroBench [input *test*] =======
+[qsort] Quick sort: * Passed.
+[queen] Queen placement: * Passed.
+[bf] Brainf**k interpreter: * Passed.
+[fib] Fibonacci number: * Passed.
+[sieve] Eratosthenes sieve: * Passed.
+[15pz] A* 15-puzzle search: * Passed.
+[dinic] Dinic's maxflow algorithm: * Passed.
+[lzip] Lzip compression: * Passed.
+[ssort] Suffix sort: * Passed.
+[md5] MD5 digest: * Passed.
+==================================================
+MicroBench PASS
+Scored time: 10223.669 ms
+Total  time: 13206.091 ms
+trap了
+HIT GOOD TRAP at pc = 0xa0004dc8, cycles = 14289965, instructions = 405864, ipc = 0.0284
+性能计数器
+IFU取到指令: 573721
+EXU完成计算: 573720
+LSU取到数据: 67426
+LSU写出数据: 54374
+ALU指令: 305385
+访存指令: 121800
+CSR指令: 0
+分支/跳转指令: 146535
+指令类别合计: 573720 (应与IFU取指一致)
+IFU取指: 573721
+EXU完成: 573720 (应与IFU取指接近)
+LSU合计: 121800 (应与访存指令一致)
+
+指令类别占比与平均周期:
+ALU指令占比: 53.2%
+访存指令占比: 21.2%
+访存指令平均周期: 30.75
+CSR指令占比: 0.0%
+分支/跳转指令占比: 25.5%
+
+IFU取不到指令原因分析:
+流水线阻塞(IFU有数据但下游不接): 1426413 周期, 占比 10.0%
+AXI总线等待(AR/R通道未就绪): 12289828 周期, 占比 86.0%
+  其中 AR通道等待(请求未接受): 3211744 周期, 占比 22.5%
+  其中 R通道等待(数据未返回): 8504363 周期, 占比 59.5%
+跳转冲刷(取指结果被丢弃): 92884 周期, 占比 0.6%
+IFU空闲(无取指请求): 573724 周期, 占比 4.0%
+
+EXU流水线阻塞分析:
+EXU等待LSU完成(流水线stall): 3624117 周期, 占比 25.4%
+
+LSU平均访存延迟:
+平均延迟: 29.75 周期
+  读延迟: 36.80 周期 (67426 次)
+  写延迟: 21.02 周期 (54374 次)
+
+LSU访存延迟分解:
+  AR等待(读请求握手): 134852 周期, 占比 3.7%
+  R等待(读数据返回):  2278927 周期, 占比 62.9%
+  AW/W等待(写请求握手): 108748 周期, 占比 3.0%
+  B等待(写响应返回):  979790 周期, 占比 27.0%
+
+ICache 性能:
+  命中: 251081 次
+  缺失: 279094 次
+  命中率: 47.4%
+  缺失平均延迟: 42.0 周期
+  AMAT: 23.1 周期
