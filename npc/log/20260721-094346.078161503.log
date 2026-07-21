@@ -1,0 +1,5 @@
+现在指定了镜像文件
+文件加载了: /home/abc/ysyx-workbench/am-kernels/tests/alu-tests/build/alutest-riscv32e-npc.bin, size = 832720 bytes
+%Error: build/program.hex:65536: $readmem file address beyond bounds of array
+Aborting...
+terminate called without an active exception
