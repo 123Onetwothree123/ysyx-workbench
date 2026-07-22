@@ -123,6 +123,7 @@ void DUT::step()
 {
     dut->clock = 0;
     dut->eval();
+    bool perf_lo = static_cast<bool>(dut->perf_exu_done);
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
     tfp.dump(cycle * 2);
 #endif
@@ -133,7 +134,7 @@ void DUT::step()
 #endif
     ++cycle;
 #ifdef CONFIG_PERF_STATS
-    if (dut->perf_exu_done || dut->debug_commit)
+    if (perf_lo || dut->perf_exu_done || dut->debug_commit)
     {
         ++instructions;
     }
