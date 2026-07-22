@@ -59,6 +59,13 @@ int main(int argc, char const *argv[])
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
+        if (dut.GetCycle() % 10000 == 0) {
+            printf("progress: %zu cycles, %zu instr, pc=0x%08x, lsu=%d, fault=%d\n",
+                dut.GetCycle(), dut.GetInstructions(),
+                static_cast<unsigned>(dut->debug_pc),
+                static_cast<int>(dut->perf_lsu_active),
+                static_cast<int>(dut->debug_access_fault));
+        }
 #ifdef CONFIG_NVBOARD
         nvboard_update();
 #endif
