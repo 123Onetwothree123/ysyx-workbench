@@ -52,10 +52,9 @@ int main(int argc, char const *argv[])
         }
     }
 #endif
+    std::println("before reset");
     dut.reset();
-    std::println("reset done, commit={}, pc=0x{:08x}",
-        static_cast<int>(dut->debug_commit),
-        static_cast<std::uint32_t>(dut->debug_pc));
+    std::println("after reset");
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
