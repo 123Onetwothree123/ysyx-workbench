@@ -17,10 +17,8 @@ import npc;
 int main(int argc, char const *argv[])
 {
     setvbuf(stdout, NULL, _IONBF, 0);
-    std::println("DEBUG: main starts, argc={}", argc);
 #if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_init();
-    std::println("DEBUG: log_init done");
 #endif
     Verilated::commandArgs(argc, argv);
     DUT dut;
@@ -55,23 +53,12 @@ int main(int argc, char const *argv[])
     }
 #endif
     dut.reset();
-    std::println("DEBUG: reset done, entering main loop");
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
-    std::size_t progress_step{0};
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
-        if (++progress_step % 5000 == 0) {
-            std::println("progress: {} cycles, {} instr, pc=0x{:08x}",
-                dut.GetCycle(), dut.GetInstructions(),
-                static_cast<std::uint32_t>(dut->debug_pc));
-            std::println("  ifu_stall: axi={} ar={} r={} pipe={} idle={} exe_act={}",
-                static_cast<int>(dut->perf_ifu_stall_axi), static_cast<int>(dut->perf_ifu_stall_ar),
-                static_cast<int>(dut->perf_ifu_stall_r), static_cast<int>(dut->perf_ifu_stall_pipeline),
-                static_cast<int>(dut->perf_ifu_stall_idle), static_cast<int>(dut->perf_execution_active));
-        }
 #ifdef CONFIG_NVBOARD
         nvboard_update();
 #endif
