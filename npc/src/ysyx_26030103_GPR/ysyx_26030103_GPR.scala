@@ -49,7 +49,9 @@ class ysyx_26030103_GPR extends Module {
   ysyx_26030103_RegisterFile.io.debug_raddr := io.DebugRaddr
   io.DebugRdata := ysyx_26030103_RegisterFile.io.debug_rdata
   val gpr_probe = Module(new AXIDebugProbe)
-  gpr_probe.io.trigger := RegisterFileWen
+  val gpr_wen_r = RegInit(false.B)
+  gpr_wen_r := RegisterFileWen
+  gpr_probe.io.trigger := RegisterFileWen && !gpr_wen_r
   gpr_probe.io.tag := 5.U
   gpr_probe.io.addr := io.WriteSELECT
   gpr_probe.io.resp := io.wdata
