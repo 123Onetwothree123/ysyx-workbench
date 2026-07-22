@@ -20,19 +20,24 @@ int main(int argc, char const *argv[])
     log_init();
     std::println("DEBUG: log_init done");
 #endif
+    std::println("DEBUG: before Verilated::commandArgs");
     Verilated::commandArgs(argc, argv);
+    std::println("DEBUG: before DUT construction");
     DUT dut;
+    std::println("DEBUG: DUT constructed");
 #ifdef CONFIG_NVBOARD
     nvboard_bind_all_pins(&*dut);
     nvboard_init();
 #endif
     auto options{CLIOptions::Parse(argc, argv)};
+    std::println("DEBUG: options parsed");
     if (!options)
     {
         std::println(std::cerr, "{}", options.error());
         return 1;
     }
     auto load{ImageLoader::LoadFromCLI(*options)};
+    std::println("DEBUG: image loaded");
     if (!load)
     {
 #ifdef CONFIG_SDB
@@ -42,6 +47,9 @@ int main(int argc, char const *argv[])
         return 1;
 #endif
     }
+    std::println("DEBUG: before dut.reset()");
+    dut.reset();
+    std::println("DEBUG: after dut.reset()");
 #ifdef CONFIG_DIFFTEST
     if (load)
     {
