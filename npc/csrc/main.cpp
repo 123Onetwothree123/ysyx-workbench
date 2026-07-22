@@ -33,12 +33,12 @@ int main(int argc, char const *argv[])
         static_cast<std::uint32_t>(dut->debug_pc));
 
     // dump first 200 cycles
-    std::println("cycle,pc,commit,ifu_pipe,ifu_axi,ifu_ar,ifu_r,ifu_idle,ifu_redir,exe_act,exu_done,exu_lsu_stall,lsu_act,lsu_load,lsu_store,lsu_r_ar,lsu_r_r,lsu_w_req,lsu_w_b,acc_fault");
+    std::println("cycle,pc,commit,ifu_pipe,ifu_axi,ifu_ar,ifu_r,ifu_idle,ifu_redir,exe_act,exu_done,exu_lsu,lsu_act,lsu_ld,lsu_st,lsu_rar,lsu_rr,lsu_wrq,lsu_wb,fault");
     for (int c = 0; c < 200 && !Verilated::gotFinish() && !NPCTrap::HasHalted(); ++c) {
         dut.step();
-        std::println("{},{:08x},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        printf("%zu,%08x,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
             dut.GetCycle(),
-            static_cast<std::uint32_t>(dut->debug_pc),
+            static_cast<unsigned>(dut->debug_pc),
             static_cast<int>(dut->debug_commit),
             static_cast<int>(dut->perf_ifu_stall_pipeline),
             static_cast<int>(dut->perf_ifu_stall_axi),
