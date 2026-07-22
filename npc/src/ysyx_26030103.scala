@@ -81,6 +81,15 @@ class ysyx_26030103(
         |endmodule""".stripMargin)
   })
   probe_exu_mv.io.valid := exu.io.MemoryValid
+  // Probe: is WBU ever seeing RegisterWrite=1?
+  val probe_regwr = Module(new BlackBox with HasBlackBoxInline {
+    val io = IO(new Bundle { val valid = Input(Bool()) })
+    setInline("RegWrProbe.v",
+      """module RegWrProbe(input valid);
+        |always @(*) if (valid) $display("[REG_WRITE]");
+        |endmodule""".stripMargin)
+  })
+  probe_regwr.io.valid := wbu.io.in.bits.RegisterWrite && wbu.io.in.valid
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
