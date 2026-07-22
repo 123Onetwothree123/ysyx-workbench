@@ -53,7 +53,18 @@ class ysyx_26030103(
   // DPI-C probe: captures valid glitch from Verilog side
   val probe = Module(new CommitProbe)
   probe.io.valid := exu.io.out.valid
+  val probe_lsu = Module(new CommitProbe)
+  probe_lsu.io.valid := lsu.io.Active
   io.debug_commit := probe.io.commit
+  // Separate LSU probe with $display for debugging
+  val probe_lsu_dbg = Module(new BlackBox with HasBlackBoxInline {
+    val io = IO(new Bundle { val valid = Input(Bool()) })
+    setInline("LsuProbe.v",
+      """module LsuProbe(input valid);
+        |always @(*) if (valid) $display("[LSU_ACTIVE]");
+        |endmodule""".stripMargin)
+  })
+  probe_lsu_dbg.io.valid := lsu.io.Active
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
