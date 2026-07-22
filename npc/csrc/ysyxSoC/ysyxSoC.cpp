@@ -7,7 +7,7 @@ std::vector<std::uint8_t> mrom;
 std::vector<std::uint8_t> FlashMemory;
 extern "C" void flash_read(std::int32_t addr, std::int32_t *data)
 {
-    std::uint32_t offset{static_cast<std::uint32_t>(addr)};
+    std::uint32_t offset{static_cast<std::uint32_t>(addr)}; // 已经是偏移，不用减基址
     std::uint32_t aligned{offset & ~3u};
     std::uint32_t result{0};
     for (int i = 0; i < 4; i++)
@@ -21,7 +21,7 @@ extern "C" void flash_read(std::int32_t addr, std::int32_t *data)
 }
 extern "C" void mrom_read(std::int32_t addr, std::int32_t *data)
 {
-    std::uint32_t offset{static_cast<std::uint32_t>(addr) - static_cast<std::uint32_t>(CONFIG_MBASE)};
+    std::uint32_t offset{static_cast<std::uint32_t>(addr) - static_cast<std::uint32_t>(CONFIG_MBASE)}; // 脑残编译器，这里auto会解读成ui32，他妈的那每次auto写了后，还得检查一遍，这和没写auto有什么区别，他妈的
     std::uint32_t aligned{offset & ~3u};
     std::uint32_t result{0};
     for (int i = 0; i < 4; i++)
