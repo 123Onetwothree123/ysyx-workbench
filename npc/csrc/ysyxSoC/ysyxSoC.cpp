@@ -35,6 +35,6 @@ extern "C" void axi_debug_probe(std::int32_t tag, std::int32_t addr, std::int32_
 {
     static const char *names[] = {"ICACHE", "LSU_R", "LSU_B", "SOC_R", "SOC_B", "GPR_W", "WBU_W", "IFU_F"};
     auto idx{static_cast<unsigned>(tag)};
-    auto name{(idx < 7) ? names[idx] : "UNKNOWN"};
+    auto name{(idx < 8) ? names[idx] : "UNKNOWN"};
     std::println(std::cerr, "[AXI_DEBUG] {} addr=0x{:08x} data=0x{:08x}", name, static_cast<std::uint32_t>(addr), static_cast<std::uint32_t>(resp));
 }
