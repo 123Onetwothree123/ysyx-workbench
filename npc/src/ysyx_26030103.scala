@@ -119,9 +119,10 @@ class ysyx_26030103(
   soc.R.RDATA := io.master_rdata
   soc.R.RLAST := io.master_rlast
   val probe_soc_r = Module(new AXIDebugProbe)
-  probe_soc_r.io.trigger := soc.R.RVALID && soc.R.RREADY && soc.R.RRESP =/= 0.U
+  probe_soc_r.io.trigger := soc.R.RVALID && soc.R.RREADY
   probe_soc_r.io.tag := 3.U  // SOC_R
-  probe_soc_r.io.addr := 0.U
+  probe_soc_r.io.addr := soc.R.RDATA
+  probe_soc_r.io.resp := soc.R.RRESP
   probe_soc_r.io.resp := soc.R.RRESP
 
   io.slave_awready := 0.U
