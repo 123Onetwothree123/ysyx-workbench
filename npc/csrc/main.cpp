@@ -33,10 +33,10 @@ int main(int argc, char const *argv[])
         static_cast<std::uint32_t>(dut->debug_pc));
 
     // dump first 200 cycles
-    std::println("cycle,pc,commit,ifu_pipe,ifu_axi,ifu_ar,ifu_r,ifu_idle,ifu_redir,exe_act,exu_lsu_stall,lsu_act,lsu_load,lsu_store,lsu_r_ar,lsu_r_r,lsu_w_req,lsu_w_b,acc_fault");
+    std::println("cycle,pc,commit,ifu_pipe,ifu_axi,ifu_ar,ifu_r,ifu_idle,ifu_redir,exe_act,exu_done,exu_lsu_stall,lsu_act,lsu_load,lsu_store,lsu_r_ar,lsu_r_r,lsu_w_req,lsu_w_b,acc_fault");
     for (int c = 0; c < 200 && !Verilated::gotFinish() && !NPCTrap::HasHalted(); ++c) {
         dut.step();
-        std::println("{},{:08x},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        std::println("{},{:08x},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             dut.GetCycle(),
             static_cast<std::uint32_t>(dut->debug_pc),
             static_cast<int>(dut->debug_commit),
@@ -47,6 +47,7 @@ int main(int argc, char const *argv[])
             static_cast<int>(dut->perf_ifu_stall_idle),
             static_cast<int>(dut->perf_ifu_stall_redirect),
             static_cast<int>(dut->perf_execution_active),
+            static_cast<int>(dut->perf_exu_done),
             static_cast<int>(dut->perf_exu_stall_lsu),
             static_cast<int>(dut->perf_lsu_active),
             static_cast<int>(dut->perf_lsu_load_active),
