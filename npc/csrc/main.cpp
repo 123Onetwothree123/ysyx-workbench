@@ -15,8 +15,10 @@ import npc;
 
 int main(int argc, char const *argv[])
 {
+    std::println("DEBUG: main started");
 #if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_init();
+    std::println("DEBUG: log_init done");
 #endif
     Verilated::commandArgs(argc, argv);
     DUT dut;
