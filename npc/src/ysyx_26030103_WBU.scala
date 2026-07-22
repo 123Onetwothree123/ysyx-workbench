@@ -14,14 +14,7 @@ class ysyx_26030103_WBU extends Module {
   io.WriteSELECT := io.in.bits.Rd
   val fire = io.in.fire && io.in.bits.RegisterWrite
   io.WriteEN := fire
-  // 用 set-clear 寄存器确保 commit 至少持续一整拍
-  val commitSet = WireDefault(false.B)
-  val commitReg = RegInit(false.B)
-  when (commitSet) { commitReg := true.B }
-  .elsewhen (commitReg) { commitReg := false.B }
-  // 在 fire 的那一拍 set
-  commitSet := fire
-  io.Commit := commitReg
+  io.Commit := RegNext(fire, false.B)
   io.wdata := 0.U(32.W)
   switch(io.in.bits.WBSelect) {
     is("b00".U) {

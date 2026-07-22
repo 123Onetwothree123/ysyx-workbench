@@ -36,7 +36,7 @@ int main(int argc, char const *argv[])
     std::println("cycle,pc,commit,ifu_pipe,ifu_axi,ifu_ar,ifu_r,ifu_idle,ifu_redir,exe_act,exu_done,exu_lsu,lsu_act,lsu_ld,lsu_st,lsu_rar,lsu_rr,lsu_wrq,lsu_wb,fault");
     for (int c = 0; c < 200 && !Verilated::gotFinish() && !NPCTrap::HasHalted(); ++c) {
         dut.step();
-        printf("%zu,%08x,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+        printf("%zu,%08x,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
             dut.GetCycle(),
             static_cast<unsigned>(dut->debug_pc),
             static_cast<int>(dut->debug_commit),
