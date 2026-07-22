@@ -123,6 +123,11 @@ class ysyx_26030103(
   probe_soc_r.io.tag := 3.U  // SOC_R
   probe_soc_r.io.addr := soc.R.RDATA
   probe_soc_r.io.resp := soc.R.RRESP
+  val probe_soc_ar = Module(new AXIDebugProbe)
+  probe_soc_ar.io.trigger := soc.AR.ARVALID && soc.AR.ARREADY
+  probe_soc_ar.io.tag := 9.U  // SOC_AR
+  probe_soc_ar.io.addr := soc.AR.ARADDR
+  probe_soc_ar.io.resp := 0.U
   probe_soc_r.io.resp := soc.R.RRESP
 
   io.slave_awready := 0.U
