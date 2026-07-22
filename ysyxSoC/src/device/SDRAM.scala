@@ -96,6 +96,8 @@ class sdramChisel extends RawModule {
     val WriteEnable = WireDefault(false.B)
     val WriteBank = WireDefault(0.U(2.W))
     val WriteColumn = WireDefault(0.U(9.W))
+    output := RegNext(Mux(state === state_read_data, ROWBuffer(CmdBank)(CmdCol + BurstCounter), 0.U), 0.U)
+    en := RegNext(state === state_read_data, false.B)
     switch(state) {
       is(state_idle) {
         when(Command_ACTIVE) {
@@ -188,9 +190,6 @@ class sdramChisel extends RawModule {
       when(WriteBank === 3.U) { memory(3).write(ActiveRow(3), WriteData, WriteMask) }
     }
   }
-  // Combinatorial output/en — avoid registered output race with controller
-  en := state === state_read_data
-  output := Mux(state === state_read_data, ROWBuffer(CmdBank)(CmdCol + BurstCounter), 0.U)
 }
 
 class AXI4SDRAM(address: Seq[AddressSet])(implicit p: Parameters)

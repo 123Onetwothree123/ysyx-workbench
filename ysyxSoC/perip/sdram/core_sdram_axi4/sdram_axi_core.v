@@ -472,6 +472,14 @@ if (rst_i)
 else
     sample_data0_q <= sdram_data_in_w;
 
+// negedge capture resolves Verilator eval-order race with sdramChisel model
+reg [SDRAM_DATA_W-1:0] sample_data0_n;
+always @ (negedge clk_i or posedge rst_i)
+if (rst_i)
+    sample_data0_n <= {SDRAM_DATA_W{1'b0}};
+else
+    sample_data0_n <= sdram_data_in_w;
+
 reg [SDRAM_DATA_W-1:0] sample_data_q;
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
@@ -675,7 +683,7 @@ else if (rd_q[SDRAM_READ_LATENCY+1])
     data_buffer_q <= sample_data_q;
 
 // Read data output（位扩展后一拍 32 位；data_buffer_q 在采样拍把整 32 位锁住并保持到 ack）
-assign ram_read_data_w = sample_data_q;
+assign ram_read_data_w = sample_data0_q;
 
 //-----------------------------------------------------------------
 // ACK
