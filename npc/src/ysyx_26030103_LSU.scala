@@ -226,12 +226,6 @@ class ysyx_26030103_LSU extends Module {
       io.DataBus.W.WDATA := WriteData
       io.DataBus.W.WSTRB := WriteMask
       io.DataBus.W.WLAST := !WAlreadyDone
-      when(!AWAlreadyDone && io.DataBus.AW.AWVALID) {
-        printf("[LSU] AW addr=0x%x valid=%d ready=%d\n", io.ALUResult, io.DataBus.AW.AWVALID, io.DataBus.AW.AWREADY)
-      }
-      when(!WAlreadyDone && io.DataBus.W.WVALID) {
-        printf("[LSU] W data=0x%x strb=%x valid=%d ready=%d\n", WriteData, WriteMask, io.DataBus.W.WVALID, io.DataBus.W.WREADY)
-      }
       // 握手完毕了就记录写完了
       when(AWfire) {
         AWDone := true.B
@@ -246,7 +240,6 @@ class ysyx_26030103_LSU extends Module {
     is(StatesWriteResponse) {
       // 因为是等，所以要用B总线，而不是W线
       io.DataBus.B.BREADY := true.B
-      printf("[LSU] wait B: bvalid=%d bready=%d bresp=%d\n", io.DataBus.B.BVALID, io.DataBus.B.BREADY, io.DataBus.B.BRESP)
       when(Bfire) {
         when(io.DataBus.B.BRESP =/= 0.U) {
           AccessFaultReg := true.B

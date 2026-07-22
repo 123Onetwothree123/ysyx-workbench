@@ -22,137 +22,53 @@ int main(int argc, char const *argv[])
 #endif
     Verilated::commandArgs(argc, argv);
     DUT dut;
-#ifdef CONFIG_NVBOARD
-    nvboard_bind_all_pins(&*dut);
-    nvboard_init();
-#endif
     auto options{CLIOptions::Parse(argc, argv)};
-    if (!options)
-    {
-        std::println(std::cerr, "{}", options.error());
-        return 1;
-    }
+    if (!options) { std::println(std::cerr, "{}", options.error()); return 1; }
     auto load{ImageLoader::LoadFromCLI(*options)};
-    if (!load)
-    {
-#ifdef CONFIG_SDB
-        std::println("未加载镜像文件，进入空 SDB");
-#else
-        std::println(std::cerr, "{}", load.error());
-        return 1;
-#endif
-    }
-#ifdef CONFIG_DIFFTEST
-    if (load)
-    {
-        auto diffResult{DifftestInitialize(options->GetDiffFile(), *load)};
-        if (!diffResult)
-        {
-            std::println(std::cerr, "DiffTest 初始化失败：{}", diffResult.error());
-        }
-    }
-#endif
-    std::println("before reset");
+    if (!load) { std::println(std::cerr, "{}", load.error()); return 1; }
+
+    std::println("reset start...");
     dut.reset();
-    std::println("after reset, commit={} pc=0x{:08x}", static_cast<int>(dut->debug_commit), static_cast<std::uint32_t>(dut->debug_pc));
-#ifdef CONFIG_SDB
-    SDB::MainLoop(dut);
-#else
-    while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
-    {
+    std::println("reset done, commit={} pc=0x{:08x}", static_cast<int>(dut->debug_commit),
+        static_cast<std::uint32_t>(dut->debug_pc));
+
+    // dump first 200 cycles
+    std::println("cycle,pc,commit,ifu_pipe,ifu_axi,ifu_ar,ifu_r,ifu_idle,ifu_redir,exe_act,exu_lsu_stall,lsu_act,lsu_load,lsu_store,lsu_r_ar,lsu_r_r,lsu_w_req,lsu_w_b,acc_fault");
+    for (int c = 0; c < 200 && !Verilated::gotFinish() && !NPCTrap::HasHalted(); ++c) {
         dut.step();
-#ifdef CONFIG_NVBOARD
-        nvboard_update();
-#endif
-        if (dut->trap_valid)
-        {
-            std::println("trap了");
-            const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
+        std::println("{},{:08x},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            dut.GetCycle(),
+            static_cast<std::uint32_t>(dut->debug_pc),
+            static_cast<int>(dut->debug_commit),
+            static_cast<int>(dut->perf_ifu_stall_pipeline),
+            static_cast<int>(dut->perf_ifu_stall_axi),
+            static_cast<int>(dut->perf_ifu_stall_ar),
+            static_cast<int>(dut->perf_ifu_stall_r),
+            static_cast<int>(dut->perf_ifu_stall_idle),
+            static_cast<int>(dut->perf_ifu_stall_redirect),
+            static_cast<int>(dut->perf_execution_active),
+            static_cast<int>(dut->perf_exu_stall_lsu),
+            static_cast<int>(dut->perf_lsu_active),
+            static_cast<int>(dut->perf_lsu_load_active),
+            static_cast<int>(dut->perf_lsu_store_active),
+            static_cast<int>(dut->perf_lsu_stall_read_ar),
+            static_cast<int>(dut->perf_lsu_stall_read_r),
+            static_cast<int>(dut->perf_lsu_stall_write_req),
+            static_cast<int>(dut->perf_lsu_stall_write_b),
+            static_cast<int>(dut->debug_access_fault));
+        if (dut->trap_valid) break;
+    }
+    std::println("---TRACE END---");
+
+    while (!Verilated::gotFinish() && !NPCTrap::HasHalted()) {
+        dut.step();
+        if (dut->trap_valid) {
+            const auto halt_code{dut.ReadGPR(10)};
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
         }
     }
-#endif
     dut.final();
-#ifdef CONFIG_NVBOARD
-    nvboard_quit();
-#endif
     int result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
-#ifdef CONFIG_PERF_STATS
-    NPCTrap::PrintPerformanceStatistics(
-        dut.GetInstructionFetchCount(),
-        dut.GetExecutionCompleteCount(),
-        dut.GetLoadDataCount(),
-        dut.GetStoreDataCount(),
-        dut.GetArithmeticOperationCount(),
-        dut.GetMemoryAccessOperationCount(),
-        dut.GetControlStatusRegisterOperationCount(),
-        dut.GetBranchOperationCount(),
-        dut.GetCycle(),
-        dut.GetInstructionFetchStallPipelineCount(),
-        dut.GetInstructionFetchStallAXICount(),
-        dut.GetInstructionFetchStallRedirectCount(),
-        dut.GetInstructionFetchStallARCount(),
-        dut.GetInstructionFetchStallRCount(),
-        dut.GetInstructionFetchStallIdleCount(),
-        dut.GetArithmeticOperationActiveCycleCount(),
-        dut.GetMemoryAccessOperationActiveCycleCount(),
-        dut.GetControlStatusRegisterOperationActiveCycleCount(),
-        dut.GetBranchOperationActiveCycleCount(),
-        dut.GetEXUStallLSUCount(),
-        dut.GetLoadStoreUnitActiveCycleCount(),
-        dut.GetLoadStoreUnitLoadActiveCycleCount(),
-        dut.GetLoadStoreUnitStoreActiveCycleCount(),
-        dut.GetLSUStallReadARCount(),
-        dut.GetLSUStallReadRCount(),
-        dut.GetLSUStallWriteReqCount(),
-        dut.GetLSUStallWriteBCount(),
-        dut.GetICacheHitCount(),
-        dut.GetICacheMissCount());
-#endif
-#ifdef CONFIG_PERF_SAVE
-    auto result_dir = options->GetResultDir();
-    if (result_dir.has_value()) {
-        NPCSimResult::Save(
-            *result_dir,
-        dut.GetCycle(),
-        dut.GetInstructions(),
-        dut.GetInstructionFetchCount(),
-        dut.GetExecutionCompleteCount(),
-        dut.GetLoadDataCount(),
-        dut.GetStoreDataCount(),
-        dut.GetArithmeticOperationCount(),
-        dut.GetMemoryAccessOperationCount(),
-        dut.GetControlStatusRegisterOperationCount(),
-        dut.GetBranchOperationCount(),
-        dut.GetMemoryAccessOperationActiveCycleCount(),
-        dut.GetInstructionFetchStallPipelineCount(),
-        dut.GetInstructionFetchStallAXICount(),
-        dut.GetInstructionFetchStallARCount(),
-        dut.GetInstructionFetchStallRCount(),
-        dut.GetInstructionFetchStallRedirectCount(),
-        dut.GetInstructionFetchStallIdleCount(),
-        dut.GetEXUStallLSUCount(),
-        dut.GetLoadStoreUnitActiveCycleCount(),
-        dut.GetLoadStoreUnitLoadActiveCycleCount(),
-        dut.GetLoadStoreUnitStoreActiveCycleCount(),
-        dut.GetLSUStallReadARCount(),
-        dut.GetLSUStallReadRCount(),
-        dut.GetLSUStallWriteReqCount(),
-        dut.GetLSUStallWriteBCount(),
-        dut.GetICacheHitCount(),
-        dut.GetICacheMissCount());
-    }
-#endif
-    dut.final();
-#ifdef CONFIG_NVBOARD
-    nvboard_quit();
-#endif
-#ifdef CONFIG_DIFFTEST
-    if (result != 0)
-    {
-        DiftestFinalCheck(dut);
-    }
-#endif
 #if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_close();
 #endif

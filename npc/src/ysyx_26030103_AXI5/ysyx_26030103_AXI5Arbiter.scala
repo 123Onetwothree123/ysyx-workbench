@@ -80,15 +80,12 @@ class ysyx_26030103_AXI5Arbiter extends Module {
       when(LSUWriteRequest) {
         grant := GrantLSU
         state := StatesWriteRequest
-        printf("[ARB] grant LSU write\n")
       }.elsewhen(LSUReadRequest) {
         grant := GrantLSU
         state := StatesReadRequest
-        printf("[ARB] grant LSU read\n")
       }.elsewhen(IFUReadRequest) {
         grant := GrantIFU
         state := StatesReadRequest
-        printf("[ARB] grant IFU read\n")
       }
     }
     is(StatesReadRequest) {

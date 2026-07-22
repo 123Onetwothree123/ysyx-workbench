@@ -152,12 +152,6 @@ class ysyx_26030103(
     lsu.io.AccessFaultResp
   )
   io.debug_commit := wbu.io.WriteEN
-  val debug_cycle = RegInit(0.U(32.W))
-  debug_cycle := debug_cycle + 1.U
-  when(debug_cycle(9,0) === 0.U) {
-    printf("[TOP] cycle=%d pc=0x%x commit=%d\n",
-      debug_cycle, ifu.io.DebugPC, io.debug_commit)
-  }
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done  := exu.io.out.fire

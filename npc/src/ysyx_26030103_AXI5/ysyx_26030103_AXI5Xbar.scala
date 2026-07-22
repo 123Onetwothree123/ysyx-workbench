@@ -212,9 +212,6 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.SoCBus.W.WSTRB := WSTRBReg
       io.SoCBus.W.WLAST := WLASTReg
 
-      printf("[XBAR] write to SoCBus: awaddr=0x%x awvalid=%d awready=%d wvalid=%d wready=%d\n",
-        AWAddressReg, SendAW, io.SoCBus.AW.AWREADY, SendW, io.SoCBus.W.WREADY)
-
       val AWFire = SendAW && io.SoCBus.AW.AWREADY
       val WFire = SendW && io.SoCBus.W.WREADY
 
@@ -270,9 +267,6 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.in.B.BVALID := io.SoCBus.B.BVALID
       io.in.B.BRESP := io.SoCBus.B.BRESP
       io.SoCBus.B.BREADY := io.in.B.BREADY
-
-      printf("[XBAR] write resp: bvalid=%d bready=%d bresp=%d\n",
-        io.SoCBus.B.BVALID, io.in.B.BREADY, io.SoCBus.B.BRESP)
 
       when(io.SoCBus.B.BVALID && io.in.B.BREADY) {
         AWValidReg := false.B
