@@ -22,16 +22,26 @@ class ysyx_26030103_GPR extends Module {
   ysyx_26030103_RegisterFile.io.wen := RegisterFileWen
   ysyx_26030103_RegisterFile.io.raddr1 := io.Read1SELECT
   ysyx_26030103_RegisterFile.io.raddr2 := io.Read2SELECT
+  val fwd_valid = RegInit(false.B)
+  val fwd_addr = RegInit(0.U(5.W))
+  val fwd_data = RegInit(0.U(32.W))
+  when(RegisterFileWen) {
+    fwd_valid := true.B
+    fwd_addr := io.WriteSELECT
+    fwd_data := io.wdata
+  }.otherwise {
+    fwd_valid := false.B
+  }
   io.ReadDATA1 := Mux(
     io.Read1SELECT === 0.U,
     0.U(32.W),
-    Mux(io.WriteEN && io.Read1SELECT === io.WriteSELECT, io.wdata,
+    Mux(fwd_valid && io.Read1SELECT === fwd_addr, fwd_data,
       ysyx_26030103_RegisterFile.io.rdata1)
   )
   io.ReadDATA2 := Mux(
     io.Read2SELECT === 0.U,
     0.U(32.W),
-    Mux(io.WriteEN && io.Read2SELECT === io.WriteSELECT, io.wdata,
+    Mux(fwd_valid && io.Read2SELECT === fwd_addr, fwd_data,
       ysyx_26030103_RegisterFile.io.rdata2)
   )
   io.DebugA0 := ysyx_26030103_RegisterFile.io.debug_a0
