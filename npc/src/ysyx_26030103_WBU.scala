@@ -28,4 +28,9 @@ class ysyx_26030103_WBU extends Module {
       io.wdata := io.in.bits.CSRReadData
     }
   }
+  val wb_probe = Module(new AXIDebugProbe)
+  wb_probe.io.trigger := io.in.fire && io.in.bits.RegisterWrite
+  wb_probe.io.tag := 6.U
+  wb_probe.io.addr := io.in.bits.Rd
+  wb_probe.io.resp := io.in.bits.pc
 }
