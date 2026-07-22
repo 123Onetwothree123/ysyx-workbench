@@ -5,14 +5,16 @@ import _root_.ysyx_26030103.ysyx_26030103_Message._
 class ysyx_26030103_WBU extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage))
-    // 给ysyx_26030103_GPR的
     val WriteSELECT = Output(UInt(5.W))
     val WriteEN = Output(Bool())
     val wdata = Output(UInt(32.W))
+    val Commit = Output(Bool())  // registered commit signal
   })
   io.in.ready := true.B
   io.WriteSELECT := io.in.bits.Rd
-  io.WriteEN := io.in.fire && io.in.bits.RegisterWrite
+  val fire = io.in.fire && io.in.bits.RegisterWrite
+  io.WriteEN := fire
+  io.Commit := RegNext(fire, false.B)  // 延迟一拍，稳定给C++读
   io.wdata := 0.U(32.W)
   switch(io.in.bits.WBSelect) {
     is("b00".U) {

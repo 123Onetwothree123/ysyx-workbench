@@ -151,7 +151,7 @@ class ysyx_26030103(
     icache.io.access_fault_resp,
     lsu.io.AccessFaultResp
   )
-  io.debug_commit := wbu.io.WriteEN
+  io.debug_commit := wbu.io.Commit
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done  := exu.io.out.fire
