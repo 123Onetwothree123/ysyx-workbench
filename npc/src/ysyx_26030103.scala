@@ -10,7 +10,9 @@ class CommitProbe extends BlackBox with HasBlackBoxInline {
   })
   setInline("CommitProbe.v",
     """module CommitProbe(input valid, output reg commit);
+      |/* verilator lint_off LATCH */
       |always @(*) if (valid) commit = 1;
+      |/* verilator lint_on LATCH */
       |endmodule""".stripMargin)
 }
 //他妈的，我们伟大的scala插件和编译器设计专家应该要以死谢罪，是哪个天才想到的，如果直接写ysyx_26030103，因为我这个顶层模块类和包同名了
