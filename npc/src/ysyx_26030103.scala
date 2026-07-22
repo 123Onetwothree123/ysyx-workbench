@@ -26,11 +26,7 @@ class AXIDebugProbe extends BlackBox with HasBlackBoxInline {
   setInline("AXIDebugProbe.v",
     """module AXIDebugProbe(input trigger, input [31:0] tag, input [31:0] addr, input [31:0] resp);
       |import "DPI-C" function void axi_debug_probe(input int tag, input int addr, input int resp);
-      |reg _prev;
-      |always @(*) begin
-      |  if (trigger && !_prev) axi_debug_probe(tag, addr, resp);
-      |  _prev = trigger;
-      |end
+      |always @(*) if (trigger) axi_debug_probe(tag, addr, resp);
       |endmodule""".stripMargin)
   override def desiredName = "AXIDebugProbe"
 }
