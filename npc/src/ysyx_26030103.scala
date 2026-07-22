@@ -40,16 +40,14 @@ class ysyx_26030103(
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
-  ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
-  ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
-  // Workaround for firtool 1.139.0: explicit wires ensure valid/ready propagation
-  idu.io.in.valid := ifu.io.out.valid
-  ifu.io.out.ready := idu.io.in.ready
-  exu.io.in.valid := idu.io.out.valid
-  idu.io.out.ready := exu.io.in.ready
-  wbu.io.in.valid := exu.io.out.valid
-  exu.io.out.ready := wbu.io.in.ready
+  // StageConnect commented out: use explicit wire-through for firtool 1.139.0
+  //ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
+  //ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
+  //ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
+  // Explicit wires: valid, ready, AND bits
+  idu.io.in <> ifu.io.out
+  exu.io.in <> idu.io.out
+  wbu.io.in <> exu.io.out
   // DPI-C probe: captures valid glitch from Verilog side
   val probe = Module(new CommitProbe)
   probe.io.valid := exu.io.out.valid
