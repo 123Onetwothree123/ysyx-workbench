@@ -29,6 +29,16 @@ class ysyx_26030103(
   ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
   ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
   ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
+  // Explicit wire-through to ensure valid/ready propagation
+  idu.io.in.valid := ifu.io.out.valid
+  idu.io.in.bits := ifu.io.out.bits
+  ifu.io.out.ready := idu.io.in.ready
+  exu.io.in.valid := idu.io.out.valid
+  exu.io.in.bits := idu.io.out.bits
+  idu.io.out.ready := exu.io.in.ready
+  wbu.io.in.valid := exu.io.out.valid
+  wbu.io.in.bits := exu.io.out.bits
+  exu.io.out.ready := wbu.io.in.ready
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
