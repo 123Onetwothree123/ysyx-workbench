@@ -58,6 +58,7 @@ class AXI4MROM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
     mrom.io.raddr := in.ar.bits.addr + address.head.base.U
     mrom.io.ren := in.ar.fire
     in.ar.ready := (state === stateIdle)
+
     in.r.bits.data := mrom.io.rdata
     in.r.bits.id := RegEnable(in.ar.bits.id, in.ar.fire)
     in.r.bits.resp := 0.U
@@ -67,9 +68,5 @@ class AXI4MROM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
     in.aw.ready := false.B
     in. w.ready := false.B
     in. b.valid := false.B
-
-    // MROM不接受写，AXI交叉开关启动时有awvalid毛刺，暂关断言
-    //assert(!in.aw.valid, "do not support write operations")
-    //assert(!in. w.valid, "do not support write operations")
   }
 }

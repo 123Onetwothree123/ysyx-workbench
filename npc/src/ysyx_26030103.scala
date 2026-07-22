@@ -41,83 +41,9 @@ class ysyx_26030103(
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  // StageConnect commented out: use explicit wire-through for firtool 1.139.0
-  //ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
-  //ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
-  //ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
-  // Explicit wires: valid, ready, AND bits
-  idu.io.in <> ifu.io.out
-  exu.io.in <> idu.io.out
-  wbu.io.in <> exu.io.out
-  // DPI-C probe: captures valid glitch from Verilog side
-  val probe = Module(new CommitProbe)
-  probe.io.valid := exu.io.out.valid
-  val probe_lsu = Module(new CommitProbe)
-  probe_lsu.io.valid := lsu.io.Active
-  io.debug_commit := probe.io.commit
-  // Separate LSU probe with $display for debugging
-  val probe_lsu_dbg = Module(new BlackBox with HasBlackBoxInline {
-    val io = IO(new Bundle { val valid = Input(Bool()) })
-    setInline("LsuProbe.v",
-      """module LsuProbe(input valid);
-        |always @(*) if (valid) $display("[LSU_ACTIVE]");
-        |endmodule""".stripMargin)
-    override def desiredName = "LsuProbe"
-  })
-  probe_lsu_dbg.io.valid := lsu.io.Active
-  // (continued from above - probes)
-  probe_lsu_dbg.io.valid := lsu.io.Active
-  // Probe: is IDU ever setting MemoryValid?
-  val probe_memvalid = Module(new BlackBox with HasBlackBoxInline {
-    val io = IO(new Bundle { val valid = Input(Bool()) })
-    setInline("MemValidProbe.v",
-      """module MemValidProbe(input valid);
-        |always @(*) if (valid) $display("[MEM_VALID]");
-        |endmodule""".stripMargin)
-    override def desiredName = "MemValidProbe"
-  })
-  probe_memvalid.io.valid := idu.io.out.bits.MemoryValid
-  // Probe: is EXU ever outputting MemoryValid to LSU?
-  val probe_exu_mv = Module(new BlackBox with HasBlackBoxInline {
-    val io = IO(new Bundle { val valid = Input(Bool()) })
-    setInline("ExuMVProbe.v",
-      """module ExuMVProbe(input valid);
-        |always @(*) if (valid) $display("[EXU_MEM_VALID]");
-        |endmodule""".stripMargin)
-    override def desiredName = "ExuMVProbe"
-  })
-  probe_exu_mv.io.valid := exu.io.MemoryValid
-  // Probe: is WBU ever seeing RegisterWrite=1?
-  val probe_regwr = Module(new BlackBox with HasBlackBoxInline {
-    val io = IO(new Bundle { val valid = Input(Bool()) })
-    setInline("RegWrProbe.v",
-      """module RegWrProbe(input valid);
-        |always @(*) if (valid) $display("[REG_WRITE]");
-        |endmodule""".stripMargin)
-    override def desiredName = "RegWrProbe"
-  })
-  probe_regwr.io.valid := wbu.io.in.bits.RegisterWrite && wbu.io.in.valid
-  // Direct probe on IDU output RegisterWrite
-  val probe_idu_rw = Module(new BlackBox with HasBlackBoxInline {
-    val io = IO(new Bundle { val valid = Input(Bool()) })
-    setInline("IduRWProbe.v",
-      """module IduRWProbe(input valid);
-        |always @(*) if (valid) $display("[IDU_REGWR]");
-        |endmodule""".stripMargin)
-    override def desiredName = "IduRWProbe"
-  })
-  probe_idu_rw.io.valid := idu.io.out.bits.RegisterWrite && idu.io.out.valid
-  // Direct probe on IFU output instruction
-  val probe_ifu_inst = Module(new BlackBox with HasBlackBoxInline {
-    val io = IO(new Bundle { val inst = Input(UInt(32.W)); val valid = Input(Bool()) })
-    setInline("IfuInstProbe.v",
-      """module IfuInstProbe(input [31:0] inst, input valid);
-        |always @(*) if (valid) $display("[IFU_INST] 0x%h", inst);
-        |endmodule""".stripMargin)
-    override def desiredName = "IfuInstProbe"
-  })
-  probe_ifu_inst.io.inst := ifu.io.out.bits.Instruction
-  probe_ifu_inst.io.valid := ifu.io.out.valid
+  ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
+  ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
+  ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
@@ -241,6 +167,10 @@ class ysyx_26030103(
     lsu.io.AccessFaultResp
   )
   io.debug_commit := wbu.io.WriteEN
+  // CommitProbe latch ensures debug_commit stays high after first valid (Verilator glitch workaround)
+  val probe = Module(new CommitProbe)
+  probe.io.valid := exu.io.out.valid
+  io.debug_commit := probe.io.commit
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done  := exu.io.out.fire
