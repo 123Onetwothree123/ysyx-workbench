@@ -26,19 +26,9 @@ class ysyx_26030103(
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  // StageConnect replaced by explicit wires for firtool 1.139.0 compatibility
-  //ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
-  //ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
-  //ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
-  idu.io.in.valid := ifu.io.out.valid
-  idu.io.in.bits := ifu.io.out.bits
-  ifu.io.out.ready := idu.io.in.ready
-  exu.io.in.valid := idu.io.out.valid
-  exu.io.in.bits := idu.io.out.bits
-  idu.io.out.ready := exu.io.in.ready
-  wbu.io.in.valid := exu.io.out.valid
-  wbu.io.in.bits := exu.io.out.bits
-  exu.io.out.ready := wbu.io.in.ready
+  ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
+  ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
+  ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
@@ -161,10 +151,7 @@ class ysyx_26030103(
     icache.io.access_fault_resp,
     lsu.io.AccessFaultResp
   )
-  // Commit: latch any valid event for C++ visibility
-  val commit_latch = RegInit(false.B)
-  when (exu.io.out.valid) { commit_latch := true.B }
-  io.debug_commit := commit_latch
+  io.debug_commit := wbu.io.WriteEN
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done  := exu.io.out.fire

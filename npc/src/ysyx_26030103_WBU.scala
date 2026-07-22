@@ -9,13 +9,10 @@ class ysyx_26030103_WBU extends Module {
     val WriteSELECT = Output(UInt(5.W))
     val WriteEN = Output(Bool())
     val wdata = Output(UInt(32.W))
-    val Commit = Output(Bool())
   })
   io.in.ready := true.B
   io.WriteSELECT := io.in.bits.Rd
-  val fire = io.in.fire && io.in.bits.RegisterWrite
-  io.WriteEN := fire
-  io.Commit := RegNext(fire, false.B)
+  io.WriteEN := io.in.fire && io.in.bits.RegisterWrite
   io.wdata := 0.U(32.W)
   switch(io.in.bits.WBSelect) {
     is("b00".U) {
