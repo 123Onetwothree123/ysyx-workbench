@@ -55,7 +55,7 @@ class AXI4MROM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
                Mux(in. r.fire, stateIdle, stateWaitRready))
 
     mrom.io.clock := clock
-    mrom.io.raddr := in.ar.bits.addr
+    mrom.io.raddr := in.ar.bits.addr + address.head.base.U
     mrom.io.ren := in.ar.fire
     in.ar.ready := (state === stateIdle)
     in.r.bits.data := mrom.io.rdata
