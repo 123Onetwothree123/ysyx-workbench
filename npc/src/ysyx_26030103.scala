@@ -65,6 +65,24 @@ class ysyx_26030103(
         |endmodule""".stripMargin)
   })
   probe_lsu_dbg.io.valid := lsu.io.Active
+  // Probe: is IDU ever setting MemoryValid?
+  val probe_memvalid = Module(new BlackBox with HasBlackBoxInline {
+    val io = IO(new Bundle { val valid = Input(Bool()) })
+    setInline("MemValidProbe.v",
+      """module MemValidProbe(input valid);
+        |always @(*) if (valid) $display("[MEM_VALID]");
+        |endmodule""".stripMargin)
+  })
+  probe_memvalid.io.valid := idu.io.out.bits.MemoryValid
+  // Probe: is EXU ever outputting MemoryValid to LSU?
+  val probe_exu_mv = Module(new BlackBox with HasBlackBoxInline {
+    val io = IO(new Bundle { val valid = Input(Bool()) })
+    setInline("ExuMVProbe.v",
+      """module ExuMVProbe(input valid);
+        |always @(*) if (valid) $display("[EXU_MEM_VALID]");
+        |endmodule""".stripMargin)
+  })
+  probe_exu_mv.io.valid := exu.io.MemoryValid
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
