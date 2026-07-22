@@ -90,6 +90,25 @@ class ysyx_26030103(
         |endmodule""".stripMargin)
   })
   probe_regwr.io.valid := wbu.io.in.bits.RegisterWrite && wbu.io.in.valid
+  // Direct probe on IDU output RegisterWrite
+  val probe_idu_rw = Module(new BlackBox with HasBlackBoxInline {
+    val io = IO(new Bundle { val valid = Input(Bool()) })
+    setInline("IduRWProbe.v",
+      """module IduRWProbe(input valid);
+        |always @(*) if (valid) $display("[IDU_REGWR]");
+        |endmodule""".stripMargin)
+  })
+  probe_idu_rw.io.valid := idu.io.out.bits.RegisterWrite && idu.io.out.valid
+  // Direct probe on IFU output instruction (first word, to verify data)
+  val probe_ifu_inst = Module(new BlackBox with HasBlackBoxInline {
+    val io = IO(new Bundle { val inst = Input(UInt(32.W)); val valid = Input(Bool()) })
+    setInline("IfuInstProbe.v",
+      """module IfuInstProbe(input [31:0] inst, input valid);
+        |always @(*) if (valid) $display("[IFU_INST] 0x%h", inst);
+        |endmodule""".stripMargin)
+  })
+  probe_ifu_inst.io.inst := ifu.io.out.bits.Instruction
+  probe_ifu_inst.io.valid := ifu.io.out.valid
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
