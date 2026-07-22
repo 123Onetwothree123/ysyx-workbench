@@ -19,12 +19,12 @@ class CommitProbe extends BlackBox with HasBlackBoxInline {
 class AXIDebugProbe extends BlackBox with HasBlackBoxInline {
   val io = IO(new Bundle {
     val trigger = Input(Bool())
-    val tag = Input(UInt(4.W))
+    val tag = Input(UInt(32.W))
     val addr = Input(UInt(32.W))
-    val resp = Input(UInt(2.W))
+    val resp = Input(UInt(32.W))
   })
   setInline("AXIDebugProbe.v",
-    """module AXIDebugProbe(input trigger, input [3:0] tag, input [31:0] addr, input [1:0] resp);
+    """module AXIDebugProbe(input trigger, input [31:0] tag, input [31:0] addr, input [31:0] resp);
       |import "DPI-C" function void axi_debug_probe(input int tag, input int addr, input int resp);
       |always @(posedge trigger) axi_debug_probe(tag, addr, resp);
       |endmodule""".stripMargin)
