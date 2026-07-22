@@ -26,10 +26,11 @@ class ysyx_26030103(
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
-  ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
-  ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
-  // Explicit wire-through to ensure valid/ready propagation
+  // StageConnect replaced by explicit wires below
+  //ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
+  //ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
+  //ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
+  // Explicit wire-through to ensure valid/ready/bits propagation
   idu.io.in.valid := ifu.io.out.valid
   idu.io.in.bits := ifu.io.out.bits
   ifu.io.out.ready := idu.io.in.ready
