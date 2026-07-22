@@ -12,14 +12,11 @@ extern void nvboard_bind_all_pins(TOP_MODULE* top);
 #endif
 import std;
 import npc;
-#include <unistd.h>
 
 int main(int argc, char const *argv[])
 {
-    write(STDOUT_FILENO, "START\n", 6);
 #if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_init();
-    write(STDOUT_FILENO, "LOG_INIT_DONE\n", 14);
 #endif
     Verilated::commandArgs(argc, argv);
     DUT dut;
