@@ -1,5 +1,6 @@
 package ysyx_26030103.ysyx_26030103_GPR
 import chisel3._
+import _root_.ysyx_26030103.AXIDebugProbe
 class ysyx_26030103_GPR extends Module {
   val io = IO(new Bundle {
     val wdata = Input(UInt(32.W))
@@ -47,4 +48,9 @@ class ysyx_26030103_GPR extends Module {
   io.DebugA0 := ysyx_26030103_RegisterFile.io.debug_a0
   ysyx_26030103_RegisterFile.io.debug_raddr := io.DebugRaddr
   io.DebugRdata := ysyx_26030103_RegisterFile.io.debug_rdata
+  val gpr_probe = Module(new AXIDebugProbe)
+  gpr_probe.io.trigger := RegisterFileWen
+  gpr_probe.io.tag := 5.U
+  gpr_probe.io.addr := io.WriteSELECT
+  gpr_probe.io.resp := io.wdata
 }
