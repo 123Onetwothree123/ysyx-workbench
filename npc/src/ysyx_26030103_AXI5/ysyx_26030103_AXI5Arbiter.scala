@@ -56,6 +56,7 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   io.memory.AW.AWBURST := 0.U
   io.memory.AW.AWPROT := 0.U
   io.memory.W.WVALID := false.B
+  io.memory.W.WID := 0.U
   io.memory.W.WDATA := 0.U
   io.memory.W.WSTRB := 0.U
   io.memory.W.WLAST := false.B
