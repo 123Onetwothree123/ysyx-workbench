@@ -86,6 +86,9 @@ class ysyx_26030103_ICache(
   io.perf_miss := false.B
   io.perf_refill_req := state === state_refill_req
   io.perf_refill_resp := state === state_refill_resp
+  io.probe_trigger := false.B
+  io.probe_addr := 0.U
+  io.probe_resp := 0.U
   switch(state) {
     is(state_idle) {
       access_fault_reg := false.B

@@ -272,4 +272,10 @@ class ysyx_26030103_LSU extends Module {
   io.StallReadR     := state === StatesReadResponse
   io.StallWriteReq  := state === StatesWriteRequest
   io.StallWriteB    := state === StatesWriteResponse
+  io.probe_r_trigger := false.B
+  io.probe_r_addr := 0.U
+  io.probe_r_resp := 0.U
+  io.probe_b_trigger := false.B
+  io.probe_b_addr := 0.U
+  io.probe_b_resp := 0.U
 }
