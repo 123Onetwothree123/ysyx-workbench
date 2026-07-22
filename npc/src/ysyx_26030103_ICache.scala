@@ -64,7 +64,6 @@ class ysyx_26030103_ICache(
   io.axi.AW.AWBURST := 1.U
   io.axi.AW.AWPROT := 0.U
   io.axi.W.WVALID := false.B
-  io.axi.W.WID := 0.U
   io.axi.W.WDATA := 0.U
   io.axi.W.WSTRB := 0.U
   io.axi.W.WLAST := false.B

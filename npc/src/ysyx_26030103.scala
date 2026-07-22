@@ -59,7 +59,6 @@ class ysyx_26030103(
   io.master_wdata := soc.W.WDATA
   io.master_wstrb := soc.W.WSTRB
   io.master_wlast := soc.W.WLAST
-  io.master_wid := soc.W.WID
   soc.W.WREADY := io.master_wready
 
   io.master_bready := soc.B.BREADY

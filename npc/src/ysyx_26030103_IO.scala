@@ -23,7 +23,6 @@ class ysyx_26030103_IO extends Bundle {
   val master_wdata = Output(UInt(32.W))
   val master_wstrb = Output(UInt(4.W))
   val master_wlast = Output(Bool())
-  val master_wid = Output(UInt(4.W))
 //B写回的
   val master_bready = Output(Bool())
   val master_bvalid = Input(Bool())

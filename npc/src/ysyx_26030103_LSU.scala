@@ -114,7 +114,6 @@ class ysyx_26030103_LSU extends Module {
   io.DataBus.AW.AWBURST := 1.U
   io.DataBus.AW.AWPROT := 0.U
   io.DataBus.W.WVALID := false.B
-  io.DataBus.W.WID := 0.U
   io.DataBus.W.WDATA := 0.U
   io.DataBus.W.WSTRB := 0.U
   io.DataBus.W.WLAST := false.B
@@ -223,7 +222,6 @@ class ysyx_26030103_LSU extends Module {
       io.DataBus.AW.AWVALID := !AWAlreadyDone
       io.DataBus.AW.AWADDR := io.ALUResult
       io.DataBus.AW.AWPROT := 0.U
-      io.DataBus.W.WID := 0.U
       io.DataBus.W.WVALID := !WAlreadyDone
       io.DataBus.W.WDATA := WriteData
       io.DataBus.W.WSTRB := WriteMask
