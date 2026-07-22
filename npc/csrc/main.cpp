@@ -64,7 +64,10 @@ int main(int argc, char const *argv[])
     {
         dut.step();
         if (++progress_step % 5000 == 0) {
-            std::println("progress: {} cycles, {} instructions", dut.GetCycle(), dut.GetInstructions());
+            std::println("progress: {} cycles, {} instructions, access_fault={}, reset={}",
+                dut.GetCycle(), dut.GetInstructions(),
+                static_cast<int>(dut->debug_access_fault),
+                static_cast<int>(dut->reset));
         }
 #ifdef CONFIG_NVBOARD
         nvboard_update();
