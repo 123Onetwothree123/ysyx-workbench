@@ -64,14 +64,13 @@ int main(int argc, char const *argv[])
     {
         dut.step();
         if (++progress_step % 5000 == 0) {
-            std::println("progress: {} cycles, {} instr, af={} rst={} ifu_stall: axi={} ar={} r={} pipe={} idle={}",
+            std::println("progress: {} cycles, {} instr, pc=0x{:08x}",
                 dut.GetCycle(), dut.GetInstructions(),
-                static_cast<int>(dut->debug_access_fault), static_cast<int>(dut->reset),
+                static_cast<std::uint32_t>(dut->debug_pc));
+            std::println("  ifu_stall: axi={} ar={} r={} pipe={} idle={} exe_act={}",
                 static_cast<int>(dut->perf_ifu_stall_axi), static_cast<int>(dut->perf_ifu_stall_ar),
                 static_cast<int>(dut->perf_ifu_stall_r), static_cast<int>(dut->perf_ifu_stall_pipeline),
-                static_cast<int>(dut->perf_ifu_stall_idle));
-            std::println("  perf_exe_active={} lsu_active={}",
-                static_cast<int>(dut->perf_execution_active), static_cast<int>(dut->perf_lsu_active));
+                static_cast<int>(dut->perf_ifu_stall_idle), static_cast<int>(dut->perf_execution_active));
         }
 #ifdef CONFIG_NVBOARD
         nvboard_update();
