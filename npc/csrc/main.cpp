@@ -1,6 +1,4 @@
 #include <verilated.h>
-#include <cstdio>
-#include <csignal>
 #ifdef VRISCV32E_NPC
 #include "Vriscv32e_npc_SimTop.h"
 #define TOP_MODULE Vriscv32e_npc_SimTop
@@ -17,17 +15,11 @@ import npc;
 
 int main(int argc, char const *argv[])
 {
-    setvbuf(stdout, NULL, _IONBF, 0);
-    // install signal handler so VCD is flushed on kill
-    static DUT* g_dut = nullptr;
-    std::signal(SIGTERM, [](int) { if (g_dut) g_dut->final(); std::exit(1); });
-    std::signal(SIGINT,  [](int) { if (g_dut) g_dut->final(); std::exit(1); });
 #if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_init();
 #endif
     Verilated::commandArgs(argc, argv);
     DUT dut;
-    g_dut = &dut;
 #ifdef CONFIG_NVBOARD
     nvboard_bind_all_pins(&*dut);
     nvboard_init();
@@ -58,9 +50,7 @@ int main(int argc, char const *argv[])
         }
     }
 #endif
-    std::println("before reset");
     dut.reset();
-    std::println("after reset");
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
