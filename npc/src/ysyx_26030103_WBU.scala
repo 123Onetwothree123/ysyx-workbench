@@ -5,6 +5,7 @@ import _root_.ysyx_26030103.ysyx_26030103_Message._
 class ysyx_26030103_WBU extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage))
+    // 给ysyx_26030103_GPR的
     val WriteSELECT = Output(UInt(5.W))
     val WriteEN = Output(Bool())
     val wdata = Output(UInt(32.W))
@@ -14,11 +15,7 @@ class ysyx_26030103_WBU extends Module {
   io.WriteSELECT := io.in.bits.Rd
   val fire = io.in.fire && io.in.bits.RegisterWrite
   io.WriteEN := fire
-  // DEBUG: force commit high 1 cycle after fire to test signal chain
-  val commitReg = RegInit(false.B)
-  when (io.in.valid) { commitReg := true.B }
-  .elsewhen (commitReg) { commitReg := false.B }
-  io.Commit := commitReg
+  io.Commit := RegNext(fire, false.B)
   io.wdata := 0.U(32.W)
   switch(io.in.bits.WBSelect) {
     is("b00".U) {

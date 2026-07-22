@@ -21,9 +21,7 @@ void log_init() {
 
 void log_close() {
 #ifdef CONFIG_LOG_TO_FILE
-    if (log_file.is_open()) {
-        log_file.close();
-    }
+    if (log_file.is_open()) log_file.close();
 #endif
 }
 
@@ -50,8 +48,6 @@ void log_write(LogLevel level, std::string_view msg, std::source_location loc) {
     line += msg;
     std::println(std::cerr, "{}", line);
 #ifdef CONFIG_LOG_TO_FILE
-    if (log_file.is_open()) {
-        log_file << line << std::endl;
-    }
+    if (log_file.is_open()) log_file << line << std::endl;
 #endif
 }

@@ -26,11 +26,10 @@ class ysyx_26030103(
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  // StageConnect replaced by explicit wires below
-  //ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
-  //ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
-  //ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
-  // Explicit wire-through to ensure valid/ready/bits propagation
+  ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
+  ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
+  ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
+  // Explicit wire-through to work around firtool 1.139.0 StageConnect issue
   idu.io.in.valid := ifu.io.out.valid
   idu.io.in.bits := ifu.io.out.bits
   ifu.io.out.ready := idu.io.in.ready
@@ -162,11 +161,7 @@ class ysyx_26030103(
     icache.io.access_fault_resp,
     lsu.io.AccessFaultResp
   )
-  // DEBUG: latch any commit event for C++ visibility
-  val commit_latched = RegInit(false.B)
-  when (exu.io.out.valid) { commit_latched := true.B }
-  val commit_visible = commit_latched || wbu.io.Commit
-  io.debug_commit := commit_visible
+  io.debug_commit := wbu.io.Commit
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done  := exu.io.out.fire
