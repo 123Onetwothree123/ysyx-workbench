@@ -161,7 +161,10 @@ class ysyx_26030103(
     icache.io.access_fault_resp,
     lsu.io.AccessFaultResp
   )
-  io.debug_commit := wbu.io.Commit
+  // Commit: registered version of exu output valid (for C++ visibility)
+  val commit_reg = RegInit(false.B)
+  commit_reg := exu.io.out.valid
+  io.debug_commit := commit_reg
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done  := exu.io.out.fire
