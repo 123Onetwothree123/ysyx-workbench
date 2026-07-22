@@ -27,6 +27,9 @@ class ysyx_26030103_ICache(
     val perf_refill_resp = Output(Bool())
     val access_fault = Output(Bool())
     val access_fault_resp = Output(UInt(2.W))
+    val probe_trigger = Output(Bool())
+    val probe_addr = Output(UInt(32.W))
+    val probe_resp = Output(UInt(2.W))
   })
   // 直接映射cache存储阵列：valid+tag+data
   val valid = RegInit(VecInit(Seq.fill(NumBlocks)(false.B)))
@@ -120,7 +123,9 @@ class ysyx_26030103_ICache(
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RREADY) {
         when(io.axi.R.RRESP =/= 0.U) {
-          printf("ICACHE_FAULT addr=%x resp=%d\n", fetch_addr_reg, io.axi.R.RRESP)
+          io.probe_trigger := true.B
+          io.probe_addr := fetch_addr_reg
+          io.probe_resp := io.axi.R.RRESP
           access_fault_reg := true.B
           access_fault_resp_reg := io.axi.R.RRESP
         }.otherwise {

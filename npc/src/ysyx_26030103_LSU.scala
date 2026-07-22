@@ -26,6 +26,12 @@ class ysyx_26030103_LSU extends Module {
     val StallReadR     = Output(Bool())
     val StallWriteReq  = Output(Bool())
     val StallWriteB    = Output(Bool())
+    val probe_r_trigger = Output(Bool())
+    val probe_r_addr = Output(UInt(32.W))
+    val probe_r_resp = Output(UInt(2.W))
+    val probe_b_trigger = Output(Bool())
+    val probe_b_addr = Output(UInt(32.W))
+    val probe_b_resp = Output(UInt(2.W))
   })
   // 接入ysyxSoC新加的
   val AXISize = WireDefault(2.U(3.W))
@@ -173,7 +179,9 @@ class ysyx_26030103_LSU extends Module {
       io.DataBus.R.RREADY := true.B
       when(io.DataBus.R.RVALID) {
         when(io.DataBus.R.RRESP =/= 0.U) {
-          printf("LSU_R_FAULT addr=%x resp=%d\n", io.ALUResult, io.DataBus.R.RRESP)
+          io.probe_r_trigger := true.B
+          io.probe_r_addr := io.ALUResult
+          io.probe_r_resp := io.DataBus.R.RRESP
           AccessFaultReg := true.B
           AccessFaultRespReg := io.DataBus.R.RRESP
         }.otherwise {
@@ -243,7 +251,9 @@ class ysyx_26030103_LSU extends Module {
       io.DataBus.B.BREADY := true.B
       when(Bfire) {
         when(io.DataBus.B.BRESP =/= 0.U) {
-          printf("LSU_B_FAULT addr=%x resp=%d\n", io.ALUResult, io.DataBus.B.BRESP)
+          io.probe_b_trigger := true.B
+          io.probe_b_addr := io.ALUResult
+          io.probe_b_resp := io.DataBus.B.BRESP
           AccessFaultReg := true.B
           AccessFaultRespReg := io.DataBus.B.BRESP
         }

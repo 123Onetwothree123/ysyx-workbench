@@ -16,6 +16,20 @@ class CommitProbe extends BlackBox with HasBlackBoxInline {
       |endmodule""".stripMargin)
   override def desiredName = "CommitProbe"
 }
+class AXIDebugProbe extends BlackBox with HasBlackBoxInline {
+  val io = IO(new Bundle {
+    val trigger = Input(Bool())
+    val tag = Input(UInt(4.W))
+    val addr = Input(UInt(32.W))
+    val resp = Input(UInt(2.W))
+  })
+  setInline("AXIDebugProbe.v",
+    """module AXIDebugProbe(input trigger, input [3:0] tag, input [31:0] addr, input [1:0] resp);
+      |import "DPI-C" function void axi_debug_probe(input int tag, input int addr, input int resp);
+      |always @(posedge trigger) axi_debug_probe(tag, addr, resp);
+      |endmodule""".stripMargin)
+  override def desiredName = "AXIDebugProbe"
+}
 //他妈的，我们伟大的scala插件和编译器设计专家应该要以死谢罪，是哪个天才想到的，如果直接写ysyx_26030103，因为我这个顶层模块类和包同名了
 //能被解读成ysyx_26030103的ysyx_26030103的AXI模块，还得手动指定从最顶层的根目录去找
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
@@ -33,11 +47,26 @@ class ysyx_26030103(
   val exu = Module(new ysyx_26030103_EXU)
   val wbu = Module(new ysyx_26030103_WBU)
   val lsu = Module(new ysyx_26030103_LSU)
+  val probe_lsu_r = Module(new AXIDebugProbe)
+  probe_lsu_r.io.trigger := lsu.io.probe_r_trigger
+  probe_lsu_r.io.tag := 1.U  // LSU_R
+  probe_lsu_r.io.addr := lsu.io.probe_r_addr
+  probe_lsu_r.io.resp := lsu.io.probe_r_resp
+  val probe_lsu_b = Module(new AXIDebugProbe)
+  probe_lsu_b.io.trigger := lsu.io.probe_b_trigger
+  probe_lsu_b.io.tag := 2.U  // LSU_B
+  probe_lsu_b.io.addr := lsu.io.probe_b_addr
+  probe_lsu_b.io.resp := lsu.io.probe_b_resp
   val gpr = Module(new ysyx_26030103_GPR)
   val icache = Module(new ysyx_26030103_ICache(
     CacheableBase = CacheableBase,
     CacheableMask = CacheableMask
   ))
+  val probe_icache = Module(new AXIDebugProbe)
+  probe_icache.io.trigger := icache.io.probe_trigger
+  probe_icache.io.tag := 0.U  // ICACHE
+  probe_icache.io.addr := icache.io.probe_addr
+  probe_icache.io.resp := icache.io.probe_resp
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
@@ -80,9 +109,11 @@ class ysyx_26030103(
   soc.B.BID := io.master_bid
   soc.B.BVALID := io.master_bvalid
   soc.B.BRESP := io.master_bresp
-  when(soc.B.BVALID && soc.B.BREADY && soc.B.BRESP =/= 0.U) {
-    printf("SOC_B_FAULT resp=%d\n", soc.B.BRESP)
-  }
+  val probe_soc_b = Module(new AXIDebugProbe)
+  probe_soc_b.io.trigger := soc.B.BVALID && soc.B.BREADY && soc.B.BRESP =/= 0.U
+  probe_soc_b.io.tag := 4.U  // SOC_B
+  probe_soc_b.io.addr := 0.U
+  probe_soc_b.io.resp := soc.B.BRESP
 
   io.master_arvalid := soc.AR.ARVALID
   io.master_araddr := soc.AR.ARADDR
@@ -102,9 +133,11 @@ class ysyx_26030103(
   soc.R.RRESP := io.master_rresp
   soc.R.RDATA := io.master_rdata
   soc.R.RLAST := io.master_rlast
-  when(soc.R.RVALID && soc.R.RREADY && soc.R.RRESP =/= 0.U) {
-    printf("SOC_R_FAULT resp=%d\n", soc.R.RRESP)
-  }
+  val probe_soc_r = Module(new AXIDebugProbe)
+  probe_soc_r.io.trigger := soc.R.RVALID && soc.R.RREADY && soc.R.RRESP =/= 0.U
+  probe_soc_r.io.tag := 3.U  // SOC_R
+  probe_soc_r.io.addr := 0.U
+  probe_soc_r.io.resp := soc.R.RRESP
 
   io.slave_awready := 0.U
   io.slave_wready := 0.U

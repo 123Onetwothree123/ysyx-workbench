@@ -31,3 +31,10 @@ extern "C" void mrom_read(std::int32_t addr, std::int32_t *data)
     }
     *data = static_cast<std::int32_t>(result);
 }
+extern "C" void axi_debug_probe(std::int32_t tag, std::int32_t addr, std::int32_t resp)
+{
+    static const char *names[] = {"ICACHE", "LSU_R", "LSU_B", "SOC_R", "SOC_B"};
+    auto idx{static_cast<unsigned>(tag)};
+    auto name{(idx < 5) ? names[idx] : "UNKNOWN"};
+    std::println(std::cerr, "[AXI_DEBUG] {} addr=0x{:08x} resp={}", name, static_cast<std::uint32_t>(addr), resp);
+}
