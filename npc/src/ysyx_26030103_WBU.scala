@@ -15,6 +15,7 @@ class ysyx_26030103_WBU extends Module {
   io.WriteSELECT := io.in.bits.Rd
   val fire = io.in.fire && io.in.bits.RegisterWrite
   io.WriteEN := fire
+  // Use a simple register — the explicit wires now make valid stable enough
   io.Commit := RegNext(fire, false.B)
   io.wdata := 0.U(32.W)
   switch(io.in.bits.WBSelect) {
