@@ -25,12 +25,14 @@ class ysyx_26030103_GPR extends Module {
   io.ReadDATA1 := Mux(
     io.Read1SELECT === 0.U,
     0.U(32.W),
-    ysyx_26030103_RegisterFile.io.rdata1
+    Mux(io.WriteEN && io.Read1SELECT === io.WriteSELECT, io.wdata,
+      ysyx_26030103_RegisterFile.io.rdata1)
   )
   io.ReadDATA2 := Mux(
     io.Read2SELECT === 0.U,
     0.U(32.W),
-    ysyx_26030103_RegisterFile.io.rdata2
+    Mux(io.WriteEN && io.Read2SELECT === io.WriteSELECT, io.wdata,
+      ysyx_26030103_RegisterFile.io.rdata2)
   )
   io.DebugA0 := ysyx_26030103_RegisterFile.io.debug_a0
   ysyx_26030103_RegisterFile.io.debug_raddr := io.DebugRaddr
