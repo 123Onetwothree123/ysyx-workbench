@@ -1,4 +1,5 @@
 module;
+#include <cstdio>
 #ifdef VRISCV32E_NPC
 #include "Vriscv32e_npc_SimTop.h"
 #define TOP_MODULE Vriscv32e_npc_SimTop
@@ -136,6 +137,8 @@ void DUT::step()
     if (dut->debug_commit)
     {
         ++instructions;
+        static int commit_cnt = 0;
+        if (++commit_cnt <= 3) printf("[DUT] COMMIT #%d at cycle %zu pc=0x%08x\n", commit_cnt, cycle, static_cast<unsigned>(dut->debug_pc));
     }
     if (dut->perf_ifu_fetch)
     {

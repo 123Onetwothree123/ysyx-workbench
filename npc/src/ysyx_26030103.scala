@@ -163,7 +163,8 @@ class ysyx_26030103(
   )
   // Commit: registered version of exu output valid (for C++ visibility)
   val commit_reg = RegInit(false.B)
-  commit_reg := exu.io.out.valid
+  when (exu.io.out.valid) { commit_reg := true.B }
+  .otherwise { commit_reg := false.B }
   io.debug_commit := commit_reg
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
