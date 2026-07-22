@@ -292,8 +292,6 @@ u_response
     .valid_o(resp_valid_w)
 );
 
-always @(posedge clk_i) if (ram_ack_i && ram_read_data_i != 0) $display("PMEM_RD data=%08x", ram_read_data_i);
-
 //-----------------------------------------------------------------
 // RAM Request
 //-----------------------------------------------------------------
