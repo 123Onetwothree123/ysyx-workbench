@@ -105,16 +105,6 @@ class ysyx_26030103_LSU extends Module {
   val is_store_transaction = RegInit(false.B)
   io.AccessFault := AccessFaultReg
   io.AccessFaultResp := AccessFaultRespReg
-  val lsu_probe_r = Module(new AXIDebugProbe)
-  lsu_probe_r.io.trigger := false.B
-  lsu_probe_r.io.tag := 1.U
-  lsu_probe_r.io.addr := 0.U
-  lsu_probe_r.io.resp := 0.U
-  val lsu_probe_b = Module(new AXIDebugProbe)
-  lsu_probe_b.io.trigger := false.B
-  lsu_probe_b.io.tag := 2.U
-  lsu_probe_b.io.addr := 0.U
-  lsu_probe_b.io.resp := 0.U
   // 先给默认值，真的是烦死了，我也不知道vscode那个doctor是干什么的，是JVM的吗？看到是甲骨文的名字，而且这玩意不能捡起来直接用就很烦，他妈的
   io.DataBus.AW.AWVALID := false.B
   io.DataBus.AW.AWID := 0.U
@@ -183,10 +173,6 @@ class ysyx_26030103_LSU extends Module {
       io.DataBus.R.RREADY := true.B
       when(io.DataBus.R.RVALID) {
         when(io.DataBus.R.RRESP =/= 0.U) {
-          lsu_probe_r.io.trigger := true.B
-          lsu_probe_r.io.tag := 1.U
-          lsu_probe_r.io.addr := io.ALUResult
-          lsu_probe_r.io.resp := io.DataBus.R.RRESP
           AccessFaultReg := true.B
           AccessFaultRespReg := io.DataBus.R.RRESP
         }.otherwise {
@@ -256,10 +242,6 @@ class ysyx_26030103_LSU extends Module {
       io.DataBus.B.BREADY := true.B
       when(Bfire) {
         when(io.DataBus.B.BRESP =/= 0.U) {
-          lsu_probe_b.io.trigger := true.B
-          lsu_probe_b.io.tag := 2.U
-          lsu_probe_b.io.addr := io.ALUResult
-          lsu_probe_b.io.resp := io.DataBus.B.BRESP
           AccessFaultReg := true.B
           AccessFaultRespReg := io.DataBus.B.BRESP
         }

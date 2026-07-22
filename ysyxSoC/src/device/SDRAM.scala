@@ -156,6 +156,7 @@ class sdramChisel extends RawModule {
       is(state_read_data) {
         en := true.B
         output := ROWBuffer(CmdBank)(CmdCol + BurstCounter)
+        printf("SDRAM_RD bank=%d row=%d col=%d data=%x\n", CmdBank, ActiveRow(CmdBank), CmdCol + BurstCounter, ROWBuffer(CmdBank)(CmdCol + BurstCounter))
         when(BurstCounter === (MR_Burst_Length - 1.U)) {
           state := state_idle
         }.otherwise {
@@ -178,6 +179,7 @@ class sdramChisel extends RawModule {
     }
     // 写落盘：同时更新对应 bank 的行缓冲(供开行读)和存储阵列(持久化)，按 dqm 做字节掩码
     when(WriteEnable) {
+      printf("SDRAM_WR bank=%d row=%d col=%d data=%x dqm=%b\n", WriteBank, ActiveRow(WriteBank), WriteColumn, input, io.dqm)
       val OldWord = ROWBuffer(WriteBank)(WriteColumn)
       val NewWord = Cat(
         Mux(!io.dqm(1), input(15, 8), OldWord(15, 8)),

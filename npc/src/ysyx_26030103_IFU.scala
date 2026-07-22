@@ -91,9 +91,4 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   io.StallPipeline     := state === StatesHold
   io.StallICache       := state === StatesWaitICache
   io.StallIdle         := state === StatesIdle
-  val ifu_probe = Module(new AXIDebugProbe)
-  ifu_probe.io.trigger := io.out.fire
-  ifu_probe.io.tag := 7.U
-  ifu_probe.io.addr := io.out.bits.pc
-  ifu_probe.io.resp := io.out.bits.Instruction
 }

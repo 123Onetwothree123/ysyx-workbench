@@ -1,6 +1,5 @@
 package ysyx_26030103.ysyx_26030103_GPR
 import chisel3._
-import _root_.ysyx_26030103.AXIDebugProbe
 class ysyx_26030103_GPR extends Module {
   val io = IO(new Bundle {
     val wdata = Input(UInt(32.W))
@@ -23,36 +22,17 @@ class ysyx_26030103_GPR extends Module {
   ysyx_26030103_RegisterFile.io.wen := RegisterFileWen
   ysyx_26030103_RegisterFile.io.raddr1 := io.Read1SELECT
   ysyx_26030103_RegisterFile.io.raddr2 := io.Read2SELECT
-  val fwd_valid = RegInit(false.B)
-  val fwd_addr = RegInit(0.U(5.W))
-  val fwd_data = RegInit(0.U(32.W))
-  when(RegisterFileWen) {
-    fwd_valid := true.B
-    fwd_addr := io.WriteSELECT
-    fwd_data := io.wdata
-  }.otherwise {
-    fwd_valid := false.B
-  }
   io.ReadDATA1 := Mux(
     io.Read1SELECT === 0.U,
     0.U(32.W),
-    Mux(fwd_valid && io.Read1SELECT === fwd_addr, fwd_data,
-      ysyx_26030103_RegisterFile.io.rdata1)
+    ysyx_26030103_RegisterFile.io.rdata1
   )
   io.ReadDATA2 := Mux(
     io.Read2SELECT === 0.U,
     0.U(32.W),
-    Mux(fwd_valid && io.Read2SELECT === fwd_addr, fwd_data,
-      ysyx_26030103_RegisterFile.io.rdata2)
+    ysyx_26030103_RegisterFile.io.rdata2
   )
   io.DebugA0 := ysyx_26030103_RegisterFile.io.debug_a0
   ysyx_26030103_RegisterFile.io.debug_raddr := io.DebugRaddr
   io.DebugRdata := ysyx_26030103_RegisterFile.io.debug_rdata
-  val gpr_probe = Module(new AXIDebugProbe)
-  val gpr_wen_r = RegInit(false.B)
-  gpr_wen_r := RegisterFileWen
-  gpr_probe.io.trigger := RegisterFileWen && !gpr_wen_r
-  gpr_probe.io.tag := 5.U
-  gpr_probe.io.addr := io.WriteSELECT
-  gpr_probe.io.resp := io.wdata
 }
