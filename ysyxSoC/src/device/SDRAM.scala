@@ -96,6 +96,8 @@ class sdramChisel extends RawModule {
     val WriteEnable = WireDefault(false.B)
     val WriteBank = WireDefault(0.U(2.W))
     val WriteColumn = WireDefault(0.U(9.W))
+    output := 0.U
+    en := false.B
     switch(state) {
       is(state_idle) {
         when(Command_ACTIVE) {
@@ -152,7 +154,8 @@ class sdramChisel extends RawModule {
         }
       }
       is(state_read_data) {
-        printf("SDRAM_RD bank=%d row=%d col=%d data=%x\n", CmdBank, ActiveRow(CmdBank), CmdCol + BurstCounter, ROWBuffer(CmdBank)(CmdCol + BurstCounter))
+        en := true.B
+        output := ROWBuffer(CmdBank)(CmdCol + BurstCounter)
         when(BurstCounter === (MR_Burst_Length - 1.U)) {
           state := state_idle
         }.otherwise {
@@ -175,7 +178,7 @@ class sdramChisel extends RawModule {
     }
     // 写落盘：同时更新对应 bank 的行缓冲(供开行读)和存储阵列(持久化)，按 dqm 做字节掩码
     when(WriteEnable) {
-      printf("SDRAM_WR bank=%d row=%d col=%d data=%x dqm=%b\n", WriteBank, ActiveRow(WriteBank), WriteColumn, input, io.dqm)
+
       val OldWord = ROWBuffer(WriteBank)(WriteColumn)
       val NewWord = Cat(
         Mux(!io.dqm(1), input(15, 8), OldWord(15, 8)),
@@ -190,9 +193,6 @@ class sdramChisel extends RawModule {
       when(WriteBank === 3.U) { memory(3).write(ActiveRow(3), WriteData, WriteMask) }
     }
   }
-  // Combinatorial output/en — must not be registered to avoid read data race
-  en := state === state_read_data
-  output := Mux(state === state_read_data, ROWBuffer(CmdBank)(CmdCol + BurstCounter), 0.U)
 }
 
 class AXI4SDRAM(address: Seq[AddressSet])(implicit p: Parameters)

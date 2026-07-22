@@ -117,7 +117,7 @@ module sdram_top_axi(
       .SDRAM_MHZ(100),
       .SDRAM_ADDR_W(24),
       .SDRAM_COL_W(9),
-      .SDRAM_READ_LATENCY(3)
+      .SDRAM_READ_LATENCY(2)
   )
   u_core
   (
