@@ -4,10 +4,13 @@ import chisel3.util._
 import chisel3.util.experimental._
 
 class CommitProbe extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle { val valid = Input(Bool()) })
+  val io = IO(new Bundle {
+    val valid = Input(Bool())
+    val commit = Output(Bool())
+  })
   setInline("CommitProbe.v",
-    """module CommitProbe(input valid);
-      |always @(*) if (valid) $display("[COMMIT]");
+    """module CommitProbe(input valid, output reg commit);
+      |always @(*) if (valid) commit = 1;
       |endmodule""".stripMargin)
 }
 //他妈的，我们伟大的scala插件和编译器设计专家应该要以死谢罪，是哪个天才想到的，如果直接写ysyx_26030103，因为我这个顶层模块类和包同名了
@@ -48,6 +51,7 @@ class ysyx_26030103(
   // DPI-C probe: captures valid glitch from Verilog side
   val probe = Module(new CommitProbe)
   probe.io.valid := exu.io.out.valid
+  io.debug_commit := probe.io.commit
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
