@@ -151,7 +151,8 @@ class ysyx_26030103_AXI5Arbiter extends Module {
       // 因为如果AW完成了握手，那么valid和ready都得改为false，防止出现重复握手的情况
 
 //一样，得W没完成
-      io.memory.W.WVALID := io.lsu.W.WVALID && !WAlreadyDone
+       io.memory.W.WVALID := io.lsu.W.WVALID && !WAlreadyDone
+      io.memory.W.WID := io.lsu.W.WID
       io.memory.W.WDATA := io.lsu.W.WDATA
       io.memory.W.WSTRB := io.lsu.W.WSTRB
       io.memory.W.WLAST := io.lsu.W.WLAST

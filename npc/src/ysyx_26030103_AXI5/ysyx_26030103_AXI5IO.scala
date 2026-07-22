@@ -6,7 +6,7 @@ class ysyx_26030103_AXI5IO(
     IdWidth: Int = 4
 ) extends Bundle {
   val AW = new ysyx_26030103_AXI5AW(AddressWidth, IdWidth)
-  val W = new ysyx_26030103_AXI5W(DataWidth)
+  val W = new ysyx_26030103_AXI5W(DataWidth, IdWidth)
   val B = new ysyx_26030103_AXI5B(IdWidth)
   val AR = new ysyx_26030103_AXI5AR(AddressWidth, IdWidth)
   val R = new ysyx_26030103_AXI5R(DataWidth, IdWidth)

@@ -53,6 +53,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val WDataReg = RegInit(0.U(32.W))
   val WSTRBReg = RegInit(0.U(4.W))
   val WLASTReg = RegInit(false.B)
+  val WIDReg = RegInit(0.U(4.W))
   // 写响应B通道回来时也没有地址，所以要记住写请求目标
   val WriteTargetReg = RegInit(TargetInvalid)
   val DownstreamAWDone = RegInit(false.B)
@@ -83,6 +84,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   io.SoCBus.AW.AWBURST := 0.U
   io.SoCBus.AW.AWPROT := 0.U
   io.SoCBus.W.WVALID := false.B
+  io.SoCBus.W.WID := 0.U
   io.SoCBus.W.WDATA := 0.U
   io.SoCBus.W.WSTRB := 0.U
   io.SoCBus.W.WLAST := false.B
@@ -103,6 +105,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   io.CLINT.AW.AWBURST := 0.U
   io.CLINT.AW.AWPROT := 0.U
   io.CLINT.W.WVALID := false.B
+  io.CLINT.W.WID := 0.U
   io.CLINT.W.WDATA := 0.U
   io.CLINT.W.WSTRB := 0.U
   io.CLINT.W.WLAST := false.B
@@ -133,6 +136,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     AWValidReg := true.B
   }
   when(InWFire) {
+    WIDReg := io.in.W.WID
     WDataReg := io.in.W.WDATA
     WSTRBReg := io.in.W.WSTRB
     WLASTReg := io.in.W.WLAST
@@ -208,6 +212,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.SoCBus.AW.AWPROT := AWPROTReg
 
       io.SoCBus.W.WVALID := SendW
+      io.SoCBus.W.WID := WIDReg
       io.SoCBus.W.WDATA := WDataReg
       io.SoCBus.W.WSTRB := WSTRBReg
       io.SoCBus.W.WLAST := WLASTReg
@@ -239,6 +244,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.CLINT.AW.AWPROT := AWPROTReg
 
       io.CLINT.W.WVALID := SendW
+      io.CLINT.W.WID := WIDReg
       io.CLINT.W.WDATA := WDataReg
       io.CLINT.W.WSTRB := WSTRBReg
       io.CLINT.W.WLAST := WLASTReg
