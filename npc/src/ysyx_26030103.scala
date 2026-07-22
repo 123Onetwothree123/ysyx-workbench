@@ -161,11 +161,10 @@ class ysyx_26030103(
     icache.io.access_fault_resp,
     lsu.io.AccessFaultResp
   )
-  // Commit: registered version of exu output valid (for C++ visibility)
-  val commit_reg = RegInit(false.B)
-  when (exu.io.out.valid) { commit_reg := true.B }
-  .otherwise { commit_reg := false.B }
-  io.debug_commit := commit_reg
+  // Commit: latch any valid event for C++ visibility
+  val commit_latch = RegInit(false.B)
+  when (exu.io.out.valid) { commit_latch := true.B }
+  io.debug_commit := commit_latch
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done  := exu.io.out.fire
