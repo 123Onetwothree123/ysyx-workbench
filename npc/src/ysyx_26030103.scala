@@ -14,6 +14,7 @@ class CommitProbe extends BlackBox with HasBlackBoxInline {
       |always @(*) if (valid) commit = 1;
       |/* verilator lint_on LATCH */
       |endmodule""".stripMargin)
+  override def desiredName = "CommitProbe"
 }
 //他妈的，我们伟大的scala插件和编译器设计专家应该要以死谢罪，是哪个天才想到的，如果直接写ysyx_26030103，因为我这个顶层模块类和包同名了
 //能被解读成ysyx_26030103的ysyx_26030103的AXI模块，还得手动指定从最顶层的根目录去找
@@ -61,7 +62,10 @@ class ysyx_26030103(
       """module LsuProbe(input valid);
         |always @(*) if (valid) $display("[LSU_ACTIVE]");
         |endmodule""".stripMargin)
+    override def desiredName = "LsuProbe"
   })
+  probe_lsu_dbg.io.valid := lsu.io.Active
+  // (continued from above - probes)
   probe_lsu_dbg.io.valid := lsu.io.Active
   // Probe: is IDU ever setting MemoryValid?
   val probe_memvalid = Module(new BlackBox with HasBlackBoxInline {
@@ -70,6 +74,7 @@ class ysyx_26030103(
       """module MemValidProbe(input valid);
         |always @(*) if (valid) $display("[MEM_VALID]");
         |endmodule""".stripMargin)
+    override def desiredName = "MemValidProbe"
   })
   probe_memvalid.io.valid := idu.io.out.bits.MemoryValid
   // Probe: is EXU ever outputting MemoryValid to LSU?
@@ -79,6 +84,7 @@ class ysyx_26030103(
       """module ExuMVProbe(input valid);
         |always @(*) if (valid) $display("[EXU_MEM_VALID]");
         |endmodule""".stripMargin)
+    override def desiredName = "ExuMVProbe"
   })
   probe_exu_mv.io.valid := exu.io.MemoryValid
   // Probe: is WBU ever seeing RegisterWrite=1?
@@ -88,6 +94,7 @@ class ysyx_26030103(
       """module RegWrProbe(input valid);
         |always @(*) if (valid) $display("[REG_WRITE]");
         |endmodule""".stripMargin)
+    override def desiredName = "RegWrProbe"
   })
   probe_regwr.io.valid := wbu.io.in.bits.RegisterWrite && wbu.io.in.valid
   // Direct probe on IDU output RegisterWrite
@@ -97,15 +104,17 @@ class ysyx_26030103(
       """module IduRWProbe(input valid);
         |always @(*) if (valid) $display("[IDU_REGWR]");
         |endmodule""".stripMargin)
+    override def desiredName = "IduRWProbe"
   })
   probe_idu_rw.io.valid := idu.io.out.bits.RegisterWrite && idu.io.out.valid
-  // Direct probe on IFU output instruction (first word, to verify data)
+  // Direct probe on IFU output instruction
   val probe_ifu_inst = Module(new BlackBox with HasBlackBoxInline {
     val io = IO(new Bundle { val inst = Input(UInt(32.W)); val valid = Input(Bool()) })
     setInline("IfuInstProbe.v",
       """module IfuInstProbe(input [31:0] inst, input valid);
         |always @(*) if (valid) $display("[IFU_INST] 0x%h", inst);
         |endmodule""".stripMargin)
+    override def desiredName = "IfuInstProbe"
   })
   probe_ifu_inst.io.inst := ifu.io.out.bits.Instruction
   probe_ifu_inst.io.valid := ifu.io.out.valid
