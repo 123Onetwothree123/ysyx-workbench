@@ -120,6 +120,7 @@ class ysyx_26030103_ICache(
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RREADY) {
         when(io.axi.R.RRESP =/= 0.U) {
+          printf("ICACHE_FAULT addr=%x resp=%d\n", fetch_addr_reg, io.axi.R.RRESP)
           access_fault_reg := true.B
           access_fault_resp_reg := io.axi.R.RRESP
         }.otherwise {

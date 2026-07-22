@@ -80,6 +80,9 @@ class ysyx_26030103(
   soc.B.BID := io.master_bid
   soc.B.BVALID := io.master_bvalid
   soc.B.BRESP := io.master_bresp
+  when(soc.B.BVALID && soc.B.BREADY && soc.B.BRESP =/= 0.U) {
+    printf("SOC_B_FAULT resp=%d\n", soc.B.BRESP)
+  }
 
   io.master_arvalid := soc.AR.ARVALID
   io.master_araddr := soc.AR.ARADDR
@@ -99,6 +102,9 @@ class ysyx_26030103(
   soc.R.RRESP := io.master_rresp
   soc.R.RDATA := io.master_rdata
   soc.R.RLAST := io.master_rlast
+  when(soc.R.RVALID && soc.R.RREADY && soc.R.RRESP =/= 0.U) {
+    printf("SOC_R_FAULT resp=%d\n", soc.R.RRESP)
+  }
 
   io.slave_awready := 0.U
   io.slave_wready := 0.U

@@ -173,6 +173,7 @@ class ysyx_26030103_LSU extends Module {
       io.DataBus.R.RREADY := true.B
       when(io.DataBus.R.RVALID) {
         when(io.DataBus.R.RRESP =/= 0.U) {
+          printf("LSU_R_FAULT addr=%x resp=%d\n", io.ALUResult, io.DataBus.R.RRESP)
           AccessFaultReg := true.B
           AccessFaultRespReg := io.DataBus.R.RRESP
         }.otherwise {
@@ -242,6 +243,7 @@ class ysyx_26030103_LSU extends Module {
       io.DataBus.B.BREADY := true.B
       when(Bfire) {
         when(io.DataBus.B.BRESP =/= 0.U) {
+          printf("LSU_B_FAULT addr=%x resp=%d\n", io.ALUResult, io.DataBus.B.BRESP)
           AccessFaultReg := true.B
           AccessFaultRespReg := io.DataBus.B.BRESP
         }
