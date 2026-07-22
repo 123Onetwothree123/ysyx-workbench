@@ -73,10 +73,11 @@ void DUT::final()
 }
 void DUT::reset()
 {
+    std::println(stderr, "DEBUG DUT::reset start");
     dut->clock = 0;
     dut->reset = 1;
     dut->debug_gpr_raddr = 0;
-    // 同步复位必须有时钟边沿才能生效，先拉高 reset 跑几个周期
+    std::println(stderr, "DEBUG DUT::reset before reset cycles");
     for (int i = 0; i < 5; ++i)
     {
         dut->clock = 0;
@@ -84,6 +85,7 @@ void DUT::reset()
         dut->clock = 1;
         dut->eval();
     }
+    std::println(stderr, "DEBUG DUT::reset after reset cycles");
     dut->reset = 0;
     cycle = 0;
 #ifdef CONFIG_PERF_STATS
