@@ -23,8 +23,8 @@ class MROMHelper extends BlackBox with HasBlackBoxInline {
       |  output reg [31:0] rdata
       |);
       |import "DPI-C" function void mrom_read(input int raddr, output int rdata);
-      |wire [31:0] dpi_data;
-      |mrom_read(raddr, dpi_data);
+      |reg [31:0] dpi_data;
+      |always @(*) mrom_read(raddr, dpi_data);
       |always @(posedge clock) if (ren) rdata <= dpi_data;
       |endmodule
     """.stripMargin)
