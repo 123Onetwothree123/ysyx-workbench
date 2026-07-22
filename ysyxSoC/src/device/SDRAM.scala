@@ -96,8 +96,8 @@ class sdramChisel extends RawModule {
     val WriteEnable = WireDefault(false.B)
     val WriteBank = WireDefault(0.U(2.W))
     val WriteColumn = WireDefault(0.U(9.W))
-    output := RegNext(Mux(state === state_read_data, ROWBuffer(CmdBank)(CmdCol + BurstCounter), 0.U), 0.U)
-    en := RegNext(state === state_read_data, false.B)
+    output := 0.U
+    en := false.B
     switch(state) {
       is(state_idle) {
         when(Command_ACTIVE) {
@@ -154,6 +154,8 @@ class sdramChisel extends RawModule {
         }
       }
       is(state_read_data) {
+        en := true.B
+        output := ROWBuffer(CmdBank)(CmdCol + BurstCounter)
         when(BurstCounter === (MR_Burst_Length - 1.U)) {
           state := state_idle
         }.otherwise {

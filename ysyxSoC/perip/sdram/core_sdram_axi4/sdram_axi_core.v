@@ -472,14 +472,6 @@ if (rst_i)
 else
     sample_data0_q <= sdram_data_in_w;
 
-// negedge capture resolves Verilator eval-order race with sdramChisel model
-reg [SDRAM_DATA_W-1:0] sample_data0_n;
-always @ (negedge clk_i or posedge rst_i)
-if (rst_i)
-    sample_data0_n <= {SDRAM_DATA_W{1'b0}};
-else
-    sample_data0_n <= sdram_data_in_w;
-
 reg [SDRAM_DATA_W-1:0] sample_data_q;
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
@@ -697,7 +689,7 @@ else
 begin
     if (state_q == STATE_WRITE0)
         ack_q <= 1'b1;
-    else if (rd_q[SDRAM_READ_LATENCY+1])
+    else if (rd_q[SDRAM_READ_LATENCY])
         ack_q <= 1'b1;
     else
         ack_q <= 1'b0;
