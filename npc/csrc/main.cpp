@@ -53,12 +53,22 @@ int main(int argc, char const *argv[])
     }
 #endif
     dut.reset();
+    std::println("sim start, cycles={} instr={}", dut.GetCycle(), dut.GetInstructions());
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
-    while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
+    int decerr_count = 0;
+    while (!Verilated::gotFinish() && !NPCTrap::HasHalted() && decerr_count < 10)
     {
         dut.step();
+        if (dut->debug_access_fault && static_cast<int>(dut->debug_access_fault_resp) == 3) {
+            printf("[DECERR #%d] PC=0x%08x mtrace_valid=%d mtrace_addr=0x%08x mtrace_wen=%d\n",
+                ++decerr_count,
+                static_cast<unsigned>(dut->debug_pc),
+                static_cast<int>(dut->debug_mtrace_valid),
+                static_cast<unsigned>(dut->debug_mtrace_addr),
+                static_cast<int>(dut->debug_mtrace_wen));
+        }
 #ifdef CONFIG_NVBOARD
         nvboard_update();
 #endif
