@@ -23,7 +23,7 @@ extern "C" void mrom_read(std::int32_t addr, std::int32_t *data)
 {
     static bool first{true};
     if (first) {
-        std::println(stderr, "[DEBUG] mrom_read first call: addr=0x{:08x}, mrom.size={}", static_cast<std::uint32_t>(addr), mrom.size());
+        fprintf(stderr, "[DEBUG] mrom_read first call: addr=0x%08x, mrom.size=%zu\n", static_cast<unsigned>(addr), mrom.size());
         first = false;
     }
     std::uint32_t offset{static_cast<std::uint32_t>(addr) - static_cast<std::uint32_t>(CONFIG_MBASE)};
