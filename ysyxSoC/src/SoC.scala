@@ -76,12 +76,15 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
   )
 
   val sdramAddressSet = AddressSet.misaligned(0xa0000000L, 0x2000000)
-  val lsdram_apb =
-    if (!Config.sdramUseAXI) Some(LazyModule(new APBSDRAM(sdramAddressSet)))
-    else None
-  val lsdram_axi =
-    if (Config.sdramUseAXI) Some(LazyModule(new AXI4SDRAM(sdramAddressSet)))
-    else None
+  val lsdram_axi = AXI4RAM(
+    sdramAddressSet.head,
+    true,   // executable
+    true,   // supportsWrite
+    4,      // beatBytes
+    None,
+    Nil,
+    false
+  )
 
   List(
     lspi.node,
@@ -94,11 +97,10 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
   List(
     apbxbar := APBDelayer() := AXI4ToAPB() := AXI4Buffer(),
     lmrom.node,
-    sramNode
+    sramNode,
+    lsdram_axi := ysyx.AXI4Delayer()
   ).map(_ := xbar2)
   xbar2 := AXI4UserYanker(Some(1)) := AXI4Fragmenter() := xbar
-  if (Config.sdramUseAXI) lsdram_axi.get.node := ysyx.AXI4Delayer() := xbar
-  else lsdram_apb.get.node := apbxbar
   if (Config.hasChipLink) chiplinkNode.get := xbar
   xbar := cpu.masterNode
 
@@ -217,22 +219,16 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     val intr_from_chipSlave = IO(Input(Bool()))
     cpu.module.interrupt := intr_from_chipSlave
 
-    val sdramBundle =
-      if (Config.sdramUseAXI) lsdram_axi.get.module.sdram_bundle
-      else lsdram_apb.get.module.sdram_bundle
-
     // expose slave I/O interface as ports
     val spi = IO(chiselTypeOf(lspi.module.spi_bundle))
     val uart = IO(chiselTypeOf(luart.module.uart))
     val psram = IO(chiselTypeOf(lpsram.module.qspi_bundle))
-    val sdram = IO(chiselTypeOf(sdramBundle))
     val gpio = IO(chiselTypeOf(lgpio.module.gpio_bundle))
     val ps2 = IO(chiselTypeOf(lkeyboard.module.ps2_bundle))
     val vga = IO(chiselTypeOf(lvga.module.vga_bundle))
     uart <> luart.module.uart
     spi <> lspi.module.spi_bundle
     psram <> lpsram.module.qspi_bundle
-    sdram <> sdramBundle
     gpio <> lgpio.module.gpio_bundle
     ps2 <> lkeyboard.module.ps2_bundle
     vga <> lvga.module.vga_bundle
@@ -288,23 +284,6 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     // val psram = Module(new psram)
     val psram = Module(new psramChisel)
     psram.io <> masic.psram
-    // 位扩展：实例化 2 个 16 位 SDRAM 颗粒，命令广播、dqm/dq 各接一半
-    val sdram0 = Module(new sdramChisel)
-    val sdram1 = Module(new sdramChisel)
-    Seq(sdram0, sdram1).foreach { s =>
-      s.io.clk := masic.sdram.clk
-      s.io.cke := masic.sdram.cke
-      s.io.cs  := masic.sdram.cs
-      s.io.ras := masic.sdram.ras
-      s.io.cas := masic.sdram.cas
-      s.io.we  := masic.sdram.we
-      s.io.a   := masic.sdram.a
-      s.io.ba  := masic.sdram.ba
-    }
-    sdram0.io.dqm := masic.sdram.dqm(1, 0)
-    sdram1.io.dqm := masic.sdram.dqm(3, 2)
-    chisel3.experimental.attach(sdram0.io.dq(0), masic.sdram.dq(0))
-    chisel3.experimental.attach(sdram1.io.dq(0), masic.sdram.dq(1))
 
     val externalPins = IO(new Bundle {
       val gpio = chiselTypeOf(masic.gpio)
