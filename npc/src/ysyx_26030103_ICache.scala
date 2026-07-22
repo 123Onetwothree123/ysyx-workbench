@@ -53,12 +53,7 @@ class ysyx_26030103_ICache(
   val cacheable_reg = RegInit(false.B)
   val access_fault_reg = RegInit(false.B)
   val access_fault_resp_reg = RegInit(0.U(2.W))
-  val refill_cnt = RegInit(0.U(WordCntBits.W))
-  val ic_probe = Module(new AXIDebugProbe)
-  ic_probe.io.trigger := false.B
-  ic_probe.io.tag := 8.U
-  ic_probe.io.addr := 0.U
-  ic_probe.io.resp := 0.U  // 当前正在填充第几个word
+  val refill_cnt = RegInit(0.U(WordCntBits.W))  // 当前正在填充第几个word
   io.access_fault := access_fault_reg
   io.access_fault_resp := access_fault_resp_reg
   io.axi.AW.AWVALID := false.B
@@ -149,10 +144,6 @@ class ysyx_26030103_ICache(
       io.resp_valid := true.B
       io.resp_data := Mux(cacheable_reg && !access_fault_reg,
         data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
-      ic_probe.io.trigger := io.resp_valid && io.resp_ready
-      ic_probe.io.tag := 8.U
-      ic_probe.io.addr := fetch_addr_reg
-      ic_probe.io.resp := io.resp_data
       when(io.resp_ready) {
         state := state_idle
       }

@@ -178,7 +178,6 @@ class sdramChisel extends RawModule {
     }
     // 写落盘：同时更新对应 bank 的行缓冲(供开行读)和存储阵列(持久化)，按 dqm 做字节掩码
     when(WriteEnable) {
-
       val OldWord = ROWBuffer(WriteBank)(WriteColumn)
       val NewWord = Cat(
         Mux(!io.dqm(1), input(15, 8), OldWord(15, 8)),

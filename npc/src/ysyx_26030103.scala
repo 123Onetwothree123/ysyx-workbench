@@ -16,20 +16,6 @@ class CommitProbe extends BlackBox with HasBlackBoxInline {
       |endmodule""".stripMargin)
   override def desiredName = "CommitProbe"
 }
-class AXIDebugProbe extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle {
-    val trigger = Input(Bool())
-    val tag = Input(UInt(32.W))
-    val addr = Input(UInt(32.W))
-    val resp = Input(UInt(32.W))
-  })
-  setInline("AXIDebugProbe.v",
-    """module AXIDebugProbe(input trigger, input [31:0] tag, input [31:0] addr, input [31:0] resp);
-      |import "DPI-C" function void axi_debug_probe(input int tag, input int addr, input int resp);
-      |always @(*) if (trigger) axi_debug_probe(tag, addr, resp);
-      |endmodule""".stripMargin)
-  override def desiredName = "AXIDebugProbe"
-}
 //他妈的，我们伟大的scala插件和编译器设计专家应该要以死谢罪，是哪个天才想到的，如果直接写ysyx_26030103，因为我这个顶层模块类和包同名了
 //能被解读成ysyx_26030103的ysyx_26030103的AXI模块，还得手动指定从最顶层的根目录去找
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
@@ -94,11 +80,6 @@ class ysyx_26030103(
   soc.B.BID := io.master_bid
   soc.B.BVALID := io.master_bvalid
   soc.B.BRESP := io.master_bresp
-  val probe_soc_b = Module(new AXIDebugProbe)
-  probe_soc_b.io.trigger := soc.B.BVALID && soc.B.BREADY && soc.B.BRESP =/= 0.U
-  probe_soc_b.io.tag := 4.U  // SOC_B
-  probe_soc_b.io.addr := 0.U
-  probe_soc_b.io.resp := soc.B.BRESP
 
   io.master_arvalid := soc.AR.ARVALID
   io.master_araddr := soc.AR.ARADDR
@@ -118,17 +99,6 @@ class ysyx_26030103(
   soc.R.RRESP := io.master_rresp
   soc.R.RDATA := io.master_rdata
   soc.R.RLAST := io.master_rlast
-  val probe_soc_r = Module(new AXIDebugProbe)
-  probe_soc_r.io.trigger := soc.R.RVALID && soc.R.RREADY
-  probe_soc_r.io.tag := 3.U  // SOC_R
-  probe_soc_r.io.addr := soc.R.RDATA
-  probe_soc_r.io.resp := soc.R.RRESP
-  val probe_soc_ar = Module(new AXIDebugProbe)
-  probe_soc_ar.io.trigger := soc.AR.ARVALID && soc.AR.ARREADY
-  probe_soc_ar.io.tag := 9.U  // SOC_AR
-  probe_soc_ar.io.addr := soc.AR.ARADDR
-  probe_soc_ar.io.resp := 0.U
-  probe_soc_r.io.resp := soc.R.RRESP
 
   io.slave_awready := 0.U
   io.slave_wready := 0.U
