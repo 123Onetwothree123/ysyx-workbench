@@ -47,26 +47,11 @@ class ysyx_26030103(
   val exu = Module(new ysyx_26030103_EXU)
   val wbu = Module(new ysyx_26030103_WBU)
   val lsu = Module(new ysyx_26030103_LSU)
-  val probe_lsu_r = Module(new AXIDebugProbe)
-  probe_lsu_r.io.trigger := lsu.io.probe_r_trigger
-  probe_lsu_r.io.tag := 1.U  // LSU_R
-  probe_lsu_r.io.addr := lsu.io.probe_r_addr
-  probe_lsu_r.io.resp := lsu.io.probe_r_resp
-  val probe_lsu_b = Module(new AXIDebugProbe)
-  probe_lsu_b.io.trigger := lsu.io.probe_b_trigger
-  probe_lsu_b.io.tag := 2.U  // LSU_B
-  probe_lsu_b.io.addr := lsu.io.probe_b_addr
-  probe_lsu_b.io.resp := lsu.io.probe_b_resp
   val gpr = Module(new ysyx_26030103_GPR)
   val icache = Module(new ysyx_26030103_ICache(
     CacheableBase = CacheableBase,
     CacheableMask = CacheableMask
   ))
-  val probe_icache = Module(new AXIDebugProbe)
-  probe_icache.io.trigger := icache.io.probe_trigger
-  probe_icache.io.tag := 0.U  // ICACHE
-  probe_icache.io.addr := icache.io.probe_addr
-  probe_icache.io.resp := icache.io.probe_resp
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
