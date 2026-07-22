@@ -21,11 +21,13 @@ extern "C" void flash_read(std::int32_t addr, std::int32_t *data)
 }
 extern "C" void mrom_read(std::int32_t addr, std::int32_t *data)
 {
-    static bool first{true};
-    if (first) {
-        fprintf(stderr, "[DEBUG] mrom_read first call: addr=0x%08x, mrom.size=%zu\n", static_cast<unsigned>(addr), mrom.size());
-        first = false;
+    static int call_count{0};
+    if (call_count == 0) {
+        char buf[256];
+        int len = snprintf(buf, sizeof(buf), "[DEBUG] mrom_read first call: addr=0x%x, mrom.size=%zu\n", (unsigned)addr, mrom.size());
+        write(2, buf, len);
     }
+    ++call_count;
     std::uint32_t offset{static_cast<std::uint32_t>(addr) - static_cast<std::uint32_t>(CONFIG_MBASE)};
     std::uint32_t aligned{offset & ~3u};
     std::uint32_t result{0};
