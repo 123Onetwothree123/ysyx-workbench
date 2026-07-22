@@ -9,10 +9,6 @@ module axi4_delayer(
   input  [7:0]  in_arlen,
   input  [2:0]  in_arsize,
   input  [1:0]  in_arburst,
-  input         in_arlock,
-  input  [3:0]  in_arcache,
-  input  [2:0]  in_arprot,
-  input  [3:0]  in_arqos,
   input         in_rready,
   output        in_rvalid,
   output [3:0]  in_rid,
@@ -26,10 +22,6 @@ module axi4_delayer(
   input  [7:0]  in_awlen,
   input  [2:0]  in_awsize,
   input  [1:0]  in_awburst,
-  input         in_awlock,
-  input  [3:0]  in_awcache,
-  input  [2:0]  in_awprot,
-  input  [3:0]  in_awqos,
   output        in_wready,
   input         in_wvalid,
   input  [31:0] in_wdata,
@@ -47,10 +39,6 @@ module axi4_delayer(
   output [7:0]  out_arlen,
   output [2:0]  out_arsize,
   output [1:0]  out_arburst,
-  output        out_arlock,
-  output [3:0]  out_arcache,
-  output [2:0]  out_arprot,
-  output [3:0]  out_arqos,
   output        out_rready,
   input         out_rvalid,
   input  [3:0]  out_rid,
@@ -64,10 +52,6 @@ module axi4_delayer(
   output [7:0]  out_awlen,
   output [2:0]  out_awsize,
   output [1:0]  out_awburst,
-  output        out_awlock,
-  output [3:0]  out_awcache,
-  output [2:0]  out_awprot,
-  output [3:0]  out_awqos,
   input         out_wready,
   output        out_wvalid,
   output [31:0] out_wdata,
@@ -86,10 +70,6 @@ module axi4_delayer(
   assign out_arlen = in_arlen;
   assign out_arsize = in_arsize;
   assign out_arburst = in_arburst;
-  assign out_arlock = in_arlock;
-  assign out_arcache = in_arcache;
-  assign out_arprot = in_arprot;
-  assign out_arqos = in_arqos;
   assign out_rready = in_rready;
   assign in_rvalid = out_rvalid;
   assign in_rid = out_rid;
@@ -103,10 +83,6 @@ module axi4_delayer(
   assign out_awlen = in_awlen;
   assign out_awsize = in_awsize;
   assign out_awburst = in_awburst;
-  assign out_awlock = in_awlock;
-  assign out_awcache = in_awcache;
-  assign out_awprot = in_awprot;
-  assign out_awqos = in_awqos;
   assign in_wready = out_wready;
   assign out_wvalid = in_wvalid;
   assign out_wdata = in_wdata;
