@@ -3,8 +3,8 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 class ysyx_26030103_ICache(
-    BlockSizeLog2: Int = 2,
-    IndexBits:     Int = 4,
+    BlockSizeLog2: Int = 4,
+    IndexBits:     Int = 5,
     AddressWidth:  Int = 32,
     CacheableBase: Long = 0x00000000L,
     CacheableMask: Long = 0x00000000L  // 0=全缓存，由上层传入覆盖
@@ -107,11 +107,10 @@ class ysyx_26030103_ICache(
     }
     is(state_refill_req) {
       io.axi.AR.ARVALID := true.B
-      io.axi.AR.ARADDR := Cat(
-        fetch_addr_reg(AddressWidth - 1, BlockSizeLog2),
-        refill_cnt,
-        0.U(2.W)
-      ) // 块对齐地址 + refill_cnt × 4
+      io.axi.AR.ARADDR := Mux(cacheable_reg,
+        Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W)),
+        fetch_addr_reg
+      )
       when(io.axi.AR.ARREADY) {
         state := state_refill_resp
       }
@@ -132,7 +131,7 @@ class ysyx_26030103_ICache(
             }
           }
         }
-        when(refill_cnt === (WordsPerBlock - 1).U) {
+        when(refill_cnt === (WordsPerBlock - 1).U || !cacheable_reg) {
           state := state_resp
         }.otherwise {
           refill_cnt := refill_cnt + 1.U
