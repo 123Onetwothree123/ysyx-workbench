@@ -197,12 +197,6 @@ class sdramChisel extends RawModule {
         Mux(!io.dqm(0), input(7, 0), OldWord(7, 0))
       )
       ROWBuffer(WriteBank)(WriteColumn) := NewWord
-      val WriteData = VecInit(Seq.fill(512)(NewWord))
-      val WriteMask = (0 until 512).map(i => i.U === WriteColumn)
-      when(WriteBank === 0.U) { memory(0).write(ActiveRow(0), WriteData, WriteMask) }
-      when(WriteBank === 1.U) { memory(1).write(ActiveRow(1), WriteData, WriteMask) }
-      when(WriteBank === 2.U) { memory(2).write(ActiveRow(2), WriteData, WriteMask) }
-      when(WriteBank === 3.U) { memory(3).write(ActiveRow(3), WriteData, WriteMask) }
     }
   }
 }
