@@ -133,13 +133,6 @@ void DUT::step()
 #endif
     ++cycle;
 #ifdef CONFIG_PERF_STATS
-    if (cycle % 100000 == 0 || (cycle < 200 && cycle % 20 == 0)) {
-        std::println(stderr, "[DBG] c={} pc=0x{:08x} cmt_cnt={} fetch_cnt={} IFUaxi={}",
-            cycle,
-            static_cast<uint32_t>(dut->debug_pc),
-            instructions, instruction_fetch_count,
-            static_cast<int>(dut->perf_ifu_stall_axi));
-    }
     if (dut->debug_commit)
     {
         ++instructions;

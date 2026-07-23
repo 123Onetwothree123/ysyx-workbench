@@ -169,13 +169,6 @@ class ysyx_26030103(
   io.debug_commit := wbu.io.WriteEN
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
-  val dbg_cnt = RegInit(0.U(5.W))
-  when(icache.io.resp_valid && icache.io.resp_ready) {
-    when(dbg_cnt < 5.U) {
-      printf("[CPU_FETCH] data=0x%x\n", icache.io.resp_data)
-      dbg_cnt := dbg_cnt + 1.U
-    }
-  }
   io.perf_exu_done  := exu.io.out.fire
   io.perf_lsu_load  := lsu.io.Complete && !exu.io.MemoryWrite
   io.perf_lsu_store := lsu.io.Complete && exu.io.MemoryWrite
