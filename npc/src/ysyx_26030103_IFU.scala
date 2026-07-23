@@ -68,6 +68,9 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
       io.RespReady := true.B
       when(io.RespValid && io.RespReady) {
         InstructionReg := io.RespData
+        when(io.RespData === "h00100073".U) {
+          printf(cf"IFU: fetched ebreak at pc=${PCModule.io.ysyx_26030103_PC}\n")
+        }
         state := StatesHold
       }
     }

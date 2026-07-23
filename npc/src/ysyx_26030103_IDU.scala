@@ -128,6 +128,9 @@ class ysyx_26030103_IDU extends Module {
   io.out.bits.IsCsrrs := IsCsrrs
   io.out.bits.IsEcall := IsEcall
   io.out.bits.IsEbreak := IsEbreak
+  when(IsEbreak && io.in.fire) {
+    printf(cf"IDU: ebreak inst=${io.in.bits.Instruction}\n")
+  }
   io.out.bits.IsMret := IsMret
   io.out.bits.CSRAddress := Instruction(31, 20)
   io.out.bits.Rs1 := Rs1
