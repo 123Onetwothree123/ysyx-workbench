@@ -675,7 +675,7 @@ else if (rd_q[SDRAM_READ_LATENCY+1])
     data_buffer_q <= sample_data_q;
 
 // Read data output（位扩展后一拍 32 位；data_buffer_q 在采样拍把整 32 位锁住并保持到 ack）
-assign ram_read_data_w = sample_data0_q;
+assign ram_read_data_w = sample_data_q;
 
 //-----------------------------------------------------------------
 // ACK
