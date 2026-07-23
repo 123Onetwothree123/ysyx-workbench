@@ -123,9 +123,6 @@ void DUT::step()
 {
     dut->clock = 0;
     dut->eval();
-    if (cycle < 200 || cycle % 2000 == 0)
-        fprintf(stderr, "[%8zu] PC=0x%08x inst=%zu fetch=%zu\n",
-            cycle, static_cast<uint32_t>(dut->debug_pc), instructions, instruction_fetch_count);
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
     tfp.dump(cycle * 2);
 #endif
