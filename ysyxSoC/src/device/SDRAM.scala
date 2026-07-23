@@ -75,7 +75,7 @@ class sdramChisel extends RawModule {
     Command_PRECHAREG := (~io.cs) && (~io.ras) && io.cas && (~io.we)
     Command_AUTO_REFRESH := (~io.cs) && (~io.ras) && (~io.cas) && io.we
     Command_LOAD_MODE_REGISTER := (~io.cs) && (~io.ras) && (~io.cas) && (~io.we)
-    val memory = Seq.fill(4)(Mem(8192, UInt((512*16).W)))
+    val memory = Seq.fill(4)(Mem(8192, Vec(512, UInt(16.W))))
     // 真实 SDRAM 有 4 个 bank，每个 bank 各自独立保持一个打开的行
     val ROWBuffer = Reg(Vec(4, Vec(512, UInt(16.W)))) // 每个 bank 各自的行缓冲
     val ActiveRow = Reg(Vec(4, UInt(13.W)))           // 每个 bank 各自的激活行
@@ -132,18 +132,7 @@ class sdramChisel extends RawModule {
           }
         }
         when(Command_PRECHAREG) {
-          // 提交行缓冲到 Memory，确保刷新覆盖 ROWBuffer 后还能从 Memory 恢复
-          when(io.a(10)) {
-            memory(0).write(ActiveRow(0), ROWBuffer(0).asUInt)
-            memory(1).write(ActiveRow(1), ROWBuffer(1).asUInt)
-            memory(2).write(ActiveRow(2), ROWBuffer(2).asUInt)
-            memory(3).write(ActiveRow(3), ROWBuffer(3).asUInt)
-          }.otherwise {
-            when(io.ba === 0.U) { memory(0).write(ActiveRow(0), ROWBuffer(0).asUInt) }
-            when(io.ba === 1.U) { memory(1).write(ActiveRow(1), ROWBuffer(1).asUInt) }
-            when(io.ba === 2.U) { memory(2).write(ActiveRow(2), ROWBuffer(2).asUInt) }
-            when(io.ba === 3.U) { memory(3).write(ActiveRow(3), ROWBuffer(3).asUInt) }
-          }
+          // 电气特性相关，仿真不必考虑
           state := state_idle
         }
         when(Command_AUTO_REFRESH) {
@@ -152,10 +141,10 @@ class sdramChisel extends RawModule {
       }
       is(state_active) {
         // 载入命令所指 bank 的行缓冲
-        when(CmdBank === 0.U) { ROWBuffer(0) := memory(0)(ActiveRowNext(0)).asTypeOf(Vec(512, UInt(16.W))) }
-        when(CmdBank === 1.U) { ROWBuffer(1) := memory(1)(ActiveRowNext(1)).asTypeOf(Vec(512, UInt(16.W))) }
-        when(CmdBank === 2.U) { ROWBuffer(2) := memory(2)(ActiveRowNext(2)).asTypeOf(Vec(512, UInt(16.W))) }
-        when(CmdBank === 3.U) { ROWBuffer(3) := memory(3)(ActiveRowNext(3)).asTypeOf(Vec(512, UInt(16.W))) }
+        when(CmdBank === 0.U) { ROWBuffer(0) := memory(0)(ActiveRowNext(0)) }
+        when(CmdBank === 1.U) { ROWBuffer(1) := memory(1)(ActiveRowNext(1)) }
+        when(CmdBank === 2.U) { ROWBuffer(2) := memory(2)(ActiveRowNext(2)) }
+        when(CmdBank === 3.U) { ROWBuffer(3) := memory(3)(ActiveRowNext(3)) }
         state := state_idle
       }
       is(state_read) {
@@ -202,10 +191,10 @@ class sdramChisel extends RawModule {
       val WriteRow = VecInit(indices.map { i =>
         Mux(i === WriteColumn, NewWord, ROWBuffer(WriteBank)(i))
       })
-      when(WriteBank === 0.U) { memory(0).write(ActiveRow(0), WriteRow.asUInt) }
-      when(WriteBank === 1.U) { memory(1).write(ActiveRow(1), WriteRow.asUInt) }
-      when(WriteBank === 2.U) { memory(2).write(ActiveRow(2), WriteRow.asUInt) }
-      when(WriteBank === 3.U) { memory(3).write(ActiveRow(3), WriteRow.asUInt) }
+      when(WriteBank === 0.U) { memory(0).write(ActiveRow(0), WriteRow) }
+      when(WriteBank === 1.U) { memory(1).write(ActiveRow(1), WriteRow) }
+      when(WriteBank === 2.U) { memory(2).write(ActiveRow(2), WriteRow) }
+      when(WriteBank === 3.U) { memory(3).write(ActiveRow(3), WriteRow) }
     }
   }
 }

@@ -133,6 +133,18 @@ void DUT::step()
 #endif
     ++cycle;
 #ifdef CONFIG_PERF_STATS
+    if (cycle % 100000 == 0) {
+        std::println(stderr, "[DBG] c={} pc=0x{:08x} commit={} fetch={} IFUpipe={} IFUaxi={} IFUidle={} IFUar={} IFUr={}",
+            cycle,
+            static_cast<uint32_t>(dut->debug_pc),
+            static_cast<int>(dut->debug_commit),
+            static_cast<int>(dut->perf_ifu_fetch),
+            static_cast<int>(dut->perf_ifu_stall_pipeline),
+            static_cast<int>(dut->perf_ifu_stall_axi),
+            static_cast<int>(dut->perf_ifu_stall_idle),
+            static_cast<int>(dut->perf_ifu_stall_ar),
+            static_cast<int>(dut->perf_ifu_stall_r));
+    }
     if (dut->debug_commit)
     {
         ++instructions;
