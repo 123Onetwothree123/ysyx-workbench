@@ -93,6 +93,9 @@ class ysyx_26030103_EXU extends Module {
   CSRUnit.io.Enable := FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
   io.TrapValid := InstructionExecutionDone && ActiveInstruction.IsEbreak
   io.TrapPC := ActiveInstruction.pc
+  when(InstructionExecutionDone && ActiveInstruction.IsEbreak) {
+    printf(cf"TRAP: ebreak at pc=${ActiveInstruction.pc}, trap_valid=${io.TrapValid}\n")
+  }
   io.Redirect := InstructionExecutionDone && Redirect
   when(ActiveInstruction.IsJalr) {
     io.RedirectTarget := JalrTarget
