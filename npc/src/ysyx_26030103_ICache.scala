@@ -143,6 +143,9 @@ class ysyx_26030103_ICache(
       io.resp_valid := true.B
       io.resp_data := Mux(cacheable_reg && !access_fault_reg,
         data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
+      when(io.resp_ready && fetch_addr_reg === "ha00000ec".U) {
+        printf(cf"ICache resp: addr=${fetch_addr_reg}, data=${io.resp_data}\n")
+      }
       when(io.resp_ready) {
         state := state_idle
       }
