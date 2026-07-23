@@ -25,7 +25,11 @@ object ysyx_26030103_Elaborate extends App {
     Paths.get(targetDir, "ysyx_26030103.sv"),
     Paths.get(targetDir, "ysyx_26030103_npc.sv"),
       StandardCopyOption.REPLACE_EXISTING)
-  emitVerilog(new ysyx_26030103, Array("--target-dir", targetDir))
+  emitVerilog(new ysyx_26030103(
+    resetAddr     = 0x30000000L,
+    CacheableBase = CacheableBase_ysyxsoc,
+    CacheableMask = CacheableMask_ysyxsoc
+  ), Array("--target-dir", targetDir))
 
   emitVerilog(new _root_.ysyx_26030103.riscv32e_npc_AXIRAM, Array("--target-dir", targetDir))
 
