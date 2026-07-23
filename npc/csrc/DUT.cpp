@@ -123,6 +123,13 @@ void DUT::step()
 {
     dut->clock = 0;
     dut->eval();
+    if (cycle < 100 || cycle % 500 == 0)
+        printf("[%8zu] PC=0x%08x inst=%zu fetch=%zu commit=%d icache_stall=%d\n",
+            cycle, static_cast<uint32_t>(dut->debug_pc),
+            instructions, instruction_fetch_count,
+            static_cast<int>(dut->debug_commit),
+            static_cast<int>(dut->perf_ifu_stall_axi)
+        );
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
     tfp.dump(cycle * 2);
 #endif
