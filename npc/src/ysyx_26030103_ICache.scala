@@ -91,9 +91,6 @@ class ysyx_26030103_ICache(
       io.perf_hit  := io.fetch_valid && io.fetch_ready && cacheable && hit
       io.perf_miss := io.fetch_valid && io.fetch_ready && cacheable && !hit
       when(io.fetch_valid && io.fetch_ready) {
-        when(io.fetch_addr === "ha00000ec".U) {
-          printf(cf"ICache req: addr=${io.fetch_addr}\n")
-        }
         fetch_addr_reg  := io.fetch_addr
         fetch_index_reg := index
         fetch_tag_reg   := reqTag
@@ -146,9 +143,7 @@ class ysyx_26030103_ICache(
       io.resp_valid := true.B
       io.resp_data := Mux(cacheable_reg && !access_fault_reg,
         data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
-      when(io.resp_ready && fetch_addr_reg === "ha00000ec".U) {
-        printf(cf"ICache resp: addr=${fetch_addr_reg}, data=${io.resp_data}\n")
-      }
+      printf(cf"[icache] addr=${fetch_addr_reg} data=${io.resp_data}\n")
       when(io.resp_ready) {
         state := state_idle
       }
