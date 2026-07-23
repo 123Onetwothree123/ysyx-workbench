@@ -132,7 +132,18 @@ class sdramChisel extends RawModule {
           }
         }
         when(Command_PRECHAREG) {
-          // 写已直接落盘，PRECHARGE 无需提交，实现成 NOP
+          // 提交行缓冲到 Memory，确保刷新覆盖 ROWBuffer 后还能从 Memory 恢复
+          when(io.a(10)) {
+            memory(0).write(ActiveRow(0), ROWBuffer(0))
+            memory(1).write(ActiveRow(1), ROWBuffer(1))
+            memory(2).write(ActiveRow(2), ROWBuffer(2))
+            memory(3).write(ActiveRow(3), ROWBuffer(3))
+          }.otherwise {
+            when(io.ba === 0.U) { memory(0).write(ActiveRow(0), ROWBuffer(0)) }
+            when(io.ba === 1.U) { memory(1).write(ActiveRow(1), ROWBuffer(1)) }
+            when(io.ba === 2.U) { memory(2).write(ActiveRow(2), ROWBuffer(2)) }
+            when(io.ba === 3.U) { memory(3).write(ActiveRow(3), ROWBuffer(3)) }
+          }
           state := state_idle
         }
         when(Command_AUTO_REFRESH) {
