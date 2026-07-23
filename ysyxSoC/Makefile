@@ -15,7 +15,6 @@ $(V_FILE_FINAL): $(SCALA_FILES)
 	mv $(V_FILE_GEN) $@
 	sed -i -e 's/_\(aw\|ar\|w\|r\|b\)_\(\|bits_\)/_\1/g' $@
 	sed -i '/firrtl_black_box_resource_files.f/, $$d' $@
-	python3 scripts/fix_memory_read.py $@
 
 verilog: $(V_FILE_FINAL)
 
