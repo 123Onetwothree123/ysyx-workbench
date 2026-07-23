@@ -139,10 +139,12 @@ class sdramChisel extends RawModule {
       }
       is(state_active) {
         // 载入命令所指 bank 的行缓冲
-        when(CmdBank === 0.U) { ROWBuffer(0) := memory(0)(ActiveRow(0)) }
-        when(CmdBank === 1.U) { ROWBuffer(1) := memory(1)(ActiveRow(1)) }
-        when(CmdBank === 2.U) { ROWBuffer(2) := memory(2)(ActiveRow(2)) }
-        when(CmdBank === 3.U) { ROWBuffer(3) := memory(3)(ActiveRow(3)) }
+        // 注意：用 io.a 而不是 ActiveRow(bank)，因为 ActiveRow 是旧行号，
+        // ACTIVE 的 io.a 才是正要激活的新行号
+        when(CmdBank === 0.U) { ROWBuffer(0) := memory(0)(io.a) }
+        when(CmdBank === 1.U) { ROWBuffer(1) := memory(1)(io.a) }
+        when(CmdBank === 2.U) { ROWBuffer(2) := memory(2)(io.a) }
+        when(CmdBank === 3.U) { ROWBuffer(3) := memory(3)(io.a) }
         state := state_idle
       }
       is(state_read) {
