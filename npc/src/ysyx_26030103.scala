@@ -167,10 +167,6 @@ class ysyx_26030103(
     lsu.io.AccessFaultResp
   )
   io.debug_commit := wbu.io.WriteEN
-  // CommitProbe latch ensures debug_commit stays high after first valid (Verilator glitch workaround)
-  val probe = Module(new CommitProbe)
-  probe.io.valid := exu.io.out.valid
-  io.debug_commit := probe.io.commit
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done  := exu.io.out.fire
