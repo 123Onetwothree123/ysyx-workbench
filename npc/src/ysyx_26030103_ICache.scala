@@ -3,8 +3,8 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 class ysyx_26030103_ICache(
-    BlockSizeLog2: Int = 4,
-    IndexBits:     Int = 5,
+    BlockSizeLog2: Int = 2,
+    IndexBits:     Int = 4,
     AddressWidth:  Int = 32,
     CacheableBase: Long = 0x00000000L,
     CacheableMask: Long = 0x00000000L  // 0=全缓存，由上层传入覆盖
