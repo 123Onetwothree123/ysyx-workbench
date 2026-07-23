@@ -131,10 +131,23 @@ class sdramChisel extends RawModule {
             state := state_write_data
           }
         }
-        when(Command_PRECHAREG) {
-          // 写已直接落盘，PRECHARGE 无需提交，实现成 NOP
-          state := state_idle
+      when(Command_PRECHAREG) {
+        // 提交当前行缓冲到存储阵列
+        when(io.a(10)) {
+          // All banks precharge
+          memory(0).write(ActiveRow(0), ROWBuffer(0))
+          memory(1).write(ActiveRow(1), ROWBuffer(1))
+          memory(2).write(ActiveRow(2), ROWBuffer(2))
+          memory(3).write(ActiveRow(3), ROWBuffer(3))
+        }.otherwise {
+          // Single bank precharge
+          when(io.ba === 0.U) { memory(0).write(ActiveRow(0), ROWBuffer(0)) }
+          when(io.ba === 1.U) { memory(1).write(ActiveRow(1), ROWBuffer(1)) }
+          when(io.ba === 2.U) { memory(2).write(ActiveRow(2), ROWBuffer(2)) }
+          when(io.ba === 3.U) { memory(3).write(ActiveRow(3), ROWBuffer(3)) }
         }
+        state := state_idle
+      }
         when(Command_AUTO_REFRESH) {
           state := state_idle
         }
@@ -179,7 +192,7 @@ class sdramChisel extends RawModule {
         }
       }
     }
-    // 写落盘：同时更新对应 bank 的行缓冲(供开行读)和存储阵列(持久化)，按 dqm 做字节掩码
+    // 写落盘：更新行缓冲(供开行读)，存储阵列在 PRECHARGE 时统一提交
     when(WriteEnable) {
       val OldWord = ROWBuffer(WriteBank)(WriteColumn)
       val NewWord = Cat(
@@ -187,12 +200,6 @@ class sdramChisel extends RawModule {
         Mux(!io.dqm(0), input(7, 0), OldWord(7, 0))
       )
       ROWBuffer(WriteBank)(WriteColumn) := NewWord
-      val WriteData = VecInit(Seq.fill(512)(NewWord))
-      val WriteMask = (0 until 512).map(i => i.U === WriteColumn)
-      when(WriteBank === 0.U) { memory(0).write(ActiveRow(0), WriteData, WriteMask) }
-      when(WriteBank === 1.U) { memory(1).write(ActiveRow(1), WriteData, WriteMask) }
-      when(WriteBank === 2.U) { memory(2).write(ActiveRow(2), WriteData, WriteMask) }
-      when(WriteBank === 3.U) { memory(3).write(ActiveRow(3), WriteData, WriteMask) }
     }
   }
 }
