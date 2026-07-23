@@ -45,6 +45,11 @@ class ysyx_26030103_EXU extends Module {
   val StatesDone = states(2)
   val state = RegInit(StatesIdle)
   val MemoryInstructionReg = Reg(chiselTypeOf(io.in.bits))
+  val _unused_debug = RegInit(0.U(32.W))
+  _unused_debug := _unused_debug + 1.U
+  when(_unused_debug < 5.U) {
+    printf(cf"HELLO from EXU\n")
+  }
   val FSM_Is_Idle = state === StatesIdle
   when(FSM_Is_Idle && io.in.fire && io.in.bits.MemoryValid) {
     MemoryInstructionReg := io.in.bits
