@@ -447,13 +447,10 @@ assign msr_read = (wb_re_i && wb_addr_i == `UART_REG_MS && !dlab);
 assign fifo_read = (wb_re_i && wb_addr_i == `UART_REG_RB && !dlab);
 assign fifo_write = (wb_we_i && wb_addr_i == `UART_REG_TR && !dlab);
 
+// simulation: capture UART TX byte output  
 `ifdef VERILATOR
-always @(posedge clk) if (fifo_write) $write("%c", wb_dat_i[7:0]);
-`endif
-
-// simulation: capture UART TX byte output
-`ifdef VERILATOR
-always @(posedge clk) if (fifo_write) $write("%c", wb_dat_i[7:0]);
+always @(posedge clk) if (wb_we_i) $display("[UART_WR] addr=%h data=%h", wb_addr_i, wb_dat_i);
+always @(posedge clk) if (fifo_write) $display("[UART_TX] %c", wb_dat_i[7:0]);
 `endif
 
 // lsr_mask_d delayed signal handling
@@ -611,9 +608,8 @@ assign lsr3 = rf_data_out[0]; // framing error bit
 assign lsr4 = rf_data_out[2]; // break error in the character
 assign lsr5 = (tf_count==5'b0 && thre_set_en);  // transmitter fifo is empty
 `ifdef VERILATOR
-// simulation: override lsr5 to ignore baud timing
-wire _sim_lsr5 = (tf_count==5'b0);  // always set when FIFO empty, ignore thre_set_en
-assign lsr5 = _sim_lsr5;
+// simulation: force THRE always ready, ignore baud rate timing
+assign lsr5 = 1'b1;
 `endif
 assign lsr6 = (tf_count==5'b0 && thre_set_en && (tstate == /*`S_IDLE */ 0)); // transmitter empty
 assign lsr7 = rf_error_bit | rf_overrun;
@@ -683,7 +679,11 @@ always @(posedge clk or posedge wb_rst_i)
 
 always @(posedge clk or posedge wb_rst_i)
     if (wb_rst_i) lsr5r <= #1 1;
+`ifdef VERILATOR
+    else lsr5r <= #1 (fifo_write) ? 0 : 1'b1;  // simulation: force THRE after write
+`else
     else lsr5r <= #1 (fifo_write) ? 0 :  lsr5r || (lsr5 && ~lsr5_d);
+`endif
 
 // lsr bit 6 (transmitter empty indicator)
 reg lsr6_d;

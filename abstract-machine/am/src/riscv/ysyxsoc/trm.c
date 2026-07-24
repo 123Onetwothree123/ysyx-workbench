@@ -30,6 +30,7 @@ void _trm_init()
     *dll = 0x01; // 除数低字节 = 1
     *dlh = 0x00; // 除数高字节 = 0
     *lcr = 0x03; // DLAB=0, 8N1
+    cte_init(NULL); // 至少设置 mtvec，异常时不跑飞
     int ret = main(mainargs);
     halt(ret);
 }
