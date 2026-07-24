@@ -152,6 +152,8 @@ class ysyx_26030103_EXU extends Module {
   io.PerfBranchOp := ActiveInstruction.IsBranch || ActiveInstruction.IsJal || ActiveInstruction.IsJalr
   io.PerfExecutionActive := state =/= StatesIdle
   io.StallWaitLSU := state === StatesWait
-  io.SemihostValid := putcharProbe.io.en
+  val semihostValidReg = RegInit(false.B)
+  semihostValidReg := putcharProbe.io.en
+  io.SemihostValid := putcharProbe.io.en && !semihostValidReg  // rising edge only
   io.SemihostChar  := putcharProbe.io.data
 }
