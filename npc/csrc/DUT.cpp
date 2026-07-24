@@ -155,6 +155,10 @@ void DUT::step()
     if (dut->perf_lsu_store)
     {
         ++store_data_count;
+        auto addr = static_cast<std::uint32_t>(dut->debug_mtrace_addr);
+        auto data = static_cast<std::uint32_t>(dut->debug_mtrace_wdata);
+        if (addr == 0xa0001380)
+            std::print("{}", static_cast<char>(data & 0xff));
     }
     if (dut->perf_exu_done)
     {
@@ -313,6 +317,14 @@ void DUT::step()
             std::println(std::cerr, "Access Fault [RESP={}] at PC=0x{:08x}, cycle={}", resp, pc, cycle);
             std::println(std::cerr, "  这什么AXI响应码，我也不认识");
         }
+    }
+    // PATCH: capture putch writes via mtrace (dump all store addresses)
+    if (dut->debug_mtrace_valid && dut->debug_mtrace_wen)
+    {
+        auto addr = static_cast<std::uint32_t>(dut->debug_mtrace_addr);
+        auto data = static_cast<std::uint32_t>(dut->debug_mtrace_wdata);
+        if (addr == 0xa0002000)
+            std::print("{}", static_cast<char>(data & 0xff));
     }
 }
 std::size_t DUT::GetCycle() const
