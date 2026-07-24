@@ -133,18 +133,6 @@ void DUT::step()
 #endif
     ++cycle;
 #ifdef CONFIG_PERF_STATS
-    if (cycle % 5000 == 0) {
-        std::println(stderr, "[TRACE] c={} cmt_raw={} instr={} trap={}",
-            cycle, static_cast<int>(dut->debug_commit), instructions,
-            static_cast<int>(dut->trap_valid));
-    }
-    if (cycle % 50000 == 0) {
-        std::println(stderr, "[DBG] c={} cmt={} fetch={} EXU={} EXUstall={} LSUact={} stall_b={} fault={}",
-            cycle, instructions, instruction_fetch_count,
-            execution_complete_count, exu_stall_lsu_count,
-            static_cast<int>(dut->perf_lsu_active), static_cast<int>(dut->perf_lsu_stall_write_b),
-            static_cast<int>(dut->debug_access_fault));
-    }
     if (dut->debug_commit)
     {
         ++instructions;
