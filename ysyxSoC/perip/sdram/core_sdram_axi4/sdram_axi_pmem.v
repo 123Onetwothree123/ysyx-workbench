@@ -274,24 +274,6 @@ wire [3:0] resp_id_w = req_out_w[3:0];
 //-----------------------------------------------------------------
 wire resp_valid_w;
 
-// PATCH: probe write B path
-reg [31:0] _wr_push_count, _wr_pop_count;
-reg        _wr_done;
-always @(posedge clk_i) begin
-    if (rst_i) begin
-        _wr_push_count <= 0;
-        _wr_pop_count <= 0;
-        _wr_done <= 0;
-    end else if (!_wr_done) begin
-        if (ram_ack_i) _wr_push_count <= _wr_push_count + 1;
-        if (resp_accept_w && resp_is_write_w) _wr_pop_count <= _wr_pop_count + 1;
-        if (_wr_push_count > _wr_pop_count + 8) begin  // depth is now 8
-            $display("[SDRAM-FIFO] RESPONSE FIFO OVERFLOW! push=%d pop=%d", _wr_push_count, _wr_pop_count);
-            _wr_done <= 1;
-        end
-    end
-end
-
 sdram_axi_pmem_fifo2
 #( .WIDTH(32), .DEPTH(8), .ADDR_W(3) )
 u_response
