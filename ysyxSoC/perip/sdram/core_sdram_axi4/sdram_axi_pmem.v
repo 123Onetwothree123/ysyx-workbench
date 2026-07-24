@@ -273,9 +273,10 @@ wire [3:0] resp_id_w = req_out_w[3:0];
 // Response buffering
 //-----------------------------------------------------------------
 wire resp_valid_w;
+wire resp_fifo_accept_w;
 
 sdram_axi_pmem_fifo2
-#( .WIDTH(32), .DEPTH(8), .ADDR_W(3) )
+#( .WIDTH(32), .DEPTH(32), .ADDR_W(5) )
 u_response
 (
     .clk_i(clk_i),
@@ -284,7 +285,7 @@ u_response
     // Input
     .data_in_i(ram_read_data_i),
     .push_i(ram_ack_i),
-    .accept_o(),
+    .accept_o(resp_fifo_accept_w),
 
     // Output
     .pop_i(resp_accept_w),
