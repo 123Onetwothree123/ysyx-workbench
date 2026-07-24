@@ -610,6 +610,11 @@ assign lsr2 = rf_data_out[1]; // parity error bit
 assign lsr3 = rf_data_out[0]; // framing error bit
 assign lsr4 = rf_data_out[2]; // break error in the character
 assign lsr5 = (tf_count==5'b0 && thre_set_en);  // transmitter fifo is empty
+`ifdef VERILATOR
+// simulation: override lsr5 to ignore baud timing
+wire _sim_lsr5 = (tf_count==5'b0);  // always set when FIFO empty, ignore thre_set_en
+assign lsr5 = _sim_lsr5;
+`endif
 assign lsr6 = (tf_count==5'b0 && thre_set_en && (tstate == /*`S_IDLE */ 0)); // transmitter empty
 assign lsr7 = rf_error_bit | rf_overrun;
 
