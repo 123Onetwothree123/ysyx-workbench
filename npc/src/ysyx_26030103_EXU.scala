@@ -31,6 +31,8 @@ class ysyx_26030103_EXU extends Module {
     val PerfBranchOp = Output(Bool())
     val PerfExecutionActive = Output(Bool())
     val StallWaitLSU = Output(Bool())
+    val SemihostValid = Output(Bool())
+    val SemihostChar  = Output(UInt(8.W))
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -150,4 +152,6 @@ class ysyx_26030103_EXU extends Module {
   io.PerfBranchOp := ActiveInstruction.IsBranch || ActiveInstruction.IsJal || ActiveInstruction.IsJalr
   io.PerfExecutionActive := state =/= StatesIdle
   io.StallWaitLSU := state === StatesWait
+  io.SemihostValid := putcharProbe.io.en
+  io.SemihostChar  := putcharProbe.io.data
 }
