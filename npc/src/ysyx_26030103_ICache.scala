@@ -95,7 +95,7 @@ class ysyx_26030103_ICache(
         fetch_index_reg := index
         fetch_tag_reg   := reqTag
         resp_data_reg   := data(index)(blockOffset)
-        cacheable_reg   := cacheable
+        cacheable_reg   := (io.fetch_addr & CacheableMask.U) === CacheableBase.U
         fetch_offset_reg := blockOffset
         refill_cnt      := 0.U
         when(cacheable && hit) {
