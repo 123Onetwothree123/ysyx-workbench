@@ -344,7 +344,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.in.R.RLAST := io.SoCBus.R.RLAST
       io.SoCBus.R.RREADY := io.in.R.RREADY
 
-      when(io.SoCBus.R.RVALID && io.in.R.RREADY) {
+      when(io.SoCBus.R.RVALID && io.in.R.RREADY && io.SoCBus.R.RLAST) {
         state := StateIdle
       }
     }.elsewhen(ReadTargetReg === TargetCLINT) {
@@ -355,7 +355,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.in.R.RLAST := io.CLINT.R.RLAST
       io.CLINT.R.RREADY := io.in.R.RREADY
 
-      when(io.CLINT.R.RVALID && io.in.R.RREADY) {
+      when(io.CLINT.R.RVALID && io.in.R.RREADY && io.CLINT.R.RLAST) {
         state := StateIdle
       }
     }.otherwise {
