@@ -298,10 +298,6 @@ void DUT::step()
     // Step-by-step difftest disabled due to multi-cycle timing issue.
     // Comparison is done at the end via DiftestFinalCheck().
 #endif
-    // PATCH: mirror trap_valid at C++ level
-    if (dut->trap_valid) {
-        std::println("[CPP-TRAP] step=0x{:08x} pc=0x{:08x}", cycle, static_cast<std::uint32_t>(dut->trap_pc));
-    }
     if (dut->debug_access_fault)
     {
         auto resp{static_cast<unsigned>(dut->debug_access_fault_resp)};
@@ -321,13 +317,6 @@ void DUT::step()
             std::println(std::cerr, "Access Fault [RESP={}] at PC=0x{:08x}, cycle={}", resp, pc, cycle);
             std::println(std::cerr, "  这什么AXI响应码，我也不认识");
         }
-    }
-    // PATCH: capture putch writes via perf_lsu_store
-    if (dut->perf_lsu_store) {
-        auto addr = static_cast<std::uint32_t>(dut->debug_mtrace_addr);
-        auto data = static_cast<std::uint32_t>(dut->debug_mtrace_wdata);
-        if (addr == 0x0f007000)
-            std::print("{}", static_cast<char>(data & 0xff));
     }
 }
 std::size_t DUT::GetCycle() const
