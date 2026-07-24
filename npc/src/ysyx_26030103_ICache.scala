@@ -71,7 +71,7 @@ class ysyx_26030103_ICache(
   io.axi.AR.ARVALID := false.B
   io.axi.AR.ARID := 0.U
   io.axi.AR.ARADDR := 0.U
-  io.axi.AR.ARLEN := 0.U  // TEST: disable burst, keep new state machine
+  io.axi.AR.ARLEN := 0.U
   io.axi.AR.ARSIZE := 2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
@@ -108,7 +108,7 @@ class ysyx_26030103_ICache(
     is(state_refill_req) {
       io.axi.AR.ARVALID := true.B
       io.axi.AR.ARADDR := Mux(cacheable_reg,
-        Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), 0.U((BlockSizeLog2).W)),
+        Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W)),
         fetch_addr_reg
       )
       when(io.axi.AR.ARREADY) {
@@ -121,21 +121,21 @@ class ysyx_26030103_ICache(
         when(io.axi.R.RRESP =/= 0.U) {
           access_fault_reg := true.B
           access_fault_resp_reg := io.axi.R.RRESP
-          state := state_resp
         }.otherwise {
           resp_data_reg := io.axi.R.RDATA
           when(cacheable_reg) {
             tag(fetch_index_reg)   := fetch_tag_reg
             data(fetch_index_reg)(refill_cnt) := io.axi.R.RDATA
-          }
-          when(io.axi.R.RLAST || !cacheable_reg) {
-            when(cacheable_reg) {
-              valid(fetch_index_reg) := true.B
+            when(refill_cnt === (WordsPerBlock - 1).U) {
+              valid(fetch_index_reg) := true.B  // 全部word填完才设valid
             }
-            state := state_resp
-          }.otherwise {
-            refill_cnt := refill_cnt + 1.U
           }
+        }
+        when(refill_cnt === (WordsPerBlock - 1).U || !cacheable_reg) {
+          state := state_resp
+        }.otherwise {
+          refill_cnt := refill_cnt + 1.U
+          state := state_refill_req
         }
       }
     }

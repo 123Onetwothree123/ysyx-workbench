@@ -314,13 +314,6 @@ void DUT::step()
             std::println(std::cerr, "  这什么AXI响应码，我也不认识");
         }
     }
-    {
-        static int n = 0;
-        if (n < 20 && dut->perf_refill_req) {
-            n++;
-            std::print("[ARLEN={}]", static_cast<int>(dut->ARLEN_to_probe));
-        }
-    }
 }
 std::size_t DUT::GetCycle() const
 {
