@@ -155,10 +155,6 @@ void DUT::step()
     if (dut->perf_lsu_store)
     {
         ++store_data_count;
-        auto addr = static_cast<std::uint32_t>(dut->debug_mtrace_addr);
-        auto data = static_cast<std::uint32_t>(dut->debug_mtrace_wdata);
-        if (addr == 0xa0001380)
-            std::print("{}", static_cast<char>(data & 0xff));
     }
     if (dut->perf_exu_done)
     {
@@ -318,18 +314,7 @@ void DUT::step()
             std::println(std::cerr, "  这什么AXI响应码，我也不认识");
         }
     }
-    {
-        static int n = 0;
-        if (n < 5) { n++; std::print("[SV={}]", static_cast<int>(dut->semihost_valid)); }
-    }
-    static uint8_t last_char = 0xff;
-    if (dut->semihost_valid) {
-        auto ch = static_cast<uint8_t>(dut->semihost_char);
-        if (ch != last_char) {
-            std::print("{}", static_cast<char>(ch));
-            last_char = ch;
-        }
-    }
+
 }
 std::size_t DUT::GetCycle() const
 {
