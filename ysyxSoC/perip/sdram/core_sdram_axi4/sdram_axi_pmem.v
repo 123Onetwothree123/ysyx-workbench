@@ -169,12 +169,12 @@ begin
         // Data ready?
         if (axi_wvalid_i && axi_wready_o)
         begin
-            req_wr_q      <= 1'b1;                // fix2: keep until burst done
-            req_len_q     <= axi_awlen_i;          // fix1: no underflow for awlen=0
+            req_wr_q      <= 1'b1;
+            req_len_q     <= axi_awlen_i;
             req_id_q      <= axi_awid_i;
             req_axburst_q <= axi_awburst_i;
             req_axlen_q   <= axi_awlen_i;
-            req_addr_q    <= axi_awaddr_i;         // fix2b: current addr, not next
+            req_addr_q    <= axi_awaddr_i;
         end
         // Data not ready
         else
@@ -192,7 +192,7 @@ begin
     else if (axi_arvalid_i && axi_arready_o)
     begin
         req_rd_q      <= (axi_arlen_i != 0);
-        req_len_q     <= axi_arlen_i;              // fix1: no underflow for arlen=0
+        req_len_q     <= axi_arlen_i;
         req_addr_q    <= calculate_addr_next(axi_araddr_i, axi_arburst_i, axi_arlen_i);
         req_id_q      <= axi_arid_i;
         req_axburst_q <= axi_arburst_i;
@@ -303,7 +303,7 @@ wire read_prio_w    = ((!req_prio_q & !req_hold_wr_q) | req_hold_rd_q);
 wire write_active_w  = (axi_awvalid_i || req_wr_q) && !req_rd_q && req_fifo_accept_w && (write_prio_w || req_wr_q || !axi_arvalid_i);
 wire read_active_w   = (axi_arvalid_i || req_rd_q) && !req_wr_q && req_fifo_accept_w && (read_prio_w || req_rd_q || !axi_awvalid_i);
 
-assign axi_awready_o = write_active_w && !req_wr_q && req_fifo_accept_w;   // fix3: don't wait for ram_accept_i
+assign axi_awready_o = write_active_w && !req_wr_q && req_fifo_accept_w;
 assign axi_wready_o  = write_active_w &&              ram_accept_i && req_fifo_accept_w;
 assign axi_arready_o = read_active_w  && !req_rd_q && ram_accept_i && req_fifo_accept_w;
 
@@ -333,7 +333,6 @@ assign axi_rresp_o   = 2'b0;
 assign axi_rid_o     = resp_id_w;
 assign axi_rlast_o   = resp_is_last_w;
 
-// fix4: auto-drain stuck write responses when BREADY idle
 reg [3:0] wr_b_stuck_cnt;
 wire wr_b_stuck = axi_bvalid_o & !axi_bready_i;
 always @(posedge clk_i or posedge rst_i) begin
@@ -345,8 +344,8 @@ wire wr_b_timeout = (wr_b_stuck_cnt >= 4'd4);
 
 assign resp_accept_w    = (axi_rvalid_o & axi_rready_i) |
                           (axi_bvalid_o & axi_bready_i) |
-                          (resp_valid_w & resp_is_write_w & !resp_is_last_w) |  // mid-burst write resps
-                          (resp_valid_w & resp_is_write_w & resp_is_last_w & wr_b_timeout); // stuck write drain
+                          (resp_valid_w & resp_is_write_w & !resp_is_last_w) |
+                          (resp_valid_w & resp_is_write_w & resp_is_last_w & wr_b_timeout);
 
 endmodule
 
