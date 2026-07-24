@@ -91,9 +91,10 @@ class ysyx_26030103_EXU extends Module {
   val InstructionExecutionDone =
     FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
   CSRUnit.io.Enable := FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
-  when (io.in.fire && FSM_Is_Idle && !io.in.bits.MemoryValid && io.in.bits.CSRAddress === "h8a0".U) {
-    printf("%c", io.in.bits.Rs1Data(7, 0))
-  }
+  val putcharProbe = Module(new ysyx_26030103_PutcharProbe)
+  putcharProbe.io.clk := clock
+  putcharProbe.io.en := io.in.fire && FSM_Is_Idle && !io.in.bits.MemoryValid && io.in.bits.CSRAddress === "h8a0".U
+  putcharProbe.io.data := io.in.bits.Rs1Data(7, 0)
   io.TrapValid := InstructionExecutionDone && CSRUnit.io.IsEbreak
   io.TrapPC := io.in.bits.pc
   io.Redirect := InstructionExecutionDone && Redirect
