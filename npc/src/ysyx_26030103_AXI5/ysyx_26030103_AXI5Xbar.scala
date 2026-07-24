@@ -155,6 +155,14 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     ARLENReg := ARLenPending
     state := StateReadRequest
   }
+  // capture AR into pending when not idle
+  when(InARFire && state =/= StateIdle) {
+    val target = decode(io.in.AR.ARADDR)
+    ARPending := true.B
+    ARTargetPending := target
+    ARAddrPending := io.in.AR.ARADDR
+    ARLenPending := io.in.AR.ARLEN
+  }
   // 写不动了剩下状态机代码都是ai写的
   when(state === StateIdle) {
     val HasWriteRequest =
@@ -175,29 +183,21 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       }.otherwise {
         state := StateWriteCollect
       }
-    }.otherwise { // 没有写请求时，接收读请求（可排队）
+    }.otherwise { // 没有写请求时，读请求在这里直接处理
       InARReady := true.B
       when(InARFire) {
         val target = decode(io.in.AR.ARADDR)
-        when(state === StateIdle) {
-          ARIDReg := io.in.AR.ARID
-          ARAddressReg := io.in.AR.ARADDR
-          ARLENReg := io.in.AR.ARLEN
-          ARSIZEReg := io.in.AR.ARSIZE
-          ARBURSTReg := io.in.AR.ARBURST
-          ARPROTReg := io.in.AR.ARPROT
-          ReadTargetReg := target
-          when(target === TargetInvalid) {
-            state := StateReadDECERR
-          }.otherwise {
-            state := StateReadRequest
-          }
+        ARIDReg := io.in.AR.ARID
+        ARAddressReg := io.in.AR.ARADDR
+        ARLENReg := io.in.AR.ARLEN
+        ARSIZEReg := io.in.AR.ARSIZE
+        ARBURSTReg := io.in.AR.ARBURST
+        ARPROTReg := io.in.AR.ARPROT
+        ReadTargetReg := target
+        when(target === TargetInvalid) {
+          state := StateReadDECERR
         }.otherwise {
-          // buffer AR for later processing
-          ARPending := true.B
-          ARTargetPending := target
-          ARAddrPending := io.in.AR.ARADDR
-          ARLenPending := io.in.AR.ARLEN
+          state := StateReadRequest
         }
       }
     }
