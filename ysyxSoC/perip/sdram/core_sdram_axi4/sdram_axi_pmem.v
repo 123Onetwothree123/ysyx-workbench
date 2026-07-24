@@ -247,7 +247,7 @@ begin
 end
 
 sdram_axi_pmem_fifo2
-#( .WIDTH(1 + 1 + 4) )
+#( .WIDTH(1 + 1 + 4), .DEPTH(16), .ADDR_W(4) )
 u_requests
 (
     .clk_i(clk_i),
@@ -274,9 +274,20 @@ wire [3:0] resp_id_w = req_out_w[3:0];
 //-----------------------------------------------------------------
 wire resp_valid_w;
 wire resp_fifo_accept_w;
+reg [31:0] _push_cnt, _pop_cnt;
+always @(posedge clk_i) begin
+    if (rst_i) begin _push_cnt <= 0; _pop_cnt <= 0; end
+    else begin
+        if (ram_ack_i && !resp_fifo_accept_w) begin
+            $display("[SDRAM-FIFO] OVERFLOW push=%d pop=%d", _push_cnt, _pop_cnt);
+        end
+        if (ram_ack_i) _push_cnt <= _push_cnt + 1;
+        if (resp_accept_w) _pop_cnt <= _pop_cnt + 1;
+    end
+end
 
 sdram_axi_pmem_fifo2
-#( .WIDTH(32), .DEPTH(32), .ADDR_W(5) )
+#( .WIDTH(32), .DEPTH(8192), .ADDR_W(13) )
 u_response
 (
     .clk_i(clk_i),
