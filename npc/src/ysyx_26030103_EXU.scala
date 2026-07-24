@@ -95,11 +95,6 @@ class ysyx_26030103_EXU extends Module {
   putcharProbe.io.clk := clock
   putcharProbe.io.en := io.in.fire && FSM_Is_Idle && !io.in.bits.MemoryValid && io.in.bits.CSRAddress === "h8a0".U
   putcharProbe.io.data := io.in.bits.Rs1Data(7, 0)
-  val _firstExceptionCaught = RegInit(false.B)
-  when (io.ExceptionTaken && !_firstExceptionCaught) {
-    _firstExceptionCaught := true.B
-    printf(cf"[EXU-EXC] FIRST exception: pc=0x${io.in.bits.pc}%x ecall=${io.in.bits.IsEcall} ebreak=${io.in.bits.IsEbreak} illegal=${io.in.bits.ALUCDIllegal}\n")
-  }
   io.TrapValid := InstructionExecutionDone && CSRUnit.io.IsEbreak
   io.TrapPC := io.in.bits.pc
   io.Redirect := InstructionExecutionDone && Redirect
