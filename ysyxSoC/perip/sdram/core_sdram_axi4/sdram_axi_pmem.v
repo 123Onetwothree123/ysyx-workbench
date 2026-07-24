@@ -347,6 +347,9 @@ assign resp_accept_w    = (axi_rvalid_o & axi_rready_i) |
                           (resp_valid_w & resp_is_write_w & !resp_is_last_w) |
                           (resp_valid_w & resp_is_write_w & resp_is_last_w & wr_b_timeout);
 
+reg [31:0] _dbg;
+always @(posedge clk_i or posedge rst_i) if(rst_i) _dbg<=0; else _dbg<=_dbg+1;
+always @(posedge clk_i) if(axi_arvalid_i & axi_arready_o) $display("[P] AR len=%d rdy=%d", axi_arlen_i, axi_rready_i);
 endmodule
 
 //-----------------------------------------------------------------
