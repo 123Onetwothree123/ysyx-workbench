@@ -3,7 +3,7 @@
 #include <klib.h>
 extern char _heap_start, _heap_end;
 Area heap = RANGE(&_heap_start, &_heap_end);
-static const char mainargs[MAINARGS_MAX_LEN] = TOSTRING(MAINARGS_PLACEHOLDER);
+static const char mainargs[MAINARGS_MAX_LEN] __attribute__((used)) = TOSTRING(MAINARGS_PLACEHOLDER);
 extern void __am_asm_trap(void);
 
 void putch(char ch) { asm volatile("csrw 0x8a0, %0" : : "r"((int)ch)); }
@@ -18,11 +18,11 @@ void _trm_init()
         "sw ra, 12(sp)\n"
         "li a0, 0\n"
         "call cte_init\n"
-        "la a0, %1\n"
+        "la a0, mainargs\n"
         "call main\n"
         "li a0, 0\n"
         "ebreak\n"
         :
-        : "r"(&__am_asm_trap), "m"(mainargs)
+        : "r"(&__am_asm_trap)
     );
 }
