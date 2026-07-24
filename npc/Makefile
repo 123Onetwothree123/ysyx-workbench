@@ -59,6 +59,7 @@ verilog:
 	mkdir -p $(BUILD_DIR)
 	mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
 	ln -sf layers-ysyx_26030103-Verification.sv $(BUILD_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
+	cp -f src/ysyx_26030103_PutcharProbe.v $(BUILD_DIR)/
 
 help:
 	mill -i runMain ysyx_26030103_Elaborate --help
