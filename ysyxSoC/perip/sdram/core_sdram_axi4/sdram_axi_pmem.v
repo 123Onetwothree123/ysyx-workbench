@@ -352,10 +352,12 @@ always @(posedge clk_i or posedge rst_i) if (rst_i) pmem_dbg<=0; else pmem_dbg<=
 always @(posedge clk_i) begin
     if (axi_arvalid_i & axi_arready_o)
         $display("[PMEM] AR addr=%08x len=%d", axi_araddr_i, axi_arlen_i);
+    if (ram_rd_o & ram_accept_i)
+        $display("[PMEM] RD_REQ active=%d rdq=%d len=%d", read_active_w, req_rd_q, req_len_q);
     if (ram_ack_i & resp_is_read_w)
-        $display("[PMEM] R_ACK len=%d last=%d", req_len_q, resp_is_last_w);
+        $display("[PMEM] R_ACK c=%d last=%d len=%d", pmem_dbg, resp_is_last_w, req_len_q);
     if (axi_rvalid_o & axi_rready_i)
-        $display("[PMEM] R_OUT last=%d", axi_rlast_o);
+        $display("[PMEM] R_OUT c=%d last=%d", pmem_dbg, axi_rlast_o);
 end
 
 endmodule
