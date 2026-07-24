@@ -149,7 +149,7 @@ end
 else
 begin
     // Clear write/read burst flag only when response is sent back
-    if (resp_accept_w)
+    if (resp_accept_w | wr_resp_valid_r)  // writes: cleared when BVALID high
     begin
         req_rd_q <= 1'b0;
         req_wr_q <= 1'b0;
@@ -258,10 +258,12 @@ u_requests
     .accept_o(req_fifo_accept_w),
 
     // Output
-    .pop_i(resp_accept_w),
+    .pop_i(resp_accept_w | wr_pop_w),
     .data_out_o(req_out_w),
     .valid_o(req_out_valid_w)
 );
+
+wire wr_pop_w = wr_resp_valid_r; // pop request FIFO entry when write B done
 
 wire resp_is_write_w = req_out_valid_w ? ~req_out_w[5] : 1'b0;
 wire resp_is_read_w  = req_out_valid_w ? req_out_w[5]  : 1'b0;
@@ -274,8 +276,11 @@ wire [3:0] resp_id_w = req_out_w[3:0];
 wire resp_valid_w;
 wire resp_fifo_accept_w;
 
+reg        wr_resp_valid_r;
+reg [ 3:0] wr_resp_id_r;
+
 sdram_axi_pmem_fifo2
-#( .WIDTH(32), .DEPTH(65536), .ADDR_W(16) )
+#( .WIDTH(32), .DEPTH(32), .ADDR_W(5) )
 u_response
 (
     .clk_i(clk_i),
@@ -283,7 +288,7 @@ u_response
 
     // Input
     .data_in_i(ram_read_data_i),
-    .push_i(ram_ack_i),
+    .push_i(ram_ack_i & resp_is_read_w),
     .accept_o(resp_fifo_accept_w),
 
     // Output
@@ -291,6 +296,18 @@ u_response
     .data_out_o(axi_rdata_o),
     .valid_o(resp_valid_w)
 );
+
+always @(posedge clk_i or posedge rst_i)
+if (rst_i) begin
+    wr_resp_valid_r <= 1'b0;
+    wr_resp_id_r    <= 4'b0;
+end else begin
+    wr_resp_valid_r <= 1'b0;
+    if (ram_ack_i & resp_is_write_w & resp_is_last_w) begin
+        wr_resp_valid_r <= 1'b1;
+        wr_resp_id_r    <= resp_id_w;
+    end
+end
 
 //-----------------------------------------------------------------
 // RAM Request
@@ -326,18 +343,16 @@ assign ram_len_o        = axi_awvalid_i ? axi_awlen_i:
 //-----------------------------------------------------------------
 // Response
 //-----------------------------------------------------------------
-assign axi_bvalid_o  = resp_valid_w & resp_is_write_w & resp_is_last_w;
+assign axi_bvalid_o  = wr_resp_valid_r;
 assign axi_bresp_o   = 2'b0;
-assign axi_bid_o     = resp_id_w;
+assign axi_bid_o     = wr_resp_id_r;
 
 assign axi_rvalid_o  = resp_valid_w & resp_is_read_w;
 assign axi_rresp_o   = 2'b0;
 assign axi_rid_o     = resp_id_w;
 assign axi_rlast_o   = resp_is_last_w;
 
-assign resp_accept_w    = (axi_rvalid_o & axi_rready_i) |
-                          (axi_bvalid_o & axi_bready_i) |
-                          (resp_valid_w & resp_is_write_w & !resp_is_last_w); // Ignore write resps mid burst
+assign resp_accept_w = axi_rvalid_o & axi_rready_i;
 
 endmodule
 
