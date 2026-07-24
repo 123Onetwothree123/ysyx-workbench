@@ -7,5 +7,6 @@ class ysyx_26030103_PutcharProbe extends BlackBox {
     val clk = Input(Clock())
     val en = Input(Bool())
     val data = Input(UInt(8.W))
+    val done = Output(Bool())
   })
 }
