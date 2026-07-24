@@ -70,8 +70,6 @@ module sdram_axi_pmem
     ,output [  1:0]  axi_rresp_o
     ,output [  3:0]  axi_rid_o
     ,output          axi_rlast_o
-    ,output          resp_ready_o     // backpressure for SDRAM controller
-
     ,output [  3:0]  ram_wr_o
     ,output          ram_rd_o
     ,output [  7:0]  ram_len_o
@@ -150,15 +148,14 @@ begin
 end
 else
 begin
-    // Burst continuation
-    if ((ram_wr_o != 4'b0 || ram_rd_o) && ram_accept_i)
+    // Clear write/read burst flag only when response is sent back
+    if (resp_accept_w)
     begin
-        if (req_len_q == 8'd0)
-        begin
-            req_rd_q   <= 1'b0;
-            req_wr_q   <= 1'b0;
-        end
-        else
+        req_rd_q <= 1'b0;
+        req_wr_q <= 1'b0;
+    end else if ((ram_wr_o != 4'b0 || ram_rd_o) && ram_accept_i)
+    begin
+        if (req_len_q != 8'd0)
         begin
             req_addr_q <= calculate_addr_next(req_addr_q, req_axburst_q, req_axlen_q);
             req_len_q  <= req_len_q - 8'd1;
@@ -171,12 +168,12 @@ begin
         // Data ready?
         if (axi_wvalid_i && axi_wready_o)
         begin
-            req_wr_q      <= !axi_wlast_i;
+            req_wr_q      <= 1'b1;  // FIX: keep until response, not !wlast
             req_len_q     <= axi_awlen_i - 8'd1;
             req_id_q      <= axi_awid_i;
             req_axburst_q <= axi_awburst_i;
             req_axlen_q   <= axi_awlen_i;
-            req_addr_q    <= calculate_addr_next(axi_awaddr_i, axi_awburst_i, axi_awlen_i);
+            req_addr_q    <= axi_awaddr_i;  // FIX: current addr, not next
         end
         // Data not ready
         else
@@ -276,7 +273,6 @@ wire [3:0] resp_id_w = req_out_w[3:0];
 //-----------------------------------------------------------------
 wire resp_valid_w;
 wire resp_fifo_accept_w;
-assign resp_ready_o = resp_fifo_accept_w;
 
 sdram_axi_pmem_fifo2
 #( .WIDTH(32), .DEPTH(65536), .ADDR_W(16) )
@@ -284,9 +280,13 @@ u_response
 (
     .clk_i(clk_i),
     .rst_i(rst_i),
+
+    // Input
     .data_in_i(ram_read_data_i),
-    .push_i(ram_ack_i & resp_fifo_accept_w),
+    .push_i(ram_ack_i),
     .accept_o(resp_fifo_accept_w),
+
+    // Output
     .pop_i(resp_accept_w),
     .data_out_o(axi_rdata_o),
     .valid_o(resp_valid_w)
@@ -315,6 +315,8 @@ wire rd_w    = read_active_w;
 
 // RAM if
 assign ram_addr_o       = addr_w;
+always @(posedge clk_i) begin
+end
 assign ram_write_data_o = axi_wdata_i;
 assign ram_rd_o         = rd_w;
 assign ram_wr_o         = wr_w ? axi_wstrb_i : 4'b0;

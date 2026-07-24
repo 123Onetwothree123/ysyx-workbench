@@ -42,8 +42,7 @@ module sdram_axi_core
     ,input  [  7:0]  inport_len_i
     ,input  [ 31:0]  inport_addr_i
     ,input  [ 31:0]  inport_write_data_i
-     ,input  [ 31:0]  sdram_data_input_i
-     ,input           resp_ready_i   // backpressure from response FIFO
+    ,input  [ 31:0]  sdram_data_input_i
 
     // Outputs
     ,output          inport_accept_o
@@ -217,9 +216,9 @@ begin
 
             target_state_r = STATE_REFRESH;
         end
-         // Access request (only when response FIFO has room)
-         else if (ram_req_w && resp_ready_i)
-         begin
+        // Access request
+        else if (ram_req_w)
+        begin
             // Open row hit
             if (row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w])
             begin
@@ -272,8 +271,8 @@ begin
     begin
         next_state_r = STATE_IDLE;
 
-        // Another pending read request (with no refresh pending, FIFO has room)
-        if (!refresh_q && ram_req_w && ram_rd_w && resp_ready_i)
+        // Another pending read request (with no refresh pending)
+        if (!refresh_q && ram_req_w && ram_rd_w)
         begin
             // Open row hit
             if (row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w])
@@ -286,8 +285,7 @@ begin
     STATE_WRITE0 :
     begin
         next_state_r = STATE_IDLE;
-        // Another pending write request (with no refresh pending, FIFO has room)
-        if (!refresh_q && ram_req_w && (ram_wr_w != 4'b0) && resp_ready_i)
+        if (!refresh_q && ram_req_w && (ram_wr_w != 4'b0))
         begin
             if (row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w])
                 next_state_r = STATE_WRITE0;
@@ -300,8 +298,8 @@ begin
     begin
         next_state_r = STATE_IDLE;
 
-        // Another pending write request (with no refresh pending, FIFO has room)
-        if (!refresh_q && ram_req_w && (ram_wr_w != 4'b0) && resp_ready_i)
+        // Another pending write request (with no refresh pending)
+        if (!refresh_q && ram_req_w && (ram_wr_w != 4'b0))
         begin
             // Open row hit
             if (row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w])
@@ -367,8 +365,8 @@ begin
     begin
         delay_r = SDRAM_READ_LATENCY;
 
-        // Another pending read request (with no refresh pending, FIFO has room)
-        if (!refresh_q && ram_req_w && ram_rd_w && resp_ready_i)
+        // Another pending read request (with no refresh pending)
+        if (!refresh_q && ram_req_w && ram_rd_w)
         begin
             // Open row hit
             if (row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w])

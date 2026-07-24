@@ -4,8 +4,25 @@
 extern char _heap_start, _heap_end;
 Area heap = RANGE(&_heap_start, &_heap_end);
 static const char mainargs[MAINARGS_MAX_LEN] = TOSTRING(MAINARGS_PLACEHOLDER);
+extern void __am_asm_trap(void);
 
 void putch(char ch) { asm volatile("csrw 0x8a0, %0" : : "r"((int)ch)); }
 void halt(int code) { asm volatile("mv a0, %0; ebreak" : : "r"(code)); while (1); }
 
-void _trm_init() { extern int main(const char*); cte_init(NULL); int r = main(mainargs); halt(r); }
+__attribute__((naked))
+void _trm_init()
+{
+    asm volatile(
+        "csrw 0x305, %0\n"
+        "addi sp, sp, -16\n"
+        "sw ra, 12(sp)\n"
+        "li a0, 0\n"
+        "call cte_init\n"
+        "la a0, %1\n"
+        "call main\n"
+        "li a0, 0\n"
+        "ebreak\n"
+        :
+        : "r"(&__am_asm_trap), "m"(mainargs)
+    );
+}
