@@ -697,6 +697,16 @@ begin
 end
 
 assign ram_ack_w = ack_q;
+// PATCH: track writes after SSBL (addresses > 0xa0002000)
+reg        _post_ssbl_write_seen;
+always @(posedge clk_i) begin
+    if (state_q == STATE_WRITE0) begin
+        if (ram_addr_w > 32'ha0002000 && !_post_ssbl_write_seen) begin
+            $display("[SDRAM-CTL] WRITE high addr=%08x", ram_addr_w);
+            _post_ssbl_write_seen <= 1;
+        end
+    end
+end
 
 // Accept command in READ or WRITE0 states
 assign ram_accept_w = (state_q == STATE_READ || state_q == STATE_WRITE0);
