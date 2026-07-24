@@ -102,6 +102,7 @@ wire [ 31:0]  ram_read_data_w;
 wire [  7:0]  ram_len_w;
 wire          ram_ack_w;
 wire          ram_error_w;
+wire          resp_ready_w;   // backpressure from pmem to core
 
 sdram_axi_pmem
 u_axi
@@ -147,8 +148,9 @@ u_axi
     .ram_write_data_o(ram_write_data_w),
     .ram_ack_i(ram_ack_w),
     .ram_error_i(ram_error_w),
-    .ram_read_data_i(ram_read_data_w)
-);
+    .ram_read_data_i(ram_read_data_w),
+    .resp_ready_o(resp_ready_w)
+ );
 
 //-----------------------------------------------------------------
 // SDRAM Controller
@@ -169,8 +171,9 @@ u_core
     ,.inport_rd_i(ram_rd_w)
     ,.inport_len_i(ram_len_w)
     ,.inport_addr_i(ram_addr_w)
-    ,.inport_write_data_i(ram_write_data_w)
-    ,.inport_accept_o(ram_accept_w)
+     ,.inport_write_data_i(ram_write_data_w)
+     ,.resp_ready_i(resp_ready_w)
+     ,.inport_accept_o(ram_accept_w)
     ,.inport_ack_o(ram_ack_w)
     ,.inport_error_o(ram_error_w)
     ,.inport_read_data_o(ram_read_data_w)

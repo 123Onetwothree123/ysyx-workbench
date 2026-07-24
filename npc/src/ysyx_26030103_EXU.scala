@@ -91,8 +91,8 @@ class ysyx_26030103_EXU extends Module {
   val InstructionExecutionDone =
     FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
   CSRUnit.io.Enable := FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
-  io.TrapValid := InstructionExecutionDone && CSRUnit.io.IsEbreak
-  io.TrapPC := io.in.bits.pc
+  io.TrapValid := InstructionExecutionDone && ActiveInstruction.IsEbreak
+  io.TrapPC := ActiveInstruction.pc
   io.Redirect := InstructionExecutionDone && Redirect
   when(ActiveInstruction.IsJalr) {
     io.RedirectTarget := JalrTarget
