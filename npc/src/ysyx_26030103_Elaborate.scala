@@ -6,8 +6,8 @@ import java.nio.file.{Files, Paths, StandardCopyOption}
 object ysyx_26030103_Elaborate extends App {
   val targetDir = args(args.indexOf("--target-dir") + 1)
 
-  val CacheableBase_ysyxsoc = 0x00000000L
-  val CacheableMask_ysyxsoc = 0x00000000L
+  val CacheableBase_ysyxsoc = 0x80000000L
+  val CacheableMask_ysyxsoc = 0x80000000L
   val CacheableBase_npc     = 0x80000000L
   val CacheableMask_npc     = 0x80000000L
 
