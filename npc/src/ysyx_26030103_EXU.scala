@@ -98,7 +98,7 @@ class ysyx_26030103_EXU extends Module {
   val _firstExceptionCaught = RegInit(false.B)
   when (io.ExceptionTaken && !_firstExceptionCaught) {
     _firstExceptionCaught := true.B
-    printf(cf"[EXU-EXC] FIRST exception: pc=0x${io.in.bits.pc}%x inst=0x${io.in.bits.Instruction}%x\n")
+    printf(cf"[EXU-EXC] FIRST exception: pc=0x${io.in.bits.pc}%x ecall=${io.in.bits.IsEcall} ebreak=${io.in.bits.IsEbreak} illegal=${io.in.bits.ALUCDIllegal}\n")
   }
   io.TrapValid := InstructionExecutionDone && CSRUnit.io.IsEbreak
   io.TrapPC := io.in.bits.pc
