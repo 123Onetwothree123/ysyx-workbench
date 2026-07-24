@@ -347,6 +347,17 @@ assign resp_accept_w    = (axi_rvalid_o & axi_rready_i) |
                           (resp_valid_w & resp_is_write_w & !resp_is_last_w) |
                           (resp_valid_w & resp_is_write_w & resp_is_last_w & wr_b_timeout);
 
+reg [31:0] pmem_dbg;
+always @(posedge clk_i or posedge rst_i) if (rst_i) pmem_dbg<=0; else pmem_dbg<=pmem_dbg+1;
+always @(posedge clk_i) begin
+    if (axi_arvalid_i & axi_arready_o)
+        $display("[PMEM] AR addr=%08x len=%d", axi_araddr_i, axi_arlen_i);
+    if (ram_ack_i & resp_is_read_w)
+        $display("[PMEM] R_ACK len=%d last=%d", req_len_q, resp_is_last_w);
+    if (axi_rvalid_o & axi_rready_i)
+        $display("[PMEM] R_OUT last=%d", axi_rlast_o);
+end
+
 endmodule
 
 //-----------------------------------------------------------------
