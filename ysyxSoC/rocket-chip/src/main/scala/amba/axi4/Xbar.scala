@@ -276,8 +276,8 @@ object AXI4Arbiter
     val anyValid = valids.reduce(_ || _)
     // Arbitrate amongst the requests
     val readys = VecInit(policy(valids.size, Cat(valids.reverse), idle).asBools)
-    // Any slave with valid data can win (needed for R channel burst)
-    val winner = VecInit(valids)
+    // Which request wins arbitration?
+    val winner = VecInit((readys zip valids) map { case (r,v) => r&&v })
 
     // Confirm the policy works properly
     require (readys.size == valids.size)
