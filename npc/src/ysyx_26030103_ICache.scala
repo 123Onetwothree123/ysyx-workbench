@@ -71,7 +71,7 @@ class ysyx_26030103_ICache(
   io.axi.AR.ARVALID := false.B
   io.axi.AR.ARID := 0.U
   io.axi.AR.ARADDR := 0.U
-  io.axi.AR.ARLEN := 3.U  // TEST: force burst
+  io.axi.AR.ARLEN := 0.U
   io.axi.AR.ARSIZE := 2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
