@@ -1,7 +1,6 @@
 package ysyx_26030103.ysyx_26030103_AXI5
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.dontTouch
 class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val io = IO(new Bundle {
     // 先做过笔记，因为这个是接裁决器的，裁决器是master，所以这里的对反
@@ -45,7 +44,8 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val ARIDReg = RegInit(0.U(4.W))
   val ARAddressReg = RegInit(0.U(32.W))
   val ARLENReg = RegInit(0.U(8.W))
-  dontTouch(ARLENReg)
+  // Force Chisel to keep this register alive
+  when(state === StateIdle) { printf(cf"[Xbar] ARLENReg=${ARLENReg}\n") }
   val ARSIZEReg = RegInit(2.U(3.W))
   val ARBURSTReg = RegInit(0.U(2.W))
   val ARPROTReg = RegInit(0.U(3.W))
