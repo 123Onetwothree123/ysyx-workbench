@@ -63,10 +63,6 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val DownstreamAWDone = RegInit(false.B)
   val DownstreamWDone = RegInit(false.B)
   // AR pending buffer: accept AR even when xbar is not idle
-  val ARPending = RegInit(false.B)
-  val ARTargetPending = RegInit(TargetInvalid)
-  val ARAddrPending = RegInit(0.U(32.W))
-  val ARLenPending = RegInit(0.U(8.W))
   // 这段是AI写的
   // 用 Wire 控制上游 ready，避免直接读自己驱动的输出端口。
   val InAWReady = WireDefault(false.B)
