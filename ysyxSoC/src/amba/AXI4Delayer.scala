@@ -26,7 +26,7 @@ class axi4_delayer extends BlackBox {
   val io = IO(new AXI4DelayerIO)
 }
 
-class AXI4DelayerChisel(val CPU_MHZ: Int = 100, val DEVICE_MHZ: Int = 100, val S: Int = 64) extends Module {
+class AXI4DelayerChisel(val CPU_MHZ: Int = 450, val DEVICE_MHZ: Int = 100, val S: Int = 64) extends Module {
   val io = IO(new AXI4DelayerIO)
 
   val CounterWidth = 24
