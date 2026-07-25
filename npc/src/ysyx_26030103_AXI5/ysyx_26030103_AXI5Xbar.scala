@@ -97,6 +97,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   io.SoCBus.AR.ARVALID := false.B
   io.SoCBus.AR.ARID := 0.U
   io.SoCBus.AR.ARADDR := 0.U
+  io.SoCBus.AR.ARLEN := ARLENReg
   io.SoCBus.AR.ARSIZE := 2.U
   io.SoCBus.AR.ARBURST := 0.U
   io.SoCBus.AR.ARPROT := 0.U
@@ -128,9 +129,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     Mux(InAWFire, decode(io.in.AW.AWADDR), WriteTargetReg)
   val AWCollected = AWValidReg || InAWFire
   val WCollected = WValidReg || InWFire
-  when(InARFire) {
-    ARLENReg := io.in.AR.ARLEN
-  }
+  ARLENReg := Mux(InARFire, io.in.AR.ARLEN, ARLENReg)
   when(InAWFire) {
     AWIDReg := io.in.AW.AWID
     AWAddressReg := io.in.AW.AWADDR
