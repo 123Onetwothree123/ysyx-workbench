@@ -1,7 +1,7 @@
 module;
 module npc.ysyxSoC;
 #ifndef CONFIG_MBASE
-#define CONFIG_MBASE 0x20000000u
+#define CONFIG_MBASE 0x30000000u
 #endif
 std::vector<std::uint8_t> mrom;
 std::vector<std::uint8_t> FlashMemory;
