@@ -349,6 +349,9 @@ assign resp_accept_w    = (axi_rvalid_o & axi_rready_i) |
 
 always @(posedge clk_i) if(axi_arvalid_i & axi_arready_o) $display("[P] AR len=%d", axi_arlen_i);
 always @(posedge clk_i) if(axi_rvalid_o & axi_rready_i) $display("[P] R last=%d", axi_rlast_o);
+reg [31:0] _d;
+always @(posedge clk_i or posedge rst_i) if(rst_i) _d<=0; else _d<=_d+1;
+always @(posedge clk_i) if(axi_rvalid_o & axi_rready_i) $display("[P] R c=%d last=%d", _d, axi_rlast_o);
 endmodule
 
 //-----------------------------------------------------------------
