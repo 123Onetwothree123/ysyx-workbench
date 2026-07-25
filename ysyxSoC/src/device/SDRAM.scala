@@ -209,8 +209,8 @@ class AXI4SDRAM(address: Seq[AddressSet])(implicit p: Parameters)
           AXI4SlaveParameters(
             address = address,
             executable = true,
-            supportsWrite = TransferSizes(1, beatBytes * 4),
-            supportsRead = TransferSizes(1, beatBytes * 4),
+            supportsWrite = TransferSizes(1, beatBytes),
+            supportsRead = TransferSizes(1, beatBytes),
             interleavedId = Some(0)
           )
         ),
