@@ -336,6 +336,7 @@ assign resp_accept_w    = (axi_rvalid_o & axi_rready_i) |
                           (axi_bvalid_o & axi_bready_i) |
                           (resp_valid_w & resp_is_write_w & !resp_is_last_w) |
                           (resp_valid_w & resp_is_write_w & resp_is_last_w & wr_b_timeout);
+always @(posedge clk_i) if(axi_rvalid_o & axi_rready_i) $display("[P] R last=%d data=%08x", axi_rlast_o, axi_rdata_o);
 endmodule
 
 //-----------------------------------------------------------------
