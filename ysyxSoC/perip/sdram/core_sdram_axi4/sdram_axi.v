@@ -189,7 +189,6 @@ u_core
     ,.sdram_data_input_i(sdram_data_input_i)
 );
 
-always @(posedge clk_i) if(out_rvalid_i & out_rready_o) $display("[SDRAM] R last=%d data=%08x", out_rlast_i, out_rdata_i);
 
 
 endmodule
