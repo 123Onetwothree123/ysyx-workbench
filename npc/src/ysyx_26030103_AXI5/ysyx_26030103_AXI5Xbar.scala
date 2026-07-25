@@ -97,7 +97,6 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   io.SoCBus.AR.ARVALID := false.B
   io.SoCBus.AR.ARID := 0.U
   io.SoCBus.AR.ARADDR := 0.U
-  io.SoCBus.AR.ARLEN := 0.U
   io.SoCBus.AR.ARSIZE := 2.U
   io.SoCBus.AR.ARBURST := 0.U
   io.SoCBus.AR.ARPROT := 0.U
@@ -311,12 +310,11 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     }
   }.elsewhen(state === StateReadRequest) {
     // 把读地址AR转发到对应下游
-    io.SoCBus.AR.ARLEN  := Mux(ReadTargetReg === TargetSoCBus,  ARLENReg,  0.U)
-    io.CLINT.AR.ARLEN  := Mux(ReadTargetReg === TargetCLINT, ARLENReg,  0.U)
     when(ReadTargetReg === TargetSoCBus) {
       io.SoCBus.AR.ARVALID := true.B
       io.SoCBus.AR.ARID := ARIDReg
       io.SoCBus.AR.ARADDR := ARAddressReg
+      io.SoCBus.AR.ARLEN := ARLENReg
       io.SoCBus.AR.ARSIZE := ARSIZEReg
       io.SoCBus.AR.ARBURST := ARBURSTReg
       io.SoCBus.AR.ARPROT := ARPROTReg
@@ -328,6 +326,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.CLINT.AR.ARVALID := true.B
       io.CLINT.AR.ARID := ARIDReg
       io.CLINT.AR.ARADDR := ARAddressReg
+      io.CLINT.AR.ARLEN := ARLENReg
       io.CLINT.AR.ARSIZE := ARSIZEReg
       io.CLINT.AR.ARBURST := ARBURSTReg
       io.CLINT.AR.ARPROT := ARPROTReg
@@ -378,4 +377,6 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       state := StateIdle
     }
   }
+  io.SoCBus.AR.ARLEN := ARLENReg
+  io.CLINT.AR.ARLEN := ARLENReg
 }
