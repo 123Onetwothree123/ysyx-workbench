@@ -106,8 +106,8 @@ class ysyx_26030103_ICache(
     }
     is(state_refill_req) {
       io.axi.AR.ARVALID := true.B
-      io.axi.AR.ARADDR := Mux(cacheable_reg,
-        Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W)),
+      io.axi.AR.ARADDR := Mux(fetch_addr_reg(31).asBool,
+        Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), 0.U((BlockSizeLog2).W)),
         fetch_addr_reg
       )
       when(io.axi.AR.ARREADY) {
@@ -122,7 +122,7 @@ class ysyx_26030103_ICache(
           access_fault_resp_reg := io.axi.R.RRESP
         }.otherwise {
           resp_data_reg := io.axi.R.RDATA
-          when(cacheable_reg) {
+          when(fetch_addr_reg(31).asBool) {
             tag(fetch_index_reg)   := fetch_tag_reg
             data(fetch_index_reg)(refill_cnt) := io.axi.R.RDATA
             when(refill_cnt === (WordsPerBlock - 1).U) {
@@ -130,7 +130,7 @@ class ysyx_26030103_ICache(
             }
           }
         }
-        when(refill_cnt === (WordsPerBlock - 1).U || !cacheable_reg) {
+        when(refill_cnt === (WordsPerBlock - 1).U || !fetch_addr_reg(31).asBool) {
           state := state_resp
         }.otherwise {
           refill_cnt := refill_cnt + 1.U
@@ -140,7 +140,7 @@ class ysyx_26030103_ICache(
     }
     is(state_resp) {
       io.resp_valid := true.B
-      io.resp_data := Mux(cacheable_reg && !access_fault_reg,
+      io.resp_data := Mux(fetch_addr_reg(31).asBool && !access_fault_reg,
         data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
       when(io.resp_ready && fetch_addr_reg === "ha00000ec".U) {
         printf(cf"ICache resp: addr=${fetch_addr_reg}, data=${io.resp_data}\n")
