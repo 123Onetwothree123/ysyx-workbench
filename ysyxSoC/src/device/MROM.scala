@@ -57,8 +57,9 @@ class AXI4MROM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
     val addr_reg   = RegInit(0.U(32.W))
 
     mrom.io.clock := clock
-    mrom.io.raddr := addr_reg + (beat_cnt << 2)
-    mrom.io.ren := (state === stateActive)
+    mrom.io.raddr := Mux(in.ar.fire, in.ar.bits.addr,
+                     addr_reg + ((beat_cnt + 1.U) << 2))
+    mrom.io.ren := in.ar.fire || (state === stateActive)
 
     in.ar.ready := (state === stateIdle)
     when(in.ar.fire) {
