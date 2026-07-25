@@ -223,8 +223,10 @@ end
 //-----------------------------------------------------------------
 // Request tracking
 //-----------------------------------------------------------------
+wire       req_push_w_raw = (ram_rd_o || (ram_wr_o != 4'b0)) && ram_accept_i;
+// For burst reads, suppress push on AR handshake (burst continuation handles it)
+wire       req_push_w = req_push_w_raw && !(axi_arvalid_i && axi_arready_o && (axi_arlen_i != 8'd0));
 reg [5:0]  req_in_r;
-reg        req_push_w;
 
 wire       req_out_valid_w;
 wire [5:0] req_out_w;
@@ -234,20 +236,16 @@ wire       resp_accept_w;
 always @ *
 begin
     req_in_r = 6'b0;
-    req_push_w = 1'b0;
 
-    if (axi_arvalid_i && axi_arready_o) begin
+    // First cycle of read burst
+    if (axi_arvalid_i && axi_arready_o)
         req_in_r = {1'b1, (axi_arlen_i == 8'd0), axi_arid_i};
-        req_push_w = (axi_arlen_i == 8'd0);
-    end
-    else if (axi_awvalid_i && axi_awready_o) begin
+    // First cycle of write burst
+    else if (axi_awvalid_i && axi_awready_o)
         req_in_r = {1'b0, (axi_awlen_i == 8'd0), axi_awid_i};
-        req_push_w = 1'b1;
-    end
-    else if ((ram_rd_o || (ram_wr_o != 4'b0)) && ram_accept_i) begin
+    // In burst
+    else
         req_in_r = {ram_rd_o, (req_len_q == 8'd0), req_id_q};
-        req_push_w = 1'b1;
-    end
 end
 
 sdram_axi_pmem_fifo2
