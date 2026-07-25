@@ -223,9 +223,7 @@ end
 //-----------------------------------------------------------------
 // Request tracking
 //-----------------------------------------------------------------
-wire       req_push_w_raw = (ram_rd_o || (ram_wr_o != 4'b0)) && ram_accept_i;
-// For burst reads, suppress push on AR handshake (burst continuation handles it)
-wire       req_push_w = req_push_w_raw && !(axi_arvalid_i && axi_arready_o && (axi_arlen_i != 8'd0));
+wire       req_push_w = (ram_rd_o || (ram_wr_o != 4'b0)) && ram_accept_i;
 reg [5:0]  req_in_r;
 
 wire       req_out_valid_w;

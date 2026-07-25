@@ -200,4 +200,13 @@ always @(posedge clk_i) begin
     $display("[SDRAM-R]  data=%08x last=%d resp=%d", out_rdata_i, out_rlast_i, out_rresp_i);
 end
 
+
+
+always @(posedge clk_i) begin
+  if (inport_arvalid_i & inport_arready_o)
+    $display("[SDRAM-AR] addr=%08x len=%d", inport_araddr_i, inport_arlen_i);
+  if (inport_rvalid_o & inport_rready_i)
+    $display("[SDRAM-R]  data=%08x last=%d", inport_rdata_o, inport_rlast_o);
+end
+
 endmodule
