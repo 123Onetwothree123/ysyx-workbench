@@ -54,6 +54,7 @@ class ysyx_26030103_ICache(
   val access_fault_reg = RegInit(false.B)
   val access_fault_resp_reg = RegInit(0.U(2.W))
   val refill_cnt = RegInit(0.U(WordCntBits.W))  // 当前正在填充第几个word
+  val burst_mode = RegInit(false.B)             // 突发传输模式标志
   io.access_fault := access_fault_reg
   io.access_fault_resp := access_fault_resp_reg
   io.axi.AW.AWVALID := false.B
@@ -107,8 +108,12 @@ class ysyx_26030103_ICache(
     }
     is(state_refill_req) {
       io.axi.AR.ARVALID := true.B
+      io.axi.AR.ARLEN := Mux(cacheable_reg && burst_mode, (WordsPerBlock - 1).U, 0.U)
       io.axi.AR.ARADDR := Mux(cacheable_reg,
-        Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W)),
+        Mux(burst_mode,
+          Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W)),
+          Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W))
+        ),
         fetch_addr_reg
       )
       when(io.axi.AR.ARREADY) {
@@ -127,15 +132,29 @@ class ysyx_26030103_ICache(
             tag(fetch_index_reg)   := fetch_tag_reg
             data(fetch_index_reg)(refill_cnt) := io.axi.R.RDATA
             when(refill_cnt === (WordsPerBlock - 1).U) {
-              valid(fetch_index_reg) := true.B  // 全部word填完才设valid
+              valid(fetch_index_reg) := true.B
             }
           }
         }
-        when(refill_cnt === (WordsPerBlock - 1).U || !cacheable_reg) {
-          state := state_resp
-        }.otherwise {
+        when(cacheable_reg && burst_mode) {
           refill_cnt := refill_cnt + 1.U
-          state := state_refill_req
+          when(io.axi.R.RLAST || !cacheable_reg) {
+            when(refill_cnt >= (WordsPerBlock - 1).U) {
+              state := state_resp
+            }.otherwise {
+              burst_mode := false.B
+              state := state_refill_req
+            }
+          }
+        }.elsewhen(cacheable_reg) {
+          when(refill_cnt === (WordsPerBlock - 1).U || !cacheable_reg) {
+            state := state_resp
+          }.otherwise {
+            refill_cnt := refill_cnt + 1.U
+            state := state_refill_req
+          }
+        }.otherwise {
+          state := state_resp
         }
       }
     }
