@@ -62,6 +62,11 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val WriteTargetReg = RegInit(TargetInvalid)
   val DownstreamAWDone = RegInit(false.B)
   val DownstreamWDone = RegInit(false.B)
+  // AR pending buffer: accept AR even when xbar is not idle
+  val ARPending = RegInit(false.B)
+  val ARTargetPending = RegInit(TargetInvalid)
+  val ARAddrPending = RegInit(0.U(32.W))
+  val ARLenPending = RegInit(0.U(8.W))
   // 这段是AI写的
   // 用 Wire 控制上游 ready，避免直接读自己驱动的输出端口。
   val InAWReady = WireDefault(false.B)
@@ -147,23 +152,22 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     WLASTReg := io.in.W.WLAST
     WValidReg := true.B
   }
-  // process buffered AR when returning to idle
+  // 写不动了剩下状态机代码都是ai写的  (先处理缓冲的AR)
   when(state === StateIdle && ARPending) {
     ARPending := false.B
     ReadTargetReg := ARTargetPending
     ARAddressReg := ARAddrPending
     ARLENReg := ARLenPending
+    ARSIZEReg := 2.U(3.W)
+    ARBURSTReg := 0.U(2.W)
+    ARPROTReg := 0.U(3.W)
     state := StateReadRequest
-  }
-  // capture AR into pending when not idle
-  when(InARFire && state =/= StateIdle) {
-    val target = decode(io.in.AR.ARADDR)
+  }.elsewhen(state =/= StateIdle && InARFire && ~HasWriteReq) {
     ARPending := true.B
-    ARTargetPending := target
+    ARTargetPending := decode(io.in.AR.ARADDR)
     ARAddrPending := io.in.AR.ARADDR
     ARLenPending := io.in.AR.ARLEN
   }
-  // 写不动了剩下状态机代码都是ai写的
   when(state === StateIdle) {
     val HasWriteRequest =
       io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || WValidReg
