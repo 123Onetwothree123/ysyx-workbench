@@ -127,7 +127,7 @@ class ysyx_26030103_ICache(
           resp_data_reg := io.axi.R.RDATA
           when(fetch_addr_reg(31).asBool) {
             tag(fetch_index_reg)   := fetch_tag_reg
-            data(fetch_index_reg)(refill_cnt) := io.axi.R.RDATA
+            when(!io.axi.R.RLAST) { data(fetch_index_reg)(refill_cnt) := io.axi.R.RDATA }
             when(refill_cnt === (WordsPerBlock - 1).U) {
               valid(fetch_index_reg) := true.B  // 全部word填完才设valid
             }
