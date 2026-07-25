@@ -294,7 +294,7 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     psram.io <> masic.psram
     // 位扩展：实例化 2 个 16 位 SDRAM 颗粒，命令广播、dqm/dq 各接一半
     val sdram0 = Module(new sdramChisel)
-    val sdram1 = Module(new sdramChisel(1))
+    val sdram1 = Module(new sdramChisel)
     Seq(sdram0, sdram1).foreach { s =>
       s.io.clk := masic.sdram.clk
       s.io.cke := masic.sdram.cke

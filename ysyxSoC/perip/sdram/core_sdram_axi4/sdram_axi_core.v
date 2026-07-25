@@ -735,14 +735,4 @@ end
 `endif
 
 
-
-always @(posedge clk_i) begin
-  if (state_q == STATE_READ && !rst_i)
-    $display("[CORE-READ] col=%04x row=%04x bank=%d rd=%d",
-             addr_col_w, addr_row_w, addr_bank_w, ram_rd_w);
-  if (state_q == STATE_WRITE0 && !rst_i)
-    $display("[CORE-WRITE] col=%04x data=%08x",
-             addr_col_w, ram_write_data_w);
-end
-
 endmodule

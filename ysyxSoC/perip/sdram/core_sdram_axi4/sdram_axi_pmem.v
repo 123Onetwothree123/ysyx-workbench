@@ -193,7 +193,7 @@ begin
     begin
         req_rd_q      <= (axi_arlen_i != 0);
         req_len_q     <= axi_arlen_i;
-        req_addr_q    <= calculate_addr_next(axi_araddr_i, axi_arburst_i, axi_arlen_i);
+        req_addr_q    <= axi_araddr_i;
         req_id_q      <= axi_arid_i;
         req_axburst_q <= axi_arburst_i;
         req_axlen_q   <= axi_arlen_i;
@@ -347,11 +347,6 @@ assign resp_accept_w    = (axi_rvalid_o & axi_rready_i) |
                           (resp_valid_w & resp_is_write_w & !resp_is_last_w) |
                           (resp_valid_w & resp_is_write_w & resp_is_last_w & wr_b_timeout);
 
-// PROBE
-always @(posedge clk_i) begin
-  if (axi_rvalid_o & axi_rready_i)
-    $display("[PMEM-R] data=%08x last=%d", axi_rdata_o, axi_rlast_o);
-end
 endmodule
 
 //-----------------------------------------------------------------

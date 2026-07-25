@@ -51,7 +51,7 @@ class sdram extends BlackBox {
   val io = IO(Flipped(new SDRAMIO))
 }
 
-class sdramChisel(colOffset: Int = 0) extends RawModule {
+class sdramChisel extends RawModule {
   val io = IO(Flipped(new SDRAMIO))
   val output = Wire(UInt(16.W))
   val en = Wire(Bool())
@@ -113,17 +113,17 @@ class sdramChisel(colOffset: Int = 0) extends RawModule {
         }
         when(Command_READ) {
           CmdBank := io.ba
-          CmdCol := io.a(8, 0) + colOffset.U
+          CmdCol := io.a(8, 0)
           BurstCounter := 0.U
           state := state_read
         }
         when(Command_WRITE) {
           CmdBank := io.ba
-          CmdCol := io.a(8, 0) + colOffset.U
+          CmdCol := io.a(8, 0)
           // beat0 就在 WRITE 命令这一拍的 dq 上
           WriteEnable := true.B
           WriteBank := io.ba
-          WriteColumn := io.a(8, 0) + colOffset.U
+          WriteColumn := io.a(8, 0)
           BurstCounter := 1.U
           when(MR_Write_Burst_Mode || MR_Burst_Length === 1.U) {
             state := state_idle
@@ -209,8 +209,8 @@ class AXI4SDRAM(address: Seq[AddressSet])(implicit p: Parameters)
           AXI4SlaveParameters(
             address = address,
             executable = true,
-            supportsWrite = TransferSizes(1, beatBytes * 4),
-            supportsRead = TransferSizes(1, beatBytes * 4),
+            supportsWrite = TransferSizes(1, beatBytes),
+            supportsRead = TransferSizes(1, beatBytes),
             interleavedId = Some(0)
           )
         ),
