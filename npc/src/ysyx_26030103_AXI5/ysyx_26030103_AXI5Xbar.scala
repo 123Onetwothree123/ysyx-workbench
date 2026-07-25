@@ -67,7 +67,8 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   // 用 Wire 控制上游 ready，避免直接读自己驱动的输出端口。
   val InAWReady = WireDefault(false.B)
   val InWReady = WireDefault(false.B)
-  val InARReady = WireDefault(false.B)  val HasWriteReq = io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || WValidReg
+  val InARReady = WireDefault(false.B)
+  val HasWriteReq = io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || WValidReg
   io.in.AW.AWREADY := InAWReady
   io.in.W.WREADY := InWReady
   io.in.AR.ARREADY := InARReady
