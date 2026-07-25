@@ -1,7 +1,7 @@
 package ysyx_26030103
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.DontTouch
+import chisel3.dontTouch
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 class ysyx_26030103_ICache(
     BlockSizeLog2: Int = 4,
@@ -73,7 +73,7 @@ class ysyx_26030103_ICache(
   io.axi.AR.ARID := 0.U
   io.axi.AR.ARADDR := 0.U
   io.axi.AR.ARLEN := 0.U
-  DontTouch(io.axi.AR.ARLEN)
+  dontTouch(io.axi.AR.ARLEN)
   io.axi.AR.ARSIZE := 2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
