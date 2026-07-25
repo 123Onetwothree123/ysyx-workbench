@@ -297,7 +297,7 @@ object AXI4Arbiter
     when (sink.fire) { idle := true.B }
 
     if (sources.size > 1) {
-      val allowed = Mux(idle, readys, state)
+      val allowed = Mux(idle, VecInit.fill(sources.size)(true.B), state)
       (sources zip allowed) foreach { case (s, r) =>
         s.ready := sink.ready && r
       }
