@@ -125,8 +125,10 @@ class ysyx_26030103_ICache(
         }.otherwise {
           resp_data_reg := io.axi.R.RDATA
           when(fetch_addr_reg(31).asBool) {
-            data(fetch_index_reg)(refill_cnt) := io.axi.R.RDATA
-            tag(fetch_index_reg) := fetch_tag_reg
+            when(!io.axi.R.RLAST) {
+              data(fetch_index_reg)(refill_cnt) := io.axi.R.RDATA
+              tag(fetch_index_reg) := fetch_tag_reg
+            }
             when(refill_cnt < (WordsPerBlock - 1).U) {
               refill_cnt := refill_cnt + 1.U
             }
