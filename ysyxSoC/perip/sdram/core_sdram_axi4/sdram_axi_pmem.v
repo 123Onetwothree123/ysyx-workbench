@@ -192,7 +192,7 @@ begin
     else if (axi_arvalid_i && axi_arready_o)
     begin
         req_rd_q      <= (axi_arlen_i != 0);
-        req_len_q     <= axi_arlen_i;
+        req_len_q     <= axi_arlen_i - 8'd1;
         req_addr_q    <= axi_araddr_i;
         req_id_q      <= axi_arid_i;
         req_axburst_q <= axi_arburst_i;
