@@ -44,6 +44,9 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val ARIDReg = RegInit(0.U(4.W))
   val ARAddressReg = RegInit(0.U(32.W))
   val ARLENReg = RegInit(0.U(8.W))
+  when(InARFire) {
+    ARLENReg := io.in.AR.ARLEN
+  }
   val ARSIZEReg = RegInit(2.U(3.W))
   val ARBURSTReg = RegInit(0.U(2.W))
   val ARPROTReg = RegInit(0.U(3.W))
@@ -169,7 +172,6 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
         val target = decode(io.in.AR.ARADDR)
         ARIDReg := io.in.AR.ARID
         ARAddressReg := io.in.AR.ARADDR
-        ARLENReg := io.in.AR.ARLEN
         ARSIZEReg := io.in.AR.ARSIZE
         ARBURSTReg := io.in.AR.ARBURST
         ARPROTReg := io.in.AR.ARPROT
