@@ -347,6 +347,11 @@ assign resp_accept_w    = (axi_rvalid_o & axi_rready_i) |
                           (resp_valid_w & resp_is_write_w & !resp_is_last_w) |
                           (resp_valid_w & resp_is_write_w & resp_is_last_w & wr_b_timeout);
 
+// PROBE
+always @(posedge clk_i) begin
+  if (axi_rvalid_o & axi_rready_i)
+    $display("[PMEM-R] data=%08x last=%d", axi_rdata_o, axi_rlast_o);
+end
 endmodule
 
 //-----------------------------------------------------------------

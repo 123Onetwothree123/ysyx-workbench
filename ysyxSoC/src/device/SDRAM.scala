@@ -51,7 +51,7 @@ class sdram extends BlackBox {
   val io = IO(Flipped(new SDRAMIO))
 }
 
-class sdramChisel extends RawModule {
+class sdramChisel(colOffset: Int = 0) extends RawModule {
   val io = IO(Flipped(new SDRAMIO))
   val output = Wire(UInt(16.W))
   val en = Wire(Bool())
@@ -113,17 +113,17 @@ class sdramChisel extends RawModule {
         }
         when(Command_READ) {
           CmdBank := io.ba
-          CmdCol := io.a(8, 0)
+          CmdCol := io.a(8, 0) + colOffset.U
           BurstCounter := 0.U
           state := state_read
         }
         when(Command_WRITE) {
           CmdBank := io.ba
-          CmdCol := io.a(8, 0)
+          CmdCol := io.a(8, 0) + colOffset.U
           // beat0 就在 WRITE 命令这一拍的 dq 上
           WriteEnable := true.B
           WriteBank := io.ba
-          WriteColumn := io.a(8, 0)
+          WriteColumn := io.a(8, 0) + colOffset.U
           BurstCounter := 1.U
           when(MR_Write_Burst_Mode || MR_Burst_Length === 1.U) {
             state := state_idle
