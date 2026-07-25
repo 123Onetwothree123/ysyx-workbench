@@ -51,7 +51,7 @@ class sdram extends BlackBox {
   val io = IO(Flipped(new SDRAMIO))
 }
 
-class sdramChisel(colOffset: Int = 0) extends RawModule {
+class sdramChisel extends RawModule {
   val io = IO(Flipped(new SDRAMIO))
   val output = Wire(UInt(16.W))
   val en = Wire(Bool())
@@ -157,7 +157,7 @@ class sdramChisel(colOffset: Int = 0) extends RawModule {
       }
       is(state_read_data) {
         en := true.B
-        output := ROWBuffer(CmdBank)(CmdCol + BurstCounter + colOffset.U)
+        output := ROWBuffer(CmdBank)(CmdCol + BurstCounter)
         when(BurstCounter === (MR_Burst_Length - 1.U)) {
           state := state_idle
         }.otherwise {
