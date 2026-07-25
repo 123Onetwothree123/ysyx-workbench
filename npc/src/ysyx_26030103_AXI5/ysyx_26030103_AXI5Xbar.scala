@@ -43,7 +43,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val ARLenPending = RegInit(0.U(8.W))
   val ARIDReg = RegInit(0.U(4.W))
   val ARAddressReg = RegInit(0.U(32.W))
-  val ARLENReg = RegEnable(io.in.AR.ARLEN, 0.U(8.W), InARFire)
+  val ARLENReg = RegInit(0.U(8.W))
   val ARSIZEReg = RegInit(2.U(3.W))
   val ARBURSTReg = RegInit(0.U(2.W))
   val ARPROTReg = RegInit(0.U(3.W))
@@ -129,6 +129,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     Mux(InAWFire, decode(io.in.AW.AWADDR), WriteTargetReg)
   val AWCollected = AWValidReg || InAWFire
   val WCollected = WValidReg || InWFire
+  when(InARFire) { ARLENReg := io.in.AR.ARLEN }
   when(InAWFire) {
     AWIDReg := io.in.AW.AWID
     AWAddressReg := io.in.AW.AWADDR
