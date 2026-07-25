@@ -3,7 +3,7 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 class ysyx_26030103_ICache(
-    BlockSizeLog2: Int = 4,
+    BlockSizeLog2: Int = 5,
     IndexBits:     Int = 5,
     AddressWidth:  Int = 32,
     CacheableBase: Long = 0x00000000L,
