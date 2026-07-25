@@ -83,6 +83,7 @@ class ysyx_26030103_ICache(
   io.perf_miss := false.B
   io.perf_refill_req := state === state_refill_req
   io.perf_refill_resp := state === state_refill_resp
+  printf(cf"[IC] state=${state} addr=${io.fetch_addr} hit=${hit} fv=${io.fetch_valid} fr=${io.fetch_ready} arid=${io.axi.AR.ARID} arlen=${io.axi.AR.ARLEN} arv=${io.axi.AR.ARVALID} arr=${io.axi.AR.ARREADY} rv=${io.axi.R.RVALID} rr=${io.axi.R.RREADY}\n")
   switch(state) {
     is(state_idle) {
       access_fault_reg := false.B
