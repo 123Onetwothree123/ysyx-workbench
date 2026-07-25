@@ -71,7 +71,7 @@ class ysyx_26030103_ICache(
   io.axi.AR.ARVALID := false.B
   io.axi.AR.ARID := 0.U
   io.axi.AR.ARADDR := 0.U
-  io.axi.AR.ARLEN := Mux(cacheable_reg, (WordsPerBlock - 1).U, 0.U)
+  io.axi.AR.ARLEN := Mux(fetch_addr_reg(31), (WordsPerBlock - 1).U, 0.U)
   io.axi.AR.ARSIZE := 2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
