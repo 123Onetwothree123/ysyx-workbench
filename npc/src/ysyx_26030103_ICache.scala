@@ -88,17 +88,17 @@ class ysyx_26030103_ICache(
       access_fault_reg := false.B
       access_fault_resp_reg := 0.U
       io.fetch_ready := true.B
-      io.perf_hit  := io.fetch_valid && io.fetch_ready && io_fetch_addr(31).asBool && hit
-      io.perf_miss := io.fetch_valid && io.fetch_ready && io_fetch_addr(31).asBool && !hit
+      io.perf_hit  := io.fetch_valid && io.fetch_ready && io_fetch_addr(31) && hit
+      io.perf_miss := io.fetch_valid && io.fetch_ready && io_fetch_addr(31) && !hit
       when(io.fetch_valid && io.fetch_ready) {
         fetch_addr_reg  := io.fetch_addr
         fetch_index_reg := index
         fetch_tag_reg   := reqTag
         resp_data_reg   := data(index)(blockOffset)
-        cacheable_reg   := io_fetch_addr(31, 31).asBool
+        cacheable_reg   := io_fetch_addr(31)
         fetch_offset_reg := blockOffset
         refill_cnt      := 0.U
-        when(io_fetch_addr(31).asBool && hit) {
+        when(io_fetch_addr(31) && hit) {
           state := state_resp
         }.otherwise {
           state := state_refill_req
