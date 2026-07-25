@@ -461,7 +461,7 @@ SYNTH_FREQ ?= 450
 
 ifeq ($(SIM_TOP),soc)
 SYNTH_DESIGN = ysyx_26030103
-SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103.sv)
+SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103.sv) $(abspath $(BUILD_DIR)/ysyx_26030103_PutcharProbe.v)
 else
 SYNTH_DESIGN = ysyx_26030103
 SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
