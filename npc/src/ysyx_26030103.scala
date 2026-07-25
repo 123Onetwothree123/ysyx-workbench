@@ -85,7 +85,7 @@ class ysyx_26030103(
   io.master_araddr := soc.AR.ARADDR
   io.master_arid := soc.AR.ARID
   // Bypass Xbar ARLEN (Chisel optimizes it to 0)
-  io.master_arlen := arbiter.io.memory.AR.ARLEN
+  io.master_arlen := icache.io.axi.AR.ARLEN
   io.master_arsize := soc.AR.ARSIZE
   io.master_arburst := soc.AR.ARBURST
   io.master_arlock := 0.U
