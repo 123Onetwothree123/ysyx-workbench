@@ -92,6 +92,9 @@ class ysyx_26030103_ICache(
       io.perf_hit  := io.fetch_valid && io.fetch_ready && cacheable && hit
       io.perf_miss := io.fetch_valid && io.fetch_ready && cacheable && !hit
       when(io.fetch_valid && io.fetch_ready) {
+        when(cacheable && !hit) {
+          printf(cf"ICache MISS: addr=${io.fetch_addr}\n")
+        }
         fetch_addr_reg  := io.fetch_addr
         fetch_index_reg := index
         fetch_tag_reg   := reqTag
