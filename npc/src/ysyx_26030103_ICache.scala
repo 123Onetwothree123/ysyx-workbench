@@ -106,15 +106,14 @@ class ysyx_26030103_ICache(
       }
     }
     is(state_refill_req) {
-      val is_burst = cacheable_reg && (WordsPerBlock > 1).B
       io.axi.AR.ARVALID := true.B
-      io.axi.AR.ARLEN := Mux(is_burst, (WordsPerBlock - 1).U, 0.U)
-      io.axi.AR.ARADDR := Mux(cacheable_reg,
-        Mux(is_burst,
-          Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W)),
-          Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W))
-        ),
-        fetch_addr_reg
+      io.axi.AR.ARLEN := Mux(cacheable_reg && (WordsPerBlock > 1).B, (WordsPerBlock - 1).U, 0.U)
+      io.axi.AR.ARADDR := Mux(cacheable_reg && (WordsPerBlock > 1).B,
+        Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W)),
+        Mux(cacheable_reg,
+          Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W)),
+          fetch_addr_reg
+        )
       )
       when(io.axi.AR.ARREADY) {
         state := state_refill_resp
