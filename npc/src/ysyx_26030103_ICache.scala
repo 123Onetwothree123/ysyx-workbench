@@ -107,7 +107,7 @@ class ysyx_26030103_ICache(
     }
     is(state_refill_req) {
       io.axi.AR.ARVALID := true.B
-      io.axi.AR.ARADDR := Mux(fetch_addr_reg(31).asBool,
+      io.axi.AR.ARADDR := Mux(cacheable_reg,
         Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W)),
         fetch_addr_reg
       )
@@ -123,15 +123,15 @@ class ysyx_26030103_ICache(
           access_fault_resp_reg := io.axi.R.RRESP
         }.otherwise {
           resp_data_reg := io.axi.R.RDATA
-          when(fetch_addr_reg(31).asBool) {
+          when(cacheable_reg) {
             tag(fetch_index_reg)   := fetch_tag_reg
             data(fetch_index_reg)(refill_cnt) := io.axi.R.RDATA
             when(refill_cnt === (WordsPerBlock - 1).U) {
-              valid(fetch_index_reg) := true.B
+              valid(fetch_index_reg) := true.B  // 全部word填完才设valid
             }
           }
         }
-        when(refill_cnt === (WordsPerBlock - 1).U || !fetch_addr_reg(31).asBool) {
+        when(refill_cnt === (WordsPerBlock - 1).U || !cacheable_reg) {
           state := state_resp
         }.otherwise {
           refill_cnt := refill_cnt + 1.U
