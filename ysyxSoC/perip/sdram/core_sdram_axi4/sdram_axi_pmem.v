@@ -148,8 +148,8 @@ begin
 end
 else
 begin
-    // Burst continuation
-    if ((ram_wr_o != 4'b0 || ram_rd_o) && ram_accept_i)
+    // Burst continuation (only if already in burst)
+    if ((ram_wr_o != 4'b0 || ram_rd_o) && ram_accept_i && (req_rd_q || req_wr_q))
     begin
         if (req_len_q == 8'd0)
         begin
@@ -163,33 +163,8 @@ begin
         end
     end
 
-    // Write command accepted
-    if (axi_awvalid_i && axi_awready_o)
-    begin
-        // Data ready?
-        if (axi_wvalid_i && axi_wready_o)
-        begin
-            req_wr_q      <= 1'b1;
-            req_len_q     <= axi_awlen_i;
-            req_id_q      <= axi_awid_i;
-            req_axburst_q <= axi_awburst_i;
-            req_axlen_q   <= axi_awlen_i;
-            req_addr_q    <= axi_awaddr_i;
-        end
-        // Data not ready
-        else
-        begin
-            req_wr_q      <= 1'b1;
-            req_len_q     <= axi_awlen_i;
-            req_id_q      <= axi_awid_i;
-            req_axburst_q <= axi_awburst_i;
-            req_axlen_q   <= axi_awlen_i;
-            req_addr_q    <= axi_awaddr_i;
-        end
-        req_prio_q    <= !req_prio_q;
-    end
     // Read command accepted
-    else if (axi_arvalid_i && axi_arready_o)
+    if (axi_arvalid_i && axi_arready_o)
     begin
         req_rd_q      <= (axi_arlen_i != 0);
         req_len_q     <= axi_arlen_i;
@@ -197,6 +172,17 @@ begin
         req_id_q      <= axi_arid_i;
         req_axburst_q <= axi_arburst_i;
         req_axlen_q   <= axi_arlen_i;
+        req_prio_q    <= !req_prio_q;
+    end
+    // Write command accepted
+    else if (axi_awvalid_i && axi_awready_o)
+    begin
+        req_wr_q      <= 1'b1;
+        req_len_q     <= axi_awlen_i;
+        req_id_q      <= axi_awid_i;
+        req_axburst_q <= axi_awburst_i;
+        req_axlen_q   <= axi_awlen_i;
+        req_addr_q    <= axi_awaddr_i;
         req_prio_q    <= !req_prio_q;
     end
 end
@@ -223,8 +209,8 @@ end
 //-----------------------------------------------------------------
 // Request tracking
 //-----------------------------------------------------------------
-wire       req_push_w = (ram_rd_o || (ram_wr_o != 4'b0)) && ram_accept_i;
 reg [5:0]  req_in_r;
+reg        req_push_w;
 
 wire       req_out_valid_w;
 wire [5:0] req_out_w;
@@ -234,16 +220,20 @@ wire       resp_accept_w;
 always @ *
 begin
     req_in_r = 6'b0;
+    req_push_w = 1'b0;
 
-    // First cycle of read burst
-    if (axi_arvalid_i && axi_arready_o)
+    if (axi_arvalid_i && axi_arready_o) begin
         req_in_r = {1'b1, (axi_arlen_i == 8'd0), axi_arid_i};
-    // First cycle of write burst
-    else if (axi_awvalid_i && axi_awready_o)
+        req_push_w = (axi_arlen_i == 8'd0);
+    end
+    else if (axi_awvalid_i && axi_awready_o) begin
         req_in_r = {1'b0, (axi_awlen_i == 8'd0), axi_awid_i};
-    // In burst
-    else
+        req_push_w = 1'b1;
+    end
+    else if ((ram_rd_o || (ram_wr_o != 4'b0)) && ram_accept_i) begin
         req_in_r = {ram_rd_o, (req_len_q == 8'd0), req_id_q};
+        req_push_w = 1'b1;
+    end
 end
 
 sdram_axi_pmem_fifo2
