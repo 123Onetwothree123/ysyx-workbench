@@ -74,7 +74,7 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = 450, val DEVICE_MHZ: Int = 100, val S
       is(rd_idle) {
         when(io.in.ar.valid && io.in.ar.ready) {
           rd_state := rd_active
-          n_rd := 0.U
+          n_rd := 1.U
           rd_arid := io.in.ar.bits.id
           rd_fifo_wptr := 0.U
           rd_fifo_rptr := 0.U
@@ -151,13 +151,14 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = 450, val DEVICE_MHZ: Int = 100, val S
       is(wr_idle) {
         when(io.in.aw.valid && io.in.aw.ready) {
           wr_state := wr_aw_seen
-          n_wr := 0.U
+          n_wr := 1.U
           b_latched := false.B
         }
       }
       is(wr_aw_seen) {
         n_wr := n_wr + 1.U
-        when(io.in.w.valid) {
+        io.in.w.ready := true.B
+        when(io.in.w.valid && io.in.w.ready) {
           wdata_reg := io.in.w.bits.data
           wstrb_reg := io.in.w.bits.strb
           w_arrival_n := n_wr
