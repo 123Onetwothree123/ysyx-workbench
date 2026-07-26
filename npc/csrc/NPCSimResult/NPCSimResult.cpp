@@ -126,13 +126,13 @@ void NPCSimResult::Save(
 
     auto csv_file{
 #ifdef VRISCV32E_NPC
-        result_dir / "result_npc.csv"
+        result_dir / (std::string{"result_npc_"} + std::string{STR(CONFIG_PDK)} + ".csv")
 #else
-        result_dir / "result_ysyxsoc.csv"
+        result_dir / (std::string{"result_ysyxsoc_"} + std::string{STR(CONFIG_PDK)} + ".csv")
 #endif
     };
      {
-        auto out{std::ofstream{csv_file, std::ios::binary}};
+        auto out{std::ofstream{csv_file.string(), std::ios::binary}};
         out << "\xEF\xBB\xBF";
         out << "commit,说明,仿真周期数,指令数,IPC,综合频率(MHz),综合面积(um^2),"
                "IFU取指,EXU完成,LSU读,LSU写,"

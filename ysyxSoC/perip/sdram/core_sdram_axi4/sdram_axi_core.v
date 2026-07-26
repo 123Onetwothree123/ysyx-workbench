@@ -284,12 +284,7 @@ begin
     //-----------------------------------------
     STATE_WRITE0 :
     begin
-        next_state_r = STATE_IDLE;
-        if (!refresh_q && ram_req_w && (ram_wr_w != 4'b0))
-        begin
-            if (row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w])
-                next_state_r = STATE_WRITE0;
-        end
+        next_state_r = STATE_WRITE1;
     end
     //-----------------------------------------
     // STATE_WRITE1
@@ -297,11 +292,8 @@ begin
     STATE_WRITE1 :
     begin
         next_state_r = STATE_IDLE;
-
-        // Another pending write request (with no refresh pending)
         if (!refresh_q && ram_req_w && (ram_wr_w != 4'b0))
         begin
-            // Open row hit
             if (row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w])
                 next_state_r = STATE_WRITE0;
         end
@@ -672,10 +664,11 @@ always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
     data_buffer_q <= 32'b0;
 else if (rd_q[SDRAM_READ_LATENCY+1])
-    data_buffer_q <= sample_data_q;
+     data_buffer_q <= sample_data_q;
 
 // Read data output（位扩展后一拍 32 位；data_buffer_q 在采样拍把整 32 位锁住并保持到 ack）
-assign ram_read_data_w = sample_data_q;
+assign ram_read_data_w = data_buffer_q;
+
 
 //-----------------------------------------------------------------
 // ACK
@@ -687,9 +680,9 @@ if (rst_i)
     ack_q   <= 1'b0;
 else
 begin
-    if (state_q == STATE_WRITE0)
+    if (state_q == STATE_WRITE1)
         ack_q <= 1'b1;
-    else if (rd_q[SDRAM_READ_LATENCY])
+    else if (rd_q[SDRAM_READ_LATENCY+1])
         ack_q <= 1'b1;
     else
         ack_q <= 1'b0;

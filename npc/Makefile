@@ -16,7 +16,8 @@ BIN=$(BUILD_DIR)/$(TOPNAME)
 VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" ! -name "riscv32e_npc*" ! -name "ysyx_*_npc*" ! -name "*_yosys*" ! -name "*_merged*" ! -name "*_sv2v*" 2>/dev/null | sort) \
       $(YSYXSOC_FULL_V) \
       $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort) \
-      $(shell find $(YSYXSOC_PERIP_DIR) -type f -name "*.v" 2>/dev/null | sort)
+      $(shell find $(YSYXSOC_PERIP_DIR) -type f -name "*.v" 2>/dev/null | sort) \
+      $(BUILD_DIR)/ysyx_26030103_PutcharProbe.v
 VINCDIRS=$(BUILD_DIR) \
          $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort) \
          $(YSYXSOC_PERIP_INCDIRS)
@@ -54,11 +55,25 @@ VERILATOR_THREADS := $(shell if [ "$(SIM_THREADS)" -gt 1 ] 2>/dev/null; then ech
 test:
 	mill -i test
 
+CACHE_BLOCK_SIZE_LOG2 ?= $(or $(CONFIG_CACHE_BLOCK_SIZE_LOG2),4)
+CACHE_INDEX_BITS ?= $(or $(CONFIG_CACHE_INDEX_BITS),5)
+
+VERILOG_ENV = env \
+	CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2) \
+	CACHE_INDEX_BITS=$(CACHE_INDEX_BITS) \
+	APB_CPU_FREQ_MHZ=$(SYNTH_FREQ) \
+	APB_DEVICE_FREQ_MHZ=$(APB_DEVICE_FREQ) \
+	APB_DELAY_SCALE_FACTOR=$(APB_DELAY_SCALE) \
+	AXI_CPU_FREQ_MHZ=$(SYNTH_FREQ) \
+	AXI_DEVICE_FREQ_MHZ=$(AXI_DEVICE_FREQ) \
+	AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE)
+
 verilog:
 	$(call git_commit, "generate verilog")
 	mkdir -p $(BUILD_DIR)
-	mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
+	$(VERILOG_ENV) mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
 	ln -sf layers-ysyx_26030103-Verification.sv $(BUILD_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
+	cp -f src/ysyx_26030103_PutcharProbe.v $(BUILD_DIR)/
 
 help:
 	mill -i runMain ysyx_26030103_Elaborate --help
@@ -306,7 +321,7 @@ ifneq ($(CONFIG_RESET_PC),)
 RESET_PC_CFLAGS = -DCONFIG_RESET_PC=$(call remove_quote,$(CONFIG_RESET_PC))
 endif
 COMMON_INCFLAGS += $(addprefix -I, $(abspath $(CSRC_DIR)/difftest))
-SHARED_CFLAGS += $(COMMON_INCFLAGS) $(SDB_CFLAGS) $(TRACE_CFLAGS) $(ITRACE_CFLAGS) $(ITRACE_WRITE_FILE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(IRINGBUF_CFLAGS) $(WATCHPOINT_CFLAGS) $(DIFFTEST_CFLAGS) $(PERF_STATS_CFLAGS) $(PERF_SAVE_CFLAGS) $(MBASE_CFLAGS) $(MSIZE_CFLAGS) $(RESET_PC_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(PGO_CFLAGS) $(ASAN_CFLAGS) $(UBSAN_CFLAGS) $(TSAN_CFLAGS) $(COVERAGE_CFLAGS) $(COLOR_CFLAGS) $(PIPE_CFLAGS) $(SPLIT_DWARF_CFLAGS) $(GC_SECTIONS_CFLAGS) $(VISIBILITY_CFLAGS) $(MARCH_CFLAGS) $(IPA_PTA_CFLAGS) $(PREFETCH_CFLAGS) $(GPROF_CFLAGS) $(TIME_REPORT_CFLAGS) $(TIMESTAMP_CFLAGS) $(LOG_CFLAGS) $(NO_OMIT_FP_CFLAGS) $(TRACE_VCD_CFLAGS) $(TRACE_FST_CFLAGS) $(ICPX_NOSTDINCXX_CFLAGS) $(STDLIB_FLAG) $(CC_OPT) $(NVBOARD_CFLAGS)
+SHARED_CFLAGS += $(COMMON_INCFLAGS) $(SDB_CFLAGS) $(TRACE_CFLAGS) $(ITRACE_CFLAGS) $(ITRACE_WRITE_FILE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(IRINGBUF_CFLAGS) $(WATCHPOINT_CFLAGS) $(DIFFTEST_CFLAGS) $(PERF_STATS_CFLAGS) $(PERF_SAVE_CFLAGS) $(MBASE_CFLAGS) $(MSIZE_CFLAGS) $(RESET_PC_CFLAGS) $(PDK_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(PGO_CFLAGS) $(ASAN_CFLAGS) $(UBSAN_CFLAGS) $(TSAN_CFLAGS) $(COVERAGE_CFLAGS) $(COLOR_CFLAGS) $(PIPE_CFLAGS) $(SPLIT_DWARF_CFLAGS) $(GC_SECTIONS_CFLAGS) $(VISIBILITY_CFLAGS) $(MARCH_CFLAGS) $(IPA_PTA_CFLAGS) $(PREFETCH_CFLAGS) $(GPROF_CFLAGS) $(TIME_REPORT_CFLAGS) $(TIMESTAMP_CFLAGS) $(LOG_CFLAGS) $(NO_OMIT_FP_CFLAGS) $(TRACE_VCD_CFLAGS) $(TRACE_FST_CFLAGS) $(ICPX_NOSTDINCXX_CFLAGS) $(STDLIB_FLAG) $(CC_OPT) $(NVBOARD_CFLAGS)
 VERILATOR_CFLAGS = $(SHARED_CFLAGS) $(VERILATOR_CXX_STD_FLAG)
 USER_CXXFLAGS = $(USER_CXX_STD_FLAG) $(MODULE_CFLAGS) $(WALL_CFLAGS) $(WERROR_CFLAGS) $(PEDANTIC_CFLAGS) $(WCONVERSION_CFLAGS)
 #verilator的部分
@@ -392,7 +407,18 @@ simtest: $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
 
-$(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
+$(YSYXSOC_FULL_V):
+	@echo "[perf] (re)building ysyxSoC with APB(DEV=$(APB_DEVICE_FREQ)MHz S=$(APB_DELAY_SCALE)) AXI(DEV=$(AXI_DEVICE_FREQ)MHz S=$(AXI_DELAY_SCALE))"
+	@cd $(YSYXSOC_DIR) && env \
+		APB_CPU_FREQ_MHZ=$(SYNTH_FREQ) \
+		APB_DEVICE_FREQ_MHZ=$(APB_DEVICE_FREQ) \
+		APB_DELAY_SCALE_FACTOR=$(APB_DELAY_SCALE) \
+		AXI_CPU_FREQ_MHZ=$(SYNTH_FREQ) \
+		AXI_DEVICE_FREQ_MHZ=$(AXI_DEVICE_FREQ) \
+		AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE) \
+		make verilog
+
+$(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -455,11 +481,58 @@ PERF_DIR   = NPCSimResult
 PERF_SYNTH = $(BUILD_DIR)/synth.txt
 
 YOSYS_STA_HOME ?= $(abspath $(NPC_HOME)/../yosys-sta)
+ifneq ($(CONFIG_SYNTH_FREQ),)
+SYNTH_FREQ = $(call remove_quote,$(CONFIG_SYNTH_FREQ))
+else
 SYNTH_FREQ ?= 450
+endif
+ifneq ($(CONFIG_PDK),)
+PDK_VALUE = $(call remove_quote,$(CONFIG_PDK))
+else
+PDK_VALUE = icsprout55
+endif
+PDK_CFLAGS = -DCONFIG_PDK=$(PDK_VALUE)
+
+ifneq ($(CONFIG_SYNTH_STRATEGY_TYPE),)
+SYNTH_STRATEGY_TYPE = $(call remove_quote,$(CONFIG_SYNTH_STRATEGY_TYPE))
+else
+SYNTH_STRATEGY_TYPE = AREA
+endif
+ifneq ($(CONFIG_SYNTH_STRATEGY_IDX),)
+SYNTH_STRATEGY_IDX = $(call remove_quote,$(CONFIG_SYNTH_STRATEGY_IDX))
+else
+SYNTH_STRATEGY_IDX = 0
+endif
+ifneq ($(CONFIG_SYNTH_NOMAP),n)
+SYNTH_NOMAP = 1
+else
+SYNTH_NOMAP = 0
+endif
+
+ifneq ($(CONFIG_APB_DEVICE_FREQ),)
+APB_DEVICE_FREQ = $(call remove_quote,$(CONFIG_APB_DEVICE_FREQ))
+else
+APB_DEVICE_FREQ = 100
+endif
+ifneq ($(CONFIG_APB_DELAY_SCALE),)
+APB_DELAY_SCALE = $(call remove_quote,$(CONFIG_APB_DELAY_SCALE))
+else
+APB_DELAY_SCALE = 64
+endif
+ifneq ($(CONFIG_AXI_DEVICE_FREQ),)
+AXI_DEVICE_FREQ = $(call remove_quote,$(CONFIG_AXI_DEVICE_FREQ))
+else
+AXI_DEVICE_FREQ = 100
+endif
+ifneq ($(CONFIG_AXI_DELAY_SCALE),)
+AXI_DELAY_SCALE = $(call remove_quote,$(CONFIG_AXI_DELAY_SCALE))
+else
+AXI_DELAY_SCALE = 64
+endif
 
 ifeq ($(SIM_TOP),soc)
 SYNTH_DESIGN = ysyx_26030103
-SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103.sv)
+SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103.sv) $(abspath $(BUILD_DIR)/ysyx_26030103_PutcharProbe.v)
 else
 SYNTH_DESIGN = ysyx_26030103
 SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
@@ -487,16 +560,19 @@ $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
 endif
 
 synth: verilog $(YOSYS_PP)
-	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, icsprout55) ..."
-	@$(YOSYS_PP) $(SYNTH_RTL_FILES) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
-	@$(MAKE) -C $(YOSYS_STA_HOME) syn \
+	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY_TYPE) $(SYNTH_STRATEGY_IDX), nomap=$(SYNTH_NOMAP)) ..."
+	@$(YOSYS_PP) $(abspath $(BUILD_DIR)/ysyx_26030103.sv) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
+	@cat $(abspath $(BUILD_DIR)/ysyx_26030103_PutcharProbe.v) >> $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
+	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && \
+	$(MAKE) -C $(YOSYS_STA_HOME) syn \
+		PDK=$(PDK_VALUE) \
 		DESIGN=$(SYNTH_DESIGN) \
 		RTL_FILES="$(abspath $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv)" \
 		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
 		O=$(abspath $(YOSYS_STA_HOME))/result
 	@mkdir -p $(BUILD_DIR)
 	@echo $(SYNTH_FREQ) > $(PERF_SYNTH)
-	@SYNTH_STAT="$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz/synth_stat.txt"; \
+	@SYNTH_STAT="$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz-$(PDK_VALUE)/synth_stat.txt"; \
 	if [ -f "$$SYNTH_STAT" ]; then \
 		awk '/Chip area/ {print $$6}' "$$SYNTH_STAT" >> $(PERF_SYNTH); \
 	else \

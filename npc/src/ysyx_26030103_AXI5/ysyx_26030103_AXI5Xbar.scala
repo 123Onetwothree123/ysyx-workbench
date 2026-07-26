@@ -36,6 +36,11 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   // 读请求被接收后，R回来时已经没有地址了
   // 所以必须记住这次读请求被发给哪个下游
   val ReadTargetReg = RegInit(TargetInvalid)
+  // AR buffering: accept AR even when xbar is not idle
+  val ARPending = RegInit(false.B)
+  val ARTargetPending = RegInit(TargetInvalid)
+  val ARAddrPending = RegInit(0.U(32.W))
+  val ARLenPending = RegInit(0.U(8.W))
   val ARIDReg = RegInit(0.U(4.W))
   val ARAddressReg = RegInit(0.U(32.W))
   val ARLENReg = RegInit(0.U(8.W))
@@ -57,11 +62,13 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val WriteTargetReg = RegInit(TargetInvalid)
   val DownstreamAWDone = RegInit(false.B)
   val DownstreamWDone = RegInit(false.B)
+  // AR pending buffer: accept AR even when xbar is not idle
   // 这段是AI写的
   // 用 Wire 控制上游 ready，避免直接读自己驱动的输出端口。
   val InAWReady = WireDefault(false.B)
   val InWReady = WireDefault(false.B)
   val InARReady = WireDefault(false.B)
+  val HasWriteReq = io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || WValidReg
   io.in.AW.AWREADY := InAWReady
   io.in.W.WREADY := InWReady
   io.in.AR.ARREADY := InARReady
@@ -138,7 +145,6 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     WLASTReg := io.in.W.WLAST
     WValidReg := true.B
   }
-  // 写不动了剩下状态机代码都是ai写的
   when(state === StateIdle) {
     val HasWriteRequest =
       io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || WValidReg
@@ -158,11 +164,10 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       }.otherwise {
         state := StateWriteCollect
       }
-    }.otherwise { // 没有写请求时，才接收读请求
+    }.otherwise { // 没有写请求时，读请求在这里直接处理
       InARReady := true.B
       when(InARFire) {
         val target = decode(io.in.AR.ARADDR)
-
         ARIDReg := io.in.AR.ARID
         ARAddressReg := io.in.AR.ARADDR
         ARLENReg := io.in.AR.ARLEN
@@ -170,7 +175,6 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
         ARBURSTReg := io.in.AR.ARBURST
         ARPROTReg := io.in.AR.ARPROT
         ReadTargetReg := target
-
         when(target === TargetInvalid) {
           state := StateReadDECERR
         }.otherwise {
@@ -344,7 +348,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.in.R.RLAST := io.SoCBus.R.RLAST
       io.SoCBus.R.RREADY := io.in.R.RREADY
 
-      when(io.SoCBus.R.RVALID && io.in.R.RREADY) {
+      when(io.SoCBus.R.RVALID && io.in.R.RREADY && io.SoCBus.R.RLAST) {
         state := StateIdle
       }
     }.elsewhen(ReadTargetReg === TargetCLINT) {
@@ -355,7 +359,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.in.R.RLAST := io.CLINT.R.RLAST
       io.CLINT.R.RREADY := io.in.R.RREADY
 
-      when(io.CLINT.R.RVALID && io.in.R.RREADY) {
+      when(io.CLINT.R.RVALID && io.in.R.RREADY && io.CLINT.R.RLAST) {
         state := StateIdle
       }
     }.otherwise {

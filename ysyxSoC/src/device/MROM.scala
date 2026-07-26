@@ -37,7 +37,7 @@ class AXI4MROM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
         address       = address,
         executable    = true,
         supportsWrite = TransferSizes.none,
-        supportsRead  = TransferSizes(1, beatBytes),
+        supportsRead  = TransferSizes(1, beatBytes * 16),
         interleavedId = Some(0))
     ),
     beatBytes  = beatBytes)))
@@ -48,30 +48,42 @@ class AXI4MROM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
 
     val mrom = Module(new MROMHelper)
 
-    val (stateIdle, stateWaitRready) = (0.U, 1.U)
+    val (stateIdle, stateActive) = (0.U(1.W), 1.U(1.W))
     val state = RegInit(stateIdle)
-    state := Mux(state === stateIdle,
-               Mux(in.ar.fire, stateWaitRready, stateIdle),
-               Mux(in. r.fire, stateIdle, stateWaitRready))
+
+    val burst_len  = RegInit(0.U(8.W))
+    val beat_cnt   = RegInit(0.U(8.W))
+    val addr_reg   = RegInit(0.U(32.W))
 
     mrom.io.clock := clock
-    mrom.io.raddr := in.ar.bits.addr + address.head.base.U
-    mrom.io.ren := in.ar.fire
+    mrom.io.raddr := Mux(in.ar.fire, in.ar.bits.addr,
+                     addr_reg + ((beat_cnt + 1.U) << 2))
+    mrom.io.ren := in.ar.fire || (state === stateActive)
+
     in.ar.ready := (state === stateIdle)
-//    assert(!(in.ar.fire && in.ar.bits.size === 3.U), "do not support 8 byte transfter")
+    when(in.ar.fire) {
+      state      := stateActive
+      burst_len  := in.ar.bits.len
+      beat_cnt   := 0.U
+      addr_reg   := in.ar.bits.addr
+    }
 
     in.r.bits.data := mrom.io.rdata
-    in.r.bits.id := RegEnable(in.ar.bits.id, in.ar.fire)
+    in.r.bits.id   := RegEnable(in.ar.bits.id, in.ar.fire)
     in.r.bits.resp := 0.U
-    in.r.bits.last := true.B
-    in.r.valid := (state === stateWaitRready)
+    in.r.bits.last := (state === stateActive) && (beat_cnt === burst_len)
+    in.r.valid := (state === stateActive)
+
+    when(in.r.fire) {
+      when(beat_cnt === burst_len) {
+        state := stateIdle
+      }.otherwise {
+        beat_cnt := beat_cnt + 1.U
+      }
+    }
 
     in.aw.ready := false.B
     in. w.ready := false.B
     in. b.valid := false.B
-
-    // MROM不接受写，AXI交叉开关启动时有awvalid毛刺，暂关断言
-    //assert(!in.aw.valid, "do not support write operations")
-    //assert(!in. w.valid, "do not support write operations")
   }
 }

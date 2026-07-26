@@ -96,9 +96,9 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     lmrom.node,
     sramNode
   ).map(_ := xbar2)
-  if (Config.sdramUseAXI) lsdram_axi.get.node := ysyx.AXI4Delayer() := xbar2
-  else lsdram_apb.get.node := apbxbar
   xbar2 := AXI4UserYanker(Some(1)) := AXI4Fragmenter() := xbar
+  if (Config.sdramUseAXI) lsdram_axi.get.node := ysyx.AXI4Delayer() := xbar
+  else lsdram_apb.get.node := apbxbar
   if (Config.hasChipLink) chiplinkNode.get := xbar
   xbar := cpu.masterNode
 
@@ -197,6 +197,10 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     perf_icache_hit := cpu.module.perf_icache_hit
     val perf_icache_miss = IO(Output(Bool()))
     perf_icache_miss := cpu.module.perf_icache_miss
+    val semihost_valid = IO(Output(Bool()))
+    val semihost_char  = IO(Output(UInt(8.W)))
+    semihost_valid := cpu.module.semihost_valid
+    semihost_char  := cpu.module.semihost_char
 
     if (Config.hasChipLink) {
       // connect chiplink slave interface to crossbar
@@ -402,5 +406,9 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     perf_icache_hit := masic.perf_icache_hit
     val perf_icache_miss = IO(Output(Bool()))
     perf_icache_miss := masic.perf_icache_miss
+    val semihost_valid = IO(Output(Bool()))
+    val semihost_char  = IO(Output(UInt(8.W)))
+    semihost_valid := masic.semihost_valid
+    semihost_char  := masic.semihost_char
   }
 }

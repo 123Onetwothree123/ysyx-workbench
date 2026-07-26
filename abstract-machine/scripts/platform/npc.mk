@@ -11,6 +11,9 @@ AM_SRCS := riscv/npc/start.S \
 CFLAGS    += -fdata-sections -ffunction-sections
 LDSCRIPTS += $(AM_HOME)/scripts/linker.ld
 LDFLAGS   += --defsym=_pmem_start=0x80000000 --defsym=_entry_offset=0x0
+-include $(NPC_HOME)/include/config/auto.conf
+CACHE_PADDING ?= $(or $(CONFIG_CACHE_PADDING),0)
+LDFLAGS   += --defsym=_cache_padding=$(CACHE_PADDING)
 LDFLAGS   += --gc-sections -e _start
 
 MAINARGS_MAX_LEN = 64
