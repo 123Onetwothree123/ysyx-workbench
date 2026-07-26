@@ -700,20 +700,35 @@ config SYNTH_FREQ
     面积换取更低的逻辑延迟。受限于工艺库和寄存器堆/加法器/SRAM等
     关键部件的最大工作频率。
 
-config DEVICE_FREQ
-  int "仿真设备频率 (MHz) - 用于校准访存延迟"
-  default 100
-  help
-    外设（SDRAM等）运行频率。用于APB/AXI延迟模块计算
-    频率比 r = CPU频率 / 设备频率，校准仿真中的访存延迟。
-    典型值: SDRAM=100, Flash=50。
+endmenu
 
-config DELAY_SCALE
-  int "延迟模块缩放因子 S"
-  default 64
-  help
-    频率比累加时的放大系数。用于减少定点数截断误差。
-    S越大误差越小，但计数器位宽需求越高。默认64。
+menu "仿真延迟校准 (Simulation Delay Calibration)"
+
+config APB_DEVICE_FREQ
+	int "APB设备频率 (MHz)"
+	default 100
+	help
+	  APB总线上外设（如SDRAM控制器）的运行频率。
+	  用于APB延迟模块计算频率比校准访存延迟。
+
+config APB_DELAY_SCALE
+	int "APB延迟缩放因子 S"
+	default 64
+	help
+	  APB延迟模块中频率比累加的放大系数。
+
+config AXI_DEVICE_FREQ
+	int "AXI设备频率 (MHz)"
+	default 100
+	help
+	  AXI总线上外设（如SDRAM控制器）的运行频率。
+	  用于AXI延迟模块计算频率比校准访存延迟。
+
+config AXI_DELAY_SCALE
+	int "AXI延迟缩放因子 S"
+	default 64
+	help
+	  AXI延迟模块中频率比累加的放大系数。
 
 endmenu
 

@@ -22,9 +22,9 @@ class apb_delayer extends BlackBox {
   val io = IO(new APBDelayerIO)
 }
 
-class APBDelayerChisel(val CPU_MHZ: Int = sys.env.get("CPU_FREQ_MHZ").map(_.toInt).getOrElse(450),
-    val DEVICE_MHZ: Int = sys.env.get("DEVICE_FREQ_MHZ").map(_.toInt).getOrElse(100),
-    val S: Int = sys.env.get("DELAY_SCALE_FACTOR").map(_.toInt).getOrElse(64)) extends Module {
+class APBDelayerChisel(val CPU_MHZ: Int = sys.env.get("APB_CPU_FREQ_MHZ").map(_.toInt).getOrElse(450),
+    val DEVICE_MHZ: Int = sys.env.get("APB_DEVICE_FREQ_MHZ").map(_.toInt).getOrElse(100),
+    val S: Int = sys.env.get("APB_DELAY_SCALE_FACTOR").map(_.toInt).getOrElse(64)) extends Module {
   val io = IO(new APBDelayerIO)
   val RTS = CPU_MHZ * S / DEVICE_MHZ
   val AMT = if (RTS > S) {
