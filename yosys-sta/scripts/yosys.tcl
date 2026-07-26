@@ -40,7 +40,7 @@ set EXCLUDE_CELLS [concat {*}[lmap cell $DONT_USE_CELLS {concat "-dont_use" $cel
 #   set parameter for ABC
 #===========================================================
 
-set SYNTH_STRATEGY "DELAY 4"
+set SYNTH_STRATEGY "AREA 0"
 
 set buffering 1
 set sizing 1
