@@ -180,6 +180,9 @@ foreach file $VERILOG_FILES {
   read_verilog -sv $file
 }
 
+# disable memory inference to preserve register array area fidelity
+memory -nomap
+
 # generic synthesis (coarse)
 synth -top $DESIGN -flatten -run :fine
 
