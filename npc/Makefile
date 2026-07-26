@@ -498,7 +498,7 @@ SYNTH_STRATEGY = $(call remove_quote,$(CONFIG_SYNTH_STRATEGY))
 else
 SYNTH_STRATEGY = AREA 0
 endif
-ifeq ($(CONFIG_SYNTH_NOMAP),y)
+ifneq ($(CONFIG_SYNTH_NOMAP),n)
 SYNTH_NOMAP = 1
 else
 SYNTH_NOMAP = 0
