@@ -43,8 +43,6 @@ set EXCLUDE_CELLS [concat {*}[lmap cell $DONT_USE_CELLS {concat "-dont_use" $cel
 set SYNTH_STRATEGY "AREA 0"
 if {[info exists env(SYNTH_STRATEGY)]} {
   set SYNTH_STRATEGY $::env(SYNTH_STRATEGY)
-} else {
-  puts "Warning: env SYNTH_STRATEGY not defined. Use $SYNTH_STRATEGY by default."
 }
 
 set SYNTH_NOMAP 1
