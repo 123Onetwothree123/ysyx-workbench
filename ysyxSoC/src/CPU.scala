@@ -69,8 +69,6 @@ class ysyx_26030103 extends BlackBox {
     val io_perf_lsu_stall_write_b  = Output(Bool())
     val io_perf_icache_hit         = Output(Bool())
     val io_perf_icache_miss        = Output(Bool())
-    val io_semihost_valid = Output(Bool())
-    val io_semihost_char  = Output(UInt(8.W))
   })
 }
 

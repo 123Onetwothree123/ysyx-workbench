@@ -17,7 +17,6 @@ VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" ! -name "riscv3
       $(YSYXSOC_FULL_V) \
       $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort) \
       $(shell find $(YSYXSOC_PERIP_DIR) -type f -name "*.v" 2>/dev/null | sort) \
-      $(BUILD_DIR)/ysyx_26030103_PutcharProbe.v
 VINCDIRS=$(BUILD_DIR) \
          $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort) \
          $(YSYXSOC_PERIP_INCDIRS)
@@ -73,7 +72,6 @@ verilog:
 	mkdir -p $(BUILD_DIR)
 	$(VERILOG_ENV) mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
 	ln -sf layers-ysyx_26030103-Verification.sv $(BUILD_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
-	cp -f src/ysyx_26030103_PutcharProbe.v $(BUILD_DIR)/
 
 help:
 	mill -i runMain ysyx_26030103_Elaborate --help
@@ -532,7 +530,6 @@ endif
 
 ifeq ($(SIM_TOP),soc)
 SYNTH_DESIGN = ysyx_26030103
-SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103.sv) $(abspath $(BUILD_DIR)/ysyx_26030103_PutcharProbe.v)
 else
 SYNTH_DESIGN = ysyx_26030103
 SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
@@ -562,7 +559,6 @@ endif
 synth: verilog $(YOSYS_PP)
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY_TYPE) $(SYNTH_STRATEGY_IDX), nomap=$(SYNTH_NOMAP)) ..."
 	@$(YOSYS_PP) $(abspath $(BUILD_DIR)/ysyx_26030103.sv) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
-	@cat $(abspath $(BUILD_DIR)/ysyx_26030103_PutcharProbe.v) >> $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
 	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && \
 	$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		PDK=$(PDK_VALUE) \
