@@ -69,8 +69,6 @@ class ysyx_26030103 extends BlackBox {
     val io_perf_lsu_stall_write_b  = Output(Bool())
     val io_perf_icache_hit         = Output(Bool())
     val io_perf_icache_miss        = Output(Bool())
-    val io_semihost_valid          = Output(Bool())
-    val io_semihost_char           = Output(UInt(8.W))
   })
 }
 
@@ -185,9 +183,5 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     perf_icache_hit := cpu.io.io_perf_icache_hit
     val perf_icache_miss = IO(Output(Bool()))
     perf_icache_miss := cpu.io.io_perf_icache_miss
-    val semihost_valid = IO(Output(Bool()))
-    val semihost_char  = IO(Output(UInt(8.W)))
-    semihost_valid := cpu.io.io_semihost_valid
-    semihost_char  := cpu.io.io_semihost_char
   }
 }

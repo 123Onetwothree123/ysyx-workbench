@@ -128,8 +128,8 @@ class ysyx_26030103_AXI5Arbiter extends Module {
         io.ifu.R.RVALID := io.memory.R.RVALID
         io.memory.R.RREADY := io.ifu.R.RREADY
       }
-      when(io.memory.R.RVALID && io.memory.R.RREADY && io.memory.R.RLAST) {
-        state := StatesIdle // burst: wait until last beat
+      when(io.memory.R.RVALID && io.memory.R.RREADY) {
+        state := StatesIdle // 开新循环
       }
     }
     is(StatesWriteRequest) {

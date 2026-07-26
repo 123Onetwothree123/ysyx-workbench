@@ -3,8 +3,8 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 class ysyx_26030103_ICache(
-    BlockSizeLog2: Int = 4,
-    IndexBits:     Int = 5,
+    BlockSizeLog2: Int = 2,
+    IndexBits:     Int = 4,
     AddressWidth:  Int = 32,
     CacheableBase: Long = 0x00000000L,
     CacheableMask: Long = 0x00000000L  // 0=全缓存，由上层传入覆盖
@@ -54,7 +54,6 @@ class ysyx_26030103_ICache(
   val access_fault_reg = RegInit(false.B)
   val access_fault_resp_reg = RegInit(0.U(2.W))
   val refill_cnt = RegInit(0.U(WordCntBits.W))  // 当前正在填充第几个word
-  val burst_mode = RegInit(false.B)             // 突发传输模式标志
   io.access_fault := access_fault_reg
   io.access_fault_resp := access_fault_resp_reg
   io.axi.AW.AWVALID := false.B
@@ -108,14 +107,11 @@ class ysyx_26030103_ICache(
     }
     is(state_refill_req) {
       io.axi.AR.ARVALID := true.B
-      io.axi.AR.ARLEN := Mux(cacheable_reg && burst_mode, (WordsPerBlock - 1).U, 0.U)
-      io.axi.AR.ARADDR := Mux(cacheable_reg,
-        Mux(burst_mode,
-          Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W)),
-          Cat(fetch_addr_reg(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W))
-        ),
-        fetch_addr_reg
-      )
+      io.axi.AR.ARADDR := Cat(
+        fetch_addr_reg(AddressWidth - 1, BlockSizeLog2),
+        refill_cnt,
+        0.U(2.W)
+      ) // 块对齐地址 + refill_cnt × 4
       when(io.axi.AR.ARREADY) {
         state := state_refill_resp
       }
@@ -132,29 +128,15 @@ class ysyx_26030103_ICache(
             tag(fetch_index_reg)   := fetch_tag_reg
             data(fetch_index_reg)(refill_cnt) := io.axi.R.RDATA
             when(refill_cnt === (WordsPerBlock - 1).U) {
-              valid(fetch_index_reg) := true.B
+              valid(fetch_index_reg) := true.B  // 全部word填完才设valid
             }
           }
         }
-        when(cacheable_reg && burst_mode) {
-          refill_cnt := refill_cnt + 1.U
-          when(io.axi.R.RLAST || !cacheable_reg) {
-            when(refill_cnt >= (WordsPerBlock - 1).U) {
-              state := state_resp
-            }.otherwise {
-              burst_mode := false.B
-              state := state_refill_req
-            }
-          }
-        }.elsewhen(cacheable_reg) {
-          when(refill_cnt === (WordsPerBlock - 1).U || !cacheable_reg) {
-            state := state_resp
-          }.otherwise {
-            refill_cnt := refill_cnt + 1.U
-            state := state_refill_req
-          }
-        }.otherwise {
+        when(refill_cnt === (WordsPerBlock - 1).U) {
           state := state_resp
+        }.otherwise {
+          refill_cnt := refill_cnt + 1.U
+          state := state_refill_req
         }
       }
     }
@@ -162,9 +144,6 @@ class ysyx_26030103_ICache(
       io.resp_valid := true.B
       io.resp_data := Mux(cacheable_reg && !access_fault_reg,
         data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
-      when(io.resp_ready && fetch_addr_reg === "ha00000ec".U) {
-        printf(cf"ICache resp: addr=${fetch_addr_reg}, data=${io.resp_data}\n")
-      }
       when(io.resp_ready) {
         state := state_idle
       }

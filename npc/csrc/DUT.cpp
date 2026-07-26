@@ -34,17 +34,14 @@ static VerilatedFstC tfp;
 #ifndef CONFIG_MSIZE
 #define CONFIG_MSIZE 0x10000000
 #endif
-DUT::DUT()
+DUT::DUT() : dut{std::make_unique<TOP_MODULE>()}
 {
-#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
-    Verilated::traceEverOn(true);
-#endif
-    dut = std::make_unique<TOP_MODULE>();
     dut->debug_gpr_raddr = 0;
 #ifdef CONFIG_ITRACE
     init_disasm();
 #endif
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
+    Verilated::traceEverOn(true);
 #if !defined(CONFIG_TRACE_DEPTH) || CONFIG_TRACE_DEPTH == 0
     dut->trace(&tfp, 99);
 #else
