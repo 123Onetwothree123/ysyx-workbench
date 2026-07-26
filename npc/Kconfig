@@ -676,6 +676,32 @@ config RESET_PC
 
 endmenu
 
+menu "综合 (Synthesis)"
+
+choice
+  prompt "综合工艺库 (PDK)"
+  default PDK_ICSPROUT55
+config PDK_ICSPROUT55
+  bool "icsprout55"
+config PDK_NANGATE45
+  bool "nangate45"
+endchoice
+
+config PDK
+  string
+  default "icsprout55" if PDK_ICSPROUT55
+  default "nangate45" if PDK_NANGATE45
+
+config SYNTH_FREQ
+  int "综合目标频率 (MHz)"
+  default 450
+  help
+    综合器尝试达到的目标频率。设置越高，综合器可能使用更多
+    面积换取更低的逻辑延迟。受限于工艺库和寄存器堆/加法器/SRAM等
+    关键部件的最大工作频率。
+
+endmenu
+
 menu "外设 / NVBoard"
 
 config NVBOARD
