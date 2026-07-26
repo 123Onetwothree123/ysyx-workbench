@@ -123,11 +123,11 @@ set delay_scripts [list \
   ]
 
 set area_scripts [list \
-  "+fx;mfs;strash;refactor;${abc_resyn2};${abc_retime_area};scleanup;${abc_choice2};${abc_map_new_area};retime,-D,{D};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
+  "+fx;mfs;strash;refactor;${abc_resyn2};scleanup;${abc_choice2};${abc_map_new_area};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
   \
-  "+fx;mfs;strash;refactor;${abc_resyn2};${abc_retime_area};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};retime,-D,{D};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
+  "+fx;mfs;strash;refactor;${abc_resyn2};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
   \
-  "+fx;mfs;strash;refactor;${abc_choice2};${abc_retime_area};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};retime,-D,{D};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
+  "+fx;mfs;strash;refactor;${abc_choice2};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
   "+strash;dch;map -B 0.9;topo;stime -c;buffer -c -N ${max_FO};upsize -c;dnsize -c;stime,-p;print_stats -m" \
   ]
 
