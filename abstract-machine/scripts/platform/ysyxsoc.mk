@@ -12,6 +12,9 @@ riscv/ysyxsoc/vga.c \
 CFLAGS+=-fdata-sections -ffunction-sections
 LDSCRIPTS += $(AM_HOME)/scripts/ysyxsoclinker.ld
 LDFLAGS   += --gc-sections -e _start
+-include $(NPC_HOME)/include/config/auto.conf
+CACHE_PADDING ?= $(or $(CONFIG_CACHE_PADDING),0)
+LDFLAGS   += --defsym=_cache_padding=$(CACHE_PADDING)
 MAINARGS_MAX_LEN = 64
 MAINARGS_PLACEHOLDER = the_insert-arg_rule_in_Makefile_will_insert_mainargs_here
 CFLAGS += -DMAINARGS_MAX_LEN=$(MAINARGS_MAX_LEN) -DMAINARGS_PLACEHOLDER=$(MAINARGS_PLACEHOLDER)

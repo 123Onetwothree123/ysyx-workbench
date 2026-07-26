@@ -55,10 +55,13 @@ VERILATOR_THREADS := $(shell if [ "$(SIM_THREADS)" -gt 1 ] 2>/dev/null; then ech
 test:
 	mill -i test
 
+CACHE_BLOCK_SIZE_LOG2 ?= $(or $(CONFIG_CACHE_BLOCK_SIZE_LOG2),4)
+CACHE_INDEX_BITS ?= $(or $(CONFIG_CACHE_INDEX_BITS),5)
+
 verilog:
 	$(call git_commit, "generate verilog")
 	mkdir -p $(BUILD_DIR)
-	mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
+	env CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2) CACHE_INDEX_BITS=$(CACHE_INDEX_BITS) mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
 	ln -sf layers-ysyx_26030103-Verification.sv $(BUILD_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
 	cp -f src/ysyx_26030103_PutcharProbe.v $(BUILD_DIR)/
 

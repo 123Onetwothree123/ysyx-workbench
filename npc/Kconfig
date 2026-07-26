@@ -620,12 +620,37 @@ config WATCHPOINT
     启用监视点功能，用于监控表达式值的变化
 
 config DIFFTEST
-  bool "启用差分测试difftest"
-  default n
-  help
-    启用差分测试，并使用NEMU作为参考模型
-    需要将NEMU编译为.so共享库
-    使用make run diff=/path/to/nemu-so指定参考模型
+	bool "启用差分测试difftest"
+	default n
+	help
+	  启用差分测试，并使用NEMU作为参考模型
+	  需要将NEMU编译为.so共享库
+	  使用make run diff=/path/to/nemu-so指定参考模型
+
+config CACHE_PADDING
+	int "ICache字节填充（用于对齐热点循环到cache块边界）"
+	default 0
+	range 0 15
+	help
+	  在.text段前插入的空白字节数，用于调整代码在内存中的位置
+	  使热点循环对齐到ICache块边界，以减少cache块的占用。
+	  默认0表示不填充。需要结合性能计数器分析热点循环地址后设置。
+
+config CACHE_BLOCK_SIZE_LOG2
+	int "ICache块大小的log2（2^N字节）"
+	default 4
+	range 2 6
+	help
+	  2=4字节, 3=8字节, 4=16字节, 5=32字节, 6=64字节。
+	  修改后需重新 make verilog 以重新生成RTL。
+
+config CACHE_INDEX_BITS
+	int "ICache索引位宽（2^N个块）"
+	default 5
+	range 1 10
+	help
+	  1=2块, 5=32块, 10=1024块。
+	  修改后需重新 make verilog 以重新生成RTL。
 
 endmenu
 

@@ -23,6 +23,9 @@ SECTIONS {
       _ssbl_start = ADDR(.ssbl);
       _ssbl_end = _ssbl_start + SIZEOF(.ssbl);
       .text : {
+     PROVIDE(_cache_padding = 0);
+     . = . + _cache_padding;
+     . = ALIGN(16);
      *(.text*)
      *(.rodata*)
      *(.srodata*)

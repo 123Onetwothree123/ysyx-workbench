@@ -24,6 +24,8 @@ import _root_.ysyx_26030103.ysyx_26030103_GPR._
 class ysyx_26030103(
     resetAddr:      Long = 0x30000000L,
     AddressWidth:   Int  = 32,
+    BlockSizeLog2:  Int  = 4,
+    IndexBits:      Int  = 5,
     CacheableBase:  Long = 0x80000000L, // ysyxsoc默认值
     CacheableMask:  Long = 0x80000000L  // ysyxsoc默认值
 ) extends Module {
@@ -35,6 +37,8 @@ class ysyx_26030103(
   val lsu = Module(new ysyx_26030103_LSU)
   val gpr = Module(new ysyx_26030103_GPR)
   val icache = Module(new ysyx_26030103_ICache(
+    BlockSizeLog2 = BlockSizeLog2,
+    IndexBits     = IndexBits,
     CacheableBase = CacheableBase,
     CacheableMask = CacheableMask
   ))
