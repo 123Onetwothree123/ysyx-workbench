@@ -189,8 +189,12 @@ muxpack
 opt_demorgan
 opt_ffinv
 
-# generic synthesis (fine)
-synth -run fine:
+# generic synthesis (fine) - skip intermediate ABC to preserve area fidelity
+opt -full
+memory_map
+opt -full
+techmap
+opt -fast
 
 # remove unused cells and wires
 opt_clean -purge
