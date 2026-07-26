@@ -470,7 +470,7 @@ PDK_VALUE = $(call remove_quote,$(CONFIG_PDK))
 else
 PDK_VALUE = icsprout55
 endif
-PDK_CFLAGS = -DCONFIG_PDK='"$(PDK_VALUE)"'
+PDK_CFLAGS = -DCONFIG_PDK=$(PDK_VALUE)
 
 ifeq ($(SIM_TOP),soc)
 SYNTH_DESIGN = ysyx_26030103

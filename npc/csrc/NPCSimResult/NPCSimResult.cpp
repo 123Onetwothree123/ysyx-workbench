@@ -126,9 +126,9 @@ void NPCSimResult::Save(
 
     auto csv_file{
 #ifdef VRISCV32E_NPC
-        result_dir / (std::string{"result_npc_"} + std::string{CONFIG_PDK} + ".csv")
+        result_dir / (std::string{"result_npc_"} + std::string{STR(CONFIG_PDK)} + ".csv")
 #else
-        result_dir / (std::string{"result_ysyxsoc_"} + std::string{CONFIG_PDK} + ".csv")
+        result_dir / (std::string{"result_ysyxsoc_"} + std::string{STR(CONFIG_PDK)} + ".csv")
 #endif
     };
      {
