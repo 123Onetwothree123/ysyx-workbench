@@ -702,11 +702,11 @@ config SYNTH_FREQ
 
 choice
   prompt "综合策略"
-  default SYNTH_STRATEGY_AREA
+  default SYNTH_STRATEGY_DELAY
 config SYNTH_STRATEGY_AREA
-  bool "AREA (面积优先，不做retiming，反映真实面积)"
+  bool "AREA 0 (面积优先，不做retiming，反映真实面积)"
 config SYNTH_STRATEGY_DELAY
-  bool "DELAY (时序优先，ABC会做retiming，面积可能被膨胀)"
+  bool "DELAY 4 (yosys-sta默认，时序优先，ABC会做retiming)"
 endchoice
 
 config SYNTH_STRATEGY_TYPE
@@ -725,7 +725,14 @@ config SYNTH_NOMAP
   help
     禁止yosys将寄存器阵列推断为memory块。
     开启后ICache等寄存器阵列的面积变化能正确反映在综合结果中。
-    对时序可能有轻微影响。
+
+config SYNTH_NOABC
+  bool "禁用 ABC 优化（保留真实DFF面积）"
+  default y
+  help
+    跳过ABC技术映射，仅做dfflibmap+简单组合逻辑映射。
+    开启后综合面积能正确反映不同ICache大小的差异。
+    关闭则ABC会做全局优化，面积可能被归一化。
 
 endmenu
 

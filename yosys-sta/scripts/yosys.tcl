@@ -136,11 +136,11 @@ set delay_scripts [list \
   ]
 
 set area_scripts [list \
-  "+fx;mfs;strash;refactor;${abc_resyn2};scleanup;${abc_choice2};${abc_map_new_area};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
+  "+fx;mfs;strash;refactor;${abc_resyn2};${abc_retime_area};scleanup;${abc_choice2};${abc_map_new_area};retime,-D,{D};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
   \
-  "+fx;mfs;strash;refactor;${abc_resyn2};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
+  "+fx;mfs;strash;refactor;${abc_resyn2};${abc_retime_area};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};retime,-D,{D};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
   \
-  "+fx;mfs;strash;refactor;${abc_choice2};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
+  "+fx;mfs;strash;refactor;${abc_choice2};${abc_retime_area};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};retime,-D,{D};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
   "+strash;dch;map -B 0.9;topo;stime -c;buffer -c -N ${max_FO};upsize -c;dnsize -c;stime,-p;print_stats -m" \
   ]
 
@@ -193,7 +193,6 @@ foreach file $VERILOG_FILES {
   read_verilog -sv $file
 }
 
-# disable memory inference to preserve register array area fidelity (configurable)
 if { $SYNTH_NOMAP } {
   memory -nomap
 }
@@ -201,23 +200,14 @@ if { $SYNTH_NOMAP } {
 # generic synthesis (coarse)
 synth -top $DESIGN -flatten -run :fine
 
-# re-apply nomap after synth (synth may override)
-if { $SYNTH_NOMAP } {
-  memory -nomap
-}
-
 share -aggressive
 onehot
 muxpack
 opt_demorgan
 opt_ffinv
 
-# generic synthesis (fine) - skip intermediate ABC to preserve area fidelity
-opt -full
-memory_map
-opt -full
-techmap
-opt -fast
+# generic synthesis (fine)
+synth -run fine:
 
 # remove unused cells and wires
 opt_clean -purge
@@ -241,10 +231,12 @@ opt -undriven -purge
 
 log "\[INFO\]: USING STRATEGY $strategy_name"
 
-# technology mapping for cells - skip structural optimization to preserve area fidelity
+# technology mapping for cells
 abc -D "$CLK_PERIOD_PS" \
   -constr "$sdc_file" \
-  {*}$LIBS {*}$EXCLUDE_CELLS
+  {*}$LIBS {*}$EXCLUDE_CELLS \
+  -script "$strategy_script" \
+  -showtmp
 
 # technology mapping for constant hi- and/or lo-drivers
 hilomap -singleton -hicell {*}$TIEHI_CELL_AND_PORT -locell {*}$TIELO_CELL_AND_PORT
