@@ -51,7 +51,8 @@ DUT::DUT()
     dut->trace(&tfp, CONFIG_TRACE_DEPTH);
 #endif
     auto parent = std::filesystem::path{CONFIG_TRACE_FILE}.parent_path();
-    if (!parent.empty()) std::filesystem::create_directories(parent);
+    if (!parent.empty())
+        std::filesystem::create_directories(parent);
     tfp.open(CONFIG_TRACE_FILE);
 #endif
 }
@@ -144,7 +145,11 @@ void DUT::step()
     {
         ++instruction_fetch_count;
 #ifdef CONFIG_ITRACE_WRITE_FILE
-        { static auto fp = std::ofstream("itrace.txt", std::ios::app); fp << std::hex << "0x" << static_cast<uint32_t>(dut->debug_pc) << "\n" << std::dec; }
+        {
+            static auto fp = std::ofstream("itrace.txt", std::ios::app);
+            fp << std::hex << "0x" << static_cast<uint32_t>(dut->debug_pc) << "\n"
+               << std::dec;
+        }
 #endif
     }
     if (dut->perf_exu_done)
