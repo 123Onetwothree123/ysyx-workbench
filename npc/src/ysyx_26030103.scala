@@ -197,6 +197,4 @@ class ysyx_26030103(
   io.perf_lsu_stall_read_r   := lsu.io.StallReadR
   io.perf_lsu_stall_write_req := lsu.io.StallWriteReq
   io.perf_lsu_stall_write_b  := lsu.io.StallWriteB
-  io.semihost_valid := exu.io.SemihostValid
-  io.semihost_char  := exu.io.SemihostChar
 }
