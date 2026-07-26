@@ -37,12 +37,21 @@ auto TraceReader::try_parse(const std::string& line) -> std::optional<std::uint3
     if (line.empty())
         return std::nullopt;
 
-    // 跳过注释行
     if (line[0] == '#' || line[0] == '/' || line[0] == '\n' || line[0] == '\r')
         return std::nullopt;
 
+    // mtrace 格式: "Memory Read: PC=0x..., Addr=0x..., Data=..."
+    if (line.starts_with("Memory Read") || line.starts_with("Memory Write")) {
+        auto pos = line.find("Addr=0x");
+        if (pos != std::string::npos)
+            return static_cast<std::uint32_t>(std::stoul(line.substr(pos + 8), nullptr, 16));
+        pos = line.find("Addr=0X");
+        if (pos != std::string::npos)
+            return static_cast<std::uint32_t>(std::stoul(line.substr(pos + 8), nullptr, 16));
+        return std::nullopt;
+    }
+
     try {
-        // 支持 16 进制 (0x...) 或 10 进制
         if (line.starts_with("0x") || line.starts_with("0X"))
             return static_cast<std::uint32_t>(std::stoul(line.substr(2), nullptr, 16));
         else
