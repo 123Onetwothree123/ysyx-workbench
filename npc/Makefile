@@ -558,7 +558,7 @@ synth: verilog $(YOSYS_PP)
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY), nomap=$(SYNTH_NOMAP)) ..."
 	@$(YOSYS_PP) $(abspath $(BUILD_DIR)/ysyx_26030103.sv) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
 	@cat $(abspath $(BUILD_DIR)/ysyx_26030103_PutcharProbe.v) >> $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
-	@SYNTH_STRATEGY="$(SYNTH_STRATEGY)" SYNTH_NOMAP="$(SYNTH_NOMAP)" \
+	@export SYNTH_STRATEGY='$(SYNTH_STRATEGY)' && export SYNTH_NOMAP=$(SYNTH_NOMAP) && \
 	$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		PDK=$(PDK_VALUE) \
 		DESIGN=$(SYNTH_DESIGN) \
