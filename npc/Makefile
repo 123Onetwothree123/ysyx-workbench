@@ -493,6 +493,17 @@ PDK_VALUE = icsprout55
 endif
 PDK_CFLAGS = -DCONFIG_PDK=$(PDK_VALUE)
 
+ifneq ($(CONFIG_SYNTH_STRATEGY),)
+SYNTH_STRATEGY = $(call remove_quote,$(CONFIG_SYNTH_STRATEGY))
+else
+SYNTH_STRATEGY = AREA 0
+endif
+ifeq ($(CONFIG_SYNTH_NOMAP),y)
+SYNTH_NOMAP = 1
+else
+SYNTH_NOMAP = 0
+endif
+
 ifneq ($(CONFIG_APB_DEVICE_FREQ),)
 APB_DEVICE_FREQ = $(call remove_quote,$(CONFIG_APB_DEVICE_FREQ))
 else
@@ -544,10 +555,11 @@ $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
 endif
 
 synth: verilog $(YOSYS_PP)
-	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE)) ..."
+	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY), nomap=$(SYNTH_NOMAP)) ..."
 	@$(YOSYS_PP) $(abspath $(BUILD_DIR)/ysyx_26030103.sv) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
 	@cat $(abspath $(BUILD_DIR)/ysyx_26030103_PutcharProbe.v) >> $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
-	@$(MAKE) -C $(YOSYS_STA_HOME) syn \
+	@SYNTH_STRATEGY="$(SYNTH_STRATEGY)" SYNTH_NOMAP="$(SYNTH_NOMAP)" \
+	$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		PDK=$(PDK_VALUE) \
 		DESIGN=$(SYNTH_DESIGN) \
 		RTL_FILES="$(abspath $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv)" \

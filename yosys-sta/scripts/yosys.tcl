@@ -41,6 +41,16 @@ set EXCLUDE_CELLS [concat {*}[lmap cell $DONT_USE_CELLS {concat "-dont_use" $cel
 #===========================================================
 
 set SYNTH_STRATEGY "AREA 0"
+if {[info exists env(SYNTH_STRATEGY)]} {
+  set SYNTH_STRATEGY $::env(SYNTH_STRATEGY)
+} else {
+  puts "Warning: env SYNTH_STRATEGY not defined. Use $SYNTH_STRATEGY by default."
+}
+
+set SYNTH_NOMAP 1
+if {[info exists env(SYNTH_NOMAP)]} {
+  set SYNTH_NOMAP $::env(SYNTH_NOMAP)
+}
 
 set buffering 1
 set sizing 1
@@ -180,8 +190,10 @@ foreach file $VERILOG_FILES {
   read_verilog -sv $file
 }
 
-# disable memory inference to preserve register array area fidelity
-memory -nomap
+# disable memory inference to preserve register array area fidelity (configurable)
+if { $SYNTH_NOMAP } {
+  memory -nomap
+}
 
 # generic synthesis (coarse)
 synth -top $DESIGN -flatten -run :fine

@@ -700,6 +700,28 @@ config SYNTH_FREQ
     面积换取更低的逻辑延迟。受限于工艺库和寄存器堆/加法器/SRAM等
     关键部件的最大工作频率。
 
+choice
+  prompt "综合策略"
+  default SYNTH_STRATEGY_AREA
+config SYNTH_STRATEGY_AREA
+  bool "AREA (面积优先，不做retiming，反映真实面积)"
+config SYNTH_STRATEGY_DELAY
+  bool "DELAY (时序优先，ABC会做retiming，面积可能被膨胀)"
+endchoice
+
+config SYNTH_STRATEGY
+  string
+  default "AREA 0" if SYNTH_STRATEGY_AREA
+  default "DELAY 4" if SYNTH_STRATEGY_DELAY
+
+config SYNTH_NOMAP
+  bool "禁用 memory inference（保留寄存器阵列的真实面积）"
+  default y
+  help
+    禁止yosys将寄存器阵列推断为memory块。
+    开启后ICache等寄存器阵列的面积变化能正确反映在综合结果中。
+    对时序可能有轻微影响。
+
 endmenu
 
 menu "仿真延迟校准 (Simulation Delay Calibration)"
