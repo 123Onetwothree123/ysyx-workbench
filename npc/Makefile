@@ -16,7 +16,7 @@ BIN=$(BUILD_DIR)/$(TOPNAME)
 VSRCS=$(shell find $(BUILD_DIR) -maxdepth 1 -type f -name "*.sv" ! -name "riscv32e_npc*" ! -name "ysyx_*_npc*" ! -name "*_yosys*" ! -name "*_merged*" ! -name "*_sv2v*" 2>/dev/null | sort) \
       $(YSYXSOC_FULL_V) \
       $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort) \
-      $(shell find $(YSYXSOC_PERIP_DIR) -type f -name "*.v" 2>/dev/null | sort) \
+      $(shell find $(YSYXSOC_PERIP_DIR) -type f -name "*.v" 2>/dev/null | sort)
 VINCDIRS=$(BUILD_DIR) \
          $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort) \
          $(YSYXSOC_PERIP_INCDIRS)
