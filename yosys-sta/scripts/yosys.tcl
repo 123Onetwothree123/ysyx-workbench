@@ -201,6 +201,11 @@ if { $SYNTH_NOMAP } {
 # generic synthesis (coarse)
 synth -top $DESIGN -flatten -run :fine
 
+# re-apply nomap after synth (synth may override)
+if { $SYNTH_NOMAP } {
+  memory -nomap
+}
+
 share -aggressive
 onehot
 muxpack
@@ -236,12 +241,10 @@ opt -undriven -purge
 
 log "\[INFO\]: USING STRATEGY $strategy_name"
 
-# technology mapping for cells
+# technology mapping for cells - skip structural optimization to preserve area fidelity
 abc -D "$CLK_PERIOD_PS" \
   -constr "$sdc_file" \
-  {*}$LIBS {*}$EXCLUDE_CELLS \
-  -script "$strategy_script" \
-  -showtmp
+  {*}$LIBS {*}$EXCLUDE_CELLS
 
 # technology mapping for constant hi- and/or lo-drivers
 hilomap -singleton -hicell {*}$TIEHI_CELL_AND_PORT -locell {*}$TIELO_CELL_AND_PORT
