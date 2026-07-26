@@ -132,7 +132,7 @@ void NPCSimResult::Save(
 #endif
     };
      {
-        auto out{std::ofstream{csv_file, std::ios::binary}};
+        auto out{std::ofstream{csv_file.string(), std::ios::binary}};
         out << "\xEF\xBB\xBF";
         out << "commit,说明,仿真周期数,指令数,IPC,综合频率(MHz),综合面积(um^2),"
                "IFU取指,EXU完成,LSU读,LSU写,"
