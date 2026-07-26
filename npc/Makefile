@@ -58,10 +58,17 @@ test:
 CACHE_BLOCK_SIZE_LOG2 ?= $(or $(CONFIG_CACHE_BLOCK_SIZE_LOG2),4)
 CACHE_INDEX_BITS ?= $(or $(CONFIG_CACHE_INDEX_BITS),5)
 
+VERILOG_ENV = env \
+	CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2) \
+	CACHE_INDEX_BITS=$(CACHE_INDEX_BITS) \
+	CPU_FREQ_MHZ=$(SYNTH_FREQ) \
+	DEVICE_FREQ_MHZ=$(DEVICE_FREQ) \
+	DELAY_SCALE_FACTOR=$(DELAY_SCALE)
+
 verilog:
 	$(call git_commit, "generate verilog")
 	mkdir -p $(BUILD_DIR)
-	env CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2) CACHE_INDEX_BITS=$(CACHE_INDEX_BITS) mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
+	$(VERILOG_ENV) mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
 	ln -sf layers-ysyx_26030103-Verification.sv $(BUILD_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
 	cp -f src/ysyx_26030103_PutcharProbe.v $(BUILD_DIR)/
 
@@ -397,7 +404,11 @@ simtest: $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
 
-$(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
+$(YSYXSOC_FULL_V):
+	@echo "[perf] (re)building ysyxSoC with CPU=$(SYNTH_FREQ)MHz DEV=$(DEVICE_FREQ)MHz S=$(DELAY_SCALE)"
+	@cd $(YSYXSOC_DIR) && env CPU_FREQ_MHZ=$(SYNTH_FREQ) DEVICE_FREQ_MHZ=$(DEVICE_FREQ) DELAY_SCALE_FACTOR=$(DELAY_SCALE) make verilog
+
+$(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -471,6 +482,17 @@ else
 PDK_VALUE = icsprout55
 endif
 PDK_CFLAGS = -DCONFIG_PDK=$(PDK_VALUE)
+
+ifneq ($(CONFIG_DEVICE_FREQ),)
+DEVICE_FREQ = $(call remove_quote,$(CONFIG_DEVICE_FREQ))
+else
+DEVICE_FREQ = 100
+endif
+ifneq ($(CONFIG_DELAY_SCALE),)
+DELAY_SCALE = $(call remove_quote,$(CONFIG_DELAY_SCALE))
+else
+DELAY_SCALE = 64
+endif
 
 ifeq ($(SIM_TOP),soc)
 SYNTH_DESIGN = ysyx_26030103
