@@ -620,37 +620,12 @@ config WATCHPOINT
     启用监视点功能，用于监控表达式值的变化
 
 config DIFFTEST
-	bool "启用差分测试difftest"
-	default n
-	help
-	  启用差分测试，并使用NEMU作为参考模型
-	  需要将NEMU编译为.so共享库
-	  使用make run diff=/path/to/nemu-so指定参考模型
-
-config CACHE_PADDING
-	int "ICache字节填充（用于对齐热点循环到cache块边界）"
-	default 0
-	range 0 15
-	help
-	  在.text段前插入的空白字节数，用于调整代码在内存中的位置
-	  使热点循环对齐到ICache块边界，以减少cache块的占用。
-	  默认0表示不填充。需要结合性能计数器分析热点循环地址后设置。
-
-config CACHE_BLOCK_SIZE_LOG2
-	int "ICache块大小的log2（2^N字节）"
-	default 4
-	range 2 6
-	help
-	  2=4字节, 3=8字节, 4=16字节, 5=32字节, 6=64字节。
-	  修改后需重新 make verilog 以重新生成RTL。
-
-config CACHE_INDEX_BITS
-	int "ICache索引位宽（2^N个块）"
-	default 5
-	range 1 10
-	help
-	  1=2块, 5=32块, 10=1024块。
-	  修改后需重新 make verilog 以重新生成RTL。
+  bool "启用差分测试difftest"
+  default n
+  help
+    启用差分测试，并使用NEMU作为参考模型
+    需要将NEMU编译为.so共享库
+    使用make run diff=/path/to/nemu-so指定参考模型
 
 endmenu
 
@@ -673,89 +648,6 @@ config RESET_PC
   default 0x30000000
   help
     复位后程序计数器的初始值
-
-endmenu
-
-menu "综合 (Synthesis)"
-
-choice
-  prompt "综合工艺库 (PDK)"
-  default PDK_ICSPROUT55
-config PDK_ICSPROUT55
-  bool "icsprout55"
-config PDK_NANGATE45
-  bool "nangate45"
-endchoice
-
-config PDK
-  string
-  default "icsprout55" if PDK_ICSPROUT55
-  default "nangate45" if PDK_NANGATE45
-
-config SYNTH_FREQ
-  int "综合目标频率 (MHz)"
-  default 450
-  help
-    综合器尝试达到的目标频率。设置越高，综合器可能使用更多
-    面积换取更低的逻辑延迟。受限于工艺库和寄存器堆/加法器/SRAM等
-    关键部件的最大工作频率。
-
-choice
-  prompt "综合策略"
-  default SYNTH_STRATEGY_AREA
-config SYNTH_STRATEGY_AREA
-  bool "AREA (面积优先，不做retiming，反映真实面积)"
-config SYNTH_STRATEGY_DELAY
-  bool "DELAY (时序优先，ABC会做retiming，面积可能被膨胀)"
-endchoice
-
-config SYNTH_STRATEGY_TYPE
-  string
-  default "AREA" if SYNTH_STRATEGY_AREA
-  default "DELAY" if SYNTH_STRATEGY_DELAY
-
-config SYNTH_STRATEGY_IDX
-  int
-  default 0 if SYNTH_STRATEGY_AREA
-  default 4 if SYNTH_STRATEGY_DELAY
-
-config SYNTH_NOMAP
-  bool "禁用 memory inference（保留寄存器阵列的真实面积）"
-  default y
-  help
-    禁止yosys将寄存器阵列推断为memory块。
-    开启后ICache等寄存器阵列的面积变化能正确反映在综合结果中。
-    对时序可能有轻微影响。
-
-endmenu
-
-menu "仿真延迟校准 (Simulation Delay Calibration)"
-
-config APB_DEVICE_FREQ
-	int "APB设备频率 (MHz)"
-	default 100
-	help
-	  APB总线上外设（如SDRAM控制器）的运行频率。
-	  用于APB延迟模块计算频率比校准访存延迟。
-
-config APB_DELAY_SCALE
-	int "APB延迟缩放因子 S"
-	default 64
-	help
-	  APB延迟模块中频率比累加的放大系数。
-
-config AXI_DEVICE_FREQ
-	int "AXI设备频率 (MHz)"
-	default 100
-	help
-	  AXI总线上外设（如SDRAM控制器）的运行频率。
-	  用于AXI延迟模块计算频率比校准访存延迟。
-
-config AXI_DELAY_SCALE
-	int "AXI延迟缩放因子 S"
-	default 64
-	help
-	  AXI延迟模块中频率比累加的放大系数。
 
 endmenu
 

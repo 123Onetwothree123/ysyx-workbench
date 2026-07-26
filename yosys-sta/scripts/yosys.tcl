@@ -40,20 +40,7 @@ set EXCLUDE_CELLS [concat {*}[lmap cell $DONT_USE_CELLS {concat "-dont_use" $cel
 #   set parameter for ABC
 #===========================================================
 
-set SYNTH_STRATEGY_TYPE "AREA"
-set SYNTH_STRATEGY_IDX 0
-if {[info exists env(SYNTH_STRATEGY_TYPE)]} {
-  set SYNTH_STRATEGY_TYPE $::env(SYNTH_STRATEGY_TYPE)
-}
-if {[info exists env(SYNTH_STRATEGY_IDX)]} {
-  set SYNTH_STRATEGY_IDX $::env(SYNTH_STRATEGY_IDX)
-}
-set SYNTH_STRATEGY "$SYNTH_STRATEGY_TYPE $SYNTH_STRATEGY_IDX"
-
-set SYNTH_NOMAP 1
-if {[info exists env(SYNTH_NOMAP)]} {
-  set SYNTH_NOMAP $::env(SYNTH_NOMAP)
-}
+set SYNTH_STRATEGY "DELAY 4"
 
 set buffering 1
 set sizing 1
@@ -136,11 +123,11 @@ set delay_scripts [list \
   ]
 
 set area_scripts [list \
-  "+fx;mfs;strash;refactor;${abc_resyn2};scleanup;${abc_choice2};${abc_map_new_area};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
+  "+fx;mfs;strash;refactor;${abc_resyn2};${abc_retime_area};scleanup;${abc_choice2};${abc_map_new_area};retime,-D,{D};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
   \
-  "+fx;mfs;strash;refactor;${abc_resyn2};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
+  "+fx;mfs;strash;refactor;${abc_resyn2};${abc_retime_area};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};retime,-D,{D};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
   \
-  "+fx;mfs;strash;refactor;${abc_choice2};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
+  "+fx;mfs;strash;refactor;${abc_choice2};${abc_retime_area};scleanup;${abc_choice2};${abc_map_new_area};${abc_choice2};${abc_map_new_area};retime,-D,{D};&get,-n;&st;&dch;&nf;&put;${abc_fine_tune};stime,-p;print_stats -m" \
   "+strash;dch;map -B 0.9;topo;stime -c;buffer -c -N ${max_FO};upsize -c;dnsize -c;stime,-p;print_stats -m" \
   ]
 
@@ -193,11 +180,6 @@ foreach file $VERILOG_FILES {
   read_verilog -sv $file
 }
 
-# disable memory inference to preserve register array area fidelity (configurable)
-if { $SYNTH_NOMAP } {
-  memory -nomap
-}
-
 # generic synthesis (coarse)
 synth -top $DESIGN -flatten -run :fine
 
@@ -207,12 +189,8 @@ muxpack
 opt_demorgan
 opt_ffinv
 
-# generic synthesis (fine) - skip intermediate ABC to preserve area fidelity
-opt -full
-memory_map
-opt -full
-techmap
-opt -fast
+# generic synthesis (fine)
+synth -run fine:
 
 # remove unused cells and wires
 opt_clean -purge
