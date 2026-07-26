@@ -6,26 +6,39 @@ import java.nio.file.{Files, Paths, StandardCopyOption}
 object ysyx_26030103_Elaborate extends App {
   val targetDir = args(args.indexOf("--target-dir") + 1)
 
-  val CacheableBase_ysyxsoc = 0x80000000L
-  val CacheableMask_ysyxsoc = 0x80000000L
+  val BlockSizeLog2 = sys.env.getOrElse("CACHE_BLOCK_SIZE_LOG2", "4").toInt
+  val IndexBits     = sys.env.getOrElse("CACHE_INDEX_BITS", "5").toInt
+
+  val CacheableBase_ysyxsoc = 0x00000000L
+  val CacheableMask_ysyxsoc = 0x00000000L
   val CacheableBase_npc     = 0x80000000L
   val CacheableMask_npc     = 0x80000000L
 
   emitVerilog(new ysyx_26030103(
-    resetAddr     = 0x30000000L,
-    CacheableBase = CacheableBase_ysyxsoc,
-    CacheableMask = CacheableMask_ysyxsoc
+    resetAddr      = 0x30000000L,
+    BlockSizeLog2  = BlockSizeLog2,
+    IndexBits      = IndexBits,
+    CacheableBase  = CacheableBase_ysyxsoc,
+    CacheableMask  = CacheableMask_ysyxsoc
   ), Array("--target-dir", targetDir))
   emitVerilog(new ysyx_26030103(
-    resetAddr     = 0x80000000L,
-    CacheableBase = CacheableBase_npc,
-    CacheableMask = CacheableMask_npc
+    resetAddr      = 0x80000000L,
+    BlockSizeLog2  = BlockSizeLog2,
+    IndexBits      = IndexBits,
+    CacheableBase  = CacheableBase_npc,
+    CacheableMask  = CacheableMask_npc
   ), Array("--target-dir", targetDir))
   Files.move(
     Paths.get(targetDir, "ysyx_26030103.sv"),
     Paths.get(targetDir, "ysyx_26030103_npc.sv"),
       StandardCopyOption.REPLACE_EXISTING)
-  emitVerilog(new ysyx_26030103, Array("--target-dir", targetDir))
+  emitVerilog(new ysyx_26030103(
+    resetAddr      = 0x30000000L,
+    BlockSizeLog2  = BlockSizeLog2,
+    IndexBits      = IndexBits,
+    CacheableBase  = CacheableBase_ysyxsoc,
+    CacheableMask  = CacheableMask_ysyxsoc
+  ), Array("--target-dir", targetDir))
 
   emitVerilog(new _root_.ysyx_26030103.riscv32e_npc_AXIRAM, Array("--target-dir", targetDir))
 

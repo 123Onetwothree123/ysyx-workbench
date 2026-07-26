@@ -22,20 +22,17 @@ class apb_delayer extends BlackBox {
   val io = IO(new APBDelayerIO)
 }
 
-class APBDelayerChisel extends Module {
+class APBDelayerChisel(val CPU_MHZ: Int = sys.env.get("APB_CPU_FREQ_MHZ").map(_.toInt).getOrElse(450),
+    val DEVICE_MHZ: Int = sys.env.get("APB_DEVICE_FREQ_MHZ").map(_.toInt).getOrElse(100),
+    val S: Int = sys.env.get("APB_DELAY_SCALE_FACTOR").map(_.toInt).getOrElse(64)) extends Module {
   val io = IO(new APBDelayerIO)
-  io.out <> io.in
-  val CPU_MHZ = 450
-  val DEVICE_MHZ = 100
-  val S = 64
-  val RTS = CPU_MHZ * S / DEVICE_MHZ // 因为r * S，整数截断
+  val RTS = CPU_MHZ * S / DEVICE_MHZ
   val AMT = if (RTS > S) {
-    RTS - S // (r-1) * S 的整数近似
+    RTS - S
   } else {
     0
   }
   if (AMT == 0) {
-    // r <= 1, 无需延迟, 直通
     io.out <> io.in
   } else {
     val CounterWidth = 24
@@ -58,7 +55,6 @@ class APBDelayerChisel extends Module {
     io.in.pduser := io.out.pduser
     switch(state) {
       is(state_idle) {
-        // 空闲时直通，用于检测事务开始
         io.in.pready := io.out.pready
         io.in.prdata := io.out.prdata
         io.in.pslverr := io.out.pslverr
@@ -69,16 +65,12 @@ class APBDelayerChisel extends Module {
       }
       is(state_count) {
         when(!io.in.psel) {
-          // 事务异常中止
           state := state_idle
         }.elsewhen(io.out.pready && io.in.penable) {
-          // 设备回复到达之后就捕获数据，进入排空阶段
           state := state_delay
           rdata := io.out.prdata
           slverr := io.out.pslverr
-          // 本周期不再累加（设备已完成处理）
         }.otherwise {
-          // 等待设备处理，每周期累加(r-1)*S
           counter := counter + AMT.S(CounterWidth.W)
         }
       }
@@ -86,7 +78,6 @@ class APBDelayerChisel extends Module {
         io.in.prdata := rdata
         io.in.pslverr := slverr
         when(counter <= 0.S) {
-          // 排空完毕，向上游返回pready
           state := state_idle
           io.in.pready := true.B
         }.otherwise {
@@ -103,7 +94,6 @@ class APBDelayerWrapper(implicit p: Parameters) extends LazyModule {
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {
     (node.in zip node.out) foreach { case ((in, edgeIn), (out, edgeOut)) =>
-      // val delayer = Module(new apb_delayer)
       val delayer = Module(new APBDelayerChisel)
       delayer.io.clock := clock
       delayer.io.reset := reset

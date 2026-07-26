@@ -6,10 +6,10 @@ DESIGN ?= gcd
 SDC_FILE ?= $(PROJ_PATH)/scripts/default.sdc
 RTL_FILES ?= $(shell find $(PROJ_PATH)/example -name "*.v")
 export CLK_FREQ_MHZ ?= 500
-export CLK_PORT_NAME ?= clk
+export CLK_PORT_NAME ?= clock
 PDK = icsprout55
 
-RESULT_DIR = $(O)/$(DESIGN)-$(CLK_FREQ_MHZ)MHz
+RESULT_DIR = $(O)/$(DESIGN)-$(CLK_FREQ_MHZ)MHz-$(PDK)
 SCRIPT_DIR = $(PROJ_PATH)/scripts
 NETLIST_SYN_V   = $(RESULT_DIR)/$(DESIGN).netlist.v
 TIMING_RPT = $(RESULT_DIR)/$(DESIGN).rpt
