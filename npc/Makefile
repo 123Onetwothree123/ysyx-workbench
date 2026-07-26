@@ -493,10 +493,15 @@ PDK_VALUE = icsprout55
 endif
 PDK_CFLAGS = -DCONFIG_PDK=$(PDK_VALUE)
 
-ifneq ($(CONFIG_SYNTH_STRATEGY),)
-SYNTH_STRATEGY = $(call remove_quote,$(CONFIG_SYNTH_STRATEGY))
+ifneq ($(CONFIG_SYNTH_STRATEGY_TYPE),)
+SYNTH_STRATEGY_TYPE = $(call remove_quote,$(CONFIG_SYNTH_STRATEGY_TYPE))
 else
-SYNTH_STRATEGY = AREA 0
+SYNTH_STRATEGY_TYPE = AREA
+endif
+ifneq ($(CONFIG_SYNTH_STRATEGY_IDX),)
+SYNTH_STRATEGY_IDX = $(call remove_quote,$(CONFIG_SYNTH_STRATEGY_IDX))
+else
+SYNTH_STRATEGY_IDX = 0
 endif
 ifneq ($(CONFIG_SYNTH_NOMAP),n)
 SYNTH_NOMAP = 1
@@ -555,10 +560,10 @@ $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
 endif
 
 synth: verilog $(YOSYS_PP)
-	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY), nomap=$(SYNTH_NOMAP)) ..."
+	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY_TYPE) $(SYNTH_STRATEGY_IDX), nomap=$(SYNTH_NOMAP)) ..."
 	@$(YOSYS_PP) $(abspath $(BUILD_DIR)/ysyx_26030103.sv) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
 	@cat $(abspath $(BUILD_DIR)/ysyx_26030103_PutcharProbe.v) >> $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
-	@export SYNTH_STRATEGY='$(SYNTH_STRATEGY)' && export SYNTH_NOMAP=$(SYNTH_NOMAP) && \
+	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && \
 	$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		PDK=$(PDK_VALUE) \
 		DESIGN=$(SYNTH_DESIGN) \

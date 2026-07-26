@@ -40,10 +40,15 @@ set EXCLUDE_CELLS [concat {*}[lmap cell $DONT_USE_CELLS {concat "-dont_use" $cel
 #   set parameter for ABC
 #===========================================================
 
-set SYNTH_STRATEGY "AREA 0"
-if {[info exists env(SYNTH_STRATEGY)]} {
-  set SYNTH_STRATEGY $::env(SYNTH_STRATEGY)
+set SYNTH_STRATEGY_TYPE "AREA"
+set SYNTH_STRATEGY_IDX 0
+if {[info exists env(SYNTH_STRATEGY_TYPE)]} {
+  set SYNTH_STRATEGY_TYPE $::env(SYNTH_STRATEGY_TYPE)
 }
+if {[info exists env(SYNTH_STRATEGY_IDX)]} {
+  set SYNTH_STRATEGY_IDX $::env(SYNTH_STRATEGY_IDX)
+}
+set SYNTH_STRATEGY "$SYNTH_STRATEGY_TYPE $SYNTH_STRATEGY_IDX"
 
 set SYNTH_NOMAP 1
 if {[info exists env(SYNTH_NOMAP)]} {

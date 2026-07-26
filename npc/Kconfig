@@ -709,10 +709,15 @@ config SYNTH_STRATEGY_DELAY
   bool "DELAY (时序优先，ABC会做retiming，面积可能被膨胀)"
 endchoice
 
-config SYNTH_STRATEGY
+config SYNTH_STRATEGY_TYPE
   string
-  default "AREA 0" if SYNTH_STRATEGY_AREA
-  default "DELAY 4" if SYNTH_STRATEGY_DELAY
+  default "AREA" if SYNTH_STRATEGY_AREA
+  default "DELAY" if SYNTH_STRATEGY_DELAY
+
+config SYNTH_STRATEGY_IDX
+  int
+  default 0 if SYNTH_STRATEGY_AREA
+  default 4 if SYNTH_STRATEGY_DELAY
 
 config SYNTH_NOMAP
   bool "禁用 memory inference（保留寄存器阵列的真实面积）"
