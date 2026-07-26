@@ -235,7 +235,7 @@ class riscv32e_npc_SimTop extends Module {
 
   val cyc = RegInit(0.U(32.W))
   cyc := cyc + 1.U
-  when (cyc < 5.U) {
-    printf(p"[TOP cyc=${cyc} trap=${trap_valid}]\n")
+  when (cyc < 20.U && trap_valid) {
+    printf(p"[?] Simulation has happened a trap (the program may has finished correctly)\n")
   }
 }

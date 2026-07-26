@@ -27,6 +27,7 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
     val StallPipeline     = Output(Bool())
     val StallICache       = Output(Bool())
     val StallIdle         = Output(Bool())
+    val FlushFetch        = Input(Bool())
   })
   val PCModule     = Module(new ysyx_26030103_PC(resetAddr))
   val NextPCModule = Module(new ysyx_26030103_NextPC)
@@ -55,6 +56,9 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
 
   switch(state) {
     is(StatesIdle) {
+      when(io.FlushFetch) {
+        state := StatesIdle
+      }.otherwise {
       AccessFaultReg     := false.B
       AccessFaultRespReg := 0.U
       io.FetchValid := true.B
@@ -63,18 +67,27 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
       when(io.FetchReady) {
         state := StatesWaitICache
       }
+      }
     }
     is(StatesWaitICache) {
+      when(io.FlushFetch) {
+        state := StatesIdle
+      }.otherwise {
       io.RespReady := true.B
       when(io.RespValid && io.RespReady) {
         InstructionReg := io.RespData
         state := StatesHold
       }
+      }
     }
     is(StatesHold) {
+      when(io.FlushFetch) {
+        state := StatesIdle
+      }.otherwise {
       io.out.valid := true.B
       when(io.out.valid && io.out.ready) {
         state := StatesIdle
+      }
       }
     }
   }

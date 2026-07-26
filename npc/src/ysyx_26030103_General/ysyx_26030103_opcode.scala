@@ -12,6 +12,7 @@ object ysyx_26030103_opcode {
   val OPCODE_UpperImmediate_auipc = "b0010111".U(7.W)
   val OPCODE_Jump = "b1101111".U(7.W)
   val OPCODE_System = "b1110011".U(7.W)
+  val OPCODE_MiscMem = "b0001111".U(7.W)
   object BitPats {
     val OPCODE_Register = BitPat("b0110011")
     val OPCODE_Immediate = BitPat("b0010011")

@@ -27,6 +27,7 @@ class ysyx_26030103_ICache(
     val perf_refill_resp = Output(Bool())
     val access_fault = Output(Bool())
     val access_fault_resp = Output(UInt(2.W))
+    val flush = Input(Bool())
   })
   // 直接映射cache存储阵列：valid+tag+data
   val valid = RegInit(VecInit(Seq.fill(NumBlocks)(false.B)))
@@ -86,6 +87,10 @@ class ysyx_26030103_ICache(
   io.perf_refill_resp := state === state_refill_resp
   switch(state) {
     is(state_idle) {
+      when(io.flush) {
+        valid.foreach(_ := false.B)
+        state := state_idle
+      }.otherwise {
       access_fault_reg := false.B
       access_fault_resp_reg := 0.U
       io.fetch_ready := true.B
@@ -105,8 +110,13 @@ class ysyx_26030103_ICache(
           state := state_refill_req
         }
       }
+      }
     }
     is(state_refill_req) {
+      when(io.flush) {
+        valid.foreach(_ := false.B)
+        state := state_idle
+      }.otherwise {
       io.axi.AR.ARVALID := true.B
       io.axi.AR.ARLEN := Mux(cacheable_reg && burst_mode, (WordsPerBlock - 1).U, 0.U)
       io.axi.AR.ARADDR := Mux(cacheable_reg,
@@ -119,8 +129,13 @@ class ysyx_26030103_ICache(
       when(io.axi.AR.ARREADY) {
         state := state_refill_resp
       }
+      }
     }
     is(state_refill_resp) {
+      when(io.flush) {
+        valid.foreach(_ := false.B)
+        state := state_idle
+      }.otherwise {
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RREADY) {
         when(io.axi.R.RRESP =/= 0.U) {
@@ -157,16 +172,19 @@ class ysyx_26030103_ICache(
           state := state_resp
         }
       }
+      }
     }
     is(state_resp) {
+      when(io.flush) {
+        valid.foreach(_ := false.B)
+        state := state_idle
+      }.otherwise {
       io.resp_valid := true.B
       io.resp_data := Mux(cacheable_reg && !access_fault_reg,
         data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
-      when(io.resp_ready && fetch_addr_reg === "ha00000ec".U) {
-        printf(cf"ICache resp: addr=${fetch_addr_reg}, data=${io.resp_data}\n")
-      }
       when(io.resp_ready) {
         state := state_idle
+      }
       }
     }
   }

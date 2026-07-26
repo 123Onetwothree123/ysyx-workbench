@@ -137,6 +137,8 @@ class ysyx_26030103(
   ifu.io.RedirectTarget := exu.io.RedirectTarget
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
+  ifu.io.FlushFetch := RegNext(exu.io.FenceIFlush, false.B)
+  icache.io.flush := exu.io.FenceIFlush
   // 取指或访存返回错误时，跳转到地址0
   val AccessFaultOccurred = icache.io.access_fault || lsu.io.AccessFault
   when(AccessFaultOccurred) {

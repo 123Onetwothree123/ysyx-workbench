@@ -31,6 +31,7 @@ class ysyx_26030103_IDUMessage extends Bundle {
   val IsEcall = Bool()
   val IsEbreak = Bool()
   val IsMret = Bool()
+  val IsFenceI = Bool()
   val CSRAddress = UInt(12.W)
   val Rs1 = UInt(5.W)
   val Rs1Data = UInt(32.W)

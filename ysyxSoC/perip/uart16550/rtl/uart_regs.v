@@ -447,14 +447,6 @@ assign msr_read = (wb_re_i && wb_addr_i == `UART_REG_MS && !dlab);
 assign fifo_read = (wb_re_i && wb_addr_i == `UART_REG_RB && !dlab);
 assign fifo_write = (wb_we_i && wb_addr_i == `UART_REG_TR && !dlab);
 
-// simulation: capture UART TX byte output  
-`ifdef VERILATOR
-integer _uart_tx_cnt = 0;
-always @(posedge clk) if (wb_we_i) _uart_tx_cnt <= _uart_tx_cnt + 1;
-always @(posedge clk) if (_uart_tx_cnt < 20 && (wb_we_i || fifo_write)) begin
-    $display("[UART] we=%b addr=%h data=%h", wb_we_i, wb_addr_i, wb_dat_i);
-    if (fifo_write) $display("[UART_TX] byte=%c", wb_dat_i[7:0]);
-end
 `endif
 
 // lsr_mask_d delayed signal handling

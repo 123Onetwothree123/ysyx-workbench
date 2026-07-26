@@ -44,6 +44,7 @@ class ysyx_26030103_IDU extends Module {
   val IsEbreak = Instruction === "h00100073".U(32.W)
   val IsEcall = Instruction === "h00000073".U(32.W)
   val IsMret = Instruction === "h30200073".U(32.W)
+  val IsFenceI = (opcode === OPCODE_MiscMem) && (funct3 === "b001".U(3.W))
   val RegisterWrite =
     IsRType || IsIType || IsUType || IsJType || IsCsrrs || IsCsrrw
   val MemoryValid = IsLoad || IsSType
@@ -129,6 +130,7 @@ class ysyx_26030103_IDU extends Module {
   io.out.bits.IsEcall := IsEcall
   io.out.bits.IsEbreak := IsEbreak
   io.out.bits.IsMret := IsMret
+  io.out.bits.IsFenceI := IsFenceI
   io.out.bits.CSRAddress := Instruction(31, 20)
   io.out.bits.Rs1 := Rs1
   io.out.bits.Rs1Data := io.ReadDATA1

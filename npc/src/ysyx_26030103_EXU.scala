@@ -33,6 +33,7 @@ class ysyx_26030103_EXU extends Module {
     val StallWaitLSU = Output(Bool())
     val SemihostValid = Output(Bool())
     val SemihostChar  = Output(UInt(8.W))
+    val FenceIFlush = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -156,4 +157,5 @@ class ysyx_26030103_EXU extends Module {
   semihostValidReg := putcharProbe.io.en
   io.SemihostValid := putcharProbe.io.en && !semihostValidReg  // rising edge only
   io.SemihostChar  := putcharProbe.io.data
+  io.FenceIFlush := InstructionExecutionDone && ActiveInstruction.IsFenceI
 }
