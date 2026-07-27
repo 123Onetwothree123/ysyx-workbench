@@ -13,10 +13,14 @@ class ysyx_26030103_IDU extends Module {
     val ReadDATA2 = Input(UInt(32.W))
     val Read1SELECT = Output(UInt(5.W))
     val Read2SELECT = Output(UInt(5.W))
+    // RAW 检测输入: 来自流水线下游的状态
+    val ex_valid = Input(Bool())
+    val ex_rd = Input(UInt(5.W))
+    val ex_regWrite = Input(Bool())
+    val wb_valid = Input(Bool())
+    val wb_rd = Input(UInt(5.W))
+    val wb_regWrite = Input(Bool())
   })
-  // 唉直接照着抄，直接连了
-  io.in.ready := io.out.ready
-  io.out.valid := io.in.valid
   val Instruction = io.in.bits.Instruction
   val pc = io.in.bits.pc
   val snpc = pc + 4.U(32.W)
@@ -103,6 +107,14 @@ class ysyx_26030103_IDU extends Module {
     }
   }
   val ALU_B = Mux(opcode === OPCODE_Register, io.ReadDATA2, Immediate)
+  val needsRs2 = IsRType || IsBType || IsSType
+  val ex_hazard = io.ex_valid && io.ex_regWrite && io.ex_rd =/= 0.U &&
+    ((io.ex_rd === Rs1) || (needsRs2 && io.ex_rd === Rs2))
+  val wb_hazard = io.wb_valid && io.wb_regWrite && io.wb_rd =/= 0.U &&
+    ((io.wb_rd === Rs1) || (needsRs2 && io.wb_rd === Rs2))
+  val isRAW = ex_hazard || wb_hazard
+  io.in.ready := io.out.ready && !isRAW
+  io.out.valid := io.in.valid && !isRAW
   io.out.bits.pc := pc
   io.out.bits.snpc := snpc
   io.out.bits.ALUCtrl := ALUCtrl

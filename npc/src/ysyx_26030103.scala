@@ -45,7 +45,8 @@ class ysyx_26030103(
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  ysyx_26030103_StageConnect(ifu.io.out, idu.io.in)
+  val pipe_flush = exu.io.Redirect || exu.io.FenceIFlush
+  ysyx_26030103_StageConnect(ifu.io.out, idu.io.in, pipe_flush)
   ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
   ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
   icache.io.axi <> arbiter.io.ifu
@@ -120,6 +121,13 @@ class ysyx_26030103(
   xbar.io.CLINT.B <> clint.io.B
   xbar.io.CLINT.AR <> clint.io.AR
   xbar.io.CLINT.R <> clint.io.R
+  // RAW 检测: 从 pipeline 寄存器提取下游状态传给 IDU（时序化避免组合环）
+  idu.io.ex_valid := RegNext(exu.io.in.valid, false.B)
+  idu.io.ex_rd := RegNext(exu.io.in.bits.Rd, 0.U)
+  idu.io.ex_regWrite := RegNext(exu.io.in.bits.RegisterWrite, false.B)
+  idu.io.wb_valid := RegNext(wbu.io.in.valid, false.B)
+  idu.io.wb_rd := RegNext(wbu.io.in.bits.Rd, 0.U)
+  idu.io.wb_regWrite := RegNext(wbu.io.in.bits.RegisterWrite, false.B)
   // 手动连线了
   idu.io.ReadDATA1 := gpr.io.ReadDATA1
   idu.io.ReadDATA2 := gpr.io.ReadDATA2
