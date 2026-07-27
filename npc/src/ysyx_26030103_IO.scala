@@ -131,6 +131,5 @@ class ysyx_26030103_IO extends Bundle {
   val perf_lsu_stall_read_r   = Output(Bool())
   val perf_lsu_stall_write_req = Output(Bool())
   val perf_lsu_stall_write_b  = Output(Bool())
-  val semihost_valid = Output(Bool())
-  val semihost_char  = Output(UInt(8.W))
+
 }

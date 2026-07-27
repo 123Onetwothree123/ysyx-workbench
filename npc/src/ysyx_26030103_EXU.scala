@@ -31,8 +31,7 @@ class ysyx_26030103_EXU extends Module {
     val PerfBranchOp = Output(Bool())
     val PerfExecutionActive = Output(Bool())
     val StallWaitLSU = Output(Bool())
-    val SemihostValid = Output(Bool())
-    val SemihostChar  = Output(UInt(8.W))
+
     val FenceIFlush = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
@@ -94,10 +93,7 @@ class ysyx_26030103_EXU extends Module {
   val InstructionExecutionDone =
     FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
   CSRUnit.io.Enable := FSM_Is_Idle && io.in.fire && !io.in.bits.MemoryValid
-  val putcharProbe = Module(new ysyx_26030103_PutcharProbe)
-  putcharProbe.io.clk := clock
-  putcharProbe.io.en := io.in.fire && FSM_Is_Idle && !io.in.bits.MemoryValid && io.in.bits.CSRAddress === "h8a0".U
-  putcharProbe.io.data := io.in.bits.Rs1Data(7, 0)
+
   io.TrapValid := InstructionExecutionDone && CSRUnit.io.IsEbreak
   io.TrapPC := io.in.bits.pc
   io.Redirect := InstructionExecutionDone && Redirect
@@ -153,9 +149,6 @@ class ysyx_26030103_EXU extends Module {
   io.PerfBranchOp := ActiveInstruction.IsBranch || ActiveInstruction.IsJal || ActiveInstruction.IsJalr
   io.PerfExecutionActive := state =/= StatesIdle
   io.StallWaitLSU := state === StatesWait
-  val semihostValidReg = RegInit(false.B)
-  semihostValidReg := putcharProbe.io.en
-  io.SemihostValid := putcharProbe.io.en && !semihostValidReg  // rising edge only
-  io.SemihostChar  := putcharProbe.io.data
+
   io.FenceIFlush := InstructionExecutionDone && ActiveInstruction.IsFenceI
 }
