@@ -19,7 +19,11 @@ class ysyx_26030103_IDU extends Module {
     val wb_valid = Input(Bool())
     val wb_rd = Input(UInt(5.W))
     val wb_regWrite = Input(Bool())
+    val ex_memop = Input(Bool())
     val pipeline_mode = Input(Bool())
+    val perf_stall_raw = Output(Bool())
+    val perf_stall_raw_loaduse = Output(Bool())
+    val perf_stall_raw_alu = Output(Bool())
   })
   val Instruction = io.in.bits.Instruction
   val pc = io.in.bits.pc
@@ -121,6 +125,10 @@ class ysyx_26030103_IDU extends Module {
   val isRAW = Mux(io.pipeline_mode, ex_hazard || wb_hazard, false.B)
   io.in.ready := io.out.ready && !isRAW
   io.out.valid := io.in.valid && !isRAW
+  val raw_loaduse = ex_hazard && io.ex_memop
+  io.perf_stall_raw := io.in.valid && isRAW
+  io.perf_stall_raw_loaduse := io.in.valid && isRAW && raw_loaduse
+  io.perf_stall_raw_alu := io.in.valid && isRAW && !raw_loaduse
   io.out.bits.pc := pc
   io.out.bits.snpc := snpc
   io.out.bits.ALUCtrl := ALUCtrl

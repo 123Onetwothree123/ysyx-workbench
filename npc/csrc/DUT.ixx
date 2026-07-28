@@ -44,6 +44,11 @@ private:
     std::size_t lsu_stall_write_b_count{0};
     std::size_t icache_hit_count{0};
     std::size_t icache_miss_count{0};
+    std::size_t idu_stall_raw_count{0};
+    std::size_t idu_stall_raw_loaduse_count{0};
+    std::size_t idu_stall_raw_alu_count{0};
+    std::size_t exu_idle_noinput_count{0};
+    std::size_t trap_count{0};
 
 public:
     DUT();
@@ -86,6 +91,11 @@ public:
     std::size_t GetLSUStallWriteBCount() const;
     std::size_t GetICacheHitCount() const;
     std::size_t GetICacheMissCount() const;
+    std::size_t GetIDUStallRAWCount() const;
+    std::size_t GetIDUStallRAWLoadUseCount() const;
+    std::size_t GetIDUStallRAWALUCount() const;
+    std::size_t GetEXUIdleNoInputCount() const;
+    std::size_t GetTrapCount() const;
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();

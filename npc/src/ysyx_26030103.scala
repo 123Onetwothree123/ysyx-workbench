@@ -195,5 +195,11 @@ class ysyx_26030103(
   io.perf_lsu_stall_read_r   := lsu.io.StallReadR
   io.perf_lsu_stall_write_req := lsu.io.StallWriteReq
   io.perf_lsu_stall_write_b  := lsu.io.StallWriteB
+  idu.io.ex_memop := exu.io.HazardMemOp
+  io.perf_idu_stall_raw := idu.io.perf_stall_raw
+  io.perf_idu_stall_raw_loaduse := idu.io.perf_stall_raw_loaduse
+  io.perf_idu_stall_raw_alu := idu.io.perf_stall_raw_alu
+  io.perf_exu_idle_noinput := exu.io.PerfIdleNoInput
+  io.perf_trap := exu.io.PerfTrap
 
 }

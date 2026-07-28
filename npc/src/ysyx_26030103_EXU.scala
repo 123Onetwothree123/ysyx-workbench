@@ -52,6 +52,9 @@ class ysyx_26030103_EXU extends Module {
     val HazardValid = Output(Bool())
     val HazardRd = Output(UInt(5.W))
     val HazardRegWrite = Output(Bool())
+    val HazardMemOp = Output(Bool())
+    val PerfIdleNoInput = Output(Bool())
+    val PerfTrap = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -107,7 +110,7 @@ class ysyx_26030103_EXU extends Module {
   // 和logisim一样，最低位换成常量0
   val JalrTarget = Cat(ALUUnit.io.result(31, 1), 0.U(1.W))
   // fence.i也要产生"重定向": 目标是自己的snpc(即fence.i+4),
-  // 借此把流水线里比fence.i年轻的、可能过时的指令全部冲刷并重新取指(B5要求)
+  // 借此把流水线里比fence.i年轻的、可能过时的指令全部冲刷并重新取指
   val Redirect =
     (ActiveInstruction.IsJal || ActiveInstruction.IsJalr || BranchComparatorUnit.io.Taken ||
     ActiveInstruction.IsFenceI) && !UpEx
@@ -217,4 +220,7 @@ class ysyx_26030103_EXU extends Module {
   io.HazardRd := ActiveInstruction.Rd
   // 带异常标记的指令和访存出错的load不会真正写回,不应让IDU白白等它;被中断压掉的指令同理
   io.HazardRegWrite := ActiveInstruction.RegisterWrite && !UpEx && !MemFaultReg && !CSRUnit.io.IrqCommit
+  io.HazardMemOp := ActiveInstruction.MemoryValid
+  io.PerfIdleNoInput := FSM_Is_Idle && !io.in.valid
+  io.PerfTrap := io.ExceptionTaken
 }

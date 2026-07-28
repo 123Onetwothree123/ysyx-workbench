@@ -86,7 +86,12 @@ void NPCTrap::PrintPerformanceStatistics(
     std::size_t lsu_stall_write_req_cycles,
     std::size_t lsu_stall_write_b_cycles,
     std::size_t icache_hit,
-    std::size_t icache_miss)
+    std::size_t icache_miss,
+    std::size_t idu_stall_raw,
+    std::size_t idu_stall_raw_loaduse,
+    std::size_t idu_stall_raw_alu,
+    std::size_t exu_idle_noinput,
+    std::size_t trap_count)
 {
     std::println("性能计数器");
     std::println("IFU取到指令: {}", instruction_fetch);
@@ -135,7 +140,19 @@ void NPCTrap::PrintPerformanceStatistics(
     {
         auto total{static_cast<double>(total_cycles)};
         std::println("EXU等待LSU完成(流水线stall): {} 周期, 占比 {:.1f}%", exu_stall_lsu_cycles, 100.0 * exu_stall_lsu_cycles / total);
+        std::println("EXU空转无输入(上游供给不足): {} 周期, 占比 {:.1f}%", exu_idle_noinput, 100.0 * exu_idle_noinput / total);
     }
+    std::println("");
+    std::println("IDU数据冒险阻塞分析:");
+    if (total_cycles > 0)
+    {
+        auto total{static_cast<double>(total_cycles)};
+        std::println("RAW阻塞合计: {} 周期, 占比 {:.1f}%", idu_stall_raw, 100.0 * idu_stall_raw / total);
+        std::println("  load-use(等LSU数据,转发无法消除): {} 周期, 占比 {:.1f}%", idu_stall_raw_loaduse, 100.0 * idu_stall_raw_loaduse / total);
+        std::println("  ALU依赖(转发可消除,即转发理想收益): {} 周期, 占比 {:.1f}%", idu_stall_raw_alu, 100.0 * idu_stall_raw_alu / total);
+    }
+    std::println("");
+    std::println("异常/中断提交: {} 次", trap_count);
     std::println("");
     std::println("LSU平均访存延迟:");
     auto load_store_total{load_data + store_data};

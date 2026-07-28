@@ -69,6 +69,11 @@ class ysyx_26030103 extends BlackBox {
     val io_perf_lsu_stall_write_b  = Output(Bool())
     val io_perf_icache_hit         = Output(Bool())
     val io_perf_icache_miss        = Output(Bool())
+    val io_perf_idu_stall_raw         = Output(Bool())
+    val io_perf_idu_stall_raw_loaduse = Output(Bool())
+    val io_perf_idu_stall_raw_alu     = Output(Bool())
+    val io_perf_exu_idle_noinput      = Output(Bool())
+    val io_perf_trap                  = Output(Bool())
   })
 }
 
@@ -183,5 +188,15 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     perf_icache_hit := cpu.io.io_perf_icache_hit
     val perf_icache_miss = IO(Output(Bool()))
     perf_icache_miss := cpu.io.io_perf_icache_miss
+    val perf_idu_stall_raw = IO(Output(Bool()))
+    perf_idu_stall_raw := cpu.io.io_perf_idu_stall_raw
+    val perf_idu_stall_raw_loaduse = IO(Output(Bool()))
+    perf_idu_stall_raw_loaduse := cpu.io.io_perf_idu_stall_raw_loaduse
+    val perf_idu_stall_raw_alu = IO(Output(Bool()))
+    perf_idu_stall_raw_alu := cpu.io.io_perf_idu_stall_raw_alu
+    val perf_exu_idle_noinput = IO(Output(Bool()))
+    perf_exu_idle_noinput := cpu.io.io_perf_exu_idle_noinput
+    val perf_trap = IO(Output(Bool()))
+    perf_trap := cpu.io.io_perf_trap
   }
 }

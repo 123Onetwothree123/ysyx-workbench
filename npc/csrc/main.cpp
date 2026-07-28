@@ -105,7 +105,12 @@ int main(int argc, char const *argv[])
         dut.GetLSUStallWriteReqCount(),
         dut.GetLSUStallWriteBCount(),
         dut.GetICacheHitCount(),
-        dut.GetICacheMissCount());
+        dut.GetICacheMissCount(),
+        dut.GetIDUStallRAWCount(),
+        dut.GetIDUStallRAWLoadUseCount(),
+        dut.GetIDUStallRAWALUCount(),
+        dut.GetEXUIdleNoInputCount(),
+        dut.GetTrapCount());
 #endif
 #ifdef CONFIG_PERF_SAVE
     auto result_dir = options->GetResultDir();
@@ -138,7 +143,12 @@ int main(int argc, char const *argv[])
         dut.GetLSUStallWriteReqCount(),
         dut.GetLSUStallWriteBCount(),
         dut.GetICacheHitCount(),
-        dut.GetICacheMissCount());
+        dut.GetICacheMissCount(),
+        dut.GetIDUStallRAWCount(),
+        dut.GetIDUStallRAWLoadUseCount(),
+        dut.GetIDUStallRAWALUCount(),
+        dut.GetEXUIdleNoInputCount(),
+        dut.GetTrapCount());
     }
 #endif
     dut.final();

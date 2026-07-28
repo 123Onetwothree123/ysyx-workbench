@@ -41,6 +41,11 @@ public:
         std::size_t lsu_stall_write_req_cycles,
         std::size_t lsu_stall_write_b_cycles,
         std::size_t icache_hit,
-        std::size_t icache_miss);
+        std::size_t icache_miss,
+        std::size_t idu_stall_raw,
+        std::size_t idu_stall_raw_loaduse,
+        std::size_t idu_stall_raw_alu,
+        std::size_t exu_idle_noinput,
+        std::size_t trap_count);
 #endif
 };

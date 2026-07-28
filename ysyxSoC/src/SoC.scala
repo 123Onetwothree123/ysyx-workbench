@@ -197,6 +197,16 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     perf_icache_hit := cpu.module.perf_icache_hit
     val perf_icache_miss = IO(Output(Bool()))
     perf_icache_miss := cpu.module.perf_icache_miss
+    val perf_idu_stall_raw = IO(Output(Bool()))
+    perf_idu_stall_raw := cpu.module.perf_idu_stall_raw
+    val perf_idu_stall_raw_loaduse = IO(Output(Bool()))
+    perf_idu_stall_raw_loaduse := cpu.module.perf_idu_stall_raw_loaduse
+    val perf_idu_stall_raw_alu = IO(Output(Bool()))
+    perf_idu_stall_raw_alu := cpu.module.perf_idu_stall_raw_alu
+    val perf_exu_idle_noinput = IO(Output(Bool()))
+    perf_exu_idle_noinput := cpu.module.perf_exu_idle_noinput
+    val perf_trap = IO(Output(Bool()))
+    perf_trap := cpu.module.perf_trap
 
     if (Config.hasChipLink) {
       // connect chiplink slave interface to crossbar
@@ -402,5 +412,15 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     perf_icache_hit := masic.perf_icache_hit
     val perf_icache_miss = IO(Output(Bool()))
     perf_icache_miss := masic.perf_icache_miss
+    val perf_idu_stall_raw = IO(Output(Bool()))
+    perf_idu_stall_raw := masic.perf_idu_stall_raw
+    val perf_idu_stall_raw_loaduse = IO(Output(Bool()))
+    perf_idu_stall_raw_loaduse := masic.perf_idu_stall_raw_loaduse
+    val perf_idu_stall_raw_alu = IO(Output(Bool()))
+    perf_idu_stall_raw_alu := masic.perf_idu_stall_raw_alu
+    val perf_exu_idle_noinput = IO(Output(Bool()))
+    perf_exu_idle_noinput := masic.perf_exu_idle_noinput
+    val perf_trap = IO(Output(Bool()))
+    perf_trap := masic.perf_trap
   }
 }

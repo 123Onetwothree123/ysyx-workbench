@@ -292,6 +292,26 @@ void DUT::step()
     {
         ++icache_miss_count;
     }
+    if (dut->perf_idu_stall_raw)
+    {
+        ++idu_stall_raw_count;
+    }
+    if (dut->perf_idu_stall_raw_loaduse)
+    {
+        ++idu_stall_raw_loaduse_count;
+    }
+    if (dut->perf_idu_stall_raw_alu)
+    {
+        ++idu_stall_raw_alu_count;
+    }
+    if (dut->perf_exu_idle_noinput)
+    {
+        ++exu_idle_noinput_count;
+    }
+    if (dut->perf_trap)
+    {
+        ++trap_count;
+    }
 #endif
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
@@ -515,4 +535,24 @@ std::size_t DUT::GetICacheHitCount() const
 std::size_t DUT::GetICacheMissCount() const
 {
     return icache_miss_count;
+}
+std::size_t DUT::GetIDUStallRAWCount() const
+{
+    return idu_stall_raw_count;
+}
+std::size_t DUT::GetIDUStallRAWLoadUseCount() const
+{
+    return idu_stall_raw_loaduse_count;
+}
+std::size_t DUT::GetIDUStallRAWALUCount() const
+{
+    return idu_stall_raw_alu_count;
+}
+std::size_t DUT::GetEXUIdleNoInputCount() const
+{
+    return exu_idle_noinput_count;
+}
+std::size_t DUT::GetTrapCount() const
+{
+    return trap_count;
 }
