@@ -117,6 +117,9 @@ class ysyx_26030103(
   idu.io.ex_valid := exu.io.HazardValid
   idu.io.ex_rd := exu.io.HazardRd
   idu.io.ex_regWrite := exu.io.HazardRegWrite
+  idu.io.ex_fwd_ready := exu.io.FwdReady
+  idu.io.ex_fwd_data := exu.io.FwdData
+  idu.io.wb_fwd_data := wbu.io.wdata
   idu.io.wb_valid := wbu.io.in.valid
   idu.io.wb_rd := wbu.io.in.bits.Rd
   idu.io.wb_regWrite := wbu.io.in.bits.RegisterWrite

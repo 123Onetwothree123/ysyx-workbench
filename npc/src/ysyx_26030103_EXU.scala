@@ -55,6 +55,9 @@ class ysyx_26030103_EXU extends Module {
     val HazardMemOp = Output(Bool())
     val PerfIdleNoInput = Output(Bool())
     val PerfTrap = Output(Bool())
+    // 转发给IDU: EX阶段生产者的最终写回值,以及该值当前是否可用于转发
+    val FwdData = Output(UInt(32.W))
+    val FwdReady = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -223,4 +226,11 @@ class ysyx_26030103_EXU extends Module {
   io.HazardMemOp := ActiveInstruction.MemoryValid
   io.PerfIdleNoInput := FSM_Is_Idle && !io.in.valid
   io.PerfTrap := io.ExceptionTaken
+  // 转发给IDU的最终写回值(与WBU写GPR的值一致): ALU结果/snpc/CSR读出/load数据
+  io.FwdData := Mux(ActiveInstruction.WBSelect === 2.U, ActiveInstruction.snpc,
+    Mux(ActiveInstruction.WBSelect === 3.U, CSRUnit.io.CSR_rdata,
+      Mux(ActiveInstruction.WBSelect === 1.U, io.LSULoadDATA, ALUUnit.io.result)))
+  // 可转发条件: 会写rd,且非访存指令(当拍就绪)或load已完成(StatesDone时LoadDATA有效)
+  io.FwdReady := io.HazardValid && io.HazardRegWrite &&
+    (!ActiveInstruction.MemoryValid || state === StatesDone)
 }
