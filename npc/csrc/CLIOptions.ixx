@@ -9,9 +9,11 @@ public:
     [[nodiscard]] const std::optional<std::filesystem::path> &GetElfFile() const noexcept;
     [[nodiscard]] const std::optional<std::filesystem::path> &GetDiffFile() const noexcept;
     [[nodiscard]] const std::optional<std::filesystem::path> &GetResultDir() const noexcept;
+    [[nodiscard]] bool GetVGACheck() const noexcept;
 private:
     std::optional<std::filesystem::path> ImageFile{};
     std::optional<std::filesystem::path> ElfFile{};
     std::optional<std::filesystem::path> DiffFile{};
     std::optional<std::filesystem::path> ResultDir{};
+    bool VGACheckEnabled{false};
 };

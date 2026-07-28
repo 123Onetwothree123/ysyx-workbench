@@ -55,10 +55,10 @@ SECTIONS {
      _bss_end = .;
    } > sdram
    /*他妈的几百年没更新过吗？C和C++都能做好，为什么这个做不好空格问题，一定要写空格吗？没有格式化文档，我还得自己手改*/
-     /*堆从.bss之后开始，到栈底结束*/
+     /*堆从.bss之后开始，到栈底结束;栈区在SDRAM顶部预留1MB,分配器不得染指*/
    _heap_start = ALIGN(0x10);
-   _heap_end = _stack_pointer;
-    _stack_top = _heap_end;
+   _heap_end = _stack_pointer - 0x100000;
+    _stack_top = _stack_pointer;
      /*初始栈指针放在SDRAM顶部，栈向低地址增长*/
      _stack_pointer = ORIGIN(sdram) + LENGTH(sdram) - 0x800;
    end = .;

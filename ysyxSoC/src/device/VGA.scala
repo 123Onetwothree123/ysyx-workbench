@@ -37,7 +37,7 @@ class vgaChisel extends Module {
   val VFront = 2; val VActive = 35; val VBack = 515; val VTotal = 525
   val XCnt = RegInit(1.U(10.W))
   val YCnt = RegInit(1.U(10.W))
-  val FrameBuffer = Mem(640 * 480, UInt(32.W))
+  val FrameBuffer = Mem(640 * 480, Vec(4, UInt(8.W)))
   when(reset.asBool) {
     XCnt := 1.U
     YCnt := 1.U
@@ -59,13 +59,17 @@ class vgaChisel extends Module {
   io.vga.hsync := XCnt > HFront.U
   io.vga.vsync := YCnt > VFront.U
   io.vga.valid := Valid
-  io.vga.r := Mux(Valid, PixData(23, 16), 0.U)
-  io.vga.g := Mux(Valid, PixData(15, 8), 0.U)
-  io.vga.b := Mux(Valid, PixData(7, 0), 0.U)
-  //拿来APB写帧缓冲的
+  io.vga.r := Mux(Valid, PixData(2), 0.U)
+  io.vga.g := Mux(Valid, PixData(1), 0.U)
+  io.vga.b := Mux(Valid, PixData(0), 0.U)
+  //拿来APB写帧缓冲的,按pstrb字节使能写,支持sb/sh/sl
   val WriteAddr = (apb.paddr - "h21000000".U)(20, 2)
   when(apb.psel && apb.penable && apb.pwrite) {
-    FrameBuffer(WriteAddr) := apb.pwdata
+    FrameBuffer.write(
+      WriteAddr,
+      VecInit(Seq(apb.pwdata(7, 0), apb.pwdata(15, 8), apb.pwdata(23, 16), apb.pwdata(31, 24))),
+      apb.pstrb.asBools
+    )
   }
   apb.prdata := 0.U
   apb.pready := true.B

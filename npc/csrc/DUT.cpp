@@ -161,6 +161,61 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
+#ifndef VRISCV32E_NPC
+    if (vga_check)
+    {
+        const bool hs{dut->externalPins_vga_hsync};
+        const bool vs{dut->externalPins_vga_vsync};
+        const bool vv{dut->externalPins_vga_valid};
+        if (hs && !vga_prev_hsync)
+        {
+            const auto period{cycle - vga_last_hsync_cycle};
+            if (vga_line_period_count > 0)
+            {
+                vga_line_period_sum += period;
+                if (period != 800) ++vga_line_period_bad;
+            }
+            ++vga_line_period_count;
+            vga_last_hsync_cycle = cycle;
+            vga_x = 97;
+            ++vga_y;
+        }
+        else if (vga_x >= 0)
+        {
+            ++vga_x;
+            if (vga_x > 800) vga_x = 1;
+        }
+        if (vs && !vga_prev_vsync)
+        {
+            const auto period{cycle - vga_last_vsync_cycle};
+            if (vga_frames > 0 && period != 420000) ++vga_frame_period_bad;
+            ++vga_frames;
+            vga_last_vsync_cycle = cycle;
+            vga_last_frame_valid_pixels = vga_valid_pixels;
+            vga_valid_pixels = 0;
+            vga_y = 3;
+        }
+        if (vv)
+        {
+            ++vga_valid_pixels;
+            const int px{vga_x - 145};
+            const int py{vga_y - 36};
+            if (px < 0 || px >= 640 || py < 0 || py >= 480)
+            {
+                ++vga_pos_errors;
+            }
+            else
+            {
+                const auto idx{(static_cast<std::size_t>(py) * 640 + static_cast<std::size_t>(px)) * 3};
+                vga_frame[idx + 0] = dut->externalPins_vga_r;
+                vga_frame[idx + 1] = dut->externalPins_vga_g;
+                vga_frame[idx + 2] = dut->externalPins_vga_b;
+            }
+        }
+        vga_prev_hsync = hs;
+        vga_prev_vsync = vs;
+    }
+#endif
 #ifdef CONFIG_PERF_STATS
     if (dut->debug_commit)
     {
@@ -292,6 +347,7 @@ void DUT::step()
     {
         ++icache_miss_count;
     }
+#ifndef VRISCV32E_NPC
     if (dut->perf_idu_stall_raw)
     {
         ++idu_stall_raw_count;
@@ -312,6 +368,7 @@ void DUT::step()
     {
         ++trap_count;
     }
+#endif
 #endif
 #ifdef CONFIG_ITRACE
     Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
@@ -555,4 +612,33 @@ std::size_t DUT::GetEXUIdleNoInputCount() const
 std::size_t DUT::GetTrapCount() const
 {
     return trap_count;
+}
+
+void DUT::EnableVGACheck()
+{
+    vga_check = true;
+    vga_frame.assign(640 * 480 * 3, 0);
+}
+void DUT::VGACheckReport()
+{
+    if (!vga_check) return;
+    std::println("VGA监视器结果:");
+    std::println("  完整帧数: {}", vga_frames);
+    if (vga_line_period_count > 1)
+    {
+        std::println("  行周期(期望800拍): 平均 {:.1f}, 异常行数 {}",
+            static_cast<double>(vga_line_period_sum) / static_cast<double>(vga_line_period_count - 1), vga_line_period_bad);
+    }
+    std::println("  帧周期异常次数(期望420000拍): {}", vga_frame_period_bad);
+    std::println("  最近一帧有效像素(期望307200): {}", vga_last_frame_valid_pixels);
+    std::println("  像素位置错误: {}", vga_pos_errors);
+    {
+        std::ofstream f{"vga_frame.ppm", std::ios::binary};
+        f << "P6\n640 480\n255\n";
+        f.write(reinterpret_cast<const char *>(vga_frame.data()), static_cast<std::streamsize>(vga_frame.size()));
+    }
+    std::println("  帧已导出: vga_frame.ppm");
+    const bool ok{vga_frames > 0 && vga_line_period_bad == 0 && vga_frame_period_bad == 0 &&
+        vga_last_frame_valid_pixels == 307200 && vga_pos_errors == 0};
+    std::println("  VGA时序检查: {}", ok ? "PASS" : "FAIL");
 }

@@ -14,6 +14,23 @@ export class DUT
 private:
     std::unique_ptr<TOP_MODULE> dut;
     std::size_t cycle{0};
+
+    bool vga_check{false};
+    bool vga_prev_hsync{true};
+    bool vga_prev_vsync{true};
+    std::size_t vga_last_hsync_cycle{0};
+    std::size_t vga_last_vsync_cycle{0};
+    std::size_t vga_line_period_sum{0};
+    std::size_t vga_line_period_count{0};
+    std::size_t vga_line_period_bad{0};
+    std::size_t vga_frame_period_bad{0};
+    int vga_x{-1};
+    int vga_y{0};
+    std::size_t vga_valid_pixels{0};
+    std::size_t vga_last_frame_valid_pixels{0};
+    std::size_t vga_pos_errors{0};
+    std::size_t vga_frames{0};
+    std::vector<std::uint8_t> vga_frame;
     std::size_t instructions{0};
     std::size_t instruction_fetch_count{0};
     std::size_t execution_complete_count{0};
@@ -58,6 +75,8 @@ public:
     TOP_MODULE *operator->();
     void eval();
     void final();
+    void EnableVGACheck();
+    void VGACheckReport();
     void step();
     void reset();
     std::size_t GetCycle() const;

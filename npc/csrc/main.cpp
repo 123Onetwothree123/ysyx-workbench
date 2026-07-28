@@ -53,12 +53,20 @@ int main(int argc, char const *argv[])
     }
 #endif
     dut.reset();
+    if (options->GetVGACheck())
+    {
+        dut.EnableVGACheck();
+    }
 #ifdef CONFIG_SDB
     SDB::MainLoop(dut);
 #else
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
+        if (options->GetVGACheck() && dut.GetCycle() >= 50000000)
+        {
+            NPCTrap::Stop();
+        }
 #ifdef CONFIG_NVBOARD
         nvboard_update();
 #endif
@@ -70,6 +78,7 @@ int main(int argc, char const *argv[])
         }
     }
 #endif
+    dut.VGACheckReport();
     dut.final();
 #ifdef CONFIG_NVBOARD
     nvboard_quit();

@@ -1,117 +1,44 @@
 package ysyx_26030103
 import chisel3._
 import chisel3.util._
-import _root_.ysyx_26030103.ysyx_26030103_Message.ysyx_26030103_IFUMessage
 
+// 取指流水化后的IFU: 退化为纯PC发生器
+// 每拍向icache发一个取指请求,被接受就PC+4;重定向/异常时停发一拍并改写PC
+// 指令的锁存、交付和冲刷全部由icache响应级+下游流水寄存器完成
 class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   val io = IO(new Bundle {
     val FetchAddr  = Output(UInt(32.W))
     val FetchValid = Output(Bool())
     val FetchReady = Input(Bool())
 
-    val RespData  = Input(UInt(32.W))
-    val RespValid = Input(Bool())
-    val RespReady = Output(Bool())
-    // icache在resp_valid有效期间给出的取指访问错误标志,与RespData同拍锁存
-    val RespFault = Input(Bool())
-
     val RedirectTarget  = Input(UInt(32.W))
     val Redirect        = Input(Bool())
     val ExceptionTaken  = Input(Bool())
     val ExceptionTarget = Input(UInt(32.W))
 
-    val out = Decoupled(new ysyx_26030103_IFUMessage)
-
-    val DebugPC           = Output(UInt(32.W))
-    val DebugInstructions = Output(UInt(32.W))
-    val AccessFault       = Output(Bool())
-    val AccessFaultResp   = Output(UInt(2.W))
-    val StallPipeline     = Output(Bool())
-    val StallICache       = Output(Bool())
-    val StallIdle         = Output(Bool())
-    val FlushFetch        = Input(Bool())
+    val DebugPC       = Output(UInt(32.W))
+    val StallPipeline = Output(Bool())
+    val StallICache   = Output(Bool())
+    val StallIdle     = Output(Bool())
   })
   val PCModule     = Module(new ysyx_26030103_PC(resetAddr))
   val NextPCModule = Module(new ysyx_26030103_NextPC)
   val snpc = PCModule.io.ysyx_26030103_PC + 4.U(32.W)
 
-  val states = Enum(3)
-  val StatesIdle       = states(0)
-  val StatesWaitICache = states(1)
-  val StatesHold       = states(2)
-  val state = RegInit(StatesIdle)
+  val redirect = io.Redirect || io.ExceptionTaken
+  io.FetchValid := !redirect
+  io.FetchAddr  := PCModule.io.ysyx_26030103_PC
 
-  val InstructionReg     = RegInit(0.U(32.W))
-  val PCReg              = RegInit(0.U(32.W))
-  val AccessFaultReg     = RegInit(false.B)
-  val AccessFaultRespReg = RegInit(0.U(2.W))
-  // 取指访问错误标志,与InstructionReg同拍锁存,随IFUMessage传给下游
-  val FetchFaultReg      = RegInit(false.B)
-
-  io.AccessFault     := AccessFaultReg
-  io.AccessFaultResp := AccessFaultRespReg
-
-  io.FetchValid := false.B
-  io.FetchAddr  := 0.U
-  io.RespReady  := false.B
-  io.out.valid  := false.B
-  io.out.bits.Instruction := InstructionReg
-  io.out.bits.pc          := PCReg
-  // 取指错(cause=1)随指令传递,EXU提交点才处理;数据本身是icache给的NOP,不会被使用
-  io.out.bits.ExceptionValid := FetchFaultReg
-  io.out.bits.ExceptionCause := 1.U(4.W)
-
-  switch(state) {
-    is(StatesIdle) {
-      io.RespReady := true.B
-      when(io.FlushFetch || io.Redirect || io.ExceptionTaken) {
-        state := StatesIdle
-      }.otherwise {
-      AccessFaultReg     := false.B
-      AccessFaultRespReg := 0.U
-      FetchFaultReg      := false.B
-      io.FetchValid := true.B
-      io.FetchAddr  := PCModule.io.ysyx_26030103_PC
-      PCReg         := PCModule.io.ysyx_26030103_PC
-      when(io.FetchReady) {
-        state := StatesWaitICache
-      }
-      }
-    }
-    is(StatesWaitICache) {
-      when(io.FlushFetch || io.Redirect || io.ExceptionTaken) {
-        state := StatesIdle
-      }.otherwise {
-      io.RespReady := true.B
-      when(io.RespValid && io.RespReady) {
-        InstructionReg := io.RespData
-        FetchFaultReg  := io.RespFault
-        state := StatesHold
-      }
-      }
-    }
-    is(StatesHold) {
-      when(io.FlushFetch || io.Redirect || io.ExceptionTaken) {
-        state := StatesIdle
-      }.otherwise {
-      io.out.valid := true.B
-      when(io.out.valid && io.out.ready) {
-        state := StatesIdle
-      }
-      }
-    }
-  }
   NextPCModule.io.SNPC             := snpc
   NextPCModule.io.Redirect         := io.Redirect
   NextPCModule.io.RedirectTarget   := io.RedirectTarget
   NextPCModule.io.ExceptionTaken   := io.ExceptionTaken
   NextPCModule.io.ExceptionTarget  := io.ExceptionTarget
   PCModule.io.ysyx_26030103_NextPC := NextPCModule.io.ysyx_26030103_NextPC
-  PCModule.io.PCEnable := (NextPCModule.io.PCEnable && io.out.fire) || io.Redirect || io.ExceptionTaken
+  PCModule.io.PCEnable := redirect || (io.FetchValid && io.FetchReady)
 
-  io.DebugPC           := PCModule.io.ysyx_26030103_PC
-  io.DebugInstructions := InstructionReg
-  io.StallPipeline     := state === StatesHold
-  io.StallICache       := state === StatesWaitICache
-  io.StallIdle         := state === StatesIdle
+  io.DebugPC       := PCModule.io.ysyx_26030103_PC
+  io.StallICache   := io.FetchValid && !io.FetchReady
+  io.StallIdle     := !io.FetchValid
+  io.StallPipeline := false.B // 下游反压的测点上移到icache响应侧,由顶层统计
 }

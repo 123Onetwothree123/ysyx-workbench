@@ -6,6 +6,7 @@ import chisel3.util._
 //能被解读成ysyx_26030103的ysyx_26030103的AXI模块，还得手动指定从最顶层的根目录去找
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 import _root_.ysyx_26030103.ysyx_26030103_GPR._
+import _root_.ysyx_26030103.ysyx_26030103_Message._
 
 class ysyx_26030103(
     resetAddr:      Long = 0x30000000L,
@@ -32,16 +33,22 @@ class ysyx_26030103(
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
   val pipe_flush = exu.io.FlushIF
-  ysyx_26030103_StageConnect(ifu.io.out, idu.io.in, pipe_flush)
+  // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
+  val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
+  ifuResp.valid := icache.io.resp_valid
+  ifuResp.bits.Instruction := icache.io.resp_data
+  ifuResp.bits.pc := icache.io.resp_addr
+  ifuResp.bits.ExceptionValid := icache.io.resp_fault
+  ifuResp.bits.ExceptionCause := 1.U(4.W)
+  icache.io.resp_ready := ifuResp.ready
+  ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
+  icache.io.kill := pipe_flush
   ysyx_26030103_StageConnect(idu.io.out, exu.io.in, exu.io.FlushIDEX)
   ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
   ifu.io.FetchReady      := icache.io.fetch_ready
-  ifu.io.RespData        := icache.io.resp_data
-  ifu.io.RespValid       := icache.io.resp_valid
-  icache.io.resp_ready   := ifu.io.RespReady
   arbiter.io.lsu <> lsu.io.DataBus
   arbiter.io.memory.AW <> xbar.io.in.AW
   arbiter.io.memory.W <> xbar.io.in.W
@@ -131,10 +138,7 @@ class ysyx_26030103(
   ifu.io.RedirectTarget := exu.io.RedirectTarget
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
-  ifu.io.FlushFetch := RegNext(exu.io.FenceIFlush, false.B)
   icache.io.flush := exu.io.FenceIFlush  // 仅 FenceI 冲 iCache，分支不冲
-  // 取指错误标志随指令传递给IFU,由流水线带到EXU提交点统一走mtvec(不再直接跳地址0)
-  ifu.io.RespFault := icache.io.access_fault
   exu.io.LSUAccessFault := lsu.io.AccessFault
   // 取指或访存返回错误的标志,仅保留给SoC测试台的debug输出用
   val AccessFaultOccurred = icache.io.access_fault || lsu.io.AccessFault
@@ -150,7 +154,7 @@ class ysyx_26030103(
   gpr.io.DebugRaddr := io.debug_gpr_raddr
   io.debug_gpr_rdata := gpr.io.DebugRdata
   io.debug_pc := ifu.io.DebugPC
-  io.debug_instructions := ifu.io.DebugInstructions
+  io.debug_instructions := idu.io.in.bits.Instruction
   // mtrace
   // 注意对齐: lsu.Complete拉高时, 访存指令还停在EXU的MemoryInstructionReg里,
   // 而exu.MemoryValid只在该指令进入EXU那一拍有效, 两者对不上.
@@ -178,7 +182,7 @@ class ysyx_26030103(
   io.perf_mem_op    := exu.io.PerfMemOp
   io.perf_csr_op    := exu.io.PerfCSROp
   io.perf_branch_op := exu.io.PerfBranchOp
-  io.perf_ifu_stall_pipeline := ifu.io.StallPipeline
+  io.perf_ifu_stall_pipeline := icache.io.resp_valid && !icache.io.resp_ready
   io.perf_ifu_stall_axi      := ifu.io.StallICache
   io.perf_ifu_stall_ar       := icache.io.perf_refill_req
   io.perf_ifu_stall_r        := icache.io.perf_refill_resp
