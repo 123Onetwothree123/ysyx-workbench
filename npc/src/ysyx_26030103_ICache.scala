@@ -137,7 +137,6 @@ class ysyx_26030103_ICache(
         ),
         fetch_addr_reg
       )
-      printf("[iCache-AR] addr=%x cacheable=%d\n", io.axi.AR.ARADDR, cacheable_reg)
       when(io.axi.AR.ARREADY) {
         state := state_refill_resp
       }
@@ -152,7 +151,6 @@ class ysyx_26030103_ICache(
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RREADY) {
         when(!discard) {
-        printf("[iCache-R] addr=%x rdata=%x rresp=%x\n", fetch_addr_reg, io.axi.R.RDATA, io.axi.R.RRESP)
         when(io.axi.R.RRESP =/= 0.U) {
           access_fault_reg := true.B
           access_fault_resp_reg := io.axi.R.RRESP

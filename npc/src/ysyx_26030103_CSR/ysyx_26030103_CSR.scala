@@ -24,6 +24,12 @@ class ysyx_26030103_CSR extends Module {
     val ExceptionTarget = Output(UInt(32.W)) // 跳转目标地址
     // 新加的，真正的处理功能
     val Interrupt = Input(Bool())
+    // EXU提交点送来的异常:IFU取指错(1)/IDU非法指令(2)/LSU访存错(5或7),与ecall/ebreak走同一条提交通路
+    val TrapValid = Input(Bool())
+    val TrapCause = Input(UInt(32.W))
+    // 中断提交标志(Enable且中断被接受),给EXU用来压掉被中断指令的副作用:
+    // mepc记的是这条指令自己的PC,mret后它会重新执行,因此它本次不得写GPR/CSR
+    val IrqCommit = Output(Bool())
   })
   // ysyx_26030103_mcycle=12'hB00，低32位
   // mcycleh=12'hB80，高32位
@@ -43,7 +49,6 @@ class ysyx_26030103_CSR extends Module {
     io.IsCsrrw || io.IsCsrrs // 忘记了，后面重看的，以防以后忘记，先标记一下，这是看现在是不是会读取ysyx_26030103_CSR旧数值的ysyx_26030103_CSR指令
   val csrrwWen = io.Enable && io.IsCsrrw
   val csrrsWen = io.Enable && io.IsCsrrs && io.rs1 =/= 0.U // 不能是0号寄存器
-  val CSRWen = csrrwWen || csrrsWen
   // csrrw直接写rs1，csrrs写旧值|rs1
   def CSRWriteData(old: UInt): UInt =
     Mux(io.IsCsrrw, io.Rs1Data, old | io.Rs1Data)
@@ -79,7 +84,7 @@ class ysyx_26030103_CSR extends Module {
   // 真正的ebreak按RISC-V breakpoint异常处理：写ysyx_26030103_mepc/ysyx_26030103_mcause，然后跳ysyx_26030103_mtvec
   val HasInterrupt =
     io.Interrupt && Mstatus_rdata(3) // ysyx_26030103_mstatus寄存器第3位是MIE，这个是处理器的中断使能，允许中断进来
-  val IsException = io.IsEcall || io.IsEbreak || HasInterrupt
+  val IsException = io.IsEcall || io.IsEbreak || HasInterrupt || io.TrapValid
   /*
   根据RISCV手册来看，31号bit如果是0那就是异常，而如果是1，那就是中断
   30号到0号，则是编号，3是异常，7是机器定时器中断（就是Machine Timer），11是ecall
@@ -87,6 +92,8 @@ class ysyx_26030103_CSR extends Module {
   val ExceptionCause = WireDefault(0.U(32.W))
   when(HasInterrupt) {
     ExceptionCause := "h80000007".U(32.W) // ysyx_26030103_mcause=7，bit31=1说明这是中断不是异常
+  }.elsewhen(io.TrapValid) {
+    ExceptionCause := io.TrapCause // EXU提交点送来的异常号:取指错1/非法指令2/load访存错5/store访存错7
   }.elsewhen(io.IsEbreak) {
     ExceptionCause := 3.U(32.W) // breakpoint
   }.otherwise { // 只剩ecall
@@ -94,6 +101,9 @@ class ysyx_26030103_CSR extends Module {
   }
   // 新加的这行代码，irq是Interrupt ReQuest，是中断请求的意思
   val HasIrqCommit = io.Enable && HasInterrupt
+  // 中断提交时被中断的指令要被压掉(mepc记的是它自己的PC,mret后重跑),因此它本次不得写CSR/GPR
+  val CSRWen = (csrrwWen || csrrsWen) && !HasInterrupt
+  io.IrqCommit := HasIrqCommit
   val ExceptionCommit = io.Enable && IsException
   // 以下这段代码是AI编写的
   /*

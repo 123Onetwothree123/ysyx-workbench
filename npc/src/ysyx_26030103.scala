@@ -1,21 +1,7 @@
 package ysyx_26030103
 import chisel3._
 import chisel3.util._
-import chisel3.util.experimental._
 
-class CommitProbe extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle {
-    val valid = Input(Bool())
-    val commit = Output(Bool())
-  })
-  setInline("CommitProbe.v",
-    """module CommitProbe(input valid, output reg commit);
-      |/* verilator lint_off LATCH */
-      |always @(*) if (valid) commit = 1;
-      |/* verilator lint_on LATCH */
-      |endmodule""".stripMargin)
-  override def desiredName = "CommitProbe"
-}
 //他妈的，我们伟大的scala插件和编译器设计专家应该要以死谢罪，是哪个天才想到的，如果直接写ysyx_26030103，因为我这个顶层模块类和包同名了
 //能被解读成ysyx_26030103的ysyx_26030103的AXI模块，还得手动指定从最顶层的根目录去找
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
@@ -45,16 +31,10 @@ class ysyx_26030103(
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  val pipe_flush = exu.io.Redirect
+  val pipe_flush = exu.io.FlushIF
   ysyx_26030103_StageConnect(ifu.io.out, idu.io.in, pipe_flush)
-  ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
+  ysyx_26030103_StageConnect(idu.io.out, exu.io.in, exu.io.FlushIDEX)
   ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
-  val cyc_debug = RegInit(0.U(32.W))
-  cyc_debug := cyc_debug + 1.U
-  when(cyc_debug < 5.U) {
-    printf("[TOP c=%d] ifu_ov=%d ifu_or=%d idu_ir=%d idu_ov=%d flush=%d\n",
-      cyc_debug, ifu.io.out.valid, ifu.io.out.ready, idu.io.in.ready, idu.io.out.valid, pipe_flush)
-  }
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
@@ -153,12 +133,11 @@ class ysyx_26030103(
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
   ifu.io.FlushFetch := RegNext(exu.io.FenceIFlush, false.B)
   icache.io.flush := exu.io.FenceIFlush  // 仅 FenceI 冲 iCache，分支不冲
-  // 取指或访存返回错误时，跳转到地址0
+  // 取指错误标志随指令传递给IFU,由流水线带到EXU提交点统一走mtvec(不再直接跳地址0)
+  ifu.io.RespFault := icache.io.access_fault
+  exu.io.LSUAccessFault := lsu.io.AccessFault
+  // 取指或访存返回错误的标志,仅保留给SoC测试台的debug输出用
   val AccessFaultOccurred = icache.io.access_fault || lsu.io.AccessFault
-  when(AccessFaultOccurred) {
-    ifu.io.ExceptionTaken := true.B
-    ifu.io.ExceptionTarget := 0.U
-  }
   gpr.io.WriteSELECT := wbu.io.WriteSELECT
   gpr.io.WriteEN := wbu.io.WriteEN
   gpr.io.wdata := wbu.io.wdata

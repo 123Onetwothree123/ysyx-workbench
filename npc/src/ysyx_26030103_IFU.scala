@@ -12,6 +12,8 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
     val RespData  = Input(UInt(32.W))
     val RespValid = Input(Bool())
     val RespReady = Output(Bool())
+    // icache在resp_valid有效期间给出的取指访问错误标志,与RespData同拍锁存
+    val RespFault = Input(Bool())
 
     val RedirectTarget  = Input(UInt(32.W))
     val Redirect        = Input(Bool())
@@ -43,6 +45,8 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   val PCReg              = RegInit(0.U(32.W))
   val AccessFaultReg     = RegInit(false.B)
   val AccessFaultRespReg = RegInit(0.U(2.W))
+  // 取指访问错误标志,与InstructionReg同拍锁存,随IFUMessage传给下游
+  val FetchFaultReg      = RegInit(false.B)
 
   io.AccessFault     := AccessFaultReg
   io.AccessFaultResp := AccessFaultRespReg
@@ -53,21 +57,19 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   io.out.valid  := false.B
   io.out.bits.Instruction := InstructionReg
   io.out.bits.pc          := PCReg
-  val cyc = RegInit(0.U(32.W))
-  cyc := cyc + 1.U
-  when(cyc < 10.U) {
-    printf("[IFU c=%d] state=%d pc=%x redirect=%d fvalid=%d fready=%d rvalid=%d\n",
-      cyc, state, PCModule.io.ysyx_26030103_PC, io.Redirect, io.FetchValid, io.FetchReady, io.RespValid)
-  }
+  // 取指错(cause=1)随指令传递,EXU提交点才处理;数据本身是icache给的NOP,不会被使用
+  io.out.bits.ExceptionValid := FetchFaultReg
+  io.out.bits.ExceptionCause := 1.U(4.W)
 
   switch(state) {
     is(StatesIdle) {
       io.RespReady := true.B
-      when(io.FlushFetch || io.Redirect) {
+      when(io.FlushFetch || io.Redirect || io.ExceptionTaken) {
         state := StatesIdle
       }.otherwise {
       AccessFaultReg     := false.B
       AccessFaultRespReg := 0.U
+      FetchFaultReg      := false.B
       io.FetchValid := true.B
       io.FetchAddr  := PCModule.io.ysyx_26030103_PC
       PCReg         := PCModule.io.ysyx_26030103_PC
@@ -77,18 +79,19 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
       }
     }
     is(StatesWaitICache) {
-      when(io.FlushFetch || io.Redirect) {
+      when(io.FlushFetch || io.Redirect || io.ExceptionTaken) {
         state := StatesIdle
       }.otherwise {
       io.RespReady := true.B
       when(io.RespValid && io.RespReady) {
         InstructionReg := io.RespData
+        FetchFaultReg  := io.RespFault
         state := StatesHold
       }
       }
     }
     is(StatesHold) {
-      when(io.FlushFetch || io.Redirect) {
+      when(io.FlushFetch || io.Redirect || io.ExceptionTaken) {
         state := StatesIdle
       }.otherwise {
       io.out.valid := true.B
@@ -111,10 +114,4 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   io.StallPipeline     := state === StatesHold
   io.StallICache       := state === StatesWaitICache
   io.StallIdle         := state === StatesIdle
-  when(state === StatesHold && io.out.fire) {
-    printf("[IFU] out pc=%x inst=%x\n", PCReg, InstructionReg)
-  }
-  when(io.Redirect) {
-    printf("[IFU] redirect target=%x\n", io.RedirectTarget)
-  }
 }

@@ -97,6 +97,12 @@ class ysyx_26030103_IDU extends Module {
   ALUControlDecoderModule.io.funct7 := funct7
   val ALUCtrl = ALUControlDecoderModule.io.ALUCtrl
   val ALUCDIllegal = ALUControlDecoderModule.io.Illegal
+  // ALUCDIllegal只覆盖了已知指令类别里funct3/funct7非法的情况,这里补上"不属于任何已知指令"的检测:
+  // System里只实现了csrrw/csrrs/ecall/ebreak/mret,MiscMem里fence当nop处理,fence.i单独处理
+  val IsFence = (opcode === OPCODE_MiscMem) && (funct3 === "b000".U(3.W))
+  val IsKnownInstruction = IsRType || IsIType || IsSType || IsBType || IsUType || IsJType ||
+    IsCsrrw || IsCsrrs || IsEcall || IsEbreak || IsMret || IsFenceI || IsFence
+  val IllegalInsn = ALUCDIllegal || !IsKnownInstruction
   val ALU_A = WireDefault(io.ReadDATA1) // 默认所有指令的第一个计算的数是寄存器值
   switch(opcode) {
     is(OPCODE_UpperImmediate_lui) {
@@ -115,10 +121,6 @@ class ysyx_26030103_IDU extends Module {
   val isRAW = Mux(io.pipeline_mode, ex_hazard || wb_hazard, false.B)
   io.in.ready := io.out.ready && !isRAW
   io.out.valid := io.in.valid && !isRAW
-  when(io.in.fire) {
-    printf("[IDU] pc=%x raw=%d ir=%x rs1=%d rs2=%d rd=%d ex_v=%d ex_rd=%d wb_v=%d wb_rd=%d\n",
-      pc, isRAW, Instruction, Rs1, Rs2, Rd, io.ex_valid, io.ex_rd, io.wb_valid, io.wb_rd)
-  }
   io.out.bits.pc := pc
   io.out.bits.snpc := snpc
   io.out.bits.ALUCtrl := ALUCtrl
@@ -151,4 +153,7 @@ class ysyx_26030103_IDU extends Module {
   io.out.bits.Rs1 := Rs1
   io.out.bits.Rs1Data := io.ReadDATA1
   io.out.bits.ALUCDIllegal := ALUCDIllegal
+  // 异常传递:IFU的取指错优先(此时指令本身是垃圾,IDU的译码结果不可信),否则报非法指令(cause=2)
+  io.out.bits.ExceptionValid := io.in.bits.ExceptionValid || IllegalInsn
+  io.out.bits.ExceptionCause := Mux(io.in.bits.ExceptionValid, io.in.bits.ExceptionCause, 2.U(4.W))
 }
