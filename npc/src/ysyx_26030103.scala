@@ -45,10 +45,16 @@ class ysyx_26030103(
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  val pipe_flush = exu.io.Redirect || exu.io.FenceIFlush
+  val pipe_flush = exu.io.Redirect
   ysyx_26030103_StageConnect(ifu.io.out, idu.io.in, pipe_flush)
   ysyx_26030103_StageConnect(idu.io.out, exu.io.in)
   ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
+  val cyc_debug = RegInit(0.U(32.W))
+  cyc_debug := cyc_debug + 1.U
+  when(cyc_debug < 5.U) {
+    printf("[TOP c=%d] ifu_ov=%d ifu_or=%d idu_ir=%d idu_ov=%d flush=%d\n",
+      cyc_debug, ifu.io.out.valid, ifu.io.out.ready, idu.io.in.ready, idu.io.out.valid, pipe_flush)
+  }
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
@@ -121,13 +127,13 @@ class ysyx_26030103(
   xbar.io.CLINT.B <> clint.io.B
   xbar.io.CLINT.AR <> clint.io.AR
   xbar.io.CLINT.R <> clint.io.R
-  // RAW 检测: 从 pipeline 寄存器提取下游状态传给 IDU（时序化避免组合环）
-  idu.io.ex_valid := RegNext(exu.io.in.valid, false.B)
-  idu.io.ex_rd := RegNext(exu.io.in.bits.Rd, 0.U)
-  idu.io.ex_regWrite := RegNext(exu.io.in.bits.RegisterWrite, false.B)
-  idu.io.wb_valid := RegNext(wbu.io.in.valid, false.B)
-  idu.io.wb_rd := RegNext(wbu.io.in.bits.Rd, 0.U)
-  idu.io.wb_regWrite := RegNext(wbu.io.in.bits.RegisterWrite, false.B)
+  idu.io.ex_valid := exu.io.HazardValid
+  idu.io.ex_rd := exu.io.HazardRd
+  idu.io.ex_regWrite := exu.io.HazardRegWrite
+  idu.io.wb_valid := wbu.io.in.valid
+  idu.io.wb_rd := wbu.io.in.bits.Rd
+  idu.io.wb_regWrite := wbu.io.in.bits.RegisterWrite
+  idu.io.pipeline_mode := true.B
   // 手动连线了
   idu.io.ReadDATA1 := gpr.io.ReadDATA1
   idu.io.ReadDATA2 := gpr.io.ReadDATA2
@@ -146,7 +152,7 @@ class ysyx_26030103(
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
   ifu.io.FlushFetch := RegNext(exu.io.FenceIFlush, false.B)
-  icache.io.flush := exu.io.FenceIFlush
+  icache.io.flush := exu.io.FenceIFlush  // 仅 FenceI 冲 iCache，分支不冲
   // 取指或访存返回错误时，跳转到地址0
   val AccessFaultOccurred = icache.io.access_fault || lsu.io.AccessFault
   when(AccessFaultOccurred) {
@@ -167,7 +173,10 @@ class ysyx_26030103(
   io.debug_pc := ifu.io.DebugPC
   io.debug_instructions := ifu.io.DebugInstructions
   // mtrace
-  io.debug_mtrace_valid := lsu.io.Complete && exu.io.MemoryValid
+  // 注意对齐: lsu.Complete拉高时, 访存指令还停在EXU的MemoryInstructionReg里,
+  // 而exu.MemoryValid只在该指令进入EXU那一拍有效, 两者对不上.
+  // PerfMemOp = ActiveInstruction.MemoryValid, 在整个LSU等待期间都有效, 才是对齐的.
+  io.debug_mtrace_valid := lsu.io.Complete && exu.io.PerfMemOp
   io.debug_mtrace_wen := exu.io.MemoryWrite
   io.debug_mtrace_addr := exu.io.ALUResult_ToLSU
   io.debug_mtrace_wdata := exu.io.StoreDATA

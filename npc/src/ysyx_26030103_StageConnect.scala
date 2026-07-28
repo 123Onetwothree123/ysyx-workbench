@@ -12,11 +12,16 @@ object ysyx_26030103_StageConnect {
     } else if (arch == "multi") {
       Right <> Left
     } else if (arch == "pipeline") {
-      Left.ready := Right.ready                     // prevOut.ready := thisIn.ready
-      Right.bits := RegEnable(Left.bits,            // thisIn.bits := RegEnable(prevOut.bits,
-                              Left.valid && Right.ready) //   prevOut.valid && thisIn.ready)
-      Right.valid := Mux(flush, false.B,                 // flush 优先清空
-                         RegEnable(Left.valid, Right.ready, false.B))
+      val BitsReg = Reg(chiselTypeOf(Left.bits))
+      val ValidReg = RegInit(false.B)
+      val ReadyForInput = !ValidReg || Right.ready || flush
+      Left.ready := ReadyForInput
+      Right.valid := Mux(flush, false.B, ValidReg)
+      Right.bits := BitsReg
+      when(ReadyForInput) {
+        ValidReg := Mux(flush, false.B, Left.valid)
+        when(!flush && Left.valid) { BitsReg := Left.bits }
+      }
     } else if (arch == "ooo") {
       Right <> Queue(Left, 16)
     } else {

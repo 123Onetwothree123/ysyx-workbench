@@ -33,6 +33,13 @@ class ysyx_26030103_EXU extends Module {
     val StallWaitLSU = Output(Bool())
 
     val FenceIFlush = Output(Bool())
+
+    // 给IDU做数据冒险检测用：访存指令被锁存进MemoryInstructionReg后，
+    // io.in.valid会撤销，流水线寄存器里看不到它了，但指令还在EX阶段，
+    // 必须让IDU在整个LSU等待期间都能看到这条指令，否则后面的依赖指令会拿旧值
+    val HazardValid = Output(Bool())
+    val HazardRd = Output(UInt(5.W))
+    val HazardRegWrite = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -69,6 +76,7 @@ class ysyx_26030103_EXU extends Module {
   BranchComparatorUnit.io.B := ActiveInstruction.BranchB
   BranchComparatorUnit.io.Funct3 := ActiveInstruction.BranchFunct3
   BranchComparatorUnit.io.IsBranch := ActiveInstruction.IsBranch
+  BranchComparatorUnit.io.IsBranch := ActiveInstruction.IsBranch
   // 先给fire一个初始值，我是真的没理解为什么要给这个名字
   io.in.ready := false.B
   io.out.valid := false.B
@@ -80,8 +88,11 @@ class ysyx_26030103_EXU extends Module {
   val JalTarget = ALUUnit.io.result
   // 和logisim一样，最低位换成常量0
   val JalrTarget = Cat(ALUUnit.io.result(31, 1), 0.U(1.W))
+  // fence.i也要产生"重定向": 目标是自己的snpc(即fence.i+4),
+  // 借此把流水线里比fence.i年轻的、可能过时的指令全部冲刷并重新取指(B5要求)
   val Redirect =
-    ActiveInstruction.IsJal || ActiveInstruction.IsJalr || BranchComparatorUnit.io.Taken
+    ActiveInstruction.IsJal || ActiveInstruction.IsJalr || BranchComparatorUnit.io.Taken ||
+    ActiveInstruction.IsFenceI
   // val InstructionExecutionDone=FSM_Is_Idle&&io.in.fire
   // 让AI后期二次审核的时候，AI说必须这么写，说我写的是错的，问原因，就说是为了安全，防止误触，因为ysyx_26030103_LSU要几个周期，而且访存指令
   // 本身不会产生跳转
@@ -97,10 +108,18 @@ class ysyx_26030103_EXU extends Module {
   io.TrapValid := InstructionExecutionDone && CSRUnit.io.IsEbreak
   io.TrapPC := io.in.bits.pc
   io.Redirect := InstructionExecutionDone && Redirect
+  when(FSM_Is_Idle && io.in.fire) {
+    printf("[EXU] pc=%x jal=%d jalr=%d taken=%d mem=%d redirect=%d trap=%d\n",
+      ActiveInstruction.pc, ActiveInstruction.IsJal, ActiveInstruction.IsJalr,
+      BranchComparatorUnit.io.Taken, ActiveInstruction.MemoryValid,
+      InstructionExecutionDone && Redirect, InstructionExecutionDone && CSRUnit.io.IsEbreak)
+  }
   when(ActiveInstruction.IsJalr) {
     io.RedirectTarget := JalrTarget
   }.elsewhen(ActiveInstruction.IsJal) {
     io.RedirectTarget := JalTarget
+  }.elsewhen(ActiveInstruction.IsFenceI) {
+    io.RedirectTarget := ActiveInstruction.snpc // fence.i: 从下一指令重新取指
   }.otherwise {
     io.RedirectTarget := BranchTarget
   }
@@ -113,7 +132,7 @@ class ysyx_26030103_EXU extends Module {
   io.LoadSigned := ActiveInstruction.LoadSigned
   switch(state) {
     is(StatesIdle) {
-      when(io.in.bits.MemoryValid) { // 内存被选中了
+      when(io.in.valid && io.in.bits.MemoryValid) { // 内存被选中了（valid 必须为真）
         io.in.ready := true.B
         when(io.in.fire) {
           state := StatesWait
@@ -151,4 +170,10 @@ class ysyx_26030103_EXU extends Module {
   io.StallWaitLSU := state === StatesWait
 
   io.FenceIFlush := InstructionExecutionDone && ActiveInstruction.IsFenceI
+
+  // StatesIdle时ActiveInstruction就是io.in.bits，非Idle时是MemoryInstructionReg，
+  // 因此load在LSU等待期间对IDU始终可见，IDU会一直stall到它进入WB阶段
+  io.HazardValid := io.in.valid || (state =/= StatesIdle)
+  io.HazardRd := ActiveInstruction.Rd
+  io.HazardRegWrite := ActiveInstruction.RegisterWrite
 }

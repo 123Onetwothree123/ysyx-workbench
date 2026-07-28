@@ -13,13 +13,13 @@ class ysyx_26030103_IDU extends Module {
     val ReadDATA2 = Input(UInt(32.W))
     val Read1SELECT = Output(UInt(5.W))
     val Read2SELECT = Output(UInt(5.W))
-    // RAW 检测输入: 来自流水线下游的状态
     val ex_valid = Input(Bool())
     val ex_rd = Input(UInt(5.W))
     val ex_regWrite = Input(Bool())
     val wb_valid = Input(Bool())
     val wb_rd = Input(UInt(5.W))
     val wb_regWrite = Input(Bool())
+    val pipeline_mode = Input(Bool())
   })
   val Instruction = io.in.bits.Instruction
   val pc = io.in.bits.pc
@@ -112,9 +112,13 @@ class ysyx_26030103_IDU extends Module {
     ((io.ex_rd === Rs1) || (needsRs2 && io.ex_rd === Rs2))
   val wb_hazard = io.wb_valid && io.wb_regWrite && io.wb_rd =/= 0.U &&
     ((io.wb_rd === Rs1) || (needsRs2 && io.wb_rd === Rs2))
-  val isRAW = ex_hazard || wb_hazard
+  val isRAW = Mux(io.pipeline_mode, ex_hazard || wb_hazard, false.B)
   io.in.ready := io.out.ready && !isRAW
   io.out.valid := io.in.valid && !isRAW
+  when(io.in.fire) {
+    printf("[IDU] pc=%x raw=%d ir=%x rs1=%d rs2=%d rd=%d ex_v=%d ex_rd=%d wb_v=%d wb_rd=%d\n",
+      pc, isRAW, Instruction, Rs1, Rs2, Rd, io.ex_valid, io.ex_rd, io.wb_valid, io.wb_rd)
+  }
   io.out.bits.pc := pc
   io.out.bits.snpc := snpc
   io.out.bits.ALUCtrl := ALUCtrl

@@ -56,6 +56,9 @@ class ysyx_26030103_ICache(
   val access_fault_resp_reg = RegInit(0.U(2.W))
   val refill_cnt = RegInit(0.U(WordCntBits.W))  // 当前正在填充第几个word
   val burst_mode = RegInit(false.B)             // 突发传输模式标志
+  // flush(fence.i/复位)不能丢弃已被从机接受的AXI事务: 置位后继续把剩余拍排空,
+  // 否则残留的R拍会被后续突发误收, 造成块内数据错位
+  val discard = RegInit(false.B)
   io.access_fault := access_fault_reg
   io.access_fault_resp := access_fault_resp_reg
   io.axi.AW.AWVALID := false.B
@@ -77,7 +80,7 @@ class ysyx_26030103_ICache(
   io.axi.AR.ARSIZE := 2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
-  io.axi.R.RREADY := false.B
+  io.axi.R.RREADY := true.B  // always drain AXI responses
   io.fetch_ready := false.B
   io.resp_valid := false.B
   io.resp_data := 0.U
@@ -104,6 +107,8 @@ class ysyx_26030103_ICache(
         cacheable_reg   := cacheable
         fetch_offset_reg := blockOffset
         refill_cnt      := 0.U
+        // 可缓存区域的块填充用突发传输(依赖SoC侧sdram_axi_pmem的突发修复)
+        burst_mode      := cacheable
         when(cacheable && hit) {
           state := state_resp
         }.otherwise {
@@ -115,7 +120,13 @@ class ysyx_26030103_ICache(
     is(state_refill_req) {
       when(io.flush) {
         valid.foreach(_ := false.B)
-        state := state_idle
+        // AR已被从机接受的事务不能放弃, 转入排空; 未被接受则直接放弃
+        when(io.axi.AR.ARVALID && io.axi.AR.ARREADY) {
+          discard := true.B
+          state := state_refill_resp
+        }.otherwise {
+          state := state_idle
+        }
       }.otherwise {
       io.axi.AR.ARVALID := true.B
       io.axi.AR.ARLEN := Mux(cacheable_reg && burst_mode, (WordsPerBlock - 1).U, 0.U)
@@ -126,21 +137,26 @@ class ysyx_26030103_ICache(
         ),
         fetch_addr_reg
       )
+      printf("[iCache-AR] addr=%x cacheable=%d\n", io.axi.AR.ARADDR, cacheable_reg)
       when(io.axi.AR.ARREADY) {
         state := state_refill_resp
       }
       }
     }
     is(state_refill_resp) {
-      when(io.flush) {
+      // flush不立即撤离: 置discard继续把在飞事务的剩余拍排空(数据丢弃)
+      when(io.flush && !discard) {
         valid.foreach(_ := false.B)
-        state := state_idle
-      }.otherwise {
+        discard := true.B
+      }
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RREADY) {
+        when(!discard) {
+        printf("[iCache-R] addr=%x rdata=%x rresp=%x\n", fetch_addr_reg, io.axi.R.RDATA, io.axi.R.RRESP)
         when(io.axi.R.RRESP =/= 0.U) {
           access_fault_reg := true.B
           access_fault_resp_reg := io.axi.R.RRESP
+          resp_data_reg := "h00000013".U  // NOP, 不让 IFU 拿到非法指令
         }.otherwise {
           resp_data_reg := io.axi.R.RDATA
           when(cacheable_reg) {
@@ -151,27 +167,41 @@ class ysyx_26030103_ICache(
             }
           }
         }
+        }
         when(cacheable_reg && burst_mode) {
           refill_cnt := refill_cnt + 1.U
-          when(io.axi.R.RLAST || !cacheable_reg) {
-            when(refill_cnt >= (WordsPerBlock - 1).U) {
+          when(io.axi.R.RLAST || refill_cnt === (WordsPerBlock - 1).U) {
+            // 突发结束(正常结束或被从机提前截断)
+            when(discard) {
+              discard := false.B
+              state := state_idle
+            }.elsewhen(refill_cnt === (WordsPerBlock - 1).U) {
               state := state_resp
             }.otherwise {
-              burst_mode := false.B
+              burst_mode := false.B  // 提前RLAST: 剩余的词改单拍补取
               state := state_refill_req
             }
           }
         }.elsewhen(cacheable_reg) {
-          when(refill_cnt === (WordsPerBlock - 1).U || !cacheable_reg) {
+          // 单拍填充: 每词一个独立AR; 排空时当前拍即结束, 剩余的词放弃(独立事务无残留)
+          when(discard) {
+            discard := false.B
+            state := state_idle
+          }.elsewhen(refill_cnt === (WordsPerBlock - 1).U) {
             state := state_resp
           }.otherwise {
             refill_cnt := refill_cnt + 1.U
             state := state_refill_req
           }
         }.otherwise {
-          state := state_resp
+          // 非缓存区: 一词一拍, 当前拍即结束
+          when(discard) {
+            discard := false.B
+            state := state_idle
+          }.otherwise {
+            state := state_resp
+          }
         }
-      }
       }
     }
     is(state_resp) {
@@ -180,8 +210,8 @@ class ysyx_26030103_ICache(
         state := state_idle
       }.otherwise {
       io.resp_valid := true.B
-      io.resp_data := Mux(cacheable_reg && !access_fault_reg,
-        data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
+      io.resp_data := Mux(access_fault_reg, "h00000013".U,
+        Mux(cacheable_reg, data(fetch_index_reg)(fetch_offset_reg), resp_data_reg))
       when(io.resp_ready) {
         state := state_idle
       }

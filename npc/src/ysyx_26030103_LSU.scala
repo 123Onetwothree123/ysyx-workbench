@@ -226,6 +226,8 @@ class ysyx_26030103_LSU extends Module {
       io.DataBus.W.WDATA := WriteData
       io.DataBus.W.WSTRB := WriteMask
       io.DataBus.W.WLAST := !WAlreadyDone
+      printf("[LSU-W] addr=%x data=%x mask=%b AWFire=%b WFire=%b\n",
+        io.ALUResult, WriteData, WriteMask, AWfire, Wfire)
       // 握手完毕了就记录写完了
       when(AWfire) {
         AWDone := true.B
@@ -241,6 +243,7 @@ class ysyx_26030103_LSU extends Module {
       // 因为是等，所以要用B总线，而不是W线
       io.DataBus.B.BREADY := true.B
       when(Bfire) {
+        printf("[LSU-W] BRESP=%x\n", io.DataBus.B.BRESP)
         when(io.DataBus.B.BRESP =/= 0.U) {
           AccessFaultReg := true.B
           AccessFaultRespReg := io.DataBus.B.BRESP

@@ -53,10 +53,17 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   io.out.valid  := false.B
   io.out.bits.Instruction := InstructionReg
   io.out.bits.pc          := PCReg
+  val cyc = RegInit(0.U(32.W))
+  cyc := cyc + 1.U
+  when(cyc < 10.U) {
+    printf("[IFU c=%d] state=%d pc=%x redirect=%d fvalid=%d fready=%d rvalid=%d\n",
+      cyc, state, PCModule.io.ysyx_26030103_PC, io.Redirect, io.FetchValid, io.FetchReady, io.RespValid)
+  }
 
   switch(state) {
     is(StatesIdle) {
-      when(io.FlushFetch) {
+      io.RespReady := true.B
+      when(io.FlushFetch || io.Redirect) {
         state := StatesIdle
       }.otherwise {
       AccessFaultReg     := false.B
@@ -70,7 +77,7 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
       }
     }
     is(StatesWaitICache) {
-      when(io.FlushFetch) {
+      when(io.FlushFetch || io.Redirect) {
         state := StatesIdle
       }.otherwise {
       io.RespReady := true.B
@@ -81,7 +88,7 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
       }
     }
     is(StatesHold) {
-      when(io.FlushFetch) {
+      when(io.FlushFetch || io.Redirect) {
         state := StatesIdle
       }.otherwise {
       io.out.valid := true.B
@@ -97,11 +104,17 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   NextPCModule.io.ExceptionTaken   := io.ExceptionTaken
   NextPCModule.io.ExceptionTarget  := io.ExceptionTarget
   PCModule.io.ysyx_26030103_NextPC := NextPCModule.io.ysyx_26030103_NextPC
-  PCModule.io.PCEnable := NextPCModule.io.PCEnable && io.out.fire
+  PCModule.io.PCEnable := (NextPCModule.io.PCEnable && io.out.fire) || io.Redirect || io.ExceptionTaken
 
   io.DebugPC           := PCModule.io.ysyx_26030103_PC
   io.DebugInstructions := InstructionReg
   io.StallPipeline     := state === StatesHold
   io.StallICache       := state === StatesWaitICache
   io.StallIdle         := state === StatesIdle
+  when(state === StatesHold && io.out.fire) {
+    printf("[IFU] out pc=%x inst=%x\n", PCReg, InstructionReg)
+  }
+  when(io.Redirect) {
+    printf("[IFU] redirect target=%x\n", io.RedirectTarget)
+  }
 }
