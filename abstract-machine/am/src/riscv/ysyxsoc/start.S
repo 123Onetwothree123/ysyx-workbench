@@ -23,6 +23,10 @@ _start:
   j 1b
 2:
 
+  # fence.i: 保证后续取指能看到上面store写入的SSBL代码(RISC-V手册要求)
+  # 工具链的rv32i不带zifencei扩展, 直接用机器码 0x0000100f
+  .word 0x0000100f
+
   # FSBL: jump to SSBL in on-chip SRAM
   lui t0, %hi(ssbl_entry)
   addi t0, t0, %lo(ssbl_entry)
@@ -83,6 +87,9 @@ ssbl_entry:
   addi t0, t0, 4
   j 1b
 2:
+
+  # fence.i: 保证后续取指能看到上面store写入PSRAM/SDRAM的程序代码
+  .word 0x0000100f
 
   # SSBL: absolute jump to _trm_init in PSRAM
   lui t0, %hi(_trm_init)
