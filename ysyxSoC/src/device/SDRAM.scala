@@ -58,143 +58,116 @@ class sdramChisel extends RawModule {
   val input = TriStateInBuf(io.dq(0), output, en)
 
   withClockAndReset(io.clk.asClock, false.B.asAsyncReset) {
-    val Command_NO_OPERATION = Wire(Bool())
-    val Command_ACTIVE = Wire(Bool())
-    val Command_READ = Wire(Bool())
-    val Command_WRITE = Wire(Bool())
-    val Command_BURST_TERMINATE = Wire(Bool())
-    val Command_PRECHAREG = Wire(Bool())
-    val Command_AUTO_REFRESH = Wire(Bool())
-    val Command_LOAD_MODE_REGISTER = Wire(Bool())
+    // 命令解码: SDRAM的命令总线每一拍都有效, 新命令(如流水式READ)可以打断正在进行的突发,
+    // 因此任何状态下都要解码命令, 不能只在外层idle状态解码
+    val Command_NOP = io.cs || (io.ras && io.cas && io.we)
+    val Command_ACTIVE = !io.cs && !io.ras && io.cas && io.we
+    val Command_READ = !io.cs && io.ras && !io.cas && io.we
+    val Command_WRITE = !io.cs && io.ras && !io.cas && !io.we
+    val Command_TERMINATE = !io.cs && io.ras && io.cas && !io.we
+    val Command_PRECHARGE = !io.cs && !io.ras && io.cas && !io.we
+    val Command_REFRESH = !io.cs && !io.ras && !io.cas && io.we
+    val Command_LOAD_MR = !io.cs && !io.ras && !io.cas && !io.we
 
-    Command_NO_OPERATION := io.cs || (io.ras && io.cas && io.we)
-    Command_ACTIVE := (~io.cs) && (~io.ras) && io.cas && io.we
-    Command_READ := (~io.cs) && io.ras && (~io.cas) && io.we
-    Command_WRITE := (~io.cs) && io.ras && (~io.cas) && (~io.we)
-    Command_BURST_TERMINATE := (~io.cs) && io.ras && io.cas && (~io.we)
-    Command_PRECHAREG := (~io.cs) && (~io.ras) && io.cas && (~io.we)
-    Command_AUTO_REFRESH := (~io.cs) && (~io.ras) && (~io.cas) && io.we
-    Command_LOAD_MODE_REGISTER := (~io.cs) && (~io.ras) && (~io.cas) && (~io.we)
-    val memory = Seq.fill(4)(Mem(8192, Vec(512, UInt(16.W))))
-    // 真实 SDRAM 有 4 个 bank，每个 bank 各自独立保持一个打开的行
-    val ROWBuffer = Reg(Vec(4, Vec(512, UInt(16.W)))) // 每个 bank 各自的行缓冲
-    val ActiveRow = Reg(Vec(4, UInt(13.W)))           // 每个 bank 各自的激活行
-    val ActiveRowNext = Reg(Vec(4, UInt(13.W)))       // ACTIVE 时暂存新行号，供 state_active 读 memory 用
+    // 存储阵列: 4个bank, 每bank 8192行x512列x16bit, 展平成一维(Cat(行,列)寻址).
+    // 写直接落存储阵列, 不需要行缓冲和precharge写回(官方允许PRECHARGE/REFRESH实现为NOP),
+    // 也避免了整行重构带来的仿真性能问题
+    val memory = Seq.fill(4)(Mem(8192 * 512, UInt(16.W)))
+    val ActiveRow = Reg(Vec(4, UInt(13.W))) // 每个bank各自打开的行
     val ModeRegister = RegInit(0x20.U(13.W))
     val MR_Burst_Length = MuxLookup(ModeRegister(2, 0), 1.U)(
       Seq(0.U -> 1.U, 1.U -> 2.U, 2.U -> 4.U, 3.U -> 8.U, 7.U -> 256.U)
     )
     val MR_CAS_Latency = ModeRegister(6, 4)
-    val MR_Burst_Type = ModeRegister(3)
-    val MR_Write_Burst_Mode = ModeRegister(9)
-    val state_idle :: state_active :: state_read :: state_read_data :: state_write :: state_write_data :: Nil =
-      Enum(6)
-    val state = RegInit(state_idle)
-    val CmdBank = Reg(UInt(2.W))  // 当前 ACTIVE/READ/WRITE 命令针对的 bank
-    val CmdCol = Reg(UInt(9.W))   // 当前列地址
-    val BurstCounter = Reg(UInt(8.W)) // SDRAM真的牛逼，居然所有读写操作都是属于突发情况
-    // 写直接落进存储阵列（不依赖 precharge 提交）
-    val WriteEnable = WireDefault(false.B)
-    val WriteBank = WireDefault(0.U(2.W))
-    val WriteColumn = WireDefault(0.U(9.W))
-    output := 0.U
-    en := false.B
-    switch(state) {
-      is(state_idle) {
-      when(Command_ACTIVE) {
-        ActiveRow(io.ba) := io.a
-        ActiveRowNext(io.ba) := io.a
-        CmdBank := io.ba
-        state := state_active
-      }
-        when(Command_LOAD_MODE_REGISTER) {
-          ModeRegister := io.a
-          state := state_idle
-        }
-        when(Command_READ) {
-          CmdBank := io.ba
-          CmdCol := io.a(8, 0)
-          BurstCounter := 0.U
-          state := state_read
-        }
-        when(Command_WRITE) {
-          CmdBank := io.ba
-          CmdCol := io.a(8, 0)
-          // beat0 就在 WRITE 命令这一拍的 dq 上
-          WriteEnable := true.B
-          WriteBank := io.ba
-          WriteColumn := io.a(8, 0)
-          BurstCounter := 1.U
-          when(MR_Write_Burst_Mode || MR_Burst_Length === 1.U) {
-            state := state_idle
-          }.otherwise {
-            state := state_write_data
-          }
-        }
-        when(Command_PRECHAREG) {
-          // 电气特性相关，仿真不必考虑
-          state := state_idle
-        }
-        when(Command_AUTO_REFRESH) {
-          state := state_idle
-        }
-      }
-      is(state_active) {
-        // 载入命令所指 bank 的行缓冲
-        when(CmdBank === 0.U) { ROWBuffer(0) := memory(0)(ActiveRowNext(0)) }
-        when(CmdBank === 1.U) { ROWBuffer(1) := memory(1)(ActiveRowNext(1)) }
-        when(CmdBank === 2.U) { ROWBuffer(2) := memory(2)(ActiveRowNext(2)) }
-        when(CmdBank === 3.U) { ROWBuffer(3) := memory(3)(ActiveRowNext(3)) }
-        state := state_idle
-      }
-      is(state_read) {
-        when(BurstCounter < (MR_CAS_Latency - 2.U)) {
-          BurstCounter := BurstCounter + 1.U
-        }.otherwise {
-          BurstCounter := 0.U
-          state := state_read_data
-        }
-      }
-      is(state_read_data) {
-        en := true.B
-        output := ROWBuffer(CmdBank)(CmdCol + BurstCounter)
-        when(BurstCounter === (MR_Burst_Length - 1.U)) {
-          state := state_idle
-        }.otherwise {
-          BurstCounter := BurstCounter + 1.U
-        }
-      }
-      is(state_write) {
-        state := state_write_data
-      }
-      is(state_write_data) {
-        WriteEnable := true.B
-        WriteBank := CmdBank
-        WriteColumn := CmdCol + BurstCounter
-        when(MR_Write_Burst_Mode || BurstCounter === MR_Burst_Length - 1.U) {
-          state := state_idle // single write只要一拍
-        }.otherwise {
-          BurstCounter := BurstCounter + 1.U
-        }
-      }
+
+    when(Command_ACTIVE) { ActiveRow(io.ba) := io.a }
+    when(Command_LOAD_MR) { ModeRegister := io.a }
+    // PRECHARGE/REFRESH与电气特性相关, 按官方要求实现为NOP
+
+    // ---- 读: 任何一拍都可接READ(读可以打断读), 经CAS延迟流水线后驱动DQ ----
+    val PipeValid = RegInit(VecInit(Seq.fill(3)(false.B)))
+    val PipeBank = Reg(Vec(3, UInt(2.W)))
+    val PipeCol = Reg(Vec(3, UInt(9.W)))
+    PipeValid(0) := Command_READ
+    PipeBank(0) := io.ba
+    PipeCol(0) := io.a(8, 0)
+    for (i <- 1 until 3) {
+      PipeValid(i) := PipeValid(i - 1)
+      PipeBank(i) := PipeBank(i - 1)
+      PipeCol(i) := PipeCol(i - 1)
     }
-    // 写落盘：同时更新对应 bank 的行缓冲(供开行读)和存储阵列(持久化)，按 dqm 做字节掩码
-    when(WriteEnable) {
-      val OldWord = ROWBuffer(WriteBank)(WriteColumn)
+    val pipeFire = MuxLookup(MR_CAS_Latency, PipeValid(1))(
+      Seq(1.U -> PipeValid(0), 2.U -> PipeValid(1), 3.U -> PipeValid(2))
+    )
+    val pipeBank = MuxLookup(MR_CAS_Latency, PipeBank(1))(
+      Seq(1.U -> PipeBank(0), 2.U -> PipeBank(1), 3.U -> PipeBank(2))
+    )
+    val pipeCol = MuxLookup(MR_CAS_Latency, PipeCol(1))(
+      Seq(1.U -> PipeCol(0), 2.U -> PipeCol(1), 3.U -> PipeCol(2))
+    )
+
+    // 突发输出引擎: pipeFire当拍出第一个数据, 之后按突发长度连续出
+    val RdLeft = RegInit(0.U(9.W))
+    val RdBank = Reg(UInt(2.W))
+    val RdCol = Reg(UInt(9.W))
+    val driving = RdLeft =/= 0.U
+    val outBank = Mux(pipeFire, pipeBank, RdBank)
+    val outCol = Mux(pipeFire, pipeCol, RdCol)
+    val rdDataVec =
+      (0 until 4).map(b => memory(b).read(Cat(ActiveRow(b), outCol)))
+    en := pipeFire || driving
+    output := rdDataVec(outBank)
+    when(pipeFire) {
+      RdLeft := MR_Burst_Length - 1.U
+      RdBank := pipeBank
+      RdCol := pipeCol + 1.U
+    }.elsewhen(driving) {
+      RdLeft := RdLeft - 1.U
+      RdCol := RdCol + 1.U
+    }
+    when(Command_TERMINATE) {
+      RdLeft := 0.U
+      PipeValid.foreach(_ := false.B)
+    }
+
+    // ---- 写: 命令与第一拍数据同拍出现, 后续拍连续, 可被新命令打断 ----
+    val WrLeft = RegInit(0.U(9.W))
+    val WrBank = Reg(UInt(2.W))
+    val WrCol = Reg(UInt(9.W))
+    val wrFire = WireDefault(false.B)
+    val wrBank = WireDefault(0.U(2.W))
+    val wrCol = WireDefault(0.U(9.W))
+    when(Command_WRITE) {
+      wrFire := true.B
+      wrBank := io.ba
+      wrCol := io.a(8, 0)
+      WrLeft := MR_Burst_Length - 1.U
+      WrBank := io.ba
+      WrCol := io.a(8, 0) + 1.U
+    }.elsewhen(WrLeft =/= 0.U) {
+      wrFire := true.B
+      wrBank := WrBank
+      wrCol := WrCol
+      WrLeft := WrLeft - 1.U
+      WrCol := WrCol + 1.U
+    }
+    when(Command_READ || Command_TERMINATE || Command_PRECHARGE) {
+      WrLeft := 0.U
+    }
+
+    // 写落盘: 按dqm做字节掩码(读改写), 直接写存储阵列
+    when(wrFire) {
+      val waddr = (0 until 4).map(b => Cat(ActiveRow(b), wrCol))
+      val oldVec = (0 until 4).map(b => memory(b).read(waddr(b)))
+      val OldWord = oldVec(wrBank)
       val NewWord = Cat(
         Mux(!io.dqm(1), input(15, 8), OldWord(15, 8)),
         Mux(!io.dqm(0), input(7, 0), OldWord(7, 0))
       )
-      ROWBuffer(WriteBank)(WriteColumn) := NewWord
-      // Build full row by taking ROWBuffer and replacing only WriteColumn with NewWord
-      val indices = (0 until 512).map(_.U)
-      val WriteRow = VecInit(indices.map { i =>
-        Mux(i === WriteColumn, NewWord, ROWBuffer(WriteBank)(i))
-      })
-      when(WriteBank === 0.U) { memory(0).write(ActiveRow(0), WriteRow) }
-      when(WriteBank === 1.U) { memory(1).write(ActiveRow(1), WriteRow) }
-      when(WriteBank === 2.U) { memory(2).write(ActiveRow(2), WriteRow) }
-      when(WriteBank === 3.U) { memory(3).write(ActiveRow(3), WriteRow) }
+      when(wrBank === 0.U) { memory(0).write(waddr(0), NewWord) }
+      when(wrBank === 1.U) { memory(1).write(waddr(1), NewWord) }
+      when(wrBank === 2.U) { memory(2).write(waddr(2), NewWord) }
+      when(wrBank === 3.U) { memory(3).write(waddr(3), NewWord) }
     }
   }
 }

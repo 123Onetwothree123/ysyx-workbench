@@ -41,8 +41,11 @@ class APBDelayerChisel(val CPU_MHZ: Int = sys.env.get("APB_CPU_FREQ_MHZ").map(_.
     val counter = RegInit(0.S(CounterWidth.W))
     val rdata = RegInit(0.U(32.W))
     val slverr = RegInit(false.B)
-    io.out.psel := io.in.psel
-    io.out.penable := io.in.penable
+    // 注意: 从设备视角, 事务在其pready返回时就已结束. 在state_delay(单纯拖延主机)期间
+    // 必须撤销发往从设备的psel/penable, 否则带"ST_IDLE看到wb_valid就重新触发"逻辑的
+    // 从设备(如EF_PSRAM_CTRL)会把同一事务重复执行多遍, 并在连续写时丢失事务
+    io.out.psel := io.in.psel && (state =/= state_delay)
+    io.out.penable := io.in.penable && (state =/= state_delay)
     io.out.pwrite := io.in.pwrite
     io.out.paddr := io.in.paddr
     io.out.pprot := io.in.pprot

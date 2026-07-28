@@ -54,7 +54,15 @@ class psramChisel extends RawModule {
   val wdata = withClockAndReset(sck_clock, ce_reset) {
     RegInit(0.U(32.W))
   }
-  val QPIMode = WireDefault(true.B)  // 控制器复位后自动初始化为QPI, 无需检测35h
+  // QPI模式标志: 上电处于基础SPI模式, 收到35h命令后切换到QPI模式(IS66WVS4M8ALL手册).
+  // 注意不能用ce_n复位它: 真实颗粒在片选撤销后仍保持QPI模式, 掉电才丢失.
+  // 也不能用非门控时钟域的复位: 每次事务结束ce_n都会拉起.
+  val setQPI = WireDefault(false.B)
+  val QPIMode = withClockAndReset(sck_clock, false.B.asAsyncReset) {
+    val q = RegInit(false.B)
+    when(setQPI) { q := true.B }
+    q
+  }
   val MemoryAddress = addr(21, 0)
 
   val memory = withClock(sck_clock) { Mem(1 << 22, UInt(8.W)) }
@@ -75,8 +83,8 @@ class psramChisel extends RawModule {
         val cmd_end = Mux(QPIMode, counter === 1.U, counter === 7.U)
         when(cmd_end) {
           counter := 0.U
-          when(!QPIMode && Cat(cmd(6,0), input(0)) === "h35".U) {
-            QPIMode := true.B
+          when(!QPIMode && Cat(cmd(6, 0), input(0)) === "h35".U) {
+            setQPI := true.B // 35h: 进入QPI模式, 之后命令也按4bit传输
             state := idle
           }.otherwise {
             state := rx_addr

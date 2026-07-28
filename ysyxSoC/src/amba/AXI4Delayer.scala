@@ -87,14 +87,17 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_
         n_rd := n_rd + 1.U
 
         io.out.r.ready := rd_fifo_not_full
-        when(io.out.r.valid && io.out.r.ready) {
+        // 注意: push(下游来拍)与pop(向CPU发拍)可能同拍发生,
+        // count必须用加减合并, 两条独立的+1/-1赋值会被后者覆盖而丢表项
+        val pushFire = io.out.r.valid && io.out.r.ready
+        val popFire = WireDefault(false.B)
+        when(pushFire) {
           rd_fifo_data(rd_fifo_wptr) := io.out.r.bits.data
           rd_fifo_rid(rd_fifo_wptr) := io.out.r.bits.id
           rd_fifo_rresp(rd_fifo_wptr) := io.out.r.bits.resp
           rd_fifo_rlast(rd_fifo_wptr) := io.out.r.bits.last
           rd_fifo_target(rd_fifo_wptr) := n_rd * RTS.U
           rd_fifo_wptr := rd_fifo_wptr + 1.U
-          rd_fifo_count := rd_fifo_count + 1.U
         }
 
         val do_present = rd_fifo_not_empty && ((n_rd << 6) >= rd_fifo_target(rd_fifo_rptr))
@@ -107,12 +110,13 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_
         }
 
         when(io.in.r.valid && io.in.r.ready) {
+          popFire := true.B
           rd_fifo_rptr := rd_fifo_rptr + 1.U
-          rd_fifo_count := rd_fifo_count - 1.U
           when(rd_fifo_rlast(rd_fifo_rptr)) {
             rd_state := rd_idle
           }
         }
+        rd_fifo_count := rd_fifo_count + pushFire.asUInt - popFire.asUInt
       }
     }
 
