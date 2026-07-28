@@ -19,11 +19,13 @@ import npc.trace.mtrace;
 import npc.trace.ftrace;
 import npc.difftest.difftest;
 import npc.ysyxSoC;
+// 注意: 这里故意泄漏堆上的trace对象. 此前用静态对象, 退出时其析构函数调用
+// Verilated::removeFlushCb, 在Verilator 5.050下会访问已损毁的回调链表而段错误
 #ifdef CONFIG_TRACE_VCD
-static VerilatedVcdC tfp;
+static VerilatedVcdC &tfp = *new VerilatedVcdC;
 #endif
 #ifdef CONFIG_TRACE_FST
-static VerilatedFstC tfp;
+static VerilatedFstC &tfp = *new VerilatedFstC;
 #endif
 #ifndef CONFIG_TRACE_FILE
 #define CONFIG_TRACE_FILE "waveform.vcd"
@@ -80,8 +82,11 @@ void DUT::reset()
     dut->clock = 0;
     dut->reset = 1;
     dut->debug_gpr_raddr = 0;
-    // 同步复位必须有时钟边沿才能生效，先拉高 reset 跑几个周期
-    for (int i = 0; i < 5; ++i)
+    // 同步复位必须有时钟边沿才能生效，先拉高 reset 跑几个周期。
+    // 注意: SoC 的 cpu_reset_chain 有 10 级移位寄存器(Verilator 随机初始化),
+    // 复位保持时间必须明显超过 10 拍, 否则链中的随机初始值会形成滞后的
+    // 伪复位脉冲, 在取指进行中复位 CPU, 并导致 AXI 突发拍序错乱
+    for (int i = 0; i < 20; ++i)
     {
         dut->clock = 0;
         dut->eval();
@@ -125,6 +130,26 @@ void DUT::reset()
 }
 void DUT::step()
 {
+    if (cycle < 5) {
+        std::println("[C++ DUT] step cycle={}", cycle);
+    }
+    // 调试保险丝: 每10万周期打印一次流水线卡住原因 + 硬周期上限, 防止卡死时空转刷爆磁盘
+    if (cycle % 100000 == 99 || (dut->trap_valid && cycle > 100)) {
+        std::println("[HB c={}] pc=0x{:08x} lsu_st(wreq={} wb={} rar={} rr={}) lsu_act(ld={} st={}) ifu_st(ar={} r={} pipe={})",
+            cycle, static_cast<uint32_t>(dut->debug_pc),
+            dut->perf_lsu_stall_write_req, dut->perf_lsu_stall_write_b,
+            dut->perf_lsu_stall_read_ar, dut->perf_lsu_stall_read_r,
+            dut->perf_lsu_load_active, dut->perf_lsu_store_active,
+            dut->perf_ifu_stall_ar, dut->perf_ifu_stall_r, dut->perf_ifu_stall_pipeline);
+    }
+    if (cycle > 2000000000) {
+        std::println("[DUT] 超过200万周期, 判定卡死, 强制结束. pc=0x{:08x}", static_cast<uint32_t>(dut->debug_pc));
+        std::abort();
+    }
+    if (dut->debug_mtrace_valid) {
+        std::println("[MTRACE] valid wen={} addr=0x{:08x} wdata=0x{:08x} rdata=0x{:08x}",
+            dut->debug_mtrace_wen, dut->debug_mtrace_addr, dut->debug_mtrace_wdata, dut->debug_mtrace_rdata);
+    }
     dut->clock = 0;
     dut->eval();
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
@@ -304,6 +329,10 @@ void DUT::step()
 #endif
     if (dut->debug_access_fault)
     {
+        // 限流: 连续fault时只打前几条, 防止日志撑爆磁盘(/tmp只有12G)
+        static std::size_t fault_count = 0;
+        if (fault_count++ < 20)
+        {
         auto resp{static_cast<unsigned>(dut->debug_access_fault_resp)};
         auto pc{static_cast<std::uint32_t>(dut->debug_pc)};
         if (resp == 2)
@@ -320,6 +349,7 @@ void DUT::step()
         {
             std::println(std::cerr, "Access Fault [RESP={}] at PC=0x{:08x}, cycle={}", resp, pc, cycle);
             std::println(std::cerr, "  这什么AXI响应码，我也不认识");
+        }
         }
     }
 }
