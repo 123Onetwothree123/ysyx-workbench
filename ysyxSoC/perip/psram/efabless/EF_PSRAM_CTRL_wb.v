@@ -100,7 +100,11 @@ module EF_PSRAM_CTRL_wb (
                     nstate = ST_IDLE;
 
             ST_WAIT :
-                if((mw_done & wb_we) | (mr_done & wb_re))
+                // 原条件 (mw_done & wb_we) | (mr_done & wb_re) 会锁死:
+                // APB delayer 在人为延迟期间保持 psel, 控制器会重复执行同一事务;
+                // 当 delayer 释放主机、psel 撤销后, done 才到来时 wb_we/wb_re 已为 0,
+                // ST_WAIT 永远无法退出. 引擎完成即应回到 IDLE.
+                if(mw_done | mr_done)
                     nstate = ST_IDLE;
                 else
                     nstate = ST_WAIT;

@@ -149,12 +149,17 @@ end
 else
 begin
     // Burst continuation
+    // 注意: AR/AW握手那一拍同时也是第一个命令(地址已发给RAM), 因此:
+    // 1) 接受AR/AW时就要把地址推进到下一拍(见下方AR/AW分支), 否则第一个
+    //    后续命令会重复第一个地址(实测ARLEN=3发出了col0,col0,col2,col4,col6);
+    // 2) req_len_q==1时表示正在发最后一个字, 必须停发, 否则会多发一拍越界数据
     if ((ram_wr_o != 4'b0 || ram_rd_o) && ram_accept_i)
     begin
-        if (req_len_q == 8'd0)
+        if (req_len_q <= 8'd1)
         begin
             req_rd_q   <= 1'b0;
             req_wr_q   <= 1'b0;
+            req_len_q  <= 8'd0;
         end
         else
         begin
@@ -166,26 +171,15 @@ begin
     // Write command accepted
     if (axi_awvalid_i && axi_awready_o)
     begin
-        // Data ready?
-        if (axi_wvalid_i && axi_wready_o)
-        begin
-            req_wr_q      <= 1'b1;
-            req_len_q     <= axi_awlen_i;
-            req_id_q      <= axi_awid_i;
-            req_axburst_q <= axi_awburst_i;
-            req_axlen_q   <= axi_awlen_i;
-            req_addr_q    <= axi_awaddr_i;
-        end
-        // Data not ready
-        else
-        begin
-            req_wr_q      <= 1'b1;
-            req_len_q     <= axi_awlen_i;
-            req_id_q      <= axi_awid_i;
-            req_axburst_q <= axi_awburst_i;
-            req_axlen_q   <= axi_awlen_i;
-            req_addr_q    <= axi_awaddr_i;
-        end
+        req_wr_q      <= 1'b1;
+        req_len_q     <= axi_awlen_i;
+        req_id_q      <= axi_awid_i;
+        req_axburst_q <= axi_awburst_i;
+        req_axlen_q   <= axi_awlen_i;
+        // 首拍命令已随AW握手发出, 突发时地址直接推进到第二拍
+        req_addr_q    <= (axi_awlen_i != 8'd0) ?
+                         calculate_addr_next(axi_awaddr_i, axi_awburst_i, axi_awlen_i) :
+                         axi_awaddr_i;
         req_prio_q    <= !req_prio_q;
     end
     // Read command accepted
@@ -193,10 +187,13 @@ begin
     begin
         req_rd_q      <= (axi_arlen_i != 0);
         req_len_q     <= axi_arlen_i;
-        req_addr_q    <= axi_araddr_i;
         req_id_q      <= axi_arid_i;
         req_axburst_q <= axi_arburst_i;
         req_axlen_q   <= axi_arlen_i;
+        // 首拍命令已随AR握手发出, 突发时地址直接推进到第二拍
+        req_addr_q    <= (axi_arlen_i != 8'd0) ?
+                         calculate_addr_next(axi_araddr_i, axi_arburst_i, axi_arlen_i) :
+                         axi_araddr_i;
         req_prio_q    <= !req_prio_q;
     end
 end
@@ -242,8 +239,9 @@ begin
     else if (axi_awvalid_i && axi_awready_o)
         req_in_r = {1'b0, (axi_awlen_i == 8'd0), axi_awid_i};
     // In burst
+    // req_len_q==1即最后一拍(配合continuation的停发条件), RLAST才能对齐
     else
-        req_in_r = {ram_rd_o, (req_len_q == 8'd0), req_id_q};
+        req_in_r = {ram_rd_o, (req_len_q <= 8'd1), req_id_q};
 end
 
 sdram_axi_pmem_fifo2
