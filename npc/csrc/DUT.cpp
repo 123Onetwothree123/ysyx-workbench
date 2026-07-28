@@ -130,26 +130,12 @@ void DUT::reset()
 }
 void DUT::step()
 {
-    if (cycle < 5) {
-        std::println("[C++ DUT] step cycle={}", cycle);
-    }
-    // 调试保险丝: 每10万周期打印一次流水线卡住原因 + 硬周期上限, 防止卡死时空转刷爆磁盘
-    if (cycle % 100000 == 99 || (dut->trap_valid && cycle > 100)) {
-        std::println("[HB c={}] pc=0x{:08x} lsu_st(wreq={} wb={} rar={} rr={}) lsu_act(ld={} st={}) ifu_st(ar={} r={} pipe={})",
-            cycle, static_cast<uint32_t>(dut->debug_pc),
-            dut->perf_lsu_stall_write_req, dut->perf_lsu_stall_write_b,
-            dut->perf_lsu_stall_read_ar, dut->perf_lsu_stall_read_r,
-            dut->perf_lsu_load_active, dut->perf_lsu_store_active,
-            dut->perf_ifu_stall_ar, dut->perf_ifu_stall_r, dut->perf_ifu_stall_pipeline);
-    }
-    if (cycle > 2000000000) {
-        std::println("[DUT] 超过200万周期, 判定卡死, 强制结束. pc=0x{:08x}", static_cast<uint32_t>(dut->debug_pc));
-        std::abort();
-    }
+#ifdef CONFIG_MTRACE
     if (dut->debug_mtrace_valid) {
         std::println("[MTRACE] valid wen={} addr=0x{:08x} wdata=0x{:08x} rdata=0x{:08x}",
             dut->debug_mtrace_wen, dut->debug_mtrace_addr, dut->debug_mtrace_wdata, dut->debug_mtrace_rdata);
     }
+#endif
     dut->clock = 0;
     dut->eval();
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
