@@ -32,7 +32,7 @@ NPC_VINCDIRS = $(BUILD_DIR) \
                 $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort)
 
 CSRC_DIR=./csrc
-CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -name "*.cpp" -print 2>/dev/null)
+CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -path "$(CSRC_DIR)/tools/branchsim" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
 remove_quote = $(patsubst "%",%,$(1))
 -include include/config/auto.conf
@@ -532,6 +532,7 @@ endif
 
 YOSYS_PP = $(BUILD_DIR)/preprocess_for_yosys
 ifeq ($(filter clang% icpx%,$(notdir $(CXX))),)
+# GCC: libstdc++ 的 bits/std.cc
 STD_MODULE_SRC = $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
 $(BUILD_DIR)/gcm.cache/std.gcm: $(STD_MODULE_SRC)
 	@mkdir -p $(@D)
@@ -541,14 +542,21 @@ $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/gcm.cache
 	@mkdir -p $(@D)
 	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -O2 -o $(notdir $@) $(abspath $<)
 else
+# Clang/icpx: libc++ → std.cppm, 否则 libstdc++ bits/std.cc
+ifeq ($(CONFIG_STDLIB_LIBCXX),y)
+STD_MODULE_SRC = /usr/share/libc++/v1/std.cppm
+NPC_STDLIB_FLAG = -stdlib=libc++
+else
 STD_MODULE_SRC = $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
+NPC_STDLIB_FLAG =
+endif
 $(BUILD_DIR)/std.pcm: $(STD_MODULE_SRC)
 	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) -std=c++23 -x c++-module --precompile $< -o std.pcm
+	cd $(BUILD_DIR) && $(CXX) -std=c++23 $(NPC_STDLIB_FLAG) -x c++-module --precompile $< -o std.pcm
 
 $(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
 	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) -std=c++23 -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
+	cd $(BUILD_DIR) && $(CXX) -std=c++23 $(NPC_STDLIB_FLAG) -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
 endif
 
 synth: verilog $(YOSYS_PP)

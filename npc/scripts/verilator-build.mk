@@ -13,7 +13,19 @@ else
 NPC_COMPILER := gcc
 endif
 
-STD_MODULE_SRC := $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
+# 拉 Kconfig 配置以选择标准库
+-include $(NPC_CSRC_DIR)/../include/config/auto.conf
+
+# 标准库模块源: clang+libc++ → libc++ 自带 std.cppm; 其余 → libstdc++ 的 bits/std.cc
+ifeq ($(NPC_COMPILER)-$(CONFIG_STDLIB_LIBCXX),clang-y)
+NPC_STD_MODULE_SRC := /usr/share/libc++/v1/std.cppm
+NPC_STDLIB_FLAG := -stdlib=libc++
+else
+NPC_STD_MODULE_SRC := $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
+NPC_STDLIB_FLAG :=
+endif
+
+STD_MODULE_SRC := $(NPC_STD_MODULE_SRC)
 
 STD_MODULE_OBJ := std_module.o
 
@@ -118,10 +130,10 @@ NPC_CLANG_MODULE_FLAGS := -fprebuilt-module-path=$(NPC_PCM_DIR) -Wno-reserved-mo
 
 $(NPC_PCM_DIR)/std.pcm: $(STD_MODULE_SRC)
 	@mkdir -p $(NPC_PCM_DIR)
-	$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) -x c++-module --precompile $< -o $@
+	$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) $(NPC_STDLIB_FLAG) -x c++-module --precompile $< -o $@
 
 $(STD_MODULE_OBJ): $(NPC_PCM_DIR)/std.pcm
-	@$(CXX) $(NPC_STD_FLAG) -c $< -o $@
+	@$(CXX) $(NPC_STD_FLAG) $(NPC_STDLIB_FLAG) -c $< -o $@
 
 # Compile import <xxx>; headers as header units
 NPC_HEADER_PCM := $(foreach h,$(NPC_IMPORT_HEADERS),$(NPC_PCM_DIR)/$(subst /,_,$(h)).pcm)

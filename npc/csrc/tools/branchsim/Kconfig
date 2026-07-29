@@ -1,0 +1,160 @@
+mainmenu "branchsim 配置"
+
+menu "分支预测器参数"
+
+choice
+    prompt "静态预测算法"
+    default BP_ALWAYSTAKEN
+config BP_ALWAYSTAKEN
+    bool "总是跳转 (always taken)"
+config BP_BTFN
+    bool "BTFN (backward taken, forward not-taken)"
+endchoice
+
+# 仅注入编译宏 BP_ALWAYSTAKEN / BP_BTFN (0 或 1), 不导出 Kconfig 变量
+
+config BTB_BITS
+    int "BTB 索引位数 (表项数 = 2^N)"
+    default 4
+
+endmenu
+
+menu "工具链"
+
+choice
+    prompt "编译器"
+    default CC_GPP
+config CC_GPP
+    bool "g++"
+config CC_CLANG
+    bool "clang++"
+endchoice
+
+config CC
+    string
+    default "g++" if CC_GPP
+    default "clang++" if CC_CLANG
+    default "g++"
+
+choice
+    prompt "C++ 标准库"
+    default STDLIB_LIBSTDCXX
+config STDLIB_LIBSTDCXX
+    bool "libstdc++（GNU）"
+config STDLIB_LIBCXX
+    bool "libc++（LLVM）"
+    depends on CC_CLANG
+endchoice
+
+config STDLIB_FLAG
+    string
+    default "-stdlib=libstdc++" if STDLIB_LIBSTDCXX
+    default "-stdlib=libc++" if STDLIB_LIBCXX
+    default "-stdlib=libstdc++"
+
+choice
+    prompt "链接器"
+    default LD_DEFAULT
+config LD_DEFAULT
+    bool "ld（GNU）"
+config LD_GOLD
+    bool "gold（GNU）"
+config LD_LLD
+    bool "lld（LLVM）"
+config LD_MOLD
+    bool "mold"
+endchoice
+
+config LD_FLAG
+    string
+    default "" if LD_DEFAULT
+    default "-fuse-ld=gold" if LD_GOLD
+    default "-fuse-ld=lld" if LD_LLD
+    default "-fuse-ld=mold" if LD_MOLD
+    default ""
+
+endmenu
+
+menu "优化"
+
+choice
+    prompt "优化级别"
+    default CC_O2
+config CC_O0
+    bool "O0"
+config CC_O1
+    bool "O1"
+config CC_O2
+    bool "O2"
+config CC_O3
+    bool "O3"
+config CC_OFAST
+    bool "Ofast"
+endchoice
+
+config CC_OPT
+    string
+    default "-O0" if CC_O0
+    default "-O1" if CC_O1
+    default "-O2" if CC_O2
+    default "-O3" if CC_O3
+    default "-Ofast" if CC_OFAST
+    default "-O2"
+
+config CC_LTO
+    bool "链接时优化 (-flto)"
+    default n
+
+choice
+    prompt "架构优化 -march"
+    default MARCH_OFF
+config MARCH_OFF
+    bool "不指定"
+config MARCH_NATIVE
+    bool "native（本机CPU）"
+config MARCH_CUSTOM
+    bool "手动指定"
+endchoice
+
+config MARCH_CUSTOM_VALUE
+    string "架构名称"
+    default "x86-64-v3"
+    depends on MARCH_CUSTOM
+
+endmenu
+
+menu "警告"
+
+config CC_WERROR
+    bool "警告视为错误 (-Werror)"
+    default n
+
+config CC_WALL
+    bool "额外警告 (-Wall -Wextra)"
+    default n
+
+config CC_WCONVERSION
+    bool "隐式类型转换警告 (-Wconversion)"
+    default n
+
+config CC_PEDANTIC
+    bool "严格合规 (-Wpedantic)"
+    default n
+
+endmenu
+
+menu "调试"
+
+config CC_DEBUG
+    bool "调试信息 (-g)"
+    default n
+
+config CC_ASAN
+    bool "地址错误检测 (-fsanitize=address)"
+    default n
+
+config CC_UBSAN
+    bool "未定义行为检测 (-fsanitize=undefined)"
+    default n
+
+endmenu
