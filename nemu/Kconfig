@@ -206,6 +206,15 @@ config ETRACE
     Open Error trace functional, need open trace
 
 
+#自己写的
+config BTRACE
+  depends on TRACE
+  bool "Enable Branch Trace"
+  default y
+  help
+    Open Branch trace functional to generate btrace for branchsim.
+    Output file: build/btrace.txt
+
 config DIFFTEST
   depends on TARGET_NATIVE_ELF
   bool "Enable differential testing"
