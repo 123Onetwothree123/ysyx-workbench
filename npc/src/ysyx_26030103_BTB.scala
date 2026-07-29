@@ -66,9 +66,9 @@ class ysyx_26030103_BTB(
       tag_match(w) := valid(upd_idx)(w) && tag(upd_idx)(w) === upd_tag
     }
     val any_match = tag_match.reduceTree(_ || _)
-    // prefix_full(w) = way 0..w-1 全部占用
+    // prefix_full(w) = way 0..w-1 全部占用(way0是第一个槽,前置恒为"已满")
     val prefix_full = Wire(Vec(BTBWays, Bool()))
-    prefix_full(0) := false.B
+    prefix_full(0) := true.B
     for (w <- 1 until BTBWays) {
       prefix_full(w) := prefix_full(w - 1) || valid(upd_idx)(w - 1)
     }

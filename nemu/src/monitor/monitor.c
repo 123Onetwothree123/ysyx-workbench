@@ -61,6 +61,8 @@ static char *img_file = NULL;
 // 自己加的
 static char *elf_file = NULL;
 static int difftest_port = 1234;
+// ysyxsoc镜像模式: 镜像加载到flash(0x30000000), 复位PC=flash基址
+static bool ysyxsoc_mode = false;
 
 static long load_img()
 {
@@ -79,8 +81,13 @@ static long load_img()
   Log("The image is %s, size = %ld", img_file, size);
 
   fseek(fp, 0, SEEK_SET);
-  int ret = fread(guest_to_host(RESET_VECTOR), size, 1, fp);
+  paddr_t load_addr = ysyxsoc_mode ? FLASH_BASE : RESET_VECTOR;
+  int ret = fread(guest_to_host(load_addr), size, 1, fp);
   assert(ret == 1);
+  if (ysyxsoc_mode)
+  {
+    cpu.pc = FLASH_BASE;
+  }
 
   fclose(fp);
   return size;
@@ -94,6 +101,7 @@ static int parse_args(int argc, char *argv[])
       {"diff", required_argument, NULL, 'd'},
       {"port", required_argument, NULL, 'p'},
       {"help", no_argument, NULL, 'h'},
+      {"ysyxsoc", no_argument, NULL, 'y'},
       // 自己加的
       {"elf", required_argument, NULL, 'e'},
       {0, 0, NULL, 0},
@@ -105,6 +113,9 @@ static int parse_args(int argc, char *argv[])
     {
     case 'b':
       sdb_set_batch_mode();
+      break;
+    case 'y':
+      ysyxsoc_mode = true;
       break;
     case 'p':
       sscanf(optarg, "%d", &difftest_port);

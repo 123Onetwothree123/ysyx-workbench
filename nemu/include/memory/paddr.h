@@ -52,6 +52,13 @@ static inline bool in_pmem_range(paddr_t addr, size_t len)
 // flash
 #define FLASH_BASE 0x30000000u
 #define FLASH_SIZE 0x10000000u
+// SDRAM(适配ysyxsoc镜像)
+#define SDRAM_BASE 0xa0000000u
+#define SDRAM_SIZE 0x2000000u
+static inline bool in_sdram(paddr_t addr)
+{
+  return addr - SDRAM_BASE < SDRAM_SIZE;
+}
 static inline bool in_flash(paddr_t addr)
 {
   return addr - FLASH_BASE < FLASH_SIZE;

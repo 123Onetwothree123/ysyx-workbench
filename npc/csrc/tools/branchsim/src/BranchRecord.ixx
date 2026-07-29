@@ -15,5 +15,5 @@ public:
     ~BranchRecord() = default;
     std::uint32_t GetPC() const;
     std::uint32_t GetTarget() const;
-    bool          GetTaken() const;
+    bool GetTaken() const;
 };
