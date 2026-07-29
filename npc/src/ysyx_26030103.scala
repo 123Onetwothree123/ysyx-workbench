@@ -202,7 +202,10 @@ class ysyx_26030103(
   io.perf_icache_hit  := icache.io.perf_hit
   io.perf_icache_miss := icache.io.perf_miss
   io.perf_execution_active   := exu.io.PerfExecutionActive
-  io.perf_exu_stall_lsu      := lsu.io.StallWaitLSU
+  // EXU被下游阻塞: 有指令但本拍未完成(EX/MEM寄存器被占,或副作用指令等MEM级排空)
+  io.perf_exu_stall_lsu      := exu.io.in.valid && !exu.io.out.fire
+  // EX/MEM等待槽占用: LSU级忙时有一条指令等在流水寄存器里(5级拆分买到的重叠)
+  io.perf_mem_waitslot       := lsu.io.Hazard2Valid
   io.perf_lsu_active         := lsu.io.Active
   io.perf_lsu_load_active    := lsu.io.Active && !lsu.io.IsStore
   io.perf_lsu_store_active   := lsu.io.Active && lsu.io.IsStore

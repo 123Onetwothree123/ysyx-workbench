@@ -66,6 +66,7 @@ private:
     std::size_t idu_stall_raw_alu_count{0};
     std::size_t exu_idle_noinput_count{0};
     std::size_t trap_count{0};
+    std::size_t mem_waitslot_count{0};
 
 public:
     DUT();
@@ -115,6 +116,7 @@ public:
     std::size_t GetIDUStallRAWALUCount() const;
     std::size_t GetEXUIdleNoInputCount() const;
     std::size_t GetTrapCount() const;
+    std::size_t GetMemWaitSlotCount() const;
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();

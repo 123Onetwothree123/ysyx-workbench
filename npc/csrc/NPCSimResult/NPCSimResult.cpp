@@ -33,7 +33,8 @@ void NPCSimResult::Save(
     std::size_t idu_stall_raw_loaduse,
     std::size_t idu_stall_raw_alu,
     std::size_t exu_idle_noinput,
-    std::size_t trap_count)
+    std::size_t trap_count,
+    std::size_t mem_waitslot)
 {
     double ipc{0.0};
     if (total_cycles > 0)
@@ -95,7 +96,7 @@ void NPCSimResult::Save(
         }
     }
     auto csv_row{std::format(
-        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         commit,
         msg,
         total_cycles,
@@ -132,7 +133,8 @@ void NPCSimResult::Save(
         idu_stall_raw_loaduse,
         idu_stall_raw_alu,
         exu_idle_noinput,
-        trap_count)};
+        trap_count,
+        mem_waitslot)};
 
     auto csv_file{
 #ifdef VRISCV32E_NPC
@@ -153,7 +155,7 @@ void NPCSimResult::Save(
                "LSU读延迟,LSU写延迟,"
                "LSU_AR等待,LSU_R等待,LSU_AW/W等待,LSU_B等待,"
                "ICache命中,ICache缺失,AMAT,"
-               "IDU_RAW阻塞,IDU_RAW_loaduse,IDU_RAW_可转发,EXU空转等输入,异常提交\n";
+               "IDU_RAW阻塞,IDU_RAW_loaduse,IDU_RAW_可转发,EXU空转等输入,异常提交,EX/MEM等待槽占用\n";
         out << csv_row << '\n';
     }
 

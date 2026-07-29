@@ -147,6 +147,8 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     debug_access_fault_resp := cpu.module.debug_access_fault_resp
     val debug_commit = IO(Output(Bool()))
     debug_commit := cpu.module.debug_commit
+    val perf_mem_waitslot = IO(Output(Bool()))
+    perf_mem_waitslot := cpu.module.perf_mem_waitslot
     val perf_ifu_fetch = IO(Output(Bool()))
     perf_ifu_fetch := cpu.module.perf_ifu_fetch
     val perf_exu_done = IO(Output(Bool()))
@@ -362,6 +364,8 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     // IPC
     val debug_commit = IO(Output(Bool()))
     debug_commit := masic.debug_commit
+    val perf_mem_waitslot = IO(Output(Bool()))
+    perf_mem_waitslot := masic.perf_mem_waitslot
     val perf_ifu_fetch = IO(Output(Bool()))
     perf_ifu_fetch := masic.perf_ifu_fetch
     val perf_exu_done = IO(Output(Bool()))

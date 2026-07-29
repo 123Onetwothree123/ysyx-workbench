@@ -46,6 +46,7 @@ public:
         std::size_t idu_stall_raw_loaduse,
         std::size_t idu_stall_raw_alu,
         std::size_t exu_idle_noinput,
-        std::size_t trap_count);
+        std::size_t trap_count,
+        std::size_t mem_waitslot_cycles);
 #endif
 };

@@ -126,6 +126,7 @@ void DUT::reset()
     lsu_stall_write_b_count = 0;
     icache_hit_count = 0;
     icache_miss_count = 0;
+    mem_waitslot_count = 0;
 #endif
 }
 void DUT::step()
@@ -280,6 +281,10 @@ void DUT::step()
     if (dut->perf_exu_stall_lsu)
     {
         ++exu_stall_lsu_count;
+    }
+    if (dut->perf_mem_waitslot)
+    {
+        ++mem_waitslot_count;
     }
     if (dut->perf_execution_active && dut->perf_alu_op)
     {
@@ -598,6 +603,10 @@ std::size_t DUT::GetEXUIdleNoInputCount() const
 std::size_t DUT::GetTrapCount() const
 {
     return trap_count;
+}
+std::size_t DUT::GetMemWaitSlotCount() const
+{
+    return mem_waitslot_count;
 }
 
 void DUT::EnableVGACheck()

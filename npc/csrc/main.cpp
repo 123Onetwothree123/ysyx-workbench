@@ -119,7 +119,8 @@ int main(int argc, char const *argv[])
         dut.GetIDUStallRAWLoadUseCount(),
         dut.GetIDUStallRAWALUCount(),
         dut.GetEXUIdleNoInputCount(),
-        dut.GetTrapCount());
+        dut.GetTrapCount(),
+        dut.GetMemWaitSlotCount());
 #endif
 #ifdef CONFIG_PERF_SAVE
     auto result_dir = options->GetResultDir();
@@ -157,7 +158,8 @@ int main(int argc, char const *argv[])
         dut.GetIDUStallRAWLoadUseCount(),
         dut.GetIDUStallRAWALUCount(),
         dut.GetEXUIdleNoInputCount(),
-        dut.GetTrapCount());
+        dut.GetTrapCount(),
+        dut.GetMemWaitSlotCount());
     }
 #endif
     dut.final();

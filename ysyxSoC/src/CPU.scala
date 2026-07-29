@@ -74,6 +74,7 @@ class ysyx_26030103 extends BlackBox {
     val io_perf_idu_stall_raw_alu     = Output(Bool())
     val io_perf_exu_idle_noinput      = Output(Bool())
     val io_perf_trap                  = Output(Bool())
+    val io_perf_mem_waitslot          = Output(Bool())
   })
 }
 
@@ -138,6 +139,8 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     val debug_commit = IO(Output(Bool()))
     debug_commit := cpu.io.io_debug_commit
     // 性能计数器
+    val perf_mem_waitslot = IO(Output(Bool()))
+    perf_mem_waitslot := cpu.io.io_perf_mem_waitslot
     val perf_ifu_fetch = IO(Output(Bool()))
     perf_ifu_fetch := cpu.io.io_perf_ifu_fetch
     val perf_exu_done = IO(Output(Bool()))

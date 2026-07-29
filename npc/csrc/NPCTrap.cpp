@@ -91,7 +91,8 @@ void NPCTrap::PrintPerformanceStatistics(
     std::size_t idu_stall_raw_loaduse,
     std::size_t idu_stall_raw_alu,
     std::size_t exu_idle_noinput,
-    std::size_t trap_count)
+    std::size_t trap_count,
+    std::size_t mem_waitslot_cycles)
 {
     std::println("性能计数器");
     std::println("IFU取到指令: {}", instruction_fetch);
@@ -139,8 +140,9 @@ void NPCTrap::PrintPerformanceStatistics(
     if (total_cycles > 0)
     {
         auto total{static_cast<double>(total_cycles)};
-        std::println("EXU等待LSU完成(流水线stall): {} 周期, 占比 {:.1f}%", exu_stall_lsu_cycles, 100.0 * exu_stall_lsu_cycles / total);
+        std::println("EXU被下游阻塞(有指令但本拍未完成): {} 周期, 占比 {:.1f}%", exu_stall_lsu_cycles, 100.0 * exu_stall_lsu_cycles / total);
         std::println("EXU空转无输入(上游供给不足): {} 周期, 占比 {:.1f}%", exu_idle_noinput, 100.0 * exu_idle_noinput / total);
+        std::println("EX/MEM等待槽占用(5级拆分买到的访存重叠): {} 周期, 占比 {:.1f}%", mem_waitslot_cycles, 100.0 * mem_waitslot_cycles / total);
     }
     std::println("");
     std::println("IDU数据冒险阻塞分析:");
