@@ -6,4 +6,7 @@ class ysyx_26030103_IFUMessage extends Bundle {
   // 取指时检测到的异常(目前只有指令访问错误,cause=1),随指令传递到EXU提交点统一处理
   val ExceptionValid = Bool()
   val ExceptionCause = UInt(4.W)
+  // 分支预测信息: IFU取指时由BTB+BTFN给出,随指令传到EXU做"预测错误才重定向"
+  val pred_taken = Bool()
+  val pred_target = UInt(32.W)
 }

@@ -204,4 +204,7 @@ class ysyx_26030103_IDU extends Module {
   // 异常传递:IFU的取指错优先(此时指令本身是垃圾,IDU的译码结果不可信),否则报非法指令(cause=2)
   io.out.bits.ExceptionValid := io.in.bits.ExceptionValid || IllegalInsn
   io.out.bits.ExceptionCause := Mux(io.in.bits.ExceptionValid, io.in.bits.ExceptionCause, 2.U(4.W))
+  // 分支预测信息透传
+  io.out.bits.pred_taken := io.in.bits.pred_taken
+  io.out.bits.pred_target := io.in.bits.pred_target
 }

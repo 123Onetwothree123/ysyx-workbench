@@ -16,6 +16,10 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
     val ExceptionTaken  = Input(Bool())
     val ExceptionTarget = Input(UInt(32.W))
 
+    // BTB查询结果(由顶层例化的BTB用当前FetchAddr查后回送)
+    val PredHit    = Input(Bool())
+    val PredTarget = Input(UInt(32.W))
+
     val DebugPC       = Output(UInt(32.W))
     val StallPipeline = Output(Bool())
     val StallICache   = Output(Bool())
@@ -34,6 +38,8 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   NextPCModule.io.RedirectTarget   := io.RedirectTarget
   NextPCModule.io.ExceptionTaken   := io.ExceptionTaken
   NextPCModule.io.ExceptionTarget  := io.ExceptionTarget
+  NextPCModule.io.PredHit          := io.PredHit && !redirect
+  NextPCModule.io.PredTarget       := io.PredTarget
   PCModule.io.ysyx_26030103_NextPC := NextPCModule.io.ysyx_26030103_NextPC
   PCModule.io.PCEnable := redirect || (io.FetchValid && io.FetchReady)
 

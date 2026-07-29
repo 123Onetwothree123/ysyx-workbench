@@ -44,6 +44,10 @@ class ysyx_26030103_EXU extends Module {
     // 转发给IDU: EX阶段生产者的最终写回值,以及该值当前是否可用于转发
     val FwdData = Output(UInt(32.W))
     val FwdReady = Output(Bool())
+    // BTB更新: 分支提交时把真实target写回BTB(为后文jal预留,jal只需复用此接口)
+    val BTBUpdateValid  = Output(Bool())
+    val BTBUpdatePC     = Output(UInt(32.W))
+    val BTBUpdateTarget = Output(UInt(32.W))
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -84,8 +88,16 @@ class ysyx_26030103_EXU extends Module {
   val JalrTarget = Cat(ALUUnit.io.result(31, 1), 0.U(1.W))
   // fence.i也要产生"重定向": 目标是自己的snpc(即fence.i+4),
   // 借此把流水线里比fence.i年轻的、可能过时的指令全部冲刷并重新取指
-  val Redirect =
-    (inst.IsJal || inst.IsJalr || BranchComparatorUnit.io.Taken || inst.IsFenceI) && !UpEx
+  // 实际下一PC: jalr最低位清零由JalrTarget给出;分支not-taken与fence.i都回snpc
+  val ActualNextPC = Mux(inst.IsJal, JalTarget,
+    Mux(inst.IsJalr, JalrTarget,
+      Mux(inst.IsBranch && BranchComparatorUnit.io.Taken, BranchTarget, inst.snpc)))
+  // 预测下一PC: IFU用BTB+BTFN给出,随指令传到此;未命中=顺序=snpc
+  val PredNextPC = Mux(inst.pred_taken, inst.pred_target, inst.snpc)
+  // 预测错误检查: 比较实际与预测的下一PC,不一致则冲刷并重定向到实际目标
+  // (jal/jalr: BTB未存表项时pred_taken=false,实际跳转=>必然判错重定向,与改造前行为一致)
+  val Mispredict = ActualNextPC =/= PredNextPC
+  val Redirect = (Mispredict || inst.IsFenceI) && !UpEx
   // CSR提交(csr写/ecall/ebreak/mret/异常/中断): 只在非访存指令fire时提交,
   // 访存指令一拍流过EXU前往MEMU,不允许中断提交和它们绑定(避免被压掉的load/store留下副作用)
   CSRUnit.io.Enable := (io.in.fire && !inst.MemoryValid) || io.MemTrapCommit
@@ -95,15 +107,7 @@ class ysyx_26030103_EXU extends Module {
   io.TrapValid := io.in.fire && CSRUnit.io.IsEbreak
   io.TrapPC := inst.pc
   io.Redirect := io.in.fire && Redirect
-  when(inst.IsJalr) {
-    io.RedirectTarget := JalrTarget
-  }.elsewhen(inst.IsJal) {
-    io.RedirectTarget := JalTarget
-  }.elsewhen(inst.IsFenceI) {
-    io.RedirectTarget := inst.snpc // fence.i: 从下一指令重新取指
-  }.otherwise {
-    io.RedirectTarget := BranchTarget
-  }
+  io.RedirectTarget := ActualNextPC
   // ecall/mret/上游异常提交,或MEMU经CSR后门提交的访存故障
   io.ExceptionTaken := CSRUnit.io.ExceptionTaken
   io.ExceptionTarget := CSRUnit.io.ExceptionTarget
@@ -148,4 +152,11 @@ class ysyx_26030103_EXU extends Module {
     Mux(inst.WBSelect === 3.U, CSRUnit.io.CSR_rdata, ALUUnit.io.result))
   // 可转发条件: 会写rd,且不是load(load要等MEMU完成)
   io.FwdReady := io.HazardValid && io.HazardRegWrite && !inst.MemoryValid
+
+  // BTB更新: 所有分支指令提交时都写回PC→target(不管是否taken),
+  // 供IFU查BTB命中后用BTFN(target<PC=后向则taken)做方向预测.
+  // 扩展点(暂不实现): jal复用此端口(target=JalTarget); jalr/ret需RAS,不能简单复用
+  io.BTBUpdateValid  := io.in.fire && inst.IsBranch && !UpEx
+  io.BTBUpdatePC     := inst.pc
+  io.BTBUpdateTarget := BranchTarget
 }
