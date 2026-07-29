@@ -24,6 +24,20 @@ class ysyx_26030103_IDU extends Module {
     val ex_fwd_ready = Input(Bool())
     val ex_fwd_data = Input(UInt(32.W))
     val wb_fwd_data = Input(UInt(32.W))
+    // MEM级(MEMU)的冒险检测与转发
+    val me_valid = Input(Bool())
+    val me_rd = Input(UInt(5.W))
+    val me_regWrite = Input(Bool())
+    val me_memop = Input(Bool())
+    val me_fwd_ready = Input(Bool())
+    val me_fwd_data = Input(UInt(32.W))
+    // MEM级等待槽(EX/MEM流水寄存器里等待的指令,比MEM级年轻)
+    val me2_valid = Input(Bool())
+    val me2_rd = Input(UInt(5.W))
+    val me2_regWrite = Input(Bool())
+    val me2_memop = Input(Bool())
+    val me2_fwd_ready = Input(Bool())
+    val me2_fwd_data = Input(UInt(32.W))
     val pipeline_mode = Input(Bool())
     val perf_stall_raw = Output(Bool())
     val perf_stall_raw_loaduse = Output(Bool())
@@ -114,13 +128,21 @@ class ysyx_26030103_IDU extends Module {
   val needsRs2 = IsRType || IsBType || IsSType
   // 源操作数真正被使用的判断(lui/auipc/jal的rs1字段是立即数,不算使用)
   val usesRs1 = IsRType || IsIType || IsSType || IsBType || IsCsrrw || IsCsrrs
-  // 转发命中(EXU优先于WBU: 多条同时命中时选最年轻生产者)
+  // 转发命中(EXU > MEM等待槽 > MEM级 > WBU: 多条同时命中时选最年轻生产者)
   val ex_fwd_rs1 = io.ex_fwd_ready && io.ex_rd =/= 0.U && io.ex_rd === Rs1
   val ex_fwd_rs2 = io.ex_fwd_ready && io.ex_rd =/= 0.U && needsRs2 && io.ex_rd === Rs2
+  val me2_fwd_rs1 = io.me2_fwd_ready && io.me2_rd =/= 0.U && io.me2_rd === Rs1
+  val me2_fwd_rs2 = io.me2_fwd_ready && io.me2_rd =/= 0.U && needsRs2 && io.me2_rd === Rs2
+  val me_fwd_rs1 = io.me_fwd_ready && io.me_rd =/= 0.U && io.me_rd === Rs1
+  val me_fwd_rs2 = io.me_fwd_ready && io.me_rd =/= 0.U && needsRs2 && io.me_rd === Rs2
   val wb_fwd_rs1 = io.wb_valid && io.wb_regWrite && io.wb_rd =/= 0.U && io.wb_rd === Rs1
   val wb_fwd_rs2 = io.wb_valid && io.wb_regWrite && io.wb_rd =/= 0.U && needsRs2 && io.wb_rd === Rs2
-  val src1 = Mux(ex_fwd_rs1, io.ex_fwd_data, Mux(wb_fwd_rs1, io.wb_fwd_data, io.ReadDATA1))
-  val src2 = Mux(ex_fwd_rs2, io.ex_fwd_data, Mux(wb_fwd_rs2, io.wb_fwd_data, io.ReadDATA2))
+  val src1 = Mux(ex_fwd_rs1, io.ex_fwd_data,
+    Mux(me2_fwd_rs1, io.me2_fwd_data,
+      Mux(me_fwd_rs1, io.me_fwd_data, Mux(wb_fwd_rs1, io.wb_fwd_data, io.ReadDATA1))))
+  val src2 = Mux(ex_fwd_rs2, io.ex_fwd_data,
+    Mux(me2_fwd_rs2, io.me2_fwd_data,
+      Mux(me_fwd_rs2, io.me_fwd_data, Mux(wb_fwd_rs2, io.wb_fwd_data, io.ReadDATA2))))
   val ALU_A = WireDefault(src1) // 默认所有指令的第一个计算的数是寄存器值
   switch(opcode) {
     is(OPCODE_UpperImmediate_lui) {
@@ -133,13 +155,17 @@ class ysyx_26030103_IDU extends Module {
   val ALU_B = Mux(opcode === OPCODE_Register, src2, Immediate)
   val ex_hazard = io.ex_valid && io.ex_regWrite && io.ex_rd =/= 0.U &&
     ((usesRs1 && io.ex_rd === Rs1) || (needsRs2 && io.ex_rd === Rs2))
-  val wb_hazard = io.wb_valid && io.wb_regWrite && io.wb_rd =/= 0.U &&
-    ((usesRs1 && io.wb_rd === Rs1) || (needsRs2 && io.wb_rd === Rs2))
-  // 只有EX阶段的生产者数据未就绪(load-use且load未完成)才需要阻塞,其余全部转发
-  val isRAW = Mux(io.pipeline_mode, ex_hazard && !io.ex_fwd_ready, false.B)
+  val me2_hazard = io.me2_valid && io.me2_regWrite && io.me2_rd =/= 0.U &&
+    ((usesRs1 && io.me2_rd === Rs1) || (needsRs2 && io.me2_rd === Rs2))
+  val me_hazard = io.me_valid && io.me_regWrite && io.me_rd =/= 0.U &&
+    ((usesRs1 && io.me_rd === Rs1) || (needsRs2 && io.me_rd === Rs2))
+  // 只有生产者的数据未就绪(load未完成)才需要阻塞,其余全部转发
+  val isRAW = Mux(io.pipeline_mode,
+    (ex_hazard && !io.ex_fwd_ready) || (me2_hazard && !io.me2_fwd_ready) ||
+      (me_hazard && !io.me_fwd_ready), false.B)
   io.in.ready := io.out.ready && !isRAW
   io.out.valid := io.in.valid && !isRAW
-  val raw_loaduse = ex_hazard && io.ex_memop
+  val raw_loaduse = (ex_hazard && io.ex_memop) || (me2_hazard && io.me2_memop) || (me_hazard && io.me_memop)
   io.perf_stall_raw := io.in.valid && isRAW
   io.perf_stall_raw_loaduse := io.in.valid && isRAW && raw_loaduse
   io.perf_stall_raw_alu := io.in.valid && isRAW && !raw_loaduse

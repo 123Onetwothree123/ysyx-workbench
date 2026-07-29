@@ -43,8 +43,9 @@ class ysyx_26030103(
   icache.io.resp_ready := ifuResp.ready
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
   icache.io.kill := pipe_flush
-  ysyx_26030103_StageConnect(idu.io.out, exu.io.in, exu.io.FlushIDEX)
-  ysyx_26030103_StageConnect(exu.io.out, wbu.io.in)
+  ysyx_26030103_StageConnect(idu.io.out, exu.io.in, lsu.io.FlushIDEX)
+  ysyx_26030103_StageConnect(exu.io.out, lsu.io.in, lsu.io.FlushEXMEM)
+  ysyx_26030103_StageConnect(lsu.io.out, wbu.io.in)
   icache.io.axi <> arbiter.io.ifu
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
@@ -129,20 +130,30 @@ class ysyx_26030103(
   idu.io.ReadDATA2 := gpr.io.ReadDATA2
   gpr.io.Read1SELECT := idu.io.Read1SELECT
   gpr.io.Read2SELECT := idu.io.Read2SELECT
-  exu.io.LSU_Complete := lsu.io.Complete
-  exu.io.LSULoadDATA := lsu.io.LoadDATA
-  lsu.io.MemoryValid := exu.io.MemoryValid
-  lsu.io.MemoryWrite := exu.io.MemoryWrite
-  lsu.io.WidthSelect := exu.io.WidthSelect
-  lsu.io.ALUResult := exu.io.ALUResult_ToLSU
-  lsu.io.StoreDATA := exu.io.StoreDATA
-  lsu.io.LoadSigned := exu.io.LoadSigned
+  // LSU(MEM级)反馈给EXU: 非空标志+访存故障提交的CSR后门
+  exu.io.MEMBusy := lsu.io.Busy
+  exu.io.MemTrapCommit := lsu.io.MemTrapCommit
+  exu.io.MemTrapCause := lsu.io.MemTrapCause
+  exu.io.MemTrapPC := lsu.io.MemTrapPC
+  // LSU(MEM级)给IDU做冒险检测和转发
+  idu.io.me_valid := lsu.io.HazardValid
+  idu.io.me_rd := lsu.io.HazardRd
+  idu.io.me_regWrite := lsu.io.HazardRegWrite
+  idu.io.me_memop := lsu.io.HazardMemOp
+  idu.io.me_fwd_ready := lsu.io.FwdReady
+  idu.io.me_fwd_data := lsu.io.FwdData
+  // LSU等待槽(EX/MEM流水寄存器)也给IDU做冒险检测和转发
+  idu.io.me2_valid := lsu.io.Hazard2Valid
+  idu.io.me2_rd := lsu.io.Hazard2Rd
+  idu.io.me2_regWrite := lsu.io.Hazard2RegWrite
+  idu.io.me2_memop := lsu.io.Hazard2MemOp
+  idu.io.me2_fwd_ready := lsu.io.Hazard2FwdReady
+  idu.io.me2_fwd_data := lsu.io.Hazard2FwdData
   ifu.io.Redirect := exu.io.Redirect
   ifu.io.RedirectTarget := exu.io.RedirectTarget
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
   icache.io.flush := exu.io.FenceIFlush  // 仅 FenceI 冲 iCache，分支不冲
-  exu.io.LSUAccessFault := lsu.io.AccessFault
   // 取指或访存返回错误的标志,仅保留给SoC测试台的debug输出用
   val AccessFaultOccurred = icache.io.access_fault || lsu.io.AccessFault
   gpr.io.WriteSELECT := wbu.io.WriteSELECT
@@ -158,16 +169,13 @@ class ysyx_26030103(
   io.debug_gpr_rdata := gpr.io.DebugRdata
   io.debug_pc := ifu.io.DebugPC
   io.debug_instructions := idu.io.in.bits.Instruction
-  // mtrace
-  // 注意对齐: lsu.Complete拉高时, 访存指令还停在EXU的MemoryInstructionReg里,
-  // 而exu.MemoryValid只在该指令进入EXU那一拍有效, 两者对不上.
-  // PerfMemOp = ActiveInstruction.MemoryValid, 在整个LSU等待期间都有效, 才是对齐的.
-  io.debug_mtrace_valid := lsu.io.Complete && exu.io.PerfMemOp
-  io.debug_mtrace_wen := exu.io.MemoryWrite
-  io.debug_mtrace_addr := exu.io.ALUResult_ToLSU
-  io.debug_mtrace_wdata := exu.io.StoreDATA
-  io.debug_mtrace_rdata := lsu.io.LoadDATA
-  io.debug_mtrace_width := exu.io.WidthSelect
+  // mtrace: 访存指令在LSU(MEM级)完成时采样
+  io.debug_mtrace_valid := lsu.io.Complete && lsu.io.HazardMemOp
+  io.debug_mtrace_wen := lsu.io.DebugMemoryWrite
+  io.debug_mtrace_addr := lsu.io.DebugALUResult
+  io.debug_mtrace_wdata := lsu.io.DebugStoreDATA
+  io.debug_mtrace_rdata := lsu.io.DebugLoadDATA
+  io.debug_mtrace_width := lsu.io.DebugWidthSelect
   // Access Fault
   io.debug_access_fault := AccessFaultOccurred
   io.debug_access_fault_resp := Mux(
@@ -179,8 +187,8 @@ class ysyx_26030103(
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done  := exu.io.out.fire
-  io.perf_lsu_load  := lsu.io.Complete && !exu.io.MemoryWrite
-  io.perf_lsu_store := lsu.io.Complete && exu.io.MemoryWrite
+  io.perf_lsu_load  := lsu.io.Complete && !lsu.io.DebugMemoryWrite
+  io.perf_lsu_store := lsu.io.Complete && lsu.io.DebugMemoryWrite
   io.perf_alu_op    := exu.io.PerfALUOp
   io.perf_mem_op    := exu.io.PerfMemOp
   io.perf_csr_op    := exu.io.PerfCSROp
@@ -194,7 +202,7 @@ class ysyx_26030103(
   io.perf_icache_hit  := icache.io.perf_hit
   io.perf_icache_miss := icache.io.perf_miss
   io.perf_execution_active   := exu.io.PerfExecutionActive
-  io.perf_exu_stall_lsu      := exu.io.StallWaitLSU
+  io.perf_exu_stall_lsu      := lsu.io.StallWaitLSU
   io.perf_lsu_active         := lsu.io.Active
   io.perf_lsu_load_active    := lsu.io.Active && !lsu.io.IsStore
   io.perf_lsu_store_active   := lsu.io.Active && lsu.io.IsStore
