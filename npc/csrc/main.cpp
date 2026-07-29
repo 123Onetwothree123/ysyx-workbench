@@ -94,6 +94,8 @@ int main(int argc, char const *argv[])
         dut.GetMemoryAccessOperationCount(),
         dut.GetControlStatusRegisterOperationCount(),
         dut.GetBranchOperationCount(),
+        dut.GetJalOperationCount(),
+        dut.GetJalrOperationCount(),
         dut.GetCycle(),
         dut.GetInstructionFetchStallPipelineCount(),
         dut.GetInstructionFetchStallAXICount(),

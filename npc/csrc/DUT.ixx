@@ -40,6 +40,8 @@ private:
     std::size_t memory_access_operation_count{0};
     std::size_t control_status_register_operation_count{0};
     std::size_t branch_operation_count{0};
+    std::size_t jal_operation_count{0};
+    std::size_t jalr_operation_count{0};
     std::size_t instruction_fetch_stall_pipeline_count{0};
     std::size_t instruction_fetch_stall_axi_count{0};
     std::size_t instruction_fetch_stall_ar_count{0};
@@ -90,6 +92,8 @@ public:
     std::size_t GetMemoryAccessOperationCount() const;
     std::size_t GetControlStatusRegisterOperationCount() const;
     std::size_t GetBranchOperationCount() const;
+    std::size_t GetJalOperationCount() const;
+    std::size_t GetJalrOperationCount() const;
     std::size_t GetInstructionFetchStallPipelineCount() const;
     std::size_t GetInstructionFetchStallAXICount() const;
     std::size_t GetInstructionFetchStallARCount() const;

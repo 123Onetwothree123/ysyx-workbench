@@ -114,6 +114,8 @@ class ysyx_26030103_IO extends Bundle {
   val perf_mem_op     = Output(Bool())
   val perf_csr_op     = Output(Bool())
   val perf_branch_op  = Output(Bool())
+  val perf_jal_op     = Output(Bool())
+  val perf_jalr_op    = Output(Bool())
   val perf_ifu_stall_pipeline = Output(Bool())
   val perf_ifu_stall_axi      = Output(Bool())
   val perf_ifu_stall_ar       = Output(Bool())

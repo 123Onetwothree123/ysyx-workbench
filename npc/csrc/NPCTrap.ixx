@@ -21,6 +21,8 @@ public:
         std::size_t memory_access_operation,
         std::size_t control_status_register_operation,
         std::size_t branch_operation,
+        std::size_t jal_operation,
+        std::size_t jalr_operation,
         std::size_t total_cycles,
         std::size_t instruction_fetch_stall_pipeline,
         std::size_t instruction_fetch_stall_axi,

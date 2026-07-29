@@ -105,6 +105,8 @@ void DUT::reset()
     memory_access_operation_count = 0;
     control_status_register_operation_count = 0;
     branch_operation_count = 0;
+    jal_operation_count = 0;
+    jalr_operation_count = 0;
     instruction_fetch_stall_pipeline_count = 0;
     instruction_fetch_stall_axi_count = 0;
     instruction_fetch_stall_ar_count = 0;
@@ -248,6 +250,14 @@ void DUT::step()
         if (dut->perf_branch_op)
         {
             ++branch_operation_count;
+        }
+        if (dut->perf_jal_op)
+        {
+            ++jal_operation_count;
+        }
+        if (dut->perf_jalr_op)
+        {
+            ++jalr_operation_count;
         }
     }
     if (dut->perf_ifu_stall_pipeline)
@@ -460,6 +470,14 @@ std::size_t DUT::GetControlStatusRegisterOperationCount() const
 std::size_t DUT::GetBranchOperationCount() const
 {
     return branch_operation_count;
+}
+std::size_t DUT::GetJalOperationCount() const
+{
+    return jal_operation_count;
+}
+std::size_t DUT::GetJalrOperationCount() const
+{
+    return jalr_operation_count;
 }
 std::size_t DUT::GetInstructionFetchStallPipelineCount() const
 {

@@ -25,6 +25,8 @@ class ysyx_26030103_EXU extends Module {
     val PerfMemOp = Output(Bool())
     val PerfCSROp = Output(Bool())
     val PerfBranchOp = Output(Bool())
+    val PerfJalOp = Output(Bool())
+    val PerfJalrOp = Output(Bool())
     val PerfExecutionActive = Output(Bool())
 
     val FenceIFlush = Output(Bool())
@@ -134,6 +136,8 @@ class ysyx_26030103_EXU extends Module {
   io.PerfMemOp := inst.MemoryValid
   io.PerfCSROp := inst.IsCsrrw || inst.IsCsrrs
   io.PerfBranchOp := inst.IsBranch || inst.IsJal || inst.IsJalr
+  io.PerfJalOp := inst.IsJal
+  io.PerfJalrOp := inst.IsJalr
   io.PerfExecutionActive := io.in.valid
 
   io.FenceIFlush := io.in.fire && inst.IsFenceI && !UpEx

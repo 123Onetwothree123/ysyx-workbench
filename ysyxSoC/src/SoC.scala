@@ -165,6 +165,10 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     perf_csr_op := cpu.module.perf_csr_op
     val perf_branch_op = IO(Output(Bool()))
     perf_branch_op := cpu.module.perf_branch_op
+    val perf_jal_op = IO(Output(Bool()))
+    perf_jal_op := cpu.module.perf_jal_op
+    val perf_jalr_op = IO(Output(Bool()))
+    perf_jalr_op := cpu.module.perf_jalr_op
     val perf_ifu_stall_pipeline = IO(Output(Bool()))
     perf_ifu_stall_pipeline := cpu.module.perf_ifu_stall_pipeline
     val perf_ifu_stall_axi = IO(Output(Bool()))
@@ -382,6 +386,10 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     perf_csr_op := masic.perf_csr_op
     val perf_branch_op = IO(Output(Bool()))
     perf_branch_op := masic.perf_branch_op
+    val perf_jal_op = IO(Output(Bool()))
+    perf_jal_op := masic.perf_jal_op
+    val perf_jalr_op = IO(Output(Bool()))
+    perf_jalr_op := masic.perf_jalr_op
     val perf_ifu_stall_pipeline = IO(Output(Bool()))
     perf_ifu_stall_pipeline := masic.perf_ifu_stall_pipeline
     val perf_ifu_stall_axi = IO(Output(Bool()))

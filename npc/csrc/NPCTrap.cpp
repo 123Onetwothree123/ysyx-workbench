@@ -66,6 +66,8 @@ void NPCTrap::PrintPerformanceStatistics(
     std::size_t memory_access_operation,
     std::size_t control_status_register_operation,
     std::size_t branch_operation,
+    std::size_t jal_operation,
+    std::size_t jalr_operation,
     std::size_t total_cycles,
     std::size_t instruction_fetch_stall_pipeline,
     std::size_t instruction_fetch_stall_axi,
@@ -103,6 +105,9 @@ void NPCTrap::PrintPerformanceStatistics(
     std::println("访存指令: {}", memory_access_operation);
     std::println("CSR指令: {}", control_status_register_operation);
     std::println("分支/跳转指令: {}", branch_operation);
+    std::println("  其中 jal指令: {}", jal_operation);
+    std::println("  其中 jalr指令: {}", jalr_operation);
+    std::println("  其中 条件分支: {}", branch_operation - jal_operation - jalr_operation);
     auto instruction_type_sum{arithmetic_operation + memory_access_operation + control_status_register_operation + branch_operation};
     std::println("指令类别合计: {} (应与IFU取指一致)", instruction_type_sum);
     std::println("IFU取指: {}", instruction_fetch);
