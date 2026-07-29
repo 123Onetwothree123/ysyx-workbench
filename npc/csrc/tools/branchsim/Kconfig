@@ -2,17 +2,6 @@ mainmenu "branchsim 配置"
 
 menu "分支预测器参数"
 
-choice
-    prompt "静态预测算法"
-    default BP_ALWAYSTAKEN
-config BP_ALWAYSTAKEN
-    bool "总是跳转 (always taken)"
-config BP_BTFN
-    bool "BTFN (backward taken, forward not-taken)"
-endchoice
-
-# 仅注入编译宏 BP_ALWAYSTAKEN / BP_BTFN (0 或 1), 不导出 Kconfig 变量
-
 config BTB_BITS
     int "BTB 索引位数 (表项数 = 2^N)"
     default 4
