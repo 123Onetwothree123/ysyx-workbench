@@ -1,19 +1,17 @@
 module;
 #include <cstdint>
-
 export module AlwaysJump;
 import std;
 import BPAlgorithmBase;
-
+import BPConfig;
 export class AlwaysJump : public BPAlgorithmBase
 {
 private:
-    std::string name_{"AlwaysJump"};
+    std::string name{"AlwaysJump"};
 public:
-    AlwaysJump() = default;
+    explicit AlwaysJump(const BPConfig& config);
     ~AlwaysJump() override = default;
-
-    auto predict(uint32_t pc) const -> bool override { return true; }
-    void update(uint32_t pc, bool taken, uint32_t target) override {}
-    [[nodiscard]] auto name() const -> std::string_view override { return name_; }
+    bool predict(uint32_t pc) const override;
+    void update(uint32_t pc, bool taken, uint32_t target) override;
+    [[nodiscard]] std::string_view GetName() const override;
 };

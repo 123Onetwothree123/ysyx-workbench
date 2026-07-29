@@ -1,19 +1,17 @@
 module;
 #include <cstdint>
-
 export module BTFN;
 import std;
 import BPAlgorithmBase;
-
+import BPConfig;
 export class BTFN : public BPAlgorithmBase
 {
 private:
-    std::string name_{"BTFN"};
+    std::string name{"BTFN"};
 public:
-    BTFN() = default;
+    explicit BTFN(const BPConfig& config);
     ~BTFN() override = default;
-
-    auto predict(uint32_t pc) const -> bool override { return false; }
-    void update(uint32_t pc, bool taken, uint32_t target) override {}
-    [[nodiscard]] auto name() const -> std::string_view override { return name_; }
+    bool predict(uint32_t pc) const override;
+    void update(uint32_t pc, bool taken, uint32_t target) override;
+    [[nodiscard]] std::string_view GetName() const override;
 };
