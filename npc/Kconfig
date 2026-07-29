@@ -652,6 +652,24 @@ config CACHE_INDEX_BITS
 	  1=2块, 5=32块, 10=1024块。
 	  修改后需重新 make verilog 以重新生成RTL。
 
+config BTB_BITS
+	int "BTB索引位宽（2^N组）"
+	default 4
+	range 1 10
+	help
+	  BTB组数=2^N。1=2组, 4=16组, 10=1024组。
+	  修改后需重新 make verilog 以重新生成RTL。
+	  建议与branchsim的CONFIG_BTB_BITS保持一致, 以便用branchsim校准RTL。
+
+config BTB_WAYS
+	int "BTB相联度（1=直接映射）"
+	default 1
+	range 1 8
+	help
+	  每组表项数, 1=直接映射, 2=2路组相联, 以此类推。
+	  修改后需重新 make verilog 以重新生成RTL。
+	  建议与branchsim的CONFIG_BTB_WAYS保持一致, 以便用branchsim校准RTL。
+
 endmenu
 
 menu "目标体系结构"

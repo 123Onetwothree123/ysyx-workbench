@@ -13,6 +13,8 @@ class ysyx_26030103(
     AddressWidth:   Int  = 32,
     BlockSizeLog2:  Int  = 4,
     IndexBits:      Int  = 5,
+    BTBBits:        Int  = 4,
+    BTBWays:        Int  = 1,
     CacheableBase:  Long = 0x80000000L, // ysyxsoc默认值
     CacheableMask:  Long = 0x80000000L  // ysyxsoc默认值
 ) extends Module {
@@ -35,7 +37,7 @@ class ysyx_26030103(
   val pipe_flush = exu.io.FlushIF
   // 分支目标缓冲(BTB): IFU取指级查询1决定下一PC,响应级查询2给指令贴预测标签,
   // EXU提交时更新taken分支的真实target(为后文jal/ret预留扩展)
-  val btb = Module(new ysyx_26030103_BTB())
+  val btb = Module(new ysyx_26030103_BTB(BTBBits, BTBWays))
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
   ifuResp.valid := icache.io.resp_valid
