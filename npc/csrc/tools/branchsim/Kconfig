@@ -6,6 +6,10 @@ config BTB_BITS
     int "BTB 索引位数 (表项数 = 2^N)"
     default 4
 
+config BTB_WAYS
+    int "BTB 相联度 (1=直接映射)"
+    default 1
+
 endmenu
 
 menu "工具链"
