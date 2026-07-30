@@ -40,6 +40,5 @@ HDLLearn/4/netlist.v
 !README.md
 !.gitignore
 !init.sh
-/nvboard
 /fceux-am
 /am-kernels
