@@ -23,6 +23,16 @@ class ysyx_26030103_AXI5Arbiter extends Module {
 //和之前一样也是要两个独立的判断，因为AW和W不一定要一个周期同时实现握手，所以两个是独立的
   val AWDone = RegInit(false.B)
   val WDone = RegInit(false.B)
+//R通道skid buffer: 切断 xbar状态机→R路由→arbiter透传→master 的全组合链(时序关键路径)
+//代价是R返回延迟+1拍; 前向valid/data全部寄存化, 反向ready = !valid || 当拍被消费
+  val rSkidValid = RegInit(false.B)
+  val rSkidID    = Reg(UInt(4.W))
+  val rSkidData  = Reg(UInt(32.W))
+  val rSkidResp  = Reg(UInt(2.W))
+  val rSkidLast  = Reg(Bool())
+//只有在读响应阶段, 被授权方才会看到skid的内容并消费它
+  val rConsume = rSkidValid && (state === StatesReadResponse) &&
+    Mux(grant === GrantLSU, io.lsu.R.RREADY, io.ifu.R.RREADY)
 //都是初始化
   io.ifu.AW.AWREADY := false.B
   io.ifu.W.WREADY := false.B
@@ -67,7 +77,17 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   io.memory.AR.ARSIZE := 2.U
   io.memory.AR.ARBURST := 0.U
   io.memory.AR.ARPROT := 0.U
-  io.memory.R.RREADY := false.B
+  io.memory.R.RREADY := !rSkidValid || rConsume
+//skid装载: 同拍被消费又装新拍时保持valid, 只消费不装时清空
+  when(io.memory.R.RVALID && io.memory.R.RREADY) {
+    rSkidValid := true.B
+    rSkidID    := io.memory.R.RID
+    rSkidData  := io.memory.R.RDATA
+    rSkidResp  := io.memory.R.RRESP
+    rSkidLast  := io.memory.R.RLAST
+  }.elsewhen(rConsume) {
+    rSkidValid := false.B
+  }
 //ysyx_26030103_IFU可以只读，ysyx_26030103_LSU可以又读又写
   val LSUWriteRequest = io.lsu.AW.AWVALID || io.lsu.W.WVALID
   val LSUReadRequest = io.lsu.AR.ARVALID
@@ -114,22 +134,20 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     }
     is(StatesReadResponse) {
       when(grant === GrantLSU) {
-        io.lsu.R.RID := io.memory.R.RID
-        io.lsu.R.RDATA := io.memory.R.RDATA
-        io.lsu.R.RRESP := io.memory.R.RRESP
-        io.lsu.R.RLAST := io.memory.R.RLAST
-        io.lsu.R.RVALID := io.memory.R.RVALID
-        io.memory.R.RREADY := io.lsu.R.RREADY
+        io.lsu.R.RID := rSkidID
+        io.lsu.R.RDATA := rSkidData
+        io.lsu.R.RRESP := rSkidResp
+        io.lsu.R.RLAST := rSkidLast
+        io.lsu.R.RVALID := rSkidValid
       }.otherwise {
-        io.ifu.R.RID := io.memory.R.RID
-        io.ifu.R.RDATA := io.memory.R.RDATA
-        io.ifu.R.RRESP := io.memory.R.RRESP
-        io.ifu.R.RLAST := io.memory.R.RLAST
-        io.ifu.R.RVALID := io.memory.R.RVALID
-        io.memory.R.RREADY := io.ifu.R.RREADY
+        io.ifu.R.RID := rSkidID
+        io.ifu.R.RDATA := rSkidData
+        io.ifu.R.RRESP := rSkidResp
+        io.ifu.R.RLAST := rSkidLast
+        io.ifu.R.RVALID := rSkidValid
       }
-      when(io.memory.R.RVALID && io.memory.R.RREADY && io.memory.R.RLAST) {
-        state := StatesIdle // burst: wait until last beat
+      when(rConsume && rSkidLast) { // 最后一拍从skid被消费才算读事务结束
+        state := StatesIdle
       }
     }
     is(StatesWriteRequest) {
