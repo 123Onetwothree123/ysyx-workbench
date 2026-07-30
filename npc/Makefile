@@ -534,44 +534,14 @@ SYNTH_DESIGN = ysyx_26030103
 SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
 endif
 
-YOSYS_PP = $(BUILD_DIR)/preprocess_for_yosys
-ifeq ($(filter clang% icpx%,$(notdir $(CXX))),)
-# GCC: libstdc++ 的 bits/std.cc
-STD_MODULE_SRC = $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
-$(BUILD_DIR)/gcm.cache/std.gcm: $(STD_MODULE_SRC)
-	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) -x c++ -c $< -o std_module.o
-
-$(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/gcm.cache/std.gcm
-	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) $(USER_CXXFLAGS) $(SHARED_CFLAGS) -O2 -o $(notdir $@) $(abspath $<)
-else
-# Clang/icpx: libc++ → std.cppm, 否则 libstdc++ bits/std.cc
-ifeq ($(CONFIG_STDLIB_LIBCXX),y)
-STD_MODULE_SRC = /usr/share/libc++/v1/std.cppm
-NPC_STDLIB_FLAG = -stdlib=libc++
-else
-STD_MODULE_SRC = $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
-NPC_STDLIB_FLAG =
-endif
-$(BUILD_DIR)/std.pcm: $(STD_MODULE_SRC)
-	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) -std=c++23 $(NPC_STDLIB_FLAG) -x c++-module --precompile $< -o std.pcm
-
-$(YOSYS_PP): $(NPC_HOME)/scripts/preprocess_for_yosys.cpp $(BUILD_DIR)/std.pcm
-	@mkdir -p $(@D)
-	cd $(BUILD_DIR) && $(CXX) -std=c++23 $(NPC_STDLIB_FLAG) -fprebuilt-module-path=. -O2 -o $(notdir $@) $(abspath $<)
-endif
-
-synth: verilog $(YOSYS_PP)
+synth: verilog
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY_TYPE) $(SYNTH_STRATEGY_IDX), nomap=$(SYNTH_NOMAP)) ..."
-	@$(YOSYS_PP) $(abspath $(BUILD_DIR)/ysyx_26030103.sv) > $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv
 
 	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && \
 	$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		PDK=$(PDK_VALUE) \
 		DESIGN=$(SYNTH_DESIGN) \
-		RTL_FILES="$(abspath $(BUILD_DIR)/$(SYNTH_DESIGN)_yosys.sv)" \
+		RTL_FILES="$(abspath $(BUILD_DIR)/ysyx_26030103.sv)" \
 		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
 		O=$(abspath $(YOSYS_STA_HOME))/result
 	@mkdir -p $(BUILD_DIR)

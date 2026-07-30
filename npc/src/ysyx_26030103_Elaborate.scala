@@ -16,6 +16,13 @@ object ysyx_26030103_Elaborate extends App {
   val CacheableBase_npc     = 0x80000000L
   val CacheableMask_npc     = 0x80000000L
 
+  // 让 firtool 直接输出 yosys 能读的语法:
+  //   disallowLocalVariables  禁止 always 块内声明变量(消除 automatic logic 声明+初始化)
+  //   disallowPackedArrays    打散多维 packed 数组(消除 [3:0][7:0] 和 '{...} 赋值模式)
+  val yosysFirtoolOpts: firrtl.AnnotationSeq = Seq(
+    circt.stage.FirtoolOption("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+  )
+
   emitVerilog(new ysyx_26030103(
     resetAddr      = 0x30000000L,
     BlockSizeLog2  = BlockSizeLog2,
@@ -24,7 +31,7 @@ object ysyx_26030103_Elaborate extends App {
     BTBWays        = BTBWays,
     CacheableBase  = CacheableBase_ysyxsoc,
     CacheableMask  = CacheableMask_ysyxsoc
-  ), Array("--target-dir", targetDir))
+  ), Array("--target-dir", targetDir), yosysFirtoolOpts)
   emitVerilog(new ysyx_26030103(
     resetAddr      = 0x80000000L,
     BlockSizeLog2  = BlockSizeLog2,
@@ -33,7 +40,7 @@ object ysyx_26030103_Elaborate extends App {
     BTBWays        = BTBWays,
     CacheableBase  = CacheableBase_npc,
     CacheableMask  = CacheableMask_npc
-  ), Array("--target-dir", targetDir))
+  ), Array("--target-dir", targetDir), yosysFirtoolOpts)
   Files.move(
     Paths.get(targetDir, "ysyx_26030103.sv"),
     Paths.get(targetDir, "ysyx_26030103_npc.sv"),
@@ -46,9 +53,9 @@ object ysyx_26030103_Elaborate extends App {
     BTBWays        = BTBWays,
     CacheableBase  = CacheableBase_ysyxsoc,
     CacheableMask  = CacheableMask_ysyxsoc
-  ), Array("--target-dir", targetDir))
+  ), Array("--target-dir", targetDir), yosysFirtoolOpts)
 
-  emitVerilog(new _root_.ysyx_26030103.riscv32e_npc_AXIRAM, Array("--target-dir", targetDir))
+  emitVerilog(new _root_.ysyx_26030103.riscv32e_npc_AXIRAM, Array("--target-dir", targetDir), yosysFirtoolOpts)
 
   for (top <- Seq("ysyx_26030103", "ysyx_26030103_npc")) {
     val svFile = s"$targetDir/$top.sv"
