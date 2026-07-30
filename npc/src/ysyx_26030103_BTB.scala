@@ -56,9 +56,13 @@ class ysyx_26030103_BTB(
   io.hit2 := hit2_vec.reduceTree(_ || _)
   io.target2 := target(lookup2_idx)(hit2_way)
 
-  // 更新: 写入对应组,命中同tag则更新target,否则找空槽,满了覆盖way0(简易FIFO)
+  // 更新: 写入对应组,命中同tag则更新target,否则找第一个空槽,组满按轮转指针替换(FIFO)
   val upd_idx = io.update_pc(BTBBits + 1, 2)
   val upd_tag = io.update_pc(AddressWidth - 1, BTBBits + 2)
+  // 每组一个轮转指针, 组满替换时指向受害者way, 替换后自增回绕
+  // (ways=1时恒为0, 退化为直接映射的正常覆盖行为)
+  val ReplPtrWidth = log2Ceil(BTBWays).max(1)
+  val repl_ptr = RegInit(VecInit(Seq.fill(NumSets)(0.U(ReplPtrWidth.W))))
   when(io.update_valid) {
     // 先组合判断: 是否有同tag命中, 各way之前(不含自己)是否全占用
     val tag_match = Wire(Vec(BTBWays, Bool()))
@@ -66,22 +70,26 @@ class ysyx_26030103_BTB(
       tag_match(w) := valid(upd_idx)(w) && tag(upd_idx)(w) === upd_tag
     }
     val any_match = tag_match.reduceTree(_ || _)
-    // prefix_full(w) = way 0..w-1 全部占用(way0是第一个槽,前置恒为"已满")
+    // prefix_full(w) = way 0..w-1 全部占用(AND语义, way0的前置恒为"已满")
     val prefix_full = Wire(Vec(BTBWays, Bool()))
     prefix_full(0) := true.B
     for (w <- 1 until BTBWays) {
-      prefix_full(w) := prefix_full(w - 1) || valid(upd_idx)(w - 1)
+      prefix_full(w) := prefix_full(w - 1) && valid(upd_idx)(w - 1)
     }
-    val all_full = prefix_full(BTBWays - 1) || valid(upd_idx)(BTBWays - 1)
-    // 每个way的写入: 命中则刷target; 否则当无命中且(该way是第一个空槽 或 组满且way0)时建新项
+    val all_full = prefix_full(BTBWays - 1) && valid(upd_idx)(BTBWays - 1)
+    // 每个way的写入: 命中则刷target; 否则当无命中且(该way是第一个空槽 或 组满且轮到该way)时建新项
     for (w <- 0 until BTBWays) {
       when(tag_match(w)) {
         target(upd_idx)(w) := io.update_target
-      }.elsewhen(!any_match && (!valid(upd_idx)(w) && prefix_full(w) || (all_full && w.U === 0.U))) {
+      }.elsewhen(!any_match && (!valid(upd_idx)(w) && prefix_full(w) || (all_full && w.U === repl_ptr(upd_idx)))) {
         valid(upd_idx)(w) := true.B
         tag(upd_idx)(w) := upd_tag
         target(upd_idx)(w) := io.update_target
       }
+    }
+    // 组满发生替换后轮转指针自增(回绕到0)
+    when(!any_match && all_full) {
+      repl_ptr(upd_idx) := Mux(repl_ptr(upd_idx) === (BTBWays - 1).U, 0.U, repl_ptr(upd_idx) + 1.U)
     }
   }
 }

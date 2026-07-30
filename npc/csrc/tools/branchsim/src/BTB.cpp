@@ -6,10 +6,11 @@ BTB::BTB(const BPConfig &config)
 {
 }
 BTB::BTB(std::size_t bits, std::size_t ways)
-    : index_bits{bits}
+    : index_bits{bits}, ways{ways}
 {
     auto SetsNumber{std::size_t{1} << index_bits};
     sets.resize(SetsNumber);
+    repl_ptr.assign(SetsNumber, 0);
     for (auto &set : sets)
     {
         set.resize(ways); // 把entry其全部初始化为0
@@ -53,8 +54,11 @@ void BTB::update(std::uint32_t pc, std::uint32_t target, bool is_jal)
         }
     }
     // 第3轮：书架满了，全都有效
-    set[0].tag = pc;        //   覆盖第 0 号槽位（简单 FIFO）
-    set[0].target = target; //   set[0] 先到，自然先出
-    set[0].is_jal = is_jal;
-    set[0].valid = true;    //   确保有效位置 1
+    // 按轮转指针选受害者, 替换后指针自增回绕(与硬件BTB的repl_ptr行为一致)
+    auto &victim{set[repl_ptr[index]]};
+    victim.tag = pc;
+    victim.target = target;
+    victim.is_jal = is_jal;
+    victim.valid = true;             // 确保有效位置 1
+    repl_ptr[index] = (repl_ptr[index] + 1) % ways;
 }
