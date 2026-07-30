@@ -138,11 +138,16 @@ auto main(int argc, char* argv[]) -> int
         return 1;
     }
 
+#if RUN_MODE == 1
+    // Kconfig 选择了 DSE 模式: 直接做设计空间探索 (多线程)
+    dse_run(trace_path, bus_width);
+    return 0;
+#endif
+
     if (dse_mode) {
         dse_run(trace_path, bus_width);
         return 0;
     }
-
     if ((config.block_size & (config.block_size - 1)) != 0) {
         std::println(std::cerr, "错误: 块大小必须是 2 的幂, 当前值 {}", config.block_size);
         return 1;

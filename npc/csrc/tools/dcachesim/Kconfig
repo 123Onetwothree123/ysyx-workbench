@@ -1,36 +1,18 @@
-mainmenu "cachesim 配置"
+mainmenu "dcachesim 配置"
 
-menu "Cache 参数"
+menu "DCache 参数"
 
-config CACHE_BLOCK_SIZE
+config DCACHE_BLOCK_SIZE
     int "块大小 (字节, 2的幂)"
     default 4
 
-config CACHE_NUM_BLOCKS
+config DCACHE_NUM_BLOCKS
     int "cache 块总数"
     default 16
 
-config CACHE_WAYS
-    int "相联度 (ways)"
+config DCACHE_WAYS
+    int "相联度 (1=直接映射, 块总数=全相联)"
     default 1
-
-choice
-    prompt "替换策略"
-    default REPL_FIFO
-config REPL_FIFO
-    bool "FIFO"
-config REPL_LRU
-    bool "LRU"
-config REPL_RANDOM
-    bool "Random"
-endchoice
-
-config REPL_POLICY
-    int
-    default 0 if REPL_FIFO
-    default 1 if REPL_LRU
-    default 2 if REPL_RANDOM
-    default 0
 
 endmenu
 
@@ -40,7 +22,7 @@ choice
     prompt "运行模式"
     default RUN_MANUAL
 config RUN_MANUAL
-    bool "手动输入 (命令行参数指定配置)"
+    bool "手动输入 (Kconfig 参数单次运行)"
 config RUN_DSE
     bool "DSE 设计空间探索 (多线程)"
 endchoice
