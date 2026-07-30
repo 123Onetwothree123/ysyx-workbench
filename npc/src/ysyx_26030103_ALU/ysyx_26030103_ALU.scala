@@ -26,7 +26,7 @@ class ysyx_26030103_ALU extends Module {
     Seq(
       ALUCTRL_ADD -> (io.A + io.B),
       ALUCTRL_SUB -> (io.A - io.B),
-      ALUCTRL_SLL -> (io.A << io.B(4, 0)),
+      ALUCTRL_SLL -> (io.A << io.B(4, 0))(31, 0),
       ALUCTRL_SLT -> Mux(io.A.asSInt < io.B.asSInt, 1.U(32.W), 0.U(32.W)),
       ALUCTRL_SLTU -> Mux(io.A < io.B, 1.U(32.W), 0.U(32.W)),
       ALUCTRL_XOR -> (io.A ^ io.B),

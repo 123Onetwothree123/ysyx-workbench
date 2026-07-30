@@ -22,19 +22,20 @@ class ysyx_26030103_BTB(
 ) extends Module {
   val NumSets = 1 << BTBBits
   val TagBits = AddressWidth - BTBBits - 2 // PC>>2后去掉index位
+  val AddrShiftedWidth = AddressWidth - 2 // PC[31:2], 低位始终为0
   val HasKind = KindBits > 0
   val io = IO(new Bundle {
-    // 查询端口1(组合逻辑,IFU每拍用当前PC查,决定下一PC)
-    val lookup_pc = Input(UInt(AddressWidth.W))
+    // 查询端口1(组合逻辑,IFU每拍用当前PC[31:2]查,决定下一PC)
+    val lookup_pc = Input(UInt(AddrShiftedWidth.W))
     val hit       = Output(Bool())
     val target    = Output(UInt(AddressWidth.W))
     // 查询端口2(原响应级贴标签用; 已改为取指接受时快照标签, 顶层不再使用, 仅保留端口)
-    val lookup2_pc = Input(UInt(AddressWidth.W))
+    val lookup2_pc = Input(UInt(AddrShiftedWidth.W))
     val hit2       = Output(Bool())
     val target2    = Output(UInt(AddressWidth.W))
     // 更新端口(EXU提交分支/jal时写,写PC对应的真实target)
     val update_valid  = Input(Bool())
-    val update_pc     = Input(UInt(AddressWidth.W))
+    val update_pc     = Input(UInt(AddrShiftedWidth.W))
     val update_target = Input(UInt(AddressWidth.W))
     // 可选kind端口(仅KindBits>0时存在)
     val hit_kind    = if (HasKind) Some(Output(UInt(KindBits.W))) else None
@@ -48,9 +49,9 @@ class ysyx_26030103_BTB(
   val target = Reg(Vec(NumSets, Vec(BTBWays, UInt(AddressWidth.W))))
   val kind  = if (HasKind) Some(Reg(Vec(NumSets, Vec(BTBWays, UInt(KindBits.W))))) else None
 
-  // 查询: PC>>2, 低BTBBits位做index, 高位做tag
-  val lookup_idx = io.lookup_pc(BTBBits + 1, 2)
-  val lookup_tag = io.lookup_pc(AddressWidth - 1, BTBBits + 2)
+  // 查询: input已是PC[31:2], 低BTBBits位做index, 高位做tag
+  val lookup_idx = io.lookup_pc(BTBBits - 1, 0)
+  val lookup_tag = io.lookup_pc(AddrShiftedWidth - 1, BTBBits)
   val hit_vec = Wire(Vec(BTBWays, Bool()))
   for (w <- 0 until BTBWays) {
     hit_vec(w) := valid(lookup_idx)(w) && tag(lookup_idx)(w) === lookup_tag
@@ -63,8 +64,8 @@ class ysyx_26030103_BTB(
   }
 
   // 第二查询端口(响应级用resp_addr查,跟端口1读同一张表)
-  val lookup2_idx = io.lookup2_pc(BTBBits + 1, 2)
-  val lookup2_tag = io.lookup2_pc(AddressWidth - 1, BTBBits + 2)
+  val lookup2_idx = io.lookup2_pc(BTBBits - 1, 0)
+  val lookup2_tag = io.lookup2_pc(AddrShiftedWidth - 1, BTBBits)
   val hit2_vec = Wire(Vec(BTBWays, Bool()))
   for (w <- 0 until BTBWays) {
     hit2_vec(w) := valid(lookup2_idx)(w) && tag(lookup2_idx)(w) === lookup2_tag
@@ -77,8 +78,8 @@ class ysyx_26030103_BTB(
   }
 
   // 更新: 写入对应组,命中同tag则更新target,否则找第一个空槽,组满按轮转指针替换(FIFO)
-  val upd_idx = io.update_pc(BTBBits + 1, 2)
-  val upd_tag = io.update_pc(AddressWidth - 1, BTBBits + 2)
+  val upd_idx = io.update_pc(BTBBits - 1, 0)
+  val upd_tag = io.update_pc(AddrShiftedWidth - 1, BTBBits)
   // 每组一个轮转指针, 组满替换时指向受害者way, 替换后自增回绕
   // (ways=1时恒为0, 退化为直接映射的正常覆盖行为)
   val ReplPtrWidth = log2Ceil(BTBWays).max(1)
