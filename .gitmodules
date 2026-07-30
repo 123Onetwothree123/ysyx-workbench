@@ -20,3 +20,7 @@
 	path = am-kernels
 	url = git@github.com:123Onetwothree123/am-kernels.git
 	branch = ics2021
+[submodule "fceux-am"]
+	path = fceux-am
+	url = git@github.com:123Onetwothree123/fceux-am.git
+	branch = ics2021
