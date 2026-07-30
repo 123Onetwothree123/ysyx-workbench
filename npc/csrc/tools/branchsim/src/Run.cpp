@@ -5,6 +5,31 @@ import BPAlgorithmBase;
 import BranchRecord;
 import stats;
 
+auto RunOne(BPAlgorithmBase& algo,
+            std::span<const BranchRecord> trace) -> stats
+{
+    stats st{};
+    for (const auto& rec : trace)
+    {
+        auto pred{algo.predict(rec.GetPC())};
+        if (pred == rec.GetTaken())
+        {
+            ++st.correct;
+            if (rec.GetKind() == BranchKind::Jal)
+                ++st.jal_correct;
+            else
+                ++st.branch_correct;
+        }
+        ++st.total;
+        if (rec.GetKind() == BranchKind::Jal)
+            ++st.jal_total;
+        else
+            ++st.branch_total;
+        algo.update(rec.GetPC(), rec.GetTaken(), rec.GetTarget(), rec.GetKind());
+    }
+    return st;
+}
+
 auto Run(const BPAlgorithmsType& algos,
          std::span<const BranchRecord> trace)
     -> std::vector<std::pair<std::string_view, stats>>
@@ -18,18 +43,7 @@ auto Run(const BPAlgorithmsType& algos,
         {
             threads.emplace_back([&, i]
             {
-                auto& algo = algos[i];
-                auto& st   = results[i];
-                for (const auto& rec : trace)
-                {
-                    auto pred{algo.predict(rec.GetPC())};
-                    if (pred == rec.GetTaken())
-                    {
-                        ++st.correct;
-                    }
-                    ++st.total;
-                    algo.update(rec.GetPC(), rec.GetTaken(), rec.GetTarget());
-                }
+                results[i] = RunOne(algos[i], trace);
             });
         }
     }   // jthread 析构自动 join, 确保所有线程执行完毕

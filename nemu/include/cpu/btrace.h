@@ -20,22 +20,31 @@
 
 #ifdef CONFIG_BTRACE
 
-void btrace_write(vaddr_t pc, vaddr_t target, bool taken);
+// kind: 'b'=条件分支, 'j'=jal; jalr/ret 需要RAS, 暂不记录
+void btrace_write(vaddr_t pc, vaddr_t target, bool taken, char kind);
 
 #define BTRACE_BRANCH(s, offset, cond) do { \
     vaddr_t _target = (s)->pc + (offset); \
     if (cond) { \
         (s)->dnpc = _target; \
-        btrace_write((s)->pc, _target, true); \
+        btrace_write((s)->pc, _target, true, 'b'); \
     } else { \
-        btrace_write((s)->pc, _target, false); \
+        btrace_write((s)->pc, _target, false, 'b'); \
     } \
+} while(0)
+
+#define BTRACE_JAL(s, offset) do { \
+    (s)->dnpc = (s)->pc + (offset); \
+    btrace_write((s)->pc, (s)->dnpc, true, 'j'); \
 } while(0)
 
 #else
 
 #define BTRACE_BRANCH(s, offset, cond) \
     do { if (cond) (s)->dnpc = (s)->pc + (offset); } while(0)
+
+#define BTRACE_JAL(s, offset) \
+    do { (s)->dnpc = (s)->pc + (offset); } while(0)
 
 #endif
 

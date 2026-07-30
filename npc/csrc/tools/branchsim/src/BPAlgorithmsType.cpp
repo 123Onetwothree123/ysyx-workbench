@@ -3,12 +3,16 @@ import std;
 import BPAlgorithmBase;
 import AlwaysJump;
 import BTFN;
+import BTFNSharedJal;
+import BTFNSplitJal;
 import BPConfig;
 
 BPAlgorithmsType::BPAlgorithmsType(const BPConfig& config)
 {
     algos.push_back(std::make_unique<AlwaysJump>(config));
     algos.push_back(std::make_unique<BTFN>(config));
+    algos.push_back(std::make_unique<BTFNSharedJal>(config));
+    algos.push_back(std::make_unique<BTFNSplitJal>(config));
 }
 auto BPAlgorithmsType::begin() const noexcept
 {

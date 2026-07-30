@@ -3,13 +3,16 @@ import std;
 import BPConfig;
 export class BTB
 {
-private:
+public:
+    // 表项: valid + tag + target + 类型位(jal表项命中即taken, 不受BTFN方向判断约束)
     struct entry
     {
         bool valid;           // 1代表有数据
         std::uint32_t tag;    // 分支指令的PC>>2，因为RISC-V指令地址必4对齐
         std::uint32_t target; // 跳转目标地址
+        bool is_jal;          // true=jal表项, false=条件分支表项
     };
+private:
     // 行=sets_数量=2^index_bits，每行ways项，举个例子：btb_bits=4，ways=2就是16行×2项=32个entry
     std::vector<std::vector<entry>> sets;
     std::size_t index_bits; // 索引位数，2底数，也就是log2(sets)
@@ -17,6 +20,8 @@ public:
     BTB() = default;
     ~BTB() = default;
     explicit BTB(const BPConfig &config);
-    std::optional<std::uint32_t> lookup(std::uint32_t pc) const; // 命中失败就直接返回空
-    void update(std::uint32_t pc, std::uint32_t target);
+    // 直接指定容量/相联度, 供独立jal BTB使用(Kconfig的JAL_BTB_*参数)
+    BTB(std::size_t bits, std::size_t ways);
+    std::optional<entry> lookup(std::uint32_t pc) const; // 命中失败就直接返回空
+    void update(std::uint32_t pc, std::uint32_t target, bool is_jal);
 };

@@ -5,9 +5,9 @@ bool AlwaysJump::predict(uint32_t pc) const
 {
     return true;
 }
-void AlwaysJump::update(uint32_t pc, bool taken, uint32_t target)
+void AlwaysJump::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind)
 {
-    btb.update(pc, target);
+    btb.update(pc, target, kind == BranchKind::Jal);
 }
 std::string_view AlwaysJump::GetName() const
 {

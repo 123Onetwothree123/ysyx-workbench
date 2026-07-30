@@ -3,6 +3,8 @@ import std;
 import BPAlgorithmBase;
 import AlwaysJump;
 import BTFN;
+import BTFNSharedJal;
+import BTFNSplitJal;
 import BTB;
 import BPConfig;
 export class BPAlgorithmsType

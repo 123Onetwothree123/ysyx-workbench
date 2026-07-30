@@ -2,29 +2,32 @@ module BTB;
 import std;
 import BPConfig;
 BTB::BTB(const BPConfig &config)
-    : index_bits{config.get_btb_bits()}
+    : BTB{config.get_btb_bits(), config.get_btb_ways()}
+{
+}
+BTB::BTB(std::size_t bits, std::size_t ways)
+    : index_bits{bits}
 {
     auto SetsNumber{std::size_t{1} << index_bits};
-    auto ways{config.get_btb_ways()};
     sets.resize(SetsNumber);
     for (auto &set : sets)
     {
         set.resize(ways); // 把entry其全部初始化为0
     }
 }
-std::optional<std::uint32_t> BTB::lookup(std::uint32_t pc) const
+std::optional<BTB::entry> BTB::lookup(std::uint32_t pc) const
 {
     auto index{(pc >> 2) & ((std::size_t{1} << index_bits) - 1)}; // 取低index_bits位作为书架号
     for (const auto &entry : sets[index])
     {
         if (entry.valid && entry.tag == pc)
         {
-            return entry.target;
+            return entry;
         }
     }
     return std::nullopt;
 }
-void BTB::update(std::uint32_t pc, std::uint32_t target)
+void BTB::update(std::uint32_t pc, std::uint32_t target, bool is_jal)
 {
     auto index{(pc >> 2) & ((std::size_t{1} << index_bits) - 1)}; // 同上
     auto &set{sets[index]};                                       // 拿到对应书架的所有表项引用
@@ -32,9 +35,10 @@ void BTB::update(std::uint32_t pc, std::uint32_t target)
     for (auto &e : set)
     { // 第1轮：找是否有同 tag 的旧记录
         if (e.valid && e.tag == pc)
-        {                      //   找到了——说明这条分支之前执行过
-            e.target = target; //   更新跳转目标（可能没变，也可能变了）
-            return;            //   只更新不新建
+        {                        //   找到了——说明这条分支之前执行过
+            e.target = target;   //   更新跳转目标（可能没变，也可能变了）
+            e.is_jal = is_jal;   //   类型位一并刷新(同一PC类型不会变, 仅为保险)
+            return;              //   只更新不新建
         }
     }
     for (auto &e : set)
@@ -44,11 +48,13 @@ void BTB::update(std::uint32_t pc, std::uint32_t target)
             e.valid = true;    //   标记为有效
             e.tag = pc;        //   写入当前 PC
             e.target = target; //   写入跳转目标
+            e.is_jal = is_jal; //   写入类型位
             return;
         }
     }
     // 第3轮：书架满了，全都有效
     set[0].tag = pc;        //   覆盖第 0 号槽位（简单 FIFO）
     set[0].target = target; //   set[0] 先到，自然先出
+    set[0].is_jal = is_jal;
     set[0].valid = true;    //   确保有效位置 1
 }

@@ -10,6 +10,33 @@ config BTB_WAYS
     int "BTB 相联度 (1=直接映射)"
     default 1
 
+config JAL_BTB_BITS
+    int "独立 jal BTB 索引位数 (表项数 = 2^N, 仅 SplitJal 方案使用)"
+    default 4
+
+config JAL_BTB_WAYS
+    int "独立 jal BTB 相联度 (1=直接映射)"
+    default 1
+
+endmenu
+
+menu "运行模式"
+
+choice
+    prompt "运行模式"
+    default RUN_MANUAL
+config RUN_MANUAL
+    bool "手动输入 (Kconfig 参数单次运行)"
+config RUN_DSE
+    bool "DSE 设计空间探索 (多线程)"
+endchoice
+
+config RUN_MODE
+    int
+    default 0 if RUN_MANUAL
+    default 1 if RUN_DSE
+    default 0
+
 endmenu
 
 menu "工具链"

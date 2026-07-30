@@ -11,7 +11,7 @@ static void btrace_close(void) {
     }
 }
 
-void btrace_write(vaddr_t pc, vaddr_t target, bool taken) {
+void btrace_write(vaddr_t pc, vaddr_t target, bool taken, char kind) {
     if (btrace_fp == NULL) {
         btrace_fp = fopen("build/btrace.txt", "w");
         if (btrace_fp == NULL) {
@@ -23,6 +23,6 @@ void btrace_write(vaddr_t pc, vaddr_t target, bool taken) {
         }
     }
     if (btrace_fp) {
-        fprintf(btrace_fp, "%08x %08x %d\n", pc, target, taken ? 1 : 0);
+        fprintf(btrace_fp, "%08x %08x %d %c\n", pc, target, taken ? 1 : 0, kind);
     }
 }
