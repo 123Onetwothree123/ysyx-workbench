@@ -153,9 +153,9 @@ void DUT::step()
 #ifndef VRISCV32E_NPC
     if (vga_check)
     {
-        const bool hs{dut->externalPins_vga_hsync};
-        const bool vs{dut->externalPins_vga_vsync};
-        const bool vv{dut->externalPins_vga_valid};
+        const bool hs{dut->externalPins_vga_hsync != 0};
+        const bool vs{dut->externalPins_vga_vsync != 0};
+        const bool vv{dut->externalPins_vga_valid != 0};
         if (hs && !vga_prev_hsync)
         {
             const auto period{cycle - vga_last_hsync_cycle};
