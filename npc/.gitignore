@@ -16,6 +16,15 @@
 !*hpp
 !*ixx
 !.gitattributes
+!/rtl/*.sv
+!*.nxdc
+!*.yml
+!*.yaml
+!*.l
+!*.y
+!*.cmake
+!CMakeLists.txt
+!*.sh
 
 build/
 

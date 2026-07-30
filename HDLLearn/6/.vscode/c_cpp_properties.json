@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/home/abc/ysyx-workbench/nvboard/**",
+                "/usr/include/**",
+                "/usr/share/verilator/include/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/sbin/g++",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}
