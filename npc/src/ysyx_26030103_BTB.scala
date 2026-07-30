@@ -5,8 +5,8 @@ import chisel3.util._
 // 分支目标缓冲(Branch Target Buffer)
 // 用PC索引,命中返回跳转目标,供IFU做BTFN预测
 // 组织方式: 组相联,组数=2^BTBBits,相联度=BTBWays(1=直接映射)
-// 表项: valid + tag + target
-// 为后文jal/ret预测预留: 表项结构和更新接口通用,jal只需复用update即可
+// 表项: valid + tag + target; 组满按每组repl_ptr轮转替换(FIFO)
+// 顶层例化两张: 分支BTB(BTFN方向预测) + 独立jal BTB(命中即taken, 方案B)
 class ysyx_26030103_BTB(
   BTBBits: Int = 4,
   BTBWays: Int = 1,

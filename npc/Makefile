@@ -32,7 +32,7 @@ NPC_VINCDIRS = $(BUILD_DIR) \
                 $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort)
 
 CSRC_DIR=./csrc
-CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -path "$(CSRC_DIR)/tools/branchsim" -prune -o -name "*.cpp" -print 2>/dev/null)
+CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -path "$(CSRC_DIR)/tools/branchsim" -prune -o -path "$(CSRC_DIR)/tools/dcachesim" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
 remove_quote = $(patsubst "%",%,$(1))
 -include include/config/auto.conf
@@ -58,12 +58,16 @@ CACHE_BLOCK_SIZE_LOG2 ?= $(or $(CONFIG_CACHE_BLOCK_SIZE_LOG2),4)
 CACHE_INDEX_BITS ?= $(or $(CONFIG_CACHE_INDEX_BITS),5)
 BTB_BITS ?= $(or $(CONFIG_BTB_BITS),4)
 BTB_WAYS ?= $(or $(CONFIG_BTB_WAYS),1)
+JAL_BTB_BITS ?= $(or $(CONFIG_JAL_BTB_BITS),4)
+JAL_BTB_WAYS ?= $(or $(CONFIG_JAL_BTB_WAYS),1)
 
 VERILOG_ENV = env \
 	CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2) \
 	CACHE_INDEX_BITS=$(CACHE_INDEX_BITS) \
 	BTB_BITS=$(BTB_BITS) \
 	BTB_WAYS=$(BTB_WAYS) \
+	JAL_BTB_BITS=$(JAL_BTB_BITS) \
+	JAL_BTB_WAYS=$(JAL_BTB_WAYS) \
 	APB_CPU_FREQ_MHZ=$(SYNTH_FREQ) \
 	APB_DEVICE_FREQ_MHZ=$(APB_DEVICE_FREQ) \
 	APB_DELAY_SCALE_FACTOR=$(APB_DELAY_SCALE) \

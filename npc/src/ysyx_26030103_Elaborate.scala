@@ -10,6 +10,8 @@ object ysyx_26030103_Elaborate extends App {
   val IndexBits     = sys.env.getOrElse("CACHE_INDEX_BITS", "5").toInt
   val BTBBits       = sys.env.getOrElse("BTB_BITS", "4").toInt
   val BTBWays       = sys.env.getOrElse("BTB_WAYS", "1").toInt
+  val JalBTBBits    = sys.env.getOrElse("JAL_BTB_BITS", "4").toInt
+  val JalBTBWays    = sys.env.getOrElse("JAL_BTB_WAYS", "1").toInt
 
   val CacheableBase_ysyxsoc = 0x00000000L
   val CacheableMask_ysyxsoc = 0x00000000L
@@ -29,6 +31,8 @@ object ysyx_26030103_Elaborate extends App {
     IndexBits      = IndexBits,
     BTBBits        = BTBBits,
     BTBWays        = BTBWays,
+    JalBTBBits     = JalBTBBits,
+    JalBTBWays     = JalBTBWays,
     CacheableBase  = CacheableBase_ysyxsoc,
     CacheableMask  = CacheableMask_ysyxsoc
   ), Array("--target-dir", targetDir), yosysFirtoolOpts)
@@ -38,6 +42,8 @@ object ysyx_26030103_Elaborate extends App {
     IndexBits      = IndexBits,
     BTBBits        = BTBBits,
     BTBWays        = BTBWays,
+    JalBTBBits     = JalBTBBits,
+    JalBTBWays     = JalBTBWays,
     CacheableBase  = CacheableBase_npc,
     CacheableMask  = CacheableMask_npc
   ), Array("--target-dir", targetDir), yosysFirtoolOpts)
@@ -51,6 +57,8 @@ object ysyx_26030103_Elaborate extends App {
     IndexBits      = IndexBits,
     BTBBits        = BTBBits,
     BTBWays        = BTBWays,
+    JalBTBBits     = JalBTBBits,
+    JalBTBWays     = JalBTBWays,
     CacheableBase  = CacheableBase_ysyxsoc,
     CacheableMask  = CacheableMask_ysyxsoc
   ), Array("--target-dir", targetDir), yosysFirtoolOpts)

@@ -15,6 +15,8 @@ class ysyx_26030103(
     IndexBits:      Int  = 5,
     BTBBits:        Int  = 4,
     BTBWays:        Int  = 1,
+    JalBTBBits:     Int  = 4,
+    JalBTBWays:     Int  = 1,
     CacheableBase:  Long = 0x80000000L, // ysyxsoc默认值
     CacheableMask:  Long = 0x80000000L  // ysyxsoc默认值
 ) extends Module {
@@ -36,8 +38,9 @@ class ysyx_26030103(
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
   val pipe_flush = exu.io.FlushIF
   // 分支目标缓冲(BTB): IFU取指级查询1决定下一PC,响应级查询2给指令贴预测标签,
-  // EXU提交时更新taken分支的真实target(为后文jal/ret预留扩展)
+  // EXU提交时更新分支的真实target; 另设独立jal BTB(方案B: 与分支表零干扰)
   val btb = Module(new ysyx_26030103_BTB(BTBBits, BTBWays))
+  val jal_btb = Module(new ysyx_26030103_BTB(JalBTBBits, JalBTBWays))
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
   ifuResp.valid := icache.io.resp_valid
@@ -45,11 +48,12 @@ class ysyx_26030103(
   ifuResp.bits.pc := icache.io.resp_addr
   ifuResp.bits.ExceptionValid := icache.io.resp_fault
   ifuResp.bits.ExceptionCause := 1.U(4.W)
-  // 响应级用resp_addr查BTB,给刚取回的指令贴预测标签(预测是否taken及目标)
+  // 响应级用resp_addr同时查两张BTB,给刚取回的指令贴预测标签(预测是否taken及目标)
   btb.io.lookup2_pc := icache.io.resp_addr
-  // BTFN方向预测: 后向分支(target<pc)预测taken, 前向预测not-taken
-  ifuResp.bits.pred_taken := btb.io.hit2 && (btb.io.target2 < icache.io.resp_addr)
-  ifuResp.bits.pred_target := btb.io.target2
+  jal_btb.io.lookup2_pc := icache.io.resp_addr
+  // 两表合并: jal表命中即taken且优先(目标静态), 否则分支表命中按BTFN(后向taken)判方向
+  ifuResp.bits.pred_taken := jal_btb.io.hit2 || (btb.io.hit2 && (btb.io.target2 < icache.io.resp_addr))
+  ifuResp.bits.pred_target := Mux(jal_btb.io.hit2, jal_btb.io.target2, btb.io.target2)
   icache.io.resp_ready := ifuResp.ready
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
   icache.io.kill := pipe_flush
@@ -60,15 +64,19 @@ class ysyx_26030103(
   icache.io.fetch_addr  := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
   ifu.io.FetchReady      := icache.io.fetch_ready
-  // BTB查询1: 用当前取指地址查,结果回送IFU决定下一PC
+  // BTB查询1: 用当前取指地址同时查两张表,合并结果回送IFU决定下一PC
   btb.io.lookup_pc := ifu.io.FetchAddr
-  // BTFN: BTB命中且目标在后方(target<当前PC)才预测taken, 前向分支预测not-taken
-  ifu.io.PredHit    := btb.io.hit && (btb.io.target < ifu.io.FetchAddr)
-  ifu.io.PredTarget := btb.io.target
-  // BTB更新: EXU提交taken分支时写回真实target
+  jal_btb.io.lookup_pc := ifu.io.FetchAddr
+  // jal表命中即taken且优先; 分支表命中且目标在后方(target<当前PC)才预测taken(BTFN)
+  ifu.io.PredHit    := jal_btb.io.hit || (btb.io.hit && (btb.io.target < ifu.io.FetchAddr))
+  ifu.io.PredTarget := Mux(jal_btb.io.hit, jal_btb.io.target, btb.io.target)
+  // BTB更新: EXU提交时按指令类型路由, 分支写分支表, jal写jal表
   btb.io.update_valid  := exu.io.BTBUpdateValid
   btb.io.update_pc     := exu.io.BTBUpdatePC
   btb.io.update_target := exu.io.BTBUpdateTarget
+  jal_btb.io.update_valid  := exu.io.JalBTBUpdateValid
+  jal_btb.io.update_pc     := exu.io.JalBTBUpdatePC
+  jal_btb.io.update_target := exu.io.JalBTBUpdateTarget
   arbiter.io.lsu <> lsu.io.DataBus
   arbiter.io.memory.AW <> xbar.io.in.AW
   arbiter.io.memory.W <> xbar.io.in.W

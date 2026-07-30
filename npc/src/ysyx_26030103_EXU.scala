@@ -46,10 +46,14 @@ class ysyx_26030103_EXU extends Module {
     // 转发给IDU: EX阶段生产者的最终写回值,以及该值当前是否可用于转发
     val FwdData = Output(UInt(32.W))
     val FwdReady = Output(Bool())
-    // BTB更新: 分支提交时把真实target写回BTB(为后文jal预留,jal只需复用此接口)
+    // BTB更新: 分支提交时把真实target写回分支BTB
     val BTBUpdateValid  = Output(Bool())
     val BTBUpdatePC     = Output(UInt(32.W))
     val BTBUpdateTarget = Output(UInt(32.W))
+    // jal BTB更新: jal提交时把真实target写回独立jal BTB(方案B)
+    val JalBTBUpdateValid  = Output(Bool())
+    val JalBTBUpdatePC     = Output(UInt(32.W))
+    val JalBTBUpdateTarget = Output(UInt(32.W))
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -94,10 +98,10 @@ class ysyx_26030103_EXU extends Module {
   val ActualNextPC = Mux(inst.IsJal, JalTarget,
     Mux(inst.IsJalr, JalrTarget,
       Mux(inst.IsBranch && BranchComparatorUnit.io.Taken, BranchTarget, inst.snpc)))
-  // 预测下一PC: IFU用BTB+BTFN给出,随指令传到此;未命中=顺序=snpc
+  // 预测下一PC: IFU用BTB(分支BTFN+独立jal BTB)给出,随指令传到此;未命中=顺序=snpc
   val PredNextPC = Mux(inst.pred_taken, inst.pred_target, inst.snpc)
   // 预测错误检查: 比较实际与预测的下一PC,不一致则冲刷并重定向到实际目标
-  // (jal/jalr: BTB未存表项时pred_taken=false,实际跳转=>必然判错重定向,与改造前行为一致)
+  // (jal: 独立jal BTB命中则预测正确免冲刷; jalr: 无预测=>必然判错重定向,待RAS解决)
   val Mispredict = ActualNextPC =/= PredNextPC
   val Redirect = (Mispredict || inst.IsFenceI) && !UpEx
   // CSR提交(csr写/ecall/ebreak/mret/异常/中断): 只在非访存指令fire时提交,
@@ -159,8 +163,12 @@ class ysyx_26030103_EXU extends Module {
 
   // BTB更新: 所有分支指令提交时都写回PC→target(不管是否taken),
   // 供IFU查BTB命中后用BTFN(target<PC=后向则taken)做方向预测.
-  // 扩展点(暂不实现): jal复用此端口(target=JalTarget); jalr/ret需RAS,不能简单复用
   io.BTBUpdateValid  := io.in.fire && inst.IsBranch && !UpEx
   io.BTBUpdatePC     := inst.pc
   io.BTBUpdateTarget := BranchTarget
+  // jal BTB更新: jal提交时写回PC→JalTarget(方案B: 独立jal BTB, 表项命中即taken, 目标静态).
+  // jalr/ret目标依赖寄存器值, 需RAS才能预测, 不在此实现
+  io.JalBTBUpdateValid  := io.in.fire && inst.IsJal && !UpEx
+  io.JalBTBUpdatePC     := inst.pc
+  io.JalBTBUpdateTarget := JalTarget
 }
