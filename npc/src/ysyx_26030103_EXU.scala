@@ -50,10 +50,15 @@ class ysyx_26030103_EXU extends Module {
     val BTBUpdateValid  = Output(Bool())
     val BTBUpdatePC     = Output(UInt(32.W))
     val BTBUpdateTarget = Output(UInt(32.W))
-    // jal BTB更新: jal提交时把真实target写回独立jal BTB(方案B)
+    // jal BTB更新: jal/ret提交时把真实target写回独立jal BTB(方案B), 带2位类型
     val JalBTBUpdateValid  = Output(Bool())
     val JalBTBUpdatePC     = Output(UInt(32.W))
     val JalBTBUpdateTarget = Output(UInt(32.W))
+    val JalBTBUpdateKind   = Output(UInt(2.W)) // ysyx_26030103_BTBKind: Jal/Call/Ret
+    // RAS更新: call提交压栈(返回地址=snpc), ret提交弹栈
+    val RASPushValid = Output(Bool())
+    val RASPushAddr  = Output(UInt(32.W))
+    val RASPopValid  = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -101,7 +106,7 @@ class ysyx_26030103_EXU extends Module {
   // 预测下一PC: IFU用BTB(分支BTFN+独立jal BTB)给出,随指令传到此;未命中=顺序=snpc
   val PredNextPC = Mux(inst.pred_taken, inst.pred_target, inst.snpc)
   // 预测错误检查: 比较实际与预测的下一PC,不一致则冲刷并重定向到实际目标
-  // (jal: 独立jal BTB命中则预测正确免冲刷; jalr: 无预测=>必然判错重定向,待RAS解决)
+  // (jal: jal BTB命中免冲刷; ret: Ret表项+RAS栈顶预测; 其他jalr: 无预测=>必然判错重定向)
   val Mispredict = ActualNextPC =/= PredNextPC
   val Redirect = (Mispredict || inst.IsFenceI) && !UpEx
   // CSR提交(csr写/ecall/ebreak/mret/异常/中断): 只在非访存指令fire时提交,
@@ -166,9 +171,20 @@ class ysyx_26030103_EXU extends Module {
   io.BTBUpdateValid  := io.in.fire && inst.IsBranch && !UpEx
   io.BTBUpdatePC     := inst.pc
   io.BTBUpdateTarget := BranchTarget
-  // jal BTB更新: jal提交时写回PC→JalTarget(方案B: 独立jal BTB, 表项命中即taken, 目标静态).
-  // jalr/ret目标依赖寄存器值, 需RAS才能预测, 不在此实现
-  io.JalBTBUpdateValid  := io.in.fire && inst.IsJal && !UpEx
+  // call/ret识别(标准RISC-V ABI, 与NEMU的ftrace/btrace判定一致):
+  // call=rd为ra(x1)的jal/jalr; ret=jalr x0, ra, 0
+  val IsCall = (inst.IsJal || inst.IsJalr) && inst.Rd === 1.U
+  val IsRet  = inst.IsJalr && inst.Rd === 0.U && inst.Rs1 === 1.U && inst.Immediate === 0.U
+  // jal BTB更新: jal提交时写回PC→JalTarget(Jal/Call表项, 目标静态);
+  // ret提交时写Ret表项(只作ret标记, 预测目标由RAS给出).
+  // 间接jalr(非call非ret)目标多变, 不入表
+  io.JalBTBUpdateValid  := io.in.fire && (inst.IsJal || IsRet) && !UpEx
   io.JalBTBUpdatePC     := inst.pc
-  io.JalBTBUpdateTarget := JalTarget
+  io.JalBTBUpdateTarget := Mux(inst.IsJal, JalTarget, JalrTarget)
+  io.JalBTBUpdateKind   := Mux(IsRet, ysyx_26030103_BTBKind.Ret,
+                             Mux(inst.Rd === 1.U, ysyx_26030103_BTBKind.Call, ysyx_26030103_BTBKind.Jal))
+  // RAS更新: call压栈(返回地址=pc+4=snpc), ret弹栈
+  io.RASPushValid := io.in.fire && IsCall && !UpEx
+  io.RASPushAddr  := inst.snpc
+  io.RASPopValid  := io.in.fire && IsRet && !UpEx
 }

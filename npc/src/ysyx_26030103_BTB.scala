@@ -2,24 +2,33 @@ package ysyx_26030103
 import chisel3._
 import chisel3.util._
 
+// jal BTB表项类型(KindBits=2时使用): ret表项只作ret标记, 预测目标由RAS给出
+object ysyx_26030103_BTBKind {
+  val Jal  = 0.U(2.W)
+  val Call = 1.U(2.W)
+  val Ret  = 2.U(2.W)
+}
+
 // 分支目标缓冲(Branch Target Buffer)
 // 用PC索引,命中返回跳转目标,供IFU做BTFN预测
 // 组织方式: 组相联,组数=2^BTBBits,相联度=BTBWays(1=直接映射)
-// 表项: valid + tag + target; 组满按每组repl_ptr轮转替换(FIFO)
-// 顶层例化两张: 分支BTB(BTFN方向预测) + 独立jal BTB(命中即taken, 方案B)
+// 表项: valid + tag + target (+ 可选kind, KindBits>0时启用); 组满按每组repl_ptr轮转替换(FIFO)
+// 顶层例化两张: 分支BTB(KindBits=0, BTFN方向预测) + jal BTB(KindBits=2, 区分Jal/Call/Ret)
 class ysyx_26030103_BTB(
   BTBBits: Int = 4,
   BTBWays: Int = 1,
-  AddressWidth: Int = 32
+  AddressWidth: Int = 32,
+  KindBits: Int = 0
 ) extends Module {
   val NumSets = 1 << BTBBits
   val TagBits = AddressWidth - BTBBits - 2 // PC>>2后去掉index位
+  val HasKind = KindBits > 0
   val io = IO(new Bundle {
     // 查询端口1(组合逻辑,IFU每拍用当前PC查,决定下一PC)
     val lookup_pc = Input(UInt(AddressWidth.W))
     val hit       = Output(Bool())
     val target    = Output(UInt(AddressWidth.W))
-    // 查询端口2(响应级用resp_addr查,给已取回的指令贴预测标签)
+    // 查询端口2(原响应级贴标签用; 已改为取指接受时快照标签, 顶层不再使用, 仅保留端口)
     val lookup2_pc = Input(UInt(AddressWidth.W))
     val hit2       = Output(Bool())
     val target2    = Output(UInt(AddressWidth.W))
@@ -27,12 +36,17 @@ class ysyx_26030103_BTB(
     val update_valid  = Input(Bool())
     val update_pc     = Input(UInt(AddressWidth.W))
     val update_target = Input(UInt(AddressWidth.W))
+    // 可选kind端口(仅KindBits>0时存在)
+    val hit_kind    = if (HasKind) Some(Output(UInt(KindBits.W))) else None
+    val hit2_kind   = if (HasKind) Some(Output(UInt(KindBits.W))) else None
+    val update_kind = if (HasKind) Some(Input(UInt(KindBits.W))) else None
   })
 
   // 阵列: 每组ways项
   val valid = RegInit(VecInit(Seq.fill(NumSets)(VecInit(Seq.fill(BTBWays)(false.B)))))
   val tag   = Reg(Vec(NumSets, Vec(BTBWays, UInt(TagBits.W))))
   val target = Reg(Vec(NumSets, Vec(BTBWays, UInt(AddressWidth.W))))
+  val kind  = if (HasKind) Some(Reg(Vec(NumSets, Vec(BTBWays, UInt(KindBits.W))))) else None
 
   // 查询: PC>>2, 低BTBBits位做index, 高位做tag
   val lookup_idx = io.lookup_pc(BTBBits + 1, 2)
@@ -44,6 +58,9 @@ class ysyx_26030103_BTB(
   val hit_way = hit_vec.indexWhere((h: Bool) => h)
   io.hit := hit_vec.reduceTree(_ || _)
   io.target := target(lookup_idx)(hit_way)
+  if (HasKind) {
+    io.hit_kind.get := kind.get(lookup_idx)(hit_way)
+  }
 
   // 第二查询端口(响应级用resp_addr查,跟端口1读同一张表)
   val lookup2_idx = io.lookup2_pc(BTBBits + 1, 2)
@@ -55,6 +72,9 @@ class ysyx_26030103_BTB(
   val hit2_way = hit2_vec.indexWhere((h: Bool) => h)
   io.hit2 := hit2_vec.reduceTree(_ || _)
   io.target2 := target(lookup2_idx)(hit2_way)
+  if (HasKind) {
+    io.hit2_kind.get := kind.get(lookup2_idx)(hit2_way)
+  }
 
   // 更新: 写入对应组,命中同tag则更新target,否则找第一个空槽,组满按轮转指针替换(FIFO)
   val upd_idx = io.update_pc(BTBBits + 1, 2)
@@ -81,10 +101,16 @@ class ysyx_26030103_BTB(
     for (w <- 0 until BTBWays) {
       when(tag_match(w)) {
         target(upd_idx)(w) := io.update_target
+        if (HasKind) {
+          kind.get(upd_idx)(w) := io.update_kind.get
+        }
       }.elsewhen(!any_match && (!valid(upd_idx)(w) && prefix_full(w) || (all_full && w.U === repl_ptr(upd_idx)))) {
         valid(upd_idx)(w) := true.B
         tag(upd_idx)(w) := upd_tag
         target(upd_idx)(w) := io.update_target
+        if (HasKind) {
+          kind.get(upd_idx)(w) := io.update_kind.get
+        }
       }
     }
     // 组满发生替换后轮转指针自增(回绕到0)

@@ -18,6 +18,10 @@ config JAL_BTB_WAYS
     int "独立 jal BTB 相联度 (1=直接映射)"
     default 1
 
+config RAS_BITS
+    int "返回地址栈(RAS)深度位数 (深度 = 2^N, 仅 SplitJalRAS 方案使用)"
+    default 4
+
 endmenu
 
 menu "运行模式"

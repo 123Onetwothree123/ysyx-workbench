@@ -20,7 +20,8 @@
 
 #ifdef CONFIG_BTRACE
 
-// kind: 'b'=条件分支, 'j'=jal; jalr/ret 需要RAS, 暂不记录
+// kind: 'b'=条件分支, 'j'=jal(非调用), 'c'=jal ra直接调用,
+//       'r'=ret(jalr x0,x1,0), 'i'=jalr ra间接调用, 'x'=其他jalr
 void btrace_write(vaddr_t pc, vaddr_t target, bool taken, char kind);
 
 #define BTRACE_BRANCH(s, offset, cond) do { \
@@ -33,9 +34,17 @@ void btrace_write(vaddr_t pc, vaddr_t target, bool taken, char kind);
     } \
 } while(0)
 
-#define BTRACE_JAL(s, offset) do { \
+#define BTRACE_JAL(s, offset, rd) do { \
     (s)->dnpc = (s)->pc + (offset); \
-    btrace_write((s)->pc, (s)->dnpc, true, 'j'); \
+    btrace_write((s)->pc, (s)->dnpc, true, (rd) == 1 ? 'c' : 'j'); \
+} while(0)
+
+// jalr目标运行时才知道, 但类型可以区分: ret弹RAS, 间接call压RAS, 其他不预测
+#define BTRACE_JALR(s, _rs1, _rd, _imm) do { \
+    char _kind = 'x'; \
+    if ((_rd) == 0 && (_rs1) == 1 && (_imm) == 0) _kind = 'r'; \
+    else if ((_rd) == 1) _kind = 'i'; \
+    btrace_write((s)->pc, (s)->dnpc, true, _kind); \
 } while(0)
 
 #else
@@ -43,8 +52,10 @@ void btrace_write(vaddr_t pc, vaddr_t target, bool taken, char kind);
 #define BTRACE_BRANCH(s, offset, cond) \
     do { if (cond) (s)->dnpc = (s)->pc + (offset); } while(0)
 
-#define BTRACE_JAL(s, offset) \
+#define BTRACE_JAL(s, offset, rd) \
     do { (s)->dnpc = (s)->pc + (offset); } while(0)
+
+#define BTRACE_JALR(s, _rs1, _rd, _imm) do { } while(0)
 
 #endif
 

@@ -2,8 +2,10 @@ module;
 #include <cstdint>
 export module BranchRecord;
 import std;
-// 记录类型: 条件分支 / jal(jalr/ret 需要RAS, 不在本工具范围内)
-export enum class BranchKind : std::uint8_t { Branch, Jal };
+// 记录类型:
+//   Branch=条件分支, Jal=jal非调用(rd!=ra), Call=jal ra直接调用(压RAS),
+//   Ret=ret(jalr x0,ra,0, 弹RAS), JalrCall=jalr ra间接调用(压RAS), JalrOther=其他jalr
+export enum class BranchKind : std::uint8_t { Branch, Jal, Call, Ret, JalrCall, JalrOther };
 export class BranchRecord
 {
 private:

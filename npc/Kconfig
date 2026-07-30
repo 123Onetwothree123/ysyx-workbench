@@ -688,6 +688,15 @@ config JAL_BTB_WAYS
 	  修改后需重新 make verilog 以重新生成RTL。
 	  建议与branchsim的CONFIG_JAL_BTB_WAYS保持一致, 以便用branchsim校准RTL。
 
+config RAS_BITS
+	int "返回地址栈(RAS)深度位宽（深度=2^N）"
+	default 4
+	range 1 8
+	help
+	  RAS深度=2^N, 用于ret的跳转目标预测。4=16深, branchsim评估显示8深即够用。
+	  修改后需重新 make verilog 以重新生成RTL。
+	  建议与branchsim的CONFIG_RAS_BITS保持一致, 以便用branchsim校准RTL。
+
 endmenu
 
 menu "目标体系结构"

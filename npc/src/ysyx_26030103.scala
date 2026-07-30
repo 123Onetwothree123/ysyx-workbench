@@ -17,6 +17,7 @@ class ysyx_26030103(
     BTBWays:        Int  = 1,
     JalBTBBits:     Int  = 4,
     JalBTBWays:     Int  = 1,
+    RASBits:        Int  = 4,
     CacheableBase:  Long = 0x80000000L, // ysyxsoc默认值
     CacheableMask:  Long = 0x80000000L  // ysyxsoc默认值
 ) extends Module {
@@ -37,10 +38,12 @@ class ysyx_26030103(
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
   val pipe_flush = exu.io.FlushIF
-  // 分支目标缓冲(BTB): IFU取指级查询1决定下一PC,响应级查询2给指令贴预测标签,
-  // EXU提交时更新分支的真实target; 另设独立jal BTB(方案B: 与分支表零干扰)
+  // 分支目标缓冲(BTB): IFU取指级查询决定下一PC,取指被icache接受时快照预测标签随请求保存,
+  // EXU提交时更新分支的真实target; 另设独立jal BTB(方案B: 与分支表零干扰, 表项带kind区分Jal/Call/Ret)
+  // + 返回地址栈RAS(ret的预测目标=栈顶, EXU提交call/ret时压/弹, 非投机无需修复)
   val btb = Module(new ysyx_26030103_BTB(BTBBits, BTBWays))
-  val jal_btb = Module(new ysyx_26030103_BTB(JalBTBBits, JalBTBWays))
+  val jal_btb = Module(new ysyx_26030103_BTB(JalBTBBits, JalBTBWays, 32, 2))
+  val ras = Module(new ysyx_26030103_RAS(RASBits))
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
   ifuResp.valid := icache.io.resp_valid
@@ -48,12 +51,19 @@ class ysyx_26030103(
   ifuResp.bits.pc := icache.io.resp_addr
   ifuResp.bits.ExceptionValid := icache.io.resp_fault
   ifuResp.bits.ExceptionCause := 1.U(4.W)
-  // 响应级用resp_addr同时查两张BTB,给刚取回的指令贴预测标签(预测是否taken及目标)
-  btb.io.lookup2_pc := icache.io.resp_addr
-  jal_btb.io.lookup2_pc := icache.io.resp_addr
-  // 两表合并: jal表命中即taken且优先(目标静态), 否则分支表命中按BTFN(后向taken)判方向
-  ifuResp.bits.pred_taken := jal_btb.io.hit2 || (btb.io.hit2 && (btb.io.target2 < icache.io.resp_addr))
-  ifuResp.bits.pred_target := Mux(jal_btb.io.hit2, jal_btb.io.target2, btb.io.target2)
+  // 预测标签快照: 取指请求被icache接受时,把取指时刻的预测随请求保存,响应时贴给指令.
+  // 根治"取指/响应两阶段查找之间BTB/RAS状态变化,导致标签与实际取指路径不一致"的致命漏洞
+  // (反例: ret取指时RAS顶是A(错),响应时弹栈后变B(对),标签=B与实际执行一致=>不冲刷,
+  //  错路指令漏网提交,ra被污染. icache最多1个outstanding,单表项快照即够;
+  //  背靠背=响应与接受同拍,响应读的是旧值,时序正确)
+  val accept_fetch = ifu.io.FetchValid && icache.io.fetch_ready
+  val pred_tag_taken  = RegEnable(ifu.io.PredHit, false.B, accept_fetch)
+  val pred_tag_target = RegEnable(ifu.io.PredTarget, 0.U(32.W), accept_fetch)
+  ifuResp.bits.pred_taken := pred_tag_taken
+  ifuResp.bits.pred_target := pred_tag_target
+  // 响应级不再重新查表(第二查询端口保留在模块里, 顶层不再使用)
+  btb.io.lookup2_pc := 0.U(32.W)
+  jal_btb.io.lookup2_pc := 0.U(32.W)
   icache.io.resp_ready := ifuResp.ready
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
   icache.io.kill := pipe_flush
@@ -67,16 +77,26 @@ class ysyx_26030103(
   // BTB查询1: 用当前取指地址同时查两张表,合并结果回送IFU决定下一PC
   btb.io.lookup_pc := ifu.io.FetchAddr
   jal_btb.io.lookup_pc := ifu.io.FetchAddr
-  // jal表命中即taken且优先; 分支表命中且目标在后方(target<当前PC)才预测taken(BTFN)
-  ifu.io.PredHit    := jal_btb.io.hit || (btb.io.hit && (btb.io.target < ifu.io.FetchAddr))
-  ifu.io.PredTarget := Mux(jal_btb.io.hit, jal_btb.io.target, btb.io.target)
-  // BTB更新: EXU提交时按指令类型路由, 分支写分支表, jal写jal表
+  // jal表Ret表项命中且RAS非空→目标取RAS顶; Jal/Call表项命中即taken;
+  // 分支表命中且目标在后方(target<当前PC)才预测taken(BTFN)
+  val jalRet1 = jal_btb.io.hit && jal_btb.io.hit_kind.get === ysyx_26030103_BTBKind.Ret
+  val jalStatic1 = jal_btb.io.hit && jal_btb.io.hit_kind.get =/= ysyx_26030103_BTBKind.Ret
+  ifu.io.PredHit    := (jalRet1 && ras.io.nonempty) || jalStatic1 ||
+    (btb.io.hit && (btb.io.target < ifu.io.FetchAddr))
+  ifu.io.PredTarget := Mux(jalRet1, ras.io.top,
+    Mux(jalStatic1, jal_btb.io.target, btb.io.target))
+  // BTB更新: EXU提交时按指令类型路由, 分支写分支表, jal/ret写jal表(带kind)
   btb.io.update_valid  := exu.io.BTBUpdateValid
   btb.io.update_pc     := exu.io.BTBUpdatePC
   btb.io.update_target := exu.io.BTBUpdateTarget
   jal_btb.io.update_valid  := exu.io.JalBTBUpdateValid
   jal_btb.io.update_pc     := exu.io.JalBTBUpdatePC
   jal_btb.io.update_target := exu.io.JalBTBUpdateTarget
+  jal_btb.io.update_kind.get := exu.io.JalBTBUpdateKind
+  // RAS更新: call压栈, ret弹栈
+  ras.io.push_valid := exu.io.RASPushValid
+  ras.io.push_addr  := exu.io.RASPushAddr
+  ras.io.pop_valid  := exu.io.RASPopValid
   arbiter.io.lsu <> lsu.io.DataBus
   arbiter.io.memory.AW <> xbar.io.in.AW
   arbiter.io.memory.W <> xbar.io.in.W

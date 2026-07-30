@@ -142,7 +142,7 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 000 ????? 00100 11", addi, I, R(rd) = src1 + imm);
   INSTPAT("??????? ????? ????? ??? ????? 11011 11", jal, J, {
     R(rd) = s->pc + 4;
-    BTRACE_JAL(s, imm);
+    BTRACE_JAL(s, imm, rd);
 #ifdef CONFIG_FTRACE
     // 标准 RISC-V ABI: 只有 jal ra, offset (rd == x1) 才是函数调用
     if (rd == 1)
@@ -156,8 +156,9 @@ static int decode_exec(Decode *s)
     R(rd) = s->pc + 4;
     s->dnpc = (src1 + imm) & ~1;
     // 因为 jalr 既可能 call 也可能 ret
-#ifdef CONFIG_FTRACE
     int rs1 = BITS(s->isa.inst, 19, 15);
+    BTRACE_JALR(s, rs1, rd, imm);
+#ifdef CONFIG_FTRACE
     // 标准 RISC-V ABI: ret 为 jalr x0, x1, 0
     if (rd == 0 && rs1 == 1 && imm == 0)
     {

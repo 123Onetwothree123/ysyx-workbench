@@ -5,6 +5,7 @@ import AlwaysJump;
 import BTFN;
 import BTFNSharedJal;
 import BTFNSplitJal;
+import BTFNSplitJalRAS;
 import BTB;
 import BPConfig;
 export class BPAlgorithmsType

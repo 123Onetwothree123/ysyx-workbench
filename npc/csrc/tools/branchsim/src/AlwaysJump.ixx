@@ -12,7 +12,7 @@ private:
 public:
     explicit AlwaysJump(const BPConfig& config);
     ~AlwaysJump() override = default;
-    bool predict(uint32_t pc) const override;
+    Prediction predict(uint32_t pc) const override;
     void update(uint32_t pc, bool taken, uint32_t target, BranchKind kind) override;
     [[nodiscard]] std::string_view GetName() const override;
 };

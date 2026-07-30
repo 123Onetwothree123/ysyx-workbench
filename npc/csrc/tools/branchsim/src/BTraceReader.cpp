@@ -58,15 +58,24 @@ std::optional<BranchRecord> BTraceReader::TryParse(std::string_view line)
     {
         return std::nullopt;
     }
-    // 第4列(可选): 记录类型, 'j'=jal, 其余或缺失=条件分支(兼容旧格式trace)
+    // 第4列(可选): 记录类型, b=条件分支(默认), j=jal非调用, c=jal ra调用,
+    // r=ret, i=jalr ra间接调用, x=其他jalr; 缺失=条件分支(兼容旧格式trace)
     auto kind{BranchKind::Branch};
     while (pointer3 < end && (*pointer3 == ' ' || *pointer3 == '\t'))
     {
         ++pointer3;
     }
-    if (pointer3 < end && (*pointer3 == 'j' || *pointer3 == 'J'))
+    if (pointer3 < end)
     {
-        kind = BranchKind::Jal;
+        switch (*pointer3)
+        {
+        case 'j': case 'J': kind = BranchKind::Jal; break;
+        case 'c': case 'C': kind = BranchKind::Call; break;
+        case 'r': case 'R': kind = BranchKind::Ret; break;
+        case 'i': case 'I': kind = BranchKind::JalrCall; break;
+        case 'x': case 'X': kind = BranchKind::JalrOther; break;
+        default: break;
+        }
     }
     return BranchRecord{pc, target, taken != 0, kind};
 }

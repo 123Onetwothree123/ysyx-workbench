@@ -12,6 +12,7 @@ object ysyx_26030103_Elaborate extends App {
   val BTBWays       = sys.env.getOrElse("BTB_WAYS", "1").toInt
   val JalBTBBits    = sys.env.getOrElse("JAL_BTB_BITS", "4").toInt
   val JalBTBWays    = sys.env.getOrElse("JAL_BTB_WAYS", "1").toInt
+  val RASBits       = sys.env.getOrElse("RAS_BITS", "4").toInt
 
   val CacheableBase_ysyxsoc = 0x00000000L
   val CacheableMask_ysyxsoc = 0x00000000L
@@ -33,6 +34,7 @@ object ysyx_26030103_Elaborate extends App {
     BTBWays        = BTBWays,
     JalBTBBits     = JalBTBBits,
     JalBTBWays     = JalBTBWays,
+    RASBits        = RASBits,
     CacheableBase  = CacheableBase_ysyxsoc,
     CacheableMask  = CacheableMask_ysyxsoc
   ), Array("--target-dir", targetDir), yosysFirtoolOpts)
@@ -44,6 +46,7 @@ object ysyx_26030103_Elaborate extends App {
     BTBWays        = BTBWays,
     JalBTBBits     = JalBTBBits,
     JalBTBWays     = JalBTBWays,
+    RASBits        = RASBits,
     CacheableBase  = CacheableBase_npc,
     CacheableMask  = CacheableMask_npc
   ), Array("--target-dir", targetDir), yosysFirtoolOpts)
@@ -59,6 +62,7 @@ object ysyx_26030103_Elaborate extends App {
     BTBWays        = BTBWays,
     JalBTBBits     = JalBTBBits,
     JalBTBWays     = JalBTBWays,
+    RASBits        = RASBits,
     CacheableBase  = CacheableBase_ysyxsoc,
     CacheableMask  = CacheableMask_ysyxsoc
   ), Array("--target-dir", targetDir), yosysFirtoolOpts)

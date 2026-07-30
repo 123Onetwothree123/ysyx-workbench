@@ -1,7 +1,9 @@
 module BPConfig;
 import std;
-BPConfig::BPConfig(std::size_t bits, std::size_t ways, std::size_t jal_bits, std::size_t jal_ways)
-    : btb_bits{bits}, btb_ways{ways}, jal_btb_bits{jal_bits}, jal_btb_ways{jal_ways}
+BPConfig::BPConfig(std::size_t bits, std::size_t ways, std::size_t jal_bits, std::size_t jal_ways,
+                   std::size_t ras_bits)
+    : btb_bits{bits}, btb_ways{ways}, jal_btb_bits{jal_bits}, jal_btb_ways{jal_ways},
+      ras_bits{ras_bits}
 {
 }
 std::size_t BPConfig::get_btb_bits() const
@@ -19,4 +21,8 @@ std::size_t BPConfig::get_jal_btb_bits() const
 std::size_t BPConfig::get_jal_btb_ways() const
 {
     return jal_btb_ways;
+}
+std::size_t BPConfig::get_ras_bits() const
+{
+    return ras_bits;
 }

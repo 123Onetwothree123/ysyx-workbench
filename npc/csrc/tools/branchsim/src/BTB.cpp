@@ -1,6 +1,7 @@
 module BTB;
 import std;
 import BPConfig;
+import BranchRecord;
 BTB::BTB(const BPConfig &config)
     : BTB{config.get_btb_bits(), config.get_btb_ways()}
 {
@@ -28,7 +29,7 @@ std::optional<BTB::entry> BTB::lookup(std::uint32_t pc) const
     }
     return std::nullopt;
 }
-void BTB::update(std::uint32_t pc, std::uint32_t target, bool is_jal)
+void BTB::update(std::uint32_t pc, std::uint32_t target, BranchKind kind)
 {
     auto index{(pc >> 2) & ((std::size_t{1} << index_bits) - 1)}; // 同上
     auto &set{sets[index]};                                       // 拿到对应书架的所有表项引用
@@ -38,7 +39,7 @@ void BTB::update(std::uint32_t pc, std::uint32_t target, bool is_jal)
         if (e.valid && e.tag == pc)
         {                        //   找到了——说明这条分支之前执行过
             e.target = target;   //   更新跳转目标（可能没变，也可能变了）
-            e.is_jal = is_jal;   //   类型位一并刷新(同一PC类型不会变, 仅为保险)
+            e.kind = kind;       //   类型位一并刷新(同一PC类型不会变, 仅为保险)
             return;              //   只更新不新建
         }
     }
@@ -49,7 +50,7 @@ void BTB::update(std::uint32_t pc, std::uint32_t target, bool is_jal)
             e.valid = true;    //   标记为有效
             e.tag = pc;        //   写入当前 PC
             e.target = target; //   写入跳转目标
-            e.is_jal = is_jal; //   写入类型位
+            e.kind = kind;     //   写入类型位
             return;
         }
     }
@@ -58,7 +59,7 @@ void BTB::update(std::uint32_t pc, std::uint32_t target, bool is_jal)
     auto &victim{set[repl_ptr[index]]};
     victim.tag = pc;
     victim.target = target;
-    victim.is_jal = is_jal;
+    victim.kind = kind;
     victim.valid = true;             // 确保有效位置 1
     repl_ptr[index] = (repl_ptr[index] + 1) % ways;
 }

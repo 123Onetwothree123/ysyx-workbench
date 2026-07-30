@@ -1,13 +1,15 @@
 module;
 #include <cstdint>
+
 module AlwaysJump;
-bool AlwaysJump::predict(uint32_t pc) const
+Prediction AlwaysJump::predict(uint32_t pc) const
 {
-    return true;
+    // 方向型参考算法, 不提供目标(只做方向评判)
+    return {true, false, 0};
 }
 void AlwaysJump::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind)
 {
-    btb.update(pc, target, kind == BranchKind::Jal);
+    btb.update(pc, target, kind);
 }
 std::string_view AlwaysJump::GetName() const
 {
