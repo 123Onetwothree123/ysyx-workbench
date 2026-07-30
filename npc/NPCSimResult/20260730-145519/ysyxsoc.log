@@ -1,0 +1,82 @@
+现在指定了镜像文件
+文件加载了: /home/abc/ysyx-workbench/am-kernels/benchmarks/microbench/build/microbench-riscv32i-ysyxsoc.bin, size = 29280 bytes
+======= Running MicroBench [input *test*] =======
+[qsort] Quick sort: * Passed.
+[queen] Queen placement: * Passed.
+[bf] Brainf**k interpreter: * Passed.
+[fib] Fibonacci number: * Passed.
+[sieve] Eratosthenes sieve: * Passed.
+[15pz] A* 15-puzzle search: * Passed.
+[dinic] Dinic's maxflow algorithm: * Passed.
+[lzip] Lzip compression: * Passed.
+[ssort] Suffix sort: * Passed.
+[md5] MD5 digest: * Passed.
+==================================================
+MicroBench PASS
+Scored time: 3097.076 ms
+Total  time: 4491.999 ms
+trap了
+HIT GOOD TRAP at pc = 0xa0004db8, cycles = 4989847, instructions = 405649, ipc = 0.0813
+性能计数器
+IFU取到指令: 637849
+EXU完成计算: 573369
+LSU取到数据: 67432
+LSU写出数据: 54394
+ALU指令: 305126
+访存指令: 121826
+CSR指令: 2
+分支/跳转指令: 146415
+  其中 jal指令: 19196
+  其中 jalr指令: 13896
+  其中 条件分支: 113323
+指令类别合计: 573369 (应与IFU取指一致)
+IFU取指: 637849
+EXU完成: 573369 (应与IFU取指接近)
+LSU合计: 121826 (应与访存指令一致)
+
+指令类别占比与平均周期:
+ALU指令占比: 47.8%
+访存指令占比: 19.1%
+访存指令平均周期: 6.69
+CSR指令占比: 0.0%
+分支/跳转指令占比: 23.0%
+
+IFU取不到指令原因分析:
+流水线阻塞(IFU有数据但下游不接): 3404415 周期, 占比 68.2%
+AXI总线等待(AR/R通道未就绪): 4306326 周期, 占比 86.3%
+  其中 AR通道等待(请求未接受): 163955 周期, 占比 3.3%
+  其中 R通道等待(数据未返回): 726250 周期, 占比 14.6%
+跳转冲刷(取指结果被丢弃): 36835 周期, 占比 0.7%
+IFU空闲(无取指请求): 36836 周期, 占比 0.7%
+
+EXU流水线阻塞分析:
+EXU被下游阻塞(有指令但本拍未完成): 2446705 周期, 占比 49.0%
+EXU空转无输入(上游供给不足): 1969773 周期, 占比 39.5%
+EX/MEM等待槽占用(5级拆分买到的访存重叠): 2850956 周期, 占比 57.1%
+
+IDU数据冒险阻塞分析:
+RAW阻塞合计: 1482370 周期, 占比 29.7%
+  load-use(等LSU数据,转发无法消除): 1482370 周期, 占比 29.7%
+  ALU依赖(转发可消除,即转发理想收益): 0 周期, 占比 0.0%
+
+异常/中断提交: 1 次
+
+LSU平均访存延迟:
+平均延迟: 30.36 周期
+  读延迟: 33.31 周期 (67432 次)
+  写延迟: 26.69 周期 (54394 次)
+
+LSU访存延迟分解:
+  AR等待(读请求握手): 296796 周期, 占比 8.0%
+  R等待(读数据返回):  1882134 周期, 占比 50.9%
+  AW/W等待(写请求握手): 230543 周期, 占比 6.2%
+  B等待(写响应返回):  1167065 周期, 占比 31.6%
+
+ICache 性能:
+  命中: 626143 次
+  缺失: 20542 次
+  命中率: 96.8%
+  缺失平均延迟: 43.3 周期
+  AMAT: 2.4 周期
+
+单次记录: NPCSimResult/20260730-145519/result_ysyxsoc_icsprout55.csv
