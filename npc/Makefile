@@ -124,7 +124,7 @@ cachesim_dse: $(CACHESIM_BIN)
 	@echo "cachesim DSE 探索中..."
 	@$(CACHESIM_BIN) --dse itrace.txt
 
-.PHONY: test verilog help reformat checkformat clean synth perf sim-iverilog sim-iverilog-netlist
+.PHONY: test verilog help reformat checkformat clean synth perf
 
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
@@ -463,19 +463,6 @@ run: $(BIN_NPC)
 	od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
 	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
 endif
-
-IVERILOG_FLAGS = -g2012 -I$(BUILD_DIR)
-
-sim-iverilog: verilog
-ifndef IMG
-	$(error IMG is not set. Usage: make sim-iverilog IMG=<path_to_bin>)
-endif
-	od -An -tx4 -w4 -v "$(IMG)" | awk '{print $$1}' > $(BUILD_DIR)/program_iverilog.hex
-	sed -i '/^  bind /d; /^module ysyx_26030103_Verification_Assert/,/^endmodule/d' $(BUILD_DIR)/ysyx_26030103_npc.sv
-	iverilog $(IVERILOG_FLAGS) -o $(BUILD_DIR)/npc_sim.vvp \
-		rtl/iverilog_sim_top.sv rtl/iverilog_axi_ram.sv \
-		$(BUILD_DIR)/ysyx_26030103_npc.sv
-	vvp $(BUILD_DIR)/npc_sim.vvp
 
 .PHONY: pgo
 pgo: verilog
