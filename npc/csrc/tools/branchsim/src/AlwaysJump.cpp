@@ -13,6 +13,6 @@ std::string_view AlwaysJump::GetName() const
 {
     return name;
 }
-AlwaysJump::AlwaysJump(const BPConfig &config) : BPAlgorithmBase(config)
+AlwaysJump::AlwaysJump(const BPConfig &config) : BPAlgorithmBase{config}
 {
 }

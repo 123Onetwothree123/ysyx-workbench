@@ -9,7 +9,7 @@ export class BPAlgorithmBase
 protected:
     BTB btb;
 public:
-    explicit BPAlgorithmBase(const BPConfig& config) : btb{config} {}
+    explicit BPAlgorithmBase(const BPConfig& config);
     virtual ~BPAlgorithmBase() = default;
     BPAlgorithmBase(const BPAlgorithmBase &) = default;
     BPAlgorithmBase(BPAlgorithmBase &&) = default;

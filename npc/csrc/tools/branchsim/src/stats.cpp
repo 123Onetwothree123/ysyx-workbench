@@ -22,7 +22,7 @@ void PrintTable(std::span<const std::pair<std::string_view, stats>> results)
 void WriteCSV(std::span<const std::pair<std::string_view, stats>> results, const std::filesystem::path &dir)
 {
     std::filesystem::create_directories(dir);
-    auto file = std::ofstream(dir / "result.csv");
+    std::ofstream file{dir / "result.csv"};
     file << "算法,总分支,正确,误预测,准确率(%)\n";
     for (auto &[name, s] : results)
     {

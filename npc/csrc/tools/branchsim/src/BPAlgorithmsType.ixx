@@ -20,6 +20,6 @@ public:
     BPAlgorithmsType &operator=(const BPAlgorithmsType &) = delete;
     [[nodiscard]] auto begin() const noexcept;
     [[nodiscard]] auto end() const noexcept;
-    [[nodiscard]] auto size() const noexcept { return algos.size(); }
-    auto& operator[](std::size_t i) const { return *algos[i]; }
+    [[nodiscard]] std::size_t size() const noexcept;
+    BPAlgorithmBase& operator[](std::size_t i) const;
 };

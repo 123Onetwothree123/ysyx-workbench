@@ -18,3 +18,11 @@ auto BPAlgorithmsType::end() const noexcept
 {
     return algos.end();
 }
+std::size_t BPAlgorithmsType::size() const noexcept
+{
+    return algos.size();
+}
+BPAlgorithmBase& BPAlgorithmsType::operator[](std::size_t i) const
+{
+    return *algos[i];
+}

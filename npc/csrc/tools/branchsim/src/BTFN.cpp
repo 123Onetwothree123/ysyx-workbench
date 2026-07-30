@@ -17,6 +17,6 @@ std::string_view BTFN::GetName() const
 {
     return name;
 }
-BTFN::BTFN(const BPConfig &config) : BPAlgorithmBase(config)
+BTFN::BTFN(const BPConfig &config) : BPAlgorithmBase{config}
 {
 }
