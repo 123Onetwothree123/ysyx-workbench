@@ -70,10 +70,11 @@ class ysyx_26030103_EXU extends Module {
   // 上游随指令传来的异常标记(IFU取指错cause=1/IDU非法指令cause=2)
   // 带标记的指令只做异常提交,不得产生任何副作用(访存/CSR写/GPR写/重定向)
   val UpEx = inst.ExceptionValid
-  // 带副作用的指令(csr/ecall/ebreak/mret/异常)必须等MEM级排空(在序精确异常):
-  // 比它年老的访存可能还没完成,甚至可能是故障要提交异常
+  // 带副作用的指令(csr/ecall/ebreak/mret/fence.i/异常)必须等MEM级排空(在序精确异常):
+  // 比它年老的访存可能还没完成,甚至可能是故障要提交异常;
+  // fence.i也要等写缓冲排空, 否则新取指可能读到store落内存之前的旧指令
   val IsSideEffect = inst.IsCsrrw || inst.IsCsrrs || inst.IsEcall || inst.IsEbreak ||
-    inst.IsMret || inst.ExceptionValid
+    inst.IsMret || inst.ExceptionValid || inst.IsFenceI
   val BlockForMEM = io.MEMBusy && IsSideEffect
   io.in.ready := io.out.ready && !BlockForMEM
   io.out.valid := io.in.valid && !BlockForMEM
