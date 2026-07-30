@@ -1,2 +1,3 @@
 NPCSimResult/**/*.csv linguist-vendored
 log/**/*.log linguist-generated
+yosys-sta-result/**/* linguist-generated

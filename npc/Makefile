@@ -553,6 +553,22 @@ synth: verilog
 		echo "0" >> $(PERF_SYNTH); \
 	fi
 
+YOSYS_STA_RESULT = $(NPC_HOME)/yosys-sta-result
+
+yosys-sta: verilog
+	@echo "[yosys-sta] 全流程 syn+sta ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE)) ..."
+	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && \
+	$(MAKE) -C $(YOSYS_STA_HOME) syn sta \
+		PDK=$(PDK_VALUE) \
+		DESIGN=$(SYNTH_DESIGN) \
+		RTL_FILES="$(abspath $(BUILD_DIR)/ysyx_26030103.sv)" \
+		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
+		O=$(abspath $(YOSYS_STA_HOME))/result
+	@TS_DIR="$(YOSYS_STA_RESULT)/$$(date +%Y%m%d-%H%M%S)"; \
+	mkdir -p "$$TS_DIR" && \
+	cp -r "$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz-$(PDK_VALUE)/." "$$TS_DIR/" && \
+	echo "[yosys-sta] 结果已保存到 $$TS_DIR"
+
 ifeq ($(SIM_TOP),soc)
 perf: synth $(BIN)
 	@mkdir -p $(PERF_DIR)
