@@ -41,4 +41,3 @@ HDLLearn/4/netlist.v
 !.gitignore
 !init.sh
 /fceux-am
-/am-kernels

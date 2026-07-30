@@ -16,3 +16,7 @@
 [submodule "rt-thread"]
 	path = rt-thread
 	url = https://github.com/123Onetwothree123/rt-thread.git
+[submodule "am-kernels"]
+	path = am-kernels
+	url = git@github.com:123Onetwothree123/am-kernels.git
+	branch = ics2021
