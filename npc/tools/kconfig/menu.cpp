@@ -114,20 +114,20 @@ void menu_add_dep(struct expr *dep)
 	current_entry->dep = expr_alloc_and(current_entry->dep, dep);
 }
 
-void menu_set_type(int type)
+void menu_set_type(enum symbol_type type)
 {
 	struct symbol *sym = current_entry->sym;
 
 	if (sym->type == type)
 		return;
 	if (sym->type == S_UNKNOWN) {
-		sym->type = static_cast<symbol_type>(type);
+		sym->type = type;
 		return;
 	}
 	menu_warn(current_entry,
 		"ignoring type redefinition of '%s' from '%s' to '%s'",
 		sym->name ? sym->name : "<choice>",
-		sym_type_name(sym->type), sym_type_name(static_cast<symbol_type>(type)));
+		sym_type_name(sym->type), sym_type_name(type));
 }
 
 static struct property *menu_add_prop(enum prop_type type, struct expr *expr,

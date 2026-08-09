@@ -233,7 +233,7 @@ static int conf_set_sym_val(struct symbol *sym, int def, int def_flags, char *p)
 	case S_INT:
 	case S_HEX:
 		if (sym_string_valid(sym, p)) {
-			sym->def[def].val = xstrdup(p);
+			sym->def[def].val.str = xstrdup(p);
 			sym->flags |= def_flags;
 		} else {
 			if (def != S_DEF_AUTO)
@@ -320,11 +320,12 @@ load:
 		case S_INT:
 		case S_HEX:
 		case S_STRING:
-			if (sym->def[def].val)
-				free(sym->def[def].val);
+			if (sym->def[def].val.str)
+				/* allocated by xstrdup() in conf_set_sym_val() */
+				free(const_cast<char *>(sym->def[def].val.str));
 			/* fall through */
 		default:
-			sym->def[def].val = nullptr;
+			sym->def[def].val.str = nullptr;
 			sym->def[def].tri = no;
 		}
 	}
@@ -417,7 +418,7 @@ load:
 			case yes:
 				if (cs->def[def].tri != no)
 					conf_warning("override: %s changes choice state", sym->name);
-				cs->def[def].val = sym;
+				cs->def[def].val.sym = sym;
 				break;
 			}
 			cs->def[def].tri = EXPR_OR(cs->def[def].tri, sym->def[def].tri);
@@ -454,7 +455,7 @@ int conf_read(const char *name)
 					continue;
 				break;
 			default:
-				if (!strcmp(static_cast<const char*>(sym->curr.val), static_cast<const char*>(sym->def[S_DEF_USER].val)))
+				if (!strcmp(sym->curr.val.str, sym->def[S_DEF_USER].val.str))
 					continue;
 				break;
 			}
@@ -479,7 +480,7 @@ int conf_read(const char *name)
 			case S_INT:
 			case S_HEX:
 				/* Reset a string value if it's out of range */
-				if (sym_string_within_range(sym, static_cast<const char*>(sym->def[S_DEF_USER].val)))
+				if (sym_string_within_range(sym, sym->def[S_DEF_USER].val.str))
 					break;
 				sym->flags &= ~(SYMBOL_VALID|SYMBOL_DEF_USER);
 				conf_unsaved++;
@@ -633,11 +634,10 @@ static void conf_write_symbol(FILE *fp, struct symbol *sym,
 	case S_UNKNOWN:
 		break;
 	case S_STRING: {
-		std::unique_ptr<char, decltype(&std::free)> escaped(nullptr, &std::free);
+		const std::string escaped =
+			sym_escape_string_value(sym_get_string_value(sym));
 
-		str = sym_get_string_value(sym);
-		escaped.reset(const_cast<char *>(sym_escape_string_value(str)));
-		printer->print_symbol(fp, sym, escaped.get(), skip_unset);
+		printer->print_symbol(fp, sym, escaped.c_str(), skip_unset);
 		break;
 	}
 	default:
@@ -940,7 +940,7 @@ static int conf_touch_deps(void)
 				case S_HEX:
 				case S_INT:
 					if (!strcmp(sym_get_string_value(sym),
-						    static_cast<const char*>(sym->def[S_DEF_AUTO].val)))
+						    sym->def[S_DEF_AUTO].val.str))
 						continue;
 					break;
 				default:
@@ -1119,7 +1119,7 @@ static bool randomize_choice_values(struct symbol *csym)
 	expr_list_for_each_sym(prop->expr, e, sym) {
 		if (def == cnt++) {
 			sym->def[S_DEF_USER].tri = yes;
-			csym->def[S_DEF_USER].val = sym;
+			csym->def[S_DEF_USER].val.sym = sym;
 		}
 		else {
 			sym->def[S_DEF_USER].tri = no;

@@ -21,7 +21,7 @@ using namespace std;
 static void conf(struct menu *menu);
 static void check_conf(struct menu *menu);
 
-enum input_mode {
+enum class input_mode {
 	oldaskconfig,
 	syncconfig,
 	oldconfig,
@@ -38,6 +38,23 @@ enum input_mode {
 	yes2modconfig,
 	mod2yesconfig,
 };
+
+/* Bare-enumerator compatibility aliases (getopt/case-label readability). */
+inline constexpr input_mode oldaskconfig  = input_mode::oldaskconfig;
+inline constexpr input_mode syncconfig    = input_mode::syncconfig;
+inline constexpr input_mode oldconfig     = input_mode::oldconfig;
+inline constexpr input_mode allnoconfig   = input_mode::allnoconfig;
+inline constexpr input_mode allyesconfig  = input_mode::allyesconfig;
+inline constexpr input_mode allmodconfig  = input_mode::allmodconfig;
+inline constexpr input_mode alldefconfig  = input_mode::alldefconfig;
+inline constexpr input_mode randconfig    = input_mode::randconfig;
+inline constexpr input_mode defconfig     = input_mode::defconfig;
+inline constexpr input_mode savedefconfig = input_mode::savedefconfig;
+inline constexpr input_mode listnewconfig = input_mode::listnewconfig;
+inline constexpr input_mode helpnewconfig = input_mode::helpnewconfig;
+inline constexpr input_mode olddefconfig  = input_mode::olddefconfig;
+inline constexpr input_mode yes2modconfig = input_mode::yes2modconfig;
+inline constexpr input_mode mod2yesconfig = input_mode::mod2yesconfig;
 static enum input_mode input_mode = oldaskconfig;
 
 static int indent = 1;
@@ -428,22 +445,12 @@ static void check_conf(struct menu *menu)
 		    (sym_is_choice(sym) && sym_get_tristate_value(sym) == yes)) {
 			if (input_mode == listnewconfig) {
 				if (sym->name) {
-					const char *str;
-
 					if (sym->type == S_STRING) {
-						str = sym_get_string_value(sym);
-						/*
-						 * sym_escape_string_value() (in
-						 * confdata.cpp) returns heap memory
-						 * through a const char *; ownership
-						 * passes to the caller, hence the
-						 * const_cast + free below.
-						 */
-						str = sym_escape_string_value(str);
-						printf("%s%s=%s\n", CONFIG_, sym->name, str);
-						free(const_cast<char*>(str));
+						const std::string str =
+							sym_escape_string_value(sym_get_string_value(sym));
+						printf("%s%s=%s\n", CONFIG_, sym->name, str.c_str());
 					} else {
-						str = sym_get_string_value(sym);
+						const char *str = sym_get_string_value(sym);
 						printf("%s%s=%s\n", CONFIG_, sym->name, str);
 					}
 				}
@@ -466,21 +473,21 @@ static void check_conf(struct menu *menu)
 }
 
 static const struct option long_opts[] = {
-	{"oldaskconfig",    no_argument,       nullptr, oldaskconfig},
-	{"oldconfig",       no_argument,       nullptr, oldconfig},
-	{"syncconfig",      no_argument,       nullptr, syncconfig},
-	{"defconfig",       required_argument, nullptr, defconfig},
-	{"savedefconfig",   required_argument, nullptr, savedefconfig},
-	{"allnoconfig",     no_argument,       nullptr, allnoconfig},
-	{"allyesconfig",    no_argument,       nullptr, allyesconfig},
-	{"allmodconfig",    no_argument,       nullptr, allmodconfig},
-	{"alldefconfig",    no_argument,       nullptr, alldefconfig},
-	{"randconfig",      no_argument,       nullptr, randconfig},
-	{"listnewconfig",   no_argument,       nullptr, listnewconfig},
-	{"helpnewconfig",   no_argument,       nullptr, helpnewconfig},
-	{"olddefconfig",    no_argument,       nullptr, olddefconfig},
-	{"yes2modconfig",   no_argument,       nullptr, yes2modconfig},
-	{"mod2yesconfig",   no_argument,       nullptr, mod2yesconfig},
+	{"oldaskconfig",    no_argument,       nullptr, static_cast<int>(oldaskconfig)},
+	{"oldconfig",       no_argument,       nullptr, static_cast<int>(oldconfig)},
+	{"syncconfig",      no_argument,       nullptr, static_cast<int>(syncconfig)},
+	{"defconfig",       required_argument, nullptr, static_cast<int>(defconfig)},
+	{"savedefconfig",   required_argument, nullptr, static_cast<int>(savedefconfig)},
+	{"allnoconfig",     no_argument,       nullptr, static_cast<int>(allnoconfig)},
+	{"allyesconfig",    no_argument,       nullptr, static_cast<int>(allyesconfig)},
+	{"allmodconfig",    no_argument,       nullptr, static_cast<int>(allmodconfig)},
+	{"alldefconfig",    no_argument,       nullptr, static_cast<int>(alldefconfig)},
+	{"randconfig",      no_argument,       nullptr, static_cast<int>(randconfig)},
+	{"listnewconfig",   no_argument,       nullptr, static_cast<int>(listnewconfig)},
+	{"helpnewconfig",   no_argument,       nullptr, static_cast<int>(helpnewconfig)},
+	{"olddefconfig",    no_argument,       nullptr, static_cast<int>(olddefconfig)},
+	{"yes2modconfig",   no_argument,       nullptr, static_cast<int>(yes2modconfig)},
+	{"mod2yesconfig",   no_argument,       nullptr, static_cast<int>(mod2yesconfig)},
 	{nullptr, 0, nullptr, 0}
 };
 
@@ -521,8 +528,12 @@ int main(int ac, char **av)
 			conf_set_message_callback(nullptr);
 			continue;
 		}
+		if (opt == '?') {
+			conf_usage(progname);
+			exit(1);
+		}
 		input_mode = static_cast<enum input_mode>(opt);
-		switch (opt) {
+		switch (input_mode) {
 		case syncconfig:
 			/*
 			 * syncconfig is invoked during the build stage.
@@ -571,10 +582,6 @@ int main(int ac, char **av)
 		case olddefconfig:
 		case yes2modconfig:
 		case mod2yesconfig:
-			break;
-		case '?':
-			conf_usage(progname);
-			exit(1);
 			break;
 		}
 	}

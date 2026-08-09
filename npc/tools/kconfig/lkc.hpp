@@ -118,7 +118,7 @@ void menu_add_option_modules(void);
 void menu_add_option_defconfig_list(void);
 void menu_add_option_allnoconfig_y(void);
 void menu_finalize(struct menu *parent);
-void menu_set_type(int type);
+void menu_set_type(enum symbol_type type);
 
 extern struct menu rootmenu;
 
@@ -149,7 +149,7 @@ static inline tristate sym_get_tristate_value(struct symbol *sym)
 
 static inline struct symbol *sym_get_choice_value(struct symbol *sym)
 {
-	return (struct symbol *)sym->curr.val;
+	return sym->curr.val.sym;
 }
 
 static inline bool sym_set_choice_value(struct symbol *ch, struct symbol *chval)

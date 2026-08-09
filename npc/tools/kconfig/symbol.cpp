@@ -17,25 +17,25 @@ using namespace std;
 
 struct symbol symbol_yes = {
 	.name = "y",
-	.curr = { const_cast<char*>("y"), yes },
+	.curr = { .val = { .str = "y" }, .tri = yes },
 	.flags = SYMBOL_CONST|SYMBOL_VALID,
 };
 
 struct symbol symbol_mod = {
 	.name = "m",
-	.curr = { const_cast<char*>("m"), mod },
+	.curr = { .val = { .str = "m" }, .tri = mod },
 	.flags = SYMBOL_CONST|SYMBOL_VALID,
 };
 
 struct symbol symbol_no = {
 	.name = "n",
-	.curr = { const_cast<char*>("n"), no },
+	.curr = { .val = { .str = "n" }, .tri = no },
 	.flags = SYMBOL_CONST|SYMBOL_VALID,
 };
 
 static struct symbol symbol_empty = {
 	.name = "",
-	.curr = { const_cast<char*>(""), no },
+	.curr = { .val = { .str = "" }, .tri = no },
 	.flags = SYMBOL_VALID,
 };
 
@@ -121,7 +121,7 @@ static long long sym_get_range_val(struct symbol *sym, int base)
 	default:
 		break;
 	}
-	return strtoll(static_cast<const char*>(sym->curr.val), nullptr, base);
+	return strtoll(sym->curr.val.str, nullptr, base);
 }
 
 static void sym_validate_range(struct symbol *sym)
@@ -144,7 +144,7 @@ static void sym_validate_range(struct symbol *sym)
 	prop = sym_get_range_prop(sym);
 	if (!prop)
 		return;
-	val = strtoll(static_cast<const char*>(sym->curr.val), nullptr, base);
+	val = strtoll(sym->curr.val.str, nullptr, base);
 	val2 = sym_get_range_val(prop->expr->left.sym, base);
 	if (val >= val2) {
 		val2 = sym_get_range_val(prop->expr->right.sym, base);
@@ -156,8 +156,8 @@ static void sym_validate_range(struct symbol *sym)
 	else
 		snprintf(str, sizeof(str), "0x%llx", val2);
 	/*
-	 * curr.val may alias a string literal, def[S_DEF_USER].val, or
-	 * another symbol's curr.val (see sym_calc_value()); none of those
+	 * curr.val.str may alias a string literal, def[S_DEF_USER].val.str, or
+	 * another symbol's curr.val.str (see sym_calc_value()); none of those
 	 * are owned by us, so they must not be freed. Conservative
 	 * strategy: only free the previous value when it is the result of
 	 * a previous xstrdup() in this very function, tracked per symbol
@@ -165,13 +165,15 @@ static void sym_validate_range(struct symbol *sym)
 	 */
 	{
 		static std::unordered_map<struct symbol *, void *> clamped_vals;
+		char *dup = xstrdup(str);
+
 		auto it = clamped_vals.find(sym);
 		if (it != clamped_vals.end()) {
 			free(it->second);
 			clamped_vals.erase(it);
 		}
-		sym->curr.val = xstrdup(str);
-		clamped_vals.emplace(sym, sym->curr.val);
+		sym->curr.val.str = dup;
+		clamped_vals.emplace(sym, dup);
 	}
 }
 
@@ -309,7 +311,7 @@ static struct symbol *sym_calc_choice(struct symbol *sym)
 	sym->flags &= flags | ~SYMBOL_DEF_USER;
 
 	/* is the user choice visible? */
-	def_sym = static_cast<symbol*>(sym->def[S_DEF_USER].val);
+	def_sym = sym->def[S_DEF_USER].val.sym;
 	if (def_sym && def_sym->visible != no)
 		return def_sym;
 
@@ -378,7 +380,7 @@ void sym_calc_value(struct symbol *sym)
 		newval = symbol_no.curr;
 		break;
 	default:
-		sym->curr.val = const_cast<char*>(sym->name);
+		sym->curr.val.str = sym->name;
 		sym->curr.tri = no;
 		return;
 	}
@@ -397,7 +399,7 @@ void sym_calc_value(struct symbol *sym)
 	case S_TRISTATE:
 		if (sym_is_choice_value(sym) && sym->visible == yes) {
 			prop = sym_get_choice_prop(sym);
-			newval.tri = (prop_get_symbol(prop)->curr.val == sym) ? yes : no;
+			newval.tri = (prop_get_symbol(prop)->curr.val.sym == sym) ? yes : no;
 		} else {
 			if (sym->visible != no) {
 				/* if the symbol is visible use the user value
@@ -438,7 +440,7 @@ void sym_calc_value(struct symbol *sym)
 	case S_HEX:
 	case S_INT:
 		if (sym->visible != no && sym_has_value(sym)) {
-			newval.val = sym->def[S_DEF_USER].val;
+			newval.val.str = sym->def[S_DEF_USER].val.str;
 			break;
 		}
 		prop = sym_get_default_prop(sym);
@@ -447,7 +449,7 @@ void sym_calc_value(struct symbol *sym)
 			if (ds) {
 				sym->flags |= SYMBOL_WRITE;
 				sym_calc_value(ds);
-				newval.val = ds->curr.val;
+				newval.val.str = ds->curr.val.str;
 			}
 		}
 		break;
@@ -457,11 +459,16 @@ void sym_calc_value(struct symbol *sym)
 
 	sym->curr = newval;
 	if (sym_is_choice(sym) && newval.tri == yes)
-		sym->curr.val = sym_calc_choice(sym);
+		sym->curr.val.sym = sym_calc_choice(sym);
 	sym_validate_range(sym);
 
-	/* struct symbol_value has padding; compare field by field */
-	if (oldval.val != sym->curr.val || oldval.tri != sym->curr.tri) {
+	/*
+	 * struct symbol_value has padding; compare field by field. The two
+	 * union members are both pointers, so reading .str compares the raw
+	 * pointer value regardless of which member is active (same semantics
+	 * as the previous void * comparison).
+	 */
+	if (oldval.val.str != sym->curr.val.str || oldval.tri != sym->curr.tri) {
 		sym_set_changed(sym);
 		if (modules_sym == sym) {
 			sym_set_all_changed();
@@ -539,7 +546,7 @@ bool sym_set_tristate_value(struct symbol *sym, tristate val)
 		struct property *prop;
 		struct expr *e;
 
-		cs->def[S_DEF_USER].val = sym;
+		cs->def[S_DEF_USER].val.sym = sym;
 		cs->flags |= SYMBOL_DEF_USER;
 		prop = sym_get_choice_prop(cs);
 		for (e = prop->expr; e; e = e->left.expr) {
@@ -693,27 +700,28 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 		sym_set_changed(sym);
 	}
 
-	oldval = static_cast<const char*>(sym->def[S_DEF_USER].val);
+	oldval = sym->def[S_DEF_USER].val.str;
 	size = strlen(newval) + 1;
 	if (sym->type == S_HEX && (newval[0] != '0' || (newval[1] != 'x' && newval[1] != 'X'))) {
 		size += 2;
-		sym->def[S_DEF_USER].val = val = static_cast<char*>(xmalloc(size));
+		sym->def[S_DEF_USER].val.str = val = static_cast<char*>(xmalloc(size));
 		*val++ = '0';
 		*val++ = 'x';
 	} else if (!oldval || strcmp(oldval, newval))
-		sym->def[S_DEF_USER].val = val = static_cast<char*>(xmalloc(size));
+		sym->def[S_DEF_USER].val.str = val = static_cast<char*>(xmalloc(size));
 	else
 		return true;
 
 	strcpy(val, newval);
 	free((void *)oldval);
 	/*
-	 * curr.val may alias the just-freed def[S_DEF_USER].val (assigned
-	 * in sym_calc_value()); clear that dangling pointer. The current
-	 * value is recomputed lazily after sym_clear_all_valid() below.
+	 * curr.val.str may alias the just-freed def[S_DEF_USER].val.str
+	 * (assigned in sym_calc_value()); clear that dangling pointer. The
+	 * current value is recomputed lazily after sym_clear_all_valid()
+	 * below.
 	 */
-	if (sym->curr.val == static_cast<const void *>(oldval))
-		sym->curr.val = nullptr;
+	if (sym->curr.val.str == oldval)
+		sym->curr.val.str = nullptr;
 	sym_clear_all_valid();
 
 	return true;
@@ -736,7 +744,7 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 	sym_calc_visibility(sym);
 	sym_calc_value(modules_sym);
 	val = symbol_no.curr.tri;
-	str = static_cast<const char*>(symbol_empty.curr.val);
+	str = symbol_empty.curr.val.str;
 
 	/* If symbol has a default value look it up */
 	prop = sym_get_default_prop(sym);
@@ -756,7 +764,7 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 			ds = prop_get_symbol(prop);
 			if (ds != nullptr) {
 				sym_calc_value(ds);
-				str = (const char *)ds->curr.val;
+				str = ds->curr.val.str;
 			}
 		}
 	}
@@ -817,7 +825,7 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 	default:
 		;
 	}
-	return (const char *)sym->curr.val;
+	return sym->curr.val.str;
 }
 
 [[nodiscard]] bool sym_is_changeable(struct symbol *sym)
@@ -902,46 +910,33 @@ struct symbol *sym_find(const char *name)
 	return symbol;
 }
 
-const char *sym_escape_string_value(const char *in)
+/*
+ * Returns 'in' wrapped in double quotes with embedded '"' and '\'
+ * backslash-escaped. Ownership stays with the returned std::string; the
+ * former interface returned heap memory through a const char *, forcing
+ * callers into const_cast + free().
+ */
+std::string sym_escape_string_value(const char *in)
 {
-	const char *p;
-	size_t reslen;
-	char *res;
+	std::string res;
+	const char *p = in;
 	size_t l;
 
-	reslen = strlen(in) + strlen("\"\"") + 1;
+	res = '"';
 
-	p = in;
 	for (;;) {
 		l = strcspn(p, "\"\\");
+		res.append(p, l);
 		p += l;
 
 		if (p[0] == '\0')
 			break;
 
-		reslen++;
-		p++;
+		res += '\\';
+		res += *p++;
 	}
 
-	res = static_cast<char*>(xmalloc(reslen));
-	res[0] = '\0';
-
-	strcat(res, "\"");
-
-	p = in;
-	for (;;) {
-		l = strcspn(p, "\"\\");
-		strncat(res, p, l);
-		p += l;
-
-		if (p[0] == '\0')
-			break;
-
-		strcat(res, "\\");
-		strncat(res, p++, 1);
-	}
-
-	strcat(res, "\"");
+	res += '"';
 	return res;
 }
 

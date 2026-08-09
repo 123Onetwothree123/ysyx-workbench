@@ -462,7 +462,8 @@ static void build_conf(struct menu *menu)
 	struct symbol *sym;
 	struct property *prop;
 	struct menu *child;
-	int type, tmp, doint = 2;
+	enum symbol_type type;
+	int tmp, doint = 2;
 	tristate val;
 	char ch;
 	bool visible;

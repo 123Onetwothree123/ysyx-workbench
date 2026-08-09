@@ -17,9 +17,18 @@ struct file {
 	int lineno;
 };
 
-typedef enum tristate {
+enum class tristate {
 	no, mod, yes
-} tristate;
+};
+
+/*
+ * Unqualified-name compatibility aliases. The codebase (including the
+ * generated parser/lexer) uses the bare enumerators everywhere; these keep
+ * all those call sites source-compatible with the scoped enum.
+ */
+inline constexpr tristate no  = tristate::no;
+inline constexpr tristate mod = tristate::mod;
+inline constexpr tristate yes = tristate::yes;
 
 enum expr_type {
 	E_NONE, E_OR, E_AND, E_NOT,
@@ -49,7 +58,7 @@ inline constexpr tristate EXPR_AND(tristate dep1, tristate dep2)
 
 inline constexpr tristate EXPR_NOT(tristate dep)
 {
-	return static_cast<tristate>(2 - dep);
+	return static_cast<tristate>(2 - static_cast<int>(dep));
 }
 
 #define expr_list_for_each_sym(l, e, s) \
@@ -60,14 +69,33 @@ struct expr_value {
 	tristate tri;
 };
 
+/*
+ * Tagged payload of symbol_value: 'str' for string/int/hex values (and the
+ * constant tristate symbols' literal names), 'sym' for the selected
+ * choice-value symbol of a choice. Which member is active follows from the
+ * symbol's type/flags at the access site.
+ */
+union symbol_value_data {
+	const char *str;
+	struct symbol *sym;
+};
+
 struct symbol_value {
-	void *val;
+	union symbol_value_data val;
 	tristate tri;
 };
 
-enum symbol_type {
+enum class symbol_type {
 	S_UNKNOWN, S_BOOLEAN, S_TRISTATE, S_INT, S_HEX, S_STRING
 };
+
+/* See tristate above: bare-enumerator compatibility aliases. */
+inline constexpr symbol_type S_UNKNOWN  = symbol_type::S_UNKNOWN;
+inline constexpr symbol_type S_BOOLEAN  = symbol_type::S_BOOLEAN;
+inline constexpr symbol_type S_TRISTATE = symbol_type::S_TRISTATE;
+inline constexpr symbol_type S_INT      = symbol_type::S_INT;
+inline constexpr symbol_type S_HEX      = symbol_type::S_HEX;
+inline constexpr symbol_type S_STRING   = symbol_type::S_STRING;
 
 /* enum values are used as index to symbol.def[] */
 enum {
@@ -180,7 +208,7 @@ inline constexpr int SYMBOL_ALLNOCONFIG_Y = 0x200000;
  * Please, also check parser.y:print_symbol() when modifying the
  * list of property types!
  */
-enum prop_type {
+enum class prop_type {
 	P_UNKNOWN,
 	P_PROMPT,   /* prompt "foo prompt" or "BAZ Value" */
 	P_COMMENT,  /* text associated with a comment */
@@ -192,6 +220,18 @@ enum prop_type {
 	P_RANGE,    /* range 7..100 (for a symbol) */
 	P_SYMBOL,   /* where a symbol is defined */
 };
+
+/* See tristate above: bare-enumerator compatibility aliases. */
+inline constexpr prop_type P_UNKNOWN = prop_type::P_UNKNOWN;
+inline constexpr prop_type P_PROMPT  = prop_type::P_PROMPT;
+inline constexpr prop_type P_COMMENT = prop_type::P_COMMENT;
+inline constexpr prop_type P_MENU    = prop_type::P_MENU;
+inline constexpr prop_type P_DEFAULT = prop_type::P_DEFAULT;
+inline constexpr prop_type P_CHOICE  = prop_type::P_CHOICE;
+inline constexpr prop_type P_SELECT  = prop_type::P_SELECT;
+inline constexpr prop_type P_IMPLY   = prop_type::P_IMPLY;
+inline constexpr prop_type P_RANGE   = prop_type::P_RANGE;
+inline constexpr prop_type P_SYMBOL  = prop_type::P_SYMBOL;
 
 struct property {
 	struct property *next;     /* next property - null if last */

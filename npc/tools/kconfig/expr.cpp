@@ -137,15 +137,14 @@ void expr_free(struct expr *e)
 }
 
 /*
- * Number of simplifications performed in the current expr_eliminate_dups()
- * pass; also bumped by __expr_eliminate_eq() so that expr_eq() can detect
- * changes. This is a file-scope variable because the public entry points
- * (expr_eq(), expr_eliminate_dups()) cannot take extra parameters (their
- * signatures are fixed by expr.hpp and used by other front ends). Callers
- * must save/restore it around reentrant use, as expr_eq() and
- * expr_eliminate_dups() do with 'old_count'/'oldcount'.
+ * Simplification counter. Each public entry point (expr_eq(),
+ * expr_eliminate_eq(), expr_eliminate_dups()) keeps its own counter in a
+ * local variable and threads it through the internal helpers as the 'count'
+ * parameter. This replaces the former file-scope 'trans_count' variable with
+ * its manual save/restore protocol, removing the reentrancy hazard: a nested
+ * call (e.g. expr_eq() from within an expr_eliminate_dups() pass) can no
+ * longer clobber the outer pass's counter.
  */
-static int trans_count;
 
 /*
  * expr_eliminate_eq() helper.
@@ -153,22 +152,24 @@ static int trans_count;
  * Walks the two expression trees given in 'ep1' and 'ep2'. Any node that does
  * not have type 'type' (E_OR/E_AND) is considered a leaf, and is compared
  * against all other leaves. Two equal leaves are both replaced with either 'y'
- * or 'n' as appropriate for 'type', to be eliminated later.
+ * or 'n' as appropriate for 'type', to be eliminated later. 'count' is bumped
+ * for each such simplification.
  */
-static void __expr_eliminate_eq(enum expr_type type, struct expr **ep1, struct expr **ep2)
+static void __expr_eliminate_eq(enum expr_type type, struct expr **ep1, struct expr **ep2,
+				int &count)
 {
 	auto &e1 = *ep1;
 	auto &e2 = *ep2;
 	/* Recurse down to leaves */
 
 	if (e1->type == type) {
-		__expr_eliminate_eq(type, &e1->left.expr, &e2);
-		__expr_eliminate_eq(type, &e1->right.expr, &e2);
+		__expr_eliminate_eq(type, &e1->left.expr, &e2, count);
+		__expr_eliminate_eq(type, &e1->right.expr, &e2, count);
 		return;
 	}
 	if (e2->type == type) {
-		__expr_eliminate_eq(type, &e1, &e2->left.expr);
-		__expr_eliminate_eq(type, &e1, &e2->right.expr);
+		__expr_eliminate_eq(type, &e1, &e2->left.expr, count);
+		__expr_eliminate_eq(type, &e1, &e2->right.expr, count);
 		return;
 	}
 
@@ -183,7 +184,7 @@ static void __expr_eliminate_eq(enum expr_type type, struct expr **ep1, struct e
 
 	/* e1 and e2 are equal leaves. Prepare them for elimination. */
 
-	trans_count++;
+	count++;
 	expr_free(e1); expr_free(e2);
 	switch (type) {
 	case E_OR:
@@ -232,20 +233,22 @@ void expr_eliminate_eq(struct expr **ep1, struct expr **ep2)
 {
 	auto &e1 = *ep1;
 	auto &e2 = *ep2;
+	/* Own counter; discarded (callers cannot observe simplifications). */
+	int count = 0;
 
 	if (!e1 || !e2)
 		return;
 	switch (e1->type) {
 	case E_OR:
 	case E_AND:
-		__expr_eliminate_eq(e1->type, ep1, ep2);
+		__expr_eliminate_eq(e1->type, ep1, ep2, count);
 	default:
 		;
 	}
 	if (e1->type != e2->type) switch (e2->type) {
 	case E_OR:
 	case E_AND:
-		__expr_eliminate_eq(e2->type, ep1, ep2);
+		__expr_eliminate_eq(e2->type, ep1, ep2, count);
 	default:
 		;
 	}
@@ -262,7 +265,6 @@ void expr_eliminate_eq(struct expr **ep1, struct expr **ep2)
 bool expr_eq(const struct expr *e1, const struct expr *e2)
 {
 	bool res;
-	int old_count;
 
 	/*
 	 * A nullptr expr is taken to be yes, but there's also a different way to
@@ -296,13 +298,16 @@ bool expr_eq(const struct expr *e1, const struct expr *e2)
 			expr_free(c2);
 			return false;
 		}
-		old_count = trans_count;
+		/*
+		 * expr_eliminate_eq() works on the copies and keeps its own
+		 * simplification counter, so no save/restore dance is needed
+		 * here anymore.
+		 */
 		expr_eliminate_eq(&c1, &c2);
 		res = (c1->type == E_SYMBOL && c2->type == E_SYMBOL &&
 		       c1->left.sym == c2->left.sym);
 		expr_free(c1);
 		expr_free(c2);
-		trans_count = old_count;
 		return res;
 	}
 	case E_LIST:
@@ -617,9 +622,11 @@ static struct expr *expr_join_and(struct expr *e1, struct expr *e2)
  *
  * Walks the two expression trees given in 'ep1' and 'ep2'. Any node that does
  * not have type 'type' (E_OR/E_AND) is considered a leaf, and is compared
- * against all other leaves to look for simplifications.
+ * against all other leaves to look for simplifications. 'count' is bumped for
+ * each simplification performed.
  */
-static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct expr **ep2)
+static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct expr **ep2,
+				 int &count)
 {
 	auto &e1 = *ep1;
 	auto &e2 = *ep2;
@@ -628,13 +635,13 @@ static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct 
 	/* Recurse down to leaves */
 
 	if (e1->type == type) {
-		expr_eliminate_dups1(type, &e1->left.expr, &e2);
-		expr_eliminate_dups1(type, &e1->right.expr, &e2);
+		expr_eliminate_dups1(type, &e1->left.expr, &e2, count);
+		expr_eliminate_dups1(type, &e1->right.expr, &e2, count);
 		return;
 	}
 	if (e2->type == type) {
-		expr_eliminate_dups1(type, &e1, &e2->left.expr);
-		expr_eliminate_dups1(type, &e1, &e2->right.expr);
+		expr_eliminate_dups1(type, &e1, &e2->left.expr, count);
+		expr_eliminate_dups1(type, &e1, &e2->right.expr, count);
 		return;
 	}
 
@@ -645,7 +652,7 @@ static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct 
 
 	switch (e1->type) {
 	case E_OR: case E_AND:
-		expr_eliminate_dups1(e1->type, &e1, &e1);
+		expr_eliminate_dups1(e1->type, &e1, &e1, count);
 	default:
 		;
 	}
@@ -657,7 +664,7 @@ static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct 
 			expr_free(e1); expr_free(e2);
 			e1 = expr_alloc_symbol(&symbol_no);
 			e2 = tmp;
-			trans_count++;
+			count++;
 		}
 		break;
 	case E_AND:
@@ -666,7 +673,7 @@ static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct 
 			expr_free(e1); expr_free(e2);
 			e1 = expr_alloc_symbol(&symbol_yes);
 			e2 = tmp;
-			trans_count++;
+			count++;
 		}
 		break;
 	default:
@@ -687,25 +694,24 @@ static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct 
  */
 struct expr *expr_eliminate_dups(struct expr *e)
 {
-	int oldcount;
+	/* Simplifications performed in the current pass (local: no save/restore). */
+	int count;
 	if (!e)
 		return e;
 
-	oldcount = trans_count;
 	while (1) {
-		trans_count = 0;
+		count = 0;
 		switch (e->type) {
 		case E_OR: case E_AND:
-			expr_eliminate_dups1(e->type, &e, &e);
+			expr_eliminate_dups1(e->type, &e, &e, count);
 		default:
 			;
 		}
-		if (!trans_count)
+		if (!count)
 			/* No simplifications done in this pass. We're done */
 			break;
 		e = expr_eliminate_yn(e);
 	}
-	trans_count = oldcount;
 	return e;
 }
 

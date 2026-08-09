@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdio>   /* FILE */
+#include <string>   /* std::string (sym_escape_string_value) */
 
 #include "expr.hpp" /* struct symbol, SYMBOL_HASHSIZE, tristate, enum symbol_type, ... */
 
@@ -21,7 +22,7 @@ extern struct symbol * symbol_hash[SYMBOL_HASHSIZE];
 
 struct symbol * sym_lookup(const char *name, int flags);
 struct symbol * sym_find(const char *name);
-const char * sym_escape_string_value(const char *in);
+std::string sym_escape_string_value(const char *in);
 struct symbol ** sym_re_search(const char *pattern);
 const char * sym_type_name(enum symbol_type type);
 void sym_calc_value(struct symbol *sym);
