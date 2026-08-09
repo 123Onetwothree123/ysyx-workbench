@@ -352,16 +352,76 @@ void end_dialog(int x, int y)
 	endwin();
 }
 
+/* UTF-8 aware display-width helpers (CJK etc.): columns, not bytes */
+int utf8_width_n(const char *s, size_t len)
+{
+	mbstate_t st{};
+	int w = 0;
+	size_t i = 0;
+
+	while (i < len) {
+		wchar_t wc;
+		size_t n = mbrtowc(&wc, s + i, len - i, &st);
+		if (n == static_cast<size_t>(-1)) {	/* invalid byte */
+			memset(&st, 0, sizeof(st));
+			i++;
+			w++;
+			continue;
+		}
+		if (n == static_cast<size_t>(-2) || n == 0)
+			break;
+		int cw = wcwidth(wc);
+		w += cw > 0 ? cw : 0;
+		i += n;
+	}
+	return w;
+}
+
+int utf8_width(const char *s)
+{
+	return utf8_width_n(s, strlen(s));
+}
+
+size_t utf8_bytes_for_cells(const char *s, int max_cells)
+{
+	mbstate_t st{};
+	int w = 0;
+	size_t i = 0, len = strlen(s);
+
+	while (i < len) {
+		wchar_t wc;
+		size_t n = mbrtowc(&wc, s + i, len - i, &st);
+		int cw;
+		if (n == static_cast<size_t>(-1)) {	/* invalid byte: 1 col */
+			memset(&st, 0, sizeof(st));
+			n = 1;
+			cw = 1;
+		} else if (n == static_cast<size_t>(-2) || n == 0) {
+			break;
+		} else {
+			cw = wcwidth(wc);
+			if (cw < 0)
+				cw = 0;
+		}
+		if (w + cw > max_cells)
+			break;
+		w += cw;
+		i += n;
+	}
+	return i;
+}
+
 /* Print the title of the dialog. Center the title and truncate
  * tile if wider than dialog (- 2 chars).
  **/
 void print_title(WINDOW *dialog, const char *title, int width)
 {
 	if (title) {
-		int tlen = MIN(width - 2, strlen(title));
+		size_t nbytes = utf8_bytes_for_cells(title, width - 2);
+		int tlen = utf8_width_n(title, nbytes);
 		wattrset(dialog, dlg.title.atr);
 		mvwaddch(dialog, 0, (width - tlen) / 2 - 1, ' ');
-		mvwaddnstr(dialog, 0, (width - tlen)/2, title, tlen);
+		mvwaddnstr(dialog, 0, (width - tlen)/2, title, nbytes);
 		waddch(dialog, ' ');
 	}
 }
@@ -380,7 +440,7 @@ void print_autowrap(WINDOW * win, const char *prompt, int width, int y, int x)
 
 	snprintf(tempstr, sizeof(tempstr), "%s", prompt);
 
-	prompt_len = strlen(tempstr);
+	prompt_len = utf8_width(tempstr);
 
 	if (prompt_len <= width - x * 2) {	/* If prompt is short */
 		wmove(win, y, (width - prompt_len) / 2);
@@ -402,15 +462,39 @@ void print_autowrap(WINDOW * win, const char *prompt, int width, int y, int x)
 			   or it is the first word of a new sentence, and it is
 			   short, and the next word does not fit. */
 			room = width - cur_x;
-			wlen = strlen(word);
+			wlen = utf8_width(word);
 			if (wlen > room ||
 			    (newl && wlen < 4 && sp
-			     && wlen + 1 + strlen(sp) > room
+			     && wlen + 1 + utf8_width(sp) > room
 			     && (!(sp2 = strpbrk(sp, "\n "))
-				 || wlen + 1 + (sp2 - sp) > room))) {
+				 || wlen + 1 + utf8_width_n(sp, sp2 - sp) > room))) {
 				cur_y++;
 				cur_x = x;
+				room = width - cur_x;
 			}
+
+			/* A word wider than the remaining room (typical for
+			   CJK text without spaces): split it at display-cell
+			   boundaries so no multibyte character is cut. */
+			while (wlen > room) {
+				size_t part = utf8_bytes_for_cells(word, room);
+				if (!part) {
+					if (room == width - x)
+						break;	/* window too narrow */
+					cur_y++;
+					cur_x = x;
+					room = width - cur_x;
+					continue;
+				}
+				wmove(win, cur_y, cur_x);
+				waddnstr(win, word, part);
+				word += part;
+				wlen = utf8_width(word);
+				cur_y++;
+				cur_x = x;
+				room = width - cur_x;
+			}
+
 			wmove(win, cur_y, cur_x);
 			waddstr(win, word);
 			getyx(win, cur_y, cur_x);

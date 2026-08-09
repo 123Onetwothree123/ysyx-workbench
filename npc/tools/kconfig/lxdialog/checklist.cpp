@@ -25,9 +25,10 @@ static int list_width, check_x, item_x;
 static void print_item(WINDOW * win, int choice, int selected)
 {
 	int i;
-	/* Copy of the current item, truncated to the visible width */
+	/* Copy of the current item, truncated to the visible width
+	 * (display cells; never split a multibyte character) */
 	std::string list_item(item_str(),
-			      strnlen(item_str(), list_width - item_x));
+			      utf8_bytes_for_cells(item_str(), list_width - item_x));
 
 	/* Clear 'residue' of last item */
 	wattrset(win, dlg.menubox.atr);
@@ -163,10 +164,11 @@ do_resize:
 	draw_box(dialog, box_y, box_x, list_height + 2, list_width + 2,
 		 dlg.menubox_border.atr, dlg.menubox.atr);
 
-	/* Find length of longest item in order to center checklist */
+	/* Find length of longest item in order to center checklist
+	 * (display cells, not bytes) */
 	check_x = 0;
 	item_foreach()
-		check_x = MAX(check_x, strlen(item_str()) + 4);
+		check_x = MAX(check_x, utf8_width(item_str()) + 4);
 	check_x = MIN(check_x, list_width);
 
 	check_x = (list_width - check_x) / 2;

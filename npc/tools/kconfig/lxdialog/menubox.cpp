@@ -24,8 +24,9 @@ static void do_print_item(WINDOW * win, const char *item, int line_y,
 			  int selected, int hotkey)
 {
 	int j;
-	/* Copy of the item, truncated to the visible width */
-	std::string menu_item(item, strnlen(item, menu_width - item_x));
+	/* Copy of the item, truncated to the visible width
+	 * (display cells; never split a multibyte character) */
+	std::string menu_item(item, utf8_bytes_for_cells(item, menu_width - item_x));
 
 	j = first_alpha(menu_item.c_str(), "YyNnMmHh");
 

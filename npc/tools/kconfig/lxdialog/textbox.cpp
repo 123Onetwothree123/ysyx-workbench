@@ -90,12 +90,29 @@ static char *get_line(void)
 static void print_line(WINDOW *win, int row, int width)
 {
 	char *line;
+	const char *p;
+	int skipped = 0;
 
 	line = get_line();
-	line += MIN(static_cast<int>(strlen(line)), hscroll);	/* Scroll horizontally */
+	/* Scroll horizontally by display cells, never splitting a
+	 * multibyte character */
+	p = line;
+	while (*p && skipped < hscroll) {
+		size_t n = utf8_bytes_for_cells(p, 1);
+		int cw;
+		if (!n)
+			break;
+		cw = utf8_width_n(p, n);
+		if (skipped + cw > hscroll)
+			break;
+		skipped += cw;
+		p += n;
+	}
+	line = const_cast<char *>(p);
+
 	wmove(win, row, 0);	/* move cursor to correct line */
 	waddch(win, ' ');
-	waddnstr(win, line, MIN(static_cast<int>(strlen(line)), width - 2));
+	waddnstr(win, line, utf8_bytes_for_cells(line, width - 2));
 
 	/* Clear 'residue' of previous line */
 	wclrtoeol(win);
