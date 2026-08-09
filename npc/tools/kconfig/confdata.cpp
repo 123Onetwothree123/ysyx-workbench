@@ -173,6 +173,82 @@ static void conf_message(const char *fmt, ...)
 	conf_message_callback(buf.c_str());
 }
 
+static bool changed_input_warning_suppressed;
+
+/* randconfig 的"用户值"是随机赋的，被约束改写属预期，不属于
+ * "用户提供的值被改写"，调用方（conf.cpp randconfig 分支）用此关闭告警 */
+void conf_suppress_changed_input_warning(void)
+{
+	changed_input_warning_suppressed = true;
+}
+
+static void conf_changed_input_warning(const char *s)
+{
+	if (changed_input_warning_suppressed)
+		return;
+	fputs(s, stderr);
+}
+
+static const char *sym_get_user_value_string(struct symbol *sym)
+{
+	switch (sym->type) {
+	case S_BOOLEAN:
+	case S_TRISTATE:
+		switch (sym->def[S_DEF_USER].tri) {
+		case yes:
+			return "y";
+		case mod:
+			return "m";
+		default:
+			return "n";
+		}
+	default:
+		return sym->def[S_DEF_USER].val.str ?
+			sym->def[S_DEF_USER].val.str : "";
+	}
+}
+
+static bool sym_user_value_changed(struct symbol *sym)
+{
+	if (!sym_has_value(sym) || sym->type == S_UNKNOWN)
+		return false;
+
+	switch (sym->type) {
+	case S_BOOLEAN:
+	case S_TRISTATE:
+		return sym->def[S_DEF_USER].tri != sym_get_tristate_value(sym);
+	default:
+		return strcmp(sym_get_user_value_string(sym),
+			      sym_get_string_value(sym)) != 0;
+	}
+}
+
+static void conf_clear_written_flags(void)
+{
+	struct symbol *sym;
+	int i;
+
+	for_all_symbols(i, sym)
+		sym->flags &= ~SYMBOL_WRITTEN;
+}
+
+static void conf_append_changed_input_warning(std::string &msg,
+					      struct symbol *sym,
+					      bool &changed_input_found)
+{
+	if (!sym_user_value_changed(sym))
+		return;
+
+	if (!changed_input_found) {
+		msg += "warning: user-provided values changed by Kconfig:\n";
+		changed_input_found = true;
+	}
+
+	msg += std::string("  ") + CONFIG_ + sym->name + ": " +
+	       sym_get_user_value_string(sym) + " -> " +
+	       sym_get_string_value(sym) + "\n";
+}
+
 const char *conf_get_configname(void)
 {
 	char *name = getenv("KCONFIG_CONFIG");
@@ -669,6 +745,8 @@ int conf_write_defconfig(const char *filename)
 	struct symbol *sym;
 	struct menu *menu;
 	FILE *out;
+	bool changed_input_found = false;
+	std::string changed_input_warning;
 
 	out = fopen(filename, "w");
 	if (!out)
@@ -685,8 +763,11 @@ int conf_write_defconfig(const char *filename)
 		if (sym == nullptr) {
 			if (!menu_is_visible(menu))
 				goto next_menu;
-		} else if (!sym_is_choice(sym)) {
+		} else if (!sym_is_choice(sym) && !(sym->flags & SYMBOL_WRITTEN)) {
 			sym_calc_value(sym);
+			conf_append_changed_input_warning(changed_input_warning,
+							  sym, changed_input_found);
+			sym->flags |= SYMBOL_WRITTEN;
 			if (!(sym->flags & SYMBOL_WRITE))
 				goto next_menu;
 			sym->flags &= ~SYMBOL_WRITE;
@@ -734,6 +815,12 @@ next_menu:
 		}
 	}
 	fclose(out);
+
+	conf_clear_written_flags();
+
+	if (changed_input_found)
+		conf_changed_input_warning(changed_input_warning.c_str());
+
 	return 0;
 }
 
@@ -745,8 +832,9 @@ int conf_write(const char *name)
 	const char *str;
 	char tmpname[PATH_MAX + 1], oldname[PATH_MAX + 1];
 	char *env;
-	int i;
 	bool need_newline = false;
+	bool changed_input_found = false;
+	std::string changed_input_warning;
 
 	if (!name)
 		name = conf_get_configname();
@@ -798,13 +886,15 @@ int conf_write(const char *name)
 		} else if (!(sym->flags & SYMBOL_CHOICE) &&
 			   !(sym->flags & SYMBOL_WRITTEN)) {
 			sym_calc_value(sym);
+			conf_append_changed_input_warning(changed_input_warning,
+							  sym, changed_input_found);
+			sym->flags |= SYMBOL_WRITTEN;
 			if (!(sym->flags & SYMBOL_WRITE))
 				goto next;
 			if (need_newline) {
 				fprintf(out, "\n");
 				need_newline = false;
 			}
-			sym->flags |= SYMBOL_WRITTEN;
 			conf_write_symbol(out, sym, &kconfig_printer_cb, false);
 		}
 
@@ -830,8 +920,10 @@ next:
 	}
 	fclose(out);
 
-	for_all_symbols(i, sym)
-		sym->flags &= ~SYMBOL_WRITTEN;
+	conf_clear_written_flags();
+
+	if (changed_input_found)
+		conf_changed_input_warning(changed_input_warning.c_str());
 
 	if (*tmpname) {
 		if (::is_same(name, tmpname)) {
@@ -1082,6 +1174,35 @@ static std::mt19937 &conf_rng(void)
 	static std::mt19937 gen(std::random_device{}());
 
 	return gen;
+}
+
+/*
+ * Seed the PRNG used by randconfig, following upstream
+ * set_randconfig_seed() semantics: use $KCONFIG_SEED (parsed with
+ * strtol base 0) if it is valid, otherwise keep a non-deterministic
+ * seed. The seed actually used is always printed to stdout. Called
+ * once per randconfig run from conf.cpp, so the message appears only
+ * for randconfig, as upstream does.
+ */
+void conf_set_randconfig_seed(void)
+{
+	unsigned int seed;
+	const char *env = getenv("KCONFIG_SEED");
+	bool seed_set = false;
+
+	if (env && *env) {
+		char *endp;
+
+		seed = static_cast<unsigned int>(strtol(env, &endp, 0));
+		if (*endp == '\0')
+			seed_set = true;
+	}
+
+	if (!seed_set)
+		seed = std::random_device{}();
+
+	printf("KCONFIG_SEED=0x%X\n", seed);
+	conf_rng().seed(seed);
 }
 
 static bool randomize_choice_values(struct symbol *csym)

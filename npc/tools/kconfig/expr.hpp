@@ -191,6 +191,12 @@ inline constexpr int SYMBOL_NEED_SET_CHOICE_VALUES = 0x100000;
 /* Set symbol to y if allnoconfig; used for symbols that hide others */
 inline constexpr int SYMBOL_ALLNOCONFIG_Y = 0x200000;
 
+/*
+ * Upstream assigns 0x0100 to SYMBOL_TRANS, but that bit is still used
+ * by SYMBOL_OPTIONAL in this port, so the next free bit is taken here.
+ */
+inline constexpr int SYMBOL_TRANS      = 0x400000;  /* symbol is transitional only (not visible) */
+
 #define SYMBOL_MAXLENGTH	256
 #define SYMBOL_HASHSIZE		9973
 

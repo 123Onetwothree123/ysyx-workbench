@@ -79,6 +79,7 @@ struct menu *current_menu, *current_entry;
 %token T_SELECT
 %token T_SOURCE
 %token T_STRING
+%token T_TRANSITIONAL
 %token T_TRISTATE
 %token T_VISIBLE
 %token T_EOL
@@ -188,6 +189,12 @@ config_option: T_PROMPT T_WORD_QUOTE if_expr T_EOL
 {
 	menu_add_prompt(P_PROMPT, $2, $3);
 	printd(DEBUG_PARSE, "%s:%d:prompt\n", zconf_curname(), zconf_lineno());
+};
+
+config_option: T_TRANSITIONAL T_EOL
+{
+	current_entry->sym->flags |= SYMBOL_TRANS;
+	printd(DEBUG_PARSE, "%s:%d:transitional\n", zconf_curname(), zconf_lineno());
 };
 
 config_option: default expr if_expr T_EOL
@@ -484,6 +491,62 @@ assign_val:
 
 %%
 
+/**
+ * transitional_check_sanity - check transitional symbols have no other
+ *			       properties
+ *
+ * @menu: menu of the potentially transitional symbol
+ *
+ * Return: -1 if an error is found, 0 otherwise.
+ */
+static int transitional_check_sanity(const struct menu *menu)
+{
+	struct property *prop;
+
+	if (!menu->sym || !(menu->sym->flags & SYMBOL_TRANS))
+		return 0;
+
+	/* Check for depends and visible conditions. */
+	if ((menu->dep && !expr_is_yes(menu->dep)) ||
+	    (menu->visibility && !expr_is_yes(menu->visibility))) {
+		fprintf(stderr, "%s:%d: error: %s",
+			menu->file->name, menu->lineno,
+			"transitional symbols can only have help sections\n");
+		return -1;
+	}
+
+	/*
+	 * Check for any property other than "help". P_SYMBOL only records
+	 * where the symbol was defined (a local addition for mconf's
+	 * jump-to-definition); it is not a real property, so it is
+	 * exempted here.
+	 */
+	for (prop = menu->sym->prop; prop; prop = prop->next) {
+		if (prop->type != P_COMMENT && prop->type != P_SYMBOL) {
+			fprintf(stderr, "%s:%d: error: %s",
+				prop->file->name, prop->lineno,
+				"transitional symbols can only have help sections\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int transitional_check_menus(struct menu *menu)
+{
+	int errors = 0;
+
+	for (; menu; menu = menu->next) {
+		if (transitional_check_sanity(menu))
+			errors++;
+		if (menu->list)
+			errors += transitional_check_menus(menu->list);
+	}
+
+	return errors;
+}
+
 void conf_parse(const char *name)
 {
 	struct symbol *sym;
@@ -515,6 +578,7 @@ void conf_parse(const char *name)
 		if (sym_check_deps(sym))
 			yynerrs++;
 	}
+	yynerrs += transitional_check_menus(rootmenu.list);
 	if (yynerrs)
 		exit(1);
 	sym_set_change_count(1);

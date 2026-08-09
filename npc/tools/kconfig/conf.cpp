@@ -547,30 +547,9 @@ int main(int ac, char **av)
 			defconfig_file = optarg;
 			break;
 		case randconfig:
-		{
-			struct timeval now;
-			unsigned int seed;
-			const char *seed_env;
-
-			/*
-			 * Use microseconds derived seed,
-			 * compensate for systems where it may be zero
-			 */
-			gettimeofday(&now, nullptr);
-			seed = (unsigned int)((now.tv_sec + 1) * (now.tv_usec + 1));
-
-			seed_env = getenv("KCONFIG_SEED");
-			if (seed_env && *seed_env) {
-				char *endp;
-				int tmp = (int)strtol(seed_env, &endp, 0);
-				if (*endp == '\0') {
-					seed = tmp;
-				}
-			}
-			fprintf(stderr, "KCONFIG_SEED=0x%X\n", seed);
-			srand(seed);
+			conf_set_randconfig_seed();
+			conf_suppress_changed_input_warning();
 			break;
-		}
 		case oldaskconfig:
 		case oldconfig:
 		case allnoconfig:
