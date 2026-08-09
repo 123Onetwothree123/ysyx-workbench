@@ -6,19 +6,31 @@
  * Copied from include/linux/...
  */
 
-#undef offsetof
-#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
+#include <cstddef>     /* offsetof */
+#include <type_traits> /* std::remove_pointer_t, std::remove_const_t */
+
+/**
+ * list_container_of - cast a member of a structure out to the containing
+ * structure (template implementation behind the container_of() macro)
+ * @ptr:           the pointer to the member.
+ * @member_offset: offsetof() of the member within the containing struct.
+ */
+template <typename T, typename M>
+static inline T *list_container_of(M *ptr, size_t member_offset)
+{
+	char *p = const_cast<char *>(reinterpret_cast<const char *>(ptr));
+
+	return reinterpret_cast<T *>(p - member_offset);
+}
 
 /**
  * container_of - cast a member of a structure out to the containing structure
- * @ptr:        the pointer to the member.
- * @type:       the type of the container struct this is embedded in.
- * @member:     the name of the member within the struct.
- *
+ * @ptr:	the pointer to the member.
+ * @type:	the type of the container struct this is embedded in.
+ * @member:	the name of the member within the struct.
  */
-#define container_of(ptr, type, member) ({                      \
-	const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
-	(type *)( (char *)__mptr - offsetof(type,member) );})
+#define container_of(ptr, type, member) \
+	list_container_of<type>((ptr), offsetof(type, member))
 
 
 struct list_head {
@@ -47,9 +59,11 @@ struct list_head {
  * @member:	the name of the list_head within the struct.
  */
 #define list_for_each_entry(pos, head, member)				\
-	for (pos = list_entry((head)->next, typeof(*pos), member);	\
-	     &pos->member != (head); 	\
-	     pos = list_entry(pos->member.next, typeof(*pos), member))
+	for (pos = list_entry((head)->next,				\
+			      std::remove_pointer_t<decltype(pos)>, member); \
+	     &pos->member != (head);					\
+	     pos = list_entry(pos->member.next,				\
+			      std::remove_pointer_t<decltype(pos)>, member))
 
 /**
  * list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
@@ -59,10 +73,13 @@ struct list_head {
  * @member:	the name of the list_head within the struct.
  */
 #define list_for_each_entry_safe(pos, n, head, member)			\
-	for (pos = list_entry((head)->next, typeof(*pos), member),	\
-		n = list_entry(pos->member.next, typeof(*pos), member);	\
+	for (pos = list_entry((head)->next,				\
+			      std::remove_pointer_t<decltype(pos)>, member), \
+		n = list_entry(pos->member.next,			\
+			      std::remove_pointer_t<decltype(n)>, member); \
 	     &pos->member != (head);					\
-	     pos = n, n = list_entry(n->member.next, typeof(*n), member))
+	     pos = n, n = list_entry(n->member.next,			\
+			      std::remove_pointer_t<decltype(n)>, member))
 
 /**
  * list_empty - tests whether a list is empty

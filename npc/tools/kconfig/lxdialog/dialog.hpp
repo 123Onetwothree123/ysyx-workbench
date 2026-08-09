@@ -5,6 +5,8 @@
  *  AUTHOR: Savio Lam (lam836@cs.cuhk.hk)
  */
 
+#pragma once
+
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -207,6 +209,10 @@ void print_title(WINDOW *dialog, const char *title, int width);
 void draw_box(WINDOW * win, int y, int x, int height, int width, chtype box,
 	      chtype border);
 void draw_shadow(WINDOW * win, int y, int x, int height, int width);
+/* Draw the horizontal separator line above the button area of a dialog */
+void draw_bottom_border(WINDOW *win, int height, int width);
+/* Cycle a button selection left/right with wraparound (count buttons) */
+int next_button(int button, int key, int count);
 
 int first_alpha(const char *string, const char *exempt);
 int dialog_yesno(const char *title, const char *prompt, int height, int width);

@@ -39,7 +39,7 @@ struct gstr str_new(void)
 	gs.s = static_cast<char*>(xmalloc(sizeof(char) * 64));
 	gs.len = 64;
 	gs.max_width = 0;
-	strcpy(gs.s, "\0");
+	gs.s[0] = '\0';
 	return gs;
 }
 
@@ -48,7 +48,7 @@ void str_free(struct gstr *gs)
 {
 	if (gs->s)
 		free(gs->s);
-	gs->s = NULL;
+	gs->s = nullptr;
 	gs->len = 0;
 }
 
@@ -69,12 +69,23 @@ void str_append(struct gstr *gs, const char *s)
 /* Append printf formatted string to growable string */
 void str_printf(struct gstr *gs, const char *fmt, ...)
 {
-	va_list ap;
-	char s[10000]; /* big enough... */
+	va_list ap, aq;
+	int len;
+
 	va_start(ap, fmt);
-	vsnprintf(s, sizeof(s), fmt, ap);
-	str_append(gs, s);
+	va_copy(aq, ap);
+	len = vsnprintf(nullptr, 0, fmt, ap);
 	va_end(ap);
+	if (len < 0) {
+		va_end(aq);
+		return;
+	}
+
+	std::string s(len, '\0');
+	vsnprintf(s.data(), len + 1, fmt, aq);
+	va_end(aq);
+
+	str_append(gs, s.c_str());
 }
 
 /* Retrieve value of growable string */
@@ -83,7 +94,7 @@ const char *str_get(struct gstr *gs)
 	return gs->s;
 }
 
-void *xmalloc(size_t size)
+[[nodiscard]] void *xmalloc(size_t size)
 {
 	void *p = malloc(size);
 	if (p)
@@ -92,7 +103,7 @@ void *xmalloc(size_t size)
 	exit(1);
 }
 
-void *xcalloc(size_t nmemb, size_t size)
+[[nodiscard]] void *xcalloc(size_t nmemb, size_t size)
 {
 	void *p = calloc(nmemb, size);
 	if (p)
@@ -101,7 +112,7 @@ void *xcalloc(size_t nmemb, size_t size)
 	exit(1);
 }
 
-void *xrealloc(void *p, size_t size)
+[[nodiscard]] void *xrealloc(void *p, size_t size)
 {
 	p = realloc(p, size);
 	if (p)
@@ -110,7 +121,7 @@ void *xrealloc(void *p, size_t size)
 	exit(1);
 }
 
-char *xstrdup(const char *s)
+[[nodiscard]] char *xstrdup(const char *s)
 {
 	char *p;
 
@@ -121,7 +132,7 @@ char *xstrdup(const char *s)
 	exit(1);
 }
 
-char *xstrndup(const char *s, size_t n)
+[[nodiscard]] char *xstrndup(const char *s, size_t n)
 {
 	char *p;
 

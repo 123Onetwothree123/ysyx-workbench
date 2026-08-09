@@ -14,6 +14,7 @@ using namespace std;
 #include <getopt.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <climits> /* PATH_MAX */
 
 #include "lkc.hpp"
 
@@ -61,7 +62,7 @@ static void strip(char *str)
 	char *p = str;
 	int l;
 
-	while ((isspace(*p)))
+	while (isspace(static_cast<unsigned char>(*p)))
 		p++;
 	l = strlen(p);
 	if (p != str)
@@ -69,15 +70,17 @@ static void strip(char *str)
 	if (!l)
 		return;
 	p = str + l - 1;
-	while ((isspace(*p)))
+	while (isspace(static_cast<unsigned char>(*p)))
 		*p-- = 0;
 }
 
 /* Helper function to facilitate fgets() by Jean Sacren. */
 static void xfgets(char *str, int size, FILE *in)
 {
-	if (!fgets(str, size, in))
+	if (!fgets(str, size, in)) {
 		fprintf(stderr, "\nError in reading or end of file.\n");
+		exit(1);
+	}
 
 	if (!tty_stdio)
 		printf("%s", str);
@@ -149,7 +152,7 @@ static int conf_string(struct menu *menu)
 			/* print help */
 			if (line[1] == '\n') {
 				print_help(menu);
-				def = NULL;
+				def = nullptr;
 				break;
 			}
 			/* fall through */
@@ -312,7 +315,7 @@ static int conf_choice(struct menu *menu)
 			}
 			if (!line[0])
 				cnt = def;
-			else if (isdigit(line[0]))
+			else if (isdigit(static_cast<unsigned char>(line[0])))
 				cnt = atoi(line);
 			else
 				continue;
@@ -429,6 +432,13 @@ static void check_conf(struct menu *menu)
 
 					if (sym->type == S_STRING) {
 						str = sym_get_string_value(sym);
+						/*
+						 * sym_escape_string_value() (in
+						 * confdata.cpp) returns heap memory
+						 * through a const char *; ownership
+						 * passes to the caller, hence the
+						 * const_cast + free below.
+						 */
 						str = sym_escape_string_value(str);
 						printf("%s%s=%s\n", CONFIG_, sym->name, str);
 						free(const_cast<char*>(str));
@@ -455,23 +465,23 @@ static void check_conf(struct menu *menu)
 		check_conf(child);
 }
 
-static struct option long_opts[] = {
-	{"oldaskconfig",    no_argument,       NULL, oldaskconfig},
-	{"oldconfig",       no_argument,       NULL, oldconfig},
-	{"syncconfig",      no_argument,       NULL, syncconfig},
-	{"defconfig",       required_argument, NULL, defconfig},
-	{"savedefconfig",   required_argument, NULL, savedefconfig},
-	{"allnoconfig",     no_argument,       NULL, allnoconfig},
-	{"allyesconfig",    no_argument,       NULL, allyesconfig},
-	{"allmodconfig",    no_argument,       NULL, allmodconfig},
-	{"alldefconfig",    no_argument,       NULL, alldefconfig},
-	{"randconfig",      no_argument,       NULL, randconfig},
-	{"listnewconfig",   no_argument,       NULL, listnewconfig},
-	{"helpnewconfig",   no_argument,       NULL, helpnewconfig},
-	{"olddefconfig",    no_argument,       NULL, olddefconfig},
-	{"yes2modconfig",   no_argument,       NULL, yes2modconfig},
-	{"mod2yesconfig",   no_argument,       NULL, mod2yesconfig},
-	{NULL, 0, NULL, 0}
+static const struct option long_opts[] = {
+	{"oldaskconfig",    no_argument,       nullptr, oldaskconfig},
+	{"oldconfig",       no_argument,       nullptr, oldconfig},
+	{"syncconfig",      no_argument,       nullptr, syncconfig},
+	{"defconfig",       required_argument, nullptr, defconfig},
+	{"savedefconfig",   required_argument, nullptr, savedefconfig},
+	{"allnoconfig",     no_argument,       nullptr, allnoconfig},
+	{"allyesconfig",    no_argument,       nullptr, allyesconfig},
+	{"allmodconfig",    no_argument,       nullptr, allmodconfig},
+	{"alldefconfig",    no_argument,       nullptr, alldefconfig},
+	{"randconfig",      no_argument,       nullptr, randconfig},
+	{"listnewconfig",   no_argument,       nullptr, listnewconfig},
+	{"helpnewconfig",   no_argument,       nullptr, helpnewconfig},
+	{"olddefconfig",    no_argument,       nullptr, olddefconfig},
+	{"yes2modconfig",   no_argument,       nullptr, yes2modconfig},
+	{"mod2yesconfig",   no_argument,       nullptr, mod2yesconfig},
+	{nullptr, 0, nullptr, 0}
 };
 
 static void conf_usage(const char *progname)
@@ -501,14 +511,14 @@ int main(int ac, char **av)
 {
 	const char *progname = av[0];
 	int opt;
-	const char *name, *defconfig_file = NULL /* gcc uninit */;
+	const char *name, *defconfig_file = nullptr /* gcc uninit */;
 	int no_conf_write = 0;
 
 	tty_stdio = isatty(0) && isatty(1);
 
-	while ((opt = getopt_long(ac, av, "s", long_opts, NULL)) != -1) {
+	while ((opt = getopt_long(ac, av, "s", long_opts, nullptr)) != -1) {
 		if (opt == 's') {
-			conf_set_message_callback(NULL);
+			conf_set_message_callback(nullptr);
 			continue;
 		}
 		input_mode = static_cast<enum input_mode>(opt);
@@ -518,7 +528,7 @@ int main(int ac, char **av)
 			 * syncconfig is invoked during the build stage.
 			 * Suppress distracting "configuration written to ..."
 			 */
-			conf_set_message_callback(NULL);
+			conf_set_message_callback(nullptr);
 			sync_kconfig = 1;
 			break;
 		case defconfig:
@@ -529,24 +539,24 @@ int main(int ac, char **av)
 		{
 			struct timeval now;
 			unsigned int seed;
-			char *seed_env;
+			const char *seed_env;
 
 			/*
 			 * Use microseconds derived seed,
 			 * compensate for systems where it may be zero
 			 */
-			gettimeofday(&now, NULL);
+			gettimeofday(&now, nullptr);
 			seed = (unsigned int)((now.tv_sec + 1) * (now.tv_usec + 1));
 
 			seed_env = getenv("KCONFIG_SEED");
-			if( seed_env && *seed_env ) {
+			if (seed_env && *seed_env) {
 				char *endp;
 				int tmp = (int)strtol(seed_env, &endp, 0);
 				if (*endp == '\0') {
 					seed = tmp;
 				}
 			}
-			fprintf( stderr, "KCONFIG_SEED=0x%X\n", seed );
+			fprintf(stderr, "KCONFIG_SEED=0x%X\n", seed);
 			srand(seed);
 			break;
 		}
@@ -597,7 +607,7 @@ int main(int ac, char **av)
 	case olddefconfig:
 	case yes2modconfig:
 	case mod2yesconfig:
-		conf_read(NULL);
+		conf_read(nullptr);
 		break;
 	case allnoconfig:
 	case allyesconfig:
@@ -703,7 +713,7 @@ int main(int ac, char **av)
 			return 1;
 		}
 	} else if (input_mode != listnewconfig && input_mode != helpnewconfig) {
-		if (!no_conf_write && conf_write(NULL)) {
+		if (!no_conf_write && conf_write(nullptr)) {
 			fprintf(stderr, "\n*** Error during writing of the configuration.\n\n");
 			exit(1);
 		}

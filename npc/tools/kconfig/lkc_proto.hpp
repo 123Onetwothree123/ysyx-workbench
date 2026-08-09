@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-#include <stdarg.h>
+#pragma once
+
+#include <cstdio>   /* FILE */
+
+#include "expr.hpp" /* struct symbol, SYMBOL_HASHSIZE, tristate, enum symbol_type, ... */
 
 /* confdata.c */
 void conf_parse(const char *name);
@@ -8,7 +12,7 @@ int conf_read_simple(const char *name, int);
 int conf_write_defconfig(const char *name);
 int conf_write(const char *name);
 int conf_write_autoconf(int overwrite);
-bool conf_get_changed(void);
+[[nodiscard]] bool conf_get_changed(void);
 void conf_set_changed_callback(void (*fn)(void));
 void conf_set_message_callback(void (*fn)(const char *s));
 

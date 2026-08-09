@@ -25,10 +25,9 @@ static int list_width, check_x, item_x;
 static void print_item(WINDOW * win, int choice, int selected)
 {
 	int i;
-	char *list_item = static_cast<char*>(malloc(list_width + 1));
-
-	strncpy(list_item, item_str(), list_width - item_x);
-	list_item[list_width - item_x] = '\0';
+	/* Copy of the current item, truncated to the visible width */
+	std::string list_item(item_str(),
+			      strnlen(item_str(), list_width - item_x));
 
 	/* Clear 'residue' of last item */
 	wattrset(win, dlg.menubox.atr);
@@ -43,14 +42,13 @@ static void print_item(WINDOW * win, int choice, int selected)
 		wprintw(win, "(%c)", item_is_tag('X') ? 'X' : ' ');
 
 	wattrset(win, selected ? dlg.tag_selected.atr : dlg.tag.atr);
-	mvwaddch(win, choice, item_x, list_item[0]);
+	mvwaddch(win, choice, item_x, list_item.empty() ? ' ' : list_item[0]);
 	wattrset(win, selected ? dlg.item_selected.atr : dlg.item.atr);
-	waddstr(win, list_item + 1);
+	waddstr(win, list_item.size() > 1 ? list_item.c_str() + 1 : "");
 	if (selected) {
 		wmove(win, choice, check_x + 1);
 		wrefresh(win);
 	}
-	free(list_item);
 }
 
 /*
@@ -144,12 +142,7 @@ do_resize:
 
 	draw_box(dialog, 0, 0, height, width,
 		 dlg.dialog.atr, dlg.border.atr);
-	wattrset(dialog, dlg.border.atr);
-	mvwaddch(dialog, height - 3, 0, ACS_LTEE);
-	for (i = 0; i < width - 2; i++)
-		waddch(dialog, ACS_HLINE);
-	wattrset(dialog, dlg.dialog.atr);
-	waddch(dialog, ACS_RTEE);
+	draw_bottom_border(dialog, height, width);
 
 	print_title(dialog, title, width);
 
@@ -201,12 +194,21 @@ do_resize:
 
 	while (key != KEY_ESC) {
 		key = wgetch(dialog);
-
-		for (i = 0; i < max_choice; i++) {
-			item_set(i + scroll);
-			if (toupper(key) == toupper(item_str()[0]))
-				break;
+		if (key == ERR) {	/* interrupted by a signal: unwind */
+			key = KEY_ESC;
+			break;
 		}
+
+		/* Function keys (KEY_UP etc.) are out of toupper()'s domain */
+		if (key >= 0 && key <= UCHAR_MAX) {
+			for (i = 0; i < max_choice; i++) {
+				item_set(i + scroll);
+				if (toupper(key) ==
+				    toupper(static_cast<unsigned char>(item_str()[0])))
+					break;
+			}
+		} else
+			i = max_choice;
 
 		if (i < max_choice || key == KEY_UP || key == KEY_DOWN ||
 		    key == '+' || key == '-') {
@@ -297,8 +299,7 @@ do_resize:
 		case TAB:
 		case KEY_LEFT:
 		case KEY_RIGHT:
-			button = ((key == KEY_LEFT ? --button : ++button) < 0)
-			    ? 1 : (button > 1 ? 0 : button);
+			button = next_button(button, key, 2);
 
 			print_buttons(dialog, height, width, button);
 			wrefresh(dialog);
