@@ -55,6 +55,11 @@ if {[info exists env(SYNTH_NOMAP)]} {
   set SYNTH_NOMAP $::env(SYNTH_NOMAP)
 }
 
+set SYNTH_NOABC 0
+if {[info exists env(SYNTH_NOABC)]} {
+  set SYNTH_NOABC $::env(SYNTH_NOABC)
+}
+
 set buffering 1
 set sizing 1
 
@@ -229,14 +234,18 @@ dfflibmap {*}$LIBS {*}$EXCLUDE_CELLS
 # optimize the design
 opt -undriven -purge
 
-log "\[INFO\]: USING STRATEGY $strategy_name"
+if { $SYNTH_NOABC } {
+  log "\[INFO\]: SKIPPING ABC (SYNTH_NOABC=1), keeping dfflibmap-mapped netlist"
+} else {
+  log "\[INFO\]: USING STRATEGY $strategy_name"
 
-# technology mapping for cells
-abc -D "$CLK_PERIOD_PS" \
-  -constr "$sdc_file" \
-  {*}$LIBS {*}$EXCLUDE_CELLS \
-  -script "$strategy_script" \
-  -showtmp
+  # technology mapping for cells
+  abc -D "$CLK_PERIOD_PS" \
+    -constr "$sdc_file" \
+    {*}$LIBS {*}$EXCLUDE_CELLS \
+    -script "$strategy_script" \
+    -showtmp
+}
 
 # technology mapping for constant hi- and/or lo-drivers
 hilomap -singleton -hicell {*}$TIEHI_CELL_AND_PORT -locell {*}$TIELO_CELL_AND_PORT

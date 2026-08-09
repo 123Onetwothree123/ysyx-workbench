@@ -635,6 +635,8 @@ config CACHE_PADDING
 	  在.text段前插入的空白字节数，用于调整代码在内存中的位置
 	  使热点循环对齐到ICache块边界，以减少cache块的占用。
 	  默认0表示不填充。需要结合性能计数器分析热点循环地址后设置。
+	  仅对 npc 独立仿真路径（SIM_TOP=npc）生效：镜像整体后移N字节，
+	  复位PC同步加N。SoC路径启动地址由RTL固定，不受此选项影响。
 
 config CACHE_BLOCK_SIZE_LOG2
 	int "ICache块大小的log2（2^N字节）"

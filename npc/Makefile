@@ -61,10 +61,15 @@ BTB_WAYS ?= $(or $(CONFIG_BTB_WAYS),1)
 JAL_BTB_BITS ?= $(or $(CONFIG_JAL_BTB_BITS),4)
 JAL_BTB_WAYS ?= $(or $(CONFIG_JAL_BTB_WAYS),1)
 RAS_BITS ?= $(or $(CONFIG_RAS_BITS),4)
+CACHE_PADDING ?= $(or $(CONFIG_CACHE_PADDING),0)
+# npc 独立仿真路径的复位 PC：0x80000000 + CACHE_PADDING（镜像在内存中整体后移 CACHE_PADDING 字节）
+NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(CACHE_PADDING))))
+CACHE_PADDING_CFLAGS = -DCONFIG_CACHE_PADDING=$(CACHE_PADDING)
 
 VERILOG_ENV = env \
 	CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2) \
 	CACHE_INDEX_BITS=$(CACHE_INDEX_BITS) \
+	CACHE_PADDING=$(CACHE_PADDING) \
 	BTB_BITS=$(BTB_BITS) \
 	BTB_WAYS=$(BTB_WAYS) \
 	JAL_BTB_BITS=$(JAL_BTB_BITS) \
@@ -297,6 +302,10 @@ endif
 ifeq ($(CONFIG_LOG_TO_FILE),y)
 LOG_CFLAGS += -DCONFIG_LOG_TO_FILE
 endif
+ifneq ($(CONFIG_LOG_DIR),)
+# 字符串字面值需要穿过两层 shell（make → verilator → 子 make → g++），故用 '\"..\"' 形式
+LOG_CFLAGS += -DCONFIG_LOG_DIR='\"$(call remove_quote,$(CONFIG_LOG_DIR))\"'
+endif
 ifeq ($(CONFIG_LOG_TIMESTAMP),y)
 LOG_CFLAGS += -DCONFIG_LOG_TIMESTAMP
 endif
@@ -330,7 +339,7 @@ ifneq ($(CONFIG_RESET_PC),)
 RESET_PC_CFLAGS = -DCONFIG_RESET_PC=$(call remove_quote,$(CONFIG_RESET_PC))
 endif
 COMMON_INCFLAGS += $(addprefix -I, $(abspath $(CSRC_DIR)/difftest))
-SHARED_CFLAGS += $(COMMON_INCFLAGS) $(SDB_CFLAGS) $(TRACE_CFLAGS) $(ITRACE_CFLAGS) $(ITRACE_WRITE_FILE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(IRINGBUF_CFLAGS) $(WATCHPOINT_CFLAGS) $(DIFFTEST_CFLAGS) $(PERF_STATS_CFLAGS) $(PERF_SAVE_CFLAGS) $(MBASE_CFLAGS) $(MSIZE_CFLAGS) $(RESET_PC_CFLAGS) $(PDK_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(PGO_CFLAGS) $(ASAN_CFLAGS) $(UBSAN_CFLAGS) $(TSAN_CFLAGS) $(COVERAGE_CFLAGS) $(COLOR_CFLAGS) $(PIPE_CFLAGS) $(SPLIT_DWARF_CFLAGS) $(GC_SECTIONS_CFLAGS) $(VISIBILITY_CFLAGS) $(MARCH_CFLAGS) $(IPA_PTA_CFLAGS) $(PREFETCH_CFLAGS) $(GPROF_CFLAGS) $(TIME_REPORT_CFLAGS) $(TIMESTAMP_CFLAGS) $(LOG_CFLAGS) $(NO_OMIT_FP_CFLAGS) $(TRACE_VCD_CFLAGS) $(TRACE_FST_CFLAGS) $(ICPX_NOSTDINCXX_CFLAGS) $(STDLIB_FLAG) $(CC_OPT) $(NVBOARD_CFLAGS)
+SHARED_CFLAGS += $(COMMON_INCFLAGS) $(SDB_CFLAGS) $(TRACE_CFLAGS) $(ITRACE_CFLAGS) $(ITRACE_WRITE_FILE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(IRINGBUF_CFLAGS) $(WATCHPOINT_CFLAGS) $(DIFFTEST_CFLAGS) $(PERF_STATS_CFLAGS) $(PERF_SAVE_CFLAGS) $(MBASE_CFLAGS) $(MSIZE_CFLAGS) $(RESET_PC_CFLAGS) $(PDK_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(PGO_CFLAGS) $(ASAN_CFLAGS) $(UBSAN_CFLAGS) $(TSAN_CFLAGS) $(COVERAGE_CFLAGS) $(COLOR_CFLAGS) $(PIPE_CFLAGS) $(SPLIT_DWARF_CFLAGS) $(GC_SECTIONS_CFLAGS) $(VISIBILITY_CFLAGS) $(MARCH_CFLAGS) $(IPA_PTA_CFLAGS) $(PREFETCH_CFLAGS) $(GPROF_CFLAGS) $(TIME_REPORT_CFLAGS) $(TIMESTAMP_CFLAGS) $(LOG_CFLAGS) $(NO_OMIT_FP_CFLAGS) $(TRACE_VCD_CFLAGS) $(TRACE_FST_CFLAGS) $(TRACE_FILE_CFLAGS) $(CACHE_PADDING_CFLAGS) $(ICPX_NOSTDINCXX_CFLAGS) $(STDLIB_FLAG) $(CC_OPT) $(NVBOARD_CFLAGS)
 VERILATOR_CFLAGS = $(SHARED_CFLAGS) $(VERILATOR_CXX_STD_FLAG)
 USER_CXXFLAGS = $(USER_CXX_STD_FLAG) $(MODULE_CFLAGS) $(WALL_CFLAGS) $(WERROR_CFLAGS) $(PEDANTIC_CFLAGS) $(WCONVERSION_CFLAGS)
 #verilator的部分
@@ -351,6 +360,9 @@ TRACE_DEPTH_VAL := $(call remove_quote,$(CONFIG_TRACE_DEPTH))
 ifneq ($(TRACE_DEPTH_VAL),0)
 VERILATOR_TRACE += --trace-depth $(TRACE_DEPTH_VAL)
 endif
+endif
+ifneq ($(CONFIG_TRACE_FILE),)
+TRACE_FILE_CFLAGS = -DCONFIG_TRACE_FILE='\"$(call remove_quote,$(CONFIG_TRACE_FILE))\"'
 endif
 ifeq ($(CONFIG_PROF_CFUNCS),y)
 VERILATOR_PROF = --prof-cfuncs
@@ -445,7 +457,7 @@ $(BIN_NPC): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 		$(addprefix -I,$(NPC_VINCDIRS)) \
 		--top-module riscv32e_npc_SimTop \
 		$(NPC_VSRCS) $(CSRCS) \
-		$(addprefix -CFLAGS , $(filter-out -DCONFIG_MBASE=% -DCONFIG_RESET_PC=%,$(VERILATOR_CFLAGS)) -DVRISCV32E_NPC -DCONFIG_RESET_PC=0x80000000 -DCONFIG_MBASE=0x80000000) \
+		$(addprefix -CFLAGS , $(filter-out -DCONFIG_MBASE=% -DCONFIG_RESET_PC=%,$(VERILATOR_CFLAGS)) -DVRISCV32E_NPC -DCONFIG_RESET_PC=$(NPC_RESET_PC) -DCONFIG_MBASE=0x80000000) \
 		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) \
 		--Mdir $(NPC_OBJ_DIR) \
 		--exe -o $(abspath $(BIN_NPC))
@@ -455,12 +467,23 @@ $(BIN_NPC): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
 
+ifeq ($(CONFIG_PGO_AUTO),y)
+# PGO_AUTO（自动一步到位）：make run 等价于 make pgo file=镜像
+# 内部完成 插桩编译→收集profile→优化编译→运行最终程序
 ifeq ($(SIM_TOP),soc)
+run: pgo
+else
+run: $(BIN_NPC)
+	@echo "警告: PGO_AUTO 目前仅支持 SIM_TOP=soc，本次执行普通运行"
+	{ head -c $(CACHE_PADDING) /dev/zero 2>/dev/null; cat "$(file)"; } | od -An -tx4 -w4 -v | awk '{print $$1}' > $(BUILD_DIR)/program.hex
+	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
+endif
+else ifeq ($(SIM_TOP),soc)
 run: $(BIN)
 	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
 else
 run: $(BIN_NPC)
-	od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
+	{ head -c $(CACHE_PADDING) /dev/zero 2>/dev/null; cat "$(file)"; } | od -An -tx4 -w4 -v | awk '{print $$1}' > $(BUILD_DIR)/program.hex
 	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
 endif
 
@@ -505,10 +528,15 @@ SYNTH_STRATEGY_IDX = $(call remove_quote,$(CONFIG_SYNTH_STRATEGY_IDX))
 else
 SYNTH_STRATEGY_IDX = 0
 endif
-ifneq ($(CONFIG_SYNTH_NOMAP),n)
+ifeq ($(CONFIG_SYNTH_NOMAP),y)
 SYNTH_NOMAP = 1
 else
 SYNTH_NOMAP = 0
+endif
+ifeq ($(CONFIG_SYNTH_NOABC),y)
+SYNTH_NOABC = 1
+else
+SYNTH_NOABC = 0
 endif
 
 ifneq ($(CONFIG_APB_DEVICE_FREQ),)
@@ -541,9 +569,9 @@ SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
 endif
 
 synth: verilog
-	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY_TYPE) $(SYNTH_STRATEGY_IDX), nomap=$(SYNTH_NOMAP)) ..."
+	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY_TYPE) $(SYNTH_STRATEGY_IDX), nomap=$(SYNTH_NOMAP), noabc=$(SYNTH_NOABC)) ..."
 
-	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && \
+	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && export SYNTH_NOABC=$(SYNTH_NOABC) && \
 	$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		PDK=$(PDK_VALUE) \
 		DESIGN=$(SYNTH_DESIGN) \
@@ -563,7 +591,7 @@ YOSYS_STA_RESULT = $(NPC_HOME)/yosys-sta-result
 
 yosys-sta: verilog
 	@echo "[yosys-sta] 全流程 syn+sta ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE)) ..."
-	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && \
+	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && export SYNTH_NOABC=$(SYNTH_NOABC) && \
 	$(MAKE) -C $(YOSYS_STA_HOME) syn sta \
 		PDK=$(PDK_VALUE) \
 		DESIGN=$(SYNTH_DESIGN) \
@@ -586,7 +614,7 @@ else
 perf: synth $(BIN_NPC)
 	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 编译 hex ..."
-	@od -An -tx4 -w4 -v "$(file)" | awk '{print $$1}' > $(BUILD_DIR)/program.hex
+	@{ head -c $(CACHE_PADDING) /dev/zero 2>/dev/null; cat "$(file)"; } | od -An -tx4 -w4 -v | awk '{print $$1}' > $(BUILD_DIR)/program.hex
 	@echo "[perf] 运行仿真 ..."
 	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
 	mkdir -p "$$RESULT_DIR"; \
