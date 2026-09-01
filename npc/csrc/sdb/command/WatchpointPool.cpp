@@ -1,4 +1,5 @@
 module npc.sdb.command.WatchpointPool;
+import npc.unicode;
 import npc.sdb.TablePrinter;
 
 WatchpointPool &GetGlobalWatchpointPool()

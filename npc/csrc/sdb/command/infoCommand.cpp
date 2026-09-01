@@ -1,5 +1,6 @@
 module npc.sdb.command.infoCommand;
 import npc.DUT;
+import npc.unicode;
 import npc.sdb.NPCEvaluationContext;
 import npc.sdb.TablePrinter;
 import npc.sdb.command.WatchpointPool;

@@ -1,5 +1,6 @@
 export module npc.sdb.TablePrinter;
 import std;
+import npc.unicode;
 
 export namespace ANSI
 {
@@ -13,6 +14,5 @@ export namespace ANSI
     constexpr const char *FG_WHITE{"\033[1;37m"};
 }
 
-export int display_width(std::string_view s);
 export void print_border(const std::vector<int> &widths);
 export void print_cell_colored(std::string_view raw_content, int width, bool center);

@@ -443,10 +443,7 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
             return std::unexpected{std::format("Flash 地址越界：0x{:08x}", addr)};
         }
         std::uint32_t value{0};
-        for (std::size_t i{0}; i < size; ++i)
-        {
-            value |= static_cast<std::uint32_t>(FlashMemory[offset + i]) << (i * 8);
-        }
+        std::memcpy(&value, FlashMemory.data() + offset, size);
         return value;
     }
     return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 Flash 0x{:08x}-0x{:08x}）", addr, FLASH_BASE, FLASH_BASE + FLASH_SIZE)};
