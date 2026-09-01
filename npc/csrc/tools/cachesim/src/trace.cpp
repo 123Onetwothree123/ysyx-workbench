@@ -32,6 +32,24 @@ TraceReader::~TraceReader()
     }
 }
 
+namespace
+{
+    std::optional<std::uint32_t> ParseNumber(std::string_view text, int base)
+    {
+        if (text.empty())
+        {
+            return std::nullopt;
+        }
+        std::uint32_t value{};
+        const auto [ptr, ec]{std::from_chars(text.data(), text.data() + text.size(), value, base)};
+        if (ec == std::errc{})
+        {
+            return value;
+        }
+        return std::nullopt;
+    }
+}
+
 auto TraceReader::try_parse(const std::string& line) -> std::optional<std::uint32_t>
 {
     if (line.empty())
@@ -44,21 +62,18 @@ auto TraceReader::try_parse(const std::string& line) -> std::optional<std::uint3
     if (line.starts_with("Memory Read") || line.starts_with("Memory Write")) {
         auto pos = line.find("Addr=0x");
         if (pos != std::string::npos)
-            return static_cast<std::uint32_t>(std::stoul(line.substr(pos + 8), nullptr, 16));
+            return ParseNumber(std::string_view{line}.substr(pos + 8), 16);
         pos = line.find("Addr=0X");
         if (pos != std::string::npos)
-            return static_cast<std::uint32_t>(std::stoul(line.substr(pos + 8), nullptr, 16));
+            return ParseNumber(std::string_view{line}.substr(pos + 8), 16);
         return std::nullopt;
     }
 
-    try {
-        if (line.starts_with("0x") || line.starts_with("0X"))
-            return static_cast<std::uint32_t>(std::stoul(line.substr(2), nullptr, 16));
-        else
-            return static_cast<std::uint32_t>(std::stoul(line, nullptr, 0));
-    } catch (...) {
-        return std::nullopt;
-    }
+    if (line.starts_with("0x") || line.starts_with("0X"))
+        return ParseNumber(std::string_view{line}.substr(2), 16);
+    // 原 stoul(..., 0) 的 base 0 自动检测会八进制解释 "0123"
+    // from_chars 统一按十进制, 消除了这个坑
+    return ParseNumber(line, 10);
 }
 
 auto TraceReader::next() -> std::optional<std::uint32_t>

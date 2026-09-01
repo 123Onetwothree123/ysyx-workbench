@@ -92,6 +92,18 @@ void dse_run(const char* trace_path, unsigned bus_width)
 
 } // anonymous namespace
 
+auto parse_uint(const char *text) -> std::optional<unsigned>
+{
+    std::uint32_t value{};
+    const auto end{text + std::char_traits<char>::length(text)};
+    const auto [ptr, ec]{std::from_chars(text, end, value, 10)};
+    if (ec == std::errc{} && ptr != text)
+    {
+        return value;
+    }
+    return std::nullopt;
+}
+
 auto main(int argc, char* argv[]) -> int
 {
     CacheConfig config;
@@ -116,13 +128,41 @@ auto main(int argc, char* argv[]) -> int
         if (arg == "--dse") {
             dse_mode = true;
         } else if (is_long ? arg == "--bus-width" : false) {
-            if (i + 1 < argc) bus_width = static_cast<unsigned>(std::atoi(argv[++i]));
+            if (i + 1 < argc) {
+                if (auto v{parse_uint(argv[++i])})
+                    bus_width = *v;
+                else {
+                    std::println(std::cerr, "错误: 无效的 --bus-width 参数: {}", argv[i]);
+                    return 1;
+                }
+            }
         } else if (is_long ? arg == "--block-size" : arg == "-b") {
-            if (i + 1 < argc) config.block_size = static_cast<unsigned>(std::atoi(argv[++i]));
+            if (i + 1 < argc) {
+                if (auto v{parse_uint(argv[++i])})
+                    config.block_size = *v;
+                else {
+                    std::println(std::cerr, "错误: 无效的 --block-size 参数: {}", argv[i]);
+                    return 1;
+                }
+            }
         } else if (is_long ? arg == "--num-blocks" : arg == "-n") {
-            if (i + 1 < argc) config.num_blocks = static_cast<unsigned>(std::atoi(argv[++i]));
+            if (i + 1 < argc) {
+                if (auto v{parse_uint(argv[++i])})
+                    config.num_blocks = *v;
+                else {
+                    std::println(std::cerr, "错误: 无效的 --num-blocks 参数: {}", argv[i]);
+                    return 1;
+                }
+            }
         } else if (is_long ? arg == "--ways" : arg == "-w") {
-            if (i + 1 < argc) config.ways = static_cast<unsigned>(std::atoi(argv[++i]));
+            if (i + 1 < argc) {
+                if (auto v{parse_uint(argv[++i])})
+                    config.ways = *v;
+                else {
+                    std::println(std::cerr, "错误: 无效的 --ways 参数: {}", argv[i]);
+                    return 1;
+                }
+            }
         } else if (is_long ? arg == "--replacement" : arg == "-r") {
             if (i + 1 < argc) config.repl_policy = parse_repl(argv[++i]);
         } else {
