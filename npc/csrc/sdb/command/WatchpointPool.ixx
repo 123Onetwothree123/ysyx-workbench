@@ -7,11 +7,12 @@ import npc.expressions.expressions;
 export class WatchpointPool
 {
 private:
+    static constexpr std::size_t MaxWatchpoints{32};
     std::vector<Watchpoint> watchpoints;
-    std::vector<std::size_t> FreeWatchpointIndices; // 存储空闲监视点编号的栈
-    std::vector<std::size_t> UsedWatchpointIndices; // 存储已使用监视点编号的列表
+    std::inplace_vector<std::size_t, MaxWatchpoints> FreeWatchpointIndices; // 存储空闲监视点编号的栈
+    std::inplace_vector<std::size_t, MaxWatchpoints> UsedWatchpointIndices; // 存储已使用监视点编号的列表
 public:
-    WatchpointPool(const std::size_t InputMaxWatchpoints = 32);
+    WatchpointPool();
     ~WatchpointPool() = default;
     bool DeleteWatchpoint(std::size_t NO);
     Watchpoint *CreateWatchpoint(const std::string &expression, std::size_t InitialValue);

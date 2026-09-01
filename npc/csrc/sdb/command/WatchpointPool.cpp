@@ -8,14 +8,14 @@ WatchpointPool &GetGlobalWatchpointPool()
     return GlobalWatchpointPool;
 }
 
-WatchpointPool::WatchpointPool(std::size_t InputMaxWatchpoints)
-    : watchpoints(InputMaxWatchpoints)
+WatchpointPool::WatchpointPool()
 {
-    for (std::size_t i{InputMaxWatchpoints}; i > 0; --i)
+    watchpoints.resize(MaxWatchpoints);
+    FreeWatchpointIndices.resize(MaxWatchpoints);
+    std::iota(FreeWatchpointIndices.begin(), FreeWatchpointIndices.end(), std::size_t{0});
+    for (std::size_t i{0}; i < MaxWatchpoints; ++i)
     {
-        const auto NO{i - 1};
-        watchpoints[NO].SetNO(NO);
-        FreeWatchpointIndices.push_back(NO);
+        watchpoints[i].SetNO(i);
     }
 }
 Watchpoint *WatchpointPool::GetWatchpoint(std::size_t NO)
