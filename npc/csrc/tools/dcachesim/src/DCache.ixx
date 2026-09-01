@@ -36,6 +36,7 @@ private:
     ReplPolicy policy{};
     std::string name;
     std::uint64_t tick{}; // 逻辑时钟，给FIFO/LRU计时用
+    std::mt19937 rng_{std::random_device{}()};
     void fill(entry& e, std::uint32_t tag, bool is_write);
 public:
     DCache(const DCacheConfig& config, ReplPolicy policy, std::string_view name);

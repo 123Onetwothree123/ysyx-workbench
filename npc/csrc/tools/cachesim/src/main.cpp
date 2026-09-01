@@ -10,7 +10,7 @@ namespace {
 void print_usage(const char* prog)
 {
     std::println("用法: {} [选项] <trace文件>", prog);
-    std::println("");
+    std::println();
     std::println("选项:");
     std::println("  -b, --block-size <N>     块大小 (字节, 2的幂, 默认 {})", CACHE_BLOCK_SIZE);
     std::println("  -n, --num-blocks <N>     cache 块总数 (默认 {})", CACHE_NUM_BLOCKS);
@@ -21,11 +21,11 @@ void print_usage(const char* prog)
     std::println("  -h, --help               显示帮助信息");
 }
 
-auto parse_repl(const char* s) -> unsigned
+auto parse_repl(std::string_view s) -> unsigned
 {
-    if (std::strcmp(s, "fifo") == 0 || std::strcmp(s, "FIFO") == 0) return 0;
-    if (std::strcmp(s, "lru") == 0  || std::strcmp(s, "LRU") == 0)  return 1;
-    if (std::strcmp(s, "random") == 0 || std::strcmp(s, "RANDOM") == 0) return 2;
+    if (s == "fifo" || s == "FIFO") return 0;
+    if (s == "lru"  || s == "LRU")  return 1;
+    if (s == "random" || s == "RANDOM") return 2;
     std::println(std::cerr, "未知替换策略: {}, 使用默认 FIFO", s);
     return 0;
 }

@@ -17,7 +17,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         add_custom_command(
             OUTPUT ${STD_PCM}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${BUILD_DIR}
-            COMMAND ${CMAKE_CXX_COMPILER} -std=c++23 -stdlib=libc++
+            COMMAND ${CMAKE_CXX_COMPILER} -std=c++26 -stdlib=libc++
                     -x c++-module --precompile ${STD_SRC} -o ${STD_PCM}
             COMMENT "Precompiling std.pcm (Clang)"
         )

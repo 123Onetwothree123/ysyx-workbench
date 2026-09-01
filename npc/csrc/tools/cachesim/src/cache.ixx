@@ -23,6 +23,7 @@ private:
     unsigned                        num_sets_    = 0;
     std::vector<std::vector<Block>> sets_;
     std::uint64_t                   tick_ = 0;
+    std::mt19937                    rng_{std::random_device{}()};
 
     // 3C 模型辅助状态
     std::unordered_set<std::uint32_t> seen_tags_;
@@ -31,7 +32,6 @@ private:
 
     SimStats stats_;
 
-    auto find_in_set(const std::vector<Block>& set, std::uint32_t tag) -> int;
     auto find_victim(const std::vector<Block>& set) -> unsigned;
     auto fa_access(std::uint32_t tag) -> bool;
     auto log2_ceil(unsigned n) -> unsigned;

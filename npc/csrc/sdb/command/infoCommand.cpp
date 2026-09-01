@@ -18,13 +18,13 @@ static constexpr std::string_view get_reg_abi_name(std::size_t idx) noexcept
     }
     return {};
 }
-static const char *get_reg_desc(const char *arch_name, std::string_view abi_name)
+static const char *get_reg_desc(std::string_view arch_name, std::string_view abi_name)
 {
-    if (std::strcmp(arch_name, "pc") == 0)
+    if (arch_name == "pc")
     {
         return "程序计数器";
     }
-    if (std::strcmp(arch_name, "x0") == 0)
+    if (arch_name == "x0")
     {
         return "零寄存器";
     }
@@ -76,13 +76,13 @@ static constexpr const char *get_reg_header_color(std::string_view title) noexce
     }
     return ANSI::FG_WHITE;
 }
-static const char *get_reg_row_color(const char *arch_name, std::string_view abi_name)
+static const char *get_reg_row_color(std::string_view arch_name, std::string_view abi_name)
 {
-    if (std::strcmp(arch_name, "pc") == 0)
+    if (arch_name == "pc")
     {
         return ANSI::FG_YELLOW;
     }
-    if (std::strcmp(arch_name, "x0") == 0 || abi_name == "zero")
+    if (arch_name == "x0" || abi_name == "zero")
     {
         return ANSI::FG_WHITE;
     }
@@ -144,7 +144,7 @@ static void PrintGPR(DUT &dut)
             auto result{dut.ReadGPR(static_cast<std::uint32_t>(reg_idx))};
             rows[i].value = result ? *result : 0;
         }
-        rows[i].desc = get_reg_desc(rows[i].arch_name.c_str(), rows[i].abi_name);
+        rows[i].desc = get_reg_desc(rows[i].arch_name, rows[i].abi_name);
     }
     auto id_width{display_width("编号")};
     auto name_width{display_width("寄存器")};
@@ -192,7 +192,7 @@ static void PrintGPR(DUT &dut)
     print_border(col_widths);
     for (std::size_t i{0}; i < nr_rows; i++)
     {
-        const auto row_color{get_reg_row_color(rows[i].arch_name.c_str(), rows[i].abi_name)};
+        const auto row_color{get_reg_row_color(rows[i].arch_name, rows[i].abi_name)};
         auto id_str{std::format("{}{}{}", row_color, rows[i].arch_name, ANSI::NONE)};
         auto name_str{std::format("{}{}{}", row_color, rows[i].abi_name, ANSI::NONE)};
         auto dec_str{std::format("{}{}{}", ANSI::FG_WHITE, rows[i].value, ANSI::NONE)};

@@ -46,35 +46,29 @@ AccessOutcome DCache::access(const AccessRecord& rec)
     auto& set{sets[index]};
 
     // 第1轮：找是否有同 tag 的块，命中
-    for (auto& e : set)
+    if (const auto it{std::ranges::find_if(set, [tag](const entry& e) { return e.valid && e.tag == tag; })}; it != set.end())
     {
-        if (e.valid && e.tag == tag)
+        if (policy == ReplPolicy::LRU)
         {
-            if (policy == ReplPolicy::LRU)
-            {
-                e.time = tick; // LRU命中要刷新访问时间
-            }
-            if (rec.GetIsWrite())
-            {
-                e.dirty = true; // 写命中置脏
-            }
-            return {true, false};
+            it->time = tick; // LRU命中要刷新访问时间
         }
+        if (rec.GetIsWrite())
+        {
+            it->dirty = true; // 写命中置脏
+        }
+        return {true, false};
     }
     // 第2轮：找空闲槽位
-    for (auto& e : set)
+    if (const auto it{std::ranges::find_if(set, [](const entry& e) { return !e.valid; })}; it != set.end())
     {
-        if (!e.valid)
-        {
-            fill(e, tag, rec.GetIsWrite());
-            return {false, false};
-        }
+        fill(*it, tag, rec.GetIsWrite());
+        return {false, false};
     }
     // 第3轮：组满了，按替换策略选牺牲者
     std::size_t victim{0};
     if (policy == ReplPolicy::Random)
     {
-        victim = static_cast<std::size_t>(std::rand()) % set.size();
+        victim = std::uniform_int_distribution<std::size_t>{0, set.size() - 1}(rng_);
     }
     else
     {

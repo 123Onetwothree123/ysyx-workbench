@@ -143,17 +143,17 @@ static const char *get_watchpoint_type_name(const char *expr)
     }
     return "常量";
 }
-static const char *get_type_color(const char *type_name)
+static const char *get_type_color(std::string_view type_name)
 {
-    if (std::strcmp(type_name, "寄存器") == 0)
+    if (type_name == "寄存器")
     {
         return ANSI::FG_CYAN;
     }
-    if (std::strcmp(type_name, "解引用") == 0)
+    if (type_name == "解引用")
     {
         return ANSI::FG_YELLOW;
     }
-    if (std::strcmp(type_name, "表达式") == 0)
+    if (type_name == "表达式")
     {
         return ANSI::FG_MAGENTA;
     }

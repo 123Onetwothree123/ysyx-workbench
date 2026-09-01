@@ -44,6 +44,37 @@ config STDLIB_FLAG
   default "-stdlib=libc++" if STDLIB_LIBCXX
   default "-stdlib=libstdc++"
 
+config LIB_HARDENING
+  bool "标准库硬化 (Standard Library Hardening)"
+  default n
+  help
+    将标准库中部分前置条件违规从UB转为运行时检查（P3471）
+    libstdc++（GNU）：单级，启用后加 -D_GLIBCXX_ASSERTIONS
+    libc++（LLVM）：多挡位，启用后还需选择硬化级别
+
+choice
+  prompt "libc++硬化级别"
+  default LIB_HARDENING_MODE_FAST
+  depends on LIB_HARDENING && STDLIB_LIBCXX
+  help
+    FAST：仅检查输入区间与元素访问，开销最小，生产推荐
+    EXTENSIVE：追加空指针/重叠区间/非法释放/参数域等检查
+    DEBUG：全部检查，含语义要求与内部不变量，适合开发调试
+config LIB_HARDENING_MODE_FAST
+  bool "FAST（生产推荐）"
+config LIB_HARDENING_MODE_EXTENSIVE
+  bool "EXTENSIVE"
+config LIB_HARDENING_MODE_DEBUG
+  bool "DEBUG（开发调试）"
+endchoice
+
+config LIB_HARDENING_MODE
+  string
+  default "_LIBCPP_HARDENING_MODE_FAST" if LIB_HARDENING_MODE_FAST
+  default "_LIBCPP_HARDENING_MODE_EXTENSIVE" if LIB_HARDENING_MODE_EXTENSIVE
+  default "_LIBCPP_HARDENING_MODE_DEBUG" if LIB_HARDENING_MODE_DEBUG
+  default "_LIBCPP_HARDENING_MODE_FAST"
+
 config CC_ICPX_NOSTDINCXX
   bool "icpx: 跳过Intel内置C++头路径 (-nostdinc++)"
   depends on CC_ICPX && STDLIB_LIBCXX
@@ -105,21 +136,21 @@ menu "语言标准"
 
 choice
   prompt "用户C++语言标准"
-  default USER_CXX_STD_CXX23
-  help
-    设置csrc目录中用户C++源码使用的语言标准
-    用户源码依赖std::print等特性，最低要求C++23
-config USER_CXX_STD_CXX23
-  bool "C++23"
-config USER_CXX_STD_CXX26
-  bool "C++26"
+  default USER_CXX_STD_CXX26
+   help
+     设置csrc目录中用户C++源码使用的语言标准
+     用户源码依赖std::print等特性，最低要求C++26
+ config USER_CXX_STD_CXX26
+   bool "C++26"
+ config USER_CXX_STD_CXX23
+   bool "C++23"
 endchoice
 
 config USER_CXX_STD
-  string
-  default "c++23" if USER_CXX_STD_CXX23
-  default "c++26" if USER_CXX_STD_CXX26
-  default "c++23"
+   string
+   default "c++26" if USER_CXX_STD_CXX26
+   default "c++23" if USER_CXX_STD_CXX23
+   default "c++26"
 
 choice
   prompt "Verilator生成代码语言标准"

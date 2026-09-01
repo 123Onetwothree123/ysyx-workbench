@@ -114,7 +114,7 @@ void NPCTrap::PrintPerformanceStatistics(
     std::println("EXU完成: {} (应与IFU取指接近)", execution_complete);
     auto load_store_sum{load_data + store_data};
     std::println("LSU合计: {} (应与访存指令一致)", load_store_sum);
-    std::println("");
+    std::println();
     std::println("指令类别占比与平均周期:");
     if (instruction_fetch > 0)
     {
@@ -128,7 +128,7 @@ void NPCTrap::PrintPerformanceStatistics(
         std::println("CSR指令占比: {:.1f}%", 100.0 * control_status_register_operation / total_instructions);
         std::println("分支/跳转指令占比: {:.1f}%", 100.0 * branch_operation / total_instructions);
     }
-    std::println("");
+    std::println();
     std::println("IFU取不到指令原因分析:");
     if (total_cycles > 0)
     {
@@ -140,7 +140,7 @@ void NPCTrap::PrintPerformanceStatistics(
         std::println("跳转冲刷(取指结果被丢弃): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_redirect, 100.0 * instruction_fetch_stall_redirect / total);
         std::println("IFU空闲(无取指请求): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_idle, 100.0 * instruction_fetch_stall_idle / total);
     }
-    std::println("");
+    std::println();
     std::println("EXU流水线阻塞分析:");
     if (total_cycles > 0)
     {
@@ -149,7 +149,7 @@ void NPCTrap::PrintPerformanceStatistics(
         std::println("EXU空转无输入(上游供给不足): {} 周期, 占比 {:.1f}%", exu_idle_noinput, 100.0 * exu_idle_noinput / total);
         std::println("EX/MEM等待槽占用(5级拆分买到的访存重叠): {} 周期, 占比 {:.1f}%", mem_waitslot_cycles, 100.0 * mem_waitslot_cycles / total);
     }
-    std::println("");
+    std::println();
     std::println("IDU数据冒险阻塞分析:");
     if (total_cycles > 0)
     {
@@ -158,9 +158,9 @@ void NPCTrap::PrintPerformanceStatistics(
         std::println("  load-use(等LSU数据,转发无法消除): {} 周期, 占比 {:.1f}%", idu_stall_raw_loaduse, 100.0 * idu_stall_raw_loaduse / total);
         std::println("  ALU依赖(转发可消除,即转发理想收益): {} 周期, 占比 {:.1f}%", idu_stall_raw_alu, 100.0 * idu_stall_raw_alu / total);
     }
-    std::println("");
+    std::println();
     std::println("异常/中断提交: {} 次", trap_count);
-    std::println("");
+    std::println();
     std::println("LSU平均访存延迟:");
     auto load_store_total{load_data + store_data};
     if (load_store_total > 0)
@@ -175,7 +175,7 @@ void NPCTrap::PrintPerformanceStatistics(
     {
         std::println("  写延迟: {:.2f} 周期 ({} 次)", static_cast<double>(load_store_unit_store_active_cycles) / store_data, store_data);
     }
-    std::println("");
+    std::println();
     std::println("LSU访存延迟分解:");
     auto lsu_active_total{load_store_unit_active_cycles};
     if (lsu_active_total > 0)
@@ -186,7 +186,7 @@ void NPCTrap::PrintPerformanceStatistics(
         std::println("  AW/W等待(写请求握手): {} 周期, 占比 {:.1f}%", lsu_stall_write_req_cycles, 100.0 * lsu_stall_write_req_cycles / active_total_d);
         std::println("  B等待(写响应返回):  {} 周期, 占比 {:.1f}%", lsu_stall_write_b_cycles, 100.0 * lsu_stall_write_b_cycles / active_total_d);
     }
-    std::println("");
+    std::println();
     std::println("ICache 性能:");
     std::println("  命中: {} 次", icache_hit);
     std::println("  缺失: {} 次", icache_miss);
