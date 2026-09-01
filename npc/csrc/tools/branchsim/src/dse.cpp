@@ -18,17 +18,11 @@ auto RunDse(std::span<const BranchRecord> trace,
     struct Combo { std::size_t bb, bw, jb, jw, rb; };
     std::vector<Combo> configs{};
     for (auto bb : btb_bits_list)
-        for (auto bw : btb_ways_list)
-        {
-            if (bw > (std::size_t{1} << bb)) continue;
+        for (auto bw : btb_ways_list | std::views::filter([bb](auto ways) { return ways <= (std::size_t{1} << bb); }))
             for (auto jb : jal_bits_list)
-                for (auto jw : jal_ways_list)
-                {
-                    if (jw > (std::size_t{1} << jb)) continue;
+                for (auto jw : jal_ways_list | std::views::filter([jb](auto ways) { return ways <= (std::size_t{1} << jb); }))
                     for (auto rb : ras_bits_list)
                         configs.push_back({bb, bw, jb, jw, rb});
-                }
-        }
 
     // 结果槽: 每combo固定5个算法(BPAlgorithmsType构造顺序固定)
     constexpr std::size_t AlgosPerCombo{5};

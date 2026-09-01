@@ -84,13 +84,10 @@ bool WatchpointPool::CheckAll(const EvaluationContext &context)
     expressions expression;
     auto CurrentPC{context.GetPC()};
     bool triggered{false};
-    for (std::size_t NO : UsedWatchpointIndices)
+    for (std::size_t NO : UsedWatchpointIndices
+                          | std::views::filter([&](std::size_t no) { return watchpoints[no].IsEnabled(); }))
     {
         auto &wp{watchpoints[NO]};
-        if (!wp.IsEnabled())
-        {
-            continue;
-        }
         auto result{expression.evaluate(wp.GetExpression(), context)};
         if (!result)
         {

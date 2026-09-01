@@ -18,12 +18,8 @@ auto RunDse(std::span<const AccessRecord> trace,
     {
         for (auto nb : num_blocks_list)
         {
-            for (auto w : ways_list)
+            for (auto w : ways_list | std::views::filter([nb](auto ways) { return ways <= nb && nb % ways == 0; }))
             {
-                if (w > nb || nb % w != 0)
-                {
-                    continue;
-                }
                 configs.emplace_back(bs, nb, w);
             }
         }
