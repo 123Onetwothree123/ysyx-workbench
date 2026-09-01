@@ -33,6 +33,7 @@ NPC_IMPORT_HEADERS := $(shell grep -rhoP '(?<=import <)[^>]+' $(NPC_CSRC_DIR) --
 
 NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/log/log.ixx \
+  $(NPC_CSRC_DIR)/PerfStats.ixx \
   $(NPC_CSRC_DIR)/NPCTrap.ixx \
   $(NPC_CSRC_DIR)/CLIOptions.ixx \
   $(NPC_CSRC_DIR)/SoCMemoryMap/AddressRange.ixx \

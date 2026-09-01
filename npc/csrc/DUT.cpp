@@ -97,38 +97,7 @@ void DUT::reset()
     cycle = 0;
 #ifdef CONFIG_PERF_STATS
     instructions = 0;
-    instruction_fetch_count = 0;
-    execution_complete_count = 0;
-    load_data_count = 0;
-    store_data_count = 0;
-    arithmetic_operation_count = 0;
-    memory_access_operation_count = 0;
-    control_status_register_operation_count = 0;
-    branch_operation_count = 0;
-    jal_operation_count = 0;
-    jalr_operation_count = 0;
-    instruction_fetch_stall_pipeline_count = 0;
-    instruction_fetch_stall_axi_count = 0;
-    instruction_fetch_stall_ar_count = 0;
-    instruction_fetch_stall_r_count = 0;
-    instruction_fetch_stall_redirect_count = 0;
-    instruction_fetch_stall_idle_count = 0;
-    execution_active_cycle_count = 0;
-    exu_stall_lsu_count = 0;
-    arithmetic_operation_active_cycle_count = 0;
-    memory_access_operation_active_cycle_count = 0;
-    control_status_register_operation_active_cycle_count = 0;
-    branch_operation_active_cycle_count = 0;
-    load_store_unit_active_cycle_count = 0;
-    load_store_unit_load_active_cycle_count = 0;
-    load_store_unit_store_active_cycle_count = 0;
-    lsu_stall_read_ar_count = 0;
-    lsu_stall_read_r_count = 0;
-    lsu_stall_write_req_count = 0;
-    lsu_stall_write_b_count = 0;
-    icache_hit_count = 0;
-    icache_miss_count = 0;
-    mem_waitslot_count = 0;
+    perf = {};
 #endif
 }
 void DUT::step()
@@ -212,7 +181,7 @@ void DUT::step()
     }
     if (dut->perf_ifu_fetch)
     {
-        ++instruction_fetch_count;
+        ++perf.instruction_fetch;
 #ifdef CONFIG_ITRACE_WRITE_FILE
         {
             static auto fp = std::ofstream("itrace.txt", std::ios::app);
@@ -223,151 +192,151 @@ void DUT::step()
     }
     if (dut->perf_exu_done)
     {
-        ++execution_complete_count;
+        ++perf.execution_complete;
     }
     if (dut->perf_lsu_load)
     {
-        ++load_data_count;
+        ++perf.load_data;
     }
     if (dut->perf_lsu_store)
     {
-        ++store_data_count;
+        ++perf.store_data;
     }
     if (dut->perf_exu_done)
     {
         if (dut->perf_alu_op)
         {
-            ++arithmetic_operation_count;
+            ++perf.arithmetic_operation;
         }
         if (dut->perf_mem_op)
         {
-            ++memory_access_operation_count;
+            ++perf.memory_access_operation;
         }
         if (dut->perf_csr_op)
         {
-            ++control_status_register_operation_count;
+            ++perf.control_status_register_operation;
         }
         if (dut->perf_branch_op)
         {
-            ++branch_operation_count;
+            ++perf.branch_operation;
         }
         if (dut->perf_jal_op)
         {
-            ++jal_operation_count;
+            ++perf.jal_operation;
         }
         if (dut->perf_jalr_op)
         {
-            ++jalr_operation_count;
+            ++perf.jalr_operation;
         }
     }
     if (dut->perf_ifu_stall_pipeline)
     {
-        ++instruction_fetch_stall_pipeline_count;
+        ++perf.instruction_fetch_stall_pipeline;
     }
     if (dut->perf_ifu_stall_axi)
     {
-        ++instruction_fetch_stall_axi_count;
+        ++perf.instruction_fetch_stall_axi;
     }
     if (dut->perf_ifu_stall_ar)
     {
-        ++instruction_fetch_stall_ar_count;
+        ++perf.instruction_fetch_stall_ar;
     }
     if (dut->perf_ifu_stall_r)
     {
-        ++instruction_fetch_stall_r_count;
+        ++perf.instruction_fetch_stall_r;
     }
     if (dut->perf_ifu_stall_redirect)
     {
-        ++instruction_fetch_stall_redirect_count;
+        ++perf.instruction_fetch_stall_redirect;
     }
     if (dut->perf_ifu_stall_idle)
     {
-        ++instruction_fetch_stall_idle_count;
+        ++perf.instruction_fetch_stall_idle;
     }
     if (dut->perf_execution_active)
     {
-        ++execution_active_cycle_count;
+        ++perf.execution_active_cycle;
     }
     if (dut->perf_exu_stall_lsu)
     {
-        ++exu_stall_lsu_count;
+        ++perf.exu_stall_lsu;
     }
     if (dut->perf_mem_waitslot)
     {
-        ++mem_waitslot_count;
+        ++perf.mem_waitslot;
     }
     if (dut->perf_execution_active && dut->perf_alu_op)
     {
-        ++arithmetic_operation_active_cycle_count;
+        ++perf.arithmetic_operation_active_cycle;
     }
     if (dut->perf_execution_active && dut->perf_mem_op)
     {
-        ++memory_access_operation_active_cycle_count;
+        ++perf.memory_access_operation_active_cycle;
     }
     if (dut->perf_execution_active && dut->perf_csr_op)
     {
-        ++control_status_register_operation_active_cycle_count;
+        ++perf.control_status_register_operation_active_cycle;
     }
     if (dut->perf_execution_active && dut->perf_branch_op)
     {
-        ++branch_operation_active_cycle_count;
+        ++perf.branch_operation_active_cycle;
     }
     if (dut->perf_lsu_active)
     {
-        ++load_store_unit_active_cycle_count;
+        ++perf.load_store_unit_active_cycle;
     }
     if (dut->perf_lsu_load_active)
     {
-        ++load_store_unit_load_active_cycle_count;
+        ++perf.load_store_unit_load_active_cycle;
     }
     if (dut->perf_lsu_store_active)
     {
-        ++load_store_unit_store_active_cycle_count;
+        ++perf.load_store_unit_store_active_cycle;
     }
     if (dut->perf_lsu_stall_read_ar)
     {
-        ++lsu_stall_read_ar_count;
+        ++perf.lsu_stall_read_ar;
     }
     if (dut->perf_lsu_stall_read_r)
     {
-        ++lsu_stall_read_r_count;
+        ++perf.lsu_stall_read_r;
     }
     if (dut->perf_lsu_stall_write_req)
     {
-        ++lsu_stall_write_req_count;
+        ++perf.lsu_stall_write_req;
     }
     if (dut->perf_lsu_stall_write_b)
     {
-        ++lsu_stall_write_b_count;
+        ++perf.lsu_stall_write_b;
     }
     if (dut->perf_icache_hit)
     {
-        ++icache_hit_count;
+        ++perf.icache_hit;
     }
     if (dut->perf_icache_miss)
     {
-        ++icache_miss_count;
+        ++perf.icache_miss;
     }
 #ifndef VRISCV32E_NPC
     if (dut->perf_idu_stall_raw)
     {
-        ++idu_stall_raw_count;
+        ++perf.idu_stall_raw;
     }
     if (dut->perf_idu_stall_raw_loaduse)
     {
-        ++idu_stall_raw_loaduse_count;
+        ++perf.idu_stall_raw_loaduse;
     }
     if (dut->perf_idu_stall_raw_alu)
     {
-        ++idu_stall_raw_alu_count;
+        ++perf.idu_stall_raw_alu;
     }
     if (dut->perf_exu_idle_noinput)
     {
-        ++exu_idle_noinput_count;
+        ++perf.exu_idle_noinput;
     }
     if (dut->perf_trap)
     {
-        ++trap_count;
+        ++perf.trap_count;
     }
 #endif
 #endif
@@ -439,121 +408,9 @@ std::size_t DUT::GetInstructions() const
 {
     return instructions;
 }
-std::size_t DUT::GetInstructionFetchCount() const
+const PerfStats &DUT::GetPerfStats() const noexcept
 {
-    return instruction_fetch_count;
-}
-std::size_t DUT::GetExecutionCompleteCount() const
-{
-    return execution_complete_count;
-}
-std::size_t DUT::GetLoadDataCount() const
-{
-    return load_data_count;
-}
-std::size_t DUT::GetStoreDataCount() const
-{
-    return store_data_count;
-}
-std::size_t DUT::GetArithmeticOperationCount() const
-{
-    return arithmetic_operation_count;
-}
-std::size_t DUT::GetMemoryAccessOperationCount() const
-{
-    return memory_access_operation_count;
-}
-std::size_t DUT::GetControlStatusRegisterOperationCount() const
-{
-    return control_status_register_operation_count;
-}
-std::size_t DUT::GetBranchOperationCount() const
-{
-    return branch_operation_count;
-}
-std::size_t DUT::GetJalOperationCount() const
-{
-    return jal_operation_count;
-}
-std::size_t DUT::GetJalrOperationCount() const
-{
-    return jalr_operation_count;
-}
-std::size_t DUT::GetInstructionFetchStallPipelineCount() const
-{
-    return instruction_fetch_stall_pipeline_count;
-}
-std::size_t DUT::GetInstructionFetchStallAXICount() const
-{
-    return instruction_fetch_stall_axi_count;
-}
-std::size_t DUT::GetInstructionFetchStallARCount() const
-{
-    return instruction_fetch_stall_ar_count;
-}
-std::size_t DUT::GetInstructionFetchStallRCount() const
-{
-    return instruction_fetch_stall_r_count;
-}
-std::size_t DUT::GetInstructionFetchStallRedirectCount() const
-{
-    return instruction_fetch_stall_redirect_count;
-}
-std::size_t DUT::GetInstructionFetchStallIdleCount() const
-{
-    return instruction_fetch_stall_idle_count;
-}
-std::size_t DUT::GetExecutionActiveCycleCount() const
-{
-    return execution_active_cycle_count;
-}
-std::size_t DUT::GetEXUStallLSUCount() const
-{
-    return exu_stall_lsu_count;
-}
-std::size_t DUT::GetArithmeticOperationActiveCycleCount() const
-{
-    return arithmetic_operation_active_cycle_count;
-}
-std::size_t DUT::GetMemoryAccessOperationActiveCycleCount() const
-{
-    return memory_access_operation_active_cycle_count;
-}
-std::size_t DUT::GetControlStatusRegisterOperationActiveCycleCount() const
-{
-    return control_status_register_operation_active_cycle_count;
-}
-std::size_t DUT::GetBranchOperationActiveCycleCount() const
-{
-    return branch_operation_active_cycle_count;
-}
-std::size_t DUT::GetLoadStoreUnitActiveCycleCount() const
-{
-    return load_store_unit_active_cycle_count;
-}
-std::size_t DUT::GetLoadStoreUnitLoadActiveCycleCount() const
-{
-    return load_store_unit_load_active_cycle_count;
-}
-std::size_t DUT::GetLoadStoreUnitStoreActiveCycleCount() const
-{
-    return load_store_unit_store_active_cycle_count;
-}
-std::size_t DUT::GetLSUStallReadARCount() const
-{
-    return lsu_stall_read_ar_count;
-}
-std::size_t DUT::GetLSUStallReadRCount() const
-{
-    return lsu_stall_read_r_count;
-}
-std::size_t DUT::GetLSUStallWriteReqCount() const
-{
-    return lsu_stall_write_req_count;
-}
-std::size_t DUT::GetLSUStallWriteBCount() const
-{
-    return lsu_stall_write_b_count;
+    return perf;
 }
 std::expected<std::uint32_t, std::string> DUT::ReadGPR(std::uint32_t index)
 {
@@ -593,38 +450,6 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
         return value;
     }
     return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 Flash 0x{:08x}-0x{:08x}）", addr, FLASH_BASE, FLASH_BASE + FLASH_SIZE)};
-}
-std::size_t DUT::GetICacheHitCount() const
-{
-    return icache_hit_count;
-}
-std::size_t DUT::GetICacheMissCount() const
-{
-    return icache_miss_count;
-}
-std::size_t DUT::GetIDUStallRAWCount() const
-{
-    return idu_stall_raw_count;
-}
-std::size_t DUT::GetIDUStallRAWLoadUseCount() const
-{
-    return idu_stall_raw_loaduse_count;
-}
-std::size_t DUT::GetIDUStallRAWALUCount() const
-{
-    return idu_stall_raw_alu_count;
-}
-std::size_t DUT::GetEXUIdleNoInputCount() const
-{
-    return exu_idle_noinput_count;
-}
-std::size_t DUT::GetTrapCount() const
-{
-    return trap_count;
-}
-std::size_t DUT::GetMemWaitSlotCount() const
-{
-    return mem_waitslot_count;
 }
 
 void DUT::EnableVGACheck()

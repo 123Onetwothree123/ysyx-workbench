@@ -57,147 +57,110 @@ int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Instructions)
     return 1;
 }
 #ifdef CONFIG_PERF_STATS
-void NPCTrap::PrintPerformanceStatistics(
-    std::size_t instruction_fetch,
-    std::size_t execution_complete,
-    std::size_t load_data,
-    std::size_t store_data,
-    std::size_t arithmetic_operation,
-    std::size_t memory_access_operation,
-    std::size_t control_status_register_operation,
-    std::size_t branch_operation,
-    std::size_t jal_operation,
-    std::size_t jalr_operation,
-    std::size_t total_cycles,
-    std::size_t instruction_fetch_stall_pipeline,
-    std::size_t instruction_fetch_stall_axi,
-    std::size_t instruction_fetch_stall_redirect,
-    std::size_t instruction_fetch_stall_ar,
-    std::size_t instruction_fetch_stall_r,
-    std::size_t instruction_fetch_stall_idle,
-    std::size_t arithmetic_operation_active_cycles,
-    std::size_t memory_access_operation_active_cycles,
-    std::size_t control_status_register_operation_active_cycles,
-    std::size_t branch_operation_active_cycles,
-    std::size_t exu_stall_lsu_cycles,
-    std::size_t load_store_unit_active_cycles,
-    std::size_t load_store_unit_load_active_cycles,
-    std::size_t load_store_unit_store_active_cycles,
-    std::size_t lsu_stall_read_ar_cycles,
-    std::size_t lsu_stall_read_r_cycles,
-    std::size_t lsu_stall_write_req_cycles,
-    std::size_t lsu_stall_write_b_cycles,
-    std::size_t icache_hit,
-    std::size_t icache_miss,
-    std::size_t idu_stall_raw,
-    std::size_t idu_stall_raw_loaduse,
-    std::size_t idu_stall_raw_alu,
-    std::size_t exu_idle_noinput,
-    std::size_t trap_count,
-    std::size_t mem_waitslot_cycles)
+void NPCTrap::PrintPerformanceStatistics(const PerfStats &stats, std::size_t total_cycles)
 {
     std::println("性能计数器");
-    std::println("IFU取到指令: {}", instruction_fetch);
-    std::println("EXU完成计算: {}", execution_complete);
-    std::println("LSU取到数据: {}", load_data);
-    std::println("LSU写出数据: {}", store_data);
-    std::println("ALU指令: {}", arithmetic_operation);
-    std::println("访存指令: {}", memory_access_operation);
-    std::println("CSR指令: {}", control_status_register_operation);
-    std::println("分支/跳转指令: {}", branch_operation);
-    std::println("  其中 jal指令: {}", jal_operation);
-    std::println("  其中 jalr指令: {}", jalr_operation);
-    std::println("  其中 条件分支: {}", branch_operation - jal_operation - jalr_operation);
-    auto instruction_type_sum{arithmetic_operation + memory_access_operation + control_status_register_operation + branch_operation};
+    std::println("IFU取到指令: {}", stats.instruction_fetch);
+    std::println("EXU完成计算: {}", stats.execution_complete);
+    std::println("LSU取到数据: {}", stats.load_data);
+    std::println("LSU写出数据: {}", stats.store_data);
+    std::println("ALU指令: {}", stats.arithmetic_operation);
+    std::println("访存指令: {}", stats.memory_access_operation);
+    std::println("CSR指令: {}", stats.control_status_register_operation);
+    std::println("分支/跳转指令: {}", stats.branch_operation);
+    std::println("  其中 jal指令: {}", stats.jal_operation);
+    std::println("  其中 jalr指令: {}", stats.jalr_operation);
+    std::println("  其中 条件分支: {}", stats.branch_operation - stats.jal_operation - stats.jalr_operation);
+    auto instruction_type_sum{stats.arithmetic_operation + stats.memory_access_operation + stats.control_status_register_operation + stats.branch_operation};
     std::println("指令类别合计: {} (应与IFU取指一致)", instruction_type_sum);
-    std::println("IFU取指: {}", instruction_fetch);
-    std::println("EXU完成: {} (应与IFU取指接近)", execution_complete);
-    auto load_store_sum{load_data + store_data};
+    std::println("IFU取指: {}", stats.instruction_fetch);
+    std::println("EXU完成: {} (应与IFU取指接近)", stats.execution_complete);
+    auto load_store_sum{stats.load_data + stats.store_data};
     std::println("LSU合计: {} (应与访存指令一致)", load_store_sum);
     std::println();
     std::println("指令类别占比与平均周期:");
-    if (instruction_fetch > 0)
+    if (stats.instruction_fetch > 0)
     {
-        auto total_instructions = static_cast<double>(instruction_fetch);
-        std::println("ALU指令占比: {:.1f}%", 100.0 * arithmetic_operation / total_instructions);
-        std::println("访存指令占比: {:.1f}%", 100.0 * memory_access_operation / total_instructions);
-        if (memory_access_operation > 0)
+        auto total_instructions = static_cast<double>(stats.instruction_fetch);
+        std::println("ALU指令占比: {:.1f}%", 100.0 * stats.arithmetic_operation / total_instructions);
+        std::println("访存指令占比: {:.1f}%", 100.0 * stats.memory_access_operation / total_instructions);
+        if (stats.memory_access_operation > 0)
         {
-            std::println("访存指令平均周期: {:.2f}", static_cast<double>(memory_access_operation_active_cycles) / memory_access_operation);
+            std::println("访存指令平均周期: {:.2f}", static_cast<double>(stats.memory_access_operation_active_cycle) / stats.memory_access_operation);
         }
-        std::println("CSR指令占比: {:.1f}%", 100.0 * control_status_register_operation / total_instructions);
-        std::println("分支/跳转指令占比: {:.1f}%", 100.0 * branch_operation / total_instructions);
+        std::println("CSR指令占比: {:.1f}%", 100.0 * stats.control_status_register_operation / total_instructions);
+        std::println("分支/跳转指令占比: {:.1f}%", 100.0 * stats.branch_operation / total_instructions);
     }
     std::println();
     std::println("IFU取不到指令原因分析:");
     if (total_cycles > 0)
     {
         auto total {static_cast<double>(total_cycles)};
-        std::println("流水线阻塞(IFU有数据但下游不接): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_pipeline, 100.0 * instruction_fetch_stall_pipeline / total);
-        std::println("AXI总线等待(AR/R通道未就绪): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_axi, 100.0 * instruction_fetch_stall_axi / total);
-        std::println("  其中 AR通道等待(请求未接受): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_ar, 100.0 * instruction_fetch_stall_ar / total);
-        std::println("  其中 R通道等待(数据未返回): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_r, 100.0 * instruction_fetch_stall_r / total);
-        std::println("跳转冲刷(取指结果被丢弃): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_redirect, 100.0 * instruction_fetch_stall_redirect / total);
-        std::println("IFU空闲(无取指请求): {} 周期, 占比 {:.1f}%", instruction_fetch_stall_idle, 100.0 * instruction_fetch_stall_idle / total);
+        std::println("流水线阻塞(IFU有数据但下游不接): {} 周期, 占比 {:.1f}%", stats.instruction_fetch_stall_pipeline, 100.0 * stats.instruction_fetch_stall_pipeline / total);
+        std::println("AXI总线等待(AR/R通道未就绪): {} 周期, 占比 {:.1f}%", stats.instruction_fetch_stall_axi, 100.0 * stats.instruction_fetch_stall_axi / total);
+        std::println("  其中 AR通道等待(请求未接受): {} 周期, 占比 {:.1f}%", stats.instruction_fetch_stall_ar, 100.0 * stats.instruction_fetch_stall_ar / total);
+        std::println("  其中 R通道等待(数据未返回): {} 周期, 占比 {:.1f}%", stats.instruction_fetch_stall_r, 100.0 * stats.instruction_fetch_stall_r / total);
+        std::println("跳转冲刷(取指结果被丢弃): {} 周期, 占比 {:.1f}%", stats.instruction_fetch_stall_redirect, 100.0 * stats.instruction_fetch_stall_redirect / total);
+        std::println("IFU空闲(无取指请求): {} 周期, 占比 {:.1f}%", stats.instruction_fetch_stall_idle, 100.0 * stats.instruction_fetch_stall_idle / total);
     }
     std::println();
     std::println("EXU流水线阻塞分析:");
     if (total_cycles > 0)
     {
         auto total{static_cast<double>(total_cycles)};
-        std::println("EXU被下游阻塞(有指令但本拍未完成): {} 周期, 占比 {:.1f}%", exu_stall_lsu_cycles, 100.0 * exu_stall_lsu_cycles / total);
-        std::println("EXU空转无输入(上游供给不足): {} 周期, 占比 {:.1f}%", exu_idle_noinput, 100.0 * exu_idle_noinput / total);
-        std::println("EX/MEM等待槽占用(5级拆分买到的访存重叠): {} 周期, 占比 {:.1f}%", mem_waitslot_cycles, 100.0 * mem_waitslot_cycles / total);
+        std::println("EXU被下游阻塞(有指令但本拍未完成): {} 周期, 占比 {:.1f}%", stats.exu_stall_lsu, 100.0 * stats.exu_stall_lsu / total);
+        std::println("EXU空转无输入(上游供给不足): {} 周期, 占比 {:.1f}%", stats.exu_idle_noinput, 100.0 * stats.exu_idle_noinput / total);
+        std::println("EX/MEM等待槽占用(5级拆分买到的访存重叠): {} 周期, 占比 {:.1f}%", stats.mem_waitslot, 100.0 * stats.mem_waitslot / total);
     }
     std::println();
     std::println("IDU数据冒险阻塞分析:");
     if (total_cycles > 0)
     {
         auto total{static_cast<double>(total_cycles)};
-        std::println("RAW阻塞合计: {} 周期, 占比 {:.1f}%", idu_stall_raw, 100.0 * idu_stall_raw / total);
-        std::println("  load-use(等LSU数据,转发无法消除): {} 周期, 占比 {:.1f}%", idu_stall_raw_loaduse, 100.0 * idu_stall_raw_loaduse / total);
-        std::println("  ALU依赖(转发可消除,即转发理想收益): {} 周期, 占比 {:.1f}%", idu_stall_raw_alu, 100.0 * idu_stall_raw_alu / total);
+        std::println("RAW阻塞合计: {} 周期, 占比 {:.1f}%", stats.idu_stall_raw, 100.0 * stats.idu_stall_raw / total);
+        std::println("  load-use(等LSU数据,转发无法消除): {} 周期, 占比 {:.1f}%", stats.idu_stall_raw_loaduse, 100.0 * stats.idu_stall_raw_loaduse / total);
+        std::println("  ALU依赖(转发可消除,即转发理想收益): {} 周期, 占比 {:.1f}%", stats.idu_stall_raw_alu, 100.0 * stats.idu_stall_raw_alu / total);
     }
     std::println();
-    std::println("异常/中断提交: {} 次", trap_count);
+    std::println("异常/中断提交: {} 次", stats.trap_count);
     std::println();
     std::println("LSU平均访存延迟:");
-    auto load_store_total{load_data + store_data};
+    auto load_store_total{stats.load_data + stats.store_data};
     if (load_store_total > 0)
     {
-        std::println("平均延迟: {:.2f} 周期", static_cast<double>(load_store_unit_active_cycles) / load_store_total);
+        std::println("平均延迟: {:.2f} 周期", static_cast<double>(stats.load_store_unit_active_cycle) / load_store_total);
     }
-    if (load_data > 0)
+    if (stats.load_data > 0)
     {
-        std::println("  读延迟: {:.2f} 周期 ({} 次)", static_cast<double>(load_store_unit_load_active_cycles) / load_data, load_data);
+        std::println("  读延迟: {:.2f} 周期 ({} 次)", static_cast<double>(stats.load_store_unit_load_active_cycle) / stats.load_data, stats.load_data);
     }
-    if (store_data > 0)
+    if (stats.store_data > 0)
     {
-        std::println("  写延迟: {:.2f} 周期 ({} 次)", static_cast<double>(load_store_unit_store_active_cycles) / store_data, store_data);
+        std::println("  写延迟: {:.2f} 周期 ({} 次)", static_cast<double>(stats.load_store_unit_store_active_cycle) / stats.store_data, stats.store_data);
     }
     std::println();
     std::println("LSU访存延迟分解:");
-    auto lsu_active_total{load_store_unit_active_cycles};
+    auto lsu_active_total{stats.load_store_unit_active_cycle};
     if (lsu_active_total > 0)
     {
         auto active_total_d = static_cast<double>(lsu_active_total);
-        std::println("  AR等待(读请求握手): {} 周期, 占比 {:.1f}%", lsu_stall_read_ar_cycles, 100.0 * lsu_stall_read_ar_cycles / active_total_d);
-        std::println("  R等待(读数据返回):  {} 周期, 占比 {:.1f}%", lsu_stall_read_r_cycles, 100.0 * lsu_stall_read_r_cycles / active_total_d);
-        std::println("  AW/W等待(写请求握手): {} 周期, 占比 {:.1f}%", lsu_stall_write_req_cycles, 100.0 * lsu_stall_write_req_cycles / active_total_d);
-        std::println("  B等待(写响应返回):  {} 周期, 占比 {:.1f}%", lsu_stall_write_b_cycles, 100.0 * lsu_stall_write_b_cycles / active_total_d);
+        std::println("  AR等待(读请求握手): {} 周期, 占比 {:.1f}%", stats.lsu_stall_read_ar, 100.0 * stats.lsu_stall_read_ar / active_total_d);
+        std::println("  R等待(读数据返回):  {} 周期, 占比 {:.1f}%", stats.lsu_stall_read_r, 100.0 * stats.lsu_stall_read_r / active_total_d);
+        std::println("  AW/W等待(写请求握手): {} 周期, 占比 {:.1f}%", stats.lsu_stall_write_req, 100.0 * stats.lsu_stall_write_req / active_total_d);
+        std::println("  B等待(写响应返回):  {} 周期, 占比 {:.1f}%", stats.lsu_stall_write_b, 100.0 * stats.lsu_stall_write_b / active_total_d);
     }
     std::println();
     std::println("ICache 性能:");
-    std::println("  命中: {} 次", icache_hit);
-    std::println("  缺失: {} 次", icache_miss);
-    if (icache_hit + icache_miss > 0)
+    std::println("  命中: {} 次", stats.icache_hit);
+    std::println("  缺失: {} 次", stats.icache_miss);
+    if (stats.icache_hit + stats.icache_miss > 0)
     {
-        auto hit_rate{static_cast<double>(icache_hit) / (icache_hit + icache_miss)};
+        auto hit_rate{static_cast<double>(stats.icache_hit) / (stats.icache_hit + stats.icache_miss)};
         std::println("  命中率: {:.1f}%", 100.0 * hit_rate);
-        if (icache_miss > 0)
+        if (stats.icache_miss > 0)
         {
-            auto miss_cycles{static_cast<double>(instruction_fetch_stall_ar + instruction_fetch_stall_r)};
-            auto miss_avg{miss_cycles / icache_miss};
+            auto miss_cycles{static_cast<double>(stats.instruction_fetch_stall_ar + stats.instruction_fetch_stall_r)};
+            auto miss_avg{miss_cycles / stats.icache_miss};
             auto amat{1.0 + (1.0 - hit_rate) * miss_avg};
             std::println("  缺失平均延迟: {:.1f} 周期", miss_avg);
             std::println("  AMAT: {:.1f} 周期", amat);

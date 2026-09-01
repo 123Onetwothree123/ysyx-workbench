@@ -2,39 +2,9 @@ module npc.NPCSimResult;
 import std;
 void NPCSimResult::Save(
     std::filesystem::path result_dir,
+    const PerfStats &stats,
     std::size_t total_cycles,
-    std::size_t total_instructions,
-    std::size_t instruction_fetch,
-    std::size_t execution_complete,
-    std::size_t load_data,
-    std::size_t store_data,
-    std::size_t arithmetic_operation,
-    std::size_t memory_access_operation,
-    std::size_t control_status_register_operation,
-    std::size_t branch_operation,
-    std::size_t memory_access_operation_active_cycles,
-    std::size_t instruction_fetch_stall_pipeline,
-    std::size_t instruction_fetch_stall_axi,
-    std::size_t instruction_fetch_stall_ar,
-    std::size_t instruction_fetch_stall_r,
-    std::size_t instruction_fetch_stall_redirect,
-    std::size_t instruction_fetch_stall_idle,
-    std::size_t exu_stall_lsu,
-    std::size_t load_store_unit_active,
-    std::size_t load_store_unit_load_active,
-    std::size_t load_store_unit_store_active,
-    std::size_t lsu_stall_read_ar,
-    std::size_t lsu_stall_read_r,
-    std::size_t lsu_stall_write_req,
-    std::size_t lsu_stall_write_b,
-    std::size_t icache_hit,
-    std::size_t icache_miss,
-    std::size_t idu_stall_raw,
-    std::size_t idu_stall_raw_loaduse,
-    std::size_t idu_stall_raw_alu,
-    std::size_t exu_idle_noinput,
-    std::size_t trap_count,
-    std::size_t mem_waitslot)
+    std::size_t total_instructions)
 {
     double ipc{0.0};
     if (total_cycles > 0)
@@ -42,26 +12,26 @@ void NPCSimResult::Save(
         ipc = static_cast<double>(total_instructions) / static_cast<double>(total_cycles);
     }
     double mem_avg{0.0};
-    if (memory_access_operation > 0)
+    if (stats.memory_access_operation > 0)
     {
-        mem_avg = static_cast<double>(memory_access_operation_active_cycles)
-                / static_cast<double>(memory_access_operation);
+        mem_avg = static_cast<double>(stats.memory_access_operation_active_cycle)
+                / static_cast<double>(stats.memory_access_operation);
     }
     double load_avg{0.0};
-    if (load_data > 0)
+    if (stats.load_data > 0)
     {
-        load_avg = static_cast<double>(load_store_unit_load_active) / static_cast<double>(load_data);
+        load_avg = static_cast<double>(stats.load_store_unit_load_active_cycle) / static_cast<double>(stats.load_data);
     }
     double store_avg{0.0};
-    if (store_data > 0)
+    if (stats.store_data > 0)
     {
-        store_avg = static_cast<double>(load_store_unit_store_active) / static_cast<double>(store_data);
+        store_avg = static_cast<double>(stats.load_store_unit_store_active_cycle) / static_cast<double>(stats.store_data);
     }
     double amat{0.0};
-    if (icache_hit + icache_miss > 0 && icache_miss > 0)
+    if (stats.icache_hit + stats.icache_miss > 0 && stats.icache_miss > 0)
     {
-        auto hit_rate{static_cast<double>(icache_hit) / static_cast<double>(icache_hit + icache_miss)};
-        auto miss_avg{static_cast<double>(instruction_fetch_stall_ar + instruction_fetch_stall_r) / static_cast<double>(icache_miss)};
+        auto hit_rate{static_cast<double>(stats.icache_hit) / static_cast<double>(stats.icache_hit + stats.icache_miss)};
+        auto miss_avg{static_cast<double>(stats.instruction_fetch_stall_ar + stats.instruction_fetch_stall_r) / static_cast<double>(stats.icache_miss)};
         amat = 1.0 + (1.0 - hit_rate) * miss_avg;
     }
     std::filesystem::create_directories(result_dir);
@@ -104,37 +74,37 @@ void NPCSimResult::Save(
         std::format("{:.4f}", ipc),
         freq,
         area,
-        instruction_fetch,
-        execution_complete,
-        load_data,
-        store_data,
-        arithmetic_operation,
-        memory_access_operation,
-        control_status_register_operation,
-        branch_operation,
+        stats.instruction_fetch,
+        stats.execution_complete,
+        stats.load_data,
+        stats.store_data,
+        stats.arithmetic_operation,
+        stats.memory_access_operation,
+        stats.control_status_register_operation,
+        stats.branch_operation,
         std::format("{:.2f}", mem_avg),
-        instruction_fetch_stall_pipeline,
-        instruction_fetch_stall_axi,
-        instruction_fetch_stall_ar,
-        instruction_fetch_stall_r,
-        instruction_fetch_stall_redirect,
-        instruction_fetch_stall_idle,
-        exu_stall_lsu,
+        stats.instruction_fetch_stall_pipeline,
+        stats.instruction_fetch_stall_axi,
+        stats.instruction_fetch_stall_ar,
+        stats.instruction_fetch_stall_r,
+        stats.instruction_fetch_stall_redirect,
+        stats.instruction_fetch_stall_idle,
+        stats.exu_stall_lsu,
         std::format("{:.2f}", load_avg),
         std::format("{:.2f}", store_avg),
-        lsu_stall_read_ar,
-        lsu_stall_read_r,
-        lsu_stall_write_req,
-        lsu_stall_write_b,
-        icache_hit,
-        icache_miss,
+        stats.lsu_stall_read_ar,
+        stats.lsu_stall_read_r,
+        stats.lsu_stall_write_req,
+        stats.lsu_stall_write_b,
+        stats.icache_hit,
+        stats.icache_miss,
         std::format("{:.1f}", amat),
-        idu_stall_raw,
-        idu_stall_raw_loaduse,
-        idu_stall_raw_alu,
-        exu_idle_noinput,
-        trap_count,
-        mem_waitslot)};
+        stats.idu_stall_raw,
+        stats.idu_stall_raw_loaduse,
+        stats.idu_stall_raw_alu,
+        stats.exu_idle_noinput,
+        stats.trap_count,
+        stats.mem_waitslot)};
 
     auto csv_file{
 #ifdef VRISCV32E_NPC

@@ -85,83 +85,12 @@ int main(int argc, char const *argv[])
 #endif
     int result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
 #ifdef CONFIG_PERF_STATS
-    NPCTrap::PrintPerformanceStatistics(
-        dut.GetInstructionFetchCount(),
-        dut.GetExecutionCompleteCount(),
-        dut.GetLoadDataCount(),
-        dut.GetStoreDataCount(),
-        dut.GetArithmeticOperationCount(),
-        dut.GetMemoryAccessOperationCount(),
-        dut.GetControlStatusRegisterOperationCount(),
-        dut.GetBranchOperationCount(),
-        dut.GetJalOperationCount(),
-        dut.GetJalrOperationCount(),
-        dut.GetCycle(),
-        dut.GetInstructionFetchStallPipelineCount(),
-        dut.GetInstructionFetchStallAXICount(),
-        dut.GetInstructionFetchStallRedirectCount(),
-        dut.GetInstructionFetchStallARCount(),
-        dut.GetInstructionFetchStallRCount(),
-        dut.GetInstructionFetchStallIdleCount(),
-        dut.GetArithmeticOperationActiveCycleCount(),
-        dut.GetMemoryAccessOperationActiveCycleCount(),
-        dut.GetControlStatusRegisterOperationActiveCycleCount(),
-        dut.GetBranchOperationActiveCycleCount(),
-        dut.GetEXUStallLSUCount(),
-        dut.GetLoadStoreUnitActiveCycleCount(),
-        dut.GetLoadStoreUnitLoadActiveCycleCount(),
-        dut.GetLoadStoreUnitStoreActiveCycleCount(),
-        dut.GetLSUStallReadARCount(),
-        dut.GetLSUStallReadRCount(),
-        dut.GetLSUStallWriteReqCount(),
-        dut.GetLSUStallWriteBCount(),
-        dut.GetICacheHitCount(),
-        dut.GetICacheMissCount(),
-        dut.GetIDUStallRAWCount(),
-        dut.GetIDUStallRAWLoadUseCount(),
-        dut.GetIDUStallRAWALUCount(),
-        dut.GetEXUIdleNoInputCount(),
-        dut.GetTrapCount(),
-        dut.GetMemWaitSlotCount());
+    NPCTrap::PrintPerformanceStatistics(dut.GetPerfStats(), dut.GetCycle());
 #endif
 #ifdef CONFIG_PERF_SAVE
     auto result_dir = options->GetResultDir();
     if (result_dir.has_value()) {
-        NPCSimResult::Save(
-            *result_dir,
-        dut.GetCycle(),
-        dut.GetInstructions(),
-        dut.GetInstructionFetchCount(),
-        dut.GetExecutionCompleteCount(),
-        dut.GetLoadDataCount(),
-        dut.GetStoreDataCount(),
-        dut.GetArithmeticOperationCount(),
-        dut.GetMemoryAccessOperationCount(),
-        dut.GetControlStatusRegisterOperationCount(),
-        dut.GetBranchOperationCount(),
-        dut.GetMemoryAccessOperationActiveCycleCount(),
-        dut.GetInstructionFetchStallPipelineCount(),
-        dut.GetInstructionFetchStallAXICount(),
-        dut.GetInstructionFetchStallARCount(),
-        dut.GetInstructionFetchStallRCount(),
-        dut.GetInstructionFetchStallRedirectCount(),
-        dut.GetInstructionFetchStallIdleCount(),
-        dut.GetEXUStallLSUCount(),
-        dut.GetLoadStoreUnitActiveCycleCount(),
-        dut.GetLoadStoreUnitLoadActiveCycleCount(),
-        dut.GetLoadStoreUnitStoreActiveCycleCount(),
-        dut.GetLSUStallReadARCount(),
-        dut.GetLSUStallReadRCount(),
-        dut.GetLSUStallWriteReqCount(),
-        dut.GetLSUStallWriteBCount(),
-        dut.GetICacheHitCount(),
-        dut.GetICacheMissCount(),
-        dut.GetIDUStallRAWCount(),
-        dut.GetIDUStallRAWLoadUseCount(),
-        dut.GetIDUStallRAWALUCount(),
-        dut.GetEXUIdleNoInputCount(),
-        dut.GetTrapCount(),
-        dut.GetMemWaitSlotCount());
+        NPCSimResult::Save(*result_dir, dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
     }
 #endif
     dut.final();
