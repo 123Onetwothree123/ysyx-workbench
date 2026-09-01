@@ -205,50 +205,10 @@ void WatchpointPool::PrintAllWatchpoints(const EvaluationContext &context) const
     const int delta_width{11};
     const int trigger_width{10};
     int no_width{display_width("编号")};
-    int type_width{display_width("类型")};
-    int enable_width{display_width("启用状态")};
-    int status_width{display_width("状态")};
+    int type_width{std::max({display_width("类型"), display_width("寄存器"), display_width("解引用"), display_width("表达式"), display_width("常量")})};
+    int enable_width{std::max({display_width("启用状态"), display_width("启用"), display_width("禁用")})};
+    int status_width{std::max({display_width("状态"), display_width("已变化"), display_width("正常"), display_width("无效"), display_width("停用")})};
     int expr_width{display_width("表达式")};
-    if (display_width("寄存器") > type_width)
-    {
-        type_width = display_width("寄存器");
-    }
-    if (display_width("解引用") > type_width)
-    {
-        type_width = display_width("解引用");
-    }
-    if (display_width("表达式") > type_width)
-    {
-        type_width = display_width("表达式");
-    }
-    if (display_width("常量") > type_width)
-    {
-        type_width = display_width("常量");
-    }
-    if (display_width("启用") > enable_width)
-    {
-        enable_width = display_width("启用");
-    }
-    if (display_width("禁用") > enable_width)
-    {
-        enable_width = display_width("禁用");
-    }
-    if (display_width("已变化") > status_width)
-    {
-        status_width = display_width("已变化");
-    }
-    if (display_width("正常") > status_width)
-    {
-        status_width = display_width("正常");
-    }
-    if (display_width("无效") > status_width)
-    {
-        status_width = display_width("无效");
-    }
-    if (display_width("停用") > status_width)
-    {
-        status_width = display_width("停用");
-    }
     for (const auto *wp : wps)
     {
         int w{display_width(std::to_string(wp->GetNO()))};
