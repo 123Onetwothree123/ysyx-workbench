@@ -73,13 +73,8 @@ AccessOutcome DCache::access(const AccessRecord& rec)
     else
     {
         // FIFO比插入时间，LRU比访问时间，都是取time最小者
-        for (std::size_t i{1}; i < set.size(); ++i)
-        {
-            if (set[i].time < set[victim].time)
-            {
-                victim = i;
-            }
-        }
+        const auto it{std::ranges::min_element(set, std::ranges::less{}, &entry::time)};
+        victim = static_cast<std::size_t>(it - set.begin());
     }
     const auto writeback{set[victim].dirty}; // 脏块换出要写回内存
     fill(set[victim], tag, rec.GetIsWrite());
