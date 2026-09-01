@@ -10,18 +10,17 @@ BTB::BTB(std::size_t bits, std::size_t ways)
     : index_bits{bits}, ways{ways}
 {
     auto SetsNumber{std::size_t{1} << index_bits};
-    sets.resize(SetsNumber);
+    // 单块连续内存 + mdspan 二维视图 (组数 × 相联度)
+    sets_flat.resize(SetsNumber * ways);
+    sets = std::mdspan{sets_flat.data(), SetsNumber, ways}; // entry全部零初始化
     repl_ptr.assign(SetsNumber, 0);
-    for (auto &set : sets)
-    {
-        set.resize(ways); // 把entry其全部初始化为0
-    }
 }
 std::optional<BTB::entry> BTB::lookup(std::uint32_t pc) const
 {
     auto index{(pc >> 2) & ((std::size_t{1} << index_bits) - 1)}; // 取低index_bits位作为书架号
-    const auto it{std::ranges::find_if(sets[index], [pc](const entry& e) { return e.valid && e.tag == pc; })};
-    if (it != sets[index].end())
+    const std::span<const entry> set{sets.data_handle() + index * ways, ways};
+    const auto it{std::ranges::find_if(set, [pc](const entry& e) { return e.valid && e.tag == pc; })};
+    if (it != set.end())
     {
         return *it;
     }
@@ -30,7 +29,7 @@ std::optional<BTB::entry> BTB::lookup(std::uint32_t pc) const
 void BTB::update(std::uint32_t pc, std::uint32_t target, BranchKind kind)
 {
     auto index{(pc >> 2) & ((std::size_t{1} << index_bits) - 1)}; // 同上
-    auto &set{sets[index]};                                       // 拿到对应书架的所有表项引用
+    const std::span<entry> set{sets.data_handle() + index * ways, ways}; // 对应书架的所有表项
     //下面这段是AI写的了，确实是写不出来
     if (const auto it{std::ranges::find_if(set, [pc](const entry& e) { return e.valid && e.tag == pc; })}; it != set.end())
     { // 第1轮：找是否有同 tag 的旧记录

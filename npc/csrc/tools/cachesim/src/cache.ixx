@@ -21,7 +21,9 @@ private:
     unsigned                        offset_bits_ = 0;
     unsigned                        index_bits_  = 0;
     unsigned                        num_sets_    = 0;
-    std::vector<std::vector<Block>> sets_;
+    unsigned                        ways_        = 0;
+    std::vector<Block>              sets_flat_;
+    std::mdspan<Block, std::dextents<std::size_t, 2>> sets_;
     std::uint64_t                   tick_ = 0;
     std::mt19937                    rng_{std::random_device{}()};
 
@@ -32,7 +34,7 @@ private:
 
     SimStats stats_;
 
-    auto find_victim(const std::vector<Block>& set) -> unsigned;
+    auto find_victim(std::span<const Block> set) -> unsigned;
     auto fa_access(std::uint32_t tag) -> bool;
     auto log2_ceil(unsigned n) -> unsigned;
 };

@@ -23,11 +23,9 @@ DCache::DCache(const DCacheConfig& config, ReplPolicy policy, std::string_view n
     , name{name}
 {
     auto SetsNumber{std::size_t{1} << index_bits};
-    sets.resize(SetsNumber);
-    for (auto& set : sets)
-    {
-        set.resize(ways); // entry全部默认初始化为0
-    }
+    // 单块连续内存 + mdspan 二维视图 (组数 × 相联度)
+    sets_flat.resize(SetsNumber * ways);
+    sets = std::mdspan{sets_flat.data(), SetsNumber, ways}; // entry全部默认初始化为0
 }
 
 void DCache::fill(entry& e, std::uint32_t tag, bool is_write)
@@ -43,7 +41,7 @@ AccessOutcome DCache::access(const AccessRecord& rec)
     ++tick;
     const auto tag{rec.GetAddr() >> offset_bits};
     const auto index{tag & ((std::size_t{1} << index_bits) - 1)}; // 取低index_bits位作为组号
-    auto& set{sets[index]};
+    const std::span<entry> set{sets.data_handle() + index * ways, ways};
 
     // 第1轮：找是否有同 tag 的块，命中
     if (const auto it{std::ranges::find_if(set, [tag](const entry& e) { return e.valid && e.tag == tag; })}; it != set.end())

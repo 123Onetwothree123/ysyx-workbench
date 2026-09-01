@@ -7,11 +7,11 @@ CacheSim::CacheSim(const CacheConfig& cfg)
     offset_bits_ = log2_ceil(cfg.block_size);
     num_sets_    = cfg.num_blocks / cfg.ways;
     index_bits_  = log2_ceil(num_sets_);
+    ways_        = cfg.ways;
 
-    // 实际 cache
-    sets_.resize(num_sets_);
-    for (auto& set : sets_)
-        set.resize(cfg.ways);
+    // 实际 cache: 单块连续内存 + mdspan 二维视图 (组 × 路)
+    sets_flat_.resize(static_cast<std::size_t>(num_sets_) * ways_);
+    sets_ = std::mdspan{sets_flat_.data(), num_sets_, ways_};
 
     // 全相联对照 cache (1 set, num_blocks ways, 用于检测 capacity miss)
     fa_ways_ = cfg.num_blocks;
@@ -26,7 +26,7 @@ auto CacheSim::log2_ceil(unsigned n) -> unsigned
     return r;
 }
 
-auto CacheSim::find_victim(const std::vector<Block>& set) -> unsigned
+auto CacheSim::find_victim(std::span<const Block> set) -> unsigned
 {
     // 优先选无效块
     if (const auto it{std::ranges::find_if(set, [](const Block& b) { return !b.valid; })}; it != set.end())
@@ -95,7 +95,7 @@ auto CacheSim::access(std::uint32_t addr) -> AccessResult
     bool fa_hit = fa_access(tag);
 
     // 查实际 cache
-    auto& set      = sets_[index];
+    const std::span<Block> set{sets_.data_handle() + static_cast<std::size_t>(index) * ways_, ways_};
     const auto hit_way{std::ranges::find_if(set, [tag](const Block& b) { return b.valid && b.tag == tag; })};
 
     if (hit_way != set.end()) {
