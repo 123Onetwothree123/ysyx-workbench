@@ -95,6 +95,7 @@ void DUT::reset()
     }
     dut->reset = 0;
     cycle = 0;
+    fault_count = 0;
 #ifdef CONFIG_PERF_STATS
     instructions = 0;
     perf = {};
@@ -377,7 +378,6 @@ void DUT::step()
     if (dut->debug_access_fault)
     {
         // 限流: 连续fault时只打前几条, 防止日志撑爆磁盘(/tmp只有12G)
-        static std::size_t fault_count = 0;
         if (fault_count++ < 20)
         {
         auto resp{static_cast<unsigned>(dut->debug_access_fault_resp)};
@@ -435,7 +435,8 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
     }
     constexpr std::uint32_t FLASH_BASE{CONFIG_MBASE};
     constexpr std::uint32_t FLASH_SIZE{CONFIG_MSIZE};
-    if (addr >= FLASH_BASE && addr + size <= FLASH_BASE + FLASH_SIZE)
+    // 用减法形式避免 addr+size 整数溢出: size<=FLASH_SIZE 短路保证 FLASH_SIZE-size 无下溢
+    if (addr >= FLASH_BASE && size <= FLASH_SIZE && addr - FLASH_BASE <= FLASH_SIZE - size)
     {
         auto offset{addr - FLASH_BASE};
         if (offset + size > FlashMemory.size())

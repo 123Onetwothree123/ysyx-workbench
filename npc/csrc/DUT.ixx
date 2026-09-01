@@ -34,6 +34,7 @@ private:
     std::vector<std::uint8_t> vga_frame;
     std::size_t instructions{0};
     PerfStats perf{};
+    std::size_t fault_count{0}; // AXI fault 打印限流计数
 
 public:
     DUT();
