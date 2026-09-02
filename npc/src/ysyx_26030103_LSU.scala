@@ -44,10 +44,10 @@ class ysyx_26030103_LSU extends Module {
     val AccessFaultResp = Output(UInt(2.W))
     val Active = Output(Bool())
     val IsStore = Output(Bool())
-    val StallReadAR    = Output(Bool())
-    val StallReadR     = Output(Bool())
-    val StallWriteReq  = Output(Bool())
-    val StallWriteB    = Output(Bool())
+    val StallReadAR = Output(Bool())
+    val StallReadR = Output(Bool())
+    val StallWriteReq = Output(Bool())
+    val StallWriteB = Output(Bool())
     val DebugMemoryWrite = Output(Bool())
     val DebugALUResult = Output(UInt(32.W))
     val DebugStoreDATA = Output(UInt(32.W))
@@ -128,9 +128,19 @@ class ysyx_26030103_LSU extends Module {
   io.HazardRegWrite := ActiveInstruction.RegisterWrite && !MemFaultReg
   io.HazardMemOp := ActiveInstruction.MemoryValid
   // 转发给IDU的最终写回值: ALU结果/snpc/CSR读出已在消息里,load数据在完成时给
-  io.FwdData := Mux(ActiveInstruction.WBSelect === 2.U, ActiveInstruction.snpc,
-    Mux(ActiveInstruction.WBSelect === 3.U, ActiveInstruction.CSRReadData,
-      Mux(ActiveInstruction.WBSelect === 1.U, LoadDataReg, ActiveInstruction.ALUResult)))
+  io.FwdData := Mux(
+    ActiveInstruction.WBSelect === 2.U,
+    ActiveInstruction.snpc,
+    Mux(
+      ActiveInstruction.WBSelect === 3.U,
+      ActiveInstruction.CSRReadData,
+      Mux(
+        ActiveInstruction.WBSelect === 1.U,
+        LoadDataReg,
+        ActiveInstruction.ALUResult
+      )
+    )
+  )
   io.FwdReady := io.HazardValid && io.HazardRegWrite &&
     (!ActiveInstruction.MemoryValid || stageState === StageDone)
 
@@ -142,8 +152,15 @@ class ysyx_26030103_LSU extends Module {
   io.Hazard2Rd := io.in.bits.Rd
   io.Hazard2RegWrite := io.in.bits.RegisterWrite
   io.Hazard2MemOp := io.in.bits.MemoryValid
-  io.Hazard2FwdData := Mux(io.in.bits.WBSelect === 2.U, io.in.bits.snpc,
-    Mux(io.in.bits.WBSelect === 3.U, io.in.bits.CSRReadData, io.in.bits.ALUResult))
+  io.Hazard2FwdData := Mux(
+    io.in.bits.WBSelect === 2.U,
+    io.in.bits.snpc,
+    Mux(
+      io.in.bits.WBSelect === 3.U,
+      io.in.bits.CSRReadData,
+      io.in.bits.ALUResult
+    )
+  )
   io.Hazard2FwdReady := WaitValid && io.in.bits.RegisterWrite && !io.in.bits.MemoryValid
 
   io.StallWaitLSU := stageState === StageWait
@@ -171,7 +188,7 @@ class ysyx_26030103_LSU extends Module {
   val StatesReadRequest = StateMachine(1)
   val StatesReadResponse = StateMachine(2)
   val StatesWriteWaitBuf = StateMachine(3) // store等写缓冲空位
-  val StatesLoadWaitBuf = StateMachine(4)  // load等写缓冲排空(保序)
+  val StatesLoadWaitBuf = StateMachine(4) // load等写缓冲排空(保序)
   val StatesDone = StateMachine(5)
   val state = RegInit(StatesIdle)
   // 写对齐(组合逻辑): 按地址低两位把StoreData摆到正确的字节lane并生成WSTRB
@@ -187,11 +204,19 @@ class ysyx_26030103_LSU extends Module {
           AlignedWriteMask := "b0001".U
         }
         is("b01".U) {
-          AlignedWriteData := Cat(0.U(16.W), ActiveInstruction.StoreData(7, 0), 0.U(8.W));
+          AlignedWriteData := Cat(
+            0.U(16.W),
+            ActiveInstruction.StoreData(7, 0),
+            0.U(8.W)
+          );
           AlignedWriteMask := "b0010".U
         }
         is("b10".U) {
-          AlignedWriteData := Cat(0.U(8.W), ActiveInstruction.StoreData(7, 0), 0.U(16.W));
+          AlignedWriteData := Cat(
+            0.U(8.W),
+            ActiveInstruction.StoreData(7, 0),
+            0.U(16.W)
+          );
           AlignedWriteMask := "b0100".U
         }
         is("b11".U) {
@@ -203,11 +228,17 @@ class ysyx_26030103_LSU extends Module {
     is("b01".U) {
       switch(ActiveInstruction.ALUResult(1, 0)) {
         is("b00".U) {
-          AlignedWriteData := Cat(0.U(16.W), ActiveInstruction.StoreData(15, 0));
+          AlignedWriteData := Cat(
+            0.U(16.W),
+            ActiveInstruction.StoreData(15, 0)
+          );
           AlignedWriteMask := "b0011".U
         }
         is("b10".U) {
-          AlignedWriteData := Cat(ActiveInstruction.StoreData(15, 0), 0.U(16.W));
+          AlignedWriteData := Cat(
+            ActiveInstruction.StoreData(15, 0),
+            0.U(16.W)
+          );
           AlignedWriteMask := "b1100".U
         }
       }
@@ -224,7 +255,7 @@ class ysyx_26030103_LSU extends Module {
   io.DataBus.AW.AWID := 0.U
   io.DataBus.AW.AWADDR := 0.U
   io.DataBus.AW.AWLEN := 0.U
-  io.DataBus.AW.AWSIZE := AXISize//接soc改的
+  io.DataBus.AW.AWSIZE := AXISize // 接soc改的
   io.DataBus.AW.AWBURST := 1.U
   io.DataBus.AW.AWPROT := 0.U
   io.DataBus.W.WVALID := false.B
@@ -270,9 +301,11 @@ class ysyx_26030103_LSU extends Module {
   val wbufEmpty = wbCount === 0.U
   val wbufFull = wbCount === WBufDepth.U
   // 入队: 接受store当拍有空位, 或等空位的那一拍(此时ActiveInstruction已是MsgReg)
-  def IsPlainRAM(addr: UInt): Bool = addr(31, 28) === "h8".U || addr(31, 28) === "ha".U
-  val wbPush = (startMem && ActiveInstruction.MemoryWrite && !AddressMisaligned && !wbufFull) ||
-    (state === StatesWriteWaitBuf && !wbufFull)
+  def IsPlainRAM(addr: UInt): Bool =
+    addr(31, 28) === "h8".U || addr(31, 28) === "ha".U
+  val wbPush =
+    (startMem && ActiveInstruction.MemoryWrite && !AddressMisaligned && !wbufFull) ||
+      (state === StatesWriteWaitBuf && !wbufFull)
   when(wbPush) {
     wbAddr(wbTail) := ActiveInstruction.ALUResult
     wbData(wbTail) := AlignedWriteData
@@ -286,11 +319,16 @@ class ysyx_26030103_LSU extends Module {
   // 且字地址无一匹配, load可直接上总线(顺序由单主端口天然保证); 否则等排空。
   // 匹配场景(如栈上先写后读同一字)不做store-to-load转发, 直接等——先求对。
   val loadWordAddr = ActiveInstruction.ALUResult(31, 2)
-  val wbufHit = VecInit((0 until WBufDepth).map(i =>
-    wbValid(i) && wbAddr(i)(31, 2) === loadWordAddr)).asUInt.orR
-  val wbufAllNorm = VecInit((0 until WBufDepth).map(i =>
-    !wbValid(i) || wbNorm(i))).asUInt.andR
-  val loadMayBypass = IsPlainRAM(ActiveInstruction.ALUResult) && !wbufHit && wbufAllNorm
+  val wbufHit = VecInit(
+    (0 until WBufDepth).map(i =>
+      wbValid(i) && wbAddr(i)(31, 2) === loadWordAddr
+    )
+  ).asUInt.orR
+  val wbufAllNorm = VecInit(
+    (0 until WBufDepth).map(i => !wbValid(i) || wbNorm(i))
+  ).asUInt.andR
+  val loadMayBypass =
+    IsPlainRAM(ActiveInstruction.ALUResult) && !wbufHit && wbufAllNorm
   // 写事务FSM: 队首向总线发AW/W(可独立握手), 都完成后等B, B到了出队
   val wbStates = Enum(3)
   val wbIdle = wbStates(0)
@@ -441,8 +479,8 @@ class ysyx_26030103_LSU extends Module {
   }
   io.Active := state =/= StatesIdle
   io.IsStore := is_store_transaction
-  io.StallReadAR    := state === StatesReadRequest
-  io.StallReadR     := state === StatesReadResponse
-  io.StallWriteReq  := state === StatesWriteWaitBuf
-  io.StallWriteB    := wbState === wbWaitB // 后台等B, 不再阻塞流水线, 仅供观测
+  io.StallReadAR := state === StatesReadRequest
+  io.StallReadR := state === StatesReadResponse
+  io.StallWriteReq := state === StatesWriteWaitBuf
+  io.StallWriteB := wbState === wbWaitB // 后台等B, 不再阻塞流水线, 仅供观测
 }

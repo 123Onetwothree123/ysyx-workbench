@@ -47,18 +47,19 @@ class ysyx_26030103_EXU extends Module {
     val FwdData = Output(UInt(32.W))
     val FwdReady = Output(Bool())
     // BTB更新: 分支提交时把真实target写回分支BTB
-    val BTBUpdateValid  = Output(Bool())
-    val BTBUpdatePC     = Output(UInt(32.W))
+    val BTBUpdateValid = Output(Bool())
+    val BTBUpdatePC = Output(UInt(32.W))
     val BTBUpdateTarget = Output(UInt(32.W))
     // jal BTB更新: jal/ret提交时把真实target写回独立jal BTB(方案B), 带2位类型
-    val JalBTBUpdateValid  = Output(Bool())
-    val JalBTBUpdatePC     = Output(UInt(32.W))
+    val JalBTBUpdateValid = Output(Bool())
+    val JalBTBUpdatePC = Output(UInt(32.W))
     val JalBTBUpdateTarget = Output(UInt(32.W))
-    val JalBTBUpdateKind   = Output(UInt(2.W)) // ysyx_26030103_BTBKind: Jal/Call/Ret
+    val JalBTBUpdateKind =
+      Output(UInt(2.W)) // ysyx_26030103_BTBKind: Jal/Call/Ret
     // RAS更新: call提交压栈(返回地址=snpc), ret提交弹栈
     val RASPushValid = Output(Bool())
-    val RASPushAddr  = Output(UInt(32.W))
-    val RASPopValid  = Output(Bool())
+    val RASPushAddr = Output(UInt(32.W))
+    val RASPopValid = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
   val CSRUnit = Module(new ysyx_26030103_CSR)
@@ -73,8 +74,9 @@ class ysyx_26030103_EXU extends Module {
   // 带副作用的指令(csr/ecall/ebreak/mret/fence.i/异常)必须等MEM级排空(在序精确异常):
   // 比它年老的访存可能还没完成,甚至可能是故障要提交异常;
   // fence.i也要等写缓冲排空, 否则新取指可能读到store落内存之前的旧指令
-  val IsSideEffect = inst.IsCsrrw || inst.IsCsrrs || inst.IsEcall || inst.IsEbreak ||
-    inst.IsMret || inst.ExceptionValid || inst.IsFenceI
+  val IsSideEffect =
+    inst.IsCsrrw || inst.IsCsrrs || inst.IsEcall || inst.IsEbreak ||
+      inst.IsMret || inst.ExceptionValid || inst.IsFenceI
   val BlockForMEM = io.MEMBusy && IsSideEffect
   io.in.ready := io.out.ready && !BlockForMEM
   io.out.valid := io.in.valid && !BlockForMEM
@@ -101,9 +103,19 @@ class ysyx_26030103_EXU extends Module {
   // fence.i也要产生"重定向": 目标是自己的snpc(即fence.i+4),
   // 借此把流水线里比fence.i年轻的、可能过时的指令全部冲刷并重新取指
   // 实际下一PC: jalr最低位清零由JalrTarget给出;分支not-taken与fence.i都回snpc
-  val ActualNextPC = Mux(inst.IsJal, JalTarget,
-    Mux(inst.IsJalr, JalrTarget,
-      Mux(inst.IsBranch && BranchComparatorUnit.io.Taken, BranchTarget, inst.snpc)))
+  val ActualNextPC = Mux(
+    inst.IsJal,
+    JalTarget,
+    Mux(
+      inst.IsJalr,
+      JalrTarget,
+      Mux(
+        inst.IsBranch && BranchComparatorUnit.io.Taken,
+        BranchTarget,
+        inst.snpc
+      )
+    )
+  )
   // 预测下一PC: IFU用BTB(分支BTFN+独立jal BTB)给出,随指令传到此;未命中=顺序=snpc
   val PredNextPC = Mux(inst.pred_taken, inst.pred_target, inst.snpc)
   // 预测错误检查: 比较实际与预测的下一PC,不一致则冲刷并重定向到实际目标
@@ -114,7 +126,11 @@ class ysyx_26030103_EXU extends Module {
   // 访存指令一拍流过EXU前往MEMU,不允许中断提交和它们绑定(避免被压掉的load/store留下副作用)
   CSRUnit.io.Enable := (io.in.fire && !inst.MemoryValid) || io.MemTrapCommit
   CSRUnit.io.TrapValid := UpEx || io.MemTrapCommit
-  CSRUnit.io.TrapCause := Mux(io.MemTrapCommit, io.MemTrapCause, Cat(0.U(28.W), inst.ExceptionCause))
+  CSRUnit.io.TrapCause := Mux(
+    io.MemTrapCommit,
+    io.MemTrapCause,
+    Cat(0.U(28.W), inst.ExceptionCause)
+  )
 
   io.TrapValid := io.in.fire && CSRUnit.io.IsEbreak
   io.TrapPC := inst.pc
@@ -162,30 +178,37 @@ class ysyx_26030103_EXU extends Module {
   io.PerfTrap := io.ExceptionTaken
   // 转发给IDU的最终写回值(与WBU写GPR的值一致): ALU结果/snpc/CSR读出
   // (load数据在EXU阶段不可知,由MEMU提供它那一级的转发)
-  io.FwdData := Mux(inst.WBSelect === 2.U, inst.snpc,
-    Mux(inst.WBSelect === 3.U, CSRUnit.io.CSR_rdata, ALUUnit.io.result))
+  io.FwdData := Mux(
+    inst.WBSelect === 2.U,
+    inst.snpc,
+    Mux(inst.WBSelect === 3.U, CSRUnit.io.CSR_rdata, ALUUnit.io.result)
+  )
   // 可转发条件: 会写rd,且不是load(load要等MEMU完成)
   io.FwdReady := io.HazardValid && io.HazardRegWrite && !inst.MemoryValid
 
   // BTB更新: 所有分支指令提交时都写回PC→target(不管是否taken),
   // 供IFU查BTB命中后用BTFN(target<PC=后向则taken)做方向预测.
-  io.BTBUpdateValid  := io.in.fire && inst.IsBranch && !UpEx
-  io.BTBUpdatePC     := inst.pc
+  io.BTBUpdateValid := io.in.fire && inst.IsBranch && !UpEx
+  io.BTBUpdatePC := inst.pc
   io.BTBUpdateTarget := BranchTarget
   // call/ret识别(标准RISC-V ABI, 与NEMU的ftrace/btrace判定一致):
   // call=rd为ra(x1)的jal/jalr; ret=jalr x0, ra, 0
   val IsCall = (inst.IsJal || inst.IsJalr) && inst.Rd === 1.U
-  val IsRet  = inst.IsJalr && inst.Rd === 0.U && inst.Rs1 === 1.U && inst.Immediate === 0.U
+  val IsRet =
+    inst.IsJalr && inst.Rd === 0.U && inst.Rs1 === 1.U && inst.Immediate === 0.U
   // jal BTB更新: jal提交时写回PC→JalTarget(Jal/Call表项, 目标静态);
   // ret提交时写Ret表项(只作ret标记, 预测目标由RAS给出).
   // 间接jalr(非call非ret)目标多变, 不入表
-  io.JalBTBUpdateValid  := io.in.fire && (inst.IsJal || IsRet) && !UpEx
-  io.JalBTBUpdatePC     := inst.pc
+  io.JalBTBUpdateValid := io.in.fire && (inst.IsJal || IsRet) && !UpEx
+  io.JalBTBUpdatePC := inst.pc
   io.JalBTBUpdateTarget := Mux(inst.IsJal, JalTarget, JalrTarget)
-  io.JalBTBUpdateKind   := Mux(IsRet, ysyx_26030103_BTBKind.Ret,
-                             Mux(inst.Rd === 1.U, ysyx_26030103_BTBKind.Call, ysyx_26030103_BTBKind.Jal))
+  io.JalBTBUpdateKind := Mux(
+    IsRet,
+    ysyx_26030103_BTBKind.Ret,
+    Mux(inst.Rd === 1.U, ysyx_26030103_BTBKind.Call, ysyx_26030103_BTBKind.Jal)
+  )
   // RAS更新: call压栈(返回地址=pc+4=snpc), ret弹栈
   io.RASPushValid := io.in.fire && IsCall && !UpEx
-  io.RASPushAddr  := inst.snpc
-  io.RASPopValid  := io.in.fire && IsRet && !UpEx
+  io.RASPushAddr := inst.snpc
+  io.RASPopValid := io.in.fire && IsRet && !UpEx
 }

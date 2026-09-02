@@ -4,7 +4,11 @@ import chisel3.util._
 
 object ysyx_26030103_StageConnect {
   private val arch = "pipeline"
-  def apply[T <: Data](Left: DecoupledIO[T], Right: DecoupledIO[T], flush: Bool = false.B): Unit = {
+  def apply[T <: Data](
+      Left: DecoupledIO[T],
+      Right: DecoupledIO[T],
+      flush: Bool = false.B
+  ): Unit = {
     if (arch == "single") {
       Right.bits := Left.bits
       Right.valid := true.B

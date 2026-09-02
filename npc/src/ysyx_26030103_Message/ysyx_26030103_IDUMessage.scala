@@ -35,9 +35,9 @@ class ysyx_26030103_IDUMessage extends Bundle {
   val CSRAddress = UInt(12.W)
   val Rs1 = UInt(5.W)
   val Rs1Data = UInt(32.W)
-  
-  //新加的ysyx_26030103_ALU的异常的指令，是ysyx_26030103_ALUControlDecoder模块里面的
-  val ALUCDIllegal=Bool()
+
+  // 新加的ysyx_26030103_ALU的异常的指令，是ysyx_26030103_ALUControlDecoder模块里面的
+  val ALUCDIllegal = Bool()
 
   // 异常标记:可能是IFU传下来的取指错(cause=1),也可能是IDU检测到的非法指令(cause=2)
   // 统一在EXU提交点处理,带异常标记的指令不得产生任何副作用

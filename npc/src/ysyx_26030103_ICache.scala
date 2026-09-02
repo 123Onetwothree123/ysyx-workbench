@@ -4,22 +4,22 @@ import chisel3.util._
 import _root_.ysyx_26030103.ysyx_26030103_AXI5._
 class ysyx_26030103_ICache(
     BlockSizeLog2: Int = 4,
-    IndexBits:     Int = 5,
-    AddressWidth:  Int = 32,
+    IndexBits: Int = 5,
+    AddressWidth: Int = 32,
     CacheableBase: Long = 0x00000000L,
-    CacheableMask: Long = 0x00000000L  // 0=全缓存，由上层传入覆盖
+    CacheableMask: Long = 0x00000000L // 0=全缓存，由上层传入覆盖
 ) extends Module {
   val TagBits = AddressWidth - IndexBits - BlockSizeLog2
   val NumBlocks = 1 << IndexBits
   val WordsPerBlock = 1 << (BlockSizeLog2 - 2) // 块大小 ÷ 4字节
-  val WordCntBits = log2Ceil(WordsPerBlock)     // 块内字数计数器位宽
+  val WordCntBits = log2Ceil(WordsPerBlock) // 块内字数计数器位宽
   val io = IO(new Bundle {
     val fetch_addr = Input(UInt(AddressWidth.W))
     val fetch_valid = Input(Bool())
     val fetch_ready = Output(Bool())
     val resp_data = Output(UInt(32.W))
     val resp_addr = Output(UInt(AddressWidth.W)) // 响应对应的取指地址(即那条指令的PC)
-    val resp_fault = Output(Bool())              // 该响应是否是取指访问错误
+    val resp_fault = Output(Bool()) // 该响应是否是取指访问错误
     val resp_valid = Output(Bool())
     val resp_ready = Input(Bool())
     val axi = new ysyx_26030103_AXI5IO(AddressWidth)
@@ -30,7 +30,7 @@ class ysyx_26030103_ICache(
     val access_fault = Output(Bool())
     val access_fault_resp = Output(UInt(2.W))
     val flush = Input(Bool()) // fence.i: 清cache行并丢弃在飞refill
-    val kill = Input(Bool())  // 重定向/异常: 杀掉在飞取指请求,不动cache行
+    val kill = Input(Bool()) // 重定向/异常: 杀掉在飞取指请求,不动cache行
   })
   // 直接映射cache存储阵列：valid+tag+data
   val valid = RegInit(VecInit(Seq.fill(NumBlocks)(false.B)))
@@ -44,8 +44,8 @@ class ysyx_26030103_ICache(
   val cacheable = (io.fetch_addr & CacheableMask.U) === CacheableBase.U
   // 两级流水: s1受理级(寄存请求,命中数据当拍锁存) -> 响应级(命中直接响应,缺失走refill)
   val s1_valid = RegInit(false.B)
-  val s1_hit = Reg(Bool())            // 受理时判定: 可缓存且命中
-  val s1_ready = RegInit(false.B)     // 缺失的关键词已返回(early restart)或refill已完成
+  val s1_hit = Reg(Bool()) // 受理时判定: 可缓存且命中
+  val s1_ready = RegInit(false.B) // 缺失的关键词已返回(early restart)或refill已完成
   val fetch_addr_reg = Reg(UInt(AddressWidth.W))
   val fetch_index_reg = Reg(UInt(IndexBits.W))
   val fetch_offset_reg = Reg(UInt((BlockSizeLog2 - 2).W)) // 请求时块内word偏移
@@ -68,8 +68,8 @@ class ysyx_26030103_ICache(
     if (WordsPerBlock > 1) ref_addr(BlockSizeLog2 - 1, 2)
     else 0.U
   val ref_cacheable = Reg(Bool())
-  val refill_cnt = RegInit(0.U(WordCntBits.W))  // 当前正在填充第几个word
-  val burst_mode = RegInit(false.B)             // 突发传输模式标志
+  val refill_cnt = RegInit(0.U(WordCntBits.W)) // 当前正在填充第几个word
+  val burst_mode = RegInit(false.B) // 突发传输模式标志
   // 在飞refill是否仍属于当前s1里的请求: 原请求被消费/冲刷/替换后,
   // 后续R拍只写阵列, 绝不再写s1的响应寄存器(那会污染新请求)
   val s1_waits = RegInit(false.B)
@@ -102,16 +102,22 @@ class ysyx_26030103_ICache(
   io.axi.AR.ARSIZE := 2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
-  io.axi.R.RREADY := true.B  // always drain AXI responses
+  io.axi.R.RREADY := true.B // always drain AXI responses
   // 响应级: 命中(s1_hit)用受理时锁存的数据; 关键词返回/refill完成(s1_ready)后,
   // 可缓存的从阵列读(关键词所在拍已写入), 不可缓存的用R拍锁存的数据; 错误一律给NOP
   val responding = s1_valid && (s1_hit || s1_ready)
   io.resp_valid := responding
   io.resp_addr := fetch_addr_reg
   io.resp_fault := access_fault_reg
-  io.resp_data := Mux(access_fault_reg, "h00000013".U,
-    Mux(s1_hit, resp_data_reg,
-      Mux(cacheable_reg, data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)))
+  io.resp_data := Mux(
+    access_fault_reg,
+    "h00000013".U,
+    Mux(
+      s1_hit,
+      resp_data_reg,
+      Mux(cacheable_reg, data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
+    )
+  )
   // 受理级: 响应槽为空,或本拍响应正被接收; refill期间也可受理(缺失则排队)
   io.fetch_ready := !s1_valid || (responding && io.resp_ready)
   val accept = io.fetch_valid && io.fetch_ready
@@ -140,7 +146,10 @@ class ysyx_26030103_ICache(
   val queued_miss = s1_valid && !s1_hit && !s1_ready
   val recheck_hit = cacheable_reg &&
     valid(fetch_index_reg) &&
-    tag(fetch_index_reg) === fetch_addr_reg(AddressWidth - 1, IndexBits + BlockSizeLog2)
+    tag(fetch_index_reg) === fetch_addr_reg(
+      AddressWidth - 1,
+      IndexBits + BlockSizeLog2
+    )
   when(queued_miss && rfstate === rf_idle && !io.kill && !io.flush) {
     when(recheck_hit) {
       s1_hit := true.B
@@ -161,9 +170,15 @@ class ysyx_26030103_ICache(
   switch(rfstate) {
     is(rf_req) {
       io.axi.AR.ARVALID := true.B
-      io.axi.AR.ARLEN := Mux(ref_cacheable && burst_mode, (WordsPerBlock - 1).U, 0.U)
-      io.axi.AR.ARADDR := Mux(ref_cacheable,
-        Mux(burst_mode,
+      io.axi.AR.ARLEN := Mux(
+        ref_cacheable && burst_mode,
+        (WordsPerBlock - 1).U,
+        0.U
+      )
+      io.axi.AR.ARADDR := Mux(
+        ref_cacheable,
+        Mux(
+          burst_mode,
           Cat(ref_addr(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W)),
           Cat(ref_addr(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W))
         ),
@@ -177,24 +192,24 @@ class ysyx_26030103_ICache(
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RREADY) {
         when(!discard) {
-        when(io.axi.R.RRESP =/= 0.U) {
-          when(s1_waits) {  // 错误属于原请求, 只有它还住在s1里才上报
-            access_fault_reg := true.B
-            access_fault_resp_reg := io.axi.R.RRESP
-            resp_data_reg := "h00000013".U  // NOP, 不让下游拿到非法指令
-          }
-        }.otherwise {
-          when(s1_waits) {
-            resp_data_reg := io.axi.R.RDATA
-          }
-          when(ref_cacheable) {  // 阵列填充无条件进行, 数据是真实内存内容
-            tag(ref_index) := ref_tag
-            data(ref_index)(refill_cnt) := io.axi.R.RDATA
-            when(refill_cnt === (WordsPerBlock - 1).U) {
-              valid(ref_index) := true.B
+          when(io.axi.R.RRESP =/= 0.U) {
+            when(s1_waits) { // 错误属于原请求, 只有它还住在s1里才上报
+              access_fault_reg := true.B
+              access_fault_resp_reg := io.axi.R.RRESP
+              resp_data_reg := "h00000013".U // NOP, 不让下游拿到非法指令
+            }
+          }.otherwise {
+            when(s1_waits) {
+              resp_data_reg := io.axi.R.RDATA
+            }
+            when(ref_cacheable) { // 阵列填充无条件进行, 数据是真实内存内容
+              tag(ref_index) := ref_tag
+              data(ref_index)(refill_cnt) := io.axi.R.RDATA
+              when(refill_cnt === (WordsPerBlock - 1).U) {
+                valid(ref_index) := true.B
+              }
             }
           }
-        }
         }
         // early restart: 关键词所在拍到手即可响应, 无需等整行填完
         when(!discard && s1_waits && refill_cnt === ref_offset) {
@@ -213,7 +228,7 @@ class ysyx_26030103_ICache(
               }
               rfstate := rf_idle
             }.otherwise {
-              burst_mode := false.B  // 提前RLAST: 剩余的词改单拍补取
+              burst_mode := false.B // 提前RLAST: 剩余的词改单拍补取
               rfstate := rf_req
             }
           }
