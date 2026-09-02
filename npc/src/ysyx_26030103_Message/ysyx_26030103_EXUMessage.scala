@@ -6,7 +6,7 @@ class ysyx_26030103_EXUMessage extends Bundle {
   val RegisterWrite = Bool()
   val WBSelect = UInt(2.W)
   val ALUResult = UInt(32.W)
-  val LoadData = UInt(32.W)  // EXU填0,由MEMU在访存完成后填真实数据
+  val LoadData = UInt(32.W) // EXU填0,由MEMU在访存完成后填真实数据
   val snpc = UInt(32.W)
   val CSRReadData = UInt(32.W)
 

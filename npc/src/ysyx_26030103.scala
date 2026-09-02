@@ -9,17 +9,17 @@ import _root_.ysyx_26030103.ysyx_26030103_GPR._
 import _root_.ysyx_26030103.ysyx_26030103_Message._
 
 class ysyx_26030103(
-    resetAddr:      Long = 0x30000000L,
-    AddressWidth:   Int  = 32,
-    BlockSizeLog2:  Int  = 4,
-    IndexBits:      Int  = 5,
-    BTBBits:        Int  = 4,
-    BTBWays:        Int  = 1,
-    JalBTBBits:     Int  = 4,
-    JalBTBWays:     Int  = 1,
-    RASBits:        Int  = 4,
-    CacheableBase:  Long = 0x80000000L, // ysyxsoc默认值
-    CacheableMask:  Long = 0x80000000L  // ysyxsoc默认值
+    resetAddr: Long = 0x30000000L,
+    AddressWidth: Int = 32,
+    BlockSizeLog2: Int = 4,
+    IndexBits: Int = 5,
+    BTBBits: Int = 4,
+    BTBWays: Int = 1,
+    JalBTBBits: Int = 4,
+    JalBTBWays: Int = 1,
+    RASBits: Int = 4,
+    CacheableBase: Long = 0x80000000L, // ysyxsoc默认值
+    CacheableMask: Long = 0x80000000L // ysyxsoc默认值
 ) extends Module {
   val io = IO(new ysyx_26030103_IO)
   val ifu = Module(new ysyx_26030103_IFU(resetAddr))
@@ -28,12 +28,14 @@ class ysyx_26030103(
   val wbu = Module(new ysyx_26030103_WBU)
   val lsu = Module(new ysyx_26030103_LSU)
   val gpr = Module(new ysyx_26030103_GPR)
-  val icache = Module(new ysyx_26030103_ICache(
-    BlockSizeLog2 = BlockSizeLog2,
-    IndexBits     = IndexBits,
-    CacheableBase = CacheableBase,
-    CacheableMask = CacheableMask
-  ))
+  val icache = Module(
+    new ysyx_26030103_ICache(
+      BlockSizeLog2 = BlockSizeLog2,
+      IndexBits = IndexBits,
+      CacheableBase = CacheableBase,
+      CacheableMask = CacheableMask
+    )
+  )
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
@@ -57,13 +59,13 @@ class ysyx_26030103(
   //  错路指令漏网提交,ra被污染. icache最多1个outstanding,单表项快照即够;
   //  背靠背=响应与接受同拍,响应读的是旧值,时序正确)
   val accept_fetch = ifu.io.FetchValid && icache.io.fetch_ready
-  val pred_tag_taken  = RegEnable(ifu.io.PredHit, false.B, accept_fetch)
+  val pred_tag_taken = RegEnable(ifu.io.PredHit, false.B, accept_fetch)
   val pred_tag_target = RegEnable(ifu.io.PredTarget, 0.U(32.W), accept_fetch)
   ifuResp.bits.pred_taken := pred_tag_taken
   ifuResp.bits.pred_target := pred_tag_target
   // 响应级不再重新查表(第二查询端口保留在模块里, 顶层不再使用)
-  btb.io.lookup2_pc := 0.U(32.W)
-  jal_btb.io.lookup2_pc := 0.U(32.W)
+  btb.io.lookup2_pc := 0.U(30.W)
+  jal_btb.io.lookup2_pc := 0.U(30.W)
   icache.io.resp_ready := ifuResp.ready
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
   icache.io.kill := pipe_flush
@@ -71,32 +73,38 @@ class ysyx_26030103(
   ysyx_26030103_StageConnect(exu.io.out, lsu.io.in, lsu.io.FlushEXMEM)
   ysyx_26030103_StageConnect(lsu.io.out, wbu.io.in)
   icache.io.axi <> arbiter.io.ifu
-  icache.io.fetch_addr  := ifu.io.FetchAddr
+  icache.io.fetch_addr := ifu.io.FetchAddr
   icache.io.fetch_valid := ifu.io.FetchValid
-  ifu.io.FetchReady      := icache.io.fetch_ready
+  ifu.io.FetchReady := icache.io.fetch_ready
   // BTB查询1: 用当前取指地址同时查两张表,合并结果回送IFU决定下一PC
-  btb.io.lookup_pc := ifu.io.FetchAddr
-  jal_btb.io.lookup_pc := ifu.io.FetchAddr
+  // 传入PC[31:2]; 低位恒为0, 无需参与索引和tag匹配
+  btb.io.lookup_pc := ifu.io.FetchAddr(31, 2)
+  jal_btb.io.lookup_pc := ifu.io.FetchAddr(31, 2)
   // jal表Ret表项命中且RAS非空→目标取RAS顶; Jal/Call表项命中即taken;
   // 分支表命中且目标在后方(target<当前PC)才预测taken(BTFN)
-  val jalRet1 = jal_btb.io.hit && jal_btb.io.hit_kind.get === ysyx_26030103_BTBKind.Ret
-  val jalStatic1 = jal_btb.io.hit && jal_btb.io.hit_kind.get =/= ysyx_26030103_BTBKind.Ret
-  ifu.io.PredHit    := (jalRet1 && ras.io.nonempty) || jalStatic1 ||
+  val jalRet1 =
+    jal_btb.io.hit && jal_btb.io.hit_kind.get === ysyx_26030103_BTBKind.Ret
+  val jalStatic1 =
+    jal_btb.io.hit && jal_btb.io.hit_kind.get =/= ysyx_26030103_BTBKind.Ret
+  ifu.io.PredHit := (jalRet1 && ras.io.nonempty) || jalStatic1 ||
     (btb.io.hit && (btb.io.target < ifu.io.FetchAddr))
-  ifu.io.PredTarget := Mux(jalRet1, ras.io.top,
-    Mux(jalStatic1, jal_btb.io.target, btb.io.target))
+  ifu.io.PredTarget := Mux(
+    jalRet1,
+    ras.io.top,
+    Mux(jalStatic1, jal_btb.io.target, btb.io.target)
+  )
   // BTB更新: EXU提交时按指令类型路由, 分支写分支表, jal/ret写jal表(带kind)
-  btb.io.update_valid  := exu.io.BTBUpdateValid
-  btb.io.update_pc     := exu.io.BTBUpdatePC
+  btb.io.update_valid := exu.io.BTBUpdateValid
+  btb.io.update_pc := exu.io.BTBUpdatePC(31, 2)
   btb.io.update_target := exu.io.BTBUpdateTarget
-  jal_btb.io.update_valid  := exu.io.JalBTBUpdateValid
-  jal_btb.io.update_pc     := exu.io.JalBTBUpdatePC
+  jal_btb.io.update_valid := exu.io.JalBTBUpdateValid
+  jal_btb.io.update_pc := exu.io.JalBTBUpdatePC(31, 2)
   jal_btb.io.update_target := exu.io.JalBTBUpdateTarget
   jal_btb.io.update_kind.get := exu.io.JalBTBUpdateKind
   // RAS更新: call压栈, ret弹栈
   ras.io.push_valid := exu.io.RASPushValid
-  ras.io.push_addr  := exu.io.RASPushAddr
-  ras.io.pop_valid  := exu.io.RASPopValid
+  ras.io.push_addr := exu.io.RASPushAddr
+  ras.io.pop_valid := exu.io.RASPopValid
   arbiter.io.lsu <> lsu.io.DataBus
   arbiter.io.memory.AW <> xbar.io.in.AW
   arbiter.io.memory.W <> xbar.io.in.W
@@ -200,7 +208,7 @@ class ysyx_26030103(
   ifu.io.RedirectTarget := exu.io.RedirectTarget
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
-  icache.io.flush := exu.io.FenceIFlush  // 仅 FenceI 冲 iCache，分支不冲
+  icache.io.flush := exu.io.FenceIFlush // 仅 FenceI 冲 iCache，分支不冲
   // 取指或访存返回错误的标志,仅保留给SoC测试台的debug输出用
   val AccessFaultOccurred = icache.io.access_fault || lsu.io.AccessFault
   gpr.io.WriteSELECT := wbu.io.WriteSELECT
@@ -233,40 +241,56 @@ class ysyx_26030103(
   io.debug_commit := wbu.io.WriteEN
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
-  io.perf_exu_done  := exu.io.out.fire
-  io.perf_lsu_load  := lsu.io.Complete && !lsu.io.DebugMemoryWrite
+  io.perf_exu_done := exu.io.out.fire
+  io.perf_lsu_load := lsu.io.Complete && !lsu.io.DebugMemoryWrite
   io.perf_lsu_store := lsu.io.Complete && lsu.io.DebugMemoryWrite
-  io.perf_alu_op    := exu.io.PerfALUOp
-  io.perf_mem_op    := exu.io.PerfMemOp
-  io.perf_csr_op    := exu.io.PerfCSROp
+  io.perf_alu_op := exu.io.PerfALUOp
+  io.perf_mem_op := exu.io.PerfMemOp
+  io.perf_csr_op := exu.io.PerfCSROp
   io.perf_branch_op := exu.io.PerfBranchOp
-  io.perf_jal_op    := exu.io.PerfJalOp
-  io.perf_jalr_op   := exu.io.PerfJalrOp
+  io.perf_jal_op := exu.io.PerfJalOp
+  io.perf_jalr_op := exu.io.PerfJalrOp
   io.perf_ifu_stall_pipeline := icache.io.resp_valid && !icache.io.resp_ready
-  io.perf_ifu_stall_axi      := ifu.io.StallICache
-  io.perf_ifu_stall_ar       := icache.io.perf_refill_req
-  io.perf_ifu_stall_r        := icache.io.perf_refill_resp
+  io.perf_ifu_stall_axi := ifu.io.StallICache
+  io.perf_ifu_stall_ar := icache.io.perf_refill_req
+  io.perf_ifu_stall_r := icache.io.perf_refill_resp
   io.perf_ifu_stall_redirect := exu.io.Redirect
-  io.perf_ifu_stall_idle     := ifu.io.StallIdle
-  io.perf_icache_hit  := icache.io.perf_hit
+  io.perf_ifu_stall_idle := ifu.io.StallIdle
+  io.perf_icache_hit := icache.io.perf_hit
   io.perf_icache_miss := icache.io.perf_miss
-  io.perf_execution_active   := exu.io.PerfExecutionActive
+  io.perf_execution_active := exu.io.PerfExecutionActive
   // EXU被下游阻塞: 有指令但本拍未完成(EX/MEM寄存器被占,或副作用指令等MEM级排空)
-  io.perf_exu_stall_lsu      := exu.io.in.valid && !exu.io.out.fire
+  io.perf_exu_stall_lsu := exu.io.in.valid && !exu.io.out.fire
   // EX/MEM等待槽占用: LSU级忙时有一条指令等在流水寄存器里(5级拆分买到的重叠)
-  io.perf_mem_waitslot       := lsu.io.Hazard2Valid
-  io.perf_lsu_active         := lsu.io.Active
-  io.perf_lsu_load_active    := lsu.io.Active && !lsu.io.IsStore
-  io.perf_lsu_store_active   := lsu.io.Active && lsu.io.IsStore
-  io.perf_lsu_stall_read_ar  := lsu.io.StallReadAR
-  io.perf_lsu_stall_read_r   := lsu.io.StallReadR
+  io.perf_mem_waitslot := lsu.io.Hazard2Valid
+  io.perf_lsu_active := lsu.io.Active
+  io.perf_lsu_load_active := lsu.io.Active && !lsu.io.IsStore
+  io.perf_lsu_store_active := lsu.io.Active && lsu.io.IsStore
+  io.perf_lsu_stall_read_ar := lsu.io.StallReadAR
+  io.perf_lsu_stall_read_r := lsu.io.StallReadR
   io.perf_lsu_stall_write_req := lsu.io.StallWriteReq
-  io.perf_lsu_stall_write_b  := lsu.io.StallWriteB
+  io.perf_lsu_stall_write_b := lsu.io.StallWriteB
   idu.io.ex_memop := exu.io.HazardMemOp
   io.perf_idu_stall_raw := idu.io.perf_stall_raw
   io.perf_idu_stall_raw_loaduse := idu.io.perf_stall_raw_loaduse
   io.perf_idu_stall_raw_alu := idu.io.perf_stall_raw_alu
   io.perf_exu_idle_noinput := exu.io.PerfIdleNoInput
   io.perf_trap := exu.io.PerfTrap
+
+  // AXI response signal assertions; these consume bresp/bid/rid inputs that
+  // are otherwise dead code in the single-master design, eliminating Verilator
+  // UNUSEDSIGNAL warnings while providing simulation-time protocol checks.
+  val b_handshake = io.master_bvalid && io.master_bready
+  assert(
+    !b_handshake || io.master_bresp === 0.U,
+    "AXI write response error: bresp=%d bid=%d",
+    io.master_bresp,
+    io.master_bid
+  )
+  assert(
+    !(io.master_rvalid && io.master_rready) || io.master_rid === 0.U,
+    "AXI read: rid=%d",
+    io.master_rid
+  )
 
 }

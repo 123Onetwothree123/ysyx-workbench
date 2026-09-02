@@ -16,7 +16,8 @@ public:
     };
 private:
     // 行=sets_数量=2^index_bits，每行ways项，举个例子：btb_bits=4，ways=2就是16行×2项=32个entry
-    std::vector<std::vector<entry>> sets;
+    std::vector<entry> sets_flat;
+    std::mdspan<entry, std::dextents<std::size_t, 2>> sets; // (组数 × 相联度) 二维视图
     std::vector<std::size_t> repl_ptr; // 每组一个轮转指针, 组满时指向受害者way(与硬件BTB行为一致)
     std::size_t index_bits; // 索引位数，2底数，也就是log2(sets)
     std::size_t ways;       // 相联度

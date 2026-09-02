@@ -24,18 +24,18 @@ static void do_print_item(WINDOW * win, const char *item, int line_y,
 			  int selected, int hotkey)
 {
 	int j;
-	char *menu_item = static_cast<char*>(malloc(menu_width + 1));
+	/* Copy of the item, truncated to the visible width
+	 * (display cells; never split a multibyte character) */
+	std::string menu_item(item, utf8_bytes_for_cells(item, menu_width - item_x));
 
-	strncpy(menu_item, item, menu_width - item_x);
-	menu_item[menu_width - item_x] = '\0';
-	j = first_alpha(menu_item, "YyNnMmHh");
+	j = first_alpha(menu_item.c_str(), "YyNnMmHh");
 
 	/* Clear 'residue' of last item */
 	wattrset(win, dlg.menubox.atr);
 	wmove(win, line_y, 0);
 	wclrtoeol(win);
 	wattrset(win, selected ? dlg.item_selected.atr : dlg.item.atr);
-	mvwaddstr(win, line_y, item_x, menu_item);
+	mvwaddstr(win, line_y, item_x, menu_item.c_str());
 	if (hotkey) {
 		wattrset(win, selected ? dlg.tag_key_selected.atr
 			 : dlg.tag_key.atr);
@@ -43,7 +43,7 @@ static void do_print_item(WINDOW * win, const char *item, int line_y,
 		mbstate_t state{};
 		for (int k = 0; k < j && menu_item[k];) {
 			wchar_t wc;
-			auto len = mbrtowc(&wc, menu_item + k, MB_CUR_MAX, &state);
+			auto len = mbrtowc(&wc, menu_item.c_str() + k, MB_CUR_MAX, &state);
 			if (len == static_cast<size_t>(-1) || len == static_cast<size_t>(-2))
 				break;
 			int w = wcwidth(wc);
@@ -55,7 +55,6 @@ static void do_print_item(WINDOW * win, const char *item, int line_y,
 	if (selected) {
 		wmove(win, line_y, item_x + 1);
 	}
-	free(menu_item);
 	wrefresh(win);
 }
 
@@ -173,13 +172,7 @@ do_resize:
 
 	draw_box(dialog, 0, 0, height, width,
 		 dlg.dialog.atr, dlg.border.atr);
-	wattrset(dialog, dlg.border.atr);
-	mvwaddch(dialog, height - 3, 0, ACS_LTEE);
-	for (i = 0; i < width - 2; i++)
-		waddch(dialog, ACS_HLINE);
-	wattrset(dialog, dlg.dialog.atr);
-	wbkgdset(dialog, dlg.dialog.atr & A_COLOR);
-	waddch(dialog, ACS_RTEE);
+	draw_bottom_border(dialog, height, width);
 
 	print_title(dialog, title, width);
 
@@ -242,7 +235,13 @@ do_resize:
 	while (key != KEY_ESC) {
 		key = wgetch(menu);
 
-		if (key < 256 && isalpha(key))
+		/* Interrupted by a signal (e.g. SIGINT): unwind so the
+		 * caller can run its deferred signal handling. */
+		if (key == ERR)
+			return KEY_ESC;
+
+		/* Function keys/ERR are out of the ctype functions' domain */
+		if (key >= 0 && key <= UCHAR_MAX && isalpha(key))
 			key = tolower(key);
 
 		if (strchr("ynmh ", key))
@@ -251,14 +250,14 @@ do_resize:
 			for (i = choice + 1; i < max_choice; i++) {
 				item_set(scroll + i);
 				j = first_alpha(item_str(), "YyNnMmHh");
-				if (key == tolower(item_str()[j]))
+				if (key == tolower(static_cast<unsigned char>(item_str()[j])))
 					break;
 			}
 			if (i == max_choice)
 				for (i = 0; i < max_choice; i++) {
 					item_set(scroll + i);
 					j = first_alpha(item_str(), "YyNnMmHh");
-					if (key == tolower(item_str()[j]))
+					if (key == tolower(static_cast<unsigned char>(item_str()[j])))
 						break;
 				}
 		}
@@ -334,8 +333,7 @@ do_resize:
 		case KEY_LEFT:
 		case TAB:
 		case KEY_RIGHT:
-			button = ((key == KEY_LEFT ? --button : ++button) < 0)
-			    ? 4 : (button > 4 ? 0 : button);
+			button = next_button(button, key, 5);
 
 			print_buttons(dialog, height, width, button);
 			wrefresh(menu);

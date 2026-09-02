@@ -68,7 +68,8 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val InAWReady = WireDefault(false.B)
   val InWReady = WireDefault(false.B)
   val InARReady = WireDefault(false.B)
-  val HasWriteReq = io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || WValidReg
+  val HasWriteReq =
+    io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || WValidReg
   io.in.AW.AWREADY := InAWReady
   io.in.W.WREADY := InWReady
   io.in.AR.ARREADY := InARReady

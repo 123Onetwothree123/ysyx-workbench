@@ -1,5 +1,19 @@
 module npc.ImageLoader;
 import npc.ysyxSoC;
+
+#ifndef CONFIG_CACHE_PADDING
+#define CONFIG_CACHE_PADDING 0
+#endif
+
+// CACHE_PADDING 只影响 npc 独立仿真路径（VRISCV32E_NPC）：
+// 镜像内容在内存中整体后移 N 字节，复位 PC 由 Makefile 同步加 N（NPC_RESET_PC）。
+// SoC 路径的启动地址由 RTL 固定，不能在 csrc 侧移动镜像，否则启动会执行到填充字节。
+#ifdef VRISCV32E_NPC
+constexpr std::size_t kCachePadding{CONFIG_CACHE_PADDING};
+#else
+constexpr std::size_t kCachePadding{0};
+#endif
+
 std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOptions &Options)
 {
     const auto &ImageFile{Options.GetImageFile()};
@@ -21,14 +35,14 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOption
         {
             return std::unexpected(std::format("文件打不开{0}", path.string()));
         }
-        FlashMemory.resize(FileSize);
-        ifs.read(reinterpret_cast<char *>(FlashMemory.data()), FileSize);
+        FlashMemory.resize(FileSize + kCachePadding); // resize 零初始化，前 kCachePadding 字节即填充
+        ifs.read(reinterpret_cast<char *>(FlashMemory.data() + kCachePadding), FileSize);
         if (!ifs)
         {
             return std::unexpected(std::format("读取文件失败{0}", path.string()));
         }
         mrom = FlashMemory;
-        std::println("文件加载了: {0}, size = {1} bytes", path.string(), FileSize);
+        std::println("文件加载了: {0}, size = {1} bytes, padding = {2} bytes", path.string(), FileSize, kCachePadding);
         return FileSize;
     }
     return std::unexpected("没有指定镜像文件");

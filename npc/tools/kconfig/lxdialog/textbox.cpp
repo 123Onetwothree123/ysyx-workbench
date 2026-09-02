@@ -17,8 +17,7 @@ using namespace std;
 
 static int hscroll;
 static int begin_reached, end_reached, page_length;
-static const char *buf, *page;
-static size_t txt_start, txt_end;
+static char *buf, *page;
 
 /*
  * Go back 'n' lines in text. Called by dialog_textbox().
@@ -91,12 +90,29 @@ static char *get_line(void)
 static void print_line(WINDOW *win, int row, int width)
 {
 	char *line;
+	const char *p;
+	int skipped = 0;
 
 	line = get_line();
-	line += MIN(static_cast<int>(strlen(line)), hscroll);	/* Scroll horizontally */
+	/* Scroll horizontally by display cells, never splitting a
+	 * multibyte character */
+	p = line;
+	while (*p && skipped < hscroll) {
+		size_t n = utf8_bytes_for_cells(p, 1);
+		int cw;
+		if (!n)
+			break;
+		cw = utf8_width_n(p, n);
+		if (skipped + cw > hscroll)
+			break;
+		skipped += cw;
+		p += n;
+	}
+	line = const_cast<char *>(p);
+
 	wmove(win, row, 0);	/* move cursor to correct line */
 	waddch(win, ' ');
-	waddnstr(win, line, MIN(static_cast<int>(strlen(line)), width - 2));
+	waddnstr(win, line, utf8_bytes_for_cells(line, width - 2));
 
 	/* Clear 'residue' of previous line */
 	wclrtoeol(win);
@@ -105,9 +121,20 @@ static void print_line(WINDOW *win, int row, int width)
 /*
  * Print a new page of text.
  */
-static void print_page(WINDOW *win, int height, int width)
+static void print_page(WINDOW *win, int height, int width,
+		       update_text_fn update_text, void *data)
 {
 	int i, passed_end = 0;
+
+	if (update_text) {
+		char *end;
+
+		for (i = 0; i < height; i++)
+			get_line();
+		end = page;
+		back_lines(height);
+		update_text(buf, page - buf, end - buf, data);
+	}
 
 	page_length = 0;
 	for (i = 0; i < height; i++) {
@@ -126,10 +153,12 @@ static void print_page(WINDOW *win, int height, int width)
 static void print_position(WINDOW *win)
 {
 	int percent;
+	size_t total = strlen(buf);
 
 	wattrset(win, dlg.position_indicator.atr);
 	wbkgdset(win, dlg.position_indicator.atr & A_COLOR);
-	percent = (page - buf) * 100 / strlen(buf);
+	percent = total ? static_cast<int>((page - buf) * 100 /
+					   static_cast<ptrdiff_t>(total)) : 0;
 	wmove(win, getmaxy(win) - 3, getmaxx(win) - 9);
 	wprintw(win, "(%3d%%)", percent);
 }
@@ -138,26 +167,24 @@ static void print_position(WINDOW *win)
  * refresh window content
  */
 static void refresh_text_box(WINDOW *dialog, WINDOW *box, int boxh, int boxw,
-			     int cur_y, int cur_x)
+			     int cur_y, int cur_x, update_text_fn update_text,
+			     void *data)
 {
-	txt_start = page - buf;
-
-	print_page(box, boxh, boxw);
+	print_page(box, boxh, boxw, update_text, data);
 	print_position(dialog);
 	wmove(dialog, cur_y, cur_x);	/* Restore cursor position */
 	wrefresh(dialog);
-
-	txt_end = page - buf;
 }
 
 /*
  * Display text from a file in a dialog box.
  *
  * keys is a null-terminated array
+ * update_text() may not add or remove any '\n' or '\0' in tbuf
  */
 int dialog_textbox(const char *title, char *tbuf, int initial_height,
 		   int initial_width, int *keys, int *_vscroll, int *_hscroll,
-		   update_text_fn extra_key_cb, void *data)
+		   update_text_fn update_text, void *data)
 {
 	int i, x, y, cur_x, cur_y, key = 0;
 	int height, width, boxh, boxw;
@@ -221,13 +248,7 @@ do_resize:
 	draw_box(dialog, 0, 0, height, width,
 		 dlg.dialog.atr, dlg.border.atr);
 
-	wattrset(dialog, dlg.border.atr);
-	mvwaddch(dialog, height - 3, 0, ACS_LTEE);
-	for (i = 0; i < width - 2; i++)
-		waddch(dialog, ACS_HLINE);
-	wattrset(dialog, dlg.dialog.atr);
-	wbkgdset(dialog, dlg.dialog.atr & A_COLOR);
-	waddch(dialog, ACS_RTEE);
+	draw_bottom_border(dialog, height, width);
 
 	print_title(dialog, title, width);
 
@@ -237,11 +258,14 @@ do_resize:
 
 	/* Print first page of text */
 	attr_clear(box, boxh, boxw, dlg.dialog.atr);
-	refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x);
+	refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x, update_text, data);
 
 	while (!done) {
 		key = wgetch(dialog);
 		switch (key) {
+		case ERR:	/* interrupted by a signal: unwind */
+			done = true;
+			break;
 		case 'E':	/* Exit */
 		case 'e':
 		case 'X':
@@ -256,7 +280,7 @@ do_resize:
 				begin_reached = 1;
 				page = buf;
 				refresh_text_box(dialog, box, boxh, boxw,
-						 cur_y, cur_x);
+						 cur_y, cur_x, update_text, data);
 			}
 			break;
 		case 'G':	/* Last page */
@@ -266,7 +290,7 @@ do_resize:
 			/* point to last char in buf */
 			page = buf + strlen(buf);
 			back_lines(boxh);
-			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x);
+			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x, update_text, data);
 			break;
 		case 'K':	/* Previous line */
 		case 'k':
@@ -275,7 +299,7 @@ do_resize:
 				break;
 
 			back_lines(page_length + 1);
-			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x);
+			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x, update_text, data);
 			break;
 		case 'B':	/* Previous page */
 		case 'b':
@@ -284,7 +308,7 @@ do_resize:
 			if (begin_reached)
 				break;
 			back_lines(page_length + boxh);
-			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x);
+			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x, update_text, data);
 			break;
 		case 'J':	/* Next line */
 		case 'j':
@@ -293,7 +317,7 @@ do_resize:
 				break;
 
 			back_lines(page_length - 1);
-			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x);
+			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x, update_text, data);
 			break;
 		case KEY_NPAGE:	/* Next page */
 		case ' ':
@@ -302,7 +326,7 @@ do_resize:
 				break;
 
 			begin_reached = 0;
-			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x);
+			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x, update_text, data);
 			break;
 		case '0':	/* Beginning of line */
 		case 'H':	/* Scroll left */
@@ -317,7 +341,7 @@ do_resize:
 				hscroll--;
 			/* Reprint current page to scroll horizontally */
 			back_lines(page_length);
-			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x);
+			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x, update_text, data);
 			break;
 		case 'L':	/* Scroll right */
 		case 'l':
@@ -327,7 +351,7 @@ do_resize:
 			hscroll++;
 			/* Reprint current page to scroll horizontally */
 			back_lines(page_length);
-			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x);
+			refresh_text_box(dialog, box, boxh, boxw, cur_y, cur_x, update_text, data);
 			break;
 		case KEY_ESC:
 			if (on_key_esc(dialog) == KEY_ESC)
@@ -340,8 +364,11 @@ do_resize:
 			on_key_resize();
 			goto do_resize;
 		default:
-			if (extra_key_cb) {
-				extra_key_cb(nullptr, txt_start, txt_end, data);
+			for (i = 0; keys[i]; i++) {
+				if (key == keys[i]) {
+					done = true;
+					break;
+				}
 			}
 		}
 	}

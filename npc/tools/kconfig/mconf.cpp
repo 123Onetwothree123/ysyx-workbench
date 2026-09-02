@@ -5,7 +5,6 @@ import std;
 #endif
 using namespace std;
 #include <clocale>
-#include <clocale>
 
 // SPDX-License-Identifier: GPL-2.0
 /*
@@ -277,10 +276,13 @@ search_help[] =
 
 static int indent;
 static int child_count;
-static int single_menu_mode;
-static int show_all_options;
-static int save_and_exit;
-static int silent;
+static bool single_menu_mode;
+static bool show_all_options;
+static bool save_and_exit;
+static bool silent;
+
+/* Set by sig_handler(); polled by the main loop (async-signal-safe) */
+static volatile sig_atomic_t sig_int_caught;
 
 static void conf(struct menu *menu, struct menu *active_menu);
 static void conf_choice(struct menu *menu);
@@ -302,12 +304,12 @@ static void set_config_filename(const char *config_filename)
 
 	size = snprintf(menu_backtitle, sizeof(menu_backtitle),
 			"%s - %s", config_filename, rootmenu.prompt->text);
-	if (size >= sizeof(menu_backtitle))
+	if (static_cast<size_t>(size) >= sizeof(menu_backtitle))
 		menu_backtitle[sizeof(menu_backtitle)-1] = '\0';
 	set_dialog_backtitle(menu_backtitle);
 
 	size = snprintf(filename, sizeof(filename), "%s", config_filename);
-	if (size >= sizeof(filename))
+	if (static_cast<size_t>(size) >= sizeof(filename))
 		filename[sizeof(filename)-1] = '\0';
 }
 
@@ -317,43 +319,34 @@ struct subtitle_part {
 };
 static LIST_HEAD(trail);
 
-static struct subtitle_list *subtitles;
+/*
+ * RAII storage for the subtitle chain handed to lxdialog; std::list never
+ * relocates its nodes, so the struct subtitle_list links stay valid.
+ */
+static std::list<struct subtitle_list> subtitle_nodes;
 static void set_subtitle(void)
 {
 	struct subtitle_part *sp;
-	struct subtitle_list *pos, *tmp;
 
-	for (pos = subtitles; pos != NULL; pos = tmp) {
-		tmp = pos->next;
-		free(pos);
-	}
-
-	subtitles = NULL;
+	subtitle_nodes.clear();
 	list_for_each_entry(sp, &trail, entries) {
-		if (sp->text) {
-			if (pos) {
-				pos->next = static_cast<struct subtitle_list*>(xcalloc(1, sizeof(*pos)));
-				pos = pos->next;
-			} else {
-				subtitles = pos = static_cast<struct subtitle_list*>(xcalloc(1, sizeof(*pos)));
-			}
-			pos->text = sp->text;
-		}
+		if (!sp->text)
+			continue;
+		if (!subtitle_nodes.empty())
+			subtitle_nodes.back().next = &subtitle_nodes.emplace_back();
+		else
+			subtitle_nodes.emplace_back();
+		subtitle_nodes.back().text = sp->text;
 	}
 
-	set_dialog_subtitles(subtitles);
+	set_dialog_subtitles(subtitle_nodes.empty() ? nullptr
+						    : &subtitle_nodes.front());
 }
 
 static void reset_subtitle(void)
 {
-	struct subtitle_list *pos, *tmp;
-
-	for (pos = subtitles; pos != NULL; pos = tmp) {
-		tmp = pos->next;
-		free(pos);
-	}
-	subtitles = NULL;
-	set_dialog_subtitles(subtitles);
+	subtitle_nodes.clear();
+	set_dialog_subtitles(nullptr);
 }
 
 struct search_data {
@@ -375,12 +368,12 @@ static void update_text(char *buf, size_t start, size_t end, void *_data)
 			if (k < JUMP_NB) {
 				int key = '0' + (pos->index % JUMP_NB) + 1;
 
-				sprintf(header, "(%c)", key);
+				snprintf(header, sizeof(header), "(%c)", key);
 				data->keys[k] = key;
 				data->targets[k] = pos->target;
 				k++;
 			} else {
-				sprintf(header, "   ");
+				snprintf(header, sizeof(header), "   ");
 			}
 
 			memcpy(buf + pos->offset, header, sizeof(header) - 1);
@@ -434,7 +427,7 @@ again:
 	do {
 		LIST_HEAD(head);
 		struct menu *targets[JUMP_NB];
-		int keys[JUMP_NB + 1], i;
+		int keys[JUMP_NB + 1] = {}, i;
 		struct search_data data = {
 			.head = &head,
 			.targets = targets,
@@ -444,10 +437,10 @@ again:
 
 		res = get_relations_str(sym_arr, &head);
 		set_subtitle();
-		dres = show_textbox_ext("Search Results", (char *)
-					str_get(&res), 0, 0, keys, &vscroll,
-					&hscroll, &update_text, (void *)
-					&data);
+		dres = show_textbox_ext("Search Results",
+					const_cast<char *>(str_get(&res)), 0, 0,
+					keys, &vscroll, &hscroll, &update_text,
+					static_cast<void *>(&data));
 		again = false;
 		for (i = 0; i < JUMP_NB && keys[i]; i++)
 			if (dres == keys[i]) {
@@ -469,7 +462,8 @@ static void build_conf(struct menu *menu)
 	struct symbol *sym;
 	struct property *prop;
 	struct menu *child;
-	int type, tmp, doint = 2;
+	enum symbol_type type;
+	int tmp, doint = 2;
 	tristate val;
 	char ch;
 	bool visible;
@@ -529,7 +523,7 @@ static void build_conf(struct menu *menu)
 	type = sym_get_type(sym);
 	if (sym_is_choice(sym)) {
 		struct symbol *def_sym = sym_get_choice_value(sym);
-		struct menu *def_menu = NULL;
+		struct menu *def_menu = nullptr;
 
 		child_count++;
 		for (child = menu->list; child; child = child->next) {
@@ -654,10 +648,12 @@ static void conf(struct menu *menu, struct menu *active_menu)
 	if (menu != &rootmenu)
 		stpart.text = menu_get_prompt(menu);
 	else
-		stpart.text = NULL;
+		stpart.text = nullptr;
 	list_add_tail(&stpart.entries, &trail);
 
 	while (1) {
+		if (sig_int_caught)
+			return;	/* SIGINT: unwind to main() for handle_exit() */
 		item_reset();
 		current_menu = menu;
 		build_conf(menu);
@@ -681,22 +677,25 @@ static void conf(struct menu *menu, struct menu *active_menu)
 		if (submenu)
 			sym = submenu->sym;
 		else
-			sym = NULL;
+			sym = nullptr;
 
 		switch (res) {
 		case 0:
 			switch (item_tag()) {
 			case 'm':
 				if (single_menu_mode)
-					submenu->data = reinterpret_cast<void*>(static_cast<long>(!submenu->data));
+					/* menu->data doubles as a boolean fold
+					 * flag in single_menu_mode; smuggle it
+					 * through the void * as an intptr_t */
+					submenu->data = reinterpret_cast<void*>(static_cast<intptr_t>(!submenu->data));
 				else
-					conf(submenu, NULL);
+					conf(submenu, nullptr);
 				break;
 			case 't':
 				if (sym_is_choice(sym) && sym_get_tristate_value(sym) == yes)
 					conf_choice(submenu);
 				else if (submenu->prompt->type == P_MENU)
-					conf(submenu, NULL);
+					conf(submenu, nullptr);
 				break;
 			case 's':
 				conf_string(submenu);
@@ -724,7 +723,7 @@ static void conf(struct menu *menu, struct menu *active_menu)
 				if (sym_set_tristate_value(sym, yes))
 					break;
 				if (sym_set_tristate_value(sym, mod))
-					show_textbox(NULL, setmod_text, 6, 74);
+					show_textbox(nullptr, setmod_text, 6, 74);
 			}
 			break;
 		case 6:
@@ -739,7 +738,7 @@ static void conf(struct menu *menu, struct menu *active_menu)
 			if (item_is_tag('t'))
 				sym_toggle_tristate_value(sym);
 			else if (item_is_tag('m'))
-				conf(submenu, NULL);
+				conf(submenu, nullptr);
 			break;
 		case 9:
 			search_conf();
@@ -764,8 +763,11 @@ static int show_textbox_ext(const char *title, char *text, int r, int c, int
 
 static void show_textbox(const char *title, const char *text, int r, int c)
 {
-	show_textbox_ext(title, (char *) text, r, c, (int []) {0}, NULL, NULL,
-			 NULL, NULL);
+	/* Empty key list: dialog_textbox() expects a zero-terminated array */
+	static int no_keys[] = { 0 };
+
+	show_textbox_ext(title, const_cast<char *>(text), r, c, no_keys, nullptr,
+			 nullptr, nullptr, nullptr);
 }
 
 static void show_helptext(const char *title, const char *text)
@@ -779,7 +781,7 @@ static void conf_message_callback(const char *s)
 		if (!silent)
 			printf("%s", s);
 	} else {
-		show_textbox(NULL, s, 6, 60);
+		show_textbox(nullptr, s, 6, 60);
 	}
 }
 
@@ -884,7 +886,7 @@ static void conf_string(struct menu *menu)
 		case 0:
 			if (sym_set_string_value(menu->sym, dialog_input_result))
 				return;
-			show_textbox(NULL, "You have made an invalid entry.", 5, 43);
+			show_textbox(nullptr, "You have made an invalid entry.", 5, 43);
 			break;
 		case 1:
 			show_help(menu);
@@ -901,7 +903,7 @@ static void conf_load(void)
 	while (1) {
 		int res;
 		dialog_clear();
-		res = dialog_inputbox(NULL, load_config_text,
+		res = dialog_inputbox(nullptr, load_config_text,
 				      11, 55, filename);
 		switch(res) {
 		case 0:
@@ -912,7 +914,7 @@ static void conf_load(void)
 				sym_set_change_count(1);
 				return;
 			}
-			show_textbox(NULL, "File does not exist!", 5, 38);
+			show_textbox(nullptr, "File does not exist!", 5, 38);
 			break;
 		case 1:
 			show_helptext("Load Alternate Configuration", load_config_help);
@@ -928,7 +930,7 @@ static void conf_save(void)
 	while (1) {
 		int res;
 		dialog_clear();
-		res = dialog_inputbox(NULL, save_config_text,
+		res = dialog_inputbox(nullptr, save_config_text,
 				      11, 55, filename);
 		switch(res) {
 		case 0:
@@ -938,7 +940,7 @@ static void conf_save(void)
 				set_config_filename(dialog_input_result);
 				return;
 			}
-			show_textbox(NULL, "Can't create file!", 5, 60);
+			show_textbox(nullptr, "Can't create file!", 5, 60);
 			break;
 		case 1:
 			show_helptext("Save Alternate Configuration", save_config_help);
@@ -953,11 +955,12 @@ static int handle_exit(void)
 {
 	int res;
 
+	sig_int_caught = 0;
 	save_and_exit = 1;
 	reset_subtitle();
 	dialog_clear();
 	if (conf_get_changed())
-		res = dialog_yesno(NULL,
+		res = dialog_yesno(nullptr,
 				   "Do you wish to save your new configuration?\n"
 				     "(Press <ESC><ESC> to continue kernel configuration.)",
 				   6, 60);
@@ -976,7 +979,7 @@ static int handle_exit(void)
 			return 1;
 		}
 		conf_write_autoconf(0);
-		/* fall through */
+		[[fallthrough]];
 	case -1:
 		if (!silent)
 			printf("\n\n"
@@ -997,15 +1000,21 @@ static int handle_exit(void)
 	return res;
 }
 
+/*
+ * Only set a flag here: curses/fprintf/exit() are not async-signal-safe.
+ * The main loop polls sig_int_caught and runs handle_exit() there.
+ */
 static void sig_handler(int signo)
 {
-	exit(handle_exit());
+	sig_int_caught = 1;
 }
 
 int main(int ac, char **av)
 {
 	char *mode;
 	int res;
+	const char *progname = av[0];
+	struct sigaction sa = {};
 
 	if (!setlocale(LC_ALL, ""))
 		fprintf(stderr, "Warning: failed to initialize the system locale\n");
@@ -1014,16 +1023,24 @@ int main(int ac, char **av)
 	    !setlocale(LC_CTYPE, "en_US.UTF-8"))
 		fprintf(stderr, "Warning: no UTF-8 locale is available\n");
 
-	signal(SIGINT, sig_handler);
+	/* No SA_RESTART: let wgetch() return so the flag gets polled */
+	sa.sa_handler = sig_handler;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sigaction(SIGINT, &sa, nullptr);
 
 	if (ac > 1 && strcmp(av[1], "-s") == 0) {
 		silent = 1;
 		/* Silence conf_read() until the real callback is set up */
-		conf_set_message_callback(NULL);
+		conf_set_message_callback(nullptr);
 		av++;
 	}
+	if (!av[1]) {
+		fprintf(stderr, "Usage: %s [-s] Kconfig\n", progname);
+		return 1;
+	}
 	conf_parse(av[1]);
-	conf_read(NULL);
+	conf_read(nullptr);
 
 	mode = getenv("MENUCONFIG_MODE");
 	if (mode) {
@@ -1031,7 +1048,7 @@ int main(int ac, char **av)
 			single_menu_mode = 1;
 	}
 
-	if (init_dialog(NULL)) {
+	if (init_dialog(nullptr)) {
 		fprintf(stderr, "Your display is too small to run Menuconfig!\n");
 		fprintf(stderr, "It must be at least 19 lines by 80 columns.\n");
 		return 1;
@@ -1040,7 +1057,7 @@ int main(int ac, char **av)
 	set_config_filename(conf_get_configname());
 	conf_set_message_callback(conf_message_callback);
 	do {
-		conf(&rootmenu, NULL);
+		conf(&rootmenu, nullptr);
 		res = handle_exit();
 	} while (res == KEY_ESC);
 

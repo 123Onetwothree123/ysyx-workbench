@@ -5,6 +5,8 @@
  *  AUTHOR: Savio Lam (lam836@cs.cuhk.hk)
  */
 
+#pragma once
+
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -207,6 +209,18 @@ void print_title(WINDOW *dialog, const char *title, int width);
 void draw_box(WINDOW * win, int y, int x, int height, int width, chtype box,
 	      chtype border);
 void draw_shadow(WINDOW * win, int y, int x, int height, int width);
+/* Draw the horizontal separator line above the button area of a dialog */
+void draw_bottom_border(WINDOW *win, int height, int width);
+/* Cycle a button selection left/right with wraparound (count buttons) */
+int next_button(int button, int key, int count);
+
+/* UTF-8 aware display-width helpers (CJK etc.): columns, not bytes.
+ * Invalid bytes count as one column each. */
+int utf8_width_n(const char *s, size_t len);
+int utf8_width(const char *s);
+/* Bytes of 's' that fit within 'max_cells' display columns without
+ * splitting a multibyte character. */
+size_t utf8_bytes_for_cells(const char *s, int max_cells);
 
 int first_alpha(const char *string, const char *exempt);
 int dialog_yesno(const char *title, const char *prompt, int height, int width);

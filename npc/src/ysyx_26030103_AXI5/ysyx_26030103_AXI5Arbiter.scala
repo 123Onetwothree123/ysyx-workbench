@@ -26,10 +26,10 @@ class ysyx_26030103_AXI5Arbiter extends Module {
 //R通道skid buffer: 切断 xbar状态机→R路由→arbiter透传→master 的全组合链(时序关键路径)
 //代价是R返回延迟+1拍; 前向valid/data全部寄存化, 反向ready = !valid || 当拍被消费
   val rSkidValid = RegInit(false.B)
-  val rSkidID    = Reg(UInt(4.W))
-  val rSkidData  = Reg(UInt(32.W))
-  val rSkidResp  = Reg(UInt(2.W))
-  val rSkidLast  = Reg(Bool())
+  val rSkidID = Reg(UInt(4.W))
+  val rSkidData = Reg(UInt(32.W))
+  val rSkidResp = Reg(UInt(2.W))
+  val rSkidLast = Reg(Bool())
 //只有在读响应阶段, 被授权方才会看到skid的内容并消费它
   val rConsume = rSkidValid && (state === StatesReadResponse) &&
     Mux(grant === GrantLSU, io.lsu.R.RREADY, io.ifu.R.RREADY)
@@ -81,10 +81,10 @@ class ysyx_26030103_AXI5Arbiter extends Module {
 //skid装载: 同拍被消费又装新拍时保持valid, 只消费不装时清空
   when(io.memory.R.RVALID && io.memory.R.RREADY) {
     rSkidValid := true.B
-    rSkidID    := io.memory.R.RID
-    rSkidData  := io.memory.R.RDATA
-    rSkidResp  := io.memory.R.RRESP
-    rSkidLast  := io.memory.R.RLAST
+    rSkidID := io.memory.R.RID
+    rSkidData := io.memory.R.RDATA
+    rSkidResp := io.memory.R.RRESP
+    rSkidLast := io.memory.R.RLAST
   }.elsewhen(rConsume) {
     rSkidValid := false.B
   }

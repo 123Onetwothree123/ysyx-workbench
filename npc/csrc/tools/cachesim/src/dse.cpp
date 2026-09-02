@@ -21,8 +21,7 @@ auto run_dse(const std::string& trace_path,
     std::vector<CacheConfig> configs;
     for (auto bs : block_sizes) {
         for (auto nb : num_blocks_list) {
-            for (auto w : ways_list) {
-                if (w > nb || nb % w != 0) continue;
+            for (auto w : ways_list | std::views::filter([nb](auto ways) { return ways <= nb && nb % ways == 0; })) {
                 for (auto r : repl_list) {
                     configs.push_back({bs, nb, w, r});
                 }

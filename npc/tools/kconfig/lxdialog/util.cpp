@@ -254,14 +254,14 @@ void dialog_clear(void)
 
 	attr_clear(stdscr, lines, columns, dlg.screen.atr);
 	/* Display background title if it exists ... - SLH */
-	if (dlg.backtitle != NULL) {
+	if (dlg.backtitle != nullptr) {
 		int i, len = 0, skip = 0;
 		struct subtitle_list *pos;
 
 		wattrset(stdscr, dlg.screen.atr);
 		mvwaddstr(stdscr, 0, 1, (char *)dlg.backtitle);
 
-		for (pos = dlg.subtitles; pos != NULL; pos = pos->next) {
+		for (pos = dlg.subtitles; pos != nullptr; pos = pos->next) {
 			/* 3 is for the arrow and spaces */
 			len += strlen(pos->text) + 3;
 		}
@@ -273,7 +273,7 @@ void dialog_clear(void)
 			skip = len - (columns - 2 - strlen(ellipsis));
 		}
 
-		for (pos = dlg.subtitles; pos != NULL; pos = pos->next) {
+		for (pos = dlg.subtitles; pos != nullptr; pos = pos->next) {
 			if (skip == 0)
 				waddch(stdscr, ACS_RARROW);
 			else
@@ -352,16 +352,76 @@ void end_dialog(int x, int y)
 	endwin();
 }
 
+/* UTF-8 aware display-width helpers (CJK etc.): columns, not bytes */
+int utf8_width_n(const char *s, size_t len)
+{
+	mbstate_t st{};
+	int w = 0;
+	size_t i = 0;
+
+	while (i < len) {
+		wchar_t wc;
+		size_t n = mbrtowc(&wc, s + i, len - i, &st);
+		if (n == static_cast<size_t>(-1)) {	/* invalid byte */
+			memset(&st, 0, sizeof(st));
+			i++;
+			w++;
+			continue;
+		}
+		if (n == static_cast<size_t>(-2) || n == 0)
+			break;
+		int cw = wcwidth(wc);
+		w += cw > 0 ? cw : 0;
+		i += n;
+	}
+	return w;
+}
+
+int utf8_width(const char *s)
+{
+	return utf8_width_n(s, strlen(s));
+}
+
+size_t utf8_bytes_for_cells(const char *s, int max_cells)
+{
+	mbstate_t st{};
+	int w = 0;
+	size_t i = 0, len = strlen(s);
+
+	while (i < len) {
+		wchar_t wc;
+		size_t n = mbrtowc(&wc, s + i, len - i, &st);
+		int cw;
+		if (n == static_cast<size_t>(-1)) {	/* invalid byte: 1 col */
+			memset(&st, 0, sizeof(st));
+			n = 1;
+			cw = 1;
+		} else if (n == static_cast<size_t>(-2) || n == 0) {
+			break;
+		} else {
+			cw = wcwidth(wc);
+			if (cw < 0)
+				cw = 0;
+		}
+		if (w + cw > max_cells)
+			break;
+		w += cw;
+		i += n;
+	}
+	return i;
+}
+
 /* Print the title of the dialog. Center the title and truncate
  * tile if wider than dialog (- 2 chars).
  **/
 void print_title(WINDOW *dialog, const char *title, int width)
 {
 	if (title) {
-		int tlen = MIN(width - 2, strlen(title));
+		size_t nbytes = utf8_bytes_for_cells(title, width - 2);
+		int tlen = utf8_width_n(title, nbytes);
 		wattrset(dialog, dlg.title.atr);
 		mvwaddch(dialog, 0, (width - tlen) / 2 - 1, ' ');
-		mvwaddnstr(dialog, 0, (width - tlen)/2, title, tlen);
+		mvwaddnstr(dialog, 0, (width - tlen)/2, title, nbytes);
 		waddch(dialog, ' ');
 	}
 }
@@ -378,9 +438,9 @@ void print_autowrap(WINDOW * win, const char *prompt, int width, int y, int x)
 	int prompt_len, room, wlen;
 	char tempstr[MAX_LEN + 1], *word, *sp, *sp2, *newline_separator = 0;
 
-	strcpy(tempstr, prompt);
+	snprintf(tempstr, sizeof(tempstr), "%s", prompt);
 
-	prompt_len = strlen(tempstr);
+	prompt_len = utf8_width(tempstr);
 
 	if (prompt_len <= width - x * 2) {	/* If prompt is short */
 		wmove(win, y, (width - prompt_len) / 2);
@@ -402,15 +462,39 @@ void print_autowrap(WINDOW * win, const char *prompt, int width, int y, int x)
 			   or it is the first word of a new sentence, and it is
 			   short, and the next word does not fit. */
 			room = width - cur_x;
-			wlen = strlen(word);
+			wlen = utf8_width(word);
 			if (wlen > room ||
 			    (newl && wlen < 4 && sp
-			     && wlen + 1 + strlen(sp) > room
+			     && wlen + 1 + utf8_width(sp) > room
 			     && (!(sp2 = strpbrk(sp, "\n "))
-				 || wlen + 1 + (sp2 - sp) > room))) {
+				 || wlen + 1 + utf8_width_n(sp, sp2 - sp) > room))) {
 				cur_y++;
 				cur_x = x;
+				room = width - cur_x;
 			}
+
+			/* A word wider than the remaining room (typical for
+			   CJK text without spaces): split it at display-cell
+			   boundaries so no multibyte character is cut. */
+			while (wlen > room) {
+				size_t part = utf8_bytes_for_cells(word, room);
+				if (!part) {
+					if (room == width - x)
+						break;	/* window too narrow */
+					cur_y++;
+					cur_x = x;
+					room = width - cur_x;
+					continue;
+				}
+				wmove(win, cur_y, cur_x);
+				waddnstr(win, word, part);
+				word += part;
+				wlen = utf8_width(word);
+				cur_y++;
+				cur_x = x;
+				room = width - cur_x;
+			}
+
 			wmove(win, cur_y, cur_x);
 			waddstr(win, word);
 			getyx(win, cur_y, cur_x);
@@ -527,7 +611,7 @@ int first_alpha(const char *string, const char *exempt)
 	int i, in_paren = 0, c;
 
 	for (i = 0; i < strlen(string); i++) {
-		c = tolower(string[i]);
+		c = tolower(static_cast<unsigned char>(string[i]));
 
 		if (strchr("<[(", c))
 			++in_paren;
@@ -580,33 +664,63 @@ int on_key_resize(void)
 	return KEY_RESIZE;
 }
 
+/*
+ * Draw the horizontal separator line above the button area, connecting
+ * the left and right borders of the dialog box. Shared by all dialog
+ * variants (previously copied into each of them).
+ */
+void draw_bottom_border(WINDOW *win, int height, int width)
+{
+	wattrset(win, dlg.border.atr);
+	mvwaddch(win, height - 3, 0, ACS_LTEE);
+	for (int i = 0; i < width - 2; i++)
+		waddch(win, ACS_HLINE);
+	wattrset(win, dlg.dialog.atr);
+	/* NOT useless: sets the window background so blank cells (the whole
+	 * dialog interior) are rendered with the dialog color on wrefresh,
+	 * and subwindows created afterwards inherit it. */
+	wbkgdset(win, dlg.dialog.atr & A_COLOR);
+	waddch(win, ACS_RTEE);
+}
+
+/*
+ * Cycle a button selection left (KEY_LEFT) or right with wraparound.
+ * Shared by the dialogs' TAB/arrow key handling.
+ */
+int next_button(int button, int key, int count)
+{
+	button = (key == KEY_LEFT) ? button - 1 : button + 1;
+	if (button < 0)
+		return count - 1;
+	if (button >= count)
+		return 0;
+	return button;
+}
+
 struct dialog_list *item_cur;
 struct dialog_list item_nil;
 struct dialog_list *item_head;
 
+/* RAII storage backing the item list; nodes are never moved once added */
+static std::deque<struct dialog_list> item_pool;
+
 void item_reset(void)
 {
-	struct dialog_list *p, *next;
-
-	for (p = item_head; p; p = next) {
-		next = p->next;
-		free(p);
-	}
-	item_head = NULL;
+	item_pool.clear();
+	item_head = nullptr;
 	item_cur = &item_nil;
 }
 
 void item_make(const char *fmt, ...)
 {
 	va_list ap;
-	struct dialog_list *p = static_cast<struct dialog_list*>(malloc(sizeof(*p)));
+	struct dialog_list *p = &item_pool.emplace_back();
 
 	if (item_head)
 		item_cur->next = p;
 	else
 		item_head = p;
 	item_cur = p;
-	memset(p, 0, sizeof(*p));
 
 	va_start(ap, fmt);
 	vsnprintf(item_cur->node.str, sizeof(item_cur->node.str), fmt, ap);

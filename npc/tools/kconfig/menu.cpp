@@ -21,6 +21,7 @@ static struct menu **last_entry_ptr;
 struct file *file_list;
 struct file *current_file;
 
+__attribute__((format(printf, 2, 3)))
 void menu_warn(struct menu *menu, const char *fmt, ...)
 {
 	va_list ap;
@@ -31,6 +32,7 @@ void menu_warn(struct menu *menu, const char *fmt, ...)
 	va_end(ap);
 }
 
+__attribute__((format(printf, 2, 3)))
 static void prop_warn(struct property *prop, const char *fmt, ...)
 {
 	va_list ap;
@@ -62,7 +64,7 @@ void menu_add_entry(struct symbol *sym)
 	last_entry_ptr = &menu->next;
 	current_entry = menu;
 	if (sym)
-		menu_add_symbol(P_SYMBOL, sym, NULL);
+		menu_add_symbol(P_SYMBOL, sym, nullptr);
 }
 
 struct menu *menu_add_menu(void)
@@ -112,20 +114,20 @@ void menu_add_dep(struct expr *dep)
 	current_entry->dep = expr_alloc_and(current_entry->dep, dep);
 }
 
-void menu_set_type(int type)
+void menu_set_type(enum symbol_type type)
 {
 	struct symbol *sym = current_entry->sym;
 
 	if (sym->type == type)
 		return;
 	if (sym->type == S_UNKNOWN) {
-		sym->type = static_cast<symbol_type>(type);
+		sym->type = type;
 		return;
 	}
 	menu_warn(current_entry,
 		"ignoring type redefinition of '%s' from '%s' to '%s'",
 		sym->name ? sym->name : "<choice>",
-		sym_type_name(sym->type), sym_type_name(static_cast<symbol_type>(type)));
+		sym_type_name(sym->type), sym_type_name(type));
 }
 
 static struct property *menu_add_prop(enum prop_type type, struct expr *expr,
@@ -159,11 +161,11 @@ static struct property *menu_add_prop(enum prop_type type, struct expr *expr,
 struct property *menu_add_prompt(enum prop_type type, char *prompt,
 				 struct expr *dep)
 {
-	struct property *prop = menu_add_prop(type, NULL, dep);
+	struct property *prop = menu_add_prop(type, nullptr, dep);
 
-	if (isspace(*prompt)) {
+	if (isspace(static_cast<unsigned char>(*prompt))) {
 		prop_warn(prop, "leading whitespace ignored");
-		while (isspace(*prompt))
+		while (isspace(static_cast<unsigned char>(*prompt)))
 			prompt++;
 	}
 	if (current_entry->prompt)
@@ -173,7 +175,7 @@ struct property *menu_add_prompt(enum prop_type type, char *prompt,
 	if (type == P_PROMPT) {
 		struct menu *menu = current_entry;
 
-		while ((menu = menu->parent) != NULL) {
+		while ((menu = menu->parent) != nullptr) {
 			struct expr *dup_expr;
 
 			if (!menu->visibility)
@@ -246,7 +248,7 @@ static void sym_check_prop(struct symbol *sym)
 {
 	struct property *prop;
 	struct symbol *sym2;
-	char *use;
+	const char *use;
 
 	for (prop = sym->prop; prop; prop = prop->next) {
 		switch (prop->type) {
@@ -278,7 +280,7 @@ static void sym_check_prop(struct symbol *sym)
 			break;
 		case P_SELECT:
 		case P_IMPLY:
-			use = prop->type == P_SELECT ? const_cast<char*>("select") : const_cast<char*>("imply");
+			use = prop->type == P_SELECT ? "select" : "imply";
 			sym2 = prop_get_symbol(prop);
 			if (sym->type != S_BOOLEAN && sym->type != S_TRISTATE)
 				prop_warn(prop,
@@ -456,12 +458,12 @@ void menu_finalize(struct menu *parent)
 		 *	 ...
 		 */
 
-		basedep = parent->prompt ? parent->prompt->visible.expr : NULL;
+		basedep = parent->prompt ? parent->prompt->visible.expr : nullptr;
 		basedep = expr_trans_compare(basedep, E_UNEQUAL, &symbol_no);
 		basedep = expr_eliminate_dups(expr_transform(basedep));
 
 		/* Examine consecutive elements after sym */
-		last_menu = NULL;
+		last_menu = nullptr;
 		for (menu = parent->next; menu; menu = menu->next) {
 			dep = menu->prompt ? menu->prompt->visible.expr : menu->dep;
 			if (!expr_contains_symbol(dep, sym))
@@ -501,7 +503,7 @@ void menu_finalize(struct menu *parent)
 		if (last_menu) {
 			parent->list = parent->next;
 			parent->next = last_menu->next;
-			last_menu->next = NULL;
+			last_menu->next = nullptr;
 		}
 
 		sym->dir_dep.expr = expr_alloc_or(sym->dir_dep.expr, parent->dep);
@@ -539,11 +541,11 @@ void menu_finalize(struct menu *parent)
 									    prop->visible.expr);
 				}
 			}
-			menu_add_symbol(P_CHOICE, sym, NULL);
+			menu_add_symbol(P_CHOICE, sym, nullptr);
 			prop = sym_get_choice_prop(sym);
 			for (ep = &prop->expr; *ep; ep = &(*ep)->left.expr)
 				;
-			*ep = expr_alloc_one(E_LIST, NULL);
+			*ep = expr_alloc_one(E_LIST, nullptr);
 			(*ep)->right.sym = menu->sym;
 		}
 
@@ -583,7 +585,7 @@ void menu_finalize(struct menu *parent)
 			}
 			last_menu->next = menu->next;
 			menu->next = menu->list;
-			menu->list = NULL;
+			menu->list = nullptr;
 		}
 	}
 
@@ -615,11 +617,9 @@ void menu_finalize(struct menu *parent)
 	}
 }
 
-bool menu_has_prompt(struct menu *menu)
+[[nodiscard]] bool menu_has_prompt(struct menu *menu)
 {
-	if (!menu->prompt)
-		return false;
-	return true;
+	return menu->prompt != nullptr;
 }
 
 /*
@@ -627,18 +627,18 @@ bool menu_has_prompt(struct menu *menu)
  * A menu is considered empty if it contains no or only
  * invisible entries.
  */
-bool menu_is_empty(struct menu *menu)
+[[nodiscard]] bool menu_is_empty(struct menu *menu)
 {
 	struct menu *child;
 
 	for (child = menu->list; child; child = child->next) {
 		if (menu_is_visible(child))
-			return(false);
+			return false;
 	}
-	return(true);
+	return true;
 }
 
-bool menu_is_visible(struct menu *menu)
+[[nodiscard]] bool menu_is_visible(struct menu *menu)
 {
 	struct menu *child;
 	struct symbol *sym;
@@ -676,38 +676,39 @@ bool menu_is_visible(struct menu *menu)
 	return false;
 }
 
-const char *menu_get_prompt(struct menu *menu)
+[[nodiscard]] const char *menu_get_prompt(struct menu *menu)
 {
 	if (menu->prompt)
 		return menu->prompt->text;
 	else if (menu->sym)
 		return menu->sym->name;
-	return NULL;
+	return nullptr;
 }
 
-struct menu *menu_get_root_menu(struct menu *menu)
+[[nodiscard]] struct menu *menu_get_root_menu([[maybe_unused]] struct menu *menu)
 {
 	return &rootmenu;
 }
 
-struct menu *menu_get_parent_menu(struct menu *menu)
+[[nodiscard]] struct menu *menu_get_parent_menu(struct menu *menu)
 {
 	enum prop_type type;
 
 	for (; menu != &rootmenu; menu = menu->parent) {
-		type = menu->prompt ? static_cast<prop_type>(menu->prompt->type) : static_cast<prop_type>(0);
+		/* P_UNKNOWN doubles as the sentinel for "no prompt" here */
+		type = menu->prompt ? menu->prompt->type : P_UNKNOWN;
 		if (type == P_MENU)
 			break;
 	}
 	return menu;
 }
 
-bool menu_has_help(struct menu *menu)
+[[nodiscard]] bool menu_has_help(struct menu *menu)
 {
-	return menu->help != NULL;
+	return menu->help != nullptr;
 }
 
-const char *menu_get_help(struct menu *menu)
+[[nodiscard]] const char *menu_get_help(struct menu *menu)
 {
 	if (menu->help)
 		return menu->help;
@@ -734,8 +735,8 @@ static void get_prompt_str(struct gstr *r, struct property *prop,
 			   struct list_head *head)
 {
 	int i, j;
-	struct menu *submenu[8], *menu, *location = NULL;
-	struct jump_key *jump = NULL;
+	struct menu *submenu[8], *menu, *location = nullptr;
+	struct jump_key *jump = nullptr;
 
 	str_printf(r, "  Prompt: %s\n", prop->text);
 
@@ -756,7 +757,7 @@ static void get_prompt_str(struct gstr *r, struct property *prop,
 		bool accessible = menu_is_visible(menu);
 
 		submenu[i++] = menu;
-		if (location == NULL && accessible)
+		if (location == nullptr && accessible)
 			location = menu;
 	}
 	if (head && location) {
@@ -819,7 +820,7 @@ static void get_symbol_props_str(struct gstr *r, struct symbol *sym,
 }
 
 /*
- * head is optional and may be NULL
+ * head is optional and may be nullptr
  */
 static void get_symbol_str(struct gstr *r, struct symbol *sym,
 		    struct list_head *head)
@@ -898,5 +899,5 @@ void menu_get_ext_help(struct menu *menu, struct gstr *help)
 	}
 	str_printf(help, "%s\n", help_text);
 	if (sym)
-		get_symbol_str(help, sym, NULL);
+		get_symbol_str(help, sym, nullptr);
 }

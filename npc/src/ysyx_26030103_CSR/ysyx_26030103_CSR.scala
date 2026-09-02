@@ -16,11 +16,13 @@ class ysyx_26030103_CSR extends Module {
     val CSRAddress = Input(UInt(12.W)) // ysyx_26030103_CSR地址，指令[31:20]
     val rs1 = Input(UInt(5.W)) // rs1寄存器编号，用于判断csrrs是否写ysyx_26030103_CSR
     val Rs1Data = Input(UInt(32.W)) // Rs1寄存器的数据
-    val pc = Input(UInt(32.W)) // 现在的ysyx_26030103_PC，就是ecall时保存到ysyx_26030103_mepc
+    val pc =
+      Input(UInt(32.W)) // 现在的ysyx_26030103_PC，就是ecall时保存到ysyx_26030103_mepc
     val CSR_rdata = Output(UInt(32.W)) // ysyx_26030103_CSR读出，写到rd
     val CSRValid = Output(Bool()) // 如果当前是ysyx_26030103_CSR指令，那就需要写回rd
     // 异常和返回的跳转控制
-    val ExceptionTaken = Output(Bool()) // 需要跳转，ecall到ysyx_26030103_mtvec，mret到ysyx_26030103_mepc
+    val ExceptionTaken =
+      Output(Bool()) // 需要跳转，ecall到ysyx_26030103_mtvec，mret到ysyx_26030103_mepc
     val ExceptionTarget = Output(UInt(32.W)) // 跳转目标地址
     // 新加的，真正的处理功能
     val Interrupt = Input(Bool())
@@ -83,7 +85,9 @@ class ysyx_26030103_CSR extends Module {
   val Mcycle_rdata = Mcycle.io.rdata
   // 真正的ebreak按RISC-V breakpoint异常处理：写ysyx_26030103_mepc/ysyx_26030103_mcause，然后跳ysyx_26030103_mtvec
   val HasInterrupt =
-    io.Interrupt && Mstatus_rdata(3) // ysyx_26030103_mstatus寄存器第3位是MIE，这个是处理器的中断使能，允许中断进来
+    io.Interrupt && Mstatus_rdata(
+      3
+    ) // ysyx_26030103_mstatus寄存器第3位是MIE，这个是处理器的中断使能，允许中断进来
   val IsException = io.IsEcall || io.IsEbreak || HasInterrupt || io.TrapValid
   /*
   根据RISCV手册来看，31号bit如果是0那就是异常，而如果是1，那就是中断
@@ -91,7 +95,9 @@ class ysyx_26030103_CSR extends Module {
    */
   val ExceptionCause = WireDefault(0.U(32.W))
   when(HasInterrupt) {
-    ExceptionCause := "h80000007".U(32.W) // ysyx_26030103_mcause=7，bit31=1说明这是中断不是异常
+    ExceptionCause := "h80000007".U(
+      32.W
+    ) // ysyx_26030103_mcause=7，bit31=1说明这是中断不是异常
   }.elsewhen(io.TrapValid) {
     ExceptionCause := io.TrapCause // EXU提交点送来的异常号:取指错1/非法指令2/load访存错5/store访存错7
   }.elsewhen(io.IsEbreak) {
@@ -117,7 +123,8 @@ class ysyx_26030103_CSR extends Module {
   就比如说ysyx_26030103_mtvec存0x80000001，BASE是0x80000000
   ecall和ebreak还是BASE，然后是中断7，所以中断跳的地址是BASE+4x7
    */
-  val ExceptionTargetBase = Cat(Mtvec_rdata(31, 2), 0.U(2.W)) // ysyx_26030103_mtvec 地址，4 字节对齐
+  val ExceptionTargetBase =
+    Cat(Mtvec_rdata(31, 2), 0.U(2.W)) // ysyx_26030103_mtvec 地址，4 字节对齐
   when(io.IsMret) {
     io.ExceptionTarget := Mepc_rdata // mret → 从异常返回，跳 ysyx_26030103_mepc
   }.otherwise {

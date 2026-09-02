@@ -25,7 +25,7 @@ class ysyx_26030103_ALUControlDecoder extends Module {
   or
   and
   nop是不知道
-  */
+   */
   val ALUOP_ADDR = 0.U(2.W)
   val ALUOP_BRANCH = 1.U(2.W)
   val ALUOP_ARITH = 2.U(2.W)

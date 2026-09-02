@@ -43,3 +43,6 @@ test_run_dir/
 !log/
 !log/**/*
 !*.csv
+
+# GCC C++ modules cache (build artifact)
+gcm.cache/

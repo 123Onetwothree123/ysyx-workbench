@@ -47,7 +47,7 @@ int dialog_inputbox(const char *title, const char *prompt, int height, int width
 	if (!init)
 		instr[0] = '\0';
 	else
-		strcpy(instr, init);
+		snprintf(instr, MAX_LEN + 1, "%s", init);
 
 do_resize:
 	if (getmaxy(stdscr) <= (height - INPUTBOX_HEIGTH_MIN))
@@ -66,12 +66,7 @@ do_resize:
 
 	draw_box(dialog, 0, 0, height, width,
 		 dlg.dialog.atr, dlg.border.atr);
-	wattrset(dialog, dlg.border.atr);
-	mvwaddch(dialog, height - 3, 0, ACS_LTEE);
-	for (i = 0; i < width - 2; i++)
-		waddch(dialog, ACS_HLINE);
-	wattrset(dialog, dlg.dialog.atr);
-	waddch(dialog, ACS_RTEE);
+	draw_bottom_border(dialog, height, width);
 
 	print_title(dialog, title, width);
 
@@ -112,6 +107,8 @@ do_resize:
 
 	while (key != KEY_ESC) {
 		key = wgetch(dialog);
+		if (key == ERR)	/* interrupted by a signal: unwind */
+			break;
 
 		if (button == -1) {	/* Input box selected */
 			switch (key) {
@@ -189,7 +186,7 @@ do_resize:
 				}
 				continue;
 			default:
-				if (key < 0x100 && isprint(key)) {
+				if (key >= 0 && key < 0x100 && isprint(key)) {
 					if (len < MAX_LEN) {
 						wattrset(dialog, dlg.inputbox.atr);
 						if (pos < len) {
