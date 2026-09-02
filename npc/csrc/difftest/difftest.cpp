@@ -8,11 +8,13 @@ module npc.difftest.difftest;
 import npc.difftest.DifftestCPUState;
 import npc.NPCTrap;
 import npc.ysyxSoC;
+// 兜底值必须与 Kconfig 的 CONFIG_MBASE / CONFIG_RESET_PC 默认值一致，
+// 否则脱离 Makefile 直接编译时 DiffTest 与 SoC 地址映射会不一致
 #ifndef CONFIG_MBASE
-#define CONFIG_MBASE 0x20000000
+#define CONFIG_MBASE 0x30000000
 #endif
 #ifndef CONFIG_RESET_PC
-#define CONFIG_RESET_PC 0x20000000
+#define CONFIG_RESET_PC 0x30000000
 #endif
 namespace
 {

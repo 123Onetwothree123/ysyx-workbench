@@ -1,7 +1,8 @@
 module;
 module npc.ysyxSoC;
+// 兜底值必须与 Kconfig 的 CONFIG_MBASE 默认值一致（与 SoCMemoryMap 模块保持同步）
 #ifndef CONFIG_MBASE
-#define CONFIG_MBASE 0x20000000u
+#define CONFIG_MBASE 0x30000000u
 #endif
 
 static_assert(std::endian::native == std::endian::little, "NPC 仅支持小端主机");

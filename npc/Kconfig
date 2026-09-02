@@ -650,6 +650,13 @@ config WATCHPOINT
   help
     启用监视点功能，用于监控表达式值的变化
 
+config WATCHPOINT_NUM
+  int "监视点数量上限"
+  default 32
+  depends on WATCHPOINT
+  help
+    监视点编号池的大小上限，修改后需重新编译
+
 config DIFFTEST
 	bool "启用差分测试difftest"
 	default n

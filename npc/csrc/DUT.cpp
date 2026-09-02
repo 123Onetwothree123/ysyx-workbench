@@ -416,7 +416,7 @@ std::expected<std::uint32_t, std::string> DUT::ReadGPR(std::uint32_t index)
 {
     if (index >= 32)
     {
-        return std::unexpected{std::format("GPR编号都超31号了，跑个毛线啊", index)};
+        return std::unexpected{std::format("GPR编号都超31号了: {0}", index)};
     }
     dut->debug_gpr_raddr = static_cast<CData>(index);
     dut->eval();
