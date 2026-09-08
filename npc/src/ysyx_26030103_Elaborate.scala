@@ -33,22 +33,6 @@ object ysyx_26030103_Elaborate extends App {
 
   emitVerilog(
     new ysyx_26030103(
-      resetAddr = 0x30000000L,
-      BlockSizeLog2 = BlockSizeLog2,
-      IndexBits = IndexBits,
-      BTBBits = BTBBits,
-      BTBWays = BTBWays,
-      JalBTBBits = JalBTBBits,
-      JalBTBWays = JalBTBWays,
-      RASBits = RASBits,
-      CacheableBase = CacheableBase_ysyxsoc,
-      CacheableMask = CacheableMask_ysyxsoc
-    ),
-    Array("--target-dir", targetDir),
-    yosysFirtoolOpts
-  )
-  emitVerilog(
-    new ysyx_26030103(
       resetAddr = 0x80000000L + CachePadding,
       BlockSizeLog2 = BlockSizeLog2,
       IndexBits = IndexBits,

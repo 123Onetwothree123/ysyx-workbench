@@ -63,9 +63,7 @@ class ysyx_26030103(
   val pred_tag_target = RegEnable(ifu.io.PredTarget, 0.U(32.W), accept_fetch)
   ifuResp.bits.pred_taken := pred_tag_taken
   ifuResp.bits.pred_target := pred_tag_target
-  // 响应级不再重新查表(第二查询端口保留在模块里, 顶层不再使用)
-  btb.io.lookup2_pc := 0.U(30.W)
-  jal_btb.io.lookup2_pc := 0.U(30.W)
+  // 响应级不再重新查表, 预测标签在取指接受时快照保存
   icache.io.resp_ready := ifuResp.ready
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
   icache.io.kill := pipe_flush

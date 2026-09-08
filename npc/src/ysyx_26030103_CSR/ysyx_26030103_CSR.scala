@@ -123,13 +123,6 @@ class ysyx_26030103_CSR extends Module {
   就比如说ysyx_26030103_mtvec存0x80000001，BASE是0x80000000
   ecall和ebreak还是BASE，然后是中断7，所以中断跳的地址是BASE+4x7
    */
-  val ExceptionTargetBase =
-    Cat(Mtvec_rdata(31, 2), 0.U(2.W)) // ysyx_26030103_mtvec 地址，4 字节对齐
-  when(io.IsMret) {
-    io.ExceptionTarget := Mepc_rdata // mret → 从异常返回，跳 ysyx_26030103_mepc
-  }.otherwise {
-    io.ExceptionTarget := ExceptionTargetBase // 中断/异常 → 统一跳 ysyx_26030103_mtvec
-  }
   // ecall和ebreak异常进入时，MPP写11，MPIE写旧MIE，MIE写0
   // MPP，00是U，01是S，11是M
   // 他妈的又忘记了，先标记一下，MPP是标记现在的等级的，MPIE是专门保存MIE的，MIE在异常的时候要关闭中断（归零）

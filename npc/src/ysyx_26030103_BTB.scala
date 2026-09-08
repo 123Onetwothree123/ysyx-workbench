@@ -25,21 +25,16 @@ class ysyx_26030103_BTB(
   val AddrShiftedWidth = AddressWidth - 2 // PC[31:2], 低位始终为0
   val HasKind = KindBits > 0
   val io = IO(new Bundle {
-    // 查询端口1(组合逻辑,IFU每拍用当前PC[31:2]查,决定下一PC)
+    // 查询端口(组合逻辑,IFU每拍用当前PC[31:2]查,决定下一PC)
     val lookup_pc = Input(UInt(AddrShiftedWidth.W))
     val hit = Output(Bool())
     val target = Output(UInt(AddressWidth.W))
-    // 查询端口2(原响应级贴标签用; 已改为取指接受时快照标签, 顶层不再使用, 仅保留端口)
-    val lookup2_pc = Input(UInt(AddrShiftedWidth.W))
-    val hit2 = Output(Bool())
-    val target2 = Output(UInt(AddressWidth.W))
     // 更新端口(EXU提交分支/jal时写,写PC对应的真实target)
     val update_valid = Input(Bool())
     val update_pc = Input(UInt(AddrShiftedWidth.W))
     val update_target = Input(UInt(AddressWidth.W))
     // 可选kind端口(仅KindBits>0时存在)
     val hit_kind = if (HasKind) Some(Output(UInt(KindBits.W))) else None
-    val hit2_kind = if (HasKind) Some(Output(UInt(KindBits.W))) else None
     val update_kind = if (HasKind) Some(Input(UInt(KindBits.W))) else None
   })
 
@@ -65,20 +60,6 @@ class ysyx_26030103_BTB(
   io.target := target(lookup_idx)(hit_way)
   if (HasKind) {
     io.hit_kind.get := kind.get(lookup_idx)(hit_way)
-  }
-
-  // 第二查询端口(响应级用resp_addr查,跟端口1读同一张表)
-  val lookup2_idx = io.lookup2_pc(BTBBits - 1, 0)
-  val lookup2_tag = io.lookup2_pc(AddrShiftedWidth - 1, BTBBits)
-  val hit2_vec = Wire(Vec(BTBWays, Bool()))
-  for (w <- 0 until BTBWays) {
-    hit2_vec(w) := valid(lookup2_idx)(w) && tag(lookup2_idx)(w) === lookup2_tag
-  }
-  val hit2_way = hit2_vec.indexWhere((h: Bool) => h)
-  io.hit2 := hit2_vec.reduceTree(_ || _)
-  io.target2 := target(lookup2_idx)(hit2_way)
-  if (HasKind) {
-    io.hit2_kind.get := kind.get(lookup2_idx)(hit2_way)
   }
 
   // 更新: 写入对应组,命中同tag则更新target,否则找第一个空槽,组满按轮转指针替换(FIFO)
