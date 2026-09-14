@@ -1,4 +1,5 @@
 NPC_HOME := $(CURDIR)
+SHELL := /bin/bash
 BUILD_DIR = ./build
 YSYXSOC_DIR = ../ysyxSoC
 YSYXSOC_PERIP_DIR = $(YSYXSOC_DIR)/perip
@@ -609,9 +610,12 @@ yosys-sta: verilog
 		RTL_FILES="$(abspath $(BUILD_DIR)/ysyx_26030103.sv)" \
 		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
 		O=$(abspath $(YOSYS_STA_HOME))/result
-	@TS_DIR="$(YOSYS_STA_RESULT)/$$(date +%Y%m%d-%H%M%S)"; \
+	@SRC_DIR="$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz-$(PDK_VALUE)"; \
+	TS_DIR="$(YOSYS_STA_RESULT)/$$(date +%Y%m%d-%H%M%S)"; \
+	set -o pipefail; \
 	mkdir -p "$$TS_DIR" && \
-	cp -r "$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz-$(PDK_VALUE)/." "$$TS_DIR/" && \
+	tar -C "$$SRC_DIR" --exclude='yosys.log' --exclude='sta.log' --exclude='*.v' --exclude='*.v.sim' -cf - . | tar -C "$$TS_DIR" -xf - && \
+	find "$$SRC_DIR" -type f \( -name '*.v' -o -name '*.v.sim' \) -delete && \
 	echo "[yosys-sta] 结果已保存到 $$TS_DIR"
 
 ifeq ($(SIM_TOP),soc)
