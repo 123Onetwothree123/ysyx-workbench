@@ -3,7 +3,7 @@ package ysyx_26030103
 import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.loadMemoryFromFileInline
-import _root_.ysyx_26030103.ysyx_26030103_AXI5._
+import _root_.ysyx_26030103.infra._
 
 class riscv32e_npc_AXIRAM extends Module {
   val io = IO(new Bundle {

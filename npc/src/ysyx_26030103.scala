@@ -4,9 +4,13 @@ import chisel3.util._
 
 //他妈的，我们伟大的scala插件和编译器设计专家应该要以死谢罪，是哪个天才想到的，如果直接写ysyx_26030103，因为我这个顶层模块类和包同名了
 //能被解读成ysyx_26030103的ysyx_26030103的AXI模块，还得手动指定从最顶层的根目录去找
-import _root_.ysyx_26030103.ysyx_26030103_AXI5._
-import _root_.ysyx_26030103.ysyx_26030103_GPR._
-import _root_.ysyx_26030103.ysyx_26030103_Message._
+import _root_.ysyx_26030103.common._
+import _root_.ysyx_26030103.infra._
+import _root_.ysyx_26030103.ifu._
+import _root_.ysyx_26030103.idu._
+import _root_.ysyx_26030103.exu._
+import _root_.ysyx_26030103.mem._
+import _root_.ysyx_26030103.wbu._
 
 class ysyx_26030103(
     resetAddr: Long = 0x30000000L,

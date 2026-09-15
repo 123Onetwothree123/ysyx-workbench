@@ -178,195 +178,223 @@ config VERILATOR_CXX_STD
 
 endmenu
 
-menu "优化"
+menu "编译选项"
 
-menu "性能优化"
+  menu "优化"
 
-choice
-  prompt "优化级别"
-  default CC_O3
-config CC_O0
-  bool "O0"
-config CC_O1
-  bool "O1"
-config CC_O2
-  bool "O2"
-config CC_O3
-  bool "O3"
-config CC_OFAST
-  bool "Ofast"
-  help
-    等同于-O3加上-ffast-math
-    放宽IEEE浮点标准合规性换取速度
-    可能导致浮点计算结果与标准不一致
-endchoice
+  menu "性能优化"
 
-config CC_OPT
-  string
-  default "-O0" if CC_O0
-  default "-O1" if CC_O1
-  default "-O2" if CC_O2
-  default "-O3" if CC_O3
-  default "-Ofast" if CC_OFAST
-  default "-O3"
+  choice
+    prompt "优化级别"
+    default CC_O3
+  config CC_O0
+    bool "O0"
+  config CC_O1
+    bool "O1"
+  config CC_O2
+    bool "O2"
+  config CC_O3
+    bool "O3"
+  config CC_OFAST
+    bool "Ofast"
+    help
+      等同于-O3加上-ffast-math
+      放宽IEEE浮点标准合规性换取速度
+      可能导致浮点计算结果与标准不一致
+  endchoice
 
-config CC_LTO
-  bool "启用链接时优化-flto"
-  default n
+  config CC_OPT
+    string
+    default "-O0" if CC_O0
+    default "-O1" if CC_O1
+    default "-O2" if CC_O2
+    default "-O3" if CC_O3
+    default "-Ofast" if CC_OFAST
+    default "-O3"
 
-choice
-  prompt "PGO配置引导优化"
-  default PGO_OFF
-  help
-    Profile-Guided Optimization，基于实际运行数据优化
-config PGO_OFF
-  bool "关闭"
-config PGO_GENERATE
-  bool "手动：生成profile数据"
-  help
-    添加-fprofile-generate，编译后运行产生profile文件
-    之后切到"使用"选项重新编译
-config PGO_USE
-  bool "手动：使用profile数据优化"
-  help
-    添加-fprofile-use，读取之前运行产生的profile文件优化
-    使用前不要make clean，否则profile数据丢失
-config PGO_AUTO
-  bool "自动（一步到位）"
-  help
-    使用make pgo自动完成全部流程：
-      make pgo file=镜像文件.bin
-    内部自动执行：
-      1. 以-fprofile-generate编译插桩版本
-      2. 运行指定的镜像文件收集热点数据
-      3. 以-fprofile-use重新编译，应用profile优化
-      4. 运行最终优化后的程序
-    注意：必须通过file=指定要运行的镜像文件
-endchoice
+  config CC_LTO
+    bool "启用链接时优化-flto"
+    default n
 
-choice
-  prompt "架构优化-march"
-  default MARCH_OFF
-config MARCH_OFF
-  bool "不指定"
-config MARCH_NATIVE
-  bool "native（本机CPU）"
-config MARCH_CUSTOM
-  bool "手动指定"
-endchoice
+  choice
+    prompt "PGO配置引导优化"
+    default PGO_OFF
+    help
+      Profile-Guided Optimization，基于实际运行数据优化
+  config PGO_OFF
+    bool "关闭"
+  config PGO_GENERATE
+    bool "手动：生成profile数据"
+    help
+      添加-fprofile-generate，编译后运行产生profile文件
+      之后切到"使用"选项重新编译
+  config PGO_USE
+    bool "手动：使用profile数据优化"
+    help
+      添加-fprofile-use，读取之前运行产生的profile文件优化
+      使用前不要make clean，否则profile数据丢失
+  config PGO_AUTO
+    bool "自动（一步到位）"
+    help
+      使用make pgo自动完成全部流程：
+        make pgo file=镜像文件.bin
+      内部自动执行：
+        1. 以-fprofile-generate编译插桩版本
+        2. 运行指定的镜像文件收集热点数据
+        3. 以-fprofile-use重新编译，应用profile优化
+        4. 运行最终优化后的程序
+      注意：必须通过file=指定要运行的镜像文件
+  endchoice
 
-config MARCH_CUSTOM_VALUE
-  string "架构名称"
-  default "x86-64-v3"
-  depends on MARCH_CUSTOM
-  help
-    输入GCC/Clang支持的架构名，例如：
-    alderlake, raptorlake, znver4, skylake, x86-64-v3
+  choice
+    prompt "架构优化-march"
+    default MARCH_OFF
+  config MARCH_OFF
+    bool "不指定"
+  config MARCH_NATIVE
+    bool "native（本机CPU）"
+  config MARCH_CUSTOM
+    bool "手动指定"
+  endchoice
 
-config CC_IPA_PTA
-  bool "跨过程指针分析-fipa-pta"
-  default n
-  depends on CC_GPP
-  help
-    允许编译器跨函数分析指针别名，发现更多优化机会
-    会显著增加编译时间（仅GCC支持）
+  config MARCH_CUSTOM_VALUE
+    string "架构名称"
+    default "x86-64-v3"
+    depends on MARCH_CUSTOM
+    help
+      输入GCC/Clang支持的架构名，例如：
+      alderlake, raptorlake, znver4, skylake, x86-64-v3
 
-config CC_PREFETCH
-  bool "软件预取大数组-fprefetch-loop-arrays"
-  default n
-  depends on CC_GPP
-  help
-    在循环中插入prefetch指令提前加载数据到缓存
-    对遍历大数组的场景有效，对小数据量可能反而变慢（仅GCC支持）
+  config CC_IPA_PTA
+    bool "跨过程指针分析-fipa-pta"
+    default n
+    depends on CC_GPP
+    help
+      允许编译器跨函数分析指针别名，发现更多优化机会
+      会显著增加编译时间（仅GCC支持）
 
-config CC_PIPE
-  bool "使用管道加速编译-pipe"
-  default n
-  help
-    编译阶段间用管道代替临时文件，减少磁盘IO
+  config CC_PREFETCH
+    bool "软件预取大数组-fprefetch-loop-arrays"
+    default n
+    depends on CC_GPP
+    help
+      在循环中插入prefetch指令提前加载数据到缓存
+      对遍历大数组的场景有效，对小数据量可能反而变慢（仅GCC支持）
 
-config CC_SPLIT_DWARF
-  bool "拆分调试信息加速链接-gsplit-dwarf"
-  default n
-  help
-    将调试信息拆分到.dwo文件，减少链接器处理量
-    需配合-g使用
+  config CC_PIPE
+    bool "使用管道加速编译-pipe"
+    default n
+    help
+      编译阶段间用管道代替临时文件，减少磁盘IO
 
-endmenu
+  config CC_SPLIT_DWARF
+    bool "拆分调试信息加速链接-gsplit-dwarf"
+    default n
+    help
+      将调试信息拆分到.dwo文件，减少链接器处理量
+      需配合-g使用
 
-menu "大小优化"
+  endmenu
 
-config CC_GC_SECTIONS
-  bool "删除未使用代码和数据-ffunction-sections -fdata-sections"
-  default n
-  help
-    将每个函数和数据放入独立section
-    链接时通过--gc-sections丢弃未引用的section
+  menu "大小优化"
 
-config CC_STRIP
-  bool "剥离符号表-s"
-  default n
-  help
-    链接时删除所有符号信息，减小二进制体积
-    启用后无法用gdb调试
+  config CC_GC_SECTIONS
+    bool "删除未使用代码和数据-ffunction-sections -fdata-sections"
+    default n
+    help
+      将每个函数和数据放入独立section
+      链接时通过--gc-sections丢弃未引用的section
 
-config CC_VISIBILITY_HIDDEN
-  bool "默认隐藏符号-fvisibility=hidden"
-  default n
-  help
-    所有符号默认不导出，减少动态链接开销
-    对可执行文件无副作用
+  config CC_STRIP
+    bool "剥离符号表-s"
+    default n
+    help
+      链接时删除所有符号信息，减小二进制体积
+      启用后无法用gdb调试
 
-endmenu
+  config CC_VISIBILITY_HIDDEN
+    bool "默认隐藏符号-fvisibility=hidden"
+    default n
+    help
+      所有符号默认不导出，减少动态链接开销
+      对可执行文件无副作用
 
-endmenu
+  endmenu
 
-menu "调试与分析"
+  endmenu
 
-config CC_DEBUG
-  bool "生成调试信息-g"
-  default n
+  menu "警告"
 
-config CC_NO_OMIT_FP
-  bool "保留帧指针-fno-omit-frame-pointer"
-  default n
+  config CC_WALL
+    bool "启用额外警告-Wall -Wextra"
+    default n
 
-config CC_ASAN
-  bool "启用ASan地址错误检测-fsanitize=address"
-  default n
+  config CC_WERROR
+    bool "将警告视为错误-Werror"
+    default n
 
-config CC_UBSAN
-  bool "启用UBSan未定义行为检测-fsanitize=undefined"
-  default n
+  config CC_PEDANTIC
+    bool "严格ISO C++合规警告-Wpedantic"
+    default n
 
-config CC_TSAN
-  bool "启用TSan线程竞争检测-fsanitize=thread"
-  default n
-  help
-    检测数据竞争，不能与ASan同时使用
+  config CC_WCONVERSION
+    bool "隐式类型转换警告-Wconversion"
+    default n
 
-config CC_COVERAGE
-  bool "启用代码覆盖率--coverage"
-  default n
-  help
-    编译后运行程序会生成.gcda/.gcno文件
-    用gcov/lcov/genhtml生成覆盖率报告
+  config CC_COLOR
+    bool "强制彩色编译输出-fdiagnostics-color=always"
+    default n
 
-config CC_GPROF
-  bool "启用gprof性能分析-pg"
-  default n
-  help
-    运行后生成gmon.out，用gprof分析热点函数
+  endmenu
 
-config CC_TIME_REPORT
-  bool "显示编译各阶段耗时-ftime-report"
-  default n
+  menu "调试与分析"
 
-config BUILD_TIMESTAMP
-  bool "嵌入构建时间戳"
-  default n
-  help
-    将编译时间嵌入二进制，可在运行时打印版本信息
+  config CC_DEBUG
+    bool "生成调试信息-g"
+    default n
+
+  config CC_NO_OMIT_FP
+    bool "保留帧指针-fno-omit-frame-pointer"
+    default n
+
+  config CC_ASAN
+    bool "启用ASan地址错误检测-fsanitize=address"
+    default n
+
+  config CC_UBSAN
+    bool "启用UBSan未定义行为检测-fsanitize=undefined"
+    default n
+
+  config CC_TSAN
+    bool "启用TSan线程竞争检测-fsanitize=thread"
+    default n
+    help
+      检测数据竞争，不能与ASan同时使用
+
+  config CC_COVERAGE
+    bool "启用代码覆盖率--coverage"
+    default n
+    help
+      编译后运行程序会生成.gcda/.gcno文件
+      用gcov/lcov/genhtml生成覆盖率报告
+
+  config CC_GPROF
+    bool "启用gprof性能分析-pg"
+    default n
+    help
+      运行后生成gmon.out，用gprof分析热点函数
+
+  config CC_TIME_REPORT
+    bool "显示编译各阶段耗时-ftime-report"
+    default n
+
+  config BUILD_TIMESTAMP
+    bool "嵌入构建时间戳"
+    default n
+    help
+      将编译时间嵌入二进制，可在运行时打印版本信息
+
+  endmenu
 
 endmenu
 
@@ -434,330 +462,396 @@ config LOG_SOURCE_LOCATION
 
 endmenu
 
-menu "警告"
+menu "Verilator 仿真"
 
-config CC_WALL
-  bool "启用额外警告-Wall -Wextra"
-  default n
+  menu "构建与并行"
 
-config CC_WERROR
-  bool "将警告视为错误-Werror"
-  default n
+    config BUILD_THREADS
+      int "构建线程数，0 = 使用全部核心"
+      default 0
+      help
+        设置Verilator并行构建的线程数
+        0表示使用所有可用核心
+        超过系统核心数的值将被限制为系统核心数
 
-config CC_PEDANTIC
-  bool "严格ISO C++合规警告-Wpedantic"
-  default n
+    config SIM_THREADS
+      int "仿真线程数，0 = 全部核心，1 = 单线程"
+      default 1
+      help
+        设置Verilator运行仿真时使用的线程数
+        0表示使用所有可用核心
+        1表示单线程，这是默认值，也是最稳妥的选择
+        超过系统核心数的值将被限制为系统核心数
+        由于存在线程同步开销，多线程仿真不一定更快
 
-config CC_WCONVERSION
-  bool "隐式类型转换警告-Wconversion"
-  default n
+    config OUTPUT_SPLIT
+      int "输出文件拆分大小（行数），0 = 不拆分"
+      default 20000
+      help
+        设置Verilator的--output-split参数
+        将生成的C++文件按行数拆分成多个小文件
+        有助于并行编译加速，建议值20000
+        0表示不拆分
 
-config CC_COLOR
-  bool "强制彩色编译输出-fdiagnostics-color=always"
-  default n
+  endmenu
 
-endmenu
+  menu "波形追踪"
 
-menu "Verilator选项"
+    choice
+      prompt "波形追踪"
+      default TRACE_NONE
+    config TRACE_NONE
+      bool "不生成波形"
+    config TRACE_VCD
+      bool "VCD --trace"
+    config TRACE_FST
+      bool "FST --trace-fst"
+    endchoice
 
-config BUILD_THREADS
-  int "构建线程数，0 = 使用全部核心"
-  default 0
-  help
-    设置Verilator并行构建的线程数
-    0表示使用所有可用核心
-    超过系统核心数的值将被限制为系统核心数
+    config TRACE_DEPTH
+      int "波形追踪深度，0 = 全部层级"
+      default 0
+      depends on !TRACE_NONE
+      help
+        设置Verilator波形追踪的--trace-depth层级
+        0表示追踪所有层级
 
-config SIM_THREADS
-  int "仿真线程数，0 = 全部核心，1 = 单线程"
-  default 1
-  help
-    设置Verilator运行仿真时使用的线程数
-    0表示使用所有可用核心
-    1表示单线程，这是默认值，也是最稳妥的选择
-    超过系统核心数的值将被限制为系统核心数
-    由于存在线程同步开销，多线程仿真不一定更快
+    config TRACE_FILE
+      string "波形输出文件路径"
+      default "oscillogram/waveform.vcd" if TRACE_VCD
+      default "oscillogram/waveform.fst" if TRACE_FST
+      depends on !TRACE_NONE
+      help
+        波形文件的输出路径，相对于npc目录
 
-config OUTPUT_SPLIT
-  int "输出文件拆分大小（行数），0 = 不拆分"
-  default 20000
-  help
-    设置Verilator的--output-split参数
-    将生成的C++文件按行数拆分成多个小文件
-    有助于并行编译加速，建议值20000
-    0表示不拆分
+  endmenu
 
-choice
-  prompt "波形追踪"
-  default TRACE_NONE
-config TRACE_NONE
-  bool "不生成波形"
-config TRACE_VCD
-  bool "VCD --trace"
-config TRACE_FST
-  bool "FST --trace-fst"
-endchoice
+  menu "仿真行为"
 
-config TRACE_DEPTH
-  int "波形追踪深度，0 = 全部层级"
-  default 0
-  depends on !TRACE_NONE
-  help
-    设置Verilator波形追踪的--trace-depth层级
-    0表示追踪所有层级
+    choice
+      prompt "Verilator优化级别"
+      default VERILATOR_O3
+    config VERILATOR_O0
+      bool "O0"
+    config VERILATOR_O1
+      bool "O1"
+    config VERILATOR_O2
+      bool "O2"
+    config VERILATOR_O3
+      bool "O3"
+    endchoice
 
-config TRACE_FILE
-  string "波形输出文件路径"
-  default "oscillogram/waveform.vcd" if TRACE_VCD
-  default "oscillogram/waveform.fst" if TRACE_FST
-  depends on !TRACE_NONE
-  help
-    波形文件的输出路径，相对于npc目录
+    config VERILATOR_OPT
+      string
+      default "-O0" if VERILATOR_O0
+      default "-O1" if VERILATOR_O1
+      default "-O2" if VERILATOR_O2
+      default "-O3" if VERILATOR_O3
+      default "-O3"
 
-choice
-  prompt "Verilator优化级别"
-  default VERILATOR_O3
-config VERILATOR_O0
-  bool "O0"
-config VERILATOR_O1
-  bool "O1"
-config VERILATOR_O2
-  bool "O2"
-config VERILATOR_O3
-  bool "O3"
-endchoice
+    config PROF_CFUNCS
+      bool "启用性能分析--prof-cfuncs"
+      default n
 
-config VERILATOR_OPT
-  string
-  default "-O0" if VERILATOR_O0
-  default "-O1" if VERILATOR_O1
-  default "-O2" if VERILATOR_O2
-  default "-O3" if VERILATOR_O3
-  default "-O3"
+    config AUTOFLUSH
+      bool "启用自动刷新--autoflush"
+      default y
+      help
+        每个周期结束后自动刷新输出流
+        禁用此项可能提升性能，但如果仿真崩溃，波形可能不完整
 
-config PROF_CFUNCS
-  bool "启用性能分析--prof-cfuncs"
-  default n
+    config ASSERT
+      bool "启用SystemVerilog断言--assert"
+      default n
+      help
+        启用RTL设计中的SVA断言
+        为提高性能，默认使用--noassert
 
-config AUTOFLUSH
-  bool "启用自动刷新--autoflush"
-  default y
-  help
-    每个周期结束后自动刷新输出流
-    禁用此项可能提升性能，但如果仿真崩溃，波形可能不完整
+    choice
+      prompt "X赋值模式--x-assign"
+      default X_ASSIGN_FAST
+    config X_ASSIGN_FAST
+      bool "fast"
+    config X_ASSIGN_0
+      bool "0"
+    config X_ASSIGN_1
+      bool "1"
+    config X_ASSIGN_UNIQUE
+      bool "unique"
+    endchoice
 
-config ASSERT
-  bool "启用SystemVerilog断言--assert"
-  default n
-  help
-    启用RTL设计中的SVA断言
-    为提高性能，默认使用--noassert
+    choice
+      prompt "X初始值模式--x-initial"
+      default X_INITIAL_FAST
+    config X_INITIAL_FAST
+      bool "fast"
+    config X_INITIAL_0
+      bool "0"
+    config X_INITIAL_1
+      bool "1"
+    config X_INITIAL_UNIQUE
+      bool "unique"
+    endchoice
 
-choice
-  prompt "X赋值模式--x-assign"
-  default X_ASSIGN_FAST
-config X_ASSIGN_FAST
-  bool "fast"
-config X_ASSIGN_0
-  bool "0"
-config X_ASSIGN_1
-  bool "1"
-config X_ASSIGN_UNIQUE
-  bool "unique"
-endchoice
+    config COVERAGE
+      bool "启用RTL覆盖率统计--coverage"
+      default n
 
-choice
-  prompt "X初始值模式--x-initial"
-  default X_INITIAL_FAST
-config X_INITIAL_FAST
-  bool "fast"
-config X_INITIAL_0
-  bool "0"
-config X_INITIAL_1
-  bool "1"
-config X_INITIAL_UNIQUE
-  bool "unique"
-endchoice
-
-config COVERAGE
-  bool "启用RTL覆盖率统计--coverage"
-  default n
+  endmenu
 
 endmenu
 
-menu "测试与调试"
+menu "硬件配置"
 
-config SDB
-  bool "启用SDB调试器"
-  default y
+  menu "ICache"
 
-config PERF_STATS
-  bool "启用性能统计（IPC/指令数/周期数）"
-  default y
-  help
-    在仿真结束时输出动态指令数、周期数和IPC
-    IPC = 指令数 / 周期数，反映处理器微结构效率
-    开启后每周期读取debug_commit信号计数，开销极低
+    config CACHE_BLOCK_SIZE_LOG2
+      int "ICache块大小的log2（2^N字节）"
+      default 4
+      range 2 6
+      help
+        2=4字节, 3=8字节, 4=16字节, 5=32字节, 6=64字节。
+        修改后需重新 make verilog 以重新生成RTL。
 
-config PERF_SAVE
-  bool "启用性能数据自动存档（TSV文件）"
-  default y
-  depends on PERF_STATS
-  help
-    仿真结束后自动把性能数据写入 NPCSimResult/ 目录
-    每次运行生成时间戳命名的 .tsv 和 .log 文件
-    同时追加到 perf.tsv 累计表格
+    config CACHE_INDEX_BITS
+      int "ICache索引位宽（2^N个块）"
+      default 5
+      range 1 10
+      help
+        1=2块, 5=32块, 10=1024块。
+        修改后需重新 make verilog 以重新生成RTL。
 
-config TRACE
-  bool "启用追踪功能（总开关）"
-  default n
+  endmenu
 
-config ITRACE
-  bool "启用指令追踪itrace"
-  default n
-  depends on TRACE
+  menu "分支预测 (BTB / RAS)"
 
-config ITRACE_WRITE_FILE
-  bool "itrace 输出到文件 (itrace.txt)"
-  default n
-  depends on ITRACE
+    config BTB_BITS
+      int "BTB索引位宽（2^N组）"
+      default 4
+      range 1 10
+      help
+        BTB组数=2^N。1=2组, 4=16组, 10=1024组。
+        修改后需重新 make verilog 以重新生成RTL。
+        建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_BTB_BITS保持一致, 以便用branchsim校准RTL。
 
-config MTRACE
-  bool "启用内存追踪mtrace"
-  default n
-  depends on TRACE
+    config BTB_WAYS
+      int "BTB相联度（1=直接映射）"
+      default 1
+      range 1 8
+      help
+        每组表项数, 1=直接映射, 2=2路组相联, 以此类推。
+        修改后需重新 make verilog 以重新生成RTL。
+        建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_BTB_WAYS保持一致, 以便用branchsim校准RTL。
 
-config FTRACE
-  bool "启用函数调用追踪ftrace"
-  default n
-  depends on TRACE
+    config JAL_BTB_BITS
+      int "jal BTB索引位宽（2^N组）"
+      default 4
+      range 1 10
+      help
+        jal专用BTB组数=2^N(方案B: 独立小表, 与分支BTB零干扰)。4=16组。
+        修改后需重新 make verilog 以重新生成RTL。
+        建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_JAL_BTB_BITS保持一致, 以便用branchsim校准RTL。
 
-config IRINGBUF
-  bool "启用指令环形缓冲区iringbuf"
-  default n
-  depends on TRACE
-  help
-    在环形缓冲区中记录最近执行的指令，并在NPC异常终止时输出
+    config JAL_BTB_WAYS
+      int "jal BTB相联度（1=直接映射）"
+      default 1
+      range 1 8
+      help
+        每组表项数, 1=直接映射, 2=2路组相联, 以此类推。
+        修改后需重新 make verilog 以重新生成RTL。
+        建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_JAL_BTB_WAYS保持一致, 以便用branchsim校准RTL。
 
-config IRINGBUF_SIZE
-  int "指令环形缓冲区大小"
-  default 16
-  depends on IRINGBUF
+    config RAS_BITS
+      int "返回地址栈(RAS)深度位宽（深度=2^N）"
+      default 4
+      range 1 8
+      help
+        RAS深度=2^N, 用于ret的跳转目标预测。4=16深, branchsim评估显示8深即够用。
+        修改后需重新 make verilog 以重新生成RTL。
+        建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_RAS_BITS保持一致, 以便用branchsim校准RTL。
 
-config WATCHPOINT
-  bool "启用监视点"
-  default n
-  help
-    启用监视点功能，用于监控表达式值的变化
+  endmenu
 
-config WATCHPOINT_NUM
-  int "监视点数量上限"
-  default 32
-  depends on WATCHPOINT
-  help
-    监视点编号池的大小上限，修改后需重新编译
+  menu "目标体系结构"
 
-config DIFFTEST
-	bool "启用差分测试difftest"
-	default n
-	help
-	  启用差分测试，并使用NEMU作为参考模型
-	  需要将NEMU编译为.so共享库
-	  使用make run diff=/path/to/nemu-so指定参考模型
+    config MBASE
+      hex "内存基地址"
+      default 0x30000000
+      help
+        加载程序镜像的内存区域基地址
 
-config CACHE_PADDING
-	int "ICache字节填充（用于对齐热点循环到cache块边界）"
-	default 0
-	range 0 15
-	help
-	  在.text段前插入的空白字节数，用于调整代码在内存中的位置
-	  使热点循环对齐到ICache块边界，以减少cache块的占用。
-	  默认0表示不填充。需要结合性能计数器分析热点循环地址后设置。
-	  仅对 npc 独立仿真路径（SIM_TOP=npc）生效：镜像整体后移N字节，
-	  复位PC同步加N。SoC路径启动地址由RTL固定，不受此选项影响。
+    config MSIZE
+      hex "内存大小"
+      default 0x10000000
+      help
+        内存区域的大小，单位为字节
 
-config CACHE_BLOCK_SIZE_LOG2
-	int "ICache块大小的log2（2^N字节）"
-	default 4
-	range 2 6
-	help
-	  2=4字节, 3=8字节, 4=16字节, 5=32字节, 6=64字节。
-	  修改后需重新 make verilog 以重新生成RTL。
+    config RESET_PC
+      hex "复位PC地址"
+      default 0x30000000
+      help
+        复位后程序计数器的初始值
 
-config CACHE_INDEX_BITS
-	int "ICache索引位宽（2^N个块）"
-	default 5
-	range 1 10
-	help
-	  1=2块, 5=32块, 10=1024块。
-	  修改后需重新 make verilog 以重新生成RTL。
+    config CACHE_PADDING
+      int "ICache字节填充（用于对齐热点循环到cache块边界）"
+      default 0
+      range 0 15
+      help
+        在.text段前插入的空白字节数，用于调整代码在内存中的位置
+        使热点循环对齐到ICache块边界，以减少cache块的占用。
+        默认0表示不填充。需要结合性能计数器分析热点循环地址后设置。
+        仅对 npc 独立仿真路径（SIM_TOP=npc）生效：镜像整体后移N字节，
+        复位PC同步加N。SoC路径启动地址由RTL固定，不受此选项影响。
 
-config BTB_BITS
-	int "BTB索引位宽（2^N组）"
-	default 4
-	range 1 10
-	help
-	  BTB组数=2^N。1=2组, 4=16组, 10=1024组。
-	  修改后需重新 make verilog 以重新生成RTL。
-	  建议与branchsim的CONFIG_BTB_BITS保持一致, 以便用branchsim校准RTL。
+  endmenu
 
-config BTB_WAYS
-	int "BTB相联度（1=直接映射）"
-	default 1
-	range 1 8
-	help
-	  每组表项数, 1=直接映射, 2=2路组相联, 以此类推。
-	  修改后需重新 make verilog 以重新生成RTL。
-	  建议与branchsim的CONFIG_BTB_WAYS保持一致, 以便用branchsim校准RTL。
+  menu "SoC 总线延迟模型"
 
-config JAL_BTB_BITS
-	int "jal BTB索引位宽（2^N组）"
-	default 4
-	range 1 10
-	help
-	  jal专用BTB组数=2^N(方案B: 独立小表, 与分支BTB零干扰)。4=16组。
-	  修改后需重新 make verilog 以重新生成RTL。
-	  建议与branchsim的CONFIG_JAL_BTB_BITS保持一致, 以便用branchsim校准RTL。
+    config SYNTH_FREQ
+      int "综合目标频率 (MHz)"
+      default 450
+      help
+        综合器尝试达到的目标频率。设置越高，综合器可能使用更多
+        面积换取更低的逻辑延迟。受限于工艺库和寄存器堆/加法器/SRAM等
+        关键部件的最大工作频率。
+        该值同时作为 APB/AXI 延迟模型的 CPU 频率传入 RTL，
+        修改后需重新 make verilog。
 
-config JAL_BTB_WAYS
-	int "jal BTB相联度（1=直接映射）"
-	default 1
-	range 1 8
-	help
-	  每组表项数, 1=直接映射, 2=2路组相联, 以此类推。
-	  修改后需重新 make verilog 以重新生成RTL。
-	  建议与branchsim的CONFIG_JAL_BTB_WAYS保持一致, 以便用branchsim校准RTL。
+    config APB_DEVICE_FREQ
+      int "APB设备频率 (MHz)"
+      default 100
+      help
+        APB总线上外设（如SDRAM控制器）的运行频率。
+        用于APB延迟模块计算频率比校准访存延迟。
 
-config RAS_BITS
-	int "返回地址栈(RAS)深度位宽（深度=2^N）"
-	default 4
-	range 1 8
-	help
-	  RAS深度=2^N, 用于ret的跳转目标预测。4=16深, branchsim评估显示8深即够用。
-	  修改后需重新 make verilog 以重新生成RTL。
-	  建议与branchsim的CONFIG_RAS_BITS保持一致, 以便用branchsim校准RTL。
+    config APB_DELAY_SCALE
+      int "APB延迟缩放因子 S"
+      default 64
+      help
+        APB延迟模块中频率比累加的放大系数。
+
+    config AXI_DEVICE_FREQ
+      int "AXI设备频率 (MHz)"
+      default 100
+      help
+        AXI总线上外设（如SDRAM控制器）的运行频率。
+        用于AXI延迟模块计算频率比校准访存延迟。
+
+    config AXI_DELAY_SCALE
+      int "AXI延迟缩放因子 S"
+      default 64
+      help
+        AXI延迟模块中频率比累加的放大系数。
+
+  endmenu
+
+  menu "外设 / NVBoard"
+
+    config NVBOARD
+      bool "启用 NVBoard (LED/数码管/拨码开关可视化)"
+      default n
+      help
+        链接 NVBoard，把 ysyxSoCFull 的 GPIO 引脚绑定到虚拟板卡的
+        LED/数码管/拨码开关。需要 SDL2 (libsdl2-dev libsdl2-image-dev
+        libsdl2-ttf-dev)，且 nvboard.a 要与本工程的 C++ 标准库 ABI 一致。
+
+    config NVBOARD_NXDC
+      string "NVBoard 约束文件(.nxdc)路径"
+      depends on NVBOARD
+      default "csrc/nvboard/gpio.nxdc"
+      help
+        描述 RTL 引脚到 NVBoard 组件的绑定关系
+
+    config NVBOARD_UPDATE_INTERVAL
+      int "每多少周期刷新一次 NVBoard GUI"
+      depends on NVBOARD
+      default 100
+      help
+        每周期都刷新太慢，隔 N 个周期调用一次 nvboard_update 折中
+
+  endmenu
 
 endmenu
 
-menu "目标体系结构"
+menu "运行时调试"
 
-config MBASE
-  hex "内存基地址"
-  default 0x30000000
-  help
-    加载程序镜像的内存区域基地址
+  config SDB
+    bool "启用SDB调试器"
+    default y
 
-config MSIZE
-  hex "内存大小"
-  default 0x10000000
-  help
-    内存区域的大小，单位为字节
+  config PERF_STATS
+    bool "启用性能统计（IPC/指令数/周期数）"
+    default y
+    help
+      在仿真结束时输出动态指令数、周期数和IPC
+      IPC = 指令数 / 周期数，反映处理器微结构效率
+      开启后每周期读取debug_commit信号计数，开销极低
 
-config RESET_PC
-  hex "复位PC地址"
-  default 0x30000000
-  help
-    复位后程序计数器的初始值
+  config PERF_SAVE
+    bool "启用性能数据自动存档（TSV文件）"
+    default y
+    depends on PERF_STATS
+    help
+      仿真结束后自动把性能数据写入 NPCSimResult/ 目录
+      每次运行生成时间戳命名的 .tsv 和 .log 文件
+      同时追加到 perf.tsv 累计表格
+
+  config TRACE
+    bool "启用追踪功能（总开关）"
+    default n
+
+  config ITRACE
+    bool "启用指令追踪itrace"
+    default n
+    depends on TRACE
+
+  config ITRACE_WRITE_FILE
+    bool "itrace 输出到文件 (itrace.txt)"
+    default n
+    depends on ITRACE
+
+  config MTRACE
+    bool "启用内存追踪mtrace"
+    default n
+    depends on TRACE
+
+  config FTRACE
+    bool "启用函数调用追踪ftrace"
+    default n
+    depends on TRACE
+
+  config IRINGBUF
+    bool "启用指令环形缓冲区iringbuf"
+    default n
+    depends on TRACE
+    help
+      在环形缓冲区中记录最近执行的指令，并在NPC异常终止时输出
+
+  config IRINGBUF_SIZE
+    int "指令环形缓冲区大小"
+    default 16
+    depends on IRINGBUF
+
+  config WATCHPOINT
+    bool "启用监视点"
+    default n
+    help
+      启用监视点功能，用于监控表达式值的变化
+
+  config WATCHPOINT_NUM
+    int "监视点数量上限"
+    default 32
+    depends on WATCHPOINT
+    help
+      监视点编号池的大小上限，修改后需重新编译
+
+  config DIFFTEST
+    bool "启用差分测试difftest"
+    default n
+    help
+      启用差分测试，并使用NEMU作为参考模型
+      需要将NEMU编译为.so共享库
+      使用make run diff=/path/to/nemu-so指定参考模型
 
 endmenu
 
@@ -776,14 +870,6 @@ config PDK
   string
   default "icsprout55" if PDK_ICSPROUT55
   default "nangate45" if PDK_NANGATE45
-
-config SYNTH_FREQ
-  int "综合目标频率 (MHz)"
-  default 450
-  help
-    综合器尝试达到的目标频率。设置越高，综合器可能使用更多
-    面积换取更低的逻辑延迟。受限于工艺库和寄存器堆/加法器/SRAM等
-    关键部件的最大工作频率。
 
 choice
   prompt "综合策略"
@@ -818,61 +904,5 @@ config SYNTH_NOABC
     跳过ABC技术映射，仅做dfflibmap+简单组合逻辑映射。
     开启后综合面积能正确反映不同ICache大小的差异。
     关闭则ABC会做全局优化，面积可能被归一化。
-
-endmenu
-
-menu "仿真延迟校准 (Simulation Delay Calibration)"
-
-config APB_DEVICE_FREQ
-	int "APB设备频率 (MHz)"
-	default 100
-	help
-	  APB总线上外设（如SDRAM控制器）的运行频率。
-	  用于APB延迟模块计算频率比校准访存延迟。
-
-config APB_DELAY_SCALE
-	int "APB延迟缩放因子 S"
-	default 64
-	help
-	  APB延迟模块中频率比累加的放大系数。
-
-config AXI_DEVICE_FREQ
-	int "AXI设备频率 (MHz)"
-	default 100
-	help
-	  AXI总线上外设（如SDRAM控制器）的运行频率。
-	  用于AXI延迟模块计算频率比校准访存延迟。
-
-config AXI_DELAY_SCALE
-	int "AXI延迟缩放因子 S"
-	default 64
-	help
-	  AXI延迟模块中频率比累加的放大系数。
-
-endmenu
-
-menu "外设 / NVBoard"
-
-config NVBOARD
-  bool "启用 NVBoard (LED/数码管/拨码开关可视化)"
-  default n
-  help
-    链接 NVBoard，把 ysyxSoCFull 的 GPIO 引脚绑定到虚拟板卡的
-    LED/数码管/拨码开关。需要 SDL2 (libsdl2-dev libsdl2-image-dev
-    libsdl2-ttf-dev)，且 nvboard.a 要与本工程的 C++ 标准库 ABI 一致。
-
-config NVBOARD_NXDC
-  string "NVBoard 约束文件(.nxdc)路径"
-  depends on NVBOARD
-  default "csrc/nvboard/gpio.nxdc"
-  help
-    描述 RTL 引脚到 NVBoard 组件的绑定关系
-
-config NVBOARD_UPDATE_INTERVAL
-  int "每多少周期刷新一次 NVBoard GUI"
-  depends on NVBOARD
-  default 100
-  help
-    每周期都刷新太慢，隔 N 个周期调用一次 nvboard_update 折中
 
 endmenu
