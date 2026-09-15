@@ -60,6 +60,7 @@ $(BIN): $(VSRCS) $(APP_CSRCS)
 # GTest 模式编译
 # 关键点：增加 -DTEST_MODE 和 GTEST_INC / GTEST_LIBS
 test-build: $(VSRCS) $(CSRCS)
+	@mkdir -p $(BUILD_DIR)
 	@rm -rf $(OBJ_DIR)_test
 	$(VERILATOR) -MMD --build -cc -j $(NPROC) \
 		--top-module $(TOPNAME) $^ \

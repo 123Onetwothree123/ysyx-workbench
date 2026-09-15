@@ -43,7 +43,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 收集编译和链接标志
-set(CXX_FLAGS -std=c++23)
+set(CXX_FLAGS -std=c++26)
 set(LD_FLAGS)
 
 macro(flag_list_out lst_out)
@@ -101,6 +101,15 @@ if_y(CONFIG_CC_DEBUG "-g")
 if_y_both(CONFIG_CC_ASAN "-fsanitize=address")
 if_y_both(CONFIG_CC_UBSAN "-fsanitize=undefined")
 
+# 标准库硬化 (P3471): libstdc++ 单级开关, libc++ 按挡位
+if(CONFIG_LIB_HARDENING STREQUAL "y")
+    if(CONFIG_STDLIB_LIBCXX STREQUAL "y")
+        add_cxx("-D_LIBCPP_HARDENING_MODE=${CONFIG_LIB_HARDENING_MODE}")
+    else()
+        add_cxx("-D_GLIBCXX_ASSERTIONS")
+    endif()
+endif()
+
 # cache 参数注入编译定义
 list(APPEND CXX_FLAGS
     -DCACHE_BLOCK_SIZE=${CACHE_BLOCK_SIZE}
@@ -134,14 +143,14 @@ if(IS_CLANG AND CONFIG_STDLIB_LIBCXX STREQUAL "y")
     add_custom_command(
         OUTPUT ${STD_PCM}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${PCM_DIR}
-        COMMAND ${CMAKE_CXX_COMPILER} -std=c++23 -stdlib=libc++
+        COMMAND ${CMAKE_CXX_COMPILER} -std=c++26 -stdlib=libc++
             -x c++-module --precompile ${STD_MODULE_SRC} -o ${STD_PCM}
         DEPENDS ${STD_MODULE_SRC}
         COMMENT "预编译 std.pcm (Clang+libc++)"
     )
     add_custom_command(
         OUTPUT ${STD_MODULE_OBJ}
-        COMMAND ${CMAKE_CXX_COMPILER} -std=c++23 -stdlib=libc++
+        COMMAND ${CMAKE_CXX_COMPILER} -std=c++26 -stdlib=libc++
             -c ${STD_PCM} -o ${STD_MODULE_OBJ}
         DEPENDS ${STD_PCM}
         COMMENT "编译 std_module.o (libc++)"
@@ -156,14 +165,14 @@ else()
         add_custom_command(
             OUTPUT ${STD_PCM}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${PCM_DIR}
-            COMMAND ${CMAKE_CXX_COMPILER} -std=c++23
+            COMMAND ${CMAKE_CXX_COMPILER} -std=c++26
                 -x c++-module --precompile ${STD_MODULE_SRC} -o ${STD_PCM}
             DEPENDS ${STD_MODULE_SRC}
             COMMENT "预编译 std.pcm (Clang+libstdc++)"
         )
         add_custom_command(
             OUTPUT ${STD_MODULE_OBJ}
-            COMMAND ${CMAKE_CXX_COMPILER} -std=c++23
+            COMMAND ${CMAKE_CXX_COMPILER} -std=c++26
                 -c ${STD_PCM} -o ${STD_MODULE_OBJ}
             DEPENDS ${STD_PCM}
             COMMENT "编译 std_module.o (libstdc++)"

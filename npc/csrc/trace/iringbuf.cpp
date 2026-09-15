@@ -46,11 +46,9 @@ void iringbuf::print(std::uint64_t ErrorPC) const
         constexpr std::string_view marker_normal{"   "};
         std::string_view marker{(entry.GetPC() == ErrorPC) ? marker_selected : marker_normal};
         std::array<std::uint8_t, 4> inst_bytes{};
-        auto instruction{entry.GetInstruction()};
-        for (std::size_t j{0}; j < static_cast<std::size_t>(entry.GetLen()); j++)
-        {
-            inst_bytes[j] = static_cast<std::uint8_t>(instruction >> (j * 8));
-        }
+        const auto instruction{entry.GetInstruction()};
+        const auto len{static_cast<std::size_t>(entry.GetLen())};
+        std::memcpy(inst_bytes.data(), &instruction, len);
         std::span<std::uint8_t> bytes_span{inst_bytes.data(), static_cast<std::size_t>(entry.GetLen())};
         std::array<char, 128> AssemblyBuffer{};
         disassemble(AssemblyBuffer.data(), static_cast<int>(AssemblyBuffer.size()), entry.GetPC(), bytes_span.data(), static_cast<int>(bytes_span.size()));

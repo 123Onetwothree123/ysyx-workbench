@@ -1,50 +1,5 @@
 module npc.sdb.TablePrinter;
-int display_width(std::string_view s)
-{
-    auto w{0};
-    for (std::size_t i{0}; i < s.size();)
-    {
-        if (s[i] == '\033' && i + 1 < s.size() && s[i + 1] == '[')
-        {
-            i += 2;
-            while (i < s.size() && !(s[i] >= 0x40 && s[i] <= 0x7e))
-            {
-                i++;
-            }
-            if (i < s.size())
-            {
-                i++;
-            }
-            continue;
-        }
-        const auto c{static_cast<unsigned char>(s[i])};
-        if (c < 0x80)
-        {
-            w += 1;
-            i += 1;
-        }
-        else if ((c & 0xE0) == 0xC0)
-        {
-            w += 2;
-            i += 2;
-        }
-        else if ((c & 0xF0) == 0xE0)
-        {
-            w += 2;
-            i += 3;
-        }
-        else if ((c & 0xF8) == 0xF0)
-        {
-            w += 2;
-            i += 4;
-        }
-        else
-        {
-            i += 1;
-        }
-    }
-    return w;
-}
+import npc.unicode;
 void print_border(const std::vector<int> &widths)
 {
     std::print("{0}+{1}", ANSI::FG_BLUE, ANSI::NONE);

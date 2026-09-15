@@ -7,11 +7,11 @@ CacheSim::CacheSim(const CacheConfig& cfg)
     offset_bits_ = log2_ceil(cfg.block_size);
     num_sets_    = cfg.num_blocks / cfg.ways;
     index_bits_  = log2_ceil(num_sets_);
+    ways_        = cfg.ways;
 
-    // 实际 cache
-    sets_.resize(num_sets_);
-    for (auto& set : sets_)
-        set.resize(cfg.ways);
+    // 实际 cache: 单块连续内存 + mdspan 二维视图 (组 × 路)
+    sets_flat_.resize(static_cast<std::size_t>(num_sets_) * ways_);
+    sets_ = std::mdspan{sets_flat_.data(), num_sets_, ways_};
 
     // 全相联对照 cache (1 set, num_blocks ways, 用于检测 capacity miss)
     fa_ways_ = cfg.num_blocks;
@@ -26,53 +26,23 @@ auto CacheSim::log2_ceil(unsigned n) -> unsigned
     return r;
 }
 
-auto CacheSim::find_in_set(const std::vector<Block>& set, std::uint32_t tag) -> int
+auto CacheSim::find_victim(std::span<const Block> set) -> unsigned
 {
-    for (int i = 0; i < static_cast<int>(set.size()); ++i) {
-        if (set[i].valid && set[i].tag == tag)
-            return i;
-    }
-    return -1;
-}
-
-auto CacheSim::find_victim(const std::vector<Block>& set) -> unsigned
-{
-    unsigned victim = 0;
-
     // 优先选无效块
-    for (unsigned i = 0; i < set.size(); ++i) {
-        if (!set[i].valid)
-            return i;
-    }
+    if (const auto it{std::ranges::find_if(set, [](const Block& b) { return !b.valid; })}; it != set.end())
+        return static_cast<unsigned>(it - set.begin());
 
     switch (config_.repl_policy) {
-    case 0: { // FIFO
-        std::uint64_t oldest = set[0].insert_time;
-        for (unsigned i = 1; i < set.size(); ++i) {
-            if (set[i].insert_time < oldest) {
-                oldest = set[i].insert_time;
-                victim = i;
-            }
-        }
-        break;
-    }
-    case 1: { // LRU
-        std::uint64_t oldest = set[0].access_time;
-        for (unsigned i = 1; i < set.size(); ++i) {
-            if (set[i].access_time < oldest) {
-                oldest = set[i].access_time;
-                victim = i;
-            }
-        }
-        break;
-    }
+    case 0: // FIFO
+        return static_cast<unsigned>(
+            std::ranges::min_element(set, std::ranges::less{}, &Block::insert_time) - set.begin());
+    case 1: // LRU
+        return static_cast<unsigned>(
+            std::ranges::min_element(set, std::ranges::less{}, &Block::access_time) - set.begin());
     case 2: // Random
     default:
-        victim = static_cast<unsigned>(std::rand()) % set.size();
-        break;
+        return std::uniform_int_distribution<unsigned>{0, static_cast<unsigned>(set.size()) - 1}(rng_);
     }
-
-    return victim;
 }
 
 auto CacheSim::fa_access(std::uint32_t tag) -> bool
@@ -125,12 +95,12 @@ auto CacheSim::access(std::uint32_t addr) -> AccessResult
     bool fa_hit = fa_access(tag);
 
     // 查实际 cache
-    auto& set      = sets_[index];
-    int   hit_way  = find_in_set(set, tag);
+    const std::span<Block> set{sets_.data_handle() + static_cast<std::size_t>(index) * ways_, ways_};
+    const auto hit_way{std::ranges::find_if(set, [tag](const Block& b) { return b.valid && b.tag == tag; })};
 
-    if (hit_way >= 0) {
+    if (hit_way != set.end()) {
         // 命中
-        set[hit_way].access_time = tick_;
+        hit_way->access_time = tick_;
         result.type = MissType::Hit;
         ++stats_.hits;
     } else {

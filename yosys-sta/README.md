@@ -58,7 +58,6 @@ make sta
 * `gcd.netlist.v.sim` - Yosys综合的网表文件, 用于网表仿真
 * `synth_stat.txt` - Yosys综合的面积报告
 * `synth_check.txt` - Yosys综合的检查报告, 用户需仔细阅读并决定是否需要排除相应警告
-* `yosys.log` - Yosys综合的完整日志
 * `gcd.rpt` - iSTA的时序分析报告, 包含WNS, TNS和时序路径
 * `gcd.cap` - iSTA的电容违例报告
 * `gcd.fanout` - iSTA的扇出违例报告
@@ -68,7 +67,8 @@ make sta
 * `gcd.pwr` - iSTA的总体功耗报告
 * `gcd_instance.pwr` - iSTA的标准单元级别功耗报告
 * `gcd_instance.csv` - iSTA的标准单元级别功耗报告, CSV格式
-* `sta.log` - iSTA的日志
+
+Yosys 和 iSTA 的运行日志默认直接输出到终端，不保存为 `yosys.log` 或 `sta.log`。
 
 ## 评估其他设计
 

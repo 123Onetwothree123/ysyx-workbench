@@ -10,8 +10,6 @@ using namespace std;
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
  */
 
-#include <sys/mman.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -20,66 +18,36 @@ using namespace std;
 /* return true if 'path' exists, false otherwise */
 static bool is_present(const char *path)
 {
-	struct stat st;
+	std::error_code ec;
 
-	return !stat(path, &st);
+	return std::filesystem::exists(path, ec);
 }
 
 /* return true if 'path' exists and it is a directory, false otherwise */
 static bool is_dir(const char *path)
 {
-	struct stat st;
+	std::error_code ec;
 
-	if (stat(path, &st))
-		return 0;
-
-	return S_ISDIR(st.st_mode);
+	return std::filesystem::is_directory(path, ec);
 }
 
 /* return true if the given two files are the same, false otherwise */
 static bool is_same(const char *file1, const char *file2)
 {
-	int fd1, fd2;
-	struct stat st1, st2;
-	void *map1, *map2;
-	bool ret = false;
+	std::ifstream f1(file1, std::ios::binary);
+	if (!f1.is_open())
+		return false;
 
-	fd1 = open(file1, O_RDONLY);
-	if (fd1 < 0)
-		return ret;
+	std::ifstream f2(file2, std::ios::binary);
+	if (!f2.is_open())
+		return false;
 
-	fd2 = open(file2, O_RDONLY);
-	if (fd2 < 0)
-		goto close1;
+	std::string s1((std::istreambuf_iterator<char>(f1)),
+		       std::istreambuf_iterator<char>());
+	std::string s2((std::istreambuf_iterator<char>(f2)),
+		       std::istreambuf_iterator<char>());
 
-	ret = fstat(fd1, &st1);
-	if (ret)
-		goto close2;
-	ret = fstat(fd2, &st2);
-	if (ret)
-		goto close2;
-
-	if (st1.st_size != st2.st_size)
-		goto close2;
-
-	map1 = mmap(NULL, st1.st_size, PROT_READ, MAP_PRIVATE, fd1, 0);
-	if (map1 == MAP_FAILED)
-		goto close2;
-
-	map2 = mmap(NULL, st2.st_size, PROT_READ, MAP_PRIVATE, fd2, 0);
-	if (map2 == MAP_FAILED)
-		goto close2;
-
-	if (bcmp(map1, map2, st1.st_size))
-		goto close2;
-
-	ret = true;
-close2:
-	close(fd2);
-close1:
-	close(fd1);
-
-	return ret;
+	return s1 == s2;
 }
 
 /*
@@ -89,36 +57,16 @@ close1:
  */
 static int make_parent_dir(const char *path)
 {
-	char tmp[PATH_MAX + 1];
-	char *p;
+	std::filesystem::path parent = std::filesystem::path(path).parent_path();
 
-	strncpy(tmp, path, sizeof(tmp));
-	tmp[sizeof(tmp) - 1] = 0;
-
-	/* Remove the base name. Just return if nothing is left */
-	p = strrchr(tmp, '/');
-	if (!p)
+	/* Just return if there is no parent directory to create */
+	if (parent.empty())
 		return 0;
-	*(p + 1) = 0;
 
-	/* Just in case it is an absolute path */
-	p = tmp;
-	while (*p == '/')
-		p++;
+	std::error_code ec;
+	std::filesystem::create_directories(parent, ec);
 
-	while ((p = strchr(p, '/'))) {
-		*p = 0;
-
-		/* skip if the directory exists */
-		if (!is_dir(tmp) && mkdir(tmp, 0755))
-			return -1;
-
-		*p = '/';
-		while (*p == '/')
-			p++;
-	}
-
-	return 0;
+	return ec ? -1 : 0;
 }
 
 static char depfile_path[PATH_MAX];
@@ -139,7 +87,7 @@ static int conf_touch_dep(const char *name)
 	s = name;
 
 	while ((c = *s++))
-		*d++ = (c == '_') ? '/' : tolower(c);
+		*d++ = (c == '_') ? '/' : tolower(static_cast<unsigned char>(c));
 	strcpy(d, ".h");
 
 	/* Assume directory path already exists. */
@@ -163,8 +111,8 @@ static int conf_touch_dep(const char *name)
 }
 
 struct conf_printer {
-	void (*print_symbol)(FILE *, struct symbol *, const char *, void *);
-	void (*print_comment)(FILE *, const char *, void *);
+	void (*print_symbol)(FILE *, struct symbol *, const char *, bool);
+	void (*print_comment)(FILE *, const char *, bool);
 };
 
 static void conf_warning(const char *fmt, ...)
@@ -203,17 +151,102 @@ void conf_set_message_callback(void (*fn)(const char *s))
 
 static void conf_message(const char *fmt, ...)
 {
-	va_list ap;
-	char buf[4096];
+	va_list ap, ap2;
+	int len;
 
 	if (!conf_message_callback)
 		return;
 
 	va_start(ap, fmt);
+	va_copy(ap2, ap);
+	len = vsnprintf(nullptr, 0, fmt, ap2);
+	va_end(ap2);
+	if (len < 0) {
+		va_end(ap);
+		return;
+	}
 
-	vsnprintf(buf, sizeof(buf), fmt, ap);
-	conf_message_callback(buf);
+	std::string buf(len, '\0');
+	vsnprintf(buf.data(), buf.size() + 1, fmt, ap);
 	va_end(ap);
+
+	conf_message_callback(buf.c_str());
+}
+
+static bool changed_input_warning_suppressed;
+
+/* randconfig 的"用户值"是随机赋的，被约束改写属预期，不属于
+ * "用户提供的值被改写"，调用方（conf.cpp randconfig 分支）用此关闭告警 */
+void conf_suppress_changed_input_warning(void)
+{
+	changed_input_warning_suppressed = true;
+}
+
+static void conf_changed_input_warning(const char *s)
+{
+	if (changed_input_warning_suppressed)
+		return;
+	fputs(s, stderr);
+}
+
+static const char *sym_get_user_value_string(struct symbol *sym)
+{
+	switch (sym->type) {
+	case S_BOOLEAN:
+	case S_TRISTATE:
+		switch (sym->def[S_DEF_USER].tri) {
+		case yes:
+			return "y";
+		case mod:
+			return "m";
+		default:
+			return "n";
+		}
+	default:
+		return sym->def[S_DEF_USER].val.str ?
+			sym->def[S_DEF_USER].val.str : "";
+	}
+}
+
+static bool sym_user_value_changed(struct symbol *sym)
+{
+	if (!sym_has_value(sym) || sym->type == S_UNKNOWN)
+		return false;
+
+	switch (sym->type) {
+	case S_BOOLEAN:
+	case S_TRISTATE:
+		return sym->def[S_DEF_USER].tri != sym_get_tristate_value(sym);
+	default:
+		return strcmp(sym_get_user_value_string(sym),
+			      sym_get_string_value(sym)) != 0;
+	}
+}
+
+static void conf_clear_written_flags(void)
+{
+	struct symbol *sym;
+	int i;
+
+	for_all_symbols(i, sym)
+		sym->flags &= ~SYMBOL_WRITTEN;
+}
+
+static void conf_append_changed_input_warning(std::string &msg,
+					      struct symbol *sym,
+					      bool &changed_input_found)
+{
+	if (!sym_user_value_changed(sym))
+		return;
+
+	if (!changed_input_found) {
+		msg += "warning: user-provided values changed by Kconfig:\n";
+		changed_input_found = true;
+	}
+
+	msg += std::string("  ") + CONFIG_ + sym->name + ": " +
+	       sym_get_user_value_string(sym) + " -> " +
+	       sym_get_string_value(sym) + "\n";
 }
 
 const char *conf_get_configname(void)
@@ -276,7 +309,7 @@ static int conf_set_sym_val(struct symbol *sym, int def, int def_flags, char *p)
 	case S_INT:
 	case S_HEX:
 		if (sym_string_valid(sym, p)) {
-			sym->def[def].val = xstrdup(p);
+			sym->def[def].val.str = xstrdup(p);
 			sym->flags |= def_flags;
 		} else {
 			if (def != S_DEF_AUTO)
@@ -291,78 +324,41 @@ static int conf_set_sym_val(struct symbol *sym, int def, int def_flags, char *p)
 	return 0;
 }
 
-#define LINE_GROWTH 16
-static int add_byte(int c, char **lineptr, size_t slen, size_t *n)
+/*
+ * Try to open the specified file with the following names:
+ * ./name
+ * $(srctree)/name
+ * (mirrors zconf_fopen() in the lexer)
+ */
+static std::ifstream conf_open_file(const char *name)
 {
-	char *nline;
-	size_t new_size = slen + 1;
-	if (new_size > *n) {
-		new_size += LINE_GROWTH - 1;
-		new_size *= 2;
-		nline = static_cast<char*>(xrealloc(*lineptr, new_size));
-		if (!nline)
-			return -1;
+	std::ifstream f(name);
 
-		*lineptr = nline;
-		*n = new_size;
+	if (!f.is_open() && name && name[0] != '/') {
+		const char *env = getenv(SRCTREE);
+		if (env)
+			f.open(std::string(env) + "/" + name);
 	}
 
-	(*lineptr)[slen] = c;
-
-	return 0;
-}
-
-static ssize_t compat_getline(char **lineptr, size_t *n, FILE *stream)
-{
-	char *line = *lineptr;
-	size_t slen = 0;
-
-	for (;;) {
-		int c = getc(stream);
-
-		switch (c) {
-		case '\n':
-			if (add_byte(c, &line, slen, n) < 0)
-				goto e_out;
-			slen++;
-			/* fall through */
-		case EOF:
-			if (add_byte('\0', &line, slen, n) < 0)
-				goto e_out;
-			*lineptr = line;
-			if (slen == 0)
-				return -1;
-			return slen;
-		default:
-			if (add_byte(c, &line, slen, n) < 0)
-				goto e_out;
-			slen++;
-		}
-	}
-
-e_out:
-	line[slen-1] = '\0';
-	*lineptr = line;
-	return -1;
+	return f;
 }
 
 int conf_read_simple(const char *name, int def)
 {
-	FILE *in = NULL;
-	char   *line = NULL;
-	size_t  line_asize = 0;
-	char *p, *p2;
+	std::ifstream in;
+	std::string line;
+	char *lp, *p;
 	struct symbol *sym;
 	int i, def_flags;
 
 	if (name) {
-		in = zconf_fopen(name);
+		in = conf_open_file(name);
 	} else {
 		struct property *prop;
 
 		name = conf_get_configname();
-		in = zconf_fopen(name);
-		if (in)
+		in = conf_open_file(name);
+		if (in.is_open())
 			goto load;
 		sym_add_change_count(1);
 		if (!sym_defconfig_list)
@@ -374,15 +370,15 @@ int conf_read_simple(const char *name, int def)
 				continue;
 			sym_calc_value(prop->expr->left.sym);
 			name = sym_get_string_value(prop->expr->left.sym);
-			in = zconf_fopen(name);
-			if (in) {
+			in = conf_open_file(name);
+			if (in.is_open()) {
 				conf_message("using defaults found in %s",
 					 name);
 				goto load;
 			}
 		}
 	}
-	if (!in)
+	if (!in.is_open())
 		return 1;
 
 load:
@@ -400,35 +396,41 @@ load:
 		case S_INT:
 		case S_HEX:
 		case S_STRING:
-			if (sym->def[def].val)
-				free(sym->def[def].val);
+			if (sym->def[def].val.str)
+				/* allocated by xstrdup() in conf_set_sym_val() */
+				free(const_cast<char *>(sym->def[def].val.str));
 			/* fall through */
 		default:
-			sym->def[def].val = NULL;
+			sym->def[def].val.str = nullptr;
 			sym->def[def].tri = no;
 		}
 	}
 
-	while (compat_getline(&line, &line_asize, in) != -1) {
+	while (std::getline(in, line)) {
 		conf_lineno++;
-		sym = NULL;
-		if (line[0] == '#') {
-			if (memcmp(line + 2, CONFIG_, strlen(CONFIG_)))
+		/* tolerate CRLF line endings */
+		if (!line.empty() && line.back() == '\r')
+			line.pop_back();
+		lp = line.data();
+		sym = nullptr;
+		if (lp[0] == '#') {
+			if (line.size() < 2 + strlen(CONFIG_) ||
+			    memcmp(lp + 2, CONFIG_, strlen(CONFIG_)))
 				continue;
-			p = strchr(line + 2 + strlen(CONFIG_), ' ');
+			p = strchr(lp + 2 + strlen(CONFIG_), ' ');
 			if (!p)
 				continue;
 			*p++ = 0;
 			if (strncmp(p, "is not set", 10))
 				continue;
 			if (def == S_DEF_USER) {
-				sym = sym_find(line + 2 + strlen(CONFIG_));
+				sym = sym_find(lp + 2 + strlen(CONFIG_));
 				if (!sym) {
 					sym_add_change_count(1);
 					continue;
 				}
 			} else {
-				sym = sym_lookup(line + 2 + strlen(CONFIG_), 0);
+				sym = sym_lookup(lp + 2 + strlen(CONFIG_), 0);
 				if (sym->type == S_UNKNOWN)
 					sym->type = S_BOOLEAN;
 			}
@@ -444,19 +446,14 @@ load:
 			default:
 				;
 			}
-		} else if (memcmp(line, CONFIG_, strlen(CONFIG_)) == 0) {
-			p = strchr(line + strlen(CONFIG_), '=');
+		} else if (line.size() >= strlen(CONFIG_) &&
+			   !memcmp(lp, CONFIG_, strlen(CONFIG_))) {
+			p = strchr(lp + strlen(CONFIG_), '=');
 			if (!p)
 				continue;
 			*p++ = 0;
-			p2 = strchr(p, '\n');
-			if (p2) {
-				*p2-- = 0;
-				if (*p2 == '\r')
-					*p2 = 0;
-			}
 
-			sym = sym_find(line + strlen(CONFIG_));
+			sym = sym_find(lp + strlen(CONFIG_));
 			if (!sym) {
 				if (def == S_DEF_AUTO)
 					/*
@@ -465,7 +462,7 @@ load:
 					 * auto.conf but it is missing now,
 					 * include/config/foo.h must be touched.
 					 */
-					conf_touch_dep(line + strlen(CONFIG_));
+					conf_touch_dep(lp + strlen(CONFIG_));
 				else
 					sym_add_change_count(1);
 				continue;
@@ -477,9 +474,8 @@ load:
 			if (conf_set_sym_val(sym, def, def_flags, p))
 				continue;
 		} else {
-			if (line[0] != '\r' && line[0] != '\n')
-				conf_warning("unexpected data: %.*s",
-					     (int)strcspn(line, "\r\n"), line);
+			if (lp[0] != '\0')
+				conf_warning("unexpected data: %s", lp);
 
 			continue;
 		}
@@ -498,14 +494,12 @@ load:
 			case yes:
 				if (cs->def[def].tri != no)
 					conf_warning("override: %s changes choice state", sym->name);
-				cs->def[def].val = sym;
+				cs->def[def].val.sym = sym;
 				break;
 			}
 			cs->def[def].tri = EXPR_OR(cs->def[def].tri, sym->def[def].tri);
 		}
 	}
-	free(line);
-	fclose(in);
 	return 0;
 }
 
@@ -537,7 +531,7 @@ int conf_read(const char *name)
 					continue;
 				break;
 			default:
-				if (!strcmp(static_cast<const char*>(sym->curr.val), static_cast<const char*>(sym->def[S_DEF_USER].val)))
+				if (!strcmp(sym->curr.val.str, sym->def[S_DEF_USER].val.str))
 					continue;
 				break;
 			}
@@ -562,7 +556,7 @@ int conf_read(const char *name)
 			case S_INT:
 			case S_HEX:
 				/* Reset a string value if it's out of range */
-				if (sym_string_within_range(sym, static_cast<const char*>(sym->def[S_DEF_USER].val)))
+				if (sym_string_within_range(sym, sym->def[S_DEF_USER].val.str))
 					break;
 				sym->flags &= ~(SYMBOL_VALID|SYMBOL_DEF_USER);
 				conf_unsaved++;
@@ -583,19 +577,17 @@ int conf_read(const char *name)
  *
  * This printer is used when generating the resulting configuration after
  * kconfig invocation and `defconfig' files. Unset symbol might be omitted by
- * passing a non-NULL argument to the printer.
+ * passing skip_unset=true to the printer.
  *
  */
 static void
-kconfig_print_symbol(FILE *fp, struct symbol *sym, const char *value, void *arg)
+kconfig_print_symbol(FILE *fp, struct symbol *sym, const char *value, bool skip_unset)
 {
 
 	switch (sym->type) {
 	case S_BOOLEAN:
 	case S_TRISTATE:
 		if (*value == 'n') {
-			bool skip_unset = (arg != NULL);
-
 			if (!skip_unset)
 				fprintf(fp, "# %s%s is not set\n",
 				    CONFIG_, sym->name);
@@ -610,7 +602,7 @@ kconfig_print_symbol(FILE *fp, struct symbol *sym, const char *value, void *arg)
 }
 
 static void
-kconfig_print_comment(FILE *fp, const char *value, void *arg)
+kconfig_print_comment(FILE *fp, const char *value, bool skip_unset)
 {
 	const char *p = value;
 	size_t l;
@@ -641,7 +633,7 @@ static struct conf_printer kconfig_printer_cb =
  * This printer is used when generating the `include/generated/autoconf.h' file.
  */
 static void
-header_print_symbol(FILE *fp, struct symbol *sym, const char *value, void *arg)
+header_print_symbol(FILE *fp, struct symbol *sym, const char *value, bool skip_unset)
 {
 
 	switch (sym->type) {
@@ -682,7 +674,7 @@ header_print_symbol(FILE *fp, struct symbol *sym, const char *value, void *arg)
 }
 
 static void
-header_print_comment(FILE *fp, const char *value, void *arg)
+header_print_comment(FILE *fp, const char *value, bool skip_unset)
 {
 	const char *p = value;
 	size_t l;
@@ -710,27 +702,28 @@ static struct conf_printer header_printer_cb =
 };
 
 static void conf_write_symbol(FILE *fp, struct symbol *sym,
-			      struct conf_printer *printer, void *printer_arg)
+			      struct conf_printer *printer, bool skip_unset)
 {
 	const char *str;
 
 	switch (sym->type) {
 	case S_UNKNOWN:
 		break;
-	case S_STRING:
-		str = sym_get_string_value(sym);
-		str = sym_escape_string_value(str);
-		printer->print_symbol(fp, sym, str, printer_arg);
-		free((void *)str);
+	case S_STRING: {
+		const std::string escaped =
+			sym_escape_string_value(sym_get_string_value(sym));
+
+		printer->print_symbol(fp, sym, escaped.c_str(), skip_unset);
 		break;
+	}
 	default:
 		str = sym_get_string_value(sym);
-		printer->print_symbol(fp, sym, str, printer_arg);
+		printer->print_symbol(fp, sym, str, skip_unset);
 	}
 }
 
 static void
-conf_write_heading(FILE *fp, struct conf_printer *printer, void *printer_arg)
+conf_write_heading(FILE *fp, struct conf_printer *printer)
 {
 	char buf[256];
 
@@ -740,7 +733,7 @@ conf_write_heading(FILE *fp, struct conf_printer *printer, void *printer_arg)
 	    "%s\n",
 	    rootmenu.prompt->text);
 
-	printer->print_comment(fp, buf, printer_arg);
+	printer->print_comment(fp, buf, false);
 }
 
 /*
@@ -752,6 +745,8 @@ int conf_write_defconfig(const char *filename)
 	struct symbol *sym;
 	struct menu *menu;
 	FILE *out;
+	bool changed_input_found = false;
+	std::string changed_input_warning;
 
 	out = fopen(filename, "w");
 	if (!out)
@@ -762,14 +757,17 @@ int conf_write_defconfig(const char *filename)
 	/* Traverse all menus to find all relevant symbols */
 	menu = rootmenu.list;
 
-	while (menu != NULL)
+	while (menu != nullptr)
 	{
 		sym = menu->sym;
-		if (sym == NULL) {
+		if (sym == nullptr) {
 			if (!menu_is_visible(menu))
 				goto next_menu;
-		} else if (!sym_is_choice(sym)) {
+		} else if (!sym_is_choice(sym) && !(sym->flags & SYMBOL_WRITTEN)) {
 			sym_calc_value(sym);
+			conf_append_changed_input_warning(changed_input_warning,
+							  sym, changed_input_found);
+			sym->flags |= SYMBOL_WRITTEN;
 			if (!(sym->flags & SYMBOL_WRITE))
 				goto next_menu;
 			sym->flags &= ~SYMBOL_WRITE;
@@ -799,17 +797,17 @@ int conf_write_defconfig(const char *filename)
 						goto next_menu;
 				}
 			}
-			conf_write_symbol(out, sym, &kconfig_printer_cb, NULL);
+			conf_write_symbol(out, sym, &kconfig_printer_cb, false);
 		}
 next_menu:
-		if (menu->list != NULL) {
+		if (menu->list != nullptr) {
 			menu = menu->list;
 		}
-		else if (menu->next != NULL) {
+		else if (menu->next != nullptr) {
 			menu = menu->next;
 		} else {
 			while ((menu = menu->parent)) {
-				if (menu->next != NULL) {
+				if (menu->next != nullptr) {
 					menu = menu->next;
 					break;
 				}
@@ -817,6 +815,12 @@ next_menu:
 		}
 	}
 	fclose(out);
+
+	conf_clear_written_flags();
+
+	if (changed_input_found)
+		conf_changed_input_warning(changed_input_warning.c_str());
+
 	return 0;
 }
 
@@ -828,24 +832,27 @@ int conf_write(const char *name)
 	const char *str;
 	char tmpname[PATH_MAX + 1], oldname[PATH_MAX + 1];
 	char *env;
-	int i;
 	bool need_newline = false;
+	bool changed_input_found = false;
+	std::string changed_input_warning;
 
 	if (!name)
 		name = conf_get_configname();
 
 	if (!*name) {
 		fprintf(stderr, "config name is empty\n");
-		return -1;
+		return 1;
 	}
 
 	if (is_dir(name)) {
 		fprintf(stderr, "%s: Is a directory\n", name);
-		return -1;
+		return 1;
 	}
 
-	if (make_parent_dir(name))
-		return -1;
+	if (make_parent_dir(name)) {
+		fprintf(stderr, "cannot create parent directory of %s\n", name);
+		return 1;
+	}
 
 	env = getenv("KCONFIG_OVERWRITECONFIG");
 	if (env && *env) {
@@ -859,7 +866,7 @@ int conf_write(const char *name)
 	if (!out)
 		return 1;
 
-	conf_write_heading(out, &kconfig_printer_cb, NULL);
+	conf_write_heading(out, &kconfig_printer_cb);
 
 	if (!conf_get_changed())
 		sym_clear_all_valid();
@@ -879,14 +886,16 @@ int conf_write(const char *name)
 		} else if (!(sym->flags & SYMBOL_CHOICE) &&
 			   !(sym->flags & SYMBOL_WRITTEN)) {
 			sym_calc_value(sym);
+			conf_append_changed_input_warning(changed_input_warning,
+							  sym, changed_input_found);
+			sym->flags |= SYMBOL_WRITTEN;
 			if (!(sym->flags & SYMBOL_WRITE))
 				goto next;
 			if (need_newline) {
 				fprintf(out, "\n");
 				need_newline = false;
 			}
-			sym->flags |= SYMBOL_WRITTEN;
-			conf_write_symbol(out, sym, &kconfig_printer_cb, NULL);
+			conf_write_symbol(out, sym, &kconfig_printer_cb, false);
 		}
 
 next:
@@ -911,8 +920,10 @@ next:
 	}
 	fclose(out);
 
-	for_all_symbols(i, sym)
-		sym->flags &= ~SYMBOL_WRITTEN;
+	conf_clear_written_flags();
+
+	if (changed_input_found)
+		conf_changed_input_warning(changed_input_warning.c_str());
 
 	if (*tmpname) {
 		if (::is_same(name, tmpname)) {
@@ -923,9 +934,15 @@ next:
 		}
 
 		snprintf(oldname, sizeof(oldname), "%s.old", name);
-		rename(name, oldname);
-		if (rename(tmpname, name))
+		if (rename(name, oldname) && errno != ENOENT)
+			fprintf(stderr, "warning: cannot back up %s to %s: %s\n",
+				name, oldname, strerror(errno));
+		if (rename(tmpname, name)) {
+			fprintf(stderr, "cannot rename %s to %s: %s\n",
+				tmpname, name, strerror(errno));
+			unlink(tmpname);
 			return 1;
+		}
 	}
 
 	conf_message("configuration written to %s", name);
@@ -959,9 +976,14 @@ static int conf_write_dep(const char *name)
 	fprintf(out, "\n$(deps_config): ;\n");
 	fclose(out);
 
-	if (make_parent_dir(name))
+	if (make_parent_dir(name)) {
+		remove("..config.tmp");
 		return 1;
-	rename("..config.tmp", name);
+	}
+	if (rename("..config.tmp", name)) {
+		remove("..config.tmp");
+		return 1;
+	}
 	return 0;
 }
 
@@ -971,10 +993,21 @@ static int conf_touch_deps(void)
 	struct symbol *sym;
 	int res, i;
 
-	strcpy(depfile_path, "include/config/");
+	name = conf_get_autoconfig_name();
+
+	/* derive the depfile directory from the autoconfig path */
+	std::string prefix = name;
+	size_t slash = prefix.find_last_of('/');
+	if (slash != std::string::npos)
+		prefix.resize(slash + 1);
+	else
+		prefix.clear();
+
+	if (prefix.size() >= sizeof(depfile_path))
+		return -1;
+	strcpy(depfile_path, prefix.c_str());
 	depfile_prefix_len = strlen(depfile_path);
 
-	name = conf_get_autoconfig_name();
 	conf_read_simple(name, S_DEF_AUTO);
 	sym_calc_value(modules_sym);
 
@@ -999,7 +1032,7 @@ static int conf_touch_deps(void)
 				case S_HEX:
 				case S_INT:
 					if (!strcmp(sym_get_string_value(sym),
-						    static_cast<const char*>(sym->def[S_DEF_AUTO].val)))
+						    sym->def[S_DEF_AUTO].val.str))
 						continue;
 					break;
 				default:
@@ -1060,11 +1093,12 @@ int conf_write_autoconf(int overwrite)
 	out_h = fopen(".tmpconfig.h", "w");
 	if (!out_h) {
 		fclose(out);
+		remove(".tmpconfig");
 		return 1;
 	}
 
-	conf_write_heading(out, &kconfig_printer_cb, NULL);
-	conf_write_heading(out_h, &header_printer_cb, NULL);
+	conf_write_heading(out, &kconfig_printer_cb);
+	conf_write_heading(out_h, &header_printer_cb);
 
 	for_all_symbols(i, sym) {
 		sym_calc_value(sym);
@@ -1072,8 +1106,8 @@ int conf_write_autoconf(int overwrite)
 			continue;
 
 		/* write symbols to auto.conf and autoconf.h */
-		conf_write_symbol(out, sym, &kconfig_printer_cb, (void *)1);
-		conf_write_symbol(out_h, sym, &header_printer_cb, NULL);
+		conf_write_symbol(out, sym, &kconfig_printer_cb, true);
+		conf_write_symbol(out_h, sym, &header_printer_cb, false);
 	}
 	fclose(out);
 	fclose(out_h);
@@ -1081,19 +1115,29 @@ int conf_write_autoconf(int overwrite)
 	name = getenv("KCONFIG_AUTOHEADER");
 	if (!name)
 		name = "include/generated/autoconf.h";
-	if (make_parent_dir(name))
+	if (make_parent_dir(name)) {
+		remove(".tmpconfig");
+		remove(".tmpconfig.h");
 		return 1;
-	if (rename(".tmpconfig.h", name))
+	}
+	if (rename(".tmpconfig.h", name)) {
+		remove(".tmpconfig");
+		remove(".tmpconfig.h");
 		return 1;
+	}
 
-	if (make_parent_dir(autoconf_name))
+	if (make_parent_dir(autoconf_name)) {
+		remove(".tmpconfig");
 		return 1;
+	}
 	/*
 	 * This must be the last step, kbuild has a dependency on auto.conf
 	 * and this marks the successful completion of the previous steps.
 	 */
-	if (rename(".tmpconfig", autoconf_name))
+	if (rename(".tmpconfig", autoconf_name)) {
+		remove(".tmpconfig");
 		return 1;
+	}
 
 	return 0;
 }
@@ -1125,6 +1169,42 @@ void conf_set_changed_callback(void (*fn)(void))
 	conf_changed_callback = fn;
 }
 
+static std::mt19937 &conf_rng(void)
+{
+	static std::mt19937 gen(std::random_device{}());
+
+	return gen;
+}
+
+/*
+ * Seed the PRNG used by randconfig, following upstream
+ * set_randconfig_seed() semantics: use $KCONFIG_SEED (parsed with
+ * strtol base 0) if it is valid, otherwise keep a non-deterministic
+ * seed. The seed actually used is always printed to stdout. Called
+ * once per randconfig run from conf.cpp, so the message appears only
+ * for randconfig, as upstream does.
+ */
+void conf_set_randconfig_seed(void)
+{
+	unsigned int seed;
+	const char *env = getenv("KCONFIG_SEED");
+	bool seed_set = false;
+
+	if (env && *env) {
+		char *endp;
+
+		seed = static_cast<unsigned int>(strtol(env, &endp, 0));
+		if (*endp == '\0')
+			seed_set = true;
+	}
+
+	if (!seed_set)
+		seed = std::random_device{}();
+
+	printf("KCONFIG_SEED=0x%X\n", seed);
+	conf_rng().seed(seed);
+}
+
 static bool randomize_choice_values(struct symbol *csym)
 {
 	struct property *prop;
@@ -1147,17 +1227,20 @@ static bool randomize_choice_values(struct symbol *csym)
 	expr_list_for_each_sym(prop->expr, e, sym)
 		cnt++;
 
+	if (cnt == 0)
+		return false;
+
 	/*
 	 * find a random value and set it to yes,
 	 * set the rest to no so we have only one set
 	 */
-	def = (rand() % cnt);
+	def = std::uniform_int_distribution<int>(0, cnt - 1)(conf_rng());
 
 	cnt = 0;
 	expr_list_for_each_sym(prop->expr, e, sym) {
 		if (def == cnt++) {
 			sym->def[S_DEF_USER].tri = yes;
-			csym->def[S_DEF_USER].val = sym;
+			csym->def[S_DEF_USER].val.sym = sym;
 		}
 		else {
 			sym->def[S_DEF_USER].tri = no;
@@ -1265,7 +1348,7 @@ bool conf_set_all_new_symbols(enum conf_def_mode mode)
 				break;
 			case def_random:
 				sym->def[S_DEF_USER].tri = no;
-				cnt = rand() % 100;
+				cnt = std::uniform_int_distribution<int>(0, 99)(conf_rng());
 				if (sym->type == S_TRISTATE) {
 					if (cnt < pty)
 						sym->def[S_DEF_USER].tri = yes;

@@ -11,15 +11,13 @@ using namespace std;
 
 
 
-#include "list.hpp"
 #include "lkc.hpp"
-
-#define ARRAY_SIZE(arr)		(sizeof(arr) / sizeof((arr)[0]))
 
 static char *expand_string_with_args(const char *in, int argc, char *argv[]);
 static char *expand_string(const char *in);
 
-static void __attribute__((noreturn)) pperror(const char *format, ...)
+[[noreturn]] __attribute__((format(printf, 1, 2)))
+static void pperror(const char *format, ...)
 {
 	va_list ap;
 
@@ -35,50 +33,35 @@ static void __attribute__((noreturn)) pperror(const char *format, ...)
 /*
  * Environment variables
  */
-static LIST_HEAD(env_list);
-
 struct env {
-	char *name;
-	char *value;
-	struct list_head node;
+	std::string name;
+	std::string value;
 };
+
+/* std::list: push_back does not invalidate pointers to existing elements */
+static std::list<struct env> env_list;
 
 static void env_add(const char *name, const char *value)
 {
-	struct env *e;
-
-	e = static_cast<struct env*>(xmalloc(sizeof(*e)));
-	e->name = xstrdup(name);
-	e->value = xstrdup(value);
-
-	list_add_tail(&e->node, &env_list);
-}
-
-static void env_del(struct env *e)
-{
-	list_del(&e->node);
-	free(e->name);
-	free(e->value);
-	free(e);
+	env_list.push_back({name, value});
 }
 
 /* The returned pointer must be freed when done */
 static char *env_expand(const char *name)
 {
-	struct env *e;
 	const char *value;
 
 	if (!*name)
-		return NULL;
+		return nullptr;
 
-	list_for_each_entry(e, &env_list, node) {
-		if (!strcmp(name, e->name))
-			return xstrdup(e->value);
+	for (const struct env &e : env_list) {
+		if (name == e.name)
+			return xstrdup(e.value.c_str());
 	}
 
 	value = getenv(name);
 	if (!value)
-		return NULL;
+		return nullptr;
 
 	/*
 	 * We need to remember all referenced environment variables.
@@ -91,14 +74,12 @@ static char *env_expand(const char *name)
 
 void env_write_dep(FILE *f, const char *autoconfig_name)
 {
-	struct env *e, *tmp;
-
-	list_for_each_entry_safe(e, tmp, &env_list, node) {
-		fprintf(f, "ifneq \"$(%s)\" \"%s\"\n", e->name, e->value);
+	for (const struct env &e : env_list) {
+		fprintf(f, "ifneq \"$(%s)\" \"%s\"\n", e.name.c_str(), e.value.c_str());
 		fprintf(f, "%s: FORCE\n", autoconfig_name);
 		fprintf(f, "endif\n");
-		env_del(e);
 	}
+	env_list.clear();
 }
 
 /*
@@ -133,11 +114,7 @@ static char *do_info(int argc, char *argv[])
 
 static char *do_lineno(int argc, char *argv[])
 {
-	char buf[16];
-
-	sprintf(buf, "%d", yylineno);
-
-	return xstrdup(buf);
+	return xstrdup(std::to_string(yylineno).c_str());
 }
 
 static char *do_shell(int argc, char *argv[])
@@ -146,7 +123,7 @@ static char *do_shell(int argc, char *argv[])
 	char buf[256];
 	char *cmd;
 	size_t nread;
-	int i;
+	size_t i;
 
 	cmd = argv[0];
 
@@ -204,9 +181,8 @@ static const struct kconfig_func function_table[] = {
 static char *function_expand(const char *name, int argc, char *argv[])
 {
 	const struct kconfig_func *f;
-	int i;
 
-	for (i = 0; i < ARRAY_SIZE(function_table); i++) {
+	for (size_t i = 0; i < std::size(function_table); i++) {
 		f = &function_table[i];
 		if (strcmp(f->name, name))
 			continue;
@@ -222,32 +198,30 @@ static char *function_expand(const char *name, int argc, char *argv[])
 		return f->func(argc, argv);
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 /*
  * Variables (and user-defined functions)
  */
-static LIST_HEAD(variable_list);
-
 struct variable {
-	char *name;
-	char *value;
+	std::string name;
+	std::string value;
 	enum variable_flavor flavor;
-	int exp_count;
-	struct list_head node;
+	int exp_count = 0;
 };
+
+/* std::list: push_back does not invalidate pointers to existing elements */
+static std::list<struct variable> variable_list;
 
 static struct variable *variable_lookup(const char *name)
 {
-	struct variable *v;
-
-	list_for_each_entry(v, &variable_list, node) {
-		if (!strcmp(name, v->name))
-			return v;
+	for (struct variable &v : variable_list) {
+		if (name == v.name)
+			return &v;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 static char *variable_expand(const char *name, int argc, char *argv[])
@@ -257,7 +231,7 @@ static char *variable_expand(const char *name, int argc, char *argv[])
 
 	v = variable_lookup(name);
 	if (!v)
-		return NULL;
+		return nullptr;
 
 	if (argc == 0 && v->exp_count)
 		pperror("Recursive variable '%s' references itself (eventually)",
@@ -269,9 +243,9 @@ static char *variable_expand(const char *name, int argc, char *argv[])
 	v->exp_count++;
 
 	if (v->flavor == VAR_RECURSIVE)
-		res = expand_string_with_args(v->value, argc, argv);
+		res = expand_string_with_args(v->value.c_str(), argc, argv);
 	else
-		res = xstrdup(v->value);
+		res = xstrdup(v->value.c_str());
 
 	v->exp_count--;
 
@@ -282,7 +256,7 @@ void variable_add(const char *name, const char *value,
 		  enum variable_flavor flavor)
 {
 	struct variable *v;
-	char *new_value;
+	std::string new_value;
 	bool append = false;
 
 	v = variable_lookup(name);
@@ -291,52 +265,38 @@ void variable_add(const char *name, const char *value,
 		if (flavor == VAR_APPEND) {
 			flavor = v->flavor;
 			append = true;
-		} else {
-			free(v->value);
 		}
 	} else {
 		/* For undefined variables, += assumes the recursive flavor */
 		if (flavor == VAR_APPEND)
 			flavor = VAR_RECURSIVE;
 
-		v = static_cast<struct variable*>(xmalloc(sizeof(*v)));
-		v->name = xstrdup(name);
-		v->exp_count = 0;
-		list_add_tail(&v->node, &variable_list);
+		variable_list.push_back({name, "", VAR_RECURSIVE, 0});
+		v = &variable_list.back();
 	}
 
 	v->flavor = flavor;
 
-	if (flavor == VAR_SIMPLE)
-		new_value = expand_string(value);
-	else
-		new_value = xstrdup(value);
+	if (flavor == VAR_SIMPLE) {
+		char *expanded = expand_string(value);
+
+		new_value = expanded;
+		free(expanded);
+	} else {
+		new_value = value;
+	}
 
 	if (append) {
-		v->value = static_cast<char*>(xrealloc(v->value,
-				    strlen(v->value) + strlen(new_value) + 2));
-		strcat(v->value, " ");
-		strcat(v->value, new_value);
-		free(new_value);
+		v->value += ' ';
+		v->value += new_value;
 	} else {
-		v->value = new_value;
+		v->value = std::move(new_value);
 	}
-}
-
-static void variable_del(struct variable *v)
-{
-	list_del(&v->node);
-	free(v->name);
-	free(v->value);
-	free(v);
 }
 
 void variable_all_del(void)
 {
-	struct variable *v, *tmp;
-
-	list_for_each_entry_safe(v, tmp, &variable_list, node)
-		variable_del(v);
+	variable_list.clear();
 }
 
 /*
@@ -398,6 +358,8 @@ static char *eval_clause(const char *str, size_t len, int argc, char *argv[])
 
 		p++;
 	}
+	if (new_argc >= FUNCTION_MAX_ARGS)
+		pperror("too many function arguments");
 	new_argv[new_argc++] = prev;
 
 	/*
@@ -491,31 +453,25 @@ static char *expand_dollar_with_args(const char **str, int argc, char *argv[])
 
 char *expand_dollar(const char **str)
 {
-	return expand_dollar_with_args(str, 0, NULL);
+	return expand_dollar_with_args(str, 0, nullptr);
 }
 
 static char *__expand_string(const char **str, bool (*is_end)(char c),
 			     int argc, char *argv[])
 {
 	const char *in, *p;
-	char *expansion, *out;
-	size_t in_len, out_len;
-
-	out = static_cast<char*>(xmalloc(1));
-	*out = 0;
-	out_len = 1;
+	std::string out;
 
 	p = in = *str;
 
 	while (1) {
 		if (*p == '$') {
-			in_len = p - in;
+			char *expansion;
+
+			out.append(in, p);
 			p++;
 			expansion = expand_dollar_with_args(&p, argc, argv);
-			out_len += in_len + strlen(expansion);
-			out = static_cast<char*>(xrealloc(out, out_len));
-			strncat(out, in, in_len);
-			strcat(out, expansion);
+			out += expansion;
 			free(expansion);
 			in = p;
 			continue;
@@ -527,15 +483,12 @@ static char *__expand_string(const char **str, bool (*is_end)(char c),
 		p++;
 	}
 
-	in_len = p - in;
-	out_len += in_len;
-	out = static_cast<char*>(xrealloc(out, out_len));
-	strncat(out, in, in_len);
+	out.append(in, p);
 
 	/* Advance 'str' to the end character */
 	*str = p;
 
-	return out;
+	return xstrdup(out.c_str());
 }
 
 static bool is_end_of_str(char c)
@@ -555,12 +508,12 @@ static char *expand_string_with_args(const char *in, int argc, char *argv[])
 
 static char *expand_string(const char *in)
 {
-	return expand_string_with_args(in, 0, NULL);
+	return expand_string_with_args(in, 0, nullptr);
 }
 
 static bool is_end_of_token(char c)
 {
-	return !(isalnum(c) || c == '_' || c == '-');
+	return !(isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-');
 }
 
 /*
@@ -572,5 +525,5 @@ static bool is_end_of_token(char c)
  */
 char *expand_one_token(const char **str)
 {
-	return __expand_string(str, is_end_of_token, 0, NULL);
+	return __expand_string(str, is_end_of_token, 0, nullptr);
 }

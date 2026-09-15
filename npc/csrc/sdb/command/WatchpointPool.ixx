@@ -4,14 +4,21 @@ import npc.sdb.command.Watchpoint;
 import npc.sdb.EvaluationContext;
 import npc.expressions.expressions;
 
+// 兜底值必须与 Kconfig 的 CONFIG_WATCHPOINT_NUM 默认值一致
+#ifndef CONFIG_WATCHPOINT_NUM
+#define CONFIG_WATCHPOINT_NUM 32
+#endif
+
 export class WatchpointPool
 {
 private:
+    static constexpr std::size_t MaxWatchpoints{CONFIG_WATCHPOINT_NUM};
+    static_assert(MaxWatchpoints > 0, "监视点数量上限必须为正数");
     std::vector<Watchpoint> watchpoints;
-    std::vector<std::size_t> FreeWatchpointIndices; // 存储空闲监视点编号的栈
-    std::vector<std::size_t> UsedWatchpointIndices; // 存储已使用监视点编号的列表
+    std::inplace_vector<std::size_t, MaxWatchpoints> FreeWatchpointIndices; // 存储空闲监视点编号的栈
+    std::inplace_vector<std::size_t, MaxWatchpoints> UsedWatchpointIndices; // 存储已使用监视点编号的列表
 public:
-    WatchpointPool(const std::size_t InputMaxWatchpoints = 32);
+    WatchpointPool();
     ~WatchpointPool() = default;
     bool DeleteWatchpoint(std::size_t NO);
     Watchpoint *CreateWatchpoint(const std::string &expression, std::size_t InitialValue);

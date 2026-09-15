@@ -1,5 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-#include <stdarg.h>
+#pragma once
+
+#include <cstdio>   /* FILE */
+#include <string>   /* std::string (sym_escape_string_value) */
+
+#include "expr.hpp" /* struct symbol, SYMBOL_HASHSIZE, tristate, enum symbol_type, ... */
 
 /* confdata.c */
 void conf_parse(const char *name);
@@ -8,7 +13,7 @@ int conf_read_simple(const char *name, int);
 int conf_write_defconfig(const char *name);
 int conf_write(const char *name);
 int conf_write_autoconf(int overwrite);
-bool conf_get_changed(void);
+[[nodiscard]] bool conf_get_changed(void);
 void conf_set_changed_callback(void (*fn)(void));
 void conf_set_message_callback(void (*fn)(const char *s));
 
@@ -17,7 +22,7 @@ extern struct symbol * symbol_hash[SYMBOL_HASHSIZE];
 
 struct symbol * sym_lookup(const char *name, int flags);
 struct symbol * sym_find(const char *name);
-const char * sym_escape_string_value(const char *in);
+std::string sym_escape_string_value(const char *in);
 struct symbol ** sym_re_search(const char *pattern);
 const char * sym_type_name(enum symbol_type type);
 void sym_calc_value(struct symbol *sym);

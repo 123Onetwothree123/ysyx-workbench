@@ -43,3 +43,10 @@ test_run_dir/
 !log/
 !log/**/*
 !*.csv
+
+# Yosys/iSTA result netlists are reproducible and are not versioned
+/yosys-sta-result/**/*.v
+/yosys-sta-result/**/*.v.sim
+
+# GCC C++ modules cache (build artifact)
+gcm.cache/

@@ -23,11 +23,9 @@ DCache::DCache(const DCacheConfig& config, ReplPolicy policy, std::string_view n
     , name{name}
 {
     auto SetsNumber{std::size_t{1} << index_bits};
-    sets.resize(SetsNumber);
-    for (auto& set : sets)
-    {
-        set.resize(ways); // entry全部默认初始化为0
-    }
+    // 单块连续内存 + mdspan 二维视图 (组数 × 相联度)
+    sets_flat.resize(SetsNumber * ways);
+    sets = std::mdspan{sets_flat.data(), SetsNumber, ways}; // entry全部默认初始化为0
 }
 
 void DCache::fill(entry& e, std::uint32_t tag, bool is_write)
@@ -43,49 +41,38 @@ AccessOutcome DCache::access(const AccessRecord& rec)
     ++tick;
     const auto tag{rec.GetAddr() >> offset_bits};
     const auto index{tag & ((std::size_t{1} << index_bits) - 1)}; // 取低index_bits位作为组号
-    auto& set{sets[index]};
+    const std::span<entry> set{sets.data_handle() + index * ways, ways};
 
     // 第1轮：找是否有同 tag 的块，命中
-    for (auto& e : set)
+    if (const auto it{std::ranges::find_if(set, [tag](const entry& e) { return e.valid && e.tag == tag; })}; it != set.end())
     {
-        if (e.valid && e.tag == tag)
+        if (policy == ReplPolicy::LRU)
         {
-            if (policy == ReplPolicy::LRU)
-            {
-                e.time = tick; // LRU命中要刷新访问时间
-            }
-            if (rec.GetIsWrite())
-            {
-                e.dirty = true; // 写命中置脏
-            }
-            return {true, false};
+            it->time = tick; // LRU命中要刷新访问时间
         }
+        if (rec.GetIsWrite())
+        {
+            it->dirty = true; // 写命中置脏
+        }
+        return {true, false};
     }
     // 第2轮：找空闲槽位
-    for (auto& e : set)
+    if (const auto it{std::ranges::find_if(set, [](const entry& e) { return !e.valid; })}; it != set.end())
     {
-        if (!e.valid)
-        {
-            fill(e, tag, rec.GetIsWrite());
-            return {false, false};
-        }
+        fill(*it, tag, rec.GetIsWrite());
+        return {false, false};
     }
     // 第3轮：组满了，按替换策略选牺牲者
     std::size_t victim{0};
     if (policy == ReplPolicy::Random)
     {
-        victim = static_cast<std::size_t>(std::rand()) % set.size();
+        victim = std::uniform_int_distribution<std::size_t>{0, set.size() - 1}(rng_);
     }
     else
     {
         // FIFO比插入时间，LRU比访问时间，都是取time最小者
-        for (std::size_t i{1}; i < set.size(); ++i)
-        {
-            if (set[i].time < set[victim].time)
-            {
-                victim = i;
-            }
-        }
+        const auto it{std::ranges::min_element(set, std::ranges::less{}, &entry::time)};
+        victim = static_cast<std::size_t>(it - set.begin());
     }
     const auto writeback{set[victim].dirty}; // 脏块换出要写回内存
     fill(set[victim], tag, rec.GetIsWrite());

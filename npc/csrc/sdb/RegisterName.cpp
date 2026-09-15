@@ -26,15 +26,10 @@ std::optional<std::uint32_t> RegisterNameToIndex(std::string_view name)
     if (name.size() >= 2 && name.front() == 'x')
     {
         auto Index{std::uint32_t{0}};
-        for (std::size_t Pos{1}; Pos < name.size(); ++Pos)
-        {
-            if (name[Pos] < '0' || name[Pos] > '9')
-            {
-                return std::nullopt;
-            }
-            Index = Index * 10u + static_cast<std::uint32_t>(name[Pos] - '0');
-        }
-        if (Index < 32)
+        const auto *Begin{name.data() + 1};
+        const auto End{name.data() + name.size()};
+        const auto [Ptr, Ec]{std::from_chars(Begin, End, Index, 10)};
+        if (Ec == std::errc{} && Ptr == End && Index < 32)
         {
             return Index;
         }
@@ -46,12 +41,9 @@ std::optional<std::uint32_t> RegisterNameToIndex(std::string_view name)
         "a6",   "a7", "s2", "s3", "s4", "s5", "s6", "s7",
         "s8",   "s9", "s10", "s11", "t3", "t4", "t5", "t6",
     };
-    for (std::size_t Index{0}; Index < ABIName.size(); ++Index)
+    if (const auto It{std::ranges::find(ABIName, name)}; It != ABIName.end())
     {
-        if (name == ABIName[Index])
-        {
-            return static_cast<std::uint32_t>(Index);
-        }
+        return static_cast<std::uint32_t>(It - ABIName.begin());
     }
     if (name == "fp")
     {

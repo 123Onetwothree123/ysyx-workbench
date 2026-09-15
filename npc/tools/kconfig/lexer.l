@@ -123,6 +123,7 @@ n	[A-Za-z0-9_-]
 "source"		return T_SOURCE;
 "string"		return T_STRING;
 "tristate"		return T_TRISTATE;
+"transitional"		return T_TRANSITIONAL;
 "visible"		return T_VISIBLE;
 "||"			return T_OR;
 "&&"			return T_AND;

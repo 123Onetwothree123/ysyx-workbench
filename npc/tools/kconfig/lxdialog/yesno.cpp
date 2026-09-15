@@ -35,7 +35,7 @@ static void print_buttons(WINDOW * dialog, int height, int width, int selected)
  */
 int dialog_yesno(const char *title, const char *prompt, int height, int width)
 {
-	int i, x, y, key = 0, button = 0;
+	int x, y, key = 0, button = 0;
 	WINDOW *dialog;
 
 do_resize:
@@ -55,12 +55,7 @@ do_resize:
 
 	draw_box(dialog, 0, 0, height, width,
 		 dlg.dialog.atr, dlg.border.atr);
-	wattrset(dialog, dlg.border.atr);
-	mvwaddch(dialog, height - 3, 0, ACS_LTEE);
-	for (i = 0; i < width - 2; i++)
-		waddch(dialog, ACS_HLINE);
-	wattrset(dialog, dlg.dialog.atr);
-	waddch(dialog, ACS_RTEE);
+	draw_bottom_border(dialog, height, width);
 
 	print_title(dialog, title, width);
 
@@ -71,6 +66,10 @@ do_resize:
 
 	while (key != KEY_ESC) {
 		key = wgetch(dialog);
+		if (key == ERR) {	/* interrupted by a signal: unwind */
+			delwin(dialog);
+			return KEY_ESC;
+		}
 		switch (key) {
 		case 'Y':
 		case 'y':
@@ -84,7 +83,7 @@ do_resize:
 		case TAB:
 		case KEY_LEFT:
 		case KEY_RIGHT:
-			button = ((key == KEY_LEFT ? --button : ++button) < 0) ? 1 : (button > 1 ? 0 : button);
+			button = next_button(button, key, 2);
 
 			print_buttons(dialog, height, width, button);
 			wrefresh(dialog);

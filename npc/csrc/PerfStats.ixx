@@ -1,0 +1,43 @@
+export module npc.PerfStats;
+import std;
+
+export struct PerfStats
+{
+    std::size_t instruction_fetch{0};
+    std::size_t execution_complete{0};
+    std::size_t load_data{0};
+    std::size_t store_data{0};
+    std::size_t arithmetic_operation{0};
+    std::size_t memory_access_operation{0};
+    std::size_t control_status_register_operation{0};
+    std::size_t branch_operation{0};
+    std::size_t jal_operation{0};
+    std::size_t jalr_operation{0};
+    std::size_t instruction_fetch_stall_pipeline{0};
+    std::size_t instruction_fetch_stall_axi{0};
+    std::size_t instruction_fetch_stall_ar{0};
+    std::size_t instruction_fetch_stall_r{0};
+    std::size_t instruction_fetch_stall_redirect{0};
+    std::size_t instruction_fetch_stall_idle{0};
+    std::size_t execution_active_cycle{0};
+    std::size_t exu_stall_lsu{0};
+    std::size_t arithmetic_operation_active_cycle{0};
+    std::size_t memory_access_operation_active_cycle{0};
+    std::size_t control_status_register_operation_active_cycle{0};
+    std::size_t branch_operation_active_cycle{0};
+    std::size_t load_store_unit_active_cycle{0};
+    std::size_t load_store_unit_load_active_cycle{0};
+    std::size_t load_store_unit_store_active_cycle{0};
+    std::size_t lsu_stall_read_ar{0};
+    std::size_t lsu_stall_read_r{0};
+    std::size_t lsu_stall_write_req{0};
+    std::size_t lsu_stall_write_b{0};
+    std::size_t icache_hit{0};
+    std::size_t icache_miss{0};
+    std::size_t idu_stall_raw{0};
+    std::size_t idu_stall_raw_loaduse{0};
+    std::size_t idu_stall_raw_alu{0};
+    std::size_t exu_idle_noinput{0};
+    std::size_t trap_count{0};
+    std::size_t mem_waitslot{0};
+};

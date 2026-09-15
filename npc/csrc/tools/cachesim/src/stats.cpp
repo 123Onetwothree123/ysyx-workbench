@@ -17,7 +17,7 @@ void print_stats(const SimStats& stats, const CacheConfig& config)
 
     unsigned misses = stats.misses();
 
-    println("");
+    println();
     println("统计结果:");
     println("总访问次数：{}", stats.total);
     println("命中次数：{}", stats.hits);

@@ -3,19 +3,12 @@
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
  */
 
-#ifndef EXPR_H
-#define EXPR_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#pragma once
 
 #include <assert.h>
 #include <stdio.h>
+#include <cstddef>
 #include "list.hpp"
-#ifndef __cplusplus
-#include <stdbool.h>
-#endif
 
 struct file {
 	struct file *next;
@@ -24,9 +17,18 @@ struct file {
 	int lineno;
 };
 
-typedef enum tristate {
+enum class tristate {
 	no, mod, yes
-} tristate;
+};
+
+/*
+ * Unqualified-name compatibility aliases. The codebase (including the
+ * generated parser/lexer) uses the bare enumerators everywhere; these keep
+ * all those call sites source-compatible with the scoped enum.
+ */
+inline constexpr tristate no  = tristate::no;
+inline constexpr tristate mod = tristate::mod;
+inline constexpr tristate yes = tristate::yes;
 
 enum expr_type {
 	E_NONE, E_OR, E_AND, E_NOT,
@@ -44,9 +46,20 @@ struct expr {
 	union expr_data left, right;
 };
 
-#define EXPR_OR(dep1, dep2) (static_cast<tristate>(((dep1)>(dep2))?(dep1):(dep2)))
-#define EXPR_AND(dep1, dep2) (static_cast<tristate>(((dep1)<(dep2))?(dep1):(dep2)))
-#define EXPR_NOT(dep) (static_cast<tristate>(2-(dep)))
+inline constexpr tristate EXPR_OR(tristate dep1, tristate dep2)
+{
+	return dep1 > dep2 ? dep1 : dep2;
+}
+
+inline constexpr tristate EXPR_AND(tristate dep1, tristate dep2)
+{
+	return dep1 < dep2 ? dep1 : dep2;
+}
+
+inline constexpr tristate EXPR_NOT(tristate dep)
+{
+	return static_cast<tristate>(2 - static_cast<int>(dep));
+}
 
 #define expr_list_for_each_sym(l, e, s) \
 	for (e = (l); e && (s = e->right.sym); e = e->left.expr)
@@ -56,14 +69,33 @@ struct expr_value {
 	tristate tri;
 };
 
+/*
+ * Tagged payload of symbol_value: 'str' for string/int/hex values (and the
+ * constant tristate symbols' literal names), 'sym' for the selected
+ * choice-value symbol of a choice. Which member is active follows from the
+ * symbol's type/flags at the access site.
+ */
+union symbol_value_data {
+	const char *str;
+	struct symbol *sym;
+};
+
 struct symbol_value {
-	void *val;
+	union symbol_value_data val;
 	tristate tri;
 };
 
-enum symbol_type {
+enum class symbol_type {
 	S_UNKNOWN, S_BOOLEAN, S_TRISTATE, S_INT, S_HEX, S_STRING
 };
+
+/* See tristate above: bare-enumerator compatibility aliases. */
+inline constexpr symbol_type S_UNKNOWN  = symbol_type::S_UNKNOWN;
+inline constexpr symbol_type S_BOOLEAN  = symbol_type::S_BOOLEAN;
+inline constexpr symbol_type S_TRISTATE = symbol_type::S_TRISTATE;
+inline constexpr symbol_type S_INT      = symbol_type::S_INT;
+inline constexpr symbol_type S_HEX      = symbol_type::S_HEX;
+inline constexpr symbol_type S_STRING   = symbol_type::S_STRING;
 
 /* enum values are used as index to symbol.def[] */
 enum {
@@ -133,31 +165,37 @@ struct symbol {
 
 #define for_all_symbols(i, sym) for (i = 0; i < SYMBOL_HASHSIZE; i++) for (sym = symbol_hash[i]; sym; sym = sym->next)
 
-#define SYMBOL_CONST      0x0001  /* symbol is const */
-#define SYMBOL_CHECK      0x0008  /* used during dependency checking */
-#define SYMBOL_CHOICE     0x0010  /* start of a choice block (null name) */
-#define SYMBOL_CHOICEVAL  0x0020  /* used as a value in a choice block */
-#define SYMBOL_VALID      0x0080  /* set when symbol.curr is calculated */
-#define SYMBOL_OPTIONAL   0x0100  /* choice is optional - values can be 'n' */
-#define SYMBOL_WRITE      0x0200  /* write symbol to file (KCONFIG_CONFIG) */
-#define SYMBOL_CHANGED    0x0400  /* ? */
-#define SYMBOL_WRITTEN    0x0800  /* track info to avoid double-write to .config */
-#define SYMBOL_NO_WRITE   0x1000  /* Symbol for internal use only; it will not be written */
-#define SYMBOL_CHECKED    0x2000  /* used during dependency checking */
-#define SYMBOL_WARNED     0x8000  /* warning has been issued */
+inline constexpr int SYMBOL_CONST      = 0x0001;  /* symbol is const */
+inline constexpr int SYMBOL_CHECK      = 0x0008;  /* used during dependency checking */
+inline constexpr int SYMBOL_CHOICE     = 0x0010;  /* start of a choice block (null name) */
+inline constexpr int SYMBOL_CHOICEVAL  = 0x0020;  /* used as a value in a choice block */
+inline constexpr int SYMBOL_VALID      = 0x0080;  /* set when symbol.curr is calculated */
+inline constexpr int SYMBOL_OPTIONAL   = 0x0100;  /* choice is optional - values can be 'n' */
+inline constexpr int SYMBOL_WRITE      = 0x0200;  /* write symbol to file (KCONFIG_CONFIG) */
+inline constexpr int SYMBOL_CHANGED    = 0x0400;  /* ? */
+inline constexpr int SYMBOL_WRITTEN    = 0x0800;  /* track info to avoid double-write to .config */
+inline constexpr int SYMBOL_NO_WRITE   = 0x1000;  /* Symbol for internal use only; it will not be written */
+inline constexpr int SYMBOL_CHECKED    = 0x2000;  /* used during dependency checking */
+inline constexpr int SYMBOL_WARNED     = 0x8000;  /* warning has been issued */
 
 /* Set when symbol.def[] is used */
-#define SYMBOL_DEF        0x10000  /* First bit of SYMBOL_DEF */
-#define SYMBOL_DEF_USER   0x10000  /* symbol.def[S_DEF_USER] is valid */
-#define SYMBOL_DEF_AUTO   0x20000  /* symbol.def[S_DEF_AUTO] is valid */
-#define SYMBOL_DEF3       0x40000  /* symbol.def[S_DEF_3] is valid */
-#define SYMBOL_DEF4       0x80000  /* symbol.def[S_DEF_4] is valid */
+inline constexpr int SYMBOL_DEF        = 0x10000;  /* First bit of SYMBOL_DEF */
+inline constexpr int SYMBOL_DEF_USER   = 0x10000;  /* symbol.def[S_DEF_USER] is valid */
+inline constexpr int SYMBOL_DEF_AUTO   = 0x20000;  /* symbol.def[S_DEF_AUTO] is valid */
+inline constexpr int SYMBOL_DEF3       = 0x40000;  /* symbol.def[S_DEF_3] is valid */
+inline constexpr int SYMBOL_DEF4       = 0x80000;  /* symbol.def[S_DEF_4] is valid */
 
 /* choice values need to be set before calculating this symbol value */
-#define SYMBOL_NEED_SET_CHOICE_VALUES  0x100000
+inline constexpr int SYMBOL_NEED_SET_CHOICE_VALUES = 0x100000;
 
 /* Set symbol to y if allnoconfig; used for symbols that hide others */
-#define SYMBOL_ALLNOCONFIG_Y 0x200000
+inline constexpr int SYMBOL_ALLNOCONFIG_Y = 0x200000;
+
+/*
+ * Upstream assigns 0x0100 to SYMBOL_TRANS, but that bit is still used
+ * by SYMBOL_OPTIONAL in this port, so the next free bit is taken here.
+ */
+inline constexpr int SYMBOL_TRANS      = 0x400000;  /* symbol is transitional only (not visible) */
 
 #define SYMBOL_MAXLENGTH	256
 #define SYMBOL_HASHSIZE		9973
@@ -176,7 +214,7 @@ struct symbol {
  * Please, also check parser.y:print_symbol() when modifying the
  * list of property types!
  */
-enum prop_type {
+enum class prop_type {
 	P_UNKNOWN,
 	P_PROMPT,   /* prompt "foo prompt" or "BAZ Value" */
 	P_COMMENT,  /* text associated with a comment */
@@ -188,6 +226,18 @@ enum prop_type {
 	P_RANGE,    /* range 7..100 (for a symbol) */
 	P_SYMBOL,   /* where a symbol is defined */
 };
+
+/* See tristate above: bare-enumerator compatibility aliases. */
+inline constexpr prop_type P_UNKNOWN = prop_type::P_UNKNOWN;
+inline constexpr prop_type P_PROMPT  = prop_type::P_PROMPT;
+inline constexpr prop_type P_COMMENT = prop_type::P_COMMENT;
+inline constexpr prop_type P_MENU    = prop_type::P_MENU;
+inline constexpr prop_type P_DEFAULT = prop_type::P_DEFAULT;
+inline constexpr prop_type P_CHOICE  = prop_type::P_CHOICE;
+inline constexpr prop_type P_SELECT  = prop_type::P_SELECT;
+inline constexpr prop_type P_IMPLY   = prop_type::P_IMPLY;
+inline constexpr prop_type P_RANGE   = prop_type::P_RANGE;
+inline constexpr prop_type P_SYMBOL  = prop_type::P_SYMBOL;
 
 struct property {
 	struct property *next;     /* next property - null if last */
@@ -300,13 +350,13 @@ struct expr *expr_alloc_or(struct expr *e1, struct expr *e2);
 struct expr *expr_copy(const struct expr *org);
 void expr_free(struct expr *e);
 void expr_eliminate_eq(struct expr **ep1, struct expr **ep2);
-int expr_eq(struct expr *e1, struct expr *e2);
+[[nodiscard]] bool expr_eq(const struct expr *e1, const struct expr *e2);
 tristate expr_calc_value(struct expr *e);
 struct expr *expr_trans_bool(struct expr *e);
 struct expr *expr_eliminate_dups(struct expr *e);
 struct expr *expr_transform(struct expr *e);
-int expr_contains_symbol(struct expr *dep, struct symbol *sym);
-bool expr_depends_symbol(struct expr *dep, struct symbol *sym);
+[[nodiscard]] bool expr_contains_symbol(const struct expr *dep, struct symbol *sym);
+[[nodiscard]] bool expr_depends_symbol(const struct expr *dep, struct symbol *sym);
 struct expr *expr_trans_compare(struct expr *e, enum expr_type type, struct symbol *sym);
 
 void expr_fprint(struct expr *e, FILE *out);
@@ -315,18 +365,12 @@ void expr_gstr_print(struct expr *e, struct gstr *gs);
 void expr_gstr_print_revdep(struct expr *e, struct gstr *gs,
 			    tristate pr_type, const char *title);
 
-static inline int expr_is_yes(struct expr *e)
+[[nodiscard]] static inline bool expr_is_yes(const struct expr *e)
 {
 	return !e || (e->type == E_SYMBOL && e->left.sym == &symbol_yes);
 }
 
-static inline int expr_is_no(struct expr *e)
+[[nodiscard]] static inline bool expr_is_no(const struct expr *e)
 {
 	return e && (e->type == E_SYMBOL && e->left.sym == &symbol_no);
 }
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* EXPR_H */

@@ -1,4 +1,5 @@
 module npc.sdb.command.WatchpointPool;
+import npc.unicode;
 import npc.sdb.TablePrinter;
 
 WatchpointPool &GetGlobalWatchpointPool()
@@ -7,14 +8,14 @@ WatchpointPool &GetGlobalWatchpointPool()
     return GlobalWatchpointPool;
 }
 
-WatchpointPool::WatchpointPool(std::size_t InputMaxWatchpoints)
-    : watchpoints(InputMaxWatchpoints)
+WatchpointPool::WatchpointPool()
 {
-    for (std::size_t i{InputMaxWatchpoints}; i > 0; --i)
+    watchpoints.resize(MaxWatchpoints);
+    FreeWatchpointIndices.resize(MaxWatchpoints);
+    std::iota(FreeWatchpointIndices.begin(), FreeWatchpointIndices.end(), std::size_t{0});
+    for (std::size_t i{0}; i < MaxWatchpoints; ++i)
     {
-        const auto NO{i - 1};
-        watchpoints[NO].SetNO(NO);
-        FreeWatchpointIndices.push_back(NO);
+        watchpoints[i].SetNO(i);
     }
 }
 Watchpoint *WatchpointPool::GetWatchpoint(std::size_t NO)
@@ -84,13 +85,10 @@ bool WatchpointPool::CheckAll(const EvaluationContext &context)
     expressions expression;
     auto CurrentPC{context.GetPC()};
     bool triggered{false};
-    for (std::size_t NO : UsedWatchpointIndices)
+    for (std::size_t NO : UsedWatchpointIndices
+                          | std::views::filter([&](std::size_t no) { return watchpoints[no].IsEnabled(); }))
     {
         auto &wp{watchpoints[NO]};
-        if (!wp.IsEnabled())
-        {
-            continue;
-        }
         auto result{expression.evaluate(wp.GetExpression(), context)};
         if (!result)
         {
@@ -143,17 +141,17 @@ static const char *get_watchpoint_type_name(const char *expr)
     }
     return "常量";
 }
-static const char *get_type_color(const char *type_name)
+static const char *get_type_color(std::string_view type_name)
 {
-    if (std::strcmp(type_name, "寄存器") == 0)
+    if (type_name == "寄存器")
     {
         return ANSI::FG_CYAN;
     }
-    if (std::strcmp(type_name, "解引用") == 0)
+    if (type_name == "解引用")
     {
         return ANSI::FG_YELLOW;
     }
-    if (std::strcmp(type_name, "表达式") == 0)
+    if (type_name == "表达式")
     {
         return ANSI::FG_MAGENTA;
     }
@@ -205,50 +203,10 @@ void WatchpointPool::PrintAllWatchpoints(const EvaluationContext &context) const
     const int delta_width{11};
     const int trigger_width{10};
     int no_width{display_width("编号")};
-    int type_width{display_width("类型")};
-    int enable_width{display_width("启用状态")};
-    int status_width{display_width("状态")};
+    int type_width{std::max({display_width("类型"), display_width("寄存器"), display_width("解引用"), display_width("表达式"), display_width("常量")})};
+    int enable_width{std::max({display_width("启用状态"), display_width("启用"), display_width("禁用")})};
+    int status_width{std::max({display_width("状态"), display_width("已变化"), display_width("正常"), display_width("无效"), display_width("停用")})};
     int expr_width{display_width("表达式")};
-    if (display_width("寄存器") > type_width)
-    {
-        type_width = display_width("寄存器");
-    }
-    if (display_width("解引用") > type_width)
-    {
-        type_width = display_width("解引用");
-    }
-    if (display_width("表达式") > type_width)
-    {
-        type_width = display_width("表达式");
-    }
-    if (display_width("常量") > type_width)
-    {
-        type_width = display_width("常量");
-    }
-    if (display_width("启用") > enable_width)
-    {
-        enable_width = display_width("启用");
-    }
-    if (display_width("禁用") > enable_width)
-    {
-        enable_width = display_width("禁用");
-    }
-    if (display_width("已变化") > status_width)
-    {
-        status_width = display_width("已变化");
-    }
-    if (display_width("正常") > status_width)
-    {
-        status_width = display_width("正常");
-    }
-    if (display_width("无效") > status_width)
-    {
-        status_width = display_width("无效");
-    }
-    if (display_width("停用") > status_width)
-    {
-        status_width = display_width("停用");
-    }
     for (const auto *wp : wps)
     {
         int w{display_width(std::to_string(wp->GetNO()))};

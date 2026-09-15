@@ -6,12 +6,14 @@
 #ifndef LKC_H
 #define LKC_H
 
+#include <cassert>  /* assert */
+#include <cstdio>   /* FILE */
+#include <cstddef>  /* size_t */
+#include <cstdlib>  /* getenv */
+
 #include "expr.hpp"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
+/* All kconfig sources are C++ (.cpp); use uniform C++ linkage. */
 #include "lkc_proto.hpp"
 
 #define SRCTREE "srctree"
@@ -20,12 +22,22 @@ extern "C" {
 #define PACKAGE "linux"
 #endif
 
+/*
+ * CONFIG_ macro trick: the rest of the code uses CONFIG_ as if it were a
+ * plain prefix string, but it is really a function call so the prefix can be
+ * overridden at runtime via the CONFIG_ environment variable.  The first
+ * (temporary) definition only supplies the default value for CONFIG_prefix();
+ * it is then undefined and CONFIG_ is redefined as the function call.  A
+ * build-time -DCONFIG_=... still overrides the default value.
+ */
 #ifndef CONFIG_
 #define CONFIG_ "CONFIG_"
 #endif
 static inline const char *CONFIG_prefix(void)
 {
-	return getenv( "CONFIG_" ) ?: CONFIG_;
+	const char *p = getenv("CONFIG_");
+
+	return p ? p : CONFIG_;
 }
 #undef CONFIG_
 #define CONFIG_ CONFIG_prefix()
@@ -53,6 +65,8 @@ const char *conf_get_configname(void);
 void sym_set_change_count(int count);
 void sym_add_change_count(int count);
 bool conf_set_all_new_symbols(enum conf_def_mode mode);
+void conf_set_randconfig_seed(void);
+void conf_suppress_changed_input_warning(void);
 void conf_rewrite_mod_or_yes(enum conf_def_mode mode);
 void set_all_choice_values(struct symbol *csym);
 
@@ -67,11 +81,11 @@ static inline void xfwrite(const void *str, size_t len, size_t count, FILE *out)
 
 /* util.c */
 struct file *file_lookup(const char *name);
-void *xmalloc(size_t size);
-void *xcalloc(size_t nmemb, size_t size);
-void *xrealloc(void *p, size_t size);
-char *xstrdup(const char *s);
-char *xstrndup(const char *s, size_t n);
+[[nodiscard]] void *xmalloc(size_t size);
+[[nodiscard]] void *xcalloc(size_t nmemb, size_t size);
+[[nodiscard]] void *xrealloc(void *p, size_t size);
+[[nodiscard]] char *xstrdup(const char *s);
+[[nodiscard]] char *xstrndup(const char *s, size_t n);
 
 /* lexer.l */
 int yylex(void);
@@ -106,7 +120,7 @@ void menu_add_option_modules(void);
 void menu_add_option_defconfig_list(void);
 void menu_add_option_allnoconfig_y(void);
 void menu_finalize(struct menu *parent);
-void menu_set_type(int type);
+void menu_set_type(enum symbol_type type);
 
 extern struct menu rootmenu;
 
@@ -137,7 +151,7 @@ static inline tristate sym_get_tristate_value(struct symbol *sym)
 
 static inline struct symbol *sym_get_choice_value(struct symbol *sym)
 {
-	return (struct symbol *)sym->curr.val;
+	return sym->curr.val.sym;
 }
 
 static inline bool sym_set_choice_value(struct symbol *ch, struct symbol *chval)
@@ -165,17 +179,11 @@ static inline bool sym_has_value(struct symbol *sym)
 	return sym->flags & SYMBOL_DEF_USER ? true : false;
 }
 
-#ifdef __cplusplus
-}
-#endif
-
-#ifdef __cplusplus
 extern struct menu *current_entry;
 extern struct menu *current_menu;
 extern struct file *current_file;
 extern struct file *file_list;
 extern void zconf_error(const char *err, ...);
-#endif
 
 extern int yydebug;
 extern int yylineno;
