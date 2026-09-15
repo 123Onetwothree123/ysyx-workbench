@@ -108,17 +108,13 @@ class ysyx_26030103_IDU extends Module {
   val ImmediateGeneratorModule = Module(new ysyx_26030103_ImmediateGenerator)
   ImmediateGeneratorModule.io.Instruction := Instruction
   val Immediate = ImmediateGeneratorModule.io.Immediate
-  // ysyx_26030103_ALU直接模块实例化了
-  val ALUOpDecoderModule = Module(new ysyx_26030103_ALUOpDecoder)
-  ALUOpDecoderModule.io.opcode := opcode
-  val ALUOp = ALUOpDecoderModule.io.ALUOp
-  val ALUControlDecoderModule = Module(new ysyx_26030103_ALUControlDecoder)
-  ALUControlDecoderModule.io.ALUOp := ALUOp
-  ALUControlDecoderModule.io.opcode := opcode
-  ALUControlDecoderModule.io.funct3 := funct3
-  ALUControlDecoderModule.io.funct7 := funct7
-  val ALUCtrl = ALUControlDecoderModule.io.ALUCtrl
-  val ALUCDIllegal = ALUControlDecoderModule.io.Illegal
+  // ALU 控制解码已经合并为一个模块，直接使用 opcode/funct3/funct7 完成译码。
+  val ALUDecoderModule = Module(new ysyx_26030103_ALUDecoder)
+  ALUDecoderModule.io.opcode := opcode
+  ALUDecoderModule.io.funct3 := funct3
+  ALUDecoderModule.io.funct7 := funct7
+  val ALUCtrl = ALUDecoderModule.io.ALUCtrl
+  val ALUCDIllegal = ALUDecoderModule.io.Illegal
   // ALUCDIllegal只覆盖了已知指令类别里funct3/funct7非法的情况,这里补上"不属于任何已知指令"的检测:
   // System里只实现了csrrw/csrrs/ecall/ebreak/mret,MiscMem里fence当nop处理,fence.i单独处理
   val IsFence = (opcode === OPCODE_MiscMem) && (funct3 === "b000".U(3.W))
