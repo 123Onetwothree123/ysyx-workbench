@@ -121,9 +121,15 @@ class ysyx_26030103_EXU extends Module {
   val Mispredict = ActualNextPC =/= PredNextPC
   val Redirect = (Mispredict || inst.IsFenceI) && !UpEx
   // CSR提交(csr写/ecall/ebreak/mret/异常/中断): 只在非访存指令fire时提交,
-  // 访存指令一拍流过EXU前往MEM,不允许中断提交和它们绑定(避免被压掉的load/store留下副作用)
-  CSRUnit.io.Enable := (io.in.fire && !inst.MemoryValid) || io.MemTrapCommit
-  CSRUnit.io.TrapValid := UpEx || io.MemTrapCommit
+  // 访存指令一拍流过EXU前往MEM,不允许中断提交和它们绑定(避免被压掉的load/store留下副作用);
+  // 带异常标记的访存指令(取指错/非法编码)必须在EXU提交异常, 提交视角下不算访存指令,
+  // 否则会落入"等MEM级提交"分支而把异常吞掉
+  val IsMemoryForCommit = inst.MemoryValid && !UpEx
+  // 指令级提交只认本拍fire; MEM级故障走独立的MemTrap后门, 这样MemTrap当拍
+  // EXU里被冲刷的指令(csrrw/mret)不会产生CSR副作用, 异常目标也不会被mret劫持
+  CSRUnit.io.Enable := io.in.fire && !IsMemoryForCommit
+  CSRUnit.io.MemTrap := io.MemTrapCommit
+  CSRUnit.io.TrapValid := UpEx
   CSRUnit.io.TrapCause := Mux(
     io.MemTrapCommit,
     io.MemTrapCause,

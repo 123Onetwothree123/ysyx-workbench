@@ -26,9 +26,12 @@ class ysyx_26030103_CSR extends Module {
     val ExceptionTarget = Output(UInt(32.W)) // 跳转目标地址
     // 新加的，真正的处理功能
     val Interrupt = Input(Bool())
-    // EXU提交点送来的异常:IFU取指错(1)/IDU非法指令(2)/LSU访存错(5或7),与ecall/ebreak走同一条提交通路
+    // EXU提交点送来的异常:IFU取指错(1)/IDU非法指令(2),与ecall/ebreak走同一条提交通路
     val TrapValid = Input(Bool())
     val TrapCause = Input(UInt(32.W))
+    // MEM级访存故障后门提交(与当前EXU里的指令无关): 置位时当前指令被冲刷,
+    // 不得再产生任何指令级副作用(csr写/mret/中断提交), 异常走mtvec
+    val MemTrap = Input(Bool())
     // 中断提交标志(Enable且中断被接受),给EXU用来压掉被中断指令的副作用:
     // mepc记的是这条指令自己的PC,mret后它会重新执行,因此它本次不得写GPR/CSR
     val IrqCommit = Output(Bool())
@@ -94,7 +97,9 @@ class ysyx_26030103_CSR extends Module {
   30号到0号，则是编号，3是异常，7是机器定时器中断（就是Machine Timer），11是ecall
    */
   val ExceptionCause = WireDefault(0.U(32.W))
-  when(HasInterrupt) {
+  when(io.MemTrap) {
+    ExceptionCause := io.TrapCause // MEM后门故障(cause由EXU在TrapCause上先选好)
+  }.elsewhen(HasInterrupt) {
     ExceptionCause := "h80000007".U(
       32.W
     ) // ysyx_26030103_mcause=7，bit31=1说明这是中断不是异常
@@ -106,11 +111,12 @@ class ysyx_26030103_CSR extends Module {
     ExceptionCause := 11.U(32.W) // ecall
   }
   // 新加的这行代码，irq是Interrupt ReQuest，是中断请求的意思
-  val HasIrqCommit = io.Enable && HasInterrupt
+  val HasIrqCommit = io.Enable && HasInterrupt && !io.MemTrap
   // 中断提交时被中断的指令要被压掉(mepc记的是它自己的PC,mret后重跑),因此它本次不得写CSR/GPR
   val CSRWen = (csrrwWen || csrrsWen) && !HasInterrupt
   io.IrqCommit := HasIrqCommit
-  val ExceptionCommit = io.Enable && IsException
+  // 异常提交: MEM后门优先(当前指令被冲刷), 其余由本条指令的ecall/ebreak/中断/异常触发
+  val ExceptionCommit = io.MemTrap || (io.Enable && IsException)
   // 以下这段代码是AI编写的
   /*
   就是RISCV有两种模式，一种是BASE模式，一种是向量模式
@@ -201,10 +207,12 @@ class ysyx_26030103_CSR extends Module {
     IsCSRAddress(CSR_MCAUSE)
   io.CSRValid := CSRReadCommand && IsAddressValid
   // ecall和ebreak跳ysyx_26030103_mtvec，mret跳ysyx_26030103_mepc
+  // 目标按"是否提交异常"选择: 异常优先走mtvec, 只有纯mret才走mepc
+  // (修掉MemTrap当拍被冲刷的mret把目标劫持到旧mepc的问题)
   io.ExceptionTaken := ExceptionCommit || MretCommit
   io.ExceptionTarget := Mux(
-    io.IsMret,
-    Mepc_rdata,
-    Cat(Mtvec_rdata(31, 2), 0.U(2.W))
+    ExceptionCommit,
+    Cat(Mtvec_rdata(31, 2), 0.U(2.W)),
+    Mepc_rdata
   )
 }

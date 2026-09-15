@@ -65,6 +65,8 @@ class ysyx_26030103_LSU extends Module {
   val LoadDataReg = RegInit(0.U(32.W))
   val AccessFaultReg = RegInit(false.B)
   val AccessFaultRespReg = RegInit(0.U(2.W))
+  // store等B响应期间锁存的响应错误(BRESP!=0), 与load的AccessFaultReg并列
+  val StoreFaultReg = RegInit(false.B)
   val StageIsIdle = stageState === StageIdle
   val IsMemOp = io.in.bits.MemoryValid
   val startMem = StageIsIdle && io.in.fire && IsMemOp
@@ -73,10 +75,21 @@ class ysyx_26030103_LSU extends Module {
   }
   val ActiveInstruction = Mux(StageIsIdle, io.in.bits, MsgReg)
 
+  // 地址对齐检查: word必须4字节对齐, half必须2字节对齐(byte无限制);
+  // 不对齐时按RISC-V报地址非对齐异常(load=4/store=6), 不发起总线事务
+  val AddressMisaligned = Wire(Bool())
+  when(ActiveInstruction.WidthSelect === "b10".U) {
+    AddressMisaligned := ActiveInstruction.ALUResult(1, 0) =/= "b00".U
+  }.elsewhen(ActiveInstruction.WidthSelect === "b01".U) {
+    AddressMisaligned := ActiveInstruction.ALUResult(0) =/= 0.U
+  }.otherwise {
+    AddressMisaligned := false.B
+  }
+
   // 访存错误锁存: 总线进Done那一拍AccessFault还有效,之后会被清掉
   val MemFaultReg = RegInit(false.B)
   when(stageState === StageWait && io.Complete) {
-    MemFaultReg := AccessFaultReg
+    MemFaultReg := AccessFaultReg || StoreFaultReg
   }
   when(stageState === StageDone && io.out.ready) {
     MemFaultReg := false.B
@@ -84,7 +97,11 @@ class ysyx_26030103_LSU extends Module {
   // 访存故障提交点(StageDone里out.valid恒为true,用out.ready而不是out.fire避免组合环)
   val MemTrapCommit = stageState === StageDone && MemFaultReg && io.out.ready
   io.MemTrapCommit := MemTrapCommit
-  io.MemTrapCause := Mux(MsgReg.MemoryWrite, 7.U(32.W), 5.U(32.W))
+  io.MemTrapCause := Mux(
+    AddressMisaligned,
+    Mux(MsgReg.MemoryWrite, 6.U(32.W), 4.U(32.W)), // 地址非对齐: store=6, load=4
+    Mux(MsgReg.MemoryWrite, 7.U(32.W), 5.U(32.W)) // 访问故障: store=7, load=5
+  )
   io.MemTrapPC := MsgReg.pc
   io.FlushIDEX := MemTrapCommit
   io.FlushEXMEM := MemTrapCommit
@@ -183,13 +200,14 @@ class ysyx_26030103_LSU extends Module {
       AXISize := 2.U // 4 bytes
     }
   }
-  val StateMachine = Enum(6)
+  val StateMachine = Enum(7)
   val StatesIdle = StateMachine(0)
   val StatesReadRequest = StateMachine(1)
   val StatesReadResponse = StateMachine(2)
   val StatesWriteWaitBuf = StateMachine(3) // store等写缓冲空位
   val StatesLoadWaitBuf = StateMachine(4) // load等写缓冲排空(保序)
   val StatesDone = StateMachine(5)
+  val StatesWriteWaitB = StateMachine(6) // store等自己的B响应(非纯RAM地址, 可能DECERR/SLVERR)
   val state = RegInit(StatesIdle)
   // 写对齐(组合逻辑): 按地址低两位把StoreData摆到正确的字节lane并生成WSTRB
   // 做个笔记，AMBA AXI的文档规定的，A3.2.1.1 Write strobes
@@ -249,7 +267,7 @@ class ysyx_26030103_LSU extends Module {
     }
   }
   val is_store_transaction = RegInit(false.B)
-  io.AccessFault := AccessFaultReg
+  io.AccessFault := AccessFaultReg || StoreFaultReg
   io.AccessFaultResp := AccessFaultRespReg
   io.DataBus.AW.AWVALID := false.B
   io.DataBus.AW.AWID := 0.U
@@ -272,22 +290,14 @@ class ysyx_26030103_LSU extends Module {
   io.DataBus.AR.ARPROT := 0.U
   io.DataBus.R.RREADY := false.B
   io.Complete := state === StatesDone
-  // 检查下地址有没有对齐
-  val AddressMisaligned = Wire(Bool())
-  when(ActiveInstruction.WidthSelect === "b10".U) {
-    AddressMisaligned := ActiveInstruction.ALUResult(1, 0) =/= "b00".U
-  }.elsewhen(ActiveInstruction.WidthSelect === "b01".U) {
-    AddressMisaligned := ActiveInstruction.ALUResult(0) =/= 0.U
-  }.otherwise {
-    AddressMisaligned := false.B
-  }
   // ===== 写缓冲 =====
-  // store入队即退休(StatesDone), 不再陪等B响应(~21拍); 后台按程序序完成AXI写。
+  // 纯RAM(0x8/0xa)的store入队即退休(StatesDone), 后台按程序序完成AXI写, 不等B(~21拍);
+  // 其余地址(MMIO/未映射窗口)可能回DECERR/SLVERR, store必须等自己的B响应,
+  // BRESP != 0时置StoreFaultReg, 经MemFaultReg/CSR后门精确提交store访问故障(cause=7)。
   // 保序: load默认等buffer排空; 满足旁路条件(纯RAM+字地址无匹配+在写项全纯RAM)可直接上总线,
   // 单主端口下先到的事务先在xbar落地, 顺序天然有保证, 因此无需store-to-load转发。
   // fence.i经EXU的IsSideEffect机制等Busy(含buffer非空)排空后才冲icache。
-  // 代价: 总线级store故障(BRESP错误)无法精确异常化——入队时指令已退休。
-  // SoC内合法地址的写不会故障, 可接受; 不对齐store仍在入队前被精确拦截。
+  // 不对齐store仍在入队前被拦截(见AddressMisaligned)。
   val WBufDepth = 4
   val wbAddr = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbData = Reg(Vec(WBufDepth, UInt(32.W)))
@@ -303,6 +313,10 @@ class ysyx_26030103_LSU extends Module {
   // 入队: 接受store当拍有空位, 或等空位的那一拍(此时ActiveInstruction已是MsgReg)
   def IsPlainRAM(addr: UInt): Bool =
     addr(31, 28) === "h8".U || addr(31, 28) === "ha".U
+  // 只有纯RAM的写不可能故障, 可以入队即退休; 其余地址必须等自己的B响应
+  val storeNeedsB = !IsPlainRAM(ActiveInstruction.ALUResult)
+  // 在写缓冲中的槽位(入队时记录), 用于等B时确认收到的是自己的响应
+  val storeBufIdx = Reg(UInt(log2Ceil(WBufDepth).W))
   val wbPush =
     (startMem && ActiveInstruction.MemoryWrite && !AddressMisaligned && !wbufFull) ||
       (state === StatesWriteWaitBuf && !wbufFull)
@@ -313,6 +327,7 @@ class ysyx_26030103_LSU extends Module {
     wbSize(wbTail) := AXISize
     wbValid(wbTail) := true.B
     wbNorm(wbTail) := IsPlainRAM(ActiveInstruction.ALUResult)
+    storeBufIdx := wbTail
     wbTail := wbTail + 1.U
   }
   // load旁路: buffer非空时, 若load是纯RAM访问、所有在缓冲的写也都是纯RAM、
@@ -384,16 +399,18 @@ class ysyx_26030103_LSU extends Module {
     is(StatesIdle) {
       AccessFaultReg := false.B
       AccessFaultRespReg := 0.U
+      StoreFaultReg := false.B
       when(startMem) {
         is_store_transaction := ActiveInstruction.MemoryWrite
         when(AddressMisaligned) {
+          // 不对齐访存不发起总线事务: 置故障标志, 经MemTrap精确提交地址非对齐异常(cause 4/6)
+          AccessFaultReg := true.B
           state := StatesDone
-          // 不对齐访存直接完成(不发起总线事务),结果未定义,靠编译器保证不会翻车
         }
           .elsewhen(ActiveInstruction.MemoryWrite) {
-            // store入队即完成; 满了就等空位
+            // store: 纯RAM入队即完成; 其余地址等B响应; 满了先等空位
             when(!wbufFull) {
-              state := StatesDone
+              state := Mux(storeNeedsB, StatesWriteWaitB, StatesDone)
             }.otherwise {
               state := StatesWriteWaitBuf
             }
@@ -410,6 +427,14 @@ class ysyx_26030103_LSU extends Module {
     }
     is(StatesWriteWaitBuf) {
       when(!wbufFull) {
+        state := Mux(storeNeedsB, StatesWriteWaitB, StatesDone)
+      }
+    }
+    is(StatesWriteWaitB) {
+      // 等到自己的写事务拿到B响应: 之前的项都已按序完成, 队首就是本指令的项
+      when(wbState === wbWaitB && io.DataBus.B.BVALID && wbHead === storeBufIdx) {
+        StoreFaultReg := io.DataBus.B.BRESP =/= 0.U
+        AccessFaultRespReg := io.DataBus.B.BRESP
         state := StatesDone
       }
     }

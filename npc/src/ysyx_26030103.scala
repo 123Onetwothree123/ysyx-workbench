@@ -279,14 +279,13 @@ class ysyx_26030103(
   io.perf_exu_idle_noinput := exu.io.PerfIdleNoInput
   io.perf_trap := exu.io.PerfTrap
 
-  // AXI response signal assertions; these consume bresp/bid/rid inputs that
-  // are otherwise dead code in the single-master design, eliminating Verilator
-  // UNUSEDSIGNAL warnings while providing simulation-time protocol checks.
+  // AXI响应协议检查: B响应的错误码不再在这里断言——DECERR/SLVERR会由LSU按
+  // store访问故障精确提交(cause=7), 顶层断言会抢先把仿真停掉。
+  // 这里保留BID/RID协议检查, 并消费这些顶层AXI响应信号。
   val b_handshake = io.master_bvalid && io.master_bready
   assert(
-    !b_handshake || io.master_bresp === 0.U,
-    "AXI write response error: bresp=%d bid=%d",
-    io.master_bresp,
+    !b_handshake || io.master_bid === 0.U,
+    "AXI write: bid=%d",
     io.master_bid
   )
   assert(
