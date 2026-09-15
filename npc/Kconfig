@@ -632,13 +632,16 @@ menu "硬件配置"
 
     choice
       prompt "乘法器实现（RV32_M 启用时有效）"
-      default MUL_WALLACE
+      default MUL_REUSE_ADDER
       depends on RV32_M
       help
-        Wallace和Dadda都是部分积压缩树+末级加法, 结果相同, 区别在压缩顺序:
-        Wallace 面积/时延较均衡, Dadda 压缩器更少但布线更复杂。
-        两种实现共用同一个乘法接口, 通过 elaboration 期条件例化二选一,
+        三种实现共用同一个乘法接口, 通过 elaboration 期条件例化三选一,
         未选中的实现不会进入生成的RTL。
+        复用加法器: 多周期移位累加, 复用加法器, 面积最小;
+        Wallace: 部分积压缩树+末级加法, 面积/时延较均衡;
+        Dadda: 压缩器更少但布线更复杂。
+    config MUL_REUSE_ADDER
+      bool "复用加法器（移位累加，多周期）(待实现)"
     config MUL_WALLACE
       bool "Wallace 树 (待实现)"
     config MUL_DADDA
@@ -647,9 +650,10 @@ menu "硬件配置"
 
     config MUL_IMPL
       string
+      default "reuse_adder" if MUL_REUSE_ADDER
       default "wallace" if MUL_WALLACE
       default "dadda" if MUL_DADDA
-      default "wallace"
+      default "reuse_adder"
 
   endmenu
 
