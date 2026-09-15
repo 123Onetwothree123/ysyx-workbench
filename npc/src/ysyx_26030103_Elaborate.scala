@@ -1,5 +1,7 @@
 import chisel3._
 import ysyx_26030103.ysyx_26030103
+import _root_.ysyx_26030103.common.ysyx_26030103_NPCConfig
+import _root_.ysyx_26030103.common.ysyx_26030103_MulImpl
 import java.io.File
 import java.nio.file.{Files, Paths, StandardCopyOption}
 
@@ -16,11 +18,29 @@ object ysyx_26030103_Elaborate extends App {
   // ICache 对齐填充：npc 独立仿真的复位地址 = 0x80000000 + CACHE_PADDING
   // 与 Makefile 的 NPC_RESET_PC、program.hex 头部填充保持一致
   val CachePadding = sys.env.getOrElse("CACHE_PADDING", "0").toInt
-
   val CacheableBase_ysyxsoc = 0x00000000L
   val CacheableMask_ysyxsoc = 0x00000000L
   val CacheableBase_npc = 0x80000000L
   val CacheableMask_npc = 0x80000000L
+  // 用kconfig来指挥的指令集扩展开关，然后没有实现的部分就直接让NPCConfig的require判断为失败的条件就可以了
+  val UseM = sys.env.getOrElse("RV32_M", "n") == "y"
+  val UseA = sys.env.getOrElse("RV32_A", "n") == "y"
+  val UseC = sys.env.getOrElse("RV32_C", "n") == "y"
+  val MulImplName = sys.env.getOrElse("MUL_IMPL", "reuse_adder")
+  val config = ysyx_26030103_NPCConfig(
+    UseM = UseM,
+    UseA = UseA,
+    UseC = UseC,
+    MulImpl = ysyx_26030103_MulImpl.FromString(MulImplName),
+    BlockSizeLog2 = BlockSizeLog2,
+    IndexBits = IndexBits,
+    BTBBits = BTBBits,
+    BTBWays = BTBWays,
+    JalBTBBits = JalBTBBits,
+    JalBTBWays = JalBTBWays,
+    RASBits = RASBits
+  )
+  println(s"[NPC config] ${config.Describe}")
 
   // 让 firtool 直接输出 yosys 能读的语法:
   //   disallowLocalVariables  禁止 always 块内声明变量(消除 automatic logic 声明+初始化)
@@ -33,16 +53,11 @@ object ysyx_26030103_Elaborate extends App {
 
   emitVerilog(
     new ysyx_26030103(
-      resetAddr = 0x80000000L + CachePadding,
-      BlockSizeLog2 = BlockSizeLog2,
-      IndexBits = IndexBits,
-      BTBBits = BTBBits,
-      BTBWays = BTBWays,
-      JalBTBBits = JalBTBBits,
-      JalBTBWays = JalBTBWays,
-      RASBits = RASBits,
-      CacheableBase = CacheableBase_npc,
-      CacheableMask = CacheableMask_npc
+      config.copy(
+        ResetAddr = 0x80000000L + CachePadding,
+        CacheableBase = CacheableBase_npc,
+        CacheableMask = CacheableMask_npc
+      )
     ),
     Array("--target-dir", targetDir),
     yosysFirtoolOpts
@@ -54,16 +69,11 @@ object ysyx_26030103_Elaborate extends App {
   )
   emitVerilog(
     new ysyx_26030103(
-      resetAddr = 0x30000000L,
-      BlockSizeLog2 = BlockSizeLog2,
-      IndexBits = IndexBits,
-      BTBBits = BTBBits,
-      BTBWays = BTBWays,
-      JalBTBBits = JalBTBBits,
-      JalBTBWays = JalBTBWays,
-      RASBits = RASBits,
-      CacheableBase = CacheableBase_ysyxsoc,
-      CacheableMask = CacheableMask_ysyxsoc
+      config.copy(
+        ResetAddr = 0x30000000L,
+        CacheableBase = CacheableBase_ysyxsoc,
+        CacheableMask = CacheableMask_ysyxsoc
+      )
     ),
     Array("--target-dir", targetDir),
     yosysFirtoolOpts

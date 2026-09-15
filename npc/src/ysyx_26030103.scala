@@ -12,21 +12,10 @@ import _root_.ysyx_26030103.exu._
 import _root_.ysyx_26030103.mem._
 import _root_.ysyx_26030103.wbu._
 
-class ysyx_26030103(
-    resetAddr: Long = 0x30000000L,
-    AddressWidth: Int = 32,
-    BlockSizeLog2: Int = 4,
-    IndexBits: Int = 5,
-    BTBBits: Int = 4,
-    BTBWays: Int = 1,
-    JalBTBBits: Int = 4,
-    JalBTBWays: Int = 1,
-    RASBits: Int = 4,
-    CacheableBase: Long = 0x80000000L, // ysyxsoc默认值
-    CacheableMask: Long = 0x80000000L // ysyxsoc默认值
-) extends Module {
+class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig())
+    extends Module {
   val io = IO(new ysyx_26030103_IO)
-  val ifu = Module(new ysyx_26030103_IFU(resetAddr))
+  val ifu = Module(new ysyx_26030103_IFU(config.ResetAddr))
   val idu = Module(new ysyx_26030103_IDU)
   val exu = Module(new ysyx_26030103_EXU)
   val wbu = Module(new ysyx_26030103_WBU)
@@ -34,22 +23,23 @@ class ysyx_26030103(
   val gpr = Module(new ysyx_26030103_GPR)
   val icache = Module(
     new ysyx_26030103_ICache(
-      BlockSizeLog2 = BlockSizeLog2,
-      IndexBits = IndexBits,
-      CacheableBase = CacheableBase,
-      CacheableMask = CacheableMask
+      BlockSizeLog2 = config.BlockSizeLog2,
+      IndexBits = config.IndexBits,
+      CacheableBase = config.CacheableBase,
+      CacheableMask = config.CacheableMask
     )
   )
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
-  val xbar = Module(new ysyx_26030103_AXI5Xbar(AddressWidth))
+  val xbar = Module(new ysyx_26030103_AXI5Xbar(config.AddressWidth))
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
   val pipe_flush = exu.io.FlushIF
   // 分支目标缓冲(BTB): IFU取指级查询决定下一PC,取指被icache接受时快照预测标签随请求保存,
   // EXU提交时更新分支的真实target; 另设独立jal BTB(方案B: 与分支表零干扰, 表项带kind区分Jal/Call/Ret)
   // + 返回地址栈RAS(ret的预测目标=栈顶, EXU提交call/ret时压/弹, 非投机无需修复)
-  val btb = Module(new ysyx_26030103_BTB(BTBBits, BTBWays))
-  val jal_btb = Module(new ysyx_26030103_BTB(JalBTBBits, JalBTBWays, 32, 2))
-  val ras = Module(new ysyx_26030103_RAS(RASBits))
+  val btb = Module(new ysyx_26030103_BTB(config.BTBBits, config.BTBWays))
+  val jal_btb =
+    Module(new ysyx_26030103_BTB(config.JalBTBBits, config.JalBTBWays, 32, 2))
+  val ras = Module(new ysyx_26030103_RAS(config.RASBits))
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
   ifuResp.valid := icache.io.resp_valid
