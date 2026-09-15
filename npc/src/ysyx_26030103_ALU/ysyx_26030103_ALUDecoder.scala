@@ -1,6 +1,7 @@
 package ysyx_26030103.ysyx_26030103_ALU
 import chisel3._
 import chisel3.util._
+import chisel3.util.experimental.decode._
 import ysyx_26030103.ysyx_26030103_General.ysyx_26030103_opcode._
 class ysyx_26030103_ALUDecoder extends Module {
   import ysyx_26030103_ALUFunction._
@@ -11,165 +12,75 @@ class ysyx_26030103_ALUDecoder extends Module {
     val ALUCtrl = Output(UInt(CtrlWidth.W))
     val Illegal = Output(Bool())
   })
-  private def MatchesAny(value: UInt, validValues: UInt*): Bool =
-    validValues.map(value === _).reduceOption(_ || _).getOrElse(false.B)
-  private def SetIllegal(): Unit = {
-    io.ALUCtrl := NOP
-    io.Illegal := true.B
-  }
-  io.ALUCtrl := NOP
-  io.Illegal := false.B
-  switch(io.opcode) {
-    is(OPCODE_Immediate_Lxxx) {
-      io.ALUCtrl := ADD
-      when(
-        !MatchesAny(
-          io.funct3,
-          0.U(3.W), // LB
-          1.U(3.W), // LH
-          2.U(3.W), // LW
-          4.U(3.W), // LBU
-          5.U(3.W)  // LHU
-        )
-      ) {
-        SetIllegal()
-      }
-    }
-    is(OPCODE_Store) {
-      io.ALUCtrl := ADD
-      when(!MatchesAny(io.funct3, 0.U(3.W), 1.U(3.W), 2.U(3.W))) {
-        SetIllegal()
-      }
-    }
-    is(OPCODE_Immediate_Bxxx) {
-      io.ALUCtrl := ADD
-      when(io.funct3 =/= 0.U(3.W)) {
-        SetIllegal()
-      }
-    }
-    is(OPCODE_UpperImmediate_auipc, OPCODE_Jump) {
-      io.ALUCtrl := ADD
-    }
-    is(OPCODE_Branch) {
-      io.ALUCtrl := SUB
-      when(
-        !MatchesAny(
-          io.funct3,
-          0.U(3.W), // BEQ
-          1.U(3.W), // BNE
-          4.U(3.W), // BLT
-          5.U(3.W), // BGE
-          6.U(3.W), // BLTU
-          7.U(3.W)  // BGEU
-        )
-      ) {
-        SetIllegal()
-      }
-    }
-    is(OPCODE_Immediate) {
-      switch(io.funct3) {
-        is(0.U(3.W)) { // ADDI
-          io.ALUCtrl := ADD
-        }
-        is(1.U(3.W)) { // SLLI RV32I要funct7=0000000
-          when(io.funct7 === 0.U(7.W)) {
-            io.ALUCtrl := SLL
-          }.otherwise {
-            SetIllegal()
-          }
-        }
-        is(2.U(3.W)) { // SLTI
-          io.ALUCtrl := SLT
-        }
-        is(3.U(3.W)) { // SLTIU
-          io.ALUCtrl := SLTU
-        }
-        is(4.U(3.W)) { // XORI
-          io.ALUCtrl := XOR
-        }
-        is(5.U(3.W)) { // SRLI/SRAI
-          when(io.funct7 === 0.U(7.W)) {
-            io.ALUCtrl := SRL
-          }.elsewhen(io.funct7 === "b0100000".U(7.W)) {
-            io.ALUCtrl := SRA
-          }.otherwise {
-            SetIllegal()
-          }
-        }
-        is(6.U(3.W)) { // ORI
-          io.ALUCtrl := OR
-        }
-        is(7.U(3.W)) { // ANDI
-          io.ALUCtrl := AND
-        }
-      }
-    }
-    is(OPCODE_Register) {
-      switch(io.funct3) {
-        is(0.U(3.W)) { // ADD/SUB
-          when(io.funct7 === 0.U(7.W)) {
-            io.ALUCtrl := ADD
-          }.elsewhen(io.funct7 === "b0100000".U(7.W)) {
-            io.ALUCtrl := SUB
-          }.otherwise {
-            SetIllegal()
-          }
-        }
-        is(1.U(3.W)) { // SLL
-          when(io.funct7 === 0.U(7.W)) {
-            io.ALUCtrl := SLL
-          }.otherwise {
-            SetIllegal()
-          }
-        }
-        is(2.U(3.W)) { // SLT
-          when(io.funct7 === 0.U(7.W)) {
-            io.ALUCtrl := SLT
-          }.otherwise {
-            SetIllegal()
-          }
-        }
-        is(3.U(3.W)) { // SLTU
-          when(io.funct7 === 0.U(7.W)) {
-            io.ALUCtrl := SLTU
-          }.otherwise {
-            SetIllegal()
-          }
-        }
-        is(4.U(3.W)) { // XOR
-          when(io.funct7 === 0.U(7.W)) {
-            io.ALUCtrl := XOR
-          }.otherwise {
-            SetIllegal()
-          }
-        }
-        is(5.U(3.W)) { // SRL/SRA
-          when(io.funct7 === 0.U(7.W)) {
-            io.ALUCtrl := SRL
-          }.elsewhen(io.funct7 === "b0100000".U(7.W)) {
-            io.ALUCtrl := SRA
-          }.otherwise {
-            SetIllegal()
-          }
-        }
-        is(6.U(3.W)) { // OR
-          when(io.funct7 === 0.U(7.W)) {
-            io.ALUCtrl := OR
-          }.otherwise {
-            SetIllegal()
-          }
-        }
-        is(7.U(3.W)) { // AND
-          when(io.funct7 === 0.U(7.W)) {
-            io.ALUCtrl := AND
-          }.otherwise {
-            SetIllegal()
-          }
-        }
-      }
-    }
-    is(OPCODE_UpperImmediate_lui) {
-      io.ALUCtrl := ADD
-    }
-  }
+  private def encode(ctrl: UInt, illegal: Boolean = false): BitPat =
+    BitPat(ctrl) ## BitPat(
+      if (illegal) 1.U else 0.U
+    ) // 输出就是ALUCtrl高位+Illegal的1bit在低位
+  private def key(opcode: UInt, f3f7: String): BitPat =
+    BitPat(opcode) ## BitPat(f3f7)
+  private val table: TruthTable = TruthTable(
+    Seq(
+      key(OPCODE_Immediate_Lxxx, "b000_???????") -> encode(
+        ADD
+      ), // LB
+      key(OPCODE_Immediate_Lxxx, "b001_???????") -> encode(ADD), // LH
+      key(OPCODE_Immediate_Lxxx, "b010_???????") -> encode(ADD), // LW
+      key(OPCODE_Immediate_Lxxx, "b100_???????") -> encode(ADD), // LBU
+      key(OPCODE_Immediate_Lxxx, "b101_???????") -> encode(ADD), // LHU
+      key(OPCODE_Store, "b000_???????") -> encode(ADD), // SB
+      key(OPCODE_Store, "b001_???????") -> encode(ADD), // SH
+      key(OPCODE_Store, "b010_???????") -> encode(ADD), // SW
+      key(OPCODE_Immediate_Bxxx, "b000_???????") -> encode(ADD), // JALR
+      key(OPCODE_UpperImmediate_auipc, "b???_???????") -> encode(
+        ADD
+      ), // AUIPC这边funct3和funct7属于立即数
+      key(OPCODE_Jump, "b???_???????") -> encode(ADD), // JAL
+      key(OPCODE_UpperImmediate_lui, "b???_???????") -> encode(ADD), // LUI
+      key(OPCODE_Branch, "b000_???????") -> encode(SUB), // BEQ
+      key(OPCODE_Branch, "b001_???????") -> encode(SUB), // BNE
+      key(OPCODE_Branch, "b100_???????") -> encode(SUB), // BLT
+      key(OPCODE_Branch, "b101_???????") -> encode(SUB), // BGE
+      key(OPCODE_Branch, "b110_???????") -> encode(SUB), // BLTU
+      key(OPCODE_Branch, "b111_???????") -> encode(SUB), // BGEU
+      key(OPCODE_Immediate, "b000_???????") -> encode(
+        ADD
+      ), // ADDI这边funct7是立即数高位
+      key(OPCODE_Immediate, "b001_0000000") -> encode(
+        SLL
+      ), // SLLI这里移位量立即数要求 funct7是全0
+      key(OPCODE_Immediate, "b010_???????") -> encode(SLT), // SLTI
+      key(OPCODE_Immediate, "b011_???????") -> encode(SLTU), // SLTIU
+      key(OPCODE_Immediate, "b100_???????") -> encode(XOR), // XORI
+      key(OPCODE_Immediate, "b101_0000000") -> encode(SRL), // SRLI
+      key(OPCODE_Immediate, "b101_0100000") -> encode(SRA), // SRAI
+      key(OPCODE_Immediate, "b110_???????") -> encode(OR), // ORI
+      key(OPCODE_Immediate, "b111_???????") -> encode(AND), // ANDI
+      key(OPCODE_Register, "b000_0000000") -> encode(ADD), // ADD
+      key(OPCODE_Register, "b000_0100000") -> encode(SUB), // SUB
+      key(OPCODE_Register, "b001_0000000") -> encode(SLL), // SLL
+      key(OPCODE_Register, "b010_0000000") -> encode(SLT), // SLT
+      key(OPCODE_Register, "b011_0000000") -> encode(SLTU), // SLTU
+      key(OPCODE_Register, "b100_0000000") -> encode(XOR), // XOR
+      key(OPCODE_Register, "b101_0000000") -> encode(SRL), // SRL
+      key(OPCODE_Register, "b101_0100000") -> encode(SRA), // SRA
+      key(OPCODE_Register, "b110_0000000") -> encode(OR), // OR
+      key(OPCODE_Register, "b111_0000000") -> encode(AND), // AND
+      key(OPCODE_System, "b???_???????") -> encode(
+        NOP
+      ), // CSR和ecall和ebreak和mret有没有用就交给 IDU
+      key(OPCODE_MiscMem, "b???_???????") -> encode(NOP) // fence和fence.i同上
+    ),
+    encode(
+      NOP,
+      illegal = true
+    ) // 这是AI写的，AI给的建议，直接写就可以，不需要判断：所有行都不命中: ALUCtrl=NOP 且 Illegal=1
+  )
+  private val decoded =
+    decoder(
+      QMCMinimizer, // 卡诺图
+      Cat(io.opcode, io.funct3, io.funct7),
+      table
+    )
+  io.ALUCtrl := decoded(CtrlWidth, 1)
+  io.Illegal := decoded(0)
 }
