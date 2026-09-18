@@ -637,7 +637,7 @@ menu "硬件配置"
         prompt "乘法器实现"
         default MUL_SHIFT_ADD
         help
-          三种实现共用同一个乘法接口, 通过 elaboration 期条件例化三选一,
+          多种实现共用同一个乘法接口, 通过 elaboration 期条件例化选出一种,
           未选中的实现不会进入生成的RTL。
           移位乘法器: 多周期移位累加, 内部单个加法器, 面积最小;
           Wallace: 部分积压缩树+末级加法, 面积/时延较均衡;
@@ -656,6 +656,28 @@ menu "硬件配置"
         default "wallace" if MUL_WALLACE
         default "dadda" if MUL_DADDA
         default "shift_add"
+
+      choice
+        prompt "移位乘法器编码方式"
+        default MUL_SHIFT_PLAIN
+        depends on MUL_SHIFT_ADD
+        help
+          Booth 模式属于移位乘法器内部的重编码方式，不改变顶层实现类型。
+          一位 Booth 每次处理1个乘数位，二位 Booth（基4）每次处理2个乘数位。
+      config MUL_SHIFT_PLAIN
+        bool "普通移位累加（非 Booth）"
+      config MUL_SHIFT_BOOTH1
+        bool "一位 Booth 移位乘法器（待实现）"
+      config MUL_SHIFT_BOOTH2
+        bool "二位 Booth 移位乘法器（待实现）"
+      endchoice
+
+      config MUL_SHIFT_ALGO
+        string
+        default "plain" if MUL_SHIFT_PLAIN
+        default "booth1" if MUL_SHIFT_BOOTH1
+        default "booth2" if MUL_SHIFT_BOOTH2
+        default "plain"
 
       choice
         prompt "部分积编码方式"
@@ -694,6 +716,8 @@ menu "硬件配置"
 
       config MUL_ITER_BITS
         int "移位乘法器每拍处理的位数"
+        default 1 if MUL_SHIFT_PLAIN || MUL_SHIFT_BOOTH1
+        default 2 if MUL_SHIFT_BOOTH2
         default 1
         range 1 8
         depends on MUL_SHIFT_ADD
