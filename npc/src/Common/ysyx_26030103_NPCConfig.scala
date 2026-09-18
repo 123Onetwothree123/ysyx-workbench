@@ -56,11 +56,11 @@ case class ysyx_26030103_NPCConfig(
     "RV32I" + MExt + AExt + CExt
   }
   def Describe: String = {
-    val Isa = ISAString
+    val ISA = ISAString
     val MOff = OnOff(UseM)
     val AOff = OnOff(UseA)
     val COff = OnOff(UseC)
-    s"ISA=$Isa, M=$MOff, A=$AOff, C=$COff, mul=${MulImpl.Name}, " +
+    s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, mul=${MulImpl.Name}, " +
       s"ICache=${1 << BlockSizeLog2}B/${1 << IndexBits}sets, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, reset=0x${ResetAddr.toHexString}"
