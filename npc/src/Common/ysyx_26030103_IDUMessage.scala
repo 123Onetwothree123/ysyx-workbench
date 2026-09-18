@@ -32,6 +32,9 @@ class ysyx_26030103_IDUMessage extends Bundle {
   val IsEcall = Bool()
   val IsEbreak = Bool()
   val IsMret = Bool()
+  // 普通 FENCE（opcode=0001111, funct3=000）。与 FenceI 分开，
+  // 由 EXU 将其作为访存顺序屏障处理；它本身不刷新 ICache。
+  val IsFence = Bool()
   val IsFenceI = Bool()
   val CSRAddress = UInt(12.W)
   val Rs1 = UInt(5.W)

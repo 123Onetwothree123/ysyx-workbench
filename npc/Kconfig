@@ -630,30 +630,129 @@ menu "硬件配置"
       help
         尚未实现: 启用后 elaboration 会直接报错, 防止生成功能不完整的核。
 
-    choice
-      prompt "乘法器实现（RV32_M 启用时有效）"
-      default MUL_REUSE_ADDER
+    menu "乘法器配置"
       depends on RV32_M
-      help
-        三种实现共用同一个乘法接口, 通过 elaboration 期条件例化三选一,
-        未选中的实现不会进入生成的RTL。
-        复用加法器: 多周期移位累加, 复用加法器, 面积最小;
-        Wallace: 部分积压缩树+末级加法, 面积/时延较均衡;
-        Dadda: 压缩器更少但布线更复杂。
-    config MUL_REUSE_ADDER
-      bool "复用加法器（移位累加，多周期）(待实现)"
-    config MUL_WALLACE
-      bool "Wallace 树 (待实现)"
-    config MUL_DADDA
-      bool "Dadda 树 (待实现)"
-    endchoice
 
-    config MUL_IMPL
-      string
-      default "reuse_adder" if MUL_REUSE_ADDER
-      default "wallace" if MUL_WALLACE
-      default "dadda" if MUL_DADDA
-      default "reuse_adder"
+      choice
+        prompt "乘法器实现"
+        default MUL_SHIFT_ADD
+        help
+          三种实现共用同一个乘法接口, 通过 elaboration 期条件例化三选一,
+          未选中的实现不会进入生成的RTL。
+          移位乘法器: 多周期移位累加, 内部单个加法器, 面积最小;
+          Wallace: 部分积压缩树+末级加法, 面积/时延较均衡;
+          Dadda: 压缩器更少但布线更复杂。
+      config MUL_SHIFT_ADD
+        bool "移位乘法器"
+      config MUL_WALLACE
+        bool "Wallace"
+      config MUL_DADDA
+        bool "Dadda"
+      endchoice
+
+      config MUL_IMPL
+        string
+        default "shift_add" if MUL_SHIFT_ADD
+        default "wallace" if MUL_WALLACE
+        default "dadda" if MUL_DADDA
+        default "shift_add"
+
+      choice
+        prompt "部分积编码方式"
+        default MUL_RADIX2
+        depends on MUL_WALLACE || MUL_DADDA
+        help
+          基2直接产生32个部分积; 基4 Booth减半到16个; 基8进一步减少但编码更复杂。
+      config MUL_RADIX2
+        bool "无 Booth（基2）"
+      config MUL_RADIX4
+        bool "基4 Booth"
+      config MUL_RADIX8
+        bool "基8 Booth"
+      endchoice
+
+      config MUL_RADIX
+        string
+        default "radix2" if MUL_RADIX2
+        default "radix4" if MUL_RADIX4
+        default "radix8" if MUL_RADIX8
+        default "radix2"
+
+      config MUL_SPLIT
+        int "分块复用的块数（1=不拆分，2=2×16×16，4=4×8×8）"
+        default 1
+        range 1 4
+        help
+          拆成多个小块乘法器分时复用: 面积下降, 拍数上升。
+
+      config MUL_PIPELINE
+        int "流水级数（0=组合逻辑）"
+        default 0
+        range 0 4
+        help
+          压缩网络按级数插流水寄存器; 影响吞吐/延迟/面积, 接口需延迟无关。
+
+      config MUL_ITER_BITS
+        int "移位乘法器每拍处理的位数"
+        default 1
+        range 1 8
+        depends on MUL_SHIFT_ADD
+        help
+          1位/拍面积最小, 4或8位/拍减少拍数; 仅对移位乘法器实现有效。
+
+      config MUL_EARLY_OUT
+        bool "高位为零时提前结束"
+        default n
+        depends on MUL_SHIFT_ADD
+        help
+          迭代乘法高位已全零时提前完成, 仅对移位乘法器实现有效。
+
+    endmenu
+
+    menu "除法器配置"
+      depends on RV32_M
+
+      choice
+        prompt "除法器实现"
+        default DIV_RESTORING
+        help
+          恢复余数法最直观; 不恢复余数法每拍少一次加减;
+          SRT基数越高每拍出更多商位, 但需要商预测表。
+      config DIV_RESTORING
+        bool "恢复余数法"
+      config DIV_NONRESTORING
+        bool "不恢复余数法"
+      config DIV_SRT2
+        bool "SRT 基2"
+      config DIV_SRT4
+        bool "SRT 基4"
+      config DIV_SRT16
+        bool "SRT 基16"
+      endchoice
+
+      config DIV_IMPL
+        string
+        default "restoring" if DIV_RESTORING
+        default "nonrestoring" if DIV_NONRESTORING
+        default "srt2" if DIV_SRT2
+        default "srt4" if DIV_SRT4
+        default "srt16" if DIV_SRT16
+        default "restoring"
+
+      config DIV_ITER_BITS
+        int "每拍处理的位数"
+        default 1
+        range 1 4
+        help
+          每拍产生的商位数; 越大拍数越少, 组合路径越长。
+
+      config DIV_EARLY_OUT
+        bool "提前结束"
+        default n
+        help
+          余数已为零或商已确定时提前完成。
+
+    endmenu
 
   endmenu
 

@@ -26,7 +26,8 @@ object ysyx_26030103_Elaborate extends App {
   val UseM = sys.env.getOrElse("RV32_M", "n") == "y"
   val UseA = sys.env.getOrElse("RV32_A", "n") == "y"
   val UseC = sys.env.getOrElse("RV32_C", "n") == "y"
-  val MulImplName = sys.env.getOrElse("MUL_IMPL", "reuse_adder")
+  val MulImplName =
+    sys.env.get("MUL_IMPL").filter(_.nonEmpty).getOrElse("shift_add")
   val config = ysyx_26030103_NPCConfig(
     UseM = UseM,
     UseA = UseA,

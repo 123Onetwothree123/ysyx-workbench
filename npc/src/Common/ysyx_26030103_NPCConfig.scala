@@ -4,8 +4,8 @@ sealed trait ysyx_26030103_MulImpl {
   def Name: String
 }
 object ysyx_26030103_MulImpl {
-  case object ReuseAdder extends ysyx_26030103_MulImpl {
-    val Name = "reuse_adder"
+  case object ShiftAdd extends ysyx_26030103_MulImpl {
+    val Name = "shift_add"
   }
   case object Wallace extends ysyx_26030103_MulImpl {
     val Name = "wallace" // 华莱士
@@ -14,7 +14,7 @@ object ysyx_26030103_MulImpl {
     val Name = "dadda"
   }
   def FromString(s: String): ysyx_26030103_MulImpl = s match {
-    case "reuse_adder" => ReuseAdder
+    case "shift_add" => ShiftAdd
     case "wallace"     => Wallace
     case "dadda"       => Dadda
     case other => throw new IllegalArgumentException(s"这个乘法器没有实现: $other")
@@ -24,7 +24,7 @@ case class ysyx_26030103_NPCConfig(
     UseM: Boolean = false,
     UseA: Boolean = false,
     UseC: Boolean = false,
-    MulImpl: ysyx_26030103_MulImpl = ysyx_26030103_MulImpl.ReuseAdder,
+    MulImpl: ysyx_26030103_MulImpl = ysyx_26030103_MulImpl.ShiftAdd,
     // 目标平台
     ResetAddr: Long = 0x30000000L,
     AddressWidth: Int = 32,

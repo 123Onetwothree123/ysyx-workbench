@@ -59,8 +59,8 @@ class ysyx_26030103_ICache(
   val rf_req = rfstates(1)
   val rf_resp = rfstates(2)
   val rfstate = RegInit(rf_idle)
-  // refill专属寄存器: refill期间s1可继续受理新请求(命中直下/缺失排队),
-  // 因此阵列写口、AR地址、early restart判定都必须用refill自己的地址, 不能碰s1的
+  // refill专属寄存器。refill期间不再受理新的fetch请求（见fetch_ready），
+  // 这样R通道的旧refill响应不会和新的s1请求竞争同一组响应寄存器。
   val ref_addr = Reg(UInt(AddressWidth.W))
   val ref_index = ref_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   val ref_tag = ref_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
@@ -76,6 +76,9 @@ class ysyx_26030103_ICache(
   // flush(fence.i)/kill不能丢弃已被从机接受的AXI事务: 置位后继续把剩余拍排空,
   // 否则残留的R拍会被后续突发误收, 造成块内数据错位
   val discard = RegInit(false.B)
+  // 一条cache line的refill错误状态。RRESP错误可能出现在关键词之后，
+  // 因而不能只看最后一个beat决定valid；任意一个错误都使整条line失效。
+  val refill_error = RegInit(false.B)
   // 正在refill的索引: 同索引新请求可能读到半填的行(tag已换/数据填了一半),
   // 一律强制判缺失排队, 等refill完成后重查命中
   val refill_busy = rfstate =/= rf_idle
@@ -118,8 +121,13 @@ class ysyx_26030103_ICache(
       Mux(cacheable_reg, data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
     )
   )
-  // 受理级: 响应槽为空,或本拍响应正被接收; refill期间也可受理(缺失则排队)
-  io.fetch_ready := !s1_valid || (responding && io.resp_ready)
+  // 受理级: 响应槽为空,或本拍响应正被接收。refill未结束时禁止接收新的
+  // fetch，避免旧refill的R beat覆盖新的s1响应状态；flush/kill期间也不接收。
+  io.fetch_ready :=
+    (rfstate === rf_idle) &&
+      !io.flush &&
+      !io.kill &&
+      (!s1_valid || (responding && io.resp_ready))
   val accept = io.fetch_valid && io.fetch_ready
   io.perf_hit := accept && cacheable && hit
   io.perf_miss := accept && !(cacheable && hit)
@@ -160,6 +168,13 @@ class ysyx_26030103_ICache(
       ref_cacheable := cacheable_reg
       refill_cnt := 0.U
       burst_mode := cacheable_reg
+      // 每次新refill都从干净的事务状态开始，不能继承上一次flush/discard
+      // 或RRESP错误；旧目标行也必须先失效，避免半填数据被误认为命中。
+      discard := false.B
+      refill_error := false.B
+      when(cacheable_reg) {
+        valid(fetch_index_reg) := false.B
+      }
       s1_waits := true.B
     }
   }
@@ -191,28 +206,36 @@ class ysyx_26030103_ICache(
     is(rf_resp) {
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RREADY) {
-        when(!discard) {
-          when(io.axi.R.RRESP =/= 0.U) {
-            when(s1_waits) { // 错误属于原请求, 只有它还住在s1里才上报
-              access_fault_reg := true.B
-              access_fault_resp_reg := io.axi.R.RRESP
-              resp_data_reg := "h00000013".U // NOP, 不让下游拿到非法指令
-            }
-          }.otherwise {
-            when(s1_waits) {
-              resp_data_reg := io.axi.R.RDATA
-            }
-            when(ref_cacheable) { // 阵列填充无条件进行, 数据是真实内存内容
-              tag(ref_index) := ref_tag
-              data(ref_index)(refill_cnt) := io.axi.R.RDATA
-              when(refill_cnt === (WordsPerBlock - 1).U) {
-                valid(ref_index) := true.B
-              }
+        val r_error = io.axi.R.RRESP =/= 0.U
+        // 非缓存访问只有一个beat；缓存访问则只有请求所在的关键词beat
+        // 能把错误归属给当前s1请求，其他beat的错误仅记录为line错误。
+        val keyword_beat = !ref_cacheable || (refill_cnt === ref_offset)
+
+        // 错误必须在discard时也记录（事务仍在排空），但不能把被flush的
+        // 响应重新写回s1。sticky状态保证后续成功beat不能重新置valid。
+        when(r_error) {
+          refill_error := true.B
+          when(!discard && s1_waits && keyword_beat) {
+            access_fault_reg := true.B
+            access_fault_resp_reg := io.axi.R.RRESP
+            resp_data_reg := "h00000013".U // NOP, 不让下游拿到非法指令
+          }
+        }.elsewhen(!discard) {
+          when(s1_waits) {
+            resp_data_reg := io.axi.R.RDATA
+          }
+          when(ref_cacheable) { // 阵列填充无条件进行, 数据是真实内存内容
+            tag(ref_index) := ref_tag
+            data(ref_index)(refill_cnt) := io.axi.R.RDATA
+            // 只有整条line无任何错误时才允许变为valid；当前beat为成功
+            // 响应，refill_error覆盖此前已经发生的错误。
+            when(refill_cnt === (WordsPerBlock - 1).U && !refill_error) {
+              valid(ref_index) := true.B
             }
           }
         }
         // early restart: 关键词所在拍到手即可响应, 无需等整行填完
-        when(!discard && s1_waits && refill_cnt === ref_offset) {
+        when(!discard && s1_waits && keyword_beat) {
           s1_ready := true.B
         }
         when(ref_cacheable && burst_mode) {

@@ -69,6 +69,17 @@ class ysyx_26030103_IDU extends Module {
   val IsEbreak = Instruction === "h00100073".U(32.W)
   val IsEcall = Instruction === "h00000073".U(32.W)
   val IsMret = Instruction === "h30200073".U(32.W)
+  // FENCE and FENCE.I are both in the MISC-MEM opcode class, but have
+  // different ordering/flush semantics downstream.
+  // 当前只实现基础 FENCE（fm=0000，rd/rs1 保留为 x0）；
+  // 未实现的扩展/保留编码不能静默降级成屏障。
+  val FenceEncodingValid =
+    (Instruction(31, 28) === 0.U) &&
+      (Instruction(19, 15) === 0.U) &&
+      (Instruction(11, 7) === 0.U)
+  val IsFence =
+    (opcode === OPCODE_MiscMem) && (funct3 === "b000".U(3.W)) &&
+      FenceEncodingValid
   val IsFenceI = (opcode === OPCODE_MiscMem) && (funct3 === "b001".U(3.W))
   val RegisterWrite =
     IsRType || IsIType || IsUType || IsJType || IsCsrrs || IsCsrrw
@@ -115,12 +126,34 @@ class ysyx_26030103_IDU extends Module {
   val ALUCtrl = ALUDecoderModule.io.ALUCtrl
   val ALUCDIllegal = ALUDecoderModule.io.Illegal
   // ALUCDIllegal只覆盖了已知指令类别里funct3/funct7非法的情况,这里补上"不属于任何已知指令"的检测:
-  // System里只实现了csrrw/csrrs/ecall/ebreak/mret,MiscMem里fence当nop处理,fence.i单独处理
-  val IsFence = (opcode === OPCODE_MiscMem) && (funct3 === "b000".U(3.W))
+  // System里只实现了csrrw/csrrs/ecall/ebreak/mret,MiscMem里fence/fence.i分别处理。
   val IsKnownInstruction =
     IsRType || IsIType || IsSType || IsBType || IsUType || IsJType ||
       IsCsrrw || IsCsrrs || IsEcall || IsEbreak || IsMret || IsFenceI || IsFence
-  val IllegalInsn = ALUCDIllegal || !IsKnownInstruction
+  // CSR access legality is checked at decode time, rather than relying on
+  // CSRUnit's read-data mux.  The core currently implements this explicit
+  // machine-CSR set; accesses outside it are illegal instructions.
+  val CSRAddress = Instruction(31, 20)
+  val CSRAddressValid =
+    (CSRAddress === "hB00".U(12.W)) || // mcycle
+      (CSRAddress === "hB80".U(12.W)) || // mcycleh
+      (CSRAddress === "hF11".U(12.W)) || // mvendorid (read-only)
+      (CSRAddress === "hF12".U(12.W)) || // marchid (read-only)
+      (CSRAddress === "h300".U(12.W)) || // mstatus
+      (CSRAddress === "h305".U(12.W)) || // mtvec
+      (CSRAddress === "h341".U(12.W)) || // mepc
+      (CSRAddress === "h342".U(12.W))   // mcause
+  // CSRRW always writes, including when rd=x0.  CSRRS writes only when
+  // rs1!=x0; the rs1=x0 form is a pure read and is legal for read-only CSRs.
+  val CSRWriteIntent = IsCsrrw || (IsCsrrs && (Rs1 =/= 0.U))
+  // Per the privileged ISA, an address whose [11:10] bits are 11 denotes a
+  // read-only CSR.  Keep the generic rule here so future read-only entries
+  // cannot accidentally become writable.
+  val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W)
+  val CSRIllegal =
+    (IsCsrrw || IsCsrrs) &&
+      (!CSRAddressValid || (CSRWriteIntent && CSRReadOnly))
+  val IllegalInsn = ALUCDIllegal || !IsKnownInstruction || CSRIllegal
   val needsRs2 = IsRType || IsBType || IsSType
   // 源操作数真正被使用的判断(lui/auipc/jal的rs1字段是立即数,不算使用)
   val usesRs1 = IsRType || IsIType || IsSType || IsBType || IsCsrrw || IsCsrrs
@@ -221,8 +254,9 @@ class ysyx_26030103_IDU extends Module {
   io.out.bits.IsEcall := IsEcall
   io.out.bits.IsEbreak := IsEbreak
   io.out.bits.IsMret := IsMret
+  io.out.bits.IsFence := IsFence
   io.out.bits.IsFenceI := IsFenceI
-  io.out.bits.CSRAddress := Instruction(31, 20)
+  io.out.bits.CSRAddress := CSRAddress
   io.out.bits.Rs1 := Rs1
   io.out.bits.Rs1Data := src1
   io.out.bits.ALUCDIllegal := ALUCDIllegal

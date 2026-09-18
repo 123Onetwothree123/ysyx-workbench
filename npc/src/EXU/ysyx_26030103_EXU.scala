@@ -74,7 +74,7 @@ class ysyx_26030103_EXU extends Module {
   // fence.i也要等写缓冲排空, 否则新取指可能读到store落内存之前的旧指令
   val IsSideEffect =
     inst.IsCsrrw || inst.IsCsrrs || inst.IsEcall || inst.IsEbreak ||
-      inst.IsMret || inst.ExceptionValid || inst.IsFenceI
+      inst.IsMret || inst.ExceptionValid || inst.IsFenceI || inst.IsFence
   val BlockForMEM = io.MEMBusy && IsSideEffect
   io.in.ready := io.out.ready && !BlockForMEM
   io.out.valid := io.in.valid && !BlockForMEM
@@ -127,7 +127,9 @@ class ysyx_26030103_EXU extends Module {
   val IsMemoryForCommit = inst.MemoryValid && !UpEx
   // 指令级提交只认本拍fire; MEM级故障走独立的MemTrap后门, 这样MemTrap当拍
   // EXU里被冲刷的指令(csrrw/mret)不会产生CSR副作用, 异常目标也不会被mret劫持
-  CSRUnit.io.Enable := io.in.fire && !IsMemoryForCommit
+  // MEM故障是更老指令的精确异常；当它提交时，当前EXU指令即使因
+  // FlushEXMEM而被“放行”也不能再提交自己的CSR/MRET副作用。
+  CSRUnit.io.Enable := io.in.fire && !IsMemoryForCommit && !io.MemTrapCommit
   CSRUnit.io.MemTrap := io.MemTrapCommit
   CSRUnit.io.TrapValid := UpEx
   CSRUnit.io.TrapCause := Mux(
@@ -136,9 +138,16 @@ class ysyx_26030103_EXU extends Module {
     Cat(0.U(28.W), inst.ExceptionCause)
   )
 
-  io.TrapValid := io.in.fire && CSRUnit.io.IsEbreak
+  // 当前EXU指令只有在真正被接受、且没有被更老的访存故障或中断
+  // 抢占时才算提交。预测器和当前指令产生的控制副作用统一使用它。
+  val InstructionCommit =
+    io.in.fire && !UpEx && !io.MemTrapCommit && !CSRUnit.io.IrqCommit
+
+  io.TrapValid :=
+    io.in.fire && CSRUnit.io.IsEbreak && !io.MemTrapCommit &&
+      !CSRUnit.io.IrqCommit
   io.TrapPC := inst.pc
-  io.Redirect := io.in.fire && Redirect
+  io.Redirect := InstructionCommit && Redirect
   io.RedirectTarget := ActualNextPC
   // ecall/mret/上游异常提交,或MEM经CSR后门提交的访存故障
   io.ExceptionTaken := CSRUnit.io.ExceptionTaken
@@ -148,13 +157,16 @@ class ysyx_26030103_EXU extends Module {
   io.out.bits.snpc := inst.snpc
   io.out.bits.Rd := inst.Rd
   // 带异常标记的指令不得写回GPR;被中断压掉的指令(IrqCommit)也不得写回
-  io.out.bits.RegisterWrite := inst.RegisterWrite && !UpEx && !CSRUnit.io.IrqCommit
+  io.out.bits.RegisterWrite :=
+    inst.RegisterWrite && !UpEx && !CSRUnit.io.IrqCommit &&
+      !io.MemTrapCommit
   io.out.bits.WBSelect := inst.WBSelect
   io.out.bits.ALUResult := ALUUnit.io.result
   io.out.bits.LoadData := 0.U(32.W) // 由MEM在访存完成后填写
   io.out.bits.CSRReadData := CSRUnit.io.CSR_rdata
-  io.out.bits.MemoryValid := inst.MemoryValid && !UpEx
-  io.out.bits.MemoryWrite := inst.MemoryWrite
+  io.out.bits.MemoryValid :=
+    inst.MemoryValid && !UpEx && !io.MemTrapCommit
+  io.out.bits.MemoryWrite := inst.MemoryWrite && !io.MemTrapCommit
   io.out.bits.WidthSelect := inst.WidthSelect
   io.out.bits.LoadSigned := inst.LoadSigned
   io.out.bits.StoreData := inst.StoreData
@@ -170,13 +182,17 @@ class ysyx_26030103_EXU extends Module {
   io.PerfJalrOp := inst.IsJalr
   io.PerfExecutionActive := io.in.valid
 
-  io.FenceIFlush := io.in.fire && inst.IsFenceI && !UpEx
+  // 这些是“当前EXU指令”的副作用。中断接受或更老访存故障提交时，
+  // 当前指令会被重做/丢弃，不能训练预测器，也不能产生重定向或FenceI刷新。
+  io.FenceIFlush := InstructionCommit && inst.IsFenceI
   io.FlushIF := io.Redirect || io.ExceptionTaken
 
   io.HazardValid := io.in.valid
   io.HazardRd := inst.Rd
   // 带异常标记的指令不会真正写回,不应让IDU白白等它;被中断压掉的指令同理
-  io.HazardRegWrite := inst.RegisterWrite && !UpEx && !CSRUnit.io.IrqCommit
+  io.HazardRegWrite :=
+    inst.RegisterWrite && !UpEx && !CSRUnit.io.IrqCommit &&
+      !io.MemTrapCommit
   io.HazardMemOp := inst.MemoryValid
   io.PerfIdleNoInput := !io.in.valid
   io.PerfTrap := io.ExceptionTaken
@@ -192,7 +208,7 @@ class ysyx_26030103_EXU extends Module {
 
   // BTB更新: 所有分支指令提交时都写回PC→target(不管是否taken),
   // 供IFU查BTB命中后用BTFN(target<PC=后向则taken)做方向预测.
-  io.BTBUpdateValid := io.in.fire && inst.IsBranch && !UpEx
+  io.BTBUpdateValid := InstructionCommit && inst.IsBranch
   io.BTBUpdatePC := inst.pc
   io.BTBUpdateTarget := BranchTarget
   // call/ret识别(标准RISC-V ABI, 与NEMU的ftrace/btrace判定一致):
@@ -203,7 +219,7 @@ class ysyx_26030103_EXU extends Module {
   // jal BTB更新: jal提交时写回PC→JalTarget(Jal/Call表项, 目标静态);
   // ret提交时写Ret表项(只作ret标记, 预测目标由RAS给出).
   // 间接jalr(非call非ret)目标多变, 不入表
-  io.JalBTBUpdateValid := io.in.fire && (inst.IsJal || IsRet) && !UpEx
+  io.JalBTBUpdateValid := InstructionCommit && (inst.IsJal || IsRet)
   io.JalBTBUpdatePC := inst.pc
   io.JalBTBUpdateTarget := Mux(inst.IsJal, JalTarget, JalrTarget)
   io.JalBTBUpdateKind := Mux(
@@ -212,7 +228,7 @@ class ysyx_26030103_EXU extends Module {
     Mux(inst.Rd === 1.U, ysyx_26030103_BTBKind.Call, ysyx_26030103_BTBKind.Jal)
   )
   // RAS更新: call压栈(返回地址=pc+4=snpc), ret弹栈
-  io.RASPushValid := io.in.fire && IsCall && !UpEx
+  io.RASPushValid := InstructionCommit && IsCall
   io.RASPushAddr := inst.snpc
-  io.RASPopValid := io.in.fire && IsRet && !UpEx
+  io.RASPopValid := InstructionCommit && IsRet
 }
