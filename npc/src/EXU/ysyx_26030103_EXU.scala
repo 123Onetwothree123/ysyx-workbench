@@ -2,7 +2,9 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
-class ysyx_26030103_EXU extends Module {
+class ysyx_26030103_EXU(
+    val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
+) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_IDUMessage))
     val out = Decoupled(new ysyx_26030103_EXUMessage)
@@ -60,15 +62,21 @@ class ysyx_26030103_EXU extends Module {
     val RASPopValid = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
+  val MDUUnit = Module(new ysyx_26030103_MDU(config))
   val CSRUnit = Module(new ysyx_26030103_CSR)
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
   CSRUnit.io.Interrupt := io.Interrupt
   val BranchComparatorUnit = Module(new ysyx_26030103_BranchComparator)
   val inst = io.in.bits
+  // MDU 只有一个在途事务。M 指令先由 EXU 内部接收 Req，期间保持
+  // IDU->EXU 的输入不 fire；Resp 与 EXU 输出同拍握手时才消费该输入。
+  val PendingMDU = RegInit(false.B)
+  val PendingMDUInst = Reg(chiselTypeOf(io.in.bits))
   // 上游随指令传来的异常标记(IFU取指错cause=1/IDU非法指令cause=2)
   // 带标记的指令只做异常提交,不得产生任何副作用(访存/CSR写/GPR写/重定向)
   val UpEx = inst.ExceptionValid
+  val IsMDUInstruction = inst.IsMDU && !UpEx && !io.MemTrapCommit
   // 带副作用的指令(csr/ecall/ebreak/mret/fence.i/异常)必须等MEM级排空(在序精确异常):
   // 比它年老的访存可能还没完成,甚至可能是故障要提交异常;
   // fence.i也要等写缓冲排空, 否则新取指可能读到store落内存之前的旧指令
@@ -76,8 +84,46 @@ class ysyx_26030103_EXU extends Module {
     inst.IsCsrrw || inst.IsCsrrs || inst.IsEcall || inst.IsEbreak ||
       inst.IsMret || inst.ExceptionValid || inst.IsFenceI || inst.IsFence
   val BlockForMEM = io.MEMBusy && IsSideEffect
-  io.in.ready := io.out.ready && !BlockForMEM
-  io.out.valid := io.in.valid && !BlockForMEM
+
+  // MDU 的 Flush 必须同时屏蔽旧 Resp；访存故障提交时，正在 EXU 中等待的
+  // M 指令属于年轻指令，不能在故障冲刷后泄漏到 MEM/WB。
+  MDUUnit.io.Flush := io.MemTrapCommit
+  MDUUnit.io.Req.valid := io.in.valid && IsMDUInstruction && !PendingMDU
+  MDUUnit.io.Req.bits.LHS := inst.ALU_A
+  MDUUnit.io.Req.bits.RHS := inst.ALU_B
+  MDUUnit.io.Req.bits.MDUOp := inst.MDUOp
+
+  // Resp.ready 只在输出可以提交时拉高，使 MDU 结果在 backpressure 下保持；
+  // 输入 ready 也只在这一拍拉高，从而令 Resp.fire == exu.out.fire == in.fire。
+  MDUUnit.io.Resp.ready := PendingMDU && io.out.ready && !io.MemTrapCommit
+  val MDUReqFire = MDUUnit.io.Req.valid && MDUUnit.io.Req.ready
+  val MDURespFire = MDUUnit.io.Resp.valid && MDUUnit.io.Resp.ready
+
+  io.in.ready := Mux(
+    PendingMDU,
+    MDUUnit.io.Resp.valid && io.out.ready && !io.MemTrapCommit,
+    Mux(IsMDUInstruction, false.B, io.out.ready && !BlockForMEM)
+  )
+  io.out.valid := Mux(
+    PendingMDU,
+    MDUUnit.io.Resp.valid && !io.MemTrapCommit,
+    io.in.valid && !IsMDUInstruction && !BlockForMEM
+  )
+
+  when(io.MemTrapCommit) {
+    PendingMDU := false.B
+  }.elsewhen(MDUReqFire) {
+    PendingMDUInst := inst
+    PendingMDU := true.B
+  }.elsewhen(MDURespFire) {
+    PendingMDU := false.B
+  }
+
+  val ActiveInst = Wire(chiselTypeOf(io.in.bits))
+  ActiveInst := inst
+  when(PendingMDU) {
+    ActiveInst := PendingMDUInst
+  }
   ALUUnit.io.A := inst.ALU_A
   ALUUnit.io.B := inst.ALU_B
   ALUUnit.io.ALUCtrl := inst.ALUCtrl
@@ -153,58 +199,63 @@ class ysyx_26030103_EXU extends Module {
   io.ExceptionTaken := CSRUnit.io.ExceptionTaken
   io.ExceptionTarget := CSRUnit.io.ExceptionTarget
 
-  io.out.bits.pc := inst.pc
-  io.out.bits.snpc := inst.snpc
-  io.out.bits.Rd := inst.Rd
+  io.out.bits.pc := ActiveInst.pc
+  io.out.bits.snpc := ActiveInst.snpc
+  io.out.bits.Rd := ActiveInst.Rd
   // 带异常标记的指令不得写回GPR;被中断压掉的指令(IrqCommit)也不得写回
   io.out.bits.RegisterWrite :=
-    inst.RegisterWrite && !UpEx && !CSRUnit.io.IrqCommit &&
+    ActiveInst.RegisterWrite && !ActiveInst.ExceptionValid && !CSRUnit.io.IrqCommit &&
       !io.MemTrapCommit
-  io.out.bits.WBSelect := inst.WBSelect
-  io.out.bits.ALUResult := ALUUnit.io.result
+  io.out.bits.WBSelect := ActiveInst.WBSelect
+  io.out.bits.ALUResult := Mux(PendingMDU, MDUUnit.io.Resp.bits.Result, ALUUnit.io.result)
   io.out.bits.LoadData := 0.U(32.W) // 由MEM在访存完成后填写
   io.out.bits.CSRReadData := CSRUnit.io.CSR_rdata
   io.out.bits.MemoryValid :=
-    inst.MemoryValid && !UpEx && !io.MemTrapCommit
-  io.out.bits.MemoryWrite := inst.MemoryWrite && !io.MemTrapCommit
-  io.out.bits.WidthSelect := inst.WidthSelect
-  io.out.bits.LoadSigned := inst.LoadSigned
-  io.out.bits.StoreData := inst.StoreData
-  io.out.bits.ExceptionValid := inst.ExceptionValid
-  io.out.bits.ExceptionCause := inst.ExceptionCause
+    ActiveInst.MemoryValid && !ActiveInst.ExceptionValid && !io.MemTrapCommit
+  io.out.bits.MemoryWrite := ActiveInst.MemoryWrite && !io.MemTrapCommit
+  io.out.bits.WidthSelect := ActiveInst.WidthSelect
+  io.out.bits.LoadSigned := ActiveInst.LoadSigned
+  io.out.bits.StoreData := ActiveInst.StoreData
+  io.out.bits.ExceptionValid := ActiveInst.ExceptionValid
+  io.out.bits.ExceptionCause := ActiveInst.ExceptionCause
 
-  io.PerfALUOp := !inst.MemoryValid && !inst.IsCsrrw && !inst.IsCsrrs &&
-    !inst.IsBranch && !inst.IsJal && !inst.IsJalr
+  io.PerfALUOp := !inst.MemoryValid && !inst.IsMDU && !inst.IsCsrrw &&
+    !inst.IsCsrrs && !inst.IsBranch && !inst.IsJal && !inst.IsJalr
   io.PerfMemOp := inst.MemoryValid
   io.PerfCSROp := inst.IsCsrrw || inst.IsCsrrs
   io.PerfBranchOp := inst.IsBranch || inst.IsJal || inst.IsJalr
   io.PerfJalOp := inst.IsJal
   io.PerfJalrOp := inst.IsJalr
-  io.PerfExecutionActive := io.in.valid
+  io.PerfExecutionActive := io.in.valid || PendingMDU
 
   // 这些是“当前EXU指令”的副作用。中断接受或更老访存故障提交时，
   // 当前指令会被重做/丢弃，不能训练预测器，也不能产生重定向或FenceI刷新。
   io.FenceIFlush := InstructionCommit && inst.IsFenceI
   io.FlushIF := io.Redirect || io.ExceptionTaken
 
-  io.HazardValid := io.in.valid
-  io.HazardRd := inst.Rd
+  io.HazardValid := io.in.valid || PendingMDU
+  io.HazardRd := ActiveInst.Rd
   // 带异常标记的指令不会真正写回,不应让IDU白白等它;被中断压掉的指令同理
   io.HazardRegWrite :=
-    inst.RegisterWrite && !UpEx && !CSRUnit.io.IrqCommit &&
+    ActiveInst.RegisterWrite && !ActiveInst.ExceptionValid && !CSRUnit.io.IrqCommit &&
       !io.MemTrapCommit
-  io.HazardMemOp := inst.MemoryValid
-  io.PerfIdleNoInput := !io.in.valid
+  io.HazardMemOp := ActiveInst.MemoryValid
+  io.PerfIdleNoInput := !io.in.valid && !PendingMDU
   io.PerfTrap := io.ExceptionTaken
   // 转发给IDU的最终写回值(与WBU写GPR的值一致): ALU结果/snpc/CSR读出
   // (load数据在EXU阶段不可知,由MEM提供它那一级的转发)
   io.FwdData := Mux(
-    inst.WBSelect === 2.U,
-    inst.snpc,
-    Mux(inst.WBSelect === 3.U, CSRUnit.io.CSR_rdata, ALUUnit.io.result)
+    PendingMDU,
+    MDUUnit.io.Resp.bits.Result,
+    Mux(
+      ActiveInst.WBSelect === 2.U,
+      ActiveInst.snpc,
+      Mux(ActiveInst.WBSelect === 3.U, CSRUnit.io.CSR_rdata, ALUUnit.io.result)
+    )
   )
   // 可转发条件: 会写rd,且不是load(load要等MEM完成)
-  io.FwdReady := io.HazardValid && io.HazardRegWrite && !inst.MemoryValid
+  io.FwdReady := io.HazardValid && io.HazardRegWrite && !ActiveInst.MemoryValid &&
+    (!IsMDUInstruction || MDUUnit.io.Resp.valid)
 
   // BTB更新: 所有分支指令提交时都写回PC→target(不管是否taken),
   // 供IFU查BTB命中后用BTFN(target<PC=后向则taken)做方向预测.

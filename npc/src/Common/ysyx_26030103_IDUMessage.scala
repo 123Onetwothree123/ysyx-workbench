@@ -6,6 +6,9 @@ class ysyx_26030103_IDUMessage extends Bundle {
   val snpc = UInt(32.W)
 
   val ALUCtrl = UInt(CtrlWidth.W)
+  //刚加的M扩展
+  val IsMDU = Bool()
+  val MDUOp = UInt(ysyx_26030103_MDUOp.Width.W)
   val ALU_A = UInt(32.W)
   val ALU_B = UInt(32.W)
 

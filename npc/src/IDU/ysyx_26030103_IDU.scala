@@ -1,10 +1,13 @@
 package ysyx_26030103.idu
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_NPCConfig
 import _root_.ysyx_26030103.common.ysyx_26030103_opcode._
 import _root_.ysyx_26030103.common.ysyx_26030103_IFUMessage
 import _root_.ysyx_26030103.common.ysyx_26030103_IDUMessage
-class ysyx_26030103_IDU extends Module {
+class ysyx_26030103_IDU(
+    val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
+) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_IFUMessage))
     val out = Decoupled(new ysyx_26030103_IDUMessage)
@@ -119,12 +122,14 @@ class ysyx_26030103_IDU extends Module {
   ImmediateGeneratorModule.io.Instruction := Instruction
   val Immediate = ImmediateGeneratorModule.io.Immediate
   // ALU 控制解码已经合并为一个模块，直接使用 opcode/funct3/funct7 完成译码。
-  val ALUDecoderModule = Module(new ysyx_26030103_ALUDecoder)
+  val ALUDecoderModule = Module(new ysyx_26030103_ALUDecoder(config))
   ALUDecoderModule.io.opcode := opcode
   ALUDecoderModule.io.funct3 := funct3
   ALUDecoderModule.io.funct7 := funct7
   val ALUCtrl = ALUDecoderModule.io.ALUCtrl
   val ALUCDIllegal = ALUDecoderModule.io.Illegal
+  val IsMDU = ALUDecoderModule.io.IsMDU
+  val MDUOp = ALUDecoderModule.io.MDUOp
   // ALUCDIllegal只覆盖了已知指令类别里funct3/funct7非法的情况,这里补上"不属于任何已知指令"的检测:
   // System里只实现了csrrw/csrrs/ecall/ebreak/mret,MiscMem里fence/fence.i分别处理。
   val IsKnownInstruction =
@@ -230,6 +235,8 @@ class ysyx_26030103_IDU extends Module {
   io.out.bits.pc := pc
   io.out.bits.snpc := snpc
   io.out.bits.ALUCtrl := ALUCtrl
+  io.out.bits.IsMDU := IsMDU
+  io.out.bits.MDUOp := MDUOp
   io.out.bits.ALU_A := ALU_A
   io.out.bits.ALU_B := ALU_B
   io.out.bits.BranchA := src1

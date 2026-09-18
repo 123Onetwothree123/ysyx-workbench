@@ -16,8 +16,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     extends Module {
   val io = IO(new ysyx_26030103_IO)
   val ifu = Module(new ysyx_26030103_IFU(config.ResetAddr))
-  val idu = Module(new ysyx_26030103_IDU)
-  val exu = Module(new ysyx_26030103_EXU)
+  val idu = Module(new ysyx_26030103_IDU(config))
+  val exu = Module(new ysyx_26030103_EXU(config))
   val wbu = Module(new ysyx_26030103_WBU)
   val lsu = Module(new ysyx_26030103_LSU)
   val gpr = Module(new ysyx_26030103_GPR)
