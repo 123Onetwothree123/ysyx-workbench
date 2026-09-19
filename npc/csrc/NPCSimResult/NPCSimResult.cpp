@@ -105,6 +105,20 @@ void NPCSimResult::Save(
         stats.exu_idle_noinput,
         stats.trap_count,
         stats.mem_waitslot)};
+    csv_row += std::format(
+        ",{},{},{},{},{},{},{},{},{},{},{},{}",
+        stats.mdu_request,
+        stats.mdu_complete,
+        stats.mdu_mul,
+        stats.mdu_mulh,
+        stats.mdu_mulhsu,
+        stats.mdu_mulhu,
+        stats.mdu_div,
+        stats.mdu_divu,
+        stats.mdu_rem,
+        stats.mdu_remu,
+        stats.mdu_active_cycle,
+        stats.mdu_wait_cycle);
 
     auto csv_file{
 #ifdef VRISCV32E_NPC
@@ -125,7 +139,8 @@ void NPCSimResult::Save(
                "LSU读延迟,LSU写延迟,"
                "LSU_AR等待,LSU_R等待,LSU_AW/W等待,LSU_B等待,"
                "ICache命中,ICache缺失,AMAT,"
-               "IDU_RAW阻塞,IDU_RAW_loaduse,IDU_RAW_可转发,EXU空转等输入,异常提交,EX/MEM等待槽占用\n";
+               "IDU_RAW阻塞,IDU_RAW_loaduse,IDU_RAW_可转发,EXU空转等输入,异常提交,EX/MEM等待槽占用,"
+               "MDU请求,MDU完成,MUL,MULH,MULHSU,MULHU,DIV,DIVU,REM,REMU,MDU活跃周期,MDU等待周期\n";
         out << csv_row << '\n';
     }
 

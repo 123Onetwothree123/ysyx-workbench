@@ -27,6 +27,11 @@ class ysyx_26030103_EXU(
     val PerfBranchOp = Output(Bool())
     val PerfJalOp = Output(Bool())
     val PerfJalrOp = Output(Bool())
+    val PerfMDUReq = Output(Bool())
+    val PerfMDUDone = Output(Bool())
+    val PerfMDUOp = Output(UInt(ysyx_26030103_MDUOp.Width.W))
+    val PerfMDUActive = Output(Bool())
+    val PerfMDUWait = Output(Bool())
     val PerfExecutionActive = Output(Bool())
 
     val FenceIFlush = Output(Bool())
@@ -226,6 +231,11 @@ class ysyx_26030103_EXU(
   io.PerfBranchOp := inst.IsBranch || inst.IsJal || inst.IsJalr
   io.PerfJalOp := inst.IsJal
   io.PerfJalrOp := inst.IsJalr
+  io.PerfMDUReq := MDUReqFire
+  io.PerfMDUDone := io.out.fire && ActiveInst.IsMDU && !ActiveInst.ExceptionValid && !io.MemTrapCommit
+  io.PerfMDUOp := ActiveInst.MDUOp
+  io.PerfMDUActive := PendingMDU
+  io.PerfMDUWait := PendingMDU && !(MDUUnit.io.Resp.valid && MDUUnit.io.Resp.ready)
   io.PerfExecutionActive := io.in.valid || PendingMDU
 
   // 这些是“当前EXU指令”的副作用。中断接受或更老访存故障提交时，

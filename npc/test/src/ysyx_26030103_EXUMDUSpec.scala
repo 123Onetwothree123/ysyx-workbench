@@ -68,7 +68,11 @@ class ysyx_26030103_EXUMDUSpec
       dut.io.out.valid.expect(false.B)
       dut.clock.step()
 
-      // 参考 MDU 下一拍返回，结果随 EXU 输出提交。
+      var cycles = 0
+      while (!dut.io.out.valid.peek().litToBoolean && cycles < 128) {
+        dut.clock.step()
+        cycles += 1
+      }
       dut.io.out.valid.expect(true.B)
       dut.io.out.bits.ALUResult.expect(42.U)
       dut.io.out.bits.Rd.expect(5.U)

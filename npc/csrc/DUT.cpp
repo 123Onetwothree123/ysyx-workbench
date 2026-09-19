@@ -195,6 +195,34 @@ void DUT::step()
     {
         ++perf.execution_complete;
     }
+    if (dut->perf_mdu_req)
+    {
+        ++perf.mdu_request;
+    }
+    if (dut->perf_mdu_done)
+    {
+        ++perf.mdu_complete;
+        switch (static_cast<unsigned>(dut->perf_mdu_op))
+        {
+        case 0: ++perf.mdu_mul; break;
+        case 1: ++perf.mdu_mulh; break;
+        case 2: ++perf.mdu_mulhsu; break;
+        case 3: ++perf.mdu_mulhu; break;
+        case 4: ++perf.mdu_div; break;
+        case 5: ++perf.mdu_divu; break;
+        case 6: ++perf.mdu_rem; break;
+        case 7: ++perf.mdu_remu; break;
+        default: break;
+        }
+    }
+    if (dut->perf_mdu_active)
+    {
+        ++perf.mdu_active_cycle;
+    }
+    if (dut->perf_mdu_wait)
+    {
+        ++perf.mdu_wait_cycle;
+    }
     if (dut->perf_lsu_load)
     {
         ++perf.load_data;

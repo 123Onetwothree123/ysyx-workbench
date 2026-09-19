@@ -8,6 +8,18 @@ export struct PerfStats
     std::size_t load_data{0};
     std::size_t store_data{0};
     std::size_t arithmetic_operation{0};
+    std::size_t mdu_request{0};
+    std::size_t mdu_complete{0};
+    std::size_t mdu_mul{0};
+    std::size_t mdu_mulh{0};
+    std::size_t mdu_mulhsu{0};
+    std::size_t mdu_mulhu{0};
+    std::size_t mdu_div{0};
+    std::size_t mdu_divu{0};
+    std::size_t mdu_rem{0};
+    std::size_t mdu_remu{0};
+    std::size_t mdu_active_cycle{0};
+    std::size_t mdu_wait_cycle{0};
     std::size_t memory_access_operation{0};
     std::size_t control_status_register_operation{0};
     std::size_t branch_operation{0};

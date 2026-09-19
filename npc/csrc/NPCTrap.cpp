@@ -65,16 +65,33 @@ void NPCTrap::PrintPerformanceStatistics(const PerfStats &stats, std::size_t tot
     std::println("LSU取到数据: {}", stats.load_data);
     std::println("LSU写出数据: {}", stats.store_data);
     std::println("ALU指令: {}", stats.arithmetic_operation);
+    std::println("MDU请求: {}", stats.mdu_request);
+    std::println("MDU完成: {}", stats.mdu_complete);
+    std::println("  MUL: {}", stats.mdu_mul);
+    std::println("  MULH: {}", stats.mdu_mulh);
+    std::println("  MULHSU: {}", stats.mdu_mulhsu);
+    std::println("  MULHU: {}", stats.mdu_mulhu);
+    std::println("  DIV: {}", stats.mdu_div);
+    std::println("  DIVU: {}", stats.mdu_divu);
+    std::println("  REM: {}", stats.mdu_rem);
+    std::println("  REMU: {}", stats.mdu_remu);
     std::println("访存指令: {}", stats.memory_access_operation);
     std::println("CSR指令: {}", stats.control_status_register_operation);
     std::println("分支/跳转指令: {}", stats.branch_operation);
     std::println("  其中 jal指令: {}", stats.jal_operation);
     std::println("  其中 jalr指令: {}", stats.jalr_operation);
     std::println("  其中 条件分支: {}", stats.branch_operation - stats.jal_operation - stats.jalr_operation);
-    auto instruction_type_sum{stats.arithmetic_operation + stats.memory_access_operation + stats.control_status_register_operation + stats.branch_operation};
+    auto instruction_type_sum{stats.arithmetic_operation + stats.mdu_complete + stats.memory_access_operation + stats.control_status_register_operation + stats.branch_operation};
     std::println("指令类别合计: {} (应与IFU取指一致)", instruction_type_sum);
     std::println("IFU取指: {}", stats.instruction_fetch);
     std::println("EXU完成: {} (应与IFU取指接近)", stats.execution_complete);
+    if (stats.mdu_complete > 0)
+    {
+        std::println("MDU活跃: {} 周期, 平均 {:.2f} 周期/完成", stats.mdu_active_cycle,
+            static_cast<double>(stats.mdu_active_cycle) / stats.mdu_complete);
+        std::println("MDU等待结果: {} 周期, 平均 {:.2f} 周期/完成", stats.mdu_wait_cycle,
+            static_cast<double>(stats.mdu_wait_cycle) / stats.mdu_complete);
+    }
     auto load_store_sum{stats.load_data + stats.store_data};
     std::println("LSU合计: {} (应与访存指令一致)", load_store_sum);
     std::println();
@@ -83,6 +100,11 @@ void NPCTrap::PrintPerformanceStatistics(const PerfStats &stats, std::size_t tot
     {
         auto total_instructions = static_cast<double>(stats.instruction_fetch);
         std::println("ALU指令占比: {:.1f}%", 100.0 * stats.arithmetic_operation / total_instructions);
+        std::println("MDU指令占比: {:.1f}%", 100.0 * stats.mdu_complete / total_instructions);
+        if (stats.mdu_complete > 0)
+        {
+            std::println("MDU平均活跃周期: {:.2f}", static_cast<double>(stats.mdu_active_cycle) / stats.mdu_complete);
+        }
         std::println("访存指令占比: {:.1f}%", 100.0 * stats.memory_access_operation / total_instructions);
         if (stats.memory_access_operation > 0)
         {

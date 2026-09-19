@@ -658,66 +658,50 @@ menu "硬件配置"
         default "shift_add"
 
       choice
-        prompt "移位乘法器编码方式"
-        default MUL_SHIFT_PLAIN
-        depends on MUL_SHIFT_ADD
+        prompt "乘法部分积编码方式"
+        default MUL_ENCODING_PLAIN
         help
-          Booth 模式属于移位乘法器内部的重编码方式，不改变顶层实现类型。
-          一位 Booth 每次处理1个乘数位，二位 Booth（基4）每次处理2个乘数位。
-      config MUL_SHIFT_PLAIN
-        bool "普通移位累加（非 Booth）"
-      config MUL_SHIFT_BOOTH1
-        bool "一位 Booth 移位乘法器（待实现）"
-      config MUL_SHIFT_BOOTH2
-        bool "二位 Booth 移位乘法器（待实现）"
+          编码方式是独立于乘法器结构的维度。
+          Booth编码可用于移位累加器、Wallace或Dadda压缩树。
+      config MUL_ENCODING_PLAIN
+        bool "普通部分积（非Booth）"
+      config MUL_ENCODING_BOOTH
+        bool "Booth编码"
       endchoice
 
-      config MUL_SHIFT_ALGO
+      config MUL_ENCODING
         string
-        default "plain" if MUL_SHIFT_PLAIN
-        default "booth1" if MUL_SHIFT_BOOTH1
-        default "booth2" if MUL_SHIFT_BOOTH2
+        default "plain" if MUL_ENCODING_PLAIN
+        default "booth" if MUL_ENCODING_BOOTH
         default "plain"
 
-      choice
-        prompt "部分积编码方式"
-        default MUL_RADIX2
-        depends on MUL_WALLACE || MUL_DADDA
-        help
-          基2直接产生32个部分积; 基4 Booth减半到16个; 基8进一步减少但编码更复杂。
-      config MUL_RADIX2
-        bool "无 Booth（基2）"
-      config MUL_RADIX4
-        bool "基4 Booth"
-      config MUL_RADIX8
-        bool "基8 Booth"
-      endchoice
-
       config MUL_RADIX
-        string
-        default "radix2" if MUL_RADIX2
-        default "radix4" if MUL_RADIX4
-        default "radix8" if MUL_RADIX8
-        default "radix2"
+        int "乘法Booth基数"
+        default 4
+        depends on MUL_ENCODING_BOOTH
+        help
+          输入2、4、8、16等2的幂；elaboration会拒绝其他数值。
 
       config MUL_SPLIT
-        int "分块复用的块数（1=不拆分，2=2×16×16，4=4×8×8）"
+        int "移位乘法器复用因子（1=不拆分，2/4=减少每拍处理量）"
         default 1
         range 1 4
+        depends on MUL_SHIFT_ADD
         help
           拆成多个小块乘法器分时复用: 面积下降, 拍数上升。
 
       config MUL_PIPELINE
-        int "流水级数（0=组合逻辑）"
+        int "压缩树内部流水级数（0=不插入内部流水）"
         default 0
         range 0 4
+        depends on MUL_WALLACE || MUL_DADDA
         help
-          压缩网络按级数插流水寄存器; 影响吞吐/延迟/面积, 接口需延迟无关。
+          压缩网络按级数插流水寄存器;主要对Wallace/Dadda有效，
+          影响吞吐/延迟/面积, 接口需延迟无关。
 
       config MUL_ITER_BITS
         int "移位乘法器每拍处理的位数"
-        default 1 if MUL_SHIFT_PLAIN || MUL_SHIFT_BOOTH1
-        default 2 if MUL_SHIFT_BOOTH2
+        default 2 if MUL_ENCODING_BOOTH
         default 1
         range 1 8
         depends on MUL_SHIFT_ADD
@@ -741,34 +725,34 @@ menu "硬件配置"
         default DIV_RESTORING
         help
           恢复余数法最直观; 不恢复余数法每拍少一次加减;
-          SRT基数越高每拍出更多商位, 但需要商预测表。
+          SRT基数越高每拍出更多商位, 但商数字选择逻辑更大。
       config DIV_RESTORING
         bool "恢复余数法"
       config DIV_NONRESTORING
         bool "不恢复余数法"
-      config DIV_SRT2
-        bool "SRT 基2"
-      config DIV_SRT4
-        bool "SRT 基4"
-      config DIV_SRT16
-        bool "SRT 基16"
+      config DIV_SRT
+        bool "SRT除法"
       endchoice
 
       config DIV_IMPL
         string
         default "restoring" if DIV_RESTORING
         default "nonrestoring" if DIV_NONRESTORING
-        default "srt2" if DIV_SRT2
-        default "srt4" if DIV_SRT4
-        default "srt16" if DIV_SRT16
+        default "srt" if DIV_SRT
         default "restoring"
 
+      config DIV_RADIX
+        int "除法基数"
+        default 2
+        help
+          输入2、4、8、16等2的幂；elaboration会拒绝其他数值。
+
       config DIV_ITER_BITS
-        int "每拍处理的位数"
+        int "每拍展开的基数数字数"
         default 1
         range 1 4
         help
-          每拍产生的商位数; 越大拍数越少, 组合路径越长。
+          每拍连续处理的基数数字数; 越大拍数越少, 组合路径越长。
 
       config DIV_EARLY_OUT
         bool "提前结束"
