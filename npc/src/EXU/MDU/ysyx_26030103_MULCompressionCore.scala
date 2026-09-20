@@ -58,15 +58,17 @@ private object ysyx_26030103_MULCompressionUtils {
   ): IndexedSeq[IndexedSeq[Bool]] = {
     require(InputColumns.length == 64)
     require(Target >= 2)
-    // carry 是本 stage 的输出点，只参与目标列高计算，不会被本 stage
-    // 的其他压缩器再次消费，因而每个 Dadda stage 保持单层压缩深度。
+    // 当前 stage 在低位列产生的 carry 会作为下一列的输入点参与同一轮
+    // 的列高计算。这正是标准 Dadda 列扫描的做法；若把它只计数而不
+    // 放回 Work，会得到一个功能等价但压缩器布局不标准的网络。
     val IncomingCarries = Array.fill(64)(scala.collection.mutable.ArrayBuffer[Bool]())
     val ReducedColumns = Array.fill(64)(scala.collection.mutable.ArrayBuffer[Bool]())
     for (Bit <- 0 until 64) {
       val Work = scala.collection.mutable.ArrayBuffer[Bool]()
       Work ++= InputColumns(Bit)
-      while (Work.length + ReducedColumns(Bit).length + IncomingCarries(Bit).length > Target) {
-        val Excess = Work.length + ReducedColumns(Bit).length + IncomingCarries(Bit).length - Target
+      Work ++= IncomingCarries(Bit)
+      while (Work.length + ReducedColumns(Bit).length > Target) {
+        val Excess = Work.length + ReducedColumns(Bit).length - Target
         if (Excess >= 2) {
           require(Work.length >= 3)
           val A = Work(0)
@@ -74,6 +76,8 @@ private object ysyx_26030103_MULCompressionUtils {
           val C = Work(2)
           Work.remove(0, 3)
           ReducedColumns(Bit) += A ^ B ^ C
+          // Core result is fixed at 64 bits; carry out of bit 63 is the
+          // intentional modulo-2^64 truncation used by RV32 MUL/MULH.
           if (Bit < 63) {
             IncomingCarries(Bit + 1) += ((A & B) | (A & C) | (B & C))
           }
@@ -89,7 +93,6 @@ private object ysyx_26030103_MULCompressionUtils {
         }
       }
       ReducedColumns(Bit) ++= Work
-      ReducedColumns(Bit) ++= IncomingCarries(Bit)
     }
     require(
       ReducedColumns.forall(_.length <= Target),
@@ -167,40 +170,88 @@ abstract class ysyx_26030103_MULCompressionCore(
   private val BoothGroups = if (UseBooth) (33 + BoothBits - 1) / BoothBits else 0 //Booth部分积行数
   private val BoothPaddedBits = BoothGroups * BoothBits //补齐后的乘数宽度
   private val BoothProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(BoothRadix) //编码器部分积宽度
-  private val InitialRows = if (!UseBooth) {
-    ysyx_26030103_MULCompressionUtils.PlainPartialProducts(IO.Req.bits.LHSMagnitude, IO.Req.bits.RHSMagnitude)
+  // Booth 负部分积只保留局部的 K 位表示。对 K 位补码 p：
+  // sign_extend(p) = zero_extend(p) - sign(p) * 2^K；
+  // InitialBoothCorrectionMagnitude 汇总这些减法补偿项。
+  private val InitialRowsAndCorrections = if (!UseBooth) {
+    (
+      ysyx_26030103_MULCompressionUtils.PlainPartialProducts(
+        IO.Req.bits.LHSMagnitude,
+        IO.Req.bits.RHSMagnitude
+      ),
+      0.U(64.W)
+    )
   } else {
     val Multiplier = Cat(0.U((BoothPaddedBits - 32).W), IO.Req.bits.RHSMagnitude, 0.U(1.W))
     val Multiplicand = Cat(0.U(BoothBits.W), IO.Req.bits.LHSMagnitude)
-    (0 until BoothGroups).map { Group =>
+    val Rows = scala.collection.mutable.ArrayBuffer[UInt]()
+    val CorrectionBits = scala.collection.mutable.ArrayBuffer[(Int, Bool)]()
+    for (Group <- 0 until BoothGroups) {
       val Encoder = Module(new ysyx_26030103_MULBoothEncoder(BoothRadix))
       val WindowLow = Group * BoothBits
       Encoder.IO.Multiplicand := Multiplicand
       Encoder.IO.Window := Multiplier(WindowLow + BoothBits, WindowLow)
       val PartialProduct = Encoder.IO.PartialProduct
-      val PartialProductLow = if (BoothProductWidth >= 64) PartialProduct(63, 0) else Cat(Fill(64 - BoothProductWidth, PartialProduct(BoothProductWidth - 1)), PartialProduct)
-      (PartialProductLow << (Group * BoothBits))(63, 0)
+      val FiniteProduct = if (BoothProductWidth >= 64) {
+        PartialProduct(63, 0)
+      } else {
+        Cat(0.U((64 - BoothProductWidth).W), PartialProduct)
+      }
+      Rows += (FiniteProduct << (Group * BoothBits))(63, 0)
+
+      val CorrectionExponent = BoothProductWidth + Group * BoothBits
+      if (CorrectionExponent < 64) {
+        CorrectionBits += ((CorrectionExponent, PartialProduct(BoothProductWidth - 1)))
+      }
     }
+    val CorrectionMagnitudeBits = (0 until 64).map { Bit =>
+      CorrectionBits.find(_._1 == Bit).map(_._2).getOrElse(false.B)
+    }
+    val CorrectionMagnitude = CorrectionMagnitudeBits.reverse.map(_.asUInt).reduce((High, Low) => Cat(High, Low))
+    (Rows.toIndexedSeq, CorrectionMagnitude)
+  }
+  private val InitialRows = InitialRowsAndCorrections._1
+  private val InitialBoothCorrectionMagnitude = InitialRowsAndCorrections._2
+  private val InitialWallaceRows = if (UseBooth) {
+    InitialRows ++ Seq(
+      (~InitialBoothCorrectionMagnitude)(63, 0),
+      1.U(64.W)
+    )
+  } else {
+    InitialRows
   }
   // Dadda 使用真实的部分积列高，而不是完整 UInt 行的数量。
-  // 普通部分积第 r 行只占据 [r, r+31]；Booth 行从其组移位位置
-  // 开始占据到 bit63（高位包含符号扩展的有效点）。
+  // 普通部分积第 r 行只占据 [r, r+31]；Booth 行只保留其 K 位
+  // 有效段，符号扩展由单独的补偿点处理。
   private val InitialDaddaRanges = if (!UseBooth) {
     (0 until InitialRows.length).map { Row =>
       (Row, (Row + 31).min(63))
     }.toIndexedSeq
   } else {
     (0 until InitialRows.length).map { Group =>
-      (Group * BoothBits, 63)
+      (Group * BoothBits, (Group * BoothBits + BoothProductWidth - 1).min(63))
     }.toIndexedSeq
   }
-  private val InitialDaddaColumns =
+  private val InitialDaddaColumnsBase =
     ysyx_26030103_MULCompressionUtils.InitialDaddaColumns(InitialRows, InitialDaddaRanges)
+  // 将 -CorrectionMagnitude 改写成 ~CorrectionMagnitude + 1，作为
+  // 普通点注入 Dadda 初始列，避免在树外再串接一个 64 位减法器。
+  private val InitialDaddaColumns = if (UseDadda && UseBooth) {
+    val Columns = InitialDaddaColumnsBase.map(_.toBuffer).toArray
+    val Complement = (~InitialBoothCorrectionMagnitude)(63, 0)
+    for (Bit <- 0 until 64) {
+      Columns(Bit) += Complement(Bit)
+    }
+    Columns(0) += true.B
+    Columns.map(_.toIndexedSeq).toIndexedSeq
+  } else {
+    InitialDaddaColumnsBase
+  }
   private val InitialDaddaHeight = InitialDaddaColumns.map(_.length).max
   private val BaseSchedule = if (UseDadda) {
     ysyx_26030103_MULCompressionUtils.DaddaSchedule(InitialDaddaHeight)
   } else {
-    ysyx_26030103_MULCompressionUtils.WallaceSchedule(InitialRows.length)
+    ysyx_26030103_MULCompressionUtils.WallaceSchedule(InitialWallaceRows.length)
   }
   private val Schedule = if (BaseSchedule.length < config.MULPipeline) BaseSchedule ++ Seq.fill(config.MULPipeline - BaseSchedule.length)(2) else BaseSchedule
   private val BoundarySteps = (1 to config.MULPipeline).map { Boundary =>
@@ -227,7 +278,7 @@ abstract class ysyx_26030103_MULCompressionCore(
       ysyx_26030103_MULCompressionUtils.ColumnsToRows(Columns)
     )
   } else {
-    var Rows = InitialRows
+    var Rows = InitialWallaceRows
     for ((_, step) <- Schedule.zipWithIndex) {
       Rows = if (Rows.length <= 2) {
         Rows

@@ -12,7 +12,11 @@ object ysyx_26030103_MULBoothConfig {
   }
   def WindowWidth(Radix: Int): Int = BoothBits(Radix) + 1
   def MultiplicandWidth(Radix: Int): Int = OperandWidth + BoothBits(Radix)
-  def PartialProductWidth(Radix: Int): Int = MultiplicandWidth(Radix) * 2
+  // A Booth digit has magnitude at most 2^(BoothBits-1).  The
+  // N+BoothBits-wide signed value is sufficient for one unshifted
+  // partial product; the compressor widens it to the final P=2N
+  // representation explicitly.
+  def PartialProductWidth(Radix: Int): Int = MultiplicandWidth(Radix)
 }
 //Booth编码器组合接口；输出未移位的补码部分积。
 class ysyx_26030103_MULBoothEncoderInterface(val Radix: Int) extends Bundle {

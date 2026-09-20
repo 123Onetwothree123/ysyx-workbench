@@ -18,7 +18,9 @@ class ysyx_26030103_MULBoothEncoder(val Radix: Int) extends Module {
     RadixValue - RawMagnitude, //负数字的绝对值等于2^B-raw
     RawMagnitude //窗口最高位为0时直接使用raw
   )
-  val MultiplicandWide = Cat(0.U((ProductWidth - MultiplicandWidth).W), IO.Multiplicand) //零扩展被乘数
+  val MultiplicandWide =
+    if (ProductWidth == MultiplicandWidth) IO.Multiplicand
+    else Cat(0.U((ProductWidth - MultiplicandWidth).W), IO.Multiplicand) //零扩展被乘数
   var PositiveProduct: UInt = 0.U(ProductWidth.W) //正幅值部分积累加器
   for (Index <- 0 until DigitWidth) {
     val Shifted = (MultiplicandWide << Index)(ProductWidth - 1, 0) //生成2^Index乘数

@@ -17,6 +17,7 @@ class ysyx_26030103_MULShiftAddCore(
   private val PaddedGroups = if (UseBooth) CycleCount * GroupsPerCycle else 0 //补齐后的Booth组数
   private val InternalWidth = if (UseBooth) 2 * (32 + BoothBits) else 64 //内部累加宽度
   private val EncoderWidth = 32 + BoothBits //编码器被乘数宽度
+  private val EncoderProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(BoothRadix) //编码器部分积宽度
   private val MultiplierWidth = if (UseBooth) PaddedGroups * BoothBits + 1 else CycleCount * CycleBits //乘数寄存器宽度
   private val CounterWidth = log2Ceil(CycleCount + 1).max(1) //轮计数器宽度
   private val ShiftWidth = log2Ceil(InternalWidth + 1).max(1) //部分积移位量宽度
@@ -43,7 +44,15 @@ class ysyx_26030103_MULShiftAddCore(
       Encoder.IO.Multiplicand := Multiplicand(EncoderWidth - 1, 0) //输入未移位被乘数
       Encoder.IO.Window := Multiplier(WindowLow + BoothBits, WindowLow) //取当前窗口
       val ShiftAmount = BoothShift + (Group * BoothBits).U(ShiftWidth.W) //当前部分积位置
-      val ShiftedPartialProduct = Encoder.IO.PartialProduct << ShiftAmount //部分积左移
+      val SignedPartialProduct = if (EncoderProductWidth >= InternalWidth) {
+        Encoder.IO.PartialProduct(InternalWidth - 1, 0)
+      } else {
+        Cat(
+          Fill(InternalWidth - EncoderProductWidth, Encoder.IO.PartialProduct(EncoderProductWidth - 1)),
+          Encoder.IO.PartialProduct
+        )
+      }
+      val ShiftedPartialProduct = SignedPartialProduct << ShiftAmount //部分积左移
       val PartialProduct = ShiftedPartialProduct(InternalWidth - 1, 0) //截取内部宽度
       BoothSum = (BoothSum +& PartialProduct)(InternalWidth - 1, 0) //累加本拍部分积
     }

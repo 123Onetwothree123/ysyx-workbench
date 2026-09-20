@@ -122,6 +122,20 @@ class ysyx_26030103_DaddaSpec
         MULEncoding = ysyx_26030103_MULEncoding.Booth,
         MULRadix = 16,
         MULPipeline = 4
+      ),
+      ysyx_26030103_NPCConfig(
+        UseM = true,
+        MULImpl = ysyx_26030103_MULImpl.Wallace,
+        MULEncoding = ysyx_26030103_MULEncoding.Booth,
+        MULRadix = 4,
+        MULPipeline = 2
+      ),
+      ysyx_26030103_NPCConfig(
+        UseM = true,
+        MULImpl = ysyx_26030103_MULImpl.ShiftAdd,
+        MULEncoding = ysyx_26030103_MULEncoding.Booth,
+        MULRadix = 4,
+        MULIterBits = 4
       )
     )
 
