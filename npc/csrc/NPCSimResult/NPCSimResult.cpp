@@ -27,6 +27,7 @@ void NPCSimResult::Save(
     {
         store_avg = static_cast<double>(stats.load_store_unit_store_active_cycle) / static_cast<double>(stats.store_data);
     }
+#ifdef CONFIG_ICACHE
     double amat{0.0};
     if (stats.icache_hit + stats.icache_miss > 0 && stats.icache_miss > 0)
     {
@@ -34,6 +35,7 @@ void NPCSimResult::Save(
         auto miss_avg{static_cast<double>(stats.instruction_fetch_stall_ar + stats.instruction_fetch_stall_r) / static_cast<double>(stats.icache_miss)};
         amat = 1.0 + (1.0 - hit_rate) * miss_avg;
     }
+#endif
     std::filesystem::create_directories(result_dir);
 #define XSTR(s) #s
 #define STR(s) XSTR(s)
@@ -66,7 +68,7 @@ void NPCSimResult::Save(
         }
     }
     auto csv_row{std::format(
-        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         commit,
         msg,
         total_cycles,
@@ -95,16 +97,20 @@ void NPCSimResult::Save(
         stats.lsu_stall_read_ar,
         stats.lsu_stall_read_r,
         stats.lsu_stall_write_req,
-        stats.lsu_stall_write_b,
-        stats.icache_hit,
-        stats.icache_miss,
-        std::format("{:.1f}", amat),
+        stats.lsu_stall_write_b)};
+#ifdef CONFIG_ICACHE
+    csv_row += std::format(",{},{},{}", stats.icache_hit, stats.icache_miss,
+                           std::format("{:.1f}", amat));
+#endif
+    csv_row += std::format(
+        ",{},{},{},{},{},{}",
         stats.idu_stall_raw,
         stats.idu_stall_raw_loaduse,
         stats.idu_stall_raw_alu,
         stats.exu_idle_noinput,
         stats.trap_count,
-        stats.mem_waitslot)};
+        stats.mem_waitslot);
+#ifdef CONFIG_RV32_M
     csv_row += std::format(
         ",{},{},{},{},{},{},{},{},{},{},{},{}",
         stats.mdu_request,
@@ -119,6 +125,7 @@ void NPCSimResult::Save(
         stats.mdu_remu,
         stats.mdu_active_cycle,
         stats.mdu_wait_cycle);
+#endif
 
     auto csv_file{
 #ifdef VRISCV32E_NPC
@@ -138,9 +145,14 @@ void NPCSimResult::Save(
                "EXU等LSU,"
                "LSU读延迟,LSU写延迟,"
                "LSU_AR等待,LSU_R等待,LSU_AW/W等待,LSU_B等待,"
+#ifdef CONFIG_ICACHE
                "ICache命中,ICache缺失,AMAT,"
+#endif
                "IDU_RAW阻塞,IDU_RAW_loaduse,IDU_RAW_可转发,EXU空转等输入,异常提交,EX/MEM等待槽占用,"
-               "MDU请求,MDU完成,MUL,MULH,MULHSU,MULHU,DIV,DIVU,REM,REMU,MDU活跃周期,MDU等待周期\n";
+#ifdef CONFIG_RV32_M
+               "MDU请求,MDU完成,MUL,MULH,MULHSU,MULHU,DIV,DIVU,REM,REMU,MDU活跃周期,MDU等待周期"
+#endif
+               "\n";
         out << csv_row << '\n';
     }
 

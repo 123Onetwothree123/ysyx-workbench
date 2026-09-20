@@ -764,10 +764,30 @@ menu "硬件配置"
 
   endmenu
 
-  menu "ICache"
+  menu "缓存"
+
+    config ICACHE
+      bool "开启指令缓存(ICache)"
+      default y
+      help
+        开启: 取指经过ICache(直接映射, 参数见下)。
+        关闭: 取指不做任何缓存, 每次取指直接发单拍AXI读(和数据通路一样),
+              ICache的存储阵列/标签/回填逻辑不会生成, 这部分面积消失。
+        修改后需重新 make verilog 以重新生成RTL。
+
+    config DCACHE
+      bool "开启数据缓存(DCache)"
+      default n
+      help
+        开启: 普通RAM的读操作经过直映射DCache(参数见下)，写操作采用
+              写直达且不写分配，并复用LSU写缓冲。
+              MMIO和其它非缓存地址始终直通AXI，不进入DCache。
+        关闭: LSU保持当前直连AXI访存路径，不生成DCache存储阵列/回填逻辑。
+        修改后需重新 make verilog 以重新生成RTL。
 
     config CACHE_BLOCK_SIZE_LOG2
-      int "ICache块大小的log2（2^N字节）"
+      int "Cache块大小的log2（2^N字节）"
+      depends on ICACHE || DCACHE
       default 4
       range 2 6
       help
@@ -775,11 +795,26 @@ menu "硬件配置"
         修改后需重新 make verilog 以重新生成RTL。
 
     config CACHE_INDEX_BITS
-      int "ICache索引位宽（2^N个块）"
+      int "Cache索引位宽（2^N个块）"
+      depends on ICACHE || DCACHE
       default 5
       range 1 10
       help
         1=2块, 5=32块, 10=1024块。
+        修改后需重新 make verilog 以重新生成RTL。
+
+  endmenu
+
+  menu "写缓冲 (LSU)"
+
+    config WBUF_DEPTH
+      int "写缓冲项数（必须是2的幂）"
+      default 4
+      range 1 16
+      help
+        写操作先入队、由后台异步写内存, 项数越多越能吸收连续写(栈/结构体/内存填充),
+        但触发器和组合逻辑面积也越大。
+        必须是2的幂: 1/2/4/8/16(环形队列按位回绕)。
         修改后需重新 make verilog 以重新生成RTL。
 
   endmenu

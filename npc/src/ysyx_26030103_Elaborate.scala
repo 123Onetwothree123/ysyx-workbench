@@ -12,6 +12,9 @@ object ysyx_26030103_Elaborate extends App {
 
   val BlockSizeLog2 = sys.env.getOrElse("CACHE_BLOCK_SIZE_LOG2", "4").toInt
   val IndexBits = sys.env.getOrElse("CACHE_INDEX_BITS", "5").toInt
+  val ICacheEnable = sys.env.getOrElse("ICACHE", "y") == "y"
+  val DCacheEnable = sys.env.getOrElse("DCACHE", "n") == "y"
+  val WBufDepth = sys.env.getOrElse("WBUF_DEPTH", "4").toInt
   val BTBBits = sys.env.getOrElse("BTB_BITS", "4").toInt
   val BTBWays = sys.env.getOrElse("BTB_WAYS", "1").toInt
   val JalBTBBits = sys.env.getOrElse("JAL_BTB_BITS", "4").toInt
@@ -57,8 +60,11 @@ object ysyx_26030103_Elaborate extends App {
     MULPipeline = MULPipeline,
     MULSplit = MULSplit,
     MULEarlyOut = MULEarlyOut,
+    ICacheEnable = ICacheEnable,
+    DCacheEnable = DCacheEnable,
     BlockSizeLog2 = BlockSizeLog2,
     IndexBits = IndexBits,
+    WBufDepth = WBufDepth,
     BTBBits = BTBBits,
     BTBWays = BTBWays,
     JalBTBBits = JalBTBBits,

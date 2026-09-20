@@ -76,9 +76,13 @@ case class ysyx_26030103_NPCConfig(
     // 目标平台
     ResetAddr: Long = 0x30000000L,
     AddressWidth: Int = 32,
-    // icache
+    // caches
+    ICacheEnable: Boolean = true,
+    DCacheEnable: Boolean = false,
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
+    // LSU 写缓冲项数(必须是2的幂, 环形队列按位回绕)
+    WBufDepth: Int = 4,
     CacheableBase: Long = 0x80000000L,
     CacheableMask: Long = 0x80000000L,
     // 分支预测
@@ -90,6 +94,10 @@ case class ysyx_26030103_NPCConfig(
 ) {
   require(!UseA, "RV32_A还没有做")
   require(!UseC, "RV32_C还没做")
+  require(
+    Integer.bitCount(WBufDepth) == 1,
+    "WBufDepth必须是2的幂(1/2/4/8/16)"
+  )
   require(
     ysyx_26030103_MULBoothConfig.IsValidRadix(MULRadix),
     "MULRadix必须是大于等于2的2的幂"
@@ -117,12 +125,18 @@ case class ysyx_26030103_NPCConfig(
     val MOff = OnOff(UseM)
     val AOff = OnOff(UseA)
     val COff = OnOff(UseC)
+    val ICacheDesc =
+      if (ICacheEnable) { s"${1 << BlockSizeLog2}B/${1 << IndexBits}sets" }
+      else { "off" }
+    val DCacheDesc =
+      if (DCacheEnable) { s"${1 << BlockSizeLog2}B/${1 << IndexBits}sets" }
+      else { "off" }
     s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, " +
       s"mul=${MULImpl.Name}/${MULEncoding.Name}, " +
       s"mul_radix=$MULRadix, div=${DIVImpl.Name}, div_radix=$DIVRadix, div_iter=$DIVIterBits, " +
       s"iter=$MULIterBits, pipeline=$MULPipeline, split=$MULSplit, " +
       s"mul_early_out=${OnOff(MULEarlyOut)}, div_early_out=${OnOff(DIVEarlyOut)}, " +
-      s"ICache=${1 << BlockSizeLog2}B/${1 << IndexBits}sets, " +
+      s"ICache=$ICacheDesc, DCache=$DCacheDesc, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, reset=0x${ResetAddr.toHexString}"
   }

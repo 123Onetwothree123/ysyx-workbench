@@ -3,6 +3,7 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.infra._
 class ysyx_26030103_ICache(
+    Enable: Boolean = true, // false=不做缓存, 每次取指直接发单拍AXI读(和数据通路一样)
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
     AddressWidth: Int = 32,
@@ -33,15 +34,19 @@ class ysyx_26030103_ICache(
     val kill = Input(Bool()) // 重定向/异常: 杀掉在飞取指请求,不动cache行
   })
   // 直接映射cache存储阵列：valid+tag+data
-  val valid = RegInit(VecInit(Seq.fill(NumBlocks)(false.B)))
-  val tag = Reg(Vec(NumBlocks, UInt(TagBits.W)))
-  val data = Reg(Vec(NumBlocks, Vec(WordsPerBlock, UInt(32.W))))
+  // 关闭缓存时阵列只留1项占位(其余逻辑不可达), 综合会把这些触发器/组合逻辑全部剪掉
+  private val ArrayBlocks = if (Enable) NumBlocks else 1
+  val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
+  val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))
+  val data = Reg(Vec(ArrayBlocks, Vec(WordsPerBlock, UInt(32.W))))
   val index = io.fetch_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   val blockOffset =
     if (WordsPerBlock > 1) io.fetch_addr(BlockSizeLog2 - 1, 2)
     else 0.U
   val reqTag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  val cacheable = (io.fetch_addr & CacheableMask.U) === CacheableBase.U
+  // 关闭缓存: 一律当作不可缓存访问 => 单拍AXI读, 不填阵列不查tag
+  val cacheable =
+    if (Enable) (io.fetch_addr & CacheableMask.U) === CacheableBase.U else false.B
   // 两级流水: s1受理级(寄存请求,命中数据当拍锁存) -> 响应级(命中直接响应,缺失走refill)
   val s1_valid = RegInit(false.B)
   val s1_hit = Reg(Bool()) // 受理时判定: 可缓存且命中

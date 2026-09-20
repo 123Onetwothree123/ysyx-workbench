@@ -19,10 +19,20 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val idu = Module(new ysyx_26030103_IDU(config))
   val exu = Module(new ysyx_26030103_EXU(config))
   val wbu = Module(new ysyx_26030103_WBU)
-  val lsu = Module(new ysyx_26030103_LSU)
+  val lsu = Module(
+    new ysyx_26030103_LSU(
+      WBufDepth = config.WBufDepth,
+      DCacheEnable = config.DCacheEnable,
+      DCacheBlockSizeLog2 = config.BlockSizeLog2,
+      DCacheIndexBits = config.IndexBits,
+      DCacheableBase = config.CacheableBase,
+      DCacheableMask = config.CacheableMask
+    )
+  )
   val gpr = Module(new ysyx_26030103_GPR)
   val icache = Module(
     new ysyx_26030103_ICache(
+      Enable = config.ICacheEnable,
       BlockSizeLog2 = config.BlockSizeLog2,
       IndexBits = config.IndexBits,
       CacheableBase = config.CacheableBase,
@@ -201,6 +211,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
   icache.io.flush := exu.io.FenceIFlush // 仅 FenceI 冲 iCache，分支不冲
+  lsu.io.DCacheFlush := exu.io.FenceIFlush // fence.i同时使数据缓存失效
   // 取指或访存返回错误的标志,仅保留给SoC测试台的debug输出用
   val AccessFaultOccurred = icache.io.access_fault || lsu.io.AccessFault
   gpr.io.WriteSELECT := wbu.io.WriteSELECT

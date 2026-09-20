@@ -195,6 +195,8 @@ void DUT::step()
     {
         ++perf.execution_complete;
     }
+#ifdef CONFIG_RV32_M
+    // M扩展关闭时译码不出M指令, 这些信号恒为0, 不再逐拍采集
     if (dut->perf_mdu_req)
     {
         ++perf.mdu_request;
@@ -223,6 +225,7 @@ void DUT::step()
     {
         ++perf.mdu_wait_cycle;
     }
+#endif
     if (dut->perf_lsu_load)
     {
         ++perf.load_data;
@@ -338,6 +341,8 @@ void DUT::step()
     {
         ++perf.lsu_stall_write_b;
     }
+#ifdef CONFIG_ICACHE
+    // ICache关闭时取指直连AXI, 这些信号恒为0, 不再逐拍采集
     if (dut->perf_icache_hit)
     {
         ++perf.icache_hit;
@@ -346,6 +351,7 @@ void DUT::step()
     {
         ++perf.icache_miss;
     }
+#endif
 #ifndef VRISCV32E_NPC
     if (dut->perf_idu_stall_raw)
     {
