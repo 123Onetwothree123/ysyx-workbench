@@ -46,6 +46,8 @@ export struct PerfStats
     std::size_t lsu_stall_write_b{0};
     std::size_t icache_hit{0};
     std::size_t icache_miss{0};
+    std::size_t dcache_hit{0};
+    std::size_t dcache_miss{0};
     std::size_t idu_stall_raw{0};
     std::size_t idu_stall_raw_loaduse{0};
     std::size_t idu_stall_raw_alu{0};

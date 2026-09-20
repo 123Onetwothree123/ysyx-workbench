@@ -266,6 +266,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   io.perf_ifu_stall_idle := ifu.io.StallIdle
   io.perf_icache_hit := icache.io.perf_hit
   io.perf_icache_miss := icache.io.perf_miss
+  io.perf_dcache_hit := lsu.io.DCachePerfHit
+  io.perf_dcache_miss := lsu.io.DCachePerfMiss
+  io.perf_dcache_refill_req := lsu.io.DCachePerfRefillReq
+  io.perf_dcache_refill_resp := lsu.io.DCachePerfRefillResp
   io.perf_execution_active := exu.io.PerfExecutionActive
   // EXU被下游阻塞: 有指令但本拍未完成(EX/MEM寄存器被占,或副作用指令等MEM级排空)
   io.perf_exu_stall_lsu := exu.io.in.valid && !exu.io.out.fire

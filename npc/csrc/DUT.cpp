@@ -352,6 +352,17 @@ void DUT::step()
         ++perf.icache_miss;
     }
 #endif
+#ifdef CONFIG_DCACHE
+    // DCache关闭时这些信号恒为0, 不再逐拍采集
+    if (dut->perf_dcache_hit)
+    {
+        ++perf.dcache_hit;
+    }
+    if (dut->perf_dcache_miss)
+    {
+        ++perf.dcache_miss;
+    }
+#endif
 #ifndef VRISCV32E_NPC
     if (dut->perf_idu_stall_raw)
     {

@@ -196,5 +196,23 @@ void NPCTrap::PrintPerformanceStatistics(const PerfStats &stats, std::size_t tot
         }
     }
 #endif
+#ifdef CONFIG_DCACHE
+    std::println("DCache 性能:");
+    std::println("  命中: {} 次", stats.dcache_hit);
+    std::println("  缺失: {} 次", stats.dcache_miss);
+    if (stats.dcache_hit + stats.dcache_miss > 0)
+    {
+        auto hit_rate{static_cast<double>(stats.dcache_hit) / (stats.dcache_hit + stats.dcache_miss)};
+        std::println("  命中率: {:.1f}%", 100.0 * hit_rate);
+        if (stats.dcache_miss > 0)
+        {
+            auto miss_cycles{static_cast<double>(stats.lsu_stall_read_ar + stats.lsu_stall_read_r)};
+            auto miss_avg{miss_cycles / stats.dcache_miss};
+            auto amat{1.0 + (1.0 - hit_rate) * miss_avg};
+            std::println("  缺失平均延迟: {:.1f} 周期", miss_avg);
+            std::println("  AMAT: {:.1f} 周期", amat);
+        }
+    }
+#endif
 }
 #endif

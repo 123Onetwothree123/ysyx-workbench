@@ -36,6 +36,15 @@ void NPCSimResult::Save(
         amat = 1.0 + (1.0 - hit_rate) * miss_avg;
     }
 #endif
+#ifdef CONFIG_DCACHE
+    double dcache_amat{0.0};
+    if (stats.dcache_hit + stats.dcache_miss > 0 && stats.dcache_miss > 0)
+    {
+        auto hit_rate{static_cast<double>(stats.dcache_hit) / static_cast<double>(stats.dcache_hit + stats.dcache_miss)};
+        auto miss_avg{static_cast<double>(stats.lsu_stall_read_ar + stats.lsu_stall_read_r) / static_cast<double>(stats.dcache_miss)};
+        dcache_amat = 1.0 + (1.0 - hit_rate) * miss_avg;
+    }
+#endif
     std::filesystem::create_directories(result_dir);
 #define XSTR(s) #s
 #define STR(s) XSTR(s)
@@ -102,6 +111,10 @@ void NPCSimResult::Save(
     csv_row += std::format(",{},{},{}", stats.icache_hit, stats.icache_miss,
                            std::format("{:.1f}", amat));
 #endif
+#ifdef CONFIG_DCACHE
+    csv_row += std::format(",{},{},{}", stats.dcache_hit, stats.dcache_miss,
+                           std::format("{:.1f}", dcache_amat));
+#endif
     csv_row += std::format(
         ",{},{},{},{},{},{}",
         stats.idu_stall_raw,
@@ -147,6 +160,9 @@ void NPCSimResult::Save(
                "LSU_AR等待,LSU_R等待,LSU_AW/W等待,LSU_B等待,"
 #ifdef CONFIG_ICACHE
                "ICache命中,ICache缺失,AMAT,"
+#endif
+#ifdef CONFIG_DCACHE
+               "DCache命中,DCache缺失,DCache AMAT,"
 #endif
                "IDU_RAW阻塞,IDU_RAW_loaduse,IDU_RAW_可转发,EXU空转等输入,异常提交,EX/MEM等待槽占用,"
 #ifdef CONFIG_RV32_M

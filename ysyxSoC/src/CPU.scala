@@ -76,6 +76,10 @@ class ysyx_26030103 extends BlackBox {
     val io_perf_lsu_stall_write_b  = Output(Bool())
     val io_perf_icache_hit         = Output(Bool())
     val io_perf_icache_miss        = Output(Bool())
+    val io_perf_dcache_hit         = Output(Bool())
+    val io_perf_dcache_miss        = Output(Bool())
+    val io_perf_dcache_refill_req  = Output(Bool())
+    val io_perf_dcache_refill_resp = Output(Bool())
     val io_perf_idu_stall_raw         = Output(Bool())
     val io_perf_idu_stall_raw_loaduse = Output(Bool())
     val io_perf_idu_stall_raw_alu     = Output(Bool())
@@ -212,6 +216,14 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     perf_icache_hit := cpu.io.io_perf_icache_hit
     val perf_icache_miss = IO(Output(Bool()))
     perf_icache_miss := cpu.io.io_perf_icache_miss
+    val perf_dcache_hit = IO(Output(Bool()))
+    perf_dcache_hit := cpu.io.io_perf_dcache_hit
+    val perf_dcache_miss = IO(Output(Bool()))
+    perf_dcache_miss := cpu.io.io_perf_dcache_miss
+    val perf_dcache_refill_req = IO(Output(Bool()))
+    perf_dcache_refill_req := cpu.io.io_perf_dcache_refill_req
+    val perf_dcache_refill_resp = IO(Output(Bool()))
+    perf_dcache_refill_resp := cpu.io.io_perf_dcache_refill_resp
     val perf_idu_stall_raw = IO(Output(Bool()))
     perf_idu_stall_raw := cpu.io.io_perf_idu_stall_raw
     val perf_idu_stall_raw_loaduse = IO(Output(Bool()))

@@ -27,6 +27,11 @@ class ysyx_26030103_LSU(
     // 直接连总线
     val DataBus = new ysyx_26030103_AXI5IO(32)
     val DCacheFlush = Input(Bool()) // fence.i使写直达数据缓存失效
+    // DCache性能计数器
+    val DCachePerfHit = Output(Bool())
+    val DCachePerfMiss = Output(Bool())
+    val DCachePerfRefillReq = Output(Bool())
+    val DCachePerfRefillResp = Output(Bool())
     // 给IDU做数据冒险检测和转发用
     val HazardValid = Output(Bool())
     val HazardRd = Output(UInt(5.W))
@@ -69,6 +74,10 @@ class ysyx_26030103_LSU(
       CacheableMask = DCacheableMask
     )
   )
+  io.DCachePerfHit := DCache.io.perf_hit
+  io.DCachePerfMiss := DCache.io.perf_miss
+  io.DCachePerfRefillReq := DCache.io.perf_refill_req
+  io.DCachePerfRefillResp := DCache.io.perf_refill_resp
   // 阶段级FSM: 接受/等待/退休
   val StageStates = Enum(3)
   val StageIdle = StageStates(0)
@@ -205,7 +214,7 @@ class ysyx_26030103_LSU(
   val StatesLoadWaitBuf = StateMachine(4) // 读操作等待写缓冲排空
   val StatesDone = StateMachine(5)
   val StatesWriteWaitB = StateMachine(6) // 非普通内存写等待B响应
-  val State = RegInit(StatesIdle)
+  val state = RegInit(StatesIdle)
   val DCacheRequestActive = RegInit(false.B)
   val AlignedWriteData = WireDefault(ActiveInstruction.StoreData) // 按地址低位对齐写数据
   val AlignedWriteMask = WireDefault("b1111".U(4.W))
@@ -284,7 +293,7 @@ class ysyx_26030103_LSU(
   io.DataBus.AR.ARBURST := 1.U
   io.DataBus.AR.ARPROT := 0.U
   io.DataBus.R.RREADY := false.B
-  io.Complete := State === StatesDone
+  io.Complete := state === StatesDone
   val wbAddr = Reg(Vec(WBufDepth, UInt(32.W))) // 普通RAM写入队即退休，MMIO写等待B响应
   val wbData = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbStrb = Reg(Vec(WBufDepth, UInt(4.W)))
@@ -302,7 +311,7 @@ class ysyx_26030103_LSU(
   val storeBufIdx = Reg(UInt(log2Ceil(WBufDepth).max(1).W)) // 当前写操作的缓冲槽位
   val wbPush =
     (startMem && ActiveInstruction.MemoryWrite && !AddressMisaligned && !wbufFull) ||
-      (State === StatesWriteWaitBuf && !wbufFull)
+      (state === StatesWriteWaitBuf && !wbufFull)
   when(wbPush) {
     wbAddr(wbTail) := ActiveInstruction.ALUResult
     wbData(wbTail) := AlignedWriteData
@@ -348,16 +357,16 @@ class ysyx_26030103_LSU(
     wbufEmpty || DCacheLoadMayBypass,
     wbufEmpty || loadMayBypass
   )
-  DCache.io.Req.valid := DCacheRequestActive && State === StatesReadRequest // 复用LSU的AR/R通道
-  DCache.io.Req.bits.Addr := ActiveInstruction.ALUResult
-  DCache.io.Req.bits.WidthSelect := ActiveInstruction.WidthSelect
-  DCache.io.Req.bits.Signed := ActiveInstruction.LoadSigned
-  DCache.io.Resp.ready := DCacheRequestActive && State === StatesReadResponse
+  DCache.io.req.valid := DCacheRequestActive && state === StatesReadRequest // 复用LSU的AR/R通道
+  DCache.io.req.bits.addr := ActiveInstruction.ALUResult
+  DCache.io.req.bits.WidthSelect := ActiveInstruction.WidthSelect
+  DCache.io.req.bits.signed := ActiveInstruction.LoadSigned
+  DCache.io.resp.ready := DCacheRequestActive && state === StatesReadResponse
   DCache.io.StoreValid := wbPush && DCacheStore && DCacheCacheable
   DCache.io.StoreAddr := ActiveInstruction.ALUResult
   DCache.io.StoreData := AlignedWriteData
   DCache.io.StoreStrb := AlignedWriteMask
-  DCache.io.Flush := io.DCacheFlush
+  DCache.io.flush := io.DCacheFlush
   DCache.io.AXI.AW.AWREADY := false.B // DCache不使用AXI写通道
   DCache.io.AXI.W.WREADY := false.B
   DCache.io.AXI.B.BID := 0.U
@@ -412,7 +421,7 @@ class ysyx_26030103_LSU(
   }
   wbCount := wbCount + wbPush.asUInt - wbPop.asUInt
   io.Busy := (stageState =/= StageIdle) || io.in.valid || !wbufEmpty // 当前级、输入或写缓冲任一忙
-  switch(State) {
+  switch(state) {
     is(StatesIdle) {
       AccessFaultReg := false.B
       AccessFaultRespReg := 0.U
@@ -422,29 +431,29 @@ class ysyx_26030103_LSU(
         when(AddressMisaligned) {
           // 不对齐访存不发起总线事务: 置故障标志, 经MemTrap精确提交地址非对齐异常(cause 4/6)
           AccessFaultReg := true.B
-          State := StatesDone
+          state := StatesDone
         }
           .elsewhen(ActiveInstruction.MemoryWrite) {
             // 普通内存写入队即完成，其余写操作等待B响应
             when(!wbufFull) {
-              State := Mux(storeNeedsB, StatesWriteWaitB, StatesDone)
+              state := Mux(storeNeedsB, StatesWriteWaitB, StatesDone)
             }.otherwise {
-              State := StatesWriteWaitBuf
+              state := StatesWriteWaitBuf
             }
           }
           .otherwise {
             if (DCacheEnable) {
               when(LoadMayProceed) {
                 DCacheRequestActive := true.B
-                State := StatesReadRequest
+                state := StatesReadRequest
               }.otherwise {
-                State := StatesLoadWaitBuf
+                state := StatesLoadWaitBuf
               }
             } else { // 关闭数据缓存时保持原来的单拍直读路径
               when(wbufEmpty || loadMayBypass) {
-                State := StatesReadRequest
+                state := StatesReadRequest
               }.otherwise {
-                State := StatesLoadWaitBuf
+                state := StatesLoadWaitBuf
               }
             }
           }
@@ -452,7 +461,7 @@ class ysyx_26030103_LSU(
     }
     is(StatesWriteWaitBuf) {
       when(!wbufFull) {
-        State := Mux(storeNeedsB, StatesWriteWaitB, StatesDone)
+        state := Mux(storeNeedsB, StatesWriteWaitB, StatesDone)
       }
     }
     is(StatesWriteWaitB) {
@@ -460,48 +469,48 @@ class ysyx_26030103_LSU(
       when(wbState === wbWaitB && io.DataBus.B.BVALID && wbHead === storeBufIdx) {
         StoreFaultReg := io.DataBus.B.BRESP =/= 0.U
         AccessFaultRespReg := io.DataBus.B.BRESP
-        State := StatesDone
+        state := StatesDone
       }
     }
     is(StatesLoadWaitBuf) {
       if (DCacheEnable) {
         when(LoadMayProceed) {
           DCacheRequestActive := true.B
-          State := StatesReadRequest
+          state := StatesReadRequest
         }
       } else {
         when(wbufEmpty || loadMayBypass) {
-          State := StatesReadRequest
+          state := StatesReadRequest
         }
       }
     }
     is(StatesReadRequest) {
       if (DCacheEnable) {
         when(DCacheRequestActive) {
-          when(DCache.io.Req.fire) { State := StatesReadResponse }
+          when(DCache.io.req.fire) { state := StatesReadResponse }
         }.otherwise {
           io.DataBus.AR.ARVALID := true.B
           io.DataBus.AR.ARADDR := ActiveInstruction.ALUResult
-          when(io.DataBus.AR.ARREADY) { State := StatesReadResponse }
+          when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
         }
       } else {
         io.DataBus.AR.ARVALID := true.B
         io.DataBus.AR.ARADDR := ActiveInstruction.ALUResult
-        when(io.DataBus.AR.ARREADY) { State := StatesReadResponse }
+        when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
       }
     }
     is(StatesReadResponse) {
       if (DCacheEnable) {
         when(DCacheRequestActive) {
-          when(DCache.io.Resp.fire) {
-            when(DCache.io.Resp.bits.Fault) {
+          when(DCache.io.resp.fire) {
+            when(DCache.io.resp.bits.fault) {
               AccessFaultReg := true.B
-              AccessFaultRespReg := DCache.io.Resp.bits.FaultResp
+              AccessFaultRespReg := DCache.io.resp.bits.FaultResp
             }.otherwise {
-              LoadDataReg := DCache.io.Resp.bits.Data
+              LoadDataReg := DCache.io.resp.bits.data
             }
             DCacheRequestActive := false.B
-            State := StatesDone
+            state := StatesDone
           }
         }.otherwise {
           io.DataBus.R.RREADY := true.B
@@ -539,7 +548,7 @@ class ysyx_26030103_LSU(
                 LoadDataReg := io.DataBus.R.RDATA
               }
             }
-            State := StatesDone
+            state := StatesDone
           }
         }
       } else {
@@ -578,13 +587,13 @@ class ysyx_26030103_LSU(
               LoadDataReg := io.DataBus.R.RDATA
             }
           }
-          State := StatesDone
+          state := StatesDone
         }
       }
     }
     // 这个就是开新的循环了
     is(StatesDone) {
-      State := StatesIdle
+      state := StatesIdle
     }
   }
   if (DCacheEnable) {
@@ -618,10 +627,10 @@ class ysyx_26030103_LSU(
     DCache.io.AXI.R.RLAST := false.B
     DCache.io.AXI.R.RVALID := false.B
   }
-  io.Active := State =/= StatesIdle
+  io.Active := state =/= StatesIdle
   io.IsStore := is_store_transaction
-  io.StallReadAR := State === StatesReadRequest
-  io.StallReadR := State === StatesReadResponse
-  io.StallWriteReq := State === StatesWriteWaitBuf
+  io.StallReadAR := state === StatesReadRequest
+  io.StallReadR := state === StatesReadResponse
+  io.StallWriteReq := state === StatesWriteWaitBuf
   io.StallWriteB := wbState === wbWaitB // 后台等B, 不再阻塞流水线, 仅供观测
 }
