@@ -3,6 +3,7 @@
 #include <klib-macros.h>
 #include <stdarg.h>
 
+#include <errno.h>
 #include <limits.h>
 
 #if !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
@@ -20,6 +21,7 @@ typedef struct FILE FILE;
 struct FILE
 {
   size_t (*write)(FILE *f, const unsigned char *buf, size_t len);
+  size_t (*repeat)(FILE *f, unsigned char ch, size_t len);
   void *cookie;
   size_t count; // 这玩意是逻辑上“本来想写”的总长度
   int err;
@@ -30,11 +32,20 @@ struct FILE
   int lbf;
   int lock;
 };
+enum
+{
+  FILE_ERROR_NONE,
+  FILE_ERROR_WRITE,
+  FILE_ERROR_FORMAT,
+  FILE_ERROR_OVERFLOW
+};
 static size_t console_write(FILE *f, const unsigned char *s, size_t l); // 这是底层输出的
+static size_t console_repeat(FILE *f, unsigned char ch, size_t len);
 static FILE __stdout_FILE = {
     .lbf = EOF,
     .lock = -1,
     .write = console_write,
+    .repeat = console_repeat,
     .cookie = NULL,
     .buf = NULL,
     .wbase = NULL,
@@ -49,6 +60,7 @@ KFILE *kstdout = (KFILE *)&__stdout_FILE;
 
 // 自己写的
 static size_t sn_write(FILE *f, const unsigned char *s, size_t l);
+static size_t sn_repeat(FILE *f, unsigned char ch, size_t len);
 /*
 static void byte_copy(char *dst, const unsigned char *src, size_t n);
 static size_t cstr_len(const char *s);
@@ -57,7 +69,9 @@ int vfprintf(FILE *f, const char *fmt, va_list ap);
 // vfprintf和write之间的中间层，就反正是vfprintf不直接碰sn_write，然后具体怎么写就直接让f->write决定
 static int file_write(FILE *f, const void *buf, size_t len);
 static int file_putc(FILE *f, char ch);       // file_write的1字节包装
-static int file_pad(FILE *f, char ch, int n); // 连续输出多个填充字符
+static int file_pad(FILE *f, char ch, size_t n); // 连续输出多个填充字符
+static int file_check_count(FILE *f, size_t len);
+static int file_set_error(FILE *f, int error, int error_number);
 // 负责把一个无符号整数转成字符串，但先倒着存。
 static int uint_to_rev(uintmax_t x, unsigned base, int uppercase, char *buf);
 typedef enum
@@ -113,7 +127,7 @@ int printf(const char *fmt, ...)
 int vsprintf(char *out, const char *fmt, va_list ap)
 {
   // panic("Not implemented");
-  return vsnprintf(out, INT_MAX, fmt, ap);
+  return vsnprintf(out, (size_t)INT_MAX + 1u, fmt, ap);
 }
 
 int sprintf(char *out, const char *fmt, ...)
@@ -147,6 +161,7 @@ int vsnprintf(char *out, size_t n, const char *fmt, va_list ap)
   FILE f = {
       .lbf = EOF,
       .write = sn_write,
+      .repeat = sn_repeat,
       .lock = -1,
       .buf = buf,
       .wbase = buf,
@@ -183,6 +198,20 @@ static size_t sn_write(FILE *f, const unsigned char *s, size_t l)
   // 翻译：即使我们丢弃了额外数据，也要假装成功。
   return l;
 }
+static size_t sn_repeat(FILE *f, unsigned char ch, size_t len)
+{
+  struct cookie *c = (struct cookie *)f->cookie;
+  size_t copied = MIN(c->n, len);
+  if (copied != 0)
+  {
+    memset(c->s, ch, copied);
+    c->s += copied;
+    c->n -= copied;
+  }
+  *c->s = '\0';
+  f->wpos = f->wbase = f->buf;
+  return len;
+}
 int vfprintf(FILE *f, const char *fmt, va_list ap)
 {
   va_list ap2;
@@ -194,20 +223,44 @@ int vfprintf(FILE *f, const char *fmt, va_list ap)
   va_end(ap2);
   return f->err ? -1 : ret;
 }
+static int file_set_error(FILE *f, int error, int error_number)
+{
+  if (f->err == FILE_ERROR_NONE)
+  {
+    f->err = error;
+    if (error_number != 0)
+    {
+      errno = error_number;
+    }
+  }
+  return -1;
+}
+static int file_check_count(FILE *f, size_t len)
+{
+  if (f->err != FILE_ERROR_NONE)
+  {
+    return -1;
+  }
+  if (f->count > (size_t)INT_MAX ||
+      len > (size_t)INT_MAX - f->count)
+  {
+    return file_set_error(f, FILE_ERROR_OVERFLOW, EOVERFLOW);
+  }
+  return 0;
+}
 static int file_write(FILE *f, const void *buf, size_t len)
 {
   if (len == 0)
   {
     return 0;
   }
-  if (f->err)
+  if (file_check_count(f, len) < 0)
   {
     return -1;
   }
   if (f->write(f, (const unsigned char *)buf, len) != len)
   {
-    f->err = 1;
-    return -1;
+    return file_set_error(f, FILE_ERROR_WRITE, 0);
   }
   f->count += len;
   return 0;
@@ -216,13 +269,21 @@ static int file_putc(FILE *f, char ch)
 {
   return file_write(f, &ch, 1);
 }
-static int file_pad(FILE *f, char ch, int n)
+static int file_pad(FILE *f, char ch, size_t n)
 {
-  while (n-- > 0)
+  if (n == 0)
   {
-    if (file_putc(f, ch) < 0)
-      return -1;
+    return 0;
   }
+  if (file_check_count(f, n) < 0)
+  {
+    return -1;
+  }
+  if (f->repeat(f, (unsigned char)ch, n) != n)
+  {
+    return file_set_error(f, FILE_ERROR_WRITE, 0);
+  }
+  f->count += n;
   return 0;
 }
 static int uint_to_rev(uintmax_t x, unsigned base, int uppercase, char *buf)
@@ -270,6 +331,13 @@ static int print_number(FILE *f, uintmax_t x, unsigned base, int uppercase, cons
 
   size_t total = (sign ? 1u : 0u) + (size_t)prefix_len +
                  (size_t)precision_zeroes + (size_t)ndig;
+  size_t field_length = total < (size_t)spec->width
+                            ? (size_t)spec->width
+                            : total;
+  if (file_check_count(f, field_length) < 0)
+  {
+    return -1;
+  }
   int padding = (total < (size_t)spec->width)
                     ? spec->width - (int)total
                     : 0;
@@ -280,7 +348,7 @@ static int print_number(FILE *f, uintmax_t x, unsigned base, int uppercase, cons
     padding = 0;
   }
 
-  if (!spec->left_align && file_pad(f, ' ', padding) < 0)
+  if (!spec->left_align && file_pad(f, ' ', (size_t)padding) < 0)
   {
     return -1;
   }
@@ -292,8 +360,8 @@ static int print_number(FILE *f, uintmax_t x, unsigned base, int uppercase, cons
   {
     return -1;
   }
-  if (file_pad(f, '0', width_zeroes) < 0 ||
-      file_pad(f, '0', precision_zeroes) < 0)
+  if (file_pad(f, '0', (size_t)width_zeroes) < 0 ||
+      file_pad(f, '0', (size_t)precision_zeroes) < 0)
   {
     return -1;
   }
@@ -304,7 +372,7 @@ static int print_number(FILE *f, uintmax_t x, unsigned base, int uppercase, cons
       return -1;
     }
   }
-  if (spec->left_align && file_pad(f, ' ', padding) < 0)
+  if (spec->left_align && file_pad(f, ' ', (size_t)padding) < 0)
   {
     return -1;
   }
@@ -355,7 +423,7 @@ static int parse_spec(FILE *f, const char **pfmt, va_list *ap, PrintfSpec *spec)
     fmt++;
     if (dynamic_width == INT_MIN)
     {
-      return format_error(f);
+      return file_set_error(f, FILE_ERROR_OVERFLOW, EOVERFLOW);
     }
     if (dynamic_width < 0)
     {
@@ -368,7 +436,7 @@ static int parse_spec(FILE *f, const char **pfmt, va_list *ap, PrintfSpec *spec)
   {
     if (parse_decimal(&fmt, &spec->width) < 0)
     {
-      return format_error(f);
+      return file_set_error(f, FILE_ERROR_OVERFLOW, EOVERFLOW);
     }
   }
 
@@ -386,7 +454,7 @@ static int parse_spec(FILE *f, const char **pfmt, va_list *ap, PrintfSpec *spec)
     {
       if (parse_decimal(&fmt, &spec->precision) < 0)
       {
-        return format_error(f);
+        return file_set_error(f, FILE_ERROR_OVERFLOW, EOVERFLOW);
       }
     }
   }
@@ -452,7 +520,14 @@ static int print_str(FILE *f, const char *s, const PrintfSpec *spec)
   int padding = (len < (size_t)spec->width)
                     ? spec->width - (int)len
                     : 0;
-  if (!spec->left_align && file_pad(f, ' ', padding) < 0)
+  size_t field_length = len < (size_t)spec->width
+                            ? (size_t)spec->width
+                            : len;
+  if (file_check_count(f, field_length) < 0)
+  {
+    return -1;
+  }
+  if (!spec->left_align && file_pad(f, ' ', (size_t)padding) < 0)
   {
     return -1;
   }
@@ -460,7 +535,7 @@ static int print_str(FILE *f, const char *s, const PrintfSpec *spec)
   {
     return -1;
   }
-  if (spec->left_align && file_pad(f, ' ', padding) < 0)
+  if (spec->left_align && file_pad(f, ' ', (size_t)padding) < 0)
   {
     return -1;
   }
@@ -469,7 +544,12 @@ static int print_str(FILE *f, const char *s, const PrintfSpec *spec)
 static int print_char(FILE *f, char ch, const PrintfSpec *spec)
 {
   int padding = spec->width > 1 ? spec->width - 1 : 0;
-  if (!spec->left_align && file_pad(f, ' ', padding) < 0)
+  size_t field_length = spec->width > 1 ? (size_t)spec->width : 1u;
+  if (file_check_count(f, field_length) < 0)
+  {
+    return -1;
+  }
+  if (!spec->left_align && file_pad(f, ' ', (size_t)padding) < 0)
   {
     return -1;
   }
@@ -477,7 +557,7 @@ static int print_char(FILE *f, char ch, const PrintfSpec *spec)
   {
     return -1;
   }
-  if (spec->left_align && file_pad(f, ' ', padding) < 0)
+  if (spec->left_align && file_pad(f, ' ', (size_t)padding) < 0)
   {
     return -1;
   }
@@ -564,8 +644,7 @@ static uintmax_t read_unsigned_arg(va_list *ap, PrintfLength length)
 }
 static int format_error(FILE *f)
 {
-  f->err = 1;
-  return -1;
+  return file_set_error(f, FILE_ERROR_FORMAT, EINVAL);
 }
 static int printf_core(FILE *f, const char *fmt, va_list *ap)
 {
@@ -700,7 +779,11 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap)
     }
     fmt++;
   }
-  return f->err ? -1 : (int)f->count;
+  if (file_check_count(f, 0) < 0)
+  {
+    return -1;
+  }
+  return (int)f->count;
 }
 static size_t console_write(FILE *f, const unsigned char *s, size_t l)
 {
@@ -710,6 +793,15 @@ static size_t console_write(FILE *f, const unsigned char *s, size_t l)
     putch((char)s[i]);
   }
   return l;
+}
+static size_t console_repeat(FILE *f, unsigned char ch, size_t len)
+{
+  (void)f;
+  for (size_t i = 0; i < len; i++)
+  {
+    putch((char)ch);
+  }
+  return len;
 }
 int fprintf(FILE *stream, const char *fmt, ...)
 {

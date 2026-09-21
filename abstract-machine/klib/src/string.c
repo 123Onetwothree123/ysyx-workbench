@@ -207,21 +207,23 @@ void *memset(void *s, int c, size_t n)
 
 void *memmove(void *dst, const void *src, size_t n)
 {
-  // panic("Not implemented");
   unsigned char *destination = (unsigned char *)dst;
-  unsigned char *source = (unsigned char *)src;
-  if (destination < source)
-  {
-    for (size_t i = 0; i < n; i++)
-    {
-      destination[i] = source[i];
-    }
-  }
-  else if (destination > source)
+  const unsigned char *source = (const unsigned char *)src;
+  uintptr_t destination_address = (uintptr_t)destination;
+  uintptr_t source_address = (uintptr_t)source;
+  if (destination_address > source_address &&
+      destination_address - source_address < n)
   {
     for (size_t i = n; i > 0; i--)
     {
       destination[i - 1] = source[i - 1];
+    }
+  }
+  else if (destination_address != source_address)
+  {
+    for (size_t i = 0; i < n; i++)
+    {
+      destination[i] = source[i];
     }
   }
   return dst;
@@ -257,6 +259,20 @@ int memcmp(const void *s1, const void *s2, size_t n)
     FunctionS2++;
   }
   return 0;
+}
+
+void *(memchr)(const void *s, int c, size_t n)
+{
+  const unsigned char *bytes = (const unsigned char *)s;
+  const unsigned char target = (unsigned char)c;
+  for (size_t i = 0; i < n; i++)
+  {
+    if (bytes[i] == target)
+    {
+      return (void *)(bytes + i);
+    }
+  }
+  return NULL;
 }
 
 // 自己写的

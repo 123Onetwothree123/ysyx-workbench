@@ -397,6 +397,7 @@ void *malloc(size_t size)
   }
   if (size > SIZE_MAX - BLOCK_PAYLOAD_OFFSET)
   {
+    errno = ENOMEM;
     return NULL;
   }
   AllocatorInit();
@@ -404,15 +405,62 @@ void *malloc(size_t size)
   uint8_t Grades = Size_to_Grades(TotalSize);
   if (Grades == 0)
   {
+    errno = ENOMEM;
     return NULL;
   }
   BlockHeader *block = GetBlock(Grades);
   if (block == NULL)
   {
+    errno = ENOMEM;
     return NULL;
   }
   block->used = true;
   return Block_to_Payload(block);
+}
+
+void *calloc(size_t count, size_t size)
+{
+  if (count != 0 && size > SIZE_MAX / count)
+  {
+    errno = ENOMEM;
+    return NULL;
+  }
+  size_t total = count * size;
+  void *ptr = malloc(total);
+  if (ptr != NULL)
+  {
+    memset(ptr, 0, total);
+  }
+  return ptr;
+}
+
+void *realloc(void *ptr, size_t new_size)
+{
+  if (ptr == NULL)
+  {
+    return malloc(new_size);
+  }
+  if (new_size == 0)
+  {
+    free(ptr);
+    return NULL;
+  }
+
+  BlockHeader *block = Payload_to_Block(ptr);
+  size_t old_capacity = Grades_to_Size(block->Grades) - BLOCK_PAYLOAD_OFFSET;
+  if (new_size <= old_capacity)
+  {
+    return ptr;
+  }
+
+  void *new_ptr = malloc(new_size);
+  if (new_ptr == NULL)
+  {
+    return NULL;
+  }
+  memcpy(new_ptr, ptr, old_capacity);
+  free(ptr);
+  return new_ptr;
 }
 
 void free(void *ptr)

@@ -1,4 +1,5 @@
 #include <am.h>
+#include <errno.h>
 #include <klib.h>
 #include <limits.h>
 #include <stdint.h>
@@ -129,6 +130,50 @@ int main(void) {
   check_text_and_length(len, "+00005|0x00ab|+00042|0X000ABC");
 
   // 无法获知未知格式对应的参数类型，因此必须立即失败，不能继续错读参数。
+  char extreme[4];
+  errno = EFAULT;
+  len = snprintf(NULL, 0, "%*s", INT_MAX, "");
+  CHECK(len == INT_MAX);
+  CHECK(errno == EFAULT);
+  len = snprintf(extreme, sizeof(extreme), "%*s", INT_MAX, "");
+  CHECK(len == INT_MAX);
+  CHECK(strcmp(extreme, "   ") == 0);
+
+  errno = 0;
+  len = snprintf(extreme, sizeof(extreme), "%*sX", INT_MAX, "");
+  CHECK(len == -1);
+  CHECK(errno == EOVERFLOW);
+  CHECK(strcmp(extreme, "   ") == 0);
+
+  errno = 0;
+  len = snprintf(extreme, sizeof(extreme), "x%*s", INT_MAX, "");
+  CHECK(len == -1);
+  CHECK(errno == EOVERFLOW);
+  CHECK(strcmp(extreme, "x") == 0);
+
+  errno = EFAULT;
+  len = snprintf(extreme, sizeof(extreme), "%.*d", INT_MAX, 0);
+  CHECK(len == INT_MAX);
+  CHECK(errno == EFAULT);
+  CHECK(strcmp(extreme, "000") == 0);
+
+  errno = 0;
+  len = snprintf(extreme, sizeof(extreme), "%+.*d", INT_MAX, 0);
+  CHECK(len == -1);
+  CHECK(errno == EOVERFLOW);
+  CHECK(extreme[0] == '\0');
+
+  errno = 0;
+  len = snprintf(extreme, sizeof(extreme), "%#.*x", INT_MAX, 1u);
+  CHECK(len == -1);
+  CHECK(errno == EOVERFLOW);
+  CHECK(extreme[0] == '\0');
+
+  errno = EFAULT;
+  len = snprintf(extreme, sizeof(extreme), "%s", "ok");
+  CHECK(len == 2 && strcmp(extreme, "ok") == 0);
+  CHECK(errno == EFAULT);
+
   const char unknown_format[] = "before:%q after:%d";
   len = snprintf(buf, sizeof(buf), unknown_format, 111, 222);
   CHECK(len == -1);
@@ -146,14 +191,25 @@ int main(void) {
   CHECK(strcmp(buf, "tail:") == 0);
 
   const char width_overflow_format[] = "wide:%2147483648d";
+  errno = 0;
   len = snprintf(buf, sizeof(buf), width_overflow_format, 1);
   CHECK(len == -1);
+  CHECK(errno == EOVERFLOW);
   CHECK(strcmp(buf, "wide:") == 0);
 
   const char dynamic_width_overflow_format[] = "wide:%*d";
+  errno = 0;
   len = snprintf(buf, sizeof(buf), dynamic_width_overflow_format, INT_MIN, 1);
   CHECK(len == -1);
+  CHECK(errno == EOVERFLOW);
   CHECK(strcmp(buf, "wide:") == 0);
+
+  const char precision_overflow_format[] = "prec:%.2147483648d";
+  errno = 0;
+  len = snprintf(buf, sizeof(buf), precision_overflow_format, 1);
+  CHECK(len == -1);
+  CHECK(errno == EOVERFLOW);
+  CHECK(strcmp(buf, "prec:") == 0);
 
   // 格式错误不能污染下一次调用。
   len = snprintf(buf, sizeof(buf), "%zu", (size_t)42);

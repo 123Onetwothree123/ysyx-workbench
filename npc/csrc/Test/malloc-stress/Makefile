@@ -1,4 +1,5 @@
 NAME = malloc-stress
 SRCS = main.cpp
 include $(AM_HOME)/Makefile
-override CXXFLAGS += -std=c++26 -D_GLIBCXX_ASSERTIONS
+MALLOC_STRESS_ROUNDS ?= 200
+override CXXFLAGS += -std=c++26 -D_GLIBCXX_ASSERTIONS -DMALLOC_STRESS_ROUNDS=$(MALLOC_STRESS_ROUNDS)

@@ -350,18 +350,30 @@ uint32_t __inline __builtin_clzll(uint64_t value) {
 #include <am.h>
 
 #if !defined(__ARCH_RISCV64_MYCPU)
+static du_int di_magnitude(di_int value)
+{
+    const du_int bits = (du_int)value;
+    return value < 0 ? (du_int)0 - bits : bits;
+}
+
+static di_int di_from_magnitude(du_int magnitude, bool negative)
+{
+    const du_int sign_bit =
+        (du_int)1 << ((int)(sizeof(di_int) * CHAR_BIT) - 1);
+    if (magnitude == sign_bit)
+        return LLONG_MIN;
+    const di_int value = (di_int)magnitude;
+    return negative ? -value : value;
+}
+
 /* Returns: a / b */
 
 COMPILER_RT_ABI di_int
 __divdi3(di_int a, di_int b)
 {
-    const int bits_in_dword_m1 = (int)(sizeof(di_int) * CHAR_BIT) - 1;
-    di_int s_a = a >> bits_in_dword_m1;           /* s_a = a < 0 ? -1 : 0 */
-    di_int s_b = b >> bits_in_dword_m1;           /* s_b = b < 0 ? -1 : 0 */
-    a = (a ^ s_a) - s_a;                         /* negate if s_a == -1 */
-    b = (b ^ s_b) - s_b;                         /* negate if s_b == -1 */
-    s_a ^= s_b;                                  /*sign of quotient */
-    return (__udivmoddi4(a, b, (du_int*)0) ^ s_a) - s_a;  /* negate if s_a == -1 */
+    const du_int quotient =
+        __udivmoddi4(di_magnitude(a), di_magnitude(b), (du_int*)0);
+    return di_from_magnitude(quotient, (a < 0) != (b < 0));
 }
 
 /* Returns: a / b, *rem = a % b  */
@@ -369,9 +381,11 @@ __divdi3(di_int a, di_int b)
 COMPILER_RT_ABI di_int
 __divmoddi4(di_int a, di_int b, di_int* rem)
 {
-  di_int d = __divdi3(a,b);
-  *rem = a - (d*b);
-  return d;
+    du_int unsigned_rem;
+    const du_int quotient =
+        __udivmoddi4(di_magnitude(a), di_magnitude(b), &unsigned_rem);
+    *rem = di_from_magnitude(unsigned_rem, a < 0);
+    return di_from_magnitude(quotient, (a < 0) != (b < 0));
 }
 
 /* Returns: a % b */
@@ -379,14 +393,10 @@ __divmoddi4(di_int a, di_int b, di_int* rem)
 COMPILER_RT_ABI di_int
 __moddi3(di_int a, di_int b)
 {
-    const int bits_in_dword_m1 = (int)(sizeof(di_int) * CHAR_BIT) - 1;
-    di_int s = b >> bits_in_dword_m1;  /* s = b < 0 ? -1 : 0 */
-    b = (b ^ s) - s;                   /* negate if s == -1 */
-    s = a >> bits_in_dword_m1;         /* s = a < 0 ? -1 : 0 */
-    a = (a ^ s) - s;                   /* negate if s == -1 */
-    du_int r;
-    __udivmoddi4(a, b, &r);
-    return ((di_int)r ^ s) - s;                /* negate if s == -1 */
+    du_int unsigned_rem;
+    (void)__udivmoddi4(
+        di_magnitude(a), di_magnitude(b), &unsigned_rem);
+    return di_from_magnitude(unsigned_rem, a < 0);
 }
 
 /* Returns: a / b */

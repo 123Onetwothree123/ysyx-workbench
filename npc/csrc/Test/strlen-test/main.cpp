@@ -52,6 +52,24 @@ int main() {
   CHECK(strstr(empty, "a") == NULL);
   CHECK(strstr(repeated, "aaa") == repeated);
 
+  const unsigned char binary[] = {0x00, 0x11, 0xff, 0x22, 0xff};
+  CHECK(memchr(binary, 0xff, sizeof(binary)) == binary + 2);
+  CHECK(memchr(binary, 0x1ff, sizeof(binary)) == binary + 2);
+  CHECK(memchr(binary, 0x22, sizeof(binary)) == binary + 3);
+  CHECK(memchr(binary, 0x33, sizeof(binary)) == NULL);
+  CHECK(memchr(binary, 0x00, sizeof(binary)) == binary);
+  CHECK(memchr(binary, 0xff, 0) == NULL);
+
+  char move_buf[16] = "abcdef";
+  CHECK(memmove(move_buf + 2, move_buf, 6) == move_buf + 2);
+  CHECK(strcmp(move_buf, "ababcdef") == 0);
+  strcpy(move_buf, "abcdef");
+  CHECK(memmove(move_buf, move_buf + 2, 5) == move_buf);
+  CHECK(strcmp(move_buf, "cdef") == 0);
+  strcpy(move_buf, "abcdef");
+  CHECK(memmove(move_buf, move_buf, sizeof(move_buf)) == move_buf);
+  CHECK(strcmp(move_buf, "abcdef") == 0);
+
 #if !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
   char dst[8];
   memset(dst, 'Z', sizeof(dst));
