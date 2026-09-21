@@ -1,5 +1,7 @@
 #include <klib.h>
 #include <klib-macros.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 
 #if !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
@@ -79,6 +81,54 @@ char *(strstr)(const char *haystack, const char *needle)
     }
   }
   return NULL;
+}
+
+ptrdiff_t (strscpy)(char *dst, const char *src, size_t dstsize)
+{
+  if (dstsize == 0 || dstsize > INT_MAX)
+  {
+    return -E2BIG;
+  }
+  size_t copied = 0;
+  while (copied < dstsize - 1 && src[copied] != '\0')
+  {
+    dst[copied] = src[copied];
+    copied++;
+  }
+  dst[copied] = '\0';
+  if (src[copied] != '\0')
+  {
+    return -E2BIG;
+  }
+  return (ptrdiff_t)copied;
+}
+
+size_t (strlcpy)(char *dst, const char *src, size_t dstsize)
+{
+  size_t src_len = strlen(src);
+  if (dstsize != 0)
+  {
+    size_t copied = src_len < dstsize - 1 ? src_len : dstsize - 1;
+    memcpy(dst, src, copied);
+    dst[copied] = '\0';
+  }
+  return src_len;
+}
+
+size_t (strlcat)(char *dst, const char *src, size_t dstsize)
+{
+  size_t dst_len = strnlen(dst, dstsize);
+  size_t src_len = strlen(src);
+  if (dst_len == dstsize)
+  {
+    return dstsize + src_len;
+  }
+
+  size_t available = dstsize - dst_len - 1;
+  size_t copied = src_len < available ? src_len : available;
+  memcpy(dst + dst_len, src, copied);
+  dst[dst_len + copied] = '\0';
+  return dst_len + src_len;
 }
 
 char *strcpy(char *dst, const char *src)
