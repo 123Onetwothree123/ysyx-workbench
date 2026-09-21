@@ -54,6 +54,10 @@ void  *malloc    (size_t size);
 void   free      (void *ptr);
 int    abs       (int x);
 int    atoi      (const char *nptr);
+long   strtol    (const char *__restrict nptr, char **__restrict endptr, int base);
+unsigned long strtoul(const char *__restrict nptr, char **__restrict endptr, int base);
+long long strtoll(const char *__restrict nptr, char **__restrict endptr, int base);
+unsigned long long strtoull(const char *__restrict nptr, char **__restrict endptr, int base);
 
 // stdio.h
 int    printf    (const char *format, ...);

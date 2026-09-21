@@ -2,6 +2,9 @@
 #include <klib.h>
 #include <klib-macros.h>
 
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 
 #if !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
@@ -125,6 +128,112 @@ uintptr_t AlignDown(uintptr_t value, size_t align);
 // 卧槽，漏了一个，取块函数
 BlockHeader *GetBlock(uint8_t TargetGrades);
 
+typedef struct ParsedInteger
+{
+  uintmax_t magnitude;
+  const char *end;
+  bool negative;
+  bool any_digit;
+  bool overflow;
+  bool invalid_base;
+} ParsedInteger;
+
+static int DigitValue(unsigned char c)
+{
+  if (c >= '0' && c <= '9')
+  {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'z')
+  {
+    return c - 'a' + 10;
+  }
+  if (c >= 'A' && c <= 'Z')
+  {
+    return c - 'A' + 10;
+  }
+  return -1;
+}
+
+static ParsedInteger ParseInteger(
+    const char *nptr,
+    int base,
+    uintmax_t positive_limit,
+    uintmax_t negative_limit)
+{
+  ParsedInteger result = {
+      .magnitude = 0,
+      .end = nptr,
+      .negative = false,
+      .any_digit = false,
+      .overflow = false,
+      .invalid_base = false,
+  };
+  if (base != 0 && (base < 2 || base > 36))
+  {
+    result.invalid_base = true;
+    return result;
+  }
+
+  const unsigned char *s = (const unsigned char *)nptr;
+  while (isspace(*s))
+  {
+    s++;
+  }
+  if (*s == '+' || *s == '-')
+  {
+    result.negative = *s == '-';
+    s++;
+  }
+
+  int third_digit = -1;
+  if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
+  {
+    third_digit = DigitValue(s[2]);
+  }
+  if ((base == 0 || base == 16) && third_digit >= 0 && third_digit < 16)
+  {
+    base = 16;
+    s += 2;
+  }
+  else if (base == 0)
+  {
+    base = s[0] == '0' ? 8 : 10;
+  }
+
+  uintmax_t limit = result.negative ? negative_limit : positive_limit;
+  uintmax_t cutoff = limit / (unsigned)base;
+  unsigned cutlim = (unsigned)(limit % (unsigned)base);
+  while (1)
+  {
+    int digit = DigitValue(*s);
+    if (digit < 0 || digit >= base)
+    {
+      break;
+    }
+    result.any_digit = true;
+    if (!result.overflow)
+    {
+      if (result.magnitude > cutoff ||
+          (result.magnitude == cutoff && (unsigned)digit > cutlim))
+      {
+        result.magnitude = limit;
+        result.overflow = true;
+      }
+      else
+      {
+        result.magnitude = result.magnitude * (unsigned)base + (unsigned)digit;
+      }
+    }
+    s++;
+  }
+  if (result.any_digit)
+  {
+    result.end = (const char *)s;
+  }
+  return result;
+}
+
 int rand(void)
 {
   // RAND_MAX assumed to be 32767
@@ -137,6 +246,136 @@ void srand(unsigned int seed)
   next = seed;
 }
 
+long strtol(const char *nptr, char **endptr, int base)
+{
+  ParsedInteger parsed = ParseInteger(
+      nptr,
+      base,
+      (uintmax_t)LONG_MAX,
+      (uintmax_t)LONG_MAX + 1u);
+  if (endptr != NULL)
+  {
+    *endptr = (char *)parsed.end;
+  }
+  if (parsed.invalid_base)
+  {
+    errno = EINVAL;
+    return 0;
+  }
+  if (!parsed.any_digit)
+  {
+    return 0;
+  }
+  if (parsed.overflow)
+  {
+    errno = ERANGE;
+    return parsed.negative ? LONG_MIN : LONG_MAX;
+  }
+  if (!parsed.negative)
+  {
+    return (long)parsed.magnitude;
+  }
+  if (parsed.magnitude == (uintmax_t)LONG_MAX + 1u)
+  {
+    return LONG_MIN;
+  }
+  return -(long)parsed.magnitude;
+}
+
+unsigned long strtoul(const char *nptr, char **endptr, int base)
+{
+  ParsedInteger parsed = ParseInteger(
+      nptr,
+      base,
+      (uintmax_t)ULONG_MAX,
+      (uintmax_t)ULONG_MAX);
+  if (endptr != NULL)
+  {
+    *endptr = (char *)parsed.end;
+  }
+  if (parsed.invalid_base)
+  {
+    errno = EINVAL;
+    return 0;
+  }
+  if (!parsed.any_digit)
+  {
+    return 0;
+  }
+  if (parsed.overflow)
+  {
+    errno = ERANGE;
+    return ULONG_MAX;
+  }
+  unsigned long value = (unsigned long)parsed.magnitude;
+  return parsed.negative ? 0ul - value : value;
+}
+
+long long strtoll(const char *nptr, char **endptr, int base)
+{
+  ParsedInteger parsed = ParseInteger(
+      nptr,
+      base,
+      (uintmax_t)LLONG_MAX,
+      (uintmax_t)LLONG_MAX + 1u);
+  if (endptr != NULL)
+  {
+    *endptr = (char *)parsed.end;
+  }
+  if (parsed.invalid_base)
+  {
+    errno = EINVAL;
+    return 0;
+  }
+  if (!parsed.any_digit)
+  {
+    return 0;
+  }
+  if (parsed.overflow)
+  {
+    errno = ERANGE;
+    return parsed.negative ? LLONG_MIN : LLONG_MAX;
+  }
+  if (!parsed.negative)
+  {
+    return (long long)parsed.magnitude;
+  }
+  if (parsed.magnitude == (uintmax_t)LLONG_MAX + 1u)
+  {
+    return LLONG_MIN;
+  }
+  return -(long long)parsed.magnitude;
+}
+
+unsigned long long strtoull(const char *nptr, char **endptr, int base)
+{
+  ParsedInteger parsed = ParseInteger(
+      nptr,
+      base,
+      (uintmax_t)ULLONG_MAX,
+      (uintmax_t)ULLONG_MAX);
+  if (endptr != NULL)
+  {
+    *endptr = (char *)parsed.end;
+  }
+  if (parsed.invalid_base)
+  {
+    errno = EINVAL;
+    return 0;
+  }
+  if (!parsed.any_digit)
+  {
+    return 0;
+  }
+  if (parsed.overflow)
+  {
+    errno = ERANGE;
+    return ULLONG_MAX;
+  }
+  unsigned long long value = (unsigned long long)parsed.magnitude;
+  return parsed.negative ? 0ull - value : value;
+}
+
 int abs(int x)
 {
   return (x < 0 ? -x : x);
@@ -144,17 +383,7 @@ int abs(int x)
 
 int atoi(const char *nptr)
 {
-  int x = 0;
-  while (*nptr == ' ')
-  {
-    nptr++;
-  }
-  while (*nptr >= '0' && *nptr <= '9')
-  {
-    x = x * 10 + *nptr - '0';
-    nptr++;
-  }
-  return x;
+  return (int)strtol(nptr, NULL, 10);
 }
 
 // Native运行时在AM初始化前就可能调用malloc；该模式成对使用宿主malloc/free，
