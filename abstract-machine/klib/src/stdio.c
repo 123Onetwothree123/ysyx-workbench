@@ -58,25 +58,44 @@ int vfprintf(FILE *f, const char *fmt, va_list ap);
 static int file_write(FILE *f, const void *buf, size_t len);
 static int file_putc(FILE *f, char ch);       // file_write的1字节包装
 static int file_pad(FILE *f, char ch, int n); // 连续输出多个填充字符
-// 负责把一个无符号整数转成字符串，但先倒着存，x是待转换的数值，base是基数，buf是缓冲区，返回 int 类型的实际写入字符个数，即数字的位数
-static int ull_to_rev(unsigned long long x, unsigned base, char *buf);
-/*
-太长了，我先用多行注释来记录一下，以免忘记
-目的：以unsigned long long形式传入，将一个无符号整数格式化成指定进制、指定宽度、带前缀、支持负数符号等，并写入文件流
-x：数字本体
-base：10或16
-width：最小宽度
-zero_pad：是否用0填充
-prefix/prefix_len：比如%p需要"0x"
-negative：是否要先输出-
-*/
-static int file_put_uint(FILE *f, unsigned long long x, unsigned base, int width, int zero_pad, const char *prefix, int prefix_len, int negative);
-//  解析十进制宽度，比如%08x这里里面的这个8，%123d的这个123，然后因为传入的是fmt指针的地址，所以函数内部可以一边读一边推进指针
-static int parse_width(const char **ps);
+// 负责把一个无符号整数转成字符串，但先倒着存。
+static int uint_to_rev(uintmax_t x, unsigned base, int uppercase, char *buf);
+typedef enum
+{
+  PRINTF_LENGTH_DEFAULT,
+  PRINTF_LENGTH_CHAR,
+  PRINTF_LENGTH_SHORT,
+  PRINTF_LENGTH_LONG,
+  PRINTF_LENGTH_LONG_LONG,
+  PRINTF_LENGTH_SIZE,
+  PRINTF_LENGTH_PTRDIFF,
+  PRINTF_LENGTH_INTMAX
+} PrintfLength;
+typedef struct
+{
+  int width;
+  int precision; // -1表示没有指定精度
+  int left_align;
+  int show_plus;
+  int space_sign;
+  int alternate;
+  int zero_pad;
+  PrintfLength length;
+} PrintfSpec;
+_Static_assert(
+    sizeof(ptrdiff_t) == sizeof(size_t),
+    "%zd需要ptrdiff_t与size_t使用相同宽度");
+static int print_number(FILE *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec, char sign, int pointer_prefix);
+static int parse_decimal(const char **ps, int *value);
+static int parse_spec(FILE *f, const char **pfmt, va_list *ap, PrintfSpec *spec);
 static int printf_core(FILE *f, const char *fmt, va_list *ap);
-static int print_str(FILE *f, const char *s, int width);
-static int print_uint(FILE *f, unsigned long long x, unsigned base, int width, int zero_pad);
-static int print_int(FILE *f, long long x, int width, int zero_pad);
+static int print_str(FILE *f, const char *s, const PrintfSpec *spec);
+static int print_char(FILE *f, char ch, const PrintfSpec *spec);
+static int print_uint(FILE *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec);
+static int print_int(FILE *f, intmax_t x, const PrintfSpec *spec);
+static intmax_t read_signed_arg(va_list *ap, PrintfLength length);
+static uintmax_t read_unsigned_arg(va_list *ap, PrintfLength length);
+static int format_error(FILE *f);
 static size_t console_write(FILE *f, const unsigned char *s, size_t l);
 int fprintf(FILE *stream, const char *fmt, ...);
 
@@ -206,172 +225,400 @@ static int file_pad(FILE *f, char ch, int n)
   }
   return 0;
 }
-static int ull_to_rev(unsigned long long x, unsigned base, char *buf)
+static int uint_to_rev(uintmax_t x, unsigned base, int uppercase, char *buf)
 {
-  static const char dig[] = "0123456789abcdef"; // 这是为了既支持2进制，也支持16进制
-  int n = 0;                                    // 拿来记录已生成的字符数的
-  // 他妈的用dowhile是为了保证即使x是0，也会至少执行一次循环，将'0'写入缓冲区，目的就是为了到时候可以将0转换为字符串
+  static const char lower_digits[] = "0123456789abcdef";
+  static const char upper_digits[] = "0123456789ABCDEF";
+  const char *digits = uppercase ? upper_digits : lower_digits;
+  int n = 0;
   do
   {
-    buf[n++] = dig[x % base]; // x % base是为了取出当前最低位数字，就是0到base-1之间
-    x /= base;                // 丢弃最低位
+    buf[n++] = digits[x % base];
+    x /= base;
   } while (x != 0);
   return n;
 }
-static int file_put_uint(FILE *f, unsigned long long x, unsigned base, int width, int zero_pad, const char *prefix, int prefix_len, int negative)
+static int print_number(FILE *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec, char sign, int pointer_prefix)
 {
-  // char tmp[32];                                       // 缓冲区，用于存放转换后的数字字符，但是得是倒序的
-  char tmp[64];
-  int ndig = ull_to_rev(x, base, tmp);                // x在指定base下的数字位数，但是不含前缀和符号
-  int total = ndig + prefix_len + (negative ? 1 : 0); // 格式化后的总字符数，但是只是最小字符数，实际上可能会更多
-  // 逆序存储是为了方便后续从后向前输出，避免额外的缓冲区反转操作
-  // 如果不是补零，就先补空格
-  if (!zero_pad && width > total) // 如果要求的最小宽度width比实际内容total大，并且不是0填充
+  char tmp[sizeof(uintmax_t) * CHAR_BIT];
+  int ndig = (spec->precision == 0 && x == 0 && !pointer_prefix)
+                 ? 0
+                 : uint_to_rev(x, base, uppercase, tmp);
+  const char *prefix = NULL;
+  int prefix_len = 0;
+  if (pointer_prefix)
   {
-    if (file_pad(f, ' ', width - total) < 0) // 在前面补空格
-    {
-      return -1;
-    }
+    prefix = "0x";
+    prefix_len = 2;
   }
-  if (negative) // 如果需要负号，先输出-
+  else if (spec->alternate && base == 16 && x != 0)
   {
-    if (file_putc(f, '-') < 0)
-    {
-      return -1;
-    }
+    prefix = uppercase ? "0X" : "0x";
+    prefix_len = 2;
   }
-  // 如果有前缀，比如0x，就在这里输出
-  if (prefix_len)
+
+  int precision_zeroes = 0;
+  if (spec->precision > ndig)
   {
-    if (file_write(f, prefix, prefix_len) < 0)
-    {
-      return -1;
-    }
+    precision_zeroes = spec->precision - ndig;
   }
-  // 如果是补零，就在这里补0
-  if (zero_pad && width > total)
+  if (spec->alternate && base == 8 && precision_zeroes == 0 &&
+      (ndig == 0 || tmp[ndig - 1] != '0'))
   {
-    // 反正就是当启用了zero_pad的时候，并且width大于内容总长度，就在前缀之后、数字之前补0
-    if (file_pad(f, '0', width - total) < 0)
-    {
-      return -1;
-    }
+    precision_zeroes = 1;
   }
-  while (ndig > 0) // 把数字正序输出
+
+  size_t total = (sign ? 1u : 0u) + (size_t)prefix_len +
+                 (size_t)precision_zeroes + (size_t)ndig;
+  int padding = (total < (size_t)spec->width)
+                    ? spec->width - (int)total
+                    : 0;
+  int width_zeroes = 0;
+  if (!spec->left_align && spec->zero_pad && spec->precision < 0)
+  {
+    width_zeroes = padding;
+    padding = 0;
+  }
+
+  if (!spec->left_align && file_pad(f, ' ', padding) < 0)
+  {
+    return -1;
+  }
+  if (sign && file_putc(f, sign) < 0)
+  {
+    return -1;
+  }
+  if (prefix_len && file_write(f, prefix, (size_t)prefix_len) < 0)
+  {
+    return -1;
+  }
+  if (file_pad(f, '0', width_zeroes) < 0 ||
+      file_pad(f, '0', precision_zeroes) < 0)
+  {
+    return -1;
+  }
+  while (ndig > 0)
   {
     if (file_putc(f, tmp[--ndig]) < 0)
     {
       return -1;
     }
   }
+  if (spec->left_align && file_pad(f, ' ', padding) < 0)
+  {
+    return -1;
+  }
   return 0;
 }
-static int parse_width(const char **ps)
+static int parse_decimal(const char **ps, int *value)
 {
-  int width = 0;
-  // 只要当前字符还是数字，就继续累计
+  int result = 0;
   while (**ps >= '0' && **ps <= '9')
   {
-    width = width * 10 + (**ps - '0');
+    int digit = **ps - '0';
+    if (result > (INT_MAX - digit) / 10)
+    {
+      return -1;
+    }
+    result = result * 10 + digit;
     (*ps)++;
   }
-  return width;
+  *value = result;
+  return 0;
 }
-static int print_str(FILE *f, const char *s, int width)
+static int parse_spec(FILE *f, const char **pfmt, va_list *ap, PrintfSpec *spec)
 {
-  int len = 0;
+  const char *fmt = *pfmt;
+  *spec = (PrintfSpec){
+      .width = 0,
+      .precision = -1,
+      .length = PRINTF_LENGTH_DEFAULT,
+  };
+
+  int parsing_flags = 1;
+  while (parsing_flags)
+  {
+    switch (*fmt)
+    {
+    case '-': spec->left_align = 1; fmt++; break;
+    case '+': spec->show_plus = 1; fmt++; break;
+    case ' ': spec->space_sign = 1; fmt++; break;
+    case '#': spec->alternate = 1; fmt++; break;
+    case '0': spec->zero_pad = 1; fmt++; break;
+    default: parsing_flags = 0; break;
+    }
+  }
+
+  if (*fmt == '*')
+  {
+    int dynamic_width = va_arg(*ap, int);
+    fmt++;
+    if (dynamic_width == INT_MIN)
+    {
+      return format_error(f);
+    }
+    if (dynamic_width < 0)
+    {
+      spec->left_align = 1;
+      dynamic_width = -dynamic_width;
+    }
+    spec->width = dynamic_width;
+  }
+  else if (*fmt >= '0' && *fmt <= '9')
+  {
+    if (parse_decimal(&fmt, &spec->width) < 0)
+    {
+      return format_error(f);
+    }
+  }
+
+  if (*fmt == '.')
+  {
+    fmt++;
+    spec->precision = 0;
+    if (*fmt == '*')
+    {
+      int dynamic_precision = va_arg(*ap, int);
+      fmt++;
+      spec->precision = dynamic_precision < 0 ? -1 : dynamic_precision;
+    }
+    else if (*fmt >= '0' && *fmt <= '9')
+    {
+      if (parse_decimal(&fmt, &spec->precision) < 0)
+      {
+        return format_error(f);
+      }
+    }
+  }
+
+  if (*fmt == 'h')
+  {
+    spec->length = PRINTF_LENGTH_SHORT;
+    fmt++;
+    if (*fmt == 'h')
+    {
+      spec->length = PRINTF_LENGTH_CHAR;
+      fmt++;
+    }
+  }
+  else if (*fmt == 'l')
+  {
+    spec->length = PRINTF_LENGTH_LONG;
+    fmt++;
+    if (*fmt == 'l')
+    {
+      spec->length = PRINTF_LENGTH_LONG_LONG;
+      fmt++;
+    }
+  }
+  else if (*fmt == 'z')
+  {
+    spec->length = PRINTF_LENGTH_SIZE;
+    fmt++;
+  }
+  else if (*fmt == 't')
+  {
+    spec->length = PRINTF_LENGTH_PTRDIFF;
+    fmt++;
+  }
+  else if (*fmt == 'j')
+  {
+    spec->length = PRINTF_LENGTH_INTMAX;
+    fmt++;
+  }
+
+  if (spec->left_align)
+  {
+    spec->zero_pad = 0;
+  }
+  if (spec->show_plus)
+  {
+    spec->space_sign = 0;
+  }
+  *pfmt = fmt;
+  return 0;
+}
+static int print_str(FILE *f, const char *s, const PrintfSpec *spec)
+{
   if (s == NULL)
   {
     s = "(null)";
   }
-  while (s[len])
+  size_t len = 0;
+  while ((spec->precision < 0 || len < (size_t)spec->precision) && s[len])
   {
     len++;
   }
-  if (width > len && file_pad(f, ' ', width - len) < 0)
+  int padding = (len < (size_t)spec->width)
+                    ? spec->width - (int)len
+                    : 0;
+  if (!spec->left_align && file_pad(f, ' ', padding) < 0)
   {
     return -1;
   }
-  while (*s)
+  if (file_write(f, s, len) < 0)
   {
-    if (file_putc(f, *s++) < 0)
-    {
-      return -1;
-    }
+    return -1;
+  }
+  if (spec->left_align && file_pad(f, ' ', padding) < 0)
+  {
+    return -1;
   }
   return 0;
 }
-static int print_uint(FILE *f, unsigned long long x, unsigned base, int width, int zero_pad)
+static int print_char(FILE *f, char ch, const PrintfSpec *spec)
 {
-  return file_put_uint(f, x, base, width, zero_pad, NULL, 0, 0);
+  int padding = spec->width > 1 ? spec->width - 1 : 0;
+  if (!spec->left_align && file_pad(f, ' ', padding) < 0)
+  {
+    return -1;
+  }
+  if (file_putc(f, ch) < 0)
+  {
+    return -1;
+  }
+  if (spec->left_align && file_pad(f, ' ', padding) < 0)
+  {
+    return -1;
+  }
+  return 0;
 }
-static int print_int(FILE *f, long long x, int width, int zero_pad)
+static int print_uint(FILE *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec)
 {
+  return print_number(f, x, base, uppercase, spec, '\0', 0);
+}
+static int print_int(FILE *f, intmax_t x, const PrintfSpec *spec)
+{
+  char sign = '\0';
+  uintmax_t magnitude;
   if (x < 0)
   {
-    return file_put_uint(f, 0ull - (unsigned long long)x, 10, width, zero_pad, NULL, 0, 1);
+    sign = '-';
+    magnitude = (uintmax_t)0 - (uintmax_t)x;
   }
-  return file_put_uint(f, (unsigned long long)x, 10, width, zero_pad, NULL, 0, 0);
+  else
+  {
+    magnitude = (uintmax_t)x;
+    if (spec->show_plus)
+    {
+      sign = '+';
+    }
+    else if (spec->space_sign)
+    {
+      sign = ' ';
+    }
+  }
+  return print_number(f, magnitude, 10, 0, spec, sign, 0);
+}
+static intmax_t read_signed_arg(va_list *ap, PrintfLength length)
+{
+  switch (length)
+  {
+  case PRINTF_LENGTH_CHAR:
+    return (signed char)va_arg(*ap, int);
+  case PRINTF_LENGTH_SHORT:
+    return (short)va_arg(*ap, int);
+  case PRINTF_LENGTH_LONG:
+    return va_arg(*ap, long);
+  case PRINTF_LENGTH_LONG_LONG:
+    return va_arg(*ap, long long);
+  case PRINTF_LENGTH_SIZE:
+  case PRINTF_LENGTH_PTRDIFF:
+    return va_arg(*ap, ptrdiff_t);
+  case PRINTF_LENGTH_INTMAX:
+    return va_arg(*ap, intmax_t);
+  case PRINTF_LENGTH_DEFAULT:
+  default:
+    return va_arg(*ap, int);
+  }
+}
+static uintmax_t read_unsigned_arg(va_list *ap, PrintfLength length)
+{
+  switch (length)
+  {
+  case PRINTF_LENGTH_CHAR:
+#if UCHAR_MAX <= INT_MAX
+    return (unsigned char)va_arg(*ap, int);
+#else
+    return (unsigned char)va_arg(*ap, unsigned int);
+#endif
+  case PRINTF_LENGTH_SHORT:
+#if USHRT_MAX <= INT_MAX
+    return (unsigned short)va_arg(*ap, int);
+#else
+    return (unsigned short)va_arg(*ap, unsigned int);
+#endif
+  case PRINTF_LENGTH_LONG:
+    return va_arg(*ap, unsigned long);
+  case PRINTF_LENGTH_LONG_LONG:
+    return va_arg(*ap, unsigned long long);
+  case PRINTF_LENGTH_SIZE:
+  case PRINTF_LENGTH_PTRDIFF:
+    return va_arg(*ap, size_t);
+  case PRINTF_LENGTH_INTMAX:
+    return va_arg(*ap, uintmax_t);
+  case PRINTF_LENGTH_DEFAULT:
+  default:
+    return va_arg(*ap, unsigned int);
+  }
+}
+static int format_error(FILE *f)
+{
+  f->err = 1;
+  return -1;
 }
 static int printf_core(FILE *f, const char *fmt, va_list *ap)
 {
   while (*fmt)
   {
-    const char *spec_begin = fmt;
-    int width = 0;
-    int zero_pad = 0;
-
-    // 他妈的烦了，普通字符直接输出
     if (*fmt != '%')
     {
       if (file_putc(f, *fmt) < 0)
       {
-        return -1; // 懒得管了，直接退出
+        return -1;
       }
       fmt++;
       continue;
     }
-    // 跳过%，然后这就直接看真正的格式符
+
     fmt++;
-    if (*fmt == '0')
+    PrintfSpec spec;
+    if (parse_spec(f, &fmt, ap, &spec) < 0)
     {
-      zero_pad = 1;
-      fmt++;
+      return -1;
     }
-    if (*fmt >= '0' && *fmt <= '9')
-    {
-      width = parse_width(&fmt);
-    }
-    int long_flag = 0;
-    if (*fmt == 'l')
-    {
-      long_flag = 1;
-      fmt++;
-    }
+
     switch (*fmt)
     {
     case '%':
-      if (width > 1 && file_pad(f, zero_pad ? '0' : ' ', width - 1) < 0)
+      if (spec.length != PRINTF_LENGTH_DEFAULT || spec.precision >= 0 ||
+          spec.show_plus || spec.space_sign || spec.alternate)
       {
-        return -1;
+        return format_error(f);
       }
-      if (file_putc(f, '%') < 0) // 妈的简单起见,不想管了
+      if (print_char(f, '%', &spec) < 0)
       {
         return -1;
       }
       break;
     case 'c':
-      if (width > 1 && file_pad(f, ' ', width - 1) < 0)
+      if (spec.length != PRINTF_LENGTH_DEFAULT || spec.precision >= 0 ||
+          spec.show_plus || spec.space_sign || spec.alternate)
       {
-        return -1;
+        return format_error(f);
       }
-      if (file_putc(f, (char)va_arg(*ap, int)) < 0)
+      if (print_char(f, (char)va_arg(*ap, int), &spec) < 0)
       {
         return -1;
       }
       break;
     case 's':
-      if (print_str(f, va_arg(*ap, const char *), width) < 0)
+      if (spec.length != PRINTF_LENGTH_DEFAULT || spec.show_plus ||
+          spec.space_sign || spec.alternate)
+      {
+        return format_error(f);
+      }
+      if (print_str(f, va_arg(*ap, const char *), &spec) < 0)
       {
         return -1;
       }
@@ -379,8 +626,12 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap)
     case 'd':
     case 'i':
     {
-      long long val = long_flag ? va_arg(*ap, long) : va_arg(*ap, int);
-      if (print_int(f, val, width, zero_pad) < 0)
+      if (spec.alternate)
+      {
+        return format_error(f);
+      }
+      intmax_t val = read_signed_arg(ap, spec.length);
+      if (print_int(f, val, &spec) < 0)
       {
         return -1;
       }
@@ -388,8 +639,12 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap)
     }
     case 'u':
     {
-      unsigned long long val = long_flag ? va_arg(*ap, unsigned long) : va_arg(*ap, unsigned int);
-      if (print_uint(f, val, 10, width, zero_pad) < 0)
+      if (spec.show_plus || spec.space_sign || spec.alternate)
+      {
+        return format_error(f);
+      }
+      uintmax_t val = read_unsigned_arg(ap, spec.length);
+      if (print_uint(f, val, 10, 0, &spec) < 0)
       {
         return -1;
       }
@@ -397,41 +652,51 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap)
     }
 
     case 'x':
+    case 'X':
     {
-      unsigned long long val = long_flag ? va_arg(*ap, unsigned long) : va_arg(*ap, unsigned int);
-      if (print_uint(f, val, 16, width, zero_pad) < 0)
+      if (spec.show_plus || spec.space_sign)
+      {
+        return format_error(f);
+      }
+      uintmax_t val = read_unsigned_arg(ap, spec.length);
+      if (print_uint(f, val, 16, *fmt == 'X', &spec) < 0)
       {
         return -1;
       }
       break;
     }
-      /*
-      //妈的，指针问题到现在还没有一个可行的方案，他妈的烦死了，一直报错，一直报错，这个傻逼vscode还虚报错误，脑子有坑
+    case 'o':
+    {
+      if (spec.show_plus || spec.space_sign)
+      {
+        return format_error(f);
+      }
+      uintmax_t val = read_unsigned_arg(ap, spec.length);
+      if (print_uint(f, val, 8, 0, &spec) < 0)
+      {
+        return -1;
+      }
+      break;
+    }
     case 'p':
-      if (file_write(f, "0x", 2) < 0)
+    {
+      if (spec.length != PRINTF_LENGTH_DEFAULT || spec.show_plus ||
+          spec.space_sign || spec.alternate)
       {
-        return -1;
+        return format_error(f);
       }
-      if (print_uint(f, (uintptr_t)va_arg(*ap, void *), 16) < 0)
+      uintmax_t value = (uintmax_t)(uintptr_t)va_arg(*ap, void *);
+      if (print_number(f, value, 16, 0, &spec, '\0', 1) < 0)
       {
         return -1;
       }
       break;
-      */
+    }
     case '\0':
-      // 反正不管怎么样，格式串最后如果只剩一个不完整格式，就把它原样输出
-      if (file_write(f, spec_begin, (size_t)(fmt - spec_begin)) < 0)
-      {
-        return -1;
-      }
-      return f->err ? -1 : (int)f->count;
+      return format_error(f);
     default:
-      // GPT5.4的建议是不认识的格式，原样吐回去，方便调试
-      if (file_write(f, spec_begin, (size_t)(fmt - spec_begin + 1)) < 0)
-      {
-        return -1;
-      }
-      break;
+      // 不知道参数类型时不能猜测va_arg；立即停止，避免后续格式读取错位。
+      return format_error(f);
     }
     fmt++;
   }

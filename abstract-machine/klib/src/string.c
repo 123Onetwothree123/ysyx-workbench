@@ -17,6 +17,70 @@ size_t strlen(const char *s)
   }
   return s - start;
 }
+size_t strnlen(const char *s, size_t maxlen)
+{
+  size_t len = 0;
+  while (len < maxlen && s[len] != '\0')
+  {
+    len++;
+  }
+  return len;
+}
+
+char *(strchr)(const char *s, int c)
+{
+  const char target = (char)c;
+  while (1)
+  {
+    if (*s == target)
+    {
+      return (char *)s;
+    }
+    if (*s == '\0')
+    {
+      return NULL;
+    }
+    s++;
+  }
+}
+
+char *(strrchr)(const char *s, int c)
+{
+  const char target = (char)c;
+  const char *last = NULL;
+  do
+  {
+    if (*s == target)
+    {
+      last = s;
+    }
+  } while (*s++ != '\0');
+  return (char *)last;
+}
+
+char *(strstr)(const char *haystack, const char *needle)
+{
+  if (*needle == '\0')
+  {
+    return (char *)haystack;
+  }
+  for (; *haystack != '\0'; haystack++)
+  {
+    const char *candidate = haystack;
+    const char *pattern = needle;
+    while (*pattern != '\0' && *candidate == *pattern)
+    {
+      candidate++;
+      pattern++;
+    }
+    if (*pattern == '\0')
+    {
+      return (char *)haystack;
+    }
+  }
+  return NULL;
+}
+
 char *strcpy(char *dst, const char *src)
 {
   // panic("Not implemented");
