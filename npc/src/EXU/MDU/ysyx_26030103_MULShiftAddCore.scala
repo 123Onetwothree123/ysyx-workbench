@@ -5,19 +5,21 @@ import _root_.ysyx_26030103.common._
 //移位累加乘法器。
 class ysyx_26030103_MULShiftAddCore(
     config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
-) extends ysyx_26030103_MULCore {
+) extends ysyx_26030103_MULCore(config.MULWidth) {
+  private val OperandWidth = config.MULWidth
+  private val ProductWidth = 2 * OperandWidth
   private val UseBooth = config.MULEncoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth
   private val BoothRadix = if (UseBooth) config.MULRadix else 2 //单个Booth基数
   private val BoothBits = if (UseBooth) ysyx_26030103_MULBoothConfig.BoothBits(BoothRadix) else 1 //单个Booth组宽度
   private val BaseGroupsPerCycle = if (UseBooth) (config.MULIterBits + BoothBits - 1) / BoothBits else 1 //未分块时每拍处理的组数
   private val GroupsPerCycle = if (UseBooth) ((BaseGroupsPerCycle + config.MULSplit - 1) / config.MULSplit).max(1) else 1 //分块后每拍Booth组数
   private val CycleBits = if (UseBooth) GroupsPerCycle * BoothBits else ((config.MULIterBits + config.MULSplit - 1) / config.MULSplit).max(1) //每拍实际处理位数
-  private val TotalGroups = if (UseBooth) (33 + BoothBits - 1) / BoothBits else 32 //总组数
-  private val CycleCount = if (UseBooth) (TotalGroups + GroupsPerCycle - 1) / GroupsPerCycle else (32 + CycleBits - 1) / CycleBits //总轮数
+  private val TotalGroups = if (UseBooth) (OperandWidth + 1 + BoothBits - 1) / BoothBits else OperandWidth //总组数
+  private val CycleCount = if (UseBooth) (TotalGroups + GroupsPerCycle - 1) / GroupsPerCycle else (OperandWidth + CycleBits - 1) / CycleBits //总轮数
   private val PaddedGroups = if (UseBooth) CycleCount * GroupsPerCycle else 0 //补齐后的Booth组数
-  private val InternalWidth = if (UseBooth) 2 * (32 + BoothBits) else 64 //内部累加宽度
-  private val EncoderWidth = 32 + BoothBits //编码器被乘数宽度
-  private val EncoderProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(BoothRadix) //编码器部分积宽度
+  private val InternalWidth = if (UseBooth) 2 * (OperandWidth + BoothBits) else ProductWidth //内部累加宽度
+  private val EncoderWidth = OperandWidth + BoothBits //编码器被乘数宽度
+  private val EncoderProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(BoothRadix, OperandWidth) //编码器部分积宽度
   private val MultiplierWidth = if (UseBooth) PaddedGroups * BoothBits + 1 else CycleCount * CycleBits //乘数寄存器宽度
   private val CounterWidth = log2Ceil(CycleCount + 1).max(1) //轮计数器宽度
   private val ShiftWidth = log2Ceil(InternalWidth + 1).max(1) //部分积移位量宽度
@@ -28,10 +30,10 @@ class ysyx_26030103_MULShiftAddCore(
   private val Multiplier = RegInit(0.U(MultiplierWidth.W)) //乘数寄存器
   private val Iteration = RegInit(0.U(CounterWidth.W)) //轮计数
   private val BoothShift = RegInit(0.U(ShiftWidth.W)) //Booth部分积移位量
-  private val Result = RegInit(0.U(64.W)) //最终结果
+  private val Result = RegInit(0.U(ProductWidth.W)) //最终结果
   IO.Req.ready := !IO.Flush && !Busy && (!ResultValid || IO.Resp.ready) //可接收请求
   IO.Resp.valid := ResultValid && !IO.Flush //结果有效
-  IO.Resp.bits.Product := Result //输出低64位乘积
+  IO.Resp.bits.Product := Result //输出低2N位乘积
   val ReqFire = IO.Req.valid && IO.Req.ready //请求握手
   val RespFire = IO.Resp.valid && IO.Resp.ready //响应握手
   val CurrentAddend = Wire(UInt(InternalWidth.W)) //本轮待累加部分积
@@ -39,7 +41,7 @@ class ysyx_26030103_MULShiftAddCore(
   if (UseBooth) {
     var BoothSum: UInt = 0.U(InternalWidth.W) //本轮Booth部分积和
     for (Group <- 0 until GroupsPerCycle) {
-      val Encoder = Module(new ysyx_26030103_MULBoothEncoder(BoothRadix)) //Booth编码器
+      val Encoder = Module(new ysyx_26030103_MULBoothEncoder(BoothRadix, OperandWidth)) //Booth编码器
       val WindowLow = Group * BoothBits //窗口起始位
       Encoder.IO.Multiplicand := Multiplicand(EncoderWidth - 1, 0) //输入未移位被乘数
       Encoder.IO.Window := Multiplier(WindowLow + BoothBits, WindowLow) //取当前窗口
@@ -83,13 +85,23 @@ class ysyx_26030103_MULShiftAddCore(
     Busy := true.B
     ResultValid := false.B
     Accumulator := 0.U
-    Multiplicand := Cat(0.U((InternalWidth - 32).W), IO.Req.bits.LHSMagnitude) //锁存被乘数
+    Multiplicand := Cat(0.U((InternalWidth - OperandWidth).W), IO.Req.bits.LHSMagnitude) //锁存被乘数
     if (UseBooth) {
-      val PaddingWidth = PaddedGroups * BoothBits - 32
-      Multiplier := Cat(0.U(PaddingWidth.W), IO.Req.bits.RHSMagnitude, 0.U(1.W)) //补高位和最低位
+      val PaddingWidth = PaddedGroups * BoothBits - OperandWidth
+      val MultiplierValue = if (PaddingWidth == 0) {
+        Cat(IO.Req.bits.RHSMagnitude, 0.U(1.W))
+      } else {
+        Cat(0.U(PaddingWidth.W), IO.Req.bits.RHSMagnitude, 0.U(1.W))
+      }
+      Multiplier := MultiplierValue //补高位和最低位
     } else {
-      val PaddingWidth = CycleCount * CycleBits - 32
-      Multiplier := Cat(0.U(PaddingWidth.W), IO.Req.bits.RHSMagnitude) //普通乘数高位补零
+      val PaddingWidth = CycleCount * CycleBits - OperandWidth
+      val MultiplierValue = if (PaddingWidth == 0) {
+        IO.Req.bits.RHSMagnitude
+      } else {
+        Cat(0.U(PaddingWidth.W), IO.Req.bits.RHSMagnitude)
+      }
+      Multiplier := MultiplierValue //普通乘数高位补零
     }
     Iteration := 0.U
     BoothShift := 0.U
@@ -103,7 +115,7 @@ class ysyx_26030103_MULShiftAddCore(
     when (LastIteration || EarlyFinish) {
       Busy := false.B
       ResultValid := true.B
-      Result := NextAccumulator(63, 0) //保存64位结果
+      Result := NextAccumulator(ProductWidth - 1, 0) //保存2N位结果
       Accumulator := NextAccumulator
     }.otherwise {
       Accumulator := NextAccumulator

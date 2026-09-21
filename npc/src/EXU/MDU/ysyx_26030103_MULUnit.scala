@@ -1,11 +1,14 @@
 package ysyx_26030103.exu
 import chisel3._
+import chisel3.util._
 import _root_.ysyx_26030103.common._
 //MUL ISA适配层。
 class ysyx_26030103_MULUnit(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
 ) extends ysyx_26030103_MULAdapter {
   private val Core = ysyx_26030103_MULCoreFactory.Create(config)
+  private val CoreWidth = config.MULWidth
+  private val CoreProductWidth = 2 * CoreWidth
   private val Pending = RegInit(false.B)
   private val PendingNegative = RegInit(false.B)
   private val PendingTakeHigh = RegInit(false.B)
@@ -23,15 +26,36 @@ class ysyx_26030103_MULUnit(
     ysyx_26030103_MULSignedMode.RHSSigned(IO.Req.bits.SignedMode)
   )
   Core.IO.Flush := IO.Flush
-  Core.IO.Req.bits.LHSMagnitude := LHSMagnitude
-  Core.IO.Req.bits.RHSMagnitude := RHSMagnitude
+  private val CoreLHSMagnitude = if (CoreWidth == 32) {
+    LHSMagnitude
+  } else if (CoreWidth > 32) {
+    Cat(0.U((CoreWidth - 32).W), LHSMagnitude)
+  } else {
+    LHSMagnitude(CoreWidth - 1, 0)
+  }
+  private val CoreRHSMagnitude = if (CoreWidth == 32) {
+    RHSMagnitude
+  } else if (CoreWidth > 32) {
+    Cat(0.U((CoreWidth - 32).W), RHSMagnitude)
+  } else {
+    RHSMagnitude(CoreWidth - 1, 0)
+  }
+  Core.IO.Req.bits.LHSMagnitude := CoreLHSMagnitude
+  Core.IO.Req.bits.RHSMagnitude := CoreRHSMagnitude
   Core.IO.Resp.ready := Pending && IO.Resp.ready
   val CoreRespFire = Core.IO.Resp.valid && Core.IO.Resp.ready
   val CanAccept = !Pending || CoreRespFire
   IO.Req.ready := CanAccept && Core.IO.Req.ready
   Core.IO.Req.valid := IO.Req.valid && CanAccept
+  val CoreProductWidthAdjusted = if (CoreProductWidth == 64) {
+    Core.IO.Resp.bits.Product(63, 0)
+  } else if (CoreProductWidth > 64) {
+    Core.IO.Resp.bits.Product(63, 0)
+  } else {
+    Cat(0.U((64 - CoreProductWidth).W), Core.IO.Resp.bits.Product)
+  }
   val CoreProduct = ysyx_26030103_MULAdapterUtils.RestoreSign(
-    Core.IO.Resp.bits.Product,
+    CoreProductWidthAdjusted,
     PendingNegative
   )
   IO.Resp.valid := Pending && Core.IO.Resp.valid

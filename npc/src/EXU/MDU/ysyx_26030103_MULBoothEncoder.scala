@@ -2,13 +2,16 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
-class ysyx_26030103_MULBoothEncoder(val Radix: Int) extends Module {
+class ysyx_26030103_MULBoothEncoder(
+    val Radix: Int,
+    val OperandWidth: Int = ysyx_26030103_MULBoothConfig.OperandWidth
+) extends Module {
   private val BoothBits = ysyx_26030103_MULBoothConfig.BoothBits(Radix) //每组处理位数
-  final val IO = _root_.chisel3.IO(new ysyx_26030103_MULBoothEncoderInterface(Radix))
+  final val IO = _root_.chisel3.IO(new ysyx_26030103_MULBoothEncoderInterface(Radix, OperandWidth))
   private val WindowWidth = ysyx_26030103_MULBoothConfig.WindowWidth(Radix) //窗口宽度等于BoothBits+1
   private val DigitWidth = BoothBits + 1 //有符号数字的内部宽度
-  private val ProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(Radix) //部分积宽度
-  private val MultiplicandWidth = ysyx_26030103_MULBoothConfig.MultiplicandWidth(Radix) //被乘数扩展宽度
+  private val ProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(Radix, OperandWidth) //部分积宽度
+  private val MultiplicandWidth = ysyx_26030103_MULBoothConfig.MultiplicandWidth(Radix, OperandWidth) //被乘数扩展宽度
   val WindowExtended = Cat(0.U(1.W), IO.Window) //在窗口最高位补0，防止到时候搞个加1溢出
   val RoundedWindow = WindowExtended + 1.U((WindowWidth + 1).W) //计算window+1
   val RawMagnitude = (RoundedWindow >> 1)(DigitWidth - 1, 0) //计算floor((window+1)/2)

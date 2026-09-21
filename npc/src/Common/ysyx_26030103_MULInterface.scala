@@ -30,18 +30,18 @@ class ysyx_26030103_MULAdapterInterface extends Bundle {
   val Flush = Input(Bool()) //取消事务
 }
 //MUL后端接收的无符号幅值。
-class ysyx_26030103_MULCoreRequest extends Bundle {
-  val LHSMagnitude = UInt(32.W) //左幅值
-  val RHSMagnitude = UInt(32.W) //右幅值
+class ysyx_26030103_MULCoreRequest(val Width: Int = 32) extends Bundle {
+  val LHSMagnitude = UInt(Width.W) //左幅值
+  val RHSMagnitude = UInt(Width.W) //右幅值
 }
-//MUL后端返回的64位乘积。
-class ysyx_26030103_MULCoreResponse extends Bundle {
-  val Product = UInt(64.W) //原始乘积
+//MUL后端返回的2N位乘积；默认N=32时为64位。
+class ysyx_26030103_MULCoreResponse(val Width: Int = 32) extends Bundle {
+  val Product = UInt((2 * Width).W) //原始乘积
 }
 //所有MUL算法后端共用的握手接口。
-class ysyx_26030103_MULCoreInterface extends Bundle {
-  val Req = Flipped(Decoupled(new ysyx_26030103_MULCoreRequest)) //输入请求
-  val Resp = Decoupled(new ysyx_26030103_MULCoreResponse) //输出乘积
+class ysyx_26030103_MULCoreInterface(val Width: Int = 32) extends Bundle {
+  val Req = Flipped(Decoupled(new ysyx_26030103_MULCoreRequest(Width))) //输入请求
+  val Resp = Decoupled(new ysyx_26030103_MULCoreResponse(Width)) //输出乘积
   val Flush = Input(Bool()) //取消事务
 }
 //MUL适配层辅助函数。

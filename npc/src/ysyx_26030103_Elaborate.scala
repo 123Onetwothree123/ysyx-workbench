@@ -38,6 +38,20 @@ object ysyx_26030103_Elaborate extends App {
   val DIVImplName =
     sys.env.get("DIV_IMPL").filter(_.nonEmpty).getOrElse("restoring")
   val MULRadix = sys.env.getOrElse("MUL_RADIX", "4").toInt
+  val MULWidth = sys.env.getOrElse("MUL_WIDTH", "32").toInt
+  val MULCompressorInputs = sys.env.getOrElse("MUL_COMPRESSOR_INPUTS", "3").toInt
+  val MULCompressorOutputs = sys.env.getOrElse("MUL_COMPRESSOR_OUTPUTS", "2").toInt
+  val MULCompressorOutputOffsets = sys.env
+    .getOrElse("MUL_COMPRESSOR_OUTPUT_OFFSETS", "0,1")
+    .split(',')
+    .map(_.trim)
+    .filter(_.nonEmpty)
+    .map(_.toInt)
+    .toIndexedSeq
+  val MULCompressorHasCin = sys.env.getOrElse("MUL_COMPRESSOR_HAS_CIN", "n") == "y"
+  val MULCompressorHasCout = sys.env.getOrElse("MUL_COMPRESSOR_HAS_COUT", "n") == "y"
+  val MULCompressorCoutOffset = sys.env.getOrElse("MUL_COMPRESSOR_COUT_OFFSET", "1").toInt
+  val MULCompressorAllowRedundant = sys.env.getOrElse("MUL_COMPRESSOR_ALLOW_REDUNDANT", "n") == "y"
   val DIVRadix = sys.env.getOrElse("DIV_RADIX", "2").toInt
   val DIVIterBits = sys.env.getOrElse("DIV_ITER_BITS", "1").toInt
   val DIVEarlyOut = sys.env.getOrElse("DIV_EARLY_OUT", "n") == "y"
@@ -53,6 +67,14 @@ object ysyx_26030103_Elaborate extends App {
     MULEncoding = ysyx_26030103_MULEncoding.FromString(MULEncodingName),
     DIVImpl = ysyx_26030103_DIVImpl.FromString(DIVImplName),
     MULRadix = MULRadix,
+    MULWidth = MULWidth,
+    MULCompressorInputs = MULCompressorInputs,
+    MULCompressorOutputs = MULCompressorOutputs,
+    MULCompressorOutputOffsets = MULCompressorOutputOffsets,
+    MULCompressorHasCin = MULCompressorHasCin,
+    MULCompressorHasCout = MULCompressorHasCout,
+    MULCompressorCoutOffset = MULCompressorCoutOffset,
+    MULCompressorAllowRedundant = MULCompressorAllowRedundant,
     DIVRadix = DIVRadix,
     DIVIterBits = DIVIterBits,
     DIVEarlyOut = DIVEarlyOut,

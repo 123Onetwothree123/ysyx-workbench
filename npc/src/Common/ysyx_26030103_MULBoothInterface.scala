@@ -11,16 +11,19 @@ object ysyx_26030103_MULBoothConfig {
     Integer.numberOfTrailingZeros(Radix)
   }
   def WindowWidth(Radix: Int): Int = BoothBits(Radix) + 1
-  def MultiplicandWidth(Radix: Int): Int = OperandWidth + BoothBits(Radix)
+  def MultiplicandWidth(Radix: Int, Width: Int = OperandWidth): Int = Width + BoothBits(Radix)
   // A Booth digit has magnitude at most 2^(BoothBits-1).  The
   // N+BoothBits-wide signed value is sufficient for one unshifted
   // partial product; the compressor widens it to the final P=2N
   // representation explicitly.
-  def PartialProductWidth(Radix: Int): Int = MultiplicandWidth(Radix)
+  def PartialProductWidth(Radix: Int, Width: Int = OperandWidth): Int = MultiplicandWidth(Radix, Width)
 }
 //Booth编码器组合接口；输出未移位的补码部分积。
-class ysyx_26030103_MULBoothEncoderInterface(val Radix: Int) extends Bundle {
-  val Multiplicand = Input(UInt(ysyx_26030103_MULBoothConfig.MultiplicandWidth(Radix).W)) //被乘数
+class ysyx_26030103_MULBoothEncoderInterface(
+    val Radix: Int,
+    val OperandWidth: Int = ysyx_26030103_MULBoothConfig.OperandWidth
+) extends Bundle {
+  val Multiplicand = Input(UInt(ysyx_26030103_MULBoothConfig.MultiplicandWidth(Radix, OperandWidth).W)) //被乘数
   val Window = Input(UInt(ysyx_26030103_MULBoothConfig.WindowWidth(Radix).W)) //乘数窗口
-  val PartialProduct = Output(UInt(ysyx_26030103_MULBoothConfig.PartialProductWidth(Radix).W)) //未移位部分积
+  val PartialProduct = Output(UInt(ysyx_26030103_MULBoothConfig.PartialProductWidth(Radix, OperandWidth).W)) //未移位部分积
 }

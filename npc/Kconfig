@@ -682,6 +682,54 @@ menu "硬件配置"
         help
           输入2、4、8、16等2的幂；elaboration会拒绝其他数值。
 
+      config MUL_WIDTH
+        int "乘法器后端操作数位宽"
+        default 32
+        range 1 128
+        help
+          仅控制乘法器后端的操作数位宽，必须是2的幂(1/2/4/...);
+          CPU的RV32指令接口仍保持32位，非32位宽主要用于独立后端生成与验证。
+
+      config MUL_COMPRESSOR_INPUTS
+        int "压缩树通用GPC输入数K"
+        default 3
+        range 3 64
+        depends on MUL_WALLACE || MUL_DADDA
+        help
+          所有K使用同一生成路径；默认3仅用于保持现有配置行为。
+
+      config MUL_COMPRESSOR_OUTPUTS
+        int "压缩树通用GPC输出数R"
+        default 2
+        range 1 64
+        depends on MUL_WALLACE || MUL_DADDA
+
+      config MUL_COMPRESSOR_OUTPUT_OFFSETS
+        string "GPC每个主输出的目标列偏移(逗号分隔)"
+        default "0,1"
+        depends on MUL_WALLACE || MUL_DADDA
+
+      config MUL_COMPRESSOR_HAS_CIN
+        bool "GPC包含Cin输入"
+        default n
+        depends on MUL_WALLACE || MUL_DADDA
+
+      config MUL_COMPRESSOR_HAS_COUT
+        bool "GPC包含Cout输出"
+        default n
+        depends on MUL_WALLACE || MUL_DADDA
+
+      config MUL_COMPRESSOR_COUT_OFFSET
+        int "GPC Cout目标列偏移"
+        default 1
+        range 0 128
+        depends on MUL_COMPRESSOR_HAS_COUT
+
+      config MUL_COMPRESSOR_ALLOW_REDUNDANT
+        bool "允许GPC输出存在冗余表示"
+        default n
+        depends on MUL_WALLACE || MUL_DADDA
+
       config MUL_SPLIT
         int "移位乘法器复用因子（1=不拆分，2/4=减少每拍处理量）"
         default 1

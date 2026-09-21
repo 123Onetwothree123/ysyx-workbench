@@ -36,6 +36,7 @@ CSRC_DIR=./csrc
 CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -path "$(CSRC_DIR)/tools/branchsim" -prune -o -path "$(CSRC_DIR)/tools/dcachesim" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
 remove_quote = $(patsubst "%",%,$(1))
+comma := ,
 -include include/config/auto.conf
 NPROC_MAX := $(shell nproc 2>/dev/null || echo 4)
 ifneq ($(CONFIG_BUILD_THREADS),)
@@ -85,6 +86,14 @@ VERILOG_ENV = env \
 	MUL_IMPL=$(or $(call remove_quote,$(CONFIG_MUL_IMPL)),shift_add) \
 	MUL_ENCODING=$(or $(call remove_quote,$(CONFIG_MUL_ENCODING)),plain) \
 	MUL_RADIX=$(or $(CONFIG_MUL_RADIX),4) \
+	MUL_WIDTH=$(or $(CONFIG_MUL_WIDTH),32) \
+	MUL_COMPRESSOR_INPUTS=$(or $(CONFIG_MUL_COMPRESSOR_INPUTS),3) \
+	MUL_COMPRESSOR_OUTPUTS=$(or $(CONFIG_MUL_COMPRESSOR_OUTPUTS),2) \
+	MUL_COMPRESSOR_OUTPUT_OFFSETS=$(or $(call remove_quote,$(CONFIG_MUL_COMPRESSOR_OUTPUT_OFFSETS)),0$(comma)1) \
+	MUL_COMPRESSOR_HAS_CIN=$(CONFIG_MUL_COMPRESSOR_HAS_CIN) \
+	MUL_COMPRESSOR_HAS_COUT=$(CONFIG_MUL_COMPRESSOR_HAS_COUT) \
+	MUL_COMPRESSOR_COUT_OFFSET=$(or $(CONFIG_MUL_COMPRESSOR_COUT_OFFSET),1) \
+	MUL_COMPRESSOR_ALLOW_REDUNDANT=$(CONFIG_MUL_COMPRESSOR_ALLOW_REDUNDANT) \
 	DIV_IMPL=$(or $(call remove_quote,$(CONFIG_DIV_IMPL)),restoring) \
 	DIV_RADIX=$(or $(CONFIG_DIV_RADIX),2) \
 	DIV_ITER_BITS=$(or $(CONFIG_DIV_ITER_BITS),1) \

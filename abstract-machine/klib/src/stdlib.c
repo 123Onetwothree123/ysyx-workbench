@@ -70,6 +70,18 @@ typedef struct BlockHeader
   bool used;          // 标记一下0是空闲，1是分配了
   FreeBlock FreeLink; // 拿来给空闲块之间互相串联的
 } BlockHeader;
+
+// malloc返回值必须适合存放任何基础类型。块头本身在RV32上只有12字节，
+// 不能直接把block + sizeof(BlockHeader)作为payload，否则只剩4字节对齐。
+#define MALLOC_ALIGNMENT ((size_t)_Alignof(max_align_t))
+#define BLOCK_PAYLOAD_OFFSET \
+  (((sizeof(BlockHeader) + MALLOC_ALIGNMENT - 1) / MALLOC_ALIGNMENT) * MALLOC_ALIGNMENT)
+_Static_assert(
+    (((size_t)1 << MinimumBlock) % MALLOC_ALIGNMENT) == 0,
+    "最小伙伴块必须满足malloc最大基础类型对齐");
+_Static_assert(
+    BLOCK_PAYLOAD_OFFSET < ((size_t)1 << MinimumBlock),
+    "块头和对齐填充必须小于最小伙伴块");
 // 分配器
 typedef struct Allocator
 {
@@ -145,19 +157,21 @@ int atoi(const char *nptr)
   return x;
 }
 
+// Native运行时在AM初始化前就可能调用malloc；该模式成对使用宿主malloc/free，
+// 裸机目标才启用下面的伙伴分配器入口。
+#if !(defined(__ISA_NATIVE__) && defined(__NATIVE_USE_KLIB__))
 void *malloc(size_t size)
 {
-  // On native, malloc() will be called during initializaion of C runtime.
-  // Therefore do not call panic() here, else it will yield a dead recursion:
-  //   panic() -> putchar() -> (glibc) -> malloc() -> panic()
-#if !(defined(__ISA_NATIVE__) && defined(__NATIVE_USE_KLIB__))
-  // panic("Not implemented");
   if (size == 0)
   {
     return NULL;
   }
+  if (size > SIZE_MAX - BLOCK_PAYLOAD_OFFSET)
+  {
+    return NULL;
+  }
   AllocatorInit();
-  size_t TotalSize = size + sizeof(BlockHeader);
+  size_t TotalSize = size + BLOCK_PAYLOAD_OFFSET;
   uint8_t Grades = Size_to_Grades(TotalSize);
   if (Grades == 0)
   {
@@ -170,8 +184,6 @@ void *malloc(size_t size)
   }
   block->used = true;
   return Block_to_Payload(block);
-#endif
-  return NULL;
 }
 
 void free(void *ptr)
@@ -186,6 +198,7 @@ void free(void *ptr)
   block = merge(block);
   PushFreeBlock(block);
 }
+#endif
 
 size_t Grades_to_Size(uint8_t Grades)
 {
@@ -229,7 +242,7 @@ void *Block_to_Payload(BlockHeader *block)
   // 找到一个更简单的方法，直接跳过现在的BH，然后就是真正的payload用的那个内存，就不需要额外的其他位移操作了
   // return (void *)(block + 1);
   // 唉算了，还是规范点写吧
-  return (void *)((char *)block + sizeof(BlockHeader));
+  return (void *)((char *)block + BLOCK_PAYLOAD_OFFSET);
 }
 BlockHeader *Payload_to_Block(void *pointer)
 {
@@ -237,7 +250,7 @@ BlockHeader *Payload_to_Block(void *pointer)
   {
     return NULL;
   }
-  return (BlockHeader *)((char *)pointer - sizeof(BlockHeader));
+  return (BlockHeader *)((char *)pointer - BLOCK_PAYLOAD_OFFSET);
 }
 void PushFreeBlock(BlockHeader *block)
 {
@@ -316,7 +329,7 @@ void AllocatorInit(void)
     return;
   }
   current = allocator.start;                     // 开始调到开头，准备扫描整段的内存堆了
-  while (current + MinimumSize <= allocator.end) // 只要current后面还至少放得下一个最小块，就继续分割
+  while (current < allocator.end && MinimumSize <= allocator.end - current) // 后面至少放得下一个最小块
   {
     size_t remaining = (size_t)(allocator.end - current); // 还有多少字节可用
     /*
@@ -394,11 +407,12 @@ BlockHeader *FindFriend(BlockHeader *block)
   /*
   但凡设计一个全局绝对地址，也不需要搞这玩意了，只能用这种方法切换到在AM中的硬地址
   */
-  uintptr_t FriendAdress = allocator.start + FriendOffset;
-  if (FriendAdress < allocator.start || FriendAdress + BlockSize > allocator.end)
+  uintptr_t ManagedSize = allocator.end - allocator.start;
+  if (FriendOffset > ManagedSize || BlockSize > ManagedSize - FriendOffset)
   {
     return NULL;
   }
+  uintptr_t FriendAdress = allocator.start + FriendOffset;
   // 目前返回的地址上对应的块
   return (BlockHeader *)FriendAdress;
 }
@@ -479,7 +493,12 @@ uintptr_t AlignUp(uintptr_t value, size_t align)
     return value;
   }
   // 有余数就代表没有对齐，然后就是当前的数值加上原本要对齐的数据减掉多余的余数
-  return value + (align - remainder);
+  uintptr_t adjustment = align - remainder;
+  if (value > UINTPTR_MAX - adjustment)
+  {
+    return UINTPTR_MAX;
+  }
+  return value + adjustment;
 }
 // 向下对齐到align的整数倍，比如100按64对齐，结果就是64
 uintptr_t AlignDown(uintptr_t value, size_t align)
@@ -494,7 +513,7 @@ BlockHeader *GetBlock(uint8_t TargetGrades)
   {
     return NULL;
   }
-  for (uint8_t Grades = TargetGrades; Grades < MaximumBlock; Grades++)
+  for (uint8_t Grades = TargetGrades; Grades <= MaximumBlock; Grades++)
   {
     uint8_t index = Grades_to_index(Grades);
     if (allocator.FreeArea[index] == NULL) // 没有空闲的就直接循环往上拉等级
