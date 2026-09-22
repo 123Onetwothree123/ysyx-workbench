@@ -5,6 +5,7 @@
 #include <elf.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 #include "platform.h"
 
 #define MAX_CPU 16
@@ -172,14 +173,25 @@ static void init_platform() {
   setbuf(stdout, NULL);
 
   const char *args = getenv("mainargs");
+#ifdef __NATIVE_USE_KLIB__
+  exit(main(args ? args : ""));
+#else
   halt(main(args ? args : "")); // call main here!
+#endif
 }
 
 void __am_exit_platform(int code) {
   // let Linux clean up other resource
   extern int __am_mpe_init;
   if (__am_mpe_init && cpu_count() > 1) kill(0, SIGKILL);
+  /* Native+KLIB overrides exit(), so calling it here would recurse through
+   * halt().  In that mode KLIB has already run handlers and flushed streams.
+   * A normal native build still delegates cleanup to the host C runtime. */
+#ifdef __NATIVE_USE_KLIB__
+  _exit(code);
+#else
   exit(code);
+#endif
 }
 
 void __am_pmem_map(void *va, void *pa, int prot) {

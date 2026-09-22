@@ -376,14 +376,281 @@ unsigned long long strtoull(const char *nptr, char **endptr, int base)
   return parsed.negative ? 0ull - value : value;
 }
 
+intmax_t strtoimax(const char *nptr, char **endptr, int base)
+{
+  ParsedInteger parsed = ParseInteger(
+      nptr,
+      base,
+      (uintmax_t)INTMAX_MAX,
+      (uintmax_t)INTMAX_MAX + 1u);
+  if (endptr != NULL)
+  {
+    *endptr = (char *)parsed.end;
+  }
+  if (parsed.invalid_base)
+  {
+    errno = EINVAL;
+    return 0;
+  }
+  if (!parsed.any_digit)
+  {
+    return 0;
+  }
+  if (parsed.overflow)
+  {
+    errno = ERANGE;
+    return parsed.negative ? INTMAX_MIN : INTMAX_MAX;
+  }
+  if (!parsed.negative)
+  {
+    return (intmax_t)parsed.magnitude;
+  }
+  if (parsed.magnitude == (uintmax_t)INTMAX_MAX + 1u)
+  {
+    return INTMAX_MIN;
+  }
+  return -(intmax_t)parsed.magnitude;
+}
+
+uintmax_t strtoumax(const char *nptr, char **endptr, int base)
+{
+  ParsedInteger parsed = ParseInteger(
+      nptr,
+      base,
+      UINTMAX_MAX,
+      UINTMAX_MAX);
+  if (endptr != NULL)
+  {
+    *endptr = (char *)parsed.end;
+  }
+  if (parsed.invalid_base)
+  {
+    errno = EINVAL;
+    return 0;
+  }
+  if (!parsed.any_digit)
+  {
+    return 0;
+  }
+  if (parsed.overflow)
+  {
+    errno = ERANGE;
+    return UINTMAX_MAX;
+  }
+  return parsed.negative ? (uintmax_t)0 - parsed.magnitude
+                         : parsed.magnitude;
+}
+
 int abs(int x)
 {
-  return (x < 0 ? -x : x);
+  /* The ISO C result is undefined when the positive value is not
+   * representable.  Keep this implementation itself free of signed
+   * overflow and retain the two's-complement value in that case. */
+  if (x == INT_MIN)
+  {
+    return INT_MIN;
+  }
+  return x < 0 ? -x : x;
+}
+
+long labs(long x)
+{
+  if (x == LONG_MIN)
+  {
+    return LONG_MIN;
+  }
+  return x < 0 ? -x : x;
+}
+
+long long llabs(long long x)
+{
+  if (x == LLONG_MIN)
+  {
+    return LLONG_MIN;
+  }
+  return x < 0 ? -x : x;
 }
 
 int atoi(const char *nptr)
 {
   return (int)strtol(nptr, NULL, 10);
+}
+
+long atol(const char *nptr)
+{
+  return strtol(nptr, NULL, 10);
+}
+
+long long atoll(const char *nptr)
+{
+  return strtoll(nptr, NULL, 10);
+}
+
+#if !defined(__ISA_NATIVE__)
+div_t div(int numer, int denom)
+{
+  div_t result;
+  if (numer == INT_MIN && denom == -1)
+  {
+    /* ISO C leaves this unrepresentable quotient undefined.  Avoid
+     * executing an overflowing signed division in the implementation. */
+    result.quot = INT_MIN;
+    result.rem = 0;
+    return result;
+  }
+  result.quot = numer / denom;
+  result.rem = numer % denom;
+  return result;
+}
+
+ldiv_t ldiv(long numer, long denom)
+{
+  ldiv_t result;
+  if (numer == LONG_MIN && denom == -1)
+  {
+    result.quot = LONG_MIN;
+    result.rem = 0;
+    return result;
+  }
+  result.quot = numer / denom;
+  result.rem = numer % denom;
+  return result;
+}
+
+lldiv_t lldiv(long long numer, long long denom)
+{
+  lldiv_t result;
+  if (numer == LLONG_MIN && denom == -1)
+  {
+    result.quot = LLONG_MIN;
+    result.rem = 0;
+    return result;
+  }
+  result.quot = numer / denom;
+  result.rem = numer % denom;
+  return result;
+}
+#endif
+
+static void SwapElements(unsigned char *left, unsigned char *right, size_t size)
+{
+  if (left == right)
+  {
+    return;
+  }
+  for (size_t i = 0; i < size; i++)
+  {
+    unsigned char byte = left[i];
+    left[i] = right[i];
+    right[i] = byte;
+  }
+}
+
+static void SiftDown(
+    unsigned char *base,
+    size_t root,
+    size_t count,
+    size_t size,
+    int (*compar)(const void *, const void *))
+{
+  /*
+   * root <= (count - 2) / 2 exactly means that root has a left child.
+   * Keeping the test in this form also makes root * 2 + 1 unable to
+   * overflow size_t.
+   */
+  while (count >= 2 && root <= (count - 2) / 2)
+  {
+    size_t child = root * 2 + 1;
+    if (child + 1 < count &&
+        compar(base + child * size, base + (child + 1) * size) < 0)
+    {
+      child++;
+    }
+    if (compar(base + root * size, base + child * size) >= 0)
+    {
+      return;
+    }
+    SwapElements(base + root * size, base + child * size, size);
+    root = child;
+  }
+}
+
+void qsort(
+    void *base,
+    size_t nmemb,
+    size_t size,
+    int (*compar)(const void *, const void *))
+{
+  /* No element address may be formed before these no-op/error guards. */
+  if (nmemb < 2 || size == 0 || base == NULL || compar == NULL)
+  {
+    return;
+  }
+  if (nmemb > SIZE_MAX / size)
+  {
+    return;
+  }
+
+  unsigned char *bytes = (unsigned char *)base;
+
+  /* Build a max heap. The first leaf is at nmemb / 2. */
+  for (size_t root = nmemb / 2; root != 0;)
+  {
+    root--;
+    SiftDown(bytes, root, nmemb, size, compar);
+  }
+
+  /* Move the maximum to the end, then restore the remaining heap. */
+  for (size_t count = nmemb; count > 1;)
+  {
+    count--;
+    SwapElements(bytes, bytes + count * size, size);
+    SiftDown(bytes, 0, count, size, compar);
+  }
+}
+
+void *bsearch(
+    const void *key,
+    const void *base,
+    size_t nmemb,
+    size_t size,
+    int (*compar)(const void *, const void *))
+{
+  if (nmemb == 0 || size == 0 || key == NULL || base == NULL || compar == NULL)
+  {
+    return NULL;
+  }
+  /* This guard makes every index * size operation below representable. */
+  if (nmemb > SIZE_MAX / size)
+  {
+    return NULL;
+  }
+
+  const unsigned char *bytes = (const unsigned char *)base;
+  size_t first = 0;
+  size_t count = nmemb;
+  while (count != 0)
+  {
+    /* Unlike (first + last) / 2, this midpoint cannot overflow. */
+    size_t step = count / 2;
+    size_t middle = first + step;
+    const void *element = bytes + middle * size;
+    int ordering = compar(key, element);
+    if (ordering == 0)
+    {
+      return (void *)element;
+    }
+    if (ordering > 0)
+    {
+      first = middle + 1;
+      count -= step + 1;
+    }
+    else
+    {
+      count = step;
+    }
+  }
+  return NULL;
 }
 
 // Native运行时在AM初始化前就可能调用malloc；该模式成对使用宿主malloc/free，

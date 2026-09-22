@@ -1,0 +1,34 @@
+#ifndef KLIB_CWCTYPE_INCLUDED
+#define KLIB_CWCTYPE_INCLUDED
+
+#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#include_next <cwctype>
+#else
+#include <wctype.h>
+
+namespace std {
+using ::wctrans_t;
+using ::wctype_t;
+using ::wint_t;
+using ::iswalnum;
+using ::iswalpha;
+using ::iswblank;
+using ::iswcntrl;
+using ::iswctype;
+using ::iswdigit;
+using ::iswgraph;
+using ::iswlower;
+using ::iswprint;
+using ::iswpunct;
+using ::iswspace;
+using ::iswupper;
+using ::iswxdigit;
+using ::towctrans;
+using ::towlower;
+using ::towupper;
+using ::wctrans;
+using ::wctype;
+}
+#endif
+
+#endif

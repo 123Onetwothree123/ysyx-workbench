@@ -11,6 +11,17 @@
 !Makefile
 !README
 !LICENSE
+!klib/include/cassert
+!klib/include/cerrno
+!klib/include/cctype
+!klib/include/clocale
+!klib/include/cmath
+!klib/include/cstdio
+!klib/include/cstdlib
+!klib/include/cstring
+!klib/include/ctime
+!klib/include/cwchar
+!klib/include/cwctype
 .*
 _*
 *~

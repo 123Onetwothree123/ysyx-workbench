@@ -83,6 +83,214 @@ char *(strstr)(const char *haystack, const char *needle)
   return NULL;
 }
 
+static int string_set_contains(const char *set, unsigned char target)
+{
+  const unsigned char *bytes = (const unsigned char *)set;
+  while (*bytes != '\0')
+  {
+    if (*bytes == target)
+    {
+      return 1;
+    }
+    bytes++;
+  }
+  return 0;
+}
+
+size_t strspn(const char *s, const char *accept)
+{
+  const unsigned char *bytes = (const unsigned char *)s;
+  size_t length = 0;
+  while (bytes[length] != '\0' &&
+         string_set_contains(accept, bytes[length]))
+  {
+    length++;
+  }
+  return length;
+}
+
+size_t strcspn(const char *s, const char *reject)
+{
+  const unsigned char *bytes = (const unsigned char *)s;
+  size_t length = 0;
+  while (bytes[length] != '\0' &&
+         !string_set_contains(reject, bytes[length]))
+  {
+    length++;
+  }
+  return length;
+}
+
+char *(strpbrk)(const char *s, const char *accept)
+{
+  const unsigned char *bytes = (const unsigned char *)s;
+  while (*bytes != '\0')
+  {
+    if (string_set_contains(accept, *bytes))
+    {
+      return (char *)bytes;
+    }
+    bytes++;
+  }
+  return NULL;
+}
+
+char *strtok_r(char *__restrict s, const char *__restrict delim,
+               char **__restrict saveptr)
+{
+  char *current = s != NULL ? s : *saveptr;
+  if (current == NULL)
+  {
+    return NULL;
+  }
+
+  current += strspn(current, delim);
+  if (*current == '\0')
+  {
+    *saveptr = current;
+    return NULL;
+  }
+
+  char *end = current + strcspn(current, delim);
+  if (*end != '\0')
+  {
+    *end = '\0';
+    *saveptr = end + 1;
+  }
+  else
+  {
+    *saveptr = end;
+  }
+  return current;
+}
+
+char *strtok(char *__restrict s, const char *__restrict delim)
+{
+  static char *next;
+  return strtok_r(s, delim, &next);
+}
+
+char *strsep(char **stringp, const char *delim)
+{
+  char *token = *stringp;
+  if (token == NULL)
+  {
+    return NULL;
+  }
+
+  char *end = strpbrk(token, delim);
+  if (end != NULL)
+  {
+    *end = '\0';
+    *stringp = end + 1;
+  }
+  else
+  {
+    *stringp = NULL;
+  }
+  return token;
+}
+
+static unsigned char ascii_tolower(unsigned char c)
+{
+  if (c >= (unsigned char)'A' && c <= (unsigned char)'Z')
+  {
+    return (unsigned char)(c + ((unsigned char)'a' - (unsigned char)'A'));
+  }
+  return c;
+}
+
+int strcasecmp(const char *s1, const char *s2)
+{
+  while (1)
+  {
+    const unsigned char c1 = ascii_tolower((unsigned char)*s1);
+    const unsigned char c2 = ascii_tolower((unsigned char)*s2);
+    if (c1 != c2 || c1 == '\0')
+    {
+      return (int)c1 - (int)c2;
+    }
+    s1++;
+    s2++;
+  }
+}
+
+int strncasecmp(const char *s1, const char *s2, size_t n)
+{
+  for (size_t i = 0; i < n; i++)
+  {
+    const unsigned char c1 = ascii_tolower((unsigned char)s1[i]);
+    const unsigned char c2 = ascii_tolower((unsigned char)s2[i]);
+    if (c1 != c2 || c1 == '\0')
+    {
+      return (int)c1 - (int)c2;
+    }
+  }
+  return 0;
+}
+
+char *strdup(const char *s)
+{
+  const size_t length = strlen(s);
+  if (length == SIZE_MAX)
+  {
+    errno = ENOMEM;
+    return NULL;
+  }
+
+  char *copy = (char *)malloc(length + 1);
+  if (copy != NULL)
+  {
+    memcpy(copy, s, length + 1);
+  }
+  return copy;
+}
+
+char *strndup(const char *s, size_t n)
+{
+  const size_t length = strnlen(s, n);
+  if (length == SIZE_MAX)
+  {
+    errno = ENOMEM;
+    return NULL;
+  }
+
+  char *copy = (char *)malloc(length + 1);
+  if (copy != NULL)
+  {
+    memcpy(copy, s, length);
+    copy[length] = '\0';
+  }
+  return copy;
+}
+
+void *memmem(const void *haystack, size_t haystacklen,
+             const void *needle, size_t needlelen)
+{
+  if (needlelen == 0)
+  {
+    return (void *)haystack;
+  }
+  if (needlelen > haystacklen)
+  {
+    return NULL;
+  }
+
+  const unsigned char *haystack_bytes =
+      (const unsigned char *)haystack;
+  const unsigned char *needle_bytes = (const unsigned char *)needle;
+  const size_t last = haystacklen - needlelen;
+  for (size_t i = 0; i <= last; i++)
+  {
+    if (haystack_bytes[i] == needle_bytes[0] &&
+        memcmp(haystack_bytes + i, needle_bytes, needlelen) == 0)
+    {
+      return (void *)(haystack_bytes + i);
+    }
+  }
+  return NULL;
+}
+
 ptrdiff_t (strscpy)(char *dst, const char *src, size_t dstsize)
 {
   if (dstsize == 0 || dstsize > INT_MAX)
@@ -138,6 +346,11 @@ char *strcpy(char *dst, const char *src)
   return dst;
 }
 
+char *stpcpy(char *dst, const char *src)
+{
+  return _strcpy_to_end(dst, src);
+}
+
 char *strncpy(char *dst, const char *src, size_t n)
 {
   // panic("Not implemented");
@@ -154,6 +367,28 @@ char *strncpy(char *dst, const char *src, size_t n)
   return ret;
 }
 
+char *stpncpy(char *dst, const char *src, size_t n)
+{
+  if (n == 0)
+  {
+    return dst;
+  }
+
+  size_t copied = 0;
+  while (copied < n && src[copied] != '\0')
+  {
+    dst[copied] = src[copied];
+    copied++;
+  }
+
+  char *end = dst + copied;
+  while (copied < n)
+  {
+    dst[copied++] = '\0';
+  }
+  return end;
+}
+
 char *strcat(char *dst, const char *src)
 {
   // panic("Not implemented");
@@ -164,6 +399,24 @@ char *strcat(char *dst, const char *src)
     dst++;
   }
   _strcpy_to_end(dst, src);
+  return ret;
+}
+
+char *strncat(char *dst, const char *src, size_t n)
+{
+  char *ret = dst;
+  while (*dst != '\0')
+  {
+    dst++;
+  }
+
+  size_t copied = 0;
+  while (copied < n && src[copied] != '\0')
+  {
+    dst[copied] = src[copied];
+    copied++;
+  }
+  dst[copied] = '\0';
   return ret;
 }
 
@@ -239,6 +492,16 @@ void *memcpy(void *out, const void *in, size_t n)
     FunctionDestinationOut[i] = FunctionSourceIn[i];
   }
   return out;
+}
+
+void *mempcpy(void *dst, const void *src, size_t n)
+{
+  if (n == 0)
+  {
+    return dst;
+  }
+  memcpy(dst, src, n);
+  return (unsigned char *)dst + n;
 }
 
 int memcmp(const void *s1, const void *s2, size_t n)

@@ -1,3 +1,3 @@
 NAME = int64-div-test
-SRCS = main.c
+SRCS = main.cpp
 include $(AM_HOME)/Makefile

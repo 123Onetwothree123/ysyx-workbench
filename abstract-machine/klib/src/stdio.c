@@ -3,35 +3,26 @@
 #include <klib-macros.h>
 #include <stdarg.h>
 
+#include "stdio_impl.h"
+
 #include <errno.h>
 #include <limits.h>
 
 #if !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
 
-// 自己写的
-#ifndef EOF
-#define EOF (-1)
-#endif
 struct cookie
 {
   char *s;  // 指向缓冲区中下一个可写入的位置
   size_t n; // 缓冲区剩余可用字节数，不包括结尾的\0
 };
-typedef struct FILE FILE;
-struct FILE
+
+typedef struct
 {
-  size_t (*write)(FILE *f, const unsigned char *buf, size_t len);
-  size_t (*repeat)(FILE *f, unsigned char ch, size_t len);
-  void *cookie;
-  size_t count; // 这玩意是逻辑上“本来想写”的总长度
+  FILE *stream;
+  size_t count;
   int err;
-  unsigned char *buf;   // 内部写缓冲起点
-  unsigned char *wbase; // 当前待刷出的起点
-  unsigned char *wpos;  // 当前写到哪里了
-  unsigned char *wend;
-  int lbf;
-  int lock;
-};
+} FormatContext;
+
 enum
 {
   FILE_ERROR_NONE,
@@ -39,23 +30,6 @@ enum
   FILE_ERROR_FORMAT,
   FILE_ERROR_OVERFLOW
 };
-static size_t console_write(FILE *f, const unsigned char *s, size_t l); // 这是底层输出的
-static size_t console_repeat(FILE *f, unsigned char ch, size_t len);
-static FILE __stdout_FILE = {
-    .lbf = EOF,
-    .lock = -1,
-    .write = console_write,
-    .repeat = console_repeat,
-    .cookie = NULL,
-    .buf = NULL,
-    .wbase = NULL,
-    .wpos = NULL,
-    .wend = NULL,
-    .count = 0,
-    .err = 0,
-};
-FILE *stdout = &__stdout_FILE;
-KFILE *kstdout = (KFILE *)&__stdout_FILE;
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 // 自己写的
@@ -67,11 +41,11 @@ static size_t cstr_len(const char *s);
 */
 int vfprintf(FILE *f, const char *fmt, va_list ap);
 // vfprintf和write之间的中间层，就反正是vfprintf不直接碰sn_write，然后具体怎么写就直接让f->write决定
-static int file_write(FILE *f, const void *buf, size_t len);
-static int file_putc(FILE *f, char ch);       // file_write的1字节包装
-static int file_pad(FILE *f, char ch, size_t n); // 连续输出多个填充字符
-static int file_check_count(FILE *f, size_t len);
-static int file_set_error(FILE *f, int error, int error_number);
+static int file_write(FormatContext *f, const void *buf, size_t len);
+static int file_putc(FormatContext *f, char ch);       // file_write的1字节包装
+static int file_pad(FormatContext *f, char ch, size_t n); // 连续输出多个填充字符
+static int file_check_count(FormatContext *f, size_t len);
+static int file_set_error(FormatContext *f, int error, int error_number);
 // 负责把一个无符号整数转成字符串，但先倒着存。
 static int uint_to_rev(uintmax_t x, unsigned base, int uppercase, char *buf);
 typedef enum
@@ -99,19 +73,23 @@ typedef struct
 _Static_assert(
     sizeof(ptrdiff_t) == sizeof(size_t),
     "%zd需要ptrdiff_t与size_t使用相同宽度");
-static int print_number(FILE *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec, char sign, int pointer_prefix);
+static int print_number(FormatContext *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec, char sign, int pointer_prefix);
 static int parse_decimal(const char **ps, int *value);
-static int parse_spec(FILE *f, const char **pfmt, va_list *ap, PrintfSpec *spec);
-static int printf_core(FILE *f, const char *fmt, va_list *ap);
-static int print_str(FILE *f, const char *s, const PrintfSpec *spec);
-static int print_char(FILE *f, char ch, const PrintfSpec *spec);
-static int print_uint(FILE *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec);
-static int print_int(FILE *f, intmax_t x, const PrintfSpec *spec);
+static int parse_spec(FormatContext *f, const char **pfmt, va_list *ap, PrintfSpec *spec);
+static int printf_core(FormatContext *f, const char *fmt, va_list *ap);
+static int print_str(FormatContext *f, const char *s, const PrintfSpec *spec);
+static int print_char(FormatContext *f, char ch, const PrintfSpec *spec);
+static int print_uint(FormatContext *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec);
+static int print_int(FormatContext *f, intmax_t x, const PrintfSpec *spec);
 static intmax_t read_signed_arg(va_list *ap, PrintfLength length);
 static uintmax_t read_unsigned_arg(va_list *ap, PrintfLength length);
-static int format_error(FILE *f);
-static size_t console_write(FILE *f, const unsigned char *s, size_t l);
+static int format_error(FormatContext *f);
 int fprintf(FILE *stream, const char *fmt, ...);
+
+int vprintf(const char *fmt, va_list ap)
+{
+  return vfprintf(stdout, fmt, ap);
+}
 
 int printf(const char *fmt, ...)
 {
@@ -119,7 +97,7 @@ int printf(const char *fmt, ...)
   int ret;
   va_list ap;
   va_start(ap, fmt);
-  ret = vfprintf(stdout, fmt, ap);
+  ret = vprintf(fmt, ap);
   va_end(ap);
   return ret;
 }
@@ -159,16 +137,14 @@ int vsnprintf(char *out, size_t n, const char *fmt, va_list ap)
   char dummy[1];
   struct cookie c = {.s = n ? out : dummy, .n = n ? n - 1 : 0};
   FILE f = {
+      .flags = F_NORD,
       .lbf = EOF,
       .write = sn_write,
       .repeat = sn_repeat,
       .lock = -1,
       .buf = buf,
-      .wbase = buf,
-      .wpos = buf,
+      .buf_size = 0,
       .cookie = &c,
-      .count = 0,
-      .err = 0,
   };
   *c.s = '\0';
   return vfprintf(&f, fmt, ap);
@@ -176,16 +152,7 @@ int vsnprintf(char *out, size_t n, const char *fmt, va_list ap)
 static size_t sn_write(FILE *f, const unsigned char *s, size_t l)
 {
   struct cookie *c = (struct cookie *)f->cookie;
-  // 先把FILE内部缓冲里还没倒出去的旧数据拷到用户字符串
-  size_t k = MIN(c->n, (size_t)(f->wpos - f->wbase));
-  if (k)
-  {
-    memcpy(c->s, f->wbase, k);
-    c->s += k;
-    c->n -= k;
-  }
-  // 再拷这次新来的数据
-  k = MIN(c->n, l);
+  size_t k = MIN(c->n, l);
   if (k)
   {
     memcpy(c->s, s, k);
@@ -193,7 +160,6 @@ static size_t sn_write(FILE *f, const unsigned char *s, size_t l)
     c->n -= k;
   }
   *c->s = 0; // snprintf只要n>0，就始终保持字符串可终止
-  f->wpos = f->wbase = f->buf;
   /* pretend to succeed, even if we discarded extra data */
   // 翻译：即使我们丢弃了额外数据，也要假装成功。
   return l;
@@ -209,21 +175,25 @@ static size_t sn_repeat(FILE *f, unsigned char ch, size_t len)
     c->n -= copied;
   }
   *c->s = '\0';
-  f->wpos = f->wbase = f->buf;
   return len;
 }
 int vfprintf(FILE *f, const char *fmt, va_list ap)
 {
   va_list ap2;
   int ret;
+  FormatContext context = {
+      .stream = f,
+      .count = 0,
+      .err = FILE_ERROR_NONE,
+  };
   va_copy(ap2, ap);
-  f->count = 0;
-  f->err = 0;
-  ret = printf_core(f, fmt, &ap2);
+  __kfile_lock(f);
+  ret = printf_core(&context, fmt, &ap2);
+  __kfile_unlock(f);
   va_end(ap2);
-  return f->err ? -1 : ret;
+  return context.err ? -1 : ret;
 }
-static int file_set_error(FILE *f, int error, int error_number)
+static int file_set_error(FormatContext *f, int error, int error_number)
 {
   if (f->err == FILE_ERROR_NONE)
   {
@@ -235,7 +205,7 @@ static int file_set_error(FILE *f, int error, int error_number)
   }
   return -1;
 }
-static int file_check_count(FILE *f, size_t len)
+static int file_check_count(FormatContext *f, size_t len)
 {
   if (f->err != FILE_ERROR_NONE)
   {
@@ -248,7 +218,7 @@ static int file_check_count(FILE *f, size_t len)
   }
   return 0;
 }
-static int file_write(FILE *f, const void *buf, size_t len)
+static int file_write(FormatContext *f, const void *buf, size_t len)
 {
   if (len == 0)
   {
@@ -258,18 +228,18 @@ static int file_write(FILE *f, const void *buf, size_t len)
   {
     return -1;
   }
-  if (f->write(f, (const unsigned char *)buf, len) != len)
+  if (__kfile_write(f->stream, buf, len) != len)
   {
     return file_set_error(f, FILE_ERROR_WRITE, 0);
   }
   f->count += len;
   return 0;
 }
-static int file_putc(FILE *f, char ch)
+static int file_putc(FormatContext *f, char ch)
 {
   return file_write(f, &ch, 1);
 }
-static int file_pad(FILE *f, char ch, size_t n)
+static int file_pad(FormatContext *f, char ch, size_t n)
 {
   if (n == 0)
   {
@@ -279,7 +249,7 @@ static int file_pad(FILE *f, char ch, size_t n)
   {
     return -1;
   }
-  if (f->repeat(f, (unsigned char)ch, n) != n)
+  if (__kfile_repeat(f->stream, (unsigned char)ch, n) != n)
   {
     return file_set_error(f, FILE_ERROR_WRITE, 0);
   }
@@ -299,7 +269,7 @@ static int uint_to_rev(uintmax_t x, unsigned base, int uppercase, char *buf)
   } while (x != 0);
   return n;
 }
-static int print_number(FILE *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec, char sign, int pointer_prefix)
+static int print_number(FormatContext *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec, char sign, int pointer_prefix)
 {
   char tmp[sizeof(uintmax_t) * CHAR_BIT];
   int ndig = (spec->precision == 0 && x == 0 && !pointer_prefix)
@@ -394,7 +364,7 @@ static int parse_decimal(const char **ps, int *value)
   *value = result;
   return 0;
 }
-static int parse_spec(FILE *f, const char **pfmt, va_list *ap, PrintfSpec *spec)
+static int parse_spec(FormatContext *f, const char **pfmt, va_list *ap, PrintfSpec *spec)
 {
   const char *fmt = *pfmt;
   *spec = (PrintfSpec){
@@ -506,7 +476,7 @@ static int parse_spec(FILE *f, const char **pfmt, va_list *ap, PrintfSpec *spec)
   *pfmt = fmt;
   return 0;
 }
-static int print_str(FILE *f, const char *s, const PrintfSpec *spec)
+static int print_str(FormatContext *f, const char *s, const PrintfSpec *spec)
 {
   if (s == NULL)
   {
@@ -541,7 +511,7 @@ static int print_str(FILE *f, const char *s, const PrintfSpec *spec)
   }
   return 0;
 }
-static int print_char(FILE *f, char ch, const PrintfSpec *spec)
+static int print_char(FormatContext *f, char ch, const PrintfSpec *spec)
 {
   int padding = spec->width > 1 ? spec->width - 1 : 0;
   size_t field_length = spec->width > 1 ? (size_t)spec->width : 1u;
@@ -563,11 +533,11 @@ static int print_char(FILE *f, char ch, const PrintfSpec *spec)
   }
   return 0;
 }
-static int print_uint(FILE *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec)
+static int print_uint(FormatContext *f, uintmax_t x, unsigned base, int uppercase, const PrintfSpec *spec)
 {
   return print_number(f, x, base, uppercase, spec, '\0', 0);
 }
-static int print_int(FILE *f, intmax_t x, const PrintfSpec *spec)
+static int print_int(FormatContext *f, intmax_t x, const PrintfSpec *spec)
 {
   char sign = '\0';
   uintmax_t magnitude;
@@ -642,11 +612,11 @@ static uintmax_t read_unsigned_arg(va_list *ap, PrintfLength length)
     return va_arg(*ap, unsigned int);
   }
 }
-static int format_error(FILE *f)
+static int format_error(FormatContext *f)
 {
   return file_set_error(f, FILE_ERROR_FORMAT, EINVAL);
 }
-static int printf_core(FILE *f, const char *fmt, va_list *ap)
+static int printf_core(FormatContext *f, const char *fmt, va_list *ap)
 {
   while (*fmt)
   {
@@ -784,24 +754,6 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap)
     return -1;
   }
   return (int)f->count;
-}
-static size_t console_write(FILE *f, const unsigned char *s, size_t l)
-{
-  (void)f;
-  for (size_t i = 0; i < l; i++)
-  {
-    putch((char)s[i]);
-  }
-  return l;
-}
-static size_t console_repeat(FILE *f, unsigned char ch, size_t len)
-{
-  (void)f;
-  for (size_t i = 0; i < len; i++)
-  {
-    putch((char)ch);
-  }
-  return len;
 }
 int fprintf(FILE *stream, const char *fmt, ...)
 {

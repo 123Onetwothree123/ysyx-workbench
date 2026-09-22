@@ -1,3 +1,3 @@
 NAME = strto-test
-SRCS = main.c
+SRCS = main.cpp
 include $(AM_HOME)/Makefile

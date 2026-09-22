@@ -1,0 +1,309 @@
+#ifndef KLIB_CMATH__
+#define KLIB_CMATH__
+
+#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#include_next <cmath>
+#else
+
+#ifndef __cplusplus
+#error "<cmath> is a C++ header"
+#endif
+
+#include <math.h>
+#include <cstdlib>
+#include <type_traits>
+
+/* Replace the C generic macros with genuine C++ overload sets. */
+#undef fpclassify
+#undef isfinite
+#undef isinf
+#undef isnan
+#undef isnormal
+#undef signbit
+
+namespace std {
+using ::double_t;
+using ::float_t;
+
+using ::fabs;
+using ::fabsf;
+using ::fabsl;
+inline float fabs(float x) { return ::fabsf(x); }
+inline long double fabs(long double x) { return ::fabsl(x); }
+inline float abs(float x) { return ::fabsf(x); }
+inline double abs(double x) { return ::fabs(x); }
+inline long double abs(long double x) { return ::fabsl(x); }
+
+template <typename Integer,
+          typename enable_if<is_integral<Integer>::value, int>::type = 0>
+inline double fabs(Integer x)
+{
+  return ::fabs(static_cast<double>(x));
+}
+
+using ::copysign;
+using ::copysignf;
+using ::copysignl;
+inline float copysign(float x, float y) { return ::copysignf(x, y); }
+inline long double copysign(long double x, long double y)
+{
+  return ::copysignl(x, y);
+}
+
+template <typename First, typename Second>
+struct __klib_common_float {
+  static constexpr bool has_long_double =
+      is_same<First, long double>::value ||
+      is_same<Second, long double>::value;
+  static constexpr bool has_double_or_integer =
+      is_same<First, double>::value || is_same<Second, double>::value ||
+      is_integral<First>::value || is_integral<Second>::value;
+  using type = typename conditional<
+      has_long_double,
+      long double,
+      typename conditional<has_double_or_integer, double, float>::type>::type;
+};
+
+template <typename First, typename Second,
+          typename enable_if<is_arithmetic<First>::value &&
+                                 is_arithmetic<Second>::value,
+                             int>::type = 0>
+inline typename __klib_common_float<First, Second>::type copysign(
+    First x, Second y)
+{
+  using result_type = typename __klib_common_float<First, Second>::type;
+  if constexpr (is_same<result_type, long double>::value)
+    return ::copysignl(static_cast<long double>(x),
+                       static_cast<long double>(y));
+  if constexpr (is_same<result_type, float>::value)
+    return ::copysignf(static_cast<float>(x), static_cast<float>(y));
+  return ::copysign(static_cast<double>(x), static_cast<double>(y));
+}
+
+/*
+ * KLIB currently implements these operations in double precision.  A float
+ * argument is exactly representable as double, so the wrapper preserves the
+ * standard C++ return type and converts the result back to float.  KLIB has
+ * no long-double implementation; delete that overload instead of silently
+ * narrowing it to double.
+ */
+#define __KLIB_CMATH_DOUBLE_UNARY(name)                                    \
+  using ::name;                                                            \
+  inline float name(float x)                                               \
+  {                                                                        \
+    return static_cast<float>(::name(static_cast<double>(x)));             \
+  }                                                                        \
+  inline long double name(long double) = delete;                           \
+  template <typename Integer,                                              \
+            typename enable_if<is_integral<Integer>::value, int>::type = 0>\
+  inline double name(Integer x)                                            \
+  {                                                                        \
+    return ::name(static_cast<double>(x));                                 \
+  }
+
+__KLIB_CMATH_DOUBLE_UNARY(ceil)
+__KLIB_CMATH_DOUBLE_UNARY(floor)
+__KLIB_CMATH_DOUBLE_UNARY(round)
+__KLIB_CMATH_DOUBLE_UNARY(sqrt)
+__KLIB_CMATH_DOUBLE_UNARY(trunc)
+
+/*
+ * Mirror KLIB's declared double C surface.  Some transcendental definitions
+ * are still deliberate runtime panic stubs.  The overloads here only provide
+ * the C++ type surface; they do not change that runtime status.
+ */
+__KLIB_CMATH_DOUBLE_UNARY(acos)
+__KLIB_CMATH_DOUBLE_UNARY(asin)
+__KLIB_CMATH_DOUBLE_UNARY(atan)
+__KLIB_CMATH_DOUBLE_UNARY(cbrt)
+__KLIB_CMATH_DOUBLE_UNARY(cos)
+__KLIB_CMATH_DOUBLE_UNARY(exp)
+__KLIB_CMATH_DOUBLE_UNARY(exp2)
+__KLIB_CMATH_DOUBLE_UNARY(log)
+__KLIB_CMATH_DOUBLE_UNARY(log10)
+__KLIB_CMATH_DOUBLE_UNARY(log2)
+__KLIB_CMATH_DOUBLE_UNARY(sin)
+__KLIB_CMATH_DOUBLE_UNARY(tan)
+
+#undef __KLIB_CMATH_DOUBLE_UNARY
+
+#define __KLIB_CMATH_DOUBLE_BINARY(name)                                   \
+  using ::name;                                                            \
+  inline float name(float x, float y)                                      \
+  {                                                                        \
+    return static_cast<float>(                                             \
+        ::name(static_cast<double>(x), static_cast<double>(y)));           \
+  }                                                                        \
+  inline long double name(long double, long double) = delete;              \
+  template <typename First, typename Second,                               \
+            typename enable_if<                                           \
+                is_arithmetic<First>::value &&                             \
+                    is_arithmetic<Second>::value &&                        \
+                    __klib_common_float<First, Second>::has_long_double,   \
+                int>::type = 0>                                            \
+  inline typename __klib_common_float<First, Second>::type name(           \
+      First, Second) = delete;                                             \
+  template <typename First, typename Second,                               \
+            typename enable_if<                                           \
+                is_arithmetic<First>::value &&                             \
+                    is_arithmetic<Second>::value &&                        \
+                    !__klib_common_float<First, Second>::has_long_double,  \
+                int>::type = 0>                                            \
+  inline typename __klib_common_float<First, Second>::type name(           \
+      First x, Second y)                                                   \
+  {                                                                        \
+    using result_type =                                                    \
+        typename __klib_common_float<First, Second>::type;                 \
+    return static_cast<result_type>(                                       \
+        ::name(static_cast<double>(x), static_cast<double>(y)));           \
+  }
+
+__KLIB_CMATH_DOUBLE_BINARY(atan2)
+__KLIB_CMATH_DOUBLE_BINARY(fmod)
+__KLIB_CMATH_DOUBLE_BINARY(pow)
+
+#undef __KLIB_CMATH_DOUBLE_BINARY
+
+using ::frexp;
+using ::frexpf;
+inline float frexp(float x, int *exponent) { return ::frexpf(x, exponent); }
+inline long double frexp(long double, int *) = delete;
+
+template <typename Integer,
+          typename enable_if<is_integral<Integer>::value, int>::type = 0>
+inline double frexp(Integer x, int *exponent)
+{
+  return ::frexp(static_cast<double>(x), exponent);
+}
+
+using ::ldexp;
+using ::ldexpf;
+inline float ldexp(float x, int exponent) { return ::ldexpf(x, exponent); }
+inline long double ldexp(long double, int) = delete;
+
+template <typename Integer,
+          typename enable_if<is_integral<Integer>::value, int>::type = 0>
+inline double ldexp(Integer x, int exponent)
+{
+  return ::ldexp(static_cast<double>(x), exponent);
+}
+
+using ::scalbn;
+using ::scalbnf;
+inline float scalbn(float x, int exponent) { return ::scalbnf(x, exponent); }
+inline long double scalbn(long double, int) = delete;
+
+template <typename Integer,
+          typename enable_if<is_integral<Integer>::value, int>::type = 0>
+inline double scalbn(Integer x, int exponent)
+{
+  return ::scalbn(static_cast<double>(x), exponent);
+}
+
+using ::modf;
+using ::modff;
+inline float modf(float x, float *integer_part)
+{
+  return ::modff(x, integer_part);
+}
+inline long double modf(long double, long double *) = delete;
+
+using ::nextafter;
+using ::nextafterf;
+inline float nextafter(float x, float y) { return ::nextafterf(x, y); }
+inline long double nextafter(long double, long double) = delete;
+
+template <typename First, typename Second,
+          typename enable_if<is_arithmetic<First>::value &&
+                                 is_arithmetic<Second>::value &&
+                                 __klib_common_float<First, Second>::
+                                     has_long_double,
+                             int>::type = 0>
+inline typename __klib_common_float<First, Second>::type nextafter(
+    First, Second) = delete;
+
+template <typename First, typename Second,
+          typename enable_if<is_arithmetic<First>::value &&
+                                 is_arithmetic<Second>::value &&
+                                 !__klib_common_float<First, Second>::
+                                     has_long_double,
+                             int>::type = 0>
+inline typename __klib_common_float<First, Second>::type nextafter(
+    First x, Second y)
+{
+  using result_type = typename __klib_common_float<First, Second>::type;
+  if constexpr (is_same<result_type, float>::value)
+    return ::nextafterf(static_cast<float>(x), static_cast<float>(y));
+  return ::nextafter(static_cast<double>(x), static_cast<double>(y));
+}
+
+inline int fpclassify(float x) { return ::__klib_fpclassifyf(x); }
+inline int fpclassify(double x) { return ::__klib_fpclassify(x); }
+inline int fpclassify(long double x) { return ::__klib_fpclassifyl(x); }
+
+inline bool isfinite(float x) { return fpclassify(x) >= FP_ZERO; }
+inline bool isfinite(double x) { return fpclassify(x) >= FP_ZERO; }
+inline bool isfinite(long double x) { return fpclassify(x) >= FP_ZERO; }
+
+inline bool isinf(float x) { return fpclassify(x) == FP_INFINITE; }
+inline bool isinf(double x) { return fpclassify(x) == FP_INFINITE; }
+inline bool isinf(long double x) { return fpclassify(x) == FP_INFINITE; }
+
+inline bool isnan(float x) { return fpclassify(x) == FP_NAN; }
+inline bool isnan(double x) { return fpclassify(x) == FP_NAN; }
+inline bool isnan(long double x) { return fpclassify(x) == FP_NAN; }
+
+inline bool isnormal(float x) { return fpclassify(x) == FP_NORMAL; }
+inline bool isnormal(double x) { return fpclassify(x) == FP_NORMAL; }
+inline bool isnormal(long double x) { return fpclassify(x) == FP_NORMAL; }
+
+inline bool signbit(float x) { return ::__klib_signbitf(x) != 0; }
+inline bool signbit(double x) { return ::__klib_signbit(x) != 0; }
+inline bool signbit(long double x) { return ::__klib_signbitl(x) != 0; }
+
+template <typename Integer,
+          typename enable_if<is_integral<Integer>::value, int>::type = 0>
+inline int fpclassify(Integer x)
+{
+  return x == 0 ? FP_ZERO : FP_NORMAL;
+}
+
+template <typename Integer,
+          typename enable_if<is_integral<Integer>::value, int>::type = 0>
+inline bool isfinite(Integer)
+{
+  return true;
+}
+
+template <typename Integer,
+          typename enable_if<is_integral<Integer>::value, int>::type = 0>
+inline bool isinf(Integer)
+{
+  return false;
+}
+
+template <typename Integer,
+          typename enable_if<is_integral<Integer>::value, int>::type = 0>
+inline bool isnan(Integer)
+{
+  return false;
+}
+
+template <typename Integer,
+          typename enable_if<is_integral<Integer>::value, int>::type = 0>
+inline bool isnormal(Integer x)
+{
+  return x != 0;
+}
+
+template <typename Integer,
+          typename enable_if<is_integral<Integer>::value, int>::type = 0>
+inline bool signbit(Integer x)
+{
+  if constexpr (is_signed<Integer>::value) return x < 0;
+  return false;
+}
+}  // namespace std
+
+#endif
+#endif

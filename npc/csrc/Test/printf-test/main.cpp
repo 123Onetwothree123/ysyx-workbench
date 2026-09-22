@@ -20,13 +20,25 @@ static void check_text_and_length(int len, const char *expect) {
   CHECK(strcmp(buf, expect) == 0);
   CHECK(len == (int)strlen(expect));
 }
+
+static int call_vprintf(const char *format, ...) {
+  va_list ap;
+  va_start(ap, format);
+  int result = vprintf(format, ap);
+  va_end(ap);
+  return result;
+}
 #endif
 
-int main(void) {
+int main() {
 #if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
   printf("printf-test skipped: native libc is active\n");
   return 0;
 #else
+  CHECK(putchar(0x150) == 'P');
+  CHECK(puts("UTCHAR/PUTS TEST") >= 0);
+  CHECK(call_vprintf("VPRINTF TEST %d %s\n", 42, "PASS") == 21);
+
   int len = snprintf(buf, sizeof(buf), "%p|%u",
                      (void *)(uintptr_t)0x1234, 77u);
   check_text_and_length(len, "0x1234|77");

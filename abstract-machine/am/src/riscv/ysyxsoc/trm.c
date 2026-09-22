@@ -23,10 +23,10 @@ void _trm_init()
         "sw ra, 12(sp)\n"
         "li a0, 0\n"
         "call cte_init\n"
+        "call __klib_init_array\n"
         "la a0, mainargs\n"
         "call main\n"
-        "li a0, 0\n"
-        "ebreak\n"
+        "call exit\n"
         :
         : "r"(&__am_asm_trap)
     );

@@ -1,0 +1,16 @@
+#ifndef KLIB_CLOCALE_INCLUDED
+#define KLIB_CLOCALE_INCLUDED
+
+#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#include_next <clocale>
+#else
+#include <locale.h>
+
+namespace std {
+using ::lconv;
+using ::localeconv;
+using ::setlocale;
+}
+#endif
+
+#endif

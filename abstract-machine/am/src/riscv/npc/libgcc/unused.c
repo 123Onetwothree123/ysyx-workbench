@@ -1,5 +1,5 @@
-#include <klib-macros.h>
-#include <am.h>
-
-double __muldf3 (double a, double b) { panic("Not implement"); }
-long __fixdfdi (double a) { panic("Not implement"); }
+/*
+ * Floating-point compiler helpers are provided by KLIB's Berkeley SoftFloat
+ * bridge.  Keep this translation unit because several legacy architecture
+ * makefiles still list it explicitly.
+ */

@@ -1,0 +1,76 @@
+#ifndef KLIB_CSTDLIB_INCLUDED
+#define KLIB_CSTDLIB_INCLUDED
+
+#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#include_next <cstdlib>
+#else
+#include <stdlib.h>
+
+namespace std {
+using ::size_t;
+using ::div_t;
+using ::ldiv_t;
+using ::lldiv_t;
+using ::abort;
+using ::aligned_alloc;
+using ::abs;
+using ::at_quick_exit;
+using ::atexit;
+using ::atof;
+using ::atoi;
+using ::atol;
+using ::atoll;
+using ::bsearch;
+using ::calloc;
+using ::div;
+using ::exit;
+using ::free;
+using ::getenv;
+using ::labs;
+using ::ldiv;
+using ::llabs;
+using ::lldiv;
+using ::malloc;
+using ::mblen;
+using ::mbstowcs;
+using ::mbtowc;
+using ::qsort;
+using ::quick_exit;
+using ::rand;
+using ::realloc;
+using ::srand;
+using ::strtol;
+using ::strtod;
+using ::strtof;
+using ::strtold;
+using ::strtoll;
+using ::strtoul;
+using ::strtoull;
+using ::system;
+using ::wcstombs;
+using ::wctomb;
+using ::_Exit;
+
+inline long abs(long value)
+{
+  return ::labs(value);
+}
+
+inline long long abs(long long value)
+{
+  return ::llabs(value);
+}
+
+inline ldiv_t div(long numerator, long denominator)
+{
+  return ::ldiv(numerator, denominator);
+}
+
+inline lldiv_t div(long long numerator, long long denominator)
+{
+  return ::lldiv(numerator, denominator);
+}
+}
+#endif
+
+#endif

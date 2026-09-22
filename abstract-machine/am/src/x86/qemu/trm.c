@@ -1,4 +1,5 @@
 #include "x86-qemu.h"
+#include <klib.h>
 
 Area heap = {};
 int __am_ncpu = 0;
@@ -6,7 +7,8 @@ int __am_ncpu = 0;
 int main(const char *args);
 
 static void call_main(const char *args) {
-  halt(main(args));
+  __klib_init_array();
+  exit(main(args));
 }
 
 void _start_c(char *args) {

@@ -1,0 +1,31 @@
+#ifndef KLIB_CTIME_INCLUDED
+#define KLIB_CTIME_INCLUDED
+
+#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#include_next <ctime>
+#else
+#include <time.h>
+
+namespace std {
+using ::clock_t;
+using ::time_t;
+using ::tm;
+#if __cplusplus >= 201703L
+using ::timespec;
+#endif
+using ::asctime;
+using ::clock;
+using ::ctime;
+using ::difftime;
+using ::gmtime;
+using ::localtime;
+using ::mktime;
+using ::strftime;
+using ::time;
+#if __cplusplus >= 201703L
+using ::timespec_get;
+#endif
+}
+#endif
+
+#endif

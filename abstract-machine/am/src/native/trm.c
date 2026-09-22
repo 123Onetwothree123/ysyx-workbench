@@ -1,5 +1,6 @@
 #include <am.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <klib-macros.h>
 
 void __am_platform_dummy();
@@ -10,7 +11,11 @@ void trm_init() {
 }
 
 void putch(char ch) {
+#ifdef __NATIVE_USE_KLIB__
+  (void)write(STDOUT_FILENO, &ch, 1);
+#else
   putchar(ch);
+#endif
 }
 
 void halt(int code) {

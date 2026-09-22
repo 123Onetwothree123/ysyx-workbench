@@ -1,5 +1,6 @@
 #include <am.h>
 #include <nemu.h>
+#include <klib.h>
 
 extern char _heap_start;
 int main(const char *args);
@@ -16,6 +17,6 @@ void halt(int code) {
 }
 
 void _trm_init() {
-  int ret = main("");
-  halt(ret);
+  __klib_init_array();
+  exit(main(""));
 }

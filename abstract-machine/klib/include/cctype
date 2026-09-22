@@ -1,0 +1,27 @@
+#ifndef KLIB_CCTYPE_INCLUDED
+#define KLIB_CCTYPE_INCLUDED
+
+#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#include_next <cctype>
+#else
+#include <ctype.h>
+
+namespace std {
+using ::isalnum;
+using ::isalpha;
+using ::isblank;
+using ::iscntrl;
+using ::isdigit;
+using ::isgraph;
+using ::islower;
+using ::isprint;
+using ::ispunct;
+using ::isspace;
+using ::isupper;
+using ::isxdigit;
+using ::tolower;
+using ::toupper;
+}
+#endif
+
+#endif

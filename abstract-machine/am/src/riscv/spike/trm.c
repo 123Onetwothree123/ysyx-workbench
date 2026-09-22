@@ -29,6 +29,6 @@ void halt(int code) {
 }
 
 void _trm_init() {
-  int ret = main(mainargs);
-  halt(ret);
+  __klib_init_array();
+  exit(main(mainargs));
 }

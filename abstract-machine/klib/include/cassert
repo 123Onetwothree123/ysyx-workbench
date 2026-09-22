@@ -1,0 +1,5 @@
+#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#include_next <cassert>
+#else
+#include <assert.h>
+#endif

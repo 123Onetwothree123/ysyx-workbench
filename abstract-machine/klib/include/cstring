@@ -1,0 +1,81 @@
+#ifndef KLIB_CSTRING_INCLUDED
+#define KLIB_CSTRING_INCLUDED
+
+#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#include_next <cstring>
+#else
+#include <string.h>
+
+namespace std {
+using ::size_t;
+using ::memcmp;
+using ::memcpy;
+using ::memmove;
+using ::memset;
+using ::strcat;
+using ::strcmp;
+using ::strcoll;
+using ::strcpy;
+using ::strcspn;
+using ::strerror;
+using ::strlen;
+using ::strncat;
+using ::strncmp;
+using ::strncpy;
+using ::strspn;
+using ::strtok;
+using ::strxfrm;
+
+inline void *memchr(void *buffer, int byte, size_t length)
+{
+  return ::memchr(buffer, byte, length);
+}
+
+inline const void *memchr(const void *buffer, int byte, size_t length)
+{
+  return ::memchr(buffer, byte, length);
+}
+
+inline char *strchr(char *string, int character)
+{
+  return ::strchr(string, character);
+}
+
+inline const char *strchr(const char *string, int character)
+{
+  return ::strchr(string, character);
+}
+
+inline char *strpbrk(char *string, const char *accept)
+{
+  return ::strpbrk(string, accept);
+}
+
+inline const char *strpbrk(const char *string, const char *accept)
+{
+  return ::strpbrk(string, accept);
+}
+
+inline char *strrchr(char *string, int character)
+{
+  return ::strrchr(string, character);
+}
+
+inline const char *strrchr(const char *string, int character)
+{
+  return ::strrchr(string, character);
+}
+
+inline char *strstr(char *haystack, const char *needle)
+{
+  return ::strstr(haystack, needle);
+}
+
+inline const char *strstr(const char *haystack, const char *needle)
+{
+  return ::strstr(haystack, needle);
+}
+}
+#endif
+
+#endif

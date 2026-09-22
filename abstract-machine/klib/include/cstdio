@@ -1,0 +1,114 @@
+#ifndef KLIB_CSTDIO__
+#define KLIB_CSTDIO__
+
+#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#include_next <cstdio>
+#else
+
+#ifndef __cplusplus
+#error "<cstdio> is a C++ header"
+#endif
+
+#include <stdio.h>
+
+/* C permits these names to be macros; C++ requires addressable functions. */
+#undef clearerr
+#undef fclose
+#undef feof
+#undef ferror
+#undef fflush
+#undef fgetc
+#undef fgetpos
+#undef fgets
+#undef fopen
+#undef fprintf
+#undef fputc
+#undef fputs
+#undef fread
+#undef freopen
+#undef fscanf
+#undef fseek
+#undef fsetpos
+#undef ftell
+#undef fwrite
+#undef getc
+#undef getchar
+#undef perror
+#undef printf
+#undef putc
+#undef putchar
+#undef puts
+#undef remove
+#undef rename
+#undef rewind
+#undef scanf
+#undef setbuf
+#undef setvbuf
+#undef snprintf
+#undef sprintf
+#undef sscanf
+#undef tmpfile
+#undef tmpnam
+#undef ungetc
+#undef vfprintf
+#undef vfscanf
+#undef vprintf
+#undef vscanf
+#undef vsnprintf
+#undef vsprintf
+#undef vsscanf
+
+namespace std {
+using ::FILE;
+using ::fpos_t;
+using ::size_t;
+
+using ::clearerr;
+using ::fclose;
+using ::feof;
+using ::ferror;
+using ::fflush;
+using ::fgetc;
+using ::fgetpos;
+using ::fgets;
+using ::fopen;
+using ::fprintf;
+using ::fputc;
+using ::fputs;
+using ::fread;
+using ::freopen;
+using ::fscanf;
+using ::fseek;
+using ::fsetpos;
+using ::ftell;
+using ::fwrite;
+using ::getc;
+using ::getchar;
+using ::perror;
+using ::printf;
+using ::putc;
+using ::putchar;
+using ::puts;
+using ::remove;
+using ::rename;
+using ::rewind;
+using ::scanf;
+using ::setbuf;
+using ::setvbuf;
+using ::snprintf;
+using ::sprintf;
+using ::sscanf;
+using ::tmpfile;
+using ::tmpnam;
+using ::ungetc;
+using ::vfprintf;
+using ::vfscanf;
+using ::vprintf;
+using ::vscanf;
+using ::vsnprintf;
+using ::vsprintf;
+using ::vsscanf;
+}  // namespace std
+
+#endif
+#endif

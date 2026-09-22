@@ -1,0 +1,13 @@
+#ifndef KLIB_CERRNO_INCLUDED
+#define KLIB_CERRNO_INCLUDED
+
+#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#include_next <cerrno>
+#else
+#include <errno.h>
+#ifndef errno
+#define errno errno
+#endif
+#endif
+
+#endif

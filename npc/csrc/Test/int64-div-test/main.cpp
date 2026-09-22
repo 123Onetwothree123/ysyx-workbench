@@ -2,9 +2,11 @@
 #include <klib.h>
 #include <limits.h>
 
-extern long long __divdi3(long long a, long long b);
-extern long long __moddi3(long long a, long long b);
-extern long long __divmoddi4(long long a, long long b, long long *rem);
+extern "C" {
+long long __divdi3(long long a, long long b);
+long long __moddi3(long long a, long long b);
+long long __divmoddi4(long long a, long long b, long long *rem);
+}
 
 static int failures;
 
@@ -29,7 +31,7 @@ static void check_case(
   }
 }
 
-int main(void)
+int main()
 {
   check_case(LLONG_MIN, 1, LLONG_MIN, 0);
   check_case(LLONG_MIN, -1, LLONG_MIN, 0);

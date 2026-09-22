@@ -4,13 +4,27 @@
 extern "C"
 {
 #endif
-#if defined(__ISA_NATIVE__) && !defined(__NATIVE_USE_KLIB__)
+#if defined(__ISA_NATIVE__)
+/* Native AM platform sources include host sys/time.h before this wrapper.
+ * Reuse the host time ABI even when differential-testing KLIB functions. */
 #include_next <time.h>
 #else
-// 0 UTC 起算的秒数，裸机这里用 AM 的计时器（uptime ms / 1000）
+#include <stddef.h>
+#include <stdint.h>
+/* Match the target newlib ABI: RV32 uses a 64-bit time_t, while RV64 uses
+ * long.  clock_t is unsigned long on both targets. */
+#if __LONG_MAX__ > 0x7fffffffL
 typedef long time_t;
-typedef long clock_t;
+#else
+typedef int64_t time_t;
+#endif
+typedef unsigned long clock_t;
 #define CLOCKS_PER_SEC 1000
+#define TIME_UTC 1
+struct timespec {
+  time_t tv_sec;
+  long tv_nsec;
+};
 struct tm {
   int tm_sec;   // 0-59
   int tm_min;   // 0-59
@@ -25,11 +39,18 @@ struct tm {
 clock_t clock(void);
 time_t time(time_t *t);
 struct tm *gmtime(const time_t *t);
+struct tm *gmtime_r(const time_t *t, struct tm *result);
 struct tm *localtime(const time_t *t);
+struct tm *localtime_r(const time_t *t, struct tm *result);
 time_t mktime(struct tm *tm);
 char *asctime(const struct tm *tm);
+char *asctime_r(const struct tm *tm, char *buffer);
 char *ctime(const time_t *t);
+char *ctime_r(const time_t *t, char *buffer);
 double difftime(time_t end, time_t begin);
+size_t strftime(char *s, size_t maxsize, const char *format,
+                const struct tm *timeptr);
+int timespec_get(struct timespec *ts, int base);
 #endif
 #ifdef __cplusplus
 }
