@@ -59,6 +59,7 @@ class ysyx_26030103_LSU(
     val StallWriteReq = Output(Bool())
     val StallWriteB = Output(Bool())
     val DebugMemoryWrite = Output(Bool())
+    val DebugPC = Output(UInt(32.W))
     val DebugALUResult = Output(UInt(32.W))
     val DebugStoreDATA = Output(UInt(32.W))
     val DebugLoadDATA = Output(UInt(32.W))
@@ -151,6 +152,7 @@ class ysyx_26030103_LSU(
   io.out.bits := ActiveInstruction
   io.out.bits.LoadData := LoadDataReg
   io.out.bits.RegisterWrite := ActiveInstruction.RegisterWrite && !MemFaultReg // 读错误时禁止写回
+  io.out.bits.Retire := ActiveInstruction.Retire && !MemFaultReg
   // Busy的赋值在写缓冲声明之后(见下)
   io.HazardValid := io.in.valid || (stageState =/= StageIdle)
   io.HazardRd := ActiveInstruction.Rd
@@ -189,6 +191,7 @@ class ysyx_26030103_LSU(
   io.Hazard2FwdReady := WaitValid && io.in.bits.RegisterWrite && !io.in.bits.MemoryValid
   io.StallWaitLSU := stageState === StageWait
   io.DebugMemoryWrite := ActiveInstruction.MemoryWrite
+  io.DebugPC := ActiveInstruction.pc
   io.DebugALUResult := ActiveInstruction.ALUResult
   io.DebugStoreDATA := ActiveInstruction.StoreData
   io.DebugLoadDATA := LoadDataReg
@@ -294,7 +297,9 @@ class ysyx_26030103_LSU(
   io.DataBus.AR.ARPROT := 0.U
   io.DataBus.R.RREADY := false.B
   io.Complete := state === StatesDone
-  val wbAddr = Reg(Vec(WBufDepth, UInt(32.W))) // 普通RAM写入队即退休，MMIO写等待B响应
+  // 所有 store 都先进入写缓冲，但只有属于该指令的 B 响应成功后才能退休。
+  // 这样 RAM 的 SLVERR/DECERR 也能精确转换成 store access fault(cause=7)。
+  val wbAddr = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbData = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbStrb = Reg(Vec(WBufDepth, UInt(4.W)))
   val wbSize = Reg(Vec(WBufDepth, UInt(3.W)))
@@ -307,7 +312,6 @@ class ysyx_26030103_LSU(
   val wbufFull = wbCount === WBufDepth.U
   def IsPlainRAM(addr: UInt): Bool =
     addr(31, 28) === "h8".U || addr(31, 28) === "ha".U
-  val storeNeedsB = !IsPlainRAM(ActiveInstruction.ALUResult)
   val storeBufIdx = Reg(UInt(log2Ceil(WBufDepth).max(1).W)) // 当前写操作的缓冲槽位
   val wbPush =
     (startMem && ActiveInstruction.MemoryWrite && !AddressMisaligned && !wbufFull) ||
@@ -341,7 +345,6 @@ class ysyx_26030103_LSU(
       ActiveInstruction.ALUResult(31, 28) === "ha".U
     Configured && NormalRAM
   } else false.B
-  val DCacheStore = ActiveInstruction.MemoryValid && ActiveInstruction.MemoryWrite
   // 回填不能越过同一缓存行中尚未完成的写操作
   val DCacheWbufLineHit = VecInit(
     (0 until WBufDepth).map(i =>
@@ -362,10 +365,6 @@ class ysyx_26030103_LSU(
   DCache.io.req.bits.WidthSelect := ActiveInstruction.WidthSelect
   DCache.io.req.bits.signed := ActiveInstruction.LoadSigned
   DCache.io.resp.ready := DCacheRequestActive && state === StatesReadResponse
-  DCache.io.StoreValid := wbPush && DCacheStore && DCacheCacheable
-  DCache.io.StoreAddr := ActiveInstruction.ALUResult
-  DCache.io.StoreData := AlignedWriteData
-  DCache.io.StoreStrb := AlignedWriteMask
   DCache.io.flush := io.DCacheFlush
   DCache.io.AXI.AW.AWREADY := false.B // DCache不使用AXI写通道
   DCache.io.AXI.W.WREADY := false.B
@@ -383,6 +382,13 @@ class ysyx_26030103_LSU(
   val wbAWfire = io.DataBus.AW.AWVALID && io.DataBus.AW.AWREADY
   val wbWfire = io.DataBus.W.WVALID && io.DataBus.W.WREADY
   val wbPop = wbState === wbWaitB && io.DataBus.B.BVALID
+  // 写直达 DCache 不能在 store 入队时投机更新；否则外部写失败后
+  // cache 会保留并不存在于内存的新值。只在成功 B 握手当拍更新。
+  val wbCommitSuccess = wbPop && io.DataBus.B.BRESP === 0.U
+  DCache.io.StoreValid := wbCommitSuccess
+  DCache.io.StoreAddr := wbAddr(wbHead)
+  DCache.io.StoreData := wbData(wbHead)
+  DCache.io.StoreStrb := wbStrb(wbHead)
   switch(wbState) {
     is(wbIdle) {
       when(!wbufEmpty) {
@@ -409,7 +415,7 @@ class ysyx_26030103_LSU(
     }
     is(wbWaitB) {
       io.DataBus.B.BREADY := true.B
-      // 普通内存写已退休，因此后台B响应只用于完成出队
+      // B 响应既决定写缓冲出队，也是 store 的精确退休点。
       when(io.DataBus.B.BVALID) {
         wbState := wbIdle
       }
@@ -434,9 +440,9 @@ class ysyx_26030103_LSU(
           state := StatesDone
         }
           .elsewhen(ActiveInstruction.MemoryWrite) {
-            // 普通内存写入队即完成，其余写操作等待B响应
+            // 所有 store（包括普通 RAM）都要等属于自己的 B 响应。
             when(!wbufFull) {
-              state := Mux(storeNeedsB, StatesWriteWaitB, StatesDone)
+              state := StatesWriteWaitB
             }.otherwise {
               state := StatesWriteWaitBuf
             }
@@ -461,7 +467,7 @@ class ysyx_26030103_LSU(
     }
     is(StatesWriteWaitBuf) {
       when(!wbufFull) {
-        state := Mux(storeNeedsB, StatesWriteWaitB, StatesDone)
+        state := StatesWriteWaitB
       }
     }
     is(StatesWriteWaitB) {

@@ -23,7 +23,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   def decode(address: UInt): UInt = {
     Mux(IsCLINT(address), TargetCLINT, TargetSoCBus)
   }
-  val states = Enum(8)
+  val states = Enum(9)
   val StateIdle = states(0)
   val StateReadRequest = states(1)
   val StateReadResponse = states(2)
@@ -32,6 +32,8 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val StateWriteRequest = states(5)
   val StateWriteResponse = states(6)
   val StateWriteDECERR = states(7)
+  // 不支持转发的写burst仍需吃完全部W beat，之后再返回DECERR。
+  val StateWriteDrain = states(8)
   val state = RegInit(StateIdle)
   // 读请求被接收后，R回来时已经没有地址了
   // 所以必须记住这次读请求被发给哪个下游
@@ -128,8 +130,12 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val InARFire = io.in.AR.ARVALID && InARReady
   val WriteTargetAfterAW =
     Mux(InAWFire, decode(io.in.AW.AWADDR), WriteTargetReg)
+  val WriteLenAfterAW = Mux(InAWFire, io.in.AW.AWLEN, AWLENReg)
   val AWCollected = AWValidReg || InAWFire
   val WCollected = WValidReg || InWFire
+  val FirstWLastAfterW = Mux(InWFire, io.in.W.WLAST, WLASTReg)
+  val WriteCannotForward = WriteTargetAfterAW === TargetInvalid ||
+    (WriteTargetAfterAW === TargetCLINT && WriteLenAfterAW =/= 0.U)
   when(InAWFire) {
     AWIDReg := io.in.AW.AWID
     AWAddressReg := io.in.AW.AWADDR
@@ -140,7 +146,8 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     WriteTargetReg := decode(io.in.AW.AWADDR)
     AWValidReg := true.B
   }
-  when(InWFire) {
+  // Idle/Collect阶段只缓存首个W beat；进入转发阶段后其余beat直接流过。
+  when(InWFire && (state === StateIdle || state === StateWriteCollect)) {
     WDataReg := io.in.W.WDATA
     WSTRBReg := io.in.W.WSTRB
     WLASTReg := io.in.W.WLAST
@@ -157,8 +164,10 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       when(AWCollected && WCollected) {
         DownstreamAWDone := false.B
         DownstreamWDone := false.B
-        when(WriteTargetAfterAW === TargetInvalid) {
-          state := StateWriteDECERR
+        when(WriteCannotForward) {
+          // 首beat已由收集级接收；若它不是最后一拍，继续排空余下W。
+          WValidReg := false.B
+          state := Mux(FirstWLastAfterW, StateWriteDECERR, StateWriteDrain)
         }.otherwise {
           state := StateWriteRequest
         }
@@ -192,17 +201,20 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     when(AWCollected && WCollected) {
       DownstreamAWDone := false.B
       DownstreamWDone := false.B
-      when(WriteTargetAfterAW === TargetInvalid) {
-        state := StateWriteDECERR
+      when(WriteCannotForward) {
+        WValidReg := false.B
+        state := Mux(FirstWLastAfterW, StateWriteDECERR, StateWriteDrain)
       }.otherwise {
         state := StateWriteRequest
       }
     }
   }.elsewhen(state === StateWriteRequest) {
-    // AW和W都收齐后，根据写地址译码结果转发到对应下游
+    // AW只发送一次；收集级缓存首个W beat，之后的beat直接以ready/valid
+    // 流过，直到真正握手的WLAST为止。
     when(WriteTargetReg === TargetSoCBus) {
       val SendAW = !DownstreamAWDone
-      val SendW = !DownstreamWDone
+      val UseBufferedW = WValidReg
+      val StreamW = !WValidReg && !DownstreamWDone
 
       io.SoCBus.AW.AWVALID := SendAW
       io.SoCBus.AW.AWID := AWIDReg
@@ -212,28 +224,35 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.SoCBus.AW.AWBURST := AWBURSTReg
       io.SoCBus.AW.AWPROT := AWPROTReg
 
-      io.SoCBus.W.WVALID := SendW
-      io.SoCBus.W.WDATA := WDataReg
-      io.SoCBus.W.WSTRB := WSTRBReg
-      io.SoCBus.W.WLAST := WLASTReg
+      io.SoCBus.W.WVALID := Mux(UseBufferedW, true.B, StreamW && io.in.W.WVALID)
+      io.SoCBus.W.WDATA := Mux(UseBufferedW, WDataReg, io.in.W.WDATA)
+      io.SoCBus.W.WSTRB := Mux(UseBufferedW, WSTRBReg, io.in.W.WSTRB)
+      io.SoCBus.W.WLAST := Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
+      InWReady := StreamW && io.SoCBus.W.WREADY
 
       val AWFire = SendAW && io.SoCBus.AW.AWREADY
-      val WFire = SendW && io.SoCBus.W.WREADY
+      val BufferedWFire = UseBufferedW && io.SoCBus.W.WREADY
+      val StreamWFire = StreamW && io.in.W.WVALID && io.SoCBus.W.WREADY
+      val WFire = BufferedWFire || StreamWFire
+      val WLastFire = WFire && Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
 
       when(AWFire) {
         DownstreamAWDone := true.B
       }
-      when(WFire) {
+      when(BufferedWFire) {
+        WValidReg := false.B
+      }
+      when(WLastFire) {
         DownstreamWDone := true.B
       }
 
-      // 下游AW/W都握手完成后，进入B响应阶段
-      when((DownstreamAWDone || AWFire) && (DownstreamWDone || WFire)) {
+      when((DownstreamAWDone || AWFire) && (DownstreamWDone || WLastFire)) {
         state := StateWriteResponse
       }
     }.elsewhen(WriteTargetReg === TargetCLINT) {
       val SendAW = !DownstreamAWDone
-      val SendW = !DownstreamWDone
+      val UseBufferedW = WValidReg
+      val StreamW = !WValidReg && !DownstreamWDone
 
       io.CLINT.AW.AWVALID := SendAW
       io.CLINT.AW.AWID := AWIDReg
@@ -243,26 +262,39 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       io.CLINT.AW.AWBURST := AWBURSTReg
       io.CLINT.AW.AWPROT := AWPROTReg
 
-      io.CLINT.W.WVALID := SendW
-      io.CLINT.W.WDATA := WDataReg
-      io.CLINT.W.WSTRB := WSTRBReg
-      io.CLINT.W.WLAST := WLASTReg
+      io.CLINT.W.WVALID := Mux(UseBufferedW, true.B, StreamW && io.in.W.WVALID)
+      io.CLINT.W.WDATA := Mux(UseBufferedW, WDataReg, io.in.W.WDATA)
+      io.CLINT.W.WSTRB := Mux(UseBufferedW, WSTRBReg, io.in.W.WSTRB)
+      io.CLINT.W.WLAST := Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
+      InWReady := StreamW && io.CLINT.W.WREADY
 
       val AWFire = SendAW && io.CLINT.AW.AWREADY
-      val WFire = SendW && io.CLINT.W.WREADY
+      val BufferedWFire = UseBufferedW && io.CLINT.W.WREADY
+      val StreamWFire = StreamW && io.in.W.WVALID && io.CLINT.W.WREADY
+      val WFire = BufferedWFire || StreamWFire
+      val WLastFire = WFire && Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
 
       when(AWFire) {
         DownstreamAWDone := true.B
       }
-      when(WFire) {
+      when(BufferedWFire) {
+        WValidReg := false.B
+      }
+      when(WLastFire) {
         DownstreamWDone := true.B
       }
 
-      // 下游AW/W都握手完成后，进入B响应阶段
-      when((DownstreamAWDone || AWFire) && (DownstreamWDone || WFire)) {
+      when((DownstreamAWDone || AWFire) && (DownstreamWDone || WLastFire)) {
         state := StateWriteResponse
       }
     }.otherwise {
+      state := Mux(WValidReg && WLASTReg, StateWriteDECERR, StateWriteDrain)
+    }
+  }.elsewhen(state === StateWriteDrain) {
+    // 地址无效或本地CLINT不支持burst：首beat已在收集级被接受，
+    // 继续吞掉剩余beat，避免上游停在W通道而永远等不到错误响应。
+    InWReady := true.B
+    when(io.in.W.WVALID && io.in.W.WLAST) {
       state := StateWriteDECERR
     }
   }.elsewhen(state === StateWriteResponse) {

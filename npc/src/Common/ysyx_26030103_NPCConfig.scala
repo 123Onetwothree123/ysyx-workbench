@@ -169,6 +169,7 @@ case class ysyx_26030103_NPCConfig(
 ) {
   require(!UseA, "RV32_A还没有做")
   require(!UseC, "RV32_C还没做")
+  require((ResetAddr & 0x3L) == 0L, "未启用RV32_C时ResetAddr必须按4字节对齐")
   require(
     Integer.bitCount(WBufDepth) == 1,
     "WBufDepth必须是2的幂(1/2/4/8/16)"

@@ -225,10 +225,23 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // sdb
   gpr.io.DebugRaddr := io.debug_gpr_raddr
   io.debug_gpr_rdata := gpr.io.DebugRdata
-  io.debug_pc := ifu.io.DebugPC
-  io.debug_instructions := idu.io.in.bits.Instruction
+  // 提交trace统一取MEM/WB寄存器中的同一条指令；debug_commit是唯一有效门控。
+  val DebugCommit = wbu.io.in.fire && wbu.io.in.bits.Retire
+  val LastCommitPC = RegInit(config.ResetAddr.U(32.W))
+  val LastCommitInstruction = RegInit("h00000013".U(32.W))
+  when(DebugCommit) {
+    LastCommitPC := wbu.io.in.bits.pc
+    LastCommitInstruction := wbu.io.in.bits.Instruction
+  }
+  io.debug_pc := Mux(DebugCommit, wbu.io.in.bits.pc, LastCommitPC)
+  io.debug_instructions := Mux(
+    DebugCommit,
+    wbu.io.in.bits.Instruction,
+    LastCommitInstruction
+  )
   // mtrace: 访存指令在LSU(MEM级)完成时采样
   io.debug_mtrace_valid := lsu.io.Complete && lsu.io.HazardMemOp
+  io.debug_mtrace_pc := lsu.io.DebugPC
   io.debug_mtrace_wen := lsu.io.DebugMemoryWrite
   io.debug_mtrace_addr := lsu.io.DebugALUResult
   io.debug_mtrace_wdata := lsu.io.DebugStoreDATA
@@ -236,12 +249,17 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   io.debug_mtrace_width := lsu.io.DebugWidthSelect
   // Access Fault
   io.debug_access_fault := AccessFaultOccurred
+  io.debug_access_fault_pc := Mux(
+    icache.io.access_fault,
+    icache.io.resp_addr,
+    lsu.io.DebugPC
+  )
   io.debug_access_fault_resp := Mux(
     icache.io.access_fault,
     icache.io.access_fault_resp,
     lsu.io.AccessFaultResp
   )
-  io.debug_commit := wbu.io.WriteEN
+  io.debug_commit := DebugCommit
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done := exu.io.out.fire

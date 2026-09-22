@@ -18,8 +18,15 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
   val BRESPReg = RegInit(OKAY)
   val RValidReg = RegInit(false.B)
   val ARIDReg = RegInit(0.U(4.W))
+  val ARAddrReg = RegInit(0.U(32.W))
+  val ARLenReg = RegInit(0.U(8.W))
+  val ARSizeReg = RegInit(2.U(3.W))
+  val ARBurstReg = RegInit(0.U(2.W))
+  val ARBeatReg = RegInit(0.U(8.W))
+  val ARConfigErrorReg = RegInit(false.B)
   val RDataReg = RegInit(0.U(32.W))
   val RRESPReg = RegInit(OKAY)
+  val RLastReg = RegInit(false.B)
   io.AW.AWREADY := !AWValidReg && !BValidReg
   io.W.WREADY := !WValidReg && !BValidReg
   io.B.BID := AWIDReg
@@ -30,7 +37,7 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
   io.R.RVALID := RValidReg
   io.R.RDATA := RDataReg
   io.R.RRESP := RRESPReg
-  io.R.RLAST := RValidReg
+  io.R.RLAST := RValidReg && RLastReg
   val AWFire = io.AW.AWVALID && io.AW.AWREADY
   val WFire = io.W.WVALID && io.W.WREADY
   val BFire = io.B.BVALID && io.B.BREADY
@@ -53,17 +60,59 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
   when(BFire) {
     BValidReg := false.B
   }
-  when(RFire) {
-    RValidReg := false.B
-  }
-  val IsMtimeLow = io.AR.ARADDR === MtimeLowAddress
-  val IsMtimeHigh = io.AR.ARADDR === MtimeHighAddress
-  val IsMtime = IsMtimeLow || IsMtimeHigh
-  Mtime.io.SelectHigh := IsMtimeHigh
+  def IsMtime(address: UInt): Bool =
+    address === MtimeLowAddress || address === MtimeHighAddress
+
+  val ARStep = MuxLookup(ARSizeReg, 0.U(32.W))(
+    Seq(
+      0.U -> 1.U(32.W),
+      1.U -> 2.U(32.W),
+      2.U -> 4.U(32.W)
+    )
+  )
+  val NextARAddr = Mux(ARBurstReg === 1.U, ARAddrReg + ARStep, ARAddrReg)
+  // Select the address whose response is being registered at this edge.  The
+  // data itself must be captured because mtime continues changing while the
+  // master is allowed to hold RREADY low.
+  val ResponseAddress = Mux(ARFire, io.AR.ARADDR, NextARAddr)
+  Mtime.io.SelectHigh := ResponseAddress === MtimeHighAddress
+
   when(ARFire) {
     ARIDReg := io.AR.ARID
-    RDataReg := Mtime.io.rdata
-    RRESPReg := Mux(IsMtime, OKAY, SLVERR)
+    ARAddrReg := io.AR.ARADDR
+    ARLenReg := io.AR.ARLEN
+    ARSizeReg := io.AR.ARSIZE
+    ARBurstReg := io.AR.ARBURST
+    ARBeatReg := 0.U
+    ARConfigErrorReg := io.AR.ARSIZE > 2.U || io.AR.ARBURST > 1.U
+    val ConfigError = io.AR.ARSIZE > 2.U || io.AR.ARBURST > 1.U
+    val AddressValid = IsMtime(io.AR.ARADDR)
+    RDataReg := Mux(!ConfigError && AddressValid, Mtime.io.rdata, 0.U)
+    RRESPReg := Mux(!ConfigError && AddressValid, OKAY, SLVERR)
+    RLastReg := io.AR.ARLEN === 0.U
     RValidReg := true.B
+  }
+  when(RFire) {
+    when(ARBeatReg === ARLenReg) {
+      RValidReg := false.B
+      RLastReg := false.B
+    }.otherwise {
+      val NextBeat = ARBeatReg + 1.U
+      val AddressValid = IsMtime(NextARAddr)
+      ARAddrReg := NextARAddr
+      ARBeatReg := NextBeat
+      RDataReg := Mux(
+        !ARConfigErrorReg && AddressValid,
+        Mtime.io.rdata,
+        0.U
+      )
+      RRESPReg := Mux(
+        !ARConfigErrorReg && AddressValid,
+        OKAY,
+        SLVERR
+      )
+      RLastReg := NextBeat === ARLenReg
+      RValidReg := true.B
+    }
   }
 }

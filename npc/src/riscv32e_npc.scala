@@ -14,65 +14,226 @@ class riscv32e_npc_AXIRAM extends Module {
   val mem = SyncReadMem(depth, UInt(32.W))
   loadMemoryFromFileInline(mem, "build/program.hex")
 
-  val sIdle :: sReadWait :: sReadResp :: sWriteResp :: Nil = Enum(4)
+  val OKAY = 0.U(2.W)
+  val SLVERR = 2.U(2.W)
+  val DECERR = 3.U(2.W)
+  val RamBase = "h80000000".U(32.W)
+  val RamLast = "h8003ffff".U(32.W)
+  val UARTAddress = "h10000000".U(32.W)
+
+  // A beat is in RAM only when every byte selected by AxSIZE remains inside
+  // the 256 KiB simulation-memory window.  In particular, addresses outside
+  // this window must never wrap through a truncated SyncReadMem index.
+  def IsRAMBeat(address: UInt, size: UInt): Bool = {
+    val lastStart = MuxLookup(size, 0.U(32.W))(
+      Seq(
+        0.U -> RamLast,
+        1.U -> (RamLast - 1.U),
+        2.U -> (RamLast - 3.U)
+      )
+    )
+    size <= 2.U && address >= RamBase && address <= lastStart
+  }
+
+  val sIdle :: sReadWait :: sReadResp :: sWriteRead :: sWriteCommit :: sWriteDrain :: sWriteResp :: Nil =
+    Enum(7)
   val state = RegInit(sIdle)
-  val txn = RegInit(0.U(32.W))
-  val arAddr = Reg(UInt(32.W))
-  val rd = mem.read((arAddr - 0x80000000L.U) >> 2)
+  val arAddr = RegInit(0.U(32.W))
+  val arId = RegInit(0.U(4.W))
+  val arLen = RegInit(0.U(8.W))
+  val arSize = RegInit(2.U(3.W))
+  val arBurst = RegInit(0.U(2.W))
+  val readBeat = RegInit(0.U(8.W))
+  val readConfigError = RegInit(false.B)
+  val readResp = RegInit(OKAY)
+  val readStep = MuxLookup(arSize, 0.U(32.W))(
+    Seq(
+      0.U -> 1.U(32.W),
+      1.U -> 2.U(32.W),
+      2.U -> 4.U(32.W)
+    )
+  )
+  val readAddressIsRAM = IsRAMBeat(arAddr, arSize)
+  val readWordIndex = ((arAddr - RamBase) >> 2)(15, 0)
+  val rd = mem.read(
+    readWordIndex,
+    (state === sReadWait || state === sReadResp) &&
+      !readConfigError && readAddressIsRAM
+  )
 
-  val awAddr = Reg(UInt(32.W))
-  val wData = Reg(UInt(32.W))
-  val wStrb = Reg(UInt(4.W))
+  val awAddr = RegInit(0.U(32.W))
+  val awId = RegInit(0.U(4.W))
+  val awLen = RegInit(0.U(8.W))
+  val awSize = RegInit(2.U(3.W))
+  val awBurst = RegInit(0.U(2.W))
+  val writeBeat = RegInit(0.U(8.W))
+  val writeResp = RegInit(OKAY)
+  val writeConfigError = RegInit(false.B)
+  val wData = RegInit(0.U(32.W))
+  val wStrb = RegInit(0.U(4.W))
+  val wLast = RegInit(false.B)
+  val awPending = RegInit(false.B)
+  val wPending = RegInit(false.B)
 
-  io.axi.AR.ARREADY := state === sIdle
+  // SyncReadMem returns data one cycle after a read request.  A partial write
+  // therefore has to read the old word first, then merge and write it in a
+  // later state; using the read result in the request cycle would merge stale
+  // or undefined data.
+  val writeAddressIsRAM = IsRAMBeat(awAddr, awSize)
+  val writeAddressIsUART = awAddr === UARTAddress
+  val writeWordIndex = ((awAddr - RamBase) >> 2)(15, 0)
+  val writeOld = mem.read(
+    writeWordIndex,
+    state === sWriteRead && !writeConfigError && writeAddressIsRAM
+  )
+  val writeMask = Cat(
+    Mux(wStrb(3), 0xff.U(8.W), 0.U(8.W)),
+    Mux(wStrb(2), 0xff.U(8.W), 0.U(8.W)),
+    Mux(wStrb(1), 0xff.U(8.W), 0.U(8.W)),
+    Mux(wStrb(0), 0xff.U(8.W), 0.U(8.W))
+  )
+  val writeMerged = (wData & writeMask) | (writeOld & ~writeMask)
+  val writeStep = MuxLookup(awSize, 0.U(32.W))(
+    Seq(
+      0.U -> 1.U(32.W),
+      1.U -> 2.U(32.W),
+      2.U -> 4.U(32.W)
+    )
+  )
+  val expectedLastBeat = writeBeat === awLen
+
+  // Give a partially collected write priority over reads.  AW and W are
+  // accepted independently and may arrive in either order.
+  val writeIncoming = awPending || wPending || io.axi.AW.AWVALID || io.axi.W.WVALID
+  io.axi.AW.AWREADY := state === sIdle && !awPending
+  io.axi.W.WREADY := (state === sIdle && !wPending) || state === sWriteDrain
+  io.axi.AR.ARREADY := state === sIdle && !writeIncoming
+
+  val awFire = io.axi.AW.AWVALID && io.axi.AW.AWREADY
+  val wFire = io.axi.W.WVALID && io.axi.W.WREADY
+  val wCollectFire = wFire && state === sIdle
+  val wDrainFire = wFire && state === sWriteDrain
+  val arFire = io.axi.AR.ARVALID && io.axi.AR.ARREADY
+  val haveAW = awPending || awFire
+  val haveW = wPending || wCollectFire
+
+  when(awFire) {
+    awAddr := io.axi.AW.AWADDR
+    awId := io.axi.AW.AWID
+    awLen := io.axi.AW.AWLEN
+    awSize := io.axi.AW.AWSIZE
+    awBurst := io.axi.AW.AWBURST
+    writeBeat := 0.U
+    writeConfigError := io.axi.AW.AWSIZE > 2.U || io.axi.AW.AWBURST > 1.U
+    writeResp := Mux(
+      io.axi.AW.AWSIZE > 2.U || io.axi.AW.AWBURST > 1.U,
+      SLVERR,
+      OKAY
+    )
+    awPending := true.B
+  }
+  when(wCollectFire) {
+    wData := io.axi.W.WDATA
+    wStrb := io.axi.W.WSTRB
+    wLast := io.axi.W.WLAST
+    wPending := true.B
+  }
+
   io.axi.R.RVALID := state === sReadResp
-  io.axi.R.RDATA := rd
-  io.axi.R.RRESP := 0.U
-  io.axi.R.RLAST := true.B
-  io.axi.R.RID := 0.U
+  io.axi.R.RDATA := Mux(readResp === OKAY, rd, 0.U)
+  io.axi.R.RRESP := readResp
+  io.axi.R.RLAST := state === sReadResp && readBeat === arLen
+  io.axi.R.RID := arId
 
-  io.axi.AW.AWREADY := state === sIdle
-  io.axi.W.WREADY := state === sIdle
   io.axi.B.BVALID := state === sWriteResp
-  io.axi.B.BRESP := 0.U
-  io.axi.B.BID := 0.U
+  io.axi.B.BRESP := writeResp
+  io.axi.B.BID := awId
 
   switch(state) {
     is(sIdle) {
-      when(io.axi.AR.ARVALID && io.axi.AR.ARREADY) {
+      when(arFire) {
         arAddr := io.axi.AR.ARADDR
+        arId := io.axi.AR.ARID
+        arLen := io.axi.AR.ARLEN
+        arSize := io.axi.AR.ARSIZE
+        arBurst := io.axi.AR.ARBURST
+        readBeat := 0.U
+        readConfigError := io.axi.AR.ARSIZE > 2.U || io.axi.AR.ARBURST > 1.U
         state := sReadWait
-        txn := txn + 1.U
-      }.elsewhen(io.axi.AW.AWVALID && io.axi.W.WVALID) {
-        awAddr := io.axi.AW.AWADDR
-        wData := io.axi.W.WDATA
-        wStrb := io.axi.W.WSTRB
-        state := sWriteResp
-        txn := txn + 1.U
+      }.elsewhen(haveAW && haveW) {
+        state := sWriteRead
       }
     }
     is(sReadWait) {
+      readResp := Mux(
+        readConfigError,
+        SLVERR,
+        Mux(readAddressIsRAM, OKAY, DECERR)
+      )
       state := sReadResp
     }
     is(sReadResp) {
       when(io.axi.R.RREADY) {
+        when(readBeat === arLen) {
+          state := sIdle
+        }.otherwise {
+          readBeat := readBeat + 1.U
+          when(arBurst === 1.U && !readConfigError) {
+            arAddr := arAddr + readStep
+          }
+          state := sReadWait
+        }
+      }
+    }
+    is(sWriteRead) {
+      // Launch the synchronous read.  writeOld is valid in sWriteCommit.
+      state := sWriteCommit
+    }
+    is(sWriteCommit) {
+      when(!writeConfigError) {
+        when(writeAddressIsRAM) {
+          mem.write(writeWordIndex, writeMerged)
+        }.elsewhen(writeAddressIsUART) {
+          // UART is a side-effect-only target and is deliberately disjoint
+          // from the RAM window.  Only an enabled low byte emits a character.
+          when(wStrb(0)) {
+            printf("%c", wData(7, 0))
+          }
+        }.otherwise {
+          when(writeResp === OKAY) {
+            writeResp := DECERR
+          }
+        }
+      }
+      when(wLast) {
+        when(!expectedLastBeat) {
+          writeResp := SLVERR // early WLAST
+        }
+        state := sWriteResp
+      }.elsewhen(expectedLastBeat) {
+        // AWLEN beats have arrived without WLAST.  Drain through WLAST so the
+        // upstream write-data channel cannot remain wedged, then report SLVERR.
+        writeResp := SLVERR
+        wPending := false.B
+        state := sWriteDrain
+      }.otherwise {
+        writeBeat := writeBeat + 1.U
+        when(awBurst === 1.U) { // INCR; FIXED keeps the same address
+          awAddr := awAddr + writeStep
+        }
+        wPending := false.B
         state := sIdle
+      }
+    }
+    is(sWriteDrain) {
+      when(wDrainFire && io.axi.W.WLAST) {
+        state := sWriteResp
       }
     }
     is(sWriteResp) {
       when(io.axi.B.BREADY) {
-        when(awAddr === 0x10000000L.U) {
-          printf("%c", wData(7, 0))
-        }
-        val addr = ((awAddr - 0x80000000L.U) >> 2) & 65535.U(32.W)
-        val old = mem.read(addr)
-        val mask = Cat(
-          Mux(wStrb(3), 0xff.U(8.W), 0.U(8.W)),
-          Mux(wStrb(2), 0xff.U(8.W), 0.U(8.W)),
-          Mux(wStrb(1), 0xff.U(8.W), 0.U(8.W)),
-          Mux(wStrb(0), 0xff.U(8.W), 0.U(8.W))
-        )
-        mem.write(addr, (wData & mask) | (old & ~mask))
+        awPending := false.B
+        wPending := false.B
         state := sIdle
       }
     }
@@ -164,6 +325,8 @@ class riscv32e_npc_SimTop extends Module {
 
   val debug_mtrace_valid = IO(Output(Bool()))
   debug_mtrace_valid := cpu.io.debug_mtrace_valid
+  val debug_mtrace_pc = IO(Output(UInt(32.W)))
+  debug_mtrace_pc := cpu.io.debug_mtrace_pc
   val debug_mtrace_wen = IO(Output(Bool()))
   debug_mtrace_wen := cpu.io.debug_mtrace_wen
   val debug_mtrace_addr = IO(Output(UInt(32.W)))
@@ -177,6 +340,8 @@ class riscv32e_npc_SimTop extends Module {
 
   val debug_access_fault = IO(Output(Bool()))
   debug_access_fault := cpu.io.debug_access_fault
+  val debug_access_fault_pc = IO(Output(UInt(32.W)))
+  debug_access_fault_pc := cpu.io.debug_access_fault_pc
   val debug_access_fault_resp = IO(Output(UInt(2.W)))
   debug_access_fault_resp := cpu.io.debug_access_fault_resp
   val debug_commit = IO(Output(Bool()))

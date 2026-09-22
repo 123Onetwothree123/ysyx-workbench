@@ -14,9 +14,10 @@ class ysyx_26030103_mepc extends Module {
   })
   val RegMepc = withClockAndReset(io.clk, io.rst) { RegInit(0.U(32.W)) }
   when(io.ExceptionWE) { // 异常优先跑
-    RegMepc := io.ExceptionData
+    RegMepc := Cat(io.ExceptionData(31, 2), 0.U(2.W))
   }.elsewhen(io.wen) {
-    RegMepc := io.wdata
+    RegMepc := Cat(io.wdata(31, 2), 0.U(2.W))
   }
-  io.rdata := RegMepc
+  // IALIGN=32：mepc[1:0]在写入和读出两侧都固定为0。
+  io.rdata := Cat(RegMepc(31, 2), 0.U(2.W))
 }

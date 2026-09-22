@@ -13,7 +13,10 @@ class ysyx_26030103_mtvec extends Module {
   when(io.rst) {
     RegMtvec := 0.U(32.W)
   }.elsewhen(io.wen) {
-    RegMtvec := io.wdata
+    // WARL: BASE按4字节对齐，MODE仅支持Direct(0)/Vectored(1)。
+    // 对于保留编码2/3，选择确定性地收敛到Direct。
+    val LegalMode = Mux(io.wdata(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
+    RegMtvec := Cat(io.wdata(31, 2), LegalMode)
   }
   io.rdata := RegMtvec
 }

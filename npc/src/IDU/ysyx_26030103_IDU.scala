@@ -232,6 +232,7 @@ class ysyx_26030103_IDU(
   io.perf_stall_raw := io.in.valid && isRAW
   io.perf_stall_raw_loaduse := io.in.valid && isRAW && raw_loaduse
   io.perf_stall_raw_alu := io.in.valid && isRAW && !raw_loaduse
+  io.out.bits.Instruction := Instruction
   io.out.bits.pc := pc
   io.out.bits.snpc := snpc
   io.out.bits.ALUCtrl := ALUCtrl

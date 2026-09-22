@@ -129,12 +129,14 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     debug_instructions := cpu.module.debug_instructions
     // mtrace
     val debug_mtrace_valid = IO(Output(Bool()))
+    val debug_mtrace_pc = IO(Output(UInt(32.W)))
     val debug_mtrace_wen = IO(Output(Bool()))
     val debug_mtrace_addr = IO(Output(UInt(32.W)))
     val debug_mtrace_wdata = IO(Output(UInt(32.W)))
     val debug_mtrace_rdata = IO(Output(UInt(32.W)))
     val debug_mtrace_width = IO(Output(UInt(2.W)))
     debug_mtrace_valid := cpu.module.debug_mtrace_valid
+    debug_mtrace_pc := cpu.module.debug_mtrace_pc
     debug_mtrace_wen := cpu.module.debug_mtrace_wen
     debug_mtrace_addr := cpu.module.debug_mtrace_addr
     debug_mtrace_wdata := cpu.module.debug_mtrace_wdata
@@ -143,6 +145,8 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     // Access Fault
     val debug_access_fault = IO(Output(Bool()))
     debug_access_fault := cpu.module.debug_access_fault
+    val debug_access_fault_pc = IO(Output(UInt(32.W)))
+    debug_access_fault_pc := cpu.module.debug_access_fault_pc
     val debug_access_fault_resp = IO(Output(UInt(2.W)))
     debug_access_fault_resp := cpu.module.debug_access_fault_resp
     val debug_commit = IO(Output(Bool()))
@@ -367,12 +371,14 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     debug_instructions := masic.debug_instructions
     // mtrace
     val debug_mtrace_valid = IO(Output(Bool()))
+    val debug_mtrace_pc = IO(Output(UInt(32.W)))
     val debug_mtrace_wen = IO(Output(Bool()))
     val debug_mtrace_addr = IO(Output(UInt(32.W)))
     val debug_mtrace_wdata = IO(Output(UInt(32.W)))
     val debug_mtrace_rdata = IO(Output(UInt(32.W)))
     val debug_mtrace_width = IO(Output(UInt(2.W)))
     debug_mtrace_valid := masic.debug_mtrace_valid
+    debug_mtrace_pc := masic.debug_mtrace_pc
     debug_mtrace_wen := masic.debug_mtrace_wen
     debug_mtrace_addr := masic.debug_mtrace_addr
     debug_mtrace_wdata := masic.debug_mtrace_wdata
@@ -381,6 +387,8 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     // Access Fault
     val debug_access_fault = IO(Output(Bool()))
     debug_access_fault := masic.debug_access_fault
+    val debug_access_fault_pc = IO(Output(UInt(32.W)))
+    debug_access_fault_pc := masic.debug_access_fault_pc
     val debug_access_fault_resp = IO(Output(UInt(2.W)))
     debug_access_fault_resp := masic.debug_access_fault_resp
     // IPC

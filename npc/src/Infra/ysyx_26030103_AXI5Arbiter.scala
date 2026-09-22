@@ -92,15 +92,19 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   val LSUWriteRequest = io.lsu.AW.AWVALID || io.lsu.W.WVALID
   val LSUReadRequest = io.lsu.AR.ARVALID
   val IFUReadRequest = io.ifu.AR.ARVALID
+  val LSURequest = LSUWriteRequest || LSUReadRequest
 
   switch(state) {
     is(StatesIdle) {
       AWDone := false.B
       WDone := false.B
-      when(LSUWriteRequest) {
+      // grant保留上一笔事务的owner；双方同时请求时选择另一方，形成
+      // 事务粒度的round-robin，避免写缓冲持续排空时长期压住IFU。
+      val ChooseLSU = LSURequest && (!IFUReadRequest || grant === GrantIFU)
+      when(ChooseLSU && LSUWriteRequest) {
         grant := GrantLSU
         state := StatesWriteRequest
-      }.elsewhen(LSUReadRequest) {
+      }.elsewhen(ChooseLSU && LSUReadRequest) {
         grant := GrantLSU
         state := StatesReadRequest
       }.elsewhen(IFUReadRequest) {
@@ -157,6 +161,7 @@ class ysyx_26030103_AXI5Arbiter extends Module {
       // 必须得没有完成握手应该是怕不会重复握手，后面两个条件就是对标fire
       val AWFire = !AWAlreadyDone && io.lsu.AW.AWVALID && io.memory.AW.AWREADY
       val WFire = !WAlreadyDone && io.lsu.W.WVALID && io.memory.W.WREADY
+      val WLastFire = WFire && io.lsu.W.WLAST
 //只有AW还没完成时才把ysyx_26030103_LSU的AWVALID传递给Memory
       io.memory.AW.AWVALID := io.lsu.AW.AWVALID && !AWAlreadyDone
       io.memory.AW.AWID := io.lsu.AW.AWID
@@ -178,11 +183,12 @@ class ysyx_26030103_AXI5Arbiter extends Module {
       when(AWFire) {
         AWDone := true.B
       }
-      when(WFire) {
+      // W通道可以有多个beat；只有实际握手的WLAST才结束数据阶段。
+      when(WLastFire) {
         WDone := true.B
       }
       // 都完成了就直接开始回复
-      when((AWAlreadyDone || AWFire) && (WAlreadyDone || WFire)) {
+      when((AWAlreadyDone || AWFire) && (WAlreadyDone || WLastFire)) {
         state := StatesWriteResponse
       }
     }

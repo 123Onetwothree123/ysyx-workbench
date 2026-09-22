@@ -183,14 +183,15 @@ void DUT::step()
     if (dut->perf_ifu_fetch)
     {
         ++perf.instruction_fetch;
-#ifdef CONFIG_ITRACE_WRITE_FILE
-        {
-            static auto fp = std::ofstream("itrace.txt", std::ios::app);
-            fp << std::hex << "0x" << static_cast<uint32_t>(dut->debug_pc) << "\n"
-               << std::dec;
-        }
-#endif
     }
+#ifdef CONFIG_ITRACE_WRITE_FILE
+    if (dut->debug_commit)
+    {
+        static auto fp = std::ofstream("itrace.txt", std::ios::app);
+        fp << std::hex << "0x" << static_cast<uint32_t>(dut->debug_pc) << "\n"
+           << std::dec;
+    }
+#endif
     if (dut->perf_exu_done)
     {
         ++perf.execution_complete;
@@ -387,9 +388,13 @@ void DUT::step()
 #endif
 #endif
 #ifdef CONFIG_ITRACE
-    Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
+    if (dut->debug_commit)
+    {
+        Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
+    }
 #endif
 #ifdef CONFIG_FTRACE
+    if (dut->debug_commit)
     {
         static bool HasPreviousStep{false};
         static std::uint32_t PreviousPC{0};
@@ -408,7 +413,7 @@ void DUT::step()
     if (dut->debug_mtrace_valid)
     {
         MtraceRecord(
-            dut->debug_pc,
+            dut->debug_mtrace_pc,
             dut->debug_mtrace_addr,
             dut->debug_mtrace_wdata,
             dut->debug_mtrace_rdata,
@@ -426,7 +431,7 @@ void DUT::step()
         if (fault_count++ < 20)
         {
         auto resp{static_cast<unsigned>(dut->debug_access_fault_resp)};
-        auto pc{static_cast<std::uint32_t>(dut->debug_pc)};
+        auto pc{static_cast<std::uint32_t>(dut->debug_access_fault_pc)};
         if (resp == 2)
         {
             std::println(std::cerr, "Access Fault [SLVERR] at PC=0x{:08x}, cycle={}", pc, cycle);

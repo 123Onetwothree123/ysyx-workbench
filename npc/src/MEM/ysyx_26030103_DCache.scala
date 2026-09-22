@@ -31,7 +31,7 @@ class ysyx_26030103_DCache(
   val io = IO(new Bundle {
     val req = Flipped(Decoupled(new Request))
     val resp = Decoupled(new Response)
-    val StoreValid = Input(Bool()) // LSU写缓冲入队时通知DCache
+    val StoreValid = Input(Bool()) // LSU收到成功B响应时通知DCache
     val StoreAddr = Input(UInt(AddressWidth.W))
     val StoreData = Input(UInt(32.W))
     val StoreStrb = Input(UInt(4.W))
@@ -137,7 +137,8 @@ class ysyx_26030103_DCache(
   io.AXI.AR.ARPROT := 0.U
   io.AXI.R.RREADY := false.B
   io.req.ready := state === SIdle && !io.flush
-  io.resp.valid := state === SResp
+  // flush可取消尚未交付给LSU的内部响应；AXI侧已经提出的请求则不能撤回。
+  io.resp.valid := state === SResp && !io.flush
   io.resp.bits.data := ResponseData
   io.resp.bits.fault := ResponseFault
   io.resp.bits.FaultResp := ResponseFaultResp
@@ -161,7 +162,7 @@ class ysyx_26030103_DCache(
     (io.StoreAddr(31, 28) === "h8".U || io.StoreAddr(31, 28) === "ha".U)
   val StoreHit = StoreCacheable &&
     valid(StoreIndexSafe) && tag(StoreIndexSafe) === StoreTag
-  when(io.StoreValid && StoreCacheable) { // 与LSU写缓冲入队同拍更新缓存
+  when(io.StoreValid && StoreCacheable) { // 只在外部写成功后更新写直达镜像
     when(StoreHit) {
       if (WordsPerBlock > 1) {
         data(StoreIndexSafe)(StoreOffset) :=
@@ -224,15 +225,9 @@ class ysyx_26030103_DCache(
         ReqAddrReg
       )
       io.AXI.AR.ARSIZE := Mux(RefillActive, 2.U, ReqWidthReg)
-      when(io.flush) {
-        when(io.AXI.AR.ARREADY) {
-          discard := true.B // AR已握手时继续等待并丢弃返回数据
-          state := SReadResp
-        }.otherwise {
-          RefillActive := false.B
-          state := SIdle
-        }
-      }.elsewhen(io.AXI.AR.ARREADY) {
+      // AXI要求ARVALID一旦提出就保持到握手。即使flush到来，也继续完成
+      // 地址握手，再在R通道排空并丢弃响应。
+      when(io.AXI.AR.ARREADY) {
         state := SReadResp
       }
     }
@@ -299,6 +294,7 @@ class ysyx_26030103_DCache(
   when(io.flush) { // fence.i使全部缓存行失效
     valid.foreach(_ := false.B)
     when(state === SResp) { state := SIdle }
+    when(state === SReadReq) { discard := true.B }
     when(state === SReadResp && !io.AXI.R.RVALID) { discard := true.B }
   }
 }

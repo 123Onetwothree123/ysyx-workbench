@@ -34,6 +34,7 @@ class ysyx_26030103 extends BlackBox {
     val io_debug_instructions = Output(UInt(32.W))
     // mtrace
     val io_debug_mtrace_valid = Output(Bool())
+    val io_debug_mtrace_pc    = Output(UInt(32.W))
     val io_debug_mtrace_wen   = Output(Bool())
     val io_debug_mtrace_addr  = Output(UInt(32.W))
     val io_debug_mtrace_wdata = Output(UInt(32.W))
@@ -41,6 +42,7 @@ class ysyx_26030103 extends BlackBox {
     val io_debug_mtrace_width = Output(UInt(2.W))
     // Access Fault
     val io_debug_access_fault = Output(Bool())
+    val io_debug_access_fault_pc = Output(UInt(32.W))
     val io_debug_access_fault_resp = Output(UInt(2.W))
     val io_debug_commit = Output(Bool())
     // 性能计数器
@@ -131,12 +133,14 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     debug_instructions := cpu.io.io_debug_instructions
     // mtrace
     val debug_mtrace_valid = IO(Output(Bool()))
+    val debug_mtrace_pc    = IO(Output(UInt(32.W)))
     val debug_mtrace_wen   = IO(Output(Bool()))
     val debug_mtrace_addr  = IO(Output(UInt(32.W)))
     val debug_mtrace_wdata = IO(Output(UInt(32.W)))
     val debug_mtrace_rdata = IO(Output(UInt(32.W)))
     val debug_mtrace_width = IO(Output(UInt(2.W)))
     debug_mtrace_valid := cpu.io.io_debug_mtrace_valid
+    debug_mtrace_pc    := cpu.io.io_debug_mtrace_pc
     debug_mtrace_wen   := cpu.io.io_debug_mtrace_wen
     debug_mtrace_addr  := cpu.io.io_debug_mtrace_addr
     debug_mtrace_wdata := cpu.io.io_debug_mtrace_wdata
@@ -145,6 +149,8 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     // Access Fault
     val debug_access_fault = IO(Output(Bool()))
     debug_access_fault := cpu.io.io_debug_access_fault
+    val debug_access_fault_pc = IO(Output(UInt(32.W)))
+    debug_access_fault_pc := cpu.io.io_debug_access_fault_pc
     val debug_access_fault_resp = IO(Output(UInt(2.W)))
     debug_access_fault_resp := cpu.io.io_debug_access_fault_resp
     val debug_commit = IO(Output(Bool()))

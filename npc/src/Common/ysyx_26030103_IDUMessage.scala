@@ -2,6 +2,7 @@ package ysyx_26030103.common
 import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction.CtrlWidth
 class ysyx_26030103_IDUMessage extends Bundle {
+  val Instruction = UInt(32.W)
   val pc = UInt(32.W)
   val snpc = UInt(32.W)
 

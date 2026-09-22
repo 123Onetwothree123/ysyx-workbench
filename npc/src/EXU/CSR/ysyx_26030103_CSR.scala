@@ -35,6 +35,11 @@ class ysyx_26030103_CSR extends Module {
     // 中断提交标志(Enable且中断被接受),给EXU用来压掉被中断指令的副作用:
     // mepc记的是这条指令自己的PC,mret后它会重新执行,因此它本次不得写GPR/CSR
     val IrqCommit = Output(Bool())
+    // 未经Enable门控的“可接受IRQ”，供EXU在老MEM指令未排空时预先施加反压。
+    val IrqPending = Output(Bool())
+    // 仅在进入trap(ecall/ebreak/同步异常/IRQ/MEM fault)时置位；
+    // MRET虽然也产生控制转移，但不是新的trap入口。
+    val TrapCommit = Output(Bool())
   })
   // ysyx_26030103_mcycle=12'hB00，低32位
   // mcycleh=12'hB80，高32位
@@ -91,6 +96,7 @@ class ysyx_26030103_CSR extends Module {
     io.Interrupt && Mstatus_rdata(
       3
     ) // ysyx_26030103_mstatus寄存器第3位是MIE，这个是处理器的中断使能，允许中断进来
+  io.IrqPending := HasInterrupt
   val IsException = io.IsEcall || io.IsEbreak || HasInterrupt || io.TrapValid
   /*
   根据RISCV手册来看，31号bit如果是0那就是异常，而如果是1，那就是中断
@@ -117,6 +123,7 @@ class ysyx_26030103_CSR extends Module {
   io.IrqCommit := HasIrqCommit
   // 异常提交: MEM后门优先(当前指令被冲刷), 其余由本条指令的ecall/ebreak/中断/异常触发
   val ExceptionCommit = io.MemTrap || (io.Enable && IsException)
+  io.TrapCommit := ExceptionCommit
   // 以下这段代码是AI编写的
   /*
   就是RISCV有两种模式，一种是BASE模式，一种是向量模式
@@ -206,13 +213,23 @@ class ysyx_26030103_CSR extends Module {
     IsCSRAddress(CSR_MEPC) ||
     IsCSRAddress(CSR_MCAUSE)
   io.CSRValid := CSRReadCommand && IsAddressValid
-  // ecall和ebreak跳ysyx_26030103_mtvec，mret跳ysyx_26030103_mepc
-  // 目标按"是否提交异常"选择: 异常优先走mtvec, 只有纯mret才走mepc
+  // mtvec.MODE=Direct(0): 所有trap走BASE。MODE=Vectored(1): 只有interrupt
+  // 走BASE+4*cause，同步异常仍走BASE。目标使用本拍ExceptionCause，
+  // 不依赖时钟边沿后才写入的mcause。
+  val MtvecBase = Cat(Mtvec_rdata(31, 2), 0.U(2.W))
+  val CauseOffsetWide = ExceptionCause(30, 0) << 2
+  val CauseOffset = CauseOffsetWide(31, 0)
+  val MtvecTrapTarget = Mux(
+    Mtvec_rdata(1, 0) === 1.U && ExceptionCause(31),
+    MtvecBase + CauseOffset,
+    MtvecBase
+  )
+  // 目标按"是否提交异常"选择: trap优先走mtvec, 只有纯mret才走mepc
   // (修掉MemTrap当拍被冲刷的mret把目标劫持到旧mepc的问题)
   io.ExceptionTaken := ExceptionCommit || MretCommit
   io.ExceptionTarget := Mux(
     ExceptionCommit,
-    Cat(Mtvec_rdata(31, 2), 0.U(2.W)),
+    MtvecTrapTarget,
     Mepc_rdata
   )
 }

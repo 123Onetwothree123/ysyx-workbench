@@ -9,12 +9,14 @@ module riscv32e_npc_SimTop(
   output [31:0] debug_pc,
   output [31:0] debug_instructions,
   output        debug_mtrace_valid,
+  output [31:0] debug_mtrace_pc,
   output        debug_mtrace_wen,
   output [31:0] debug_mtrace_addr,
   output [31:0] debug_mtrace_wdata,
   output [31:0] debug_mtrace_rdata,
   output [1:0]  debug_mtrace_width,
   output        debug_access_fault,
+  output [31:0] debug_access_fault_pc,
   output [1:0]  debug_access_fault_resp,
   output        debug_commit,
   output perf_ifu_fetch, perf_exu_done, perf_lsu_load, perf_lsu_store,
@@ -29,11 +31,19 @@ module riscv32e_npc_SimTop(
   output perf_lsu_stall_read_ar, perf_lsu_stall_read_r,
   output perf_lsu_stall_write_req, perf_lsu_stall_write_b,
   output perf_icache_hit, perf_icache_miss,
+  output perf_dcache_hit, perf_dcache_miss,
+  output perf_dcache_refill_req, perf_dcache_refill_resp,
+  output perf_idu_stall_raw, perf_idu_stall_raw_loaduse, perf_idu_stall_raw_alu,
+  output perf_exu_idle_noinput, perf_trap,
   output perf_mem_waitslot
 );
 
   wire        cpu_awready, cpu_awvalid, cpu_wready, cpu_wvalid, cpu_wlast;
   wire [31:0] cpu_awaddr, cpu_wdata;
+  wire [3:0]  cpu_awid, cpu_arid;
+  wire [7:0]  cpu_awlen, cpu_arlen;
+  wire [2:0]  cpu_awsize, cpu_arsize, cpu_awprot, cpu_arprot;
+  wire [1:0]  cpu_awburst, cpu_arburst;
   wire [3:0]  cpu_wstrb;
   wire        cpu_bready, cpu_bvalid;
   wire [1:0]  cpu_bresp;
@@ -48,19 +58,21 @@ module riscv32e_npc_SimTop(
     .io_trap_valid(trap_valid), .io_trap_pc(trap_pc),
     .io_master_awready(cpu_awready), .io_master_awvalid(cpu_awvalid),
     .io_master_awaddr(cpu_awaddr),
-    .io_master_awid(), .io_master_awlen(), .io_master_awsize(), .io_master_awburst(),
-    .io_master_awlock(), .io_master_awcache(), .io_master_awprot(), .io_master_awqos(),
+    .io_master_awid(cpu_awid), .io_master_awlen(cpu_awlen),
+    .io_master_awsize(cpu_awsize), .io_master_awburst(cpu_awburst),
+    .io_master_awlock(), .io_master_awcache(), .io_master_awprot(cpu_awprot), .io_master_awqos(),
     .io_master_wready(cpu_wready), .io_master_wvalid(cpu_wvalid),
     .io_master_wdata(cpu_wdata), .io_master_wstrb(cpu_wstrb), .io_master_wlast(cpu_wlast),
     .io_master_bready(cpu_bready), .io_master_bvalid(cpu_bvalid),
-    .io_master_bresp(cpu_bresp), .io_master_bid(),
+    .io_master_bresp(cpu_bresp), .io_master_bid(cpu_bid),
     .io_master_arready(cpu_arready), .io_master_arvalid(cpu_arvalid),
     .io_master_araddr(cpu_araddr),
-    .io_master_arid(), .io_master_arlen(), .io_master_arsize(), .io_master_arburst(),
-    .io_master_arlock(), .io_master_arcache(), .io_master_arprot(), .io_master_arqos(),
+    .io_master_arid(cpu_arid), .io_master_arlen(cpu_arlen),
+    .io_master_arsize(cpu_arsize), .io_master_arburst(cpu_arburst),
+    .io_master_arlock(), .io_master_arcache(), .io_master_arprot(cpu_arprot), .io_master_arqos(),
     .io_master_rready(cpu_rready), .io_master_rvalid(cpu_rvalid),
     .io_master_rdata(cpu_rdata), .io_master_rresp(cpu_rresp),
-    .io_master_rlast(cpu_rlast), .io_master_rid(),
+    .io_master_rlast(cpu_rlast), .io_master_rid(cpu_rid),
     .io_slave_awready(), .io_slave_awvalid(1'b0),
     .io_slave_awaddr(32'b0), .io_slave_awid(4'b0), .io_slave_awlen(8'b0),
     .io_slave_awsize(3'b0), .io_slave_awburst(2'b0), .io_slave_awlock(1'b0),
@@ -77,12 +89,14 @@ module riscv32e_npc_SimTop(
     .io_debug_gpr_raddr(debug_gpr_raddr), .io_debug_gpr_rdata(debug_gpr_rdata),
     .io_debug_pc(debug_pc), .io_debug_instructions(debug_instructions),
     .io_debug_mtrace_valid(debug_mtrace_valid),
+    .io_debug_mtrace_pc(debug_mtrace_pc),
     .io_debug_mtrace_wen(debug_mtrace_wen),
     .io_debug_mtrace_addr(debug_mtrace_addr),
     .io_debug_mtrace_wdata(debug_mtrace_wdata),
     .io_debug_mtrace_rdata(debug_mtrace_rdata),
     .io_debug_mtrace_width(debug_mtrace_width),
     .io_debug_access_fault(debug_access_fault),
+    .io_debug_access_fault_pc(debug_access_fault_pc),
     .io_debug_access_fault_resp(debug_access_fault_resp),
     .io_debug_commit(debug_commit),
     .io_perf_ifu_fetch(perf_ifu_fetch), .io_perf_exu_done(perf_exu_done),
@@ -108,6 +122,14 @@ module riscv32e_npc_SimTop(
     .io_perf_lsu_stall_write_req(perf_lsu_stall_write_req),
     .io_perf_lsu_stall_write_b(perf_lsu_stall_write_b),
     .io_perf_icache_hit(perf_icache_hit), .io_perf_icache_miss(perf_icache_miss),
+    .io_perf_dcache_hit(perf_dcache_hit), .io_perf_dcache_miss(perf_dcache_miss),
+    .io_perf_dcache_refill_req(perf_dcache_refill_req),
+    .io_perf_dcache_refill_resp(perf_dcache_refill_resp),
+    .io_perf_idu_stall_raw(perf_idu_stall_raw),
+    .io_perf_idu_stall_raw_loaduse(perf_idu_stall_raw_loaduse),
+    .io_perf_idu_stall_raw_alu(perf_idu_stall_raw_alu),
+    .io_perf_exu_idle_noinput(perf_exu_idle_noinput),
+    .io_perf_trap(perf_trap),
     .io_perf_mem_waitslot(perf_mem_waitslot)
   );
 
@@ -115,16 +137,16 @@ module riscv32e_npc_SimTop(
     .clock(clock), .reset(reset),
     .io_axi_AW_AWVALID(cpu_awvalid), .io_axi_AW_AWREADY(cpu_awready),
     .io_axi_AW_AWADDR(cpu_awaddr),
-    .io_axi_AW_AWID(4'b0), .io_axi_AW_AWLEN(8'b0), .io_axi_AW_AWSIZE(3'b0),
-    .io_axi_AW_AWBURST(2'b0), .io_axi_AW_AWPROT(3'b0),
+    .io_axi_AW_AWID(cpu_awid), .io_axi_AW_AWLEN(cpu_awlen), .io_axi_AW_AWSIZE(cpu_awsize),
+    .io_axi_AW_AWBURST(cpu_awburst), .io_axi_AW_AWPROT(cpu_awprot),
     .io_axi_W_WDATA(cpu_wdata), .io_axi_W_WSTRB(cpu_wstrb), .io_axi_W_WLAST(cpu_wlast),
     .io_axi_W_WVALID(cpu_wvalid), .io_axi_W_WREADY(cpu_wready),
     .io_axi_B_BVALID(cpu_bvalid), .io_axi_B_BREADY(cpu_bready),
     .io_axi_B_BRESP(cpu_bresp), .io_axi_B_BID(cpu_bid),
     .io_axi_AR_ARVALID(cpu_arvalid), .io_axi_AR_ARREADY(cpu_arready),
     .io_axi_AR_ARADDR(cpu_araddr),
-    .io_axi_AR_ARID(4'b0), .io_axi_AR_ARLEN(8'b0), .io_axi_AR_ARSIZE(3'b0),
-    .io_axi_AR_ARBURST(2'b0), .io_axi_AR_ARPROT(3'b0),
+    .io_axi_AR_ARID(cpu_arid), .io_axi_AR_ARLEN(cpu_arlen), .io_axi_AR_ARSIZE(cpu_arsize),
+    .io_axi_AR_ARBURST(cpu_arburst), .io_axi_AR_ARPROT(cpu_arprot),
     .io_axi_R_RVALID(cpu_rvalid), .io_axi_R_RREADY(cpu_rready),
     .io_axi_R_RDATA(cpu_rdata), .io_axi_R_RRESP(cpu_rresp),
     .io_axi_R_RLAST(cpu_rlast), .io_axi_R_RID(cpu_rid)

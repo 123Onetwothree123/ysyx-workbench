@@ -1,6 +1,9 @@
 package ysyx_26030103.common
 import chisel3._
 class ysyx_26030103_EXUMessage extends Bundle {
+  // 与提交记录同行传递，供退休级调试/trace精确对齐。
+  val Instruction = UInt(32.W)
+  val Retire = Bool()
   // EXU算好交给MEM/WBU的最终写回相关字段
   val Rd = UInt(5.W)
   val RegisterWrite = Bool()
