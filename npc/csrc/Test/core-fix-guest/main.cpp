@@ -6,6 +6,7 @@
 //   * mepc/mtvec WARL behavior for IALIGN=32 and mtvec.MODE;
 //   * instruction-address-misaligned traps from JALR, JAL and taken branch;
 //   * a not-taken branch with a nominally misaligned target not trapping;
+//   * architectural EBREAK reaching mtvec instead of stopping simulation;
 //   * fence.i making a self-modified, already-prefetched instruction visible.
 #include <am.h>
 #include <klib.h>
@@ -85,8 +86,8 @@ static void test_partial_stores() {
   word = 0xa1b2c3d4u;
   fence_i();
   asm volatile("sb %0, 1(%1)" : : "r"(0xeeu), "r"(&word) : "memory");
-  // The D-cache mirrors stores at enqueue time.  Flushing it before the load
-  // forces the value to be fetched back from AXI RAM and exposes a broken RMW.
+  // The D-cache mirrors a store only after a successful B response.  Flushing
+  // it before the load forces the value back from AXI RAM and exposes bad RMW.
   fence_i();
   check_value("sb-preserves-neighbours", word, 0xa1b2eed4u);
 
@@ -211,6 +212,29 @@ static void test_misaligned_branch() {
   check_value("not-taken-branch-no-trap", trap_count, before);
 }
 
+static void test_architectural_ebreak() {
+  const uint32_t before = trap_count;
+  reset_trap_observation();
+  asm volatile(
+      "la t0, 1f\n\t"
+      "la t1, expected_pc\n\t"
+      "sw t0, 0(t1)\n\t"
+      "1: ebreak\n\t"
+      :
+      :
+      : "t0", "t1", "memory");
+
+  const bool ok = trap_count == before + 1 && last_mcause == 3 &&
+                  last_mepc == expected_pc;
+  printf("[architectural-ebreak] traps=%u->%u mcause=%u "
+         "mepc=0x%08x expected=0x%08x => %s\n",
+         (unsigned)before, (unsigned)trap_count, (unsigned)last_mcause,
+         (unsigned)last_mepc, (unsigned)expected_pc, ok ? "PASS" : "FAIL");
+  if (!ok) {
+    ++failures;
+  }
+}
+
 static void test_fence_i_prefetch() {
   fencei_result = 0;
   asm volatile(
@@ -236,10 +260,11 @@ int main() {
   test_misaligned_jalr();
   test_misaligned_jal();
   test_misaligned_branch();
+  test_architectural_ebreak();
   test_fence_i_prefetch();
 
-  printf("trap_count=%u expected=3\n", (unsigned)trap_count);
-  if (trap_count != 3) {
+  printf("trap_count=%u expected=4\n", (unsigned)trap_count);
+  if (trap_count != 4) {
     ++failures;
   }
 

@@ -21,6 +21,8 @@ class ysyx_26030103_RAS(
     val push_addr = Input(UInt(AddressWidth.W))
     // EXU提交pop hint时弹栈
     val pop_valid = Input(Bool())
+    // fence.i 可能替换 call/return 指令；清空旧预测历史。
+    val flush = Input(Bool())
   })
 
   val buf = Reg(Vec(Depth, UInt(AddressWidth.W)))
@@ -32,7 +34,10 @@ class ysyx_26030103_RAS(
 
   // JALR协程hint可以要求同拍pop-then-push。非空时用新返回地址
   // 覆盖被弹出的旧栈顶，top/count不变；空栈时pop无效、push正常入栈。
-  when(io.push_valid && io.pop_valid) {
+  when(io.flush) {
+    top := 0.U
+    count := 0.U
+  }.elsewhen(io.push_valid && io.pop_valid) {
     when(count =/= 0.U) {
       buf((top - 1.U)(RASBits - 1, 0)) := io.push_addr
     }.otherwise {

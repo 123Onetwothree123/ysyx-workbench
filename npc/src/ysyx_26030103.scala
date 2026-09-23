@@ -35,13 +35,15 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       Enable = config.ICacheEnable,
       BlockSizeLog2 = config.BlockSizeLog2,
       IndexBits = config.IndexBits,
-      CacheableBase = config.CacheableBase,
-      CacheableMask = config.CacheableMask
+      PMARegions = config.PMARegions
     )
   )
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
-  val xbar = Module(new ysyx_26030103_AXI5Xbar(config.AddressWidth))
+  val xbar = Module(
+    new ysyx_26030103_AXI5Xbar(config.AddressWidth, config.PMARegions)
+  )
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
+  val dmaErrorSlave = Module(new ysyx_26030103_AXI5DMAErrorSlave)
   val pipe_flush = exu.io.FlushIF
   // 分支目标缓冲(BTB): IFU取指级查询决定下一PC,取指被icache接受时快照预测标签随请求保存,
   // EXU提交时更新分支的真实target; 另设独立jal BTB(方案B: 与分支表零干扰, 表项带kind区分Jal/Call/Ret)
@@ -50,6 +52,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val jal_btb =
     Module(new ysyx_26030103_BTB(config.JalBTBBits, config.JalBTBWays, 32, 2))
   val ras = Module(new ysyx_26030103_RAS(config.RASBits))
+  val predictorSelect = Module(new ysyx_26030103_PredictorSelect)
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
   ifuResp.valid := icache.io.resp_valid
@@ -57,6 +60,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   ifuResp.bits.pc := icache.io.resp_addr
   ifuResp.bits.ExceptionValid := icache.io.resp_fault
   ifuResp.bits.ExceptionCause := 1.U(4.W)
+  ifuResp.bits.AccessFaultResp := icache.io.access_fault_resp
   // 预测标签快照: 取指请求被icache接受时,把取指时刻的预测随请求保存,响应时贴给指令.
   // 根治"取指/响应两阶段查找之间BTB/RAS状态变化,导致标签与实际取指路径不一致"的致命漏洞
   // (反例: ret取指时RAS顶是A(错),响应时弹栈后变B(对),标签=B与实际执行一致=>不冲刷,
@@ -82,31 +86,33 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 传入PC[31:2]; 低位恒为0, 无需参与索引和tag匹配
   btb.io.lookup_pc := ifu.io.FetchAddr(31, 2)
   jal_btb.io.lookup_pc := ifu.io.FetchAddr(31, 2)
-  // jal表Ret表项命中且RAS非空→目标取RAS顶; Jal/Call表项命中即taken;
-  // 分支表命中且目标在后方(target<当前PC)才预测taken(BTFN)
-  val jalRet1 =
-    jal_btb.io.hit && jal_btb.io.hit_kind.get === ysyx_26030103_BTBKind.Ret
-  val jalStatic1 =
-    jal_btb.io.hit && jal_btb.io.hit_kind.get =/= ysyx_26030103_BTBKind.Ret
-  ifu.io.PredHit := (jalRet1 && ras.io.nonempty) || jalStatic1 ||
-    (btb.io.hit && (btb.io.target < ifu.io.FetchAddr))
-  ifu.io.PredTarget := Mux(
-    jalRet1,
-    ras.io.top,
-    Mux(jalStatic1, jal_btb.io.target, btb.io.target)
-  )
+  // Ret只有在RAS非空时才有资格取得优先级；Ret表项的target保存静态
+  // JALR immediate，由选择器与动态栈顶相加。分支仍采用BTFN方向预测。
+  predictorSelect.io.fetchPC := ifu.io.FetchAddr
+  predictorSelect.io.branchHit := btb.io.hit
+  predictorSelect.io.branchTarget := btb.io.target
+  predictorSelect.io.jalHit := jal_btb.io.hit
+  predictorSelect.io.jalTarget := jal_btb.io.target
+  predictorSelect.io.jalKind := jal_btb.io.hit_kind.get
+  predictorSelect.io.rasNonempty := ras.io.nonempty
+  predictorSelect.io.rasTop := ras.io.top
+  ifu.io.PredHit := predictorSelect.io.predHit
+  ifu.io.PredTarget := predictorSelect.io.predTarget
   // BTB更新: EXU提交时按指令类型路由, 分支写分支表, jal/ret写jal表(带kind)
   btb.io.update_valid := exu.io.BTBUpdateValid
   btb.io.update_pc := exu.io.BTBUpdatePC(31, 2)
   btb.io.update_target := exu.io.BTBUpdateTarget
+  btb.io.flush := exu.io.FenceIFlush
   jal_btb.io.update_valid := exu.io.JalBTBUpdateValid
   jal_btb.io.update_pc := exu.io.JalBTBUpdatePC(31, 2)
   jal_btb.io.update_target := exu.io.JalBTBUpdateTarget
   jal_btb.io.update_kind.get := exu.io.JalBTBUpdateKind
+  jal_btb.io.flush := exu.io.FenceIFlush
   // RAS更新: call压栈, ret弹栈
   ras.io.push_valid := exu.io.RASPushValid
   ras.io.push_addr := exu.io.RASPushAddr
   ras.io.pop_valid := exu.io.RASPopValid
+  ras.io.flush := exu.io.FenceIFlush
   arbiter.io.lsu <> lsu.io.DataBus
   arbiter.io.memory.AW <> xbar.io.in.AW
   arbiter.io.memory.W <> xbar.io.in.W
@@ -156,17 +162,49 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   soc.R.RDATA := io.master_rdata
   soc.R.RLAST := io.master_rlast
 
-  io.slave_awready := 0.U
-  io.slave_wready := 0.U
-  io.slave_bvalid := 0.U
-  io.slave_bresp := 0.U
-  io.slave_bid := 0.U
-  io.slave_arready := 0.U
-  io.slave_rvalid := 0.U
-  io.slave_rresp := 0.U
-  io.slave_rdata := 0.U
-  io.slave_rlast := 0.U
-  io.slave_rid := 0.U
+  // The inbound port is connected to ChipLink's DMA-facing master in the SoC.
+  // There is currently no local memory behind this CPU port.  Forwarding its
+  // 0xc0000000--0xffffffff requests through the CPU master would route them
+  // straight back to ChipLink, so terminate them with protocol-complete DECERR
+  // responses instead of hanging forever or falsely acknowledging a write.
+  // Since every write fails, no RAM/cache state changes and no DCache snoop is
+  // required.  A future real DMA path must add an explicit memory target and
+  // invalidate the DCache before returning a successful B response.
+  dmaErrorSlave.io.AW.AWVALID := io.slave_awvalid
+  dmaErrorSlave.io.AW.AWADDR := io.slave_awaddr
+  dmaErrorSlave.io.AW.AWID := io.slave_awid
+  dmaErrorSlave.io.AW.AWLEN := io.slave_awlen
+  dmaErrorSlave.io.AW.AWSIZE := io.slave_awsize
+  dmaErrorSlave.io.AW.AWBURST := io.slave_awburst
+  dmaErrorSlave.io.AW.AWPROT := io.slave_awprot
+  io.slave_awready := dmaErrorSlave.io.AW.AWREADY
+
+  dmaErrorSlave.io.W.WVALID := io.slave_wvalid
+  dmaErrorSlave.io.W.WDATA := io.slave_wdata
+  dmaErrorSlave.io.W.WSTRB := io.slave_wstrb
+  dmaErrorSlave.io.W.WLAST := io.slave_wlast
+  io.slave_wready := dmaErrorSlave.io.W.WREADY
+
+  dmaErrorSlave.io.B.BREADY := io.slave_bready
+  io.slave_bvalid := dmaErrorSlave.io.B.BVALID
+  io.slave_bresp := dmaErrorSlave.io.B.BRESP
+  io.slave_bid := dmaErrorSlave.io.B.BID
+
+  dmaErrorSlave.io.AR.ARVALID := io.slave_arvalid
+  dmaErrorSlave.io.AR.ARADDR := io.slave_araddr
+  dmaErrorSlave.io.AR.ARID := io.slave_arid
+  dmaErrorSlave.io.AR.ARLEN := io.slave_arlen
+  dmaErrorSlave.io.AR.ARSIZE := io.slave_arsize
+  dmaErrorSlave.io.AR.ARBURST := io.slave_arburst
+  dmaErrorSlave.io.AR.ARPROT := io.slave_arprot
+  io.slave_arready := dmaErrorSlave.io.AR.ARREADY
+
+  dmaErrorSlave.io.R.RREADY := io.slave_rready
+  io.slave_rvalid := dmaErrorSlave.io.R.RVALID
+  io.slave_rresp := dmaErrorSlave.io.R.RRESP
+  io.slave_rdata := dmaErrorSlave.io.R.RDATA
+  io.slave_rlast := dmaErrorSlave.io.R.RLAST
+  io.slave_rid := dmaErrorSlave.io.R.RID
   xbar.io.CLINT.AW <> clint.io.AW
   xbar.io.CLINT.W <> clint.io.W
   xbar.io.CLINT.B <> clint.io.B
@@ -212,54 +250,117 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
   icache.io.flush := exu.io.FenceIFlush // 仅 FenceI 冲 iCache，分支不冲
   lsu.io.DCacheFlush := exu.io.FenceIFlush // fence.i同时使数据缓存失效
-  // 取指或访存返回错误的标志,仅保留给SoC测试台的debug输出用
-  val AccessFaultOccurred = icache.io.access_fault || lsu.io.AccessFault
   gpr.io.WriteSELECT := wbu.io.WriteSELECT
   gpr.io.WriteEN := wbu.io.WriteEN
   gpr.io.wdata := wbu.io.wdata
   // 临时新加的处理中断的
   exu.io.Interrupt := io.interrupt
-  // 最后删掉的跳转检查还是加回来了，还好当时接入soc的时候，没有删掉exu的那些东西，等等，到时候还得改ysyxsoc的代码？
-  io.trap_valid := exu.io.TrapValid
-  io.trap_pc := exu.io.TrapPC
+  // 仿真 halt 是 custom-0 指令的提交事件，而不是架构 EBREAK。再寄存
+  // 一拍后暴露给 C++，保证上升沿上的所有更老 GPR 写回已经生效。
+  val SimHaltCommit = exu.io.SimHaltValid
+  io.trap_valid := RegNext(SimHaltCommit, false.B)
+  io.trap_pc := RegEnable(exu.io.SimHaltPC, config.ResetAddr.U(32.W), SimHaltCommit)
   // sdb
   gpr.io.DebugRaddr := io.debug_gpr_raddr
   io.debug_gpr_rdata := gpr.io.DebugRdata
-  // 提交trace统一取MEM/WB寄存器中的同一条指令；debug_commit是唯一有效门控。
-  val DebugCommit = wbu.io.in.fire && wbu.io.in.bits.Retire
-  val LastCommitPC = RegInit(config.ResetAddr.U(32.W))
-  val LastCommitInstruction = RegInit("h00000013".U(32.W))
-  when(DebugCommit) {
-    LastCommitPC := wbu.io.in.bits.pc
-    LastCommitInstruction := wbu.io.in.bits.Instruction
-  }
-  io.debug_pc := Mux(DebugCommit, wbu.io.in.bits.pc, LastCommitPC)
-  io.debug_instructions := Mux(
-    DebugCommit,
+  // WBU 的 fire 是上升沿前的“将提交”。将 valid、PC、指令一起寄存，
+  // C++ 在该上升沿之后看到 debug_commit 时，GPR 已经是提交后的状态。
+  val WBUCommit = wbu.io.in.fire && wbu.io.in.bits.Retire
+  io.debug_commit := RegNext(WBUCommit, false.B)
+  io.debug_pc := RegEnable(wbu.io.in.bits.pc, config.ResetAddr.U(32.W), WBUCommit)
+  io.debug_next_pc := RegEnable(
+    wbu.io.in.bits.NextPC,
+    config.ResetAddr.U(32.W),
+    WBUCommit
+  )
+  io.debug_instructions := RegEnable(
     wbu.io.in.bits.Instruction,
-    LastCommitInstruction
+    "h00000013".U(32.W),
+    WBUCommit
   )
-  // mtrace: 访存指令在LSU(MEM级)完成时采样
-  io.debug_mtrace_valid := lsu.io.Complete && lsu.io.HazardMemOp
-  io.debug_mtrace_pc := lsu.io.DebugPC
-  io.debug_mtrace_wen := lsu.io.DebugMemoryWrite
-  io.debug_mtrace_addr := lsu.io.DebugALUResult
-  io.debug_mtrace_wdata := lsu.io.DebugStoreDATA
-  io.debug_mtrace_rdata := lsu.io.DebugLoadDATA
-  io.debug_mtrace_width := lsu.io.DebugWidthSelect
-  // Access Fault
-  io.debug_access_fault := AccessFaultOccurred
-  io.debug_access_fault_pc := Mux(
-    icache.io.access_fault,
-    icache.io.resp_addr,
-    lsu.io.DebugPC
+
+  // 调试器的 $pc 不能复用 retire trace PC。正常退休时前进到
+  // 该指令的实际后继；异常/中断提交时直接记录 trap 目标。
+  // 若同拍既有更老的 WBU 退休又有年轻 trap，trap 必须优先。
+  val DebugArchPC = RegInit(config.ResetAddr.U(32.W))
+  when(WBUCommit) {
+    DebugArchPC := wbu.io.in.bits.NextPC
+  }
+  when(exu.io.TrapCommit) {
+    DebugArchPC := exu.io.TrapTarget
+  }
+  io.debug_arch_pc := DebugArchPC
+
+  io.debug_trap_valid := RegNext(exu.io.TrapCommit, false.B)
+  io.debug_trap_pc := RegEnable(
+    exu.io.TrapPC,
+    config.ResetAddr.U(32.W),
+    exu.io.TrapCommit
   )
-  io.debug_access_fault_resp := Mux(
-    icache.io.access_fault,
-    icache.io.access_fault_resp,
-    lsu.io.AccessFaultResp
+  io.debug_trap_target := RegEnable(
+    exu.io.TrapTarget,
+    config.ResetAddr.U(32.W),
+    exu.io.TrapCommit
   )
-  io.debug_commit := DebugCommit
+  io.debug_trap_cause := RegEnable(
+    exu.io.TrapCause,
+    0.U(32.W),
+    exu.io.TrapCommit
+  )
+
+  // mtrace 只记录成功从 LSU 退休的访存。错误响应和地址非对齐均不
+  // Retire，因而不会携带旧 LoadData 生成伪记录；字段与 valid 同拍锁存。
+  val MtraceCommit =
+    lsu.io.out.fire && lsu.io.out.bits.MemoryValid && lsu.io.out.bits.Retire
+  io.debug_mtrace_valid := RegNext(MtraceCommit, false.B)
+  io.debug_mtrace_pc := RegEnable(lsu.io.out.bits.pc, 0.U(32.W), MtraceCommit)
+  io.debug_mtrace_wen := RegEnable(
+    lsu.io.out.bits.MemoryWrite,
+    false.B,
+    MtraceCommit
+  )
+  io.debug_mtrace_addr := RegEnable(
+    lsu.io.out.bits.ALUResult,
+    0.U(32.W),
+    MtraceCommit
+  )
+  io.debug_mtrace_wdata := RegEnable(
+    lsu.io.out.bits.StoreData,
+    0.U(32.W),
+    MtraceCommit
+  )
+  io.debug_mtrace_rdata := RegEnable(
+    lsu.io.out.bits.LoadData,
+    0.U(32.W),
+    MtraceCommit
+  )
+  io.debug_mtrace_width := RegEnable(
+    lsu.io.out.bits.WidthSelect,
+    0.U(2.W),
+    MtraceCommit
+  )
+
+  // 调试 Access Fault 只认精确提交事件。取指错误必须随指令
+  // 通过流水线到 EXU，错路响应在此前被 flush 就不得打印。
+  // LSU 仍以精确 MemTrap 提交为界；cause=4/6 非对齐不是 AXI fault。
+  val LSUAccessFaultCommit = lsu.io.AccessFault
+  val ICacheAccessFaultCommit = exu.io.FetchAccessFaultCommit
+  val AccessFaultCommit = LSUAccessFaultCommit || ICacheAccessFaultCommit
+  io.debug_access_fault := RegNext(AccessFaultCommit, false.B)
+  io.debug_access_fault_pc := RegEnable(
+    Mux(LSUAccessFaultCommit, lsu.io.MemTrapPC, exu.io.FetchAccessFaultPC),
+    0.U(32.W),
+    AccessFaultCommit
+  )
+  io.debug_access_fault_resp := RegEnable(
+    Mux(
+      LSUAccessFaultCommit,
+      lsu.io.AccessFaultResp,
+      exu.io.FetchAccessFaultResp
+    ),
+    0.U(2.W),
+    AccessFaultCommit
+  )
   // 性能计数器
   io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
   io.perf_exu_done := exu.io.out.fire

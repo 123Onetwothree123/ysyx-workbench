@@ -35,6 +35,9 @@ class ysyx_26030103_IDUMessage extends Bundle {
   val IsCsrrs = Bool()
   val IsEcall = Bool()
   val IsEbreak = Bool()
+  // 仿真环境专用的终止请求。它使用 custom-0 空间中的保留编码，和会
+  // 正常进入 mtvec 的架构 EBREAK 完全分开。
+  val IsSimHalt = Bool()
   val IsMret = Bool()
   // 普通 FENCE（opcode=0001111, funct3=000）。与 FenceI 分开，
   // 由 EXU 将其作为访存顺序屏障处理；它本身不刷新 ICache。
@@ -51,6 +54,7 @@ class ysyx_26030103_IDUMessage extends Bundle {
   // 统一在EXU提交点处理,带异常标记的指令不得产生任何副作用
   val ExceptionValid = Bool()
   val ExceptionCause = UInt(4.W)
+  val AccessFaultResp = UInt(2.W)
   // 分支预测信息透传到EXU
   val pred_taken = Bool()
   val pred_target = UInt(32.W)

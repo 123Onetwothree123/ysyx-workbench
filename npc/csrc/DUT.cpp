@@ -72,6 +72,9 @@ void DUT::eval()
 }
 void DUT::final()
 {
+    if (finalized)
+        return;
+    finalized = true;
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
     tfp.close();
 #endif
@@ -96,6 +99,7 @@ void DUT::reset()
     dut->reset = 0;
     cycle = 0;
     fault_count = 0;
+    debug_memory_writes.clear();
 #ifdef CONFIG_PERF_STATS
     instructions = 0;
     perf = {};
@@ -364,7 +368,6 @@ void DUT::step()
         ++perf.dcache_miss;
     }
 #endif
-#ifndef VRISCV32E_NPC
     if (dut->perf_idu_stall_raw)
     {
         ++perf.idu_stall_raw;
@@ -381,11 +384,13 @@ void DUT::step()
     {
         ++perf.exu_idle_noinput;
     }
-    if (dut->perf_trap)
+    // TrapCommit is a pre-edge combinational pulse and can disappear when the
+    // pipeline flushes on that same edge.  debug_trap_valid is its registered,
+    // architecturally precise counterpart and is safe to sample here.
+    if (dut->debug_trap_valid)
     {
         ++perf.trap_count;
     }
-#endif
 #endif
 #ifdef CONFIG_ITRACE
     if (dut->debug_commit)
@@ -409,6 +414,39 @@ void DUT::step()
         HasPreviousStep = true;
     }
 #endif
+    // 维护调试器的安全 live-memory shadow。只有成功退休的 store
+    // 才会产生 mtrace；总线错误和非对齐访问不会污染它。
+    if (dut->debug_mtrace_valid && dut->debug_mtrace_wen)
+    {
+        const auto address{static_cast<std::uint32_t>(dut->debug_mtrace_addr)};
+        const auto data{static_cast<std::uint32_t>(dut->debug_mtrace_wdata)};
+        const auto width{static_cast<unsigned>(dut->debug_mtrace_width)};
+        const auto bytes{width <= 2 ? (1U << width) : 0U};
+#ifdef VRISCV32E_NPC
+        const bool trackable{
+            address >= static_cast<std::uint32_t>(CONFIG_MBASE) &&
+            address - static_cast<std::uint32_t>(CONFIG_MBASE) <
+                static_cast<std::uint32_t>(CONFIG_MSIZE)};
+#else
+        const bool trackable{
+            (address >= 0x0f000000U && address < 0x0f008000U) ||
+            (address >= 0x80000000U && address < 0x80400000U) ||
+            (address >= 0xa0000000U && address < 0xa2000000U) ||
+            // With ChipLink enabled this window is external RAM.  Keeping it
+            // here unconditionally is safe: without ChipLink no store to the
+            // window can retire successfully, so no shadow entry is created.
+            address >= 0xc0000000U};
+#endif
+        if (trackable && bytes != 0 &&
+            address <= std::numeric_limits<std::uint32_t>::max() - (bytes - 1U))
+        {
+            for (unsigned index{0}; index < bytes; ++index)
+            {
+                debug_memory_writes[address + index] =
+                    static_cast<std::uint8_t>(data >> (index * 8U));
+            }
+        }
+    }
 #ifdef CONFIG_MTRACE
     if (dut->debug_mtrace_valid)
     {
@@ -422,8 +460,16 @@ void DUT::step()
     }
 #endif
 #ifdef CONFIG_DIFFTEST
-    // Step-by-step difftest disabled due to multi-cycle timing issue.
-    // Comparison is done at the end via DiftestFinalCheck().
+    // 同拍可能同时有更老的 WBU 退休和年轻的 EXU trap。
+    // 按程序顺序先比对退休，再同步 trap。
+    if (dut->debug_commit)
+    {
+        DifftestStep(*this);
+    }
+    if (dut->debug_trap_valid)
+    {
+        DifftestTrapStep(*this);
+    }
 #endif
     if (dut->debug_access_fault)
     {
@@ -475,7 +521,7 @@ std::expected<std::uint32_t, std::string> DUT::ReadGPR(std::uint32_t index)
 std::expected<std::uint32_t, std::string> DUT::ReadPC()
 {
     dut->eval();
-    return static_cast<std::uint32_t>(dut->debug_pc);
+    return static_cast<std::uint32_t>(dut->debug_arch_pc);
 }
 std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, std::size_t size)
 {
@@ -483,21 +529,39 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
     {
         return std::unexpected{std::format("不支持的内存读取长度：{}", size)};
     }
-    constexpr std::uint32_t FLASH_BASE{CONFIG_MBASE};
-    constexpr std::uint32_t FLASH_SIZE{CONFIG_MSIZE};
-    // 用减法形式避免 addr+size 整数溢出: size<=FLASH_SIZE 短路保证 FLASH_SIZE-size 无下溢
-    if (addr >= FLASH_BASE && size <= FLASH_SIZE && addr - FLASH_BASE <= FLASH_SIZE - size)
+    if (addr > std::numeric_limits<std::uint32_t>::max() - (size - 1U))
     {
-        auto offset{addr - FLASH_BASE};
-        if (offset + size > FlashMemory.size())
-        {
-            return std::unexpected{std::format("Flash 地址越界：0x{:08x}", addr)};
-        }
-        std::uint32_t value{0};
-        std::memcpy(&value, FlashMemory.data() + offset, size);
-        return value;
+        return std::unexpected{std::format("内存读取地址溢出：0x{:08x}", addr)};
     }
-    return std::unexpected{std::format("地址 0x{:08x} 不在可读范围内（目前仅支持 Flash 0x{:08x}-0x{:08x}）", addr, FLASH_BASE, FLASH_BASE + FLASH_SIZE)};
+
+    constexpr std::uint32_t IMAGE_BASE{CONFIG_MBASE};
+    std::uint32_t value{0};
+    for (std::size_t index{0}; index < size; ++index)
+    {
+        const auto current{addr + static_cast<std::uint32_t>(index)};
+        std::optional<std::uint8_t> byte;
+        if (const auto written{debug_memory_writes.find(current)};
+            written != debug_memory_writes.end())
+        {
+            byte = written->second;
+        }
+        else if (current >= IMAGE_BASE)
+        {
+            const auto offset{static_cast<std::size_t>(current - IMAGE_BASE)};
+            if (offset < FlashMemory.size())
+                byte = FlashMemory[offset];
+        }
+
+        if (!byte)
+        {
+            return std::unexpected{std::format(
+                "地址 0x{:08x} 没有可验证的实时 RAM 数据；"
+                "调试器只能读取初始镜像或已退休 store 的 shadow",
+                current)};
+        }
+        value |= static_cast<std::uint32_t>(*byte) << (index * 8U);
+    }
+    return value;
 }
 
 void DUT::EnableVGACheck()

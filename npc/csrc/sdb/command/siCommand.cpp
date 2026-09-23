@@ -54,17 +54,28 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
     }
     auto &dut{context.GetDUT()};
     NPCEvaluationContext EvaluationContext{dut};
-    for (std::size_t index{0}; index < count && !NPCTrap::HasHalted(); ++index)
+    std::size_t retired{0};
+    while (retired < count && !NPCTrap::HasHalted())
     {
         dut.step();
+        if (NPCTrap::HasHalted())
+            break;
         if (dut->trap_valid)
         {
             const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
-            std::println("trap了");
+            std::println("收到仿真 halt 请求");
             break;
         }
-        if (GetGlobalWatchpointPool().CheckAll(EvaluationContext))
+        // si 的计数单位是退休指令，不是时钟周期。cache miss、
+        // MDU 和 AXI stall 可以经历任意多拍，都不应提前结束单步。
+        if (dut->debug_commit)
+            ++retired;
+
+        // 监视点只在架构状态边界重新求值，避免把流水线
+        // 中间周期误当成一条指令。
+        if ((dut->debug_commit || dut->debug_trap_valid) &&
+            GetGlobalWatchpointPool().CheckAll(EvaluationContext))
         {
             std::println("因为监视点变化，程序停止");
             break;

@@ -682,13 +682,13 @@ menu "硬件配置"
         help
           输入2、4、8、16等2的幂；elaboration会拒绝其他数值。
 
-      config MUL_WIDTH
-        int "乘法器后端操作数位宽"
-        default 32
-        range 1 128
-        help
-          仅控制乘法器后端的操作数位宽，必须是2的幂(1/2/4/...);
-          CPU的RV32指令接口仍保持32位，非32位宽主要用于独立后端生成与验证。
+    config MUL_WIDTH
+      int "乘法器后端操作数位宽"
+      default 32
+      range 32 128
+      help
+        控制乘法器后端的操作数位宽，必须是不小于32的2的幂(32/64/128);
+        RV32指令接口保持32位。小于32会截断ISA操作数，因此明确禁止。
 
       config MUL_COMPRESSOR_INPUTS
         int "压缩树通用GPC输入数K"
@@ -789,11 +789,13 @@ menu "硬件配置"
         default "srt" if DIV_SRT
         default "restoring"
 
-      config DIV_RADIX
-        int "除法基数"
-        default 2
-        help
-          输入2、4、8、16等2的幂；elaboration会拒绝其他数值。
+    config DIV_RADIX
+      int "除法基数"
+      default 2
+      range 2 16
+      help
+        输入2、4、8、16；elaboration会拒绝其他数值。过大的基数会让
+        恢复余数后端静态展开过长的试减链，因此上限为16。
 
       config DIV_ITER_BITS
         int "每拍展开的基数数字数"

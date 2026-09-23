@@ -2,13 +2,14 @@ package ysyx_26030103.ifu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.infra._
+import _root_.ysyx_26030103.common._
 class ysyx_26030103_ICache(
     Enable: Boolean = true, // false=不做缓存, 每次取指直接发单拍AXI读(和数据通路一样)
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
     AddressWidth: Int = 32,
-    CacheableBase: Long = 0x00000000L,
-    CacheableMask: Long = 0x00000000L // 0=全缓存，由上层传入覆盖
+    PMARegions: Seq[ysyx_26030103_PMARegion] =
+      ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends Module {
   val TagBits = AddressWidth - IndexBits - BlockSizeLog2
   val NumBlocks = 1 << IndexBits
@@ -44,9 +45,40 @@ class ysyx_26030103_ICache(
     if (WordsPerBlock > 1) io.fetch_addr(BlockSizeLog2 - 1, 2)
     else 0.U
   val reqTag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  // 关闭缓存: 一律当作不可缓存访问 => 单拍AXI读, 不填阵列不查tag
+  private def AddressInRegion(
+      Address: UInt,
+      Region: ysyx_26030103_PMARegion
+  ): Bool = {
+    val Extended = Cat(0.U(1.W), Address)
+    Extended >= BigInt(Region.Base).U((AddressWidth + 1).W) &&
+    Extended < BigInt(Region.EndExclusive).U((AddressWidth + 1).W)
+  }
+  private def AddressInRegions(
+      Address: UInt,
+      Regions: Seq[ysyx_26030103_PMARegion]
+  ): Bool =
+    Regions
+      .map(AddressInRegion(Address, _))
+      .reduceOption(_ || _)
+      .getOrElse(false.B)
+
+  private val ExecutableRegions = PMARegions.filter(_.Executable)
+  private val CacheableRegions = PMARegions.filter(r => r.Executable && r.Cacheable)
+  require(ExecutableRegions.nonEmpty, "ICache至少需要一个可执行PMA区域")
+  require(
+    CacheableRegions.forall(r =>
+      r.Size >= (1L << BlockSizeLog2) &&
+        (r.Base & ((1L << BlockSizeLog2) - 1L)) == 0L &&
+        (r.Size & ((1L << BlockSizeLog2) - 1L)) == 0L
+    ),
+    "可缓存PMA区域必须按cache line对齐且不得小于一个cache line"
+  )
+
+  // 可执行权限和可缓存属性是两个独立的PMA属性。非法取指在本模块
+  // 直接形成instruction access fault，不允许向MMIO/CLINT/地址空洞发AR。
+  val executable = AddressInRegions(io.fetch_addr, ExecutableRegions)
   val cacheable =
-    if (Enable) (io.fetch_addr & CacheableMask.U) === CacheableBase.U else false.B
+    if (Enable) AddressInRegions(io.fetch_addr, CacheableRegions) else false.B
   // 两级流水: s1受理级(寄存请求,命中数据当拍锁存) -> 响应级(命中直接响应,缺失走refill)
   val s1_valid = RegInit(false.B)
   val s1_hit = Reg(Bool()) // 受理时判定: 可缓存且命中
@@ -135,7 +167,7 @@ class ysyx_26030103_ICache(
       (!s1_valid || (responding && io.resp_ready))
   val accept = io.fetch_valid && io.fetch_ready
   io.perf_hit := accept && cacheable && hit
-  io.perf_miss := accept && !(cacheable && hit)
+  io.perf_miss := accept && executable && !(cacheable && hit)
   io.perf_refill_req := rfstate === rf_req
   io.perf_refill_resp := rfstate === rf_resp
   when(responding && io.resp_ready) {
@@ -148,10 +180,12 @@ class ysyx_26030103_ICache(
     fetch_offset_reg := blockOffset
     resp_data_reg := data(index)(blockOffset) // 命中时这就是响应数据
     cacheable_reg := cacheable
-    s1_hit := cacheable && hit
-    s1_ready := false.B
-    access_fault_reg := false.B
-    access_fault_resp_reg := 0.U
+    s1_hit := executable && cacheable && hit
+    // PMA拒绝不需要总线往返；用DECERR作为调试响应码，并让带故障的
+    // NOP响应沿正常流水线到达EXU，在提交点精确写入mepc/mcause。
+    s1_ready := !executable
+    access_fault_reg := !executable
+    access_fault_resp_reg := Mux(executable, 0.U, 3.U)
     s1_valid := true.B
     s1_waits := false.B
   }

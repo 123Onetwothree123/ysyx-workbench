@@ -12,7 +12,12 @@ void putch(char ch) {
   while (!(*LSR & 0x20));  // wait for THRE (Transmitter Holding Register Empty)
   *THR = ch;
 }
-void halt(int code) { asm volatile("mv a0, %0; ebreak" : : "r"(code)); while (1); }
+void halt(int code) {
+  // NPC/ysyxSoC 仿真退出使用 custom-0；标准 EBREAK 继续产生
+  // breakpoint 异常并进入 mtvec。
+  asm volatile("mv a0, %0; .word 0x0000000b" : : "r"(code) : "a0", "memory");
+  while (1);
+}
 
 __attribute__((naked))
 void _trm_init()

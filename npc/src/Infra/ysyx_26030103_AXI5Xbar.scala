@@ -1,7 +1,12 @@
 package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
-class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
+import _root_.ysyx_26030103.common._
+class ysyx_26030103_AXI5Xbar(
+    AddressWidth: Int = 32,
+    PMARegions: Seq[ysyx_26030103_PMARegion] =
+      ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
+) extends Module {
   val io = IO(new Bundle {
     // 先做过笔记，因为这个是接裁决器的，裁决器是master，所以这里的对反
     val in = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
@@ -17,11 +22,71 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val TargetSoCBus = 0.U(2.W)
   val TargetCLINT = 1.U(2.W)
   val TargetInvalid = 2.U(2.W)
-  def IsCLINT(address: UInt): Bool = {
-    address >= CLINTBase && address < CLINTEnd
+  require(PMARegions.nonEmpty, "AXI Xbar物理地址图不能为空")
+  require(
+    PMARegions.forall(r => BigInt(r.EndExclusive) <= (BigInt(1) << AddressWidth)),
+    "AXI Xbar PMA区域超出地址宽度"
+  )
+
+  private def LastByte(
+      Address: UInt,
+      Len: UInt,
+      Size: UInt,
+      Burst: UInt
+  ): UInt = {
+    val ExtendedAddress = Cat(0.U(1.W), Address)
+    val BeatBytes = 1.U((AddressWidth + 1).W) << Size
+    val LastBeatOffset = Mux(
+      Burst === 1.U,
+      Len * BeatBytes,
+      0.U
+    )
+    ExtendedAddress + LastBeatOffset + BeatBytes - 1.U
   }
-  def decode(address: UInt): UInt = {
-    Mux(IsCLINT(address), TargetCLINT, TargetSoCBus)
+  private def InRegion(
+      Address: UInt,
+      Len: UInt,
+      Size: UInt,
+      Burst: UInt,
+      Region: ysyx_26030103_PMARegion
+  ): Bool = {
+    val ExtendedAddress = Cat(0.U(1.W), Address)
+    val End = LastByte(Address, Len, Size, Burst)
+    ExtendedAddress >= BigInt(Region.Base).U &&
+    End < BigInt(Region.EndExclusive).U
+  }
+  private def InAnyRegion(
+      Address: UInt,
+      Len: UInt,
+      Size: UInt,
+      Burst: UInt,
+      Regions: Seq[ysyx_26030103_PMARegion]
+  ): Bool =
+    Regions
+      .map(InRegion(Address, Len, Size, Burst, _))
+      .reduceOption(_ || _)
+      .getOrElse(false.B)
+
+  def IsCLINT(address: UInt, len: UInt, size: UInt, burst: UInt): Bool = {
+    val End = LastByte(address, len, size, burst)
+    Cat(0.U(1.W), address) >= Cat(0.U(1.W), CLINTBase) &&
+    End < Cat(0.U(1.W), CLINTEnd)
+  }
+  def decode(address: UInt, len: UInt, size: UInt, burst: UInt): UInt = {
+    val ConfigSupported = size <= 2.U && (burst === 0.U || burst === 1.U)
+    Mux(
+      !ConfigSupported,
+      TargetInvalid,
+      Mux(
+        IsCLINT(address, len, size, burst),
+        TargetCLINT,
+        Mux(
+          InAnyRegion(address, len, size, burst, PMARegions),
+          TargetSoCBus,
+          TargetInvalid
+        )
+      )
+    )
   }
   val states = Enum(9)
   val StateIdle = states(0)
@@ -49,6 +114,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val ARSIZEReg = RegInit(2.U(3.W))
   val ARBURSTReg = RegInit(0.U(2.W))
   val ARPROTReg = RegInit(0.U(3.W))
+  val ReadDECERRBeatReg = RegInit(0.U(8.W))
   val AWValidReg = RegInit(false.B)
   val WValidReg = RegInit(false.B)
   val AWIDReg = RegInit(0.U(4.W))
@@ -129,7 +195,16 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
   val InWFire = io.in.W.WVALID && InWReady
   val InARFire = io.in.AR.ARVALID && InARReady
   val WriteTargetAfterAW =
-    Mux(InAWFire, decode(io.in.AW.AWADDR), WriteTargetReg)
+    Mux(
+      InAWFire,
+      decode(
+        io.in.AW.AWADDR,
+        io.in.AW.AWLEN,
+        io.in.AW.AWSIZE,
+        io.in.AW.AWBURST
+      ),
+      WriteTargetReg
+    )
   val WriteLenAfterAW = Mux(InAWFire, io.in.AW.AWLEN, AWLENReg)
   val AWCollected = AWValidReg || InAWFire
   val WCollected = WValidReg || InWFire
@@ -143,7 +218,12 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     AWSIZEReg := io.in.AW.AWSIZE
     AWBURSTReg := io.in.AW.AWBURST
     AWPROTReg := io.in.AW.AWPROT
-    WriteTargetReg := decode(io.in.AW.AWADDR)
+    WriteTargetReg := decode(
+      io.in.AW.AWADDR,
+      io.in.AW.AWLEN,
+      io.in.AW.AWSIZE,
+      io.in.AW.AWBURST
+    )
     AWValidReg := true.B
   }
   // Idle/Collect阶段只缓存首个W beat；进入转发阶段后其余beat直接流过。
@@ -177,13 +257,19 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
     }.otherwise { // 没有写请求时，读请求在这里直接处理
       InARReady := true.B
       when(InARFire) {
-        val target = decode(io.in.AR.ARADDR)
+        val target = decode(
+          io.in.AR.ARADDR,
+          io.in.AR.ARLEN,
+          io.in.AR.ARSIZE,
+          io.in.AR.ARBURST
+        )
         ARIDReg := io.in.AR.ARID
         ARAddressReg := io.in.AR.ARADDR
         ARLENReg := io.in.AR.ARLEN
         ARSIZEReg := io.in.AR.ARSIZE
         ARBURSTReg := io.in.AR.ARBURST
         ARPROTReg := io.in.AR.ARPROT
+        ReadDECERRBeatReg := 0.U
         ReadTargetReg := target
         when(target === TargetInvalid) {
           state := StateReadDECERR
@@ -329,8 +415,7 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       state := StateWriteDECERR
     }
   }.elsewhen(state === StateWriteDECERR) {
-    // 防御分支：正常decode不会产生Invalid，非CLINT地址统一转发到SoCBus。
-    // 如果状态机进入Invalid目标，这里不访问任何下游设备。
+    // 地址空洞和不支持的burst在CPU内部完成，不访问任何下游设备。
     io.in.B.BID := AWIDReg
     io.in.B.BVALID := true.B
     io.in.B.BRESP := DECERR
@@ -399,16 +484,20 @@ class ysyx_26030103_AXI5Xbar(AddressWidth: Int = 32) extends Module {
       state := StateReadDECERR
     }
   }.elsewhen(state === StateReadDECERR) {
-    // 防御分支：正常decode不会产生Invalid，非CLINT地址统一转发到SoCBus。
-    // RDATA没有实际意义，固定返回0。
+    // 即使错误请求是burst，也必须返回ARLEN+1拍，避免合法AXI master
+    // 因等待RLAST而挂死。RDATA没有实际意义，固定返回0。
     io.in.R.RID := ARIDReg
     io.in.R.RVALID := true.B
     io.in.R.RDATA := 0.U
     io.in.R.RRESP := DECERR
-    io.in.R.RLAST := true.B
+    io.in.R.RLAST := ReadDECERRBeatReg === ARLENReg
 
     when(io.in.R.RREADY) {
-      state := StateIdle
+      when(ReadDECERRBeatReg === ARLENReg) {
+        state := StateIdle
+      }.otherwise {
+        ReadDECERRBeatReg := ReadDECERRBeatReg + 1.U
+      }
     }
   }
 }

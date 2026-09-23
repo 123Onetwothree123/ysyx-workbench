@@ -3,6 +3,7 @@ import chisel3._
 
 class ysyx_26030103_IO extends Bundle {
   val interrupt = Input(Bool())
+  // 仿真 ABI 的 custom-0 halt 提交脉冲；不是架构异常/EBREAK 指示。
   val trap_valid = Output(Bool())
   val trap_pc = Output(UInt(32.W))
 //写地址的
@@ -92,7 +93,12 @@ class ysyx_26030103_IO extends Bundle {
   // 给sdb用的
   val debug_gpr_raddr = Input(UInt(5.W))
   val debug_gpr_rdata = Output(UInt(32.W))
+  // debug_pc 是本次退休指令的 PC，只能在 debug_commit 时使用。
   val debug_pc = Output(UInt(32.W))
+  // debug_next_pc 与退休记录同拍；debug_arch_pc 是调试器应向
+  // 用户展示的最新架构 PC（也会跟踪 trap 跳转）。
+  val debug_next_pc = Output(UInt(32.W))
+  val debug_arch_pc = Output(UInt(32.W))
   val debug_instructions = Output(UInt(32.W))
   // mtrace
   val debug_mtrace_valid = Output(Bool())
@@ -107,6 +113,10 @@ class ysyx_26030103_IO extends Bundle {
   val debug_access_fault_pc = Output(UInt(32.W))
   val debug_access_fault_resp = Output(UInt(2.W))
   val debug_commit = Output(Bool())
+  val debug_trap_valid = Output(Bool())
+  val debug_trap_pc = Output(UInt(32.W))
+  val debug_trap_target = Output(UInt(32.W))
+  val debug_trap_cause = Output(UInt(32.W))
   // 性能计数器
   val perf_ifu_fetch = Output(Bool())
   val perf_exu_done = Output(Bool())

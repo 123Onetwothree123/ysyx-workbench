@@ -72,14 +72,15 @@ class ysyx_26030103_IDU(
   val IsEbreak = Instruction === "h00100073".U(32.W)
   val IsEcall = Instruction === "h00000073".U(32.W)
   val IsMret = Instruction === "h30200073".U(32.W)
+  // custom-0 编码只用于仿真器的 AM halt ABI。标准 EBREAK 始终保留其
+  // breakpoint 异常语义，不能再被宿主机无条件当成退出请求。
+  val IsSimHalt = Instruction === "h0000000b".U(32.W)
   // FENCE and FENCE.I are both in the MISC-MEM opcode class, but have
   // different ordering/flush semantics downstream.
-  // 当前只实现基础 FENCE（fm=0000，rd/rs1 保留为 x0）；
-  // 未实现的扩展/保留编码不能静默降级成屏障。
-  val FenceEncodingValid =
-    (Instruction(31, 28) === 0.U) &&
-      (Instruction(19, 15) === 0.U) &&
-      (Instruction(11, 7) === 0.U)
+  // 当前只实现基础 FENCE（fm=0000）。rd/rs1 是为更精细的未来
+  // 屏障保留的字段；基础实现必须忽略它们，不能因其非零报非法指令。
+  // 未实现的 fm 扩展/保留编码仍不能静默降级成基础屏障。
+  val FenceEncodingValid = Instruction(31, 28) === 0.U
   val IsFence =
     (opcode === OPCODE_MiscMem) && (funct3 === "b000".U(3.W)) &&
       FenceEncodingValid
@@ -134,7 +135,8 @@ class ysyx_26030103_IDU(
   // System里只实现了csrrw/csrrs/ecall/ebreak/mret,MiscMem里fence/fence.i分别处理。
   val IsKnownInstruction =
     IsRType || IsIType || IsSType || IsBType || IsUType || IsJType ||
-      IsCsrrw || IsCsrrs || IsEcall || IsEbreak || IsMret || IsFenceI || IsFence
+      IsCsrrw || IsCsrrs || IsEcall || IsEbreak || IsSimHalt || IsMret ||
+      IsFenceI || IsFence
   // CSR access legality is checked at decode time, rather than relying on
   // CSRUnit's read-data mux.  The core currently implements this explicit
   // machine-CSR set; accesses outside it are illegal instructions.
@@ -158,7 +160,10 @@ class ysyx_26030103_IDU(
   val CSRIllegal =
     (IsCsrrw || IsCsrrs) &&
       (!CSRAddressValid || (CSRWriteIntent && CSRReadOnly))
-  val IllegalInsn = ALUCDIllegal || !IsKnownInstruction || CSRIllegal
+  // custom-0 不属于通用 ALU decoder 的 opcode 集合；精确匹配的仿真
+  // halt 编码在这里显式豁免，custom-0 的其它编码仍然是非法指令。
+  val IllegalInsn =
+    (ALUCDIllegal && !IsSimHalt) || !IsKnownInstruction || CSRIllegal
   val needsRs2 = IsRType || IsBType || IsSType
   // 源操作数真正被使用的判断(lui/auipc/jal的rs1字段是立即数,不算使用)
   val usesRs1 = IsRType || IsIType || IsSType || IsBType || IsCsrrw || IsCsrrs
@@ -261,6 +266,7 @@ class ysyx_26030103_IDU(
   io.out.bits.IsCsrrs := IsCsrrs
   io.out.bits.IsEcall := IsEcall
   io.out.bits.IsEbreak := IsEbreak
+  io.out.bits.IsSimHalt := IsSimHalt
   io.out.bits.IsMret := IsMret
   io.out.bits.IsFence := IsFence
   io.out.bits.IsFenceI := IsFenceI
@@ -275,6 +281,7 @@ class ysyx_26030103_IDU(
     io.in.bits.ExceptionCause,
     2.U(4.W)
   )
+  io.out.bits.AccessFaultResp := io.in.bits.AccessFaultResp
   // 分支预测信息透传
   io.out.bits.pred_taken := io.in.bits.pred_taken
   io.out.bits.pred_target := io.in.bits.pred_target

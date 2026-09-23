@@ -18,6 +18,29 @@
 #include <difftest-def.h>
 #include <memory/paddr.h>
 
+/*
+ * NPC <-> NEMU register-copy ABI.
+ *
+ * Do not memcpy CPU_state here: that private structure contains CSRs and its
+ * GPR array changes size under CONFIG_RVE.  The caller cannot know either
+ * layout, which previously made a normal RV32 copy overrun a 132-byte NPC
+ * buffer by 16 bytes.  Keep the shared ABI fixed at 32 RV32 GPRs plus PC and
+ * translate explicitly at this boundary.
+ */
+typedef struct
+{
+  uint32_t gpr[32];
+  uint32_t pc;
+} riscv32_difftest_state_t;
+
+_Static_assert(sizeof(riscv32_difftest_state_t) == 33 * sizeof(uint32_t),
+               "unexpected RV32 DiffTest ABI padding");
+
+__EXPORT size_t difftest_state_size(void)
+{
+  return sizeof(riscv32_difftest_state_t);
+}
+
 __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction)
 {
   // assert(0);
@@ -41,15 +64,26 @@ __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction)
 
 __EXPORT void difftest_regcpy(void *dut, bool direction)
 {
-  // assert(0);
   assert(dut != NULL);
+  riscv32_difftest_state_t *state =
+      (riscv32_difftest_state_t *)dut;
+  const size_t nemu_gpr_count = sizeof(cpu.gpr) / sizeof(cpu.gpr[0]);
   if (direction == DIFFTEST_TO_REF)
   {
-    memcpy(&cpu, dut, sizeof(cpu));
+    for (size_t i = 0; i < nemu_gpr_count; ++i)
+    {
+      cpu.gpr[i] = state->gpr[i];
+    }
+    cpu.pc = state->pc;
   }
   else
   {
-    memcpy(dut, &cpu, sizeof(cpu));
+    memset(state, 0, sizeof(*state));
+    for (size_t i = 0; i < nemu_gpr_count; ++i)
+    {
+      state->gpr[i] = cpu.gpr[i];
+    }
+    state->pc = cpu.pc;
   }
 }
 
@@ -59,9 +93,9 @@ __EXPORT void difftest_exec(uint64_t n)
   cpu_exec(n);
 }
 
-__EXPORT void difftest_raise_intr(word_t NO)
+__EXPORT void difftest_raise_intr(uint64_t NO)
 {
-  assert(0);
+  cpu.pc = isa_raise_intr((word_t)NO, cpu.pc);
 }
 
 __EXPORT void difftest_init(int port)

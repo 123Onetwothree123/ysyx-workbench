@@ -9,6 +9,11 @@ namespace
 }
 void NPCTrap::Halt(std::uint32_t PC, std::uint32_t Code) noexcept
 {
+    // Once a checker has reported failure, a later architectural/custom halt
+    // must not downgrade the run to GOOD.  A late failure is still allowed to
+    // replace an earlier GOOD halt (for example the final DiffTest check).
+    if (Halted && HaltCode != 0 && Code == 0)
+        return;
     Halted = true;
     HaltPC = PC;
     HaltCode = Code;

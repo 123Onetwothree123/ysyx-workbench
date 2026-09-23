@@ -64,6 +64,8 @@ JAL_BTB_BITS ?= $(or $(CONFIG_JAL_BTB_BITS),4)
 JAL_BTB_WAYS ?= $(or $(CONFIG_JAL_BTB_WAYS),1)
 RAS_BITS ?= $(or $(CONFIG_RAS_BITS),4)
 CACHE_PADDING ?= $(or $(CONFIG_CACHE_PADDING),0)
+CHIPLINK ?= n
+export CHIPLINK
 # npc 独立仿真路径的复位 PC：0x80000000 + CACHE_PADDING（镜像在内存中整体后移 CACHE_PADDING 字节）
 NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(CACHE_PADDING))))
 CACHE_PADDING_CFLAGS = -DCONFIG_CACHE_PADDING=$(CACHE_PADDING)
@@ -75,6 +77,7 @@ VERILOG_ENV = env \
 	DCACHE=$(CONFIG_DCACHE) \
 	WBUF_DEPTH=$(CONFIG_WBUF_DEPTH) \
 	CACHE_PADDING=$(CACHE_PADDING) \
+	CHIPLINK=$(CHIPLINK) \
 	BTB_BITS=$(BTB_BITS) \
 	BTB_WAYS=$(BTB_WAYS) \
 	JAL_BTB_BITS=$(JAL_BTB_BITS) \
@@ -478,9 +481,15 @@ simtest: $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
 
-$(YSYXSOC_FULL_V):
+# Always enter the SoC sub-build.  Its own config stamp and Scala dependencies
+# decide whether regeneration is necessary; checking only for the final file
+# here would otherwise reuse stale RTL after a CPU port or CHIPLINK change.
+.PHONY: ysyxsoc-verilog-force
+ysyxSoC-verilog-force:
+
+$(YSYXSOC_FULL_V): ysyxsoc-verilog-force
 	@echo "[perf] (re)building ysyxSoC ..."
-	@cd $(YSYXSOC_DIR) && make verilog
+	@$(MAKE) -C $(YSYXSOC_DIR) CHIPLINK=$(CHIPLINK) verilog
 
 $(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \

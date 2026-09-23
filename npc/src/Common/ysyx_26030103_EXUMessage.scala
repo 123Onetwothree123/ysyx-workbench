@@ -11,6 +11,9 @@ class ysyx_26030103_EXUMessage extends Bundle {
   val ALUResult = UInt(32.W)
   val LoadData = UInt(32.W) // EXU填0,由MEM在访存完成后填真实数据
   val snpc = UInt(32.W)
+  // 该指令退休后的架构 PC：顺序指令为 snpc，分支/跳转/MRET
+  // 为实际目标。DiffTest 必须比较这个值，而不是退休指令 PC。
+  val NextPC = UInt(32.W)
   val CSRReadData = UInt(32.W)
 
   // 访存请求(MEM消费)

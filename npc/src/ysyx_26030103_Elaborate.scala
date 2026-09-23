@@ -4,6 +4,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_NPCConfig
 import _root_.ysyx_26030103.common.ysyx_26030103_MULImpl
 import _root_.ysyx_26030103.common.ysyx_26030103_MULEncoding
 import _root_.ysyx_26030103.common.ysyx_26030103_DIVImpl
+import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 import java.io.File
 import java.nio.file.{Files, Paths, StandardCopyOption}
 
@@ -27,6 +28,7 @@ object ysyx_26030103_Elaborate extends App {
   val CacheableMask_ysyxsoc = 0x00000000L
   val CacheableBase_npc = 0x80000000L
   val CacheableMask_npc = 0x80000000L
+  val HasChipLink = sys.env.getOrElse("CHIPLINK", "n") == "y"
   // 用kconfig来指挥的指令集扩展开关，然后没有实现的部分就直接让NPCConfig的require判断为失败的条件就可以了
   val UseM = sys.env.getOrElse("RV32_M", "n") == "y"
   val UseA = sys.env.getOrElse("RV32_A", "n") == "y"
@@ -109,7 +111,8 @@ object ysyx_26030103_Elaborate extends App {
       config.copy(
         ResetAddr = 0x80000000L + CachePadding,
         CacheableBase = CacheableBase_npc,
-        CacheableMask = CacheableMask_npc
+        CacheableMask = CacheableMask_npc,
+        PMARegions = ysyx_26030103_PhysicalMemoryMap.NPC
       )
     ),
     Array("--target-dir", targetDir),
@@ -125,7 +128,8 @@ object ysyx_26030103_Elaborate extends App {
       config.copy(
         ResetAddr = 0x30000000L,
         CacheableBase = CacheableBase_ysyxsoc,
-        CacheableMask = CacheableMask_ysyxsoc
+        CacheableMask = CacheableMask_ysyxsoc,
+        PMARegions = ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink)
       )
     ),
     Array("--target-dir", targetDir),

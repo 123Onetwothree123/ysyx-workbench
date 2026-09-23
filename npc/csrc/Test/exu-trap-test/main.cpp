@@ -120,6 +120,7 @@ public:
     dut_->io_in_bits_IsCsrrs = 0;
     dut_->io_in_bits_IsEcall = 0;
     dut_->io_in_bits_IsEbreak = 0;
+    dut_->io_in_bits_IsSimHalt = 0;
     dut_->io_in_bits_IsMret = 0;
     dut_->io_in_bits_IsFence = 0;
     dut_->io_in_bits_IsFenceI = 0;
@@ -510,6 +511,46 @@ void testPerfTrapExcludesMret() {
   tb.tick();
 }
 
+void testBreakpointAndSimulationHaltAreDistinct() {
+  ExuTestbench tb;
+  tb.csrWrite(kMtvec, 0x00000100U);
+
+  constexpr std::uint32_t breakpoint_pc = 0x80000300U;
+  tb.beginInstruction(breakpoint_pc);
+  tb.dut().io_in_bits_IsEbreak = 1;
+  tb.eval();
+  CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
+        "EBREAK did not reach the EXU commit point");
+  CHECK(tb.dut().io_ExceptionTaken,
+        "architectural EBREAK did not enter mtvec");
+  CHECK_EQ(tb.dut().io_ExceptionTarget, 0x00000100U,
+           "EBREAK trap target");
+  CHECK(!tb.dut().io_SimHaltValid,
+        "architectural EBREAK leaked into the simulator halt channel");
+  CHECK(!tb.dut().io_out_bits_Retire,
+        "architectural EBREAK was incorrectly marked retired");
+  tb.tick();
+  tb.driveIdle();
+  tb.eval();
+  CHECK_EQ(tb.csrRead(kMcause), 3U, "EBREAK mcause");
+  CHECK_EQ(tb.csrRead(kMepc), breakpoint_pc, "EBREAK mepc");
+
+  constexpr std::uint32_t halt_pc = 0x80000340U;
+  tb.beginInstruction(halt_pc);
+  tb.dut().io_in_bits_IsSimHalt = 1;
+  tb.eval();
+  CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
+        "custom halt did not reach the EXU commit point");
+  CHECK(tb.dut().io_SimHaltValid,
+        "custom halt did not produce a simulator halt commit");
+  CHECK_EQ(tb.dut().io_SimHaltPC, halt_pc, "custom halt PC");
+  CHECK(!tb.dut().io_ExceptionTaken,
+        "custom halt incorrectly entered the architectural trap handler");
+  CHECK(!tb.dut().io_out_bits_Retire,
+        "custom halt was incorrectly marked as an ISA retirement");
+  tb.tick();
+}
+
 void testTakenBranchMisalignment() {
   ExuTestbench tb;
   tb.csrWrite(kMtvec, 0x00000100U);
@@ -652,6 +693,8 @@ int main(int argc, char **argv) {
        testControlTransfersWaitForOlderMemory},
       {"RAS hints for x1/x5", testRasHintsForX1AndX5},
       {"PerfTrap excludes MRET", testPerfTrapExcludesMret},
+      {"EBREAK and simulation halt are distinct",
+       testBreakpointAndSimulationHaltAreDistinct},
       {"taken branch misalignment", testTakenBranchMisalignment},
       {"not-taken branch does not trap", testNotTakenBranchDoesNotTrap},
       {"JAL misalignment", testJalMisalignment},

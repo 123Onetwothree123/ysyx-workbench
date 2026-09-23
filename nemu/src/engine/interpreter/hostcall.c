@@ -22,7 +22,7 @@
 
 void set_nemu_state(int state, vaddr_t pc, int halt_ret)
 {
-  difftest_skip_ref();//跳过这个指令的difftest，应该是因为ebreak只能在一侧跑，所以不能双机器同时ebreak，得跳过，
+  difftest_skip_ref();// custom halt会结束参考模型，本拍不再参与后续difftest
   nemu_state.state = state;//状态机设置为END模式
   nemu_state.halt_pc = pc;
   // 0=GOOD TRAP, 非0=BAD TRAP，然后cpu_exec函数执行到状态机为END模式，就打印GOOD TRAP或HIT TRAP

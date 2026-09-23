@@ -40,6 +40,9 @@ class ysyx_26030103_CSR extends Module {
     // 仅在进入trap(ecall/ebreak/同步异常/IRQ/MEM fault)时置位；
     // MRET虽然也产生控制转移，但不是新的trap入口。
     val TrapCommit = Output(Bool())
+    // 本次 trap 提交的完整 mcause，供退休级调试/DiffTest
+    // 区分同步异常与中断。
+    val CommittedCause = Output(UInt(32.W))
   })
   // ysyx_26030103_mcycle=12'hB00，低32位
   // mcycleh=12'hB80，高32位
@@ -124,6 +127,7 @@ class ysyx_26030103_CSR extends Module {
   // 异常提交: MEM后门优先(当前指令被冲刷), 其余由本条指令的ecall/ebreak/中断/异常触发
   val ExceptionCommit = io.MemTrap || (io.Enable && IsException)
   io.TrapCommit := ExceptionCommit
+  io.CommittedCause := ExceptionCause
   // 以下这段代码是AI编写的
   /*
   就是RISCV有两种模式，一种是BASE模式，一种是向量模式

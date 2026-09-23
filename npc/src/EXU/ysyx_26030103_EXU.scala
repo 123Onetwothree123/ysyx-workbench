@@ -19,8 +19,19 @@ class ysyx_26030103_EXU(
     val MemTrapCause = Input(UInt(32.W))
     val MemTrapPC = Input(UInt(32.W))
 
-    val TrapValid = Output(Bool())
+    // custom-0 仿真 halt 的提交事件；架构 EBREAK 不走这条通路。
+    val SimHaltValid = Output(Bool())
+    val SimHaltPC = Output(UInt(32.W))
+    // 精确架构 trap 提交事件（不包含 MRET），用于 DiffTest
+    // 和调试端在正确指令边界观察 PC 改变。
+    val TrapCommit = Output(Bool())
     val TrapPC = Output(UInt(32.W))
+    val TrapTarget = Output(UInt(32.W))
+    val TrapCause = Output(UInt(32.W))
+    // 取指 access fault 只在对应指令真正提交异常时上报。
+    val FetchAccessFaultCommit = Output(Bool())
+    val FetchAccessFaultPC = Output(UInt(32.W))
+    val FetchAccessFaultResp = Output(UInt(2.W))
     val PerfALUOp = Output(Bool())
     val PerfMemOp = Output(Bool())
     val PerfCSROp = Output(Bool())
@@ -114,8 +125,8 @@ class ysyx_26030103_EXU(
   // fence.i也要等写缓冲排空, 否则新取指可能读到store落内存之前的旧指令
   val IsSideEffect =
     inst.IsCsrrw || inst.IsCsrrs || inst.IsEcall || inst.IsEbreak ||
-      inst.IsMret || InstructionTrapValid || inst.IsFenceI || inst.IsFence ||
-      inst.IsBranch || inst.IsJal || inst.IsJalr
+      inst.IsSimHalt || inst.IsMret || InstructionTrapValid || inst.IsFenceI ||
+      inst.IsFence || inst.IsBranch || inst.IsJal || inst.IsJalr
   // IRQ是动态副作用：MEM级尚未排空时必须阻塞所有当前指令，
   // 包括load/store。否则连续访存流可以不断进入MEM，使已使能IRQ无界推迟。
   // branch/JAL/JALR也等老MEM结果确定后再更新BTB/RAS，避免老load fault
@@ -192,6 +203,7 @@ class ysyx_26030103_EXU(
       )
     )
   )
+  val CommitNextPC = Mux(inst.IsMret, CSRUnit.io.ExceptionTarget, ActualNextPC)
   // 预测下一PC: IFU用BTB(分支BTFN+独立jal BTB)给出,随指令传到此;未命中=顺序=snpc
   val PredNextPC = Mux(inst.pred_taken, inst.pred_target, inst.snpc)
   // 预测错误检查: 比较实际与预测的下一PC,不一致则冲刷并重定向到实际目标
@@ -229,10 +241,16 @@ class ysyx_26030103_EXU(
     io.in.fire && !InstructionTrapValid && !io.MemTrapCommit &&
       !CSRUnit.io.IrqCommit
 
-  io.TrapValid :=
-    io.in.fire && CSRUnit.io.IsEbreak && !io.MemTrapCommit &&
-      !CSRUnit.io.IrqCommit
-  io.TrapPC := inst.pc
+  io.SimHaltValid := InstructionCommit && inst.IsSimHalt
+  io.SimHaltPC := inst.pc
+  io.TrapCommit := CSRUnit.io.TrapCommit
+  io.TrapPC := Mux(io.MemTrapCommit, io.MemTrapPC, inst.pc)
+  io.TrapTarget := CSRUnit.io.ExceptionTarget
+  io.TrapCause := CSRUnit.io.CommittedCause
+  io.FetchAccessFaultCommit := CSRUnit.io.TrapCommit && !io.MemTrapCommit &&
+    !CSRUnit.io.IrqCommit && UpEx && inst.ExceptionCause === 1.U
+  io.FetchAccessFaultPC := inst.pc
+  io.FetchAccessFaultResp := inst.AccessFaultResp
   io.Redirect := InstructionCommit && Redirect
   io.RedirectTarget := ActualNextPC
   // ecall/mret/上游异常提交,或MEM经CSR后门提交的访存故障
@@ -243,9 +261,13 @@ class ysyx_26030103_EXU(
   // 同步异常指令不退休；IRQ抢占的指令会从mepc重做，也不退休。
   // load/store先携带退休意图进入MEM，若总线故障则由LSU清除。
   io.out.bits.Retire := !InstructionTrapValid && !ActiveInst.IsEcall &&
-    !ActiveInst.IsEbreak && !CSRUnit.io.IrqCommit && !io.MemTrapCommit
+    !ActiveInst.IsEbreak && !ActiveInst.IsSimHalt && !CSRUnit.io.IrqCommit &&
+    !io.MemTrapCommit
   io.out.bits.pc := ActiveInst.pc
   io.out.bits.snpc := ActiveInst.snpc
+  // Pending MDU 不可能是控制转移；其它指令使用本拍已
+  // 计算的实际后继 PC，MRET 则使用 mepc。
+  io.out.bits.NextPC := Mux(PendingMDU, ActiveInst.snpc, CommitNextPC)
   io.out.bits.Rd := ActiveInst.Rd
   // 带异常标记的指令不得写回GPR;被中断压掉的指令(IrqCommit)也不得写回
   io.out.bits.RegisterWrite :=
@@ -327,11 +349,11 @@ class ysyx_26030103_EXU(
   val RASPop =
     inst.IsJalr && Rs1IsLink && (!RdIsLink || inst.Rd =/= inst.Rs1)
   // jal BTB更新: jal提交时写回PC→JalTarget(Jal/Call表项, 目标静态);
-  // ret提交时写Ret表项(只作ret标记, 预测目标由RAS给出).
+  // ret提交时目标字段保存静态JALR immediate，预测时与动态RAS栈顶相加。
   // 间接jalr(非call非ret)目标多变, 不入表
   io.JalBTBUpdateValid := InstructionCommit && (inst.IsJal || RASPop)
   io.JalBTBUpdatePC := inst.pc
-  io.JalBTBUpdateTarget := Mux(inst.IsJal, JalTarget, JalrTarget)
+  io.JalBTBUpdateTarget := Mux(inst.IsJal, JalTarget, inst.Immediate)
   io.JalBTBUpdateKind := Mux(
     RASPop,
     ysyx_26030103_BTBKind.Ret,

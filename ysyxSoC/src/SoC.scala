@@ -122,9 +122,13 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     val debug_gpr_raddr = IO(Input(UInt(5.W)))
     val debug_gpr_rdata = IO(Output(UInt(32.W)))
     val debug_pc = IO(Output(UInt(32.W)))
+    val debug_next_pc = IO(Output(UInt(32.W)))
+    val debug_arch_pc = IO(Output(UInt(32.W)))
     cpu.module.debug_gpr_raddr := debug_gpr_raddr
     debug_gpr_rdata := cpu.module.debug_gpr_rdata
     debug_pc := cpu.module.debug_pc
+    debug_next_pc := cpu.module.debug_next_pc
+    debug_arch_pc := cpu.module.debug_arch_pc
     val debug_instructions = IO(Output(UInt(32.W)))
     debug_instructions := cpu.module.debug_instructions
     // mtrace
@@ -151,6 +155,14 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     debug_access_fault_resp := cpu.module.debug_access_fault_resp
     val debug_commit = IO(Output(Bool()))
     debug_commit := cpu.module.debug_commit
+    val debug_trap_valid = IO(Output(Bool()))
+    val debug_trap_pc = IO(Output(UInt(32.W)))
+    val debug_trap_target = IO(Output(UInt(32.W)))
+    val debug_trap_cause = IO(Output(UInt(32.W)))
+    debug_trap_valid := cpu.module.debug_trap_valid
+    debug_trap_pc := cpu.module.debug_trap_pc
+    debug_trap_target := cpu.module.debug_trap_target
+    debug_trap_cause := cpu.module.debug_trap_cause
     val perf_mem_waitslot = IO(Output(Bool()))
     perf_mem_waitslot := cpu.module.perf_mem_waitslot
     val perf_ifu_fetch = IO(Output(Bool()))
@@ -364,9 +376,13 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     val debug_gpr_raddr = IO(Input(UInt(5.W)))
     val debug_gpr_rdata = IO(Output(UInt(32.W)))
     val debug_pc = IO(Output(UInt(32.W)))
+    val debug_next_pc = IO(Output(UInt(32.W)))
+    val debug_arch_pc = IO(Output(UInt(32.W)))
     masic.debug_gpr_raddr := debug_gpr_raddr
     debug_gpr_rdata := masic.debug_gpr_rdata
     debug_pc := masic.debug_pc
+    debug_next_pc := masic.debug_next_pc
+    debug_arch_pc := masic.debug_arch_pc
     val debug_instructions = IO(Output(UInt(32.W)))
     debug_instructions := masic.debug_instructions
     // mtrace
@@ -394,6 +410,14 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     // IPC
     val debug_commit = IO(Output(Bool()))
     debug_commit := masic.debug_commit
+    val debug_trap_valid = IO(Output(Bool()))
+    val debug_trap_pc = IO(Output(UInt(32.W)))
+    val debug_trap_target = IO(Output(UInt(32.W)))
+    val debug_trap_cause = IO(Output(UInt(32.W)))
+    debug_trap_valid := masic.debug_trap_valid
+    debug_trap_pc := masic.debug_trap_pc
+    debug_trap_target := masic.debug_trap_target
+    debug_trap_cause := masic.debug_trap_cause
     val perf_mem_waitslot = IO(Output(Bool()))
     perf_mem_waitslot := masic.perf_mem_waitslot
     val perf_ifu_fetch = IO(Output(Bool()))

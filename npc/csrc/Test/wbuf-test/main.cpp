@@ -5,7 +5,7 @@
 // T3 超深度写簇: 连续8个store(>4项buffer, 触发等空位), 读回全部校验
 // T4 load旁路:   sw后紧跟多次不同字地址lw(纯RAM无匹配) — 旁路上总线, 值必须对
 // T5 MMIO门控:   RAM写与MMIO写(UART)混合后读回 — 冒烟验证"在写项全纯RAM才旁路"的门控路径
-// T6 halt排空:   最后一笔store后立刻halt — ebreak是IsSideEffect, 会等buffer排空才结束仿真
+// T6 halt排空:   最后一笔store后立刻halt — custom halt是IsSideEffect, 会等buffer排空才结束仿真
 #include <am.h>
 #include <klib.h>
 
@@ -90,7 +90,7 @@ int main() {
   uint32_t v5 = buf[2];         // 同字匹配, 等排空后必须读到新值
   check("t5-ram-after-mmio", v5, 0x51515151);
 
-  // ---- T6: 最后一笔store后立刻halt, ebreak等buffer排空, 仿真结束时内存一致 ----
+  // ---- T6: 最后一笔store后立刻halt, custom halt等buffer排空, 仿真结束时内存一致 ----
   buf[3] = 0x60000000u | (uint32_t)failures;
 
   printf("wbuf-test %s (failures=%d)\n", failures ? "FAIL" : "PASS", failures);

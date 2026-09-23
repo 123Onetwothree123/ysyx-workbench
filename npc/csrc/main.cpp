@@ -26,10 +26,23 @@ int main(int argc, char const *argv[])
     nvboard_bind_all_pins(&*dut);
     nvboard_init();
 #endif
+    // All exits after the DUT/NVBoard have been created use the same one-shot
+    // cleanup path.  This also keeps DiffTest initialization failures from
+    // bypassing Verilator/NVBoard finalization.
+    const auto finalize = [&dut]() {
+#if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
+        log_close();
+#endif
+        dut.final();
+#ifdef CONFIG_NVBOARD
+        nvboard_quit();
+#endif
+    };
     auto options{CLIOptions::Parse(argc, argv)};
     if (!options)
     {
         std::println(std::cerr, "{}", options.error());
+        finalize();
         return 1;
     }
     auto load{ImageLoader::LoadFromCLI(*options)};
@@ -39,20 +52,26 @@ int main(int argc, char const *argv[])
         std::println("未加载镜像文件，进入空 SDB");
 #else
         std::println(std::cerr, "{}", load.error());
+        finalize();
         return 1;
 #endif
     }
+    // Establish the DUT's architectural reset state before synchronizing a
+    // reference model.  GPRs other than x0 have no ISA-defined reset value,
+    // so DiffTest must copy the values actually seen by this RTL instance.
+    dut.reset();
 #ifdef CONFIG_DIFFTEST
     if (load)
     {
-        auto diffResult{DifftestInitialize(options->GetDiffFile(), *load)};
+        auto diffResult{DifftestInitialize(dut, options->GetDiffFile(), *load)};
         if (!diffResult)
         {
             std::println(std::cerr, "DiffTest 初始化失败：{}", diffResult.error());
+            finalize();
+            return 1;
         }
     }
 #endif
-    dut.reset();
     if (options->GetVGACheck())
     {
         dut.EnableVGACheck();
@@ -63,6 +82,10 @@ int main(int argc, char const *argv[])
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
+        // DiffTest can mark the run BAD while processing this edge.  Do not
+        // let a same-cycle custom halt overwrite that failure with a0 == 0.
+        if (NPCTrap::HasHalted())
+            break;
         if (options->GetVGACheck() && dut.GetCycle() >= 50000000)
         {
             NPCTrap::Stop();
@@ -72,17 +95,22 @@ int main(int argc, char const *argv[])
 #endif
         if (dut->trap_valid)
         {
-            std::println("trap了");
+            std::println("收到仿真 halt 请求");
             const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
         }
     }
 #endif
-    dut.VGACheckReport();
-    dut.final();
-#ifdef CONFIG_NVBOARD
-    nvboard_quit();
+#ifdef CONFIG_DIFFTEST
+    // 逐退休比对已经把 REF 推进到 DUT 的当前架构边界。
+    // GOOD/BAD trap 都在 final() 之前校验，不再让 REF 盲跑固定条数。
+    if (!DifftestFinalCheck(dut))
+    {
+        const auto pc{dut.ReadPC()};
+        NPCTrap::Halt(pc ? *pc : 0U, 1U);
+    }
 #endif
+    dut.VGACheckReport();
     int result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
 #ifdef CONFIG_PERF_STATS
     NPCTrap::PrintPerformanceStatistics(dut.GetPerfStats(), dut.GetCycle());
@@ -93,18 +121,8 @@ int main(int argc, char const *argv[])
         NPCSimResult::Save(*result_dir, dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
     }
 #endif
-    dut.final();
-#ifdef CONFIG_NVBOARD
-    nvboard_quit();
-#endif
-#ifdef CONFIG_DIFFTEST
-    if (result != 0)
-    {
-        DiftestFinalCheck(dut);
-    }
-#endif
-#if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
-    log_close();
-#endif
+    // Verilator/NVBoard 的收尾每个只执行一次，且必须在所有
+    // 读取 DUT 状态的检查之后。
+    finalize();
     return result;
 }

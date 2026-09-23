@@ -24,12 +24,15 @@ namespace
     using REFDifftestExec = void (*)(std::uint64_t n);
     using REFDifftestRaiseIntr = void (*)(std::uint64_t no);
     using REFDifftestInit = void (*)(int port);
+    using REFDifftestStateSize = std::size_t (*)();
     void *REFHandle{nullptr};
     REFDifftestMemcpy REFMemcpy{nullptr};
     REFDifftestRegcpy REFRegcpy{nullptr};
     REFDifftestExec REFExec{nullptr};
     REFDifftestRaiseIntr REFRaiseIntr{nullptr};
+    REFDifftestStateSize REFStateSize{nullptr};
     bool Enabled{false};
+    bool Failed{false};
     /// @brief 从REF .so中按名称加载符号并转为指定函数指针类型
     /// @tparam Fn 目标函数指针类型
     /// @param Name 符号名称
@@ -45,13 +48,39 @@ namespace
         }
         return reinterpret_cast<Fn>(Symbol);
     }
+
+    DifftestCPUState ReadReferenceState()
+    {
+        DifftestCPUState state;
+        REFRegcpy(&state, DifftestCPUState::GetDirectionToDUT());
+        return state;
+    }
+
+    DifftestCPUState ReadDUTStateAtPC(DUT &dut, std::uint32_t pc)
+    {
+        auto state{DifftestCPUState::ReadDUTState(dut)};
+        state.SetPC(pc);
+        return state;
+    }
+
+    void ReportMismatch(DUT &dut, std::string_view event, std::uint32_t dutPC)
+    {
+        Failed = true;
+        std::println(std::cerr,
+                     "DiffTest {} 校验失败（retire PC=0x{:08x}, cycle={}）",
+                     event,
+                     static_cast<std::uint32_t>(dut->debug_pc),
+                     dut.GetCycle());
+        NPCTrap::Halt(dutPC, 1);
+    }
 #endif
 }
 /// @brief 初始化DiffTest：加载REF .so、同步内存和寄存器、启用比对
 /// @param REFSoFile REF动态库路径，为空则不启用
 /// @param ImageSize 程序镜像大小（字节）
 /// @return 成功返回空，失败返回错误信息
-std::expected<void, std::string> DifftestInitialize(const std::optional<std::filesystem::path> &REFSoFile,
+std::expected<void, std::string> DifftestInitialize(DUT &dut,
+                                                    const std::optional<std::filesystem::path> &REFSoFile,
                                                     std::size_t ImageSize)
 {
 #ifdef CONFIG_DIFFTEST
@@ -76,6 +105,21 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
         return std::unexpected{RegcpySymbol.error()};
     }
     REFRegcpy = *RegcpySymbol;
+    auto StateSizeSymbol{LoadSymbol<REFDifftestStateSize>("difftest_state_size")};
+    if (!StateSizeSymbol)
+    {
+        return std::unexpected{
+            std::format("DiffTest REF 不支持固定 RV32 状态 ABI：{}",
+                        StateSizeSymbol.error())};
+    }
+    REFStateSize = *StateSizeSymbol;
+    if (const auto stateSize{REFStateSize()}; stateSize != sizeof(DifftestCPUState))
+    {
+        return std::unexpected{std::format(
+            "DiffTest 状态 ABI 不匹配：REF={} 字节，DUT={} 字节",
+            stateSize,
+            sizeof(DifftestCPUState))};
+    }
     auto ExecSymbol{LoadSymbol<REFDifftestExec>("difftest_exec")};
     if (!ExecSymbol)
     {
@@ -94,16 +138,25 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
         return std::unexpected{InitSymbol.error()};
     }
     (*InitSymbol)(0);
-    // InitSymbol might corrupt global state, skip if not needed
-    // REFMemcpy and REFRegcpy should be sufficient for basic difftest
-    REFMemcpy(CONFIG_MBASE, FlashMemory.data(), ImageSize, DifftestCPUState::GetDirectionToRef());
-    DifftestCPUState DUTState;
-    DUTState.SetPC(CONFIG_RESET_PC);
+    // 包含 direct-NPC cache padding 在内的整个实际镜像都要同步。
+    if (ImageSize > FlashMemory.size())
+    {
+        return std::unexpected{"DiffTest 镜像长度大于已加载内存"};
+    }
+    REFMemcpy(CONFIG_MBASE,
+              FlashMemory.data(),
+              FlashMemory.size(),
+              DifftestCPUState::GetDirectionToRef());
+    // RISC-V does not define reset values for x1..x31.  Synchronize the
+    // reference from the post-reset RTL state instead of assuming zero.
+    auto DUTState{DifftestCPUState::ReadDUTState(dut)};
     REFRegcpy(&DUTState, DifftestCPUState::GetDirectionToRef());
     Enabled = true;
+    Failed = false;
     std::println("DiffTest: ON, REF = {0}", REFSoFile->string());
     return {};
 #else
+    static_cast<void>(dut);
     if (REFSoFile)
     {
         return std::unexpected{"没开DiffTest"};
@@ -118,24 +171,65 @@ std::expected<void, std::string> DifftestInitialize(const std::optional<std::fil
 void DifftestStep(DUT &dut)
 {
 #ifdef CONFIG_DIFFTEST
-    if (!Enabled)
+    if (!Enabled || Failed)
+        return;
+    const auto retirePC{static_cast<std::uint32_t>(dut->debug_pc)};
+    const auto before{ReadReferenceState()};
+    if (before.GetPC() != retirePC)
     {
-        static bool Warned{false};
-        if (!Warned)
-        {
-            std::println("DIFFTEST的enabled都没启动，跑个毛啊");
-            Warned = true;
-        }
+        std::println(std::cerr,
+                     "DiffTest 执行前 PC 不匹配：REF=0x{:08x}, DUT retire=0x{:08x}",
+                     before.GetPC(),
+                     retirePC);
+        ReportMismatch(dut, "retire-pre", retirePC);
         return;
     }
+
     REFExec(1);
-    DifftestCPUState REFState;
-    REFRegcpy(&REFState, DifftestCPUState::GetDirectionToDUT());
-    const auto DUTState{DifftestCPUState::ReadDUTState(dut)};
+    const auto REFState{ReadReferenceState()};
+    const auto nextPC{static_cast<std::uint32_t>(dut->debug_next_pc)};
+    const auto DUTState{ReadDUTStateAtPC(dut, nextPC)};
     if (!REFState.CheckRegs(DUTState))
     {
-        std::println("DUT和REF的寄存器数据对比不一样");
-        NPCTrap::Halt(DUTState.GetPC(), 1);
+        ReportMismatch(dut, "retire-post", nextPC);
+    }
+#else
+    static_cast<void>(dut);
+#endif
+}
+
+void DifftestTrapStep(DUT &dut)
+{
+#ifdef CONFIG_DIFFTEST
+    if (!Enabled || Failed)
+        return;
+
+    const auto trapPC{static_cast<std::uint32_t>(dut->debug_trap_pc)};
+    const auto cause{static_cast<std::uint32_t>(dut->debug_trap_cause)};
+    const auto before{ReadReferenceState()};
+    if (before.GetPC() != trapPC)
+    {
+        std::println(std::cerr,
+                     "DiffTest trap 前 PC 不匹配：REF=0x{:08x}, DUT trap=0x{:08x}",
+                     before.GetPC(),
+                     trapPC);
+        ReportMismatch(dut, "trap-pre", trapPC);
+        return;
+    }
+
+    // The DUT has already classified the precise trap.  Inject both
+    // interrupts and synchronous exceptions at this architectural boundary:
+    // executing the faulting instruction in REF is unsafe for PMA faults,
+    // illegal instructions, and misaligned control transfers that the simple
+    // reference memory/decoder may not model.
+    REFRaiseIntr(cause);
+
+    const auto REFState{ReadReferenceState()};
+    const auto target{static_cast<std::uint32_t>(dut->debug_trap_target)};
+    const auto DUTState{ReadDUTStateAtPC(dut, target)};
+    if (!REFState.CheckRegs(DUTState))
+    {
+        ReportMismatch(dut, "trap-post", target);
     }
 #else
     static_cast<void>(dut);
@@ -153,28 +247,25 @@ bool DifftestIsEnabled()
 }
 /// @brief 跑完整体比对：NEMU连续执行直至trap，与DUT最终状态逐寄存器对比
 /// @note 需在 DUT 已触发 trap 后调用
-void DiftestFinalCheck(DUT &dut)
+bool DifftestFinalCheck(DUT &dut)
 {
 #ifdef CONFIG_DIFFTEST
     if (!Enabled)
-        return;
-    // NEMU 连续执行直到 ebreak（测试程序 halt 会触发）
-    REFExec(100000);
-    DifftestCPUState REFState;
-    REFRegcpy(&REFState, DifftestCPUState::GetDirectionToDUT());
+        return true;
+    if (Failed)
+        return false;
+    const auto REFState{ReadReferenceState()};
     const auto DUTState{DifftestCPUState::ReadDUTState(dut)};
-    std::println(stderr, "=== Final Check: REF vs DUT ===");
-    std::println(stderr, "  PC: REF=0x{:08x} DUT=0x{:08x}", REFState.GetPC(), DUTState.GetPC());
-    for (std::size_t i{0}; i < 32; i++)
+    const bool matched{REFState.CheckRegs(DUTState)};
+    if (!matched)
     {
-        if (REFState.GetGPR(i) != DUTState.GetGPR(i))
-            std::println(stderr, "  x{:<2}: REF=0x{:08x} DUT=0x{:08x} ***", i, REFState.GetGPR(i), DUTState.GetGPR(i));
+        ReportMismatch(dut, "final", DUTState.GetPC());
+        return false;
     }
-    if (!REFState.CheckRegs(DUTState))
-    {
-        std::println("DUT和REF的寄存器数据对比不一样 - 这是最后的比对");
-    }
+    std::println("DiffTest: final state PASS (pc=0x{:08x})", DUTState.GetPC());
+    return !Failed;
 #else
     static_cast<void>(dut);
+    return true;
 #endif
 }

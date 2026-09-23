@@ -320,6 +320,10 @@ class riscv32e_npc_SimTop extends Module {
   debug_gpr_rdata := cpu.io.debug_gpr_rdata
   val debug_pc = IO(Output(UInt(32.W)))
   debug_pc := cpu.io.debug_pc
+  val debug_next_pc = IO(Output(UInt(32.W)))
+  debug_next_pc := cpu.io.debug_next_pc
+  val debug_arch_pc = IO(Output(UInt(32.W)))
+  debug_arch_pc := cpu.io.debug_arch_pc
   val debug_instructions = IO(Output(UInt(32.W)))
   debug_instructions := cpu.io.debug_instructions
 
@@ -346,6 +350,14 @@ class riscv32e_npc_SimTop extends Module {
   debug_access_fault_resp := cpu.io.debug_access_fault_resp
   val debug_commit = IO(Output(Bool()))
   debug_commit := cpu.io.debug_commit
+  val debug_trap_valid = IO(Output(Bool()))
+  debug_trap_valid := cpu.io.debug_trap_valid
+  val debug_trap_pc = IO(Output(UInt(32.W)))
+  debug_trap_pc := cpu.io.debug_trap_pc
+  val debug_trap_target = IO(Output(UInt(32.W)))
+  debug_trap_target := cpu.io.debug_trap_target
+  val debug_trap_cause = IO(Output(UInt(32.W)))
+  debug_trap_cause := cpu.io.debug_trap_cause
 
   val perf_ifu_fetch = IO(Output(Bool()))
   perf_ifu_fetch := cpu.io.perf_ifu_fetch
@@ -413,7 +425,7 @@ class riscv32e_npc_SimTop extends Module {
   cyc := cyc + 1.U
   when(cyc < 20.U && trap_valid) {
     printf(
-      p"[?] Simulation has happened a trap (the program may has finished correctly)\n"
+      p"[?] Simulation halt was requested by the custom halt instruction\n"
     )
   }
 }

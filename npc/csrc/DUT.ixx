@@ -35,6 +35,10 @@ private:
     std::size_t instructions{0};
     PerfStats perf{};
     std::size_t fault_count{0}; // AXI fault 打印限流计数
+    bool finalized{false};
+    // Verilator 顶层没有稳定的 RAM 读端口。只记录已精确退休的
+    // CPU store，与初始镜像合并成可证明正确的调试内存视图。
+    std::unordered_map<std::uint32_t, std::uint8_t> debug_memory_writes;
 
 public:
     DUT();

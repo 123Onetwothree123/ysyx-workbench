@@ -26,6 +26,8 @@ class ysyx_26030103_BTB(
     val update_valid = Input(Bool())
     val update_pc = Input(UInt(AddrShiftedWidth.W))
     val update_target = Input(UInt(AddressWidth.W))
+    // fence.i 后代码含义可能改变，旧控制流表项必须失效。
+    val flush = Input(Bool())
     // 可选kind端口(仅KindBits>0时存在)
     val hit_kind = if (HasKind) Some(Output(UInt(KindBits.W))) else None
     val update_kind = if (HasKind) Some(Input(UInt(KindBits.W))) else None
@@ -62,7 +64,14 @@ class ysyx_26030103_BTB(
   // (ways=1时恒为0, 退化为直接映射的正常覆盖行为)
   val ReplPtrWidth = log2Ceil(BTBWays).max(1)
   val repl_ptr = RegInit(VecInit(Seq.fill(NumSets)(0.U(ReplPtrWidth.W))))
-  when(io.update_valid) {
+  when(io.flush) {
+    for (set <- 0 until NumSets; way <- 0 until BTBWays) {
+      valid(set)(way) := false.B
+    }
+    for (set <- 0 until NumSets) {
+      repl_ptr(set) := 0.U
+    }
+  }.elsewhen(io.update_valid) {
     // 先组合判断: 是否有同tag命中, 各way之前(不含自己)是否全占用
     val tag_match = Wire(Vec(BTBWays, Bool()))
     for (w <- 0 until BTBWays) {

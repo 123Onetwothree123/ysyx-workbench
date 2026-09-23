@@ -21,7 +21,9 @@ void putch(char ch)
 //抄NEMU的
 void halt(int code)
 {
-  asm volatile("mv a0, %0; ebreak" : : "r"(code));
+  // custom-0 是 NPC 仿真退出 ABI；标准 EBREAK 必须留给 breakpoint
+  // 异常处理程序。a0 仍沿用 AM 的退出码约定。
+  asm volatile("mv a0, %0; .word 0x0000000b" : : "r"(code) : "a0", "memory");
   while (1)
     ;
 }

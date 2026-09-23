@@ -71,6 +71,9 @@ class ysyx_26030103_DCache(
   val RefillBaseReg = Reg(UInt(AddressWidth.W))
   val RefillCount = RegInit(0.U(CountWidth.W))
   val RefillActive = RegInit(false.B)
+  // 正常回填使用一笔 INCR burst。仅当不符合请求长度的从机提前给出
+  // RLAST 时，才退化成逐字单拍补齐剩余数据，避免需求 load 永久挂起。
+  val RefillBurst = RegInit(false.B)
   val RefillError = RegInit(false.B)
   val ResponseData = RegInit(0.U(32.W))
   val ResponseFault = RegInit(false.B)
@@ -81,7 +84,11 @@ class ysyx_26030103_DCache(
   val SReadResp = states(2)
   val SResp = states(3)
   val state = RegInit(SIdle)
-  val discard = RegInit(false.B)
+  // flush invalidates cached state, but it must not cancel an already accepted
+  // demand request: LSU has no cancellation handshake and is waiting for exactly
+  // one response.  suppressFill keeps the outstanding request alive while
+  // preventing a line that straddled the flush from becoming valid again.
+  val suppressFill = RegInit(false.B)
   val ReqIndexSafe = if (Enable) ReqIndexReg else 0.U(IndexWidth.W)
   def FormatLoad(word: UInt, address: UInt, width: UInt, signed: Bool): UInt = {
     val ByteData = MuxLookup(address(1, 0), word(7, 0))(
@@ -137,8 +144,9 @@ class ysyx_26030103_DCache(
   io.AXI.AR.ARPROT := 0.U
   io.AXI.R.RREADY := false.B
   io.req.ready := state === SIdle && !io.flush
-  // flush可取消尚未交付给LSU的内部响应；AXI侧已经提出的请求则不能撤回。
-  io.resp.valid := state === SResp && !io.flush
+  // Every accepted request produces exactly one response, including when a
+  // cache invalidation arrives while the request is in flight.
+  io.resp.valid := state === SResp
   io.resp.bits.data := ResponseData
   io.resp.bits.fault := ResponseFault
   io.resp.bits.FaultResp := ResponseFaultResp
@@ -186,7 +194,7 @@ class ysyx_26030103_DCache(
     ReqOffsetReg := WordOffset
     ResponseFault := false.B
     ResponseFaultResp := 0.U
-    discard := false.B
+    suppressFill := false.B
     when(hit) {
       if (WordsPerBlock > 1) {
         ResponseData := FormatLoad(
@@ -206,6 +214,7 @@ class ysyx_26030103_DCache(
       state := SResp
     }.otherwise {
       RefillActive := cacheable
+      RefillBurst := cacheable
       RefillCount := 0.U
       RefillError := false.B
       RefillBaseReg := Cat(
@@ -224,9 +233,14 @@ class ysyx_26030103_DCache(
         RefillBaseReg + Cat(RefillCount, 0.U(2.W)),
         ReqAddrReg
       )
+      io.AXI.AR.ARLEN := Mux(
+        RefillActive && RefillBurst,
+        (WordsPerBlock - 1).U,
+        0.U
+      )
       io.AXI.AR.ARSIZE := Mux(RefillActive, 2.U, ReqWidthReg)
       // AXI要求ARVALID一旦提出就保持到握手。即使flush到来，也继续完成
-      // 地址握手，再在R通道排空并丢弃响应。
+      // 地址和R通道事务；响应仍交付demand，但不安装该次回填的cache line。
       when(io.AXI.AR.ARREADY) {
         state := SReadResp
       }
@@ -234,11 +248,7 @@ class ysyx_26030103_DCache(
     is(SReadResp) {
       io.AXI.R.RREADY := true.B
       when(io.AXI.R.RVALID) {
-        when(io.flush || discard) {
-          RefillActive := false.B
-          discard := false.B
-          state := SIdle
-        }.elsewhen(RefillActive) {
+        when(RefillActive) {
           val BeatError = io.AXI.R.RRESP =/= 0.U
           when(BeatError) {
             RefillError := true.B
@@ -247,12 +257,16 @@ class ysyx_26030103_DCache(
               ResponseFaultResp := io.AXI.R.RRESP
             }
           }
-          tag(ReqIndexSafe) := ReqTagReg
           when(!BeatError) {
-            if (WordsPerBlock > 1) {
-              data(ReqIndexSafe)(RefillCount) := io.AXI.R.RDATA
-            } else {
-              data(ReqIndexSafe)(0) := io.AXI.R.RDATA
+            // Data that returns during/after a flush may satisfy the demand
+            // load, but must not repopulate the invalidated cache line.
+            when(!suppressFill && !io.flush) {
+              tag(ReqIndexSafe) := ReqTagReg
+              if (WordsPerBlock > 1) {
+                data(ReqIndexSafe)(RefillCount) := io.AXI.R.RDATA
+              } else {
+                data(ReqIndexSafe)(0) := io.AXI.R.RDATA
+              }
             }
             when(RefillCount === ReqOffsetReg) {
               ResponseData := FormatLoad(
@@ -263,13 +277,23 @@ class ysyx_26030103_DCache(
               )
             }
           }
-          when(RefillCount === (WordsPerBlock - 1).U) {
-            valid(ReqIndexSafe) := !RefillError && !BeatError // 任一回填出错都不置有效
+          val LastExpectedBeat = RefillCount === (WordsPerBlock - 1).U
+          when(LastExpectedBeat) {
+            valid(ReqIndexSafe) :=
+              !suppressFill && !io.flush && !RefillError && !BeatError
             RefillActive := false.B
+            RefillBurst := false.B
             state := SResp
-          }.otherwise {
+          }.elsewhen(RefillBurst && io.AXI.R.RLAST) {
+            // 提前 RLAST 属于下游协议异常，但 AXI RRESP 没有专门编码可
+            // 上报。保留已收到的拍，从下一字开始用单拍读取补齐，确保
+            // 当前 demand 最终仍得到且只得到一个响应。
+            RefillBurst := false.B
             RefillCount := RefillCount + 1.U
             state := SReadReq
+          }.otherwise {
+            RefillCount := RefillCount + 1.U
+            when(!RefillBurst) { state := SReadReq }
           }
         }.otherwise {
           when(io.AXI.R.RRESP =/= 0.U) {
@@ -288,13 +312,14 @@ class ysyx_26030103_DCache(
       }
     }
     is(SResp) {
-      when(io.resp.fire) { state := SIdle }
+      when(io.resp.fire) {
+        suppressFill := false.B
+        state := SIdle
+      }
     }
   }
   when(io.flush) { // fence.i使全部缓存行失效
     valid.foreach(_ := false.B)
-    when(state === SResp) { state := SIdle }
-    when(state === SReadReq) { discard := true.B }
-    when(state === SReadResp && !io.AXI.R.RVALID) { discard := true.B }
+    when(state =/= SIdle) { suppressFill := true.B }
   }
 }

@@ -1,12 +1,21 @@
 V_FILE_GEN   = build/ysyxSoCTop.sv
 V_FILE_FINAL = build/ysyxSoCFull.v
 SCALA_FILES = $(shell find src/ -name "*.scala")
+CHIPLINK ?= n
+export CHIPLINK
+ELAB_CONFIG = build/.elaboration-config
 
 # Firtool version
 FIRTOOL_VERSION = 1.105.0
 FIRTOOL_PATCH_DIR = $(shell pwd)/patch/firtool
 
-$(V_FILE_FINAL): $(SCALA_FILES)
+$(ELAB_CONFIG): FORCE
+	@mkdir -p $(@D)
+	@if [ ! -f $@ ] || [ "$$(sed -n '1p' $@)" != "CHIPLINK=$(CHIPLINK)" ]; then \
+	  printf '%s\n' 'CHIPLINK=$(CHIPLINK)' > $@; \
+	fi
+
+$(V_FILE_FINAL): $(SCALA_FILES) $(ELAB_CONFIG)
 # Replace firtool with a newer version
 # TODO: This can be removed after chisel publishes a new version
 	@./patch/update-firtool.sh $(FIRTOOL_VERSION) $(FIRTOOL_PATCH_DIR)
@@ -25,4 +34,6 @@ dev-init:
 	git submodule update --init --recursive
 	cd rocket-chip && git apply ../patch/rocket-chip.patch
 
-.PHONY: verilog clean dev-init
+FORCE:
+
+.PHONY: verilog clean dev-init FORCE

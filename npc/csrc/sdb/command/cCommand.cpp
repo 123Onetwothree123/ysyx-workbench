@@ -25,14 +25,20 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
+        // A DiffTest mismatch raised by this step has priority over a
+        // same-cycle simulation halt, otherwise a0 == 0 could turn BAD into
+        // an apparent GOOD result.
+        if (NPCTrap::HasHalted())
+            break;
         if (dut->trap_valid)
         {
             const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
             NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
-            std::println("trap了");
+            std::println("收到仿真 halt 请求");
             break;
         }
-        if (GetGlobalWatchpointPool().CheckAll(EvaluationContext))
+        if ((dut->debug_commit || dut->debug_trap_valid) &&
+            GetGlobalWatchpointPool().CheckAll(EvaluationContext))
         {
             std::println("因为要检查监视点，所以程序现在先停止");
             break;

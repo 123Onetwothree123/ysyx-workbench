@@ -3,10 +3,12 @@ import std;
 import npc.DUT;
 
 // 加载参考CPU动态库并初始化比对环境
-export std::expected<void, std::string> DifftestInitialize(const std::optional<std::filesystem::path> &RefSoFile, std::size_t ImageSize);
+export std::expected<void, std::string> DifftestInitialize(DUT &dut, const std::optional<std::filesystem::path> &RefSoFile, std::size_t ImageSize);
 // 参考CPU执行一步后与DUT寄存器状态比对，不一致就直接触发ebreak
 export void DifftestStep(DUT &dut);
-// 跑完后整体比对：NEMU跑至trap，与DUT最终状态对比
-export void DiftestFinalCheck(DUT &dut);
+// DUT 提交一个不退休的架构 trap 时，同步参考模型。
+export void DifftestTrapStep(DUT &dut);
+// 不再额外执行 REF，只校验已逐事件同步的最终状态。
+export bool DifftestFinalCheck(DUT &dut);
 // 返回DiffTest是否已启用
 export bool DifftestIsEnabled();

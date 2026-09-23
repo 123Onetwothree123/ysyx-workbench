@@ -44,6 +44,7 @@ Context *__am_irq_handle(Context *c)
 extern void __am_asm_trap(void);
 bool cte_init(Context *(*handler)(Event, Context *))
 {
+    user_handler = handler;
     asm volatile("csrw mtvec, %0" : : "r"(__am_asm_trap));
     return true;
 }
@@ -66,8 +67,18 @@ void yield()
 }
 bool ienabled()
 {
-    return false;
+    uintptr_t mstatus;
+    asm volatile("csrr %0, mstatus" : "=r"(mstatus));
+    return (mstatus & (1u << 3)) != 0;
 }
 void iset(bool enable)
 {
+    uintptr_t mstatus;
+    asm volatile("csrr %0, mstatus" : "=r"(mstatus));
+    if (enable) {
+        mstatus |= (1u << 3);
+    } else {
+        mstatus &= ~(1u << 3);
+    }
+    asm volatile("csrw mstatus, %0" : : "r"(mstatus) : "memory");
 }

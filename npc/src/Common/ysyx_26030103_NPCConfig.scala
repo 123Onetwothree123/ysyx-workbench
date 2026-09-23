@@ -160,6 +160,8 @@ case class ysyx_26030103_NPCConfig(
     WBufDepth: Int = 4,
     CacheableBase: Long = 0x80000000L,
     CacheableMask: Long = 0x80000000L,
+    PMARegions: Seq[ysyx_26030103_PMARegion] =
+      ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
     // 分支预测
     BTBBits: Int = 4,
     BTBWays: Int = 1,
@@ -170,6 +172,11 @@ case class ysyx_26030103_NPCConfig(
   require(!UseA, "RV32_A还没有做")
   require(!UseC, "RV32_C还没做")
   require((ResetAddr & 0x3L) == 0L, "未启用RV32_C时ResetAddr必须按4字节对齐")
+  require(PMARegions.nonEmpty, "物理地址图不能为空")
+  require(
+    PMARegions.exists(r => ResetAddr >= r.Base && ResetAddr < r.EndExclusive && r.Executable),
+    "ResetAddr必须位于可执行PMA区域"
+  )
   require(
     Integer.bitCount(WBufDepth) == 1,
     "WBufDepth必须是2的幂(1/2/4/8/16)"
@@ -179,8 +186,8 @@ case class ysyx_26030103_NPCConfig(
     "MULRadix必须是大于等于2的2的幂"
   )
   require(
-    MULWidth >= 1 && Integer.bitCount(MULWidth) == 1,
-    "MULWidth必须是正的2的幂(1/2/4/8/... )"
+    MULWidth >= 32 && Integer.bitCount(MULWidth) == 1,
+    "RV32 M扩展的MULWidth必须是不小于32的2的幂(32/64/128/... )"
   )
   require(
     MULCompressorInputs >= 3 && MULCompressorInputs <= 64,
@@ -195,7 +202,10 @@ case class ysyx_26030103_NPCConfig(
     CoutOffset = MULCompressorCoutOffset,
     AllowRedundant = MULCompressorAllowRedundant
   )
-  require(ysyx_26030103_MULBoothConfig.IsValidRadix(DIVRadix), "DIVRadix必须是大于等于2的2的幂")
+  require(
+    ysyx_26030103_MULBoothConfig.IsValidRadix(DIVRadix) && DIVRadix <= 16,
+    "DIVRadix必须是2/4/8/16之一，避免恢复余数除法器发生不可综合的静态展开"
+  )
   require(DIVIterBits >= 1 && DIVIterBits <= 4, "DIVIterBits必须在1到4之间")
   require(MULIterBits >= 1 && MULIterBits <= 8, "MULIterBits必须在1到8之间")
   require(MULPipeline >= 0 && MULPipeline <= 4, "MULPipeline必须在0到4之间")

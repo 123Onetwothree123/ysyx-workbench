@@ -1,6 +1,8 @@
 module;
 #include <stdio.h>
 module npc.difftest.DifftestCPUState;
+static_assert(std::is_standard_layout_v<DifftestCPUState>);
+static_assert(sizeof(DifftestCPUState) == 33 * sizeof(std::uint32_t));
 std::uint32_t DifftestCPUState::GetGPR(std::size_t Index) const
 {
     if (Index >= gpr.size())
