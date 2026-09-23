@@ -9,8 +9,9 @@ REF_OBJ_DIR := $(TEST_DIR)/build/nemu-obj
 LEGACY_REF_SO := $(TEST_DIR)/build/legacy-ref-without-state-size.so
 DIFFTEST_LOG := $(TEST_DIR)/build/difftest-online.log
 DIFFTEST_REJECT_LOG := $(TEST_DIR)/build/difftest-reject.log
+DIFFTEST_SOC_LOG := $(TEST_DIR)/build/difftest-soc.log
 NPC_BIN := $(NPC_DIR)/build/ysyx_26030103_npc
-NEMU_SRCS := $(shell find $(NEMU_DIR)/src -type f \( -name '*.c' -o -name '*.h' \) -print)
+NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \( -name '*.c' -o -name '*.h' \) -print)
 HOST_CXX ?= g++
 
 NAME = difftest-online-test
@@ -23,7 +24,7 @@ include $(AM_HOME)/Makefile
 
 override CXXFLAGS += -std=c++17 -D_GLIBCXX_ASSERTIONS
 
-.PHONY: difftest
+.PHONY: difftest difftest-soc difftest-soc-run
 
 # Build and run with DiffTest explicitly enabled, independent of npc/.config.
 # The output checks prevent an ordinary non-DiffTest GOOD trap from being
@@ -34,6 +35,7 @@ difftest: insert-arg $(REF_SO) $(LEGACY_REF_SO)
 	    file=$(IMAGE).bin elf=$(IMAGE).elf diff=$(REF_SO) 2>&1 | tee $(DIFFTEST_LOG)
 	@grep -Fq 'DiffTest: ON' $(DIFFTEST_LOG)
 	@grep -Fq 'DiffTest: final state PASS' $(DIFFTEST_LOG)
+	@grep -Fq 'DiffTest: injected ' $(DIFFTEST_LOG)
 	@grep -Fq 'HIT GOOD TRAP' $(DIFFTEST_LOG)
 	@cd $(NPC_DIR); set +e; \
 	  $(NPC_BIN) $(IMAGE).bin --elf $(IMAGE).elf --diff $(LEGACY_REF_SO) \
@@ -44,6 +46,21 @@ difftest: insert-arg $(REF_SO) $(LEGACY_REF_SO)
 	  fi
 	@grep -Fq 'DiffTest 初始化失败' $(DIFFTEST_REJECT_LOG)
 	@! grep -Fq 'HIT GOOD TRAP' $(DIFFTEST_REJECT_LOG)
+
+# Exercise the real full-SoC reset/image path at 0x30000000 and the SoC
+# SRAM/SDRAM/MMIO map.  Recursion is required so AM selects the ysyxsoc linker
+# script before it computes IMAGE and architecture-specific sources.
+difftest-soc:
+	$(MAKE) ARCH=riscv32i-ysyxsoc difftest-soc-run
+
+difftest-soc-run: insert-arg $(REF_SO)
+	@set -o pipefail; \
+	  $(MAKE) -C $(NPC_DIR) CONFIG_DIFFTEST=y SIM_TOP=soc run \
+	    file=$(IMAGE).bin elf=$(IMAGE).elf diff=$(REF_SO) 2>&1 | tee $(DIFFTEST_SOC_LOG)
+	@grep -Fq 'DiffTest: ON' $(DIFFTEST_SOC_LOG)
+	@grep -Fq 'DiffTest: injected ' $(DIFFTEST_SOC_LOG)
+	@grep -Fq 'DiffTest: final state PASS' $(DIFFTEST_SOC_LOG)
+	@grep -Fq 'HIT GOOD TRAP' $(DIFFTEST_SOC_LOG)
 
 $(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile
 	$(MAKE) -C $(NEMU_DIR) GUEST_ISA=riscv32 ENGINE=interpreter \

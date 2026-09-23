@@ -569,9 +569,9 @@ void DUT::EnableVGACheck()
     vga_check = true;
     vga_frame.assign(640 * 480 * 3, 0);
 }
-void DUT::VGACheckReport()
+bool DUT::VGACheckReport()
 {
-    if (!vga_check) return;
+    if (!vga_check) return true;
     std::println("VGA监视器结果:");
     std::println("  完整帧数: {}", vga_frames);
     if (vga_line_period_count > 1)
@@ -591,4 +591,5 @@ void DUT::VGACheckReport()
     const bool ok{vga_frames > 0 && vga_line_period_bad == 0 && vga_frame_period_bad == 0 &&
         vga_last_frame_valid_pixels == 307200 && vga_pos_errors == 0};
     std::println("  VGA时序检查: {}", ok ? "PASS" : "FAIL");
+    return ok;
 }

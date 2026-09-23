@@ -42,6 +42,10 @@ class ysyx_26030103_DCache(
     val perf_miss = Output(Bool())
     val perf_refill_req = Output(Bool())
     val perf_refill_resp = Output(Bool())
+    // The demand response may be returned at the critical word while the
+    // remaining line refill is still draining.  LSU must keep routing AXI R
+    // traffic until this flag falls.
+    val axi_active = Output(Bool())
   })
   val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
   val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))
@@ -78,11 +82,13 @@ class ysyx_26030103_DCache(
   val ResponseData = RegInit(0.U(32.W))
   val ResponseFault = RegInit(false.B)
   val ResponseFaultResp = RegInit(0.U(2.W))
+  val ResponseValid = RegInit(false.B)
+  val DemandResponseDone = RegInit(false.B)
   val states = Enum(4)
   val SIdle = states(0)
   val SReadReq = states(1)
   val SReadResp = states(2)
-  val SResp = states(3)
+  val SDrain = states(3)
   val state = RegInit(SIdle)
   // flush invalidates cached state, but it must not cancel an already accepted
   // demand request: LSU has no cancellation handshake and is waiting for exactly
@@ -143,13 +149,14 @@ class ysyx_26030103_DCache(
   io.AXI.AR.ARBURST := 1.U
   io.AXI.AR.ARPROT := 0.U
   io.AXI.R.RREADY := false.B
-  io.req.ready := state === SIdle && !io.flush
-  // Every accepted request produces exactly one response, including when a
-  // cache invalidation arrives while the request is in flight.
-  io.resp.valid := state === SResp
+  io.req.ready := state === SIdle && !ResponseValid && !io.flush
+  // Response state is decoupled from refill state so the critical word can
+  // restart the pipeline before the rest of the line has arrived.
+  io.resp.valid := ResponseValid
   io.resp.bits.data := ResponseData
   io.resp.bits.fault := ResponseFault
   io.resp.bits.FaultResp := ResponseFaultResp
+  io.axi_active := state === SReadReq || state === SReadResp || state === SDrain
   // 性能计数器: 受理当拍判定命中/缺失; 回填AR/R阶段计数
   io.perf_hit := io.req.fire && hit
   io.perf_miss := io.req.fire && !hit
@@ -170,7 +177,17 @@ class ysyx_26030103_DCache(
     (io.StoreAddr(31, 28) === "h8".U || io.StoreAddr(31, 28) === "ha".U)
   val StoreHit = StoreCacheable &&
     valid(StoreIndexSafe) && tag(StoreIndexSafe) === StoreTag
+  val StoreConflictsRefill = io.StoreValid && RefillActive && StoreCacheable &&
+    io.StoreAddr(AddressWidth - 1, BlockSizeLog2) ===
+      ReqAddrReg(AddressWidth - 1, BlockSizeLog2)
   when(io.StoreValid && StoreCacheable) { // 只在外部写成功后更新写直达镜像
+    // A demand may have early-restarted while its line is still arriving.
+    // A younger successful store to that line makes any remaining read beat
+    // potentially stale, so finish draining but never install this refill.
+    when(StoreConflictsRefill) {
+      suppressFill := true.B
+      valid(StoreIndexSafe) := false.B
+    }
     when(StoreHit) {
       if (WordsPerBlock > 1) {
         data(StoreIndexSafe)(StoreOffset) :=
@@ -194,6 +211,8 @@ class ysyx_26030103_DCache(
     ReqOffsetReg := WordOffset
     ResponseFault := false.B
     ResponseFaultResp := 0.U
+    ResponseValid := false.B
+    DemandResponseDone := false.B
     suppressFill := false.B
     when(hit) {
       if (WordsPerBlock > 1) {
@@ -211,7 +230,8 @@ class ysyx_26030103_DCache(
           io.req.bits.signed
         )
       }
-      state := SResp
+      ResponseValid := true.B
+      state := SIdle
     }.otherwise {
       RefillActive := cacheable
       RefillBurst := cacheable
@@ -224,6 +244,10 @@ class ysyx_26030103_DCache(
       when(cacheable) { valid(IndexSafe) := false.B }
       state := SReadReq
     }
+  }
+  when(io.resp.fire) {
+    ResponseValid := false.B
+    DemandResponseDone := true.B
   }
   switch(state) {
     is(SReadReq) {
@@ -250,11 +274,13 @@ class ysyx_26030103_DCache(
       when(io.AXI.R.RVALID) {
         when(RefillActive) {
           val BeatError = io.AXI.R.RRESP =/= 0.U
+          val KeywordBeat = RefillCount === ReqOffsetReg
           when(BeatError) {
             RefillError := true.B
-            when(RefillCount === ReqOffsetReg) {
+            when(KeywordBeat && !DemandResponseDone) {
               ResponseFault := true.B
               ResponseFaultResp := io.AXI.R.RRESP
+              ResponseValid := true.B
             }
           }
           when(!BeatError) {
@@ -268,32 +294,69 @@ class ysyx_26030103_DCache(
                 data(ReqIndexSafe)(0) := io.AXI.R.RDATA
               }
             }
-            when(RefillCount === ReqOffsetReg) {
+            when(KeywordBeat && !DemandResponseDone) {
               ResponseData := FormatLoad(
                 io.AXI.R.RDATA,
                 ReqAddrReg,
                 ReqWidthReg,
                 ReqSignedReg
               )
+              ResponseFault := false.B
+              ResponseFaultResp := 0.U
+              ResponseValid := true.B
             }
           }
           val LastExpectedBeat = RefillCount === (WordsPerBlock - 1).U
           when(LastExpectedBeat) {
-            valid(ReqIndexSafe) :=
-              !suppressFill && !io.flush && !RefillError && !BeatError
-            RefillActive := false.B
-            RefillBurst := false.B
-            state := SResp
-          }.elsewhen(RefillBurst && io.AXI.R.RLAST) {
-            // 提前 RLAST 属于下游协议异常，但 AXI RRESP 没有专门编码可
-            // 上报。保留已收到的拍，从下一字开始用单拍读取补齐，确保
-            // 当前 demand 最终仍得到且只得到一个响应。
-            RefillBurst := false.B
-            RefillCount := RefillCount + 1.U
-            state := SReadReq
+            when(io.AXI.R.RLAST) {
+              valid(ReqIndexSafe) :=
+                !suppressFill && !io.flush && !StoreConflictsRefill &&
+                  !RefillError && !BeatError
+              RefillActive := false.B
+              RefillBurst := false.B
+              suppressFill := false.B
+              state := SIdle
+            }.otherwise {
+              // The expected final beat arrived without RLAST.  Do not let
+              // the load retire while the arbiter still owns this response;
+              // invalidate the line and drain until a late RLAST appears.
+              valid(ReqIndexSafe) := false.B
+              RefillError := true.B
+              // Never mutate or recreate an already-visible Decoupled
+              // response.  If the critical word was consumed earlier, this
+              // late protocol error only invalidates/drains the line.
+              when(!DemandResponseDone && !ResponseValid) {
+                ResponseFault := true.B
+                ResponseFaultResp := Mux(BeatError, io.AXI.R.RRESP, 2.U)
+                ResponseValid := true.B
+              }
+              state := SDrain
+            }
+          }.elsewhen(RefillBurst) {
+            when(io.AXI.R.RLAST) {
+              // Early RLAST: retain received words and fetch each remainder as
+              // a separate one-beat transaction.
+              RefillBurst := false.B
+              RefillCount := RefillCount + 1.U
+              state := SReadReq
+            }.otherwise {
+              RefillCount := RefillCount + 1.U
+            }
           }.otherwise {
-            RefillCount := RefillCount + 1.U
-            when(!RefillBurst) { state := SReadReq }
+            // A fallback request is one beat and therefore must end in RLAST.
+            when(io.AXI.R.RLAST) {
+              RefillCount := RefillCount + 1.U
+              state := SReadReq
+            }.otherwise {
+              valid(ReqIndexSafe) := false.B
+              RefillError := true.B
+              when(!DemandResponseDone && !ResponseValid) {
+                ResponseFault := true.B
+                ResponseFaultResp := Mux(BeatError, io.AXI.R.RRESP, 2.U)
+                ResponseValid := true.B
+              }
+              state := SDrain
+            }
           }
         }.otherwise {
           when(io.AXI.R.RRESP =/= 0.U) {
@@ -307,12 +370,30 @@ class ysyx_26030103_DCache(
               ReqSignedReg
             )
           }
-          state := SResp
+          ResponseValid := true.B
+          when(io.AXI.R.RLAST) {
+            suppressFill := false.B
+            state := SIdle
+          }.otherwise {
+            // Every uncached request is a one-beat AXI transaction.  Missing
+            // RLAST is a protocol fault and must be drained before another
+            // LSU read can reuse the fixed read ID.
+            ResponseFault := true.B
+            ResponseFaultResp := Mux(
+              io.AXI.R.RRESP =/= 0.U,
+              io.AXI.R.RRESP,
+              2.U
+            )
+            state := SDrain
+          }
         }
       }
     }
-    is(SResp) {
-      when(io.resp.fire) {
+    is(SDrain) {
+      io.AXI.R.RREADY := true.B
+      when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
+        RefillActive := false.B
+        RefillBurst := false.B
         suppressFill := false.B
         state := SIdle
       }

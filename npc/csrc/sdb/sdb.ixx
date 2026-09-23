@@ -6,5 +6,7 @@ export class SDB final
 {
 public:
     SDB() = delete;
-    static void MainLoop(DUT &dut, bool batch_mode = false); // batch_mode直接等于就是c命令，直接自动执行到结束
+    // true only for an explicit interactive `q`; simulation completion,
+    // batch mode, and stdin EOF are not silently treated as success.
+    [[nodiscard]] static bool MainLoop(DUT &dut, bool batch_mode = false);
 };

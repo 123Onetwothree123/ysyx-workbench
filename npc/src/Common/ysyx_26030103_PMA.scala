@@ -2,14 +2,18 @@ package ysyx_26030103.common
 
 /** A physical-address region visible to the CPU.
   *
-  * `Cacheable` describes whether an instruction fetch may allocate an ICache
-  * line. `Executable` is an independent permission: MMIO remains reachable by
-  * loads/stores, but an attempted fetch is rejected locally without touching
-  * the device.
+  * `Readable` and `Writable` are bus permissions, while `Executable` controls
+  * instruction fetches.  Keeping these permissions independent is important
+  * for read-only memories such as the SoC MROM: a store must be rejected by
+  * the CPU-side crossbar instead of being sent to a slave which has no write
+  * channel. `Cacheable` describes whether an instruction fetch may allocate
+  * an ICache line.
   */
 case class ysyx_26030103_PMARegion(
     Base: Long,
     Size: Long,
+    Readable: Boolean = true,
+    Writable: Boolean = true,
     Cacheable: Boolean = false,
     Executable: Boolean = false
 ) {
@@ -19,6 +23,8 @@ case class ysyx_26030103_PMARegion(
     BigInt(Base) + BigInt(Size) <= (BigInt(1) << 32),
     "PMA区域必须位于32位物理地址空间内"
   )
+  require(!Cacheable || Readable, "可缓存PMA区域必须可读")
+  require(!Executable || Readable, "可执行PMA区域必须可读")
 
   final val EndExclusive: Long = Base + Size
 }
@@ -30,7 +36,11 @@ object ysyx_26030103_PhysicalMemoryMap {
   val NPC: Seq[ysyx_26030103_PMARegion] = Seq(
     CLINT,
     // The direct-NPC UART is a single write-only word in AXIRAM.
-    ysyx_26030103_PMARegion(0x10000000L, 0x4L),
+    ysyx_26030103_PMARegion(
+      0x10000000L,
+      0x4L,
+      Readable = false
+    ),
     ysyx_26030103_PMARegion(
       0x80000000L,
       0x00040000L,
@@ -56,6 +66,7 @@ object ysyx_26030103_PhysicalMemoryMap {
       ysyx_26030103_PMARegion(
         0x30000000L,
         0x10000000L,
+        Writable = false,
         Cacheable = true,
         Executable = true
       ), // MROM

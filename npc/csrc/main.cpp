@@ -77,7 +77,7 @@ int main(int argc, char const *argv[])
         dut.EnableVGACheck();
     }
 #ifdef CONFIG_SDB
-    SDB::MainLoop(dut);
+    const bool sdbUserQuit{SDB::MainLoop(dut)};
 #else
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
@@ -88,7 +88,9 @@ int main(int argc, char const *argv[])
             break;
         if (options->GetVGACheck() && dut.GetCycle() >= 50000000)
         {
-            NPCTrap::Stop();
+            const auto pc{dut.ReadPC()};
+            std::println(std::cerr, "VGA时序检查超过50000000周期，强制终止");
+            NPCTrap::Stop(pc ? *pc : 0U);
         }
 #ifdef CONFIG_NVBOARD
         nvboard_update();
@@ -110,8 +112,25 @@ int main(int argc, char const *argv[])
         NPCTrap::Halt(pc ? *pc : 0U, 1U);
     }
 #endif
-    dut.VGACheckReport();
+    if (!dut.VGACheckReport())
+    {
+        const auto pc{dut.ReadPC()};
+        NPCTrap::Halt(pc ? *pc : 0U, 1U);
+    }
+#ifdef CONFIG_SDB
+    int result;
+    if (sdbUserQuit && !NPCTrap::HasHalted())
+    {
+        std::println("SDB用户主动退出（程序未结束）");
+        result = 0;
+    }
+    else
+    {
+        result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
+    }
+#else
     int result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
+#endif
 #ifdef CONFIG_PERF_STATS
     NPCTrap::PrintPerformanceStatistics(dut.GetPerfStats(), dut.GetCycle());
 #endif

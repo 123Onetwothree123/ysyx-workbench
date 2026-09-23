@@ -2,8 +2,16 @@ V_FILE_GEN   = build/ysyxSoCTop.sv
 V_FILE_FINAL = build/ysyxSoCFull.v
 SCALA_FILES = $(shell find src/ -name "*.scala")
 CHIPLINK ?= n
-export CHIPLINK
+APB_CPU_FREQ_MHZ ?= 450
+APB_DEVICE_FREQ_MHZ ?= 100
+APB_DELAY_SCALE_FACTOR ?= 64
+AXI_CPU_FREQ_MHZ ?= 450
+AXI_DEVICE_FREQ_MHZ ?= 100
+AXI_DELAY_SCALE_FACTOR ?= 64
+export CHIPLINK APB_CPU_FREQ_MHZ APB_DEVICE_FREQ_MHZ APB_DELAY_SCALE_FACTOR
+export AXI_CPU_FREQ_MHZ AXI_DEVICE_FREQ_MHZ AXI_DELAY_SCALE_FACTOR
 ELAB_CONFIG = build/.elaboration-config
+ELAB_CONFIG_TEXT = CHIPLINK=$(CHIPLINK) APB_CPU_FREQ_MHZ=$(APB_CPU_FREQ_MHZ) APB_DEVICE_FREQ_MHZ=$(APB_DEVICE_FREQ_MHZ) APB_DELAY_SCALE_FACTOR=$(APB_DELAY_SCALE_FACTOR) AXI_CPU_FREQ_MHZ=$(AXI_CPU_FREQ_MHZ) AXI_DEVICE_FREQ_MHZ=$(AXI_DEVICE_FREQ_MHZ) AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE_FACTOR)
 
 # Firtool version
 FIRTOOL_VERSION = 1.105.0
@@ -11,11 +19,11 @@ FIRTOOL_PATCH_DIR = $(shell pwd)/patch/firtool
 
 $(ELAB_CONFIG): FORCE
 	@mkdir -p $(@D)
-	@if [ ! -f $@ ] || [ "$$(sed -n '1p' $@)" != "CHIPLINK=$(CHIPLINK)" ]; then \
-	  printf '%s\n' 'CHIPLINK=$(CHIPLINK)' > $@; \
+	@if [ ! -f $@ ] || [ "$$(cat $@)" != "$(ELAB_CONFIG_TEXT)" ]; then \
+	  printf '%s\n' '$(ELAB_CONFIG_TEXT)' > $@; \
 	fi
 
-$(V_FILE_FINAL): $(SCALA_FILES) $(ELAB_CONFIG)
+$(V_FILE_FINAL): $(SCALA_FILES) Makefile $(ELAB_CONFIG)
 # Replace firtool with a newer version
 # TODO: This can be removed after chisel publishes a new version
 	@./patch/update-firtool.sh $(FIRTOOL_VERSION) $(FIRTOOL_PATCH_DIR)

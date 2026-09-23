@@ -251,6 +251,8 @@ static uint32_t fill_and_load(DUT &dut, uint32_t address,
   tick(dut);
   dut.io_DataBus_AR_ARREADY = 0;
 
+  bool retired = false;
+  uint32_t result = 0;
   for (uint32_t beat = 0; beat < 4; ++beat) {
     wait_until(dut, [&] { return dut.io_DataBus_R_RREADY; },
                "DCache refill never became ready for R");
@@ -261,14 +263,23 @@ static uint32_t fill_and_load(DUT &dut, uint32_t address,
     dut.io_DataBus_R_RLAST = beat == 3;
     dut.io_DataBus_R_RVALID = 1;
     tick(dut);
+    dut.eval();
+    if (dut.io_out_valid) {
+      retired = true;
+      result = dut.io_out_bits_LoadData;
+    }
     dut.io_DataBus_R_RVALID = 0;
     dut.io_DataBus_R_RLAST = 0;
   }
 
-  wait_until(dut, [&] { return dut.io_out_valid; },
-             "refilled load never retired");
-  const uint32_t result = dut.io_out_bits_LoadData;
-  tick(dut);
+  if (!retired) {
+    wait_until(dut, [&] { return dut.io_out_valid; },
+               "refilled load never retired");
+    result = dut.io_out_bits_LoadData;
+  }
+  if (dut.io_out_valid) {
+    tick(dut);
+  }
   return result;
 }
 

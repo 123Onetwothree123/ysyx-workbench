@@ -49,7 +49,7 @@ public:
     void eval();
     void final();
     void EnableVGACheck();
-    void VGACheckReport();
+    [[nodiscard]] bool VGACheckReport();
     void step();
     void reset();
     std::size_t GetCycle() const;

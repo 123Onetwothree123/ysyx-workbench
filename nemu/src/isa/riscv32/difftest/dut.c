@@ -24,14 +24,27 @@
 架代码会自动停止客户程序的运行. 特别地, isa_difftest_checkregs()对比结果不一致时, 第二个参数pc应指向导
 致对比结果不一致的指令, 可用于打印提示信息.
 */
-bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc)
+bool isa_difftest_checkregs(const void *ref_state, vaddr_t pc)
 {
-  // return false;
-  for (size_t i = 0; i < MUXDEF(CONFIG_RVE, 17, 32); i++)
+  const riscv_difftest_state_t *ref_r =
+      (const riscv_difftest_state_t *)ref_state;
+  const size_t dut_gpr_count = sizeof(cpu.gpr) / sizeof(cpu.gpr[0]);
+  for (size_t i = 0; i < dut_gpr_count; i++)
   {
     if (ref_r->gpr[i] != cpu.gpr[i])
     {
       Log("比对失败，pc = " FMT_WORD "，寄存器 %s的参考的值 = " FMT_WORD "，实际上的值 = " FMT_WORD, pc, reg_name(i), ref_r->gpr[i], cpu.gpr[i]);
+      return false;
+    }
+  }
+  /* RV32E's absent upper slots are part of the fixed external ABI and must be
+   * zero, rather than reading beyond cpu.gpr[15]. */
+  for (size_t i = dut_gpr_count; i < 32; ++i)
+  {
+    if (ref_r->gpr[i] != 0)
+    {
+      Log("比对失败，pc = " FMT_WORD "，RV32E不存在的寄存器 x%zu 为 " FMT_WORD,
+          pc, i, ref_r->gpr[i]);
       return false;
     }
   }

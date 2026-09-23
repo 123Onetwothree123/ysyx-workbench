@@ -51,6 +51,14 @@ class ysyx_26030103 extends BlackBox {
     val io_debug_trap_pc = Output(UInt(32.W))
     val io_debug_trap_target = Output(UInt(32.W))
     val io_debug_trap_cause = Output(UInt(32.W))
+    val io_debug_csr_mstatus = Output(UInt(32.W))
+    val io_debug_csr_mtvec = Output(UInt(32.W))
+    val io_debug_csr_mepc = Output(UInt(32.W))
+    val io_debug_csr_mcause = Output(UInt(32.W))
+    val io_debug_trap_mstatus = Output(UInt(32.W))
+    val io_debug_trap_mtvec = Output(UInt(32.W))
+    val io_debug_trap_mepc = Output(UInt(32.W))
+    val io_debug_trap_mcause = Output(UInt(32.W))
     // 性能计数器
     val io_perf_ifu_fetch  = Output(Bool())
     val io_perf_exu_done   = Output(Bool())
@@ -173,6 +181,22 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     debug_trap_pc := cpu.io.io_debug_trap_pc
     debug_trap_target := cpu.io.io_debug_trap_target
     debug_trap_cause := cpu.io.io_debug_trap_cause
+    val debug_csr_mstatus = IO(Output(UInt(32.W)))
+    val debug_csr_mtvec = IO(Output(UInt(32.W)))
+    val debug_csr_mepc = IO(Output(UInt(32.W)))
+    val debug_csr_mcause = IO(Output(UInt(32.W)))
+    val debug_trap_mstatus = IO(Output(UInt(32.W)))
+    val debug_trap_mtvec = IO(Output(UInt(32.W)))
+    val debug_trap_mepc = IO(Output(UInt(32.W)))
+    val debug_trap_mcause = IO(Output(UInt(32.W)))
+    debug_csr_mstatus := cpu.io.io_debug_csr_mstatus
+    debug_csr_mtvec := cpu.io.io_debug_csr_mtvec
+    debug_csr_mepc := cpu.io.io_debug_csr_mepc
+    debug_csr_mcause := cpu.io.io_debug_csr_mcause
+    debug_trap_mstatus := cpu.io.io_debug_trap_mstatus
+    debug_trap_mtvec := cpu.io.io_debug_trap_mtvec
+    debug_trap_mepc := cpu.io.io_debug_trap_mepc
+    debug_trap_mcause := cpu.io.io_debug_trap_mcause
     // 性能计数器
     val perf_mem_waitslot = IO(Output(Bool()))
     perf_mem_waitslot := cpu.io.io_perf_mem_waitslot

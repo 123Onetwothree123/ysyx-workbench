@@ -43,6 +43,11 @@ class ysyx_26030103_CSR extends Module {
     // 本次 trap 提交的完整 mcause，供退休级调试/DiffTest
     // 区分同步异常与中断。
     val CommittedCause = Output(UInt(32.W))
+    // 当前 EXU 架构事件完成后的 CSR 状态，用于退休级 DiffTest。
+    val StateMstatus = Output(UInt(32.W))
+    val StateMtvec = Output(UInt(32.W))
+    val StateMepc = Output(UInt(32.W))
+    val StateMcause = Output(UInt(32.W))
   })
   // ysyx_26030103_mcycle=12'hB00，低32位
   // mcycleh=12'hB80，高32位
@@ -188,6 +193,43 @@ class ysyx_26030103_CSR extends Module {
     // 先标记一下，这是正常的写入，最开始不知道，以为可以直接写if语句收ExceptionCause，后面查了才知道，软件也可以写csrrw和csrrs
     // 等下，那说明ysyx_26030103_mepc也是可以正常转的吗？
     CSRWriteData(Mcause_rdata)
+  )
+  // 寄存器在上升沿才写入，但随指令流向 WBU 的快照必须表示
+  // “本指令之后”的状态，所以在这里显式计算 next-state。
+  val MstatusCSRData = CSRWriteData(Mstatus_rdata)
+  io.StateMstatus := MuxCase(
+    Mstatus_rdata,
+    Seq(
+      ExceptionCommit -> MstatusExceptionData,
+      MretCommit -> MstatusMretData,
+      (CSRWen && IsCSRAddress(CSR_MSTATUS)) -> MstatusCSRData
+    )
+  )
+  val MtvecCSRData = CSRWriteData(Mtvec_rdata)
+  val MtvecLegalMode = Mux(MtvecCSRData(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
+  io.StateMtvec := Mux(
+    CSRWen && IsCSRAddress(CSR_MTVEC),
+    Cat(MtvecCSRData(31, 2), MtvecLegalMode),
+    Mtvec_rdata
+  )
+  val MepcCSRData = CSRWriteData(Mepc_rdata)
+  io.StateMepc := Mux(
+    ExceptionCommit,
+    Cat(io.pc(31, 2), 0.U(2.W)),
+    Mux(
+      CSRWen && IsCSRAddress(CSR_MEPC),
+      Cat(MepcCSRData(31, 2), 0.U(2.W)),
+      Mepc_rdata
+    )
+  )
+  io.StateMcause := Mux(
+    ExceptionCommit,
+    ExceptionCause,
+    Mux(
+      CSRWen && IsCSRAddress(CSR_MCAUSE),
+      CSRWriteData(Mcause_rdata),
+      Mcause_rdata
+    )
   )
   val McycleAccess = IsCSRAddress(CSR_MCYCLE) || IsCSRAddress(CSR_MCYCLEH)
   Mcycle.io.wen := CSRWen && McycleAccess

@@ -27,18 +27,27 @@
  * buffer by 16 bytes.  Keep the shared ABI fixed at 32 RV32 GPRs plus PC and
  * translate explicitly at this boundary.
  */
-typedef struct
-{
-  uint32_t gpr[32];
-  uint32_t pc;
-} riscv32_difftest_state_t;
-
-_Static_assert(sizeof(riscv32_difftest_state_t) == 33 * sizeof(uint32_t),
-               "unexpected RV32 DiffTest ABI padding");
+_Static_assert(sizeof(riscv_difftest_state_t) == 33 * sizeof(RISCV_GPR_TYPE),
+               "unexpected RISC-V DiffTest ABI padding");
 
 __EXPORT size_t difftest_state_size(void)
 {
-  return sizeof(riscv32_difftest_state_t);
+  return sizeof(riscv_difftest_state_t);
+}
+
+__EXPORT size_t difftest_csr_state_size(void)
+{
+  return sizeof(riscv_difftest_csr_state_t);
+}
+
+__EXPORT void difftest_set_platform(int ysyxsoc)
+{
+  set_ysyxsoc_memory_mode(ysyxsoc != 0);
+}
+
+__EXPORT bool difftest_memory_range_supported(paddr_t addr, size_t n)
+{
+  return in_backed_memory_range(addr, n);
 }
 
 __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction)
@@ -49,9 +58,9 @@ __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction)
     return;
   }
   assert(buf != NULL);
-  // assert(in_pmem_range(addr, n));
-  // 适配新版difftest
-  assert(in_pmem_range(addr, n) || in_mrom(addr) || in_sram(addr));
+  /* Validate the complete copy, not just its first byte.  The SoC image lives
+   * in the 0x30000000 flash/MROM window and must be accepted in SoC mode. */
+  assert(in_backed_memory_range(addr, n));
   if (direction == DIFFTEST_TO_REF)
   {
     memcpy(guest_to_host(addr), buf, n);
@@ -65,8 +74,8 @@ __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction)
 __EXPORT void difftest_regcpy(void *dut, bool direction)
 {
   assert(dut != NULL);
-  riscv32_difftest_state_t *state =
-      (riscv32_difftest_state_t *)dut;
+  riscv_difftest_state_t *state =
+      (riscv_difftest_state_t *)dut;
   const size_t nemu_gpr_count = sizeof(cpu.gpr) / sizeof(cpu.gpr[0]);
   if (direction == DIFFTEST_TO_REF)
   {
@@ -84,6 +93,27 @@ __EXPORT void difftest_regcpy(void *dut, bool direction)
       state->gpr[i] = cpu.gpr[i];
     }
     state->pc = cpu.pc;
+  }
+}
+
+__EXPORT void difftest_csrcpy(void *dut, bool direction)
+{
+  assert(dut != NULL);
+  riscv_difftest_csr_state_t *state =
+      (riscv_difftest_csr_state_t *)dut;
+  if (direction == DIFFTEST_TO_REF)
+  {
+    cpu.mstatus = state->mstatus;
+    cpu.mtvec = state->mtvec;
+    cpu.mepc = state->mepc;
+    cpu.mcause = state->mcause;
+  }
+  else
+  {
+    state->mstatus = cpu.mstatus;
+    state->mtvec = cpu.mtvec;
+    state->mepc = cpu.mepc;
+    state->mcause = cpu.mcause;
   }
 }
 

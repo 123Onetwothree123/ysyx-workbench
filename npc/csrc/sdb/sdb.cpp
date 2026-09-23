@@ -4,13 +4,13 @@ import npc.sdb.SDBCommandRegistry;
 import npc.sdb.SDBCommandResult;
 import npc.NPCTrap;
 
-void SDB::MainLoop(DUT &dut, bool batch_mode)
+bool SDB::MainLoop(DUT &dut, bool batch_mode)
 {
     SDBCommandRegistry Commands{dut};
     if (batch_mode)
     {
         Commands.Execute("c");
-        return;
+        return false;
     }
     auto line{readline("(npc) ")};
     while (line != nullptr)
@@ -25,8 +25,9 @@ void SDB::MainLoop(DUT &dut, bool batch_mode)
         if (Commands.Execute(cmd) == SDBCommandResult::Quit)
         {
             std::println("退出");
-            break;
+            return true;
         }
         line = readline("(npc) ");
     }
+    return false;
 }

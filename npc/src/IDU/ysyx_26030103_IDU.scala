@@ -77,13 +77,11 @@ class ysyx_26030103_IDU(
   val IsSimHalt = Instruction === "h0000000b".U(32.W)
   // FENCE and FENCE.I are both in the MISC-MEM opcode class, but have
   // different ordering/flush semantics downstream.
-  // 当前只实现基础 FENCE（fm=0000）。rd/rs1 是为更精细的未来
-  // 屏障保留的字段；基础实现必须忽略它们，不能因其非零报非法指令。
-  // 未实现的 fm 扩展/保留编码仍不能静默降级成基础屏障。
-  val FenceEncodingValid = Instruction(31, 28) === 0.U
+  // 基础实现可以保守地把所有fm/pred/succ配置都执行成完整FENCE。
+  // 为向前兼容，保留的fm编码以及rd/rs1都必须被忽略；FENCE.TSO也可
+  // 合法地退化为更强的FENCE RW,RW，不能因fm非零报非法指令。
   val IsFence =
-    (opcode === OPCODE_MiscMem) && (funct3 === "b000".U(3.W)) &&
-      FenceEncodingValid
+    (opcode === OPCODE_MiscMem) && (funct3 === "b000".U(3.W))
   val IsFenceI = (opcode === OPCODE_MiscMem) && (funct3 === "b001".U(3.W))
   val RegisterWrite =
     IsRType || IsIType || IsUType || IsJType || IsCsrrs || IsCsrrw

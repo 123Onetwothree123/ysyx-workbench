@@ -25,6 +25,69 @@
 #define Mr vaddr_read
 #define Mw vaddr_write
 
+extern uint64_t g_nr_guest_inst;
+
+static inline word_t mepc_warl(word_t value)
+{
+  return value & ~(word_t)3u;
+}
+
+static inline word_t mtvec_warl(word_t value)
+{
+  const word_t mode = (value & 3u) == 1u ? 1u : 0u;
+  return (value & ~(word_t)3u) | mode;
+}
+
+static word_t csr_read(word_t address)
+{
+  switch (address)
+  {
+  case 0xf11: return 0x79737978u;
+  case 0xf12: return 0x018d3017u;
+  case 0x300: return cpu.mstatus;
+  case 0x305: return cpu.mtvec;
+  case 0x341: return cpu.mepc;
+  case 0x342: return cpu.mcause;
+  case 0xb00: return (word_t)g_nr_guest_inst;
+  case 0xb80: return (word_t)(g_nr_guest_inst >> 32);
+  default: panic("Unknown CSR 0x%x", address); return 0;
+  }
+}
+
+static void csr_write(word_t address, word_t value)
+{
+  switch (address)
+  {
+  /* mvendorid/marchid are read-only in the DUT; writes are ignored. */
+  case 0xf11:
+  case 0xf12:
+    return;
+  case 0x300: cpu.mstatus = value; return;
+  case 0x305: cpu.mtvec = mtvec_warl(value); return;
+  case 0x341: cpu.mepc = mepc_warl(value); return;
+  case 0x342: cpu.mcause = value; return;
+  /* mcycle is nondeterministic relative to RTL wall-clock cycles.  NPC's
+   * online DiffTest result-injects these instructions, but retaining writes
+   * here makes standalone NEMU's supported CSR set match the decoder. */
+  case 0xb00:
+    g_nr_guest_inst = (g_nr_guest_inst & 0xffffffff00000000ull) | value;
+    return;
+  case 0xb80:
+    g_nr_guest_inst = (g_nr_guest_inst & 0x00000000ffffffffull) |
+                      ((uint64_t)value << 32);
+    return;
+  default: panic("Unknown CSR 0x%x", address); return;
+  }
+}
+
+static inline void mret_update_mstatus(void)
+{
+  const word_t mpie = BITS(cpu.mstatus, 7, 7);
+  cpu.mstatus =
+      (cpu.mstatus & ~((word_t)(3u << 11) | (word_t)(1u << 7) | (word_t)(1u << 3))) |
+      (word_t)(1u << 7) | (mpie << 3);
+}
+
 enum
 {
   TYPE_I,
@@ -213,7 +276,10 @@ static int decode_exec(Decode *s)
   // Base implementations ignore the reserved rd/rs1 fields of FENCE and
   // FENCE.I.  Keep the reference model aligned with the DUT for those legal
   // encodings instead of requiring rd=x0.
-  INSTPAT("0000??? ????? ????? 000 ????? 0001111", fence, N, );
+  /* A base implementation may conservatively execute every fm/pred/succ
+   * encoding as a full fence.  This also implements FENCE.TSO with stronger
+   * ordering and preserves forward compatibility with reserved fm values. */
+  INSTPAT("??????? ????? ????? 000 ????? 0001111", fence, N, );
   INSTPAT("??????? ????? ????? 001 ????? 0001111", fence_i, N, );
   INSTPAT("??????? ????? ????? 000 ????? 00000 11", lb, I, R(rd) = SEXT(Mr(src1 + imm, 1), 8));
   INSTPAT("0000000 ????? ????? 010 ????? 01100 11", slt, R, R(rd) = ((sword_t)src1 < (sword_t)src2) ? 1 : 0);
@@ -221,58 +287,20 @@ static int decode_exec(Decode *s)
   INSTPAT("0000001 ????? ????? 010 ????? 01100 11", mulhsu, R, R(rd) = ((int64_t)(sword_t)src1 * (uint64_t)src2) >> 32);
   INSTPAT("0000000 00000 00000 000 00000 11100 11", ecall, N, s->dnpc = isa_raise_intr(11, s->pc));
   INSTPAT("??????? ????? ????? 001 ????? 11100 11", csrrw, I, {
-    word_t t = 0; // 临时保存的
-    switch (imm)
-    {
-    case 0x341:
-      t = cpu.mepc;
-      cpu.mepc = src1;
-      break;
-    case 0x342:
-      t = cpu.mcause;
-      cpu.mcause = src1;
-      break;
-    case 0x300:
-      t = cpu.mstatus;
-      cpu.mstatus = src1;
-      break;
-    case 0x305:
-      t = cpu.mtvec;
-      cpu.mtvec = src1;
-      break;
-    default:
-      panic("Unknown CSR 0x%x", imm);
-      break;
-    }
+    word_t t = csr_read(imm);
+    csr_write(imm, src1);
     R(rd) = t;
   });
   INSTPAT("??????? ????? ????? 010 ????? 11100 11", csrrs, I, {
-    word_t t = 0;
-    switch (imm)
-    {
-    case 0x341:
-      t = cpu.mepc;
-      cpu.mepc = t | src1;
-      break;
-    case 0x342:
-      t = cpu.mcause;
-      cpu.mcause = t | src1;
-      break;
-    case 0x300:
-      t = cpu.mstatus;
-      cpu.mstatus = t | src1;
-      break;
-    case 0x305:
-      t = cpu.mtvec;
-      cpu.mtvec = t | src1;
-      break;
-    default:
-      panic("Unknown CSR 0x%x", imm);
-      break;
-    }
+    word_t t = csr_read(imm);
+    if (BITS(s->isa.inst, 19, 15) != 0)
+      csr_write(imm, t | src1);
     R(rd) = t;
   });
-  INSTPAT("0011000 00010 00000 000 00000 11100 11", mret, N, s->dnpc = cpu.mepc);
+  INSTPAT("0011000 00010 00000 000 00000 11100 11", mret, N, {
+    s->dnpc = cpu.mepc;
+    mret_update_mstatus();
+  });
   INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv, N, INV(s->pc));
   INSTPAT_END();
 

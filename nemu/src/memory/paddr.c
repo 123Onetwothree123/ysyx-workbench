@@ -53,12 +53,13 @@ static void stub_mmio_write(paddr_t addr, word_t data) {
 #endif
 
 // 适配新版本difftest
-static uint8_t mrom[MROM_SIZE] = {};
 static uint8_t sram[SRAM_SIZE] = {};
 // flash
 static uint8_t flash[FLASH_SIZE] = {};
+static uint8_t psram[PSRAM_SIZE] = {};
 // sdram(适配ysyxsoc镜像)
 static uint8_t sdram[SDRAM_SIZE] = {};
+static bool ysyxsoc_memory_mode = false;
 
 #if defined(CONFIG_PMEM_MALLOC)
 static uint8_t *pmem = NULL;
@@ -66,27 +67,71 @@ static uint8_t *pmem = NULL;
 static uint8_t pmem[CONFIG_MSIZE] PG_ALIGN = {};
 #endif
 
+void set_ysyxsoc_memory_mode(bool enable)
+{
+  ysyxsoc_memory_mode = enable;
+}
+
+bool is_ysyxsoc_memory_mode(void)
+{
+  return ysyxsoc_memory_mode;
+}
+
+bool in_backed_memory_range(paddr_t addr, size_t len)
+{
+  if (!ysyxsoc_memory_mode && in_pmem_range(addr, len))
+  {
+    return true;
+  }
+  return ysyxsoc_memory_mode &&
+         (in_sram_range(addr, len) || in_flash_range(addr, len) ||
+          in_psram_range(addr, len) || in_sdram_range(addr, len));
+}
+
 uint8_t *guest_to_host(paddr_t paddr)
 {
-  if (in_mrom(paddr))
-  {
-    return mrom + paddr - MROM_BASE;
-  }
-  if (in_sram(paddr))
+  if (ysyxsoc_memory_mode && in_sram(paddr))
   {
     return sram + paddr - SRAM_BASE;
   }
-  if (in_flash(paddr))
+  if (ysyxsoc_memory_mode && in_flash(paddr))
   {
     return flash + paddr - FLASH_BASE;
   }
-  if (in_sdram(paddr))
+  if (ysyxsoc_memory_mode && in_psram(paddr))
+  {
+    return psram + paddr - PSRAM_BASE;
+  }
+  if (ysyxsoc_memory_mode && in_sdram(paddr))
   {
     return sdram + paddr - SDRAM_BASE;
   }
   return pmem + paddr - CONFIG_MBASE;
 }
-paddr_t host_to_guest(uint8_t *haddr) { return haddr - pmem + CONFIG_MBASE; }
+
+static bool host_address_in(const uint8_t *address,
+                            const uint8_t *base, size_t size)
+{
+  const uintptr_t value = (uintptr_t)address;
+  const uintptr_t begin = (uintptr_t)base;
+  return value >= begin && value - begin < size;
+}
+
+paddr_t host_to_guest(uint8_t *haddr)
+{
+  if (ysyxsoc_memory_mode)
+  {
+    if (host_address_in(haddr, sram, SRAM_SIZE))
+      return SRAM_BASE + (paddr_t)(haddr - sram);
+    if (host_address_in(haddr, flash, FLASH_SIZE))
+      return FLASH_BASE + (paddr_t)(haddr - flash);
+    if (host_address_in(haddr, psram, PSRAM_SIZE))
+      return PSRAM_BASE + (paddr_t)(haddr - psram);
+    if (host_address_in(haddr, sdram, SDRAM_SIZE))
+      return SDRAM_BASE + (paddr_t)(haddr - sdram);
+  }
+  return (paddr_t)((uintptr_t)haddr - (uintptr_t)pmem) + CONFIG_MBASE;
+}
 
 static word_t pmem_read(paddr_t addr, int len)
 {
@@ -117,7 +162,7 @@ void init_mem()
 word_t paddr_read(paddr_t addr, int len)
 {
 
-  if (likely(in_pmem_range(addr, len)))
+  if (likely(!ysyxsoc_memory_mode && in_pmem_range(addr, len)))
   {
     word_t ret = pmem_read(addr, len);
 #ifdef CONFIG_MTRACE
@@ -126,19 +171,19 @@ word_t paddr_read(paddr_t addr, int len)
 #endif
     return ret;
   }
-  if (in_mrom(addr))
-  {
-    return host_read(mrom + addr - MROM_BASE, len);
-  }
-  if (in_sram(addr))
+  if (ysyxsoc_memory_mode && in_sram_range(addr, len))
   {
     return host_read(sram + addr - SRAM_BASE, len);
   }
-  if (in_flash(addr))
+  if (ysyxsoc_memory_mode && in_flash_range(addr, len))
   {
     return host_read(flash + addr - FLASH_BASE, len);
   }
-  if (in_sdram(addr))
+  if (ysyxsoc_memory_mode && in_psram_range(addr, len))
+  {
+    return host_read(psram + addr - PSRAM_BASE, len);
+  }
+  if (ysyxsoc_memory_mode && in_sdram_range(addr, len))
   {
     return host_read(sdram + addr - SDRAM_BASE, len);
   }
@@ -165,7 +210,7 @@ word_t paddr_read(paddr_t addr, int len)
 
 void paddr_write(paddr_t addr, int len, word_t data)
 {
-  if (likely(in_pmem_range(addr, len)))
+  if (likely(!ysyxsoc_memory_mode && in_pmem_range(addr, len)))
   {
 #ifdef CONFIG_MTRACE
     Log("mtrace写内存追踪：pc = " FMT_WORD ", addr = " FMT_PADDR ", len = %d, data = " FMT_WORD,
@@ -174,21 +219,21 @@ void paddr_write(paddr_t addr, int len, word_t data)
     pmem_write(addr, len, data);
     return;
   }
-  if (in_mrom(addr))
-  {
-    host_write(mrom + addr - MROM_BASE, len, data);
-    return;
-  }
-  if (in_sram(addr))
+  if (ysyxsoc_memory_mode && in_sram_range(addr, len))
   {
     host_write(sram + addr - SRAM_BASE, len, data);
     return;
   }
-  if (in_flash(addr))
+  if (ysyxsoc_memory_mode && in_flash_range(addr, len))
   {
     return;
   }
-  if (in_sdram(addr))
+  if (ysyxsoc_memory_mode && in_psram_range(addr, len))
+  {
+    host_write(psram + addr - PSRAM_BASE, len, data);
+    return;
+  }
+  if (ysyxsoc_memory_mode && in_sdram_range(addr, len))
   {
     host_write(sdram + addr - SDRAM_BASE, len, data);
     return;

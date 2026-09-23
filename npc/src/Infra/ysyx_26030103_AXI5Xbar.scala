@@ -72,49 +72,72 @@ class ysyx_26030103_AXI5Xbar(
     Cat(0.U(1.W), address) >= Cat(0.U(1.W), CLINTBase) &&
     End < Cat(0.U(1.W), CLINTEnd)
   }
-  def decode(address: UInt, len: UInt, size: UInt, burst: UInt): UInt = {
+  private val ReadableRegions = PMARegions.filter(_.Readable)
+  private val WritableRegions = PMARegions.filter(_.Writable)
+  private val ReadableCLINT = ReadableRegions.exists(
+    _ == ysyx_26030103_PhysicalMemoryMap.CLINT
+  )
+  private val WritableCLINT = WritableRegions.exists(
+    _ == ysyx_26030103_PhysicalMemoryMap.CLINT
+  )
+
+  def decode(
+      address: UInt,
+      len: UInt,
+      size: UInt,
+      burst: UInt,
+      isWrite: Boolean
+  ): UInt = {
     val ConfigSupported = size <= 2.U && (burst === 0.U || burst === 1.U)
+    val PermittedRegions = if (isWrite) WritableRegions else ReadableRegions
+    val CLINTPermitted = if (isWrite) WritableCLINT else ReadableCLINT
     Mux(
       !ConfigSupported,
       TargetInvalid,
       Mux(
-        IsCLINT(address, len, size, burst),
+        CLINTPermitted.B && IsCLINT(address, len, size, burst),
         TargetCLINT,
         Mux(
-          InAnyRegion(address, len, size, burst, PMARegions),
+          InAnyRegion(address, len, size, burst, PermittedRegions),
           TargetSoCBus,
           TargetInvalid
         )
       )
     )
   }
-  val states = Enum(9)
-  val StateIdle = states(0)
-  val StateReadRequest = states(1)
-  val StateReadResponse = states(2)
-  val StateReadDECERR = states(3)
-  val StateWriteCollect = states(4)
-  val StateWriteRequest = states(5)
-  val StateWriteResponse = states(6)
-  val StateWriteDECERR = states(7)
+  // AXI read and write channels are independent.  Read state is kept per RID,
+  // so the fixed IFU/LSU IDs can both be outstanding in the downstream fabric.
+  private val ReadSlotCount = 16
+  val readSlotStates = Enum(5)
+  val ReadSlotFree = readSlotStates(0)
+  val ReadSlotRequest = readSlotStates(1)
+  val ReadSlotResponse = readSlotStates(2)
+  val ReadSlotDECERR = readSlotStates(3)
+  val ReadSlotLocalLast = readSlotStates(4)
+  val ReadSlotState = RegInit(
+    VecInit(Seq.fill(ReadSlotCount)(ReadSlotFree))
+  )
+  val ReadTargetReg = RegInit(
+    VecInit(Seq.fill(ReadSlotCount)(TargetInvalid))
+  )
+  val ARAddressReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(32.W))))
+  val ARLENReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(8.W))))
+  val ARSIZEReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(2.U(3.W))))
+  val ARBURSTReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(2.W))))
+  val ARPROTReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(3.W))))
+  val ReadDECERRBeatReg = RegInit(
+    VecInit(Seq.fill(ReadSlotCount)(0.U(8.W)))
+  )
+
+  val writeStates = Enum(6)
+  val StateWriteIdle = writeStates(0)
+  val StateWriteCollect = writeStates(1)
+  val StateWriteRequest = writeStates(2)
+  val StateWriteResponse = writeStates(3)
+  val StateWriteDECERR = writeStates(4)
   // 不支持转发的写burst仍需吃完全部W beat，之后再返回DECERR。
-  val StateWriteDrain = states(8)
-  val state = RegInit(StateIdle)
-  // 读请求被接收后，R回来时已经没有地址了
-  // 所以必须记住这次读请求被发给哪个下游
-  val ReadTargetReg = RegInit(TargetInvalid)
-  // AR buffering: accept AR even when xbar is not idle
-  val ARPending = RegInit(false.B)
-  val ARTargetPending = RegInit(TargetInvalid)
-  val ARAddrPending = RegInit(0.U(32.W))
-  val ARLenPending = RegInit(0.U(8.W))
-  val ARIDReg = RegInit(0.U(4.W))
-  val ARAddressReg = RegInit(0.U(32.W))
-  val ARLENReg = RegInit(0.U(8.W))
-  val ARSIZEReg = RegInit(2.U(3.W))
-  val ARBURSTReg = RegInit(0.U(2.W))
-  val ARPROTReg = RegInit(0.U(3.W))
-  val ReadDECERRBeatReg = RegInit(0.U(8.W))
+  val StateWriteDrain = writeStates(5)
+  val writeState = RegInit(StateWriteIdle)
   val AWValidReg = RegInit(false.B)
   val WValidReg = RegInit(false.B)
   val AWIDReg = RegInit(0.U(4.W))
@@ -130,14 +153,10 @@ class ysyx_26030103_AXI5Xbar(
   val WriteTargetReg = RegInit(TargetInvalid)
   val DownstreamAWDone = RegInit(false.B)
   val DownstreamWDone = RegInit(false.B)
-  // AR pending buffer: accept AR even when xbar is not idle
-  // 这段是AI写的
   // 用 Wire 控制上游 ready，避免直接读自己驱动的输出端口。
   val InAWReady = WireDefault(false.B)
   val InWReady = WireDefault(false.B)
   val InARReady = WireDefault(false.B)
-  val HasWriteReq =
-    io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || WValidReg
   io.in.AW.AWREADY := InAWReady
   io.in.W.WREADY := InWReady
   io.in.AR.ARREADY := InARReady
@@ -194,6 +213,8 @@ class ysyx_26030103_AXI5Xbar(
   val InAWFire = io.in.AW.AWVALID && InAWReady
   val InWFire = io.in.W.WVALID && InWReady
   val InARFire = io.in.AR.ARVALID && InARReady
+
+  // -------------------- Write channel --------------------
   val WriteTargetAfterAW =
     Mux(
       InAWFire,
@@ -201,7 +222,8 @@ class ysyx_26030103_AXI5Xbar(
         io.in.AW.AWADDR,
         io.in.AW.AWLEN,
         io.in.AW.AWSIZE,
-        io.in.AW.AWBURST
+        io.in.AW.AWBURST,
+        isWrite = true
       ),
       WriteTargetReg
     )
@@ -222,18 +244,22 @@ class ysyx_26030103_AXI5Xbar(
       io.in.AW.AWADDR,
       io.in.AW.AWLEN,
       io.in.AW.AWSIZE,
-      io.in.AW.AWBURST
+      io.in.AW.AWBURST,
+      isWrite = true
     )
     AWValidReg := true.B
   }
   // Idle/Collect阶段只缓存首个W beat；进入转发阶段后其余beat直接流过。
-  when(InWFire && (state === StateIdle || state === StateWriteCollect)) {
+  when(
+    InWFire &&
+      (writeState === StateWriteIdle || writeState === StateWriteCollect)
+  ) {
     WDataReg := io.in.W.WDATA
     WSTRBReg := io.in.W.WSTRB
     WLASTReg := io.in.W.WLAST
     WValidReg := true.B
   }
-  when(state === StateIdle) {
+  when(writeState === StateWriteIdle) {
     val HasWriteRequest =
       io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || WValidReg
     when(HasWriteRequest) { // 哪个通道还没缓存，就对哪个通道拉ready
@@ -247,38 +273,19 @@ class ysyx_26030103_AXI5Xbar(
         when(WriteCannotForward) {
           // 首beat已由收集级接收；若它不是最后一拍，继续排空余下W。
           WValidReg := false.B
-          state := Mux(FirstWLastAfterW, StateWriteDECERR, StateWriteDrain)
+          writeState := Mux(
+            FirstWLastAfterW,
+            StateWriteDECERR,
+            StateWriteDrain
+          )
         }.otherwise {
-          state := StateWriteRequest
+          writeState := StateWriteRequest
         }
       }.otherwise {
-        state := StateWriteCollect
-      }
-    }.otherwise { // 没有写请求时，读请求在这里直接处理
-      InARReady := true.B
-      when(InARFire) {
-        val target = decode(
-          io.in.AR.ARADDR,
-          io.in.AR.ARLEN,
-          io.in.AR.ARSIZE,
-          io.in.AR.ARBURST
-        )
-        ARIDReg := io.in.AR.ARID
-        ARAddressReg := io.in.AR.ARADDR
-        ARLENReg := io.in.AR.ARLEN
-        ARSIZEReg := io.in.AR.ARSIZE
-        ARBURSTReg := io.in.AR.ARBURST
-        ARPROTReg := io.in.AR.ARPROT
-        ReadDECERRBeatReg := 0.U
-        ReadTargetReg := target
-        when(target === TargetInvalid) {
-          state := StateReadDECERR
-        }.otherwise {
-          state := StateReadRequest
-        }
+        writeState := StateWriteCollect
       }
     }
-  }.elsewhen(state === StateWriteCollect) {
+  }.elsewhen(writeState === StateWriteCollect) {
     // 已经开始处理写事务，但是AW和W还没有都收到
     // 例如AW先到、W后到，或者W先到、AW后到
     InAWReady := !AWValidReg
@@ -289,12 +296,16 @@ class ysyx_26030103_AXI5Xbar(
       DownstreamWDone := false.B
       when(WriteCannotForward) {
         WValidReg := false.B
-        state := Mux(FirstWLastAfterW, StateWriteDECERR, StateWriteDrain)
+        writeState := Mux(
+          FirstWLastAfterW,
+          StateWriteDECERR,
+          StateWriteDrain
+        )
       }.otherwise {
-        state := StateWriteRequest
+        writeState := StateWriteRequest
       }
     }
-  }.elsewhen(state === StateWriteRequest) {
+  }.elsewhen(writeState === StateWriteRequest) {
     // AW只发送一次；收集级缓存首个W beat，之后的beat直接以ready/valid
     // 流过，直到真正握手的WLAST为止。
     when(WriteTargetReg === TargetSoCBus) {
@@ -333,7 +344,7 @@ class ysyx_26030103_AXI5Xbar(
       }
 
       when((DownstreamAWDone || AWFire) && (DownstreamWDone || WLastFire)) {
-        state := StateWriteResponse
+        writeState := StateWriteResponse
       }
     }.elsewhen(WriteTargetReg === TargetCLINT) {
       val SendAW = !DownstreamAWDone
@@ -371,19 +382,23 @@ class ysyx_26030103_AXI5Xbar(
       }
 
       when((DownstreamAWDone || AWFire) && (DownstreamWDone || WLastFire)) {
-        state := StateWriteResponse
+        writeState := StateWriteResponse
       }
     }.otherwise {
-      state := Mux(WValidReg && WLASTReg, StateWriteDECERR, StateWriteDrain)
+      writeState := Mux(
+        WValidReg && WLASTReg,
+        StateWriteDECERR,
+        StateWriteDrain
+      )
     }
-  }.elsewhen(state === StateWriteDrain) {
+  }.elsewhen(writeState === StateWriteDrain) {
     // 地址无效或本地CLINT不支持burst：首beat已在收集级被接受，
     // 继续吞掉剩余beat，避免上游停在W通道而永远等不到错误响应。
     InWReady := true.B
     when(io.in.W.WVALID && io.in.W.WLAST) {
-      state := StateWriteDECERR
+      writeState := StateWriteDECERR
     }
-  }.elsewhen(state === StateWriteResponse) {
+  }.elsewhen(writeState === StateWriteResponse) {
     // B响应回来时没有地址，所以要根据之前保存的WriteTargetReg选择下游
     when(WriteTargetReg === TargetSoCBus) {
       io.in.B.BID := io.SoCBus.B.BID
@@ -396,7 +411,7 @@ class ysyx_26030103_AXI5Xbar(
         WValidReg := false.B
         DownstreamAWDone := false.B
         DownstreamWDone := false.B
-        state := StateIdle
+        writeState := StateWriteIdle
       }
     }.elsewhen(WriteTargetReg === TargetCLINT) {
       io.in.B.BID := io.CLINT.B.BID
@@ -409,12 +424,12 @@ class ysyx_26030103_AXI5Xbar(
         WValidReg := false.B
         DownstreamAWDone := false.B
         DownstreamWDone := false.B
-        state := StateIdle
+        writeState := StateWriteIdle
       }
     }.otherwise {
-      state := StateWriteDECERR
+      writeState := StateWriteDECERR
     }
-  }.elsewhen(state === StateWriteDECERR) {
+  }.elsewhen(writeState === StateWriteDECERR) {
     // 地址空洞和不支持的burst在CPU内部完成，不访问任何下游设备。
     io.in.B.BID := AWIDReg
     io.in.B.BVALID := true.B
@@ -425,79 +440,184 @@ class ysyx_26030103_AXI5Xbar(
       WValidReg := false.B
       DownstreamAWDone := false.B
       DownstreamWDone := false.B
-      state := StateIdle
+      writeState := StateWriteIdle
     }
-  }.elsewhen(state === StateReadRequest) {
-    // 把读地址AR转发到对应下游
-    when(ReadTargetReg === TargetSoCBus) {
-      io.SoCBus.AR.ARVALID := true.B
-      io.SoCBus.AR.ARID := ARIDReg
-      io.SoCBus.AR.ARADDR := ARAddressReg
-      io.SoCBus.AR.ARLEN := ARLENReg
-      io.SoCBus.AR.ARSIZE := ARSIZEReg
-      io.SoCBus.AR.ARBURST := ARBURSTReg
-      io.SoCBus.AR.ARPROT := ARPROTReg
+  }
 
-      when(io.SoCBus.AR.ARREADY) {
-        state := StateReadResponse
-      }
-    }.elsewhen(ReadTargetReg === TargetCLINT) {
-      io.CLINT.AR.ARVALID := true.B
-      io.CLINT.AR.ARID := ARIDReg
-      io.CLINT.AR.ARADDR := ARAddressReg
-      io.CLINT.AR.ARLEN := ARLENReg
-      io.CLINT.AR.ARSIZE := ARSIZEReg
-      io.CLINT.AR.ARBURST := ARBURSTReg
-      io.CLINT.AR.ARPROT := ARPROTReg
+  // -------------------- Read channel --------------------
+  // Each AXI ID owns one slot until its RLAST is consumed upstream.  The
+  // arbiter currently uses IDs 0 and 1 for IFU/LSU, while the 16-entry table
+  // keeps this crossbar well-defined for every representable ID.
+  val IncomingReadID = io.in.AR.ARID
+  InARReady := ReadSlotState(IncomingReadID) === ReadSlotFree
 
-      when(io.CLINT.AR.ARREADY) {
-        state := StateReadResponse
-      }
+  when(InARFire) {
+    val target = decode(
+      io.in.AR.ARADDR,
+      io.in.AR.ARLEN,
+      io.in.AR.ARSIZE,
+      io.in.AR.ARBURST,
+      isWrite = false
+    )
+    ReadTargetReg(IncomingReadID) := target
+    ARAddressReg(IncomingReadID) := io.in.AR.ARADDR
+    ARLENReg(IncomingReadID) := io.in.AR.ARLEN
+    ARSIZEReg(IncomingReadID) := io.in.AR.ARSIZE
+    ARBURSTReg(IncomingReadID) := io.in.AR.ARBURST
+    ARPROTReg(IncomingReadID) := io.in.AR.ARPROT
+    ReadDECERRBeatReg(IncomingReadID) := 0.U
+    ReadSlotState(IncomingReadID) := Mux(
+      target === TargetInvalid,
+      ReadSlotDECERR,
+      ReadSlotRequest
+    )
+  }
+
+  // SoCBus and CLINT have independent AR channels, so one pending request for
+  // each target may be issued in the same cycle.  Requests sharing a target
+  // are sent one per cycle and may both handshake before either R response.
+  val SoCRequestMask = VecInit((0 until ReadSlotCount).map { id =>
+    ReadSlotState(id) === ReadSlotRequest &&
+    ReadTargetReg(id) === TargetSoCBus
+  }).asUInt
+  val CLINTRequestMask = VecInit((0 until ReadSlotCount).map { id =>
+    ReadSlotState(id) === ReadSlotRequest &&
+    ReadTargetReg(id) === TargetCLINT
+  }).asUInt
+  val SoCARHeld = RegInit(false.B)
+  val SoCARHeldID = RegInit(0.U(4.W))
+  val CLINTARHeld = RegInit(false.B)
+  val CLINTARHeldID = RegInit(0.U(4.W))
+  val SoCRequestCandidateID = PriorityEncoder(SoCRequestMask)
+  val CLINTRequestCandidateID = PriorityEncoder(CLINTRequestMask)
+  val SoCRequestValid = SoCARHeld || SoCRequestMask.orR
+  val CLINTRequestValid = CLINTARHeld || CLINTRequestMask.orR
+  val SoCRequestID =
+    Mux(SoCARHeld, SoCARHeldID, SoCRequestCandidateID)
+  val CLINTRequestID =
+    Mux(CLINTARHeld, CLINTARHeldID, CLINTRequestCandidateID)
+  val SoCRequestFire = SoCRequestValid && io.SoCBus.AR.ARREADY
+  val CLINTRequestFire = CLINTRequestValid && io.CLINT.AR.ARREADY
+
+  when(SoCRequestValid) {
+    io.SoCBus.AR.ARVALID := true.B
+    io.SoCBus.AR.ARID := SoCRequestID
+    io.SoCBus.AR.ARADDR := ARAddressReg(SoCRequestID)
+    io.SoCBus.AR.ARLEN := ARLENReg(SoCRequestID)
+    io.SoCBus.AR.ARSIZE := ARSIZEReg(SoCRequestID)
+    io.SoCBus.AR.ARBURST := ARBURSTReg(SoCRequestID)
+    io.SoCBus.AR.ARPROT := ARPROTReg(SoCRequestID)
+    when(SoCRequestFire) {
+      ReadSlotState(SoCRequestID) := ReadSlotResponse
+    }
+  }
+  when(CLINTRequestValid) {
+    io.CLINT.AR.ARVALID := true.B
+    io.CLINT.AR.ARID := CLINTRequestID
+    io.CLINT.AR.ARADDR := ARAddressReg(CLINTRequestID)
+    io.CLINT.AR.ARLEN := ARLENReg(CLINTRequestID)
+    io.CLINT.AR.ARSIZE := ARSIZEReg(CLINTRequestID)
+    io.CLINT.AR.ARBURST := ARBURSTReg(CLINTRequestID)
+    io.CLINT.AR.ARPROT := ARPROTReg(CLINTRequestID)
+    when(CLINTRequestFire) {
+      ReadSlotState(CLINTRequestID) := ReadSlotResponse
+    }
+  }
+  when(!SoCARHeld && SoCRequestValid && !io.SoCBus.AR.ARREADY) {
+    SoCARHeld := true.B
+    SoCARHeldID := SoCRequestID
+  }.elsewhen(SoCRequestFire) {
+    SoCARHeld := false.B
+  }
+  when(!CLINTARHeld && CLINTRequestValid && !io.CLINT.AR.ARREADY) {
+    CLINTARHeld := true.B
+    CLINTARHeldID := CLINTRequestID
+  }.elsewhen(CLINTRequestFire) {
+    CLINTARHeld := false.B
+  }
+
+  // A one-beat response buffer both arbitrates simultaneous SoCBus/CLINT
+  // responses and guarantees that RID/RDATA/RRESP/RLAST remain stable while
+  // the upstream master applies backpressure.
+  val RBufferValid = RegInit(false.B)
+  val RBufferID = RegInit(0.U(4.W))
+  val RBufferData = RegInit(0.U(32.W))
+  val RBufferResp = RegInit(OKAY)
+  val RBufferLast = RegInit(false.B)
+  io.in.R.RID := RBufferID
+  io.in.R.RVALID := RBufferValid
+  io.in.R.RDATA := RBufferData
+  io.in.R.RRESP := RBufferResp
+  io.in.R.RLAST := RBufferLast
+
+  val RBufferPop = RBufferValid && io.in.R.RREADY
+  val RBufferAvailable = !RBufferValid || RBufferPop
+  val SoCResponseExpected =
+    (ReadSlotState(io.SoCBus.R.RID) === ReadSlotResponse &&
+      ReadTargetReg(io.SoCBus.R.RID) === TargetSoCBus) ||
+      (SoCRequestFire && SoCRequestID === io.SoCBus.R.RID)
+  val CLINTResponseExpected =
+    (ReadSlotState(io.CLINT.R.RID) === ReadSlotResponse &&
+      ReadTargetReg(io.CLINT.R.RID) === TargetCLINT) ||
+      (CLINTRequestFire && CLINTRequestID === io.CLINT.R.RID)
+  val SoCResponseValid = io.SoCBus.R.RVALID && SoCResponseExpected
+  val CLINTResponseValid = io.CLINT.R.RVALID && CLINTResponseExpected
+
+  val LocalResponseMask = VecInit((0 until ReadSlotCount).map { id =>
+    ReadSlotState(id) === ReadSlotDECERR
+  }).asUInt
+  val LocalResponseValid = LocalResponseMask.orR
+  val LocalResponseID = PriorityEncoder(LocalResponseMask)
+  val LocalResponseLast =
+    ReadDECERRBeatReg(LocalResponseID) === ARLENReg(LocalResponseID)
+
+  // Fixed source priority is safe because AXI bursts are finite.  A source
+  // which loses arbitration sees RREADY low and must retain its payload.
+  val SelectSoC = SoCResponseValid
+  val SelectCLINT = !SelectSoC && CLINTResponseValid
+  val SelectLocal = !SelectSoC && !SelectCLINT && LocalResponseValid
+  io.SoCBus.R.RREADY := RBufferAvailable && SelectSoC
+  io.CLINT.R.RREADY := RBufferAvailable && SelectCLINT
+  val CaptureSoC = io.SoCBus.R.RVALID && io.SoCBus.R.RREADY
+  val CaptureCLINT = io.CLINT.R.RVALID && io.CLINT.R.RREADY
+  val CaptureLocal = RBufferAvailable && SelectLocal
+
+  when(CaptureSoC) {
+    RBufferValid := true.B
+    RBufferID := io.SoCBus.R.RID
+    RBufferData := io.SoCBus.R.RDATA
+    RBufferResp := io.SoCBus.R.RRESP
+    RBufferLast := io.SoCBus.R.RLAST
+  }.elsewhen(CaptureCLINT) {
+    RBufferValid := true.B
+    RBufferID := io.CLINT.R.RID
+    RBufferData := io.CLINT.R.RDATA
+    RBufferResp := io.CLINT.R.RRESP
+    RBufferLast := io.CLINT.R.RLAST
+  }.elsewhen(CaptureLocal) {
+    RBufferValid := true.B
+    RBufferID := LocalResponseID
+    RBufferData := 0.U
+    RBufferResp := DECERR
+    RBufferLast := LocalResponseLast
+    when(LocalResponseLast) {
+      ReadSlotState(LocalResponseID) := ReadSlotLocalLast
     }.otherwise {
-      state := StateReadDECERR
+      ReadDECERRBeatReg(LocalResponseID) :=
+        ReadDECERRBeatReg(LocalResponseID) + 1.U
     }
-  }.elsewhen(state === StateReadResponse) {
-    // R响应回来时没有地址，所以根据之前保存的ReadTargetReg选择下游
-    when(ReadTargetReg === TargetSoCBus) {
-      io.in.R.RID := io.SoCBus.R.RID
-      io.in.R.RVALID := io.SoCBus.R.RVALID
-      io.in.R.RDATA := io.SoCBus.R.RDATA
-      io.in.R.RRESP := io.SoCBus.R.RRESP
-      io.in.R.RLAST := io.SoCBus.R.RLAST
-      io.SoCBus.R.RREADY := io.in.R.RREADY
+  }.elsewhen(RBufferPop) {
+    RBufferValid := false.B
+  }
 
-      when(io.SoCBus.R.RVALID && io.in.R.RREADY && io.SoCBus.R.RLAST) {
-        state := StateIdle
-      }
-    }.elsewhen(ReadTargetReg === TargetCLINT) {
-      io.in.R.RID := io.CLINT.R.RID
-      io.in.R.RVALID := io.CLINT.R.RVALID
-      io.in.R.RDATA := io.CLINT.R.RDATA
-      io.in.R.RRESP := io.CLINT.R.RRESP
-      io.in.R.RLAST := io.CLINT.R.RLAST
-      io.CLINT.R.RREADY := io.in.R.RREADY
+  when(RBufferPop && RBufferLast) {
+    ReadSlotState(RBufferID) := ReadSlotFree
+  }
 
-      when(io.CLINT.R.RVALID && io.in.R.RREADY && io.CLINT.R.RLAST) {
-        state := StateIdle
-      }
-    }.otherwise {
-      state := StateReadDECERR
-    }
-  }.elsewhen(state === StateReadDECERR) {
-    // 即使错误请求是burst，也必须返回ARLEN+1拍，避免合法AXI master
-    // 因等待RLAST而挂死。RDATA没有实际意义，固定返回0。
-    io.in.R.RID := ARIDReg
-    io.in.R.RVALID := true.B
-    io.in.R.RDATA := 0.U
-    io.in.R.RRESP := DECERR
-    io.in.R.RLAST := ReadDECERRBeatReg === ARLENReg
-
-    when(io.in.R.RREADY) {
-      when(ReadDECERRBeatReg === ARLENReg) {
-        state := StateIdle
-      }.otherwise {
-        ReadDECERRBeatReg := ReadDECERRBeatReg + 1.U
-      }
-    }
+  when(io.SoCBus.R.RVALID) {
+    assert(SoCResponseExpected, "SoCBus returned an inactive or misrouted RID")
+  }
+  when(io.CLINT.R.RVALID) {
+    assert(CLINTResponseExpected, "CLINT returned an inactive or misrouted RID")
   }
 }

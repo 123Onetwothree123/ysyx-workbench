@@ -16,6 +16,9 @@ import npc.ysyxSoC;
 #ifndef CONFIG_RESET_PC
 #define CONFIG_RESET_PC 0x30000000
 #endif
+#ifndef CONFIG_MSIZE
+#define CONFIG_MSIZE 0x10000000
+#endif
 namespace
 {
 #ifdef CONFIG_DIFFTEST
@@ -25,14 +28,31 @@ namespace
     using REFDifftestRaiseIntr = void (*)(std::uint64_t no);
     using REFDifftestInit = void (*)(int port);
     using REFDifftestStateSize = std::size_t (*)();
+    using REFDifftestCSRStateSize = std::size_t (*)();
+    using REFDifftestCSRcpy = void (*)(void *dut, bool direction);
+    using REFDifftestSetPlatform = void (*)(int ysyxsoc);
     void *REFHandle{nullptr};
     REFDifftestMemcpy REFMemcpy{nullptr};
     REFDifftestRegcpy REFRegcpy{nullptr};
     REFDifftestExec REFExec{nullptr};
     REFDifftestRaiseIntr REFRaiseIntr{nullptr};
     REFDifftestStateSize REFStateSize{nullptr};
+    REFDifftestCSRStateSize REFCSRStateSize{nullptr};
+    REFDifftestCSRcpy REFCSRcpy{nullptr};
+    REFDifftestSetPlatform REFSetPlatform{nullptr};
     bool Enabled{false};
     bool Failed{false};
+    std::size_t SkipCount{0};
+
+    struct DifftestCSRState
+    {
+        std::uint32_t mstatus{};
+        std::uint32_t mtvec{};
+        std::uint32_t mepc{};
+        std::uint32_t mcause{};
+    };
+    static_assert(sizeof(DifftestCSRState) == 4 * sizeof(std::uint32_t));
+    DifftestCSRState LastDUTCSR{};
     /// @brief 从REF .so中按名称加载符号并转为指定函数指针类型
     /// @tparam Fn 目标函数指针类型
     /// @param Name 符号名称
@@ -61,6 +81,100 @@ namespace
         auto state{DifftestCPUState::ReadDUTState(dut)};
         state.SetPC(pc);
         return state;
+    }
+
+    DifftestCSRState ReadDUTRetireCSR(DUT &dut)
+    {
+        return {
+            .mstatus = static_cast<std::uint32_t>(dut->debug_csr_mstatus),
+            .mtvec = static_cast<std::uint32_t>(dut->debug_csr_mtvec),
+            .mepc = static_cast<std::uint32_t>(dut->debug_csr_mepc),
+            .mcause = static_cast<std::uint32_t>(dut->debug_csr_mcause),
+        };
+    }
+
+    DifftestCSRState ReadDUTTrapCSR(DUT &dut)
+    {
+        return {
+            .mstatus = static_cast<std::uint32_t>(dut->debug_trap_mstatus),
+            .mtvec = static_cast<std::uint32_t>(dut->debug_trap_mtvec),
+            .mepc = static_cast<std::uint32_t>(dut->debug_trap_mepc),
+            .mcause = static_cast<std::uint32_t>(dut->debug_trap_mcause),
+        };
+    }
+
+    DifftestCSRState ReadReferenceCSR()
+    {
+        DifftestCSRState state{};
+        REFCSRcpy(&state, DifftestCPUState::GetDirectionToDUT());
+        return state;
+    }
+
+    bool CheckCSR(const DifftestCSRState &reference,
+                  const DifftestCSRState &dut,
+                  std::string_view event,
+                  std::uint32_t pc)
+    {
+        if (reference.mstatus == dut.mstatus && reference.mtvec == dut.mtvec &&
+            reference.mepc == dut.mepc && reference.mcause == dut.mcause)
+            return true;
+        std::println(
+            std::cerr,
+            "DiffTest {} CSR 不匹配（pc=0x{:08x}）:\n"
+            "  mstatus REF=0x{:08x} DUT=0x{:08x}\n"
+            "  mtvec   REF=0x{:08x} DUT=0x{:08x}\n"
+            "  mepc    REF=0x{:08x} DUT=0x{:08x}\n"
+            "  mcause  REF=0x{:08x} DUT=0x{:08x}",
+            event,
+            pc,
+            reference.mstatus,
+            dut.mstatus,
+            reference.mtvec,
+            dut.mtvec,
+            reference.mepc,
+            dut.mepc,
+            reference.mcause,
+            dut.mcause);
+        return false;
+    }
+
+    constexpr bool RangeContains(std::uint32_t address,
+                                 std::uint32_t bytes,
+                                 std::uint32_t base,
+                                 std::uint32_t size)
+    {
+        return bytes != 0 && address >= base && address - base < size &&
+               bytes <= size - (address - base);
+    }
+
+    bool ReferenceModelsDataAccess(DUT &dut)
+    {
+        if (!dut->debug_mtrace_valid ||
+            static_cast<std::uint32_t>(dut->debug_mtrace_pc) !=
+                static_cast<std::uint32_t>(dut->debug_pc))
+            return true;
+        const auto width{static_cast<unsigned>(dut->debug_mtrace_width)};
+        if (width > 2)
+            return false;
+        const auto bytes{static_cast<std::uint32_t>(1U << width)};
+        const auto address{static_cast<std::uint32_t>(dut->debug_mtrace_addr)};
+#ifdef VRISCV32E_NPC
+        return RangeContains(address, bytes, 0x80000000U, 0x00040000U);
+#else
+        return RangeContains(address, bytes, 0x0f000000U, 0x00008000U) ||
+               RangeContains(address, bytes, 0x30000000U, 0x10000000U) ||
+               RangeContains(address, bytes, 0x80000000U, 0x00400000U) ||
+               RangeContains(address, bytes, 0xa0000000U, 0x02000000U);
+#endif
+    }
+
+    bool IsNondeterministicCSR(DUT &dut)
+    {
+        const auto instruction{static_cast<std::uint32_t>(dut->debug_instructions)};
+        if ((instruction & 0x7fU) != 0x73U || ((instruction >> 12) & 7U) == 0U)
+            return false;
+        const auto address{instruction >> 20};
+        return address == 0xb00U || address == 0xb80U;
     }
 
     void ReportMismatch(DUT &dut, std::string_view event, std::uint32_t dutPC)
@@ -120,6 +234,27 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
             stateSize,
             sizeof(DifftestCPUState))};
     }
+    auto CSRStateSizeSymbol{
+        LoadSymbol<REFDifftestCSRStateSize>("difftest_csr_state_size")};
+    if (!CSRStateSizeSymbol)
+        return std::unexpected{CSRStateSizeSymbol.error()};
+    REFCSRStateSize = *CSRStateSizeSymbol;
+    if (const auto stateSize{REFCSRStateSize()}; stateSize != sizeof(DifftestCSRState))
+    {
+        return std::unexpected{std::format(
+            "DiffTest CSR 状态 ABI 不匹配：REF={} 字节，DUT={} 字节",
+            stateSize,
+            sizeof(DifftestCSRState))};
+    }
+    auto CSRcpySymbol{LoadSymbol<REFDifftestCSRcpy>("difftest_csrcpy")};
+    if (!CSRcpySymbol)
+        return std::unexpected{CSRcpySymbol.error()};
+    REFCSRcpy = *CSRcpySymbol;
+    auto SetPlatformSymbol{
+        LoadSymbol<REFDifftestSetPlatform>("difftest_set_platform")};
+    if (!SetPlatformSymbol)
+        return std::unexpected{SetPlatformSymbol.error()};
+    REFSetPlatform = *SetPlatformSymbol;
     auto ExecSymbol{LoadSymbol<REFDifftestExec>("difftest_exec")};
     if (!ExecSymbol)
     {
@@ -137,11 +272,25 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
     {
         return std::unexpected{InitSymbol.error()};
     }
+    // 必须在 REF 初始化/加载镜像前选择地址图：普通 NEMU 的
+    // 0xa0000000 是 MMIO，只有 full-SoC 模式才是 SDRAM。
+#ifdef VRISCV32E_NPC
+    REFSetPlatform(0);
+#else
+    REFSetPlatform(1);
+#endif
     (*InitSymbol)(0);
     // 包含 direct-NPC cache padding 在内的整个实际镜像都要同步。
     if (ImageSize > FlashMemory.size())
     {
         return std::unexpected{"DiffTest 镜像长度大于已加载内存"};
+    }
+    if (FlashMemory.size() > static_cast<std::size_t>(CONFIG_MSIZE))
+    {
+        return std::unexpected{std::format(
+            "DiffTest 镜像 {} 字节超出平台镜像窗口 {} 字节",
+            FlashMemory.size(),
+            static_cast<std::size_t>(CONFIG_MSIZE))};
     }
     REFMemcpy(CONFIG_MBASE,
               FlashMemory.data(),
@@ -151,8 +300,11 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
     // reference from the post-reset RTL state instead of assuming zero.
     auto DUTState{DifftestCPUState::ReadDUTState(dut)};
     REFRegcpy(&DUTState, DifftestCPUState::GetDirectionToRef());
+    LastDUTCSR = ReadDUTRetireCSR(dut);
+    REFCSRcpy(&LastDUTCSR, DifftestCPUState::GetDirectionToRef());
     Enabled = true;
     Failed = false;
+    SkipCount = 0;
     std::println("DiffTest: ON, REF = {0}", REFSoFile->string());
     return {};
 #else
@@ -185,14 +337,37 @@ void DifftestStep(DUT &dut)
         return;
     }
 
-    REFExec(1);
-    const auto REFState{ReadReferenceState()};
     const auto nextPC{static_cast<std::uint32_t>(dut->debug_next_pc)};
     const auto DUTState{ReadDUTStateAtPC(dut, nextPC)};
+    const auto DUTCSR{ReadDUTRetireCSR(dut)};
+    const bool injectResult{!ReferenceModelsDataAccess(dut) ||
+                            IsNondeterministicCSR(dut)};
+    if (injectResult)
+    {
+        // MMIO 和 mcycle 没有可重现的 REF 结果。不执行 REF 这条
+        // 指令，而是在精确退休边界注入 DUT 的 GPR/PC/CSR 结果。
+        auto injectedState{DUTState};
+        auto injectedCSR{DUTCSR};
+        REFRegcpy(&injectedState, DifftestCPUState::GetDirectionToRef());
+        REFCSRcpy(&injectedCSR, DifftestCPUState::GetDirectionToRef());
+        LastDUTCSR = DUTCSR;
+        ++SkipCount;
+        return;
+    }
+
+    REFExec(1);
+    const auto REFState{ReadReferenceState()};
     if (!REFState.CheckRegs(DUTState))
     {
         ReportMismatch(dut, "retire-post", nextPC);
+        return;
     }
+    if (!CheckCSR(ReadReferenceCSR(), DUTCSR, "retire-post", nextPC))
+    {
+        ReportMismatch(dut, "retire-post-csr", nextPC);
+        return;
+    }
+    LastDUTCSR = DUTCSR;
 #else
     static_cast<void>(dut);
 #endif
@@ -227,10 +402,18 @@ void DifftestTrapStep(DUT &dut)
     const auto REFState{ReadReferenceState()};
     const auto target{static_cast<std::uint32_t>(dut->debug_trap_target)};
     const auto DUTState{ReadDUTStateAtPC(dut, target)};
+    const auto DUTCSR{ReadDUTTrapCSR(dut)};
     if (!REFState.CheckRegs(DUTState))
     {
         ReportMismatch(dut, "trap-post", target);
+        return;
     }
+    if (!CheckCSR(ReadReferenceCSR(), DUTCSR, "trap-post", target))
+    {
+        ReportMismatch(dut, "trap-post-csr", target);
+        return;
+    }
+    LastDUTCSR = DUTCSR;
 #else
     static_cast<void>(dut);
 #endif
@@ -262,6 +445,13 @@ bool DifftestFinalCheck(DUT &dut)
         ReportMismatch(dut, "final", DUTState.GetPC());
         return false;
     }
+    if (!CheckCSR(ReadReferenceCSR(), LastDUTCSR, "final", DUTState.GetPC()))
+    {
+        ReportMismatch(dut, "final-csr", DUTState.GetPC());
+        return false;
+    }
+    if (SkipCount != 0)
+        std::println("DiffTest: injected {} MMIO/nondeterministic result(s)", SkipCount);
     std::println("DiffTest: final state PASS (pc=0x{:08x})", DUTState.GetPC());
     return !Failed;
 #else

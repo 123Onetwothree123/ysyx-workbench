@@ -31,7 +31,12 @@ static void restart()
   /* Set the initial program counter. */
   cpu.pc = CONFIG_MBASE;
   cpu.gpr[0] = 0;
-  cpu.mstatus = 0x1800;
+  /* Match the RTL reset state.  DiffTest must not begin with an invisible
+   * mstatus mismatch and wait until a later CSR read to discover it. */
+  cpu.mstatus = 0;
+  cpu.mtvec = 0;
+  cpu.mepc = 0;
+  cpu.mcause = 0;
 }
 
 void init_isa()

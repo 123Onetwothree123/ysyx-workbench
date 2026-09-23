@@ -920,24 +920,6 @@ menu "硬件配置"
 
   menu "目标体系结构"
 
-    config MBASE
-      hex "内存基地址"
-      default 0x30000000
-      help
-        加载程序镜像的内存区域基地址
-
-    config MSIZE
-      hex "内存大小"
-      default 0x10000000
-      help
-        内存区域的大小，单位为字节
-
-    config RESET_PC
-      hex "复位PC地址"
-      default 0x30000000
-      help
-        复位后程序计数器的初始值
-
     config CACHE_PADDING
       int "ICache字节填充（用于对齐热点循环到cache块边界）"
       default 0
@@ -956,6 +938,7 @@ menu "硬件配置"
     config SYNTH_FREQ
       int "综合目标频率 (MHz)"
       default 450
+      range 1 10000
       help
         综合器尝试达到的目标频率。设置越高，综合器可能使用更多
         面积换取更低的逻辑延迟。受限于工艺库和寄存器堆/加法器/SRAM等
@@ -966,6 +949,7 @@ menu "硬件配置"
     config APB_DEVICE_FREQ
       int "APB设备频率 (MHz)"
       default 100
+      range 1 10000
       help
         APB总线上外设（如SDRAM控制器）的运行频率。
         用于APB延迟模块计算频率比校准访存延迟。
@@ -973,12 +957,14 @@ menu "硬件配置"
     config APB_DELAY_SCALE
       int "APB延迟缩放因子 S"
       default 64
+      range 1 1048576
       help
         APB延迟模块中频率比累加的放大系数。
 
     config AXI_DEVICE_FREQ
       int "AXI设备频率 (MHz)"
       default 100
+      range 1 10000
       help
         AXI总线上外设（如SDRAM控制器）的运行频率。
         用于AXI延迟模块计算频率比校准访存延迟。
@@ -986,6 +972,7 @@ menu "硬件配置"
     config AXI_DELAY_SCALE
       int "AXI延迟缩放因子 S"
       default 64
+      range 1 1048576
       help
         AXI延迟模块中频率比累加的放大系数。
 

@@ -10,6 +10,7 @@ extern "C" {
 
 volatile uint32_t trap_count = 0;
 volatile uint32_t last_trap_cause = 0;
+volatile uint32_t timer_observation = 0;
 
 // Each test trap is a four-byte instruction.  Record its cause, advance mepc,
 // and return so online DiffTest must synchronize both the trap edge and the
@@ -32,6 +33,13 @@ __attribute__((naked, aligned(4))) void difftest_trap_entry() {
 } // extern "C"
 
 extern "C" int main() {
+  // CLINT mtime is intentionally nondeterministic between RTL cycles and the
+  // host-side NEMU reference.  Online DiffTest must result-inject this load,
+  // not execute a different timer implementation and report a false mismatch.
+  volatile const uint32_t *const mtime =
+      reinterpret_cast<volatile const uint32_t *>(0x0200bff8u);
+  timer_observation = mtime[0] ^ mtime[1];
+
   uint32_t accumulator = 0;
   for (uint32_t i = 0; i < 16; ++i) {
     if ((i & 1u) != 0) {

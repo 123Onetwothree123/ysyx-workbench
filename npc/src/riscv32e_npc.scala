@@ -358,6 +358,22 @@ class riscv32e_npc_SimTop extends Module {
   debug_trap_target := cpu.io.debug_trap_target
   val debug_trap_cause = IO(Output(UInt(32.W)))
   debug_trap_cause := cpu.io.debug_trap_cause
+  val debug_csr_mstatus = IO(Output(UInt(32.W)))
+  val debug_csr_mtvec = IO(Output(UInt(32.W)))
+  val debug_csr_mepc = IO(Output(UInt(32.W)))
+  val debug_csr_mcause = IO(Output(UInt(32.W)))
+  val debug_trap_mstatus = IO(Output(UInt(32.W)))
+  val debug_trap_mtvec = IO(Output(UInt(32.W)))
+  val debug_trap_mepc = IO(Output(UInt(32.W)))
+  val debug_trap_mcause = IO(Output(UInt(32.W)))
+  debug_csr_mstatus := cpu.io.debug_csr_mstatus
+  debug_csr_mtvec := cpu.io.debug_csr_mtvec
+  debug_csr_mepc := cpu.io.debug_csr_mepc
+  debug_csr_mcause := cpu.io.debug_csr_mcause
+  debug_trap_mstatus := cpu.io.debug_trap_mstatus
+  debug_trap_mtvec := cpu.io.debug_trap_mtvec
+  debug_trap_mepc := cpu.io.debug_trap_mepc
+  debug_trap_mcause := cpu.io.debug_trap_mcause
 
   val perf_ifu_fetch = IO(Output(Bool()))
   perf_ifu_fetch := cpu.io.perf_ifu_fetch

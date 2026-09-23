@@ -18,9 +18,9 @@ void NPCTrap::Halt(std::uint32_t PC, std::uint32_t Code) noexcept
     HaltPC = PC;
     HaltCode = Code;
 }
-void NPCTrap::Stop() noexcept
+void NPCTrap::Stop(std::uint32_t PC) noexcept
 {
-    Halted = true;
+    Halt(PC, 1);
 }
 bool NPCTrap::HasHalted() noexcept
 {
@@ -38,8 +38,8 @@ int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Instructions)
 {
     if (!Halted)
     {
-        std::println("NPC在未触发陷阱的情况下退出");
-        return 0;
+        std::println(std::cerr, "NPC在未触发陷阱的情况下退出");
+        return 1;
     }
 #ifdef CONFIG_PERF_STATS
     auto ipc{Cycles > 0 ? static_cast<double>(Instructions) / static_cast<double>(Cycles) : 0.0};

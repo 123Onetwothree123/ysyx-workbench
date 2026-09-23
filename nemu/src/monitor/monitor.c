@@ -25,7 +25,8 @@
 void init_rand();
 void init_log(const char *log_file);
 void init_mem();
-void init_difftest(char *ref_so_file, long img_size, int port);
+void init_difftest(char *ref_so_file, long img_size, int port,
+                   paddr_t image_addr, bool ysyxsoc_mode);
 void init_device();
 void init_sdb();
 void init_disasm();
@@ -163,6 +164,7 @@ void init_monitor(int argc, char *argv[])
   init_log(log_file);
 
   /* Initialize memory. */
+  set_ysyxsoc_memory_mode(ysyxsoc_mode);
   init_mem();
 
   /* Initialize devices. */
@@ -175,7 +177,8 @@ void init_monitor(int argc, char *argv[])
   long img_size = load_img();
 
   /* Initialize differential testing. */
-  init_difftest(diff_so_file, img_size, difftest_port);
+  init_difftest(diff_so_file, img_size, difftest_port,
+                ysyxsoc_mode ? FLASH_BASE : RESET_VECTOR, ysyxsoc_mode);
 
   /* Initialize the simple debugger. */
   init_sdb();

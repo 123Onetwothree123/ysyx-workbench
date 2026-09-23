@@ -101,6 +101,14 @@ NPC_IXX_SRCS := \
 
 NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))))
 
+# Verilator rewrites its public header on every invocation even when its
+# contents are unchanged.  Track a content signature so that the expensive
+# C++ module graph is invalidated only when the actual top-level API changes.
+.npc_top_header_signature: $(VM_PREFIX).h
+	@new_sig=$$(sha256sum $< | cut -d' ' -f1); \
+	 old_sig=$$(test -f $@ && sed -n '1p' $@ || true); \
+	 if test "$$new_sig" != "$$old_sig"; then printf '%s\n' "$$new_sig" > $@; fi
+
 # ============ GCC module compilation ============
 ifeq ($(NPC_COMPILER),gcc)
 
@@ -111,7 +119,10 @@ $(NPC_HEADER_GCM): gcm.cache/%.gcm:
 	@echo "  CXX HEADER <$*>"
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++-system-header $*
 
-.npc_modules_built: $(NPC_HEADER_GCM) $(NPC_IXX_SRCS)
+# DUT.ixx imports the generated top class.  Rebuild the complete module graph
+# whenever Verilator changes that public header; otherwise GCC can silently
+# reuse an old npc.DUT BMI and report newly-added RTL ports as nonexistent.
+.npc_modules_built: $(NPC_HEADER_GCM) $(NPC_IXX_SRCS) .npc_top_header_signature
 	@mkdir -p gcm.cache
 	@echo "  CXX MODULE std"
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) -x c++ -c $(STD_MODULE_SRC) -o $(STD_MODULE_OBJ)
@@ -144,7 +155,7 @@ $(NPC_HEADER_PCM): $(NPC_PCM_DIR)/%.pcm:
 	@echo "  CXX HEADER <$(subst _,/,$*)>"
 	$(CXX) $(NPC_STD_FLAG) -x c++-system-header $(subst _,/,$*) --precompile -o $@
 
-.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_HEADER_PCM) $(NPC_IXX_SRCS)
+.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_HEADER_PCM) $(NPC_IXX_SRCS) .npc_top_header_signature
 	@$(foreach src,$(NPC_IXX_SRCS),\
 		MOD_NAME=$$(grep -oP '(?<=export module )\S+(?=;)' $(src)); \
 		echo "  CXX MODULE $(notdir $(src)) [$$MOD_NAME]"; \

@@ -307,35 +307,76 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     0.U(32.W),
     exu.io.TrapCommit
   )
+  io.debug_csr_mstatus := RegEnable(
+    wbu.io.in.bits.CSRStateMstatus,
+    0.U(32.W),
+    WBUCommit
+  )
+  io.debug_csr_mtvec := RegEnable(
+    wbu.io.in.bits.CSRStateMtvec,
+    0.U(32.W),
+    WBUCommit
+  )
+  io.debug_csr_mepc := RegEnable(
+    wbu.io.in.bits.CSRStateMepc,
+    0.U(32.W),
+    WBUCommit
+  )
+  io.debug_csr_mcause := RegEnable(
+    wbu.io.in.bits.CSRStateMcause,
+    0.U(32.W),
+    WBUCommit
+  )
+  io.debug_trap_mstatus := RegEnable(
+    exu.io.CSRStateMstatus,
+    0.U(32.W),
+    exu.io.TrapCommit
+  )
+  io.debug_trap_mtvec := RegEnable(
+    exu.io.CSRStateMtvec,
+    0.U(32.W),
+    exu.io.TrapCommit
+  )
+  io.debug_trap_mepc := RegEnable(
+    exu.io.CSRStateMepc,
+    0.U(32.W),
+    exu.io.TrapCommit
+  )
+  io.debug_trap_mcause := RegEnable(
+    exu.io.CSRStateMcause,
+    0.U(32.W),
+    exu.io.TrapCommit
+  )
 
-  // mtrace 只记录成功从 LSU 退休的访存。错误响应和地址非对齐均不
-  // Retire，因而不会携带旧 LoadData 生成伪记录；字段与 valid 同拍锁存。
+  // mtrace 必须与 WBU retire 记录对齐，而不是早一拍的 LSU out.fire。
+  // DiffTest 在 debug_commit 拍用它判断 MMIO；错一拍会让 mtime 在 REF 真正
+  // 执行并产生伪差异。错误响应/非对齐访问不 Retire，不会到达这里。
   val MtraceCommit =
-    lsu.io.out.fire && lsu.io.out.bits.MemoryValid && lsu.io.out.bits.Retire
+    WBUCommit && wbu.io.in.bits.MemoryValid
   io.debug_mtrace_valid := RegNext(MtraceCommit, false.B)
-  io.debug_mtrace_pc := RegEnable(lsu.io.out.bits.pc, 0.U(32.W), MtraceCommit)
+  io.debug_mtrace_pc := RegEnable(wbu.io.in.bits.pc, 0.U(32.W), MtraceCommit)
   io.debug_mtrace_wen := RegEnable(
-    lsu.io.out.bits.MemoryWrite,
+    wbu.io.in.bits.MemoryWrite,
     false.B,
     MtraceCommit
   )
   io.debug_mtrace_addr := RegEnable(
-    lsu.io.out.bits.ALUResult,
+    wbu.io.in.bits.ALUResult,
     0.U(32.W),
     MtraceCommit
   )
   io.debug_mtrace_wdata := RegEnable(
-    lsu.io.out.bits.StoreData,
+    wbu.io.in.bits.StoreData,
     0.U(32.W),
     MtraceCommit
   )
   io.debug_mtrace_rdata := RegEnable(
-    lsu.io.out.bits.LoadData,
+    wbu.io.in.bits.LoadData,
     0.U(32.W),
     MtraceCommit
   )
   io.debug_mtrace_width := RegEnable(
-    lsu.io.out.bits.WidthSelect,
+    wbu.io.in.bits.WidthSelect,
     0.U(2.W),
     MtraceCommit
   )
@@ -418,7 +459,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     io.master_bid
   )
   assert(
-    !(io.master_rvalid && io.master_rready) || io.master_rid === 0.U,
+    !(io.master_rvalid && io.master_rready) ||
+      io.master_rid === 0.U || io.master_rid === 1.U,
     "AXI read: rid=%d",
     io.master_rid
   )

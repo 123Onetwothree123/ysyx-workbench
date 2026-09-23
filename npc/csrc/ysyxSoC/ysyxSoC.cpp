@@ -1,6 +1,6 @@
 module;
 module npc.ysyxSoC;
-// 兜底值必须与 Kconfig 的 CONFIG_MBASE 默认值一致（与 SoCMemoryMap 模块保持同步）
+// Fixed ysyxSoC MROM base; Makefile supplies the same platform constant.
 #ifndef CONFIG_MBASE
 #define CONFIG_MBASE 0x30000000u
 #endif

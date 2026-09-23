@@ -12,13 +12,15 @@ riscv/ysyxsoc/vga.c \
 CFLAGS+=-fdata-sections -ffunction-sections
 LDSCRIPTS += $(AM_HOME)/scripts/ysyxsoclinker.ld
 LDFLAGS   += --gc-sections -e _start
+NPC_HOME ?= $(abspath $(AM_HOME)/../npc)
 -include $(NPC_HOME)/include/config/auto.conf
 CACHE_PADDING ?= $(or $(CONFIG_CACHE_PADDING),0)
 LDFLAGS   += --defsym=_cache_padding=$(CACHE_PADDING)
+AM_TIMER_FREQ_MHZ ?= $(or $(CONFIG_SYNTH_FREQ),450)
+CFLAGS += -DAM_TIMER_FREQ_MHZ=$(AM_TIMER_FREQ_MHZ)
 MAINARGS_MAX_LEN = 64
 MAINARGS_PLACEHOLDER = the_insert-arg_rule_in_Makefile_will_insert_mainargs_here
 CFLAGS += -DMAINARGS_MAX_LEN=$(MAINARGS_MAX_LEN) -DMAINARGS_PLACEHOLDER=$(MAINARGS_PLACEHOLDER)
-NPC_HOME ?= $(abspath $(AM_HOME)/../npc)
 insert-arg: image
 	@python $(AM_HOME)/tools/insert-arg.py $(IMAGE).bin $(MAINARGS_MAX_LEN) $(MAINARGS_PLACEHOLDER) "$(mainargs)"
 image: image-dep

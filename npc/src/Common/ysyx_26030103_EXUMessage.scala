@@ -15,6 +15,12 @@ class ysyx_26030103_EXUMessage extends Bundle {
   // 为实际目标。DiffTest 必须比较这个值，而不是退休指令 PC。
   val NextPC = UInt(32.W)
   val CSRReadData = UInt(32.W)
+  // 该指令提交后的精确 CSR 快照。CSR 在 EXU 产生副作用，
+  // 不能在 WBU 退休时直接采样 CSR 实时值，否则可能包含年轻指令的更新。
+  val CSRStateMstatus = UInt(32.W)
+  val CSRStateMtvec = UInt(32.W)
+  val CSRStateMepc = UInt(32.W)
+  val CSRStateMcause = UInt(32.W)
 
   // 访存请求(MEM消费)
   val MemoryValid = Bool()

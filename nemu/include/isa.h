@@ -52,7 +52,9 @@ vaddr_t isa_raise_intr(word_t NO, vaddr_t epc);
 word_t isa_query_intr();
 
 // difftest
-bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc);
+/* `ref_r` uses the external DiffTest ABI, which is not necessarily laid out
+ * like private CPU_state (notably for RV32E). */
+bool isa_difftest_checkregs(const void *ref_r, vaddr_t pc);
 void isa_difftest_attach();
 
 //自己写的

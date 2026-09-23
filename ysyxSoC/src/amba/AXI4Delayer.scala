@@ -29,6 +29,9 @@ class axi4_delayer extends BlackBox {
 class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_.toInt).getOrElse(450),
     val DEVICE_MHZ: Int = sys.env.get("AXI_DEVICE_FREQ_MHZ").map(_.toInt).getOrElse(100),
     val S: Int = sys.env.get("AXI_DELAY_SCALE_FACTOR").map(_.toInt).getOrElse(64)) extends Module {
+  require(CPU_MHZ > 0, "AXI CPU frequency must be positive")
+  require(DEVICE_MHZ > 0, "AXI device frequency must be positive")
+  require(S > 0, "AXI delay scale must be positive")
   val io = IO(new AXI4DelayerIO)
 
   val CounterWidth = 24
@@ -58,8 +61,14 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_
     val rd_fifo_rresp = Reg(Vec(8, UInt(2.W)))
     val rd_fifo_rlast = Reg(Vec(8, Bool()))
     val rd_fifo_target = Reg(Vec(8, UInt(TargetWidth.W)))
+    val rd_last_target = RegInit(0.U(TargetWidth.W))
+    val rd_has_target = RegInit(false.B)
 
-    io.out.ar.valid := io.in.ar.valid
+    // Do not let an address handshake escape downstream while this delayer is
+    // still completing the previous transaction.  The upstream READY alone
+    // cannot prevent such a handshake because READY belongs to a different
+    // interface.
+    io.out.ar.valid := io.in.ar.valid && (rd_state === rd_idle)
     io.in.ar.ready := io.out.ar.ready && (rd_state === rd_idle)
     io.out.ar.bits := io.in.ar.bits
 
@@ -81,6 +90,8 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_
           rd_fifo_wptr := 0.U
           rd_fifo_rptr := 0.U
           rd_fifo_count := 0.U
+          rd_last_target := 0.U
+          rd_has_target := false.B
         }
       }
       is(rd_active) {
@@ -91,16 +102,28 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_
         // count必须用加减合并, 两条独立的+1/-1赋值会被后者覆盖而丢表项
         val pushFire = io.out.r.valid && io.out.r.ready
         val popFire = WireDefault(false.B)
+        val arrivalTarget = Wire(UInt(TargetWidth.W))
+        val sequentialTarget = Wire(UInt(TargetWidth.W))
+        val scheduledTarget = Wire(UInt(TargetWidth.W))
+        arrivalTarget := (n_rd * S.U) + AMT.U
+        sequentialTarget := rd_last_target + RTS.U
+        scheduledTarget := Mux(
+          rd_has_target && sequentialTarget > arrivalTarget,
+          sequentialTarget,
+          arrivalTarget
+        )
         when(pushFire) {
           rd_fifo_data(rd_fifo_wptr) := io.out.r.bits.data
           rd_fifo_rid(rd_fifo_wptr) := io.out.r.bits.id
           rd_fifo_rresp(rd_fifo_wptr) := io.out.r.bits.resp
           rd_fifo_rlast(rd_fifo_wptr) := io.out.r.bits.last
-          rd_fifo_target(rd_fifo_wptr) := n_rd * RTS.U
+          rd_fifo_target(rd_fifo_wptr) := scheduledTarget
           rd_fifo_wptr := rd_fifo_wptr + 1.U
+          rd_last_target := scheduledTarget
+          rd_has_target := true.B
         }
 
-        val do_present = rd_fifo_not_empty && ((n_rd << 6) >= rd_fifo_target(rd_fifo_rptr))
+        val do_present = rd_fifo_not_empty && ((n_rd * S.U) >= rd_fifo_target(rd_fifo_rptr))
         when(do_present) {
           io.in.r.valid := true.B
           io.in.r.bits.id := rd_fifo_rid(rd_fifo_rptr)
@@ -121,21 +144,22 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_
     }
 
     // ========== Write Channel ==========
-    val wr_idle :: wr_aw_seen :: wr_w_hold :: wr_wait_b :: wr_b_hold :: Nil = Enum(5)
+    val wr_idle :: wr_accept_w :: wr_w_hold :: wr_wait_b :: wr_b_hold :: Nil = Enum(5)
     val wr_state = RegInit(wr_idle)
     val n_wr = RegInit(0.U(CounterWidth.W))
 
-    val w_arrival_n = RegInit(0.U(CounterWidth.W))
+    val w_target = RegInit(0.U(TargetWidth.W))
     val w_forwarded_n = RegInit(0.U(CounterWidth.W))
     val wdata_reg = RegInit(0.U(32.W))
     val wstrb_reg = RegInit(0.U(4.W))
+    val wlast_reg = RegInit(false.B)
 
     val b_id_reg = RegInit(0.U(4.W))
     val b_resp_reg = RegInit(0.U(2.W))
     val b_target = RegInit(0.U(TargetWidth.W))
     val b_latched = RegInit(false.B)
 
-    io.out.aw.valid := io.in.aw.valid
+    io.out.aw.valid := io.in.aw.valid && (wr_state === wr_idle)
     io.in.aw.ready := io.out.aw.ready && (wr_state === wr_idle)
     io.out.aw.bits := io.in.aw.bits
 
@@ -156,31 +180,40 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_
     switch(wr_state) {
       is(wr_idle) {
         when(io.in.aw.valid && io.in.aw.ready) {
-          wr_state := wr_aw_seen
+          wr_state := wr_accept_w
           n_wr := 1.U
           b_latched := false.B
         }
       }
-      is(wr_aw_seen) {
+      is(wr_accept_w) {
         n_wr := n_wr + 1.U
         io.in.w.ready := true.B
         when(io.in.w.valid && io.in.w.ready) {
           wdata_reg := io.in.w.bits.data
           wstrb_reg := io.in.w.bits.strb
-          w_arrival_n := n_wr
+          wlast_reg := io.in.w.bits.last
+          // This channel holds only one W beat.  Delay each newly accepted
+          // beat by the additional CPU/device frequency latency instead of
+          // multiplying its already-delayed absolute arrival time (which
+          // would make burst gaps grow exponentially).
+          w_target := (n_wr * S.U) + AMT.U
           wr_state := wr_w_hold
         }
       }
       is(wr_w_hold) {
         n_wr := n_wr + 1.U
-        when((n_wr << 6) >= (w_arrival_n * RTS.U)) {
+        when((n_wr * S.U) >= w_target) {
           io.out.w.valid := true.B
           io.out.w.bits.data := wdata_reg
           io.out.w.bits.strb := wstrb_reg
-          io.out.w.bits.last := true.B
+          io.out.w.bits.last := wlast_reg
           when(io.out.w.ready) {
-            w_forwarded_n := n_wr
-            wr_state := wr_wait_b
+            when(wlast_reg) {
+              w_forwarded_n := n_wr
+              wr_state := wr_wait_b
+            }.otherwise {
+              wr_state := wr_accept_w
+            }
           }
         }
       }
@@ -192,7 +225,7 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_
           b_resp_reg := io.out.b.bits.resp
           b_latched := true.B
           val interval = n_wr - w_forwarded_n
-          b_target := (w_forwarded_n << 6) + (interval * RTS.U)
+          b_target := (w_forwarded_n * S.U) + (interval * RTS.U)
         }
         when(b_latched) {
           wr_state := wr_b_hold
@@ -200,7 +233,7 @@ class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_
       }
       is(wr_b_hold) {
         n_wr := n_wr + 1.U
-        when((n_wr << 6) >= b_target) {
+        when((n_wr * S.U) >= b_target) {
           io.in.b.valid := true.B
           io.in.b.bits.id := b_id_reg
           io.in.b.bits.resp := b_resp_reg

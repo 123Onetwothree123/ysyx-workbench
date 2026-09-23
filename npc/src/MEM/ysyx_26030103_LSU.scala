@@ -695,7 +695,8 @@ class ysyx_26030103_LSU(
     }
   }
   if (DCacheEnable) {
-    when(DCacheRequestActive) {
+    val DCacheBusActive = DCacheRequestActive || DCache.io.axi_active
+    when(DCacheBusActive) {
       io.DataBus.AR.ARVALID := DCache.io.AXI.AR.ARVALID
       io.DataBus.AR.ARID := DCache.io.AXI.AR.ARID
       io.DataBus.AR.ARADDR := DCache.io.AXI.AR.ARADDR
@@ -705,7 +706,7 @@ class ysyx_26030103_LSU(
       io.DataBus.AR.ARPROT := DCache.io.AXI.AR.ARPROT
     }
     DCache.io.AXI.AR.ARREADY := Mux(
-      DCacheRequestActive,
+      DCacheBusActive,
       io.DataBus.AR.ARREADY,
       false.B
     )
@@ -714,7 +715,7 @@ class ysyx_26030103_LSU(
     DCache.io.AXI.R.RRESP := io.DataBus.R.RRESP
     DCache.io.AXI.R.RLAST := io.DataBus.R.RLAST
     DCache.io.AXI.R.RVALID := io.DataBus.R.RVALID
-    when(DCacheRequestActive) {
+    when(DCacheBusActive) {
       io.DataBus.R.RREADY := DCache.io.AXI.R.RREADY
     }
   } else {

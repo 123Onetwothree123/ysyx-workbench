@@ -28,6 +28,10 @@ class ysyx_26030103_EXU(
     val TrapPC = Output(UInt(32.W))
     val TrapTarget = Output(UInt(32.W))
     val TrapCause = Output(UInt(32.W))
+    val CSRStateMstatus = Output(UInt(32.W))
+    val CSRStateMtvec = Output(UInt(32.W))
+    val CSRStateMepc = Output(UInt(32.W))
+    val CSRStateMcause = Output(UInt(32.W))
     // 取指 access fault 只在对应指令真正提交异常时上报。
     val FetchAccessFaultCommit = Output(Bool())
     val FetchAccessFaultPC = Output(UInt(32.W))
@@ -247,6 +251,10 @@ class ysyx_26030103_EXU(
   io.TrapPC := Mux(io.MemTrapCommit, io.MemTrapPC, inst.pc)
   io.TrapTarget := CSRUnit.io.ExceptionTarget
   io.TrapCause := CSRUnit.io.CommittedCause
+  io.CSRStateMstatus := CSRUnit.io.StateMstatus
+  io.CSRStateMtvec := CSRUnit.io.StateMtvec
+  io.CSRStateMepc := CSRUnit.io.StateMepc
+  io.CSRStateMcause := CSRUnit.io.StateMcause
   io.FetchAccessFaultCommit := CSRUnit.io.TrapCommit && !io.MemTrapCommit &&
     !CSRUnit.io.IrqCommit && UpEx && inst.ExceptionCause === 1.U
   io.FetchAccessFaultPC := inst.pc
@@ -277,6 +285,10 @@ class ysyx_26030103_EXU(
   io.out.bits.ALUResult := Mux(PendingMDU, MDUUnit.io.Resp.bits.Result, ALUUnit.io.result)
   io.out.bits.LoadData := 0.U(32.W) // 由MEM在访存完成后填写
   io.out.bits.CSRReadData := CSRUnit.io.CSR_rdata
+  io.out.bits.CSRStateMstatus := CSRUnit.io.StateMstatus
+  io.out.bits.CSRStateMtvec := CSRUnit.io.StateMtvec
+  io.out.bits.CSRStateMepc := CSRUnit.io.StateMepc
+  io.out.bits.CSRStateMcause := CSRUnit.io.StateMcause
   io.out.bits.MemoryValid :=
     ActiveInst.MemoryValid && !InstructionTrapValid && !CSRUnit.io.IrqCommit &&
       !io.MemTrapCommit

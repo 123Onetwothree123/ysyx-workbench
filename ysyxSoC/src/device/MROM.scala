@@ -48,24 +48,35 @@ class AXI4MROM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
 
     val mrom = Module(new MROMHelper)
 
-    val (stateIdle, stateActive) = (0.U(1.W), 1.U(1.W))
+    // MROMHelper is a synchronous one-cycle read.  Keep a load state between
+    // beats so its registered output is never overwritten while RREADY is
+    // low.  In particular, only launch the next memory read after the current
+    // R beat has actually handshaken.
+    val stateIdle :: stateLoad :: stateActive :: Nil = Enum(3)
     val state = RegInit(stateIdle)
 
     val burst_len  = RegInit(0.U(8.W))
     val beat_cnt   = RegInit(0.U(8.W))
     val addr_reg   = RegInit(0.U(32.W))
 
+    val next_addr = addr_reg + 4.U
+
     mrom.io.clock := clock
-    mrom.io.raddr := Mux(in.ar.fire, in.ar.bits.addr,
-                     addr_reg + ((beat_cnt + 1.U) << 2))
-    mrom.io.ren := in.ar.fire || (state === stateActive)
+    mrom.io.raddr := Mux(in.ar.fire, in.ar.bits.addr, next_addr)
+    mrom.io.ren := in.ar.fire ||
+      ((state === stateActive) && in.r.ready &&
+        (beat_cnt =/= burst_len))
 
     in.ar.ready := (state === stateIdle)
     when(in.ar.fire) {
-      state      := stateActive
+      state      := stateLoad
       burst_len  := in.ar.bits.len
       beat_cnt   := 0.U
       addr_reg   := in.ar.bits.addr
+    }
+
+    when(state === stateLoad) {
+      state := stateActive
     }
 
     in.r.bits.data := mrom.io.rdata
@@ -78,7 +89,9 @@ class AXI4MROM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
       when(beat_cnt === burst_len) {
         state := stateIdle
       }.otherwise {
+        state := stateLoad
         beat_cnt := beat_cnt + 1.U
+        addr_reg := next_addr
       }
     }
 

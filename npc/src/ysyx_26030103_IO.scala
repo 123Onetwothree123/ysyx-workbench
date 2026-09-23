@@ -117,6 +117,16 @@ class ysyx_26030103_IO extends Bundle {
   val debug_trap_pc = Output(UInt(32.W))
   val debug_trap_target = Output(UInt(32.W))
   val debug_trap_cause = Output(UInt(32.W))
+  // 与 retire/trap 事件分别对齐的 CSR 快照。两组不能共用，
+  // 因为同拍可能同时有更老的 WBU 退休与年轻 trap。
+  val debug_csr_mstatus = Output(UInt(32.W))
+  val debug_csr_mtvec = Output(UInt(32.W))
+  val debug_csr_mepc = Output(UInt(32.W))
+  val debug_csr_mcause = Output(UInt(32.W))
+  val debug_trap_mstatus = Output(UInt(32.W))
+  val debug_trap_mtvec = Output(UInt(32.W))
+  val debug_trap_mepc = Output(UInt(32.W))
+  val debug_trap_mcause = Output(UInt(32.W))
   // 性能计数器
   val perf_ifu_fetch = Output(Bool())
   val perf_exu_done = Output(Bool())

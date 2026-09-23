@@ -84,11 +84,10 @@ int main(int argc, char **argv) {
 
     dut.io_ex_valid = 0;
     dut.io_me_valid = 0;
-    dut.io_in_bits_Instruction = fence_encoding(1, 0, 0, 0, 0);
-    dut.eval();
-    check(!dut.io_out_bits_IsFence && dut.io_out_bits_ExceptionValid &&
-              dut.io_out_bits_ExceptionCause == 2,
-          "unsupported fm encoding was silently accepted as base FENCE");
+    expect_fence(dut, fence_encoding(1, 0, 0, 0, 0),
+                 "FENCE with reserved fm encoding");
+    expect_fence(dut, fence_encoding(8, 0x3, 0x3, 0, 0),
+                 "FENCE.TSO conservatively implemented as a full FENCE");
     dut.final();
   });
 }

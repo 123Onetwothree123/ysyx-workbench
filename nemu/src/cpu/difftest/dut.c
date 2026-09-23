@@ -14,6 +14,7 @@
 ***************************************************************************************/
 
 #include <dlfcn.h>
+#include <stddef.h>
 
 #include <isa.h>
 #include <cpu/cpu.h>
@@ -59,7 +60,28 @@ void difftest_skip_dut(int nr_ref, int nr_dut) {
   }
 }
 
-void init_difftest(char *ref_so_file, long img_size, int port) {
+static void pack_dut_registers(void *buffer) {
+#ifdef CONFIG_ISA_riscv
+  riscv_difftest_state_t *state = (riscv_difftest_state_t *)buffer;
+  memset(state, 0, sizeof(*state));
+  const size_t count = sizeof(cpu.gpr) / sizeof(cpu.gpr[0]);
+  for (size_t i = 0; i < count; ++i) state->gpr[i] = cpu.gpr[i];
+  state->pc = cpu.pc;
+#else
+  memcpy(buffer, &cpu, DIFFTEST_REG_SIZE);
+#endif
+}
+
+static vaddr_t unpack_ref_pc(const void *buffer) {
+#ifdef CONFIG_ISA_riscv
+  return ((const riscv_difftest_state_t *)buffer)->pc;
+#else
+  return ((const CPU_state *)buffer)->pc;
+#endif
+}
+
+void init_difftest(char *ref_so_file, long img_size, int port,
+                   paddr_t image_addr, bool ysyxsoc_mode) {
   assert(ref_so_file != NULL);
 
   void *handle;
@@ -81,17 +103,26 @@ void init_difftest(char *ref_so_file, long img_size, int port) {
   void (*ref_difftest_init)(int) = dlsym(handle, "difftest_init");
   assert(ref_difftest_init);
 
+  /* New NEMU references expose an explicit platform selector.  Keep this
+   * optional so NEMU can still be used with external reference models. */
+  void (*ref_difftest_set_platform)(int) =
+      dlsym(handle, "difftest_set_platform");
+
   Log("Differential testing: %s", ANSI_FMT("ON", ANSI_FG_GREEN));
   Log("The result of every instruction will be compared with %s. "
       "This will help you a lot for debugging, but also significantly reduce the performance. "
       "If it is not necessary, you can turn it off in menuconfig.", ref_so_file);
 
+  if (ref_difftest_set_platform != NULL)
+    ref_difftest_set_platform(ysyxsoc_mode ? 1 : 0);
   ref_difftest_init(port);
-  ref_difftest_memcpy(RESET_VECTOR, guest_to_host(RESET_VECTOR), img_size, DIFFTEST_TO_REF);
-  ref_difftest_regcpy(&cpu, DIFFTEST_TO_REF);
+  ref_difftest_memcpy(image_addr, guest_to_host(image_addr), img_size, DIFFTEST_TO_REF);
+  _Alignas(max_align_t) uint8_t dut_state[DIFFTEST_REG_SIZE];
+  pack_dut_registers(dut_state);
+  ref_difftest_regcpy(dut_state, DIFFTEST_TO_REF);
 }
 
-static void checkregs(CPU_state *ref, vaddr_t pc) {
+static void checkregs(const void *ref, vaddr_t pc) {
   if (!isa_difftest_checkregs(ref, pc)) {
     nemu_state.state = NEMU_ABORT;
     nemu_state.halt_pc = pc;
@@ -100,33 +131,37 @@ static void checkregs(CPU_state *ref, vaddr_t pc) {
 }
 
 void difftest_step(vaddr_t pc, vaddr_t npc) {
-  CPU_state ref_r;
+  _Alignas(max_align_t) uint8_t ref_r[DIFFTEST_REG_SIZE];
 
   if (skip_dut_nr_inst > 0) {
-    ref_difftest_regcpy(&ref_r, DIFFTEST_TO_DUT);
-    if (ref_r.pc == npc) {
+    ref_difftest_regcpy(ref_r, DIFFTEST_TO_DUT);
+    if (unpack_ref_pc(ref_r) == npc) {
       skip_dut_nr_inst = 0;
-      checkregs(&ref_r, npc);
+      checkregs(ref_r, npc);
       return;
     }
     skip_dut_nr_inst --;
     if (skip_dut_nr_inst == 0)
-      panic("can not catch up with ref.pc = " FMT_WORD " at pc = " FMT_WORD, ref_r.pc, pc);
+      panic("can not catch up with ref.pc = " FMT_WORD " at pc = " FMT_WORD,
+            unpack_ref_pc(ref_r), pc);
     return;
   }
 
   if (is_skip_ref) {
     // to skip the checking of an instruction, just copy the reg state to reference design
-    ref_difftest_regcpy(&cpu, DIFFTEST_TO_REF);
+    _Alignas(max_align_t) uint8_t dut_state[DIFFTEST_REG_SIZE];
+    pack_dut_registers(dut_state);
+    ref_difftest_regcpy(dut_state, DIFFTEST_TO_REF);
     is_skip_ref = false;
     return;
   }
 
   ref_difftest_exec(1);
-  ref_difftest_regcpy(&ref_r, DIFFTEST_TO_DUT);
+  ref_difftest_regcpy(ref_r, DIFFTEST_TO_DUT);
 
-  checkregs(&ref_r, pc);
+  checkregs(ref_r, pc);
 }
 #else
-void init_difftest(char *ref_so_file, long img_size, int port) { }
+void init_difftest(char *ref_so_file, long img_size, int port,
+                   paddr_t image_addr, bool ysyxsoc_mode) { }
 #endif

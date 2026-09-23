@@ -10,7 +10,7 @@ REF_SO := $(BUILD_DIR)/riscv32-nemu-interpreter-so
 REF_OBJ_DIR := $(BUILD_DIR)/nemu-obj
 REF_RVE_SO := $(BUILD_DIR)/riscv32e-nemu-interpreter-so
 REF_RVE_OBJ_DIR := $(BUILD_DIR)/nemu-rve-fixed-obj
-NEMU_SRCS := $(shell find $(NEMU_DIR)/src -type f \( -name '*.c' -o -name '*.h' \) -print)
+NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \( -name '*.c' -o -name '*.h' \) -print)
 
 CXX ?= g++
 
