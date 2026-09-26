@@ -9,9 +9,8 @@ class ysyx_26030103_MULUnit(
   private val Core = ysyx_26030103_MULCoreFactory.Create(config)
   private val CoreWidth = config.MULWidth
   private val CoreProductWidth = 2 * CoreWidth
-  // Sign/high-half metadata must have one entry for every request which the
-  // pipelined compression core can keep in flight.  A single Pending bit would
-  // serialize the otherwise II=1 Wallace/Dadda cores.
+  // 流水压缩核能够保留的每项在途请求都必须有一项符号/高半部元数据。
+  // 仅使用一个Pending位会使原本II=1的Wallace/Dadda核串行化。
   private val MetadataDepth = config.MULMaxInflight
   private val MetadataPtrWidth = log2Ceil(MetadataDepth).max(1)
   private val MetadataCountWidth = log2Ceil(MetadataDepth + 1)

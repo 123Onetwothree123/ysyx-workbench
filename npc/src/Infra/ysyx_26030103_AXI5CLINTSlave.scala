@@ -61,8 +61,7 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
       WValidReg := false.B
       WLastReg := false.B
     }.otherwise {
-      // A multi-beat write is drained one beat at a time.  Keep AWValid so
-      // the following W beat remains associated with the same transaction.
+      // 多拍写事务逐拍排空。保持AWValid，使后续W数据拍仍属于同一事务。
       WValidReg := false.B
       WLastReg := false.B
     }
@@ -82,9 +81,8 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
     )
   )
   val NextARAddr = Mux(ARBurstReg === 1.U, ARAddrReg + ARStep, ARAddrReg)
-  // Select the address whose response is being registered at this edge.  The
-  // data itself must be captured because mtime continues changing while the
-  // master is allowed to hold RREADY low.
+  // 选择其响应在此时钟沿被寄存的地址。数据本身也必须被捕获，因为主设备
+  // 可以保持RREADY为低，而mtime会在此期间持续变化。
   val ResponseAddress = Mux(ARFire, io.AR.ARADDR, NextARAddr)
   Mtime.io.SelectHigh := ResponseAddress === MtimeHighAddress
 

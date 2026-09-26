@@ -44,49 +44,49 @@ class ysyx_26030103_ALUDecoder(
   private val BaseRows: Seq[(BitPat, BitPat)] = Seq(
     key(OPCODE_Immediate_Lxxx, "b000_???????") -> encode(
       ADD
-    ), // LB
-    key(OPCODE_Immediate_Lxxx, "b001_???????") -> encode(ADD), // LH
-    key(OPCODE_Immediate_Lxxx, "b010_???????") -> encode(ADD), // LW
-    key(OPCODE_Immediate_Lxxx, "b100_???????") -> encode(ADD), // LBU
-    key(OPCODE_Immediate_Lxxx, "b101_???????") -> encode(ADD), // LHU
-    key(OPCODE_Store, "b000_???????") -> encode(ADD), // SB
-    key(OPCODE_Store, "b001_???????") -> encode(ADD), // SH
-    key(OPCODE_Store, "b010_???????") -> encode(ADD), // SW
-    key(OPCODE_Immediate_Bxxx, "b000_???????") -> encode(ADD), // JALR
+    ), // 字节加载（LB）
+    key(OPCODE_Immediate_Lxxx, "b001_???????") -> encode(ADD), // 半字加载（LH）
+    key(OPCODE_Immediate_Lxxx, "b010_???????") -> encode(ADD), // 字加载（LW）
+    key(OPCODE_Immediate_Lxxx, "b100_???????") -> encode(ADD), // 无符号字节加载（LBU）
+    key(OPCODE_Immediate_Lxxx, "b101_???????") -> encode(ADD), // 无符号半字加载（LHU）
+    key(OPCODE_Store, "b000_???????") -> encode(ADD), // 字节存储（SB）
+    key(OPCODE_Store, "b001_???????") -> encode(ADD), // 半字存储（SH）
+    key(OPCODE_Store, "b010_???????") -> encode(ADD), // 字存储（SW）
+    key(OPCODE_Immediate_Bxxx, "b000_???????") -> encode(ADD), // 间接跳转并链接（JALR）
     key(OPCODE_UpperImmediate_auipc, "b???_???????") -> encode(
       ADD
     ), // AUIPC这边funct3和funct7属于立即数
-    key(OPCODE_Jump, "b???_???????") -> encode(ADD), // JAL
-    key(OPCODE_UpperImmediate_lui, "b???_???????") -> encode(ADD), // LUI
-    key(OPCODE_Branch, "b000_???????") -> encode(SUB), // BEQ
-    key(OPCODE_Branch, "b001_???????") -> encode(SUB), // BNE
-    key(OPCODE_Branch, "b100_???????") -> encode(SUB), // BLT
-    key(OPCODE_Branch, "b101_???????") -> encode(SUB), // BGE
-    key(OPCODE_Branch, "b110_???????") -> encode(SUB), // BLTU
-    key(OPCODE_Branch, "b111_???????") -> encode(SUB), // BGEU
+    key(OPCODE_Jump, "b???_???????") -> encode(ADD), // 跳转并链接（JAL）
+    key(OPCODE_UpperImmediate_lui, "b???_???????") -> encode(ADD), // 高位立即数加载（LUI）
+    key(OPCODE_Branch, "b000_???????") -> encode(SUB), // 相等分支（BEQ）
+    key(OPCODE_Branch, "b001_???????") -> encode(SUB), // 不等分支（BNE）
+    key(OPCODE_Branch, "b100_???????") -> encode(SUB), // 有符号小于分支（BLT）
+    key(OPCODE_Branch, "b101_???????") -> encode(SUB), // 有符号大于等于分支（BGE）
+    key(OPCODE_Branch, "b110_???????") -> encode(SUB), // 无符号小于分支（BLTU）
+    key(OPCODE_Branch, "b111_???????") -> encode(SUB), // 无符号大于等于分支（BGEU）
     key(OPCODE_Immediate, "b000_???????") -> encode(
       ADD
     ), // ADDI这边funct7是立即数高位
     key(OPCODE_Immediate, "b001_0000000") -> encode(
       SLL
     ), // SLLI这里移位量立即数要求 funct7是全0
-    key(OPCODE_Immediate, "b010_???????") -> encode(SLT), // SLTI
-    key(OPCODE_Immediate, "b011_???????") -> encode(SLTU), // SLTIU
-    key(OPCODE_Immediate, "b100_???????") -> encode(XOR), // XORI
-    key(OPCODE_Immediate, "b101_0000000") -> encode(SRL), // SRLI
-    key(OPCODE_Immediate, "b101_0100000") -> encode(SRA), // SRAI
-    key(OPCODE_Immediate, "b110_???????") -> encode(OR), // ORI
-    key(OPCODE_Immediate, "b111_???????") -> encode(AND), // ANDI
-    key(OPCODE_Register, "b000_0000000") -> encode(ADD), // ADD
-    key(OPCODE_Register, "b000_0100000") -> encode(SUB), // SUB
-    key(OPCODE_Register, "b001_0000000") -> encode(SLL), // SLL
-    key(OPCODE_Register, "b010_0000000") -> encode(SLT), // SLT
-    key(OPCODE_Register, "b011_0000000") -> encode(SLTU), // SLTU
-    key(OPCODE_Register, "b100_0000000") -> encode(XOR), // XOR
-    key(OPCODE_Register, "b101_0000000") -> encode(SRL), // SRL
-    key(OPCODE_Register, "b101_0100000") -> encode(SRA), // SRA
-    key(OPCODE_Register, "b110_0000000") -> encode(OR), // OR
-    key(OPCODE_Register, "b111_0000000") -> encode(AND), // AND
+    key(OPCODE_Immediate, "b010_???????") -> encode(SLT), // 有符号小于立即数置位（SLTI）
+    key(OPCODE_Immediate, "b011_???????") -> encode(SLTU), // 无符号小于立即数置位（SLTIU）
+    key(OPCODE_Immediate, "b100_???????") -> encode(XOR), // 立即数异或（XORI）
+    key(OPCODE_Immediate, "b101_0000000") -> encode(SRL), // 逻辑右移立即数（SRLI）
+    key(OPCODE_Immediate, "b101_0100000") -> encode(SRA), // 算术右移立即数（SRAI）
+    key(OPCODE_Immediate, "b110_???????") -> encode(OR), // 立即数或（ORI）
+    key(OPCODE_Immediate, "b111_???????") -> encode(AND), // 立即数与（ANDI）
+    key(OPCODE_Register, "b000_0000000") -> encode(ADD), // 加法（ADD）
+    key(OPCODE_Register, "b000_0100000") -> encode(SUB), // 减法（SUB）
+    key(OPCODE_Register, "b001_0000000") -> encode(SLL), // 逻辑左移（SLL）
+    key(OPCODE_Register, "b010_0000000") -> encode(SLT), // 有符号小于置位（SLT）
+    key(OPCODE_Register, "b011_0000000") -> encode(SLTU), // 无符号小于置位（SLTU）
+    key(OPCODE_Register, "b100_0000000") -> encode(XOR), // 异或（XOR）
+    key(OPCODE_Register, "b101_0000000") -> encode(SRL), // 逻辑右移（SRL）
+    key(OPCODE_Register, "b101_0100000") -> encode(SRA), // 算术右移（SRA）
+    key(OPCODE_Register, "b110_0000000") -> encode(OR), // 或（OR）
+    key(OPCODE_Register, "b111_0000000") -> encode(AND), // 与（AND）
     key(OPCODE_System, "b???_???????") -> encode(
       NOP
     ), // CSR和ecall和ebreak和mret有没有用就交给 IDU

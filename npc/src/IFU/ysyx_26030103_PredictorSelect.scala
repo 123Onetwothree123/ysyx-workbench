@@ -4,12 +4,12 @@ import chisel3._
 import chisel3.util.Cat
 import _root_.ysyx_26030103.common.ysyx_26030103_BTBKind
 
-/** Priority and target selection for the branch/JAL/RAS predictors.
+/** 分支、JAL 与 RAS 预测器的优先级和目标选择逻辑。
   *
-  * A Ret entry is usable only with a non-empty RAS.  Ret BTB entries store the
-  * static JALR immediate rather than an absolute target, so non-zero-offset
-  * returns predict `(rasTop + immediate) & ~1` just like the architectural
-  * JALR target calculation.
+  * 仅当 RAS 非空时才能使用 Ret 表项。Ret BTB 表项保存的是静态 JALR
+  * 立即数而非绝对目标，因此带非零偏移量的返回指令会按
+  * `(rasTop + immediate) & ~1` 预测目标，与体系结构规定的 JALR
+  * 目标计算方式一致。
   */
 class ysyx_26030103_PredictorSelect extends Module {
   val io = IO(new Bundle {

@@ -120,9 +120,9 @@ class ysyx_26030103_CSR extends Module {
   }.elsewhen(io.TrapValid) {
     ExceptionCause := io.TrapCause // EXU提交点送来的异常号:取指错1/非法指令2/load访存错5/store访存错7
   }.elsewhen(io.IsEbreak) {
-    ExceptionCause := 3.U(32.W) // breakpoint
+    ExceptionCause := 3.U(32.W) // 断点异常
   }.otherwise { // 只剩ecall
-    ExceptionCause := 11.U(32.W) // ecall
+    ExceptionCause := 11.U(32.W) // 环境调用异常
   }
   // 新加的这行代码，irq是Interrupt ReQuest，是中断请求的意思
   val HasIrqCommit = io.Enable && HasInterrupt && !io.MemTrap
@@ -236,7 +236,7 @@ class ysyx_26030103_CSR extends Module {
   Mcycle.io.SelectHigh := IsCSRAddress(CSR_MCYCLEH)
   Mcycle.io.wdata := CSRWriteData(Mcycle_rdata)
   // 做一个表，本来直接用switch的，结果知乎链接看到可以用Seq来实现，然后后面别的地方也开始用Seq了
-  // https://zhuanlan.zhihu.com/p/567818196
+  // 参考资料：https://zhuanlan.zhihu.com/p/567818196
   val CSRMap = Seq(
     CSR_MCYCLE -> Mcycle_rdata,
     CSR_MCYCLEH -> Mcycle_rdata,

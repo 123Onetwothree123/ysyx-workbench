@@ -3,13 +3,11 @@ package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
 
-/** AXI arbiter for the IFU and LSU ports.
+/** IFU与LSU端口的AXI仲裁器。
   *
-  * Reads and writes are independent: an LSU write may wait for B while either
-  * instruction fetch or a load is in flight. The two read masters receive
-  * distinct downstream IDs, allowing one IFU and one LSU read to be
-  * outstanding together and making response ownership explicit. Each source
-  * is still limited to one read, matching the blocking ICache/DCache ports.
+  * 读写相互独立：LSU写事务等待B响应时，取指或load仍可处于在途状态。
+  * 两个读主设备使用不同的下游ID，使一项IFU读和一项LSU读可以同时在途，
+  * 并明确响应的归属。每个源仍限制为一项读事务，以匹配阻塞式ICache/DCache端口。
   */
 class ysyx_26030103_AXI5Arbiter extends Module {
   val io = IO(new Bundle {
@@ -67,7 +65,7 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   io.memory.AR.ARBURST := 0.U
   io.memory.AR.ARPROT := 0.U
 
-  // Read address arbitration and ID-based response routing.
+  // 读地址仲裁和基于ID的响应路由。
   val ifuReadOutstanding = RegInit(false.B)
   val lsuReadOutstanding = RegInit(false.B)
   val lastReadGrant = RegInit(GrantLSU)
@@ -78,9 +76,8 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   val chooseNewLSU =
     lsuReadRequest && (!ifuReadRequest || lastReadGrant === GrantIFU)
   val chooseNewIFU = ifuReadRequest && !chooseNewLSU
-  // Once ARVALID is presented without READY, AXI requires every AR payload
-  // field to remain stable.  A newly-arriving competing master therefore
-  // cannot change the grant until the stalled request handshakes.
+  // ARVALID拉高但READY未拉高后，AXI要求AR的每个有效载荷字段保持稳定。
+  // 因此，在受阻请求完成握手前，新到达的竞争主设备不能改变授权结果。
   val chooseLSU = Mux(readGrantHeld, heldReadGrant === GrantLSU, chooseNewLSU)
   val chooseIFU = Mux(readGrantHeld, heldReadGrant === GrantIFU, chooseNewIFU)
 
@@ -120,8 +117,8 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     lastReadGrant := GrantIFU
   }
 
-  // One-beat skid buffer cuts the downstream response combinational path and
-  // holds the complete payload stable under either source's backpressure.
+  // 单拍弹性缓冲切断下游响应的组合路径，并在任一源施加反压时保持
+  // 完整有效载荷稳定。
   val rSkidValid = RegInit(false.B)
   val rSkidID = RegInit(0.U(4.W))
   val rSkidData = Reg(UInt(32.W))
@@ -171,8 +168,8 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     )
   }
 
-  // Independent LSU write channel. Writes stay ordered and precise, but their
-  // AW/W/B latency no longer blocks unrelated instruction or data reads.
+  // 独立的LSU写通道。写事务仍保持有序和精确，但其AW/W/B延迟不再阻塞
+  // 无关的取指或数据读取。
   val writeStates = Enum(3)
   val WriteIdle = writeStates(0)
   val WriteRequest = writeStates(1)

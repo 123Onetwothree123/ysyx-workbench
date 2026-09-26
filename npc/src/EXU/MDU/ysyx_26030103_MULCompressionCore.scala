@@ -255,7 +255,7 @@ abstract class ysyx_26030103_MULCompressionCore(
   private val BoothPaddedBits = BoothGroups * BoothBits //补齐后的乘数宽度
   private val BoothProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(BoothRadix, OperandWidth) //编码器部分积宽度
   // Booth 负部分积只保留局部的 K 位表示。对 K 位补码 p：
-  // sign_extend(p) = zero_extend(p) - sign(p) * 2^K；
+  // 符号扩展关系：sign_extend(p) = zero_extend(p) - sign(p) * 2^K；
   // InitialBoothCorrectionMagnitude 汇总这些减法补偿项。
   private val InitialRowsAndCorrections = if (!UseBooth) {
     (

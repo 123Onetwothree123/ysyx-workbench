@@ -151,7 +151,7 @@ case class ysyx_26030103_NPCConfig(
     // 目标平台
     ResetAddr: Long = 0x30000000L,
     AddressWidth: Int = 32,
-    // caches
+    // 缓存
     ICacheEnable: Boolean = true,
     DCacheEnable: Boolean = false,
     BlockSizeLog2: Int = 4,
@@ -214,9 +214,9 @@ case class ysyx_26030103_NPCConfig(
   require(MULIterBits >= 1 && MULIterBits <= 8, "MULIterBits必须在1到8之间")
   require(MULPipeline >= 0 && MULPipeline <= 4, "MULPipeline必须在0到4之间")
   require(MULSplit >= 1 && MULSplit <= 4, "MULSplit必须在1到4之间")
-  // Compression-tree cores contain MULPipeline+1 elastic result slots.  The
-  // iterative shift-add core remains single-outstanding regardless of that
-  // otherwise inapplicable setting.  MDU adds one independent DIV slot.
+  // 压缩树核心包含 MULPipeline+1 个弹性结果槽。迭代移位加法核心始终只允许
+  // 一笔在途请求，不受这个对它并不适用的设置影响。MDU 还会增加一个独立的
+  // DIV 槽位。
   final val MULMaxInflight: Int = MULImpl match {
     case ysyx_26030103_MULImpl.ShiftAdd => 1
     case _                              => MULPipeline + 1

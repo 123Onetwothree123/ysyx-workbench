@@ -76,8 +76,8 @@ class ysyx_26030103_IDU(
   // custom-0 编码只用于仿真器的 AM halt ABI。标准 EBREAK 始终保留其
   // breakpoint 异常语义，不能再被宿主机无条件当成退出请求。
   val IsSimHalt = Instruction === "h0000000b".U(32.W)
-  // FENCE and FENCE.I are both in the MISC-MEM opcode class, but have
-  // different ordering/flush semantics downstream.
+  // FENCE 和 FENCE.I 都属于 MISC-MEM 操作码类别，但在下游具有不同的
+  // 顺序约束和冲刷语义。
   // 基础实现可以保守地把所有fm/pred/succ配置都执行成完整FENCE。
   // 为向前兼容，保留的fm编码以及rd/rs1都必须被忽略；FENCE.TSO也可
   // 合法地退化为更强的FENCE RW,RW，不能因fm非零报非法指令。
@@ -111,9 +111,9 @@ class ysyx_26030103_IDU(
     WBSelect := WB_MEMORY // load就直接写回访存结果
   }.elsewhen(
     (opcode === OPCODE_Immediate_Bxxx) && (funct3 === "b000".U(3.W))
-  ) { // jalr
+  ) { // 间接跳转并链接（JALR）
     WBSelect := WB_SNPC
-  }.elsewhen(IsJType) { // jal
+  }.elsewhen(IsJType) { // 跳转并链接（JAL）
     WBSelect := WB_SNPC
   }.otherwise { // 正常写回的普通指令
     WBSelect := WB_ALU
@@ -136,25 +136,24 @@ class ysyx_26030103_IDU(
     IsRType || IsIType || IsSType || IsBType || IsUType || IsJType ||
       IsCsrrw || IsCsrrs || IsEcall || IsEbreak || IsSimHalt || IsMret ||
       IsFenceI || IsFence
-  // CSR access legality is checked at decode time, rather than relying on
-  // CSRUnit's read-data mux.  The core currently implements this explicit
-  // machine-CSR set; accesses outside it are illegal instructions.
+  // CSR 访问合法性在译码时检查，而不是依赖 CSRUnit 的读取数据多路选择器。
+  // 本核心目前只实现下面明确列出的机器态 CSR 集合，访问集合外的 CSR
+  // 将被视为非法指令。
   val CSRAddress = Instruction(31, 20)
   val CSRAddressValid =
-    (CSRAddress === "hB00".U(12.W)) || // mcycle
-      (CSRAddress === "hB80".U(12.W)) || // mcycleh
-      (CSRAddress === "hF11".U(12.W)) || // mvendorid (read-only)
-      (CSRAddress === "hF12".U(12.W)) || // marchid (read-only)
-      (CSRAddress === "h300".U(12.W)) || // mstatus
-      (CSRAddress === "h305".U(12.W)) || // mtvec
-      (CSRAddress === "h341".U(12.W)) || // mepc
-      (CSRAddress === "h342".U(12.W))   // mcause
-  // CSRRW always writes, including when rd=x0.  CSRRS writes only when
-  // rs1!=x0; the rs1=x0 form is a pure read and is legal for read-only CSRs.
+    (CSRAddress === "hB00".U(12.W)) || // 机器周期计数器（mcycle）
+      (CSRAddress === "hB80".U(12.W)) || // 机器周期计数器高位（mcycleh）
+      (CSRAddress === "hF11".U(12.W)) || // 机器厂商编号（mvendorid，只读）
+      (CSRAddress === "hF12".U(12.W)) || // 机器架构编号（marchid，只读）
+      (CSRAddress === "h300".U(12.W)) || // 机器状态寄存器（mstatus）
+      (CSRAddress === "h305".U(12.W)) || // 机器陷阱向量基址（mtvec）
+      (CSRAddress === "h341".U(12.W)) || // 机器异常程序计数器（mepc）
+      (CSRAddress === "h342".U(12.W))   // 机器陷阱原因（mcause）
+  // CSRRW 始终执行写入，包括 rd=x0 的情况。CSRRS 仅在 rs1!=x0 时写入；
+  // rs1=x0 的形式是纯读取操作，因此可合法访问只读 CSR。
   val CSRWriteIntent = IsCsrrw || (IsCsrrs && (Rs1 =/= 0.U))
-  // Per the privileged ISA, an address whose [11:10] bits are 11 denotes a
-  // read-only CSR.  Keep the generic rule here so future read-only entries
-  // cannot accidentally become writable.
+  // 根据特权级 ISA，地址的 [11:10] 位为 11 表示只读 CSR。这里保留通用规则，
+  // 防止以后新增的只读表项意外变为可写。
   val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W)
   val CSRIllegal =
     (IsCsrrw || IsCsrrs) &&
@@ -226,8 +225,8 @@ class ysyx_26030103_IDU(
     ((usesRs1 && io.me2_rd === Rs1) || (needsRs2 && io.me2_rd === Rs2))
   val me_hazard = io.me_valid && io.me_regWrite && io.me_rd =/= 0.U &&
     ((usesRs1 && io.me_rd === Rs1) || (needsRs2 && io.me_rd === Rs2))
-  // Only the oldest MDU instruction is represented by the normal EX hazard
-  // port.  Any younger queued MDU producer has no forwardable value yet.
+  // 普通 EX 冒险端口只表示最老的 MDU 指令。队列中更年轻的 MDU 生产者
+  // 尚无可供前递的值。
   val hidden_mdu_hazard =
     (usesRs1 && Rs1 =/= 0.U && io.ex_mdu_hidden_writes(Rs1)) ||
       (needsRs2 && Rs2 =/= 0.U && io.ex_mdu_hidden_writes(Rs2))

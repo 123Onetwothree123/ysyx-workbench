@@ -1,13 +1,11 @@
 package ysyx_26030103.common
 
-/** A physical-address region visible to the CPU.
+/** CPU 可见的物理地址区域。
   *
-  * `Readable` and `Writable` are bus permissions, while `Executable` controls
-  * instruction fetches.  Keeping these permissions independent is important
-  * for read-only memories such as the SoC MROM: a store must be rejected by
-  * the CPU-side crossbar instead of being sent to a slave which has no write
-  * channel. `Cacheable` describes whether an instruction fetch may allocate
-  * an ICache line.
+  * `Readable` 和 `Writable` 表示总线权限，`Executable` 控制指令取值权限。
+  * 保持这些权限相互独立对 SoC MROM 之类的只读存储器十分重要：store 必须
+  * 由 CPU 侧交叉开关拒绝，而不能发送到没有写通道的从设备。`Cacheable`
+  * 表示取指是否允许分配一条 ICache 缓存行。
   */
 case class ysyx_26030103_PMARegion(
     Base: Long,
@@ -29,13 +27,13 @@ case class ysyx_26030103_PMARegion(
   final val EndExclusive: Long = Base + Size
 }
 
-/** The two concrete physical maps supported by this core. */
+/** 本核心支持的两种具体物理地址映射。 */
 object ysyx_26030103_PhysicalMemoryMap {
   val CLINT = ysyx_26030103_PMARegion(0x02000000L, 0x00010000L)
 
   val NPC: Seq[ysyx_26030103_PMARegion] = Seq(
     CLINT,
-    // The direct-NPC UART is a single write-only word in AXIRAM.
+    // 直接 NPC 的 UART 是 AXIRAM 中一个只写的单字寄存器。
     ysyx_26030103_PMARegion(
       0x10000000L,
       0x4L,
@@ -57,36 +55,36 @@ object ysyx_26030103_PhysicalMemoryMap {
         0x00008000L,
         Cacheable = true,
         Executable = true
-      ), // SRAM
-      ysyx_26030103_PMARegion(0x10000000L, 0x00001000L), // UART
-      ysyx_26030103_PMARegion(0x10001000L, 0x00001000L), // SPI controller
-      ysyx_26030103_PMARegion(0x10002000L, 0x00000010L), // GPIO
-      ysyx_26030103_PMARegion(0x10011000L, 0x00000008L), // keyboard
-      ysyx_26030103_PMARegion(0x21000000L, 0x00200000L), // VGA framebuffer
+      ), // SRAM（静态随机存取存储器）
+      ysyx_26030103_PMARegion(0x10000000L, 0x00001000L), // UART（通用异步收发器）
+      ysyx_26030103_PMARegion(0x10001000L, 0x00001000L), // SPI 控制器
+      ysyx_26030103_PMARegion(0x10002000L, 0x00000010L), // GPIO（通用输入输出）
+      ysyx_26030103_PMARegion(0x10011000L, 0x00000008L), // 键盘
+      ysyx_26030103_PMARegion(0x21000000L, 0x00200000L), // VGA 帧缓冲区
       ysyx_26030103_PMARegion(
         0x30000000L,
         0x10000000L,
         Writable = false,
         Cacheable = true,
         Executable = true
-      ), // MROM
+      ), // MROM（掩模只读存储器）
       ysyx_26030103_PMARegion(
         0x80000000L,
         0x00400000L,
         Cacheable = true,
         Executable = true
-      ), // PSRAM
+      ), // PSRAM（伪静态随机存取存储器）
       ysyx_26030103_PMARegion(
         0xa0000000L,
         0x02000000L,
         Cacheable = true,
         Executable = true
-      ) // SDRAM
+      ) // SDRAM（同步动态随机存取存储器）
     )
     val ChipLink =
       if (HasChipLink)
         Seq(
-          // ChipLink MMIO is intentionally non-executable/non-cacheable.
+          // ChipLink MMIO 被有意设置为不可执行且不可缓存。
           ysyx_26030103_PMARegion(0x40000000L, 0x40000000L),
           ysyx_26030103_PMARegion(
             0xc0000000L,

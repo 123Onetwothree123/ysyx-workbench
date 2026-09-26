@@ -529,9 +529,8 @@ class ysyx_26030103_LSU(
   switch(state) {
     is(StatesIdle) {
       when(startMem) {
-        // These registers belong to the accepted memory instruction.  Keep
-        // them stable after the bus FSM returns to Idle until the stage can
-        // actually commit under downstream backpressure.
+        // 这些寄存器属于已接受的访存指令。总线状态机返回Idle后仍要保持其稳定，
+        // 直到该级能在下游反压下真正提交。
         AccessFaultReg := false.B
         AccessFaultRespReg := 0.U
         StoreFaultReg := false.B
@@ -658,9 +657,8 @@ class ysyx_26030103_LSU(
             when(io.DataBus.R.RLAST) {
               state := StatesDone
             }.otherwise {
-              // The request is a single-beat AXI read, so a response without
-              // RLAST is a protocol error.  Keep consuming the channel until
-              // the offending burst is drained instead of retiring early.
+              // 该请求是单拍AXI读，因此不带RLAST的响应属于协议错误。应继续消费
+              // 此通道，直到违规突发传输排空，而不是提前退休。
               AccessFaultReg := true.B
               AccessFaultRespReg := Mux(
                 io.DataBus.R.RRESP =/= 0.U,

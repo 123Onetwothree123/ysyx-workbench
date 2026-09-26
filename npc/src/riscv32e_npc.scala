@@ -21,9 +21,8 @@ class riscv32e_npc_AXIRAM extends Module {
   val RamLast = "h8003ffff".U(32.W)
   val UARTAddress = "h10000000".U(32.W)
 
-  // A beat is in RAM only when every byte selected by AxSIZE remains inside
-  // the 256 KiB simulation-memory window.  In particular, addresses outside
-  // this window must never wrap through a truncated SyncReadMem index.
+  // 只有 AxSIZE 选中的每个字节都位于 256 KiB 仿真内存窗口内时，该拍才属于
+  // RAM。尤其要避免窗口外地址通过截断后的 SyncReadMem 索引发生回绕。
   def IsRAMBeat(address: UInt, size: UInt): Bool = {
     val lastStart = MuxLookup(size, 0.U(32.W))(
       Seq(
@@ -75,10 +74,9 @@ class riscv32e_npc_AXIRAM extends Module {
   val awPending = RegInit(false.B)
   val wPending = RegInit(false.B)
 
-  // SyncReadMem returns data one cycle after a read request.  A partial write
-  // therefore has to read the old word first, then merge and write it in a
-  // later state; using the read result in the request cycle would merge stale
-  // or undefined data.
+  // SyncReadMem 会在读请求后一拍返回数据。因此，部分写必须先读取旧字，再在
+  // 后续状态中合并并写回；如果在请求当拍使用读结果，就会合并陈旧或未定义的
+  // 数据。
   val writeAddressIsRAM = IsRAMBeat(awAddr, awSize)
   val writeAddressIsUART = awAddr === UARTAddress
   val writeWordIndex = ((awAddr - RamBase) >> 2)(15, 0)
@@ -102,8 +100,7 @@ class riscv32e_npc_AXIRAM extends Module {
   )
   val expectedLastBeat = writeBeat === awLen
 
-  // Give a partially collected write priority over reads.  AW and W are
-  // accepted independently and may arrive in either order.
+  // 尚未收集完整的写事务优先于读事务。AW 与 W 独立接收，可以按任意顺序到达。
   val writeIncoming = awPending || wPending || io.axi.AW.AWVALID || io.axi.W.WVALID
   io.axi.AW.AWREADY := state === sIdle && !awPending
   io.axi.W.WREADY := (state === sIdle && !wPending) || state === sWriteDrain
@@ -186,7 +183,7 @@ class riscv32e_npc_AXIRAM extends Module {
       }
     }
     is(sWriteRead) {
-      // Launch the synchronous read.  writeOld is valid in sWriteCommit.
+      // 发起同步读；writeOld 会在 sWriteCommit 状态中有效。
       state := sWriteCommit
     }
     is(sWriteCommit) {
@@ -194,8 +191,8 @@ class riscv32e_npc_AXIRAM extends Module {
         when(writeAddressIsRAM) {
           mem.write(writeWordIndex, writeMerged)
         }.elsewhen(writeAddressIsUART) {
-          // UART is a side-effect-only target and is deliberately disjoint
-          // from the RAM window.  Only an enabled low byte emits a character.
+          // UART 是只有副作用的目标，并且刻意与 RAM 窗口分离。只有低字节使能时
+          // 才会输出字符。
           when(wStrb(0)) {
             printf("%c", wData(7, 0))
           }
@@ -207,18 +204,18 @@ class riscv32e_npc_AXIRAM extends Module {
       }
       when(wLast) {
         when(!expectedLastBeat) {
-          writeResp := SLVERR // early WLAST
+          writeResp := SLVERR // WLAST 过早到达
         }
         state := sWriteResp
       }.elsewhen(expectedLastBeat) {
-        // AWLEN beats have arrived without WLAST.  Drain through WLAST so the
-        // upstream write-data channel cannot remain wedged, then report SLVERR.
+        // 已收到 AWLEN 指定的拍数但仍未见 WLAST。继续排空到 WLAST，避免上游
+        // 写数据通道永久阻塞，随后报告 SLVERR。
         writeResp := SLVERR
         wPending := false.B
         state := sWriteDrain
       }.otherwise {
         writeBeat := writeBeat + 1.U
-        when(awBurst === 1.U) { // INCR; FIXED keeps the same address
+        when(awBurst === 1.U) { // INCR 递增地址；FIXED 保持地址不变
           awAddr := awAddr + writeStep
         }
         wPending := false.B

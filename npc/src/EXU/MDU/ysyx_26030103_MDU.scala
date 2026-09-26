@@ -25,9 +25,8 @@ class ysyx_26030103_MDU(
   val io = IO(new ysyx_26030103_MDUInterface) //MDU接口
   private val MULUnit = Module(new ysyx_26030103_MULUnit(config))
   private val DIVUnit = Module(new ysyx_26030103_DIVUnit(config))
-  // MUL and DIV execute independently, while this FIFO preserves architectural
-  // request order when their latencies differ.  Its capacity covers every MUL
-  // pipeline slot plus the DIV unit's one outstanding request.
+  // MUL与DIV独立执行，而此FIFO在两者延迟不同时仍保持架构请求顺序。
+  // 其容量覆盖MUL的所有流水槽位，以及DIV单元的一项在途请求。
   private val OwnerDepth = config.MDUMaxInflight
   private val OwnerPtrWidth = log2Ceil(OwnerDepth).max(1)
   private val OwnerCountWidth = log2Ceil(OwnerDepth + 1)

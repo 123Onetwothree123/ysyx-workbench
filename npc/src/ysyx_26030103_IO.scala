@@ -41,7 +41,7 @@ class ysyx_26030103_IO extends Bundle {
   val master_arcache = Output(UInt(4.W))
   val master_arprot = Output(UInt(3.W))
   val master_arqos = Output(UInt(4.W))
-//R
+//R读数据通道
   val master_rready = Output(Bool())
   val master_rvalid = Input(Bool())
   val master_rresp = Input(UInt(2.W))
@@ -100,7 +100,7 @@ class ysyx_26030103_IO extends Bundle {
   val debug_next_pc = Output(UInt(32.W))
   val debug_arch_pc = Output(UInt(32.W))
   val debug_instructions = Output(UInt(32.W))
-  // mtrace
+  // 内存访问跟踪
   val debug_mtrace_valid = Output(Bool())
   val debug_mtrace_pc = Output(UInt(32.W))
   val debug_mtrace_wen = Output(Bool())
@@ -108,7 +108,7 @@ class ysyx_26030103_IO extends Bundle {
   val debug_mtrace_wdata = Output(UInt(32.W))
   val debug_mtrace_rdata = Output(UInt(32.W))
   val debug_mtrace_width = Output(UInt(2.W))
-  // Access Fault
+  // 访问错误
   val debug_access_fault = Output(Bool())
   val debug_access_fault_pc = Output(UInt(32.W))
   val debug_access_fault_resp = Output(UInt(2.W))

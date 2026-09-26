@@ -4,13 +4,11 @@ import chisel3.util._
 import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.infra._
 
-/** Shared DCache allocation policy.
+/** DCache共用的分配策略。
   *
-  * The legacy base/mask and 0x8/0xa RAM filter still select which data ranges
-  * are worth caching.  PMA additionally proves that the *whole* refill line is
-  * readable inside one region.  If it is not, the demand is issued as a
-  * one-beat uncached read so a legal access near a PMA edge is not widened into
-  * an illegal burst.
+  * 原有的基址/掩码和0x8/0xa RAM过滤器仍用于选择值得缓存的数据区间。
+  * PMA还会确认整条回填缓存行都位于同一个可读区域内。若不满足，需求请求
+  * 将作为单拍非缓存读发出，避免PMA边界附近的合法访问被扩展成非法突发传输。
   */
 object ysyx_26030103_DCachePolicy {
   def LineContainedInReadableRegion(
@@ -111,11 +109,10 @@ class ysyx_26030103_DCache(
     val perf_miss = Output(Bool())
     val perf_refill_req = Output(Bool())
     val perf_refill_resp = Output(Bool())
-    // Expose the single source of truth to LSU's write-buffer ordering logic.
+    // 向LSU的写缓冲排序逻辑提供唯一的可缓存性判定源。
     val req_cacheable = Output(Bool())
-    // The demand response may be returned at the critical word while the
-    // remaining line refill is still draining.  LSU must keep routing AXI R
-    // traffic until this flag falls.
+    // 需求响应可能在关键字返回时就发出，而缓存行的其余回填仍在排空。
+    // 在此标志拉低前，LSU必须继续路由AXI R通道流量。
     val axi_active = Output(Bool())
   })
   val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
@@ -163,10 +160,9 @@ class ysyx_26030103_DCache(
   val SReadResp = states(2)
   val SDrain = states(3)
   val state = RegInit(SIdle)
-  // flush invalidates cached state, but it must not cancel an already accepted
-  // demand request: LSU has no cancellation handshake and is waiting for exactly
-  // one response.  suppressFill keeps the outstanding request alive while
-  // preventing a line that straddled the flush from becoming valid again.
+  // flush会使缓存状态失效，但不能取消已经接受的需求请求：LSU没有取消握手，
+  // 并且正在等待恰好一个响应。suppressFill在维持在途请求的同时，防止跨越
+  // 本次flush的缓存行重新变为有效。
   val suppressFill = RegInit(false.B)
   val ReqIndexSafe = if (Enable) ReqIndexReg else 0.U(IndexWidth.W)
   def FormatLoad(word: UInt, address: UInt, width: UInt, signed: Bool): UInt = {
@@ -223,8 +219,7 @@ class ysyx_26030103_DCache(
   io.AXI.AR.ARPROT := 0.U
   io.AXI.R.RREADY := false.B
   io.req.ready := state === SIdle && !ResponseValid && !io.flush
-  // Response state is decoupled from refill state so the critical word can
-  // restart the pipeline before the rest of the line has arrived.
+  // 响应状态与回填状态解耦，使关键字能在缓存行其余数据到达前重启流水线。
   io.resp.valid := ResponseValid
   io.resp.bits.data := ResponseData
   io.resp.bits.fault := ResponseFault
@@ -256,9 +251,8 @@ class ysyx_26030103_DCache(
     io.StoreAddr(AddressWidth - 1, BlockSizeLog2) ===
       ReqAddrReg(AddressWidth - 1, BlockSizeLog2)
   when(io.StoreValid && StoreCacheable) { // 只在外部写成功后更新写直达镜像
-    // A demand may have early-restarted while its line is still arriving.
-    // A younger successful store to that line makes any remaining read beat
-    // potentially stale, so finish draining but never install this refill.
+    // 需求请求可能已在其缓存行仍在到达时提前重启。若更年轻的store成功写入
+    // 该缓存行，则剩余读数据拍都可能已过期，因此应完成排空但绝不安装此次回填。
     when(StoreConflictsRefill) {
       suppressFill := true.B
       valid(StoreIndexSafe) := false.B
@@ -359,8 +353,8 @@ class ysyx_26030103_DCache(
             }
           }
           when(!BeatError) {
-            // Data that returns during/after a flush may satisfy the demand
-            // load, but must not repopulate the invalidated cache line.
+            // flush期间或之后返回的数据可以满足需求load，但不得重新填充
+            // 已失效的缓存行。
             when(!suppressFill && !io.flush) {
               tag(ReqIndexSafe) := ReqTagReg
               if (WordsPerBlock > 1) {
@@ -392,14 +386,12 @@ class ysyx_26030103_DCache(
               suppressFill := false.B
               state := SIdle
             }.otherwise {
-              // The expected final beat arrived without RLAST.  Do not let
-              // the load retire while the arbiter still owns this response;
-              // invalidate the line and drain until a late RLAST appears.
+              // 预期的最后一拍到达时没有RLAST。仲裁器仍持有此响应期间，
+              // 不得让load退休；应使缓存行失效并持续排空，直到迟到的RLAST出现。
               valid(ReqIndexSafe) := false.B
               RefillError := true.B
-              // Never mutate or recreate an already-visible Decoupled
-              // response.  If the critical word was consumed earlier, this
-              // late protocol error only invalidates/drains the line.
+              // 绝不修改或重新产生已经对外可见的Decoupled响应。若关键字先前已被
+              // 消费，这个迟到的协议错误只会使缓存行失效并将其排空。
               when(!DemandResponseDone && !ResponseValid) {
                 ResponseFault := true.B
                 ResponseFaultResp := Mux(BeatError, io.AXI.R.RRESP, 2.U)
@@ -409,8 +401,8 @@ class ysyx_26030103_DCache(
             }
           }.elsewhen(RefillBurst) {
             when(io.AXI.R.RLAST) {
-              // Early RLAST: retain received words and fetch each remainder as
-              // a separate one-beat transaction.
+              // RLAST提前到达：保留已接收的数据字，并将每个剩余数据字作为
+              // 独立的单拍事务获取。
               RefillBurst := false.B
               RefillCount := RefillCount + 1.U
               state := SReadReq
@@ -418,7 +410,7 @@ class ysyx_26030103_DCache(
               RefillCount := RefillCount + 1.U
             }
           }.otherwise {
-            // A fallback request is one beat and therefore must end in RLAST.
+            // 退化请求只有一拍，因此必须以RLAST结束。
             when(io.AXI.R.RLAST) {
               RefillCount := RefillCount + 1.U
               state := SReadReq
@@ -450,9 +442,8 @@ class ysyx_26030103_DCache(
             suppressFill := false.B
             state := SIdle
           }.otherwise {
-            // Every uncached request is a one-beat AXI transaction.  Missing
-            // RLAST is a protocol fault and must be drained before another
-            // LSU read can reuse the fixed read ID.
+            // 每个非缓存请求都是单拍AXI事务。缺少RLAST属于协议故障，必须先将其
+            // 排空，另一个LSU读请求才能复用固定的读ID。
             ResponseFault := true.B
             ResponseFaultResp := Mux(
               io.AXI.R.RRESP =/= 0.U,

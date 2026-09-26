@@ -12,22 +12,22 @@ class ysyx_26030103_BranchComparator extends Module {
   io.Taken := false.B
   when(io.IsBranch) {
     switch(io.Funct3) {
-      is("b000".U) { // BEQ
+      is("b000".U) { // 相等时分支（BEQ）
         io.Taken := io.A === io.B
       }
-      is("b001".U) { // BNE
+      is("b001".U) { // 不相等时分支（BNE）
         io.Taken := io.A =/= io.B
       }
-      is("b100".U) { // BLT
+      is("b100".U) { // 有符号小于时分支（BLT）
         io.Taken := io.A.asSInt < io.B.asSInt
       }
-      is("b101".U) { // BGE
+      is("b101".U) { // 有符号大于等于时分支（BGE）
         io.Taken := io.A.asSInt >= io.B.asSInt
       }
-      is("b110".U) { // BLTU
+      is("b110".U) { // 无符号小于时分支（BLTU）
         io.Taken := io.A < io.B
       }
-      is("b111".U) { // BGEU
+      is("b111".U) { // 无符号大于等于时分支（BGEU）
         io.Taken := io.A >= io.B
       }
     }

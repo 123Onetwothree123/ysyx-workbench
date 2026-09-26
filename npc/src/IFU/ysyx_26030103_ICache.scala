@@ -50,9 +50,9 @@ class ysyx_26030103_ICache(
       Region: ysyx_26030103_PMARegion
   ): Bool = {
     val Extended = Cat(0.U(1.W), Address)
-    // RV32 without C always fetches one complete 4-byte instruction.  Checking
-    // only the first byte would allow a request at the tail of an oddly-sized
-    // executable region to cross EndExclusive before the Xbar rejects it.
+    // 未启用 C 扩展的 RV32 每次都取一条完整的 4 字节指令。如果只检查
+    // 首字节，位于非规则大小可执行区域末尾的请求就可能在 Xbar 拒绝前
+    // 越过 EndExclusive。
     val LastByte = Extended + 3.U((AddressWidth + 1).W)
     Extended >= BigInt(Region.Base).U((AddressWidth + 1).W) &&
     LastByte < BigInt(Region.EndExclusive).U((AddressWidth + 1).W)
@@ -146,7 +146,7 @@ class ysyx_26030103_ICache(
   io.axi.AR.ARSIZE := 2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
-  io.axi.R.RREADY := true.B // always drain AXI responses
+  io.axi.R.RREADY := true.B // 始终接收并排空 AXI 响应
   // 响应级: 命中(s1_hit)用受理时锁存的数据; 关键词返回/refill完成(s1_ready)后,
   // 可缓存的从阵列读(关键词所在拍已写入), 不可缓存的用R拍锁存的数据; 错误一律给NOP
   val responding = s1_valid && (s1_hit || s1_ready)

@@ -45,9 +45,9 @@ class ysyx_26030103_EXU(
     val PerfMDUReq = Output(Bool())
     val PerfMDUDone = Output(Bool())
     val PerfMDUOp = Output(UInt(ysyx_26030103_MDUOp.Width.W))
-    // 0=none, 1=ALU, 2=MEM, 3=CSR, 4=BRANCH, 5=JAL, 6=JALR, 7=MDU.
-    // This is a pre-edge event; the existing perf_* type signals remain
-    // level signals for active-cycle statistics.
+    // 0=无事件，1=ALU，2=MEM，3=CSR，4=BRANCH，5=JAL，6=JALR，7=MDU。
+    // 这是一个时钟沿前事件；现有的perf_*类型信号仍作为电平信号，
+    // 用于统计活跃周期。
     val PerfEventKind = Output(UInt(3.W))
     val PerfMDUActive = Output(Bool())
     val PerfMDUWait = Output(Bool())
@@ -65,8 +65,8 @@ class ysyx_26030103_EXU(
     val HazardRd = Output(UInt(5.W))
     val HazardRegWrite = Output(Bool())
     val HazardMemOp = Output(Bool())
-    // Writes belonging to queued MDU instructions other than the queue head.
-    // IDU cannot forward these values yet and must stall matching consumers.
+    // 属于队首之外已排队MDU指令的写入。
+    // IDU尚不能转发这些值，必须阻塞与之匹配的消费者。
     val HazardMDUHiddenWrites = Output(UInt(32.W))
     val PerfIdleNoInput = Output(Bool())
     val PerfTrap = Output(Bool())
@@ -82,7 +82,7 @@ class ysyx_26030103_EXU(
     val JalBTBUpdatePC = Output(UInt(32.W))
     val JalBTBUpdateTarget = Output(UInt(32.W))
     val JalBTBUpdateKind =
-      Output(UInt(2.W)) // ysyx_26030103_BTBKind: Jal/Call/Ret
+      Output(UInt(2.W)) // ysyx_26030103_BTBKind：普通跳转/调用/返回
     // RAS更新: call提交压栈(返回地址=snpc), ret提交弹栈
     val RASPushValid = Output(Bool())
     val RASPushAddr = Output(UInt(32.W))
@@ -96,9 +96,8 @@ class ysyx_26030103_EXU(
   CSRUnit.io.Interrupt := io.Interrupt
   val BranchComparatorUnit = Module(new ysyx_26030103_BranchComparator)
   val inst = io.in.bits
-  // MDU requests are kept in an in-order instruction queue.  This allows a
-  // pipelined multiplier to accept consecutive M instructions while the
-  // oldest result is still waiting for the LSU/WBU stage.
+  // MDU请求保存在顺序指令队列中。这样，即使最老结果仍在等待LSU/WBU级，
+  // 流水乘法器也能接收连续的M扩展指令。
   private val MDUQueueDepth = config.MDUMaxInflight
   private val MDUQueuePtrWidth = log2Ceil(MDUQueueDepth).max(1)
   private val MDUQueueCountWidth = log2Ceil(MDUQueueDepth + 1)
@@ -172,14 +171,12 @@ class ysyx_26030103_EXU(
   MDUUnit.io.Resp.ready := MDURespReady
   val MDURespFire = MDUUnit.io.Resp.valid && MDURespReady
   val MDUQueueHasSpace = MDUQueueCount < MDUQueueDepth.U || MDURespFire
-  // An IRQ may retire the current input at an instruction boundary.  Consume
-  // that M input so the interrupt can commit, but do not start an MDU request;
-  // once older MDU work exists, hold the input until the queue has drained.
+  // IRQ可能在指令边界结束当前输入。应消耗该M扩展输入以便提交中断，但不启动
+  // MDU请求；一旦存在更老的MDU任务，就保持该输入，直到队列排空。
   val MDUInputBlockedByIRQ =
     IsMDUInstruction && CSRUnit.io.IrqPending && !io.MemTrapCommit
-  // A not-yet-issued M instruction may be consumed and replayed after IRQ only
-  // once every older MEM instruction has drained.  Otherwise the MDU-specific
-  // ready path would bypass BlockIrqForMEM and violate precise trap ordering.
+  // 尚未发射的M扩展指令只有在所有更老MEM指令都排空后，才能被消耗并在IRQ后重放。
+  // 否则，MDU专用ready路径会绕过BlockIrqForMEM，破坏精确陷阱顺序。
   val MDUInputKilledByIRQ =
     MDUInputBlockedByIRQ && !PendingMDU && !io.MEMBusy
   val MDUReqReady = IsMDUInstruction && !MDUInputBlockedByIRQ &&
@@ -194,10 +191,9 @@ class ysyx_26030103_EXU(
   io.in.ready := Mux(
     IsMDUInstruction,
     Mux(MDUInputKilledByIRQ, true.B, MDUReqReady),
-    // A pending MDU result occupies the single output slot this cycle.  A
-    // younger non-MDU instruction must stay in the IDU->EXU register until
-    // that result has been emitted; accepting it here would consume it
-    // without ever producing its EXU output.
+    // 待处理的MDU结果会占用本周期唯一的输出槽位。更年轻的非MDU指令必须留在
+    // IDU->EXU寄存器中，直到该结果发出；若在这里接收它，就会在未产生其EXU输出
+    // 的情况下将其消耗。
     !PendingMDU && io.out.ready && !BlockForMEM
   )
   io.out.valid := Mux(
@@ -316,9 +312,8 @@ class ysyx_26030103_EXU(
   val InstructionCommit =
     io.in.fire && !PendingMDU && !InstructionTrapValid && !io.MemTrapCommit &&
       !CSRUnit.io.IrqCommit
-  // Performance events describe the instruction currently being emitted to
-  // the next stage, not whatever younger input happens to be presented while
-  // a pending MDU result is being drained.
+  // 性能事件描述的是当前正发往下一级的指令，而不是排出待处理MDU结果时
+  // 恰好呈现的任何更年轻输入。
   val ActiveCommit = Mux(
     PendingMDU,
     MDURespFire && !io.MemTrapCommit && !CSRUnit.io.IrqCommit,
@@ -413,8 +408,8 @@ class ysyx_26030103_EXU(
       )
     )
   )
-  // Keep the historical type levels for active-cycle statistics.  The
-  // pre-edge PerfEventKind above is used for one-shot operation counters.
+  // 保留原有类型电平用于活跃周期统计。上面的时钟沿前PerfEventKind用于
+  // 单次操作计数器。
   io.PerfALUOp := !inst.MemoryValid && !inst.IsMDU && !inst.IsCsrrw &&
     !inst.IsCsrrs && !inst.IsBranch && !inst.IsJal && !inst.IsJalr
   io.PerfMemOp := inst.MemoryValid
@@ -442,10 +437,9 @@ class ysyx_26030103_EXU(
     ActiveInst.RegisterWrite && !ActiveInstructionTrapValid &&
       !CSRUnit.io.IrqCommit && !io.MemTrapCommit
   io.HazardMemOp := ActiveInst.MemoryValid
-  // The existing single hazard/forward port describes the MDU queue head.
-  // Build a mask for every younger queued writer plus a current MDU input which
-  // is waiting to enter the queue.  This prevents IDU from permanently
-  // snapshotting stale operands when independent multiplies are issued at II=1.
+  // 现有的单一冒险/转发端口描述MDU队首。为每个更年轻的已排队写入者，
+  // 以及当前正在等待入队的MDU输入构建掩码。这样可避免独立乘法以II=1发射时，
+  // IDU永久锁存过期的操作数。
   var HiddenMDUWriteMask: UInt = 0.U(32.W)
   for (Offset <- 1 until MDUQueueDepth) {
     val ExtendedHead = Cat(0.U(1.W), MDUQueueHead)

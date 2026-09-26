@@ -105,8 +105,8 @@ class ysyx_26030103_AXI5Xbar(
       )
     )
   }
-  // AXI read and write channels are independent.  Read state is kept per RID,
-  // so the fixed IFU/LSU IDs can both be outstanding in the downstream fabric.
+  // AXI读写通道相互独立。读状态按RID分别保存，因此固定的IFU/LSU ID
+  // 都可以同时处于下游互连结构的在途状态。
   private val ReadSlotCount = 16
   val readSlotStates = Enum(5)
   val ReadSlotFree = readSlotStates(0)
@@ -214,7 +214,7 @@ class ysyx_26030103_AXI5Xbar(
   val InWFire = io.in.W.WVALID && InWReady
   val InARFire = io.in.AR.ARVALID && InARReady
 
-  // -------------------- Write channel --------------------
+  // -------------------- 写通道 --------------------
   val WriteTargetAfterAW =
     Mux(
       InAWFire,
@@ -444,10 +444,9 @@ class ysyx_26030103_AXI5Xbar(
     }
   }
 
-  // -------------------- Read channel --------------------
-  // Each AXI ID owns one slot until its RLAST is consumed upstream.  The
-  // arbiter currently uses IDs 0 and 1 for IFU/LSU, while the 16-entry table
-  // keeps this crossbar well-defined for every representable ID.
+  // -------------------- 读通道 --------------------
+  // 每个AXI ID独占一个槽位，直到其RLAST被上游消费。仲裁器当前为IFU/LSU
+  // 使用ID 0和1，而包含16项的表让此交叉开关能明确定义每个可表示ID的行为。
   val IncomingReadID = io.in.AR.ARID
   InARReady := ReadSlotState(IncomingReadID) === ReadSlotFree
 
@@ -473,9 +472,9 @@ class ysyx_26030103_AXI5Xbar(
     )
   }
 
-  // SoCBus and CLINT have independent AR channels, so one pending request for
-  // each target may be issued in the same cycle.  Requests sharing a target
-  // are sent one per cycle and may both handshake before either R response.
+  // SoCBus与CLINT拥有独立的AR通道，因此可以在同一周期分别向两个目标各发射
+  // 一项等待请求。共享目标的请求每周期发送一项，并且可以在任一R响应到来前
+  // 都完成握手。
   val SoCRequestMask = VecInit((0 until ReadSlotCount).map { id =>
     ReadSlotState(id) === ReadSlotRequest &&
     ReadTargetReg(id) === TargetSoCBus
@@ -536,9 +535,8 @@ class ysyx_26030103_AXI5Xbar(
     CLINTARHeld := false.B
   }
 
-  // A one-beat response buffer both arbitrates simultaneous SoCBus/CLINT
-  // responses and guarantees that RID/RDATA/RRESP/RLAST remain stable while
-  // the upstream master applies backpressure.
+  // 单拍响应缓冲既对同时到达的SoCBus/CLINT响应进行仲裁，也保证上游主设备
+  // 施加反压时RID/RDATA/RRESP/RLAST保持稳定。
   val RBufferValid = RegInit(false.B)
   val RBufferID = RegInit(0.U(4.W))
   val RBufferData = RegInit(0.U(32.W))
@@ -571,8 +569,8 @@ class ysyx_26030103_AXI5Xbar(
   val LocalResponseLast =
     ReadDECERRBeatReg(LocalResponseID) === ARLENReg(LocalResponseID)
 
-  // Fixed source priority is safe because AXI bursts are finite.  A source
-  // which loses arbitration sees RREADY low and must retain its payload.
+  // 因为AXI突发传输长度有限，所以固定源优先级是安全的。仲裁失败的源会看到
+  // RREADY为低，并且必须保持其有效载荷。
   val SelectSoC = SoCResponseValid
   val SelectCLINT = !SelectSoC && CLINTResponseValid
   val SelectLocal = !SelectSoC && !SelectCLINT && LocalResponseValid
@@ -610,10 +608,9 @@ class ysyx_26030103_AXI5Xbar(
     RBufferValid := false.B
   }
 
-  // Local DECERR state advances when a beat is captured into RBuffer, not when
-  // that buffered beat is later consumed.  If a SoC/CLINT response replaces a
-  // local beat on its pop cycle, advancing the old slot again would skip one
-  // error beat and can skip the ARLEN beat which owns RLAST.
+  // 本地DECERR状态在数据拍被捕获到RBuffer时推进，而不是在该缓冲数据拍随后
+  // 被消费时推进。如果SoC/CLINT响应在本地数据拍出队的周期替换它，再次推进
+  // 旧槽位会跳过一个错误响应拍，还可能跳过携带RLAST的ARLEN对应数据拍。
 
   when(RBufferPop && RBufferLast) {
     ReadSlotState(RBufferID) := ReadSlotFree
