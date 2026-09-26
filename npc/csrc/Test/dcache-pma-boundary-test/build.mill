@@ -1,0 +1,35 @@
+//| mill-version: 1.1.0
+
+package build
+
+import mill._
+import mill.scalalib._
+
+val workspaceRoot = os.Path(sys.env("MILL_WORKSPACE_ROOT"))
+
+object `package` extends ScalaModule {
+  override def scalaVersion = "2.13.18"
+
+  override def scalacOptions = Seq(
+    "-language:reflectiveCalls",
+    "-deprecation",
+    "-feature",
+    "-Xcheckinit"
+  )
+
+  override def mvnDeps = Seq(mvn"org.chipsalliance::chisel:7.7.0")
+  override def scalacPluginMvnDeps =
+    Seq(mvn"org.chipsalliance:::chisel-plugin:7.7.0")
+
+  override def sources = Task.Sources(
+    workspaceRoot / "scala",
+    workspaceRoot / "../../../src/Common/ysyx_26030103_PMA.scala",
+    workspaceRoot / "../../../src/MEM/ysyx_26030103_DCache.scala",
+    workspaceRoot / "../../../src/Infra/ysyx_26030103_AXI5IO.scala",
+    workspaceRoot / "../../../src/Infra/ysyx_26030103_AXI5AW.scala",
+    workspaceRoot / "../../../src/Infra/ysyx_26030103_AXI5W.scala",
+    workspaceRoot / "../../../src/Infra/ysyx_26030103_AXI5B.scala",
+    workspaceRoot / "../../../src/Infra/ysyx_26030103_AXI5AR.scala",
+    workspaceRoot / "../../../src/Infra/ysyx_26030103_AXI5R.scala"
+  )
+}

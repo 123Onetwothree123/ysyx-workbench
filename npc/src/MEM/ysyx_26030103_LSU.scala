@@ -10,7 +10,9 @@ class ysyx_26030103_LSU(
     val DCacheBlockSizeLog2: Int = 4,
     val DCacheIndexBits: Int = 5,
     val DCacheableBase: Long = 0x80000000L,
-    val DCacheableMask: Long = 0x80000000L
+    val DCacheableMask: Long = 0x80000000L,
+    val DCachePMARegions: Seq[ysyx_26030103_PMARegion] =
+      ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage))
@@ -72,7 +74,8 @@ class ysyx_26030103_LSU(
       IndexBits = DCacheIndexBits,
       AddressWidth = 32,
       CacheableBase = DCacheableBase,
-      CacheableMask = DCacheableMask
+      CacheableMask = DCacheableMask,
+      PMARegions = DCachePMARegions
     )
   )
   io.DCachePerfHit := DCache.io.perf_hit
@@ -418,14 +421,7 @@ class ysyx_26030103_LSU(
   ).asUInt.andR
   val loadMayBypass =
     IsPlainRAM(ActiveInstruction.ALUResult) && !wbufHit && wbufAllNorm // 无冲突时越过写缓冲
-  val DCacheCacheable = if (DCacheEnable) {
-    val Configured =
-      (ActiveInstruction.ALUResult & DCacheableMask.U(32.W)) ===
-        DCacheableBase.U(32.W)
-    val NormalRAM = ActiveInstruction.ALUResult(31, 28) === "h8".U ||
-      ActiveInstruction.ALUResult(31, 28) === "ha".U
-    Configured && NormalRAM
-  } else false.B
+  val DCacheCacheable = DCache.io.req_cacheable
   // 回填不能越过同一缓存行中尚未完成的写操作
   val DCacheWbufLineHit = VecInit(
     (0 until WBufDepth).map(i =>
@@ -532,10 +528,13 @@ class ysyx_26030103_LSU(
     PendingStoreValid || !wbufEmpty // 当前级、输入或写缓冲任一忙
   switch(state) {
     is(StatesIdle) {
-      AccessFaultReg := false.B
-      AccessFaultRespReg := 0.U
-      StoreFaultReg := false.B
       when(startMem) {
+        // These registers belong to the accepted memory instruction.  Keep
+        // them stable after the bus FSM returns to Idle until the stage can
+        // actually commit under downstream backpressure.
+        AccessFaultReg := false.B
+        AccessFaultRespReg := 0.U
+        StoreFaultReg := false.B
         is_store_transaction := ActiveInstruction.MemoryWrite
         when(AddressMisaligned) {
           // 不对齐访存不发起总线事务: 置故障标志, 经MemTrap精确提交地址非对齐异常(cause 4/6)

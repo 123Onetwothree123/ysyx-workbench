@@ -1,7 +1,74 @@
 package ysyx_26030103.mem
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.infra._
+
+/** Shared DCache allocation policy.
+  *
+  * The legacy base/mask and 0x8/0xa RAM filter still select which data ranges
+  * are worth caching.  PMA additionally proves that the *whole* refill line is
+  * readable inside one region.  If it is not, the demand is issued as a
+  * one-beat uncached read so a legal access near a PMA edge is not widened into
+  * an illegal burst.
+  */
+object ysyx_26030103_DCachePolicy {
+  def LineContainedInReadableRegion(
+      Address: UInt,
+      AddressWidth: Int,
+      BlockSizeLog2: Int,
+      PMARegions: Seq[ysyx_26030103_PMARegion]
+  ): Bool = {
+    require(
+      BlockSizeLog2 >= 2,
+      "DCache cache line must contain at least one 32-bit word"
+    )
+    require(
+      BlockSizeLog2 < AddressWidth,
+      "DCache cache line must fit in the address space"
+    )
+    val LineBase = Cat(
+      0.U(1.W),
+      Address(AddressWidth - 1, BlockSizeLog2),
+      0.U(BlockSizeLog2.W)
+    )
+    val LineLast = LineBase +
+      ((BigInt(1) << BlockSizeLog2) - 1).U((AddressWidth + 1).W)
+    PMARegions
+      .filter(_.Readable)
+      .map { Region =>
+        LineBase >= BigInt(Region.Base).U((AddressWidth + 1).W) &&
+        LineLast < BigInt(Region.EndExclusive).U((AddressWidth + 1).W)
+      }
+      .reduceOption(_ || _)
+      .getOrElse(false.B)
+  }
+
+  def IsCacheable(
+      Address: UInt,
+      Enable: Boolean,
+      AddressWidth: Int,
+      BlockSizeLog2: Int,
+      CacheableBase: Long,
+      CacheableMask: Long,
+      PMARegions: Seq[ysyx_26030103_PMARegion]
+  ): Bool = {
+    if (Enable) {
+      val Configured =
+        (Address & CacheableMask.U(AddressWidth.W)) ===
+          CacheableBase.U(AddressWidth.W)
+      val NormalRAM =
+        Address(31, 28) === "h8".U || Address(31, 28) === "ha".U
+      Configured && NormalRAM && LineContainedInReadableRegion(
+        Address,
+        AddressWidth,
+        BlockSizeLog2,
+        PMARegions
+      )
+    } else false.B
+  }
+}
+
 // 单请求直映射DCache，读通道回填，写通道由LSU写缓冲负责
 class ysyx_26030103_DCache(
     Enable: Boolean = true,
@@ -9,7 +76,9 @@ class ysyx_26030103_DCache(
     IndexBits: Int = 5,
     AddressWidth: Int = 32,
     CacheableBase: Long = 0x80000000L,
-    CacheableMask: Long = 0x80000000L
+    CacheableMask: Long = 0x80000000L,
+    PMARegions: Seq[ysyx_26030103_PMARegion] =
+      ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends Module {
   private val TagBits = AddressWidth - IndexBits - BlockSizeLog2
   private val NumBlocks = 1 << IndexBits
@@ -42,6 +111,8 @@ class ysyx_26030103_DCache(
     val perf_miss = Output(Bool())
     val perf_refill_req = Output(Bool())
     val perf_refill_resp = Output(Bool())
+    // Expose the single source of truth to LSU's write-buffer ordering logic.
+    val req_cacheable = Output(Bool())
     // The demand response may be returned at the critical word while the
     // remaining line refill is still draining.  LSU must keep routing AXI R
     // traffic until this flag falls.
@@ -56,14 +127,16 @@ class ysyx_26030103_DCache(
     if (WordsPerBlock > 1) io.req.bits.addr(BlockSizeLog2 - 1, 2)
     else 0.U(OffsetWidth.W)
   val ReqTag = io.req.bits.addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  val ConfiguredCacheable =
-    if (Enable) {
-      (io.req.bits.addr & CacheableMask.U(AddressWidth.W)) ===
-        CacheableBase.U(AddressWidth.W)
-    } else false.B
-  val NormalRAM = io.req.bits.addr(31, 28) === "h8".U ||
-    io.req.bits.addr(31, 28) === "ha".U
-  val cacheable = ConfiguredCacheable && NormalRAM
+  val cacheable = ysyx_26030103_DCachePolicy.IsCacheable(
+    io.req.bits.addr,
+    Enable,
+    AddressWidth,
+    BlockSizeLog2,
+    CacheableBase,
+    CacheableMask,
+    PMARegions
+  )
+  io.req_cacheable := cacheable
   val hit =
     cacheable && valid(IndexSafe) && tag(IndexSafe) === ReqTag // 这个直接拿来做一个命中条件
   val ReqAddrReg = Reg(UInt(AddressWidth.W))
@@ -168,13 +241,15 @@ class ysyx_26030103_DCache(
     if (WordsPerBlock > 1) io.StoreAddr(BlockSizeLog2 - 1, 2)
     else 0.U(OffsetWidth.W)
   val StoreTag = io.StoreAddr(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  val StoreConfigured =
-    if (Enable) {
-      (io.StoreAddr & CacheableMask.U(AddressWidth.W)) ===
-        CacheableBase.U(AddressWidth.W)
-    } else false.B
-  val StoreCacheable = StoreConfigured &&
-    (io.StoreAddr(31, 28) === "h8".U || io.StoreAddr(31, 28) === "ha".U)
+  val StoreCacheable = ysyx_26030103_DCachePolicy.IsCacheable(
+    io.StoreAddr,
+    Enable,
+    AddressWidth,
+    BlockSizeLog2,
+    CacheableBase,
+    CacheableMask,
+    PMARegions
+  )
   val StoreHit = StoreCacheable &&
     valid(StoreIndexSafe) && tag(StoreIndexSafe) === StoreTag
   val StoreConflictsRefill = io.StoreValid && RefillActive && StoreCacheable &&

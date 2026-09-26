@@ -50,8 +50,12 @@ class ysyx_26030103_ICache(
       Region: ysyx_26030103_PMARegion
   ): Bool = {
     val Extended = Cat(0.U(1.W), Address)
+    // RV32 without C always fetches one complete 4-byte instruction.  Checking
+    // only the first byte would allow a request at the tail of an oddly-sized
+    // executable region to cross EndExclusive before the Xbar rejects it.
+    val LastByte = Extended + 3.U((AddressWidth + 1).W)
     Extended >= BigInt(Region.Base).U((AddressWidth + 1).W) &&
-    Extended < BigInt(Region.EndExclusive).U((AddressWidth + 1).W)
+    LastByte < BigInt(Region.EndExclusive).U((AddressWidth + 1).W)
   }
   private def AddressInRegions(
       Address: UInt,

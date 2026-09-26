@@ -355,6 +355,73 @@ int main(int argc, char **argv) {
     dut.io_resp_ready = 1;
     tick(dut);
 
+    // The default SoC PSRAM PMA region is [0x80000000, 0x80400000).
+    // Its final complete line remains cacheable and must still use a refill.
+    dut.io_req_bits_addr = 0x803ffffcU;
+    dut.io_req_valid = 1;
+    dut.eval();
+    check(dut.io_req_ready,
+          "DCache did not accept the final in-range PSRAM word");
+    tick(dut);
+    dut.io_req_valid = 0;
+    accept_refill_ar(dut, 0x803ffff0U, 0);
+    constexpr std::array<uint32_t, 4> boundary_words = {
+        0x51000000U, 0x51000001U, 0x51000002U, 0x51000003U};
+    send_refill(dut, boundary_words, -1, 0, 3, false);
+    tick(dut); // consume the response for the final word
+    dut.eval();
+    check(dut.io_req_ready,
+          "DCache did not finish the final in-range PSRAM refill");
+
+    // The immediately following address is outside every default SoC PMA
+    // region.  It may be checked by the downstream xbar, but DCache must not
+    // amplify that one demand into a four-beat cache-line transaction.
+    dut.io_req_bits_addr = 0x80400000U;
+    dut.io_req_valid = 1;
+    dut.eval();
+    check(dut.io_req_ready,
+          "DCache did not accept the first address beyond PSRAM");
+    tick(dut);
+    dut.io_req_valid = 0;
+    wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
+               "out-of-PMA boundary request never issued AR");
+    check(dut.io_AXI_AR_ARADDR == 0x80400000U,
+          "out-of-PMA boundary request changed its AXI address");
+    check(dut.io_AXI_AR_ARLEN == 0 && dut.io_AXI_AR_ARSIZE == 2,
+          "out-of-PMA boundary request was expanded into a line refill");
+    dut.io_AXI_AR_ARREADY = 1;
+    tick(dut);
+    dut.io_AXI_AR_ARREADY = 0;
+
+    // Model the xbar's local DECERR for the PMA hole.  One R beat must be
+    // sufficient to complete the demand and its fault payload must remain
+    // stable while the LSU applies response backpressure.
+    dut.io_resp_ready = 0;
+    dut.io_AXI_R_RDATA = 0;
+    dut.io_AXI_R_RRESP = 3;
+    dut.io_AXI_R_RLAST = 1;
+    dut.io_AXI_R_RVALID = 1;
+    tick(dut);
+    dut.io_AXI_R_RVALID = 0;
+    dut.io_AXI_R_RLAST = 0;
+    dut.eval();
+    check(!dut.io_axi_active && dut.io_resp_valid &&
+              dut.io_resp_bits_fault && dut.io_resp_bits_FaultResp == 3,
+          "out-of-PMA single-beat DECERR was not preserved as a load fault");
+    for (int cycle = 0; cycle < 2; ++cycle) {
+      tick(dut);
+      dut.eval();
+      check(dut.io_resp_valid && dut.io_resp_bits_fault &&
+                dut.io_resp_bits_FaultResp == 3,
+            "out-of-PMA fault response changed under backpressure");
+    }
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_resp_ready = 1;
+    tick(dut);
+    dut.eval();
+    check(dut.io_req_ready,
+          "DCache did not recover after the out-of-PMA boundary fault");
+
     // Uncached accesses are also single-beat AXI transactions and need the
     // same late-RLAST resynchronization instead of orphaning the arbiter ID.
     dut.io_req_bits_addr = 0x10000000U;

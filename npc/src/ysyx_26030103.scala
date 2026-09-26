@@ -26,7 +26,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DCacheBlockSizeLog2 = config.BlockSizeLog2,
       DCacheIndexBits = config.IndexBits,
       DCacheableBase = config.CacheableBase,
-      DCacheableMask = config.CacheableMask
+      DCacheableMask = config.CacheableMask,
+      DCachePMARegions = config.PMARegions
     )
   )
   val gpr = Module(new ysyx_26030103_GPR)
