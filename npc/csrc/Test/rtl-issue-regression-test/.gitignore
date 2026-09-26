@@ -1,2 +1,3 @@
 !layers-StageConnectHarness-Verification.sv
 !layers-ICachePmaBoundaryHarness-Verification.sv
+!layers-ZeroPredictorGeometryHarness-Verification.sv

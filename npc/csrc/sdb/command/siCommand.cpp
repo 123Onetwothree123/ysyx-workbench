@@ -4,8 +4,10 @@ module npc.sdb.command.siCommand;
 import npc.NPCTrap;
 import npc.DUT;
 import npc.sdb.SDBCommandUtils;
+#ifdef CONFIG_WATCHPOINT
 import npc.sdb.NPCEvaluationContext;
 import npc.sdb.command.WatchpointPool;
+#endif
 
 [[nodiscard]] std::string_view siCommand::name() const noexcept
 {
@@ -53,7 +55,9 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
         return SDBCommandResult::Continue;
     }
     auto &dut{context.GetDUT()};
+#ifdef CONFIG_WATCHPOINT
     NPCEvaluationContext EvaluationContext{dut};
+#endif
     std::size_t retired{0};
     while (retired < count && !NPCTrap::HasHalted())
     {
@@ -74,12 +78,14 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
 
         // 监视点只在架构状态边界重新求值，避免把流水线
         // 中间周期误当成一条指令。
+#ifdef CONFIG_WATCHPOINT
         if ((dut->debug_commit || dut->debug_trap_valid) &&
             GetGlobalWatchpointPool().CheckAll(EvaluationContext))
         {
             std::println("因为监视点变化，程序停止");
             break;
         }
+#endif
     }
     return SDBCommandResult::Continue;
 }

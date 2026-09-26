@@ -43,7 +43,12 @@ DUT::DUT()
 #endif
     dut = std::make_unique<TOP_MODULE>();
     dut->debug_gpr_raddr = 0;
-#ifdef CONFIG_ITRACE
+#ifdef VRISCV32E_NPC
+    dut->ram_init_valid = 0;
+    dut->ram_init_index = 0;
+    dut->ram_init_data = 0;
+#endif
+#if defined(CONFIG_ITRACE) || defined(CONFIG_IRINGBUF)
     init_disasm();
 #endif
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
@@ -56,6 +61,47 @@ DUT::DUT()
     if (!parent.empty())
         std::filesystem::create_directories(parent);
     tfp.open(CONFIG_TRACE_FILE);
+#endif
+}
+void DUT::InitializeMemory(std::span<const std::uint8_t> image)
+{
+#ifdef VRISCV32E_NPC
+    constexpr std::size_t RamBytes{256U * 1024U};
+    constexpr std::size_t WordBytes{sizeof(std::uint32_t)};
+    if (image.size() > RamBytes)
+    {
+        throw std::length_error{
+            std::format("direct-NPC 镜像 {} 字节超出 RAM {} 字节", image.size(), RamBytes)};
+    }
+
+    // 写满整个 RAM，而不是只写镜像覆盖的部分。这保证空镜像
+    // 或较短镜像之后的内存为零，不会保留上次运行的内容。
+    dut->reset = 1;
+    dut->ram_init_valid = 1;
+    for (std::size_t wordIndex{0}; wordIndex < RamBytes / WordBytes; ++wordIndex)
+    {
+        std::uint32_t word{0};
+        const auto byteBase{wordIndex * WordBytes};
+        for (std::size_t byteIndex{0}; byteIndex < WordBytes; ++byteIndex)
+        {
+            const auto imageIndex{byteBase + byteIndex};
+            if (imageIndex < image.size())
+            {
+                word |= static_cast<std::uint32_t>(image[imageIndex]) << (byteIndex * 8U);
+            }
+        }
+        dut->ram_init_index = static_cast<std::uint16_t>(wordIndex);
+        dut->ram_init_data = word;
+        dut->clock = 0;
+        dut->eval();
+        dut->clock = 1;
+        dut->eval();
+    }
+    dut->clock = 0;
+    dut->ram_init_valid = 0;
+    dut->eval();
+#else
+    static_cast<void>(image);
 #endif
 }
 TOP_MODULE &DUT::operator*()
@@ -201,14 +247,6 @@ void DUT::step()
     {
         ++perf.instruction_fetch;
     }
-#ifdef CONFIG_ITRACE_WRITE_FILE
-    if (dut->debug_commit)
-    {
-        static auto fp = std::ofstream("itrace.txt", std::ios::app);
-        fp << std::hex << "0x" << static_cast<uint32_t>(dut->debug_pc) << "\n"
-           << std::dec;
-    }
-#endif
     if (perf_event_exu_done)
     {
         ++perf.execution_complete;
@@ -252,16 +290,7 @@ void DUT::step()
     {
         ++perf.store_data;
     }
-    switch (static_cast<unsigned>(perf_event_kind))
-    {
-    case 1: ++perf.arithmetic_operation; break;
-    case 2: ++perf.memory_access_operation; break;
-    case 3: ++perf.control_status_register_operation; break;
-    case 4: ++perf.branch_operation; break;
-    case 5: ++perf.jal_operation; break;
-    case 6: ++perf.jalr_operation; break;
-    default: break;
-    }
+    RecordExecutionEvent(perf, static_cast<unsigned>(perf_event_kind));
     if (dut->perf_ifu_stall_pipeline)
     {
         ++perf.instruction_fetch_stall_pipeline;
@@ -298,19 +327,22 @@ void DUT::step()
     {
         ++perf.mem_waitslot;
     }
-    if (dut->perf_execution_active && dut->perf_alu_op)
+    // Scala 侧已用 ActiveInst 生成类型电平。这里再排除 MDU 在途周期
+    // 作为防御，避免后续接口改动时把 MDU 计算时间归到其他类型。
+    const bool classify_exu_level = dut->perf_execution_active && !dut->perf_mdu_active;
+    if (classify_exu_level && dut->perf_alu_op)
     {
         ++perf.arithmetic_operation_active_cycle;
     }
-    if (dut->perf_execution_active && dut->perf_mem_op)
+    if (classify_exu_level && dut->perf_mem_op)
     {
         ++perf.memory_access_operation_active_cycle;
     }
-    if (dut->perf_execution_active && dut->perf_csr_op)
+    if (classify_exu_level && dut->perf_csr_op)
     {
         ++perf.control_status_register_operation_active_cycle;
     }
-    if (dut->perf_execution_active && dut->perf_branch_op)
+    if (classify_exu_level && dut->perf_branch_op)
     {
         ++perf.branch_operation_active_cycle;
     }
@@ -363,6 +395,14 @@ void DUT::step()
     {
         ++perf.dcache_miss;
     }
+    if (dut->perf_dcache_refill_req)
+    {
+        ++perf.dcache_refill_req_cycle;
+    }
+    if (dut->perf_dcache_refill_resp)
+    {
+        ++perf.dcache_refill_resp_cycle;
+    }
 #endif
     if (dut->perf_idu_stall_raw)
     {
@@ -388,7 +428,17 @@ void DUT::step()
         ++perf.trap_count;
     }
 #endif
-#ifdef CONFIG_ITRACE
+#ifdef CONFIG_ITRACE_WRITE_FILE
+    // 文件 itrace 只依赖退休信号，不应被 PERF_STATS
+    // 意外控制。
+    if (dut->debug_commit)
+    {
+        static auto fp = std::ofstream("itrace.txt", std::ios::app);
+        fp << std::hex << "0x" << static_cast<std::uint32_t>(dut->debug_pc) << '\n'
+           << std::dec;
+    }
+#endif
+#ifdef CONFIG_IRINGBUF
     if (dut->debug_commit)
     {
         Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
@@ -397,17 +447,13 @@ void DUT::step()
 #ifdef CONFIG_FTRACE
     if (dut->debug_commit)
     {
-        static bool HasPreviousStep{false};
-        static std::uint32_t PreviousPC{0};
-        static std::uint32_t PreviousInstructions{0};
-        auto CurrentPC{static_cast<std::uint32_t>(dut->debug_pc)};
-        if (HasPreviousStep)
-        {
-            GlobalFtrace.OnInstruction(PreviousPC, PreviousInstructions, CurrentPC);
-        }
-        PreviousPC = CurrentPC;
-        PreviousInstructions = static_cast<std::uint32_t>(dut->debug_instructions);
-        HasPreviousStep = true;
+        // debug_next_pc 与 debug_pc/debug_instructions 属于同一条
+        // 退休记录。当拍处理可避免把 trap handler PC 误当作
+        // call target，也不会在程序最后一条 call/ret 时丢事件。
+        GlobalFtrace.OnInstruction(
+            static_cast<std::uint32_t>(dut->debug_pc),
+            static_cast<std::uint32_t>(dut->debug_instructions),
+            static_cast<std::uint32_t>(dut->debug_next_pc));
     }
 #endif
     // 维护调试器的安全 live-memory shadow。只有成功退休的 store

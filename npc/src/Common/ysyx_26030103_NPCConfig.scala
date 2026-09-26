@@ -175,6 +175,28 @@ case class ysyx_26030103_NPCConfig(
     AddressWidth == 32,
     "当前RV32核的PC/PMA/流水线消息固定为32位；暂不支持非32位AddressWidth"
   )
+  require(BlockSizeLog2 >= 2, "Cache block必须至少容纳1个32位字")
+  require(IndexBits >= 1, "Cache必须至少包含2个set")
+  require(
+    IndexBits + BlockSizeLog2 < AddressWidth,
+    "Cache地址几何必须留出至少1位tag"
+  )
+  require(BTBBits >= 0, "BTBBits不能为负数；0表示单组BTB")
+  require(
+    BTBBits < AddressWidth - 2,
+    "BTB地址几何必须在去除PC对齐位后留出至少1位tag"
+  )
+  require(BTBWays >= 1, "BTB必须至少包含1路")
+  require(JalBTBBits >= 0, "JalBTBBits不能为负数；0表示单组JAL BTB")
+  require(
+    JalBTBBits < AddressWidth - 2,
+    "JAL BTB地址几何必须在去除PC对齐位后留出至少1位tag"
+  )
+  require(JalBTBWays >= 1, "JAL BTB必须至少包含1路")
+  require(
+    RASBits >= 0 && RASBits < 31,
+    "RASBits必须在0到30之间；0表示单项RAS"
+  )
   require((ResetAddr & 0x3L) == 0L, "未启用RV32_C时ResetAddr必须按4字节对齐")
   require(PMARegions.nonEmpty, "物理地址图不能为空")
   require(

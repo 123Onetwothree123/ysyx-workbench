@@ -56,6 +56,7 @@ void defaults(DUT &dut) {
   dut.io_in_bits_pred_target = 0x80000004U;
   dut.io_Interrupt = 0;
   dut.io_MEMBusy = 0;
+  dut.io_PipelineBusy = 0;
   dut.io_MemTrapCommit = 0;
   dut.io_MemTrapCause = 0;
   dut.io_MemTrapPC = 0;
@@ -185,6 +186,9 @@ void pipelined_mul_must_accept_back_to_back_requests() {
   wait_until(
       dut, [&] { return dut.io_out_valid; },
       "pipelined MUL never produced its first response", 16);
+  check(!dut.io_PerfMDUWait,
+        "ready MDU result under downstream backpressure was still counted as "
+        "MDU computation wait");
   const std::uint32_t held_result = dut.io_out_bits_ALUResult;
   const std::uint32_t held_pc = dut.io_out_bits_pc;
   const std::uint8_t held_rd = dut.io_out_bits_Rd;
@@ -328,6 +332,61 @@ void hidden_mdu_write_mask_survives_duplicates_and_flushes() {
   dut.final();
 }
 
+void pending_mdu_perf_uses_queue_head_instruction() {
+  enum class YoungerKind { Alu, Memory, Csr, Branch };
+  for (const auto kind : {YoungerKind::Alu, YoungerKind::Memory,
+                          YoungerKind::Csr, YoungerKind::Branch}) {
+    DUT dut;
+    defaults(dut);
+    reset(dut);
+
+    // DIVU is deliberately long-lived, leaving a younger input visible while
+    // the queue-head metadata remains the active EXU instruction.
+    drive_mdu(dut, 0x80000400U, 100, 7, 9, 5);
+    dut.eval();
+    check(dut.io_in_ready && dut.io_PerfMDUReq,
+          "long-latency MDU request was not accepted");
+    tick(dut);
+
+    begin_instruction(dut, 0x80000404U);
+    dut.io_out_ready = 0;
+    switch (kind) {
+    case YoungerKind::Alu:
+      dut.io_in_bits_ALUCtrl = 0;
+      dut.io_in_bits_ALU_A = 1;
+      dut.io_in_bits_ALU_B = 2;
+      break;
+    case YoungerKind::Memory:
+      dut.io_in_bits_MemoryValid = 1;
+      break;
+    case YoungerKind::Csr:
+      dut.io_in_bits_IsCsrrw = 1;
+      dut.io_in_bits_CSRAddress = kMstatus;
+      dut.io_in_bits_Rs1 = 1;
+      break;
+    case YoungerKind::Branch:
+      dut.io_in_bits_IsBranch = 1;
+      dut.io_in_bits_BranchFunct3 = 0;
+      break;
+    }
+    dut.eval();
+
+    check(dut.io_PerfExecutionActive && dut.io_PerfMDUActive,
+          "pending MDU was not reported active");
+    check(dut.io_PerfMDUWait,
+          "long-latency pending MDU was not classified as an MDU wait");
+    check(!dut.io_PerfALUOp && !dut.io_PerfMemOp && !dut.io_PerfCSROp &&
+              !dut.io_PerfBranchOp && !dut.io_PerfJalOp &&
+              !dut.io_PerfJalrOp,
+          "younger blocked instruction polluted pending-MDU perf classes");
+    check(dut.io_PerfMDUOp == 5,
+          "pending-MDU perf opcode came from the younger input");
+    check(dut.io_PerfEventKind == 0,
+          "unretired pending MDU emitted a completion event");
+    dut.final();
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -346,6 +405,8 @@ int main(int argc, char **argv) {
                          mixed_mdu_requests_preserve_program_order);
     failures += run_test("MDU hidden-rd scoreboard and flush",
                          hidden_mdu_write_mask_survives_duplicates_and_flushes);
+    failures += run_test("pending MDU perf uses queue-head instruction",
+                         pending_mdu_perf_uses_queue_head_instruction);
   }
   return failures == 0 ? 0 : 1;
 }

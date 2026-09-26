@@ -52,6 +52,9 @@ public:
     [[nodiscard]] bool VGACheckReport();
     void step();
     void reset();
+    // 把 ImageLoader 产生的唯一镜像写入 direct-NPC RAM。
+    // SoC 路径的 MROM/flash 本来就直接读取这个 vector，因此为 no-op。
+    void InitializeMemory(std::span<const std::uint8_t> image);
     std::size_t GetCycle() const;
     std::size_t GetInstructions() const;
     [[nodiscard]] const PerfStats &GetPerfStats() const noexcept;

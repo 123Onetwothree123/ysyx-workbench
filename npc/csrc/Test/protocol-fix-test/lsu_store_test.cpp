@@ -65,7 +65,9 @@ static void enqueue_store(DUT &dut, uint32_t address, uint32_t data,
 static void complete_buffered_store(DUT &dut, uint32_t expected_address,
                                     uint32_t expected_data,
                                     uint32_t expected_pc, uint8_t bresp,
-                                    uint32_t &random_state) {
+                                    uint32_t &random_state,
+                                    uint32_t next_address = 0,
+                                    uint32_t next_data = 0) {
   bool aw_seen = false;
   bool w_seen = false;
   bool aw_held = false;
@@ -133,6 +135,14 @@ static void complete_buffered_store(DUT &dut, uint32_t expected_address,
   dut.io_DataBus_B_BVALID = 1;
   tick(dut);
   dut.io_DataBus_B_BVALID = 0;
+  dut.eval();
+  if (bresp == 0 && next_address != 0) {
+    check(dut.io_DataBus_AW_AWVALID && dut.io_DataBus_W_WVALID,
+          "write buffer inserted an idle cycle after successful BRESP");
+    check(dut.io_DataBus_AW_AWADDR == next_address &&
+              dut.io_DataBus_W_WDATA == next_data,
+          "write buffer did not expose the next queued store after BRESP");
+  }
 
   wait_until(dut, [&] { return dut.io_out_valid; },
              "store did not reach ordered retirement after BRESP");
@@ -161,6 +171,11 @@ static void check_write_buffer_depth_and_precision() {
   for (uint32_t index = 0; index < 4; ++index) {
     enqueue_store(dut, base + index * 4U, 0xa5000000U + index,
                   pc + index * 4U);
+    if (index == 0) {
+      dut.eval();
+      check(dut.io_DataBus_AW_AWVALID && dut.io_DataBus_W_WVALID,
+            "newly queued store spent an empty cycle before AW/W");
+    }
   }
 
   // WBUF_DEPTH=4 counts the active queue head plus three pending stores.
@@ -173,7 +188,8 @@ static void check_write_buffer_depth_and_precision() {
   dut.io_in_valid = 0;
 
   uint32_t random_state = 0x31415926U;
-  complete_buffered_store(dut, base, 0xa5000000U, pc, 0, random_state);
+  complete_buffered_store(dut, base, 0xa5000000U, pc, 0, random_state,
+                          base + 4U, 0xa5000001U);
 
   // As the next pending head enters the active slot, enqueue the formerly
   // blocked fifth store in the same cycle.  Queue count must remain stable and
@@ -182,7 +198,9 @@ static void check_write_buffer_depth_and_precision() {
   for (uint32_t index = 1; index < 5; ++index) {
     complete_buffered_store(dut, base + index * 4U,
                             0xa5000000U + index, pc + index * 4U, 0,
-                            random_state);
+                            random_state,
+                            index < 4 ? base + (index + 1) * 4U : 0,
+                            index < 4 ? 0xa5000000U + index + 1 : 0);
   }
   dut.final();
 
@@ -205,7 +223,7 @@ static void check_write_buffer_depth_and_precision() {
 
   random_state = 0x27182818U;
   complete_buffered_store(fault_dut, base, 0xb6000000U, pc, 0,
-                          random_state);
+                          random_state, base + 4U, 0xb6000001U);
   complete_buffered_store(fault_dut, base + 4U, 0xb6000001U, pc + 4U, 2,
                           random_state);
 
@@ -219,6 +237,36 @@ static void check_write_buffer_depth_and_precision() {
     tick(fault_dut);
   }
   fault_dut.final();
+
+  // A queued misaligned store is an ordering barrier just like a failing
+  // BRESP.  It must trap when it reaches the head, and the younger aligned
+  // store must never have reached AW/W.
+  DUT misaligned_dut;
+  defaults(misaligned_dut);
+  reset(misaligned_dut);
+  enqueue_store(misaligned_dut, base, 0xc7000000U, pc);
+  enqueue_store(misaligned_dut, base + 6U, 0xc7000001U, pc + 4U);
+  enqueue_store(misaligned_dut, base + 8U, 0xc7000002U, pc + 8U);
+  random_state = 0x16180339U;
+  complete_buffered_store(misaligned_dut, base, 0xc7000000U, pc, 0,
+                          random_state);
+  misaligned_dut.eval();
+  check(misaligned_dut.io_out_valid && misaligned_dut.io_MemTrapCommit &&
+            misaligned_dut.io_MemTrapCause == 6 &&
+            misaligned_dut.io_MemTrapPC == pc + 4U,
+        "queued misaligned store did not become the precise queue-head trap");
+  check(!misaligned_dut.io_DataBus_AW_AWVALID &&
+            !misaligned_dut.io_DataBus_W_WVALID,
+        "younger store crossed a queued misaligned-store barrier");
+  tick(misaligned_dut);
+  for (int cycle = 0; cycle < 8; ++cycle) {
+    misaligned_dut.eval();
+    check(!misaligned_dut.io_DataBus_AW_AWVALID &&
+              !misaligned_dut.io_DataBus_W_WVALID,
+          "younger store escaped after a queued misaligned-store trap");
+    tick(misaligned_dut);
+  }
+  misaligned_dut.final();
 }
 
 static void begin_memory_op(DUT &dut, uint32_t address, bool write,
@@ -299,6 +347,88 @@ static uint32_t load_hit(DUT &dut, uint32_t address) {
   throw std::runtime_error("DCache hit load never retired");
 }
 
+static void check_hit_latency_and_busy_split(DUT &dut, uint32_t address,
+                                             uint32_t expected_word) {
+  // Busy keeps its legacy "anything resident" meaning, while MemoryBusy must
+  // stay low for an ordinary non-memory instruction that is merely passing
+  // through the LSU in one cycle.
+  dut.io_in_bits_MemoryValid = 0;
+  dut.io_in_bits_MemoryWrite = 0;
+  dut.io_in_bits_RegisterWrite = 1;
+  dut.io_in_bits_Rd = 7;
+  dut.io_in_valid = 1;
+  dut.eval();
+  check(dut.io_Busy && !dut.io_MemoryBusy && dut.io_in_ready &&
+            dut.io_out_valid,
+        "LSU MemoryBusy treated a non-memory pass-through as unresolved memory");
+  tick(dut);
+  dut.io_in_valid = 0;
+
+  const auto drive_load = [&](uint32_t pc) {
+    dut.io_in_bits_MemoryValid = 1;
+    dut.io_in_bits_MemoryWrite = 0;
+    dut.io_in_bits_RegisterWrite = 1;
+    dut.io_in_bits_WBSelect = 1;
+    dut.io_in_bits_Rd = 8;
+    dut.io_in_bits_ALUResult = address;
+    dut.io_in_bits_WidthSelect = 2;
+    dut.io_in_bits_LoadSigned = 0;
+    dut.io_in_bits_pc = pc;
+    dut.io_in_valid = 1;
+  };
+
+  drive_load(0x80000300U);
+  dut.eval();
+  check(dut.io_in_ready && dut.io_MemoryBusy,
+        "cached load was not accepted or did not assert MemoryBusy");
+  tick(dut); // first load input.fire
+  dut.io_in_valid = 0;
+
+  unsigned latency = 0;
+  bool saw_early_forward = false;
+  while (!dut.io_out_valid && latency < 8) {
+    dut.eval();
+    check(!dut.io_DataBus_AR_ARVALID,
+          "performance hit unexpectedly generated an AXI refill");
+    if (dut.io_FwdReady && !dut.io_out_valid) {
+      saw_early_forward = true;
+      check(dut.io_FwdData == expected_word,
+            "early load forwarding carried the wrong hit data");
+    }
+    if (!dut.io_out_valid) {
+      tick(dut);
+      ++latency;
+    }
+  }
+  dut.eval();
+  check(latency == 2 && dut.io_out_valid &&
+            dut.io_out_bits_LoadData == expected_word,
+        "DCache hit did not reach LSU output in exactly two cycles");
+  check(saw_early_forward,
+        "DCache hit was not forwarded before the completed output slot");
+
+  // Replace the completed load in the same cycle it retires.  The next input
+  // handshake is exactly three cycles after the first (request, response,
+  // pop+push), rather than the old five-cycle initiation interval.
+  drive_load(0x80000304U);
+  dut.eval();
+  check(dut.io_in_ready,
+        "LSU could not replace a completed hit while retiring it");
+  tick(dut); // second load input.fire, three cycles after the first
+  dut.io_in_valid = 0;
+
+  unsigned second_latency = 0;
+  while (!dut.io_out_valid && second_latency < 8) {
+    tick(dut);
+    ++second_latency;
+    dut.eval();
+  }
+  check(second_latency == 2 && dut.io_out_valid &&
+            dut.io_out_bits_LoadData == expected_word,
+        "second pipelined DCache hit violated latency/II target");
+  tick(dut);
+}
+
 static uint32_t load_while_flushing(DUT &dut, uint32_t address,
                                     uint32_t requested_word) {
   begin_memory_op(dut, address, false);
@@ -321,6 +451,8 @@ static uint32_t load_while_flushing(DUT &dut, uint32_t address,
   tick(dut);
   dut.io_DataBus_AR_ARREADY = 0;
 
+  bool retired = false;
+  uint32_t result = 0;
   for (uint32_t beat = 0; beat < 4; ++beat) {
     wait_until(dut, [&] { return dut.io_DataBus_R_RREADY; },
                "flush-overlap refill stopped waiting for R");
@@ -331,16 +463,23 @@ static uint32_t load_while_flushing(DUT &dut, uint32_t address,
     dut.io_DataBus_R_RLAST = beat == 3;
     dut.io_DataBus_R_RVALID = 1;
     tick(dut);
+    dut.eval();
+    if (dut.io_out_valid) {
+      retired = true;
+      result = dut.io_out_bits_LoadData;
+    }
     dut.io_DataBus_R_RVALID = 0;
     dut.io_DataBus_R_RLAST = 0;
   }
 
-  wait_until(dut, [&] { return dut.io_out_valid; },
-             "LSU hung after DCache flush overlapped an accepted load");
-  const uint32_t result = dut.io_out_bits_LoadData;
-  check(dut.io_out_bits_Retire,
-        "successful flush-overlap load did not retire");
-  tick(dut);
+  if (!retired) {
+    wait_until(dut, [&] { return dut.io_out_valid; },
+               "LSU hung after DCache flush overlapped an accepted load");
+    result = dut.io_out_bits_LoadData;
+    check(dut.io_out_bits_Retire,
+          "successful flush-overlap load did not retire");
+    tick(dut);
+  }
   return result;
 }
 
@@ -438,6 +577,7 @@ int main(int argc, char **argv) {
     constexpr uint32_t old_word = 0x11223344U;
     check(fill_and_load(dut, address, old_word) == old_word,
           "initial DCache refill returned the wrong word");
+    check_hit_latency_and_busy_split(dut, address, old_word);
 
     store_with_response(dut, address, 0xdeadbeefU, 2, true, 0x80000120U);
     check(load_hit(dut, address) == old_word,

@@ -15,6 +15,9 @@ public:
     [[nodiscard]] static std::uint32_t GetCode() noexcept;
     [[nodiscard]] static int PrintResult(std::size_t Cycles, std::size_t Instructions);
 #ifdef CONFIG_PERF_STATS
-    static void PrintPerformanceStatistics(const PerfStats &stats, std::size_t total_cycles);
+    static void PrintPerformanceStatistics(
+        const PerfStats &stats,
+        std::size_t total_cycles,
+        std::size_t retired_instructions);
 #endif
 };

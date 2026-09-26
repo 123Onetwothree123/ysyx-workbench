@@ -5,7 +5,7 @@ package ysyx_26030103.common
   * `Readable` 和 `Writable` 表示总线权限，`Executable` 控制指令取值权限。
   * 保持这些权限相互独立对 SoC MROM 之类的只读存储器十分重要：store 必须
   * 由 CPU 侧交叉开关拒绝，而不能发送到没有写通道的从设备。`Cacheable`
-  * 表示取指是否允许分配一条 ICache 缓存行。
+  * 表示 ICache/DCache 是否允许为该物理区域分配缓存行。
   */
 case class ysyx_26030103_PMARegion(
     Base: Long,

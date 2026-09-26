@@ -38,6 +38,19 @@ object ConfigGuardTest extends App {
     }
   }
 
+  private def expectAccepted(name: String)(body: => Any): Unit = {
+    try {
+      body
+      println(s"[PASS] config guard: $name was accepted")
+    } catch {
+      case error: IllegalArgumentException =>
+        failures += 1
+        Console.err.println(
+          s"[FAIL] config guard: $name was rejected: ${error.getMessage}"
+        )
+    }
+  }
+
   expectRejected("BlockSizeLog2=1") {
     ysyx_26030103_NPCConfig(BlockSizeLog2 = 1)
   }
@@ -47,19 +60,19 @@ object ConfigGuardTest extends App {
   expectRejected("IndexBits+BlockSizeLog2>=AddressWidth") {
     ysyx_26030103_NPCConfig(IndexBits = 28, BlockSizeLog2 = 4)
   }
-  expectRejected("BTBBits=0") {
+  expectAccepted("BTBBits=0 (one-set BTB)") {
     ysyx_26030103_NPCConfig(BTBBits = 0)
   }
   expectRejected("BTBWays=0") {
     ysyx_26030103_NPCConfig(BTBWays = 0)
   }
-  expectRejected("JalBTBBits=0") {
+  expectAccepted("JalBTBBits=0 (one-set JAL BTB)") {
     ysyx_26030103_NPCConfig(JalBTBBits = 0)
   }
   expectRejected("JalBTBWays=0") {
     ysyx_26030103_NPCConfig(JalBTBWays = 0)
   }
-  expectRejected("RASBits=0") {
+  expectAccepted("RASBits=0 (one-entry RAS)") {
     ysyx_26030103_NPCConfig(RASBits = 0)
   }
 

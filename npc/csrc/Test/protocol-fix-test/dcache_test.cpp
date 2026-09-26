@@ -239,6 +239,28 @@ int main(int argc, char **argv) {
           "DCache did not install the fully recovered cache line");
     tick(dut);
 
+    // A hit response slot is elastic: consuming response N and accepting hit
+    // N+1 must happen in the same cycle, without an artificial empty slot.
+    dut.io_req_bits_addr = 0x80000004U;
+    dut.io_req_valid = 1;
+    dut.eval();
+    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+          "DCache did not accept/count the first pipelined hit");
+    tick(dut);
+    dut.io_req_bits_addr = 0x80000008U;
+    dut.eval();
+    check(dut.io_resp_valid && dut.io_resp_bits_data == words[1],
+          "DCache first pipelined hit returned the wrong word");
+    check(dut.io_req_ready,
+          "DCache could not pop a hit response and push the next hit together");
+    tick(dut); // old response fire and next request fire
+    dut.io_req_valid = 0;
+    dut.eval();
+    check(dut.io_resp_valid && dut.io_resp_bits_data == words[2] &&
+              !dut.io_AXI_AR_ARVALID,
+          "DCache lost the replacement response during same-cycle pop/push");
+    tick(dut);
+
     // A younger successful store may arrive after critical-word restart but
     // before the old read burst finishes.  The remaining beats can be stale,
     // so that refill must drain without becoming a valid cache line.
@@ -426,6 +448,9 @@ int main(int argc, char **argv) {
     // same late-RLAST resynchronization instead of orphaning the arbiter ID.
     dut.io_req_bits_addr = 0x10000000U;
     dut.io_req_valid = 1;
+    dut.eval();
+    check(dut.io_req_ready && !dut.io_perf_hit && !dut.io_perf_miss,
+          "uncached load polluted DCache hit/miss accounting");
     tick(dut);
     dut.io_req_valid = 0;
     wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },

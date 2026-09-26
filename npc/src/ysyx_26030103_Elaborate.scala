@@ -22,7 +22,7 @@ object ysyx_26030103_Elaborate extends App {
   val JalBTBWays = sys.env.getOrElse("JAL_BTB_WAYS", "1").toInt
   val RASBits = sys.env.getOrElse("RAS_BITS", "4").toInt
   // ICache 对齐填充：npc 独立仿真的复位地址 = 0x80000000 + CACHE_PADDING
-  // 与 Makefile 的 NPC_RESET_PC、program.hex 头部填充保持一致
+  // 与 Makefile 的 NPC_RESET_PC、ImageLoader 写入 direct RAM 的前置零保持一致
   val CachePadding = sys.env.getOrElse("CACHE_PADDING", "0").toInt
   val CacheableBase_ysyxsoc = 0x00000000L
   val CacheableMask_ysyxsoc = 0x00000000L

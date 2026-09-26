@@ -13,6 +13,14 @@ class ysyx_26030103_BTB(
     AddressWidth: Int = 32,
     KindBits: Int = 0
 ) extends Module {
+  require(BTBBits >= 0, "BTBBits must be non-negative")
+  require(BTBWays >= 1, "BTB must contain at least one way")
+  require(AddressWidth >= 3, "BTB address width must include PC alignment and tag bits")
+  require(
+    BTBBits < AddressWidth - 2,
+    "BTB geometry must leave at least one tag bit after removing PC alignment bits"
+  )
+  require(KindBits >= 0, "BTB kind width must be non-negative")
   val NumSets = 1 << BTBBits
   val TagBits = AddressWidth - BTBBits - 2 // PC>>2后去掉index位
   val AddrShiftedWidth = AddressWidth - 2 // PC[31:2], 低位始终为0
@@ -44,7 +52,8 @@ class ysyx_26030103_BTB(
     else None
 
   // 查询: input已是PC[31:2], 低BTBBits位做index, 高位做tag
-  val lookup_idx = io.lookup_pc(BTBBits - 1, 0)
+  val lookup_idx =
+    if (BTBBits == 0) 0.U(1.W) else io.lookup_pc(BTBBits - 1, 0)
   val lookup_tag = io.lookup_pc(AddrShiftedWidth - 1, BTBBits)
   val hit_vec = Wire(Vec(BTBWays, Bool()))
   for (w <- 0 until BTBWays) {
@@ -58,7 +67,8 @@ class ysyx_26030103_BTB(
   }
 
   // 更新: 写入对应组,命中同tag则更新target,否则找第一个空槽,组满按轮转指针替换(FIFO)
-  val upd_idx = io.update_pc(BTBBits - 1, 0)
+  val upd_idx =
+    if (BTBBits == 0) 0.U(1.W) else io.update_pc(BTBBits - 1, 0)
   val upd_tag = io.update_pc(AddrShiftedWidth - 1, BTBBits)
   // 每组一个轮转指针, 组满替换时指向受害者way, 替换后自增回绕
   // (ways=1时恒为0, 退化为直接映射的正常覆盖行为)

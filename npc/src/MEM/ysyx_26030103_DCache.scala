@@ -6,12 +6,12 @@ import _root_.ysyx_26030103.infra._
 
 /** DCache共用的分配策略。
   *
-  * 原有的基址/掩码和0x8/0xa RAM过滤器仍用于选择值得缓存的数据区间。
-  * PMA还会确认整条回填缓存行都位于同一个可读区域内。若不满足，需求请求
-  * 将作为单拍非缓存读发出，避免PMA边界附近的合法访问被扩展成非法突发传输。
+  * PMA的Readable && Cacheable是分配数据缓存行的必要条件；可选的基址/
+  * 掩码只作为额外过滤器。整条回填缓存行还必须位于同一个可缓存区域内；
+  * 否则需求使用单拍非缓存读，避免在PMA边界上扩展成非法突发传输。
   */
 object ysyx_26030103_DCachePolicy {
-  def LineContainedInReadableRegion(
+  def LineContainedInCacheableRegion(
       Address: UInt,
       AddressWidth: Int,
       BlockSizeLog2: Int,
@@ -33,7 +33,7 @@ object ysyx_26030103_DCachePolicy {
     val LineLast = LineBase +
       ((BigInt(1) << BlockSizeLog2) - 1).U((AddressWidth + 1).W)
     PMARegions
-      .filter(_.Readable)
+      .filter(Region => Region.Readable && Region.Cacheable)
       .map { Region =>
         LineBase >= BigInt(Region.Base).U((AddressWidth + 1).W) &&
         LineLast < BigInt(Region.EndExclusive).U((AddressWidth + 1).W)
@@ -55,9 +55,7 @@ object ysyx_26030103_DCachePolicy {
       val Configured =
         (Address & CacheableMask.U(AddressWidth.W)) ===
           CacheableBase.U(AddressWidth.W)
-      val NormalRAM =
-        Address(31, 28) === "h8".U || Address(31, 28) === "ha".U
-      Configured && NormalRAM && LineContainedInReadableRegion(
+      Configured && LineContainedInCacheableRegion(
         Address,
         AddressWidth,
         BlockSizeLog2,
@@ -78,6 +76,12 @@ class ysyx_26030103_DCache(
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends Module {
+  require(BlockSizeLog2 >= 2, "DCache line must contain at least one 32-bit word")
+  require(IndexBits >= 1, "DCache must contain at least two sets")
+  require(
+    IndexBits + BlockSizeLog2 < AddressWidth,
+    "DCache geometry must leave at least one tag bit"
+  )
   private val TagBits = AddressWidth - IndexBits - BlockSizeLog2
   private val NumBlocks = 1 << IndexBits
   private val WordsPerBlock = 1 << (BlockSizeLog2 - 2)
@@ -104,7 +108,8 @@ class ysyx_26030103_DCache(
     val StoreStrb = Input(UInt(4.W))
     val AXI = new ysyx_26030103_AXI5IO(AddressWidth) // DCache只使用AR/R通道
     val flush = Input(Bool())
-    // 性能计数器(约定与ICache一致: 不可缓存访问也计为缺失)
+    // 性能计数器只描述可缓存 load。不可缓存旁路不属于 cache miss，
+    // 否则用 refill 周期计算的 miss service/AMAT 会被 MMIO 访问污染。
     val perf_hit = Output(Bool())
     val perf_miss = Output(Bool())
     val perf_refill_req = Output(Bool())
@@ -218,7 +223,12 @@ class ysyx_26030103_DCache(
   io.AXI.AR.ARBURST := 1.U
   io.AXI.AR.ARPROT := 0.U
   io.AXI.R.RREADY := false.B
-  io.req.ready := state === SIdle && !ResponseValid && !io.flush
+  // ResponseValid is a one-entry elastic response slot.  When the consumer
+  // removes the old response in this cycle, a new request may reuse the slot
+  // immediately; forbidding that pop+push case inserted a bubble between every
+  // pair of cache hits.
+  val ResponseSlotReady = !ResponseValid || io.resp.ready
+  io.req.ready := state === SIdle && ResponseSlotReady && !io.flush
   // 响应状态与回填状态解耦，使关键字能在缓存行其余数据到达前重启流水线。
   io.resp.valid := ResponseValid
   io.resp.bits.data := ResponseData
@@ -227,7 +237,7 @@ class ysyx_26030103_DCache(
   io.axi_active := state === SReadReq || state === SReadResp || state === SDrain
   // 性能计数器: 受理当拍判定命中/缺失; 回填AR/R阶段计数
   io.perf_hit := io.req.fire && hit
-  io.perf_miss := io.req.fire && !hit
+  io.perf_miss := io.req.fire && cacheable && !hit
   io.perf_refill_req := RefillActive && state === SReadReq
   io.perf_refill_resp := RefillActive && state === SReadResp
   val StoreIndex = io.StoreAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
@@ -271,6 +281,13 @@ class ysyx_26030103_DCache(
       valid(StoreIndexSafe) := false.B
     }
   }
+  // Clear the old response before installing a replacement below.  The order
+  // is important for a hit accepted in the same cycle as io.resp.fire: the new
+  // response must remain valid for the following cycle.
+  when(io.resp.fire) {
+    ResponseValid := false.B
+    DemandResponseDone := true.B
+  }
   when(io.req.fire) {
     ReqAddrReg := io.req.bits.addr
     ReqWidthReg := io.req.bits.WidthSelect
@@ -313,10 +330,6 @@ class ysyx_26030103_DCache(
       when(cacheable) { valid(IndexSafe) := false.B }
       state := SReadReq
     }
-  }
-  when(io.resp.fire) {
-    ResponseValid := false.B
-    DemandResponseDone := true.B
   }
   switch(state) {
     is(SReadReq) {

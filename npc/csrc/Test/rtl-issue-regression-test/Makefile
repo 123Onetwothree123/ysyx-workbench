@@ -23,9 +23,10 @@ MUL_CORE_BIN := $(BIN_DIR)/mul_core_pipeline_test
 LSU_BIN := $(BIN_DIR)/lsu_bad_bid_test
 STAGE_CONNECT_BIN := $(BIN_DIR)/stage_connect_flush_test
 ICACHE_PMA_BIN := $(BIN_DIR)/icache_pma_boundary_test
-BINS := $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(ICACHE_PMA_BIN)
+ZERO_PREDICTOR_BIN := $(BIN_DIR)/zero_predictor_geometry_test
+BINS := $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(ICACHE_PMA_BIN) $(ZERO_PREDICTOR_BIN)
 
-.PHONY: all test run functional-test config-test xbar-test mul-core-test exu-test lsu-test stage-connect-test icache-pma-test clean
+.PHONY: all test run functional-test config-test xbar-test mul-core-test exu-test lsu-test stage-connect-test icache-pma-test zero-predictor-test clean
 
 all: $(BINS)
 
@@ -71,6 +72,9 @@ stage-connect-test: $(STAGE_CONNECT_BIN)
 icache-pma-test: $(ICACHE_PMA_BIN)
 	$(ICACHE_PMA_BIN)
 
+zero-predictor-test: $(ZERO_PREDICTOR_BIN)
+	$(ZERO_PREDICTOR_BIN)
+
 # Generate one production snapshot with a genuinely pipelined compression-tree
 # core.  The leaf EXU, LSU and Xbar modules are then selected as independent
 # Verilator tops by the tests below.
@@ -94,6 +98,7 @@ $(GEN_STAMP): $(SCALA_SOURCES) Makefile
 $(HARNESS_STAMP): $(LOCAL_SCALA_SOURCES) build.mill \
                     layers-StageConnectHarness-Verification.sv \
                     layers-ICachePmaBoundaryHarness-Verification.sv \
+                    layers-ZeroPredictorGeometryHarness-Verification.sv \
                     $(SCALA_SOURCES)
 	@mkdir -p $(HARNESS_RTL_DIR)
 	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
@@ -102,8 +107,12 @@ $(HARNESS_STAMP): $(LOCAL_SCALA_SOURCES) build.mill \
 	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
 	  ysyx_26030103.test.ICachePmaBoundaryHarnessElaborate \
 	  --target-dir $(HARNESS_RTL_DIR)
+	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
+	  ysyx_26030103.test.ZeroPredictorGeometryHarnessElaborate \
+	  --target-dir $(HARNESS_RTL_DIR)
 	@cp $(TEST_DIR)/layers-StageConnectHarness-Verification.sv $(HARNESS_RTL_DIR)/
 	@cp $(TEST_DIR)/layers-ICachePmaBoundaryHarness-Verification.sv $(HARNESS_RTL_DIR)/
+	@cp $(TEST_DIR)/layers-ZeroPredictorGeometryHarness-Verification.sv $(HARNESS_RTL_DIR)/
 	@touch $@
 
 $(XBAR_BIN): xbar_local_decerr_interleave_test.cpp test_common.hpp $(GEN_STAMP)
@@ -161,6 +170,16 @@ $(ICACHE_PMA_BIN): icache_pma_boundary_test.cpp test_common.hpp $(HARNESS_STAMP)
 	  -CFLAGS '$(CXXFLAGS)' \
 	  -o $(abspath $@) \
 	  $(HARNESS_RTL_DIR)/ICachePmaBoundaryHarness.sv $<
+
+$(ZERO_PREDICTOR_BIN): zero_predictor_geometry_test.cpp test_common.hpp $(HARNESS_STAMP)
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
+	  -I$(HARNESS_RTL_DIR) \
+	  --top-module ZeroPredictorGeometryHarness \
+	  --Mdir $(BUILD_DIR)/obj-zero-predictor \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(HARNESS_RTL_DIR)/ZeroPredictorGeometryHarness.sv $<
 
 clean:
 	rm -rf $(BUILD_DIR) out

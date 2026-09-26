@@ -142,6 +142,8 @@ class ysyx_26030103_IO extends Bundle {
   val perf_mdu_done = Output(Bool())
   val perf_mdu_op = Output(UInt(3.W))
   val perf_exu_event_kind = Output(UInt(3.W))
+  // MDU从首次发射到退休的活跃周期；wait只表示结果未就绪，
+  // 结果已就绪但被下游反压时归入perf_exu_stall_lsu。
   val perf_mdu_active = Output(Bool())
   val perf_mdu_wait = Output(Bool())
   val perf_ifu_stall_pipeline = Output(Bool())
@@ -157,6 +159,7 @@ class ysyx_26030103_IO extends Bundle {
   val perf_dcache_refill_req = Output(Bool())
   val perf_dcache_refill_resp = Output(Bool())
   val perf_execution_active = Output(Bool())
+  // EX/MEM/LSU下游反压或为精确顺序等待年长指令；不含MDU计算等待。
   val perf_exu_stall_lsu = Output(Bool())
   val perf_lsu_active = Output(Bool())
   val perf_lsu_load_active = Output(Bool())

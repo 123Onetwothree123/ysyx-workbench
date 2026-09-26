@@ -541,7 +541,6 @@ run: pgo
 else
 run: $(BIN_NPC)
 	@echo "警告: PGO_AUTO 目前仅支持 SIM_TOP=soc，本次执行普通运行"
-	{ head -c $(CACHE_PADDING) /dev/zero 2>/dev/null; cat "$(file)"; } | od -An -tx4 -w4 -v | awk '{print $$1}' > $(BUILD_DIR)/program.hex
 	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
 endif
 else ifeq ($(SIM_TOP),soc)
@@ -549,7 +548,6 @@ run: $(BIN)
 	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
 else
 run: $(BIN_NPC)
-	{ head -c $(CACHE_PADDING) /dev/zero 2>/dev/null; cat "$(file)"; } | od -An -tx4 -w4 -v | awk '{print $$1}' > $(BUILD_DIR)/program.hex
 	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
 endif
 
@@ -682,8 +680,6 @@ perf: synth $(BIN)
 else
 perf: synth $(BIN_NPC)
 	@mkdir -p $(PERF_DIR)
-	@echo "[perf] 编译 hex ..."
-	@{ head -c $(CACHE_PADDING) /dev/zero 2>/dev/null; cat "$(file)"; } | od -An -tx4 -w4 -v | awk '{print $$1}' > $(BUILD_DIR)/program.hex
 	@echo "[perf] 运行仿真 ..."
 	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
 	mkdir -p "$$RESULT_DIR"; \

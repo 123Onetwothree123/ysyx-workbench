@@ -13,8 +13,11 @@ class ysyx_26030103_EXU(
     val ExceptionTaken = Output(Bool())
     val ExceptionTarget = Output(UInt(32.W))
     val Interrupt = Input(Bool())
-    // MEM的反馈: 非空=有指令在访存/完成中; 访存故障提交信号(CSR后门)
+    // MEM的反馈分成两类：MEMBusy只表示年长访存事务，用于
+    // branch/fence等只需等待“可能故障的访存”的场景；PipelineBusy
+    // 表示任意年长指令仍在MEM流水级，用于IRQ/CSR/异常的精确顺序。
     val MEMBusy = Input(Bool())
+    val PipelineBusy = Input(Bool())
     val MemTrapCommit = Input(Bool())
     val MemTrapCause = Input(UInt(32.W))
     val MemTrapPC = Input(UInt(32.W))
@@ -140,19 +143,24 @@ class ysyx_26030103_EXU(
 
   // 带标记或EXU动态发现异常的指令只做异常提交，不得产生
   // 访存/CSR写/GPR写/重定向/预测器训练等副作用。
-  // 带副作用的指令(csr/ecall/ebreak/mret/fence.i/异常)必须等MEM级排空(在序精确异常):
-  // 比它年老的访存可能还没完成,甚至可能是故障要提交异常;
-  // fence.i也要等写缓冲排空, 否则新取指可能读到store落内存之前的旧指令
-  val IsSideEffect =
+  // CSR/异常/IRQ会立即改变架构状态，必须等任意年长MEM级指令
+  // 越过该精确边界。branch/JAL/JALR只需等待年长访存：普通ALU
+  // 不会故障，不应该让控制转移多停一拍；但年长load/store仍可能
+  // 提交精确故障，在它完成前不能留下无法回滚的BTB/RAS状态。
+  val RequiresPipelineDrain =
     inst.IsCsrrw || inst.IsCsrrs || inst.IsEcall || inst.IsEbreak ||
-      inst.IsSimHalt || inst.IsMret || InstructionTrapValid || inst.IsFenceI ||
-      inst.IsFence || inst.IsBranch || inst.IsJal || inst.IsJalr
-  // IRQ是动态副作用：MEM级尚未排空时必须阻塞所有当前指令，
-  // 包括load/store。否则连续访存流可以不断进入MEM，使已使能IRQ无界推迟。
-  // branch/JAL/JALR也等老MEM结果确定后再更新BTB/RAS，避免老load fault
-  // 冲流后留下无法恢复的预测器状态。
-  val BlockIrqForMEM = io.MEMBusy && CSRUnit.io.IrqPending
-  val BlockForMEM = (io.MEMBusy && IsSideEffect) || BlockIrqForMEM
+      inst.IsSimHalt || inst.IsMret || InstructionTrapValid
+  val RequiresMemoryDrain =
+    inst.IsFenceI || inst.IsFence || inst.IsBranch || inst.IsJal || inst.IsJalr
+  // MEMBusy在顶层是PipelineBusy的子集。这里仍取或作为防御，
+  // 也让叶子EXU回归可以只驱动MEMBusy来表示年长访存。
+  val OlderPipelineBusy = io.PipelineBusy || io.MEMBusy
+  // IRQ是动态精确副作用：只要任意年长MEM级指令未越过，
+  // 就不能在当前指令边界提交IRQ。
+  val BlockIrqForPipeline = OlderPipelineBusy && CSRUnit.io.IrqPending
+  val BlockForOlder =
+    (OlderPipelineBusy && RequiresPipelineDrain) ||
+      (io.MEMBusy && RequiresMemoryDrain) || BlockIrqForPipeline
 
   // MDU 的 Flush 必须同时屏蔽旧 Resp；访存故障提交时，所有已经接收的
   // 年轻 M 指令都属于待取消事务，不能在故障冲刷后泄漏到 MEM/WB。
@@ -162,10 +170,10 @@ class ysyx_26030103_EXU(
   MDUUnit.io.Req.bits.MDUOp := inst.MDUOp
 
   // Resp.ready 只在输出可以提交时拉高，使最老 MDU 结果在 backpressure 下保持。
-  // 若IRQ在更老MEM尚未排空时到达，MDU结果也必须等待；MEM排空后先按序
+  // 若IRQ在更老MEM级指令尚未排空时到达，MDU结果也必须等待；排空后先按序
   // 退休这个已发射的MDU，IRQ再在下一条输入指令边界提交。
   val BlockPendingMDUForMEM =
-    io.MEMBusy && CSRUnit.io.IrqPending
+    OlderPipelineBusy && CSRUnit.io.IrqPending
   val MDURespReady = PendingMDU && io.out.ready &&
     !io.MemTrapCommit && !BlockPendingMDUForMEM
   MDUUnit.io.Resp.ready := MDURespReady
@@ -176,9 +184,9 @@ class ysyx_26030103_EXU(
   val MDUInputBlockedByIRQ =
     IsMDUInstruction && CSRUnit.io.IrqPending && !io.MemTrapCommit
   // 尚未发射的M扩展指令只有在所有更老MEM指令都排空后，才能被消耗并在IRQ后重放。
-  // 否则，MDU专用ready路径会绕过BlockIrqForMEM，破坏精确陷阱顺序。
+  // 否则，MDU专用ready路径会绕过BlockIrqForPipeline，破坏精确陷阱顺序。
   val MDUInputKilledByIRQ =
-    MDUInputBlockedByIRQ && !PendingMDU && !io.MEMBusy
+    MDUInputBlockedByIRQ && !PendingMDU && !OlderPipelineBusy
   val MDUReqReady = IsMDUInstruction && !MDUInputBlockedByIRQ &&
     MDUQueueHasSpace && MDUUnit.io.Req.ready
   MDUUnit.io.Req.valid := io.in.valid && IsMDUInstruction &&
@@ -194,12 +202,12 @@ class ysyx_26030103_EXU(
     // 待处理的MDU结果会占用本周期唯一的输出槽位。更年轻的非MDU指令必须留在
     // IDU->EXU寄存器中，直到该结果发出；若在这里接收它，就会在未产生其EXU输出
     // 的情况下将其消耗。
-    !PendingMDU && io.out.ready && !BlockForMEM
+    !PendingMDU && io.out.ready && !BlockForOlder
   )
   io.out.valid := Mux(
     PendingMDU,
     MDUUnit.io.Resp.valid && !io.MemTrapCommit && !BlockPendingMDUForMEM,
-    io.in.valid && !IsMDUInstruction && !PendingMDU && !BlockForMEM
+    io.in.valid && !IsMDUInstruction && !PendingMDU && !BlockForOlder
   )
 
   val NextMDUQueueTail = Mux(
@@ -408,21 +416,34 @@ class ysyx_26030103_EXU(
       )
     )
   )
-  // 保留原有类型电平用于活跃周期统计。上面的时钟沿前PerfEventKind用于
-  // 单次操作计数器。
-  io.PerfALUOp := !inst.MemoryValid && !inst.IsMDU && !inst.IsCsrrw &&
-    !inst.IsCsrrs && !inst.IsBranch && !inst.IsJal && !inst.IsJalr
-  io.PerfMemOp := inst.MemoryValid
-  io.PerfCSROp := inst.IsCsrrw || inst.IsCsrrs
-  io.PerfBranchOp := inst.IsBranch || inst.IsJal || inst.IsJalr
-  io.PerfJalOp := inst.IsJal
-  io.PerfJalrOp := inst.IsJalr
+  // 类型电平用于活跃周期统计。PendingMDU时io.in.bits可能已经是
+  // 被反压的年轻指令，因此必须与输出数据一样使用ActiveInst，
+  // 否则会把MDU等待周期错记到年轻ALU/MEM/CSR/branch上。
+  val ActiveALUClass =
+    !ActiveInst.MemoryValid && !ActiveInst.IsMDU && !ActiveInst.IsCsrrw &&
+      !ActiveInst.IsCsrrs && !ActiveInst.IsBranch && !ActiveInst.IsJal &&
+      !ActiveInst.IsJalr && !ActiveInst.IsEcall && !ActiveInst.IsEbreak &&
+      !ActiveInst.IsMret && !ActiveInst.IsSimHalt && !ActiveInst.IsFence &&
+      !ActiveInst.IsFenceI && !ActiveInstructionTrapValid
+  io.PerfALUOp := ActiveALUClass
+  io.PerfMemOp := ActiveInst.MemoryValid && !ActiveInstructionTrapValid
+  io.PerfCSROp := ActiveInst.IsCsrrw || ActiveInst.IsCsrrs
+  io.PerfBranchOp := ActiveInst.IsBranch || ActiveInst.IsJal || ActiveInst.IsJalr
+  io.PerfJalOp := ActiveInst.IsJal
+  io.PerfJalrOp := ActiveInst.IsJalr
   io.PerfEventKind := PerfEventKind
   io.PerfMDUReq := MDUReqFire
   io.PerfMDUDone := ActiveCommit && ActiveInst.IsMDU && !ActiveInst.ExceptionValid
   io.PerfMDUOp := ActiveInst.MDUOp
-  io.PerfMDUActive := PendingMDU
-  io.PerfMDUWait := PendingMDU && !(MDUUnit.io.Resp.valid && MDUUnit.io.Resp.ready)
+  // MDUActive包含首次发射拍。MDUWait只统计等待MDU本身的周期；
+  // 若结果已valid却因EX/MEM/LSU反压未接收，应归到LSU/下游stall，
+  // 不再误算成MDU计算延迟。
+  val WaitingForFirstMDUResult =
+    !PendingMDU && io.in.valid && IsMDUInstruction && !MDUInputBlockedByIRQ
+  val WaitingForPendingMDUResult = PendingMDU && !MDUUnit.io.Resp.valid
+  io.PerfMDUActive := PendingMDU || MDUReqFire
+  io.PerfMDUWait := !io.out.fire &&
+    (WaitingForFirstMDUResult || WaitingForPendingMDUResult)
   io.PerfExecutionActive := io.in.valid || PendingMDU
 
   // 这些是“当前EXU指令”的副作用。中断接受或更老访存故障提交时，

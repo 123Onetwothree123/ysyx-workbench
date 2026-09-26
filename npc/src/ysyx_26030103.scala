@@ -236,8 +236,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   idu.io.ReadDATA2 := gpr.io.ReadDATA2
   gpr.io.Read1SELECT := idu.io.Read1SELECT
   gpr.io.Read2SELECT := idu.io.Read2SELECT
-  // LSU(MEM级)反馈给EXU: 非空标志+访存故障提交的CSR后门
-  exu.io.MEMBusy := lsu.io.Busy
+  // 年长访存事务与年长普通指令必须分开。控制转移只需等
+  // 可能故障的访存，不应被LSU中单拍直通的普通ALU指令拖慢；
+  // IRQ/CSR/异常则仍使用全流水级Busy保证精确顺序。
+  exu.io.MEMBusy := lsu.io.MemoryBusy
+  exu.io.PipelineBusy := lsu.io.Busy
   exu.io.MemTrapCommit := lsu.io.MemTrapCommit
   exu.io.MemTrapCause := lsu.io.MemTrapCause
   exu.io.MemTrapPC := lsu.io.MemTrapPC
@@ -431,7 +434,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   io.perf_mdu_active := exu.io.PerfMDUActive
   io.perf_mdu_wait := exu.io.PerfMDUWait
   io.perf_ifu_stall_pipeline := icache.io.resp_valid && !icache.io.resp_ready
-  io.perf_ifu_stall_axi := ifu.io.StallICache
+  // AXI等待只统计真实refill的AR/R占用。FetchReady为低还可能是
+  // 响应槽或下游反压，不能全部归因于AXI。
+  io.perf_ifu_stall_axi :=
+    icache.io.perf_refill_req || icache.io.perf_refill_resp
   io.perf_ifu_stall_ar := icache.io.perf_refill_req
   io.perf_ifu_stall_r := icache.io.perf_refill_resp
   io.perf_ifu_stall_redirect := exu.io.Redirect
@@ -443,8 +449,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   io.perf_dcache_refill_req := lsu.io.DCachePerfRefillReq
   io.perf_dcache_refill_resp := lsu.io.DCachePerfRefillResp
   io.perf_execution_active := exu.io.PerfExecutionActive
-  // EXU被下游阻塞: 有指令但本拍未完成(EX/MEM寄存器被占,或副作用指令等MEM级排空)
-  io.perf_exu_stall_lsu := exu.io.in.valid && !exu.io.out.fire
+  // EXU未完成周期按原因互斥分类：PerfMDUWait是等MDU结果；
+  // 本信号只保留EX/MEM/LSU反压或精确顺序排空。当MDU结果
+  // 已valid但下游不ready时，也正确归到这里。
+  io.perf_exu_stall_lsu := exu.io.PerfExecutionActive && !exu.io.out.fire &&
+    !exu.io.PerfMDUWait
   // EX/MEM等待槽占用: LSU级忙时有一条指令等在流水寄存器里(5级拆分买到的重叠)
   io.perf_mem_waitslot := lsu.io.Hazard2Valid
   io.perf_lsu_active := lsu.io.Active

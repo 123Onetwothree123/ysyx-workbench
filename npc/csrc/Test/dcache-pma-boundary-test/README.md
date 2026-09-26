@@ -1,10 +1,13 @@
-# DCache PMA boundary test
+# DCache PMA cacheability regressions
 
-Leaf-level Verilator regression for a legal load whose 16-byte cache line
-crosses the end of a 12-byte readable/cacheable PMA region.
+Leaf-level Verilator regressions for all PMA decisions used by DCache:
 
-The DCache must issue the legal word as one uncached AXI beat rather than
-widening it into an illegal four-beat refill.
+- a legal load stays single-beat when its 16-byte cache line would cross a PMA
+  region boundary;
+- a readable region marked `Cacheable=false` never starts a refill, even at a
+  historical 0x8 RAM address;
+- a PMA-approved cacheable region outside the historical 0x8/0xa windows can
+  refill and hit normally.
 
 ```bash
 make test

@@ -3,8 +3,10 @@ module;
 module npc.sdb.command.cCommand;
 import npc.NPCTrap;
 import npc.DUT;
+#ifdef CONFIG_WATCHPOINT
 import npc.sdb.NPCEvaluationContext;
 import npc.sdb.command.WatchpointPool;
+#endif
 
 [[nodiscard]] std::string_view cCommand::name() const noexcept
 {
@@ -21,7 +23,9 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
 {
     static_cast<void>(args);
     auto &dut{context.GetDUT()};
+#ifdef CONFIG_WATCHPOINT
     NPCEvaluationContext EvaluationContext{dut};
+#endif
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
@@ -37,12 +41,14 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
             std::println("收到仿真 halt 请求");
             break;
         }
+#ifdef CONFIG_WATCHPOINT
         if ((dut->debug_commit || dut->debug_trap_valid) &&
             GetGlobalWatchpointPool().CheckAll(EvaluationContext))
         {
             std::println("因为要检查监视点，所以程序现在先停止");
             break;
         }
+#endif
     }
     return SDBCommandResult::Continue;
 }

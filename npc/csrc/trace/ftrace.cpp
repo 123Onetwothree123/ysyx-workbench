@@ -12,7 +12,6 @@ namespace
     constexpr auto OpcodeJal{std::uint32_t{0x6fu}};
     constexpr auto OpcodeJalr{std::uint32_t{0x67u}};
     constexpr auto Funct3Mask{std::uint32_t{0x7u}};
-    constexpr auto ReturnRegister{std::uint32_t{1u}};
     constexpr auto InstructionBytes{std::uint64_t{4u}};
     constexpr auto UnknownFunction{std::string_view{"???"}};
     /**
@@ -96,14 +95,14 @@ namespace
     /**
      * @brief 判断一条指令是否是ret。
      * @param Instruction std::uint32_t，原始指令。
-     * @return bool，若指令形如`jalr x0, x1, 0`则返回true。
+     * @return bool，若指令形如`jalr x0, x1/x5, 0`则返回true。
      */
     [[nodiscard]] constexpr bool IsReturnInstruction(std::uint32_t Instruction) noexcept
     {
         return Opcode(Instruction) == OpcodeJalr &&
                Funct3(Instruction) == 0u &&
                Rd(Instruction) == 0u &&
-               Rs1(Instruction) == ReturnRegister &&
+               IsLinkRegister(Rs1(Instruction)) &&
                IImm(Instruction) == 0;
     }
     /**

@@ -874,9 +874,9 @@ menu "硬件配置"
     config BTB_BITS
       int "BTB索引位宽（2^N组）"
       default 4
-      range 1 10
+      range 0 10
       help
-        BTB组数=2^N。1=2组, 4=16组, 10=1024组。
+        BTB组数=2^N。0=1组, 1=2组, 4=16组, 10=1024组。
         修改后需重新 make verilog 以重新生成RTL。
         建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_BTB_BITS保持一致, 以便用branchsim校准RTL。
 
@@ -892,9 +892,10 @@ menu "硬件配置"
     config JAL_BTB_BITS
       int "jal BTB索引位宽（2^N组）"
       default 4
-      range 1 10
+      range 0 10
       help
-        jal专用BTB组数=2^N(方案B: 独立小表, 与分支BTB零干扰)。4=16组。
+        jal专用BTB组数=2^N(方案B: 独立小表, 与分支BTB零干扰)。
+        0=1组, 4=16组。
         修改后需重新 make verilog 以重新生成RTL。
         建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_JAL_BTB_BITS保持一致, 以便用branchsim校准RTL。
 
@@ -910,9 +911,10 @@ menu "硬件配置"
     config RAS_BITS
       int "返回地址栈(RAS)深度位宽（深度=2^N）"
       default 4
-      range 1 8
+      range 0 8
       help
-        RAS深度=2^N, 用于ret的跳转目标预测。4=16深, branchsim评估显示8深即够用。
+        RAS深度=2^N, 用于ret的跳转目标预测。0=1项, 4=16项,
+        branchsim评估显示8项即够用。
         修改后需重新 make verilog 以重新生成RTL。
         建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_RAS_BITS保持一致, 以便用branchsim校准RTL。
 
@@ -1064,10 +1066,12 @@ menu "运行时调试"
     int "指令环形缓冲区大小"
     default 16
     depends on IRINGBUF
+    range 1 65536
 
   config WATCHPOINT
     bool "启用监视点"
     default n
+    depends on SDB
     help
       启用监视点功能，用于监控表达式值的变化
 
@@ -1075,6 +1079,7 @@ menu "运行时调试"
     int "监视点数量上限"
     default 32
     depends on WATCHPOINT
+    range 1 65536
     help
       监视点编号池的大小上限，修改后需重新编译
 

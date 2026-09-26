@@ -6,6 +6,9 @@
 using DUT = Vriscv32e_npc_AXIRAM;
 
 static void defaults(DUT &dut) {
+  dut.io_hostWriteValid = 0;
+  dut.io_hostWriteIndex = 0;
+  dut.io_hostWriteData = 0;
   dut.io_axi_AW_AWID = 0;
   dut.io_axi_AW_AWADDR = 0;
   dut.io_axi_AW_AWLEN = 0;
@@ -152,6 +155,17 @@ int main(int argc, char **argv) {
     DUT dut;
     defaults(dut);
     reset(dut);
+
+    // direct-NPC 在 CPU reset 前使用这个单周期主机端口
+    // 写入 CLI 镜像。显式验证端口，防止回归测试仅仅把
+    // 新输入拉低而没有覆盖真正的初始化路径。
+    dut.io_hostWriteIndex = 0x20;
+    dut.io_hostWriteData = 0x89abcdefU;
+    dut.io_hostWriteValid = 1;
+    tick(dut);
+    dut.io_hostWriteValid = 0;
+    check(read_word(dut, 0x80000080U, 15) == 0x89abcdefU,
+          "AXIRAM host image write was not visible to AXI reads");
 
     write_single(dut, 0x80000000U, 0x11223344U, 0xf, 2, 1);
     write_single(dut, 0x80000001U, 0x0000aa00U, 0x2, 0, 2, true);

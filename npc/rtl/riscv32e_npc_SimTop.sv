@@ -2,6 +2,9 @@
 module riscv32e_npc_SimTop(
   input         clock,
   input         reset,
+  input         ram_init_valid,
+  input  [15:0] ram_init_index,
+  input  [31:0] ram_init_data,
   output        trap_valid,
   output [31:0] trap_pc,
   input  [4:0]  debug_gpr_raddr,
@@ -164,6 +167,9 @@ module riscv32e_npc_SimTop(
 
   riscv32e_npc_AXIRAM ram (
     .clock(clock), .reset(reset),
+    .io_hostWriteValid(ram_init_valid),
+    .io_hostWriteIndex(ram_init_index),
+    .io_hostWriteData(ram_init_data),
     .io_axi_AW_AWVALID(cpu_awvalid), .io_axi_AW_AWREADY(cpu_awready),
     .io_axi_AW_AWADDR(cpu_awaddr),
     .io_axi_AW_AWID(cpu_awid), .io_axi_AW_AWLEN(cpu_awlen), .io_axi_AW_AWSIZE(cpu_awsize),

@@ -11,7 +11,9 @@ class ysyx_26030103_RAS(
     RASBits: Int = 4,
     AddressWidth: Int = 32
 ) extends Module {
+  require(RASBits >= 0 && RASBits < 31, "RASBits must be between 0 and 30")
   val Depth = 1 << RASBits
+  val PointerWidth = RASBits.max(1)
   val io = IO(new Bundle {
     // 查询(组合逻辑, IFU取指级和响应级共用当前栈顶)
     val top = Output(UInt(AddressWidth.W))
@@ -26,10 +28,16 @@ class ysyx_26030103_RAS(
   })
 
   val buf = Reg(Vec(Depth, UInt(AddressWidth.W)))
-  val top = RegInit(0.U(RASBits.W)) // 下一个写入位置
+  val top = RegInit(0.U(PointerWidth.W)) // 下一个写入位置
   val count = RegInit(0.U((RASBits + 1).W))
+  val TopEntry =
+    if (Depth == 1) 0.U(PointerWidth.W)
+    else (top - 1.U)(RASBits - 1, 0)
+  val WriteEntry = if (Depth == 1) 0.U(PointerWidth.W) else top
+  val IncrementedTop = if (Depth == 1) 0.U(PointerWidth.W) else top + 1.U
+  val DecrementedTop = if (Depth == 1) 0.U(PointerWidth.W) else top - 1.U
 
-  io.top := buf((top - 1.U)(RASBits - 1, 0))
+  io.top := buf(TopEntry)
   io.nonempty := count =/= 0.U
 
   // JALR协程hint可以要求同拍pop-then-push。非空时用新返回地址
@@ -39,21 +47,21 @@ class ysyx_26030103_RAS(
     count := 0.U
   }.elsewhen(io.push_valid && io.pop_valid) {
     when(count =/= 0.U) {
-      buf((top - 1.U)(RASBits - 1, 0)) := io.push_addr
+      buf(TopEntry) := io.push_addr
     }.otherwise {
-      buf(top) := io.push_addr
-      top := top + 1.U
+      buf(WriteEntry) := io.push_addr
+      top := IncrementedTop
       count := 1.U
     }
   }.elsewhen(io.push_valid) {
-    buf(top) := io.push_addr
-    top := top + 1.U
+    buf(WriteEntry) := io.push_addr
+    top := IncrementedTop
     when(count < Depth.U) {
       count := count + 1.U
     } // 已满则覆盖最旧, count不变
   }.elsewhen(io.pop_valid) {
     when(count =/= 0.U) {
-      top := top - 1.U
+      top := DecrementedTop
       count := count - 1.U
     }
   }

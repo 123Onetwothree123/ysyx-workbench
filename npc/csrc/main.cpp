@@ -20,8 +20,65 @@ int main(int argc, char const *argv[])
 #if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
     log_init();
 #endif
+    const auto failBeforeDUT = [](std::string_view error) {
+        std::println(std::cerr, "{}", error);
+#if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
+        log_close();
+#endif
+        return 1;
+    };
+
+    // CLI、镜像和 ELF 都必须在 DUT 构造前完成。direct-NPC 的 RAM
+    // 会在构造后立即由 FlashMemory 初始化，因此不再有
+    // "$readmemh 读旧 program.hex，C++ 却读新 CLI 镜像" 的窗口。
+    auto options{CLIOptions::Parse(argc, argv)};
+    if (!options)
+    {
+        return failBeforeDUT(options.error());
+    }
+    auto load{ImageLoader::LoadFromCLI(*options)};
+    if (!load)
+    {
+#ifdef CONFIG_SDB
+        // 没传镜像才是合法的空 SDB；显式给出了坏路径或
+        // 过大/损坏镜像时必须失败，不能静默运行旧内存。
+        if (options->GetImageFile())
+        {
+            return failBeforeDUT(load.error());
+        }
+        FlashMemory.clear();
+        mrom.clear();
+        std::println("未指定镜像文件，进入空 SDB");
+#else
+        return failBeforeDUT(load.error());
+#endif
+    }
+
+    if (const auto &elfFile{options->GetElfFile()}; elfFile)
+    {
+#ifdef CONFIG_FTRACE
+        constexpr bool EnableConfiguredFtrace{true};
+#else
+        constexpr bool EnableConfiguredFtrace{false};
+#endif
+        auto result{InitializeFtrace(*elfFile, EnableConfiguredFtrace)};
+        if (!result)
+        {
+            return failBeforeDUT(std::format("ELF 初始化失败：{}", result.error()));
+        }
+    }
+#ifdef CONFIG_FTRACE
+    else
+    {
+        // FTRACE 是编译期功能开关：开启后不需要再进 SDB
+        // 手工执行 `ftrace on`。没有 ELF 时仍跟踪，函数名显示 ???。
+        GlobalFtrace.Enable();
+    }
+#endif
+
     Verilated::commandArgs(argc, argv);
     DUT dut;
+    dut.InitializeMemory(FlashMemory);
 #ifdef CONFIG_NVBOARD
     nvboard_bind_all_pins(&*dut);
     nvboard_init();
@@ -38,31 +95,20 @@ int main(int argc, char const *argv[])
         nvboard_quit();
 #endif
     };
-    auto options{CLIOptions::Parse(argc, argv)};
-    if (!options)
-    {
-        std::println(std::cerr, "{}", options.error());
-        finalize();
-        return 1;
-    }
-    auto load{ImageLoader::LoadFromCLI(*options)};
-    if (!load)
-    {
-#ifdef CONFIG_SDB
-        std::println("未加载镜像文件，进入空 SDB");
-#else
-        std::println(std::cerr, "{}", load.error());
-        finalize();
-        return 1;
-#endif
-    }
     // Establish the DUT's architectural reset state before synchronizing a
     // reference model.  GPRs other than x0 have no ISA-defined reset value,
     // so DiffTest must copy the values actually seen by this RTL instance.
     dut.reset();
-#ifdef CONFIG_DIFFTEST
-    if (load)
+    // DifftestInitialize 在 CONFIG_DIFFTEST=n 时也会显式拒绝
+    // --diff。不能用预处理把用户参数和错误一起删掉。
+    if (options->GetDiffFile())
     {
+        if (!load)
+        {
+            std::println(std::cerr, "DiffTest 需要同时指定程序镜像");
+            finalize();
+            return 1;
+        }
         auto diffResult{DifftestInitialize(dut, options->GetDiffFile(), *load)};
         if (!diffResult)
         {
@@ -71,7 +117,6 @@ int main(int argc, char const *argv[])
             return 1;
         }
     }
-#endif
     if (options->GetVGACheck())
     {
         dut.EnableVGACheck();
@@ -132,7 +177,8 @@ int main(int argc, char const *argv[])
     int result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
 #endif
 #ifdef CONFIG_PERF_STATS
-    NPCTrap::PrintPerformanceStatistics(dut.GetPerfStats(), dut.GetCycle());
+    NPCTrap::PrintPerformanceStatistics(
+        dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
 #endif
 #ifdef CONFIG_PERF_SAVE
     auto result_dir = options->GetResultDir();

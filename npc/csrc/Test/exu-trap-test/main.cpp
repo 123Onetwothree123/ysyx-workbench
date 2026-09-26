@@ -134,6 +134,7 @@ public:
 
     dut_->io_Interrupt = 0;
     dut_->io_MEMBusy = 0;
+    dut_->io_PipelineBusy = 0;
     dut_->io_MemTrapCommit = 0;
     dut_->io_MemTrapCause = 0;
     dut_->io_MemTrapPC = 0;
@@ -427,6 +428,116 @@ void testControlTransfersWaitForOlderMemory() {
   }
 }
 
+void testControlTransfersDoNotWaitForOlderNonMemory() {
+  enum class Kind { Branch, Jal, Jalr };
+  for (const Kind kind : {Kind::Branch, Kind::Jal, Kind::Jalr}) {
+    const std::string label =
+        kind == Kind::Branch ? "branch" : (kind == Kind::Jal ? "JAL" : "JALR");
+    ExuTestbench tb;
+    constexpr std::uint32_t pc = 0x80000180U;
+    constexpr std::uint32_t target = 0x800001a0U;
+    tb.beginInstruction(pc);
+    tb.dut().io_PipelineBusy = 1;
+    tb.dut().io_MEMBusy = 0;
+    tb.dut().io_in_bits_pred_taken = 1;
+    tb.dut().io_in_bits_pred_target = target;
+
+    if (kind == Kind::Branch) {
+      tb.dut().io_in_bits_IsBranch = 1;
+      tb.dut().io_in_bits_BranchFunct3 = 0; // BEQ
+      tb.dut().io_in_bits_BranchA = 9;
+      tb.dut().io_in_bits_BranchB = 9;
+      tb.dut().io_in_bits_Immediate = target - pc;
+    } else if (kind == Kind::Jal) {
+      tb.dut().io_in_bits_IsJal = 1;
+      tb.dut().io_in_bits_ALUCtrl = 0;
+      tb.dut().io_in_bits_ALU_A = pc;
+      tb.dut().io_in_bits_ALU_B = target - pc;
+      tb.dut().io_in_bits_Rd = 1;
+      tb.dut().io_in_bits_RegisterWrite = 1;
+    } else {
+      tb.dut().io_in_bits_IsJalr = 1;
+      tb.dut().io_in_bits_ALUCtrl = 0;
+      tb.dut().io_in_bits_ALU_A = target;
+      tb.dut().io_in_bits_ALU_B = 0;
+      tb.dut().io_in_bits_Rs1 = 1;
+    }
+
+    tb.eval();
+    CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
+          label + " stalled behind an older non-memory instruction");
+    if (kind == Kind::Branch) {
+      CHECK(tb.dut().io_BTBUpdateValid,
+            "branch did not train while only PipelineBusy was asserted");
+    } else {
+      CHECK(tb.dut().io_JalBTBUpdateValid,
+            label + " did not train while only PipelineBusy was asserted");
+    }
+    tb.tick();
+  }
+}
+
+void testPreciseEffectsWaitForOlderPipelineInstruction() {
+  {
+    ExuTestbench tb;
+    tb.csrWrite(kMtvec, 0x00000100U);
+    tb.csrWrite(kMstatus, 1U << 3);
+    tb.beginInstruction(0x800001c0U);
+    tb.dut().io_Interrupt = 1;
+    tb.dut().io_PipelineBusy = 1;
+    tb.eval();
+    CHECK(!tb.dut().io_in_ready && !tb.dut().io_ExceptionTaken,
+          "IRQ bypassed an older non-memory pipeline instruction");
+    tb.tick();
+    tb.dut().io_PipelineBusy = 0;
+    tb.eval();
+    CHECK(tb.dut().io_in_ready && tb.dut().io_ExceptionTaken,
+          "IRQ did not resume after the older pipeline instruction drained");
+  }
+
+  {
+    ExuTestbench tb;
+    tb.beginInstruction(0x800001d0U);
+    tb.dut().io_in_bits_IsCsrrw = 1;
+    tb.dut().io_in_bits_CSRAddress = kMstatus;
+    tb.dut().io_in_bits_Rs1 = 1;
+    tb.dut().io_in_bits_Rs1Data = 1U << 3;
+    tb.dut().io_in_bits_WBSelect = 3;
+    tb.dut().io_PipelineBusy = 1;
+    tb.eval();
+    CHECK(!tb.dut().io_in_ready && !tb.dut().io_out_valid,
+          "CSR write bypassed an older non-memory pipeline instruction");
+    tb.tick();
+    tb.dut().io_PipelineBusy = 0;
+    tb.eval();
+    CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
+          "CSR write did not resume after the pipeline drained");
+    tb.tick();
+    tb.driveIdle();
+    tb.eval();
+    CHECK_EQ(tb.csrRead(kMstatus), 1U << 3,
+             "delayed CSR write committed the wrong value");
+  }
+
+  {
+    ExuTestbench tb;
+    tb.csrWrite(kMtvec, 0x00000100U);
+    tb.beginInstruction(0x800001e0U);
+    tb.dut().io_in_bits_ExceptionValid = 1;
+    tb.dut().io_in_bits_ExceptionCause = 2;
+    tb.dut().io_PipelineBusy = 1;
+    tb.eval();
+    CHECK(!tb.dut().io_in_ready && !tb.dut().io_ExceptionTaken,
+          "synchronous exception bypassed an older pipeline instruction");
+    tb.tick();
+    tb.dut().io_PipelineBusy = 0;
+    tb.eval();
+    CHECK(tb.dut().io_in_ready && tb.dut().io_ExceptionTaken,
+          "synchronous exception did not resume after the pipeline drained");
+    CHECK_EQ(tb.dut().io_TrapCause, 2U, "delayed exception cause");
+  }
+}
+
 void testRasHintsForX1AndX5() {
   constexpr std::uint32_t pc = 0x80000200U;
   constexpr std::uint32_t target = 0x80000300U;
@@ -693,6 +804,10 @@ int main(int argc, char **argv) {
       {"pending MDU waits for older MEM", testPendingMduWaitsForOlderMemory},
       {"control transfers wait for older MEM",
        testControlTransfersWaitForOlderMemory},
+      {"control transfers bypass older non-memory",
+       testControlTransfersDoNotWaitForOlderNonMemory},
+      {"precise effects wait for older pipeline instruction",
+       testPreciseEffectsWaitForOlderPipelineInstruction},
       {"RAS hints for x1/x5", testRasHintsForX1AndX5},
       {"PerfTrap excludes MRET", testPerfTrapExcludesMret},
       {"EBREAK and simulation halt are distinct",

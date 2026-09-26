@@ -1,18 +1,20 @@
 module npc.sdb.SDBCommandRegistry;
 import npc.sdb.SDBCommandUsage;
 import npc.sdb.command.cCommand;
-import npc.sdb.command.dCommand;
 import npc.sdb.command.helpCommand;
 import npc.sdb.command.infoCommand;
 import npc.sdb.command.pCommand;
 import npc.sdb.command.qCommand;
 import npc.sdb.command.siCommand;
-import npc.sdb.command.wCommand;
 import npc.sdb.command.xCommand;
+#ifdef CONFIG_WATCHPOINT
+import npc.sdb.command.wCommand;
+import npc.sdb.command.dCommand;
+#endif
 import npc.sdb.command.clearCommand;
 import npc.sdb.command.historyCommand;
 import npc.sdb.command.readelfCommand;
-#ifdef CONFIG_ITRACE
+#ifdef CONFIG_IRINGBUF
 import npc.sdb.command.iringbufCommand;
 #endif
 #ifdef CONFIG_FTRACE
@@ -132,9 +134,11 @@ void SDBCommandRegistry::RegisterBuiltins()
     RegisterCommand(std::make_unique<infoCommand>());
     RegisterCommand(std::make_unique<xCommand>());
     RegisterCommand(std::make_unique<pCommand>());
+#ifdef CONFIG_WATCHPOINT
     RegisterCommand(std::make_unique<wCommand>());
     RegisterCommand(std::make_unique<dCommand>());
-#ifdef CONFIG_ITRACE
+#endif
+#ifdef CONFIG_IRINGBUF
     RegisterCommand(std::make_unique<iringbufCommand>());
 #endif
 #ifdef CONFIG_FTRACE

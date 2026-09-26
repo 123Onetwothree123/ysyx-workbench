@@ -2,17 +2,21 @@ package ysyx_26030103
 
 import chisel3._
 import chisel3.util._
-import chisel3.util.experimental.loadMemoryFromFileInline
 import _root_.ysyx_26030103.infra._
 
 class riscv32e_npc_AXIRAM extends Module {
   val io = IO(new Bundle {
     val axi = Flipped(new ysyx_26030103_AXI5IO(32, 32, 4))
+    // direct-NPC 在构造 DUT 后由 C++ 将命令行镜像写入 RAM。
+    // 这使 RTL 和 DiffTest/调试器共用同一份 FlashMemory，
+    // 不再依赖当前工作目录下可能过期的 program.hex。
+    val hostWriteValid = Input(Bool())
+    val hostWriteIndex = Input(UInt(16.W))
+    val hostWriteData = Input(UInt(32.W))
   })
 
   val depth = 65536
   val mem = SyncReadMem(depth, UInt(32.W))
-  loadMemoryFromFileInline(mem, "build/program.hex")
 
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
@@ -99,6 +103,18 @@ class riscv32e_npc_AXIRAM extends Module {
     )
   )
   val expectedLastBeat = writeBeat === awLen
+
+  // RAM 只保留一个写端口。主机初始化发生在 reset 期间，
+  // 并且优先于 AXI 写，避免为 SyncReadMem 推导额外写端口。
+  val cpuWriteValid = WireDefault(false.B)
+  val cpuWriteIndex = WireDefault(0.U(16.W))
+  val cpuWriteData = WireDefault(0.U(32.W))
+  when(io.hostWriteValid || cpuWriteValid) {
+    mem.write(
+      Mux(io.hostWriteValid, io.hostWriteIndex, cpuWriteIndex),
+      Mux(io.hostWriteValid, io.hostWriteData, cpuWriteData)
+    )
+  }
 
   // 尚未收集完整的写事务优先于读事务。AW 与 W 独立接收，可以按任意顺序到达。
   val writeIncoming = awPending || wPending || io.axi.AW.AWVALID || io.axi.W.WVALID
@@ -189,7 +205,9 @@ class riscv32e_npc_AXIRAM extends Module {
     is(sWriteCommit) {
       when(!writeConfigError) {
         when(writeAddressIsRAM) {
-          mem.write(writeWordIndex, writeMerged)
+          cpuWriteValid := true.B
+          cpuWriteIndex := writeWordIndex
+          cpuWriteData := writeMerged
         }.elsewhen(writeAddressIsUART) {
           // UART 是只有副作用的目标，并且刻意与 RAM 窗口分离。只有低字节使能时
           // 才会输出字符。
@@ -240,6 +258,12 @@ class riscv32e_npc_AXIRAM extends Module {
 class riscv32e_npc_SimTop extends Module {
   val cpu = Module(new ysyx_26030103)
   val ram = Module(new riscv32e_npc_AXIRAM)
+
+  // 这个 Scala SimTop 不是 production direct-NPC 顶层；production
+  // 的手写 SV wrapper 会将这些端口引出给 C++。
+  ram.io.hostWriteValid := false.B
+  ram.io.hostWriteIndex := 0.U
+  ram.io.hostWriteData := 0.U
 
   cpu.io.interrupt := false.B
 
