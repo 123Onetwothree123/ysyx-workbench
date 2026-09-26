@@ -13,6 +13,7 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
   // 日常默认值，都复制粘贴了
   val AWValidReg = RegInit(false.B)
   val WValidReg = RegInit(false.B)
+  val WLastReg = RegInit(false.B)
   val BValidReg = RegInit(false.B)
   val AWIDReg = RegInit(0.U(4.W))
   val BRESPReg = RegInit(OKAY)
@@ -49,16 +50,26 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
   }
   when(WFire) {
     WValidReg := true.B
+    WLastReg := io.W.WLAST
   }
   when(AWValidReg && WValidReg && !BValidReg) {
-    // ysyx_26030103_mtime不让写
-    BRESPReg := SLVERR
-    BValidReg := true.B
-    AWValidReg := false.B
-    WValidReg := false.B
+    // ysyx_26030103_mtime不让写；仍必须先排空完整的W burst。
+    when(WLastReg) {
+      BRESPReg := SLVERR
+      BValidReg := true.B
+      AWValidReg := false.B
+      WValidReg := false.B
+      WLastReg := false.B
+    }.otherwise {
+      // A multi-beat write is drained one beat at a time.  Keep AWValid so
+      // the following W beat remains associated with the same transaction.
+      WValidReg := false.B
+      WLastReg := false.B
+    }
   }
   when(BFire) {
     BValidReg := false.B
+    WLastReg := false.B
   }
   def IsMtime(address: UInt): Bool =
     address === MtimeLowAddress || address === MtimeHighAddress

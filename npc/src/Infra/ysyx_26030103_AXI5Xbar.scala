@@ -610,6 +610,11 @@ class ysyx_26030103_AXI5Xbar(
     RBufferValid := false.B
   }
 
+  // Local DECERR state advances when a beat is captured into RBuffer, not when
+  // that buffered beat is later consumed.  If a SoC/CLINT response replaces a
+  // local beat on its pop cycle, advancing the old slot again would skip one
+  // error beat and can skip the ARLEN beat which owns RLAST.
+
   when(RBufferPop && RBufferLast) {
     ReadSlotState(RBufferID) := ReadSlotFree
   }

@@ -201,14 +201,19 @@ private object ysyx_26030103_MULCompressionUtils {
   // 在 Dadda stage 之间插入按列保存的寄存器，不把稀疏列重新补成完整行。
   def RegisterColumns(
       Columns: IndexedSeq[IndexedSeq[Bool]],
-      Advance: Bool
+      Advance: Bool,
+      Clear: Bool = false.B
   ): IndexedSeq[IndexedSeq[Bool]] = {
     Columns.map { Column =>
       if (Column.isEmpty) {
         Column
       } else {
-        val Boundary = Reg(Vec(Column.length, Bool()))
-        when (Advance) {
+        val Boundary = RegInit(VecInit(Seq.fill(Column.length)(false.B)))
+        when (Clear) {
+          for (Index <- Column.indices) {
+            Boundary(Index) := false.B
+          }
+        }.elsewhen (Advance) {
           for (Index <- Column.indices) {
             Boundary(Index) := Column(Index)
           }
@@ -340,9 +345,10 @@ abstract class ysyx_26030103_MULCompressionCore(
     math.ceil(Schedule.length.toDouble * Boundary / (config.MULPipeline + 1)).toInt - 1
   }.toSet
   private val Valid = RegInit(VecInit(Seq.fill(config.MULPipeline + 1)(false.B)))
-  private val Product = Reg(UInt(ProductWidth.W))
+  private val Product = RegInit(0.U(ProductWidth.W))
   private val Advance = !Valid.last || IO.Resp.ready
-  IO.Req.ready := !IO.Flush && Advance
+  private val PipelineEnable = !IO.Flush && Advance
+  IO.Req.ready := PipelineEnable
   IO.Resp.valid := Valid.last && !IO.Flush
   IO.Resp.bits.Product := Product
   private val NextProduct = if (UseDadda) {
@@ -358,7 +364,11 @@ abstract class ysyx_26030103_MULCompressionCore(
         )
       }
       if (BoundarySteps.contains(step)) {
-        Columns = ysyx_26030103_MULCompressionUtils.RegisterColumns(Columns, Advance)
+        Columns = ysyx_26030103_MULCompressionUtils.RegisterColumns(
+          Columns,
+          PipelineEnable,
+          IO.Flush
+        )
       }
     }
     ysyx_26030103_MULCompressionUtils.FinalSum(
@@ -377,7 +387,11 @@ abstract class ysyx_26030103_MULCompressionCore(
         )
       }
       if (BoundarySteps.contains(step)) {
-        Columns = ysyx_26030103_MULCompressionUtils.RegisterColumns(Columns, Advance)
+        Columns = ysyx_26030103_MULCompressionUtils.RegisterColumns(
+          Columns,
+          PipelineEnable,
+          IO.Flush
+        )
       }
     }
     ysyx_26030103_MULCompressionUtils.FinalSum(
@@ -389,7 +403,8 @@ abstract class ysyx_26030103_MULCompressionCore(
     for (Index <- Valid.indices) {
       Valid(Index) := false.B
     }
-  }.elsewhen (Advance) {
+    Product := 0.U
+  }.elsewhen (PipelineEnable) {
     for (Index <- Valid.indices) {
       Valid(Index) := (if (Index == 0) IO.Req.valid else Valid(Index - 1))
     }

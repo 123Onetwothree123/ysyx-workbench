@@ -25,6 +25,7 @@ class ysyx_26030103_IDU(
     // 转发: EX阶段的最终写回值及其就绪标志, WB阶段的写回值(总是就绪)
     val ex_fwd_ready = Input(Bool())
     val ex_fwd_data = Input(UInt(32.W))
+    val ex_mdu_hidden_writes = Input(UInt(32.W))
     val wb_fwd_data = Input(UInt(32.W))
     // MEM级(MEM)的冒险检测与转发
     val me_valid = Input(Bool())
@@ -166,17 +167,21 @@ class ysyx_26030103_IDU(
   // 源操作数真正被使用的判断(lui/auipc/jal的rs1字段是立即数,不算使用)
   val usesRs1 = IsRType || IsIType || IsSType || IsBType || IsCsrrw || IsCsrrs
   // 转发命中(EXU > MEM等待槽 > MEM级 > WBU: 多条同时命中时选最年轻生产者)
-  val ex_fwd_rs1 = io.ex_fwd_ready && io.ex_rd =/= 0.U && io.ex_rd === Rs1
+  val ex_fwd_rs1 =
+    usesRs1 && io.ex_fwd_ready && io.ex_rd =/= 0.U && io.ex_rd === Rs1
   val ex_fwd_rs2 =
     io.ex_fwd_ready && io.ex_rd =/= 0.U && needsRs2 && io.ex_rd === Rs2
-  val me2_fwd_rs1 = io.me2_fwd_ready && io.me2_rd =/= 0.U && io.me2_rd === Rs1
+  val me2_fwd_rs1 =
+    usesRs1 && io.me2_fwd_ready && io.me2_rd =/= 0.U && io.me2_rd === Rs1
   val me2_fwd_rs2 =
     io.me2_fwd_ready && io.me2_rd =/= 0.U && needsRs2 && io.me2_rd === Rs2
-  val me_fwd_rs1 = io.me_fwd_ready && io.me_rd =/= 0.U && io.me_rd === Rs1
+  val me_fwd_rs1 =
+    usesRs1 && io.me_fwd_ready && io.me_rd =/= 0.U && io.me_rd === Rs1
   val me_fwd_rs2 =
     io.me_fwd_ready && io.me_rd =/= 0.U && needsRs2 && io.me_rd === Rs2
   val wb_fwd_rs1 =
-    io.wb_valid && io.wb_regWrite && io.wb_rd =/= 0.U && io.wb_rd === Rs1
+    usesRs1 && io.wb_valid && io.wb_regWrite && io.wb_rd =/= 0.U &&
+      io.wb_rd === Rs1
   val wb_fwd_rs2 =
     io.wb_valid && io.wb_regWrite && io.wb_rd =/= 0.U && needsRs2 && io.wb_rd === Rs2
   val src1 = Mux(
@@ -221,11 +226,16 @@ class ysyx_26030103_IDU(
     ((usesRs1 && io.me2_rd === Rs1) || (needsRs2 && io.me2_rd === Rs2))
   val me_hazard = io.me_valid && io.me_regWrite && io.me_rd =/= 0.U &&
     ((usesRs1 && io.me_rd === Rs1) || (needsRs2 && io.me_rd === Rs2))
+  // Only the oldest MDU instruction is represented by the normal EX hazard
+  // port.  Any younger queued MDU producer has no forwardable value yet.
+  val hidden_mdu_hazard =
+    (usesRs1 && Rs1 =/= 0.U && io.ex_mdu_hidden_writes(Rs1)) ||
+      (needsRs2 && Rs2 =/= 0.U && io.ex_mdu_hidden_writes(Rs2))
   // 只有生产者的数据未就绪(load未完成)才需要阻塞,其余全部转发
   val isRAW = Mux(
     io.pipeline_mode,
     (ex_hazard && !io.ex_fwd_ready) || (me2_hazard && !io.me2_fwd_ready) ||
-      (me_hazard && !io.me_fwd_ready),
+      (me_hazard && !io.me_fwd_ready) || hidden_mdu_hazard,
     false.B
   )
   io.in.ready := io.out.ready && !isRAW

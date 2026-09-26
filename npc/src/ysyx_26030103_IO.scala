@@ -141,6 +141,7 @@ class ysyx_26030103_IO extends Bundle {
   val perf_mdu_req = Output(Bool())
   val perf_mdu_done = Output(Bool())
   val perf_mdu_op = Output(UInt(3.W))
+  val perf_exu_event_kind = Output(UInt(3.W))
   val perf_mdu_active = Output(Bool())
   val perf_mdu_wait = Output(Bool())
   val perf_ifu_stall_pipeline = Output(Bool())

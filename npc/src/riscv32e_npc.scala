@@ -397,6 +397,8 @@ class riscv32e_npc_SimTop extends Module {
   perf_mdu_done := cpu.io.perf_mdu_done
   val perf_mdu_op = IO(Output(UInt(3.W)))
   perf_mdu_op := cpu.io.perf_mdu_op
+  val perf_exu_event_kind = IO(Output(UInt(3.W)))
+  perf_exu_event_kind := cpu.io.perf_exu_event_kind
   val perf_mdu_active = IO(Output(Bool()))
   perf_mdu_active := cpu.io.perf_mdu_active
   val perf_mdu_wait = IO(Output(Bool()))

@@ -207,6 +207,8 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     perf_mdu_done := cpu.module.perf_mdu_done
     val perf_mdu_op = IO(Output(UInt(3.W)))
     perf_mdu_op := cpu.module.perf_mdu_op
+    val perf_exu_event_kind = IO(Output(UInt(3.W)))
+    perf_exu_event_kind := cpu.module.perf_exu_event_kind
     val perf_mdu_active = IO(Output(Bool()))
     perf_mdu_active := cpu.module.perf_mdu_active
     val perf_mdu_wait = IO(Output(Bool()))
@@ -478,6 +480,8 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     perf_mdu_done := masic.perf_mdu_done
     val perf_mdu_op = IO(Output(UInt(3.W)))
     perf_mdu_op := masic.perf_mdu_op
+    val perf_exu_event_kind = IO(Output(UInt(3.W)))
+    perf_exu_event_kind := masic.perf_exu_event_kind
     val perf_mdu_active = IO(Output(Bool()))
     perf_mdu_active := masic.perf_mdu_active
     val perf_mdu_wait = IO(Output(Bool()))

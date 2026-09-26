@@ -45,6 +45,10 @@ class ysyx_26030103_EXU(
     val PerfMDUReq = Output(Bool())
     val PerfMDUDone = Output(Bool())
     val PerfMDUOp = Output(UInt(ysyx_26030103_MDUOp.Width.W))
+    // 0=none, 1=ALU, 2=MEM, 3=CSR, 4=BRANCH, 5=JAL, 6=JALR, 7=MDU.
+    // This is a pre-edge event; the existing perf_* type signals remain
+    // level signals for active-cycle statistics.
+    val PerfEventKind = Output(UInt(3.W))
     val PerfMDUActive = Output(Bool())
     val PerfMDUWait = Output(Bool())
     val PerfExecutionActive = Output(Bool())
@@ -61,6 +65,9 @@ class ysyx_26030103_EXU(
     val HazardRd = Output(UInt(5.W))
     val HazardRegWrite = Output(Bool())
     val HazardMemOp = Output(Bool())
+    // Writes belonging to queued MDU instructions other than the queue head.
+    // IDU cannot forward these values yet and must stall matching consumers.
+    val HazardMDUHiddenWrites = Output(UInt(32.W))
     val PerfIdleNoInput = Output(Bool())
     val PerfTrap = Output(Bool())
     // 转发给IDU: EX阶段生产者的最终写回值,以及该值当前是否可用于转发
@@ -89,10 +96,20 @@ class ysyx_26030103_EXU(
   CSRUnit.io.Interrupt := io.Interrupt
   val BranchComparatorUnit = Module(new ysyx_26030103_BranchComparator)
   val inst = io.in.bits
-  // MDU 只有一个在途事务。M 指令先由 EXU 内部接收 Req，期间保持
-  // IDU->EXU 的输入不 fire；Resp 与 EXU 输出同拍握手时才消费该输入。
-  val PendingMDU = RegInit(false.B)
-  val PendingMDUInst = Reg(chiselTypeOf(io.in.bits))
+  // MDU requests are kept in an in-order instruction queue.  This allows a
+  // pipelined multiplier to accept consecutive M instructions while the
+  // oldest result is still waiting for the LSU/WBU stage.
+  private val MDUQueueDepth = config.MDUMaxInflight
+  private val MDUQueuePtrWidth = log2Ceil(MDUQueueDepth).max(1)
+  private val MDUQueueCountWidth = log2Ceil(MDUQueueDepth + 1)
+  private val MDUInstQueue = RegInit(
+    VecInit(Seq.fill(MDUQueueDepth)(0.U.asTypeOf(chiselTypeOf(io.in.bits))))
+  )
+  private val MDUQueueHead = RegInit(0.U(MDUQueuePtrWidth.W))
+  private val MDUQueueTail = RegInit(0.U(MDUQueuePtrWidth.W))
+  private val MDUQueueCount = RegInit(0.U(MDUQueueCountWidth.W))
+  val PendingMDU = MDUQueueCount =/= 0.U
+  val PendingMDUInst = MDUInstQueue(MDUQueueHead)
   // 上游随指令传来的异常标记(IFU取指错cause=1/IDU非法指令cause=2)
   val UpEx = inst.ExceptionValid
 
@@ -138,43 +155,84 @@ class ysyx_26030103_EXU(
   val BlockIrqForMEM = io.MEMBusy && CSRUnit.io.IrqPending
   val BlockForMEM = (io.MEMBusy && IsSideEffect) || BlockIrqForMEM
 
-  // MDU 的 Flush 必须同时屏蔽旧 Resp；访存故障提交时，正在 EXU 中等待的
-  // M 指令属于年轻指令，不能在故障冲刷后泄漏到 MEM/WB。
+  // MDU 的 Flush 必须同时屏蔽旧 Resp；访存故障提交时，所有已经接收的
+  // 年轻 M 指令都属于待取消事务，不能在故障冲刷后泄漏到 MEM/WB。
   MDUUnit.io.Flush := io.MemTrapCommit
-  MDUUnit.io.Req.valid := io.in.valid && IsMDUInstruction && !PendingMDU
   MDUUnit.io.Req.bits.LHS := inst.ALU_A
   MDUUnit.io.Req.bits.RHS := inst.ALU_B
   MDUUnit.io.Req.bits.MDUOp := inst.MDUOp
 
-  // Resp.ready 只在输出可以提交时拉高，使 MDU 结果在 backpressure 下保持；
-  // 输入 ready 也只在这一拍拉高，从而令 Resp.fire == exu.out.fire == in.fire。
-  // Pending MDU的完成拍同样是IRQ提交点，不能绕过MEM排空约束。
+  // Resp.ready 只在输出可以提交时拉高，使最老 MDU 结果在 backpressure 下保持。
+  // 若IRQ在更老MEM尚未排空时到达，MDU结果也必须等待；MEM排空后先按序
+  // 退休这个已发射的MDU，IRQ再在下一条输入指令边界提交。
   val BlockPendingMDUForMEM =
     io.MEMBusy && CSRUnit.io.IrqPending
-  MDUUnit.io.Resp.ready := PendingMDU && io.out.ready &&
+  val MDURespReady = PendingMDU && io.out.ready &&
     !io.MemTrapCommit && !BlockPendingMDUForMEM
+  MDUUnit.io.Resp.ready := MDURespReady
+  val MDURespFire = MDUUnit.io.Resp.valid && MDURespReady
+  val MDUQueueHasSpace = MDUQueueCount < MDUQueueDepth.U || MDURespFire
+  // An IRQ may retire the current input at an instruction boundary.  Consume
+  // that M input so the interrupt can commit, but do not start an MDU request;
+  // once older MDU work exists, hold the input until the queue has drained.
+  val MDUInputBlockedByIRQ =
+    IsMDUInstruction && CSRUnit.io.IrqPending && !io.MemTrapCommit
+  // A not-yet-issued M instruction may be consumed and replayed after IRQ only
+  // once every older MEM instruction has drained.  Otherwise the MDU-specific
+  // ready path would bypass BlockIrqForMEM and violate precise trap ordering.
+  val MDUInputKilledByIRQ =
+    MDUInputBlockedByIRQ && !PendingMDU && !io.MEMBusy
+  val MDUReqReady = IsMDUInstruction && !MDUInputBlockedByIRQ &&
+    MDUQueueHasSpace && MDUUnit.io.Req.ready
+  MDUUnit.io.Req.valid := io.in.valid && IsMDUInstruction &&
+    !MDUInputBlockedByIRQ && MDUQueueHasSpace
   val MDUReqFire = MDUUnit.io.Req.valid && MDUUnit.io.Req.ready
-  val MDURespFire = MDUUnit.io.Resp.valid && MDUUnit.io.Resp.ready
+  assert(!MDUReqFire || MDUQueueHasSpace, "EXU MDU instruction queue overflow")
+  assert(!MDURespFire || PendingMDU, "EXU received an MDU response without an instruction")
+  assert(MDUQueueCount <= MDUQueueDepth.U, "EXU MDU instruction queue overflowed")
 
   io.in.ready := Mux(
-    PendingMDU,
-    MDUUnit.io.Resp.valid && io.out.ready && !io.MemTrapCommit &&
-      !BlockPendingMDUForMEM,
-    Mux(IsMDUInstruction, false.B, io.out.ready && !BlockForMEM)
+    IsMDUInstruction,
+    Mux(MDUInputKilledByIRQ, true.B, MDUReqReady),
+    // A pending MDU result occupies the single output slot this cycle.  A
+    // younger non-MDU instruction must stay in the IDU->EXU register until
+    // that result has been emitted; accepting it here would consume it
+    // without ever producing its EXU output.
+    !PendingMDU && io.out.ready && !BlockForMEM
   )
   io.out.valid := Mux(
     PendingMDU,
     MDUUnit.io.Resp.valid && !io.MemTrapCommit && !BlockPendingMDUForMEM,
-    io.in.valid && !IsMDUInstruction && !BlockForMEM
+    io.in.valid && !IsMDUInstruction && !PendingMDU && !BlockForMEM
   )
 
+  val NextMDUQueueTail = Mux(
+    MDUQueueTail === (MDUQueueDepth - 1).U,
+    0.U,
+    MDUQueueTail + 1.U
+  )
+  val NextMDUQueueHead = Mux(
+    MDUQueueHead === (MDUQueueDepth - 1).U,
+    0.U,
+    MDUQueueHead + 1.U
+  )
   when(io.MemTrapCommit) {
-    PendingMDU := false.B
-  }.elsewhen(MDUReqFire) {
-    PendingMDUInst := inst
-    PendingMDU := true.B
-  }.elsewhen(MDURespFire) {
-    PendingMDU := false.B
+    MDUQueueCount := 0.U
+    MDUQueueHead := 0.U
+    MDUQueueTail := 0.U
+  }.elsewhen(MDUReqFire || MDURespFire) {
+    when(MDUReqFire) {
+      MDUInstQueue(MDUQueueTail) := inst
+      MDUQueueTail := NextMDUQueueTail
+    }
+    when(MDURespFire) {
+      MDUQueueHead := NextMDUQueueHead
+    }
+    when(MDUReqFire && !MDURespFire) {
+      MDUQueueCount := MDUQueueCount + 1.U
+    }.elsewhen(!MDUReqFire && MDURespFire) {
+      MDUQueueCount := MDUQueueCount - 1.U
+    }
   }
 
   val ActiveInst = Wire(chiselTypeOf(io.in.bits))
@@ -182,11 +240,25 @@ class ysyx_26030103_EXU(
   when(PendingMDU) {
     ActiveInst := PendingMDUInst
   }
-  CSRUnit.io.IsCsrrw := inst.IsCsrrw && !InstructionTrapValid
-  CSRUnit.io.IsCsrrs := inst.IsCsrrs && !InstructionTrapValid
-  CSRUnit.io.IsEcall := inst.IsEcall && !InstructionTrapValid
-  CSRUnit.io.IsEbreak := inst.IsEbreak && !InstructionTrapValid
-  CSRUnit.io.IsMret := inst.IsMret && !InstructionTrapValid
+  val ActiveInstructionTrapValid = Mux(
+    PendingMDU,
+    ActiveInst.ExceptionValid,
+    InstructionTrapValid
+  )
+  val ActiveExceptionCause = Mux(
+    PendingMDU,
+    ActiveInst.ExceptionCause,
+    Mux(
+      InstructionAddressMisaligned,
+      0.U,
+      ActiveInst.ExceptionCause
+    )
+  )
+  CSRUnit.io.IsCsrrw := !PendingMDU && inst.IsCsrrw && !InstructionTrapValid
+  CSRUnit.io.IsCsrrs := !PendingMDU && inst.IsCsrrs && !InstructionTrapValid
+  CSRUnit.io.IsEcall := !PendingMDU && inst.IsEcall && !InstructionTrapValid
+  CSRUnit.io.IsEbreak := !PendingMDU && inst.IsEbreak && !InstructionTrapValid
+  CSRUnit.io.IsMret := !PendingMDU && inst.IsMret && !InstructionTrapValid
   CSRUnit.io.CSRAddress := inst.CSRAddress
   CSRUnit.io.rs1 := inst.Rs1
   CSRUnit.io.Rs1Data := inst.Rs1Data
@@ -225,10 +297,10 @@ class ysyx_26030103_EXU(
   // FlushEXMEM而被“放行”也不能再提交自己的CSR/MRET副作用。
   // 普通load/store不经由CSR单元提交，但IRQ pending时必须允许IRQ
   // 在该访存执行前的指令边界提交；后面会用IrqCommit压掉访存副作用。
-  CSRUnit.io.Enable := io.in.fire && (!IsMemoryForCommit || CSRUnit.io.IrqPending) &&
-    !io.MemTrapCommit
+  CSRUnit.io.Enable := io.in.fire && !PendingMDU &&
+    (!IsMemoryForCommit || CSRUnit.io.IrqPending) && !io.MemTrapCommit
   CSRUnit.io.MemTrap := io.MemTrapCommit
-  CSRUnit.io.TrapValid := InstructionTrapValid
+  CSRUnit.io.TrapValid := !PendingMDU && InstructionTrapValid
   CSRUnit.io.TrapCause := Mux(
     io.MemTrapCommit,
     io.MemTrapCause,
@@ -242,8 +314,17 @@ class ysyx_26030103_EXU(
   // 当前EXU指令只有在真正被接受、且没有被更老的访存故障或中断
   // 抢占时才算提交。预测器和当前指令产生的控制副作用统一使用它。
   val InstructionCommit =
-    io.in.fire && !InstructionTrapValid && !io.MemTrapCommit &&
+    io.in.fire && !PendingMDU && !InstructionTrapValid && !io.MemTrapCommit &&
       !CSRUnit.io.IrqCommit
+  // Performance events describe the instruction currently being emitted to
+  // the next stage, not whatever younger input happens to be presented while
+  // a pending MDU result is being drained.
+  val ActiveCommit = Mux(
+    PendingMDU,
+    MDURespFire && !io.MemTrapCommit && !CSRUnit.io.IrqCommit,
+    io.out.fire && !ActiveInstructionTrapValid && !io.MemTrapCommit &&
+      !CSRUnit.io.IrqCommit
+  )
 
   io.SimHaltValid := InstructionCommit && inst.IsSimHalt
   io.SimHaltPC := inst.pc
@@ -268,7 +349,7 @@ class ysyx_26030103_EXU(
   io.out.bits.Instruction := ActiveInst.Instruction
   // 同步异常指令不退休；IRQ抢占的指令会从mepc重做，也不退休。
   // load/store先携带退休意图进入MEM，若总线故障则由LSU清除。
-  io.out.bits.Retire := !InstructionTrapValid && !ActiveInst.IsEcall &&
+  io.out.bits.Retire := !ActiveInstructionTrapValid && !ActiveInst.IsEcall &&
     !ActiveInst.IsEbreak && !ActiveInst.IsSimHalt && !CSRUnit.io.IrqCommit &&
     !io.MemTrapCommit
   io.out.bits.pc := ActiveInst.pc
@@ -279,8 +360,8 @@ class ysyx_26030103_EXU(
   io.out.bits.Rd := ActiveInst.Rd
   // 带异常标记的指令不得写回GPR;被中断压掉的指令(IrqCommit)也不得写回
   io.out.bits.RegisterWrite :=
-    ActiveInst.RegisterWrite && !InstructionTrapValid && !CSRUnit.io.IrqCommit &&
-      !io.MemTrapCommit
+    ActiveInst.RegisterWrite && !ActiveInstructionTrapValid &&
+      !CSRUnit.io.IrqCommit && !io.MemTrapCommit
   io.out.bits.WBSelect := ActiveInst.WBSelect
   io.out.bits.ALUResult := Mux(PendingMDU, MDUUnit.io.Resp.bits.Result, ALUUnit.io.result)
   io.out.bits.LoadData := 0.U(32.W) // 由MEM在访存完成后填写
@@ -290,20 +371,50 @@ class ysyx_26030103_EXU(
   io.out.bits.CSRStateMepc := CSRUnit.io.StateMepc
   io.out.bits.CSRStateMcause := CSRUnit.io.StateMcause
   io.out.bits.MemoryValid :=
-    ActiveInst.MemoryValid && !InstructionTrapValid && !CSRUnit.io.IrqCommit &&
-      !io.MemTrapCommit
-  io.out.bits.MemoryWrite := ActiveInst.MemoryWrite && !InstructionTrapValid &&
-    !CSRUnit.io.IrqCommit && !io.MemTrapCommit
+    ActiveInst.MemoryValid && !ActiveInstructionTrapValid &&
+      !CSRUnit.io.IrqCommit && !io.MemTrapCommit
+  io.out.bits.MemoryWrite :=
+    ActiveInst.MemoryWrite && !ActiveInstructionTrapValid &&
+      !CSRUnit.io.IrqCommit && !io.MemTrapCommit
   io.out.bits.WidthSelect := ActiveInst.WidthSelect
   io.out.bits.LoadSigned := ActiveInst.LoadSigned
   io.out.bits.StoreData := ActiveInst.StoreData
-  io.out.bits.ExceptionValid := InstructionTrapValid
-  io.out.bits.ExceptionCause := Mux(
-    InstructionAddressMisaligned,
-    0.U(4.W),
-    ActiveInst.ExceptionCause
-  )
+  io.out.bits.ExceptionValid := ActiveInstructionTrapValid
+  io.out.bits.ExceptionCause := ActiveExceptionCause
 
+  val PerfAluEligible = ActiveCommit &&
+    !ActiveInst.MemoryValid && !ActiveInst.IsMDU && !ActiveInst.IsCsrrw &&
+    !ActiveInst.IsCsrrs && !ActiveInst.IsBranch && !ActiveInst.IsJal &&
+    !ActiveInst.IsJalr && !ActiveInst.IsEcall && !ActiveInst.IsEbreak &&
+    !ActiveInst.IsMret && !ActiveInst.IsSimHalt && !ActiveInst.IsFence &&
+    !ActiveInst.IsFenceI && !ActiveInst.ExceptionValid
+  val PerfEventKind = Mux(
+    !ActiveCommit,
+    0.U,
+    Mux(
+      ActiveInst.IsMDU,
+      7.U,
+      Mux(
+        ActiveInst.MemoryValid,
+        2.U,
+        Mux(
+          ActiveInst.IsCsrrw || ActiveInst.IsCsrrs,
+          3.U,
+          Mux(
+            ActiveInst.IsJal,
+            5.U,
+            Mux(
+              ActiveInst.IsJalr,
+              6.U,
+              Mux(ActiveInst.IsBranch, 4.U, Mux(PerfAluEligible, 1.U, 0.U))
+            )
+          )
+        )
+      )
+    )
+  )
+  // Keep the historical type levels for active-cycle statistics.  The
+  // pre-edge PerfEventKind above is used for one-shot operation counters.
   io.PerfALUOp := !inst.MemoryValid && !inst.IsMDU && !inst.IsCsrrw &&
     !inst.IsCsrrs && !inst.IsBranch && !inst.IsJal && !inst.IsJalr
   io.PerfMemOp := inst.MemoryValid
@@ -311,8 +422,9 @@ class ysyx_26030103_EXU(
   io.PerfBranchOp := inst.IsBranch || inst.IsJal || inst.IsJalr
   io.PerfJalOp := inst.IsJal
   io.PerfJalrOp := inst.IsJalr
+  io.PerfEventKind := PerfEventKind
   io.PerfMDUReq := MDUReqFire
-  io.PerfMDUDone := io.out.fire && ActiveInst.IsMDU && !ActiveInst.ExceptionValid && !io.MemTrapCommit
+  io.PerfMDUDone := ActiveCommit && ActiveInst.IsMDU && !ActiveInst.ExceptionValid
   io.PerfMDUOp := ActiveInst.MDUOp
   io.PerfMDUActive := PendingMDU
   io.PerfMDUWait := PendingMDU && !(MDUUnit.io.Resp.valid && MDUUnit.io.Resp.ready)
@@ -327,9 +439,33 @@ class ysyx_26030103_EXU(
   io.HazardRd := ActiveInst.Rd
   // 带异常标记的指令不会真正写回,不应让IDU白白等它;被中断压掉的指令同理
   io.HazardRegWrite :=
-    ActiveInst.RegisterWrite && !InstructionTrapValid && !CSRUnit.io.IrqCommit &&
-      !io.MemTrapCommit
+    ActiveInst.RegisterWrite && !ActiveInstructionTrapValid &&
+      !CSRUnit.io.IrqCommit && !io.MemTrapCommit
   io.HazardMemOp := ActiveInst.MemoryValid
+  // The existing single hazard/forward port describes the MDU queue head.
+  // Build a mask for every younger queued writer plus a current MDU input which
+  // is waiting to enter the queue.  This prevents IDU from permanently
+  // snapshotting stale operands when independent multiplies are issued at II=1.
+  var HiddenMDUWriteMask: UInt = 0.U(32.W)
+  for (Offset <- 1 until MDUQueueDepth) {
+    val ExtendedHead = Cat(0.U(1.W), MDUQueueHead)
+    val RawIndex = ExtendedHead + Offset.U((MDUQueuePtrWidth + 1).W)
+    val WrappedIndex = Mux(
+      RawIndex >= MDUQueueDepth.U,
+      RawIndex - MDUQueueDepth.U,
+      RawIndex
+    )
+    val Entry = MDUInstQueue(WrappedIndex(MDUQueuePtrWidth - 1, 0))
+    val EntryWrites = Offset.U < MDUQueueCount && Entry.RegisterWrite &&
+      Entry.Rd =/= 0.U
+    HiddenMDUWriteMask = HiddenMDUWriteMask |
+      Mux(EntryWrites, UIntToOH(Entry.Rd, 32), 0.U(32.W))
+  }
+  val CurrentMDUWrite = PendingMDU && io.in.valid && IsMDUInstruction &&
+    inst.RegisterWrite && inst.Rd =/= 0.U
+  val CurrentMDUWriteMask =
+    Mux(CurrentMDUWrite, UIntToOH(inst.Rd, 32), 0.U(32.W))
+  io.HazardMDUHiddenWrites := HiddenMDUWriteMask | CurrentMDUWriteMask
   io.PerfIdleNoInput := !io.in.valid && !PendingMDU
   io.PerfTrap := CSRUnit.io.TrapCommit
   // 转发给IDU的最终写回值(与WBU写GPR的值一致): ALU结果/snpc/CSR读出
@@ -345,7 +481,7 @@ class ysyx_26030103_EXU(
   )
   // 可转发条件: 会写rd,且不是load(load要等MEM完成)
   io.FwdReady := io.HazardValid && io.HazardRegWrite && !ActiveInst.MemoryValid &&
-    (!IsMDUInstruction || MDUUnit.io.Resp.valid)
+    (!ActiveInst.IsMDU || MDUUnit.io.Resp.valid)
 
   // BTB更新: 所有分支指令提交时都写回PC→target(不管是否taken),
   // 供IFU查BTB命中后用BTFN(target<PC=后向则taken)做方向预测.

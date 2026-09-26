@@ -171,6 +171,10 @@ case class ysyx_26030103_NPCConfig(
 ) {
   require(!UseA, "RV32_A还没有做")
   require(!UseC, "RV32_C还没做")
+  require(
+    AddressWidth == 32,
+    "当前RV32核的PC/PMA/流水线消息固定为32位；暂不支持非32位AddressWidth"
+  )
   require((ResetAddr & 0x3L) == 0L, "未启用RV32_C时ResetAddr必须按4字节对齐")
   require(PMARegions.nonEmpty, "物理地址图不能为空")
   require(
@@ -210,6 +214,14 @@ case class ysyx_26030103_NPCConfig(
   require(MULIterBits >= 1 && MULIterBits <= 8, "MULIterBits必须在1到8之间")
   require(MULPipeline >= 0 && MULPipeline <= 4, "MULPipeline必须在0到4之间")
   require(MULSplit >= 1 && MULSplit <= 4, "MULSplit必须在1到4之间")
+  // Compression-tree cores contain MULPipeline+1 elastic result slots.  The
+  // iterative shift-add core remains single-outstanding regardless of that
+  // otherwise inapplicable setting.  MDU adds one independent DIV slot.
+  final val MULMaxInflight: Int = MULImpl match {
+    case ysyx_26030103_MULImpl.ShiftAdd => 1
+    case _                              => MULPipeline + 1
+  }
+  final val MDUMaxInflight: Int = MULMaxInflight + 1
   private def OnOff(Flag: Boolean): String = {
     if (Flag) { "on" }
     else { "off" }

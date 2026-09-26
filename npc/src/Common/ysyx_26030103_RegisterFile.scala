@@ -4,6 +4,8 @@ class ysyx_26030103_RegisterFile(
     val ADDR_WIDTH: Int = 1,
     val DATA_WIDTH: Int = 1
 ) extends Module {
+  require(ADDR_WIDTH >= 1, "RegisterFile ADDR_WIDTH必须至少为1")
+  require(DATA_WIDTH >= 1, "RegisterFile DATA_WIDTH必须至少为1")
   val io = IO(new Bundle {
     val wdata = Input(UInt(DATA_WIDTH.W))
     val waddr = Input(UInt(ADDR_WIDTH.W))
@@ -22,7 +24,11 @@ class ysyx_26030103_RegisterFile(
   }
   io.rdata1 := ysyx_26030103_RegisterFile(io.raddr1)
   io.rdata2 := ysyx_26030103_RegisterFile(io.raddr2)
-  io.debug_a0 := ysyx_26030103_RegisterFile(10.U)
+  io.debug_a0 := (if ((1 << ADDR_WIDTH) > 10) {
+    ysyx_26030103_RegisterFile(10.U)
+  } else {
+    0.U(DATA_WIDTH.W)
+  })
   io.debug_rdata := Mux(
     io.debug_raddr === 0.U,
     0.U(DATA_WIDTH.W),

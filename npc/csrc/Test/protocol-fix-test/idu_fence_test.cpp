@@ -24,6 +24,7 @@ static void defaults(DUT &dut) {
   dut.io_ex_memop = 0;
   dut.io_ex_fwd_ready = 0;
   dut.io_ex_fwd_data = 0;
+  dut.io_ex_mdu_hidden_writes = 0;
   dut.io_wb_fwd_data = 0;
   dut.io_me_valid = 0;
   dut.io_me_rd = 0;
@@ -68,8 +69,7 @@ int main(int argc, char **argv) {
     DUT dut;
     defaults(dut);
 
-    expect_fence(dut, fence_encoding(0, 0xf, 0xf, 0, 0),
-                 "canonical FENCE");
+    expect_fence(dut, fence_encoding(0, 0xf, 0xf, 0, 0), "canonical FENCE");
 
     // Base implementations ignore rd and rs1.  Also present matching pending
     // register writes: these fields must not accidentally create RAW hazards.
@@ -88,6 +88,22 @@ int main(int argc, char **argv) {
                  "FENCE with reserved fm encoding");
     expect_fence(dut, fence_encoding(8, 0x3, 0x3, 0, 0),
                  "FENCE.TSO conservatively implemented as a full FENCE");
+
+    // ADD x3,x5,x0 depends on a younger, non-head MDU write to x5.  That
+    // producer has no result on the single EX forwarding port yet, so the
+    // scoreboard mask must hold the consumer until the queued write retires.
+    dut.io_in_bits_Instruction = 0x000281b3U;
+    dut.io_ex_mdu_hidden_writes = 1U << 5;
+    dut.eval();
+    check(!dut.io_in_ready && !dut.io_out_valid && dut.io_perf_stall_raw,
+          "IDU ignored a hidden queued-MDU RAW dependency");
+    check(!dut.io_perf_stall_raw_loaduse,
+          "queued-MDU RAW dependency was misclassified as load-use");
+
+    dut.io_ex_mdu_hidden_writes = 0;
+    dut.eval();
+    check(dut.io_in_ready && dut.io_out_valid,
+          "IDU remained stalled after the hidden MDU writer retired");
     dut.final();
   });
 }

@@ -73,6 +73,7 @@ class ysyx_26030103 extends BlackBox {
     val io_perf_mdu_req    = Output(Bool())
     val io_perf_mdu_done   = Output(Bool())
     val io_perf_mdu_op     = Output(UInt(3.W))
+    val io_perf_exu_event_kind = Output(UInt(3.W))
     val io_perf_mdu_active = Output(Bool())
     val io_perf_mdu_wait   = Output(Bool())
     val io_perf_ifu_stall_pipeline = Output(Bool())
@@ -226,6 +227,8 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     perf_mdu_done := cpu.io.io_perf_mdu_done
     val perf_mdu_op = IO(Output(UInt(3.W)))
     perf_mdu_op := cpu.io.io_perf_mdu_op
+    val perf_exu_event_kind = IO(Output(UInt(3.W)))
+    perf_exu_event_kind := cpu.io.io_perf_exu_event_kind
     val perf_mdu_active = IO(Output(Bool()))
     perf_mdu_active := cpu.io.io_perf_mdu_active
     val perf_mdu_wait = IO(Output(Bool()))

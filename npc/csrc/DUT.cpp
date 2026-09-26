@@ -118,6 +118,19 @@ void DUT::step()
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
     tfp.dump(cycle * 2);
 #endif
+#ifdef CONFIG_PERF_STATS
+    // These are combinational/pre-edge events.  Sample them before the rising
+    // edge; several are intentionally cleared or replaced by that edge.
+    const bool perf_event_ifu_fetch = dut->perf_ifu_fetch;
+    const bool perf_event_exu_done = dut->perf_exu_done;
+    const bool perf_event_lsu_load = dut->perf_lsu_load;
+    const bool perf_event_lsu_store = dut->perf_lsu_store;
+    const bool perf_event_mdu_req = dut->perf_mdu_req;
+    const bool perf_event_mdu_done = dut->perf_mdu_done;
+    const auto perf_event_mdu_op = dut->perf_mdu_op;
+    const auto perf_event_kind = dut->perf_exu_event_kind;
+    const bool perf_event_redirect = dut->perf_ifu_stall_redirect;
+#endif
     dut->clock = 1;
     dut->eval();
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
@@ -184,7 +197,7 @@ void DUT::step()
     {
         ++instructions;
     }
-    if (dut->perf_ifu_fetch)
+    if (perf_event_ifu_fetch)
     {
         ++perf.instruction_fetch;
     }
@@ -196,20 +209,20 @@ void DUT::step()
            << std::dec;
     }
 #endif
-    if (dut->perf_exu_done)
+    if (perf_event_exu_done)
     {
         ++perf.execution_complete;
     }
 #ifdef CONFIG_RV32_M
     // M扩展关闭时译码不出M指令, 这些信号恒为0, 不再逐拍采集
-    if (dut->perf_mdu_req)
+    if (perf_event_mdu_req)
     {
         ++perf.mdu_request;
     }
-    if (dut->perf_mdu_done)
+    if (perf_event_mdu_done)
     {
         ++perf.mdu_complete;
-        switch (static_cast<unsigned>(dut->perf_mdu_op))
+        switch (static_cast<unsigned>(perf_event_mdu_op))
         {
         case 0: ++perf.mdu_mul; break;
         case 1: ++perf.mdu_mulh; break;
@@ -231,40 +244,23 @@ void DUT::step()
         ++perf.mdu_wait_cycle;
     }
 #endif
-    if (dut->perf_lsu_load)
+    if (perf_event_lsu_load)
     {
         ++perf.load_data;
     }
-    if (dut->perf_lsu_store)
+    if (perf_event_lsu_store)
     {
         ++perf.store_data;
     }
-    if (dut->perf_exu_done)
+    switch (static_cast<unsigned>(perf_event_kind))
     {
-        if (dut->perf_alu_op)
-        {
-            ++perf.arithmetic_operation;
-        }
-        if (dut->perf_mem_op)
-        {
-            ++perf.memory_access_operation;
-        }
-        if (dut->perf_csr_op)
-        {
-            ++perf.control_status_register_operation;
-        }
-        if (dut->perf_branch_op)
-        {
-            ++perf.branch_operation;
-        }
-        if (dut->perf_jal_op)
-        {
-            ++perf.jal_operation;
-        }
-        if (dut->perf_jalr_op)
-        {
-            ++perf.jalr_operation;
-        }
+    case 1: ++perf.arithmetic_operation; break;
+    case 2: ++perf.memory_access_operation; break;
+    case 3: ++perf.control_status_register_operation; break;
+    case 4: ++perf.branch_operation; break;
+    case 5: ++perf.jal_operation; break;
+    case 6: ++perf.jalr_operation; break;
+    default: break;
     }
     if (dut->perf_ifu_stall_pipeline)
     {
@@ -282,7 +278,7 @@ void DUT::step()
     {
         ++perf.instruction_fetch_stall_r;
     }
-    if (dut->perf_ifu_stall_redirect)
+    if (perf_event_redirect)
     {
         ++perf.instruction_fetch_stall_redirect;
     }

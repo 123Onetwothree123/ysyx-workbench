@@ -282,8 +282,7 @@ void testIrqPreemptsCurrentMemoryAfterDrain() {
           label + " did not reach the post-MEM IRQ boundary");
     CHECK(tb.dut().io_ExceptionTaken,
           label + " was allowed past an already-pending IRQ");
-    CHECK(tb.dut().io_PerfTrap,
-          label + " IRQ entry was not counted as a trap");
+    CHECK(tb.dut().io_PerfTrap, label + " IRQ entry was not counted as a trap");
     CHECK(!tb.dut().io_out_bits_MemoryValid,
           label + " MemoryValid leaked through an IRQ commit");
     CHECK(!tb.dut().io_out_bits_MemoryWrite,
@@ -316,13 +315,14 @@ void testPendingMduWaitsForOlderMemory() {
   tb.dut().io_in_bits_Rd = 6;
   tb.eval();
   CHECK(tb.dut().io_PerfMDUReq, "MUL request was not accepted by the MDU");
-  CHECK(!tb.dut().io_in_ready,
-        "multi-cycle MUL input fired before its result was ready");
+  CHECK(tb.dut().io_in_ready,
+        "queued MUL request did not consume its EXU input");
   tb.tick();
 
-  // The producer keeps the original M instruction stable while EXU owns the
-  // request. Let the iterative 32-bit multiplier finish with an older memory
-  // operation and an enabled interrupt both present.
+  // The M request is now owned by EXU.  Present its younger successor while the
+  // iterative multiplier finishes with an older memory operation and an
+  // enabled interrupt both present.
+  tb.beginInstruction(0x80000054U);
   tb.dut().io_Interrupt = 1;
   tb.dut().io_MEMBusy = 1;
   for (int cycle = 0; cycle < 40; ++cycle) {
@@ -340,25 +340,30 @@ void testPendingMduWaitsForOlderMemory() {
 
   tb.dut().io_MEMBusy = 0;
   tb.eval();
-  CHECK(tb.dut().io_in_ready,
-        "completed MUL did not resume after the older MEM operation drained");
+  CHECK(!tb.dut().io_in_ready,
+        "younger input bypassed the completed queue-head MUL");
   CHECK(tb.dut().io_out_valid,
         "completed MUL result was not available after MEM drained");
   CHECK_EQ(tb.dut().io_out_bits_ALUResult, 63U, "held MUL result");
-  CHECK(tb.dut().io_ExceptionTaken,
-        "pending IRQ was not committed with the completed MUL");
+  CHECK(!tb.dut().io_ExceptionTaken,
+        "IRQ incorrectly preempted an already-issued completed MUL");
+  CHECK(tb.dut().io_out_bits_RegisterWrite && tb.dut().io_out_bits_Retire,
+        "completed MUL did not retire before the pending IRQ");
+
+  tb.tick();
+  tb.eval();
+  CHECK(tb.dut().io_in_ready && tb.dut().io_ExceptionTaken,
+        "pending IRQ was not accepted at the next instruction boundary");
   CHECK_EQ(tb.dut().io_ExceptionTarget, 0x00000100U, "pending-MDU IRQ target");
-  CHECK(!tb.dut().io_out_bits_RegisterWrite,
-        "interrupted MUL was allowed to write a register");
-  CHECK(!tb.dut().io_out_bits_Retire,
-        "interrupted MUL was marked retired");
+  CHECK(!tb.dut().io_out_bits_RegisterWrite && !tb.dut().io_out_bits_Retire,
+        "IRQ-preempted younger instruction leaked side effects");
 
   tb.tick();
   tb.driveIdle();
   tb.eval();
   CHECK_EQ(tb.csrRead(kMcause), kMachineTimerInterrupt,
            "pending-MDU IRQ mcause");
-  CHECK_EQ(tb.csrRead(kMepc), 0x80000050U, "pending-MDU IRQ mepc");
+  CHECK_EQ(tb.csrRead(kMepc), 0x80000054U, "pending-MDU IRQ mepc");
 }
 
 void testControlTransfersWaitForOlderMemory() {
@@ -474,8 +479,7 @@ void testRasHintsForX1AndX5() {
     CHECK(static_cast<bool>(tb.dut().io_JalBTBUpdateValid) == ret_btb,
           label + " produced the wrong return-BTB update");
     if (ret_btb) {
-      CHECK_EQ(tb.dut().io_JalBTBUpdateKind, 2U,
-               label + " return-BTB kind");
+      CHECK_EQ(tb.dut().io_JalBTBUpdateKind, 2U, label + " return-BTB kind");
     }
   };
 
@@ -521,10 +525,8 @@ void testBreakpointAndSimulationHaltAreDistinct() {
   tb.eval();
   CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
         "EBREAK did not reach the EXU commit point");
-  CHECK(tb.dut().io_ExceptionTaken,
-        "architectural EBREAK did not enter mtvec");
-  CHECK_EQ(tb.dut().io_ExceptionTarget, 0x00000100U,
-           "EBREAK trap target");
+  CHECK(tb.dut().io_ExceptionTaken, "architectural EBREAK did not enter mtvec");
+  CHECK_EQ(tb.dut().io_ExceptionTarget, 0x00000100U, "EBREAK trap target");
   CHECK(!tb.dut().io_SimHaltValid,
         "architectural EBREAK leaked into the simulator halt channel");
   CHECK(!tb.dut().io_out_bits_Retire,

@@ -1,0 +1,3 @@
+`ifndef layers_StageConnectHarness_Verification
+  `define layers_StageConnectHarness_Verification
+`endif

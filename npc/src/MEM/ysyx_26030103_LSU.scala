@@ -276,7 +276,7 @@ class ysyx_26030103_LSU(
       AXISize := 2.U // 四字节
     }
   }
-  val StateMachine = Enum(7)
+  val StateMachine = Enum(8)
   val StatesIdle = StateMachine(0)
   val StatesReadRequest = StateMachine(1)
   val StatesReadResponse = StateMachine(2)
@@ -284,6 +284,7 @@ class ysyx_26030103_LSU(
   val StatesLoadWaitBuf = StateMachine(4) // 读操作等待写缓冲排空
   val StatesDone = StateMachine(5)
   val StatesWriteWaitB = StateMachine(6) // 非普通内存写等待B响应
+  val StatesReadDrain = StateMachine(7) // 非法单拍读缺少RLAST时排空剩余响应
   val state = RegInit(StatesIdle)
   val DCacheRequestActive = RegInit(false.B)
   val AlignedWriteData = WireDefault(ActiveInstruction.StoreData) // 按地址低位对齐写数据
@@ -464,7 +465,10 @@ class ysyx_26030103_LSU(
   val wbWDone = RegInit(false.B)
   val wbAWfire = io.DataBus.AW.AWVALID && io.DataBus.AW.AWREADY
   val wbWfire = io.DataBus.W.WVALID && io.DataBus.W.WREADY
-  val wbPop = wbState === wbWaitB && io.DataBus.B.BVALID
+  val wbBMatch = io.DataBus.B.BID === 0.U
+  val wbBReady = wbState === wbWaitB
+  val wbBFire = wbBReady && io.DataBus.B.BVALID
+  val wbPop = wbBFire && wbBMatch
   // 写直达 DCache 不能在 store 入队时投机更新；否则外部写失败后
   // cache 会保留并不存在于内存的新值。只在成功 B 握手当拍更新。
   val wbCommitSuccess = wbPop && io.DataBus.B.BRESP === 0.U
@@ -501,10 +505,16 @@ class ysyx_26030103_LSU(
       }
     }
     is(wbWaitB) {
-      io.DataBus.B.BREADY := true.B
+      io.DataBus.B.BREADY := wbBReady
       // B 响应既决定写缓冲出队，也是 store 的精确退休点。
-      when(io.DataBus.B.BVALID) {
-        wbState := wbIdle
+      when(wbBFire) {
+        assert(
+          io.DataBus.B.BID === 0.U,
+          "LSU received a B response with an unexpected BID"
+        )
+        when(wbBMatch) {
+          wbState := wbIdle
+        }
       }
     }
   }
@@ -564,7 +574,7 @@ class ysyx_26030103_LSU(
     }
     is(StatesWriteWaitB) {
       // 等到自己的写事务拿到B响应: 之前的项都已按序完成, 队首就是本指令的项
-      when(wbState === wbWaitB && io.DataBus.B.BVALID && wbHead === storeBufIdx) {
+      when(wbPop && wbHead === storeBufIdx) {
         StoreFaultReg := io.DataBus.B.BRESP =/= 0.U
         AccessFaultRespReg := io.DataBus.B.BRESP
         state := StatesDone
@@ -646,7 +656,20 @@ class ysyx_26030103_LSU(
                 LoadDataReg := io.DataBus.R.RDATA
               }
             }
-            state := StatesDone
+            when(io.DataBus.R.RLAST) {
+              state := StatesDone
+            }.otherwise {
+              // The request is a single-beat AXI read, so a response without
+              // RLAST is a protocol error.  Keep consuming the channel until
+              // the offending burst is drained instead of retiring early.
+              AccessFaultReg := true.B
+              AccessFaultRespReg := Mux(
+                io.DataBus.R.RRESP =/= 0.U,
+                io.DataBus.R.RRESP,
+                2.U
+              )
+              state := StatesReadDrain
+            }
           }
         }
       } else {
@@ -685,8 +708,24 @@ class ysyx_26030103_LSU(
               LoadDataReg := io.DataBus.R.RDATA
             }
           }
-          state := StatesDone
+          when(io.DataBus.R.RLAST) {
+            state := StatesDone
+          }.otherwise {
+            AccessFaultReg := true.B
+            AccessFaultRespReg := Mux(
+              io.DataBus.R.RRESP =/= 0.U,
+              io.DataBus.R.RRESP,
+              2.U
+            )
+            state := StatesReadDrain
+          }
         }
+      }
+    }
+    is(StatesReadDrain) {
+      io.DataBus.R.RREADY := true.B
+      when(io.DataBus.R.RVALID && io.DataBus.R.RLAST) {
+        state := StatesDone
       }
     }
     // 这个就是开新的循环了
@@ -729,7 +768,7 @@ class ysyx_26030103_LSU(
   io.Active := state =/= StatesIdle
   io.IsStore := is_store_transaction
   io.StallReadAR := state === StatesReadRequest
-  io.StallReadR := state === StatesReadResponse
+  io.StallReadR := state === StatesReadResponse || state === StatesReadDrain
   io.StallWriteReq := state === StatesWriteWaitBuf
   io.StallWriteB := wbState === wbWaitB // 后台等B, 不再阻塞流水线, 仅供观测
 }
