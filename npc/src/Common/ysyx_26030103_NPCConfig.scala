@@ -125,6 +125,59 @@ object ysyx_26030103_DIVImpl {
     case other => throw new IllegalArgumentException(s"这个除法器没有实现: $other")
   }
 }
+object ysyx_26030103_NPCConfig {
+  /** 性能计数器分组 → 组内单计数器键。
+    *
+    * 键名与Kconfig符号后缀（PERF_COUNTER_<键大写>）、RTL端口后缀以及
+    * C++宏名（CONFIG_PERF_COUNTER_<键大写>）一一对应。
+    */
+  val PerfCounterGroups: Seq[(String, Seq[String])] = Seq(
+    "basic" -> Seq("ifu_fetch", "exu_done", "lsu_load", "lsu_store"),
+    "opclass" -> Seq(
+      "alu_op",
+      "mem_op",
+      "csr_op",
+      "branch_op",
+      "jal_op",
+      "jalr_op",
+      "execution_active"
+    ),
+    "mdu" -> Seq("mdu_req", "mdu_done", "mdu_op", "mdu_active", "mdu_wait"),
+    "ifu_stall" -> Seq(
+      "ifu_stall_pipeline",
+      "ifu_stall_axi",
+      "ifu_stall_ar",
+      "ifu_stall_r",
+      "ifu_stall_redirect",
+      "ifu_stall_idle"
+    ),
+    "icache" -> Seq("icache_hit", "icache_miss"),
+    "dcache" -> Seq(
+      "dcache_hit",
+      "dcache_miss",
+      "dcache_refill_req",
+      "dcache_refill_resp"
+    ),
+    "exu_stall" -> Seq("exu_stall_lsu", "exu_idle_noinput", "mem_waitslot"),
+    "lsu" -> Seq(
+      "lsu_active",
+      "lsu_load_active",
+      "lsu_store_active",
+      "lsu_stall_read_ar",
+      "lsu_stall_read_r",
+      "lsu_stall_write_req",
+      "lsu_stall_write_b"
+    ),
+    "idu_stall" -> Seq(
+      "idu_stall_raw",
+      "idu_stall_raw_loaduse",
+      "idu_stall_raw_alu"
+    ),
+    "trap" -> Seq("trap_count")
+  )
+  val AllPerfCounters: Set[String] = PerfCounterGroups.flatMap(_._2).toSet
+}
+
 case class ysyx_26030103_NPCConfig(
     UseM: Boolean = false,
     UseA: Boolean = false,
@@ -178,7 +231,23 @@ case class ysyx_26030103_NPCConfig(
     ITraceEnable: Boolean = true,
     FTraceEnable: Boolean = true,
     IRingBufEnable: Boolean = true,
-    PerfStatsEnable: Boolean = true
+    PerfStatsEnable: Boolean = true,
+    // 性能计数器细分：仅在PerfStatsEnable打开时有意义。关闭的组在顶层
+    // 输出常量，未被读取的叶模块信号会被综合展平/常量传播优化掉，
+    // 仿真侧也不再逐拍采样，从而同时节省面积与编译产物。
+    PerfCounterBasic: Boolean = true,
+    PerfCounterOpClass: Boolean = true,
+    PerfCounterMDU: Boolean = true,
+    PerfCounterIfuStall: Boolean = true,
+    PerfCounterICache: Boolean = true,
+    PerfCounterDCache: Boolean = true,
+    PerfCounterExuStall: Boolean = true,
+    PerfCounterLSU: Boolean = true,
+    PerfCounterIduStall: Boolean = true,
+    PerfCounterTrap: Boolean = true,
+    // 单计数器选择：键名如"ifu_fetch"/"mdu_req"。实际生效集合还要与
+    // 主开关及所属组总开关相与（见EnabledPerfCounters）。
+    PerfCounters: Set[String] = ysyx_26030103_NPCConfig.AllPerfCounters
 ) {
   require(!UseA, "RV32_A还没有做")
   require(!UseC, "RV32_C还没做")
@@ -266,6 +335,46 @@ case class ysyx_26030103_NPCConfig(
   final val EnableMemoryTrace: Boolean =
     SDBEnable || DiffTestEnable || MTraceEnable
   final val EnablePerfTrace: Boolean = PerfStatsEnable
+  // 性能计数器分组总开关。
+  private val PerfCounterGroupFlags: Map[String, Boolean] = Map(
+    "basic" -> PerfCounterBasic,
+    "opclass" -> PerfCounterOpClass,
+    "mdu" -> PerfCounterMDU,
+    "ifu_stall" -> PerfCounterIfuStall,
+    "icache" -> PerfCounterICache,
+    "dcache" -> PerfCounterDCache,
+    "exu_stall" -> PerfCounterExuStall,
+    "lsu" -> PerfCounterLSU,
+    "idu_stall" -> PerfCounterIduStall,
+    "trap" -> PerfCounterTrap
+  )
+  // 单计数器实际生效集合 = 主开关 ∩ 组总开关 ∩ 单计数器开关。
+  final val EnabledPerfCounters: Set[String] = {
+    if (!PerfStatsEnable) { Set.empty }
+    else {
+      ysyx_26030103_NPCConfig.PerfCounterGroups.flatMap {
+        case (group, counters) =>
+          if (PerfCounterGroupFlags(group)) {
+            counters.filter(PerfCounters.contains(_))
+          } else { Seq.empty }
+      }.toSet
+    }
+  }
+  final def EnablePerfCounter(Key: String): Boolean =
+    EnabledPerfCounters.contains(Key)
+  // 事件分类码与执行活跃电平是多个单计数器的公共信号：消费方任一开启
+  // 就生成，否则绑常量以便综合裁剪。
+  final val EnablePerfEventKind: Boolean = Seq(
+    "alu_op",
+    "mem_op",
+    "csr_op",
+    "branch_op",
+    "jal_op",
+    "jalr_op"
+  ).exists(EnablePerfCounter)
+  final val EnablePerfExecutionActive: Boolean =
+    EnablePerfCounter("execution_active") ||
+      Seq("alu_op", "mem_op", "csr_op", "branch_op").exists(EnablePerfCounter)
   final val EnableAnyObservability: Boolean = EnableRetireTrace
   private def OnOff(Flag: Boolean): String = {
     if (Flag) { "on" }
@@ -279,6 +388,18 @@ case class ysyx_26030103_NPCConfig(
     val CExt = if (UseC) { "C" }
     else { "" }
     "RV32I" + MExt + AExt + CExt
+  }
+  private def PerfCounterList: String = {
+    if (!PerfStatsEnable) { "off" }
+    else {
+      val EnabledGroups = ysyx_26030103_NPCConfig.PerfCounterGroups.collect {
+        case (group, _) if PerfCounterGroupFlags(group) => group
+      }
+      val GroupText =
+        if (EnabledGroups.isEmpty) { "none" }
+        else { EnabledGroups.mkString("+") }
+      s"$GroupText(${EnabledPerfCounters.size}/${ysyx_26030103_NPCConfig.AllPerfCounters.size})"
+    }
   }
   def Describe: String = {
     val ISA = ISAString
@@ -301,6 +422,7 @@ case class ysyx_26030103_NPCConfig(
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, observe=${OnOff(EnableAnyObservability)}, " +
       s"gpr_debug=${OnOff(EnableDynamicGPRDebug)}, perf_debug=${OnOff(EnablePerfTrace)}, " +
+      s"perf_counters=${PerfCounterList}, " +
       s"reset=0x${ResetAddr.toHexString}"
   }
 }

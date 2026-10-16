@@ -211,11 +211,33 @@ $(NPC_HEADER_GCM): gcm.cache/%.gcm: .npc_build_signature
 # DUT.ixx imports the generated top class.  Rebuild the complete module graph
 # whenever Verilator changes that public header; otherwise GCC can silently
 # reuse an old npc.DUT BMI and report newly-added RTL ports as nonexistent.
-.npc_modules_built: $(NPC_HEADER_GCM) $(NPC_IXX_SRCS) $(STD_MODULE_SRC) .npc_top_header_signature .npc_build_signature
+#
+# 每个模块对象使用独立规则编译。原先整张清单展开进一条shell命令，编译标志
+# 增多（例如按需性能计数器宏）后整行会超过单个参数128KiB上限，触发
+# "Argument list too long"。逐对象规则同时天然获得增量编译；顺序用前置依赖
+# 链保持：GCC的模块可见性要求导入者晚于被导入者构建。
+npc_module_obj = $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(1)))
+define npc_module_chain
+$(if $(wordlist 2,$(words $(1)),$(1)),$(word 2,$(1)): $(word 1,$(1))
+$(call npc_module_chain,$(wordlist 2,$(words $(1)),$(1))))
+endef
+NPC_MODULE_OBJS_IXX := $(foreach src,$(NPC_IXX_SRCS),$(call npc_module_obj,$(src)))
+$(eval $(call npc_module_chain,$(STD_MODULE_OBJ) $(NPC_MODULE_OBJS_IXX)))
+
+$(STD_MODULE_OBJ): $(STD_MODULE_SRC) .npc_build_signature
 	@mkdir -p gcm.cache
 	@echo "  CXX MODULE std"
-	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS) -x c++ -c $(STD_MODULE_SRC) -o $(STD_MODULE_OBJ)
-	@$(foreach src,$(NPC_IXX_SRCS),echo "  CXX MODULE $(notdir $(src))"; $(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS) -x c++ -c $(src) -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1;)
+	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS) -x c++ -c $< -o $@
+
+define NPC_GCC_MODULE_RULE
+$(call npc_module_obj,$(1)): $(1) .npc_build_signature .npc_top_header_signature $(NPC_HEADER_GCM)
+	@echo "  CXX MODULE $(notdir $(1))"
+	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS) -x c++ -c $(1) -o $(call npc_module_obj,$(1))
+endef
+$(foreach src,$(NPC_IXX_SRCS),$(eval $(call NPC_GCC_MODULE_RULE,$(src))))
+
+.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_MODULE_OBJS_IXX) $(NPC_HEADER_GCM) $(NPC_IXX_SRCS) $(STD_MODULE_SRC) .npc_top_header_signature .npc_build_signature
+	@mkdir -p gcm.cache
 	@touch $@
 
 $(VK_USER_OBJS): .npc_modules_built
@@ -244,13 +266,33 @@ $(NPC_HEADER_PCM): $(NPC_PCM_DIR)/%.pcm: .npc_build_signature
 	@echo "  CXX HEADER <$(subst _,/,$*)>"
 	$(CXX) $(NPC_STD_FLAG) -x c++-system-header $(subst _,/,$*) --precompile -o $@
 
-.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_HEADER_PCM) $(NPC_IXX_SRCS) .npc_top_header_signature .npc_build_signature
-	@$(foreach src,$(NPC_IXX_SRCS),\
-		MOD_NAME=$$(grep -oP '(?<=export module )\S+(?=;)' $(src)); \
-		echo "  CXX MODULE $(notdir $(src)) [$$MOD_NAME]"; \
-		$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) -x c++-module --precompile $(src) -o $(NPC_PCM_DIR)/$$MOD_NAME.pcm || exit 1; \
-		$(CXX) $(NPC_STD_FLAG) -c $(NPC_CLANG_MODULE_FLAGS) $(NPC_PCM_DIR)/$$MOD_NAME.pcm -o $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))) || exit 1; \
-	)
+# 与GCC分支同理：逐模块规则，避免把整张清单塞进一条shell命令。
+# clang的pcm文件名由源码路径唯一决定，使用显式规则，不会与上面的
+# 头文件pcm模式规则冲突。
+npc_module_obj = $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(1)))
+npc_module_pcm = $(NPC_PCM_DIR)/$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.pcm,$(1)))
+define npc_module_chain
+$(if $(wordlist 2,$(words $(1)),$(1)),$(word 2,$(1)): $(word 1,$(1))
+$(call npc_module_chain,$(wordlist 2,$(words $(1)),$(1))))
+endef
+NPC_MODULE_OBJS_IXX := $(foreach src,$(NPC_IXX_SRCS),$(call npc_module_obj,$(src)))
+NPC_MODULE_PCMS := $(foreach src,$(NPC_IXX_SRCS),$(call npc_module_pcm,$(src)))
+$(eval $(call npc_module_chain,$(NPC_MODULE_PCMS)))
+$(eval $(call npc_module_chain,$(NPC_MODULE_OBJS_IXX)))
+
+define NPC_CLANG_MODULE_RULE
+$(call npc_module_pcm,$(1)): $(1) .npc_build_signature
+	@mkdir -p $(NPC_PCM_DIR)
+	@echo "  CXX MODULE $(notdir $(1))"
+	$(CXX) $(CPPFLAGS) $(NPC_STD_FLAG) $(NPC_CLANG_MODULE_FLAGS) -x c++-module --precompile $(1) -o $(call npc_module_pcm,$(1))
+
+$(call npc_module_obj,$(1)): $(call npc_module_pcm,$(1))
+	@echo "  CXX MODULE OBJECT $(notdir $(1))"
+	$(CXX) $(NPC_STD_FLAG) -c $(NPC_CLANG_MODULE_FLAGS) $(call npc_module_pcm,$(1)) -o $(call npc_module_obj,$(1))
+endef
+$(foreach src,$(NPC_IXX_SRCS),$(eval $(call NPC_CLANG_MODULE_RULE,$(src))))
+
+.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_MODULE_PCMS) $(NPC_MODULE_OBJS_IXX) $(NPC_HEADER_PCM) $(NPC_IXX_SRCS) .npc_top_header_signature .npc_build_signature
 	@touch $@
 
 $(VK_USER_OBJS): .npc_modules_built

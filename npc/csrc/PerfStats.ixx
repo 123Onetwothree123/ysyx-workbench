@@ -81,22 +81,50 @@ export constexpr std::size_t ClassifiedInstructionCount(const PerfStats &stats) 
 }
 
 // 与 RTL 的 PerfEventKind 编码保持一致。把事件归类集中在可测试函数中，
-// 避免 JAL/JALR 只增加子计数却漏掉 branch/jump 总数。
-export constexpr void RecordExecutionEvent(PerfStats &stats, unsigned event_kind) noexcept
+// 避免 JAL/JALR 只增加子计数却漏掉 branch/jump 总数。enabled 位掩码让
+// 单计数器开关关闭的类型不再参与分类统计（默认全开保持原语义）。
+export inline constexpr unsigned PerfEventALU = 1U << 0;
+export inline constexpr unsigned PerfEventMEM = 1U << 1;
+export inline constexpr unsigned PerfEventCSR = 1U << 2;
+export inline constexpr unsigned PerfEventBRANCH = 1U << 3;
+export inline constexpr unsigned PerfEventJAL = 1U << 4;
+export inline constexpr unsigned PerfEventJALR = 1U << 5;
+export inline constexpr unsigned PerfEventAll =
+    PerfEventALU | PerfEventMEM | PerfEventCSR | PerfEventBRANCH | PerfEventJAL |
+    PerfEventJALR;
+export constexpr void RecordExecutionEvent(
+    PerfStats &stats, unsigned event_kind,
+    unsigned enabled = PerfEventAll) noexcept
 {
     switch (event_kind)
     {
-    case 1: ++stats.arithmetic_operation; break;
-    case 2: ++stats.memory_access_operation; break;
-    case 3: ++stats.control_status_register_operation; break;
-    case 4: ++stats.branch_operation; break;
+    case 1:
+        if (enabled & PerfEventALU)
+            ++stats.arithmetic_operation;
+        break;
+    case 2:
+        if (enabled & PerfEventMEM)
+            ++stats.memory_access_operation;
+        break;
+    case 3:
+        if (enabled & PerfEventCSR)
+            ++stats.control_status_register_operation;
+        break;
+    case 4:
+        if (enabled & PerfEventBRANCH)
+            ++stats.branch_operation;
+        break;
     case 5:
-        ++stats.branch_operation;
-        ++stats.jal_operation;
+        if (enabled & PerfEventBRANCH)
+            ++stats.branch_operation;
+        if (enabled & PerfEventJAL)
+            ++stats.jal_operation;
         break;
     case 6:
-        ++stats.branch_operation;
-        ++stats.jalr_operation;
+        if (enabled & PerfEventBRANCH)
+            ++stats.branch_operation;
+        if (enabled & PerfEventJALR)
+            ++stats.jalr_operation;
         break;
     default: break;
     }

@@ -185,15 +185,36 @@ void DUT::step()
 #ifdef CONFIG_PERF_STATS
     // These are combinational/pre-edge events.  Sample them before the rising
     // edge; several are intentionally cleared or replaced by that edge.
+    // 只采样本构建实际启用的单计数器，关闭的计数器不产生逐拍读取开销。
+#ifdef CONFIG_PERF_COUNTER_IFU_FETCH
     const bool perf_event_ifu_fetch = dut->perf_ifu_fetch;
+#endif
+#ifdef CONFIG_PERF_COUNTER_EXU_DONE
     const bool perf_event_exu_done = dut->perf_exu_done;
+#endif
+#ifdef CONFIG_PERF_COUNTER_LSU_LOAD
     const bool perf_event_lsu_load = dut->perf_lsu_load;
+#endif
+#ifdef CONFIG_PERF_COUNTER_LSU_STORE
     const bool perf_event_lsu_store = dut->perf_lsu_store;
+#endif
+#if defined(CONFIG_RV32_M) && defined(CONFIG_PERF_COUNTER_MDU_REQ)
     const bool perf_event_mdu_req = dut->perf_mdu_req;
+#endif
+#if defined(CONFIG_RV32_M) && defined(CONFIG_PERF_COUNTER_MDU_DONE)
     const bool perf_event_mdu_done = dut->perf_mdu_done;
+#if defined(CONFIG_PERF_COUNTER_MDU_OP)
     const auto perf_event_mdu_op = dut->perf_mdu_op;
+#endif
+#endif
+#if defined(CONFIG_PERF_COUNTER_ALU_OP) || defined(CONFIG_PERF_COUNTER_MEM_OP) || \
+    defined(CONFIG_PERF_COUNTER_CSR_OP) || defined(CONFIG_PERF_COUNTER_BRANCH_OP) || \
+    defined(CONFIG_PERF_COUNTER_JAL_OP) || defined(CONFIG_PERF_COUNTER_JALR_OP)
     const auto perf_event_kind = dut->perf_exu_event_kind;
+#endif
+#ifdef CONFIG_PERF_COUNTER_IFU_STALL_REDIRECT
     const bool perf_event_redirect = dut->perf_ifu_stall_redirect;
+#endif
 #endif
     dut->clock = 1;
     dut->eval();
@@ -433,23 +454,30 @@ void DUT::step()
     {
         ++instructions;
     }
+#ifdef CONFIG_PERF_COUNTER_IFU_FETCH
     if (perf_event_ifu_fetch)
     {
         ++perf.instruction_fetch;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_EXU_DONE
     if (perf_event_exu_done)
     {
         ++perf.execution_complete;
     }
-#ifdef CONFIG_RV32_M
+#endif
+#if defined(CONFIG_RV32_M) && defined(CONFIG_PERF_COUNTER_MDU_REQ)
     // M扩展关闭时译码不出M指令, 这些信号恒为0, 不再逐拍采集
     if (perf_event_mdu_req)
     {
         ++perf.mdu_request;
     }
+#endif
+#if defined(CONFIG_RV32_M) && defined(CONFIG_PERF_COUNTER_MDU_DONE)
     if (perf_event_mdu_done)
     {
         ++perf.mdu_complete;
+#if defined(CONFIG_PERF_COUNTER_MDU_OP)
         switch (static_cast<unsigned>(perf_event_mdu_op))
         {
         case 0: ++perf.mdu_mul; break;
@@ -462,154 +490,252 @@ void DUT::step()
         case 7: ++perf.mdu_remu; break;
         default: break;
         }
+#endif
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_MDU_ACTIVE
     if (dut->perf_mdu_active)
     {
         ++perf.mdu_active_cycle;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_MDU_WAIT
     if (dut->perf_mdu_wait)
     {
         ++perf.mdu_wait_cycle;
     }
 #endif
+#ifdef CONFIG_PERF_COUNTER_LSU_LOAD
     if (perf_event_lsu_load)
     {
         ++perf.load_data;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_LSU_STORE
     if (perf_event_lsu_store)
     {
         ++perf.store_data;
     }
-    RecordExecutionEvent(perf, static_cast<unsigned>(perf_event_kind));
+#endif
+#if defined(CONFIG_PERF_COUNTER_ALU_OP) || defined(CONFIG_PERF_COUNTER_MEM_OP) || \
+    defined(CONFIG_PERF_COUNTER_CSR_OP) || defined(CONFIG_PERF_COUNTER_BRANCH_OP) || \
+    defined(CONFIG_PERF_COUNTER_JAL_OP) || defined(CONFIG_PERF_COUNTER_JALR_OP)
+    // 事件分类按单计数器开关合取，只统计本构建实际启用的类型。
+    unsigned perf_event_mask = 0;
+#ifdef CONFIG_PERF_COUNTER_ALU_OP
+    perf_event_mask |= PerfEventALU;
+#endif
+#ifdef CONFIG_PERF_COUNTER_MEM_OP
+    perf_event_mask |= PerfEventMEM;
+#endif
+#ifdef CONFIG_PERF_COUNTER_CSR_OP
+    perf_event_mask |= PerfEventCSR;
+#endif
+#ifdef CONFIG_PERF_COUNTER_BRANCH_OP
+    perf_event_mask |= PerfEventBRANCH;
+#endif
+#ifdef CONFIG_PERF_COUNTER_JAL_OP
+    perf_event_mask |= PerfEventJAL;
+#endif
+#ifdef CONFIG_PERF_COUNTER_JALR_OP
+    perf_event_mask |= PerfEventJALR;
+#endif
+    RecordExecutionEvent(
+        perf, static_cast<unsigned>(perf_event_kind), perf_event_mask);
+#endif
+#ifdef CONFIG_PERF_COUNTER_IFU_STALL_PIPELINE
     if (dut->perf_ifu_stall_pipeline)
     {
         ++perf.instruction_fetch_stall_pipeline;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_IFU_STALL_AXI
     if (dut->perf_ifu_stall_axi)
     {
         ++perf.instruction_fetch_stall_axi;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_IFU_STALL_AR
     if (dut->perf_ifu_stall_ar)
     {
         ++perf.instruction_fetch_stall_ar;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_IFU_STALL_R
     if (dut->perf_ifu_stall_r)
     {
         ++perf.instruction_fetch_stall_r;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_IFU_STALL_REDIRECT
     if (perf_event_redirect)
     {
         ++perf.instruction_fetch_stall_redirect;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_IFU_STALL_IDLE
     if (dut->perf_ifu_stall_idle)
     {
         ++perf.instruction_fetch_stall_idle;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_EXECUTION_ACTIVE
     if (dut->perf_execution_active)
     {
         ++perf.execution_active_cycle;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_EXU_STALL_LSU
     if (dut->perf_exu_stall_lsu)
     {
         ++perf.exu_stall_lsu;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_MEM_WAITSLOT
     if (dut->perf_mem_waitslot)
     {
         ++perf.mem_waitslot;
     }
-    // Scala 侧已用 ActiveInst 生成类型电平。这里再排除 MDU 在途周期
-    // 作为防御，避免后续接口改动时把 MDU 计算时间归到其他类型。
+#endif
+#if defined(CONFIG_PERF_COUNTER_ALU_OP) || defined(CONFIG_PERF_COUNTER_MEM_OP) || \
+    defined(CONFIG_PERF_COUNTER_CSR_OP) || defined(CONFIG_PERF_COUNTER_BRANCH_OP)
+    // 类型活跃周期：Scala 侧已用 ActiveInst 生成类型电平。这里再排除 MDU
+    // 在途周期作为防御；MDU相关计数器关闭时该端口为常量0，防御自动退化。
+#if defined(CONFIG_PERF_COUNTER_MDU_ACTIVE)
     const bool classify_exu_level = dut->perf_execution_active && !dut->perf_mdu_active;
+#else
+    const bool classify_exu_level = static_cast<bool>(dut->perf_execution_active);
+#endif
+#ifdef CONFIG_PERF_COUNTER_ALU_OP
     if (classify_exu_level && dut->perf_alu_op)
     {
         ++perf.arithmetic_operation_active_cycle;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_MEM_OP
     if (classify_exu_level && dut->perf_mem_op)
     {
         ++perf.memory_access_operation_active_cycle;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_CSR_OP
     if (classify_exu_level && dut->perf_csr_op)
     {
         ++perf.control_status_register_operation_active_cycle;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_BRANCH_OP
     if (classify_exu_level && dut->perf_branch_op)
     {
         ++perf.branch_operation_active_cycle;
     }
+#endif
+#endif
+#ifdef CONFIG_PERF_COUNTER_LSU_ACTIVE
     if (dut->perf_lsu_active)
     {
         ++perf.load_store_unit_active_cycle;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_LSU_LOAD_ACTIVE
     if (dut->perf_lsu_load_active)
     {
         ++perf.load_store_unit_load_active_cycle;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_LSU_STORE_ACTIVE
     if (dut->perf_lsu_store_active)
     {
         ++perf.load_store_unit_store_active_cycle;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_LSU_STALL_READ_AR
     if (dut->perf_lsu_stall_read_ar)
     {
         ++perf.lsu_stall_read_ar;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_LSU_STALL_READ_R
     if (dut->perf_lsu_stall_read_r)
     {
         ++perf.lsu_stall_read_r;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_LSU_STALL_WRITE_REQ
     if (dut->perf_lsu_stall_write_req)
     {
         ++perf.lsu_stall_write_req;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_LSU_STALL_WRITE_B
     if (dut->perf_lsu_stall_write_b)
     {
         ++perf.lsu_stall_write_b;
     }
-#ifdef CONFIG_ICACHE
+#endif
+#if defined(CONFIG_ICACHE) && defined(CONFIG_PERF_COUNTER_ICACHE_HIT)
     // ICache关闭时取指直连AXI, 这些信号恒为0, 不再逐拍采集
     if (dut->perf_icache_hit)
     {
         ++perf.icache_hit;
     }
+#endif
+#if defined(CONFIG_ICACHE) && defined(CONFIG_PERF_COUNTER_ICACHE_MISS)
     if (dut->perf_icache_miss)
     {
         ++perf.icache_miss;
     }
 #endif
-#ifdef CONFIG_DCACHE
+#if defined(CONFIG_DCACHE) && defined(CONFIG_PERF_COUNTER_DCACHE_HIT)
     // DCache关闭时这些信号恒为0, 不再逐拍采集
     if (dut->perf_dcache_hit)
     {
         ++perf.dcache_hit;
     }
+#endif
+#if defined(CONFIG_DCACHE) && defined(CONFIG_PERF_COUNTER_DCACHE_MISS)
     if (dut->perf_dcache_miss)
     {
         ++perf.dcache_miss;
     }
+#endif
+#if defined(CONFIG_DCACHE) && defined(CONFIG_PERF_COUNTER_DCACHE_REFILL_REQ)
     if (dut->perf_dcache_refill_req)
     {
         ++perf.dcache_refill_req_cycle;
     }
+#endif
+#if defined(CONFIG_DCACHE) && defined(CONFIG_PERF_COUNTER_DCACHE_REFILL_RESP)
     if (dut->perf_dcache_refill_resp)
     {
         ++perf.dcache_refill_resp_cycle;
     }
 #endif
+#ifdef CONFIG_PERF_COUNTER_IDU_STALL_RAW
     if (dut->perf_idu_stall_raw)
     {
         ++perf.idu_stall_raw;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_IDU_STALL_RAW_LOADUSE
     if (dut->perf_idu_stall_raw_loaduse)
     {
         ++perf.idu_stall_raw_loaduse;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_IDU_STALL_RAW_ALU
     if (dut->perf_idu_stall_raw_alu)
     {
         ++perf.idu_stall_raw_alu;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_EXU_IDLE_NOINPUT
     if (dut->perf_exu_idle_noinput)
     {
         ++perf.exu_idle_noinput;
     }
+#endif
+#ifdef CONFIG_PERF_COUNTER_TRAP_COUNT
     // TrapCommit is a pre-edge combinational pulse and can disappear when the
     // pipeline flushes on that same edge.  debug_trap_valid is its registered,
     // architecturally precise counterpart and is safe to sample here.
@@ -617,6 +743,7 @@ void DUT::step()
     {
         ++perf.trap_count;
     }
+#endif
 #endif
 #if defined(CONFIG_ITRACE) && !defined(CONFIG_ITRACE_WRITE_FILE)
     if (dut->debug_commit)

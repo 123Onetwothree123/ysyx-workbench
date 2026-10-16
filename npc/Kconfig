@@ -1024,6 +1024,295 @@ menu "运行时调试"
       在仿真结束时输出动态指令数、周期数和IPC
       IPC = 指令数 / 周期数，反映处理器微结构效率
       开启后每周期读取debug_commit信号计数，开销极低
+      具体计数器的分组与单计数器选择见下方"性能计数器细分"菜单：
+      未开启的计数器在RTL顶层输出常量，综合展平后不会产生硬件，
+      C++侧也不再逐拍采样，对应CSV列恒为0。
+
+  menu "性能计数器细分"
+
+    config PERF_COUNTER_BASIC
+      bool "基础吞吐组：取指交付/执行完成/读写完成"
+      depends on PERF_STATS
+      default y
+      help
+        组总开关：关闭时本组下所有单计数器同时关闭。
+        单计数器开关见本组子菜单"基础吞吐：单计数器"。
+
+    config PERF_COUNTER_OPCLASS
+      bool "指令类型与执行活跃组：ALU/访存/CSR/分支/JAL/JALR"
+      depends on PERF_STATS
+      default y
+      help
+        组总开关：关闭时本组下所有单计数器同时关闭。
+        单计数器开关见本组子菜单"指令类型与执行活跃：单计数器"。
+
+    config PERF_COUNTER_MDU
+      bool "乘除法组：请求/完成/操作码/活动与等待"
+      depends on PERF_STATS
+      default y
+      help
+        组总开关。仅在RV32_M开启时有意义；单计数器见本组子菜单。
+
+    config PERF_COUNTER_IFU_STALL
+      bool "取指停顿组：流水/总线/AR/R/重定向/空闲"
+      depends on PERF_STATS
+      default y
+      help
+        组总开关；单计数器见本组子菜单。
+
+    config PERF_COUNTER_ICACHE
+      bool "指令缓存组：命中/缺失"
+      depends on PERF_STATS
+      default y
+      help
+        组总开关；单计数器见本组子菜单。关闭后CSV的ICache命中/
+        缺失/平均缺失服务周期/AMAT列恒为0。
+
+    config PERF_COUNTER_DCACHE
+      bool "数据缓存组：命中/缺失/回填请求/回填响应"
+      depends on PERF_STATS
+      default y
+      help
+        组总开关；单计数器见本组子菜单。DCache本身未开启时这些列恒为0。
+
+    config PERF_COUNTER_EXU_STALL
+      bool "执行级停顿组：下游等待/空转/等待槽"
+      depends on PERF_STATS
+      default y
+      help
+        组总开关；单计数器见本组子菜单。
+
+    config PERF_COUNTER_LSU
+      bool "访存级组：活跃状态与读写停顿"
+      depends on PERF_STATS
+      default y
+      help
+        组总开关；单计数器见本组子菜单。
+
+    config PERF_COUNTER_IDU_STALL
+      bool "译码级RAW停顿组：总数/load-use/其它"
+      depends on PERF_STATS
+      default y
+      help
+        组总开关；单计数器见本组子菜单。
+
+    config PERF_COUNTER_TRAP
+      bool "异常组：提交次数"
+      depends on PERF_STATS
+      default y
+      help
+        组总开关；单计数器见本组子菜单。
+
+    menu "基础吞吐：单计数器"
+      depends on PERF_COUNTER_BASIC
+
+      config PERF_COUNTER_IFU_FETCH
+        bool "取指响应交付（perf_ifu_fetch）"
+        default y
+
+      config PERF_COUNTER_EXU_DONE
+        bool "EXU输出握手（perf_exu_done）"
+        default y
+
+      config PERF_COUNTER_LSU_LOAD
+        bool "LSU读完成（perf_lsu_load）"
+        default y
+
+      config PERF_COUNTER_LSU_STORE
+        bool "LSU写完成（perf_lsu_store）"
+        default y
+    endmenu
+
+    menu "指令类型与执行活跃：单计数器"
+      depends on PERF_COUNTER_OPCLASS
+
+      config PERF_COUNTER_ALU_OP
+        bool "ALU：计数与活跃周期（perf_alu_op）"
+        default y
+
+      config PERF_COUNTER_MEM_OP
+        bool "访存：计数与活跃周期（perf_mem_op）"
+        default y
+
+      config PERF_COUNTER_CSR_OP
+        bool "CSR：计数与活跃周期（perf_csr_op）"
+        default y
+
+      config PERF_COUNTER_BRANCH_OP
+        bool "分支与跳转总数、条件分支与活跃周期（perf_branch_op）"
+        default y
+
+      config PERF_COUNTER_JAL_OP
+        bool "JAL计数（perf_jal_op）"
+        default y
+
+      config PERF_COUNTER_JALR_OP
+        bool "JALR计数（perf_jalr_op）"
+        default y
+
+      config PERF_COUNTER_EXECUTION_ACTIVE
+        bool "EXU执行活跃周期（perf_execution_active）"
+        default y
+    endmenu
+
+    menu "乘除法：单计数器"
+      depends on PERF_COUNTER_MDU
+
+      config PERF_COUNTER_MDU_REQ
+        bool "MDU请求（perf_mdu_req）"
+        default y
+
+      config PERF_COUNTER_MDU_DONE
+        bool "MDU完成（perf_mdu_done）"
+        default y
+
+      config PERF_COUNTER_MDU_OP
+        bool "各操作码明细（perf_mdu_op，依赖MDU完成开关）"
+        depends on PERF_COUNTER_MDU_DONE
+        default y
+
+      config PERF_COUNTER_MDU_ACTIVE
+        bool "MDU发射/在途活动周期（perf_mdu_active）"
+        default y
+
+      config PERF_COUNTER_MDU_WAIT
+        bool "MDU等待结果周期（perf_mdu_wait）"
+        default y
+    endmenu
+
+    menu "取指停顿：单计数器"
+      depends on PERF_COUNTER_IFU_STALL
+
+      config PERF_COUNTER_IFU_STALL_PIPELINE
+        bool "响应有效但下游未接受（perf_ifu_stall_pipeline）"
+        default y
+
+      config PERF_COUNTER_IFU_STALL_AXI
+        bool "refill AR/R 合计（perf_ifu_stall_axi）"
+        default y
+
+      config PERF_COUNTER_IFU_STALL_AR
+        bool "refill AR请求状态（perf_ifu_stall_ar）"
+        default y
+
+      config PERF_COUNTER_IFU_STALL_R
+        bool "refill R响应状态（perf_ifu_stall_r）"
+        default y
+
+      config PERF_COUNTER_IFU_STALL_REDIRECT
+        bool "控制流重定向事件（perf_ifu_stall_redirect）"
+        default y
+
+      config PERF_COUNTER_IFU_STALL_IDLE
+        bool "IFU空闲（perf_ifu_stall_idle）"
+        default y
+    endmenu
+
+    menu "指令缓存：单计数器"
+      depends on PERF_COUNTER_ICACHE
+
+      config PERF_COUNTER_ICACHE_HIT
+        bool "ICache命中（perf_icache_hit）"
+        default y
+
+      config PERF_COUNTER_ICACHE_MISS
+        bool "ICache缺失（perf_icache_miss）"
+        default y
+    endmenu
+
+    menu "数据缓存：单计数器"
+      depends on PERF_COUNTER_DCACHE
+
+      config PERF_COUNTER_DCACHE_HIT
+        bool "DCache命中（perf_dcache_hit）"
+        default y
+
+      config PERF_COUNTER_DCACHE_MISS
+        bool "DCache缺失（perf_dcache_miss）"
+        default y
+
+      config PERF_COUNTER_DCACHE_REFILL_REQ
+        bool "回填AR状态（perf_dcache_refill_req）"
+        default y
+
+      config PERF_COUNTER_DCACHE_REFILL_RESP
+        bool "回填R状态（perf_dcache_refill_resp）"
+        default y
+    endmenu
+
+    menu "执行级停顿：单计数器"
+      depends on PERF_COUNTER_EXU_STALL
+
+      config PERF_COUNTER_EXU_STALL_LSU
+        bool "EXU下游/顺序等待（perf_exu_stall_lsu）"
+        default y
+
+      config PERF_COUNTER_EXU_IDLE_NOINPUT
+        bool "EXU空转等输入（perf_exu_idle_noinput）"
+        default y
+
+      config PERF_COUNTER_MEM_WAITSLOT
+        bool "EX/MEM等待槽占用（perf_mem_waitslot）"
+        default y
+    endmenu
+
+    menu "访存级：单计数器"
+      depends on PERF_COUNTER_LSU
+
+      config PERF_COUNTER_LSU_ACTIVE
+        bool "LSU活跃（perf_lsu_active）"
+        default y
+
+      config PERF_COUNTER_LSU_LOAD_ACTIVE
+        bool "LSU读活跃（perf_lsu_load_active）"
+        default y
+
+      config PERF_COUNTER_LSU_STORE_ACTIVE
+        bool "LSU写活跃（perf_lsu_store_active）"
+        default y
+
+      config PERF_COUNTER_LSU_STALL_READ_AR
+        bool "LSU读请求状态（perf_lsu_stall_read_ar）"
+        default y
+
+      config PERF_COUNTER_LSU_STALL_READ_R
+        bool "LSU读响应状态（perf_lsu_stall_read_r）"
+        default y
+
+      config PERF_COUNTER_LSU_STALL_WRITE_REQ
+        bool "写缓冲无空位（perf_lsu_stall_write_req）"
+        default y
+
+      config PERF_COUNTER_LSU_STALL_WRITE_B
+        bool "写响应在途（perf_lsu_stall_write_b）"
+        default y
+    endmenu
+
+    menu "译码级RAW停顿：单计数器"
+      depends on PERF_COUNTER_IDU_STALL
+
+      config PERF_COUNTER_IDU_STALL_RAW
+        bool "RAW阻塞合计（perf_idu_stall_raw）"
+        default y
+
+      config PERF_COUNTER_IDU_STALL_RAW_LOADUSE
+        bool "load-use阻塞（perf_idu_stall_raw_loaduse）"
+        default y
+
+      config PERF_COUNTER_IDU_STALL_RAW_ALU
+        bool "非load未就绪依赖（perf_idu_stall_raw_alu）"
+        default y
+    endmenu
+
+    menu "异常：单计数器"
+      depends on PERF_COUNTER_TRAP
+
+      config PERF_COUNTER_TRAP_COUNT
+        bool "异常提交次数（perf_trap）"
+        default y
+    endmenu
+
+  endmenu
 
   config PERF_SAVE
     bool "启用性能数据自动存档（CSV文件）"

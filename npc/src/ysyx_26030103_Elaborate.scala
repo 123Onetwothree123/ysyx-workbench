@@ -68,6 +68,26 @@ object ysyx_26030103_Elaborate extends App {
   val FTraceEnable = sys.env.getOrElse("FTRACE", "n") == "y"
   val IRingBufEnable = sys.env.getOrElse("IRINGBUF", "n") == "y"
   val PerfStatsEnable = sys.env.getOrElse("PERF_STATS", "n") == "y"
+  // 性能计数器：组总开关与单计数器开关。主开关关闭时全部关闭；未提供的
+  // 符号按默认开启，与Kconfig默认值以及尚未重新生成配置的工作区保持一致。
+  // 单计数器与组总开关的相与在NPCConfig里统一完成。
+  def PerfGroupEnabled(name: String): Boolean =
+    sys.env.getOrElse(name, "y") == "y"
+  val PerfCounterBasic = PerfGroupEnabled("PERF_COUNTER_BASIC")
+  val PerfCounterOpClass = PerfGroupEnabled("PERF_COUNTER_OPCLASS")
+  val PerfCounterMDU = PerfGroupEnabled("PERF_COUNTER_MDU")
+  val PerfCounterIfuStall = PerfGroupEnabled("PERF_COUNTER_IFU_STALL")
+  val PerfCounterICache = PerfGroupEnabled("PERF_COUNTER_ICACHE")
+  val PerfCounterDCache = PerfGroupEnabled("PERF_COUNTER_DCACHE")
+  val PerfCounterExuStall = PerfGroupEnabled("PERF_COUNTER_EXU_STALL")
+  val PerfCounterLSU = PerfGroupEnabled("PERF_COUNTER_LSU")
+  val PerfCounterIduStall = PerfGroupEnabled("PERF_COUNTER_IDU_STALL")
+  val PerfCounterTrap = PerfGroupEnabled("PERF_COUNTER_TRAP")
+  val PerfCounters: Set[String] =
+    ysyx_26030103_NPCConfig.AllPerfCounters.filter { name =>
+      PerfStatsEnable && sys.env
+        .getOrElse(s"PERF_COUNTER_${name.toUpperCase}", "y") == "y"
+    }
   val config = ysyx_26030103_NPCConfig(
     UseM = UseM,
     UseA = UseA,
@@ -107,7 +127,18 @@ object ysyx_26030103_Elaborate extends App {
     ITraceEnable = ITraceEnable,
     FTraceEnable = FTraceEnable,
     IRingBufEnable = IRingBufEnable,
-    PerfStatsEnable = PerfStatsEnable
+    PerfStatsEnable = PerfStatsEnable,
+    PerfCounterBasic = PerfCounterBasic,
+    PerfCounterOpClass = PerfCounterOpClass,
+    PerfCounterMDU = PerfCounterMDU,
+    PerfCounterIfuStall = PerfCounterIfuStall,
+    PerfCounterICache = PerfCounterICache,
+    PerfCounterDCache = PerfCounterDCache,
+    PerfCounterExuStall = PerfCounterExuStall,
+    PerfCounterLSU = PerfCounterLSU,
+    PerfCounterIduStall = PerfCounterIduStall,
+    PerfCounterTrap = PerfCounterTrap,
+    PerfCounters = PerfCounters
   )
   println(s"[NPC config] ${config.Describe}")
 

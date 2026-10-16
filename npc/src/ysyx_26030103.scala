@@ -557,101 +557,92 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     io.debug_access_fault_pc := 0.U
     io.debug_access_fault_resp := 0.U
   }
-  // 性能计数器
+  // 性能计数器：按Kconfig单计数器开关逐个生成。关闭的计数器在顶层输出
+  // 常量，未被读取的叶模块信号会被综合展平/常量传播与Verilator死代码
+  // 消除一并裁掉；顶层端口ABI保持不变，未启用的计数器对应CSV列恒为0。
+  private def PerfBool(Key: String)(Signal: => Bool): Bool =
+    if (config.EnablePerfCounter(Key)) { Signal }
+    else { false.B }
+  private def PerfUInt(Key: String, Width: Int)(Signal: => UInt): UInt =
+    if (config.EnablePerfCounter(Key)) { Signal }
+    else { 0.U(Width.W) }
   idu.io.ex_memop := exu.io.HazardMemOp
-  if (config.EnablePerfTrace) {
-    io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
-    io.perf_exu_done := exu.io.out.fire
-    io.perf_lsu_load := lsu.io.Complete && !lsu.io.DebugMemoryWrite
-    io.perf_lsu_store := lsu.io.Complete && lsu.io.DebugMemoryWrite
-    io.perf_alu_op := exu.io.PerfALUOp
-    io.perf_mem_op := exu.io.PerfMemOp
-    io.perf_csr_op := exu.io.PerfCSROp
-    io.perf_branch_op := exu.io.PerfBranchOp
-    io.perf_jal_op := exu.io.PerfJalOp
-    io.perf_jalr_op := exu.io.PerfJalrOp
-    io.perf_mdu_req := exu.io.PerfMDUReq
-    io.perf_mdu_done := exu.io.PerfMDUDone
-    io.perf_mdu_op := exu.io.PerfMDUOp
-    io.perf_exu_event_kind := exu.io.PerfEventKind
-    io.perf_mdu_active := exu.io.PerfMDUActive
-    io.perf_mdu_wait := exu.io.PerfMDUWait
-    io.perf_ifu_stall_pipeline := icache.io.resp_valid && !icache.io.resp_ready
-    // AXI等待只统计真实refill的AR/R占用。FetchReady为低还可能是
-    // 响应槽或下游反压，不能全部归因于AXI。
-    io.perf_ifu_stall_axi :=
-      icache.io.perf_refill_req || icache.io.perf_refill_resp
-    io.perf_ifu_stall_ar := icache.io.perf_refill_req
-    io.perf_ifu_stall_r := icache.io.perf_refill_resp
-    io.perf_ifu_stall_redirect := exu.io.Redirect
-    io.perf_ifu_stall_idle := ifu.io.StallIdle
-    io.perf_icache_hit := icache.io.perf_hit
-    io.perf_icache_miss := icache.io.perf_miss
-    io.perf_dcache_hit := lsu.io.DCachePerfHit
-    io.perf_dcache_miss := lsu.io.DCachePerfMiss
-    io.perf_dcache_refill_req := lsu.io.DCachePerfRefillReq
-    io.perf_dcache_refill_resp := lsu.io.DCachePerfRefillResp
-    io.perf_execution_active := exu.io.PerfExecutionActive
-    io.perf_exu_stall_lsu := exu.io.PerfExecutionActive && !exu.io.out.fire &&
-      !exu.io.PerfMDUWait
-    io.perf_mem_waitslot := lsu.io.Hazard2Valid
-    io.perf_lsu_active := lsu.io.Active
-    io.perf_lsu_load_active := lsu.io.Active && !lsu.io.IsStore
-    io.perf_lsu_store_active := lsu.io.Active && lsu.io.IsStore
-    io.perf_lsu_stall_read_ar := lsu.io.StallReadAR
-    io.perf_lsu_stall_read_r := lsu.io.StallReadR
-    io.perf_lsu_stall_write_req := lsu.io.StallWriteReq
-    io.perf_lsu_stall_write_b := lsu.io.StallWriteB
-    io.perf_idu_stall_raw := idu.io.perf_stall_raw
-    io.perf_idu_stall_raw_loaduse := idu.io.perf_stall_raw_loaduse
-    io.perf_idu_stall_raw_alu := idu.io.perf_stall_raw_alu
-    io.perf_exu_idle_noinput := exu.io.PerfIdleNoInput
-    io.perf_trap := exu.io.PerfTrap
-  } else {
-    io.perf_ifu_fetch := false.B
-    io.perf_exu_done := false.B
-    io.perf_lsu_load := false.B
-    io.perf_lsu_store := false.B
-    io.perf_alu_op := false.B
-    io.perf_mem_op := false.B
-    io.perf_csr_op := false.B
-    io.perf_branch_op := false.B
-    io.perf_jal_op := false.B
-    io.perf_jalr_op := false.B
-    io.perf_mdu_req := false.B
-    io.perf_mdu_done := false.B
-    io.perf_mdu_op := 0.U
-    io.perf_exu_event_kind := 0.U
-    io.perf_mdu_active := false.B
-    io.perf_mdu_wait := false.B
-    io.perf_ifu_stall_pipeline := false.B
-    io.perf_ifu_stall_axi := false.B
-    io.perf_ifu_stall_ar := false.B
-    io.perf_ifu_stall_r := false.B
-    io.perf_ifu_stall_redirect := false.B
-    io.perf_ifu_stall_idle := false.B
-    io.perf_icache_hit := false.B
-    io.perf_icache_miss := false.B
-    io.perf_dcache_hit := false.B
-    io.perf_dcache_miss := false.B
-    io.perf_dcache_refill_req := false.B
-    io.perf_dcache_refill_resp := false.B
-    io.perf_execution_active := false.B
-    io.perf_exu_stall_lsu := false.B
-    io.perf_mem_waitslot := false.B
-    io.perf_lsu_active := false.B
-    io.perf_lsu_load_active := false.B
-    io.perf_lsu_store_active := false.B
-    io.perf_lsu_stall_read_ar := false.B
-    io.perf_lsu_stall_read_r := false.B
-    io.perf_lsu_stall_write_req := false.B
-    io.perf_lsu_stall_write_b := false.B
-    io.perf_idu_stall_raw := false.B
-    io.perf_idu_stall_raw_loaduse := false.B
-    io.perf_idu_stall_raw_alu := false.B
-    io.perf_exu_idle_noinput := false.B
-    io.perf_trap := false.B
-  }
+  // 基础吞吐
+  io.perf_ifu_fetch := PerfBool("ifu_fetch")(icache.io.resp_valid &&
+    icache.io.resp_ready)
+  io.perf_exu_done := PerfBool("exu_done")(exu.io.out.fire)
+  io.perf_lsu_load := PerfBool("lsu_load")(lsu.io.Complete &&
+    !lsu.io.DebugMemoryWrite)
+  io.perf_lsu_store := PerfBool("lsu_store")(lsu.io.Complete &&
+    lsu.io.DebugMemoryWrite)
+  // 指令类型与执行活跃
+  io.perf_alu_op := PerfBool("alu_op")(exu.io.PerfALUOp)
+  io.perf_mem_op := PerfBool("mem_op")(exu.io.PerfMemOp)
+  io.perf_csr_op := PerfBool("csr_op")(exu.io.PerfCSROp)
+  io.perf_branch_op := PerfBool("branch_op")(exu.io.PerfBranchOp)
+  io.perf_jal_op := PerfBool("jal_op")(exu.io.PerfJalOp)
+  io.perf_jalr_op := PerfBool("jalr_op")(exu.io.PerfJalrOp)
+  // 乘除法
+  io.perf_mdu_req := PerfBool("mdu_req")(exu.io.PerfMDUReq)
+  io.perf_mdu_done := PerfBool("mdu_done")(exu.io.PerfMDUDone)
+  io.perf_mdu_op := PerfUInt("mdu_op", 3)(exu.io.PerfMDUOp)
+  io.perf_mdu_active := PerfBool("mdu_active")(exu.io.PerfMDUActive)
+  io.perf_mdu_wait := PerfBool("mdu_wait")(exu.io.PerfMDUWait)
+  // 取指停顿
+  io.perf_ifu_stall_pipeline := PerfBool("ifu_stall_pipeline")(
+    icache.io.resp_valid && !icache.io.resp_ready
+  )
+  // AXI等待只统计真实refill的AR/R占用。FetchReady为低还可能是
+  // 响应槽或下游反压，不能全部归因于AXI。
+  io.perf_ifu_stall_axi := PerfBool("ifu_stall_axi")(
+    icache.io.perf_refill_req || icache.io.perf_refill_resp
+  )
+  io.perf_ifu_stall_ar := PerfBool("ifu_stall_ar")(icache.io.perf_refill_req)
+  io.perf_ifu_stall_r := PerfBool("ifu_stall_r")(icache.io.perf_refill_resp)
+  io.perf_ifu_stall_redirect := PerfBool("ifu_stall_redirect")(exu.io.Redirect)
+  io.perf_ifu_stall_idle := PerfBool("ifu_stall_idle")(ifu.io.StallIdle)
+  // 指令缓存
+  io.perf_icache_hit := PerfBool("icache_hit")(icache.io.perf_hit)
+  io.perf_icache_miss := PerfBool("icache_miss")(icache.io.perf_miss)
+  // 数据缓存
+  io.perf_dcache_hit := PerfBool("dcache_hit")(lsu.io.DCachePerfHit)
+  io.perf_dcache_miss := PerfBool("dcache_miss")(lsu.io.DCachePerfMiss)
+  io.perf_dcache_refill_req :=
+    PerfBool("dcache_refill_req")(lsu.io.DCachePerfRefillReq)
+  io.perf_dcache_refill_resp :=
+    PerfBool("dcache_refill_resp")(lsu.io.DCachePerfRefillResp)
+  // 执行级停顿
+  io.perf_exu_stall_lsu := PerfBool("exu_stall_lsu")(
+    exu.io.PerfExecutionActive && !exu.io.out.fire && !exu.io.PerfMDUWait
+  )
+  io.perf_exu_idle_noinput := PerfBool("exu_idle_noinput")(exu.io.PerfIdleNoInput)
+  io.perf_mem_waitslot := PerfBool("mem_waitslot")(lsu.io.Hazard2Valid)
+  // 访存级
+  io.perf_lsu_active := PerfBool("lsu_active")(lsu.io.Active)
+  io.perf_lsu_load_active := PerfBool("lsu_load_active")(lsu.io.Active &&
+    !lsu.io.IsStore)
+  io.perf_lsu_store_active := PerfBool("lsu_store_active")(lsu.io.Active &&
+    lsu.io.IsStore)
+  io.perf_lsu_stall_read_ar := PerfBool("lsu_stall_read_ar")(lsu.io.StallReadAR)
+  io.perf_lsu_stall_read_r := PerfBool("lsu_stall_read_r")(lsu.io.StallReadR)
+  io.perf_lsu_stall_write_req :=
+    PerfBool("lsu_stall_write_req")(lsu.io.StallWriteReq)
+  io.perf_lsu_stall_write_b := PerfBool("lsu_stall_write_b")(lsu.io.StallWriteB)
+  // 译码级RAW停顿
+  io.perf_idu_stall_raw := PerfBool("idu_stall_raw")(idu.io.perf_stall_raw)
+  io.perf_idu_stall_raw_loaduse :=
+    PerfBool("idu_stall_raw_loaduse")(idu.io.perf_stall_raw_loaduse)
+  io.perf_idu_stall_raw_alu :=
+    PerfBool("idu_stall_raw_alu")(idu.io.perf_stall_raw_alu)
+  // 异常
+  io.perf_trap := PerfBool("trap_count")(exu.io.PerfTrap)
+  // 执行活跃电平与事件分类码是多个单计数器的公共信号：消费方任一开启
+  // 才生成，否则绑常量。
+  io.perf_execution_active :=
+    (if (config.EnablePerfExecutionActive) exu.io.PerfExecutionActive
+     else false.B)
+  io.perf_exu_event_kind :=
+    (if (config.EnablePerfEventKind) exu.io.PerfEventKind else 0.U(3.W))
 
   // AXI响应协议检查: B响应的错误码不再在这里断言——DECERR/SLVERR会由LSU按
   // store访问故障精确提交(cause=7), 顶层断言会抢先把仿真停掉。
