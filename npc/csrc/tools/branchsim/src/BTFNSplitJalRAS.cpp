@@ -8,9 +8,10 @@ Prediction BTFNSplitJalRAS::predict(uint32_t pc) const
     {
         if (h->kind == BranchKind::Ret)
         {
-            // ret: 目标取RAS栈顶(可能错, 必须接受目标校验); 栈空则无法预测
+            // Ret/Coroutine表项保存静态immediate，目标与RTL一样为
+            // (RAS top + immediate) & ~1；栈空则无法预测。
             if (auto t{ras.top_addr()})
-                return {true, true, *t};
+                return {true, true, (*t + h->target) & ~std::uint32_t{1}};
             return {false, false, 0};
         }
         // Jal/Call表项: 命中即taken, 目标静态必正确
@@ -21,12 +22,15 @@ Prediction BTFNSplitJalRAS::predict(uint32_t pc) const
         return {hit->target < pc, true, hit->target};
     return {false, false, 0};
 }
-void BTFNSplitJalRAS::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind)
+void BTFNSplitJalRAS::update(uint32_t pc, bool taken, uint32_t target,
+                             BranchKind kind, std::uint32_t jalr_immediate)
 {
     switch (kind)
     {
     case BranchKind::Branch:
-        btb.update(pc, target, kind);
+        // RTL的BTFN表只训练后向条件分支。
+        if (target < pc)
+            btb.update(pc, target, kind);
         break;
     case BranchKind::Jal:
         jal_btb.update(pc, target, kind);
@@ -35,12 +39,18 @@ void BTFNSplitJalRAS::update(uint32_t pc, bool taken, uint32_t target, BranchKin
         ras.push(pc + 4);
         jal_btb.update(pc, target, kind);
         break;
-    case BranchKind::JalrCall: // jalr ra间接调用: 目标不可预测, 但要压RAS
+    case BranchKind::JalrCall: // 普通间接call: 压RAS，并学习本次实际目标
         ras.push(pc + 4);
+        jal_btb.update(pc, target, BranchKind::Call);
         break;
-    case BranchKind::Ret: // ret: 弹RAS, 表项只作ret标记
+    case BranchKind::Ret: // 只弹RAS，Ret表项保存静态immediate
         ras.pop();
-        jal_btb.update(pc, target, kind);
+        jal_btb.update(pc, jalr_immediate, BranchKind::Ret);
+        break;
+    case BranchKind::Coroutine: // x1/x5异名link hint：RTL为pop-then-push
+        ras.pop();
+        ras.push(pc + 4);
+        jal_btb.update(pc, jalr_immediate, BranchKind::Ret);
         break;
     case BranchKind::JalrOther: // 其他间接跳转: 不预测
         break;

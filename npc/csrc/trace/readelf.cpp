@@ -169,8 +169,8 @@ namespace
      * @param header const Header&，从文件偏移零处读取的头。
      * @return std::expected<void, std::string>，空的成功值，或此ELF不受支持的原因。
      * @details
-     * 解析器有意仅支持NPC所需的常见情况：小端ELF文件，且其 32/64 位class
-     * 与构建匹配。条目大小检查可防止对具有不兼容主机结构布局的表进行意外重解释。
+     * 解析器有意仅支持NPC所需的常见情况：RISC-V小端ELF文件，且其
+     * 32/64 位class与构建匹配。条目大小检查可防止对具有不兼容主机结构布局的表进行意外重解释。
      */
     std::expected<void, std::string> validate_header(const Header &header)
     {
@@ -192,6 +192,14 @@ namespace
         if (header.e_ident[EI_VERSION] != EV_CURRENT || header.e_version != EV_CURRENT)
         {
             return make_error("不支持的ELF版本(unsupported ELF version)");
+        }
+        if (header.e_machine != EM_RISCV)
+        {
+            return make_error(std::format(
+                "ELF目标架构不匹配(ELF machine mismatch)：仅支持RISC-V "
+                "(expected EM_RISCV={}, actual e_machine={})",
+                EM_RISCV,
+                static_cast<unsigned>(header.e_machine)));
         }
         if (header.e_ehsize != sizeof(Header))
         {

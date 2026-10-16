@@ -19,26 +19,51 @@ private:
     bool vga_check{false};
     bool vga_prev_hsync{true};
     bool vga_prev_vsync{true};
+    std::size_t vga_hsync_run_length{0};
+    std::size_t vga_vsync_run_length{0};
     std::size_t vga_last_hsync_cycle{0};
     std::size_t vga_last_vsync_cycle{0};
     std::size_t vga_line_period_sum{0};
     std::size_t vga_line_period_count{0};
     std::size_t vga_line_period_bad{0};
     std::size_t vga_frame_period_bad{0};
+    std::size_t vga_hsync_width_bad{0};
+    std::size_t vga_vsync_width_bad{0};
+    std::size_t vga_hsync_level_errors{0};
+    std::size_t vga_vsync_level_errors{0};
+    std::size_t vga_valid_timing_errors{0};
+    std::size_t vga_frame_pixel_bad{0};
     int vga_x{-1};
-    int vga_y{0};
+    int vga_y{-1};
+    bool vga_horizontal_aligned{false};
+    bool vga_vertical_aligned{false};
     std::size_t vga_valid_pixels{0};
     std::size_t vga_last_frame_valid_pixels{0};
+    std::size_t vga_last_frame_missing_pixels{0};
+    std::size_t vga_last_frame_duplicate_pixels{0};
+    std::size_t vga_missing_pixels{0};
+    std::size_t vga_duplicate_pixels{0};
     std::size_t vga_pos_errors{0};
     std::size_t vga_frames{0};
+    bool vga_completed_frame_available{false};
+    bool vga_timed_out{false};
+    std::vector<std::uint8_t> vga_working_frame;
     std::vector<std::uint8_t> vga_frame;
+    std::vector<std::uint8_t> vga_pixel_coverage;
     std::size_t instructions{0};
     PerfStats perf{};
     std::size_t fault_count{0}; // AXI fault 打印限流计数
     bool finalized{false};
+    // Seeded once when a REF is enabled, then updated by reading the physical
+    // destination after each real write.  DiffTest can snapshot all 32 GPRs
+    // without 32 debug-address changes/evals per retirement.
+    std::array<std::uint32_t, 32> architectural_gpr{};
+    std::uint32_t architectural_pc{0};
+#ifdef CONFIG_SDB
     // Verilator 顶层没有稳定的 RAM 读端口。只记录已精确退休的
     // CPU store，与初始镜像合并成可证明正确的调试内存视图。
     std::unordered_map<std::uint32_t, std::uint8_t> debug_memory_writes;
+#endif
 
 public:
     DUT();
@@ -61,5 +86,11 @@ public:
     // 给sdb的
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadPC();
+    [[nodiscard]] std::expected<std::uint32_t, std::string>
+        ReadCachedGPR(std::uint32_t index) const;
+    [[nodiscard]] std::uint32_t ReadCachedPC() const noexcept;
+    // One-time physical RF rescan used at reset and at the final DiffTest
+    // boundary.  Per-retirement snapshots continue to use the write mirror.
+    void RefreshCachedArchitecturalState();
     [[nodiscard]] std::expected<std::uint32_t, std::string> ReadMemory(std::uint32_t addr, std::size_t size);
 };

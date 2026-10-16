@@ -59,8 +59,11 @@ std::optional<BranchRecord> BTraceReader::TryParse(std::string_view line)
         return std::nullopt;
     }
     // 第4列(可选): 记录类型, b=条件分支(默认), j=jal非调用, c=jal ra调用,
-    // r=ret, i=jalr ra间接调用, x=其他jalr; 缺失=条件分支(兼容旧格式trace)
+    // r=jalr只弹RAS, i=jalr只压RAS, o=x1/x5协程切换(同拍弹后压),
+    // x=无RAS hint的其他jalr; 缺失=条件分支(兼容旧格式trace)。
+    // 第5列可选：JALR的符号扩展immediate，按32位十六进制位模式记录。
     auto kind{BranchKind::Branch};
+    std::uint32_t jalr_immediate{};
     while (pointer3 < end && (*pointer3 == ' ' || *pointer3 == '\t'))
     {
         ++pointer3;
@@ -73,11 +76,26 @@ std::optional<BranchRecord> BTraceReader::TryParse(std::string_view line)
         case 'c': case 'C': kind = BranchKind::Call; break;
         case 'r': case 'R': kind = BranchKind::Ret; break;
         case 'i': case 'I': kind = BranchKind::JalrCall; break;
+        case 'o': case 'O': kind = BranchKind::Coroutine; break;
         case 'x': case 'X': kind = BranchKind::JalrOther; break;
         default: break;
         }
+        ++pointer3;
+        while (pointer3 < end && (*pointer3 == ' ' || *pointer3 == '\t'))
+        {
+            ++pointer3;
+        }
+        if (pointer3 < end)
+        {
+            const auto [pointer4, errorcode4] =
+                std::from_chars(pointer3, end, jalr_immediate, 16);
+            if (errorcode4 != std::errc{} || pointer4 != end)
+            {
+                return std::nullopt;
+            }
+        }
     }
-    return BranchRecord{pc, target, taken != 0, kind};
+    return BranchRecord{pc, target, taken != 0, kind, jalr_immediate};
 }
 std::size_t BTraceReader::GetCount() const
 {

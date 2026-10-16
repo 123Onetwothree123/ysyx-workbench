@@ -93,6 +93,10 @@ class ysyx_26030103_IO extends Bundle {
   // 给sdb用的
   val debug_gpr_raddr = Input(UInt(5.W))
   val debug_gpr_rdata = Output(UInt(32.W))
+  // 上升沿前实际送入寄存器堆的 GPR 写使能和地址。DiffTest 在低
+  // 电平采样，沿后只回读这个物理寄存器来更新 C++ 架构镜像。
+  val debug_gpr_wen = Output(Bool())
+  val debug_gpr_waddr = Output(UInt(5.W))
   // debug_pc 是本次退休指令的 PC，只能在 debug_commit 时使用。
   val debug_pc = Output(UInt(32.W))
   // debug_next_pc 与退休记录同拍；debug_arch_pc 是调试器应向

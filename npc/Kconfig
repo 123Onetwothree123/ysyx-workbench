@@ -989,6 +989,8 @@ menu "硬件配置"
         链接 NVBoard，把 ysyxSoCFull 的 GPIO 引脚绑定到虚拟板卡的
         LED/数码管/拨码开关。需要 SDL2 (libsdl2-dev libsdl2-image-dev
         libsdl2-ttf-dev)，且 nvboard.a 要与本工程的 C++ 标准库 ABI 一致。
+        仅支持 SIM_TOP=soc；direct-NPC 顶层没有这些外设引脚，构建时会
+        明确拒绝该组合。
 
     config NVBOARD_NXDC
       string "NVBoard 约束文件(.nxdc)路径"
@@ -1001,6 +1003,7 @@ menu "硬件配置"
       int "每多少周期刷新一次 NVBoard GUI"
       depends on NVBOARD
       default 100
+      range 1 1000000
       help
         每周期都刷新太慢，隔 N 个周期调用一次 nvboard_update 折中
 
@@ -1023,13 +1026,18 @@ menu "运行时调试"
       开启后每周期读取debug_commit信号计数，开销极低
 
   config PERF_SAVE
-    bool "启用性能数据自动存档（TSV文件）"
+    bool "启用性能数据自动存档（CSV文件）"
     default y
     depends on PERF_STATS
     help
-      仿真结束后自动把性能数据写入 NPCSimResult/ 目录
-      每次运行生成时间戳命名的 .tsv 和 .log 文件
-      同时追加到 perf.tsv 累计表格
+      仿真结束后把本次性能数据写入单独的 CSV 文件。
+      默认保存到 NPCSimResult/YYYYMMDD-HHMMSS/ 目录；同一秒
+      内的多次运行会加数字后缀，不会覆盖已有结果。命令行
+      --result-dir 可指定其他目录；未启用本选项时传入该参数
+      会明确报错，不会静默忽略。
+      CSV 同时记录工作区 dirty 状态、有效硬件配置摘要/哈希和
+      当前目标 RTL 哈希。只有 target、PDK、配置及 RTL 哈希都匹配
+      时才采用 synth.txt 的频率和面积，避免普通运行误用旧综合结果。
 
   config TRACE
     bool "启用追踪功能（总开关）"

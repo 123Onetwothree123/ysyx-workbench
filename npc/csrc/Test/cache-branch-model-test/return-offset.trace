@@ -1,0 +1,5 @@
+# Ret entries store the static immediate; target=(RAS top+immediate)&~1.
+00001000 00004000 1 c
+00003008 00001008 1 r 00000004
+00001010 00004000 1 c
+00003008 00001018 1 r 00000004

@@ -18,7 +18,12 @@ int main(int argc, char const *argv[])
 {
     setvbuf(stdout, NULL, _IONBF, 0);
 #if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
-    log_init();
+    if (auto logResult{log_init()}; !logResult)
+    {
+        std::println(std::cerr, "日志初始化失败：{}", logResult.error());
+        log_close();
+        return 1;
+    }
 #endif
     const auto failBeforeDUT = [](std::string_view error) {
         std::println(std::cerr, "{}", error);
@@ -36,6 +41,20 @@ int main(int argc, char const *argv[])
     {
         return failBeforeDUT(options.error());
     }
+#ifdef VRISCV32E_NPC
+    if (options->GetVGACheck())
+    {
+        return failBeforeDUT(
+            "--vga-check 仅支持带 VGA 引脚的 SoC 仿真，direct-NPC 不支持");
+    }
+#endif
+#ifndef CONFIG_PERF_SAVE
+    if (options->GetResultDir())
+    {
+        return failBeforeDUT(
+            "--result-dir 需要在构建时启用 CONFIG_PERF_SAVE");
+    }
+#endif
     auto load{ImageLoader::LoadFromCLI(*options)};
     if (!load)
     {
@@ -122,7 +141,7 @@ int main(int argc, char const *argv[])
         dut.EnableVGACheck();
     }
 #ifdef CONFIG_SDB
-    const bool sdbUserQuit{SDB::MainLoop(dut)};
+    const auto sdbExitReason{SDB::MainLoop(dut)};
 #else
     while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
@@ -131,15 +150,6 @@ int main(int argc, char const *argv[])
         // let a same-cycle custom halt overwrite that failure with a0 == 0.
         if (NPCTrap::HasHalted())
             break;
-        if (options->GetVGACheck() && dut.GetCycle() >= 50000000)
-        {
-            const auto pc{dut.ReadPC()};
-            std::println(std::cerr, "VGA时序检查超过50000000周期，强制终止");
-            NPCTrap::Stop(pc ? *pc : 0U);
-        }
-#ifdef CONFIG_NVBOARD
-        nvboard_update();
-#endif
         if (dut->trap_valid)
         {
             std::println("收到仿真 halt 请求");
@@ -164,7 +174,8 @@ int main(int argc, char const *argv[])
     }
 #ifdef CONFIG_SDB
     int result;
-    if (sdbUserQuit && !NPCTrap::HasHalted())
+    if (sdbExitReason == SDBExitReason::UserQuit &&
+        !Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         std::println("SDB用户主动退出（程序未结束）");
         result = 0;
@@ -181,9 +192,31 @@ int main(int argc, char const *argv[])
         dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
 #endif
 #ifdef CONFIG_PERF_SAVE
-    auto result_dir = options->GetResultDir();
-    if (result_dir.has_value()) {
-        NPCSimResult::Save(*result_dir, dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
+    std::optional<std::filesystem::path> default_result_dir;
+    try
+    {
+        std::filesystem::path result_dir;
+        if (options->GetResultDir())
+        {
+            result_dir = *options->GetResultDir();
+        }
+        else
+        {
+            result_dir = NPCSimResult::CreateDefaultResultDirectory();
+            default_result_dir = result_dir;
+        }
+        NPCSimResult::Save(
+            result_dir, dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
+    }
+    catch (const std::exception &error)
+    {
+        std::println(std::cerr, "性能结果保存失败：{}", error.what());
+        if (default_result_dir)
+        {
+            std::error_code ignored;
+            std::filesystem::remove(*default_result_dir, ignored);
+        }
+        result = 1;
     }
 #endif
     // Verilator/NVBoard 的收尾每个只执行一次，且必须在所有

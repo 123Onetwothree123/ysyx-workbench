@@ -11,10 +11,13 @@ Prediction BTFNSharedJal::predict(uint32_t pc) const
     // ret表项的目标是"上次返回地址", 接受目标校验(通常不准, 这正是需要RAS的原因)
     return {hit->kind != BranchKind::Branch || hit->target < pc, true, hit->target};
 }
-void BTFNSharedJal::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind)
+void BTFNSharedJal::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind,
+                           std::uint32_t)
 {
-    // 共享表: 所有控制流指令共用一张BTB, 互相挤占
-    btb.update(pc, target, kind);
+    // 共享表中非条件跳转仍正常训练；条件分支与RTL一样
+    // 只保留BTFN可能预测taken的后向表项。
+    if (kind != BranchKind::Branch || target < pc)
+        btb.update(pc, target, kind);
 }
 std::string_view BTFNSharedJal::GetName() const
 {

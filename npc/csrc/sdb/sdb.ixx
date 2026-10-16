@@ -2,11 +2,20 @@ export module npc.sdb.sdb;
 import std;
 import npc.DUT;
 
+// MainLoop must tell its caller why it returned.  A bool could not distinguish
+// an explicit `q` from Verilator's $finish/EOF paths, which let a `q` queued
+// after $finish turn an unfinished simulation into a successful exit.
+export enum class SDBExitReason
+{
+    UserQuit,
+    EndOfInput,
+    BatchComplete,
+    VerilatorFinish,
+};
+
 export class SDB final
 {
 public:
     SDB() = delete;
-    // true only for an explicit interactive `q`; simulation completion,
-    // batch mode, and stdin EOF are not silently treated as success.
-    [[nodiscard]] static bool MainLoop(DUT &dut, bool batch_mode = false);
+    [[nodiscard]] static SDBExitReason MainLoop(DUT &dut, bool batch_mode = false);
 };

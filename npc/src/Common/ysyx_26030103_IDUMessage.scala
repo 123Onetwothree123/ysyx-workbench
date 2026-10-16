@@ -33,6 +33,7 @@ class ysyx_26030103_IDUMessage extends Bundle {
 
   val IsCsrrw = Bool()
   val IsCsrrs = Bool()
+  val IsCsrrc = Bool()
   val IsEcall = Bool()
   val IsEbreak = Bool()
   // 仿真环境专用的终止请求。它使用 custom-0 空间中的保留编码，和会
@@ -44,6 +45,9 @@ class ysyx_26030103_IDUMessage extends Bundle {
   val IsFence = Bool()
   val IsFenceI = Bool()
   val CSRAddress = UInt(12.W)
+  // CSR 寄存器型指令中这是 rs1/寄存器数据；立即数型指令中这是
+  // zimm 字段及其零扩展值。CSRRS[I]/CSRRC[I] 用字段是否为零判断
+  // 是否具有写意图。
   val Rs1 = UInt(5.W)
   val Rs1Data = UInt(32.W)
 

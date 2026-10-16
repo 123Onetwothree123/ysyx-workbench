@@ -24,7 +24,6 @@ static void defaults(DUT &dut) {
   dut.io_ex_memop = 0;
   dut.io_ex_fwd_ready = 0;
   dut.io_ex_fwd_data = 0;
-  dut.io_ex_mdu_hidden_writes = 0;
   dut.io_wb_fwd_data = 0;
   dut.io_me_valid = 0;
   dut.io_me_rd = 0;
@@ -63,9 +62,61 @@ static void expect_fence(DUT &dut, uint32_t instruction,
         std::string(description) + " treated reserved rd as a write");
 }
 
+static void expect_disabled_m_instruction_illegal(DUT &dut, uint8_t funct3) {
+  // funct7=0000001/opcode=OP is one of MUL[H]*, DIV[U] or REM[U].  This
+  // test is built from the RV32_M=n production RTL, so every one must remain
+  // a precise illegal instruction instead of entering an absent MDU path.
+  dut.io_in_bits_Instruction = 0x02000033U |
+                               (static_cast<uint32_t>(funct3 & 0x7U) << 12);
+  dut.eval();
+  check(dut.io_in_ready && dut.io_out_valid,
+        "disabled M instruction was unexpectedly stalled");
+  check(dut.io_out_bits_ExceptionValid,
+        "RV32_M=n accepted an M instruction");
+  check(dut.io_out_bits_ExceptionCause == 2,
+        "disabled M instruction did not raise illegal-instruction cause 2");
+}
+
+static void expect_wfi_nop(DUT &dut) {
+  constexpr uint32_t kWfi = 0x10500073U;
+  constexpr uint32_t kPc = 0x80000120U;
+  dut.io_in_bits_Instruction = kWfi;
+  dut.io_in_bits_pc = kPc;
+  dut.eval();
+
+  check(dut.io_in_ready && dut.io_out_valid,
+        "WFI was unexpectedly stalled");
+  check(!dut.io_out_bits_ExceptionValid,
+        "M-mode WFI raised illegal-instruction");
+  check(dut.io_out_bits_snpc == kPc + 4U,
+        "WFI did not preserve the sequential PC");
+  check(!dut.io_out_bits_RegisterWrite,
+        "WFI unexpectedly enabled a GPR write");
+  check(!dut.io_out_bits_MemoryValid && !dut.io_out_bits_MemoryWrite,
+        "WFI unexpectedly enabled a memory access");
+  check(!dut.io_out_bits_IsCsrrw && !dut.io_out_bits_IsCsrrs &&
+            !dut.io_out_bits_IsCsrrc,
+        "WFI unexpectedly decoded as a CSR operation");
+  check(!dut.io_out_bits_IsEcall && !dut.io_out_bits_IsEbreak &&
+            !dut.io_out_bits_IsMret,
+        "WFI unexpectedly decoded as another SYSTEM operation");
+}
+
+static void expect_illegal_system(DUT &dut, uint32_t instruction,
+                                  const char *description) {
+  dut.io_in_bits_Instruction = instruction;
+  dut.eval();
+  check(dut.io_in_ready && dut.io_out_valid,
+        std::string(description) + " was unexpectedly stalled");
+  check(dut.io_out_bits_ExceptionValid,
+        std::string(description) + " was accepted as WFI");
+  check(dut.io_out_bits_ExceptionCause == 2,
+        std::string(description) + " did not raise illegal-instruction cause 2");
+}
+
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
-  return run_test("IDU FENCE reserved rd/rs1 fields", [] {
+  return run_test("IDU FENCE/WFI and RV32_M-disabled illegal traps", [] {
     DUT dut;
     defaults(dut);
 
@@ -89,21 +140,14 @@ int main(int argc, char **argv) {
     expect_fence(dut, fence_encoding(8, 0x3, 0x3, 0, 0),
                  "FENCE.TSO conservatively implemented as a full FENCE");
 
-    // ADD x3,x5,x0 depends on a younger, non-head MDU write to x5.  That
-    // producer has no result on the single EX forwarding port yet, so the
-    // scoreboard mask must hold the consumer until the queued write retires.
-    dut.io_in_bits_Instruction = 0x000281b3U;
-    dut.io_ex_mdu_hidden_writes = 1U << 5;
-    dut.eval();
-    check(!dut.io_in_ready && !dut.io_out_valid && dut.io_perf_stall_raw,
-          "IDU ignored a hidden queued-MDU RAW dependency");
-    check(!dut.io_perf_stall_raw_loaduse,
-          "queued-MDU RAW dependency was misclassified as load-use");
+    expect_wfi_nop(dut);
+    // Only the exact standard WFI encoding is legal: a neighbouring immediate
+    // and a nonzero reserved rd must remain precise illegal instructions.
+    expect_illegal_system(dut, 0x10400073U, "reserved SYSTEM immediate");
+    expect_illegal_system(dut, 0x105000f3U, "WFI encoding with nonzero rd");
 
-    dut.io_ex_mdu_hidden_writes = 0;
-    dut.eval();
-    check(dut.io_in_ready && dut.io_out_valid,
-          "IDU remained stalled after the hidden MDU writer retired");
+    for (uint8_t funct3 = 0; funct3 < 8; ++funct3)
+      expect_disabled_m_instruction_illegal(dut, funct3);
     dut.final();
   });
 }

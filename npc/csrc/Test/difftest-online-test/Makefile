@@ -23,6 +23,9 @@ export ARCH
 include $(AM_HOME)/Makefile
 
 override CXXFLAGS += -std=c++17 -D_GLIBCXX_ASSERTIONS
+ifeq ($(ARCH),riscv32e-npc)
+override CXXFLAGS += -DTEST_DIRECT_NPC
+endif
 
 .PHONY: difftest difftest-soc difftest-soc-run
 

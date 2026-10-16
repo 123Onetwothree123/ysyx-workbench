@@ -13,6 +13,7 @@ static void defaults(DUT &dut) {
   dut.io_req_bits_signed = 0;
   dut.io_resp_ready = 1;
   dut.io_StoreValid = 0;
+  dut.io_StoreResp = 0;
   dut.io_StoreAddr = 0;
   dut.io_StoreData = 0;
   dut.io_StoreStrb = 0;
@@ -261,9 +262,233 @@ int main(int argc, char **argv) {
           "DCache lost the replacement response during same-cycle pop/push");
     tick(dut);
 
-    // A younger successful store may arrive after critical-word restart but
-    // before the old read burst finishes.  The remaining beats can be stale,
-    // so that refill must drain without becoming a valid cache line.
+    // Write-no-allocate must leave an unrelated resident line alone.  These
+    // two lines map to the same direct-mapped set (32 sets * 16 bytes), but
+    // have different tags.  A successful store miss to the second line must
+    // not evict the first line, because it neither allocates nor modifies it.
+    dut.io_StoreAddr = 0x80000200U;
+    dut.io_StoreData = 0xdeadbeefU;
+    dut.io_StoreStrb = 0xf;
+    dut.io_StoreValid = 1;
+    tick(dut);
+    dut.io_StoreValid = 0;
+    dut.io_req_bits_addr = 0x80000004U;
+    dut.io_req_valid = 1;
+    dut.eval();
+    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+          "write-no-allocate store miss evicted an unrelated same-set line");
+    tick(dut);
+    dut.io_req_valid = 0;
+    dut.eval();
+    check(dut.io_resp_valid && dut.io_resp_bits_data == words[1] &&
+              !dut.io_AXI_AR_ARVALID,
+          "unrelated store miss forced a refill of the resident line");
+    tick(dut);
+
+    // Critical-word restart must also free the demand side while the tail of
+    // the same refill is still arriving.  Only words that have already
+    // returned may hit under this single outstanding miss: accepting a later
+    // word would expose uninitialized/old array contents, while treating the
+    // returned word as a second miss would need another MSHR and AXI ID.
+    dut.io_req_bits_addr = 0x80000080U;
+    dut.io_req_valid = 1;
+    tick(dut);
+    dut.io_req_valid = 0;
+    accept_refill_ar(dut, 0x80000080U, 0);
+    dut.io_AXI_R_RDATA = 0x81020304U;
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_AXI_R_RLAST = 0;
+    dut.io_AXI_R_RVALID = 1;
+    tick(dut); // word 0 returns and produces the original demand response
+    dut.io_AXI_R_RVALID = 0;
+    dut.eval();
+    check(dut.io_resp_valid && dut.io_resp_bits_data == 0x81020304U,
+          "DCache did not expose the first critical word");
+    tick(dut); // consume the original response; refill beats 1..3 remain
+
+    // A resident line in another set is an ordinary full hit and is equally
+    // safe while the refill tail owns the sole AXI ID.  It must not be
+    // serialized behind an unrelated miss.
+    dut.io_req_bits_addr = 0x80000004U;
+    dut.io_req_valid = 1;
+    dut.io_resp_ready = 0;
+    dut.eval();
+    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+          "DCache blocked an independent full hit behind a refill tail");
+    tick(dut);
+    dut.io_req_valid = 0;
+    dut.eval();
+    check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
+              dut.io_resp_bits_data == words[1],
+          "full hit-under-refill returned the wrong resident word");
+    dut.io_resp_ready = 1;
+    tick(dut);
+
+    dut.io_req_bits_addr = 0x80000088U; // word 2 has not returned yet
+    dut.io_req_valid = 1;
+    dut.eval();
+    check(!dut.io_req_ready,
+          "DCache accepted an unreturned word from a partial refill");
+    dut.io_req_bits_addr = 0x80000280U; // same set, different line/tag
+    dut.eval();
+    check(!dut.io_req_ready,
+          "single-MSHR DCache accepted a second line during refill");
+
+    dut.io_req_bits_addr = 0x80000080U; // word 0 is safe to reuse
+    dut.io_resp_ready = 0;
+    dut.eval();
+    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+          "DCache blocked a returned word behind the refill tail");
+    check(!dut.io_AXI_AR_ARVALID,
+          "hit-under-refill incorrectly issued a second AXI request");
+    tick(dut); // accept the hit while keeping its response backpressured
+    dut.io_req_valid = 0;
+    dut.eval();
+    check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
+              dut.io_resp_bits_data == 0x81020304U,
+          "hit-under-refill returned the wrong already-received word");
+
+    constexpr std::array<uint32_t, 3> restart_tail = {
+        0x81111111U, 0x82222222U, 0x83333333U};
+    // Return word 1 while the word-0 response slot is stalled, then turn the
+    // slot over in one cycle: pop word 0 and accept/push word 1 together.
+    dut.io_AXI_R_RDATA = restart_tail[0];
+    dut.io_AXI_R_RLAST = 0;
+    dut.io_AXI_R_RVALID = 1;
+    tick(dut);
+    dut.io_AXI_R_RVALID = 0;
+    dut.io_req_bits_addr = 0x80000084U;
+    dut.io_req_valid = 1;
+    dut.io_resp_ready = 1;
+    dut.eval();
+    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+          "hit-under-refill response slot could not pop and push together");
+    tick(dut);
+    dut.io_req_valid = 0;
+    dut.io_resp_ready = 0;
+    dut.eval();
+    check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
+              dut.io_resp_bits_data == restart_tail[0],
+          "elastic hit-under-refill slot lost its replacement response");
+
+    for (unsigned beat = 1; beat < restart_tail.size(); ++beat) {
+      dut.io_AXI_R_RDATA = restart_tail[beat];
+      dut.io_AXI_R_RLAST = beat + 1 == restart_tail.size();
+      dut.io_AXI_R_RVALID = 1;
+      tick(dut);
+      dut.io_AXI_R_RVALID = 0;
+      dut.io_AXI_R_RLAST = 0;
+      dut.eval();
+      check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
+                dut.io_resp_bits_data == restart_tail[0],
+            "refill tail mutated a stalled hit-under-refill response");
+    }
+    dut.io_resp_ready = 1;
+    tick(dut);
+    dut.eval();
+    check(dut.io_req_ready && !dut.io_axi_active,
+          "DCache did not finish the refill after hit-under-refill");
+
+    // An error on any refill beat makes the partial line unusable even when a
+    // different word had already returned successfully.  The original load
+    // may keep its precise successful response, but no younger request may
+    // reuse data from the failed refill.
+    dut.io_req_bits_addr = 0x800000c0U;
+    dut.io_req_valid = 1;
+    tick(dut);
+    dut.io_req_valid = 0;
+    accept_refill_ar(dut, 0x800000c0U, 0);
+    dut.io_AXI_R_RDATA = 0xc0010203U;
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_AXI_R_RLAST = 0;
+    dut.io_AXI_R_RVALID = 1;
+    tick(dut);
+    dut.io_AXI_R_RVALID = 0;
+    tick(dut); // consume the successful word-0 demand response
+    dut.io_AXI_R_RDATA = 0xc1111111U;
+    dut.io_AXI_R_RRESP = 2;
+    dut.io_AXI_R_RVALID = 1;
+    dut.io_req_bits_addr = 0x800000c0U;
+    dut.io_req_valid = 1;
+    dut.eval();
+    check(!dut.io_req_ready,
+          "DCache accepted a partial hit alongside a failing refill beat");
+    tick(dut); // a non-critical refill beat fails
+    dut.io_AXI_R_RVALID = 0;
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_req_valid = 0;
+    dut.eval();
+    check(!dut.io_req_ready,
+          "DCache reused a partial word after another refill beat failed");
+    for (unsigned beat = 2; beat < words.size(); ++beat) {
+      dut.io_AXI_R_RDATA = 0xc0000000U + beat;
+      dut.io_AXI_R_RLAST = beat + 1 == words.size();
+      dut.io_AXI_R_RVALID = 1;
+      tick(dut);
+      dut.io_AXI_R_RVALID = 0;
+      dut.io_AXI_R_RLAST = 0;
+    }
+    dut.eval();
+    check(dut.io_req_ready && !dut.io_axi_active,
+          "failed refill did not drain after a non-critical RRESP error");
+    dut.io_req_valid = 1;
+    dut.eval();
+    check(dut.io_req_ready && dut.io_perf_miss && !dut.io_perf_hit,
+          "non-critical RRESP error installed a partial cache line");
+    tick(dut);
+    dut.io_req_valid = 0;
+    accept_refill_ar(dut, 0x800000c0U, 0);
+    constexpr std::array<uint32_t, 4> recovered_words = {
+        0xc0010203U, 0xc1111111U, 0xc2222222U, 0xc3333333U};
+    send_refill(dut, recovered_words, -1, 0, 0, false);
+
+    // A coherence flush after early restart must revoke even already-returned
+    // partial words.  The AXI burst still drains, but no request can reuse the
+    // pre-flush snapshot and the completed line remains invalid.
+    dut.io_req_bits_addr = 0x80000100U;
+    dut.io_req_valid = 1;
+    tick(dut);
+    dut.io_req_valid = 0;
+    accept_refill_ar(dut, 0x80000100U, 0);
+    dut.io_AXI_R_RDATA = 0xf0010203U;
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_AXI_R_RLAST = 0;
+    dut.io_AXI_R_RVALID = 1;
+    tick(dut);
+    dut.io_AXI_R_RVALID = 0;
+    tick(dut); // consume the original demand response
+    dut.io_flush = 1;
+    tick(dut);
+    dut.io_flush = 0;
+    dut.io_req_bits_addr = 0x80000100U;
+    dut.io_req_valid = 1;
+    dut.eval();
+    check(!dut.io_req_ready,
+          "flush left an already-returned partial word reusable");
+    dut.io_req_valid = 0;
+    for (unsigned beat = 1; beat < words.size(); ++beat) {
+      dut.io_AXI_R_RDATA = 0xf0000000U + beat;
+      dut.io_AXI_R_RLAST = beat + 1 == words.size();
+      dut.io_AXI_R_RVALID = 1;
+      tick(dut);
+      dut.io_AXI_R_RVALID = 0;
+      dut.io_AXI_R_RLAST = 0;
+    }
+    dut.io_req_valid = 1;
+    dut.eval();
+    check(dut.io_req_ready && dut.io_perf_miss && !dut.io_perf_hit,
+          "flush-crossing refill installed a cache line");
+    tick(dut);
+    dut.io_req_valid = 0;
+    accept_refill_ar(dut, 0x80000100U, 0);
+    constexpr std::array<uint32_t, 4> post_flush_words = {
+        0xf0010203U, 0xf1111111U, 0xf2222222U, 0xf3333333U};
+    send_refill(dut, post_flush_words, -1, 0, 0, false);
+
+    // A younger store completion may arrive after critical-word restart but
+    // before the old read burst finishes.  Even an error response may follow
+    // a partial external side effect, so the remaining beats can be stale and
+    // the refill must drain without becoming a valid cache line.
     dut.io_req_bits_addr = 0x80000040U;
     dut.io_req_valid = 1;
     tick(dut);
@@ -278,9 +503,17 @@ int main(int argc, char **argv) {
     dut.io_StoreAddr = 0x80000040U;
     dut.io_StoreData = 0xa1b2c3d4U;
     dut.io_StoreStrb = 0xf;
+    dut.io_StoreResp = 2;
     dut.io_StoreValid = 1;
     tick(dut); // consume demand response and invalidate in-flight refill
     dut.io_StoreValid = 0;
+    dut.io_StoreResp = 0;
+    dut.io_req_bits_addr = 0x80000040U;
+    dut.io_req_valid = 1;
+    dut.eval();
+    check(!dut.io_req_ready,
+          "store/refill conflict left stale partial words reusable");
+    dut.io_req_valid = 0;
     for (unsigned beat = 1; beat < words.size(); ++beat) {
       dut.io_AXI_R_RDATA = words[beat];
       dut.io_AXI_R_RLAST = beat + 1 == words.size();

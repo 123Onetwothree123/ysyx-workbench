@@ -19,14 +19,15 @@ HARNESS_STAMP := $(HARNESS_RTL_DIR)/.generated
 
 XBAR_BIN := $(BIN_DIR)/xbar_local_decerr_interleave_test
 EXU_BIN := $(BIN_DIR)/exu_mdu_ordering_test
+IDU_MDU_BIN := $(BIN_DIR)/idu_mdu_enabled_test
 MUL_CORE_BIN := $(BIN_DIR)/mul_core_pipeline_test
 LSU_BIN := $(BIN_DIR)/lsu_bad_bid_test
 STAGE_CONNECT_BIN := $(BIN_DIR)/stage_connect_flush_test
 ICACHE_PMA_BIN := $(BIN_DIR)/icache_pma_boundary_test
 ZERO_PREDICTOR_BIN := $(BIN_DIR)/zero_predictor_geometry_test
-BINS := $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(ICACHE_PMA_BIN) $(ZERO_PREDICTOR_BIN)
+BINS := $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(ICACHE_PMA_BIN) $(ZERO_PREDICTOR_BIN)
 
-.PHONY: all test run functional-test config-test xbar-test mul-core-test exu-test lsu-test stage-connect-test icache-pma-test zero-predictor-test clean
+.PHONY: all test run functional-test config-test xbar-test mul-core-test exu-test idu-mdu-test lsu-test stage-connect-test icache-pma-test zero-predictor-test clean
 
 all: $(BINS)
 
@@ -44,10 +45,11 @@ test run: all
 # Focused gate for the production RTL fixes.  Broader `make test` intentionally
 # retains the independent ICache custom-PMA and configuration-guard findings as
 # future work.
-functional-test: $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN)
+functional-test: $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN)
 	$(XBAR_BIN)
 	$(MUL_CORE_BIN)
 	$(EXU_BIN)
+	$(IDU_MDU_BIN)
 	$(LSU_BIN)
 	$(STAGE_CONNECT_BIN)
 
@@ -59,6 +61,9 @@ xbar-test: $(XBAR_BIN)
 
 exu-test: $(EXU_BIN)
 	$(EXU_BIN)
+
+idu-mdu-test: $(IDU_MDU_BIN)
+	$(IDU_MDU_BIN)
 
 mul-core-test: $(MUL_CORE_BIN)
 	$(MUL_CORE_BIN)
@@ -92,6 +97,7 @@ $(GEN_STAMP): $(SCALA_SOURCES) Makefile
 	  MUL_COMPRESSOR_COUT_OFFSET=1 MUL_COMPRESSOR_ALLOW_REDUNDANT=n \
 	  MUL_ITER_BITS=1 MUL_PIPELINE=2 MUL_SPLIT=1 MUL_EARLY_OUT=n \
 	  DIV_IMPL=restoring DIV_RADIX=2 DIV_ITER_BITS=1 DIV_EARLY_OUT=n \
+	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_STATS=y \
 	  $(MILL) --no-server runMain ysyx_26030103_Elaborate --target-dir $(RTL_DIR)
 	@touch $@
 
@@ -129,6 +135,15 @@ $(EXU_BIN): exu_mdu_ordering_test.cpp test_common.hpp $(GEN_STAMP)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_EXU \
 	  --Mdir $(BUILD_DIR)/obj-exu-mdu-ordering \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(RTL_DIR)/ysyx_26030103.sv $<
+
+$(IDU_MDU_BIN): idu_mdu_enabled_test.cpp test_common.hpp $(GEN_STAMP)
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VERILATOR_FLAGS) \
+	  --top-module ysyx_26030103_IDU \
+	  --Mdir $(BUILD_DIR)/obj-idu-mdu-enabled \
 	  -CFLAGS '$(CXXFLAGS)' \
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv $<

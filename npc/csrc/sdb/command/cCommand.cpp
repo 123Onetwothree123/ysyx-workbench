@@ -21,7 +21,11 @@ import npc.sdb.command.WatchpointPool;
 }
 SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view args)
 {
-    static_cast<void>(args);
+    if (!args.empty())
+    {
+        std::println("用法：c");
+        return SDBCommandResult::Continue;
+    }
     auto &dut{context.GetDUT()};
 #ifdef CONFIG_WATCHPOINT
     NPCEvaluationContext EvaluationContext{dut};

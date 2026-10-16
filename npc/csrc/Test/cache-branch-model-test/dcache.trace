@@ -1,0 +1,7 @@
+# store miss must not allocate; store hit updates the resident write-through mirror.
+w 00000000
+r 00000000
+r 00000000
+w 00000000
+r 00000040
+r 00000000

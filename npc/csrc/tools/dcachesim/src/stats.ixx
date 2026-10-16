@@ -8,7 +8,8 @@ export struct stats
     std::size_t read_hits{};
     std::size_t writes{};
     std::size_t write_hits{};
-    std::size_t writebacks{}; // 脏块被换出的次数
+    // 为保持旧CSV schema保留；write-through RTL不产生脏块，因此始终为0。
+    std::size_t writebacks{};
 
     [[nodiscard]] auto Misses() const -> std::size_t;
     [[nodiscard]] auto HitRate() const -> double;

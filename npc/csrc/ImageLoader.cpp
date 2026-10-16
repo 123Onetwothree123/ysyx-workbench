@@ -23,15 +23,25 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOption
     {
         std::println("现在指定了镜像文件");
         const auto &path{*ImageFile};
-        if (!std::filesystem::exists(path))
+        std::error_code error;
+        const auto fileStatus{std::filesystem::status(path, error)};
+        if (error)
+        {
+            return std::unexpected(std::format("无法查询镜像文件状态{}: {}", path.string(), error.message()));
+        }
+        if (!std::filesystem::exists(fileStatus))
         {
             return std::unexpected(std::format("他妈的文件路径没找到文件{0}", path.string()));
         }
-        if (!std::filesystem::is_regular_file(path))
+        if (!std::filesystem::is_regular_file(fileStatus))
         {
             return std::unexpected(std::format("fuck，不是普通文件{0}", path.string()));
         }
-        const auto FileSize{std::filesystem::file_size(path)};
+        const auto FileSize{std::filesystem::file_size(path, error)};
+        if (error)
+        {
+            return std::unexpected(std::format("无法获取镜像文件大小{}: {}", path.string(), error.message()));
+        }
         const auto padding{static_cast<std::uintmax_t>(kCachePadding)};
         if (padding > kImageCapacity || FileSize > kImageCapacity - padding)
         {

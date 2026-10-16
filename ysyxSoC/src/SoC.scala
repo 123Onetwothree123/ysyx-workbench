@@ -121,11 +121,15 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     // SDB debug的
     val debug_gpr_raddr = IO(Input(UInt(5.W)))
     val debug_gpr_rdata = IO(Output(UInt(32.W)))
+    val debug_gpr_wen = IO(Output(Bool()))
+    val debug_gpr_waddr = IO(Output(UInt(5.W)))
     val debug_pc = IO(Output(UInt(32.W)))
     val debug_next_pc = IO(Output(UInt(32.W)))
     val debug_arch_pc = IO(Output(UInt(32.W)))
     cpu.module.debug_gpr_raddr := debug_gpr_raddr
     debug_gpr_rdata := cpu.module.debug_gpr_rdata
+    debug_gpr_wen := cpu.module.debug_gpr_wen
+    debug_gpr_waddr := cpu.module.debug_gpr_waddr
     debug_pc := cpu.module.debug_pc
     debug_next_pc := cpu.module.debug_next_pc
     debug_arch_pc := cpu.module.debug_arch_pc
@@ -393,11 +397,15 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     // SDB debug
     val debug_gpr_raddr = IO(Input(UInt(5.W)))
     val debug_gpr_rdata = IO(Output(UInt(32.W)))
+    val debug_gpr_wen = IO(Output(Bool()))
+    val debug_gpr_waddr = IO(Output(UInt(5.W)))
     val debug_pc = IO(Output(UInt(32.W)))
     val debug_next_pc = IO(Output(UInt(32.W)))
     val debug_arch_pc = IO(Output(UInt(32.W)))
     masic.debug_gpr_raddr := debug_gpr_raddr
     debug_gpr_rdata := masic.debug_gpr_rdata
+    debug_gpr_wen := masic.debug_gpr_wen
+    debug_gpr_waddr := masic.debug_gpr_waddr
     debug_pc := masic.debug_pc
     debug_next_pc := masic.debug_next_pc
     debug_arch_pc := masic.debug_arch_pc

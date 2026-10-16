@@ -6,6 +6,7 @@ export class NPCSimResult final
 {
 public:
     NPCSimResult() = delete;
+    [[nodiscard]] static std::filesystem::path CreateDefaultResultDirectory();
     static void Save(
         std::filesystem::path result_dir,
         const PerfStats &stats,

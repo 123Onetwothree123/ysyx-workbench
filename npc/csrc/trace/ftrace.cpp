@@ -1,3 +1,5 @@
+module;
+#include <elf.h>
 module npc.trace.ftrace;
 /**
  * @file ftrace.cpp
@@ -26,17 +28,6 @@ namespace
         const auto Width{High - Low + 1u};
         const auto Mask{(1u << Width) - 1u};
         return (Value >> Low) & Mask;
-    }
-    /**
-     * @brief 对指定位宽的立即数做符号扩展。
-     * @param Value std::uint32_t，原始立即数。
-     * @param BitCount unsigned，立即数的有效位数。
-     * @return std::int32_t，符号扩展后的有符号整数。
-     */
-    [[nodiscard]] constexpr std::int32_t SignExtend(std::uint32_t Value, unsigned BitCount) noexcept
-    {
-        const auto SignBit{1u << (BitCount - 1u)};
-        return static_cast<std::int32_t>((Value ^ SignBit) - SignBit);
     }
     /**
      * @brief 取出RISC-V指令的opcode字段。
@@ -75,15 +66,6 @@ namespace
         return Bits(Instruction, 19, 15);
     }
     /**
-     * @brief 取出I型指令立即数并做符号扩展。
-     * @param Instruction std::uint32_t，原始指令。
-     * @return std::int32_t，符号扩展后的I型立即数。
-     */
-    [[nodiscard]] constexpr std::int32_t IImm(std::uint32_t Instruction) noexcept
-    {
-        return SignExtend(Bits(Instruction, 31, 20), 12);
-    }
-    /**
      * @brief 判断寄存器是否是链接寄存器。
      * @param Reg std::uint32_t，寄存器编号。
      * @return bool，若是x1/ra或x5/t0则返回true。
@@ -93,22 +75,26 @@ namespace
         return Reg == 1u || Reg == 5u;
     }
     /**
-     * @brief 判断一条指令是否是ret。
+     * @brief 判断一条指令是否带有RAS pop hint。
      * @param Instruction std::uint32_t，原始指令。
-     * @return bool，若指令形如`jalr x0, x1/x5, 0`则返回true。
+     * @return bool，若JALR的rs1是x1/x5，且rd不是同一个链接寄存器，则返回true。
+     * @details RISC-V的RAS hint只由rd/rs1决定，不要求立即数为0。
+     *          rd和rs1分别为x1/x5且不同时，该JALR同时还带有push hint。
      */
     [[nodiscard]] constexpr bool IsReturnInstruction(std::uint32_t Instruction) noexcept
     {
+        const auto Destination{Rd(Instruction)};
+        const auto Source{Rs1(Instruction)};
         return Opcode(Instruction) == OpcodeJalr &&
                Funct3(Instruction) == 0u &&
-               Rd(Instruction) == 0u &&
-               IsLinkRegister(Rs1(Instruction)) &&
-               IImm(Instruction) == 0;
+               IsLinkRegister(Source) &&
+               (!IsLinkRegister(Destination) || Destination != Source);
     }
     /**
      * @brief 判断一条指令是否是函数调用。
      * @param Instruction std::uint32_t，原始指令。
-     * @return bool，若指令是写链接寄存器的jal/jalr，且不是ret，则返回true。
+     * @return bool，若指令是写链接寄存器的jal/jalr，则返回true。
+     * @details 协程JALR可以同时是return和call，因此这里不再排除pop hint。
      */
     [[nodiscard]] constexpr bool IsCallInstruction(std::uint32_t Instruction) noexcept
     {
@@ -118,8 +104,7 @@ namespace
         }
         return Opcode(Instruction) == OpcodeJalr &&
                Funct3(Instruction) == 0u &&
-               IsLinkRegister(Rd(Instruction)) &&
-               !IsReturnInstruction(Instruction);
+               IsLinkRegister(Rd(Instruction));
     }
     /**
      * @brief 根据事件类型和深度计算打印缩进。
@@ -153,14 +138,29 @@ Ftrace::~Ftrace() = default;
 /**
  * @brief 加载ELF文件并准备函数符号表。
  * @param ElfFile std::filesystem::path，ELF文件路径。
+ * @param RequireExecutable bool，运行时Ftrace为true；纯ELF检查为false。
  * @return std::expected<void, std::string>，成功返回空结果，失败返回错误字符串。
  */
-std::expected<void, std::string> Ftrace::LoadElf(std::filesystem::path ElfFile)
+std::expected<void, std::string> Ftrace::LoadElf(
+    std::filesystem::path ElfFile,
+    bool RequireExecutable)
 {
     auto Reader{Readelf::load(std::move(ElfFile))};
     if (!Reader)
     {
         return std::unexpected{Reader.error()};
+    }
+    // Readelf is intentionally a general ELF inspection utility and may load
+    // relocatable/shared objects.  Ftrace, however, compares symbol values
+    // directly with the retired runtime PC and has neither section placement
+    // nor a dynamic load bias with which to relocate ET_REL/ET_DYN symbols.
+    // Accepting those files produces plausible-looking but systematically
+    // wrong function names, so require a fixed-address executable here.
+    if (RequireExecutable && Reader->header().e_type != ET_EXEC)
+    {
+        return std::unexpected{std::format(
+            "Ftrace需要固定地址的ET_EXEC文件，当前ELF类型为{}",
+            static_cast<unsigned>(Reader->header().e_type))};
     }
     Reset();
     Elf.emplace(std::move(*Reader));
@@ -238,7 +238,6 @@ void Ftrace::OnInstruction(std::uint64_t PC, std::uint32_t Instruction, std::uin
     if (IsReturnInstruction(Instruction))
     {
         OnReturn(PC, NextPC);
-        return;
     }
     if (IsCallInstruction(Instruction))
     {
@@ -446,7 +445,10 @@ void Ftrace::PrintEventLine(const FtraceEvent &Event) const
  */
 std::expected<void, std::string> InitializeFtrace(const std::filesystem::path &ElfFile, bool ShouldEnable)
 {
-    auto Result{GlobalFtrace.LoadElf(ElfFile)};
+    // Without CONFIG_FTRACE the same --elf input is still useful to SDB's
+    // generic readelf command, which legitimately accepts ET_REL/ET_DYN.
+    // Only runtime function tracing requires absolute ET_EXEC symbol values.
+    auto Result{GlobalFtrace.LoadElf(ElfFile, ShouldEnable)};
     if (!Result)
     {
         return Result;

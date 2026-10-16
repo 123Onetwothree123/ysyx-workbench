@@ -1,7 +1,10 @@
 module npc.trace.mtrace;
 void MtraceRecord(std::uint32_t pc, std::uint32_t addr, std::uint32_t wdata,
-                  std::uint32_t rdata, std::uint8_t width, bool wen)
+                  std::uint32_t rdata, std::uint8_t widthEncoding, bool wen)
 {
+    const auto width{widthEncoding <= 2U
+                         ? std::format("{}B", 1U << widthEncoding)
+                         : std::format("invalid(code={})", static_cast<unsigned>(widthEncoding))};
     if (wen)
     {
         std::println("Memory Write: PC=0x{:08x}, Addr=0x{:08x}, Data=0x{:08x}, Width={}",

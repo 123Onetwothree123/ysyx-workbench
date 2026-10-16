@@ -579,10 +579,17 @@ int main(int argc, char **argv) {
           "initial DCache refill returned the wrong word");
     check_hit_latency_and_busy_split(dut, address, old_word);
 
+    // A failing AXI write may already have produced a partial external side
+    // effect before the slave reports SLVERR.  The precise store trap remains,
+    // but the old cache line must be discarded so a trap handler cannot reuse
+    // stale data.  Model the conservative case where memory now contains the
+    // attempted store value and require a fresh refill after the fault.
     store_with_response(dut, address, 0xdeadbeefU, 2, true, 0x80000120U);
-    check(load_hit(dut, address) == old_word,
-          "failed store modified the DCache mirror");
+    check(fill_and_load(dut, address, 0xdeadbeefU) == 0xdeadbeefU,
+          "failed store left a stale valid DCache line");
 
+    // OKAY keeps the existing write-through optimization: update a resident
+    // line immediately and satisfy the following load without another AR.
     store_with_response(dut, address, 0xaabbccddU, 0, false, 0x80000124U);
     check(load_hit(dut, address) == 0xaabbccddU,
           "successful store did not update the DCache mirror");

@@ -1,0 +1,8 @@
+# 'o' is an x1/x5 coroutine JALR: pop the old link, then push pc+4.
+# The optional fifth column is the sign-extended JALR immediate as 32-bit hex.
+00001000 00004000 1 c
+00002004 00001004 1 o 00000000
+00002004 00002008 1 o 00000000
+00003008 00002008 1 r 00000000
+00003008 00001004 1 r 00000000
+00003008 00001004 1 r 00000000

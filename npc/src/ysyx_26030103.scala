@@ -30,7 +30,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DCachePMARegions = config.PMARegions
     )
   )
-  val gpr = Module(new ysyx_26030103_GPR)
+  val gpr = Module(new ysyx_26030103_GPR(config.EnableDynamicGPRDebug))
   val icache = Module(
     new ysyx_26030103_ICache(
       Enable = config.ICacheEnable,
@@ -44,7 +44,20 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     new ysyx_26030103_AXI5Xbar(config.AddressWidth, config.PMARegions)
   )
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  val dmaErrorSlave = Module(new ysyx_26030103_AXI5DMAErrorSlave)
+  // ysyxSoC的ChipLink内存窗口。只有当当前PMA明确覆盖完整
+  // 0xc0000000--0xffffffff可读写区域时，才允许CPU slave端口代理
+  // 入站DMA请求。其他配置继续用DECERR安全终止，不会意外暴露
+  // CPU本地CLINT或SoC其他地址。
+  private val ChipLinkMemoryBase = BigInt("c0000000", 16)
+  private val ChipLinkMemoryEnd = BigInt(1) << 32
+  private val DMAProxyEnable = config.PMARegions.exists { Region =>
+    Region.Readable && Region.Writable &&
+    BigInt(Region.Base) <= ChipLinkMemoryBase &&
+    BigInt(Region.EndExclusive) >= ChipLinkMemoryEnd
+  }
+  val dmaErrorSlave =
+    if (DMAProxyEnable) None
+    else Some(Module(new ysyx_26030103_AXI5DMAErrorSlave))
   val pipe_flush = exu.io.FlushIF
   // 分支目标缓冲(BTB): IFU取指级查询决定下一PC,取指被icache接受时快照预测标签随请求保存,
   // EXU提交时更新分支的真实target; 另设独立jal BTB(方案B: 与分支表零干扰, 表项带kind区分Jal/Call/Ret)
@@ -140,7 +153,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   io.master_awburst := soc.AW.AWBURST
   io.master_awlock := 0.U
   io.master_awcache := 0.U
-  io.master_awprot := 0.U
+  io.master_awprot := soc.AW.AWPROT
   io.master_awqos := 0.U
   soc.AW.AWREADY := io.master_awready
 
@@ -163,7 +176,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   io.master_arburst := soc.AR.ARBURST
   io.master_arlock := 0.U
   io.master_arcache := 0.U
-  io.master_arprot := 0.U
+  io.master_arprot := soc.AR.ARPROT
   io.master_arqos := 0.U
   soc.AR.ARREADY := io.master_arready
 
@@ -174,47 +187,109 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   soc.R.RDATA := io.master_rdata
   soc.R.RLAST := io.master_rlast
 
-  // 入站端口连接到 SoC 中 ChipLink 面向 DMA 的主设备。当前 CPU 端口后面没有
-  // 本地存储器；如果把它发往 0xc0000000--0xffffffff 的请求经 CPU 主端口转发，
-  // 请求会直接绕回 ChipLink。因此这里返回协议完整的 DECERR 来终止事务，避免
-  // 永久挂起或错误确认实际未完成的写操作。由于所有写都会失败，RAM/缓存状态
-  // 不会改变，也无需监听 DCache。未来若实现真正的 DMA 路径，必须增加明确的
-  // 存储目标，并在返回成功的 B 响应前使 DCache 失效。
-  dmaErrorSlave.io.AW.AWVALID := io.slave_awvalid
-  dmaErrorSlave.io.AW.AWADDR := io.slave_awaddr
-  dmaErrorSlave.io.AW.AWID := io.slave_awid
-  dmaErrorSlave.io.AW.AWLEN := io.slave_awlen
-  dmaErrorSlave.io.AW.AWSIZE := io.slave_awsize
-  dmaErrorSlave.io.AW.AWBURST := io.slave_awburst
-  dmaErrorSlave.io.AW.AWPROT := io.slave_awprot
-  io.slave_awready := dmaErrorSlave.io.AW.AWREADY
+  // ChipLink对端的DMA请求从CPU slave入站。该窗口的实体存储位于
+  // FPGA侧：请求经本仲裁器和CPU master送回ChipLink后，在对端
+  // master_mem/SimAXIMem终止。这是受控的hairpin proxy，不是无限环回。
+  if (DMAProxyEnable) {
+    arbiter.io.dmaAWLock := io.slave_awlock
+    arbiter.io.dmaARLock := io.slave_arlock
+    arbiter.io.dma.AW.AWVALID := io.slave_awvalid
+    arbiter.io.dma.AW.AWADDR := io.slave_awaddr
+    arbiter.io.dma.AW.AWID := io.slave_awid
+    arbiter.io.dma.AW.AWLEN := io.slave_awlen
+    arbiter.io.dma.AW.AWSIZE := io.slave_awsize
+    arbiter.io.dma.AW.AWBURST := io.slave_awburst
+    arbiter.io.dma.AW.AWPROT := io.slave_awprot
+    io.slave_awready := arbiter.io.dma.AW.AWREADY
 
-  dmaErrorSlave.io.W.WVALID := io.slave_wvalid
-  dmaErrorSlave.io.W.WDATA := io.slave_wdata
-  dmaErrorSlave.io.W.WSTRB := io.slave_wstrb
-  dmaErrorSlave.io.W.WLAST := io.slave_wlast
-  io.slave_wready := dmaErrorSlave.io.W.WREADY
+    arbiter.io.dma.W.WVALID := io.slave_wvalid
+    arbiter.io.dma.W.WDATA := io.slave_wdata
+    arbiter.io.dma.W.WSTRB := io.slave_wstrb
+    arbiter.io.dma.W.WLAST := io.slave_wlast
+    io.slave_wready := arbiter.io.dma.W.WREADY
 
-  dmaErrorSlave.io.B.BREADY := io.slave_bready
-  io.slave_bvalid := dmaErrorSlave.io.B.BVALID
-  io.slave_bresp := dmaErrorSlave.io.B.BRESP
-  io.slave_bid := dmaErrorSlave.io.B.BID
+    arbiter.io.dma.B.BREADY := io.slave_bready
+    io.slave_bvalid := arbiter.io.dma.B.BVALID
+    io.slave_bresp := arbiter.io.dma.B.BRESP
+    io.slave_bid := arbiter.io.dma.B.BID
 
-  dmaErrorSlave.io.AR.ARVALID := io.slave_arvalid
-  dmaErrorSlave.io.AR.ARADDR := io.slave_araddr
-  dmaErrorSlave.io.AR.ARID := io.slave_arid
-  dmaErrorSlave.io.AR.ARLEN := io.slave_arlen
-  dmaErrorSlave.io.AR.ARSIZE := io.slave_arsize
-  dmaErrorSlave.io.AR.ARBURST := io.slave_arburst
-  dmaErrorSlave.io.AR.ARPROT := io.slave_arprot
-  io.slave_arready := dmaErrorSlave.io.AR.ARREADY
+    arbiter.io.dma.AR.ARVALID := io.slave_arvalid
+    arbiter.io.dma.AR.ARADDR := io.slave_araddr
+    arbiter.io.dma.AR.ARID := io.slave_arid
+    arbiter.io.dma.AR.ARLEN := io.slave_arlen
+    arbiter.io.dma.AR.ARSIZE := io.slave_arsize
+    arbiter.io.dma.AR.ARBURST := io.slave_arburst
+    arbiter.io.dma.AR.ARPROT := io.slave_arprot
+    io.slave_arready := arbiter.io.dma.AR.ARREADY
 
-  dmaErrorSlave.io.R.RREADY := io.slave_rready
-  io.slave_rvalid := dmaErrorSlave.io.R.RVALID
-  io.slave_rresp := dmaErrorSlave.io.R.RRESP
-  io.slave_rdata := dmaErrorSlave.io.R.RDATA
-  io.slave_rlast := dmaErrorSlave.io.R.RLAST
-  io.slave_rid := dmaErrorSlave.io.R.RID
+    arbiter.io.dma.R.RREADY := io.slave_rready
+    io.slave_rvalid := arbiter.io.dma.R.RVALID
+    io.slave_rresp := arbiter.io.dma.R.RRESP
+    io.slave_rdata := arbiter.io.dma.R.RDATA
+    io.slave_rlast := arbiter.io.dma.R.RLAST
+    io.slave_rid := arbiter.io.dma.R.RID
+  } else {
+    val ErrorSlave = dmaErrorSlave.get
+    ErrorSlave.io.AW.AWVALID := io.slave_awvalid
+    ErrorSlave.io.AW.AWADDR := io.slave_awaddr
+    ErrorSlave.io.AW.AWID := io.slave_awid
+    ErrorSlave.io.AW.AWLEN := io.slave_awlen
+    ErrorSlave.io.AW.AWSIZE := io.slave_awsize
+    ErrorSlave.io.AW.AWBURST := io.slave_awburst
+    ErrorSlave.io.AW.AWPROT := io.slave_awprot
+    io.slave_awready := ErrorSlave.io.AW.AWREADY
+
+    ErrorSlave.io.W.WVALID := io.slave_wvalid
+    ErrorSlave.io.W.WDATA := io.slave_wdata
+    ErrorSlave.io.W.WSTRB := io.slave_wstrb
+    ErrorSlave.io.W.WLAST := io.slave_wlast
+    io.slave_wready := ErrorSlave.io.W.WREADY
+
+    ErrorSlave.io.B.BREADY := io.slave_bready
+    io.slave_bvalid := ErrorSlave.io.B.BVALID
+    io.slave_bresp := ErrorSlave.io.B.BRESP
+    io.slave_bid := ErrorSlave.io.B.BID
+
+    ErrorSlave.io.AR.ARVALID := io.slave_arvalid
+    ErrorSlave.io.AR.ARADDR := io.slave_araddr
+    ErrorSlave.io.AR.ARID := io.slave_arid
+    ErrorSlave.io.AR.ARLEN := io.slave_arlen
+    ErrorSlave.io.AR.ARSIZE := io.slave_arsize
+    ErrorSlave.io.AR.ARBURST := io.slave_arburst
+    ErrorSlave.io.AR.ARPROT := io.slave_arprot
+    io.slave_arready := ErrorSlave.io.AR.ARREADY
+
+    ErrorSlave.io.R.RREADY := io.slave_rready
+    io.slave_rvalid := ErrorSlave.io.R.RVALID
+    io.slave_rresp := ErrorSlave.io.R.RRESP
+    io.slave_rdata := ErrorSlave.io.R.RDATA
+    io.slave_rlast := ErrorSlave.io.R.RLAST
+    io.slave_rid := ErrorSlave.io.R.RID
+
+    // 未开启ChipLink时仲裁器的DMA输入不可悬空。
+    arbiter.io.dmaAWLock := false.B
+    arbiter.io.dmaARLock := false.B
+    arbiter.io.dma.AW.AWVALID := false.B
+    arbiter.io.dma.AW.AWADDR := 0.U
+    arbiter.io.dma.AW.AWID := 0.U
+    arbiter.io.dma.AW.AWLEN := 0.U
+    arbiter.io.dma.AW.AWSIZE := 0.U
+    arbiter.io.dma.AW.AWBURST := 0.U
+    arbiter.io.dma.AW.AWPROT := 0.U
+    arbiter.io.dma.W.WVALID := false.B
+    arbiter.io.dma.W.WDATA := 0.U
+    arbiter.io.dma.W.WSTRB := 0.U
+    arbiter.io.dma.W.WLAST := false.B
+    arbiter.io.dma.B.BREADY := false.B
+    arbiter.io.dma.AR.ARVALID := false.B
+    arbiter.io.dma.AR.ARADDR := 0.U
+    arbiter.io.dma.AR.ARID := 0.U
+    arbiter.io.dma.AR.ARLEN := 0.U
+    arbiter.io.dma.AR.ARSIZE := 0.U
+    arbiter.io.dma.AR.ARBURST := 0.U
+    arbiter.io.dma.AR.ARPROT := 0.U
+    arbiter.io.dma.R.RREADY := false.B
+  }
   xbar.io.CLINT.AW <> clint.io.AW
   xbar.io.CLINT.W <> clint.io.W
   xbar.io.CLINT.B <> clint.io.B
@@ -262,8 +337,17 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   ifu.io.RedirectTarget := exu.io.RedirectTarget
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
-  icache.io.flush := exu.io.FenceIFlush // 仅 FenceI 冲 iCache，分支不冲
-  lsu.io.DCacheFlush := exu.io.FenceIFlush // fence.i同时使数据缓存失效
+  icache.io.flush := exu.io.FenceIFlush // 仅 FenceI 冲 ICache，分支不冲
+  // 当前 DCache 是写直达/不写分配，成功 store 会更新命中行，并且
+  // Fence.I 在提交前已经等待更老的 store 排空。因此指令一致性只需
+  // 失效 ICache/取指流水；清空 DCache 只会制造无意义的数据 miss。
+  // DMA写是CPU缓存之外的副作用。写直达DCache没有脏数据，
+  // 因此在匹配B响应出现时全局失效即可保证后续load不命中旧行。
+  // 每笔DMA写在匹配BVALID首次出现时产生单拍失效；后续B反压不会持续
+  // 阻止CPU load。错误B也同样失效，以覆盖从设备可能的部分写副作用。
+  // 不在这里异步冲ICache：现有ICache flush与流水线重定向成对，
+  // DMA修改可执行内存后由软件执行fence.i完成指令一致性。
+  lsu.io.DCacheFlush := arbiter.io.DMAWriteInvalidate
   gpr.io.WriteSELECT := wbu.io.WriteSELECT
   gpr.io.WriteEN := wbu.io.WriteEN
   gpr.io.wdata := wbu.io.wdata
@@ -274,214 +358,314 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val SimHaltCommit = exu.io.SimHaltValid
   io.trap_valid := RegNext(SimHaltCommit, false.B)
   io.trap_pc := RegEnable(exu.io.SimHaltPC, config.ResetAddr.U(32.W), SimHaltCommit)
-  // 简易调试器（SDB）
+  // 固定 ABI：关闭动态调试读口时，GPR 模块忽略地址并将这里直连到 a0，
+  // 供 custom halt 判定 GOOD/BAD；不会为此保留第三个 32 路读 mux。
   gpr.io.DebugRaddr := io.debug_gpr_raddr
   io.debug_gpr_rdata := gpr.io.DebugRdata
-  // WBU 的 fire 是上升沿前的“将提交”。将 valid、PC、指令一起寄存，
-  // C++ 在该上升沿之后看到 debug_commit 时，GPR 已经是提交后的状态。
+  // WBUCommit 与最小架构 PC 不属于可选观测逻辑。异常/中断即使在所有
+  // 调试功能关闭时也需要精确的最近架构边界。
   val WBUCommit = wbu.io.in.fire && wbu.io.in.bits.Retire
-  io.debug_commit := RegNext(WBUCommit, false.B)
-  io.debug_pc := RegEnable(wbu.io.in.bits.pc, config.ResetAddr.U(32.W), WBUCommit)
-  io.debug_next_pc := RegEnable(
-    wbu.io.in.bits.NextPC,
-    config.ResetAddr.U(32.W),
-    WBUCommit
-  )
-  io.debug_instructions := RegEnable(
-    wbu.io.in.bits.Instruction,
-    "h00000013".U(32.W),
-    WBUCommit
-  )
+  if (config.EnableDynamicGPRDebug) {
+    // DiffTest 在上升沿前采样实际物理写口，沿后只回读被写寄存器。
+    io.debug_gpr_wen := wbu.io.WriteEN && (wbu.io.WriteSELECT =/= 0.U)
+    io.debug_gpr_waddr := wbu.io.WriteSELECT
+  } else {
+    io.debug_gpr_wen := false.B
+    io.debug_gpr_waddr := 0.U
+  }
+  if (config.EnableRetireTrace) {
+    // C++ 在上升沿后看到 commit，此时 GPR 已是该指令提交后的状态。
+    io.debug_commit := RegNext(WBUCommit, false.B)
+    io.debug_pc := RegEnable(
+      wbu.io.in.bits.pc,
+      config.ResetAddr.U(32.W),
+      WBUCommit
+    )
+    io.debug_next_pc := RegEnable(
+      wbu.io.in.bits.NextPC,
+      config.ResetAddr.U(32.W),
+      WBUCommit
+    )
+    io.debug_instructions := RegEnable(
+      wbu.io.in.bits.Instruction,
+      "h00000013".U(32.W),
+      WBUCommit
+    )
+  } else {
+    io.debug_commit := false.B
+    io.debug_pc := 0.U
+    io.debug_next_pc := 0.U
+    io.debug_instructions := 0.U
+  }
 
   // 调试器的 $pc 不能复用 retire trace PC。正常退休时前进到
   // 该指令的实际后继；异常/中断提交时直接记录 trap 目标。
   // 若同拍既有更老的 WBU 退休又有年轻 trap，trap 必须优先。
-  val DebugArchPC = RegInit(config.ResetAddr.U(32.W))
+  val ArchitecturalPC = RegInit(config.ResetAddr.U(32.W))
+  // 空流水中断没有随指令携带的 PC；同拍若有更老退休，则以该指令后继
+  // 为边界，否则使用最近架构 PC。此路径是架构状态，不能随调试功能裁剪。
+  exu.io.IdleIrqPC := Mux(WBUCommit, wbu.io.in.bits.NextPC, ArchitecturalPC)
   when(WBUCommit) {
-    DebugArchPC := wbu.io.in.bits.NextPC
+    ArchitecturalPC := wbu.io.in.bits.NextPC
   }
   when(exu.io.TrapCommit) {
-    DebugArchPC := exu.io.TrapTarget
+    ArchitecturalPC := exu.io.TrapTarget
   }
-  io.debug_arch_pc := DebugArchPC
+  io.debug_arch_pc := ArchitecturalPC
 
-  io.debug_trap_valid := RegNext(exu.io.TrapCommit, false.B)
-  io.debug_trap_pc := RegEnable(
-    exu.io.TrapPC,
-    config.ResetAddr.U(32.W),
-    exu.io.TrapCommit
-  )
-  io.debug_trap_target := RegEnable(
-    exu.io.TrapTarget,
-    config.ResetAddr.U(32.W),
-    exu.io.TrapCommit
-  )
-  io.debug_trap_cause := RegEnable(
-    exu.io.TrapCause,
-    0.U(32.W),
-    exu.io.TrapCommit
-  )
-  io.debug_csr_mstatus := RegEnable(
-    wbu.io.in.bits.CSRStateMstatus,
-    0.U(32.W),
-    WBUCommit
-  )
-  io.debug_csr_mtvec := RegEnable(
-    wbu.io.in.bits.CSRStateMtvec,
-    0.U(32.W),
-    WBUCommit
-  )
-  io.debug_csr_mepc := RegEnable(
-    wbu.io.in.bits.CSRStateMepc,
-    0.U(32.W),
-    WBUCommit
-  )
-  io.debug_csr_mcause := RegEnable(
-    wbu.io.in.bits.CSRStateMcause,
-    0.U(32.W),
-    WBUCommit
-  )
-  io.debug_trap_mstatus := RegEnable(
-    exu.io.CSRStateMstatus,
-    0.U(32.W),
-    exu.io.TrapCommit
-  )
-  io.debug_trap_mtvec := RegEnable(
-    exu.io.CSRStateMtvec,
-    0.U(32.W),
-    exu.io.TrapCommit
-  )
-  io.debug_trap_mepc := RegEnable(
-    exu.io.CSRStateMepc,
-    0.U(32.W),
-    exu.io.TrapCommit
-  )
-  io.debug_trap_mcause := RegEnable(
-    exu.io.CSRStateMcause,
-    0.U(32.W),
-    exu.io.TrapCommit
-  )
+  if (config.EnableTrapTrace) {
+    io.debug_trap_valid := RegNext(exu.io.TrapCommit, false.B)
+    io.debug_trap_pc := RegEnable(
+      exu.io.TrapPC,
+      config.ResetAddr.U(32.W),
+      exu.io.TrapCommit
+    )
+    io.debug_trap_target := RegEnable(
+      exu.io.TrapTarget,
+      config.ResetAddr.U(32.W),
+      exu.io.TrapCommit
+    )
+    io.debug_trap_cause := RegEnable(
+      exu.io.TrapCause,
+      0.U(32.W),
+      exu.io.TrapCommit
+    )
+  } else {
+    io.debug_trap_valid := false.B
+    io.debug_trap_pc := 0.U
+    io.debug_trap_target := 0.U
+    io.debug_trap_cause := 0.U
+  }
+  if (config.EnableCSRTrace) {
+    io.debug_csr_mstatus := RegEnable(
+      wbu.io.in.bits.CSRStateMstatus,
+      ysyx_26030103_mstatus.resetValue,
+      WBUCommit
+    )
+    io.debug_csr_mtvec := RegEnable(
+      wbu.io.in.bits.CSRStateMtvec,
+      0.U(32.W),
+      WBUCommit
+    )
+    io.debug_csr_mepc := RegEnable(
+      wbu.io.in.bits.CSRStateMepc,
+      0.U(32.W),
+      WBUCommit
+    )
+    io.debug_csr_mcause := RegEnable(
+      wbu.io.in.bits.CSRStateMcause,
+      0.U(32.W),
+      WBUCommit
+    )
+    io.debug_trap_mstatus := RegEnable(
+      exu.io.CSRStateMstatus,
+      ysyx_26030103_mstatus.resetValue,
+      exu.io.TrapCommit
+    )
+    io.debug_trap_mtvec := RegEnable(
+      exu.io.CSRStateMtvec,
+      0.U(32.W),
+      exu.io.TrapCommit
+    )
+    io.debug_trap_mepc := RegEnable(
+      exu.io.CSRStateMepc,
+      0.U(32.W),
+      exu.io.TrapCommit
+    )
+    io.debug_trap_mcause := RegEnable(
+      exu.io.CSRStateMcause,
+      0.U(32.W),
+      exu.io.TrapCommit
+    )
+  } else {
+    io.debug_csr_mstatus := 0.U
+    io.debug_csr_mtvec := 0.U
+    io.debug_csr_mepc := 0.U
+    io.debug_csr_mcause := 0.U
+    io.debug_trap_mstatus := 0.U
+    io.debug_trap_mtvec := 0.U
+    io.debug_trap_mepc := 0.U
+    io.debug_trap_mcause := 0.U
+  }
 
   // mtrace 必须与 WBU retire 记录对齐，而不是早一拍的 LSU out.fire。
   // DiffTest 在 debug_commit 拍用它判断 MMIO；错一拍会让 mtime 在 REF 真正
   // 执行并产生伪差异。错误响应/非对齐访问不 Retire，不会到达这里。
-  val MtraceCommit =
-    WBUCommit && wbu.io.in.bits.MemoryValid
-  io.debug_mtrace_valid := RegNext(MtraceCommit, false.B)
-  io.debug_mtrace_pc := RegEnable(wbu.io.in.bits.pc, 0.U(32.W), MtraceCommit)
-  io.debug_mtrace_wen := RegEnable(
-    wbu.io.in.bits.MemoryWrite,
-    false.B,
-    MtraceCommit
-  )
-  io.debug_mtrace_addr := RegEnable(
-    wbu.io.in.bits.ALUResult,
-    0.U(32.W),
-    MtraceCommit
-  )
-  io.debug_mtrace_wdata := RegEnable(
-    wbu.io.in.bits.StoreData,
-    0.U(32.W),
-    MtraceCommit
-  )
-  io.debug_mtrace_rdata := RegEnable(
-    wbu.io.in.bits.LoadData,
-    0.U(32.W),
-    MtraceCommit
-  )
-  io.debug_mtrace_width := RegEnable(
-    wbu.io.in.bits.WidthSelect,
-    0.U(2.W),
-    MtraceCommit
-  )
+  if (config.EnableMemoryTrace) {
+    val MtraceCommit = WBUCommit && wbu.io.in.bits.MemoryValid
+    io.debug_mtrace_valid := RegNext(MtraceCommit, false.B)
+    io.debug_mtrace_pc := RegEnable(wbu.io.in.bits.pc, 0.U(32.W), MtraceCommit)
+    io.debug_mtrace_wen := RegEnable(
+      wbu.io.in.bits.MemoryWrite,
+      false.B,
+      MtraceCommit
+    )
+    io.debug_mtrace_addr := RegEnable(
+      wbu.io.in.bits.ALUResult,
+      0.U(32.W),
+      MtraceCommit
+    )
+    io.debug_mtrace_wdata := RegEnable(
+      wbu.io.in.bits.StoreData,
+      0.U(32.W),
+      MtraceCommit
+    )
+    io.debug_mtrace_rdata := RegEnable(
+      wbu.io.in.bits.LoadData,
+      0.U(32.W),
+      MtraceCommit
+    )
+    io.debug_mtrace_width := RegEnable(
+      wbu.io.in.bits.WidthSelect,
+      0.U(2.W),
+      MtraceCommit
+    )
+  } else {
+    io.debug_mtrace_valid := false.B
+    io.debug_mtrace_pc := 0.U
+    io.debug_mtrace_wen := false.B
+    io.debug_mtrace_addr := 0.U
+    io.debug_mtrace_wdata := 0.U
+    io.debug_mtrace_rdata := 0.U
+    io.debug_mtrace_width := 0.U
+  }
 
   // 调试 Access Fault 只认精确提交事件。取指错误必须随指令
   // 通过流水线到 EXU，错路响应在此前被 flush 就不得打印。
   // LSU 仍以精确 MemTrap 提交为界；cause=4/6 非对齐不是 AXI fault。
-  val LSUAccessFaultCommit = lsu.io.AccessFault
-  val ICacheAccessFaultCommit = exu.io.FetchAccessFaultCommit
-  val AccessFaultCommit = LSUAccessFaultCommit || ICacheAccessFaultCommit
-  io.debug_access_fault := RegNext(AccessFaultCommit, false.B)
-  io.debug_access_fault_pc := RegEnable(
-    Mux(LSUAccessFaultCommit, lsu.io.MemTrapPC, exu.io.FetchAccessFaultPC),
-    0.U(32.W),
-    AccessFaultCommit
-  )
-  io.debug_access_fault_resp := RegEnable(
-    Mux(
-      LSUAccessFaultCommit,
-      lsu.io.AccessFaultResp,
-      exu.io.FetchAccessFaultResp
-    ),
-    0.U(2.W),
-    AccessFaultCommit
-  )
+  if (config.EnableAnyObservability) {
+    val LSUAccessFaultCommit = lsu.io.AccessFault
+    val ICacheAccessFaultCommit = exu.io.FetchAccessFaultCommit
+    val AccessFaultCommit = LSUAccessFaultCommit || ICacheAccessFaultCommit
+    io.debug_access_fault := RegNext(AccessFaultCommit, false.B)
+    io.debug_access_fault_pc := RegEnable(
+      Mux(LSUAccessFaultCommit, lsu.io.MemTrapPC, exu.io.FetchAccessFaultPC),
+      0.U(32.W),
+      AccessFaultCommit
+    )
+    io.debug_access_fault_resp := RegEnable(
+      Mux(
+        LSUAccessFaultCommit,
+        lsu.io.AccessFaultResp,
+        exu.io.FetchAccessFaultResp
+      ),
+      0.U(2.W),
+      AccessFaultCommit
+    )
+  } else {
+    io.debug_access_fault := false.B
+    io.debug_access_fault_pc := 0.U
+    io.debug_access_fault_resp := 0.U
+  }
   // 性能计数器
-  io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
-  io.perf_exu_done := exu.io.out.fire
-  io.perf_lsu_load := lsu.io.Complete && !lsu.io.DebugMemoryWrite
-  io.perf_lsu_store := lsu.io.Complete && lsu.io.DebugMemoryWrite
-  io.perf_alu_op := exu.io.PerfALUOp
-  io.perf_mem_op := exu.io.PerfMemOp
-  io.perf_csr_op := exu.io.PerfCSROp
-  io.perf_branch_op := exu.io.PerfBranchOp
-  io.perf_jal_op := exu.io.PerfJalOp
-  io.perf_jalr_op := exu.io.PerfJalrOp
-  io.perf_mdu_req := exu.io.PerfMDUReq
-  io.perf_mdu_done := exu.io.PerfMDUDone
-  io.perf_mdu_op := exu.io.PerfMDUOp
-  io.perf_exu_event_kind := exu.io.PerfEventKind
-  io.perf_mdu_active := exu.io.PerfMDUActive
-  io.perf_mdu_wait := exu.io.PerfMDUWait
-  io.perf_ifu_stall_pipeline := icache.io.resp_valid && !icache.io.resp_ready
-  // AXI等待只统计真实refill的AR/R占用。FetchReady为低还可能是
-  // 响应槽或下游反压，不能全部归因于AXI。
-  io.perf_ifu_stall_axi :=
-    icache.io.perf_refill_req || icache.io.perf_refill_resp
-  io.perf_ifu_stall_ar := icache.io.perf_refill_req
-  io.perf_ifu_stall_r := icache.io.perf_refill_resp
-  io.perf_ifu_stall_redirect := exu.io.Redirect
-  io.perf_ifu_stall_idle := ifu.io.StallIdle
-  io.perf_icache_hit := icache.io.perf_hit
-  io.perf_icache_miss := icache.io.perf_miss
-  io.perf_dcache_hit := lsu.io.DCachePerfHit
-  io.perf_dcache_miss := lsu.io.DCachePerfMiss
-  io.perf_dcache_refill_req := lsu.io.DCachePerfRefillReq
-  io.perf_dcache_refill_resp := lsu.io.DCachePerfRefillResp
-  io.perf_execution_active := exu.io.PerfExecutionActive
-  // EXU未完成周期按原因互斥分类：PerfMDUWait是等MDU结果；
-  // 本信号只保留EX/MEM/LSU反压或精确顺序排空。当MDU结果
-  // 已valid但下游不ready时，也正确归到这里。
-  io.perf_exu_stall_lsu := exu.io.PerfExecutionActive && !exu.io.out.fire &&
-    !exu.io.PerfMDUWait
-  // EX/MEM等待槽占用: LSU级忙时有一条指令等在流水寄存器里(5级拆分买到的重叠)
-  io.perf_mem_waitslot := lsu.io.Hazard2Valid
-  io.perf_lsu_active := lsu.io.Active
-  io.perf_lsu_load_active := lsu.io.Active && !lsu.io.IsStore
-  io.perf_lsu_store_active := lsu.io.Active && lsu.io.IsStore
-  io.perf_lsu_stall_read_ar := lsu.io.StallReadAR
-  io.perf_lsu_stall_read_r := lsu.io.StallReadR
-  io.perf_lsu_stall_write_req := lsu.io.StallWriteReq
-  io.perf_lsu_stall_write_b := lsu.io.StallWriteB
   idu.io.ex_memop := exu.io.HazardMemOp
-  io.perf_idu_stall_raw := idu.io.perf_stall_raw
-  io.perf_idu_stall_raw_loaduse := idu.io.perf_stall_raw_loaduse
-  io.perf_idu_stall_raw_alu := idu.io.perf_stall_raw_alu
-  io.perf_exu_idle_noinput := exu.io.PerfIdleNoInput
-  io.perf_trap := exu.io.PerfTrap
+  if (config.EnablePerfTrace) {
+    io.perf_ifu_fetch := icache.io.resp_valid && icache.io.resp_ready
+    io.perf_exu_done := exu.io.out.fire
+    io.perf_lsu_load := lsu.io.Complete && !lsu.io.DebugMemoryWrite
+    io.perf_lsu_store := lsu.io.Complete && lsu.io.DebugMemoryWrite
+    io.perf_alu_op := exu.io.PerfALUOp
+    io.perf_mem_op := exu.io.PerfMemOp
+    io.perf_csr_op := exu.io.PerfCSROp
+    io.perf_branch_op := exu.io.PerfBranchOp
+    io.perf_jal_op := exu.io.PerfJalOp
+    io.perf_jalr_op := exu.io.PerfJalrOp
+    io.perf_mdu_req := exu.io.PerfMDUReq
+    io.perf_mdu_done := exu.io.PerfMDUDone
+    io.perf_mdu_op := exu.io.PerfMDUOp
+    io.perf_exu_event_kind := exu.io.PerfEventKind
+    io.perf_mdu_active := exu.io.PerfMDUActive
+    io.perf_mdu_wait := exu.io.PerfMDUWait
+    io.perf_ifu_stall_pipeline := icache.io.resp_valid && !icache.io.resp_ready
+    // AXI等待只统计真实refill的AR/R占用。FetchReady为低还可能是
+    // 响应槽或下游反压，不能全部归因于AXI。
+    io.perf_ifu_stall_axi :=
+      icache.io.perf_refill_req || icache.io.perf_refill_resp
+    io.perf_ifu_stall_ar := icache.io.perf_refill_req
+    io.perf_ifu_stall_r := icache.io.perf_refill_resp
+    io.perf_ifu_stall_redirect := exu.io.Redirect
+    io.perf_ifu_stall_idle := ifu.io.StallIdle
+    io.perf_icache_hit := icache.io.perf_hit
+    io.perf_icache_miss := icache.io.perf_miss
+    io.perf_dcache_hit := lsu.io.DCachePerfHit
+    io.perf_dcache_miss := lsu.io.DCachePerfMiss
+    io.perf_dcache_refill_req := lsu.io.DCachePerfRefillReq
+    io.perf_dcache_refill_resp := lsu.io.DCachePerfRefillResp
+    io.perf_execution_active := exu.io.PerfExecutionActive
+    io.perf_exu_stall_lsu := exu.io.PerfExecutionActive && !exu.io.out.fire &&
+      !exu.io.PerfMDUWait
+    io.perf_mem_waitslot := lsu.io.Hazard2Valid
+    io.perf_lsu_active := lsu.io.Active
+    io.perf_lsu_load_active := lsu.io.Active && !lsu.io.IsStore
+    io.perf_lsu_store_active := lsu.io.Active && lsu.io.IsStore
+    io.perf_lsu_stall_read_ar := lsu.io.StallReadAR
+    io.perf_lsu_stall_read_r := lsu.io.StallReadR
+    io.perf_lsu_stall_write_req := lsu.io.StallWriteReq
+    io.perf_lsu_stall_write_b := lsu.io.StallWriteB
+    io.perf_idu_stall_raw := idu.io.perf_stall_raw
+    io.perf_idu_stall_raw_loaduse := idu.io.perf_stall_raw_loaduse
+    io.perf_idu_stall_raw_alu := idu.io.perf_stall_raw_alu
+    io.perf_exu_idle_noinput := exu.io.PerfIdleNoInput
+    io.perf_trap := exu.io.PerfTrap
+  } else {
+    io.perf_ifu_fetch := false.B
+    io.perf_exu_done := false.B
+    io.perf_lsu_load := false.B
+    io.perf_lsu_store := false.B
+    io.perf_alu_op := false.B
+    io.perf_mem_op := false.B
+    io.perf_csr_op := false.B
+    io.perf_branch_op := false.B
+    io.perf_jal_op := false.B
+    io.perf_jalr_op := false.B
+    io.perf_mdu_req := false.B
+    io.perf_mdu_done := false.B
+    io.perf_mdu_op := 0.U
+    io.perf_exu_event_kind := 0.U
+    io.perf_mdu_active := false.B
+    io.perf_mdu_wait := false.B
+    io.perf_ifu_stall_pipeline := false.B
+    io.perf_ifu_stall_axi := false.B
+    io.perf_ifu_stall_ar := false.B
+    io.perf_ifu_stall_r := false.B
+    io.perf_ifu_stall_redirect := false.B
+    io.perf_ifu_stall_idle := false.B
+    io.perf_icache_hit := false.B
+    io.perf_icache_miss := false.B
+    io.perf_dcache_hit := false.B
+    io.perf_dcache_miss := false.B
+    io.perf_dcache_refill_req := false.B
+    io.perf_dcache_refill_resp := false.B
+    io.perf_execution_active := false.B
+    io.perf_exu_stall_lsu := false.B
+    io.perf_mem_waitslot := false.B
+    io.perf_lsu_active := false.B
+    io.perf_lsu_load_active := false.B
+    io.perf_lsu_store_active := false.B
+    io.perf_lsu_stall_read_ar := false.B
+    io.perf_lsu_stall_read_r := false.B
+    io.perf_lsu_stall_write_req := false.B
+    io.perf_lsu_stall_write_b := false.B
+    io.perf_idu_stall_raw := false.B
+    io.perf_idu_stall_raw_loaduse := false.B
+    io.perf_idu_stall_raw_alu := false.B
+    io.perf_exu_idle_noinput := false.B
+    io.perf_trap := false.B
+  }
 
   // AXI响应协议检查: B响应的错误码不再在这里断言——DECERR/SLVERR会由LSU按
   // store访问故障精确提交(cause=7), 顶层断言会抢先把仿真停掉。
   // 这里保留BID/RID协议检查, 并消费这些顶层AXI响应信号。
+  // CPU自身使用读ID 0/1和写ID 0；入站DMA proxy保留下游ID 2。
   val b_handshake = io.master_bvalid && io.master_bready
   assert(
-    !b_handshake || io.master_bid === 0.U,
+    !b_handshake || io.master_bid === 0.U || io.master_bid === 2.U,
     "AXI write: bid=%d",
     io.master_bid
   )
   assert(
     !(io.master_rvalid && io.master_rready) ||
-      io.master_rid === 0.U || io.master_rid === 1.U,
+      io.master_rid === 0.U || io.master_rid === 1.U || io.master_rid === 2.U,
     "AXI read: rid=%d",
     io.master_rid
   )

@@ -1,6 +1,6 @@
 package ysyx_26030103.common
 import chisel3._
-class ysyx_26030103_GPR extends Module {
+class ysyx_26030103_GPR(val EnableDynamicDebug: Boolean = true) extends Module {
   val io = IO(new Bundle {
     val wdata = Input(UInt(32.W))
     val WriteSELECT = Input(UInt(5.W))
@@ -14,7 +14,11 @@ class ysyx_26030103_GPR extends Module {
     val DebugRdata = Output(UInt(32.W))
   })
   val ysyx_26030103_RegisterFile = Module(
-    new ysyx_26030103_RegisterFile(ADDR_WIDTH = 5, DATA_WIDTH = 32)
+    new ysyx_26030103_RegisterFile(
+      ADDR_WIDTH = 5,
+      DATA_WIDTH = 32,
+      EnableDynamicDebug = EnableDynamicDebug
+    )
   )
   val RegisterFileWen = Mux(io.WriteSELECT === 0.U, false.B, io.WriteEN)
   ysyx_26030103_RegisterFile.io.wdata := io.wdata

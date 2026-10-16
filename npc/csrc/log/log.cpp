@@ -10,13 +10,27 @@ static std::ofstream log_file;
 #define CONFIG_LOG_DIR "log"
 #endif
 
-void log_init() {
+std::expected<void, std::string> log_init() noexcept {
 #ifdef CONFIG_LOG_TO_FILE
-    std::filesystem::create_directories(CONFIG_LOG_DIR);
-    auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
-    auto filename{std::format("{}/{:%Y%m%d-%H%M%S}.log", CONFIG_LOG_DIR, now)};
-    log_file.open(filename);
+    try
+    {
+        std::filesystem::create_directories(CONFIG_LOG_DIR);
+        auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
+        auto filename{std::format("{}/{:%Y%m%d-%H%M%S}.log", CONFIG_LOG_DIR, now)};
+        log_file.open(filename, std::ios::out | std::ios::app);
+        if (!log_file.is_open())
+        {
+            return std::unexpected{
+                std::format("无法打开日志文件 {}", filename)};
+        }
+    }
+    catch (const std::exception &error)
+    {
+        return std::unexpected{
+            std::format("无法初始化日志目录 {}：{}", CONFIG_LOG_DIR, error.what())};
+    }
 #endif
+    return {};
 }
 
 void log_close() {

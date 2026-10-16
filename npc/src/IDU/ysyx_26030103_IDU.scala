@@ -68,11 +68,19 @@ class ysyx_26030103_IDU(
   val IsLoad = (opcode === OPCODE_Immediate_Lxxx)
   val IsSystem = (opcode === OPCODE_System)
   // 两个中间变量，他妈了个逼的，Verilog的wire既能读还能写，chisel3的输出端口还他妈的只能写不能读，还得搞中间变量
-  val IsCsrrw = IsSystem && (funct3 === "b001".U(3.W))
-  val IsCsrrs = IsSystem && (funct3 === "b010".U(3.W))
+  // Zicsr 的寄存器型和立即数型编码只在 funct3[2] 上有区别；低两位
+  // 分别选择 RW/RS/RC。funct3=000 仍留给 ECALL/EBREAK/MRET。
+  val IsCSRInstruction = IsSystem && funct3(1, 0) =/= 0.U
+  val IsCSRImmediate = IsCSRInstruction && funct3(2)
+  val IsCsrrw = IsCSRInstruction && funct3(1, 0) === "b01".U(2.W)
+  val IsCsrrs = IsCSRInstruction && funct3(1, 0) === "b10".U(2.W)
+  val IsCsrrc = IsCSRInstruction && funct3(1, 0) === "b11".U(2.W)
   val IsEbreak = Instruction === "h00100073".U(32.W)
   val IsEcall = Instruction === "h00000073".U(32.W)
   val IsMret = Instruction === "h30200073".U(32.W)
+  // 本核仅实现 M-mode，可将 WFI 合法地实现为 NOP。必须精确匹配整个
+  // 标准编码，避免把其它 funct3=000 的保留 SYSTEM 编码一并放行。
+  val IsWfi = Instruction === "h10500073".U(32.W)
   // custom-0 编码只用于仿真器的 AM halt ABI。标准 EBREAK 始终保留其
   // breakpoint 异常语义，不能再被宿主机无条件当成退出请求。
   val IsSimHalt = Instruction === "h0000000b".U(32.W)
@@ -85,7 +93,7 @@ class ysyx_26030103_IDU(
     (opcode === OPCODE_MiscMem) && (funct3 === "b000".U(3.W))
   val IsFenceI = (opcode === OPCODE_MiscMem) && (funct3 === "b001".U(3.W))
   val RegisterWrite =
-    IsRType || IsIType || IsUType || IsJType || IsCsrrs || IsCsrrw
+    IsRType || IsIType || IsUType || IsJType || IsCSRInstruction
   val MemoryValid = IsLoad || IsSType
   val MemoryWrite = IsSType
   /*
@@ -105,7 +113,7 @@ class ysyx_26030103_IDU(
   val WB_SNPC = 2.U(2.W)
   val WB_CSR = 3.U(2.W)
   val WBSelect = Wire(UInt(2.W))
-  when(IsCsrrw || IsCsrrs) {
+  when(IsCSRInstruction) {
     WBSelect := WB_CSR // ysyx_26030103_CSR指令写回ysyx_26030103_CSR读出值
   }.elsewhen(IsLoad) {
     WBSelect := WB_MEMORY // load就直接写回访存结果
@@ -131,10 +139,11 @@ class ysyx_26030103_IDU(
   val IsMDU = ALUDecoderModule.io.IsMDU
   val MDUOp = ALUDecoderModule.io.MDUOp
   // ALUCDIllegal只覆盖了已知指令类别里funct3/funct7非法的情况,这里补上"不属于任何已知指令"的检测:
-  // System里只实现了csrrw/csrrs/ecall/ebreak/mret,MiscMem里fence/fence.i分别处理。
+  // System 实现完整的六条 Zicsr 指令以及 ecall/ebreak/mret/wfi；WFI
+  // 作为无副作用 NOP 正常退休。MiscMem 中 fence/fence.i 分别处理。
   val IsKnownInstruction =
     IsRType || IsIType || IsSType || IsBType || IsUType || IsJType ||
-      IsCsrrw || IsCsrrs || IsEcall || IsEbreak || IsSimHalt || IsMret ||
+      IsCSRInstruction || IsEcall || IsEbreak || IsSimHalt || IsMret || IsWfi ||
       IsFenceI || IsFence
   // CSR 访问合法性在译码时检查，而不是依赖 CSRUnit 的读取数据多路选择器。
   // 本核心目前只实现下面明确列出的机器态 CSR 集合，访问集合外的 CSR
@@ -149,14 +158,14 @@ class ysyx_26030103_IDU(
       (CSRAddress === "h305".U(12.W)) || // 机器陷阱向量基址（mtvec）
       (CSRAddress === "h341".U(12.W)) || // 机器异常程序计数器（mepc）
       (CSRAddress === "h342".U(12.W))   // 机器陷阱原因（mcause）
-  // CSRRW 始终执行写入，包括 rd=x0 的情况。CSRRS 仅在 rs1!=x0 时写入；
-  // rs1=x0 的形式是纯读取操作，因此可合法访问只读 CSR。
-  val CSRWriteIntent = IsCsrrw || (IsCsrrs && (Rs1 =/= 0.U))
+  // CSRRW[I] 始终执行写入，包括 rd=x0、源为零的情况。CSRRS[I]/CSRRC[I]
+  // 仅在 rs1/zimm 非零时写入；零源形式是纯读取，可合法访问只读 CSR。
+  val CSRWriteIntent = IsCsrrw || ((IsCsrrs || IsCsrrc) && (Rs1 =/= 0.U))
   // 根据特权级 ISA，地址的 [11:10] 位为 11 表示只读 CSR。这里保留通用规则，
   // 防止以后新增的只读表项意外变为可写。
   val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W)
   val CSRIllegal =
-    (IsCsrrw || IsCsrrs) &&
+    IsCSRInstruction &&
       (!CSRAddressValid || (CSRWriteIntent && CSRReadOnly))
   // custom-0 不属于通用 ALU decoder 的 opcode 集合；精确匹配的仿真
   // halt 编码在这里显式豁免，custom-0 的其它编码仍然是非法指令。
@@ -164,7 +173,8 @@ class ysyx_26030103_IDU(
     (ALUCDIllegal && !IsSimHalt) || !IsKnownInstruction || CSRIllegal
   val needsRs2 = IsRType || IsBType || IsSType
   // 源操作数真正被使用的判断(lui/auipc/jal的rs1字段是立即数,不算使用)
-  val usesRs1 = IsRType || IsIType || IsSType || IsBType || IsCsrrw || IsCsrrs
+  val usesRs1 = IsRType || IsIType || IsSType || IsBType ||
+    (IsCSRInstruction && !IsCSRImmediate)
   // 转发命中(EXU > MEM等待槽 > MEM级 > WBU: 多条同时命中时选最年轻生产者)
   val ex_fwd_rs1 =
     usesRs1 && io.ex_fwd_ready && io.ex_rd =/= 0.U && io.ex_rd === Rs1
@@ -228,8 +238,12 @@ class ysyx_26030103_IDU(
   // 普通 EX 冒险端口只表示最老的 MDU 指令。队列中更年轻的 MDU 生产者
   // 尚无可供前递的值。
   val hidden_mdu_hazard =
-    (usesRs1 && Rs1 =/= 0.U && io.ex_mdu_hidden_writes(Rs1)) ||
-      (needsRs2 && Rs2 =/= 0.U && io.ex_mdu_hidden_writes(Rs2))
+    if (config.UseM) {
+      (usesRs1 && Rs1 =/= 0.U && io.ex_mdu_hidden_writes(Rs1)) ||
+        (needsRs2 && Rs2 =/= 0.U && io.ex_mdu_hidden_writes(Rs2))
+    } else {
+      false.B
+    }
   // 只有生产者的数据未就绪(load未完成)才需要阻塞,其余全部转发
   val isRAW = Mux(
     io.pipeline_mode,
@@ -271,6 +285,7 @@ class ysyx_26030103_IDU(
   io.out.bits.StoreData := src2
   io.out.bits.IsCsrrw := IsCsrrw
   io.out.bits.IsCsrrs := IsCsrrs
+  io.out.bits.IsCsrrc := IsCsrrc
   io.out.bits.IsEcall := IsEcall
   io.out.bits.IsEbreak := IsEbreak
   io.out.bits.IsSimHalt := IsSimHalt
@@ -279,7 +294,7 @@ class ysyx_26030103_IDU(
   io.out.bits.IsFenceI := IsFenceI
   io.out.bits.CSRAddress := CSRAddress
   io.out.bits.Rs1 := Rs1
-  io.out.bits.Rs1Data := src1
+  io.out.bits.Rs1Data := Mux(IsCSRImmediate, Cat(0.U(27.W), Rs1), src1)
   io.out.bits.ALUCDIllegal := ALUCDIllegal
   // 异常传递:IFU的取指错优先(此时指令本身是垃圾,IDU的译码结果不可信),否则报非法指令(cause=2)
   io.out.bits.ExceptionValid := io.in.bits.ExceptionValid || IllegalInsn

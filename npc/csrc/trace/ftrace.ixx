@@ -17,7 +17,9 @@ public:
     Ftrace &operator=(Ftrace &&) = delete;      // 禁止移动赋值
     ~Ftrace();                                  // 释放ftrace内部资源
     // 这是对外接口，模块生命周期部分
-    [[nodiscard]] std::expected<void, std::string> LoadElf(std::filesystem::path ElfFile); // 加载ELF文件并准备函数符号表
+    [[nodiscard]] std::expected<void, std::string> LoadElf(
+        std::filesystem::path ElfFile,
+        bool RequireExecutable = true); // 为Ftrace加载ELF；纯readelf用途可保留通用类型
     void ClearElf();                                                                       // 清空ELF符号和已有ftrace状态
     void Reset();                                                                          // 清空调用栈和历史事件，但保留已经加载的ELF符号
     // 这是对外接口，开关控制部分

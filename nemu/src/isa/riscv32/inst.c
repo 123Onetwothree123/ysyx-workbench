@@ -38,6 +38,33 @@ static inline word_t mtvec_warl(word_t value)
   return (value & ~(word_t)3u) | mode;
 }
 
+static inline word_t mstatus_warl(word_t value)
+{
+  const word_t interrupt_bits = value & (word_t)0x88u; /* MPIE/MIE */
+  /* The DUT is M-only: MPP is WARL and hardwired to the sole supported mode. */
+  return interrupt_bits | (word_t)0x1800u;
+}
+
+static inline word_t csr_address(const Decode *s)
+{
+  return BITS(s->isa.inst, 31, 20);
+}
+
+static inline word_t csr_zimm(const Decode *s)
+{
+  return BITS(s->isa.inst, 19, 15);
+}
+
+static inline word_t csr_rs1(const Decode *s)
+{
+  return R(BITS(s->isa.inst, 19, 15));
+}
+
+static inline bool csr_is_read_only(word_t address)
+{
+  return BITS(address, 11, 10) == 3u;
+}
+
 static word_t csr_read(word_t address)
 {
   switch (address)
@@ -58,11 +85,11 @@ static void csr_write(word_t address, word_t value)
 {
   switch (address)
   {
-  /* mvendorid/marchid are read-only in the DUT; writes are ignored. */
+  /* The decoder rejects write-intent accesses to these read-only CSRs. */
   case 0xf11:
   case 0xf12:
     return;
-  case 0x300: cpu.mstatus = value; return;
+  case 0x300: cpu.mstatus = mstatus_warl(value); return;
   case 0x305: cpu.mtvec = mtvec_warl(value); return;
   case 0x341: cpu.mepc = mepc_warl(value); return;
   case 0x342: cpu.mcause = value; return;
@@ -83,9 +110,9 @@ static void csr_write(word_t address, word_t value)
 static inline void mret_update_mstatus(void)
 {
   const word_t mpie = BITS(cpu.mstatus, 7, 7);
-  cpu.mstatus =
+  cpu.mstatus = mstatus_warl(
       (cpu.mstatus & ~((word_t)(3u << 11) | (word_t)(1u << 7) | (word_t)(1u << 3))) |
-      (word_t)(1u << 7) | (mpie << 3);
+      (word_t)(1u << 7) | (mpie << 3));
 }
 
 enum
@@ -286,16 +313,69 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 010 ????? 00100 11", slti, I, R(rd) = ((sword_t)src1 < (sword_t)imm) ? 1 : 0);
   INSTPAT("0000001 ????? ????? 010 ????? 01100 11", mulhsu, R, R(rd) = ((int64_t)(sword_t)src1 * (uint64_t)src2) >> 32);
   INSTPAT("0000000 00000 00000 000 00000 11100 11", ecall, N, s->dnpc = isa_raise_intr(11, s->pc));
-  INSTPAT("??????? ????? ????? 001 ????? 11100 11", csrrw, I, {
-    word_t t = csr_read(imm);
-    csr_write(imm, src1);
-    R(rd) = t;
+  INSTPAT("??????? ????? ????? 001 ????? 11100 11", csrrw, N, {
+    const word_t address = csr_address(s);
+    if (csr_is_read_only(address)) {
+      s->dnpc = isa_raise_intr(2, s->pc);
+    } else {
+      const word_t old = csr_read(address);
+      csr_write(address, csr_rs1(s));
+      R(rd) = old;
+    }
   });
-  INSTPAT("??????? ????? ????? 010 ????? 11100 11", csrrs, I, {
-    word_t t = csr_read(imm);
-    if (BITS(s->isa.inst, 19, 15) != 0)
-      csr_write(imm, t | src1);
-    R(rd) = t;
+  INSTPAT("??????? ????? ????? 010 ????? 11100 11", csrrs, N, {
+    const word_t address = csr_address(s);
+    const bool write = BITS(s->isa.inst, 19, 15) != 0;
+    if (write && csr_is_read_only(address)) {
+      s->dnpc = isa_raise_intr(2, s->pc);
+    } else {
+      const word_t old = csr_read(address);
+      if (write) csr_write(address, old | csr_rs1(s));
+      R(rd) = old;
+    }
+  });
+  INSTPAT("??????? ????? ????? 011 ????? 11100 11", csrrc, N, {
+    const word_t address = csr_address(s);
+    const bool write = BITS(s->isa.inst, 19, 15) != 0;
+    if (write && csr_is_read_only(address)) {
+      s->dnpc = isa_raise_intr(2, s->pc);
+    } else {
+      const word_t old = csr_read(address);
+      if (write) csr_write(address, old & ~csr_rs1(s));
+      R(rd) = old;
+    }
+  });
+  INSTPAT("??????? ????? ????? 101 ????? 11100 11", csrrwi, N, {
+    const word_t address = csr_address(s);
+    if (csr_is_read_only(address)) {
+      s->dnpc = isa_raise_intr(2, s->pc);
+    } else {
+      const word_t old = csr_read(address);
+      csr_write(address, csr_zimm(s));
+      R(rd) = old;
+    }
+  });
+  INSTPAT("??????? ????? ????? 110 ????? 11100 11", csrrsi, N, {
+    const word_t address = csr_address(s);
+    const word_t source = csr_zimm(s);
+    if (source != 0 && csr_is_read_only(address)) {
+      s->dnpc = isa_raise_intr(2, s->pc);
+    } else {
+      const word_t old = csr_read(address);
+      if (source != 0) csr_write(address, old | source);
+      R(rd) = old;
+    }
+  });
+  INSTPAT("??????? ????? ????? 111 ????? 11100 11", csrrci, N, {
+    const word_t address = csr_address(s);
+    const word_t source = csr_zimm(s);
+    if (source != 0 && csr_is_read_only(address)) {
+      s->dnpc = isa_raise_intr(2, s->pc);
+    } else {
+      const word_t old = csr_read(address);
+      if (source != 0) csr_write(address, old & ~source);
+      R(rd) = old;
+    }
   });
   INSTPAT("0011000 00010 00000 000 00000 11100 11", mret, N, {
     s->dnpc = cpu.mepc;

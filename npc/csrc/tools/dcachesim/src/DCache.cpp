@@ -28,11 +28,10 @@ DCache::DCache(const DCacheConfig& config, ReplPolicy policy, std::string_view n
     sets = std::mdspan{sets_flat.data(), SetsNumber, ways}; // entry全部默认初始化为0
 }
 
-void DCache::fill(entry& e, std::uint32_t tag, bool is_write)
+void DCache::fill(entry& e, std::uint32_t tag)
 {
     e.valid = true;
     e.tag = tag;
-    e.dirty = is_write; // 写分配: 写缺失也把块装进来并置脏
     e.time = tick;
 }
 
@@ -50,16 +49,20 @@ AccessOutcome DCache::access(const AccessRecord& rec)
         {
             it->time = tick; // LRU命中要刷新访问时间
         }
-        if (rec.GetIsWrite())
-        {
-            it->dirty = true; // 写命中置脏
-        }
         return {true, false};
     }
+
+    // 当前 RTL 的 DCache 由 LSU 写缓冲执行 write-through：store 只会在
+    // 已有 cache line 命中时更新镜像数据，写 miss 绝不分配。
+    if (rec.GetIsWrite())
+    {
+        return {false, false};
+    }
+
     // 第2轮：找空闲槽位
     if (const auto it{std::ranges::find_if(set, [](const entry& e) { return !e.valid; })}; it != set.end())
     {
-        fill(*it, tag, rec.GetIsWrite());
+        fill(*it, tag);
         return {false, false};
     }
     // 第3轮：组满了，按替换策略选牺牲者
@@ -74,9 +77,8 @@ AccessOutcome DCache::access(const AccessRecord& rec)
         const auto it{std::ranges::min_element(set, std::ranges::less{}, &entry::time)};
         victim = static_cast<std::size_t>(it - set.begin());
     }
-    const auto writeback{set[victim].dirty}; // 脏块换出要写回内存
-    fill(set[victim], tag, rec.GetIsWrite());
-    return {false, writeback};
+    fill(set[victim], tag);
+    return {false, false};
 }
 
 std::string_view DCache::GetName() const

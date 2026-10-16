@@ -88,6 +88,10 @@ int main(int argc, char **argv) try {
 
   set_platform(1);
   init(0);
+  CSRState reset_csr{};
+  csrcopy(&reset_csr, kToDUT);
+  check(reset_csr.mstatus == 0x1800u,
+        "M-only reference reset did not hardwire MPP=M");
   check(supported(kFlash, 4), "full-SoC flash image range was rejected");
   check(supported(0x0f007ffcu, 4), "upper 24 KiB of 32 KiB SRAM missing");
   check(!supported(0x0f007ffcu, 8), "cross-SRAM copy was accepted");
@@ -113,7 +117,7 @@ int main(int argc, char **argv) try {
   cpu.gpr[2] = 0x81234567u;
   cpu.gpr[3] = 1u << 3; // MIE
   regcopy(&cpu, kToREF);
-  CSRState csr{};
+  CSRState csr{.mstatus = 0x1800u};
   csrcopy(&csr, kToREF);
 
   exec(1);
@@ -138,22 +142,25 @@ int main(int argc, char **argv) try {
   regcopy(&cpu, kToDUT);
   csrcopy(&csr, kToDUT);
   check(cpu.pc == kFlash + 12u, "mret did not jump to mepc");
-  check(csr.mstatus == 0x88u,
-        "mret did not restore MIE/set MPIE/clear MPP like the DUT");
+  check(csr.mstatus == 0x1888u,
+        "M-only mret did not restore MIE/set MPIE/retain MPP=M");
 
   cpu.pc = kFlash + 0x20u;
   regcopy(&cpu, kToREF);
-  csr = {.mstatus = 1u << 3,
+  csr = {.mstatus = 0x1800u | (1u << 3),
          .mtvec = kFlash + 0x101u,
          .mepc = 0,
          .mcause = 0};
   csrcopy(&csr, kToREF);
-  raise(0x80000007u);
+  // The CPU top-level interrupt pin is the platform's machine-external
+  // interrupt source.  Exercise the reference with the same architectural
+  // cause used by the RTL rather than the unrelated machine-timer cause.
+  raise(0x8000000bu);
   regcopy(&cpu, kToDUT);
   csrcopy(&csr, kToDUT);
-  check(cpu.pc == kFlash + 0x100u + 4u * 7u,
+  check(cpu.pc == kFlash + 0x100u + 4u * 11u,
         "vectored interrupt target is incorrect");
-  check(csr.mepc == kFlash + 0x20u && csr.mcause == 0x80000007u,
+  check(csr.mepc == kFlash + 0x20u && csr.mcause == 0x8000000bu,
         "injected interrupt CSR state is incorrect");
 
   dlclose(handle);

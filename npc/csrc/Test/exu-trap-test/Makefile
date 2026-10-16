@@ -28,6 +28,7 @@ $(RTL): $(SCALA_SRCS)
 	cd $(NPC_DIR) && env \
 		ICACHE=n DCACHE=n WBUF_DEPTH=4 \
 		RV32_M=y RV32_A=n RV32_C=n \
+		SDB=y DIFFTEST=y PERF_STATS=y \
 		$(MILL) --no-server runMain ysyx_26030103_Elaborate \
 			--target-dir $(RTL_DIR)
 

@@ -9,10 +9,12 @@ Prediction BTFN::predict(uint32_t pc) const
         return {hit->target < pc, true, hit->target};
     return {false, false, 0};
 }
-void BTFN::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind)
+void BTFN::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind,
+                  std::uint32_t)
 {
-    // 基线=当前硬件行为: 只有条件分支进BTB, jal/jalr/ret不预测(必然误预测重定向)
-    if (kind == BranchKind::Branch)
+    // 当前RTL只为BTFN可能预测taken的后向条件分支分配BTB；
+    // 前向分支始终预测不跳，不应占容量或驱逐有用的后向表项。
+    if (kind == BranchKind::Branch && target < pc)
         btb.update(pc, target, kind);
 }
 std::string_view BTFN::GetName() const

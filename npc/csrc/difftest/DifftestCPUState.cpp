@@ -34,11 +34,10 @@ DifftestCPUState DifftestCPUState::ReadDUTState(DUT &dut)
     auto State{DifftestCPUState{}};
     for (std::size_t Index{0}; Index < State.gpr.size(); ++Index)
     {
-        auto result{dut.ReadGPR(static_cast<std::uint32_t>(Index))};
+        auto result{dut.ReadCachedGPR(static_cast<std::uint32_t>(Index))};
         State.gpr[Index] = result ? *result : 0;
     }
-    auto pc{dut.ReadPC()};
-    State.pc = pc ? *pc : 0;
+    State.pc = dut.ReadCachedPC();
     return State;
 }
 bool DifftestCPUState::CheckRegs(const DifftestCPUState &DUT) const

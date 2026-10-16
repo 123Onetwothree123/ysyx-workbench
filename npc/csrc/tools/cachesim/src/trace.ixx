@@ -15,6 +15,8 @@ private:
     std::FILE*  file_  = nullptr;
     std::size_t count_ = 0;
     bool   is_pipe_ = false;
+    int compressed_child_pid_ = -1;
 
     auto try_parse(const std::string& line) -> std::optional<std::uint32_t>;
+    void finish_compressed_input();
 };

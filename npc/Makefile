@@ -1,6 +1,8 @@
 NPC_HOME := $(CURDIR)
 SHELL := /bin/bash
 BUILD_DIR = ./build
+PERF_BUILD_METADATA := $(abspath $(BUILD_DIR)/perf_build_metadata.txt)
+PERF_SYNTH := $(abspath $(BUILD_DIR)/synth.txt)
 YSYXSOC_DIR = ../ysyxSoC
 YSYXSOC_PERIP_DIR = $(YSYXSOC_DIR)/perip
 YSYXSOC_PERIP_INCDIRS = \
@@ -40,6 +42,9 @@ CSRC_DIR=./csrc
 CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -path "$(CSRC_DIR)/tools/branchsim" -prune -o -path "$(CSRC_DIR)/tools/dcachesim" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
 remove_quote = $(patsubst "%",%,$(1))
+# Quote one make value as one POSIX-shell word.  This is used for generated
+# performance metadata, where configuration strings may contain commas.
+perf_shell_quote = '$(subst ','"'"',$(1))'
 comma := ,
 -include include/config/auto.conf
 NPROC_MAX := $(shell nproc 2>/dev/null || echo 4)
@@ -87,6 +92,13 @@ VERILOG_ENV = env \
 	JAL_BTB_BITS=$(JAL_BTB_BITS) \
 	JAL_BTB_WAYS=$(JAL_BTB_WAYS) \
 	RAS_BITS=$(RAS_BITS) \
+	SDB=$(or $(CONFIG_SDB),n) \
+	DIFFTEST=$(or $(CONFIG_DIFFTEST),n) \
+	MTRACE=$(or $(CONFIG_MTRACE),n) \
+	ITRACE=$(if $(filter y,$(CONFIG_ITRACE) $(CONFIG_ITRACE_WRITE_FILE)),y,n) \
+	FTRACE=$(or $(CONFIG_FTRACE),n) \
+	IRINGBUF=$(or $(CONFIG_IRINGBUF),n) \
+	PERF_STATS=$(or $(CONFIG_PERF_STATS),n) \
 	RV32_M=$(CONFIG_RV32_M) \
 	RV32_A=$(CONFIG_RV32_A) \
 	RV32_C=$(CONFIG_RV32_C) \
@@ -115,6 +127,12 @@ VERILOG_ENV = env \
 	AXI_CPU_FREQ_MHZ=$(SYNTH_FREQ) \
 	AXI_DEVICE_FREQ_MHZ=$(AXI_DEVICE_FREQ) \
 	AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE)
+
+# Keep the effective hardware knobs in one stable, human-readable record.
+# The hash of this exact string identifies configurations even when two builds
+# come from the same git commit.  Target selection is recorded separately:
+# one elaboration emits both the direct-NPC and SoC CPU wrappers.
+PERF_CONFIG_SUMMARY = ICACHE=$(or $(CONFIG_ICACHE),n);DCACHE=$(or $(CONFIG_DCACHE),n);CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2);CACHE_INDEX_BITS=$(CACHE_INDEX_BITS);WBUF_DEPTH=$(or $(CONFIG_WBUF_DEPTH),4);CACHE_PADDING=$(CACHE_PADDING);BTB_BITS=$(BTB_BITS);BTB_WAYS=$(BTB_WAYS);JAL_BTB_BITS=$(JAL_BTB_BITS);JAL_BTB_WAYS=$(JAL_BTB_WAYS);RAS_BITS=$(RAS_BITS);SDB=$(or $(CONFIG_SDB),n);DIFFTEST=$(or $(CONFIG_DIFFTEST),n);MTRACE=$(or $(CONFIG_MTRACE),n);ITRACE=$(or $(CONFIG_ITRACE),n);ITRACE_WRITE_FILE=$(or $(CONFIG_ITRACE_WRITE_FILE),n);FTRACE=$(or $(CONFIG_FTRACE),n);IRINGBUF=$(or $(CONFIG_IRINGBUF),n);PERF_STATS=$(or $(CONFIG_PERF_STATS),n);RV32_M=$(or $(CONFIG_RV32_M),n);RV32_A=$(or $(CONFIG_RV32_A),n);RV32_C=$(or $(CONFIG_RV32_C),n);MUL_IMPL=$(or $(call remove_quote,$(CONFIG_MUL_IMPL)),shift_add);MUL_ENCODING=$(or $(call remove_quote,$(CONFIG_MUL_ENCODING)),plain);MUL_RADIX=$(or $(CONFIG_MUL_RADIX),4);MUL_WIDTH=$(or $(CONFIG_MUL_WIDTH),32);MUL_COMPRESSOR_INPUTS=$(or $(CONFIG_MUL_COMPRESSOR_INPUTS),3);MUL_COMPRESSOR_OUTPUTS=$(or $(CONFIG_MUL_COMPRESSOR_OUTPUTS),2);MUL_COMPRESSOR_OUTPUT_OFFSETS=$(or $(call remove_quote,$(CONFIG_MUL_COMPRESSOR_OUTPUT_OFFSETS)),0$(comma)1);MUL_COMPRESSOR_HAS_CIN=$(or $(CONFIG_MUL_COMPRESSOR_HAS_CIN),n);MUL_COMPRESSOR_HAS_COUT=$(or $(CONFIG_MUL_COMPRESSOR_HAS_COUT),n);MUL_COMPRESSOR_COUT_OFFSET=$(or $(CONFIG_MUL_COMPRESSOR_COUT_OFFSET),1);MUL_COMPRESSOR_ALLOW_REDUNDANT=$(or $(CONFIG_MUL_COMPRESSOR_ALLOW_REDUNDANT),n);DIV_IMPL=$(or $(call remove_quote,$(CONFIG_DIV_IMPL)),restoring);DIV_RADIX=$(or $(CONFIG_DIV_RADIX),2);DIV_ITER_BITS=$(or $(CONFIG_DIV_ITER_BITS),1);DIV_EARLY_OUT=$(or $(CONFIG_DIV_EARLY_OUT),n);MUL_ITER_BITS=$(or $(CONFIG_MUL_ITER_BITS),1);MUL_PIPELINE=$(or $(CONFIG_MUL_PIPELINE),0);MUL_SPLIT=$(or $(CONFIG_MUL_SPLIT),1);MUL_EARLY_OUT=$(or $(CONFIG_MUL_EARLY_OUT),n);CHIPLINK=$(or $(CHIPLINK),n);APB_CPU_FREQ_MHZ=$(SYNTH_FREQ);APB_DEVICE_FREQ_MHZ=$(APB_DEVICE_FREQ);APB_DELAY_SCALE_FACTOR=$(APB_DELAY_SCALE);AXI_CPU_FREQ_MHZ=$(SYNTH_FREQ);AXI_DEVICE_FREQ_MHZ=$(AXI_DEVICE_FREQ);AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE);SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE);SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX);SYNTH_NOMAP=$(SYNTH_NOMAP);SYNTH_NOABC=$(SYNTH_NOABC)
 
 verilog:
 	$(call git_commit, "generate verilog")
@@ -210,7 +228,7 @@ CONFIG_ITRACE_WRITE_FILE ?= n
 CONFIG_MTRACE ?= n
 CONFIG_FTRACE ?= n
 CONFIG_NVBOARD ?= n
-CONFIG_NVBOARD_UPDATE_INTERVAL ?= 1
+CONFIG_NVBOARD_UPDATE_INTERVAL ?= 100
 CONFIG_NVBOARD_NXDC ?= csrc/nvboard/gpio.nxdc
 ifeq ($(CONFIG_NVBOARD),y)
 NVBOARD_HOME ?= $(abspath $(NPC_HOME)/../nvboard)
@@ -219,6 +237,12 @@ NVBOARD_AUTOBIND = $(BUILD_DIR)/auto_bind.cpp
 NVBOARD_CFLAGS = -DCONFIG_NVBOARD -DCONFIG_NVBOARD_UPDATE_INTERVAL=$(call remove_quote,$(CONFIG_NVBOARD_UPDATE_INTERVAL)) -I$(NVBOARD_HOME)/usr/include $(shell sdl2-config --cflags 2>/dev/null)
 NVBOARD_LDADD = $(NVBOARD_ARCHIVE) $(shell sdl2-config --libs 2>/dev/null) -lSDL2_image -lSDL2_ttf
 NVBOARD_LDFLAGS = $(addprefix -LDFLAGS ,$(NVBOARD_LDADD))
+NVBOARD_DIRECT_GUARD = nvboard-direct-unsupported
+
+.PHONY: nvboard-direct-unsupported
+nvboard-direct-unsupported:
+	@echo "错误：NVBoard 只能绑定 ysyxSoCFull 的外设引脚；direct-NPC 顶层没有可绑定的 GPIO/VGA/UART 引脚。请使用 SIM_TOP=soc。" >&2
+	@exit 2
 endif
 ifeq ($(CONFIG_SDB),y)
 SDB_CFLAGS = -DCONFIG_SDB
@@ -261,9 +285,63 @@ PERF_STATS_CFLAGS = -DCONFIG_PERF_STATS
 endif
 ifeq ($(CONFIG_PERF_SAVE),y)
 PERF_SAVE_CFLAGS = -DCONFIG_PERF_SAVE
-GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "0000000")
-PERF_SAVE_CFLAGS += -DCONFIG_PERF_GIT_COMMIT=$(GIT_COMMIT)
-$(shell git log -1 --format=%s 2>/dev/null > $(BUILD_DIR)/git_msg.txt || echo "" > $(BUILD_DIR)/git_msg.txt)
+PERF_SAVE_CFLAGS += -DCONFIG_PERF_BUILD_METADATA_FILE='\"$(PERF_BUILD_METADATA)\"'
+PERF_SAVE_CFLAGS += -DCONFIG_PERF_SYNTH_FILE='\"$(PERF_SYNTH)\"'
+endif
+
+# The perf recipe's ordered sub-make reuses the RTL and metadata that its
+# successful synth prerequisite just produced.  All ordinary binary targets
+# retain the normal PHONY elaboration dependency.
+.PHONY: perf-simulator-rebuild
+perf-simulator-rebuild:
+
+ifeq ($(PERF_SYNTH_READY),1)
+NPC_VERILOG_PREREQ := perf-simulator-rebuild
+else
+NPC_VERILOG_PREREQ := verilog
+endif
+
+.PHONY: perf-build-metadata
+perf-build-metadata: verilog
+	@set -eu; \
+	mkdir -p "$(dir $(PERF_BUILD_METADATA))"; \
+	tmp="$(PERF_BUILD_METADATA).tmp.$$$$"; \
+	summary=$(call perf_shell_quote,$(PERF_CONFIG_SUMMARY)); \
+	config_sha256=$$(printf '%s' "$$summary" | sha256sum | cut -d' ' -f1); \
+	npc_rtl="$(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)"; \
+	soc_rtl="$(abspath $(BUILD_DIR)/ysyx_26030103.sv)"; \
+	test -f "$$npc_rtl"; \
+	test -f "$$soc_rtl"; \
+	npc_sha256=$$(sha256sum "$$npc_rtl" | cut -d' ' -f1); \
+	soc_sha256=$$(sha256sum "$$soc_rtl" | cut -d' ' -f1); \
+	commit=$$(git -C "$(NPC_HOME)" rev-parse --short=12 HEAD 2>/dev/null || printf '%s' unknown); \
+	message=$$(git -C "$(NPC_HOME)" log -1 --format=%s 2>/dev/null || true); \
+	if git_status=$$(git -C "$(NPC_HOME)" status --porcelain --untracked-files=normal 2>/dev/null); then \
+		if test -z "$$git_status"; then dirty=0; else dirty=1; fi; \
+	else \
+		dirty=unknown; \
+	fi; \
+	{ \
+		printf 'format=1\n'; \
+		printf 'commit=%s\n' "$$commit"; \
+		printf 'git_dirty=%s\n' "$$dirty"; \
+		printf 'message=%s\n' "$$message"; \
+		printf 'config_sha256=%s\n' "$$config_sha256"; \
+		printf 'config_summary=%s\n' "$$summary"; \
+		printf 'rtl_npc_sha256=%s\n' "$$npc_sha256"; \
+		printf 'rtl_soc_sha256=%s\n' "$$soc_sha256"; \
+		printf 'pdk=%s\n' "$(PDK_VALUE)"; \
+	} > "$$tmp"; \
+	if test -f "$(PERF_BUILD_METADATA)" && cmp -s "$$tmp" "$(PERF_BUILD_METADATA)"; then \
+		rm -f "$$tmp"; \
+	else \
+		mv -f "$$tmp" "$(PERF_BUILD_METADATA)"; \
+	fi
+
+ifeq ($(CONFIG_PERF_SAVE),y)
+ifneq ($(PERF_SYNTH_READY),1)
+simtest $(BIN) $(BIN_NPC): | perf-build-metadata
+endif
 endif
 # 向C++侧传递M扩展开关
 ifeq ($(CONFIG_RV32_M),y)
@@ -498,7 +576,7 @@ $(YSYXSOC_FULL_V): ysyxsoc-verilog-force
 		AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE) \
 		verilog
 
-$(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V)
+$(BIN): $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -515,7 +593,7 @@ $(BIN): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSO
 		CXX=$(CXX) LINK=$(CXX) \
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
-$(BIN_NPC): verilog $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+$(BIN_NPC): $(NVBOARD_DIRECT_GUARD) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -567,9 +645,13 @@ pgo: verilog
 
 
 PERF_DIR   = NPCSimResult
-PERF_SYNTH = $(BUILD_DIR)/synth.txt
 
 YOSYS_STA_HOME ?= $(abspath $(NPC_HOME)/../yosys-sta)
+# Never place synthesis products in yosys-sta's repository-global result/
+# directory.  Besides keeping custom BUILD_DIR builds self-contained, the
+# identity subdirectory prevents two concurrent builds (or two synthesis
+# strategies for the same RTL) from sharing a synth_stat.txt.
+SYNTH_OUTPUT_BASE ?= $(abspath $(BUILD_DIR)/yosys-sta)
 ifneq ($(CONFIG_SYNTH_FREQ),)
 SYNTH_FREQ = $(call remove_quote,$(CONFIG_SYNTH_FREQ))
 else
@@ -632,37 +714,120 @@ SYNTH_DESIGN = ysyx_26030103
 SYNTH_RTL_FILES = $(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)
 endif
 
-synth: verilog
+# The identity directory is deliberately reusable.  Publish an invalid
+# manifest and delete the exact old area report before each run, so a failed
+# synthesis or a missing new report cannot inherit a valid old measurement.
+synth: verilog perf-build-metadata
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY_TYPE) $(SYNTH_STRATEGY_IDX), nomap=$(SYNTH_NOMAP), noabc=$(SYNTH_NOABC)) ..."
 
-	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && export SYNTH_NOABC=$(SYNTH_NOABC) && \
+	@set -eu; \
+	config_sha256=$$(sed -n 's/^config_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	if test "$(SIM_TOP)" = soc; then \
+		target=soc; \
+		rtl_sha256=$$(sed -n 's/^rtl_soc_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	else \
+		target=npc; \
+		rtl_sha256=$$(sed -n 's/^rtl_npc_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	fi; \
+	test -n "$$config_sha256"; \
+	test -n "$$rtl_sha256"; \
+	synth_output="$(SYNTH_OUTPUT_BASE)/$$target-$$config_sha256-$$rtl_sha256"; \
+	SYNTH_STAT="$$synth_output/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz-$(PDK_VALUE)/synth_stat.txt"; \
+	mkdir -p "$(dir $(PERF_SYNTH))"; \
+	tmp="$(PERF_SYNTH).tmp.$$$$"; \
+	{ \
+		printf 'format=2\n'; \
+		printf 'target=%s\n' "$$target"; \
+		printf 'pdk=%s\n' "$(PDK_VALUE)"; \
+		printf 'config_sha256=%s\n' "$$config_sha256"; \
+		printf 'rtl_sha256=%s\n' "$$rtl_sha256"; \
+		printf 'measurement_valid=0\n'; \
+		printf 'frequency_mhz=%s\n' "$(SYNTH_FREQ)"; \
+		printf 'area_um2=0\n'; \
+	} > "$$tmp"; \
+	mv -f "$$tmp" "$(PERF_SYNTH)"; \
+	rm -f "$$SYNTH_STAT"; \
+	export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE); \
+	export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX); \
+	export SYNTH_NOMAP=$(SYNTH_NOMAP); \
+	export SYNTH_NOABC=$(SYNTH_NOABC); \
 	$(MAKE) -C $(YOSYS_STA_HOME) syn \
 		PDK=$(PDK_VALUE) \
 		DESIGN=$(SYNTH_DESIGN) \
 		RTL_FILES="$(SYNTH_RTL_FILES)" \
 		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
-		O=$(abspath $(YOSYS_STA_HOME))/result
-	@mkdir -p $(BUILD_DIR)
-	@echo $(SYNTH_FREQ) > $(PERF_SYNTH)
-	@SYNTH_STAT="$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz-$(PDK_VALUE)/synth_stat.txt"; \
-	if [ -f "$$SYNTH_STAT" ]; then \
-		awk '/Chip area/ {print $$6}' "$$SYNTH_STAT" >> $(PERF_SYNTH); \
+		O="$$synth_output"
+	@set -eu; \
+	config_sha256=$$(sed -n 's/^config_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	if test "$(SIM_TOP)" = soc; then \
+		target=soc; \
+		rtl_sha256=$$(sed -n 's/^rtl_soc_sha256=//p' "$(PERF_BUILD_METADATA)"); \
 	else \
-		echo "0" >> $(PERF_SYNTH); \
-	fi
+		target=npc; \
+		rtl_sha256=$$(sed -n 's/^rtl_npc_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	fi; \
+	test -n "$$config_sha256"; \
+	test -n "$$rtl_sha256"; \
+	synth_output="$(SYNTH_OUTPUT_BASE)/$$target-$$config_sha256-$$rtl_sha256"; \
+	SYNTH_STAT="$$synth_output/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz-$(PDK_VALUE)/synth_stat.txt"; \
+	area=0; \
+	measurement_valid=0; \
+	if test -f "$$SYNTH_STAT"; then \
+		candidate=$$(awk '/Chip area/ {print $$6; exit}' "$$SYNTH_STAT"); \
+		if test -n "$$candidate"; then \
+			area="$$candidate"; \
+			measurement_valid=1; \
+		fi; \
+	fi; \
+	mkdir -p "$(dir $(PERF_SYNTH))"; \
+	tmp="$(PERF_SYNTH).tmp.$$$$"; \
+	{ \
+		printf 'format=2\n'; \
+		printf 'target=%s\n' "$$target"; \
+		printf 'pdk=%s\n' "$(PDK_VALUE)"; \
+		printf 'config_sha256=%s\n' "$$config_sha256"; \
+		printf 'rtl_sha256=%s\n' "$$rtl_sha256"; \
+		printf 'measurement_valid=%s\n' "$$measurement_valid"; \
+		printf 'frequency_mhz=%s\n' "$(SYNTH_FREQ)"; \
+		printf 'area_um2=%s\n' "$$area"; \
+	} > "$$tmp"; \
+	mv -f "$$tmp" "$(PERF_SYNTH)"
 
 YOSYS_STA_RESULT = $(NPC_HOME)/yosys-sta-result
 
-yosys-sta: verilog
+yosys-sta: verilog perf-build-metadata
 	@echo "[yosys-sta] 全流程 syn+sta ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE)) ..."
-	@export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE) && export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX) && export SYNTH_NOMAP=$(SYNTH_NOMAP) && export SYNTH_NOABC=$(SYNTH_NOABC) && \
+	@set -eu; \
+	config_sha256=$$(sed -n 's/^config_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	if test "$(SIM_TOP)" = soc; then \
+		target=soc; \
+		rtl_sha256=$$(sed -n 's/^rtl_soc_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	else \
+		target=npc; \
+		rtl_sha256=$$(sed -n 's/^rtl_npc_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	fi; \
+	test -n "$$config_sha256"; \
+	test -n "$$rtl_sha256"; \
+	synth_output="$(SYNTH_OUTPUT_BASE)/$$target-$$config_sha256-$$rtl_sha256"; \
+	export SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE); \
+	export SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX); \
+	export SYNTH_NOMAP=$(SYNTH_NOMAP); \
+	export SYNTH_NOABC=$(SYNTH_NOABC); \
 	$(MAKE) -C $(YOSYS_STA_HOME) syn sta \
 		PDK=$(PDK_VALUE) \
 		DESIGN=$(SYNTH_DESIGN) \
 		RTL_FILES="$(SYNTH_RTL_FILES)" \
 		CLK_FREQ_MHZ=$(SYNTH_FREQ) \
-		O=$(abspath $(YOSYS_STA_HOME))/result
-	@SRC_DIR="$(abspath $(YOSYS_STA_HOME))/result/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz-$(PDK_VALUE)"; \
+		O="$$synth_output"
+	@config_sha256=$$(sed -n 's/^config_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	if test "$(SIM_TOP)" = soc; then \
+		target=soc; \
+		rtl_sha256=$$(sed -n 's/^rtl_soc_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	else \
+		target=npc; \
+		rtl_sha256=$$(sed -n 's/^rtl_npc_sha256=//p' "$(PERF_BUILD_METADATA)"); \
+	fi; \
+	SRC_DIR="$(SYNTH_OUTPUT_BASE)/$$target-$$config_sha256-$$rtl_sha256/$(SYNTH_DESIGN)-$(SYNTH_FREQ)MHz-$(PDK_VALUE)"; \
 	TS_DIR="$(YOSYS_STA_RESULT)/$$(date +%Y%m%d-%H%M%S)"; \
 	set -o pipefail; \
 	mkdir -p "$$TS_DIR" && \
@@ -670,19 +835,42 @@ yosys-sta: verilog
 	find "$$SRC_DIR" -type f \( -name '*.v' -o -name '*.v.sim' \) -delete && \
 	echo "[yosys-sta] 结果已保存到 $$TS_DIR"
 
+# `perf` must finish synthesis before compiling the simulator: otherwise a
+# parallel make can compile against regenerated RTL while synthesis is still
+# consuming it.  Use a recipe sub-make rather than a GNU make 4.4-only ordered
+# prerequisite feature, so GNU make 4.3 remains supported.
+# PERF_SYNTH_READY suppresses only duplicate elaboration/metadata;
+# perf-simulator-rebuild still forces Verilator to rebuild the executable from
+# the RTL that synthesis just consumed.
 ifeq ($(SIM_TOP),soc)
-perf: synth $(BIN)
+perf: synth
+	@$(MAKE) --no-print-directory PERF_SYNTH_READY=1 $(BIN)
 	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 运行仿真 ..."
-	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
-	mkdir -p "$$RESULT_DIR"; \
+	@set -o pipefail; \
+	base="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	suffix=0; \
+	while :; do \
+		if test "$$suffix" -eq 0; then RESULT_DIR="$$base"; else RESULT_DIR="$$base-$$suffix"; fi; \
+		if mkdir "$$RESULT_DIR" 2>/dev/null; then break; fi; \
+		if test ! -e "$$RESULT_DIR"; then echo "无法创建性能结果目录 $$RESULT_DIR" >&2; exit 1; fi; \
+		suffix=$$((suffix + 1)); \
+	done; \
 	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
 else
-perf: synth $(BIN_NPC)
+perf: synth
+	@$(MAKE) --no-print-directory PERF_SYNTH_READY=1 $(BIN_NPC)
 	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 运行仿真 ..."
-	@RESULT_DIR="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
-	mkdir -p "$$RESULT_DIR"; \
+	@set -o pipefail; \
+	base="$(PERF_DIR)/$$(date +%Y%m%d-%H%M%S)"; \
+	suffix=0; \
+	while :; do \
+		if test "$$suffix" -eq 0; then RESULT_DIR="$$base"; else RESULT_DIR="$$base-$$suffix"; fi; \
+		if mkdir "$$RESULT_DIR" 2>/dev/null; then break; fi; \
+		if test ! -e "$$RESULT_DIR"; then echo "无法创建性能结果目录 $$RESULT_DIR" >&2; exit 1; fi; \
+		suffix=$$((suffix + 1)); \
+	done; \
 	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/npc.log"
 endif
 

@@ -30,6 +30,8 @@ class ysyx_26030103 extends BlackBox {
     // sdb
     val io_debug_gpr_raddr = Input(UInt(5.W))
     val io_debug_gpr_rdata = Output(UInt(32.W))
+    val io_debug_gpr_wen = Output(Bool())
+    val io_debug_gpr_waddr = Output(UInt(5.W))
     val io_debug_pc = Output(UInt(32.W))
     val io_debug_next_pc = Output(UInt(32.W))
     val io_debug_arch_pc = Output(UInt(32.W))
@@ -139,12 +141,16 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
     // sdb
     val debug_gpr_raddr = IO(Input(UInt(5.W)))
     val debug_gpr_rdata = IO(Output(UInt(32.W)))
+    val debug_gpr_wen = IO(Output(Bool()))
+    val debug_gpr_waddr = IO(Output(UInt(5.W)))
     val debug_pc = IO(Output(UInt(32.W)))
     val debug_next_pc = IO(Output(UInt(32.W)))
     val debug_arch_pc = IO(Output(UInt(32.W)))
 
     cpu.io.io_debug_gpr_raddr := debug_gpr_raddr
     debug_gpr_rdata := cpu.io.io_debug_gpr_rdata
+    debug_gpr_wen := cpu.io.io_debug_gpr_wen
+    debug_gpr_waddr := cpu.io.io_debug_gpr_waddr
     debug_pc := cpu.io.io_debug_pc
     debug_next_pc := cpu.io.io_debug_next_pc
     debug_arch_pc := cpu.io.io_debug_arch_pc

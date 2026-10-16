@@ -292,12 +292,33 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
             FlashMemory.size(),
             static_cast<std::size_t>(CONFIG_MSIZE))};
     }
+#ifdef VRISCV32E_NPC
+    // The direct RTL initialization clears the complete 256 KiB RAM before
+    // overlaying the image.  NEMU's heap-backed RAM has no matching reset
+    // guarantee, so synchronizing only the image leaves its tail random and
+    // creates false DiffTest mismatches on the first legitimate tail read.
+    constexpr std::size_t DirectRamBytes{256U * 1024U};
+    static_assert(CONFIG_MSIZE == DirectRamBytes,
+                  "direct-NPC DiffTest RAM size must match the RTL RAM");
+    std::vector<std::uint8_t> referenceMemory(DirectRamBytes, 0);
+    std::ranges::copy(FlashMemory, referenceMemory.begin());
+    REFMemcpy(CONFIG_MBASE,
+              referenceMemory.data(),
+              referenceMemory.size(),
+              DifftestCPUState::GetDirectionToRef());
+#else
+    // Full SoC MROM is a 256 MiB address window, but only the loaded image is
+    // backed by host storage.  Do not manufacture/copy a 256 MiB zero buffer.
     REFMemcpy(CONFIG_MBASE,
               FlashMemory.data(),
               FlashMemory.size(),
               DifftestCPUState::GetDirectionToRef());
-    // RISC-V does not define reset values for x1..x31.  Synchronize the
-    // reference from the post-reset RTL state instead of assuming zero.
+#endif
+    // RISC-V does not define reset values for x1..x31.  Seed the mirror only
+    // when a REF was actually requested (a DiffTest-capable binary without
+    // --diff must retain zero per-instruction debug overhead), then synchronize
+    // the reference from the post-reset physical RTL state.
+    dut.RefreshCachedArchitecturalState();
     auto DUTState{DifftestCPUState::ReadDUTState(dut)};
     REFRegcpy(&DUTState, DifftestCPUState::GetDirectionToRef());
     LastDUTCSR = ReadDUTRetireCSR(dut);
@@ -437,6 +458,10 @@ bool DifftestFinalCheck(DUT &dut)
         return true;
     if (Failed)
         return false;
+    // The retirement mirror is exact for the GPR's sole indexed write port.
+    // Rescan the physical RF once at the final boundary as an independent
+    // guard against unintended writes outside that port or bookkeeping bugs.
+    dut.RefreshCachedArchitecturalState();
     const auto REFState{ReadReferenceState()};
     const auto DUTState{DifftestCPUState::ReadDUTState(dut)};
     const bool matched{REFState.CheckRegs(DUTState)};

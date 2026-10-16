@@ -15,13 +15,18 @@
 
 #include <isa.h>
 
+static inline word_t mstatus_warl(word_t value)
+{
+  const word_t interrupt_bits = value & (word_t)0x88u;
+  /* The reference follows the DUT's explicit M-only WARL model. */
+  return interrupt_bits | (word_t)0x1800u;
+}
+
 static inline word_t mstatus_on_trap(word_t old)
 {
   const word_t mie = BITS(old, 3, 3);
-  /* Match the DUT's implemented M-mode transition exactly: MPP=3,
-   * MPIE=old.MIE, MIE=0; all unimplemented/pass-through bits are preserved. */
-  return (old & ~((word_t)(3u << 11) | (word_t)(1u << 7) | (word_t)(1u << 3))) |
-         (word_t)(3u << 11) | (mie << 7);
+  /* Match the DUT: MPP=3, MPIE=old.MIE, MIE=0; WPRI bits stay zero. */
+  return mstatus_warl((word_t)(3u << 11) | (mie << 7));
 }
 
 word_t isa_raise_intr(word_t NO, vaddr_t epc)

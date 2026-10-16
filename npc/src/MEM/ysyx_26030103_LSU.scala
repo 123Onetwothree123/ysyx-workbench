@@ -31,7 +31,9 @@ class ysyx_26030103_LSU(
     val FlushEXMEM = Output(Bool())
     // 直接连总线
     val DataBus = new ysyx_26030103_AXI5IO(32)
-    val DCacheFlush = Input(Bool()) // fence.i使写直达数据缓存失效
+    // 为未来 DMA/其他非 CPU 写入者保留的数据缓存一致性失效口。
+    // Fence.I 只同步指令取值，当前写直达 DCache 不因 Fence.I 清空。
+    val DCacheFlush = Input(Bool())
     // DCache性能计数器
     val DCachePerfHit = Output(Bool())
     val DCachePerfMiss = Output(Bool())
@@ -70,6 +72,9 @@ class ysyx_26030103_LSU(
     val DebugLoadDATA = Output(UInt(32.W))
     val DebugWidthSelect = Output(UInt(2.W))
   })
+  // 保留叶模块一致性接口供协议回归和未来 DMA 复用；当前生产顶层
+  // 绑低该口，后端综合仍可以在展平后常量传播掉对应逻辑。
+  dontTouch(io.DCacheFlush)
   val DCache = Module(
     new ysyx_26030103_DCache(
       Enable = DCacheEnable,
@@ -519,16 +524,16 @@ class ysyx_26030103_LSU(
   val wbBReady = wbState === wbWaitB && ActiveStoreAwaitsB
   val wbBFire = wbBReady && io.DataBus.B.BVALID
   val wbPop = wbBFire && wbBMatch
-  // 写直达 DCache 不能在 store 入队时投机更新；否则外部写失败后
-  // cache 会保留并不存在于内存的新值。只在成功 B 握手当拍更新。
-  val wbCommitSuccess = wbPop && io.DataBus.B.BRESP === 0.U
+  // 写直达 DCache 不能在 store 入队时投机更新。匹配B握手时再通知：
+  // OKAY按字节更新命中行；错误响应只失效该行，以覆盖从机可能的部分副作用。
   val wbHeadAddr = if (WBufDepth == 1) wbAddr(0) else wbAddr(wbHead)
   val wbHeadData = if (WBufDepth == 1) wbData(0) else wbData(wbHead)
   val wbHeadStrb = if (WBufDepth == 1) wbStrb(0) else wbStrb(wbHead)
   val wbHeadSize = if (WBufDepth == 1) wbSize(0) else wbSize(wbHead)
   val wbHeadMisaligned =
     if (WBufDepth == 1) wbMisaligned(0) else wbMisaligned(wbHead)
-  DCache.io.StoreValid := wbCommitSuccess
+  DCache.io.StoreValid := wbPop
+  DCache.io.StoreResp := io.DataBus.B.BRESP
   DCache.io.StoreAddr := wbHeadAddr
   DCache.io.StoreData := wbHeadData
   DCache.io.StoreStrb := wbHeadStrb

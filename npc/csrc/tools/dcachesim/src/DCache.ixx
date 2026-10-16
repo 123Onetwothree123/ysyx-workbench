@@ -14,8 +14,10 @@ export enum struct ReplPolicy
 
 export struct AccessOutcome
 {
-    bool hit{};      // 这次访问是否命中
-    bool writeback{}; // 这次访问是否换出了脏块(需要写回内存)
+    bool hit{}; // 这次访问是否命中
+    // RTL DCache 是 write-through/no-write-allocate，不存在脏块写回。
+    // 保留字段以维持现有统计/CSV schema，值始终为 false。
+    bool writeback{};
 };
 
 export class DCache
@@ -25,7 +27,6 @@ private:
     {
         bool valid{};         // 1代表有数据
         std::uint32_t tag{};  // 数据块号 = 地址 >> offset_bits
-        bool dirty{};         // 写回法: 1表示被写过, 换出时要写回
         std::uint64_t time{}; // FIFO记插入时间, LRU记最后访问时间
     };
     // 行=组数=2^index_bits，每行ways项，举个例子：num_blocks=16，ways=2就是8行×2项=16个entry
@@ -38,10 +39,12 @@ private:
     std::string name;
     std::uint64_t tick{}; // 逻辑时钟，给FIFO/LRU计时用
     std::mt19937 rng_{std::random_device{}()};
-    void fill(entry& e, std::uint32_t tag, bool is_write);
+    void fill(entry& e, std::uint32_t tag);
 public:
     DCache(const DCacheConfig& config, ReplPolicy policy, std::string_view name);
     ~DCache() = default;
-    AccessOutcome access(const AccessRecord& rec); // 读命中/写命中都算hit
+    // 读 miss 会分配；写 miss 只经外部写通道落内存，不改变 cache tag。
+    // 写 hit 会更新 RTL 中的镜像数据，在 tag-only 模型中表现为一次命中。
+    AccessOutcome access(const AccessRecord& rec);
     [[nodiscard]] std::string_view GetName() const;
 };

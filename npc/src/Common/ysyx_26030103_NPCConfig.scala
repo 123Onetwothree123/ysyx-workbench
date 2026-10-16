@@ -167,7 +167,18 @@ case class ysyx_26030103_NPCConfig(
     BTBWays: Int = 1,
     JalBTBBits: Int = 4,
     JalBTBWays: Int = 1,
-    RASBits: Int = 4
+    RASBits: Int = 4,
+    // 仿真观测逻辑也是硬件配置：顶层端口 ABI 始终保持不变，但关闭相应
+    // 软件功能后，端口会绑常量，内部动态读 mux/事件快照寄存器可被裁剪。
+    // 默认打开是为了保持直接实例化本配置的单元测试兼容；生产 elaborator
+    // 会根据 Kconfig 对每一项显式赋值。
+    SDBEnable: Boolean = true,
+    DiffTestEnable: Boolean = true,
+    MTraceEnable: Boolean = true,
+    ITraceEnable: Boolean = true,
+    FTraceEnable: Boolean = true,
+    IRingBufEnable: Boolean = true,
+    PerfStatsEnable: Boolean = true
 ) {
   require(!UseA, "RV32_A还没有做")
   require(!UseC, "RV32_C还没做")
@@ -244,6 +255,18 @@ case class ysyx_26030103_NPCConfig(
     case _                              => MULPipeline + 1
   }
   final val MDUMaxInflight: Int = MULMaxInflight + 1
+  final val EnableDynamicGPRDebug: Boolean = SDBEnable || DiffTestEnable
+  final val EnableRetireTrace: Boolean =
+    SDBEnable || DiffTestEnable || MTraceEnable || ITraceEnable ||
+      FTraceEnable || IRingBufEnable || PerfStatsEnable
+  // 性能统计也从注册后的 trap 事件计数，不能只保留 retire 事件。
+  final val EnableTrapTrace: Boolean =
+    SDBEnable || DiffTestEnable || PerfStatsEnable
+  final val EnableCSRTrace: Boolean = DiffTestEnable
+  final val EnableMemoryTrace: Boolean =
+    SDBEnable || DiffTestEnable || MTraceEnable
+  final val EnablePerfTrace: Boolean = PerfStatsEnable
+  final val EnableAnyObservability: Boolean = EnableRetireTrace
   private def OnOff(Flag: Boolean): String = {
     if (Flag) { "on" }
     else { "off" }
@@ -276,6 +299,8 @@ case class ysyx_26030103_NPCConfig(
       s"mul_early_out=${OnOff(MULEarlyOut)}, div_early_out=${OnOff(DIVEarlyOut)}, " +
       s"ICache=$ICacheDesc, DCache=$DCacheDesc, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
-      s"RAS=${1 << RASBits}, reset=0x${ResetAddr.toHexString}"
+      s"RAS=${1 << RASBits}, observe=${OnOff(EnableAnyObservability)}, " +
+      s"gpr_debug=${OnOff(EnableDynamicGPRDebug)}, perf_debug=${OnOff(EnablePerfTrace)}, " +
+      s"reset=0x${ResetAddr.toHexString}"
   }
 }

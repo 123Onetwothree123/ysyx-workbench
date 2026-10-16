@@ -65,7 +65,8 @@ SDBCommandResult historyCommand::execute(SDBCommandContext &context, std::string
     {
         auto num{static_cast<std::ptrdiff_t>(0)};
         const auto result{std::from_chars(args.data(), args.data() + args.size(), num, 10)};
-        if (result.ec != std::errc() || num <= 0)
+        const auto trailing{SDBTrimLeft(std::string_view{result.ptr, args.data() + args.size()})};
+        if (result.ec != std::errc() || num <= 0 || !trailing.empty())
         {
             std::println("无效参数 '{}'。用法是 history [N]", args);
             return SDBCommandResult::Continue;

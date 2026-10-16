@@ -2,6 +2,7 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
 class ysyx_26030103_CSR extends Module {
+  import ysyx_26030103_mstatus.legalize
   val io = IO(new Bundle {
     val clk = Input(Clock())
     val rst = Input(Bool())
@@ -9,6 +10,7 @@ class ysyx_26030103_CSR extends Module {
     // ysyx_26030103_IDU给出的指令译码信号
     val IsCsrrw = Input(Bool())
     val IsCsrrs = Input(Bool())
+    val IsCsrrc = Input(Bool())
     val IsEcall = Input(Bool())
     // Chisel版本设计的真正ebreak，不是之前Verilog里依赖DPI-C结束仿真的ebreak
     val IsEbreak = Input(Bool())
@@ -16,8 +18,9 @@ class ysyx_26030103_CSR extends Module {
     val CSRAddress = Input(UInt(12.W)) // ysyx_26030103_CSR地址，指令[31:20]
     val rs1 = Input(UInt(5.W)) // rs1寄存器编号，用于判断csrrs是否写ysyx_26030103_CSR
     val Rs1Data = Input(UInt(32.W)) // Rs1寄存器的数据
-    val pc =
-      Input(UInt(32.W)) // 现在的ysyx_26030103_PC，就是ecall时保存到ysyx_26030103_mepc
+    // 本次架构事件的精确边界PC：普通指令取其指令PC，空流水IRQ取顶层
+    // 提交态PC，MEM后门故障取故障指令PC。
+    val pc = Input(UInt(32.W))
     val CSR_rdata = Output(UInt(32.W)) // ysyx_26030103_CSR读出，写到rd
     val CSRValid = Output(Bool()) // 如果当前是ysyx_26030103_CSR指令，那就需要写回rd
     // 异常和返回的跳转控制
@@ -62,14 +65,20 @@ class ysyx_26030103_CSR extends Module {
   val Mvendorid_rdata = 0x79737978.U(32.W)
   val Marchid_rdata = "h018d3017".U(32.W)
   def IsCSRAddress(addr: UInt): Bool = io.CSRAddress === addr
-  // csrrw时写，csrrs时rs1非零才写
+  // CSRRS[I]/CSRRC[I] 在源字段为零时是纯读取；CSRRW[I] 总是写入。
   val CSRReadCommand =
-    io.IsCsrrw || io.IsCsrrs // 忘记了，后面重看的，以防以后忘记，先标记一下，这是看现在是不是会读取ysyx_26030103_CSR旧数值的ysyx_26030103_CSR指令
+    io.IsCsrrw || io.IsCsrrs || io.IsCsrrc
   val csrrwWen = io.Enable && io.IsCsrrw
-  val csrrsWen = io.Enable && io.IsCsrrs && io.rs1 =/= 0.U // 不能是0号寄存器
-  // csrrw直接写rs1，csrrs写旧值|rs1
+  val csrrsWen = io.Enable && io.IsCsrrs && io.rs1 =/= 0.U
+  val csrrcWen = io.Enable && io.IsCsrrc && io.rs1 =/= 0.U
+  // CSRRW 写源值，CSRRS 置位，CSRRC 清位。立即数型指令的 zimm 已由
+  // IDU 零扩展到 Rs1Data，因此这里可与寄存器型共用语义。
   def CSRWriteData(old: UInt): UInt =
-    Mux(io.IsCsrrw, io.Rs1Data, old | io.Rs1Data)
+    Mux(
+      io.IsCsrrw,
+      io.Rs1Data,
+      Mux(io.IsCsrrs, old | io.Rs1Data, old & ~io.Rs1Data)
+    )
   val MretCommit = io.Enable && io.IsMret
   /*
   val ExceptionCause =
@@ -108,15 +117,17 @@ class ysyx_26030103_CSR extends Module {
   val IsException = io.IsEcall || io.IsEbreak || HasInterrupt || io.TrapValid
   /*
   根据RISCV手册来看，31号bit如果是0那就是异常，而如果是1，那就是中断
-  30号到0号，则是编号，3是异常，7是机器定时器中断（就是Machine Timer），11是ecall
+  30号到0号，则是编号，3是异常，11是机器外部中断或M-mode ecall
    */
   val ExceptionCause = WireDefault(0.U(32.W))
   when(io.MemTrap) {
     ExceptionCause := io.TrapCause // MEM后门故障(cause由EXU在TrapCause上先选好)
   }.elsewhen(HasInterrupt) {
-    ExceptionCause := "h80000007".U(
+    // CPU 顶层的 io_interrupt 按 SoC 接口契约是 machine external
+    // interrupt，因此 mcause 中断号必须是 11，而不是 MTI 的 7。
+    ExceptionCause := "h8000000b".U(
       32.W
-    ) // ysyx_26030103_mcause=7，bit31=1说明这是中断不是异常
+    ) // bit31=1 表示中断，cause=11 表示 machine external interrupt
   }.elsewhen(io.TrapValid) {
     ExceptionCause := io.TrapCause // EXU提交点送来的异常号:取指错1/非法指令2/load访存错5/store访存错7
   }.elsewhen(io.IsEbreak) {
@@ -127,7 +138,7 @@ class ysyx_26030103_CSR extends Module {
   // 新加的这行代码，irq是Interrupt ReQuest，是中断请求的意思
   val HasIrqCommit = io.Enable && HasInterrupt && !io.MemTrap
   // 中断提交时被中断的指令要被压掉(mepc记的是它自己的PC,mret后重跑),因此它本次不得写CSR/GPR
-  val CSRWen = (csrrwWen || csrrsWen) && !HasInterrupt
+  val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !HasInterrupt
   io.IrqCommit := HasIrqCommit
   // 异常提交: MEM后门优先(当前指令被冲刷), 其余由本条指令的ecall/ebreak/中断/异常触发
   val ExceptionCommit = io.MemTrap || (io.Enable && IsException)
@@ -137,47 +148,29 @@ class ysyx_26030103_CSR extends Module {
   /*
   就是RISCV有两种模式，一种是BASE模式，一种是向量模式
   基础模式（好像BASE的中文翻译应该是叫基址），bit0=0
-  不管什么原因，比如ecall和ebreak和定时器中断，全往同一个地址跳，然后操作系统这边写一个入口函数，进去后再读ysyx_26030103_mcause，然后判
+  不管什么原因，比如ecall和ebreak和外部中断，全往同一个地址跳，然后操作系统这边写一个入口函数，进去后再读ysyx_26030103_mcause，然后判
   断到底发生了什么
   就是ysyx_26030103_mtvec存了什么地址，ecall和ebreak和中断就跳到哪个地址
   向量模式，bit0=1
   不同原因跳不同的地址，然后跳的地址是BASE+4 x n，
   就比如说ysyx_26030103_mtvec存0x80000001，BASE是0x80000000
-  ecall和ebreak还是BASE，然后是中断7，所以中断跳的地址是BASE+4x7
+  ecall和ebreak还是BASE，外部中断是11，所以中断跳的地址是BASE+4x11
    */
-  // ecall和ebreak异常进入时，MPP写11，MPIE写旧MIE，MIE写0
-  // MPP，00是U，01是S，11是M
-  // 他妈的又忘记了，先标记一下，MPP是标记现在的等级的，MPIE是专门保存MIE的，MIE在异常的时候要关闭中断（归零）
-  val MstatusExceptionData = Cat(
-    Mstatus_rdata(31, 13),
-    "b11".U(2.W),
-    Mstatus_rdata(10, 8),
-    Mstatus_rdata(3), // MPIE赶快把MIE保存下来
-    Mstatus_rdata(6, 4),
-    0.U(1.W), // MIE赶紧归零，赶快把中断关掉，别到时候又来个新的中断过来，然后他妈的直接打断施法了
-    Mstatus_rdata(2, 0)
-  )
-  val MstatusMretData = Cat(
-    Mstatus_rdata(31, 13),
-    "b00".U(2.W),
-    Mstatus_rdata(10, 8),
-    1.U(1.W),
-    Mstatus_rdata(6, 4),
-    Mstatus_rdata(7),
-    Mstatus_rdata(2, 0)
-  )
+  // M-only trap entry: MPP=M、MPIE=旧 MIE、MIE=0。
+  val MstatusExceptionData =
+    legalize("h00001800".U(32.W) | (Mstatus_rdata(3) << 7))
+  // M-only：MRET 恢复 MIE、置 MPIE，MPP 经 WARL 始终保持为 M。
+  val MstatusMretData = legalize((Mstatus_rdata(7) << 3) | (1.U << 7))
   Mstatus.io.wen := (CSRWen && IsCSRAddress(
     CSR_MSTATUS
   )) || ExceptionCommit || MretCommit
-  Mstatus.io.wdata := MuxCase(
-    CSRWriteData(
-      Mstatus_rdata
-    ), // 这段重新写了，就直接不用拆分变量了，直接默认ysyx_26030103_CSR指令正常的写入，然后根据csrrw和csrrs的语义来算新的数值
+  Mstatus.io.wdata := legalize(MuxCase(
+    CSRWriteData(Mstatus_rdata),
     Seq(
       ExceptionCommit -> MstatusExceptionData,
       MretCommit -> MstatusMretData
     )
-  )
+  ))
   Mtvec.io.wen := CSRWen && IsCSRAddress(CSR_MTVEC)
   Mtvec.io.wdata := CSRWriteData(Mtvec_rdata)
   Mepc.io.wen := (CSRWen && IsCSRAddress(CSR_MEPC)) || ExceptionCommit
@@ -196,7 +189,7 @@ class ysyx_26030103_CSR extends Module {
   )
   // 寄存器在上升沿才写入，但随指令流向 WBU 的快照必须表示
   // “本指令之后”的状态，所以在这里显式计算 next-state。
-  val MstatusCSRData = CSRWriteData(Mstatus_rdata)
+  val MstatusCSRData = legalize(CSRWriteData(Mstatus_rdata))
   io.StateMstatus := MuxCase(
     Mstatus_rdata,
     Seq(

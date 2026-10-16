@@ -40,6 +40,7 @@ void defaults(DUT &dut) {
   dut.io_in_bits_StoreData = 0;
   dut.io_in_bits_IsCsrrw = 0;
   dut.io_in_bits_IsCsrrs = 0;
+  dut.io_in_bits_IsCsrrc = 0;
   dut.io_in_bits_IsEcall = 0;
   dut.io_in_bits_IsEbreak = 0;
   dut.io_in_bits_IsSimHalt = 0;
@@ -55,6 +56,7 @@ void defaults(DUT &dut) {
   dut.io_in_bits_pred_taken = 0;
   dut.io_in_bits_pred_target = 0x80000004U;
   dut.io_Interrupt = 0;
+  dut.io_IdleIrqPC = 0x80000000U;
   dut.io_MEMBusy = 0;
   dut.io_PipelineBusy = 0;
   dut.io_MemTrapCommit = 0;

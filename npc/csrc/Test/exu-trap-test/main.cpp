@@ -19,7 +19,7 @@ constexpr std::uint16_t kMstatus = 0x300;
 constexpr std::uint16_t kMtvec = 0x305;
 constexpr std::uint16_t kMepc = 0x341;
 constexpr std::uint16_t kMcause = 0x342;
-constexpr std::uint32_t kMachineTimerInterrupt = 0x80000007U;
+constexpr std::uint32_t kMachineExternalInterrupt = 0x8000000bU;
 
 std::string hex32(std::uint32_t value) {
   std::ostringstream stream;
@@ -118,6 +118,7 @@ public:
     dut_->io_in_bits_StoreData = 0;
     dut_->io_in_bits_IsCsrrw = 0;
     dut_->io_in_bits_IsCsrrs = 0;
+    dut_->io_in_bits_IsCsrrc = 0;
     dut_->io_in_bits_IsEcall = 0;
     dut_->io_in_bits_IsEbreak = 0;
     dut_->io_in_bits_IsSimHalt = 0;
@@ -133,6 +134,7 @@ public:
     dut_->io_in_bits_pred_target = 0x80000004U;
 
     dut_->io_Interrupt = 0;
+    dut_->io_IdleIrqPC = 0x80000000U;
     dut_->io_MEMBusy = 0;
     dut_->io_PipelineBusy = 0;
     dut_->io_MemTrapCommit = 0;
@@ -158,25 +160,30 @@ public:
   }
 
   void csrWrite(std::uint16_t address, std::uint32_t value) {
-    beginInstruction();
-    dut_->io_in_bits_IsCsrrw = 1;
-    dut_->io_in_bits_CSRAddress = address;
-    dut_->io_in_bits_Rs1 = 1;
-    dut_->io_in_bits_Rs1Data = value;
-    dut_->io_in_bits_WBSelect = 3;
-    requireFire("CSR write " + hex32(address));
+    static_cast<void>(csrAccess(address, true, false, false, 1, value));
   }
 
   std::uint32_t csrRead(std::uint16_t address) {
+    return csrAccess(address, false, true, false, 0, 0);
+  }
+
+  std::uint32_t csrAccess(std::uint16_t address, bool is_csrrw,
+                          bool is_csrrs, bool is_csrrc,
+                          std::uint8_t source_field,
+                          std::uint32_t source_data) {
     beginInstruction();
-    dut_->io_in_bits_IsCsrrs = 1;
+    dut_->io_in_bits_IsCsrrw = is_csrrw;
+    dut_->io_in_bits_IsCsrrs = is_csrrs;
+    dut_->io_in_bits_IsCsrrc = is_csrrc;
     dut_->io_in_bits_CSRAddress = address;
-    dut_->io_in_bits_Rs1 = 0;
-    dut_->io_in_bits_Rs1Data = 0;
+    dut_->io_in_bits_Rs1 = source_field;
+    dut_->io_in_bits_Rs1Data = source_data;
+    dut_->io_in_bits_RegisterWrite = 1;
+    dut_->io_in_bits_Rd = 1;
     dut_->io_in_bits_WBSelect = 3;
     dut_->eval();
-    CHECK(dut_->io_in_ready, "CSR read input was not ready");
-    CHECK(dut_->io_out_valid, "CSR read output was not valid");
+    CHECK(dut_->io_in_ready, "CSR access input was not ready");
+    CHECK(dut_->io_out_valid, "CSR access output was not valid");
     const std::uint32_t value = dut_->io_out_bits_CSRReadData;
     tick();
     driveIdle();
@@ -246,8 +253,112 @@ void testIrqWaitsForOlderMemory() {
   tb.tick();
   tb.driveIdle();
   tb.eval();
-  CHECK_EQ(tb.csrRead(kMcause), kMachineTimerInterrupt, "IRQ mcause");
+  CHECK_EQ(tb.csrRead(kMcause), kMachineExternalInterrupt, "IRQ mcause");
   CHECK_EQ(tb.csrRead(kMepc), 0x80000040U, "IRQ mepc");
+}
+
+void testIdlePipelineIrqUsesPreciseBoundaryPC() {
+  ExuTestbench tb;
+  tb.csrWrite(kMtvec, 0x00000100U);
+  tb.csrWrite(kMstatus, 1U << 3);
+
+  constexpr std::uint32_t boundary_pc = 0x80001234U;
+  tb.driveIdle();
+  tb.dut().io_IdleIrqPC = boundary_pc;
+  tb.dut().io_Interrupt = 1;
+  // valid=0时bits无语义。故意留下互相冲突的CSR/MRET/异常控制，证明
+  // 空流水IRQ不会采纳stale Decoupled payload。
+  tb.dut().io_in_bits_IsCsrrw = 1;
+  tb.dut().io_in_bits_IsMret = 1;
+  tb.dut().io_in_bits_ExceptionValid = 1;
+  tb.dut().io_in_bits_ExceptionCause = 2;
+  tb.dut().io_in_bits_CSRAddress = kMtvec;
+  tb.dut().io_in_bits_Rs1 = 1;
+  tb.dut().io_in_bits_Rs1Data = 0x400U;
+
+  // 没有io.in.fire也必须在有限时间内提交。实现应在第一个空闲边界
+  // 接受中断；保留八拍上限可直接覆盖此前“空跑八拍仍不trap”的故障。
+  bool observed = false;
+  for (int cycle = 0; cycle < 8; ++cycle) {
+    tb.eval();
+    if (tb.dut().io_TrapCommit) {
+      observed = true;
+      CHECK(tb.dut().io_ExceptionTaken,
+            "idle IRQ did not redirect to the trap handler");
+      CHECK(tb.dut().io_PerfTrap, "idle IRQ was not counted as a trap event");
+      CHECK_EQ(tb.dut().io_ExceptionTarget, 0x00000100U,
+               "idle IRQ target with stale input bits");
+      CHECK(!tb.dut().io_out_valid,
+            "idle IRQ fabricated an EXU output instruction");
+      CHECK_EQ(tb.dut().io_TrapPC, boundary_pc, "idle IRQ TrapPC");
+      CHECK_EQ(tb.dut().io_CSRStateMepc, boundary_pc,
+               "idle IRQ next-state mepc");
+      CHECK_EQ(tb.dut().io_CSRStateMtvec, 0x00000100U,
+               "idle IRQ accepted stale CSR write");
+      CHECK_EQ(tb.dut().io_TrapCause, kMachineExternalInterrupt,
+               "idle IRQ cause");
+      tb.tick();
+      break;
+    }
+    tb.tick();
+  }
+  CHECK(observed, "IRQ did not commit during eight empty EXU cycles");
+
+  // IRQ电平继续保持时，trap入口已清MIE，不得重复提交。
+  for (int cycle = 0; cycle < 3; ++cycle) {
+    tb.eval();
+    CHECK(!tb.dut().io_TrapCommit,
+          "level IRQ committed repeatedly after MIE cleared");
+    tb.tick();
+  }
+  tb.dut().io_Interrupt = 0;
+  tb.eval();
+  CHECK_EQ(tb.csrRead(kMcause), kMachineExternalInterrupt, "idle IRQ mcause");
+  CHECK_EQ(tb.csrRead(kMepc), boundary_pc, "idle IRQ mepc");
+}
+
+void testIdleIrqWaitsForOlderPipelineAndMemTrapWins() {
+  {
+    ExuTestbench tb;
+    tb.csrWrite(kMtvec, 0x00000100U);
+    tb.csrWrite(kMstatus, 1U << 3);
+    tb.driveIdle();
+    tb.dut().io_IdleIrqPC = 0x80002000U;
+    tb.dut().io_Interrupt = 1;
+    tb.dut().io_PipelineBusy = 1;
+
+    for (int cycle = 0; cycle < 3; ++cycle) {
+      tb.eval();
+      CHECK(!tb.dut().io_TrapCommit,
+            "idle IRQ bypassed an older pipeline instruction");
+      tb.tick();
+    }
+    tb.dut().io_PipelineBusy = 0;
+    tb.eval();
+    CHECK(tb.dut().io_TrapCommit,
+          "idle IRQ did not commit after the older pipeline drained");
+    CHECK_EQ(tb.dut().io_TrapPC, 0x80002000U,
+             "delayed idle IRQ boundary PC");
+  }
+
+  {
+    ExuTestbench tb;
+    tb.csrWrite(kMtvec, 0x00000100U);
+    tb.csrWrite(kMstatus, 1U << 3);
+    tb.driveIdle();
+    tb.dut().io_IdleIrqPC = 0x80003000U;
+    tb.dut().io_Interrupt = 1;
+    tb.dut().io_MemTrapCommit = 1;
+    tb.dut().io_MemTrapCause = 5;
+    tb.dut().io_MemTrapPC = 0x80002ff0U;
+    tb.eval();
+
+    CHECK(tb.dut().io_TrapCommit, "older MEM fault did not commit");
+    CHECK_EQ(tb.dut().io_TrapCause, 5U, "MEM fault priority cause");
+    CHECK_EQ(tb.dut().io_TrapPC, 0x80002ff0U, "MEM fault priority PC");
+    CHECK_EQ(tb.dut().io_CSRStateMepc, 0x80002ff0U,
+             "MEM fault priority mepc");
+  }
 }
 
 void testIrqPreemptsCurrentMemoryAfterDrain() {
@@ -296,7 +407,7 @@ void testIrqPreemptsCurrentMemoryAfterDrain() {
     tb.tick();
     tb.driveIdle();
     tb.eval();
-    CHECK_EQ(tb.csrRead(kMcause), kMachineTimerInterrupt,
+    CHECK_EQ(tb.csrRead(kMcause), kMachineExternalInterrupt,
              label + " IRQ mcause");
     CHECK_EQ(tb.csrRead(kMepc), pc, label + " IRQ mepc");
   }
@@ -362,7 +473,7 @@ void testPendingMduWaitsForOlderMemory() {
   tb.tick();
   tb.driveIdle();
   tb.eval();
-  CHECK_EQ(tb.csrRead(kMcause), kMachineTimerInterrupt,
+  CHECK_EQ(tb.csrRead(kMcause), kMachineExternalInterrupt,
            "pending-MDU IRQ mcause");
   CHECK_EQ(tb.csrRead(kMepc), 0x80000054U, "pending-MDU IRQ mepc");
 }
@@ -380,11 +491,13 @@ void testControlTransfersWaitForOlderMemory() {
     tb.dut().io_in_bits_pred_target = target;
 
     if (kind == Kind::Branch) {
+      constexpr std::uint32_t branch_target = pc - 0x20U;
       tb.dut().io_in_bits_IsBranch = 1;
       tb.dut().io_in_bits_BranchFunct3 = 0; // BEQ
       tb.dut().io_in_bits_BranchA = 7;
       tb.dut().io_in_bits_BranchB = 7;
-      tb.dut().io_in_bits_Immediate = target - pc;
+      tb.dut().io_in_bits_Immediate = branch_target - pc;
+      tb.dut().io_in_bits_pred_target = branch_target;
     } else if (kind == Kind::Jal) {
       tb.dut().io_in_bits_IsJal = 1;
       tb.dut().io_in_bits_ALUCtrl = 0; // ADD
@@ -443,11 +556,13 @@ void testControlTransfersDoNotWaitForOlderNonMemory() {
     tb.dut().io_in_bits_pred_target = target;
 
     if (kind == Kind::Branch) {
+      constexpr std::uint32_t branch_target = pc - 0x20U;
       tb.dut().io_in_bits_IsBranch = 1;
       tb.dut().io_in_bits_BranchFunct3 = 0; // BEQ
       tb.dut().io_in_bits_BranchA = 9;
       tb.dut().io_in_bits_BranchB = 9;
-      tb.dut().io_in_bits_Immediate = target - pc;
+      tb.dut().io_in_bits_Immediate = branch_target - pc;
+      tb.dut().io_in_bits_pred_target = branch_target;
     } else if (kind == Kind::Jal) {
       tb.dut().io_in_bits_IsJal = 1;
       tb.dut().io_in_bits_ALUCtrl = 0;
@@ -515,7 +630,7 @@ void testPreciseEffectsWaitForOlderPipelineInstruction() {
     tb.tick();
     tb.driveIdle();
     tb.eval();
-    CHECK_EQ(tb.csrRead(kMstatus), 1U << 3,
+    CHECK_EQ(tb.csrRead(kMstatus), 0x00001808U,
              "delayed CSR write committed the wrong value");
   }
 
@@ -568,14 +683,18 @@ void testRasHintsForX1AndX5() {
   };
 
   const auto check_jalr = [&](std::uint32_t rd, std::uint32_t rs1, bool push,
-                              bool pop, bool ret_btb,
+                              bool pop, bool expect_btb,
+                              std::uint32_t expected_kind,
+                              std::uint32_t expected_target,
                               const std::string &label) {
     ExuTestbench tb;
+    constexpr std::uint32_t immediate = 0x24U;
     tb.beginInstruction(pc);
     tb.dut().io_in_bits_IsJalr = 1;
     tb.dut().io_in_bits_ALUCtrl = 0;
-    tb.dut().io_in_bits_ALU_A = target;
-    tb.dut().io_in_bits_ALU_B = 0;
+    tb.dut().io_in_bits_ALU_A = target - immediate;
+    tb.dut().io_in_bits_ALU_B = immediate;
+    tb.dut().io_in_bits_Immediate = immediate;
     tb.dut().io_in_bits_Rd = rd;
     tb.dut().io_in_bits_Rs1 = rs1;
     tb.dut().io_in_bits_pred_taken = 1;
@@ -587,23 +706,31 @@ void testRasHintsForX1AndX5() {
           label + " produced the wrong RAS push hint");
     CHECK(static_cast<bool>(tb.dut().io_RASPopValid) == pop,
           label + " produced the wrong RAS pop hint");
-    CHECK(static_cast<bool>(tb.dut().io_JalBTBUpdateValid) == ret_btb,
-          label + " produced the wrong return-BTB update");
-    if (ret_btb) {
-      CHECK_EQ(tb.dut().io_JalBTBUpdateKind, 2U, label + " return-BTB kind");
+    CHECK(static_cast<bool>(tb.dut().io_JalBTBUpdateValid) == expect_btb,
+          label + " produced the wrong JAL-BTB update valid");
+    if (expect_btb) {
+      CHECK_EQ(tb.dut().io_JalBTBUpdateKind, expected_kind,
+               label + " JAL-BTB kind");
+      CHECK_EQ(tb.dut().io_JalBTBUpdateTarget, expected_target,
+               label + " JAL-BTB target");
     }
   };
 
   check_jal(1, true, 1, "JAL x1");
   check_jal(5, true, 1, "JAL x5");
   check_jal(2, false, 0, "JAL non-link");
-  check_jalr(0, 1, false, true, true, "JALR pop x1");
-  check_jalr(0, 5, false, true, true, "JALR pop x5");
-  check_jalr(1, 2, true, false, false, "JALR push x1");
-  check_jalr(5, 5, true, false, false, "JALR same-link x5");
-  check_jalr(1, 5, true, true, true, "JALR coroutine x5-to-x1");
-  check_jalr(5, 1, true, true, true, "JALR coroutine x1-to-x5");
-  check_jalr(2, 3, false, false, false, "JALR no hint");
+  constexpr std::uint32_t jalr_immediate = 0x24U;
+  check_jalr(0, 1, false, true, true, 2, jalr_immediate, "JALR pop x1");
+  check_jalr(0, 5, false, true, true, 2, jalr_immediate, "JALR pop x5");
+  check_jalr(1, 6, true, false, true, 1, target,
+             "JALR indirect call x1-from-x6");
+  check_jalr(5, 5, true, false, true, 1, target,
+             "JALR same-link x5 call");
+  check_jalr(1, 5, true, true, true, 2, jalr_immediate,
+             "JALR coroutine x5-to-x1");
+  check_jalr(5, 1, true, true, true, 2, jalr_immediate,
+             "JALR coroutine x1-to-x5");
+  check_jalr(2, 3, false, false, false, 0, 0, "JALR no hint");
 }
 
 void testPerfTrapExcludesMret() {
@@ -664,6 +791,31 @@ void testBreakpointAndSimulationHaltAreDistinct() {
   tb.tick();
 }
 
+void testWfiNopRetiresSequentially() {
+  ExuTestbench tb;
+  constexpr std::uint32_t wfi_pc = 0x80000380U;
+  tb.beginInstruction(wfi_pc);
+  tb.dut().io_in_bits_Instruction = 0x10500073U;
+  tb.eval();
+
+  CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
+        "WFI did not reach the EXU commit point");
+  CHECK(tb.dut().io_out_bits_Retire,
+        "NOP-implemented WFI was not marked retired");
+  CHECK_EQ(tb.dut().io_out_bits_NextPC, wfi_pc + 4U,
+           "WFI sequential next PC");
+  CHECK(!tb.dut().io_ExceptionTaken,
+        "NOP-implemented WFI unexpectedly entered the trap handler");
+  CHECK(!tb.dut().io_out_bits_RegisterWrite,
+        "NOP-implemented WFI unexpectedly wrote a GPR");
+  CHECK(!tb.dut().io_out_bits_MemoryValid &&
+            !tb.dut().io_out_bits_MemoryWrite,
+        "NOP-implemented WFI unexpectedly accessed memory");
+  CHECK(!tb.dut().io_Redirect,
+        "NOP-implemented WFI unexpectedly redirected control flow");
+  tb.tick();
+}
+
 void testTakenBranchMisalignment() {
   ExuTestbench tb;
   tb.csrWrite(kMtvec, 0x00000100U);
@@ -698,10 +850,49 @@ void testNotTakenBranchDoesNotTrap() {
         "not-taken branch incorrectly raised address-misaligned");
   CHECK(!tb.dut().io_Redirect,
         "correctly predicted not-taken branch redirected");
-  CHECK(tb.dut().io_BTBUpdateValid,
-        "committed not-taken branch did not train the BTB");
+  CHECK(!tb.dut().io_BTBUpdateValid,
+        "forward branch allocated a BTB entry that BTFN cannot use");
   CHECK(tb.dut().io_out_bits_Retire,
         "successful not-taken branch was not marked retired");
+  tb.tick();
+}
+
+void testBtfnOnlyTrainsBackwardBranches() {
+  ExuTestbench tb;
+
+  constexpr std::uint32_t forward_pc = 0x80000100U;
+  tb.beginInstruction(forward_pc);
+  tb.dut().io_in_bits_IsBranch = 1;
+  tb.dut().io_in_bits_BranchFunct3 = 0; // BEQ
+  tb.dut().io_in_bits_BranchA = 0x55;
+  tb.dut().io_in_bits_BranchB = 0x55;
+  tb.dut().io_in_bits_Immediate = 8;
+  tb.eval();
+  CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
+        "forward taken branch did not fire");
+  CHECK(tb.dut().io_Redirect &&
+            tb.dut().io_RedirectTarget == forward_pc + 8U,
+        "forward branch filtering changed architectural redirection");
+  CHECK(!tb.dut().io_BTBUpdateValid,
+        "forward taken branch polluted the BTFN BTB");
+  tb.tick();
+
+  constexpr std::uint32_t backward_pc = 0x80000120U;
+  tb.beginInstruction(backward_pc);
+  tb.dut().io_in_bits_IsBranch = 1;
+  tb.dut().io_in_bits_BranchFunct3 = 0; // BEQ
+  tb.dut().io_in_bits_BranchA = 0xaa;
+  tb.dut().io_in_bits_BranchB = 0xaa;
+  tb.dut().io_in_bits_Immediate = 0xfffffff8U; // -8
+  tb.eval();
+  CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
+        "backward taken branch did not fire");
+  CHECK(tb.dut().io_BTBUpdateValid,
+        "BTFN-useful backward branch was not trained");
+  CHECK_EQ(tb.dut().io_BTBUpdatePC, backward_pc,
+           "backward branch BTB update PC");
+  CHECK_EQ(tb.dut().io_BTBUpdateTarget, backward_pc - 8U,
+           "backward branch BTB update target");
   tb.tick();
 }
 
@@ -750,35 +941,119 @@ void testMepcAlignment() {
   tb.tick();
 }
 
+void testCsrReadModifyWriteOperations() {
+  ExuTestbench tb;
+
+  tb.csrWrite(kMcause, 0xa5a55a5aU);
+  CHECK_EQ(tb.csrAccess(kMcause, true, false, false, 1, 0x12345678U),
+           0xa5a55a5aU, "CSRRW old value");
+  CHECK_EQ(tb.csrRead(kMcause), 0x12345678U, "CSRRW new value");
+
+  CHECK_EQ(tb.csrAccess(kMcause, false, true, false, 1, 0x0000f00fU),
+           0x12345678U, "CSRRS old value");
+  CHECK_EQ(tb.csrRead(kMcause), 0x1234f67fU, "CSRRS set bits");
+
+  CHECK_EQ(tb.csrAccess(kMcause, false, false, true, 1, 0x00340070U),
+           0x1234f67fU, "CSRRC old value");
+  CHECK_EQ(tb.csrRead(kMcause), 0x1200f60fU, "CSRRC clear bits");
+
+  // RS/RC with rs1/zimm=0 are pure reads even if the data input carries
+  // non-zero combinational noise.
+  CHECK_EQ(tb.csrAccess(kMcause, false, true, false, 0, 0xffffffffU),
+           0x1200f60fU, "CSRRS zero-source old value");
+  CHECK_EQ(tb.csrAccess(kMcause, false, false, true, 0, 0xffffffffU),
+           0x1200f60fU, "CSRRC zero-source old value");
+  CHECK_EQ(tb.csrRead(kMcause), 0x1200f60fU,
+           "zero-source CSR access changed state");
+}
+
+void testMstatusWarlAndTransitions() {
+  ExuTestbench tb;
+  CHECK_EQ(tb.csrRead(kMstatus), 0x00001800U,
+           "M-only mstatus reset value");
+
+  tb.csrWrite(kMstatus, 0xffffffffU);
+  CHECK_EQ(tb.csrRead(kMstatus), 0x00001888U,
+           "mstatus WPRI/WARL write mask");
+  tb.csrWrite(kMstatus, 0x00000800U);
+  CHECK_EQ(tb.csrRead(kMstatus), 0x00001800U,
+           "M-only mstatus reserved MPP=01 WARL");
+  tb.csrWrite(kMstatus, 0x00001000U);
+  CHECK_EQ(tb.csrRead(kMstatus), 0x00001800U,
+           "M-only mstatus reserved MPP=10 WARL");
+
+  tb.csrWrite(kMtvec, 0x00000100U);
+  tb.csrWrite(kMstatus, 1U << 3);
+  tb.beginInstruction(0x80001000U);
+  tb.dut().io_in_bits_IsEcall = 1;
+  tb.eval();
+  CHECK(tb.dut().io_ExceptionTaken, "ECALL did not enter trap");
+  CHECK_EQ(tb.dut().io_CSRStateMstatus, 0x00001880U,
+           "trap mstatus next-state snapshot");
+  tb.tick();
+  tb.driveIdle();
+  tb.eval();
+  CHECK_EQ(tb.csrRead(kMstatus), 0x00001880U, "trap mstatus state");
+
+  tb.beginInstruction(0x00000100U);
+  tb.dut().io_in_bits_IsMret = 1;
+  tb.eval();
+  CHECK(tb.dut().io_ExceptionTaken, "MRET did not redirect");
+  CHECK_EQ(tb.dut().io_CSRStateMstatus, 0x00001888U,
+           "MRET mstatus next-state snapshot");
+  tb.tick();
+  tb.driveIdle();
+  tb.eval();
+  CHECK_EQ(tb.csrRead(kMstatus), 0x00001888U,
+           "M-only MRET mstatus state");
+}
+
 void testMtvecWarlAndDirectMode() {
   ExuTestbench tb;
+  constexpr std::uint32_t irq_pc = 0x80000080U;
 
   tb.csrWrite(kMtvec, 0x00000203U);
   CHECK_EQ(tb.csrRead(kMtvec), 0x00000200U,
            "mtvec reserved MODE must normalize to Direct");
 
   tb.csrWrite(kMstatus, 1U << 3);
-  tb.beginInstruction(0x80000080U);
+  tb.beginInstruction(irq_pc);
   tb.dut().io_Interrupt = 1;
   tb.eval();
   CHECK(tb.dut().io_ExceptionTaken, "direct-mode IRQ was not taken");
   CHECK_EQ(tb.dut().io_ExceptionTarget, 0x00000200U, "mtvec Direct IRQ target");
+  CHECK_EQ(tb.dut().io_TrapCause, kMachineExternalInterrupt,
+           "mtvec Direct external IRQ cause");
   tb.tick();
+  tb.driveIdle();
+  tb.eval();
+  CHECK_EQ(tb.csrRead(kMcause), kMachineExternalInterrupt,
+           "mtvec Direct external IRQ mcause");
+  CHECK_EQ(tb.csrRead(kMepc), irq_pc, "mtvec Direct external IRQ mepc");
 }
 
 void testMtvecVectoredMode() {
   ExuTestbench tb;
+  constexpr std::uint32_t irq_pc = 0x80000090U;
   tb.csrWrite(kMtvec, 0x00000201U);
   CHECK_EQ(tb.csrRead(kMtvec), 0x00000201U, "mtvec Vectored readback");
 
   tb.csrWrite(kMstatus, 1U << 3);
-  tb.beginInstruction(0x80000090U);
+  tb.beginInstruction(irq_pc);
   tb.dut().io_Interrupt = 1;
   tb.eval();
   CHECK(tb.dut().io_ExceptionTaken, "vectored IRQ was not taken");
-  CHECK_EQ(tb.dut().io_ExceptionTarget, 0x0000021CU,
-           "mtvec Vectored machine-timer target");
+  CHECK_EQ(tb.dut().io_ExceptionTarget, 0x0000022CU,
+           "mtvec Vectored machine-external target");
+  CHECK_EQ(tb.dut().io_TrapCause, kMachineExternalInterrupt,
+           "mtvec Vectored external IRQ cause");
   tb.tick();
+  tb.driveIdle();
+  tb.eval();
+  CHECK_EQ(tb.csrRead(kMcause), kMachineExternalInterrupt,
+           "mtvec Vectored external IRQ mcause");
+  CHECK_EQ(tb.csrRead(kMepc), irq_pc,
+           "mtvec Vectored external IRQ mepc");
 
   // Reset only the architectural state needed for a synchronous exception.
   // Vectored mode must not add a cause offset for exceptions.
@@ -800,6 +1075,10 @@ int main(int argc, char **argv) {
 
   const std::vector<std::pair<std::string, std::function<void()>>> tests = {
       {"IRQ waits for older MEM", testIrqWaitsForOlderMemory},
+      {"idle pipeline IRQ uses precise boundary PC",
+       testIdlePipelineIrqUsesPreciseBoundaryPC},
+      {"idle IRQ ordering and MEM fault priority",
+       testIdleIrqWaitsForOlderPipelineAndMemTrapWins},
       {"IRQ preempts current memory", testIrqPreemptsCurrentMemoryAfterDrain},
       {"pending MDU waits for older MEM", testPendingMduWaitsForOlderMemory},
       {"control transfers wait for older MEM",
@@ -812,11 +1091,16 @@ int main(int argc, char **argv) {
       {"PerfTrap excludes MRET", testPerfTrapExcludesMret},
       {"EBREAK and simulation halt are distinct",
        testBreakpointAndSimulationHaltAreDistinct},
+      {"WFI retires as a sequential NOP", testWfiNopRetiresSequentially},
       {"taken branch misalignment", testTakenBranchMisalignment},
       {"not-taken branch does not trap", testNotTakenBranchDoesNotTrap},
+      {"BTFN trains only backward branches",
+       testBtfnOnlyTrainsBackwardBranches},
       {"JAL misalignment", testJalMisalignment},
       {"JALR misalignment", testJalrMisalignment},
       {"mepc alignment", testMepcAlignment},
+      {"CSR read/modify/write operations", testCsrReadModifyWriteOperations},
+      {"mstatus WARL and transitions", testMstatusWarlAndTransitions},
       {"mtvec WARL/direct", testMtvecWarlAndDirectMode},
       {"mtvec vectored", testMtvecVectoredMode},
   };

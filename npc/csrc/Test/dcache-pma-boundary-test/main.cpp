@@ -18,6 +18,7 @@ static void defaults(DUT &dut, std::uint32_t address) {
   dut.io_req_bits_signed = 0;
   dut.io_resp_ready = 0;
   dut.io_StoreValid = 0;
+  dut.io_StoreResp = 0;
   dut.io_StoreAddr = 0;
   dut.io_StoreData = 0;
   dut.io_StoreStrb = 0;

@@ -97,7 +97,7 @@ auto parse_uint(const char *text) -> std::optional<unsigned>
     std::uint32_t value{};
     const auto end{text + std::char_traits<char>::length(text)};
     const auto [ptr, ec]{std::from_chars(text, end, value, 10)};
-    if (ec == std::errc{} && ptr != text)
+    if (ec == std::errc{} && ptr == end && ptr != text)
     {
         return value;
     }
@@ -128,43 +128,55 @@ auto main(int argc, char* argv[]) -> int
         if (arg == "--dse") {
             dse_mode = true;
         } else if (is_long ? arg == "--bus-width" : false) {
-            if (i + 1 < argc) {
-                if (auto v{parse_uint(argv[++i])})
-                    bus_width = *v;
-                else {
-                    std::println(std::cerr, "错误: 无效的 --bus-width 参数: {}", argv[i]);
-                    return 1;
-                }
+            if (i + 1 >= argc) {
+                std::println(std::cerr, "错误: --bus-width 缺少参数");
+                return 1;
+            }
+            if (auto v{parse_uint(argv[++i])})
+                bus_width = *v;
+            else {
+                std::println(std::cerr, "错误: 无效的 --bus-width 参数: {}", argv[i]);
+                return 1;
             }
         } else if (is_long ? arg == "--block-size" : arg == "-b") {
-            if (i + 1 < argc) {
-                if (auto v{parse_uint(argv[++i])})
-                    config.block_size = *v;
-                else {
-                    std::println(std::cerr, "错误: 无效的 --block-size 参数: {}", argv[i]);
-                    return 1;
-                }
+            if (i + 1 >= argc) {
+                std::println(std::cerr, "错误: {} 缺少参数", arg);
+                return 1;
+            }
+            if (auto v{parse_uint(argv[++i])})
+                config.block_size = *v;
+            else {
+                std::println(std::cerr, "错误: 无效的 --block-size 参数: {}", argv[i]);
+                return 1;
             }
         } else if (is_long ? arg == "--num-blocks" : arg == "-n") {
-            if (i + 1 < argc) {
-                if (auto v{parse_uint(argv[++i])})
-                    config.num_blocks = *v;
-                else {
-                    std::println(std::cerr, "错误: 无效的 --num-blocks 参数: {}", argv[i]);
-                    return 1;
-                }
+            if (i + 1 >= argc) {
+                std::println(std::cerr, "错误: {} 缺少参数", arg);
+                return 1;
+            }
+            if (auto v{parse_uint(argv[++i])})
+                config.num_blocks = *v;
+            else {
+                std::println(std::cerr, "错误: 无效的 --num-blocks 参数: {}", argv[i]);
+                return 1;
             }
         } else if (is_long ? arg == "--ways" : arg == "-w") {
-            if (i + 1 < argc) {
-                if (auto v{parse_uint(argv[++i])})
-                    config.ways = *v;
-                else {
-                    std::println(std::cerr, "错误: 无效的 --ways 参数: {}", argv[i]);
-                    return 1;
-                }
+            if (i + 1 >= argc) {
+                std::println(std::cerr, "错误: {} 缺少参数", arg);
+                return 1;
+            }
+            if (auto v{parse_uint(argv[++i])})
+                config.ways = *v;
+            else {
+                std::println(std::cerr, "错误: 无效的 --ways 参数: {}", argv[i]);
+                return 1;
             }
         } else if (is_long ? arg == "--replacement" : arg == "-r") {
-            if (i + 1 < argc) config.repl_policy = parse_repl(argv[++i]);
+            if (i + 1 >= argc) {
+                std::println(std::cerr, "错误: {} 缺少参数", arg);
+                return 1;
+            }
+            config.repl_policy = parse_repl(argv[++i]);
         } else {
             std::println(std::cerr, "未知选项: {}", argv[i]);
             print_usage(argv[0]);
@@ -178,22 +190,20 @@ auto main(int argc, char* argv[]) -> int
         return 1;
     }
 
-#if RUN_MODE == 1
-    // Kconfig 选择了 DSE 模式: 直接做设计空间探索 (多线程)
-    dse_run(trace_path, bus_width);
-    return 0;
-#endif
-
-    if (dse_mode) {
-        dse_run(trace_path, bus_width);
-        return 0;
-    }
-    if ((config.block_size & (config.block_size - 1)) != 0) {
-        std::println(std::cerr, "错误: 块大小必须是 2 的幂, 当前值 {}", config.block_size);
+    if (bus_width == 0) {
+        std::println(std::cerr, "错误: bus_width 必须大于 0");
         return 1;
     }
-    if (config.num_blocks == 0 || config.ways == 0) {
-        std::println(std::cerr, "错误: num_blocks 和 ways 必须大于 0");
+    if (!std::has_single_bit(config.block_size)) {
+        std::println(std::cerr, "错误: 块大小必须是大于 0 的 2 的幂, 当前值 {}", config.block_size);
+        return 1;
+    }
+    if (!std::has_single_bit(config.num_blocks)) {
+        std::println(std::cerr, "错误: num_blocks 必须是大于 0 的 2 的幂, 当前值 {}", config.num_blocks);
+        return 1;
+    }
+    if (config.ways == 0) {
+        std::println(std::cerr, "错误: ways 必须大于 0");
         return 1;
     }
     if (config.num_blocks % config.ways != 0) {
@@ -202,7 +212,15 @@ auto main(int argc, char* argv[]) -> int
     }
 
     try {
-        single_run(config, trace_path);
+#if RUN_MODE == 1
+        // Kconfig 选择了 DSE 模式: 直接做设计空间探索 (多线程)
+        dse_run(trace_path, bus_width);
+#else
+        if (dse_mode)
+            dse_run(trace_path, bus_width);
+        else
+            single_run(config, trace_path);
+#endif
     } catch (const std::exception& e) {
         std::println(std::cerr, "错误: {}", e.what());
         return 1;

@@ -13,12 +13,16 @@ Prediction BTFNSplitJal::predict(uint32_t pc) const
         return {hit->target < pc, true, hit->target};
     return {false, false, 0};
 }
-void BTFNSplitJal::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind)
+void BTFNSplitJal::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind,
+                          std::uint32_t)
 {
-    // jal BTB只收静态目标可预测的Jal/Call和需要标记的Ret; 间接jalr目标多变, 不入表
+    // 与当前RTL一致：普通间接call也用本次解析出的实际目标
+    // 训练独立JAL BTB，使稳定函数指针的后续调用可命中。
     if (kind == BranchKind::Jal || kind == BranchKind::Call || kind == BranchKind::Ret)
         jal_btb.update(pc, target, kind);
-    else if (kind == BranchKind::Branch)
+    else if (kind == BranchKind::JalrCall)
+        jal_btb.update(pc, target, BranchKind::Call);
+    else if (kind == BranchKind::Branch && target < pc)
         btb.update(pc, target, kind);
 }
 std::string_view BTFNSplitJal::GetName() const

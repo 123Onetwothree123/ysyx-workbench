@@ -1,0 +1,6 @@
+# PCs 0x1000 and 0x1040 map to the same direct-mapped BTB set.
+# The forward branch must not evict the already learned backward branch.
+00001000 00000ff0 1 b
+00001000 00000ff0 1 b
+00001040 00001050 0 b
+00001000 00000ff0 1 b

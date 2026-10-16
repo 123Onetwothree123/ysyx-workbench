@@ -14,7 +14,11 @@ SDBCommandUsageList clearCommand::usage() const noexcept
 SDBCommandResult clearCommand::execute(SDBCommandContext &context, std::string_view args)
 {
     static_cast<void>(context);
-    static_cast<void>(args);
+    if (!args.empty())
+    {
+        std::println("用法：clear");
+        return SDBCommandResult::Continue;
+    }
     std::print("\033[H\033[J");
     std::cout.flush();
     return SDBCommandResult::Continue;

@@ -8,7 +8,10 @@ import std;
 export enum class LogLevel { Silent = 0, Error = 1, Warn = 2, Info = 3, Debug = 4 };
 export inline constexpr auto CURRENT_LOG_LEVEL = static_cast<LogLevel>(CONFIG_LOG_LEVEL);
 
-export void log_init();
+// Logging is initialized before the DUT exists.  Report filesystem/open
+// failures to main instead of allowing filesystem_error to terminate the
+// process before the normal error path can run.
+export [[nodiscard]] std::expected<void, std::string> log_init() noexcept;
 export void log_close();
 export void log_write(LogLevel level, std::string_view msg, std::source_location loc);
 

@@ -5,7 +5,7 @@ import BPAlgorithmBase;
 import BranchRecord;
 import stats;
 
-// 按记录类型累计分桶(JalrCall/JalrOther合并为jalr桶)
+// 按记录类型累计分桶(JalrCall/Coroutine/JalrOther合并为jalr桶)
 static void Bump(std::size_t stats::* total, std::size_t stats::* correct,
                  stats& st, bool ok)
 {
@@ -39,7 +39,8 @@ auto RunOne(BPAlgorithmBase& algo,
         case BranchKind::Ret:    Bump(&stats::ret_total, &stats::ret_correct, st, correct); break;
         default:                 Bump(&stats::jalr_total, &stats::jalr_correct, st, correct); break;
         }
-        algo.update(rec.GetPC(), rec.GetTaken(), rec.GetTarget(), rec.GetKind());
+        algo.update(rec.GetPC(), rec.GetTaken(), rec.GetTarget(), rec.GetKind(),
+                    rec.GetJalrImmediate());
     }
     return st;
 }

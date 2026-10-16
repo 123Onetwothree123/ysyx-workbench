@@ -82,6 +82,16 @@ bool WatchpointPool::DeleteWatchpoint(std::size_t NO)
 }
 bool WatchpointPool::CheckAll(const EvaluationContext &context)
 {
+    // The normal fast path has no watchpoints.  In particular, do not call
+    // GetPC(), which reaches DUT::eval(), once per retired instruction merely
+    // because WATCHPOINT support was compiled in.
+    if (UsedWatchpointIndices.empty() ||
+        std::ranges::none_of(UsedWatchpointIndices,
+                            [&](std::size_t no) {
+                                return watchpoints[no].IsEnabled();
+                            }))
+        return false;
+
     expressions expression;
     auto CurrentPC{context.GetPC()};
     bool triggered{false};

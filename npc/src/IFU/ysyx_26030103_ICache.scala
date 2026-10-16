@@ -41,6 +41,10 @@ class ysyx_26030103_ICache(
   val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))
   val data = Reg(Vec(ArrayBlocks, Vec(WordsPerBlock, UInt(32.W))))
   val index = io.fetch_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+  // Enable=false时阵列只有一个综合占位项。用Scala期的常量索引访问它，
+  // 避免把完整的组索引接到单项Vec上产生W004；Enable=true时仍是原始索引，
+  // 不在命中路径增加任何截断或选择逻辑。
+  val IndexSafe = if (Enable) index else 0.U(IndexBits.W)
   val blockOffset =
     if (WordsPerBlock > 1) io.fetch_addr(BlockSizeLog2 - 1, 2)
     else 0.U
@@ -90,29 +94,44 @@ class ysyx_26030103_ICache(
   val fetch_addr_reg = Reg(UInt(AddressWidth.W))
   val fetch_index_reg = Reg(UInt(IndexBits.W))
   val fetch_offset_reg = Reg(UInt((BlockSizeLog2 - 2).W)) // 请求时块内word偏移
+  val FetchIndexSafe =
+    if (Enable) fetch_index_reg else 0.U(IndexBits.W)
+  val FetchOffsetSafe =
+    if (WordsPerBlock > 1) fetch_offset_reg else 0.U
   val resp_data_reg = Reg(UInt(32.W))
   val cacheable_reg = RegInit(false.B)
   val access_fault_reg = RegInit(false.B)
   val access_fault_resp_reg = RegInit(0.U(2.W))
-  // refill状态机(结构互斥: 同一时刻只处理一个缺失)
-  val rfstates = Enum(3)
+  // refill状态机(单MSHR: 同一时刻只处理一个缺失)
+  val rfstates = Enum(4)
   val rf_idle = rfstates(0)
   val rf_req = rfstates(1)
   val rf_resp = rfstates(2)
+  val rf_drain = rfstates(3)
   val rfstate = RegInit(rf_idle)
-  // refill专属寄存器。refill期间不再受理新的fetch请求（见fetch_ready），
-  // 这样R通道的旧refill响应不会和新的s1请求竞争同一组响应寄存器。
+  // refill专属寄存器。refill期间只能受理同一line中已返回的word，
+  // 未返回word和其他line在单MSHR结构下继续反压。
   val ref_addr = Reg(UInt(AddressWidth.W))
   val ref_index = ref_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+  val RefIndexSafe = if (Enable) ref_index else 0.U(IndexBits.W)
   val ref_tag = ref_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
   val ref_offset =
     if (WordsPerBlock > 1) ref_addr(BlockSizeLog2 - 1, 2)
     else 0.U
   val ref_cacheable = Reg(Bool())
   val refill_cnt = RegInit(0.U(WordCntBits.W)) // 当前正在填充第几个word
+  val RefillOffsetSafe = if (WordsPerBlock > 1) refill_cnt else 0.U
+  // 只有RRESP成功且已握手的word才能被early-restart后的新fetch使用。
+  // line valid仍要等所有beat成功后才会置位。
+  val refill_word_valid = RegInit(0.U(WordsPerBlock.W))
   val burst_mode = RegInit(false.B) // 突发传输模式标志
+  // AXI规定VALID一旦对外呈现，在READY前不能撤回。该位区分
+  // “刚进rf_req且本拍kill”与“ARVALID已经反压了一拍”。
+  val ar_exposed = RegInit(false.B)
   // 在飞refill是否仍属于当前s1里的请求: 原请求被消费/冲刷/替换后,
   // 后续R拍只写阵列, 绝不再写s1的响应寄存器(那会污染新请求)
+  // s1_ready为true时响应已经对外可见，即使尚未握手也不能在反压下修改
+  // payload。因此迟到的协议错误只能替换尚未可见的demand响应。
   val s1_waits = RegInit(false.B)
   // flush(fence.i)/kill不能丢弃已被从机接受的AXI事务: 置位后继续把剩余拍排空,
   // 否则残留的R拍会被后续突发误收, 造成块内数据错位
@@ -120,11 +139,28 @@ class ysyx_26030103_ICache(
   // 一条cache line的refill错误状态。RRESP错误可能出现在关键词之后，
   // 因而不能只看最后一个beat决定valid；任意一个错误都使整条line失效。
   val refill_error = RegInit(false.B)
-  // 正在refill的索引: 同索引新请求可能读到半填的行(tag已换/数据填了一半),
-  // 一律强制判缺失排队, 等refill完成后重查命中
+  // 正在refill的索引不能走普通valid/tag命中；半填行只能通过
+  // refill_word_valid的逐word许可通路访问。
   val refill_busy = rfstate =/= rf_idle
   val under_refill = refill_busy && ref_cacheable && (index === ref_index)
-  val hit = valid(index) && tag(index) === reqTag && !under_refill
+  val hit = valid(IndexSafe) && tag(IndexSafe) === reqTag && !under_refill
+  val refill_line_match =
+    io.fetch_addr(AddressWidth - 1, BlockSizeLog2) ===
+      ref_addr(AddressWidth - 1, BlockSizeLog2)
+  val requested_word_arrived =
+    if (WordsPerBlock > 1) refill_word_valid(blockOffset)
+    else refill_word_valid(0)
+  val refill_r_fire = rfstate === rf_resp && io.axi.R.RVALID
+  val malformed_refill_beat_now =
+    refill_r_fire && !io.axi.R.RLAST &&
+      (!ref_cacheable || !burst_mode || refill_cnt === (WordsPerBlock - 1).U)
+  val refill_error_now =
+    refill_r_fire && (io.axi.R.RRESP =/= 0.U || malformed_refill_beat_now)
+  val partial_refill_hit =
+    (rfstate === rf_req || rfstate === rf_resp) &&
+      ref_cacheable && !discard && !refill_error && !refill_error_now &&
+      refill_line_match && requested_word_arrived
+  val request_hit = executable && cacheable && (hit || partial_refill_hit)
   io.access_fault := access_fault_reg
   io.access_fault_resp := access_fault_resp_reg
   io.axi.AW.AWVALID := false.B
@@ -159,19 +195,22 @@ class ysyx_26030103_ICache(
     Mux(
       s1_hit,
       resp_data_reg,
-      Mux(cacheable_reg, data(fetch_index_reg)(fetch_offset_reg), resp_data_reg)
+      Mux(cacheable_reg, data(FetchIndexSafe)(FetchOffsetSafe), resp_data_reg)
     )
   )
-  // 受理级: 响应槽为空,或本拍响应正被接收。refill未结束时禁止接收新的
-  // fetch，避免旧refill的R beat覆盖新的s1响应状态；flush/kill期间也不接收。
+  // 受理级: 响应槽为空,或本拍响应正被接收。refill中可放行
+  // 其他index的完整命中，以及同line已返回word的partial hit；两者的
+  // 数据都在受理拍锁存到resp_data_reg，不会被后续R beat覆盖。
+  val response_slot_available =
+    !s1_valid || (responding && io.resp_ready)
   io.fetch_ready :=
-    (rfstate === rf_idle) &&
-      !io.flush &&
+    !io.flush &&
       !io.kill &&
-      (!s1_valid || (responding && io.resp_ready))
+      response_slot_available &&
+      (rfstate === rf_idle || request_hit)
   val accept = io.fetch_valid && io.fetch_ready
-  io.perf_hit := accept && cacheable && hit
-  io.perf_miss := accept && executable && !(cacheable && hit)
+  io.perf_hit := accept && request_hit
+  io.perf_miss := accept && executable && !request_hit
   io.perf_refill_req := rfstate === rf_req
   io.perf_refill_resp := rfstate === rf_resp
   when(responding && io.resp_ready) {
@@ -182,9 +221,9 @@ class ysyx_26030103_ICache(
     fetch_addr_reg := io.fetch_addr
     fetch_index_reg := index
     fetch_offset_reg := blockOffset
-    resp_data_reg := data(index)(blockOffset) // 命中时这就是响应数据
+    resp_data_reg := data(IndexSafe)(blockOffset) // 命中时这就是响应数据
     cacheable_reg := cacheable
-    s1_hit := executable && cacheable && hit
+    s1_hit := request_hit
     // PMA拒绝不需要总线往返；用DECERR作为调试响应码，并让带故障的
     // NOP响应沿正常流水线到达EXU，在提交点精确写入mepc/mcause。
     s1_ready := !executable
@@ -196,28 +235,28 @@ class ysyx_26030103_ICache(
   // 排队缺失: refill空闲时启动; 启动前重查命中(在飞refill可能刚把这行填好)
   val queued_miss = s1_valid && !s1_hit && !s1_ready
   val recheck_hit = cacheable_reg &&
-    valid(fetch_index_reg) &&
-    tag(fetch_index_reg) === fetch_addr_reg(
+    valid(FetchIndexSafe) &&
+    tag(FetchIndexSafe) === fetch_addr_reg(
       AddressWidth - 1,
       IndexBits + BlockSizeLog2
     )
   when(queued_miss && rfstate === rf_idle && !io.kill && !io.flush) {
     when(recheck_hit) {
       s1_hit := true.B
-      resp_data_reg := data(fetch_index_reg)(fetch_offset_reg)
+      resp_data_reg := data(FetchIndexSafe)(FetchOffsetSafe)
     }.otherwise {
       rfstate := rf_req
       ref_addr := fetch_addr_reg
       ref_cacheable := cacheable_reg
       refill_cnt := 0.U
+      refill_word_valid := 0.U
+      ar_exposed := false.B
       burst_mode := cacheable_reg
       // 每次新refill都从干净的事务状态开始，不能继承上一次flush/discard
-      // 或RRESP错误；旧目标行也必须先失效，避免半填数据被误认为命中。
+      // 或RRESP错误；旧目标行在AR握手时才失效，避免取消的
+      // 错路请求白白驱逐原有行。
       discard := false.B
       refill_error := false.B
-      when(cacheable_reg) {
-        valid(fetch_index_reg) := false.B
-      }
       s1_waits := true.B
     }
   }
@@ -227,7 +266,11 @@ class ysyx_26030103_ICache(
   // 缺失+70%, 总周期+10.6%, 已回退。
   switch(rfstate) {
     is(rf_req) {
-      io.axi.AR.ARVALID := true.B
+      // redirect/exception在AR尚未被时钟采样为pending时可以取消错路
+      // refill。ARVALID若已被反压过，即使还没握手也必须保持到READY。
+      val cancel_unaccepted =
+        io.kill && s1_waits && !ar_exposed && !io.flush
+      io.axi.AR.ARVALID := !cancel_unaccepted
       io.axi.AR.ARLEN := Mux(
         ref_cacheable && burst_mode,
         (WordsPerBlock - 1).U,
@@ -242,8 +285,27 @@ class ysyx_26030103_ICache(
         ),
         ref_addr
       )
-      when(io.axi.AR.ARREADY) {
+      when(cancel_unaccepted) {
+        burst_mode := false.B
+        discard := false.B
+        refill_word_valid := 0.U
+        ar_exposed := false.B
+        rfstate := rf_idle
+      }.elsewhen(io.axi.AR.ARREADY) {
+        // 延迟到AR真正接受后才失效被替换行；因此未握手的
+        // 错路refill被取消时，不会白白驱逐原有有效行。
+        // 已展示但在握手前被kill的owner AR必须完成协议，但其
+        // discard事务既不写新line，也不应驱逐原victim。
+        val killed_owner_now = io.kill && s1_waits
+        when(ref_cacheable && !discard && !killed_owner_now) {
+          valid(RefIndexSafe) := false.B
+        }
+        ar_exposed := false.B
         rfstate := rf_resp
+      }.otherwise {
+        // 本拍ARVALID已对外呈现但被反压；之后即使kill到来也必须
+        // 保持地址和VALID，等握手后再排空响应。
+        ar_exposed := true.B
       }
     }
     is(rf_resp) {
@@ -258,22 +320,35 @@ class ysyx_26030103_ICache(
         // 响应重新写回s1。sticky状态保证后续成功beat不能重新置valid。
         when(r_error) {
           refill_error := true.B
+          // burst中任一beat失败后，整条line的partial-hit许可立即
+          // 撤销；不能再利用早先成功beat的半填数据。
+          refill_word_valid := 0.U
           when(!discard && s1_waits && keyword_beat) {
             access_fault_reg := true.B
             access_fault_resp_reg := io.axi.R.RRESP
             resp_data_reg := "h00000013".U // NOP, 不让下游拿到非法指令
           }
         }.elsewhen(!discard) {
-          when(s1_waits) {
+          // 可缓存demand直接从数据阵列取关键词，不需要写
+          // resp_data_reg。这也避免“旧响应pop+新partial hit accept+R beat”
+          // 同拍时，旧s1_waits把新命中数据覆盖。
+          when(s1_waits && !ref_cacheable) {
             resp_data_reg := io.axi.R.RDATA
           }
           when(ref_cacheable) { // 阵列填充无条件进行, 数据是真实内存内容
-            tag(ref_index) := ref_tag
-            data(ref_index)(refill_cnt) := io.axi.R.RDATA
+            tag(RefIndexSafe) := ref_tag
+            data(RefIndexSafe)(RefillOffsetSafe) := io.axi.R.RDATA
+            when(!refill_error) {
+              refill_word_valid := refill_word_valid |
+                UIntToOH(refill_cnt, WordsPerBlock)
+            }
             // 只有整条line无任何错误时才允许变为valid；当前beat为成功
             // 响应，refill_error覆盖此前已经发生的错误。
-            when(refill_cnt === (WordsPerBlock - 1).U && !refill_error) {
-              valid(ref_index) := true.B
+            when(
+              refill_cnt === (WordsPerBlock - 1).U &&
+                io.axi.R.RLAST && !refill_error
+            ) {
+              valid(RefIndexSafe) := true.B
             }
           }
         }
@@ -283,7 +358,7 @@ class ysyx_26030103_ICache(
         }
         when(ref_cacheable && burst_mode) {
           refill_cnt := refill_cnt + 1.U
-          when(io.axi.R.RLAST || refill_cnt === (WordsPerBlock - 1).U) {
+          when(io.axi.R.RLAST) {
             // 突发结束(正常结束或被从机提前截断)
             when(discard) {
               discard := false.B
@@ -297,41 +372,96 @@ class ysyx_26030103_ICache(
               burst_mode := false.B // 提前RLAST: 剩余的词改单拍补取
               rfstate := rf_req
             }
-          }
-        }.elsewhen(ref_cacheable) {
-          // 单拍填充: 每词一个独立AR; 排空时当前拍即结束, 剩余的词放弃(独立事务无残留)
-          when(discard) {
-            discard := false.B
-            rfstate := rf_idle
           }.elsewhen(refill_cnt === (WordsPerBlock - 1).U) {
-            when(s1_waits) {
+            // 已收到ARLEN指定的最后一拍却没有RLAST，该line绝不能安装。
+            // 继续排空R通道直到迟到的RLAST，避免它被后续refill误收。
+            valid(RefIndexSafe) := false.B
+            refill_error := true.B
+            refill_word_valid := 0.U
+            when(!discard && s1_waits && !s1_ready) {
+              access_fault_reg := true.B
+              access_fault_resp_reg := Mux(r_error, io.axi.R.RRESP, 2.U)
+              resp_data_reg := "h00000013".U
               s1_ready := true.B
             }
-            rfstate := rf_idle
+            rfstate := rf_drain
+          }
+        }.elsewhen(ref_cacheable) {
+          // 提前RLAST后的补取是独立单拍事务，每一拍也必须以RLAST结束。
+          when(io.axi.R.RLAST) {
+            when(discard) {
+              discard := false.B
+              rfstate := rf_idle
+            }.elsewhen(refill_cnt === (WordsPerBlock - 1).U) {
+              when(s1_waits) {
+                s1_ready := true.B
+              }
+              rfstate := rf_idle
+            }.otherwise {
+              refill_cnt := refill_cnt + 1.U
+              rfstate := rf_req
+            }
           }.otherwise {
-            refill_cnt := refill_cnt + 1.U
-            rfstate := rf_req
+            valid(RefIndexSafe) := false.B
+            refill_error := true.B
+            refill_word_valid := 0.U
+            when(!discard && s1_waits && !s1_ready) {
+              access_fault_reg := true.B
+              access_fault_resp_reg := Mux(r_error, io.axi.R.RRESP, 2.U)
+              resp_data_reg := "h00000013".U
+              s1_ready := true.B
+            }
+            rfstate := rf_drain
           }
         }.otherwise {
           // 非缓存区: 一词一拍, 当前拍即结束
-          when(discard) {
-            discard := false.B
-            rfstate := rf_idle
+          when(io.axi.R.RLAST) {
+            when(discard) {
+              discard := false.B
+              rfstate := rf_idle
+            }.otherwise {
+              when(s1_waits) {
+                s1_ready := true.B
+              }
+              rfstate := rf_idle
+            }
           }.otherwise {
-            when(s1_waits) {
+            when(!discard && s1_waits && !s1_ready) {
+              access_fault_reg := true.B
+              access_fault_resp_reg := Mux(r_error, io.axi.R.RRESP, 2.U)
+              resp_data_reg := "h00000013".U
               s1_ready := true.B
             }
-            rfstate := rf_idle
+            rfstate := rf_drain
           }
         }
       }
     }
+    is(rf_drain) {
+      io.axi.R.RREADY := true.B
+      when(io.axi.R.RVALID && io.axi.R.RLAST) {
+        discard := false.B
+        burst_mode := false.B
+        rfstate := rf_idle
+      }
+    }
   }
-  // kill(重定向/异常): 只杀响应槽(s1),在飞的refill照常完成并填充阵列
-  // (数据是真实内存内容,下次循环到同一行就能命中;否则每次跳转都浪费一次refill)
+  // kill(重定向/异常): 杀响应槽(s1)。未展示的owner AR可直接取消；
+  // 已展示但未握手的owner AR必须排空但不安装，也不驱逐victim；
+  // 已握手的refill继续填充。已脱离s1的后台fill不受无关kill影响。
   when(io.kill) {
+    // 只有当前s1仍是这个refill的demand owner时，kill才能改变
+    // refill。early response已消费后，s1_waits=false，之后无关分支的kill
+    // 不能丢弃后台fill。只有已展示但未握手的AR需要sticky discard；
+    // 已握手的rf_resp继续完成有效line，避免留下必然miss的空index。
+    val kill_owned_exposed_ar =
+      s1_waits && rfstate === rf_req && ar_exposed
     s1_valid := false.B
     s1_waits := false.B
+    when(kill_owned_exposed_ar) {
+      discard := true.B
+      refill_word_valid := 0.U
+    }
   }
   // flush(fence.i): 代码可能已被改写,清cache行,在飞事务排空丢弃
   // 注意: 已发出的ARVALID绝不能在握手前撤回(否则仲裁器授权后等不到fire会死锁),
@@ -339,6 +469,7 @@ class ysyx_26030103_ICache(
   when(io.flush) {
     s1_valid := false.B
     s1_waits := false.B
+    refill_word_valid := 0.U
     valid.foreach(_ := false.B)
     when(rfstate === rf_req) {
       discard := true.B

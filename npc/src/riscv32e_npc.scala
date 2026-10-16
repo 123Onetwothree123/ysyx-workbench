@@ -339,6 +339,10 @@ class riscv32e_npc_SimTop extends Module {
   cpu.io.debug_gpr_raddr := debug_gpr_raddr
   val debug_gpr_rdata = IO(Output(UInt(32.W)))
   debug_gpr_rdata := cpu.io.debug_gpr_rdata
+  val debug_gpr_wen = IO(Output(Bool()))
+  debug_gpr_wen := cpu.io.debug_gpr_wen
+  val debug_gpr_waddr = IO(Output(UInt(5.W)))
+  debug_gpr_waddr := cpu.io.debug_gpr_waddr
   val debug_pc = IO(Output(UInt(32.W)))
   debug_pc := cpu.io.debug_pc
   val debug_next_pc = IO(Output(UInt(32.W)))

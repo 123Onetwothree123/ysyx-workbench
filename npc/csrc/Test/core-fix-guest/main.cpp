@@ -73,6 +73,19 @@ static void check_misaligned_trap(const char *name, uint32_t count_before) {
   }
 }
 
+static void check_trap(const char *name, uint32_t count_before,
+                       uint32_t cause) {
+  const bool ok = trap_count == count_before + 1 && last_mcause == cause &&
+                  last_mepc == expected_pc;
+  printf("[%s] traps=%u->%u mcause=%u mepc=0x%08x expected=0x%08x => %s\n",
+         name, (unsigned)count_before, (unsigned)trap_count,
+         (unsigned)last_mcause, (unsigned)last_mepc, (unsigned)expected_pc,
+         ok ? "PASS" : "FAIL");
+  if (!ok) {
+    ++failures;
+  }
+}
+
 // The direct NPC AM target currently advertises RV32E_Zicsr rather than
 // Zifencei to the compiler.  Emit the architectural FENCE.I encoding directly
 // so this regression can still be built by that existing toolchain setup.
@@ -101,6 +114,16 @@ static void test_partial_stores() {
 static void test_csr_warl() {
   uint32_t got = 0;
 
+  asm volatile("csrw mstatus, %0" : : "r"(0xffffffffu));
+  asm volatile("csrr %0, mstatus" : "=r"(got));
+  check_value("mstatus-wpri-mask", got, 0x00001888u);
+  asm volatile("csrw mstatus, %0" : : "r"(0x00000800u));
+  asm volatile("csrr %0, mstatus" : "=r"(got));
+  check_value("mstatus-mpp-reserved-01", got, 0x00001800u);
+  asm volatile("csrw mstatus, %0" : : "r"(0x00001000u));
+  asm volatile("csrr %0, mstatus" : "=r"(got));
+  check_value("mstatus-mpp-reserved-10", got, 0x00001800u);
+
   // With C disabled, IALIGN=32 makes mepc[1:0] read as zero.
   const uint32_t mepc_probe = 0x81234567u;
   asm volatile("csrw mepc, %0" : : "r"(mepc_probe));
@@ -120,6 +143,140 @@ static void test_csr_warl() {
 
   // All following synchronous exceptions use Direct mode.
   asm volatile("csrw mtvec, %0" : : "r"(base));
+}
+
+static void test_zicsr_operations() {
+  uint32_t old = 0;
+  uint32_t got = 0;
+  uint32_t source = 0xa5a55a5au;
+  asm volatile("csrw mcause, %0" : : "r"(source));
+
+  source = 0x12345678u;
+  asm volatile("csrrw %0, mcause, %1" : "=r"(old) : "r"(source));
+  check_value("csrrw-old", old, 0xa5a55a5au);
+  asm volatile("csrr %0, mcause" : "=r"(got));
+  check_value("csrrw-new", got, 0x12345678u);
+
+  source = 0x0000f00fu;
+  asm volatile("csrrs %0, mcause, %1" : "=r"(old) : "r"(source));
+  check_value("csrrs-old", old, 0x12345678u);
+  asm volatile("csrr %0, mcause" : "=r"(got));
+  check_value("csrrs-new", got, 0x1234f67fu);
+
+  source = 0x00340070u;
+  asm volatile("csrrc %0, mcause, %1" : "=r"(old) : "r"(source));
+  check_value("csrrc-old", old, 0x1234f67fu);
+  asm volatile("csrr %0, mcause" : "=r"(got));
+  check_value("csrrc-new", got, 0x1200f60fu);
+
+  asm volatile("csrrwi %0, mcause, 26" : "=r"(old));
+  check_value("csrrwi-old", old, 0x1200f60fu);
+  asm volatile("csrr %0, mcause" : "=r"(got));
+  check_value("csrrwi-new", got, 0x1au);
+
+  asm volatile("csrrsi %0, mcause, 5" : "=r"(old));
+  check_value("csrrsi-old", old, 0x1au);
+  asm volatile("csrr %0, mcause" : "=r"(got));
+  check_value("csrrsi-new", got, 0x1fu);
+
+  asm volatile("csrrci %0, mcause, 3" : "=r"(old));
+  check_value("csrrci-old", old, 0x1fu);
+  asm volatile("csrr %0, mcause" : "=r"(got));
+  check_value("csrrci-new", got, 0x1cu);
+
+  // zimm=0 is a pure read for CSRRSI/CSRRCI.
+  asm volatile("csrrsi %0, mcause, 0" : "=r"(old));
+  check_value("csrrsi-zero-old", old, 0x1cu);
+  asm volatile("csrrci %0, mcause, 0" : "=r"(old));
+  check_value("csrrci-zero-old", old, 0x1cu);
+  asm volatile("csrr %0, mcause" : "=r"(got));
+  check_value("csr-zero-source-unchanged", got, 0x1cu);
+
+  // Register and immediate zero-source RS/RC forms may read a read-only CSR.
+  asm volatile("csrrs %0, 0xf11, x0" : "=r"(got));
+  check_value("csrrs-readonly-read", got, 0x79737978u);
+  asm volatile("csrrc %0, 0xf11, x0" : "=r"(got));
+  check_value("csrrc-readonly-read", got, 0x79737978u);
+  asm volatile("csrrsi %0, 0xf11, 0" : "=r"(got));
+  check_value("csrrsi-readonly-read", got, 0x79737978u);
+  asm volatile("csrrci %0, 0xf11, 0" : "=r"(got));
+  check_value("csrrci-readonly-read", got, 0x79737978u);
+}
+
+static void test_zicsr_readonly_write_traps() {
+  uint32_t before = trap_count;
+  reset_trap_observation();
+  asm volatile(
+      "la t0, 1f\n\t"
+      "la t1, expected_pc\n\t"
+      "sw t0, 0(t1)\n\t"
+      "1: csrrw x0, 0xf11, x0\n\t"
+      :
+      :
+      : "t0", "t1", "memory");
+  check_trap("csrrw-readonly-write", before, 2);
+
+  before = trap_count;
+  reset_trap_observation();
+  asm volatile(
+      "la t0, 1f\n\t"
+      "la t1, expected_pc\n\t"
+      "sw t0, 0(t1)\n\t"
+      "1: csrrwi x0, 0xf11, 0\n\t"
+      :
+      :
+      : "t0", "t1", "memory");
+  check_trap("csrrwi-readonly-write", before, 2);
+
+  before = trap_count;
+  reset_trap_observation();
+  asm volatile(
+      "li t0, 1\n\t"
+      "la t1, 1f\n\t"
+      "la t2, expected_pc\n\t"
+      "sw t1, 0(t2)\n\t"
+      "1: csrrs x0, 0xf11, t0\n\t"
+      :
+      :
+      : "t0", "t1", "t2", "memory");
+  check_trap("csrrs-readonly-write", before, 2);
+
+  before = trap_count;
+  reset_trap_observation();
+  asm volatile(
+      "la t0, 1f\n\t"
+      "la t1, expected_pc\n\t"
+      "sw t0, 0(t1)\n\t"
+      "1: csrrsi x0, 0xf11, 1\n\t"
+      :
+      :
+      : "t0", "t1", "memory");
+  check_trap("csrrsi-readonly-write", before, 2);
+
+  before = trap_count;
+  reset_trap_observation();
+  asm volatile(
+      "li t0, 1\n\t"
+      "la t1, 1f\n\t"
+      "la t2, expected_pc\n\t"
+      "sw t1, 0(t2)\n\t"
+      "1: csrrc x0, 0xf11, t0\n\t"
+      :
+      :
+      : "t0", "t1", "t2", "memory");
+  check_trap("csrrc-readonly-write", before, 2);
+
+  before = trap_count;
+  reset_trap_observation();
+  asm volatile(
+      "la t0, 1f\n\t"
+      "la t1, expected_pc\n\t"
+      "sw t0, 0(t1)\n\t"
+      "1: csrrci x0, 0xf11, 1\n\t"
+      :
+      :
+      : "t0", "t1", "memory");
+  check_trap("csrrci-readonly-write", before, 2);
 }
 
 static void test_misaligned_jalr() {
@@ -257,14 +414,16 @@ int main() {
 
   test_partial_stores();
   test_csr_warl();
+  test_zicsr_operations();
+  test_zicsr_readonly_write_traps();
   test_misaligned_jalr();
   test_misaligned_jal();
   test_misaligned_branch();
   test_architectural_ebreak();
   test_fence_i_prefetch();
 
-  printf("trap_count=%u expected=4\n", (unsigned)trap_count);
-  if (trap_count != 4) {
+  printf("trap_count=%u expected=10\n", (unsigned)trap_count);
+  if (trap_count != 10) {
     ++failures;
   }
 

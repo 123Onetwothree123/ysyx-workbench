@@ -58,8 +58,8 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
 #ifdef CONFIG_WATCHPOINT
     NPCEvaluationContext EvaluationContext{dut};
 #endif
-    std::size_t retired{0};
-    while (retired < count && !NPCTrap::HasHalted())
+    std::size_t completedBoundaries{0};
+    while (completedBoundaries < count && !Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
         dut.step();
         if (NPCTrap::HasHalted())
@@ -71,21 +71,43 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
             std::println("收到仿真 halt 请求");
             break;
         }
-        // si 的计数单位是退休指令，不是时钟周期。cache miss、
+        // si 的计数单位是架构边界，不是时钟周期。cache miss、
         // MDU 和 AXI stall 可以经历任意多拍，都不应提前结束单步。
-        if (dut->debug_commit)
-            ++retired;
+        // 例外指令不会 debug_commit，但 trap 提交同样是一个精确的
+        // 架构边界。同拍的退休和 trap 只计一次，因为 C++ 无法在
+        // 一次 dut.step() 中间停下来。
+        const bool trapBoundary{static_cast<bool>(dut->debug_trap_valid)};
+        if (dut->debug_commit || trapBoundary)
+            ++completedBoundaries;
 
         // 监视点只在架构状态边界重新求值，避免把流水线
         // 中间周期误当成一条指令。
 #ifdef CONFIG_WATCHPOINT
-        if ((dut->debug_commit || dut->debug_trap_valid) &&
+        if ((dut->debug_commit || trapBoundary) &&
             GetGlobalWatchpointPool().CheckAll(EvaluationContext))
         {
             std::println("因为监视点变化，程序停止");
             break;
         }
 #endif
+        // 例外是调试器必须暴露的停止原因。即使用户请求
+        // si N (N > 1)，也不能在未通知用户的情况下继续执行 handler。
+        if (trapBoundary)
+        {
+            std::println(
+                "遇到异常，停止单步（pc=0x{:08x}, cause=0x{:08x}, target=0x{:08x}）",
+                static_cast<std::uint32_t>(dut->debug_trap_pc),
+                static_cast<std::uint32_t>(dut->debug_trap_cause),
+                static_cast<std::uint32_t>(dut->debug_trap_target));
+            break;
+        }
+    }
+    if (Verilated::gotFinish() && !NPCTrap::HasHalted())
+    {
+        std::println(
+            "Verilator已请求结束，停止单步（本次完成 {} / {} 个架构边界）",
+            completedBoundaries,
+            count);
     }
     return SDBCommandResult::Continue;
 }

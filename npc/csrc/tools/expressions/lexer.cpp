@@ -111,17 +111,20 @@ token lexer::ScanNumber()
     {
         Advance();
     }
-    auto text {input.substr(start, position - start)};
-    try
+    const auto text{input.substr(start, position - start)};
+    std::uint32_t value{};
+    const auto [ptr, ec]{std::from_chars(text.data(), text.data() + text.size(), value, 10)};
+    if (ec == std::errc::result_out_of_range)
     {
-        auto value {std::stoul(std::string(text), nullptr, 10)};
-        return token::MakeNumber(text, value, start);
+        error = "十进制数字超出 uint32_t 范围: " + std::string(text);
+        return token::MakeEnd(position);
     }
-    catch (const std::exception &)
+    if (ec != std::errc{} || ptr != text.data() + text.size())
     {
         error = "无效的编号: " + std::string(text);
         return token::MakeEnd(position);
     }
+    return token::MakeNumber(text, value, start);
 }
 token lexer::ScanHexNumber()
 {
@@ -139,16 +142,20 @@ token lexer::ScanHexNumber()
         error = "无效的十六进制数字: " + std::string(text);
         return token::MakeEnd(position);
     }
-    try
+    const auto digits{input.substr(DigitStart, position - DigitStart)};
+    std::uint32_t value{};
+    const auto [ptr, ec]{std::from_chars(digits.data(), digits.data() + digits.size(), value, 16)};
+    if (ec == std::errc::result_out_of_range)
     {
-        auto value{std::stoul(std::string(text), nullptr, 16)};
-        return token::MakeNumber(text, static_cast<std::uint32_t>(value), start);
+        error = "十六进制数字超出 uint32_t 范围: " + std::string(text);
+        return token::MakeEnd(position);
     }
-    catch (const std::exception &)
+    if (ec != std::errc{} || ptr != digits.data() + digits.size())
     {
         error = "无效的十六进制数字: " + std::string(text);
         return token::MakeEnd(position);
     }
+    return token::MakeNumber(text, value, start);
 }
 token lexer::ScanRegister()
 {

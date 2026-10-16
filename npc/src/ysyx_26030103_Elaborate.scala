@@ -61,6 +61,13 @@ object ysyx_26030103_Elaborate extends App {
   val MULPipeline = sys.env.getOrElse("MUL_PIPELINE", "0").toInt
   val MULSplit = sys.env.getOrElse("MUL_SPLIT", "1").toInt
   val MULEarlyOut = sys.env.getOrElse("MUL_EARLY_OUT", "n") == "y"
+  val SDBEnable = sys.env.getOrElse("SDB", "n") == "y"
+  val DiffTestEnable = sys.env.getOrElse("DIFFTEST", "n") == "y"
+  val MTraceEnable = sys.env.getOrElse("MTRACE", "n") == "y"
+  val ITraceEnable = sys.env.getOrElse("ITRACE", "n") == "y"
+  val FTraceEnable = sys.env.getOrElse("FTRACE", "n") == "y"
+  val IRingBufEnable = sys.env.getOrElse("IRINGBUF", "n") == "y"
+  val PerfStatsEnable = sys.env.getOrElse("PERF_STATS", "n") == "y"
   val config = ysyx_26030103_NPCConfig(
     UseM = UseM,
     UseA = UseA,
@@ -93,7 +100,14 @@ object ysyx_26030103_Elaborate extends App {
     BTBWays = BTBWays,
     JalBTBBits = JalBTBBits,
     JalBTBWays = JalBTBWays,
-    RASBits = RASBits
+    RASBits = RASBits,
+    SDBEnable = SDBEnable,
+    DiffTestEnable = DiffTestEnable,
+    MTraceEnable = MTraceEnable,
+    ITraceEnable = ITraceEnable,
+    FTraceEnable = FTraceEnable,
+    IRingBufEnable = IRingBufEnable,
+    PerfStatsEnable = PerfStatsEnable
   )
   println(s"[NPC config] ${config.Describe}")
 

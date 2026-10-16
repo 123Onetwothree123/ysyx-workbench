@@ -36,11 +36,22 @@ std::expected<CLIOptions, std::string> CLIOptions::Parse(int argc, char const *a
             {
                 return std::unexpected("--result-dir 需要跟一个目录路径");
             }
-            options.ResultDir = std::filesystem::path{argv[++i]};
+            const auto result_dir{std::filesystem::path{argv[++i]}};
+            if (result_dir.empty())
+            {
+                return std::unexpected("--result-dir 不能是空路径");
+            }
+            options.ResultDir = result_dir;
         }
         else if (arg.starts_with("--result-dir="))
         {
-            options.ResultDir = std::filesystem::path{std::string{arg.substr(13)}};
+            const auto result_dir{
+                std::filesystem::path{std::string{arg.substr(13)}}};
+            if (result_dir.empty())
+            {
+                return std::unexpected("--result-dir 不能是空路径");
+            }
+            options.ResultDir = result_dir;
         }
         else if (arg == "--vga-check")
         {
