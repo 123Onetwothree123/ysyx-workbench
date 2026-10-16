@@ -1,9 +1,6 @@
 import chisel3._
 import ysyx_26030103.ysyx_26030103
-import _root_.ysyx_26030103.common.ysyx_26030103_NPCConfig
-import _root_.ysyx_26030103.common.ysyx_26030103_MULImpl
-import _root_.ysyx_26030103.common.ysyx_26030103_MULEncoding
-import _root_.ysyx_26030103.common.ysyx_26030103_DIVImpl
+import _root_.ysyx_26030103.config._
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 import java.io.File
 import java.nio.file.{Files, Paths, StandardCopyOption}
@@ -84,7 +81,7 @@ object ysyx_26030103_Elaborate extends App {
   val PerfCounterIduStall = PerfGroupEnabled("PERF_COUNTER_IDU_STALL")
   val PerfCounterTrap = PerfGroupEnabled("PERF_COUNTER_TRAP")
   val PerfCounters: Set[String] =
-    ysyx_26030103_NPCConfig.AllPerfCounters.filter { name =>
+    ysyx_26030103_PerfCounterCatalog.AllPerfCounters.filter { name =>
       PerfStatsEnable && sys.env
         .getOrElse(s"PERF_COUNTER_${name.toUpperCase}", "y") == "y"
     }

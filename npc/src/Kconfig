@@ -1,0 +1,405 @@
+menu "硬件配置"
+
+  menu "指令集扩展"
+
+    config RV32_M
+      bool "M 扩展（乘/除/取余）"
+      default n
+      help
+        启用后生成MDU(乘法器+除法器)并在译码表加入M类指令;
+        关闭时M类指令按非法指令处理(cause=2)。
+        修改后需重新 make verilog。
+        difftest时NEMU必须使用相同ISA(如riscv32im)。
+
+    config RV32_A
+      bool "A 扩展（原子访存）(暂未实现)"
+      default n
+      help
+        尚未实现: 启用后 elaboration 会直接报错, 防止生成功能不完整的核。
+
+    config RV32_C
+      bool "C 扩展（压缩指令）(暂未实现)"
+      default n
+      help
+        尚未实现: 启用后 elaboration 会直接报错, 防止生成功能不完整的核。
+
+    menu "乘法器配置"
+      depends on RV32_M
+
+      choice
+        prompt "乘法器实现"
+        default MUL_SHIFT_ADD
+        help
+          多种实现共用同一个乘法接口, 通过 elaboration 期条件例化选出一种,
+          未选中的实现不会进入生成的RTL。
+          移位乘法器: 多周期移位累加, 内部单个加法器, 面积最小;
+          Wallace: 部分积压缩树+末级加法, 面积/时延较均衡;
+          Dadda: 压缩器更少但布线更复杂。
+      config MUL_SHIFT_ADD
+        bool "移位乘法器"
+      config MUL_WALLACE
+        bool "Wallace"
+      config MUL_DADDA
+        bool "Dadda"
+      endchoice
+
+      config MUL_IMPL
+        string
+        default "shift_add" if MUL_SHIFT_ADD
+        default "wallace" if MUL_WALLACE
+        default "dadda" if MUL_DADDA
+        default "shift_add"
+
+      choice
+        prompt "乘法部分积编码方式"
+        default MUL_ENCODING_PLAIN
+        help
+          编码方式是独立于乘法器结构的维度。
+          Booth编码可用于移位累加器、Wallace或Dadda压缩树。
+      config MUL_ENCODING_PLAIN
+        bool "普通部分积（非Booth）"
+      config MUL_ENCODING_BOOTH
+        bool "Booth编码"
+      endchoice
+
+      config MUL_ENCODING
+        string
+        default "plain" if MUL_ENCODING_PLAIN
+        default "booth" if MUL_ENCODING_BOOTH
+        default "plain"
+
+      config MUL_RADIX
+        int "乘法Booth基数"
+        default 4
+        depends on MUL_ENCODING_BOOTH
+        help
+          输入2、4、8、16等2的幂；elaboration会拒绝其他数值。
+
+    config MUL_WIDTH
+      int "乘法器后端操作数位宽"
+      default 32
+      range 32 128
+      help
+        控制乘法器后端的操作数位宽，必须是不小于32的2的幂(32/64/128);
+        RV32指令接口保持32位。小于32会截断ISA操作数，因此明确禁止。
+
+      config MUL_COMPRESSOR_INPUTS
+        int "压缩树通用GPC输入数K"
+        default 3
+        range 3 64
+        depends on MUL_WALLACE || MUL_DADDA
+        help
+          所有K使用同一生成路径；默认3仅用于保持现有配置行为。
+
+      config MUL_COMPRESSOR_OUTPUTS
+        int "压缩树通用GPC输出数R"
+        default 2
+        range 1 64
+        depends on MUL_WALLACE || MUL_DADDA
+
+      config MUL_COMPRESSOR_OUTPUT_OFFSETS
+        string "GPC每个主输出的目标列偏移(逗号分隔)"
+        default "0,1"
+        depends on MUL_WALLACE || MUL_DADDA
+
+      config MUL_COMPRESSOR_HAS_CIN
+        bool "GPC包含Cin输入"
+        default n
+        depends on MUL_WALLACE || MUL_DADDA
+
+      config MUL_COMPRESSOR_HAS_COUT
+        bool "GPC包含Cout输出"
+        default n
+        depends on MUL_WALLACE || MUL_DADDA
+
+      config MUL_COMPRESSOR_COUT_OFFSET
+        int "GPC Cout目标列偏移"
+        default 1
+        range 0 128
+        depends on MUL_COMPRESSOR_HAS_COUT
+
+      config MUL_COMPRESSOR_ALLOW_REDUNDANT
+        bool "允许GPC输出存在冗余表示"
+        default n
+        depends on MUL_WALLACE || MUL_DADDA
+
+      config MUL_SPLIT
+        int "移位乘法器复用因子（1=不拆分，2/4=减少每拍处理量）"
+        default 1
+        range 1 4
+        depends on MUL_SHIFT_ADD
+        help
+          拆成多个小块乘法器分时复用: 面积下降, 拍数上升。
+
+      config MUL_PIPELINE
+        int "压缩树内部流水级数（0=不插入内部流水）"
+        default 0
+        range 0 4
+        depends on MUL_WALLACE || MUL_DADDA
+        help
+          压缩网络按级数插流水寄存器;主要对Wallace/Dadda有效，
+          影响吞吐/延迟/面积, 接口需延迟无关。
+
+      config MUL_ITER_BITS
+        int "移位乘法器每拍处理的位数"
+        default 2 if MUL_ENCODING_BOOTH
+        default 1
+        range 1 8
+        depends on MUL_SHIFT_ADD
+        help
+          1位/拍面积最小, 4或8位/拍减少拍数; 仅对移位乘法器实现有效。
+
+      config MUL_EARLY_OUT
+        bool "高位为零时提前结束"
+        default n
+        depends on MUL_SHIFT_ADD
+        help
+          迭代乘法高位已全零时提前完成, 仅对移位乘法器实现有效。
+
+    endmenu
+
+    menu "除法器配置"
+      depends on RV32_M
+
+      choice
+        prompt "除法器实现"
+        default DIV_RESTORING
+        help
+          恢复余数法最直观; 不恢复余数法每拍少一次加减;
+          SRT基数越高每拍出更多商位, 但商数字选择逻辑更大。
+      config DIV_RESTORING
+        bool "恢复余数法"
+      config DIV_NONRESTORING
+        bool "不恢复余数法"
+      config DIV_SRT
+        bool "SRT除法"
+      endchoice
+
+      config DIV_IMPL
+        string
+        default "restoring" if DIV_RESTORING
+        default "nonrestoring" if DIV_NONRESTORING
+        default "srt" if DIV_SRT
+        default "restoring"
+
+    config DIV_RADIX
+      int "除法基数"
+      default 2
+      range 2 16
+      help
+        输入2、4、8、16；elaboration会拒绝其他数值。过大的基数会让
+        恢复余数后端静态展开过长的试减链，因此上限为16。
+
+      config DIV_ITER_BITS
+        int "每拍展开的基数数字数"
+        default 1
+        range 1 4
+        help
+          每拍连续处理的基数数字数; 越大拍数越少, 组合路径越长。
+
+      config DIV_EARLY_OUT
+        bool "提前结束"
+        default n
+        help
+          余数已为零或商已确定时提前完成。
+
+    endmenu
+
+  endmenu
+
+  menu "缓存"
+
+    config ICACHE
+      bool "开启指令缓存(ICache)"
+      default y
+      help
+        开启: 取指经过ICache(直接映射, 参数见下)。
+        关闭: 取指不做任何缓存, 每次取指直接发单拍AXI读(和数据通路一样),
+              ICache的存储阵列/标签/回填逻辑不会生成, 这部分面积消失。
+        修改后需重新 make verilog 以重新生成RTL。
+
+    config DCACHE
+      bool "开启数据缓存(DCache)"
+      default n
+      help
+        开启: 普通RAM的读操作经过直映射DCache(参数见下)，写操作采用
+              写直达且不写分配，并复用LSU写缓冲。
+              MMIO和其它非缓存地址始终直通AXI，不进入DCache。
+        关闭: LSU保持当前直连AXI访存路径，不生成DCache存储阵列/回填逻辑。
+        修改后需重新 make verilog 以重新生成RTL。
+
+    config CACHE_BLOCK_SIZE_LOG2
+      int "Cache块大小的log2（2^N字节）"
+      depends on ICACHE || DCACHE
+      default 4
+      range 2 6
+      help
+        2=4字节, 3=8字节, 4=16字节, 5=32字节, 6=64字节。
+        修改后需重新 make verilog 以重新生成RTL。
+
+    config CACHE_INDEX_BITS
+      int "Cache索引位宽（2^N个块）"
+      depends on ICACHE || DCACHE
+      default 5
+      range 1 10
+      help
+        1=2块, 5=32块, 10=1024块。
+        修改后需重新 make verilog 以重新生成RTL。
+
+  endmenu
+
+  menu "写缓冲 (LSU)"
+
+    config WBUF_DEPTH
+      int "写缓冲项数（必须是2的幂）"
+      default 4
+      range 1 16
+      help
+        写操作先入队、由后台异步写内存, 项数越多越能吸收连续写(栈/结构体/内存填充),
+        但触发器和组合逻辑面积也越大。
+        必须是2的幂: 1/2/4/8/16(环形队列按位回绕)。
+        修改后需重新 make verilog 以重新生成RTL。
+
+  endmenu
+
+  menu "分支预测 (BTB / RAS)"
+
+    config BTB_BITS
+      int "BTB索引位宽（2^N组）"
+      default 4
+      range 0 10
+      help
+        BTB组数=2^N。0=1组, 1=2组, 4=16组, 10=1024组。
+        修改后需重新 make verilog 以重新生成RTL。
+        建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_BTB_BITS保持一致, 以便用branchsim校准RTL。
+
+    config BTB_WAYS
+      int "BTB相联度（1=直接映射）"
+      default 1
+      range 1 8
+      help
+        每组表项数, 1=直接映射, 2=2路组相联, 以此类推。
+        修改后需重新 make verilog 以重新生成RTL。
+        建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_BTB_WAYS保持一致, 以便用branchsim校准RTL。
+
+    config JAL_BTB_BITS
+      int "jal BTB索引位宽（2^N组）"
+      default 4
+      range 0 10
+      help
+        jal专用BTB组数=2^N(方案B: 独立小表, 与分支BTB零干扰)。
+        0=1组, 4=16组。
+        修改后需重新 make verilog 以重新生成RTL。
+        建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_JAL_BTB_BITS保持一致, 以便用branchsim校准RTL。
+
+    config JAL_BTB_WAYS
+      int "jal BTB相联度（1=直接映射）"
+      default 1
+      range 1 8
+      help
+        每组表项数, 1=直接映射, 2=2路组相联, 以此类推。
+        修改后需重新 make verilog 以重新生成RTL。
+        建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_JAL_BTB_WAYS保持一致, 以便用branchsim校准RTL。
+
+    config RAS_BITS
+      int "返回地址栈(RAS)深度位宽（深度=2^N）"
+      default 4
+      range 0 8
+      help
+        RAS深度=2^N, 用于ret的跳转目标预测。0=1项, 4=16项,
+        branchsim评估显示8项即够用。
+        修改后需重新 make verilog 以重新生成RTL。
+        建议与branchsim(csrc/tools/branchsim/Kconfig)的CONFIG_RAS_BITS保持一致, 以便用branchsim校准RTL。
+
+  endmenu
+
+  menu "目标体系结构"
+
+    config CACHE_PADDING
+      int "ICache字节填充（用于对齐热点循环到cache块边界）"
+      default 0
+      range 0 15
+      help
+        在.text段前插入的空白字节数，用于调整代码在内存中的位置
+        使热点循环对齐到ICache块边界，以减少cache块的占用。
+        默认0表示不填充。需要结合性能计数器分析热点循环地址后设置。
+        仅对 npc 独立仿真路径（SIM_TOP=npc）生效：镜像整体后移N字节，
+        复位PC同步加N。SoC路径启动地址由RTL固定，不受此选项影响。
+
+  endmenu
+
+  menu "SoC 总线延迟模型"
+
+    config SYNTH_FREQ
+      int "综合目标频率 (MHz)"
+      default 450
+      range 1 10000
+      help
+        综合器尝试达到的目标频率。设置越高，综合器可能使用更多
+        面积换取更低的逻辑延迟。受限于工艺库和寄存器堆/加法器/SRAM等
+        关键部件的最大工作频率。
+        该值同时作为 APB/AXI 延迟模型的 CPU 频率传入 RTL，
+        修改后需重新 make verilog。
+
+    config APB_DEVICE_FREQ
+      int "APB设备频率 (MHz)"
+      default 100
+      range 1 10000
+      help
+        APB总线上外设（如SDRAM控制器）的运行频率。
+        用于APB延迟模块计算频率比校准访存延迟。
+
+    config APB_DELAY_SCALE
+      int "APB延迟缩放因子 S"
+      default 64
+      range 1 1048576
+      help
+        APB延迟模块中频率比累加的放大系数。
+
+    config AXI_DEVICE_FREQ
+      int "AXI设备频率 (MHz)"
+      default 100
+      range 1 10000
+      help
+        AXI总线上外设（如SDRAM控制器）的运行频率。
+        用于AXI延迟模块计算频率比校准访存延迟。
+
+    config AXI_DELAY_SCALE
+      int "AXI延迟缩放因子 S"
+      default 64
+      range 1 1048576
+      help
+        AXI延迟模块中频率比累加的放大系数。
+
+  endmenu
+
+  menu "外设 / NVBoard"
+
+    config NVBOARD
+      bool "启用 NVBoard (LED/数码管/拨码开关可视化)"
+      default n
+      help
+        链接 NVBoard，把 ysyxSoCFull 的 GPIO 引脚绑定到虚拟板卡的
+        LED/数码管/拨码开关。需要 SDL2 (libsdl2-dev libsdl2-image-dev
+        libsdl2-ttf-dev)，且 nvboard.a 要与本工程的 C++ 标准库 ABI 一致。
+        仅支持 SIM_TOP=soc；direct-NPC 顶层没有这些外设引脚，构建时会
+        明确拒绝该组合。
+
+    config NVBOARD_NXDC
+      string "NVBoard 约束文件(.nxdc)路径"
+      depends on NVBOARD
+      default "csrc/nvboard/gpio.nxdc"
+      help
+        描述 RTL 引脚到 NVBoard 组件的绑定关系
+
+    config NVBOARD_UPDATE_INTERVAL
+      int "每多少周期刷新一次 NVBoard GUI"
+      depends on NVBOARD
+      default 100
+      range 1 1000000
+      help
+        每周期都刷新太慢，隔 N 个周期调用一次 nvboard_update 折中
+
+  endmenu
+
+endmenu

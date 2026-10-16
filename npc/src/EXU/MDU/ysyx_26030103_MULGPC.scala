@@ -1,7 +1,7 @@
 package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
-import _root_.ysyx_26030103.common.ysyx_26030103_MULGPCConfig
+import _root_.ysyx_26030103.config.ysyx_26030103_MULGPCConfig
 
 // 参数化K:R通用并行计数器；具体输出编码在elaboration期由权重配置求解。
 class ysyx_26030103_MULGPC(val Config: ysyx_26030103_MULGPCConfig) extends Module {

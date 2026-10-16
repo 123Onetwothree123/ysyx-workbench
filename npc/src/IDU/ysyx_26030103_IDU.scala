@@ -1,7 +1,7 @@
 package ysyx_26030103.idu
 import chisel3._
 import chisel3.util._
-import _root_.ysyx_26030103.common.ysyx_26030103_NPCConfig
+import _root_.ysyx_26030103.config.ysyx_26030103_NPCConfig
 import _root_.ysyx_26030103.common.ysyx_26030103_opcode._
 import _root_.ysyx_26030103.common.ysyx_26030103_IFUMessage
 import _root_.ysyx_26030103.common.ysyx_26030103_IDUMessage

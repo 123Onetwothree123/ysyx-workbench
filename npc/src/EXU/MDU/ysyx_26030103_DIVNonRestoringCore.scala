@@ -2,7 +2,7 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
-import _root_.ysyx_26030103.common.ysyx_26030103_NPCConfig
+import _root_.ysyx_26030103.config._
 //通用2的幂基数不恢复余数除法器。
 class ysyx_26030103_DIVNonRestoringCore(
     config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置

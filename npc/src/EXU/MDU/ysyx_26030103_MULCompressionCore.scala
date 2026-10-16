@@ -2,6 +2,7 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
+import _root_.ysyx_26030103.config._
 //无符号部分积压缩树公共结构。
 private object ysyx_26030103_MULCompressionUtils {
   def PlainPartialProducts(LHS: UInt, RHS: UInt, OperandWidth: Int = 32, ProductWidth: Int = 64): IndexedSeq[UInt] = {

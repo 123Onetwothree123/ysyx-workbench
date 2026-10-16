@@ -1,183 +1,14 @@
-package ysyx_26030103.common
-//由Kconfig选择的乘法器结构。
-sealed trait ysyx_26030103_MULImpl {
-  def Name: String
-}
-object ysyx_26030103_MULImpl {
-  case object ShiftAdd extends ysyx_26030103_MULImpl {
-    val Name = "shift_add"
-  }
-  case object Wallace extends ysyx_26030103_MULImpl {
-    val Name = "wallace"
-  }
-  case object Dadda extends ysyx_26030103_MULImpl {
-    val Name = "dadda"
-  }
-  def FromString(s: String): ysyx_26030103_MULImpl = s match {
-    case "shift_add" => ShiftAdd
-    case "wallace" => Wallace
-    case "dadda" => Dadda
-    case other => throw new IllegalArgumentException(s"这个乘法器没有实现: $other")
-  }
-}
-//部分积编码与乘法器结构正交。
-sealed trait ysyx_26030103_MULEncoding {
-  def Name: String
-}
-object ysyx_26030103_MULEncoding {
-  case object Plain extends ysyx_26030103_MULEncoding {
-    val Name = "plain"
-  }
-  case object Booth extends ysyx_26030103_MULEncoding {
-    val Name = "booth"
-  }
-  def FromString(s: String): ysyx_26030103_MULEncoding = s match {
-    case "plain" => Plain
-    case "booth" => Booth
-    case other => throw new IllegalArgumentException(s"这个乘法编码没有实现: $other")
-  }
-}
-case class ysyx_26030103_MULGPCConfig(
-    Inputs: Int = 3,
-    Outputs: Int = 2,
-    OutputOffsets: IndexedSeq[Int] = IndexedSeq(0, 1),
-    HasCin: Boolean = false,
-    HasCout: Boolean = false,
-    CoutOffset: Int = 1,
-    AllowRedundant: Boolean = false
-) {
-  require(Inputs >= 3 && Inputs <= 64, "MUL GPC K必须在3到64之间")
-  require(Outputs >= 1 && Outputs <= 64, "MUL GPC R必须在1到64之间")
-  require(OutputOffsets.length == Outputs, "MUL GPC输出权重数量必须等于R")
-  require(OutputOffsets.forall(_ >= 0), "MUL GPC输出权重偏移必须非负")
-  require(CoutOffset >= 0, "MUL GPC Cout权重偏移必须非负")
-  final val InputCountWithCin: Int = Inputs + (if (HasCin) 1 else 0)
-  final val OutputCountWithCout: Int = Outputs + (if (HasCout) 1 else 0)
-  final val AllOutputOffsets: IndexedSeq[Int] =
-    OutputOffsets ++ (if (HasCout) IndexedSeq(CoutOffset) else IndexedSeq.empty)
-  private val OutputWeights: IndexedSeq[BigInt] =
-    AllOutputOffsets.map(Offset => BigInt(1) << Offset)
-  private def BetterEncoding(Left: BigInt, Right: BigInt): BigInt = {
-    val LeftBits = Left.bitCount
-    val RightBits = Right.bitCount
-    if (LeftBits < RightBits || (LeftBits == RightBits && Left < Right)) Left else Right
-  }
-  private def BuildEncodings(MaxInputSum: Int): IndexedSeq[BigInt] = {
-    val Counts = Array.fill(MaxInputSum + 1)(0)
-    val Best = Array.fill[Option[BigInt]](MaxInputSum + 1)(None)
-    Counts(0) = 1
-    Best(0) = Some(BigInt(0))
-    for ((weight, bit) <- OutputWeights.zipWithIndex if weight <= MaxInputSum) {
-      val W = weight.toInt
-      for (sum <- MaxInputSum to W by -1) {
-        if (Counts(sum - W) > 0) {
-          Counts(sum) = math.min(2, Counts(sum) + Counts(sum - W))
-          val Candidate = Best(sum - W).get | (BigInt(1) << bit)
-          Best(sum) = Best(sum).map(BetterEncoding(_, Candidate)).orElse(Some(Candidate))
-        }
-      }
-    }
-    (0 to MaxInputSum).map { sum =>
-      require(Best(sum).nonEmpty, s"MUL GPC配置无法精确表示输入和$sum")
-      require(
-        AllowRedundant || Counts(sum) == 1,
-        s"MUL GPC配置在输入和$sum 上存在多种输出编码；若这是有意的，请打开冗余表示"
-      )
-      Best(sum).get
-    }.toIndexedSeq
-  }
-  final val EncodingTable: IndexedSeq[BigInt] = BuildEncodings(InputCountWithCin)
-  def ActiveOutputBits(MaxDataInputs: Int, CinPossible: Boolean = false): IndexedSeq[Int] = {
-    val MaxSum = MaxDataInputs + (if (HasCin && CinPossible) 1 else 0)
-    val UsedMask = EncodingTable.take(MaxSum + 1).foldLeft(BigInt(0))(_ | _)
-    (0 until OutputCountWithCout).filter(Bit => ((UsedMask >> Bit) & 1) == 1).toIndexedSeq
-  }
-  final val FullActiveOutputBits: IndexedSeq[Int] = ActiveOutputBits(Inputs, HasCin)
-  require(
-    FullActiveOutputBits.length < InputCountWithCin,
-    "MUL GPC完整输入时必须减少dot数量"
-  )
-  def Describe: String = {
-    val CinDesc = if (HasCin) "+cin" else ""
-    val CoutDesc = if (HasCout) s"+cout@$CoutOffset" else ""
-    val RedundantDesc = if (AllowRedundant) ",redundant" else ""
-    s"$Inputs:$Outputs$CinDesc$CoutDesc@${OutputOffsets.mkString("[", ",", "]")}$RedundantDesc"
-  }
-}
-//由Kconfig选择的除法器结构。
-sealed trait ysyx_26030103_DIVImpl {
-  def Name: String
-}
-object ysyx_26030103_DIVImpl {
-  case object Restoring extends ysyx_26030103_DIVImpl {
-    val Name = "restoring"
-  }
-  case object NonRestoring extends ysyx_26030103_DIVImpl {
-    val Name = "nonrestoring"
-  }
-  case object SRT extends ysyx_26030103_DIVImpl {
-    val Name = "srt"
-  }
-  def FromString(Value: String): ysyx_26030103_DIVImpl = Value match {
-    case "restoring" => Restoring
-    case "nonrestoring" => NonRestoring
-    case "srt" => SRT
-    case other => throw new IllegalArgumentException(s"这个除法器没有实现: $other")
-  }
-}
-object ysyx_26030103_NPCConfig {
-  /** 性能计数器分组 → 组内单计数器键。
-    *
-    * 键名与Kconfig符号后缀（PERF_COUNTER_<键大写>）、RTL端口后缀以及
-    * C++宏名（CONFIG_PERF_COUNTER_<键大写>）一一对应。
-    */
-  val PerfCounterGroups: Seq[(String, Seq[String])] = Seq(
-    "basic" -> Seq("ifu_fetch", "exu_done", "lsu_load", "lsu_store"),
-    "opclass" -> Seq(
-      "alu_op",
-      "mem_op",
-      "csr_op",
-      "branch_op",
-      "jal_op",
-      "jalr_op",
-      "execution_active"
-    ),
-    "mdu" -> Seq("mdu_req", "mdu_done", "mdu_op", "mdu_active", "mdu_wait"),
-    "ifu_stall" -> Seq(
-      "ifu_stall_pipeline",
-      "ifu_stall_axi",
-      "ifu_stall_ar",
-      "ifu_stall_r",
-      "ifu_stall_redirect",
-      "ifu_stall_idle"
-    ),
-    "icache" -> Seq("icache_hit", "icache_miss"),
-    "dcache" -> Seq(
-      "dcache_hit",
-      "dcache_miss",
-      "dcache_refill_req",
-      "dcache_refill_resp"
-    ),
-    "exu_stall" -> Seq("exu_stall_lsu", "exu_idle_noinput", "mem_waitslot"),
-    "lsu" -> Seq(
-      "lsu_active",
-      "lsu_load_active",
-      "lsu_store_active",
-      "lsu_stall_read_ar",
-      "lsu_stall_read_r",
-      "lsu_stall_write_req",
-      "lsu_stall_write_b"
-    ),
-    "idu_stall" -> Seq(
-      "idu_stall_raw",
-      "idu_stall_raw_loaduse",
-      "idu_stall_raw_alu"
-    ),
-    "trap" -> Seq("trap_count")
-  )
-  val AllPerfCounters: Set[String] = PerfCounterGroups.flatMap(_._2).toSet
-}
+package ysyx_26030103.config
 
+import _root_.ysyx_26030103.common.ysyx_26030103_MULBoothConfig
+import _root_.ysyx_26030103.common.ysyx_26030103_PMARegion
+import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
+
+/** NPC 的全部elaboration期配置。
+  *
+  * 字段与Kconfig/环境变量一一对应（见 `ysyx_26030103_Elaborate`），并在此处
+  * 做统一合法性校验（require）与派生量计算（使能开关、最大在途数等）。
+  */
 case class ysyx_26030103_NPCConfig(
     UseM: Boolean = false,
     UseA: Boolean = false,
@@ -247,7 +78,8 @@ case class ysyx_26030103_NPCConfig(
     PerfCounterTrap: Boolean = true,
     // 单计数器选择：键名如"ifu_fetch"/"mdu_req"。实际生效集合还要与
     // 主开关及所属组总开关相与（见EnabledPerfCounters）。
-    PerfCounters: Set[String] = ysyx_26030103_NPCConfig.AllPerfCounters
+    PerfCounters: Set[String] =
+      ysyx_26030103_PerfCounterCatalog.AllPerfCounters
 ) {
   require(!UseA, "RV32_A还没有做")
   require(!UseC, "RV32_C还没做")
@@ -352,7 +184,7 @@ case class ysyx_26030103_NPCConfig(
   final val EnabledPerfCounters: Set[String] = {
     if (!PerfStatsEnable) { Set.empty }
     else {
-      ysyx_26030103_NPCConfig.PerfCounterGroups.flatMap {
+      ysyx_26030103_PerfCounterCatalog.PerfCounterGroups.flatMap {
         case (group, counters) =>
           if (PerfCounterGroupFlags(group)) {
             counters.filter(PerfCounters.contains(_))
@@ -392,13 +224,14 @@ case class ysyx_26030103_NPCConfig(
   private def PerfCounterList: String = {
     if (!PerfStatsEnable) { "off" }
     else {
-      val EnabledGroups = ysyx_26030103_NPCConfig.PerfCounterGroups.collect {
-        case (group, _) if PerfCounterGroupFlags(group) => group
-      }
+      val EnabledGroups =
+        ysyx_26030103_PerfCounterCatalog.PerfCounterGroups.collect {
+          case (group, _) if PerfCounterGroupFlags(group) => group
+        }
       val GroupText =
         if (EnabledGroups.isEmpty) { "none" }
         else { EnabledGroups.mkString("+") }
-      s"$GroupText(${EnabledPerfCounters.size}/${ysyx_26030103_NPCConfig.AllPerfCounters.size})"
+      s"$GroupText(${EnabledPerfCounters.size}/${ysyx_26030103_PerfCounterCatalog.AllPerfCounters.size})"
     }
   }
   def Describe: String = {

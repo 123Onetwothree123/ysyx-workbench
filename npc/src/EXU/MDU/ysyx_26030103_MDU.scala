@@ -2,6 +2,7 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
+import _root_.ysyx_26030103.config._
 //MDU请求。
 class ysyx_26030103_MDURequest extends Bundle {
   val LHS = UInt(32.W) //左操作数

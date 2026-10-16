@@ -2,6 +2,7 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
+import _root_.ysyx_26030103.config._
 class ysyx_26030103_EXU(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends Module {

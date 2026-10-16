@@ -1,6 +1,7 @@
 package ysyx_26030103.exu
 import chisel3._
 import _root_.ysyx_26030103.common._
+import _root_.ysyx_26030103.config._
 //按MULImpl选择乘法后端。
 object ysyx_26030103_MULCoreFactory {
   def Create(config: ysyx_26030103_NPCConfig): ysyx_26030103_MULCore = {

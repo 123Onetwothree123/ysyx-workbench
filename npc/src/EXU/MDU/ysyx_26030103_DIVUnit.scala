@@ -1,6 +1,7 @@
 package ysyx_26030103.exu
 import chisel3._
 import _root_.ysyx_26030103.common._
+import _root_.ysyx_26030103.config._
 //DIV ISA适配层。
 class ysyx_26030103_DIVUnit(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置

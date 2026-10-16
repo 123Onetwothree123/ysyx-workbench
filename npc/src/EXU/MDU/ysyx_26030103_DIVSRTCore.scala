@@ -2,7 +2,7 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
-import _root_.ysyx_26030103.common.ysyx_26030103_NPCConfig
+import _root_.ysyx_26030103.config._
 //参数化SRT除法器，使用精确比较选择冗余商数字。
 class ysyx_26030103_DIVSRTCore(
     config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
