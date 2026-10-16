@@ -4,6 +4,7 @@
 !Makefile
 !*.mk
 !Kconfig
+!Kconfig.*
 !*.scala
 !*.[cSh]
 !*.v

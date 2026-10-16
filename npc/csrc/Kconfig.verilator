@@ -1,0 +1,138 @@
+menu "Verilator 仿真"
+
+  menu "构建与并行"
+
+    config BUILD_THREADS
+      int "构建线程数，0 = 使用全部核心"
+      default 0
+      help
+        设置Verilator并行构建的线程数
+        0表示使用所有可用核心
+        超过系统核心数的值将被限制为系统核心数
+
+    config SIM_THREADS
+      int "仿真线程数，0 = 全部核心，1 = 单线程"
+      default 1
+      help
+        设置Verilator运行仿真时使用的线程数
+        0表示使用所有可用核心
+        1表示单线程，这是默认值，也是最稳妥的选择
+        超过系统核心数的值将被限制为系统核心数
+        由于存在线程同步开销，多线程仿真不一定更快
+
+    config OUTPUT_SPLIT
+      int "输出文件拆分大小（行数），0 = 不拆分"
+      default 20000
+      help
+        设置Verilator的--output-split参数
+        将生成的C++文件按行数拆分成多个小文件
+        有助于并行编译加速，建议值20000
+        0表示不拆分
+
+  endmenu
+
+  menu "波形追踪"
+
+    choice
+      prompt "波形追踪"
+      default TRACE_NONE
+    config TRACE_NONE
+      bool "不生成波形"
+    config TRACE_VCD
+      bool "VCD --trace"
+    config TRACE_FST
+      bool "FST --trace-fst"
+    endchoice
+
+    config TRACE_DEPTH
+      int "波形追踪深度，0 = 全部层级"
+      default 0
+      depends on !TRACE_NONE
+      help
+        设置Verilator波形追踪的--trace-depth层级
+        0表示追踪所有层级
+
+    config TRACE_FILE
+      string "波形输出文件路径"
+      default "oscillogram/waveform.vcd" if TRACE_VCD
+      default "oscillogram/waveform.fst" if TRACE_FST
+      depends on !TRACE_NONE
+      help
+        波形文件的输出路径，相对于npc目录
+
+  endmenu
+
+  menu "仿真行为"
+
+    choice
+      prompt "Verilator优化级别"
+      default VERILATOR_O3
+    config VERILATOR_O0
+      bool "O0"
+    config VERILATOR_O1
+      bool "O1"
+    config VERILATOR_O2
+      bool "O2"
+    config VERILATOR_O3
+      bool "O3"
+    endchoice
+
+    config VERILATOR_OPT
+      string
+      default "-O0" if VERILATOR_O0
+      default "-O1" if VERILATOR_O1
+      default "-O2" if VERILATOR_O2
+      default "-O3" if VERILATOR_O3
+      default "-O3"
+
+    config PROF_CFUNCS
+      bool "启用性能分析--prof-cfuncs"
+      default n
+
+    config AUTOFLUSH
+      bool "启用自动刷新--autoflush"
+      default y
+      help
+        每个周期结束后自动刷新输出流
+        禁用此项可能提升性能，但如果仿真崩溃，波形可能不完整
+
+    config ASSERT
+      bool "启用SystemVerilog断言--assert"
+      default n
+      help
+        启用RTL设计中的SVA断言
+        为提高性能，默认使用--noassert
+
+    choice
+      prompt "X赋值模式--x-assign"
+      default X_ASSIGN_FAST
+    config X_ASSIGN_FAST
+      bool "fast"
+    config X_ASSIGN_0
+      bool "0"
+    config X_ASSIGN_1
+      bool "1"
+    config X_ASSIGN_UNIQUE
+      bool "unique"
+    endchoice
+
+    choice
+      prompt "X初始值模式--x-initial"
+      default X_INITIAL_FAST
+    config X_INITIAL_FAST
+      bool "fast"
+    config X_INITIAL_0
+      bool "0"
+    config X_INITIAL_1
+      bool "1"
+    config X_INITIAL_UNIQUE
+      bool "unique"
+    endchoice
+
+    config COVERAGE
+      bool "启用RTL覆盖率统计--coverage"
+      default n
+
+  endmenu
+
+endmenu
