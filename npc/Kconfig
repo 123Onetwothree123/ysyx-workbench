@@ -1,11 +1,10 @@
 mainmenu "NPC配置菜单"
 
-# 按 Linux 模式拆分：顶层只保留 mainmenu 与 source；每个菜单的 Kconfig
-# 放在被配置的目录旁（csrc=仿真器C++、src=硬件RTL、scripts=构建/综合），
-# 跨模块主题沿用 Kconfig.<topic> 命名。
-source "csrc/Kconfig"            # C++ 配置（工具链/语言标准/编译选项）
-source "csrc/Kconfig.log"        # 日志
-source "csrc/Kconfig.verilator"  # Verilator 仿真
-source "src/Kconfig"             # 硬件配置（ISA/乘法器/缓存/外设）
-source "src/Kconfig.debug"       # 运行时调试（SDB/追踪/性能计数器）
-source "scripts/Kconfig.synth"   # 综合 (Synthesis)
+# 拆分文件统一放在 kconfig/ 目录（整目录已在 .gitignore 白名单内），顶层
+# 只保留 mainmenu 与 source；source 路径相对 npc/ 根目录解析。
+source "kconfig/Kconfig.cpp"       # C++ 配置（工具链/语言标准/编译选项）
+source "kconfig/Kconfig.log"       # 日志
+source "kconfig/Kconfig.verilator" # Verilator 仿真
+source "kconfig/Kconfig.hardware"  # 硬件配置（ISA/乘法器/缓存/外设）
+source "kconfig/Kconfig.debug"     # 运行时调试（SDB/追踪/性能计数器）
+source "kconfig/Kconfig.synth"     # 综合 (Synthesis)
