@@ -3,12 +3,19 @@
 static void *pf = NULL;
 
 void* new_page(size_t nr_page) {
-  return NULL;
+  // return NULL;
+  void *ret = pf;                     // 新分配区的起始位置（即旧的位置）
+  pf = (char *)pf + nr_page * PGSIZE; // 顺序分配，分配后无需回收
+  return ret;
 }
 
 #ifdef HAS_VME
 static void* pg_alloc(int n) {
-  return NULL;
+  // return NULL;
+  assert(n % PGSIZE == 0);   // AM 保证申请的空间是页面大小的整数倍（参数是字节数）
+  void *p = new_page(n / PGSIZE);
+  memset(p, 0, n);           // 分配的页面需要清零
+  return p;
 }
 #endif
 

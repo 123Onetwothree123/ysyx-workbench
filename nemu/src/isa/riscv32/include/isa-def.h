@@ -46,6 +46,7 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
   */
   word_t mstatus;
   vaddr_t mtvec; // 存放异常入口地址的
+  word_t satp;   // Sv32 页目录基地址与分页使能位（bit 31 为 MODE）
 } MUXDEF(CONFIG_RV64, riscv64_CPU_state, riscv32_CPU_state);
 
 // decode
@@ -54,6 +55,8 @@ typedef struct
   uint32_t inst;
 } MUXDEF(CONFIG_RV64, riscv64_ISADecodeInfo, riscv32_ISADecodeInfo);
 
-#define isa_mmu_check(vaddr, len, type) (MMU_DIRECT)
+// #define isa_mmu_check(vaddr, len, type) (MMU_DIRECT)
+// 分页模式由 satp.MODE(bit 31) 决定：1 表示 Sv32 分页开启（PA 简化：M 模式也进行地址转换）
+#define isa_mmu_check(vaddr, len, type) (BITS(cpu.satp, 31, 31) ? MMU_TRANSLATE : MMU_DIRECT)
 
 #endif

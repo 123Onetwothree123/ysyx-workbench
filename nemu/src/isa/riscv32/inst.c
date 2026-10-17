@@ -75,6 +75,7 @@ static word_t csr_read(word_t address)
   case 0x305: return cpu.mtvec;
   case 0x341: return cpu.mepc;
   case 0x342: return cpu.mcause;
+  case 0x180: return cpu.satp;
   case 0xb00: return (word_t)g_nr_guest_inst;
   case 0xb80: return (word_t)(g_nr_guest_inst >> 32);
   default: panic("Unknown CSR 0x%x", address); return 0;
@@ -93,6 +94,7 @@ static void csr_write(word_t address, word_t value)
   case 0x305: cpu.mtvec = mtvec_warl(value); return;
   case 0x341: cpu.mepc = mepc_warl(value); return;
   case 0x342: cpu.mcause = value; return;
+  case 0x180: cpu.satp = value; return;
   /* mcycle is nondeterministic relative to RTL wall-clock cycles.  NPC's
    * online DiffTest result-injects these instructions, but retaining writes
    * here makes standalone NEMU's supported CSR set match the decoder. */

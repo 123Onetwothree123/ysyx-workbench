@@ -37,6 +37,7 @@ static void restart()
   cpu.mtvec = 0;
   cpu.mepc = 0;
   cpu.mcause = 0;
+  cpu.satp = 0; /* 分页关闭（MODE=0）：启动阶段直接使用物理地址 */
 }
 
 void init_isa()

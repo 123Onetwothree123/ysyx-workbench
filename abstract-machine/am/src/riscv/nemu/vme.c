@@ -67,6 +67,22 @@ void __am_switch(Context *c) {
 }
 
 void map(AddrSpace *as, void *va, void *pa, int prot) {
+  // Sv32 两级页表：as->ptr 是页目录（第一级页表）的基地址
+  uintptr_t *pgdir = (uintptr_t *)as->ptr;
+  uint32_t vpn1 = ((uintptr_t)va >> 22) & 0x3ff; // 虚拟地址的 vpn[1]
+  uint32_t vpn0 = ((uintptr_t)va >> 12) & 0x3ff; // 虚拟地址的 vpn[0]
+
+  uintptr_t *pgtbl;
+  if (pgdir[vpn1] & PTE_V) {
+    // 第二级页表已存在：从页目录项中取出它的物理页号
+    pgtbl = (uintptr_t *)((pgdir[vpn1] >> 10) << 12);
+  } else {
+    // 申请一页空闲的物理页作为新的页表，并把它的物理页号记录到页目录项中
+    pgtbl = (uintptr_t *)pgalloc_usr(PGSIZE);
+    pgdir[vpn1] = (((uintptr_t)pgtbl >> 12) << 10) | PTE_V;
+  }
+  // 填写页表项：物理页号 + 权限位（PA 不实现保护机制，prot 暂不使用，统一给 RWX）
+  pgtbl[vpn0] = (((uintptr_t)pa >> 12) << 10) | PTE_V | PTE_R | PTE_W | PTE_X;
 }
 
 Context *ucontext(AddrSpace *as, Area kstack, void *entry) {
