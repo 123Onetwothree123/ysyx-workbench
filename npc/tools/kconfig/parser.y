@@ -28,7 +28,7 @@ static bool zconf_endtoken(const char *tokenname,
 
 struct symbol *symbol_hash[SYMBOL_HASHSIZE];
 
-struct menu *current_menu, *current_entry;
+struct menu *current_menu, *current_entry, *current_choice;
 
 %}
 
@@ -151,6 +151,18 @@ config_entry_start: T_CONFIG nonconst_symbol T_EOL
 
 config_stmt: config_entry_start config_option_list
 {
+	if (current_choice) {
+		if (!current_entry->prompt) {
+			fprintf(stderr, "%s:%d: error: choice member must have a prompt\n",
+				current_entry->file->name, current_entry->lineno);
+			yynerrs++;
+		}
+		if (current_entry->sym->type != S_BOOLEAN) {
+			fprintf(stderr, "%s:%d: error: choice member must be bool\n",
+				current_entry->file->name, current_entry->lineno);
+			yynerrs++;
+		}
+	}
 	printd(DEBUG_PARSE, "%s:%d:endconfig\n", zconf_curname(), zconf_lineno());
 };
 
@@ -166,7 +178,7 @@ menuconfig_stmt: menuconfig_entry_start config_option_list
 	if (current_entry->prompt)
 		current_entry->prompt->type = P_MENU;
 	else
-		zconfprint("warning: menuconfig statement without prompt");
+		zconf_error("menuconfig statement without prompt");
 	printd(DEBUG_PARSE, "%s:%d:endconfig\n", zconf_curname(), zconf_lineno());
 };
 
@@ -254,11 +266,18 @@ choice: T_CHOICE word_opt T_EOL
 
 choice_entry: choice choice_option_list
 {
+	if (!current_entry->prompt) {
+		fprintf(stderr, "%s:%d: error: choice must have a prompt\n",
+			current_entry->file->name, current_entry->lineno);
+		yynerrs++;
+	}
 	$$ = menu_add_menu();
+	current_choice = current_entry;
 };
 
 choice_end: end
 {
+	current_choice = NULL;
 	if (zconf_endtoken($1, "choice")) {
 		menu_end_menu();
 		printd(DEBUG_PARSE, "%s:%d:endchoice\n", zconf_curname(), zconf_lineno());
@@ -322,7 +341,7 @@ if_entry: T_IF expr T_EOL
 {
 	printd(DEBUG_PARSE, "%s:%d:if\n", zconf_curname(), zconf_lineno());
 	menu_add_entry(NULL);
-	menu_add_dep($2);
+	menu_add_dep($2, NULL);
 	$$ = menu_add_menu();
 };
 
@@ -407,23 +426,23 @@ help: help_start T_HELPTEXT
 {
 	if (current_entry->help) {
 		free(current_entry->help);
-		zconfprint("warning: '%s' defined with more than one help text -- only the last one will be used",
-			   current_entry->sym->name ?: "<choice>");
+		zconf_error("'%s' defined with more than one help text",
+			    current_entry->sym->name ?: "<choice>");
 	}
 
 	/* Is the help text empty or all whitespace? */
 	if ($2[strspn($2, " \f\n\r\t\v")] == '\0')
-		zconfprint("warning: '%s' defined with blank help text",
-			   current_entry->sym->name ?: "<choice>");
+		zconf_error("'%s' defined with blank help text",
+			    current_entry->sym->name ?: "<choice>");
 
 	current_entry->help = $2;
 };
 
 /* depends option */
 
-depends: T_DEPENDS T_ON expr T_EOL
+depends: T_DEPENDS T_ON expr if_expr T_EOL
 {
-	menu_add_dep($3);
+	menu_add_dep($3, $4);
 	printd(DEBUG_PARSE, "%s:%d:depends on\n", zconf_curname(), zconf_lineno());
 };
 
@@ -533,6 +552,37 @@ static int transitional_check_sanity(const struct menu *menu)
 	return 0;
 }
 
+/**
+ * choice_check_sanity - 检查 choice 成员的合法性（对齐新版 Linux）
+ *
+ * @menu: choice 成员的 menu
+ *
+ * Return: -1 表示发现错误，0 表示正常。
+ */
+static int choice_check_sanity(const struct menu *menu)
+{
+	struct property *prop;
+	int ret = 0;
+
+	for (prop = menu->sym->prop; prop; prop = prop->next) {
+		if (prop->type == P_DEFAULT) {
+			fprintf(stderr, "%s:%d: error: %s",
+				prop->file->name, prop->lineno,
+				"defaults for choice values not supported\n");
+			ret = -1;
+		}
+
+		if (prop->menu != menu && prop->type == P_PROMPT) {
+			fprintf(stderr, "%s:%d: error: %s",
+				prop->file->name, prop->lineno,
+				"choice value must not have a prompt in another entry\n");
+			ret = -1;
+		}
+	}
+
+	return ret;
+}
+
 static int transitional_check_menus(struct menu *menu)
 {
 	int errors = 0;
@@ -540,6 +590,12 @@ static int transitional_check_menus(struct menu *menu)
 	for (; menu; menu = menu->next) {
 		if (transitional_check_sanity(menu))
 			errors++;
+		if (menu->sym && sym_is_choice(menu->sym)) {
+			struct menu *child;
+			for (child = menu->list; child; child = child->next)
+				if (child->sym && choice_check_sanity(child))
+					errors++;
+		}
 		if (menu->list)
 			errors += transitional_check_menus(menu->list);
 	}

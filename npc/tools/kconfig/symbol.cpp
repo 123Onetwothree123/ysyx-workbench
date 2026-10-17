@@ -329,6 +329,8 @@ static struct symbol *sym_calc_choice(struct symbol *sym)
 	return def_sym;
 }
 
+static int sym_warnings;
+
 static void sym_warn_unmet_dep(struct symbol *sym)
 {
 	struct gstr gs = str_new();
@@ -349,6 +351,15 @@ static void sym_warn_unmet_dep(struct symbol *sym)
 
 	fputs(str_get(&gs), stderr);
 	str_free(&gs);
+	sym_warnings++;
+}
+
+/* 依赖告警出现时，若设置了 KCONFIG_WERROR 则以非 0 退出（对齐新版 Linux） */
+bool sym_dep_errors(void)
+{
+	if (sym_warnings)
+		return getenv("KCONFIG_WERROR");
+	return false;
 }
 
 void sym_calc_value(struct symbol *sym)

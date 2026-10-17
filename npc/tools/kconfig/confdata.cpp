@@ -135,6 +135,14 @@ static void conf_warning(const char *fmt, ...)
 	conf_warnings++;
 }
 
+/* 有警告时，若设置了 KCONFIG_WERROR 则以非 0 退出（对齐新版 Linux） */
+bool conf_errors(void)
+{
+	if (conf_warnings)
+		return getenv("KCONFIG_WERROR");
+	return false;
+}
+
 static void conf_default_message_callback(const char *s)
 {
 	printf("#\n# ");
@@ -189,6 +197,14 @@ static void conf_changed_input_warning(const char *s)
 	fputs(s, stderr);
 }
 
+/* 该警告默认关闭，由环境变量 KCONFIG_WARN_CHANGED_INPUT 开启（对齐新版 Linux） */
+static bool conf_warn_changed_input_enabled(void)
+{
+	const char *env = getenv("KCONFIG_WARN_CHANGED_INPUT");
+
+	return env && *env;
+}
+
 static const char *sym_get_user_value_string(struct symbol *sym)
 {
 	switch (sym->type) {
@@ -236,6 +252,8 @@ static void conf_append_changed_input_warning(std::string &msg,
 					      struct symbol *sym,
 					      bool &changed_input_found)
 {
+	if (!conf_warn_changed_input_enabled())
+		return;
 	if (!sym_user_value_changed(sym))
 		return;
 
@@ -347,20 +365,54 @@ int conf_read_simple(const char *name, int def)
 {
 	std::ifstream in;
 	std::string line;
+	std::string defconfig_candidate;
 	char *lp, *p;
 	struct symbol *sym;
 	int i, def_flags;
+	const char *warn_unknown;
+
+	warn_unknown = getenv("KCONFIG_WARN_UNKNOWN_SYMBOLS");
 
 	if (name) {
 		in = conf_open_file(name);
 	} else {
 		struct property *prop;
+		const char *env;
 
 		name = conf_get_configname();
 		in = conf_open_file(name);
 		if (in.is_open())
 			goto load;
 		sym_add_change_count(1);
+
+		/*
+		 * 先尝试环境变量 KCONFIG_DEFCONFIG_LIST 提供的候选默认配置
+		 * （对齐新版 Linux；旧的 option defconfig_list 机制保留在后面）。
+		 */
+		env = getenv("KCONFIG_DEFCONFIG_LIST");
+		while (env && *env) {
+			const char *p;
+
+			while (isspace(static_cast<unsigned char>(*env)))
+				env++;
+			if (!*env)
+				break;
+
+			p = env;
+			while (*p && !isspace(static_cast<unsigned char>(*p)))
+				p++;
+
+			defconfig_candidate.assign(env, p - env);
+			env = (*p == '\0') ? p : p + 1;
+
+			in = conf_open_file(defconfig_candidate.c_str());
+			if (in.is_open()) {
+				name = defconfig_candidate.c_str();
+				conf_message("using defaults found in %s", name);
+				goto load;
+			}
+		}
+
 		if (!sym_defconfig_list)
 			return 1;
 
@@ -463,8 +515,12 @@ load:
 					 * include/config/foo.h must be touched.
 					 */
 					conf_touch_dep(lp + strlen(CONFIG_));
-				else
+				else {
+					if (warn_unknown)
+						conf_warning("unknown symbol: %s",
+							     lp + strlen(CONFIG_));
 					sym_add_change_count(1);
+				}
 				continue;
 			}
 
@@ -1408,8 +1464,22 @@ void conf_rewrite_mod_or_yes(enum conf_def_mode mode)
 {
 	struct symbol *sym;
 	int i;
-	tristate old_val = (mode == def_y2m) ? yes : mod;
-	tristate new_val = (mode == def_y2m) ? mod : yes;
+	tristate old_val, new_val;
+
+	switch (mode) {
+	case def_y2m:
+		old_val = yes;
+		new_val = mod;
+		break;
+	case def_m2y:
+		old_val = mod;
+		new_val = yes;
+		break;
+	default: /* def_m2n */
+		old_val = mod;
+		new_val = no;
+		break;
+	}
 
 	for_all_symbols(i, sym) {
 		if (sym_get_type(sym) == S_TRISTATE &&

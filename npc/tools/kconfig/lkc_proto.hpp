@@ -16,6 +16,7 @@ int conf_write_autoconf(int overwrite);
 [[nodiscard]] bool conf_get_changed(void);
 void conf_set_changed_callback(void (*fn)(void));
 void conf_set_message_callback(void (*fn)(const char *s));
+bool conf_errors(void);
 
 /* symbol.c */
 extern struct symbol * symbol_hash[SYMBOL_HASHSIZE];
@@ -25,6 +26,7 @@ struct symbol * sym_find(const char *name);
 std::string sym_escape_string_value(const char *in);
 struct symbol ** sym_re_search(const char *pattern);
 const char * sym_type_name(enum symbol_type type);
+bool sym_dep_errors(void);
 void sym_calc_value(struct symbol *sym);
 enum symbol_type sym_get_type(struct symbol *sym);
 bool sym_tristate_within_range(struct symbol *sym,tristate tri);

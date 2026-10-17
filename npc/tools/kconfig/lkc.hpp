@@ -48,6 +48,7 @@ enum conf_def_mode {
 	def_mod,
 	def_y2m,
 	def_m2y,
+	def_m2n,
 	def_no,
 	def_random
 };
@@ -80,7 +81,8 @@ static inline void xfwrite(const void *str, size_t len, size_t count, FILE *out)
 }
 
 /* util.c */
-struct file *file_lookup(const char *name);
+struct file *file_lookup(const char *name, const char *parent_name,
+			 int parent_lineno);
 [[nodiscard]] void *xmalloc(size_t size);
 [[nodiscard]] void *xcalloc(size_t nmemb, size_t size);
 [[nodiscard]] void *xrealloc(void *p, size_t size);
@@ -111,7 +113,7 @@ void menu_warn(struct menu *menu, const char *fmt, ...);
 struct menu *menu_add_menu(void);
 void menu_end_menu(void);
 void menu_add_entry(struct symbol *sym);
-void menu_add_dep(struct expr *dep);
+void menu_add_dep(struct expr *dep, struct expr *cond);
 void menu_add_visibility(struct expr *dep);
 struct property *menu_add_prompt(enum prop_type type, char *prompt, struct expr *dep);
 void menu_add_expr(enum prop_type type, struct expr *expr, struct expr *dep);

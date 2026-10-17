@@ -15,6 +15,8 @@ struct file {
 	struct file *parent;
 	const char *name;
 	int lineno;
+	const char *parent_name; /* 首次包含它的文件（用于重复包含报错） */
+	int parent_lineno;       /* 首次包含它的行号 */
 };
 
 enum class tristate {

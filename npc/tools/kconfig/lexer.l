@@ -281,8 +281,10 @@ repeat:
 			 * terminator in Kconfig, but it is not always true
 			 * because \n could be escaped by a backslash.
 			 */
-			current_pos.file = current_file;
-			current_pos.lineno = yylineno;
+			if (current_file) {
+				current_pos.file = current_file;
+				current_pos.lineno = yylineno;
+			}
 		}
 	}
 
@@ -306,8 +308,11 @@ static char *expand_token(const char *in, size_t n)
 	new_string();
 	append_string(in, n);
 
-	/* get the whole line because we do not know the end of token. */
-	while ((c = input()) != EOF) {
+	/*
+	 * get the whole line because we do not know the end of token.
+	 * input() returns 0 (not EOF!) when it reaches the end of file.
+	 */
+	while ((c = input()) != 0) {
 		if (c == '\n') {
 			unput(c);
 			break;
@@ -398,14 +403,13 @@ void zconf_initscan(const char *name)
 	current_buf = (buffer*)xmalloc(sizeof(*current_buf));
 	memset(current_buf, 0, sizeof(*current_buf));
 
-	current_file = file_lookup(name);
+	current_file = file_lookup(name, NULL, 0);
 	yylineno = 1;
 }
 
 void zconf_nextfile(const char *name)
 {
-	struct file *iter;
-	struct file *file = file_lookup(name);
+	struct file *file = file_lookup(name, zconf_curname(), zconf_lineno());
 	struct buffer *buf = (buffer*)xmalloc(sizeof(*buf));
 	memset(buf, 0, sizeof(*buf));
 
@@ -422,22 +426,6 @@ void zconf_nextfile(const char *name)
 
 	current_file->lineno = yylineno;
 	file->parent = current_file;
-
-	for (iter = current_file; iter; iter = iter->parent) {
-		if (!strcmp(iter->name, file->name)) {
-			fprintf(stderr,
-				"Recursive inclusion detected.\n"
-				"Inclusion path:\n"
-				"  current file : %s\n", file->name);
-			iter = file;
-			do {
-				iter = iter->parent;
-				fprintf(stderr, "  included from: %s:%d\n",
-					iter->name, iter->lineno - 1);
-			} while (strcmp(iter->name, file->name));
-			exit(1);
-		}
-	}
 
 	yylineno = 1;
 	current_file = file;

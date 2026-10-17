@@ -14,19 +14,34 @@ using namespace std;
 #include "lkc.hpp"
 
 /* file already present in list? If not add it */
-struct file *file_lookup(const char *name)
+struct file *file_lookup(const char *name, const char *parent_name,
+			 int parent_lineno)
 {
 	struct file *file;
 
 	for (file = file_list; file; file = file->next) {
 		if (!strcmp(name, file->name)) {
-			return file;
+			if (!parent_name)
+				return file;
+
+			/* 同一文件被重复包含（对齐新版 Linux：直接报错） */
+			fprintf(stderr,
+				"%s:%d: error: repeated inclusion of %s\n",
+				parent_name, parent_lineno, file->name);
+			if (file->parent_name)
+				fprintf(stderr,
+					"%s:%d: note: location of first inclusion of %s\n",
+					file->parent_name, file->parent_lineno,
+					file->name);
+			exit(1);
 		}
 	}
 
 	file = static_cast<struct file*>(xmalloc(sizeof(*file)));
 	memset(file, 0, sizeof(*file));
 	file->name = xstrdup(name);
+	file->parent_name = parent_name ? xstrdup(parent_name) : nullptr;
+	file->parent_lineno = parent_lineno;
 	file->next = file_list;
 	file_list = file;
 	return file;

@@ -109,8 +109,17 @@ static struct expr *rewrite_m(struct expr *e)
 	return e;
 }
 
-void menu_add_dep(struct expr *dep)
+void menu_add_dep(struct expr *dep, struct expr *cond)
 {
+	if (cond) {
+		/*
+		 * "depends on X if Y" 的语义（对齐新版 Linux）：
+		 *	Y != n --> X
+		 *	Y == n --> y
+		 * 化简为: (X || (Y == n))
+		 */
+		dep = expr_alloc_or(dep, expr_trans_compare(cond, E_EQUAL, &symbol_no));
+	}
 	current_entry->dep = expr_alloc_and(current_entry->dep, dep);
 }
 

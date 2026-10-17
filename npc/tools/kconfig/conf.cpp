@@ -37,6 +37,7 @@ enum class input_mode {
 	olddefconfig,
 	yes2modconfig,
 	mod2yesconfig,
+	mod2noconfig,
 };
 
 /* Bare-enumerator compatibility aliases (getopt/case-label readability). */
@@ -55,6 +56,7 @@ inline constexpr input_mode helpnewconfig = input_mode::helpnewconfig;
 inline constexpr input_mode olddefconfig  = input_mode::olddefconfig;
 inline constexpr input_mode yes2modconfig = input_mode::yes2modconfig;
 inline constexpr input_mode mod2yesconfig = input_mode::mod2yesconfig;
+inline constexpr input_mode mod2noconfig = input_mode::mod2noconfig;
 static enum input_mode input_mode = oldaskconfig;
 
 static int indent = 1;
@@ -179,6 +181,19 @@ static int conf_string(struct menu *menu)
 		}
 		if (def && sym_set_string_value(sym, def))
 			return 0;
+
+		/*
+		 * 新的 int/hex 符号如果默认值校验失败，空回答无法设置它；
+		 * 当标准输入耗尽（非交互的 oldconfig/syncconfig）时，
+		 * 反复询问会死循环并不断增长输出直到内存耗尽。
+		 * 这里带符号名报错退出（对齐新版 Linux）。
+		 */
+		if (feof(stdin)) {
+			fprintf(stderr,
+				"\nerror: no value for new symbol '%s' at end of input\n",
+				sym->name);
+			exit(1);
+		}
 	}
 }
 
@@ -473,6 +488,8 @@ static void check_conf(struct menu *menu)
 }
 
 static const struct option long_opts[] = {
+	{"help",            no_argument,       nullptr, 'h'},
+	{"silent",          no_argument,       nullptr, 's'},
 	{"oldaskconfig",    no_argument,       nullptr, static_cast<int>(oldaskconfig)},
 	{"oldconfig",       no_argument,       nullptr, static_cast<int>(oldconfig)},
 	{"syncconfig",      no_argument,       nullptr, static_cast<int>(syncconfig)},
@@ -488,14 +505,20 @@ static const struct option long_opts[] = {
 	{"olddefconfig",    no_argument,       nullptr, static_cast<int>(olddefconfig)},
 	{"yes2modconfig",   no_argument,       nullptr, static_cast<int>(yes2modconfig)},
 	{"mod2yesconfig",   no_argument,       nullptr, static_cast<int>(mod2yesconfig)},
+	{"mod2noconfig",    no_argument,       nullptr, static_cast<int>(mod2noconfig)},
 	{nullptr, 0, nullptr, 0}
 };
 
 static void conf_usage(const char *progname)
 {
 
-	printf("Usage: %s [-s] [option] <kconfig-file>\n", progname);
-	printf("[option] is _one_ of the following:\n");
+	printf("Usage: %s [options] kconfig_file\n", progname);
+	printf("\n");
+	printf("Generic options:\n");
+	printf("  -h, --help              Print this message and exit.\n");
+	printf("  -s, --silent            Do not print log.\n");
+	printf("\n");
+	printf("Mode options:\n");
 	printf("  --listnewconfig         List new options\n");
 	printf("  --helpnewconfig         List new options and help text\n");
 	printf("  --oldaskconfig          Start a new configuration using a line-oriented program\n");
@@ -512,6 +535,11 @@ static void conf_usage(const char *progname)
 	printf("  --randconfig            New config with random answer to all options\n");
 	printf("  --yes2modconfig         Change answers from yes to mod if possible\n");
 	printf("  --mod2yesconfig         Change answers from mod to yes if possible\n");
+	printf("  --mod2noconfig          Change answers from mod to no if possible\n");
+	printf("  (If none of the above is given, --oldaskconfig is the default)\n");
+	printf("\n");
+	printf("Arguments:\n");
+	printf("  kconfig_file            Top-level Kconfig file.\n");
 }
 
 int main(int ac, char **av)
@@ -523,7 +551,11 @@ int main(int ac, char **av)
 
 	tty_stdio = isatty(0) && isatty(1);
 
-	while ((opt = getopt_long(ac, av, "s", long_opts, nullptr)) != -1) {
+	while ((opt = getopt_long(ac, av, "hs", long_opts, nullptr)) != -1) {
+		if (opt == 'h') {
+			conf_usage(progname);
+			exit(1);
+		}
 		if (opt == 's') {
 			conf_set_message_callback(nullptr);
 			continue;
@@ -561,6 +593,7 @@ int main(int ac, char **av)
 		case olddefconfig:
 		case yes2modconfig:
 		case mod2yesconfig:
+		case mod2noconfig:
 			break;
 		}
 	}
@@ -593,6 +626,7 @@ int main(int ac, char **av)
 	case olddefconfig:
 	case yes2modconfig:
 	case mod2yesconfig:
+	case mod2noconfig:
 		conf_read(nullptr);
 		break;
 	case allnoconfig:
@@ -631,6 +665,9 @@ int main(int ac, char **av)
 	default:
 		break;
 	}
+
+	if (conf_errors())
+		exit(1);
 
 	if (sync_kconfig) {
 		name = getenv("KCONFIG_NOSILENTUPDATE");
@@ -672,6 +709,9 @@ int main(int ac, char **av)
 	case mod2yesconfig:
 		conf_rewrite_mod_or_yes(def_m2y);
 		break;
+	case mod2noconfig:
+		conf_rewrite_mod_or_yes(def_m2n);
+		break;
 	case oldaskconfig:
 		rootEntry = &rootmenu;
 		conf(&rootmenu);
@@ -691,6 +731,9 @@ int main(int ac, char **av)
 	default:
 		break;
 	}
+
+	if (sym_dep_errors())
+		exit(1);
 
 	if (input_mode == savedefconfig) {
 		if (conf_write_defconfig(defconfig_file)) {
