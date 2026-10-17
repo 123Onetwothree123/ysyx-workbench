@@ -25,8 +25,7 @@ Context *__am_irq_handle(Context *c)
       }
       else
       {
-        printf("我也不知道怎么解决，反正mcause跑到11了，但是没进yield事件，文档也没说该怎么去解决\n");
-        ev.event = EVENT_ERROR;
+        ev.event = EVENT_SYSCALL;
       }
       break;
     default:
