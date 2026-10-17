@@ -1,45 +1,30 @@
-package ysyx_26030103.ifu
+package ysyx_26030103.cache
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.infra._
 import _root_.ysyx_26030103.common._
-class ysyx_26030103_ICache(
+class ysyx_26030103_ICacheSRAM(
     Enable: Boolean = true, // false=不做缓存, 每次取指直接发单拍AXI读(和数据通路一样)
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
     AddressWidth: Int = 32,
+    // true=命中响应的第一拍旁路SRAM输出(保持1拍延迟);
+    // false=老实打一拍(响应晚一拍), 用于量化"不旁路"的性能代价
+    Bypass: Boolean = true,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
-) extends Module {
+) extends ysyx_26030103_ICacheBase(AddressWidth) {
   val TagBits = AddressWidth - IndexBits - BlockSizeLog2
   val NumBlocks = 1 << IndexBits
   val WordsPerBlock = 1 << (BlockSizeLog2 - 2) // 块大小 ÷ 4字节
   val WordCntBits = log2Ceil(WordsPerBlock) // 块内字数计数器位宽
-  val io = IO(new Bundle {
-    val fetch_addr = Input(UInt(AddressWidth.W))
-    val fetch_valid = Input(Bool())
-    val fetch_ready = Output(Bool())
-    val resp_data = Output(UInt(32.W))
-    val resp_addr = Output(UInt(AddressWidth.W)) // 响应对应的取指地址(即那条指令的PC)
-    val resp_fault = Output(Bool()) // 该响应是否是取指访问错误
-    val resp_valid = Output(Bool())
-    val resp_ready = Input(Bool())
-    val axi = new ysyx_26030103_AXI5IO(AddressWidth)
-    val perf_hit = Output(Bool())
-    val perf_miss = Output(Bool())
-    val perf_refill_req = Output(Bool())
-    val perf_refill_resp = Output(Bool())
-    val access_fault = Output(Bool())
-    val access_fault_resp = Output(UInt(2.W))
-    val flush = Input(Bool()) // fence.i: 清cache行并丢弃在飞refill
-    val kill = Input(Bool()) // 重定向/异常: 杀掉在飞取指请求,不动cache行
-  })
-  // 直接映射cache存储阵列：valid+tag+data
-  // 关闭缓存时阵列只留1项占位(其余逻辑不可达), 综合会把这些触发器/组合逻辑全部剪掉
+  // 直接映射cache存储阵列：valid/tag留在触发器阵列（小、需要复位、判定命中不占端口），
+  // data换成同步读SRAM(SyncReadMem)：第N拍给地址和读使能，第N+1拍数据有效。
+  // valid/tag在关闭缓存时只留1项占位；data SRAM按满容量描述，禁用模式下不会被访问。
   private val ArrayBlocks = if (Enable) NumBlocks else 1
   val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
   val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))
-  val data = Reg(Vec(ArrayBlocks, Vec(WordsPerBlock, UInt(32.W))))
+  val dataMem = SyncReadMem(NumBlocks * WordsPerBlock, UInt(32.W))
   val index = io.fetch_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   // Enable=false时阵列只有一个综合占位项。用Scala期的常量索引访问它，
   // 避免把完整的组索引接到单项Vec上产生W004；Enable=true时仍是原始索引，
@@ -49,6 +34,9 @@ class ysyx_26030103_ICache(
     if (WordsPerBlock > 1) io.fetch_addr(BlockSizeLog2 - 1, 2)
     else 0.U
   val reqTag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
+  // SRAM字地址：组索引与块内word偏移拼成一个线性地址。
+  private def WordAddress(BlockIndex: UInt, WordOffset: UInt): UInt =
+    if (WordsPerBlock > 1) Cat(BlockIndex, WordOffset) else BlockIndex
   private def AddressInRegion(
       Address: UInt,
       Region: ysyx_26030103_PMARegion
@@ -87,7 +75,7 @@ class ysyx_26030103_ICache(
   val executable = AddressInRegions(io.fetch_addr, ExecutableRegions)
   val cacheable =
     if (Enable) AddressInRegions(io.fetch_addr, CacheableRegions) else false.B
-  // 两级流水: s1受理级(寄存请求,命中数据当拍锁存) -> 响应级(命中直接响应,缺失走refill)
+  // 两级流水: s1受理级(寄存请求,受理拍发起SRAM读) -> 响应级(下一拍SRAM数据旁路到响应,缺失走refill)
   val s1_valid = RegInit(false.B)
   val s1_hit = Reg(Bool()) // 受理时判定: 可缓存且命中
   val s1_ready = RegInit(false.B) // 缺失的关键词已返回(early restart)或refill已完成
@@ -99,6 +87,9 @@ class ysyx_26030103_ICache(
   val FetchOffsetSafe =
     if (WordsPerBlock > 1) fetch_offset_reg else 0.U
   val resp_data_reg = Reg(UInt(32.W))
+  // SRAM数据晚一拍：命中响应的第一拍直接旁路SRAM输出，同时锁存到resp_data_reg，
+  // 之后被下游反压时用锁存值保证响应数据稳定。
+  val resp_data_held = RegInit(false.B)
   val cacheable_reg = RegInit(false.B)
   val access_fault_reg = RegInit(false.B)
   val access_fault_resp_reg = RegInit(0.U(2.W))
@@ -183,24 +174,17 @@ class ysyx_26030103_ICache(
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
   io.axi.R.RREADY := true.B // 始终接收并排空 AXI 响应
-  // 响应级: 命中(s1_hit)用受理时锁存的数据; 关键词返回/refill完成(s1_ready)后,
-  // 可缓存的从阵列读(关键词所在拍已写入), 不可缓存的用R拍锁存的数据; 错误一律给NOP
-  val responding = s1_valid && (s1_hit || s1_ready)
+  // 响应级: 命中在Bypass模式第一拍直接旁路SRAM输出、
+  // 否则等数据锁存就绪后再响应(晚一拍);
+  // 关键词返回/refill完成(s1_ready)的缺失用R拍锁存的数据; 错误一律给NOP
+  val hitResponding = if (Bypass) s1_hit else s1_hit && resp_data_held
+  val responding = s1_valid && (hitResponding || s1_ready)
   io.resp_valid := responding
   io.resp_addr := fetch_addr_reg
   io.resp_fault := access_fault_reg
-  io.resp_data := Mux(
-    access_fault_reg,
-    "h00000013".U,
-    Mux(
-      s1_hit,
-      resp_data_reg,
-      Mux(cacheable_reg, data(FetchIndexSafe)(FetchOffsetSafe), resp_data_reg)
-    )
-  )
   // 受理级: 响应槽为空,或本拍响应正被接收。refill中可放行
   // 其他index的完整命中，以及同line已返回word的partial hit；两者的
-  // 数据都在受理拍锁存到resp_data_reg，不会被后续R beat覆盖。
+  // 数据都在受理拍发起SRAM读，下一拍旁路到响应并同时锁存。
   val response_slot_available =
     !s1_valid || (responding && io.resp_ready)
   io.fetch_ready :=
@@ -221,7 +205,6 @@ class ysyx_26030103_ICache(
     fetch_addr_reg := io.fetch_addr
     fetch_index_reg := index
     fetch_offset_reg := blockOffset
-    resp_data_reg := data(IndexSafe)(blockOffset) // 命中时这就是响应数据
     cacheable_reg := cacheable
     s1_hit := request_hit
     // PMA拒绝不需要总线往返；用DECERR作为调试响应码，并让带故障的
@@ -243,7 +226,6 @@ class ysyx_26030103_ICache(
   when(queued_miss && rfstate === rf_idle && !io.kill && !io.flush) {
     when(recheck_hit) {
       s1_hit := true.B
-      resp_data_reg := data(FetchIndexSafe)(FetchOffsetSafe)
     }.otherwise {
       rfstate := rf_req
       ref_addr := fetch_addr_reg
@@ -259,6 +241,37 @@ class ysyx_26030103_ICache(
       refill_error := false.B
       s1_waits := true.B
     }
+  }
+  // SRAM读口: 受理命中(含partial hit)与"排队缺失重查命中"两处需要读数据。
+  // 两者不会同拍发生(前者要求响应槽可复用, 后者要求槽中仍是未就绪的缺失),
+  // 因此共用唯一读端口。
+  val acceptRead = accept && request_hit
+  val recheckRead =
+    queued_miss && rfstate === rf_idle && !io.kill && !io.flush && recheck_hit
+  val sramReadEnable = acceptRead || recheckRead
+  val sramReadAddr = Mux(
+    acceptRead,
+    WordAddress(IndexSafe, blockOffset),
+    WordAddress(FetchIndexSafe, FetchOffsetSafe)
+  )
+  val sramReadData = dataMem.read(sramReadAddr, sramReadEnable)
+  // SRAM数据到达(受理/重查命中的下一拍)时锁存; 旁路模式同拍直接输出,
+  // 非旁路模式下一拍才作为响应。resp_data_held表示锁存已就绪。
+  val respDataArrives = s1_valid && s1_hit && !resp_data_held
+  val respDataFire = responding && io.resp_ready
+  val respDataSelected = if (Bypass) {
+    Mux(s1_hit, Mux(respDataArrives, sramReadData, resp_data_reg), resp_data_reg)
+  } else {
+    resp_data_reg
+  }
+  io.resp_data := Mux(access_fault_reg, "h00000013".U, respDataSelected)
+  when(respDataArrives) {
+    resp_data_reg := sramReadData
+  }
+  when(!s1_valid || respDataFire) {
+    resp_data_held := false.B
+  }.elsewhen(respDataArrives) {
+    resp_data_held := true.B
   }
   // 注意: refill启动刻意不早于s1_valid寄存后一拍——启动条件里的!io.kill
   // 能抑制错误路径取指的refill(误预测时kill比受理晚一拍到)。曾经试过受理即启动,
@@ -329,15 +342,21 @@ class ysyx_26030103_ICache(
             resp_data_reg := "h00000013".U // NOP, 不让下游拿到非法指令
           }
         }.elsewhen(!discard) {
-          // 可缓存demand直接从数据阵列取关键词，不需要写
-          // resp_data_reg。这也避免“旧响应pop+新partial hit accept+R beat”
-          // 同拍时，旧s1_waits把新命中数据覆盖。
+          // SRAM不能在响应拍组合读数据: 关键词拍必须把数据锁存到resp_data_reg,
+          // 供early-restart/s1_ready后的响应使用。命中新请求的数据在
+          // "第一拍旁路"时才锁存, 与该路径不同拍, 不会互相覆盖。
           when(s1_waits && !ref_cacheable) {
+            resp_data_reg := io.axi.R.RDATA
+          }
+          when(s1_waits && ref_cacheable && keyword_beat) {
             resp_data_reg := io.axi.R.RDATA
           }
           when(ref_cacheable) { // 阵列填充无条件进行, 数据是真实内存内容
             tag(RefIndexSafe) := ref_tag
-            data(RefIndexSafe)(RefillOffsetSafe) := io.axi.R.RDATA
+            dataMem.write(
+              WordAddress(RefIndexSafe, RefillOffsetSafe),
+              io.axi.R.RDATA
+            )
             when(!refill_error) {
               refill_word_valid := refill_word_valid |
                 UIntToOH(refill_cnt, WordsPerBlock)

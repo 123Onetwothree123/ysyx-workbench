@@ -246,6 +246,58 @@ menu "硬件配置"
         1=2块, 5=32块, 10=1024块。
         修改后需重新 make verilog 以重新生成RTL。
 
+    choice
+      prompt "ICache数据阵列存储介质"
+      depends on ICACHE
+      default ICACHE_STORAGE_REG
+      help
+        寄存器阵列: 数据阵列用触发器(Reg(Vec)), 组合读, 无额外时序(默认);
+        同步读SRAM: 数据阵列用SyncReadMem/SRAM黑盒, 命中响应通过"第一拍旁路+
+          锁存"保持1拍延迟与吞吐(综合面积略小, 便于后续替换物理SRAM宏);
+        SRAM不旁路: 命中响应晚一拍, 仅用于量化旁路的性能代价, 正常构建不建议选。
+        修改后需重新 make verilog 以重新生成RTL。
+
+    config ICACHE_STORAGE_REG
+      bool "寄存器阵列"
+    config ICACHE_STORAGE_SRAM
+      bool "同步读SRAM（旁路，保持1拍命中）"
+    config ICACHE_STORAGE_SRAM_NOBYPASS
+      bool "同步读SRAM（不旁路，命中晚1拍）"
+    endchoice
+
+    config ICACHE_STORAGE
+      string
+      default "reg" if ICACHE_STORAGE_REG
+      default "sram" if ICACHE_STORAGE_SRAM
+      default "sram_nobypass" if ICACHE_STORAGE_SRAM_NOBYPASS
+      default "reg"
+
+    choice
+      prompt "DCache数据阵列存储介质"
+      depends on DCACHE
+      default DCACHE_STORAGE_REG
+      help
+        寄存器阵列: 数据阵列用触发器(Reg(Vec)), 组合读, 无额外时序(默认);
+        同步读SRAM: 数据阵列用单块SRAM黑盒(1读口+2写口, 字节掩码), 命中响应
+          通过"第一拍旁路+锁存"保持1拍延迟与吞吐;
+        SRAM不旁路: 命中响应晚一拍, 仅用于量化旁路的性能代价, 正常构建不建议选。
+        修改后需重新 make verilog 以重新生成RTL。
+
+    config DCACHE_STORAGE_REG
+      bool "寄存器阵列"
+    config DCACHE_STORAGE_SRAM
+      bool "同步读SRAM（旁路，保持1拍命中）"
+    config DCACHE_STORAGE_SRAM_NOBYPASS
+      bool "同步读SRAM（不旁路，命中晚1拍）"
+    endchoice
+
+    config DCACHE_STORAGE
+      string
+      default "reg" if DCACHE_STORAGE_REG
+      default "sram" if DCACHE_STORAGE_SRAM
+      default "sram_nobypass" if DCACHE_STORAGE_SRAM_NOBYPASS
+      default "reg"
+
   endmenu
 
   menu "写缓冲 (LSU)"

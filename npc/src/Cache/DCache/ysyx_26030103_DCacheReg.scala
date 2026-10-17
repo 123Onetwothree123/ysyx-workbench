@@ -1,72 +1,12 @@
-package ysyx_26030103.mem
+package ysyx_26030103.cache
+
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.infra._
 
-/** DCache共用的分配策略。
-  *
-  * PMA的Readable && Cacheable是分配数据缓存行的必要条件；可选的基址/
-  * 掩码只作为额外过滤器。整条回填缓存行还必须位于同一个可缓存区域内；
-  * 否则需求使用单拍非缓存读，避免在PMA边界上扩展成非法突发传输。
-  */
-object ysyx_26030103_DCachePolicy {
-  def LineContainedInCacheableRegion(
-      Address: UInt,
-      AddressWidth: Int,
-      BlockSizeLog2: Int,
-      PMARegions: Seq[ysyx_26030103_PMARegion]
-  ): Bool = {
-    require(
-      BlockSizeLog2 >= 2,
-      "DCache cache line must contain at least one 32-bit word"
-    )
-    require(
-      BlockSizeLog2 < AddressWidth,
-      "DCache cache line must fit in the address space"
-    )
-    val LineBase = Cat(
-      0.U(1.W),
-      Address(AddressWidth - 1, BlockSizeLog2),
-      0.U(BlockSizeLog2.W)
-    )
-    val LineLast = LineBase +
-      ((BigInt(1) << BlockSizeLog2) - 1).U((AddressWidth + 1).W)
-    PMARegions
-      .filter(Region => Region.Readable && Region.Cacheable)
-      .map { Region =>
-        LineBase >= BigInt(Region.Base).U((AddressWidth + 1).W) &&
-        LineLast < BigInt(Region.EndExclusive).U((AddressWidth + 1).W)
-      }
-      .reduceOption(_ || _)
-      .getOrElse(false.B)
-  }
-
-  def IsCacheable(
-      Address: UInt,
-      Enable: Boolean,
-      AddressWidth: Int,
-      BlockSizeLog2: Int,
-      CacheableBase: Long,
-      CacheableMask: Long,
-      PMARegions: Seq[ysyx_26030103_PMARegion]
-  ): Bool = {
-    if (Enable) {
-      val Configured =
-        (Address & CacheableMask.U(AddressWidth.W)) ===
-          CacheableBase.U(AddressWidth.W)
-      Configured && LineContainedInCacheableRegion(
-        Address,
-        AddressWidth,
-        BlockSizeLog2,
-        PMARegions
-      )
-    } else false.B
-  }
-}
-
 // 单请求直映射DCache，读通道回填，写通道由LSU写缓冲负责
-class ysyx_26030103_DCache(
+class ysyx_26030103_DCacheReg(
     Enable: Boolean = true,
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
@@ -75,7 +15,7 @@ class ysyx_26030103_DCache(
     CacheableMask: Long = 0x80000000L,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
-) extends Module {
+) extends ysyx_26030103_DCacheBase(AddressWidth) {
   require(BlockSizeLog2 >= 2, "DCache line must contain at least one 32-bit word")
   require(IndexBits >= 1, "DCache must contain at least two sets")
   require(
@@ -89,40 +29,6 @@ class ysyx_26030103_DCache(
   private val OffsetWidth = (BlockSizeLog2 - 2).max(1)
   private val CountWidth = log2Ceil(WordsPerBlock).max(1)
   private val ArrayBlocks = if (Enable) NumBlocks else 1
-  class Request extends Bundle {
-    val addr = UInt(AddressWidth.W)
-    val WidthSelect = UInt(2.W) // 0=字节，1=半字，2=字
-    val signed = Bool()
-  }
-  class Response extends Bundle {
-    val data = UInt(32.W)
-    val fault = Bool()
-    val FaultResp = UInt(2.W)
-  }
-  val io = IO(new Bundle {
-    val req = Flipped(Decoupled(new Request))
-    val resp = Decoupled(new Response)
-    // LSU收到匹配B响应时通知DCache。OKAY可更新写直达镜像；错误响应
-    // 仍可能伴随外部部分副作用，因此必须至少失效命中行。
-    val StoreValid = Input(Bool())
-    val StoreResp = Input(UInt(2.W))
-    val StoreAddr = Input(UInt(AddressWidth.W))
-    val StoreData = Input(UInt(32.W))
-    val StoreStrb = Input(UInt(4.W))
-    val AXI = new ysyx_26030103_AXI5IO(AddressWidth) // DCache只使用AR/R通道
-    val flush = Input(Bool())
-    // 性能计数器只描述可缓存 load。不可缓存旁路不属于 cache miss，
-    // 否则用 refill 周期计算的 miss service/AMAT 会被 MMIO 访问污染。
-    val perf_hit = Output(Bool())
-    val perf_miss = Output(Bool())
-    val perf_refill_req = Output(Bool())
-    val perf_refill_resp = Output(Bool())
-    // 向LSU的写缓冲排序逻辑提供唯一的可缓存性判定源。
-    val req_cacheable = Output(Bool())
-    // 需求响应可能在关键字返回时就发出，而缓存行的其余回填仍在排空。
-    // 在此标志拉低前，LSU必须继续路由AXI R通道流量。
-    val axi_active = Output(Bool())
-  })
   // 一致性 flush 是 DCache 自身的可验证接口，不应因当前顶层暂时绑低
   // 就在生产 elaboration 中从叶模块端口裁掉；未来 DMA 也会复用该通路。
   dontTouch(io.flush)

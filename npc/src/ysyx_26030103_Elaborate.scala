@@ -11,7 +11,13 @@ object ysyx_26030103_Elaborate extends App {
   val BlockSizeLog2 = sys.env.getOrElse("CACHE_BLOCK_SIZE_LOG2", "4").toInt
   val IndexBits = sys.env.getOrElse("CACHE_INDEX_BITS", "5").toInt
   val ICacheEnable = sys.env.getOrElse("ICACHE", "y") == "y"
+  // ICache数据阵列存储介质："reg"=寄存器阵列(默认)，"sram"=SyncReadMem同步读阵列
+  val ICacheStorageName =
+    sys.env.get("ICACHE_STORAGE").filter(_.nonEmpty).getOrElse("reg")
   val DCacheEnable = sys.env.getOrElse("DCACHE", "n") == "y"
+  // DCache数据阵列存储介质："reg"=寄存器阵列(默认)，"sram"=SyncReadMem同步读阵列
+  val DCacheStorageName =
+    sys.env.get("DCACHE_STORAGE").filter(_.nonEmpty).getOrElse("reg")
   val WBufDepth = sys.env.getOrElse("WBUF_DEPTH", "4").toInt
   val BTBBits = sys.env.getOrElse("BTB_BITS", "4").toInt
   val BTBWays = sys.env.getOrElse("BTB_WAYS", "1").toInt
@@ -109,7 +115,9 @@ object ysyx_26030103_Elaborate extends App {
     MULSplit = MULSplit,
     MULEarlyOut = MULEarlyOut,
     ICacheEnable = ICacheEnable,
+    ICacheStorage = ysyx_26030103_CacheStorage.FromString(ICacheStorageName),
     DCacheEnable = DCacheEnable,
+    DCacheStorage = ysyx_26030103_CacheStorage.FromString(DCacheStorageName),
     BlockSizeLog2 = BlockSizeLog2,
     IndexBits = IndexBits,
     WBufDepth = WBufDepth,
@@ -142,10 +150,13 @@ object ysyx_26030103_Elaborate extends App {
   // 让 firtool 直接输出 yosys 能读的语法:
   //   disallowLocalVariables  禁止 always 块内声明变量(消除 automatic logic 声明+初始化)
   //   disallowPackedArrays    打散多维 packed 数组(消除 [3:0][7:0] 和 '{...} 赋值模式)
+  // UseSRAMBlackbox: SRAM API的内存由Chisel自己生成Verilog(内联黑盒),
+  // 不经过CIRCT的memory降低, 因此多写口的字节掩码不会被丢弃。
   val yosysFirtoolOpts: firrtl.AnnotationSeq = Seq(
     circt.stage.FirtoolOption(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays"
-    )
+    ),
+    chisel3.stage.UseSRAMBlackbox
   )
 
   emitVerilog(

@@ -6,6 +6,7 @@ import chisel3.util._
 //能被解读成ysyx_26030103的ysyx_26030103的AXI模块，还得手动指定从最顶层的根目录去找
 import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.config._
+import _root_.ysyx_26030103.cache._
 import _root_.ysyx_26030103.infra._
 import _root_.ysyx_26030103.ifu._
 import _root_.ysyx_26030103.idu._
@@ -24,6 +25,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     new ysyx_26030103_LSU(
       WBufDepth = config.WBufDepth,
       DCacheEnable = config.DCacheEnable,
+      DCacheStorage = config.DCacheStorage,
       DCacheBlockSizeLog2 = config.BlockSizeLog2,
       DCacheIndexBits = config.IndexBits,
       DCacheableBase = config.CacheableBase,
@@ -32,14 +34,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     )
   )
   val gpr = Module(new ysyx_26030103_GPR(config.EnableDynamicGPRDebug))
-  val icache = Module(
-    new ysyx_26030103_ICache(
-      Enable = config.ICacheEnable,
-      BlockSizeLog2 = config.BlockSizeLog2,
-      IndexBits = config.IndexBits,
-      PMARegions = config.PMARegions
-    )
-  )
+  val icache = ysyx_26030103_ICacheFactory.Create(config)
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(
     new ysyx_26030103_AXI5Xbar(config.AddressWidth, config.PMARegions)

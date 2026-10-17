@@ -37,7 +37,11 @@ case class ysyx_26030103_NPCConfig(
     AddressWidth: Int = 32,
     // 缓存
     ICacheEnable: Boolean = true,
+    // ICache数据阵列的存储介质：寄存器阵列或同步读SRAM
+    ICacheStorage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
     DCacheEnable: Boolean = false,
+    // DCache数据阵列的存储介质：寄存器阵列或同步读SRAM
+    DCacheStorage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
     // LSU 写缓冲项数(必须是2的幂, 环形队列按位回绕)
@@ -251,7 +255,7 @@ case class ysyx_26030103_NPCConfig(
       s"div=${DIVImpl.Name}, div_radix=$DIVRadix, div_iter=$DIVIterBits, " +
       s"iter=$MULIterBits, pipeline=$MULPipeline, split=$MULSplit, " +
       s"mul_early_out=${OnOff(MULEarlyOut)}, div_early_out=${OnOff(DIVEarlyOut)}, " +
-      s"ICache=$ICacheDesc, DCache=$DCacheDesc, WBuf=$WBufDepth, " +
+      s"ICache=$ICacheDesc, DCache=$DCacheDesc, icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, observe=${OnOff(EnableAnyObservability)}, " +
       s"gpr_debug=${OnOff(EnableDynamicGPRDebug)}, perf_debug=${OnOff(EnablePerfTrace)}, " +

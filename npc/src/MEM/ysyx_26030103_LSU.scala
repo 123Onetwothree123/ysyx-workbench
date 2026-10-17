@@ -3,10 +3,13 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.infra._
+import _root_.ysyx_26030103.cache._
+import _root_.ysyx_26030103.config._
 // LSU是访存流水级：完成总线事务、提交访存故障并冲刷年轻指令
 class ysyx_26030103_LSU(
     val WBufDepth: Int = 4, // 写缓冲项数(必须是2的幂, 环形队列按位回绕)
     val DCacheEnable: Boolean = false,
+    val DCacheStorage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
     val DCacheBlockSizeLog2: Int = 4,
     val DCacheIndexBits: Int = 5,
     val DCacheableBase: Long = 0x80000000L,
@@ -75,16 +78,15 @@ class ysyx_26030103_LSU(
   // 保留叶模块一致性接口供协议回归和未来 DMA 复用；当前生产顶层
   // 绑低该口，后端综合仍可以在展平后常量传播掉对应逻辑。
   dontTouch(io.DCacheFlush)
-  val DCache = Module(
-    new ysyx_26030103_DCache(
-      Enable = DCacheEnable,
-      BlockSizeLog2 = DCacheBlockSizeLog2,
-      IndexBits = DCacheIndexBits,
-      AddressWidth = 32,
-      CacheableBase = DCacheableBase,
-      CacheableMask = DCacheableMask,
-      PMARegions = DCachePMARegions
-    )
+  val DCache = ysyx_26030103_DCacheFactory.Create(
+    Enable = DCacheEnable,
+    BlockSizeLog2 = DCacheBlockSizeLog2,
+    IndexBits = DCacheIndexBits,
+    AddressWidth = 32,
+    CacheableBase = DCacheableBase,
+    CacheableMask = DCacheableMask,
+    PMARegions = DCachePMARegions,
+    Storage = DCacheStorage
   )
   io.DCachePerfHit := DCache.io.perf_hit
   io.DCachePerfMiss := DCache.io.perf_miss
