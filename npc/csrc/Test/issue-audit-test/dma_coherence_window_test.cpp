@@ -16,12 +16,22 @@
 // 说明：AXI 允许从设备在 B 之前提交写，因此这是真实竞态；设计注释只承诺
 // "B 之后的 load 不命中旧行"，窗口内的一致性没有机制保证。
 //
-// ⚠ 状态（2026-10-18）：本集成测试**尚未跑通**——诊断显示 CPU 在无 DMA
-// 参与时也会在某次取指上卡住（R 拍被 Xbar 拒绝、且 DMA 写的 W 也被 Arbiter
-// 拒绝），即"CPU + ChipLink 总线 + 本测试台从设备"组合存在未归因的停顿。
-// 该测试暂不纳入 `make test`，保留为手动诊断（make dma-window-diag）。
-// 一致性窗口本身由代码证据确认：失效脉冲只在 B 握手产生（Arbiter），DCache
-// 只有该脉冲一种失效源（无 snooping），而 AXI 允许从设备在 B 之前落盘。
+// 结论（2026-10-18，已跑通并纳入回归）：
+//   x6 = 旧值（miss 填充）、x7 = 旧值（B 之前的窗口内命中陈旧行）、
+//   x8 = 新值（B 触发全局失效后重填）——窗口端到端确认。
+//
+// 窗口是"CPU 缓存 + 非一致性 AXI DMA 主设备"架构的固有性质：AXI 允许从设备
+// 在 B 之前落盘，主设备在 B 之前无从得知落盘时刻，因此硬件能给出的最早保证
+// 就是"匹配 B 时全局失效"。顶层已文档化契约：写直达 DCache 无脏数据，匹配 B
+// 失效保证后续 load 不命中旧行；DMA 改可执行内存后由软件 fence.i 保证指令
+// 一致性。软件侧的契约：DMA 传输在途时不得消费目标区域（轮询类用法天然满足，
+// 且最终 B 的全局失效会覆盖窗口内可能填入的任何陈旧行）。
+//
+// 诊断记录：此前观察到的"无 DMA 参与也卡死"是**本测试台的时序缺陷**，非 RTL
+// 缺陷——测试台从设备/DMA 主设备在判定握手时使用了一拍前的 READY（假握手），
+// 导致 R 拍在总线上多保持一拍，被 Xbar 当作第二个拍重复捕获而卡住 R buffer。
+// 已修复：施加 VALID 后先 eval 再判定 READY（见下方注释）。真实 AXIRAM 为
+// 寄存器式 FSM（RVALID := state === sReadResp），握手后下一拍即撤销，不受影响。
 
 #include "Vysyx_26030103.h"
 #include "test_common.hpp"
@@ -31,6 +41,9 @@
 #include <string>
 #include <vector>
 #include <verilated.h>
+#ifdef DIAG_TRACE
+#include <verilated_vcd_c.h>
+#endif
 
 using DUT = Vysyx_26030103;
 
@@ -39,6 +52,26 @@ static constexpr uint32_t kDataAddr = 0xC0000000U;
 static constexpr uint32_t kOldValue = 0xAAAA0000U;
 static constexpr uint32_t kNewValue = 0xBBBB0000U;
 
+#ifdef DIAG_NO_LOADS
+// 诊断：去掉全部 load（LSU 读），只看 IFU 取指是否仍会卡住。
+static const uint32_t kProgram[] = {
+    0xC00002B7U, // lui  x5, 0xc0000
+    0x00100313U, // addi x6, x0, 1   （替代 lw）
+    0x00100393U, // addi x7, x0, 1
+    0x00200413U, // addi x8, x0, 2
+    0x00000093U, // addi x1, x0, 0
+    0x0C800113U, // addi x2, x0, 200
+    0x00108093U, // addi x1, x1, 1
+    0xFE209EE3U, // bne  x1, x2, -4
+    0x00100393U, // addi x7, x0, 1
+    0x00000093U, // addi x1, x0, 0
+    0x0C800113U, // addi x2, x0, 200
+    0x00108093U, // addi x1, x1, 1
+    0xFE209EE3U, // bne  x1, x2, -4
+    0x00200413U, // addi x8, x0, 2
+    0x0000000BU, // halt
+};
+#else
 static const uint32_t kProgram[] = {
     0xC00002B7U, // lui  x5, 0xc0000      ; x5 = 0xc0000000
     0x0002A303U, // lw   x6, 0(x5)        ; 第一次读：miss → 旧值
@@ -54,6 +87,7 @@ static const uint32_t kProgram[] = {
     0x0002A403U, // lw   x8, 0(x5)        ; 第三次读：B 已释放 → 失效重填 → 新值
     0x0000000BU, // custom-0 halt
 };
+#endif
 
 struct Memory {
   std::map<uint32_t, uint32_t> words;
@@ -69,6 +103,12 @@ int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
   return run_test("DMA write vs DCache coherence window", [] {
     DUT dut;
+#ifdef DIAG_TRACE
+    Verilated::traceEverOn(true);
+    VerilatedVcdC *tfp = new VerilatedVcdC;
+    dut.trace(tfp, 99);
+    tfp->open("dma_window_diag.vcd");
+#endif
     Memory mem;
 
     // 程序与数据初始化
@@ -154,6 +194,7 @@ int main(int argc, char **argv) {
     // 观察
     int data_loads = 0;          // 对 0xc0000000 的 load 次数（按提交顺序）
     bool dma_started = false;
+    int r_stuck_cycles = 0;
     bool b_released = false;
 
     long cycle = 0;
@@ -193,6 +234,13 @@ int main(int argc, char **argv) {
         rd_id = dut.io_master_arid;
         rd_beats_left = static_cast<int>(dut.io_master_arlen) + 1;
         rd_state = RdState::Wait;
+        #ifdef DIAG_EV_LOG
+        if (cycle < 2000) {
+          std::cerr << "EV AR c=" << cycle << " id=" << (int)rd_id << " addr=0x"
+                    << std::hex << rd_address << std::dec << " len="
+                    << (int)dut.io_master_arlen << "\n";
+        }
+#endif
       }
       dut.io_master_rvalid = 0;
       dut.io_master_rlast = 0;
@@ -204,11 +252,36 @@ int main(int argc, char **argv) {
         dut.io_master_rid = rd_id;
         dut.io_master_rresp = 0;
         dut.io_master_rlast = (rd_beats_left == 1);
+        // 关键：RVALID 施加后重新 eval，再判断握手——否则判断用的是上一拍
+        // （RVALID 尚未拉高）的 RREADY，导致同一拍在总线上多保持一拍，
+        // 会被 Xbar 当作第二个拍重复捕获。
+        dut.eval();
+#ifdef DIAG_EV_LOG
+        if (cycle < 2000) {
+          std::cerr << "EV R  c=" << cycle << " id=" << (int)rd_id << " addr=0x"
+                    << std::hex << rd_address << std::dec << " last="
+                    << (int)dut.io_master_rlast << " rready="
+                    << (int)dut.io_master_rready << "\n";
+        }
+#endif
         if (dut.io_master_rready) {
           rd_address += 4;
           rd_beats_left--;
           rd_state = (rd_beats_left == 0) ? RdState::Idle : RdState::Wait;
         }
+      }
+
+      // 卡住检测：同一拍 R 被拒 > 60 拍时打印 RID/地址/RLAST
+      if (dut.io_master_rvalid && !dut.io_master_rready) {
+        r_stuck_cycles++;
+        if (r_stuck_cycles == 60) {
+          std::cerr << "STUCK R c=" << cycle << " rid=" << (int)rd_id
+                    << " addr=0x" << std::hex << rd_address << std::dec
+                    << " last=" << (int)dut.io_master_rlast
+                    << " beats=" << rd_beats_left << "\n";
+        }
+      } else {
+        r_stuck_cycles = 0;
       }
 
       // ---- 下游从设备：写通道 ----
@@ -240,6 +313,10 @@ int main(int argc, char **argv) {
       }
 
       // ---- DMA 主设备（CPU slave 口）----
+      // 握手判定必须在施加 VALID 后重新 eval，否则用的是一拍前的 READY，
+      // 会出现"自认为握手成功但总线上从未发生"的假握手。
+      dut.io_slave_awvalid = 0;
+      dut.io_slave_wvalid = 0;
       switch (dma_state) {
       case DmaState::Idle:
         break;
@@ -250,8 +327,8 @@ int main(int argc, char **argv) {
         dut.io_slave_awlen = 0;
         dut.io_slave_awsize = 2;
         dut.io_slave_awburst = 1;
+        dut.eval();
         if (dut.io_slave_awready) {
-          dut.io_slave_awvalid = 0;
           dma_state = DmaState::SendW;
         }
         break;
@@ -260,9 +337,8 @@ int main(int argc, char **argv) {
         dut.io_slave_wdata = kNewValue;
         dut.io_slave_wstrb = 0xF;
         dut.io_slave_wlast = 1;
+        dut.eval();
         if (dut.io_slave_wready) {
-          dut.io_slave_wvalid = 0;
-          dut.io_slave_wlast = 0;
           dma_state = DmaState::WaitB;
         }
         break;
@@ -280,7 +356,16 @@ int main(int argc, char **argv) {
         break;
       }
       edge();
+#ifdef DIAG_TRACE
+      if (cycle < 400) {
+        tfp->dump(static_cast<vluint64_t>(cycle * 2));
+        tfp->dump(static_cast<vluint64_t>(cycle * 2 + 1));
+      }
+#endif
     }
+#ifdef DIAG_TRACE
+    tfp->close();
+#endif
 
     if (!dut.io_trap_valid) {
       auto gpr0 = [&](int index) -> uint32_t {

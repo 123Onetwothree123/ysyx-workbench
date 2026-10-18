@@ -41,7 +41,7 @@ DCACHE_REFILL_SRAM_BIN := $(BIN_DIR)/dcache_refill_sram_test
 DCACHE_REFILL_NOBYPASS_BIN := $(BIN_DIR)/dcache_refill_nobypass_test
 BINS := $(IDU_BIN) $(IRQ_BIN) $(DCACHE_REG_BIN) $(DCACHE_SRAM_BIN) \
         $(DCACHE_NOBYPASS_BIN) $(ICACHE_BIN) $(ICACHE_SMALL_BIN) \
-        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(FULLCORE_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN)
+        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(FULLCORE_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN) $(DMA_WINDOW_BIN)
 
 .PHONY: all test run rtl-check clean
 
@@ -319,3 +319,28 @@ $(DCACHE_SMALL_BIN): dcache_smallline_test.cpp test_common.hpp $(SMALLLINE_RTL)/
 	  -CFLAGS '$(CXXFLAGS)' \
 	  -o $(abspath $@) \
 	  $(SMALLLINE_RTL)/ysyx_26030103.sv dcache_smallline_test.cpp
+
+
+DMA_WINDOW_NOLOAD_BIN := $(BIN_DIR)/dma_coherence_noload_diag
+$(DMA_WINDOW_NOLOAD_BIN): dma_coherence_window_test.cpp test_common.hpp \
+                          $(CHIPLINK_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103 \
+	  --Mdir $(BUILD_DIR)/obj-dma-noload-audit \
+	  -I$(CHIPLINK_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DDIAG_NO_LOADS -DDIAG_DMA_AFTER_ALL' \
+	  -o $(abspath $@) \
+	  $(CHIPLINK_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
+
+DMA_WINDOW_TRACE_BIN := $(BIN_DIR)/dma_coherence_trace_test
+$(DMA_WINDOW_TRACE_BIN): dma_coherence_window_test.cpp test_common.hpp \
+                         $(CHIPLINK_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert --trace \
+	  --top-module ysyx_26030103 \
+	  --Mdir $(BUILD_DIR)/obj-dma-trace-audit \
+	  -I$(CHIPLINK_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DDIAG_TRACE -DDIAG_DMA_AFTER_ALL' \
+	  -o $(abspath $@) \
+	  $(CHIPLINK_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
