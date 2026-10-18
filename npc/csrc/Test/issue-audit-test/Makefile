@@ -32,6 +32,7 @@ BTB2_BIN := $(BIN_DIR)/btb_twoway_test
 MULCFG_BIN := $(BIN_DIR)/mul_config_core_test
 MDU_BLOCK_BIN := $(BIN_DIR)/mdu_pipeline_block_test
 FULLCORE_BIN := $(BIN_DIR)/fullcore_stall_test
+PERFSEM_BIN := $(BIN_DIR)/perf_counter_semantics_test
 XBAR_HOL_BIN := $(BIN_DIR)/xbar_r_hol_test
 CHIPLINK_RTL := $(BUILD_DIR)/rtl-chiplink
 DMA_WINDOW_BIN := $(BIN_DIR)/dma_coherence_window_test
@@ -41,7 +42,7 @@ DCACHE_REFILL_SRAM_BIN := $(BIN_DIR)/dcache_refill_sram_test
 DCACHE_REFILL_NOBYPASS_BIN := $(BIN_DIR)/dcache_refill_nobypass_test
 BINS := $(IDU_BIN) $(IRQ_BIN) $(DCACHE_REG_BIN) $(DCACHE_SRAM_BIN) \
         $(DCACHE_NOBYPASS_BIN) $(ICACHE_BIN) $(ICACHE_SMALL_BIN) \
-        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(FULLCORE_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN) $(DMA_WINDOW_BIN)
+        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(FULLCORE_BIN) $(PERFSEM_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN) $(DMA_WINDOW_BIN)
 
 .PHONY: all test run rtl-check clean
 
@@ -263,6 +264,21 @@ $(FULLCORE_BIN): fullcore_stall_test.cpp test_common.hpp \
 	  $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
 	  $(BASE_RTL)/ysyx_26030103_npc.sv $(BASE_RTL)/riscv32e_npc_AXIRAM.sv \
 	  fullcore_stall_test.cpp
+
+# perf 口径回归：同样使用生产 wrapper + NPC 快照
+$(PERFSEM_BIN): perf_counter_semantics_test.cpp test_common.hpp \
+                $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
+                $(BASE_RTL)/ysyx_26030103_npc.sv $(BASE_RTL)/riscv32e_npc_AXIRAM.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) \
+	  --top-module riscv32e_npc_SimTop \
+	  --Mdir $(BUILD_DIR)/obj-perfsem-audit \
+	  -I$(BASE_RTL) -I$(NPC_DIR)/rtl \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
+	  $(BASE_RTL)/ysyx_26030103_npc.sv $(BASE_RTL)/riscv32e_npc_AXIRAM.sv \
+	  perf_counter_semantics_test.cpp
 
 $(XBAR_HOL_BIN): xbar_r_hol_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)

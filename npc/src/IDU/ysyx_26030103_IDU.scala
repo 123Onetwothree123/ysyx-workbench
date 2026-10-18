@@ -176,18 +176,27 @@ class ysyx_26030103_IDU(
   val usesRs1 = IsRType || IsIType || IsSType || IsBType ||
     (IsCSRInstruction && !IsCSRImmediate)
   // 转发命中(EXU > MEM等待槽 > MEM级 > WBU: 多条同时命中时选最年轻生产者)
+  // 显式检查生产者 valid：虽然顶层契约把 valid 折进了 *_fwd_ready
+  // （EXU/LSU 的 FwdReady 含 HazardValid），这里保持与下方冒险谓词同口径，
+  // 避免未来新增生产者端口只拉 ready 时静默转发陈旧数据。
   val ex_fwd_rs1 =
-    usesRs1 && io.ex_fwd_ready && io.ex_rd =/= 0.U && io.ex_rd === Rs1
+    usesRs1 && io.ex_valid && io.ex_fwd_ready && io.ex_rd =/= 0.U &&
+      io.ex_rd === Rs1
   val ex_fwd_rs2 =
-    io.ex_fwd_ready && io.ex_rd =/= 0.U && needsRs2 && io.ex_rd === Rs2
+    io.ex_valid && io.ex_fwd_ready && io.ex_rd =/= 0.U && needsRs2 &&
+      io.ex_rd === Rs2
   val me2_fwd_rs1 =
-    usesRs1 && io.me2_fwd_ready && io.me2_rd =/= 0.U && io.me2_rd === Rs1
+    usesRs1 && io.me2_valid && io.me2_fwd_ready && io.me2_rd =/= 0.U &&
+      io.me2_rd === Rs1
   val me2_fwd_rs2 =
-    io.me2_fwd_ready && io.me2_rd =/= 0.U && needsRs2 && io.me2_rd === Rs2
+    io.me2_valid && io.me2_fwd_ready && io.me2_rd =/= 0.U && needsRs2 &&
+      io.me2_rd === Rs2
   val me_fwd_rs1 =
-    usesRs1 && io.me_fwd_ready && io.me_rd =/= 0.U && io.me_rd === Rs1
+    usesRs1 && io.me_valid && io.me_fwd_ready && io.me_rd =/= 0.U &&
+      io.me_rd === Rs1
   val me_fwd_rs2 =
-    io.me_fwd_ready && io.me_rd =/= 0.U && needsRs2 && io.me_rd === Rs2
+    io.me_valid && io.me_fwd_ready && io.me_rd =/= 0.U && needsRs2 &&
+      io.me_rd === Rs2
   val wb_fwd_rs1 =
     usesRs1 && io.wb_valid && io.wb_regWrite && io.wb_rd =/= 0.U &&
       io.wb_rd === Rs1

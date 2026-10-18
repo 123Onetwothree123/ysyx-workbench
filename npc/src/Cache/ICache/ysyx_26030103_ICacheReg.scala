@@ -191,7 +191,8 @@ class ysyx_26030103_ICacheReg(
       (rfstate === rf_idle || request_hit)
   val accept = io.fetch_valid && io.fetch_ready
   io.perf_hit := accept && request_hit
-  io.perf_miss := accept && executable && !request_hit
+  // 非缓存取指（ICACHE=n 或未来的可执行不可缓存区）不是 miss。
+  io.perf_miss := accept && executable && cacheable && !request_hit
   io.perf_refill_req := rfstate === rf_req
   io.perf_refill_resp := rfstate === rf_resp
   when(responding && io.resp_ready) {

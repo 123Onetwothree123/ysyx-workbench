@@ -413,7 +413,11 @@ class ysyx_26030103_EXU(
   io.FetchAccessFaultPC := inst.pc
   io.FetchAccessFaultResp := inst.AccessFaultResp
   io.Redirect := InstructionCommit && Redirect
-  io.RedirectTarget := ActualNextPC
+  // 重定向目标必须与实际提交的下一PC一致：MRET 的实际目标是 mepc
+  // （CommitNextPC 的 MRET 分支），若用 ActualNextPC 会给出顺序 snpc。
+  // 功能上 MRET 由 ExceptionTaken 优先分支覆盖，此处只修正
+  // RedirectTarget 的语义（消费方/波形/perf 归因不再看到错值）。
+  io.RedirectTarget := CommitNextPC
   // ecall/mret/上游异常提交,或MEM经CSR后门提交的访存故障
   io.ExceptionTaken := CSRUnit.io.ExceptionTaken
   io.ExceptionTarget := CSRUnit.io.ExceptionTarget

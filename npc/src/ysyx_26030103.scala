@@ -564,8 +564,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     else { 0.U(Width.W) }
   idu.io.ex_memop := exu.io.HazardMemOp
   // 基础吞吐
+  // 冲刷拍（pipe_flush）的响应被 StageConnect 消费后直接丢弃，不算交付。
   io.perf_ifu_fetch := PerfBool("ifu_fetch")(icache.io.resp_valid &&
-    icache.io.resp_ready)
+    icache.io.resp_ready && !pipe_flush)
   io.perf_exu_done := PerfBool("exu_done")(exu.io.out.fire)
   io.perf_lsu_load := PerfBool("lsu_load")(lsu.io.Complete &&
     !lsu.io.DebugMemoryWrite)
@@ -595,7 +596,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   )
   io.perf_ifu_stall_ar := PerfBool("ifu_stall_ar")(icache.io.perf_refill_req)
   io.perf_ifu_stall_r := PerfBool("ifu_stall_r")(icache.io.perf_refill_resp)
-  io.perf_ifu_stall_redirect := PerfBool("ifu_stall_redirect")(exu.io.Redirect)
+  // 重定向事件含异常/mret（ExceptionTaken）：它们与分支误预测一样让 IFU
+  // 停发一拍；二者同拍时用或避免重复计数。
+  io.perf_ifu_stall_redirect := PerfBool("ifu_stall_redirect")(
+    exu.io.Redirect || exu.io.ExceptionTaken
+  )
   io.perf_ifu_stall_idle := PerfBool("ifu_stall_idle")(ifu.io.StallIdle)
   // 指令缓存
   io.perf_icache_hit := PerfBool("icache_hit")(icache.io.perf_hit)

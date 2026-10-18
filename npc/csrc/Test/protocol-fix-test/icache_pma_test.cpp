@@ -573,10 +573,9 @@ static void executable_memory_uses_single_beat(DUT &dut,
   dut.io_fetch_valid = 1;
   dut.eval();
   check(dut.io_fetch_ready, "cache-disabled ICache did not accept a fetch");
-  // perf_hit and ARLEN are compile-time zero in this configuration, so firtool
-  // removes those constant output ports.  perf_miss remains observable.
-  check(dut.io_perf_miss,
-        "cache-disabled fetch was not classified as a miss");
+  // 口径修正后，缓存禁用配置下 perf_hit/perf_miss/ARLEN 都是编译期常量
+  // （非缓存取指不算 miss），firtool 会移除这些常量输出端口——缓存禁用时
+  // 不存在"缺失"，因此这里不再观察 perf_miss。
   tick(dut);
   dut.io_fetch_valid = 0;
 
