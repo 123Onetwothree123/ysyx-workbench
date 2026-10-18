@@ -219,19 +219,32 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     readGrantHeld := false.B
   }
   // AXI 要求 VALID 一旦提出必须保持到 READY：被授权方若在地址握手前撤销
-  // ARVALID，授权会永久锁死并静默阻塞其余两方。仿真断言把它变成显式错误。
+  // ARVALID，授权会永久锁死并静默阻塞其余两方。仿真断言把它变成显式错误；
+  // 断言在综合后消失，因此再加一个可综合兜底：持续 1024 拍仍看不到
+  // ARVALID 就释放授权（此时本级 ARVALID 已为低，撤销不违反稳定性），
+  // 让其余主设备继续推进而不是整机挂死。
+  val grantedArValid = MuxCase(
+    false.B,
+    Seq(
+      (heldReadGrant === GrantIFU) -> io.ifu.AR.ARVALID,
+      (heldReadGrant === GrantLSU) -> io.lsu.AR.ARVALID,
+      (heldReadGrant === GrantDMA) -> io.dma.AR.ARVALID
+    )
+  )
   when(readGrantHeld) {
     assert(
-      MuxCase(
-        false.B,
-        Seq(
-          (heldReadGrant === GrantIFU) -> io.ifu.AR.ARVALID,
-          (heldReadGrant === GrantLSU) -> io.lsu.AR.ARVALID,
-          (heldReadGrant === GrantDMA) -> io.dma.AR.ARVALID
-        )
-      ),
+      grantedArValid,
       "granted master dropped ARVALID before its address handshake"
     )
+  }
+  val grantStallTimer = RegInit(0.U(10.W))
+  when(!readGrantHeld || grantedArValid) {
+    grantStallTimer := 0.U
+  }.otherwise {
+    grantStallTimer := grantStallTimer + 1.U
+  }
+  when(readGrantHeld && grantStallTimer === 1023.U) {
+    readGrantHeld := false.B
   }
   when(readAddressFire && chooseLSU) {
     lsuReadOutstanding := true.B

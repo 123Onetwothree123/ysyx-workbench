@@ -15,8 +15,10 @@ class ysyx_26030103_MULUnit(
   private val MetadataDepth = config.MULMaxInflight
   private val MetadataPtrWidth = log2Ceil(MetadataDepth).max(1)
   private val MetadataCountWidth = log2Ceil(MetadataDepth + 1)
-  private val NegativeQueue = Reg(Vec(MetadataDepth, Bool()))
-  private val TakeHighQueue = Reg(Vec(MetadataDepth, Bool()))
+  private val NegativeQueue =
+    RegInit(VecInit(Seq.fill(MetadataDepth)(false.B)))
+  private val TakeHighQueue =
+    RegInit(VecInit(Seq.fill(MetadataDepth)(false.B)))
   private val MetadataHead = RegInit(0.U(MetadataPtrWidth.W))
   private val MetadataTail = RegInit(0.U(MetadataPtrWidth.W))
   private val MetadataCount = RegInit(0.U(MetadataCountWidth.W))

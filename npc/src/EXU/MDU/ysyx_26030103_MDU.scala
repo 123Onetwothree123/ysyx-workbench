@@ -31,7 +31,8 @@ class ysyx_26030103_MDU(
   private val OwnerDepth = config.MDUMaxInflight
   private val OwnerPtrWidth = log2Ceil(OwnerDepth).max(1)
   private val OwnerCountWidth = log2Ceil(OwnerDepth + 1)
-  private val OwnerIsMULQueue = Reg(Vec(OwnerDepth, Bool()))
+  private val OwnerIsMULQueue =
+    RegInit(VecInit(Seq.fill(OwnerDepth)(false.B)))
   private val OwnerHead = RegInit(0.U(OwnerPtrWidth.W))
   private val OwnerTail = RegInit(0.U(OwnerPtrWidth.W))
   private val OwnerCount = RegInit(0.U(OwnerCountWidth.W))

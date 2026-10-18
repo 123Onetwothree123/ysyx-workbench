@@ -95,6 +95,7 @@ class ysyx_26030103_ICacheReg(
   // 超时后转入 rf_drain_fault：继续吸收迟到拍防串扰，同时让取指以
   // 故障响应继续推进，而不是整核挂死。
   val drain_timer = RegInit(0.U(10.W))
+  val drain_retry_timer = RegInit(0.U(10.W))
   val bus_fault = RegInit(false.B)
   // refill专属寄存器。refill期间只能受理同一line中已返回的word，
   // 未返回word和其他line在单MSHR结构下继续反压。
@@ -449,6 +450,7 @@ class ysyx_26030103_ICacheReg(
       }.elsewhen(drain_timer === 1023.U) {
         bus_fault := true.B
         drain_timer := 0.U
+        drain_retry_timer := 0.U
         rfstate := rf_drain_fault
       }.otherwise {
         drain_timer := drain_timer + 1.U
@@ -456,11 +458,18 @@ class ysyx_26030103_ICacheReg(
     }
     is(rf_drain_fault) {
       // 继续以 RREADY 吸收违规从设备的迟到拍，直到 RLAST 使总线重新同步；
-      // 期间新取指由受理路径直接以故障响应结束。
+      // 期间新取指由受理路径直接以故障响应结束。通道安静时周期性重试
+      // refill（清故障标记回空闲）：从设备恢复后系统自动复原，不必等复位。
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RLAST) {
         bus_fault := false.B
         rfstate := rf_idle
+      }.elsewhen(drain_retry_timer === 1023.U && !io.axi.R.RVALID) {
+        bus_fault := false.B
+        drain_retry_timer := 0.U
+        rfstate := rf_idle
+      }.otherwise {
+        drain_retry_timer := drain_retry_timer + 1.U
       }
     }
   }

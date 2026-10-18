@@ -574,21 +574,33 @@ class ysyx_26030103_AXI5Xbar(
     CLINTARHeld := false.B
   }
 
-  // 单拍响应缓冲既对同时到达的SoCBus/CLINT响应进行仲裁，也保证上游主设备
-  // 施加反压时RID/RDATA/RRESP/RLAST保持稳定。
-  val RBufferValid = RegInit(false.B)
-  val RBufferID = RegInit(0.U(4.W))
-  val RBufferData = RegInit(0.U(32.W))
-  val RBufferResp = RegInit(OKAY)
-  val RBufferLast = RegInit(false.B)
-  io.in.R.RID := RBufferID
-  io.in.R.RVALID := RBufferValid
-  io.in.R.RDATA := RBufferData
-  io.in.R.RRESP := RBufferResp
-  io.in.R.RLAST := RBufferLast
+  // 响应小FIFO（4拍）：既对同时到达的SoCBus/CLINT响应进行仲裁，也保证
+  // 上游主设备施加反压时RID/RDATA/RRESP/RLAST保持稳定。此前是单拍缓冲，
+  // 被反压的响应会独占通道、阻塞无关owner的响应（队头阻塞）；深度取4与
+  // 仲裁器CPU侧队列一致，正常路径仍为1拍穿透。
+  private class RPayload extends Bundle {
+    val Id = UInt(4.W)
+    val Data = UInt(32.W)
+    val Resp = UInt(2.W)
+    val Last = Bool()
+  }
+  private val rQueue =
+    Module(new Queue(new RPayload, 4, pipe = true, flow = false))
+  io.in.R.RID := rQueue.io.deq.bits.Id
+  io.in.R.RVALID := rQueue.io.deq.valid
+  io.in.R.RDATA := rQueue.io.deq.bits.Data
+  io.in.R.RRESP := rQueue.io.deq.bits.Resp
+  io.in.R.RLAST := rQueue.io.deq.bits.Last
+  rQueue.io.deq.ready := io.in.R.RREADY
 
-  val RBufferPop = RBufferValid && io.in.R.RREADY
-  val RBufferAvailable = !RBufferValid || RBufferPop
+  rQueue.io.enq.valid := false.B
+  rQueue.io.enq.bits.Id := 0.U
+  rQueue.io.enq.bits.Data := 0.U
+  rQueue.io.enq.bits.Resp := OKAY
+  rQueue.io.enq.bits.Last := false.B
+
+  val RBufferPop = rQueue.io.deq.fire
+  val RBufferAvailable = rQueue.io.enq.ready || RBufferPop
   val SoCResponseExpected =
     (ReadSlotState(io.SoCBus.R.RID) === ReadSlotResponse &&
       ReadTargetReg(io.SoCBus.R.RID) === TargetSoCBus) ||
@@ -620,39 +632,37 @@ class ysyx_26030103_AXI5Xbar(
   val CaptureLocal = RBufferAvailable && SelectLocal
 
   when(CaptureSoC) {
-    RBufferValid := true.B
-    RBufferID := io.SoCBus.R.RID
-    RBufferData := io.SoCBus.R.RDATA
-    RBufferResp := io.SoCBus.R.RRESP
-    RBufferLast := io.SoCBus.R.RLAST
+    rQueue.io.enq.valid := true.B
+    rQueue.io.enq.bits.Id := io.SoCBus.R.RID
+    rQueue.io.enq.bits.Data := io.SoCBus.R.RDATA
+    rQueue.io.enq.bits.Resp := io.SoCBus.R.RRESP
+    rQueue.io.enq.bits.Last := io.SoCBus.R.RLAST
   }.elsewhen(CaptureCLINT) {
-    RBufferValid := true.B
-    RBufferID := io.CLINT.R.RID
-    RBufferData := io.CLINT.R.RDATA
-    RBufferResp := io.CLINT.R.RRESP
-    RBufferLast := io.CLINT.R.RLAST
+    rQueue.io.enq.valid := true.B
+    rQueue.io.enq.bits.Id := io.CLINT.R.RID
+    rQueue.io.enq.bits.Data := io.CLINT.R.RDATA
+    rQueue.io.enq.bits.Resp := io.CLINT.R.RRESP
+    rQueue.io.enq.bits.Last := io.CLINT.R.RLAST
   }.elsewhen(CaptureLocal) {
-    RBufferValid := true.B
-    RBufferID := LocalResponseID
-    RBufferData := 0.U
-    RBufferResp := DECERR
-    RBufferLast := LocalResponseLast
+    rQueue.io.enq.valid := true.B
+    rQueue.io.enq.bits.Id := LocalResponseID
+    rQueue.io.enq.bits.Data := 0.U
+    rQueue.io.enq.bits.Resp := DECERR
+    rQueue.io.enq.bits.Last := LocalResponseLast
     when(LocalResponseLast) {
       ReadSlotState(LocalResponseID) := ReadSlotLocalLast
     }.otherwise {
       ReadDECERRBeatReg(LocalResponseID) :=
         ReadDECERRBeatReg(LocalResponseID) + 1.U
     }
-  }.elsewhen(RBufferPop) {
-    RBufferValid := false.B
   }
 
-  // 本地DECERR状态在数据拍被捕获到RBuffer时推进，而不是在该缓冲数据拍随后
-  // 被消费时推进。如果SoC/CLINT响应在本地数据拍出队的周期替换它，再次推进
-  // 旧槽位会跳过一个错误响应拍，还可能跳过携带RLAST的ARLEN对应数据拍。
+  // 本地DECERR状态在数据拍被捕获进FIFO时推进，而不是在该拍随后被消费时
+  // 推进。如果SoC/CLINT响应在本地数据拍出队的周期替换它，再次推进旧槽位
+  // 会跳过一个错误响应拍，还可能跳过携带RLAST的ARLEN对应数据拍。
 
-  when(RBufferPop && RBufferLast) {
-    ReadSlotState(RBufferID) := ReadSlotFree
+  when(RBufferPop && rQueue.io.deq.bits.Last) {
+    ReadSlotState(rQueue.io.deq.bits.Id) := ReadSlotFree
   }
 
   when(io.SoCBus.R.RVALID) {

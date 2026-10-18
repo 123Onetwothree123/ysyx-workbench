@@ -356,8 +356,11 @@ class ysyx_26030103_EXU(
   // 预测错误检查: 比较实际与预测的下一PC,不一致则冲刷并重定向到实际目标
   // (jal: jal BTB命中免冲刷; ret: Ret表项+RAS栈顶预测; 其他jalr: 无预测=>必然判错重定向)
   val Mispredict = ActualNextPC =/= PredNextPC
+  // MRET 的实际下一PC是mepc，不参与这里的顺序PC比较：它的重定向完全由
+  // ExceptionTaken 承担。此前陈旧BTB表项会让 MRET 走 Mispredict 产生一次
+  // 伪 Redirect（目标虽已修正为mepc，但事件语义/计数仍会误导）。
   val Redirect =
-    (Mispredict || inst.IsFenceI) && !InstructionTrapValid
+    (Mispredict || inst.IsFenceI) && !InstructionTrapValid && !inst.IsMret
   // CSR提交(csr写/ecall/ebreak/mret/异常/中断): 普通访存不访问CSR单元；
   // 但已使能IRQ可以在load/store执行前的指令边界提交，并压掉该访存。
   // 带异常标记的访存指令(取指错/非法编码)必须在EXU提交异常, 提交视角下不算访存指令,

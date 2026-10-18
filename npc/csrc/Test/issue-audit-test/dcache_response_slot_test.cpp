@@ -210,6 +210,59 @@ static void test_store_mirror_then_load(DUT &dut, uint32_t line_base,
   dut.eval();
 }
 
+// 随机化漂移守卫：伪随机序列的命中 load / 命中 store，用内存模型逐笔核对。
+// 三个存储后端编译同一份激励，任何实现漂移都会在此暴露（今天修掉的
+// "store 写镜像后 load 读到旧值"就属于这一类）。
+static void test_randomized_drift_guard(DUT &dut, uint32_t line_base,
+                                        const std::vector<uint32_t> &words) {
+  std::vector<uint32_t> model(words);
+  miss_and_refill(dut, line_base, words);
+
+  uint32_t rng = 0x12345678U;
+  auto next = [&]() {
+    rng = rng * 1664525U + 1013904223U;
+    return rng >> 16;
+  };
+
+  for (int op = 0; op < 200; ++op) {
+    const uint32_t word = next() % words.size();
+    const uint32_t addr = line_base + word * 4U;
+    if ((next() & 3U) == 0U) {
+      const uint32_t data = next();
+      dut.io_resp_ready = 0;
+      dut.io_StoreValid = 1;
+      dut.io_StoreResp = 0;
+      dut.io_StoreAddr = addr;
+      dut.io_StoreData = data;
+      dut.io_StoreStrb = 0xF;
+      tick(dut);
+      dut.io_StoreValid = 0;
+      dut.io_StoreStrb = 0;
+      dut.eval();
+      model[word] = data;
+    } else {
+      dut.io_req_valid = 1;
+      dut.io_req_bits_addr = addr;
+      dut.io_req_bits_WidthSelect = 2;
+      dut.io_req_bits_signed = 0;
+      dut.eval();
+      check(dut.io_req_ready, "drift guard: hit load was not accepted");
+      tick(dut);
+      dut.io_req_valid = 0;
+      wait_until(dut, [&] { return dut.io_resp_valid; },
+                 "drift guard: hit load produced no response");
+      check(!dut.io_resp_bits_fault && dut.io_resp_bits_data == model[word],
+            "drift guard: response 0x" +
+                std::to_string(dut.io_resp_bits_data) +
+                " != model 0x" + std::to_string(model[word]));
+      dut.io_resp_ready = 1;
+      tick(dut);
+      dut.io_resp_ready = 0;
+      dut.eval();
+    }
+  }
+}
+
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
   const std::string name =
@@ -271,6 +324,7 @@ int main(int argc, char **argv) {
     }
     test_store_conflict_same_cycle(dut, kLineBase + 0x40U, words);
     test_store_mirror_then_load(dut, kLineBase + 0x80U, words);
+    test_randomized_drift_guard(dut, kLineBase + 0xc0U, words);
 
     dut.final();
   });

@@ -1,13 +1,12 @@
-// 设计审计：Xbar 的单一 R 缓冲造成跨源队头阻塞。
+// 设计审计：Xbar 的响应缓冲由单拍改为 4 拍小 FIFO 后，跨源队头阻塞消除。
 //
-// 机制：Xbar 只有一个 R 响应缓冲（RBuffer*）。当某个源（例如入站 DMA，
-// RID=2）的响应被其消费者反压（io_in_R_RREADY=0）时，缓冲被占住，
-// 其他源（IFU/LSU）的响应也无法被接受——下游从设备必须一直保持
-// RVALID，否则就是协议违例。
+// 背景：此前 Xbar 只有一个 R 响应缓冲，某个源（例如入站 DMA，RID=2）的
+// 响应被消费者反压（io_in_R_RREADY=0）时会独占通道，其他源（IFU/LSU）
+// 的响应无法被接受。现改为小 FIFO（深度与仲裁器 CPU 侧队列一致）：
+// 被反压的响应不再阻塞无关 owner。
 //
-// 本测试确认该行为存在：先缓冲 RID=2 的响应并反压消费者，再喂 RID=0
-// 的响应，检查 io_SoCBus_R_RREADY 是否为 0（无法接受）；释放消费者后
-// 两个响应都能正常排空（无数据损坏）。
+// 本测试确认：先入队 RID=2 并反压消费者，RID=0 的响应仍必须被接受
+// （RREADY=1）；释放消费者后按到达顺序排空且数据无损。
 
 #include "Vysyx_26030103_AXI5Xbar.h"
 #include "test_common.hpp"
@@ -85,62 +84,61 @@ static void issue_soc_read(DUT &dut, uint8_t id, uint32_t address) {
 
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
-  return run_test("xbar single R buffer blocks unrelated responses", [] {
-    DUT dut;
-    defaults(dut);
-    reset(dut);
+  return run_test(
+      "xbar R FIFO absorbs an unrelated response while one is back-pressured",
+      [] {
+        DUT dut;
+        defaults(dut);
+        reset(dut);
 
-    // 两笔到 PSRAM 的读：RID=2（入站 DMA）与 RID=0（IFU）。
-    issue_soc_read(dut, 2, 0x80001000U);
-    issue_soc_read(dut, 0, 0x80002000U);
+        // 两笔到 PSRAM 的读：RID=2（入站 DMA）与 RID=0（IFU）。
+        issue_soc_read(dut, 2, 0x80001000U);
+        issue_soc_read(dut, 0, 0x80002000U);
 
-    // 先返回 RID=2 的响应，消费者保持反压（DMA 侧不取）。
-    dut.io_in_R_RREADY = 0;
-    dut.io_SoCBus_R_RID = 2;
-    dut.io_SoCBus_R_RDATA = 0x22222222U;
-    dut.io_SoCBus_R_RLAST = 1;
-    dut.io_SoCBus_R_RVALID = 1;
-    dut.eval();
-    check(dut.io_SoCBus_R_RREADY,
-          "xbar did not accept the DMA response into its buffer");
-    tick(dut);
-    dut.io_SoCBus_R_RVALID = 0;
-    dut.io_SoCBus_R_RLAST = 0;
-    dut.eval();
-    check(dut.io_in_R_RVALID && dut.io_in_R_RID == 2,
-          "buffered DMA response is not visible to the consumer");
+        // 先返回 RID=2 的响应，消费者保持反压（DMA 侧不取）。
+        dut.io_in_R_RREADY = 0;
+        dut.io_SoCBus_R_RID = 2;
+        dut.io_SoCBus_R_RDATA = 0x22222222U;
+        dut.io_SoCBus_R_RLAST = 1;
+        dut.io_SoCBus_R_RVALID = 1;
+        dut.eval();
+        check(dut.io_SoCBus_R_RREADY,
+              "xbar did not accept the DMA response into its FIFO");
+        tick(dut);
+        dut.io_SoCBus_R_RVALID = 0;
+        dut.io_SoCBus_R_RLAST = 0;
+        dut.eval();
+        check(dut.io_in_R_RVALID && dut.io_in_R_RID == 2,
+              "buffered DMA response is not visible to the consumer");
 
-    // 现在喂 IFU 的响应：单一缓冲被 DMA 占住，必须无法接受。
-    dut.io_SoCBus_R_RID = 0;
-    dut.io_SoCBus_R_RDATA = 0x00000000U;
-    dut.io_SoCBus_R_RLAST = 1;
-    dut.io_SoCBus_R_RVALID = 1;
-    dut.eval();
-    check(!dut.io_SoCBus_R_RREADY,
-          "xbar accepted an unrelated IFU response while the DMA response "
-          "was still buffered (head-of-line blocking absent)");
+        // 再喂 IFU 的响应：FIFO 有余量，必须被接受；旧单拍缓冲会在此阻塞。
+        dut.io_SoCBus_R_RID = 0;
+        dut.io_SoCBus_R_RDATA = 0x00000011U;
+        dut.io_SoCBus_R_RLAST = 1;
+        dut.io_SoCBus_R_RVALID = 1;
+        dut.eval();
+        check(dut.io_SoCBus_R_RREADY,
+              "xbar did not absorb the unrelated IFU response behind a "
+              "back-pressured one (head-of-line blocking still present)");
+        tick(dut);
+        dut.io_SoCBus_R_RVALID = 0;
+        dut.io_SoCBus_R_RLAST = 0;
+        dut.eval();
 
-    // 释放消费者：DMA 响应被消费；缓冲空出后 IFU 响应才被接受
-    // （Xbar 的缓冲是弹性的：pop 与 push 可以同拍发生）。
-    dut.io_in_R_RREADY = 1;
-    tick(dut);
-    dut.eval();
-    check(!dut.io_in_R_RVALID || dut.io_in_R_RID == 0,
-          "DMA response was not drained before the IFU response");
-
-    if (!dut.io_in_R_RVALID) {
-      check(dut.io_SoCBus_R_RREADY,
-            "xbar did not accept the IFU response after the buffer drained");
-      tick(dut);
-      dut.eval();
-    }
-    // IFU 响应已被捕获：从设备撤销 RVALID（握手完成）。
-    dut.io_SoCBus_R_RVALID = 0;
-    dut.io_SoCBus_R_RLAST = 0;
-    dut.eval();
-    check(dut.io_in_R_RVALID && dut.io_in_R_RID == 0 &&
-              dut.io_in_R_RDATA == 0x00000000U,
-          "IFU response was lost or corrupted after the HOL block");
-    dut.final();
-  });
+        // 释放消费者：按到达顺序排空（先 DMA 后 IFU），数据无损。
+        dut.io_in_R_RREADY = 1;
+        dut.eval();
+        check(dut.io_in_R_RVALID && dut.io_in_R_RID == 2 &&
+                  dut.io_in_R_RDATA == 0x22222222U,
+              "first drained response was not the DMA beat");
+        tick(dut);
+        dut.eval();
+        check(dut.io_in_R_RVALID && dut.io_in_R_RID == 0 &&
+                  dut.io_in_R_RDATA == 0x00000011U,
+              "second drained response was not the intact IFU beat");
+        tick(dut);
+        dut.eval();
+        check(!dut.io_in_R_RVALID, "R FIFO did not drain empty");
+        dut.final();
+      });
 }

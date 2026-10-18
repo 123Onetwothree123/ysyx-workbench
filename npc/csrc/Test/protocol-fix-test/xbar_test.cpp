@@ -127,39 +127,95 @@ static void external_read_burst(DUT &dut, std::uint32_t address) {
   dut.io_in_AR_ARLEN = 0;
 }
 
+#ifdef TEST_CHIPLINK
+// 自然激励：CLINT 窗口内的多拍写。Xbar 必须整笔吞掉（W 排空到 WLAST）、
+// 不泄漏到 CLINT 从设备，最后回 DECERR。此前该用例靠 rootp 直接改内部
+// 寄存器状态；现在 AWLEN 由输入驱动，路径自然可达（也覆盖 StateWriteDrain）。
 static void clint_burst_decerr(DUT &dut) {
-  // The complete CPU elaboration specializes AWLEN to zero because today's
-  // LSU only emits single-beat writes.  Enter the otherwise real drain state
-  // directly so this C++ regression still checks its WLAST/DECERR behavior.
-  dut.rootp->ysyx_26030103_AXI5Xbar__DOT__WriteTargetReg = 1;
-  dut.rootp->ysyx_26030103_AXI5Xbar__DOT__writeState = 5;
+  dut.io_in_AW_AWADDR = 0x02000000U; // CLINT 窗口起点
+  dut.io_in_AW_AWLEN = 1;            // 2 拍
+  dut.io_in_AW_AWSIZE = 2;
+  dut.io_in_AW_AWBURST = 1;
+  dut.io_in_AW_AWVALID = 1;
+  dut.eval();
+  check(dut.io_in_AW_AWREADY, "xbar did not accept a CLINT burst AW");
+  tick(dut);
   dut.io_in_AW_AWVALID = 0;
-  dut.io_in_W_WDATA = 0xaaaaaaaaU;
+  dut.io_in_AW_AWLEN = 0;
+
+  // 首拍 W：收集级接收后因不支持转发而进入排空态。
+  dut.io_in_W_WDATA = 0x11111111U;
+  dut.io_in_W_WSTRB = 0xF;
   dut.io_in_W_WLAST = 0;
   dut.io_in_W_WVALID = 1;
   dut.eval();
+  check(dut.io_in_W_WREADY, "xbar did not collect the first CLINT W beat");
+  tick(dut);
+  dut.eval();
   check(!dut.io_CLINT_AW_AWVALID && !dut.io_CLINT_W_WVALID,
         "unsupported CLINT burst reached the CLINT slave");
-  check(dut.io_in_W_WREADY,
-        "xbar did not enter drain state for CLINT burst");
-
-  dut.io_in_W_WDATA = 0xbbbbbbbbU;
-  dut.io_in_W_WLAST = 0;
-  tick(dut);
   check(!dut.io_in_B_BVALID,
-        "xbar responded before draining CLINT burst through WLAST");
+        "xbar responded before draining the CLINT burst through WLAST");
 
-  dut.io_in_W_WDATA = 0xccccccccU;
+  // 末拍 W：排空态接受，随后回 DECERR。
+  dut.io_in_W_WDATA = 0x22222222U;
   dut.io_in_W_WLAST = 1;
   dut.eval();
-  check(dut.io_in_W_WREADY, "xbar did not accept drained WLAST");
+  check(dut.io_in_W_WREADY, "xbar did not accept the drained WLAST");
   tick(dut);
   dut.io_in_W_WVALID = 0;
+  dut.io_in_W_WLAST = 0;
   dut.eval();
+  check(!dut.io_CLINT_AW_AWVALID && !dut.io_CLINT_W_WVALID,
+        "CLINT slave saw writes during the drain");
   check(dut.io_in_B_BVALID && dut.io_in_B_BRESP == 3,
         "CLINT burst did not return DECERR after drain");
+  dut.io_in_B_BREADY = 1;
   tick(dut);
+  dut.eval();
 }
+
+// 自然激励：未映射地址上的多拍写同样走排空态（WriteTarget=Invalid 分支）。
+static void unmapped_burst_write_decerr(DUT &dut) {
+  dut.io_in_AW_AWADDR = 0x20000000U; // 地址空洞
+  dut.io_in_AW_AWLEN = 1;
+  dut.io_in_AW_AWSIZE = 2;
+  dut.io_in_AW_AWBURST = 1;
+  dut.io_in_AW_AWVALID = 1;
+  dut.eval();
+  check(dut.io_in_AW_AWREADY, "xbar did not accept an unmapped burst AW");
+  tick(dut);
+  dut.io_in_AW_AWVALID = 0;
+  dut.io_in_AW_AWLEN = 0;
+
+  dut.io_in_W_WDATA = 0x33333333U;
+  dut.io_in_W_WSTRB = 0xF;
+  dut.io_in_W_WLAST = 0;
+  dut.io_in_W_WVALID = 1;
+  dut.eval();
+  check(dut.io_in_W_WREADY, "xbar did not collect the first unmapped W beat");
+  tick(dut);
+  dut.eval();
+  check(!dut.io_SoCBus_AW_AWVALID && !dut.io_SoCBus_W_WVALID &&
+            !dut.io_CLINT_AW_AWVALID && !dut.io_CLINT_W_WVALID,
+        "unmapped burst leaked downstream during drain");
+
+  dut.io_in_W_WDATA = 0x44444444U;
+  dut.io_in_W_WLAST = 1;
+  dut.eval();
+  check(dut.io_in_W_WREADY, "xbar did not accept the drained unmapped WLAST");
+  tick(dut);
+  dut.io_in_W_WVALID = 0;
+  dut.io_in_W_WLAST = 0;
+  dut.eval();
+  check(dut.io_in_B_BVALID && dut.io_in_B_BRESP == 3,
+        "unmapped burst did not return DECERR after drain");
+  dut.io_in_B_BREADY = 1;
+  tick(dut);
+  dut.eval();
+}
+
+#endif
 
 static void unmapped_read_burst_decerr(DUT &dut) {
   dut.io_in_AR_ARADDR = 0x20000000U; // SoC address-map hole
@@ -517,28 +573,42 @@ static void simultaneous_targets_are_arbitrated(DUT &dut) {
   dut.io_SoCBus_R_RVALID = 0;
   dut.io_SoCBus_R_RLAST = 0;
 
+  // R FIFO（深度 4）：SoC 响应先入队并保持稳定（两拍反压）。
   for (int cycle = 0; cycle < 2; ++cycle) {
     dut.eval();
     check(dut.io_in_R_RVALID && dut.io_in_R_RID == 0 &&
-              dut.io_in_R_RDATA == 0xaaaa0000U &&
-              !dut.io_CLINT_R_RREADY,
+              dut.io_in_R_RDATA == 0xaaaa0000U,
           "selected SoCBus response was unstable under backpressure");
-    tick(dut);
+    if (cycle == 0) {
+      // 本拍 SoC 已撤 VALID，CLINT 获得仲裁并被 FIFO 吸收；沿后从设备
+      // 立即撤销 VALID（AXI 要求，避免被重复捕获）。
+      check(dut.io_CLINT_R_RREADY,
+            "CLINT response was not absorbed into the R FIFO behind the "
+            "back-pressured SoC beat");
+      tick(dut);
+      dut.io_CLINT_R_RVALID = 0;
+      dut.io_CLINT_R_RLAST = 0;
+    } else {
+      tick(dut);
+    }
   }
+  dut.eval();
 
-  // Pop SoCBus and capture the waiting CLINT beat on the same edge.
+  // 释放消费者：按入队顺序先出 SoC 再出 CLINT。
   dut.io_in_R_RREADY = 1;
   dut.eval();
-  check(dut.io_CLINT_R_RREADY,
-        "waiting CLINT response did not receive arbitration after pop");
+  check(dut.io_in_R_RVALID && dut.io_in_R_RID == 0 &&
+            dut.io_in_R_RDATA == 0xaaaa0000U && dut.io_in_R_RLAST,
+        "first drained response was not the SoC beat");
   tick(dut);
-  dut.io_CLINT_R_RVALID = 0;
-  dut.io_CLINT_R_RLAST = 0;
   dut.eval();
   check(dut.io_in_R_RVALID && dut.io_in_R_RID == 1 &&
             dut.io_in_R_RDATA == 0xbbbb1111U && dut.io_in_R_RLAST,
-        "arbitrated CLINT response was corrupted");
+        "second drained response was not the intact CLINT beat");
   tick(dut);
+  dut.eval();
+  check(!dut.io_in_R_RVALID, "R FIFO did not drain empty");
+  dut.io_in_R_RREADY = 0;
   dut.io_in_AR_ARID = 0;
 }
 
@@ -615,7 +685,10 @@ int main(int argc, char **argv) {
 #ifdef TEST_CHIPLINK
     external_read_burst(dut, 0xc0000000U);
 #endif
+#ifdef TEST_CHIPLINK
     clint_burst_decerr(dut);
+    unmapped_burst_write_decerr(dut);
+#endif
     unmapped_read_burst_decerr(dut);
     crossing_read_decerr(dut);
     unmapped_write_decerr(dut);

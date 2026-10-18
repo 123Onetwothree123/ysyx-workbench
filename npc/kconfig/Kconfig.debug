@@ -94,7 +94,7 @@ menu "运行时调试"
       depends on PERF_COUNTER_BASIC
 
       config PERF_COUNTER_IFU_FETCH
-        bool "取指响应交付（不含冲刷拍丢弃，perf_ifu_fetch）"
+        bool "取指响应交付（不含冲刷拍丢弃；冲刷前已交付的错路取指仍计入，perf_ifu_fetch）"
         default y
 
       config PERF_COUNTER_EXU_DONE
@@ -191,7 +191,7 @@ menu "运行时调试"
         default y
 
       config PERF_COUNTER_IFU_STALL_IDLE
-        bool "IFU空闲（perf_ifu_stall_idle）"
+        bool "IFU空闲：重定向/异常停发拍（周期数，与redirect事件数口径不同；perf_ifu_stall_idle）"
         default y
     endmenu
 
