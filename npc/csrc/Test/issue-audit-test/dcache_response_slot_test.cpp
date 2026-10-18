@@ -97,6 +97,79 @@ static void miss_and_refill(DUT &dut, uint32_t addr,
   check(dut.io_req_ready, "DCache did not return to idle after the refill");
 }
 
+// 同拍"命中 store 写镜像 + 同线 load 请求"的契约检查。
+// 源码注释承诺：同拍成功 store 会在时钟沿才写入阵列，因此必须反压该
+// load 一拍，避免响应锁存 store 之前的旧值。三种存储介质必须一致遵守，
+// 且冲突解除后的响应必须是 store 之后的新值。
+static void test_store_conflict_same_cycle(DUT &dut, uint32_t line_base,
+                                           const std::vector<uint32_t> &words) {
+  miss_and_refill(dut, line_base + 4U, words);
+  const uint32_t kStoreAddr = line_base + 4U;
+  constexpr uint32_t kStoreData = 0xDEADBEEFU;
+  const uint32_t kOldWord = words[1]; // 冲突拍之前该字的旧值
+
+  // 冲突拍：同线 store 命中（写镜像）+ load 请求。响应先不消费，
+  // 保证随后出现的响应必然属于冲突拍受理的这个请求。
+  dut.io_resp_ready = 0;
+  dut.io_req_valid = 1;
+  dut.io_req_bits_addr = kStoreAddr;
+  dut.io_req_bits_WidthSelect = 2;
+  dut.io_req_bits_signed = 0;
+  dut.io_StoreValid = 1;
+  dut.io_StoreResp = 0;
+  dut.io_StoreAddr = kStoreAddr;
+  dut.io_StoreData = kStoreData;
+  dut.io_StoreStrb = 0xF;
+  dut.eval();
+  const bool accepted_in_conflict = dut.io_req_ready;
+  tick(dut);
+  dut.io_StoreValid = 0;
+  dut.io_StoreStrb = 0;
+  dut.eval();
+  dut.io_req_valid = 0;
+
+  uint32_t first_resp = 0;
+  bool got_first = false;
+  if (accepted_in_conflict) {
+    wait_until(dut, [&] { return dut.io_resp_valid; },
+               "冲突拍受理的 load 没有响应");
+    first_resp = dut.io_resp_bits_data;
+    got_first = true;
+  }
+  dut.io_resp_ready = 1;
+  tick(dut);
+  dut.eval();
+
+  // 冲突解除后的新请求：必须返回 store 之后的新值。
+  dut.io_req_valid = 1;
+  dut.io_req_bits_addr = kStoreAddr;
+  dut.eval();
+  check(dut.io_req_ready, "冲突解除后 load 未被接受");
+  tick(dut);
+  dut.io_req_valid = 0;
+  wait_until(dut, [&] { return dut.io_resp_valid; },
+             "冲突解除后的 load 没有响应");
+  const uint32_t after_resp = dut.io_resp_bits_data;
+  dut.io_resp_ready = 1;
+  tick(dut);
+  dut.eval();
+
+  std::cout << "[info] " << kStorageName
+            << ": 冲突拍受理=" << accepted_in_conflict << " 冲突拍响应=0x"
+            << std::hex << first_resp << "（旧字=0x" << kOldWord
+            << "） 冲突后响应=0x" << after_resp << std::dec << "\n";
+  check(!accepted_in_conflict,
+        "同拍 store 写镜像与同线 load 必须反压一拍（源码注释承诺）");
+  if (got_first) {
+    check(first_resp == kStoreData,
+          "冲突拍受理的 load 返回了 store 之前的旧值 0x" +
+              std::to_string(first_resp));
+  }
+  check(after_resp == kStoreData,
+        "冲突解除后的 load 必须看到 store 之后的新值，得到 0x" +
+            std::to_string(after_resp));
+}
+
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
   const std::string name =
@@ -156,6 +229,8 @@ int main(int argc, char **argv) {
                 std::to_string(requests[index]) + " expects 0x" +
                 std::to_string(expected));
     }
+    test_store_conflict_same_cycle(dut, kLineBase + 0x40U, words);
+
     dut.final();
   });
 }

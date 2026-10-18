@@ -205,8 +205,11 @@ class ysyx_26030103_DCacheReg(
   val HitUnderRefill = PriorDemandLeaves && !io.flush &&
     !StoreConflictsRequest && (FullHitUnderRefill || PartialHitUnderRefill)
   val AcceptedHit = Mux(state === SIdle, hit, HitUnderRefill)
+  // 同拍命中 store 会在此沿才写入阵列/镜像：SIdle 命中路径也必须反压
+  // 同线 load 一拍，否则 Reg 实现会锁存 store 之前的旧值（SRAM 实现因
+  // 读口打拍而恰好看到新值），两实现语义不一致。
   io.req.ready := ResponseSlotReady && !io.flush &&
-    (state === SIdle || HitUnderRefill)
+    (state === SIdle || HitUnderRefill) && !StoreConflictsRequest
   // 性能计数器: 已返回的MSHR字按hit计数，不应伪造第二次cache miss。
   io.perf_hit := io.req.fire && AcceptedHit
   io.perf_miss := io.req.fire && cacheable && !AcceptedHit
