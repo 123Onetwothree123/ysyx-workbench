@@ -22,7 +22,6 @@ class ysyx_26030103_CSR extends Module {
     // 提交态PC，MEM后门故障取故障指令PC。
     val pc = Input(UInt(32.W))
     val CSR_rdata = Output(UInt(32.W)) // ysyx_26030103_CSR读出，写到rd
-    val CSRValid = Output(Bool()) // 如果当前是ysyx_26030103_CSR指令，那就需要写回rd
     // 异常和返回的跳转控制
     val ExceptionTaken =
       Output(Bool()) // 需要跳转，ecall到ysyx_26030103_mtvec，mret到ysyx_26030103_mepc
@@ -65,9 +64,6 @@ class ysyx_26030103_CSR extends Module {
   val Mvendorid_rdata = 0x79737978.U(32.W)
   val Marchid_rdata = "h018d3017".U(32.W)
   def IsCSRAddress(addr: UInt): Bool = io.CSRAddress === addr
-  // CSRRS[I]/CSRRC[I] 在源字段为零时是纯读取；CSRRW[I] 总是写入。
-  val CSRReadCommand =
-    io.IsCsrrw || io.IsCsrrs || io.IsCsrrc
   val csrrwWen = io.Enable && io.IsCsrrw
   val csrrsWen = io.Enable && io.IsCsrrs && io.rs1 =/= 0.U
   val csrrcWen = io.Enable && io.IsCsrrc && io.rs1 =/= 0.U
@@ -255,16 +251,6 @@ class ysyx_26030103_CSR extends Module {
   )
   // 管他了，找不到就赋值0了
   io.CSR_rdata := MuxLookup(io.CSRAddress, 0.U(32.W))(CSRMap)
-  // 我是真的服了，居然光直接跳过命令控制，直接连线看具体指令还不够，过不了检查，还得为了检查去看地址有没有匹配
-  val IsAddressValid = IsCSRAddress(CSR_MCYCLE) ||
-    IsCSRAddress(CSR_MCYCLEH) ||
-    IsCSRAddress(CSR_MVENDORID) ||
-    IsCSRAddress(CSR_MARCHID) ||
-    IsCSRAddress(CSR_MSTATUS) ||
-    IsCSRAddress(CSR_MTVEC) ||
-    IsCSRAddress(CSR_MEPC) ||
-    IsCSRAddress(CSR_MCAUSE)
-  io.CSRValid := CSRReadCommand && IsAddressValid
   // mtvec.MODE=Direct(0): 所有trap走BASE。MODE=Vectored(1): 只有interrupt
   // 走BASE+4*cause，同步异常仍走BASE。目标使用本拍ExceptionCause，
   // 不依赖时钟边沿后才写入的mcause。

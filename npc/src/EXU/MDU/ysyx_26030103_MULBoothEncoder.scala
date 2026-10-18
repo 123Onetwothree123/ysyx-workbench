@@ -25,7 +25,10 @@ class ysyx_26030103_MULBoothEncoder(
     if (ProductWidth == MultiplicandWidth) IO.Multiplicand
     else Cat(0.U((ProductWidth - MultiplicandWidth).W), IO.Multiplicand) //零扩展被乘数
   var PositiveProduct: UInt = 0.U(ProductWidth.W) //正幅值部分积累加器
-  for (Index <- 0 until DigitWidth) {
+  // 幅值恒小于 2^BoothBits（负分支最大为 RadixValue-RawMagnitude，
+  // 正分支 RawMagnitude < 2^(BoothBits-1)），因此第 BoothBits 位恒为 0，
+  // 不需要为它展开一级零加数。
+  for (Index <- 0 until BoothBits) {
     val Shifted = (MultiplicandWide << Index)(ProductWidth - 1, 0) //生成2^Index乘数
     val Addend = Mux(DigitMagnitude(Index), Shifted, 0.U(ProductWidth.W)) //按幅值位选择加数
     PositiveProduct = (PositiveProduct +& Addend)(ProductWidth - 1, 0) //移位加法累加并截断

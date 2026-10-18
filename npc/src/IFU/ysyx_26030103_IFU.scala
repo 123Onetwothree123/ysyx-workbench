@@ -20,9 +20,6 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
     val PredHit = Input(Bool())
     val PredTarget = Input(UInt(32.W))
 
-    val DebugPC = Output(UInt(32.W))
-    val StallPipeline = Output(Bool())
-    val StallICache = Output(Bool())
     val StallIdle = Output(Bool())
   })
   val PCModule = Module(new ysyx_26030103_PC(resetAddr))
@@ -43,8 +40,5 @@ class ysyx_26030103_IFU(resetAddr: Long = 0x30000000L) extends Module {
   PCModule.io.ysyx_26030103_NextPC := NextPCModule.io.ysyx_26030103_NextPC
   PCModule.io.PCEnable := redirect || (io.FetchValid && io.FetchReady)
 
-  io.DebugPC := PCModule.io.ysyx_26030103_PC
-  io.StallICache := io.FetchValid && !io.FetchReady
   io.StallIdle := !io.FetchValid
-  io.StallPipeline := false.B // 下游反压的测点上移到icache响应侧,由顶层统计
 }

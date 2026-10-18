@@ -51,8 +51,6 @@ class ysyx_26030103_IDUMessage extends Bundle {
   val Rs1 = UInt(5.W)
   val Rs1Data = UInt(32.W)
 
-  // ALU 解码器检测到的非法指令编码
-  val ALUCDIllegal = Bool()
 
   // 异常标记:可能是IFU传下来的取指错(cause=1),也可能是IDU检测到的非法指令(cause=2)
   // 统一在EXU提交点处理,带异常标记的指令不得产生任何副作用

@@ -304,7 +304,6 @@ class ysyx_26030103_IDU(
   io.out.bits.CSRAddress := CSRAddress
   io.out.bits.Rs1 := Rs1
   io.out.bits.Rs1Data := Mux(IsCSRImmediate, Cat(0.U(27.W), Rs1), src1)
-  io.out.bits.ALUCDIllegal := ALUCDIllegal
   // 异常传递:IFU的取指错优先(此时指令本身是垃圾,IDU的译码结果不可信),否则报非法指令(cause=2)
   io.out.bits.ExceptionValid := io.in.bits.ExceptionValid || IllegalInsn
   io.out.bits.ExceptionCause := Mux(
