@@ -6,6 +6,8 @@
 
 #include "expr.hpp" /* struct symbol, SYMBOL_HASHSIZE, tristate, enum symbol_type, ... */
 
+namespace kconfig {
+
 /* confdata.c */
 void conf_parse(const char *name);
 int conf_read(const char *name);
@@ -19,12 +21,11 @@ void conf_set_message_callback(void (*fn)(const char *s));
 bool conf_errors(void);
 
 /* symbol.c */
-extern struct symbol * symbol_hash[SYMBOL_HASHSIZE];
 
 struct symbol * sym_lookup(const char *name, int flags);
 struct symbol * sym_find(const char *name);
 std::string sym_escape_string_value(const char *in);
-struct symbol ** sym_re_search(const char *pattern);
+std::vector<struct symbol *> sym_re_search(const char *pattern);
 const char * sym_type_name(enum symbol_type type);
 bool sym_dep_errors(void);
 void sym_calc_value(struct symbol *sym);
@@ -42,11 +43,16 @@ const char * sym_get_string_value(struct symbol *sym);
 const char * prop_get_type_name(enum prop_type type);
 
 /* preprocess.c */
-enum variable_flavor {
+enum class variable_flavor {
 	VAR_SIMPLE,
 	VAR_RECURSIVE,
 	VAR_APPEND,
 };
+
+/* See tristate above: bare-enumerator compatibility aliases. */
+inline constexpr variable_flavor VAR_SIMPLE    = variable_flavor::VAR_SIMPLE;
+inline constexpr variable_flavor VAR_RECURSIVE = variable_flavor::VAR_RECURSIVE;
+inline constexpr variable_flavor VAR_APPEND    = variable_flavor::VAR_APPEND;
 void env_write_dep(FILE *f, const char *auto_conf_name);
 void variable_add(const char *name, const char *value,
 		  enum variable_flavor flavor);
@@ -55,4 +61,6 @@ char *expand_dollar(const char **str);
 char *expand_one_token(const char **str);
 
 /* expr.c */
-void expr_print(struct expr *e, void (*fn)(void *, struct symbol *, const char *), void *data, int prevtoken);
+void expr_print(struct expr *e, void (*fn)(void *, struct symbol *, const char *), void *data, expr_type prevtoken);
+
+} /* namespace kconfig */

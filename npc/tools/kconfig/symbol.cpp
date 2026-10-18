@@ -15,6 +15,8 @@ using namespace std;
 
 #include "lkc.hpp"
 
+namespace kconfig {
+
 struct symbol symbol_yes = {
 	.name = "y",
 	.curr = { .val = { .str = "y" }, .tri = yes },
@@ -77,18 +79,17 @@ static tristate modules_val;
 
 [[nodiscard]] struct property *sym_get_choice_prop(struct symbol *sym)
 {
-	struct property *prop;
-
-	for_all_choices(sym, prop)
-		return prop;
+	for (struct property *prop : sym->prop)
+		if (prop->type == P_CHOICE)
+			return prop;
 	return nullptr;
 }
 
 static struct property *sym_get_default_prop(struct symbol *sym)
 {
-	struct property *prop;
-
-	for_all_defaults(sym, prop) {
+	for (struct property *prop : sym->prop) {
+		if (prop->type != P_DEFAULT)
+			continue;
 		prop->visible.tri = expr_calc_value(prop->visible.expr);
 		if (prop->visible.tri != no)
 			return prop;
@@ -98,9 +99,9 @@ static struct property *sym_get_default_prop(struct symbol *sym)
 
 [[nodiscard]] struct property *sym_get_range_prop(struct symbol *sym)
 {
-	struct property *prop;
-
-	for_all_properties(sym, prop, P_RANGE) {
+	for (struct property *prop : sym->prop) {
+		if (prop->type != P_RANGE)
+			continue;
 		prop->visible.tri = expr_calc_value(prop->visible.expr);
 		if (prop->visible.tri != no)
 			return prop;
@@ -179,10 +180,8 @@ static void sym_validate_range(struct symbol *sym)
 
 static void sym_set_changed(struct symbol *sym)
 {
-	struct property *prop;
-
 	sym->flags |= SYMBOL_CHANGED;
-	for (prop = sym->prop; prop; prop = prop->next) {
+	for (struct property *prop : sym->prop) {
 		if (prop->menu)
 			prop->menu->flags |= MENU_CHANGED;
 	}
@@ -190,16 +189,12 @@ static void sym_set_changed(struct symbol *sym)
 
 static void sym_set_all_changed(void)
 {
-	struct symbol *sym;
-	int i;
-
-	for_all_symbols(i, sym)
+	for (struct symbol *sym : all_symbols())
 		sym_set_changed(sym);
 }
 
 static void sym_calc_visibility(struct symbol *sym)
 {
-	struct property *prop;
 	struct symbol *choice_sym = nullptr;
 	tristate tri;
 
@@ -214,7 +209,9 @@ static void sym_calc_visibility(struct symbol *sym)
 	if (sym_is_choice_value(sym))
 		choice_sym = prop_get_symbol(sym_get_choice_prop(sym));
 
-	for_all_prompts(sym, prop) {
+	for (struct property *prop : sym->prop) {
+		if (!prop->text)
+			continue;
 		prop->visible.tri = expr_calc_value(prop->visible.expr);
 		/*
 		 * Tristate choice_values with visibility 'mod' are
@@ -278,7 +275,9 @@ struct symbol *sym_choice_default(struct symbol *sym)
 	struct expr *e;
 
 	/* any of the defaults visible? */
-	for_all_defaults(sym, prop) {
+	for (struct property *prop : sym->prop) {
+		if (prop->type != P_DEFAULT)
+			continue;
 		prop->visible.tri = expr_calc_value(prop->visible.expr);
 		if (prop->visible.tri == no)
 			continue;
@@ -527,10 +526,7 @@ void sym_calc_value(struct symbol *sym)
 
 void sym_clear_all_valid(void)
 {
-	struct symbol *sym;
-	int i;
-
-	for_all_symbols(i, sym)
+	for (struct symbol *sym : all_symbols())
 		sym->flags &= ~SYMBOL_VALID;
 	sym_add_change_count(1);
 	sym_calc_value(modules_sym);
@@ -862,21 +858,74 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 	return sym->visible > sym->rev_dep.tri;
 }
 
+/* fnv32 hash（保留原实现：决定桶分配，从而决定 all_symbols() 的遍历顺序） */
 static unsigned strhash(const char *s)
 {
-	/* fnv32 hash */
 	unsigned hash = 2166136261U;
 	for (; *s; s++)
 		hash = (hash ^ *s) * 0x01000193;
 	return hash;
 }
 
+/*
+ * 符号表：现代容器实现。
+ *   - storage 拥有全部符号（unique_ptr，地址稳定：代码中到处保存 symbol*）
+ *   - index 提供快速查找（同名可有多条，复刻原 hash 链"新者优先"语义）
+ *   - buckets 仅用于复刻历史遍历顺序（见 all_symbols()），保证 auto.conf /
+ *     autoconf.h 逐字节不变。
+ */
+namespace {
+
+std::vector<std::unique_ptr<struct symbol>> symbol_storage;
+std::unordered_map<std::string_view, std::vector<struct symbol *>> symbol_index;
+std::vector<std::vector<struct symbol *>> symbol_buckets(SYMBOL_HASHSIZE);
+
+} /* namespace */
+
+/* 按历史 hash 桶顺序遍历全部符号（桶内为"新者在前"） */
+SymbolRange::iterator SymbolRange::begin() const
+{
+	for (size_t b = 0; b < symbol_buckets.size(); b++)
+		if (!symbol_buckets[b].empty())
+			return iterator(&symbol_buckets, b, 0);
+	return end();
+}
+
+struct symbol *SymbolRange::iterator::operator*() const
+{
+	const auto &buckets =
+		*static_cast<const std::vector<std::vector<struct symbol *>> *>(table_);
+	const auto &bucket = buckets[bucket_];
+
+	return bucket[bucket.size() - 1 - pos_];
+}
+
+SymbolRange::iterator &SymbolRange::iterator::operator++()
+{
+	const auto &buckets =
+		*static_cast<const std::vector<std::vector<struct symbol *>> *>(table_);
+
+	pos_++;
+	if (pos_ < buckets[bucket_].size())
+		return *this;
+	for (bucket_++; bucket_ < buckets.size(); bucket_++)
+		if (!buckets[bucket_].empty()) {
+			pos_ = 0;
+			return *this;
+		}
+	table_ = nullptr; /* end() */
+	bucket_ = 0;
+	pos_ = 0;
+	return *this;
+}
+
+SymbolRange all_symbols()
+{
+	return SymbolRange{};
+}
+
 struct symbol *sym_lookup(const char *name, int flags)
 {
-	struct symbol *symbol;
-	char *new_name;
-	int hash;
-
 	if (name) {
 		if (name[0] && !name[1]) {
 			switch (name[0]) {
@@ -885,38 +934,39 @@ struct symbol *sym_lookup(const char *name, int flags)
 			case 'n': return &symbol_no;
 			}
 		}
-		hash = strhash(name) % SYMBOL_HASHSIZE;
+		auto it = symbol_index.find(name);
+		if (it != symbol_index.end()) {
+			/* 新者优先（复刻原 hash 链扫描顺序） */
+			for (auto rit = it->second.rbegin(); rit != it->second.rend(); ++rit) {
+				struct symbol *symbol = *rit;
 
-		for (symbol = symbol_hash[hash]; symbol; symbol = symbol->next) {
-			if (symbol->name &&
-			    !strcmp(symbol->name, name) &&
-			    (flags ? symbol->flags & flags
-				   : !(symbol->flags & (SYMBOL_CONST|SYMBOL_CHOICE))))
-				return symbol;
+				if (flags ? (symbol->flags & flags)
+					  : !(symbol->flags & (SYMBOL_CONST|SYMBOL_CHOICE)))
+					return symbol;
+			}
 		}
-		new_name = xstrdup(name);
-	} else {
-		new_name = nullptr;
-		hash = 0;
 	}
 
-	symbol = static_cast<struct symbol*>(xmalloc(sizeof(*symbol)));
-	memset(symbol, 0, sizeof(*symbol));
-	symbol->name = new_name;
+	auto owned = std::make_unique<struct symbol>();
+	struct symbol *symbol = owned.get();
+	symbol->name = name ? xstrdup(name) : nullptr;
 	symbol->type = S_UNKNOWN;
 	symbol->flags = flags;
 
-	symbol->next = symbol_hash[hash];
-	symbol_hash[hash] = symbol;
+	symbol_storage.push_back(std::move(owned));
+	if (symbol->name) {
+		symbol_index[std::string_view(symbol->name)].push_back(symbol);
+		symbol_buckets[strhash(symbol->name) % SYMBOL_HASHSIZE].push_back(symbol);
+	} else {
+		/* 匿名符号：原实现 hash = 0 */
+		symbol_buckets[0].push_back(symbol);
+	}
 
 	return symbol;
 }
 
 struct symbol *sym_find(const char *name)
 {
-	struct symbol *symbol = nullptr;
-	int hash = 0;
-
 	if (!name)
 		return nullptr;
 
@@ -927,16 +977,16 @@ struct symbol *sym_find(const char *name)
 		case 'n': return &symbol_no;
 		}
 	}
-	hash = strhash(name) % SYMBOL_HASHSIZE;
 
-	for (symbol = symbol_hash[hash]; symbol; symbol = symbol->next) {
-		if (symbol->name &&
-		    !strcmp(symbol->name, name) &&
-		    !(symbol->flags & SYMBOL_CONST))
-				break;
+	auto it = symbol_index.find(name);
+	if (it != symbol_index.end()) {
+		/* 新者优先；跳过 const 符号（复刻原扫描语义） */
+		for (auto rit = it->second.rbegin(); rit != it->second.rend(); ++rit)
+			if (!((*rit)->flags & SYMBOL_CONST))
+				return *rit;
 	}
 
-	return symbol;
+	return nullptr;
 }
 
 /*
@@ -1004,21 +1054,20 @@ static bool sym_rel_comp(const struct sym_match &s1, const struct sym_match &s2)
  * Public API: keeps the original malloc'd, nullptr-terminated array form
  * (callers free() it); internally uses std::vector + std::sort.
  */
-struct symbol **sym_re_search(const char *pattern)
+std::vector<struct symbol *> sym_re_search(const char *pattern)
 {
-	struct symbol *sym, **sym_arr = nullptr;
+	std::vector<struct symbol *> sym_arr;
 	std::vector<struct sym_match> matches;
-	int i;
 	regex_t re;
 	regmatch_t match[1];
 
 	/* Skip if empty */
 	if (strlen(pattern) == 0)
-		return nullptr;
+		return sym_arr;
 	if (regcomp(&re, pattern, REG_EXTENDED|REG_ICASE))
-		return nullptr;
+		return sym_arr;
 
-	for_all_symbols(i, sym) {
+	for (struct symbol *sym : all_symbols()) {
 		if (sym->flags & SYMBOL_CONST || !sym->name)
 			continue;
 		if (regexec(&re, sym->name, 1, match, 0))
@@ -1031,14 +1080,9 @@ struct symbol **sym_re_search(const char *pattern)
 	}
 	regfree(&re);
 
-	if (!matches.empty()) {
-		std::sort(matches.begin(), matches.end(), sym_rel_comp);
-		sym_arr = static_cast<struct symbol**>(
-			xmalloc((matches.size() + 1) * sizeof(struct symbol *)));
-		for (size_t j = 0; j < matches.size(); j++)
-			sym_arr[j] = matches[j].sym;
-		sym_arr[matches.size()] = nullptr;
-	}
+	std::sort(matches.begin(), matches.end(), sym_rel_comp);
+	for (const struct sym_match &m : matches)
+		sym_arr.push_back(m.sym);
 
 	return sym_arr;
 }
@@ -1108,15 +1152,18 @@ static void sym_check_print_recursive(struct symbol *last_sym)
 		sym = stack->sym;
 		next_sym = stack->next ? stack->next->sym : last_sym;
 		prop = stack->prop;
-		if (prop == nullptr)
-			prop = stack->sym->prop;
+		if (prop == nullptr && !stack->sym->prop.empty())
+			prop = stack->sym->prop.front();
 
 		/* for choice values find the menu entry (used below) */
 		if (sym_is_choice(sym) || sym_is_choice_value(sym)) {
-			for (prop = sym->prop; prop; prop = prop->next) {
-				menu = prop->menu;
-				if (prop->menu)
+			prop = nullptr;
+			for (struct property *p : sym->prop) {
+				menu = p->menu;
+				if (p->menu) {
+					prop = p;
 					break;
+				}
 			}
 		}
 		if (stack->sym == last_sym)
@@ -1210,7 +1257,6 @@ static struct symbol *sym_check_expr_deps(struct expr *e)
 static struct symbol *sym_check_sym_deps(struct symbol *sym)
 {
 	struct symbol *sym2;
-	struct property *prop;
 	struct dep_stack stack;
 
 	dep_stack_insert(&stack, sym);
@@ -1232,7 +1278,7 @@ static struct symbol *sym_check_sym_deps(struct symbol *sym)
 
 	stack.expr = nullptr;
 
-	for (prop = sym->prop; prop; prop = prop->next) {
+	for (struct property *prop : sym->prop) {
 		if (prop->type == P_CHOICE || prop->type == P_SELECT ||
 		    prop->type == P_IMPLY)
 			continue;
@@ -1357,3 +1403,5 @@ struct symbol *sym_check_deps(struct symbol *sym)
 	}
 	return "unknown";
 }
+
+} /* namespace kconfig */

@@ -10,11 +10,16 @@
 #include <cstdio>   /* FILE */
 #include <cstddef>  /* size_t */
 #include <cstdlib>  /* getenv */
+#include <memory>   /* std::unique_ptr */
+#include <string>   /* std::string */
+#include <vector>   /* std::vector */
 
 #include "expr.hpp"
 
 /* All kconfig sources are C++ (.cpp); use uniform C++ linkage. */
 #include "lkc_proto.hpp"
+
+namespace kconfig {
 
 #define SRCTREE "srctree"
 
@@ -42,7 +47,7 @@ static inline const char *CONFIG_prefix(void)
 #undef CONFIG_
 #define CONFIG_ CONFIG_prefix()
 
-enum conf_def_mode {
+enum class conf_def_mode {
 	def_default,
 	def_yes,
 	def_mod,
@@ -52,6 +57,16 @@ enum conf_def_mode {
 	def_no,
 	def_random
 };
+
+/* See tristate above: bare-enumerator compatibility aliases. */
+inline constexpr conf_def_mode def_default = conf_def_mode::def_default;
+inline constexpr conf_def_mode def_yes     = conf_def_mode::def_yes;
+inline constexpr conf_def_mode def_mod     = conf_def_mode::def_mod;
+inline constexpr conf_def_mode def_y2m     = conf_def_mode::def_y2m;
+inline constexpr conf_def_mode def_m2y     = conf_def_mode::def_m2y;
+inline constexpr conf_def_mode def_m2n     = conf_def_mode::def_m2n;
+inline constexpr conf_def_mode def_no      = conf_def_mode::def_no;
+inline constexpr conf_def_mode def_random  = conf_def_mode::def_random;
 
 void zconfdump(FILE *out);
 void zconf_starthelp(void);
@@ -92,20 +107,26 @@ struct file *file_lookup(const char *name, const char *parent_name,
 /* lexer.l */
 int yylex(void);
 
+/*
+ * 可增长字符串。现代实现：内部为 std::string；max_width 不为 0 时，
+ * 打印表达式时会在超宽处折行（见 expr.cpp 的 expr_print_gstr_helper）。
+ */
 struct gstr {
-	size_t len;
-	char  *s;
-	/*
-	* when max_width is not zero long lines in string s (if any) get
-	* wrapped not to exceed the max_width value
-	*/
-	int max_width;
+	std::string s;
+	int max_width = 0;
 };
 struct gstr str_new(void);
 void str_free(struct gstr *gs);
 void str_append(struct gstr *gs, const char *s);
+void str_append(struct gstr *gs, const std::string &s);
 void str_printf(struct gstr *gs, const char *fmt, ...);
 const char *str_get(struct gstr *gs);
+
+/* FILE* 的 RAII 包装：析构时自动 fclose */
+struct file_closer {
+	void operator()(FILE *fp) const { if (fp) fclose(fp); }
+};
+using FilePtr = std::unique_ptr<FILE, file_closer>;
 
 /* menu.c */
 void _menu_init(void);
@@ -134,7 +155,8 @@ struct menu *menu_get_root_menu(struct menu *menu);
 struct menu *menu_get_parent_menu(struct menu *menu);
 bool menu_has_help(struct menu *menu);
 const char *menu_get_help(struct menu *menu);
-struct gstr get_relations_str(struct symbol **sym_arr, struct list_head *head);
+struct gstr get_relations_str(const std::vector<struct symbol *> &sym_arr,
+			      struct list_head *head);
 void menu_get_ext_help(struct menu *menu, struct gstr *help);
 
 /* symbol.c */
@@ -181,13 +203,26 @@ static inline bool sym_has_value(struct symbol *sym)
 	return sym->flags & SYMBOL_DEF_USER ? true : false;
 }
 
-extern struct menu *current_entry;
-extern struct menu *current_menu;
-extern struct file *current_file;
-extern struct file *file_list;
+/*
+ * 解析期上下文：把原先散落的解析状态全局变量收拢为一个对象
+ * （current_file 由词法器维护，其余由文法动作维护）。
+ */
+struct ParseContext {
+	struct menu *current_menu = nullptr;
+	struct menu *current_entry = nullptr;
+	struct menu *current_choice = nullptr;
+	struct file *current_file = nullptr;
+};
+extern ParseContext parse_ctx;
+/* 所有被解析的 Kconfig 文件，按包含顺序（最旧在前；depfile 用逆序） */
+const std::vector<struct file *> &kconfig_files(void);
 extern void zconf_error(const char *err, ...);
 
 extern int yydebug;
+
+} /* namespace kconfig */
+
+/* flex 的 %option yylineno 在全局作用域定义 yylineno */
 extern int yylineno;
 
 #endif /* LKC_H */

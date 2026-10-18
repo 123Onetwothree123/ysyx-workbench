@@ -15,11 +15,21 @@
 #include <unistd.h>
 
 #include "lkc.hpp"
+
+using namespace kconfig;
+
 #include "parser.tab.h"
 
-#define YY_DECL		static int yylex1(void)
+/* C++ 解析器骨架的语义值类型（%union 生成） */
+#define YYSTYPE yy::parser::semantic_type
 
-#define START_STRSIZE	16
+/* C++ 骨架下解析器不再提供全局 yylval，由词法器自己定义 */
+YYSTYPE yylval;
+
+/* 词法单元名来自解析器的 token 枚举（C++20 using enum） */
+using enum yy::parser::token::token_kind_type;
+
+#define YY_DECL		static int yylex1(void)
 
 static struct {
 	struct file *file;
@@ -28,57 +38,46 @@ static struct {
 
 static int prev_prev_token = T_EOL;
 static int prev_token = T_EOL;
-static char *text;
-static int text_size, text_asize;
+static std::string text; /* 当前 token / 帮助文本的构建缓冲 */
 
 struct buffer {
-	struct buffer *parent;
+	std::unique_ptr<struct buffer> parent;
 	YY_BUFFER_STATE state;
 };
 
-static struct buffer *current_buf;
+static std::unique_ptr<struct buffer> current_buf;
 
 static int last_ts, first_ts;
+
+namespace kconfig {
 
 static char *expand_token(const char *in, size_t n);
 static void append_expanded_string(const char *in);
 static void zconf_endhelp(void);
 static void zconf_endfile(void);
 
+} /* namespace kconfig */
+
 static void new_string(void)
 {
-	text = (char*)xmalloc(START_STRSIZE);
-	text_asize = START_STRSIZE;
-	text_size = 0;
-	*text = 0;
+	text.clear();
 }
 
 static void append_string(const char *str, int size)
 {
-	int new_size = text_size + size + 1;
-	if (new_size > text_asize) {
-		new_size += START_STRSIZE - 1;
-		new_size &= -START_STRSIZE;
-		text = (char*)xrealloc(text, new_size);
-		text_asize = new_size;
-	}
-	memcpy(text + text_size, str, size);
-	text_size += size;
-	text[text_size] = 0;
+	text.append(str, size);
 }
 
 static void alloc_string(const char *str, int size)
 {
-	text = (char*)xmalloc(size + 1);
-	memcpy(text, str, size);
-	text[size] = 0;
+	text.assign(str, size);
 }
 
 static void warn_ignored_character(char chr)
 {
 	fprintf(stderr,
 	        "%s:%d:warning: ignoring unsupported character '%c'\n",
-	        current_file->name, yylineno, chr);
+	        parse_ctx.current_file->name, yylineno, chr);
 }
 %}
 
@@ -145,7 +144,7 @@ n	[A-Za-z0-9_-]
 			}
 {n}+			{
 				alloc_string(yytext, yyleng);
-				yylval.string = text;
+				yylval.string = xstrdup(text.c_str());
 				return T_WORD;
 			}
 ({n}|$)+		{
@@ -160,7 +159,7 @@ n	[A-Za-z0-9_-]
 <ASSIGN_VAL>{
 	[^[:blank:]\n]+.*	{
 		alloc_string(yytext, yyleng);
-		yylval.string = text;
+		yylval.string = xstrdup(text.c_str());
 		return T_ASSIGN_VAL;
 	}
 	\n	{ BEGIN(INITIAL); return T_EOL; }
@@ -178,7 +177,7 @@ n	[A-Za-z0-9_-]
 	\'|\"	{
 		if (str == yytext[0]) {
 			BEGIN(INITIAL);
-			yylval.string = text;
+			yylval.string = xstrdup(text.c_str());
 			return T_WORD_QUOTE;
 		} else
 			append_string(yytext, 1);
@@ -189,12 +188,12 @@ n	[A-Za-z0-9_-]
 			zconf_curname(), zconf_lineno());
 		unput('\n');
 		BEGIN(INITIAL);
-		yylval.string = text;
+		yylval.string = xstrdup(text.c_str());
 		return T_WORD_QUOTE;
 	}
 	<<EOF>>	{
 		BEGIN(INITIAL);
-		yylval.string = text;
+		yylval.string = xstrdup(text.c_str());
 		return T_WORD_QUOTE;
 	}
 }
@@ -250,9 +249,9 @@ n	[A-Za-z0-9_-]
 
 	if (prev_token != T_EOL && prev_token != T_HELPTEXT)
 		fprintf(stderr, "%s:%d:warning: no new line at end of file\n",
-			current_file->name, yylineno);
+			parse_ctx.current_file->name, yylineno);
 
-	if (current_file) {
+	if (parse_ctx.current_file) {
 		zconf_endfile();
 		return T_EOL;
 	}
@@ -261,6 +260,8 @@ n	[A-Za-z0-9_-]
 }
 
 %%
+
+namespace kconfig {
 
 /* second stage lexer */
 int yylex(void)
@@ -281,8 +282,8 @@ repeat:
 			 * terminator in Kconfig, but it is not always true
 			 * because \n could be escaped by a backslash.
 			 */
-			if (current_file) {
-				current_pos.file = current_file;
+			if (parse_ctx.current_file) {
+				current_pos.file = parse_ctx.current_file;
 				current_pos.lineno = yylineno;
 			}
 		}
@@ -297,6 +298,22 @@ repeat:
 
 	return token;
 }
+
+} /* namespace kconfig */
+
+/*
+ * C++ 解析器骨架（lalr1.cc）的扫描器接口：调用两段式 yylex()，
+ * 并把 flex 的全局语义值拷贝进解析器传入的语义值。
+ */
+int yylex(yy::parser::semantic_type *lval)
+{
+	int tok = yylex();
+
+	*lval = yylval;
+	return tok;
+}
+
+namespace kconfig {
 
 static char *expand_token(const char *in, size_t n)
 {
@@ -321,15 +338,13 @@ static char *expand_token(const char *in, size_t n)
 		append_string(&c2, 1);
 	}
 
-	rest = text;
+	rest = text.c_str();
 	out = expand_one_token(&rest);
 
 	/* push back unused characters to the input stream */
 	end = rest + strlen(rest);
 	while (end > rest)
 		unput(*--end);
-
-	free(text);
 
 	return out;
 }
@@ -362,7 +377,7 @@ void zconf_starthelp(void)
 
 static void zconf_endhelp(void)
 {
-	yylval.string = text;
+	yylval.string = xstrdup(text.c_str());
 	BEGIN(INITIAL);
 }
 
@@ -400,18 +415,16 @@ void zconf_initscan(const char *name)
 		exit(1);
 	}
 
-	current_buf = (buffer*)xmalloc(sizeof(*current_buf));
-	memset(current_buf, 0, sizeof(*current_buf));
+	current_buf = std::make_unique<struct buffer>();
 
-	current_file = file_lookup(name, NULL, 0);
+	parse_ctx.current_file = file_lookup(name, NULL, 0);
 	yylineno = 1;
 }
 
 void zconf_nextfile(const char *name)
 {
 	struct file *file = file_lookup(name, zconf_curname(), zconf_lineno());
-	struct buffer *buf = (buffer*)xmalloc(sizeof(*buf));
-	memset(buf, 0, sizeof(*buf));
+	auto buf = std::make_unique<struct buffer>();
 
 	current_buf->state = YY_CURRENT_BUFFER;
 	yyin = zconf_fopen(file->name);
@@ -421,32 +434,31 @@ void zconf_nextfile(const char *name)
 		exit(1);
 	}
 	yy_switch_to_buffer(yy_create_buffer(yyin, YY_BUF_SIZE));
-	buf->parent = current_buf;
-	current_buf = buf;
+	buf->parent = std::move(current_buf);
+	current_buf = std::move(buf);
 
-	current_file->lineno = yylineno;
-	file->parent = current_file;
+	parse_ctx.current_file->lineno = yylineno;
+	file->parent = parse_ctx.current_file;
 
 	yylineno = 1;
-	current_file = file;
+	parse_ctx.current_file = file;
 }
 
 static void zconf_endfile(void)
 {
-	struct buffer *parent;
+	std::unique_ptr<struct buffer> parent;
 
-	current_file = current_file->parent;
-	if (current_file)
-		yylineno = current_file->lineno;
+	parse_ctx.current_file = parse_ctx.current_file->parent;
+	if (parse_ctx.current_file)
+		yylineno = parse_ctx.current_file->lineno;
 
-	parent = current_buf->parent;
+	parent = std::move(current_buf->parent);
 	if (parent) {
 		fclose(yyin);
 		yy_delete_buffer(YY_CURRENT_BUFFER);
 		yy_switch_to_buffer(parent->state);
 	}
-	free(current_buf);
-	current_buf = parent;
+	current_buf = std::move(parent);
 }
 
 int zconf_lineno(void)
@@ -458,3 +470,5 @@ const char *zconf_curname(void)
 {
 	return current_pos.file ? current_pos.file->name : "<none>";
 }
+
+} /* namespace kconfig */

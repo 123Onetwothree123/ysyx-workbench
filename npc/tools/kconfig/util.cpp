@@ -13,100 +13,104 @@ using namespace std;
 
 #include "lkc.hpp"
 
+namespace kconfig {
+
+/* 已解析的 Kconfig 文件表：插入序保存 + 名字索引（现代容器实现） */
+static std::vector<std::unique_ptr<struct file>> file_storage;
+static std::vector<struct file *> file_order;
+static std::unordered_map<std::string, struct file *> file_index;
+
+/* 按包含顺序（最旧在前）返回所有被解析的 Kconfig 文件 */
+const std::vector<struct file *> &kconfig_files(void)
+{
+	return file_order;
+}
+
 /* file already present in list? If not add it */
 struct file *file_lookup(const char *name, const char *parent_name,
 			 int parent_lineno)
 {
-	struct file *file;
+	auto it = file_index.find(name);
+	if (it != file_index.end()) {
+		struct file *file = it->second;
 
-	for (file = file_list; file; file = file->next) {
-		if (!strcmp(name, file->name)) {
-			if (!parent_name)
-				return file;
+		if (!parent_name)
+			return file;
 
-			/* 同一文件被重复包含（对齐新版 Linux：直接报错） */
+		/* 同一文件被重复包含（对齐新版 Linux：直接报错） */
+		fprintf(stderr,
+			"%s:%d: error: repeated inclusion of %s\n",
+			parent_name, parent_lineno, file->name);
+		if (file->parent_name)
 			fprintf(stderr,
-				"%s:%d: error: repeated inclusion of %s\n",
-				parent_name, parent_lineno, file->name);
-			if (file->parent_name)
-				fprintf(stderr,
-					"%s:%d: note: location of first inclusion of %s\n",
-					file->parent_name, file->parent_lineno,
-					file->name);
-			exit(1);
-		}
+				"%s:%d: note: location of first inclusion of %s\n",
+				file->parent_name, file->parent_lineno,
+				file->name);
+		exit(1);
 	}
 
-	file = static_cast<struct file*>(xmalloc(sizeof(*file)));
-	memset(file, 0, sizeof(*file));
-	file->name = xstrdup(name);
-	file->parent_name = parent_name ? xstrdup(parent_name) : nullptr;
-	file->parent_lineno = parent_lineno;
-	file->next = file_list;
-	file_list = file;
+	auto owned = std::make_unique<struct file>();
+	owned->name = xstrdup(name);
+	owned->parent_name = parent_name ? xstrdup(parent_name) : nullptr;
+	owned->parent_lineno = parent_lineno;
+
+	struct file *file = owned.get();
+	file_storage.push_back(std::move(owned));
+	file_index.emplace(file->name, file);
+	file_order.push_back(file);
 	return file;
 }
 
 /* Allocate initial growable string */
 struct gstr str_new(void)
 {
-	struct gstr gs;
-	gs.s = static_cast<char*>(xmalloc(sizeof(char) * 64));
-	gs.len = 64;
-	gs.max_width = 0;
-	gs.s[0] = '\0';
-	return gs;
+	return {};
 }
 
-/* Free storage for growable string */
+/* Free storage for growable string（RAII 后为无操作，保留 API 兼容） */
 void str_free(struct gstr *gs)
 {
-	if (gs->s)
-		free(gs->s);
-	gs->s = nullptr;
-	gs->len = 0;
+	gs->s.clear();
+	gs->max_width = 0;
 }
 
 /* Append to growable string */
 void str_append(struct gstr *gs, const char *s)
 {
-	size_t l;
-	if (s) {
-		l = strlen(gs->s) + strlen(s) + 1;
-		if (l > gs->len) {
-			gs->s = static_cast<char*>(xrealloc(gs->s, l));
-			gs->len = l;
-		}
-		strcat(gs->s, s);
-	}
+	if (s)
+		gs->s += s;
+}
+
+/* Append std::string to growable string */
+void str_append(struct gstr *gs, const std::string &s)
+{
+	gs->s += s;
 }
 
 /* Append printf formatted string to growable string */
 void str_printf(struct gstr *gs, const char *fmt, ...)
 {
-	va_list ap, aq;
+	va_list ap;
 	int len;
 
 	va_start(ap, fmt);
-	va_copy(aq, ap);
 	len = vsnprintf(nullptr, 0, fmt, ap);
 	va_end(ap);
-	if (len < 0) {
-		va_end(aq);
+	if (len < 0)
 		return;
-	}
 
-	std::string s(len, '\0');
-	vsnprintf(s.data(), len + 1, fmt, aq);
-	va_end(aq);
-
-	str_append(gs, s.c_str());
+	const size_t old = gs->s.size();
+	gs->s.resize(old + len + 1);
+	va_start(ap, fmt);
+	vsnprintf(gs->s.data() + old, len + 1, fmt, ap);
+	va_end(ap);
+	gs->s.resize(old + len); /* 去掉 vsnprintf 写入的结尾 '\0' */
 }
 
 /* Retrieve value of growable string */
 const char *str_get(struct gstr *gs)
 {
-	return gs->s;
+	return gs->s.c_str();
 }
 
 [[nodiscard]] void *xmalloc(size_t size)
@@ -158,3 +162,5 @@ const char *str_get(struct gstr *gs)
 	exit(1);
 }
 int yydebug = 0;
+
+} /* namespace kconfig */

@@ -18,6 +18,8 @@ using namespace std;
 
 #include "lkc.hpp"
 
+using namespace kconfig;
+
 static void conf(struct menu *menu);
 static void check_conf(struct menu *menu);
 
@@ -302,7 +304,8 @@ static int conf_choice(struct menu *menu)
 		def_sym = sym_get_choice_value(sym);
 		cnt = def = 0;
 		line[0] = 0;
-		for (child = menu->list; child; child = child->next) {
+		for (auto &child_owner : menu->children) {
+			child = child_owner.get();
 			if (!menu_is_visible(child))
 				continue;
 			if (!child->sym) {
@@ -357,11 +360,14 @@ static int conf_choice(struct menu *menu)
 		}
 
 	conf_childs:
-		for (child = menu->list; child; child = child->next) {
-			if (!child->sym || !menu_is_visible(child))
+		child = nullptr;
+		for (auto &child_owner : menu->children) {
+			if (!child_owner->sym || !menu_is_visible(child_owner.get()))
 				continue;
-			if (!--cnt)
+			if (!--cnt) {
+				child = child_owner.get();
 				break;
+			}
 		}
 		if (!child)
 			continue;
@@ -370,9 +376,9 @@ static int conf_choice(struct menu *menu)
 			continue;
 		}
 		sym_set_choice_value(sym, child->sym);
-		for (child = child->list; child; child = child->next) {
+		for (auto &grandchild : child->children) {
 			indent += 2;
-			conf(child);
+			conf(grandchild.get());
 			indent -= 2;
 		}
 		return 1;
@@ -440,8 +446,8 @@ static void conf(struct menu *menu)
 conf_childs:
 	if (sym)
 		indent += 2;
-	for (child = menu->list; child; child = child->next)
-		conf(child);
+	for (auto &child_owner : menu->children)
+		conf(child_owner.get());
 	if (sym)
 		indent -= 2;
 }
@@ -449,7 +455,6 @@ conf_childs:
 static void check_conf(struct menu *menu)
 {
 	struct symbol *sym;
-	struct menu *child;
 
 	if (!menu_is_visible(menu))
 		return;
@@ -483,8 +488,8 @@ static void check_conf(struct menu *menu)
 		}
 	}
 
-	for (child = menu->list; child; child = child->next)
-		check_conf(child);
+	for (auto &child_owner : menu->children)
+		check_conf(child_owner.get());
 }
 
 static const struct option long_opts[] = {

@@ -363,7 +363,7 @@ int utf8_width_n(const char *s, size_t len)
 		wchar_t wc;
 		size_t n = mbrtowc(&wc, s + i, len - i, &st);
 		if (n == static_cast<size_t>(-1)) {	/* invalid byte */
-			memset(&st, 0, sizeof(st));
+			st = mbstate_t{};
 			i++;
 			w++;
 			continue;
@@ -393,7 +393,7 @@ size_t utf8_bytes_for_cells(const char *s, int max_cells)
 		size_t n = mbrtowc(&wc, s + i, len - i, &st);
 		int cw;
 		if (n == static_cast<size_t>(-1)) {	/* invalid byte: 1 col */
-			memset(&st, 0, sizeof(st));
+			st = mbstate_t{};
 			n = 1;
 			cw = 1;
 		} else if (n == static_cast<size_t>(-2) || n == 0) {

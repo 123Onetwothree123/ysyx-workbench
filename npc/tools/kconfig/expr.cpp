@@ -13,41 +13,96 @@ using namespace std;
 
 #include "lkc.hpp"
 
+namespace kconfig {
+
 constexpr bool DEBUG_EXPR = false;
 
 static struct expr *expr_eliminate_yn(struct expr *e);
 
+/*
+ * 表达式驻留池：结构相同（type, left, right）的节点全局唯一，对齐新版
+ * Linux 的 expr_lookup()。节点一旦创建便不再修改、不再逐个释放——池拥有
+ * 全部节点。因此：
+ *   - expr_copy() 退化为递归去重查找（menu.c 等处的防御性拷贝变为无害）；
+ *   - expr_free() 成为无操作；
+ *   - 所有简化函数改写为无副作用风格（重建而非就地修改）。
+ */
+namespace {
+
+struct ExprKey {
+	enum expr_type type;
+	const void *l;
+	const void *r;
+
+	bool operator==(const ExprKey &o) const
+	{
+		return type == o.type && l == o.l && r == o.r;
+	}
+};
+
+struct ExprKeyHash {
+	size_t operator()(const ExprKey &k) const
+	{
+		size_t h = std::hash<int>()(static_cast<int>(k.type));
+		h ^= std::hash<const void *>()(k.l) + 0x9e3779b9u + (h << 6) + (h >> 2);
+		h ^= std::hash<const void *>()(k.r) + 0x9e3779b9u + (h << 6) + (h >> 2);
+		return h;
+	}
+};
+
+std::deque<struct expr> expr_pool; /* 地址稳定，池拥有全部节点 */
+std::unordered_map<ExprKey, struct expr *, ExprKeyHash> expr_index;
+
+/* 查找或创建 (type, l, r) 对应的唯一表达式节点 */
+struct expr *expr_lookup(enum expr_type type, const void *l, const void *r)
+{
+	ExprKey key{type, l, r};
+	auto it = expr_index.find(key);
+	if (it != expr_index.end())
+		return it->second;
+
+	expr_pool.emplace_back();
+	struct expr *e = &expr_pool.back();
+	e->type = type;
+	e->left._initdata = const_cast<void *>(l);
+	e->right._initdata = const_cast<void *>(r);
+	expr_index.emplace(key, e);
+	return e;
+}
+
+} /* namespace */
+
 struct expr *expr_alloc_symbol(struct symbol *sym)
 {
-	struct expr *e = static_cast<struct expr*>(xcalloc(1, sizeof(*e)));
-	e->type = E_SYMBOL;
-	e->left.sym = sym;
-	return e;
+	return expr_lookup(E_SYMBOL, sym, nullptr);
 }
 
 struct expr *expr_alloc_one(enum expr_type type, struct expr *ce)
 {
-	struct expr *e = static_cast<struct expr*>(xcalloc(1, sizeof(*e)));
-	e->type = type;
-	e->left.expr = ce;
-	return e;
+	return expr_lookup(type, ce, nullptr);
 }
 
 struct expr *expr_alloc_two(enum expr_type type, struct expr *e1, struct expr *e2)
 {
-	struct expr *e = static_cast<struct expr*>(xcalloc(1, sizeof(*e)));
-	e->type = type;
-	e->left.expr = e1;
-	e->right.expr = e2;
-	return e;
+	return expr_lookup(type, e1, e2);
 }
 
 struct expr *expr_alloc_comp(enum expr_type type, struct symbol *s1, struct symbol *s2)
 {
-	struct expr *e = static_cast<struct expr*>(xcalloc(1, sizeof(*e)));
-	e->type = type;
-	e->left.sym = s1;
-	e->right.sym = s2;
+	return expr_lookup(type, s1, s2);
+}
+
+/*
+ * choice 成员链（E_LIST）专用：节点在链构建期间会被追加改写，因此不做
+ * 驻留（每个节点仅属于一条链）。
+ */
+struct expr *expr_alloc_list(struct expr *next, struct symbol *sym)
+{
+	expr_pool.emplace_back();
+	struct expr *e = &expr_pool.back();
+	e->type = E_LIST;
+	e->left.expr = next;
+	e->right.sym = sym;
 	return e;
 }
 
@@ -65,75 +120,46 @@ struct expr *expr_alloc_or(struct expr *e1, struct expr *e2)
 	return e2 ? expr_alloc_two(E_OR, e1, e2) : e1;
 }
 
+/*
+ * 返回与 'org' 等价的表达式。驻留之后，结构相同的节点全局唯一，本函数
+ * 退化为递归去重查找（返回的可能是原节点本身）。
+ */
 struct expr *expr_copy(const struct expr *org)
 {
-	struct expr *e;
-
 	if (!org)
 		return nullptr;
 
-	e = static_cast<struct expr*>(xmalloc(sizeof(*org)));
-	memcpy(e, org, sizeof(*org));
 	switch (org->type) {
 	case E_SYMBOL:
-		e->left = org->left;
-		break;
+		return expr_alloc_symbol(org->left.sym);
 	case E_NOT:
-		e->left.expr = expr_copy(org->left.expr);
-		break;
+		return expr_alloc_one(E_NOT, expr_copy(org->left.expr));
 	case E_EQUAL:
 	case E_GEQ:
 	case E_GTH:
 	case E_LEQ:
 	case E_LTH:
 	case E_UNEQUAL:
-		e->left.sym = org->left.sym;
-		e->right.sym = org->right.sym;
-		break;
+		return expr_alloc_comp(org->type, org->left.sym, org->right.sym);
 	case E_AND:
 	case E_OR:
+		return expr_alloc_two(org->type,
+				      expr_copy(org->left.expr),
+				      expr_copy(org->right.expr));
 	case E_LIST:
-		e->left.expr = expr_copy(org->left.expr);
-		e->right.expr = expr_copy(org->right.expr);
-		break;
+		return expr_alloc_list(expr_copy(org->left.expr), org->right.sym);
 	default:
-		fprintf(stderr, "can't copy type %d\n", e->type);
-		free(e);
-		e = nullptr;
-		break;
+		fprintf(stderr, "can't copy type %d\n", org->type);
+		return nullptr;
 	}
-
-	return e;
 }
 
+/*
+ * 驻留池拥有全部表达式节点，节点不再逐个释放；本函数保留为兼容接口。
+ */
 void expr_free(struct expr *e)
 {
-	if (!e)
-		return;
-
-	switch (e->type) {
-	case E_SYMBOL:
-		break;
-	case E_NOT:
-		expr_free(e->left.expr);
-		break;
-	case E_EQUAL:
-	case E_GEQ:
-	case E_GTH:
-	case E_LEQ:
-	case E_LTH:
-	case E_UNEQUAL:
-		break;
-	case E_OR:
-	case E_AND:
-		expr_free(e->left.expr);
-		expr_free(e->right.expr);
-		break;
-	default:
-		fprintf(stderr, "how to free type %d?\n", e->type);
-		break;
-	}
-	free(e);
+	(void)e;
 }
 
 /*
@@ -158,18 +184,25 @@ void expr_free(struct expr *e)
 static void __expr_eliminate_eq(enum expr_type type, struct expr **ep1, struct expr **ep2,
 				int &count)
 {
+	struct expr *l, *r;
 	auto &e1 = *ep1;
 	auto &e2 = *ep2;
 	/* Recurse down to leaves */
 
 	if (e1->type == type) {
-		__expr_eliminate_eq(type, &e1->left.expr, &e2, count);
-		__expr_eliminate_eq(type, &e1->right.expr, &e2, count);
+		l = e1->left.expr;
+		r = e1->right.expr;
+		__expr_eliminate_eq(type, &l, ep2, count);
+		__expr_eliminate_eq(type, &r, ep2, count);
+		e1 = expr_alloc_two(type, l, r);
 		return;
 	}
 	if (e2->type == type) {
-		__expr_eliminate_eq(type, &e1, &e2->left.expr, count);
-		__expr_eliminate_eq(type, &e1, &e2->right.expr, count);
+		l = e2->left.expr;
+		r = e2->right.expr;
+		__expr_eliminate_eq(type, ep1, &l, count);
+		__expr_eliminate_eq(type, ep1, &r, count);
+		e2 = expr_alloc_two(type, l, r);
 		return;
 	}
 
@@ -185,7 +218,6 @@ static void __expr_eliminate_eq(enum expr_type type, struct expr **ep1, struct e
 	/* e1 and e2 are equal leaves. Prepare them for elimination. */
 
 	count++;
-	expr_free(e1); expr_free(e2);
 	switch (type) {
 	case E_OR:
 		e1 = expr_alloc_symbol(&symbol_no);
@@ -264,8 +296,6 @@ void expr_eliminate_eq(struct expr **ep1, struct expr **ep2)
  */
 bool expr_eq(const struct expr *e1, const struct expr *e2)
 {
-	bool res;
-
 	/*
 	 * A nullptr expr is taken to be yes, but there's also a different way to
 	 * represent yes. expr_is_yes() checks for either representation.
@@ -289,26 +319,16 @@ bool expr_eq(const struct expr *e1, const struct expr *e2)
 		return expr_eq(e1->left.expr, e2->left.expr);
 	case E_AND:
 	case E_OR: {
-		struct expr *c1 = expr_copy(e1);
-		struct expr *c2 = expr_copy(e2);
-
-		if (!c1 || !c2) {
-			/* expr_copy() failed on an unknown node type */
-			expr_free(c1);
-			expr_free(c2);
-			return false;
-		}
 		/*
-		 * expr_eliminate_eq() works on the copies and keeps its own
-		 * simplification counter, so no save/restore dance is needed
-		 * here anymore.
+		 * 驻留后表达式不再被就地修改，expr_eliminate_eq() 只改写
+		 * 局部指针，因此直接操作即可（不再需要 expr_copy）。
 		 */
+		struct expr *c1 = const_cast<struct expr *>(e1);
+		struct expr *c2 = const_cast<struct expr *>(e2);
+
 		expr_eliminate_eq(&c1, &c2);
-		res = (c1->type == E_SYMBOL && c2->type == E_SYMBOL &&
-		       c1->left.sym == c2->left.sym);
-		expr_free(c1);
-		expr_free(c2);
-		return res;
+		return (c1->type == E_SYMBOL && c2->type == E_SYMBOL &&
+			c1->left.sym == c2->left.sym);
 	}
 	case E_LIST:
 	case E_RANGE:
@@ -327,7 +347,7 @@ bool expr_eq(const struct expr *e1, const struct expr *e2)
 }
 
 /*
- * Recursively performs the following simplifications in-place (as well as the
+ * Recursively performs the following simplifications (as well as the
  * corresponding simplifications with swapped operands):
  *
  *	expr && n  ->  n
@@ -335,84 +355,49 @@ bool expr_eq(const struct expr *e1, const struct expr *e2)
  *	expr || n  ->  expr
  *	expr || y  ->  y
  *
- * Returns the optimized expression.
+ * 无副作用实现（对齐新版 Linux）：节点不再被就地修改，子表达式发生简化
+ * 时用驻留池重建（内容不变则返回原节点）。
  */
 static struct expr *expr_eliminate_yn(struct expr *e)
 {
-	struct expr *tmp;
+	struct expr *l, *r;
 
 	if (e) switch (e->type) {
 	case E_AND:
-		e->left.expr = expr_eliminate_yn(e->left.expr);
-		e->right.expr = expr_eliminate_yn(e->right.expr);
-		if (e->left.expr->type == E_SYMBOL) {
-			if (e->left.expr->left.sym == &symbol_no) {
-				expr_free(e->left.expr);
-				expr_free(e->right.expr);
-				e->type = E_SYMBOL;
-				e->left.sym = &symbol_no;
-				e->right.expr = nullptr;
-				return e;
-			} else if (e->left.expr->left.sym == &symbol_yes) {
-				free(e->left.expr);
-				tmp = e->right.expr;
-				*e = *(e->right.expr);
-				free(tmp);
-				return e;
-			}
+		l = expr_eliminate_yn(e->left.expr);
+		r = expr_eliminate_yn(e->right.expr);
+		if (l->type == E_SYMBOL) {
+			if (l->left.sym == &symbol_no)
+				return l;
+			else if (l->left.sym == &symbol_yes)
+				return r;
 		}
-		if (e->right.expr->type == E_SYMBOL) {
-			if (e->right.expr->left.sym == &symbol_no) {
-				expr_free(e->left.expr);
-				expr_free(e->right.expr);
-				e->type = E_SYMBOL;
-				e->left.sym = &symbol_no;
-				e->right.expr = nullptr;
-				return e;
-			} else if (e->right.expr->left.sym == &symbol_yes) {
-				free(e->right.expr);
-				tmp = e->left.expr;
-				*e = *(e->left.expr);
-				free(tmp);
-				return e;
-			}
+		if (r->type == E_SYMBOL) {
+			if (r->left.sym == &symbol_no)
+				return r;
+			else if (r->left.sym == &symbol_yes)
+				return l;
 		}
+		if (l != e->left.expr || r != e->right.expr)
+			return expr_alloc_two(E_AND, l, r);
 		break;
 	case E_OR:
-		e->left.expr = expr_eliminate_yn(e->left.expr);
-		e->right.expr = expr_eliminate_yn(e->right.expr);
-		if (e->left.expr->type == E_SYMBOL) {
-			if (e->left.expr->left.sym == &symbol_no) {
-				free(e->left.expr);
-				tmp = e->right.expr;
-				*e = *(e->right.expr);
-				free(tmp);
-				return e;
-			} else if (e->left.expr->left.sym == &symbol_yes) {
-				expr_free(e->left.expr);
-				expr_free(e->right.expr);
-				e->type = E_SYMBOL;
-				e->left.sym = &symbol_yes;
-				e->right.expr = nullptr;
-				return e;
-			}
+		l = expr_eliminate_yn(e->left.expr);
+		r = expr_eliminate_yn(e->right.expr);
+		if (l->type == E_SYMBOL) {
+			if (l->left.sym == &symbol_no)
+				return r;
+			else if (l->left.sym == &symbol_yes)
+				return l;
 		}
-		if (e->right.expr->type == E_SYMBOL) {
-			if (e->right.expr->left.sym == &symbol_no) {
-				free(e->right.expr);
-				tmp = e->left.expr;
-				*e = *(e->left.expr);
-				free(tmp);
-				return e;
-			} else if (e->right.expr->left.sym == &symbol_yes) {
-				expr_free(e->left.expr);
-				expr_free(e->right.expr);
-				e->type = E_SYMBOL;
-				e->left.sym = &symbol_yes;
-				e->right.expr = nullptr;
-				return e;
-			}
+		if (r->type == E_SYMBOL) {
+			if (r->left.sym == &symbol_no)
+				return l;
+			else if (r->left.sym == &symbol_yes)
+				return r;
 		}
+		if (l != e->left.expr || r != e->right.expr)
+			return expr_alloc_two(E_OR, l, r);
 		break;
 	default:
 		;
@@ -423,6 +408,11 @@ static struct expr *expr_eliminate_yn(struct expr *e)
 /*
  * bool FOO!=n => FOO
  */
+/*
+ * bool FOO!=n => FOO
+ *
+ * 无副作用实现：返回（可能是新的）等价表达式。
+ */
 struct expr *expr_trans_bool(struct expr *e)
 {
 	if (!e)
@@ -430,23 +420,20 @@ struct expr *expr_trans_bool(struct expr *e)
 	switch (e->type) {
 	case E_AND:
 	case E_OR:
+		return expr_alloc_two(e->type,
+				      expr_trans_bool(e->left.expr),
+				      expr_trans_bool(e->right.expr));
 	case E_NOT:
-		e->left.expr = expr_trans_bool(e->left.expr);
-		e->right.expr = expr_trans_bool(e->right.expr);
-		break;
+		return expr_alloc_one(E_NOT, expr_trans_bool(e->left.expr));
 	case E_UNEQUAL:
 		// FOO!=n -> FOO
-		if (e->left.sym->type == S_TRISTATE) {
-			if (e->right.sym == &symbol_no) {
-				e->type = E_SYMBOL;
-				e->right.sym = nullptr;
-			}
-		}
-		break;
+		if (e->left.sym->type == S_TRISTATE &&
+		    e->right.sym == &symbol_no)
+			return expr_alloc_symbol(e->left.sym);
+		return e;
 	default:
-		;
+		return e;
 	}
-	return e;
 }
 
 /*
@@ -628,20 +615,26 @@ static struct expr *expr_join_and(struct expr *e1, struct expr *e2)
 static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct expr **ep2,
 				 int &count)
 {
+	struct expr *tmp, *l, *r;
 	auto &e1 = *ep1;
 	auto &e2 = *ep2;
-	struct expr *tmp;
 
 	/* Recurse down to leaves */
 
 	if (e1->type == type) {
-		expr_eliminate_dups1(type, &e1->left.expr, &e2, count);
-		expr_eliminate_dups1(type, &e1->right.expr, &e2, count);
+		l = e1->left.expr;
+		r = e1->right.expr;
+		expr_eliminate_dups1(type, &l, ep2, count);
+		expr_eliminate_dups1(type, &r, ep2, count);
+		e1 = expr_alloc_two(type, l, r);
 		return;
 	}
 	if (e2->type == type) {
-		expr_eliminate_dups1(type, &e1, &e2->left.expr, count);
-		expr_eliminate_dups1(type, &e1, &e2->right.expr, count);
+		l = e2->left.expr;
+		r = e2->right.expr;
+		expr_eliminate_dups1(type, ep1, &l, count);
+		expr_eliminate_dups1(type, ep1, &r, count);
+		e2 = expr_alloc_two(type, l, r);
 		return;
 	}
 
@@ -661,7 +654,6 @@ static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct 
 	case E_OR:
 		tmp = expr_join_or(e1, e2);
 		if (tmp) {
-			expr_free(e1); expr_free(e2);
 			e1 = expr_alloc_symbol(&symbol_no);
 			e2 = tmp;
 			count++;
@@ -670,7 +662,6 @@ static void expr_eliminate_dups1(enum expr_type type, struct expr **ep1, struct 
 	case E_AND:
 		tmp = expr_join_and(e1, e2);
 		if (tmp) {
-			expr_free(e1); expr_free(e2);
 			e1 = expr_alloc_symbol(&symbol_yes);
 			e2 = tmp;
 			count++;
@@ -723,8 +714,6 @@ struct expr *expr_eliminate_dups(struct expr *e)
  */
 struct expr *expr_transform(struct expr *e)
 {
-	struct expr *tmp;
-
 	if (!e)
 		return nullptr;
 	switch (e->type) {
@@ -738,8 +727,10 @@ struct expr *expr_transform(struct expr *e)
 	case E_LIST:
 		break;
 	default:
-		e->left.expr = expr_transform(e->left.expr);
-		e->right.expr = expr_transform(e->right.expr);
+		/* 无副作用重建（内容不变时驻留池返回原节点） */
+		e = expr_alloc_two(e->type,
+				   expr_transform(e->left.expr),
+				   expr_transform(e->right.expr));
 	}
 
 	switch (e->type) {
@@ -747,21 +738,19 @@ struct expr *expr_transform(struct expr *e)
 		if (e->left.sym->type != S_BOOLEAN)
 			break;
 		if (e->right.sym == &symbol_no) {
-			e->type = E_NOT;
-			e->left.expr = expr_alloc_symbol(e->left.sym);
-			e->right.sym = nullptr;
+			// a=n -> !a
+			e = expr_alloc_one(E_NOT, expr_alloc_symbol(e->left.sym));
 			break;
 		}
 		if (e->right.sym == &symbol_mod) {
+			// a=m -> n
 			fprintf(stderr, "boolean symbol %s tested for 'm'? test forced to 'n'\n", e->left.sym->name);
-			e->type = E_SYMBOL;
-			e->left.sym = &symbol_no;
-			e->right.sym = nullptr;
+			e = expr_alloc_symbol(&symbol_no);
 			break;
 		}
 		if (e->right.sym == &symbol_yes) {
-			e->type = E_SYMBOL;
-			e->right.sym = nullptr;
+			// a=y -> a
+			e = expr_alloc_symbol(e->left.sym);
 			break;
 		}
 		break;
@@ -769,21 +758,19 @@ struct expr *expr_transform(struct expr *e)
 		if (e->left.sym->type != S_BOOLEAN)
 			break;
 		if (e->right.sym == &symbol_no) {
-			e->type = E_SYMBOL;
-			e->right.sym = nullptr;
+			// a!=n -> a
+			e = expr_alloc_symbol(e->left.sym);
 			break;
 		}
 		if (e->right.sym == &symbol_mod) {
+			// a!=m -> y
 			fprintf(stderr, "boolean symbol %s tested for 'm'? test forced to 'y'\n", e->left.sym->name);
-			e->type = E_SYMBOL;
-			e->left.sym = &symbol_yes;
-			e->right.sym = nullptr;
+			e = expr_alloc_symbol(&symbol_yes);
 			break;
 		}
 		if (e->right.sym == &symbol_yes) {
-			e->type = E_NOT;
-			e->left.expr = expr_alloc_symbol(e->left.sym);
-			e->right.sym = nullptr;
+			// a!=y -> !a
+			e = expr_alloc_one(E_NOT, e->left.expr);
 			break;
 		}
 		break;
@@ -791,81 +778,51 @@ struct expr *expr_transform(struct expr *e)
 		switch (e->left.expr->type) {
 		case E_NOT:
 			// !!a -> a
-			tmp = e->left.expr->left.expr;
-			free(e->left.expr);
-			free(e);
-			e = tmp;
-			e = expr_transform(e);
+			e = e->left.expr->left.expr;
 			break;
 		case E_EQUAL:
 		case E_UNEQUAL:
 			// !a='x' -> a!='x'
-			tmp = e->left.expr;
-			free(e);
-			e = tmp;
-			e->type = e->type == E_EQUAL ? E_UNEQUAL : E_EQUAL;
+			e = expr_alloc_comp(e->left.expr->type == E_EQUAL ? E_UNEQUAL : E_EQUAL,
+					    e->left.expr->left.sym,
+					    e->left.expr->right.sym);
 			break;
 		case E_LEQ:
 		case E_GEQ:
 			// !a<='x' -> a>'x'
-			tmp = e->left.expr;
-			free(e);
-			e = tmp;
-			e->type = e->type == E_LEQ ? E_GTH : E_LTH;
+			e = expr_alloc_comp(e->left.expr->type == E_LEQ ? E_GTH : E_LTH,
+					    e->left.expr->left.sym,
+					    e->left.expr->right.sym);
 			break;
 		case E_LTH:
 		case E_GTH:
 			// !a<'x' -> a>='x'
-			tmp = e->left.expr;
-			free(e);
-			e = tmp;
-			e->type = e->type == E_LTH ? E_GEQ : E_LEQ;
+			e = expr_alloc_comp(e->left.expr->type == E_LTH ? E_GEQ : E_LEQ,
+					    e->left.expr->left.sym,
+					    e->left.expr->right.sym);
 			break;
 		case E_OR:
 			// !(a || b) -> !a && !b
-			tmp = e->left.expr;
-			e->type = E_AND;
-			e->right.expr = expr_alloc_one(E_NOT, tmp->right.expr);
-			tmp->type = E_NOT;
-			tmp->right.expr = nullptr;
+			e = expr_alloc_and(expr_alloc_one(E_NOT, e->left.expr->left.expr),
+					   expr_alloc_one(E_NOT, e->left.expr->right.expr));
 			e = expr_transform(e);
 			break;
 		case E_AND:
 			// !(a && b) -> !a || !b
-			tmp = e->left.expr;
-			e->type = E_OR;
-			e->right.expr = expr_alloc_one(E_NOT, tmp->right.expr);
-			tmp->type = E_NOT;
-			tmp->right.expr = nullptr;
+			e = expr_alloc_or(expr_alloc_one(E_NOT, e->left.expr->left.expr),
+					  expr_alloc_one(E_NOT, e->left.expr->right.expr));
 			e = expr_transform(e);
 			break;
 		case E_SYMBOL:
 			if (e->left.expr->left.sym == &symbol_yes) {
 				// !'y' -> 'n'
-				tmp = e->left.expr;
-				free(e);
-				e = tmp;
-				e->type = E_SYMBOL;
-				e->left.sym = &symbol_no;
-				break;
-			}
-			if (e->left.expr->left.sym == &symbol_mod) {
+				e = expr_alloc_symbol(&symbol_no);
+			} else if (e->left.expr->left.sym == &symbol_mod) {
 				// !'m' -> 'm'
-				tmp = e->left.expr;
-				free(e);
-				e = tmp;
-				e->type = E_SYMBOL;
-				e->left.sym = &symbol_mod;
-				break;
-			}
-			if (e->left.expr->left.sym == &symbol_no) {
+				e = expr_alloc_symbol(&symbol_mod);
+			} else if (e->left.expr->left.sym == &symbol_no) {
 				// !'n' -> 'y'
-				tmp = e->left.expr;
-				free(e);
-				e = tmp;
-				e->type = E_SYMBOL;
-				e->left.sym = &symbol_yes;
-				break;
+				e = expr_alloc_symbol(&symbol_yes);
 			}
 			break;
 		default:
@@ -991,9 +948,6 @@ struct expr *expr_trans_compare(struct expr *e, enum expr_type type, struct symb
 		return tmp;
 
 unexpected_sym:
-		/* 'sym' is not a tristate constant: drop the unused copies */
-		expr_free(e1);
-		expr_free(e2);
 		tmp = expr_copy(e);
 		if (type == E_UNEQUAL)
 			tmp = expr_alloc_one(E_NOT, tmp);
@@ -1033,11 +987,16 @@ unexpected_sym:
 	return nullptr;
 }
 
-enum string_value_kind {
+enum class string_value_kind {
 	k_string,
 	k_signed,
 	k_unsigned,
 };
+
+/* See tristate above: bare-enumerator compatibility aliases. */
+inline constexpr string_value_kind k_string   = string_value_kind::k_string;
+inline constexpr string_value_kind k_signed   = string_value_kind::k_signed;
+inline constexpr string_value_kind k_unsigned = string_value_kind::k_unsigned;
 
 union string_value {
 	unsigned long long u;
@@ -1186,20 +1145,20 @@ static int expr_compare_type(enum expr_type t1, enum expr_type t2)
 	default:
 		return -1;
 	}
-	fprintf(stderr, "[%dgt%d?]", t1, t2);
+	fprintf(stderr, "[%dgt%d?]", static_cast<int>(t1), static_cast<int>(t2));
 	return 0;
 }
 
 void expr_print(struct expr *e,
 		void (*fn)(void *, struct symbol *, const char *),
-		void *data, int prevtoken)
+		void *data, expr_type prevtoken)
 {
 	if (!e) {
 		fn(data, nullptr, "y");
 		return;
 	}
 
-	if (expr_compare_type(static_cast<expr_type>(prevtoken), e->type) > 0)
+	if (expr_compare_type(prevtoken, e->type) > 0)
 		fn(data, nullptr, "(");
 	switch (e->type) {
 	case E_SYMBOL:
@@ -1268,7 +1227,7 @@ void expr_print(struct expr *e,
 		break;
 	  }
 	}
-	if (expr_compare_type(static_cast<expr_type>(prevtoken), e->type) > 0)
+	if (expr_compare_type(prevtoken, e->type) > 0)
 		fn(data, nullptr, ")");
 }
 
@@ -1292,18 +1251,16 @@ static void expr_print_gstr_helper(void *data, struct symbol *sym, const char *s
 
 	if (gs->max_width) {
 		unsigned extra_length = strlen(str);
-		const char *last_cr = strrchr(gs->s, '\n');
+		size_t nl = gs->s.rfind('\n');
 		unsigned last_line_length;
 
 		if (sym_str)
 			extra_length += 4 + strlen(sym_str);
 
-		if (!last_cr)
-			last_cr = gs->s;
+		last_line_length = static_cast<unsigned>(gs->s.size() -
+					(nl == std::string::npos ? 0 : nl));
 
-		last_line_length = strlen(gs->s) - (last_cr - gs->s);
-
-		if ((last_line_length + extra_length) > gs->max_width)
+		if ((last_line_length + extra_length) > static_cast<unsigned>(gs->max_width))
 			str_append(gs, "\\\n");
 	}
 
@@ -1360,3 +1317,5 @@ void expr_gstr_print_revdep(struct expr *e, struct gstr *gs,
 
 	expr_print_revdep(e, expr_print_gstr_helper, gs, pr_type, &title);
 }
+
+} /* namespace kconfig */

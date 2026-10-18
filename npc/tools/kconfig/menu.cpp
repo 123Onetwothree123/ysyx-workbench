@@ -13,13 +13,18 @@ using namespace std;
 
 #include "lkc.hpp"
 
+namespace kconfig {
+
 static const char nohelp_text[] = "There is no help available for this option.";
 
 struct menu rootmenu;
-static struct menu **last_entry_ptr;
+ParseContext parse_ctx;
 
-struct file *file_list;
-struct file *current_file;
+/*
+ * 属性对象池：属性在符号的 prop 向量中仅以指针引用，池保证地址稳定；
+ * 与表达式池一致，属性不再逐个释放。
+ */
+static std::deque<struct property> property_pool;
 
 __attribute__((format(printf, 2, 3)))
 void menu_warn(struct menu *menu, const char *fmt, ...)
@@ -45,44 +50,41 @@ static void prop_warn(struct property *prop, const char *fmt, ...)
 
 void _menu_init(void)
 {
-	current_entry = current_menu = &rootmenu;
-	last_entry_ptr = &rootmenu.list;
+	parse_ctx.current_entry = parse_ctx.current_menu = &rootmenu;
 }
 
 void menu_add_entry(struct symbol *sym)
 {
-	struct menu *menu;
+	auto owned = std::make_unique<struct menu>();
+	struct menu *menu = owned.get();
 
-	menu = static_cast<struct menu*>(xmalloc(sizeof(*menu)));
-	memset(menu, 0, sizeof(*menu));
 	menu->sym = sym;
-	menu->parent = current_menu;
-	menu->file = current_file;
+	menu->parent = parse_ctx.current_menu;
+	menu->file = parse_ctx.current_file;
 	menu->lineno = zconf_lineno();
 
-	*last_entry_ptr = menu;
-	last_entry_ptr = &menu->next;
-	current_entry = menu;
+	parse_ctx.current_menu->children.push_back(std::move(owned));
+	parse_ctx.current_entry = menu;
 	if (sym)
 		menu_add_symbol(P_SYMBOL, sym, nullptr);
 }
 
 struct menu *menu_add_menu(void)
 {
-	last_entry_ptr = &current_entry->list;
-	current_menu = current_entry;
-	return current_menu;
+	parse_ctx.current_menu = parse_ctx.current_entry;
+	return parse_ctx.current_menu;
 }
 
 void menu_end_menu(void)
 {
-	last_entry_ptr = &current_menu->next;
-	current_menu = current_menu->parent;
+	parse_ctx.current_menu = parse_ctx.current_menu->parent;
 }
 
 /*
  * Rewrites 'm' to 'm' && MODULES, so that it evaluates to 'n' when running
  * without modules
+ *
+ * 无副作用实现（对齐新版 Linux）：重建而非就地修改。
  */
 static struct expr *rewrite_m(struct expr *e)
 {
@@ -91,12 +93,13 @@ static struct expr *rewrite_m(struct expr *e)
 
 	switch (e->type) {
 	case E_NOT:
-		e->left.expr = rewrite_m(e->left.expr);
+		e = expr_alloc_one(E_NOT, rewrite_m(e->left.expr));
 		break;
 	case E_OR:
 	case E_AND:
-		e->left.expr = rewrite_m(e->left.expr);
-		e->right.expr = rewrite_m(e->right.expr);
+		e = expr_alloc_two(e->type,
+				   rewrite_m(e->left.expr),
+				   rewrite_m(e->right.expr));
 		break;
 	case E_SYMBOL:
 		/* change 'm' into 'm' && MODULES */
@@ -120,12 +123,12 @@ void menu_add_dep(struct expr *dep, struct expr *cond)
 		 */
 		dep = expr_alloc_or(dep, expr_trans_compare(cond, E_EQUAL, &symbol_no));
 	}
-	current_entry->dep = expr_alloc_and(current_entry->dep, dep);
+	parse_ctx.current_entry->dep = expr_alloc_and(parse_ctx.current_entry->dep, dep);
 }
 
 void menu_set_type(enum symbol_type type)
 {
-	struct symbol *sym = current_entry->sym;
+	struct symbol *sym = parse_ctx.current_entry->sym;
 
 	if (sym->type == type)
 		return;
@@ -133,7 +136,7 @@ void menu_set_type(enum symbol_type type)
 		sym->type = type;
 		return;
 	}
-	menu_warn(current_entry,
+	menu_warn(parse_ctx.current_entry,
 		"ignoring type redefinition of '%s' from '%s' to '%s'",
 		sym->name ? sym->name : "<choice>",
 		sym_type_name(sym->type), sym_type_name(type));
@@ -142,27 +145,19 @@ void menu_set_type(enum symbol_type type)
 static struct property *menu_add_prop(enum prop_type type, struct expr *expr,
 				      struct expr *dep)
 {
-	struct property *prop;
+	property_pool.emplace_back();
+	struct property *prop = &property_pool.back();
 
-	prop = static_cast<struct property*>(xmalloc(sizeof(*prop)));
-	memset(prop, 0, sizeof(*prop));
 	prop->type = type;
-	prop->file = current_file;
+	prop->file = parse_ctx.current_file;
 	prop->lineno = zconf_lineno();
-	prop->menu = current_entry;
+	prop->menu = parse_ctx.current_entry;
 	prop->expr = expr;
 	prop->visible.expr = dep;
 
 	/* append property to the prop list of symbol */
-	if (current_entry->sym) {
-		struct property **propp;
-
-		for (propp = &current_entry->sym->prop;
-		     *propp;
-		     propp = &(*propp)->next)
-			;
-		*propp = prop;
-	}
+	if (parse_ctx.current_entry->sym)
+		parse_ctx.current_entry->sym->prop.push_back(prop);
 
 	return prop;
 }
@@ -177,12 +172,12 @@ struct property *menu_add_prompt(enum prop_type type, char *prompt,
 		while (isspace(static_cast<unsigned char>(*prompt)))
 			prompt++;
 	}
-	if (current_entry->prompt)
+	if (parse_ctx.current_entry->prompt)
 		prop_warn(prop, "prompt redefined");
 
 	/* Apply all upper menus' visibilities to actual prompts. */
 	if (type == P_PROMPT) {
-		struct menu *menu = current_entry;
+		struct menu *menu = parse_ctx.current_entry;
 
 		while ((menu = menu->parent) != nullptr) {
 			struct expr *dup_expr;
@@ -203,7 +198,7 @@ struct property *menu_add_prompt(enum prop_type type, char *prompt,
 		}
 	}
 
-	current_entry->prompt = prop;
+	parse_ctx.current_entry->prompt = prop;
 	prop->text = prompt;
 
 	return prop;
@@ -211,7 +206,7 @@ struct property *menu_add_prompt(enum prop_type type, char *prompt,
 
 void menu_add_visibility(struct expr *expr)
 {
-	current_entry->visibility = expr_alloc_and(current_entry->visibility,
+	parse_ctx.current_entry->visibility = expr_alloc_and(parse_ctx.current_entry->visibility,
 	    expr);
 }
 
@@ -229,22 +224,22 @@ void menu_add_option_modules(void)
 {
 	if (modules_sym)
 		zconf_error("symbol '%s' redefines option 'modules' already defined by symbol '%s'",
-			    current_entry->sym->name, modules_sym->name);
-	modules_sym = current_entry->sym;
+			    parse_ctx.current_entry->sym->name, modules_sym->name);
+	modules_sym = parse_ctx.current_entry->sym;
 }
 
 void menu_add_option_defconfig_list(void)
 {
 	if (!sym_defconfig_list)
-		sym_defconfig_list = current_entry->sym;
-	else if (sym_defconfig_list != current_entry->sym)
+		sym_defconfig_list = parse_ctx.current_entry->sym;
+	else if (sym_defconfig_list != parse_ctx.current_entry->sym)
 		zconf_error("trying to redefine defconfig symbol");
 	sym_defconfig_list->flags |= SYMBOL_NO_WRITE;
 }
 
 void menu_add_option_allnoconfig_y(void)
 {
-	current_entry->sym->flags |= SYMBOL_ALLNOCONFIG_Y;
+	parse_ctx.current_entry->sym->flags |= SYMBOL_ALLNOCONFIG_Y;
 }
 
 static int menu_validate_number(struct symbol *sym, struct symbol *sym2)
@@ -255,11 +250,10 @@ static int menu_validate_number(struct symbol *sym, struct symbol *sym2)
 
 static void sym_check_prop(struct symbol *sym)
 {
-	struct property *prop;
 	struct symbol *sym2;
 	const char *use;
 
-	for (prop = sym->prop; prop; prop = prop->next) {
+	for (struct property *prop : sym->prop) {
 		switch (prop->type) {
 		case P_DEFAULT:
 			if ((sym->type == S_STRING || sym->type == S_INT || sym->type == S_HEX) &&
@@ -325,7 +319,7 @@ void menu_finalize(struct menu *parent)
 	struct expr *parentdep, *basedep, *dep, *dep2, **ep;
 
 	sym = parent->sym;
-	if (parent->list) {
+	if (!parent->children.empty()) {
 		/*
 		 * This menu node has children. We (recursively) process them
 		 * and propagate parent dependencies before moving on.
@@ -334,8 +328,9 @@ void menu_finalize(struct menu *parent)
 		if (sym && sym_is_choice(sym)) {
 			if (sym->type == S_UNKNOWN) {
 				/* find the first choice value to find out choice type */
-				current_entry = parent;
-				for (menu = parent->list; menu; menu = menu->next) {
+				parse_ctx.current_entry = parent;
+				for (auto &child_owner : parent->children) {
+					menu = child_owner.get();
 					if (menu->sym && menu->sym->type != S_UNKNOWN) {
 						menu_set_type(menu->sym->type);
 						break;
@@ -343,8 +338,9 @@ void menu_finalize(struct menu *parent)
 				}
 			}
 			/* set the type of the remaining choice values */
-			for (menu = parent->list; menu; menu = menu->next) {
-				current_entry = menu;
+			for (auto &child_owner : parent->children) {
+				menu = child_owner.get();
+				parse_ctx.current_entry = menu;
 				if (menu->sym && menu->sym->type == S_UNKNOWN)
 					menu_set_type(sym->type);
 			}
@@ -362,7 +358,8 @@ void menu_finalize(struct menu *parent)
 		}
 
 		/* For each child menu node... */
-		for (menu = parent->list; menu; menu = menu->next) {
+		for (auto &child_owner : parent->children) {
+			menu = child_owner.get();
 			/*
 			 * Propagate parent dependencies to the child menu
 			 * node, also rewriting and simplifying expressions
@@ -373,21 +370,16 @@ void menu_finalize(struct menu *parent)
 			basedep = expr_eliminate_dups(basedep);
 			menu->dep = basedep;
 
-			if (menu->sym)
-				/*
-				 * Note: For symbols, all prompts are included
-				 * too in the symbol's own property list
-				 */
-				prop = menu->sym->prop;
-			else
-				/*
-				 * For non-symbol menu nodes, we just need to
-				 * handle the prompt
-				 */
-				prop = menu->prompt;
-
-			/* For each property... */
-			for (; prop; prop = prop->next) {
+			/*
+			 * For each property: 符号节点遍历其属性表（符号的
+			 * prompt 也在属性表中）；非符号节点只处理自己的
+			 * prompt，用一个单元素表统一循环。
+			 */
+			std::vector<struct property *> prompt_only;
+			if (!menu->sym && menu->prompt)
+				prompt_only.push_back(menu->prompt);
+			for (struct property *prop :
+			     menu->sym ? menu->sym->prop : prompt_only) {
 				if (prop->menu != menu)
 					/*
 					 * Two possibilities:
@@ -440,10 +432,11 @@ void menu_finalize(struct menu *parent)
 
 		/*
 		 * Recursively process children in the same fashion before
-		 * moving on
+		 * moving on（递归调用可能把后续兄弟节点搬进子菜单，
+		 * 因此用下标遍历以容忍删除）
 		 */
-		for (menu = parent->list; menu; menu = menu->next)
-			menu_finalize(menu);
+		for (size_t ci = 0; ci < parent->children.size(); ci++)
+			menu_finalize(parent->children[ci].get());
 	} else if (sym) {
 		/*
 		 * Automatic submenu creation. If sym is a symbol and A, B, C,
@@ -471,9 +464,23 @@ void menu_finalize(struct menu *parent)
 		basedep = expr_trans_compare(basedep, E_UNEQUAL, &symbol_no);
 		basedep = expr_eliminate_dups(expr_transform(basedep));
 
-		/* Examine consecutive elements after sym */
+		/*
+		 * Examine consecutive elements after sym（在祖父的
+		 * children 中从 parent 之后开始；递归调用会搬走已处理
+		 * 的节点，因此用下标遍历）
+		 */
+		auto &siblings = parent->parent->children;
+		size_t parent_idx = 0;
+		for (size_t k = 0; k < siblings.size(); k++)
+			if (siblings[k].get() == parent) {
+				parent_idx = k;
+				break;
+			}
+
 		last_menu = nullptr;
-		for (menu = parent->next; menu; menu = menu->next) {
+		size_t last_idx = parent_idx;
+		for (size_t k = parent_idx + 1; k < siblings.size(); k++) {
+			menu = siblings[k].get();
 			dep = menu->prompt ? menu->prompt->visible.expr : menu->dep;
 			if (!expr_contains_symbol(dep, sym))
 				/* No dependency, quit */
@@ -507,24 +514,31 @@ void menu_finalize(struct menu *parent)
 			menu_finalize(menu);
 			menu->parent = parent;
 			last_menu = menu;
+			last_idx = k;
 		}
 		expr_free(basedep);
 		if (last_menu) {
-			parent->list = parent->next;
-			parent->next = last_menu->next;
-			last_menu->next = nullptr;
+			/* 把 parent 之后的连续兄弟节点搬进 parent 作为子菜单 */
+			std::move(siblings.begin() + parent_idx + 1,
+				  siblings.begin() + last_idx + 1,
+				  std::back_inserter(parent->children));
+			siblings.erase(siblings.begin() + parent_idx + 1,
+				       siblings.begin() + last_idx + 1);
 		}
 
 		sym->dir_dep.expr = expr_alloc_or(sym->dir_dep.expr, parent->dep);
 	}
-	for (menu = parent->list; menu; menu = menu->next) {
+	/* 处理过程中可能向 parent->children 插入（拆平 if 块），
+	 * 因此用下标遍历以容忍插入。 */
+	for (size_t ci = 0; ci < parent->children.size(); ci++) {
+		menu = parent->children[ci].get();
 		if (sym && sym_is_choice(sym) &&
 		    menu->sym && !sym_is_choice_value(menu->sym)) {
-			current_entry = menu;
+			parse_ctx.current_entry = menu;
 			menu->sym->flags |= SYMBOL_CHOICEVAL;
 			if (!menu->prompt)
 				menu_warn(menu, "choice value must have a prompt");
-			for (prop = menu->sym->prop; prop; prop = prop->next) {
+			for (struct property *prop : menu->sym->prop) {
 				if (prop->type == P_DEFAULT)
 					prop_warn(prop, "defaults for choice "
 						  "values not supported");
@@ -543,7 +557,7 @@ void menu_finalize(struct menu *parent)
 			if (sym->type == S_TRISTATE && menu->sym->type != S_TRISTATE) {
 				basedep = expr_alloc_comp(E_EQUAL, sym, &symbol_yes);
 				menu->dep = expr_alloc_and(basedep, menu->dep);
-				for (prop = menu->sym->prop; prop; prop = prop->next) {
+				for (struct property *prop : menu->sym->prop) {
 					if (prop->menu != menu)
 						continue;
 					prop->visible.expr = expr_alloc_and(expr_copy(basedep),
@@ -554,8 +568,7 @@ void menu_finalize(struct menu *parent)
 			prop = sym_get_choice_prop(sym);
 			for (ep = &prop->expr; *ep; ep = &(*ep)->left.expr)
 				;
-			*ep = expr_alloc_one(E_LIST, nullptr);
-			(*ep)->right.sym = menu->sym;
+			*ep = expr_alloc_list(nullptr, menu->sym);
 		}
 
 		/*
@@ -586,15 +599,19 @@ void menu_finalize(struct menu *parent)
 		 *	C
 		 *	D
 		 */
-		if (menu->list && (!menu->prompt || !menu->prompt->text)) {
-			for (last_menu = menu->list; ; last_menu = last_menu->next) {
-				last_menu->parent = parent;
-				if (!last_menu->next)
-					break;
-			}
-			last_menu->next = menu->next;
-			menu->next = menu->list;
-			menu->list = nullptr;
+		if (!menu->children.empty() && (!menu->prompt || !menu->prompt->text)) {
+			/* 把 menu 的子节点按原顺序插入到它后面（同一个 children 表） */
+			for (auto &grandchild : menu->children)
+				grandchild->parent = parent;
+			auto &siblings = parent->children;
+			auto pos = std::find_if(siblings.begin(), siblings.end(),
+						[menu](const std::unique_ptr<struct menu> &p) {
+							return p.get() == menu;
+						});
+			siblings.insert(pos + 1,
+					std::make_move_iterator(menu->children.begin()),
+					std::make_move_iterator(menu->children.end()));
+			menu->children.clear();
 		}
 	}
 
@@ -638,10 +655,8 @@ void menu_finalize(struct menu *parent)
  */
 [[nodiscard]] bool menu_is_empty(struct menu *menu)
 {
-	struct menu *child;
-
-	for (child = menu->list; child; child = child->next) {
-		if (menu_is_visible(child))
+	for (auto &child : menu->children) {
+		if (menu_is_visible(child.get()))
 			return false;
 	}
 	return true;
@@ -649,7 +664,6 @@ void menu_finalize(struct menu *parent)
 
 [[nodiscard]] bool menu_is_visible(struct menu *menu)
 {
-	struct menu *child;
 	struct symbol *sym;
 	tristate visible;
 
@@ -674,8 +688,8 @@ void menu_finalize(struct menu *parent)
 	if (!sym || sym_get_tristate_value(menu->sym) == no)
 		return false;
 
-	for (child = menu->list; child; child = child->next) {
-		if (menu_is_visible(child)) {
+	for (auto &child : menu->children) {
+		if (menu_is_visible(child.get())) {
 			if (sym)
 				sym->flags |= SYMBOL_DEF_USER;
 			return true;
@@ -770,7 +784,7 @@ static void get_prompt_str(struct gstr *r, struct property *prop,
 			location = menu;
 	}
 	if (head && location) {
-		jump = static_cast<struct jump_key*>(xmalloc(sizeof(struct jump_key)));
+		jump = new struct jump_key();
 
 		if (menu_is_visible(prop->menu)) {
 			/*
@@ -797,7 +811,7 @@ static void get_prompt_str(struct gstr *r, struct property *prop,
 		for (j = 4; --i >= 0; j += 2) {
 			menu = submenu[i];
 			if (jump && menu == location)
-				jump->offset = strlen(r->s);
+				jump->offset = r->s.size();
 			str_printf(r, "%*c-> %s", j, ' ',
 				   menu_get_prompt(menu));
 			if (menu->sym) {
@@ -814,9 +828,10 @@ static void get_symbol_props_str(struct gstr *r, struct symbol *sym,
 				 enum prop_type tok, const char *prefix)
 {
 	bool hit = false;
-	struct property *prop;
 
-	for_all_properties(sym, prop, tok) {
+	for (struct property *prop : sym->prop) {
+		if (prop->type != tok)
+			continue;
 		if (!hit) {
 			str_append(r, prefix);
 			hit = true;
@@ -851,14 +866,18 @@ static void get_symbol_str(struct gstr *r, struct symbol *sym,
 	}
 
 	/* Print the definitions with prompts before the ones without */
-	for_all_properties(sym, prop, P_SYMBOL) {
+	for (struct property *prop : sym->prop) {
+		if (prop->type != P_SYMBOL)
+			continue;
 		if (prop->menu->prompt) {
 			get_def_str(r, prop->menu);
 			get_prompt_str(r, prop->menu->prompt, head);
 		}
 	}
 
-	for_all_properties(sym, prop, P_SYMBOL) {
+	for (struct property *prop : sym->prop) {
+		if (prop->type != P_SYMBOL)
+			continue;
 		if (!prop->menu->prompt) {
 			get_def_str(r, prop->menu);
 			get_dep_str(r, prop->menu->dep, "  Depends on: ");
@@ -882,15 +901,14 @@ static void get_symbol_str(struct gstr *r, struct symbol *sym,
 	str_append(r, "\n\n");
 }
 
-struct gstr get_relations_str(struct symbol **sym_arr, struct list_head *head)
+struct gstr get_relations_str(const std::vector<struct symbol *> &sym_arr,
+			      struct list_head *head)
 {
-	struct symbol *sym;
 	struct gstr res = str_new();
-	int i;
 
-	for (i = 0; sym_arr && (sym = sym_arr[i]); i++)
+	for (struct symbol *sym : sym_arr)
 		get_symbol_str(&res, sym, head);
-	if (!i)
+	if (sym_arr.empty())
 		str_append(&res, "No matches found.\n");
 	return res;
 }
@@ -910,3 +928,5 @@ void menu_get_ext_help(struct menu *menu, struct gstr *help)
 	if (sym)
 		get_symbol_str(help, sym, nullptr);
 }
+
+} /* namespace kconfig */

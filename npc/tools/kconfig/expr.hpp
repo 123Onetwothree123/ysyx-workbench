@@ -8,10 +8,14 @@
 #include <assert.h>
 #include <stdio.h>
 #include <cstddef>
+#include <iterator>
+#include <memory>
+#include <vector>
 #include "list.hpp"
 
+namespace kconfig {
+
 struct file {
-	struct file *next;
 	struct file *parent;
 	const char *name;
 	int lineno;
@@ -32,13 +36,29 @@ inline constexpr tristate no  = tristate::no;
 inline constexpr tristate mod = tristate::mod;
 inline constexpr tristate yes = tristate::yes;
 
-enum expr_type {
+enum class expr_type {
 	E_NONE, E_OR, E_AND, E_NOT,
 	E_EQUAL, E_UNEQUAL, E_LTH, E_LEQ, E_GTH, E_GEQ,
 	E_LIST, E_SYMBOL, E_RANGE
 };
 
+/* See tristate above: bare-enumerator compatibility aliases. */
+inline constexpr expr_type E_NONE    = expr_type::E_NONE;
+inline constexpr expr_type E_OR      = expr_type::E_OR;
+inline constexpr expr_type E_AND     = expr_type::E_AND;
+inline constexpr expr_type E_NOT     = expr_type::E_NOT;
+inline constexpr expr_type E_EQUAL   = expr_type::E_EQUAL;
+inline constexpr expr_type E_UNEQUAL = expr_type::E_UNEQUAL;
+inline constexpr expr_type E_LTH     = expr_type::E_LTH;
+inline constexpr expr_type E_LEQ     = expr_type::E_LEQ;
+inline constexpr expr_type E_GTH     = expr_type::E_GTH;
+inline constexpr expr_type E_GEQ     = expr_type::E_GEQ;
+inline constexpr expr_type E_LIST    = expr_type::E_LIST;
+inline constexpr expr_type E_SYMBOL  = expr_type::E_SYMBOL;
+inline constexpr expr_type E_RANGE   = expr_type::E_RANGE;
+
 union expr_data {
+	void *_initdata; /* 原始指针：表达式驻留（去重）用 */
 	struct expr *expr;
 	struct symbol *sym;
 };
@@ -114,10 +134,9 @@ enum {
  * Choices are represented as a special kind of symbol and have the
  * SYMBOL_CHOICE bit set in 'flags'.
  */
-struct symbol {
-	/* The next symbol in the same bucket in the symbol hash table */
-	struct symbol *next;
+struct property; /* 属性（prop_type）——对象由 menu.cpp 的属性池拥有 */
 
+struct symbol {
 	/* The name of the symbol, e.g. "FOO" for 'config FOO' */
 	const char *name;
 
@@ -150,8 +169,8 @@ struct symbol {
 	/* SYMBOL_* flags */
 	int flags;
 
-	/* List of properties. See prop_type. */
-	struct property *prop;
+	/* List of properties. See prop_type.（元素为指向属性池的裸指针） */
+	std::vector<struct property *> prop;
 
 	/* Dependencies from enclosing menus, choices, and ifs */
 	struct expr_value dir_dep;
@@ -165,7 +184,44 @@ struct symbol {
 	struct expr_value implied;
 };
 
-#define for_all_symbols(i, sym) for (i = 0; i < SYMBOL_HASHSIZE; i++) for (sym = symbol_hash[i]; sym; sym = sym->next)
+/*
+ * 按历史 hash 桶顺序遍历全部符号（现代容器实现，见 symbol.cpp）。
+ * 遍历顺序被刻意保留，以保证 auto.conf / autoconf.h 逐字节不变。
+ */
+class SymbolRange {
+public:
+	class iterator {
+	public:
+		using iterator_category = std::forward_iterator_tag;
+		using value_type = struct symbol *;
+		using difference_type = std::ptrdiff_t;
+		using pointer = struct symbol *;
+		using reference = struct symbol *;
+
+		iterator() = default;
+
+		struct symbol *operator*() const;
+		iterator &operator++();
+		bool operator!=(const iterator &o) const
+		{
+			return table_ != o.table_ || bucket_ != o.bucket_ || pos_ != o.pos_;
+		}
+
+	private:
+		friend class SymbolRange;
+		iterator(const void *table, size_t bucket, size_t pos)
+			: table_(table), bucket_(bucket), pos_(pos) {}
+
+		const void *table_ = nullptr; /* 符号表内部指针（不透明） */
+		size_t bucket_ = 0;
+		size_t pos_ = 0; /* 桶内位置（自尾部向前，复刻历史前插顺序） */
+	};
+
+	iterator begin() const;
+	iterator end() const { return {}; }
+};
+
+SymbolRange all_symbols();
 
 inline constexpr int SYMBOL_CONST      = 0x0001;  /* symbol is const */
 inline constexpr int SYMBOL_CHECK      = 0x0008;  /* used during dependency checking */
@@ -254,14 +310,6 @@ struct property {
 	int lineno;                /* what lineno was this property defined */
 };
 
-#define for_all_properties(sym, st, tok) \
-	for (st = sym->prop; st; st = st->next) \
-		if (st->type == (tok))
-#define for_all_defaults(sym, st) for_all_properties(sym, st, P_DEFAULT)
-#define for_all_choices(sym, st) for_all_properties(sym, st, P_CHOICE)
-#define for_all_prompts(sym, st) \
-	for (st = sym->prop; st; st = st->next) \
-		if (st->text)
 
 /*
  * Represents a node in the menu tree, as seen in e.g. menuconfig (though used
@@ -270,14 +318,11 @@ struct property {
  * location.
  */
 struct menu {
-	/* The next menu node at the same level */
-	struct menu *next;
+	/* 子节点（拥有；保持插入顺序） */
+	std::vector<std::unique_ptr<struct menu>> children;
 
 	/* The parent menu node, corresponding to e.g. a menu or choice */
 	struct menu *parent;
-
-	/* The first child menu node, for e.g. menus and choices */
-	struct menu *list;
 
 	/*
 	 * The symbol associated with the menu node. Choices are implemented as
@@ -335,9 +380,7 @@ struct jump_key {
 
 #define JUMP_NB			9
 
-extern struct file *file_list;
-extern struct file *current_file;
-struct file *lookup_file(const char *name);
+/* current_file 已并入 ParseContext（见 lkc.hpp） */
 
 extern struct symbol symbol_yes, symbol_no, symbol_mod;
 extern struct symbol *modules_sym;
@@ -347,6 +390,7 @@ struct expr *expr_alloc_symbol(struct symbol *sym);
 struct expr *expr_alloc_one(enum expr_type type, struct expr *ce);
 struct expr *expr_alloc_two(enum expr_type type, struct expr *e1, struct expr *e2);
 struct expr *expr_alloc_comp(enum expr_type type, struct symbol *s1, struct symbol *s2);
+struct expr *expr_alloc_list(struct expr *next, struct symbol *sym);
 struct expr *expr_alloc_and(struct expr *e1, struct expr *e2);
 struct expr *expr_alloc_or(struct expr *e1, struct expr *e2);
 struct expr *expr_copy(const struct expr *org);
@@ -376,3 +420,5 @@ void expr_gstr_print_revdep(struct expr *e, struct gstr *gs,
 {
 	return e && (e->type == E_SYMBOL && e->left.sym == &symbol_no);
 }
+
+} /* namespace kconfig */

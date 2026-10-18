@@ -9,6 +9,8 @@
 #include <cstddef>     /* offsetof */
 #include <type_traits> /* std::remove_pointer_t, std::remove_const_t */
 
+namespace kconfig {
+
 /**
  * list_container_of - cast a member of a structure out to the containing
  * structure (template implementation behind the container_of() macro)
@@ -146,4 +148,6 @@ static inline void list_del(struct list_head *entry)
 	entry->next = (struct list_head*)LIST_POISON1;
 	entry->prev = (struct list_head*)LIST_POISON2;
 }
+
+} /* namespace kconfig */
 #endif

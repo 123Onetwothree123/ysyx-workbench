@@ -13,6 +13,8 @@ using namespace std;
 
 #include "lkc.hpp"
 
+namespace kconfig {
+
 static char *expand_string_with_args(const char *in, int argc, char *argv[]);
 static char *expand_string(const char *in);
 
@@ -21,7 +23,7 @@ static void pperror(const char *format, ...)
 {
 	va_list ap;
 
-	fprintf(stderr, "%s:%d: ", current_file->name, yylineno);
+	fprintf(stderr, "%s:%d: ", parse_ctx.current_file->name, yylineno);
 	va_start(ap, format);
 	vfprintf(stderr, format, ap);
 	va_end(ap);
@@ -102,7 +104,7 @@ static char *do_error_if(int argc, char *argv[])
 
 static char *do_filename(int argc, char *argv[])
 {
-	return xstrdup(current_file->name);
+	return xstrdup(parse_ctx.current_file->name);
 }
 
 static char *do_info(int argc, char *argv[])
@@ -161,7 +163,7 @@ static char *do_warning_if(int argc, char *argv[])
 {
 	if (!strcmp(argv[0], "y"))
 		fprintf(stderr, "%s:%d: %s\n",
-			current_file->name, yylineno, argv[1]);
+			parse_ctx.current_file->name, yylineno, argv[1]);
 
 	return xstrdup("");
 }
@@ -527,3 +529,5 @@ char *expand_one_token(const char **str)
 {
 	return __expand_string(str, is_end_of_token, 0, nullptr);
 }
+
+} /* namespace kconfig */

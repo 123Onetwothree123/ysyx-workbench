@@ -15,6 +15,8 @@ using namespace std;
 
 #include "lkc.hpp"
 
+namespace kconfig {
+
 /* return true if 'path' exists, false otherwise */
 static bool is_present(const char *path)
 {
@@ -75,7 +77,6 @@ static size_t depfile_prefix_len;
 /* touch depfile for symbol 'name' */
 static int conf_touch_dep(const char *name)
 {
-	int fd, ret;
 	const char *s;
 	char *d, c;
 
@@ -91,28 +92,26 @@ static int conf_touch_dep(const char *name)
 	strcpy(d, ".h");
 
 	/* Assume directory path already exists. */
-	fd = open(depfile_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	if (fd == -1) {
+	FilePtr fp(fopen(depfile_path, "w"));
+	if (!fp) {
 		if (errno != ENOENT)
 			return -1;
 
-		ret = make_parent_dir(depfile_path);
-		if (ret)
-			return ret;
+		if (make_parent_dir(depfile_path))
+			return -1;
 
 		/* Try it again. */
-		fd = open(depfile_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-		if (fd == -1)
+		fp.reset(fopen(depfile_path, "w"));
+		if (!fp)
 			return -1;
 	}
-	close(fd);
 
 	return 0;
 }
 
 struct conf_printer {
-	void (*print_symbol)(FILE *, struct symbol *, const char *, bool);
-	void (*print_comment)(FILE *, const char *, bool);
+	std::function<void(FILE *, struct symbol *, const char *, bool)> print_symbol;
+	std::function<void(FILE *, const char *, bool)> print_comment;
 };
 
 static void conf_warning(const char *fmt, ...)
@@ -241,10 +240,7 @@ static bool sym_user_value_changed(struct symbol *sym)
 
 static void conf_clear_written_flags(void)
 {
-	struct symbol *sym;
-	int i;
-
-	for_all_symbols(i, sym)
+	for (struct symbol *sym : all_symbols())
 		sym->flags &= ~SYMBOL_WRITTEN;
 }
 
@@ -368,7 +364,7 @@ int conf_read_simple(const char *name, int def)
 	std::string defconfig_candidate;
 	char *lp, *p;
 	struct symbol *sym;
-	int i, def_flags;
+	int def_flags;
 	const char *warn_unknown;
 
 	warn_unknown = getenv("KCONFIG_WARN_UNKNOWN_SYMBOLS");
@@ -376,7 +372,6 @@ int conf_read_simple(const char *name, int def)
 	if (name) {
 		in = conf_open_file(name);
 	} else {
-		struct property *prop;
 		const char *env;
 
 		name = conf_get_configname();
@@ -416,7 +411,9 @@ int conf_read_simple(const char *name, int def)
 		if (!sym_defconfig_list)
 			return 1;
 
-		for_all_defaults(sym_defconfig_list, prop) {
+		for (struct property *prop : sym_defconfig_list->prop) {
+			if (prop->type != P_DEFAULT)
+				continue;
 			if (expr_calc_value(prop->visible.expr) == no ||
 			    prop->expr->type != E_SYMBOL)
 				continue;
@@ -439,7 +436,7 @@ load:
 	conf_warnings = 0;
 
 	def_flags = SYMBOL_DEF << def;
-	for_all_symbols(i, sym) {
+	for (struct symbol *sym : all_symbols()) {
 		sym->flags |= SYMBOL_CHANGED;
 		sym->flags &= ~(def_flags|SYMBOL_VALID);
 		if (sym_is_choice(sym))
@@ -563,7 +560,6 @@ int conf_read(const char *name)
 {
 	struct symbol *sym;
 	int conf_unsaved = 0;
-	int i;
 
 	sym_set_change_count(0);
 
@@ -574,7 +570,7 @@ int conf_read(const char *name)
 
 	sym_calc_value(modules_sym);
 
-	for_all_symbols(i, sym) {
+	for (struct symbol *sym : all_symbols()) {
 		sym_calc_value(sym);
 		if (sym_is_choice(sym) || (sym->flags & SYMBOL_NO_WRITE))
 			continue;
@@ -598,7 +594,7 @@ int conf_read(const char *name)
 		/* maybe print value in verbose mode... */
 	}
 
-	for_all_symbols(i, sym) {
+	for (struct symbol *sym : all_symbols()) {
 		if (sym_has_value(sym) && !sym_is_choice_value(sym)) {
 			/* Reset values of generates values, so they'll appear
 			 * as new, if they should become visible, but that
@@ -758,7 +754,7 @@ static struct conf_printer header_printer_cb =
 };
 
 static void conf_write_symbol(FILE *fp, struct symbol *sym,
-			      struct conf_printer *printer, bool skip_unset)
+			      const struct conf_printer &printer, bool skip_unset)
 {
 	const char *str;
 
@@ -769,17 +765,17 @@ static void conf_write_symbol(FILE *fp, struct symbol *sym,
 		const std::string escaped =
 			sym_escape_string_value(sym_get_string_value(sym));
 
-		printer->print_symbol(fp, sym, escaped.c_str(), skip_unset);
+		printer.print_symbol(fp, sym, escaped.c_str(), skip_unset);
 		break;
 	}
 	default:
 		str = sym_get_string_value(sym);
-		printer->print_symbol(fp, sym, str, skip_unset);
+		printer.print_symbol(fp, sym, str, skip_unset);
 	}
 }
 
 static void
-conf_write_heading(FILE *fp, struct conf_printer *printer)
+conf_write_heading(FILE *fp, const struct conf_printer &printer)
 {
 	char buf[256];
 
@@ -789,7 +785,7 @@ conf_write_heading(FILE *fp, struct conf_printer *printer)
 	    "%s\n",
 	    rootmenu.prompt->text);
 
-	printer->print_comment(fp, buf, false);
+	printer.print_comment(fp, buf, false);
 }
 
 /*
@@ -799,78 +795,66 @@ conf_write_heading(FILE *fp, struct conf_printer *printer)
 int conf_write_defconfig(const char *filename)
 {
 	struct symbol *sym;
-	struct menu *menu;
-	FILE *out;
 	bool changed_input_found = false;
 	std::string changed_input_warning;
 
-	out = fopen(filename, "w");
-	if (!out)
+	FilePtr out_owner(fopen(filename, "w"));
+	if (!out_owner)
 		return 1;
+	FILE *out = out_owner.get();
 
 	sym_clear_all_valid();
 
 	/* Traverse all menus to find all relevant symbols */
-	menu = rootmenu.list;
-
-	while (menu != nullptr)
-	{
-		sym = menu->sym;
-		if (sym == nullptr) {
-			if (!menu_is_visible(menu))
-				goto next_menu;
-		} else if (!sym_is_choice(sym) && !(sym->flags & SYMBOL_WRITTEN)) {
-			sym_calc_value(sym);
-			conf_append_changed_input_warning(changed_input_warning,
-							  sym, changed_input_found);
-			sym->flags |= SYMBOL_WRITTEN;
-			if (!(sym->flags & SYMBOL_WRITE))
-				goto next_menu;
-			sym->flags &= ~SYMBOL_WRITE;
-			/* If we cannot change the symbol - skip */
-			if (!sym_is_changeable(sym))
-				goto next_menu;
-			/* If symbol equals to default value - skip */
-			if (strcmp(sym_get_string_value(sym), sym_get_string_default(sym)) == 0)
-				goto next_menu;
-
-			/*
-			 * If symbol is a choice value and equals to the
-			 * default for a choice - skip.
-			 * But only if value is bool and equal to "y" and
-			 * choice is not "optional".
-			 * (If choice is "optional" then all values can be "n")
-			 */
-			if (sym_is_choice_value(sym)) {
-				struct symbol *cs;
-				struct symbol *ds;
-
-				cs = prop_get_symbol(sym_get_choice_prop(sym));
-				ds = sym_choice_default(cs);
-				if (!sym_is_optional(cs) && sym == ds) {
-					if ((sym->type == S_BOOLEAN) &&
-					    sym_get_tristate_value(sym) == yes)
-						goto next_menu;
-				}
-			}
-			conf_write_symbol(out, sym, &kconfig_printer_cb, false);
-		}
-next_menu:
-		if (menu->list != nullptr) {
-			menu = menu->list;
-		}
-		else if (menu->next != nullptr) {
-			menu = menu->next;
-		} else {
-			while ((menu = menu->parent)) {
-				if (menu->next != nullptr) {
-					menu = menu->next;
+	std::function<void(struct menu *)> walk = [&](struct menu *m) {
+		do {
+			sym = m->sym;
+			if (sym == nullptr) {
+				if (!menu_is_visible(m))
 					break;
+			} else if (!sym_is_choice(sym) && !(sym->flags & SYMBOL_WRITTEN)) {
+				sym_calc_value(sym);
+				conf_append_changed_input_warning(changed_input_warning,
+								  sym, changed_input_found);
+				sym->flags |= SYMBOL_WRITTEN;
+				if (!(sym->flags & SYMBOL_WRITE))
+					break;
+				sym->flags &= ~SYMBOL_WRITE;
+				/* If we cannot change the symbol - skip */
+				if (!sym_is_changeable(sym))
+					break;
+				/* If symbol equals to default value - skip */
+				if (strcmp(sym_get_string_value(sym), sym_get_string_default(sym)) == 0)
+					break;
+
+				/*
+				 * If symbol is a choice value and equals to the
+				 * default for a choice - skip.
+				 * But only if value is bool and equal to "y" and
+				 * choice is not "optional".
+				 * (If choice is "optional" then all values can be "n")
+				 */
+				if (sym_is_choice_value(sym)) {
+					struct symbol *cs;
+					struct symbol *ds;
+
+					cs = prop_get_symbol(sym_get_choice_prop(sym));
+					ds = sym_choice_default(cs);
+					if (!sym_is_optional(cs) && sym == ds) {
+						if ((sym->type == S_BOOLEAN) &&
+						    sym_get_tristate_value(sym) == yes)
+							break;
+					}
 				}
+				conf_write_symbol(out, sym, kconfig_printer_cb, false);
 			}
-		}
-	}
-	fclose(out);
+		} while (0);
+		for (auto &child_owner : m->children)
+			walk(child_owner.get());
+	};
+	for (auto &child_owner : rootmenu.children)
+		walk(child_owner.get());
+	out_owner.reset();
 
 	conf_clear_written_flags();
 
@@ -882,9 +866,8 @@ next_menu:
 
 int conf_write(const char *name)
 {
-	FILE *out;
+	FilePtr out_owner;
 	struct symbol *sym;
-	struct menu *menu;
 	const char *str;
 	char tmpname[PATH_MAX + 1], oldname[PATH_MAX + 1];
 	char *env;
@@ -913,68 +896,64 @@ int conf_write(const char *name)
 	env = getenv("KCONFIG_OVERWRITECONFIG");
 	if (env && *env) {
 		*tmpname = 0;
-		out = fopen(name, "w");
+		out_owner.reset(fopen(name, "w"));
 	} else {
 		snprintf(tmpname, sizeof(tmpname), "%s.%d.tmp",
 			 name, (int)getpid());
-		out = fopen(tmpname, "w");
+		out_owner.reset(fopen(tmpname, "w"));
 	}
-	if (!out)
+	if (!out_owner)
 		return 1;
+	FILE *out = out_owner.get();
 
-	conf_write_heading(out, &kconfig_printer_cb);
+	conf_write_heading(out, kconfig_printer_cb);
 
 	if (!conf_get_changed())
 		sym_clear_all_valid();
 
-	menu = rootmenu.list;
-	while (menu) {
-		sym = menu->sym;
-		if (!sym) {
-			if (!menu_is_visible(menu))
-				goto next;
-			str = menu_get_prompt(menu);
-			fprintf(out, "\n"
-				     "#\n"
-				     "# %s\n"
-				     "#\n", str);
-			need_newline = false;
-		} else if (!(sym->flags & SYMBOL_CHOICE) &&
-			   !(sym->flags & SYMBOL_WRITTEN)) {
-			sym_calc_value(sym);
-			conf_append_changed_input_warning(changed_input_warning,
-							  sym, changed_input_found);
-			sym->flags |= SYMBOL_WRITTEN;
-			if (!(sym->flags & SYMBOL_WRITE))
-				goto next;
-			if (need_newline) {
-				fprintf(out, "\n");
+	std::function<void(struct menu *)> walk = [&](struct menu *m) {
+		do {
+			sym = m->sym;
+			if (!sym) {
+				if (!menu_is_visible(m))
+					break;
+				str = menu_get_prompt(m);
+				fprintf(out, "\n"
+					     "#\n"
+					     "# %s\n"
+					     "#\n", str);
 				need_newline = false;
+			} else if (!(sym->flags & SYMBOL_CHOICE) &&
+				   !(sym->flags & SYMBOL_WRITTEN)) {
+				sym_calc_value(sym);
+				conf_append_changed_input_warning(changed_input_warning,
+								  sym, changed_input_found);
+				sym->flags |= SYMBOL_WRITTEN;
+				if (!(sym->flags & SYMBOL_WRITE))
+					break;
+				if (need_newline) {
+					fprintf(out, "\n");
+					need_newline = false;
+				}
+				conf_write_symbol(out, sym, kconfig_printer_cb, false);
 			}
-			conf_write_symbol(out, sym, &kconfig_printer_cb, false);
+		} while (0);
+		for (auto &child_owner : m->children)
+			walk(child_owner.get());
+		/*
+		 * 复刻原"上升"逻辑：离开子树时，对有子节点且可见的非符号
+		 * 节点输出 "# end of"
+		 */
+		if (!m->children.empty() && !m->sym && menu_is_visible(m) &&
+		    m != &rootmenu) {
+			str = menu_get_prompt(m);
+			fprintf(out, "# end of %s\n", str);
+			need_newline = true;
 		}
-
-next:
-		if (menu->list) {
-			menu = menu->list;
-			continue;
-		}
-		if (menu->next)
-			menu = menu->next;
-		else while ((menu = menu->parent)) {
-			if (!menu->sym && menu_is_visible(menu) &&
-			    menu != &rootmenu) {
-				str = menu_get_prompt(menu);
-				fprintf(out, "# end of %s\n", str);
-				need_newline = true;
-			}
-			if (menu->next) {
-				menu = menu->next;
-				break;
-			}
-		}
-	}
-	fclose(out);
+	};
+	for (auto &child_owner : rootmenu.children)
+		walk(child_owner.get());
+	out_owner.reset();
 
 	conf_clear_written_flags();
 
@@ -982,7 +961,7 @@ next:
 		conf_changed_input_warning(changed_input_warning.c_str());
 
 	if (*tmpname) {
-		if (::is_same(name, tmpname)) {
+		if (is_same(name, tmpname)) {
 			conf_message("No change to %s", name);
 			unlink(tmpname);
 			sym_set_change_count(0);
@@ -1011,18 +990,21 @@ next:
 /* write a dependency file as used by kbuild to track dependencies */
 static int conf_write_dep(const char *name)
 {
-	struct file *file;
-	FILE *out;
-
-	out = fopen("..config.tmp", "w");
-	if (!out)
+	FilePtr out_owner(fopen("..config.tmp", "w"));
+	if (!out_owner)
 		return 1;
+	FILE *out = out_owner.get();
+
 	fprintf(out, "deps_config := \\\n");
-	for (file = file_list; file; file = file->next) {
-		if (file->next)
-			fprintf(out, "\t%s \\\n", file->name);
-		else
-			fprintf(out, "\t%s\n", file->name);
+	{
+		const std::vector<struct file *> &files = kconfig_files();
+
+		for (size_t i = files.size(); i-- > 0; ) {
+			if (i > 0)
+				fprintf(out, "\t%s \\\n", files[i]->name);
+			else
+				fprintf(out, "\t%s\n", files[i]->name);
+		}
 	}
 	fprintf(out, "\n%s: \\\n"
 		     "\t$(deps_config)\n\n", conf_get_autoconfig_name());
@@ -1030,7 +1012,7 @@ static int conf_write_dep(const char *name)
 	env_write_dep(out, conf_get_autoconfig_name());
 
 	fprintf(out, "\n$(deps_config): ;\n");
-	fclose(out);
+	out_owner.reset();
 
 	if (make_parent_dir(name)) {
 		remove("..config.tmp");
@@ -1047,7 +1029,7 @@ static int conf_touch_deps(void)
 {
 	const char *name;
 	struct symbol *sym;
-	int res, i;
+	int res;
 
 	name = conf_get_autoconfig_name();
 
@@ -1067,7 +1049,7 @@ static int conf_touch_deps(void)
 	conf_read_simple(name, S_DEF_AUTO);
 	sym_calc_value(modules_sym);
 
-	for_all_symbols(i, sym) {
+	for (struct symbol *sym : all_symbols()) {
 		sym_calc_value(sym);
 		if ((sym->flags & SYMBOL_NO_WRITE) || !sym->name)
 			continue;
@@ -1131,8 +1113,6 @@ int conf_write_autoconf(int overwrite)
 	struct symbol *sym;
 	const char *name;
 	const char *autoconf_name = conf_get_autoconfig_name();
-	FILE *out, *out_h;
-	int i;
 
 	if (!overwrite && is_present(autoconf_name))
 		return 0;
@@ -1142,31 +1122,31 @@ int conf_write_autoconf(int overwrite)
 	if (conf_touch_deps())
 		return 1;
 
-	out = fopen(".tmpconfig", "w");
-	if (!out)
+	FilePtr out_owner(fopen(".tmpconfig", "w"));
+	if (!out_owner)
 		return 1;
 
-	out_h = fopen(".tmpconfig.h", "w");
-	if (!out_h) {
-		fclose(out);
+	FilePtr out_h_owner(fopen(".tmpconfig.h", "w"));
+	if (!out_h_owner) {
 		remove(".tmpconfig");
 		return 1;
 	}
+	FILE *out = out_owner.get(), *out_h = out_h_owner.get();
 
-	conf_write_heading(out, &kconfig_printer_cb);
-	conf_write_heading(out_h, &header_printer_cb);
+	conf_write_heading(out, kconfig_printer_cb);
+	conf_write_heading(out_h, header_printer_cb);
 
-	for_all_symbols(i, sym) {
+	for (struct symbol *sym : all_symbols()) {
 		sym_calc_value(sym);
 		if (!(sym->flags & SYMBOL_WRITE) || !sym->name)
 			continue;
 
 		/* write symbols to auto.conf and autoconf.h */
-		conf_write_symbol(out, sym, &kconfig_printer_cb, true);
-		conf_write_symbol(out_h, sym, &header_printer_cb, false);
+		conf_write_symbol(out, sym, kconfig_printer_cb, true);
+		conf_write_symbol(out_h, sym, header_printer_cb, false);
 	}
-	fclose(out);
-	fclose(out_h);
+	out_owner.reset();
+	out_h_owner.reset();
 
 	name = getenv("KCONFIG_AUTOHEADER");
 	if (!name)
@@ -1335,7 +1315,7 @@ void set_all_choice_values(struct symbol *csym)
 bool conf_set_all_new_symbols(enum conf_def_mode mode)
 {
 	struct symbol *sym, *csym;
-	int i, cnt, pby, pty, ptm;	/* pby: probability of bool     = y
+	int cnt, pby, pty, ptm;	/* pby: probability of bool     = y
 					 * pty: probability of tristate = y
 					 * ptm: probability of tristate = m
 					 */
@@ -1382,7 +1362,7 @@ bool conf_set_all_new_symbols(enum conf_def_mode mode)
 	}
 	bool has_changed = false;
 
-	for_all_symbols(i, sym) {
+	for (struct symbol *sym : all_symbols()) {
 		if (sym_has_value(sym) || (sym->flags & SYMBOL_VALID))
 			continue;
 		switch (sym_get_type(sym)) {
@@ -1437,14 +1417,14 @@ bool conf_set_all_new_symbols(enum conf_def_mode mode)
 	 * and the rest to no.
 	 */
 	if (mode != def_random) {
-		for_all_symbols(i, csym) {
+		for (struct symbol *csym : all_symbols()) {
 			if ((sym_is_choice(csym) && !sym_has_value(csym)) ||
 			    sym_is_choice_value(csym))
 				csym->flags |= SYMBOL_NEED_SET_CHOICE_VALUES;
 		}
 	}
 
-	for_all_symbols(i, csym) {
+	for (struct symbol *csym : all_symbols()) {
 		if (sym_has_value(csym) || !sym_is_choice(csym))
 			continue;
 
@@ -1463,7 +1443,6 @@ bool conf_set_all_new_symbols(enum conf_def_mode mode)
 void conf_rewrite_mod_or_yes(enum conf_def_mode mode)
 {
 	struct symbol *sym;
-	int i;
 	tristate old_val, new_val;
 
 	switch (mode) {
@@ -1481,10 +1460,12 @@ void conf_rewrite_mod_or_yes(enum conf_def_mode mode)
 		break;
 	}
 
-	for_all_symbols(i, sym) {
+	for (struct symbol *sym : all_symbols()) {
 		if (sym_get_type(sym) == S_TRISTATE &&
 		    sym->def[S_DEF_USER].tri == old_val)
 			sym->def[S_DEF_USER].tri = new_val;
 	}
 	sym_clear_all_valid();
 }
+
+} /* namespace kconfig */

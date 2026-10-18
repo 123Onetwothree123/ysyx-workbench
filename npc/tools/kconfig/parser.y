@@ -13,24 +13,32 @@
 
 #include "lkc.hpp"
 
+using namespace kconfig;
+
 #define printd(mask, fmt...) if (cdebug & (mask)) printf(fmt)
 
 #define PRINTD		0x0001
 #define DEBUG_PARSE	0x0002
 
+/* C++ 骨架下语法错误走 yy::parser::error()；yynerrs 由我们维护 */
+int yynerrs;
+
+namespace kconfig {
+
 int cdebug = PRINTD;
 
-static void yyerror(const char *err);
 static void zconfprint(const char *err, ...);
-void zconf_error(const char *err, ...);
 static bool zconf_endtoken(const char *tokenname,
 			   const char *expected_tokenname);
 
-struct symbol *symbol_hash[SYMBOL_HASHSIZE];
-
-struct menu *current_menu, *current_entry, *current_choice;
+} /* namespace kconfig */
 
 %}
+
+%skeleton "lalr1.cc"
+%define api.namespace {yy}
+%define api.parser.class {parser}
+%define parse.trace
 
 %union
 {
@@ -40,6 +48,11 @@ struct menu *current_menu, *current_entry, *current_choice;
 	struct menu *menu;
 	enum symbol_type type;
 	enum variable_flavor flavor;
+}
+
+%code
+{
+int yylex(yy::parser::semantic_type *lval);
 }
 
 %token <string> T_HELPTEXT
@@ -104,7 +117,7 @@ struct menu *current_menu, *current_entry, *current_choice;
 %destructor {
 	fprintf(stderr, "%s:%d: missing end statement for this entry\n",
 		$$->file->name, $$->lineno);
-	if (current_menu == $$)
+	if (parse_ctx.current_menu == $$)
 		menu_end_menu();
 } if_entry menu_entry choice_entry
 
@@ -151,15 +164,15 @@ config_entry_start: T_CONFIG nonconst_symbol T_EOL
 
 config_stmt: config_entry_start config_option_list
 {
-	if (current_choice) {
-		if (!current_entry->prompt) {
+	if (parse_ctx.current_choice) {
+		if (!parse_ctx.current_entry->prompt) {
 			fprintf(stderr, "%s:%d: error: choice member must have a prompt\n",
-				current_entry->file->name, current_entry->lineno);
+				parse_ctx.current_entry->file->name, parse_ctx.current_entry->lineno);
 			yynerrs++;
 		}
-		if (current_entry->sym->type != S_BOOLEAN) {
+		if (parse_ctx.current_entry->sym->type != S_BOOLEAN) {
 			fprintf(stderr, "%s:%d: error: choice member must be bool\n",
-				current_entry->file->name, current_entry->lineno);
+				parse_ctx.current_entry->file->name, parse_ctx.current_entry->lineno);
 			yynerrs++;
 		}
 	}
@@ -175,8 +188,8 @@ menuconfig_entry_start: T_MENUCONFIG nonconst_symbol T_EOL
 
 menuconfig_stmt: menuconfig_entry_start config_option_list
 {
-	if (current_entry->prompt)
-		current_entry->prompt->type = P_MENU;
+	if (parse_ctx.current_entry->prompt)
+		parse_ctx.current_entry->prompt->type = P_MENU;
 	else
 		zconf_error("menuconfig statement without prompt");
 	printd(DEBUG_PARSE, "%s:%d:endconfig\n", zconf_curname(), zconf_lineno());
@@ -205,7 +218,7 @@ config_option: T_PROMPT T_WORD_QUOTE if_expr T_EOL
 
 config_option: T_TRANSITIONAL T_EOL
 {
-	current_entry->sym->flags |= SYMBOL_TRANS;
+	parse_ctx.current_entry->sym->flags |= SYMBOL_TRANS;
 	printd(DEBUG_PARSE, "%s:%d:transitional\n", zconf_curname(), zconf_lineno());
 };
 
@@ -266,18 +279,18 @@ choice: T_CHOICE word_opt T_EOL
 
 choice_entry: choice choice_option_list
 {
-	if (!current_entry->prompt) {
+	if (!parse_ctx.current_entry->prompt) {
 		fprintf(stderr, "%s:%d: error: choice must have a prompt\n",
-			current_entry->file->name, current_entry->lineno);
+			parse_ctx.current_entry->file->name, parse_ctx.current_entry->lineno);
 		yynerrs++;
 	}
 	$$ = menu_add_menu();
-	current_choice = current_entry;
+	parse_ctx.current_choice = parse_ctx.current_entry;
 };
 
 choice_end: end
 {
-	current_choice = NULL;
+	parse_ctx.current_choice = NULL;
 	if (zconf_endtoken($1, "choice")) {
 		menu_end_menu();
 		printd(DEBUG_PARSE, "%s:%d:endchoice\n", zconf_curname(), zconf_lineno());
@@ -309,7 +322,7 @@ choice_option: logic_type prompt_stmt_opt T_EOL
 
 choice_option: T_OPTIONAL T_EOL
 {
-	current_entry->sym->flags |= SYMBOL_OPTIONAL;
+	parse_ctx.current_entry->sym->flags |= SYMBOL_OPTIONAL;
 	printd(DEBUG_PARSE, "%s:%d:optional\n", zconf_curname(), zconf_lineno());
 };
 
@@ -424,18 +437,18 @@ help_start: T_HELP T_EOL
 
 help: help_start T_HELPTEXT
 {
-	if (current_entry->help) {
-		free(current_entry->help);
+	if (parse_ctx.current_entry->help) {
+		free(parse_ctx.current_entry->help);
 		zconf_error("'%s' defined with more than one help text",
-			    current_entry->sym->name ?: "<choice>");
+			    parse_ctx.current_entry->sym->name ?: "<choice>");
 	}
 
 	/* Is the help text empty or all whitespace? */
 	if ($2[strspn($2, " \f\n\r\t\v")] == '\0')
 		zconf_error("'%s' defined with blank help text",
-			    current_entry->sym->name ?: "<choice>");
+			    parse_ctx.current_entry->sym->name ?: "<choice>");
 
-	current_entry->help = $2;
+	parse_ctx.current_entry->help = $2;
 };
 
 /* depends option */
@@ -510,6 +523,8 @@ assign_val:
 
 %%
 
+namespace kconfig {
+
 /**
  * transitional_check_sanity - check transitional symbols have no other
  *			       properties
@@ -520,8 +535,6 @@ assign_val:
  */
 static int transitional_check_sanity(const struct menu *menu)
 {
-	struct property *prop;
-
 	if (!menu->sym || !(menu->sym->flags & SYMBOL_TRANS))
 		return 0;
 
@@ -540,7 +553,7 @@ static int transitional_check_sanity(const struct menu *menu)
 	 * jump-to-definition); it is not a real property, so it is
 	 * exempted here.
 	 */
-	for (prop = menu->sym->prop; prop; prop = prop->next) {
+	for (struct property *prop : menu->sym->prop) {
 		if (prop->type != P_COMMENT && prop->type != P_SYMBOL) {
 			fprintf(stderr, "%s:%d: error: %s",
 				prop->file->name, prop->lineno,
@@ -564,7 +577,7 @@ static int choice_check_sanity(const struct menu *menu)
 	struct property *prop;
 	int ret = 0;
 
-	for (prop = menu->sym->prop; prop; prop = prop->next) {
+	for (struct property *prop : menu->sym->prop) {
 		if (prop->type == P_DEFAULT) {
 			fprintf(stderr, "%s:%d: error: %s",
 				prop->file->name, prop->lineno,
@@ -587,17 +600,17 @@ static int transitional_check_menus(struct menu *menu)
 {
 	int errors = 0;
 
-	for (; menu; menu = menu->next) {
-		if (transitional_check_sanity(menu))
+	for (auto &child_owner : menu->children) {
+		struct menu *child = child_owner.get();
+
+		if (transitional_check_sanity(child))
 			errors++;
-		if (menu->sym && sym_is_choice(menu->sym)) {
-			struct menu *child;
-			for (child = menu->list; child; child = child->next)
-				if (child->sym && choice_check_sanity(child))
+		if (child->sym && sym_is_choice(child->sym)) {
+			for (auto &member : child->children)
+				if (member->sym && choice_check_sanity(member.get()))
 					errors++;
 		}
-		if (menu->list)
-			errors += transitional_check_menus(menu->list);
+		errors += transitional_check_menus(child);
 	}
 
 	return errors;
@@ -605,16 +618,15 @@ static int transitional_check_menus(struct menu *menu)
 
 void conf_parse(const char *name)
 {
-	struct symbol *sym;
-	int i;
-
 	zconf_initscan(name);
 
 	_menu_init();
 
 	if (getenv("ZCONF_DEBUG"))
 		yydebug = 1;
-	yyparse();
+	yy::parser parser;
+	parser.set_debug_level(yydebug);
+	parser.parse();
 
 	/* Variables are expanded in the parse phase. We can free them here. */
 	variable_all_del();
@@ -625,16 +637,16 @@ void conf_parse(const char *name)
 		modules_sym = sym_find( "n" );
 
 	if (!menu_has_prompt(&rootmenu)) {
-		current_entry = &rootmenu;
+		parse_ctx.current_entry = &rootmenu;
 		menu_add_prompt(P_MENU, const_cast<char*>("Main menu"), NULL);
 	}
 
 	menu_finalize(&rootmenu);
-	for_all_symbols(i, sym) {
+	for (struct symbol *sym : all_symbols()) {
 		if (sym_check_deps(sym))
 			yynerrs++;
 	}
-	yynerrs += transitional_check_menus(rootmenu.list);
+	yynerrs += transitional_check_menus(&rootmenu);
 	if (yynerrs)
 		exit(1);
 	sym_set_change_count(1);
@@ -649,11 +661,11 @@ static bool zconf_endtoken(const char *tokenname,
 		yynerrs++;
 		return false;
 	}
-	if (current_menu->file != current_file) {
+	if (parse_ctx.current_menu->file != parse_ctx.current_file) {
 		zconf_error("'%s' in different file than '%s'",
 			    tokenname, expected_tokenname);
 		fprintf(stderr, "%s:%d: location of the '%s'\n",
-			current_menu->file->name, current_menu->lineno,
+			parse_ctx.current_menu->file->name, parse_ctx.current_menu->lineno,
 			expected_tokenname);
 		yynerrs++;
 		return false;
@@ -684,10 +696,15 @@ void zconf_error(const char *err, ...)
 	fprintf(stderr, "\n");
 }
 
-static void yyerror(const char *err)
+} /* namespace kconfig */
+
+void yy::parser::error(const std::string &msg)
 {
-	fprintf(stderr, "%s:%d: %s\n", zconf_curname(), zconf_lineno() + 1, err);
+	yynerrs++;
+	fprintf(stderr, "%s:%d: %s\n", zconf_curname(), zconf_lineno() + 1, msg.c_str());
 }
+
+namespace kconfig {
 
 static void print_quoted_string(FILE *out, const char *str)
 {
@@ -709,7 +726,6 @@ static void print_quoted_string(FILE *out, const char *str)
 static void print_symbol(FILE *out, struct menu *menu)
 {
 	struct symbol *sym = menu->sym;
-	struct property *prop;
 
 	if (sym_is_choice(sym))
 		fprintf(out, "\nchoice\n");
@@ -735,7 +751,7 @@ static void print_symbol(FILE *out, struct menu *menu)
 		fputs("  ???\n", out);
 		break;
 	}
-	for (prop = sym->prop; prop; prop = prop->next) {
+	for (struct property *prop : sym->prop) {
 		if (prop->menu != menu)
 			continue;
 		switch (prop->type) {
@@ -799,12 +815,10 @@ static void print_symbol(FILE *out, struct menu *menu)
 
 void zconfdump(FILE *out)
 {
-	struct property *prop;
-	struct symbol *sym;
-	struct menu *menu;
+	std::function<void(struct menu *)> walk = [&](struct menu *menu) {
+		struct property *prop;
+		struct symbol *sym;
 
-	menu = rootmenu.list;
-	while (menu) {
 		if ((sym = menu->sym))
 			print_symbol(out, menu);
 		else if ((prop = menu->prompt)) {
@@ -829,18 +843,23 @@ void zconfdump(FILE *out)
 			}
 		}
 
-		if (menu->list)
-			menu = menu->list;
-		else if (menu->next)
-			menu = menu->next;
-		else while ((menu = menu->parent)) {
-			if (menu->prompt && menu->prompt->type == P_MENU)
-				fputs("\nendmenu\n", out);
-			if (menu->next) {
-				menu = menu->next;
-				break;
-			}
-		}
-	}
+		for (auto &child_owner : menu->children)
+			walk(child_owner.get());
+		/*
+		 * 复刻原"上升"逻辑：仅当从子树上升经过该节点（即该节点有
+		 * 子节点）且其 prompt 为 P_MENU 时输出 endmenu
+		 */
+		if (!menu->children.empty() && menu->prompt &&
+		    menu->prompt->type == P_MENU)
+			fputs("\nendmenu\n", out);
+	};
+
+	for (auto &child_owner : rootmenu.children)
+		walk(child_owner.get());
+	if (!rootmenu.children.empty() && rootmenu.prompt &&
+	    rootmenu.prompt->type == P_MENU)
+		fputs("\nendmenu\n", out);
 }
+
+} /* namespace kconfig */
 

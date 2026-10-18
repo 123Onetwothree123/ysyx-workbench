@@ -21,6 +21,8 @@ using namespace std;
 #include <unistd.h>
 
 #include "lkc.hpp"
+
+using namespace kconfig;
 #include "lxdialog/dialog.hpp"
 
 static const char mconf_readme[] =
@@ -384,7 +386,7 @@ static void update_text(char *buf, size_t start, size_t end, void *_data)
 
 static void search_conf(void)
 {
-	struct symbol **sym_arr;
+	std::vector<struct symbol *> sym_arr;
 	struct gstr res;
 	struct gstr title;
 	char *dialog_input;
@@ -449,9 +451,8 @@ again:
 			}
 		str_free(&res);
 		list_for_each_entry_safe(pos, tmp, &head, entries)
-			free(pos);
+			delete pos;
 	} while (again);
-	free(sym_arr);
 	str_free(&title);
 	list_del(trail.prev);
 	str_free(&sttext);
@@ -481,7 +482,7 @@ static void build_conf(struct menu *menu)
 	sym = menu->sym;
 	prop = menu->prompt;
 	if (!sym) {
-		if (prop && menu != current_menu) {
+		if (prop && menu != parse_ctx.current_menu) {
 			const char *prompt = menu_get_prompt(menu);
 			switch (prop->type) {
 			case P_MENU:
@@ -526,9 +527,9 @@ static void build_conf(struct menu *menu)
 		struct menu *def_menu = nullptr;
 
 		child_count++;
-		for (child = menu->list; child; child = child->next) {
-			if (menu_is_visible(child) && child->sym == def_sym)
-				def_menu = child;
+		for (auto &child_owner : menu->children) {
+			if (menu_is_visible(child_owner.get()) && child_owner->sym == def_sym)
+				def_menu = child_owner.get();
 		}
 
 		val = sym_get_tristate_value(sym);
@@ -559,7 +560,7 @@ static void build_conf(struct menu *menu)
 			if (def_menu) {
 				item_add_str(" (%s)", menu_get_prompt(def_menu));
 				item_add_str("  --->");
-				if (def_menu->list) {
+				if (!def_menu->children.empty()) {
 					indent += 2;
 					build_conf(def_menu);
 					indent -= 2;
@@ -568,7 +569,7 @@ static void build_conf(struct menu *menu)
 			return;
 		}
 	} else {
-		if (menu == current_menu) {
+		if (menu == parse_ctx.current_menu) {
 			item_make("---%*c%s", indent + 1, ' ', menu_get_prompt(menu));
 			item_set_tag(':');
 			item_set_data(menu);
@@ -631,8 +632,8 @@ static void build_conf(struct menu *menu)
 
 conf_childs:
 	indent += doint;
-	for (child = menu->list; child; child = child->next)
-		build_conf(child);
+	for (auto &child_owner : menu->children)
+		build_conf(child_owner.get());
 	indent -= doint;
 }
 
@@ -655,7 +656,7 @@ static void conf(struct menu *menu, struct menu *active_menu)
 		if (sig_int_caught)
 			return;	/* SIGINT: unwind to main() for handle_exit() */
 		item_reset();
-		current_menu = menu;
+		parse_ctx.current_menu = menu;
 		build_conf(menu);
 		if (!child_count)
 			break;
@@ -808,8 +809,9 @@ static void conf_choice(struct menu *menu)
 		int selected;
 		item_reset();
 
-		current_menu = menu;
-		for (child = menu->list; child; child = child->next) {
+		parse_ctx.current_menu = menu;
+		for (auto &child_owner : menu->children) {
+			child = child_owner.get();
 			if (!menu_is_visible(child))
 				continue;
 			if (child->sym)
