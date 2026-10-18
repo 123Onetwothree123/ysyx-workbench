@@ -31,13 +31,15 @@ AXIRAM_BIN := $(BIN_DIR)/axiram_window_test
 BTB2_BIN := $(BIN_DIR)/btb_twoway_test
 MULCFG_BIN := $(BIN_DIR)/mul_config_core_test
 MDU_BLOCK_BIN := $(BIN_DIR)/mdu_pipeline_block_test
+FULLCORE_BIN := $(BIN_DIR)/fullcore_stall_test
+XBAR_HOL_BIN := $(BIN_DIR)/xbar_r_hol_test
 DIVCFG_BIN := $(BIN_DIR)/div_config_core_test
 DCACHE_REFILL_REG_BIN := $(BIN_DIR)/dcache_refill_reg_test
 DCACHE_REFILL_SRAM_BIN := $(BIN_DIR)/dcache_refill_sram_test
 DCACHE_REFILL_NOBYPASS_BIN := $(BIN_DIR)/dcache_refill_nobypass_test
 BINS := $(IDU_BIN) $(IRQ_BIN) $(DCACHE_REG_BIN) $(DCACHE_SRAM_BIN) \
         $(DCACHE_NOBYPASS_BIN) $(ICACHE_BIN) $(ICACHE_SMALL_BIN) \
-        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN)
+        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(FULLCORE_BIN) $(XBAR_HOL_BIN)
 
 .PHONY: all test run rtl-check clean
 
@@ -244,3 +246,28 @@ $(MDU_BLOCK_BIN): mdu_pipeline_block_test.cpp test_common.hpp $(BASE_RTL)/ysyx_2
 	  -CFLAGS '$(CXXFLAGS)' \
 	  -o $(abspath $@) \
 	  $(BASE_RTL)/ysyx_26030103.sv mdu_pipeline_block_test.cpp
+
+# 全系统测量：用生产 wrapper（仓库内 rtl/riscv32e_npc_SimTop.sv）+ 当前 RTL 快照
+$(FULLCORE_BIN): fullcore_stall_test.cpp test_common.hpp \
+                 $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
+                 $(BASE_RTL)/ysyx_26030103_npc.sv $(BASE_RTL)/riscv32e_npc_AXIRAM.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) \
+	  --top-module riscv32e_npc_SimTop \
+	  --Mdir $(BUILD_DIR)/obj-fullcore-audit \
+	  -I$(BASE_RTL) -I$(NPC_DIR)/rtl \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
+	  $(BASE_RTL)/ysyx_26030103_npc.sv $(BASE_RTL)/riscv32e_npc_AXIRAM.sv \
+	  fullcore_stall_test.cpp
+
+$(XBAR_HOL_BIN): xbar_r_hol_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103_AXI5Xbar \
+	  --Mdir $(BUILD_DIR)/obj-xbar-hol-audit \
+	  -I$(BASE_RTL) \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(BASE_RTL)/ysyx_26030103.sv xbar_r_hol_test.cpp
