@@ -1,7 +1,14 @@
+module;
 #ifdef __clang__
-import std;
 #else
 #include <bits/stdc++.h>
+#endif
+#ifdef __clang__
+#include "kconfig_clang_compat.h"
+#endif
+module kconfig.core;
+#ifdef __clang__
+import std;
 #endif
 using namespace std;
 
@@ -11,7 +18,6 @@ using namespace std;
  */
 
 
-#include "lkc.hpp"
 
 namespace kconfig {
 
@@ -50,7 +56,7 @@ struct ExprKeyHash {
 	}
 };
 
-std::deque<struct expr> expr_pool; /* 地址稳定，池拥有全部节点 */
+/* 模块私有的驻留索引：表达式池本身由 Kconfig 拥有 */
 std::unordered_map<ExprKey, struct expr *, ExprKeyHash> expr_index;
 
 /* 查找或创建 (type, l, r) 对应的唯一表达式节点 */
@@ -61,8 +67,8 @@ struct expr *expr_lookup(enum expr_type type, const void *l, const void *r)
 	if (it != expr_index.end())
 		return it->second;
 
-	expr_pool.emplace_back();
-	struct expr *e = &expr_pool.back();
+	kconf.exprs.emplace_back();
+	struct expr *e = &kconf.exprs.back();
 	e->type = type;
 	e->left._initdata = const_cast<void *>(l);
 	e->right._initdata = const_cast<void *>(r);
@@ -98,8 +104,8 @@ struct expr *expr_alloc_comp(enum expr_type type, struct symbol *s1, struct symb
  */
 struct expr *expr_alloc_list(struct expr *next, struct symbol *sym)
 {
-	expr_pool.emplace_back();
-	struct expr *e = &expr_pool.back();
+	kconf.exprs.emplace_back();
+	struct expr *e = &kconf.exprs.back();
 	e->type = E_LIST;
 	e->left.expr = next;
 	e->right.sym = sym;

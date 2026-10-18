@@ -1,7 +1,16 @@
+module;
 #ifdef __clang__
-import std;
 #else
 #include <bits/stdc++.h>
+#endif
+#include <regex.h>
+#include <sys/utsname.h>
+#ifdef __clang__
+#include "kconfig_clang_compat.h"
+#endif
+module kconfig.core;
+#ifdef __clang__
+import std;
 #endif
 using namespace std;
 
@@ -10,40 +19,34 @@ using namespace std;
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
  */
 
-#include <regex.h>
-#include <sys/utsname.h>
 
-#include "lkc.hpp"
+#include "kconfig_macros.hpp"  /* expr_list_for_each_sym */
 
 namespace kconfig {
 
 struct symbol symbol_yes = {
 	.name = "y",
-	.curr = { .val = { .str = "y" }, .tri = yes },
+	.curr = { .str = "y", .tri = yes },
 	.flags = SYMBOL_CONST|SYMBOL_VALID,
 };
 
 struct symbol symbol_mod = {
 	.name = "m",
-	.curr = { .val = { .str = "m" }, .tri = mod },
+	.curr = { .str = "m", .tri = mod },
 	.flags = SYMBOL_CONST|SYMBOL_VALID,
 };
 
 struct symbol symbol_no = {
 	.name = "n",
-	.curr = { .val = { .str = "n" }, .tri = no },
+	.curr = { .str = "n", .tri = no },
 	.flags = SYMBOL_CONST|SYMBOL_VALID,
 };
 
 static struct symbol symbol_empty = {
 	.name = "",
-	.curr = { .val = { .str = "" }, .tri = no },
+	.curr = { .str = "", .tri = no },
 	.flags = SYMBOL_VALID,
 };
-
-struct symbol *sym_defconfig_list;
-struct symbol *modules_sym;
-static tristate modules_val;
 
 [[nodiscard]] enum symbol_type sym_get_type(struct symbol *sym)
 {
@@ -52,7 +55,7 @@ static tristate modules_val;
 	if (type == S_TRISTATE) {
 		if (sym_is_choice_value(sym) && sym->visible == yes)
 			type = S_BOOLEAN;
-		else if (modules_val == no)
+		else if (kconf.modules_val == no)
 			type = S_BOOLEAN;
 	}
 	return type;
@@ -122,7 +125,7 @@ static long long sym_get_range_val(struct symbol *sym, int base)
 	default:
 		break;
 	}
-	return strtoll(sym->curr.val.str, nullptr, base);
+	return strtoll(sym->curr.str.c_str(), nullptr, base);
 }
 
 static void sym_validate_range(struct symbol *sym)
@@ -145,7 +148,7 @@ static void sym_validate_range(struct symbol *sym)
 	prop = sym_get_range_prop(sym);
 	if (!prop)
 		return;
-	val = strtoll(sym->curr.val.str, nullptr, base);
+	val = strtoll(sym->curr.str.c_str(), nullptr, base);
 	val2 = sym_get_range_val(prop->expr->left.sym, base);
 	if (val >= val2) {
 		val2 = sym_get_range_val(prop->expr->right.sym, base);
@@ -156,26 +159,7 @@ static void sym_validate_range(struct symbol *sym)
 		snprintf(str, sizeof(str), "%lld", val2);
 	else
 		snprintf(str, sizeof(str), "0x%llx", val2);
-	/*
-	 * curr.val.str may alias a string literal, def[S_DEF_USER].val.str, or
-	 * another symbol's curr.val.str (see sym_calc_value()); none of those
-	 * are owned by us, so they must not be freed. Conservative
-	 * strategy: only free the previous value when it is the result of
-	 * a previous xstrdup() in this very function, tracked per symbol
-	 * in clamped_vals below.
-	 */
-	{
-		static std::unordered_map<struct symbol *, void *> clamped_vals;
-		char *dup = xstrdup(str);
-
-		auto it = clamped_vals.find(sym);
-		if (it != clamped_vals.end()) {
-			free(it->second);
-			clamped_vals.erase(it);
-		}
-		sym->curr.val.str = dup;
-		clamped_vals.emplace(sym, dup);
-	}
+	sym->curr.str = str;
 }
 
 static void sym_set_changed(struct symbol *sym)
@@ -224,7 +208,7 @@ static void sym_calc_visibility(struct symbol *sym)
 
 		tri = EXPR_OR(tri, prop->visible.tri);
 	}
-	if (tri == mod && (sym->type != S_TRISTATE || modules_val == no))
+	if (tri == mod && (sym->type != S_TRISTATE || kconf.modules_val == no))
 		tri = yes;
 	if (sym->visible != tri) {
 		sym->visible = tri;
@@ -315,7 +299,7 @@ static struct symbol *sym_calc_choice(struct symbol *sym)
 	sym->flags &= flags | ~SYMBOL_DEF_USER;
 
 	/* is the user choice visible? */
-	def_sym = sym->def[S_DEF_USER].val.sym;
+	def_sym = sym->def[S_DEF_USER].sym;
 	if (def_sym && def_sym->visible != no)
 		return def_sym;
 
@@ -395,7 +379,7 @@ void sym_calc_value(struct symbol *sym)
 		newval = symbol_no.curr;
 		break;
 	default:
-		sym->curr.val.str = sym->name;
+		sym->curr.str = sym->name;
 		sym->curr.tri = no;
 		return;
 	}
@@ -414,7 +398,7 @@ void sym_calc_value(struct symbol *sym)
 	case S_TRISTATE:
 		if (sym_is_choice_value(sym) && sym->visible == yes) {
 			prop = sym_get_choice_prop(sym);
-			newval.tri = (prop_get_symbol(prop)->curr.val.sym == sym) ? yes : no;
+			newval.tri = (prop_get_symbol(prop)->curr.sym == sym) ? yes : no;
 		} else {
 			if (sym->visible != no) {
 				/* if the symbol is visible use the user value
@@ -455,7 +439,7 @@ void sym_calc_value(struct symbol *sym)
 	case S_HEX:
 	case S_INT:
 		if (sym->visible != no && sym_has_value(sym)) {
-			newval.val.str = sym->def[S_DEF_USER].val.str;
+			newval.str = sym->def[S_DEF_USER].str;
 			break;
 		}
 		prop = sym_get_default_prop(sym);
@@ -464,7 +448,7 @@ void sym_calc_value(struct symbol *sym)
 			if (ds) {
 				sym->flags |= SYMBOL_WRITE;
 				sym_calc_value(ds);
-				newval.val.str = ds->curr.val.str;
+				newval.str = ds->curr.str;
 			}
 		}
 		break;
@@ -487,20 +471,18 @@ void sym_calc_value(struct symbol *sym)
 
 	sym->curr = newval;
 	if (sym_is_choice(sym) && newval.tri == yes)
-		sym->curr.val.sym = sym_calc_choice(sym);
+		sym->curr.sym = sym_calc_choice(sym);
 	sym_validate_range(sym);
 
 	/*
-	 * struct symbol_value has padding; compare field by field. The two
-	 * union members are both pointers, so reading .str compares the raw
-	 * pointer value regardless of which member is active (same semantics
-	 * as the previous void * comparison).
+	 * struct symbol_value has padding; compare field by field.
+	 * String values are now compared by content (std::string).
 	 */
-	if (oldval.val.str != sym->curr.val.str || oldval.tri != sym->curr.tri) {
+	if (oldval.str != sym->curr.str || oldval.tri != sym->curr.tri) {
 		sym_set_changed(sym);
-		if (modules_sym == sym) {
+		if (kconf.modules_sym == sym) {
 			sym_set_all_changed();
-			modules_val = modules_sym->curr.tri;
+			kconf.modules_val = kconf.modules_sym->curr.tri;
 		}
 	}
 
@@ -529,7 +511,7 @@ void sym_clear_all_valid(void)
 	for (struct symbol *sym : all_symbols())
 		sym->flags &= ~SYMBOL_VALID;
 	sym_add_change_count(1);
-	sym_calc_value(modules_sym);
+	sym_calc_value(kconf.modules_sym);
 }
 
 [[nodiscard]] bool sym_tristate_within_range(struct symbol *sym, tristate val)
@@ -571,7 +553,7 @@ bool sym_set_tristate_value(struct symbol *sym, tristate val)
 		struct property *prop;
 		struct expr *e;
 
-		cs->def[S_DEF_USER].val.sym = sym;
+		cs->def[S_DEF_USER].sym = sym;
 		cs->flags |= SYMBOL_DEF_USER;
 		prop = sym_get_choice_prop(cs);
 		for (e = prop->expr; e; e = e->left.expr) {
@@ -697,10 +679,6 @@ tristate sym_toggle_tristate_value(struct symbol *sym)
 
 bool sym_set_string_value(struct symbol *sym, const char *newval)
 {
-	const char *oldval;
-	char *val;
-	int size;
-
 	switch (sym->type) {
 	case S_BOOLEAN:
 	case S_TRISTATE:
@@ -725,28 +703,17 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 		sym_set_changed(sym);
 	}
 
-	oldval = sym->def[S_DEF_USER].val.str;
-	size = strlen(newval) + 1;
-	if (sym->type == S_HEX && (newval[0] != '0' || (newval[1] != 'x' && newval[1] != 'X'))) {
-		size += 2;
-		sym->def[S_DEF_USER].val.str = val = static_cast<char*>(xmalloc(size));
-		*val++ = '0';
-		*val++ = 'x';
-	} else if (!oldval || strcmp(oldval, newval))
-		sym->def[S_DEF_USER].val.str = val = static_cast<char*>(xmalloc(size));
-	else
+	std::string &oldval = sym->def[S_DEF_USER].str;
+	if (sym->type == S_HEX &&
+	    (newval[0] != '0' || (newval[1] != 'x' && newval[1] != 'X'))) {
+		oldval = "0x";
+		oldval += newval;
+	} else if (oldval != newval) {
+		oldval = newval;
+	} else {
 		return true;
+	}
 
-	strcpy(val, newval);
-	free((void *)oldval);
-	/*
-	 * curr.val.str may alias the just-freed def[S_DEF_USER].val.str
-	 * (assigned in sym_calc_value()); clear that dangling pointer. The
-	 * current value is recomputed lazily after sym_clear_all_valid()
-	 * below.
-	 */
-	if (sym->curr.val.str == oldval)
-		sym->curr.val.str = nullptr;
 	sym_clear_all_valid();
 
 	return true;
@@ -767,9 +734,9 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 	tristate val;
 
 	sym_calc_visibility(sym);
-	sym_calc_value(modules_sym);
+	sym_calc_value(kconf.modules_sym);
 	val = symbol_no.curr.tri;
-	str = symbol_empty.curr.val.str;
+	str = symbol_empty.curr.str.c_str();
 
 	/* If symbol has a default value look it up */
 	prop = sym_get_default_prop(sym);
@@ -789,7 +756,7 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 			ds = prop_get_symbol(prop);
 			if (ds != nullptr) {
 				sym_calc_value(ds);
-				str = ds->curr.val.str;
+				str = ds->curr.str.c_str();
 			}
 		}
 	}
@@ -799,7 +766,7 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 
 	/* transpose mod to yes if modules are not enabled */
 	if (val == mod)
-		if (!sym_is_choice_value(sym) && modules_sym->curr.tri == no)
+		if (!sym_is_choice_value(sym) && kconf.modules_sym->curr.tri == no)
 			val = yes;
 
 	/* transpose mod to yes if type is bool */
@@ -841,8 +808,8 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 		case no:
 			return "n";
 		case mod:
-			sym_calc_value(modules_sym);
-			return (modules_sym->curr.tri == no) ? "n" : "m";
+			sym_calc_value(kconf.modules_sym);
+			return (kconf.modules_sym->curr.tri == no) ? "n" : "m";
 		case yes:
 			return "y";
 		}
@@ -850,7 +817,7 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 	default:
 		;
 	}
-	return sym->curr.val.str;
+	return sym->curr.str.c_str();
 }
 
 [[nodiscard]] bool sym_is_changeable(struct symbol *sym)
@@ -876,7 +843,7 @@ static unsigned strhash(const char *s)
  */
 namespace {
 
-std::vector<std::unique_ptr<struct symbol>> symbol_storage;
+/* 模块私有的查找索引：符号池本身由 Kconfig 拥有 */
 std::unordered_map<std::string_view, std::vector<struct symbol *>> symbol_index;
 std::vector<std::vector<struct symbol *>> symbol_buckets(SYMBOL_HASHSIZE);
 
@@ -953,7 +920,7 @@ struct symbol *sym_lookup(const char *name, int flags)
 	symbol->type = S_UNKNOWN;
 	symbol->flags = flags;
 
-	symbol_storage.push_back(std::move(owned));
+	kconf.symbols.push_back(std::move(owned));
 	if (symbol->name) {
 		symbol_index[std::string_view(symbol->name)].push_back(symbol);
 		symbol_buckets[strhash(symbol->name) % SYMBOL_HASHSIZE].push_back(symbol);

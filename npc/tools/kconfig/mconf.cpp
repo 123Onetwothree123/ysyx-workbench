@@ -1,10 +1,13 @@
 #ifdef __clang__
 import std;
+import kconfig.core;
 #else
 #include <bits/stdc++.h>
+import kconfig.core;
 #endif
-using namespace std;
-#include <clocale>
+#ifdef __clang__
+#include "kconfig_clang_compat.h"
+#endif
 
 // SPDX-License-Identifier: GPL-2.0
 /*
@@ -16,14 +19,16 @@ using namespace std;
  * i18n, 2005, Arnaldo Carvalho de Melo <acme@conectiva.com.br>
  */
 
+#include <clocale>
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
 
-#include "lkc.hpp"
-
-using namespace kconfig;
+#include "kconfig_macros.hpp"  /* CONFIG_/list 宏 */
 #include "lxdialog/dialog.hpp"
+
+using namespace std;
+using namespace kconfig;
 
 static const char mconf_readme[] =
 "Overview\n"
@@ -305,7 +310,7 @@ static void set_config_filename(const char *config_filename)
 	int size;
 
 	size = snprintf(menu_backtitle, sizeof(menu_backtitle),
-			"%s - %s", config_filename, rootmenu.prompt->text);
+			"%s - %s", config_filename, kconf.root.prompt->text);
 	if (static_cast<size_t>(size) >= sizeof(menu_backtitle))
 		menu_backtitle[sizeof(menu_backtitle)-1] = '\0';
 	set_dialog_backtitle(menu_backtitle);
@@ -482,7 +487,7 @@ static void build_conf(struct menu *menu)
 	sym = menu->sym;
 	prop = menu->prompt;
 	if (!sym) {
-		if (prop && menu != parse_ctx.current_menu) {
+		if (prop && menu != kconf.ctx.current_menu) {
 			const char *prompt = menu_get_prompt(menu);
 			switch (prop->type) {
 			case P_MENU:
@@ -569,7 +574,7 @@ static void build_conf(struct menu *menu)
 			return;
 		}
 	} else {
-		if (menu == parse_ctx.current_menu) {
+		if (menu == kconf.ctx.current_menu) {
 			item_make("---%*c%s", indent + 1, ' ', menu_get_prompt(menu));
 			item_set_tag(':');
 			item_set_data(menu);
@@ -646,7 +651,7 @@ static void conf(struct menu *menu, struct menu *active_menu)
 	int res;
 	int s_scroll = 0;
 
-	if (menu != &rootmenu)
+	if (menu != &kconf.root)
 		stpart.text = menu_get_prompt(menu);
 	else
 		stpart.text = nullptr;
@@ -656,7 +661,7 @@ static void conf(struct menu *menu, struct menu *active_menu)
 		if (sig_int_caught)
 			return;	/* SIGINT: unwind to main() for handle_exit() */
 		item_reset();
-		parse_ctx.current_menu = menu;
+		kconf.ctx.current_menu = menu;
 		build_conf(menu);
 		if (!child_count)
 			break;
@@ -809,7 +814,7 @@ static void conf_choice(struct menu *menu)
 		int selected;
 		item_reset();
 
-		parse_ctx.current_menu = menu;
+		kconf.ctx.current_menu = menu;
 		for (auto &child_owner : menu->children) {
 			child = child_owner.get();
 			if (!menu_is_visible(child))
@@ -1011,7 +1016,7 @@ static void sig_handler(int signo)
 	sig_int_caught = 1;
 }
 
-int main(int ac, char **av)
+static int run_mconf(int ac, char **av)
 {
 	char *mode;
 	int res;
@@ -1041,8 +1046,8 @@ int main(int ac, char **av)
 		fprintf(stderr, "Usage: %s [-s] Kconfig\n", progname);
 		return 1;
 	}
-	conf_parse(av[1]);
-	conf_read(nullptr);
+	kconf.parse(av[1]);
+	kconf.read(nullptr);
 
 	mode = getenv("MENUCONFIG_MODE");
 	if (mode) {
@@ -1059,9 +1064,21 @@ int main(int ac, char **av)
 	set_config_filename(conf_get_configname());
 	conf_set_message_callback(conf_message_callback);
 	do {
-		conf(&rootmenu, nullptr);
+		conf(&kconf.root, nullptr);
 		res = handle_exit();
 	} while (res == KEY_ESC);
 
 	return res;
+}
+
+/*
+ * 唯一的异常边界：致命错误已在抛出点打印，这里只负责退出码。
+ */
+int main(int ac, char **av)
+{
+	try {
+		return run_mconf(ac, av);
+	} catch (const FatalError &) {
+		return 1;
+	}
 }

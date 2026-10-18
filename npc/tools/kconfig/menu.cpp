@@ -1,7 +1,15 @@
+module;
 #ifdef __clang__
-import std;
 #else
 #include <bits/stdc++.h>
+#endif
+#include "kconfig_parse.hpp"   /* zconf_error/zconf_lineno/zconf_curname */
+#ifdef __clang__
+#include "kconfig_clang_compat.h"
+#endif
+module kconfig.core;
+#ifdef __clang__
+import std;
 #endif
 using namespace std;
 
@@ -11,20 +19,11 @@ using namespace std;
  */
 
 
-#include "lkc.hpp"
+#include "kconfig_macros.hpp"  /* CONFIG_/list_entry */
 
 namespace kconfig {
 
 static const char nohelp_text[] = "There is no help available for this option.";
-
-struct menu rootmenu;
-ParseContext parse_ctx;
-
-/*
- * 属性对象池：属性在符号的 prop 向量中仅以指针引用，池保证地址稳定；
- * 与表达式池一致，属性不再逐个释放。
- */
-static std::deque<struct property> property_pool;
 
 __attribute__((format(printf, 2, 3)))
 void menu_warn(struct menu *menu, const char *fmt, ...)
@@ -50,7 +49,7 @@ static void prop_warn(struct property *prop, const char *fmt, ...)
 
 void _menu_init(void)
 {
-	parse_ctx.current_entry = parse_ctx.current_menu = &rootmenu;
+	kconf.ctx.current_entry = kconf.ctx.current_menu = &kconf.root;
 }
 
 void menu_add_entry(struct symbol *sym)
@@ -59,25 +58,25 @@ void menu_add_entry(struct symbol *sym)
 	struct menu *menu = owned.get();
 
 	menu->sym = sym;
-	menu->parent = parse_ctx.current_menu;
-	menu->file = parse_ctx.current_file;
+	menu->parent = kconf.ctx.current_menu;
+	menu->file = kconf.ctx.current_file;
 	menu->lineno = zconf_lineno();
 
-	parse_ctx.current_menu->children.push_back(std::move(owned));
-	parse_ctx.current_entry = menu;
+	kconf.ctx.current_menu->children.push_back(std::move(owned));
+	kconf.ctx.current_entry = menu;
 	if (sym)
 		menu_add_symbol(P_SYMBOL, sym, nullptr);
 }
 
 struct menu *menu_add_menu(void)
 {
-	parse_ctx.current_menu = parse_ctx.current_entry;
-	return parse_ctx.current_menu;
+	kconf.ctx.current_menu = kconf.ctx.current_entry;
+	return kconf.ctx.current_menu;
 }
 
 void menu_end_menu(void)
 {
-	parse_ctx.current_menu = parse_ctx.current_menu->parent;
+	kconf.ctx.current_menu = kconf.ctx.current_menu->parent;
 }
 
 /*
@@ -104,7 +103,7 @@ static struct expr *rewrite_m(struct expr *e)
 	case E_SYMBOL:
 		/* change 'm' into 'm' && MODULES */
 		if (e->left.sym == &symbol_mod)
-			return expr_alloc_and(e, expr_alloc_symbol(modules_sym));
+			return expr_alloc_and(e, expr_alloc_symbol(kconf.modules_sym));
 		break;
 	default:
 		break;
@@ -123,12 +122,12 @@ void menu_add_dep(struct expr *dep, struct expr *cond)
 		 */
 		dep = expr_alloc_or(dep, expr_trans_compare(cond, E_EQUAL, &symbol_no));
 	}
-	parse_ctx.current_entry->dep = expr_alloc_and(parse_ctx.current_entry->dep, dep);
+	kconf.ctx.current_entry->dep = expr_alloc_and(kconf.ctx.current_entry->dep, dep);
 }
 
 void menu_set_type(enum symbol_type type)
 {
-	struct symbol *sym = parse_ctx.current_entry->sym;
+	struct symbol *sym = kconf.ctx.current_entry->sym;
 
 	if (sym->type == type)
 		return;
@@ -136,7 +135,7 @@ void menu_set_type(enum symbol_type type)
 		sym->type = type;
 		return;
 	}
-	menu_warn(parse_ctx.current_entry,
+	menu_warn(kconf.ctx.current_entry,
 		"ignoring type redefinition of '%s' from '%s' to '%s'",
 		sym->name ? sym->name : "<choice>",
 		sym_type_name(sym->type), sym_type_name(type));
@@ -145,19 +144,19 @@ void menu_set_type(enum symbol_type type)
 static struct property *menu_add_prop(enum prop_type type, struct expr *expr,
 				      struct expr *dep)
 {
-	property_pool.emplace_back();
-	struct property *prop = &property_pool.back();
+	kconf.props.emplace_back();
+	struct property *prop = &kconf.props.back();
 
 	prop->type = type;
-	prop->file = parse_ctx.current_file;
+	prop->file = kconf.ctx.current_file;
 	prop->lineno = zconf_lineno();
-	prop->menu = parse_ctx.current_entry;
+	prop->menu = kconf.ctx.current_entry;
 	prop->expr = expr;
 	prop->visible.expr = dep;
 
 	/* append property to the prop list of symbol */
-	if (parse_ctx.current_entry->sym)
-		parse_ctx.current_entry->sym->prop.push_back(prop);
+	if (kconf.ctx.current_entry->sym)
+		kconf.ctx.current_entry->sym->prop.push_back(prop);
 
 	return prop;
 }
@@ -172,12 +171,12 @@ struct property *menu_add_prompt(enum prop_type type, char *prompt,
 		while (isspace(static_cast<unsigned char>(*prompt)))
 			prompt++;
 	}
-	if (parse_ctx.current_entry->prompt)
+	if (kconf.ctx.current_entry->prompt)
 		prop_warn(prop, "prompt redefined");
 
 	/* Apply all upper menus' visibilities to actual prompts. */
 	if (type == P_PROMPT) {
-		struct menu *menu = parse_ctx.current_entry;
+		struct menu *menu = kconf.ctx.current_entry;
 
 		while ((menu = menu->parent) != nullptr) {
 			struct expr *dup_expr;
@@ -198,7 +197,7 @@ struct property *menu_add_prompt(enum prop_type type, char *prompt,
 		}
 	}
 
-	parse_ctx.current_entry->prompt = prop;
+	kconf.ctx.current_entry->prompt = prop;
 	prop->text = prompt;
 
 	return prop;
@@ -206,7 +205,7 @@ struct property *menu_add_prompt(enum prop_type type, char *prompt,
 
 void menu_add_visibility(struct expr *expr)
 {
-	parse_ctx.current_entry->visibility = expr_alloc_and(parse_ctx.current_entry->visibility,
+	kconf.ctx.current_entry->visibility = expr_alloc_and(kconf.ctx.current_entry->visibility,
 	    expr);
 }
 
@@ -222,24 +221,24 @@ void menu_add_symbol(enum prop_type type, struct symbol *sym, struct expr *dep)
 
 void menu_add_option_modules(void)
 {
-	if (modules_sym)
+	if (kconf.modules_sym)
 		zconf_error("symbol '%s' redefines option 'modules' already defined by symbol '%s'",
-			    parse_ctx.current_entry->sym->name, modules_sym->name);
-	modules_sym = parse_ctx.current_entry->sym;
+			    kconf.ctx.current_entry->sym->name, kconf.modules_sym->name);
+	kconf.modules_sym = kconf.ctx.current_entry->sym;
 }
 
 void menu_add_option_defconfig_list(void)
 {
-	if (!sym_defconfig_list)
-		sym_defconfig_list = parse_ctx.current_entry->sym;
-	else if (sym_defconfig_list != parse_ctx.current_entry->sym)
+	if (!kconf.sym_defconfig_list)
+		kconf.sym_defconfig_list = kconf.ctx.current_entry->sym;
+	else if (kconf.sym_defconfig_list != kconf.ctx.current_entry->sym)
 		zconf_error("trying to redefine defconfig symbol");
-	sym_defconfig_list->flags |= SYMBOL_NO_WRITE;
+	kconf.sym_defconfig_list->flags |= SYMBOL_NO_WRITE;
 }
 
 void menu_add_option_allnoconfig_y(void)
 {
-	parse_ctx.current_entry->sym->flags |= SYMBOL_ALLNOCONFIG_Y;
+	kconf.ctx.current_entry->sym->flags |= SYMBOL_ALLNOCONFIG_Y;
 }
 
 static int menu_validate_number(struct symbol *sym, struct symbol *sym2)
@@ -328,7 +327,7 @@ void menu_finalize(struct menu *parent)
 		if (sym && sym_is_choice(sym)) {
 			if (sym->type == S_UNKNOWN) {
 				/* find the first choice value to find out choice type */
-				parse_ctx.current_entry = parent;
+				kconf.ctx.current_entry = parent;
 				for (auto &child_owner : parent->children) {
 					menu = child_owner.get();
 					if (menu->sym && menu->sym->type != S_UNKNOWN) {
@@ -340,7 +339,7 @@ void menu_finalize(struct menu *parent)
 			/* set the type of the remaining choice values */
 			for (auto &child_owner : parent->children) {
 				menu = child_owner.get();
-				parse_ctx.current_entry = menu;
+				kconf.ctx.current_entry = menu;
 				if (menu->sym && menu->sym->type == S_UNKNOWN)
 					menu_set_type(sym->type);
 			}
@@ -534,7 +533,7 @@ void menu_finalize(struct menu *parent)
 		menu = parent->children[ci].get();
 		if (sym && sym_is_choice(sym) &&
 		    menu->sym && !sym_is_choice_value(menu->sym)) {
-			parse_ctx.current_entry = menu;
+			kconf.ctx.current_entry = menu;
 			menu->sym->flags |= SYMBOL_CHOICEVAL;
 			if (!menu->prompt)
 				menu_warn(menu, "choice value must have a prompt");
@@ -710,14 +709,14 @@ void menu_finalize(struct menu *parent)
 
 [[nodiscard]] struct menu *menu_get_root_menu([[maybe_unused]] struct menu *menu)
 {
-	return &rootmenu;
+	return &kconf.root;
 }
 
 [[nodiscard]] struct menu *menu_get_parent_menu(struct menu *menu)
 {
 	enum prop_type type;
 
-	for (; menu != &rootmenu; menu = menu->parent) {
+	for (; menu != &kconf.root; menu = menu->parent) {
 		/* P_UNKNOWN doubles as the sentinel for "no prompt" here */
 		type = menu->prompt ? menu->prompt->type : P_UNKNOWN;
 		if (type == P_MENU)
@@ -776,7 +775,7 @@ static void get_prompt_str(struct gstr *r, struct property *prop,
 		get_dep_str(r, prop->visible.expr, "  Visible if: ");
 
 	menu = prop->menu->parent;
-	for (i = 0; menu != &rootmenu && i < 8; menu = menu->parent) {
+	for (i = 0; menu != &kconf.root && i < 8; menu = menu->parent) {
 		bool accessible = menu_is_visible(menu);
 
 		submenu[i++] = menu;

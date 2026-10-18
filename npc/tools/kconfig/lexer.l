@@ -14,8 +14,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "lkc.hpp"
-
 using namespace kconfig;
 
 #include "parser.tab.h"
@@ -77,7 +75,7 @@ static void warn_ignored_character(char chr)
 {
 	fprintf(stderr,
 	        "%s:%d:warning: ignoring unsupported character '%c'\n",
-	        parse_ctx.current_file->name, yylineno, chr);
+	        kconf.ctx.current_file->name, yylineno, chr);
 }
 %}
 
@@ -249,9 +247,9 @@ n	[A-Za-z0-9_-]
 
 	if (prev_token != T_EOL && prev_token != T_HELPTEXT)
 		fprintf(stderr, "%s:%d:warning: no new line at end of file\n",
-			parse_ctx.current_file->name, yylineno);
+			kconf.ctx.current_file->name, yylineno);
 
-	if (parse_ctx.current_file) {
+	if (kconf.ctx.current_file) {
 		zconf_endfile();
 		return T_EOL;
 	}
@@ -282,8 +280,8 @@ repeat:
 			 * terminator in Kconfig, but it is not always true
 			 * because \n could be escaped by a backslash.
 			 */
-			if (parse_ctx.current_file) {
-				current_pos.file = parse_ctx.current_file;
+			if (kconf.ctx.current_file) {
+				current_pos.file = kconf.ctx.current_file;
 				current_pos.lineno = yylineno;
 			}
 		}
@@ -412,12 +410,12 @@ void zconf_initscan(const char *name)
 	yyin = zconf_fopen(name);
 	if (!yyin) {
 		fprintf(stderr, "can't find file %s\n", name);
-		exit(1);
+		throw FatalError();
 	}
 
 	current_buf = std::make_unique<struct buffer>();
 
-	parse_ctx.current_file = file_lookup(name, NULL, 0);
+	kconf.ctx.current_file = file_lookup(name, NULL, 0);
 	yylineno = 1;
 }
 
@@ -431,26 +429,26 @@ void zconf_nextfile(const char *name)
 	if (!yyin) {
 		fprintf(stderr, "%s:%d: can't open file \"%s\"\n",
 			zconf_curname(), zconf_lineno(), file->name);
-		exit(1);
+		throw FatalError();
 	}
 	yy_switch_to_buffer(yy_create_buffer(yyin, YY_BUF_SIZE));
 	buf->parent = std::move(current_buf);
 	current_buf = std::move(buf);
 
-	parse_ctx.current_file->lineno = yylineno;
-	file->parent = parse_ctx.current_file;
+	kconf.ctx.current_file->lineno = yylineno;
+	file->parent = kconf.ctx.current_file;
 
 	yylineno = 1;
-	parse_ctx.current_file = file;
+	kconf.ctx.current_file = file;
 }
 
 static void zconf_endfile(void)
 {
 	std::unique_ptr<struct buffer> parent;
 
-	parse_ctx.current_file = parse_ctx.current_file->parent;
-	if (parse_ctx.current_file)
-		yylineno = parse_ctx.current_file->lineno;
+	kconf.ctx.current_file = kconf.ctx.current_file->parent;
+	if (kconf.ctx.current_file)
+		yylineno = kconf.ctx.current_file->lineno;
 
 	parent = std::move(current_buf->parent);
 	if (parent) {

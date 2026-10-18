@@ -1,7 +1,14 @@
+module;
 #ifdef __clang__
-import std;
 #else
 #include <bits/stdc++.h>
+#endif
+#ifdef __clang__
+#include "kconfig_clang_compat.h"
+#endif
+module kconfig.core;
+#ifdef __clang__
+import std;
 #endif
 using namespace std;
 
@@ -11,27 +18,21 @@ using namespace std;
  * Copyright (C) 2002-2005 Sam Ravnborg <sam@ravnborg.org>
  */
 
-#include "lkc.hpp"
 
 namespace kconfig {
-
-/* 已解析的 Kconfig 文件表：插入序保存 + 名字索引（现代容器实现） */
-static std::vector<std::unique_ptr<struct file>> file_storage;
-static std::vector<struct file *> file_order;
-static std::unordered_map<std::string, struct file *> file_index;
 
 /* 按包含顺序（最旧在前）返回所有被解析的 Kconfig 文件 */
 const std::vector<struct file *> &kconfig_files(void)
 {
-	return file_order;
+	return kconf.file_order;
 }
 
 /* file already present in list? If not add it */
 struct file *file_lookup(const char *name, const char *parent_name,
 			 int parent_lineno)
 {
-	auto it = file_index.find(name);
-	if (it != file_index.end()) {
+	auto it = kconf.file_index.find(name);
+	if (it != kconf.file_index.end()) {
 		struct file *file = it->second;
 
 		if (!parent_name)
@@ -46,7 +47,7 @@ struct file *file_lookup(const char *name, const char *parent_name,
 				"%s:%d: note: location of first inclusion of %s\n",
 				file->parent_name, file->parent_lineno,
 				file->name);
-		exit(1);
+		throw FatalError();
 	}
 
 	auto owned = std::make_unique<struct file>();
@@ -55,9 +56,9 @@ struct file *file_lookup(const char *name, const char *parent_name,
 	owned->parent_lineno = parent_lineno;
 
 	struct file *file = owned.get();
-	file_storage.push_back(std::move(owned));
-	file_index.emplace(file->name, file);
-	file_order.push_back(file);
+	kconf.files.push_back(std::move(owned));
+	kconf.file_index.emplace(file->name, file);
+	kconf.file_order.push_back(file);
 	return file;
 }
 
@@ -119,7 +120,7 @@ const char *str_get(struct gstr *gs)
 	if (p)
 		return p;
 	fprintf(stderr, "Out of memory.\n");
-	exit(1);
+	throw FatalError();
 }
 
 [[nodiscard]] void *xcalloc(size_t nmemb, size_t size)
@@ -128,7 +129,7 @@ const char *str_get(struct gstr *gs)
 	if (p)
 		return p;
 	fprintf(stderr, "Out of memory.\n");
-	exit(1);
+	throw FatalError();
 }
 
 [[nodiscard]] void *xrealloc(void *p, size_t size)
@@ -137,7 +138,7 @@ const char *str_get(struct gstr *gs)
 	if (p)
 		return p;
 	fprintf(stderr, "Out of memory.\n");
-	exit(1);
+	throw FatalError();
 }
 
 [[nodiscard]] char *xstrdup(const char *s)
@@ -148,7 +149,7 @@ const char *str_get(struct gstr *gs)
 	if (p)
 		return p;
 	fprintf(stderr, "Out of memory.\n");
-	exit(1);
+	throw FatalError();
 }
 
 [[nodiscard]] char *xstrndup(const char *s, size_t n)
@@ -159,7 +160,7 @@ const char *str_get(struct gstr *gs)
 	if (p)
 		return p;
 	fprintf(stderr, "Out of memory.\n");
-	exit(1);
+	throw FatalError();
 }
 int yydebug = 0;
 

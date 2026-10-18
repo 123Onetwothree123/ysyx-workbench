@@ -3,7 +3,9 @@ import std;
 #else
 #include <bits/stdc++.h>
 #endif
-using namespace std;
+#ifdef __clang__
+#include "kconfig_clang_compat.h"
+#endif
 
 // SPDX-License-Identifier: GPL-2.0+
 /*
@@ -15,6 +17,8 @@ using namespace std;
 
 
 #include "dialog.hpp"
+
+using namespace std;
 
 /* Needed in signal handler in mconf.c */
 int saved_x, saved_y;

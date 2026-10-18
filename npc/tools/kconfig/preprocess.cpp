@@ -1,7 +1,15 @@
+module;
 #ifdef __clang__
-import std;
 #else
 #include <bits/stdc++.h>
+#endif
+#include "kconfig_parse.hpp"   /* yylineno */
+#ifdef __clang__
+#include "kconfig_clang_compat.h"
+#endif
+module kconfig.core;
+#ifdef __clang__
+import std;
 #endif
 using namespace std;
 
@@ -11,7 +19,6 @@ using namespace std;
 
 
 
-#include "lkc.hpp"
 
 namespace kconfig {
 
@@ -23,13 +30,13 @@ static void pperror(const char *format, ...)
 {
 	va_list ap;
 
-	fprintf(stderr, "%s:%d: ", parse_ctx.current_file->name, yylineno);
+	fprintf(stderr, "%s:%d: ", kconf.ctx.current_file->name, yylineno);
 	va_start(ap, format);
 	vfprintf(stderr, format, ap);
 	va_end(ap);
 	fprintf(stderr, "\n");
 
-	exit(1);
+	throw FatalError();
 }
 
 /*
@@ -104,7 +111,7 @@ static char *do_error_if(int argc, char *argv[])
 
 static char *do_filename(int argc, char *argv[])
 {
-	return xstrdup(parse_ctx.current_file->name);
+	return xstrdup(kconf.ctx.current_file->name);
 }
 
 static char *do_info(int argc, char *argv[])
@@ -132,7 +139,7 @@ static char *do_shell(int argc, char *argv[])
 	p = popen(cmd, "r");
 	if (!p) {
 		perror(cmd);
-		exit(1);
+		throw FatalError();
 	}
 
 	nread = fread(buf, 1, sizeof(buf), p);
@@ -153,7 +160,7 @@ static char *do_shell(int argc, char *argv[])
 
 	if (pclose(p) == -1) {
 		perror(cmd);
-		exit(1);
+		throw FatalError();
 	}
 
 	return xstrdup(buf);
@@ -163,7 +170,7 @@ static char *do_warning_if(int argc, char *argv[])
 {
 	if (!strcmp(argv[0], "y"))
 		fprintf(stderr, "%s:%d: %s\n",
-			parse_ctx.current_file->name, yylineno, argv[1]);
+			kconf.ctx.current_file->name, yylineno, argv[1]);
 
 	return xstrdup("");
 }

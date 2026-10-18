@@ -1,7 +1,16 @@
+module;
 #ifdef __clang__
-import std;
 #else
 #include <bits/stdc++.h>
+#endif
+#include <fcntl.h>
+#include <unistd.h>
+#ifdef __clang__
+#include "kconfig_clang_compat.h"
+#endif
+module kconfig.core;
+#ifdef __clang__
+import std;
 #endif
 using namespace std;
 
@@ -10,10 +19,8 @@ using namespace std;
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
  */
 
-#include <fcntl.h>
-#include <unistd.h>
 
-#include "lkc.hpp"
+#include "kconfig_macros.hpp"  /* SRCTREE/CONFIG_/expr_list_for_each_sym */
 
 namespace kconfig {
 
@@ -71,37 +78,31 @@ static int make_parent_dir(const char *path)
 	return ec ? -1 : 0;
 }
 
-static char depfile_path[PATH_MAX];
-static size_t depfile_prefix_len;
-
 /* touch depfile for symbol 'name' */
 static int conf_touch_dep(const char *name)
 {
-	const char *s;
-	char *d, c;
-
 	/* check overflow: prefix + name + ".h" + '\0' must fit in buffer. */
-	if (depfile_prefix_len + strlen(name) + 3 > sizeof(depfile_path))
+	if (kconf.depfile_prefix_len + strlen(name) + 3 > PATH_MAX)
 		return -1;
 
-	d = depfile_path + depfile_prefix_len;
-	s = name;
-
-	while ((c = *s++))
-		*d++ = (c == '_') ? '/' : tolower(static_cast<unsigned char>(c));
-	strcpy(d, ".h");
+	std::string path = kconf.depfile_path;
+	for (const char *s = name; *s; s++) {
+		char c = *s;
+		path += (c == '_') ? '/' : tolower(static_cast<unsigned char>(c));
+	}
+	path += ".h";
 
 	/* Assume directory path already exists. */
-	FilePtr fp(fopen(depfile_path, "w"));
+	FilePtr fp(fopen(path.c_str(), "w"));
 	if (!fp) {
 		if (errno != ENOENT)
 			return -1;
 
-		if (make_parent_dir(depfile_path))
+		if (make_parent_dir(path.c_str()))
 			return -1;
 
 		/* Try it again. */
-		fp.reset(fopen(depfile_path, "w"));
+		fp.reset(fopen(path.c_str(), "w"));
 		if (!fp)
 			return -1;
 	}
@@ -120,24 +121,21 @@ static void conf_warning(const char *fmt, ...)
 static void conf_message(const char *fmt, ...)
 	__attribute__ ((format (printf, 1, 2)));
 
-static const char *conf_filename;
-static int conf_lineno, conf_warnings;
-
 static void conf_warning(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	fprintf(stderr, "%s:%d:warning: ", conf_filename, conf_lineno);
+	fprintf(stderr, "%s:%d:warning: ", kconf.conf_filename, kconf.conf_lineno);
 	vfprintf(stderr, fmt, ap);
 	fprintf(stderr, "\n");
 	va_end(ap);
-	conf_warnings++;
+	kconf.conf_warnings++;
 }
 
 /* 有警告时，若设置了 KCONFIG_WERROR 则以非 0 退出（对齐新版 Linux） */
 bool conf_errors(void)
 {
-	if (conf_warnings)
+	if (kconf.conf_warnings)
 		return getenv("KCONFIG_WERROR");
 	return false;
 }
@@ -180,18 +178,16 @@ static void conf_message(const char *fmt, ...)
 	conf_message_callback(buf.c_str());
 }
 
-static bool changed_input_warning_suppressed;
-
 /* randconfig 的"用户值"是随机赋的，被约束改写属预期，不属于
  * "用户提供的值被改写"，调用方（conf.cpp randconfig 分支）用此关闭告警 */
 void conf_suppress_changed_input_warning(void)
 {
-	changed_input_warning_suppressed = true;
+	kconf.changed_input_warning_suppressed = true;
 }
 
 static void conf_changed_input_warning(const char *s)
 {
-	if (changed_input_warning_suppressed)
+	if (kconf.changed_input_warning_suppressed)
 		return;
 	fputs(s, stderr);
 }
@@ -218,8 +214,8 @@ static const char *sym_get_user_value_string(struct symbol *sym)
 			return "n";
 		}
 	default:
-		return sym->def[S_DEF_USER].val.str ?
-			sym->def[S_DEF_USER].val.str : "";
+		return sym->def[S_DEF_USER].str.empty() ?
+			"" : sym->def[S_DEF_USER].str.c_str();
 	}
 }
 
@@ -323,7 +319,7 @@ static int conf_set_sym_val(struct symbol *sym, int def, int def_flags, char *p)
 	case S_INT:
 	case S_HEX:
 		if (sym_string_valid(sym, p)) {
-			sym->def[def].val.str = xstrdup(p);
+			sym->def[def].str = p;
 			sym->flags |= def_flags;
 		} else {
 			if (def != S_DEF_AUTO)
@@ -408,10 +404,10 @@ int conf_read_simple(const char *name, int def)
 			}
 		}
 
-		if (!sym_defconfig_list)
+		if (!kconf.sym_defconfig_list)
 			return 1;
 
-		for (struct property *prop : sym_defconfig_list->prop) {
+		for (struct property *prop : kconf.sym_defconfig_list->prop) {
 			if (prop->type != P_DEFAULT)
 				continue;
 			if (expr_calc_value(prop->visible.expr) == no ||
@@ -431,9 +427,9 @@ int conf_read_simple(const char *name, int def)
 		return 1;
 
 load:
-	conf_filename = name;
-	conf_lineno = 0;
-	conf_warnings = 0;
+	kconf.conf_filename = name;
+	kconf.conf_lineno = 0;
+	kconf.conf_warnings = 0;
 
 	def_flags = SYMBOL_DEF << def;
 	for (struct symbol *sym : all_symbols()) {
@@ -441,22 +437,12 @@ load:
 		sym->flags &= ~(def_flags|SYMBOL_VALID);
 		if (sym_is_choice(sym))
 			sym->flags |= def_flags;
-		switch (sym->type) {
-		case S_INT:
-		case S_HEX:
-		case S_STRING:
-			if (sym->def[def].val.str)
-				/* allocated by xstrdup() in conf_set_sym_val() */
-				free(const_cast<char *>(sym->def[def].val.str));
-			/* fall through */
-		default:
-			sym->def[def].val.str = nullptr;
-			sym->def[def].tri = no;
-		}
+		sym->def[def].str.clear();
+		sym->def[def].tri = no;
 	}
 
 	while (std::getline(in, line)) {
-		conf_lineno++;
+		kconf.conf_lineno++;
 		/* tolerate CRLF line endings */
 		if (!line.empty() && line.back() == '\r')
 			line.pop_back();
@@ -547,7 +533,7 @@ load:
 			case yes:
 				if (cs->def[def].tri != no)
 					conf_warning("override: %s changes choice state", sym->name);
-				cs->def[def].val.sym = sym;
+				cs->def[def].sym = sym;
 				break;
 			}
 			cs->def[def].tri = EXPR_OR(cs->def[def].tri, sym->def[def].tri);
@@ -564,11 +550,11 @@ int conf_read(const char *name)
 	sym_set_change_count(0);
 
 	if (conf_read_simple(name, S_DEF_USER)) {
-		sym_calc_value(modules_sym);
+		sym_calc_value(	kconf.modules_sym);
 		return 1;
 	}
 
-	sym_calc_value(modules_sym);
+	sym_calc_value(	kconf.modules_sym);
 
 	for (struct symbol *sym : all_symbols()) {
 		sym_calc_value(sym);
@@ -583,7 +569,7 @@ int conf_read(const char *name)
 					continue;
 				break;
 			default:
-				if (!strcmp(sym->curr.val.str, sym->def[S_DEF_USER].val.str))
+				if (sym->curr.str == sym->def[S_DEF_USER].str)
 					continue;
 				break;
 			}
@@ -608,7 +594,7 @@ int conf_read(const char *name)
 			case S_INT:
 			case S_HEX:
 				/* Reset a string value if it's out of range */
-				if (sym_string_within_range(sym, sym->def[S_DEF_USER].val.str))
+				if (sym_string_within_range(sym, sym->def[S_DEF_USER].str.c_str()))
 					break;
 				sym->flags &= ~(SYMBOL_VALID|SYMBOL_DEF_USER);
 				conf_unsaved++;
@@ -619,7 +605,7 @@ int conf_read(const char *name)
 		}
 	}
 
-	sym_add_change_count(conf_warnings || conf_unsaved);
+	sym_add_change_count(kconf.conf_warnings || conf_unsaved);
 
 	return 0;
 }
@@ -783,10 +769,156 @@ conf_write_heading(FILE *fp, const struct conf_printer &printer)
 	    "\n"
 	    "Automatically generated file; DO NOT EDIT.\n"
 	    "%s\n",
-	    rootmenu.prompt->text);
+	    kconf.root.prompt->text);
 
 	printer.print_comment(fp, buf, false);
 }
+
+namespace {
+
+/*
+ * 收集 conf_write()/conf_write_defconfig() 遍历过程中的
+ * "用户提供的值被 Kconfig 改写"警告，遍历结束后统一输出。
+ */
+struct ChangedInputWarning {
+	bool found = false;
+	std::string text;
+
+	void append(struct symbol *sym)
+	{
+		conf_append_changed_input_warning(text, sym, found);
+	}
+
+	void flush() const
+	{
+		if (found)
+			conf_changed_input_warning(text.c_str());
+	}
+};
+
+/*
+ * 菜单树输出策略：conf_write()/conf_write_defconfig() 的差异
+ * 全部收敛在策略里，遍历顺序和符号状态管理由引擎负责。
+ */
+struct ConfigTreeWriter {
+	virtual ~ConfigTreeWriter() = default;
+
+	/* 可见的非符号菜单节点 */
+	virtual void on_menu(FILE *out, struct menu *m) {}
+	/* 离开一个有子节点的可见非符号菜单节点 */
+	virtual void on_end_menu(FILE *out, struct menu *m) {}
+	/* 可见且未写过的符号节点（SYMBOL_WRITE 已置位） */
+	virtual void on_symbol(FILE *out, struct symbol *sym) = 0;
+};
+
+/*
+ * conf_write()/conf_write_defconfig() 共享的菜单树遍历引擎。
+ * 引擎负责遍历顺序、菜单可见性、sym_calc_value()、变更输入警告和
+ * SYMBOL_WRITTEN 标记；每个节点的具体输出由策略决定。
+ */
+static void conf_write_tree(FILE *out, struct ChangedInputWarning &warning,
+			    struct ConfigTreeWriter &writer)
+{
+	std::function<void(struct menu *)> walk = [&](struct menu *m) {
+		do {
+			struct symbol *sym = m->sym;
+
+			if (sym == nullptr) {
+				if (!menu_is_visible(m))
+					break;
+				writer.on_menu(out, m);
+			} else if (!sym_is_choice(sym) &&
+				   !(sym->flags & SYMBOL_WRITTEN)) {
+				sym_calc_value(sym);
+				warning.append(sym);
+				sym->flags |= SYMBOL_WRITTEN;
+				if (!(sym->flags & SYMBOL_WRITE))
+					break;
+				writer.on_symbol(out, sym);
+			}
+		} while (0);
+
+		for (auto &child_owner : m->children)
+			walk(child_owner.get());
+
+		/*
+		 * 复刻原"上升"逻辑：离开子树时，对有子节点且可见的非符号
+		 * 节点调用 on_end_menu()
+		 */
+		if (!m->children.empty() && !m->sym && menu_is_visible(m) &&
+		    m != &kconf.root)
+			writer.on_end_menu(out, m);
+	};
+
+	for (auto &child_owner : kconf.root.children)
+		walk(child_owner.get());
+}
+
+/* defconfig 策略：跳过默认值，只写出与默认值不同的值 */
+struct DefconfigWriter final : ConfigTreeWriter {
+	void on_symbol(FILE *out, struct symbol *sym) override
+	{
+		sym->flags &= ~SYMBOL_WRITE;
+		/* If we cannot change the symbol - skip */
+		if (!sym_is_changeable(sym))
+			return;
+		/* If symbol equals to default value - skip */
+		if (strcmp(sym_get_string_value(sym),
+			   sym_get_string_default(sym)) == 0)
+			return;
+
+		/*
+		 * If symbol is a choice value and equals to the
+		 * default for a choice - skip.
+		 * But only if value is bool and equal to "y" and
+		 * choice is not "optional".
+		 * (If choice is "optional" then all values can be "n")
+		 */
+		if (sym_is_choice_value(sym)) {
+			struct symbol *cs = prop_get_symbol(sym_get_choice_prop(sym));
+			struct symbol *ds = sym_choice_default(cs);
+
+			if (!sym_is_optional(cs) && sym == ds) {
+				if ((sym->type == S_BOOLEAN) &&
+				    sym_get_tristate_value(sym) == yes)
+					return;
+			}
+		}
+		conf_write_symbol(out, sym, kconfig_printer_cb, false);
+	}
+};
+
+/* .config 策略：打印菜单注释块和 "# end of" 分隔行 */
+struct ConfigWriter final : ConfigTreeWriter {
+	void on_menu(FILE *out, struct menu *m) override
+	{
+		fprintf(out, "\n"
+			     "#\n"
+			     "# %s\n"
+			     "#\n", menu_get_prompt(m));
+		need_newline_ = false;
+	}
+
+	void on_end_menu(FILE *out, struct menu *m) override
+	{
+		fprintf(out, "# end of %s\n", menu_get_prompt(m));
+		need_newline_ = true;
+	}
+
+	void on_symbol(FILE *out, struct symbol *sym) override
+	{
+		if (need_newline_) {
+			fprintf(out, "\n");
+			need_newline_ = false;
+		}
+		conf_write_symbol(out, sym, kconfig_printer_cb, false);
+	}
+
+private:
+	bool need_newline_ = false;
+};
+
+}  // namespace
 
 /*
  * Write out a minimal config.
@@ -794,9 +926,8 @@ conf_write_heading(FILE *fp, const struct conf_printer &printer)
  */
 int conf_write_defconfig(const char *filename)
 {
-	struct symbol *sym;
-	bool changed_input_found = false;
-	std::string changed_input_warning;
+	struct ChangedInputWarning warning;
+	DefconfigWriter writer;
 
 	FilePtr out_owner(fopen(filename, "w"));
 	if (!out_owner)
@@ -805,61 +936,11 @@ int conf_write_defconfig(const char *filename)
 
 	sym_clear_all_valid();
 
-	/* Traverse all menus to find all relevant symbols */
-	std::function<void(struct menu *)> walk = [&](struct menu *m) {
-		do {
-			sym = m->sym;
-			if (sym == nullptr) {
-				if (!menu_is_visible(m))
-					break;
-			} else if (!sym_is_choice(sym) && !(sym->flags & SYMBOL_WRITTEN)) {
-				sym_calc_value(sym);
-				conf_append_changed_input_warning(changed_input_warning,
-								  sym, changed_input_found);
-				sym->flags |= SYMBOL_WRITTEN;
-				if (!(sym->flags & SYMBOL_WRITE))
-					break;
-				sym->flags &= ~SYMBOL_WRITE;
-				/* If we cannot change the symbol - skip */
-				if (!sym_is_changeable(sym))
-					break;
-				/* If symbol equals to default value - skip */
-				if (strcmp(sym_get_string_value(sym), sym_get_string_default(sym)) == 0)
-					break;
-
-				/*
-				 * If symbol is a choice value and equals to the
-				 * default for a choice - skip.
-				 * But only if value is bool and equal to "y" and
-				 * choice is not "optional".
-				 * (If choice is "optional" then all values can be "n")
-				 */
-				if (sym_is_choice_value(sym)) {
-					struct symbol *cs;
-					struct symbol *ds;
-
-					cs = prop_get_symbol(sym_get_choice_prop(sym));
-					ds = sym_choice_default(cs);
-					if (!sym_is_optional(cs) && sym == ds) {
-						if ((sym->type == S_BOOLEAN) &&
-						    sym_get_tristate_value(sym) == yes)
-							break;
-					}
-				}
-				conf_write_symbol(out, sym, kconfig_printer_cb, false);
-			}
-		} while (0);
-		for (auto &child_owner : m->children)
-			walk(child_owner.get());
-	};
-	for (auto &child_owner : rootmenu.children)
-		walk(child_owner.get());
+	conf_write_tree(out, warning, writer);
 	out_owner.reset();
 
 	conf_clear_written_flags();
-
-	if (changed_input_found)
-		conf_changed_input_warning(changed_input_warning.c_str());
+	warning.flush();
 
 	return 0;
 }
@@ -867,13 +948,10 @@ int conf_write_defconfig(const char *filename)
 int conf_write(const char *name)
 {
 	FilePtr out_owner;
-	struct symbol *sym;
-	const char *str;
 	char tmpname[PATH_MAX + 1], oldname[PATH_MAX + 1];
 	char *env;
-	bool need_newline = false;
-	bool changed_input_found = false;
-	std::string changed_input_warning;
+	struct ChangedInputWarning warning;
+	ConfigWriter writer;
 
 	if (!name)
 		name = conf_get_configname();
@@ -911,54 +989,11 @@ int conf_write(const char *name)
 	if (!conf_get_changed())
 		sym_clear_all_valid();
 
-	std::function<void(struct menu *)> walk = [&](struct menu *m) {
-		do {
-			sym = m->sym;
-			if (!sym) {
-				if (!menu_is_visible(m))
-					break;
-				str = menu_get_prompt(m);
-				fprintf(out, "\n"
-					     "#\n"
-					     "# %s\n"
-					     "#\n", str);
-				need_newline = false;
-			} else if (!(sym->flags & SYMBOL_CHOICE) &&
-				   !(sym->flags & SYMBOL_WRITTEN)) {
-				sym_calc_value(sym);
-				conf_append_changed_input_warning(changed_input_warning,
-								  sym, changed_input_found);
-				sym->flags |= SYMBOL_WRITTEN;
-				if (!(sym->flags & SYMBOL_WRITE))
-					break;
-				if (need_newline) {
-					fprintf(out, "\n");
-					need_newline = false;
-				}
-				conf_write_symbol(out, sym, kconfig_printer_cb, false);
-			}
-		} while (0);
-		for (auto &child_owner : m->children)
-			walk(child_owner.get());
-		/*
-		 * 复刻原"上升"逻辑：离开子树时，对有子节点且可见的非符号
-		 * 节点输出 "# end of"
-		 */
-		if (!m->children.empty() && !m->sym && menu_is_visible(m) &&
-		    m != &rootmenu) {
-			str = menu_get_prompt(m);
-			fprintf(out, "# end of %s\n", str);
-			need_newline = true;
-		}
-	};
-	for (auto &child_owner : rootmenu.children)
-		walk(child_owner.get());
+	conf_write_tree(out, warning, writer);
 	out_owner.reset();
 
 	conf_clear_written_flags();
-
-	if (changed_input_found)
-		conf_changed_input_warning(changed_input_warning.c_str());
+	warning.flush();
 
 	if (*tmpname) {
 		if (is_same(name, tmpname)) {
@@ -1041,13 +1076,13 @@ static int conf_touch_deps(void)
 	else
 		prefix.clear();
 
-	if (prefix.size() >= sizeof(depfile_path))
+	if (prefix.size() >= PATH_MAX)
 		return -1;
-	strcpy(depfile_path, prefix.c_str());
-	depfile_prefix_len = strlen(depfile_path);
+	kconf.depfile_path = prefix;
+	kconf.depfile_prefix_len = kconf.depfile_path.size();
 
 	conf_read_simple(name, S_DEF_AUTO);
-	sym_calc_value(modules_sym);
+	sym_calc_value(	kconf.modules_sym);
 
 	for (struct symbol *sym : all_symbols()) {
 		sym_calc_value(sym);
@@ -1070,7 +1105,7 @@ static int conf_touch_deps(void)
 				case S_HEX:
 				case S_INT:
 					if (!strcmp(sym_get_string_value(sym),
-						    sym->def[S_DEF_AUTO].val.str))
+						    sym->def[S_DEF_AUTO].str.c_str()))
 						continue;
 					break;
 				default:
@@ -1178,31 +1213,28 @@ int conf_write_autoconf(int overwrite)
 	return 0;
 }
 
-static int sym_change_count;
-static void (*conf_changed_callback)(void);
-
 void sym_set_change_count(int count)
 {
-	int _sym_change_count = sym_change_count;
-	sym_change_count = count;
-	if (conf_changed_callback &&
+	int _sym_change_count = kconf.sym_change_count;
+	kconf.sym_change_count = count;
+	if (kconf.changed_callback &&
 	    (bool)_sym_change_count != (bool)count)
-		conf_changed_callback();
+		kconf.changed_callback();
 }
 
 void sym_add_change_count(int count)
 {
-	sym_set_change_count(count + sym_change_count);
+	sym_set_change_count(count + kconf.sym_change_count);
 }
 
 bool conf_get_changed(void)
 {
-	return sym_change_count;
+	return kconf.sym_change_count;
 }
 
 void conf_set_changed_callback(void (*fn)(void))
 {
-	conf_changed_callback = fn;
+	kconf.changed_callback = fn;
 }
 
 static std::mt19937 &conf_rng(void)
@@ -1276,7 +1308,7 @@ static bool randomize_choice_values(struct symbol *csym)
 	expr_list_for_each_sym(prop->expr, e, sym) {
 		if (def == cnt++) {
 			sym->def[S_DEF_USER].tri = yes;
-			csym->def[S_DEF_USER].val.sym = sym;
+			csym->def[S_DEF_USER].sym = sym;
 		}
 		else {
 			sym->def[S_DEF_USER].tri = no;
@@ -1335,7 +1367,7 @@ bool conf_set_all_new_symbols(enum conf_def_mode mode)
 			} else {
 				errno = ERANGE;
 				perror( "KCONFIG_PROBABILITY" );
-				exit( 1 );
+				throw FatalError();
 			}
 			env = (*endp == ':') ? endp+1 : endp;
 			if( n >=3 ) {
@@ -1357,7 +1389,7 @@ bool conf_set_all_new_symbols(enum conf_def_mode mode)
 		if( pty+ptm > 100 ) {
 			errno = ERANGE;
 			perror( "KCONFIG_PROBABILITY" );
-			exit( 1 );
+			throw FatalError();
 		}
 	}
 	bool has_changed = false;

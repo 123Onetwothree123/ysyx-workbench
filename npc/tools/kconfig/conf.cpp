@@ -1,10 +1,13 @@
 #ifdef __clang__
 import std;
+import kconfig.core;
 #else
 #include <bits/stdc++.h>
+import kconfig.core;
 #endif
-using namespace std;
-
+#ifdef __clang__
+#include "kconfig_clang_compat.h"
+#endif
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
@@ -16,7 +19,9 @@ using namespace std;
 #include <sys/time.h>
 #include <climits> /* PATH_MAX */
 
-#include "lkc.hpp"
+#include "kconfig_macros.hpp"  /* CONFIG_ */
+
+using namespace std;
 
 using namespace kconfig;
 
@@ -100,7 +105,7 @@ static void xfgets(char *str, int size, FILE *in)
 {
 	if (!fgets(str, size, in)) {
 		fprintf(stderr, "\nError in reading or end of file.\n");
-		exit(1);
+		throw FatalError();
 	}
 
 	if (!tty_stdio)
@@ -194,7 +199,7 @@ static int conf_string(struct menu *menu)
 			fprintf(stderr,
 				"\nerror: no value for new symbol '%s' at end of input\n",
 				sym->name);
-			exit(1);
+			throw FatalError();
 		}
 	}
 }
@@ -547,7 +552,7 @@ static void conf_usage(const char *progname)
 	printf("  kconfig_file            Top-level Kconfig file.\n");
 }
 
-int main(int ac, char **av)
+static int run_conf(int ac, char **av)
 {
 	const char *progname = av[0];
 	int opt;
@@ -559,7 +564,7 @@ int main(int ac, char **av)
 	while ((opt = getopt_long(ac, av, "hs", long_opts, nullptr)) != -1) {
 		if (opt == 'h') {
 			conf_usage(progname);
-			exit(1);
+			throw FatalError();
 		}
 		if (opt == 's') {
 			conf_set_message_callback(nullptr);
@@ -567,7 +572,7 @@ int main(int ac, char **av)
 		}
 		if (opt == '?') {
 			conf_usage(progname);
-			exit(1);
+			throw FatalError();
 		}
 		input_mode = static_cast<enum input_mode>(opt);
 		switch (input_mode) {
@@ -605,21 +610,21 @@ int main(int ac, char **av)
 	if (ac == optind) {
 		fprintf(stderr, "%s: Kconfig file missing\n", av[0]);
 		conf_usage(progname);
-		exit(1);
+		throw FatalError();
 	}
 	name = av[optind];
-	conf_parse(name);
+	kconf.parse(name);
 	//zconfdump(stdout);
 
 	switch (input_mode) {
 	case defconfig:
-		if (conf_read(defconfig_file)) {
+		if (kconf.read(defconfig_file)) {
 			fprintf(stderr,
 				"***\n"
 				  "*** Can't find default configuration \"%s\"!\n"
 				  "***\n",
 				defconfig_file);
-			exit(1);
+			throw FatalError();
 		}
 		break;
 	case savedefconfig:
@@ -632,7 +637,7 @@ int main(int ac, char **av)
 	case yes2modconfig:
 	case mod2yesconfig:
 	case mod2noconfig:
-		conf_read(nullptr);
+		kconf.read(nullptr);
 		break;
 	case allnoconfig:
 	case allyesconfig:
@@ -647,7 +652,7 @@ int main(int ac, char **av)
 				fprintf(stderr,
 					"*** Can't read seed configuration \"%s\"!\n",
 					name);
-				exit(1);
+				throw FatalError();
 			}
 			break;
 		}
@@ -664,7 +669,7 @@ int main(int ac, char **av)
 			fprintf(stderr,
 				"*** KCONFIG_ALLCONFIG set, but no \"%s\" or \"all.config\" file found\n",
 				name);
-			exit(1);
+			throw FatalError();
 		}
 		break;
 	default:
@@ -672,7 +677,7 @@ int main(int ac, char **av)
 	}
 
 	if (conf_errors())
-		exit(1);
+		throw FatalError();
 
 	if (sync_kconfig) {
 		name = getenv("KCONFIG_NOSILENTUPDATE");
@@ -718,8 +723,8 @@ int main(int ac, char **av)
 		conf_rewrite_mod_or_yes(def_m2n);
 		break;
 	case oldaskconfig:
-		rootEntry = &rootmenu;
-		conf(&rootmenu);
+		rootEntry = &kconf.root;
+		conf(&kconf.root);
 		input_mode = oldconfig;
 		/* fall through */
 	case oldconfig:
@@ -729,7 +734,7 @@ int main(int ac, char **av)
 		/* Update until a loop caused no more changes */
 		do {
 			conf_cnt = 0;
-			check_conf(&rootmenu);
+			check_conf(&kconf.root);
 		} while (conf_cnt);
 		break;
 	case olddefconfig:
@@ -738,7 +743,7 @@ int main(int ac, char **av)
 	}
 
 	if (sym_dep_errors())
-		exit(1);
+		throw FatalError();
 
 	if (input_mode == savedefconfig) {
 		if (conf_write_defconfig(defconfig_file)) {
@@ -747,9 +752,9 @@ int main(int ac, char **av)
 			return 1;
 		}
 	} else if (input_mode != listnewconfig && input_mode != helpnewconfig) {
-		if (!no_conf_write && conf_write(nullptr)) {
+		if (!no_conf_write && kconf.write(nullptr)) {
 			fprintf(stderr, "\n*** Error during writing of the configuration.\n\n");
-			exit(1);
+			throw FatalError();
 		}
 
 		/*
@@ -768,4 +773,16 @@ int main(int ac, char **av)
 		}
 	}
 	return 0;
+}
+
+/*
+ * 唯一的异常边界：致命错误已在抛出点打印，这里只负责退出码。
+ */
+int main(int ac, char **av)
+{
+	try {
+		return run_conf(ac, av);
+	} catch (const FatalError &) {
+		return 1;
+	}
 }

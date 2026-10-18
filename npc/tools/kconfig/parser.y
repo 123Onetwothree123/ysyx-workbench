@@ -11,8 +11,6 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "lkc.hpp"
-
 using namespace kconfig;
 
 #define printd(mask, fmt...) if (cdebug & (mask)) printf(fmt)
@@ -39,6 +37,8 @@ static bool zconf_endtoken(const char *tokenname,
 %define api.namespace {yy}
 %define api.parser.class {parser}
 %define parse.trace
+/* 解析上下文显式注入（词法器受 flex C 模式限制，直接访问同一对象） */
+%parse-param { kconfig::ParseContext &ctx }
 
 %union
 {
@@ -117,7 +117,7 @@ int yylex(yy::parser::semantic_type *lval);
 %destructor {
 	fprintf(stderr, "%s:%d: missing end statement for this entry\n",
 		$$->file->name, $$->lineno);
-	if (parse_ctx.current_menu == $$)
+	if (ctx.current_menu == $$)
 		menu_end_menu();
 } if_entry menu_entry choice_entry
 
@@ -164,15 +164,15 @@ config_entry_start: T_CONFIG nonconst_symbol T_EOL
 
 config_stmt: config_entry_start config_option_list
 {
-	if (parse_ctx.current_choice) {
-		if (!parse_ctx.current_entry->prompt) {
+	if (ctx.current_choice) {
+		if (!ctx.current_entry->prompt) {
 			fprintf(stderr, "%s:%d: error: choice member must have a prompt\n",
-				parse_ctx.current_entry->file->name, parse_ctx.current_entry->lineno);
+				ctx.current_entry->file->name, ctx.current_entry->lineno);
 			yynerrs++;
 		}
-		if (parse_ctx.current_entry->sym->type != S_BOOLEAN) {
+		if (ctx.current_entry->sym->type != S_BOOLEAN) {
 			fprintf(stderr, "%s:%d: error: choice member must be bool\n",
-				parse_ctx.current_entry->file->name, parse_ctx.current_entry->lineno);
+				ctx.current_entry->file->name, ctx.current_entry->lineno);
 			yynerrs++;
 		}
 	}
@@ -188,8 +188,8 @@ menuconfig_entry_start: T_MENUCONFIG nonconst_symbol T_EOL
 
 menuconfig_stmt: menuconfig_entry_start config_option_list
 {
-	if (parse_ctx.current_entry->prompt)
-		parse_ctx.current_entry->prompt->type = P_MENU;
+	if (ctx.current_entry->prompt)
+		ctx.current_entry->prompt->type = P_MENU;
 	else
 		zconf_error("menuconfig statement without prompt");
 	printd(DEBUG_PARSE, "%s:%d:endconfig\n", zconf_curname(), zconf_lineno());
@@ -218,7 +218,7 @@ config_option: T_PROMPT T_WORD_QUOTE if_expr T_EOL
 
 config_option: T_TRANSITIONAL T_EOL
 {
-	parse_ctx.current_entry->sym->flags |= SYMBOL_TRANS;
+	ctx.current_entry->sym->flags |= SYMBOL_TRANS;
 	printd(DEBUG_PARSE, "%s:%d:transitional\n", zconf_curname(), zconf_lineno());
 };
 
@@ -279,18 +279,18 @@ choice: T_CHOICE word_opt T_EOL
 
 choice_entry: choice choice_option_list
 {
-	if (!parse_ctx.current_entry->prompt) {
+	if (!ctx.current_entry->prompt) {
 		fprintf(stderr, "%s:%d: error: choice must have a prompt\n",
-			parse_ctx.current_entry->file->name, parse_ctx.current_entry->lineno);
+			ctx.current_entry->file->name, ctx.current_entry->lineno);
 		yynerrs++;
 	}
 	$$ = menu_add_menu();
-	parse_ctx.current_choice = parse_ctx.current_entry;
+	ctx.current_choice = ctx.current_entry;
 };
 
 choice_end: end
 {
-	parse_ctx.current_choice = NULL;
+	ctx.current_choice = NULL;
 	if (zconf_endtoken($1, "choice")) {
 		menu_end_menu();
 		printd(DEBUG_PARSE, "%s:%d:endchoice\n", zconf_curname(), zconf_lineno());
@@ -322,7 +322,7 @@ choice_option: logic_type prompt_stmt_opt T_EOL
 
 choice_option: T_OPTIONAL T_EOL
 {
-	parse_ctx.current_entry->sym->flags |= SYMBOL_OPTIONAL;
+	ctx.current_entry->sym->flags |= SYMBOL_OPTIONAL;
 	printd(DEBUG_PARSE, "%s:%d:optional\n", zconf_curname(), zconf_lineno());
 };
 
@@ -437,18 +437,18 @@ help_start: T_HELP T_EOL
 
 help: help_start T_HELPTEXT
 {
-	if (parse_ctx.current_entry->help) {
-		free(parse_ctx.current_entry->help);
+	if (ctx.current_entry->help) {
+		free(ctx.current_entry->help);
 		zconf_error("'%s' defined with more than one help text",
-			    parse_ctx.current_entry->sym->name ?: "<choice>");
+			    ctx.current_entry->sym->name ?: "<choice>");
 	}
 
 	/* Is the help text empty or all whitespace? */
 	if ($2[strspn($2, " \f\n\r\t\v")] == '\0')
 		zconf_error("'%s' defined with blank help text",
-			    parse_ctx.current_entry->sym->name ?: "<choice>");
+			    ctx.current_entry->sym->name ?: "<choice>");
 
-	parse_ctx.current_entry->help = $2;
+	ctx.current_entry->help = $2;
 };
 
 /* depends option */
@@ -624,7 +624,7 @@ void conf_parse(const char *name)
 
 	if (getenv("ZCONF_DEBUG"))
 		yydebug = 1;
-	yy::parser parser;
+	yy::parser parser(kconf.ctx);
 	parser.set_debug_level(yydebug);
 	parser.parse();
 
@@ -632,23 +632,23 @@ void conf_parse(const char *name)
 	variable_all_del();
 
 	if (yynerrs)
-		exit(1);
-	if (!modules_sym)
-		modules_sym = sym_find( "n" );
+		throw FatalError();
+	if (!kconf.modules_sym)
+		kconf.modules_sym = sym_find( "n" );
 
-	if (!menu_has_prompt(&rootmenu)) {
-		parse_ctx.current_entry = &rootmenu;
+	if (!menu_has_prompt(&kconf.root)) {
+		kconf.ctx.current_entry = &kconf.root;
 		menu_add_prompt(P_MENU, const_cast<char*>("Main menu"), NULL);
 	}
 
-	menu_finalize(&rootmenu);
+	menu_finalize(&kconf.root);
 	for (struct symbol *sym : all_symbols()) {
 		if (sym_check_deps(sym))
 			yynerrs++;
 	}
-	yynerrs += transitional_check_menus(&rootmenu);
+	yynerrs += transitional_check_menus(&kconf.root);
 	if (yynerrs)
-		exit(1);
+		throw FatalError();
 	sym_set_change_count(1);
 }
 
@@ -661,11 +661,11 @@ static bool zconf_endtoken(const char *tokenname,
 		yynerrs++;
 		return false;
 	}
-	if (parse_ctx.current_menu->file != parse_ctx.current_file) {
+	if (kconf.ctx.current_menu->file != kconf.ctx.current_file) {
 		zconf_error("'%s' in different file than '%s'",
 			    tokenname, expected_tokenname);
 		fprintf(stderr, "%s:%d: location of the '%s'\n",
-			parse_ctx.current_menu->file->name, parse_ctx.current_menu->lineno,
+			kconf.ctx.current_menu->file->name, kconf.ctx.current_menu->lineno,
 			expected_tokenname);
 		yynerrs++;
 		return false;
@@ -854,10 +854,10 @@ void zconfdump(FILE *out)
 			fputs("\nendmenu\n", out);
 	};
 
-	for (auto &child_owner : rootmenu.children)
+	for (auto &child_owner : kconf.root.children)
 		walk(child_owner.get());
-	if (!rootmenu.children.empty() && rootmenu.prompt &&
-	    rootmenu.prompt->type == P_MENU)
+	if (!kconf.root.children.empty() && kconf.root.prompt &&
+	    kconf.root.prompt->type == P_MENU)
 		fputs("\nendmenu\n", out);
 }
 
