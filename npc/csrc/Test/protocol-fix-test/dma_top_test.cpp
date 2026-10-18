@@ -10,6 +10,12 @@ using DUT = Vysyx_26030103;
 
 namespace {
 
+// DMA 入站属性透传的探针常量（CPU 自身流量保持 0）。
+constexpr std::uint8_t kDmaAwCache = 0x3;
+constexpr std::uint8_t kDmaAwQos = 0x7;
+constexpr std::uint8_t kDmaArCache = 0xa;
+constexpr std::uint8_t kDmaArQos = 0x6;
+
 void defaults(DUT &dut) {
   dut.clock = 0;
   dut.reset = 0;
@@ -146,12 +152,16 @@ void accept_forwarded_dma_ar(DUT &dut, std::uint32_t address,
                 dut.io_master_arlen == length &&
                 dut.io_master_arsize == 2 &&
                 dut.io_master_arburst == 1 &&
-                dut.io_master_arprot == prot,
-            "forwarded DMA AR payload changed");
+                dut.io_master_arprot == prot &&
+                dut.io_master_arcache == kDmaArCache &&
+                dut.io_master_arqos == kDmaArQos,
+            "forwarded DMA AR payload/attributes changed");
       // Hold once to exercise the top-level AR backpressure path.
       tick(dut);
       check(dut.io_master_arvalid && dut.io_master_arid == 2 &&
-                dut.io_master_araddr == address,
+                dut.io_master_araddr == address &&
+                dut.io_master_arcache == kDmaArCache &&
+                dut.io_master_arqos == kDmaArQos,
             "forwarded DMA AR was not stable while ARREADY was low");
       dut.io_master_arready = 1;
       tick(dut);
@@ -212,6 +222,8 @@ void test_chiplink_read_proxy(DUT &dut) {
   dut.io_slave_arsize = 2;
   dut.io_slave_arburst = 1;
   dut.io_slave_arprot = 5;
+  dut.io_slave_arcache = kDmaArCache;
+  dut.io_slave_arqos = kDmaArQos;
   dut.io_slave_arvalid = 1;
   accept_slave_ar(dut);
   accept_forwarded_dma_ar(dut, address, 2, 5);
@@ -230,8 +242,10 @@ void accept_forwarded_dma_write(DUT &dut, std::uint32_t address,
     if (!aw_done && dut.io_master_awvalid) {
       check(dut.io_master_awid == 2 && dut.io_master_awaddr == address &&
                 dut.io_master_awlen == 0 && dut.io_master_awsize == 2 &&
-                dut.io_master_awprot == prot,
-            "forwarded DMA AW payload/ID was incorrect");
+                dut.io_master_awprot == prot &&
+                dut.io_master_awcache == kDmaAwCache &&
+                dut.io_master_awqos == kDmaAwQos,
+            "forwarded DMA AW payload/attributes was incorrect");
       dut.io_master_awready = 1;
     }
     if (!w_done && dut.io_master_wvalid) {
@@ -266,6 +280,8 @@ void perform_chiplink_write(DUT &dut, std::uint32_t address,
   dut.io_slave_awsize = 2;
   dut.io_slave_awburst = 1;
   dut.io_slave_awprot = 3;
+  dut.io_slave_awcache = kDmaAwCache;
+  dut.io_slave_awqos = kDmaAwQos;
   dut.io_slave_awvalid = 1;
   dut.io_slave_wdata = data;
   dut.io_slave_wstrb = 0xf;

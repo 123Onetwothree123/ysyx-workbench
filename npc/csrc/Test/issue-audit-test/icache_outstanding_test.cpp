@@ -197,11 +197,12 @@ int main(int argc, char **argv) {
                             "response " + std::to_string(index) +
                                 " data mismatch");
                     }
-                    // --- 5) 从机违反协议（永不发 RLAST）的现状 ---
-                    // AXI 要求从机必须给 RLAST；这里记录当前实现的行为：
-                    // 缺 RLAST 会在预期拍数后作废整行并进入 rf_drain，而
-                    // rf_drain 只等 RVALID&&RLAST，没有超时；flush/kill 也不
-                    // 处理该状态。若将来加入 drain 超时，本用例应改为断言恢复。
+                    // --- 5) 从机违反协议（永不发 RLAST）：drain 超时后恢复 ---
+                    // AXI 要求从设备必须给 RLAST。缺 RLAST 会在预期拍数后
+                    // 作废整行并进入 rf_drain。drain 现在有超时（1024 拍）：
+                    // 超时后转入 rf_drain_fault——继续吸收迟到拍防止被后续
+                    // 事务误收，同时新取指被受理并直接以故障响应结束，不再
+                    // 整核挂死；迟到的 RLAST 会让总线重新同步。
                     {
                       DUT stuck;
                       defaults(stuck);
@@ -234,7 +235,7 @@ int main(int argc, char **argv) {
                       }
                       stuck.eval();
 
-                      // flush/kill 不能把它拉回来；后续取指持续被阻塞。
+                      // 超时之前：flush/kill 拉不回来，取指持续被阻塞。
                       stuck.io_flush = 1;
                       tick(stuck);
                       stuck.io_flush = 0;
@@ -245,25 +246,46 @@ int main(int argc, char **argv) {
                       stuck.eval();
                       for (int cycle = 0; cycle < 8; ++cycle) {
                         check(!stuck.io_fetch_ready,
-                              "stuck test: fetch unexpectedly recovered "
-                              "without RLAST");
+                              "stuck test: fetch recovered before the drain "
+                              "timeout");
                         tick(stuck);
                         stuck.eval();
                       }
 
-                      // 迟到的 RLAST 仍然可以重新同步（当前实现支持）。
+                      // 等 drain 超时后：新取指被受理，且不再发 AR，直接以
+                      // 故障响应结束。
+                      wait_until(stuck, [&] { return stuck.io_fetch_ready; },
+                                 "stuck test: drain timeout did not release "
+                                 "the front-end",
+                                 1200);
+                      check(!stuck.io_axi_AR_ARVALID,
+                            "stuck test: issued a new AR while the bus is "
+                            "faulted");
+                      wait_until(stuck, [&] { return stuck.io_resp_valid; },
+                                 "stuck test: faulted fetch produced no "
+                                 "response");
+                      check(stuck.io_resp_fault,
+                            "stuck test: faulted fetch was not marked as a "
+                            "fault");
+                      stuck.io_resp_ready = 1;
+                      tick(stuck);
+                      stuck.eval();
+
+                      // 迟到的 RLAST 让总线重新同步，前端恢复可用。
                       stuck.io_axi_R_RDATA = 0;
                       stuck.io_axi_R_RLAST = 1;
                       stuck.io_axi_R_RVALID = 1;
                       tick(stuck);
                       stuck.io_axi_R_RVALID = 0;
                       stuck.io_axi_R_RLAST = 0;
-                      stuck.io_fetch_valid = 0;
                       stuck.eval();
                       wait_until(stuck,
                                  [&] { return stuck.io_fetch_ready; },
-                                 "stuck test: late RLAST did not resynchronize",
-                                 32);
+                                 "stuck test: late RLAST did not "
+                                 "resynchronize",
+                                 64);
+                      stuck.io_fetch_valid = 0;
+                      stuck.eval();
                       stuck.final();
                     }
 

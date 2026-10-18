@@ -128,11 +128,23 @@ int main(int argc, char **argv) {
     }
 
     check(mul_result_seen, "MUL never produced a result");
+#ifdef TEST_FAST_MDU
+    // 快配置（booth/iter=4/split=2/early-out）：实测阻塞仅 3 拍——结构性
+    // 阻塞仍在（>0），但代价比生产配置（plain/iter=1，实测 32 拍）小一个
+    // 数量级。阈值放宽到 >=1 只断言"确实存在阻塞"。
+    check(blocked_cycles >= 1,
+#else
     check(blocked_cycles >= 16,
+#endif
           "expected the in-flight MDU to block the pipeline for many cycles, "
           "observed " + std::to_string(blocked_cycles));
-    std::cout << "[info] 独立 ADD 在 MUL 在飞期间被阻塞 " << blocked_cycles
-              << " 拍（MUL 延迟约 33 拍）\n";
+#ifdef TEST_FAST_MDU
+    std::cout << "[info] 快配置（booth/iter=4/early-out）：独立 ADD 在 MUL "
+              << "在飞期间被阻塞 " << blocked_cycles << " 拍\n";
+#else
+    std::cout << "[info] 生产配置（plain/iter=1）：独立 ADD 在 MUL 在飞期间"
+              << "被阻塞 " << blocked_cycles << " 拍（MUL 延迟约 33 拍）\n";
+#endif
     dut.final();
   });
 }

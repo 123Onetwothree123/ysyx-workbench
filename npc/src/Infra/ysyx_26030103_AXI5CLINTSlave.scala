@@ -102,6 +102,8 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
     RLastReg := io.AR.ARLEN === 0.U
     RValidReg := true.B
   }
+  // 读拍计数不得越过 ARLEN：越界意味着响应拍数计算错误（会多发拍）。
+  assert(ARBeatReg <= ARLenReg, "CLINT read beat counter exceeded ARLEN")
   when(RFire) {
     when(ARBeatReg === ARLenReg) {
       RValidReg := false.B

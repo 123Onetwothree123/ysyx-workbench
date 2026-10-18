@@ -435,6 +435,8 @@ class ysyx_26030103_LSU(
   io.DataBus.AW.AWSIZE := AXISize // 接soc改的
   io.DataBus.AW.AWBURST := 1.U
   io.DataBus.AW.AWPROT := 0.U
+  io.DataBus.AW.AWCACHE := 0.U
+  io.DataBus.AW.AWQOS := 0.U
   io.DataBus.W.WVALID := false.B
   io.DataBus.W.WDATA := 0.U
   io.DataBus.W.WSTRB := 0.U
@@ -447,6 +449,8 @@ class ysyx_26030103_LSU(
   io.DataBus.AR.ARSIZE := AXISize
   io.DataBus.AR.ARBURST := 1.U
   io.DataBus.AR.ARPROT := 0.U
+  io.DataBus.AR.ARCACHE := 0.U
+  io.DataBus.AR.ARQOS := 0.U
   io.DataBus.R.RREADY := false.B
   io.Complete := TransactionComplete
   // 所有 store 都先进入写缓冲，但只有属于该指令的 B 响应成功后才能退休。
@@ -768,6 +772,8 @@ class ysyx_26030103_LSU(
       io.DataBus.AR.ARSIZE := DCache.io.AXI.AR.ARSIZE
       io.DataBus.AR.ARBURST := DCache.io.AXI.AR.ARBURST
       io.DataBus.AR.ARPROT := DCache.io.AXI.AR.ARPROT
+      io.DataBus.AR.ARCACHE := DCache.io.AXI.AR.ARCACHE
+      io.DataBus.AR.ARQOS := DCache.io.AXI.AR.ARQOS
     }
     DCache.io.AXI.AR.ARREADY := Mux(
       DCacheBusActive,

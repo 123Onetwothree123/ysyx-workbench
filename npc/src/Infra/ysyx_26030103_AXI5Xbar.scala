@@ -126,6 +126,8 @@ class ysyx_26030103_AXI5Xbar(
   val ARSIZEReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(2.U(3.W))))
   val ARBURSTReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(2.W))))
   val ARPROTReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(3.W))))
+  val ARCACHEReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(4.W))))
+  val ARQOSReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(4.W))))
   val ReadDECERRBeatReg = RegInit(
     VecInit(Seq.fill(ReadSlotCount)(0.U(8.W)))
   )
@@ -147,6 +149,8 @@ class ysyx_26030103_AXI5Xbar(
   val AWSIZEReg = RegInit(2.U(3.W))
   val AWBURSTReg = RegInit(0.U(2.W))
   val AWPROTReg = RegInit(0.U(3.W))
+  val AWCACHEReg = RegInit(0.U(4.W))
+  val AWQOSReg = RegInit(0.U(4.W))
   val WDataReg = RegInit(0.U(32.W))
   val WSTRBReg = RegInit(0.U(4.W))
   val WLASTReg = RegInit(false.B)
@@ -178,6 +182,8 @@ class ysyx_26030103_AXI5Xbar(
   io.SoCBus.AW.AWSIZE := 2.U
   io.SoCBus.AW.AWBURST := 0.U
   io.SoCBus.AW.AWPROT := 0.U
+  io.SoCBus.AW.AWCACHE := 0.U
+  io.SoCBus.AW.AWQOS := 0.U
   io.SoCBus.W.WVALID := false.B
   io.SoCBus.W.WDATA := 0.U
   io.SoCBus.W.WSTRB := 0.U
@@ -190,6 +196,8 @@ class ysyx_26030103_AXI5Xbar(
   io.SoCBus.AR.ARSIZE := 2.U
   io.SoCBus.AR.ARBURST := 0.U
   io.SoCBus.AR.ARPROT := 0.U
+  io.SoCBus.AR.ARCACHE := 0.U
+  io.SoCBus.AR.ARQOS := 0.U
   io.SoCBus.R.RREADY := false.B
   io.CLINT.AW.AWVALID := false.B
   io.CLINT.AW.AWID := 0.U
@@ -198,6 +206,8 @@ class ysyx_26030103_AXI5Xbar(
   io.CLINT.AW.AWSIZE := 2.U
   io.CLINT.AW.AWBURST := 0.U
   io.CLINT.AW.AWPROT := 0.U
+  io.CLINT.AW.AWCACHE := 0.U
+  io.CLINT.AW.AWQOS := 0.U
   io.CLINT.W.WVALID := false.B
   io.CLINT.W.WDATA := 0.U
   io.CLINT.W.WSTRB := 0.U
@@ -210,6 +220,8 @@ class ysyx_26030103_AXI5Xbar(
   io.CLINT.AR.ARSIZE := 2.U
   io.CLINT.AR.ARBURST := 0.U
   io.CLINT.AR.ARPROT := 0.U
+  io.CLINT.AR.ARCACHE := 0.U
+  io.CLINT.AR.ARQOS := 0.U
   io.CLINT.R.RREADY := false.B
   val InAWFire = io.in.AW.AWVALID && InAWReady
   val InWFire = io.in.W.WVALID && InWReady
@@ -241,6 +253,8 @@ class ysyx_26030103_AXI5Xbar(
     AWSIZEReg := io.in.AW.AWSIZE
     AWBURSTReg := io.in.AW.AWBURST
     AWPROTReg := io.in.AW.AWPROT
+    AWCACHEReg := io.in.AW.AWCACHE
+    AWQOSReg := io.in.AW.AWQOS
     WriteTargetReg := decode(
       io.in.AW.AWADDR,
       io.in.AW.AWLEN,
@@ -321,6 +335,8 @@ class ysyx_26030103_AXI5Xbar(
       io.SoCBus.AW.AWSIZE := AWSIZEReg
       io.SoCBus.AW.AWBURST := AWBURSTReg
       io.SoCBus.AW.AWPROT := AWPROTReg
+      io.SoCBus.AW.AWCACHE := AWCACHEReg
+      io.SoCBus.AW.AWQOS := AWQOSReg
 
       io.SoCBus.W.WVALID := Mux(UseBufferedW, true.B, StreamW && io.in.W.WVALID)
       io.SoCBus.W.WDATA := Mux(UseBufferedW, WDataReg, io.in.W.WDATA)
@@ -359,6 +375,8 @@ class ysyx_26030103_AXI5Xbar(
       io.CLINT.AW.AWSIZE := AWSIZEReg
       io.CLINT.AW.AWBURST := AWBURSTReg
       io.CLINT.AW.AWPROT := AWPROTReg
+      io.CLINT.AW.AWCACHE := AWCACHEReg
+      io.CLINT.AW.AWQOS := AWQOSReg
 
       io.CLINT.W.WVALID := Mux(UseBufferedW, true.B, StreamW && io.in.W.WVALID)
       io.CLINT.W.WDATA := Mux(UseBufferedW, WDataReg, io.in.W.WDATA)
@@ -406,6 +424,14 @@ class ysyx_26030103_AXI5Xbar(
       io.in.B.BVALID := io.SoCBus.B.BVALID
       io.in.B.BRESP := io.SoCBus.B.BRESP
       io.SoCBus.B.BREADY := io.in.B.BREADY
+      // B响应没有地址，ID必须与本级发出的AWID一致；错配说明从设备违规，
+      // 提前在交叉开关处报错，避免把故障点误定位到上一级仲裁器。
+      when(io.SoCBus.B.BVALID) {
+        assert(
+          io.SoCBus.B.BID === AWIDReg,
+          "SoCBus returned a write response with an unknown ID"
+        )
+      }
 
       when(io.SoCBus.B.BVALID && io.in.B.BREADY) {
         AWValidReg := false.B
@@ -419,6 +445,12 @@ class ysyx_26030103_AXI5Xbar(
       io.in.B.BVALID := io.CLINT.B.BVALID
       io.in.B.BRESP := io.CLINT.B.BRESP
       io.CLINT.B.BREADY := io.in.B.BREADY
+      when(io.CLINT.B.BVALID) {
+        assert(
+          io.CLINT.B.BID === AWIDReg,
+          "CLINT returned a write response with an unknown ID"
+        )
+      }
 
       when(io.CLINT.B.BVALID && io.in.B.BREADY) {
         AWValidReg := false.B
@@ -465,6 +497,8 @@ class ysyx_26030103_AXI5Xbar(
     ARSIZEReg(IncomingReadID) := io.in.AR.ARSIZE
     ARBURSTReg(IncomingReadID) := io.in.AR.ARBURST
     ARPROTReg(IncomingReadID) := io.in.AR.ARPROT
+    ARCACHEReg(IncomingReadID) := io.in.AR.ARCACHE
+    ARQOSReg(IncomingReadID) := io.in.AR.ARQOS
     ReadDECERRBeatReg(IncomingReadID) := 0.U
     ReadSlotState(IncomingReadID) := Mux(
       target === TargetInvalid,
@@ -507,6 +541,8 @@ class ysyx_26030103_AXI5Xbar(
     io.SoCBus.AR.ARSIZE := ARSIZEReg(SoCRequestID)
     io.SoCBus.AR.ARBURST := ARBURSTReg(SoCRequestID)
     io.SoCBus.AR.ARPROT := ARPROTReg(SoCRequestID)
+    io.SoCBus.AR.ARCACHE := ARCACHEReg(SoCRequestID)
+    io.SoCBus.AR.ARQOS := ARQOSReg(SoCRequestID)
     when(SoCRequestFire) {
       ReadSlotState(SoCRequestID) := ReadSlotResponse
     }
@@ -519,6 +555,8 @@ class ysyx_26030103_AXI5Xbar(
     io.CLINT.AR.ARSIZE := ARSIZEReg(CLINTRequestID)
     io.CLINT.AR.ARBURST := ARBURSTReg(CLINTRequestID)
     io.CLINT.AR.ARPROT := ARPROTReg(CLINTRequestID)
+    io.CLINT.AR.ARCACHE := ARCACHEReg(CLINTRequestID)
+    io.CLINT.AR.ARQOS := ARQOSReg(CLINTRequestID)
     when(CLINTRequestFire) {
       ReadSlotState(CLINTRequestID) := ReadSlotResponse
     }

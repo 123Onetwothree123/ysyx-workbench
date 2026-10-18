@@ -142,6 +142,8 @@ class ysyx_26030103_DCacheSRAM(
   io.AXI.AW.AWSIZE := 2.U
   io.AXI.AW.AWBURST := 1.U
   io.AXI.AW.AWPROT := 0.U
+  io.AXI.AW.AWCACHE := 0.U
+  io.AXI.AW.AWQOS := 0.U
   io.AXI.W.WVALID := false.B
   io.AXI.W.WDATA := 0.U
   io.AXI.W.WSTRB := 0.U
@@ -154,6 +156,8 @@ class ysyx_26030103_DCacheSRAM(
   io.AXI.AR.ARSIZE := 2.U
   io.AXI.AR.ARBURST := 1.U
   io.AXI.AR.ARPROT := 0.U
+  io.AXI.AR.ARCACHE := 0.U
+  io.AXI.AR.ARQOS := 0.U
   io.AXI.R.RREADY := false.B
   // ResponseValid is a one-entry elastic response slot.  When the consumer
   // removes the old response in this cycle, a new request may reuse the slot

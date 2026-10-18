@@ -9,6 +9,8 @@ class ysyx_26030103_AXI5AR(AddressWidth: Int = 32, IdWidth: Int = 4)
   val ARSIZE = Output(UInt(3.W))
   val ARBURST = Output(UInt(2.W))
   val ARPROT = Output(UInt(3.W)) // 保护类型
+  val ARCACHE = Output(UInt(4.W)) // 缓存属性（DMA代理入站请求透传）
+  val ARQOS = Output(UInt(4.W)) // 服务质量（DMA代理入站请求透传）
   val ARVALID = Output(Bool()) // 读地址有效
   val ARREADY = Input(Bool()) // 读地址就绪
 }

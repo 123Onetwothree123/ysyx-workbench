@@ -148,9 +148,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   io.master_awsize := soc.AW.AWSIZE
   io.master_awburst := soc.AW.AWBURST
   io.master_awlock := 0.U
-  io.master_awcache := 0.U
+  io.master_awcache := soc.AW.AWCACHE
   io.master_awprot := soc.AW.AWPROT
-  io.master_awqos := 0.U
+  io.master_awqos := soc.AW.AWQOS
   soc.AW.AWREADY := io.master_awready
 
   io.master_wvalid := soc.W.WVALID
@@ -171,9 +171,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   io.master_arsize := soc.AR.ARSIZE
   io.master_arburst := soc.AR.ARBURST
   io.master_arlock := 0.U
-  io.master_arcache := 0.U
+  io.master_arcache := soc.AR.ARCACHE
   io.master_arprot := soc.AR.ARPROT
-  io.master_arqos := 0.U
+  io.master_arqos := soc.AR.ARQOS
   soc.AR.ARREADY := io.master_arready
 
   io.master_rready := soc.R.RREADY
@@ -196,6 +196,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     arbiter.io.dma.AW.AWSIZE := io.slave_awsize
     arbiter.io.dma.AW.AWBURST := io.slave_awburst
     arbiter.io.dma.AW.AWPROT := io.slave_awprot
+    arbiter.io.dma.AW.AWCACHE := io.slave_awcache
+    arbiter.io.dma.AW.AWQOS := io.slave_awqos
     io.slave_awready := arbiter.io.dma.AW.AWREADY
 
     arbiter.io.dma.W.WVALID := io.slave_wvalid
@@ -216,6 +218,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     arbiter.io.dma.AR.ARSIZE := io.slave_arsize
     arbiter.io.dma.AR.ARBURST := io.slave_arburst
     arbiter.io.dma.AR.ARPROT := io.slave_arprot
+    arbiter.io.dma.AR.ARCACHE := io.slave_arcache
+    arbiter.io.dma.AR.ARQOS := io.slave_arqos
     io.slave_arready := arbiter.io.dma.AR.ARREADY
 
     arbiter.io.dma.R.RREADY := io.slave_rready
@@ -233,6 +237,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     ErrorSlave.io.AW.AWSIZE := io.slave_awsize
     ErrorSlave.io.AW.AWBURST := io.slave_awburst
     ErrorSlave.io.AW.AWPROT := io.slave_awprot
+    ErrorSlave.io.AW.AWCACHE := io.slave_awcache
+    ErrorSlave.io.AW.AWQOS := io.slave_awqos
     io.slave_awready := ErrorSlave.io.AW.AWREADY
 
     ErrorSlave.io.W.WVALID := io.slave_wvalid
@@ -253,6 +259,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     ErrorSlave.io.AR.ARSIZE := io.slave_arsize
     ErrorSlave.io.AR.ARBURST := io.slave_arburst
     ErrorSlave.io.AR.ARPROT := io.slave_arprot
+    ErrorSlave.io.AR.ARCACHE := io.slave_arcache
+    ErrorSlave.io.AR.ARQOS := io.slave_arqos
     io.slave_arready := ErrorSlave.io.AR.ARREADY
 
     ErrorSlave.io.R.RREADY := io.slave_rready
@@ -272,6 +280,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     arbiter.io.dma.AW.AWSIZE := 0.U
     arbiter.io.dma.AW.AWBURST := 0.U
     arbiter.io.dma.AW.AWPROT := 0.U
+    arbiter.io.dma.AW.AWCACHE := 0.U
+    arbiter.io.dma.AW.AWQOS := 0.U
     arbiter.io.dma.W.WVALID := false.B
     arbiter.io.dma.W.WDATA := 0.U
     arbiter.io.dma.W.WSTRB := 0.U
@@ -284,6 +294,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     arbiter.io.dma.AR.ARSIZE := 0.U
     arbiter.io.dma.AR.ARBURST := 0.U
     arbiter.io.dma.AR.ARPROT := 0.U
+    arbiter.io.dma.AR.ARCACHE := 0.U
+    arbiter.io.dma.AR.ARQOS := 0.U
     arbiter.io.dma.R.RREADY := false.B
   }
   xbar.io.CLINT.AW <> clint.io.AW

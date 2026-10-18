@@ -94,12 +94,18 @@ class ysyx_26030103_ICacheSRAM(
   val access_fault_reg = RegInit(false.B)
   val access_fault_resp_reg = RegInit(0.U(2.W))
   // refill状态机(单MSHR: 同一时刻只处理一个缺失)
-  val rfstates = Enum(4)
+  val rfstates = Enum(5)
   val rf_idle = rfstates(0)
   val rf_req = rfstates(1)
   val rf_resp = rfstates(2)
   val rf_drain = rfstates(3)
+  val rf_drain_fault = rfstates(4)
   val rfstate = RegInit(rf_idle)
+  // 排空超时（AXI要求从设备给RLAST；违规时不能永久停在排空态）。
+  // 超时后转入 rf_drain_fault：继续吸收迟到拍防串扰，同时让取指以
+  // 故障响应继续推进，而不是整核挂死。
+  val drain_timer = RegInit(0.U(10.W))
+  val bus_fault = RegInit(false.B)
   // refill专属寄存器。refill期间只能受理同一line中已返回的word，
   // 未返回word和其他line在单MSHR结构下继续反压。
   val ref_addr = Reg(UInt(AddressWidth.W))
@@ -160,6 +166,8 @@ class ysyx_26030103_ICacheSRAM(
   io.axi.AW.AWLEN := 0.U
   io.axi.AW.AWSIZE := 2.U
   io.axi.AW.AWBURST := 1.U
+  io.axi.AW.AWCACHE := 0.U
+  io.axi.AW.AWQOS := 0.U
   io.axi.AW.AWPROT := 0.U
   io.axi.W.WVALID := false.B
   io.axi.W.WDATA := 0.U
@@ -173,6 +181,8 @@ class ysyx_26030103_ICacheSRAM(
   io.axi.AR.ARSIZE := 2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
+  io.axi.AR.ARCACHE := 0.U
+  io.axi.AR.ARQOS := 0.U
   io.axi.R.RREADY := true.B // 始终接收并排空 AXI 响应
   // 响应级: 命中在Bypass模式第一拍直接旁路SRAM输出、
   // 否则等数据锁存就绪后再响应(晚一拍);
@@ -191,7 +201,7 @@ class ysyx_26030103_ICacheSRAM(
     !io.flush &&
       !io.kill &&
       response_slot_available &&
-      (rfstate === rf_idle || request_hit)
+      (rfstate === rf_idle || rfstate === rf_drain_fault || request_hit)
   val accept = io.fetch_valid && io.fetch_ready
   io.perf_hit := accept && request_hit
   // 非缓存取指（ICACHE=n 或未来的可执行不可缓存区）不是 miss。
@@ -215,6 +225,13 @@ class ysyx_26030103_ICacheSRAM(
     access_fault_resp_reg := Mux(executable, 0.U, 3.U)
     s1_valid := true.B
     s1_waits := false.B
+    // 总线已超时：不再发AR，直接以故障响应结束本次取指（命中仍可正常
+    // 服务，数据在阵列里不需要总线）。
+    when(bus_fault && executable && !request_hit) {
+      s1_ready := true.B
+      access_fault_reg := true.B
+      access_fault_resp_reg := 2.U
+    }
   }
   // 排队缺失: refill空闲时启动; 启动前重查命中(在飞refill可能刚把这行填好)
   val queued_miss = s1_valid && !s1_hit && !s1_ready
@@ -224,7 +241,8 @@ class ysyx_26030103_ICacheSRAM(
       AddressWidth - 1,
       IndexBits + BlockSizeLog2
     )
-  when(queued_miss && rfstate === rf_idle && !io.kill && !io.flush) {
+  when(queued_miss && rfstate === rf_idle && !io.kill && !io.flush &&
+      !bus_fault) {
     when(recheck_hit) {
       s1_hit := true.B
     }.otherwise {
@@ -405,6 +423,7 @@ class ysyx_26030103_ICacheSRAM(
               s1_ready := true.B
             }
             rfstate := rf_drain
+            drain_timer := 0.U
           }
         }.elsewhen(ref_cacheable) {
           // 提前RLAST后的补取是独立单拍事务，每一拍也必须以RLAST结束。
@@ -432,6 +451,7 @@ class ysyx_26030103_ICacheSRAM(
               s1_ready := true.B
             }
             rfstate := rf_drain
+            drain_timer := 0.U
           }
         }.otherwise {
           // 非缓存区: 一词一拍, 当前拍即结束
@@ -453,6 +473,7 @@ class ysyx_26030103_ICacheSRAM(
               s1_ready := true.B
             }
             rfstate := rf_drain
+            drain_timer := 0.U
           }
         }
       }
@@ -462,6 +483,21 @@ class ysyx_26030103_ICacheSRAM(
       when(io.axi.R.RVALID && io.axi.R.RLAST) {
         discard := false.B
         burst_mode := false.B
+        rfstate := rf_idle
+      }.elsewhen(drain_timer === 1023.U) {
+        bus_fault := true.B
+        drain_timer := 0.U
+        rfstate := rf_drain_fault
+      }.otherwise {
+        drain_timer := drain_timer + 1.U
+      }
+    }
+    is(rf_drain_fault) {
+      // 继续以 RREADY 吸收违规从设备的迟到拍，直到 RLAST 使总线重新同步；
+      // 期间新取指由受理路径直接以故障响应结束。
+      io.axi.R.RREADY := true.B
+      when(io.axi.R.RVALID && io.axi.R.RLAST) {
+        bus_fault := false.B
         rfstate := rf_idle
       }
     }

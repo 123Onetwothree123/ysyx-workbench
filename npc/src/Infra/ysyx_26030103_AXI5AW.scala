@@ -9,6 +9,8 @@ class ysyx_26030103_AXI5AW(AddressWidth: Int = 32, IdWidth: Int = 4)
   val AWSIZE = Output(UInt(3.W))
   val AWBURST = Output(UInt(2.W))
   val AWPROT = Output(UInt(3.W)) // 保护的
+  val AWCACHE = Output(UInt(4.W)) // 缓存属性（DMA代理入站请求透传）
+  val AWQOS = Output(UInt(4.W)) // 服务质量（DMA代理入站请求透传）
   val AWVALID = Output(Bool()) // 有效
   val AWREADY = Input(Bool()) // 就绪
 }

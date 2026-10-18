@@ -31,18 +31,21 @@ AXIRAM_BIN := $(BIN_DIR)/axiram_window_test
 BTB2_BIN := $(BIN_DIR)/btb_twoway_test
 MULCFG_BIN := $(BIN_DIR)/mul_config_core_test
 MDU_BLOCK_BIN := $(BIN_DIR)/mdu_pipeline_block_test
+MDU_BLOCK_FAST_BIN := $(BIN_DIR)/mdu_pipeline_block_fast_test
 FULLCORE_BIN := $(BIN_DIR)/fullcore_stall_test
 PERFSEM_BIN := $(BIN_DIR)/perf_counter_semantics_test
 XBAR_HOL_BIN := $(BIN_DIR)/xbar_r_hol_test
 CHIPLINK_RTL := $(BUILD_DIR)/rtl-chiplink
+PROD_RTL := $(BUILD_DIR)/rtl-prod
 DMA_WINDOW_BIN := $(BIN_DIR)/dma_coherence_window_test
+ICACHE_SRAM_BIN := $(BIN_DIR)/icache_sram_test
 DIVCFG_BIN := $(BIN_DIR)/div_config_core_test
 DCACHE_REFILL_REG_BIN := $(BIN_DIR)/dcache_refill_reg_test
 DCACHE_REFILL_SRAM_BIN := $(BIN_DIR)/dcache_refill_sram_test
 DCACHE_REFILL_NOBYPASS_BIN := $(BIN_DIR)/dcache_refill_nobypass_test
 BINS := $(IDU_BIN) $(IRQ_BIN) $(DCACHE_REG_BIN) $(DCACHE_SRAM_BIN) \
         $(DCACHE_NOBYPASS_BIN) $(ICACHE_BIN) $(ICACHE_SMALL_BIN) \
-        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(FULLCORE_BIN) $(PERFSEM_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN) $(DMA_WINDOW_BIN)
+        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(MDU_BLOCK_FAST_BIN) $(FULLCORE_BIN) $(PERFSEM_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN) $(DMA_WINDOW_BIN) $(ICACHE_SRAM_BIN)
 
 .PHONY: all test run rtl-check clean
 
@@ -360,3 +363,25 @@ $(DMA_WINDOW_TRACE_BIN): dma_coherence_window_test.cpp test_common.hpp \
 	  -CFLAGS '$(CXXFLAGS) -DDIAG_TRACE -DDIAG_DMA_AFTER_ALL' \
 	  -o $(abspath $@) \
 	  $(CHIPLINK_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
+
+# 生产配置（sram+sram, 32B/64sets）下的 ICacheSRAM 覆盖：先跑 ./elaborate-prod.sh
+$(ICACHE_SRAM_BIN): icache_sram_test.cpp test_common.hpp $(PROD_RTL)/ysyx_26030103.sv
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103_ICacheSRAM \
+	  --Mdir $(BUILD_DIR)/obj-icache-sram-audit \
+	  -I$(PROD_RTL) \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(PROD_RTL)/ysyx_26030103.sv icache_sram_test.cpp
+
+# 同一 EXU 叶子在"快 MDU 配置"（booth/iter=4/split=2/early-out）下的阻塞量化
+$(MDU_BLOCK_FAST_BIN): mdu_pipeline_block_test.cpp test_common.hpp $(MDUCFG_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103_EXU \
+	  --Mdir $(BUILD_DIR)/obj-mdu-block-fast-audit \
+	  -I$(MDUCFG_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DTEST_FAST_MDU' \
+	  -o $(abspath $@) \
+	  $(MDUCFG_RTL)/ysyx_26030103.sv mdu_pipeline_block_test.cpp

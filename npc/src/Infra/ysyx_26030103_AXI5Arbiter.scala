@@ -104,6 +104,8 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   io.memory.AW.AWSIZE := 2.U
   io.memory.AW.AWBURST := 0.U
   io.memory.AW.AWPROT := 0.U
+  io.memory.AW.AWCACHE := 0.U
+  io.memory.AW.AWQOS := 0.U
   io.memory.W.WVALID := false.B
   io.memory.W.WDATA := 0.U
   io.memory.W.WSTRB := 0.U
@@ -116,6 +118,8 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   io.memory.AR.ARSIZE := 2.U
   io.memory.AR.ARBURST := 0.U
   io.memory.AR.ARPROT := 0.U
+  io.memory.AR.ARCACHE := 0.U
+  io.memory.AR.ARQOS := 0.U
 
   // 读地址仲裁和基于ID的响应路由。
   val ifuReadOutstanding = RegInit(false.B)
@@ -172,6 +176,8 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     io.memory.AR.ARSIZE := io.lsu.AR.ARSIZE
     io.memory.AR.ARBURST := io.lsu.AR.ARBURST
     io.memory.AR.ARPROT := io.lsu.AR.ARPROT
+    io.memory.AR.ARCACHE := io.lsu.AR.ARCACHE
+    io.memory.AR.ARQOS := io.lsu.AR.ARQOS
     io.lsu.AR.ARREADY := io.memory.AR.ARREADY
   }.elsewhen(chooseDMA) {
     when(dmaARPermitted) {
@@ -182,6 +188,8 @@ class ysyx_26030103_AXI5Arbiter extends Module {
       io.memory.AR.ARSIZE := io.dma.AR.ARSIZE
       io.memory.AR.ARBURST := io.dma.AR.ARBURST
       io.memory.AR.ARPROT := io.dma.AR.ARPROT
+      io.memory.AR.ARCACHE := io.dma.AR.ARCACHE
+      io.memory.AR.ARQOS := io.dma.AR.ARQOS
       io.dma.AR.ARREADY := io.memory.AR.ARREADY
     }.otherwise {
       // 窗口外请求在本地接受并生成等长DECERR burst，绝不进入CPU Xbar。
@@ -195,6 +203,8 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     io.memory.AR.ARSIZE := io.ifu.AR.ARSIZE
     io.memory.AR.ARBURST := io.ifu.AR.ARBURST
     io.memory.AR.ARPROT := io.ifu.AR.ARPROT
+    io.memory.AR.ARCACHE := io.ifu.AR.ARCACHE
+    io.memory.AR.ARQOS := io.ifu.AR.ARQOS
     io.ifu.AR.ARREADY := io.memory.AR.ARREADY
   }
 
@@ -207,6 +217,21 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     heldReadGrant := Mux(chooseLSU, GrantLSU, Mux(chooseDMA, GrantDMA, GrantIFU))
   }.elsewhen(readGrantHeld && readAddressAccepted) {
     readGrantHeld := false.B
+  }
+  // AXI 要求 VALID 一旦提出必须保持到 READY：被授权方若在地址握手前撤销
+  // ARVALID，授权会永久锁死并静默阻塞其余两方。仿真断言把它变成显式错误。
+  when(readGrantHeld) {
+    assert(
+      MuxCase(
+        false.B,
+        Seq(
+          (heldReadGrant === GrantIFU) -> io.ifu.AR.ARVALID,
+          (heldReadGrant === GrantLSU) -> io.lsu.AR.ARVALID,
+          (heldReadGrant === GrantDMA) -> io.dma.AR.ARVALID
+        )
+      ),
+      "granted master dropped ARVALID before its address handshake"
+    )
   }
   when(readAddressFire && chooseLSU) {
     lsuReadOutstanding := true.B
@@ -409,6 +434,9 @@ class ysyx_26030103_AXI5Arbiter extends Module {
       io.memory.AW.AWSIZE := Mux(OwnerDMA, io.dma.AW.AWSIZE, io.lsu.AW.AWSIZE)
       io.memory.AW.AWBURST := Mux(OwnerDMA, io.dma.AW.AWBURST, io.lsu.AW.AWBURST)
       io.memory.AW.AWPROT := Mux(OwnerDMA, io.dma.AW.AWPROT, io.lsu.AW.AWPROT)
+      io.memory.AW.AWCACHE :=
+        Mux(OwnerDMA, io.dma.AW.AWCACHE, io.lsu.AW.AWCACHE)
+      io.memory.AW.AWQOS := Mux(OwnerDMA, io.dma.AW.AWQOS, io.lsu.AW.AWQOS)
       io.lsu.AW.AWREADY := io.memory.AW.AWREADY && !awDone && !OwnerDMA
       io.dma.AW.AWREADY := !awDone && OwnerDMA &&
         Mux(DMAAWPermitted, io.memory.AW.AWREADY, true.B)

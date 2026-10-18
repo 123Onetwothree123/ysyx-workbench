@@ -85,6 +85,9 @@ class ysyx_26030103_AXI5DMAErrorSlave(
     readLen := io.AR.ARLEN
     readBeat := 0.U
   }
+  // 读拍计数不得越过 ARLEN：越界意味着会多发响应拍。
+  assert(!readActive || readBeat <= readLen,
+         "DMA error slave read beat counter exceeded ARLEN")
   when(io.R.RVALID && io.R.RREADY) {
     when(io.R.RLAST) {
       readActive := false.B

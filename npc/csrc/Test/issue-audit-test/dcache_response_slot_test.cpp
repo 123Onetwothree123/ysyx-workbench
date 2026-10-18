@@ -170,6 +170,46 @@ static void test_store_conflict_same_cycle(DUT &dut, uint32_t line_base,
             std::to_string(after_resp));
 }
 
+// 命中 store 写镜像后，同线 load 必须读到新值。此前 store 镜像路径只在
+// reg 构建上被测过，SRAM 版的写口1没有覆盖。
+static void test_store_mirror_then_load(DUT &dut, uint32_t line_base,
+                                        const std::vector<uint32_t> &words) {
+  miss_and_refill(dut, line_base + 4U, words);
+  const uint32_t kAddr = line_base + 4U;
+  constexpr uint32_t kStored = 0x5A5AA5A5U;
+
+  // 命中 store（StoreValid=1、StoreResp=0）：时钟沿写入阵列/镜像。
+  dut.io_resp_ready = 0;
+  dut.io_StoreValid = 1;
+  dut.io_StoreResp = 0;
+  dut.io_StoreAddr = kAddr;
+  dut.io_StoreData = kStored;
+  dut.io_StoreStrb = 0xF;
+  tick(dut);
+  dut.io_StoreValid = 0;
+  dut.io_StoreStrb = 0;
+  dut.eval();
+
+  // 同线 load 必须看到新值。
+  dut.io_req_valid = 1;
+  dut.io_req_bits_addr = kAddr;
+  dut.io_req_bits_WidthSelect = 2;
+  dut.io_req_bits_signed = 0;
+  dut.eval();
+  check(dut.io_req_ready, "store 之后的同线 load 未被受理");
+  tick(dut);
+  dut.io_req_valid = 0;
+  wait_until(dut, [&] { return dut.io_resp_valid; },
+             "store 之后 load 没有响应");
+  check(!dut.io_resp_bits_fault, "store 之后 load 不应报故障");
+  check(dut.io_resp_bits_data == kStored,
+        "命中 store 写镜像后 load 未读到新值，得到 0x" +
+            std::to_string(dut.io_resp_bits_data));
+  dut.io_resp_ready = 1;
+  tick(dut);
+  dut.eval();
+}
+
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
   const std::string name =
@@ -230,6 +270,7 @@ int main(int argc, char **argv) {
                 std::to_string(expected));
     }
     test_store_conflict_same_cycle(dut, kLineBase + 0x40U, words);
+    test_store_mirror_then_load(dut, kLineBase + 0x80U, words);
 
     dut.final();
   });
