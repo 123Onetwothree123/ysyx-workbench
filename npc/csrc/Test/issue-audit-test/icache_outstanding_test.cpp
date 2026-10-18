@@ -197,6 +197,76 @@ int main(int argc, char **argv) {
                             "response " + std::to_string(index) +
                                 " data mismatch");
                     }
+                    // --- 5) 从机违反协议（永不发 RLAST）的现状 ---
+                    // AXI 要求从机必须给 RLAST；这里记录当前实现的行为：
+                    // 缺 RLAST 会在预期拍数后作废整行并进入 rf_drain，而
+                    // rf_drain 只等 RVALID&&RLAST，没有超时；flush/kill 也不
+                    // 处理该状态。若将来加入 drain 超时，本用例应改为断言恢复。
+                    {
+                      DUT stuck;
+                      defaults(stuck);
+                      reset(stuck);
+                      stuck.io_fetch_addr = 0x80000000U;
+                      stuck.io_fetch_valid = 1;
+                      stuck.io_resp_ready = 1;
+                      stuck.eval();
+                      check(stuck.io_fetch_ready,
+                            "stuck test: initial fetch was not accepted");
+                      tick(stuck);
+                      stuck.io_fetch_valid = 0;
+                      stuck.eval();
+
+                      wait_until(stuck,
+                                 [&] { return stuck.io_axi_AR_ARVALID; },
+                                 "stuck test: no refill AR");
+                      stuck.io_axi_AR_ARREADY = 1;
+                      tick(stuck);
+                      stuck.io_axi_AR_ARREADY = 0;
+
+                      // 预期拍数用完但从不给 RLAST。
+                      for (int beat = 0; beat < 8; ++beat) {
+                        stuck.io_axi_R_RDATA = 0x12340000U + beat;
+                        stuck.io_axi_R_RRESP = 0;
+                        stuck.io_axi_R_RLAST = 0;
+                        stuck.io_axi_R_RVALID = 1;
+                        tick(stuck);
+                        stuck.io_axi_R_RVALID = 0;
+                      }
+                      stuck.eval();
+
+                      // flush/kill 不能把它拉回来；后续取指持续被阻塞。
+                      stuck.io_flush = 1;
+                      tick(stuck);
+                      stuck.io_flush = 0;
+                      stuck.io_kill = 1;
+                      tick(stuck);
+                      stuck.io_kill = 0;
+                      stuck.io_fetch_valid = 1;
+                      stuck.eval();
+                      for (int cycle = 0; cycle < 8; ++cycle) {
+                        check(!stuck.io_fetch_ready,
+                              "stuck test: fetch unexpectedly recovered "
+                              "without RLAST");
+                        tick(stuck);
+                        stuck.eval();
+                      }
+
+                      // 迟到的 RLAST 仍然可以重新同步（当前实现支持）。
+                      stuck.io_axi_R_RDATA = 0;
+                      stuck.io_axi_R_RLAST = 1;
+                      stuck.io_axi_R_RVALID = 1;
+                      tick(stuck);
+                      stuck.io_axi_R_RVALID = 0;
+                      stuck.io_axi_R_RLAST = 0;
+                      stuck.io_fetch_valid = 0;
+                      stuck.eval();
+                      wait_until(stuck,
+                                 [&] { return stuck.io_fetch_ready; },
+                                 "stuck test: late RLAST did not resynchronize",
+                                 32);
+                      stuck.final();
+                    }
+
                     dut.final();
                   });
 }

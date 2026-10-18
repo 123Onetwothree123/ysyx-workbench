@@ -9,6 +9,8 @@ NOBYPASS_RTL := $(BUILD_DIR)/rtl-nobypass
 SMALLLINE_RTL := $(BUILD_DIR)/rtl-smallline
 GPC32_RTL := $(BUILD_DIR)/rtl-gpc32
 GPC43_RTL := $(BUILD_DIR)/rtl-gpc43
+BTB2_RTL := $(BUILD_DIR)/rtl-btb2
+MDUCFG_RTL := $(BUILD_DIR)/rtl-mdu-cfg
 BIN_DIR := $(BUILD_DIR)/bin
 
 VERILATOR ?= verilator
@@ -25,9 +27,16 @@ ICACHE_SMALL_BIN := $(BIN_DIR)/icache_smallline_test
 MUL_DEFAULT_BIN := $(BIN_DIR)/mul_gpc_default_test
 MUL_ALT_BIN := $(BIN_DIR)/mul_gpc_alt_test
 MCYCLE_BIN := $(BIN_DIR)/mcycle_semantics_test
+AXIRAM_BIN := $(BIN_DIR)/axiram_window_test
+BTB2_BIN := $(BIN_DIR)/btb_twoway_test
+MULCFG_BIN := $(BIN_DIR)/mul_config_core_test
+DIVCFG_BIN := $(BIN_DIR)/div_config_core_test
+DCACHE_REFILL_REG_BIN := $(BIN_DIR)/dcache_refill_reg_test
+DCACHE_REFILL_SRAM_BIN := $(BIN_DIR)/dcache_refill_sram_test
+DCACHE_REFILL_NOBYPASS_BIN := $(BIN_DIR)/dcache_refill_nobypass_test
 BINS := $(IDU_BIN) $(IRQ_BIN) $(DCACHE_REG_BIN) $(DCACHE_SRAM_BIN) \
         $(DCACHE_NOBYPASS_BIN) $(ICACHE_BIN) $(ICACHE_SMALL_BIN) \
-        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN)
+        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN)
 
 .PHONY: all test run rtl-check clean
 
@@ -36,7 +45,7 @@ all: $(BINS)
 # 先运行 ./elaborate-all.sh 与 ./elaborate-sram.sh 生成 RTL 快照。
 rtl-check:
 	@for dir in $(BASE_RTL) $(SRAM_RTL) $(NOBYPASS_RTL) $(SMALLLINE_RTL) \
-	            $(GPC32_RTL) $(GPC43_RTL); do \
+	            $(GPC32_RTL) $(GPC43_RTL) $(BTB2_RTL) $(MDUCFG_RTL); do \
 	  if [ ! -f "$$dir/ysyx_26030103.sv" ]; then \
 	    echo "缺少 RTL 快照 $$dir；先执行 ./elaborate-all.sh && ./elaborate-sram.sh" >&2; \
 	    exit 1; \
@@ -154,3 +163,73 @@ $(MCYCLE_BIN): mcycle_semantics_test.cpp test_common.hpp $(BASE_RTL)/ysyx_260301
 	  -CFLAGS '$(CXXFLAGS)' \
 	  -o $(abspath $@) \
 	  $(BASE_RTL)/ysyx_26030103.sv mcycle_semantics_test.cpp
+
+$(AXIRAM_BIN): axiram_window_test.cpp test_common.hpp $(BASE_RTL)/riscv32e_npc_AXIRAM.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) \
+	  --top-module riscv32e_npc_AXIRAM \
+	  --Mdir $(BUILD_DIR)/obj-axiram-audit \
+	  -I$(BASE_RTL) \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(BASE_RTL)/riscv32e_npc_AXIRAM.sv axiram_window_test.cpp
+
+$(BTB2_BIN): btb_twoway_test.cpp test_common.hpp $(BTB2_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) \
+	  --top-module ysyx_26030103_BTB \
+	  --Mdir $(BUILD_DIR)/obj-btb2-audit \
+	  -I$(BTB2_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DBTB_TWO_WAY' \
+	  -o $(abspath $@) \
+	  $(BTB2_RTL)/ysyx_26030103.sv btb_twoway_test.cpp
+
+$(DCACHE_REFILL_REG_BIN): dcache_refill_interaction_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103_DCacheReg \
+	  --Mdir $(BUILD_DIR)/obj-dcache-refill-reg \
+	  -I$(BASE_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DTEST_STORAGE_REG' \
+	  -o $(abspath $@) \
+	  $(BASE_RTL)/ysyx_26030103.sv dcache_refill_interaction_test.cpp
+
+$(DCACHE_REFILL_SRAM_BIN): dcache_refill_interaction_test.cpp test_common.hpp $(SRAM_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103_DCacheSRAM \
+	  --Mdir $(BUILD_DIR)/obj-dcache-refill-sram \
+	  -I$(SRAM_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DTEST_STORAGE_SRAM' \
+	  -o $(abspath $@) \
+	  $(SRAM_RTL)/ysyx_26030103.sv dcache_refill_interaction_test.cpp
+
+$(DCACHE_REFILL_NOBYPASS_BIN): dcache_refill_interaction_test.cpp test_common.hpp $(NOBYPASS_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103_DCacheSRAM \
+	  --Mdir $(BUILD_DIR)/obj-dcache-refill-nobypass \
+	  -I$(NOBYPASS_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DTEST_STORAGE_NOBYPASS' \
+	  -o $(abspath $@) \
+	  $(NOBYPASS_RTL)/ysyx_26030103.sv dcache_refill_interaction_test.cpp
+
+$(MULCFG_BIN): mdu_config_core_test.cpp test_common.hpp $(MDUCFG_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) \
+	  --top-module ysyx_26030103_MULShiftAddCore \
+	  --Mdir $(BUILD_DIR)/obj-mulcfg-audit \
+	  -I$(MDUCFG_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DTEST_MUL_CORE' \
+	  -o $(abspath $@) \
+	  $(MDUCFG_RTL)/ysyx_26030103.sv mdu_config_core_test.cpp
+
+$(DIVCFG_BIN): mdu_config_core_test.cpp test_common.hpp $(MDUCFG_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) \
+	  --top-module ysyx_26030103_DIVNonRestoringCore \
+	  --Mdir $(BUILD_DIR)/obj-divcfg-audit \
+	  -I$(MDUCFG_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DTEST_DIV_CORE' \
+	  -o $(abspath $@) \
+	  $(MDUCFG_RTL)/ysyx_26030103.sv mdu_config_core_test.cpp
