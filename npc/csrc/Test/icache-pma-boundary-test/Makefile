@@ -18,7 +18,7 @@ VERILATOR_FLAGS := --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS
 SCALA_SRCS := \
 	$(TEST_DIR)/scala/ICachePmaBoundaryHarness.scala \
 	$(NPC_DIR)/src/Common/ysyx_26030103_PMA.scala \
-	$(NPC_DIR)/src/IFU/ysyx_26030103_ICache.scala \
+	$(NPC_DIR)/src/Cache/ICache/ysyx_26030103_ICacheReg.scala \
 	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5IO.scala \
 	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5AW.scala \
 	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5W.scala \

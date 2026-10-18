@@ -108,9 +108,17 @@ class ysyx_26030103_CSR extends Module {
   val Mepc_rdata = Mepc.io.rdata
   val Mcause_rdata = Mcause.io.rdata
   val Mcycle_rdata = Mcycle.io.rdata
+  // 中断锁存（mip 语义）：中断线只要出现过就保持 pending，直到被真正提交。
+  // 阻塞窗口（MEM 未排空 / MDU 在飞 / 流水级未过精确边界）里的一拍脉冲
+  // 不再丢失；电平型中断源（CLINT/PLIC）行为不变——提交拍清锁存，源仍
+  // 拉高则下一拍重新置位，mret 后照常再次触发。
+  val IrqLatch = RegInit(false.B)
+  when(io.Interrupt) {
+    IrqLatch := true.B
+  }
   // 真正的ebreak按RISC-V breakpoint异常处理：写ysyx_26030103_mepc/ysyx_26030103_mcause，然后跳ysyx_26030103_mtvec
   val HasInterrupt =
-    io.Interrupt && Mstatus_rdata(
+    (io.Interrupt || IrqLatch) && Mstatus_rdata(
       3
     ) // ysyx_26030103_mstatus寄存器第3位是MIE，这个是处理器的中断使能，允许中断进来
   io.IrqPending := HasInterrupt
@@ -137,6 +145,11 @@ class ysyx_26030103_CSR extends Module {
   }
   // 新加的这行代码，irq是Interrupt ReQuest，是中断请求的意思
   val HasIrqCommit = io.Enable && HasInterrupt && !io.MemTrap
+  // 中断被真正提交时清除锁存；此时 MIE 已清零，若源仍为高电平会在下一拍
+  // 重新置位（未服务完的设备中断在 mret 后继续 pending）。
+  when(HasIrqCommit) {
+    IrqLatch := false.B
+  }
   // 中断提交时被中断的指令要被压掉(mepc记的是它自己的PC,mret后重跑),因此它本次不得写CSR/GPR
   val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !HasInterrupt
   io.IrqCommit := HasIrqCommit

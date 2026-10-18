@@ -166,7 +166,17 @@ class ysyx_26030103_DCacheSRAM(
   val SramReqWidth = Reg(UInt(2.W))
   val SramReqSigned = Reg(Bool())
   val ResponseOccupied = ResponseValid || SramRespPending
-  val ResponseSlotReady = !ResponseOccupied || io.resp.ready
+  // 非旁路模式响应要等数据锁存后（晚两拍）才可见，槽位只能在真实 fire
+  // 时释放；否则 SramRespPending 期间（响应尚不可见）也会放行新请求，
+  // 槽被超额订阅，数据到达拍的置位会被同拍 fire 的清除覆盖，响应静默丢失。
+  val ResponseSlotReady =
+    !ResponseOccupied || (if (Bypass) io.resp.ready else io.resp.fire)
+  if (!Bypass) {
+    assert(
+      !(SramRespPending && io.resp.fire),
+      "DCache non-bypass response slot over-subscribed"
+    )
+  }
   // 响应状态与回填状态解耦，使关键字能在缓存行其余数据到达前重启流水线。
   io.resp.valid := (if (Bypass) ResponseOccupied else ResponseValid)
   io.resp.bits.fault := ResponseFault

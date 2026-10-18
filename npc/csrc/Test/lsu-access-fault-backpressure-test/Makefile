@@ -16,7 +16,7 @@ LOCAL_SCALA_SOURCES := $(shell find $(TEST_DIR)/scala -type f -name '*.scala' | 
 NPC_SCALA_SOURCES := \
 	$(NPC_DIR)/src/Common/ysyx_26030103_EXUMessage.scala \
 	$(NPC_DIR)/src/Common/ysyx_26030103_PMA.scala \
-	$(NPC_DIR)/src/MEM/ysyx_26030103_DCache.scala \
+	$(NPC_DIR)/src/Cache/DCache/ysyx_26030103_DCacheReg.scala \
 	$(NPC_DIR)/src/MEM/ysyx_26030103_LSU.scala \
 	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5IO.scala \
 	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5AW.scala \

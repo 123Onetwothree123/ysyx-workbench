@@ -1,10 +1,10 @@
-#include "Vysyx_26030103_DCache.h"
+#include "Vysyx_26030103_DCacheReg.h"
 #include "test_common.hpp"
 #include <array>
 #include <cstdint>
 #include <verilated.h>
 
-using DUT = Vysyx_26030103_DCache;
+using DUT = Vysyx_26030103_DCacheReg;
 
 static void defaults(DUT &dut) {
   dut.io_req_valid = 0;

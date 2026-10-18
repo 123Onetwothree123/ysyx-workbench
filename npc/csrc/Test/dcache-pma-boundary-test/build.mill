@@ -24,7 +24,10 @@ object `package` extends ScalaModule {
   override def sources = Task.Sources(
     workspaceRoot / "scala",
     workspaceRoot / "../../../src/Common/ysyx_26030103_PMA.scala",
-    workspaceRoot / "../../../src/MEM/ysyx_26030103_DCache.scala",
+    workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheInterface.scala",
+    workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheBase.scala",
+    workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCachePolicy.scala",
+    workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheReg.scala",
     workspaceRoot / "../../../src/Infra/ysyx_26030103_AXI5IO.scala",
     workspaceRoot / "../../../src/Infra/ysyx_26030103_AXI5AW.scala",
     workspaceRoot / "../../../src/Infra/ysyx_26030103_AXI5W.scala",

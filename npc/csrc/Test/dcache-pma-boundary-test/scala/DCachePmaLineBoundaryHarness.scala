@@ -2,14 +2,14 @@ package ysyx_26030103.test
 
 import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_PMARegion
-import _root_.ysyx_26030103.mem.ysyx_26030103_DCache
+import _root_.ysyx_26030103.cache.ysyx_26030103_DCacheReg
 
 /** Covers all three PMA decisions made by DCache: a cacheable line which
   * crosses a region boundary, an explicitly uncacheable readable region, and
   * a cacheable region outside the historical 0x8/0xa address windows.
   */
 class DCachePmaLineBoundaryHarness
-    extends ysyx_26030103_DCache(
+    extends ysyx_26030103_DCacheReg(
       Enable = true,
       BlockSizeLog2 = 4,
       IndexBits = 1,

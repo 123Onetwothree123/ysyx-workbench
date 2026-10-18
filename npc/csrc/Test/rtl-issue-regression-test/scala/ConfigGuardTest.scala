@@ -1,6 +1,6 @@
 package ysyx_26030103.test
 
-import _root_.ysyx_26030103.common.ysyx_26030103_NPCConfig
+import _root_.ysyx_26030103.config.ysyx_26030103_NPCConfig
 
 /** Checks that the public Scala configuration rejects geometries which the
   * generated hardware cannot represent safely.

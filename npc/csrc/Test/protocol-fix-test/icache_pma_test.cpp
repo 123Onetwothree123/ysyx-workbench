@@ -1,10 +1,10 @@
-#include "Vysyx_26030103_ICache.h"
+#include "Vysyx_26030103_ICacheReg.h"
 #include "test_common.hpp"
 #include <array>
 #include <cstdint>
 #include <verilated.h>
 
-using DUT = Vysyx_26030103_ICache;
+using DUT = Vysyx_26030103_ICacheReg;
 
 static void defaults(DUT &dut) {
   dut.io_fetch_addr = 0;

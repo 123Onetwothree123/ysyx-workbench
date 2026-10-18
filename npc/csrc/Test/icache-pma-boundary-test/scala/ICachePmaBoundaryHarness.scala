@@ -2,14 +2,14 @@ package ysyx_26030103.test
 
 import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_PMARegion
-import _root_.ysyx_26030103.ifu.ysyx_26030103_ICache
+import _root_.ysyx_26030103.cache.ysyx_26030103_ICacheReg
 
 /** A deliberately non-word-aligned executable PMA region. Address 0x1000 is
   * a complete instruction word inside the region, while a word beginning at
   * 0x1004 crosses EndExclusive=0x1005.
   */
 class ICachePmaBoundaryHarness
-    extends ysyx_26030103_ICache(
+    extends ysyx_26030103_ICacheReg(
       Enable = true,
       BlockSizeLog2 = 4,
       IndexBits = 1,

@@ -253,8 +253,17 @@ class ysyx_26030103_IDU(
   )
   io.in.ready := io.out.ready && !isRAW
   io.out.valid := io.in.valid && !isRAW
+  // 停顿分类口径：load-use 只统计“确实由未就绪的访存生产者造成”的停顿。
+  // me 端口的 load 可能已经就绪（StageDone 或 R 响应当拍），此时它只是被
+  // 隐藏 MDU 写掩码顺带命中，不能算作 load-use。ex/me2 上的 load 恒未就绪，
+  // 加上 !fwd_ready 只是保持口径一致。
   val raw_loaduse =
-    (ex_hazard && io.ex_memop) || (me2_hazard && io.me2_memop) || (me_hazard && io.me_memop)
+    (ex_hazard && io.ex_memop && !io.ex_fwd_ready) ||
+      (me2_hazard && io.me2_memop && !io.me2_fwd_ready) ||
+      (me_hazard && io.me_memop && !io.me_fwd_ready)
+  // 注意：raw_alu 是“非 load-use 的 RAW 停顿”桶，包含 MDU 队首未就绪、
+  // MDU 隐藏写掩码等非访存生产者造成的停顿（ALU 生产者恒就绪，本身不产生
+  // 停顿），命名沿用历史。
   io.perf_stall_raw := io.in.valid && isRAW
   io.perf_stall_raw_loaduse := io.in.valid && isRAW && raw_loaduse
   io.perf_stall_raw_alu := io.in.valid && isRAW && !raw_loaduse
