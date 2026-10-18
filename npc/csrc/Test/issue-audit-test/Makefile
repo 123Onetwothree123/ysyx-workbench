@@ -33,13 +33,15 @@ MULCFG_BIN := $(BIN_DIR)/mul_config_core_test
 MDU_BLOCK_BIN := $(BIN_DIR)/mdu_pipeline_block_test
 FULLCORE_BIN := $(BIN_DIR)/fullcore_stall_test
 XBAR_HOL_BIN := $(BIN_DIR)/xbar_r_hol_test
+CHIPLINK_RTL := $(BUILD_DIR)/rtl-chiplink
+DMA_WINDOW_BIN := $(BIN_DIR)/dma_coherence_window_test
 DIVCFG_BIN := $(BIN_DIR)/div_config_core_test
 DCACHE_REFILL_REG_BIN := $(BIN_DIR)/dcache_refill_reg_test
 DCACHE_REFILL_SRAM_BIN := $(BIN_DIR)/dcache_refill_sram_test
 DCACHE_REFILL_NOBYPASS_BIN := $(BIN_DIR)/dcache_refill_nobypass_test
 BINS := $(IDU_BIN) $(IRQ_BIN) $(DCACHE_REG_BIN) $(DCACHE_SRAM_BIN) \
         $(DCACHE_NOBYPASS_BIN) $(ICACHE_BIN) $(ICACHE_SMALL_BIN) \
-        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(FULLCORE_BIN) $(XBAR_HOL_BIN)
+        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(FULLCORE_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN)
 
 .PHONY: all test run rtl-check clean
 
@@ -48,7 +50,7 @@ all: $(BINS)
 # 先运行 ./elaborate-all.sh 与 ./elaborate-sram.sh 生成 RTL 快照。
 rtl-check:
 	@for dir in $(BASE_RTL) $(SRAM_RTL) $(NOBYPASS_RTL) $(SMALLLINE_RTL) \
-	            $(GPC32_RTL) $(GPC43_RTL) $(BTB2_RTL) $(MDUCFG_RTL); do \
+	            $(GPC32_RTL) $(GPC43_RTL) $(BTB2_RTL) $(MDUCFG_RTL) $(CHIPLINK_RTL); do \
 	  if [ ! -f "$$dir/ysyx_26030103.sv" ]; then \
 	    echo "缺少 RTL 快照 $$dir；先执行 ./elaborate-all.sh && ./elaborate-sram.sh" >&2; \
 	    exit 1; \
@@ -271,3 +273,49 @@ $(XBAR_HOL_BIN): xbar_r_hol_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.s
 	  -CFLAGS '$(CXXFLAGS)' \
 	  -o $(abspath $@) \
 	  $(BASE_RTL)/ysyx_26030103.sv xbar_r_hol_test.cpp
+
+# CHIPLINK=y 的 SoC 顶层（DMA 代理启用），用于 DMA/缓存一致性窗口测试
+$(CHIPLINK_RTL)/ysyx_26030103.sv:
+	@mkdir -p $(CHIPLINK_RTL)
+	cd $(NPC_DIR) && env \
+	  CACHE_BLOCK_SIZE_LOG2=2 CACHE_INDEX_BITS=5 \
+	  ICACHE=n DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=y \
+	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
+	  RV32_M=y RV32_A=n RV32_C=n SDB=y DIFFTEST=y PERF_STATS=y \
+	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(CHIPLINK_RTL)
+	ln -sf layers-ysyx_26030103-Verification.sv $(CHIPLINK_RTL)/layers-riscv32e_npc_AXIRAM-Verification.sv
+
+DMA_WINDOW_DIAG_BIN := $(BIN_DIR)/dma_coherence_diag_test
+DCACHE_SMALL_BIN := $(BIN_DIR)/dcache_smallline_test
+
+$(DMA_WINDOW_BIN): dma_coherence_window_test.cpp test_common.hpp \
+                   $(CHIPLINK_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103 \
+	  --Mdir $(BUILD_DIR)/obj-dma-window-audit \
+	  -I$(CHIPLINK_RTL) \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(CHIPLINK_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
+
+$(DMA_WINDOW_DIAG_BIN): dma_coherence_window_test.cpp test_common.hpp \
+                        $(CHIPLINK_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103 \
+	  --Mdir $(BUILD_DIR)/obj-dma-diag-audit \
+	  -I$(CHIPLINK_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DDIAG_DMA_AFTER_ALL' \
+	  -o $(abspath $@) \
+	  $(CHIPLINK_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
+
+$(DCACHE_SMALL_BIN): dcache_smallline_test.cpp test_common.hpp $(SMALLLINE_RTL)/ysyx_26030103.sv rtl-check
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103_DCacheReg \
+	  --Mdir $(BUILD_DIR)/obj-dcache-small-audit \
+	  -I$(SMALLLINE_RTL) \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(SMALLLINE_RTL)/ysyx_26030103.sv dcache_smallline_test.cpp
