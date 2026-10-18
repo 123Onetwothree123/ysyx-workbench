@@ -29,8 +29,9 @@ class ysyx_26030103_DCacheReg(
   private val OffsetWidth = (BlockSizeLog2 - 2).max(1)
   private val CountWidth = log2Ceil(WordsPerBlock).max(1)
   private val ArrayBlocks = if (Enable) NumBlocks else 1
-  // 一致性 flush 是 DCache 自身的可验证接口，不应因当前顶层暂时绑低
-  // 就在生产 elaboration 中从叶模块端口裁掉；未来 DMA 也会复用该通路。
+  // 一致性 flush 是 DCache 自身的可验证接口；生产顶层已由 DMA 写 B
+  // 握手的失效脉冲驱动（ysyx_26030103.scala），dontTouch 保证该端口在
+  // 叶模块 elaboration 中不被裁掉。
   dontTouch(io.flush)
   val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
   val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))

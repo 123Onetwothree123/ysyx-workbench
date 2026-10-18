@@ -119,6 +119,8 @@ static void test_read_burst_and_backpressure(DUT &dut) {
   dut.eval();
   check(!dut.io_R_RVALID,
         "DMA RVALID did not clear after ARLEN+1 handshakes");
+  check(!dut.io_R_RLAST,
+        "DMA error slave kept RLAST asserted after RVALID cleared");
 }
 
 static void test_independent_read_and_write(DUT &dut) {
@@ -156,6 +158,8 @@ int main(int argc, char **argv) {
     reset(dut);
     check(dut.io_AW_AWREADY && dut.io_W_WREADY && dut.io_AR_ARREADY,
           "DMA error slave was not ready after reset");
+    check(!dut.io_R_RLAST,
+          "DMA error slave asserted RLAST without RVALID after reset");
 
     test_address_then_burst(dut);
     test_data_before_address(dut);

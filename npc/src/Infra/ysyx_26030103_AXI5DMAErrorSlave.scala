@@ -73,7 +73,9 @@ class ysyx_26030103_AXI5DMAErrorSlave(
   io.R.RID := readId
   io.R.RDATA := 0.U
   io.R.RRESP := DECERR
-  io.R.RLAST := readBeat === readLen
+  // RLAST 属于数据拍的一部分，必须与 RVALID 同步：复位后与突发结束
+  // 之后不得脱离 RVALID 断言（与 CLINT 从设备的门控方式保持一致）。
+  io.R.RLAST := readActive && readBeat === readLen
   io.R.RVALID := readActive
   dontTouch(io.R.RRESP)
 

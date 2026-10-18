@@ -53,7 +53,8 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
     WLastReg := io.W.WLAST
   }
   when(AWValidReg && WValidReg && !BValidReg) {
-    // ysyx_26030103_mtime不让写；仍必须先排空完整的W burst。
+    // 本从设备只实现 mtime 读；所有写（含 mtime 地址）都以 SLVERR 终止。
+    // 即便如此也必须先排空完整的 W burst，再回 B，保持 AXI 事务完整性。
     when(WLastReg) {
       BRESPReg := SLVERR
       BValidReg := true.B

@@ -631,7 +631,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   io.perf_idu_stall_raw_alu :=
     PerfBool("idu_stall_raw_alu")(idu.io.perf_stall_raw_alu)
   // 异常
-  io.perf_trap := PerfBool("trap_count")(exu.io.PerfTrap)
+  io.perf_trap_count := PerfBool("trap_count")(exu.io.PerfTrap)
   // 执行活跃电平与事件分类码是多个单计数器的公共信号：消费方任一开启
   // 才生成，否则绑常量。
   io.perf_execution_active :=

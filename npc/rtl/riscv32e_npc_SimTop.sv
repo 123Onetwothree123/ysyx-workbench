@@ -53,7 +53,7 @@ module riscv32e_npc_SimTop(
   output perf_dcache_hit, perf_dcache_miss,
   output perf_dcache_refill_req, perf_dcache_refill_resp,
   output perf_idu_stall_raw, perf_idu_stall_raw_loaduse, perf_idu_stall_raw_alu,
-  output perf_exu_idle_noinput, perf_trap,
+  output perf_exu_idle_noinput, perf_trap_count,
   output perf_mem_waitslot
 );
 
@@ -165,7 +165,7 @@ module riscv32e_npc_SimTop(
     .io_perf_idu_stall_raw_loaduse(perf_idu_stall_raw_loaduse),
     .io_perf_idu_stall_raw_alu(perf_idu_stall_raw_alu),
     .io_perf_exu_idle_noinput(perf_exu_idle_noinput),
-    .io_perf_trap(perf_trap),
+    .io_perf_trap_count(perf_trap_count),
     .io_perf_mem_waitslot(perf_mem_waitslot)
   );
 

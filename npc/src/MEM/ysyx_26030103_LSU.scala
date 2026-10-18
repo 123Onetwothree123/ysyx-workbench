@@ -75,8 +75,9 @@ class ysyx_26030103_LSU(
     val DebugLoadDATA = Output(UInt(32.W))
     val DebugWidthSelect = Output(UInt(2.W))
   })
-  // 保留叶模块一致性接口供协议回归和未来 DMA 复用；当前生产顶层
-  // 绑低该口，后端综合仍可以在展平后常量传播掉对应逻辑。
+  // 一致性失效接口：生产顶层由仲裁器在 DMA 写 B 握手时产生的单拍脉冲
+  // 驱动（见 ysyx_26030103.scala 的 DCacheFlush 接线），叶模块端口保留
+  // 供协议回归直接验证。
   dontTouch(io.DCacheFlush)
   val DCache = ysyx_26030103_DCacheFactory.Create(
     Enable = DCacheEnable,

@@ -16,7 +16,8 @@ class ysyx_26030103_AXI5Xbar(
   // 我真的是烦死了ARM的命名规则
   val OKAY = "b00".U(2.W)
   val DECERR = "b11".U(2.W)
-  // RISC-V标准CLINT区间：0x02000000 ~ 0x0200FFFF（64KiB），移出SDRAM窗口(0xa0000000)避免地址重叠
+  // RISC-V标准CLINT区间：0x02000000 ~ 0x0200FFFF（64KiB）；与SDRAM窗口
+  // (0xa0000000)本就不相交，解码按区间独立判定。
   val CLINTBase = "h02000000".U(32.W)
   val CLINTEnd = "h02010000".U(32.W)
   val TargetSoCBus = 0.U(2.W)
@@ -445,8 +446,8 @@ class ysyx_26030103_AXI5Xbar(
   }
 
   // -------------------- 读通道 --------------------
-  // 每个AXI ID独占一个槽位，直到其RLAST被上游消费。仲裁器当前为IFU/LSU
-  // 使用ID 0和1，而包含16项的表让此交叉开关能明确定义每个可表示ID的行为。
+  // 每个AXI ID独占一个槽位，直到其RLAST被上游消费。仲裁器为IFU/LSU/DMA
+  // 分别使用ID 0/1/2，而包含16项的表让此交叉开关能明确定义每个可表示ID的行为。
   val IncomingReadID = io.in.AR.ARID
   InARReady := ReadSlotState(IncomingReadID) === ReadSlotFree
 
