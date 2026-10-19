@@ -10,6 +10,8 @@ static Context *do_event(Event e, Context *c)
   {
   case EVENT_YIELD:
     return schedule(c);
+  case EVENT_IRQ_TIMER:
+    return schedule(c);
   case EVENT_SYSCALL:
     // 用户进程调用 yield 时直接调度，避免在内核态再次陷入造成嵌套上下文。
     if ((int)c->GPR1 == SYS_yield) {

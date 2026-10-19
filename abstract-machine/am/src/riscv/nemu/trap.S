@@ -83,6 +83,10 @@ __am_asm_trap:
 
   LOAD t1, OFFSET_STATUS(sp)
   LOAD t2, OFFSET_EPC(sp)
+  # 返回路径必须保持关中断，直到 sret 才根据 SPIE 重新开中断。
+  # 否则时钟中断可能在恢复寄存器期间重入，覆盖当前上下文。
+  li t0, -3
+  and t1, t1, t0
   csrw sstatus, t1
   csrw sepc, t2
 

@@ -54,8 +54,11 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc)
 #endif
 
   const bool from_su = cpu.privilege <= RISCV_PRIV_S;
-  const bool delegated = from_su && NO < 32u &&
-                         ((cpu.medeleg >> NO) & 1u) != 0;
+  const bool is_interrupt = BITS(NO, 31, 31);
+  const word_t cause = NO & 0x7fffffffu;
+  const word_t delegation = is_interrupt ? cpu.mideleg : cpu.medeleg;
+  const bool delegated = from_su && cause < 32u &&
+                         ((delegation >> cause) & 1u) != 0;
 
   if (delegated) {
     // S 模式异常：现场写入 scause/sepc/stval，并进入 stvec。
@@ -78,5 +81,29 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc)
 
 word_t isa_query_intr()
 {
+  if (!cpu.INTR) {
+    return INTR_EMPTY;
+  }
+
+  // 优先处理已委托给 S 模式的时钟中断。
+  if (cpu.privilege <= RISCV_PRIV_S &&
+      (cpu.mstatus & MSTATUS_SIE) &&
+      (cpu.mie & (1u << 5)) &&
+      (cpu.mideleg & (1u << 5))) {
+    cpu.INTR = false;
+    cpu.mip |= (1u << 5); // STIP
+    return 0x80000005u;   // supervisor timer interrupt
+  }
+
+  // M 模式时钟中断：只有 MIE 和 MTIE 同时打开时才接收。
+  if (cpu.privilege == RISCV_PRIV_M &&
+      (cpu.mstatus & MSTATUS_MIE) &&
+      (cpu.mie & (1u << 7))) {
+    cpu.INTR = false;
+    cpu.mip |= (1u << 7); // MTIP
+    return 0x80000007u;   // machine timer interrupt
+  }
+
+  // 关中断期间保持 INTR 挂起，等开中断后再响应。
   return INTR_EMPTY;
 }

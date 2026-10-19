@@ -70,6 +70,13 @@ static inline bool csr_priv_ok(word_t address)
 
 static word_t csr_read(word_t address)
 {
+  if (address >= 0x3a0 && address <= 0x3a3) {
+    return cpu.pmpcfg[address - 0x3a0];
+  }
+  if (address >= 0x3b0 && address <= 0x3bf) {
+    return cpu.pmpaddr[address - 0x3b0];
+  }
+
   switch (address)
   {
   case 0xf11: return 0x79737978u;
@@ -101,6 +108,15 @@ static word_t csr_read(word_t address)
 
 static void csr_write(word_t address, word_t value)
 {
+  if (address >= 0x3a0 && address <= 0x3a3) {
+    cpu.pmpcfg[address - 0x3a0] = value;
+    return;
+  }
+  if (address >= 0x3b0 && address <= 0x3bf) {
+    cpu.pmpaddr[address - 0x3b0] = value;
+    return;
+  }
+
   switch (address)
   {
   /* The decoder rejects write-intent accesses to these read-only CSRs. */

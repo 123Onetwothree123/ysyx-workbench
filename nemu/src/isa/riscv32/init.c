@@ -48,8 +48,11 @@ static void restart()
   cpu.mideleg = 0;
   cpu.mie = 0;
   cpu.mip = 0;
+  memset(cpu.pmpcfg, 0, sizeof(cpu.pmpcfg));
+  memset(cpu.pmpaddr, 0, sizeof(cpu.pmpaddr));
   cpu.satp = 0; /* 分页关闭（MODE=0）：启动阶段直接使用物理地址 */
   cpu.privilege = RISCV_PRIV_M;
+  cpu.INTR = false;
 }
 
 void init_isa()

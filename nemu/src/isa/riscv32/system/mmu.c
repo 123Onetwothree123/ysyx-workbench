@@ -103,3 +103,66 @@ paddr_t isa_mmu_translate(vaddr_t vaddr, int len, int type) {
   }
   return pa;
 }
+
+bool isa_pmp_check(paddr_t paddr, int len, int type) {
+  if (len <= 0) {
+    return true;
+  }
+
+  if (cpu.privilege == RISCV_PRIV_M) {
+    if (!(cpu.mstatus & MSTATUS_MPRV) || type == MEM_TYPE_IFETCH) {
+      return true;
+    }
+    const word_t mpp = (cpu.mstatus & MSTATUS_MPP_MASK) >> MSTATUS_MPP_SHIFT;
+    if (mpp == RISCV_PRIV_M) {
+      return true;
+    }
+  }
+
+  const uint64_t start = (uint32_t)paddr;
+  const uint64_t end = start + (uint32_t)len;
+  for (int i = 0; i < 16; i++) {
+    const word_t cfg = (cpu.pmpcfg[i / 4] >> ((i % 4) * 8)) & 0xffu;
+    const word_t a = cfg & 0x18u;
+    if (a == 0) {
+      continue;
+    }
+
+    uint64_t base = 0, size = 0;
+    if (a == 0x08u) { // TOR
+      const uint64_t lower = (i == 0) ? 0 : ((uint64_t)cpu.pmpaddr[i - 1] << 2);
+      const uint64_t upper = (uint64_t)cpu.pmpaddr[i] << 2;
+      if (upper <= lower) {
+        continue;
+      }
+      base = lower;
+      size = upper - lower;
+    } else if (a == 0x10u) { // NA4
+      base = (uint64_t)cpu.pmpaddr[i] << 2;
+      size = 4;
+    } else { // NAPOT
+      const uint32_t addr = cpu.pmpaddr[i];
+      int trailing_ones = 0;
+      while (trailing_ones < 32 && (addr & (1u << trailing_ones))) {
+        trailing_ones++;
+      }
+      if (trailing_ones == 32) {
+        base = 0;
+        size = 1ull << 35;
+      } else {
+        const uint64_t unit = 1ull << trailing_ones;
+        base = ((uint64_t)(addr & ~(uint32_t)(unit - 1))) << 2;
+        size = 1ull << (trailing_ones + 3);
+      }
+    }
+
+    if (start >= base && end <= base + size) {
+      if (type == MEM_TYPE_IFETCH) return (cfg & 0x04u) != 0;
+      if (type == MEM_TYPE_READ) return (cfg & 0x01u) != 0;
+      if (type == MEM_TYPE_WRITE) return (cfg & 0x02u) != 0;
+    }
+  }
+
+  // 没有任何 PMP 表项匹配时，S/U 访问默认被拒绝。
+  return false;
+}

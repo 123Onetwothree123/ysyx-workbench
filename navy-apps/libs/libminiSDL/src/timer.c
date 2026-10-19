@@ -4,8 +4,6 @@
 #include <sched.h>
 #include <stddef.h>
 
-int sched_yield(void);
-
 SDL_TimerID SDL_AddTimer(uint32_t interval, SDL_NewTimerCallback callback, void *param) {
   (void)interval;
   (void)callback;
@@ -24,16 +22,9 @@ uint32_t SDL_GetTicks() {
 }
 
 void SDL_Delay(uint32_t ms) {
-  static uint32_t last_yield = 0;
   uint32_t start = NDL_GetTicks();
-
   while (NDL_GetTicks() - start < ms) {
     SDL_AudioCallbackHelper();
-    // 每 10ms 让出一次 CPU，避免用户进程长期独占调度器。
-    uint32_t now = NDL_GetTicks();
-    if (now - last_yield >= 10) {
-      last_yield = now;
-      sched_yield();
-    }
+    // 时钟中断会抢占当前进程，这里不再主动 yield。
   }
 }

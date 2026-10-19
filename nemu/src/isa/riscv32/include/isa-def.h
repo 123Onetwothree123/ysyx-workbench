@@ -48,6 +48,10 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
   word_t mideleg;
   word_t mie;
   word_t mip;
+
+  // PMP：RV32 支持 16 个表项
+  word_t pmpcfg[4];
+  word_t pmpaddr[16];
   /*
   让DiffTest支持异常响应机制
  为了让DiffTest机制正确工作, 你需要
@@ -63,6 +67,7 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
   word_t mscratch; // 陷入时存放当前内核栈顶，并暂存陷入前的 sp
   word_t satp;   // Sv32 页目录基地址与分页使能位（bit 31 为 MODE）
   word_t privilege; // 当前特权级：0 = U, 1 = S, 3 = M
+  bool INTR;        // 外部中断请求引脚，目前由时钟中断拉高
 } MUXDEF(CONFIG_RV64, riscv64_CPU_state, riscv32_CPU_state);
 
 #define RISCV_PRIV_U 0u
