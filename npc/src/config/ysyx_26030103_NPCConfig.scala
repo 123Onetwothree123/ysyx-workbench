@@ -44,6 +44,14 @@ case class ysyx_26030103_NPCConfig(
     DCacheStorage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
+    // 每级缓存可单独配置几何。默认值与共享的 BlockSizeLog2/IndexBits 相同；
+    // 通过 elaboration 环境变量构建时（ICACHE_*/DCACHE_* 未设置则跟随
+    // CACHE_BLOCK_SIZE_LOG2/CACHE_INDEX_BITS），由 Elaborate 统一填充，
+    // 既有构建脚本与测试因此完全兼容。
+    ICacheBlockSizeLog2: Int = 4,
+    ICacheIndexBits: Int = 5,
+    DCacheBlockSizeLog2: Int = 4,
+    DCacheIndexBits: Int = 5,
     // LSU 写缓冲项数(必须是2的幂, 环形队列按位回绕)
     WBufDepth: Int = 4,
     CacheableBase: Long = 0x80000000L,
@@ -93,6 +101,18 @@ case class ysyx_26030103_NPCConfig(
   )
   require(BlockSizeLog2 >= 2, "Cache block必须至少容纳1个32位字")
   require(IndexBits >= 1, "Cache必须至少包含2个set")
+  require(ICacheBlockSizeLog2 >= 2, "ICache block必须至少容纳1个32位字")
+  require(ICacheIndexBits >= 1, "ICache必须至少包含2个set")
+  require(
+    ICacheIndexBits + ICacheBlockSizeLog2 < AddressWidth,
+    "ICache索引位+块内偏移必须小于地址宽度"
+  )
+  require(DCacheBlockSizeLog2 >= 2, "DCache block必须至少容纳1个32位字")
+  require(DCacheIndexBits >= 1, "DCache必须至少包含2个set")
+  require(
+    DCacheIndexBits + DCacheBlockSizeLog2 < AddressWidth,
+    "DCache索引位+块内偏移必须小于地址宽度"
+  )
   require(
     IndexBits + BlockSizeLog2 < AddressWidth,
     "Cache地址几何必须留出至少1位tag"
@@ -244,11 +264,13 @@ case class ysyx_26030103_NPCConfig(
     val AOff = OnOff(UseA)
     val COff = OnOff(UseC)
     val ICacheDesc =
-      if (ICacheEnable) { s"${1 << BlockSizeLog2}B/${1 << IndexBits}sets" }
-      else { "off" }
+      if (ICacheEnable) {
+        s"${1 << ICacheBlockSizeLog2}B/${1 << ICacheIndexBits}sets"
+      } else { "off" }
     val DCacheDesc =
-      if (DCacheEnable) { s"${1 << BlockSizeLog2}B/${1 << IndexBits}sets" }
-      else { "off" }
+      if (DCacheEnable) {
+        s"${1 << DCacheBlockSizeLog2}B/${1 << DCacheIndexBits}sets"
+      } else { "off" }
     s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, " +
       s"mul=${MULImpl.Name}/${MULEncoding.Name}, " +
       s"mul_width=$MULWidth, mul_gpc=${MULCompressorConfig.Describe}, mul_radix=$MULRadix, " +

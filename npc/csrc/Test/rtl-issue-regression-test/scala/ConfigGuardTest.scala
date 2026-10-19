@@ -60,6 +60,26 @@ object ConfigGuardTest extends App {
   expectRejected("IndexBits+BlockSizeLog2>=AddressWidth") {
     ysyx_26030103_NPCConfig(IndexBits = 28, BlockSizeLog2 = 4)
   }
+  expectRejected("ICacheBlockSizeLog2=1") {
+    ysyx_26030103_NPCConfig(ICacheBlockSizeLog2 = 1)
+  }
+  expectRejected("DCacheIndexBits=0") {
+    ysyx_26030103_NPCConfig(DCacheIndexBits = 0)
+  }
+  expectRejected("ICacheIndexBits+ICacheBlockSizeLog2>=AddressWidth") {
+    ysyx_26030103_NPCConfig(ICacheIndexBits = 28, ICacheBlockSizeLog2 = 4)
+  }
+  expectRejected("DCacheIndexBits+DCacheBlockSizeLog2>=AddressWidth") {
+    ysyx_26030103_NPCConfig(DCacheIndexBits = 28, DCacheBlockSizeLog2 = 4)
+  }
+  expectAccepted("混合几何：ICache 4B/2sets + DCache 32B/64sets") {
+    ysyx_26030103_NPCConfig(
+      ICacheBlockSizeLog2 = 2,
+      ICacheIndexBits = 1,
+      DCacheBlockSizeLog2 = 5,
+      DCacheIndexBits = 6
+    )
+  }
   expectAccepted("BTBBits=0 (one-set BTB)") {
     ysyx_26030103_NPCConfig(BTBBits = 0)
   }

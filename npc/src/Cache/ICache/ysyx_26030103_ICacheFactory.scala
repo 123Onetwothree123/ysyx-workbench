@@ -23,8 +23,8 @@ object ysyx_26030103_ICacheFactory {
         Module(
           new ysyx_26030103_ICacheReg(
             Enable = config.ICacheEnable,
-            BlockSizeLog2 = config.BlockSizeLog2,
-            IndexBits = config.IndexBits,
+            BlockSizeLog2 = config.ICacheBlockSizeLog2,
+            IndexBits = config.ICacheIndexBits,
             AddressWidth = config.AddressWidth,
             PMARegions = config.PMARegions
           )
@@ -33,8 +33,8 @@ object ysyx_26030103_ICacheFactory {
         Module(
           new ysyx_26030103_ICacheSRAM(
             Enable = config.ICacheEnable,
-            BlockSizeLog2 = config.BlockSizeLog2,
-            IndexBits = config.IndexBits,
+            BlockSizeLog2 = config.ICacheBlockSizeLog2,
+            IndexBits = config.ICacheIndexBits,
             AddressWidth = config.AddressWidth,
             PMARegions = config.PMARegions
           )
@@ -43,8 +43,8 @@ object ysyx_26030103_ICacheFactory {
         Module(
           new ysyx_26030103_ICacheSRAM(
             Enable = config.ICacheEnable,
-            BlockSizeLog2 = config.BlockSizeLog2,
-            IndexBits = config.IndexBits,
+            BlockSizeLog2 = config.ICacheBlockSizeLog2,
+            IndexBits = config.ICacheIndexBits,
             AddressWidth = config.AddressWidth,
             Bypass = false,
             PMARegions = config.PMARegions

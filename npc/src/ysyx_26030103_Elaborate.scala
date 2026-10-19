@@ -10,6 +10,13 @@ object ysyx_26030103_Elaborate extends App {
 
   val BlockSizeLog2 = sys.env.getOrElse("CACHE_BLOCK_SIZE_LOG2", "4").toInt
   val IndexBits = sys.env.getOrElse("CACHE_INDEX_BITS", "5").toInt
+  // 每级缓存可单独配置几何；未设置时跟随共享的 CACHE_BLOCK_SIZE_LOG2/INDEX_BITS。
+  private def envIntOr(key: String, fallback: Int): Int =
+    sys.env.get(key).filter(_.nonEmpty).map(_.toInt).getOrElse(fallback)
+  val ICacheBlockSizeLog2 = envIntOr("ICACHE_BLOCK_SIZE_LOG2", BlockSizeLog2)
+  val ICacheIndexBits = envIntOr("ICACHE_INDEX_BITS", IndexBits)
+  val DCacheBlockSizeLog2 = envIntOr("DCACHE_BLOCK_SIZE_LOG2", BlockSizeLog2)
+  val DCacheIndexBits = envIntOr("DCACHE_INDEX_BITS", IndexBits)
   val ICacheEnable = sys.env.getOrElse("ICACHE", "y") == "y"
   // ICache数据阵列存储介质："reg"=寄存器阵列(默认)，"sram"=SyncReadMem同步读阵列
   val ICacheStorageName =
@@ -120,6 +127,10 @@ object ysyx_26030103_Elaborate extends App {
     DCacheStorage = ysyx_26030103_CacheStorage.FromString(DCacheStorageName),
     BlockSizeLog2 = BlockSizeLog2,
     IndexBits = IndexBits,
+    ICacheBlockSizeLog2 = ICacheBlockSizeLog2,
+    ICacheIndexBits = ICacheIndexBits,
+    DCacheBlockSizeLog2 = DCacheBlockSizeLog2,
+    DCacheIndexBits = DCacheIndexBits,
     WBufDepth = WBufDepth,
     BTBBits = BTBBits,
     BTBWays = BTBWays,
@@ -195,7 +206,8 @@ object ysyx_26030103_Elaborate extends App {
     yosysFirtoolOpts
   )
 
-  for (top <- Seq("ysyx_26030103", "ysyx_26030103_npc")) {
+  // 也扫描 AXIRAM：它的层文件引用同样需要空桩，否则叶子构建会缺 include。
+  for (top <- Seq("ysyx_26030103", "ysyx_26030103_npc", "riscv32e_npc_AXIRAM")) {
     val svFile = s"$targetDir/$top.sv"
     val includePattern = """`include "([^"]*layers-[^"]*\.sv)"""".r
     val rvSV = scala.io.Source.fromFile(svFile)

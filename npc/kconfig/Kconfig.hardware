@@ -244,6 +244,43 @@ menu "硬件配置"
       range 1 10
       help
         1=2块, 5=32块, 10=1024块。
+        未单独设置 ICACHE_INDEX_BITS/DCACHE_INDEX_BITS 时，两者都跟随本值。
+        修改后需重新 make verilog 以重新生成RTL。
+
+    config ICACHE_BLOCK_SIZE_LOG2
+      int "ICache块大小的log2（2^N字节）"
+      depends on ICACHE
+      default CACHE_BLOCK_SIZE_LOG2
+      range 2 6
+      help
+        单独配置 ICache 行大小；未设置时跟随 CACHE_BLOCK_SIZE_LOG2。
+        修改后需重新 make verilog 以重新生成RTL。
+
+    config ICACHE_INDEX_BITS
+      int "ICache索引位宽（2^N个块）"
+      depends on ICACHE
+      default CACHE_INDEX_BITS
+      range 1 10
+      help
+        单独配置 ICache 组数；未设置时跟随 CACHE_INDEX_BITS。
+        修改后需重新 make verilog 以重新生成RTL。
+
+    config DCACHE_BLOCK_SIZE_LOG2
+      int "DCache块大小的log2（2^N字节）"
+      depends on DCACHE
+      default CACHE_BLOCK_SIZE_LOG2
+      range 2 6
+      help
+        单独配置 DCache 行大小；未设置时跟随 CACHE_BLOCK_SIZE_LOG2。
+        修改后需重新 make verilog 以重新生成RTL。
+
+    config DCACHE_INDEX_BITS
+      int "DCache索引位宽（2^N个块）"
+      depends on DCACHE
+      default CACHE_INDEX_BITS
+      range 1 10
+      help
+        单独配置 DCache 组数；未设置时跟随 CACHE_INDEX_BITS。
         修改后需重新 make verilog 以重新生成RTL。
 
     choice

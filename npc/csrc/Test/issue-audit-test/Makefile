@@ -34,9 +34,11 @@ MDU_BLOCK_BIN := $(BIN_DIR)/mdu_pipeline_block_test
 MDU_BLOCK_FAST_BIN := $(BIN_DIR)/mdu_pipeline_block_fast_test
 FULLCORE_BIN := $(BIN_DIR)/fullcore_stall_test
 PERFSEM_BIN := $(BIN_DIR)/perf_counter_semantics_test
+PERFSEM_MIXED_BIN := $(BIN_DIR)/perf_counter_semantics_mixed_test
 XBAR_HOL_BIN := $(BIN_DIR)/xbar_r_hol_test
 CHIPLINK_RTL := $(BUILD_DIR)/rtl-chiplink
 PROD_RTL := $(BUILD_DIR)/rtl-prod
+MIXED_RTL := $(BUILD_DIR)/rtl-mixed
 DMA_WINDOW_BIN := $(BIN_DIR)/dma_coherence_window_test
 ICACHE_SRAM_BIN := $(BIN_DIR)/icache_sram_test
 DIVCFG_BIN := $(BIN_DIR)/div_config_core_test
@@ -45,7 +47,7 @@ DCACHE_REFILL_SRAM_BIN := $(BIN_DIR)/dcache_refill_sram_test
 DCACHE_REFILL_NOBYPASS_BIN := $(BIN_DIR)/dcache_refill_nobypass_test
 BINS := $(IDU_BIN) $(IRQ_BIN) $(DCACHE_REG_BIN) $(DCACHE_SRAM_BIN) \
         $(DCACHE_NOBYPASS_BIN) $(ICACHE_BIN) $(ICACHE_SMALL_BIN) \
-        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(MDU_BLOCK_FAST_BIN) $(FULLCORE_BIN) $(PERFSEM_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN) $(DMA_WINDOW_BIN) $(ICACHE_SRAM_BIN)
+        $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(MDU_BLOCK_FAST_BIN) $(FULLCORE_BIN) $(PERFSEM_BIN) $(PERFSEM_MIXED_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN) $(DMA_WINDOW_BIN) $(ICACHE_SRAM_BIN)
 
 .PHONY: all test run rtl-check clean
 
@@ -385,3 +387,19 @@ $(MDU_BLOCK_FAST_BIN): mdu_pipeline_block_test.cpp test_common.hpp $(MDUCFG_RTL)
 	  -CFLAGS '$(CXXFLAGS) -DTEST_FAST_MDU' \
 	  -o $(abspath $@) \
 	  $(MDUCFG_RTL)/ysyx_26030103.sv mdu_pipeline_block_test.cpp
+
+# 混合几何/混合存储配置（ICache 16B/32sets/sram + DCache 32B/64sets/reg）
+# 的端到端烟测：先跑 ./elaborate-mixed.sh
+$(PERFSEM_MIXED_BIN): perf_counter_semantics_test.cpp test_common.hpp \
+                      $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
+                      $(MIXED_RTL)/ysyx_26030103_npc.sv $(MIXED_RTL)/riscv32e_npc_AXIRAM.sv
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) \
+	  --top-module riscv32e_npc_SimTop \
+	  --Mdir $(BUILD_DIR)/obj-perfsem-mixed-audit \
+	  -I$(MIXED_RTL) -I$(NPC_DIR)/rtl \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
+	  $(MIXED_RTL)/ysyx_26030103_npc.sv $(MIXED_RTL)/riscv32e_npc_AXIRAM.sv \
+	  perf_counter_semantics_test.cpp
