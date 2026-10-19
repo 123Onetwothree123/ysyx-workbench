@@ -62,18 +62,24 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc)
 
   if (delegated) {
     // S 模式异常：现场写入 scause/sepc/stval，并进入 stvec。
+    if (BITS(NO, 31, 31)) {
+      isa_trap_tval = 0;
+    }
     cpu.sepc = epc & ~(word_t)3u;
     cpu.scause = NO;
-    cpu.stval = 0;
+    cpu.stval = isa_trap_tval;
     cpu.mstatus = sstatus_on_trap(cpu.mstatus, cpu.privilege);
     cpu.privilege = RISCV_PRIV_S;
     return trap_vector(cpu.stvec, NO);
   }
 
   // M 模式异常：现场写入 mcause/mepc/mtval，并进入 mtvec。
+  if (BITS(NO, 31, 31)) {
+    isa_trap_tval = 0;
+  }
   cpu.mepc = epc & ~(word_t)3u;
   cpu.mcause = NO;
-  cpu.mtval = 0;
+  cpu.mtval = isa_trap_tval;
   cpu.mstatus = mstatus_on_trap(cpu.mstatus, cpu.privilege);
   cpu.privilege = RISCV_PRIV_M;
   return trap_vector(cpu.mtvec, NO);
@@ -81,29 +87,36 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc)
 
 word_t isa_query_intr()
 {
-  if (!cpu.INTR) {
-    return INTR_EMPTY;
-  }
-
-  // 优先处理已委托给 S 模式的时钟中断。
-  if (cpu.privilege <= RISCV_PRIV_S &&
-      (cpu.mstatus & MSTATUS_SIE) &&
-      (cpu.mie & (1u << 5)) &&
-      (cpu.mideleg & (1u << 5))) {
+  // 时钟设备只提供一根 INTR 引脚，映射为 S 模式时钟中断挂起位。
+  if (cpu.INTR) {
     cpu.INTR = false;
     cpu.mip |= (1u << 5); // STIP
-    return 0x80000005u;   // supervisor timer interrupt
   }
 
-  // M 模式时钟中断：只有 MIE 和 MTIE 同时打开时才接收。
-  if (cpu.privilege == RISCV_PRIV_M &&
-      (cpu.mstatus & MSTATUS_MIE) &&
-      (cpu.mie & (1u << 7))) {
-    cpu.INTR = false;
-    cpu.mip |= (1u << 7); // MTIP
-    return 0x80000007u;   // machine timer interrupt
+  // S 模式中断：SSIP/STIP/SEIP，必须同时满足委托、使能和全局开中断。
+  const word_t s_pending = (1u << 1) | (1u << 5) | (1u << 9);
+  if (cpu.privilege <= RISCV_PRIV_S && (cpu.mstatus & MSTATUS_SIE)) {
+    const word_t enabled = cpu.mip & cpu.mie & cpu.mideleg & s_pending;
+    for (int bit = 1; bit <= 9; bit += 4) {
+      if (enabled & (1u << bit)) {
+        cpu.mip &= ~(1u << bit);
+        return 0x80000000u | (word_t)bit;
+      }
+    }
   }
 
-  // 关中断期间保持 INTR 挂起，等开中断后再响应。
+  // M 模式中断：MSIP/MTIP/MEIP。
+  const word_t m_pending = (1u << 3) | (1u << 7) | (1u << 11);
+  if (cpu.privilege == RISCV_PRIV_M && (cpu.mstatus & MSTATUS_MIE)) {
+    const word_t enabled = cpu.mip & cpu.mie & m_pending;
+    for (int bit = 3; bit <= 11; bit += 4) {
+      if (enabled & (1u << bit)) {
+        cpu.mip &= ~(1u << bit);
+        return 0x80000000u | (word_t)bit;
+      }
+    }
+  }
+
+  // 关中断期间保持挂起，等开中断后再响应。
   return INTR_EMPTY;
 }

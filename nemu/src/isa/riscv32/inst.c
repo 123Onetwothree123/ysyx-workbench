@@ -20,12 +20,29 @@
 #include <iringbuf.h>
 #include <ftrace.h>
 #include <cpu/btrace.h>
+#include <utils.h>
+#include <setjmp.h>
 
 #define R(i) gpr(i)
 #define Mr vaddr_read
 #define Mw vaddr_write
 
 extern uint64_t g_nr_guest_inst;
+
+word_t isa_trap_tval = 0;
+
+static jmp_buf *exception_jmp = NULL;
+static word_t exception_cause = 0;
+static vaddr_t exception_epc = 0;
+
+void isa_raise_mem_exception(word_t cause, vaddr_t tval) {
+  if (exception_jmp != NULL) {
+    exception_cause = cause;
+    isa_trap_tval = tval;
+    longjmp(*exception_jmp, 1);
+  }
+  panic("memory exception cause=%d, tval=" FMT_WORD, cause, tval);
+}
 
 static inline word_t mepc_warl(word_t value)
 {
@@ -65,7 +82,23 @@ static inline bool csr_is_read_only(word_t address)
 
 static inline bool csr_priv_ok(word_t address)
 {
-  return cpu.privilege >= BITS(address, 9, 8);
+  if (cpu.privilege < BITS(address, 9, 8)) {
+    return false;
+  }
+
+  // U 模式读取 cycle/time/instret 还受 mcounteren/scounteren 控制。
+  if (cpu.privilege == RISCV_PRIV_U) {
+    word_t bit = 0;
+    if (address >= 0xc00 && address <= 0xc02) {
+      bit = 1u << (address - 0xc00);
+    } else if (address >= 0xc80 && address <= 0xc82) {
+      bit = 1u << (address - 0xc80);
+    }
+    if (bit != 0) {
+      return (cpu.mcounteren & bit) != 0 && (cpu.scounteren & bit) != 0;
+    }
+  }
+  return true;
 }
 
 static word_t csr_read(word_t address)
@@ -81,7 +114,11 @@ static word_t csr_read(word_t address)
   {
   case 0xf11: return 0x79737978u;
   case 0xf12: return 0x018d3017u;
+  case 0xf13: return 0;
+  case 0xf14: return 0;
+  case 0xf15: return 0;
   case 0x100: return cpu.mstatus & SSTATUS_MASK;
+  case 0x106: return cpu.scounteren;
   case 0x104: return cpu.mie & (MSTATUS_SIE | (1u << 5) | (1u << 9));
   case 0x105: return cpu.stvec;
   case 0x140: return cpu.sscratch;
@@ -91,17 +128,29 @@ static word_t csr_read(word_t address)
   case 0x144: return cpu.mip & (MSTATUS_SIE | (1u << 5) | (1u << 9));
   case 0x180: return cpu.satp;
   case 0x300: return cpu.mstatus;
+  case 0x301: return (1u << 30) | (1u << 8) | (1u << 12) | (1u << 18) | (1u << 20);
   case 0x302: return cpu.medeleg;
   case 0x303: return cpu.mideleg;
   case 0x304: return cpu.mie;
   case 0x305: return cpu.mtvec;
+  case 0x306: return cpu.mcounteren;
+  case 0x310: return 0; // mstatush
+  case 0x320: return cpu.mcountinhibit;
   case 0x340: return cpu.mscratch;
   case 0x341: return cpu.mepc;
   case 0x342: return cpu.mcause;
   case 0x343: return cpu.mtval;
   case 0x344: return cpu.mip;
   case 0xb00: return (word_t)g_nr_guest_inst;
+  case 0xb02: return (word_t)g_nr_guest_inst;
   case 0xb80: return (word_t)(g_nr_guest_inst >> 32);
+  case 0xb82: return (word_t)(g_nr_guest_inst >> 32);
+  case 0xc00: return (word_t)g_nr_guest_inst;
+  case 0xc01: return (word_t)get_time();
+  case 0xc02: return (word_t)g_nr_guest_inst;
+  case 0xc80: return (word_t)(g_nr_guest_inst >> 32);
+  case 0xc81: return (word_t)(get_time() >> 32);
+  case 0xc82: return (word_t)(g_nr_guest_inst >> 32);
   default: panic("Unknown CSR 0x%x", address); return 0;
   }
 }
@@ -109,11 +158,23 @@ static word_t csr_read(word_t address)
 static void csr_write(word_t address, word_t value)
 {
   if (address >= 0x3a0 && address <= 0x3a3) {
-    cpu.pmpcfg[address - 0x3a0] = value;
+    const int idx = address - 0x3a0;
+    const word_t old = cpu.pmpcfg[idx];
+    word_t locked = 0;
+    for (int i = 0; i < 4; i++) {
+      if (old & (0x80u << (i * 8))) {
+        locked |= 0xffu << (i * 8);
+      }
+    }
+    cpu.pmpcfg[idx] = (old & locked) | (value & ~locked);
     return;
   }
   if (address >= 0x3b0 && address <= 0x3bf) {
-    cpu.pmpaddr[address - 0x3b0] = value;
+    const int idx = address - 0x3b0;
+    const word_t cfg = (cpu.pmpcfg[idx / 4] >> ((idx % 4) * 8)) & 0xffu;
+    if ((cfg & 0x80u) == 0) {
+      cpu.pmpaddr[idx] = value;
+    }
     return;
   }
 
@@ -127,6 +188,7 @@ static void csr_write(word_t address, word_t value)
     cpu.mstatus = mstatus_warl((cpu.mstatus & ~SSTATUS_WRITABLE_MASK) |
                                (value & SSTATUS_WRITABLE_MASK));
     return;
+  case 0x106: cpu.scounteren = value; return;
   case 0x104:
     cpu.mie = (cpu.mie & ~(MSTATUS_SIE | (1u << 5) | (1u << 9))) |
               (value & (MSTATUS_SIE | (1u << 5) | (1u << 9)));
@@ -142,10 +204,14 @@ static void csr_write(word_t address, word_t value)
     return;
   case 0x180: cpu.satp = value; return;
   case 0x300: cpu.mstatus = mstatus_warl(value); return;
+  case 0x301: return; // misa 固定为 RV32IMSU
   case 0x302: cpu.medeleg = value; return;
   case 0x303: cpu.mideleg = value; return;
   case 0x304: cpu.mie = value; return;
   case 0x305: cpu.mtvec = mtvec_warl(value); return;
+  case 0x306: cpu.mcounteren = value; return;
+  case 0x310: return; // mstatush 全 0
+  case 0x320: cpu.mcountinhibit = value; return;
   case 0x340: cpu.mscratch = value; return;
   case 0x341: cpu.mepc = mepc_warl(value); return;
   case 0x342: cpu.mcause = value; return;
@@ -155,9 +221,11 @@ static void csr_write(word_t address, word_t value)
    * online DiffTest result-injects these instructions, but retaining writes
    * here makes standalone NEMU's supported CSR set match the decoder. */
   case 0xb00:
+  case 0xb02:
     g_nr_guest_inst = (g_nr_guest_inst & 0xffffffff00000000ull) | value;
     return;
   case 0xb80:
+  case 0xb82:
     g_nr_guest_inst = (g_nr_guest_inst & 0x00000000ffffffffull) |
                       ((uint64_t)value << 32);
     return;
@@ -310,6 +378,12 @@ static int decode_exec(Decode *s)
   // for guests that install a real mtvec handler.
   INSTPAT("0000000 00000 00000 000 00000 00010 11", sim_halt, N, NEMUTRAP(s->pc, R(10)));
   INSTPAT("0000000 00001 00000 000 00000 11100 11", ebreak, N, s->dnpc = isa_raise_intr(3, s->pc));
+  INSTPAT("0001000 00101 00000 000 00000 11100 11", wfi, N, {
+    if (cpu.privilege == RISCV_PRIV_U ||
+        (cpu.privilege == RISCV_PRIV_S && (cpu.mstatus & MSTATUS_TW))) {
+      s->dnpc = isa_raise_intr(2, s->pc);
+    }
+  });
   // 自己写的
   INSTPAT("??????? ????? ????? 000 ????? 00100 11", addi, I, R(rd) = src1 + imm);
   INSTPAT("??????? ????? ????? ??? ????? 11011 11", jal, J, {
@@ -481,7 +555,8 @@ static int decode_exec(Decode *s)
     }
   });
   INSTPAT("0001000 00010 00000 000 00000 11100 11", sret, N, {
-    if (cpu.privilege == RISCV_PRIV_U) {
+    if (cpu.privilege == RISCV_PRIV_U ||
+        (cpu.privilege == RISCV_PRIV_S && (cpu.mstatus & MSTATUS_TSR))) {
       s->dnpc = isa_raise_intr(2, s->pc);
     } else {
       s->dnpc = cpu.sepc;
@@ -493,7 +568,8 @@ static int decode_exec(Decode *s)
       s->dnpc = isa_raise_intr(2, s->pc);
     }
   });
-  INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv, N, INV(s->pc));
+  INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv, N,
+          s->dnpc = isa_raise_intr(2, s->pc));
   INSTPAT_END();
 
   R(0) = 0; // reset $zero to 0
@@ -503,8 +579,22 @@ static int decode_exec(Decode *s)
 
 int isa_exec_once(Decode *s)
 {
+  jmp_buf jb;
+  exception_jmp = &jb;
+  exception_epc = s->pc;
+  isa_trap_tval = 0;
+
+  if (setjmp(jb) != 0) {
+    exception_jmp = NULL;
+    R(0) = 0;
+    s->dnpc = isa_raise_intr(exception_cause, exception_epc);
+    return 0;
+  }
+
   s->isa.inst = inst_fetch(&s->snpc, 4);
   // 自己加的，snpc-pc就是指令长度
   RecordAInstruction(s->pc, s->isa.inst, s->snpc - s->pc);
-  return decode_exec(s);
+  int ret = decode_exec(s);
+  exception_jmp = NULL;
+  return ret;
 }

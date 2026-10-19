@@ -53,9 +53,12 @@ __am_enter_supervisor:
 .align 3
 .globl __am_asm_trap
 __am_asm_trap:
-  # 进入 S 模式陷入处理时先切换到当前进程的内核栈。
-  # sscratch 中保存内核栈顶，交换后它暂存陷入前的 sp。
+  # sscratch=0 表示陷入前就在 S 模式内核栈上，此时不切换栈；
+  # sscratch!=0 表示从 U 模式陷入，交换后 sp 指向该进程的内核栈顶。
   csrrw sp, sscratch, sp
+  bnez sp, 1f
+  csrr sp, sscratch
+1:
   addi sp, sp, -CONTEXT_SIZE
 
   MAP(REGS, PUSH)
@@ -75,20 +78,25 @@ __am_asm_trap:
   mv a0, sp
   call __am_irq_handle
 
-  # a0 是下一个要恢复的上下文，它位于该进程内核栈顶下方。
-  # 先把该内核栈顶写回 sscratch，供下一次陷入使用。
+  # a0 是下一个要恢复的上下文。
+  # 下一次从 U 陷入时 sscratch 应指向内核栈顶；从 S 陷入时应为 0。
+  LOAD t1, OFFSET_STATUS(a0)
+  LOAD t2, OFFSET_EPC(a0)
+  andi t0, t1, 0x100
+  bnez t0, 1f
   addi t0, a0, CONTEXT_SIZE
   csrw sscratch, t0
-  mv sp, a0
-
-  LOAD t1, OFFSET_STATUS(sp)
-  LOAD t2, OFFSET_EPC(sp)
+  j 2f
+1:
+  csrw sscratch, zero
+2:
   # 返回路径必须保持关中断，直到 sret 才根据 SPIE 重新开中断。
   # 否则时钟中断可能在恢复寄存器期间重入，覆盖当前上下文。
   li t0, -3
   and t1, t1, t0
   csrw sstatus, t1
   csrw sepc, t2
+  mv sp, a0
 
   MAP(REGS, POP)
 

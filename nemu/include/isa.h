@@ -46,6 +46,8 @@ int isa_mmu_check(vaddr_t vaddr, int len, int type);
 #endif
 paddr_t isa_mmu_translate(vaddr_t vaddr, int len, int type);
 bool isa_pmp_check(paddr_t paddr, int len, int type);
+void isa_raise_mem_exception(word_t cause, vaddr_t tval);
+extern word_t isa_trap_tval;
 
 // interrupt/exception
 vaddr_t isa_raise_intr(word_t NO, vaddr_t epc);

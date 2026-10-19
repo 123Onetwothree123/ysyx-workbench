@@ -25,6 +25,16 @@
 #define PTE_A 0x040u
 #define PTE_D 0x080u
 
+static word_t page_fault_cause(int type) {
+  if (type == MEM_TYPE_IFETCH) return 12;
+  if (type == MEM_TYPE_READ) return 13;
+  return 15;
+}
+
+static void raise_page_fault(vaddr_t vaddr, int type) {
+  isa_raise_mem_exception(page_fault_cause(type), vaddr);
+}
+
 int isa_mmu_check(vaddr_t vaddr, int len, int type) {
   (void)vaddr;
   (void)len;
@@ -55,13 +65,14 @@ paddr_t isa_mmu_translate(vaddr_t vaddr, int len, int type) {
 
   paddr_t pgdir = (paddr_t)BITS(cpu.satp, 21, 0) << 12;
   word_t pte1 = paddr_read(pgdir + vpn1 * 4, 4);
-  assert(pte1 & PTE_V); // 页目录项必须有效
-  // PA 只使用 4KB 页面，不接受二级页表项直接作为叶子（超级页）。
-  assert((pte1 & (PTE_R | PTE_W | PTE_X)) == 0);
+  if ((pte1 & PTE_V) == 0 || (pte1 & (PTE_R | PTE_W | PTE_X)) != 0) {
+    raise_page_fault(vaddr, type);
+  }
   paddr_t pgtbl = (paddr_t)BITS(pte1, 31, 10) << 12;
   word_t pte0 = paddr_read(pgtbl + vpn0 * 4, 4);
-  assert(pte0 & PTE_V); // 页表项必须有效
-  assert(pte0 & (PTE_R | PTE_X)); // 叶子页必须至少有 R 或 X
+  if ((pte0 & PTE_V) == 0 || (pte0 & (PTE_R | PTE_X)) == 0) {
+    raise_page_fault(vaddr, type);
+  }
 
   // MPRV 只影响 M 模式下的 load/store，不影响取指。
   word_t priv = cpu.privilege;
@@ -70,20 +81,23 @@ paddr_t isa_mmu_translate(vaddr_t vaddr, int len, int type) {
     priv = (cpu.mstatus & MSTATUS_MPP_MASK) >> MSTATUS_MPP_SHIFT;
   }
 
-  if (priv == RISCV_PRIV_U) {
-    assert(pte0 & PTE_U); // U 模式只能访问 U 页
-  } else if (priv == RISCV_PRIV_S && (pte0 & PTE_U)) {
-    // S 模式默认不能访问 U 页；数据访问需要 SUM=1，取指则始终禁止。
-    assert(type != MEM_TYPE_IFETCH);
-    assert(cpu.mstatus & MSTATUS_SUM);
+  if (priv == RISCV_PRIV_U && (pte0 & PTE_U) == 0) {
+    raise_page_fault(vaddr, type);
   }
-  if (type == MEM_TYPE_IFETCH) {
-    assert(pte0 & PTE_X);
-  } else if (type == MEM_TYPE_READ) {
-    assert((pte0 & PTE_R) ||
-           ((cpu.mstatus & MSTATUS_MXR) && (pte0 & PTE_X)));
-  } else if (type == MEM_TYPE_WRITE) {
-    assert(pte0 & PTE_W);
+  if (priv == RISCV_PRIV_S && (pte0 & PTE_U)) {
+    // S 模式默认不能访问 U 页；数据访问需要 SUM=1，取指则始终禁止。
+    if (type == MEM_TYPE_IFETCH || (cpu.mstatus & MSTATUS_SUM) == 0) {
+      raise_page_fault(vaddr, type);
+    }
+  }
+  if (type == MEM_TYPE_IFETCH && (pte0 & PTE_X) == 0) {
+    raise_page_fault(vaddr, type);
+  } else if (type == MEM_TYPE_READ &&
+             (pte0 & PTE_R) == 0 &&
+             !((cpu.mstatus & MSTATUS_MXR) && (pte0 & PTE_X))) {
+    raise_page_fault(vaddr, type);
+  } else if (type == MEM_TYPE_WRITE && (pte0 & PTE_W) == 0) {
+    raise_page_fault(vaddr, type);
   }
 
   // A/D 位：AM 填表时可以直接置 1；这里再兜底更新一次。
@@ -109,13 +123,15 @@ bool isa_pmp_check(paddr_t paddr, int len, int type) {
     return true;
   }
 
+  bool m_mode = false;
   if (cpu.privilege == RISCV_PRIV_M) {
     if (!(cpu.mstatus & MSTATUS_MPRV) || type == MEM_TYPE_IFETCH) {
-      return true;
-    }
-    const word_t mpp = (cpu.mstatus & MSTATUS_MPP_MASK) >> MSTATUS_MPP_SHIFT;
-    if (mpp == RISCV_PRIV_M) {
-      return true;
+      m_mode = true;
+    } else {
+      const word_t mpp = (cpu.mstatus & MSTATUS_MPP_MASK) >> MSTATUS_MPP_SHIFT;
+      if (mpp == RISCV_PRIV_M) {
+        m_mode = true;
+      }
     }
   }
 
@@ -125,6 +141,10 @@ bool isa_pmp_check(paddr_t paddr, int len, int type) {
     const word_t cfg = (cpu.pmpcfg[i / 4] >> ((i % 4) * 8)) & 0xffu;
     const word_t a = cfg & 0x18u;
     if (a == 0) {
+      continue;
+    }
+    // M 模式只受锁定表项约束；S/U 模式受所有表项约束。
+    if (m_mode && !(cfg & 0x80u)) {
       continue;
     }
 
@@ -163,6 +183,6 @@ bool isa_pmp_check(paddr_t paddr, int len, int type) {
     }
   }
 
-  // 没有任何 PMP 表项匹配时，S/U 访问默认被拒绝。
-  return false;
+  // 没有任何表项匹配：S/U 默认拒绝，M 模式在没有锁定表项匹配时放行。
+  return m_mode;
 }

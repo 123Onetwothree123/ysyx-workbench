@@ -52,6 +52,10 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
   // PMP：RV32 支持 16 个表项
   word_t pmpcfg[4];
   word_t pmpaddr[16];
+
+  word_t mcounteren;
+  word_t scounteren;
+  word_t mcountinhibit;
   /*
   让DiffTest支持异常响应机制
  为了让DiffTest机制正确工作, 你需要
@@ -84,9 +88,13 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
 #define MSTATUS_MPRV      (1u << 17)
 #define MSTATUS_SUM       (1u << 18)
 #define MSTATUS_MXR       (1u << 19)
+#define MSTATUS_TVM       (1u << 20)
+#define MSTATUS_TW        (1u << 21)
+#define MSTATUS_TSR       (1u << 22)
 #define MSTATUS_WRITABLE_MASK \
   (MSTATUS_SIE | MSTATUS_MIE | MSTATUS_SPIE | MSTATUS_MPIE | MSTATUS_SPP | \
-   MSTATUS_MPP_MASK | MSTATUS_MPRV | MSTATUS_SUM | MSTATUS_MXR)
+   MSTATUS_MPP_MASK | MSTATUS_MPRV | MSTATUS_SUM | MSTATUS_MXR | \
+   MSTATUS_TVM | MSTATUS_TW | MSTATUS_TSR)
 #define SSTATUS_MASK \
   (MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_SPP | MSTATUS_SUM | MSTATUS_MXR)
 #define SSTATUS_WRITABLE_MASK SSTATUS_MASK
