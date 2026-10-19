@@ -185,7 +185,7 @@ Context *ucontext(AddrSpace *as, Area kstack, void *entry) {
   memset(c, 0, sizeof(Context));
 
   c->mepc = (uintptr_t)entry;
-  c->mstatus = (MODE_U << 11) | MSTATUS_MXR | MSTATUS_SUM;
+  c->mstatus = (MODE_U << 8) | MSTATUS_MXR | MSTATUS_SUM; // SPP=U
   c->gpr[2] = (uintptr_t)as->area.end; // 初始用户栈顶
   c->pdir = as->ptr;               // 用户页目录
 

@@ -25,6 +25,27 @@
 #define PTE_A 0x040u
 #define PTE_D 0x080u
 
+int isa_mmu_check(vaddr_t vaddr, int len, int type) {
+  (void)vaddr;
+  (void)len;
+
+  if (BITS(cpu.satp, 31, 31) == 0) {
+    return MMU_DIRECT;
+  }
+
+  // S/U 模式按 satp 分页；M 模式默认直接访问物理地址，
+  // 只有 MPRV=1 的数据访问才按 MPP 指定的特权级转换。
+  if (cpu.privilege <= RISCV_PRIV_S) {
+    return MMU_TRANSLATE;
+  }
+  if (cpu.privilege == RISCV_PRIV_M &&
+      (cpu.mstatus & MSTATUS_MPRV) && type != MEM_TYPE_IFETCH) {
+    word_t mpp = (cpu.mstatus & MSTATUS_MPP_MASK) >> MSTATUS_MPP_SHIFT;
+    return (mpp <= RISCV_PRIV_S) ? MMU_TRANSLATE : MMU_DIRECT;
+  }
+  return MMU_DIRECT;
+}
+
 paddr_t isa_mmu_translate(vaddr_t vaddr, int len, int type) {
   // return MEM_RET_FAIL;
   // Sv32：虚拟地址划分为 vpn[1] | vpn[0] | offset，satp.PPN 指向第一级页表
@@ -51,6 +72,10 @@ paddr_t isa_mmu_translate(vaddr_t vaddr, int len, int type) {
 
   if (priv == RISCV_PRIV_U) {
     assert(pte0 & PTE_U); // U 模式只能访问 U 页
+  } else if (priv == RISCV_PRIV_S && (pte0 & PTE_U)) {
+    // S 模式默认不能访问 U 页；数据访问需要 SUM=1，取指则始终禁止。
+    assert(type != MEM_TYPE_IFETCH);
+    assert(cpu.mstatus & MSTATUS_SUM);
   }
   if (type == MEM_TYPE_IFETCH) {
     assert(pte0 & PTE_X);

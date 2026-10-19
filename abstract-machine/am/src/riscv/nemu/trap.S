@@ -38,22 +38,35 @@ f(30) f(31)
 #define OFFSET_EPC    ((NR_REGS + 2) * XLEN)
 
 .align 3
+.globl __am_enter_supervisor
+__am_enter_supervisor:
+  # 从 M 模式进入 S 模式，返回地址仍保存在 ra 中。
+  la t0, 1f
+  csrw mepc, t0
+  # MPP=S，MPIE=1，SUM=1，MXR=1
+  li t0, 0xc0880
+  csrw mstatus, t0
+  mret
+1:
+  ret
+
+.align 3
 .globl __am_asm_trap
 __am_asm_trap:
-  # 进入陷入处理时先切换到当前进程的内核栈。
-  # mscratch 中保存内核栈顶，交换后它暂存陷入前的 sp。
-  csrrw sp, mscratch, sp
+  # 进入 S 模式陷入处理时先切换到当前进程的内核栈。
+  # sscratch 中保存内核栈顶，交换后它暂存陷入前的 sp。
+  csrrw sp, sscratch, sp
   addi sp, sp, -CONTEXT_SIZE
 
   MAP(REGS, PUSH)
 
   # 寄存器保存宏不保存 x2，这里把陷入前的 sp 写入 gpr[2] 槽位。
-  csrr t0, mscratch
+  csrr t0, sscratch
   STORE t0, OFFSET_SP(sp)
 
-  csrr t0, mcause
-  csrr t1, mstatus
-  csrr t2, mepc
+  csrr t0, scause
+  csrr t1, sstatus
+  csrr t2, sepc
 
   STORE t0, OFFSET_CAUSE(sp)
   STORE t1, OFFSET_STATUS(sp)
@@ -63,18 +76,18 @@ __am_asm_trap:
   call __am_irq_handle
 
   # a0 是下一个要恢复的上下文，它位于该进程内核栈顶下方。
-  # 先把该内核栈顶写回 mscratch，供下一次陷入使用。
+  # 先把该内核栈顶写回 sscratch，供下一次陷入使用。
   addi t0, a0, CONTEXT_SIZE
-  csrw mscratch, t0
+  csrw sscratch, t0
   mv sp, a0
 
   LOAD t1, OFFSET_STATUS(sp)
   LOAD t2, OFFSET_EPC(sp)
-  csrw mstatus, t1
-  csrw mepc, t2
+  csrw sstatus, t1
+  csrw sepc, t2
 
   MAP(REGS, POP)
 
   # 恢复陷入前的 sp：用户进程是用户栈，内核线程是内核栈。
   LOAD sp, OFFSET_SP(sp)
-  mret
+  sret

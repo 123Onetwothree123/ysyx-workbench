@@ -34,7 +34,7 @@ Context *__am_irq_handle(Context *c)
       }
       break;
     default:
-      printf("RISC-V Privileged Specification文档的Machine Cause Register写的是大于12保留，也不知道怎么做\n");
+      printf("未处理的异常 cause=%d\n", (int)c->mcause);
       ev.event = EVENT_ERROR;
       break;
     }
@@ -49,16 +49,25 @@ Context *__am_irq_handle(Context *c)
 }
 
 extern void __am_asm_trap(void);
+extern void __am_enter_supervisor(void);
 
 bool cte_init(Context *(*handler)(Event, Context *))
 {
   // 第一次陷入时还没有进程上下文，先把当前启动栈顶作为内核栈顶。
-  asm volatile("csrw mscratch, sp" ::: "memory");
-  // 初始化异常入口。
-  asm volatile("csrw mtvec, %0" : : "r"(__am_asm_trap));
+  asm volatile("csrw sscratch, sp" ::: "memory");
+  // 初始化 S 模式异常入口。
+  asm volatile("csrw stvec, %0" : : "r"(__am_asm_trap));
+
+  // 将用户和内核异常委托给 S 模式处理：非法指令、断点、U/S ecall。
+  const uintptr_t medeleg = (1u << 2) | (1u << 3) | (1u << 8) | (1u << 9);
+  asm volatile("csrw medeleg, %0" : : "r"(medeleg));
+  asm volatile("csrw mideleg, %0" : : "r"((uintptr_t)0));
 
   // 注册事件处理函数。
   user_handler = handler;
+
+  // 从 M 模式切换到 S 模式，之后内核代码运行在 S 模式。
+  __am_enter_supervisor();
 
   return true;
 }
@@ -68,7 +77,7 @@ Context *kcontext(Area kstack, void (*entry)(void *), void *arg)
   // return NULL;
   Context *c = (Context *)(kstack.end - sizeof(Context)); // end是栈最高位然后减掉长度，找开头部分建指针
   memset(c, 0, sizeof(Context));                          // 和rtthreadam一样，ai建议手动清零
-  c->mstatus = MODE_M << 11;                              // 也是ai建议的，清除掉原本的#，避免mstatus和mcause和寄存器是垃圾
+  c->mstatus = (MODE_S << 8) | MSTATUS_SUM | MSTATUS_MXR; // SPP=S，允许 S 访问用户页
   c->mepc = (uintptr_t)entry;
   c->gpr[10] = (uintptr_t)arg; // riscv elf psabi写的是参数写到a0
   c->gpr[2] = (uintptr_t)kstack.end; // trap.S 从 gpr[2] 恢复 sp

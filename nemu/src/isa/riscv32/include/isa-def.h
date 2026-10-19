@@ -34,6 +34,20 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
   */
   vaddr_t mepc;
   word_t mcause;
+  vaddr_t mtval;
+
+  // S 模式异常现场
+  vaddr_t sepc;
+  word_t scause;
+  vaddr_t stvec;
+  word_t sscratch;
+  word_t stval;
+
+  // 异常/中断委托寄存器
+  word_t medeleg;
+  word_t mideleg;
+  word_t mie;
+  word_t mip;
   /*
   让DiffTest支持异常响应机制
  为了让DiffTest机制正确工作, 你需要
@@ -48,21 +62,29 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
   vaddr_t mtvec; // 存放异常入口地址的
   word_t mscratch; // 陷入时存放当前内核栈顶，并暂存陷入前的 sp
   word_t satp;   // Sv32 页目录基地址与分页使能位（bit 31 为 MODE）
-  word_t privilege; // 当前特权级：0 = U, 3 = M
+  word_t privilege; // 当前特权级：0 = U, 1 = S, 3 = M
 } MUXDEF(CONFIG_RV64, riscv64_CPU_state, riscv32_CPU_state);
 
 #define RISCV_PRIV_U 0u
+#define RISCV_PRIV_S 1u
 #define RISCV_PRIV_M 3u
 
+#define MSTATUS_SIE       (1u << 1)
 #define MSTATUS_MIE       (1u << 3)
+#define MSTATUS_SPIE      (1u << 5)
 #define MSTATUS_MPIE      (1u << 7)
+#define MSTATUS_SPP       (1u << 8)
 #define MSTATUS_MPP_SHIFT 11
 #define MSTATUS_MPP_MASK  (3u << MSTATUS_MPP_SHIFT)
 #define MSTATUS_MPRV      (1u << 17)
 #define MSTATUS_SUM       (1u << 18)
 #define MSTATUS_MXR       (1u << 19)
 #define MSTATUS_WRITABLE_MASK \
-  (MSTATUS_MIE | MSTATUS_MPIE | MSTATUS_MPP_MASK | MSTATUS_MPRV | MSTATUS_SUM | MSTATUS_MXR)
+  (MSTATUS_SIE | MSTATUS_MIE | MSTATUS_SPIE | MSTATUS_MPIE | MSTATUS_SPP | \
+   MSTATUS_MPP_MASK | MSTATUS_MPRV | MSTATUS_SUM | MSTATUS_MXR)
+#define SSTATUS_MASK \
+  (MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_SPP | MSTATUS_SUM | MSTATUS_MXR)
+#define SSTATUS_WRITABLE_MASK SSTATUS_MASK
 
 // decode
 typedef struct
@@ -70,8 +92,8 @@ typedef struct
   uint32_t inst;
 } MUXDEF(CONFIG_RV64, riscv64_ISADecodeInfo, riscv32_ISADecodeInfo);
 
-// #define isa_mmu_check(vaddr, len, type) (MMU_DIRECT)
-// 分页模式由 satp.MODE(bit 31) 决定：1 表示 Sv32 分页开启（PA 简化：M 模式也进行地址转换）
-#define isa_mmu_check(vaddr, len, type) (BITS(cpu.satp, 31, 31) ? MMU_TRANSLATE : MMU_DIRECT)
+// 分页规则在 mmu.c 的 isa_mmu_check() 中实现：
+// S/U 模式在 satp.MODE=1 时进行地址转换；M 模式默认直接访问物理地址，
+// 只有 MPRV=1 的数据访问才按 MPP 指定的特权级进行转换。
 
 #endif

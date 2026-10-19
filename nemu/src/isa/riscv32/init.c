@@ -38,6 +38,16 @@ static void restart()
   cpu.mscratch = 0;
   cpu.mepc = 0;
   cpu.mcause = 0;
+  cpu.mtval = 0;
+  cpu.sepc = 0;
+  cpu.scause = 0;
+  cpu.stvec = 0;
+  cpu.sscratch = 0;
+  cpu.stval = 0;
+  cpu.medeleg = 0;
+  cpu.mideleg = 0;
+  cpu.mie = 0;
+  cpu.mip = 0;
   cpu.satp = 0; /* 分页关闭（MODE=0）：启动阶段直接使用物理地址 */
   cpu.privilege = RISCV_PRIV_M;
 }
