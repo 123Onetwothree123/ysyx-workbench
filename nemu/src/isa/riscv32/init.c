@@ -33,11 +33,13 @@ static void restart()
   cpu.gpr[0] = 0;
   /* Match the RTL reset state.  DiffTest must not begin with an invisible
    * mstatus mismatch and wait until a later CSR read to discover it. */
-  cpu.mstatus = 0x1800u; /* M-only: MPP is hardwired to M. */
+  cpu.mstatus = 0x1800u; /* MPP=M；复位后从 M 模式开始 */
   cpu.mtvec = 0;
+  cpu.mscratch = 0;
   cpu.mepc = 0;
   cpu.mcause = 0;
   cpu.satp = 0; /* 分页关闭（MODE=0）：启动阶段直接使用物理地址 */
+  cpu.privilege = RISCV_PRIV_M;
 }
 
 void init_isa()

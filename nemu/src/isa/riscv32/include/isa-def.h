@@ -46,8 +46,23 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
   */
   word_t mstatus;
   vaddr_t mtvec; // 存放异常入口地址的
+  word_t mscratch; // 陷入时存放当前内核栈顶，并暂存陷入前的 sp
   word_t satp;   // Sv32 页目录基地址与分页使能位（bit 31 为 MODE）
+  word_t privilege; // 当前特权级：0 = U, 3 = M
 } MUXDEF(CONFIG_RV64, riscv64_CPU_state, riscv32_CPU_state);
+
+#define RISCV_PRIV_U 0u
+#define RISCV_PRIV_M 3u
+
+#define MSTATUS_MIE       (1u << 3)
+#define MSTATUS_MPIE      (1u << 7)
+#define MSTATUS_MPP_SHIFT 11
+#define MSTATUS_MPP_MASK  (3u << MSTATUS_MPP_SHIFT)
+#define MSTATUS_MPRV      (1u << 17)
+#define MSTATUS_SUM       (1u << 18)
+#define MSTATUS_MXR       (1u << 19)
+#define MSTATUS_WRITABLE_MASK \
+  (MSTATUS_MIE | MSTATUS_MPIE | MSTATUS_MPP_MASK | MSTATUS_MPRV | MSTATUS_SUM | MSTATUS_MXR)
 
 // decode
 typedef struct

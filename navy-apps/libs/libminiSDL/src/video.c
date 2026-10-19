@@ -4,15 +4,119 @@
 #include <string.h>
 #include <stdlib.h>
 
+static void clip_rect(int *x, int *y, int *w, int *h, int max_w, int max_h) {
+  if (*x < 0) { *w += *x; *x = 0; }
+  if (*y < 0) { *h += *y; *y = 0; }
+  if (*x + *w > max_w) *w = max_w - *x;
+  if (*y + *h > max_h) *h = max_h - *y;
+  if (*w < 0) *w = 0;
+  if (*h < 0) *h = 0;
+}
+
 void SDL_BlitSurface(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect) {
   assert(dst && src);
   assert(dst->format->BitsPerPixel == src->format->BitsPerPixel);
+
+  int sx = 0, sy = 0, sw = src->w, sh = src->h;
+  if (srcrect != NULL) {
+    sx = srcrect->x;
+    sy = srcrect->y;
+    sw = srcrect->w;
+    sh = srcrect->h;
+  }
+  int dx = 0, dy = 0;
+  if (dstrect != NULL) {
+    dx = dstrect->x;
+    dy = dstrect->y;
+  }
+
+  if (sx < 0) { dx -= sx; sw += sx; sx = 0; }
+  if (sy < 0) { dy -= sy; sh += sy; sy = 0; }
+  if (sx + sw > src->w) sw = src->w - sx;
+  if (sy + sh > src->h) sh = src->h - sy;
+  if (dx < 0) { sx -= dx; sw += dx; dx = 0; }
+  if (dy < 0) { sy -= dy; sh += dy; dy = 0; }
+  if (dx + sw > dst->w) sw = dst->w - dx;
+  if (dy + sh > dst->h) sh = dst->h - dy;
+  if (sw <= 0 || sh <= 0) return;
+
+  int bytes = src->format->BytesPerPixel;
+  if (src == dst && dy > sy) {
+    for (int i = sh - 1; i >= 0; i--) {
+      memmove(dst->pixels + (dy + i) * dst->pitch + dx * bytes,
+              src->pixels + (sy + i) * src->pitch + sx * bytes,
+              (size_t)sw * bytes);
+    }
+  } else {
+    for (int i = 0; i < sh; i++) {
+      memmove(dst->pixels + (dy + i) * dst->pitch + dx * bytes,
+              src->pixels + (sy + i) * src->pitch + sx * bytes,
+              (size_t)sw * bytes);
+    }
+  }
 }
 
 void SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, uint32_t color) {
+  assert(dst != NULL);
+  int x = 0, y = 0, w = dst->w, h = dst->h;
+  if (dstrect != NULL) {
+    x = dstrect->x;
+    y = dstrect->y;
+    w = dstrect->w;
+    h = dstrect->h;
+  }
+  clip_rect(&x, &y, &w, &h, dst->w, dst->h);
+  if (w <= 0 || h <= 0) return;
+
+  int bpp = dst->format->BitsPerPixel;
+  for (int i = 0; i < h; i++) {
+    if (bpp == 8) {
+      memset(dst->pixels + (y + i) * dst->pitch + x, (int)(color & 0xff), w);
+    } else {
+      uint32_t *row = (uint32_t *)(dst->pixels + (y + i) * dst->pitch) + x;
+      for (int j = 0; j < w; j++) row[j] = color;
+    }
+  }
 }
 
 void SDL_UpdateRect(SDL_Surface *s, int x, int y, int w, int h) {
+  assert(s != NULL);
+  if (w == 0 || h == 0) {
+    x = 0;
+    y = 0;
+    w = s->w;
+    h = s->h;
+  }
+  clip_rect(&x, &y, &w, &h, s->w, s->h);
+  if (w <= 0 || h <= 0) return;
+
+  if (s->format->BitsPerPixel == 8) {
+    SDL_Palette *pal = s->format->palette;
+    assert(pal != NULL);
+    uint32_t *buf = malloc((size_t)w * h * sizeof(uint32_t));
+    assert(buf != NULL);
+    for (int i = 0; i < h; i++) {
+      uint8_t *row = s->pixels + (y + i) * s->pitch + x;
+      for (int j = 0; j < w; j++) {
+        SDL_Color c = pal->colors[row[j]];
+        buf[i * w + j] = ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+      }
+    }
+    NDL_DrawRect(buf, x, y, w, h);
+    free(buf);
+  } else {
+    if (s->pitch == s->w * 4) {
+      NDL_DrawRect((uint32_t *)s->pixels + y * s->w + x, x, y, w, h);
+    } else {
+      uint32_t *buf = malloc((size_t)w * h * sizeof(uint32_t));
+      assert(buf != NULL);
+      for (int i = 0; i < h; i++) {
+        memcpy(buf + i * w, s->pixels + (y + i) * s->pitch + x * 4, (size_t)w * 4);
+      }
+      NDL_DrawRect(buf, x, y, w, h);
+      free(buf);
+    }
+  }
 }
 
 // APIs below are already implemented.
@@ -99,27 +203,41 @@ SDL_Surface* SDL_SetVideoMode(int width, int height, int bpp, uint32_t flags) {
 void SDL_SoftStretch(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect) {
   assert(src && dst);
   assert(dst->format->BitsPerPixel == src->format->BitsPerPixel);
-  assert(dst->format->BitsPerPixel == 8);
 
-  int x = (srcrect == NULL ? 0 : srcrect->x);
-  int y = (srcrect == NULL ? 0 : srcrect->y);
-  int w = (srcrect == NULL ? src->w : srcrect->w);
-  int h = (srcrect == NULL ? src->h : srcrect->h);
-
-  assert(dstrect);
-  if(w == dstrect->w && h == dstrect->h) {
-    /* The source rectangle and the destination rectangle
-     * are of the same size. If that is the case, there
-     * is no need to stretch, just copy. */
-    SDL_Rect rect;
-    rect.x = x;
-    rect.y = y;
-    rect.w = w;
-    rect.h = h;
-    SDL_BlitSurface(src, &rect, dst, dstrect);
+  int sx = 0, sy = 0, sw = src->w, sh = src->h;
+  if (srcrect != NULL) {
+    sx = srcrect->x;
+    sy = srcrect->y;
+    sw = srcrect->w;
+    sh = srcrect->h;
   }
-  else {
-    assert(0);
+  int dx = 0, dy = 0, dw = dst->w, dh = dst->h;
+  if (dstrect != NULL) {
+    dx = dstrect->x;
+    dy = dstrect->y;
+    dw = dstrect->w;
+    dh = dstrect->h;
+  }
+
+  if (sx < 0) { sw += sx; sx = 0; }
+  if (sy < 0) { sh += sy; sy = 0; }
+  if (sx + sw > src->w) sw = src->w - sx;
+  if (sy + sh > src->h) sh = src->h - sy;
+  if (dx < 0) { dw += dx; dx = 0; }
+  if (dy < 0) { dh += dy; dy = 0; }
+  if (dx + dw > dst->w) dw = dst->w - dx;
+  if (dy + dh > dst->h) dh = dst->h - dy;
+  if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return;
+
+  int bytes = src->format->BytesPerPixel;
+  for (int y = 0; y < dh; y++) {
+    int syy = sy + y * sh / dh;
+    for (int x = 0; x < dw; x++) {
+      int sxx = sx + x * sw / dw;
+      memcpy(dst->pixels + (dy + y) * dst->pitch + (dx + x) * bytes,
+             src->pixels + syy * src->pitch + sxx * bytes,
+             bytes);
+    }
   }
 }
 

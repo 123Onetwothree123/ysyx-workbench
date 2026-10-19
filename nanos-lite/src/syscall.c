@@ -1,6 +1,10 @@
 #include <common.h>
+#include <memory.h>
+#include <fs.h>
+#include <proc.h>
 #include "syscall.h"
-#define STRACE
+// 打开下一行可输出系统调用跟踪
+//#define STRACE
 #ifdef STRACE
 static const char *syscall_names[] = {
     [SYS_exit] = "exit",
@@ -35,32 +39,37 @@ void do_syscall(Context *c)
   intptr_t ret = 0; // 系统调用的返回值，最后就直接统一返回到a0寄存器里面去
   switch (a[0])
   {
-  case SYS_yield:
-    yield();
-    ret = 0;
+  case SYS_open:
+    ret = fs_open((const char *)a[1], (int)a[2], (int)a[3]);
     break;
-  case SYS_exit:
-#ifdef STRACE
-    Log("[strace] exit(%d)", (int)a[1]);
-#endif
-    halt(a[1]);
+  case SYS_read:
+    ret = fs_read((int)a[1], (void *)a[2], (size_t)a[3]);
     break;
   case SYS_write:
-    if (a[1] == 1 || a[1] == 2) // 1是stdout，2是stderr，a1是fd，a2是buf，a3是len
-    {
-      for (size_t i = 0; i < a[3]; i++)
-      {
-        putch(((char *)a[2])[i]); // 又忘记了，这是am的putch函数
-      }
-      ret = a[3]; // 返回写出的字节数
-    }
-    else
-    {
-      ret = -1; // 其他fd先不管了
-    }
+    ret = fs_write((int)a[1], (const void *)a[2], (size_t)a[3]);
     break;
-  case SYS_brk:
+  case SYS_close:
+    ret = fs_close((int)a[1]);
+    break;
+  case SYS_lseek:
+    ret = fs_lseek((int)a[1], (intptr_t)a[2], (int)a[3]);
+    break;
+  case SYS_getpid:
+    ret = current->pid;
+    break;
+  case SYS_gettimeofday: {
+    AM_TIMER_UPTIME_T uptime;
+    ioe_read(AM_TIMER_UPTIME, &uptime);
+    if (a[1] != 0) {
+      uint32_t *tv = (uint32_t *)a[1];
+      tv[0] = (uint32_t)(uptime.us / 1000000);
+      tv[1] = (uint32_t)(uptime.us % 1000000);
+    }
     ret = 0;
+    break;
+  }
+  case SYS_brk:
+    ret = mm_brk(a[1]);
   break;
   default:
     panic("Unhandled syscall ID = %d", a[0]);

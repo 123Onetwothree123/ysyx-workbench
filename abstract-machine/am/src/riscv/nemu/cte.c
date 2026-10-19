@@ -4,8 +4,13 @@
 
 static Context *(*user_handler)(Event, Context *) = NULL;
 
+extern void __am_get_cur_as(Context *c);
+extern void __am_switch(Context *c);
+
 Context *__am_irq_handle(Context *c)
 {
+  __am_get_cur_as(c);
+
   if (user_handler)
   {
     Event ev = {0};
@@ -38,6 +43,8 @@ Context *__am_irq_handle(Context *c)
     assert(c != NULL);
   }
 
+  __am_switch(c);
+
   return c;
 }
 
@@ -45,10 +52,12 @@ extern void __am_asm_trap(void);
 
 bool cte_init(Context *(*handler)(Event, Context *))
 {
-  // initialize exception entry
+  // 第一次陷入时还没有进程上下文，先把当前启动栈顶作为内核栈顶。
+  asm volatile("csrw mscratch, sp" ::: "memory");
+  // 初始化异常入口。
   asm volatile("csrw mtvec, %0" : : "r"(__am_asm_trap));
 
-  // register event handler
+  // 注册事件处理函数。
   user_handler = handler;
 
   return true;
@@ -62,7 +71,8 @@ Context *kcontext(Area kstack, void (*entry)(void *), void *arg)
   c->mstatus = MODE_M << 11;                              // 也是ai建议的，清除掉原本的#，避免mstatus和mcause和寄存器是垃圾
   c->mepc = (uintptr_t)entry;
   c->gpr[10] = (uintptr_t)arg; // riscv elf psabi写的是参数写到a0
-  // c->gpr[2] = (uintptr_t)c;    // sp寄存指向这个context位置
+  c->gpr[2] = (uintptr_t)kstack.end; // trap.S 从 gpr[2] 恢复 sp
+  c->pdir = NULL;              // 内核线程留在当前地址空间
   return c;
 }
 

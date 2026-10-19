@@ -40,9 +40,16 @@ f(30) f(31)
 .align 3
 .globl __am_asm_trap
 __am_asm_trap:
+  # 进入陷入处理时先切换到当前进程的内核栈。
+  # mscratch 中保存内核栈顶，交换后它暂存陷入前的 sp。
+  csrrw sp, mscratch, sp
   addi sp, sp, -CONTEXT_SIZE
 
   MAP(REGS, PUSH)
+
+  # 寄存器保存宏不保存 x2，这里把陷入前的 sp 写入 gpr[2] 槽位。
+  csrr t0, mscratch
+  STORE t0, OFFSET_SP(sp)
 
   csrr t0, mcause
   csrr t1, mstatus
@@ -52,14 +59,14 @@ __am_asm_trap:
   STORE t1, OFFSET_STATUS(sp)
   STORE t2, OFFSET_EPC(sp)
 
-  # set mstatus.MPRV to pass difftest
-  li a0, (1 << 17)
-  or t1, t1, a0
-  csrw mstatus, t1
-
   mv a0, sp
   call __am_irq_handle
-  mv sp,a0 #切换到新的context
+
+  # a0 是下一个要恢复的上下文，它位于该进程内核栈顶下方。
+  # 先把该内核栈顶写回 mscratch，供下一次陷入使用。
+  addi t0, a0, CONTEXT_SIZE
+  csrw mscratch, t0
+  mv sp, a0
 
   LOAD t1, OFFSET_STATUS(sp)
   LOAD t2, OFFSET_EPC(sp)
@@ -68,5 +75,6 @@ __am_asm_trap:
 
   MAP(REGS, POP)
 
-  addi sp, sp, CONTEXT_SIZE
+  # 恢复陷入前的 sp：用户进程是用户栈，内核线程是内核栈。
+  LOAD sp, OFFSET_SP(sp)
   mret

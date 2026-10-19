@@ -17,16 +17,16 @@
 
 static inline word_t mstatus_warl(word_t value)
 {
-  const word_t interrupt_bits = value & (word_t)0x88u;
-  /* The reference follows the DUT's explicit M-only WARL model. */
-  return interrupt_bits | (word_t)0x1800u;
+  return value & (word_t)MSTATUS_WRITABLE_MASK;
 }
 
-static inline word_t mstatus_on_trap(word_t old)
+static inline word_t mstatus_on_trap(word_t old, word_t privilege)
 {
   const word_t mie = BITS(old, 3, 3);
-  /* Match the DUT: MPP=3, MPIE=old.MIE, MIE=0; WPRI bits stay zero. */
-  return mstatus_warl((word_t)(3u << 11) | (mie << 7));
+  /* MPP 记录进入异常前的特权级；MPIE 记录旧的 MIE。 */
+  word_t next = old & ~(word_t)(MSTATUS_MPP_MASK | MSTATUS_MPIE | MSTATUS_MIE);
+  next |= ((privilege & 3u) << MSTATUS_MPP_SHIFT) | (mie ? MSTATUS_MPIE : 0u);
+  return mstatus_warl(next);
 }
 
 word_t isa_raise_intr(word_t NO, vaddr_t epc)
@@ -41,7 +41,8 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc)
   /* The core implements IALIGN=32, so mepc[1:0] are WARL zero. */
   cpu.mepc = epc & ~(word_t)3u;
   cpu.mcause = NO;
-  cpu.mstatus = mstatus_on_trap(cpu.mstatus);
+  cpu.mstatus = mstatus_on_trap(cpu.mstatus, cpu.privilege);
+  cpu.privilege = RISCV_PRIV_M; // 所有异常都在 M 模式处理
 
   const word_t base = cpu.mtvec & ~(word_t)3u;
   const bool vectored_interrupt = (cpu.mtvec & 3u) == 1u && BITS(NO, 31, 31);

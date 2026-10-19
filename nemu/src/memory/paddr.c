@@ -17,6 +17,7 @@
 #include <memory/paddr.h>
 #include <device/mmio.h>
 #include <isa.h>
+#include <cpu/difftest.h>
 #include <time.h>
 #include <stdio.h>
 
@@ -190,12 +191,14 @@ word_t paddr_read(paddr_t addr, int len)
 #ifndef CONFIG_DEVICE
   if (in_stub_mmio(addr) || in_stub_uart(addr) || addr == STUB_CLINT_LO || addr == STUB_CLINT_HI)
   {
+    difftest_skip_ref();
     return stub_mmio_read(addr, len);
   }
 #endif
 #ifdef CONFIG_DEVICE
   if (!in_pmem(addr))
   {
+    difftest_skip_ref();
     word_t ret = mmio_read(addr, len);
 #ifdef CONFIG_MTRACE
     Log("mtrace 读内存追踪(CONFIG_DEVICE)：pc = " FMT_WORD ", addr = " FMT_PADDR ", len = %d, data = " FMT_WORD,
@@ -241,6 +244,7 @@ void paddr_write(paddr_t addr, int len, word_t data)
 #ifndef CONFIG_DEVICE
   if (in_stub_mmio(addr) || in_stub_uart(addr) || addr == STUB_CLINT_LO || addr == STUB_CLINT_HI)
   {
+    difftest_skip_ref();
     stub_mmio_write(addr, data);
     return;
   }
@@ -248,6 +252,7 @@ void paddr_write(paddr_t addr, int len, word_t data)
 #ifdef CONFIG_DEVICE
   if (!in_pmem(addr))
   {
+    difftest_skip_ref();
 #ifdef CONFIG_MTRACE
     Log("mtrace写内存追踪(CONFIG_DEVICE)：pc = " FMT_WORD ", addr = " FMT_PADDR ", len = %d, data = " FMT_WORD,
         cpu.pc, addr, len, data);

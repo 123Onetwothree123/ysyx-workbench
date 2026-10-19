@@ -40,9 +40,7 @@ static inline word_t mtvec_warl(word_t value)
 
 static inline word_t mstatus_warl(word_t value)
 {
-  const word_t interrupt_bits = value & (word_t)0x88u; /* MPIE/MIE */
-  /* The DUT is M-only: MPP is WARL and hardwired to the sole supported mode. */
-  return interrupt_bits | (word_t)0x1800u;
+  return value & (word_t)MSTATUS_WRITABLE_MASK;
 }
 
 static inline word_t csr_address(const Decode *s)
@@ -73,6 +71,7 @@ static word_t csr_read(word_t address)
   case 0xf12: return 0x018d3017u;
   case 0x300: return cpu.mstatus;
   case 0x305: return cpu.mtvec;
+  case 0x340: return cpu.mscratch;
   case 0x341: return cpu.mepc;
   case 0x342: return cpu.mcause;
   case 0x180: return cpu.satp;
@@ -92,6 +91,7 @@ static void csr_write(word_t address, word_t value)
     return;
   case 0x300: cpu.mstatus = mstatus_warl(value); return;
   case 0x305: cpu.mtvec = mtvec_warl(value); return;
+  case 0x340: cpu.mscratch = value; return;
   case 0x341: cpu.mepc = mepc_warl(value); return;
   case 0x342: cpu.mcause = value; return;
   case 0x180: cpu.satp = value; return;
@@ -111,10 +111,16 @@ static void csr_write(word_t address, word_t value)
 
 static inline void mret_update_mstatus(void)
 {
+  const word_t mpp = BITS(cpu.mstatus, 12, 11);
   const word_t mpie = BITS(cpu.mstatus, 7, 7);
+
+  /* MPP 保存要返回的特权级。 */
+  cpu.privilege = mpp;
+
+  /* MIE <- MPIE，MPIE <- 1，MPP <- U（支持的最低特权级）。 */
   cpu.mstatus = mstatus_warl(
-      (cpu.mstatus & ~((word_t)(3u << 11) | (word_t)(1u << 7) | (word_t)(1u << 3))) |
-      (word_t)(1u << 7) | (mpie << 3));
+      (cpu.mstatus & ~(word_t)(MSTATUS_MPP_MASK | MSTATUS_MPIE | MSTATUS_MIE)) |
+      (mpie ? MSTATUS_MIE : 0u) | MSTATUS_MPIE);
 }
 
 enum
@@ -314,7 +320,11 @@ static int decode_exec(Decode *s)
   INSTPAT("0000000 ????? ????? 010 ????? 01100 11", slt, R, R(rd) = ((sword_t)src1 < (sword_t)src2) ? 1 : 0);
   INSTPAT("??????? ????? ????? 010 ????? 00100 11", slti, I, R(rd) = ((sword_t)src1 < (sword_t)imm) ? 1 : 0);
   INSTPAT("0000001 ????? ????? 010 ????? 01100 11", mulhsu, R, R(rd) = ((int64_t)(sword_t)src1 * (uint64_t)src2) >> 32);
-  INSTPAT("0000000 00000 00000 000 00000 11100 11", ecall, N, s->dnpc = isa_raise_intr(11, s->pc));
+  INSTPAT("0000000 00000 00000 000 00000 11100 11", ecall, N,
+          {
+            word_t cause = cpu.privilege == RISCV_PRIV_U ? 8 : 11;
+            s->dnpc = isa_raise_intr(cause, s->pc);
+          });
   INSTPAT("??????? ????? ????? 001 ????? 11100 11", csrrw, N, {
     const word_t address = csr_address(s);
     if (csr_is_read_only(address)) {
