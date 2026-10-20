@@ -58,3 +58,5 @@ test_run_dir/
 
 # GCC C++ modules cache (build artifact)
 gcm.cache/
+
+!MMU_STATUS.md
