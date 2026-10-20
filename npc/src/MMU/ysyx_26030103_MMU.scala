@@ -25,7 +25,6 @@ class ysyx_26030103_MMU(
   require(profile.ptwPath == "dedicated", "PTW 复用 DCache 尚未实现")
   require(profile.ptwArch == "independent", "流水化 PTW 尚未实现")
   require(profile.ptwOrder == "in_order", "乱序 PTW 尚未实现")
-  require(profile.tlbStorage == "reg", "TLB SRAM 存储尚未实现")
   require(profile.refillPorts == 1, "当前仅支持单 TLB refill 端口")
   require(profile.tlbMissQueueMode == "follow_tlb", "当前仅支持 follow_tlb 缺失队列")
 
@@ -100,6 +99,11 @@ class ysyx_26030103_MMU(
   def optUInt(opt: Option[ysyx_26030103_TLB], f: ysyx_26030103_TLB => UInt): UInt =
     opt.map(f).getOrElse(0.U)
 
+  val tlbResultValid =
+    if (!profile.tlbEnabled) true.B
+    else if (split) Mux(selFetch, optBool(itlbOpt, _.io.result.resultValid),
+      optBool(dtlbOpt, _.io.result.resultValid))
+    else optBool(utlbOpt, _.io.result.resultValid)
   val tlbHit =
     if (split) Mux(selFetch, optBool(itlbOpt, _.io.result.hit),
       optBool(dtlbOpt, _.io.result.hit))
@@ -166,7 +170,7 @@ class ysyx_26030103_MMU(
 
   switch(state) {
     is(lookup) {
-      when(tlbHit) {
+      when(tlbResultValid && tlbHit) {
         respReg.paddr := tlbPaddr
         respReg.fault := tlbFault
         respReg.cause := tlbCause

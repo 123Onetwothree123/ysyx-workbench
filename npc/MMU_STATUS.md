@@ -10,6 +10,7 @@
 - 取指/load/store 页错误，以及向 S 模式委托异常。
 - split ITLB/DTLB 与 unified TLB。
 - TLB ASID、Global、RR/PLRU/LRU 替换。
+- TLB Reg-CAM 和同步 SRAM 数据阵列两种存储。
 - 可选 Sv32 4MiB 超级页；超级页当前不填充 TLB，每次走 PTW。
 - 独立只读 PTW AXI 通道，与 ICache 共用 IFU 读端口。
 - 可选 PTW PTE cache（set-associative）。
@@ -21,7 +22,7 @@
 
 ```text
 ysyx_26030103_MMUTest             7
-ysyx_26030103_MMUBehaviorTest     6
+ysyx_26030103_MMUBehaviorTest     8
 ysyx_26030103_MMUStreamTest       1
 ysyx_26030103_CSRPrivilegeTest    3
 ```
@@ -44,7 +45,6 @@ S ecall + SRET          HIT GOOD
 - PTW 复用 DCache
 - pipelined / out-of-order PTW
 - 多笔在途 PTW
-- TLB SRAM 存储
 - 多 refill 端口和非 follow_tlb 缺失队列
 
 `MMU_PTW_OUTSTANDING` 当前仍按单笔 walk 处理；这是下一步要补的

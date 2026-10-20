@@ -96,6 +96,48 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "TLB" should "支持 SRAM 存储的一拍查找" in {
+    simulate(new ysyx_26030103_TLB(
+      entries = 4,
+      ways = 1,
+      asidBits = 9,
+      globalEnable = true,
+      storage = "sram"
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.flush.poke(true.B)
+      dut.io.fillValid.poke(false.B)
+      dut.io.fillVaddr.poke(0.U)
+      dut.io.fillAsid.poke(0.U)
+      dut.io.fillPte.poke(0.U)
+      dut.io.lookup.vaddr.poke(0.U)
+      dut.io.lookup.asid.poke(0.U)
+      dut.io.lookup.privilege.poke(0.U)
+      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup.sum.poke(false.B)
+      dut.io.lookup.mxr.poke(false.B)
+      dut.clock.step()
+      dut.io.flush.poke(false.B)
+
+      dut.io.fillValid.poke(true.B)
+      dut.io.fillVaddr.poke(0x1234.U)
+      dut.io.fillAsid.poke(7.U)
+      dut.io.fillPte.poke(LeafPTE.U(32.W))
+      dut.clock.step()
+      dut.io.fillValid.poke(false.B)
+
+      dut.io.lookup.vaddr.poke(0x1234.U)
+      dut.io.lookup.asid.poke(7.U)
+      dut.clock.step()
+      dut.io.result.resultValid.peek().litValue == 1 should be(true)
+      asBool(dut.io.result.hit) should be(true)
+      asBool(dut.io.result.fault) should be(false)
+      asLong(dut.io.result.paddr) should be(Leaf + 0x234L)
+    }
+  }
+
   "PTW" should "完成两级 Sv32 walk 并返回物理地址" in {
     val memory = new Memory
     simulate(new ysyx_26030103_PTW("fault")) { dut =>

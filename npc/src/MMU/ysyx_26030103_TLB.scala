@@ -15,13 +15,15 @@ class ysyx_26030103_TLB(
     asidBits: Int = 9,
     globalEnable: Boolean = true,
     replacement: String = "rr",
-    adMode: String = "fault"
+    adMode: String = "fault",
+    storage: String = "reg"
 ) extends Module {
   require(entries > 0 && ways > 0 && entries % ways == 0, "TLB entries 必须能被 ways 整除")
   require((entries & (entries - 1)) == 0, "TLB entries 必须是 2 的幂")
   require(asidBits >= 0 && asidBits <= 9, "ASID 位数必须在 0..9")
   require((ways & (ways - 1)) == 0, "TLB ways 必须是 2 的幂")
   require(adMode != "hardware", "TLB A/D hardware 模式尚未实现")
+  require(Set("reg", "sram").contains(storage), "TLB storage 必须是 reg/sram")
 
   private val sets = entries / ways
   private val setBits = if (sets == 1) 0 else log2Ceil(sets)
@@ -57,6 +59,7 @@ class ysyx_26030103_TLB(
       val fault = Bool()
       val paddr = UInt(32.W)
       val cause = UInt(32.W)
+      val resultValid = Bool()
     })
     val fillValid = Input(Bool())
     val fillVaddr = Input(UInt(32.W))
@@ -67,6 +70,13 @@ class ysyx_26030103_TLB(
 
   val entriesVec = RegInit(VecInit(Seq.fill(entries)(0.U.asTypeOf(new Entry))))
   val rr = RegInit(0.U(log2Ceil(ways.max(2)).W))
+  private val sramStorage = storage == "sram"
+  val pteMems =
+    if (sramStorage) Some((0 until ways).map(_ => SyncReadMem(sets, UInt(32.W))))
+    else None
+  val lastLookupVaddr = RegInit(0.U(32.W))
+  lastLookupVaddr := io.lookup.vaddr
+  io.result.resultValid := !sramStorage.B || lastLookupVaddr === io.lookup.vaddr
   // tree-PLRU：ways<=8 时使用 heap 索引的 way 选择树；RR 模式下不生成。
   private val plruLevels = if (ways > 1) log2Ceil(ways) else 0
   val plruOpt =
@@ -133,6 +143,7 @@ class ysyx_26030103_TLB(
   val lookupVpn = vpnOf(io.lookup.vaddr)
   val lookupSet = setOf(lookupVpn)
   val lookupTag = tagOf(lookupVpn)
+  val sramPtes = pteMems.map(_.map(m => m.read(lookupSet))).getOrElse(Seq.fill(ways)(0.U(32.W)))
   val lookupWays = (0 until ways).map { w =>
     val e = entriesVec(entryIndex(lookupSet, w.U))
     val asidMatch = if (asidBits == 0) true.B else e.asid === io.lookup.asid
@@ -142,19 +153,27 @@ class ysyx_26030103_TLB(
   val lookupHit = lookupWays.reduce(_ || _)
   val hitWay = Mux1H(lookupWays, (0 until ways).map(w => w.U(log2Ceil(ways.max(2)).W)))
   val selected = Mux1H(lookupWays, (0 until ways).map(w => entriesVec(entryIndex(lookupSet, w.U))))
+  val selectedPte = Mux1H(lookupWays, sramPtes)
+  val selR = if (sramStorage) selectedPte(1) else selected.r
+  val selW = if (sramStorage) selectedPte(2) else selected.w
+  val selX = if (sramStorage) selectedPte(3) else selected.x
+  val selU = if (sramStorage) selectedPte(4) else selected.u
+  val selA = if (sramStorage) selectedPte(6) else selected.a
+  val selD = if (sramStorage) selectedPte(7) else selected.d
+  val selPpn = if (sramStorage) selectedPte(31, 10) else selected.ppn
 
   val isFetch = io.lookup.access === ysyx_26030103_AccessType.Fetch
   val isStore = io.lookup.access === ysyx_26030103_AccessType.Store
   val privilegeU = io.lookup.privilege === 0.U
   val privilegeS = io.lookup.privilege === 1.U
-  val fetchOk = selected.x && !(privilegeS && selected.u)
-  val readOk = selected.r || (io.lookup.mxr && selected.x)
-  val writeOk = selected.w
-  val userOk = !privilegeU || selected.u
-  val sumOk = !(privilegeS && selected.u) || (io.lookup.sum && !isFetch)
+  val fetchOk = selX && !(privilegeS && selU)
+  val readOk = selR || (io.lookup.mxr && selX)
+  val writeOk = selW
+  val userOk = !privilegeU || selU
+  val sumOk = !(privilegeS && selU) || (io.lookup.sum && !isFetch)
   val accessOk = Mux(isFetch, fetchOk, Mux(isStore, writeOk, readOk))
   val adOk = adMode match {
-    case "fault" => selected.a && (!isStore || selected.d)
+    case "fault" => selA && (!isStore || selD)
     case _       => true.B
   }
   val permissionOk = userOk && sumOk && accessOk && adOk
@@ -166,7 +185,7 @@ class ysyx_26030103_TLB(
   }
   io.result.hit := lookupHit
   io.result.fault := lookupHit && !permissionOk
-  io.result.paddr := Cat(selected.ppn(19, 0), io.lookup.vaddr(11, 0))
+  io.result.paddr := Cat(selPpn(19, 0), io.lookup.vaddr(11, 0))
   io.result.cause := faultCause
 
   when(io.flush) {
@@ -188,6 +207,11 @@ class ysyx_26030103_TLB(
       else if (ways == 1) 0.U
       else rr
     val idx = entryIndex(fillSet, victimWay)
+    pteMems.foreach { mems =>
+      mems.zipWithIndex.foreach { case (m, w) =>
+        when(victimWay === w.U) { m.write(fillSet, io.fillPte) }
+      }
+    }
     val fillEntry = Wire(new Entry)
     fillEntry := 0.U.asTypeOf(new Entry)
     fillEntry.valid := true.B
