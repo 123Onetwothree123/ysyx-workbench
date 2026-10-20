@@ -172,6 +172,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       read(dut, SCAUSE) should be(BigInt(13))
       read(dut, STVAL) should be(BigInt("deadbeef", 16))
       read(dut, SEPC) should be(0x80001234L)
+      (read(dut, 0x100) & BigInt(0x100)) should be(BigInt(0x100))
     }
   }
 

@@ -27,6 +27,12 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     emit(new ysyx_26030103_TLB(entries = 4, ways = 1, adMode = "hardware"))
   }
 
+  it should "支持 rr/plru/lru 替换" in {
+    emit(new ysyx_26030103_TLB(entries = 8, ways = 4, replacement = "rr"))
+    emit(new ysyx_26030103_TLB(entries = 8, ways = 4, replacement = "plru"))
+    emit(new ysyx_26030103_TLB(entries = 8, ways = 4, replacement = "lru"))
+  }
+
   "PTW" should "支持三种 A/D 模式" in {
     emit(new ysyx_26030103_PTW("fault"))
     emit(new ysyx_26030103_PTW("hardware"))

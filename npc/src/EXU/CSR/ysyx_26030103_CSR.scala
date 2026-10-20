@@ -85,7 +85,6 @@ class ysyx_26030103_CSR extends Module {
   def CSRWriteData(old: UInt): UInt =
     Mux(io.IsCsrrw, io.Rs1Data,
       Mux(io.IsCsrrs, old | io.Rs1Data, old & ~io.Rs1Data))
-  val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !io.Interrupt
 
   val MretCommit = io.Enable && io.IsMret
   val SretCommit = io.Enable && io.IsSret
@@ -136,6 +135,8 @@ class ysyx_26030103_CSR extends Module {
   when(io.Interrupt) { IrqLatch := true.B }
   val HasInterrupt = (io.Interrupt || IrqLatch) && Mstatus_rdata(3)
   io.IrqPending := HasInterrupt
+  // CSR 写只在真正接受中断时被压掉；原始中断线为高但 MIE=0 时软件仍可写 CSR。
+  val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !HasInterrupt
   val IsException = io.IsEcall || io.IsEbreak || HasInterrupt || io.TrapValid
 
   val ExceptionCause = WireDefault(0.U(32.W))

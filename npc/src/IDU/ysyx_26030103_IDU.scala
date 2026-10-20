@@ -42,6 +42,9 @@ class ysyx_26030103_IDU(
     val me2_fwd_ready = Input(Bool())
     val me2_fwd_data = Input(UInt(32.W))
     val pipeline_mode = Input(Bool())
+    // DMMU 正在翻译一条访存指令时阻塞 IDU，避免后续消费者带着陈旧寄存器值
+    // 越过尚未进入 LSU 的 load/store。
+    val mmu_stall = Input(Bool())
     val perf_stall_raw = Output(Bool())
     val perf_stall_raw_loaduse = Output(Bool())
     val perf_stall_raw_alu = Output(Bool())
@@ -281,8 +284,8 @@ class ysyx_26030103_IDU(
       (me_hazard && !io.me_fwd_ready) || hidden_mdu_hazard,
     false.B
   )
-  io.in.ready := io.out.ready && !isRAW
-  io.out.valid := io.in.valid && !isRAW
+  io.in.ready := io.out.ready && !isRAW && !io.mmu_stall
+  io.out.valid := io.in.valid && !isRAW && !io.mmu_stall
   // 停顿分类口径：load-use 只统计“确实由未就绪的访存生产者造成”的停顿。
   // me 端口的 load 可能已经就绪（StageDone 或 R 响应当拍），此时它只是被
   // 隐藏 MDU 写掩码顺带命中，不能算作 load-use。ex/me2 上的 load 恒未就绪，

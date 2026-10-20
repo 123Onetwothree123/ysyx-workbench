@@ -15,6 +15,13 @@ import _root_.ysyx_26030103.mem._
 import _root_.ysyx_26030103.wbu._
 import _root_.ysyx_26030103.mmu._
 
+/** IFU 接受请求时保存的虚拟 PC/预测快照，用于响应级恢复架构 PC。 */
+class ysyx_26030103_FetchTag extends Bundle {
+  val pc = UInt(32.W)
+  val predTaken = Bool()
+  val predTarget = UInt(32.W)
+}
+
 class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig())
     extends Module {
   val io = IO(new ysyx_26030103_IO)
@@ -79,7 +86,6 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     if (mmuEnabled) Some(Module(new ysyx_26030103_AXIReadMux)) else None
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
-  val fetchVaddrReg = RegInit(0.U(32.W))
   val ifuFaultValid = RegInit(false.B)
   val ifuFaultPC = RegInit(0.U(32.W))
   val fetchTranslationValid =
@@ -87,13 +93,50 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val fetchPaddr = immuOpt.map(_.io.fetchPaddr).getOrElse(ifu.io.FetchAddr)
   val accept_fetch =
     ifu.io.FetchValid && fetchTranslationValid && icache.io.fetch_ready
-  val pred_tag_taken = RegEnable(ifu.io.PredHit, false.B, accept_fetch)
-  val pred_tag_target = RegEnable(ifu.io.PredTarget, 0.U(32.W), accept_fetch)
+  // 两表项虚拟 PC 队列：允许响应与下一笔接受同拍发生。ICache 通常只有
+  // 一笔在途，但零延迟响应/背靠背响应必须用队列而不是单寄存器。
+  val fetchTag0 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
+  val fetchTag1 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
+  val fetchTagCount = RegInit(0.U(2.W))
+  val pushTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
+  pushTag.pc := ifu.io.FetchAddr
+  pushTag.predTaken := ifu.io.PredHit
+  pushTag.predTarget := ifu.io.PredTarget
+  val popFetch = icache.io.resp_valid && icache.io.resp_ready
+  val responseTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
+  responseTag := Mux(fetchTagCount === 0.U, pushTag, fetchTag0)
+  val pushAndPop = accept_fetch && popFetch
+  when(pipe_flush) {
+    fetchTagCount := 0.U
+  }.elsewhen(pushAndPop) {
+    when(fetchTagCount === 0.U) {
+      fetchTagCount := 0.U
+    }.elsewhen(fetchTagCount === 1.U) {
+      fetchTag0 := pushTag
+    }.otherwise {
+      fetchTag0 := fetchTag1
+      fetchTag1 := pushTag
+    }
+  }.elsewhen(accept_fetch) {
+    when(fetchTagCount === 0.U) {
+      fetchTag0 := pushTag
+      fetchTagCount := 1.U
+    }.elsewhen(fetchTagCount === 1.U) {
+      fetchTag1 := pushTag
+      fetchTagCount := 2.U
+    }
+  }.elsewhen(popFetch) {
+    when(fetchTagCount === 2.U) {
+      fetchTag0 := fetchTag1
+      fetchTagCount := 1.U
+    }.otherwise {
+      fetchTagCount := 0.U
+    }
+  }
 
   if (mmuEnabled) {
     // 取指虚拟 PC 与 ICache 的物理取指地址分离；ICache 只有一笔在途，
     // 因此一个虚拟 PC 快照足够把响应恢复成架构 PC。
-    when(accept_fetch) { fetchVaddrReg := ifu.io.FetchAddr }
     when(immuOpt.get.io.fault) {
       ifuFaultValid := true.B
       ifuFaultPC := immuOpt.get.io.faultVaddr
@@ -102,18 +145,18 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     }
     ifuResp.valid := ifuFaultValid || icache.io.resp_valid
     ifuResp.bits.Instruction := Mux(ifuFaultValid, 0.U, icache.io.resp_data)
-    ifuResp.bits.pc := Mux(ifuFaultValid, ifuFaultPC,
-      Mux(accept_fetch, ifu.io.FetchAddr, fetchVaddrReg))
+    // 响应使用队首快照；同拍响应/接受由队列处理，AUIPC 不会拿到下一 PC。
+    ifuResp.bits.pc := Mux(ifuFaultValid, ifuFaultPC, responseTag.pc)
     ifuResp.bits.ExceptionValid := ifuFaultValid || icache.io.resp_fault
     ifuResp.bits.ExceptionCause := Mux(ifuFaultValid, 12.U(4.W), 1.U(4.W))
     ifuResp.bits.AccessFaultResp := Mux(ifuFaultValid, 0.U, icache.io.access_fault_resp)
-    ifuResp.bits.pred_taken := !ifuFaultValid && pred_tag_taken
-    ifuResp.bits.pred_target := Mux(ifuFaultValid, 0.U, pred_tag_target)
+    ifuResp.bits.pred_taken := !ifuFaultValid && responseTag.predTaken
+    ifuResp.bits.pred_target := Mux(ifuFaultValid, 0.U, responseTag.predTarget)
     icache.io.resp_ready := ifuResp.ready && !ifuFaultValid
   } else {
     ifuResp.valid := icache.io.resp_valid
     ifuResp.bits.Instruction := icache.io.resp_data
-    ifuResp.bits.pc := icache.io.resp_addr
+    ifuResp.bits.pc := responseTag.pc
     ifuResp.bits.ExceptionValid := icache.io.resp_fault
     ifuResp.bits.ExceptionCause := 1.U(4.W)
     ifuResp.bits.AccessFaultResp := icache.io.access_fault_resp
@@ -125,8 +168,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   //  错路指令漏网提交,ra被污染. icache最多1个outstanding,单表项快照即够;
   //  背靠背=响应与接受同拍,响应读的是旧值,时序正确)
   if (!mmuEnabled) {
-    ifuResp.bits.pred_taken := pred_tag_taken
-    ifuResp.bits.pred_target := pred_tag_target
+    ifuResp.bits.pred_taken := responseTag.predTaken
+    ifuResp.bits.pred_target := responseTag.predTarget
   }
   // 响应级不再重新查表, 预测标签在取指接受时快照保存
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
@@ -144,7 +187,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 此边界保存的是比 LSU 当前指令更年轻的指令，只有更老的 MEM 故障可以丢弃
   // 它；不要在这里接入 pipe_flush。
   if (mmuEnabled) {
-    ysyx_26030103_StageConnect(exu.io.out, dmmuOpt.get.io.in, lsu.io.FlushEXMEM)
+    // DMMU 对非访存指令是组合直通，因此这里仍然只有 LSU 前的一级流水寄存器。
+    // 访存指令翻译期间 exu.out.ready 被拉低，IDU 另由 dmmu.busy 阻塞。
+    exu.io.out <> dmmuOpt.get.io.in
     ysyx_26030103_StageConnect(dmmuOpt.get.io.out, lsu.io.in, lsu.io.FlushEXMEM)
   } else {
     ysyx_26030103_StageConnect(exu.io.out, lsu.io.in, lsu.io.FlushEXMEM)
@@ -408,6 +453,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   idu.io.wb_rd := wbu.io.in.bits.Rd
   idu.io.wb_regWrite := wbu.io.in.bits.RegisterWrite
   idu.io.pipeline_mode := true.B
+  idu.io.mmu_stall := dmmuOpt.map(_.io.busy).getOrElse(false.B)
   // 手动连线了
   idu.io.ReadDATA1 := gpr.io.ReadDATA1
   idu.io.ReadDATA2 := gpr.io.ReadDATA2

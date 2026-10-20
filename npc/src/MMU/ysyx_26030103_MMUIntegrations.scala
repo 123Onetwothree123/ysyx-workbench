@@ -86,6 +86,8 @@ class ysyx_26030103_IFUMMU extends Module {
   val idle :: xwait :: done :: fault :: discard :: Nil = Enum(5)
   val state = RegInit(idle)
   val paddrReg = RegInit(0.U(32.W))
+  val paddrVaddrReg = RegInit(0.U(32.W))
+  val reqVaddrReg = RegInit(0.U(32.W))
   val faultReg = RegInit(false.B)
   val faultVaddrReg = RegInit(0.U(32.W))
   val bypass = io.satp(31) === 0.U || io.privilege === 3.U
@@ -94,7 +96,10 @@ class ysyx_26030103_IFUMMU extends Module {
   io.req.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest)
   io.resp.ready := false.B
   io.fetchPaddr := Mux(bypass, io.fetchVaddr, paddrReg)
-  io.translationValid := bypass || state === done
+  // 重定向后 IFU 的虚拟 PC 已改变；即使 flush 晚一拍，旧 paddr 也绝不能
+  // 再被当成新 PC 的物理地址送给 ICache。
+  io.translationValid := bypass ||
+    (state === done && paddrVaddrReg === io.fetchVaddr)
   io.fetchReady := io.translationValid && io.cacheReady
   io.fault := faultReg
   io.faultVaddr := faultVaddrReg
@@ -113,7 +118,10 @@ class ysyx_26030103_IFUMMU extends Module {
           io.req.bits.sum := io.sum
           io.req.bits.mxr := io.mxr
           io.req.bits.satp := io.satp
-          when(io.req.fire) { state := xwait }
+          when(io.req.fire) {
+            reqVaddrReg := io.fetchVaddr
+            state := xwait
+          }
         }
       }
       is(xwait) {
@@ -121,16 +129,18 @@ class ysyx_26030103_IFUMMU extends Module {
         when(io.resp.valid) {
           when(io.resp.bits.fault) {
             faultReg := true.B
-            faultVaddrReg := io.fetchVaddr
+            faultVaddrReg := reqVaddrReg
             state := fault
           }.otherwise {
             paddrReg := io.resp.bits.paddr
+            paddrVaddrReg := reqVaddrReg
             state := done
           }
         }
       }
       is(done) {
-        when(io.fetchValid && io.cacheReady) { state := idle }
+        when(io.fetchValid && io.cacheReady &&
+             paddrVaddrReg === io.fetchVaddr) { state := idle }
         when(!io.fetchValid) { state := idle }
       }
       is(fault) {
@@ -166,6 +176,7 @@ class ysyx_26030103_LSUMMU extends Module {
     val faultCause = Output(UInt(32.W))
     val faultTval = Output(UInt(32.W))
     val faultPC = Output(UInt(32.W))
+    val busy = Output(Bool())
     val req = Decoupled(new ysyx_26030103_MMURequest)
     val resp = Flipped(Decoupled(new ysyx_26030103_MMUResponse))
   })
@@ -190,19 +201,15 @@ class ysyx_26030103_LSUMMU extends Module {
   io.faultCause := faultCauseReg
   io.faultTval := faultTvalReg
   io.faultPC := faultPCReg
+  io.busy := state =/= idle
 
   when(state === idle) {
-    when(!isMem) {
-      io.in.ready := io.out.ready
-      io.out.valid := io.in.valid
-      io.out.bits := io.in.bits
-    }.elsewhen(bypass) {
-      io.in.ready := io.out.ready
+    // 始终使用同一个握手条件，避免 in.ready 依赖 in.bits 形成组合环。
+    io.in.ready := io.out.ready
+    when(!isMem || bypass) {
       io.out.valid := io.in.valid
       io.out.bits := io.in.bits
     }.otherwise {
-      // 先接收指令，再单独发 MMU 请求，避免 in.ready 与请求仲裁器形成组合环。
-      io.in.ready := true.B
       when(io.in.fire) {
         msgReg := io.in.bits
         state := xreq
@@ -236,6 +243,7 @@ class ysyx_26030103_LSUMMU extends Module {
     }
   }
   when(state === done) {
+    io.in.ready := io.out.ready
     io.out.valid := true.B
     io.out.bits := msgReg
     io.out.bits.ALUResult := paddrReg
