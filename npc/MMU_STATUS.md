@@ -45,12 +45,12 @@ S ecall + SRET          HIT GOOD
 - VIPT
 - PTW 复用 DCache
 - pipelined / out-of-order PTW
-- 多笔在途 PTW
 - PLIC
 - 多 refill 端口和非 follow_tlb 缺失队列
 
-`MMU_PTW_OUTSTANDING` 当前仍按单笔 walk 处理；这是下一步要补的
-数据结构，不能仅靠 Kconfig 数字改变行为。
+`PTWCluster` 已支持 N 个独立 walker 和共享页表总线仲裁，但 MMU 的
+外部请求端口仍按单笔请求使用；要获得 IFU/LSU 真正并发，还需要在 MMU
+入口增加请求队列和响应 ID。
 
 ## 未完成验证
 
