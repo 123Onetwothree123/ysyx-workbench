@@ -40,6 +40,8 @@ class ysyx_26030103_IDUMessage extends Bundle {
   // 正常进入 mtvec 的架构 EBREAK 完全分开。
   val IsSimHalt = Bool()
   val IsMret = Bool()
+  val IsSret = Bool()
+  val IsSfenceVma = Bool()
   // 普通 FENCE（opcode=0001111, funct3=000）。与 FenceI 分开，
   // 由 EXU 将其作为访存顺序屏障处理；它本身不刷新 ICache。
   val IsFence = Bool()

@@ -1,273 +1,331 @@
 package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
+
+/** 机器/监管者 CSR 与精确异常入口。
+  *
+  * 当前实现支持 M/S/U 三个特权级、S 模式 CSR、异常委托和 SRET。
+  * 页表翻译本身在 MMU 中完成；这里负责 satp、stvec/sepc/scause/stval
+  * 以及异常入口的特权级切换。
+  */
 class ysyx_26030103_CSR extends Module {
   import ysyx_26030103_mstatus.legalize
   val io = IO(new Bundle {
     val clk = Input(Clock())
     val rst = Input(Bool())
     val Enable = Input(Bool())
-    // ysyx_26030103_IDU给出的指令译码信号
     val IsCsrrw = Input(Bool())
     val IsCsrrs = Input(Bool())
     val IsCsrrc = Input(Bool())
     val IsEcall = Input(Bool())
-    // Chisel版本设计的真正ebreak，不是之前Verilog里依赖DPI-C结束仿真的ebreak
     val IsEbreak = Input(Bool())
     val IsMret = Input(Bool())
-    val CSRAddress = Input(UInt(12.W)) // ysyx_26030103_CSR地址，指令[31:20]
-    val rs1 = Input(UInt(5.W)) // rs1寄存器编号，用于判断csrrs是否写ysyx_26030103_CSR
-    val Rs1Data = Input(UInt(32.W)) // Rs1寄存器的数据
-    // 本次架构事件的精确边界PC：普通指令取其指令PC，空流水IRQ取顶层
-    // 提交态PC，MEM后门故障取故障指令PC。
+    val IsSret = Input(Bool())
+    val IsSfenceVma = Input(Bool())
+    val CSRAddress = Input(UInt(12.W))
+    val rs1 = Input(UInt(5.W))
+    val Rs1Data = Input(UInt(32.W))
     val pc = Input(UInt(32.W))
-    val CSR_rdata = Output(UInt(32.W)) // ysyx_26030103_CSR读出，写到rd
-    // 异常和返回的跳转控制
-    val ExceptionTaken =
-      Output(Bool()) // 需要跳转，ecall到ysyx_26030103_mtvec，mret到ysyx_26030103_mepc
-    val ExceptionTarget = Output(UInt(32.W)) // 跳转目标地址
-    // 新加的，真正的处理功能
+    val TrapTval = Input(UInt(32.W))
+    val CSR_rdata = Output(UInt(32.W))
+    val ExceptionTaken = Output(Bool())
+    val ExceptionTarget = Output(UInt(32.W))
+    val FlushTLB = Output(Bool())
+    val Privilege = Output(UInt(2.W))
+    val Satp = Output(UInt(32.W))
+
     val Interrupt = Input(Bool())
-    // EXU提交点送来的异常:IFU取指错(1)/IDU非法指令(2),与ecall/ebreak走同一条提交通路
     val TrapValid = Input(Bool())
     val TrapCause = Input(UInt(32.W))
-    // MEM级访存故障后门提交(与当前EXU里的指令无关): 置位时当前指令被冲刷,
-    // 不得再产生任何指令级副作用(csr写/mret/中断提交), 异常走mtvec
     val MemTrap = Input(Bool())
-    // 中断提交标志(Enable且中断被接受),给EXU用来压掉被中断指令的副作用:
-    // mepc记的是这条指令自己的PC,mret后它会重新执行,因此它本次不得写GPR/CSR
     val IrqCommit = Output(Bool())
-    // 未经Enable门控的“可接受IRQ”，供EXU在老MEM指令未排空时预先施加反压。
     val IrqPending = Output(Bool())
-    // 仅在进入trap(ecall/ebreak/同步异常/IRQ/MEM fault)时置位；
-    // MRET虽然也产生控制转移，但不是新的trap入口。
     val TrapCommit = Output(Bool())
-    // 本次 trap 提交的完整 mcause，供退休级调试/DiffTest
-    // 区分同步异常与中断。
     val CommittedCause = Output(UInt(32.W))
-    // 当前 EXU 架构事件完成后的 CSR 状态，用于退休级 DiffTest。
+
     val StateMstatus = Output(UInt(32.W))
     val StateMtvec = Output(UInt(32.W))
     val StateMepc = Output(UInt(32.W))
     val StateMcause = Output(UInt(32.W))
   })
-  // ysyx_26030103_mcycle=12'hB00，低32位
-  // mcycleh=12'hB80，高32位
-  val CSR_MVENDORID = 0xf11.U(12.W)
-  val CSR_MARCHID = 0xf12.U(12.W)
-  val CSR_MCYCLE = 0xb00.U(12.W)
-  val CSR_MCYCLEH = 0xb80.U(12.W)
+
   val CSR_MSTATUS = 0x300.U(12.W)
   val CSR_MTVEC = 0x305.U(12.W)
   val CSR_MEPC = 0x341.U(12.W)
   val CSR_MCAUSE = 0x342.U(12.W)
+  val CSR_MSCRATCH = 0x340.U(12.W)
+  val CSR_MEDELEG = 0x302.U(12.W)
+  val CSR_MIDELEG = 0x303.U(12.W)
+  val CSR_MIE = 0x304.U(12.W)
+  val CSR_MIP = 0x344.U(12.W)
+  val CSR_SSTATUS = 0x100.U(12.W)
+  val CSR_SIE = 0x104.U(12.W)
+  val CSR_STVEC = 0x105.U(12.W)
+  val CSR_SCOUNTEREN = 0x106.U(12.W)
+  val CSR_SSCRATCH = 0x140.U(12.W)
+  val CSR_SEPC = 0x141.U(12.W)
+  val CSR_SCAUSE = 0x142.U(12.W)
+  val CSR_STVAL = 0x143.U(12.W)
+  val CSR_SIP = 0x144.U(12.W)
+  val CSR_SATP = 0x180.U(12.W)
+  val CSR_MCYCLE = 0xb00.U(12.W)
+  val CSR_MCYCLEH = 0xb80.U(12.W)
+  val CSR_MVENDORID = 0xf11.U(12.W)
+  val CSR_MARCHID = 0xf12.U(12.W)
+
   val Mvendorid_rdata = 0x79737978.U(32.W)
   val Marchid_rdata = "h018d3017".U(32.W)
+  val SstatusMask = "h000c0122".U(32.W) // SIE SPIE SPP SUM MXR
   def IsCSRAddress(addr: UInt): Bool = io.CSRAddress === addr
+
   val csrrwWen = io.Enable && io.IsCsrrw
   val csrrsWen = io.Enable && io.IsCsrrs && io.rs1 =/= 0.U
   val csrrcWen = io.Enable && io.IsCsrrc && io.rs1 =/= 0.U
-  // CSRRW 写源值，CSRRS 置位，CSRRC 清位。立即数型指令的 zimm 已由
-  // IDU 零扩展到 Rs1Data，因此这里可与寄存器型共用语义。
   def CSRWriteData(old: UInt): UInt =
-    Mux(
-      io.IsCsrrw,
-      io.Rs1Data,
-      Mux(io.IsCsrrs, old | io.Rs1Data, old & ~io.Rs1Data)
-    )
+    Mux(io.IsCsrrw, io.Rs1Data,
+      Mux(io.IsCsrrs, old | io.Rs1Data, old & ~io.Rs1Data))
+  val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !io.Interrupt
+
   val MretCommit = io.Enable && io.IsMret
-  /*
-  val ExceptionCause =
-    Mux( // 标记一下，English确实是烂，cause是名词（n）翻译是原因，Verilog那边能记住，这里就记不住，服了
-      io.IsEbreak,
-      3.U(32.W),
-      11.U(32.W)
-    ) // 如果是ebreak，ysyx_26030103_mcause=3，不然就是ecall，ysyx_26030103_mcause=11
-   */
+  val SretCommit = io.Enable && io.IsSret
+  val SfenceCommit = io.Enable && io.IsSfenceVma
+
   val Mstatus = Module(new ysyx_26030103_mstatus)
   val Mtvec = Module(new ysyx_26030103_mtvec)
   val Mepc = Module(new ysyx_26030103_mepc)
   val Mcause = Module(new ysyx_26030103_mcause)
+  val Stvec = Module(new ysyx_26030103_mtvec)
+  val Sepc = Module(new ysyx_26030103_mepc)
+  val Scause = Module(new ysyx_26030103_mcause)
   val Mcycle = Module(new ysyx_26030103_mcycle)
-  Mstatus.io.clk := io.clk
-  Mstatus.io.rst := io.rst
-  Mtvec.io.clk := io.clk
-  Mtvec.io.rst := io.rst
-  Mepc.io.clk := io.clk
-  Mepc.io.rst := io.rst
-  Mcause.io.clk := io.clk
-  Mcause.io.rst := io.rst
-  Mcycle.io.clk := io.clk
-  Mcycle.io.rst := io.rst
+
+  Mstatus.io.clk := io.clk; Mstatus.io.rst := io.rst
+  Mtvec.io.clk := io.clk; Mtvec.io.rst := io.rst
+  Mepc.io.clk := io.clk; Mepc.io.rst := io.rst
+  Mcause.io.clk := io.clk; Mcause.io.rst := io.rst
+  Stvec.io.clk := io.clk; Stvec.io.rst := io.rst
+  Sepc.io.clk := io.clk; Sepc.io.rst := io.rst
+  Scause.io.clk := io.clk; Scause.io.rst := io.rst
+  Mcycle.io.clk := io.clk; Mcycle.io.rst := io.rst
+
+  val Mscratch = RegInit(0.U(32.W))
+  val Sscratch = RegInit(0.U(32.W))
+  val Medeleg = RegInit(0.U(32.W))
+  val Mideleg = RegInit(0.U(32.W))
+  val Mie = RegInit(0.U(32.W))
+  val Mip = RegInit(0.U(32.W))
+  val Sie = RegInit(0.U(32.W))
+  val Sip = RegInit(0.U(32.W))
+  val Scounteren = RegInit(0.U(32.W))
+  val Stval = RegInit(0.U(32.W))
+  val SatpReg = RegInit(0.U(32.W))
+  val Privilege = RegInit(3.U(2.W))
+
   val Mstatus_rdata = Mstatus.io.rdata
+  val Sstatus_rdata = Mstatus_rdata & SstatusMask
   val Mtvec_rdata = Mtvec.io.rdata
   val Mepc_rdata = Mepc.io.rdata
   val Mcause_rdata = Mcause.io.rdata
+  val Stvec_rdata = Stvec.io.rdata
+  val Sepc_rdata = Sepc.io.rdata
+  val Scause_rdata = Scause.io.rdata
   val Mcycle_rdata = Mcycle.io.rdata
-  // 中断锁存（mip 语义）：中断线只要出现过就保持 pending，直到被真正提交。
-  // 阻塞窗口（MEM 未排空 / MDU 在飞 / 流水级未过精确边界）里的一拍脉冲
-  // 不再丢失；电平型中断源（CLINT/PLIC）行为不变——提交拍清锁存，源仍
-  // 拉高则下一拍重新置位，mret 后照常再次触发。
+
   val IrqLatch = RegInit(false.B)
-  when(io.Interrupt) {
-    IrqLatch := true.B
-  }
-  // 真正的ebreak按RISC-V breakpoint异常处理：写ysyx_26030103_mepc/ysyx_26030103_mcause，然后跳ysyx_26030103_mtvec
-  val HasInterrupt =
-    (io.Interrupt || IrqLatch) && Mstatus_rdata(
-      3
-    ) // ysyx_26030103_mstatus寄存器第3位是MIE，这个是处理器的中断使能，允许中断进来
+  when(io.Interrupt) { IrqLatch := true.B }
+  val HasInterrupt = (io.Interrupt || IrqLatch) && Mstatus_rdata(3)
   io.IrqPending := HasInterrupt
   val IsException = io.IsEcall || io.IsEbreak || HasInterrupt || io.TrapValid
-  /*
-  根据RISCV手册来看，31号bit如果是0那就是异常，而如果是1，那就是中断
-  30号到0号，则是编号，3是异常，11是机器外部中断或M-mode ecall
-   */
+
   val ExceptionCause = WireDefault(0.U(32.W))
   when(io.MemTrap) {
-    ExceptionCause := io.TrapCause // MEM后门故障(cause由EXU在TrapCause上先选好)
+    ExceptionCause := io.TrapCause
   }.elsewhen(HasInterrupt) {
-    // CPU 顶层的 io_interrupt 按 SoC 接口契约是 machine external
-    // interrupt，因此 mcause 中断号必须是 11，而不是 MTI 的 7。
-    ExceptionCause := "h8000000b".U(
-      32.W
-    ) // bit31=1 表示中断，cause=11 表示 machine external interrupt
+    ExceptionCause := "h8000000b".U(32.W)
   }.elsewhen(io.TrapValid) {
-    ExceptionCause := io.TrapCause // EXU提交点送来的异常号:取指错1/非法指令2/load访存错5/store访存错7
+    ExceptionCause := io.TrapCause
   }.elsewhen(io.IsEbreak) {
-    ExceptionCause := 3.U(32.W) // 断点异常
-  }.otherwise { // 只剩ecall
-    ExceptionCause := 11.U(32.W) // 环境调用异常
+    ExceptionCause := 3.U(32.W)
+  }.otherwise {
+    // ecall 的 cause 由当前特权级决定：U=8，S=9，M=11。
+    ExceptionCause := Mux(Privilege === 0.U, 8.U(32.W),
+      Mux(Privilege === 1.U, 9.U(32.W), 11.U(32.W)))
   }
-  // 新加的这行代码，irq是Interrupt ReQuest，是中断请求的意思
+
   val HasIrqCommit = io.Enable && HasInterrupt && !io.MemTrap
-  // 中断被真正提交时清除锁存；此时 MIE 已清零，若源仍为高电平会在下一拍
-  // 重新置位（未服务完的设备中断在 mret 后继续 pending）。
-  when(HasIrqCommit) {
-    IrqLatch := false.B
-  }
-  // 中断提交时被中断的指令要被压掉(mepc记的是它自己的PC,mret后重跑),因此它本次不得写CSR/GPR
-  val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !HasInterrupt
+  when(HasIrqCommit) { IrqLatch := false.B }
   io.IrqCommit := HasIrqCommit
-  // 异常提交: MEM后门优先(当前指令被冲刷), 其余由本条指令的ecall/ebreak/中断/异常触发
   val ExceptionCommit = io.MemTrap || (io.Enable && IsException)
   io.TrapCommit := ExceptionCommit
   io.CommittedCause := ExceptionCause
-  // 以下这段代码是AI编写的
-  /*
-  就是RISCV有两种模式，一种是BASE模式，一种是向量模式
-  基础模式（好像BASE的中文翻译应该是叫基址），bit0=0
-  不管什么原因，比如ecall和ebreak和外部中断，全往同一个地址跳，然后操作系统这边写一个入口函数，进去后再读ysyx_26030103_mcause，然后判
-  断到底发生了什么
-  就是ysyx_26030103_mtvec存了什么地址，ecall和ebreak和中断就跳到哪个地址
-  向量模式，bit0=1
-  不同原因跳不同的地址，然后跳的地址是BASE+4 x n，
-  就比如说ysyx_26030103_mtvec存0x80000001，BASE是0x80000000
-  ecall和ebreak还是BASE，外部中断是11，所以中断跳的地址是BASE+4x11
-   */
-  // M-only trap entry: MPP=M、MPIE=旧 MIE、MIE=0。
-  val MstatusExceptionData =
-    legalize("h00001800".U(32.W) | (Mstatus_rdata(3) << 7))
-  // M-only：MRET 恢复 MIE、置 MPIE，MPP 经 WARL 始终保持为 M。
-  val MstatusMretData = legalize((Mstatus_rdata(7) << 3) | (1.U << 7))
-  Mstatus.io.wen := (CSRWen && IsCSRAddress(
-    CSR_MSTATUS
-  )) || ExceptionCommit || MretCommit
-  Mstatus.io.wdata := legalize(MuxCase(
-    CSRWriteData(Mstatus_rdata),
-    Seq(
-      ExceptionCommit -> MstatusExceptionData,
-      MretCommit -> MstatusMretData
+
+  // 异常委托：只有低于 M 的异常/中断才能被委托给 S。
+  val CauseIndex = ExceptionCause(4, 0)
+  val Delegation = Mux(ExceptionCause(31), Mideleg, Medeleg)
+  val Delegated = Delegation(CauseIndex)
+  val TrapToS = Privilege =/= 3.U && Delegated
+
+  val MstatusExceptionData = {
+    val mTrap = legalize(
+      (Mstatus_rdata & ~"h00001888".U(32.W)) |
+        (Privilege << 11) | (Mstatus_rdata(3) << 7)
     )
+    val sTrap = legalize(
+      (Mstatus_rdata & ~"h00000122".U(32.W)) |
+        (Privilege(0) << 8) | (Mstatus_rdata(1) << 5)
+    )
+    Mux(TrapToS, sTrap, mTrap)
+  }
+  // MPP 恢复；MIE <- MPIE；MPIE <- 1；MPP <- U（最低支持特权级）。
+  val MstatusMretData = legalize(
+    (Mstatus_rdata & ~"h00001888".U(32.W)) |
+      (Mstatus_rdata(7) << 3) | (1.U << 7)
+  )
+  // SRET：SPP 决定返回 S/U；SIE <- SPIE；SPIE <- 1；SPP <- 0。
+  val MstatusSretData = legalize(
+    (Mstatus_rdata & ~"h00000122".U(32.W)) |
+      (Mstatus_rdata(5) << 1) | (1.U << 5)
+  )
+
+  val MstatusWen = CSRWen && (IsCSRAddress(CSR_MSTATUS) || IsCSRAddress(CSR_SSTATUS))
+  val MstatusCSRData = Mux(
+    IsCSRAddress(CSR_SSTATUS),
+    legalize((Mstatus_rdata & ~SstatusMask) | (CSRWriteData(Sstatus_rdata) & SstatusMask)),
+    legalize(CSRWriteData(Mstatus_rdata))
+  )
+  Mstatus.io.wen := MstatusWen || ExceptionCommit || MretCommit || SretCommit
+  Mstatus.io.wdata := MuxCase(MstatusCSRData, Seq(
+    ExceptionCommit -> MstatusExceptionData,
+    MretCommit -> MstatusMretData,
+    SretCommit -> MstatusSretData
   ))
+
   Mtvec.io.wen := CSRWen && IsCSRAddress(CSR_MTVEC)
   Mtvec.io.wdata := CSRWriteData(Mtvec_rdata)
-  Mepc.io.wen := (CSRWen && IsCSRAddress(CSR_MEPC)) || ExceptionCommit
-  Mepc.io.ExceptionWE := ExceptionCommit
+  Stvec.io.wen := CSRWen && IsCSRAddress(CSR_STVEC)
+  Stvec.io.wdata := CSRWriteData(Stvec_rdata)
+
+  // 只有 M 入口写 mepc/mcause；委托到 S 时写 sepc/scause/stval。
+  val MepcWen = CSRWen && IsCSRAddress(CSR_MEPC) && !TrapToS
+  Mepc.io.wen := MepcWen || (ExceptionCommit && !TrapToS)
+  Mepc.io.ExceptionWE := ExceptionCommit && !TrapToS
   Mepc.io.ExceptionData := io.pc
-  // 正常写入，反正到时候优先级不如异常的优先级高，直接写了，后面再说
-  Mcause.io.wen := (CSRWen && IsCSRAddress(CSR_MCAUSE)) || ExceptionCommit
-  // 好吧，确实可以正常写的，那这个也要改成ysyx_26030103_mcause的样子
-  Mepc.io.wdata := Mux(ExceptionCommit, io.pc, CSRWriteData(Mepc_rdata))
-  Mcause.io.wdata := Mux(
-    ExceptionCommit,
-    ExceptionCause,
-    // 先标记一下，这是正常的写入，最开始不知道，以为可以直接写if语句收ExceptionCause，后面查了才知道，软件也可以写csrrw和csrrs
-    // 等下，那说明ysyx_26030103_mepc也是可以正常转的吗？
-    CSRWriteData(Mcause_rdata)
-  )
-  // 寄存器在上升沿才写入，但随指令流向 WBU 的快照必须表示
-  // “本指令之后”的状态，所以在这里显式计算 next-state。
-  val MstatusCSRData = legalize(CSRWriteData(Mstatus_rdata))
-  io.StateMstatus := MuxCase(
-    Mstatus_rdata,
-    Seq(
-      ExceptionCommit -> MstatusExceptionData,
-      MretCommit -> MstatusMretData,
-      (CSRWen && IsCSRAddress(CSR_MSTATUS)) -> MstatusCSRData
-    )
-  )
-  val MtvecCSRData = CSRWriteData(Mtvec_rdata)
-  val MtvecLegalMode = Mux(MtvecCSRData(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
-  io.StateMtvec := Mux(
-    CSRWen && IsCSRAddress(CSR_MTVEC),
-    Cat(MtvecCSRData(31, 2), MtvecLegalMode),
-    Mtvec_rdata
-  )
-  val MepcCSRData = CSRWriteData(Mepc_rdata)
-  io.StateMepc := Mux(
-    ExceptionCommit,
-    Cat(io.pc(31, 2), 0.U(2.W)),
-    Mux(
-      CSRWen && IsCSRAddress(CSR_MEPC),
-      Cat(MepcCSRData(31, 2), 0.U(2.W)),
-      Mepc_rdata
-    )
-  )
-  io.StateMcause := Mux(
-    ExceptionCommit,
-    ExceptionCause,
-    Mux(
-      CSRWen && IsCSRAddress(CSR_MCAUSE),
-      CSRWriteData(Mcause_rdata),
-      Mcause_rdata
-    )
-  )
+  Mepc.io.wdata := Mux(ExceptionCommit && !TrapToS, io.pc, CSRWriteData(Mepc_rdata))
+  val McauseWen = CSRWen && IsCSRAddress(CSR_MCAUSE) && !TrapToS
+  Mcause.io.wen := McauseWen || (ExceptionCommit && !TrapToS)
+  Mcause.io.wdata := Mux(ExceptionCommit && !TrapToS, ExceptionCause,
+    CSRWriteData(Mcause_rdata))
+
+  val SepcWen = CSRWen && IsCSRAddress(CSR_SEPC)
+  Sepc.io.wen := SepcWen || (ExceptionCommit && TrapToS)
+  Sepc.io.ExceptionWE := ExceptionCommit && TrapToS
+  Sepc.io.ExceptionData := io.pc
+  Sepc.io.wdata := Mux(ExceptionCommit && TrapToS, io.pc, CSRWriteData(Sepc_rdata))
+  val ScauseWen = CSRWen && IsCSRAddress(CSR_SCAUSE)
+  Scause.io.wen := ScauseWen || (ExceptionCommit && TrapToS)
+  Scause.io.wdata := Mux(ExceptionCommit && TrapToS, ExceptionCause,
+    CSRWriteData(Scause_rdata))
+
+  when(ExceptionCommit && TrapToS) {
+    Stval := Mux(io.TrapTval =/= 0.U, io.TrapTval, io.pc)
+  }.elsewhen(CSRWen && IsCSRAddress(CSR_STVAL)) {
+    Stval := CSRWriteData(Stval)
+  }
+  when(CSRWen && IsCSRAddress(CSR_SSCRATCH)) { Sscratch := CSRWriteData(Sscratch) }
+  when(CSRWen && IsCSRAddress(CSR_MSCRATCH)) { Mscratch := CSRWriteData(Mscratch) }
+  when(CSRWen && IsCSRAddress(CSR_MEDELEG)) { Medeleg := CSRWriteData(Medeleg) }
+  when(CSRWen && IsCSRAddress(CSR_MIDELEG)) { Mideleg := CSRWriteData(Mideleg) }
+  when(CSRWen && IsCSRAddress(CSR_MIE)) { Mie := CSRWriteData(Mie) }
+  when(CSRWen && IsCSRAddress(CSR_MIP)) { Mip := CSRWriteData(Mip) }
+  when(CSRWen && IsCSRAddress(CSR_SIE)) { Sie := CSRWriteData(Sie) }
+  when(CSRWen && IsCSRAddress(CSR_SIP)) { Sip := CSRWriteData(Sip) }
+  when(CSRWen && IsCSRAddress(CSR_SCOUNTEREN)) { Scounteren := CSRWriteData(Scounteren) }
+  val SatpWen = CSRWen && IsCSRAddress(CSR_SATP)
+  when(SatpWen) {
+    val data = CSRWriteData(SatpReg)
+    SatpReg := Cat(Mux(data(31), 1.U(1.W), 0.U(1.W)), data(30, 0))
+  }
+  io.Satp := SatpReg
+  io.Privilege := Privilege
+  io.FlushTLB := SfenceCommit || SatpWen
+
+  when(ExceptionCommit) {
+    Privilege := Mux(TrapToS, 1.U, 3.U)
+  }.elsewhen(MretCommit) {
+    Privilege := Mstatus_rdata(12, 11)
+  }.elsewhen(SretCommit) {
+    Privilege := Mux(Mstatus_rdata(8), 1.U, 0.U)
+  }
+
   val McycleAccess = IsCSRAddress(CSR_MCYCLE) || IsCSRAddress(CSR_MCYCLEH)
   Mcycle.io.wen := CSRWen && McycleAccess
   Mcycle.io.SelectHigh := IsCSRAddress(CSR_MCYCLEH)
   Mcycle.io.wdata := CSRWriteData(Mcycle_rdata)
-  // 做一个表，本来直接用switch的，结果知乎链接看到可以用Seq来实现，然后后面别的地方也开始用Seq了
-  // 参考资料：https://zhuanlan.zhihu.com/p/567818196
+
   val CSRMap = Seq(
+    CSR_MSTATUS -> Mstatus_rdata,
+    CSR_SSTATUS -> Sstatus_rdata,
+    CSR_MTVEC -> Mtvec_rdata,
+    CSR_STVEC -> Stvec_rdata,
+    CSR_MEPC -> Mepc_rdata,
+    CSR_SEPC -> Sepc_rdata,
+    CSR_MCAUSE -> Mcause_rdata,
+    CSR_SCAUSE -> Scause_rdata,
+    CSR_MSCRATCH -> Mscratch,
+    CSR_SSCRATCH -> Sscratch,
+    CSR_MEDELEG -> Medeleg,
+    CSR_MIDELEG -> Mideleg,
+    CSR_MIE -> Mie,
+    CSR_MIP -> Mip,
+    CSR_SIE -> Sie,
+    CSR_SIP -> Sip,
+    CSR_SCOUNTEREN -> Scounteren,
+    CSR_STVAL -> Stval,
+    CSR_SATP -> SatpReg,
     CSR_MCYCLE -> Mcycle_rdata,
     CSR_MCYCLEH -> Mcycle_rdata,
     CSR_MVENDORID -> Mvendorid_rdata,
-    CSR_MARCHID -> Marchid_rdata,
-    CSR_MSTATUS -> Mstatus_rdata,
-    CSR_MTVEC -> Mtvec_rdata,
-    CSR_MEPC -> Mepc_rdata,
-    CSR_MCAUSE -> Mcause_rdata
+    CSR_MARCHID -> Marchid_rdata
   )
-  // 管他了，找不到就赋值0了
   io.CSR_rdata := MuxLookup(io.CSRAddress, 0.U(32.W))(CSRMap)
-  // mtvec.MODE=Direct(0): 所有trap走BASE。MODE=Vectored(1): 只有interrupt
-  // 走BASE+4*cause，同步异常仍走BASE。目标使用本拍ExceptionCause，
-  // 不依赖时钟边沿后才写入的mcause。
+
   val MtvecBase = Cat(Mtvec_rdata(31, 2), 0.U(2.W))
+  val StvecBase = Cat(Stvec_rdata(31, 2), 0.U(2.W))
   val CauseOffsetWide = ExceptionCause(30, 0) << 2
   val CauseOffset = CauseOffsetWide(31, 0)
   val MtvecTrapTarget = Mux(
     Mtvec_rdata(1, 0) === 1.U && ExceptionCause(31),
-    MtvecBase + CauseOffset,
-    MtvecBase
-  )
-  // 目标按"是否提交异常"选择: trap优先走mtvec, 只有纯mret才走mepc
-  // (修掉MemTrap当拍被冲刷的mret把目标劫持到旧mepc的问题)
-  io.ExceptionTaken := ExceptionCommit || MretCommit
+    MtvecBase + CauseOffset, MtvecBase)
+  val StvecTrapTarget = Mux(
+    Stvec_rdata(1, 0) === 1.U && ExceptionCause(31),
+    StvecBase + CauseOffset, StvecBase)
+
+  io.ExceptionTaken := ExceptionCommit || MretCommit || SretCommit
   io.ExceptionTarget := Mux(
     ExceptionCommit,
-    MtvecTrapTarget,
-    Mepc_rdata
+    Mux(TrapToS, StvecTrapTarget, MtvecTrapTarget),
+    Mux(MretCommit, Mepc_rdata, Sepc_rdata)
   )
+
+  // 退休级快照表示本指令执行后的 CSR 状态。
+  val MstatusCSRNext = MuxCase(MstatusCSRData, Seq(
+    ExceptionCommit -> MstatusExceptionData,
+    MretCommit -> MstatusMretData,
+    SretCommit -> MstatusSretData
+  ))
+  io.StateMstatus := MuxCase(Mstatus_rdata, Seq(
+    ExceptionCommit -> MstatusExceptionData,
+    MretCommit -> MstatusMretData,
+    SretCommit -> MstatusSretData,
+    MstatusWen -> MstatusCSRData
+  ))
+  val MtvecCSRData = CSRWriteData(Mtvec_rdata)
+  val MtvecLegalMode = Mux(MtvecCSRData(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
+  io.StateMtvec := Mux(CSRWen && IsCSRAddress(CSR_MTVEC),
+    Cat(MtvecCSRData(31, 2), MtvecLegalMode), Mtvec_rdata)
+  io.StateMepc := Mux(ExceptionCommit && !TrapToS,
+    Cat(io.pc(31, 2), 0.U(2.W)),
+    Mux(MepcWen, Cat(CSRWriteData(Mepc_rdata)(31, 2), 0.U(2.W)), Mepc_rdata))
+  io.StateMcause := Mux(ExceptionCommit && !TrapToS, ExceptionCause,
+    Mux(McauseWen, CSRWriteData(Mcause_rdata), Mcause_rdata))
 }

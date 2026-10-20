@@ -78,6 +78,12 @@ class ysyx_26030103_IDU(
   val IsEbreak = Instruction === "h00100073".U(32.W)
   val IsEcall = Instruction === "h00000073".U(32.W)
   val IsMret = Instruction === "h30200073".U(32.W)
+  val IsSret = Instruction === "h10200073".U(32.W)
+  // sfence.vma 编码：funct7=0001001, funct3=000, rd=0, SYSTEM。
+  // rs1/rs2 的取值由软件决定，MMU 侧当前统一做全量 TLB 刷新。
+  val IsSfenceVma =
+    (opcode === OPCODE_System) && (funct7 === "b0001001".U(7.W)) &&
+      (funct3 === "b000".U(3.W)) && (Instruction(11, 7) === 0.U)
   // 本核仅实现 M-mode，可将 WFI 合法地实现为 NOP。必须精确匹配整个
   // 标准编码，避免把其它 funct3=000 的保留 SYSTEM 编码一并放行。
   val IsWfi = Instruction === "h10500073".U(32.W)
@@ -143,8 +149,8 @@ class ysyx_26030103_IDU(
   // 作为无副作用 NOP 正常退休。MiscMem 中 fence/fence.i 分别处理。
   val IsKnownInstruction =
     IsRType || IsIType || IsSType || IsBType || IsUType || IsJType ||
-      IsCSRInstruction || IsEcall || IsEbreak || IsSimHalt || IsMret || IsWfi ||
-      IsFenceI || IsFence
+      IsCSRInstruction || IsEcall || IsEbreak || IsSimHalt || IsMret ||
+      IsSret || IsSfenceVma || IsWfi || IsFenceI || IsFence
   // CSR 访问合法性在译码时检查，而不是依赖 CSRUnit 的读取数据多路选择器。
   // 本核心目前只实现下面明确列出的机器态 CSR 集合，访问集合外的 CSR
   // 将被视为非法指令。
@@ -156,8 +162,23 @@ class ysyx_26030103_IDU(
       (CSRAddress === "hF12".U(12.W)) || // 机器架构编号（marchid，只读）
       (CSRAddress === "h300".U(12.W)) || // 机器状态寄存器（mstatus）
       (CSRAddress === "h305".U(12.W)) || // 机器陷阱向量基址（mtvec）
+      (CSRAddress === "h340".U(12.W)) || // 机器暂存器（mscratch）
       (CSRAddress === "h341".U(12.W)) || // 机器异常程序计数器（mepc）
-      (CSRAddress === "h342".U(12.W))   // 机器陷阱原因（mcause）
+      (CSRAddress === "h342".U(12.W)) || // 机器陷阱原因（mcause）
+      (CSRAddress === "h302".U(12.W)) || // 机器异常委托（medeleg）
+      (CSRAddress === "h303".U(12.W)) || // 机器中断委托（mideleg）
+      (CSRAddress === "h304".U(12.W)) || // 机器中断使能（mie）
+      (CSRAddress === "h344".U(12.W)) || // 机器中断挂起（mip）
+      (CSRAddress === "h100".U(12.W)) || // 监管者状态（sstatus）
+      (CSRAddress === "h104".U(12.W)) || // 监管者中断使能（sie）
+      (CSRAddress === "h105".U(12.W)) || // 监管者陷阱向量（stvec）
+      (CSRAddress === "h106".U(12.W)) || // 监管者计数器使能（scounteren）
+      (CSRAddress === "h140".U(12.W)) || // 监管者暂存器（sscratch）
+      (CSRAddress === "h141".U(12.W)) || // 监管者异常 PC（sepc）
+      (CSRAddress === "h142".U(12.W)) || // 监管者陷阱原因（scause）
+      (CSRAddress === "h143".U(12.W)) || // 监管者陷阱值（stval）
+      (CSRAddress === "h144".U(12.W)) || // 监管者中断挂起（sip）
+      (CSRAddress === "h180".U(12.W))   // 监管者地址翻译（satp）
   // CSRRW[I] 始终执行写入，包括 rd=x0、源为零的情况。CSRRS[I]/CSRRC[I]
   // 仅在 rs1/zimm 非零时写入；零源形式是纯读取，可合法访问只读 CSR。
   val CSRWriteIntent = IsCsrrw || ((IsCsrrs || IsCsrrc) && (Rs1 =/= 0.U))
@@ -308,6 +329,8 @@ class ysyx_26030103_IDU(
   io.out.bits.IsEbreak := IsEbreak
   io.out.bits.IsSimHalt := IsSimHalt
   io.out.bits.IsMret := IsMret
+  io.out.bits.IsSret := IsSret
+  io.out.bits.IsSfenceVma := IsSfenceVma
   io.out.bits.IsFence := IsFence
   io.out.bits.IsFenceI := IsFenceI
   io.out.bits.CSRAddress := CSRAddress
