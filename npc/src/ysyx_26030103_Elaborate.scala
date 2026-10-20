@@ -98,6 +98,7 @@ object ysyx_26030103_Elaborate extends App {
       PerfStatsEnable && sys.env
         .getOrElse(s"PERF_COUNTER_${name.toUpperCase}", "y") == "y"
     }
+  val mmuProfile = ysyx_26030103_MMUProfile.fromEnv(sys.env.get)
   val config = ysyx_26030103_NPCConfig(
     UseM = UseM,
     UseA = UseA,
@@ -154,7 +155,8 @@ object ysyx_26030103_Elaborate extends App {
     PerfCounterLSU = PerfCounterLSU,
     PerfCounterIduStall = PerfCounterIduStall,
     PerfCounterTrap = PerfCounterTrap,
-    PerfCounters = PerfCounters
+    PerfCounters = PerfCounters,
+    MMU = mmuProfile
   )
   println(s"[NPC config] ${config.Describe}")
 

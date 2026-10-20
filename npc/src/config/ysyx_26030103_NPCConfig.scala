@@ -91,7 +91,9 @@ case class ysyx_26030103_NPCConfig(
     // 单计数器选择：键名如"ifu_fetch"/"mdu_req"。实际生效集合还要与
     // 主开关及所属组总开关相与（见EnabledPerfCounters）。
     PerfCounters: Set[String] =
-      ysyx_26030103_PerfCounterCatalog.AllPerfCounters
+      ysyx_26030103_PerfCounterCatalog.AllPerfCounters,
+    // MMU/TLB 配置；config-only 阶段只参与 Describe，RTL 后续接入。
+    MMU: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
 ) {
   require(!UseA, "RV32_A还没有做")
   require(!UseC, "RV32_C还没做")
@@ -282,6 +284,7 @@ case class ysyx_26030103_NPCConfig(
       s"RAS=${1 << RASBits}, observe=${OnOff(EnableAnyObservability)}, " +
       s"gpr_debug=${OnOff(EnableDynamicGPRDebug)}, perf_debug=${OnOff(EnablePerfTrace)}, " +
       s"perf_counters=${PerfCounterList}, " +
+      s"mmu=${MMU.describe}, " +
       s"reset=0x${ResetAddr.toHexString}"
   }
 }
