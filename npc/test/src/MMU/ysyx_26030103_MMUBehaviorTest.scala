@@ -150,6 +150,67 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "PTW" should "PTE cache 命中后不再访问页表总线" in {
+    val memory = new Memory
+    simulate(new ysyx_26030103_PTW(
+      adMode = "fault",
+      cacheEnable = true,
+      cacheEntries = 16,
+      cacheWays = 2
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      var pending = false
+      var pendingData = BigInt(0)
+      var busReads = 0
+      var responses = 0
+
+      dut.io.req.valid.poke(false.B)
+      dut.io.req.bits.vaddr.poke(0.U)
+      dut.io.req.bits.satp.poke(0.U)
+      dut.io.req.bits.privilege.poke(0.U)
+      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.req.bits.sum.poke(false.B)
+      dut.io.req.bits.mxr.poke(false.B)
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.resp.ready.poke(true.B)
+      dut.io.flush.poke(false.B)
+
+      def access(): Unit = {
+        dut.io.req.valid.poke(true.B)
+        dut.io.req.bits.vaddr.poke(0x1234.U)
+        dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+        var fired = false
+        for (_ <- 0 until 30 if !fired) {
+          if (!pending && asBool(dut.io.bus.req.valid)) {
+            pending = true
+            busReads += 1
+            pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          }
+          dut.io.bus.resp.valid.poke(pending.B)
+          dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
+          val ready = asBool(dut.io.bus.resp.ready)
+          dut.clock.step()
+          if (pending && ready) pending = false
+          if (asBool(dut.io.resp.valid)) {
+            responses += 1
+            fired = true
+          }
+        }
+        dut.io.req.valid.poke(false.B)
+      }
+
+      access()
+      access()
+      busReads should be(2)
+      responses should be(2)
+    }
+  }
+
   "MMU" should "miss 后 refill TLB，第二次访问命中且不再走 PTW" in {
     val memory = new Memory
     simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
