@@ -24,7 +24,6 @@ class ysyx_26030103_MMU(
   require(profile.cacheMode == "pipt", "VIPT 尚未实现，只能选择 PIPT")
   require(profile.ptwPath == "dedicated", "PTW 复用 DCache 尚未实现")
   require(profile.ptwArch == "independent", "流水化 PTW 尚未实现")
-  require(profile.ptwOrder == "in_order", "乱序 PTW 尚未实现")
   require(profile.refillPorts == 1, "当前仅支持单 TLB refill 端口")
   require(profile.tlbMissQueueMode == "follow_tlb", "当前仅支持 follow_tlb 缺失队列")
 
@@ -64,12 +63,14 @@ class ysyx_26030103_MMU(
     else None
 
   val ptwOpt =
-    if (profile.enabled) Some(Module(new ysyx_26030103_PTW(
-      profile.adMode,
+    if (profile.enabled) Some(Module(new ysyx_26030103_PTWCluster(
+      outstanding = profile.ptwOutstanding,
+      adMode = profile.adMode,
       cacheEnable = profile.ptwCache,
       cacheEntries = profile.ptwCacheEntries,
       cacheWays = profile.ptwCacheWays,
-      superpage = profile.superpage
+      superpage = profile.superpage,
+      inOrder = profile.ptwOrder == "in_order"
     )))
     else None
 
