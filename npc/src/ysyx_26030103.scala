@@ -38,7 +38,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DCacheIndexBits = config.DCacheIndexBits,
       DCacheableBase = config.CacheableBase,
       DCacheableMask = config.CacheableMask,
-      DCachePMARegions = config.PMARegions
+      DCachePMARegions = config.PMARegions,
+      DCacheVipt = config.MMU.cacheMode == "vipt"
     )
   )
   val gpr = Module(new ysyx_26030103_GPR(config.EnableDynamicGPRDebug))
@@ -214,6 +215,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     immu.io.flush := mmuFlush
     ifu.io.FetchReady := immu.io.fetchReady
     icache.io.fetch_addr := immu.io.fetchPaddr
+    icache.io.fetch_vaddr := ifu.io.FetchAddr
     icache.io.fetch_valid := ifu.io.FetchValid && immu.io.translationValid
 
     dmmu.io.privilege := exu.io.CSRPrivilege
@@ -239,6 +241,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   } else {
     icache.io.axi <> arbiter.io.ifu
     icache.io.fetch_addr := ifu.io.FetchAddr
+    icache.io.fetch_vaddr := ifu.io.FetchAddr
     icache.io.fetch_valid := ifu.io.FetchValid
     ifu.io.FetchReady := icache.io.fetch_ready
   }

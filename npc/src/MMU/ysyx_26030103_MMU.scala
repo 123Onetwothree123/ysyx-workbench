@@ -21,7 +21,6 @@ class ysyx_26030103_MMU(
   )
   require(!profile.tlbSuperpage || profile.superpage, "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
   require(profile.adMode != "hardware", "MMU_AD_HARDWARE 尚未实现，请使用 fault/ignore")
-  require(profile.cacheMode == "pipt", "VIPT 尚未实现，只能选择 PIPT")
   require(profile.ptwPath == "dedicated", "PTW 复用 DCache 尚未实现")
   require(profile.ptwArch == "independent", "流水化 PTW 尚未实现")
   require(profile.refillPorts == 1, "当前仅支持单 TLB refill 端口")

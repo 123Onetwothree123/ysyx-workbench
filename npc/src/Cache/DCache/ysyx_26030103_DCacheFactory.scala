@@ -26,7 +26,8 @@ object ysyx_26030103_DCacheFactory {
       CacheableMask: Long = 0x80000000L,
       PMARegions: Seq[ysyx_26030103_PMARegion] =
         ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
-      Storage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg
+      Storage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
+      Vipt: Boolean = false
   ): ysyx_26030103_DCacheBase = {
     Storage match {
       case ysyx_26030103_CacheStorage.Reg =>
@@ -36,6 +37,7 @@ object ysyx_26030103_DCacheFactory {
             BlockSizeLog2 = BlockSizeLog2,
             IndexBits = IndexBits,
             AddressWidth = AddressWidth,
+            Vipt = Vipt,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             PMARegions = PMARegions
@@ -48,6 +50,7 @@ object ysyx_26030103_DCacheFactory {
             BlockSizeLog2 = BlockSizeLog2,
             IndexBits = IndexBits,
             AddressWidth = AddressWidth,
+            Vipt = Vipt,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             PMARegions = PMARegions
@@ -60,6 +63,7 @@ object ysyx_26030103_DCacheFactory {
             BlockSizeLog2 = BlockSizeLog2,
             IndexBits = IndexBits,
             AddressWidth = AddressWidth,
+            Vipt = Vipt,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             Bypass = false,

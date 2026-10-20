@@ -15,6 +15,7 @@ import _root_.ysyx_26030103.infra.ysyx_26030103_AXI5IO
 class ysyx_26030103_ICacheInterface(val AddressWidth: Int = 32)
     extends Bundle {
   val fetch_addr = Input(UInt(AddressWidth.W))
+  val fetch_vaddr = Input(UInt(AddressWidth.W))
   val fetch_valid = Input(Bool())
   val fetch_ready = Output(Bool())
   val resp_data = Output(UInt(32.W))

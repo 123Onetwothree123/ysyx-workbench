@@ -14,6 +14,8 @@
 - TLB Reg-CAM 和同步 SRAM 数据阵列两种存储。
 - 可选 Sv32 4MiB 超级页；超级页当前不填充 TLB，每次走 PTW。
 - 独立只读 PTW AXI 通道，与 ICache 共用 IFU 读端口。
+- PIPT 和 VIPT：VIPT 使用虚拟地址选 index、物理地址做 tag；当前是
+  先翻译后访问 Cache，不是并行 TLB/Cache 流水。
 - 可选 PTW PTE cache（set-associative）。
 - IFU/LSU 共用一个 MMU 请求端口；DMMU 对非访存指令组合直通。
 
@@ -42,7 +44,6 @@ S ecall + SRET          HIT GOOD
 
 - 自定义 PTE
 - A/D hardware 更新
-- VIPT
 - PTW 复用 DCache
 - pipelined / out-of-order PTW
 - PLIC

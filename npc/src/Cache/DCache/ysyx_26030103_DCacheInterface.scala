@@ -6,6 +6,8 @@ import _root_.ysyx_26030103.infra.ysyx_26030103_AXI5IO
 
 class ysyx_26030103_DCacheRequest(val AddressWidth: Int = 32) extends Bundle {
   val addr = UInt(AddressWidth.W)
+  // VIPT 模式下用于选 index 的虚拟地址；addr 始终是物理地址。
+  val vaddr = UInt(AddressWidth.W)
   val WidthSelect = UInt(2.W) // 0=字节，1=半字，2=字
   val signed = Bool()
 }
@@ -32,6 +34,7 @@ class ysyx_26030103_DCacheInterface(val AddressWidth: Int = 32)
   val StoreValid = Input(Bool())
   val StoreResp = Input(UInt(2.W))
   val StoreAddr = Input(UInt(AddressWidth.W))
+  val StoreVAddr = Input(UInt(AddressWidth.W))
   val StoreData = Input(UInt(32.W))
   val StoreStrb = Input(UInt(4.W))
   val AXI = new ysyx_26030103_AXI5IO(AddressWidth) // DCache只使用AR/R通道

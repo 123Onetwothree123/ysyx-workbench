@@ -15,7 +15,8 @@ class ysyx_26030103_LSU(
     val DCacheableBase: Long = 0x80000000L,
     val DCacheableMask: Long = 0x80000000L,
     val DCachePMARegions: Seq[ysyx_26030103_PMARegion] =
-      ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
+      ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
+    val DCacheVipt: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage))
@@ -88,7 +89,8 @@ class ysyx_26030103_LSU(
     CacheableBase = DCacheableBase,
     CacheableMask = DCacheableMask,
     PMARegions = DCachePMARegions,
-    Storage = DCacheStorage
+    Storage = DCacheStorage,
+    Vipt = DCacheVipt
   )
   io.DCachePerfHit := DCache.io.perf_hit
   io.DCachePerfMiss := DCache.io.perf_miss
@@ -458,6 +460,7 @@ class ysyx_26030103_LSU(
   // 所有 store 都先进入写缓冲，但只有属于该指令的 B 响应成功后才能退休。
   // 这样 RAM 的 SLVERR/DECERR 也能精确转换成 store access fault(cause=7)。
   val wbAddr = Reg(Vec(WBufDepth, UInt(32.W)))
+  val wbVAddr = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbData = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbStrb = Reg(Vec(WBufDepth, UInt(4.W)))
   val wbSize = Reg(Vec(WBufDepth, UInt(3.W)))
@@ -475,6 +478,7 @@ class ysyx_26030103_LSU(
   when(wbPush) {
     if (WBufDepth == 1) {
       wbAddr(0) := io.in.bits.ALUResult
+      wbVAddr(0) := io.in.bits.VAddr
       wbData(0) := IncomingWriteData
       wbStrb(0) := IncomingWriteMask
       wbSize(0) := IncomingAXISize
@@ -485,6 +489,7 @@ class ysyx_26030103_LSU(
       wbTail := 0.U
     } else {
       wbAddr(wbTail) := io.in.bits.ALUResult
+      wbVAddr(wbTail) := io.in.bits.VAddr
       wbData(wbTail) := IncomingWriteData
       wbStrb(wbTail) := IncomingWriteMask
       wbSize(wbTail) := IncomingAXISize
@@ -504,6 +509,7 @@ class ysyx_26030103_LSU(
   // resp.fire，不能因 fence.i/DMA 一致性 flush 自行清除。
   DCache.io.req.valid := DCacheRequestActive && state === StatesReadRequest // 复用LSU的AR/R通道
   DCache.io.req.bits.addr := ActiveInstruction.ALUResult
+  DCache.io.req.bits.vaddr := ActiveInstruction.VAddr
   DCache.io.req.bits.WidthSelect := ActiveInstruction.WidthSelect
   DCache.io.req.bits.signed := ActiveInstruction.LoadSigned
   DCache.io.resp.ready := DCacheRequestActive && state === StatesReadResponse
@@ -536,6 +542,7 @@ class ysyx_26030103_LSU(
   // 写直达 DCache 不能在 store 入队时投机更新。匹配B握手时再通知：
   // OKAY按字节更新命中行；错误响应只失效该行，以覆盖从机可能的部分副作用。
   val wbHeadAddr = if (WBufDepth == 1) wbAddr(0) else wbAddr(wbHead)
+  val wbHeadVAddr = if (WBufDepth == 1) wbVAddr(0) else wbVAddr(wbHead)
   val wbHeadData = if (WBufDepth == 1) wbData(0) else wbData(wbHead)
   val wbHeadStrb = if (WBufDepth == 1) wbStrb(0) else wbStrb(wbHead)
   val wbHeadSize = if (WBufDepth == 1) wbSize(0) else wbSize(wbHead)
@@ -544,6 +551,7 @@ class ysyx_26030103_LSU(
   DCache.io.StoreValid := wbPop
   DCache.io.StoreResp := io.DataBus.B.BRESP
   DCache.io.StoreAddr := wbHeadAddr
+  DCache.io.StoreVAddr := wbHeadVAddr
   DCache.io.StoreData := wbHeadData
   DCache.io.StoreStrb := wbHeadStrb
   // Idle 可直接驱动已经寄存的队首，避免“发现非空→切 Issue→下一拍才

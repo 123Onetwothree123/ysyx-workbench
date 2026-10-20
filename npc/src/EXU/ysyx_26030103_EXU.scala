@@ -461,6 +461,7 @@ class ysyx_26030103_EXU(
       !CSRUnit.io.IrqCommit && !io.MemTrapCommit
   io.out.bits.WBSelect := ActiveInst.WBSelect
   io.out.bits.ALUResult := Mux(PendingMDU, MDURespResult, ALUUnit.io.result)
+  io.out.bits.VAddr := ALUUnit.io.result
   io.out.bits.LoadData := 0.U(32.W) // 由MEM在访存完成后填写
   io.out.bits.CSRReadData := CSRUnit.io.CSR_rdata
   io.out.bits.CSRStateMstatus := CSRUnit.io.StateMstatus

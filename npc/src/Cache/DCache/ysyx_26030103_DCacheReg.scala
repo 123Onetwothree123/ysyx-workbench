@@ -11,6 +11,7 @@ class ysyx_26030103_DCacheReg(
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
     AddressWidth: Int = 32,
+    Vipt: Boolean = false,
     CacheableBase: Long = 0x80000000L,
     CacheableMask: Long = 0x80000000L,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
@@ -36,10 +37,11 @@ class ysyx_26030103_DCacheReg(
   val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
   val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))
   val data = Reg(Vec(ArrayBlocks, Vec(WordsPerBlock, UInt(32.W))))
-  val index = io.req.bits.addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+  val indexAddr = if (Vipt) io.req.bits.vaddr else io.req.bits.addr
+  val index = indexAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   val IndexSafe = if (Enable) index else 0.U(IndexWidth.W)
   val WordOffset =
-    if (WordsPerBlock > 1) io.req.bits.addr(BlockSizeLog2 - 1, 2)
+    if (WordsPerBlock > 1) indexAddr(BlockSizeLog2 - 1, 2)
     else 0.U(OffsetWidth.W)
   val ReqTag = io.req.bits.addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
   val cacheable = ysyx_26030103_DCachePolicy.IsCacheable(
@@ -157,10 +159,11 @@ class ysyx_26030103_DCacheReg(
   io.axi_active := state === SReadReq || state === SReadResp || state === SDrain
   io.perf_refill_req := RefillActive && state === SReadReq
   io.perf_refill_resp := RefillActive && state === SReadResp
-  val StoreIndex = io.StoreAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+  val storeIndexAddr = if (Vipt) io.StoreVAddr else io.StoreAddr
+  val StoreIndex = storeIndexAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   val StoreIndexSafe = if (Enable) StoreIndex else 0.U(IndexWidth.W)
   val StoreOffset =
-    if (WordsPerBlock > 1) io.StoreAddr(BlockSizeLog2 - 1, 2)
+    if (WordsPerBlock > 1) storeIndexAddr(BlockSizeLog2 - 1, 2)
     else 0.U(OffsetWidth.W)
   val StoreTag = io.StoreAddr(AddressWidth - 1, IndexBits + BlockSizeLog2)
   val StoreCacheable = ysyx_26030103_DCachePolicy.IsCacheable(

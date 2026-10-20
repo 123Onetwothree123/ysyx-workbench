@@ -9,6 +9,8 @@ class ysyx_26030103_EXUMessage extends Bundle {
   val RegisterWrite = Bool()
   val WBSelect = UInt(2.W)
   val ALUResult = UInt(32.W)
+  // DMMU 翻译前的虚拟访存地址；VIPT Cache 用虚拟地址选 index。
+  val VAddr = UInt(32.W)
   val LoadData = UInt(32.W) // EXU填0,由MEM在访存完成后填真实数据
   val snpc = UInt(32.W)
   // 该指令退休后的架构 PC：顺序指令为 snpc，分支/跳转/MRET

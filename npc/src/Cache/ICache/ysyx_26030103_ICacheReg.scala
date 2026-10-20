@@ -8,6 +8,7 @@ class ysyx_26030103_ICacheReg(
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
     AddressWidth: Int = 32,
+    Vipt: Boolean = false,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_ICacheBase(AddressWidth) {
@@ -21,13 +22,14 @@ class ysyx_26030103_ICacheReg(
   val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
   val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))
   val data = Reg(Vec(ArrayBlocks, Vec(WordsPerBlock, UInt(32.W))))
-  val index = io.fetch_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+  val indexAddr = if (Vipt) io.fetch_vaddr else io.fetch_addr
+  val index = indexAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   // Enable=false时阵列只有一个综合占位项。用Scala期的常量索引访问它，
   // 避免把完整的组索引接到单项Vec上产生W004；Enable=true时仍是原始索引，
   // 不在命中路径增加任何截断或选择逻辑。
   val IndexSafe = if (Enable) index else 0.U(IndexBits.W)
   val blockOffset =
-    if (WordsPerBlock > 1) io.fetch_addr(BlockSizeLog2 - 1, 2)
+    if (WordsPerBlock > 1) indexAddr(BlockSizeLog2 - 1, 2)
     else 0.U
   val reqTag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
   private def AddressInRegion(
@@ -100,7 +102,8 @@ class ysyx_26030103_ICacheReg(
   // refill专属寄存器。refill期间只能受理同一line中已返回的word，
   // 未返回word和其他line在单MSHR结构下继续反压。
   val ref_addr = Reg(UInt(AddressWidth.W))
-  val ref_index = ref_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+  val ref_vindex = Reg(UInt(IndexBits.W))
+  val ref_index = if (Vipt) ref_vindex else ref_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   val RefIndexSafe = if (Enable) ref_index else 0.U(IndexBits.W)
   val ref_tag = ref_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
   val ref_offset =
@@ -248,6 +251,7 @@ class ysyx_26030103_ICacheReg(
     }.otherwise {
       rfstate := rf_req
       ref_addr := fetch_addr_reg
+      ref_vindex := fetch_index_reg
       ref_cacheable := cacheable_reg
       refill_cnt := 0.U
       refill_word_valid := 0.U
