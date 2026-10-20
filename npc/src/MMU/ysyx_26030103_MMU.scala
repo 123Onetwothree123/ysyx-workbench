@@ -19,8 +19,7 @@ class ysyx_26030103_MMU(
       profile.pteFormat == "riscv32",
     "当前 MMU 只实现标准 Sv32 4KiB/2 级/4B PTE/4KiB 页表"
   )
-  require(!profile.superpage, "MMU_SUPERPAGE 尚未实现，不能选择")
-  require(!profile.tlbSuperpage, "TLB_SUPERPAGE 尚未实现，不能选择")
+  require(!profile.tlbSuperpage || profile.superpage, "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
   require(profile.adMode != "hardware", "MMU_AD_HARDWARE 尚未实现，请使用 fault/ignore")
   require(profile.cacheMode == "pipt", "VIPT 尚未实现，只能选择 PIPT")
   require(profile.ptwPath == "dedicated", "PTW 复用 DCache 尚未实现")
@@ -70,7 +69,8 @@ class ysyx_26030103_MMU(
       profile.adMode,
       cacheEnable = profile.ptwCache,
       cacheEntries = profile.ptwCacheEntries,
-      cacheWays = profile.ptwCacheWays
+      cacheWays = profile.ptwCacheWays,
+      superpage = profile.superpage
     )))
     else None
 

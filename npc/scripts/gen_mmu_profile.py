@@ -275,10 +275,6 @@ def build_profile(cfg: Config) -> dict:
     }
 
     reserved = []
-    if cfg.bool("MMU_SUPERPAGE", False):
-        reserved.append("MMU_SUPERPAGE")
-    if cfg.bool("TLB_SUPERPAGE", False):
-        reserved.append("TLB_SUPERPAGE")
     if cfg.bool("HAS_PMP", False):
         reserved.append("HAS_PMP")
     if pte_format == "custom":

@@ -211,6 +211,62 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "PTW" should "支持 Sv32 4MiB 超级页" in {
+    val memory = new Memory
+    val superPte = pte(0x80001L, 0xdfL)
+    memory.write(Root + 0x0L, superPte)
+    simulate(new ysyx_26030103_PTW("fault", superpage = true)) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      var pending = false
+      var pendingData = BigInt(0)
+      var busReads = 0
+      var result: Option[(BigInt, Boolean)] = None
+
+      dut.io.req.valid.poke(false.B)
+      dut.io.req.bits.vaddr.poke(0.U)
+      dut.io.req.bits.satp.poke(0.U)
+      dut.io.req.bits.privilege.poke(0.U)
+      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.req.bits.sum.poke(false.B)
+      dut.io.req.bits.mxr.poke(false.B)
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.resp.ready.poke(false.B)
+      dut.io.flush.poke(false.B)
+
+      dut.io.req.valid.poke(true.B)
+      dut.io.req.bits.vaddr.poke(0x1234.U)
+      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.clock.step()
+      dut.io.req.valid.poke(false.B)
+
+      for (_ <- 0 until 15 if result.isEmpty) {
+        if (!pending && asBool(dut.io.bus.req.valid)) {
+          pending = true
+          busReads += 1
+          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+        }
+        dut.io.bus.resp.valid.poke(pending.B)
+        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
+        val ready = asBool(dut.io.bus.resp.ready)
+        dut.clock.step()
+        if (pending && ready) pending = false
+        if (asBool(dut.io.resp.valid)) {
+          result = Some((
+            dut.io.resp.bits.paddr.peek().litValue,
+            asBool(dut.io.resp.bits.fillValid)
+          ))
+        }
+      }
+      busReads should be(1)
+      result should be(Some((BigInt("80001234", 16), false)))
+    }
+  }
+
   "MMU" should "miss 后 refill TLB，第二次访问命中且不再走 PTW" in {
     val memory = new Memory
     simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(

@@ -32,7 +32,8 @@ class ysyx_26030103_PTW(
     adMode: String = "fault",
     cacheEnable: Boolean = false,
     cacheEntries: Int = 16,
-    cacheWays: Int = 2
+    cacheWays: Int = 2,
+    superpage: Boolean = false
 ) extends Module {
   require(Set("fault", "ignore").contains(adMode), "PTW 只实现 fault/ignore A/D 模式")
   if (cacheEnable) {
@@ -133,7 +134,9 @@ class ysyx_26030103_PTW(
   val pte1Addr = root + (vpn1 << 2)
   val pte0Addr = pgtblReg + (vpn0 << 2)
 
-  def pte1Bad(d: UInt): Bool = !d(0) || d(3, 1) =/= 0.U
+  def pte1Bad(d: UInt): Bool = !d(0) || (!superpage.B && d(3, 1) =/= 0.U)
+  def pte1Leaf(d: UInt): Bool = d(3, 1) =/= 0.U
+  def superPaddr(d: UInt): UInt = Cat(d(29, 20), vaddrReg(21, 0))
   def pte0FaultOf(d: UInt): Bool = {
     val userFault = privReg === 0.U && !d(4)
     val sumFault = privReg === 1.U && d(4) && (!sumReg || isFetch)
@@ -190,8 +193,21 @@ class ysyx_26030103_PTW(
           respReg.fillAsid := 0.U
           state := done
         }.otherwise {
-          pgtblReg := Cat(cacheData1(31, 10), 0.U(12.W))
-          state := req0
+          when(superpage.B && pte1Leaf(cacheData1)) {
+            respReg.paddr := superPaddr(cacheData1)
+            respReg.fault := pte0FaultOf(cacheData1)
+            respReg.cause := pageFaultCause
+            respReg.tval := vaddrReg
+            respReg.fillValid := false.B
+            respReg.fillPte := cacheData1
+            respReg.fillVaddr := vaddrReg
+            respReg.fillAsid := satpReg(30, 22)
+            fillPulse := false.B
+            state := done
+          }.otherwise {
+            pgtblReg := Cat(cacheData1(31, 10), 0.U(12.W))
+            state := req0
+          }
         }
       }.elsewhen(io.bus.req.ready) { state := wait1 }
     }
@@ -209,8 +225,21 @@ class ysyx_26030103_PTW(
           respReg.fillAsid := 0.U
           state := done
         }.otherwise {
-          pgtblReg := Cat(pte1Bus(31, 10), 0.U(12.W))
-          state := req0
+          when(superpage.B && pte1Leaf(pte1Bus)) {
+            respReg.paddr := superPaddr(pte1Bus)
+            respReg.fault := pte0FaultOf(pte1Bus)
+            respReg.cause := pageFaultCause
+            respReg.tval := vaddrReg
+            respReg.fillValid := false.B
+            respReg.fillPte := pte1Bus
+            respReg.fillVaddr := vaddrReg
+            respReg.fillAsid := satpReg(30, 22)
+            fillPulse := false.B
+            state := done
+          }.otherwise {
+            pgtblReg := Cat(pte1Bus(31, 10), 0.U(12.W))
+            state := req0
+          }
         }
       }
     }

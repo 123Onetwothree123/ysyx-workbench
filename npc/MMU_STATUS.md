@@ -10,6 +10,7 @@
 - 取指/load/store 页错误，以及向 S 模式委托异常。
 - split ITLB/DTLB 与 unified TLB。
 - TLB ASID、Global、RR/PLRU/LRU 替换。
+- 可选 Sv32 4MiB 超级页；超级页当前不填充 TLB，每次走 PTW。
 - 独立只读 PTW AXI 通道，与 ICache 共用 IFU 读端口。
 - 可选 PTW PTE cache（set-associative）。
 - IFU/LSU 共用一个 MMU 请求端口；DMMU 对非访存指令组合直通。
@@ -37,7 +38,6 @@ S ecall + SRET          HIT GOOD
 
 ## 尚未实现（选择时会 elaboration error）
 
-- superpage
 - 自定义 PTE
 - A/D hardware 更新
 - VIPT
