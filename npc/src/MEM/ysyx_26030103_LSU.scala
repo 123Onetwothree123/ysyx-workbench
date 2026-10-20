@@ -29,6 +29,7 @@ class ysyx_26030103_LSU(
     val MemTrapCommit = Output(Bool())
     val MemTrapCause = Output(UInt(32.W))
     val MemTrapPC = Output(UInt(32.W))
+    val MemTrapTval = Output(UInt(32.W))
     // 访存故障提交时冲刷IDU→EXU和EXU→LSU流水寄存器(里面全是年轻指令)
     val FlushIDEX = Output(Bool())
     val FlushEXMEM = Output(Bool())
@@ -177,6 +178,7 @@ class ysyx_26030103_LSU(
     Mux(MsgReg.MemoryWrite, 7.U(32.W), 5.U(32.W)) // 访问故障：写=7，读=5
   )
   io.MemTrapPC := MsgReg.pc
+  io.MemTrapTval := MsgReg.ALUResult
   io.FlushIDEX := MemTrapCommit
   io.FlushEXMEM := MemTrapCommit
   io.out.valid := false.B

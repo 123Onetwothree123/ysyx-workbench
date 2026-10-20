@@ -26,6 +26,7 @@ class ysyx_26030103_EXU(
     val MemTrapCommit = Input(Bool())
     val MemTrapCause = Input(UInt(32.W))
     val MemTrapPC = Input(UInt(32.W))
+    val MemTrapTval = Input(UInt(32.W))
 
     // custom-0 仿真 halt 的提交事件；架构 EBREAK 不走这条通路。
     val SimHaltValid = Output(Bool())
@@ -36,6 +37,10 @@ class ysyx_26030103_EXU(
     val TrapPC = Output(UInt(32.W))
     val TrapTarget = Output(UInt(32.W))
     val TrapCause = Output(UInt(32.W))
+    val CSRPrivilege = Output(UInt(2.W))
+    val CSRSatp = Output(UInt(32.W))
+    val CSRCurrentMstatus = Output(UInt(32.W))
+    val CSRFlushTLB = Output(Bool())
     val CSRStateMstatus = Output(UInt(32.W))
     val CSRStateMtvec = Output(UInt(32.W))
     val CSRStateMepc = Output(UInt(32.W))
@@ -337,7 +342,8 @@ class ysyx_26030103_EXU(
     Mux(IdleIrqCommit, io.IdleIrqPC, inst.pc)
   )
   CSRUnit.io.pc := TrapBoundaryPC
-  CSRUnit.io.TrapTval := Mux(inst.MemoryValid, ALUUnit.io.result, inst.pc)
+  CSRUnit.io.TrapTval := Mux(io.MemTrapCommit, io.MemTrapTval,
+    Mux(inst.MemoryValid, ALUUnit.io.result, inst.pc))
   // fence.i也要产生"重定向": 目标是自己的snpc(即fence.i+4),
   // 借此把流水线里比fence.i年轻的、可能过时的指令全部冲刷并重新取指
   // 实际下一PC: jalr最低位清零由JalrTarget给出;分支not-taken与fence.i都回snpc
@@ -413,6 +419,10 @@ class ysyx_26030103_EXU(
   io.TrapPC := TrapBoundaryPC
   io.TrapTarget := CSRUnit.io.ExceptionTarget
   io.TrapCause := CSRUnit.io.CommittedCause
+  io.CSRPrivilege := CSRUnit.io.Privilege
+  io.CSRSatp := CSRUnit.io.Satp
+  io.CSRCurrentMstatus := CSRUnit.io.CurrentMstatus
+  io.CSRFlushTLB := CSRUnit.io.FlushTLB
   io.CSRStateMstatus := CSRUnit.io.StateMstatus
   io.CSRStateMtvec := CSRUnit.io.StateMtvec
   io.CSRStateMepc := CSRUnit.io.StateMepc

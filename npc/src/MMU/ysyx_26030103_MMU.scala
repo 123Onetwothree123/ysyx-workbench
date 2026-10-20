@@ -4,10 +4,11 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
-/** Sv32 MMU：TLB 命中直接返回，miss 走 PTW。
+/** Sv32 MMU：支持的 TLB 组织为 split（ITLB/DTLB）或 unified。
   *
-  * 批次 1 是单请求、单 PTW 在途；TLB 可关闭，关闭后每次访问都查页表。
-  * 该模块暂不直接连接 IFU/LSU，先用独立单元测试验证地址转换和页错误。
+  * 当前簇只有一个请求端口；顶层用仲裁器把 IFU/LSU 请求串行化。这样
+  * split 模式下 I/D TLB 仍然独立，PTW 只有一个物理页表总线。后续若需要
+  * I/D 并行 walk，可在此基础上复制 PTW 和控制状态。
   */
 class ysyx_26030103_MMU(
     profile: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
@@ -15,7 +16,7 @@ class ysyx_26030103_MMU(
   require(
     profile.pageSizeBytes == 4096 && profile.levels == 2 &&
       profile.pteSizeBytes == 4 && profile.pageTableSizeBytes == 4096,
-    "批次 1 MMU 只实现标准 Sv32 4KiB/2 级/4B PTE/4KiB 页表"
+    "当前 MMU 只实现标准 Sv32 4KiB/2 级/4B PTE/4KiB 页表"
   )
 
   val io = IO(new Bundle {
@@ -31,17 +32,26 @@ class ysyx_26030103_MMU(
   val respReg = RegInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
 
   val enabled = if (profile.enabled) true.B else false.B
+  val split = profile.tlbOrganization == "split"
+  val selFetch = reqReg.access === ysyx_26030103_AccessType.Fetch
 
-  val tlbOpt =
-    if (profile.tlbEnabled)
-      Some(Module(new ysyx_26030103_TLB(
-        entries = if (profile.tlbOrganization == "unified") profile.utlbEntries else profile.itlbEntries,
-        ways = if (profile.tlbOrganization == "unified") profile.utlbWays else profile.itlbWays,
-        asidBits = profile.tlbAsidBits,
-        globalEnable = profile.tlbGlobal,
-        replacement = profile.tlbReplacement,
-        adMode = profile.adMode
-      )))
+  def makeTlb(entries: Int, ways: Int) = Module(new ysyx_26030103_TLB(
+    entries = entries,
+    ways = ways,
+    asidBits = profile.tlbAsidBits,
+    globalEnable = profile.tlbGlobal,
+    replacement = profile.tlbReplacement,
+    adMode = profile.adMode
+  ))
+
+  val itlbOpt =
+    if (profile.tlbEnabled && split) Some(makeTlb(profile.itlbEntries, profile.itlbWays))
+    else None
+  val dtlbOpt =
+    if (profile.tlbEnabled && split) Some(makeTlb(profile.dtlbEntries, profile.dtlbWays))
+    else None
+  val utlbOpt =
+    if (profile.tlbEnabled && !split) Some(makeTlb(profile.utlbEntries, profile.utlbWays))
     else None
 
   val ptwOpt =
@@ -52,7 +62,7 @@ class ysyx_26030103_MMU(
   io.resp.valid := state === respond
   io.resp.bits := respReg
 
-  tlbOpt.foreach { tlb =>
+  def connectTlb(tlb: ysyx_26030103_TLB): Unit = {
     tlb.io.lookup.vaddr := reqReg.vaddr
     tlb.io.lookup.asid := reqReg.satp(30, 22)
     tlb.io.lookup.privilege := reqReg.privilege
@@ -60,7 +70,36 @@ class ysyx_26030103_MMU(
     tlb.io.lookup.sum := reqReg.sum
     tlb.io.lookup.mxr := reqReg.mxr
     tlb.io.flush := io.flush
+    tlb.io.fillValid := false.B
+    tlb.io.fillVaddr := 0.U
+    tlb.io.fillAsid := 0.U
+    tlb.io.fillPte := 0.U
   }
+  itlbOpt.foreach(connectTlb)
+  dtlbOpt.foreach(connectTlb)
+  utlbOpt.foreach(connectTlb)
+
+  def optBool(opt: Option[ysyx_26030103_TLB], f: ysyx_26030103_TLB => Bool): Bool =
+    opt.map(f).getOrElse(false.B)
+  def optUInt(opt: Option[ysyx_26030103_TLB], f: ysyx_26030103_TLB => UInt): UInt =
+    opt.map(f).getOrElse(0.U)
+
+  val tlbHit =
+    if (split) Mux(selFetch, optBool(itlbOpt, _.io.result.hit),
+      optBool(dtlbOpt, _.io.result.hit))
+    else optBool(utlbOpt, _.io.result.hit)
+  val tlbFault =
+    if (split) Mux(selFetch, optBool(itlbOpt, _.io.result.fault),
+      optBool(dtlbOpt, _.io.result.fault))
+    else optBool(utlbOpt, _.io.result.fault)
+  val tlbPaddr =
+    if (split) Mux(selFetch, optUInt(itlbOpt, _.io.result.paddr),
+      optUInt(dtlbOpt, _.io.result.paddr))
+    else optUInt(utlbOpt, _.io.result.paddr)
+  val tlbCause =
+    if (split) Mux(selFetch, optUInt(itlbOpt, _.io.result.cause),
+      optUInt(dtlbOpt, _.io.result.cause))
+    else optUInt(utlbOpt, _.io.result.cause)
 
   ptwOpt match {
     case Some(ptw) =>
@@ -68,7 +107,6 @@ class ysyx_26030103_MMU(
       ptw.io.req.bits := 0.U.asTypeOf(new ysyx_26030103_PTWRequest)
       ptw.io.resp.ready := state === walk
 
-      // MMU 是 PTW 总线的主设备；这里显式展开，避免两个同方向 Bundle 直接 <>。
       io.bus.req.valid := ptw.io.bus.req.valid
       io.bus.req.bits := ptw.io.bus.req.bits
       ptw.io.bus.req.ready := io.bus.req.ready
@@ -76,11 +114,18 @@ class ysyx_26030103_MMU(
       ptw.io.bus.resp.bits := io.bus.resp.bits
       io.bus.resp.ready := ptw.io.bus.resp.ready
 
-      tlbOpt.foreach { tlb =>
-        tlb.io.fillValid := ptw.io.resp.valid && ptw.io.resp.bits.fillValid
+      val fillValid = ptw.io.resp.valid && ptw.io.resp.bits.fillValid
+      def connectFill(tlb: ysyx_26030103_TLB, valid: Bool): Unit = {
+        tlb.io.fillValid := valid
         tlb.io.fillVaddr := ptw.io.resp.bits.fillVaddr
         tlb.io.fillAsid := ptw.io.resp.bits.fillAsid
         tlb.io.fillPte := ptw.io.resp.bits.fillPte
+      }
+      if (split) {
+        itlbOpt.foreach(connectFill(_, fillValid && selFetch))
+        dtlbOpt.foreach(connectFill(_, fillValid && !selFetch))
+      } else {
+        utlbOpt.foreach(connectFill(_, fillValid))
       }
     case None =>
       io.bus.req.valid := false.B
@@ -104,14 +149,11 @@ class ysyx_26030103_MMU(
 
   switch(state) {
     is(lookup) {
-      val hit = tlbOpt.map(_.io.result.hit).getOrElse(false.B)
-      when(hit) {
-        tlbOpt.foreach { tlb =>
-          respReg.paddr := tlb.io.result.paddr
-          respReg.fault := tlb.io.result.fault
-          respReg.cause := tlb.io.result.cause
-          respReg.tval := reqReg.vaddr
-        }
+      when(tlbHit) {
+        respReg.paddr := tlbPaddr
+        respReg.fault := tlbFault
+        respReg.cause := tlbCause
+        respReg.tval := reqReg.vaddr
         state := respond
       }.otherwise {
         ptwOpt.foreach { ptw =>

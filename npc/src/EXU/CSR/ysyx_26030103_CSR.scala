@@ -43,6 +43,7 @@ class ysyx_26030103_CSR extends Module {
     val TrapCommit = Output(Bool())
     val CommittedCause = Output(UInt(32.W))
 
+    val CurrentMstatus = Output(UInt(32.W))
     val StateMstatus = Output(UInt(32.W))
     val StateMtvec = Output(UInt(32.W))
     val StateMepc = Output(UInt(32.W))
@@ -247,6 +248,7 @@ class ysyx_26030103_CSR extends Module {
   }
   io.Satp := SatpReg
   io.Privilege := Privilege
+  io.CurrentMstatus := Mstatus_rdata
   io.FlushTLB := SfenceCommit || SatpWen
 
   when(ExceptionCommit) {

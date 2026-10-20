@@ -13,6 +13,7 @@ import _root_.ysyx_26030103.idu._
 import _root_.ysyx_26030103.exu._
 import _root_.ysyx_26030103.mem._
 import _root_.ysyx_26030103.wbu._
+import _root_.ysyx_26030103.mmu._
 
 class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig())
     extends Module {
@@ -63,26 +64,71 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     Module(new ysyx_26030103_BTB(config.JalBTBBits, config.JalBTBWays, 32, 2))
   val ras = Module(new ysyx_26030103_RAS(config.RASBits))
   val predictorSelect = Module(new ysyx_26030103_PredictorSelect)
+  val mmuEnabled = config.MMU.enabled
+  val mmuUnitOpt =
+    if (mmuEnabled) Some(Module(new ysyx_26030103_MMU(config.MMU))) else None
+  val immuOpt =
+    if (mmuEnabled) Some(Module(new ysyx_26030103_IFUMMU)) else None
+  val dmmuOpt =
+    if (mmuEnabled) Some(Module(new ysyx_26030103_LSUMMU)) else None
+  val mmuArbOpt =
+    if (mmuEnabled) Some(Module(new ysyx_26030103_MMURequestArbiter)) else None
+  val ptwToAxiOpt =
+    if (mmuEnabled) Some(Module(new ysyx_26030103_PTWToAXI)) else None
+  val axiReadMuxOpt =
+    if (mmuEnabled) Some(Module(new ysyx_26030103_AXIReadMux)) else None
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
-  ifuResp.valid := icache.io.resp_valid
-  ifuResp.bits.Instruction := icache.io.resp_data
-  ifuResp.bits.pc := icache.io.resp_addr
-  ifuResp.bits.ExceptionValid := icache.io.resp_fault
-  ifuResp.bits.ExceptionCause := 1.U(4.W)
-  ifuResp.bits.AccessFaultResp := icache.io.access_fault_resp
+  val fetchVaddrReg = RegInit(0.U(32.W))
+  val ifuFaultValid = RegInit(false.B)
+  val ifuFaultPC = RegInit(0.U(32.W))
+  val fetchTranslationValid =
+    immuOpt.map(_.io.translationValid).getOrElse(true.B)
+  val fetchPaddr = immuOpt.map(_.io.fetchPaddr).getOrElse(ifu.io.FetchAddr)
+  val accept_fetch =
+    ifu.io.FetchValid && fetchTranslationValid && icache.io.fetch_ready
+  val pred_tag_taken = RegEnable(ifu.io.PredHit, false.B, accept_fetch)
+  val pred_tag_target = RegEnable(ifu.io.PredTarget, 0.U(32.W), accept_fetch)
+
+  if (mmuEnabled) {
+    // 取指虚拟 PC 与 ICache 的物理取指地址分离；ICache 只有一笔在途，
+    // 因此一个虚拟 PC 快照足够把响应恢复成架构 PC。
+    when(accept_fetch) { fetchVaddrReg := ifu.io.FetchAddr }
+    when(immuOpt.get.io.fault) {
+      ifuFaultValid := true.B
+      ifuFaultPC := immuOpt.get.io.faultVaddr
+    }.elsewhen(ifuResp.fire) {
+      ifuFaultValid := false.B
+    }
+    ifuResp.valid := ifuFaultValid || icache.io.resp_valid
+    ifuResp.bits.Instruction := Mux(ifuFaultValid, 0.U, icache.io.resp_data)
+    ifuResp.bits.pc := Mux(ifuFaultValid, ifuFaultPC,
+      Mux(accept_fetch, ifu.io.FetchAddr, fetchVaddrReg))
+    ifuResp.bits.ExceptionValid := ifuFaultValid || icache.io.resp_fault
+    ifuResp.bits.ExceptionCause := Mux(ifuFaultValid, 12.U(4.W), 1.U(4.W))
+    ifuResp.bits.AccessFaultResp := Mux(ifuFaultValid, 0.U, icache.io.access_fault_resp)
+    ifuResp.bits.pred_taken := !ifuFaultValid && pred_tag_taken
+    ifuResp.bits.pred_target := Mux(ifuFaultValid, 0.U, pred_tag_target)
+    icache.io.resp_ready := ifuResp.ready && !ifuFaultValid
+  } else {
+    ifuResp.valid := icache.io.resp_valid
+    ifuResp.bits.Instruction := icache.io.resp_data
+    ifuResp.bits.pc := icache.io.resp_addr
+    ifuResp.bits.ExceptionValid := icache.io.resp_fault
+    ifuResp.bits.ExceptionCause := 1.U(4.W)
+    ifuResp.bits.AccessFaultResp := icache.io.access_fault_resp
+    icache.io.resp_ready := ifuResp.ready
+  }
   // 预测标签快照: 取指请求被icache接受时,把取指时刻的预测随请求保存,响应时贴给指令.
   // 根治"取指/响应两阶段查找之间BTB/RAS状态变化,导致标签与实际取指路径不一致"的致命漏洞
   // (反例: ret取指时RAS顶是A(错),响应时弹栈后变B(对),标签=B与实际执行一致=>不冲刷,
   //  错路指令漏网提交,ra被污染. icache最多1个outstanding,单表项快照即够;
   //  背靠背=响应与接受同拍,响应读的是旧值,时序正确)
-  val accept_fetch = ifu.io.FetchValid && icache.io.fetch_ready
-  val pred_tag_taken = RegEnable(ifu.io.PredHit, false.B, accept_fetch)
-  val pred_tag_target = RegEnable(ifu.io.PredTarget, 0.U(32.W), accept_fetch)
-  ifuResp.bits.pred_taken := pred_tag_taken
-  ifuResp.bits.pred_target := pred_tag_target
+  if (!mmuEnabled) {
+    ifuResp.bits.pred_taken := pred_tag_taken
+    ifuResp.bits.pred_target := pred_tag_target
+  }
   // 响应级不再重新查表, 预测标签在取指接受时快照保存
-  icache.io.resp_ready := ifuResp.ready
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
   icache.io.kill := pipe_flush
   // EXU 重定向或异常必须杀死 IDU->EXU 边界中排队的年轻指令，同时让当前 EXU
@@ -97,12 +143,60 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   )
   // 此边界保存的是比 LSU 当前指令更年轻的指令，只有更老的 MEM 故障可以丢弃
   // 它；不要在这里接入 pipe_flush。
-  ysyx_26030103_StageConnect(exu.io.out, lsu.io.in, lsu.io.FlushEXMEM)
+  if (mmuEnabled) {
+    ysyx_26030103_StageConnect(exu.io.out, dmmuOpt.get.io.in, lsu.io.FlushEXMEM)
+    ysyx_26030103_StageConnect(dmmuOpt.get.io.out, lsu.io.in, lsu.io.FlushEXMEM)
+  } else {
+    ysyx_26030103_StageConnect(exu.io.out, lsu.io.in, lsu.io.FlushEXMEM)
+  }
   ysyx_26030103_StageConnect(lsu.io.out, wbu.io.in)
-  icache.io.axi <> arbiter.io.ifu
-  icache.io.fetch_addr := ifu.io.FetchAddr
-  icache.io.fetch_valid := ifu.io.FetchValid
-  ifu.io.FetchReady := icache.io.fetch_ready
+  if (mmuEnabled) {
+    val immu = immuOpt.get
+    val dmmu = dmmuOpt.get
+    val mmu = mmuUnitOpt.get
+    val mmuArb = mmuArbOpt.get
+    val ptwAxi = ptwToAxiOpt.get
+    val readMux = axiReadMuxOpt.get
+    val mmuFlush = RegNext(pipe_flush, false.B)
+
+    immu.io.fetchValid := ifu.io.FetchValid
+    immu.io.fetchVaddr := ifu.io.FetchAddr
+    immu.io.cacheReady := icache.io.fetch_ready
+    immu.io.privilege := exu.io.CSRPrivilege
+    immu.io.satp := exu.io.CSRSatp
+    immu.io.sum := exu.io.CSRCurrentMstatus(18)
+    immu.io.mxr := exu.io.CSRCurrentMstatus(19)
+    immu.io.flush := mmuFlush
+    ifu.io.FetchReady := immu.io.fetchReady
+    icache.io.fetch_addr := immu.io.fetchPaddr
+    icache.io.fetch_valid := ifu.io.FetchValid && immu.io.translationValid
+
+    dmmu.io.privilege := exu.io.CSRPrivilege
+    dmmu.io.satp := exu.io.CSRSatp
+    dmmu.io.sum := exu.io.CSRCurrentMstatus(18)
+    dmmu.io.mxr := exu.io.CSRCurrentMstatus(19)
+    dmmu.io.flush := pipe_flush
+
+    mmuArb.io.iReq <> immu.io.req
+    mmuArb.io.iResp <> immu.io.resp
+    mmuArb.io.dReq <> dmmu.io.req
+    mmuArb.io.dResp <> dmmu.io.resp
+    mmuArb.io.mmuReq <> mmu.io.req
+    mmu.io.resp <> mmuArb.io.mmuResp
+    mmu.io.flush := exu.io.CSRFlushTLB
+
+    mmu.io.bus.req <> ptwAxi.io.req
+    mmu.io.bus.resp <> ptwAxi.io.resp
+    ptwAxi.io.axi <> readMux.io.b
+    icache.io.axi <> readMux.io.a
+    readMux.io.out <> arbiter.io.ifu
+    when(mmuFlush) { ifuFaultValid := false.B }
+  } else {
+    icache.io.axi <> arbiter.io.ifu
+    icache.io.fetch_addr := ifu.io.FetchAddr
+    icache.io.fetch_valid := ifu.io.FetchValid
+    ifu.io.FetchReady := icache.io.fetch_ready
+  }
   // BTB查询1: 用当前取指地址同时查两张表,合并结果回送IFU决定下一PC
   // 传入PC[31:2]; 低位恒为0, 无需参与索引和tag匹配
   btb.io.lookup_pc := ifu.io.FetchAddr(31, 2)
@@ -324,9 +418,14 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // IRQ/CSR/异常则仍使用全流水级Busy保证精确顺序。
   exu.io.MEMBusy := lsu.io.MemoryBusy
   exu.io.PipelineBusy := lsu.io.Busy
-  exu.io.MemTrapCommit := lsu.io.MemTrapCommit
-  exu.io.MemTrapCause := lsu.io.MemTrapCause
-  exu.io.MemTrapPC := lsu.io.MemTrapPC
+  val dmmuFaultCommit = dmmuOpt.map(_.io.faultCommit).getOrElse(false.B)
+  val dmmuFaultCause = dmmuOpt.map(_.io.faultCause).getOrElse(0.U(32.W))
+  val dmmuFaultPC = dmmuOpt.map(_.io.faultPC).getOrElse(0.U(32.W))
+  val dmmuFaultTval = dmmuOpt.map(_.io.faultTval).getOrElse(0.U(32.W))
+  exu.io.MemTrapCommit := lsu.io.MemTrapCommit || dmmuFaultCommit
+  exu.io.MemTrapCause := Mux(dmmuFaultCommit, dmmuFaultCause, lsu.io.MemTrapCause)
+  exu.io.MemTrapPC := Mux(dmmuFaultCommit, dmmuFaultPC, lsu.io.MemTrapPC)
+  exu.io.MemTrapTval := Mux(dmmuFaultCommit, dmmuFaultTval, lsu.io.MemTrapTval)
   // LSU(MEM级)给IDU做冒险检测和转发
   idu.io.me_valid := lsu.io.HazardValid
   idu.io.me_rd := lsu.io.HazardRd
