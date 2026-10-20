@@ -7,6 +7,7 @@
 - `satp`、`sstatus`、`stvec`、`sepc`、`scause`、`stval`、`sscratch`、
   `medeleg`、`mideleg`、`mie/mip/sie/sip`。
 - `mret`、`sret`、`sfence.vma`。
+- CLINT `mtimecmp` 与 timer interrupt（machine cause 7）。
 - 取指/load/store 页错误，以及向 S 模式委托异常。
 - split ITLB/DTLB 与 unified TLB。
 - TLB ASID、Global、RR/PLRU/LRU 替换。
@@ -24,7 +25,7 @@
 ysyx_26030103_MMUTest             7
 ysyx_26030103_MMUBehaviorTest     8
 ysyx_26030103_MMUStreamTest       1
-ysyx_26030103_CSRPrivilegeTest    3
+ysyx_26030103_CSRPrivilegeTest    4
 ```
 
 裸机测试（MMU 开启）：
@@ -45,6 +46,7 @@ S ecall + SRET          HIT GOOD
 - PTW 复用 DCache
 - pipelined / out-of-order PTW
 - 多笔在途 PTW
+- PLIC
 - 多 refill 端口和非 follow_tlb 缺失队列
 
 `MMU_PTW_OUTSTANDING` 当前仍按单笔 walk 处理；这是下一步要补的

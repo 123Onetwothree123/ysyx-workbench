@@ -23,6 +23,7 @@ class ysyx_26030103_CSRHarness extends Module {
     val pc = Input(UInt(32.W))
     val trapTval = Input(UInt(32.W))
     val interrupt = Input(Bool())
+    val timerInterrupt = Input(Bool())
     val trapValid = Input(Bool())
     val trapCause = Input(UInt(32.W))
     val memTrap = Input(Bool())
@@ -56,6 +57,7 @@ class ysyx_26030103_CSRHarness extends Module {
   csr.io.pc := io.pc
   csr.io.TrapTval := io.trapTval
   csr.io.Interrupt := io.interrupt
+  csr.io.TimerInterrupt := io.timerInterrupt
   csr.io.TrapValid := io.trapValid
   csr.io.TrapCause := io.trapCause
   csr.io.MemTrap := io.memTrap
@@ -104,6 +106,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
     dut.io.pc.poke(0.U)
     dut.io.trapTval.poke(0.U)
     dut.io.interrupt.poke(false.B)
+    dut.io.timerInterrupt.poke(false.B)
     dut.io.trapValid.poke(false.B)
     dut.io.trapCause.poke(0.U)
     dut.io.memTrap.poke(false.B)
@@ -173,6 +176,18 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       read(dut, STVAL) should be(BigInt("deadbeef", 16))
       read(dut, SEPC) should be(0x80001234L)
       (read(dut, 0x100) & BigInt(0x100)) should be(BigInt(0x100))
+    }
+  }
+
+  it should "timer 中断产生 cause=7" in {
+    simulate(new ysyx_26030103_CSRHarness) { dut =>
+      setup(dut)
+      write(dut, MSTATUS, BigInt(8))
+      dut.io.timerInterrupt.poke(true.B)
+      dut.io.enable.poke(true.B)
+      bool(dut.io.trapCommit) should be(true)
+      long(dut.io.committedCause) should be(0x80000007L)
+      dut.clock.step()
     }
   }
 

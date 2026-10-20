@@ -1,21 +1,32 @@
 package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
+class ysyx_26030103_CLINTIO extends ysyx_26030103_AXI5Slave(32) {
+  val timer_irq = Output(Bool())
+}
+
 class ysyx_26030103_AXI5CLINTSlave extends Module {
-  val io = IO(new ysyx_26030103_AXI5Slave(32))
+  val io = IO(new ysyx_26030103_CLINTIO)
   io.ACLK := clock.asBool
   io.ARESETn := !reset.asBool
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
   val MtimeLowAddress = "h0200bff8".U(32.W) // RISC-V标准CLINT的mtime寄存器
   val MtimeHighAddress = "h0200bffc".U(32.W)
+  val MtimecmpLowAddress = "h02004000".U(32.W)
+  val MtimecmpHighAddress = "h02004004".U(32.W)
   val Mtime = Module(new ysyx_26030103_mtime)
+  val Mtimecmp = RegInit("hffffffffffffffff".U(64.W))
+  io.timer_irq := Mtime.io.value >= Mtimecmp
   // 日常默认值，都复制粘贴了
   val AWValidReg = RegInit(false.B)
   val WValidReg = RegInit(false.B)
   val WLastReg = RegInit(false.B)
   val BValidReg = RegInit(false.B)
   val AWIDReg = RegInit(0.U(4.W))
+  val AWAddrReg = RegInit(0.U(32.W))
+  val WDataReg = RegInit(0.U(32.W))
+  val WStrbReg = RegInit(0.U(4.W))
   val BRESPReg = RegInit(OKAY)
   val RValidReg = RegInit(false.B)
   val ARIDReg = RegInit(0.U(4.W))
@@ -46,17 +57,26 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
   val RFire = io.R.RVALID && io.R.RREADY
   when(AWFire) {
     AWIDReg := io.AW.AWID
+    AWAddrReg := io.AW.AWADDR
     AWValidReg := true.B
   }
   when(WFire) {
+    WDataReg := io.W.WDATA
+    WStrbReg := io.W.WSTRB
     WValidReg := true.B
     WLastReg := io.W.WLAST
   }
   when(AWValidReg && WValidReg && !BValidReg) {
-    // 本从设备只实现 mtime 读；所有写（含 mtime 地址）都以 SLVERR 终止。
-    // 即便如此也必须先排空完整的 W burst，再回 B，保持 AXI 事务完整性。
     when(WLastReg) {
-      BRESPReg := SLVERR
+      when(AWAddrReg === MtimecmpLowAddress && WStrbReg =/= 0.U) {
+        Mtimecmp := Cat(Mtimecmp(63, 32), WDataReg)
+        BRESPReg := OKAY
+      }.elsewhen(AWAddrReg === MtimecmpHighAddress && WStrbReg =/= 0.U) {
+        Mtimecmp := Cat(WDataReg, Mtimecmp(31, 0))
+        BRESPReg := OKAY
+      }.otherwise {
+        BRESPReg := SLVERR
+      }
       BValidReg := true.B
       AWValidReg := false.B
       WValidReg := false.B
@@ -73,6 +93,13 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
   }
   def IsMtime(address: UInt): Bool =
     address === MtimeLowAddress || address === MtimeHighAddress
+  def IsMtimecmp(address: UInt): Bool =
+    address === MtimecmpLowAddress || address === MtimecmpHighAddress
+  def ReadData(address: UInt): UInt =
+    Mux(address === MtimeLowAddress, Mtime.io.rdata,
+      Mux(address === MtimeHighAddress, Mtime.io.rdata,
+        Mux(address === MtimecmpLowAddress, Mtimecmp(31, 0),
+          Mux(address === MtimecmpHighAddress, Mtimecmp(63, 32), 0.U))))
 
   val ARStep = MuxLookup(ARSizeReg, 0.U(32.W))(
     Seq(
@@ -96,8 +123,8 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
     ARBeatReg := 0.U
     ARConfigErrorReg := io.AR.ARSIZE > 2.U || io.AR.ARBURST > 1.U
     val ConfigError = io.AR.ARSIZE > 2.U || io.AR.ARBURST > 1.U
-    val AddressValid = IsMtime(io.AR.ARADDR)
-    RDataReg := Mux(!ConfigError && AddressValid, Mtime.io.rdata, 0.U)
+    val AddressValid = IsMtime(io.AR.ARADDR) || IsMtimecmp(io.AR.ARADDR)
+    RDataReg := Mux(!ConfigError && AddressValid, ReadData(io.AR.ARADDR), 0.U)
     RRESPReg := Mux(!ConfigError && AddressValid, OKAY, SLVERR)
     RLastReg := io.AR.ARLEN === 0.U
     RValidReg := true.B
@@ -110,12 +137,12 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
       RLastReg := false.B
     }.otherwise {
       val NextBeat = ARBeatReg + 1.U
-      val AddressValid = IsMtime(NextARAddr)
+      val AddressValid = IsMtime(NextARAddr) || IsMtimecmp(NextARAddr)
       ARAddrReg := NextARAddr
       ARBeatReg := NextBeat
       RDataReg := Mux(
         !ARConfigErrorReg && AddressValid,
-        Mtime.io.rdata,
+        ReadData(NextARAddr),
         0.U
       )
       RRESPReg := Mux(

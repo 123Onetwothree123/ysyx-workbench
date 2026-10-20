@@ -35,6 +35,7 @@ class ysyx_26030103_CSR extends Module {
     val Satp = Output(UInt(32.W))
 
     val Interrupt = Input(Bool())
+    val TimerInterrupt = Input(Bool())
     val TrapValid = Input(Bool())
     val TrapCause = Input(UInt(32.W))
     val MemTrap = Input(Bool())
@@ -133,7 +134,7 @@ class ysyx_26030103_CSR extends Module {
 
   val IrqLatch = RegInit(false.B)
   when(io.Interrupt) { IrqLatch := true.B }
-  val HasInterrupt = (io.Interrupt || IrqLatch) && Mstatus_rdata(3)
+  val HasInterrupt = (io.Interrupt || IrqLatch || io.TimerInterrupt) && Mstatus_rdata(3)
   io.IrqPending := HasInterrupt
   // CSR 写只在真正接受中断时被压掉；原始中断线为高但 MIE=0 时软件仍可写 CSR。
   val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !HasInterrupt
@@ -143,7 +144,7 @@ class ysyx_26030103_CSR extends Module {
   when(io.MemTrap) {
     ExceptionCause := io.TrapCause
   }.elsewhen(HasInterrupt) {
-    ExceptionCause := "h8000000b".U(32.W)
+    ExceptionCause := Mux(io.TimerInterrupt, "h80000007".U(32.W), "h8000000b".U(32.W))
   }.elsewhen(io.TrapValid) {
     ExceptionCause := io.TrapCause
   }.elsewhen(io.IsEbreak) {

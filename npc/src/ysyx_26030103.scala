@@ -506,6 +506,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   gpr.io.wdata := wbu.io.wdata
   // 临时新加的处理中断的
   exu.io.Interrupt := io.interrupt
+  exu.io.TimerInterrupt := clint.io.timer_irq
   // 仿真 halt 是 custom-0 指令的提交事件，而不是架构 EBREAK。再寄存
   // 一拍后暴露给 C++，保证上升沿上的所有更老 GPR 写回已经生效。
   val SimHaltCommit = exu.io.SimHaltValid

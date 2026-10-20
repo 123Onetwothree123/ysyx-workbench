@@ -14,6 +14,7 @@ class ysyx_26030103_EXU(
     val ExceptionTaken = Output(Bool())
     val ExceptionTarget = Output(UInt(32.W))
     val Interrupt = Input(Bool())
+    val TimerInterrupt = Input(Bool())
     // 当EXU没有有效输入、且所有更老指令都已排空时，中断仍必须在当前
     // 架构指令边界提交。该PC由顶层的提交态PC提供，不能使用可能已因
     // 预取而前移的任意流水级bits。
@@ -106,6 +107,7 @@ class ysyx_26030103_EXU(
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
   CSRUnit.io.Interrupt := io.Interrupt
+  CSRUnit.io.TimerInterrupt := io.TimerInterrupt
   val BranchComparatorUnit = Module(new ysyx_26030103_BranchComparator)
   val inst = io.in.bits
   // M扩展关闭时，这些信号全部折叠为常量；MDU模块和顺序
