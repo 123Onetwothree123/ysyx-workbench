@@ -15,9 +15,21 @@ class ysyx_26030103_MMU(
 ) extends Module {
   require(
     profile.pageSizeBytes == 4096 && profile.levels == 2 &&
-      profile.pteSizeBytes == 4 && profile.pageTableSizeBytes == 4096,
+      profile.pteSizeBytes == 4 && profile.pageTableSizeBytes == 4096 &&
+      profile.pteFormat == "riscv32",
     "当前 MMU 只实现标准 Sv32 4KiB/2 级/4B PTE/4KiB 页表"
   )
+  require(!profile.superpage, "MMU_SUPERPAGE 尚未实现，不能选择")
+  require(!profile.tlbSuperpage, "TLB_SUPERPAGE 尚未实现，不能选择")
+  require(profile.adMode != "hardware", "MMU_AD_HARDWARE 尚未实现，请使用 fault/ignore")
+  require(profile.cacheMode == "pipt", "VIPT 尚未实现，只能选择 PIPT")
+  require(profile.ptwPath == "dedicated", "PTW 复用 DCache 尚未实现")
+  require(profile.ptwArch == "independent", "流水化 PTW 尚未实现")
+  require(profile.ptwOrder == "in_order", "乱序 PTW 尚未实现")
+  require(!profile.ptwCache, "PTW cache 尚未实现")
+  require(profile.tlbStorage == "reg", "TLB SRAM 存储尚未实现")
+  require(profile.refillPorts == 1, "当前仅支持单 TLB refill 端口")
+  require(profile.tlbMissQueueMode == "follow_tlb", "当前仅支持 follow_tlb 缺失队列")
 
   val io = IO(new Bundle {
     val req = Flipped(Decoupled(new ysyx_26030103_MMURequest))
