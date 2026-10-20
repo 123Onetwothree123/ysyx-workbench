@@ -11,6 +11,7 @@
 - split ITLB/DTLB 与 unified TLB。
 - TLB ASID、Global、RR/PLRU/LRU 替换。
 - 独立只读 PTW AXI 通道，与 ICache 共用 IFU 读端口。
+- 可选 PTW PTE cache（set-associative）。
 - IFU/LSU 共用一个 MMU 请求端口；DMMU 对非访存指令组合直通。
 
 ## 已验证
@@ -42,7 +43,7 @@ S ecall + SRET          HIT GOOD
 - VIPT
 - PTW 复用 DCache
 - pipelined / out-of-order PTW
-- PTW cache
+- 多笔在途 PTW
 - TLB SRAM 存储
 - 多 refill 端口和非 follow_tlb 缺失队列
 

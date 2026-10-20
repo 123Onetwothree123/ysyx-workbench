@@ -26,7 +26,6 @@ class ysyx_26030103_MMU(
   require(profile.ptwPath == "dedicated", "PTW 复用 DCache 尚未实现")
   require(profile.ptwArch == "independent", "流水化 PTW 尚未实现")
   require(profile.ptwOrder == "in_order", "乱序 PTW 尚未实现")
-  require(!profile.ptwCache, "PTW cache 尚未实现")
   require(profile.tlbStorage == "reg", "TLB SRAM 存储尚未实现")
   require(profile.refillPorts == 1, "当前仅支持单 TLB refill 端口")
   require(profile.tlbMissQueueMode == "follow_tlb", "当前仅支持 follow_tlb 缺失队列")
@@ -67,7 +66,12 @@ class ysyx_26030103_MMU(
     else None
 
   val ptwOpt =
-    if (profile.enabled) Some(Module(new ysyx_26030103_PTW(profile.adMode)))
+    if (profile.enabled) Some(Module(new ysyx_26030103_PTW(
+      profile.adMode,
+      cacheEnable = profile.ptwCache,
+      cacheEntries = profile.ptwCacheEntries,
+      cacheWays = profile.ptwCacheWays
+    )))
     else None
 
   io.req.ready := state === idle
@@ -118,6 +122,7 @@ class ysyx_26030103_MMU(
       ptw.io.req.valid := false.B
       ptw.io.req.bits := 0.U.asTypeOf(new ysyx_26030103_PTWRequest)
       ptw.io.resp.ready := state === walk
+      ptw.io.flush := io.flush
 
       io.bus.req.valid := ptw.io.bus.req.valid
       io.bus.req.bits := ptw.io.bus.req.bits
