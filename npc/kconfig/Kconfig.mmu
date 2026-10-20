@@ -5,28 +5,30 @@ menu "虚拟内存管理 (MMU/TLB)"
     default n
     help
       启用 S 模式状态、S 模式 CSR 和 S 模式异常入口。
-      当前 RTL 尚未接入该配置；config-only 阶段仅生成 profile。
+      当前标准 Sv32 RTL 已实现 S/U 特权级和委托；该开关暂时不参与
+      RTL 裁剪，后续再接入 HAS_S/HAS_U 的面积裁剪。
 
   config HAS_U
     bool "启用 U 模式"
     default n
     help
       启用 U 模式状态和 U 模式 ecall/权限检查。
-      当前 RTL 尚未接入该配置；config-only 阶段仅生成 profile。
+      当前标准 Sv32 RTL 已实现 U 模式；该开关暂时不参与 RTL 裁剪。
 
   config HAS_MMU
     bool "启用 MMU"
     default n
     help
       MMU 总开关。关闭时 IFU/LSU 直接使用物理地址，PTW/页表/页错误
-      相关逻辑不实例化。config-only 阶段只影响 profile，不修改 RTL。
+      相关逻辑不实例化。开启时当前 RTL 支持标准 Sv32、split/unified TLB
+      和独立只读 PTW AXI 通道。
 
   config HAS_TLB
     bool "启用 TLB"
     default n
     help
       TLB 总开关。关闭时每次访问都由 PTW 查页表；TLB 阵列不实例化。
-      config-only 阶段只影响 profile，不修改 RTL。
+      当前支持 Reg-CAM 存储、RR/PLRU/LRU 替换和 ASID/Global。
 
   menu "MMU Profile"
 

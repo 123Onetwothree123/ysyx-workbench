@@ -2,9 +2,9 @@ package ysyx_26030103.config
 
 /** MMU/TLB 的 elaboration 期参数。
   *
-  * 这个类目前只描述配置，不被 RTL 实例化；后续 MMU/TLB 接入时由
-  * Elaborate 从 Kconfig 生成的环境变量构造。默认值就是标准 Sv32 balanced
-  * profile，非标准参数通过 Kconfig 和生成器校验。
+  * 这个类由 Elaborate 从 Kconfig 生成的环境变量构造，并驱动 MMU/TLB RTL。
+  * 默认值就是标准 Sv32 balanced profile；当前 RTL 只支持标准 Sv32
+  * 4KiB/2 级/4B PTE/4KiB 页表，非标准参数由生成器和 elaboration 校验。
   */
 case class ysyx_26030103_MMUProfile(
     enabled: Boolean = false,

@@ -92,7 +92,7 @@ case class ysyx_26030103_NPCConfig(
     // 主开关及所属组总开关相与（见EnabledPerfCounters）。
     PerfCounters: Set[String] =
       ysyx_26030103_PerfCounterCatalog.AllPerfCounters,
-    // MMU/TLB 配置；config-only 阶段只参与 Describe，RTL 后续接入。
+    // MMU/TLB 配置；当前已接入标准 Sv32 的 IFU/LSU 翻译路径。
     MMU: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
 ) {
   require(!UseA, "RV32_A还没有做")
