@@ -94,7 +94,9 @@ class ysyx_26030103_IFUMMU extends Module {
 
   io.req.valid := false.B
   io.req.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest)
-  io.resp.ready := false.B
+  // flush 后旧 walk 的响应仍可能返回；非等待状态也要接收并丢弃，避免
+  // MMU 请求仲裁器卡在响应转发状态。
+  io.resp.ready := true.B
   io.fetchPaddr := Mux(bypass, io.fetchVaddr, paddrReg)
   // 重定向后 IFU 的虚拟 PC 已改变；即使 flush 晚一拍，旧 paddr 也绝不能
   // 再被当成新 PC 的物理地址送给 ICache。
@@ -196,7 +198,7 @@ class ysyx_26030103_LSUMMU extends Module {
   io.out.bits := io.in.bits
   io.req.valid := false.B
   io.req.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest)
-  io.resp.ready := false.B
+  io.resp.ready := true.B
   io.faultCommit := faultReg
   io.faultCause := faultCauseReg
   io.faultTval := faultTvalReg
