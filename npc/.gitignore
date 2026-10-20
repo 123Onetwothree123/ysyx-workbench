@@ -7,6 +7,9 @@
 # Kconfig 拆分文件：整目录白名单，文件可任意命名
 !kconfig/
 !kconfig/**/*
+!configs/
+!configs/**/*
+!*.py
 !*.scala
 !*.[cSh]
 !*.v
@@ -30,6 +33,8 @@
 !*.sh
 
 build/
+include/config/
+include/generated/mmu_profile.h
 
 # mill
 !*.mill

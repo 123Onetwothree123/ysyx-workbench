@@ -1,0 +1,641 @@
+menu "虚拟内存管理 (MMU/TLB)"
+
+  config HAS_S
+    bool "启用 S 模式"
+    default n
+    help
+      启用 S 模式状态、S 模式 CSR 和 S 模式异常入口。
+      当前 RTL 尚未接入该配置；config-only 阶段仅生成 profile。
+
+  config HAS_U
+    bool "启用 U 模式"
+    default n
+    help
+      启用 U 模式状态和 U 模式 ecall/权限检查。
+      当前 RTL 尚未接入该配置；config-only 阶段仅生成 profile。
+
+  config HAS_MMU
+    bool "启用 MMU"
+    default n
+    help
+      MMU 总开关。关闭时 IFU/LSU 直接使用物理地址，PTW/页表/页错误
+      相关逻辑不实例化。config-only 阶段只影响 profile，不修改 RTL。
+
+  config HAS_TLB
+    bool "启用 TLB"
+    default n
+    help
+      TLB 总开关。关闭时每次访问都由 PTW 查页表；TLB 阵列不实例化。
+      config-only 阶段只影响 profile，不修改 RTL。
+
+  menu "MMU Profile"
+
+    choice
+      prompt "默认 profile"
+      default MMU_PROFILE_BALANCED
+      help
+        默认 balanced profile 的参数见 help 和各子项默认值。
+        所有值都可以在下面继续修改；非标准组合由 elaboration/生成器校验。
+      config MMU_PROFILE_BALANCED
+        bool "balanced (标准 Sv32 基线)"
+      config MMU_PROFILE_MIN_AREA
+        bool "min-area"
+      config MMU_PROFILE_HIGH_PERF
+        bool "high-performance"
+      config MMU_PROFILE_CUSTOM
+        bool "custom"
+    endchoice
+
+    config MMU_PROFILE
+      string
+      default "balanced" if MMU_PROFILE_BALANCED
+      default "min_area" if MMU_PROFILE_MIN_AREA
+      default "high_perf" if MMU_PROFILE_HIGH_PERF
+      default "custom"
+      help
+        profile 名称。生成 JSON/C header 时原样记录。
+
+    config MMU_PAGE_SIZE_BYTES
+      int "基础页大小 (Byte)"
+      default 4096
+      help
+        默认 4096，即标准 Sv32 的 4KiB 页。
+        硬件要求 2 的幂；非 4096 属于自定义 MMU profile，
+        需要配套软件页表生成器。
+
+    config MMU_LEVELS
+      int "页表级数"
+      default 2
+      help
+        默认 2，即标准 Sv32 两级页表。级数越小地址切分越少；
+        非 2 属于自定义 profile，需要配套软件。
+
+    config MMU_PTE_SIZE_BYTES
+      int "PTE 大小 (Byte)"
+      default 4
+      help
+        默认 4，即标准 RISC-V 32-bit PTE。必须是 2 的幂。
+
+    config MMU_PAGE_TABLE_SIZE_BYTES
+      int "单级页表页大小 (Byte)"
+      default 4096
+      help
+        默认 4096。页表页中可容纳的 PTE 数 =
+        MMU_PAGE_TABLE_SIZE_BYTES / MMU_PTE_SIZE_BYTES。
+
+    choice
+      prompt "PTE 编码"
+      default MMU_PTE_RISCV32
+      config MMU_PTE_RISCV32
+        bool "标准 RISC-V 32-bit PTE"
+      config MMU_PTE_CUSTOM
+        bool "自定义 PTE (EXPERIMENTAL)"
+    endchoice
+
+    config MMU_PTE_FORMAT
+      string
+      default "riscv32" if MMU_PTE_RISCV32
+      default "custom"
+      help
+        PTE 编码名称。自定义编码当前未实现，生成器只记录参数；
+        选中自定义 profile 时 elaboration/RTL 接入前必须报错。
+
+    config MMU_SUPERPAGE
+      bool "支持超级页 (RESERVED)"
+      default n
+      help
+        标准 Sv32 的 4MiB 超级页尚未实现，默认关闭。
+        选项保留，后续补齐 PTW/TLB 的页大小字段和测试。
+
+    choice
+      prompt "A/D 位策略"
+      default MMU_AD_FAULT
+      config MMU_AD_FAULT
+        bool "缺 A/D 产生 page fault"
+      config MMU_AD_HARDWARE
+        bool "PTW 自动写回 A/D"
+      config MMU_AD_IGNORE
+        bool "忽略 A/D (仅 bring-up)"
+    endchoice
+
+    config MMU_AD_MODE
+      string
+      default "fault" if MMU_AD_FAULT
+      default "hardware" if MMU_AD_HARDWARE
+      default "ignore"
+
+    choice
+      prompt "Cache 与 MMU 的关系"
+      default MMU_CACHE_VIPT if MMU_PROFILE_HIGH_PERF
+      default MMU_CACHE_PIPT
+      config MMU_CACHE_PIPT
+        bool "PIPT：MMU 在 Cache 前"
+      config MMU_CACHE_VIPT
+        bool "VIPT：TLB 与 Cache 并行"
+    endchoice
+
+    config MMU_CACHE_MODE
+      string
+      default "pipt" if MMU_CACHE_PIPT
+      default "vipt"
+
+    choice
+      prompt "PTW 内存通路"
+      default MMU_PTW_DEDICATED
+      config MMU_PTW_DEDICATED
+        bool "独立 PTW 物理读端口 (经 AXI 仲裁)"
+      config MMU_PTW_REUSE_DCACHE
+        bool "复用 DCache/CPU 数据通路"
+    endchoice
+
+    config MMU_PTW_PATH
+      string
+      default "dedicated" if MMU_PTW_DEDICATED
+      default "reuse_dcache"
+
+    choice
+      prompt "PTW 内部结构"
+      default MMU_PTW_PIPELINED if MMU_PROFILE_HIGH_PERF
+      default MMU_PTW_INDEPENDENT
+      config MMU_PTW_INDEPENDENT
+        bool "多个独立 walk，各自串行逐级"
+      config MMU_PTW_PIPELINED
+        bool "流水化 PTW"
+    endchoice
+
+    config MMU_PTW_ARCH
+      string
+      default "independent" if MMU_PTW_INDEPENDENT
+      default "pipelined"
+
+    config MMU_PTW_OUTSTANDING
+      int "PTW 最大在途 walk 数"
+      default 1 if MMU_PROFILE_MIN_AREA
+      default 4 if MMU_PROFILE_HIGH_PERF
+      default 2
+      range 1 16
+      help
+        balanced 默认 2。多笔在途需要 walk ID、响应队列和
+        TLB refill 仲裁；具体数据结构由 MMU_PTW_ARCH 决定。
+
+    choice
+      prompt "PTW 返回顺序"
+      default MMU_PTW_IN_ORDER
+      config MMU_PTW_IN_ORDER
+        bool "in-order"
+      config MMU_PTW_OUT_OF_ORDER
+        bool "out-of-order"
+    endchoice
+
+    config MMU_PTW_ORDER
+      string
+      default "in_order" if MMU_PTW_IN_ORDER
+      default "out_of_order"
+
+    config MMU_PTW_CACHE
+      bool "启用 PTW 专用页表缓存"
+      default y if MMU_PROFILE_HIGH_PERF
+      default n
+      help
+        也叫 walk cache/PTE cache。默认关闭，避免额外面积；
+        打开后需要与 sfence、PTE 写回和 A/D 更新保持一致。
+
+    config MMU_PTW_CACHE_ENTRIES
+      int "PTW cache 项数"
+      default 16
+      depends on MMU_PTW_CACHE
+      help
+        必须是 2 的幂。
+
+    config MMU_PTW_CACHE_WAYS
+      int "PTW cache 组相联度"
+      default 2
+      depends on MMU_PTW_CACHE
+      help
+        1 表示直接映射；必须整除项数。
+
+  endmenu
+
+  menu "TLB"
+
+    choice
+      prompt "TLB 组织"
+      default TLB_SPLIT
+      config TLB_SPLIT
+        bool "ITLB + DTLB (共享 PTW)"
+      config TLB_UNIFIED
+        bool "统一 TLB (共享 PTW)"
+    endchoice
+
+    config TLB_ORGANIZATION
+      string
+      default "split" if TLB_SPLIT
+      default "unified"
+
+    choice
+      prompt "TLB 存储介质"
+      default TLB_STORAGE_SRAM if MMU_PROFILE_HIGH_PERF
+      default TLB_STORAGE_REG
+      config TLB_STORAGE_REG
+        bool "Reg-CAM"
+      config TLB_STORAGE_SRAM
+        bool "同步读 SRAM"
+    endchoice
+
+    config TLB_STORAGE
+      string
+      default "reg" if TLB_STORAGE_REG
+      default "sram"
+
+    choice
+      prompt "TLB 替换策略"
+      default TLB_REPLACE_RR if MMU_PROFILE_MIN_AREA
+      default TLB_REPLACE_PLRU
+      config TLB_REPLACE_RR
+        bool "round-robin"
+      config TLB_REPLACE_PLRU
+        bool "PLRU"
+      config TLB_REPLACE_LRU
+        bool "LRU"
+    endchoice
+
+    config TLB_REPLACEMENT
+      string
+      default "rr" if TLB_REPLACE_RR
+      default "plru" if TLB_REPLACE_PLRU
+      default "lru"
+
+    config TLB_ASID_BITS
+      int "TLB ASID 位数"
+      default 9
+      range 0 9
+      help
+        0 表示无 ASID，satp.ASID 变化必须全冲刷；9 是标准 Sv32 ASID 宽度。
+
+    config TLB_GLOBAL
+      bool "支持 Global 位"
+      default y
+
+    config ITLB_ENTRIES
+      int "ITLB 项数"
+      default 4 if MMU_PROFILE_MIN_AREA
+      default 32 if MMU_PROFILE_HIGH_PERF
+      default 16
+      depends on TLB_SPLIT
+      help
+        必须是 2 的幂。ITLB_WAYS=1 表示直接映射。
+
+    config ITLB_WAYS
+      int "ITLB 组相联度"
+      default 1 if MMU_PROFILE_MIN_AREA
+      default 4 if MMU_PROFILE_HIGH_PERF
+      default 2
+      depends on TLB_SPLIT
+
+    config DTLB_ENTRIES
+      int "DTLB 项数"
+      default 8 if MMU_PROFILE_MIN_AREA
+      default 64 if MMU_PROFILE_HIGH_PERF
+      default 32
+      depends on TLB_SPLIT
+
+    config DTLB_WAYS
+      int "DTLB 组相联度"
+      default 1 if MMU_PROFILE_MIN_AREA
+      default 4 if MMU_PROFILE_HIGH_PERF
+      default 4
+      depends on TLB_SPLIT
+
+    config UTLB_ENTRIES
+      int "统一 TLB 项数"
+      default 8 if MMU_PROFILE_MIN_AREA
+      default 64 if MMU_PROFILE_HIGH_PERF
+      default 32
+      depends on TLB_UNIFIED
+
+    config UTLB_WAYS
+      int "统一 TLB 组相联度"
+      default 1 if MMU_PROFILE_MIN_AREA
+      default 8 if MMU_PROFILE_HIGH_PERF
+      default 4
+      depends on TLB_UNIFIED
+
+    config TLB_SUPERPAGE
+      bool "TLB 支持多页大小/超级页 (RESERVED)"
+      default n
+      help
+        当前未实现，选项保留。打开后 TLB 项需要 size/mask 字段，
+        并与 MMU_SUPERPAGE 的 PTW 行为一起实现。
+
+    choice
+      prompt "TLB miss queue 组织"
+      default TLB_MISS_QUEUE_FOLLOW
+      config TLB_MISS_QUEUE_FOLLOW
+        bool "跟随 TLB 组织"
+      config TLB_MISS_QUEUE_GLOBAL
+        bool "全局共享队列"
+    endchoice
+
+    config TLB_MISS_QUEUE_MODE
+      string
+      default "follow_tlb" if TLB_MISS_QUEUE_FOLLOW
+      default "global"
+
+    config ITLB_MISS_QUEUE_ENTRIES
+      int "ITLB miss queue 深度"
+      default 4
+      depends on TLB_SPLIT
+    config DTLB_MISS_QUEUE_ENTRIES
+      int "DTLB miss queue 深度"
+      default 4
+      depends on TLB_SPLIT
+    config UTLB_MISS_QUEUE_ENTRIES
+      int "统一 TLB miss queue 深度"
+      default 8
+      depends on TLB_UNIFIED
+    config GLOBAL_MISS_QUEUE_ENTRIES
+      int "全局 miss queue 深度"
+      default 8
+      depends on TLB_MISS_QUEUE_GLOBAL
+
+    config UTLB_LOOKUP_PORTS
+      int "统一 TLB 查找端口数"
+      default 2
+      range 1 2
+      depends on TLB_UNIFIED
+    config TLB_REFILL_PORTS
+      int "TLB refill 写端口数"
+      default 1
+      range 1 4
+
+  endmenu
+
+  menu "S/U 与中断"
+
+    config HAS_S_TIMER_IRQ
+      bool "启用 S 模式时钟中断"
+      default y
+    config HAS_S_EXTERNAL_IRQ
+      bool "启用 S 模式外部中断"
+      default y
+
+    choice
+      prompt "Timer 中断路径"
+      default TIMER_CLINT_MTIP
+      config TIMER_CLINT_MTIP
+        bool "CLINT MTIP + M-mode/SBI 桥接"
+      config TIMER_DIRECT_STIP
+        bool "直接产生 STIP"
+    endchoice
+
+    config TIMER_PATH
+      string
+      default "clint_mtip" if TIMER_CLINT_MTIP
+      default "direct_stip"
+
+    config PLIC_SOURCES
+      int "PLIC 中断源数量"
+      default 32
+      range 1 128
+      depends on HAS_S_EXTERNAL_IRQ
+    config PLIC_PRIORITY_BITS
+      int "PLIC 优先级位宽"
+      default 3
+      range 1 8
+      depends on HAS_S_EXTERNAL_IRQ
+    config PLIC_MAX_PRIORITY
+      int "PLIC 最大优先级"
+      default 7
+      depends on HAS_S_EXTERNAL_IRQ
+    config PLIC_BASE
+      hex "PLIC MMIO 基地址"
+      default 0x0c000000
+      depends on HAS_S_EXTERNAL_IRQ
+
+    config HAS_PMP
+      bool "启用 PMP (RESERVED)"
+      default n
+      help
+        本次虚存阶段不实现 PMP，只保留开关。打开后 elaboration
+        在 PMP RTL 接入前必须报错。
+    config PMP_ENTRIES
+      int "PMP 表项数"
+      default 16
+      range 0 16
+      depends on HAS_PMP
+
+  endmenu
+
+  menu "CSR 与字段行为"
+
+    choice
+      prompt "缺失 CSR 的访问行为"
+      default CSR_MISSING_ILLEGAL
+      config CSR_MISSING_ILLEGAL
+        bool "非法指令 cause 2"
+      config CSR_MISSING_ZERO
+        bool "读 0 / 写忽略 (自定义)"
+    endchoice
+
+    config CSR_MISSING_MODE
+      string
+      default "illegal" if CSR_MISSING_ILLEGAL
+      default "zero"
+
+    choice
+      prompt "sstatus/sie/sip 视图"
+      default CSR_VIEW_BOUND
+      config CSR_VIEW_BOUND
+        bool "与 mstatus/mie/mip 绑定"
+      config CSR_VIEW_INDEPENDENT
+        bool "独立开关"
+    endchoice
+
+    config CSR_VIEW_MODE
+      string
+      default "bound" if CSR_VIEW_BOUND
+      default "independent"
+
+    config CSR_FIELD_DEFAULT_READ
+      string "字段默认读行为"
+      default "normal"
+      help
+        可选 normal/zero/one。每个字段可在下面覆盖。
+    config CSR_FIELD_DEFAULT_WRITE
+      string "字段默认写行为"
+      default "normal"
+      help
+        可选 normal/ignore。每个字段可在下面覆盖。
+
+    config HAS_CSR_MSTATUS
+      bool "mstatus"
+      default y
+    config HAS_CSR_MISA
+      bool "misa"
+      default y
+    config HAS_CSR_MTVEC
+      bool "mtvec"
+      default y
+    config HAS_CSR_MEPC
+      bool "mepc"
+      default y
+    config HAS_CSR_MCAUSE
+      bool "mcause"
+      default y
+    config HAS_CSR_MTVAL
+      bool "mtval"
+      default n
+    config HAS_CSR_MSCRATCH
+      bool "mscratch"
+      default n
+    config HAS_CSR_MIE
+      bool "mie"
+      default y
+    config HAS_CSR_MIP
+      bool "mip"
+      default y
+    config HAS_CSR_MEDELEG
+      bool "medeleg"
+      default n
+    config HAS_CSR_MIDELEG
+      bool "mideleg"
+      default n
+    config HAS_CSR_MCOUNTEREN
+      bool "mcounteren"
+      default n
+    config HAS_CSR_MCOUNTINHIBIT
+      bool "mcountinhibit"
+      default n
+    config HAS_CSR_MCYCLE
+      bool "mcycle"
+      default y
+    config HAS_CSR_MINSTRET
+      bool "minstret"
+      default n
+
+    config HAS_CSR_SSTATUS
+      bool "sstatus"
+      default n
+    config HAS_CSR_SIE
+      bool "sie"
+      default n
+    config HAS_CSR_SIP
+      bool "sip"
+      default n
+    config HAS_CSR_STVEC
+      bool "stvec"
+      default n
+    config HAS_CSR_SSCRATCH
+      bool "sscratch"
+      default n
+    config HAS_CSR_SEPC
+      bool "sepc"
+      default n
+    config HAS_CSR_SCAUSE
+      bool "scause"
+      default n
+    config HAS_CSR_STVAL
+      bool "stval"
+      default n
+    config HAS_CSR_SATP
+      bool "satp"
+      default n
+    config HAS_CSR_SCOUNTEREN
+      bool "scounteren"
+      default n
+
+    config CSR_MSTATUS_MIE_READ
+      string "mstatus.MIE 读行为"
+      default "normal"
+    config CSR_MSTATUS_MIE_WRITE
+      string "mstatus.MIE 写行为"
+      default "normal"
+    config CSR_MSTATUS_MPIE_READ
+      string "mstatus.MPIE 读行为"
+      default "normal"
+    config CSR_MSTATUS_MPIE_WRITE
+      string "mstatus.MPIE 写行为"
+      default "normal"
+    config CSR_MSTATUS_MPP_READ
+      string "mstatus.MPP 读行为"
+      default "normal"
+    config CSR_MSTATUS_MPP_WRITE
+      string "mstatus.MPP 写行为"
+      default "normal"
+    config CSR_MSTATUS_SIE_READ
+      string "mstatus.SIE 读行为"
+      default "normal"
+    config CSR_MSTATUS_SIE_WRITE
+      string "mstatus.SIE 写行为"
+      default "normal"
+    config CSR_MSTATUS_SPIE_READ
+      string "mstatus.SPIE 读行为"
+      default "normal"
+    config CSR_MSTATUS_SPIE_WRITE
+      string "mstatus.SPIE 写行为"
+      default "normal"
+    config CSR_MSTATUS_SPP_READ
+      string "mstatus.SPP 读行为"
+      default "normal"
+    config CSR_MSTATUS_SPP_WRITE
+      string "mstatus.SPP 写行为"
+      default "normal"
+    config CSR_MSTATUS_MPRV_READ
+      string "mstatus.MPRV 读行为"
+      default "normal"
+    config CSR_MSTATUS_MPRV_WRITE
+      string "mstatus.MPRV 写行为"
+      default "normal"
+    config CSR_MSTATUS_SUM_READ
+      string "mstatus.SUM 读行为"
+      default "normal"
+    config CSR_MSTATUS_SUM_WRITE
+      string "mstatus.SUM 写行为"
+      default "normal"
+    config CSR_MSTATUS_MXR_READ
+      string "mstatus.MXR 读行为"
+      default "normal"
+    config CSR_MSTATUS_MXR_WRITE
+      string "mstatus.MXR 写行为"
+      default "normal"
+    config CSR_MSTATUS_TVM_READ
+      string "mstatus.TVM 读行为"
+      default "normal"
+    config CSR_MSTATUS_TVM_WRITE
+      string "mstatus.TVM 写行为"
+      default "normal"
+    config CSR_MSTATUS_TW_READ
+      string "mstatus.TW 读行为"
+      default "normal"
+    config CSR_MSTATUS_TW_WRITE
+      string "mstatus.TW 写行为"
+      default "normal"
+    config CSR_MSTATUS_TSR_READ
+      string "mstatus.TSR 读行为"
+      default "normal"
+    config CSR_MSTATUS_TSR_WRITE
+      string "mstatus.TSR 写行为"
+      default "normal"
+
+    config CSR_SATP_MODE_READ
+      string "satp.MODE 读行为"
+      default "normal"
+    config CSR_SATP_MODE_WRITE
+      string "satp.MODE 写行为"
+      default "normal"
+    config CSR_SATP_ASID_READ
+      string "satp.ASID 读行为"
+      default "normal"
+    config CSR_SATP_ASID_WRITE
+      string "satp.ASID 写行为"
+      default "normal"
+    config CSR_SATP_PPN_READ
+      string "satp.PPN 读行为"
+      default "normal"
+    config CSR_SATP_PPN_WRITE
+      string "satp.PPN 写行为"
+      default "normal"
+
+  endmenu
+
+endmenu
