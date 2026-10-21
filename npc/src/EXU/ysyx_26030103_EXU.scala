@@ -103,7 +103,7 @@ class ysyx_26030103_EXU(
     val RASPopValid = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU)
-  val CSRUnit = Module(new ysyx_26030103_CSR)
+  val CSRUnit = Module(new ysyx_26030103_CSR(config.MMU))
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
   CSRUnit.io.Interrupt := io.Interrupt

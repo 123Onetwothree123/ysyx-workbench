@@ -6,7 +6,10 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 /** 测试用的 CSR 顶层，把显式 clk/rst 连接到仿真器的隐式时钟复位。 */
-class ysyx_26030103_CSRHarness extends Module {
+class ysyx_26030103_CSRHarness(
+    profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile()
+) extends Module {
   val io = IO(new Bundle {
     val enable = Input(Bool())
     val isCsrrw = Input(Bool())
@@ -39,7 +42,7 @@ class ysyx_26030103_CSRHarness extends Module {
     val stateMepc = Output(UInt(32.W))
     val stateMcause = Output(UInt(32.W))
   })
-  val csr = Module(new ysyx_26030103_CSR)
+  val csr = Module(new ysyx_26030103_CSR(profile))
   csr.io.clk := clock
   csr.io.rst := reset
   csr.io.Enable := io.enable
@@ -176,6 +179,25 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       read(dut, STVAL) should be(BigInt("deadbeef", 16))
       read(dut, SEPC) should be(0x80001234L)
       (read(dut, 0x100) & BigInt(0x100)) should be(BigInt(0x100))
+    }
+  }
+
+  it should "支持 mstatus/satp 字段 mask 配置" in {
+    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+      csrMstatusReadMask = 0,
+      csrMstatusReadSet = 0x8,
+      csrMstatusWriteMask = 0,
+      csrSatpReadMask = 0x000000ff,
+      csrSatpReadSet = 0x100,
+      csrSatpWriteMask = 0x0000000f
+    )
+    simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
+      setup(dut)
+      write(dut, MSTATUS, BigInt("00001888", 16))
+      read(dut, MSTATUS) should be(BigInt(8))
+      write(dut, SATP, BigInt("80000123", 16))
+      // 低 4 位可写；高 4 位来自 read set，ASID/PPN 被 mask。
+      (read(dut, SATP) & BigInt(0xff)) should be(BigInt(0x3))
     }
   }
 

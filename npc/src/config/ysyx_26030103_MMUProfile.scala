@@ -60,7 +60,13 @@ case class ysyx_26030103_MMUProfile(
     dtlbMissQueueEntries: Int = 4,
     utlbMissQueueEntries: Int = 8,
     globalMissQueueEntries: Int = 8,
-    refillPorts: Int = 1
+    refillPorts: Int = 1,
+    csrMstatusReadMask: Int = 0x000c19aa,
+    csrMstatusReadSet: Int = 0,
+    csrMstatusWriteMask: Int = 0x000c19aa,
+    csrSatpReadMask: Int = 0xffffffff,
+    csrSatpReadSet: Int = 0,
+    csrSatpWriteMask: Int = 0xffffffff
 ) {
   private def isPowerOfTwo(value: Int): Boolean =
     value > 0 && (value & (value - 1)) == 0
@@ -165,6 +171,12 @@ object ysyx_26030103_MMUProfile {
       dtlbMissQueueEntries = envInt(env, "MMU_DTLB_MISS_QUEUE_ENTRIES", 4),
       utlbMissQueueEntries = envInt(env, "MMU_UTLB_MISS_QUEUE_ENTRIES", 8),
       globalMissQueueEntries = envInt(env, "MMU_GLOBAL_MISS_QUEUE_ENTRIES", 8),
-      refillPorts = envInt(env, "MMU_TLB_REFILL_PORTS", 1)
+      refillPorts = envInt(env, "MMU_TLB_REFILL_PORTS", 1),
+      csrMstatusReadMask = envInt(env, "CSR_MSTATUS_READ_MASK", 0x000c19aa),
+      csrMstatusReadSet = envInt(env, "CSR_MSTATUS_READ_SET", 0),
+      csrMstatusWriteMask = envInt(env, "CSR_MSTATUS_WRITE_MASK", 0x000c19aa),
+      csrSatpReadMask = envInt(env, "CSR_SATP_READ_MASK", 0xffffffff),
+      csrSatpReadSet = envInt(env, "CSR_SATP_READ_SET", 0),
+      csrSatpWriteMask = envInt(env, "CSR_SATP_WRITE_MASK", 0xffffffff)
     )
 }

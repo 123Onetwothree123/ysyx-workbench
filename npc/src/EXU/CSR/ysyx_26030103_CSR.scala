@@ -8,7 +8,10 @@ import chisel3.util._
   * 页表翻译本身在 MMU 中完成；这里负责 satp、stvec/sepc/scause/stval
   * 以及异常入口的特权级切换。
   */
-class ysyx_26030103_CSR extends Module {
+class ysyx_26030103_CSR(
+    val profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile()
+) extends Module {
   import ysyx_26030103_mstatus.legalize
   val io = IO(new Bundle {
     val clk = Input(Clock())
@@ -120,10 +123,15 @@ class ysyx_26030103_CSR extends Module {
   val Scounteren = RegInit(0.U(32.W))
   val Stval = RegInit(0.U(32.W))
   val SatpReg = RegInit(0.U(32.W))
+  val SatpReadData =
+    (SatpReg & (profile.csrSatpReadMask & 0xffffffffL).U(32.W)) | profile.csrSatpReadSet.U(32.W)
   val Privilege = RegInit(3.U(2.W))
 
   val Mstatus_rdata = Mstatus.io.rdata
-  val Sstatus_rdata = Mstatus_rdata & SstatusMask
+  val MstatusReadData =
+    (Mstatus_rdata & profile.csrMstatusReadMask.U(32.W)) |
+      profile.csrMstatusReadSet.U(32.W)
+  val Sstatus_rdata = MstatusReadData & SstatusMask
   val Mtvec_rdata = Mtvec.io.rdata
   val Mepc_rdata = Mepc.io.rdata
   val Mcause_rdata = Mcause.io.rdata
@@ -191,11 +199,18 @@ class ysyx_26030103_CSR extends Module {
   )
 
   val MstatusWen = CSRWen && (IsCSRAddress(CSR_MSTATUS) || IsCSRAddress(CSR_SSTATUS))
-  val MstatusCSRData = Mux(
-    IsCSRAddress(CSR_SSTATUS),
-    legalize((Mstatus_rdata & ~SstatusMask) | (CSRWriteData(Sstatus_rdata) & SstatusMask)),
-    legalize(CSRWriteData(Mstatus_rdata))
-  )
+  val MstatusWriteMask = profile.csrMstatusWriteMask.U(32.W)
+  val MstatusCSRData = {
+    val rawWrite = CSRWriteData(Mstatus_rdata)
+    val masked = (Mstatus_rdata & ~MstatusWriteMask) |
+      (rawWrite & MstatusWriteMask)
+    Mux(
+      IsCSRAddress(CSR_SSTATUS),
+      legalize((Mstatus_rdata & ~SstatusMask) |
+        ((masked | (Mstatus_rdata & ~MstatusWriteMask)) & SstatusMask)),
+      legalize(masked)
+    )
+  }
   Mstatus.io.wen := MstatusWen || ExceptionCommit || MretCommit || SretCommit
   Mstatus.io.wdata := MuxCase(MstatusCSRData, Seq(
     ExceptionCommit -> MstatusExceptionData,
@@ -245,7 +260,9 @@ class ysyx_26030103_CSR extends Module {
   when(CSRWen && IsCSRAddress(CSR_SCOUNTEREN)) { Scounteren := CSRWriteData(Scounteren) }
   val SatpWen = CSRWen && IsCSRAddress(CSR_SATP)
   when(SatpWen) {
-    val data = CSRWriteData(SatpReg)
+    val raw = CSRWriteData(SatpReg)
+    val data = (SatpReg & ~(profile.csrSatpWriteMask & 0xffffffffL).U(32.W)) |
+      (raw & (profile.csrSatpWriteMask & 0xffffffffL).U(32.W))
     SatpReg := Cat(Mux(data(31), 1.U(1.W), 0.U(1.W)), data(30, 0))
   }
   io.Satp := SatpReg
@@ -267,7 +284,7 @@ class ysyx_26030103_CSR extends Module {
   Mcycle.io.wdata := CSRWriteData(Mcycle_rdata)
 
   val CSRMap = Seq(
-    CSR_MSTATUS -> Mstatus_rdata,
+    CSR_MSTATUS -> MstatusReadData,
     CSR_SSTATUS -> Sstatus_rdata,
     CSR_MTVEC -> Mtvec_rdata,
     CSR_STVEC -> Stvec_rdata,
@@ -285,7 +302,7 @@ class ysyx_26030103_CSR extends Module {
     CSR_SIP -> Sip,
     CSR_SCOUNTEREN -> Scounteren,
     CSR_STVAL -> Stval,
-    CSR_SATP -> SatpReg,
+    CSR_SATP -> SatpReadData,
     CSR_MCYCLE -> Mcycle_rdata,
     CSR_MCYCLEH -> Mcycle_rdata,
     CSR_MVENDORID -> Mvendorid_rdata,

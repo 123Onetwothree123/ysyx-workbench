@@ -28,7 +28,7 @@
 ysyx_26030103_MMUTest             7
 ysyx_26030103_MMUBehaviorTest     10
 ysyx_26030103_MMUStreamTest       1
-ysyx_26030103_CSRPrivilegeTest    4
+ysyx_26030103_CSRPrivilegeTest    5
 ```
 
 裸机测试（MMU 开启）：
@@ -43,7 +43,6 @@ S ecall + SRET          HIT GOOD
 
 ## 尚未实现（选择时会 elaboration error）
 
-- CSR 每个字段独立读写配置
 - 并行 VIPT TLB/Cache 流水
 - pipelined / out-of-order PTW
 - PLIC
