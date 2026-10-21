@@ -11,6 +11,7 @@ object ysyx_26030103_AccessType {
 }
 
 class ysyx_26030103_MMURequest extends Bundle {
+  val id = UInt(4.W)
   val vaddr = UInt(32.W)
   val access = UInt(2.W)
   val privilege = UInt(2.W)
@@ -20,6 +21,7 @@ class ysyx_26030103_MMURequest extends Bundle {
 }
 
 class ysyx_26030103_MMUResponse extends Bundle {
+  val id = UInt(4.W)
   val paddr = UInt(32.W)
   val fault = Bool()
   val cause = UInt(32.W)

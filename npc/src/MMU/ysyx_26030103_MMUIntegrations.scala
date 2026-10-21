@@ -114,6 +114,7 @@ class ysyx_26030103_IFUMMU extends Module {
       is(idle) {
         when(io.fetchValid && !bypass) {
           io.req.valid := true.B
+          io.req.bits.id := 0.U
           io.req.bits.vaddr := io.fetchVaddr
           io.req.bits.access := ysyx_26030103_AccessType.Fetch
           io.req.bits.privilege := io.privilege
@@ -220,6 +221,7 @@ class ysyx_26030103_LSUMMU extends Module {
   }
   when(state === xreq) {
     io.req.valid := true.B
+    io.req.bits.id := 0.U
     io.req.bits.vaddr := msgReg.ALUResult
     io.req.bits.access := Mux(msgReg.MemoryWrite,
       ysyx_26030103_AccessType.Store, ysyx_26030103_AccessType.Load)

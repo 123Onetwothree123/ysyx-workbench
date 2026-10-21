@@ -39,6 +39,16 @@ class ysyx_26030103_MMU(
   val respReg = RegInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
 
   val enabled = if (profile.enabled) true.B else false.B
+  // 请求队列：顶层可以连续送入多个已翻译请求；当前响应仍按序返回。
+  val reqQueue = Module(new Queue(
+    new ysyx_26030103_MMURequest,
+    profile.ptwOutstanding.max(1),
+    pipe = false,
+    flow = false
+  ))
+  reqQueue.io.enq <> io.req
+  io.req.ready := reqQueue.io.enq.ready
+  reqQueue.io.deq.ready := false.B
   val split = profile.tlbOrganization == "split"
   val selFetch = reqReg.access === ysyx_26030103_AccessType.Fetch
 
@@ -73,7 +83,6 @@ class ysyx_26030103_MMU(
     )))
     else None
 
-  io.req.ready := state === idle
   io.resp.valid := state === respond
   io.resp.bits := respReg
 
@@ -154,14 +163,16 @@ class ysyx_26030103_MMU(
       io.bus.resp.ready := false.B
   }
 
-  when(state === idle && io.req.fire) {
-    reqReg := io.req.bits
-    when(!enabled || io.req.bits.satp(31) === 0.U ||
-         io.req.bits.privilege === 3.U) {
-      respReg.paddr := io.req.bits.vaddr
+  when(state === idle && reqQueue.io.deq.valid) {
+    reqQueue.io.deq.ready := true.B
+    reqReg := reqQueue.io.deq.bits
+    when(!enabled || reqQueue.io.deq.bits.satp(31) === 0.U ||
+         reqQueue.io.deq.bits.privilege === 3.U) {
+      respReg.id := reqQueue.io.deq.bits.id
+      respReg.paddr := reqQueue.io.deq.bits.vaddr
       respReg.fault := false.B
       respReg.cause := 0.U
-      respReg.tval := io.req.bits.vaddr
+      respReg.tval := reqQueue.io.deq.bits.vaddr
       state := respond
     }.otherwise {
       state := lookup
@@ -171,6 +182,7 @@ class ysyx_26030103_MMU(
   switch(state) {
     is(lookup) {
       when(tlbResultValid && tlbHit) {
+        respReg.id := reqReg.id
         respReg.paddr := tlbPaddr
         respReg.fault := tlbFault
         respReg.cause := tlbCause
@@ -192,6 +204,7 @@ class ysyx_26030103_MMU(
     is(walk) {
       ptwOpt.foreach { ptw =>
         when(ptw.io.resp.valid) {
+          respReg.id := reqReg.id
           respReg.paddr := ptw.io.resp.bits.paddr
           respReg.fault := ptw.io.resp.bits.fault
           respReg.cause := ptw.io.resp.bits.cause
