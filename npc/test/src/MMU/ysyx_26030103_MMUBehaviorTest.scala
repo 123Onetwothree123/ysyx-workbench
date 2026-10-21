@@ -53,12 +53,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.fillAsid.poke(0.U)
       dut.io.fillPte.poke(0.U)
       dut.io.fillLevel.poke(0.U)
-      dut.io.lookup.vaddr.poke(0.U)
-      dut.io.lookup.asid.poke(0.U)
-      dut.io.lookup.privilege.poke(0.U)
-      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.lookup.sum.poke(false.B)
-      dut.io.lookup.mxr.poke(false.B)
+      dut.io.lookup(0).vaddr.poke(0.U)
+      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).privilege.poke(0.U)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup(0).sum.poke(false.B)
+      dut.io.lookup(0).mxr.poke(false.B)
       dut.clock.step()
 
       dut.io.flush.poke(false.B)
@@ -70,31 +70,31 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
 
-      dut.io.lookup.vaddr.poke(0x1234.U)
-      dut.io.lookup.asid.poke(7.U)
-      dut.io.lookup.privilege.poke(0.U)
-      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
-      asBool(dut.io.result.hit) should be(true)
-      asBool(dut.io.result.fault) should be(false)
-      asLong(dut.io.result.paddr) should be(Leaf + 0x234L)
+      dut.io.lookup(0).vaddr.poke(0x1234.U)
+      dut.io.lookup(0).asid.poke(7.U)
+      dut.io.lookup(0).privilege.poke(0.U)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
+      asBool(dut.io.result(0).hit) should be(true)
+      asBool(dut.io.result(0).fault) should be(false)
+      asLong(dut.io.result(0).paddr) should be(Leaf + 0x234L)
 
       // ASID 不同，不应命中（Global=0）。
-      dut.io.lookup.asid.poke(8.U)
-      dut.io.lookup.vaddr.poke(0x1234.U)
-      asBool(dut.io.result.hit) should be(false)
+      dut.io.lookup(0).asid.poke(8.U)
+      dut.io.lookup(0).vaddr.poke(0x1234.U)
+      asBool(dut.io.result(0).hit) should be(false)
 
       // U 页的取指在 S 模式必须失败；S 模式数据访问需要 SUM。
-      dut.io.lookup.asid.poke(7.U)
-      dut.io.lookup.privilege.poke(1.U)
-      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Fetch)
-      asBool(dut.io.result.hit) should be(true)
-      asBool(dut.io.result.fault) should be(true)
+      dut.io.lookup(0).asid.poke(7.U)
+      dut.io.lookup(0).privilege.poke(1.U)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Fetch)
+      asBool(dut.io.result(0).hit) should be(true)
+      asBool(dut.io.result(0).fault) should be(true)
 
-      dut.io.lookup.sum.poke(false.B)
-      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
-      asBool(dut.io.result.fault) should be(true)
-      dut.io.lookup.sum.poke(true.B)
-      asBool(dut.io.result.fault) should be(false)
+      dut.io.lookup(0).sum.poke(false.B)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
+      asBool(dut.io.result(0).fault) should be(true)
+      dut.io.lookup(0).sum.poke(true.B)
+      asBool(dut.io.result(0).fault) should be(false)
     }
   }
 
@@ -118,12 +118,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       extra.asid.poke(0.U)
       extra.pte.poke(0.U)
       extra.level.poke(0.U)
-      dut.io.lookup.vaddr.poke(0.U)
-      dut.io.lookup.asid.poke(0.U)
-      dut.io.lookup.privilege.poke(0.U)
-      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.lookup.sum.poke(false.B)
-      dut.io.lookup.mxr.poke(false.B)
+      dut.io.lookup(0).vaddr.poke(0.U)
+      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).privilege.poke(0.U)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup(0).sum.poke(false.B)
+      dut.io.lookup(0).mxr.poke(false.B)
       dut.clock.step()
       dut.io.flush.poke(false.B)
       dut.io.fillValid.poke(true.B)
@@ -135,10 +135,75 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
       extra.valid.poke(false.B)
-      dut.io.lookup.vaddr.poke(0x1000.U)
-      asBool(dut.io.result.hit) should be(true)
-      dut.io.lookup.vaddr.poke(0x2000.U)
-      asBool(dut.io.result.hit) should be(true)
+      dut.io.lookup(0).vaddr.poke(0x1000.U)
+      asBool(dut.io.result(0).hit) should be(true)
+      dut.io.lookup(0).vaddr.poke(0x2000.U)
+      asBool(dut.io.result(0).hit) should be(true)
+    }
+  }
+
+  "TLB" should "同一拍用两个查找端口命中不同表项" in {
+    val otherLeafPte = pte(0x80004L, 0xdfL)
+    simulate(new ysyx_26030103_TLB(
+      entries = 8, ways = 1, asidBits = 9, globalEnable = true,
+      adMode = "ignore", refillPorts = 2, lookupPorts = 2
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.flush.poke(true.B)
+      dut.io.fillValid.poke(false.B)
+      dut.io.fillVaddr.poke(0.U)
+      dut.io.fillAsid.poke(0.U)
+      dut.io.fillPte.poke(0.U)
+      dut.io.fillLevel.poke(0.U)
+      val extra = dut.io.fillExtra.get(0)
+      extra.valid.poke(false.B)
+      extra.vaddr.poke(0.U)
+      extra.asid.poke(0.U)
+      extra.pte.poke(0.U)
+      extra.level.poke(0.U)
+      for (p <- 0 until 2) {
+        dut.io.lookup(p).vaddr.poke(0.U)
+        dut.io.lookup(p).asid.poke(0.U)
+        dut.io.lookup(p).privilege.poke(0.U)
+        dut.io.lookup(p).access.poke(ysyx_26030103_AccessType.Load)
+        dut.io.lookup(p).sum.poke(false.B)
+        dut.io.lookup(p).mxr.poke(false.B)
+      }
+      dut.clock.step()
+      dut.io.flush.poke(false.B)
+
+      // 同一拍通过两个 refill 端口填入两个不同集合的表项。
+      dut.io.fillValid.poke(true.B)
+      dut.io.fillVaddr.poke(0x1234.U)
+      dut.io.fillAsid.poke(7.U)
+      dut.io.fillPte.poke(LeafPTE.U(32.W))
+      extra.valid.poke(true.B)
+      extra.vaddr.poke(0x5678.U)
+      extra.asid.poke(8.U)
+      extra.pte.poke(otherLeafPte.U(32.W))
+      dut.clock.step()
+      dut.io.fillValid.poke(false.B)
+      extra.valid.poke(false.B)
+
+      // 两个查找端口在同一拍分别查询不同 ASID/地址，结果互不干扰。
+      dut.io.lookup(0).vaddr.poke(0x1234.U)
+      dut.io.lookup(0).asid.poke(7.U)
+      dut.io.lookup(1).vaddr.poke(0x5678.U)
+      dut.io.lookup(1).asid.poke(8.U)
+      asBool(dut.io.result(0).hit) should be(true)
+      asBool(dut.io.result(1).hit) should be(true)
+      asBool(dut.io.result(0).fault) should be(false)
+      asBool(dut.io.result(1).fault) should be(false)
+      asLong(dut.io.result(0).paddr) should be(Leaf + 0x234L)
+      asLong(dut.io.result(1).paddr) should be(BigInt("80004678", 16).toLong)
+
+      // 端口 1 的 ASID 不匹配时只让端口 1 失效，端口 0 仍保持命中。
+      dut.io.lookup(1).asid.poke(9.U)
+      asBool(dut.io.result(0).hit) should be(true)
+      asBool(dut.io.result(1).hit) should be(false)
+      asLong(dut.io.result(0).paddr) should be(Leaf + 0x234L)
     }
   }
 
@@ -156,12 +221,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.fillAsid.poke(0.U)
       dut.io.fillPte.poke(0.U)
       dut.io.fillLevel.poke(0.U)
-      dut.io.lookup.vaddr.poke(0.U)
-      dut.io.lookup.asid.poke(0.U)
-      dut.io.lookup.privilege.poke(0.U)
-      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.lookup.sum.poke(false.B)
-      dut.io.lookup.mxr.poke(false.B)
+      dut.io.lookup(0).vaddr.poke(0.U)
+      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).privilege.poke(0.U)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup(0).sum.poke(false.B)
+      dut.io.lookup(0).mxr.poke(false.B)
       dut.clock.step()
       dut.io.flush.poke(false.B)
       // PPN[1]=0x201 -> 4MiB 基址 0x80400000。
@@ -172,9 +237,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.fillLevel.poke(1.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
-      dut.io.lookup.vaddr.poke("h80543210".U)
-      asBool(dut.io.result.hit) should be(true)
-      asLong(dut.io.result.paddr) should be(BigInt("80543210", 16).toLong)
+      dut.io.lookup(0).vaddr.poke("h80543210".U)
+      asBool(dut.io.result(0).hit) should be(true)
+      asLong(dut.io.result(0).paddr) should be(BigInt("80543210", 16).toLong)
     }
   }
 
@@ -195,12 +260,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.fillAsid.poke(0.U)
       dut.io.fillPte.poke(0.U)
       dut.io.fillLevel.poke(0.U)
-      dut.io.lookup.vaddr.poke(0.U)
-      dut.io.lookup.asid.poke(0.U)
-      dut.io.lookup.privilege.poke(0.U)
-      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.lookup.sum.poke(false.B)
-      dut.io.lookup.mxr.poke(false.B)
+      dut.io.lookup(0).vaddr.poke(0.U)
+      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).privilege.poke(0.U)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup(0).sum.poke(false.B)
+      dut.io.lookup(0).mxr.poke(false.B)
       dut.clock.step()
       dut.io.flush.poke(false.B)
 
@@ -212,13 +277,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
 
-      dut.io.lookup.vaddr.poke(0x1234.U)
-      dut.io.lookup.asid.poke(7.U)
+      dut.io.lookup(0).vaddr.poke(0x1234.U)
+      dut.io.lookup(0).asid.poke(7.U)
       dut.clock.step()
-      dut.io.result.resultValid.peek().litValue == 1 should be(true)
-      asBool(dut.io.result.hit) should be(true)
-      asBool(dut.io.result.fault) should be(false)
-      asLong(dut.io.result.paddr) should be(Leaf + 0x234L)
+      dut.io.result(0).resultValid.peek().litValue == 1 should be(true)
+      asBool(dut.io.result(0).hit) should be(true)
+      asBool(dut.io.result(0).fault) should be(false)
+      asLong(dut.io.result(0).paddr) should be(Leaf + 0x234L)
     }
   }
 
@@ -842,6 +907,91 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "MMU" should "在 unified 双查找端口配置下同拍完成两个 TLB 命中" in {
+    val memory = new Memory
+    // vaddr=0 的叶子项位于页表偏移 0；默认 Memory 只填了偏移 4 的项。
+    memory.write(0x80002000L, LeafPTE)
+    simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+      enabled = true,
+      tlbEnabled = true,
+      tlbOrganization = "unified",
+      tlbStorage = "sram",
+      utlbLookupPorts = 2,
+      refillPorts = 2,
+      ptwOutstanding = 2
+    ))) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      var pending = false
+      var pendingData = BigInt(0)
+      var busReads = 0
+      dut.io.req.valid.poke(false.B)
+      dut.io.req.bits.vaddr.poke(0.U)
+      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.req.bits.privilege.poke(0.U)
+      dut.io.req.bits.sum.poke(false.B)
+      dut.io.req.bits.mxr.poke(false.B)
+      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.resp.ready.poke(false.B)
+      dut.io.flush.poke(false.B)
+
+      def stepBus(): Unit = {
+        if (!pending && asBool(dut.io.bus.req.valid)) {
+          pending = true
+          busReads += 1
+          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+        }
+        dut.io.bus.resp.valid.poke(pending.B)
+        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
+        val ready = asBool(dut.io.bus.resp.ready)
+        dut.clock.step()
+        if (pending && ready) pending = false
+      }
+
+      def issue(vaddr: Long): Unit = {
+        dut.io.req.valid.poke(true.B)
+        dut.io.req.bits.vaddr.poke(vaddr.U)
+        while (!asBool(dut.io.req.ready)) { stepBus() }
+        dut.clock.step()
+        dut.io.req.valid.poke(false.B)
+      }
+
+      def waitResponse(): BigInt = {
+        var result: Option[BigInt] = None
+        for (_ <- 0 until 20 if result.isEmpty) {
+          stepBus()
+          if (asBool(dut.io.resp.valid)) result = Some(dut.io.resp.bits.paddr.peek().litValue)
+        }
+        val value = result.get
+        dut.io.resp.ready.poke(true.B)
+        dut.clock.step()
+        dut.io.resp.ready.poke(false.B)
+        value
+      }
+
+      // 先把两页装入 TLB，并让最后一次查找停在 0x0，使下一笔 0x1234
+      // 在第一拍处于 SRAM 结果未就绪状态。
+      issue(0x1234L)
+      waitResponse() should be(BigInt("80003234", 16))
+      issue(0x0L)
+      waitResponse() should be(BigInt("80003000", 16))
+      busReads should be(4)
+
+      // 第一笔先在端口 0 等待 SRAM 结果；第二笔进入端口 1 后两笔同拍
+      // 命中，验证两个上下文可以通过双查找端口同时完成。
+      issue(0x1234L)
+      issue(0x0L)
+      val responses = Seq(waitResponse(), waitResponse())
+      responses should be(Seq(BigInt("80003234", 16), BigInt("80003000", 16)))
+      busReads should be(4)
+    }
+  }
+
   it should "在没有 A 位时产生 load page fault" in {
     val memory = new Memory
     memory.write(0x80002004L, pte(LeafPPN, 0x1L | 0x2L | 0x4L | 0x8L | 0x10L))
@@ -960,12 +1110,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.fillAsid.poke(0.U)
       dut.io.fillPte.poke(0.U)
       dut.io.fillLevel.poke(0.U)
-      dut.io.lookup.vaddr.poke(0.U)
-      dut.io.lookup.asid.poke(0.U)
-      dut.io.lookup.privilege.poke(1.U)
-      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.lookup.sum.poke(false.B)
-      dut.io.lookup.mxr.poke(false.B)
+      dut.io.lookup(0).vaddr.poke(0.U)
+      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).privilege.poke(1.U)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup(0).sum.poke(false.B)
+      dut.io.lookup(0).mxr.poke(false.B)
       dut.clock.step()
 
       // 填入 U=1 的可执行叶子页。
@@ -979,14 +1129,14 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.fillValid.poke(false.B)
 
       // HAS_U=n：S 模式取指和 SUM=0 的数据访问都不再触发 U 位错误。
-      dut.io.lookup.vaddr.poke(0x1234.U)
-      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Fetch)
-      asBool(dut.io.result.hit) should be(true)
-      asBool(dut.io.result.fault) should be(false)
-      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.lookup.sum.poke(false.B)
-      asBool(dut.io.result.fault) should be(false)
-      asLong(dut.io.result.paddr) should be(Leaf + 0x234L)
+      dut.io.lookup(0).vaddr.poke(0x1234.U)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Fetch)
+      asBool(dut.io.result(0).hit) should be(true)
+      asBool(dut.io.result(0).fault) should be(false)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup(0).sum.poke(false.B)
+      asBool(dut.io.result(0).fault) should be(false)
+      asLong(dut.io.result(0).paddr) should be(Leaf + 0x234L)
     }
   }
 

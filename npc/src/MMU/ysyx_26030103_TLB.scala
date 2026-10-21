@@ -11,11 +11,12 @@ class ysyx_26030103_TLBWrite extends Bundle {
   val level = UInt(2.W)
 }
 
-/** 单端口、组相联的 Sv32 TLB。
+/** 组相联的 Sv32 TLB，支持 1..2 个同拍查找端口。
   *
-  * 这是批次 1 的默认 RTL：split 模式下例化两份（I/D），unified 模式下
-  * 例化一份。当前实现使用寄存器阵列和 round-robin 填充；storage/replacement
-  * 参数保留，后续可扩展 SRAM/PLRU/LRU，而不改变外部接口。
+  * split 模式下 I/D TLB 各例化一份且只使用 1 个查找端口；unified 模式下
+  * 可以通过 lookupPorts=2 让两个上下文在同一拍并行查找。寄存器阵列的
+  * 查找是组合逻辑；SRAM 数据阵列每端口有独立的同步读端口和结果有效
+  * 指示（resultValid）。refill 端口仍然独立于查找端口。
   */
 class ysyx_26030103_TLB(
     entries: Int = 16,
@@ -28,13 +29,15 @@ class ysyx_26030103_TLB(
     superpage: Boolean = false,
     pageBits: Int = 12,
     refillPorts: Int = 1,
-    hasU: Boolean = true
+    hasU: Boolean = true,
+    lookupPorts: Int = 1
 ) extends Module {
   require(entries > 0 && ways > 0 && entries % ways == 0, "TLB entries 必须能被 ways 整除")
   require((entries & (entries - 1)) == 0, "TLB entries 必须是 2 的幂")
   require(asidBits >= 0 && asidBits <= 9, "ASID 位数必须在 0..9")
   require((ways & (ways - 1)) == 0, "TLB ways 必须是 2 的幂")
   require(Set("reg", "sram").contains(storage), "TLB storage 必须是 reg/sram")
+  require(lookupPorts >= 1 && lookupPorts <= 2, "TLB lookupPorts 必须在 1..2")
 
   private val sets = entries / ways
   private val setBits = if (sets == 1) 0 else log2Ceil(sets)
@@ -57,22 +60,27 @@ class ysyx_26030103_TLB(
     val d = Bool()
   }
 
+  class Lookup extends Bundle {
+    val vaddr = UInt(32.W)
+    val asid = UInt(asidWidth.W)
+    val privilege = UInt(2.W)
+    val access = UInt(2.W)
+    val sum = Bool()
+    val mxr = Bool()
+  }
+
+  class Result extends Bundle {
+    val hit = Bool()
+    val fault = Bool()
+    val paddr = UInt(32.W)
+    val cause = UInt(32.W)
+    val resultValid = Bool()
+  }
+
   val io = IO(new Bundle {
-    val lookup = Input(new Bundle {
-      val vaddr = UInt(32.W)
-      val asid = UInt(asidWidth.W)
-      val privilege = UInt(2.W)
-      val access = UInt(2.W)
-      val sum = Bool()
-      val mxr = Bool()
-    })
-    val result = Output(new Bundle {
-      val hit = Bool()
-      val fault = Bool()
-      val paddr = UInt(32.W)
-      val cause = UInt(32.W)
-      val resultValid = Bool()
-    })
+    // 端口 0 始终存在；lookupPorts=2 时端口 1 用于 unified TLB 的第二个上下文。
+    val lookup = Input(Vec(lookupPorts, new Lookup))
+    val result = Output(Vec(lookupPorts, new Result))
     val fillValid = Input(Bool())
     val fillVaddr = Input(UInt(32.W))
     val fillAsid = Input(UInt(asidWidth.W))
@@ -104,9 +112,9 @@ class ysyx_26030103_TLB(
   val pteMems =
     if (sramStorage) Some((0 until ways).map(_ => SyncReadMem(sets, UInt(32.W))))
     else None
-  val lastLookupVaddr = RegInit(0.U(32.W))
-  lastLookupVaddr := io.lookup.vaddr
-  io.result.resultValid := !sramStorage.B || lastLookupVaddr === io.lookup.vaddr
+  // SRAM 读出一拍后才有效；每个查找端口分别记录上一拍地址。
+  val lastLookupVaddr =
+    RegInit(VecInit(Seq.fill(lookupPorts)(0.U(32.W))))
   // tree-PLRU：ways<=8 时使用 heap 索引的 way 选择树；RR 模式下不生成。
   private val plruLevels = if (ways > 1) log2Ceil(ways) else 0
   val plruOpt =
@@ -170,77 +178,86 @@ class ysyx_26030103_TLB(
   private def entryIndex(set: UInt, way: UInt): UInt =
     if (entryBits == 0) 0.U else (set * ways.U + way)(entryBits - 1, 0)
 
-  val lookupVpn = vpnOf(io.lookup.vaddr)
-  val lookupSet = setOf(lookupVpn)
-  val lookupTag = tagOf(lookupVpn)
-  val sramPtes = pteMems.map(_.map(m => m.read(lookupSet))).getOrElse(Seq.fill(ways)(0.U(32.W)))
-  val lookupWays = (0 until ways).map { w =>
-    val e = entriesVec(entryIndex(lookupSet, w.U))
-    val asidMatch = if (asidBits == 0) true.B else e.asid === io.lookup.asid
-    val globalMatch = if (globalEnable) e.global else false.B
-    e.valid && e.tag === lookupTag && (globalMatch || asidMatch)
-  }
-  val lookupHit = lookupWays.reduce(_ || _)
-  val hitWay = Mux1H(lookupWays, (0 until ways).map(w => w.U(log2Ceil(ways.max(2)).W)))
-  val selected = Mux1H(lookupWays, (0 until ways).map(w => entriesVec(entryIndex(lookupSet, w.U))))
-  val selectedPte = Mux1H(lookupWays, sramPtes)
-  val superHits = if (superpage) {
-    (0 until superEntries).map { i =>
-      val e = superVec.get(i)
-      val asidMatch = if (asidBits == 0) true.B else e.asid === io.lookup.asid
+  // 每个查找端口独立做 tag/asid/权限检查。refill 在本拍末尾写入寄存器，
+  // 因而不影响本拍已经组合出来的旧表项结果。
+  for (p <- 0 until lookupPorts) {
+    val lookup = io.lookup(p)
+    val lookupVpn = vpnOf(lookup.vaddr)
+    val lookupSet = setOf(lookupVpn)
+    val lookupTag = tagOf(lookupVpn)
+    val sramPtes = pteMems
+      .map(_.map(m => m.read(lookupSet)))
+      .getOrElse(Seq.fill(ways)(0.U(32.W)))
+    val lookupWays = (0 until ways).map { w =>
+      val e = entriesVec(entryIndex(lookupSet, w.U))
+      val asidMatch = if (asidBits == 0) true.B else e.asid === lookup.asid
       val globalMatch = if (globalEnable) e.global else false.B
-      e.valid && e.vpn1 === io.lookup.vaddr(31, 22) && (globalMatch || asidMatch)
+      e.valid && e.tag === lookupTag && (globalMatch || asidMatch)
     }
-  } else Seq.empty
-  val superHit = if (superpage) superHits.reduce(_ || _) else false.B
-  val superSel = if (superpage)
-    Mux1H(superHits, (0 until superEntries).map(i => superVec.get(i)))
-  else 0.U.asTypeOf(new SuperEntry)
-  val selR = Mux(superHit, superSel.r,
-    if (sramStorage) selectedPte(1) else selected.r)
-  val selW = Mux(superHit, superSel.w,
-    if (sramStorage) selectedPte(2) else selected.w)
-  val selX = Mux(superHit, superSel.x,
-    if (sramStorage) selectedPte(3) else selected.x)
-  val selU = Mux(superHit, superSel.u,
-    if (sramStorage) selectedPte(4) else selected.u)
-  val selA = Mux(superHit, superSel.a,
-    if (sramStorage) selectedPte(6) else selected.a)
-  val selD = Mux(superHit, superSel.d,
-    if (sramStorage) selectedPte(7) else selected.d)
-  val selPpn = Mux(superHit, superSel.ppn,
-    if (sramStorage) selectedPte(31, 10) else selected.ppn)
+    val lookupHit = lookupWays.reduce(_ || _)
+    val hitWay = Mux1H(lookupWays, (0 until ways).map(w => w.U(log2Ceil(ways.max(2)).W)))
+    val selected = Mux1H(lookupWays, (0 until ways).map(w => entriesVec(entryIndex(lookupSet, w.U))))
+    val selectedPte = Mux1H(lookupWays, sramPtes)
+    val superHits = if (superpage) {
+      (0 until superEntries).map { i =>
+        val e = superVec.get(i)
+        val asidMatch = if (asidBits == 0) true.B else e.asid === lookup.asid
+        val globalMatch = if (globalEnable) e.global else false.B
+        e.valid && e.vpn1 === lookup.vaddr(31, 22) && (globalMatch || asidMatch)
+      }
+    } else Seq.empty
+    val superHit = if (superpage) superHits.reduce(_ || _) else false.B
+    val superSel = if (superpage)
+      Mux1H(superHits, (0 until superEntries).map(i => superVec.get(i)))
+    else 0.U.asTypeOf(new SuperEntry)
+    val selR = Mux(superHit, superSel.r,
+      if (sramStorage) selectedPte(1) else selected.r)
+    val selW = Mux(superHit, superSel.w,
+      if (sramStorage) selectedPte(2) else selected.w)
+    val selX = Mux(superHit, superSel.x,
+      if (sramStorage) selectedPte(3) else selected.x)
+    val selU = Mux(superHit, superSel.u,
+      if (sramStorage) selectedPte(4) else selected.u)
+    val selA = Mux(superHit, superSel.a,
+      if (sramStorage) selectedPte(6) else selected.a)
+    val selD = Mux(superHit, superSel.d,
+      if (sramStorage) selectedPte(7) else selected.d)
+    val selPpn = Mux(superHit, superSel.ppn,
+      if (sramStorage) selectedPte(31, 10) else selected.ppn)
 
-  val isFetch = io.lookup.access === ysyx_26030103_AccessType.Fetch
-  val isStore = io.lookup.access === ysyx_26030103_AccessType.Store
-  val privilegeU = if (hasU) io.lookup.privilege === 0.U else false.B
-  val privilegeS = io.lookup.privilege === 1.U
-  // HAS_U=n 时 U 级和 SUM 语义不存在：U 位检查固定为不适用，
-  // S 模式可正常访问 U=1 的页，fetch/read/write 权限仍按 R/W/X 检查。
-  val fetchOk = selX && !(hasU.B && privilegeS && selU)
-  val readOk = selR || (io.lookup.mxr && selX)
-  val writeOk = selW
-  val userOk = if (hasU) !privilegeU || selU else true.B
-  val sumOk =
-    if (hasU) !(privilegeS && selU) || (io.lookup.sum && !isFetch) else true.B
-  val accessOk = Mux(isFetch, fetchOk, Mux(isStore, writeOk, readOk))
-  val adOk = adMode match {
-    case "fault" => selA && (!isStore || selD)
-    case _       => true.B
-  }
-  val permissionOk = userOk && sumOk && accessOk && adOk
-  val faultCause = Mux(isFetch, 12.U, Mux(isStore, 15.U, 13.U))
+    val isFetch = lookup.access === ysyx_26030103_AccessType.Fetch
+    val isStore = lookup.access === ysyx_26030103_AccessType.Store
+    val privilegeU = if (hasU) lookup.privilege === 0.U else false.B
+    val privilegeS = lookup.privilege === 1.U
+    // HAS_U=n 时 U 级和 SUM 语义不存在：U 位检查固定为不适用，
+    // S 模式可正常访问 U=1 的页，fetch/read/write 权限仍按 R/W/X 检查。
+    val fetchOk = selX && !(hasU.B && privilegeS && selU)
+    val readOk = selR || (lookup.mxr && selX)
+    val writeOk = selW
+    val userOk = if (hasU) !privilegeU || selU else true.B
+    val sumOk =
+      if (hasU) !(privilegeS && selU) || (lookup.sum && !isFetch) else true.B
+    val accessOk = Mux(isFetch, fetchOk, Mux(isStore, writeOk, readOk))
+    val adOk = adMode match {
+      case "fault" => selA && (!isStore || selD)
+      case _       => true.B
+    }
+    val permissionOk = userOk && sumOk && accessOk && adOk
+    val faultCause = Mux(isFetch, 12.U, Mux(isStore, 15.U, 13.U))
 
-  when(lookupHit) {
-    plruUpdate(lookupSet, hitWay)
-    lruUpdate(lookupSet, hitWay)
+    when(lookupHit) {
+      plruUpdate(lookupSet, hitWay)
+      lruUpdate(lookupSet, hitWay)
+    }
+    val anyHit = lookupHit || superHit
+    io.result(p).hit := anyHit
+    io.result(p).fault := anyHit && !permissionOk
+    io.result(p).paddr := Mux(superHit, Cat(selPpn(19, 10), lookup.vaddr(21, 0)),
+      Cat(selPpn(ppnBits - 1, 0), lookup.vaddr(pageBits - 1, 0)))
+    io.result(p).cause := faultCause
+    lastLookupVaddr(p) := lookup.vaddr
+    io.result(p).resultValid := !sramStorage.B || lastLookupVaddr(p) === lookup.vaddr
   }
-  val anyHit = lookupHit || superHit
-  io.result.hit := anyHit
-  io.result.fault := anyHit && !permissionOk
-  io.result.paddr := Mux(superHit, Cat(selPpn(19, 10), io.lookup.vaddr(21, 0)),
-    Cat(selPpn(ppnBits - 1, 0), io.lookup.vaddr(pageBits - 1, 0)))
-  io.result.cause := faultCause
 
   when(io.flush) {
     for (i <- 0 until entries) {

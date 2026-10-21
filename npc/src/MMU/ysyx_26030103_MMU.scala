@@ -8,7 +8,8 @@ import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
   *
   * 每个在途请求拥有独立上下文；TLB 命中可直接完成，TLB 缺失则把上下文
   * 交给 PTWCluster。PTWCluster 的多个 walker 可以同时工作，响应按请求
-  * 序号而不是完成顺序返回，保持架构顺序。
+  * 序号而不是完成顺序返回，保持架构顺序。unified TLB 打开双查找端口时，
+  * 每拍可以让两个 ctxLookup 上下文并行查找。
   */
 class ysyx_26030103_MMU(
     profile: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
@@ -37,6 +38,11 @@ class ysyx_26030103_MMU(
 
   private val contexts = profile.ptwOutstanding.max(1)
   private val refillPorts = profile.refillPorts.max(1)
+  private val split = profile.tlbOrganization == "split"
+  // split 的 I/D TLB 各自只有 1 个查找端口；unified TLB 可按 Kconfig
+  // 打开第 2 个端口，让两个 ctxLookup 上下文同拍查找。
+  private val lookupPorts =
+    if (profile.tlbEnabled && !split) profile.utlbLookupPorts.max(1) else 1
   private val ctxBits = log2Ceil(contexts.max(2))
   private val tableSize = 1 << log2Ceil((contexts * 2).max(2))
   private val tableBits = log2Ceil(tableSize)
@@ -74,8 +80,6 @@ class ysyx_26030103_MMU(
   reqQueue.io.enq <> io.req
   io.req.ready := reqQueue.io.enq.ready
 
-  val split = profile.tlbOrganization == "split"
-
   def makeTlb(entries: Int, ways: Int) = Module(new ysyx_26030103_TLB(
     entries = entries,
     ways = ways,
@@ -87,7 +91,8 @@ class ysyx_26030103_MMU(
     superpage = profile.tlbSuperpage,
     pageBits = profile.pageBits,
     refillPorts = refillPorts,
-    hasU = profile.hasU
+    hasU = profile.hasU,
+    lookupPorts = lookupPorts
   ))
 
   val itlbOpt =
@@ -118,24 +123,41 @@ class ysyx_26030103_MMU(
     hasU = profile.hasU
   ))
 
-  val lookupValid = WireDefault(false.B)
-  val lookupIndex = Wire(UInt(ctxBits.W))
-  lookupIndex := 0.U
+  // 每拍为 unified TLB 选择最多两个不同的 ctxLookup 上下文：端口 0 选
+  // 编号最小的候选，端口 1 在剩余候选中再选一个。split 只有一个端口。
+  val lookupValid = Wire(Vec(lookupPorts, Bool()))
+  val lookupIndex = Wire(Vec(lookupPorts, UInt(ctxBits.W)))
+  val lookupReq = Wire(Vec(lookupPorts, new ysyx_26030103_MMURequest))
   val lookupCandidates = VecInit((0 until contexts).map { i =>
     ctxValid(i) && ctxState(i) === ctxLookup
   })
-  lookupValid := lookupCandidates.reduce(_ || _)
-  lookupIndex := PriorityEncoder(lookupCandidates)
-  val lookupReq = WireInit(0.U.asTypeOf(new ysyx_26030103_MMURequest))
-  when(lookupValid) { lookupReq := ctx(lookupIndex).req }
+  for (p <- 0 until lookupPorts) {
+    lookupValid(p) := false.B
+    lookupIndex(p) := 0.U
+    lookupReq(p) := 0.U.asTypeOf(new ysyx_26030103_MMURequest)
+  }
+  lookupValid(0) := lookupCandidates.reduce(_ || _)
+  lookupIndex(0) := PriorityEncoder(lookupCandidates)
+  if (lookupPorts > 1) {
+    val remaining = VecInit((0 until contexts).map { i =>
+      lookupCandidates(i) && lookupIndex(0) =/= i.U
+    })
+    lookupValid(1) := remaining.reduce(_ || _)
+    lookupIndex(1) := PriorityEncoder(remaining)
+  }
+  for (p <- 0 until lookupPorts) {
+    when(lookupValid(p)) { lookupReq(p) := ctx(lookupIndex(p)).req }
+  }
 
   def connectTlb(tlb: ysyx_26030103_TLB): Unit = {
-    tlb.io.lookup.vaddr := lookupReq.vaddr
-    tlb.io.lookup.asid := lookupReq.satp(30, 22)
-    tlb.io.lookup.privilege := lookupReq.privilege
-    tlb.io.lookup.access := lookupReq.access
-    tlb.io.lookup.sum := lookupReq.sum
-    tlb.io.lookup.mxr := lookupReq.mxr
+    for (p <- 0 until lookupPorts) {
+      tlb.io.lookup(p).vaddr := lookupReq(p).vaddr
+      tlb.io.lookup(p).asid := lookupReq(p).satp(30, 22)
+      tlb.io.lookup(p).privilege := lookupReq(p).privilege
+      tlb.io.lookup(p).access := lookupReq(p).access
+      tlb.io.lookup(p).sum := lookupReq(p).sum
+      tlb.io.lookup(p).mxr := lookupReq(p).mxr
+    }
     tlb.io.flush := io.flush
     tlb.io.fillValid := false.B
     tlb.io.fillVaddr := 0.U
@@ -181,37 +203,50 @@ class ysyx_26030103_MMU(
   def optUInt(opt: Option[ysyx_26030103_TLB], f: ysyx_26030103_TLB => UInt): UInt =
     opt.map(f).getOrElse(0.U)
 
-  val selFetch = lookupReq.access === ysyx_26030103_AccessType.Fetch
-  val tlbResultValid =
-    if (!profile.tlbEnabled) true.B
-    else if (split) Mux(selFetch, optBool(itlbOpt, _.io.result.resultValid),
-      optBool(dtlbOpt, _.io.result.resultValid))
-    else optBool(utlbOpt, _.io.result.resultValid)
-  val tlbHit =
-    if (split) Mux(selFetch, optBool(itlbOpt, _.io.result.hit),
-      optBool(dtlbOpt, _.io.result.hit))
-    else optBool(utlbOpt, _.io.result.hit)
-  val tlbFault =
-    if (split) Mux(selFetch, optBool(itlbOpt, _.io.result.fault),
-      optBool(dtlbOpt, _.io.result.fault))
-    else optBool(utlbOpt, _.io.result.fault)
-  val tlbPaddr =
-    if (split) Mux(selFetch, optUInt(itlbOpt, _.io.result.paddr),
-      optUInt(dtlbOpt, _.io.result.paddr))
-    else optUInt(utlbOpt, _.io.result.paddr)
-  val tlbCause =
-    if (split) Mux(selFetch, optUInt(itlbOpt, _.io.result.cause),
-      optUInt(dtlbOpt, _.io.result.cause))
-    else optUInt(utlbOpt, _.io.result.cause)
-
   // 响应顺序：每个请求分配一个序号，完成结果写入按序号索引的表，
   // 只有队首完成时才向软件返回，后面的尽早完成也不会越过前面。
   val headIdx = headSeq(tableBits - 1, 0)
   io.resp.valid := respValid(headIdx)
   io.resp.bits := respData(headIdx)
 
-  val bypass = !profile.enabled.B || lookupReq.satp(31) === 0.U ||
-    lookupReq.privilege === 3.U
+  // split 下两个 TLB 都只有一个查找端口；unified 的端口 1 只在
+  // lookupPorts=2 时存在，下面按端口号从对应 TLB 实例取结果。
+  def laneResultValid(p: Int): Bool =
+    if (!profile.tlbEnabled) true.B
+    else if (split) Mux(lookupReq(p).access === ysyx_26030103_AccessType.Fetch,
+      optBool(itlbOpt, _.io.result(0).resultValid),
+      optBool(dtlbOpt, _.io.result(0).resultValid))
+    else optBool(utlbOpt, _.io.result(p).resultValid)
+  def laneHit(p: Int): Bool =
+    if (split) Mux(lookupReq(p).access === ysyx_26030103_AccessType.Fetch,
+      optBool(itlbOpt, _.io.result(0).hit),
+      optBool(dtlbOpt, _.io.result(0).hit))
+    else optBool(utlbOpt, _.io.result(p).hit)
+  def laneFault(p: Int): Bool =
+    if (split) Mux(lookupReq(p).access === ysyx_26030103_AccessType.Fetch,
+      optBool(itlbOpt, _.io.result(0).fault),
+      optBool(dtlbOpt, _.io.result(0).fault))
+    else optBool(utlbOpt, _.io.result(p).fault)
+  def lanePaddr(p: Int): UInt =
+    if (split) Mux(lookupReq(p).access === ysyx_26030103_AccessType.Fetch,
+      optUInt(itlbOpt, _.io.result(0).paddr),
+      optUInt(dtlbOpt, _.io.result(0).paddr))
+    else optUInt(utlbOpt, _.io.result(p).paddr)
+  def laneCause(p: Int): UInt =
+    if (split) Mux(lookupReq(p).access === ysyx_26030103_AccessType.Fetch,
+      optUInt(itlbOpt, _.io.result(0).cause),
+      optUInt(dtlbOpt, _.io.result(0).cause))
+    else optUInt(utlbOpt, _.io.result(p).cause)
+
+  val laneTlbValid = VecInit((0 until lookupPorts).map(laneResultValid))
+  val laneTlbHit = VecInit((0 until lookupPorts).map(laneHit))
+  val laneTlbFault = VecInit((0 until lookupPorts).map(laneFault))
+  val lanePaddrVec = VecInit((0 until lookupPorts).map(lanePaddr))
+  val laneCauseVec = VecInit((0 until lookupPorts).map(laneCause))
+  val laneBypass = VecInit((0 until lookupPorts).map { p =>
+    !profile.enabled.B || lookupReq(p).satp(31) === 0.U ||
+      lookupReq(p).privilege === 3.U
+  })
 
   val ptwDoneVec = VecInit((0 until refillPorts).map(p => ptw.io.resp(p).valid))
   val ptwCtxIdxVec = VecInit((0 until refillPorts).map(p =>
@@ -222,10 +257,15 @@ class ysyx_26030103_MMU(
   val ptwRespVec = VecInit((0 until refillPorts).map(p => ptw.io.resp(p).bits))
   val anyPtwDone = ptwDoneVec.reduce(_ || _)
 
-  // PTW 响应优先完成；TLB 命中完成被推迟一拍，保证每拍写出稳定的响应表项。
-  val tlbDone = !anyPtwDone && lookupValid && tlbResultValid && !bypass &&
-    profile.tlbEnabled.B && tlbHit
-  val bypassDone = !anyPtwDone && lookupValid && bypass
+  // PTW 响应优先写回响应表；同一拍发生 PTW 响应时，本拍所有 TLB 命中
+  // 都延迟到下一拍，避免 TLB 和 PTW 争用响应表写端口。
+  val laneHitDone = VecInit((0 until lookupPorts).map { p =>
+    !anyPtwDone && lookupValid(p) && profile.tlbEnabled.B &&
+      !laneBypass(p) && laneTlbValid(p) && laneTlbHit(p)
+  })
+  val laneBypassDone = VecInit((0 until lookupPorts).map { p =>
+    !anyPtwDone && lookupValid(p) && laneBypass(p)
+  })
 
   def writeResponse(valid: Bool, index: UInt, seq: UInt,
       response: ysyx_26030103_MMUResponse): Unit = {
@@ -247,53 +287,67 @@ class ysyx_26030103_MMU(
     ptwResponseVec(p).tval := ptwRespVec(p).tval
   }
 
-  val hitResponse = WireInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
-  hitResponse.id := lookupReq.id
-  hitResponse.paddr := tlbPaddr
-  hitResponse.fault := tlbFault
-  hitResponse.cause := tlbCause
-  hitResponse.tval := lookupReq.vaddr
+  val laneHitResponse = WireInit(VecInit(Seq.fill(lookupPorts)(
+    0.U.asTypeOf(new ysyx_26030103_MMUResponse))))
+  val laneBypassResponse = WireInit(VecInit(Seq.fill(lookupPorts)(
+    0.U.asTypeOf(new ysyx_26030103_MMUResponse))))
+  for (p <- 0 until lookupPorts) {
+    laneHitResponse(p).id := lookupReq(p).id
+    laneHitResponse(p).paddr := lanePaddrVec(p)
+    laneHitResponse(p).fault := laneTlbFault(p)
+    laneHitResponse(p).cause := laneCauseVec(p)
+    laneHitResponse(p).tval := lookupReq(p).vaddr
 
-  val bypassResponse = WireInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
-  bypassResponse.id := lookupReq.id
-  bypassResponse.paddr := lookupReq.vaddr
-  bypassResponse.fault := false.B
-  bypassResponse.cause := 0.U
-  bypassResponse.tval := lookupReq.vaddr
+    laneBypassResponse(p).id := lookupReq(p).id
+    laneBypassResponse(p).paddr := lookupReq(p).vaddr
+    laneBypassResponse(p).fault := false.B
+    laneBypassResponse(p).cause := 0.U
+    laneBypassResponse(p).tval := lookupReq(p).vaddr
+  }
 
+  // 两个查找端口可以在同一拍各写一个响应表项；表项按请求序号索引，
+  // 因此同拍完成不会破坏向软件的响应顺序。
   for (p <- 0 until refillPorts) {
     when(ptwCtxValidVec(p)) {
       writeResponse(true.B, ptwCtxIdxVec(p), ctxSeq(ptwCtxIdxVec(p)), ptwResponseVec(p))
     }
   }
-  when(!anyPtwDone && tlbDone) {
-    writeResponse(true.B, lookupIndex, ctxSeq(lookupIndex), hitResponse)
-  }.elsewhen(!anyPtwDone && bypassDone) {
-    writeResponse(true.B, lookupIndex, ctxSeq(lookupIndex), bypassResponse)
+  for (p <- 0 until lookupPorts) {
+    when(laneHitDone(p)) {
+      writeResponse(true.B, lookupIndex(p), ctxSeq(lookupIndex(p)), laneHitResponse(p))
+    }.elsewhen(laneBypassDone(p)) {
+      writeResponse(true.B, lookupIndex(p), ctxSeq(lookupIndex(p)), laneBypassResponse(p))
+    }
   }
 
-  // TLB 命中直接返回；缺失则把上下文交给 PTWCluster。
+  // TLB 命中直接返回；缺失则把上下文交给 PTWCluster。每拍最多只发一个
+  // PTW 请求，另一个未命中的上下文保持在 ctxLookup，下一拍继续尝试。
+  val laneTlbMiss = VecInit((0 until lookupPorts).map { p =>
+    !profile.tlbEnabled.B || (laneTlbValid(p) && !laneTlbHit(p))
+  })
+  val lanePtwNeeded = VecInit((0 until lookupPorts).map { p =>
+    lookupValid(p) && !laneBypass(p) && laneTlbMiss(p) && !anyPtwDone
+  })
   ptw.io.req.valid := false.B
   ptw.io.req.bits := 0.U.asTypeOf(new ysyx_26030103_PTWRequest)
   for (p <- 0 until refillPorts) { ptw.io.resp(p).ready := ptwDoneVec(p) }
   ptw.io.flush := io.flush
-  when(lookupValid && ctxState(lookupIndex) === ctxLookup && !bypass &&
-       !tlbDone && !anyPtwDone) {
-    when(tlbResultValid && tlbHit) {
-      // 命中完成在上面的写响应逻辑中处理。
-    }.otherwise {
-      ptw.io.req.valid := true.B
-      ptw.io.req.bits.id := lookupIndex
-      ptw.io.req.bits.vaddr := lookupReq.vaddr
-      ptw.io.req.bits.satp := lookupReq.satp
-      ptw.io.req.bits.privilege := lookupReq.privilege
-      ptw.io.req.bits.access := lookupReq.access
-      ptw.io.req.bits.sum := lookupReq.sum
-      ptw.io.req.bits.mxr := lookupReq.mxr
-      when(ptw.io.req.fire) {
-        ctxState(lookupIndex) := ctxWalk
-      }
+  def requestPtw(p: Int): Unit = {
+    ptw.io.req.valid := true.B
+    ptw.io.req.bits.id := lookupIndex(p)
+    ptw.io.req.bits.vaddr := lookupReq(p).vaddr
+    ptw.io.req.bits.satp := lookupReq(p).satp
+    ptw.io.req.bits.privilege := lookupReq(p).privilege
+    ptw.io.req.bits.access := lookupReq(p).access
+    ptw.io.req.bits.sum := lookupReq(p).sum
+    ptw.io.req.bits.mxr := lookupReq(p).mxr
+    when(ptw.io.req.fire) {
+      ctxState(lookupIndex(p)) := ctxWalk
     }
+  }
+  when(lanePtwNeeded(0)) { requestPtw(0) }
+  if (lookupPorts > 1) {
+    when(!lanePtwNeeded(0) && lanePtwNeeded(1)) { requestPtw(1) }
   }
 
   // PTW 回填 TLB。多个上下文可以并行 walk，但页表总线仍由 PTWCluster 仲裁。

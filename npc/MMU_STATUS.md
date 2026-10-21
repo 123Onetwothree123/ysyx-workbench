@@ -21,6 +21,8 @@
   行为测试通过。
 - 取指/load/store 页错误，以及向 S 模式委托异常。
 - split ITLB/DTLB 与 unified TLB。
+- unified TLB 可配置 2 个查找端口（`UTLB_LOOKUP_PORTS=2`），每拍可让
+  两个不同上下文同时查找；split 模式每个 TLB 仍为单端口。
 - TLB ASID、Global、RR/PLRU/LRU 替换。
 - TLB Reg-CAM 和同步 SRAM 数据阵列两种存储。
 - TLB 可选 4MiB 超级页 CAM；PTW 默认不把超级页填 TLB，打开
@@ -42,8 +44,8 @@
 单元测试：
 
 ```text
-ysyx_26030103_MMUTest             8
-ysyx_26030103_MMUBehaviorTest     19
+ysyx_26030103_MMUTest             9
+ysyx_26030103_MMUBehaviorTest     21
 ysyx_26030103_MMUStreamTest       1
 ysyx_26030103_CSRPrivilegeTest    12
 ysyx_26030103_IDUPrivilegeTest     3
@@ -68,6 +70,9 @@ S ecall + SRET          HIT GOOD
 - `HAS_TLB=y, HAS_MMU=n`：生成器按无 TLB 处理并告警。
 - `refillPorts>1` 已支持 TLB 多写回端口和 PTWCluster 多响应端口；
   `miss_queue_mode=global` 使用统一请求队列深度。
+- `unified + utlbLookupPorts=2` 时每拍选择两个不同的 `ctxLookup`
+  上下文并行查找；同拍命中按请求序号写入响应表。若与 PTW 响应写回
+  冲突则 PTW 优先，TLB 命中延后；每拍仍只发出一个 PTW 请求。
 - `HAS_PMP=y` 启用基础 PMP：OFF/TOR/NA4/NAPOT、L 锁定和 R/W/X；
   当前 PMP 检查接在 MMU 翻译后的物理地址上，因此依赖 HAS_MMU。
 - `HAS_U=y`：保持 M/S/U 三特权级、U 模式 ecall(cause=8)、U 页
@@ -82,7 +87,6 @@ S ecall + SRET          HIT GOOD
 ## 未完成
 
 - 并行 VIPT TLB/Cache 流水。
-- `UTLB_LOOKUP_PORTS=2` 的双查找端口（当前统一 TLB 仍单查找端口）。
 - PTW 级间流水化（当前为多个独立 walker）。
 - Nanos-lite：direct-NPC 的 PMA/`CONFIG_MSIZE`/AXI RAM 已从 256KiB
   扩到 64MiB，重新构建后运行 240s（含启动）未再出现

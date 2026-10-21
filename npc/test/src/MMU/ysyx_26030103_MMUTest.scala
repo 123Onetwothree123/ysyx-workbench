@@ -33,6 +33,12 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     emit(new ysyx_26030103_TLB(entries = 8, ways = 4, replacement = "lru"))
   }
 
+  it should "支持两个查找端口" in {
+    emit(new ysyx_26030103_TLB(
+      entries = 8, ways = 2, lookupPorts = 2, refillPorts = 2
+    ))
+  }
+
   "PTW" should "支持已实现的 A/D 模式" in {
     emit(new ysyx_26030103_PTW("fault"))
     emit(new ysyx_26030103_PTW("ignore"))
@@ -67,6 +73,19 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
         tlbEnabled = true,
         hasU = false
       )
+    )))
+  }
+
+  it should "支持 unified 双查找端口" in {
+    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+      enabled = true,
+      tlbEnabled = true,
+      tlbOrganization = "unified",
+      utlbEntries = 8,
+      utlbWays = 2,
+      utlbLookupPorts = 2,
+      refillPorts = 2,
+      ptwOutstanding = 2
     )))
   }
 }
