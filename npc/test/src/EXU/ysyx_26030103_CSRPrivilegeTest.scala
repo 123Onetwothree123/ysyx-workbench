@@ -323,4 +323,56 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       long(dut.io.exceptionTarget) should be(0x80003000L)
     }
   }
+
+  it should "HAS_U=n 时 MRET/SRET 降级到 S 且 ecall 不产生 cause 8" in {
+    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(hasU = false)
+    simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
+      setup(dut)
+      // 软件尝试把 MPP 写成 U(0)，硬件必须夹到 S(1)。
+      write(dut, MSTATUS, 0)
+      ((read(dut, MSTATUS) >> 11) & 3) should be(1)
+
+      // MRET 只能返回 S。
+      write(dut, MEPC, 0x80001000L)
+      dut.io.enable.poke(true.B)
+      dut.io.isMret.poke(true.B)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isMret.poke(false.B)
+      long(dut.io.privilege) should be(1L)
+
+      // SPP 写 0 同样被夹到 1，SRET 仍返回 S。
+      write(dut, 0x100, 0)
+      ((read(dut, 0x100) >> 8) & 1) should be(1)
+      write(dut, SEPC, 0x80003000L)
+      dut.io.enable.poke(true.B)
+      dut.io.isSret.poke(true.B)
+      dut.clock.step()
+      long(dut.io.privilege) should be(1L)
+      long(dut.io.exceptionTarget) should be(0x80003000L)
+      dut.io.enable.poke(false.B)
+      dut.io.isSret.poke(false.B)
+
+      // 当前只能是 S，ecall 必须是 cause=9，不能出现 U 的 cause=8。
+      dut.io.enable.poke(true.B)
+      dut.io.isEcall.poke(true.B)
+      bool(dut.io.trapCommit) should be(true)
+      long(dut.io.committedCause) should be(9L)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isEcall.poke(false.B)
+    }
+  }
+
+  it should "HAS_U=n 时裁剪 U 级 CSR 地址" in {
+    val withU = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+      csrEnabled = Set(0x100, 0x300, 0xc00)
+    )
+    val noU = withU.copy(hasU = false)
+    withU.csrSupported(0xc00) should be(true)
+    noU.csrSupported(0xc00) should be(false)
+    noU.csrSupported(0x100) should be(true)
+    noU.csrSupported(0x300) should be(true)
+    noU.lowestPrivilege should be(1)
+  }
 }

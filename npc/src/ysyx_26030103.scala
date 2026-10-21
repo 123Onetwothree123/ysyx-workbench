@@ -87,11 +87,21 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val pmpOpt =
     if (config.MMU.pmpEnabled) Some(Module(new ysyx_26030103_PMP(config.MMU.pmpEntries)))
     else None
+  // HAS_U=n 时 MPP 理论上已被 CSR 夹到 S；顶层再做一次防御性夹取，
+  // 避免 MPRV 数据访问把不存在的 U 特权级送进 MMU/PMP。
+  val MprvPrivilege =
+    if (config.MMU.hasU) exu.io.CSRCurrentMstatus(12, 11)
+    else Mux(exu.io.CSRCurrentMstatus(12, 11) === 0.U, 1.U(2.W),
+      exu.io.CSRCurrentMstatus(12, 11))
   val dataPrivilege = Mux(
     exu.io.CSRPrivilege === 3.U && exu.io.CSRCurrentMstatus(17),
-    exu.io.CSRCurrentMstatus(12, 11),
+    MprvPrivilege,
     exu.io.CSRPrivilege
   )
+  // SUM 仅在 U/S 页表权限检查存在时有意义；HAS_U=n 时固定为 0，
+  // 让相关逻辑在综合和仿真中被常量传播裁剪。
+  val fetchSum = if (config.MMU.hasU) exu.io.CSRCurrentMstatus(18) else false.B
+  val dataSum = if (config.MMU.hasU) exu.io.CSRCurrentMstatus(18) else false.B
   pmpOpt.foreach { pmp =>
     pmp.io.cfg := exu.io.PmpCfg
     pmp.io.addr := exu.io.PmpAddr
@@ -246,7 +256,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     immu.io.cacheReady := icache.io.fetch_ready
     immu.io.privilege := exu.io.CSRPrivilege
     immu.io.satp := exu.io.CSRSatp
-    immu.io.sum := exu.io.CSRCurrentMstatus(18)
+    // 取指没有 SUM 豁免；HAS_U=n 时直接绑 0。
+    immu.io.sum := fetchSum
     immu.io.mxr := exu.io.CSRCurrentMstatus(19)
     immu.io.flush := mmuFlush
     ifu.io.FetchReady := immu.io.fetchReady
@@ -257,7 +268,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     // mstatus.MPRV：M 模式数据访问按 MPP 的特权级翻译；取指仍用当前特权级。
     dmmu.io.privilege := dataPrivilege
     dmmu.io.satp := exu.io.CSRSatp
-    dmmu.io.sum := exu.io.CSRCurrentMstatus(18)
+    dmmu.io.sum := dataSum
     dmmu.io.mxr := exu.io.CSRCurrentMstatus(19)
     dmmu.io.flush := pipe_flush
     immu.io.pmpFault := pmpOpt.map(_.io.fetchFault).getOrElse(false.B)

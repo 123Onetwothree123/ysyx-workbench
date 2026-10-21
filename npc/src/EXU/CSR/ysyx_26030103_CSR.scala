@@ -13,6 +13,9 @@ class ysyx_26030103_CSR(
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile()
 ) extends Module {
   import ysyx_26030103_mstatus.legalize
+  // HAS_U=n 时 mstatus 的 MPP/SPP 最低值被夹到 S，MRET/SRET 因此
+  // 不会把特权级切到 U；HAS_U=y 时行为与原来完全一致。
+  private def legalizeMstatus(value: UInt): UInt = legalize(value, profile.hasU)
   val io = IO(new Bundle {
     val clk = Input(Clock())
     val rst = Input(Bool())
@@ -249,8 +252,13 @@ class ysyx_26030103_CSR(
     ExceptionCause := 3.U(32.W)
   }.otherwise {
     // ecall 的 cause 由当前特权级决定：U=8，S=9，M=11。
-    ExceptionCause := Mux(Privilege === 0.U, 8.U(32.W),
-      Mux(Privilege === 1.U, 9.U(32.W), 11.U(32.W)))
+    // HAS_U=n 时 U 级不可达，直接在 RTL 中裁掉 cause=8 的选择路径。
+    ExceptionCause := (if (profile.hasU) {
+      Mux(Privilege === 0.U, 8.U(32.W),
+        Mux(Privilege === 1.U, 9.U(32.W), 11.U(32.W)))
+    } else {
+      Mux(Privilege === 1.U, 9.U(32.W), 11.U(32.W))
+    })
   }
 
   val HasIrqCommit = io.Enable && HasInterrupt && !io.MemTrap
@@ -267,23 +275,25 @@ class ysyx_26030103_CSR(
   val TrapToS = Privilege =/= 3.U && Delegated
 
   val MstatusExceptionData = {
-    val mTrap = legalize(
+    val mTrap = legalizeMstatus(
       (Mstatus_rdata & ~"h00001888".U(32.W)) |
         (Privilege << 11) | (Mstatus_rdata(3) << 7)
     )
-    val sTrap = legalize(
+    val sTrap = legalizeMstatus(
       (Mstatus_rdata & ~"h00000122".U(32.W)) |
         (Privilege(0) << 8) | (Mstatus_rdata(1) << 5)
     )
     Mux(TrapToS, sTrap, mTrap)
   }
-  // MPP 恢复；MIE <- MPIE；MPIE <- 1；MPP <- U（最低支持特权级）。
-  val MstatusMretData = legalize(
+  // MPP 恢复；MIE <- MPIE；MPIE <- 1；MPP 保持最低支持特权级。
+  // HAS_U=n 时 legalizeMstatus 已把 MPP 的最低值夹到 S。
+  val MstatusMretData = legalizeMstatus(
     (Mstatus_rdata & ~"h00001888".U(32.W)) |
       (Mstatus_rdata(7) << 3) | (1.U << 7)
   )
-  // SRET：SPP 决定返回 S/U；SIE <- SPIE；SPIE <- 1；SPP <- 0。
-  val MstatusSretData = legalize(
+  // SRET：SPP 决定返回 S/U；SIE <- SPIE；SPIE <- 1；SPP 回到最低支持级。
+  // HAS_U=n 时 SPP 固定为 1，SRET 只能返回 S。
+  val MstatusSretData = legalizeMstatus(
     (Mstatus_rdata & ~"h00000122".U(32.W)) |
       (Mstatus_rdata(5) << 1) | (1.U << 5)
   )
@@ -303,9 +313,9 @@ class ysyx_26030103_CSR(
       (rawWrite & MstatusWriteMask)
     Mux(
       IsCSRAddress(CSR_SSTATUS),
-      legalize((Mstatus_rdata & ~SstatusMask) |
+      legalizeMstatus((Mstatus_rdata & ~SstatusMask) |
         ((masked | (Mstatus_rdata & ~MstatusWriteMask)) & SstatusMask)),
-      legalize(masked)
+      legalizeMstatus(masked)
     )
   }
   Mstatus.io.wen := MstatusWen || ExceptionCommit || MretCommit ||
@@ -316,11 +326,11 @@ class ysyx_26030103_CSR(
     SretCommit -> MstatusSretData
   ))
   if (profile.csrViewMode == "independent") {
-    val sWrite = legalize((SstatusReg & ~SstatusMask) |
+    val sWrite = legalizeMstatus((SstatusReg & ~SstatusMask) |
       (CSRWriteData(SstatusReg) & SstatusMask))
-    val sTrap = legalize((SstatusReg & ~"h00000122".U(32.W)) |
+    val sTrap = legalizeMstatus((SstatusReg & ~"h00000122".U(32.W)) |
       (SstatusReg(1) << 5) | (Privilege(0) << 8))
-    val sRet = legalize((SstatusReg & ~"h00000122".U(32.W)) |
+    val sRet = legalizeMstatus((SstatusReg & ~"h00000122".U(32.W)) |
       (SstatusReg(5) << 1) | (1.U << 5))
     when(SstatusWen) { SstatusReg := sWrite }
     when(ExceptionCommit && TrapToS) { SstatusReg := sTrap }
@@ -404,12 +414,20 @@ class ysyx_26030103_CSR(
   io.CurrentMstatus := Mstatus_rdata
   io.FlushTLB := SfenceCommit || SatpWen
 
+  // HAS_U=n 时 MPP/SPP 已由 legalizeMstatus 夹到 S；这里再显式选择一次，
+  // 保证即使配置掩码隐藏了对应位，MRET/SRET 也不会进入 U。
+  val MretPrivilege =
+    if (profile.hasU) Mstatus_rdata(12, 11)
+    else Mux(Mstatus_rdata(12, 11) === 0.U, 1.U(2.W), Mstatus_rdata(12, 11))
+  val SretPrivilege =
+    if (profile.hasU) Mux(Mstatus_rdata(8), 1.U(2.W), 0.U(2.W))
+    else 1.U(2.W)
   when(ExceptionCommit) {
     Privilege := Mux(TrapToS, 1.U, 3.U)
   }.elsewhen(MretCommit) {
-    Privilege := Mstatus_rdata(12, 11)
+    Privilege := MretPrivilege
   }.elsewhen(SretCommit) {
-    Privilege := Mux(Mstatus_rdata(8), 1.U, 0.U)
+    Privilege := SretPrivilege
   }
 
   val McycleAccess = IsCSRAddress(CSR_MCYCLE) || IsCSRAddress(CSR_MCYCLEH)

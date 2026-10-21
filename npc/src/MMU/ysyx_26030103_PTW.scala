@@ -44,7 +44,8 @@ class ysyx_26030103_PTW(
     levels: Int = 2,
     tableEntries: Int = 1024,
     fillSuperpage: Boolean = false,
-    pteSizeBytes: Int = 4
+    pteSizeBytes: Int = 4,
+    hasU: Boolean = true
 ) extends Module {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
   require(pageBits >= 2 && pageBits < 32, "pageBits 非法")
@@ -175,8 +176,11 @@ class ysyx_26030103_PTW(
     !d(0) || (isLeaf(d) && !leafAllowed(d)) ||
       (!isLeaf(d) && levelReg === (levels - 1).U)
   def leafFaultOf(d: UInt): Bool = {
-    val userFault = privReg === 0.U && !d(4)
-    val sumFault = privReg === 1.U && d(4) && (!sumReg || isFetch)
+    // HAS_U=n 时 U 级不存在，U 位与 SUM 检查固定为不适用；
+    // R/W/X、A/D 等其余页表权限仍然正常检查。
+    val userFault = if (hasU) privReg === 0.U && !d(4) else false.B
+    val sumFault =
+      if (hasU) privReg === 1.U && d(4) && (!sumReg || isFetch) else false.B
     val fetchFault = isFetch && !d(3)
     val readFault = !isFetch && !isStore && !d(1) && !(mxrReg && d(3))
     val writeFault = isStore && !d(2)

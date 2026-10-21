@@ -27,7 +27,8 @@ class ysyx_26030103_TLB(
     storage: String = "reg",
     superpage: Boolean = false,
     pageBits: Int = 12,
-    refillPorts: Int = 1
+    refillPorts: Int = 1,
+    hasU: Boolean = true
 ) extends Module {
   require(entries > 0 && ways > 0 && entries % ways == 0, "TLB entries 必须能被 ways 整除")
   require((entries & (entries - 1)) == 0, "TLB entries 必须是 2 的幂")
@@ -212,13 +213,16 @@ class ysyx_26030103_TLB(
 
   val isFetch = io.lookup.access === ysyx_26030103_AccessType.Fetch
   val isStore = io.lookup.access === ysyx_26030103_AccessType.Store
-  val privilegeU = io.lookup.privilege === 0.U
+  val privilegeU = if (hasU) io.lookup.privilege === 0.U else false.B
   val privilegeS = io.lookup.privilege === 1.U
-  val fetchOk = selX && !(privilegeS && selU)
+  // HAS_U=n 时 U 级和 SUM 语义不存在：U 位检查固定为不适用，
+  // S 模式可正常访问 U=1 的页，fetch/read/write 权限仍按 R/W/X 检查。
+  val fetchOk = selX && !(hasU.B && privilegeS && selU)
   val readOk = selR || (io.lookup.mxr && selX)
   val writeOk = selW
-  val userOk = !privilegeU || selU
-  val sumOk = !(privilegeS && selU) || (io.lookup.sum && !isFetch)
+  val userOk = if (hasU) !privilegeU || selU else true.B
+  val sumOk =
+    if (hasU) !(privilegeS && selU) || (io.lookup.sum && !isFetch) else true.B
   val accessOk = Mux(isFetch, fetchOk, Mux(isStore, writeOk, readOk))
   val adOk = adMode match {
     case "fault" => selA && (!isStore || selD)
@@ -265,7 +269,9 @@ class ysyx_26030103_TLB(
         e.global := (if (globalEnable) fillPteVal(5) else false.B)
         e.ppn := Cat(fillPteVal(29, 20), 0.U(10.W))
         e.r := fillPteVal(1); e.w := fillPteVal(2); e.x := fillPteVal(3)
-        e.u := fillPteVal(4); e.a := fillPteVal(6); e.d := fillPteVal(7)
+        // HAS_U=n 时不保存 U 位，避免保留无用的 U 状态。
+        e.u := (if (hasU) fillPteVal(4) else false.B)
+        e.a := fillPteVal(6); e.d := fillPteVal(7)
         superVec.get(victim) := e
         superRR.get := Mux(superRR.get === (superEntries - 1).U, 0.U, superRR.get + 1.U)
       }
@@ -294,7 +300,8 @@ class ysyx_26030103_TLB(
       fillEntry.r := fillPteVal(1)
       fillEntry.w := fillPteVal(2)
       fillEntry.x := fillPteVal(3)
-      fillEntry.u := fillPteVal(4)
+      // HAS_U=n 时不保存 U 位。
+      fillEntry.u := (if (hasU) fillPteVal(4) else false.B)
       fillEntry.a := fillPteVal(6)
       fillEntry.d := fillPteVal(7)
       entriesVec(idx) := fillEntry

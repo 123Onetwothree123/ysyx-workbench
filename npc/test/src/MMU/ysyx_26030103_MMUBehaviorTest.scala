@@ -941,4 +941,104 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step()
     }
   }
+
+  "TLB" should "HAS_U=n 时不检查 U 位与 SUM" in {
+    simulate(new ysyx_26030103_TLB(
+      entries = 4,
+      ways = 1,
+      asidBits = 9,
+      globalEnable = true,
+      adMode = "fault",
+      hasU = false
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.flush.poke(true.B)
+      dut.io.fillValid.poke(false.B)
+      dut.io.fillVaddr.poke(0.U)
+      dut.io.fillAsid.poke(0.U)
+      dut.io.fillPte.poke(0.U)
+      dut.io.fillLevel.poke(0.U)
+      dut.io.lookup.vaddr.poke(0.U)
+      dut.io.lookup.asid.poke(0.U)
+      dut.io.lookup.privilege.poke(1.U)
+      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup.sum.poke(false.B)
+      dut.io.lookup.mxr.poke(false.B)
+      dut.clock.step()
+
+      // 填入 U=1 的可执行叶子页。
+      dut.io.flush.poke(false.B)
+      dut.io.fillValid.poke(true.B)
+      dut.io.fillVaddr.poke(0x1234.U)
+      dut.io.fillAsid.poke(0.U)
+      dut.io.fillPte.poke(LeafPTE.U(32.W))
+      dut.io.fillLevel.poke(0.U)
+      dut.clock.step()
+      dut.io.fillValid.poke(false.B)
+
+      // HAS_U=n：S 模式取指和 SUM=0 的数据访问都不再触发 U 位错误。
+      dut.io.lookup.vaddr.poke(0x1234.U)
+      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Fetch)
+      asBool(dut.io.result.hit) should be(true)
+      asBool(dut.io.result.fault) should be(false)
+      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup.sum.poke(false.B)
+      asBool(dut.io.result.fault) should be(false)
+      asLong(dut.io.result.paddr) should be(Leaf + 0x234L)
+    }
+  }
+
+  "PTW" should "HAS_U=n 时 U=1 叶子页对 S 模式不产生页错误" in {
+    val memory = new Memory
+    simulate(new ysyx_26030103_PTW("fault", hasU = false)) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      var pending = false
+      var pendingData = BigInt(0)
+      var response: Option[(BigInt, Boolean)] = None
+
+      dut.io.req.valid.poke(false.B)
+      dut.io.req.bits.vaddr.poke(0.U)
+      dut.io.req.bits.satp.poke(0.U)
+      dut.io.req.bits.privilege.poke(1.U)
+      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.req.bits.sum.poke(false.B)
+      dut.io.req.bits.mxr.poke(false.B)
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.resp.ready.poke(true.B)
+      dut.io.flush.poke(false.B)
+
+      dut.io.req.valid.poke(true.B)
+      dut.io.req.bits.vaddr.poke(0x1234.U)
+      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.clock.step()
+      dut.io.req.valid.poke(false.B)
+
+      for (_ <- 0 until 20 if response.isEmpty) {
+        if (!pending && asBool(dut.io.bus.req.valid)) {
+          pending = true
+          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+        }
+        dut.io.bus.resp.valid.poke(pending.B)
+        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
+        val ready = asBool(dut.io.bus.resp.ready)
+        dut.clock.step()
+        if (pending && ready) pending = false
+        if (asBool(dut.io.resp.valid)) {
+          response = Some((
+            dut.io.resp.bits.paddr.peek().litValue,
+            asBool(dut.io.resp.bits.fault)
+          ))
+        }
+      }
+      response.map(_._1) should be(Some(BigInt(Leaf + 0x234L)))
+      response.map(_._2) should be(Some(false))
+    }
+  }
 }

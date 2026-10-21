@@ -42,10 +42,11 @@
 单元测试：
 
 ```text
-ysyx_26030103_MMUTest             7
-ysyx_26030103_MMUBehaviorTest     17
+ysyx_26030103_MMUTest             8
+ysyx_26030103_MMUBehaviorTest     19
 ysyx_26030103_MMUStreamTest       1
-ysyx_26030103_CSRPrivilegeTest    10
+ysyx_26030103_CSRPrivilegeTest    12
+ysyx_26030103_IDUPrivilegeTest     3
 ysyx_26030103_PLICTest             2
 ysyx_26030103_PMPTest              2
 ```
@@ -69,7 +70,14 @@ S ecall + SRET          HIT GOOD
   `miss_queue_mode=global` 使用统一请求队列深度。
 - `HAS_PMP=y` 启用基础 PMP：OFF/TOR/NA4/NAPOT、L 锁定和 R/W/X；
   当前 PMP 检查接在 MMU 翻译后的物理地址上，因此依赖 HAS_MMU。
-- `HAS_S/HAS_U` 仍不参与 RTL 面积裁剪；MMU 需要至少一个 S/U 特权级。
+- `HAS_U=y`：保持 M/S/U 三特权级、U 模式 ecall(cause=8)、U 页
+  U 位/SUM 检查和 SRET 返回 U 的原有行为。
+- `HAS_U=n`：MRET/SRET 的最低目标特权级固定为 S（mstatus.MPP/SPP
+  的 U 编码在写入时夹到 S）；U 级 CSR 从实现集合裁剪；ecall cause=8
+  选择路径被裁掉；TLB/PTW 的 U 位和 SUM 检查固定为不适用，
+  S 模式可直接访问 U=1 的页（R/W/X 仍检查）。
+- `HAS_S=n`：S 级 CSR 从实现集合裁剪。
+- MMU 仍要求至少一个 S/U 特权级；当前不支持 M-only 的 Sv32。
 
 ## 未完成
 

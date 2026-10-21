@@ -116,11 +116,19 @@ case class ysyx_26030103_MMUProfile(
   require(!pmpEnabled || enabled, "HAS_PMP 当前依赖 HAS_MMU 的翻译后物理地址检查")
 
   def csrSupported(addr: Int): Boolean = {
-    val sRange = addr >= 0x100 && addr < 0x200
-    (hasS || !sRange) && (csrEnabled.contains(addr) ||
+    // CSR 地址位 [9:8] 编码最低特权级：00=U，01=S，11=M。
+    // U 级不只是 0x000--0x0ff，还包括 0xc00 这类用户只读计数器。
+    val csrPrivilege = (addr >> 8) & 0x3
+    val uLevel = csrPrivilege == 0
+    val sLevel = csrPrivilege == 1
+    // HAS_U=n 时 U 级 CSR 一并从实现集合裁剪；HAS_S=n 时裁剪 S 级 CSR。
+    ((hasU || !uLevel) && (hasS || !sLevel)) && (csrEnabled.contains(addr) ||
       (pmpEnabled && ((addr >= 0x3a0 && addr <= 0x3a3) ||
         (addr >= 0x3b0 && addr <= 0x3bf))))
   }
+
+  /** 当前配置允许的最低特权级：HAS_U=n 时最低只能是 S。 */
+  final val lowestPrivilege: Int = if (hasU) 0 else 1
 
   if (tlbEnabled) {
     requirePowerOfTwo("itlbEntries", itlbEntries)

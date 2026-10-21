@@ -86,7 +86,8 @@ class ysyx_26030103_MMU(
     storage = profile.tlbStorage,
     superpage = profile.tlbSuperpage,
     pageBits = profile.pageBits,
-    refillPorts = refillPorts
+    refillPorts = refillPorts,
+    hasU = profile.hasU
   ))
 
   val itlbOpt =
@@ -113,7 +114,8 @@ class ysyx_26030103_MMU(
     fillSuperpage = profile.tlbSuperpage,
     pteSizeBytes = profile.pteSizeBytes,
     inOrder = profile.ptwOrder == "in_order",
-    respPorts = refillPorts
+    respPorts = refillPorts,
+    hasU = profile.hasU
   ))
 
   val lookupValid = WireDefault(false.B)

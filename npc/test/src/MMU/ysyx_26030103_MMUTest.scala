@@ -2,6 +2,7 @@ package ysyx_26030103.mmu
 
 import _root_.circt.stage.ChiselStage
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
+import _root_.ysyx_26030103.config.ysyx_26030103_NPCConfig
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -56,6 +57,16 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
       tlbOrganization = "unified",
       utlbEntries = 8,
       utlbWays = 2
+    )))
+  }
+
+  it should "HAS_U=n 且 MMU 打开时顶层可 elaboration" in {
+    emit(new _root_.ysyx_26030103.ysyx_26030103(ysyx_26030103_NPCConfig(
+      MMU = ysyx_26030103_MMUProfile(
+        enabled = true,
+        tlbEnabled = true,
+        hasU = false
+      )
     )))
   }
 }
