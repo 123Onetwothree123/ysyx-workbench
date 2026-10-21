@@ -44,7 +44,11 @@ class ysyx_26030103_DCacheReg(
     if (WordsPerBlock > 1) indexAddr(BlockSizeLog2 - 1, 2)
     else 0.U(OffsetWidth.W)
   val ReqTag = io.req.bits.addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  val cacheable = ysyx_26030103_DCachePolicy.IsCacheable(
+  // VIPT：req 只保证 VA 有效，PA 与它的 VA 标签都匹配后才能做 tag/PMA 判定。
+  // PIPT 下这个条件恒为真，原有路径完全不变。
+  val IncomingPaddrMatch =
+    !Vipt.B || (io.req_paddr_valid && io.req_paddr_vaddr === io.req.bits.vaddr)
+  val cacheable = IncomingPaddrMatch && ysyx_26030103_DCachePolicy.IsCacheable(
     io.req.bits.addr,
     Enable,
     AddressWidth,
@@ -56,6 +60,37 @@ class ysyx_26030103_DCacheReg(
   io.req_cacheable := cacheable
   val hit =
     cacheable && valid(IndexSafe) && tag(IndexSafe) === ReqTag // 这个直接拿来做一个命中条件
+  // VIPT 等待 PA 的请求状态：VA 已经选好 index/offset 并锁存，PA 未到前
+  // 不判定命中、不发 AR。WaitDataReg 是受理拍用 VA 组索引早读出的字，
+  // PA 匹配后若 tag 仍命中即可直接返回（等待期间没有其他请求能改写阵列）。
+  val WaitPaddr = RegInit(false.B)
+  val WaitVaddrReg = Reg(UInt(AddressWidth.W))
+  val WaitIndexReg = Reg(UInt(IndexWidth.W))
+  val WaitOffsetReg = Reg(UInt(CountWidth.W))
+  val WaitWidthReg = Reg(UInt(2.W))
+  val WaitSignedReg = Reg(Bool())
+  val WaitDataReg = Reg(UInt(32.W))
+  val ViptNeedWait = Vipt.B && !IncomingPaddrMatch
+  // PA 带受理时的 VA 标签返回：只接受属于这笔等待请求的翻译结果。
+  // flush/kill 同拍时优先放弃本次 resolve，避免把已失效行或故障请求的数据
+  // 送上响应通道。
+  val ResolveVaddrMatch = !io.flush && !io.req_kill && WaitPaddr &&
+    io.req_paddr_valid && io.req_paddr_vaddr === WaitVaddrReg
+  val ResolvePaddr = io.req.bits.addr
+  val ResolveTag =
+    ResolvePaddr(AddressWidth - 1, IndexBits + BlockSizeLog2)
+  val ResolveIndexSafe = if (Enable) WaitIndexReg else 0.U(IndexWidth.W)
+  val ResolveCacheable = ysyx_26030103_DCachePolicy.IsCacheable(
+    ResolvePaddr,
+    Enable,
+    AddressWidth,
+    BlockSizeLog2,
+    CacheableBase,
+    CacheableMask,
+    PMARegions
+  )
+  val ResolveHit = ResolveVaddrMatch && ResolveCacheable &&
+    valid(ResolveIndexSafe) && tag(ResolveIndexSafe) === ResolveTag
   val ReqAddrReg = Reg(UInt(AddressWidth.W))
   val ReqWidthReg = Reg(UInt(2.W))
   val ReqSignedReg = Reg(Bool())
@@ -215,11 +250,18 @@ class ysyx_26030103_DCacheReg(
   // 同拍命中 store 会在此沿才写入阵列/镜像：SIdle 命中路径也必须反压
   // 同线 load 一拍，否则 Reg 实现会锁存 store 之前的旧值（SRAM 实现因
   // 读口打拍而恰好看到新值），两实现语义不一致。
-  io.req.ready := ResponseSlotReady && !io.flush &&
-    (state === SIdle || HitUnderRefill) && !StoreConflictsRequest
+  // VIPT 缺少 PA 时只允许在空闲且无回填时受理；等待期间不再接新请求。
+  val ViptAcceptable = !ViptNeedWait || (state === SIdle && !RefillActive)
+  io.req.ready := ResponseSlotReady && !io.flush && !io.req_kill &&
+    !WaitPaddr && ViptAcceptable &&
+    (state === SIdle || (HitUnderRefill && !ViptNeedWait)) &&
+    !StoreConflictsRequest
   // 性能计数器: 已返回的MSHR字按hit计数，不应伪造第二次cache miss。
-  io.perf_hit := io.req.fire && AcceptedHit
-  io.perf_miss := io.req.fire && cacheable && !AcceptedHit
+  // VIPT 未拿到 PA 时推迟到 resolve 拍再统计，避免把“尚未翻译”误报成 miss。
+  io.perf_hit := (io.req.fire && !ViptNeedWait && AcceptedHit) ||
+    (ResolveVaddrMatch && ResolveHit)
+  io.perf_miss := (io.req.fire && !ViptNeedWait && cacheable && !AcceptedHit) ||
+    (ResolveVaddrMatch && ResolveCacheable && !ResolveHit)
 
   when(io.StoreValid && StoreCacheable) {
     // 需求请求可能已在其缓存行仍在到达时提前重启。若更年轻store此时完成，
@@ -269,6 +311,18 @@ class ysyx_26030103_DCacheReg(
       ResponseFault := false.B
       ResponseFaultResp := 0.U
       ResponseValid := true.B
+    }.elsewhen(ViptNeedWait) {
+      // VIPT：PA 尚未带正确 VA 标签返回。受理拍只锁存 VA 选出的
+      // index/offset 和早读数据，绝不判定命中、发 AR 或提交故障响应。
+      WaitPaddr := true.B
+      WaitVaddrReg := io.req.bits.vaddr
+      WaitIndexReg := index
+      WaitOffsetReg := WordOffset
+      WaitWidthReg := io.req.bits.WidthSelect
+      WaitSignedReg := io.req.bits.signed
+      WaitDataReg :=
+        (if (WordsPerBlock > 1) data(IndexSafe)(WordOffset)
+         else data(IndexSafe)(0))
     }.otherwise {
       ReqAddrReg := io.req.bits.addr
       ReqWidthReg := io.req.bits.WidthSelect
@@ -313,6 +367,51 @@ class ysyx_26030103_DCacheReg(
         state := SReadReq
       }
     }
+  }
+  // 迟到的 PA 与受理时 VA 标签匹配：现在才用物理 tag 判定命中/缺失。
+  // 命中数据直接来自受理拍用 VA index 早读的字；缺失则用解析出的 PA
+  // 启动 refill，安装位置仍是 VA index。
+  when(ResolveVaddrMatch) {
+    WaitPaddr := false.B
+    when(ResolveHit) {
+      ResponseData := FormatLoad(
+        WaitDataReg,
+        WaitVaddrReg,
+        WaitWidthReg,
+        WaitSignedReg
+      )
+      ResponseFault := false.B
+      ResponseFaultResp := 0.U
+      ResponseValid := true.B
+      DemandResponseDone := true.B
+    }.otherwise {
+      ReqAddrReg := ResolvePaddr
+      ReqWidthReg := WaitWidthReg
+      ReqSignedReg := WaitSignedReg
+      ReqIndexReg := WaitIndexReg
+      ReqTagReg := ResolveTag
+      ReqOffsetReg := WaitOffsetReg
+      ResponseFault := false.B
+      ResponseFaultResp := 0.U
+      ResponseValid := false.B
+      DemandResponseDone := false.B
+      suppressFill := false.B
+      RefillActive := ResolveCacheable
+      RefillBurst := ResolveCacheable
+      RefillCount := 0.U
+      RefillError := false.B
+      RefillWordValid := 0.U
+      RefillBaseReg := Cat(
+        ResolvePaddr(AddressWidth - 1, BlockSizeLog2),
+        0.U(BlockSizeLog2.W)
+      )
+      when(ResolveCacheable) { valid(ResolveIndexSafe) := false.B }
+      state := SReadReq
+    }
+  }
+  // MMU 翻译故障杀死等待中的请求：不能留下响应或总线事务。
+  when(io.req_kill) {
+    WaitPaddr := false.B
   }
   switch(state) {
     is(SReadReq) {

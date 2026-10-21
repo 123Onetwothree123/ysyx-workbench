@@ -30,6 +30,12 @@ class ysyx_26030103_DCacheResponse extends Bundle {
 class ysyx_26030103_DCacheInterface(val AddressWidth: Int = 32)
     extends Bundle {
   val req = Flipped(Decoupled(new ysyx_26030103_DCacheRequest(AddressWidth)))
+  // VIPT 并行路径的翻译结果：PA 可能晚于 req 到达，paddr_vaddr 是这笔
+  // PA 对应的虚拟地址，用作“迟到 PA”的归属标签。PIPT 模式忽略这两个端口。
+  val req_paddr_valid = Input(Bool())
+  val req_paddr_vaddr = Input(UInt(AddressWidth.W))
+  // MMU 翻译故障：放弃已经受理但尚未完成 PA 判定的请求，不产生响应。
+  val req_kill = Input(Bool())
   val resp = Decoupled(new ysyx_26030103_DCacheResponse)
   val StoreValid = Input(Bool())
   val StoreResp = Input(UInt(2.W))

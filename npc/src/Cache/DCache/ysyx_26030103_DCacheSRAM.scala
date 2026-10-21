@@ -55,7 +55,11 @@ class ysyx_26030103_DCacheSRAM(
     if (WordsPerBlock > 1) indexAddr(BlockSizeLog2 - 1, 2)
     else 0.U(OffsetWidth.W)
   val ReqTag = io.req.bits.addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  val cacheable = ysyx_26030103_DCachePolicy.IsCacheable(
+  // VIPT：req 只保证 VA 有效，PA 与它的 VA 标签都匹配后才能做 tag/PMA 判定。
+  // PIPT 下这个条件恒为真，原有路径完全不变。
+  val IncomingPaddrMatch =
+    !Vipt.B || (io.req_paddr_valid && io.req_paddr_vaddr === io.req.bits.vaddr)
+  val cacheable = IncomingPaddrMatch && ysyx_26030103_DCachePolicy.IsCacheable(
     io.req.bits.addr,
     Enable,
     AddressWidth,
@@ -67,6 +71,36 @@ class ysyx_26030103_DCacheSRAM(
   io.req_cacheable := cacheable
   val hit =
     cacheable && valid(IndexSafe) && tag(IndexSafe) === ReqTag // 这个直接拿来做一个命中条件
+  // VIPT 等待 PA 的请求状态。SRAM 读口在受理拍就用 VA index 提前发起，
+  // 数据下一拍锁存到 WaitDataReg；PA 标签匹配后若 tag 仍命中即可返回。
+  val WaitPaddr = RegInit(false.B)
+  val WaitVaddrReg = Reg(UInt(AddressWidth.W))
+  val WaitIndexReg = Reg(UInt(IndexWidth.W))
+  val WaitOffsetReg = Reg(UInt(CountWidth.W))
+  val WaitWidthReg = Reg(UInt(2.W))
+  val WaitSignedReg = Reg(Bool())
+  val WaitDataReg = Reg(UInt(32.W))
+  val WaitDataValid = RegInit(false.B)
+  val WaitSramRead = RegInit(false.B)
+  val ViptNeedWait = Vipt.B && !IncomingPaddrMatch
+  // PA 带受理时的 VA 标签返回：只接受属于这笔等待请求的翻译结果。
+  // flush/kill 同拍时优先放弃本次 resolve，避免把已失效行或故障请求的数据
+  // 送上响应通道。
+  val ResolveVaddrMatch = !io.flush && !io.req_kill && WaitPaddr &&
+    io.req_paddr_valid && io.req_paddr_vaddr === WaitVaddrReg
+  val ResolvePaddr = io.req.bits.addr
+  val ResolveTag =
+    ResolvePaddr(AddressWidth - 1, IndexBits + BlockSizeLog2)
+  val ResolveIndexSafe = if (Enable) WaitIndexReg else 0.U(IndexWidth.W)
+  val ResolveCacheable = ysyx_26030103_DCachePolicy.IsCacheable(
+    ResolvePaddr,
+    Enable,
+    AddressWidth,
+    BlockSizeLog2,
+    CacheableBase,
+    CacheableMask,
+    PMARegions
+  )
   val ReqAddrReg = Reg(UInt(AddressWidth.W))
   val ReqWidthReg = Reg(UInt(2.W))
   val ReqSignedReg = Reg(Bool())
@@ -263,18 +297,37 @@ class ysyx_26030103_DCacheSRAM(
   // 同拍命中 store 会在此沿才写入阵列/镜像：SIdle 命中路径也必须反压
   // 同线 load 一拍，否则 Reg 实现会锁存 store 之前的旧值（SRAM 实现因
   // 读口打拍而恰好看到新值），两实现语义不一致。
-  io.req.ready := ResponseSlotReady && !io.flush &&
-    (state === SIdle || HitUnderRefill) && !StoreConflictsRequest
+  // VIPT 缺少 PA 时只允许在空闲且无回填时受理；等待期间不再接新请求。
+  val ViptAcceptable = !ViptNeedWait || (state === SIdle && !RefillActive)
+  io.req.ready := ResponseSlotReady && !io.flush && !io.req_kill &&
+    !WaitPaddr && ViptAcceptable &&
+    (state === SIdle || (HitUnderRefill && !ViptNeedWait)) &&
+    !StoreConflictsRequest
   // 性能计数器: 已返回的MSHR字按hit计数，不应伪造第二次cache miss。
-  io.perf_hit := io.req.fire && AcceptedHit
-  io.perf_miss := io.req.fire && cacheable && !AcceptedHit
+  // VIPT 未拿到 PA 时推迟到 resolve 拍再统计（放在 ResolveHit 定义之后）。
   // SRAM读口: SIdle命中与refill中partial hit都满足req.fire && AcceptedHit,
-  // 都读当前请求地址的字。
+  // 都读当前请求地址的字。VIPT 缺 PA 时也用 VA index 提前发起读，
+  // 下一拍锁存到 WaitDataReg，供 PA 到达后的 tag 判定使用。
   sram.readPorts(0).address := WordAddress(IndexSafe, WordOffset)
-  sram.readPorts(0).enable := io.req.fire && AcceptedHit
+  sram.readPorts(0).enable :=
+    (io.req.fire && AcceptedHit) || (io.req.fire && ViptNeedWait)
   val sramReadBytes = sram.readPorts(0).data
   val sramReadWord =
     Cat(sramReadBytes(3), sramReadBytes(2), sramReadBytes(1), sramReadBytes(0))
+  // 早读数据在本拍到达时也可以直接参与 resolve。
+  val ResolveWord = Mux(WaitSramRead, sramReadWord, WaitDataReg)
+  val ResolveWordValid = WaitDataValid || WaitSramRead
+  val ResolveReady = ResolveVaddrMatch && ResolveWordValid
+  val ResolveHit = ResolveReady && ResolveCacheable &&
+    valid(ResolveIndexSafe) && tag(ResolveIndexSafe) === ResolveTag
+  io.perf_hit := (io.req.fire && !ViptNeedWait && AcceptedHit) ||
+    (ResolveReady && ResolveHit)
+  io.perf_miss := (io.req.fire && !ViptNeedWait && cacheable && !AcceptedHit) ||
+    (ResolveReady && ResolveCacheable && !ResolveHit)
+  when(WaitSramRead) {
+    WaitDataReg := sramReadWord
+    WaitDataValid := true.B
+  }
   // 响应数据源: 旁路模式下SRAM数据到达当拍用刚取回的字, 其它情况用响应寄存器。
   io.resp.bits.data := (if (Bypass) {
     Mux(
@@ -289,6 +342,8 @@ class ysyx_26030103_DCacheSRAM(
     SramReqSigned := io.req.bits.signed
   }
   SramRespPending := io.req.fire && AcceptedHit
+  // VIPT 缺 PA 的受理拍已经提前发起 SRAM 读，下一拍锁存。
+  WaitSramRead := io.req.fire && ViptNeedWait
   // SRAM数据到达的当拍: 旁路模式下若同拍被消费则不再锁存;
   // 非旁路模式下锁存并置valid(下一拍响应)。
   when(SramRespPending) {
@@ -344,6 +399,17 @@ class ysyx_26030103_DCacheSRAM(
       // 由SRAM输出旁路(与SIdle命中同一条路径)。
       ResponseFault := false.B
       ResponseFaultResp := 0.U
+    }.elsewhen(ViptNeedWait) {
+      // VIPT：PA 尚未带正确 VA 标签返回。只锁存 VA 选出的
+      // index/offset，SRAM 读口已在本拍用 VA index 提前读；不判定命中/
+      // 缺失，也不发 AR。
+      WaitPaddr := true.B
+      WaitVaddrReg := io.req.bits.vaddr
+      WaitIndexReg := index
+      WaitOffsetReg := WordOffset
+      WaitWidthReg := io.req.bits.WidthSelect
+      WaitSignedReg := io.req.bits.signed
+      WaitDataValid := false.B
     }.otherwise {
       ReqAddrReg := io.req.bits.addr
       ReqWidthReg := io.req.bits.WidthSelect
@@ -373,6 +439,53 @@ class ysyx_26030103_DCacheSRAM(
         state := SReadReq
       }
     }
+  }
+  // 迟到的 PA 与受理时 VA 标签匹配且早读数据已就绪：现在才用物理 tag
+  // 判定命中/缺失。命中直接用早读字；缺失用解析出的 PA 启动 refill，
+  // 安装位置仍是 VA index。
+  when(ResolveReady) {
+    WaitPaddr := false.B
+    when(ResolveHit) {
+      ResponseData := FormatLoad(
+        ResolveWord,
+        WaitVaddrReg,
+        WaitWidthReg,
+        WaitSignedReg
+      )
+      ResponseFault := false.B
+      ResponseFaultResp := 0.U
+      ResponseValid := true.B
+      DemandResponseDone := true.B
+    }.otherwise {
+      ReqAddrReg := ResolvePaddr
+      ReqWidthReg := WaitWidthReg
+      ReqSignedReg := WaitSignedReg
+      ReqIndexReg := WaitIndexReg
+      ReqTagReg := ResolveTag
+      ReqOffsetReg := WaitOffsetReg
+      ResponseFault := false.B
+      ResponseFaultResp := 0.U
+      ResponseValid := false.B
+      DemandResponseDone := false.B
+      suppressFill := false.B
+      RefillActive := ResolveCacheable
+      RefillBurst := ResolveCacheable
+      RefillCount := 0.U
+      RefillError := false.B
+      RefillWordValid := 0.U
+      RefillBaseReg := Cat(
+        ResolvePaddr(AddressWidth - 1, BlockSizeLog2),
+        0.U(BlockSizeLog2.W)
+      )
+      when(ResolveCacheable) { valid(ResolveIndexSafe) := false.B }
+      state := SReadReq
+    }
+  }
+  // MMU 翻译故障杀死等待中的请求：不能留下响应或总线事务。
+  when(io.req_kill) {
+    WaitPaddr := false.B
+    WaitDataValid := false.B
+    WaitSramRead := false.B
   }
   switch(state) {
     is(SReadReq) {

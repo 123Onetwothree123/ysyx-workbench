@@ -16,7 +16,10 @@ class ysyx_26030103_LSU(
     val DCacheableMask: Long = 0x80000000L,
     val DCachePMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
-    val DCacheVipt: Boolean = false
+    val DCacheVipt: Boolean = false,
+    // VIPT 并行模式：DCache/LSU 在 PA 到达前就用 VA 选 index 并持有请求，
+    // MMU 故障通过 ViptKill 取消该请求。
+    val ViptParallel: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage))
@@ -39,6 +42,13 @@ class ysyx_26030103_LSU(
     // 为未来 DMA/其他非 CPU 写入者保留的数据缓存一致性失效口。
     // Fence.I 只同步指令取值，当前写直达 DCache 不因 Fence.I 清空。
     val DCacheFlush = Input(Bool())
+    // VIPT 并行翻译结果：PAddr 可能晚于 DCache 请求到达；PAddrVaddr 是
+    // 该物理地址对应的虚拟地址标签。非并行模式忽略这些输入。
+    val ViptPAddr = Input(UInt(32.W))
+    val ViptPAddrValid = Input(Bool())
+    val ViptPAddrVaddr = Input(UInt(32.W))
+    // MMU 翻译故障：取消本 LSU 已受理但尚未取到 PA 的 load。
+    val ViptKill = Input(Bool())
     // DCache性能计数器
     val DCachePerfHit = Output(Bool())
     val DCachePerfMiss = Output(Bool())
@@ -148,6 +158,23 @@ class ysyx_26030103_LSU(
     MsgReg := StageInputBits
   }
   val ActiveInstruction = Mux(StageIsIdle, StageInputBits, MsgReg)
+  // VIPT 并行 load 进入 LSU 时 ALUResult 仍是 VA；翻译结果通过独立端口
+  // 晚到。退休/mtrace/调试需要和 PIPT 一样看到物理地址，因此这里按 VA
+  // 标签锁存有效的 PA。非访存/非 load 指令保持原始 ALUResult。
+  val ViptActiveLoad = ActiveInstruction.MemoryValid && !ActiveInstruction.MemoryWrite
+  val EffectiveALUResult = WireDefault(ActiveInstruction.ALUResult)
+  if (DCacheVipt && ViptParallel) {
+    val PAddrValidReg = RegInit(false.B)
+    val PAddrReg = Reg(UInt(32.W))
+    when(startMem) { PAddrValidReg := false.B }
+    when(io.ViptPAddrValid && io.ViptPAddrVaddr === ActiveInstruction.VAddr &&
+        ViptActiveLoad) {
+      PAddrValidReg := true.B
+      PAddrReg := io.ViptPAddr
+    }
+    EffectiveALUResult :=
+      Mux(PAddrValidReg && ViptActiveLoad, PAddrReg, ActiveInstruction.ALUResult)
+  }
   private def AddressIsMisaligned(Address: UInt, Width: UInt): Bool =
     Mux(
       Width === "b10".U,
@@ -180,7 +207,7 @@ class ysyx_26030103_LSU(
     Mux(MsgReg.MemoryWrite, 7.U(32.W), 5.U(32.W)) // 访问故障：写=7，读=5
   )
   io.MemTrapPC := MsgReg.pc
-  io.MemTrapTval := MsgReg.ALUResult
+  io.MemTrapTval := EffectiveALUResult
   io.FlushIDEX := MemTrapCommit
   io.FlushEXMEM := MemTrapCommit
   io.out.valid := false.B
@@ -269,6 +296,7 @@ class ysyx_26030103_LSU(
       PendingStorePush.asUInt - PendingStorePop.asUInt
   }
   io.out.bits := ActiveInstruction
+  io.out.bits.ALUResult := EffectiveALUResult
   io.out.bits.LoadData := LoadDataReg
   io.out.bits.RegisterWrite := ActiveInstruction.RegisterWrite && !MemFaultReg // 读错误时禁止写回
   io.out.bits.Retire := ActiveInstruction.Retire && !MemFaultReg
@@ -313,7 +341,7 @@ class ysyx_26030103_LSU(
   io.StallWaitLSU := stageState === StageWait
   io.DebugMemoryWrite := ActiveInstruction.MemoryWrite
   io.DebugPC := ActiveInstruction.pc
-  io.DebugALUResult := ActiveInstruction.ALUResult
+  io.DebugALUResult := EffectiveALUResult
   io.DebugStoreDATA := ActiveInstruction.StoreData
   io.DebugLoadDATA := LoadDataReg
   io.DebugWidthSelect := ActiveInstruction.WidthSelect
@@ -507,11 +535,26 @@ class ysyx_26030103_LSU(
   // DCache 接收 req 后保证最终返回且只返回一个 resp；flush 只抑制
   // 回填安装，不取消该 demand。因此 DCacheRequestActive 必须一直保持到
   // resp.fire，不能因 fence.i/DMA 一致性 flush 自行清除。
+  // VIPT 并行模式下 addr 来自 DMMU 的物理地址端口（可能尚未有效），
+  // vaddr 始终是架构虚拟地址；DCache 用 vaddr 选 index，等 PA 标签匹配。
+  val ViptReqAddr =
+    if (DCacheVipt && ViptParallel) io.ViptPAddr
+    else ActiveInstruction.ALUResult
+  val ViptReqPaddrValid =
+    if (DCacheVipt && ViptParallel) io.ViptPAddrValid else true.B
+  val ViptReqPaddrVaddr =
+    if (DCacheVipt && ViptParallel) io.ViptPAddrVaddr
+    else ActiveInstruction.ALUResult
+  val ViptReqKill =
+    if (DCacheVipt && ViptParallel) io.ViptKill else false.B
   DCache.io.req.valid := DCacheRequestActive && state === StatesReadRequest // 复用LSU的AR/R通道
-  DCache.io.req.bits.addr := ActiveInstruction.ALUResult
+  DCache.io.req.bits.addr := ViptReqAddr
   DCache.io.req.bits.vaddr := ActiveInstruction.VAddr
   DCache.io.req.bits.WidthSelect := ActiveInstruction.WidthSelect
   DCache.io.req.bits.signed := ActiveInstruction.LoadSigned
+  DCache.io.req_paddr_valid := ViptReqPaddrValid
+  DCache.io.req_paddr_vaddr := ViptReqPaddrVaddr
+  DCache.io.req_kill := ViptReqKill
   DCache.io.resp.ready := DCacheRequestActive && state === StatesReadResponse
   DCache.io.flush := io.DCacheFlush
   DCache.io.AXI.AW.AWREADY := false.B // DCache不使用AXI写通道
@@ -814,4 +857,20 @@ class ysyx_26030103_LSU(
     io.in.bits.MemoryValid && io.in.bits.MemoryWrite && !io.in.ready
   // 等 B 时仍可继续吸收连续 store；其它指令为保持精确异常顺序而等待。
   io.StallWriteB := wbState === wbWaitB
+  // VIPT 并行 load 的 MMU 翻译故障：LSU 已经先于 PA 受理该 load，
+  // 这里必须撤销流水级和 DCache 等待请求，不能把故障 load 当作正常
+  // load 退休；精确 page fault 由顶层 LSUMMU 的 faultCommit 提交。
+  if (DCacheVipt && ViptParallel) {
+    when(io.ViptKill) {
+      stageState := StageIdle
+      DCacheRequestActive := false.B
+      state := StatesIdle
+      MisalignedReg := false.B
+      MemFaultReg := false.B
+      AccessFaultReg := false.B
+      AccessFaultRespReg := 0.U
+      StoreFaultReg := false.B
+      is_store_transaction := false.B
+    }
+  }
 }

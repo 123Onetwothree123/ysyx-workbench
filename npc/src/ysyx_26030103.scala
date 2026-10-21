@@ -29,6 +29,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val idu = Module(new ysyx_26030103_IDU(config))
   val exu = Module(new ysyx_26030103_EXU(config))
   val wbu = Module(new ysyx_26030103_WBU)
+  // 数据侧 VIPT 并行只在 DCache 打开时才有意义；关闭 DCache 的配置
+  // 仍走原来的“先翻译后访存”。
+  val parallelDataVipt =
+    config.MMU.cacheMode == "vipt" && config.DCacheEnable
   val lsu = Module(
     new ysyx_26030103_LSU(
       WBufDepth = config.WBufDepth,
@@ -39,7 +43,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DCacheableBase = config.CacheableBase,
       DCacheableMask = config.CacheableMask,
       DCachePMARegions = config.PMARegions,
-      DCacheVipt = config.MMU.cacheMode == "vipt"
+      DCacheVipt = config.MMU.cacheMode == "vipt",
+      ViptParallel = parallelDataVipt
     )
   )
   val gpr = Module(new ysyx_26030103_GPR(config.EnableDynamicGPRDebug))
@@ -121,7 +126,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       Some(Module(new ysyx_26030103_IFUMMU(ParallelVipt = parallelFetchVipt)))
     else None
   val dmmuOpt =
-    if (mmuEnabled) Some(Module(new ysyx_26030103_LSUMMU)) else None
+    if (mmuEnabled)
+      Some(Module(new ysyx_26030103_LSUMMU(ParallelVipt = parallelDataVipt)))
+    else None
   val mmuArbOpt =
     if (mmuEnabled) Some(Module(new ysyx_26030103_MMURequestArbiter)) else None
   val ptwToAxiOpt =
@@ -250,11 +257,26 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 它；不要在这里接入 pipe_flush。
   if (mmuEnabled) {
     // DMMU 对非访存指令是组合直通，因此这里仍然只有 LSU 前的一级流水寄存器。
-    // 访存指令翻译期间 exu.out.ready 被拉低，IDU 另由 dmmu.busy 阻塞。
+    // VIPT 并行 load 会在翻译完成前通过这个边界进入 LSU；翻译故障时
+    // memKill 必须同时冲刷该边界，避免故障请求在 kill 之后再次进入 LSU。
     exu.io.out <> dmmuOpt.get.io.in
-    ysyx_26030103_StageConnect(dmmuOpt.get.io.out, lsu.io.in, lsu.io.FlushEXMEM)
+    ysyx_26030103_StageConnect(
+      dmmuOpt.get.io.out,
+      lsu.io.in,
+      lsu.io.FlushEXMEM || dmmuOpt.get.io.memKill
+    )
+    lsu.io.ViptPAddr := dmmuOpt.get.io.memPaddr
+    lsu.io.ViptPAddrValid := dmmuOpt.get.io.memPaddrValid
+    lsu.io.ViptPAddrVaddr := dmmuOpt.get.io.memPaddrVaddr
+    lsu.io.ViptKill := dmmuOpt.get.io.memKill
+    dmmuOpt.get.io.memActive := lsu.io.Busy
   } else {
     ysyx_26030103_StageConnect(exu.io.out, lsu.io.in, lsu.io.FlushEXMEM)
+    // 无 MMU 时 VA==PA；VIPT 并行端口不使用，绑定安全常量。
+    lsu.io.ViptPAddr := 0.U
+    lsu.io.ViptPAddrValid := false.B
+    lsu.io.ViptPAddrVaddr := 0.U
+    lsu.io.ViptKill := false.B
   }
   ysyx_26030103_StageConnect(lsu.io.out, wbu.io.in)
   if (mmuEnabled) {

@@ -191,10 +191,16 @@ class ysyx_26030103_IFUMMU(ParallelVipt: Boolean = false) extends Module {
 
 /** 把 EXU 的虚拟访存地址翻译成物理地址，再交给 LSU。
   *
-  * 非访存指令直通；MMU 故障不进入 LSU，而是产生一个精确的 MemTrap 脉冲，
-  * 由顶层交给 EXU/CSR 的后门异常入口。这样 store 不会在页错误时产生总线副作用。
+  * PIPT（ParallelVipt=false）保持原行为：完整翻译完成后再把指令交给 LSU，
+  * MMU 故障不会在 LSU/总线上留下任何副作用。
+  *
+  * VIPT 并行模式（ParallelVipt=true）下，load 会先以 VA 交给 LSU/DCache
+  * （DCache 立即用 VA 选 index），MMU 同时翻译；PA 带 VA 标签通过独立端口
+  * 返回。翻译故障通过 memKill 取消 LSU 中已受理的请求，并由 faultCommit
+  * 向 EXU 提交精确 page fault。store 仍保持“先翻译后生效”，绝不在页错误
+  * 确定前进入写缓冲/总线。
   */
-class ysyx_26030103_LSUMMU extends Module {
+class ysyx_26030103_LSUMMU(val ParallelVipt: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage))
     val out = Decoupled(new ysyx_26030103_EXUMessage)
@@ -211,13 +217,28 @@ class ysyx_26030103_LSUMMU extends Module {
     val pmpAddr = Output(UInt(32.W))
     val pmpWrite = Output(Bool())
     val pmpFault = Input(Bool())
+    // VIPT 并行模式下，已先行交给 LSU 的 load 所使用的翻译结果。
+    val memPaddr = Output(UInt(32.W))
+    val memPaddrValid = Output(Bool())
+    val memPaddrVaddr = Output(UInt(32.W))
+    // MMU 翻译故障单拍脉冲：撤销 LSU/DCache 中尚未拿到 PA 的请求。
+    val memKill = Output(Bool())
+    // LSU 是否仍持有更老/当前指令。VIPT 并行模式用它保证翻译结果在
+    // 被消费前不被下一笔请求覆盖。
+    val memActive = Input(Bool())
     val req = Decoupled(new ysyx_26030103_MMURequest)
     val resp = Flipped(Decoupled(new ysyx_26030103_MMUResponse))
   })
-  val idle :: xreq :: xwait :: done :: fault :: Nil = Enum(5)
+  // fwd 是 VIPT 并行专用：先把原始 VA 请求交给 LSU，再等待 MMU。
+  val idle :: xreq :: xwait :: done :: fault :: fwd :: Nil = Enum(6)
   val state = RegInit(idle)
   val msgReg = RegInit(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
+  val msgBypass = RegInit(false.B)
   val paddrReg = RegInit(0.U(32.W))
+  val paddrVaddrReg = RegInit(0.U(32.W))
+  // VIPT 并行：PA 有效标志独立于状态机保持，直到 LSU 真正排空；避免
+  // 流水冲刷使 state 提前离开 done 时 DCache 永远等不到 PA。
+  val paddrValidReg = RegInit(false.B)
   val faultReg = RegInit(false.B)
   val faultCauseReg = RegInit(0.U(32.W))
   val faultTvalReg = RegInit(0.U(32.W))
@@ -238,56 +259,175 @@ class ysyx_26030103_LSUMMU extends Module {
   io.busy := state =/= idle
   io.pmpAddr := Mux(state === xwait, io.resp.bits.paddr, paddrReg)
   io.pmpWrite := msgReg.MemoryWrite
+  io.memPaddr := paddrReg
+  if (ParallelVipt) {
+    io.memPaddrValid := paddrValidReg
+  } else {
+    io.memPaddrValid := state === done
+  }
+  io.memPaddrVaddr := paddrVaddrReg
+  io.memKill := false.B
 
-  when(state === idle) {
-    // 始终使用同一个握手条件，避免 in.ready 依赖 in.bits 形成组合环。
-    io.in.ready := io.out.ready
-    when(!isMem || bypass) {
-      io.out.valid := io.in.valid
-      io.out.bits := io.in.bits
-    }.otherwise {
-      when(io.in.fire) {
-        msgReg := io.in.bits
-        state := xreq
-      }
-    }
-  }
-  when(state === xreq) {
-    io.req.valid := true.B
-    io.req.bits.id := 1.U // LSU
-    io.req.bits.vaddr := msgReg.ALUResult
-    io.req.bits.access := Mux(msgReg.MemoryWrite,
-      ysyx_26030103_AccessType.Store, ysyx_26030103_AccessType.Load)
-    io.req.bits.privilege := io.privilege
-    io.req.bits.sum := io.sum
-    io.req.bits.mxr := io.mxr
-    io.req.bits.satp := io.satp
-    when(io.req.fire) { state := xwait }
-  }
-  when(state === xwait) {
-    io.resp.ready := true.B
-    when(io.resp.valid) {
-      when(io.resp.bits.fault) {
-        faultReg := true.B
-        faultCauseReg := io.resp.bits.cause
-        faultTvalReg := msgReg.ALUResult
-        faultPCReg := msgReg.pc
-        state := fault
+  if (!ParallelVipt) {
+    // ---------------- 原有 PIPT 路径：翻译完成后才发 LSU ----------------
+    when(state === idle) {
+      // 始终使用同一个握手条件，避免 in.ready 依赖 in.bits 形成组合环。
+      io.in.ready := io.out.ready
+      when(!isMem || bypass) {
+        io.out.valid := io.in.valid
+        io.out.bits := io.in.bits
       }.otherwise {
-        paddrReg := io.resp.bits.paddr
-        state := done
+        when(io.in.fire) {
+          msgReg := io.in.bits
+          state := xreq
+        }
       }
     }
-  }
-  when(state === done) {
-    io.in.ready := io.out.ready
-    io.out.valid := true.B
-    io.out.bits := msgReg
-    io.out.bits.ALUResult := paddrReg
-    when(io.out.fire) { state := idle }
-  }
-  when(io.flush) {
-    state := idle
-    faultReg := false.B
+    when(state === xreq) {
+      io.req.valid := true.B
+      io.req.bits.id := 1.U // LSU
+      io.req.bits.vaddr := msgReg.ALUResult
+      io.req.bits.access := Mux(msgReg.MemoryWrite,
+        ysyx_26030103_AccessType.Store, ysyx_26030103_AccessType.Load)
+      io.req.bits.privilege := io.privilege
+      io.req.bits.sum := io.sum
+      io.req.bits.mxr := io.mxr
+      io.req.bits.satp := io.satp
+      when(io.req.fire) { state := xwait }
+    }
+    when(state === xwait) {
+      io.resp.ready := true.B
+      when(io.resp.valid) {
+        when(io.resp.bits.fault) {
+          faultReg := true.B
+          faultCauseReg := io.resp.bits.cause
+          faultTvalReg := msgReg.ALUResult
+          faultPCReg := msgReg.pc
+          state := fault
+        }.otherwise {
+          paddrReg := io.resp.bits.paddr
+          paddrVaddrReg := msgReg.ALUResult
+          state := done
+        }
+      }
+    }
+    when(state === done) {
+      io.in.ready := io.out.ready
+      io.out.valid := true.B
+      io.out.bits := msgReg
+      io.out.bits.ALUResult := paddrReg
+      when(io.out.fire) { state := idle }
+    }
+    when(io.flush) {
+      state := idle
+      faultReg := false.B
+    }
+  } else {
+    // ---------------- VIPT 并行路径 ----------------
+    // 只有 LSU 完全空闲时才受理新的内存指令，保证 paddrReg 在 DCache
+    // 取用前不会被下一笔请求覆盖，同时让翻译故障的 kill 不会误伤更老指令。
+    // 注意 in.ready 不能依赖 in.bits（否则 EXU 形成组合环），因此统一取
+    // “LSU 空闲且下游可接收”；非访存指令在 LSU 忙时也会被暂缓。
+    when(state === idle) {
+      io.in.ready := io.out.ready && !io.memActive
+      when(io.in.fire) {
+        // 新请求受理时先撤销上一笔 PA，防止相同 VA 的旧 PA 被误用。
+        paddrValidReg := false.B
+      }
+      when(!isMem || (bypass && io.in.bits.MemoryWrite)) {
+        // 非访存和 bypass store 仍组合直通；bypass store 的 VA==PA，
+        // 不会在页错误前产生副作用。
+        io.out.valid := io.in.valid
+        io.out.bits := io.in.bits
+      }.elsewhen(isMem && bypass) {
+        // bypass load：PA 就是 VA，立即有效；仍先锁存再交给 LSU。
+        when(io.in.fire) {
+          msgReg := io.in.bits
+          msgBypass := true.B
+          paddrReg := io.in.bits.ALUResult
+          paddrVaddrReg := io.in.bits.VAddr
+          paddrValidReg := true.B
+          state := fwd
+        }
+      }.elsewhen(isMem && io.in.bits.MemoryWrite) {
+        // store 不允许先进入 LSU：页错误时不能产生任何总线副作用。
+        when(io.in.fire) {
+          msgReg := io.in.bits
+          msgBypass := false.B
+          state := xreq
+        }
+      }.otherwise {
+        // 可翻译 load：先锁存原始 VA 并转发给 LSU，MMU 同时开始翻译。
+        when(io.in.fire) {
+          msgReg := io.in.bits
+          msgBypass := false.B
+          state := fwd
+        }
+      }
+    }
+    when(state === fwd) {
+      // 这里交给 LSU 的 ALUResult 仍是 VA；物理地址只通过 memPaddr 提供。
+      io.out.valid := true.B
+      io.out.bits := msgReg
+      when(io.out.fire) {
+        when(msgBypass) { state := done }
+          .otherwise { state := xreq }
+      }
+    }
+    when(state === xreq) {
+      io.req.valid := true.B
+      io.req.bits.id := 1.U
+      io.req.bits.vaddr := msgReg.ALUResult
+      io.req.bits.access := Mux(msgReg.MemoryWrite,
+        ysyx_26030103_AccessType.Store, ysyx_26030103_AccessType.Load)
+      io.req.bits.privilege := io.privilege
+      io.req.bits.sum := io.sum
+      io.req.bits.mxr := io.mxr
+      io.req.bits.satp := io.satp
+      when(io.req.fire) { state := xwait }
+    }
+    when(state === xwait) {
+      io.resp.ready := true.B
+      when(io.resp.valid) {
+        when(io.resp.bits.fault) {
+          // load 已经进入 LSU。先撤销它和 DCache 的等待请求，
+          // 下一拍 faultReg 作为精确 page fault 提交给 EXU/CSR。
+          faultReg := true.B
+          faultCauseReg := io.resp.bits.cause
+          faultTvalReg := msgReg.ALUResult
+          faultPCReg := msgReg.pc
+          state := fault
+        }.otherwise {
+          paddrReg := io.resp.bits.paddr
+          paddrVaddrReg := msgReg.ALUResult
+          paddrValidReg := true.B
+          state := done
+        }
+      }
+    }
+    when(state === xwait) {
+      io.memKill := io.resp.valid && io.resp.bits.fault
+    }
+    when(state === done) {
+      when(msgReg.MemoryValid && !msgReg.MemoryWrite) {
+        // load 已经交给 LSU；翻译结果保持到 LSU 完全排空，之后才允许
+        // 下一笔请求覆盖 paddrReg。
+        when(!io.memActive) {
+          paddrValidReg := false.B
+          state := idle
+        }
+      }.otherwise {
+        // store 在这里才带着 PA 交给 LSU（与 PIPT 的退休时序一致）。
+        io.in.ready := io.out.ready
+        io.out.valid := true.B
+        io.out.bits := msgReg
+        io.out.bits.ALUResult := paddrReg
+        when(io.out.fire) { state := idle }
+      }
+    }
+    when(io.flush) {
+      state := idle
+      faultReg := false.B
+    }
   }
 }
