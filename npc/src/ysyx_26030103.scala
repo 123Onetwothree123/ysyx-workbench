@@ -85,6 +85,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     if (mmuEnabled) Some(Module(new ysyx_26030103_PTWToAXI)) else None
   val axiReadMuxOpt =
     if (mmuEnabled) Some(Module(new ysyx_26030103_AXIReadMux)) else None
+  val axiWriteMuxOpt =
+    if (mmuEnabled) Some(Module(new ysyx_26030103_AXIWriteMux)) else None
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
   val ifuFaultValid = RegInit(false.B)
@@ -276,7 +278,14 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   ras.io.push_addr := exu.io.RASPushAddr
   ras.io.pop_valid := exu.io.RASPopValid
   ras.io.flush := exu.io.FenceIFlush
-  arbiter.io.lsu <> lsu.io.DataBus
+  if (mmuEnabled) {
+    val writeMux = axiWriteMuxOpt.get
+    lsu.io.DataBus <> writeMux.io.a
+    ptwToAxiOpt.get.io.axiWrite <> writeMux.io.b
+    writeMux.io.out <> arbiter.io.lsu
+  } else {
+    arbiter.io.lsu <> lsu.io.DataBus
+  }
   arbiter.io.memory.AW <> xbar.io.in.AW
   arbiter.io.memory.W <> xbar.io.in.W
   arbiter.io.memory.B <> xbar.io.in.B

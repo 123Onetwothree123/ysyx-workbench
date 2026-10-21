@@ -22,7 +22,6 @@ class ysyx_26030103_TLB(
   require((entries & (entries - 1)) == 0, "TLB entries 必须是 2 的幂")
   require(asidBits >= 0 && asidBits <= 9, "ASID 位数必须在 0..9")
   require((ways & (ways - 1)) == 0, "TLB ways 必须是 2 的幂")
-  require(adMode != "hardware", "TLB A/D hardware 模式尚未实现")
   require(Set("reg", "sram").contains(storage), "TLB storage 必须是 reg/sram")
 
   private val sets = entries / ways

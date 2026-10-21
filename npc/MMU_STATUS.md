@@ -26,7 +26,7 @@
 
 ```text
 ysyx_26030103_MMUTest             7
-ysyx_26030103_MMUBehaviorTest     8
+ysyx_26030103_MMUBehaviorTest     9
 ysyx_26030103_MMUStreamTest       1
 ysyx_26030103_CSRPrivilegeTest    4
 ```
@@ -44,7 +44,6 @@ S ecall + SRET          HIT GOOD
 ## 尚未实现（选择时会 elaboration error）
 
 - 自定义 PTE
-- A/D hardware 更新
 - PTW 复用 DCache
 - pipelined / out-of-order PTW
 - PLIC

@@ -118,6 +118,7 @@ class ysyx_26030103_PTWToAXI extends Module {
     val req = Flipped(Decoupled(new ysyx_26030103_PTEBusRequest))
     val resp = Decoupled(new ysyx_26030103_PTEBusResponse)
     val axi = new ysyx_26030103_AXI5IO(32)
+    val axiWrite = new ysyx_26030103_AXI5IO(32)
   })
   io.axi.AW.AWVALID := false.B
   io.axi.AW.AWID := 0.U
@@ -133,7 +134,7 @@ class ysyx_26030103_PTWToAXI extends Module {
   io.axi.W.WSTRB := 0.U
   io.axi.W.WLAST := false.B
   io.axi.B.BREADY := false.B
-  io.axi.AR.ARVALID := io.req.valid
+  io.axi.AR.ARVALID := io.req.valid && !io.req.bits.write
   io.axi.AR.ARID := 0.U
   io.axi.AR.ARADDR := io.req.bits.addr
   io.axi.AR.ARLEN := 0.U
@@ -142,9 +143,158 @@ class ysyx_26030103_PTWToAXI extends Module {
   io.axi.AR.ARPROT := 0.U
   io.axi.AR.ARCACHE := 0.U
   io.axi.AR.ARQOS := 0.U
-  io.req.ready := io.axi.AR.ARREADY
-  io.resp.valid := io.axi.R.RVALID
-  io.resp.bits.data := io.axi.R.RDATA
-  io.resp.bits.fault := io.axi.R.RRESP =/= 0.U
-  io.axi.R.RREADY := io.resp.ready
+
+  val awDone = RegInit(false.B)
+  val wDone = RegInit(false.B)
+  val writeActive = RegInit(false.B)
+  io.axiWrite.AW.AWVALID := io.req.valid && io.req.bits.write && !awDone
+  io.axiWrite.AW.AWID := 0.U
+  io.axiWrite.AW.AWADDR := io.req.bits.addr
+  io.axiWrite.AW.AWLEN := 0.U
+  io.axiWrite.AW.AWSIZE := 2.U
+  io.axiWrite.AW.AWBURST := 1.U
+  io.axiWrite.AW.AWPROT := 0.U
+  io.axiWrite.AW.AWCACHE := 0.U
+  io.axiWrite.AW.AWQOS := 0.U
+  io.axiWrite.W.WVALID := io.req.valid && io.req.bits.write && !wDone
+  io.axiWrite.W.WDATA := io.req.bits.data
+  io.axiWrite.W.WSTRB := io.req.bits.strb
+  io.axiWrite.W.WLAST := true.B
+  io.axiWrite.AR.ARVALID := false.B
+  io.axiWrite.AR.ARID := 0.U
+  io.axiWrite.AR.ARADDR := 0.U
+  io.axiWrite.AR.ARLEN := 0.U
+  io.axiWrite.AR.ARSIZE := 2.U
+  io.axiWrite.AR.ARBURST := 1.U
+  io.axiWrite.AR.ARPROT := 0.U
+  io.axiWrite.AR.ARCACHE := 0.U
+  io.axiWrite.AR.ARQOS := 0.U
+  io.axiWrite.R.RREADY := false.B
+  io.axiWrite.B.BREADY := io.resp.ready && writeActive
+
+  when(io.req.valid && io.req.bits.write) {
+    when(io.axiWrite.AW.AWREADY && !awDone) { awDone := true.B }
+    when(io.axiWrite.W.WREADY && !wDone) { wDone := true.B }
+  }
+  when(io.req.fire && io.req.bits.write) {
+    awDone := false.B
+    wDone := false.B
+    writeActive := true.B
+  }
+  when(writeActive && io.axiWrite.B.BVALID && io.resp.ready) {
+    writeActive := false.B
+  }
+
+  io.req.ready := Mux(io.req.bits.write, awDone && wDone, io.axi.AR.ARREADY)
+  io.resp.valid := Mux(writeActive, io.axiWrite.B.BVALID, io.axi.R.RVALID)
+  io.resp.bits.data := Mux(writeActive, 0.U, io.axi.R.RDATA)
+  io.resp.bits.fault := Mux(writeActive,
+    io.axiWrite.B.BRESP =/= 0.U, io.axi.R.RRESP =/= 0.U)
+  io.axi.R.RREADY := Mux(writeActive, false.B, io.resp.ready)
+}
+
+/** 写通道二选一：LSU 与 PTW A/D 写回共用仲裁器的 LSU 写端口。
+  *
+  * 读通道仍由 LSU 独占；PTW 只做单拍写，因此这里只需要处理 AW/W/B。
+  */
+class ysyx_26030103_AXIWriteMux extends Module {
+  val io = IO(new Bundle {
+    val a = Flipped(new ysyx_26030103_AXI5IO(32))
+    val b = Flipped(new ysyx_26030103_AXI5IO(32))
+    val out = new ysyx_26030103_AXI5IO(32)
+  })
+  val idle :: aWrite :: bWrite :: aResp :: bResp :: Nil = Enum(5)
+  val state = RegInit(idle)
+  val awDone = RegInit(false.B)
+  val wDone = RegInit(false.B)
+
+  // 读通道始终由 LSU(a) 直通。
+  io.out.AR <> io.a.AR
+  io.a.R <> io.out.R
+  io.b.AR.ARREADY := false.B
+  io.b.R.RVALID := false.B
+  io.b.R.RID := 0.U
+  io.b.R.RDATA := 0.U
+  io.b.R.RRESP := 0.U
+  io.b.R.RLAST := false.B
+
+  io.out.AW.AWVALID := false.B
+  io.out.AW.AWID := 0.U
+  io.out.AW.AWADDR := 0.U
+  io.out.AW.AWLEN := 0.U
+  io.out.AW.AWSIZE := 2.U
+  io.out.AW.AWBURST := 0.U
+  io.out.AW.AWPROT := 0.U
+  io.out.AW.AWCACHE := 0.U
+  io.out.AW.AWQOS := 0.U
+  io.out.W.WVALID := false.B
+  io.out.W.WDATA := 0.U
+  io.out.W.WSTRB := 0.U
+  io.out.W.WLAST := false.B
+  io.out.B.BREADY := false.B
+  io.a.AW.AWREADY := false.B
+  io.a.W.WREADY := false.B
+  io.a.B.BVALID := false.B
+  io.a.B.BID := 0.U
+  io.a.B.BRESP := 0.U
+  io.b.AW.AWREADY := false.B
+  io.b.W.WREADY := false.B
+  io.b.B.BVALID := false.B
+  io.b.B.BID := 0.U
+  io.b.B.BRESP := 0.U
+
+  when(state === idle) {
+    val aReq = io.a.AW.AWVALID || io.a.W.WVALID
+    val bReq = io.b.AW.AWVALID || io.b.W.WVALID
+    when(aReq) {
+      state := aWrite
+      awDone := false.B
+      wDone := false.B
+    }.elsewhen(bReq) {
+      state := bWrite
+      awDone := false.B
+      wDone := false.B
+    }
+  }
+
+  def drive(sel: ysyx_26030103_AXI5IO, isA: Boolean): Unit = {
+    io.out.AW.AWVALID := sel.AW.AWVALID && !awDone
+    io.out.AW.AWADDR := sel.AW.AWADDR
+    io.out.AW.AWLEN := sel.AW.AWLEN
+    io.out.AW.AWSIZE := sel.AW.AWSIZE
+    io.out.AW.AWBURST := sel.AW.AWBURST
+    io.out.AW.AWPROT := sel.AW.AWPROT
+    io.out.AW.AWCACHE := sel.AW.AWCACHE
+    io.out.AW.AWQOS := sel.AW.AWQOS
+    sel.AW.AWREADY := io.out.AW.AWREADY && !awDone
+    io.out.W.WVALID := sel.W.WVALID && !wDone
+    io.out.W.WDATA := sel.W.WDATA
+    io.out.W.WSTRB := sel.W.WSTRB
+    io.out.W.WLAST := sel.W.WLAST
+    sel.W.WREADY := io.out.W.WREADY && !wDone
+    val awFire = io.out.AW.AWVALID && io.out.AW.AWREADY
+    val wFire = io.out.W.WVALID && io.out.W.WREADY
+    when(awFire) { awDone := true.B }
+    when(wFire) { wDone := true.B }
+    when((awDone || awFire) && (wDone || wFire)) {
+      state := (if (isA) aResp else bResp)
+    }
+  }
+
+  when(state === aWrite) { drive(io.a, true) }
+  when(state === bWrite) { drive(io.b, false) }
+  when(state === aResp) {
+    io.a.B.BVALID := io.out.B.BVALID
+    io.a.B.BID := io.out.B.BID
+    io.a.B.BRESP := io.out.B.BRESP
+    io.out.B.BREADY := io.a.B.BREADY
+    when(io.out.B.BVALID && io.out.B.BREADY) { state := idle }
+  }
+  when(state === bResp) {
+    io.b.B.BVALID := io.out.B.BVALID
+    io.b.B.BID := io.out.B.BID
+    io.b.B.BRESP := io.out.B.BRESP
+    io.out.B.BREADY := io.b.B.BREADY
+    when(io.out.B.BVALID && io.out.B.BREADY) { state := idle }
+  }
 }

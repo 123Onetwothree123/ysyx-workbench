@@ -35,7 +35,7 @@ class ysyx_26030103_PTW(
     cacheWays: Int = 2,
     superpage: Boolean = false
 ) extends Module {
-  require(Set("fault", "ignore").contains(adMode), "PTW 只实现 fault/ignore A/D 模式")
+  require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
   if (cacheEnable) {
     require(cacheEntries > 0 && (cacheEntries & (cacheEntries - 1)) == 0,
       "PTW cache entries 必须是 2 的幂")
@@ -51,7 +51,7 @@ class ysyx_26030103_PTW(
     val flush = Input(Bool())
   })
 
-  val idle :: req1 :: wait1 :: req0 :: wait0 :: done :: Nil = Enum(6)
+  val idle :: req1 :: wait1 :: req0 :: wait0 :: write0 :: waitW :: done :: Nil = Enum(8)
   val state = RegInit(idle)
 
   val vaddrReg = RegInit(0.U(32.W))
@@ -63,6 +63,7 @@ class ysyx_26030103_PTW(
   val pgtblReg = RegInit(0.U(32.W))
   val respReg = RegInit(0.U.asTypeOf(new ysyx_26030103_PTWResponse))
   val fillPulse = RegInit(false.B)
+  val writeDataReg = RegInit(0.U(32.W))
 
   class CacheEntry extends Bundle {
     val valid = Bool()
@@ -150,6 +151,12 @@ class ysyx_26030103_PTW(
     userFault || sumFault || fetchFault || readFault || writeFault || adFault
   }
   def pte0Good(d: UInt): Bool = d(0) && !pte0FaultOf(d)
+  def needsAdUpdate(d: UInt): Bool = adMode match {
+    case "hardware" => d(0) && (!d(6) || (isStore && !d(7)))
+    case _          => false.B
+  }
+  def adUpdated(d: UInt): UInt =
+    d | "h40".U(32.W) | Mux(isStore, "h80".U(32.W), 0.U(32.W))
 
   val (cacheHit1, cacheData1) = cacheLookup(pte1Addr)
   val (cacheHit0, cacheData0) = cacheLookup(pte0Addr)
@@ -157,12 +164,12 @@ class ysyx_26030103_PTW(
   val useBus0 = state === req0 && !cacheHit0
 
   io.req.ready := state === idle
-  io.bus.req.valid := useBus1 || useBus0
+  io.bus.req.valid := useBus1 || useBus0 || state === write0
   io.bus.req.bits.addr := Mux(state === req1, pte1Addr, pte0Addr)
-  io.bus.req.bits.write := false.B
-  io.bus.req.bits.data := 0.U
-  io.bus.req.bits.strb := 0.U
-  io.bus.resp.ready := state === wait1 || state === wait0
+  io.bus.req.bits.write := state === write0
+  io.bus.req.bits.data := Mux(state === write0, writeDataReg, 0.U)
+  io.bus.req.bits.strb := Mux(state === write0, "hf".U(4.W), 0.U)
+  io.bus.resp.ready := state === wait1 || state === wait0 || state === waitW
   io.resp.valid := state === done
   io.resp.bits := respReg
 
@@ -259,16 +266,39 @@ class ysyx_26030103_PTW(
     }
     is(wait0) {
       when(io.bus.resp.valid) {
-        cacheFill(pte0Addr, pte0Bus)
-        respReg.paddr := Cat(pte0Bus(29, 10), vaddrReg(11, 0))
-        respReg.fault := io.bus.resp.bits.fault || !pte0Good(pte0Bus)
+        when(!io.bus.resp.bits.fault && needsAdUpdate(pte0Bus)) {
+          writeDataReg := adUpdated(pte0Bus)
+          state := write0
+        }.otherwise {
+          cacheFill(pte0Addr, pte0Bus)
+          respReg.paddr := Cat(pte0Bus(29, 10), vaddrReg(11, 0))
+          respReg.fault := io.bus.resp.bits.fault || !pte0Good(pte0Bus)
+          respReg.cause := pageFaultCause
+          respReg.tval := vaddrReg
+          respReg.fillValid := false.B
+          respReg.fillPte := pte0Bus
+          respReg.fillVaddr := vaddrReg
+          respReg.fillAsid := satpReg(30, 22)
+          fillPulse := pte0Good(pte0Bus) && !io.bus.resp.bits.fault
+          state := done
+        }
+      }
+    }
+    is(write0) {
+      when(io.bus.req.ready) { state := waitW }
+    }
+    is(waitW) {
+      when(io.bus.resp.valid) {
+        cacheFill(pte0Addr, writeDataReg)
+        respReg.paddr := Cat(writeDataReg(29, 10), vaddrReg(11, 0))
+        respReg.fault := io.bus.resp.bits.fault || !pte0Good(writeDataReg)
         respReg.cause := pageFaultCause
         respReg.tval := vaddrReg
         respReg.fillValid := false.B
-        respReg.fillPte := pte0Bus
+        respReg.fillPte := writeDataReg
         respReg.fillVaddr := vaddrReg
         respReg.fillAsid := satpReg(30, 22)
-        fillPulse := pte0Good(pte0Bus) && !io.bus.resp.bits.fault
+        fillPulse := pte0Good(writeDataReg) && !io.bus.resp.bits.fault
         state := done
       }
     }

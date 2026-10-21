@@ -309,6 +309,68 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "PTW" should "hardware A/D 模式写回页表项" in {
+    val memory = new Memory
+    // 有效叶子，但 A/D 清零。
+    memory.write(0x80002004L, pte(LeafPPN, 0x1fL))
+    simulate(new ysyx_26030103_PTW("hardware")) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      var pending = false
+      var pendingWrite = false
+      var pendingData = BigInt(0)
+      var writeSeen = false
+      var response: Option[BigInt] = None
+
+      dut.io.req.valid.poke(false.B)
+      dut.io.req.bits.vaddr.poke(0.U)
+      dut.io.req.bits.satp.poke(0.U)
+      dut.io.req.bits.privilege.poke(0.U)
+      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.req.bits.sum.poke(false.B)
+      dut.io.req.bits.mxr.poke(false.B)
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.resp.ready.poke(false.B)
+      dut.io.flush.poke(false.B)
+
+      dut.io.req.valid.poke(true.B)
+      dut.io.req.bits.vaddr.poke(0x1234.U)
+      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.clock.step()
+      dut.io.req.valid.poke(false.B)
+
+      for (_ <- 0 until 20 if response.isEmpty) {
+        if (!pending && asBool(dut.io.bus.req.valid)) {
+          pending = true
+          pendingWrite = asBool(dut.io.bus.req.bits.write)
+          val addr = asLong(dut.io.bus.req.bits.addr)
+          if (pendingWrite) {
+            memory.write(addr, dut.io.bus.req.bits.data.peek().litValue)
+            pendingData = BigInt(0)
+            writeSeen = true
+          } else {
+            pendingData = memory.read(addr)
+          }
+        }
+        dut.io.bus.resp.valid.poke(pending.B)
+        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
+        val ready = asBool(dut.io.bus.resp.ready)
+        dut.clock.step()
+        if (pending && ready) pending = false
+        if (asBool(dut.io.resp.valid)) {
+          response = Some(dut.io.resp.bits.paddr.peek().litValue)
+        }
+      }
+      writeSeen should be(true)
+      response should be(Some(BigInt(Leaf + 0x234L)))
+      (memory.read(0x80002004L) & BigInt(0xc0)) should be(BigInt(0x40))
+    }
+  }
+
   "MMU" should "miss 后 refill TLB，第二次访问命中且不再走 PTW" in {
     val memory = new Memory
     simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
