@@ -11,21 +11,23 @@ class riscv32e_npc_AXIRAM extends Module {
     // 这使 RTL 和 DiffTest/调试器共用同一份 FlashMemory，
     // 不再依赖当前工作目录下可能过期的 program.hex。
     val hostWriteValid = Input(Bool())
-    val hostWriteIndex = Input(UInt(16.W))
+    val hostWriteIndex = Input(UInt(25.W))
     val hostWriteData = Input(UInt(32.W))
   })
 
-  val depth = 65536
+  // direct-NPC 使用 128MiB RAM，与 AM/Nanos-lite 的 PMEM_SIZE 对齐。
+  val depth = 128 * 1024 * 1024 / 4
+  val wordIndexBits = 25
   val mem = SyncReadMem(depth, UInt(32.W))
 
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
   val DECERR = 3.U(2.W)
   val RamBase = "h80000000".U(32.W)
-  val RamLast = "h8003ffff".U(32.W)
+  val RamLast = "h87ffffff".U(32.W)
   val UARTAddress = "h10000000".U(32.W)
 
-  // 只有 AxSIZE 选中的每个字节都位于 256 KiB 仿真内存窗口内时，该拍才属于
+  // 只有 AxSIZE 选中的每个字节都位于 128MiB 仿真内存窗口内时，该拍才属于
   // RAM。尤其要避免窗口外地址通过截断后的 SyncReadMem 索引发生回绕。
   def IsRAMBeat(address: UInt, size: UInt): Bool = {
     val lastStart = MuxLookup(size, 0.U(32.W))(
@@ -57,7 +59,7 @@ class riscv32e_npc_AXIRAM extends Module {
     )
   )
   val readAddressIsRAM = IsRAMBeat(arAddr, arSize)
-  val readWordIndex = ((arAddr - RamBase) >> 2)(15, 0)
+  val readWordIndex = ((arAddr - RamBase) >> 2)(wordIndexBits - 1, 0)
   val rd = mem.read(
     readWordIndex,
     (state === sReadWait || state === sReadResp) &&
@@ -83,7 +85,7 @@ class riscv32e_npc_AXIRAM extends Module {
   // 数据。
   val writeAddressIsRAM = IsRAMBeat(awAddr, awSize)
   val writeAddressIsUART = awAddr === UARTAddress
-  val writeWordIndex = ((awAddr - RamBase) >> 2)(15, 0)
+  val writeWordIndex = ((awAddr - RamBase) >> 2)(wordIndexBits - 1, 0)
   val writeOld = mem.read(
     writeWordIndex,
     state === sWriteRead && !writeConfigError && writeAddressIsRAM
