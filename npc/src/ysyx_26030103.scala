@@ -145,7 +145,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 直接接仲裁器，避免写 mux 影响普通 load。
   val axiWriteMuxOpt =
     if (mmuEnabled && config.MMU.adMode == "hardware")
-      Some(Module(new ysyx_26030103_AXIWriteMux)) else None
+      Some(Module(new ysyx_26030103_AXIWriteMux(PassRead = false))) else None
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
   val ifuFaultValid = RegInit(false.B)
@@ -360,7 +360,12 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       lsu.io.DataBus <> lsuReadMux.io.a
       ptwAxi.io.axi <> lsuReadMux.io.b
       axiWriteMuxOpt match {
-        case Some(writeMux) => lsuReadMux.io.out <> writeMux.io.a
+        case Some(writeMux) =>
+          lsuReadMux.io.out.AW <> writeMux.io.a.AW
+          lsuReadMux.io.out.W <> writeMux.io.a.W
+          writeMux.io.a.B <> lsuReadMux.io.out.B
+          lsuReadMux.io.out.AR <> arbiter.io.lsu.AR
+          arbiter.io.lsu.R <> lsuReadMux.io.out.R
         case None => lsuReadMux.io.out <> arbiter.io.lsu
       }
     } else {
@@ -416,10 +421,33 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     axiWriteMuxOpt match {
       case Some(writeMux) =>
         if (config.MMU.ptwPath != "reuse_dcache") {
-          lsu.io.DataBus <> writeMux.io.a
+          lsu.io.DataBus.AW <> writeMux.io.a.AW
+          lsu.io.DataBus.W <> writeMux.io.a.W
+          writeMux.io.a.B <> lsu.io.DataBus.B
+          lsu.io.DataBus.AR <> arbiter.io.lsu.AR
+          arbiter.io.lsu.R <> lsu.io.DataBus.R
         }
+        // 写 mux 只承载写通道；未使用的 AR/R 输入显式绑定。
+        writeMux.io.a.AR.ARVALID := false.B
+        writeMux.io.a.AR.ARID := 0.U
+        writeMux.io.a.AR.ARADDR := 0.U
+        writeMux.io.a.AR.ARLEN := 0.U
+        writeMux.io.a.AR.ARSIZE := 2.U
+        writeMux.io.a.AR.ARBURST := 0.U
+        writeMux.io.a.AR.ARPROT := 0.U
+        writeMux.io.a.AR.ARCACHE := 0.U
+        writeMux.io.a.AR.ARQOS := 0.U
+        writeMux.io.a.R.RREADY := false.B
         ptwToAxiOpt.get.io.axiWrite <> writeMux.io.b
-        writeMux.io.out <> arbiter.io.lsu
+        writeMux.io.out.AW <> arbiter.io.lsu.AW
+        writeMux.io.out.W <> arbiter.io.lsu.W
+        writeMux.io.out.B <> arbiter.io.lsu.B
+        writeMux.io.out.AR.ARREADY := false.B
+        writeMux.io.out.R.RID := 0.U
+        writeMux.io.out.R.RDATA := 0.U
+        writeMux.io.out.R.RRESP := 0.U
+        writeMux.io.out.R.RLAST := false.B
+        writeMux.io.out.R.RVALID := false.B
       case None =>
         if (config.MMU.ptwPath != "reuse_dcache") {
           arbiter.io.lsu <> lsu.io.DataBus

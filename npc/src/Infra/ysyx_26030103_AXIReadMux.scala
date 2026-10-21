@@ -225,7 +225,7 @@ class ysyx_26030103_PTWToAXI extends Module {
   *
   * 读通道仍由 LSU 独占；PTW 只做单拍写，因此这里只需要处理 AW/W/B。
   */
-class ysyx_26030103_AXIWriteMux extends Module {
+class ysyx_26030103_AXIWriteMux(val PassRead: Boolean = true) extends Module {
   val io = IO(new Bundle {
     val a = Flipped(new ysyx_26030103_AXI5IO(32))
     val b = Flipped(new ysyx_26030103_AXI5IO(32))
@@ -236,9 +236,29 @@ class ysyx_26030103_AXIWriteMux extends Module {
   val awDone = RegInit(false.B)
   val wDone = RegInit(false.B)
 
-  // 读通道始终由 LSU(a) 直通。
-  io.out.AR <> io.a.AR
-  io.a.R <> io.out.R
+  if (PassRead) {
+    // 读通道由 LSU(a) 直通。
+    io.out.AR <> io.a.AR
+    io.a.R <> io.out.R
+  } else {
+    // 只使用写通道；读通道由顶层直接接仲裁器，避免 ARREADY 被覆盖。
+    io.out.AR.ARVALID := false.B
+    io.out.AR.ARID := 0.U
+    io.out.AR.ARADDR := 0.U
+    io.out.AR.ARLEN := 0.U
+    io.out.AR.ARSIZE := 2.U
+    io.out.AR.ARBURST := 0.U
+    io.out.AR.ARPROT := 0.U
+    io.out.AR.ARCACHE := 0.U
+    io.out.AR.ARQOS := 0.U
+    io.a.AR.ARREADY := false.B
+    io.a.R.RVALID := false.B
+    io.a.R.RID := 0.U
+    io.a.R.RDATA := 0.U
+    io.a.R.RRESP := 0.U
+    io.a.R.RLAST := false.B
+    io.out.R.RREADY := false.B
+  }
   io.b.AR.ARREADY := false.B
   io.b.R.RVALID := false.B
   io.b.R.RID := 0.U
