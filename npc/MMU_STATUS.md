@@ -90,6 +90,8 @@ S ecall + SRET          HIT GOOD
 ## 未完成
 
 - Nanos-lite 的“完整退出”日志验证：64MiB direct-NPC 已不再复现
-  `PC=0x8000236c` access fault；最近观察到 PC 长时间停在
-  `0x800009fc`（`__klib_init_array` 入口）且没有串口输出。需要继续
-  判断是 ICache refill、UART 输出缓冲还是 Nanos-lite 自身等待。
+  `PC=0x8000236c` access fault；但当前旧版 `nanos-lite-riscv32e-npc.bin`
+  的运行 PC 长时间停在 `0x800009fc`（`__klib_init_array` 入口），
+  没有串口输出或退出。关闭 ICache 复测仍停在同一 PC，说明不是
+  ICache refill 单独导致；仍需继续定位 Nanos 镜像、UART 输出缓冲或
+  早期 `_trm_init` 取指/访存路径。
