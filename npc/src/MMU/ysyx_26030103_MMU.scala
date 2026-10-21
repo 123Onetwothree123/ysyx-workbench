@@ -46,6 +46,18 @@ class ysyx_26030103_MMU(
   reqQueue.io.enq <> io.req
   io.req.ready := reqQueue.io.enq.ready
   reqQueue.io.deq.ready := false.B
+  // 响应队列允许前一笔响应等待软件接收时继续处理下一笔请求。
+  val respQueue = Module(new Queue(
+    new ysyx_26030103_MMUResponse,
+    profile.ptwOutstanding.max(1),
+    pipe = false,
+    flow = false
+  ))
+  respQueue.io.enq.valid := state === respond
+  respQueue.io.enq.bits := respReg
+  io.resp.valid := respQueue.io.deq.valid
+  io.resp.bits := respQueue.io.deq.bits
+  respQueue.io.deq.ready := io.resp.ready
   val split = profile.tlbOrganization == "split"
   val selFetch = reqReg.access === ysyx_26030103_AccessType.Fetch
 
@@ -81,8 +93,7 @@ class ysyx_26030103_MMU(
     )))
     else None
 
-  io.resp.valid := state === respond
-  io.resp.bits := respReg
+
 
   def connectTlb(tlb: ysyx_26030103_TLB): Unit = {
     tlb.io.lookup.vaddr := reqReg.vaddr
@@ -212,7 +223,7 @@ class ysyx_26030103_MMU(
       }
     }
     is(respond) {
-      when(io.resp.ready) { state := idle }
+      when(respQueue.io.enq.ready) { state := idle }
     }
   }
 }
