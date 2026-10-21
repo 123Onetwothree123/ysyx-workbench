@@ -14,6 +14,7 @@
 - TLB Reg-CAM 和同步 SRAM 数据阵列两种存储。
 - 可选 Sv32 4MiB 超级页；超级页当前不填充 TLB，每次走 PTW。
 - 独立只读 PTW AXI 通道，与 ICache 共用 IFU 读端口。
+- MMU 请求队列（深度可配）和请求/响应 ID。
 - PIPT 和 VIPT：VIPT 使用虚拟地址选 index、物理地址做 tag；当前是
   先翻译后访问 Cache，不是并行 TLB/Cache 流水。
 - 可选 PTW PTE cache（set-associative）。
@@ -49,9 +50,9 @@ S ecall + SRET          HIT GOOD
 - PLIC
 - 多 refill 端口和非 follow_tlb 缺失队列
 
-`PTWCluster` 已支持 N 个独立 walker 和共享页表总线仲裁，但 MMU 的
-外部请求端口仍按单笔请求使用；要获得 IFU/LSU 真正并发，还需要在 MMU
-入口增加请求队列和响应 ID。
+`PTWCluster` 支持 N 个独立 walker 和共享页表总线仲裁，MMU 入口已有
+请求队列和 ID；当前控制器仍逐个发起上下文，真正的多上下文并行调度
+仍可继续深化。
 
 ## 未完成验证
 
