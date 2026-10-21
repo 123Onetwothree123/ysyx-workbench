@@ -24,6 +24,8 @@ class ysyx_26030103_PTWResponse extends Bundle {
   val fillPte = UInt(32.W)
   val fillVaddr = UInt(32.W)
   val fillAsid = UInt(9.W)
+  // 0=普通 4KiB 页，1=一级超级页；后续通用页表可扩展为更大值。
+  val fillLevel = UInt(2.W)
 }
 
 /** 标准 Sv32 两级 page table walker。
@@ -68,6 +70,7 @@ class ysyx_26030103_PTW(
   val pgtblReg = RegInit(0.U(32.W))
   val respReg = RegInit(0.U.asTypeOf(new ysyx_26030103_PTWResponse))
   val fillPulse = RegInit(false.B)
+  val fillLevelReg = RegInit(0.U(2.W))
   val writeDataReg = RegInit(0.U(32.W))
 
   class CacheEntry extends Bundle {
@@ -220,6 +223,7 @@ class ysyx_26030103_PTW(
           respReg.fillValid := false.B
           respReg.fillPte := 0.U
           respReg.fillVaddr := 0.U
+          fillLevelReg := 0.U
           respReg.fillAsid := 0.U
           state := done
         }.otherwise {
@@ -232,6 +236,7 @@ class ysyx_26030103_PTW(
             respReg.fillPte := cacheData1
             respReg.fillVaddr := vaddrReg
             respReg.fillAsid := satpReg(30, 22)
+            fillLevelReg := 1.U
             fillPulse := false.B
             state := done
           }.otherwise {
@@ -252,6 +257,7 @@ class ysyx_26030103_PTW(
           respReg.fillValid := false.B
           respReg.fillPte := 0.U
           respReg.fillVaddr := 0.U
+          fillLevelReg := 0.U
           respReg.fillAsid := 0.U
           state := done
         }.otherwise {
@@ -264,6 +270,7 @@ class ysyx_26030103_PTW(
             respReg.fillPte := pte1Bus
             respReg.fillVaddr := vaddrReg
             respReg.fillAsid := satpReg(30, 22)
+            fillLevelReg := 1.U
             fillPulse := false.B
             state := done
           }.otherwise {
@@ -283,6 +290,7 @@ class ysyx_26030103_PTW(
         respReg.fillPte := cacheData0
         respReg.fillVaddr := vaddrReg
         respReg.fillAsid := satpReg(30, 22)
+        fillLevelReg := 0.U
         fillPulse := pte0Good(cacheData0)
         state := done
       }.elsewhen(io.bus.req.ready) { state := wait0 }
@@ -302,6 +310,7 @@ class ysyx_26030103_PTW(
           respReg.fillPte := pte0Bus
           respReg.fillVaddr := vaddrReg
           respReg.fillAsid := satpReg(30, 22)
+          fillLevelReg := 0.U
           fillPulse := pte0Good(pte0Bus) && !io.bus.resp.bits.fault
           state := done
         }
@@ -322,6 +331,7 @@ class ysyx_26030103_PTW(
         respReg.fillPte := written
         respReg.fillVaddr := vaddrReg
         respReg.fillAsid := satpReg(30, 22)
+        fillLevelReg := 0.U
         fillPulse := pte0Good(written) && !io.bus.resp.bits.fault
         state := done
       }
@@ -334,5 +344,6 @@ class ysyx_26030103_PTW(
 
   // TLB 在成功页表项返回后的 done 首拍填充；这是单拍脉冲。
   io.resp.bits.fillValid := fillPulse
+  io.resp.bits.fillLevel := fillLevelReg
   io.resp.bits.id := idReg
 }

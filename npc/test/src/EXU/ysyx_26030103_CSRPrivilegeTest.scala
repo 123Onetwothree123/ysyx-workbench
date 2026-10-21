@@ -79,6 +79,7 @@ class ysyx_26030103_CSRHarness(
 
 class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   private val MSTATUS = 0x300
+  private val MIE = 0x304
   private val MEPC = 0x341
   private val MEDELEG = 0x302
   private val STVEC = 0x105
@@ -205,7 +206,9 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_CSRHarness) { dut =>
       setup(dut)
       write(dut, MSTATUS, BigInt(8))
+      write(dut, MIE, BigInt(0x80))
       dut.io.timerInterrupt.poke(true.B)
+      dut.clock.step()
       dut.io.enable.poke(true.B)
       bool(dut.io.trapCommit) should be(true)
       long(dut.io.committedCause) should be(0x80000007L)

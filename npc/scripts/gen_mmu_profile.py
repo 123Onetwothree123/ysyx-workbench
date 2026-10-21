@@ -456,6 +456,21 @@ def main() -> int:
 
     if args.env:
         args.env.parent.mkdir(parents=True, exist_ok=True)
+        csr_names = {
+            "mstatus": 0x300, "misa": 0x301, "mtvec": 0x305, "mepc": 0x341,
+            "mcause": 0x342, "mtval": 0x343, "mscratch": 0x340, "mie": 0x304,
+            "mip": 0x344, "medeleg": 0x302, "mideleg": 0x303,
+            "mcounteren": 0x306, "mcountinhibit": 0x320, "mcycle": 0xb00,
+            "minstret": 0xb02, "sstatus": 0x100, "sie": 0x104, "sip": 0x144,
+            "stvec": 0x105, "sscratch": 0x140, "sepc": 0x141,
+            "scause": 0x142, "stval": 0x143, "satp": 0x180,
+            "scounteren": 0x106,
+        }
+        enabled_csr = [
+            f"0x{csr_names[name]:x}"
+            for name, value in profile["csr"]["enabled"].items()
+            if value and name in csr_names
+        ]
         env_lines = [
             f"MMU_PROFILE={profile['profile']}",
             f"MMU_ENABLED={int(profile['enabled']['mmu'])}",
@@ -463,11 +478,56 @@ def main() -> int:
             f"MMU_LEVELS={profile['mmu']['levels']}",
             f"MMU_PTE_SIZE_BYTES={profile['mmu']['pte_size_bytes']}",
             f"MMU_PAGE_TABLE_SIZE_BYTES={profile['mmu']['page_table_size_bytes']}",
+            f"MMU_PTE_FORMAT={profile['mmu']['pte_format']}",
+            f"MMU_SUPERPAGE={int(profile['mmu']['superpage'])}",
+            f"MMU_AD_MODE={profile['mmu']['ad_mode']}",
+            f"MMU_CACHE_MODE={profile['mmu']['cache_mode']}",
+            f"MMU_PTW_PATH={profile['mmu']['ptw']['path']}",
+            f"MMU_PTW_ARCH={profile['mmu']['ptw']['arch']}",
+            f"MMU_PTW_OUTSTANDING={profile['mmu']['ptw']['outstanding']}",
+            f"MMU_PTW_ORDER={profile['mmu']['ptw']['order']}",
+            f"MMU_PTW_CACHE={int(profile['mmu']['ptw']['cache']['enabled'])}",
+            f"MMU_PTW_CACHE_ENTRIES={profile['mmu']['ptw']['cache']['entries']}",
+            f"MMU_PTW_CACHE_WAYS={profile['mmu']['ptw']['cache']['ways']}",
             f"MMU_TLB_ENABLED={int(profile['enabled']['tlb'])}",
             f"MMU_TLB_ORGANIZATION={profile['tlb']['organization']}",
+            f"MMU_TLB_STORAGE={profile['tlb']['storage']}",
+            f"MMU_TLB_REPLACEMENT={profile['tlb']['replacement']}",
             f"MMU_TLB_ASID_BITS={profile['tlb']['asid_bits']}",
-            f"MMU_PTW_OUTSTANDING={profile['mmu']['ptw']['outstanding']}",
+            f"MMU_TLB_GLOBAL={int(profile['tlb']['global'])}",
+            f"MMU_ITLB_ENTRIES={profile['tlb']['itlb']['entries'] if profile['tlb']['itlb'] else 16}",
+            f"MMU_ITLB_WAYS={profile['tlb']['itlb']['ways'] if profile['tlb']['itlb'] else 2}",
+            f"MMU_DTLB_ENTRIES={profile['tlb']['dtlb']['entries'] if profile['tlb']['dtlb'] else 32}",
+            f"MMU_DTLB_WAYS={profile['tlb']['dtlb']['ways'] if profile['tlb']['dtlb'] else 4}",
+            f"MMU_UTLB_ENTRIES={profile['tlb']['utlb']['entries'] if profile['tlb']['utlb'] else 32}",
+            f"MMU_UTLB_WAYS={profile['tlb']['utlb']['ways'] if profile['tlb']['utlb'] else 4}",
+            f"MMU_TLB_SUPERPAGE={int(profile['tlb']['superpage'])}",
+            f"MMU_TLB_MISS_QUEUE_MODE={profile['tlb']['miss_queue']['mode']}",
+            f"MMU_ITLB_MISS_QUEUE_ENTRIES={profile['tlb']['miss_queue']['itlb_entries']}",
+            f"MMU_DTLB_MISS_QUEUE_ENTRIES={profile['tlb']['miss_queue']['dtlb_entries']}",
+            f"MMU_UTLB_MISS_QUEUE_ENTRIES={profile['tlb']['miss_queue']['utlb_entries']}",
+            f"MMU_GLOBAL_MISS_QUEUE_ENTRIES={profile['tlb']['miss_queue']['global_entries']}",
+            f"MMU_TLB_REFILL_PORTS={profile['tlb']['refill_ports']}",
+            f"HAS_S={int(profile['enabled']['s'])}",
+            f"HAS_U={int(profile['enabled']['u'])}",
+            f"HAS_S_TIMER_IRQ={int(profile['interrupts']['s_timer'])}",
+            f"HAS_S_EXTERNAL_IRQ={int(profile['interrupts']['s_external'])}",
+            f"TIMER_PATH={profile['interrupts']['timer_path']}",
+            f"PLIC_SOURCES={profile['interrupts']['plic']['sources']}",
+            f"PLIC_PRIORITY_BITS={profile['interrupts']['plic']['priority_bits']}",
+            f"PLIC_MAX_PRIORITY={profile['interrupts']['plic']['max_priority']}",
+            f"PLIC_BASE=0x{profile['interrupts']['plic']['base']:x}",
+            f"CSR_MISSING_MODE={profile['csr']['missing_mode']}",
+            f"CSR_VIEW_MODE={profile['csr']['view_mode']}",
+            f"CSR_FIELD_DEFAULT_READ={profile['csr']['field_default_read']}",
+            f"CSR_FIELD_DEFAULT_WRITE={profile['csr']['field_default_write']}",
+            "CSR_ENABLED=" + ",".join(enabled_csr),
         ]
+        for csr_name, fields in profile["csr"]["fields"].items():
+            for field_name, modes in fields.items():
+                upper = field_name.upper()
+                env_lines.append(f"CSR_{csr_name.upper()}_{upper}_READ={modes['read']}")
+                env_lines.append(f"CSR_{csr_name.upper()}_{upper}_WRITE={modes['write']}")
         args.env.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
 
     for warning in profile["warnings"]:

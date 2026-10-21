@@ -45,6 +45,7 @@ class ysyx_26030103_IDU(
     // DMMU 正在翻译一条访存指令时阻塞 IDU，避免后续消费者带着陈旧寄存器值
     // 越过尚未进入 LSU 的 load/store。
     val mmu_stall = Input(Bool())
+    val Privilege = Input(UInt(2.W))
     val perf_stall_raw = Output(Bool())
     val perf_stall_raw_loaduse = Output(Bool())
     val perf_stall_raw_alu = Output(Bool())
@@ -158,39 +159,18 @@ class ysyx_26030103_IDU(
   // 本核心目前只实现下面明确列出的机器态 CSR 集合，访问集合外的 CSR
   // 将被视为非法指令。
   val CSRAddress = Instruction(31, 20)
+  private val csrAddresses = config.MMU.csrEnabled.toSeq.sorted
   val CSRAddressValid =
-    (CSRAddress === "hB00".U(12.W)) || // 机器周期计数器（mcycle）
-      (CSRAddress === "hB80".U(12.W)) || // 机器周期计数器高位（mcycleh）
-      (CSRAddress === "hF11".U(12.W)) || // 机器厂商编号（mvendorid，只读）
-      (CSRAddress === "hF12".U(12.W)) || // 机器架构编号（marchid，只读）
-      (CSRAddress === "h300".U(12.W)) || // 机器状态寄存器（mstatus）
-      (CSRAddress === "h305".U(12.W)) || // 机器陷阱向量基址（mtvec）
-      (CSRAddress === "h340".U(12.W)) || // 机器暂存器（mscratch）
-      (CSRAddress === "h341".U(12.W)) || // 机器异常程序计数器（mepc）
-      (CSRAddress === "h342".U(12.W)) || // 机器陷阱原因（mcause）
-      (CSRAddress === "h302".U(12.W)) || // 机器异常委托（medeleg）
-      (CSRAddress === "h303".U(12.W)) || // 机器中断委托（mideleg）
-      (CSRAddress === "h304".U(12.W)) || // 机器中断使能（mie）
-      (CSRAddress === "h344".U(12.W)) || // 机器中断挂起（mip）
-      (CSRAddress === "h100".U(12.W)) || // 监管者状态（sstatus）
-      (CSRAddress === "h104".U(12.W)) || // 监管者中断使能（sie）
-      (CSRAddress === "h105".U(12.W)) || // 监管者陷阱向量（stvec）
-      (CSRAddress === "h106".U(12.W)) || // 监管者计数器使能（scounteren）
-      (CSRAddress === "h140".U(12.W)) || // 监管者暂存器（sscratch）
-      (CSRAddress === "h141".U(12.W)) || // 监管者异常 PC（sepc）
-      (CSRAddress === "h142".U(12.W)) || // 监管者陷阱原因（scause）
-      (CSRAddress === "h143".U(12.W)) || // 监管者陷阱值（stval）
-      (CSRAddress === "h144".U(12.W)) || // 监管者中断挂起（sip）
-      (CSRAddress === "h180".U(12.W))   // 监管者地址翻译（satp）
-  // CSRRW[I] 始终执行写入，包括 rd=x0、源为零的情况。CSRRS[I]/CSRRC[I]
-  // 仅在 rs1/zimm 非零时写入；零源形式是纯读取，可合法访问只读 CSR。
-  val CSRWriteIntent = IsCsrrw || ((IsCsrrs || IsCsrrc) && (Rs1 =/= 0.U))
-  // 根据特权级 ISA，地址的 [11:10] 位为 11 表示只读 CSR。这里保留通用规则，
-  // 防止以后新增的只读表项意外变为可写。
+    if (config.MMU.csrMissingMode == "zero") true.B
+    else csrAddresses.map(a => CSRAddress === a.U(12.W)).reduceOption(_ || _).getOrElse(false.B)
+  // 地址位 [9:8] 编码最低可访问特权级：00=U, 01=S, 11=M。
+  val CSRPrivilegeOk = io.Privilege >= CSRAddress(9, 8)
   val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W)
+  // 读只读 CSR 合法；CSRRW/带非零源的 CSRRS/CSRRC 写只读 CSR 非法。
+  val CSRWriteIntent = IsCsrrw || ((IsCsrrs || IsCsrrc) && (Rs1 =/= 0.U))
   val CSRIllegal =
     IsCSRInstruction &&
-      (!CSRAddressValid || (CSRWriteIntent && CSRReadOnly))
+      (!CSRAddressValid || !CSRPrivilegeOk || (CSRWriteIntent && CSRReadOnly))
   // custom-0 不属于通用 ALU decoder 的 opcode 集合；精确匹配的仿真
   // halt 编码在这里显式豁免，custom-0 的其它编码仍然是非法指令。
   val IllegalInsn =

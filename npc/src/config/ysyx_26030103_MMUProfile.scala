@@ -61,12 +61,24 @@ case class ysyx_26030103_MMUProfile(
     utlbMissQueueEntries: Int = 8,
     globalMissQueueEntries: Int = 8,
     refillPorts: Int = 1,
-    csrMstatusReadMask: Int = 0x000c19aa,
+    csrMstatusReadMask: Int = 0x008a19aa,
     csrMstatusReadSet: Int = 0,
-    csrMstatusWriteMask: Int = 0x000c19aa,
+    csrMstatusWriteMask: Int = 0x008a19aa,
     csrSatpReadMask: Int = 0xffffffff,
     csrSatpReadSet: Int = 0,
-    csrSatpWriteMask: Int = 0xffffffff
+    csrSatpWriteMask: Int = 0xffffffff,
+    hasS: Boolean = true,
+    hasU: Boolean = true,
+    hasSTimerIrq: Boolean = true,
+    hasSExternalIrq: Boolean = true,
+    timerPath: String = "clint_mtip",
+    plicSources: Int = 32,
+    plicPriorityBits: Int = 3,
+    plicMaxPriority: Int = 7,
+    plicBase: Long = 0x0c000000L,
+    csrViewMode: String = "bound",
+    csrMissingMode: String = "illegal",
+    csrEnabled: Set[Int] = ysyx_26030103_MMUProfile.DefaultCsrAddresses
 ) {
   private def isPowerOfTwo(value: Int): Boolean =
     value > 0 && (value & (value - 1)) == 0
@@ -86,6 +98,17 @@ case class ysyx_26030103_MMUProfile(
   require(ptwOutstanding >= 1, s"ptwOutstanding=$ptwOutstanding 必须 >= 1")
   require(tlbAsidBits >= 0 && tlbAsidBits <= 9, "tlbAsidBits 必须在 0..9")
   require(refillPorts >= 1, "refillPorts 必须 >= 1")
+  require(!enabled || hasS || hasU, "HAS_MMU 需要至少一个 S/U 特权级")
+  require(plicSources >= 2 && plicSources <= 1024, "PLIC source 数必须在 2..1024")
+  require(plicPriorityBits >= 1 && plicPriorityBits <= 8, "PLIC 优先级位宽非法")
+  require(plicMaxPriority >= 0 && plicMaxPriority < (1 << plicPriorityBits),
+    "PLIC_MAX_PRIORITY 超出优先级位宽")
+  require(plicBase >= 0 && plicBase < (1L << 32), "PLIC_BASE 超出 32 位地址空间")
+  require(Set("clint_mtip", "direct_stip").contains(timerPath), "TIMER_PATH 必须是 clint_mtip/direct_stip")
+  require(Set("bound", "independent").contains(csrViewMode), "CSR_VIEW_MODE 必须是 bound/independent")
+  require(Set("illegal", "zero").contains(csrMissingMode), "CSR_MISSING_MODE 必须是 illegal/zero")
+
+  def csrSupported(addr: Int): Boolean = csrEnabled.contains(addr)
 
   if (tlbEnabled) {
     requirePowerOfTwo("itlbEntries", itlbEntries)
@@ -113,6 +136,15 @@ case class ysyx_26030103_MMUProfile(
 }
 
 object ysyx_26030103_MMUProfile {
+  /** 配置生成器未显式给出 CSR 集合时的标准实现集合。 */
+  val DefaultCsrAddresses: Set[Int] = Set(
+    0x300, 0x301, 0x302, 0x303, 0x304, 0x305, 0x306,
+    0x320, 0x340, 0x341, 0x342, 0x343, 0x344,
+    0x100, 0x104, 0x105, 0x106, 0x140, 0x141, 0x142,
+    0x143, 0x144, 0x180,
+    0xb00, 0xb02, 0xb80, 0xf11, 0xf12
+  )
+
   private def envBool(env: String => Option[String], key: String, fallback: Boolean): Boolean =
     env(key).filter(_.nonEmpty).map(v => v == "y" || v == "1").getOrElse(fallback)
 
@@ -122,8 +154,75 @@ object ysyx_26030103_MMUProfile {
   private def envString(env: String => Option[String], key: String, fallback: String): String =
     env(key).filter(_.nonEmpty).getOrElse(fallback)
 
+  private def envLong(env: String => Option[String], key: String, fallback: Long): Long =
+    env(key).filter(_.nonEmpty).map { value =>
+      val trimmed = value.trim
+      if (trimmed.startsWith("0x") || trimmed.startsWith("0X"))
+        java.lang.Long.parseLong(trimmed.substring(2), 16)
+      else trimmed.toLong
+    }.getOrElse(fallback)
+
+  private def envAddressSet(env: String => Option[String], key: String,
+      fallback: Set[Int]): Set[Int] =
+    env(key).filter(_.nonEmpty).map { value =>
+      value.split(',').iterator.map(_.trim).filter(_.nonEmpty).map { item =>
+        val text = if (item.startsWith("0x") || item.startsWith("0X"))
+          item.substring(2) else item
+        Integer.parseInt(text, if (item.startsWith("0x") || item.startsWith("0X")) 16 else 10)
+      }.toSet
+    }.getOrElse(fallback)
+
+  /** 根据逐字段 read/write 模式生成 CSR 读掩码、读置位和写掩码。 */
+  private def fieldMasks(
+      fields: Seq[(String, BigInt)],
+      env: String => Option[String],
+      prefix: String,
+      defaultRead: String,
+      defaultWrite: String
+  ): (BigInt, BigInt, BigInt) = {
+    var readMask = BigInt(0)
+    var readSet = BigInt(0)
+    var writeMask = BigInt(0)
+    fields.foreach { case (name, bits) =>
+      val upper = name.toUpperCase
+      val readMode = env(s"${prefix}_${upper}_READ").filter(_.nonEmpty).getOrElse(defaultRead)
+      val writeMode = env(s"${prefix}_${upper}_WRITE").filter(_.nonEmpty).getOrElse(defaultWrite)
+      readMode match {
+        case "normal" => readMask |= bits
+        case "zero"   => ()
+        case "one"    => readMask |= bits; readSet |= bits
+        case other    => throw new IllegalArgumentException(s"未知 CSR 读模式: $other")
+      }
+      writeMode match {
+        case "normal" => writeMask |= bits
+        case "ignore" => ()
+        case other    => throw new IllegalArgumentException(s"未知 CSR 写模式: $other")
+      }
+    }
+    (readMask, readSet, writeMask)
+  }
+
+  private val MstatusFields = Seq(
+    "mie" -> BigInt("00000008", 16), "mpie" -> BigInt("00000080", 16),
+    "mpp" -> BigInt("00001800", 16), "sie" -> BigInt("00000002", 16),
+    "spie" -> BigInt("00000020", 16), "spp" -> BigInt("00000100", 16),
+    "mprv" -> BigInt("00020000", 16), "sum" -> BigInt("00040000", 16),
+    "mxr" -> BigInt("00080000", 16), "tvm" -> BigInt("00100000", 16),
+    "tw" -> BigInt("00200000", 16), "tsr" -> BigInt("00400000", 16)
+  )
+  private val SatpFields = Seq(
+    "mode" -> BigInt("80000000", 16), "asid" -> BigInt("7fc00000", 16),
+    "ppn" -> BigInt("003fffff", 16)
+  )
+
   /** 从 Kconfig 生成的环境变量构造；默认标准 Sv32 balanced。 */
-  def fromEnv(env: String => Option[String]): ysyx_26030103_MMUProfile =
+  def fromEnv(env: String => Option[String]): ysyx_26030103_MMUProfile = {
+    val fieldDefaultRead = envString(env, "CSR_FIELD_DEFAULT_READ", "normal")
+    val fieldDefaultWrite = envString(env, "CSR_FIELD_DEFAULT_WRITE", "normal")
+    val (mstatusReadMask, mstatusReadSet, mstatusWriteMask) =
+      fieldMasks(MstatusFields, env, "CSR_MSTATUS", fieldDefaultRead, fieldDefaultWrite)
+    val (satpReadMask, satpReadSet, satpWriteMask) =
+      fieldMasks(SatpFields, env, "CSR_SATP", fieldDefaultRead, fieldDefaultWrite)
     ysyx_26030103_MMUProfile(
       enabled = envBool(env, "MMU_ENABLED", false),
       pageSizeBytes = envInt(env, "MMU_PAGE_SIZE_BYTES", 4096),
@@ -172,11 +271,24 @@ object ysyx_26030103_MMUProfile {
       utlbMissQueueEntries = envInt(env, "MMU_UTLB_MISS_QUEUE_ENTRIES", 8),
       globalMissQueueEntries = envInt(env, "MMU_GLOBAL_MISS_QUEUE_ENTRIES", 8),
       refillPorts = envInt(env, "MMU_TLB_REFILL_PORTS", 1),
-      csrMstatusReadMask = envInt(env, "CSR_MSTATUS_READ_MASK", 0x000c19aa),
-      csrMstatusReadSet = envInt(env, "CSR_MSTATUS_READ_SET", 0),
-      csrMstatusWriteMask = envInt(env, "CSR_MSTATUS_WRITE_MASK", 0x000c19aa),
-      csrSatpReadMask = envInt(env, "CSR_SATP_READ_MASK", 0xffffffff),
-      csrSatpReadSet = envInt(env, "CSR_SATP_READ_SET", 0),
-      csrSatpWriteMask = envInt(env, "CSR_SATP_WRITE_MASK", 0xffffffff)
+      csrMstatusReadMask = envInt(env, "CSR_MSTATUS_READ_MASK", mstatusReadMask.toInt),
+      csrMstatusReadSet = envInt(env, "CSR_MSTATUS_READ_SET", mstatusReadSet.toInt),
+      csrMstatusWriteMask = envInt(env, "CSR_MSTATUS_WRITE_MASK", mstatusWriteMask.toInt),
+      csrSatpReadMask = envInt(env, "CSR_SATP_READ_MASK", satpReadMask.toInt),
+      csrSatpReadSet = envInt(env, "CSR_SATP_READ_SET", satpReadSet.toInt),
+      csrSatpWriteMask = envInt(env, "CSR_SATP_WRITE_MASK", satpWriteMask.toInt),
+      hasS = envBool(env, "HAS_S", true),
+      hasU = envBool(env, "HAS_U", true),
+      hasSTimerIrq = envBool(env, "HAS_S_TIMER_IRQ", true),
+      hasSExternalIrq = envBool(env, "HAS_S_EXTERNAL_IRQ", true),
+      timerPath = envString(env, "TIMER_PATH", "clint_mtip"),
+      plicSources = envInt(env, "PLIC_SOURCES", 32),
+      plicPriorityBits = envInt(env, "PLIC_PRIORITY_BITS", 3),
+      plicMaxPriority = envInt(env, "PLIC_MAX_PRIORITY", 7),
+      plicBase = envLong(env, "PLIC_BASE", 0x0c000000L),
+      csrViewMode = envString(env, "CSR_VIEW_MODE", "bound"),
+      csrMissingMode = envString(env, "CSR_MISSING_MODE", "illegal"),
+      csrEnabled = envAddressSet(env, "CSR_ENABLED", DefaultCsrAddresses)
     )
+  }
 }

@@ -5,9 +5,9 @@ import chisel3.util._
 object ysyx_26030103_mstatus {
   // 已实现的 mstatus 字段：
   //   SIE(1) SPIE(5) MIE(3) MPIE(7) SPP(8) MPP(12:11)
-  //   SUM(18) MXR(19)
+  //   MPRV(17) SUM(18) MXR(19) TVM(20) TW(21) TSR(22)
   // 其余字段读回零。MPP 允许 U/S/M；保留编码 2 收敛到 U。
-  private val FieldMask = BigInt("000c19aa", 16) // MPP|SUM|MXR|SPP|MPIE|SPIE|MIE|SIE
+  private val FieldMask = BigInt("008a19aa", 16)
   private val MppMask = BigInt("00001800", 16)
   private val MachineMpp = BigInt("00001800", 16)
   def resetValue: UInt = MachineMpp.U(32.W)

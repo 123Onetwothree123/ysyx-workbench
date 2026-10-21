@@ -52,6 +52,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.fillVaddr.poke(0.U)
       dut.io.fillAsid.poke(0.U)
       dut.io.fillPte.poke(0.U)
+      dut.io.fillLevel.poke(0.U)
       dut.io.lookup.vaddr.poke(0.U)
       dut.io.lookup.asid.poke(0.U)
       dut.io.lookup.privilege.poke(0.U)
@@ -65,6 +66,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.fillVaddr.poke(0x1234.U)
       dut.io.fillAsid.poke(7.U)
       dut.io.fillPte.poke(LeafPTE.U(32.W))
+      dut.io.fillLevel.poke(0.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
 
@@ -112,6 +114,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.fillVaddr.poke(0.U)
       dut.io.fillAsid.poke(0.U)
       dut.io.fillPte.poke(0.U)
+      dut.io.fillLevel.poke(0.U)
       dut.io.lookup.vaddr.poke(0.U)
       dut.io.lookup.asid.poke(0.U)
       dut.io.lookup.privilege.poke(0.U)
@@ -125,6 +128,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.fillVaddr.poke(0x1234.U)
       dut.io.fillAsid.poke(7.U)
       dut.io.fillPte.poke(LeafPTE.U(32.W))
+      dut.io.fillLevel.poke(0.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
 

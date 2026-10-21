@@ -5,7 +5,9 @@ import _root_.ysyx_26030103.common._
 class ysyx_26030103_AXI5Xbar(
     AddressWidth: Int = 32,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
-      ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
+      ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
+    PLICBaseValue: BigInt = BigInt("0c000000", 16),
+    PLICSizeBytes: BigInt = BigInt("04000000", 16)
 ) extends Module {
   val io = IO(new Bundle {
     // 先做过笔记，因为这个是接裁决器的，裁决器是master，所以这里的对反
@@ -21,8 +23,12 @@ class ysyx_26030103_AXI5Xbar(
   // (0xa0000000)本就不相交，解码按区间独立判定。
   val CLINTBase = "h02000000".U(32.W)
   val CLINTEnd = "h02010000".U(32.W)
-  val PLICBase = "h0c000000".U(32.W)
-  val PLICEnd = "h10000000".U(32.W)
+  require(PLICBaseValue >= 0 && PLICBaseValue < (BigInt(1) << AddressWidth),
+    "PLIC 基地址超出地址宽度")
+  require(PLICSizeBytes > 0 && PLICBaseValue + PLICSizeBytes <= (BigInt(1) << AddressWidth),
+    "PLIC 地址窗口超出地址宽度")
+  val PLICBase = PLICBaseValue.U(AddressWidth.W)
+  val PLICEnd = (PLICBaseValue + PLICSizeBytes).U(AddressWidth.W)
   val TargetSoCBus = 0.U(2.W)
   val TargetCLINT = 1.U(2.W)
   val TargetPLIC = 2.U(2.W)

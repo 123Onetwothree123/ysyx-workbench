@@ -16,7 +16,8 @@ class ysyx_26030103_TLB(
     globalEnable: Boolean = true,
     replacement: String = "rr",
     adMode: String = "fault",
-    storage: String = "reg"
+    storage: String = "reg",
+    superpage: Boolean = false
 ) extends Module {
   require(entries > 0 && ways > 0 && entries % ways == 0, "TLB entries 必须能被 ways 整除")
   require((entries & (entries - 1)) == 0, "TLB entries 必须是 2 的幂")
@@ -64,11 +65,26 @@ class ysyx_26030103_TLB(
     val fillVaddr = Input(UInt(32.W))
     val fillAsid = Input(UInt(asidWidth.W))
     val fillPte = Input(UInt(32.W))
+    val fillLevel = Input(UInt(2.W))
     val flush = Input(Bool())
   })
 
   val entriesVec = RegInit(VecInit(Seq.fill(entries)(0.U.asTypeOf(new Entry))))
   val rr = RegInit(0.U(log2Ceil(ways.max(2)).W))
+  private val superEntries = if (superpage) 4 else 0
+  class SuperEntry extends Bundle {
+    val valid = Bool()
+    val vpn1 = UInt(10.W)
+    val asid = UInt(asidWidth.W)
+    val global = Bool()
+    val ppn = UInt(22.W)
+    val r = Bool(); val w = Bool(); val x = Bool(); val u = Bool()
+    val a = Bool(); val d = Bool()
+  }
+  val superVec = if (superpage)
+    Some(RegInit(VecInit(Seq.fill(superEntries)(0.U.asTypeOf(new SuperEntry)))))
+  else None
+  val superRR = if (superpage) Some(RegInit(0.U(2.W))) else None
   private val sramStorage = storage == "sram"
   val pteMems =
     if (sramStorage) Some((0 until ways).map(_ => SyncReadMem(sets, UInt(32.W))))
@@ -153,13 +169,32 @@ class ysyx_26030103_TLB(
   val hitWay = Mux1H(lookupWays, (0 until ways).map(w => w.U(log2Ceil(ways.max(2)).W)))
   val selected = Mux1H(lookupWays, (0 until ways).map(w => entriesVec(entryIndex(lookupSet, w.U))))
   val selectedPte = Mux1H(lookupWays, sramPtes)
-  val selR = if (sramStorage) selectedPte(1) else selected.r
-  val selW = if (sramStorage) selectedPte(2) else selected.w
-  val selX = if (sramStorage) selectedPte(3) else selected.x
-  val selU = if (sramStorage) selectedPte(4) else selected.u
-  val selA = if (sramStorage) selectedPte(6) else selected.a
-  val selD = if (sramStorage) selectedPte(7) else selected.d
-  val selPpn = if (sramStorage) selectedPte(31, 10) else selected.ppn
+  val superHits = if (superpage) {
+    (0 until superEntries).map { i =>
+      val e = superVec.get(i)
+      val asidMatch = if (asidBits == 0) true.B else e.asid === io.lookup.asid
+      val globalMatch = if (globalEnable) e.global else false.B
+      e.valid && e.vpn1 === io.lookup.vaddr(31, 22) && (globalMatch || asidMatch)
+    }
+  } else Seq.empty
+  val superHit = if (superpage) superHits.reduce(_ || _) else false.B
+  val superSel = if (superpage)
+    Mux1H(superHits, (0 until superEntries).map(i => superVec.get(i)))
+  else 0.U.asTypeOf(new SuperEntry)
+  val selR = Mux(superHit, superSel.r,
+    if (sramStorage) selectedPte(1) else selected.r)
+  val selW = Mux(superHit, superSel.w,
+    if (sramStorage) selectedPte(2) else selected.w)
+  val selX = Mux(superHit, superSel.x,
+    if (sramStorage) selectedPte(3) else selected.x)
+  val selU = Mux(superHit, superSel.u,
+    if (sramStorage) selectedPte(4) else selected.u)
+  val selA = Mux(superHit, superSel.a,
+    if (sramStorage) selectedPte(6) else selected.a)
+  val selD = Mux(superHit, superSel.d,
+    if (sramStorage) selectedPte(7) else selected.d)
+  val selPpn = Mux(superHit, superSel.ppn,
+    if (sramStorage) selectedPte(31, 10) else selected.ppn)
 
   val isFetch = io.lookup.access === ysyx_26030103_AccessType.Fetch
   val isStore = io.lookup.access === ysyx_26030103_AccessType.Store
@@ -182,22 +217,44 @@ class ysyx_26030103_TLB(
     plruUpdate(lookupSet, hitWay)
     lruUpdate(lookupSet, hitWay)
   }
-  io.result.hit := lookupHit
-  io.result.fault := lookupHit && !permissionOk
-  io.result.paddr := Cat(selPpn(19, 0), io.lookup.vaddr(11, 0))
+  val anyHit = lookupHit || superHit
+  io.result.hit := anyHit
+  io.result.fault := anyHit && !permissionOk
+  io.result.paddr := Mux(superHit, Cat(selPpn(9, 0), io.lookup.vaddr(21, 0)),
+    Cat(selPpn(19, 0), io.lookup.vaddr(11, 0)))
   io.result.cause := faultCause
 
   when(io.flush) {
     for (i <- 0 until entries) {
       entriesVec(i).valid := false.B
     }
+    superVec.foreach { v => for (i <- 0 until superEntries) { v(i).valid := false.B } }
     plruOpt.foreach { tree =>
       for (i <- 0 until sets * (ways - 1)) { tree(i) := false.B }
     }
     lruOpt.foreach { ages =>
       for (i <- 0 until entries) { ages(i) := 0.U }
     }
-  }.elsewhen(io.fillValid) {
+  }
+  if (superpage) {
+    when(!io.flush && io.fillValid && io.fillLevel === 1.U) {
+      val hit = (0 until superEntries).map(i => superVec.get(i).valid &&
+        superVec.get(i).vpn1 === io.fillVaddr(31, 22))
+      val victim = Mux(hit.reduce(_ || _), PriorityEncoder(hit), superRR.get)
+      val e = Wire(new SuperEntry)
+      e := 0.U.asTypeOf(new SuperEntry)
+      e.valid := true.B
+      e.vpn1 := io.fillVaddr(31, 22)
+      e.asid := io.fillAsid
+      e.global := (if (globalEnable) io.fillPte(5) else false.B)
+      e.ppn := Cat(io.fillPte(29, 20), 0.U(10.W))
+      e.r := io.fillPte(1); e.w := io.fillPte(2); e.x := io.fillPte(3)
+      e.u := io.fillPte(4); e.a := io.fillPte(6); e.d := io.fillPte(7)
+      superVec.get(victim) := e
+      superRR.get := Mux(superRR.get === (superEntries - 1).U, 0.U, superRR.get + 1.U)
+    }
+  }
+  when(!io.flush && io.fillValid && (!superpage.B || io.fillLevel === 0.U)) {
     val fillVpn = vpnOf(io.fillVaddr)
     val fillSet = setOf(fillVpn)
     val victimWay =

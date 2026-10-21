@@ -46,10 +46,20 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val icache = ysyx_26030103_ICacheFactory.Create(config)
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(
-    new ysyx_26030103_AXI5Xbar(config.AddressWidth, config.PMARegions)
+    new ysyx_26030103_AXI5Xbar(
+      config.AddressWidth,
+      config.PMARegions,
+      BigInt(config.MMU.plicBase),
+      BigInt(0x04000000)
+    )
   )
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
-  val plic = Module(new ysyx_26030103_PLIC())
+  val plic = Module(new ysyx_26030103_PLIC(
+    numSources = config.MMU.plicSources,
+    priorityBits = config.MMU.plicPriorityBits,
+    maxPriority = config.MMU.plicMaxPriority,
+    base = BigInt(config.MMU.plicBase)
+  ))
   // ysyxSoC的ChipLink内存窗口。只有当当前PMA明确覆盖完整
   // 0xc0000000--0xffffffff可读写区域时，才允许CPU slave端口代理
   // 入站DMA请求。其他配置继续用DECERR安全终止，不会意外暴露
@@ -471,7 +481,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   xbar.io.CLINT.B <> clint.io.B
   xbar.io.CLINT.AR <> clint.io.AR
   xbar.io.CLINT.R <> clint.io.R
-  plic.sources := Cat(0.U(30.W), clint.io.timer_irq, io.interrupt)
+  plic.sources := Cat(0.U((config.MMU.plicSources - 2).W),
+    clint.io.timer_irq, io.interrupt)
   xbar.io.PLIC.AW <> plic.io.AW
   xbar.io.PLIC.W <> plic.io.W
   xbar.io.PLIC.B <> plic.io.B
@@ -488,6 +499,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   idu.io.wb_rd := wbu.io.in.bits.Rd
   idu.io.wb_regWrite := wbu.io.in.bits.RegisterWrite
   idu.io.pipeline_mode := true.B
+  idu.io.Privilege := exu.io.CSRPrivilege
   idu.io.mmu_stall := dmmuOpt.map(_.io.busy).getOrElse(false.B)
   // 手动连线了
   idu.io.ReadDATA1 := gpr.io.ReadDATA1

@@ -82,13 +82,44 @@ class ysyx_26030103_CSR(
   val Marchid_rdata = "h018d3017".U(32.W)
   val SstatusMask = "h000c0122".U(32.W) // SIE SPIE SPP SUM MXR
   def IsCSRAddress(addr: UInt): Bool = io.CSRAddress === addr
+  private val enabledCsrAddresses = profile.csrEnabled.toSeq.sorted
+  val CsrImplemented =
+    enabledCsrAddresses.map(a => io.CSRAddress === a.U(12.W))
+      .reduceOption(_ || _).getOrElse(false.B)
+  val CsrUseSstatusView = profile.csrViewMode == "bound"
+  def CsrReadMask: UInt = {
+    val full = 0xffffffffL.U(32.W)
+    val mstatusMask =
+      if (profile.csrSupported(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
+        (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(32.W), full) else full
+    if (profile.csrSupported(0x180)) Mux(io.CSRAddress === CSR_SATP,
+      (profile.csrSatpReadMask.toLong & 0xffffffffL).U(32.W), mstatusMask) else mstatusMask
+  }
+  def CsrReadSet: UInt = {
+    val mstatusSet =
+      if (profile.csrSupported(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
+        (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(32.W), 0.U(32.W)) else 0.U(32.W)
+    if (profile.csrSupported(0x180)) Mux(io.CSRAddress === CSR_SATP,
+      (profile.csrSatpReadSet.toLong & 0xffffffffL).U(32.W), mstatusSet) else mstatusSet
+  }
+  def CsrWriteMask: UInt = {
+    val full = 0xffffffffL.U(32.W)
+    val mstatusMask =
+      if (profile.csrSupported(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
+        (profile.csrMstatusWriteMask.toLong & 0xffffffffL).U(32.W), full) else full
+    if (profile.csrSupported(0x180)) Mux(io.CSRAddress === CSR_SATP,
+      (profile.csrSatpWriteMask.toLong & 0xffffffffL).U(32.W), mstatusMask) else mstatusMask
+  }
 
   val csrrwWen = io.Enable && io.IsCsrrw
   val csrrsWen = io.Enable && io.IsCsrrs && io.rs1 =/= 0.U
   val csrrcWen = io.Enable && io.IsCsrrc && io.rs1 =/= 0.U
-  def CSRWriteData(old: UInt): UInt =
-    Mux(io.IsCsrrw, io.Rs1Data,
+  def CSRWriteData(old: UInt): UInt = {
+    val raw = Mux(io.IsCsrrw, io.Rs1Data,
       Mux(io.IsCsrrs, old | io.Rs1Data, old & ~io.Rs1Data))
+    val mask = CsrWriteMask
+    (old & ~mask) | (raw & mask)
+  }
 
   val MretCommit = io.Enable && io.IsMret
   val SretCommit = io.Enable && io.IsSret
@@ -124,13 +155,13 @@ class ysyx_26030103_CSR(
   val Stval = RegInit(0.U(32.W))
   val SatpReg = RegInit(0.U(32.W))
   val SatpReadData =
-    (SatpReg & (profile.csrSatpReadMask & 0xffffffffL).U(32.W)) | profile.csrSatpReadSet.U(32.W)
+    (SatpReg & (profile.csrSatpReadMask & 0xffffffffL).U(32.W)) | (profile.csrSatpReadSet.toLong & 0xffffffffL).U(32.W)
   val Privilege = RegInit(3.U(2.W))
 
   val Mstatus_rdata = Mstatus.io.rdata
   val MstatusReadData =
-    (Mstatus_rdata & profile.csrMstatusReadMask.U(32.W)) |
-      profile.csrMstatusReadSet.U(32.W)
+    (Mstatus_rdata & (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(32.W)) |
+      (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(32.W)
   val Sstatus_rdata = MstatusReadData & SstatusMask
   val Mtvec_rdata = Mtvec.io.rdata
   val Mepc_rdata = Mepc.io.rdata
@@ -141,18 +172,51 @@ class ysyx_26030103_CSR(
   val Mcycle_rdata = Mcycle.io.rdata
 
   val IrqLatch = RegInit(false.B)
-  when(io.Interrupt) { IrqLatch := true.B }
-  val HasInterrupt = (io.Interrupt || IrqLatch || io.TimerInterrupt) && Mstatus_rdata(3)
+  when(io.Interrupt || io.TimerInterrupt) { IrqLatch := true.B }
+  val SInterruptMask = "h00000222".U(32.W) // SSIP/STIP/SEIP
+  val TimerView = if (profile.timerPath == "direct_stip")
+    Mux(io.TimerInterrupt, "h00000020".U(32.W), 0.U(32.W))
+  else
+    Mux(io.TimerInterrupt, "h00000080".U(32.W), 0.U(32.W))
+  val ExternalSView = if (profile.hasSExternalIrq)
+    Mux(io.Interrupt, "h00000200".U(32.W), 0.U(32.W))
+  else 0.U(32.W)
+  val ExternalMView = if (!profile.hasSExternalIrq)
+    Mux(io.Interrupt, "h00000800".U(32.W), 0.U(32.W))
+  else 0.U(32.W)
+  val MipState = Mip | TimerView | ExternalSView | ExternalMView
+  val SieState = if (profile.csrViewMode == "independent") Sie else Mie & SInterruptMask
+  val SipState = if (profile.csrViewMode == "independent") Sip else MipState & SInterruptMask
+  val MIntPending = MipState & Mie & ~Mideleg
+  val SIntPending = SipState & SieState & Mideleg
+  val MIntTaken = MIntPending.orR && Mstatus_rdata(3)
+  val SIntTaken = SIntPending.orR && Mstatus_rdata(1) && Privilege =/= 3.U
+  val HasInterrupt = MIntTaken || SIntTaken
   io.IrqPending := HasInterrupt
   // CSR 写只在真正接受中断时被压掉；原始中断线为高但 MIE=0 时软件仍可写 CSR。
-  val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !HasInterrupt
+  val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !HasInterrupt && CsrImplemented
   val IsException = io.IsEcall || io.IsEbreak || HasInterrupt || io.TrapValid
+
+  def pendingCause(pending: UInt, sMode: Boolean): UInt = {
+    val base = BigInt(0x80000000L)
+    if (sMode) {
+      Mux(pending(9), (base | 9).U(32.W),
+        Mux(pending(5), (base | 5).U(32.W), (base | 1).U(32.W)))
+    } else {
+      Mux(pending(11), (base | 11).U(32.W),
+        Mux(pending(7), (base | 7).U(32.W), (base | 3).U(32.W)))
+    }
+  }
+  val MIrqCause = pendingCause(MIntPending, sMode = false)
+  val SIrqCause = pendingCause(SIntPending, sMode = true)
+  val IrqCause = Mux(SIntTaken, SIrqCause, MIrqCause)
+  val IrqTargetS = SIntTaken
 
   val ExceptionCause = WireDefault(0.U(32.W))
   when(io.MemTrap) {
     ExceptionCause := io.TrapCause
   }.elsewhen(HasInterrupt) {
-    ExceptionCause := Mux(io.TimerInterrupt, "h80000007".U(32.W), "h8000000b".U(32.W))
+    ExceptionCause := IrqCause
   }.elsewhen(io.TrapValid) {
     ExceptionCause := io.TrapCause
   }.elsewhen(io.IsEbreak) {
@@ -199,7 +263,7 @@ class ysyx_26030103_CSR(
   )
 
   val MstatusWen = CSRWen && (IsCSRAddress(CSR_MSTATUS) || IsCSRAddress(CSR_SSTATUS))
-  val MstatusWriteMask = profile.csrMstatusWriteMask.U(32.W)
+  val MstatusWriteMask = (profile.csrMstatusWriteMask.toLong & 0xffffffffL).U(32.W)
   val MstatusCSRData = {
     val rawWrite = CSRWriteData(Mstatus_rdata)
     val masked = (Mstatus_rdata & ~MstatusWriteMask) |
@@ -255,8 +319,17 @@ class ysyx_26030103_CSR(
   when(CSRWen && IsCSRAddress(CSR_MIDELEG)) { Mideleg := CSRWriteData(Mideleg) }
   when(CSRWen && IsCSRAddress(CSR_MIE)) { Mie := CSRWriteData(Mie) }
   when(CSRWen && IsCSRAddress(CSR_MIP)) { Mip := CSRWriteData(Mip) }
-  when(CSRWen && IsCSRAddress(CSR_SIE)) { Sie := CSRWriteData(Sie) }
-  when(CSRWen && IsCSRAddress(CSR_SIP)) { Sip := CSRWriteData(Sip) }
+  if (profile.csrViewMode == "independent") {
+    when(CSRWen && IsCSRAddress(CSR_SIE)) { Sie := CSRWriteData(Sie) }
+    when(CSRWen && IsCSRAddress(CSR_SIP)) { Sip := CSRWriteData(Sip) }
+  } else {
+    when(CSRWen && IsCSRAddress(CSR_SIE)) {
+      Mie := (Mie & ~SInterruptMask) | (CSRWriteData(Mie) & SInterruptMask)
+    }
+    when(CSRWen && IsCSRAddress(CSR_SIP)) {
+      Mip := (Mip & ~SInterruptMask) | (CSRWriteData(Mip) & SInterruptMask)
+    }
+  }
   when(CSRWen && IsCSRAddress(CSR_SCOUNTEREN)) { Scounteren := CSRWriteData(Scounteren) }
   val SatpWen = CSRWen && IsCSRAddress(CSR_SATP)
   when(SatpWen) {
@@ -298,8 +371,8 @@ class ysyx_26030103_CSR(
     CSR_MIDELEG -> Mideleg,
     CSR_MIE -> Mie,
     CSR_MIP -> Mip,
-    CSR_SIE -> Sie,
-    CSR_SIP -> Sip,
+    CSR_SIE -> (if (profile.csrViewMode == "independent") Sie else Mie & SInterruptMask),
+    CSR_SIP -> (if (profile.csrViewMode == "independent") Sip else MipState & SInterruptMask),
     CSR_SCOUNTEREN -> Scounteren,
     CSR_STVAL -> Stval,
     CSR_SATP -> SatpReadData,
@@ -308,7 +381,9 @@ class ysyx_26030103_CSR(
     CSR_MVENDORID -> Mvendorid_rdata,
     CSR_MARCHID -> Marchid_rdata
   )
-  io.CSR_rdata := MuxLookup(io.CSRAddress, 0.U(32.W))(CSRMap)
+  val CsrRawRdata = MuxLookup(io.CSRAddress, 0.U(32.W))(CSRMap)
+  io.CSR_rdata := Mux(CsrImplemented,
+    (CsrRawRdata & CsrReadMask) | CsrReadSet, 0.U(32.W))
 
   val MtvecBase = Cat(Mtvec_rdata(31, 2), 0.U(2.W))
   val StvecBase = Cat(Stvec_rdata(31, 2), 0.U(2.W))

@@ -4,7 +4,11 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_EXUMessage
 
-/** 一个 MMU 请求端口的二选一仲裁器：IFU/IMMU 与 LSU/DMMU 串行共享。 */
+/** IFU/LSU 双端口 MMU 仲裁器。
+  *
+  * 每个客户端最多保留一笔在途翻译；两笔可以同时进入 MMU 的独立上下文，
+  * 响应按请求 ID 回到对应客户端，不再要求 IFU 的翻译先完成。
+  */
 class ysyx_26030103_MMURequestArbiter extends Module {
   val io = IO(new Bundle {
     val iReq = Flipped(Decoupled(new ysyx_26030103_MMURequest))
@@ -14,10 +18,9 @@ class ysyx_26030103_MMURequestArbiter extends Module {
     val mmuReq = Decoupled(new ysyx_26030103_MMURequest)
     val mmuResp = Flipped(Decoupled(new ysyx_26030103_MMUResponse))
   })
-  val idle :: iWait :: dWait :: iResp :: dResp :: Nil = Enum(5)
-  val state = RegInit(idle)
-  val last = RegInit(false.B) // false=IFU 优先
 
+  val iOutstanding = RegInit(false.B)
+  val dOutstanding = RegInit(false.B)
   io.iReq.ready := false.B
   io.dReq.ready := false.B
   io.mmuReq.valid := false.B
@@ -28,39 +31,34 @@ class ysyx_26030103_MMURequestArbiter extends Module {
   io.dResp.bits := 0.U.asTypeOf(new ysyx_26030103_MMUResponse)
   io.mmuResp.ready := false.B
 
-  when(state === idle) {
-    val chooseD = !last && io.dReq.valid && !io.iReq.valid ||
-      last && io.dReq.valid
-    val chooseI = !chooseD && io.iReq.valid
-    when(chooseD) {
-      io.dReq.ready := io.mmuReq.ready
-      io.mmuReq.valid := io.dReq.valid
-      io.mmuReq.bits := io.dReq.bits
-      when(io.dReq.fire) { state := dWait; last := false.B }
-    }.elsewhen(chooseI) {
-      io.iReq.ready := io.mmuReq.ready
-      io.mmuReq.valid := io.iReq.valid
-      io.mmuReq.bits := io.iReq.bits
-      when(io.iReq.fire) { state := iWait; last := true.B }
+  // 选择一笔尚未在途的客户端请求送入 MMU。
+  val chooseD = !dOutstanding && io.dReq.valid && (iOutstanding || !io.iReq.valid)
+  val chooseI = !iOutstanding && io.iReq.valid && !chooseD
+  when(chooseD) {
+    io.dReq.ready := io.mmuReq.ready
+    io.mmuReq.valid := io.dReq.valid
+    io.mmuReq.bits := io.dReq.bits
+    when(io.dReq.fire) { dOutstanding := true.B }
+  }.elsewhen(chooseI) {
+    io.iReq.ready := io.mmuReq.ready
+    io.mmuReq.valid := io.iReq.valid
+    io.mmuReq.bits := io.iReq.bits
+    when(io.iReq.fire) { iOutstanding := true.B }
+  }
+
+  // MMU 响应携带客户端 ID：0=IFU，1=LSU。
+  when(io.mmuResp.valid) {
+    when(io.mmuResp.bits.id === 0.U) {
+      io.iResp.valid := true.B
+      io.iResp.bits := io.mmuResp.bits
+      io.mmuResp.ready := io.iResp.ready
+      when(io.iResp.fire) { iOutstanding := false.B }
+    }.otherwise {
+      io.dResp.valid := true.B
+      io.dResp.bits := io.mmuResp.bits
+      io.mmuResp.ready := io.dResp.ready
+      when(io.dResp.fire) { dOutstanding := false.B }
     }
-  }
-  when(state === iWait && io.mmuResp.valid) {
-    state := iResp
-  }
-  when(state === dWait && io.mmuResp.valid) {
-    state := dResp
-  }
-  when(state === iResp) {
-    io.iResp.valid := io.mmuResp.valid
-    io.iResp.bits := io.mmuResp.bits
-    io.mmuResp.ready := io.iResp.ready
-    when(io.iResp.fire) { state := idle }
-  }
-  when(state === dResp) {
-    io.dResp.valid := io.mmuResp.valid
-    io.dResp.bits := io.mmuResp.bits
-    io.mmuResp.ready := io.dResp.ready
-    when(io.dResp.fire) { state := idle }
   }
 }
 
@@ -114,7 +112,7 @@ class ysyx_26030103_IFUMMU extends Module {
       is(idle) {
         when(io.fetchValid && !bypass) {
           io.req.valid := true.B
-          io.req.bits.id := 0.U
+          io.req.bits.id := 0.U // IFU
           io.req.bits.vaddr := io.fetchVaddr
           io.req.bits.access := ysyx_26030103_AccessType.Fetch
           io.req.bits.privilege := io.privilege
@@ -221,7 +219,7 @@ class ysyx_26030103_LSUMMU extends Module {
   }
   when(state === xreq) {
     io.req.valid := true.B
-    io.req.bits.id := 0.U
+    io.req.bits.id := 1.U // LSU
     io.req.bits.vaddr := msgReg.ALUResult
     io.req.bits.access := Mux(msgReg.MemoryWrite,
       ysyx_26030103_AccessType.Store, ysyx_26030103_AccessType.Load)

@@ -4,11 +4,11 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
-/** Sv32 MMU：支持的 TLB 组织为 split（ITLB/DTLB）或 unified。
+/** Sv32 MMU：请求队列 + 多上下文 PTW 调度。
   *
-  * 当前簇只有一个请求端口；顶层用仲裁器把 IFU/LSU 请求串行化。这样
-  * split 模式下 I/D TLB 仍然独立，PTW 只有一个物理页表总线。后续若需要
-  * I/D 并行 walk，可在此基础上复制 PTW 和控制状态。
+  * 每个在途请求拥有独立上下文；TLB 命中可直接完成，TLB 缺失则把上下文
+  * 交给 PTWCluster。PTWCluster 的多个 walker 可以同时工作，响应按请求
+  * 序号而不是完成顺序返回，保持架构顺序。
   */
 class ysyx_26030103_MMU(
     profile: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
@@ -19,9 +19,11 @@ class ysyx_26030103_MMU(
     "当前 MMU 只实现标准 Sv32 4KiB/2 级/4B PTE/4KiB 页表"
   )
   require(!profile.tlbSuperpage || profile.superpage, "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
-  require(profile.ptwArch == "independent", "流水化 PTW 尚未实现")
-  require(profile.refillPorts == 1, "当前仅支持单 TLB refill 端口")
-  require(profile.tlbMissQueueMode == "follow_tlb", "当前仅支持 follow_tlb 缺失队列")
+  require(profile.ptwOutstanding >= 1 && profile.ptwOutstanding <= 16,
+    "MMU_PTW_OUTSTANDING 必须在 1..16")
+  require(profile.refillPorts >= 1, "TLB refill 端口数必须 >= 1")
+  require(Set("follow_tlb", "global").contains(profile.tlbMissQueueMode),
+    "TLB miss queue 模式必须是 follow_tlb/global")
 
   val io = IO(new Bundle {
     val req = Flipped(Decoupled(new ysyx_26030103_MMURequest))
@@ -30,36 +32,45 @@ class ysyx_26030103_MMU(
     val flush = Input(Bool())
   })
 
-  val idle :: lookup :: walk :: respond :: Nil = Enum(4)
-  val state = RegInit(idle)
-  val reqReg = RegInit(0.U.asTypeOf(new ysyx_26030103_MMURequest))
-  val respReg = RegInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
+  private val contexts = profile.ptwOutstanding.max(1)
+  private val ctxBits = log2Ceil(contexts.max(2))
+  private val tableSize = 1 << log2Ceil((contexts * 2).max(2))
+  private val tableBits = log2Ceil(tableSize)
+  private val seqBits = 16
 
-  val enabled = if (profile.enabled) true.B else false.B
-  // 请求队列：顶层可以连续送入多个已翻译请求；当前响应仍按序返回。
+  val ctxFree :: ctxLookup :: ctxWalk :: Nil = Enum(3)
+  class Context extends Bundle {
+    val req = new ysyx_26030103_MMURequest
+    val seq = UInt(seqBits.W)
+  }
+  val ctx = RegInit(VecInit(Seq.fill(contexts)(0.U.asTypeOf(new Context))))
+  val ctxValid = RegInit(VecInit(Seq.fill(contexts)(false.B)))
+  val ctxState = RegInit(VecInit(Seq.fill(contexts)(ctxFree)))
+  val ctxSeq = RegInit(VecInit(Seq.fill(contexts)(0.U(seqBits.W))))
+
+  val nextSeq = RegInit(0.U(seqBits.W))
+  val headSeq = RegInit(0.U(seqBits.W))
+  val respValid = RegInit(VecInit(Seq.fill(tableSize)(false.B)))
+  val respData = RegInit(VecInit(Seq.fill(tableSize)(0.U.asTypeOf(new ysyx_26030103_MMUResponse))))
+
+  // 请求队列深度真正使用配置；follow_tlb 取各 TLB 队列最大值，global 使用共享深度。
+  private val queueDepth = {
+    val configured = if (profile.tlbMissQueueMode == "global")
+      profile.globalMissQueueEntries
+    else Seq(profile.itlbMissQueueEntries, profile.dtlbMissQueueEntries,
+      profile.utlbMissQueueEntries).max
+    configured.max(contexts).max(1)
+  }
   val reqQueue = Module(new Queue(
     new ysyx_26030103_MMURequest,
-    profile.ptwOutstanding.max(1),
+    queueDepth,
     pipe = false,
     flow = false
   ))
   reqQueue.io.enq <> io.req
   io.req.ready := reqQueue.io.enq.ready
-  reqQueue.io.deq.ready := false.B
-  // 响应队列允许前一笔响应等待软件接收时继续处理下一笔请求。
-  val respQueue = Module(new Queue(
-    new ysyx_26030103_MMUResponse,
-    profile.ptwOutstanding.max(1),
-    pipe = false,
-    flow = false
-  ))
-  respQueue.io.enq.valid := state === respond
-  respQueue.io.enq.bits := respReg
-  io.resp.valid := respQueue.io.deq.valid
-  io.resp.bits := respQueue.io.deq.bits
-  respQueue.io.deq.ready := io.resp.ready
+
   val split = profile.tlbOrganization == "split"
-  val selFetch = reqReg.access === ysyx_26030103_AccessType.Fetch
 
   def makeTlb(entries: Int, ways: Int) = Module(new ysyx_26030103_TLB(
     entries = entries,
@@ -67,7 +78,9 @@ class ysyx_26030103_MMU(
     asidBits = profile.tlbAsidBits,
     globalEnable = profile.tlbGlobal,
     replacement = profile.tlbReplacement,
-    adMode = profile.adMode
+    adMode = profile.adMode,
+    storage = profile.tlbStorage,
+    superpage = profile.tlbSuperpage
   ))
 
   val itlbOpt =
@@ -80,33 +93,41 @@ class ysyx_26030103_MMU(
     if (profile.tlbEnabled && !split) Some(makeTlb(profile.utlbEntries, profile.utlbWays))
     else None
 
-  val ptwOpt =
-    if (profile.enabled) Some(Module(new ysyx_26030103_PTWCluster(
-      outstanding = profile.ptwOutstanding,
-      adMode = profile.adMode,
-      cacheEnable = profile.ptwCache,
-      cacheEntries = profile.ptwCacheEntries,
-      cacheWays = profile.ptwCacheWays,
-      superpage = profile.superpage,
-      pteConfig = profile.pteConfig,
-      inOrder = profile.ptwOrder == "in_order"
-    )))
-    else None
+  val ptw = Module(new ysyx_26030103_PTWCluster(
+    outstanding = contexts,
+    adMode = profile.adMode,
+    cacheEnable = profile.ptwCache,
+    cacheEntries = profile.ptwCacheEntries,
+    cacheWays = profile.ptwCacheWays,
+    superpage = profile.superpage,
+    pteConfig = profile.pteConfig,
+    inOrder = profile.ptwOrder == "in_order"
+  ))
 
-
+  val lookupValid = WireDefault(false.B)
+  val lookupIndex = Wire(UInt(ctxBits.W))
+  lookupIndex := 0.U
+  val lookupCandidates = VecInit((0 until contexts).map { i =>
+    ctxValid(i) && ctxState(i) === ctxLookup
+  })
+  lookupValid := lookupCandidates.reduce(_ || _)
+  lookupIndex := PriorityEncoder(lookupCandidates)
+  val lookupReq = WireInit(0.U.asTypeOf(new ysyx_26030103_MMURequest))
+  when(lookupValid) { lookupReq := ctx(lookupIndex).req }
 
   def connectTlb(tlb: ysyx_26030103_TLB): Unit = {
-    tlb.io.lookup.vaddr := reqReg.vaddr
-    tlb.io.lookup.asid := reqReg.satp(30, 22)
-    tlb.io.lookup.privilege := reqReg.privilege
-    tlb.io.lookup.access := reqReg.access
-    tlb.io.lookup.sum := reqReg.sum
-    tlb.io.lookup.mxr := reqReg.mxr
+    tlb.io.lookup.vaddr := lookupReq.vaddr
+    tlb.io.lookup.asid := lookupReq.satp(30, 22)
+    tlb.io.lookup.privilege := lookupReq.privilege
+    tlb.io.lookup.access := lookupReq.access
+    tlb.io.lookup.sum := lookupReq.sum
+    tlb.io.lookup.mxr := lookupReq.mxr
     tlb.io.flush := io.flush
     tlb.io.fillValid := false.B
     tlb.io.fillVaddr := 0.U
     tlb.io.fillAsid := 0.U
     tlb.io.fillPte := 0.U
+    tlb.io.fillLevel := 0.U
   }
   itlbOpt.foreach(connectTlb)
   dtlbOpt.foreach(connectTlb)
@@ -117,6 +138,7 @@ class ysyx_26030103_MMU(
   def optUInt(opt: Option[ysyx_26030103_TLB], f: ysyx_26030103_TLB => UInt): UInt =
     opt.map(f).getOrElse(0.U)
 
+  val selFetch = lookupReq.access === ysyx_26030103_AccessType.Fetch
   val tlbResultValid =
     if (!profile.tlbEnabled) true.B
     else if (split) Mux(selFetch, optBool(itlbOpt, _.io.result.resultValid),
@@ -139,92 +161,135 @@ class ysyx_26030103_MMU(
       optUInt(dtlbOpt, _.io.result.cause))
     else optUInt(utlbOpt, _.io.result.cause)
 
-  ptwOpt match {
-    case Some(ptw) =>
-      ptw.io.req.valid := false.B
-      ptw.io.req.bits := 0.U.asTypeOf(new ysyx_26030103_PTWRequest)
-      ptw.io.resp.ready := state === walk
-      ptw.io.flush := io.flush
+  // 响应顺序：每个请求分配一个序号，完成结果写入按序号索引的表，
+  // 只有队首完成时才向软件返回，后面的尽早完成也不会越过前面。
+  val headIdx = headSeq(tableBits - 1, 0)
+  io.resp.valid := respValid(headIdx)
+  io.resp.bits := respData(headIdx)
 
-      io.bus.req.valid := ptw.io.bus.req.valid
-      io.bus.req.bits := ptw.io.bus.req.bits
-      ptw.io.bus.req.ready := io.bus.req.ready
-      ptw.io.bus.resp.valid := io.bus.resp.valid
-      ptw.io.bus.resp.bits := io.bus.resp.bits
-      io.bus.resp.ready := ptw.io.bus.resp.ready
+  val bypass = !profile.enabled.B || lookupReq.satp(31) === 0.U ||
+    lookupReq.privilege === 3.U
 
-      val fillValid = ptw.io.resp.valid && ptw.io.resp.bits.fillValid
-      def connectFill(tlb: ysyx_26030103_TLB, valid: Bool): Unit = {
-        tlb.io.fillValid := valid
-        tlb.io.fillVaddr := ptw.io.resp.bits.fillVaddr
-        tlb.io.fillAsid := ptw.io.resp.bits.fillAsid
-        tlb.io.fillPte := ptw.io.resp.bits.fillPte
-      }
-      if (split) {
-        itlbOpt.foreach(connectFill(_, fillValid && selFetch))
-        dtlbOpt.foreach(connectFill(_, fillValid && !selFetch))
-      } else {
-        utlbOpt.foreach(connectFill(_, fillValid))
-      }
-    case None =>
-      io.bus.req.valid := false.B
-      io.bus.req.bits := 0.U.asTypeOf(new ysyx_26030103_PTEBusRequest)
-      io.bus.resp.ready := false.B
+  val ptwDone = ptw.io.resp.valid
+  val ptwCtxIdx = ptw.io.resp.bits.id(ctxBits - 1, 0)
+  val ptwCtxValid = ptwDone && ctxValid(ptwCtxIdx) &&
+    ctxState(ptwCtxIdx) === ctxWalk
+  val ptwResp = ptw.io.resp.bits
+
+  // PTW 响应优先完成；TLB 命中完成被推迟一拍，保证每拍只写一个响应表项。
+  val tlbDone = !ptwDone && lookupValid && tlbResultValid && !bypass &&
+    profile.tlbEnabled.B && tlbHit
+  val bypassDone = !ptwDone && lookupValid && bypass
+
+  def writeResponse(valid: Bool, index: UInt, seq: UInt,
+      response: ysyx_26030103_MMUResponse): Unit = {
+    when(valid) {
+      respValid(seq(tableBits - 1, 0)) := true.B
+      respData(seq(tableBits - 1, 0)) := response
+      ctxValid(index) := false.B
+      ctxState(index) := ctxFree
+    }
   }
 
-  when(state === idle && reqQueue.io.deq.valid) {
-    reqQueue.io.deq.ready := true.B
-    reqReg := reqQueue.io.deq.bits
-    when(!enabled || reqQueue.io.deq.bits.satp(31) === 0.U ||
-         reqQueue.io.deq.bits.privilege === 3.U) {
-      respReg.id := reqQueue.io.deq.bits.id
-      respReg.paddr := reqQueue.io.deq.bits.vaddr
-      respReg.fault := false.B
-      respReg.cause := 0.U
-      respReg.tval := reqQueue.io.deq.bits.vaddr
-      state := respond
+  val ptwResponse = WireInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
+  ptwResponse.id := ctx(ptwCtxIdx).req.id
+  ptwResponse.paddr := ptwResp.paddr
+  ptwResponse.fault := ptwResp.fault
+  ptwResponse.cause := ptwResp.cause
+  ptwResponse.tval := ptwResp.tval
+
+  val hitResponse = WireInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
+  hitResponse.id := lookupReq.id
+  hitResponse.paddr := tlbPaddr
+  hitResponse.fault := tlbFault
+  hitResponse.cause := tlbCause
+  hitResponse.tval := lookupReq.vaddr
+
+  val bypassResponse = WireInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
+  bypassResponse.id := lookupReq.id
+  bypassResponse.paddr := lookupReq.vaddr
+  bypassResponse.fault := false.B
+  bypassResponse.cause := 0.U
+  bypassResponse.tval := lookupReq.vaddr
+
+  when(ptwCtxValid) {
+    writeResponse(true.B, ptwCtxIdx, ctxSeq(ptwCtxIdx), ptwResponse)
+  }.elsewhen(tlbDone) {
+    writeResponse(true.B, lookupIndex, ctxSeq(lookupIndex), hitResponse)
+  }.elsewhen(bypassDone) {
+    writeResponse(true.B, lookupIndex, ctxSeq(lookupIndex), bypassResponse)
+  }
+
+  // TLB 命中直接返回；缺失则把上下文交给 PTWCluster。
+  ptw.io.req.valid := false.B
+  ptw.io.req.bits := 0.U.asTypeOf(new ysyx_26030103_PTWRequest)
+  ptw.io.resp.ready := ptwDone
+  ptw.io.flush := io.flush
+  when(lookupValid && ctxState(lookupIndex) === ctxLookup && !bypass &&
+       !tlbDone && !ptwDone) {
+    when(tlbResultValid && tlbHit) {
+      // 命中完成在上面的写响应逻辑中处理。
     }.otherwise {
-      state := lookup
+      ptw.io.req.valid := true.B
+      ptw.io.req.bits.id := lookupIndex
+      ptw.io.req.bits.vaddr := lookupReq.vaddr
+      ptw.io.req.bits.satp := lookupReq.satp
+      ptw.io.req.bits.privilege := lookupReq.privilege
+      ptw.io.req.bits.access := lookupReq.access
+      ptw.io.req.bits.sum := lookupReq.sum
+      ptw.io.req.bits.mxr := lookupReq.mxr
+      when(ptw.io.req.fire) {
+        ctxState(lookupIndex) := ctxWalk
+      }
     }
   }
 
-  switch(state) {
-    is(lookup) {
-      when(tlbResultValid && tlbHit) {
-        respReg.id := reqReg.id
-        respReg.paddr := tlbPaddr
-        respReg.fault := tlbFault
-        respReg.cause := tlbCause
-        respReg.tval := reqReg.vaddr
-        state := respond
-      }.otherwise {
-        ptwOpt.foreach { ptw =>
-          ptw.io.req.valid := true.B
-          ptw.io.req.bits.id := reqReg.id
-          ptw.io.req.bits.vaddr := reqReg.vaddr
-          ptw.io.req.bits.satp := reqReg.satp
-          ptw.io.req.bits.privilege := reqReg.privilege
-          ptw.io.req.bits.access := reqReg.access
-          ptw.io.req.bits.sum := reqReg.sum
-          ptw.io.req.bits.mxr := reqReg.mxr
-          when(ptw.io.req.fire) { state := walk }
-        }
-      }
-    }
-    is(walk) {
-      ptwOpt.foreach { ptw =>
-        when(ptw.io.resp.valid) {
-          respReg.id := reqReg.id
-          respReg.paddr := ptw.io.resp.bits.paddr
-          respReg.fault := ptw.io.resp.bits.fault
-          respReg.cause := ptw.io.resp.bits.cause
-          respReg.tval := ptw.io.resp.bits.tval
-          state := respond
-        }
-      }
-    }
-    is(respond) {
-      when(respQueue.io.enq.ready) { state := idle }
-    }
+  // PTW 回填 TLB。多个上下文可以并行 walk，但页表总线仍由 PTWCluster 仲裁。
+  val fill = ptwCtxValid && ptwResp.fillValid
+  val fillFetch = ctx(ptwCtxIdx).req.access === ysyx_26030103_AccessType.Fetch
+  def connectFill(tlb: ysyx_26030103_TLB, valid: Bool): Unit = {
+    tlb.io.fillValid := valid
+    tlb.io.fillVaddr := ptwResp.fillVaddr
+    tlb.io.fillAsid := ptwResp.fillAsid
+    tlb.io.fillPte := ptwResp.fillPte
+    tlb.io.fillLevel := ptwResp.fillLevel
   }
+  if (split) {
+    itlbOpt.foreach(connectFill(_, fill && fillFetch))
+    dtlbOpt.foreach(connectFill(_, fill && !fillFetch))
+  } else {
+    utlbOpt.foreach(connectFill(_, fill))
+  }
+
+  // 接收新请求：空上下文槽 + 请求队列非空。
+  val freeCandidates = VecInit((0 until contexts).map(i => !ctxValid(i)))
+  val anyFree = freeCandidates.reduce(_ || _)
+  val freeIndex = PriorityEncoder(freeCandidates)
+  reqQueue.io.deq.ready := anyFree && !io.flush
+  when(reqQueue.io.deq.fire) {
+    ctx(freeIndex).req := reqQueue.io.deq.bits
+    ctxSeq(freeIndex) := nextSeq
+    ctxValid(freeIndex) := true.B
+    ctxState(freeIndex) := ctxLookup
+    nextSeq := nextSeq + 1.U
+  }
+
+  // 响应表队首出队。
+  when(io.resp.fire) {
+    respValid(headIdx) := false.B
+    headSeq := headSeq + 1.U
+  }
+
+  when(io.flush) {
+    for (i <- 0 until contexts) {
+      ctxValid(i) := false.B
+      ctxState(i) := ctxFree
+    }
+    for (i <- 0 until tableSize) { respValid(i) := false.B }
+    headSeq := 0.U
+    nextSeq := 0.U
+  }
+
+  ptw.io.bus.req <> io.bus.req
+  ptw.io.bus.resp <> io.bus.resp
 }
