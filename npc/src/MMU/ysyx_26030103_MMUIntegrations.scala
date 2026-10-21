@@ -72,7 +72,9 @@ class ysyx_26030103_IFUMMU extends Module {
     val translationValid = Output(Bool())
     val cacheReady = Input(Bool())
     val fault = Output(Bool())
+    val faultCause = Output(UInt(4.W))
     val faultVaddr = Output(UInt(32.W))
+    val pmpFault = Input(Bool())
     val privilege = Input(UInt(2.W))
     val satp = Input(UInt(32.W))
     val sum = Input(Bool())
@@ -87,6 +89,7 @@ class ysyx_26030103_IFUMMU extends Module {
   val paddrVaddrReg = RegInit(0.U(32.W))
   val reqVaddrReg = RegInit(0.U(32.W))
   val faultReg = RegInit(false.B)
+  val faultCauseReg = RegInit(0.U(4.W))
   val faultVaddrReg = RegInit(0.U(32.W))
   val bypass = io.satp(31) === 0.U || io.privilege === 3.U
 
@@ -102,6 +105,7 @@ class ysyx_26030103_IFUMMU extends Module {
     (state === done && paddrVaddrReg === io.fetchVaddr)
   io.fetchReady := io.translationValid && io.cacheReady
   io.fault := faultReg
+  io.faultCause := faultCauseReg
   io.faultVaddr := faultVaddrReg
 
   when(io.flush) {
@@ -130,6 +134,7 @@ class ysyx_26030103_IFUMMU extends Module {
         when(io.resp.valid) {
           when(io.resp.bits.fault) {
             faultReg := true.B
+            faultCauseReg := io.resp.bits.cause(3, 0)
             faultVaddrReg := reqVaddrReg
             state := fault
           }.otherwise {
@@ -140,9 +145,14 @@ class ysyx_26030103_IFUMMU extends Module {
         }
       }
       is(done) {
-        when(io.fetchValid && io.cacheReady &&
+        when(io.pmpFault) {
+          faultReg := true.B
+          faultCauseReg := 1.U
+          faultVaddrReg := paddrVaddrReg
+          state := fault
+        }.elsewhen(io.fetchValid && io.cacheReady &&
              paddrVaddrReg === io.fetchVaddr) { state := idle }
-        when(!io.fetchValid) { state := idle }
+        when(!io.fetchValid && !io.pmpFault) { state := idle }
       }
       is(fault) {
         // 保持故障直到 EXU 的 trap 冲刷；faultReg 是单拍事件，避免重复注入。
@@ -178,6 +188,9 @@ class ysyx_26030103_LSUMMU extends Module {
     val faultTval = Output(UInt(32.W))
     val faultPC = Output(UInt(32.W))
     val busy = Output(Bool())
+    val pmpAddr = Output(UInt(32.W))
+    val pmpWrite = Output(Bool())
+    val pmpFault = Input(Bool())
     val req = Decoupled(new ysyx_26030103_MMURequest)
     val resp = Flipped(Decoupled(new ysyx_26030103_MMUResponse))
   })
@@ -203,6 +216,8 @@ class ysyx_26030103_LSUMMU extends Module {
   io.faultTval := faultTvalReg
   io.faultPC := faultPCReg
   io.busy := state =/= idle
+  io.pmpAddr := Mux(state === xwait, io.resp.bits.paddr, paddrReg)
+  io.pmpWrite := msgReg.MemoryWrite
 
   when(state === idle) {
     // 始终使用同一个握手条件，避免 in.ready 依赖 in.bits 形成组合环。

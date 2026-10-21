@@ -46,6 +46,8 @@ class ysyx_26030103_EXU(
     val CSRStateMtvec = Output(UInt(32.W))
     val CSRStateMepc = Output(UInt(32.W))
     val CSRStateMcause = Output(UInt(32.W))
+    val PmpCfg = Output(Vec(16, UInt(8.W)))
+    val PmpAddr = Output(Vec(16, UInt(32.W)))
     // 取指 access fault 只在对应指令真正提交异常时上报。
     val FetchAccessFaultCommit = Output(Bool())
     val FetchAccessFaultPC = Output(UInt(32.W))
@@ -429,6 +431,8 @@ class ysyx_26030103_EXU(
   io.CSRStateMtvec := CSRUnit.io.StateMtvec
   io.CSRStateMepc := CSRUnit.io.StateMepc
   io.CSRStateMcause := CSRUnit.io.StateMcause
+  io.PmpCfg := CSRUnit.io.PmpCfg
+  io.PmpAddr := CSRUnit.io.PmpAddr
   io.FetchAccessFaultCommit := CSRUnit.io.TrapCommit && !io.MemTrapCommit &&
     !CSRUnit.io.IrqCommit && UpEx && inst.ExceptionCause === 1.U
   io.FetchAccessFaultPC := inst.pc

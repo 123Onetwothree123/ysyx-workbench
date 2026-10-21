@@ -160,7 +160,10 @@ class ysyx_26030103_IDU(
   // 本核心目前只实现下面明确列出的机器态 CSR 集合，访问集合外的 CSR
   // 将被视为非法指令。
   val CSRAddress = Instruction(31, 20)
-  private val csrAddresses = config.MMU.csrEnabled.toSeq.sorted
+  private val csrAddresses = (
+    config.MMU.csrEnabled.toSeq ++
+      (if (config.MMU.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
+  ).distinct.sorted
   val CSRAddressValid =
     if (config.MMU.csrMissingMode == "zero") true.B
     else csrAddresses.map(a => CSRAddress === a.U(12.W)).reduceOption(_ || _).getOrElse(false.B)

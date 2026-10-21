@@ -79,6 +79,8 @@ case class ysyx_26030103_MMUProfile(
     plicBase: Long = 0x0c000000L,
     csrViewMode: String = "bound",
     csrMissingMode: String = "illegal",
+    pmpEnabled: Boolean = false,
+    pmpEntries: Int = 16,
     csrEnabled: Set[Int] = ysyx_26030103_MMUProfile.DefaultCsrAddresses
 ) {
   private def isPowerOfTwo(value: Int): Boolean =
@@ -109,8 +111,14 @@ case class ysyx_26030103_MMUProfile(
   require(Set("clint_mtip", "direct_stip").contains(timerPath), "TIMER_PATH 必须是 clint_mtip/direct_stip")
   require(Set("bound", "independent").contains(csrViewMode), "CSR_VIEW_MODE 必须是 bound/independent")
   require(Set("illegal", "zero").contains(csrMissingMode), "CSR_MISSING_MODE 必须是 illegal/zero")
+  require(pmpEntries >= 0 && pmpEntries <= 16, "PMP_ENTRIES 必须在 0..16")
+  require(!pmpEnabled || pmpEntries > 0, "HAS_PMP=y 时 PMP_ENTRIES 必须 > 0")
+  require(!pmpEnabled || enabled, "HAS_PMP 当前依赖 HAS_MMU 的翻译后物理地址检查")
 
-  def csrSupported(addr: Int): Boolean = csrEnabled.contains(addr)
+  def csrSupported(addr: Int): Boolean =
+    csrEnabled.contains(addr) ||
+      (pmpEnabled && ((addr >= 0x3a0 && addr <= 0x3a3) ||
+        (addr >= 0x3b0 && addr <= 0x3bf)))
 
   if (tlbEnabled) {
     requirePowerOfTwo("itlbEntries", itlbEntries)
@@ -291,6 +299,8 @@ object ysyx_26030103_MMUProfile {
       plicBase = envLong(env, "PLIC_BASE", 0x0c000000L),
       csrViewMode = envString(env, "CSR_VIEW_MODE", "bound"),
       csrMissingMode = envString(env, "CSR_MISSING_MODE", "illegal"),
+      pmpEnabled = envBool(env, "HAS_PMP", false),
+      pmpEntries = envInt(env, "PMP_ENTRIES", 16),
       csrEnabled = envAddressSet(env, "CSR_ENABLED", DefaultCsrAddresses)
     )
   }

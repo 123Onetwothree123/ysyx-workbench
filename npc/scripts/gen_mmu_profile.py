@@ -284,9 +284,6 @@ def build_profile(cfg: Config) -> dict:
             csr["enabled"][name] = True
 
     reserved = []
-    if cfg.bool("HAS_PMP", False):
-        reserved.append("HAS_PMP")
-
     timer_path = one_of(
         "TIMER_PATH", cfg.string("TIMER_PATH", "clint_mtip"),
         ("clint_mtip", "direct_stip"),
@@ -555,6 +552,8 @@ def main() -> int:
             f"CSR_FIELD_DEFAULT_READ={profile['csr']['field_default_read']}",
             f"CSR_FIELD_DEFAULT_WRITE={profile['csr']['field_default_write']}",
             "CSR_ENABLED=" + ",".join(enabled_csr),
+            f"HAS_PMP={int(profile['pmp']['enabled'])}",
+            f"PMP_ENTRIES={profile['pmp']['entries']}",
         ]
         for csr_name, fields in profile["csr"]["fields"].items():
             for field_name, modes in fields.items():

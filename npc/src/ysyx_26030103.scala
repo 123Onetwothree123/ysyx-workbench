@@ -84,6 +84,23 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val ras = Module(new ysyx_26030103_RAS(config.RASBits))
   val predictorSelect = Module(new ysyx_26030103_PredictorSelect)
   val mmuEnabled = config.MMU.enabled
+  val pmpOpt =
+    if (config.MMU.pmpEnabled) Some(Module(new ysyx_26030103_PMP(config.MMU.pmpEntries)))
+    else None
+  val dataPrivilege = Mux(
+    exu.io.CSRPrivilege === 3.U && exu.io.CSRCurrentMstatus(17),
+    exu.io.CSRCurrentMstatus(12, 11),
+    exu.io.CSRPrivilege
+  )
+  pmpOpt.foreach { pmp =>
+    pmp.io.cfg := exu.io.PmpCfg
+    pmp.io.addr := exu.io.PmpAddr
+    pmp.io.fetchAddr := ifu.io.FetchAddr
+    pmp.io.fetchPriv := exu.io.CSRPrivilege
+    pmp.io.dataAddr := 0.U
+    pmp.io.dataPriv := dataPrivilege
+    pmp.io.dataWrite := false.B
+  }
   val mmuUnitOpt =
     if (mmuEnabled) Some(Module(new ysyx_26030103_MMU(config.MMU))) else None
   val immuOpt =
@@ -168,7 +185,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     // 响应使用队首快照；同拍响应/接受由队列处理，AUIPC 不会拿到下一 PC。
     ifuResp.bits.pc := Mux(ifuFaultValid, ifuFaultPC, responseTag.pc)
     ifuResp.bits.ExceptionValid := ifuFaultValid || icache.io.resp_fault
-    ifuResp.bits.ExceptionCause := Mux(ifuFaultValid, 12.U(4.W), 1.U(4.W))
+    ifuResp.bits.ExceptionCause := Mux(ifuFaultValid,
+      immuOpt.map(_.io.faultCause).getOrElse(12.U), 1.U(4.W))
     ifuResp.bits.AccessFaultResp := Mux(ifuFaultValid, 0.U, icache.io.access_fault_resp)
     ifuResp.bits.pred_taken := !ifuFaultValid && responseTag.predTaken
     ifuResp.bits.pred_target := Mux(ifuFaultValid, 0.U, responseTag.predTarget)
@@ -237,16 +255,18 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     icache.io.fetch_valid := ifu.io.FetchValid && immu.io.translationValid
 
     // mstatus.MPRV：M 模式数据访问按 MPP 的特权级翻译；取指仍用当前特权级。
-    val dataPrivilege = Mux(
-      exu.io.CSRPrivilege === 3.U && exu.io.CSRCurrentMstatus(17),
-      exu.io.CSRCurrentMstatus(12, 11),
-      exu.io.CSRPrivilege
-    )
     dmmu.io.privilege := dataPrivilege
     dmmu.io.satp := exu.io.CSRSatp
     dmmu.io.sum := exu.io.CSRCurrentMstatus(18)
     dmmu.io.mxr := exu.io.CSRCurrentMstatus(19)
     dmmu.io.flush := pipe_flush
+    immu.io.pmpFault := pmpOpt.map(_.io.fetchFault).getOrElse(false.B)
+    dmmu.io.pmpFault := pmpOpt.map(_.io.dataFault).getOrElse(false.B)
+    pmpOpt.foreach { pmp =>
+      pmp.io.fetchAddr := immu.io.fetchPaddr
+      pmp.io.dataAddr := dmmu.io.pmpAddr
+      pmp.io.dataWrite := dmmu.io.pmpWrite
+    }
 
     mmuArb.io.iReq <> immu.io.req
     mmuArb.io.iResp <> immu.io.resp

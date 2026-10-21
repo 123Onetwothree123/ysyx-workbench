@@ -52,6 +52,8 @@ class ysyx_26030103_CSR(
     val StateMtvec = Output(UInt(32.W))
     val StateMepc = Output(UInt(32.W))
     val StateMcause = Output(UInt(32.W))
+    val PmpCfg = Output(Vec(16, UInt(8.W)))
+    val PmpAddr = Output(Vec(16, UInt(32.W)))
   })
 
   val CSR_MSTATUS = 0x300.U(12.W)
@@ -88,7 +90,10 @@ class ysyx_26030103_CSR(
   val Marchid_rdata = "h018d3017".U(32.W)
   val SstatusMask = "h000c0122".U(32.W) // SIE SPIE SPP SUM MXR
   def IsCSRAddress(addr: UInt): Bool = io.CSRAddress === addr
-  private val enabledCsrAddresses = profile.csrEnabled.toSeq.sorted
+  private val enabledCsrAddresses = (
+    profile.csrEnabled.toSeq ++
+      (if (profile.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
+  ).distinct.sorted
   val CsrImplemented =
     enabledCsrAddresses.map(a => io.CSRAddress === a.U(12.W))
       .reduceOption(_ || _).getOrElse(false.B)
@@ -163,6 +168,8 @@ class ysyx_26030103_CSR(
   val Mcountinhibit = RegInit(0.U(32.W))
   val Mtval = RegInit(0.U(32.W))
   val Minstret = RegInit(0.U(64.W))
+  val PmpcfgReg = RegInit(VecInit(Seq.fill(4)(0.U(32.W))))
+  val PmpaddrReg = RegInit(VecInit(Seq.fill(16)(0.U(32.W))))
   val Stval = RegInit(0.U(32.W))
   val SatpReg = RegInit(0.U(32.W))
   val SatpReadData =
@@ -356,6 +363,16 @@ class ysyx_26030103_CSR(
   when(CSRWen && IsCSRAddress(CSR_MTVAL)) { Mtval := CSRWriteData(Mtval) }
   when(CSRWen && IsCSRAddress(CSR_MCOUNTEREN)) { Mcounteren := CSRWriteData(Mcounteren) }
   when(CSRWen && IsCSRAddress(CSR_MCOUNTINHIBIT)) { Mcountinhibit := CSRWriteData(Mcountinhibit) }
+  for (word <- 0 until 4) {
+    when(CSRWen && io.CSRAddress === (0x3a0 + word).U(12.W)) {
+      PmpcfgReg(word) := CSRWriteData(PmpcfgReg(word)) & "h0f0f0f0f".U(32.W)
+    }
+  }
+  for (entry <- 0 until 16) {
+    when(CSRWen && io.CSRAddress === (0x3b0 + entry).U(12.W)) {
+      PmpaddrReg(entry) := CSRWriteData(PmpaddrReg(entry)) & "h3fffffff".U(32.W)
+    }
+  }
   when(io.Enable && !Mcountinhibit(0)) { Minstret := Minstret + 1.U }
   when(CSRWen && IsCSRAddress(CSR_SSCRATCH)) { Sscratch := CSRWriteData(Sscratch) }
   when(CSRWen && IsCSRAddress(CSR_MSCRATCH)) { Mscratch := CSRWriteData(Mscratch) }
@@ -430,7 +447,8 @@ class ysyx_26030103_CSR(
     CSR_MCOUNTINHIBIT -> Mcountinhibit,
     CSR_MVENDORID -> Mvendorid_rdata,
     CSR_MARCHID -> Marchid_rdata
-  )
+  ) ++ (0 until 4).map(i => (0x3a0 + i).U(12.W) -> PmpcfgReg(i)) ++
+    (0 until 16).map(i => (0x3b0 + i).U(12.W) -> PmpaddrReg(i))
   val CsrRawRdata = MuxLookup(io.CSRAddress, 0.U(32.W))(CSRMap)
   io.CSR_rdata := Mux(CsrImplemented,
     (CsrRawRdata & CsrReadMask) | CsrReadSet, 0.U(32.W))
@@ -474,4 +492,8 @@ class ysyx_26030103_CSR(
     Mux(MepcWen, Cat(CSRWriteData(Mepc_rdata)(31, 2), 0.U(2.W)), Mepc_rdata))
   io.StateMcause := Mux(ExceptionCommit && !TrapToS, ExceptionCause,
     Mux(McauseWen, CSRWriteData(Mcause_rdata), Mcause_rdata))
+  for (entry <- 0 until 16) {
+    io.PmpCfg(entry) := PmpcfgReg(entry / 4)(8 * (entry % 4) + 7, 8 * (entry % 4))
+    io.PmpAddr(entry) := PmpaddrReg(entry)
+  }
 }

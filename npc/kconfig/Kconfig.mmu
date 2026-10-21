@@ -457,15 +457,15 @@ menu "虚拟内存管理 (MMU/TLB)"
       depends on HAS_S_EXTERNAL_IRQ
 
     config HAS_PMP
-      bool "启用 PMP (RESERVED)"
+      bool "启用 PMP"
       default n
       help
-        本次虚存阶段不实现 PMP，只保留开关。打开后 elaboration
-        在 PMP RTL 接入前必须报错。
+        启用基础 PMP：支持 OFF/TOR/NA4/NAPOT、L 锁定和 R/W/X 权限。
+        当前 PMP 检查接在 MMU 翻译后的物理地址上，因此依赖 HAS_MMU。
     config PMP_ENTRIES
       int "PMP 表项数"
       default 16
-      range 0 16
+      range 1 16
       depends on HAS_PMP
 
   endmenu
