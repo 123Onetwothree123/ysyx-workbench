@@ -50,19 +50,10 @@
 单元测试：
 
 ```text
-ysyx_26030103_MMUTest             9
-ysyx_26030103_MMUBehaviorTest     21
-ysyx_26030103_MMUStreamTest       1
-ysyx_26030103_PTWPipelineTest     7
-ysyx_26030103_CSRPrivilegeTest    12
-ysyx_26030103_IDUPrivilegeTest     3
-ysyx_26030103_PLICTest             2
-ysyx_26030103_PMPTest              2
-ysyx_26030103_ICacheViptTest       3
-ysyx_26030103_DCacheViptTest       3
-ysyx_26030103_LSUMMUViptTest       1
-ysyx_26030103_LSUViptTest          1
-ysyx_26030103_LSUDmmuViptTest      1
+总计 71 项 mill 单元测试通过，包含：
+MMU 结构/行为/流、PTW pipeline、CSR/U 裁剪、IDU 特权级、
+PLIC、PMP、ICache VIPT、DCache VIPT、LSUMMUVipt、LSUVipt、
+LSUDmmuVipt。
 ```
 
 裸机测试（MMU 开启）：
@@ -98,7 +89,7 @@ S ecall + SRET          HIT GOOD
 
 ## 未完成
 
-- Nanos-lite：direct-NPC 的 PMA/`CONFIG_MSIZE`/AXI RAM 已扩到 64MiB。
-  最近的 MMU 全功能二进制运行未再复现 `PC=0x8000236c` 的 access
-  fault；由于 direct-NPC 没有文件系统/终端回显，且 Nanos-lite 的
-  `panic` 是死循环，尚未得到可判定“完整退出”的串口日志或 halt。
+- Nanos-lite 的“完整退出”日志验证：64MiB direct-NPC 已不再复现
+  `PC=0x8000236c` access fault；最近观察到 PC 长时间停在
+  `0x800009fc`（`__klib_init_array` 入口）且没有串口输出。需要继续
+  判断是 ICache refill、UART 输出缓冲还是 Nanos-lite 自身等待。
