@@ -13,11 +13,14 @@ import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 class ysyx_26030103_MMU(
     profile: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
 ) extends Module {
-  require(
-    profile.pageSizeBytes == 4096 && profile.levels == 2 &&
-      profile.pteSizeBytes == 4 && profile.pageTableSizeBytes == 4096,
-    "当前 MMU 只实现标准 Sv32 4KiB/2 级/4B PTE/4KiB 页表"
-  )
+  require(profile.pteSizeBytes == 4,
+    "当前 MMU 只实现 4B PTE；其他 PTE 大小在 elaboration 阶段拒绝")
+  require(profile.levels >= 1 && profile.levels <= 4,
+    "页表级数必须在 1..4")
+  require(profile.pageBits + profile.levels * profile.indexBitsPerLevel == 32,
+    "pageBits + levels*indexBits 必须等于 32")
+  require(!profile.tlbSuperpage || (profile.pageSizeBytes == 4096 && profile.levels == 2),
+    "TLB 超级页当前只支持 4KiB/2 级 Sv32")
   require(!profile.tlbSuperpage || profile.superpage, "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
   require(profile.ptwOutstanding >= 1 && profile.ptwOutstanding <= 16,
     "MMU_PTW_OUTSTANDING 必须在 1..16")
@@ -80,7 +83,8 @@ class ysyx_26030103_MMU(
     replacement = profile.tlbReplacement,
     adMode = profile.adMode,
     storage = profile.tlbStorage,
-    superpage = profile.tlbSuperpage
+    superpage = profile.tlbSuperpage,
+    pageBits = profile.pageBits
   ))
 
   val itlbOpt =
@@ -101,6 +105,10 @@ class ysyx_26030103_MMU(
     cacheWays = profile.ptwCacheWays,
     superpage = profile.superpage,
     pteConfig = profile.pteConfig,
+    pageBits = profile.pageBits,
+    levels = profile.levels,
+    tableEntries = profile.tableEntries,
+    fillSuperpage = profile.tlbSuperpage,
     inOrder = profile.ptwOrder == "in_order"
   ))
 

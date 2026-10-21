@@ -24,14 +24,14 @@ class ysyx_26030103_PTWResponse extends Bundle {
   val fillPte = UInt(32.W)
   val fillVaddr = UInt(32.W)
   val fillAsid = UInt(9.W)
-  // 0=普通 4KiB 页，1=一级超级页；后续通用页表可扩展为更大值。
+  // 0=基础页，1=一级超级页，2=二级超级页……
   val fillLevel = UInt(2.W)
 }
 
-/** 标准 Sv32 两级 page table walker。
+/** 可配置页大小/级数/页表项数的 page-table walker。
   *
-  * 默认单笔在途 walk；可选 PTE cache 只缓存页表项，不改变 TLB 语义。
-  * 多笔在途/流水结构仍由后续包装层扩展。
+  * 地址位宽固定 32；要求 pageBits + levels * indexBits == 32。PTE 宽度
+  * 当前按 32 位页表项处理，页表大小决定每级索引位数。
   */
 class ysyx_26030103_PTW(
     adMode: String = "fault",
@@ -39,9 +39,20 @@ class ysyx_26030103_PTW(
     cacheEntries: Int = 16,
     cacheWays: Int = 2,
     superpage: Boolean = false,
-    pteConfig: ysyx_26030103_PteConfig = ysyx_26030103_PteConfig()
+    pteConfig: ysyx_26030103_PteConfig = ysyx_26030103_PteConfig(),
+    pageBits: Int = 12,
+    levels: Int = 2,
+    tableEntries: Int = 1024,
+    fillSuperpage: Boolean = false
 ) extends Module {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
+  require(pageBits >= 2 && pageBits < 32, "pageBits 非法")
+  require(levels >= 1 && levels <= 4, "页表级数必须在 1..4")
+  require(tableEntries > 0 && (tableEntries & (tableEntries - 1)) == 0,
+    "每级页表项数必须是 2 的幂")
+  private val indexBits = log2Ceil(tableEntries)
+  require(pageBits + levels * indexBits == 32,
+    s"pageBits($pageBits) + levels($levels)*indexBits($indexBits) 必须等于 32")
   if (cacheEnable) {
     require(cacheEntries > 0 && (cacheEntries & (cacheEntries - 1)) == 0,
       "PTW cache entries 必须是 2 的幂")
@@ -57,7 +68,7 @@ class ysyx_26030103_PTW(
     val flush = Input(Bool())
   })
 
-  val idle :: req1 :: wait1 :: req0 :: wait0 :: write0 :: waitW :: done :: Nil = Enum(8)
+  val idle :: reqState :: waitState :: writeState :: waitWrite :: done :: Nil = Enum(6)
   val state = RegInit(idle)
 
   val idReg = RegInit(0.U(4.W))
@@ -67,7 +78,9 @@ class ysyx_26030103_PTW(
   val accessReg = RegInit(0.U(2.W))
   val sumReg = RegInit(false.B)
   val mxrReg = RegInit(false.B)
-  val pgtblReg = RegInit(0.U(32.W))
+  val levelReg = RegInit(0.U(2.W))
+  val tableReg = RegInit(0.U(32.W))
+  val pteAddrReg = RegInit(0.U(32.W))
   val respReg = RegInit(0.U.asTypeOf(new ysyx_26030103_PTWResponse))
   val fillPulse = RegInit(false.B)
   val fillLevelReg = RegInit(0.U(2.W))
@@ -143,25 +156,19 @@ class ysyx_26030103_PTW(
       d(pteConfig.userBit), d(pteConfig.executeBit), d(pteConfig.writeBit),
       d(pteConfig.readBit), d(pteConfig.validBit)
     )
-    val width = pteConfig.ppnHigh - pteConfig.ppnLow + 1
     val ppn = d(pteConfig.ppnHigh, pteConfig.ppnLow)
-    val ppn22 = if (width >= 22) ppn(21, 0) else ppn.pad(22)
-    Cat(ppn22, 0.U(2.W), flags)
+    Cat(ppn.pad(22)(21, 0), 0.U(2.W), flags)
   }
   private def adRaw(d: UInt): UInt =
     d | (1.U << pteConfig.aBit) |
       Mux(isStore, 1.U << pteConfig.dBit, 0.U(32.W))
 
-  val vpn1 = vaddrReg(31, 22)
-  val vpn0 = vaddrReg(21, 12)
-  val root = Cat(satpReg(21, 0), 0.U(12.W))
-  val pte1Addr = root + (vpn1 << 2)
-  val pte0Addr = pgtblReg + (vpn0 << 2)
-
-  def pte1Bad(d: UInt): Bool = !d(0) || (!superpage.B && d(3, 1) =/= 0.U)
-  def pte1Leaf(d: UInt): Bool = d(3, 1) =/= 0.U
-  def superPaddr(d: UInt): UInt = Cat(d(29, 20), vaddrReg(21, 0))
-  def pte0FaultOf(d: UInt): Bool = {
+  def isLeaf(d: UInt): Bool = d(3, 1) =/= 0.U
+  def leafAllowed(d: UInt): Bool = superpage.B || levelReg === (levels - 1).U
+  def walkFault(d: UInt): Bool =
+    !d(0) || (isLeaf(d) && !leafAllowed(d)) ||
+      (!isLeaf(d) && levelReg === (levels - 1).U)
+  def leafFaultOf(d: UInt): Bool = {
     val userFault = privReg === 0.U && !d(4)
     val sumFault = privReg === 1.U && d(4) && (!sumReg || isFetch)
     val fetchFault = isFetch && !d(3)
@@ -173,33 +180,63 @@ class ysyx_26030103_PTW(
     }
     userFault || sumFault || fetchFault || readFault || writeFault || adFault
   }
-  def pte0Good(d: UInt): Bool = d(0) && !pte0FaultOf(d)
   def needsAdUpdate(d: UInt): Bool = adMode match {
     case "hardware" => d(0) && (!d(6) || (isStore && !d(7)))
     case _          => false.B
   }
   def adUpdated(d: UInt): UInt =
-    d | "h40".U(32.W) | Mux(isStore, "h80".U(32.W), 0.U(32.W))
+    d | (1.U << pteConfig.aBit) |
+      Mux(isStore, 1.U << pteConfig.dBit, 0.U(32.W))
 
-  val (cacheHit1, cacheData1) = cacheLookup(pte1Addr)
-  val (cacheHit0, cacheData0) = cacheLookup(pte0Addr)
-  val useBus1 = state === req1 && !cacheHit1
-  val useBus0 = state === req0 && !cacheHit0
+  /** 当前级在虚拟地址中的索引；第 0 级是根页表，使用最高 VPN。 */
+  def vpnIndex(level: UInt): UInt = {
+    val high = pageBits + (levels - 1) * indexBits
+    MuxLookup(level, vaddrReg(31, pageBits))(
+      (0 until levels).map { l =>
+        val lo = pageBits + (levels - 1 - l) * indexBits
+        l.U -> vaddrReg(lo + indexBits - 1, lo)
+      }
+    )
+  }
+  def tableAddress(base: UInt, index: UInt): UInt =
+    base + (index << log2Ceil(4))
 
+  def superOffsetBits(level: UInt): UInt =
+    pageBits.U + ((levels - 1).U - level) * indexBits.U
+  def paddrOf(d: UInt, level: UInt): UInt = {
+    val ppn = d(31, 10)
+    val shift = superOffsetBits(level)
+    val offsetMask = (1.U << shift) - 1.U
+    (ppn << pageBits) | (vaddrReg & offsetMask)
+  }
+
+  val nextPteAddr = tableAddress(tableReg, vpnIndex(levelReg))
+  val (cacheHit, cacheData) = cacheLookup(nextPteAddr)
+  val useBus = state === reqState && !cacheHit
   io.req.ready := state === idle
-  io.bus.req.valid := useBus1 || useBus0 || state === write0
-  io.bus.req.bits.addr := Mux(state === req1, pte1Addr, pte0Addr)
-  io.bus.req.bits.write := state === write0
-  io.bus.req.bits.data := Mux(state === write0, writeDataReg, 0.U)
-  io.bus.req.bits.strb := Mux(state === write0, "hf".U(4.W), 0.U)
-  io.bus.resp.ready := state === wait1 || state === wait0 || state === waitW
+  io.bus.req.valid := useBus || state === writeState
+  io.bus.req.bits.addr := Mux(state === writeState, pteAddrReg,
+    Mux(state === reqState, nextPteAddr, pteAddrReg))
+  io.bus.req.bits.write := state === writeState
+  io.bus.req.bits.data := Mux(state === writeState, writeDataReg, 0.U)
+  io.bus.req.bits.strb := Mux(state === writeState, "hf".U(4.W), 0.U)
+  io.bus.resp.ready := state === waitState || state === waitWrite
   io.resp.valid := state === done
   io.resp.bits := respReg
 
-  val pte1Raw = io.bus.resp.bits.data
-  val pte0Raw = io.bus.resp.bits.data
-  val pte1Bus = normalizePte(pte1Raw)
-  val pte0Bus = normalizePte(pte0Raw)
+  def setFault(): Unit = {
+    respReg.paddr := 0.U
+    respReg.fault := true.B
+    respReg.cause := pageFaultCause
+    respReg.tval := vaddrReg
+    respReg.fillValid := false.B
+    respReg.fillPte := 0.U
+    respReg.fillVaddr := 0.U
+    respReg.fillAsid := 0.U
+    fillLevelReg := 0.U
+    fillPulse := false.B
+    state := done
+  }
 
   when(state === idle && io.req.fire) {
     idReg := io.req.bits.id
@@ -209,130 +246,90 @@ class ysyx_26030103_PTW(
     accessReg := io.req.bits.access
     sumReg := io.req.bits.sum
     mxrReg := io.req.bits.mxr
-    state := req1
+    levelReg := 0.U
+    tableReg := Cat(io.req.bits.satp(21, 0), 0.U(pageBits.W))
+    pteAddrReg := 0.U
+    state := reqState
   }
 
   switch(state) {
-    is(req1) {
-      when(cacheHit1) {
-        when(pte1Bad(cacheData1)) {
-          respReg.paddr := 0.U
-          respReg.fault := true.B
+    is(reqState) {
+      // 计算当前级页表项地址。
+      pteAddrReg := nextPteAddr
+      when(cacheHit) {
+        when(walkFault(cacheData)) {
+          setFault()
+        }.elsewhen(isLeaf(cacheData)) {
+          respReg.paddr := paddrOf(cacheData, levelReg)
+          respReg.fault := leafFaultOf(cacheData)
           respReg.cause := pageFaultCause
           respReg.tval := vaddrReg
-          respReg.fillValid := false.B
-          respReg.fillPte := 0.U
-          respReg.fillVaddr := 0.U
-          fillLevelReg := 0.U
-          respReg.fillAsid := 0.U
-          state := done
-        }.otherwise {
-          when(superpage.B && pte1Leaf(cacheData1)) {
-            respReg.paddr := superPaddr(cacheData1)
-            respReg.fault := pte0FaultOf(cacheData1)
-            respReg.cause := pageFaultCause
-            respReg.tval := vaddrReg
-            respReg.fillValid := false.B
-            respReg.fillPte := cacheData1
-            respReg.fillVaddr := vaddrReg
-            respReg.fillAsid := satpReg(30, 22)
-            fillLevelReg := 1.U
-            fillPulse := false.B
-            state := done
-          }.otherwise {
-            pgtblReg := Cat(cacheData1(31, 10), 0.U(12.W))
-            state := req0
-          }
-        }
-      }.elsewhen(io.bus.req.ready) { state := wait1 }
-    }
-    is(wait1) {
-      when(io.bus.resp.valid) {
-        cacheFill(pte1Addr, pte1Bus)
-        when(io.bus.resp.bits.fault || pte1Bad(pte1Bus)) {
-          respReg.paddr := 0.U
-          respReg.fault := true.B
-          respReg.cause := pageFaultCause
-          respReg.tval := vaddrReg
-          respReg.fillValid := false.B
-          respReg.fillPte := 0.U
-          respReg.fillVaddr := 0.U
-          fillLevelReg := 0.U
-          respReg.fillAsid := 0.U
-          state := done
-        }.otherwise {
-          when(superpage.B && pte1Leaf(pte1Bus)) {
-            respReg.paddr := superPaddr(pte1Bus)
-            respReg.fault := pte0FaultOf(pte1Bus)
-            respReg.cause := pageFaultCause
-            respReg.tval := vaddrReg
-            respReg.fillValid := false.B
-            respReg.fillPte := pte1Bus
-            respReg.fillVaddr := vaddrReg
-            respReg.fillAsid := satpReg(30, 22)
-            fillLevelReg := 1.U
-            fillPulse := false.B
-            state := done
-          }.otherwise {
-            pgtblReg := Cat(pte1Bus(31, 10), 0.U(12.W))
-            state := req0
-          }
-        }
-      }
-    }
-    is(req0) {
-      when(cacheHit0) {
-        respReg.paddr := Cat(cacheData0(29, 10), vaddrReg(11, 0))
-        respReg.fault := !pte0Good(cacheData0)
-        respReg.cause := pageFaultCause
-        respReg.tval := vaddrReg
-        respReg.fillValid := false.B
-        respReg.fillPte := cacheData0
-        respReg.fillVaddr := vaddrReg
-        respReg.fillAsid := satpReg(30, 22)
-        fillLevelReg := 0.U
-        fillPulse := pte0Good(cacheData0)
-        state := done
-      }.elsewhen(io.bus.req.ready) { state := wait0 }
-    }
-    is(wait0) {
-      when(io.bus.resp.valid) {
-        when(!io.bus.resp.bits.fault && needsAdUpdate(pte0Bus)) {
-          writeDataReg := adRaw(pte0Raw)
-          state := write0
-        }.otherwise {
-          cacheFill(pte0Addr, pte0Bus)
-          respReg.paddr := Cat(pte0Bus(29, 10), vaddrReg(11, 0))
-          respReg.fault := io.bus.resp.bits.fault || !pte0Good(pte0Bus)
-          respReg.cause := pageFaultCause
-          respReg.tval := vaddrReg
-          respReg.fillValid := false.B
-          respReg.fillPte := pte0Bus
+          respReg.fillPte := cacheData
           respReg.fillVaddr := vaddrReg
           respReg.fillAsid := satpReg(30, 22)
-          fillLevelReg := 0.U
-          fillPulse := pte0Good(pte0Bus) && !io.bus.resp.bits.fault
+          fillLevelReg := levelReg
+          respReg.fillValid := false.B
+          fillPulse := !leafFaultOf(cacheData) &&
+            (fillSuperpage.B || levelReg === (levels - 1).U)
           state := done
+        }.otherwise {
+          tableReg := Cat(cacheData(31, 10), 0.U(pageBits.W))
+          levelReg := levelReg + 1.U
+          state := reqState
+        }
+      }.elsewhen(io.bus.req.ready) {
+        state := waitState
+      }
+    }
+    is(waitState) {
+      when(io.bus.resp.valid) {
+        cacheFill(pteAddrReg, normalizePte(io.bus.resp.bits.data))
+        val d = normalizePte(io.bus.resp.bits.data)
+        when(io.bus.resp.bits.fault || walkFault(d)) {
+          setFault()
+        }.elsewhen(isLeaf(d)) {
+          when(needsAdUpdate(d)) {
+            writeDataReg := adRaw(io.bus.resp.bits.data)
+            state := writeState
+          }.otherwise {
+            respReg.paddr := paddrOf(d, levelReg)
+            respReg.fault := leafFaultOf(d)
+            respReg.cause := pageFaultCause
+            respReg.tval := vaddrReg
+            respReg.fillPte := d
+            respReg.fillVaddr := vaddrReg
+            respReg.fillAsid := satpReg(30, 22)
+            fillLevelReg := levelReg
+            respReg.fillValid := false.B
+            fillPulse := !leafFaultOf(d) &&
+              (fillSuperpage.B || levelReg === (levels - 1).U)
+            state := done
+          }
+        }.otherwise {
+          tableReg := Cat(d(31, 10), 0.U(pageBits.W))
+          levelReg := levelReg + 1.U
+          state := reqState
         }
       }
     }
-    is(write0) {
-      when(io.bus.req.ready) { state := waitW }
+    is(writeState) {
+      when(io.bus.req.ready) { state := waitWrite }
     }
-    is(waitW) {
+    is(waitWrite) {
       when(io.bus.resp.valid) {
         val written = normalizePte(writeDataReg)
-        cacheFill(pte0Addr, written)
-        respReg.paddr := Cat(written(29, 10), vaddrReg(11, 0))
-        respReg.fault := io.bus.resp.bits.fault || !pte0Good(writeDataReg)
+        cacheFill(pteAddrReg, written)
+        respReg.paddr := paddrOf(written, levelReg)
+        respReg.fault := io.bus.resp.bits.fault || leafFaultOf(written)
         respReg.cause := pageFaultCause
         respReg.tval := vaddrReg
-        respReg.fillValid := false.B
         respReg.fillPte := written
         respReg.fillVaddr := vaddrReg
         respReg.fillAsid := satpReg(30, 22)
-        fillLevelReg := 0.U
-        fillPulse := pte0Good(written) && !io.bus.resp.bits.fault
+        fillLevelReg := levelReg
+        respReg.fillValid := false.B
+        fillPulse := !leafFaultOf(written) && !io.bus.resp.bits.fault &&
+          (fillSuperpage.B || levelReg === (levels - 1).U)
         state := done
       }
     }
@@ -342,7 +339,6 @@ class ysyx_26030103_PTW(
     }
   }
 
-  // TLB 在成功页表项返回后的 done 首拍填充；这是单拍脉冲。
   io.resp.bits.fillValid := fillPulse
   io.resp.bits.fillLevel := fillLevelReg
   io.resp.bits.id := idReg

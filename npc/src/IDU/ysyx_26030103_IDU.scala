@@ -165,7 +165,8 @@ class ysyx_26030103_IDU(
     else csrAddresses.map(a => CSRAddress === a.U(12.W)).reduceOption(_ || _).getOrElse(false.B)
   // 地址位 [9:8] 编码最低可访问特权级：00=U, 01=S, 11=M。
   val CSRPrivilegeOk = io.Privilege >= CSRAddress(9, 8)
-  val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W)
+  val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W) ||
+    CSRAddress === "h301".U(12.W) // misa 当前只读 */
   // 读只读 CSR 合法；CSRRW/带非零源的 CSRRS/CSRRC 写只读 CSR 非法。
   val CSRWriteIntent = IsCsrrw || ((IsCsrrs || IsCsrrc) && (Rs1 =/= 0.U))
   val CSRIllegal =

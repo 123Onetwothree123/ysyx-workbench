@@ -98,6 +98,42 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "TLB" should "缓存 4MiB 超级页并可跨 4KiB 地址命中" in {
+    simulate(new ysyx_26030103_TLB(
+      entries = 4, ways = 1, asidBits = 9, globalEnable = true,
+      adMode = "fault", superpage = true
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.flush.poke(true.B)
+      dut.io.fillValid.poke(false.B)
+      dut.io.fillVaddr.poke(0.U)
+      dut.io.fillAsid.poke(0.U)
+      dut.io.fillPte.poke(0.U)
+      dut.io.fillLevel.poke(0.U)
+      dut.io.lookup.vaddr.poke(0.U)
+      dut.io.lookup.asid.poke(0.U)
+      dut.io.lookup.privilege.poke(0.U)
+      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup.sum.poke(false.B)
+      dut.io.lookup.mxr.poke(false.B)
+      dut.clock.step()
+      dut.io.flush.poke(false.B)
+      // PPN[1]=0x201 -> 4MiB 基址 0x80400000。
+      dut.io.fillValid.poke(true.B)
+      dut.io.fillVaddr.poke("h80501234".U)
+      dut.io.fillAsid.poke(0.U)
+      dut.io.fillPte.poke((BigInt("201", 16) << 20 | 0xdf).U(32.W))
+      dut.io.fillLevel.poke(1.U)
+      dut.clock.step()
+      dut.io.fillValid.poke(false.B)
+      dut.io.lookup.vaddr.poke("h80543210".U)
+      asBool(dut.io.result.hit) should be(true)
+      asLong(dut.io.result.paddr) should be(BigInt("80543210", 16).toLong)
+    }
+  }
+
   "TLB" should "支持 SRAM 存储的一拍查找" in {
     simulate(new ysyx_26030103_TLB(
       entries = 4,
@@ -313,6 +349,57 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "PTW" should "支持非 4KiB 基础页和不同页表项数" in {
+    // 1KiB 页 + 2048 项/级：10 + 2*11 = 32。
+    val localRoot = 0x20000400L
+    val localLeafTable = 0x20000800L
+    val localLeaf = 0x20000c00L
+    val data = scala.collection.mutable.Map[Long, BigInt](
+      localRoot -> pte(0x80002L, 0x1L),
+      (localLeafTable + 4L * 4L) -> pte(0x80003L, 0xdfL)
+    )
+    simulate(new ysyx_26030103_PTW(
+      adMode = "fault", pageBits = 10, levels = 2, tableEntries = 2048
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      var pending = false
+      var pendingData = BigInt(0)
+      var result: Option[BigInt] = None
+      dut.io.req.valid.poke(false.B)
+      dut.io.req.bits.vaddr.poke(0.U)
+      dut.io.req.bits.satp.poke(0.U)
+      dut.io.req.bits.privilege.poke(0.U)
+      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.req.bits.sum.poke(false.B)
+      dut.io.req.bits.mxr.poke(false.B)
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.resp.ready.poke(false.B)
+      dut.io.req.valid.poke(true.B)
+      dut.io.req.bits.vaddr.poke(0x1234.U)
+      dut.io.req.bits.satp.poke((0x80000000L | 0x80001L).U(32.W))
+      dut.clock.step()
+      dut.io.req.valid.poke(false.B)
+      for (_ <- 0 until 20 if result.isEmpty) {
+        if (!pending && asBool(dut.io.bus.req.valid)) {
+          pending = true
+          pendingData = data.getOrElse(asLong(dut.io.bus.req.bits.addr), BigInt(0))
+        }
+        dut.io.bus.resp.valid.poke(pending.B)
+        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
+        val ready = asBool(dut.io.bus.resp.ready)
+        dut.clock.step()
+        if (pending && ready) pending = false
+        if (asBool(dut.io.resp.valid)) result = Some(dut.io.resp.bits.paddr.peek().litValue)
+      }
+      result should be(Some(BigInt("20000e34", 16)))
+    }
+  }
+
   "PTW" should "hardware A/D 模式写回页表项" in {
     val memory = new Memory
     // 有效叶子，但 A/D 清零。
@@ -476,6 +563,60 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       }
       result should be(Some(BigInt(Leaf + 0x234L)))
       (memory.read(0x80002004L) & BigInt(0xc0)) should be(BigInt(0xc0))
+    }
+  }
+
+  "MMU" should "同时调度两个上下文并按请求顺序返回" in {
+    val memory = new Memory
+    memory.write(0x80002014L, pte(LeafPPN, 0xdfL))
+    simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+      enabled = true, tlbEnabled = false, ptwOutstanding = 2
+    ))) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      var pending = false
+      var pendingData = BigInt(0)
+      val responses = scala.collection.mutable.ArrayBuffer.empty[BigInt]
+      dut.io.req.valid.poke(false.B)
+      dut.io.req.bits.vaddr.poke(0.U)
+      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.req.bits.privilege.poke(0.U)
+      dut.io.req.bits.sum.poke(false.B)
+      dut.io.req.bits.mxr.poke(false.B)
+      dut.io.req.bits.satp.poke(0.U)
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.resp.ready.poke(true.B)
+      dut.io.flush.poke(false.B)
+
+      dut.io.req.valid.poke(true.B)
+      dut.io.req.bits.id.poke(0.U)
+      dut.io.req.bits.vaddr.poke(0x1234.U)
+      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.clock.step()
+      dut.io.req.bits.id.poke(1.U)
+      dut.io.req.bits.vaddr.poke(0x5678.U)
+      dut.clock.step()
+      dut.io.req.valid.poke(false.B)
+
+      for (_ <- 0 until 80 if responses.size < 2) {
+        if (!pending && asBool(dut.io.bus.req.valid)) {
+          pending = true
+          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+        }
+        dut.io.bus.resp.valid.poke(pending.B)
+        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
+        val ready = asBool(dut.io.bus.resp.ready)
+        dut.clock.step()
+        if (pending && ready) pending = false
+        if (asBool(dut.io.resp.valid)) {
+          responses += dut.io.resp.bits.paddr.peek().litValue
+        }
+      }
+      responses.toSeq should be(Seq(BigInt("80003234", 16), BigInt("80003678", 16)))
     }
   }
 

@@ -75,6 +75,12 @@ class ysyx_26030103_CSR(
   val CSR_SATP = 0x180.U(12.W)
   val CSR_MCYCLE = 0xb00.U(12.W)
   val CSR_MCYCLEH = 0xb80.U(12.W)
+  val CSR_MINSTRET = 0xb02.U(12.W)
+  val CSR_MINSTRETH = 0xb82.U(12.W)
+  val CSR_MISA = 0x301.U(12.W)
+  val CSR_MTVAL = 0x343.U(12.W)
+  val CSR_MCOUNTEREN = 0x306.U(12.W)
+  val CSR_MCOUNTINHIBIT = 0x320.U(12.W)
   val CSR_MVENDORID = 0xf11.U(12.W)
   val CSR_MARCHID = 0xf12.U(12.W)
 
@@ -152,6 +158,10 @@ class ysyx_26030103_CSR(
   val Sie = RegInit(0.U(32.W))
   val Sip = RegInit(0.U(32.W))
   val Scounteren = RegInit(0.U(32.W))
+  val Mcounteren = RegInit(0.U(32.W))
+  val Mcountinhibit = RegInit(0.U(32.W))
+  val Mtval = RegInit(0.U(32.W))
+  val Minstret = RegInit(0.U(64.W))
   val Stval = RegInit(0.U(32.W))
   val SatpReg = RegInit(0.U(32.W))
   val SatpReadData =
@@ -170,6 +180,9 @@ class ysyx_26030103_CSR(
   val Sepc_rdata = Sepc.io.rdata
   val Scause_rdata = Scause.io.rdata
   val Mcycle_rdata = Mcycle.io.rdata
+  val Minstret_rdata = Minstret(31, 0)
+  val Minstreth_rdata = Minstret(63, 32)
+  val Misa_rdata = "h40000100".U(32.W)
 
   val IrqLatch = RegInit(false.B)
   when(io.Interrupt || io.TimerInterrupt) { IrqLatch := true.B }
@@ -310,9 +323,15 @@ class ysyx_26030103_CSR(
 
   when(ExceptionCommit && TrapToS) {
     Stval := Mux(io.TrapTval =/= 0.U, io.TrapTval, io.pc)
+  }.elsewhen(ExceptionCommit) {
+    Mtval := Mux(io.TrapTval =/= 0.U, io.TrapTval, io.pc)
   }.elsewhen(CSRWen && IsCSRAddress(CSR_STVAL)) {
     Stval := CSRWriteData(Stval)
   }
+  when(CSRWen && IsCSRAddress(CSR_MTVAL)) { Mtval := CSRWriteData(Mtval) }
+  when(CSRWen && IsCSRAddress(CSR_MCOUNTEREN)) { Mcounteren := CSRWriteData(Mcounteren) }
+  when(CSRWen && IsCSRAddress(CSR_MCOUNTINHIBIT)) { Mcountinhibit := CSRWriteData(Mcountinhibit) }
+  when(io.Enable && !Mcountinhibit(0)) { Minstret := Minstret + 1.U }
   when(CSRWen && IsCSRAddress(CSR_SSCRATCH)) { Sscratch := CSRWriteData(Sscratch) }
   when(CSRWen && IsCSRAddress(CSR_MSCRATCH)) { Mscratch := CSRWriteData(Mscratch) }
   when(CSRWen && IsCSRAddress(CSR_MEDELEG)) { Medeleg := CSRWriteData(Medeleg) }
@@ -378,6 +397,12 @@ class ysyx_26030103_CSR(
     CSR_SATP -> SatpReadData,
     CSR_MCYCLE -> Mcycle_rdata,
     CSR_MCYCLEH -> Mcycle_rdata,
+    CSR_MINSTRET -> Minstret_rdata,
+    CSR_MINSTRETH -> Minstreth_rdata,
+    CSR_MISA -> Misa_rdata,
+    CSR_MTVAL -> Mtval,
+    CSR_MCOUNTEREN -> Mcounteren,
+    CSR_MCOUNTINHIBIT -> Mcountinhibit,
     CSR_MVENDORID -> Mvendorid_rdata,
     CSR_MARCHID -> Marchid_rdata
   )

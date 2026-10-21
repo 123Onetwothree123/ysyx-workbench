@@ -216,6 +216,76 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  it should "按字段配置生成 mstatus/satp 读写掩码" in {
+    val p = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile.fromEnv(Map(
+      "CSR_FIELD_DEFAULT_READ" -> "normal",
+      "CSR_FIELD_DEFAULT_WRITE" -> "normal",
+      "CSR_MSTATUS_MIE_READ" -> "zero",
+      "CSR_MSTATUS_MIE_WRITE" -> "ignore",
+      "CSR_MSTATUS_SPP_READ" -> "one",
+      "CSR_SATP_ASID_READ" -> "zero"
+    ).get)
+    (p.csrMstatusReadMask & 0x8) should be(0)
+    (p.csrMstatusReadSet & 0x8) should be(0)
+    (p.csrMstatusWriteMask & 0x8) should be(0)
+    (p.csrMstatusReadMask & 0x100) should be(0x100)
+    (p.csrMstatusReadSet & 0x100) should be(0x100)
+    (p.csrSatpReadMask & BigInt("7fc00000", 16).toInt) should be(0)
+  }
+
+  it should "关闭的 CSR 读 0 且写忽略" in {
+    simulate(new ysyx_26030103_CSRHarness(
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(csrEnabled = Set(0x300))
+    )) { dut =>
+      setup(dut)
+      write(dut, 0x180, BigInt("80080001", 16))
+      read(dut, 0x180) should be(0)
+    }
+  }
+
+  it should "S 模式外部中断经 mideleg 进入 stvec" in {
+    simulate(new ysyx_26030103_CSRHarness) { dut =>
+      setup(dut)
+      // MPP=S，SIE=1，mideleg.SEIP=1，mie.SEIP=1，stvec 指向 S 入口。
+      write(dut, MSTATUS, BigInt("00000802", 16))
+      write(dut, 0x303, BigInt("00000200", 16))
+      write(dut, MIE, BigInt("00000200", 16))
+      write(dut, 0x105, BigInt("80001000", 16))
+      dut.io.isMret.poke(true.B)
+      dut.io.enable.poke(true.B)
+      dut.clock.step()
+      dut.io.isMret.poke(false.B)
+      dut.io.interrupt.poke(true.B)
+      dut.io.enable.poke(true.B)
+      long(dut.io.committedCause) should be(0x80000009L)
+      dut.io.exceptionTaken.peek().litValue should be(1)
+      long(dut.io.exceptionTarget) should be(BigInt("80001000", 16).toLong)
+      dut.clock.step()
+    }
+  }
+
+  it should "direct_stip 直接产生 S 模式 timer 中断" in {
+    simulate(new ysyx_26030103_CSRHarness(
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(timerPath = "direct_stip")
+    )) { dut =>
+      setup(dut)
+      write(dut, MSTATUS, BigInt("00000802", 16))
+      write(dut, 0x303, BigInt("00000020", 16))
+      write(dut, MIE, BigInt("00000020", 16))
+      write(dut, 0x105, BigInt("80001000", 16))
+      dut.io.isMret.poke(true.B)
+      dut.io.enable.poke(true.B)
+      dut.clock.step()
+      dut.io.isMret.poke(false.B)
+      dut.io.timerInterrupt.poke(true.B)
+      dut.io.enable.poke(true.B)
+      long(dut.io.committedCause) should be(0x80000005L)
+      dut.io.exceptionTaken.peek().litValue should be(1)
+      long(dut.io.exceptionTarget) should be(BigInt("80001000", 16).toLong)
+      dut.clock.step()
+    }
+  }
+
   it should "SRET 按 SPP 返回 U/S" in {
     simulate(new ysyx_26030103_CSRHarness) { dut =>
       setup(dut)

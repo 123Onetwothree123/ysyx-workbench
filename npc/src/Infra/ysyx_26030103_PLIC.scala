@@ -99,6 +99,9 @@ class ysyx_26030103_PLIC(
     }.elsewhen(isThreshold && WStrb =/= 0.U) {
       threshold := Mux(WData(priorityBits - 1, 0) > PriorityMax,
         PriorityMax, WData(priorityBits - 1, 0))
+    }.elsewhen(isComplete && WStrb =/= 0.U && WData =/= 0.U) {
+      val doneIdx = (WData - 1.U)(IdBits - 1, 0)
+      claimed := claimed & ~UIntToOH(doneIdx, numSources)
     }
     BResp := Mux(isPriority || isEnable || isThreshold || isComplete, OKAY, SLVERR)
     BValid := true.B

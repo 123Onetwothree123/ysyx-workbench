@@ -274,6 +274,15 @@ def build_profile(cfg: Config) -> dict:
         },
     }
 
+    # MMU 的标准 Sv32 路径依赖 S 模式 CSR；这些 CSR 不能因为旧 .config
+    # 没有显式列出而被关掉，否则 satp/sfence 会在译码阶段变成非法指令。
+    if cfg.bool("HAS_MMU") or cfg.bool("HAS_S"):
+        for name in ("mstatus", "mtvec", "mepc", "mcause", "mie", "mip",
+                     "medeleg", "mideleg", "sstatus", "sie", "sip", "stvec",
+                     "sscratch", "sepc", "scause", "stval", "satp",
+                     "scounteren"):
+            csr["enabled"][name] = True
+
     reserved = []
     if cfg.bool("HAS_PMP", False):
         reserved.append("HAS_PMP")

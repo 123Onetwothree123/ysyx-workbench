@@ -17,7 +17,8 @@ class ysyx_26030103_TLB(
     replacement: String = "rr",
     adMode: String = "fault",
     storage: String = "reg",
-    superpage: Boolean = false
+    superpage: Boolean = false,
+    pageBits: Int = 12
 ) extends Module {
   require(entries > 0 && ways > 0 && entries % ways == 0, "TLB entries 必须能被 ways 整除")
   require((entries & (entries - 1)) == 0, "TLB entries 必须是 2 的幂")
@@ -28,7 +29,8 @@ class ysyx_26030103_TLB(
   private val sets = entries / ways
   private val setBits = if (sets == 1) 0 else log2Ceil(sets)
   private val asidWidth = asidBits.max(1)
-  private val vpnBits = 20
+  private val vpnBits = 32 - pageBits
+  private val ppnBits = 32 - pageBits
   private val entryBits = log2Ceil(entries)
 
   class Entry extends Bundle {
@@ -36,7 +38,7 @@ class ysyx_26030103_TLB(
     val tag = UInt((vpnBits - setBits).W)
     val asid = UInt(asidWidth.W)
     val global = Bool()
-    val ppn = UInt(22.W)
+    val ppn = UInt(ppnBits.W)
     val r = Bool()
     val w = Bool()
     val x = Bool()
@@ -77,7 +79,7 @@ class ysyx_26030103_TLB(
     val vpn1 = UInt(10.W)
     val asid = UInt(asidWidth.W)
     val global = Bool()
-    val ppn = UInt(22.W)
+    val ppn = UInt(ppnBits.W)
     val r = Bool(); val w = Bool(); val x = Bool(); val u = Bool()
     val a = Bool(); val d = Bool()
   }
@@ -147,7 +149,7 @@ class ysyx_26030103_TLB(
     }
   }
 
-  private def vpnOf(addr: UInt): UInt = addr(31, 12)
+  private def vpnOf(addr: UInt): UInt = addr(31, pageBits)
   private def setOf(vpn: UInt): UInt =
     if (setBits == 0) 0.U else vpn(setBits - 1, 0)
   private def tagOf(vpn: UInt): UInt =
@@ -220,8 +222,8 @@ class ysyx_26030103_TLB(
   val anyHit = lookupHit || superHit
   io.result.hit := anyHit
   io.result.fault := anyHit && !permissionOk
-  io.result.paddr := Mux(superHit, Cat(selPpn(9, 0), io.lookup.vaddr(21, 0)),
-    Cat(selPpn(19, 0), io.lookup.vaddr(11, 0)))
+  io.result.paddr := Mux(superHit, Cat(selPpn(19, 10), io.lookup.vaddr(21, 0)),
+    Cat(selPpn(ppnBits - 1, 0), io.lookup.vaddr(pageBits - 1, 0)))
   io.result.cause := faultCause
 
   when(io.flush) {
@@ -274,7 +276,7 @@ class ysyx_26030103_TLB(
     fillEntry.tag := tagOf(fillVpn)
     fillEntry.asid := io.fillAsid
     fillEntry.global := (if (globalEnable) io.fillPte(5) else false.B)
-    fillEntry.ppn := io.fillPte(31, 10)
+    fillEntry.ppn := io.fillPte(31, 10)(ppnBits - 1, 0)
     fillEntry.r := io.fillPte(1)
     fillEntry.w := io.fillPte(2)
     fillEntry.x := io.fillPte(3)
