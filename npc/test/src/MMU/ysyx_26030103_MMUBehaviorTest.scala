@@ -98,6 +98,50 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "TLB" should "同拍接受两个 refill 端口" in {
+    simulate(new ysyx_26030103_TLB(
+      entries = 4, ways = 1, asidBits = 9, globalEnable = false,
+      adMode = "ignore", refillPorts = 2
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.flush.poke(true.B)
+      dut.io.fillValid.poke(false.B)
+      dut.io.fillVaddr.poke(0.U)
+      dut.io.fillAsid.poke(0.U)
+      dut.io.fillPte.poke(0.U)
+      dut.io.fillLevel.poke(0.U)
+      val extra = dut.io.fillExtra.get(0)
+      extra.valid.poke(false.B)
+      extra.vaddr.poke(0.U)
+      extra.asid.poke(0.U)
+      extra.pte.poke(0.U)
+      extra.level.poke(0.U)
+      dut.io.lookup.vaddr.poke(0.U)
+      dut.io.lookup.asid.poke(0.U)
+      dut.io.lookup.privilege.poke(0.U)
+      dut.io.lookup.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup.sum.poke(false.B)
+      dut.io.lookup.mxr.poke(false.B)
+      dut.clock.step()
+      dut.io.flush.poke(false.B)
+      dut.io.fillValid.poke(true.B)
+      dut.io.fillVaddr.poke(0x1000.U)
+      dut.io.fillPte.poke(LeafPTE.U(32.W))
+      extra.valid.poke(true.B)
+      extra.vaddr.poke(0x2000.U)
+      extra.pte.poke(LeafPTE.U(32.W))
+      dut.clock.step()
+      dut.io.fillValid.poke(false.B)
+      extra.valid.poke(false.B)
+      dut.io.lookup.vaddr.poke(0x1000.U)
+      asBool(dut.io.result.hit) should be(true)
+      dut.io.lookup.vaddr.poke(0x2000.U)
+      asBool(dut.io.result.hit) should be(true)
+    }
+  }
+
   "TLB" should "缓存 4MiB 超级页并可跨 4KiB 地址命中" in {
     simulate(new ysyx_26030103_TLB(
       entries = 4, ways = 1, asidBits = 9, globalEnable = true,

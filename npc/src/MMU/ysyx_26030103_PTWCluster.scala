@@ -23,14 +23,16 @@ class ysyx_26030103_PTWCluster(
     tableEntries: Int = 1024,
     fillSuperpage: Boolean = false,
     pteSizeBytes: Int = 4,
-    inOrder: Boolean = true
+    inOrder: Boolean = true,
+    respPorts: Int = 1
 ) extends Module {
   require(outstanding >= 1, "PTW outstanding 必须 >= 1")
+  require(respPorts >= 1, "PTW 响应端口数必须 >= 1")
   private val ptrBits = log2Ceil(outstanding.max(2))
 
   val io = IO(new Bundle {
     val req = Flipped(Decoupled(new ysyx_26030103_PTWRequest))
-    val resp = Decoupled(new ysyx_26030103_PTWResponse)
+    val resp = Vec(respPorts, Decoupled(new ysyx_26030103_PTWResponse))
     val bus = new ysyx_26030103_PTEBusIO
     val flush = Input(Bool())
   })
@@ -103,21 +105,39 @@ class ysyx_26030103_PTWCluster(
   val done = VecInit((0 until outstanding).map(i => busy(i) && walkers(i).io.resp.valid))
   def lowerPending(i: Int): Bool =
     (0 until i).map(j => busy(j) && !walkers(j).io.resp.valid).reduceOption(_ || _).getOrElse(false.B)
-  val eligible = VecInit((0 until outstanding).map { i =>
+  val eligibleBase = (0 until outstanding).map { i =>
     if (inOrder) done(i) && !lowerPending(i) else done(i)
-  })
-  val respIndex = PriorityEncoder(eligible)
-  val respValid = eligible.reduce(_ || _)
-  io.resp.valid := respValid
-  io.resp.bits := MuxLookup(respIndex, 0.U.asTypeOf(new ysyx_26030103_PTWResponse))(
-    (0 until outstanding).map(i => i.U -> walkers(i).io.resp.bits)
-  )
-  for (i <- 0 until outstanding) {
-    walkers(i).io.resp.ready := respValid && respIndex === i.U && io.resp.ready
   }
-  when(io.resp.fire) {
-    for (i <- 0 until outstanding) {
-      when(respIndex === i.U) { busy(i) := false.B }
+
+  // 每个响应端口独立选择一个完成者；端口之间按优先级消去，
+  // 因而同一拍最多可以回填 refillPorts 个 TLB 表项。
+  var remaining: Seq[Bool] = eligibleBase
+  val selValid = Wire(Vec(respPorts, Bool()))
+  val selIndex = Wire(Vec(respPorts, UInt(ptrBits.W)))
+  val selOH = Wire(Vec(respPorts, UInt(outstanding.W)))
+  for (port <- 0 until respPorts) {
+    val remVec = VecInit(remaining)
+    val valid = remVec.reduce(_ || _)
+    val index = PriorityEncoder(remVec)
+    val oh = UIntToOH(index, outstanding)
+    selValid(port) := valid
+    selIndex(port) := index
+    selOH(port) := oh
+    io.resp(port).valid := valid
+    io.resp(port).bits := MuxLookup(index, 0.U.asTypeOf(new ysyx_26030103_PTWResponse))(
+      (0 until outstanding).map(i => i.U -> walkers(i).io.resp.bits)
+    )
+    when(valid && io.resp(port).ready) {
+      for (i <- 0 until outstanding) {
+        when(oh(i)) { busy(i) := false.B }
+      }
     }
+    remaining = remaining.zipWithIndex.map { case (bit, i) => bit && !oh(i) }
+  }
+
+  for (i <- 0 until outstanding) {
+    walkers(i).io.resp.ready := (0 until respPorts).map { p =>
+      selValid(p) && selOH(p)(i) && io.resp(p).ready
+    }.reduceOption(_ || _).getOrElse(false.B)
   }
 }

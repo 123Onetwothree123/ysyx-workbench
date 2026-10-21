@@ -36,6 +36,7 @@ class ysyx_26030103_MMU(
   })
 
   private val contexts = profile.ptwOutstanding.max(1)
+  private val refillPorts = profile.refillPorts.max(1)
   private val ctxBits = log2Ceil(contexts.max(2))
   private val tableSize = 1 << log2Ceil((contexts * 2).max(2))
   private val tableBits = log2Ceil(tableSize)
@@ -84,7 +85,8 @@ class ysyx_26030103_MMU(
     adMode = profile.adMode,
     storage = profile.tlbStorage,
     superpage = profile.tlbSuperpage,
-    pageBits = profile.pageBits
+    pageBits = profile.pageBits,
+    refillPorts = refillPorts
   ))
 
   val itlbOpt =
@@ -110,7 +112,8 @@ class ysyx_26030103_MMU(
     tableEntries = profile.tableEntries,
     fillSuperpage = profile.tlbSuperpage,
     pteSizeBytes = profile.pteSizeBytes,
-    inOrder = profile.ptwOrder == "in_order"
+    inOrder = profile.ptwOrder == "in_order",
+    respPorts = refillPorts
   ))
 
   val lookupValid = WireDefault(false.B)
@@ -137,7 +140,36 @@ class ysyx_26030103_MMU(
     tlb.io.fillAsid := 0.U
     tlb.io.fillPte := 0.U
     tlb.io.fillLevel := 0.U
+    tlb.io.fillExtra.foreach { ports =>
+      for (port <- ports) {
+        port.valid := false.B
+        port.vaddr := 0.U
+        port.asid := 0.U
+        port.pte := 0.U
+        port.level := 0.U
+      }
+    }
   }
+  def connectFill(tlb: ysyx_26030103_TLB, port: Int, valid: Bool): Unit = {
+    val vaddr = ptwRespVec(port).fillVaddr
+    val asid = ptwRespVec(port).fillAsid
+    val pte = ptwRespVec(port).fillPte
+    val level = ptwRespVec(port).fillLevel
+    if (port == 0) {
+      tlb.io.fillValid := valid
+      tlb.io.fillVaddr := vaddr
+      tlb.io.fillAsid := asid
+      tlb.io.fillPte := pte
+      tlb.io.fillLevel := level
+    } else {
+      tlb.io.fillExtra.get(port - 1).valid := valid
+      tlb.io.fillExtra.get(port - 1).vaddr := vaddr
+      tlb.io.fillExtra.get(port - 1).asid := asid
+      tlb.io.fillExtra.get(port - 1).pte := pte
+      tlb.io.fillExtra.get(port - 1).level := level
+    }
+  }
+
   itlbOpt.foreach(connectTlb)
   dtlbOpt.foreach(connectTlb)
   utlbOpt.foreach(connectTlb)
@@ -179,16 +211,19 @@ class ysyx_26030103_MMU(
   val bypass = !profile.enabled.B || lookupReq.satp(31) === 0.U ||
     lookupReq.privilege === 3.U
 
-  val ptwDone = ptw.io.resp.valid
-  val ptwCtxIdx = ptw.io.resp.bits.id(ctxBits - 1, 0)
-  val ptwCtxValid = ptwDone && ctxValid(ptwCtxIdx) &&
-    ctxState(ptwCtxIdx) === ctxWalk
-  val ptwResp = ptw.io.resp.bits
+  val ptwDoneVec = VecInit((0 until refillPorts).map(p => ptw.io.resp(p).valid))
+  val ptwCtxIdxVec = VecInit((0 until refillPorts).map(p =>
+    ptw.io.resp(p).bits.id(ctxBits - 1, 0)))
+  val ptwCtxValidVec = VecInit((0 until refillPorts).map(p =>
+    ptwDoneVec(p) && ctxValid(ptwCtxIdxVec(p)) &&
+      ctxState(ptwCtxIdxVec(p)) === ctxWalk))
+  val ptwRespVec = VecInit((0 until refillPorts).map(p => ptw.io.resp(p).bits))
+  val anyPtwDone = ptwDoneVec.reduce(_ || _)
 
-  // PTW 响应优先完成；TLB 命中完成被推迟一拍，保证每拍只写一个响应表项。
-  val tlbDone = !ptwDone && lookupValid && tlbResultValid && !bypass &&
+  // PTW 响应优先完成；TLB 命中完成被推迟一拍，保证每拍写出稳定的响应表项。
+  val tlbDone = !anyPtwDone && lookupValid && tlbResultValid && !bypass &&
     profile.tlbEnabled.B && tlbHit
-  val bypassDone = !ptwDone && lookupValid && bypass
+  val bypassDone = !anyPtwDone && lookupValid && bypass
 
   def writeResponse(valid: Bool, index: UInt, seq: UInt,
       response: ysyx_26030103_MMUResponse): Unit = {
@@ -200,12 +235,15 @@ class ysyx_26030103_MMU(
     }
   }
 
-  val ptwResponse = WireInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
-  ptwResponse.id := ctx(ptwCtxIdx).req.id
-  ptwResponse.paddr := ptwResp.paddr
-  ptwResponse.fault := ptwResp.fault
-  ptwResponse.cause := ptwResp.cause
-  ptwResponse.tval := ptwResp.tval
+  val ptwResponseVec = WireInit(VecInit(Seq.fill(refillPorts)(
+    0.U.asTypeOf(new ysyx_26030103_MMUResponse))))
+  for (p <- 0 until refillPorts) {
+    ptwResponseVec(p).id := ctx(ptwCtxIdxVec(p)).req.id
+    ptwResponseVec(p).paddr := ptwRespVec(p).paddr
+    ptwResponseVec(p).fault := ptwRespVec(p).fault
+    ptwResponseVec(p).cause := ptwRespVec(p).cause
+    ptwResponseVec(p).tval := ptwRespVec(p).tval
+  }
 
   val hitResponse = WireInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
   hitResponse.id := lookupReq.id
@@ -221,21 +259,24 @@ class ysyx_26030103_MMU(
   bypassResponse.cause := 0.U
   bypassResponse.tval := lookupReq.vaddr
 
-  when(ptwCtxValid) {
-    writeResponse(true.B, ptwCtxIdx, ctxSeq(ptwCtxIdx), ptwResponse)
-  }.elsewhen(tlbDone) {
+  for (p <- 0 until refillPorts) {
+    when(ptwCtxValidVec(p)) {
+      writeResponse(true.B, ptwCtxIdxVec(p), ctxSeq(ptwCtxIdxVec(p)), ptwResponseVec(p))
+    }
+  }
+  when(!anyPtwDone && tlbDone) {
     writeResponse(true.B, lookupIndex, ctxSeq(lookupIndex), hitResponse)
-  }.elsewhen(bypassDone) {
+  }.elsewhen(!anyPtwDone && bypassDone) {
     writeResponse(true.B, lookupIndex, ctxSeq(lookupIndex), bypassResponse)
   }
 
   // TLB 命中直接返回；缺失则把上下文交给 PTWCluster。
   ptw.io.req.valid := false.B
   ptw.io.req.bits := 0.U.asTypeOf(new ysyx_26030103_PTWRequest)
-  ptw.io.resp.ready := ptwDone
+  for (p <- 0 until refillPorts) { ptw.io.resp(p).ready := ptwDoneVec(p) }
   ptw.io.flush := io.flush
   when(lookupValid && ctxState(lookupIndex) === ctxLookup && !bypass &&
-       !tlbDone && !ptwDone) {
+       !tlbDone && !anyPtwDone) {
     when(tlbResultValid && tlbHit) {
       // 命中完成在上面的写响应逻辑中处理。
     }.otherwise {
@@ -254,20 +295,25 @@ class ysyx_26030103_MMU(
   }
 
   // PTW 回填 TLB。多个上下文可以并行 walk，但页表总线仍由 PTWCluster 仲裁。
-  val fill = ptwCtxValid && ptwResp.fillValid
-  val fillFetch = ctx(ptwCtxIdx).req.access === ysyx_26030103_AccessType.Fetch
-  def connectFill(tlb: ysyx_26030103_TLB, valid: Bool): Unit = {
-    tlb.io.fillValid := valid
-    tlb.io.fillVaddr := ptwResp.fillVaddr
-    tlb.io.fillAsid := ptwResp.fillAsid
-    tlb.io.fillPte := ptwResp.fillPte
-    tlb.io.fillLevel := ptwResp.fillLevel
-  }
+  val fillFetch = VecInit((0 until refillPorts).map(p =>
+    ctx(ptwCtxIdxVec(p)).req.access === ysyx_26030103_AccessType.Fetch))
   if (split) {
-    itlbOpt.foreach(connectFill(_, fill && fillFetch))
-    dtlbOpt.foreach(connectFill(_, fill && !fillFetch))
+    itlbOpt.foreach { tlb =>
+      for (p <- 0 until refillPorts) {
+        connectFill(tlb, p, ptwCtxValidVec(p) && ptwRespVec(p).fillValid && fillFetch(p))
+      }
+    }
+    dtlbOpt.foreach { tlb =>
+      for (p <- 0 until refillPorts) {
+        connectFill(tlb, p, ptwCtxValidVec(p) && ptwRespVec(p).fillValid && !fillFetch(p))
+      }
+    }
   } else {
-    utlbOpt.foreach(connectFill(_, fill))
+    utlbOpt.foreach { tlb =>
+      for (p <- 0 until refillPorts) {
+        connectFill(tlb, p, ptwCtxValidVec(p) && ptwRespVec(p).fillValid)
+      }
+    }
   }
 
   // 接收新请求：空上下文槽 + 请求队列非空。

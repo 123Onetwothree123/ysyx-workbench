@@ -3,6 +3,14 @@ package ysyx_26030103.mmu
 import chisel3._
 import chisel3.util._
 
+class ysyx_26030103_TLBWrite extends Bundle {
+  val valid = Bool()
+  val vaddr = UInt(32.W)
+  val asid = UInt(9.W)
+  val pte = UInt(32.W)
+  val level = UInt(2.W)
+}
+
 /** 单端口、组相联的 Sv32 TLB。
   *
   * 这是批次 1 的默认 RTL：split 模式下例化两份（I/D），unified 模式下
@@ -18,7 +26,8 @@ class ysyx_26030103_TLB(
     adMode: String = "fault",
     storage: String = "reg",
     superpage: Boolean = false,
-    pageBits: Int = 12
+    pageBits: Int = 12,
+    refillPorts: Int = 1
 ) extends Module {
   require(entries > 0 && ways > 0 && entries % ways == 0, "TLB entries 必须能被 ways 整除")
   require((entries & (entries - 1)) == 0, "TLB entries 必须是 2 的幂")
@@ -68,6 +77,9 @@ class ysyx_26030103_TLB(
     val fillAsid = Input(UInt(asidWidth.W))
     val fillPte = Input(UInt(32.W))
     val fillLevel = Input(UInt(2.W))
+    // 第 2..refillPorts 个写回端口；端口 0 保持上面的兼容接口。
+    val fillExtra = if (refillPorts > 1)
+      Some(Input(Vec(refillPorts - 1, new ysyx_26030103_TLBWrite))) else None
     val flush = Input(Bool())
   })
 
@@ -238,56 +250,67 @@ class ysyx_26030103_TLB(
       for (i <- 0 until entries) { ages(i) := 0.U }
     }
   }
-  if (superpage) {
-    when(!io.flush && io.fillValid && io.fillLevel === 1.U) {
-      val hit = (0 until superEntries).map(i => superVec.get(i).valid &&
-        superVec.get(i).vpn1 === io.fillVaddr(31, 22))
-      val victim = Mux(hit.reduce(_ || _), PriorityEncoder(hit), superRR.get)
-      val e = Wire(new SuperEntry)
-      e := 0.U.asTypeOf(new SuperEntry)
-      e.valid := true.B
-      e.vpn1 := io.fillVaddr(31, 22)
-      e.asid := io.fillAsid
-      e.global := (if (globalEnable) io.fillPte(5) else false.B)
-      e.ppn := Cat(io.fillPte(29, 20), 0.U(10.W))
-      e.r := io.fillPte(1); e.w := io.fillPte(2); e.x := io.fillPte(3)
-      e.u := io.fillPte(4); e.a := io.fillPte(6); e.d := io.fillPte(7)
-      superVec.get(victim) := e
-      superRR.get := Mux(superRR.get === (superEntries - 1).U, 0.U, superRR.get + 1.U)
-    }
-  }
-  when(!io.flush && io.fillValid && (!superpage.B || io.fillLevel === 0.U)) {
-    val fillVpn = vpnOf(io.fillVaddr)
-    val fillSet = setOf(fillVpn)
-    val victimWay =
-      if (replacement == "plru" && ways > 1) plruVictim(fillSet)
-      else if (replacement == "lru") lruVictim(fillSet)
-      else if (ways == 1) 0.U
-      else rr
-    val idx = entryIndex(fillSet, victimWay)
-    pteMems.foreach { mems =>
-      mems.zipWithIndex.foreach { case (m, w) =>
-        when(victimWay === w.U) { m.write(fillSet, io.fillPte) }
+  def doFill(valid: Bool, fillVaddrVal: UInt, fillAsidVal: UInt,
+      fillPteVal: UInt, fillLevelVal: UInt): Unit = {
+    if (superpage) {
+      when(!io.flush && valid && fillLevelVal === 1.U) {
+        val hit = (0 until superEntries).map(i => superVec.get(i).valid &&
+          superVec.get(i).vpn1 === fillVaddrVal(31, 22))
+        val victim = Mux(hit.reduce(_ || _), PriorityEncoder(hit), superRR.get)
+        val e = Wire(new SuperEntry)
+        e := 0.U.asTypeOf(new SuperEntry)
+        e.valid := true.B
+        e.vpn1 := fillVaddrVal(31, 22)
+        e.asid := fillAsidVal
+        e.global := (if (globalEnable) fillPteVal(5) else false.B)
+        e.ppn := Cat(fillPteVal(29, 20), 0.U(10.W))
+        e.r := fillPteVal(1); e.w := fillPteVal(2); e.x := fillPteVal(3)
+        e.u := fillPteVal(4); e.a := fillPteVal(6); e.d := fillPteVal(7)
+        superVec.get(victim) := e
+        superRR.get := Mux(superRR.get === (superEntries - 1).U, 0.U, superRR.get + 1.U)
       }
     }
-    val fillEntry = Wire(new Entry)
-    fillEntry := 0.U.asTypeOf(new Entry)
-    fillEntry.valid := true.B
-    fillEntry.tag := tagOf(fillVpn)
-    fillEntry.asid := io.fillAsid
-    fillEntry.global := (if (globalEnable) io.fillPte(5) else false.B)
-    fillEntry.ppn := io.fillPte(31, 10)(ppnBits - 1, 0)
-    fillEntry.r := io.fillPte(1)
-    fillEntry.w := io.fillPte(2)
-    fillEntry.x := io.fillPte(3)
-    fillEntry.u := io.fillPte(4)
-    fillEntry.a := io.fillPte(6)
-    fillEntry.d := io.fillPte(7)
-    entriesVec(idx) := fillEntry
-    plruUpdate(fillSet, victimWay)
-    lruUpdate(fillSet, victimWay)
-    if (ways > 1) {
-      rr := Mux(rr === (ways - 1).U, 0.U, rr + 1.U)
+    when(!io.flush && valid && (!superpage.B || fillLevelVal === 0.U)) {
+      val fillVpn = vpnOf(fillVaddrVal)
+      val fillSet = setOf(fillVpn)
+      val victimWay =
+        if (replacement == "plru" && ways > 1) plruVictim(fillSet)
+        else if (replacement == "lru") lruVictim(fillSet)
+        else if (ways == 1) 0.U
+        else rr
+      val idx = entryIndex(fillSet, victimWay)
+      pteMems.foreach { mems =>
+        mems.zipWithIndex.foreach { case (m, w) =>
+          when(victimWay === w.U) { m.write(fillSet, fillPteVal) }
+        }
+      }
+      val fillEntry = Wire(new Entry)
+      fillEntry := 0.U.asTypeOf(new Entry)
+      fillEntry.valid := true.B
+      fillEntry.tag := tagOf(fillVpn)
+      fillEntry.asid := fillAsidVal
+      fillEntry.global := (if (globalEnable) fillPteVal(5) else false.B)
+      fillEntry.ppn := fillPteVal(31, 10)(ppnBits - 1, 0)
+      fillEntry.r := fillPteVal(1)
+      fillEntry.w := fillPteVal(2)
+      fillEntry.x := fillPteVal(3)
+      fillEntry.u := fillPteVal(4)
+      fillEntry.a := fillPteVal(6)
+      fillEntry.d := fillPteVal(7)
+      entriesVec(idx) := fillEntry
+      plruUpdate(fillSet, victimWay)
+      lruUpdate(fillSet, victimWay)
+      if (ways > 1) {
+        rr := Mux(rr === (ways - 1).U, 0.U, rr + 1.U)
+      }
     }
   }
+
+  doFill(io.fillValid, io.fillVaddr, io.fillAsid, io.fillPte, io.fillLevel)
+  io.fillExtra.foreach { extra =>
+    for (port <- extra) {
+      doFill(port.valid, port.vaddr, port.asid, port.pte, port.level)
+    }
+  }
+
 }
