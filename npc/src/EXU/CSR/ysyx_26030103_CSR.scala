@@ -151,6 +151,7 @@ class ysyx_26030103_CSR(
 
   val Mscratch = RegInit(0.U(32.W))
   val Sscratch = RegInit(0.U(32.W))
+  val SstatusReg = RegInit(0.U(32.W))
   val Medeleg = RegInit(0.U(32.W))
   val Mideleg = RegInit(0.U(32.W))
   val Mie = RegInit(0.U(32.W))
@@ -172,7 +173,8 @@ class ysyx_26030103_CSR(
   val MstatusReadData =
     (Mstatus_rdata & (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(32.W)) |
       (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(32.W)
-  val Sstatus_rdata = MstatusReadData & SstatusMask
+  val Sstatus_rdata =
+    if (profile.csrViewMode == "independent") SstatusReg else MstatusReadData & SstatusMask
   val Mtvec_rdata = Mtvec.io.rdata
   val Mepc_rdata = Mepc.io.rdata
   val Mcause_rdata = Mcause.io.rdata
@@ -205,7 +207,9 @@ class ysyx_26030103_CSR(
   val MIntPending = MipState & Mie & ~Mideleg
   val SIntPending = SipState & SieState & Mideleg
   val MIntTaken = MIntPending.orR && Mstatus_rdata(3)
-  val SIntTaken = SIntPending.orR && Mstatus_rdata(1) && Privilege =/= 3.U
+  val SStatusIE =
+    if (profile.csrViewMode == "independent") SstatusReg(1) else Mstatus_rdata(1)
+  val SIntTaken = SIntPending.orR && SStatusIE && Privilege =/= 3.U
   val HasInterrupt = MIntTaken || SIntTaken
   io.IrqPending := HasInterrupt
   // CSR 写只在真正接受中断时被压掉；原始中断线为高但 MIE=0 时软件仍可写 CSR。
@@ -277,7 +281,14 @@ class ysyx_26030103_CSR(
       (Mstatus_rdata(5) << 1) | (1.U << 5)
   )
 
-  val MstatusWen = CSRWen && (IsCSRAddress(CSR_MSTATUS) || IsCSRAddress(CSR_SSTATUS))
+  val MstatusWen =
+    if (profile.csrViewMode == "bound")
+      CSRWen && (IsCSRAddress(CSR_MSTATUS) || IsCSRAddress(CSR_SSTATUS))
+    else CSRWen && IsCSRAddress(CSR_MSTATUS)
+  val SstatusWen =
+    if (profile.csrViewMode == "independent")
+      CSRWen && IsCSRAddress(CSR_SSTATUS)
+    else false.B
   val MstatusWriteMask = (profile.csrMstatusWriteMask.toLong & 0xffffffffL).U(32.W)
   val MstatusCSRData = {
     val rawWrite = CSRWriteData(Mstatus_rdata)
@@ -290,12 +301,24 @@ class ysyx_26030103_CSR(
       legalize(masked)
     )
   }
-  Mstatus.io.wen := MstatusWen || ExceptionCommit || MretCommit || SretCommit
+  Mstatus.io.wen := MstatusWen || ExceptionCommit || MretCommit ||
+    (if (profile.csrViewMode == "bound") SretCommit else false.B)
   Mstatus.io.wdata := MuxCase(MstatusCSRData, Seq(
     ExceptionCommit -> MstatusExceptionData,
     MretCommit -> MstatusMretData,
     SretCommit -> MstatusSretData
   ))
+  if (profile.csrViewMode == "independent") {
+    val sWrite = legalize((SstatusReg & ~SstatusMask) |
+      (CSRWriteData(SstatusReg) & SstatusMask))
+    val sTrap = legalize((SstatusReg & ~"h00000122".U(32.W)) |
+      (SstatusReg(1) << 5) | (Privilege(0) << 8))
+    val sRet = legalize((SstatusReg & ~"h00000122".U(32.W)) |
+      (SstatusReg(5) << 1) | (1.U << 5))
+    when(SstatusWen) { SstatusReg := sWrite }
+    when(ExceptionCommit && TrapToS) { SstatusReg := sTrap }
+    when(SretCommit) { SstatusReg := sRet }
+  }
 
   Mtvec.io.wen := CSRWen && IsCSRAddress(CSR_MTVEC)
   Mtvec.io.wdata := CSRWriteData(Mtvec_rdata)

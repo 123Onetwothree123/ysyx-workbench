@@ -286,6 +286,19 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  it should "CSR independent 视图使用独立 sstatus" in {
+    simulate(new ysyx_26030103_CSRHarness(
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(csrViewMode = "independent")
+    )) { dut =>
+      setup(dut)
+      write(dut, 0x100, BigInt(2))
+      read(dut, 0x100) should be(BigInt(2))
+      write(dut, MSTATUS, BigInt(8))
+      read(dut, 0x100) should be(BigInt(2))
+      read(dut, MSTATUS) should be(BigInt(8))
+    }
+  }
+
   it should "SRET 按 SPP 返回 U/S" in {
     simulate(new ysyx_26030103_CSRHarness) { dut =>
       setup(dut)

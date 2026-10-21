@@ -99,15 +99,56 @@ menu "虚拟内存管理 (MMU/TLB)"
       default "riscv32" if MMU_PTE_RISCV32
       default "custom"
       help
-        PTE 编码名称。自定义编码当前未实现，生成器只记录参数；
-        选中自定义 profile 时 elaboration/RTL 接入前必须报错。
+        PTE 编码名称。自定义编码通过下面的字段位置配置，PTW 会先
+        归一化到内部标准 PTE 再交给 TLB。
+
+    config MMU_PTE_VALID_BIT
+      int "PTE valid 位"
+      default 0
+      range 0 31
+    config MMU_PTE_READ_BIT
+      int "PTE read 位"
+      default 1
+      range 0 31
+    config MMU_PTE_WRITE_BIT
+      int "PTE write 位"
+      default 2
+      range 0 31
+    config MMU_PTE_EXEC_BIT
+      int "PTE execute 位"
+      default 3
+      range 0 31
+    config MMU_PTE_USER_BIT
+      int "PTE user 位"
+      default 4
+      range 0 31
+    config MMU_PTE_GLOBAL_BIT
+      int "PTE global 位"
+      default 5
+      range 0 31
+    config MMU_PTE_A_BIT
+      int "PTE A 位"
+      default 6
+      range 0 31
+    config MMU_PTE_D_BIT
+      int "PTE D 位"
+      default 7
+      range 0 31
+    config MMU_PTE_PPN_LOW
+      int "PTE PPN 低位位置"
+      default 10
+      range 0 31
+    config MMU_PTE_PPN_HIGH
+      int "PTE PPN 高位位置"
+      default 31
+      range 0 31
 
     config MMU_SUPERPAGE
-      bool "支持超级页 (RESERVED)"
+      bool "支持超级页"
       default n
       help
-        标准 Sv32 的 4MiB 超级页尚未实现，默认关闭。
-        选项保留，后续补齐 PTW/TLB 的页大小字段和测试。
+        打开后 PTW 接受非末级叶子 PTE，并按对应页大小生成物理地址。
+        TLB 是否缓存超级页由 TLB_SUPERPAGE 单独控制。
 
     choice
       prompt "A/D 位策略"
@@ -323,11 +364,11 @@ menu "虚拟内存管理 (MMU/TLB)"
       depends on TLB_UNIFIED
 
     config TLB_SUPERPAGE
-      bool "TLB 支持多页大小/超级页 (RESERVED)"
+      bool "TLB 缓存 4MiB 超级页"
       default n
       help
-        当前未实现，选项保留。打开后 TLB 项需要 size/mask 字段，
-        并与 MMU_SUPERPAGE 的 PTW 行为一起实现。
+        打开后 TLB 增加超级页 CAM；当前支持 Sv32 4KiB/2 级下的
+        4MiB 页，其他页大小组合在 elaboration 阶段拒绝。
 
     choice
       prompt "TLB miss queue 组织"
