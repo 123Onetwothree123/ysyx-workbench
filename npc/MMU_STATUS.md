@@ -89,16 +89,8 @@ S ecall + SRET          HIT GOOD
 
 ## 未完成
 
-- Nanos-lite：修复 A/D=fault 时 LSU 读通道被写 mux 遮挡后，Nanos-lite
-  已能输出完整启动日志：
-  - logo
-  - `Hello World`
-  - `init_mm`
-  - `init_device`
-  - `init_ramdisk`（41684 bytes）
-  - `init_irq`
-  - `Initializing processes...`
-  但随后停在 `init_proc` 的进程地址空间/上下文创建，尚未打印
-  `Finish initialization` 或到达 halt。原因在 AM `npc` 平台原有的
-  VME/CTE stub（`map`/`ucontext` 等）与 Nanos-lite 的用户进程加载不匹配，
-  不在 MMU RTL 本身。
+- Nanos-lite 完整退出：AM NPC 的 VME/CTE 已补齐，并已重新构建
+  279,616 字节的新镜像；`hello` 在 direct-NPC 上可输出并 HIT GOOD TRAP。
+  Nanos-lite 新镜像能通过加载，但在 cycle 266 左右即跳到 PC=0 并重复
+  DECERR，尚未输出 logo。需要继续定位 S 模式入口/页表切换或新镜像
+  的复位/加载路径。
