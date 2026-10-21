@@ -76,5 +76,6 @@ S ecall + SRET          HIT GOOD
 - `UTLB_LOOKUP_PORTS=2` 的双查找端口（当前统一 TLB 仍单查找端口）。
 - PTW 级间流水化（当前为多个独立 walker）。
 - PMP。
-- Nanos-lite 64MiB 内存模型验证（已把 direct-NPC `CONFIG_MSIZE`
-  调到 64MiB，待重新构建确认）。
+- Nanos-lite：direct-NPC 的 PMA/`CONFIG_MSIZE` 已从 256KiB 扩到
+  128MiB，重新构建后运行 180s 未再出现 `PC=0x8000236c` 的 access
+  fault，但也没有 UART 输出或退出，仍需判断是等待设备/输入还是死循环。
