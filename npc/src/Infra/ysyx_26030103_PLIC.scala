@@ -82,9 +82,9 @@ class ysyx_26030103_PLIC(
 
   // 单拍写：priority / enable / threshold / complete。
   when(AWValid && WValid && !BValid) {
-    val idx = AWAddr >> 2
-    val isPriority = AWAddr < addrOf(0x1000L) && idx > 0.U &&
-      idx < numSources.U
+    val idx = (AWAddr - addrOf(0L)) >> 2
+    val isPriority = AWAddr >= addrOf(0L) && AWAddr < addrOf(4L * numSources) &&
+      idx > 0.U && idx < numSources.U
     val isEnable = AWAddr >= addrOf(0x2000L) &&
       AWAddr < addrOf(0x2000L + 4L * Words)
     val isThreshold = AWAddr === ThresholdAddr
@@ -119,7 +119,7 @@ class ysyx_26030103_PLIC(
     RID := io.AR.ARID
     RValid := true.B
     RResp := OKAY
-    val idx = io.AR.ARADDR >> 2
+    val idx = (io.AR.ARADDR - addrOf(0L)) >> 2
     when(io.AR.ARADDR === ClaimAddr) {
       RData := claimId
       when(claimValid) {
@@ -130,8 +130,8 @@ class ysyx_26030103_PLIC(
       RData := pending
     }.elsewhen(io.AR.ARADDR === ThresholdAddr) {
       RData := threshold
-    }.elsewhen(io.AR.ARADDR < addrOf(0x1000L) && idx > 0.U &&
-      idx < numSources.U) {
+    }.elsewhen(io.AR.ARADDR >= addrOf(0L) && io.AR.ARADDR < addrOf(4L * numSources) &&
+      idx > 0.U && idx < numSources.U) {
       RData := priority(idx(IdBits - 1, 0))
     }.elsewhen(io.AR.ARADDR >= addrOf(0x2000L) &&
       io.AR.ARADDR < addrOf(0x2000L + 4L * Words)) {
