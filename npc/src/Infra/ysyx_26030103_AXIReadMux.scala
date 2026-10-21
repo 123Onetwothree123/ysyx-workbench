@@ -237,11 +237,20 @@ class ysyx_26030103_AXIWriteMux(val PassRead: Boolean = true) extends Module {
   val wDone = RegInit(false.B)
 
   if (PassRead) {
-    // 读通道由 LSU(a) 直通。
-    io.out.AR <> io.a.AR
+    // 读通道由 LSU(a) 直通。逐字段连接，不能再用 ARREADY := false 覆盖。
+    io.out.AR.ARID := io.a.AR.ARID
+    io.out.AR.ARADDR := io.a.AR.ARADDR
+    io.out.AR.ARLEN := io.a.AR.ARLEN
+    io.out.AR.ARSIZE := io.a.AR.ARSIZE
+    io.out.AR.ARBURST := io.a.AR.ARBURST
+    io.out.AR.ARPROT := io.a.AR.ARPROT
+    io.out.AR.ARCACHE := io.a.AR.ARCACHE
+    io.out.AR.ARQOS := io.a.AR.ARQOS
+    io.out.AR.ARVALID := io.a.AR.ARVALID
+    io.a.AR.ARREADY := io.out.AR.ARREADY
     io.a.R <> io.out.R
   } else {
-    // 只使用写通道；读通道由顶层直接接仲裁器，避免 ARREADY 被覆盖。
+    // 只使用写通道；读通道由顶层直接接仲裁器。
     io.out.AR.ARVALID := false.B
     io.out.AR.ARID := 0.U
     io.out.AR.ARADDR := 0.U
@@ -282,7 +291,6 @@ class ysyx_26030103_AXIWriteMux(val PassRead: Boolean = true) extends Module {
     io.out.W.WLAST := false.B
     io.out.B.BREADY := false.B
     io.a.AW.AWREADY := false.B
-  io.a.AR.ARREADY := false.B
   io.a.W.WREADY := false.B
   io.a.B.BVALID := false.B
   io.a.B.BID := 0.U

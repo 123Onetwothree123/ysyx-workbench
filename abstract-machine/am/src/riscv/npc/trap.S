@@ -31,22 +31,45 @@ f(30) f(31)
 #define PUSH(n) STORE concat(x, n), (n * XLEN)(sp);
 #define POP(n)  LOAD  concat(x, n), (n * XLEN)(sp);
 
-#define CONTEXT_SIZE  ((NR_REGS + 3 + 1) * XLEN)
+#define CONTEXT_SIZE  ((NR_REGS + 3) * XLEN)
 #define OFFSET_SP     ( 2 * XLEN)
 #define OFFSET_CAUSE  ((NR_REGS + 0) * XLEN)
 #define OFFSET_STATUS ((NR_REGS + 1) * XLEN)
 #define OFFSET_EPC    ((NR_REGS + 2) * XLEN)
 
 .align 3
+.globl __am_enter_supervisor
+__am_enter_supervisor:
+  # 从 M 模式进入 S 模式，返回地址仍保存在 ra 中。
+  la t0, 1f
+  csrw mepc, t0
+  # MPP=S，MPIE=1，SUM=1，MXR=1
+  li t0, 0xc0880
+  csrw mstatus, t0
+  mret
+1:
+  ret
+
+.align 3
 .globl __am_asm_trap
 __am_asm_trap:
+  # sscratch=0 表示陷入前就在 S 模式内核栈上，此时不切换栈；
+  # sscratch!=0 表示从 U 模式陷入，交换后 sp 指向该进程的内核栈顶。
+  csrrw sp, sscratch, sp
+  bnez sp, 1f
+  csrr sp, sscratch
+1:
   addi sp, sp, -CONTEXT_SIZE
 
   MAP(REGS, PUSH)
 
-  csrr t0, mcause
-  csrr t1, mstatus
-  csrr t2, mepc
+  # 寄存器保存宏不保存 x2，这里把陷入前的 sp 写入 gpr[2] 槽位。
+  csrr t0, sscratch
+  STORE t0, OFFSET_SP(sp)
+
+  csrr t0, scause
+  csrr t1, sstatus
+  csrr t2, sepc
 
   STORE t0, OFFSET_CAUSE(sp)
   STORE t1, OFFSET_STATUS(sp)
@@ -54,14 +77,29 @@ __am_asm_trap:
 
   mv a0, sp
   call __am_irq_handle
-  mv sp, a0 #使用__am_irq_handle返回的新Context
 
-  LOAD t1, OFFSET_STATUS(sp)
-  LOAD t2, OFFSET_EPC(sp)
-  csrw mstatus, t1
-  csrw mepc, t2
+  # a0 是下一个要恢复的上下文。
+  # 下一次从 U 陷入时 sscratch 应指向内核栈顶；从 S 陷入时应为 0。
+  LOAD t1, OFFSET_STATUS(a0)
+  LOAD t2, OFFSET_EPC(a0)
+  andi t0, t1, 0x100
+  bnez t0, 1f
+  addi t0, a0, CONTEXT_SIZE
+  csrw sscratch, t0
+  j 2f
+1:
+  csrw sscratch, zero
+2:
+  # 返回路径必须保持关中断，直到 sret 才根据 SPIE 重新开中断。
+  # 否则时钟中断可能在恢复寄存器期间重入，覆盖当前上下文。
+  li t0, -3
+  and t1, t1, t0
+  csrw sstatus, t1
+  csrw sepc, t2
+  mv sp, a0
 
   MAP(REGS, POP)
 
-  addi sp, sp, CONTEXT_SIZE
-  mret
+  # 恢复陷入前的 sp：用户进程是用户栈，内核线程是内核栈。
+  LOAD sp, OFFSET_SP(sp)
+  sret

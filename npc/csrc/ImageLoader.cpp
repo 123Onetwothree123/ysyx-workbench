@@ -10,7 +10,12 @@ import npc.ysyxSoC;
 // SoC 路径的启动地址由 RTL 固定，不能在 csrc 侧移动镜像，否则启动会执行到填充字节。
 #ifdef VRISCV32E_NPC
 constexpr std::size_t kCachePadding{CONFIG_CACHE_PADDING};
-constexpr std::uintmax_t kImageCapacity{0x00040000U}; // AXIRAM: 256 KiB
+// 镜像容量必须与 direct-NPC 的 AXI RAM/加载器窗口一致。此前这里固定
+// 256 KiB，扩容到 64 MiB 后 Nanos-lite 镜像仍会在加载阶段被拒绝。
+#ifndef CONFIG_MSIZE
+#define CONFIG_MSIZE 0x10000000U
+#endif
+constexpr std::uintmax_t kImageCapacity{CONFIG_MSIZE};
 #else
 constexpr std::size_t kCachePadding{0};
 constexpr std::uintmax_t kImageCapacity{0x10000000U}; // ysyxSoC MROM window
