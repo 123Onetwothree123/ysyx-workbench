@@ -93,7 +93,8 @@ class ysyx_26030103_PLIC(
       priority(idx(IdBits - 1, 0)) := Mux(WData(priorityBits - 1, 0) > PriorityMax,
         PriorityMax, WData(priorityBits - 1, 0))
     }.elsewhen(isEnable && WStrb =/= 0.U) {
-      val word = ((AWAddr - addrOf(0x2000L)) >> 2)(log2Ceil(Words.max(2)) - 1, 0)
+      val word = if (Words == 1) 0.U
+        else ((AWAddr - addrOf(0x2000L)) >> 2)(log2Ceil(Words) - 1, 0)
       enable(word) := WData
     }.elsewhen(isThreshold && WStrb =/= 0.U) {
       threshold := Mux(WData(priorityBits - 1, 0) > PriorityMax,
@@ -134,8 +135,8 @@ class ysyx_26030103_PLIC(
       RData := priority(idx(IdBits - 1, 0))
     }.elsewhen(io.AR.ARADDR >= addrOf(0x2000L) &&
       io.AR.ARADDR < addrOf(0x2000L + 4L * Words)) {
-      val word = ((io.AR.ARADDR - addrOf(0x2000L)) >> 2)(
-        log2Ceil(Words.max(2)) - 1, 0)
+      val word = if (Words == 1) 0.U
+        else ((io.AR.ARADDR - addrOf(0x2000L)) >> 2)(log2Ceil(Words) - 1, 0)
       RData := enable(word)
     }.otherwise {
       RData := 0.U
