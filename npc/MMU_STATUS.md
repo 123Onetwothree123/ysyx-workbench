@@ -47,6 +47,7 @@ ysyx_26030103_MMUBehaviorTest     16
 ysyx_26030103_MMUStreamTest       1
 ysyx_26030103_CSRPrivilegeTest    10
 ysyx_26030103_PLICTest             2
+ysyx_26030103_PMPTest              2
 ```
 
 裸机测试（MMU 开启）：
@@ -66,7 +67,8 @@ S ecall + SRET          HIT GOOD
 - `HAS_TLB=y, HAS_MMU=n`：生成器按无 TLB 处理并告警。
 - `refillPorts>1` 和 `miss_queue_mode=global` 当前按单 refill
   端口、统一请求队列深度实现；没有 N 个独立 PTW 写回源。
-- `HAS_PMP` 仍是 RESERVED，选择时生成器报错。
+- `HAS_PMP=y` 启用基础 PMP：OFF/TOR/NA4/NAPOT、L 锁定和 R/W/X；
+  当前 PMP 检查接在 MMU 翻译后的物理地址上，因此依赖 HAS_MMU。
 - `HAS_S/HAS_U` 仍不参与 RTL 面积裁剪；MMU 需要至少一个 S/U 特权级。
 
 ## 未完成
@@ -75,7 +77,6 @@ S ecall + SRET          HIT GOOD
 - 多 refill 端口（当前只有一个 PTW 响应写回源）。
 - `UTLB_LOOKUP_PORTS=2` 的双查找端口（当前统一 TLB 仍单查找端口）。
 - PTW 级间流水化（当前为多个独立 walker）。
-- PMP。
 - Nanos-lite：direct-NPC 的 PMA/`CONFIG_MSIZE`/AXI RAM 已从 256KiB
   扩到 64MiB，重新构建后运行 240s（含启动）未再出现
   `PC=0x8000236c` 的 access fault，但 direct-NPC 没有 UART 回显，
