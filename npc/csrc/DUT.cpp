@@ -1,6 +1,7 @@
 module;
 #ifdef VRISCV32E_NPC
 #include "Vriscv32e_npc_SimTop.h"
+#include <algorithm>
 #define TOP_MODULE Vriscv32e_npc_SimTop
 #else
 #include "VysyxSoCFull.h"
@@ -78,6 +79,9 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
 {
 #ifdef VRISCV32E_NPC
     constexpr std::size_t RamBytes{64U * 1024U * 1024U};
+    // 只清零镜像及其后的一段 BSS/堆边距，避免 64MiB 逐字初始化把
+    // 仿真启动时间拖到几分钟；Verilator RAM 其余部分保持工具链的初始值。
+    constexpr std::size_t ZeroMarginBytes{4U * 1024U * 1024U};
     constexpr std::size_t WordBytes{sizeof(std::uint32_t)};
     if (image.size() > RamBytes)
     {
@@ -89,7 +93,9 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
     // 或较短镜像之后的内存为零，不会保留上次运行的内容。
     dut->reset = 1;
     dut->ram_init_valid = 1;
-    for (std::size_t wordIndex{0}; wordIndex < RamBytes / WordBytes; ++wordIndex)
+    const std::size_t initBytes{
+        std::min(RamBytes, image.size() + ZeroMarginBytes)};
+    for (std::size_t wordIndex{0}; wordIndex < initBytes / WordBytes; ++wordIndex)
     {
         std::uint32_t word{0};
         const auto byteBase{wordIndex * WordBytes};
