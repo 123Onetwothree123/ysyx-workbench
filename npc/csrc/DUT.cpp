@@ -81,7 +81,7 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
     constexpr std::size_t RamBytes{64U * 1024U * 1024U};
     // 只清零镜像及其后的一段 BSS/堆边距，避免 64MiB 逐字初始化把
     // 仿真启动时间拖到几分钟；Verilator RAM 其余部分保持工具链的初始值。
-    constexpr std::size_t ZeroMarginBytes{4U * 1024U * 1024U};
+    constexpr std::size_t ZeroMarginBytes{64U * 1024U};
     constexpr std::size_t WordBytes{sizeof(std::uint32_t)};
     if (image.size() > RamBytes)
     {
