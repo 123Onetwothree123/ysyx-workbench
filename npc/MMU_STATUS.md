@@ -37,8 +37,9 @@
   - 页表读等待期间 A 级仍可服务其它在途请求；同一请求的各级仍受
     数据依赖约束。
 - PTW 返回 in_order/out_of_order 选择；MMU 层仍保证架构响应顺序。
-- PIPT 和 VIPT：VIPT 使用虚拟地址选 index、物理地址做 tag；当前缓存
-  访问仍等待翻译完成，不是 TLB/Cache 同拍并行流水。
+- PIPT 和 VIPT：VIPT 使用虚拟地址提前选 index/block offset，物理地址
+  到达后再做 tag/PMA/refill。ICache 和 DCache 都有并行 VIPT 路径；
+  DCache 的并行提前访存覆盖 load，store 仍先翻译以避免页错误前产生总线副作用。
 - 可选 PTW PTE cache（set-associative）。
 - IFU/LSU 双端口仲裁：两笔翻译可以同时在途，响应按 ID 路由；
   DMMU 对非访存指令组合直通。
@@ -57,6 +58,11 @@ ysyx_26030103_CSRPrivilegeTest    12
 ysyx_26030103_IDUPrivilegeTest     3
 ysyx_26030103_PLICTest             2
 ysyx_26030103_PMPTest              2
+ysyx_26030103_ICacheViptTest       3
+ysyx_26030103_DCacheViptTest       3
+ysyx_26030103_LSUMMUViptTest       1
+ysyx_26030103_LSUViptTest          1
+ysyx_26030103_LSUDmmuViptTest      1
 ```
 
 裸机测试（MMU 开启）：
@@ -92,9 +98,7 @@ S ecall + SRET          HIT GOOD
 
 ## 未完成
 
-- 并行 VIPT TLB/Cache 流水。
-- 并行 VIPT：当前 ICache 顺序路径尚未改为并行（VIPT 子代理结果待合并后更新）。
-- Nanos-lite：direct-NPC 的 PMA/`CONFIG_MSIZE`/AXI RAM 已从 256KiB
-  扩到 64MiB，重新构建后运行 240s（含启动）未再出现
-  `PC=0x8000236c` 的 access fault，但 direct-NPC 没有 UART 回显，
-  也没有退出，仍需判断是等待设备/输入还是死循环。
+- Nanos-lite：direct-NPC 的 PMA/`CONFIG_MSIZE`/AXI RAM 已扩到 64MiB。
+  最近的 MMU 全功能二进制运行未再复现 `PC=0x8000236c` 的 access
+  fault；由于 direct-NPC 没有文件系统/终端回显，且 Nanos-lite 的
+  `panic` 是死循环，尚未得到可判定“完整退出”的串口日志或 halt。
