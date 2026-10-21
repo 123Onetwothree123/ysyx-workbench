@@ -362,6 +362,7 @@ def build_profile(cfg: Config) -> dict:
             "itlb": itlb,
             "dtlb": dtlb,
             "utlb": utlb,
+            "lookup_ports": cfg.integer("UTLB_LOOKUP_PORTS", 2),
             "superpage": cfg.bool("TLB_SUPERPAGE"),
             "miss_queue": {
                 "mode": miss_queue_mode,
@@ -532,6 +533,7 @@ def main() -> int:
             f"MMU_DTLB_WAYS={profile['tlb']['dtlb']['ways'] if profile['tlb']['dtlb'] else 4}",
             f"MMU_UTLB_ENTRIES={profile['tlb']['utlb']['entries'] if profile['tlb']['utlb'] else 32}",
             f"MMU_UTLB_WAYS={profile['tlb']['utlb']['ways'] if profile['tlb']['utlb'] else 4}",
+            f"UTLB_LOOKUP_PORTS={profile['tlb']['lookup_ports']}",
             f"MMU_TLB_SUPERPAGE={int(profile['tlb']['superpage'])}",
             f"MMU_TLB_MISS_QUEUE_MODE={profile['tlb']['miss_queue']['mode']}",
             f"MMU_ITLB_MISS_QUEUE_ENTRIES={profile['tlb']['miss_queue']['itlb_entries']}",

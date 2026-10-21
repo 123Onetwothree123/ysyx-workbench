@@ -73,6 +73,7 @@ S ecall + SRET          HIT GOOD
 
 - 并行 VIPT TLB/Cache 流水。
 - 多 refill 端口（当前只有一个 PTW 响应写回源）。
+- `UTLB_LOOKUP_PORTS=2` 的双查找端口（当前统一 TLB 仍单查找端口）。
 - PTW 级间流水化（当前为多个独立 walker）。
 - PMP。
 - Nanos-lite 64MiB 内存模型验证（已把 direct-NPC `CONFIG_MSIZE`

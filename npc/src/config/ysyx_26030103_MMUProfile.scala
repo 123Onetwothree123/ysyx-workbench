@@ -54,6 +54,7 @@ case class ysyx_26030103_MMUProfile(
     dtlbWays: Int = 4,
     utlbEntries: Int = 32,
     utlbWays: Int = 4,
+    utlbLookupPorts: Int = 1,
     tlbSuperpage: Boolean = false,
     tlbMissQueueMode: String = "follow_tlb",
     itlbMissQueueEntries: Int = 4,
@@ -97,6 +98,7 @@ case class ysyx_26030103_MMUProfile(
   requirePowerOfTwo("每级页表项数", pageTableSizeBytes / pteSizeBytes)
   require(ptwOutstanding >= 1, s"ptwOutstanding=$ptwOutstanding 必须 >= 1")
   require(tlbAsidBits >= 0 && tlbAsidBits <= 9, "tlbAsidBits 必须在 0..9")
+  require(utlbLookupPorts >= 1 && utlbLookupPorts <= 2, "utlbLookupPorts 必须在 1..2")
   require(refillPorts >= 1, "refillPorts 必须 >= 1")
   require(!enabled || hasS || hasU, "HAS_MMU 需要至少一个 S/U 特权级")
   require(plicSources >= 2 && plicSources <= 1024, "PLIC source 数必须在 2..1024")
@@ -264,6 +266,7 @@ object ysyx_26030103_MMUProfile {
       dtlbWays = envInt(env, "MMU_DTLB_WAYS", 4),
       utlbEntries = envInt(env, "MMU_UTLB_ENTRIES", 32),
       utlbWays = envInt(env, "MMU_UTLB_WAYS", 4),
+      utlbLookupPorts = envInt(env, "UTLB_LOOKUP_PORTS", 1),
       tlbSuperpage = envBool(env, "MMU_TLB_SUPERPAGE", false),
       tlbMissQueueMode = envString(env, "MMU_TLB_MISS_QUEUE_MODE", "follow_tlb"),
       itlbMissQueueEntries = envInt(env, "MMU_ITLB_MISS_QUEUE_ENTRIES", 4),
