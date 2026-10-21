@@ -5,6 +5,7 @@ import chisel3.util._
 import _root_.ysyx_26030103.config.ysyx_26030103_PteConfig
 
 class ysyx_26030103_PTWRequest extends Bundle {
+  val id = UInt(4.W)
   val vaddr = UInt(32.W)
   val satp = UInt(32.W)
   val privilege = UInt(2.W)
@@ -14,6 +15,7 @@ class ysyx_26030103_PTWRequest extends Bundle {
 }
 
 class ysyx_26030103_PTWResponse extends Bundle {
+  val id = UInt(4.W)
   val paddr = UInt(32.W)
   val fault = Bool()
   val cause = UInt(32.W)
@@ -56,6 +58,7 @@ class ysyx_26030103_PTW(
   val idle :: req1 :: wait1 :: req0 :: wait0 :: write0 :: waitW :: done :: Nil = Enum(8)
   val state = RegInit(idle)
 
+  val idReg = RegInit(0.U(4.W))
   val vaddrReg = RegInit(0.U(32.W))
   val satpReg = RegInit(0.U(32.W))
   val privReg = RegInit(0.U(2.W))
@@ -196,6 +199,7 @@ class ysyx_26030103_PTW(
   val pte0Bus = normalizePte(pte0Raw)
 
   when(state === idle && io.req.fire) {
+    idReg := io.req.bits.id
     vaddrReg := io.req.bits.vaddr
     satpReg := io.req.bits.satp
     privReg := io.req.bits.privilege
@@ -330,4 +334,5 @@ class ysyx_26030103_PTW(
 
   // TLB 在成功页表项返回后的 done 首拍填充；这是单拍脉冲。
   io.resp.bits.fillValid := fillPulse
+  io.resp.bits.id := idReg
 }

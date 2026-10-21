@@ -200,6 +200,7 @@ class ysyx_26030103_MMU(
       }.otherwise {
         ptwOpt.foreach { ptw =>
           ptw.io.req.valid := true.B
+          ptw.io.req.bits.id := reqReg.id
           ptw.io.req.bits.vaddr := reqReg.vaddr
           ptw.io.req.bits.satp := reqReg.satp
           ptw.io.req.bits.privilege := reqReg.privilege
