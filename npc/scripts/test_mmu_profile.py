@@ -54,11 +54,12 @@ class MmuProfileTest(unittest.TestCase):
         self.assertFalse(profile["mmu"]["well_formed"])
         self.assertTrue(profile["warnings"])
 
-    def test_reserved_pmp_is_visible(self):
+    def test_pmp_is_visible(self):
         values = self.base()
         values["HAS_PMP"] = True
         profile = build_profile(Config(values))
-        self.assertIn("HAS_PMP", profile["reserved"])
+        self.assertTrue(profile["pmp"]["enabled"])
+        self.assertNotIn("HAS_PMP", profile["reserved"])
 
     def test_invalid_tlb_geometry(self):
         values = self.base()
