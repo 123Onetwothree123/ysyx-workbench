@@ -277,8 +277,6 @@ def build_profile(cfg: Config) -> dict:
     reserved = []
     if cfg.bool("HAS_PMP", False):
         reserved.append("HAS_PMP")
-    if pte_format == "custom":
-        reserved.append("MMU_PTE_CUSTOM")
 
     timer_path = one_of(
         "TIMER_PATH", cfg.string("TIMER_PATH", "clint_mtip"),

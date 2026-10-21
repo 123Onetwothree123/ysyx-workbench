@@ -26,7 +26,7 @@
 
 ```text
 ysyx_26030103_MMUTest             7
-ysyx_26030103_MMUBehaviorTest     9
+ysyx_26030103_MMUBehaviorTest     10
 ysyx_26030103_MMUStreamTest       1
 ysyx_26030103_CSRPrivilegeTest    4
 ```
@@ -43,7 +43,6 @@ S ecall + SRET          HIT GOOD
 
 ## 尚未实现（选择时会 elaboration error）
 
-- 自定义 PTE
 - CSR 每个字段独立读写配置
 - 并行 VIPT TLB/Cache 流水
 - pipelined / out-of-order PTW

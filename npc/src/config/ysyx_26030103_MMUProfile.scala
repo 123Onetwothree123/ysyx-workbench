@@ -1,5 +1,23 @@
 package ysyx_26030103.config
 
+/** PTE 字段位置；默认就是标准 RISC-V 32-bit PTE。 */
+case class ysyx_26030103_PteConfig(
+    validBit: Int = 0,
+    readBit: Int = 1,
+    writeBit: Int = 2,
+    executeBit: Int = 3,
+    userBit: Int = 4,
+    globalBit: Int = 5,
+    aBit: Int = 6,
+    dBit: Int = 7,
+    ppnLow: Int = 10,
+    ppnHigh: Int = 31
+) {
+  require(ppnLow >= 0 && ppnHigh < 32 && ppnLow <= ppnHigh, "PTE PPN 位范围非法")
+  require((0 to 7).forall(b => Seq(validBit, readBit, writeBit, executeBit,
+    userBit, globalBit, aBit, dBit).forall(x => x >= 0 && x < 32)), "PTE 标志位非法")
+}
+
 /** MMU/TLB 的 elaboration 期参数。
   *
   * 这个类由 Elaborate 从 Kconfig 生成的环境变量构造，并驱动 MMU/TLB RTL。
@@ -13,6 +31,7 @@ case class ysyx_26030103_MMUProfile(
     pteSizeBytes: Int = 4,
     pageTableSizeBytes: Int = 4096,
     pteFormat: String = "riscv32",
+    pteConfig: ysyx_26030103_PteConfig = ysyx_26030103_PteConfig(),
     superpage: Boolean = false,
     adMode: String = "fault",
     cacheMode: String = "pipt",
@@ -106,6 +125,18 @@ object ysyx_26030103_MMUProfile {
       pteSizeBytes = envInt(env, "MMU_PTE_SIZE_BYTES", 4),
       pageTableSizeBytes = envInt(env, "MMU_PAGE_TABLE_SIZE_BYTES", 4096),
       pteFormat = envString(env, "MMU_PTE_FORMAT", "riscv32"),
+      pteConfig = ysyx_26030103_PteConfig(
+        validBit = envInt(env, "MMU_PTE_VALID_BIT", 0),
+        readBit = envInt(env, "MMU_PTE_READ_BIT", 1),
+        writeBit = envInt(env, "MMU_PTE_WRITE_BIT", 2),
+        executeBit = envInt(env, "MMU_PTE_EXEC_BIT", 3),
+        userBit = envInt(env, "MMU_PTE_USER_BIT", 4),
+        globalBit = envInt(env, "MMU_PTE_GLOBAL_BIT", 5),
+        aBit = envInt(env, "MMU_PTE_A_BIT", 6),
+        dBit = envInt(env, "MMU_PTE_D_BIT", 7),
+        ppnLow = envInt(env, "MMU_PTE_PPN_LOW", 10),
+        ppnHigh = envInt(env, "MMU_PTE_PPN_HIGH", 31)
+      ),
       superpage = envBool(env, "MMU_SUPERPAGE", false),
       adMode = envString(env, "MMU_AD_MODE", "fault"),
       cacheMode = envString(env, "MMU_CACHE_MODE", "pipt"),

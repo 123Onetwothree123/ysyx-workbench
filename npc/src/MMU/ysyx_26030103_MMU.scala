@@ -15,8 +15,7 @@ class ysyx_26030103_MMU(
 ) extends Module {
   require(
     profile.pageSizeBytes == 4096 && profile.levels == 2 &&
-      profile.pteSizeBytes == 4 && profile.pageTableSizeBytes == 4096 &&
-      profile.pteFormat == "riscv32",
+      profile.pteSizeBytes == 4 && profile.pageTableSizeBytes == 4096,
     "当前 MMU 只实现标准 Sv32 4KiB/2 级/4B PTE/4KiB 页表"
   )
   require(!profile.tlbSuperpage || profile.superpage, "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
@@ -77,6 +76,7 @@ class ysyx_26030103_MMU(
       cacheEntries = profile.ptwCacheEntries,
       cacheWays = profile.ptwCacheWays,
       superpage = profile.superpage,
+      pteConfig = profile.pteConfig,
       inOrder = profile.ptwOrder == "in_order"
     )))
     else None

@@ -2,6 +2,7 @@ package ysyx_26030103.mmu
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.config.ysyx_26030103_PteConfig
 
 class ysyx_26030103_PTWRequest extends Bundle {
   val vaddr = UInt(32.W)
@@ -33,7 +34,8 @@ class ysyx_26030103_PTW(
     cacheEnable: Boolean = false,
     cacheEntries: Int = 16,
     cacheWays: Int = 2,
-    superpage: Boolean = false
+    superpage: Boolean = false,
+    pteConfig: ysyx_26030103_PteConfig = ysyx_26030103_PteConfig()
 ) extends Module {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
   if (cacheEnable) {
@@ -129,6 +131,21 @@ class ysyx_26030103_PTW(
   val isStore = accessReg === ysyx_26030103_AccessType.Store
   val pageFaultCause = Mux(isFetch, 12.U, Mux(isStore, 15.U, 13.U))
 
+  private def normalizePte(d: UInt): UInt = {
+    val flags = Cat(
+      d(pteConfig.dBit), d(pteConfig.aBit), d(pteConfig.globalBit),
+      d(pteConfig.userBit), d(pteConfig.executeBit), d(pteConfig.writeBit),
+      d(pteConfig.readBit), d(pteConfig.validBit)
+    )
+    val width = pteConfig.ppnHigh - pteConfig.ppnLow + 1
+    val ppn = d(pteConfig.ppnHigh, pteConfig.ppnLow)
+    val ppn22 = if (width >= 22) ppn(21, 0) else ppn.pad(22)
+    Cat(ppn22, 0.U(2.W), flags)
+  }
+  private def adRaw(d: UInt): UInt =
+    d | (1.U << pteConfig.aBit) |
+      Mux(isStore, 1.U << pteConfig.dBit, 0.U(32.W))
+
   val vpn1 = vaddrReg(31, 22)
   val vpn0 = vaddrReg(21, 12)
   val root = Cat(satpReg(21, 0), 0.U(12.W))
@@ -173,8 +190,10 @@ class ysyx_26030103_PTW(
   io.resp.valid := state === done
   io.resp.bits := respReg
 
-  val pte1Bus = io.bus.resp.bits.data
-  val pte0Bus = io.bus.resp.bits.data
+  val pte1Raw = io.bus.resp.bits.data
+  val pte0Raw = io.bus.resp.bits.data
+  val pte1Bus = normalizePte(pte1Raw)
+  val pte0Bus = normalizePte(pte0Raw)
 
   when(state === idle && io.req.fire) {
     vaddrReg := io.req.bits.vaddr
@@ -267,7 +286,7 @@ class ysyx_26030103_PTW(
     is(wait0) {
       when(io.bus.resp.valid) {
         when(!io.bus.resp.bits.fault && needsAdUpdate(pte0Bus)) {
-          writeDataReg := adUpdated(pte0Bus)
+          writeDataReg := adRaw(pte0Raw)
           state := write0
         }.otherwise {
           cacheFill(pte0Addr, pte0Bus)
@@ -289,16 +308,17 @@ class ysyx_26030103_PTW(
     }
     is(waitW) {
       when(io.bus.resp.valid) {
-        cacheFill(pte0Addr, writeDataReg)
-        respReg.paddr := Cat(writeDataReg(29, 10), vaddrReg(11, 0))
+        val written = normalizePte(writeDataReg)
+        cacheFill(pte0Addr, written)
+        respReg.paddr := Cat(written(29, 10), vaddrReg(11, 0))
         respReg.fault := io.bus.resp.bits.fault || !pte0Good(writeDataReg)
         respReg.cause := pageFaultCause
         respReg.tval := vaddrReg
         respReg.fillValid := false.B
-        respReg.fillPte := writeDataReg
+        respReg.fillPte := written
         respReg.fillVaddr := vaddrReg
         respReg.fillAsid := satpReg(30, 22)
-        fillPulse := pte0Good(writeDataReg) && !io.bus.resp.bits.fault
+        fillPulse := pte0Good(written) && !io.bus.resp.bits.fault
         state := done
       }
     }
