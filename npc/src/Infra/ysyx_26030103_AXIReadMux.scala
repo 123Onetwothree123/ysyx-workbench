@@ -36,7 +36,7 @@ class ysyx_26030103_AXIReadMux(passWriteA: Boolean = false) extends Module {
   }
   // a 的写通道可选择直通（PTW 复用 LSU 数据通路时使用）。
   io.a.AW.AWREADY := false.B
-  io.a.AR.ARREADY := false.B
+  // 读通道由上面的 io.out.AR <> io.a.AR 驱动，不能再把 ARREADY 覆盖为 0。
   io.a.W.WREADY := false.B
   io.a.B.BVALID := false.B
   io.a.B.BID := 0.U
@@ -262,7 +262,7 @@ class ysyx_26030103_AXIWriteMux extends Module {
     io.out.W.WLAST := false.B
     io.out.B.BREADY := false.B
     io.a.AW.AWREADY := false.B
-  io.a.AR.ARREADY := false.B
+  // 读通道由上面的 io.out.AR <> io.a.AR 驱动，不能再把 ARREADY 覆盖为 0。
   io.a.W.WREADY := false.B
   io.a.B.BVALID := false.B
   io.a.B.BID := 0.U
