@@ -3,7 +3,7 @@ module riscv32e_npc_SimTop(
   input         clock,
   input         reset,
   input         ram_init_valid,
-  input  [15:0] ram_init_index,
+  input  [23:0] ram_init_index,
   input  [31:0] ram_init_data,
   output        trap_valid,
   output [31:0] trap_pc,

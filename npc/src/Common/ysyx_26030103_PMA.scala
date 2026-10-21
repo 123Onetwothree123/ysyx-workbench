@@ -41,7 +41,7 @@ object ysyx_26030103_PhysicalMemoryMap {
     ),
     ysyx_26030103_PMARegion(
       0x80000000L,
-      0x08000000L, // 128MiB：覆盖 Nanos-lite 的 AM PMEM_SIZE
+      0x04000000L, // 64MiB：覆盖 Nanos-lite 常驻数据
       Cacheable = true,
       Executable = true
     )

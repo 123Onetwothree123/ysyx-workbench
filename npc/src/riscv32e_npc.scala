@@ -11,23 +11,24 @@ class riscv32e_npc_AXIRAM extends Module {
     // 这使 RTL 和 DiffTest/调试器共用同一份 FlashMemory，
     // 不再依赖当前工作目录下可能过期的 program.hex。
     val hostWriteValid = Input(Bool())
-    val hostWriteIndex = Input(UInt(25.W))
+    val hostWriteIndex = Input(UInt(24.W))
     val hostWriteData = Input(UInt(32.W))
   })
 
-  // direct-NPC 使用 128MiB RAM，与 AM/Nanos-lite 的 PMEM_SIZE 对齐。
-  val depth = 128 * 1024 * 1024 / 4
-  val wordIndexBits = 25
+  // direct-NPC 使用 64MiB RAM；足以容纳 Nanos-lite 的常驻数据，
+  // 同时避免仿真初始化 128MiB 主机内存的过长启动时间。
+  val depth = 64 * 1024 * 1024 / 4
+  val wordIndexBits = 24
   val mem = SyncReadMem(depth, UInt(32.W))
 
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
   val DECERR = 3.U(2.W)
   val RamBase = "h80000000".U(32.W)
-  val RamLast = "h87ffffff".U(32.W)
+  val RamLast = "h83ffffff".U(32.W)
   val UARTAddress = "h10000000".U(32.W)
 
-  // 只有 AxSIZE 选中的每个字节都位于 128MiB 仿真内存窗口内时，该拍才属于
+  // 只有 AxSIZE 选中的每个字节都位于 64MiB 仿真内存窗口内时，该拍才属于
   // RAM。尤其要避免窗口外地址通过截断后的 SyncReadMem 索引发生回绕。
   def IsRAMBeat(address: UInt, size: UInt): Bool = {
     val lastStart = MuxLookup(size, 0.U(32.W))(

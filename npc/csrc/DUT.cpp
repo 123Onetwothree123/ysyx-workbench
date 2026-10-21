@@ -77,7 +77,7 @@ DUT::DUT()
 void DUT::InitializeMemory(std::span<const std::uint8_t> image)
 {
 #ifdef VRISCV32E_NPC
-    constexpr std::size_t RamBytes{256U * 1024U};
+    constexpr std::size_t RamBytes{64U * 1024U * 1024U};
     constexpr std::size_t WordBytes{sizeof(std::uint32_t)};
     if (image.size() > RamBytes)
     {
@@ -101,7 +101,7 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
                 word |= static_cast<std::uint32_t>(image[imageIndex]) << (byteIndex * 8U);
             }
         }
-        dut->ram_init_index = static_cast<std::uint16_t>(wordIndex);
+        dut->ram_init_index = static_cast<std::uint32_t>(wordIndex);
         dut->ram_init_data = word;
         dut->clock = 0;
         dut->eval();
