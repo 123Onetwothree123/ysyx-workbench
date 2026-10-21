@@ -8,7 +8,8 @@
   `medeleg`、`mideleg`、`mie/mip/sie/sip`。
 - `mret`、`sret`、`sfence.vma`。
 - CLINT `mtimecmp` 与 timer interrupt（machine cause 7）。
-- PLIC 寄存器/claim-complete 模块，已接入 Xbar 和顶层。
+- PLIC 寄存器/claim-complete 模块，已接入 Xbar 和顶层，并有
+  priority/pending/claim/threshold 行为测试。
 - 取指/load/store 页错误，以及向 S 模式委托异常。
 - split ITLB/DTLB 与 unified TLB。
 - TLB ASID、Global、RR/PLRU/LRU 替换。
@@ -30,6 +31,7 @@ ysyx_26030103_MMUTest             7
 ysyx_26030103_MMUBehaviorTest     10
 ysyx_26030103_MMUStreamTest       1
 ysyx_26030103_CSRPrivilegeTest    5
+ysyx_26030103_PLICTest             2
 ```
 
 裸机测试（MMU 开启）：
