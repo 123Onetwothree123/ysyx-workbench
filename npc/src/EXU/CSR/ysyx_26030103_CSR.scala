@@ -188,7 +188,9 @@ class ysyx_26030103_CSR(
   when(io.Interrupt || io.TimerInterrupt) { IrqLatch := true.B }
   val SInterruptMask = "h00000222".U(32.W) // SSIP/STIP/SEIP
   val TimerView = if (profile.timerPath == "direct_stip")
-    Mux(io.TimerInterrupt, "h00000020".U(32.W), 0.U(32.W))
+    (if (profile.hasSTimerIrq)
+      Mux(io.TimerInterrupt, "h00000020".U(32.W), 0.U(32.W))
+    else 0.U(32.W))
   else
     Mux(io.TimerInterrupt, "h00000080".U(32.W), 0.U(32.W))
   val ExternalSView = if (profile.hasSExternalIrq)

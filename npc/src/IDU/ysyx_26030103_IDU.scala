@@ -46,6 +46,7 @@ class ysyx_26030103_IDU(
     // 越过尚未进入 LSU 的 load/store。
     val mmu_stall = Input(Bool())
     val Privilege = Input(UInt(2.W))
+    val Mstatus = Input(UInt(32.W))
     val perf_stall_raw = Output(Bool())
     val perf_stall_raw_loaduse = Output(Bool())
     val perf_stall_raw_alu = Output(Bool())
@@ -172,10 +173,16 @@ class ysyx_26030103_IDU(
   val CSRIllegal =
     IsCSRInstruction &&
       (!CSRAddressValid || !CSRPrivilegeOk || (CSRWriteIntent && CSRReadOnly))
+  // mstatus.TVM/TSR/TW 的 S 模式陷门。
+  val TvmFault = (io.Privilege === 1.U) && io.Mstatus(20) &&
+    (IsSfenceVma || (IsCSRInstruction && CSRAddress === "h180".U(12.W)))
+  val TsrFault = (io.Privilege === 1.U) && io.Mstatus(22) && IsSret
+  val TwFault = (io.Privilege =/= 3.U) && io.Mstatus(21) && IsWfi
   // custom-0 不属于通用 ALU decoder 的 opcode 集合；精确匹配的仿真
   // halt 编码在这里显式豁免，custom-0 的其它编码仍然是非法指令。
   val IllegalInsn =
-    (ALUCDIllegal && !IsSimHalt) || !IsKnownInstruction || CSRIllegal
+    (ALUCDIllegal && !IsSimHalt) || !IsKnownInstruction || CSRIllegal ||
+      TvmFault || TsrFault || TwFault
   val needsRs2 = IsRType || IsBType || IsSType
   // 源操作数真正被使用的判断(lui/auipc/jal的rs1字段是立即数,不算使用)
   val usesRs1 = IsRType || IsIType || IsSType || IsBType ||

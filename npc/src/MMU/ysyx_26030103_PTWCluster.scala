@@ -22,6 +22,7 @@ class ysyx_26030103_PTWCluster(
     levels: Int = 2,
     tableEntries: Int = 1024,
     fillSuperpage: Boolean = false,
+    pteSizeBytes: Int = 4,
     inOrder: Boolean = true
 ) extends Module {
   require(outstanding >= 1, "PTW outstanding 必须 >= 1")
@@ -44,7 +45,8 @@ class ysyx_26030103_PTWCluster(
     pageBits = pageBits,
     levels = levels,
     tableEntries = tableEntries,
-    fillSuperpage = fillSuperpage
+    fillSuperpage = fillSuperpage,
+    pteSizeBytes = pteSizeBytes
   )))
   val busy = RegInit(VecInit(Seq.fill(outstanding)(false.B)))
   val owner = RegInit(0.U(ptrBits.W))

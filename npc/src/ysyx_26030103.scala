@@ -236,7 +236,13 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     icache.io.fetch_vaddr := ifu.io.FetchAddr
     icache.io.fetch_valid := ifu.io.FetchValid && immu.io.translationValid
 
-    dmmu.io.privilege := exu.io.CSRPrivilege
+    // mstatus.MPRV：M 模式数据访问按 MPP 的特权级翻译；取指仍用当前特权级。
+    val dataPrivilege = Mux(
+      exu.io.CSRPrivilege === 3.U && exu.io.CSRCurrentMstatus(17),
+      exu.io.CSRCurrentMstatus(12, 11),
+      exu.io.CSRPrivilege
+    )
+    dmmu.io.privilege := dataPrivilege
     dmmu.io.satp := exu.io.CSRSatp
     dmmu.io.sum := exu.io.CSRCurrentMstatus(18)
     dmmu.io.mxr := exu.io.CSRCurrentMstatus(19)
@@ -482,7 +488,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   xbar.io.CLINT.AR <> clint.io.AR
   xbar.io.CLINT.R <> clint.io.R
   plic.sources := Cat(0.U((config.MMU.plicSources - 2).W),
-    clint.io.timer_irq, io.interrupt)
+    clint.io.timer_irq && config.MMU.hasSTimerIrq.B, io.interrupt)
   xbar.io.PLIC.AW <> plic.io.AW
   xbar.io.PLIC.W <> plic.io.W
   xbar.io.PLIC.B <> plic.io.B
@@ -500,6 +506,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   idu.io.wb_regWrite := wbu.io.in.bits.RegisterWrite
   idu.io.pipeline_mode := true.B
   idu.io.Privilege := exu.io.CSRPrivilege
+  idu.io.Mstatus := exu.io.CSRCurrentMstatus
   idu.io.mmu_stall := dmmuOpt.map(_.io.busy).getOrElse(false.B)
   // 手动连线了
   idu.io.ReadDATA1 := gpr.io.ReadDATA1

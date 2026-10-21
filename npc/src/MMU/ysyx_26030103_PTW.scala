@@ -43,13 +43,18 @@ class ysyx_26030103_PTW(
     pageBits: Int = 12,
     levels: Int = 2,
     tableEntries: Int = 1024,
-    fillSuperpage: Boolean = false
+    fillSuperpage: Boolean = false,
+    pteSizeBytes: Int = 4
 ) extends Module {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
   require(pageBits >= 2 && pageBits < 32, "pageBits 非法")
   require(levels >= 1 && levels <= 4, "页表级数必须在 1..4")
   require(tableEntries > 0 && (tableEntries & (tableEntries - 1)) == 0,
     "每级页表项数必须是 2 的幂")
+  require(pteSizeBytes == 4 || pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
+  private val pteShift = log2Ceil(pteSizeBytes)
+  private val pteBytes = pteSizeBytes
+  private val cacheEffective = cacheEnable && pteBytes == 4
   private val indexBits = log2Ceil(tableEntries)
   require(pageBits + levels * indexBits == 32,
     s"pageBits($pageBits) + levels($levels)*indexBits($indexBits) 必须等于 32")
@@ -68,7 +73,7 @@ class ysyx_26030103_PTW(
     val flush = Input(Bool())
   })
 
-  val idle :: reqState :: waitState :: writeState :: waitWrite :: done :: Nil = Enum(6)
+  val idle :: reqState :: waitState :: reqHigh :: waitHigh :: writeState :: waitWrite :: done :: Nil = Enum(8)
   val state = RegInit(idle)
 
   val idReg = RegInit(0.U(4.W))
@@ -81,6 +86,7 @@ class ysyx_26030103_PTW(
   val levelReg = RegInit(0.U(2.W))
   val tableReg = RegInit(0.U(32.W))
   val pteAddrReg = RegInit(0.U(32.W))
+  val pteLowReg = RegInit(0.U(32.W))
   val respReg = RegInit(0.U.asTypeOf(new ysyx_26030103_PTWResponse))
   val fillPulse = RegInit(false.B)
   val fillLevelReg = RegInit(0.U(2.W))
@@ -91,17 +97,17 @@ class ysyx_26030103_PTW(
     val tag = UInt(32.W)
     val data = UInt(32.W)
   }
-  private val cacheSets = if (cacheEnable) cacheEntries / cacheWays else 1
+  private val cacheSets = if (cacheEffective) cacheEntries / cacheWays else 1
   private val cacheSetBits = if (cacheSets <= 1) 0 else log2Ceil(cacheSets)
   private val cacheWayBits = log2Ceil(cacheWays.max(2))
-  private val cacheIndexBits = if (cacheEnable) log2Ceil(cacheEntries) else 1
+  private val cacheIndexBits = if (cacheEffective) log2Ceil(cacheEntries) else 1
   private def cacheIndex(set: UInt, way: UInt): UInt =
     if (!cacheEnable) 0.U
     else (set * cacheWays.U + way)(cacheIndexBits - 1, 0)
-  val cache = if (cacheEnable)
+  val cache = if (cacheEffective)
     Some(RegInit(VecInit(Seq.fill(cacheEntries)(0.U.asTypeOf(new CacheEntry)))))
   else None
-  val cacheRR = if (cacheEnable)
+  val cacheRR = if (cacheEffective)
     Some(RegInit(VecInit(Seq.fill(cacheSets)(0.U(cacheWayBits.W)))))
   else None
 
@@ -109,7 +115,7 @@ class ysyx_26030103_PTW(
     if (cacheSetBits == 0) 0.U else addr(cacheSetBits + 1, 2)
 
   def cacheLookup(addr: UInt): (Bool, UInt) = {
-    if (!cacheEnable) (false.B, 0.U)
+    if (!cacheEffective) (false.B, 0.U)
     else {
       val set = cacheSetOf(addr)
       val hits = (0 until cacheWays).map { w =>
@@ -124,7 +130,7 @@ class ysyx_26030103_PTW(
   }
 
   def cacheFill(addr: UInt, data: UInt): Unit = {
-    if (cacheEnable) {
+    if (cacheEffective) {
       val set = cacheSetOf(addr)
       val idx = cacheIndex(set, cacheRR.get(set))
       val e = Wire(new CacheEntry)
@@ -199,7 +205,7 @@ class ysyx_26030103_PTW(
     )
   }
   def tableAddress(base: UInt, index: UInt): UInt =
-    base + (index << log2Ceil(4))
+    base + (index << pteShift)
 
   def superOffsetBits(level: UInt): UInt =
     pageBits.U + ((levels - 1).U - level) * indexBits.U
@@ -214,13 +220,14 @@ class ysyx_26030103_PTW(
   val (cacheHit, cacheData) = cacheLookup(nextPteAddr)
   val useBus = state === reqState && !cacheHit
   io.req.ready := state === idle
-  io.bus.req.valid := useBus || state === writeState
+  io.bus.req.valid := useBus || state === reqHigh || state === writeState
   io.bus.req.bits.addr := Mux(state === writeState, pteAddrReg,
-    Mux(state === reqState, nextPteAddr, pteAddrReg))
+    Mux(state === reqState, nextPteAddr,
+      Mux(state === reqHigh, pteAddrReg + 4.U, pteAddrReg)))
   io.bus.req.bits.write := state === writeState
   io.bus.req.bits.data := Mux(state === writeState, writeDataReg, 0.U)
   io.bus.req.bits.strb := Mux(state === writeState, "hf".U(4.W), 0.U)
-  io.bus.resp.ready := state === waitState || state === waitWrite
+  io.bus.resp.ready := state === waitState || state === waitHigh || state === waitWrite
   io.resp.valid := state === done
   io.resp.bits := respReg
 
@@ -236,6 +243,35 @@ class ysyx_26030103_PTW(
     fillLevelReg := 0.U
     fillPulse := false.B
     state := done
+  }
+
+  def processPte(d: UInt, raw: UInt, busFault: Bool): Unit = {
+    when(cacheEffective.B) { cacheFill(pteAddrReg, d) }
+    when(busFault || walkFault(d)) {
+      setFault()
+    }.elsewhen(isLeaf(d)) {
+      when(needsAdUpdate(d)) {
+        writeDataReg := adRaw(raw)
+        state := writeState
+      }.otherwise {
+        respReg.paddr := paddrOf(d, levelReg)
+        respReg.fault := leafFaultOf(d)
+        respReg.cause := pageFaultCause
+        respReg.tval := vaddrReg
+        respReg.fillPte := d
+        respReg.fillVaddr := vaddrReg
+        respReg.fillAsid := satpReg(30, 22)
+        fillLevelReg := levelReg
+        respReg.fillValid := false.B
+        fillPulse := !leafFaultOf(d) &&
+          (fillSuperpage.B || levelReg === (levels - 1).U)
+        state := done
+      }
+    }.otherwise {
+      tableReg := Cat(d(31, 10), 0.U(pageBits.W))
+      levelReg := levelReg + 1.U
+      state := reqState
+    }
   }
 
   when(state === idle && io.req.fire) {
@@ -283,33 +319,26 @@ class ysyx_26030103_PTW(
     }
     is(waitState) {
       when(io.bus.resp.valid) {
-        cacheFill(pteAddrReg, normalizePte(io.bus.resp.bits.data))
-        val d = normalizePte(io.bus.resp.bits.data)
-        when(io.bus.resp.bits.fault || walkFault(d)) {
+        when(io.bus.resp.bits.fault) {
           setFault()
-        }.elsewhen(isLeaf(d)) {
-          when(needsAdUpdate(d)) {
-            writeDataReg := adRaw(io.bus.resp.bits.data)
-            state := writeState
-          }.otherwise {
-            respReg.paddr := paddrOf(d, levelReg)
-            respReg.fault := leafFaultOf(d)
-            respReg.cause := pageFaultCause
-            respReg.tval := vaddrReg
-            respReg.fillPte := d
-            respReg.fillVaddr := vaddrReg
-            respReg.fillAsid := satpReg(30, 22)
-            fillLevelReg := levelReg
-            respReg.fillValid := false.B
-            fillPulse := !leafFaultOf(d) &&
-              (fillSuperpage.B || levelReg === (levels - 1).U)
-            state := done
-          }
         }.otherwise {
-          tableReg := Cat(d(31, 10), 0.U(pageBits.W))
-          levelReg := levelReg + 1.U
-          state := reqState
+          if (pteBytes == 8) {
+            pteLowReg := io.bus.resp.bits.data
+            state := reqHigh
+          } else {
+            processPte(normalizePte(io.bus.resp.bits.data),
+              io.bus.resp.bits.data, false.B)
+          }
         }
+      }
+    }
+    is(reqHigh) {
+      when(io.bus.req.ready) { state := waitHigh }
+    }
+    is(waitHigh) {
+      when(io.bus.resp.valid) {
+        val raw = Cat(io.bus.resp.bits.data, pteLowReg)
+        processPte(normalizePte(raw), raw, io.bus.resp.bits.fault)
       }
     }
     is(writeState) {

@@ -13,8 +13,8 @@ import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 class ysyx_26030103_MMU(
     profile: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
 ) extends Module {
-  require(profile.pteSizeBytes == 4,
-    "当前 MMU 只实现 4B PTE；其他 PTE 大小在 elaboration 阶段拒绝")
+  require(profile.pteSizeBytes == 4 || profile.pteSizeBytes == 8,
+    "PTE 大小只支持 4/8 字节")
   require(profile.levels >= 1 && profile.levels <= 4,
     "页表级数必须在 1..4")
   require(profile.pageBits + profile.levels * profile.indexBitsPerLevel == 32,
@@ -109,6 +109,7 @@ class ysyx_26030103_MMU(
     levels = profile.levels,
     tableEntries = profile.tableEntries,
     fillSuperpage = profile.tlbSuperpage,
+    pteSizeBytes = profile.pteSizeBytes,
     inOrder = profile.ptwOrder == "in_order"
   ))
 

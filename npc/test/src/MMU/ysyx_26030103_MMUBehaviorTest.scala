@@ -400,6 +400,55 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "PTW" should "支持 8 字节 PTE 的两拍读取" in {
+    val memory = new Memory
+    // 4 级、每级 32 项、8B PTE：12 + 4*5 = 32。
+    memory.write(0x80001000L, pte(0x80002L, 0x1L))
+    memory.write(0x80002000L, pte(0x80003L, 0x1L))
+    memory.write(0x80003000L, pte(0x80004L, 0x1L))
+    memory.write(0x80004008L, pte(0x80005L, 0xdfL))
+    simulate(new ysyx_26030103_PTW(
+      adMode = "fault", levels = 4, tableEntries = 32, pteSizeBytes = 8
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      var pending = false
+      var pendingData = BigInt(0)
+      var result: Option[BigInt] = None
+      dut.io.req.valid.poke(false.B)
+      dut.io.req.bits.vaddr.poke(0.U)
+      dut.io.req.bits.satp.poke(0.U)
+      dut.io.req.bits.privilege.poke(0.U)
+      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.req.bits.sum.poke(false.B)
+      dut.io.req.bits.mxr.poke(false.B)
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.resp.ready.poke(false.B)
+      dut.io.req.valid.poke(true.B)
+      dut.io.req.bits.vaddr.poke(0x1234.U)
+      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.clock.step()
+      dut.io.req.valid.poke(false.B)
+      for (_ <- 0 until 40 if result.isEmpty) {
+        if (!pending && asBool(dut.io.bus.req.valid)) {
+          pending = true
+          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+        }
+        dut.io.bus.resp.valid.poke(pending.B)
+        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
+        val ready = asBool(dut.io.bus.resp.ready)
+        dut.clock.step()
+        if (pending && ready) pending = false
+        if (asBool(dut.io.resp.valid)) result = Some(dut.io.resp.bits.paddr.peek().litValue)
+      }
+      result should be(Some(BigInt("80005234", 16)))
+    }
+  }
+
   "PTW" should "hardware A/D 模式写回页表项" in {
     val memory = new Memory
     // 有效叶子，但 A/D 清零。
