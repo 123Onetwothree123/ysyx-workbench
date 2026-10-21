@@ -84,6 +84,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val ras = Module(new ysyx_26030103_RAS(config.RASBits))
   val predictorSelect = Module(new ysyx_26030103_PredictorSelect)
   val mmuEnabled = config.MMU.enabled
+  // VIPT 取指并行：ICache 先用 VA 选 index，再等待带 VA 标签的 PA。
+  // PIPT 走原来的“翻译完成后再取指”路径，行为不变。
+  val parallelFetchVipt = config.MMU.cacheMode == "vipt"
   val pmpOpt =
     if (config.MMU.pmpEnabled) Some(Module(new ysyx_26030103_PMP(config.MMU.pmpEntries)))
     else None
@@ -114,7 +117,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val mmuUnitOpt =
     if (mmuEnabled) Some(Module(new ysyx_26030103_MMU(config.MMU))) else None
   val immuOpt =
-    if (mmuEnabled) Some(Module(new ysyx_26030103_IFUMMU)) else None
+    if (mmuEnabled)
+      Some(Module(new ysyx_26030103_IFUMMU(ParallelVipt = parallelFetchVipt)))
+    else None
   val dmmuOpt =
     if (mmuEnabled) Some(Module(new ysyx_26030103_LSUMMU)) else None
   val mmuArbOpt =
@@ -137,9 +142,15 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val ifuFaultPC = RegInit(0.U(32.W))
   val fetchTranslationValid =
     immuOpt.map(_.io.translationValid).getOrElse(true.B)
+  val fetchTranslationFault =
+    immuOpt.map(_.io.fault).getOrElse(false.B)
   val fetchPaddr = immuOpt.map(_.io.fetchPaddr).getOrElse(ifu.io.FetchAddr)
+  // VIPT 在 VA 阶段就受理取指，因此快照队列不能再用 translationValid
+  // 门控；PIPT/无 MMU 保持原条件。
   val accept_fetch =
-    ifu.io.FetchValid && fetchTranslationValid && icache.io.fetch_ready
+    ifu.io.FetchValid &&
+      (if (parallelFetchVipt) !ifuFaultValid else fetchTranslationValid) &&
+      icache.io.fetch_ready
   // 两表项虚拟 PC 队列：允许响应与下一笔接受同拍发生。ICache 通常只有
   // 一笔在途，但零延迟响应/背靠背响应必须用队列而不是单寄存器。
   val fetchTag0 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
@@ -153,7 +164,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val responseTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
   responseTag := Mux(fetchTagCount === 0.U, pushTag, fetchTag0)
   val pushAndPop = accept_fetch && popFetch
-  when(pipe_flush) {
+  when(pipe_flush || (if (parallelFetchVipt) fetchTranslationFault else false.B)) {
+    // VIPT 下翻译故障对应的请求已经被 ICache 受理并推入过快照；该请求不会
+    // 产生正常响应（故障由 ifuResp 注入），因此连同年轻请求一起清空。
     fetchTagCount := 0.U
   }.elsewhen(pushAndPop) {
     when(fetchTagCount === 0.U) {
@@ -221,7 +234,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   }
   // 响应级不再重新查表, 预测标签在取指接受时快照保存
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
-  icache.io.kill := pipe_flush
+  // icache.kill 在下面按 PIPT/VIPT 分支连接：VIPT 还需要在翻译故障时
+  // 杀死未完成的 VA 请求。
   // EXU 重定向或异常必须杀死 IDU->EXU 边界中排队的年轻指令，同时让当前 EXU
   // 指令在本周期保持可见，以便它提交并产生重定向。
   ysyx_26030103_StageConnect(
@@ -251,19 +265,45 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     val ptwAxi = ptwToAxiOpt.get
     val mmuFlush = RegNext(pipe_flush, false.B)
 
-    immu.io.fetchValid := ifu.io.FetchValid
-    immu.io.fetchVaddr := ifu.io.FetchAddr
-    immu.io.cacheReady := icache.io.fetch_ready
+    // 与 IFUMMU 内部 bypass 判定保持一致：satp.Mode=0 或 M 模式时 VA==PA。
+    val immuBypass = exu.io.CSRSatp(31) === 0.U || exu.io.CSRPrivilege === 3.U
     immu.io.privilege := exu.io.CSRPrivilege
     immu.io.satp := exu.io.CSRSatp
     // 取指没有 SUM 豁免；HAS_U=n 时直接绑 0。
     immu.io.sum := fetchSum
     immu.io.mxr := exu.io.CSRCurrentMstatus(19)
     immu.io.flush := mmuFlush
-    ifu.io.FetchReady := immu.io.fetchReady
-    icache.io.fetch_addr := immu.io.fetchPaddr
-    icache.io.fetch_vaddr := ifu.io.FetchAddr
-    icache.io.fetch_valid := ifu.io.FetchValid && immu.io.translationValid
+    if (parallelFetchVipt) {
+      // VIPT 并行路径：只翻译 ICache 已受理的 VA；PA 带 VA 标签返回。
+      // IFU 可以在 PA 到达前推进 PC（此时 cache 已用 VA 选好 index）。
+      immu.io.fetchValid := icache.io.fetch_xlate_pending
+      immu.io.fetchVaddr := icache.io.fetch_xlate_vaddr
+      immu.io.cacheReady := icache.io.fetch_ready
+      ifu.io.FetchReady := icache.io.fetch_ready && !ifuFaultValid
+      // 翻译故障期间停止受理新取指，等 EXU 精确陷阱冲刷。
+      icache.io.fetch_valid := ifu.io.FetchValid && !ifuFaultValid
+      icache.io.fetch_vaddr := ifu.io.FetchAddr
+      icache.io.fetch_addr :=
+        Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddr)
+      icache.io.fetch_paddr_valid :=
+        immuBypass || immu.io.translationValid
+      icache.io.fetch_paddr_vaddr :=
+        Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddrVaddr)
+      // 翻译故障与重定向都杀死未完成的 VA 请求，错误数据绝不提交。
+      icache.io.kill := pipe_flush || immu.io.fault
+    } else {
+      immu.io.fetchValid := ifu.io.FetchValid
+      immu.io.fetchVaddr := ifu.io.FetchAddr
+      immu.io.cacheReady := icache.io.fetch_ready
+      ifu.io.FetchReady := immu.io.fetchReady
+      icache.io.fetch_addr := immu.io.fetchPaddr
+      icache.io.fetch_vaddr := ifu.io.FetchAddr
+      icache.io.fetch_valid := ifu.io.FetchValid && immu.io.translationValid
+      // PIPT 实现忽略这两个端口；保持旧路径完全不变。
+      icache.io.fetch_paddr_valid := true.B
+      icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
+      icache.io.kill := pipe_flush
+    }
 
     // mstatus.MPRV：M 模式数据访问按 MPP 的特权级翻译；取指仍用当前特权级。
     dmmu.io.privilege := dataPrivilege
@@ -306,7 +346,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     icache.io.axi <> arbiter.io.ifu
     icache.io.fetch_addr := ifu.io.FetchAddr
     icache.io.fetch_vaddr := ifu.io.FetchAddr
+    // 无 MMU 时 VA==PA，VIPT 等价于恒等映射，不需要等待翻译。
+    icache.io.fetch_paddr_valid := true.B
+    icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
     icache.io.fetch_valid := ifu.io.FetchValid
+    icache.io.kill := pipe_flush
     ifu.io.FetchReady := icache.io.fetch_ready
   }
   // BTB查询1: 用当前取指地址同时查两张表,合并结果回送IFU决定下一PC

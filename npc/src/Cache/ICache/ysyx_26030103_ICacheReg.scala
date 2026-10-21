@@ -65,6 +65,10 @@ class ysyx_26030103_ICacheReg(
     "可缓存PMA区域必须按cache line对齐且不得小于一个cache line"
   )
 
+  // VIPT 下 PA 可能晚于 VA 到达。只接受“PA 有效且其携带的 VA 正是当前
+  // 请求 VA”的翻译结果，避免把上一笔请求的旧 PA 用到新 PC 上。
+  val incoming_paddr_match =
+    !Vipt.B || (io.fetch_paddr_valid && io.fetch_paddr_vaddr === io.fetch_vaddr)
   // 可执行权限和可缓存属性是两个独立的PMA属性。非法取指在本模块
   // 直接形成instruction access fault，不允许向MMIO/CLINT/地址空洞发AR。
   val executable = AddressInRegions(io.fetch_addr, ExecutableRegions)
@@ -75,8 +79,12 @@ class ysyx_26030103_ICacheReg(
   val s1_hit = Reg(Bool()) // 受理时判定: 可缓存且命中
   val s1_ready = RegInit(false.B) // 缺失的关键词已返回(early restart)或refill已完成
   val fetch_addr_reg = Reg(UInt(AddressWidth.W))
+  val fetch_vaddr_reg = Reg(UInt(AddressWidth.W))
   val fetch_index_reg = Reg(UInt(IndexBits.W))
   val fetch_offset_reg = Reg(UInt((BlockSizeLog2 - 2).W)) // 请求时块内word偏移
+  // VIPT: s1 受理 VA 时可能还没有 PA。该位表示 fetch_addr_reg 已装入
+  // 与本请求虚拟地址匹配的物理地址，此后才能做 tag/PMA/refill 判定。
+  val s1_paddr_valid = RegInit(false.B)
   val FetchIndexSafe =
     if (Enable) fetch_index_reg else 0.U(IndexBits.W)
   val FetchOffsetSafe =
@@ -151,7 +159,32 @@ class ysyx_26030103_ICacheReg(
     (rfstate === rf_req || rfstate === rf_resp) &&
       ref_cacheable && !discard && !refill_error && !refill_error_now &&
       refill_line_match && requested_word_arrived
-  val request_hit = executable && cacheable && (hit || partial_refill_hit)
+  val request_hit =
+    incoming_paddr_match && executable && cacheable && (hit || partial_refill_hit)
+  // VIPT 的“迟到的 PA”解析：s1 里保存的是受理时的 VA/index/offset，
+  // 只有 PA 携带的 VA 与之一致时才允许把 PA 装入请求。注意这里不能使用
+  // 当前 io.fetch_vaddr（IFU 可能已经推进到下一 PC）。
+  val s1_wait_xlate = Vipt.B && s1_valid && !s1_paddr_valid
+  val resolve_xlate = s1_wait_xlate && io.fetch_paddr_valid &&
+    io.fetch_paddr_vaddr === fetch_vaddr_reg
+  val resolve_tag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
+  val resolve_under_refill =
+    refill_busy && ref_cacheable && (fetch_index_reg === ref_index)
+  val resolve_hit =
+    valid(FetchIndexSafe) && tag(FetchIndexSafe) === resolve_tag &&
+      !resolve_under_refill
+  val resolve_line_match =
+    io.fetch_addr(AddressWidth - 1, BlockSizeLog2) ===
+      ref_addr(AddressWidth - 1, BlockSizeLog2)
+  val resolve_word_arrived =
+    if (WordsPerBlock > 1) refill_word_valid(FetchOffsetSafe)
+    else refill_word_valid(0)
+  val resolve_partial_refill_hit =
+    (rfstate === rf_req || rfstate === rf_resp) &&
+      ref_cacheable && !discard && !refill_error && !refill_error_now &&
+      resolve_line_match && resolve_word_arrived
+  val resolve_request_hit =
+    executable && cacheable && (resolve_hit || resolve_partial_refill_hit)
   io.access_fault := access_fault_reg
   io.access_fault_resp := access_fault_resp_reg
   io.axi.AW.AWVALID := false.B
@@ -182,7 +215,8 @@ class ysyx_26030103_ICacheReg(
   // 可缓存的从阵列读(关键词所在拍已写入), 不可缓存的用R拍锁存的数据; 错误一律给NOP
   val responding = s1_valid && (s1_hit || s1_ready)
   io.resp_valid := responding
-  io.resp_addr := fetch_addr_reg
+  // 响应携带架构 PC：VIPT 用受理时锁存的 VA；PIPT 的 VA==PA，保持原行为。
+  io.resp_addr := Mux(Vipt.B, fetch_vaddr_reg, fetch_addr_reg)
   io.resp_fault := access_fault_reg
   io.resp_data := Mux(
     access_fault_reg,
@@ -204,9 +238,21 @@ class ysyx_26030103_ICacheReg(
       response_slot_available &&
       (rfstate === rf_idle || rfstate === rf_drain_fault || request_hit)
   val accept = io.fetch_valid && io.fetch_ready
-  io.perf_hit := accept && request_hit
+  // VIPT 翻译请求：除了已受理但仍缺 PA 的 s1，还把“本拍正在受理且 PA
+  // 尚未匹配”的请求组合地送给 MMU。这样 TLB 查询与 VA 选 index 在同一拍
+  // 启动，而不是等受理后下一拍。该信号不参与 fetch_ready 判定，无组合环。
+  val s1_pending_xlate = Vipt.B && s1_valid && !s1_paddr_valid
+  val accept_needs_xlate = Vipt.B && accept && !incoming_paddr_match
+  io.fetch_xlate_pending := s1_pending_xlate || accept_needs_xlate
+  io.fetch_xlate_vaddr :=
+    Mux(s1_pending_xlate, fetch_vaddr_reg, io.fetch_vaddr)
+  // VIPT 的 PA 晚到时，命中/缺失要等 resolve 拍再计数，避免把“尚未翻译”
+  // 误报成 miss。
+  io.perf_hit := (accept && request_hit) || (resolve_xlate && resolve_request_hit)
   // 非缓存取指（ICACHE=n 或未来的可执行不可缓存区）不是 miss。
-  io.perf_miss := accept && executable && cacheable && !request_hit
+  io.perf_miss :=
+    (accept && incoming_paddr_match && executable && cacheable && !request_hit) ||
+      (resolve_xlate && executable && cacheable && !resolve_request_hit)
   io.perf_refill_req := rfstate === rf_req
   io.perf_refill_resp := rfstate === rf_resp
   when(responding && io.resp_ready) {
@@ -214,29 +260,65 @@ class ysyx_26030103_ICacheReg(
     s1_waits := false.B
   }
   when(accept) {
-    fetch_addr_reg := io.fetch_addr
+    // 虚拟地址在受理拍就锁存并用于选 index；这是 VIPT 并行的关键：
+    // 即使 PA 还没到，SRAM/寄存器阵列的组选择也已经发生。
     fetch_index_reg := index
     fetch_offset_reg := blockOffset
-    resp_data_reg := data(IndexSafe)(blockOffset) // 命中时这就是响应数据
+    fetch_vaddr_reg := io.fetch_vaddr
+    s1_paddr_valid := incoming_paddr_match
+    s1_valid := true.B
+    s1_waits := false.B
+    when(incoming_paddr_match) {
+      // TLB 命中/旁路：PA 同拍可用，走原来的完整命中/缺失路径。
+      fetch_addr_reg := io.fetch_addr
+      resp_data_reg := data(IndexSafe)(blockOffset) // 命中时这就是响应数据
+      cacheable_reg := cacheable
+      s1_hit := request_hit
+      // PMA拒绝不需要总线往返；用DECERR作为调试响应码，并让带故障的
+      // NOP响应沿正常流水线到达EXU，在提交点精确写入mepc/mcause。
+      s1_ready := !executable
+      access_fault_reg := !executable
+      access_fault_resp_reg := Mux(executable, 0.U, 3.U)
+      // 总线已超时：不再发AR，直接以故障响应结束本次取指（命中仍可正常
+      // 服务，数据在阵列里不需要总线）。
+      when(bus_fault && executable && !request_hit) {
+        s1_ready := true.B
+        access_fault_reg := true.B
+        access_fault_resp_reg := 2.U
+      }
+    }.otherwise {
+      // VIPT：先占住 s1 等物理地址。此时绝不能判定命中、发 AR 或提交
+      // 故障；错误数据也不会在响应通道上出现。
+      cacheable_reg := false.B
+      s1_hit := false.B
+      s1_ready := false.B
+      access_fault_reg := false.B
+      access_fault_resp_reg := 0.U
+    }
+  }
+  // PA 到达：用受理时锁存的 VA index + 当前 PA 完成 tag/PMA 判定。
+  // 只有携带同一 VA 的 PA 才被接受，旧翻译结果会被忽略。
+  when(resolve_xlate) {
+    fetch_addr_reg := io.fetch_addr
+    s1_paddr_valid := true.B
     cacheable_reg := cacheable
-    s1_hit := request_hit
-    // PMA拒绝不需要总线往返；用DECERR作为调试响应码，并让带故障的
-    // NOP响应沿正常流水线到达EXU，在提交点精确写入mepc/mcause。
+    s1_hit := resolve_request_hit
     s1_ready := !executable
     access_fault_reg := !executable
     access_fault_resp_reg := Mux(executable, 0.U, 3.U)
-    s1_valid := true.B
-    s1_waits := false.B
-    // 总线已超时：不再发AR，直接以故障响应结束本次取指（命中仍可正常
-    // 服务，数据在阵列里不需要总线）。
-    when(bus_fault && executable && !request_hit) {
+    when(resolve_request_hit) {
+      resp_data_reg := data(FetchIndexSafe)(FetchOffsetSafe)
+    }
+    when(bus_fault && executable && !resolve_request_hit) {
       s1_ready := true.B
       access_fault_reg := true.B
       access_fault_resp_reg := 2.U
     }
   }
   // 排队缺失: refill空闲时启动; 启动前重查命中(在飞refill可能刚把这行填好)
-  val queued_miss = s1_valid && !s1_hit && !s1_ready
+  // VIPT 必须等 PA 解析完成，否则会把 0 地址或旧 PA 当成缺失发上总线。
+  val queued_miss =
+    s1_valid && (!Vipt.B || s1_paddr_valid) && !s1_hit && !s1_ready
   val recheck_hit = cacheable_reg &&
     valid(FetchIndexSafe) &&
     tag(FetchIndexSafe) === fetch_addr_reg(
@@ -489,6 +571,7 @@ class ysyx_26030103_ICacheReg(
       s1_waits && rfstate === rf_req && ar_exposed
     s1_valid := false.B
     s1_waits := false.B
+    s1_paddr_valid := false.B
     when(kill_owned_exposed_ar) {
       discard := true.B
       refill_word_valid := 0.U
@@ -500,6 +583,7 @@ class ysyx_26030103_ICacheReg(
   when(io.flush) {
     s1_valid := false.B
     s1_waits := false.B
+    s1_paddr_valid := false.B
     refill_word_valid := 0.U
     valid.foreach(_ := false.B)
     when(rfstate === rf_req) {

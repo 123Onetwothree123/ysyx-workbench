@@ -14,10 +14,20 @@ import _root_.ysyx_26030103.infra.ysyx_26030103_AXI5IO
   */
 class ysyx_26030103_ICacheInterface(val AddressWidth: Int = 32)
     extends Bundle {
+  // fetch_addr：物理地址（PIPT 下也是唯一地址）；fetch_vaddr：虚拟地址。
   val fetch_addr = Input(UInt(AddressWidth.W))
   val fetch_vaddr = Input(UInt(AddressWidth.W))
+  // VIPT 并行模式：fetch_valid 可以先于翻译完成拉高，用 VA 立即选 index；
+  // 等 fetch_paddr_valid 与 fetch_paddr_vaddr 表明 PA 已到达本请求后，
+  // 再用 PA 做 tag/PMA/refill。PIPT 实现忽略这两个信号。
+  val fetch_paddr_valid = Input(Bool())
+  val fetch_paddr_vaddr = Input(UInt(AddressWidth.W))
   val fetch_valid = Input(Bool())
   val fetch_ready = Output(Bool())
+  // VIPT：s1 已受理 VA、仍在等待对应 PA。顶层用这对信号驱动取指 MMU，
+  // 确保只为已经进入 ICache 的请求发起翻译，避免翻译跑在指令流前面。
+  val fetch_xlate_pending = Output(Bool())
+  val fetch_xlate_vaddr = Output(UInt(AddressWidth.W))
   val resp_data = Output(UInt(32.W))
   val resp_addr = Output(UInt(AddressWidth.W)) // 响应对应的取指地址(即那条指令的PC)
   val resp_fault = Output(Bool()) // 该响应是否是取指访问错误

@@ -62,13 +62,23 @@ class ysyx_26030103_MMURequestArbiter extends Module {
   }
 }
 
-/** 取指地址翻译。翻译期间 IFU 的 FetchValid 保持，fetchReady 反压。 */
-class ysyx_26030103_IFUMMU extends Module {
+/** 取指地址翻译。
+  *
+  * PIPT 模式：翻译期间 IFU 的 FetchValid 保持，fetchValid 由顶层按
+  * translationValid 门控。
+  * VIPT 并行模式（ParallelVipt=true）：顶层把 ICache 已受理但缺 PA 的请求
+  * 接到 fetchValid/fetchVaddr，翻译结果附带请求 VA 作为标签；ICache 只有在
+  * 标签匹配时才接收 PA。取指 MMU 不再跑在已受理请求之前。
+  */
+class ysyx_26030103_IFUMMU(ParallelVipt: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val fetchValid = Input(Bool())
     val fetchReady = Output(Bool())
     val fetchVaddr = Input(UInt(32.W))
     val fetchPaddr = Output(UInt(32.W))
+    // 该 PA 对应的虚拟地址。VIPT 下 ICache 用它校验“迟到的 PA”属于
+    // 当前已受理的请求，而不是上一笔/错路请求。
+    val fetchPaddrVaddr = Output(UInt(32.W))
     val translationValid = Output(Bool())
     val cacheReady = Input(Bool())
     val fault = Output(Bool())
@@ -99,10 +109,13 @@ class ysyx_26030103_IFUMMU extends Module {
   // MMU 请求仲裁器卡在响应转发状态。
   io.resp.ready := true.B
   io.fetchPaddr := Mux(bypass, io.fetchVaddr, paddrReg)
+  io.fetchPaddrVaddr := Mux(bypass, io.fetchVaddr, paddrVaddrReg)
   // 重定向后 IFU 的虚拟 PC 已改变；即使 flush 晚一拍，旧 paddr 也绝不能
   // 再被当成新 PC 的物理地址送给 ICache。
+  // VIPT 下 PMP 也必须在 PA 有效后先通过，才能把 PA 交给 ICache。
   io.translationValid := bypass ||
-    (state === done && paddrVaddrReg === io.fetchVaddr)
+    (state === done && paddrVaddrReg === io.fetchVaddr &&
+      (!ParallelVipt.B || !io.pmpFault))
   io.fetchReady := io.translationValid && io.cacheReady
   io.fault := faultReg
   io.faultCause := faultCauseReg
@@ -145,13 +158,20 @@ class ysyx_26030103_IFUMMU extends Module {
         }
       }
       is(done) {
-        when(io.pmpFault) {
+        when(ParallelVipt.B && io.fetchValid &&
+            paddrVaddrReg =/= io.fetchVaddr) {
+          // VIPT: 已完成的翻译属于旧请求，直接丢弃，下一拍重新为当前
+          // ICache 请求发起翻译。
+          state := idle
+        }.elsewhen(io.pmpFault) {
           faultReg := true.B
           faultCauseReg := 1.U
           faultVaddrReg := paddrVaddrReg
           state := fault
-        }.elsewhen(io.fetchValid && io.cacheReady &&
+        }.elsewhen(!ParallelVipt.B && io.fetchValid && io.cacheReady &&
              paddrVaddrReg === io.fetchVaddr) { state := idle }
+        // VIPT 下只有 ICache 消费 PA 后 fetchValid 才会撤销；不能因为
+        // cacheReady 提前回 idle，否则会对同一请求重复发起翻译。
         when(!io.fetchValid && !io.pmpFault) { state := idle }
       }
       is(fault) {
