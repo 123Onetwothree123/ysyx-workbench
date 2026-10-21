@@ -237,16 +237,7 @@ class ysyx_26030103_AXIWriteMux extends Module {
   val wDone = RegInit(false.B)
 
   // 读通道始终由 LSU(a) 直通。
-  io.out.AR.ARID := io.a.AR.ARID
-  io.out.AR.ARADDR := io.a.AR.ARADDR
-  io.out.AR.ARLEN := io.a.AR.ARLEN
-  io.out.AR.ARSIZE := io.a.AR.ARSIZE
-  io.out.AR.ARBURST := io.a.AR.ARBURST
-  io.out.AR.ARPROT := io.a.AR.ARPROT
-  io.out.AR.ARCACHE := io.a.AR.ARCACHE
-  io.out.AR.ARQOS := io.a.AR.ARQOS
-  io.out.AR.ARVALID := io.a.AR.ARVALID
-  io.a.AR.ARREADY := io.out.AR.ARREADY
+  io.out.AR <> io.a.AR
   io.a.R <> io.out.R
   io.b.AR.ARREADY := false.B
   io.b.R.RVALID := false.B
@@ -271,7 +262,7 @@ class ysyx_26030103_AXIWriteMux extends Module {
     io.out.W.WLAST := false.B
     io.out.B.BREADY := false.B
     io.a.AW.AWREADY := false.B
-  // 读通道由上面的 io.out.AR <> io.a.AR 驱动，不能再把 ARREADY 覆盖为 0。
+  io.a.AR.ARREADY := false.B
   io.a.W.WREADY := false.B
   io.a.B.BVALID := false.B
   io.a.B.BID := 0.U
