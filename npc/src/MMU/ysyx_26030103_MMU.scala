@@ -105,23 +105,44 @@ class ysyx_26030103_MMU(
     if (profile.tlbEnabled && !split) Some(makeTlb(profile.utlbEntries, profile.utlbWays))
     else None
 
-  val ptw = Module(new ysyx_26030103_PTWCluster(
-    outstanding = contexts,
-    adMode = profile.adMode,
-    cacheEnable = profile.ptwCache,
-    cacheEntries = profile.ptwCacheEntries,
-    cacheWays = profile.ptwCacheWays,
-    superpage = profile.superpage,
-    pteConfig = profile.pteConfig,
-    pageBits = profile.pageBits,
-    levels = profile.levels,
-    tableEntries = profile.tableEntries,
-    fillSuperpage = profile.tlbSuperpage,
-    pteSizeBytes = profile.pteSizeBytes,
-    inOrder = profile.ptwOrder == "in_order",
-    respPorts = refillPorts,
-    hasU = profile.hasU
-  ))
+  private val ptw: ysyx_26030103_PTWBackend =
+    if (profile.ptwArch == "pipelined") {
+      Module(new ysyx_26030103_PTWPipeline(
+        outstanding = contexts,
+        adMode = profile.adMode,
+        cacheEnable = profile.ptwCache,
+        cacheEntries = profile.ptwCacheEntries,
+        cacheWays = profile.ptwCacheWays,
+        superpage = profile.superpage,
+        pteConfig = profile.pteConfig,
+        pageBits = profile.pageBits,
+        levels = profile.levels,
+        tableEntries = profile.tableEntries,
+        fillSuperpage = profile.tlbSuperpage,
+        pteSizeBytes = profile.pteSizeBytes,
+        inOrder = profile.ptwOrder == "in_order",
+        respPorts = refillPorts,
+        hasU = profile.hasU
+      ))
+    } else {
+      Module(new ysyx_26030103_PTWCluster(
+        outstanding = contexts,
+        adMode = profile.adMode,
+        cacheEnable = profile.ptwCache,
+        cacheEntries = profile.ptwCacheEntries,
+        cacheWays = profile.ptwCacheWays,
+        superpage = profile.superpage,
+        pteConfig = profile.pteConfig,
+        pageBits = profile.pageBits,
+        levels = profile.levels,
+        tableEntries = profile.tableEntries,
+        fillSuperpage = profile.tlbSuperpage,
+        pteSizeBytes = profile.pteSizeBytes,
+        inOrder = profile.ptwOrder == "in_order",
+        respPorts = refillPorts,
+        hasU = profile.hasU
+      ))
+    }
 
   // 每拍为 unified TLB 选择最多两个不同的 ctxLookup 上下文：端口 0 选
   // 编号最小的候选，端口 1 在剩余候选中再选一个。split 只有一个端口。

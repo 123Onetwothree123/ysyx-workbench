@@ -99,6 +99,10 @@ case class ysyx_26030103_MMUProfile(
   )
   requirePowerOfTwo("每级页表项数", pageTableSizeBytes / pteSizeBytes)
   require(ptwOutstanding >= 1, s"ptwOutstanding=$ptwOutstanding 必须 >= 1")
+  require(Set("independent", "pipelined").contains(ptwArch),
+    "MMU_PTW_ARCH 必须是 independent/pipelined")
+  require(Set("in_order", "out_of_order").contains(ptwOrder),
+    "MMU_PTW_ORDER 必须是 in_order/out_of_order")
   require(tlbAsidBits >= 0 && tlbAsidBits <= 9, "tlbAsidBits 必须在 0..9")
   require(utlbLookupPorts >= 1 && utlbLookupPorts <= 2, "utlbLookupPorts 必须在 1..2")
   require(refillPorts >= 1, "refillPorts 必须 >= 1")

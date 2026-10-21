@@ -26,17 +26,10 @@ class ysyx_26030103_PTWCluster(
     inOrder: Boolean = true,
     respPorts: Int = 1,
     hasU: Boolean = true
-) extends Module {
+) extends ysyx_26030103_PTWBackend(respPorts) {
   require(outstanding >= 1, "PTW outstanding 必须 >= 1")
   require(respPorts >= 1, "PTW 响应端口数必须 >= 1")
   private val ptrBits = log2Ceil(outstanding.max(2))
-
-  val io = IO(new Bundle {
-    val req = Flipped(Decoupled(new ysyx_26030103_PTWRequest))
-    val resp = Vec(respPorts, Decoupled(new ysyx_26030103_PTWResponse))
-    val bus = new ysyx_26030103_PTEBusIO
-    val flush = Input(Bool())
-  })
 
   val walkers = Seq.fill(outstanding)(Module(new ysyx_26030103_PTW(
     adMode = adMode,

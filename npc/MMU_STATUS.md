@@ -29,8 +29,13 @@
   `TLB_SUPERPAGE` 后由 PTW 返回 fillLevel=1 并填入超级页 CAM。
 - 独立只读 PTW AXI 通道，或复用 LSU 读端口（`MMU_PTW_PATH=reuse_dcache`）。
 - MMU 请求队列、响应表、序号重排和 1..16 个在途上下文。
-- MMU 控制器可把多个 TLB miss 同时分发给 PTWCluster 的多个 walker；
-  响应按请求序号返回，TLB 命中和 PTW 完成可以并行推进。
+- PTW 支持 `MMU_PTW_ARCH=independent` 的多 walker 簇，以及
+  `MMU_PTW_ARCH=pipelined` 的级间流水实现：
+  - A 级为在途请求计算 PTE 地址并查 PTE cache；
+  - B 级共享单端口页表总线，处理 4B/8B PTE 读和 A/D 写回；
+  - C 级解析 PTE、推进页表级数并产生响应。
+  - 页表读等待期间 A 级仍可服务其它在途请求；同一请求的各级仍受
+    数据依赖约束。
 - PTW 返回 in_order/out_of_order 选择；MMU 层仍保证架构响应顺序。
 - PIPT 和 VIPT：VIPT 使用虚拟地址选 index、物理地址做 tag；当前缓存
   访问仍等待翻译完成，不是 TLB/Cache 同拍并行流水。
@@ -47,6 +52,7 @@
 ysyx_26030103_MMUTest             9
 ysyx_26030103_MMUBehaviorTest     21
 ysyx_26030103_MMUStreamTest       1
+ysyx_26030103_PTWPipelineTest     7
 ysyx_26030103_CSRPrivilegeTest    12
 ysyx_26030103_IDUPrivilegeTest     3
 ysyx_26030103_PLICTest             2
@@ -68,7 +74,7 @@ S ecall + SRET          HIT GOOD
 - `HAS_MMU=n`：IFU/LSU 直接使用物理地址，MMU/PTW 不例化。
 - `HAS_TLB=n`：每次访问走 PTW，TLB 不例化。
 - `HAS_TLB=y, HAS_MMU=n`：生成器按无 TLB 处理并告警。
-- `refillPorts>1` 已支持 TLB 多写回端口和 PTWCluster 多响应端口；
+- `refillPorts>1` 已支持 TLB 多写回端口和 PTW 多响应端口；
   `miss_queue_mode=global` 使用统一请求队列深度。
 - `unified + utlbLookupPorts=2` 时每拍选择两个不同的 `ctxLookup`
   上下文并行查找；同拍命中按请求序号写入响应表。若与 PTW 响应写回
@@ -87,7 +93,7 @@ S ecall + SRET          HIT GOOD
 ## 未完成
 
 - 并行 VIPT TLB/Cache 流水。
-- PTW 级间流水化（当前为多个独立 walker）。
+- 并行 VIPT：当前 ICache 顺序路径尚未改为并行（VIPT 子代理结果待合并后更新）。
 - Nanos-lite：direct-NPC 的 PMA/`CONFIG_MSIZE`/AXI RAM 已从 256KiB
   扩到 64MiB，重新构建后运行 240s（含启动）未再出现
   `PC=0x8000236c` 的 access fault，但 direct-NPC 没有 UART 回显，

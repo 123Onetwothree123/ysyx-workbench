@@ -88,4 +88,24 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
       ptwOutstanding = 2
     )))
   }
+
+  it should "支持 independent 与 pipelined 两种 PTW 结构" in {
+    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+      enabled = true, tlbEnabled = true, ptwArch = "independent", ptwOutstanding = 2
+    )))
+    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+      enabled = true, tlbEnabled = true, ptwArch = "pipelined", ptwOutstanding = 2
+    )))
+  }
+
+  "PTWPipeline" should "支持标准/非标准几何和 4B/8B PTE" in {
+    emit(new ysyx_26030103_PTWPipeline(outstanding = 2))
+    emit(new ysyx_26030103_PTWPipeline(
+      outstanding = 4, pageBits = 10, levels = 2, tableEntries = 2048,
+      cacheEnable = true, superpage = true
+    ))
+    emit(new ysyx_26030103_PTWPipeline(
+      outstanding = 2, levels = 4, tableEntries = 32, pteSizeBytes = 8
+    ))
+  }
 }
