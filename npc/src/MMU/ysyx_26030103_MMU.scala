@@ -20,7 +20,6 @@ class ysyx_26030103_MMU(
     "当前 MMU 只实现标准 Sv32 4KiB/2 级/4B PTE/4KiB 页表"
   )
   require(!profile.tlbSuperpage || profile.superpage, "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
-  require(profile.ptwPath == "dedicated", "PTW 复用 DCache 尚未实现")
   require(profile.ptwArch == "independent", "流水化 PTW 尚未实现")
   require(profile.refillPorts == 1, "当前仅支持单 TLB refill 端口")
   require(profile.tlbMissQueueMode == "follow_tlb", "当前仅支持 follow_tlb 缺失队列")

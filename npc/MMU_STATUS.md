@@ -13,7 +13,7 @@
 - TLB ASID、Global、RR/PLRU/LRU 替换。
 - TLB Reg-CAM 和同步 SRAM 数据阵列两种存储。
 - 可选 Sv32 4MiB 超级页；超级页当前不填充 TLB，每次走 PTW。
-- 独立只读 PTW AXI 通道，与 ICache 共用 IFU 读端口。
+- 独立只读 PTW AXI 通道，或复用 LSU 读端口（`MMU_PTW_PATH=reuse_dcache`）。
 - MMU 请求队列（深度可配）和请求/响应 ID。
 - PIPT 和 VIPT：VIPT 使用虚拟地址选 index、物理地址做 tag；当前是
   先翻译后访问 Cache，不是并行 TLB/Cache 流水。
@@ -46,7 +46,6 @@ S ecall + SRET          HIT GOOD
 - 自定义 PTE
 - CSR 每个字段独立读写配置
 - 并行 VIPT TLB/Cache 流水
-- PTW 复用 DCache
 - pipelined / out-of-order PTW
 - PLIC
 - 多 refill 端口和非 follow_tlb 缺失队列

@@ -84,7 +84,13 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val ptwToAxiOpt =
     if (mmuEnabled) Some(Module(new ysyx_26030103_PTWToAXI)) else None
   val axiReadMuxOpt =
-    if (mmuEnabled) Some(Module(new ysyx_26030103_AXIReadMux)) else None
+    if (mmuEnabled && config.MMU.ptwPath != "reuse_dcache")
+      Some(Module(new ysyx_26030103_AXIReadMux))
+    else None
+  val axiReadLsuMuxOpt =
+    if (mmuEnabled && config.MMU.ptwPath == "reuse_dcache")
+      Some(Module(new ysyx_26030103_AXIReadMux(passWriteA = true)))
+    else None
   val axiWriteMuxOpt =
     if (mmuEnabled) Some(Module(new ysyx_26030103_AXIWriteMux)) else None
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
@@ -204,7 +210,6 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     val mmu = mmuUnitOpt.get
     val mmuArb = mmuArbOpt.get
     val ptwAxi = ptwToAxiOpt.get
-    val readMux = axiReadMuxOpt.get
     val mmuFlush = RegNext(pipe_flush, false.B)
 
     immu.io.fetchValid := ifu.io.FetchValid
@@ -236,9 +241,18 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
 
     mmu.io.bus.req <> ptwAxi.io.req
     mmu.io.bus.resp <> ptwAxi.io.resp
-    ptwAxi.io.axi <> readMux.io.b
-    icache.io.axi <> readMux.io.a
-    readMux.io.out <> arbiter.io.ifu
+    if (config.MMU.ptwPath == "reuse_dcache") {
+      val lsuReadMux = axiReadLsuMuxOpt.get
+      icache.io.axi <> arbiter.io.ifu
+      lsu.io.DataBus <> lsuReadMux.io.a
+      ptwAxi.io.axi <> lsuReadMux.io.b
+      lsuReadMux.io.out <> axiWriteMuxOpt.get.io.a
+    } else {
+      val readMux = axiReadMuxOpt.get
+      ptwAxi.io.axi <> readMux.io.b
+      icache.io.axi <> readMux.io.a
+      readMux.io.out <> arbiter.io.ifu
+    }
     when(mmuFlush) { ifuFaultValid := false.B }
   } else {
     icache.io.axi <> arbiter.io.ifu
@@ -280,7 +294,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   ras.io.flush := exu.io.FenceIFlush
   if (mmuEnabled) {
     val writeMux = axiWriteMuxOpt.get
-    lsu.io.DataBus <> writeMux.io.a
+    if (config.MMU.ptwPath != "reuse_dcache") {
+      lsu.io.DataBus <> writeMux.io.a
+    }
     ptwToAxiOpt.get.io.axiWrite <> writeMux.io.b
     writeMux.io.out <> arbiter.io.lsu
   } else {

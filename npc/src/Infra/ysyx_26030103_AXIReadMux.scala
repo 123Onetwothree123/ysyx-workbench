@@ -9,7 +9,7 @@ import _root_.ysyx_26030103.mmu._
   * 两者都只发单拍 AR，且同一时刻只允许一个 owner 有在途读。响应由
   * RLAST 释放 owner。写通道全部拒绝，不引入新的写主设备。
   */
-class ysyx_26030103_AXIReadMux extends Module {
+class ysyx_26030103_AXIReadMux(passWriteA: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val a = Flipped(new ysyx_26030103_AXI5IO(32))
     val b = Flipped(new ysyx_26030103_AXI5IO(32))
@@ -34,23 +34,45 @@ class ysyx_26030103_AXIReadMux extends Module {
     m.R.RRESP := 0.U
     m.R.RLAST := false.B
   }
-  quiet(io.a)
+  // a 的写通道可选择直通（PTW 复用 LSU 数据通路时使用）。
+  io.a.AW.AWREADY := false.B
+  io.a.W.WREADY := false.B
+  io.a.B.BVALID := false.B
+  io.a.B.BID := 0.U
+  io.a.B.BRESP := 0.U
   quiet(io.b)
 
-  io.out.AW.AWVALID := false.B
-  io.out.AW.AWID := 0.U
-  io.out.AW.AWADDR := 0.U
-  io.out.AW.AWLEN := 0.U
-  io.out.AW.AWSIZE := 2.U
-  io.out.AW.AWBURST := 0.U
-  io.out.AW.AWPROT := 0.U
-  io.out.AW.AWCACHE := 0.U
-  io.out.AW.AWQOS := 0.U
-  io.out.W.WVALID := false.B
-  io.out.W.WDATA := 0.U
-  io.out.W.WSTRB := 0.U
-  io.out.W.WLAST := false.B
-  io.out.B.BREADY := false.B
+  if (passWriteA) {
+    io.a.R.RVALID := false.B
+    io.a.R.RID := 0.U
+    io.a.R.RDATA := 0.U
+    io.a.R.RRESP := 0.U
+    io.a.R.RLAST := false.B
+    io.a.AR.ARREADY := false.B
+    io.out.AW <> io.a.AW
+    io.out.W <> io.a.W
+    io.a.B <> io.out.B
+    io.a.AW.AWREADY := io.out.AW.AWREADY
+    io.a.W.WREADY := io.out.W.WREADY
+    io.a.B.BVALID := io.out.B.BVALID
+    io.a.B.BID := io.out.B.BID
+    io.a.B.BRESP := io.out.B.BRESP
+  } else {
+    io.out.AW.AWVALID := false.B
+    io.out.AW.AWID := 0.U
+    io.out.AW.AWADDR := 0.U
+    io.out.AW.AWLEN := 0.U
+    io.out.AW.AWSIZE := 2.U
+    io.out.AW.AWBURST := 0.U
+    io.out.AW.AWPROT := 0.U
+    io.out.AW.AWCACHE := 0.U
+    io.out.AW.AWQOS := 0.U
+    io.out.W.WVALID := false.B
+    io.out.W.WDATA := 0.U
+    io.out.W.WSTRB := 0.U
+    io.out.W.WLAST := false.B
+    io.out.B.BREADY := false.B
+  }
   io.out.AR.ARVALID := false.B
   io.out.AR.ARID := 0.U
   io.out.AR.ARADDR := 0.U
@@ -218,21 +240,22 @@ class ysyx_26030103_AXIWriteMux extends Module {
   io.b.R.RRESP := 0.U
   io.b.R.RLAST := false.B
 
-  io.out.AW.AWVALID := false.B
-  io.out.AW.AWID := 0.U
-  io.out.AW.AWADDR := 0.U
-  io.out.AW.AWLEN := 0.U
-  io.out.AW.AWSIZE := 2.U
-  io.out.AW.AWBURST := 0.U
-  io.out.AW.AWPROT := 0.U
-  io.out.AW.AWCACHE := 0.U
-  io.out.AW.AWQOS := 0.U
-  io.out.W.WVALID := false.B
-  io.out.W.WDATA := 0.U
-  io.out.W.WSTRB := 0.U
-  io.out.W.WLAST := false.B
-  io.out.B.BREADY := false.B
-  io.a.AW.AWREADY := false.B
+
+    io.out.AW.AWVALID := false.B
+    io.out.AW.AWID := 0.U
+    io.out.AW.AWADDR := 0.U
+    io.out.AW.AWLEN := 0.U
+    io.out.AW.AWSIZE := 2.U
+    io.out.AW.AWBURST := 0.U
+    io.out.AW.AWPROT := 0.U
+    io.out.AW.AWCACHE := 0.U
+    io.out.AW.AWQOS := 0.U
+    io.out.W.WVALID := false.B
+    io.out.W.WDATA := 0.U
+    io.out.W.WSTRB := 0.U
+    io.out.W.WLAST := false.B
+    io.out.B.BREADY := false.B
+    io.a.AW.AWREADY := false.B
   io.a.W.WREADY := false.B
   io.a.B.BVALID := false.B
   io.a.B.BID := 0.U
