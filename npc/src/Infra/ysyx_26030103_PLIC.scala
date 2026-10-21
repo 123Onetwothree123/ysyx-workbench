@@ -122,8 +122,8 @@ class ysyx_26030103_PLIC(
     when(io.AR.ARADDR === ClaimAddr) {
       RData := claimId
       when(claimValid) {
-        pending(claimIndex) := false.B
-        claimed(claimIndex) := true.B
+        pending := pending & ~UIntToOH(claimIndex, numSources)
+        claimed := claimed | UIntToOH(claimIndex, numSources)
       }
     }.elsewhen(io.AR.ARADDR === PendingAddr) {
       RData := pending

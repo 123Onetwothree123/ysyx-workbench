@@ -49,6 +49,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     new ysyx_26030103_AXI5Xbar(config.AddressWidth, config.PMARegions)
   )
   val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
+  val plic = Module(new ysyx_26030103_PLIC())
   // ysyxSoC的ChipLink内存窗口。只有当当前PMA明确覆盖完整
   // 0xc0000000--0xffffffff可读写区域时，才允许CPU slave端口代理
   // 入站DMA请求。其他配置继续用DECERR安全终止，不会意外暴露
@@ -470,6 +471,12 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   xbar.io.CLINT.B <> clint.io.B
   xbar.io.CLINT.AR <> clint.io.AR
   xbar.io.CLINT.R <> clint.io.R
+  plic.sources := Cat(0.U(30.W), clint.io.timer_irq, io.interrupt)
+  xbar.io.PLIC.AW <> plic.io.AW
+  xbar.io.PLIC.W <> plic.io.W
+  xbar.io.PLIC.B <> plic.io.B
+  xbar.io.PLIC.AR <> plic.io.AR
+  xbar.io.PLIC.R <> plic.io.R
   idu.io.ex_valid := exu.io.HazardValid
   idu.io.ex_rd := exu.io.HazardRd
   idu.io.ex_regWrite := exu.io.HazardRegWrite
@@ -533,7 +540,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   gpr.io.WriteEN := wbu.io.WriteEN
   gpr.io.wdata := wbu.io.wdata
   // 临时新加的处理中断的
-  exu.io.Interrupt := io.interrupt
+  exu.io.Interrupt := io.interrupt || plic.external_irq
   exu.io.TimerInterrupt := clint.io.timer_irq
   // 仿真 halt 是 custom-0 指令的提交事件，而不是架构 EBREAK。再寄存
   // 一拍后暴露给 C++，保证上升沿上的所有更老 GPR 写回已经生效。

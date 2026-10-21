@@ -8,6 +8,7 @@
   `medeleg`、`mideleg`、`mie/mip/sie/sip`。
 - `mret`、`sret`、`sfence.vma`。
 - CLINT `mtimecmp` 与 timer interrupt（machine cause 7）。
+- PLIC 寄存器/claim-complete 模块，已接入 Xbar 和顶层。
 - 取指/load/store 页错误，以及向 S 模式委托异常。
 - split ITLB/DTLB 与 unified TLB。
 - TLB ASID、Global、RR/PLRU/LRU 替换。
@@ -45,7 +46,6 @@ S ecall + SRET          HIT GOOD
 
 - 并行 VIPT TLB/Cache 流水
 - pipelined / out-of-order PTW
-- PLIC
 - 多 refill 端口和非 follow_tlb 缺失队列
 
 `PTWCluster` 支持 N 个独立 walker 和共享页表总线仲裁，MMU 入口已有

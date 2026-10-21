@@ -12,6 +12,7 @@ class ysyx_26030103_AXI5Xbar(
     val in = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
     val SoCBus = new ysyx_26030103_AXI5IO(AddressWidth)
     val CLINT = new ysyx_26030103_AXI5IO(AddressWidth)
+    val PLIC = new ysyx_26030103_AXI5IO(AddressWidth)
   })
   // 我真的是烦死了ARM的命名规则
   val OKAY = "b00".U(2.W)
@@ -20,9 +21,36 @@ class ysyx_26030103_AXI5Xbar(
   // (0xa0000000)本就不相交，解码按区间独立判定。
   val CLINTBase = "h02000000".U(32.W)
   val CLINTEnd = "h02010000".U(32.W)
+  val PLICBase = "h0c000000".U(32.W)
+  val PLICEnd = "h10000000".U(32.W)
   val TargetSoCBus = 0.U(2.W)
   val TargetCLINT = 1.U(2.W)
-  val TargetInvalid = 2.U(2.W)
+  val TargetPLIC = 2.U(2.W)
+  val TargetInvalid = 3.U(2.W)
+  io.PLIC.AR.ARVALID := false.B
+  io.PLIC.AR.ARID := 0.U
+  io.PLIC.AR.ARADDR := 0.U
+  io.PLIC.AR.ARLEN := 0.U
+  io.PLIC.AR.ARSIZE := 2.U
+  io.PLIC.AR.ARBURST := 0.U
+  io.PLIC.AR.ARPROT := 0.U
+  io.PLIC.AR.ARCACHE := 0.U
+  io.PLIC.AR.ARQOS := 0.U
+  io.PLIC.R.RREADY := false.B
+  io.PLIC.AW.AWVALID := false.B
+  io.PLIC.AW.AWID := 0.U
+  io.PLIC.AW.AWADDR := 0.U
+  io.PLIC.AW.AWLEN := 0.U
+  io.PLIC.AW.AWSIZE := 2.U
+  io.PLIC.AW.AWBURST := 0.U
+  io.PLIC.AW.AWPROT := 0.U
+  io.PLIC.AW.AWCACHE := 0.U
+  io.PLIC.AW.AWQOS := 0.U
+  io.PLIC.W.WVALID := false.B
+  io.PLIC.W.WDATA := 0.U
+  io.PLIC.W.WSTRB := 0.U
+  io.PLIC.W.WLAST := false.B
+  io.PLIC.B.BREADY := false.B
   require(PMARegions.nonEmpty, "AXI Xbar物理地址图不能为空")
   require(
     PMARegions.forall(r => BigInt(r.EndExclusive) <= (BigInt(1) << AddressWidth)),
@@ -73,6 +101,11 @@ class ysyx_26030103_AXI5Xbar(
     Cat(0.U(1.W), address) >= Cat(0.U(1.W), CLINTBase) &&
     End < Cat(0.U(1.W), CLINTEnd)
   }
+  def IsPLIC(address: UInt, len: UInt, size: UInt, burst: UInt): Bool = {
+    val End = LastByte(address, len, size, burst)
+    Cat(0.U(1.W), address) >= Cat(0.U(1.W), PLICBase) &&
+    End < Cat(0.U(1.W), PLICEnd)
+  }
   private val ReadableRegions = PMARegions.filter(_.Readable)
   private val WritableRegions = PMARegions.filter(_.Writable)
   private val ReadableCLINT = ReadableRegions.exists(
@@ -99,9 +132,13 @@ class ysyx_26030103_AXI5Xbar(
         CLINTPermitted.B && IsCLINT(address, len, size, burst),
         TargetCLINT,
         Mux(
-          InAnyRegion(address, len, size, burst, PermittedRegions),
-          TargetSoCBus,
-          TargetInvalid
+          IsPLIC(address, len, size, burst),
+          TargetPLIC,
+          Mux(
+            InAnyRegion(address, len, size, burst, PermittedRegions),
+            TargetSoCBus,
+            TargetInvalid
+          )
         )
       )
     )
@@ -403,6 +440,46 @@ class ysyx_26030103_AXI5Xbar(
       when((DownstreamAWDone || AWFire) && (DownstreamWDone || WLastFire)) {
         writeState := StateWriteResponse
       }
+    }.elsewhen(WriteTargetReg === TargetPLIC) {
+      val SendAW = !DownstreamAWDone
+      val UseBufferedW = WValidReg
+      val StreamW = !WValidReg && !DownstreamWDone
+
+      io.PLIC.AW.AWVALID := SendAW
+      io.PLIC.AW.AWID := AWIDReg
+      io.PLIC.AW.AWADDR := AWAddressReg
+      io.PLIC.AW.AWLEN := AWLENReg
+      io.PLIC.AW.AWSIZE := AWSIZEReg
+      io.PLIC.AW.AWBURST := AWBURSTReg
+      io.PLIC.AW.AWPROT := AWPROTReg
+      io.PLIC.AW.AWCACHE := AWCACHEReg
+      io.PLIC.AW.AWQOS := AWQOSReg
+
+      io.PLIC.W.WVALID := Mux(UseBufferedW, true.B, StreamW && io.in.W.WVALID)
+      io.PLIC.W.WDATA := Mux(UseBufferedW, WDataReg, io.in.W.WDATA)
+      io.PLIC.W.WSTRB := Mux(UseBufferedW, WSTRBReg, io.in.W.WSTRB)
+      io.PLIC.W.WLAST := Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
+      InWReady := StreamW && io.PLIC.W.WREADY
+
+      val AWFire = SendAW && io.PLIC.AW.AWREADY
+      val BufferedWFire = UseBufferedW && io.PLIC.W.WREADY
+      val StreamWFire = StreamW && io.in.W.WVALID && io.PLIC.W.WREADY
+      val WFire = BufferedWFire || StreamWFire
+      val WLastFire = WFire && Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
+
+      when(AWFire) {
+        DownstreamAWDone := true.B
+      }
+      when(BufferedWFire) {
+        WValidReg := false.B
+      }
+      when(WLastFire) {
+        DownstreamWDone := true.B
+      }
+
+      when((DownstreamAWDone || AWFire) && (DownstreamWDone || WLastFire)) {
+        writeState := StateWriteResponse
+      }
     }.otherwise {
       writeState := Mux(
         WValidReg && WLASTReg,
@@ -453,6 +530,142 @@ class ysyx_26030103_AXI5Xbar(
       }
 
       when(io.CLINT.B.BVALID && io.in.B.BREADY) {
+        AWValidReg := false.B
+        WValidReg := false.B
+        DownstreamAWDone := false.B
+        DownstreamWDone := false.B
+        writeState := StateWriteIdle
+      }
+    }.elsewhen(WriteTargetReg === TargetPLIC) {
+      val SendAW = !DownstreamAWDone
+      val UseBufferedW = WValidReg
+      val StreamW = !WValidReg && !DownstreamWDone
+
+      io.PLIC.AW.AWVALID := SendAW
+      io.PLIC.AW.AWID := AWIDReg
+      io.PLIC.AW.AWADDR := AWAddressReg
+      io.PLIC.AW.AWLEN := AWLENReg
+      io.PLIC.AW.AWSIZE := AWSIZEReg
+      io.PLIC.AW.AWBURST := AWBURSTReg
+      io.PLIC.AW.AWPROT := AWPROTReg
+      io.PLIC.AW.AWCACHE := AWCACHEReg
+      io.PLIC.AW.AWQOS := AWQOSReg
+
+      io.PLIC.W.WVALID := Mux(UseBufferedW, true.B, StreamW && io.in.W.WVALID)
+      io.PLIC.W.WDATA := Mux(UseBufferedW, WDataReg, io.in.W.WDATA)
+      io.PLIC.W.WSTRB := Mux(UseBufferedW, WSTRBReg, io.in.W.WSTRB)
+      io.PLIC.W.WLAST := Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
+      InWReady := StreamW && io.PLIC.W.WREADY
+
+      val AWFire = SendAW && io.PLIC.AW.AWREADY
+      val BufferedWFire = UseBufferedW && io.PLIC.W.WREADY
+      val StreamWFire = StreamW && io.in.W.WVALID && io.PLIC.W.WREADY
+      val WFire = BufferedWFire || StreamWFire
+      val WLastFire = WFire && Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
+
+      when(AWFire) {
+        DownstreamAWDone := true.B
+      }
+      when(BufferedWFire) {
+        WValidReg := false.B
+      }
+      when(WLastFire) {
+        DownstreamWDone := true.B
+      }
+
+      when((DownstreamAWDone || AWFire) && (DownstreamWDone || WLastFire)) {
+        writeState := StateWriteResponse
+      }
+    }.elsewhen(WriteTargetReg === TargetPLIC) {
+      val SendAW = !DownstreamAWDone
+      val UseBufferedW = WValidReg
+      val StreamW = !WValidReg && !DownstreamWDone
+
+      io.PLIC.AW.AWVALID := SendAW
+      io.PLIC.AW.AWID := AWIDReg
+      io.PLIC.AW.AWADDR := AWAddressReg
+      io.PLIC.AW.AWLEN := AWLENReg
+      io.PLIC.AW.AWSIZE := AWSIZEReg
+      io.PLIC.AW.AWBURST := AWBURSTReg
+      io.PLIC.AW.AWPROT := AWPROTReg
+      io.PLIC.AW.AWCACHE := AWCACHEReg
+      io.PLIC.AW.AWQOS := AWQOSReg
+
+      io.PLIC.W.WVALID := Mux(UseBufferedW, true.B, StreamW && io.in.W.WVALID)
+      io.PLIC.W.WDATA := Mux(UseBufferedW, WDataReg, io.in.W.WDATA)
+      io.PLIC.W.WSTRB := Mux(UseBufferedW, WSTRBReg, io.in.W.WSTRB)
+      io.PLIC.W.WLAST := Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
+      InWReady := StreamW && io.PLIC.W.WREADY
+
+      val AWFire = SendAW && io.PLIC.AW.AWREADY
+      val BufferedWFire = UseBufferedW && io.PLIC.W.WREADY
+      val StreamWFire = StreamW && io.in.W.WVALID && io.PLIC.W.WREADY
+      val WFire = BufferedWFire || StreamWFire
+      val WLastFire = WFire && Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
+
+      when(AWFire) {
+        DownstreamAWDone := true.B
+      }
+      when(BufferedWFire) {
+        WValidReg := false.B
+      }
+      when(WLastFire) {
+        DownstreamWDone := true.B
+      }
+
+      when((DownstreamAWDone || AWFire) && (DownstreamWDone || WLastFire)) {
+        writeState := StateWriteResponse
+      }
+    }.otherwise {
+      writeState := Mux(
+        WValidReg && WLASTReg,
+        StateWriteDECERR,
+        StateWriteDrain
+      )
+    }
+  }.elsewhen(writeState === StateWriteDrain) {
+    // 地址无效或本地CLINT不支持burst：首beat已在收集级被接受，
+    // 继续吞掉剩余beat，避免上游停在W通道而永远等不到错误响应。
+    InWReady := true.B
+    when(io.in.W.WVALID && io.in.W.WLAST) {
+      writeState := StateWriteDECERR
+    }
+  }.elsewhen(writeState === StateWriteResponse) {
+    // B响应回来时没有地址，所以要根据之前保存的WriteTargetReg选择下游
+    when(WriteTargetReg === TargetSoCBus) {
+      io.in.B.BID := io.SoCBus.B.BID
+      io.in.B.BVALID := io.SoCBus.B.BVALID
+      io.in.B.BRESP := io.SoCBus.B.BRESP
+      io.SoCBus.B.BREADY := io.in.B.BREADY
+      // B响应没有地址，ID必须与本级发出的AWID一致；错配说明从设备违规，
+      // 提前在交叉开关处报错，避免把故障点误定位到上一级仲裁器。
+      when(io.SoCBus.B.BVALID) {
+        assert(
+          io.SoCBus.B.BID === AWIDReg,
+          "SoCBus returned a write response with an unknown ID"
+        )
+      }
+
+      when(io.SoCBus.B.BVALID && io.in.B.BREADY) {
+        AWValidReg := false.B
+        WValidReg := false.B
+        DownstreamAWDone := false.B
+        DownstreamWDone := false.B
+        writeState := StateWriteIdle
+      }
+    }.elsewhen(WriteTargetReg === TargetPLIC) {
+      io.in.B.BID := io.PLIC.B.BID
+      io.in.B.BVALID := io.PLIC.B.BVALID
+      io.in.B.BRESP := io.PLIC.B.BRESP
+      io.PLIC.B.BREADY := io.in.B.BREADY
+      when(io.PLIC.B.BVALID) {
+        assert(
+          io.PLIC.B.BID === AWIDReg,
+          "PLIC returned a write response with an unknown ID"
+        )
+      }
+
+      when(io.PLIC.B.BVALID && io.in.B.BREADY) {
         AWValidReg := false.B
         WValidReg := false.B
         DownstreamAWDone := false.B
@@ -518,20 +731,31 @@ class ysyx_26030103_AXI5Xbar(
     ReadSlotState(id) === ReadSlotRequest &&
     ReadTargetReg(id) === TargetCLINT
   }).asUInt
+  val PLICRequestMask = VecInit((0 until ReadSlotCount).map { id =>
+    ReadSlotState(id) === ReadSlotRequest &&
+    ReadTargetReg(id) === TargetPLIC
+  }).asUInt
   val SoCARHeld = RegInit(false.B)
   val SoCARHeldID = RegInit(0.U(4.W))
   val CLINTARHeld = RegInit(false.B)
   val CLINTARHeldID = RegInit(0.U(4.W))
+  val PLICARHeld = RegInit(false.B)
+  val PLICARHeldID = RegInit(0.U(4.W))
   val SoCRequestCandidateID = PriorityEncoder(SoCRequestMask)
   val CLINTRequestCandidateID = PriorityEncoder(CLINTRequestMask)
+  val PLICRequestCandidateID = PriorityEncoder(PLICRequestMask)
   val SoCRequestValid = SoCARHeld || SoCRequestMask.orR
   val CLINTRequestValid = CLINTARHeld || CLINTRequestMask.orR
+  val PLICRequestValid = PLICARHeld || PLICRequestMask.orR
   val SoCRequestID =
     Mux(SoCARHeld, SoCARHeldID, SoCRequestCandidateID)
   val CLINTRequestID =
     Mux(CLINTARHeld, CLINTARHeldID, CLINTRequestCandidateID)
+  val PLICRequestID =
+    Mux(PLICARHeld, PLICARHeldID, PLICRequestCandidateID)
   val SoCRequestFire = SoCRequestValid && io.SoCBus.AR.ARREADY
   val CLINTRequestFire = CLINTRequestValid && io.CLINT.AR.ARREADY
+  val PLICRequestFire = PLICRequestValid && io.PLIC.AR.ARREADY
 
   when(SoCRequestValid) {
     io.SoCBus.AR.ARVALID := true.B
@@ -561,6 +785,20 @@ class ysyx_26030103_AXI5Xbar(
       ReadSlotState(CLINTRequestID) := ReadSlotResponse
     }
   }
+  when(PLICRequestValid) {
+    io.PLIC.AR.ARVALID := true.B
+    io.PLIC.AR.ARID := PLICRequestID
+    io.PLIC.AR.ARADDR := ARAddressReg(PLICRequestID)
+    io.PLIC.AR.ARLEN := ARLENReg(PLICRequestID)
+    io.PLIC.AR.ARSIZE := ARSIZEReg(PLICRequestID)
+    io.PLIC.AR.ARBURST := ARBURSTReg(PLICRequestID)
+    io.PLIC.AR.ARPROT := ARPROTReg(PLICRequestID)
+    io.PLIC.AR.ARCACHE := ARCACHEReg(PLICRequestID)
+    io.PLIC.AR.ARQOS := ARQOSReg(PLICRequestID)
+    when(PLICRequestFire) {
+      ReadSlotState(PLICRequestID) := ReadSlotResponse
+    }
+  }
   when(!SoCARHeld && SoCRequestValid && !io.SoCBus.AR.ARREADY) {
     SoCARHeld := true.B
     SoCARHeldID := SoCRequestID
@@ -572,6 +810,12 @@ class ysyx_26030103_AXI5Xbar(
     CLINTARHeldID := CLINTRequestID
   }.elsewhen(CLINTRequestFire) {
     CLINTARHeld := false.B
+  }
+  when(!PLICARHeld && PLICRequestValid && !io.PLIC.AR.ARREADY) {
+    PLICARHeld := true.B
+    PLICARHeldID := PLICRequestID
+  }.elsewhen(PLICRequestFire) {
+    PLICARHeld := false.B
   }
 
   // 响应小FIFO（4拍）：既对同时到达的SoCBus/CLINT响应进行仲裁，也保证
@@ -609,8 +853,13 @@ class ysyx_26030103_AXI5Xbar(
     (ReadSlotState(io.CLINT.R.RID) === ReadSlotResponse &&
       ReadTargetReg(io.CLINT.R.RID) === TargetCLINT) ||
       (CLINTRequestFire && CLINTRequestID === io.CLINT.R.RID)
+  val PLICResponseExpected =
+    (ReadSlotState(io.PLIC.R.RID) === ReadSlotResponse &&
+      ReadTargetReg(io.PLIC.R.RID) === TargetPLIC) ||
+      (PLICRequestFire && PLICRequestID === io.PLIC.R.RID)
   val SoCResponseValid = io.SoCBus.R.RVALID && SoCResponseExpected
   val CLINTResponseValid = io.CLINT.R.RVALID && CLINTResponseExpected
+  val PLICResponseValid = io.PLIC.R.RVALID && PLICResponseExpected
 
   val LocalResponseMask = VecInit((0 until ReadSlotCount).map { id =>
     ReadSlotState(id) === ReadSlotDECERR
@@ -624,11 +873,14 @@ class ysyx_26030103_AXI5Xbar(
   // RREADY为低，并且必须保持其有效载荷。
   val SelectSoC = SoCResponseValid
   val SelectCLINT = !SelectSoC && CLINTResponseValid
-  val SelectLocal = !SelectSoC && !SelectCLINT && LocalResponseValid
+  val SelectPLIC = !SelectSoC && !SelectCLINT && PLICResponseValid
+  val SelectLocal = !SelectSoC && !SelectCLINT && !SelectPLIC && LocalResponseValid
   io.SoCBus.R.RREADY := RBufferAvailable && SelectSoC
   io.CLINT.R.RREADY := RBufferAvailable && SelectCLINT
+  io.PLIC.R.RREADY := RBufferAvailable && SelectPLIC
   val CaptureSoC = io.SoCBus.R.RVALID && io.SoCBus.R.RREADY
   val CaptureCLINT = io.CLINT.R.RVALID && io.CLINT.R.RREADY
+  val CapturePLIC = io.PLIC.R.RVALID && io.PLIC.R.RREADY
   val CaptureLocal = RBufferAvailable && SelectLocal
 
   when(CaptureSoC) {
@@ -643,6 +895,12 @@ class ysyx_26030103_AXI5Xbar(
     rQueue.io.enq.bits.Data := io.CLINT.R.RDATA
     rQueue.io.enq.bits.Resp := io.CLINT.R.RRESP
     rQueue.io.enq.bits.Last := io.CLINT.R.RLAST
+  }.elsewhen(CapturePLIC) {
+    rQueue.io.enq.valid := true.B
+    rQueue.io.enq.bits.Id := io.PLIC.R.RID
+    rQueue.io.enq.bits.Data := io.PLIC.R.RDATA
+    rQueue.io.enq.bits.Resp := io.PLIC.R.RRESP
+    rQueue.io.enq.bits.Last := io.PLIC.R.RLAST
   }.elsewhen(CaptureLocal) {
     rQueue.io.enq.valid := true.B
     rQueue.io.enq.bits.Id := LocalResponseID
@@ -670,5 +928,8 @@ class ysyx_26030103_AXI5Xbar(
   }
   when(io.CLINT.R.RVALID) {
     assert(CLINTResponseExpected, "CLINT returned an inactive or misrouted RID")
+  }
+  when(io.PLIC.R.RVALID) {
+    assert(PLICResponseExpected, "PLIC returned an inactive or misrouted RID")
   }
 }
