@@ -89,7 +89,11 @@ S ecall + SRET          HIT GOOD
 
 ## 未完成
 
-- Nanos-lite 完整退出：AM NPC 的 VME/CTE 已补齐，新镜像 279,616 字节
-  可被 ImageLoader 加载。`hello` 已能输出并 HIT GOOD TRAP；但 Nanos
-  新镜像在 cycle 266 左右即跳到 PC=0 并重复 DECERR，尚未输出 logo
-  或到达 halt。需要继续定位第一步 S 模式 `mret` 后的取指/页表路径。
+- Nanos-lite 完整退出：AM NPC 的 VME/CTE、页表和 S 模式入口已补齐，
+  新镜像 279,616 字节可加载；`hello` 可 HIT GOOD TRAP。Nanos 新镜像
+  仍在早期跳到 PC=0。裸机隔离测试进一步确认：
+  - `satp=0` 时 S 模式 `mret` 正常；
+  - 设置 Sv32 页表并 `satp` 非零后，`mret` 提交到 S 模式后第一次
+    取指停住，未看到 PTW 总线请求，也未进入 stvec 故障处理。
+  下一步需要继续定位 IFUMMU/MMU 请求在 S 模式 satp 下的握手，或
+  手写页表的地址/权限问题。
