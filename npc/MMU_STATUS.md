@@ -43,7 +43,7 @@
 
 ```text
 ysyx_26030103_MMUTest             7
-ysyx_26030103_MMUBehaviorTest     16
+ysyx_26030103_MMUBehaviorTest     17
 ysyx_26030103_MMUStreamTest       1
 ysyx_26030103_CSRPrivilegeTest    10
 ysyx_26030103_PLICTest             2
@@ -65,8 +65,8 @@ S ecall + SRET          HIT GOOD
 - `HAS_MMU=n`：IFU/LSU 直接使用物理地址，MMU/PTW 不例化。
 - `HAS_TLB=n`：每次访问走 PTW，TLB 不例化。
 - `HAS_TLB=y, HAS_MMU=n`：生成器按无 TLB 处理并告警。
-- `refillPorts>1` 和 `miss_queue_mode=global` 当前按单 refill
-  端口、统一请求队列深度实现；没有 N 个独立 PTW 写回源。
+- `refillPorts>1` 已支持 TLB 多写回端口和 PTWCluster 多响应端口；
+  `miss_queue_mode=global` 使用统一请求队列深度。
 - `HAS_PMP=y` 启用基础 PMP：OFF/TOR/NA4/NAPOT、L 锁定和 R/W/X；
   当前 PMP 检查接在 MMU 翻译后的物理地址上，因此依赖 HAS_MMU。
 - `HAS_S/HAS_U` 仍不参与 RTL 面积裁剪；MMU 需要至少一个 S/U 特权级。
@@ -74,7 +74,6 @@ S ecall + SRET          HIT GOOD
 ## 未完成
 
 - 并行 VIPT TLB/Cache 流水。
-- 多 refill 端口（当前只有一个 PTW 响应写回源）。
 - `UTLB_LOOKUP_PORTS=2` 的双查找端口（当前统一 TLB 仍单查找端口）。
 - PTW 级间流水化（当前为多个独立 walker）。
 - Nanos-lite：direct-NPC 的 PMA/`CONFIG_MSIZE`/AXI RAM 已从 256KiB
