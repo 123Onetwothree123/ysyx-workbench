@@ -115,10 +115,12 @@ case class ysyx_26030103_MMUProfile(
   require(!pmpEnabled || pmpEntries > 0, "HAS_PMP=y 时 PMP_ENTRIES 必须 > 0")
   require(!pmpEnabled || enabled, "HAS_PMP 当前依赖 HAS_MMU 的翻译后物理地址检查")
 
-  def csrSupported(addr: Int): Boolean =
-    csrEnabled.contains(addr) ||
+  def csrSupported(addr: Int): Boolean = {
+    val sRange = addr >= 0x100 && addr < 0x200
+    (hasS || !sRange) && (csrEnabled.contains(addr) ||
       (pmpEnabled && ((addr >= 0x3a0 && addr <= 0x3a3) ||
-        (addr >= 0x3b0 && addr <= 0x3bf)))
+        (addr >= 0x3b0 && addr <= 0x3bf))))
+  }
 
   if (tlbEnabled) {
     requirePowerOfTwo("itlbEntries", itlbEntries)

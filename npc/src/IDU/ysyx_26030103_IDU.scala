@@ -163,7 +163,7 @@ class ysyx_26030103_IDU(
   private val csrAddresses = (
     config.MMU.csrEnabled.toSeq ++
       (if (config.MMU.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
-  ).distinct.sorted
+  ).filter(config.MMU.csrSupported).distinct.sorted
   val CSRAddressValid =
     if (config.MMU.csrMissingMode == "zero") true.B
     else csrAddresses.map(a => CSRAddress === a.U(12.W)).reduceOption(_ || _).getOrElse(false.B)

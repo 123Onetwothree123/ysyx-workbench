@@ -93,7 +93,7 @@ class ysyx_26030103_CSR(
   private val enabledCsrAddresses = (
     profile.csrEnabled.toSeq ++
       (if (profile.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
-  ).distinct.sorted
+  ).filter(profile.csrSupported).distinct.sorted
   val CsrImplemented =
     enabledCsrAddresses.map(a => io.CSRAddress === a.U(12.W))
       .reduceOption(_ || _).getOrElse(false.B)
