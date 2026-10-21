@@ -28,7 +28,7 @@
 
 ```text
 ysyx_26030103_MMUTest             7
-ysyx_26030103_MMUBehaviorTest     10
+ysyx_26030103_MMUBehaviorTest     11
 ysyx_26030103_MMUStreamTest       1
 ysyx_26030103_CSRPrivilegeTest    5
 ysyx_26030103_PLICTest             2
