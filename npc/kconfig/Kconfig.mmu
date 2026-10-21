@@ -5,15 +5,16 @@ menu "虚拟内存管理 (MMU/TLB)"
     default n
     help
       启用 S 模式状态、S 模式 CSR 和 S 模式异常入口。
-      当前标准 Sv32 RTL 已实现 S/U 特权级和委托；该开关暂时不参与
-      RTL 裁剪，后续再接入 HAS_S/HAS_U 的面积裁剪。
+      当前标准 Sv32 RTL 已实现 S/U 特权级和委托；HAS_S/HAS_U
+      目前主要作为软件/生成器契约，RTL 面积裁剪仍未接入。
 
   config HAS_U
     bool "启用 U 模式"
     default n
     help
       启用 U 模式状态和 U 模式 ecall/权限检查。
-      当前标准 Sv32 RTL 已实现 U 模式；该开关暂时不参与 RTL 裁剪。
+      当前标准 Sv32 RTL 已实现 U 模式；HAS_S/HAS_U 尚未参与
+      RTL 面积裁剪。
 
   config HAS_MMU
     bool "启用 MMU"
