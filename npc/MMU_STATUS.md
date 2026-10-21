@@ -89,9 +89,16 @@ S ecall + SRET          HIT GOOD
 
 ## 未完成
 
-- Nanos-lite 的“完整退出”日志验证：64MiB direct-NPC 已不再复现
-  `PC=0x8000236c` access fault；但当前旧版 `nanos-lite-riscv32e-npc.bin`
-  的运行 PC 长时间停在 `0x800009fc`（`__klib_init_array` 入口），
-  没有串口输出或退出。关闭 ICache 复测仍停在同一 PC，说明不是
-  ICache refill 单独导致；仍需继续定位 Nanos 镜像、UART 输出缓冲或
-  早期 `_trm_init` 取指/访存路径。
+- Nanos-lite：修复 A/D=fault 时 LSU 读通道被写 mux 遮挡后，Nanos-lite
+  已能输出完整启动日志：
+  - logo
+  - `Hello World`
+  - `init_mm`
+  - `init_device`
+  - `init_ramdisk`（41684 bytes）
+  - `init_irq`
+  - `Initializing processes...`
+  但随后停在 `init_proc` 的进程地址空间/上下文创建，尚未打印
+  `Finish initialization` 或到达 halt。原因在 AM `npc` 平台原有的
+  VME/CTE stub（`map`/`ucontext` 等）与 Nanos-lite 的用户进程加载不匹配，
+  不在 MMU RTL 本身。
