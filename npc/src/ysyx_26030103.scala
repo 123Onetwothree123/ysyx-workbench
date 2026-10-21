@@ -141,8 +141,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     if (mmuEnabled && config.MMU.ptwPath == "reuse_dcache")
       Some(Module(new ysyx_26030103_AXIReadMux(passWriteA = true)))
     else None
+  // PTW 只有 A/D=hardware 时才需要写回；其余配置让 LSU 的读写通道
+  // 直接接仲裁器，避免写 mux 影响普通 load。
   val axiWriteMuxOpt =
-    if (mmuEnabled) Some(Module(new ysyx_26030103_AXIWriteMux)) else None
+    if (mmuEnabled && config.MMU.adMode == "hardware")
+      Some(Module(new ysyx_26030103_AXIWriteMux)) else None
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
   val ifuFaultValid = RegInit(false.B)
@@ -356,7 +359,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       icache.io.axi <> arbiter.io.ifu
       lsu.io.DataBus <> lsuReadMux.io.a
       ptwAxi.io.axi <> lsuReadMux.io.b
-      lsuReadMux.io.out <> axiWriteMuxOpt.get.io.a
+      axiWriteMuxOpt match {
+        case Some(writeMux) => lsuReadMux.io.out <> writeMux.io.a
+        case None => lsuReadMux.io.out <> arbiter.io.lsu
+      }
     } else {
       val readMux = axiReadMuxOpt.get
       ptwAxi.io.axi <> readMux.io.b
@@ -407,12 +413,31 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   ras.io.pop_valid := exu.io.RASPopValid
   ras.io.flush := exu.io.FenceIFlush
   if (mmuEnabled) {
-    val writeMux = axiWriteMuxOpt.get
-    if (config.MMU.ptwPath != "reuse_dcache") {
-      lsu.io.DataBus <> writeMux.io.a
+    axiWriteMuxOpt match {
+      case Some(writeMux) =>
+        if (config.MMU.ptwPath != "reuse_dcache") {
+          lsu.io.DataBus <> writeMux.io.a
+        }
+        ptwToAxiOpt.get.io.axiWrite <> writeMux.io.b
+        writeMux.io.out <> arbiter.io.lsu
+      case None =>
+        if (config.MMU.ptwPath != "reuse_dcache") {
+          arbiter.io.lsu <> lsu.io.DataBus
+        }
+        // 没有 A/D 写回时 PTW 写端口保持空闲。
+        val ptwWrite = ptwToAxiOpt.get.io.axiWrite
+        ptwWrite.AW.AWREADY := false.B
+        ptwWrite.W.WREADY := false.B
+        ptwWrite.B.BVALID := false.B
+        ptwWrite.B.BID := 0.U
+        ptwWrite.B.BRESP := 0.U
+        ptwWrite.AR.ARREADY := false.B
+        ptwWrite.R.RVALID := false.B
+        ptwWrite.R.RID := 0.U
+        ptwWrite.R.RDATA := 0.U
+        ptwWrite.R.RRESP := 0.U
+        ptwWrite.R.RLAST := false.B
     }
-    ptwToAxiOpt.get.io.axiWrite <> writeMux.io.b
-    writeMux.io.out <> arbiter.io.lsu
   } else {
     arbiter.io.lsu <> lsu.io.DataBus
   }
