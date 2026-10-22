@@ -199,7 +199,10 @@ menu "虚拟内存管理 (MMU/TLB)"
           （log2(MMU_PAGE_SIZE_BYTES)），否则不同虚拟页可能把同一物理
           行放进不同 set，elaboration 会明确报错。若确需该几何，可打开
           MMU_CACHE_VIPT_ALIAS_SAFE，由 Cache 在 refill/store 时按物理
-          tag 失效其他 set 的 alias 副本。cache line 本身始终不得跨页。
+          tag 失效其他 set 的 alias 副本。
+          VIPT 下 cache line 不得大于页，否则一行会跨越两个虚拟页；
+          elaboration 会明确报错并提示改用 MMU_CACHE_MODE=pipt。
+          PIPT 用物理地址索引和回填，允许 line > page，不存在该限制。
     endchoice
 
     config MMU_CACHE_MODE
@@ -218,6 +221,30 @@ menu "虚拟内存管理 (MMU/TLB)"
         别名读写一致。该选项会增加 tag 比较/valid 写口逻辑，默认关闭。
         关闭时非法几何仍会在 elaboration 期报错，不会静默退化为 PIPT。
         也可直接选择 MMU_CACHE_PIPT，用物理索引避免 alias。
+
+    choice
+      prompt "VIPT alias 失效扫描方式"
+      depends on MMU_CACHE_VIPT_ALIAS_SAFE
+      default MMU_CACHE_VIPT_ALIAS_SCAN_ALL_SETS
+      help
+        控制 alias 维护硬件如何搜索同一物理行的其它 set 副本。
+        ALL_SETS：单拍并行比较所有 set，refill/store 不增加额外等待，
+          但 tag 比较器和 valid 写译码面积随 set 数线性增长（默认）。
+        SERIAL：每个周期只扫描一个 set，只有一套比较器/写译码，面积小；
+          扫描期间反压新的 Cache 请求，refill 完成后可能多等 1..set 数拍。
+        两种模式都保证扫描完成前不接受可能命中旧 alias 副本的请求。
+
+      config MMU_CACHE_VIPT_ALIAS_SCAN_ALL_SETS
+        bool "ALL_SETS：单拍扫描全部 set"
+      config MMU_CACHE_VIPT_ALIAS_SCAN_SERIAL
+        bool "SERIAL：每周期扫描一个 set"
+    endchoice
+
+    config MMU_CACHE_VIPT_ALIAS_SCAN_MODE
+      string
+      default "all_sets" if MMU_CACHE_VIPT_ALIAS_SCAN_ALL_SETS
+      default "serial" if MMU_CACHE_VIPT_ALIAS_SCAN_SERIAL
+      default "all_sets"
 
     choice
       prompt "PTW 内存通路"

@@ -16,6 +16,9 @@ class ysyx_26030103_DCacheSRAM(
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装和写直达 store 完成时按物理 tag 失效其他 set 的副本。
     ViptAliasSafe: Boolean = false,
+    // alias 失效扫描方式：all_sets 单拍全扫描；serial 每周期扫描一个 set，
+    // 扫描期间反压新 load，store 事件进入小队列等待扫描。
+    ViptAliasScanMode: String = "all_sets",
     CacheableBase: Long = 0x80000000L,
     CacheableMask: Long = 0x80000000L,
     // true=命中响应第一拍旁路SRAM输出(保持1拍延迟);
@@ -24,6 +27,10 @@ class ysyx_26030103_DCacheSRAM(
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_DCacheBase(AddressWidth, DataWidth) {
+  ysyx_26030103_ViptAliasScan.requireMode(ViptAliasScanMode, "DCacheSRAM")
+  private val AliasScanSerial =
+    ViptAliasSafe && Enable &&
+      ysyx_26030103_ViptAliasScan.isSerial(ViptAliasScanMode)
   require(DataWidth == 32 || DataWidth == 64,
     s"DCache DataWidth 非法: $DataWidth")
   require(BlockSizeLog2 >= 2, "DCache line must contain at least one 32-bit word")
@@ -63,7 +70,7 @@ class ysyx_26030103_DCacheSRAM(
   // 完成后扫描 tag 阵列，失效其他 set 中的同物理行副本。扫描仅在 alias
   // 危险几何且显式打开 MMU_CACHE_VIPT_ALIAS_SAFE 时生成。
   private def InvalidateAliasCopies(AliasTag: UInt, TargetIndex: UInt): Unit = {
-    if (ViptAliasSafe && Enable) {
+    if (ViptAliasSafe && Enable && !AliasScanSerial) {
       for (i <- valid.indices) {
         when(valid(i) && tag(i) === AliasTag && i.U =/= TargetIndex) {
           valid(i) := false.B
@@ -373,13 +380,34 @@ class ysyx_26030103_DCacheSRAM(
   val HitUnderRefill = PriorDemandLeaves && !io.flush &&
     !StoreConflictsRequest && (FullHitUnderRefill || PartialHitUnderRefill)
   val AcceptedHit = Mux(state === SIdle, hit, HitUnderRefill)
+  // serial alias 扫描的事件源：refill 安装与写直达 store 未命中。
+  // store 命中时该行已是唯一副本，原地更新即可，不需要扫描。
+  val RefillAliasEvent = state === SReadReq && io.AXI.AR.ARREADY &&
+    RefillActive && !suppressFill && !io.flush
+  val StoreAliasEvent = io.StoreValid && StoreCacheable && !StoreHit
+  // 扫描/事件排队期间反压新 load；all_sets 模式恒为 false。
+  val AliasScanBusy =
+    if (AliasScanSerial) {
+      ysyx_26030103_ViptAliasScan.serialEventQueueScan(
+        valid,
+        tag,
+        RefillAliasEvent,
+        ReqTagReg,
+        ReqIndexSafe,
+        StoreAliasEvent,
+        StoreTag,
+        io.flush
+      )
+    } else {
+      false.B
+    }
   // 同拍命中 store 会在此沿才写入阵列/镜像：SIdle 命中路径也必须反压
   // 同线 load 一拍，否则 Reg 实现会锁存 store 之前的旧值（SRAM 实现因
   // 读口打拍而恰好看到新值），两实现语义不一致。
   // VIPT 缺少 PA 时只允许在空闲且无回填时受理；等待期间不再接新请求。
   val ViptAcceptable = !ViptNeedWait || (state === SIdle && !RefillActive)
   io.req.ready := ResponseSlotReady && !io.flush && !io.req_kill &&
-    !WaitPaddr && ViptAcceptable &&
+    !WaitPaddr && ViptAcceptable && !AliasScanBusy &&
     (state === SIdle || (HitUnderRefill && !ViptNeedWait)) &&
     !StoreConflictsRequest
   // 性能计数器: 已返回的MSHR字按hit计数，不应伪造第二次cache miss。
@@ -492,7 +520,7 @@ class ysyx_26030103_DCacheSRAM(
   // 写直达 store 完成后内存已是新值：同一物理行的其他 alias 副本（即使
   // store 本身按 VA index 没有命中）都必须失效。成功命中时保留 StoreIndex
   // 这份并由上面的写口更新；失败 store 则连命中行一起失效。
-  if (ViptAliasSafe && Enable) {
+  if (ViptAliasSafe && Enable && !AliasScanSerial) {
     for (i <- valid.indices) {
       val KeepTarget = StoreHit && io.StoreResp === 0.U &&
         StoreIndexSafe === i.U

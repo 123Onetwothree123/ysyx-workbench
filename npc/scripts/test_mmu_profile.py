@@ -84,6 +84,21 @@ class MmuProfileTest(unittest.TestCase):
         profile = build_profile(Config(values))
         self.assertEqual(profile["mmu"]["cache_mode"], "vipt")
         self.assertTrue(profile["mmu"]["cache_vipt_alias_safe"])
+        self.assertEqual(profile["mmu"]["cache_vipt_alias_scan_mode"], "all_sets")
+
+    def test_vipt_alias_scan_mode_is_visible(self):
+        values = self.base()
+        values["MMU_CACHE_MODE"] = "vipt"
+        values["MMU_CACHE_VIPT_ALIAS_SAFE"] = True
+        values["MMU_CACHE_VIPT_ALIAS_SCAN_MODE"] = "serial"
+        profile = build_profile(Config(values))
+        self.assertEqual(profile["mmu"]["cache_vipt_alias_scan_mode"], "serial")
+
+    def test_invalid_vipt_alias_scan_mode(self):
+        values = self.base()
+        values["MMU_CACHE_VIPT_ALIAS_SCAN_MODE"] = "directory"
+        with self.assertRaisesRegex(ValueError, "all_sets"):
+            build_profile(Config(values))
 
     def test_pmp_is_visible(self):
         values = self.base()

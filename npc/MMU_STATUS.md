@@ -67,7 +67,16 @@
   - 写直达 store 完成（BRESP 成功）后失效所有其他 set 的 alias 副本，
     store 按 VA index 未命中也能清掉旧副本；
   - 半填行只允许同一 set 的后续请求 partial-hit；
-  - cache line 始终要求不大于页大小，跨页行无法用单个物理行回填。
+  - alias 扫描方式由 `MMU_CACHE_VIPT_ALIAS_SCAN_MODE` 选择：
+    `all_sets`（默认）单拍并行比较所有 set，refill/store 无额外等待；
+    `serial` 每周期只扫描一个 set，面积小，扫描期间反压新的 Cache
+    请求，refill 最多增加 set 数拍。两种模式都在扫描完成前拒绝可能
+    命中旧 alias 副本的请求。DCache 的 store 完成事件不能被反压，
+    因此 serial 模式用小队列排队扫描；队列溢出时清空整个 Cache，
+    绝不保留陈旧副本。
+  - VIPT 下 cache line 不得大于页，跨页行无法用单个物理行回填，
+    elaboration 会明确报错并提示改用 `MMU_CACHE_MODE=pipt`；
+    PIPT 用物理地址索引/回填，允许 line > page，地址不会被截断。
   ICache 和 DCache 都有并行 VIPT 路径；DCache 的 load/store 都可以提前
   受理：store 先按 VA 登记写缓冲，只有携带匹配 VA 标签的 PA 返回后才发
   AW/W 或更新缓存镜像，页错误 kill 不会留下任何写副作用。VIPT cache
@@ -87,6 +96,8 @@
 MMU 结构/行为/流、PTW pipeline、AXI 多 outstanding、CSR/U 裁剪、
 IDU 特权级、PLIC、PMP、ICache VIPT、DCache VIPT、CacheViptAlias
 （非标准页大小、PA alias 读写/取指、store 后 alias 一致、satp 切换）、
+CacheAliasScan（8/16/32 set、all_sets/serial、Reg/SRAM、扫描期间 stall）、
+CachePiptLargeLine（line > page、物理索引/回填、跨 64B 页偏移）、
 LSUMMUVipt、LSUVipt、LSUDmmuVipt、LSUStoreVipt；以及 RV64 定向测试：
 Sv39 三级 walk/权限/U-SUM/R-W-X/超级页/A-D/非规范地址、
 Sv48 四级 walk、Sv39 TLB refill、64 位 satp WARL 与 sepc/stval。

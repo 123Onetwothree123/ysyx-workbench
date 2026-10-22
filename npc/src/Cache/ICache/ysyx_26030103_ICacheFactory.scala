@@ -28,6 +28,7 @@ object ysyx_26030103_ICacheFactory {
             AddressWidth = config.AddressWidth,
             Vipt = config.MMU.cacheMode == "vipt",
             ViptAliasSafe = config.ICacheViptAliasHardware,
+            ViptAliasScanMode = config.ICacheViptAliasScanMode,
             PMARegions = config.PMARegions
           )
         )
@@ -40,6 +41,7 @@ object ysyx_26030103_ICacheFactory {
             AddressWidth = config.AddressWidth,
             Vipt = config.MMU.cacheMode == "vipt",
             ViptAliasSafe = config.ICacheViptAliasHardware,
+            ViptAliasScanMode = config.ICacheViptAliasScanMode,
             PMARegions = config.PMARegions
           )
         )
@@ -52,6 +54,7 @@ object ysyx_26030103_ICacheFactory {
             AddressWidth = config.AddressWidth,
             Vipt = config.MMU.cacheMode == "vipt",
             ViptAliasSafe = config.ICacheViptAliasHardware,
+            ViptAliasScanMode = config.ICacheViptAliasScanMode,
             Bypass = false,
             PMARegions = config.PMARegions
           )

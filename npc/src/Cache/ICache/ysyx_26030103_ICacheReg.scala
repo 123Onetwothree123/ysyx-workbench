@@ -12,9 +12,17 @@ class ysyx_26030103_ICacheReg(
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装前按物理 tag 失效其他 set 的副本，维持每个物理行至多一份。
     ViptAliasSafe: Boolean = false,
+    // alias 失效扫描方式：all_sets 单拍全扫描；serial 每周期扫描一个 set，
+    // 扫描期间反压新取指。
+    ViptAliasScanMode: String = "all_sets",
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_ICacheBase(AddressWidth) {
+  ysyx_26030103_ViptAliasScan.requireMode(ViptAliasScanMode, "ICacheReg")
+  // serial 只在真正需要 alias 维护的几何下生成扫描硬件。
+  private val AliasScanSerial =
+    ViptAliasSafe && Enable &&
+      ysyx_26030103_ViptAliasScan.isSerial(ViptAliasScanMode)
   // alias 模式必须比较完整物理行号：index 含 VPN 位时，PA 中与 index
   // 对应的位并不由 VA index 决定，若仍省略这些位，两个只有该位不同的
   // 物理行会在同一 set 中 false hit。页内安全 VIPT 可继续使用窄 tag。
@@ -37,7 +45,7 @@ class ysyx_26030103_ICacheReg(
   // 新行会驱逐旧副本。扫描是 elaboration 期展开的（仅 alias 危险几何且
   // 显式打开 MMU_CACHE_VIPT_ALIAS_SAFE 时生成），不在默认配置增加面积。
   private def InvalidateAliasCopies(AliasTag: UInt, TargetIndex: UInt): Unit = {
-    if (ViptAliasSafe && Enable) {
+    if (ViptAliasSafe && Enable && !AliasScanSerial) {
       for (i <- valid.indices) {
         when(valid(i) && tag(i) === AliasTag && i.U =/= TargetIndex) {
           valid(i) := false.B
@@ -178,6 +186,25 @@ class ysyx_26030103_ICacheReg(
       (!ref_cacheable || !burst_mode || refill_cnt === (WordsPerBlock - 1).U)
   val refill_error_now =
     refill_r_fire && (io.axi.R.RRESP =/= 0.U || malformed_refill_beat_now)
+  // serial alias 扫描的启动事件：真正被接受的 cacheable refill AR。
+  // 被 kill/flush 取消的错路 refill 不驱逐其它 set 的有效行。
+  val RefillAliasEvent = rfstate === rf_req && io.axi.AR.ARREADY &&
+    ref_cacheable && !discard && !(io.kill && s1_waits)
+  // serial 扫描/启动拍反压新取指，确保不会在旧 alias 副本尚未清完时
+  // 受理可能命中它的请求。all_sets 模式恒为 false，时序与原来一致。
+  val AliasScanBusy =
+    if (AliasScanSerial) {
+      ysyx_26030103_ViptAliasScan.serialRefillScan(
+        valid,
+        tag,
+        RefillAliasEvent,
+        ref_tag,
+        RefIndexSafe,
+        io.flush
+      )
+    } else {
+      false.B
+    }
   // 半填行只在“同一 set”内可见：alias 几何下另一个 VA 可能用同一 PA
   // 命中不同 index，而 refill 只把数据写进 RefIndexSafe。若不比较 index，
   // 会把目标 set 的未完成数据当成另一个 set 的内容返回。
@@ -262,6 +289,7 @@ class ysyx_26030103_ICacheReg(
   io.fetch_ready :=
     !io.flush &&
       !io.kill &&
+      !AliasScanBusy &&
       response_slot_available &&
       (rfstate === rf_idle || rfstate === rf_drain_fault || request_hit)
   val accept = io.fetch_valid && io.fetch_ready

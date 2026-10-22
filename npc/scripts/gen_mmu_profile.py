@@ -143,6 +143,11 @@ def build_profile(cfg: Config) -> dict:
     cache_mode = one_of(
         "MMU_CACHE_MODE", cfg.string("MMU_CACHE_MODE", "pipt"), ("pipt", "vipt")
     )
+    cache_vipt_alias_scan_mode = one_of(
+        "MMU_CACHE_VIPT_ALIAS_SCAN_MODE",
+        cfg.string("MMU_CACHE_VIPT_ALIAS_SCAN_MODE", "all_sets"),
+        ("all_sets", "serial"),
+    )
     ptw_path = one_of(
         "MMU_PTW_PATH", cfg.string("MMU_PTW_PATH", "dedicated"),
         ("dedicated", "reuse_dcache"),
@@ -390,6 +395,7 @@ def build_profile(cfg: Config) -> dict:
             "ad_mode": ad_mode,
             "cache_mode": cache_mode,
             "cache_vipt_alias_safe": cfg.bool("MMU_CACHE_VIPT_ALIAS_SAFE"),
+            "cache_vipt_alias_scan_mode": cache_vipt_alias_scan_mode,
             "ptw": {
                 "path": ptw_path,
                 "arch": ptw_arch,
@@ -470,6 +476,7 @@ HEADER_TEMPLATE = """/* 由 scripts/gen_mmu_profile.py 从 .config 生成，请�
 #define YSYX_MMU_TLB_REPLACEMENT "{replacement}"
 #define YSYX_MMU_CACHE_MODE "{cache_mode}"
 #define YSYX_MMU_CACHE_VIPT_ALIAS_SAFE {vipt_alias_safe}u
+#define YSYX_MMU_CACHE_VIPT_ALIAS_SCAN_MODE "{vipt_alias_scan_mode}"
 #define YSYX_MMU_PTW_PATH "{ptw_path}"
 #define YSYX_MMU_PTW_OUTSTANDING {ptw_outstanding}u
 #define YSYX_MMU_PTW_BUS_OUTSTANDING {ptw_bus_outstanding}u
@@ -530,6 +537,7 @@ def main() -> int:
         replacement=profile["tlb"]["replacement"],
         cache_mode=profile["mmu"]["cache_mode"],
         vipt_alias_safe=int(profile["mmu"]["cache_vipt_alias_safe"]),
+        vipt_alias_scan_mode=profile["mmu"]["cache_vipt_alias_scan_mode"],
         ptw_path=profile["mmu"]["ptw"]["path"],
         ptw_outstanding=profile["mmu"]["ptw"]["outstanding"],
         ptw_bus_outstanding=profile["mmu"]["ptw"]["bus_outstanding"],
@@ -581,6 +589,7 @@ def main() -> int:
             f"MMU_AD_MODE={profile['mmu']['ad_mode']}",
             f"MMU_CACHE_MODE={profile['mmu']['cache_mode']}",
             f"MMU_CACHE_VIPT_ALIAS_SAFE={int(profile['mmu']['cache_vipt_alias_safe'])}",
+            f"MMU_CACHE_VIPT_ALIAS_SCAN_MODE={profile['mmu']['cache_vipt_alias_scan_mode']}",
             f"MMU_PTW_PATH={profile['mmu']['ptw']['path']}",
             f"MMU_PTW_ARCH={profile['mmu']['ptw']['arch']}",
             f"MMU_PTW_OUTSTANDING={profile['mmu']['ptw']['outstanding']}",

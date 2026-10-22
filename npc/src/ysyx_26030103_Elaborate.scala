@@ -176,6 +176,20 @@ object ysyx_26030103_Elaborate extends App {
     MMU = mmuProfile
   )
   println(s"[NPC config] ${config.Describe}")
+  if (config.PiptCacheLineExceedsPage) {
+    println(
+      "[NPC config] PIPT cache line 大于 MMU 页大小：" +
+        "索引与 refill 使用完整物理地址，不按页内偏移截断；" +
+        "VIPT 下该几何会在 elaboration 期被拒绝。"
+    )
+  }
+  if (config.ICacheViptAliasHardware || config.DCacheViptAliasHardware) {
+    println(
+      s"[NPC config] VIPT alias 维护已生成：scan_mode=" +
+        s"${config.MMU.cacheViptAliasScanMode}；" +
+        "serial 模式在扫描期间反压新请求。"
+    )
+  }
   if (config.SocXLENNeedsAxiBridge) {
     println(
       s"[NPC config] EffectiveSocXLEN=${config.EffectiveSocXLEN}: " +

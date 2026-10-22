@@ -144,6 +144,7 @@ VERILOG_ENV = env \
 	MMU_AD_MODE=$(or $(call remove_quote,$(CONFIG_MMU_AD_MODE)),fault) \
 	MMU_CACHE_MODE=$(or $(call remove_quote,$(CONFIG_MMU_CACHE_MODE)),pipt) \
 	MMU_CACHE_VIPT_ALIAS_SAFE=$(or $(CONFIG_MMU_CACHE_VIPT_ALIAS_SAFE),n) \
+	MMU_CACHE_VIPT_ALIAS_SCAN_MODE=$(or $(call remove_quote,$(CONFIG_MMU_CACHE_VIPT_ALIAS_SCAN_MODE)),all_sets) \
 	MMU_PTW_PATH=$(or $(call remove_quote,$(CONFIG_MMU_PTW_PATH)),dedicated) \
 	MMU_PTW_ARCH=$(or $(call remove_quote,$(CONFIG_MMU_PTW_ARCH)),independent) \
 	MMU_PTW_OUTSTANDING=$(or $(CONFIG_MMU_PTW_OUTSTANDING),2) \

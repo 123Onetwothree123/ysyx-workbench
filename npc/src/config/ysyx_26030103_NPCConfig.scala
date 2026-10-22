@@ -144,22 +144,29 @@ case class ysyx_26030103_NPCConfig(
   // VIPT 的页内约束按当前 MMU 页大小检查；RV32 自定义几何和 RV64
   // Sv39/Sv48 的 pageBits 都从这里取。
   val viptCacheEnabled = MMU.enabled && MMU.cacheMode == "vipt"
-  // cache line 必须落在同一个虚拟页内：行按块大小对齐，只要块不大于页
-  // 就不会跨页。跨页行的不同字节来自两个可能不连续的物理页，无法用
-  // 单个物理行 refill，因此即使打开 alias 安全模式也必须拒绝。
+  // VIPT 用虚拟地址选 index，cache line 必须落在同一个虚拟页内：行按块
+  // 大小对齐，只要块不大于页就不会跨页。跨页行的不同字节来自两个可能
+  // 不连续的物理页，无法用单个物理行 refill，因此即使打开 alias 安全
+  // 模式也必须拒绝，并明确提示改用 PIPT。
+  // PIPT 的 index/refill 全部来自物理地址，行跨越虚拟页没有意义，允许
+  // line > page；物理地址不会被截断到页内偏移。
   require(
     !viptCacheEnabled || !ICacheEnable ||
       ICacheBlockSizeLog2 <= MMU.pageBits,
     s"VIPT ICache 非法：cache line(${1 << ICacheBlockSizeLog2}B) 大于页大小" +
-      s"(${1 << MMU.pageBits}B)，会跨越虚拟页；要求 " +
-      s"ICacheBlockSizeLog2($ICacheBlockSizeLog2) <= MMU.pageBits(${MMU.pageBits})"
+      s"(${1 << MMU.pageBits}B)，会跨越虚拟页；VIPT 无法用单个物理行回填。" +
+      s"请改用 MMU_CACHE_MODE=pipt（PIPT 允许 line > page），或增大 " +
+      s"MMU_PAGE_SIZE_BYTES / 减小 ICacheBlockSizeLog2" +
+      s"（ICacheBlockSizeLog2($ICacheBlockSizeLog2), MMU_PAGE_SIZE_BYTES(${1 << MMU.pageBits})）"
   )
   require(
     !viptCacheEnabled || !DCacheEnable ||
       DCacheBlockSizeLog2 <= MMU.pageBits,
     s"VIPT DCache 非法：cache line(${1 << DCacheBlockSizeLog2}B) 大于页大小" +
-      s"(${1 << MMU.pageBits}B)，会跨越虚拟页；要求 " +
-      s"DCacheBlockSizeLog2($DCacheBlockSizeLog2) <= MMU.pageBits(${MMU.pageBits})"
+      s"(${1 << MMU.pageBits}B)，会跨越虚拟页；VIPT 无法用单个物理行回填。" +
+      s"请改用 MMU_CACHE_MODE=pipt（PIPT 允许 line > page），或增大 " +
+      s"MMU_PAGE_SIZE_BYTES / 减小 DCacheBlockSizeLog2" +
+      s"（DCacheBlockSizeLog2($DCacheBlockSizeLog2), MMU_PAGE_SIZE_BYTES(${1 << MMU.pageBits})）"
   )
   // index 含 VPN 位时，不同 VA 可把同一物理行映射到不同 set。默认仍按
   // 原策略拒绝；显式打开 MMU_CACHE_VIPT_ALIAS_SAFE 后由 Cache 在 refill
@@ -194,6 +201,18 @@ case class ysyx_26030103_NPCConfig(
   final val DCacheViptAliasHardware: Boolean =
     viptCacheEnabled && DCacheEnable && MMU.cacheViptAliasSafe &&
       DCacheAliasGeometry
+  // alias 扫描方式只对真正生成 alias 维护硬件的 Cache 生效；all_sets
+  // 保持原有时序，serial 每周期扫描一个 set 并反压新请求。
+  final val ICacheViptAliasScanMode: String = MMU.cacheViptAliasScanMode
+  final val DCacheViptAliasScanMode: String = MMU.cacheViptAliasScanMode
+  final val ICacheLineExceedsPage: Boolean =
+    ICacheEnable && ICacheBlockSizeLog2 > MMU.pageBits
+  final val DCacheLineExceedsPage: Boolean =
+    DCacheEnable && DCacheBlockSizeLog2 > MMU.pageBits
+  // PIPT 下 line > page 是受支持配置：索引与 refill 都使用物理地址。
+  final val PiptCacheLineExceedsPage: Boolean =
+    MMU.enabled && MMU.cacheMode == "pipt" &&
+      (ICacheLineExceedsPage || DCacheLineExceedsPage)
   // 只有外部 SoC AXI 实际使用 32 位地址时才要求 PMA 完全位于低
   // 4GiB。SoC64 允许 PMA/Xbar 映射更高物理地址；这些地址会完整送到
   // 64 位 AXI 边界，由下游（或 Xbar 未命中 DECERR）决定行为，绝不
@@ -388,7 +407,20 @@ case class ysyx_26030103_NPCConfig(
         val Active =
           if (ICacheViptAliasHardware || DCacheViptAliasHardware) { "(hw)" }
           else { "" }
-        s",vipt_alias_safe=${OnOff(MMU.cacheViptAliasSafe)}$Active"
+        s",vipt_alias_safe=${OnOff(MMU.cacheViptAliasSafe)}$Active" +
+          s",vipt_alias_scan=${MMU.cacheViptAliasScanMode}"
+      }
+    // PIPT 是唯一允许 line > page 的模式；把它显式打印出来，避免出现
+    // “配置成大头行却按页内截断索引”的误解。
+    val LargeLineDesc =
+      if (!PiptCacheLineExceedsPage) { "" }
+      else {
+        val Which =
+          Seq(
+            if (ICacheLineExceedsPage) Some("ICache") else None,
+            if (DCacheLineExceedsPage) Some("DCache") else None
+          ).flatten.mkString("+")
+        s",pipt_line_gt_page=$Which(${1 << MMU.pageBits}B-page)"
       }
     s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, " +
       s"addr_w=$AddressWidth, " +
@@ -398,7 +430,7 @@ case class ysyx_26030103_NPCConfig(
       s"div=${DIVImpl.Name}, div_radix=$DIVRadix, div_iter=$DIVIterBits, " +
       s"iter=$MULIterBits, pipeline=$MULPipeline, split=$MULSplit, " +
       s"mul_early_out=${OnOff(MULEarlyOut)}, div_early_out=${OnOff(DIVEarlyOut)}, " +
-      s"ICache=$ICacheDesc, DCache=$DCacheDesc$ViptAliasDesc, " +
+      s"ICache=$ICacheDesc, DCache=$DCacheDesc$ViptAliasDesc$LargeLineDesc, " +
       s"icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, observe=${OnOff(EnableAnyObservability)}, " +

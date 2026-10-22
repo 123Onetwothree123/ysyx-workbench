@@ -1,5 +1,6 @@
 package ysyx_26030103.config
 
+import chisel3.Module
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -8,7 +9,8 @@ import org.scalatest.matchers.should.Matchers
   * VIPT 用虚拟地址提前选 Cache index。index+块内偏移超出页内偏移时，
   * 不同虚拟页会把同一物理行放进不同 set：默认必须拒绝；显式打开
   * MMU_CACHE_VIPT_ALIAS_SAFE 后才允许，并由 Cache 硬件维护 alias。
-  * 无论是否打开该选项，cache line 都不允许跨页。
+  * VIPT 下 cache line 不允许跨页；PIPT 用物理地址索引/回填，允许
+  * line > page，elaboration 不得截断索引。
   */
 class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   "NPCConfig" should "拒绝 index+block 超出页内偏移的 VIPT ICache" in {
@@ -153,6 +155,70 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     }
     dcacheError.getMessage should include("跨越虚拟页")
     dcacheError.getMessage should include("DCacheBlockSizeLog2(13)")
+    dcacheError.getMessage should include("MMU_CACHE_MODE=pipt")
+  }
+
+  it should "PIPT 允许 cache line 大于页且不截断物理索引" in {
+    // 标准 4KiB 页配 8KiB line：PIPT 的 index/refill 用物理地址，合法。
+    val mmu = ysyx_26030103_MMUProfile(
+      enabled = true,
+      cacheMode = "pipt",
+      pageSizeBytes = 4096
+    )
+    val config = ysyx_26030103_NPCConfig(
+      ICacheEnable = true,
+      ICacheBlockSizeLog2 = 13,
+      ICacheIndexBits = 2,
+      DCacheEnable = true,
+      DCacheBlockSizeLog2 = 13,
+      DCacheIndexBits = 2,
+      MMU = mmu
+    )
+    config.ICacheLineExceedsPage should be(true)
+    config.DCacheLineExceedsPage should be(true)
+    config.PiptCacheLineExceedsPage should be(true)
+    config.ICacheViptAliasHardware should be(false)
+    config.DCacheViptAliasHardware should be(false)
+
+    // 自定义小页 64B 配 128B line 也应按 PIPT 接受。
+    val smallPage = mmu.copy(
+      pageSizeBytes = 64,
+      levels = 2,
+      pageTableSizeBytes = 32768
+    )
+    smallPage.pageBits should be(6)
+    smallPage.computedAddressBits should be(32)
+    val smallPageConfig = ysyx_26030103_NPCConfig(
+      ICacheEnable = true,
+      ICacheBlockSizeLog2 = 7,
+      ICacheIndexBits = 2,
+      DCacheEnable = true,
+      DCacheBlockSizeLog2 = 7,
+      DCacheIndexBits = 2,
+      MMU = smallPage
+    )
+    smallPageConfig.PiptCacheLineExceedsPage should be(true)
+  }
+
+  it should "从小页 + 大 line 切换到 VIPT 时明确提示改用 PIPT" in {
+    val mmu = ysyx_26030103_MMUProfile(
+      enabled = true,
+      cacheMode = "vipt",
+      cacheViptAliasSafe = true,
+      pageSizeBytes = 64,
+      levels = 2,
+      pageTableSizeBytes = 32768
+    )
+    val error = intercept[IllegalArgumentException] {
+      ysyx_26030103_NPCConfig(
+        ICacheEnable = true,
+        ICacheBlockSizeLog2 = 7,
+        ICacheIndexBits = 2,
+        MMU = mmu
+      )
+    }
+    error.getMessage should include("MMU_CACHE_MODE=pipt")
+    error.getMessage should include("ICacheBlockSizeLog2(7)")
   }
 
   it should "Cache 关闭时不受 VIPT 页内几何限制" in {
@@ -181,6 +247,67 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     val profile = ysyx_26030103_MMUProfile.fromEnv(env.get, xlen = 32)
     profile.cacheMode should be("vipt")
     profile.cacheViptAliasSafe should be(true)
+    profile.cacheViptAliasScanMode should be("all_sets")
+  }
+
+  it should "读取并校验 VIPT alias 扫描方式" in {
+    val env = Map(
+      "MMU_ENABLED" -> "1",
+      "MMU_CACHE_MODE" -> "vipt",
+      "MMU_CACHE_VIPT_ALIAS_SAFE" -> "1",
+      "MMU_CACHE_VIPT_ALIAS_SCAN_MODE" -> "serial"
+    )
+    val profile = ysyx_26030103_MMUProfile.fromEnv(env.get, xlen = 32)
+    profile.cacheViptAliasScanMode should be("serial")
+    profile.describe should include("vipt_alias_scan=serial")
+
+    val badEnv = env + ("MMU_CACHE_VIPT_ALIAS_SCAN_MODE" -> "directory")
+    val error = intercept[IllegalArgumentException] {
+      ysyx_26030103_MMUProfile.fromEnv(badEnv.get, xlen = 32)
+    }
+    error.getMessage should include("all_sets/serial")
+  }
+
+  it should "把 serial alias 扫描方式传给 Cache 工厂" in {
+    // pageBits=10，index 8 + block 4 = 12 > 10，确实生成 alias 维护硬件。
+    val mmu = ysyx_26030103_MMUProfile(
+      enabled = true,
+      cacheMode = "vipt",
+      cacheViptAliasSafe = true,
+      cacheViptAliasScanMode = "serial",
+      pageSizeBytes = 1024,
+      levels = 2,
+      pageTableSizeBytes = 8192
+    )
+    val config = ysyx_26030103_NPCConfig(
+      ICacheEnable = true,
+      ICacheBlockSizeLog2 = 4,
+      ICacheIndexBits = 8,
+      DCacheEnable = true,
+      DCacheBlockSizeLog2 = 4,
+      DCacheIndexBits = 8,
+      MMU = mmu
+    )
+    config.ICacheViptAliasScanMode should be("serial")
+    config.DCacheViptAliasScanMode should be("serial")
+    config.ICacheViptAliasHardware should be(true)
+    config.DCacheViptAliasHardware should be(true)
+    // 工厂必须把模式传进叶模块；elaboration 成功即说明参数路径完整。
+    _root_.circt.stage.ChiselStage.emitCHIRRTL(new Module {
+      val cache = ysyx_26030103.cache.ysyx_26030103_ICacheFactory.Create(config)
+    }) should include("module")
+    _root_.circt.stage.ChiselStage.emitCHIRRTL(new Module {
+      val cache = ysyx_26030103.cache.ysyx_26030103_DCacheFactory.Create(
+        Enable = config.DCacheEnable,
+        BlockSizeLog2 = config.DCacheBlockSizeLog2,
+        IndexBits = config.DCacheIndexBits,
+        AddressWidth = config.AddressWidth,
+        Vipt = config.MMU.cacheMode == "vipt",
+        ViptAliasSafe = config.DCacheViptAliasHardware,
+        ViptAliasScanMode = config.DCacheViptAliasScanMode,
+        PMARegions = config.PMARegions
+      )
+    }) should include("module")
   }
 
   it should "拒绝深度为 0 的 TLB miss queue" in {

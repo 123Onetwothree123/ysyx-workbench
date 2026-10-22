@@ -51,6 +51,10 @@ case class ysyx_26030103_MMUProfile(
     // refill/store 时按物理 tag 清除其他 set 的别名副本。false 保持原有
     // elaboration 期拒绝策略，绝不静默生成会 alias 的硬件。
     cacheViptAliasSafe: Boolean = false,
+    // alias 失效扫描方式：all_sets 单拍全扫描（默认，refill 无额外等待）；
+    // serial 每周期扫描一个 set（面积小，扫描期间反压新请求）。只有
+    // cacheViptAliasSafe 真正生成 alias 维护硬件时才影响 RTL。
+    cacheViptAliasScanMode: String = "all_sets",
     ptwPath: String = "dedicated",
     ptwArch: String = "independent",
     ptwOutstanding: Int = 2,
@@ -131,6 +135,8 @@ case class ysyx_26030103_MMUProfile(
     "MMU_PTW_ARCH 必须是 independent/pipelined")
   require(Set("in_order", "out_of_order").contains(ptwOrder),
     "MMU_PTW_ORDER 必须是 in_order/out_of_order")
+  require(Set("all_sets", "serial").contains(cacheViptAliasScanMode),
+    "MMU_CACHE_VIPT_ALIAS_SCAN_MODE 必须是 all_sets/serial")
   require(tlbAsidBits >= 0 && tlbAsidBits <= 16, "tlbAsidBits 必须在 0..16")
   require(utlbLookupPorts >= 1 && utlbLookupPorts <= 2, "utlbLookupPorts 必须在 1..2")
   require(refillPorts >= 1, "refillPorts 必须 >= 1")
@@ -247,6 +253,7 @@ case class ysyx_26030103_MMUProfile(
       s"profile=$pteFormat page=$pageSizeBytes levels=$levels " +
       s"pte=$pteSizeBytes table=$pageTableSizeBytes " +
       s"cache=$cacheMode vipt_alias_safe=$cacheViptAliasSafe " +
+      s"vipt_alias_scan=$cacheViptAliasScanMode " +
       s"ptw=$ptwPath/$ptwArch/$ptwOutstanding/bus$ptwBusOutstanding) " +
       s"TLB(enabled=$tlbEnabled org=$tlbOrganization storage=$tlbStorage " +
       s"repl=$tlbReplacement asid=$tlbAsidBits)"
@@ -383,6 +390,8 @@ object ysyx_26030103_MMUProfile {
       cacheMode = envString(env, "MMU_CACHE_MODE", "pipt"),
       cacheViptAliasSafe =
         envBool(env, "MMU_CACHE_VIPT_ALIAS_SAFE", false),
+      cacheViptAliasScanMode =
+        envString(env, "MMU_CACHE_VIPT_ALIAS_SCAN_MODE", "all_sets"),
       ptwPath = envString(env, "MMU_PTW_PATH", "dedicated"),
       ptwArch = envString(env, "MMU_PTW_ARCH", "independent"),
       ptwOutstanding = envInt(env, "MMU_PTW_OUTSTANDING", 2),

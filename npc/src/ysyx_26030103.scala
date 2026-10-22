@@ -61,6 +61,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DCachePMARegions = config.PMARegions,
       DCacheVipt = config.MMU.cacheMode == "vipt",
       DCacheViptAliasSafe = config.DCacheViptAliasHardware,
+      DCacheViptAliasScanMode = config.DCacheViptAliasScanMode,
       ViptParallel = parallelDataVipt,
       AddressWidth = config.AddressWidth
     )
