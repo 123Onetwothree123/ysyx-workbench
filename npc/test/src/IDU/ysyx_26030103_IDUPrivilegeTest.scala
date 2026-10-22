@@ -56,6 +56,8 @@ class ysyx_26030103_IDUPrivilegeHarness(config: ysyx_26030103_NPCConfig)
   idu.io.mmu_stall := false.B
   idu.io.Privilege := io.privilege
   idu.io.Mstatus := io.mstatus
+  idu.io.Mcounteren := "hffffffff".U
+  idu.io.Scounteren := "hffffffff".U
   io.exceptionValid := idu.io.out.bits.ExceptionValid
   io.exceptionCause := idu.io.out.bits.ExceptionCause
 }
