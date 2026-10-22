@@ -4,24 +4,30 @@ menu "虚拟内存管理 (MMU/TLB)"
     bool "启用 S 模式"
     default n
     help
-      启用 S 模式状态、S 模式 CSR 和 S 模式异常入口。
-      HAS_S=n 时 S 级 CSR 从实现集合中裁剪，访问会被判为非法指令。
+      启用 S 模式状态、S 模式 CSR、异常委托和 S 模式异常入口。
+      HAS_S=n 时为 M-only：S 级 CSR、S 模式寄存器和委托逻辑在
+      elaboration 期裁剪，SRET/SFENCE.VMA 视为非法指令。
+      MMU/Sv32 依赖 S 模式；HAS_S=n 时必须同时关闭 HAS_MMU。
 
   config HAS_U
     bool "启用 U 模式"
     default n
+    depends on HAS_S
     help
       启用 U 模式状态和 U 模式 ecall/权限检查。
       HAS_U=n 时 MRET/SRET 只能返回 S（MPP/SPP 的 U 编码被夹到 S），
       U 级 CSR 被裁剪，页表 U 位与 SUM 检查固定为不适用。
+      HAS_S=n 时 U 模式不可达，因此本项不可选。
 
   config HAS_MMU
     bool "启用 MMU"
     default n
+    depends on HAS_S
     help
       MMU 总开关。关闭时 IFU/LSU 直接使用物理地址，PTW/页表/页错误
       相关逻辑不实例化。开启时当前 RTL 支持标准 Sv32、split/unified TLB
-      和独立只读 PTW AXI 通道。
+      和独立只读 PTW AXI 通道。Sv32 需要 S 模式 satp/页错误入口，
+      因此 HAS_MMU=y 要求 HAS_S=y；违反时 elaboration 明确报错。
 
   config HAS_TLB
     bool "启用 TLB"
@@ -418,9 +424,11 @@ menu "虚拟内存管理 (MMU/TLB)"
     config HAS_S_TIMER_IRQ
       bool "启用 S 模式时钟中断"
       default y
+      depends on HAS_S
     config HAS_S_EXTERNAL_IRQ
       bool "启用 S 模式外部中断"
       default y
+      depends on HAS_S
 
     choice
       prompt "Timer 中断路径"

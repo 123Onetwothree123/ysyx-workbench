@@ -180,7 +180,8 @@ class ysyx_26030103_MMU(
       tlb.io.lookup(p).asid := lookupReq(p).satp(30, 22)
       tlb.io.lookup(p).privilege := lookupReq(p).privilege
       tlb.io.lookup(p).access := lookupReq(p).access
-      tlb.io.lookup(p).sum := lookupReq(p).sum
+      tlb.io.lookup(p).sum :=
+        (if (profile.hasU) lookupReq(p).sum else false.B)
       tlb.io.lookup(p).mxr := lookupReq(p).mxr
     }
     tlb.io.flush := io.flush
@@ -364,7 +365,7 @@ class ysyx_26030103_MMU(
     ptw.io.req.bits.satp := lookupReq(p).satp
     ptw.io.req.bits.privilege := lookupReq(p).privilege
     ptw.io.req.bits.access := lookupReq(p).access
-    ptw.io.req.bits.sum := lookupReq(p).sum
+    ptw.io.req.bits.sum := (if (profile.hasU) lookupReq(p).sum else false.B)
     ptw.io.req.bits.mxr := lookupReq(p).mxr
     when(ptw.io.req.fire) {
       ctxState(lookupIndex(p)) := ctxWalk

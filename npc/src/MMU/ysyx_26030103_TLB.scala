@@ -63,7 +63,8 @@ class ysyx_26030103_TLB(
     val r = Bool()
     val w = Bool()
     val x = Bool()
-    val u = Bool()
+    // HAS_U=n 时 U 位没有语义，连表项存储都省略。
+    val u = if (hasU) Some(Bool()) else None
     val a = Bool()
     val d = Bool()
   }
@@ -113,7 +114,8 @@ class ysyx_26030103_TLB(
     val asid = UInt(asidWidth.W)
     val global = Bool()
     val paddrBase = UInt(32.W)
-    val r = Bool(); val w = Bool(); val x = Bool(); val u = Bool()
+    val r = Bool(); val w = Bool(); val x = Bool()
+    val u = if (hasU) Some(Bool()) else None
     val a = Bool(); val d = Bool()
   }
   private val shiftBits = log2Ceil(32)
@@ -253,8 +255,11 @@ class ysyx_26030103_TLB(
       if (sramStorage) selectedPte(2) else selected.w)
     val selX = Mux(superHit, superSel.x,
       if (sramStorage) selectedPte(3) else selected.x)
-    val selU = Mux(superHit, superSel.u,
-      if (sramStorage) selectedPte(4) else selected.u)
+    val selU =
+      if (hasU)
+        Mux(superHit, superSel.u.get,
+          if (sramStorage) selectedPte(4) else selected.u.get)
+      else false.B
     val selA = Mux(superHit, superSel.a,
       if (sramStorage) selectedPte(6) else selected.a)
     val selD = Mux(superHit, superSel.d,
@@ -268,7 +273,8 @@ class ysyx_26030103_TLB(
     val privilegeS = lookup.privilege === 1.U
     // HAS_U=n 时 U 级和 SUM 语义不存在：U 位检查固定为不适用，
     // S 模式可正常访问 U=1 的页，fetch/read/write 权限仍按 R/W/X 检查。
-    val fetchOk = selX && !(hasU.B && privilegeS && selU)
+    val fetchOk =
+      if (hasU) selX && !(privilegeS && selU) else selX
     val readOk = selR || (lookup.mxr && selX)
     val writeOk = selW
     val userOk = if (hasU) !privilegeU || selU else true.B
@@ -333,7 +339,7 @@ class ysyx_26030103_TLB(
         e.paddrBase := fillPteVal(31, 10) << pageBits
         e.r := fillPteVal(1); e.w := fillPteVal(2); e.x := fillPteVal(3)
         // HAS_U=n 时不保存 U 位，避免保留无用的 U 状态。
-        e.u := (if (hasU) fillPteVal(4) else false.B)
+        e.u.foreach { u => u := fillPteVal(4) }
         e.a := fillPteVal(6); e.d := fillPteVal(7)
         superVec.get(victim) := e
         superRR.get := Mux(
@@ -368,7 +374,7 @@ class ysyx_26030103_TLB(
       fillEntry.w := fillPteVal(2)
       fillEntry.x := fillPteVal(3)
       // HAS_U=n 时不保存 U 位。
-      fillEntry.u := (if (hasU) fillPteVal(4) else false.B)
+      fillEntry.u.foreach { u => u := fillPteVal(4) }
       fillEntry.a := fillPteVal(6)
       fillEntry.d := fillPteVal(7)
       entriesVec(idx) := fillEntry

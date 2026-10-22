@@ -96,20 +96,26 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     if (config.MMU.pmpEnabled) Some(Module(new ysyx_26030103_PMP(config.MMU.pmpEntries)))
     else None
   // HAS_U=n 时 MPP 理论上已被 CSR 夹到 S；顶层再做一次防御性夹取，
-  // 避免 MPRV 数据访问把不存在的 U 特权级送进 MMU/PMP。
+  // 避免 MPRV 数据访问把不存在的 U 特权级送进 MMU/PMP。HAS_S=n 时
+  // M-only 不存在 MPRV 降级，数据访问固定按 M 特权级检查。
+  val hasS = config.MMU.hasS
+  val hasU = config.MMU.hasU
   val MprvPrivilege =
-    if (config.MMU.hasU) exu.io.CSRCurrentMstatus(12, 11)
+    if (!hasS) 3.U(2.W)
+    else if (hasU) exu.io.CSRCurrentMstatus(12, 11)
     else Mux(exu.io.CSRCurrentMstatus(12, 11) === 0.U, 1.U(2.W),
       exu.io.CSRCurrentMstatus(12, 11))
-  val dataPrivilege = Mux(
-    exu.io.CSRPrivilege === 3.U && exu.io.CSRCurrentMstatus(17),
-    MprvPrivilege,
-    exu.io.CSRPrivilege
-  )
+  val dataPrivilege =
+    if (!hasS) 3.U(2.W)
+    else Mux(
+      exu.io.CSRPrivilege === 3.U && exu.io.CSRCurrentMstatus(17),
+      MprvPrivilege,
+      exu.io.CSRPrivilege
+    )
   // SUM 仅在 U/S 页表权限检查存在时有意义；HAS_U=n 时固定为 0，
   // 让相关逻辑在综合和仿真中被常量传播裁剪。
-  val fetchSum = if (config.MMU.hasU) exu.io.CSRCurrentMstatus(18) else false.B
-  val dataSum = if (config.MMU.hasU) exu.io.CSRCurrentMstatus(18) else false.B
+  val fetchSum = if (hasU) exu.io.CSRCurrentMstatus(18) else false.B
+  val dataSum = if (hasU) exu.io.CSRCurrentMstatus(18) else false.B
   pmpOpt.foreach { pmp =>
     pmp.io.cfg := exu.io.PmpCfg
     pmp.io.addr := exu.io.PmpAddr

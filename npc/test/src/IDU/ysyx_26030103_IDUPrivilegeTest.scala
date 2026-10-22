@@ -66,9 +66,15 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
   private val CsrrsCycle = 0xc00020f3L
   // csrrs x1, 0x100, x0：读 S 级 sstatus。
   private val CsrrsSstatus = 0x100020f3L
+  // csrrs x1, 0x300, x0：读 M 级 mstatus。
+  private val CsrrsMstatus = 0x300020f3L
+  private val Sret = 0x10200073L
+  private val SfenceVma = 0x12000073L
+  private val Wfi = 0x10500073L
 
-  private def config(hasU: Boolean): ysyx_26030103_NPCConfig =
+  private def config(hasU: Boolean, hasS: Boolean = true): ysyx_26030103_NPCConfig =
     ysyx_26030103_NPCConfig(MMU = ysyx_26030103_MMUProfile(
+      hasS = hasS,
       hasU = hasU,
       csrEnabled = Set(0x100, 0x300, 0xc00)
     ))
@@ -114,6 +120,27 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
       setup(dut)
       dut.io.instruction.poke(CsrrsSstatus.U)
       dut.io.privilege.poke(0.U)
+      bool(dut.io.exceptionValid) should be(false)
+    }
+  }
+
+  it should "HAS_S=n 时 SRET/SFENCE.VMA/S 级 CSR 都是非法指令" in {
+    simulate(new ysyx_26030103_IDUPrivilegeHarness(
+      config(hasU = false, hasS = false)
+    )) { dut =>
+      setup(dut)
+      dut.io.privilege.poke(3.U)
+
+      for (insn <- Seq(Sret, SfenceVma, CsrrsSstatus)) {
+        dut.io.instruction.poke(insn.U)
+        bool(dut.io.exceptionValid) should be(true)
+        dut.io.exceptionCause.peek().litValue should be(2)
+      }
+
+      // M 级 CSR 和 WFI 仍合法。
+      dut.io.instruction.poke(CsrrsMstatus.U)
+      bool(dut.io.exceptionValid) should be(false)
+      dut.io.instruction.poke(Wfi.U)
       bool(dut.io.exceptionValid) should be(false)
     }
   }

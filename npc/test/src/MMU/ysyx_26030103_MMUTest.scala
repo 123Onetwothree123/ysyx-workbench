@@ -62,6 +62,12 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     emit(new ysyx_26030103_PTW("ignore"))
   }
 
+  it should "HAS_U=n 时可裁掉 U/SUM 状态" in {
+    emit(new ysyx_26030103_PTW("fault", hasU = false))
+    emit(new ysyx_26030103_PTWPipeline(hasU = false))
+    emit(new ysyx_26030103_TLB(entries = 4, ways = 1, hasU = false))
+  }
+
   "MMU" should "在 TLB 开关和 MMU 开关下都能 elaboration" in {
     emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile()))
     emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
@@ -102,6 +108,35 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
         pmpEntries = 16
       )
     )))
+  }
+
+  it should "HAS_S=n 的 M-only 顶层可 elaboration 且不生成 MMU/TLB/PTW" in {
+    def config = ysyx_26030103_NPCConfig(
+      MMU = ysyx_26030103_MMUProfile(
+        enabled = false,
+        tlbEnabled = false,
+        hasS = false,
+        hasU = false,
+        pmpEnabled = true,
+        pmpEntries = 16
+      )
+    )
+    val chirrtl = ChiselStage.emitCHIRRTL(
+      new _root_.ysyx_26030103.ysyx_26030103(config)
+    )
+    Seq("ysyx_26030103_MMU", "ysyx_26030103_TLB",
+      "ysyx_26030103_PTW", "ysyx_26030103_IFUMMU",
+      "ysyx_26030103_LSUMMU").foreach { name =>
+      chirrtl should not include name
+    }
+    emit(new _root_.ysyx_26030103.ysyx_26030103(config))
+  }
+
+  it should "HAS_MMU=y 且 HAS_S=n 时在 elaboration 前明确报错" in {
+    val error = intercept[IllegalArgumentException] {
+      ysyx_26030103_MMUProfile(enabled = true, hasS = false, hasU = false)
+    }
+    error.getMessage should include("HAS_MMU=y 需要 HAS_S=y")
   }
 
   it should "非标准 page/levels 的 TLB 超级页可 elaboration" in {

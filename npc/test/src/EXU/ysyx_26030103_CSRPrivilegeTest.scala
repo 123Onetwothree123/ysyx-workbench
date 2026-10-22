@@ -2,6 +2,7 @@ package ysyx_26030103.exu
 
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
+import _root_.circt.stage.ChiselStage
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -374,5 +375,65 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
     noU.csrSupported(0x100) should be(true)
     noU.csrSupported(0x300) should be(true)
     noU.lowestPrivilege should be(1)
+  }
+
+  it should "HAS_S=n 时只保留 M 模式 CSR、ecall 和 MRET 入口" in {
+    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+      hasS = false,
+      hasU = false
+    )
+    simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
+      setup(dut)
+      long(dut.io.privilege) should be(3L)
+
+      // S 模式 CSR 已被裁掉：读 0，写忽略。
+      write(dut, 0x180, BigInt("80080001", 16))
+      read(dut, 0x180) should be(0)
+      read(dut, 0x100) should be(0)
+      read(dut, 0x105) should be(0)
+      long(dut.io.satp) should be(0L)
+
+      // M-only 的 ecall 只能是 cause=11。
+      dut.io.enable.poke(true.B)
+      dut.io.isEcall.poke(true.B)
+      bool(dut.io.trapCommit) should be(true)
+      long(dut.io.committedCause) should be(11L)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isEcall.poke(false.B)
+
+      // SRET/SFENCE.VMA 不产生 CSR 侧提交或刷新。
+      dut.io.enable.poke(true.B)
+      dut.io.isSret.poke(true.B)
+      bool(dut.io.exceptionTaken) should be(false)
+      dut.io.isSret.poke(false.B)
+      dut.io.isSfenceVma.poke(true.B)
+      bool(dut.io.flushTLB) should be(false)
+      dut.io.isSfenceVma.poke(false.B)
+      dut.io.enable.poke(false.B)
+
+      // MRET 仍返回 M，mepc 是目标。
+      write(dut, MEPC, 0x80001000L)
+      dut.io.enable.poke(true.B)
+      dut.io.isMret.poke(true.B)
+      bool(dut.io.exceptionTaken) should be(true)
+      long(dut.io.exceptionTarget) should be(0x80001000L)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isMret.poke(false.B)
+      long(dut.io.privilege) should be(3L)
+    }
+  }
+
+  it should "HAS_S=n 的结构中不出现 S 模式状态寄存器" in {
+    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+      hasS = false,
+      hasU = false
+    )
+    val chirrtl = ChiselStage.emitCHIRRTL(new ysyx_26030103_CSR(profile))
+    Seq("SatpReg", "Sscratch", "Stval", "Medeleg", "Mideleg",
+      "SstatusReg").foreach { name =>
+      chirrtl should not include name
+    }
   }
 }

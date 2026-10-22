@@ -8,6 +8,8 @@ import _root_.ysyx_26030103.common.ysyx_26030103_IDUMessage
 class ysyx_26030103_IDU(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends Module {
+  private val hasS = config.MMU.hasS
+  private val hasU = config.MMU.hasU
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_IFUMessage))
     val out = Decoupled(new ysyx_26030103_IDUMessage)
@@ -83,12 +85,17 @@ class ysyx_26030103_IDU(
   val IsEbreak = Instruction === "h00100073".U(32.W)
   val IsEcall = Instruction === "h00000073".U(32.W)
   val IsMret = Instruction === "h30200073".U(32.W)
-  val IsSret = Instruction === "h10200073".U(32.W)
+  // HAS_S=n 时不存在 S 状态，SRET/SFENCE.VMA 连译码匹配都不生成，
+  // 直接落入非法指令路径。
+  val IsSret =
+    if (hasS) Instruction === "h10200073".U(32.W) else false.B
   // sfence.vma 编码：funct7=0001001, funct3=000, rd=0, SYSTEM。
   // rs1/rs2 的取值由软件决定，MMU 侧当前统一做全量 TLB 刷新。
   val IsSfenceVma =
-    (opcode === OPCODE_System) && (funct7 === "b0001001".U(7.W)) &&
-      (funct3 === "b000".U(3.W)) && (Instruction(11, 7) === 0.U)
+    if (hasS)
+      (opcode === OPCODE_System) && (funct7 === "b0001001".U(7.W)) &&
+        (funct3 === "b000".U(3.W)) && (Instruction(11, 7) === 0.U)
+    else false.B
   // 本核仅实现 M-mode，可将 WFI 合法地实现为 NOP。必须精确匹配整个
   // 标准编码，避免把其它 funct3=000 的保留 SYSTEM 编码一并放行。
   val IsWfi = Instruction === "h10500073".U(32.W)
@@ -169,13 +176,16 @@ class ysyx_26030103_IDU(
     else csrAddresses.map(a => CSRAddress === a.U(12.W)).reduceOption(_ || _).getOrElse(false.B)
   // 地址位 [9:8] 编码最低可访问特权级：00=U, 01=S, 11=M。
   // HAS_U=n 时 U 级不再存在：防御性地把 0 级请求提升为 S，并显式拒绝
-  // U 级 CSR，避免上游异常状态重新打开 U 模式访问路径。
+  // U 级 CSR，避免上游异常状态重新打开 U 模式访问路径。HAS_S=n 时只剩
+  // M 级，只有 [9:8]=11 的 CSR 可通过特权检查。
   val EffectivePrivilege =
-    if (config.MMU.hasU) io.Privilege
+    if (!hasS) 3.U(2.W)
+    else if (hasU) io.Privilege
     else Mux(io.Privilege === 0.U, 1.U(2.W), io.Privilege)
   val CSRPrivilegeOk =
-    (EffectivePrivilege >= CSRAddress(9, 8)) &&
-      (if (config.MMU.hasU) true.B else CSRAddress(9, 8) =/= 0.U(2.W))
+    if (!hasS) CSRAddress(9, 8) === "b11".U(2.W)
+    else (EffectivePrivilege >= CSRAddress(9, 8)) &&
+      (if (hasU) true.B else CSRAddress(9, 8) =/= 0.U(2.W))
   val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W) ||
     CSRAddress === "h301".U(12.W) // misa 当前只读 */
   // 读只读 CSR 合法；CSRRW/带非零源的 CSRRS/CSRRC 写只读 CSR 非法。
@@ -183,11 +193,18 @@ class ysyx_26030103_IDU(
   val CSRIllegal =
     IsCSRInstruction &&
       (!CSRAddressValid || !CSRPrivilegeOk || (CSRWriteIntent && CSRReadOnly))
-  // mstatus.TVM/TSR/TW 的 S 模式陷门。
-  val TvmFault = (EffectivePrivilege === 1.U) && io.Mstatus(20) &&
-    (IsSfenceVma || (IsCSRInstruction && CSRAddress === "h180".U(12.W)))
-  val TsrFault = (EffectivePrivilege === 1.U) && io.Mstatus(22) && IsSret
-  val TwFault = (EffectivePrivilege =/= 3.U) && io.Mstatus(21) && IsWfi
+  // mstatus.TVM/TSR/TW 的 S 模式陷门。HAS_S=n 时相关状态和陷门都不存在。
+  val TvmFault =
+    if (hasS)
+      (EffectivePrivilege === 1.U) && io.Mstatus(20) &&
+        (IsSfenceVma || (IsCSRInstruction && CSRAddress === "h180".U(12.W)))
+    else false.B
+  val TsrFault =
+    if (hasS) (EffectivePrivilege === 1.U) && io.Mstatus(22) && IsSret
+    else false.B
+  val TwFault =
+    if (hasS) (EffectivePrivilege =/= 3.U) && io.Mstatus(21) && IsWfi
+    else false.B
   // custom-0 不属于通用 ALU decoder 的 opcode 集合；精确匹配的仿真
   // halt 编码在这里显式豁免，custom-0 的其它编码仍然是非法指令。
   val IllegalInsn =

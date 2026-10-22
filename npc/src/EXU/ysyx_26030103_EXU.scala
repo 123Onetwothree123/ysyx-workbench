@@ -6,6 +6,7 @@ import _root_.ysyx_26030103.config._
 class ysyx_26030103_EXU(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends Module {
+  private val hasS = config.MMU.hasS
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_IDUMessage))
     val out = Decoupled(new ysyx_26030103_EXUMessage)
@@ -161,7 +162,8 @@ class ysyx_26030103_EXU(
   // 提交精确故障，在它完成前不能留下无法回滚的BTB/RAS状态。
   val RequiresPipelineDrain =
     inst.IsCsrrw || inst.IsCsrrs || inst.IsCsrrc || inst.IsEcall || inst.IsEbreak ||
-      inst.IsSimHalt || inst.IsMret || inst.IsSret || inst.IsSfenceVma ||
+      inst.IsSimHalt || inst.IsMret ||
+      (if (hasS) inst.IsSret || inst.IsSfenceVma else false.B) ||
       InstructionTrapValid
   val RequiresMemoryDrain =
     inst.IsFenceI || inst.IsFence || inst.IsBranch || inst.IsJal || inst.IsJalr
@@ -335,8 +337,10 @@ class ysyx_26030103_EXU(
   CSRUnit.io.IsEcall := ValidInstructionForCSR && inst.IsEcall
   CSRUnit.io.IsEbreak := ValidInstructionForCSR && inst.IsEbreak
   CSRUnit.io.IsMret := ValidInstructionForCSR && inst.IsMret
-  CSRUnit.io.IsSret := ValidInstructionForCSR && inst.IsSret
-  CSRUnit.io.IsSfenceVma := ValidInstructionForCSR && inst.IsSfenceVma
+  CSRUnit.io.IsSret :=
+    ValidInstructionForCSR && (if (hasS) inst.IsSret else false.B)
+  CSRUnit.io.IsSfenceVma :=
+    ValidInstructionForCSR && (if (hasS) inst.IsSfenceVma else false.B)
   CSRUnit.io.CSRAddress := inst.CSRAddress
   CSRUnit.io.rs1 := inst.Rs1
   CSRUnit.io.Rs1Data := inst.Rs1Data
@@ -364,8 +368,10 @@ class ysyx_26030103_EXU(
       )
     )
   )
-  val CommitNextPC = Mux(inst.IsMret || inst.IsSret,
-    CSRUnit.io.ExceptionTarget, ActualNextPC)
+  val CommitNextPC =
+    if (hasS) Mux(inst.IsMret || inst.IsSret,
+      CSRUnit.io.ExceptionTarget, ActualNextPC)
+    else Mux(inst.IsMret, CSRUnit.io.ExceptionTarget, ActualNextPC)
   // 预测下一PC: IFU用BTB(分支BTFN+独立jal BTB)给出,随指令传到此;未命中=顺序=snpc
   val PredNextPC = Mux(inst.pred_taken, inst.pred_target, inst.snpc)
   // 预测错误检查: 比较实际与预测的下一PC,不一致则冲刷并重定向到实际目标
@@ -376,7 +382,7 @@ class ysyx_26030103_EXU(
   // 伪 Redirect（目标虽已修正为mepc，但事件语义/计数仍会误导）。
   val Redirect =
     (Mispredict || inst.IsFenceI) && !InstructionTrapValid &&
-      !inst.IsMret && !inst.IsSret
+      !inst.IsMret && (if (hasS) !inst.IsSret else true.B)
   // CSR提交(csr写/ecall/ebreak/mret/异常/中断): 普通访存不访问CSR单元；
   // 但已使能IRQ可以在load/store执行前的指令边界提交，并压掉该访存。
   // 带异常标记的访存指令(取指错/非法编码)必须在EXU提交异常, 提交视角下不算访存指令,

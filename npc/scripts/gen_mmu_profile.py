@@ -168,6 +168,19 @@ def build_profile(cfg: Config) -> dict:
         ("bound", "independent"),
     )
 
+    has_s = cfg.bool("HAS_S")
+    has_u = cfg.bool("HAS_U")
+    has_mmu = cfg.bool("HAS_MMU")
+    # S 模式提供 U 模式的 CSR/SRET 入口；M-only 配置不能保留 U 级。
+    if has_u and not has_s:
+        raise ValueError("HAS_U=y 需要 HAS_S=y：U 模式依赖 S 模式 CSR/SRET")
+    # 当前 Sv32 实现依赖 satp/页错误入口/异常委托，必须显式拒绝 M-only MMU。
+    if has_mmu and not has_s:
+        raise ValueError(
+            "HAS_MMU=y 需要 HAS_S=y：MMU/Sv32 依赖 S 模式 satp/页错误入口；"
+            "请设置 HAS_S=y 或 HAS_MMU=n"
+        )
+
     page_bits = require_power_of_two("MMU_PAGE_SIZE_BYTES", page_size)
     require_power_of_two("MMU_PTE_SIZE_BYTES", pte_size)
     require_power_of_two("MMU_PAGE_TABLE_SIZE_BYTES", table_size)
@@ -297,8 +310,6 @@ def build_profile(cfg: Config) -> dict:
         )
     if cfg.bool("HAS_TLB") and not cfg.bool("HAS_MMU"):
         warnings.append("HAS_TLB=y 但 HAS_MMU=n；生成器按有效 TLB=false 处理")
-    if cfg.bool("HAS_MMU") and not (cfg.bool("HAS_S") or cfg.bool("HAS_U")):
-        warnings.append("HAS_MMU=y 但 HAS_S/HAS_U 都为 n；标准 Sv32 需要 S/U")
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -306,10 +317,10 @@ def build_profile(cfg: Config) -> dict:
         "profile": cfg.string("MMU_PROFILE", "custom"),
         "standard_sv32": standard and well_formed,
         "enabled": {
-            "s": cfg.bool("HAS_S"),
-            "u": cfg.bool("HAS_U"),
-            "mmu": cfg.bool("HAS_MMU"),
-            "tlb": cfg.bool("HAS_TLB") and cfg.bool("HAS_MMU"),
+            "s": has_s,
+            "u": has_u,
+            "mmu": has_mmu,
+            "tlb": cfg.bool("HAS_TLB") and has_mmu,
         },
         "mmu": {
             "page_size_bytes": page_size,

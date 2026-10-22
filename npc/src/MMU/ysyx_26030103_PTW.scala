@@ -80,9 +80,11 @@ class ysyx_26030103_PTW(
   val idReg = RegInit(0.U(4.W))
   val vaddrReg = RegInit(0.U(32.W))
   val satpReg = RegInit(0.U(32.W))
-  val privReg = RegInit(0.U(2.W))
+  // HAS_U=n 时 PTW 不需要保存/检查 U 特权级和 SUM；U/S 权限检查固定
+  // 不适用，只保留 R/W/X/A/D 检查。
+  val privRegOpt = if (hasU) Some(RegInit(0.U(2.W))) else None
   val accessReg = RegInit(0.U(2.W))
-  val sumReg = RegInit(false.B)
+  val sumRegOpt = if (hasU) Some(RegInit(false.B)) else None
   val mxrReg = RegInit(false.B)
   val levelReg = RegInit(0.U(2.W))
   val tableReg = RegInit(0.U(32.W))
@@ -178,9 +180,11 @@ class ysyx_26030103_PTW(
   def leafFaultOf(d: UInt): Bool = {
     // HAS_U=n 时 U 级不存在，U 位与 SUM 检查固定为不适用；
     // R/W/X、A/D 等其余页表权限仍然正常检查。
-    val userFault = if (hasU) privReg === 0.U && !d(4) else false.B
+    val userFault =
+      if (hasU) privRegOpt.get === 0.U && !d(4) else false.B
     val sumFault =
-      if (hasU) privReg === 1.U && d(4) && (!sumReg || isFetch) else false.B
+      if (hasU) privRegOpt.get === 1.U && d(4) && (!sumRegOpt.get || isFetch)
+      else false.B
     val fetchFault = isFetch && !d(3)
     val readFault = !isFetch && !isStore && !d(1) && !(mxrReg && d(3))
     val writeFault = isStore && !d(2)
@@ -288,9 +292,9 @@ class ysyx_26030103_PTW(
     idReg := io.req.bits.id
     vaddrReg := io.req.bits.vaddr
     satpReg := io.req.bits.satp
-    privReg := io.req.bits.privilege
+    privRegOpt.foreach { r => r := io.req.bits.privilege }
     accessReg := io.req.bits.access
-    sumReg := io.req.bits.sum
+    sumRegOpt.foreach { r => r := io.req.bits.sum }
     mxrReg := io.req.bits.mxr
     levelReg := 0.U
     tableReg := Cat(io.req.bits.satp(21, 0), 0.U(pageBits.W))

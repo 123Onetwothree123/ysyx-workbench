@@ -71,9 +71,10 @@ class ysyx_26030103_PTWPipeline(
     val done = Bool()
     val vaddr = UInt(32.W)
     val satp = UInt(32.W)
-    val privilege = UInt(2.W)
+    // HAS_U=n 时 U/SUM 检查不存在，Context 不保存这两个字段。
+    val privilege = if (hasU) Some(UInt(2.W)) else None
     val access = UInt(2.W)
-    val sum = Bool()
+    val sum = if (hasU) Some(Bool()) else None
     val mxr = Bool()
     val level = UInt(2.W)
     val table = UInt(32.W)
@@ -375,9 +376,9 @@ class ysyx_26030103_PTWPipeline(
     val d = normalizePte(resolveRaw)
     val level = ctx(resolveCtx).level
     val vaddr = ctx(resolveCtx).vaddr
-    val privilege = ctx(resolveCtx).privilege
+    val privilege = ctx(resolveCtx).privilege.getOrElse(0.U(2.W))
     val access = ctx(resolveCtx).access
-    val sum = ctx(resolveCtx).sum
+    val sum = ctx(resolveCtx).sum.getOrElse(false.B)
     val mxr = ctx(resolveCtx).mxr
     val isStore = access === ysyx_26030103_AccessType.Store
     val cause = pageFaultCause(access)
@@ -451,9 +452,9 @@ class ysyx_26030103_PTWPipeline(
     ctx(freeIndex).done := false.B
     ctx(freeIndex).vaddr := io.req.bits.vaddr
     ctx(freeIndex).satp := io.req.bits.satp
-    ctx(freeIndex).privilege := io.req.bits.privilege
+    ctx(freeIndex).privilege.foreach { p => p := io.req.bits.privilege }
     ctx(freeIndex).access := io.req.bits.access
-    ctx(freeIndex).sum := io.req.bits.sum
+    ctx(freeIndex).sum.foreach { s => s := io.req.bits.sum }
     ctx(freeIndex).mxr := io.req.bits.mxr
     ctx(freeIndex).level := 0.U
     ctx(freeIndex).table := Cat(io.req.bits.satp(21, 0), 0.U(pageBits.W))

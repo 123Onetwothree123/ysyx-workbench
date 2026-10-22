@@ -106,7 +106,12 @@ case class ysyx_26030103_MMUProfile(
   require(tlbAsidBits >= 0 && tlbAsidBits <= 9, "tlbAsidBits 必须在 0..9")
   require(utlbLookupPorts >= 1 && utlbLookupPorts <= 2, "utlbLookupPorts 必须在 1..2")
   require(refillPorts >= 1, "refillPorts 必须 >= 1")
-  require(!enabled || hasS || hasU, "HAS_MMU 需要至少一个 S/U 特权级")
+  // U 模式依赖 S 模式提供的 CSR/SRET 入口；HAS_S=n 时不允许保留 U 级。
+  require(hasS || !hasU, "HAS_U=y 需要 HAS_S=y：U 模式依赖 S 模式 CSR/SRET")
+  // 当前 Sv32 页表翻译、satp、页错误入口和异常委托都属于 S 模式。
+  // HAS_S=n 时必须显式关闭 MMU，而不是静默保留完整 S 逻辑。
+  require(!enabled || hasS,
+    "HAS_MMU=y 需要 HAS_S=y：MMU/Sv32 依赖 S 模式 satp/页错误入口；请设置 HAS_S=y 或 HAS_MMU=n")
   require(plicSources >= 2 && plicSources <= 1024, "PLIC source 数必须在 2..1024")
   require(plicPriorityBits >= 1 && plicPriorityBits <= 8, "PLIC 优先级位宽非法")
   require(plicMaxPriority >= 0 && plicMaxPriority < (1 << plicPriorityBits),
@@ -126,14 +131,18 @@ case class ysyx_26030103_MMUProfile(
     val csrPrivilege = (addr >> 8) & 0x3
     val uLevel = csrPrivilege == 0
     val sLevel = csrPrivilege == 1
+    // medeleg/mideleg/mcounteren 是 M 级地址，但只控制不存在的 S/U
+    // 状态；HAS_S=n 时一并从实现集合裁剪。
+    val sControl = addr == 0x302 || addr == 0x303 || addr == 0x306
     // HAS_U=n 时 U 级 CSR 一并从实现集合裁剪；HAS_S=n 时裁剪 S 级 CSR。
-    ((hasU || !uLevel) && (hasS || !sLevel)) && (csrEnabled.contains(addr) ||
-      (pmpEnabled && ((addr >= 0x3a0 && addr <= 0x3a3) ||
-        (addr >= 0x3b0 && addr <= 0x3bf))))
+    ((hasU || !uLevel) && (hasS || (!sLevel && !sControl))) &&
+      (csrEnabled.contains(addr) ||
+        (pmpEnabled && ((addr >= 0x3a0 && addr <= 0x3a3) ||
+          (addr >= 0x3b0 && addr <= 0x3bf))))
   }
 
-  /** 当前配置允许的最低特权级：HAS_U=n 时最低只能是 S。 */
-  final val lowestPrivilege: Int = if (hasU) 0 else 1
+  /** 当前配置允许的最低特权级：HAS_U=n 时最低只能是 S；HAS_S=n 时只有 M。 */
+  final val lowestPrivilege: Int = if (hasU) 0 else if (hasS) 1 else 3
 
   if (tlbEnabled) {
     requirePowerOfTwo("itlbEntries", itlbEntries)
@@ -244,12 +253,18 @@ object ysyx_26030103_MMUProfile {
   def fromEnv(env: String => Option[String]): ysyx_26030103_MMUProfile = {
     val fieldDefaultRead = envString(env, "CSR_FIELD_DEFAULT_READ", "normal")
     val fieldDefaultWrite = envString(env, "CSR_FIELD_DEFAULT_WRITE", "normal")
+    val hasS = envBool(env, "HAS_S", true)
+    // 未显式给出 HAS_U 时跟随 HAS_S：HAS_S=n 的默认组合是 M-only，
+    // 而不是悄悄保留一个没有 S 入口的 U 状态。
+    val hasU = envBool(env, "HAS_U", hasS)
     val (mstatusReadMask, mstatusReadSet, mstatusWriteMask) =
       fieldMasks(MstatusFields, env, "CSR_MSTATUS", fieldDefaultRead, fieldDefaultWrite)
     val (satpReadMask, satpReadSet, satpWriteMask) =
       fieldMasks(SatpFields, env, "CSR_SATP", fieldDefaultRead, fieldDefaultWrite)
     ysyx_26030103_MMUProfile(
-      enabled = envBool(env, "MMU_ENABLED", false),
+      // 生成器输出 MMU_ENABLED；直接使用 Kconfig 风格环境时也接受 HAS_MMU。
+      enabled = envBool(env, "MMU_ENABLED",
+        envBool(env, "HAS_MMU", false)),
       pageSizeBytes = envInt(env, "MMU_PAGE_SIZE_BYTES", 4096),
       levels = envInt(env, "MMU_LEVELS", 2),
       pteSizeBytes = envInt(env, "MMU_PTE_SIZE_BYTES", 4),
@@ -303,8 +318,8 @@ object ysyx_26030103_MMUProfile {
       csrSatpReadMask = envInt(env, "CSR_SATP_READ_MASK", satpReadMask.toInt),
       csrSatpReadSet = envInt(env, "CSR_SATP_READ_SET", satpReadSet.toInt),
       csrSatpWriteMask = envInt(env, "CSR_SATP_WRITE_MASK", satpWriteMask.toInt),
-      hasS = envBool(env, "HAS_S", true),
-      hasU = envBool(env, "HAS_U", true),
+      hasS = hasS,
+      hasU = hasU,
       hasSTimerIrq = envBool(env, "HAS_S_TIMER_IRQ", true),
       hasSExternalIrq = envBool(env, "HAS_S_EXTERNAL_IRQ", true),
       timerPath = envString(env, "TIMER_PATH", "clint_mtip"),
