@@ -5,6 +5,7 @@ class ysyx_26030103_mcycle extends Module {
   val io = IO(new Bundle {
     val clk = Input(Clock())
     val rst = Input(Bool())
+    val Enable = Input(Bool())
     val wen = Input(Bool())
     val SelectHigh = Input(Bool())
     val wdata = Input(UInt(32.W))
@@ -17,8 +18,8 @@ class ysyx_26030103_mcycle extends Module {
     }.otherwise {
       counter := Cat(counter(63, 32), io.wdata)
     }
-  }.otherwise {
-    counter := counter + 1.U // 默认的情况下
+  }.elsewhen(io.Enable) {
+    counter := counter + 1.U
   }
   io.rdata := Mux(io.SelectHigh, counter(63, 32), counter(31, 0))
 }

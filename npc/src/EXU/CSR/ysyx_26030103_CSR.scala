@@ -187,6 +187,7 @@ class ysyx_26030103_CSR(
   val ScounterenOpt = if (hasS) Some(RegInit(0.U(32.W))) else None
   val Mcounteren = RegInit(0.U(32.W))
   val Mcountinhibit = RegInit(0.U(32.W))
+  Mcycle.io.Enable := !Mcountinhibit(0)
   val Mtval = RegInit(0.U(32.W))
   val Minstret = RegInit(0.U(64.W))
   val PmpcfgReg = RegInit(VecInit(Seq.fill(4)(0.U(32.W))))
@@ -455,7 +456,8 @@ class ysyx_26030103_CSR(
       PmpaddrReg(entry) := CSRWriteData(PmpaddrReg(entry)) & "h3fffffff".U(32.W)
     }
   }
-  when(io.Enable && !Mcountinhibit(0)) { Minstret := Minstret + 1.U }
+  // 标准 mcountinhibit：bit0=CY，bit2=IR。
+  when(io.Enable && !Mcountinhibit(2) && !io.MemTrap) { Minstret := Minstret + 1.U }
   SscratchOpt.foreach { Sscratch =>
     when(CSRWen && IsCSRAddress(CSR_SSCRATCH)) { Sscratch := CSRWriteData(Sscratch) }
   }
