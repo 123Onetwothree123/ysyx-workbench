@@ -21,22 +21,41 @@ case class ysyx_26030103_PteConfig(
   require(pteBits == 32 || pteBits == 64, s"PTE 位宽只允许 32/64，收到 $pteBits")
   require(ppnLow >= 8 && ppnHigh < pteBits && ppnLow <= ppnHigh,
     "PTE PPN 位范围非法（至少为 8，且必须低于 PTE 位宽）")
-  require((0 to 7).forall(b => Seq(validBit, readBit, writeBit, executeBit,
-    userBit, globalBit, aBit, dBit).forall(x => x >= 0 && x < pteBits)),
-    "PTE 标志位非法")
+  private val flagBits = Seq(validBit, readBit, writeBit, executeBit,
+    userBit, globalBit, aBit, dBit)
+  require(flagBits.forall(x => x >= 0 && x < pteBits), "PTE 标志位非法")
+  // 归一化后的内部 PTE 固定把 8 个标志放在低 8 位。字段位置可以任意，
+  // 但标志之间不能重叠，也不能落进 PPN 字段，否则同一个 PTE 位会被
+  // 同时解释成两种语义。无法正确表达的编码必须在 elaboration 期拒绝。
+  require(flagBits.distinct.size == flagBits.size, "PTE 标志位不能重复")
+  require(flagBits.forall(b => b < ppnLow || b > ppnHigh),
+    s"PTE 标志位不能与 PPN 字段 [$ppnHigh:$ppnLow] 重叠")
+  // PPN 高位以上的位统一按保留位检查；标志位若放在该区域会和保留位
+  // 语义冲突，无法用当前归一化/保留位规则正确表达。
+  require(flagBits.forall(_ <= ppnHigh),
+    s"PTE 标志位必须位于 PPN 高位($ppnHigh)以下，不能占用保留位区域")
 }
 
 /** MMU/TLB 的 elaboration 期参数。
   *
   * 这个类由 Elaborate 从 Kconfig 生成的环境变量构造，并驱动 MMU/TLB RTL。
-  * 默认值就是标准 Sv32 balanced profile；RV64 使用 xlen=64 的标准 Sv39
-  * （3 级/8B PTE）或 Sv48（4 级/8B PTE）。非标准参数由生成器和
-  * elaboration 校验；RV32 的既有自定义 32 位几何保持兼容。
+  * 默认值就是标准 Sv32 balanced profile；RV64 默认使用 xlen=64 的标准
+  * Sv39（3 级/8B PTE）或 Sv48（4 级/8B PTE）。RV64 的非标准页几何只能
+  * 通过显式的 `geometryMode = "custom"` 打开，并使用一个非标准的 satp
+  * MODE 编码（10..15）作为扩展，绝不会伪装成标准 Sv39/Sv48。
+  * RV32 的既有自定义 32 位几何保持兼容。
   */
 case class ysyx_26030103_MMUProfile(
     enabled: Boolean = false,
     // MMU 所属的架构位宽。RV32 默认 32；RV64/Sv39 由 elaborator 设置为 64。
     xlen: Int = 32,
+    // RV64 页几何模式：standard 只接受标准 Sv39/Sv48；custom 显式启用
+    // 非标准页大小/级数/PTE 编码，并要求 satp MODE 使用 10..15 的扩展值。
+    // RV32 不接受该字段的额外限制，既有的自定义 32 位几何保持不变。
+    geometryMode: String = "standard",
+    // CUSTOM 模式专用的 satp MODE。8/9 是标准 Sv39/Sv48，1 是 Sv32，
+    // 都不能被非标准几何复用，因此 CUSTOM 只允许保留编码 10..15。
+    customSatpMode: Int = 10,
     pageSizeBytes: Int = 4096,
     levels: Int = 2,
     pteSizeBytes: Int = 4,
@@ -121,6 +140,9 @@ case class ysyx_26030103_MMUProfile(
   require(pteSizeBytes == 4 || pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
   require(xlen == 32 || pteConfig.pteBits == pteSizeBytes * 8,
     s"RV64 PTE 字段配置位宽(${pteConfig.pteBits})必须等于 pteSizeBytes*8(${pteSizeBytes * 8})")
+  require(adMode != "hardware" || pteSizeBytes <= 4 ||
+    (pteConfig.aBit < 32 && pteConfig.dBit < 32),
+    "64 位 PTE 的 A/D 硬件写回要求 A/D 位位于低 32 位字内（32 位页表写端口只更新低字）")
   require(levels >= 1, s"levels=$levels 必须 >= 1")
   require(
     pageTableSizeBytes % pteSizeBytes == 0,
@@ -207,49 +229,114 @@ case class ysyx_26030103_MMUProfile(
     }
   }
 
+  require(Set("standard", "custom").contains(geometryMode),
+    s"MMU_GEOMETRY_MODE 必须是 standard/custom，收到 $geometryMode")
+  // CUSTOM 是 RV64 的显式扩展；RV32 的 satp MODE 只有 1 位（Sv32=1），
+  // 无法表达独立的非标准模式，因此既有的 32 位自定义几何继续走
+  // standard 路径，而不是假装成一个新的 satp 模式。
+  require(xlen == 64 || geometryMode != "custom",
+    "MMU_GEOMETRY_MODE=custom 只用于 RV64；RV32 既有自定义几何保持 Sv32 模式")
+
   final val pageBits: Int = Integer.numberOfTrailingZeros(pageSizeBytes)
   final val tableEntries: Int = pageTableSizeBytes / pteSizeBytes
   final val indexBitsPerLevel: Int = Integer.numberOfTrailingZeros(tableEntries)
   final val computedAddressBits: Int = pageBits + levels * indexBitsPerLevel
-  // Sv32 的虚拟地址是 32 位；Sv39/Sv48 分别使用 39/48 位有效虚拟地址，
-  // 其余高位必须是指示位的符号扩展（由 PTW/MMU 检查）。
-  final val wellFormed: Boolean =
-    if (xlen == 32) computedAddressBits == 32
-    else computedAddressBits == 39 || computedAddressBits == 48
+  // 标准 PTE 字段布局：低 8 位标志，PPN 从 bit10 开始。显式 CUSTOM
+  // 模式也允许该布局，但若把 `pteFormat` 写成 riscv32/riscv64，字段位置
+  // 必须与对应标准完全一致，避免“名字是标准、编码却是私有”的伪装。
+  final val standardPteLayout32: Boolean =
+    pteConfig.pteBits == 32 && pteConfig.validBit == 0 &&
+      pteConfig.readBit == 1 && pteConfig.writeBit == 2 &&
+      pteConfig.executeBit == 3 && pteConfig.userBit == 4 &&
+      pteConfig.globalBit == 5 && pteConfig.aBit == 6 &&
+      pteConfig.dBit == 7 && pteConfig.ppnLow == 10 && pteConfig.ppnHigh == 31
+  final val standardPteLayout64: Boolean =
+    pteConfig.pteBits == 64 && pteConfig.validBit == 0 &&
+      pteConfig.readBit == 1 && pteConfig.writeBit == 2 &&
+      pteConfig.executeBit == 3 && pteConfig.userBit == 4 &&
+      pteConfig.globalBit == 5 && pteConfig.aBit == 6 &&
+      pteConfig.dBit == 7 && pteConfig.ppnLow == 10 && pteConfig.ppnHigh == 53
   final val standardSv32: Boolean =
     xlen == 32 && pageSizeBytes == 4096 && levels == 2 && pteSizeBytes == 4 &&
       pageTableSizeBytes == 4096 && pteFormat == "riscv32"
   final val standardSv39: Boolean =
     xlen == 64 && pageSizeBytes == 4096 && levels == 3 && pteSizeBytes == 8 &&
       pageTableSizeBytes == 4096 && pteFormat == "riscv64" &&
-      computedAddressBits == 39
+      standardPteLayout64 && computedAddressBits == 39
   final val standardSv48: Boolean =
     xlen == 64 && pageSizeBytes == 4096 && levels == 4 && pteSizeBytes == 8 &&
       pageTableSizeBytes == 4096 && pteFormat == "riscv64" &&
-      computedAddressBits == 48
-  // RTL 只对标准 Sv32/Sv39/Sv48 提供完整语义；其它 32 位地址几何继续
-  // 用于已有自定义 profile 的 elaboration 测试。
-  require(xlen == 32 || !enabled || wellFormed,
-    if (xlen == 32)
-      s"RV32 MMU 要求 pageBits($pageBits)+levels($levels)*indexBits($indexBitsPerLevel)=32，" +
-        s"实际为 $computedAddressBits"
-    else
-      s"RV64 MMU 只支持 Sv39(39) 或 Sv48(48) 地址几何，实际为 $computedAddressBits；" +
-        "请设置 MMU_LEVELS=3/4、MMU_PTE_SIZE_BYTES=8、MMU_PAGE_TABLE_SIZE_BYTES=4096")
+      standardPteLayout64 && computedAddressBits == 48
+  // CUSTOM 只改页大小/级数/索引/PTE 宽度与字段位置；虚拟地址仍必须在
+  // XLEN 内可表示，且 PPN+页内偏移不能超过 64 位物理地址。
+  final val customGeometry: Boolean = xlen == 64 && geometryMode == "custom"
+  /** 显式标记当前 profile 使用非标准 RV64 页几何。 */
+  final val nonStandard: Boolean = customGeometry
+  final val customSatpModeLegal: Boolean =
+    customSatpMode >= 10 && customSatpMode <= 15
+  final val addressBitsWithinXlen: Boolean =
+    computedAddressBits >= 2 && computedAddressBits <= xlen
+  final val customPaddrFits: Boolean =
+    pageBits + (pteConfig.ppnHigh - pteConfig.ppnLow + 1) <= 64
+  // RV64 satp.PPN 固定 44 位，根页表基址 = PPN << pageBits；页内偏移
+  // 过大时根表地址本身就无法在 64 位物理地址中表示，必须提前拒绝。
+  final val customSatpPaddrFits: Boolean = pageBits + 44 <= 64
+  // Sv32 的虚拟地址是 32 位；Sv39/Sv48 分别使用 39/48 位有效虚拟地址，
+  // 其余高位必须是指示位的符号扩展（由 PTW/MMU 检查）。CUSTOM 模式
+  // 允许任意 2..XLEN 位的有效 VA，只要高位仍按符号扩展检查。
+  final val wellFormed: Boolean =
+    if (xlen == 32) computedAddressBits == 32
+    else if (customGeometry)
+      addressBitsWithinXlen && customPaddrFits && customSatpPaddrFits
+    else computedAddressBits == 39 || computedAddressBits == 48
+  // RV32 既有自定义 32 位几何保持不变；RV64 只有在 STANDARD 下要求
+  // 完整标准 Sv39/Sv48，或在显式 CUSTOM 下才接受非标准几何。
+  require(xlen == 32 || !enabled || geometryMode == "custom" ||
+    standardSv39 || standardSv48,
+    "RV64 HAS_MMU=y 只支持标准 Sv39/Sv48，或显式设置 MMU_GEOMETRY_MODE=custom：" +
+      s"page=$pageSizeBytes levels=$levels pte=$pteSizeBytes " +
+      s"table=$pageTableSizeBytes fmt=$pteFormat va=$computedAddressBits")
+  require(!customGeometry || (levels >= 1 && levels <= 4),
+    s"RV64 CUSTOM 的 MMU_LEVELS 必须在 1..4（RTL fillLevel 为 2 位），收到 $levels")
+  require(!customGeometry ||
+    (addressBitsWithinXlen && customPaddrFits && customSatpPaddrFits),
+    s"RV64 CUSTOM 几何无法表达：pageBits($pageBits)+levels($levels)*" +
+      s"indexBits($indexBitsPerLevel)=$computedAddressBits 位 VA 必须在 2..64，" +
+      s"pageBits($pageBits)+PPN 位宽(${pteConfig.ppnHigh - pteConfig.ppnLow + 1}) 必须 <=64，" +
+      "且 pageBits+44 位 satp.PPN 必须 <=64（页大小上限 1MiB）")
+  require(!customGeometry || customSatpModeLegal,
+    s"RV64 CUSTOM 必须使用非标准 satp MODE 10..15（8/9 是标准 Sv39/Sv48），" +
+      s"收到 $customSatpMode")
+  // 超级页要求 PPN 的低 (levels-1)*indexBits 位为 0。PPN 字段比这个
+  // 对齐宽度还窄时，对齐检查本身无法表达，必须在 elaboration 期拒绝。
+  require(!superpage ||
+    pteConfig.ppnHigh - pteConfig.ppnLow + 1 >=
+      (levels - 1) * indexBitsPerLevel,
+    s"超级页对齐位(${(levels - 1) * indexBitsPerLevel})超过 PTE PPN 位宽" +
+      s"(${pteConfig.ppnHigh - pteConfig.ppnLow + 1})，无法正确检查")
+  require(!customGeometry ||
+    (pteSizeBytes == 8 && (pteFormat == "custom" ||
+      (pteFormat == "riscv64" && standardPteLayout64))) ||
+    (pteSizeBytes == 4 && (pteFormat == "custom" ||
+      (pteFormat == "riscv32" && standardPteLayout32))),
+    s"RV64 CUSTOM 的 PTE 宽度/编码不一致：pte=$pteSizeBytes fmt=$pteFormat；" +
+      "私有字段位置必须使用 MMU_PTE_FORMAT=custom")
   require(xlen == 64 || pteFormat != "riscv64",
     "RV32 配置不能使用 riscv64 PTE 编码")
-  require(xlen == 32 || !enabled || standardSv39 || standardSv48,
-    "RV64 HAS_MMU=y 只支持标准 Sv39/Sv48：page=4096, levels=3/4, PTE=8B, " +
-      "page table=4096, pteFormat=riscv64")
   // satp.MODE 编码：Sv32=1, Sv39=8, Sv48=9。0 始终表示关闭翻译。
+  // CUSTOM 使用显式保留编码 10..15；标准 8/9 的语义绝不改变。
   final val satpMode: Int =
     if (xlen == 32) 1
-    else if (computedAddressBits == 39) 8
-    else if (computedAddressBits == 48) 9
+    else if (customGeometry) customSatpMode
+    else if (standardSv39) 8
+    else if (standardSv48) 9
     else 0
+  final val standardSatpMode: Boolean =
+    satpMode == 1 || satpMode == 8 || satpMode == 9
 
   def describe: String =
-    s"MMU(enabled=$enabled xlen=$xlen va=$computedAddressBits satpMode=$satpMode " +
+    s"MMU(enabled=$enabled xlen=$xlen geometry=$geometryMode va=$computedAddressBits " +
+      s"satpMode=$satpMode${if (customGeometry) "(non-standard)" else ""} " +
       s"profile=$pteFormat page=$pageSizeBytes levels=$levels " +
       s"pte=$pteSizeBytes table=$pageTableSizeBytes " +
       s"cache=$cacheMode vipt_alias_safe=$cacheViptAliasSafe " +
@@ -366,6 +453,9 @@ object ysyx_26030103_MMUProfile {
       enabled = envBool(env, "MMU_ENABLED",
         envBool(env, "HAS_MMU", false)),
       xlen = xlen,
+      geometryMode = envString(env, "MMU_GEOMETRY_MODE", "standard")
+        .stripPrefix("\"").stripSuffix("\"").toLowerCase,
+      customSatpMode = envInt(env, "MMU_CUSTOM_SATP_MODE", 10),
       pageSizeBytes = envInt(env, "MMU_PAGE_SIZE_BYTES", 4096),
       levels = envInt(env, "MMU_LEVELS", if (xlen == 64) 3 else 2),
       pteSizeBytes = pteBytes,

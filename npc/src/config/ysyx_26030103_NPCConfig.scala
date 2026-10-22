@@ -127,15 +127,19 @@ case class ysyx_26030103_NPCConfig(
   // 数据 beat，因此必须经过 AXI5 宽度桥；SoC32 时数据通道同宽，但
   // RV64 内部地址仍需要 64->32 边界检查（由同一个桥完成）。
   final val SocXLENNeedsAxiBridge: Boolean = EffectiveSocXLEN != 32
-  // RV64 MMU 只接入标准 Sv39/Sv48；MMUProfile 自身会拒绝非标准几何。
-  // 这里再检查 profile 与顶层 XLEN/AddressWidth 一致，避免 RV64 核
-  // 例化出 RV32 satp 语义，或 RV32 核误用 64 位页表。
+  // RV64 MMU 默认接入标准 Sv39/Sv48；显式 CUSTOM 页几何由 MMUProfile
+  // 自身完成参数/非标准 satp MODE 校验。这里只检查 profile 与顶层
+  // XLEN/AddressWidth 一致，避免 RV64 核例化出 RV32 satp 语义，或
+  // RV32 核误用 64 位页表。
   require(!MMU.enabled || MMU.xlen == XLEN,
     s"MMU profile XLEN(${MMU.xlen}) 与 NPC XLEN($XLEN) 不一致")
+  require(XLEN == 32 || !MMU.enabled || AddressWidth == 64,
+    "XLEN=64 HAS_MMU=y 要求 AddressWidth=64")
   require(XLEN == 32 || !MMU.enabled ||
-      ((MMU.standardSv39 || MMU.standardSv48) && AddressWidth == 64),
-    "XLEN=64 HAS_MMU=y 只支持 AddressWidth=64 的标准 Sv39/Sv48；" +
-      "请设置 MMU_LEVELS=3(4)、MMU_PTE_SIZE_BYTES=8、MMU_PTE_FORMAT=riscv64")
+      MMU.customGeometry || MMU.standardSv39 || MMU.standardSv48,
+    "XLEN=64 HAS_MMU=y 只支持标准 Sv39/Sv48，或显式 MMU_GEOMETRY_MODE=custom")
+  require(XLEN == 32 || !MMU.enabled || !MMU.customGeometry || MMU.customSatpModeLegal,
+    "XLEN=64 CUSTOM MMU 必须使用 satp MODE 10..15，不能复用标准 8/9")
   // RV64 的 LD/SD 是 8 字节访问。LSU 在 32 位 AXI 数据通道上按两拍
   // 窄传输完成；DCache 内部仍以 32 位 word 存储，但一次 load/store
   // 可以跨两个相邻 word，因此数据行必须至少容纳两个 word。

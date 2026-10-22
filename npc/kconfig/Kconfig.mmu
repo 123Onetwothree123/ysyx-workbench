@@ -66,28 +66,63 @@ menu "虚拟内存管理 (MMU/TLB)"
       help
         profile 名称。生成 JSON/C header 时原样记录。
 
+    choice
+      prompt "RV64 页表几何模式"
+      default MMU_GEOMETRY_STANDARD
+      help
+        STANDARD 使用标准 Sv39/Sv48（4KiB 页、3/4 级、8B PTE、
+        satp MODE=8/9）。CUSTOM 显式启用非标准页大小/级数/索引/PTE
+        几何，并使用保留的 satp MODE 10..15 作为非标准扩展；它不能
+        伪装成标准 Sv39/Sv48。RV32 的既有自定义 32 位几何不受该选项
+        限制，仍使用 satp MODE=1。
+      config MMU_GEOMETRY_STANDARD
+        bool "STANDARD (标准 Sv39/Sv48)"
+      config MMU_GEOMETRY_CUSTOM
+        bool "CUSTOM (RV64 非标准页几何，EXPERIMENTAL)"
+    endchoice
+
+    config MMU_GEOMETRY_MODE
+      string
+      default "standard" if MMU_GEOMETRY_STANDARD
+      default "custom"
+      help
+        RTL 侧几何模式名称；CUSTOM 会出现在 elaboration 日志和生成的
+        mmu_profile.json/header 中，明确标记 non-standard。
+
+    config MMU_CUSTOM_SATP_MODE
+      int "CUSTOM 模式的 satp MODE"
+      depends on MMU_GEOMETRY_CUSTOM
+      default 10
+      range 10 15
+      help
+        CUSTOM 几何专用的 satp.MODE 保留编码（10..15）。标准 8/9 是
+        Sv39/Sv48，1 是 Sv32，不能复用于非标准页表；CSR 对其他编码
+        按 WARL 收敛到 Bare(0)。软件必须显式使用这里配置的扩展模式。
+
     config MMU_PAGE_SIZE_BYTES
       int "基础页大小 (Byte)"
       default 4096
       help
         默认 4096，即标准 Sv32 的 4KiB 页。
-        硬件要求 2 的幂；非 4096 属于自定义 MMU profile，
-        需要配套软件页表生成器。
+        硬件要求 2 的幂；RV64 非 4096 必须在 CUSTOM 模式下使用，
+        并配套软件页表生成器。
 
     config MMU_LEVELS
       int "页表级数"
       default 3 if XLEN=64
       default 2
       help
-        RV32 默认 2（Sv32）；RV64 必须为 3（Sv39）或 4（Sv48）。
-        非标准级数只允许用于 RV32 的自定义 profile。
+        RV32 默认 2（Sv32）。RV64 STANDARD 只能为 3（Sv39）或 4（Sv48）；
+        CUSTOM 模式支持 1..4 级，并要求
+        pageBits + levels * indexBits 的虚拟地址位数在 2..64 之间。
 
     config MMU_PTE_SIZE_BYTES
       int "PTE 大小 (Byte)"
       default 8 if XLEN=64
       default 4
       help
-        RV32 默认 4（Sv32）；RV64 必须为 8（Sv39/Sv48 的 64-bit PTE）。
+        RV32 默认 4（Sv32）；RV64 STANDARD 必须为 8（Sv39/Sv48 的
+        64-bit PTE）。CUSTOM 支持 4/8B，PTE 字段位置由下面各项配置。
 
     config MMU_PAGE_TABLE_SIZE_BYTES
       int "单级页表页大小 (Byte)"
@@ -115,7 +150,9 @@ menu "虚拟内存管理 (MMU/TLB)"
       default "custom"
       help
         PTE 编码名称。自定义编码通过下面的字段位置配置，PTW 会先
-        归一化到内部标准 PTE 再交给 TLB。
+        归一化到内部标准 PTE 再交给 TLB。RV64 CUSTOM 下，若字段位置
+        与标准布局不同，必须选择 MMU_PTE_FORMAT=custom，避免把私有
+        编码标成 riscv32/riscv64。
 
     config MMU_PTE_VALID_BIT
       int "PTE valid 位"

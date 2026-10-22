@@ -128,6 +128,12 @@ def build_profile(cfg: Config) -> dict:
         raise ValueError(f"XLEN={xlen} 必须是 32/64")
     default_levels = 3 if xlen == 64 else STANDARD_LEVELS
     default_pte = 8 if xlen == 64 else STANDARD_PTE
+    geometry_mode = one_of(
+        "MMU_GEOMETRY_MODE",
+        cfg.string("MMU_GEOMETRY_MODE", "standard").lower(),
+        ("standard", "custom"),
+    )
+    custom_satp_mode = cfg.integer("MMU_CUSTOM_SATP_MODE", 10)
     page_size = cfg.integer("MMU_PAGE_SIZE_BYTES", STANDARD_PAGE)
     levels = cfg.integer("MMU_LEVELS", default_levels)
     pte_size = cfg.integer("MMU_PTE_SIZE_BYTES", default_pte)
@@ -203,13 +209,68 @@ def build_profile(cfg: Config) -> dict:
             f"MMU_PTE_SIZE_BYTES={pte_size} 整除"
         )
 
+    pte_valid = cfg.integer("MMU_PTE_VALID_BIT", 0)
+    pte_read = cfg.integer("MMU_PTE_READ_BIT", 1)
+    pte_write = cfg.integer("MMU_PTE_WRITE_BIT", 2)
+    pte_exec = cfg.integer("MMU_PTE_EXEC_BIT", 3)
+    pte_user = cfg.integer("MMU_PTE_USER_BIT", 4)
+    pte_global = cfg.integer("MMU_PTE_GLOBAL_BIT", 5)
+    pte_a = cfg.integer("MMU_PTE_A_BIT", 6)
+    pte_d = cfg.integer("MMU_PTE_D_BIT", 7)
+    pte_ppn_low = cfg.integer("MMU_PTE_PPN_LOW", 10)
+    pte_ppn_high = cfg.integer("MMU_PTE_PPN_HIGH", 53 if pte_size == 8 else 31)
+    pte_bits = pte_size * 8
+    pte_flags = [pte_valid, pte_read, pte_write, pte_exec,
+                 pte_user, pte_global, pte_a, pte_d]
+    if any(bit < 0 or bit >= pte_bits for bit in pte_flags):
+        raise ValueError(f"PTE 标志位必须位于 0..{pte_bits - 1}")
+    if len(set(pte_flags)) != len(pte_flags):
+        raise ValueError("PTE 标志位不能重复")
+    if any(pte_ppn_low <= bit <= pte_ppn_high for bit in pte_flags):
+        raise ValueError(
+            f"PTE 标志位不能与 PPN 字段 [{pte_ppn_high}:{pte_ppn_low}] 重叠"
+        )
+    if not 8 <= pte_ppn_low <= pte_ppn_high < pte_bits:
+        raise ValueError(
+            f"PTE PPN 位范围非法：[{pte_ppn_high}:{pte_ppn_low}]，要求 "
+            f"8 <= low <= high < {pte_bits}"
+        )
+    if any(bit > pte_ppn_high for bit in pte_flags):
+        raise ValueError(
+            f"PTE 标志位必须位于 PPN 高位({pte_ppn_high})以下，不能占用保留位区域"
+        )
+    standard_layout64 = (
+        pte_bits == 64
+        and pte_flags == list(range(8))
+        and pte_ppn_low == 10
+        and pte_ppn_high == 53
+    )
+    standard_layout32 = (
+        pte_bits == 32
+        and pte_flags == list(range(8))
+        and pte_ppn_low == 10
+        and pte_ppn_high == 31
+    )
+
     table_entries = table_size // pte_size
     index_bits = require_power_of_two("每级页表项数", table_entries)
+    if table_entries < 2:
+        raise ValueError("每级页表项数必须至少为 2")
     address_bits = page_bits + levels * index_bits
+    pte_ppn_bits = pte_ppn_high - pte_ppn_low + 1
     allowed_bits = 32 if xlen == 32 else (39, 48)
-    well_formed = (address_bits == allowed_bits) if xlen == 32 else (address_bits in allowed_bits)
+    standard_well_formed = (
+        address_bits == allowed_bits if xlen == 32 else address_bits in allowed_bits
+    )
+    custom_satp_paddr_fits = page_bits + 44 <= 64
+    custom_well_formed = (
+        2 <= address_bits <= 64 and page_bits + pte_ppn_bits <= 64
+        and custom_satp_paddr_fits
+    )
+    well_formed = custom_well_formed if geometry_mode == "custom" else standard_well_formed
     standard_sv32 = (
-        xlen == 32
+        geometry_mode == "standard"
+        and xlen == 32
         and page_size == STANDARD_PAGE
         and levels == STANDARD_LEVELS
         and pte_size == STANDARD_PTE
@@ -217,30 +278,82 @@ def build_profile(cfg: Config) -> dict:
         and pte_format == "riscv32"
     )
     standard_sv39 = (
-        xlen == 64
+        geometry_mode == "standard"
+        and xlen == 64
         and page_size == STANDARD_PAGE
         and levels == 3
         and pte_size == 8
         and table_size == STANDARD_TABLE
         and pte_format == "riscv64"
+        and standard_layout64
         and address_bits == 39
     )
     standard_sv48 = (
-        xlen == 64
+        geometry_mode == "standard"
+        and xlen == 64
         and page_size == STANDARD_PAGE
         and levels == 4
         and pte_size == 8
         and table_size == STANDARD_TABLE
         and pte_format == "riscv64"
+        and standard_layout64
         and address_bits == 48
     )
     standard = standard_sv32 or standard_sv39 or standard_sv48
-    if has_mmu and xlen == 64 and not standard:
+    if geometry_mode == "custom":
+        if xlen != 64:
+            raise ValueError(
+                "MMU_GEOMETRY_MODE=custom 只用于 RV64；RV32 既有自定义 32 位"
+                "几何继续使用 standard 模式"
+            )
+        if levels < 1 or levels > 4:
+            raise ValueError(f"RV64 CUSTOM 的 MMU_LEVELS 必须在 1..4，收到 {levels}")
+        if not custom_well_formed:
+            raise ValueError(
+                "RV64 CUSTOM 几何无法表达：page_bits("
+                f"{page_bits})+levels({levels})*index_bits({index_bits})="
+                f"{address_bits} 位 VA 必须在 2..64，page_bits({page_bits})+"
+                f"PPN 位宽({pte_ppn_bits}) 必须 <=64，且 page_bits+44 位 "
+                "satp.PPN 必须 <=64（页大小上限 1MiB）"
+            )
+        if not 10 <= custom_satp_mode <= 15:
+            raise ValueError(
+                "RV64 CUSTOM 必须使用非标准 satp MODE 10..15（8/9 是标准 "
+                f"Sv39/Sv48），收到 {custom_satp_mode}"
+            )
+        if not (
+            (pte_size == 8 and (pte_format == "custom" or
+                                (pte_format == "riscv64" and standard_layout64)))
+            or (pte_size == 4 and (pte_format == "custom" or
+                                   (pte_format == "riscv32" and standard_layout32)))
+        ):
+            raise ValueError(
+                f"RV64 CUSTOM 的 PTE 宽度/编码不一致：pte={pte_size} "
+                f"fmt={pte_format}；私有字段位置必须使用 MMU_PTE_FORMAT=custom"
+            )
+        if (ad_mode == "hardware" and pte_size == 8
+                and (pte_a >= 32 or pte_d >= 32)):
+            raise ValueError(
+                "64 位 PTE 的 A/D 硬件写回要求 A/D 位位于低 32 位字内"
+            )
+    elif has_mmu and xlen == 64 and not standard:
         raise ValueError(
-            "RV64 HAS_MMU=y 只支持标准 Sv39/Sv48：MMU_LEVELS=3/4、"
+            "RV64 HAS_MMU=y 只支持标准 Sv39/Sv48，或显式设置 "
+            "MMU_GEOMETRY_MODE=custom：MMU_LEVELS=3/4、"
             "MMU_PTE_SIZE_BYTES=8、MMU_PTE_FORMAT=riscv64、"
             "MMU_PAGE_SIZE_BYTES=4096、MMU_PAGE_TABLE_SIZE_BYTES=4096"
         )
+    if cfg.bool("MMU_SUPERPAGE") and pte_ppn_bits < (levels - 1) * index_bits:
+        raise ValueError(
+            f"超级页对齐位({(levels - 1) * index_bits})超过 PTE PPN 位宽"
+            f"({pte_ppn_bits})，无法正确检查"
+        )
+    if geometry_mode == "custom":
+        satp_mode = custom_satp_mode
+    elif xlen == 32:
+        satp_mode = 1
+    else:
+        satp_mode = 8 if standard_sv39 else (9 if standard_sv48 else 0)
 
     tlb_org = cfg.string("TLB_ORGANIZATION", "split")
     if tlb_org not in ("split", "unified"):
@@ -340,7 +453,13 @@ def build_profile(cfg: Config) -> dict:
     )
 
     warnings = []
-    if not well_formed:
+    if geometry_mode == "custom":
+        warnings.append(
+            f"non-standard RV64 MMU geometry: satp MODE={custom_satp_mode}, "
+            f"page={page_size}, levels={levels}, pte={pte_size}B, va={address_bits}; "
+            "软件必须显式使用该扩展，不能当作标准 Sv39/Sv48"
+        )
+    elif not well_formed:
         expected = "32" if xlen == 32 else "39 或 48"
         warnings.append(
             f"地址位宽=page_bits({page_bits}) + levels({levels})*index_bits({index_bits}) "
@@ -364,6 +483,9 @@ def build_profile(cfg: Config) -> dict:
             "tlb": cfg.bool("HAS_TLB") and has_mmu,
         },
         "mmu": {
+            "geometry_mode": geometry_mode,
+            "custom_satp_mode": custom_satp_mode,
+            "non_standard": geometry_mode == "custom",
             "page_size_bytes": page_size,
             "page_bits": page_bits,
             "levels": levels,
@@ -375,21 +497,19 @@ def build_profile(cfg: Config) -> dict:
             "virtual_address_bits": address_bits,
             "computed_address_bits": address_bits,
             "well_formed": well_formed,
-            "satp_mode": 1 if xlen == 32 else (8 if address_bits == 39 else 9),
+            "satp_mode": satp_mode,
             "pte_format": pte_format,
             "pte": {
-                "valid_bit": cfg.integer("MMU_PTE_VALID_BIT", 0),
-                "read_bit": cfg.integer("MMU_PTE_READ_BIT", 1),
-                "write_bit": cfg.integer("MMU_PTE_WRITE_BIT", 2),
-                "execute_bit": cfg.integer("MMU_PTE_EXECUTE_BIT", 3),
-                "user_bit": cfg.integer("MMU_PTE_USER_BIT", 4),
-                "global_bit": cfg.integer("MMU_PTE_GLOBAL_BIT", 5),
-                "a_bit": cfg.integer("MMU_PTE_A_BIT", 6),
-                "d_bit": cfg.integer("MMU_PTE_D_BIT", 7),
-                "ppn_low": cfg.integer("MMU_PTE_PPN_LOW", 10),
-                "ppn_high": cfg.integer(
-                    "MMU_PTE_PPN_HIGH", 53 if pte_size == 8 else 31
-                ),
+                "valid_bit": pte_valid,
+                "read_bit": pte_read,
+                "write_bit": pte_write,
+                "execute_bit": pte_exec,
+                "user_bit": pte_user,
+                "global_bit": pte_global,
+                "a_bit": pte_a,
+                "d_bit": pte_d,
+                "ppn_low": pte_ppn_low,
+                "ppn_high": pte_ppn_high,
             },
             "superpage": cfg.bool("MMU_SUPERPAGE"),
             "ad_mode": ad_mode,
@@ -459,6 +579,9 @@ HEADER_TEMPLATE = """/* 由 scripts/gen_mmu_profile.py 从 .config 生成，请�
 #define YSYX_MMU_PROFILE_NAME "{profile}"
 #define YSYX_MMU_ENABLED {mmu}
 #define YSYX_MMU_XLEN {xlen}u
+#define YSYX_MMU_GEOMETRY_MODE "{geometry_mode}"
+#define YSYX_MMU_NON_STANDARD {non_standard}u
+#define YSYX_MMU_CUSTOM_SATP_MODE {custom_satp_mode}u
 #define YSYX_MMU_VIRTUAL_ADDRESS_BITS {address_bits}u
 #define YSYX_MMU_SATP_MODE {satp_mode}u
 #define YSYX_MMU_STANDARD_SV32 {standard}
@@ -520,6 +643,9 @@ def main() -> int:
         profile=profile["profile"],
         mmu=int(profile["enabled"]["mmu"]),
         xlen=profile["xlen"],
+        geometry_mode=profile["mmu"]["geometry_mode"],
+        non_standard=int(profile["mmu"]["non_standard"]),
+        custom_satp_mode=profile["mmu"]["custom_satp_mode"],
         address_bits=profile["mmu"]["virtual_address_bits"],
         satp_mode=profile["mmu"]["satp_mode"],
         standard=int(profile["standard_sv32"]),
@@ -570,6 +696,8 @@ def main() -> int:
             f"MMU_PROFILE={profile['profile']}",
             f"MMU_ENABLED={int(profile['enabled']['mmu'])}",
             f"MMU_XLEN={profile['xlen']}",
+            f"MMU_GEOMETRY_MODE={profile['mmu']['geometry_mode']}",
+            f"MMU_CUSTOM_SATP_MODE={profile['mmu']['custom_satp_mode']}",
             f"MMU_PAGE_SIZE_BYTES={profile['mmu']['page_size_bytes']}",
             f"MMU_LEVELS={profile['mmu']['levels']}",
             f"MMU_PTE_SIZE_BYTES={profile['mmu']['pte_size_bytes']}",
@@ -648,7 +776,9 @@ def main() -> int:
     print(
         f"[mmu-profile] {profile['profile']}: mmu={profile['enabled']['mmu']} "
         f"tlb={profile['enabled']['tlb']} xlen={profile['xlen']} "
-        f"standard={profile['standard_sv32'] or profile['standard_sv39'] or profile['standard_sv48']} "
+        f"geometry={profile['mmu']['geometry_mode']} "
+        f"standard={not profile['mmu']['non_standard'] and (profile['standard_sv32'] or profile['standard_sv39'] or profile['standard_sv48'])} "
+        f"satp_mode={profile['mmu']['satp_mode']} "
         f"page={profile['mmu']['page_size_bytes']} levels={profile['mmu']['levels']} "
         f"ptw_outstanding={profile['mmu']['ptw']['outstanding']}"
     )

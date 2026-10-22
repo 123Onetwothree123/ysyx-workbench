@@ -57,6 +57,11 @@ class ysyx_26030103_PTWPipeline(
   require(pteSizeBytes == 4 || pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
   require(XLEN == 32 || pteConfig.pteBits == pteSizeBytes * 8,
     "RV64 PTW 的 PTE 字段配置位宽必须与 PTE 大小一致")
+  // 8B PTE 的 A/D 硬件写回走现有 32 位页表写端口，只更新低字。A/D 位
+  // 落在高字时无法正确写回，必须在 elaboration 期拒绝。
+  require(adMode != "hardware" || pteSizeBytes <= 4 ||
+    (pteConfig.aBit < 32 && pteConfig.dBit < 32),
+    "64 位 PTE 的 A/D 硬件写回要求 A/D 位位于低 32 位字内")
   if (cacheEnable) {
     require(cacheEntries > 0 && (cacheEntries & (cacheEntries - 1)) == 0,
       "PTW cache entries 必须是 2 的幂")
@@ -71,6 +76,9 @@ class ysyx_26030103_PTWPipeline(
   private val ptePpnBits = pteConfig.ppnHigh - pteConfig.ppnLow + 1
   require(pageBits + levels * indexBits == vaBits,
     s"pageBits($pageBits) + levels($levels)*indexBits($indexBits) 必须等于 $vaBits")
+  require(!(superpage || fillSuperpage) ||
+    ptePpnBits >= (levels - 1) * indexBits,
+    s"超级页对齐位(${(levels - 1) * indexBits})超过 PTE PPN 位宽($ptePpnBits)")
 
   private val ctxBits = log2Ceil(outstanding.max(2))
   // 页表总线槽位数：默认与上下文数相同，每个上下文最多一笔在途事务；
@@ -201,15 +209,21 @@ class ysyx_26030103_PTWPipeline(
     d | (1.U << pteConfig.aBit) |
       Mux(isStore, 1.U << pteConfig.dBit, 0.U(pteWidth.W))
 
+  // 这些函数接收 normalizePte 之后的内部 PTE：标志位固定在 bit0..7，
+  // PPN 位置仍由 pteConfig 决定。CUSTOM 私有标志位置不能用于解释
+  // 归一化结果。
   private def isLeaf(d: UInt): Bool =
-    Cat(d(pteConfig.writeBit), d(pteConfig.readBit), d(pteConfig.executeBit)) =/= 0.U
+    Cat(d(2), d(1), d(3)) =/= 0.U // 归一化 W/R/X = bit2/1/3
   private def leafAllowed(level: UInt): Bool =
     superpage.B || level === (levels - 1).U
   private def reservedFault(d: UInt): Bool =
     if (pteConfig.ppnHigh + 1 >= pteWidth) false.B
     else d(pteWidth - 1, pteConfig.ppnHigh + 1) =/= 0.U
+  // PPN 字段以上的保留位随 pteConfig 移动；标准 Sv39/Sv48 即 PTE[63:54]，
+  // CUSTOM 重新定义 PPN 高位时不能继续硬编码 54。
   private def rawReservedFault(raw: UInt): Bool =
-    if (XLEN <= 32 || pteWidth <= 32) false.B else raw(pteWidth - 1, 54) =/= 0.U
+    if (XLEN <= 32 || pteWidth <= 32 || pteConfig.ppnHigh + 1 >= pteWidth) false.B
+    else raw(pteWidth - 1, pteConfig.ppnHigh + 1) =/= 0.U
   private def superpageMisaligned(d: UInt, level: UInt): Bool = {
     if (levels <= 1) false.B
     else {
@@ -220,7 +234,7 @@ class ysyx_26030103_PTWPipeline(
     }
   }
   private def walkFault(d: UInt, level: UInt): Bool =
-    !d(pteConfig.validBit) || reservedFault(d) ||
+    !d(0) || reservedFault(d) || // 归一化 valid = bit0
       (isLeaf(d) && (!leafAllowed(level) || superpageMisaligned(d, level))) ||
       (!isLeaf(d) && level === (levels - 1).U)
   private def leafFaultOf(d: UInt, privilege: UInt, access: UInt,
@@ -228,24 +242,20 @@ class ysyx_26030103_PTWPipeline(
     val isFetch = access === ysyx_26030103_AccessType.Fetch
     val isStore = access === ysyx_26030103_AccessType.Store
     val userFault =
-      if (hasU) privilege === 0.U && !d(pteConfig.userBit) else false.B
+      if (hasU) privilege === 0.U && !d(4) else false.B
     val sumFault =
-      if (hasU) privilege === 1.U && d(pteConfig.userBit) &&
-        (!sum || isFetch) else false.B
-    val fetchFault = isFetch && !d(pteConfig.executeBit)
-    val readFault = !isFetch && !isStore && !d(pteConfig.readBit) &&
-      !(mxr && d(pteConfig.executeBit))
-    val writeFault = isStore && !d(pteConfig.writeBit)
+      if (hasU) privilege === 1.U && d(4) && (!sum || isFetch) else false.B
+    val fetchFault = isFetch && !d(3)
+    val readFault = !isFetch && !isStore && !d(1) && !(mxr && d(3))
+    val writeFault = isStore && !d(2)
     val adFault = adMode match {
-      case "fault" => !d(pteConfig.aBit) ||
-        (isStore && !d(pteConfig.dBit))
+      case "fault" => !d(6) || (isStore && !d(7))
       case _       => false.B
     }
     userFault || sumFault || fetchFault || readFault || writeFault || adFault
   }
   private def needsAdUpdate(d: UInt, isStore: Bool): Bool = adMode match {
-    case "hardware" => d(pteConfig.validBit) &&
-      (!d(pteConfig.aBit) || (isStore && !d(pteConfig.dBit)))
+    case "hardware" => d(0) && (!d(6) || (isStore && !d(7)))
     case _          => false.B
   }
   private def pageFaultCause(access: UInt): UInt = {
@@ -512,7 +522,9 @@ class ysyx_26030103_PTWPipeline(
     }.elsewhen(leaf) {
       when(needsAdUpdate(d, isStore)) {
         ctx(resolveCtx).needWrite := true.B
-        ctx(resolveCtx).writeData := adRaw(d, isStore)
+        // A/D 写回必须基于原始 PTE 的字段位置，不能对归一化 PTE 使用
+        // pteConfig 的私有位置。
+        ctx(resolveCtx).writeData := adRaw(resolveRaw, isStore)
       }.otherwise {
         ctx(resolveCtx).done := true.B
         ctx(resolveCtx).resp.paddr := paddrOf(d, level, vaddr)

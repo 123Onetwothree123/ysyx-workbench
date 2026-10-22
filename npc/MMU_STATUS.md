@@ -1,4 +1,4 @@
-# NPC Sv32/Sv39/Sv48 MMU/TLB 状态
+# NPC Sv32/Sv39/Sv48 与 RV64 CUSTOM MMU/TLB 状态
 
 ## 已接入
 
@@ -6,16 +6,27 @@
 - RV64 标准 Sv39：4KiB 页、3 级页表（9+9+9+12）、8B PTE、44 位 PPN；
   `satp.MODE=8`、ASID 16 位、PPN 44 位。Sv48 复用同一套参数化
   walker/TLB：4 级（9+9+9+9+12）、`satp.MODE=9`；未配置对应几何时
-  satp 写入按 WARL 收敛到 Bare(0)，非标准 RV64 几何在 elaboration 期
-  明确报错。
-- 64 位 PTE 支持完整 PPN[53:10]、A/D 硬件写回（只写低 32 位字）与
-  超级页 PPN 对齐检查；Sv39/Sv48 非规范虚拟地址在 TLB 查找前产生
-  页错误，不会与低位别名命中。
+  satp 写入按 WARL 收敛到 Bare(0)。
+- RV64 显式 CUSTOM 模式（`MMU_GEOMETRY_MODE=custom`）：允许非标准
+  页大小、1..4 级页表、任意 2 的幂页表项数、4B/8B PTE 以及私有 PTE
+  字段位置。CUSTOM 使用保留的 `satp.MODE=10..15` 作为非标准扩展，
+  标准 8/9 的语义完全不变；在 CUSTOM 几何下写入 8/9 会按 WARL
+  收敛到 Bare(0)。示例配置：
+  - 1KiB 页 + 3 级 + 每级 2048 项（11 位索引）→ 43 位 VA，
+    `MMU_CUSTOM_SATP_MODE=10`；
+  - 2KiB 页 + 4 级 + 每级 512 项（9 位索引）→ 47 位 VA。
+  `configs/rv64_custom_page_defconfig` 提供 1KiB 示例。
+- 64 位 PTE 支持完整 PPN 字段、A/D 硬件写回（只写低 32 位字，因此
+  CUSTOM 的 A/D 位必须位于低字）与超级页 PPN 对齐检查；
+  STANDARD/CUSTOM 非规范虚拟地址都在 TLB 查找前产生页错误，不会与
+  低位别名命中。CUSTOM 下 satp MODE 与配置不匹配也会直接页错误，
+  不会用私有几何继续翻译标准模式请求。
 - `satp`、`mstatus`、`sepc`、`stval` 等 CSR 在 RV64 下保持 64 位；
-  `sstatus.SUM/MXR` 字段可写并参与 Sv39 权限检查。
-- 可配置页大小、页表级数、PTE 大小（4/8B）、每级页表项数；RTL 要求
-  `pageBits + levels * indexBits` 等于 32（Sv32）、39（Sv39）或 48（Sv48），
-  支持 1..4 级和 4B/8B PTE。
+  `sstatus.SUM/MXR` 字段可写并参与 Sv39/CUSTOM 权限检查。
+- 可配置页大小、页表级数、PTE 大小（4/8B）、每级页表项数；RV32
+  自定义几何和 STANDARD Sv32/Sv39/Sv48 保持原有约束。CUSTOM 要求
+  `pageBits + levels*indexBits` 在 2..64 之间，且
+  `pageBits + PPN 位宽 <= 64`，否则 elaboration 明确报错。
 - M 模式旁路；S/U 模式经 `satp` 翻译。
 - `satp`、`sstatus`、`stvec`、`sepc`、`scause`、`stval`、`sscratch`、
   `medeleg`、`mideleg`、`mie/mip/sie/sip`。
@@ -100,7 +111,10 @@ CacheAliasScan（8/16/32 set、all_sets/serial、Reg/SRAM、扫描期间 stall�
 CachePiptLargeLine（line > page、物理索引/回填、跨 64B 页偏移）、
 LSUMMUVipt、LSUVipt、LSUDmmuVipt、LSUStoreVipt；以及 RV64 定向测试：
 Sv39 三级 walk/权限/U-SUM/R-W-X/超级页/A-D/非规范地址、
-Sv48 四级 walk、Sv39 TLB refill、64 位 satp WARL 与 sepc/stval。
+Sv48 四级 walk、Sv39 TLB refill、64 位 satp WARL 与 sepc/stval；
+RV64 CUSTOM：1KiB/3 级与 2KiB/4 级几何、43/47 位 VA、私有 PTE
+字段位置、CUSTOM 超级页、TLB refill、权限/A/D、非规范 VA、
+标准 MODE 拒绝与标准 Sv39/Sv48、RV32 自定义几何回归。
 ```
 
 裸机测试（MMU 开启）：
@@ -149,10 +163,17 @@ Sv48：csrc/Test/rv64-sv48-test HIT GOOD
 - `HAS_MMU=y` 要求 `HAS_S=y`；`HAS_S=n + HAS_MMU=y` 即使
   `HAS_U=y` 也会在 elaboration 前明确报错，不会静默保留 S 逻辑。
   `HAS_TLB=y` 且 `HAS_MMU=n` 时 TLB 按未启用处理。
-- `XLEN=64 + HAS_MMU=y` 只接受标准 Sv39/Sv48：`MMU_LEVELS=3/4`、
-  `MMU_PTE_SIZE_BYTES=8`、`MMU_PTE_FORMAT=riscv64`、
-  `MMU_PAGE_TABLE_SIZE_BYTES=4096`。使用 `configs/rv64_mmu_defconfig`
-  可直接生成 Sv39 + TLB 配置。
+- `XLEN=64 + HAS_MMU=y` 默认（STANDARD）只接受标准 Sv39/Sv48：
+  `MMU_LEVELS=3/4`、`MMU_PTE_SIZE_BYTES=8`、`MMU_PTE_FORMAT=riscv64`、
+  `MMU_PAGE_TABLE_SIZE_BYTES=4096`、`MMU_PAGE_SIZE_BYTES=4096`。
+  使用 `configs/rv64_mmu_defconfig` 可生成 Sv39 + TLB 配置。
+- 非标准 RV64 几何必须显式设置 `MMU_GEOMETRY_MODE=custom`，并选择
+  10..15 的 `MMU_CUSTOM_SATP_MODE`。生成器会在 JSON/header/env 中
+  写入 `geometry_mode`、`non_standard` 和 `custom_satp_mode`；私有
+  PTE 字段位置还必须使用 `MMU_PTE_FORMAT=custom`，否则按“伪装成
+  标准编码”拒绝。`configs/rv64_custom_page_defconfig` 是 1KiB 示例。
+- RV32 的既有自定义 32 位几何不变，仍使用 `satp.MODE=1`；
+  `MMU_GEOMETRY_MODE=custom` 仅用于 RV64。
 - 默认 `HAS_S=y/HAS_U=y` 时行为与原来一致；RV32/Sv32 的默认端子宽度
   与既有实现保持一致（MMURequest/PTW/TLB 默认 32 位）。
 
@@ -172,6 +193,13 @@ Sv48：csrc/Test/rv64-sv48-test HIT GOOD
 - 剩余限制：PTW 内部页表总线可配置到 16 笔，但下游 4 位 AXI ID 在保留
   ICache/LSU/DMA 后只剩 13 个 PTW 槽；更多请求会在 PTWToAXI 队列等待，
   不再退化为单笔串行，也不影响功能正确性。
+- CUSTOM 限制：页表级数受 TLB fillLevel 2 位限制为 1..4；有效 VA
+  必须 2..64 位；`pageBits + PPN 位宽 <= 64`；RV64 satp.PPN 固定
+  44 位，因此 `pageBits <= 20`（页大小上限 1MiB）；A/D 硬件写回仍只
+  更新低 32 位字，因此 8B PTE 的 A/D 位落在高字时 elaboration 拒绝。
+  PTE 标志位不能彼此重叠、不能与 PPN 字段重叠，也不能占用 PPN 高位
+  以上的保留位区域。这些组合无法用现有 satp/页表格式/32 位页表写端口
+  正确表达，已明确报错。
 - Sv48 已完成参数化 walker/TLB、顶层 elaboration、PTW 四级 walk
   单元测试与独立裸机镜像 `csrc/Test/rv64-sv48-test`
   （`configs/rv64_sv48_defconfig`，独立 `BUILD_DIR` 构建）。默认裸机

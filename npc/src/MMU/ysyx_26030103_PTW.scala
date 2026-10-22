@@ -89,6 +89,11 @@ class ysyx_26030103_PTW(
   // 仍允许 8B PTE 配默认 32 位字段模板（兼容既有测试与实验 profile）。
   require(XLEN == 32 || pteConfig.pteBits == pteSizeBytes * 8,
     "RV64 PTW 的 PTE 字段配置位宽必须与 PTE 大小一致")
+  // 8B PTE 的 A/D 硬件写回走现有 32 位页表写端口，只更新低字。若 A/D
+  // 位落在高字，无法正确写回；必须在 elaboration 期拒绝而不是静默丢失。
+  require(adMode != "hardware" || pteSizeBytes <= 4 ||
+    (pteConfig.aBit < 32 && pteConfig.dBit < 32),
+    "64 位 PTE 的 A/D 硬件写回要求 A/D 位位于低 32 位字内")
   private val pteShift = log2Ceil(pteSizeBytes)
   private val pteBytes = pteSizeBytes
   private val pteWidth = pteBytes * 8
@@ -100,6 +105,11 @@ class ysyx_26030103_PTW(
   private val indexBits = log2Ceil(tableEntries)
   require(pageBits + levels * indexBits == vaBits,
     s"pageBits($pageBits) + levels($levels)*indexBits($indexBits) 必须等于 $vaBits")
+  // 超级页 PPN 的低 (levels-1)*indexBits 位必须可检查；PPN 字段更窄时
+  // 对齐掩码会溢出，必须拒绝而不是静默截断。
+  require(!(superpage || fillSuperpage) ||
+    ptePpnBits >= (levels - 1) * indexBits,
+    s"超级页对齐位(${(levels - 1) * indexBits})超过 PTE PPN 位宽($ptePpnBits)")
   if (cacheEnable) {
     require(cacheEntries > 0 && (cacheEntries & (cacheEntries - 1)) == 0,
       "PTW cache entries 必须是 2 的幂")
@@ -223,16 +233,24 @@ class ysyx_26030103_PTW(
     d | (1.U << pteConfig.aBit) |
       Mux(isStore, 1.U << pteConfig.dBit, 0.U(pteWidth.W))
 
+  // 以下函数接收的是 normalizePte 之后的内部 PTE：标志位固定在低 8 位，
+  // 只有 PPN 位置仍由 pteConfig 决定。绝不能再用 pteConfig 的原始标志
+  // 位置去解释归一化结果，否则 CUSTOM 的私有 PTE 布局会被误判。
   def isLeaf(d: UInt): Bool =
-    Cat(d(pteConfig.writeBit), d(pteConfig.readBit), d(pteConfig.executeBit)) =/= 0.U
+    Cat(d(2), d(1), d(3)) =/= 0.U // 归一化 W/R/X = bit2/1/3
   def leafAllowed(d: UInt): Bool = superpage.B || levelReg === (levels - 1).U
   /** 非叶子 PTE 的保留位（PPN 高位以外）必须为 0。 */
   def reservedFault(d: UInt): Bool =
     if (pteConfig.ppnHigh + 1 >= pteWidth) false.B
     else d(pteWidth - 1, pteConfig.ppnHigh + 1) =/= 0.U
-  /** Sv39/Sv48 的 PTE[63:54] 为保留位，非零必须 page fault。 */
+  /** PPN 字段以上的 PTE 位为保留位，非零必须 page fault。
+    *
+    * 标准 Sv39/Sv48 的 PPN 到 bit53，因此对应 PTE[63:54]；CUSTOM 允许
+    * 重新定义 PPN 高位，保留区必须随 pteConfig 一起移动，不能硬编码 54。
+    */
   def rawReservedFault(raw: UInt): Bool =
-    if (XLEN <= 32 || pteWidth <= 32) false.B else raw(pteWidth - 1, 54) =/= 0.U
+    if (XLEN <= 32 || pteWidth <= 32 || pteConfig.ppnHigh + 1 >= pteWidth) false.B
+    else raw(pteWidth - 1, pteConfig.ppnHigh + 1) =/= 0.U
   /** 超级页 PPN 的低位必须按层级对齐。 */
   def superpageMisaligned(d: UInt): Bool = {
     if (levels <= 1) false.B
@@ -244,32 +262,29 @@ class ysyx_26030103_PTW(
     }
   }
   def walkFault(d: UInt): Bool =
-    !d(pteConfig.validBit) || reservedFault(d) ||
+    !d(0) || reservedFault(d) || // 归一化 valid = bit0
       (isLeaf(d) && (!leafAllowed(d) || superpageMisaligned(d))) ||
       (!isLeaf(d) && levelReg === (levels - 1).U)
   def leafFaultOf(d: UInt): Bool = {
+    // d 是归一化 PTE，标志布局固定：V/R/W/X/U/G/A/D = bit0..7。
     // HAS_U=n 时 U 级不存在，U 位与 SUM 检查固定为不适用；
     // R/W/X、A/D 等其余页表权限仍然正常检查。
     val userFault =
-      if (hasU) privRegOpt.get === 0.U && !d(pteConfig.userBit) else false.B
+      if (hasU) privRegOpt.get === 0.U && !d(4) else false.B
     val sumFault =
-      if (hasU) privRegOpt.get === 1.U && d(pteConfig.userBit) &&
-        (!sumRegOpt.get || isFetch)
+      if (hasU) privRegOpt.get === 1.U && d(4) && (!sumRegOpt.get || isFetch)
       else false.B
-    val fetchFault = isFetch && !d(pteConfig.executeBit)
-    val readFault = !isFetch && !isStore && !d(pteConfig.readBit) &&
-      !(mxrReg && d(pteConfig.executeBit))
-    val writeFault = isStore && !d(pteConfig.writeBit)
+    val fetchFault = isFetch && !d(3)
+    val readFault = !isFetch && !isStore && !d(1) && !(mxrReg && d(3))
+    val writeFault = isStore && !d(2)
     val adFault = adMode match {
-      case "fault" => !d(pteConfig.aBit) ||
-        (isStore && !d(pteConfig.dBit))
+      case "fault" => !d(6) || (isStore && !d(7))
       case _       => false.B
     }
     userFault || sumFault || fetchFault || readFault || writeFault || adFault
   }
   def needsAdUpdate(d: UInt): Bool = adMode match {
-    case "hardware" => d(pteConfig.validBit) &&
-      (!d(pteConfig.aBit) || (isStore && !d(pteConfig.dBit)))
+    case "hardware" => d(0) && (!d(6) || (isStore && !d(7)))
     case _          => false.B
   }
   /** 给 TLB 的填充层级：0=基础页，k=第 k 级超级页。

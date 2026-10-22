@@ -20,8 +20,11 @@ class ysyx_26030103_MMU(
   require(profile.pageBits + profile.levels * profile.indexBitsPerLevel ==
     profile.computedAddressBits,
     "pageBits + levels*indexBits 必须等于 profile 的有效虚拟地址位数")
-  require(profile.xlen == 32 || profile.standardSv39 || profile.standardSv48,
-    "RV64 MMU 只支持标准 Sv39/Sv48 几何")
+  // RV64 默认只接受标准 Sv39/Sv48；非标准页几何必须由 CUSTOM 模式显式
+  // 打开，并使用独立的 satp MODE 编码，避免把私有几何当成标准页表格式。
+  require(profile.xlen == 32 || profile.customGeometry ||
+    profile.standardSv39 || profile.standardSv48,
+    "RV64 MMU 只支持 STANDARD Sv39/Sv48，或显式 CUSTOM 几何")
   private val xlen = profile.xlen
   private val addressWidth = if (xlen == 64) 64 else 32
   private val vaBits = profile.computedAddressBits
@@ -366,8 +369,19 @@ class ysyx_26030103_MMU(
     !profile.enabled.B || satpModeOf(lookupReq(p).satp) === 0.U ||
     lookupReq(p).privilege === 3.U
   })
+  // 只有配置对应的 MODE 才允许翻译。CSR 已对 satp.MODE 做 WARL 收敛，
+  // 这里再检查一次直接驱动 MMU 的场景：CUSTOM 下写入标准 8/9，或
+  // STANDARD 下写入另一标准模式，都必须产生页错误，不能拿另一种页表
+  // 几何继续翻译。
+  val laneModeInvalid = VecInit((0 until lookupPorts).map { p =>
+    !laneBypass(p) && satpModeOf(lookupReq(p).satp) =/= profile.satpMode.U
+  })
   val laneNonCanonical = VecInit((0 until lookupPorts).map { p =>
     !laneBypass(p) && !canonicalOk(lookupReq(p).vaddr)
+  })
+  // 模式错误优先于非规范地址：两者都只产生页错误，不会访问页表。
+  val laneAddressFault = VecInit((0 until lookupPorts).map { p =>
+    laneModeInvalid(p) || laneNonCanonical(p)
   })
 
   val ptwDoneVec       = VecInit((0 until profile.refillPorts).map(p => ptw.io.resp(p).valid))
@@ -396,11 +410,11 @@ class ysyx_26030103_MMU(
   // 都延迟到下一拍，避免 TLB 和 PTW 争用响应表写端口。
   val laneHitDone    = VecInit((0 until lookupPorts).map { p =>
     !anyPtwDone && lookupValid(p) && profile.tlbEnabled.B &&
-    !laneBypass(p) && !laneNonCanonical(p) &&
+    !laneBypass(p) && !laneAddressFault(p) &&
     laneTlbValid(p) && laneTlbHit(p)
   })
-  val laneCanonicalFaultDone = VecInit((0 until lookupPorts).map { p =>
-    !anyPtwDone && lookupValid(p) && !laneBypass(p) && laneNonCanonical(p)
+  val laneAddressFaultDone = VecInit((0 until lookupPorts).map { p =>
+    !anyPtwDone && lookupValid(p) && !laneBypass(p) && laneAddressFault(p)
   })
   val laneBypassDone = VecInit((0 until lookupPorts).map { p =>
     !anyPtwDone && lookupValid(p) && laneBypass(p)
@@ -429,7 +443,7 @@ class ysyx_26030103_MMU(
     0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))))
   val laneBypassResponse = WireInit(VecInit(Seq.fill(lookupPorts)(
     0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))))
-  val laneCanonicalFaultResponse = WireInit(VecInit(Seq.fill(lookupPorts)(
+  val laneAddressFaultResponse = WireInit(VecInit(Seq.fill(lookupPorts)(
     0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))))
   for (p <- 0 until lookupPorts) {
     laneHitResponse(p).id    := lookupReq(p).id
@@ -444,13 +458,13 @@ class ysyx_26030103_MMU(
     laneBypassResponse(p).cause := 0.U
     laneBypassResponse(p).tval  := lookupReq(p).vaddr
 
-    laneCanonicalFaultResponse(p).id    := lookupReq(p).id
-    laneCanonicalFaultResponse(p).paddr := 0.U
-    laneCanonicalFaultResponse(p).fault := true.B
-    laneCanonicalFaultResponse(p).cause := Mux(
+    laneAddressFaultResponse(p).id    := lookupReq(p).id
+    laneAddressFaultResponse(p).paddr := 0.U
+    laneAddressFaultResponse(p).fault := true.B
+    laneAddressFaultResponse(p).cause := Mux(
       lookupReq(p).access === ysyx_26030103_AccessType.Fetch, 12.U,
       Mux(lookupReq(p).access === ysyx_26030103_AccessType.Store, 15.U, 13.U))
-    laneCanonicalFaultResponse(p).tval  := lookupReq(p).vaddr
+    laneAddressFaultResponse(p).tval  := lookupReq(p).vaddr
   }
 
   // 两个查找端口可以在同一拍各写一个响应表项；表项按请求序号索引，
@@ -464,9 +478,9 @@ class ysyx_26030103_MMU(
     }
   }
   for (p <- 0 until lookupPorts) {
-    when(laneCanonicalFaultDone(p)) {
+    when(laneAddressFaultDone(p)) {
       writeResponse(true.B, lookupIndex(p), ctxSeq(lookupIndex(p)),
-        laneCanonicalFaultResponse(p))
+        laneAddressFaultResponse(p))
     }.elsewhen(laneHitDone(p)) {
       writeResponse(true.B, lookupIndex(p), ctxSeq(lookupIndex(p)), laneHitResponse(p))
     }.elsewhen(laneBypassDone(p)) {
@@ -479,7 +493,7 @@ class ysyx_26030103_MMU(
   // 未就绪时上下文留在 ctxLookup，下一拍继续查找。
   val laneMiss = VecInit((0 until lookupPorts).map { p =>
     lookupValid(p) && profile.tlbEnabled.B && !laneBypass(p) &&
-    !laneNonCanonical(p) && laneTlbValid(p) && !laneTlbHit(p)
+    !laneAddressFault(p) && laneTlbValid(p) && !laneTlbHit(p)
   })
   def laneFetch(p: Int): Bool =
     lookupReq(p).access === ysyx_26030103_AccessType.Fetch
@@ -561,7 +575,7 @@ class ysyx_26030103_MMU(
   // 无 TLB 时没有 miss queue，保留原行为：ctxLookup 直接占用 PTW。
   val directIssueNeeded =
     !profile.tlbEnabled.B && lookupValid(0) && !laneBypass(0) &&
-      !laneNonCanonical(0) && !anyPtwDone && anyFreeWalk && !io.flush
+      !laneAddressFault(0) && !anyPtwDone && anyFreeWalk && !io.flush
   val issueCtx          = Mux(directIssueNeeded, lookupIndex(0), queueCtx)
 
   def requestPtw(ctxIndex: UInt): Unit = {

@@ -552,9 +552,10 @@ class ysyx_26030103_CSR(
         // Sv32 satp.MODE 只支持 0/1。
         SatpReg := Cat(Mux(data(31), 1.U(1.W), 0.U(1.W)), data(30, 0))
       } else {
-        // RV64 satp：MODE[63:60]=0/8(Sv39)/9(Sv48)，ASID[59:44]，
-        // PPN[43:0]。未配置的 MODE 编码按 WARL 收敛到 Bare(0)，
-        // 不会在几何不匹配时静默产生错误翻译。
+        // RV64 satp：MODE[63:60]。标准模式只有 0/8(Sv39)/9(Sv48)；
+        // 显式 CUSTOM 几何使用独立的保留编码 10..15（非标准扩展）。
+        // 未配置/不匹配的 MODE 按 WARL 收敛到 Bare(0)，不会在几何
+        // 不匹配时静默产生错误翻译，也不会把 CUSTOM 伪装成 Sv39/Sv48。
         val requested = data(63, 60)
         val legalMode = Mux(
           requested === 0.U, 0.U(4.W),

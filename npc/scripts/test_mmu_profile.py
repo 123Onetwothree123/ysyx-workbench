@@ -63,11 +63,117 @@ class MmuProfileTest(unittest.TestCase):
         self.assertEqual(profile["mmu"]["satp_mode"], 8)
         self.assertEqual(profile["mmu"]["pte"]["ppn_high"], 53)
 
-    def test_rv64_rejects_nonstandard_geometry(self):
+    def test_rv64_rejects_nonstandard_geometry_in_standard_mode(self):
         values = self.base()
         values.update({"XLEN": 64})
         with self.assertRaisesRegex(ValueError, "Sv39"):
             build_profile(Config(values))
+
+    def test_rv64_custom_1k_page_geometry(self):
+        values = self.base()
+        values.update({
+            "XLEN": 64,
+            "MMU_GEOMETRY_MODE": "custom",
+            "MMU_CUSTOM_SATP_MODE": 10,
+            "MMU_PAGE_SIZE_BYTES": 1024,
+            "MMU_LEVELS": 3,
+            "MMU_PTE_SIZE_BYTES": 8,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 16384,
+            "MMU_PTE_FORMAT": "custom",
+            "TLB_ASID_BITS": 16,
+        })
+        profile = build_profile(Config(values))
+        self.assertTrue(profile["mmu"]["non_standard"])
+        self.assertEqual(profile["mmu"]["geometry_mode"], "custom")
+        self.assertEqual(profile["mmu"]["satp_mode"], 10)
+        self.assertEqual(profile["mmu"]["page_bits"], 10)
+        self.assertEqual(profile["mmu"]["table_entries"], 2048)
+        self.assertEqual(profile["mmu"]["index_bits_per_level"], 11)
+        self.assertEqual(profile["mmu"]["virtual_address_bits"], 43)
+        self.assertFalse(profile["standard_sv39"])
+        self.assertTrue(profile["warnings"])
+
+    def test_rv64_custom_2k_page_4level_geometry(self):
+        values = self.base()
+        values.update({
+            "XLEN": 64,
+            "MMU_GEOMETRY_MODE": "custom",
+            "MMU_CUSTOM_SATP_MODE": 11,
+            "MMU_PAGE_SIZE_BYTES": 2048,
+            "MMU_LEVELS": 4,
+            "MMU_PTE_SIZE_BYTES": 8,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 4096,
+            "MMU_PTE_FORMAT": "custom",
+            "TLB_ASID_BITS": 16,
+        })
+        profile = build_profile(Config(values))
+        self.assertEqual(profile["mmu"]["virtual_address_bits"], 47)
+        self.assertEqual(profile["mmu"]["satp_mode"], 11)
+
+    def test_rv64_custom_4byte_pte(self):
+        values = self.base()
+        values.update({
+            "XLEN": 64,
+            "MMU_GEOMETRY_MODE": "custom",
+            "MMU_CUSTOM_SATP_MODE": 12,
+            "MMU_PAGE_SIZE_BYTES": 1024,
+            "MMU_LEVELS": 3,
+            "MMU_PTE_SIZE_BYTES": 4,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 8192,
+            "MMU_PTE_FORMAT": "custom",
+            "TLB_ASID_BITS": 16,
+        })
+        profile = build_profile(Config(values))
+        self.assertEqual(profile["mmu"]["pte_size_bytes"], 4)
+        self.assertEqual(profile["mmu"]["virtual_address_bits"], 43)
+
+    def test_rv64_custom_rejects_standard_satp_mode(self):
+        values = self.base()
+        values.update({
+            "XLEN": 64,
+            "MMU_GEOMETRY_MODE": "custom",
+            "MMU_CUSTOM_SATP_MODE": 8,
+            "MMU_PAGE_SIZE_BYTES": 1024,
+            "MMU_LEVELS": 3,
+            "MMU_PTE_SIZE_BYTES": 8,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 16384,
+            "MMU_PTE_FORMAT": "custom",
+        })
+        with self.assertRaisesRegex(ValueError, "satp MODE"):
+            build_profile(Config(values))
+
+    def test_rv64_custom_rejects_unrepresentable_geometry(self):
+        values = self.base()
+        values.update({
+            "XLEN": 64,
+            "MMU_GEOMETRY_MODE": "custom",
+            "MMU_CUSTOM_SATP_MODE": 10,
+            "MMU_PAGE_SIZE_BYTES": 2 * 1024 * 1024,
+            "MMU_LEVELS": 3,
+            "MMU_PTE_SIZE_BYTES": 8,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 16384,
+            "MMU_PTE_FORMAT": "custom",
+        })
+        with self.assertRaisesRegex(ValueError, "无法表达"):
+            build_profile(Config(values))
+
+    def test_custom_mode_is_rv64_only(self):
+        values = self.base()
+        values["MMU_GEOMETRY_MODE"] = "custom"
+        with self.assertRaisesRegex(ValueError, "RV64"):
+            build_profile(Config(values))
+
+    def test_rv32_legacy_custom_geometry_still_works(self):
+        values = self.base()
+        values.update({
+            "MMU_PAGE_SIZE_BYTES": 1024,
+            "MMU_LEVELS": 2,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 8192,
+        })
+        profile = build_profile(Config(values))
+        self.assertEqual(profile["mmu"]["satp_mode"], 1)
+        self.assertEqual(profile["mmu"]["virtual_address_bits"], 32)
+        self.assertFalse(profile["mmu"]["non_standard"])
 
     def test_nonstandard_page_size_is_described(self):
         values = self.base()
