@@ -32,7 +32,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 高字单独输出，C++ 侧按 XLEN 拼成完整 64 位，避免 RV64 地址/PC 被截断。
   private def DebugHi(Value: UInt): UInt =
     if (XLEN == 64) Value(63, 32) else 0.U(32.W)
-  val io = IO(new ysyx_26030103_IO)
+  // 顶层 AXI 端口宽度由实际生效的 SoC XLEN 决定；CPU 内部地址/数据
+  // 宽度不能直接决定这个 ABI。
+  val io = IO(new ysyx_26030103_IO(config.EffectiveSocXLEN))
   val ifu = Module(new ysyx_26030103_IFU(config.ResetAddr, XLEN))
   val idu = Module(new ysyx_26030103_IDU(config))
   val exu = Module(new ysyx_26030103_EXU(config))
@@ -577,28 +579,27 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   arbiter.io.memory.B <> xbar.io.in.B
   arbiter.io.memory.AR <> xbar.io.in.AR
   arbiter.io.memory.R <> xbar.io.in.R
-  // SoC 边界：内部 Xbar/PMA/Cache 使用 AddressWidth（RV64 为 64），
-  // 而 ysyxSoC 的 CPU AXI 黑盒接口固定 32 位地址。Xbar 已保证只有
-  // 落在低 4GiB PMA 的请求才会到达 SoCBus；这里再显式检查高位，
-  // 任何越界请求都应先在 Xbar 内变成 DECERR，而不是被静默截断后访问
-  // 错误外设。超过 4GiB 的物理地址能力由叶模块/Xbar 定向测试覆盖。
-  private def SoCBoundaryAddress(Address: UInt): UInt = {
-    if (config.AddressWidth == 32) Address
-    else {
-      assert(
-        Address(config.AddressWidth - 1, 32) === 0.U,
-        "SoC AXI has only 32 address bits; Xbar forwarded an address above 4GiB"
-      )
-      Address(31, 0)
-    }
-  }
-  private def SoCSlaveAddress(Address: UInt): UInt = {
-    if (config.AddressWidth == 32) Address
-    else Cat(0.U((config.AddressWidth - 32).W), Address)
-  }
-  val soc = xbar.io.SoCBus
+  // SoC 边界：NPC 内部 Xbar/PMA/Cache 固定使用 32 位数据 beat，
+  // 地址宽度为 AddressWidth（RV64 为 64）；ysyxSoC 的 CPU AXI 端口
+  // 宽度由 EffectiveSocXLEN 独立决定。桥在边界完成：
+  //   - 32<->64 数据宽度转换（含 8 字节两拍访问、WSTRB、RLAST）；
+  //   - 64->32 地址越界检查，越界整笔事务在本地 DECERR，绝不截断；
+  //   - SoC64 时完整保留 64 位地址。
+  private val SocXLEN = config.EffectiveSocXLEN
+  val socMasterBridge = Module(
+    new ysyx_26030103_AXI5WidthBridge(
+      UpstreamAddressWidth = config.AddressWidth,
+      DownstreamAddressWidth = SocXLEN,
+      UpstreamDataWidth = 32,
+      DownstreamDataWidth = SocXLEN,
+      IdWidth = 4
+    )
+  )
+  socMasterBridge.io.in <> xbar.io.SoCBus
+  val soc = socMasterBridge.io.out
+
   io.master_awvalid := soc.AW.AWVALID
-  io.master_awaddr := SoCBoundaryAddress(soc.AW.AWADDR)
+  io.master_awaddr := soc.AW.AWADDR
   io.master_awid := soc.AW.AWID
   io.master_awlen := soc.AW.AWLEN
   io.master_awsize := soc.AW.AWSIZE
@@ -621,7 +622,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   soc.B.BRESP := io.master_bresp
 
   io.master_arvalid := soc.AR.ARVALID
-  io.master_araddr := SoCBoundaryAddress(soc.AR.ARADDR)
+  io.master_araddr := soc.AR.ARADDR
   io.master_arid := soc.AR.ARID
   io.master_arlen := soc.AR.ARLEN
   io.master_arsize := soc.AR.ARSIZE
@@ -642,89 +643,104 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // ChipLink对端的DMA请求从CPU slave入站。该窗口的实体存储位于
   // FPGA侧：请求经本仲裁器和CPU master送回ChipLink后，在对端
   // master_mem/SimAXIMem终止。这是受控的hairpin proxy，不是无限环回。
+  //
+  // SoC64 的 slave 端口是 64 位地址/数据，而 NPC 内部 DMA 仲裁器仍是
+  // 32 位数据 beat。入站方向同样经过桥：64->32 拆拍、聚合 B、拼回 R；
+  // 高地址在桥内 DECERR。SoC32 时桥退化为同宽直通，行为与旧版一致。
+  val socSlaveBridge = Module(
+    new ysyx_26030103_AXI5WidthBridge(
+      UpstreamAddressWidth = SocXLEN,
+      DownstreamAddressWidth = config.AddressWidth,
+      UpstreamDataWidth = SocXLEN,
+      DownstreamDataWidth = 32,
+      IdWidth = 4
+    )
+  )
+  socSlaveBridge.io.in.AW.AWVALID := io.slave_awvalid
+  socSlaveBridge.io.in.AW.AWADDR := io.slave_awaddr
+  socSlaveBridge.io.in.AW.AWID := io.slave_awid
+  socSlaveBridge.io.in.AW.AWLEN := io.slave_awlen
+  socSlaveBridge.io.in.AW.AWSIZE := io.slave_awsize
+  socSlaveBridge.io.in.AW.AWBURST := io.slave_awburst
+  socSlaveBridge.io.in.AW.AWPROT := io.slave_awprot
+  socSlaveBridge.io.in.AW.AWCACHE := io.slave_awcache
+  socSlaveBridge.io.in.AW.AWQOS := io.slave_awqos
+  io.slave_awready := socSlaveBridge.io.in.AW.AWREADY
+
+  socSlaveBridge.io.in.W.WVALID := io.slave_wvalid
+  socSlaveBridge.io.in.W.WDATA := io.slave_wdata
+  socSlaveBridge.io.in.W.WSTRB := io.slave_wstrb
+  socSlaveBridge.io.in.W.WLAST := io.slave_wlast
+  io.slave_wready := socSlaveBridge.io.in.W.WREADY
+
+  io.slave_bvalid := socSlaveBridge.io.in.B.BVALID
+  io.slave_bresp := socSlaveBridge.io.in.B.BRESP
+  io.slave_bid := socSlaveBridge.io.in.B.BID
+  socSlaveBridge.io.in.B.BREADY := io.slave_bready
+
+  socSlaveBridge.io.in.AR.ARVALID := io.slave_arvalid
+  socSlaveBridge.io.in.AR.ARADDR := io.slave_araddr
+  socSlaveBridge.io.in.AR.ARID := io.slave_arid
+  socSlaveBridge.io.in.AR.ARLEN := io.slave_arlen
+  socSlaveBridge.io.in.AR.ARSIZE := io.slave_arsize
+  socSlaveBridge.io.in.AR.ARBURST := io.slave_arburst
+  socSlaveBridge.io.in.AR.ARPROT := io.slave_arprot
+  socSlaveBridge.io.in.AR.ARCACHE := io.slave_arcache
+  socSlaveBridge.io.in.AR.ARQOS := io.slave_arqos
+  io.slave_arready := socSlaveBridge.io.in.AR.ARREADY
+
+  io.slave_rvalid := socSlaveBridge.io.in.R.RVALID
+  io.slave_rresp := socSlaveBridge.io.in.R.RRESP
+  io.slave_rdata := socSlaveBridge.io.in.R.RDATA
+  io.slave_rlast := socSlaveBridge.io.in.R.RLAST
+  io.slave_rid := socSlaveBridge.io.in.R.RID
+  socSlaveBridge.io.in.R.RREADY := io.slave_rready
+
   if (DMAProxyEnable) {
     arbiter.io.dmaAWLock := io.slave_awlock
     arbiter.io.dmaARLock := io.slave_arlock
-    arbiter.io.dma.AW.AWVALID := io.slave_awvalid
-    arbiter.io.dma.AW.AWADDR := SoCSlaveAddress(io.slave_awaddr)
-    arbiter.io.dma.AW.AWID := io.slave_awid
-    arbiter.io.dma.AW.AWLEN := io.slave_awlen
-    arbiter.io.dma.AW.AWSIZE := io.slave_awsize
-    arbiter.io.dma.AW.AWBURST := io.slave_awburst
-    arbiter.io.dma.AW.AWPROT := io.slave_awprot
-    arbiter.io.dma.AW.AWCACHE := io.slave_awcache
-    arbiter.io.dma.AW.AWQOS := io.slave_awqos
-    io.slave_awready := arbiter.io.dma.AW.AWREADY
-
-    arbiter.io.dma.W.WVALID := io.slave_wvalid
-    arbiter.io.dma.W.WDATA := io.slave_wdata
-    arbiter.io.dma.W.WSTRB := io.slave_wstrb
-    arbiter.io.dma.W.WLAST := io.slave_wlast
-    io.slave_wready := arbiter.io.dma.W.WREADY
-
-    arbiter.io.dma.B.BREADY := io.slave_bready
-    io.slave_bvalid := arbiter.io.dma.B.BVALID
-    io.slave_bresp := arbiter.io.dma.B.BRESP
-    io.slave_bid := arbiter.io.dma.B.BID
-
-    arbiter.io.dma.AR.ARVALID := io.slave_arvalid
-    arbiter.io.dma.AR.ARADDR := SoCSlaveAddress(io.slave_araddr)
-    arbiter.io.dma.AR.ARID := io.slave_arid
-    arbiter.io.dma.AR.ARLEN := io.slave_arlen
-    arbiter.io.dma.AR.ARSIZE := io.slave_arsize
-    arbiter.io.dma.AR.ARBURST := io.slave_arburst
-    arbiter.io.dma.AR.ARPROT := io.slave_arprot
-    arbiter.io.dma.AR.ARCACHE := io.slave_arcache
-    arbiter.io.dma.AR.ARQOS := io.slave_arqos
-    io.slave_arready := arbiter.io.dma.AR.ARREADY
-
-    arbiter.io.dma.R.RREADY := io.slave_rready
-    io.slave_rvalid := arbiter.io.dma.R.RVALID
-    io.slave_rresp := arbiter.io.dma.R.RRESP
-    io.slave_rdata := arbiter.io.dma.R.RDATA
-    io.slave_rlast := arbiter.io.dma.R.RLAST
-    io.slave_rid := arbiter.io.dma.R.RID
+    arbiter.io.dma <> socSlaveBridge.io.out
   } else {
     val ErrorSlave = dmaErrorSlave.get
-    ErrorSlave.io.AW.AWVALID := io.slave_awvalid
-    ErrorSlave.io.AW.AWADDR := io.slave_awaddr
-    ErrorSlave.io.AW.AWID := io.slave_awid
-    ErrorSlave.io.AW.AWLEN := io.slave_awlen
-    ErrorSlave.io.AW.AWSIZE := io.slave_awsize
-    ErrorSlave.io.AW.AWBURST := io.slave_awburst
-    ErrorSlave.io.AW.AWPROT := io.slave_awprot
-    ErrorSlave.io.AW.AWCACHE := io.slave_awcache
-    ErrorSlave.io.AW.AWQOS := io.slave_awqos
-    io.slave_awready := ErrorSlave.io.AW.AWREADY
+    ErrorSlave.io.AW.AWVALID := socSlaveBridge.io.out.AW.AWVALID
+    ErrorSlave.io.AW.AWADDR := socSlaveBridge.io.out.AW.AWADDR
+    ErrorSlave.io.AW.AWID := socSlaveBridge.io.out.AW.AWID
+    ErrorSlave.io.AW.AWLEN := socSlaveBridge.io.out.AW.AWLEN
+    ErrorSlave.io.AW.AWSIZE := socSlaveBridge.io.out.AW.AWSIZE
+    ErrorSlave.io.AW.AWBURST := socSlaveBridge.io.out.AW.AWBURST
+    ErrorSlave.io.AW.AWPROT := socSlaveBridge.io.out.AW.AWPROT
+    ErrorSlave.io.AW.AWCACHE := socSlaveBridge.io.out.AW.AWCACHE
+    ErrorSlave.io.AW.AWQOS := socSlaveBridge.io.out.AW.AWQOS
+    socSlaveBridge.io.out.AW.AWREADY := ErrorSlave.io.AW.AWREADY
 
-    ErrorSlave.io.W.WVALID := io.slave_wvalid
-    ErrorSlave.io.W.WDATA := io.slave_wdata
-    ErrorSlave.io.W.WSTRB := io.slave_wstrb
-    ErrorSlave.io.W.WLAST := io.slave_wlast
-    io.slave_wready := ErrorSlave.io.W.WREADY
+    ErrorSlave.io.W.WVALID := socSlaveBridge.io.out.W.WVALID
+    ErrorSlave.io.W.WDATA := socSlaveBridge.io.out.W.WDATA
+    ErrorSlave.io.W.WSTRB := socSlaveBridge.io.out.W.WSTRB
+    ErrorSlave.io.W.WLAST := socSlaveBridge.io.out.W.WLAST
+    socSlaveBridge.io.out.W.WREADY := ErrorSlave.io.W.WREADY
 
-    ErrorSlave.io.B.BREADY := io.slave_bready
-    io.slave_bvalid := ErrorSlave.io.B.BVALID
-    io.slave_bresp := ErrorSlave.io.B.BRESP
-    io.slave_bid := ErrorSlave.io.B.BID
+    ErrorSlave.io.B.BREADY := socSlaveBridge.io.out.B.BREADY
+    socSlaveBridge.io.out.B.BVALID := ErrorSlave.io.B.BVALID
+    socSlaveBridge.io.out.B.BRESP := ErrorSlave.io.B.BRESP
+    socSlaveBridge.io.out.B.BID := ErrorSlave.io.B.BID
 
-    ErrorSlave.io.AR.ARVALID := io.slave_arvalid
-    ErrorSlave.io.AR.ARADDR := io.slave_araddr
-    ErrorSlave.io.AR.ARID := io.slave_arid
-    ErrorSlave.io.AR.ARLEN := io.slave_arlen
-    ErrorSlave.io.AR.ARSIZE := io.slave_arsize
-    ErrorSlave.io.AR.ARBURST := io.slave_arburst
-    ErrorSlave.io.AR.ARPROT := io.slave_arprot
-    ErrorSlave.io.AR.ARCACHE := io.slave_arcache
-    ErrorSlave.io.AR.ARQOS := io.slave_arqos
-    io.slave_arready := ErrorSlave.io.AR.ARREADY
+    ErrorSlave.io.AR.ARVALID := socSlaveBridge.io.out.AR.ARVALID
+    ErrorSlave.io.AR.ARADDR := socSlaveBridge.io.out.AR.ARADDR
+    ErrorSlave.io.AR.ARID := socSlaveBridge.io.out.AR.ARID
+    ErrorSlave.io.AR.ARLEN := socSlaveBridge.io.out.AR.ARLEN
+    ErrorSlave.io.AR.ARSIZE := socSlaveBridge.io.out.AR.ARSIZE
+    ErrorSlave.io.AR.ARBURST := socSlaveBridge.io.out.AR.ARBURST
+    ErrorSlave.io.AR.ARPROT := socSlaveBridge.io.out.AR.ARPROT
+    ErrorSlave.io.AR.ARCACHE := socSlaveBridge.io.out.AR.ARCACHE
+    ErrorSlave.io.AR.ARQOS := socSlaveBridge.io.out.AR.ARQOS
+    socSlaveBridge.io.out.AR.ARREADY := ErrorSlave.io.AR.ARREADY
 
-    ErrorSlave.io.R.RREADY := io.slave_rready
-    io.slave_rvalid := ErrorSlave.io.R.RVALID
-    io.slave_rresp := ErrorSlave.io.R.RRESP
-    io.slave_rdata := ErrorSlave.io.R.RDATA
-    io.slave_rlast := ErrorSlave.io.R.RLAST
-    io.slave_rid := ErrorSlave.io.R.RID
+    ErrorSlave.io.R.RREADY := socSlaveBridge.io.out.R.RREADY
+    socSlaveBridge.io.out.R.RVALID := ErrorSlave.io.R.RVALID
+    socSlaveBridge.io.out.R.RRESP := ErrorSlave.io.R.RRESP
+    socSlaveBridge.io.out.R.RDATA := ErrorSlave.io.R.RDATA
+    socSlaveBridge.io.out.R.RLAST := ErrorSlave.io.R.RLAST
+    socSlaveBridge.io.out.R.RID := ErrorSlave.io.R.RID
 
     // 未开启ChipLink时仲裁器的DMA输入不可悬空。
     arbiter.io.dmaAWLock := false.B
@@ -1172,7 +1188,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   io.perf_idu_stall_raw_alu :=
     PerfBool("idu_stall_raw_alu")(idu.io.perf_stall_raw_alu)
   // 异常
-  io.perf_trap_count := PerfBool("trap_count")(exu.io.PerfTrap)
+  io.perf_trap := PerfBool("trap_count")(exu.io.PerfTrap)
+  io.perf_trap_count := io.perf_trap
   // 执行活跃电平与事件分类码是多个单计数器的公共信号：消费方任一开启
   // 才生成，否则绑常量。
   io.perf_execution_active :=

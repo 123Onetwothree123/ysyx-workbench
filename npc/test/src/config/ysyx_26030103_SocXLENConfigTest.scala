@@ -2,11 +2,13 @@ package ysyx_26030103.config
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import _root_.ysyx_26030103.common.ysyx_26030103_PMARegion
 
 /** ysyxSoC 接口 XLEN 与 CPU XLEN 解耦的配置规则测试。
   *
-  * 配置层必须允许 32/64 的四种组合；其中 64 位 SoC 的 AXI 桥接尚未
-  * 接入 RTL，但配置解析不能因此失败，否则后续桥接任务无法消费该值。
+  * 配置层必须允许 32/64 的四种组合；64 位 SoC 由顶层
+  * `ysyx_26030103_AXI5WidthBridge` 接入 RTL，PMA 低 4GiB 限制只对
+  * 实际 32 位 SoC 地址宽度生效。
   */
 class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
   private def cpuAddressWidth(xlen: Int): Int = if (xlen == 64) 64 else 32
@@ -64,6 +66,36 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
         error.getMessage should include("32 或 64")
       }
     }
+  }
+
+  it should "只在 SoC 地址宽度为 32 时限制 PMA 位于低 4GiB" in {
+    val HighBase = 0x180000000L
+    val HighRegions = Seq(
+      ysyx_26030103_PMARegion(HighBase, 0x10000L, Executable = true)
+    )
+    val Soc64 = ysyx_26030103_NPCConfig(
+      XLEN = 64,
+      AddressWidth = 64,
+      ResetAddr = HighBase,
+      PMARegions = HighRegions,
+      SocXLENFollowCpu = false,
+      SocXLEN = 64
+    )
+    Soc64.EffectiveSocXLEN should be(64)
+    Soc64.SocXLENNeedsAxiBridge should be(true)
+
+    val error = intercept[IllegalArgumentException] {
+      ysyx_26030103_NPCConfig(
+        XLEN = 64,
+        AddressWidth = 64,
+        ResetAddr = HighBase,
+        PMARegions = HighRegions,
+        SocXLENFollowCpu = false,
+        SocXLEN = 32
+      )
+    }
+    error.getMessage should include("低 4GiB")
+    error.getMessage should include("EffectiveSocXLEN=32")
   }
 
   it should "在 Describe 中报告生效的 SoC XLEN" in {

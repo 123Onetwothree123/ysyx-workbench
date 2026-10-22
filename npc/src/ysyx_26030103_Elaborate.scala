@@ -178,9 +178,9 @@ object ysyx_26030103_Elaborate extends App {
   println(s"[NPC config] ${config.Describe}")
   if (config.SocXLENNeedsAxiBridge) {
     println(
-      s"[NPC config][WARN] EffectiveSocXLEN=${config.EffectiveSocXLEN} 的 " +
-        "ysyxSoC AXI 桥接尚未实现：当前顶层 master/slave AXI 仍固定 " +
-        "32 位地址/数据。该配置仅用于后续桥接任务解析与消费。"
+      s"[NPC config] EffectiveSocXLEN=${config.EffectiveSocXLEN}: " +
+        "顶层 master/slave AXI 使用 64 位地址/数据，32<->64 边界桥已启用；" +
+        "内部 Xbar/PMA/Cache 仍使用 32 位数据 beat。"
     )
   }
 

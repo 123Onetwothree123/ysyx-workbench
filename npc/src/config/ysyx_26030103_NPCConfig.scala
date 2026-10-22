@@ -121,12 +121,11 @@ case class ysyx_26030103_NPCConfig(
   require(SocXLENFollowCpu || SocXLEN == 32 || SocXLEN == 64,
     "SOC_XLEN 只允许 32 或 64（SOC_XLEN_FOLLOW_CPU=n 时生效），" +
       s"收到 SOC_XLEN=$SocXLEN")
-  /** ysyxSoC CPU 侧接口实际生效的 XLEN/数据宽度。 */
+  /** ysyxSoC CPU 侧接口实际生效的 XLEN/地址/数据宽度。 */
   final val EffectiveSocXLEN: Int = if (SocXLENFollowCpu) XLEN else SocXLEN
-  // 当前顶层 AXI 仍是固定 32 位 RTL；EffectiveSocXLEN=64 只表示配置层
-  // 已保留该组合，桥接任务实现前不能当作已支持。这里刻意不拒绝 64，
-  // 以便 “CPU XLEN=64/SoC XLEN=64” 与 “CPU XLEN=32/SoC XLEN=64”
-  // 都能完成配置解析。
+  // SoC64 的 AXI 端口是 64 位地址/数据，NPC 内部 SoC 总线仍是 32 位
+  // 数据 beat，因此必须经过 AXI5 宽度桥；SoC32 时数据通道同宽，但
+  // RV64 内部地址仍需要 64->32 边界检查（由同一个桥完成）。
   final val SocXLENNeedsAxiBridge: Boolean = EffectiveSocXLEN != 32
   // RV64 MMU 只接入标准 Sv39/Sv48；MMUProfile 自身会拒绝非标准几何。
   // 这里再检查 profile 与顶层 XLEN/AddressWidth 一致，避免 RV64 核
@@ -159,16 +158,16 @@ case class ysyx_26030103_NPCConfig(
       s"DCacheBlockSizeLog2($DCacheBlockSizeLog2) 超过页内偏移位数" +
       s"(${MMU.pageBits})；请增大 MMU_PAGE_SIZE_BYTES 或减小 Cache 索引/块大小"
   )
-  // 当前顶层 ysyxSoC CPU AXI 端口实际仍固定 32 位地址（与
-  // EffectiveSocXLEN 的配置值无关，64 位 SoC 桥接尚未实现）。顶层在
-  // 64 位内部地址与 32 位 SoC 边界之间做显式检查：PMA 必须完全位于低
-  // 4GiB，Xbar 对更高地址返回 DECERR，绝不静默截断后访问错误设备。
-  // 超过 4GiB 的 Cache/Xbar 行为由叶模块定向测试覆盖。
+  // 只有外部 SoC AXI 实际使用 32 位地址时才要求 PMA 完全位于低
+  // 4GiB。SoC64 允许 PMA/Xbar 映射更高物理地址；这些地址会完整送到
+  // 64 位 AXI 边界，由下游（或 Xbar 未命中 DECERR）决定行为，绝不
+  // 在 NPC 顶层被截断。SoC32 时任何高位地址都必须在 Xbar 内变成
+  // DECERR，桥在边界再做一次整笔 burst 越界检查作为兜底。
   require(
-    AddressWidth <= 32 ||
+    EffectiveSocXLEN != 32 || AddressWidth <= 32 ||
       PMARegions.forall(r => BigInt(r.EndExclusive) <= (BigInt(1) << 32)),
-    "AddressWidth=64 时顶层 PMA 必须位于低 4GiB：外部 SoC AXI 只有 32 位地址；" +
-      "更高地址应在 Xbar 内局部 DECERR"
+    "EffectiveSocXLEN=32 时顶层 PMA 必须位于低 4GiB：" +
+      "外部 SoC AXI 只有 32 位地址；更高地址应在 Xbar 内局部 DECERR"
   )
   require(BlockSizeLog2 >= 2, "Cache block必须至少容纳1个32位字")
   require(IndexBits >= 1, "Cache必须至少包含2个set")

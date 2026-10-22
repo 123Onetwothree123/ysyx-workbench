@@ -3,14 +3,24 @@ import chisel3._
 
 /** 顶层端口 ABI。
   *
-  * 外部 AXI master/slave 为兼容 ysyxSoC 黑盒接口固定 32 位地址和 32 位
-  * 数据；RV64 的内部 PC/LSU/IFU/AXI/PMA/Xbar/Cache 使用 config.AddressWidth
-  * （64 位）。Xbar 只把低 4GiB PMA 请求送到该边界，顶层再做高位断言，
-  * 超过 4GiB 的访问在 Xbar 内 DECERR，不会静默截断。
-  * 调试端口同样保持 32 位 ABI：它们只用于 C++ 观测/比对，不参与
-  * 架构地址计算。
+  * `SocXLEN` 独立于 CPU `XLEN`/`AddressWidth`，决定 ysyxSoC CPU 侧
+  * AXI 端口的地址、数据和 WSTRB 宽度：
+  *   - SOC_XLEN=32：保持历史的 32 位地址/32 位数据/4 位 WSTRB；
+  *   - SOC_XLEN=64：使用 64 位地址/64 位数据/8 位 WSTRB。
+  *
+  * NPC 内部 SoC 总线固定 32 位数据，由 `ysyx_26030103_AXI5WidthBridge`
+  * 在边界完成 32<->64 转换和地址越界 DECERR。任何一侧都不会靠截断
+  * 高位地址或丢弃宽数据来“适配”端口。
+  *
+  * 调试/trap 观测 ABI 刻意不跟随 SocXLEN：ysyxSoC 黑盒的 debug/trap
+  * 端口始终是 32 位，NPC 用低 32 位连接该 ABI，高 32 位继续通过
+  * `*_hi` 端口输出。SoC 的 32 位观测值绝不写回 NPC 的 64 位架构状态。
   */
-class ysyx_26030103_IO extends Bundle {
+class ysyx_26030103_IO(val SocXLEN: Int = 32) extends Bundle {
+  require(SocXLEN == 32 || SocXLEN == 64,
+    s"顶层 IO 的 SocXLEN 只允许 32 或 64，收到 $SocXLEN")
+  private val SocDataWidth = SocXLEN
+  private val SocStrbWidth = SocXLEN / 8
   val interrupt = Input(Bool())
   // 仿真 ABI 的 custom-0 halt 提交脉冲；不是架构异常/EBREAK 指示。
   val trap_valid = Output(Bool())
@@ -18,7 +28,7 @@ class ysyx_26030103_IO extends Bundle {
 //写地址的
   val master_awready = Input(Bool())
   val master_awvalid = Output(Bool())
-  val master_awaddr = Output(UInt(32.W))
+  val master_awaddr = Output(UInt(SocXLEN.W))
   val master_awid = Output(UInt(4.W))
   val master_awlen = Output(UInt(8.W))
   val master_awsize = Output(UInt(3.W))
@@ -30,8 +40,8 @@ class ysyx_26030103_IO extends Bundle {
 //W写的
   val master_wready = Input(Bool())
   val master_wvalid = Output(Bool())
-  val master_wdata = Output(UInt(32.W))
-  val master_wstrb = Output(UInt(4.W))
+  val master_wdata = Output(UInt(SocDataWidth.W))
+  val master_wstrb = Output(UInt(SocStrbWidth.W))
   val master_wlast = Output(Bool())
 //B写回的
   val master_bready = Output(Bool())
@@ -41,7 +51,7 @@ class ysyx_26030103_IO extends Bundle {
 //AR的
   val master_arready = Input(Bool())
   val master_arvalid = Output(Bool())
-  val master_araddr = Output(UInt(32.W))
+  val master_araddr = Output(UInt(SocXLEN.W))
   val master_arid = Output(UInt(4.W))
   val master_arlen = Output(UInt(8.W))
   val master_arsize = Output(UInt(3.W))
@@ -54,13 +64,13 @@ class ysyx_26030103_IO extends Bundle {
   val master_rready = Output(Bool())
   val master_rvalid = Input(Bool())
   val master_rresp = Input(UInt(2.W))
-  val master_rdata = Input(UInt(32.W))
+  val master_rdata = Input(UInt(SocDataWidth.W))
   val master_rlast = Input(Bool())
   val master_rid = Input(UInt(4.W))
 //写地址的
   val slave_awready = Output(Bool())
   val slave_awvalid = Input(Bool())
-  val slave_awaddr = Input(UInt(32.W))
+  val slave_awaddr = Input(UInt(SocXLEN.W))
   val slave_awid = Input(UInt(4.W))
   val slave_awlen = Input(UInt(8.W))
   val slave_awsize = Input(UInt(3.W))
@@ -72,8 +82,8 @@ class ysyx_26030103_IO extends Bundle {
 //写
   val slave_wready = Output(Bool())
   val slave_wvalid = Input(Bool())
-  val slave_wdata = Input(UInt(32.W))
-  val slave_wstrb = Input(UInt(4.W))
+  val slave_wdata = Input(UInt(SocDataWidth.W))
+  val slave_wstrb = Input(UInt(SocStrbWidth.W))
   val slave_wlast = Input(Bool())
 //对面的
   val slave_bready = Input(Bool())
@@ -83,7 +93,7 @@ class ysyx_26030103_IO extends Bundle {
 
   val slave_arready = Output(Bool())
   val slave_arvalid = Input(Bool())
-  val slave_araddr = Input(UInt(32.W))
+  val slave_araddr = Input(UInt(SocXLEN.W))
   val slave_arid = Input(UInt(4.W))
   val slave_arlen = Input(UInt(8.W))
   val slave_arsize = Input(UInt(3.W))
@@ -96,7 +106,7 @@ class ysyx_26030103_IO extends Bundle {
   val slave_rready = Input(Bool())
   val slave_rvalid = Output(Bool())
   val slave_rresp = Output(UInt(2.W))
-  val slave_rdata = Output(UInt(32.W))
+  val slave_rdata = Output(UInt(SocDataWidth.W))
   val slave_rlast = Output(Bool())
   val slave_rid = Output(UInt(4.W))
   // 给sdb用的
@@ -206,6 +216,10 @@ class ysyx_26030103_IO extends Bundle {
   val perf_idu_stall_raw_loaduse = Output(Bool())
   val perf_idu_stall_raw_alu = Output(Bool())
   val perf_exu_idle_noinput = Output(Bool())
+  // ysyxSoC 黑盒 CPU.scala 仍使用 `io_perf_trap` 作为端口名；直接 NPC
+  // 仿真/C++ ABI 使用 `perf_trap_count`。两个名字在顶层同时输出同一
+  // 架构事件，避免为了适配一侧而修改另一侧源码或让端口悬空。
+  val perf_trap = Output(Bool())
   val perf_trap_count = Output(Bool())
   val perf_mem_waitslot = Output(Bool())
 
