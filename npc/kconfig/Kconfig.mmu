@@ -390,11 +390,16 @@ menu "虚拟内存管理 (MMU/TLB)"
       depends on TLB_UNIFIED
 
     config TLB_SUPERPAGE
-      bool "TLB 缓存 4MiB 超级页"
+      bool "TLB 缓存超级页"
       default n
       help
-        打开后 TLB 增加超级页 CAM；当前支持 Sv32 4KiB/2 级下的
-        4MiB 页，其他页大小组合在 elaboration 阶段拒绝。
+        打开后 TLB 增加超级页 CAM，按 pageBits/levels/indexBits
+        计算超级页大小。
+    config TLB_SUPERPAGE_ENTRIES
+      int "TLB 超级页 CAM 项数"
+      default 4
+      range 1 16
+      depends on TLB_SUPERPAGE
 
     choice
       prompt "TLB miss queue 组织"

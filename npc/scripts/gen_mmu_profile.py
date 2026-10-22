@@ -381,6 +381,7 @@ def build_profile(cfg: Config) -> dict:
                 "global_entries": cfg.integer("GLOBAL_MISS_QUEUE_ENTRIES", 8),
             },
             "refill_ports": cfg.integer("TLB_REFILL_PORTS", 1),
+            "superpage_entries": cfg.integer("TLB_SUPERPAGE_ENTRIES", 4),
         },
         "csr": csr,
         "interrupts": {
@@ -553,6 +554,7 @@ def main() -> int:
             f"MMU_UTLB_MISS_QUEUE_ENTRIES={profile['tlb']['miss_queue']['utlb_entries']}",
             f"MMU_GLOBAL_MISS_QUEUE_ENTRIES={profile['tlb']['miss_queue']['global_entries']}",
             f"MMU_TLB_REFILL_PORTS={profile['tlb']['refill_ports']}",
+            f"MMU_TLB_SUPERPAGE_ENTRIES={profile['tlb'].get('superpage_entries', 4)}",
             f"HAS_S={int(profile['enabled']['s'])}",
             f"HAS_U={int(profile['enabled']['u'])}",
             f"HAS_S_TIMER_IRQ={int(profile['interrupts']['s_timer'])}",

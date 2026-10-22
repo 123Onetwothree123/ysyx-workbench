@@ -122,6 +122,7 @@ class ysyx_26030103_MMU(
       levels = profile.levels,
       indexBits = profile.indexBitsPerLevel,
       refillPorts = profile.refillPorts,
+      superpageEntries = profile.tlbSuperpageEntries,
       hasU = profile.hasU,
       lookupPorts = lookupPorts
     )

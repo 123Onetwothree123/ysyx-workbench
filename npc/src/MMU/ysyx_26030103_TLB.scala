@@ -31,6 +31,7 @@ class ysyx_26030103_TLB(
     levels: Int = 2,
     indexBits: Int = 10,
     refillPorts: Int = 1,
+    superpageEntries: Int = 4,
     hasU: Boolean = true,
     lookupPorts: Int = 1
 ) extends Module {
@@ -106,7 +107,10 @@ class ysyx_26030103_TLB(
   // 超级页表项不再硬编码 4MiB/vpn1。每个表项保存填充层级、完整虚拟
   // 地址和物理基址；比较时按该层级对应的 shift 对齐。fillLevel 约定：
   // 0=基础页，k=第 k 级超级页，shift = pageBits + k*indexBits。
-  private val superEntries = if (superpage && levels > 1) 4 else 0
+  require(superpageEntries >= 1 && superpageEntries <= 16,
+    "TLB superpageEntries 必须在 1..16")
+  private val superEntryCount =
+    if (superpage && levels > 1) superpageEntries else 0
   class SuperEntry extends Bundle {
     val valid = Bool()
     val level = UInt(2.W)
@@ -133,11 +137,11 @@ class ysyx_26030103_TLB(
     val mask = ~offsetMaskOf(shiftOfLevel(level))
     (entryVaddr & mask) === (lookupVaddr & mask)
   }
-  val superVec = if (superEntries > 0)
-    Some(RegInit(VecInit(Seq.fill(superEntries)(0.U.asTypeOf(new SuperEntry)))))
+  val superVec = if (superEntryCount > 0)
+    Some(RegInit(VecInit(Seq.fill(superEntryCount)(0.U.asTypeOf(new SuperEntry)))))
   else None
-  val superRR = if (superEntries > 0)
-    Some(RegInit(0.U(log2Ceil(superEntries.max(2)).W))) else None
+  val superRR = if (superEntryCount > 0)
+    Some(RegInit(0.U(log2Ceil(superEntryCount.max(2)).W))) else None
   private val sramStorage = storage == "sram"
   val pteMems =
     if (sramStorage) Some((0 until ways).map(_ => SyncReadMem(sets, UInt(32.W))))
@@ -228,8 +232,8 @@ class ysyx_26030103_TLB(
     val hitWay = Mux1H(lookupWays, (0 until ways).map(w => w.U(log2Ceil(ways.max(2)).W)))
     val selected = Mux1H(lookupWays, (0 until ways).map(w => entriesVec(entryIndex(lookupSet, w.U))))
     val selectedPte = Mux1H(lookupWays, sramPtes)
-    val superHits = if (superEntries > 0) {
-      (0 until superEntries).map { i =>
+    val superHits = if (superEntryCount > 0) {
+      (0 until superEntryCount).map { i =>
         val e = superVec.get(i)
         val asidMatch = if (asidBits == 0) true.B else e.asid === lookup.asid
         val globalMatch = if (globalEnable) e.global else false.B
@@ -238,12 +242,12 @@ class ysyx_26030103_TLB(
           (globalMatch || asidMatch)
       }
     } else Seq.empty
-    val superHit = if (superEntries > 0) superHits.reduce(_ || _) else false.B
-    val superSel = if (superEntries > 0)
-      Mux1H(superHits, (0 until superEntries).map(i => superVec.get(i)))
+    val superHit = if (superEntryCount > 0) superHits.reduce(_ || _) else false.B
+    val superSel = if (superEntryCount > 0)
+      Mux1H(superHits, (0 until superEntryCount).map(i => superVec.get(i)))
     else 0.U.asTypeOf(new SuperEntry)
-    val superPaddr = if (superEntries > 0) {
-      val paddrs = (0 until superEntries).map { i =>
+    val superPaddr = if (superEntryCount > 0) {
+      val paddrs = (0 until superEntryCount).map { i =>
         val e = superVec.get(i)
         e.paddrBase | (lookup.vaddr & offsetMaskOf(shiftOfLevel(e.level)))
       }
@@ -306,7 +310,7 @@ class ysyx_26030103_TLB(
     for (i <- 0 until entries) {
       entriesVec(i).valid := false.B
     }
-    superVec.foreach { v => for (i <- 0 until superEntries) { v(i).valid := false.B } }
+    superVec.foreach { v => for (i <- 0 until superEntryCount) { v(i).valid := false.B } }
     plruOpt.foreach { tree =>
       for (i <- 0 until sets * (ways - 1)) { tree(i) := false.B }
     }
@@ -316,12 +320,12 @@ class ysyx_26030103_TLB(
   }
   def doFill(valid: Bool, fillVaddrVal: UInt, fillAsidVal: UInt,
       fillPteVal: UInt, fillLevelVal: UInt): Unit = {
-    if (superEntries > 0) {
+    if (superEntryCount > 0) {
       // fillLevel 0 是基础页；1..levels-1 是超级页层级。TLB 只缓存
       // 配置范围内的层级，超出范围的填充请求被忽略（PTW 不会产生）。
       when(!io.flush && valid && fillLevelVal =/= 0.U &&
           fillLevelVal < levels.U) {
-        val hit = (0 until superEntries).map { i =>
+        val hit = (0 until superEntryCount).map { i =>
           val e = superVec.get(i)
           e.valid && e.level === fillLevelVal &&
             superTagMatch(e.level, e.vaddr, fillVaddrVal)
@@ -343,7 +347,7 @@ class ysyx_26030103_TLB(
         e.a := fillPteVal(6); e.d := fillPteVal(7)
         superVec.get(victim) := e
         superRR.get := Mux(
-          superRR.get === (superEntries - 1).U,
+          superRR.get === (superEntryCount - 1).U,
           0.U,
           superRR.get + 1.U
         )
