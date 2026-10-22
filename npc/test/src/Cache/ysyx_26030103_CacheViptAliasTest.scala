@@ -129,6 +129,9 @@ class ysyx_26030103_CacheViptAliasTest extends AnyFlatSpec with Matchers {
     io.axi.R.RVALID.poke(false.B)
     io.flush.poke(false.B)
     io.kill.poke(false.B)
+    io.snoop_valid.poke(false.B)
+    io.snoop_addr.poke(0.U(AddrW.W))
+    io.snoop_addr_hi.poke(0.U(AddrW.W))
   }
 
   private def runIcache(

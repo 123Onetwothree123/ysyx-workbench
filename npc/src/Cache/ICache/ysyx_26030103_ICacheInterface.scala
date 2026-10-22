@@ -42,4 +42,10 @@ class ysyx_26030103_ICacheInterface(val AddressWidth: Int = 32)
   val access_fault_resp = Output(UInt(2.W))
   val flush = Input(Bool()) // fence.i: 清cache行并丢弃在飞refill
   val kill = Input(Bool()) // 重定向/异常: 杀掉在飞取指请求,不动cache行
+  // 自修改代码硬件 snoop（可选）：CPU store 的 B 响应完成时，按物理地址
+  // 失效对应行。[snoop_addr, snoop_addr_hi] 覆盖可能跨行的一次 store；
+  // FENCE_I 模式下有效位恒为 0，不生成额外阵列扫描逻辑。
+  val snoop_valid = Input(Bool())
+  val snoop_addr = Input(UInt(AddressWidth.W))
+  val snoop_addr_hi = Input(UInt(AddressWidth.W))
 }

@@ -58,7 +58,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DCacheIndexBits = config.DCacheIndexBits,
       DCacheableBase = config.CacheableBase,
       DCacheableMask = config.CacheableMask,
-      DCachePMARegions = config.PMARegions,
+      DCachePMARegions = config.CachePMARegions,
       DCacheVipt = config.MMU.cacheMode == "vipt",
       DCacheViptAliasSafe = config.DCacheViptAliasHardware,
       DCacheViptAliasScanMode = config.DCacheViptAliasScanMode,
@@ -843,6 +843,15 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
   ifu.io.ExceptionTarget := exu.io.ExceptionTarget
   icache.io.flush := exu.io.FenceIFlush // 仅 FenceI 冲 ICache，分支不冲
+  // 可选自修改代码 snoop：CPU store 的 B 响应完成后失效对应 ICache 行。
+  // FENCE_I 模式下 snoop_valid 恒为 0，ICache 内不生成地址比较/失效逻辑。
+  // 该模式仍保留 fence.i：流水线里已取入的旧指令只能由 fence.i 冲刷。
+  icache.io.snoop_valid :=
+    (if (config.ICacheCoherence ==
+          ysyx_26030103_ICacheCoherence.HardwareSnoop) lsu.io.StoreCommit
+     else false.B)
+  icache.io.snoop_addr := lsu.io.StoreCommitAddr
+  icache.io.snoop_addr_hi := lsu.io.StoreCommitLastAddr
   // 当前 DCache 是写直达/不写分配，成功 store 会更新命中行，并且
   // Fence.I 在提交前已经等待更老的 store 排空。因此指令一致性只需
   // 失效 ICache/取指流水；清空 DCache 只会制造无意义的数据 miss。
@@ -852,7 +861,13 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 阻止CPU load。错误B也同样失效，以覆盖从设备可能的部分写副作用。
   // 不在这里异步冲ICache：现有ICache flush与流水线重定向成对，
   // DMA修改可执行内存后由软件执行fence.i完成指令一致性。
-  lsu.io.DCacheFlush := arbiter.io.DMAWriteInvalidate
+  // DMA_COHERENCE=uncached 时 DMA 窗口本身不进入 Cache，不再需要这个
+  // 全局失效；显式关闭可以避免无意义地清空无关数据行。
+  lsu.io.DCacheFlush :=
+    (if (config.DmaCoherence ==
+          ysyx_26030103_DmaCoherence.SoftwareFlush)
+       arbiter.io.DMAWriteInvalidate
+     else false.B)
   gpr.io.WriteSELECT := wbu.io.WriteSELECT
   gpr.io.WriteEN := wbu.io.WriteEN
   gpr.io.wdata := wbu.io.wdata

@@ -59,6 +59,12 @@ class ysyx_26030103_LSU(
     // 为未来 DMA/其他非 CPU 写入者保留的数据缓存一致性失效口。
     // Fence.I 只同步指令取值，当前写直达 DCache 不因 Fence.I 清空。
     val DCacheFlush = Input(Bool())
+    // store 的 B 响应完成事件：ICache HARDWARE_SNOOP 用它在写落地后
+    // 失效对应行。Addr 是 store 首字节物理地址，LastAddr 覆盖本次访问的
+    // 最后一个字节（RV64 的 8B store 在 4B 行上可能跨两行）。
+    val StoreCommit = Output(Bool())
+    val StoreCommitAddr = Output(UInt(AddressWidth.W))
+    val StoreCommitLastAddr = Output(UInt(AddressWidth.W))
     // VIPT 并行翻译结果：PAddr 可能晚于 DCache 请求到达；PAddrVaddr 是
     // 该物理地址对应的虚拟地址标签。非并行模式忽略这些输入。
     val ViptPAddr = Input(UInt(AddressWidth.W))
@@ -744,6 +750,16 @@ class ysyx_26030103_LSU(
     (if (XLEN == 64)
        Mux(wbHeadWide, "hff".U(8.W), Cat(0.U(4.W), wbHeadStrb))
      else wbHeadStrb)
+  // store B 完成事件同时送给 ICache snoop。LastAddr 用本次访问的字节数
+  // （AWSIZE）计算，避免为了覆盖跨行把相邻行也无谓失效。
+  io.StoreCommit := wbPop
+  io.StoreCommitAddr := WbHeadEffectiveAddr
+  io.StoreCommitLastAddr := WbHeadEffectiveAddr +
+    Mux(
+      wbHeadWide,
+      (XLEN / 8 - 1).U(AddressWidth.W),
+      (1.U(AddressWidth.W) << wbHeadSize) - 1.U(AddressWidth.W)
+    )
   // Idle 可直接驱动已经寄存的队首，避免“发现非空→切 Issue→下一拍才
   // 拉 VALID”的固定空拍。失败/非对齐/等待 PA 的队首会阻断所有年轻副作用。
   val wbCanStart = !wbufEmpty && !wbHeadMisaligned && wbHeadReady &&

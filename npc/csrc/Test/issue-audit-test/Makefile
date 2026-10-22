@@ -37,9 +37,11 @@ PERFSEM_BIN := $(BIN_DIR)/perf_counter_semantics_test
 PERFSEM_MIXED_BIN := $(BIN_DIR)/perf_counter_semantics_mixed_test
 XBAR_HOL_BIN := $(BIN_DIR)/xbar_r_hol_test
 CHIPLINK_RTL := $(BUILD_DIR)/rtl-chiplink
+DMA_UNCACHED_RTL := $(BUILD_DIR)/rtl-dma-uncached
 PROD_RTL := $(BUILD_DIR)/rtl-prod
 MIXED_RTL := $(BUILD_DIR)/rtl-mixed
 DMA_WINDOW_BIN := $(BIN_DIR)/dma_coherence_window_test
+DMA_UNCACHED_BIN := $(BIN_DIR)/dma_uncached_test
 ICACHE_SRAM_BIN := $(BIN_DIR)/icache_sram_test
 DIVCFG_BIN := $(BIN_DIR)/div_config_core_test
 DCACHE_REFILL_REG_BIN := $(BIN_DIR)/dcache_refill_reg_test
@@ -49,7 +51,7 @@ BINS := $(IDU_BIN) $(IRQ_BIN) $(DCACHE_REG_BIN) $(DCACHE_SRAM_BIN) \
         $(DCACHE_NOBYPASS_BIN) $(ICACHE_BIN) $(ICACHE_SMALL_BIN) \
         $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(MDU_BLOCK_FAST_BIN) $(FULLCORE_BIN) $(PERFSEM_BIN) $(PERFSEM_MIXED_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN) $(DMA_WINDOW_BIN) $(ICACHE_SRAM_BIN)
 
-.PHONY: all test run rtl-check clean
+.PHONY: all test run rtl-check clean dma-uncached-test
 
 all: $(BINS)
 
@@ -319,6 +321,33 @@ $(DMA_WINDOW_BIN): dma_coherence_window_test.cpp test_common.hpp \
 	  -CFLAGS '$(CXXFLAGS)' \
 	  -o $(abspath $@) \
 	  $(CHIPLINK_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
+
+# DMA_COHERENCE=uncached 的 SoC 快照：DMA 窗口在 CPU Cache PMA 中不可缓存。
+# 单独作为显式目标，避免每次全量审计都多编译一份 RTL。
+$(DMA_UNCACHED_RTL)/ysyx_26030103.sv:
+	@mkdir -p $(DMA_UNCACHED_RTL)
+	cd $(NPC_DIR) && env \
+	  CACHE_BLOCK_SIZE_LOG2=2 CACHE_INDEX_BITS=5 \
+	  ICACHE=n DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=y \
+	  DMA_COHERENCE=uncached \
+	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
+	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y DIFFTEST=y PERF_STATS=y \
+	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(DMA_UNCACHED_RTL)
+	ln -sf layers-ysyx_26030103-Verification.sv $(DMA_UNCACHED_RTL)/layers-riscv32e_npc_AXIRAM-Verification.sv
+
+$(DMA_UNCACHED_BIN): dma_coherence_window_test.cpp test_common.hpp \
+                     $(DMA_UNCACHED_RTL)/ysyx_26030103.sv
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103 \
+	  --Mdir $(BUILD_DIR)/obj-dma-uncached-audit \
+	  -I$(DMA_UNCACHED_RTL) \
+	  -CFLAGS '$(CXXFLAGS) -DDMA_WINDOW_UNCACHED' \
+	  -o $(abspath $@) \
+	  $(DMA_UNCACHED_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
+
+dma-uncached-test: $(DMA_UNCACHED_BIN)
+	$(DMA_UNCACHED_BIN)
 
 $(DMA_WINDOW_DIAG_BIN): dma_coherence_window_test.cpp test_common.hpp \
                         $(CHIPLINK_RTL)/ysyx_26030103.sv rtl-check

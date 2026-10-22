@@ -15,6 +15,9 @@ class ysyx_26030103_ICacheSRAM(
     // alias 失效扫描方式：all_sets 单拍全扫描；serial 每周期扫描一个 set，
     // 扫描期间反压新取指。
     ViptAliasScanMode: String = "all_sets",
+    // 自修改代码 store snoop：store B 完成时按物理地址失效对应 ICache 行。
+    // 默认关闭（仅标准 fence.i），显式选择 HARDWARE_SNOOP 才生成比较逻辑。
+    Snoop: Boolean = false,
     // true=命中响应的第一拍旁路SRAM输出(保持1拍延迟);
     // false=老实打一拍(响应晚一拍), 用于量化"不旁路"的性能代价
     Bypass: Boolean = true,
@@ -55,6 +58,22 @@ class ysyx_26030103_ICacheSRAM(
       }
     }
   }
+  // 自修改代码 store snoop 的行匹配。默认几何下 tag 不含 index 位，
+  // 必须同时比较 set；alias-safe 几何下 tag 是完整物理行号，可扫描所有 set。
+  private def SnoopHitVec(address: UInt): UInt =
+    if (!Snoop || !Enable) 0.U(ArrayBlocks.W)
+    else
+      VecInit(valid.indices.map { set =>
+        val indexMatch =
+          if (ViptAliasSafe) true.B
+          else set.U === address(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+        valid(set) && tag(set) === TagOf(address) && indexMatch
+      }).asUInt
+  private def LineOf(address: UInt): UInt =
+    address(AddressWidth - 1, BlockSizeLog2)
+  private def SnoopLineMatch(address: UInt): Bool =
+    LineOf(address) === LineOf(io.snoop_addr) ||
+      LineOf(address) === LineOf(io.snoop_addr_hi)
   val indexAddr = if (Vipt) io.fetch_vaddr else io.fetch_addr
   val index = indexAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   // Enable=false时阵列只有一个综合占位项。用Scala期的常量索引访问它，
@@ -135,6 +154,18 @@ class ysyx_26030103_ICacheSRAM(
   val cacheable_reg = RegInit(false.B)
   val access_fault_reg = RegInit(false.B)
   val access_fault_resp_reg = RegInit(0.U(2.W))
+  // 本拍 store snoop 是否命中“当前取指/迟到的 PA”；命中时不能凭 store
+  // 之前的 tag 或半填 refill 数据判定 hit，否则同一拍会把旧指令交付。
+  val snoopLineHitNow =
+    if (Snoop && Enable) io.snoop_valid && SnoopLineMatch(io.fetch_addr)
+    else false.B
+  // s1 已锁存且 PA 已知的请求命中 store 行：撤回本拍响应，等待重新取指。
+  // 异常响应不能撤回，否则会把不可执行区域的故障取指变成总线读。
+  val snoopS1LineHit =
+    if (Snoop && Enable)
+      io.snoop_valid && s1_valid && s1_paddr_valid && !access_fault_reg &&
+        SnoopLineMatch(fetch_addr_reg)
+    else false.B
   // refill状态机(单MSHR: 同一时刻只处理一个缺失)
   val rfstates = Enum(5)
   val rf_idle = rfstates(0)
@@ -184,7 +215,9 @@ class ysyx_26030103_ICacheSRAM(
   // refill_word_valid的逐word许可通路访问。
   val refill_busy = rfstate =/= rf_idle
   val under_refill = refill_busy && ref_cacheable && (index === ref_index)
-  val hit = valid(IndexSafe) && tag(IndexSafe) === reqTag && !under_refill
+  val hit =
+    valid(IndexSafe) && tag(IndexSafe) === reqTag && !under_refill &&
+      !snoopLineHitNow
   val refill_line_match =
     io.fetch_addr(AddressWidth - 1, BlockSizeLog2) ===
       ref_addr(AddressWidth - 1, BlockSizeLog2)
@@ -219,7 +252,8 @@ class ysyx_26030103_ICacheSRAM(
   val partial_refill_hit =
     (rfstate === rf_req || rfstate === rf_resp) &&
       ref_cacheable && !discard && !refill_error && !refill_error_now &&
-      refill_line_match && (index === ref_index) && requested_word_arrived
+      refill_line_match && (index === ref_index) && requested_word_arrived &&
+      !snoopLineHitNow
   val request_hit =
     incoming_paddr_match && executable && cacheable && (hit || partial_refill_hit)
   // VIPT 的“迟到的 PA”解析：s1 里保存的是受理时的 VA/index/offset，
@@ -233,7 +267,7 @@ class ysyx_26030103_ICacheSRAM(
     refill_busy && ref_cacheable && (fetch_index_reg === ref_index)
   val resolve_hit =
     valid(FetchIndexSafe) && tag(FetchIndexSafe) === resolve_tag &&
-      !resolve_under_refill
+      !resolve_under_refill && !snoopLineHitNow
   val resolve_line_match =
     io.fetch_addr(AddressWidth - 1, BlockSizeLog2) ===
       ref_addr(AddressWidth - 1, BlockSizeLog2)
@@ -244,7 +278,7 @@ class ysyx_26030103_ICacheSRAM(
     (rfstate === rf_req || rfstate === rf_resp) &&
       ref_cacheable && !discard && !refill_error && !refill_error_now &&
       resolve_line_match && (fetch_index_reg === ref_index) &&
-      resolve_word_arrived
+      resolve_word_arrived && !snoopLineHitNow
   val resolve_request_hit =
     executable && cacheable && (resolve_hit || resolve_partial_refill_hit)
   io.access_fault := access_fault_reg
@@ -277,7 +311,8 @@ class ysyx_26030103_ICacheSRAM(
   // 否则等数据锁存就绪后再响应(晚一拍);
   // 关键词返回/refill完成(s1_ready)的缺失用R拍锁存的数据; 错误一律给NOP
   val hitResponding = if (Bypass) s1_hit else s1_hit && resp_data_held
-  val responding = s1_valid && (hitResponding || s1_ready)
+  val responding =
+    s1_valid && (hitResponding || s1_ready) && !snoopS1LineHit
   io.resp_valid := responding
   // 响应携带架构 PC：VIPT 用受理时锁存的 VA；PIPT 的 VA==PA，保持原行为。
   io.resp_addr := Mux(Vipt.B, fetch_vaddr_reg, fetch_addr_reg)
@@ -687,6 +722,36 @@ class ysyx_26030103_ICacheSRAM(
       discard := true.B
     }.elsewhen(rfstate === rf_resp && !discard) {
       discard := true.B
+    }
+  }
+  // 自修改代码 HARDWARE_SNOOP：store B 完成时失效对应物理行。若该行还有
+  // 在飞 refill，必须丢弃这次事务；当前 s1 保持未就绪，状态机回 idle 后
+  // 由 queued_miss 自动重新取指。不能直接复用 flush：snoop 是异步事件，
+  // 没有配套的流水线重定向，清掉 s1 会让取指请求永久丢失。
+  if (Snoop && Enable) {
+    val snoopHit = SnoopHitVec(io.snoop_addr) | SnoopHitVec(io.snoop_addr_hi)
+    for (set <- valid.indices) {
+      when(io.snoop_valid && snoopHit(set)) {
+        valid(set) := false.B
+      }
+    }
+    val snoopActiveRefill =
+      (rfstate =/= rf_idle) && SnoopLineMatch(ref_addr)
+    val snoopLaunchRefill =
+      queued_miss && rfstate === rf_idle && SnoopLineMatch(fetch_addr_reg)
+    val snoopRefillMatch = snoopActiveRefill || snoopLaunchRefill
+    when(io.snoop_valid && snoopRefillMatch) {
+      discard := true.B
+      refill_word_valid := 0.U
+      // 同拍 RLAST 可能刚把旧 refill 安装成 valid；最后写回必须压掉它。
+      // 启动拍 ref_addr 尚未更新，目标 index 取当前 s1 的 index。
+      valid(Mux(snoopActiveRefill, RefIndexSafe, FetchIndexSafe)) := false.B
+    }
+    when(io.snoop_valid && snoopS1LineHit) {
+      s1_hit := false.B
+      s1_ready := false.B
+      resp_data_held := false.B
+      early_read_pending := false.B
     }
   }
 }

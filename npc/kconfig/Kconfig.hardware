@@ -391,6 +391,59 @@ menu "硬件配置"
       default "sram_nobypass" if DCACHE_STORAGE_SRAM_NOBYPASS
       default "reg"
 
+    choice
+      prompt "ICache 自修改代码一致性"
+      depends on ICACHE
+      default ICACHE_COHERENCE_FENCE_I
+      help
+        RISC-V 标准语义要求软件在写指令后执行 fence.i；本选项只决定
+        fence.i 之外是否再提供硬件 store snoop，不能把“无需 fence.i”
+        当成标准行为。
+      config ICACHE_COHERENCE_FENCE_I
+        bool "仅 fence.i（标准语义，默认）"
+        help
+          只有软件执行 fence.i 才失效 ICache 和取指流水。默认保持既有行为。
+      config ICACHE_COHERENCE_HARDWARE_SNOOP
+        bool "硬件 store snoop（仍保留 fence.i）"
+        help
+          CPU store 的 B 响应完成时，按物理地址失效 ICache 对应行；
+          正在回填该行的取指会丢弃旧数据并重新发起。该模式只缩短
+          “store 已完成、尚未 fence.i”的可见性窗口，不能替代 fence.i：
+          已经取入流水线的旧指令仍必须由 fence.i 冲刷。
+    endchoice
+
+    config ICACHE_COHERENCE
+      string
+      default "fence_i" if ICACHE_COHERENCE_FENCE_I
+      default "hardware_snoop" if ICACHE_COHERENCE_HARDWARE_SNOOP
+      default "fence_i"
+
+    choice
+      prompt "DMA 数据一致性"
+      default DMA_COHERENCE_SOFTWARE_FLUSH
+      help
+        入站 DMA 经 ysyxSoC CPU slave 口直接访问内存，不经过 DCache。
+        software_flush: 保持现有行为——写直达 DCache 无脏数据，DMA 写 B
+          完成时失效 DCache；软件必须在 DMA 完成后才访问目标区域，修改
+          可执行内存后执行 fence.i。
+        uncached: 把 ChipLink DMA 窗口（0xc0000000--0xffffffff）在 CPU
+          侧标记为不可缓存，load/store/取指绕过 Cache 直接访问内存，
+          不再依赖 DMA 写 B 触发的 DCache 失效。DMA 传输在途时软件仍
+          不得消费目标区域。
+        hardware_snoop（DMA 地址级 snoop）当前未实现，因此不提供该选项；
+        若环境变量强制指定，elaboration 会明确报错，不会静默降级。
+      config DMA_COHERENCE_SOFTWARE_FLUSH
+        bool "软件维护 + DMA 写 B 失效（现有行为，默认）"
+      config DMA_COHERENCE_UNCACHED
+        bool "DMA 窗口按不可缓存访问"
+    endchoice
+
+    config DMA_COHERENCE
+      string
+      default "software_flush" if DMA_COHERENCE_SOFTWARE_FLUSH
+      default "uncached" if DMA_COHERENCE_UNCACHED
+      default "software_flush"
+
   endmenu
 
   menu "写缓冲 (LSU)"

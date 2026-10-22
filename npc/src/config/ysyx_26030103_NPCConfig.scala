@@ -63,6 +63,12 @@ case class ysyx_26030103_NPCConfig(
     ICacheIndexBits: Int = 5,
     DCacheBlockSizeLog2: Int = 4,
     DCacheIndexBits: Int = 5,
+    // 自修改代码与 DMA 一致性模式。默认都保持既有行为/标准语义；
+    // 只有显式选择的模式才会生成额外硬件或在 PMA 上改变可缓存性。
+    ICacheCoherence: ysyx_26030103_ICacheCoherence =
+      ysyx_26030103_ICacheCoherence.FenceI,
+    DmaCoherence: ysyx_26030103_DmaCoherence =
+      ysyx_26030103_DmaCoherence.SoftwareFlush,
     // LSU 写缓冲项数(必须是2的幂, 环形队列按位回绕)
     WBufDepth: Int = 4,
     CacheableBase: Long = 0x80000000L,
@@ -268,6 +274,44 @@ case class ysyx_26030103_NPCConfig(
     PMARegions.exists(r => ResetAddr >= r.Base && ResetAddr < r.EndExclusive && r.Executable),
     "ResetAddr必须位于可执行PMA区域"
   )
+  // 入站 DMA 只代理 ChipLink 内存窗口（与 AXI5Arbiter 的检查一致）。
+  // UNCACHED 模式在 Cache 使用的 PMA 视图里把该窗口切成不可缓存段；
+  // 原始 PMARegions 仍供 Xbar/PMA 权限检查使用，读写/执行权限不变。
+  private val DmaWindowBase = 0xc0000000L
+  private val DmaWindowEnd = 0x100000000L
+  /** Cache 实际使用的 PMA 视图；只有显式 UNCACHED 模式才与 PMARegions 不同。 */
+  final val CachePMARegions: Seq[ysyx_26030103_PMARegion] =
+    if (DmaCoherence != ysyx_26030103_DmaCoherence.Uncached) PMARegions
+    else PMARegions.flatMap { region =>
+      val start = math.max(region.Base, DmaWindowBase)
+      val end = math.min(region.EndExclusive, DmaWindowEnd)
+      if (start >= end) Seq(region)
+      else {
+        val before =
+          if (region.Base < start)
+            Seq(region.copy(Size = start - region.Base))
+          else Seq.empty
+        val uncached = region.copy(
+          Base = start,
+          Size = end - start,
+          Cacheable = false
+        )
+        val after =
+          if (region.EndExclusive > end)
+            Seq(region.copy(Base = end, Size = region.EndExclusive - end))
+          else Seq.empty
+        before ++ Seq(uncached) ++ after
+      }
+    }
+  final val DmaWindowUncached: Boolean =
+    DmaCoherence == ysyx_26030103_DmaCoherence.Uncached
+  /** 当前 PMA 是否真正暴露了 AXI5Arbiter 可代理的完整 DMA 窗口。 */
+  final val DmaWindowPresent: Boolean =
+    PMARegions.exists { region =>
+      region.Readable && region.Writable &&
+      BigInt(region.Base) <= BigInt(DmaWindowBase) &&
+      BigInt(region.EndExclusive) >= BigInt(DmaWindowEnd)
+    }
   require(
     Integer.bitCount(WBufDepth) == 1,
     "WBufDepth必须是2的幂(1/2/4/8/16)"
@@ -426,6 +470,19 @@ case class ysyx_26030103_NPCConfig(
           ).flatten.mkString("+")
         s",pipt_line_gt_page=$Which(${1 << MMU.pageBits}B-page)"
       }
+    // 一致性模式必须显式出现在 elaboration 日志里。ICache snoop 关闭
+    // ICache 时不生成硬件；DMA uncached 在没有 DMA 窗口的配置里也不会
+    // 改变任何 Cache 行为，因此把“配置值”和“实际生效”分开标注。
+    val ICacheCoherenceDesc =
+      if (ICacheCoherence == ysyx_26030103_ICacheCoherence.HardwareSnoop) {
+        if (ICacheEnable) "hardware_snoop(hw)"
+        else "hardware_snoop(inactive:ICache=off)"
+      } else ICacheCoherence.Name
+    val DmaCoherenceDesc =
+      if (DmaCoherence == ysyx_26030103_DmaCoherence.Uncached) {
+        if (DmaWindowPresent) "uncached(dma_window)"
+        else "uncached(inactive:no-dma-window)"
+      } else "software_flush(legacy-b-invalidate)"
     s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, " +
       s"addr_w=$AddressWidth, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
@@ -435,6 +492,7 @@ case class ysyx_26030103_NPCConfig(
       s"iter=$MULIterBits, pipeline=$MULPipeline, split=$MULSplit, " +
       s"mul_early_out=${OnOff(MULEarlyOut)}, div_early_out=${OnOff(DIVEarlyOut)}, " +
       s"ICache=$ICacheDesc, DCache=$DCacheDesc$ViptAliasDesc$LargeLineDesc, " +
+      s"icache_coherence=$ICacheCoherenceDesc, dma_coherence=$DmaCoherenceDesc, "
       s"icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, observe=${OnOff(EnableAnyObservability)}, " +

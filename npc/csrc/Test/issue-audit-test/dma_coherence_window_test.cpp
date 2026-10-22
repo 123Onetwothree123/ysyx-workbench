@@ -10,11 +10,16 @@
 //   - 通过 CPU slave 口发起一笔 DMA 写（0xc0000000 ← 新值），写进内存模型后
 //     **故意扣住 B 响应**（把窗口拉长到可观测）；
 //   - CPU 程序：读 X（miss 填充）→ 延迟 → 再读 X（命中）→ 延迟 → 再读 X → halt。
-// 预期（若窗口存在）：
+// 预期（DMA_COHERENCE=software_flush，默认）：
 //   x6 = 旧值（首次读）；x7 = 旧值（窗口内命中陈旧行）；x8 = 新值（B 后失效重填）。
 //
-// 说明：AXI 允许从设备在 B 之前提交写，因此这是真实竞态；设计注释只承诺
-// "B 之后的 load 不命中旧行"，窗口内的一致性没有机制保证。
+// 用 -DDMA_WINDOW_UNCACHED 编译时（对应 DMA_COHERENCE=uncached 的 RTL）：
+//   DMA 窗口在 CPU 侧不可缓存，首次读也不填充 DCache。从设备在 W 拍更新
+//   内存后，即使 B 仍被扣住，x7 也必须直接读到新值；x8 同理。
+//
+// 说明：AXI 允许从设备在 B 之前提交写，因此这是真实竞态；write-through
+// DCache + software_flush 只承诺 "B 之后的 load 不命中旧行"，窗口内的
+// 一致性由 uncached 模式或软件顺序（DMA 完成前不访问目标区）保证。
 //
 // 结论（2026-10-18，已跑通并纳入回归）：
 //   x6 = 旧值（miss 填充）、x7 = 旧值（B 之前的窗口内命中陈旧行）、
@@ -401,11 +406,19 @@ int main(int argc, char **argv) {
     check(x6 == kOldValue,
           "first load should read the pre-DMA value, got 0x" +
               std::to_string(x6));
-    // 窗口内命中陈旧行：这是本测试要确认的功能缺陷。
+#ifdef DMA_WINDOW_UNCACHED
+    // uncached：窗口内 load 绕过 DCache，直接看到 W 已写入的新值。
+    check(x7 == kNewValue,
+          "uncached mode: in-window load must bypass the cache and observe "
+          "the DMA value (0x" + std::to_string(kNewValue) + "), got 0x" +
+              std::to_string(x7));
+#else
+    // 窗口内命中陈旧行：这是 software_flush 模式要确认的既有行为。
     check(x7 == kOldValue,
           "expected the in-window load to return the STALE cached value "
           "(0x" + std::to_string(kOldValue) + "), got 0x" +
               std::to_string(x7));
+#endif
     check(x8 == kNewValue,
           "post-B load should observe the DMA value after invalidation, got "
           "0x" + std::to_string(x8));

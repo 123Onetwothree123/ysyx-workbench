@@ -25,6 +25,12 @@ object ysyx_26030103_Elaborate extends App {
   // DCache数据阵列存储介质："reg"=寄存器阵列(默认)，"sram"=SyncReadMem同步读阵列
   val DCacheStorageName =
     sys.env.get("DCACHE_STORAGE").filter(_.nonEmpty).getOrElse("reg")
+  // 一致性模式：默认分别是标准 fence.i 与既有 DMA 写 B 失效行为。
+  // 未实现的值会在 FromString 中明确报错，绝不静默回退。
+  val ICacheCoherenceName =
+    sys.env.get("ICACHE_COHERENCE").filter(_.nonEmpty).getOrElse("fence_i")
+  val DmaCoherenceName =
+    sys.env.get("DMA_COHERENCE").filter(_.nonEmpty).getOrElse("software_flush")
   val WBufDepth = sys.env.getOrElse("WBUF_DEPTH", "4").toInt
   val BTBBits = sys.env.getOrElse("BTB_BITS", "4").toInt
   val BTBWays = sys.env.getOrElse("BTB_WAYS", "1").toInt
@@ -143,6 +149,10 @@ object ysyx_26030103_Elaborate extends App {
     ICacheStorage = ysyx_26030103_CacheStorage.FromString(ICacheStorageName),
     DCacheEnable = DCacheEnable,
     DCacheStorage = ysyx_26030103_CacheStorage.FromString(DCacheStorageName),
+    ICacheCoherence =
+      ysyx_26030103_ICacheCoherence.FromString(ICacheCoherenceName),
+    DmaCoherence =
+      ysyx_26030103_DmaCoherence.FromString(DmaCoherenceName),
     BlockSizeLog2 = BlockSizeLog2,
     IndexBits = IndexBits,
     ICacheBlockSizeLog2 = ICacheBlockSizeLog2,
@@ -190,6 +200,22 @@ object ysyx_26030103_Elaborate extends App {
         "serial 模式在扫描期间反压新请求。"
     )
   }
+  println(
+    s"[NPC config] ICache 一致性: ${config.ICacheCoherence.Name}" +
+      (if (config.ICacheCoherence ==
+            ysyx_26030103_ICacheCoherence.HardwareSnoop) {
+         if (config.ICacheEnable) "（store B 完成时失效对应行；仍需 fence.i）"
+         else "（未生效：ICACHE=n）"
+       } else "（标准语义：store 后需执行 fence.i）")
+  )
+  println(
+    s"[NPC config] DMA 一致性: ${config.DmaCoherence.Name}" +
+      (if (config.DmaCoherence == ysyx_26030103_DmaCoherence.Uncached) {
+         if (config.DmaWindowPresent)
+           "（0xc0000000--0xffffffff 在 CPU 侧不可缓存，绕过 DCache/ICache）"
+         else "（未生效：当前 PMA 没有可代理的 DMA 窗口，CHIPLINK=n？）"
+       } else "（保持 DMA 写 B 完成时失效 DCache；软件负责 DMA 完成顺序）")
+  )
   if (config.SocXLENNeedsAxiBridge) {
     println(
       s"[NPC config] EffectiveSocXLEN=${config.EffectiveSocXLEN}: " +

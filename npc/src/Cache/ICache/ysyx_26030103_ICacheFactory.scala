@@ -18,6 +18,10 @@ object ysyx_26030103_ICacheFactory {
   def Create(
       config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
   ): ysyx_26030103_ICacheBase = {
+    // HARDWARE_SNOOP 只在显式选择时生成 store 地址比较/失效逻辑；
+    // ICACHE=n 时没有可失效的阵列，模式在日志中标注为未生效。
+    val Snoop = config.ICacheEnable &&
+      config.ICacheCoherence == ysyx_26030103_ICacheCoherence.HardwareSnoop
     config.ICacheStorage match {
       case ysyx_26030103_CacheStorage.Reg =>
         Module(
@@ -29,7 +33,8 @@ object ysyx_26030103_ICacheFactory {
             Vipt = config.MMU.cacheMode == "vipt",
             ViptAliasSafe = config.ICacheViptAliasHardware,
             ViptAliasScanMode = config.ICacheViptAliasScanMode,
-            PMARegions = config.PMARegions
+            Snoop = Snoop,
+            PMARegions = config.CachePMARegions
           )
         )
       case ysyx_26030103_CacheStorage.SRAM =>
@@ -42,7 +47,8 @@ object ysyx_26030103_ICacheFactory {
             Vipt = config.MMU.cacheMode == "vipt",
             ViptAliasSafe = config.ICacheViptAliasHardware,
             ViptAliasScanMode = config.ICacheViptAliasScanMode,
-            PMARegions = config.PMARegions
+            Snoop = Snoop,
+            PMARegions = config.CachePMARegions
           )
         )
       case ysyx_26030103_CacheStorage.SRAMNoBypass =>
@@ -56,7 +62,8 @@ object ysyx_26030103_ICacheFactory {
             ViptAliasSafe = config.ICacheViptAliasHardware,
             ViptAliasScanMode = config.ICacheViptAliasScanMode,
             Bypass = false,
-            PMARegions = config.PMARegions
+            Snoop = Snoop,
+            PMARegions = config.CachePMARegions
           )
         )
     }
