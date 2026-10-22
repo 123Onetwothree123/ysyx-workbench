@@ -38,7 +38,7 @@ menu "运行时调试"
       depends on PERF_STATS
       default y
       help
-        组总开关。仅在RV32_M开启时有意义；单计数器见本组子菜单。
+        组总开关。仅在RISCV_M开启时有意义；单计数器见本组子菜单。
 
     config PERF_COUNTER_IFU_STALL
       bool "取指停顿组：流水/总线/AR/R/重定向/空闲"

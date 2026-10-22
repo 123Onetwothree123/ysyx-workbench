@@ -117,7 +117,7 @@ class ysyx_26030103_EXU(
   val BranchComparatorUnit = Module(new ysyx_26030103_BranchComparator)
   val inst = io.in.bits
   // M扩展关闭时，这些信号全部折叠为常量；MDU模块和顺序
-  // 队列只在elaboration期的UseM分支中生成。这避免了RV32_M=n时
+  // 队列只在elaboration期的UseM分支中生成。这避免了RISCV_M=n时
   // 仅靠译码器“不使用”但仍然生成完整乘除法器的问题。
   val PendingMDU = WireDefault(false.B)
   val PendingMDUInst = WireDefault(0.U.asTypeOf(chiselTypeOf(io.in.bits)))

@@ -41,9 +41,13 @@ object ysyx_26030103_Elaborate extends App {
   val HasChipLink = sys.env.getOrElse("CHIPLINK", "n") == "y"
   // 用kconfig来指挥的指令集扩展开关，然后没有实现的部分就直接让NPCConfig的require判断为失败的条件就可以了
   val XLEN = envIntOr("XLEN", 32)
-  val UseM = sys.env.getOrElse("RV32_M", "n") == "y"
-  val UseA = sys.env.getOrElse("RV32_A", "n") == "y"
-  val UseC = sys.env.getOrElse("RV32_C", "n") == "y"
+  // 扩展名不再绑定 RV32；旧 RV32_* 环境变量保留兼容。
+  val UseM = sys.env.getOrElse("RISCV_M",
+    sys.env.getOrElse("RV32_M", "n")) == "y"
+  val UseA = sys.env.getOrElse("RISCV_A",
+    sys.env.getOrElse("RV32_A", "n")) == "y"
+  val UseC = sys.env.getOrElse("RISCV_C",
+    sys.env.getOrElse("RV32_C", "n")) == "y"
   val MULImplName =
     sys.env.get("MUL_IMPL").filter(_.nonEmpty).getOrElse("shift_add")
   val MULEncodingName =

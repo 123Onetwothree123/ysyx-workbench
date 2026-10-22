@@ -98,8 +98,8 @@ case class ysyx_26030103_NPCConfig(
 ) {
   require(XLEN == 32,
     s"当前 RTL 只支持 XLEN=32；RV64 尚未实现，收到 XLEN=$XLEN")
-  require(!UseA, "RV32_A还没有做")
-  require(!UseC, "RV32_C还没做")
+  require(!UseA, "RISCV_A 还没有做")
+  require(!UseC, "RISCV_C 还没做")
   require(
     AddressWidth == 32,
     "当前RV32核的PC/PMA/流水线消息固定为32位；暂不支持非32位AddressWidth"
@@ -157,7 +157,7 @@ case class ysyx_26030103_NPCConfig(
     RASBits >= 0 && RASBits < 31,
     "RASBits必须在0到30之间；0表示单项RAS"
   )
-  require((ResetAddr & 0x3L) == 0L, "未启用RV32_C时ResetAddr必须按4字节对齐")
+  require((ResetAddr & 0x3L) == 0L, "未启用RISCV_C时ResetAddr必须按4字节对齐")
   require(PMARegions.nonEmpty, "物理地址图不能为空")
   require(
     PMARegions.exists(r => ResetAddr >= r.Base && ResetAddr < r.EndExclusive && r.Executable),

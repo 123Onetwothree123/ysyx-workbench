@@ -12,7 +12,7 @@ menu "硬件配置"
         64 位核。RV64 的 PC、GPR、CSR、AXI 地址和 Sv39/Sv48
         页表尚未接入。
 
-    config RV32_M
+    config RISCV_M
       bool "M 扩展（乘/除/取余）"
       default n
       help
@@ -21,20 +21,20 @@ menu "硬件配置"
         修改后需重新 make verilog。
         difftest时NEMU必须使用相同ISA(如riscv32im)。
 
-    config RV32_A
+    config RISCV_A
       bool "A 扩展（原子访存）(暂未实现)"
       default n
       help
         尚未实现: 启用后 elaboration 会直接报错, 防止生成功能不完整的核。
 
-    config RV32_C
+    config RISCV_C
       bool "C 扩展（压缩指令）(暂未实现)"
       default n
       help
         尚未实现: 启用后 elaboration 会直接报错, 防止生成功能不完整的核。
 
     menu "乘法器配置"
-      depends on RV32_M
+      depends on RISCV_M
 
       choice
         prompt "乘法器实现"
@@ -169,7 +169,7 @@ menu "硬件配置"
     endmenu
 
     menu "除法器配置"
-      depends on RV32_M
+      depends on RISCV_M
 
       choice
         prompt "除法器实现"
