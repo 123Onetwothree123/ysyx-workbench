@@ -5,6 +5,10 @@ ifndef NPC_CSRC_DIR
 $(error NPC_CSRC_DIR is not set)
 endif
 
+# 唯一 XLEN 配置头。它的内容也进入构建签名，切换 CONFIG_XLEN/SOC_XLEN
+# 或修改派生类型时，模块图不会复用旧 BMI。
+NPC_CONFIG_HEADER := $(NPC_CSRC_DIR)/Config.h
+
 # Remember the wrapper itself before including Verilator's generated makefiles.
 # Its content is part of the build signature, so changes to the custom module
 # rules cannot silently reuse artifacts produced by an older version.
@@ -164,6 +168,7 @@ npc_shell_quote = '$(subst ','"'"',$(1))'
 	   $(LINK) --version 2>&1; \
 	   printf '%s\n' 'LINK_VERSION_END'; \
 	   printf 'WRAPPER_SHA256='; sha256sum '$(NPC_BUILD_WRAPPER)' | cut -d' ' -f1; \
+	   printf 'CONFIG_HEADER_SHA256='; sha256sum '$(NPC_CONFIG_HEADER)' | cut -d' ' -f1; \
 	   printf 'AUTO_CONF_SHA256='; \
 	   if test -f '$(NPC_AUTO_CONF)'; then sha256sum '$(NPC_AUTO_CONF)' | cut -d' ' -f1; else printf '%s\n' missing; fi; \
 	 } > "$$tmp"; \
@@ -230,13 +235,13 @@ $(STD_MODULE_OBJ): $(STD_MODULE_SRC) .npc_build_signature
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS) -x c++ -c $< -o $@
 
 define NPC_GCC_MODULE_RULE
-$(call npc_module_obj,$(1)): $(1) .npc_build_signature .npc_top_header_signature $(NPC_HEADER_GCM)
+$(call npc_module_obj,$(1)): $(1) $(NPC_CONFIG_HEADER) .npc_build_signature .npc_top_header_signature $(NPC_HEADER_GCM)
 	@echo "  CXX MODULE $(notdir $(1))"
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS) -x c++ -c $(1) -o $(call npc_module_obj,$(1))
 endef
 $(foreach src,$(NPC_IXX_SRCS),$(eval $(call NPC_GCC_MODULE_RULE,$(src))))
 
-.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_MODULE_OBJS_IXX) $(NPC_HEADER_GCM) $(NPC_IXX_SRCS) $(STD_MODULE_SRC) .npc_top_header_signature .npc_build_signature
+.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_MODULE_OBJS_IXX) $(NPC_HEADER_GCM) $(NPC_IXX_SRCS) $(NPC_CONFIG_HEADER) $(STD_MODULE_SRC) .npc_top_header_signature .npc_build_signature
 	@mkdir -p gcm.cache
 	@touch $@
 

@@ -47,6 +47,16 @@
 - 由于当前实际端口仍是 32 位，`AddressWidth=64` 的 PMA 低 4GiB 约束
   继续按实际 RTL 生效，不随 `EffectiveSocXLEN` 放宽。
 
+## C++ 运行时 XLEN
+
+- `csrc/Config.h` 是 NPC 运行时唯一的 XLEN 入口，只消费 Makefile 传入的
+  `CONFIG_XLEN` 与有效 `CONFIG_SOC_XLEN`（已解析 FOLLOW_CPU）。
+- 它派生 `npc::XLen`、`npc::SocXLen`、`npc::XWord`、`npc::SocXWord`：
+  RV32 仍为 32 位，RV64 的地址/GPR/PC/CSR 为完整 64 位。
+- csrc 不再生成或读取独立的 32/64 位第二开关；ELF class、反汇编模式、
+  DUT 调试状态、SDB 地址宽度和 DiffTest 状态布局都从上述派生值获得。
+- RV64 DiffTest 会明确拒绝当前固定 32 位 REF ABI，RV32 行为保持不变。
+
 ## 8 字节 LD/SD
 
 - LSU 的 LD/SD 在 32 位 AXI 数据通道上使用两拍 INCR：

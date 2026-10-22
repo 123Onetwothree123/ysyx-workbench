@@ -1,3 +1,5 @@
+module;
+#include "../../Config.h"
 module npc.sdb.command.xCommand;
 import npc.sdb.SDBCommandUtils;
 import npc.expressions.expressions;
@@ -115,22 +117,26 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
         {
         case 1:
         {
-            std::println("0x{:08x}: 0x{:02x}", CurrentAddress, Value & 0xffu);
+            std::println("0x{:0{}x}: 0x{:02x}", CurrentAddress,
+                         npc::XHexDigits, Value & 0xffu);
             break;
         }
         case 2:
         {
-            std::println("0x{:08x}: 0x{:04x}", CurrentAddress, Value & 0xffffu);
+            std::println("0x{:0{}x}: 0x{:04x}", CurrentAddress,
+                         npc::XHexDigits, Value & 0xffffu);
             break;
         }
         case 4:
         {
-            std::println("0x{:x}: 0x{:08x}", CurrentAddress, Value);
+            std::println("0x{:0{}x}: 0x{:08x}", CurrentAddress,
+                         npc::XHexDigits, Value);
             break;
         }
         case 8:
         {
-            std::println("0x{:x}: 0x{:016x}", CurrentAddress, Value);
+            std::println("0x{:0{}x}: 0x{:016x}", CurrentAddress,
+                         npc::XHexDigits, Value);
             break;
         }
         default:

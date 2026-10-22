@@ -272,17 +272,11 @@ clean:
 CACHESIM_DIR  := $(CSRC_DIR)/tools/cachesim
 CACHESIM_BIN  := $(CACHESIM_DIR)/build/cachesim
 
-# NPC 主 Kconfig 定义了 CONFIG_XLEN 时传给工具；未定义则让工具自己的
-# Kconfig 决定，避免在 Makefile 里另造第二套 XLEN 默认值。
-# 每次重新 configure，保证 .config/XLEN 变化能反映到已有 build 目录。
-.PHONY: cachesim-build
-cachesim-build:
-	@cmake -B $(CACHESIM_DIR)/build -S $(CACHESIM_DIR) \
-		$(if $(CONFIG_XLEN),-DCONFIG_XLEN=$(CONFIG_XLEN),)
-	@cmake --build $(CACHESIM_DIR)/build
+$(CACHESIM_BIN):
+	@cmake -B $(CACHESIM_DIR)/build -S $(CACHESIM_DIR) && cmake --build $(CACHESIM_DIR)/build
 
 .PHONY: cachesim
-cachesim: cachesim-build
+cachesim: $(CACHESIM_BIN)
 	@rm -f itrace.txt
 	@$(MAKE) run CONFIG_TRACE=y CONFIG_ITRACE=y CONFIG_ITRACE_WRITE_FILE=y file=$(file)
 	@echo ""
@@ -290,7 +284,7 @@ cachesim: cachesim-build
 	@$(CACHESIM_BIN) itrace.txt
 
 .PHONY: cachesim_dse
-cachesim_dse: cachesim-build
+cachesim_dse: $(CACHESIM_BIN)
 	@rm -f itrace.txt
 	@$(MAKE) run CONFIG_TRACE=y CONFIG_ITRACE=y CONFIG_ITRACE_WRITE_FILE=y file=$(file)
 	@echo ""
@@ -463,9 +457,13 @@ ifneq ($(PERF_SYNTH_READY),1)
 simtest $(BIN) $(BIN_NPC): | perf-build-metadata
 endif
 endif
-# 向C++侧传递 XLEN：readelf/ftrace 与 SDB/DUT 都只消费 CONFIG_XLEN。
+# 向 C++ 侧传递唯一的 XLEN 配置：CPU XLEN 来自 Kconfig，SoC XLEN 是
+# 已解析 FOLLOW_CPU 的有效值。csrc/Config.h 只消费这两个宏，不再生成
+# 任何独立的 32/64 位第二开关。
 NPC_XLEN := $(or $(CONFIG_XLEN),32)
-XLEN_CFLAGS = -DCONFIG_XLEN=$(NPC_XLEN)
+NPC_SOC_XLEN := $(or $(SOC_XLEN_EFFECTIVE),32)
+XLEN_CFLAGS = -DCONFIG_XLEN=$(NPC_XLEN) \
+              -DCONFIG_SOC_XLEN=$(NPC_SOC_XLEN)
 # 向C++侧传递M扩展开关
 ifeq ($(or $(CONFIG_RISCV_M),$(RISCV_M)),y)
 RISCM_CFLAGS = -DCONFIG_RISCV_M

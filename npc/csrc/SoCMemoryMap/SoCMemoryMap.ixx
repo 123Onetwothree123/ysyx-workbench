@@ -1,3 +1,5 @@
+module;
+#include "../Config.h"
 export module npc.SoCMemoryMap.SoCMemoryMap;
 import std;
 import npc.SoCMemoryMap.AddressRange;
@@ -25,8 +27,10 @@ public:
     static inline const AddressRange SRAM{"sram", 0x0f000000u, 0x8000u};
     static inline const AddressRange PSRAM{"psram", 0x80000000u, 0x400000u};
     static inline const AddressRange SDRAM{"sdram", 0xa0000000u, 0x2000000u};
-    // 看属于soc的地址空间的哪一块区域的
-    static std::optional<AddressRange> find(std::uint32_t address, std::uint32_t length = 1);
+    // 看属于 SoC 地址空间的哪一块区域。查询使用完整 XWord，内部再按
+    // 有效 SocXLen 拒绝超出 SoC 总线宽度的地址，避免静默截断。
+    static std::optional<AddressRange> find(npc::XWord address,
+                                            npc::XWord length = 1);
 
 private:
     inline static const std::array Ranges{

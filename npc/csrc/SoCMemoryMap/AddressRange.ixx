@@ -1,3 +1,5 @@
+module;
+#include "../Config.h"
 export module npc.SoCMemoryMap.AddressRange;
 import std;
 
@@ -5,17 +7,18 @@ export class AddressRange
 {
 private:
     std::string_view Name;
-    std::uint32_t Base;
-    std::uint32_t Size;
+    // 地址范围按 CPU XLEN 保存：RV32 为 32 位，RV64 为 64 位。
+    npc::XWord Base;
+    npc::XWord Size;
 
 public:
     AddressRange() = delete;
     ~AddressRange() = default;
-    AddressRange(std::string_view name, std::uint32_t base, std::uint32_t size);
+    AddressRange(std::string_view name, npc::XWord base, npc::XWord size);
     std::string_view GetName() const;
-    std::uint32_t GetBase() const;
-    std::uint32_t GetSize() const;
-    std::uint32_t GetEnd() const;
-    std::uint32_t OffsetOf(std::uint32_t Address) const;
-    bool Contains(std::uint32_t Address, std::uint32_t Length = 1) const;
+    npc::XWord GetBase() const;
+    npc::XWord GetSize() const;
+    npc::XWord GetEnd() const;
+    npc::XWord OffsetOf(npc::XWord Address) const;
+    bool Contains(npc::XWord Address, npc::XWord Length = 1) const;
 };

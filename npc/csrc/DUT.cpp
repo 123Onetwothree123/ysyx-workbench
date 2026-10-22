@@ -16,6 +16,7 @@ module;
 #ifdef CONFIG_NVBOARD
 #include <nvboard.h>
 #endif
+#include "Config.h"
 module npc.DUT;
 import npc.trace.itrace;
 import npc.trace.disasm;
@@ -41,86 +42,89 @@ static VerilatedFstC &tfp = *new VerilatedFstC;
 #ifndef CONFIG_MSIZE
 #define CONFIG_MSIZE 0x10000000
 #endif
-#ifndef CONFIG_XLEN
-#define CONFIG_XLEN 32
-#endif
 namespace
 {
 // RV64 direct-NPC 的调试端口拆成低/高两个 32 位字。这里统一拼成完整
-// 64 位；SoC 顶层仍只有低 32 位，但其地址空间本身低于 4GiB，高位为 0。
+// XWord；RV32 构建不读取不存在的高位端口。
 template <typename Top>
-std::uint64_t DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
+npc::XWord DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
 {
-    return static_cast<std::uint64_t>(Low) |
-           (static_cast<std::uint64_t>(High) << 32U);
+#if CONFIG_XLEN == 64
+    return static_cast<npc::XWord>(Low) |
+           (static_cast<npc::XWord>(High) << 32U);
+#else
+    static_cast<void>(High);
+    return static_cast<npc::XWord>(Low);
+#endif
 }
 #if defined(VRISCV32E_NPC) && CONFIG_XLEN == 64
 template <typename Top>
-std::uint64_t DebugPC(const Top &top) { return DebugWord(top, top.debug_pc, top.debug_pc_hi); }
+npc::XWord DebugPC(const Top &top) { return DebugWord(top, top.debug_pc, top.debug_pc_hi); }
 template <typename Top>
-std::uint64_t DebugNextPC(const Top &top) { return DebugWord(top, top.debug_next_pc, top.debug_next_pc_hi); }
+npc::XWord DebugNextPC(const Top &top) { return DebugWord(top, top.debug_next_pc, top.debug_next_pc_hi); }
 template <typename Top>
-std::uint64_t DebugArchPC(const Top &top) { return DebugWord(top, top.debug_arch_pc, top.debug_arch_pc_hi); }
+npc::XWord DebugArchPC(const Top &top) { return DebugWord(top, top.debug_arch_pc, top.debug_arch_pc_hi); }
 template <typename Top>
-std::uint64_t DebugGPR(const Top &top) { return DebugWord(top, top.debug_gpr_rdata, top.debug_gpr_rdata_hi); }
+npc::XWord DebugGPR(const Top &top) { return DebugWord(top, top.debug_gpr_rdata, top.debug_gpr_rdata_hi); }
 template <typename Top>
-std::uint64_t DebugMtracePC(const Top &top) { return DebugWord(top, top.debug_mtrace_pc, top.debug_mtrace_pc_hi); }
+npc::XWord DebugMtracePC(const Top &top) { return DebugWord(top, top.debug_mtrace_pc, top.debug_mtrace_pc_hi); }
 template <typename Top>
-std::uint64_t DebugMtraceAddr(const Top &top) { return DebugWord(top, top.debug_mtrace_addr, top.debug_mtrace_addr_hi); }
+npc::XWord DebugMtraceAddr(const Top &top) { return DebugWord(top, top.debug_mtrace_addr, top.debug_mtrace_addr_hi); }
 template <typename Top>
-std::uint64_t DebugMtraceWdata(const Top &top) { return DebugWord(top, top.debug_mtrace_wdata, top.debug_mtrace_wdata_hi); }
+npc::XWord DebugMtraceWdata(const Top &top) { return DebugWord(top, top.debug_mtrace_wdata, top.debug_mtrace_wdata_hi); }
 template <typename Top>
-std::uint64_t DebugMtraceRdata(const Top &top) { return DebugWord(top, top.debug_mtrace_rdata, top.debug_mtrace_rdata_hi); }
+npc::XWord DebugMtraceRdata(const Top &top) { return DebugWord(top, top.debug_mtrace_rdata, top.debug_mtrace_rdata_hi); }
 template <typename Top>
-std::uint64_t DebugFaultPC(const Top &top) { return DebugWord(top, top.debug_access_fault_pc, top.debug_access_fault_pc_hi); }
+npc::XWord DebugFaultPC(const Top &top) { return DebugWord(top, top.debug_access_fault_pc, top.debug_access_fault_pc_hi); }
 template <typename Top>
-std::uint64_t DebugTrapPC(const Top &top) { return DebugWord(top, top.debug_trap_pc, top.debug_trap_pc_hi); }
+npc::XWord DebugTrapPC(const Top &top) { return DebugWord(top, top.debug_trap_pc, top.debug_trap_pc_hi); }
 template <typename Top>
-std::uint64_t DebugTrapTarget(const Top &top) { return DebugWord(top, top.debug_trap_target, top.debug_trap_target_hi); }
+npc::XWord DebugTrapTarget(const Top &top) { return DebugWord(top, top.debug_trap_target, top.debug_trap_target_hi); }
 template <typename Top>
-std::uint64_t DebugTrapPCHalt(const Top &top) { return DebugWord(top, top.trap_pc, top.trap_pc_hi); }
+npc::XWord DebugTrapPCHalt(const Top &top) { return DebugWord(top, top.trap_pc, top.trap_pc_hi); }
 template <typename Top>
-std::uint64_t DebugCSRMtvec(const Top &top) { return DebugWord(top, top.debug_csr_mtvec, top.debug_csr_mtvec_hi); }
+npc::XWord DebugCSRMtvec(const Top &top) { return DebugWord(top, top.debug_csr_mtvec, top.debug_csr_mtvec_hi); }
 template <typename Top>
-std::uint64_t DebugCSRMepc(const Top &top) { return DebugWord(top, top.debug_csr_mepc, top.debug_csr_mepc_hi); }
+npc::XWord DebugCSRMepc(const Top &top) { return DebugWord(top, top.debug_csr_mepc, top.debug_csr_mepc_hi); }
 template <typename Top>
-std::uint64_t DebugTrapMtvec(const Top &top) { return DebugWord(top, top.debug_trap_mtvec, top.debug_trap_mtvec_hi); }
+npc::XWord DebugTrapMtvec(const Top &top) { return DebugWord(top, top.debug_trap_mtvec, top.debug_trap_mtvec_hi); }
 template <typename Top>
-std::uint64_t DebugTrapMepc(const Top &top) { return DebugWord(top, top.debug_trap_mepc, top.debug_trap_mepc_hi); }
+npc::XWord DebugTrapMepc(const Top &top) { return DebugWord(top, top.debug_trap_mepc, top.debug_trap_mepc_hi); }
 #else
-// RV32 以及 SoC 路径保持历史 32 位端口；SoC 的物理/虚拟地址上界 < 4GiB。
+// RV32 保持历史 32 位端口；SoC 顶层调试 ABI 目前固定 32 位，但其地址
+// 空间上界 < 4GiB。RV64 direct-NPC 走上面的低/高字拼接路径。
 template <typename Top>
-std::uint64_t DebugPC(const Top &top) { return top.debug_pc; }
+npc::XWord DebugPC(const Top &top) { return static_cast<npc::XWord>(top.debug_pc); }
 template <typename Top>
-std::uint64_t DebugNextPC(const Top &top) { return top.debug_next_pc; }
+npc::XWord DebugNextPC(const Top &top) { return static_cast<npc::XWord>(top.debug_next_pc); }
 template <typename Top>
-std::uint64_t DebugArchPC(const Top &top) { return top.debug_arch_pc; }
+npc::XWord DebugArchPC(const Top &top) { return static_cast<npc::XWord>(top.debug_arch_pc); }
 template <typename Top>
-std::uint64_t DebugGPR(const Top &top) { return top.debug_gpr_rdata; }
+npc::XWord DebugGPR(const Top &top) { return static_cast<npc::XWord>(top.debug_gpr_rdata); }
 template <typename Top>
-std::uint64_t DebugMtracePC(const Top &top) { return top.debug_mtrace_pc; }
+npc::XWord DebugMtracePC(const Top &top) { return static_cast<npc::XWord>(top.debug_mtrace_pc); }
 template <typename Top>
-std::uint64_t DebugMtraceAddr(const Top &top) { return top.debug_mtrace_addr; }
+npc::XWord DebugMtraceAddr(const Top &top) { return static_cast<npc::XWord>(top.debug_mtrace_addr); }
 template <typename Top>
-std::uint64_t DebugMtraceWdata(const Top &top) { return top.debug_mtrace_wdata; }
+npc::XWord DebugMtraceWdata(const Top &top) { return static_cast<npc::XWord>(top.debug_mtrace_wdata); }
 template <typename Top>
-std::uint64_t DebugMtraceRdata(const Top &top) { return top.debug_mtrace_rdata; }
+npc::XWord DebugMtraceRdata(const Top &top) { return static_cast<npc::XWord>(top.debug_mtrace_rdata); }
 template <typename Top>
-std::uint64_t DebugFaultPC(const Top &top) { return top.debug_access_fault_pc; }
+npc::XWord DebugFaultPC(const Top &top) { return static_cast<npc::XWord>(top.debug_access_fault_pc); }
 template <typename Top>
-std::uint64_t DebugTrapPC(const Top &top) { return top.debug_trap_pc; }
+npc::XWord DebugTrapPC(const Top &top) { return static_cast<npc::XWord>(top.debug_trap_pc); }
 template <typename Top>
-std::uint64_t DebugTrapTarget(const Top &top) { return top.debug_trap_target; }
+npc::XWord DebugTrapTarget(const Top &top) { return static_cast<npc::XWord>(top.debug_trap_target); }
 template <typename Top>
-std::uint64_t DebugTrapPCHalt(const Top &top) { return top.trap_pc; }
+npc::XWord DebugTrapPCHalt(const Top &top) { return static_cast<npc::XWord>(top.trap_pc); }
 template <typename Top>
-std::uint64_t DebugCSRMtvec(const Top &top) { return top.debug_csr_mtvec; }
+npc::XWord DebugCSRMtvec(const Top &top) { return static_cast<npc::XWord>(top.debug_csr_mtvec); }
 template <typename Top>
-std::uint64_t DebugCSRMepc(const Top &top) { return top.debug_csr_mepc; }
+npc::XWord DebugCSRMepc(const Top &top) { return static_cast<npc::XWord>(top.debug_csr_mepc); }
 template <typename Top>
-std::uint64_t DebugTrapMtvec(const Top &top) { return top.debug_trap_mtvec; }
+npc::XWord DebugTrapMtvec(const Top &top) { return static_cast<npc::XWord>(top.debug_trap_mtvec); }
 template <typename Top>
-std::uint64_t DebugTrapMepc(const Top &top) { return top.debug_trap_mepc; }
+npc::XWord DebugTrapMepc(const Top &top) { return static_cast<npc::XWord>(top.debug_trap_mepc); }
 #endif
 }
 #ifdef CONFIG_NVBOARD
@@ -853,7 +857,11 @@ void DUT::step()
         const auto assemblyText{assembly.front() == '\0'
                                     ? std::string_view{"<unknown>"}
                                     : std::string_view{assembly.data()}};
-        std::println("[ITRACE] 0x{:08x}: {:08x}  {}", pc, instruction, assemblyText);
+        std::println("[ITRACE] 0x{:0{}x}: {:08x}  {}",
+                     pc,
+                     npc::XHexDigits,
+                     instruction,
+                     assemblyText);
     }
 #endif
 #ifdef CONFIG_ITRACE_WRITE_FILE
@@ -955,17 +963,20 @@ void DUT::step()
         auto pc{DebugFaultPC(*dut)};
         if (resp == 2)
         {
-            std::println(std::cerr, "Access Fault [SLVERR] at PC=0x{:08x}, cycle={}", pc, cycle);
+            std::println(std::cerr, "Access Fault [SLVERR] at PC=0x{:0{}x}, cycle={}",
+                         pc, npc::XHexDigits, cycle);
             std::println(std::cerr, "  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了");
         }
         else if (resp == 3)
         {
-            std::println(std::cerr, "Access Fault [DECERR] at PC=0x{:08x}, cycle={}", pc, cycle);
+            std::println(std::cerr, "Access Fault [DECERR] at PC=0x{:0{}x}, cycle={}",
+                         pc, npc::XHexDigits, cycle);
             std::println(std::cerr, "  地址译码错误，鬼知道你访问了什么地址，AXI总线根本找不到对应的从设备");
         }
         else
         {
-            std::println(std::cerr, "Access Fault [RESP={}] at PC=0x{:08x}, cycle={}", resp, pc, cycle);
+            std::println(std::cerr, "Access Fault [RESP={}] at PC=0x{:0{}x}, cycle={}",
+                         resp, pc, npc::XHexDigits, cycle);
             std::println(std::cerr, "  这什么AXI响应码，我也不认识");
         }
         }
@@ -988,6 +999,7 @@ bool DUT::PollSimulationHalt()
         return false;
     std::println("收到仿真 halt 请求");
     const auto halt_code{ReadGPR(10)}; // x10 = a0
+    // custom halt 返回码是 32 位 ABI；地址部分保持完整 XWord。
     NPCTrap::Halt(ReadHaltPC(),
                   halt_code ? static_cast<std::uint32_t>(*halt_code) : 1u);
     return true;
@@ -1004,7 +1016,7 @@ const PerfStats &DUT::GetPerfStats() const noexcept
 {
     return perf;
 }
-std::expected<std::uint64_t, std::string> DUT::ReadGPR(std::uint32_t index)
+std::expected<npc::XWord, std::string> DUT::ReadGPR(std::uint32_t index)
 {
     if (index >= 32)
     {
@@ -1014,12 +1026,12 @@ std::expected<std::uint64_t, std::string> DUT::ReadGPR(std::uint32_t index)
     dut->eval();
     return DebugGPR(*dut);
 }
-std::expected<std::uint64_t, std::string> DUT::ReadPC()
+std::expected<npc::XWord, std::string> DUT::ReadPC()
 {
     dut->eval();
     return DebugArchPC(*dut);
 }
-std::expected<std::uint64_t, std::string>
+std::expected<npc::XWord, std::string>
 DUT::ReadCachedGPR(std::uint32_t index) const
 {
     if (index >= architectural_gpr.size())
@@ -1028,19 +1040,19 @@ DUT::ReadCachedGPR(std::uint32_t index) const
     }
     return architectural_gpr[index];
 }
-std::uint64_t DUT::ReadCachedPC() const noexcept
+npc::XWord DUT::ReadCachedPC() const noexcept
 {
     return architectural_pc;
 }
-std::uint64_t DUT::ReadHaltPC() const
+npc::XWord DUT::ReadHaltPC() const
 {
     return DebugTrapPCHalt(*dut);
 }
-std::uint64_t DUT::ReadTrapPC() const
+npc::XWord DUT::ReadTrapPC() const
 {
     return DebugTrapPC(*dut);
 }
-std::uint64_t DUT::ReadTrapTarget() const
+npc::XWord DUT::ReadTrapTarget() const
 {
     return DebugTrapTarget(*dut);
 }

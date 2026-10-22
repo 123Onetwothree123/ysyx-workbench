@@ -6,6 +6,7 @@ module;
 #include "VysyxSoCFull.h"
 #define TOP_MODULE VysyxSoCFull
 #endif
+#include "Config.h"
 export module npc.DUT;
 import std;
 import npc.PerfStats;
@@ -58,8 +59,8 @@ private:
     // destination after each real write.  DiffTest can snapshot all 32 GPRs
     // without 32 debug-address changes/evals per retirement.
     // RV64 下必须保留完整 64 位，不能沿用只够 RV32 的 32 位镜像。
-    std::array<std::uint64_t, 32> architectural_gpr{};
-    std::uint64_t architectural_pc{0};
+    std::array<npc::XWord, 32> architectural_gpr{};
+    npc::XWord architectural_pc{0};
 #ifdef CONFIG_SDB
     // Verilator 顶层没有稳定的 RAM 读端口。只记录已精确退休的
     // CPU store，与初始镜像合并成可证明正确的调试内存视图。
@@ -89,16 +90,17 @@ public:
     std::size_t GetCycle() const;
     std::size_t GetInstructions() const;
     [[nodiscard]] const PerfStats &GetPerfStats() const noexcept;
-    // 给sdb的。返回完整 XLEN 位宽，RV64 不会被截断到 32 位。
-    [[nodiscard]] std::expected<std::uint64_t, std::string> ReadGPR(std::uint32_t index);
-    [[nodiscard]] std::expected<std::uint64_t, std::string> ReadPC();
-    [[nodiscard]] std::expected<std::uint64_t, std::string>
+    // 给 SDB 的读口统一返回 XWord：RV32 是 32 位，RV64 是完整 64 位。
+    [[nodiscard]] std::expected<npc::XWord, std::string> ReadGPR(std::uint32_t index);
+    [[nodiscard]] std::expected<npc::XWord, std::string> ReadPC();
+    [[nodiscard]] std::expected<npc::XWord, std::string>
         ReadCachedGPR(std::uint32_t index) const;
-    [[nodiscard]] std::uint64_t ReadCachedPC() const noexcept;
+    [[nodiscard]] npc::XWord ReadCachedPC() const noexcept;
     // 仿真 custom halt 与 trap trace 的完整 XLEN 地址视图。
-    [[nodiscard]] std::uint64_t ReadHaltPC() const;
-    [[nodiscard]] std::uint64_t ReadTrapPC() const;
-    [[nodiscard]] std::uint64_t ReadTrapTarget() const;
+    [[nodiscard]] npc::XWord ReadHaltPC() const;
+    [[nodiscard]] npc::XWord ReadTrapPC() const;
+    [[nodiscard]] npc::XWord ReadTrapTarget() const;
+    // mcause 是异常/中断编码，RTL 调试端口固定 32 位，保留真实宽度。
     [[nodiscard]] std::uint32_t ReadTrapCause() const;
     // One-time physical RF rescan used at reset and at the final DiffTest
     // boundary.  Per-retirement snapshots continue to use the write mirror.

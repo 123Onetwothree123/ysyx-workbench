@@ -4,6 +4,7 @@ module;
 #include <dlfcn.h>
 #include <cstdio>
 #endif
+#include "../Config.h"
 module npc.difftest.difftest;
 import npc.difftest.DifftestCPUState;
 import npc.NPCTrap;
@@ -19,13 +20,12 @@ import npc.ysyxSoC;
 #ifndef CONFIG_MSIZE
 #define CONFIG_MSIZE 0x10000000
 #endif
-#ifndef CONFIG_XLEN
-#define CONFIG_XLEN 32
-#endif
 namespace
 {
 #ifdef CONFIG_DIFFTEST
-    using REFDifftestMemcpy = void (*)(std::uint32_t addr, void *buf, std::size_t n, bool direction);
+    // REF ABI 的地址参数按构建 XLEN 取宽；RV32 仍是 32 位，RV64 不允许
+    // 在进入 REF 前把地址截成 32 位。
+    using REFDifftestMemcpy = void (*)(npc::XWord addr, void *buf, std::size_t n, bool direction);
     using REFDifftestRegcpy = void (*)(void *dut, bool direction);
     using REFDifftestExec = void (*)(std::uint64_t n);
     using REFDifftestRaiseIntr = void (*)(std::uint64_t no);
@@ -49,12 +49,14 @@ namespace
 
     struct DifftestCSRState
     {
-        std::uint32_t mstatus{};
-        std::uint32_t mtvec{};
-        std::uint32_t mepc{};
-        std::uint32_t mcause{};
+        npc::XWord mstatus{};
+        npc::XWord mtvec{};
+        npc::XWord mepc{};
+        npc::XWord mcause{};
     };
-    static_assert(sizeof(DifftestCSRState) == 4 * sizeof(std::uint32_t));
+    // RV32 下与旧 REF ABI 的 4 x uint32_t 完全一致；RV64 状态在加载
+    // REF 前就会被明确拒绝。
+    static_assert(sizeof(DifftestCSRState) == 4 * sizeof(npc::XWord));
     DifftestCSRState LastDUTCSR{};
     /// @brief 从REF .so中按名称加载符号并转为指定函数指针类型
     /// @tparam Fn 目标函数指针类型
@@ -72,6 +74,35 @@ namespace
         return reinterpret_cast<Fn>(Symbol);
     }
 
+    template <typename Top>
+    npc::XWord DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
+    {
+#if CONFIG_XLEN == 64
+        return static_cast<npc::XWord>(Low) |
+               (static_cast<npc::XWord>(High) << 32U);
+#else
+        static_cast<void>(High);
+        return static_cast<npc::XWord>(Low);
+#endif
+    }
+
+    // direct-NPC RV64 才导出高 32 位调试字；SoC 顶层调试 ABI 固定 32 位。
+#if defined(VRISCV32E_NPC) && CONFIG_XLEN == 64
+    npc::XWord ReadRetirePC(DUT &dut) { return DebugWord(*dut, dut->debug_pc, dut->debug_pc_hi); }
+    npc::XWord ReadNextPC(DUT &dut) { return DebugWord(*dut, dut->debug_next_pc, dut->debug_next_pc_hi); }
+    npc::XWord ReadMtracePC(DUT &dut) { return DebugWord(*dut, dut->debug_mtrace_pc, dut->debug_mtrace_pc_hi); }
+    npc::XWord ReadMtraceAddr(DUT &dut) { return DebugWord(*dut, dut->debug_mtrace_addr, dut->debug_mtrace_addr_hi); }
+    npc::XWord ReadTrapPC(DUT &dut) { return DebugWord(*dut, dut->debug_trap_pc, dut->debug_trap_pc_hi); }
+    npc::XWord ReadTrapTarget(DUT &dut) { return DebugWord(*dut, dut->debug_trap_target, dut->debug_trap_target_hi); }
+#else
+    npc::XWord ReadRetirePC(DUT &dut) { return static_cast<npc::XWord>(dut->debug_pc); }
+    npc::XWord ReadNextPC(DUT &dut) { return static_cast<npc::XWord>(dut->debug_next_pc); }
+    npc::XWord ReadMtracePC(DUT &dut) { return static_cast<npc::XWord>(dut->debug_mtrace_pc); }
+    npc::XWord ReadMtraceAddr(DUT &dut) { return static_cast<npc::XWord>(dut->debug_mtrace_addr); }
+    npc::XWord ReadTrapPC(DUT &dut) { return static_cast<npc::XWord>(dut->debug_trap_pc); }
+    npc::XWord ReadTrapTarget(DUT &dut) { return static_cast<npc::XWord>(dut->debug_trap_target); }
+#endif
+
     DifftestCPUState ReadReferenceState()
     {
         DifftestCPUState state;
@@ -79,32 +110,56 @@ namespace
         return state;
     }
 
-    DifftestCPUState ReadDUTStateAtPC(DUT &dut, std::uint32_t pc)
+    DifftestCPUState ReadDUTStateAtPC(DUT &dut, npc::XWord pc)
     {
         auto state{DifftestCPUState::ReadDUTState(dut)};
         state.SetPC(pc);
         return state;
     }
 
+#if defined(VRISCV32E_NPC) && CONFIG_XLEN == 64
     DifftestCSRState ReadDUTRetireCSR(DUT &dut)
     {
         return {
-            .mstatus = static_cast<std::uint32_t>(dut->debug_csr_mstatus),
-            .mtvec = static_cast<std::uint32_t>(dut->debug_csr_mtvec),
-            .mepc = static_cast<std::uint32_t>(dut->debug_csr_mepc),
-            .mcause = static_cast<std::uint32_t>(dut->debug_csr_mcause),
+            .mstatus = DebugWord(*dut, dut->debug_csr_mstatus, dut->debug_csr_mstatus_hi),
+            .mtvec = DebugWord(*dut, dut->debug_csr_mtvec, dut->debug_csr_mtvec_hi),
+            .mepc = DebugWord(*dut, dut->debug_csr_mepc, dut->debug_csr_mepc_hi),
+            .mcause = static_cast<npc::XWord>(dut->debug_csr_mcause),
         };
     }
 
     DifftestCSRState ReadDUTTrapCSR(DUT &dut)
     {
         return {
-            .mstatus = static_cast<std::uint32_t>(dut->debug_trap_mstatus),
-            .mtvec = static_cast<std::uint32_t>(dut->debug_trap_mtvec),
-            .mepc = static_cast<std::uint32_t>(dut->debug_trap_mepc),
-            .mcause = static_cast<std::uint32_t>(dut->debug_trap_mcause),
+            .mstatus = DebugWord(*dut, dut->debug_trap_mstatus, dut->debug_trap_mstatus_hi),
+            .mtvec = DebugWord(*dut, dut->debug_trap_mtvec, dut->debug_trap_mtvec_hi),
+            .mepc = DebugWord(*dut, dut->debug_trap_mepc, dut->debug_trap_mepc_hi),
+            .mcause = static_cast<npc::XWord>(dut->debug_trap_mcause),
         };
     }
+#else
+    // RV32 以及 SoC 路径只有 32 位 CSR 调试端口；RV64 SoC 在
+    // DifftestInitialize 中会被明确拒绝，不会走到这里。
+    DifftestCSRState ReadDUTRetireCSR(DUT &dut)
+    {
+        return {
+            .mstatus = static_cast<npc::XWord>(dut->debug_csr_mstatus),
+            .mtvec = static_cast<npc::XWord>(dut->debug_csr_mtvec),
+            .mepc = static_cast<npc::XWord>(dut->debug_csr_mepc),
+            .mcause = static_cast<npc::XWord>(dut->debug_csr_mcause),
+        };
+    }
+
+    DifftestCSRState ReadDUTTrapCSR(DUT &dut)
+    {
+        return {
+            .mstatus = static_cast<npc::XWord>(dut->debug_trap_mstatus),
+            .mtvec = static_cast<npc::XWord>(dut->debug_trap_mtvec),
+            .mepc = static_cast<npc::XWord>(dut->debug_trap_mepc),
+            .mcause = static_cast<npc::XWord>(dut->debug_trap_mcause),
+        };
+    }
+#endif
 
     DifftestCSRState ReadReferenceCSR()
     {
@@ -116,35 +171,44 @@ namespace
     bool CheckCSR(const DifftestCSRState &reference,
                   const DifftestCSRState &dut,
                   std::string_view event,
-                  std::uint32_t pc)
+                  npc::XWord pc)
     {
         if (reference.mstatus == dut.mstatus && reference.mtvec == dut.mtvec &&
             reference.mepc == dut.mepc && reference.mcause == dut.mcause)
             return true;
         std::println(
             std::cerr,
-            "DiffTest {} CSR 不匹配（pc=0x{:08x}）:\n"
-            "  mstatus REF=0x{:08x} DUT=0x{:08x}\n"
-            "  mtvec   REF=0x{:08x} DUT=0x{:08x}\n"
-            "  mepc    REF=0x{:08x} DUT=0x{:08x}\n"
-            "  mcause  REF=0x{:08x} DUT=0x{:08x}",
+            "DiffTest {} CSR 不匹配（pc=0x{:0{}x}）:\n"
+            "  mstatus REF=0x{:0{}x} DUT=0x{:0{}x}\n"
+            "  mtvec   REF=0x{:0{}x} DUT=0x{:0{}x}\n"
+            "  mepc    REF=0x{:0{}x} DUT=0x{:0{}x}\n"
+            "  mcause  REF=0x{:0{}x} DUT=0x{:0{}x}",
             event,
             pc,
+            npc::XHexDigits,
             reference.mstatus,
+            npc::XHexDigits,
             dut.mstatus,
+            npc::XHexDigits,
             reference.mtvec,
+            npc::XHexDigits,
             dut.mtvec,
+            npc::XHexDigits,
             reference.mepc,
+            npc::XHexDigits,
             dut.mepc,
+            npc::XHexDigits,
             reference.mcause,
-            dut.mcause);
+            npc::XHexDigits,
+            dut.mcause,
+            npc::XHexDigits);
         return false;
     }
 
-    constexpr bool RangeContains(std::uint32_t address,
-                                 std::uint32_t bytes,
-                                 std::uint32_t base,
-                                 std::uint32_t size)
+    constexpr bool RangeContains(npc::XWord address,
+                                 npc::XWord bytes,
+                                 npc::XWord base,
+                                 npc::XWord size)
     {
         return bytes != 0 && address >= base && address - base < size &&
                bytes <= size - (address - base);
@@ -153,14 +217,14 @@ namespace
     bool ReferenceModelsDataAccess(DUT &dut)
     {
         if (!dut->debug_mtrace_valid ||
-            static_cast<std::uint32_t>(dut->debug_mtrace_pc) !=
-                static_cast<std::uint32_t>(dut->debug_pc))
+            ReadMtracePC(dut) != ReadRetirePC(dut))
             return true;
         const auto width{static_cast<unsigned>(dut->debug_mtrace_width)};
-        if (width > 2)
+        // RV32 最多 4 字节；RV64 的 LD/SD 是 8 字节，不能误判为不可建模。
+        if (width > (npc::XLen == 64 ? 3U : 2U))
             return false;
-        const auto bytes{static_cast<std::uint32_t>(1U << width)};
-        const auto address{static_cast<std::uint32_t>(dut->debug_mtrace_addr)};
+        const auto bytes{static_cast<npc::XWord>(1U << width)};
+        const auto address{ReadMtraceAddr(dut)};
 #ifdef VRISCV32E_NPC
         return RangeContains(address, bytes, 0x80000000U, 0x00040000U);
 #else
@@ -180,13 +244,14 @@ namespace
         return address == 0xb00U || address == 0xb80U;
     }
 
-    void ReportMismatch(DUT &dut, std::string_view event, std::uint32_t dutPC)
+    void ReportMismatch(DUT &dut, std::string_view event, npc::XWord dutPC)
     {
         Failed = true;
         std::println(std::cerr,
-                     "DiffTest {} 校验失败（retire PC=0x{:08x}, cycle={}）",
+                     "DiffTest {} 校验失败（retire PC=0x{:0{}x}, cycle={}）",
                      event,
-                     static_cast<std::uint32_t>(dut->debug_pc),
+                     ReadRetirePC(dut),
+                     npc::XHexDigits,
                      dut.GetCycle());
         NPCTrap::Halt(dutPC, 1);
     }
@@ -303,20 +368,27 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
             FlashMemory.size(),
             static_cast<std::size_t>(CONFIG_MSIZE))};
     }
-#ifdef VRISCV32E_NPC
-    // The direct RTL initialization clears the complete 256 KiB RAM before
-    // overlaying the image.  NEMU's heap-backed RAM has no matching reset
-    // guarantee, so synchronizing only the image leaves its tail random and
-    // creates false DiffTest mismatches on the first legitimate tail read.
+#if defined(VRISCV32E_NPC) && CONFIG_XLEN == 32
+    // direct RTL 初始化会把镜像及其后 64 KiB 清零，而 NEMU 的堆内存没有
+    // 同样的复位保证。因此至少同步历史的 256 KiB 窗口（以及镜像本身），
+    // 避免程序第一次读取 RAM 尾部时产生伪差异。同步上限仍由 MSIZE 决定，
+    // 不能把某个固定 RAM 大小写成静态断言，否则会拒绝合法配置。
     constexpr std::size_t DirectRamBytes{256U * 1024U};
-    static_assert(CONFIG_MSIZE == DirectRamBytes,
-                  "direct-NPC DiffTest RAM size must match the RTL RAM");
-    std::vector<std::uint8_t> referenceMemory(DirectRamBytes, 0);
+    constexpr std::size_t ZeroMarginBytes{64U * 1024U};
+    const auto ramBytes{static_cast<std::size_t>(CONFIG_MSIZE)};
+    const auto syncBytes{std::min<std::size_t>(
+        ramBytes,
+        std::max(DirectRamBytes, FlashMemory.size() + ZeroMarginBytes))};
+    std::vector<std::uint8_t> referenceMemory(syncBytes, 0);
     std::ranges::copy(FlashMemory, referenceMemory.begin());
     REFMemcpy(CONFIG_MBASE,
               referenceMemory.data(),
               referenceMemory.size(),
               DifftestCPUState::GetDirectionToRef());
+#elif defined(VRISCV32E_NPC)
+    // RV64 direct-NPC 在函数开头已明确拒绝 REF；这里不再做 32 位 ABI
+    // 的内存同步，避免把 64 位 RAM 配置交给 32 位参考模型。
+    static_cast<void>(ImageSize);
 #else
     // Full SoC MROM is a 256 MiB address window, but only the loaded image is
     // backed by host storage.  Do not manufacture/copy a 256 MiB zero buffer.
@@ -357,19 +429,21 @@ void DifftestStep(DUT &dut)
 #ifdef CONFIG_DIFFTEST
     if (!Enabled || Failed)
         return;
-    const auto retirePC{static_cast<std::uint32_t>(dut->debug_pc)};
+    const auto retirePC{ReadRetirePC(dut)};
     const auto before{ReadReferenceState()};
     if (before.GetPC() != retirePC)
     {
         std::println(std::cerr,
-                     "DiffTest 执行前 PC 不匹配：REF=0x{:08x}, DUT retire=0x{:08x}",
+                     "DiffTest 执行前 PC 不匹配：REF=0x{:0{}x}, DUT retire=0x{:0{}x}",
                      before.GetPC(),
-                     retirePC);
+                     npc::XHexDigits,
+                     retirePC,
+                     npc::XHexDigits);
         ReportMismatch(dut, "retire-pre", retirePC);
         return;
     }
 
-    const auto nextPC{static_cast<std::uint32_t>(dut->debug_next_pc)};
+    const auto nextPC{ReadNextPC(dut)};
     const auto DUTState{ReadDUTStateAtPC(dut, nextPC)};
     const auto DUTCSR{ReadDUTRetireCSR(dut)};
     const bool injectResult{!ReferenceModelsDataAccess(dut) ||
@@ -411,15 +485,17 @@ void DifftestTrapStep(DUT &dut)
     if (!Enabled || Failed)
         return;
 
-    const auto trapPC{static_cast<std::uint32_t>(dut->debug_trap_pc)};
+    const auto trapPC{ReadTrapPC(dut)};
     const auto cause{static_cast<std::uint32_t>(dut->debug_trap_cause)};
     const auto before{ReadReferenceState()};
     if (before.GetPC() != trapPC)
     {
         std::println(std::cerr,
-                     "DiffTest trap 前 PC 不匹配：REF=0x{:08x}, DUT trap=0x{:08x}",
+                     "DiffTest trap 前 PC 不匹配：REF=0x{:0{}x}, DUT trap=0x{:0{}x}",
                      before.GetPC(),
-                     trapPC);
+                     npc::XHexDigits,
+                     trapPC,
+                     npc::XHexDigits);
         ReportMismatch(dut, "trap-pre", trapPC);
         return;
     }
@@ -432,7 +508,7 @@ void DifftestTrapStep(DUT &dut)
     REFRaiseIntr(cause);
 
     const auto REFState{ReadReferenceState()};
-    const auto target{static_cast<std::uint32_t>(dut->debug_trap_target)};
+    const auto target{ReadTrapTarget(dut)};
     const auto DUTState{ReadDUTStateAtPC(dut, target)};
     const auto DUTCSR{ReadDUTTrapCSR(dut)};
     if (!REFState.CheckRegs(DUTState))
@@ -488,7 +564,9 @@ bool DifftestFinalCheck(DUT &dut)
     }
     if (SkipCount != 0)
         std::println("DiffTest: injected {} MMIO/nondeterministic result(s)", SkipCount);
-    std::println("DiffTest: final state PASS (pc=0x{:08x})", DUTState.GetPC());
+    std::println("DiffTest: final state PASS (pc=0x{:0{}x})",
+                 DUTState.GetPC(),
+                 npc::XHexDigits);
     return !Failed;
 #else
     static_cast<void>(dut);

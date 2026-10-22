@@ -1,3 +1,5 @@
+module;
+#include "../../Config.h"
 module npc.sdb.command.infoCommand;
 import npc.DUT;
 import npc.unicode;
@@ -173,7 +175,8 @@ static void PrintGPR(DUT &dut)
         {
             dec_width = w;
         }
-        w = display_width(std::format("0x{:08x}", rows[i].value));
+        w = display_width(std::format("0x{:0{}x}", rows[i].value,
+                                      npc::XHexDigits));
         if (w > hex_width)
         {
             hex_width = w;
@@ -201,7 +204,8 @@ static void PrintGPR(DUT &dut)
         auto id_str{std::format("{}{}{}", row_color, rows[i].arch_name, ANSI::NONE)};
         auto name_str{std::format("{}{}{}", row_color, rows[i].abi_name, ANSI::NONE)};
         auto dec_str{std::format("{}{}{}", ANSI::FG_WHITE, rows[i].value, ANSI::NONE)};
-        auto hex_str{std::format("{}0x{:08x}{}", row_color, rows[i].value, ANSI::NONE)};
+        auto hex_str{std::format("{}0x{:0{}x}{}", row_color, rows[i].value,
+                                 npc::XHexDigits, ANSI::NONE)};
         auto desc_str{std::format("{}{}{}", row_color, rows[i].desc, ANSI::NONE)};
         std::print("{}|{}", ANSI::FG_BLUE, ANSI::NONE);
         print_cell_colored(id_str, id_width, true);

@@ -1,13 +1,15 @@
+module;
+#include "Config.h"
 module npc.NPCTrap;
 import npc.trace.itrace;
 import npc.log;
 namespace
 {
     bool Halted{false};
-    std::uint64_t HaltPC{0};   // 记录停止的时候的PC，RV64 保留完整地址
+    npc::XWord HaltPC{0};      // 记录停止的时候的PC，RV64 保留完整地址
     std::uint32_t HaltCode{0}; // 返回码，0是good，1是bad
 }
-void NPCTrap::Halt(std::uint64_t PC, std::uint32_t Code) noexcept
+void NPCTrap::Halt(npc::XWord PC, std::uint32_t Code) noexcept
 {
     // Once a checker has reported failure, a later architectural/custom halt
     // must not downgrade the run to GOOD.  A late failure is still allowed to
@@ -18,7 +20,7 @@ void NPCTrap::Halt(std::uint64_t PC, std::uint32_t Code) noexcept
     HaltPC = PC;
     HaltCode = Code;
 }
-void NPCTrap::Stop(std::uint64_t PC) noexcept
+void NPCTrap::Stop(npc::XWord PC) noexcept
 {
     Halt(PC, 1);
 }
@@ -26,7 +28,7 @@ bool NPCTrap::HasHalted() noexcept
 {
     return Halted;
 }
-std::uint64_t NPCTrap::GetPC() noexcept
+npc::XWord NPCTrap::GetPC() noexcept
 {
     return HaltPC;
 }
@@ -44,19 +46,21 @@ int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Instructions)
 #ifdef CONFIG_PERF_STATS
     auto ipc{Cycles > 0 ? static_cast<double>(Instructions) / static_cast<double>(Cycles) : 0.0};
 #endif
+    // 按 XLEN 补齐地址宽度，长地址不会被格式化宽度截断。
+    const auto haltPC{std::format("0x{:0{}x}", HaltPC, npc::XHexDigits)};
     if (HaltCode == 0)
     {
 #ifdef CONFIG_PERF_STATS
-        std::println("HIT GOOD TRAP at pc = 0x{0:08x}, cycles = {1}, instructions = {2}, ipc = {3:.4f}", HaltPC, Cycles, Instructions, ipc);
+        std::println("HIT GOOD TRAP at pc = {0}, cycles = {1}, instructions = {2}, ipc = {3:.4f}", haltPC, Cycles, Instructions, ipc);
 #else
-        std::println("HIT GOOD TRAP at pc = 0x{0:08x}, cycles = {1}", HaltPC, Cycles);
+        std::println("HIT GOOD TRAP at pc = {0}, cycles = {1}", haltPC, Cycles);
 #endif
         return 0;
     }
 #ifdef CONFIG_PERF_STATS
-    std::println(std::cerr, "HIT BAD TRAP at pc = 0x{0:08x}, code = {1}, cycles = {2}, instructions = {3}, ipc = {4:.4f}", HaltPC, HaltCode, Cycles, Instructions, ipc);
+    std::println(std::cerr, "HIT BAD TRAP at pc = {0}, code = {1}, cycles = {2}, instructions = {3}, ipc = {4:.4f}", haltPC, HaltCode, Cycles, Instructions, ipc);
 #else
-    std::println(std::cerr, "HIT BAD TRAP at pc = 0x{0:08x}, code = {1}, cycles = {2}", HaltPC, HaltCode, Cycles);
+    std::println(std::cerr, "HIT BAD TRAP at pc = {0}, code = {1}, cycles = {2}", haltPC, HaltCode, Cycles);
 #endif
 #ifdef CONFIG_IRINGBUF
     PrintIringbuf(HaltPC);

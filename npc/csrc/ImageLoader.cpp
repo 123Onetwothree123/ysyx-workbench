@@ -1,5 +1,6 @@
 module;
 #include <elf.h>
+#include "Config.h"
 module npc.ImageLoader;
 import npc.ysyxSoC;
 
@@ -30,7 +31,8 @@ constexpr std::uintmax_t kImageCapacity{0x10000000U}; // ysyxSoC MROM window
 
 namespace
 {
-constexpr std::uint64_t kImageBase{CONFIG_MBASE};
+// 镜像地址按构建 XLEN 保存：RV32 不允许把 64 位 ELF 地址截成低 32 位。
+constexpr npc::XWord kImageBase{CONFIG_MBASE};
 
 std::expected<std::vector<std::uint8_t>, std::string> ReadWholeFile(
     const std::filesystem::path &Path,
@@ -106,7 +108,7 @@ std::expected<std::size_t, std::string> LoadElfImage(
         return std::unexpected{"ELF 程序头表超出文件范围"};
     }
 
-    std::uint64_t imageEnd{kImageBase};
+    npc::XWord imageEnd{kImageBase};
     const auto hasLoadSegment{[&](const Phdr &Segment) {
         if (Segment.p_type != PT_LOAD || Segment.p_memsz == 0)
         {
@@ -116,18 +118,20 @@ std::expected<std::size_t, std::string> LoadElfImage(
         {
             return false;
         }
-        if (Segment.p_paddr < kImageBase)
+        // RV32 构建收到高位地址的 ELF64 段时必须报错，不能截断后加载。
+        if (!npc::FitsXWord(Segment.p_paddr) ||
+            !npc::FitsXWord(Segment.p_memsz))
         {
             return false;
         }
-        if (Segment.p_paddr >
-            std::numeric_limits<std::uint64_t>::max() - Segment.p_memsz)
+        const auto paddr{static_cast<npc::XWord>(Segment.p_paddr)};
+        const auto memsz{static_cast<npc::XWord>(Segment.p_memsz)};
+        if (paddr < kImageBase ||
+            paddr > std::numeric_limits<npc::XWord>::max() - memsz)
         {
             return false;
         }
-        imageEnd = std::max(imageEnd,
-                            static_cast<std::uint64_t>(Segment.p_paddr) +
-                                static_cast<std::uint64_t>(Segment.p_memsz));
+        imageEnd = std::max(imageEnd, paddr + memsz);
         return true;
     }};
     for (std::size_t Index{0}; Index < header.e_phnum; ++Index)
@@ -171,7 +175,7 @@ std::expected<std::size_t, std::string> LoadElfImage(
                 "ELF 段 {} 的文件范围超出镜像大小", Index)};
         }
         const auto destination{static_cast<std::size_t>(
-            static_cast<std::uint64_t>(segment.p_paddr) - kImageBase)};
+            static_cast<npc::XWord>(segment.p_paddr) - kImageBase)};
         std::memcpy(image.data() + destination,
                     File.data() + segment.p_offset,
                     static_cast<std::size_t>(segment.p_filesz));
@@ -179,8 +183,9 @@ std::expected<std::size_t, std::string> LoadElfImage(
 
     // 复位 PC 是 RTL 固定值。显式检查入口，避免把入口地址不同的
     // ELF 当成裸二进制加载后从错误位置开始执行。
-    if (static_cast<std::uint64_t>(header.e_entry) !=
-        static_cast<std::uint64_t>(CONFIG_RESET_PC))
+    if (!npc::FitsXWord(header.e_entry) ||
+        static_cast<npc::XWord>(header.e_entry) !=
+            static_cast<npc::XWord>(CONFIG_RESET_PC))
     {
         return std::unexpected{std::format(
             "ELF 入口 0x{:x} 与仿真复位 PC 0x{:x} 不一致",

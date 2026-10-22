@@ -115,7 +115,7 @@ namespace
     }
     /**
      * @brief 从文件中读取一个可平凡复制的ELF结构。
-     * @tparam T 由`CONFIG_XLEN`选择的原生ELF结构类型。
+     * @tparam T 由`CONFIG_XLEN`选择的原生 ELF 结构类型。
      * @param file std::ifstream&，已打开的ELF文件流。
      * @param offset std::uint64_t，该对象的绝对文件偏移。
      * @param what std::string_view，该对象的诊断名称。

@@ -1,3 +1,5 @@
+module;
+#include "../../Config.h"
 module npc.sdb.command.pCommand;
 import npc.sdb.SDBCommandUtils;
 import npc.expressions.expressions;
@@ -38,7 +40,8 @@ SDBCommandResult pCommand::execute(SDBCommandContext &context, std::string_view 
         auto signedVal{static_cast<std::int64_t>(UnsignedValue)};
         std::println("有符号（十进制）：{}", signedVal);
         std::println("无符号（十进制）：{}", UnsignedValue);
-        std::println("十六进制：        0x{:08x}", UnsignedValue);
+        std::println("十六进制：        0x{:0{}x}", UnsignedValue,
+                     npc::XHexDigits);
     }
     else
     {
