@@ -721,6 +721,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   idu.io.pipeline_mode := true.B
   idu.io.Privilege := exu.io.CSRPrivilege
   idu.io.Mstatus := exu.io.CSRCurrentMstatus
+  idu.io.Mcounteren := exu.io.Mcounteren
+  idu.io.Scounteren := exu.io.Scounteren
   idu.io.mmu_stall := dmmuOpt.map(_.io.busy).getOrElse(false.B)
   // 手动连线了
   idu.io.ReadDATA1 := gpr.io.ReadDATA1

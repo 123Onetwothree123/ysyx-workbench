@@ -49,6 +49,8 @@ class ysyx_26030103_IDU(
     val mmu_stall = Input(Bool())
     val Privilege = Input(UInt(2.W))
     val Mstatus = Input(UInt(32.W))
+    val Mcounteren = Input(UInt(32.W))
+    val Scounteren = Input(UInt(32.W))
     val perf_stall_raw = Output(Bool())
     val perf_stall_raw_loaduse = Output(Bool())
     val perf_stall_raw_alu = Output(Bool())
@@ -167,10 +169,13 @@ class ysyx_26030103_IDU(
   // 本核心目前只实现下面明确列出的机器态 CSR 集合，访问集合外的 CSR
   // 将被视为非法指令。
   val CSRAddress = Instruction(31, 20)
+  private val userCounterAddresses =
+    Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
   private val csrAddresses = (
-    config.MMU.csrEnabled.toSeq ++
+    config.MMU.csrEnabled.toSeq ++ userCounterAddresses ++
       (if (config.MMU.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
-  ).filter(config.MMU.csrSupported).distinct.sorted
+  ).filter(a => config.MMU.csrSupported(a) || userCounterAddresses.contains(a))
+    .distinct.sorted
   val CSRAddressValid =
     if (config.MMU.csrMissingMode == "zero") true.B
     else csrAddresses.map(a => CSRAddress === a.U(12.W)).reduceOption(_ || _).getOrElse(false.B)
@@ -190,9 +195,16 @@ class ysyx_26030103_IDU(
     CSRAddress === "h301".U(12.W) // misa 当前只读 */
   // 读只读 CSR 合法；CSRRW/带非零源的 CSRRS/CSRRC 写只读 CSR 非法。
   val CSRWriteIntent = IsCsrrw || ((IsCsrrs || IsCsrrc) && (Rs1 =/= 0.U))
+  val IsUserCounter = userCounterAddresses.map(a => CSRAddress === a.U(12.W))
+    .reduceOption(_ || _).getOrElse(false.B)
+  val CounterBit = CSRAddress(2, 0)
+  val CounterAccessOk = !IsUserCounter || EffectivePrivilege === 3.U ||
+    (io.Mcounteren(CounterBit) &&
+      (EffectivePrivilege === 1.U || io.Scounteren(CounterBit)))
   val CSRIllegal =
     IsCSRInstruction &&
-      (!CSRAddressValid || !CSRPrivilegeOk || (CSRWriteIntent && CSRReadOnly))
+      (!CSRAddressValid || !CSRPrivilegeOk || !CounterAccessOk ||
+        (CSRWriteIntent && CSRReadOnly))
   // mstatus.TVM/TSR/TW 的 S 模式陷门。HAS_S=n 时相关状态和陷门都不存在。
   val TvmFault =
     if (hasS)

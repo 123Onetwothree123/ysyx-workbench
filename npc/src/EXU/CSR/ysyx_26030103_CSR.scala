@@ -64,6 +64,8 @@ class ysyx_26030103_CSR(
     val StateMcause = Output(UInt(32.W))
     val PmpCfg = Output(Vec(16, UInt(8.W)))
     val PmpAddr = Output(Vec(16, UInt(32.W)))
+    val McounterenOut = Output(UInt(32.W))
+    val ScounterenOut = Output(UInt(32.W))
   })
 
   val CSR_MSTATUS = 0x300.U(12.W)
@@ -85,6 +87,12 @@ class ysyx_26030103_CSR(
   val CSR_STVAL = 0x143.U(12.W)
   val CSR_SIP = 0x144.U(12.W)
   val CSR_SATP = 0x180.U(12.W)
+  val CSR_CYCLE = 0xc00.U(12.W)
+  val CSR_TIME = 0xc01.U(12.W)
+  val CSR_INSTRET = 0xc02.U(12.W)
+  val CSR_CYCLEH = 0xc80.U(12.W)
+  val CSR_TIMEH = 0xc81.U(12.W)
+  val CSR_INSTRETH = 0xc82.U(12.W)
   val CSR_MCYCLE = 0xb00.U(12.W)
   val CSR_MCYCLEH = 0xb80.U(12.W)
   val CSR_MINSTRET = 0xb02.U(12.W)
@@ -102,6 +110,7 @@ class ysyx_26030103_CSR(
   def IsCSRAddress(addr: UInt): Bool = io.CSRAddress === addr
   private val enabledCsrAddresses = (
     profile.csrEnabled.toSeq ++
+      Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82) ++
       (if (profile.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
   ).filter(profile.csrSupported).distinct.sorted
   val CsrImplemented =
@@ -613,6 +622,8 @@ class ysyx_26030103_CSR(
     Mux(MepcWen, Cat(CSRWriteData(Mepc_rdata)(31, 2), 0.U(2.W)), Mepc_rdata))
   io.StateMcause := Mux(ExceptionCommit && !TrapToS, ExceptionCause,
     Mux(McauseWen, CSRWriteData(Mcause_rdata), Mcause_rdata))
+  io.McounterenOut := Mcounteren
+  io.ScounterenOut := Scounteren_rdata
   for (entry <- 0 until 16) {
     io.PmpCfg(entry) := PmpcfgReg(entry / 4)(8 * (entry % 4) + 7, 8 * (entry % 4))
     io.PmpAddr(entry) := PmpaddrReg(entry)
