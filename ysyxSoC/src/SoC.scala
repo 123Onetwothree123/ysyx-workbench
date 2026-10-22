@@ -38,7 +38,14 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
   val xbar = AXI4Xbar()
   val xbar2 = AXI4Xbar()
   val apbxbar = LazyModule(new APBFanout).node
-  val cpu = LazyModule(new CPU(idBits = ChipLinkParam.idBits))
+  val cpu = LazyModule(new CPU(idBits = ChipLinkParam.idBits, xlen = Config.socXlen))
+  // SOC_XLEN=64 时，CPU 侧是 64 位地址/数据 AXI，而 xbar 及所有外设
+  // 仍是 32 位。AXI4Downsizer 负责拆 beat 和高地址 DECERR；32 位构建
+  // 不例化该桥，保持既有拓扑与面积不变。
+  val cpuDownsizer =
+    if (Config.socXlen == 64)
+      Some(LazyModule(new AXI4Downsizer(Config.cpuAXI4AddrBits, Config.cpuAXI4DataBits)))
+    else None
   val chipMaster =
     if (Config.hasChipLink) Some(LazyModule(new ChipLinkMaster)) else None
   val chiplinkNode =
@@ -100,7 +107,13 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
   if (Config.sdramUseAXI) lsdram_axi.get.node := ysyx.AXI4Delayer() := xbar
   else lsdram_apb.get.node := apbxbar
   if (Config.hasChipLink) chiplinkNode.get := xbar
-  xbar := cpu.masterNode
+  cpuDownsizer match {
+    case Some(bridge) =>
+      bridge.node := cpu.masterNode
+      xbar := bridge.node
+    case None =>
+      xbar := cpu.masterNode
+  }
 
   override lazy val module = new Impl
   class Impl extends LazyModuleImp(this) with DontTouch {

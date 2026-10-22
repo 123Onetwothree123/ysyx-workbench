@@ -10,20 +10,28 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 
 object CPUAXI4BundleParameters {
-  def apply() = AXI4BundleParameters(
-    addrBits = 32,
-    dataBits = 32,
-    idBits = ChipLinkParam.idBits
+  // CPU 侧 AXI4 端口的地址/数据宽度由 SOC_XLEN 决定：
+  //   SOC_XLEN=32 -> 32 位地址、32 位数据（与旧版完全一致）
+  //   SOC_XLEN=64 -> 64 位地址、64 位数据（由 AXI4Downsizer 接入 32 位 SoC）
+  // ID 宽度沿用 ChipLinkParam.idBits，保持 4 位边界 ABI。
+  def apply(
+      addrBits: Int = 32,
+      dataBits: Int = 32,
+      idBits: Int = ChipLinkParam.idBits
+  ) = AXI4BundleParameters(
+    addrBits = addrBits,
+    dataBits = dataBits,
+    idBits = idBits
   )
 }
 
-class ysyx_26030103 extends BlackBox {
+class ysyx_26030103(xlen: Int, idBits: Int) extends BlackBox {
   val io = IO(new Bundle {
     val clock = Input(Clock())
     val reset = Input(Reset())
     val io_interrupt = Input(Bool())
-    val io_master = AXI4Bundle(CPUAXI4BundleParameters())
-    val io_slave = Flipped(AXI4Bundle(CPUAXI4BundleParameters()))
+    val io_master = AXI4Bundle(CPUAXI4BundleParameters(xlen, xlen, idBits))
+    val io_slave = Flipped(AXI4Bundle(CPUAXI4BundleParameters(xlen, xlen, idBits)))
     // 加的接口，本来以为OSOC代码只要改一个学号就可以的，结果发现居然还得改，因为OSOC的文档讲了要把这个SOC作为顶层模块
     val io_trap_valid = Output(Bool())
     val io_trap_pc = Output(UInt(32.W))
@@ -108,7 +116,7 @@ class ysyx_26030103 extends BlackBox {
   })
 }
 
-class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
+class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
   val masterNode = AXI4MasterNode(
     p(ExtIn)
       .map(params =>
@@ -123,10 +131,17 @@ class CPU(idBits: Int)(implicit p: Parameters) extends LazyModule {
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {
     val (master, _) = masterNode.out(0)
+    // CPU 侧宽度由下游第一个节点决定；SOC_XLEN=64 时必须先接
+    // AXI4Downsizer，否则这里会在 elaboration 期直接报错，而不是
+    // 让 64 位端口被静默接到 32 位 xbar。
+    require(
+      master.params.dataBits == xlen,
+      s"CPU AXI4 数据宽度 ${master.params.dataBits} 与 SOC_XLEN=$xlen 不一致"
+    )
     val interrupt = IO(Input(Bool()))
-    val slave = IO(Flipped(AXI4Bundle(CPUAXI4BundleParameters())))
+    val slave = IO(Flipped(AXI4Bundle(CPUAXI4BundleParameters(xlen, xlen, idBits))))
 
-    val cpu = Module(new ysyx_26030103)
+    val cpu = Module(new ysyx_26030103(xlen, idBits))
     cpu.io.clock := clock
     cpu.io.reset := reset
     cpu.io.io_interrupt := interrupt

@@ -1,5 +1,12 @@
 # CPU接口命名规范
 
+> 默认（`SOC_XLEN=32`）的 AXI4 地址/数据宽度如下表所示。设置
+> `SOC_XLEN=64` 时，`io_master_awaddr`、`io_master_araddr`、
+> `io_master_wdata`、`io_master_rdata` 及其 `io_slave_*` 对应端口
+> 扩展到 64 位，`io_master_wstrb`/`io_slave_wstrb` 扩展到 8 位；
+> ID、len/size/burst 等控制字段保持不变。调试/trap 观测端口仍为
+> 32 位 ABI，详见 `../SOC_XLEN.md`。
+
 | | | | | | |
 | --- | --- | --- | --- | --- | --- |
 | CPU文件名 | | `ysyx_8位学号.v`          | 如`ysyx_23060000.v`   |
