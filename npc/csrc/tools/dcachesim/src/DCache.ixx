@@ -26,7 +26,7 @@ private:
     struct entry
     {
         bool valid{};         // 1代表有数据
-        std::uint32_t tag{};  // 数据块号 = 地址 >> offset_bits
+        Addr tag{};           // 数据块号 = 地址 >> offset_bits，宽度随 XLEN
         std::uint64_t time{}; // FIFO记插入时间, LRU记最后访问时间
     };
     // 行=组数=2^index_bits，每行ways项，举个例子：num_blocks=16，ways=2就是8行×2项=16个entry
@@ -39,7 +39,7 @@ private:
     std::string name;
     std::uint64_t tick{}; // 逻辑时钟，给FIFO/LRU计时用
     std::mt19937 rng_{std::random_device{}()};
-    void fill(entry& e, std::uint32_t tag);
+    void fill(entry& e, Addr tag);
 public:
     DCache(const DCacheConfig& config, ReplPolicy policy, std::string_view name);
     ~DCache() = default;

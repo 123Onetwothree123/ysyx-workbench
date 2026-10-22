@@ -22,6 +22,19 @@ if(EXISTS "${AUTO_CONF}")
     include(${PRJ_DIR}/scripts/read_config.cmake)
 endif()
 
+# 目标 XLEN: 默认取自本工具 Kconfig 的 CONFIG_XLEN；显式 -DCONFIG_XLEN=32/64
+# (例如父 Makefile 传入) 优先，用于同一个源码树构建两种位宽。
+if(NOT DEFINED CONFIG_XLEN OR CONFIG_XLEN STREQUAL "")
+    message(FATAL_ERROR
+        "未读取到 CONFIG_XLEN：请先生成工具 Kconfig（.config），"
+        "或由父 Makefile 传入 -DCONFIG_XLEN=32/64")
+endif()
+if(NOT CONFIG_XLEN MATCHES "^(32|64)$")
+    message(FATAL_ERROR "CONFIG_XLEN 只能为 32 或 64，当前为 '${CONFIG_XLEN}'")
+endif()
+message(STATUS "目标 XLEN: ${CONFIG_XLEN}")
+
+
 # 编译器一致性校验 (切换编译器需 rm -rf build)
 if(DEFINED CMAKE_CXX_COMPILER AND DEFINED CONFIG_CC AND NOT CONFIG_CC STREQUAL "")
     get_filename_component(CXX_SHORT "${CMAKE_CXX_COMPILER}" NAME)
@@ -116,8 +129,9 @@ if(CONFIG_LIB_HARDENING STREQUAL "y")
     endif()
 endif()
 
-# DCache 参数注入编译定义
+# DCache 参数与目标 XLEN 注入编译定义
 list(APPEND CXX_FLAGS
+    -DCONFIG_XLEN=${CONFIG_XLEN}
     -DDCACHE_BLOCK_SIZE=${CONFIG_DCACHE_BLOCK_SIZE}
     -DDCACHE_NUM_BLOCKS=${CONFIG_DCACHE_NUM_BLOCKS}
     -DDCACHE_WAYS=${CONFIG_DCACHE_WAYS}

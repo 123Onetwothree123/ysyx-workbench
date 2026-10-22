@@ -1,10 +1,10 @@
 module AccessRecord;
 import std;
-AccessRecord::AccessRecord(std::uint32_t a, bool w)
+AccessRecord::AccessRecord(Addr a, bool w)
     : addr{a}, is_write{w}
 {
 }
-std::uint32_t AccessRecord::GetAddr() const
+Addr AccessRecord::GetAddr() const
 {
     return addr;
 }

@@ -272,11 +272,17 @@ clean:
 CACHESIM_DIR  := $(CSRC_DIR)/tools/cachesim
 CACHESIM_BIN  := $(CACHESIM_DIR)/build/cachesim
 
-$(CACHESIM_BIN):
-	@cmake -B $(CACHESIM_DIR)/build -S $(CACHESIM_DIR) && cmake --build $(CACHESIM_DIR)/build
+# NPC 主 Kconfig 定义了 CONFIG_XLEN 时传给工具；未定义则让工具自己的
+# Kconfig 决定，避免在 Makefile 里另造第二套 XLEN 默认值。
+# 每次重新 configure，保证 .config/XLEN 变化能反映到已有 build 目录。
+.PHONY: cachesim-build
+cachesim-build:
+	@cmake -B $(CACHESIM_DIR)/build -S $(CACHESIM_DIR) \
+		$(if $(CONFIG_XLEN),-DCONFIG_XLEN=$(CONFIG_XLEN),)
+	@cmake --build $(CACHESIM_DIR)/build
 
 .PHONY: cachesim
-cachesim: $(CACHESIM_BIN)
+cachesim: cachesim-build
 	@rm -f itrace.txt
 	@$(MAKE) run CONFIG_TRACE=y CONFIG_ITRACE=y CONFIG_ITRACE_WRITE_FILE=y file=$(file)
 	@echo ""
@@ -284,7 +290,7 @@ cachesim: $(CACHESIM_BIN)
 	@$(CACHESIM_BIN) itrace.txt
 
 .PHONY: cachesim_dse
-cachesim_dse: $(CACHESIM_BIN)
+cachesim_dse: cachesim-build
 	@rm -f itrace.txt
 	@$(MAKE) run CONFIG_TRACE=y CONFIG_ITRACE=y CONFIG_ITRACE_WRITE_FILE=y file=$(file)
 	@echo ""

@@ -2,16 +2,21 @@ module;
 #include <cstdint>
 
 module BTFNSplitJalRAS;
-Prediction BTFNSplitJalRAS::predict(uint32_t pc) const
+Prediction BTFNSplitJalRAS::predict(Addr pc) const
 {
     if (auto h{jal_btb.lookup(pc)})
     {
         if (h->kind == BranchKind::Ret)
         {
             // Ret/Coroutine表项保存静态immediate，目标与RTL一样为
-            // (RAS top + immediate) & ~1；栈空则无法预测。
+            // (RAS top + sign_extend(immediate)) & ~1；栈空则无法预测。
+            // immediate 是 32 位真实指令字段，RV64 下必须先符号扩展到 Addr，
+            // 否则负数偏移会被当成 +4GiB 附近的大正数。
             if (auto t{ras.top_addr()})
-                return {true, true, (*t + h->target) & ~std::uint32_t{1}};
+            {
+                const auto offset{static_cast<Addr>(static_cast<std::int32_t>(static_cast<std::uint32_t>(h->target)))};
+                return {true, true, (*t + offset) & ~Addr{1}};
+            }
             return {false, false, 0};
         }
         // Jal/Call表项: 命中即taken, 目标静态必正确
@@ -22,7 +27,7 @@ Prediction BTFNSplitJalRAS::predict(uint32_t pc) const
         return {hit->target < pc, true, hit->target};
     return {false, false, 0};
 }
-void BTFNSplitJalRAS::update(uint32_t pc, bool taken, uint32_t target,
+void BTFNSplitJalRAS::update(Addr pc, bool taken, Addr target,
                              BranchKind kind, std::uint32_t jalr_immediate)
 {
     switch (kind)

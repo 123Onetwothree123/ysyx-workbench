@@ -32,7 +32,7 @@ std::optional<BranchRecord> BTraceReader::TryParse(std::string_view line)
     {
         return std::nullopt;
     }
-    std::uint32_t pc{}, target{};
+    Addr pc{}, target{};
     int taken{}; // 这是AI特意改的，说：from_chars 对 int 默认十进制
     const auto end{line.data() + line.size()};
     auto [pointer1, errorcode1] = std::from_chars(line.data(), end, pc, 16);

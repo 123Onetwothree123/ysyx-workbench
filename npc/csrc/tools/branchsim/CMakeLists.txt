@@ -22,6 +22,19 @@ if(EXISTS "${AUTO_CONF}")
     include(${PRJ_DIR}/scripts/read_config.cmake)
 endif()
 
+# 目标 XLEN: 默认取自本工具 Kconfig 的 CONFIG_XLEN；显式 -DCONFIG_XLEN=32/64
+# (例如父 Makefile 传入) 优先，用于同一个源码树构建两种位宽。
+if(NOT DEFINED CONFIG_XLEN OR CONFIG_XLEN STREQUAL "")
+    message(FATAL_ERROR
+        "未读取到 CONFIG_XLEN：请先生成工具 Kconfig（.config），"
+        "或由父 Makefile 传入 -DCONFIG_XLEN=32/64")
+endif()
+if(NOT CONFIG_XLEN MATCHES "^(32|64)$")
+    message(FATAL_ERROR "CONFIG_XLEN 只能为 32 或 64，当前为 '${CONFIG_XLEN}'")
+endif()
+message(STATUS "目标 XLEN: ${CONFIG_XLEN}")
+
+
 # 编译器一致性校验 (切换编译器需 rm -rf build)
 if(DEFINED CMAKE_CXX_COMPILER AND DEFINED CONFIG_CC AND NOT CONFIG_CC STREQUAL "")
     get_filename_component(CXX_SHORT "${CMAKE_CXX_COMPILER}" NAME)
@@ -116,8 +129,9 @@ if(CONFIG_LIB_HARDENING STREQUAL "y")
     endif()
 endif()
 
-# 分支预测器参数注入编译定义
+# 分支预测器参数与目标 XLEN 注入编译定义
 list(APPEND CXX_FLAGS
+    -DCONFIG_XLEN=${CONFIG_XLEN}
     -DBTB_BITS=${CONFIG_BTB_BITS}
     -DBTB_WAYS=${CONFIG_BTB_WAYS}
     -DJAL_BTB_BITS=${CONFIG_JAL_BTB_BITS}
@@ -231,8 +245,11 @@ if(IXX_SRCS)
         else()
             # GCC: 显式声明模块间依赖, 保证被 import 的模块先编译
             #   依赖链: BPConfig/BranchRecord → BTB → BPAlgorithmBase → 各算法 → BPAlgorithmsType
-            #            BranchRecord → BTraceReader, RAS 无额外依赖
+            #            BranchRecord → BTraceReader/RAS
             set(IXX_DEPS ${IXX_SRC} ${STD_MODULE_OBJ})
+            if(IXX_NAME STREQUAL "RAS")
+                list(APPEND IXX_DEPS ${BLD_DIR}/BranchRecord.ixx.o)
+            endif()
             if(IXX_NAME STREQUAL "BTB")
                 list(APPEND IXX_DEPS ${BLD_DIR}/BPConfig.ixx.o ${BLD_DIR}/BranchRecord.ixx.o)
             endif()

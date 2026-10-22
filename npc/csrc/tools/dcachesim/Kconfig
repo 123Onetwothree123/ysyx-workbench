@@ -1,5 +1,20 @@
 mainmenu "dcachesim 配置"
 
+menu "目标架构"
+
+config XLEN
+    int "目标 XLEN (32=RV32, 64=RV64)"
+    range 32 64
+    default 32
+    help
+      地址/PC/分支目标/RAS/cache tag 的位宽。32 保持原有行为；
+      64 支持超过 4GiB 的地址与 PC。该值由 CMake 注入为
+      CONFIG_XLEN 编译定义，也可由父 Makefile 用
+      -DCONFIG_XLEN=$(CONFIG_XLEN) 显式传入。
+
+endmenu
+
+
 menu "DCache 参数"
 
 config DCACHE_BLOCK_SIZE

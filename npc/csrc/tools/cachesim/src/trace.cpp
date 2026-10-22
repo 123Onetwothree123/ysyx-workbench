@@ -7,6 +7,7 @@ module;
 #include <unistd.h>
 module trace;
 import std;
+import types;
 
 TraceReader::TraceReader(const std::string& path)
 {
@@ -114,13 +115,13 @@ void TraceReader::finish_compressed_input()
 
 namespace
 {
-    std::optional<std::uint32_t> ParseNumber(std::string_view text, int base)
+    std::optional<Addr> ParseNumber(std::string_view text, int base)
     {
         if (text.empty())
         {
             return std::nullopt;
         }
-        std::uint32_t value{};
+        Addr value{};
         const auto [ptr, ec]{std::from_chars(text.data(), text.data() + text.size(), value, base)};
         if (ec == std::errc{} && ptr == text.data() + text.size())
         {
@@ -129,7 +130,7 @@ namespace
         return std::nullopt;
     }
 
-    std::optional<std::uint32_t> ParseMtraceAddress(std::string_view line, std::string_view marker)
+    std::optional<Addr> ParseMtraceAddress(std::string_view line, std::string_view marker)
     {
         const auto markerPosition{line.find(marker)};
         if (markerPosition == std::string_view::npos)
@@ -156,7 +157,7 @@ namespace
     }
 }
 
-auto TraceReader::try_parse(const std::string& line) -> std::optional<std::uint32_t>
+auto TraceReader::try_parse(const std::string& line) -> std::optional<Addr>
 {
     if (line.empty())
         return std::nullopt;
@@ -178,7 +179,7 @@ auto TraceReader::try_parse(const std::string& line) -> std::optional<std::uint3
     return ParseNumber(line, 10);
 }
 
-auto TraceReader::next() -> std::optional<std::uint32_t>
+auto TraceReader::next() -> std::optional<Addr>
 {
     if (!file_)
         return std::nullopt;

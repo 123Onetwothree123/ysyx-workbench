@@ -2,7 +2,7 @@ module;
 #include <cstdint>
 
 module BTFNSplitJal;
-Prediction BTFNSplitJal::predict(uint32_t pc) const
+Prediction BTFNSplitJal::predict(Addr pc) const
 {
     // 与硬件一致: 取指时不知道指令类型, 两张表同时按PC查
     // jal表Jal/Call表项: 目标静态必正确; Ret表项: 目标是上次返回地址(接受校验, 通常不准)
@@ -13,7 +13,7 @@ Prediction BTFNSplitJal::predict(uint32_t pc) const
         return {hit->target < pc, true, hit->target};
     return {false, false, 0};
 }
-void BTFNSplitJal::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind,
+void BTFNSplitJal::update(Addr pc, bool taken, Addr target, BranchKind kind,
                           std::uint32_t)
 {
     // 与当前RTL一致：普通间接call也用本次解析出的实际目标

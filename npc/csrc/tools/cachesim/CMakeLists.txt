@@ -23,6 +23,19 @@ if(EXISTS "${AUTO_CONF}")
     include(${PRJ_DIR}/scripts/read_config.cmake)
 endif()
 
+# 目标 XLEN: 默认取自本工具 Kconfig 的 CONFIG_XLEN；显式 -DCONFIG_XLEN=32/64
+# (例如父 Makefile 传入) 优先，用于同一个源码树构建两种位宽。
+if(NOT DEFINED CONFIG_XLEN OR CONFIG_XLEN STREQUAL "")
+    message(FATAL_ERROR
+        "未读取到 CONFIG_XLEN：请先生成工具 Kconfig（.config），"
+        "或由父 Makefile 传入 -DCONFIG_XLEN=32/64")
+endif()
+if(NOT CONFIG_XLEN MATCHES "^(32|64)$")
+    message(FATAL_ERROR "CONFIG_XLEN 只能为 32 或 64，当前为 '${CONFIG_XLEN}'")
+endif()
+message(STATUS "目标 XLEN: ${CONFIG_XLEN}")
+
+
 # 编译器一致性校验 (切换编译器需 rm -rf build)
 if(DEFINED CMAKE_CXX_COMPILER AND DEFINED CONFIG_CC AND NOT CONFIG_CC STREQUAL "")
     get_filename_component(CXX_SHORT "${CMAKE_CXX_COMPILER}" NAME)
@@ -110,8 +123,9 @@ if(CONFIG_LIB_HARDENING STREQUAL "y")
     endif()
 endif()
 
-# cache 参数注入编译定义
+# cache 参数与目标 XLEN 注入编译定义
 list(APPEND CXX_FLAGS
+    -DCONFIG_XLEN=${CONFIG_XLEN}
     -DCACHE_BLOCK_SIZE=${CACHE_BLOCK_SIZE}
     -DCACHE_NUM_BLOCKS=${CACHE_NUM_BLOCKS}
     -DCACHE_WAYS=${CACHE_WAYS}
@@ -229,13 +243,14 @@ foreach(IXX_SRC ${IXX_SRCS})
         set(MOD_PCM ${PCM_DIR}/${MOD_NAME}.pcm)
         list(APPEND ALL_PCMS ${MOD_PCM})
 
-        # 依赖：types.pcm 必须先于 cache.pcm / stats.pcm
+        # 依赖：types.pcm 必须先于 trace/cache/stats/dse；trace/cache 先于 dse
         set(PCM_DEPS ${STD_PCM})
-        if(MOD_NAME STREQUAL "cache" OR MOD_NAME STREQUAL "stats" OR MOD_NAME STREQUAL "dse")
+        if(MOD_NAME STREQUAL "trace" OR MOD_NAME STREQUAL "cache"
+           OR MOD_NAME STREQUAL "stats" OR MOD_NAME STREQUAL "dse")
             list(APPEND PCM_DEPS ${PCM_DIR}/types.pcm)
         endif()
         if(MOD_NAME STREQUAL "dse")
-            list(APPEND PCM_DEPS ${PCM_DIR}/cache.pcm)
+            list(APPEND PCM_DEPS ${PCM_DIR}/trace.pcm ${PCM_DIR}/cache.pcm)
         endif()
 
         add_custom_command(
@@ -257,11 +272,12 @@ foreach(IXX_SRC ${IXX_SRCS})
     else()
         # GCC: 依赖顺序
         set(IXX_DEPS ${IXX_SRC} ${STD_MODULE_OBJ})
-        if(MOD_NAME STREQUAL "cache" OR MOD_NAME STREQUAL "stats" OR MOD_NAME STREQUAL "dse")
+        if(MOD_NAME STREQUAL "trace" OR MOD_NAME STREQUAL "cache"
+           OR MOD_NAME STREQUAL "stats" OR MOD_NAME STREQUAL "dse")
             list(APPEND IXX_DEPS ${BLD_DIR}/types.ixx.o)
         endif()
         if(MOD_NAME STREQUAL "dse")
-            list(APPEND IXX_DEPS ${BLD_DIR}/cache.ixx.o)
+            list(APPEND IXX_DEPS ${BLD_DIR}/trace.ixx.o ${BLD_DIR}/cache.ixx.o)
         endif()
 
         add_custom_command(

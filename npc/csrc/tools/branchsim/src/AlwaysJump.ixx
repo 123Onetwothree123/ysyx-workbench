@@ -12,8 +12,8 @@ private:
 public:
     explicit AlwaysJump(const BPConfig& config);
     ~AlwaysJump() override = default;
-    Prediction predict(uint32_t pc) const override;
-    void update(uint32_t pc, bool taken, uint32_t target, BranchKind kind,
+    Prediction predict(Addr pc) const override;
+    void update(Addr pc, bool taken, Addr target, BranchKind kind,
                 std::uint32_t jalr_immediate) override;
     [[nodiscard]] std::string_view GetName() const override;
 };

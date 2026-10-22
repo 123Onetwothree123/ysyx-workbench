@@ -2,14 +2,14 @@ module;
 #include <cstdint>
 
 module BTFN;
-Prediction BTFN::predict(uint32_t pc) const
+Prediction BTFN::predict(Addr pc) const
 {
     auto hit{btb.lookup(pc)};
     if (hit)
         return {hit->target < pc, true, hit->target};
     return {false, false, 0};
 }
-void BTFN::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind,
+void BTFN::update(Addr pc, bool taken, Addr target, BranchKind kind,
                   std::uint32_t)
 {
     // 当前RTL只为BTFN可能预测taken的后向条件分支分配BTB；

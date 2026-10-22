@@ -10,8 +10,8 @@ public:
     struct entry
     {
         bool valid;           // 1代表有数据
-        std::uint32_t tag;    // 分支指令的PC>>2，因为RISC-V指令地址必4对齐
-        std::uint32_t target; // 跳转目标地址
+        Addr tag;    // 分支指令的 PC>>2 索引 + 完整 PC 比较，宽度随 XLEN
+        Addr target; // 跳转目标地址
         BranchKind kind;      // 表项类型(Branch/Jal/Call/Ret)
     };
 private:
@@ -27,6 +27,6 @@ public:
     explicit BTB(const BPConfig &config);
     // 直接指定容量/相联度, 供独立jal BTB使用(Kconfig的JAL_BTB_*参数)
     BTB(std::size_t bits, std::size_t ways);
-    std::optional<entry> lookup(std::uint32_t pc) const; // 命中失败就直接返回空
-    void update(std::uint32_t pc, std::uint32_t target, BranchKind kind);
+    std::optional<entry> lookup(Addr pc) const; // 命中失败就直接返回空
+    void update(Addr pc, Addr target, BranchKind kind);
 };

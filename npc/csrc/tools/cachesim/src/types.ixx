@@ -1,6 +1,15 @@
 export module types;
 import std;
 
+// 目标 XLEN 由 Kconfig 的 CONFIG_XLEN 在编译期确定（CMake/父 Makefile 注入），
+// 不提供运行时 XLEN 覆盖开关。地址、PC 等机器字相关量统一使用 Addr，
+// cache 数据字/指令字等真实 32 位字段仍保持 std::uint32_t。
+export inline constexpr unsigned kXlen = CONFIG_XLEN;
+static_assert(kXlen == 32 || kXlen == 64,
+              "CONFIG_XLEN 必须是 32 或 64");
+
+export using Addr = std::conditional_t<kXlen == 64, std::uint64_t, std::uint32_t>;
+
 export struct CacheConfig {
     unsigned block_size  = CACHE_BLOCK_SIZE;
     unsigned num_blocks  = CACHE_NUM_BLOCKS;

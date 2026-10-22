@@ -1,5 +1,6 @@
 module dse;
 import std;
+import types;
 import trace;
 import cache;
 
@@ -10,7 +11,7 @@ auto run_dse(const std::string& trace_path,
              std::span<const unsigned> repl_list) -> std::vector<DseEntry>
 {
     // 收集 trace 数据（只读一次）
-    std::vector<std::uint32_t> trace_data;
+    std::vector<Addr> trace_data;
     {
         TraceReader reader(trace_path);
         while (auto addr = reader.next())

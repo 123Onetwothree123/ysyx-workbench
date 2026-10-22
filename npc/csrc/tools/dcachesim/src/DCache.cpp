@@ -28,7 +28,7 @@ DCache::DCache(const DCacheConfig& config, ReplPolicy policy, std::string_view n
     sets = std::mdspan{sets_flat.data(), SetsNumber, ways}; // entry全部默认初始化为0
 }
 
-void DCache::fill(entry& e, std::uint32_t tag)
+void DCache::fill(entry& e, Addr tag)
 {
     e.valid = true;
     e.tag = tag;
@@ -39,7 +39,7 @@ AccessOutcome DCache::access(const AccessRecord& rec)
 {
     ++tick;
     const auto tag{rec.GetAddr() >> offset_bits};
-    const auto index{tag & ((std::size_t{1} << index_bits) - 1)}; // 取低index_bits位作为组号
+    const auto index{static_cast<std::size_t>(tag & static_cast<Addr>((std::size_t{1} << index_bits) - 1))}; // 取低index_bits位作为组号
     const std::span<entry> set{sets.data_handle() + index * ways, ways};
 
     // 第1轮：找是否有同 tag 的块，命中

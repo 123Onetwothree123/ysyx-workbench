@@ -2,7 +2,7 @@ module;
 #include <cstdint>
 
 module BTFNSharedJal;
-Prediction BTFNSharedJal::predict(uint32_t pc) const
+Prediction BTFNSharedJal::predict(Addr pc) const
 {
     auto hit{btb.lookup(pc)};
     if (!hit)
@@ -11,7 +11,7 @@ Prediction BTFNSharedJal::predict(uint32_t pc) const
     // ret表项的目标是"上次返回地址", 接受目标校验(通常不准, 这正是需要RAS的原因)
     return {hit->kind != BranchKind::Branch || hit->target < pc, true, hit->target};
 }
-void BTFNSharedJal::update(uint32_t pc, bool taken, uint32_t target, BranchKind kind,
+void BTFNSharedJal::update(Addr pc, bool taken, Addr target, BranchKind kind,
                            std::uint32_t)
 {
     // 共享表中非条件跳转仍正常训练；条件分支与RTL一样

@@ -40,7 +40,7 @@ std::optional<AccessRecord> DTraceReader::TryParse(std::string_view line)
         {
             return std::nullopt;
         }
-        std::uint32_t addr{};
+        Addr addr{};
         const auto* begin{line.data() + pos + 7};
         const auto end{line.data() + line.size()};
         auto [pointer, errorcode] = std::from_chars(begin, end, addr, 16);
@@ -62,7 +62,7 @@ std::optional<AccessRecord> DTraceReader::TryParse(std::string_view line)
     {
         ++pointer1;
     }
-    std::uint32_t addr{};
+    Addr addr{};
     auto [pointer2, errorcode2] = std::from_chars(pointer1, end, addr, 16);
     if (errorcode2 != std::errc{})
     {

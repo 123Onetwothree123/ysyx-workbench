@@ -45,7 +45,7 @@ auto CacheSim::find_victim(std::span<const Block> set) -> unsigned
     }
 }
 
-auto CacheSim::fa_access(std::uint32_t tag) -> bool
+auto CacheSim::fa_access(Addr tag) -> bool
 {
     // 在全相联 cache 中查找
     for (auto& blk : fa_blocks_) {
@@ -76,13 +76,15 @@ auto CacheSim::fa_access(std::uint32_t tag) -> bool
     return false;
 }
 
-auto CacheSim::access(std::uint32_t addr) -> AccessResult
+auto CacheSim::access(Addr addr) -> AccessResult
 {
     ++tick_;
     ++stats_.total;
 
-    std::uint32_t tag = addr >> offset_bits_;
-    unsigned index = (num_sets_ > 1) ? (tag & (num_sets_ - 1)) : 0;
+    Addr tag = addr >> offset_bits_;
+    const unsigned index = (num_sets_ > 1)
+        ? static_cast<unsigned>(tag & static_cast<Addr>(num_sets_ - 1))
+        : 0;
 
     AccessResult result;
 

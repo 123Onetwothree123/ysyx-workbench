@@ -15,7 +15,7 @@ BTB::BTB(std::size_t bits, std::size_t ways)
     sets = std::mdspan{sets_flat.data(), SetsNumber, ways}; // entry全部零初始化
     repl_ptr.assign(SetsNumber, 0);
 }
-std::optional<BTB::entry> BTB::lookup(std::uint32_t pc) const
+std::optional<BTB::entry> BTB::lookup(Addr pc) const
 {
     auto index{(pc >> 2) & ((std::size_t{1} << index_bits) - 1)}; // 取低index_bits位作为书架号
     const std::span<const entry> set{sets.data_handle() + index * ways, ways};
@@ -26,7 +26,7 @@ std::optional<BTB::entry> BTB::lookup(std::uint32_t pc) const
     }
     return std::nullopt;
 }
-void BTB::update(std::uint32_t pc, std::uint32_t target, BranchKind kind)
+void BTB::update(Addr pc, Addr target, BranchKind kind)
 {
     auto index{(pc >> 2) & ((std::size_t{1} << index_bits) - 1)}; // 同上
     const std::span<entry> set{sets.data_handle() + index * ways, ways}; // 对应书架的所有表项
