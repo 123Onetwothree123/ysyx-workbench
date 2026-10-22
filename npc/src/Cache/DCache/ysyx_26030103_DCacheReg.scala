@@ -13,6 +13,9 @@ class ysyx_26030103_DCacheReg(
     AddressWidth: Int = 32,
     DataWidth: Int = 32,
     Vipt: Boolean = false,
+    // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
+    // 安装和写直达 store 完成时按物理 tag 失效其他 set 的副本。
+    ViptAliasSafe: Boolean = false,
     CacheableBase: Long = 0x80000000L,
     CacheableMask: Long = 0x80000000L,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
@@ -28,7 +31,15 @@ class ysyx_26030103_DCacheReg(
     IndexBits + BlockSizeLog2 < AddressWidth,
     "DCache geometry must leave at least one tag bit"
   )
-  private val TagBits = AddressWidth - IndexBits - BlockSizeLog2
+  // alias 模式必须比较完整物理行号：index 含 VPN 位时，PA 中与 index
+  // 对应的位并不由 VA index 决定，窄 tag 会让两个只有该位不同的物理行
+  // 在同一 set 中 false hit。
+  private val TagBits =
+    if (ViptAliasSafe) AddressWidth - BlockSizeLog2
+    else AddressWidth - IndexBits - BlockSizeLog2
+  private def TagOf(address: UInt): UInt =
+    if (ViptAliasSafe) address(AddressWidth - 1, BlockSizeLog2)
+    else address(AddressWidth - 1, IndexBits + BlockSizeLog2)
   private val NumBlocks = 1 << IndexBits
   private val WordsPerBlock = 1 << (BlockSizeLog2 - 2)
   private val IndexWidth = IndexBits.max(1)
@@ -46,13 +57,25 @@ class ysyx_26030103_DCacheReg(
   val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
   val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))
   val data = Reg(Vec(ArrayBlocks, Vec(WordsPerBlock, UInt(32.W))))
+  // VIPT alias 维护：同一物理行只保留一份。refill 安装新行、写直达 store
+  // 完成后扫描 tag 阵列，失效其他 set 中的同物理行副本。扫描仅在 alias
+  // 危险几何且显式打开 MMU_CACHE_VIPT_ALIAS_SAFE 时生成。
+  private def InvalidateAliasCopies(AliasTag: UInt, TargetIndex: UInt): Unit = {
+    if (ViptAliasSafe && Enable) {
+      for (i <- valid.indices) {
+        when(valid(i) && tag(i) === AliasTag && i.U =/= TargetIndex) {
+          valid(i) := false.B
+        }
+      }
+    }
+  }
   val indexAddr = if (Vipt) io.req.bits.vaddr else io.req.bits.addr
   val index = indexAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   val IndexSafe = if (Enable) index else 0.U(IndexWidth.W)
   val WordOffset =
     if (WordsPerBlock > 1) indexAddr(BlockSizeLog2 - 1, 2)
     else 0.U(OffsetWidth.W)
-  val ReqTag = io.req.bits.addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
+  val ReqTag = TagOf(io.req.bits.addr)
   // VIPT：req 只保证 VA 有效，PA 与它的 VA 标签都匹配后才能做 tag/PMA 判定。
   // PIPT 下这个条件恒为真，原有路径完全不变。
   val IncomingPaddrMatch =
@@ -87,8 +110,7 @@ class ysyx_26030103_DCacheReg(
   val ResolveVaddrMatch = !io.flush && !io.req_kill && WaitPaddr &&
     io.req_paddr_valid && io.req_paddr_vaddr === WaitVaddrReg
   val ResolvePaddr = io.req.bits.addr
-  val ResolveTag =
-    ResolvePaddr(AddressWidth - 1, IndexBits + BlockSizeLog2)
+  val ResolveTag = TagOf(ResolvePaddr)
   val ResolveIndexSafe = if (Enable) WaitIndexReg else 0.U(IndexWidth.W)
   val ResolveCacheable = ysyx_26030103_DCachePolicy.IsCacheable(
     ResolvePaddr,
@@ -232,7 +254,7 @@ class ysyx_26030103_DCacheReg(
   val StoreOffset =
     if (WordsPerBlock > 1) storeIndexAddr(BlockSizeLog2 - 1, 2)
     else 0.U(OffsetWidth.W)
-  val StoreTag = io.StoreAddr(AddressWidth - 1, IndexBits + BlockSizeLog2)
+  val StoreTag = TagOf(io.StoreAddr)
   val StoreCacheable = ysyx_26030103_DCachePolicy.IsCacheable(
     io.StoreAddr,
     Enable,
@@ -277,7 +299,10 @@ class ysyx_26030103_DCacheReg(
   val StoreConflictsRequest = io.StoreValid && StoreCacheable && cacheable &&
     io.StoreAddr(AddressWidth - 1, BlockSizeLog2) ===
       io.req.bits.addr(AddressWidth - 1, BlockSizeLog2)
+  // 半填行只在“同一 set”内可见：alias 几何下另一个 VA 可能用同一 PA
+  // 命中不同 index，而 refill 只把数据写进 ReqIndexSafe。
   val PartialHitUnderRefill = RefillInProgress && SameRefillLine &&
+    (index === ReqIndexSafe) &&
     RefillWordReady && !RefillError && !suppressFill &&
     !StoreConflictsRefill && !RefillFaultNow
   val FullHitUnderRefill = RefillInProgress && RefillActive && hit
@@ -342,6 +367,19 @@ class ysyx_26030103_DCacheReg(
         // SLVERR/DECERR不保证从机完全没有副作用。不能把失败store的数据
         // 投机写入cache，但也不能继续保留可能已经过期的旧缓存行。
         valid(StoreIndexSafe) := false.B
+      }
+    }
+  }
+  // 写直达 store 完成后内存已是新值：同一物理行的其他 alias 副本（即使
+  // store 本身按 VA index 没有命中）都必须失效。成功命中时保留 StoreIndex
+  // 这份并由上面的写镜像更新；失败 store 则连命中行一起失效。
+  if (ViptAliasSafe && Enable) {
+    for (i <- valid.indices) {
+      val KeepTarget = StoreHit && io.StoreResp === 0.U &&
+        StoreIndexSafe === i.U
+      when(io.StoreValid && StoreCacheable && valid(i) &&
+          tag(i) === StoreTag && !KeepTarget) {
+        valid(i) := false.B
       }
     }
   }
@@ -501,6 +539,11 @@ class ysyx_26030103_DCacheReg(
       // AXI要求ARVALID一旦提出就保持到握手。即使flush到来，也继续完成
       // 地址和R通道事务；响应仍交付demand，但不安装该次回填的cache line。
       when(io.AXI.AR.ARREADY) {
+        // 缓存行在 AR 被接受时安装：清除其他 set 中同物理行的旧副本。
+        // 若本次 refill 已被 store/flush 抑制，则不再改动别名副本。
+        when(RefillActive && !suppressFill && !io.flush) {
+          InvalidateAliasCopies(ReqTagReg, ReqIndexSafe)
+        }
         state := SReadResp
       }
     }

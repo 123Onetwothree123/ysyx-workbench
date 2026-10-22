@@ -389,6 +389,7 @@ def build_profile(cfg: Config) -> dict:
             "superpage": cfg.bool("MMU_SUPERPAGE"),
             "ad_mode": ad_mode,
             "cache_mode": cache_mode,
+            "cache_vipt_alias_safe": cfg.bool("MMU_CACHE_VIPT_ALIAS_SAFE"),
             "ptw": {
                 "path": ptw_path,
                 "arch": ptw_arch,
@@ -468,6 +469,7 @@ HEADER_TEMPLATE = """/* 由 scripts/gen_mmu_profile.py 从 .config 生成，请�
 #define YSYX_MMU_TLB_ORGANIZATION "{tlb_org}"
 #define YSYX_MMU_TLB_REPLACEMENT "{replacement}"
 #define YSYX_MMU_CACHE_MODE "{cache_mode}"
+#define YSYX_MMU_CACHE_VIPT_ALIAS_SAFE {vipt_alias_safe}u
 #define YSYX_MMU_PTW_PATH "{ptw_path}"
 #define YSYX_MMU_PTW_OUTSTANDING {ptw_outstanding}u
 #define YSYX_MMU_PTW_BUS_OUTSTANDING {ptw_bus_outstanding}u
@@ -527,6 +529,7 @@ def main() -> int:
         tlb_org=profile["tlb"]["organization"],
         replacement=profile["tlb"]["replacement"],
         cache_mode=profile["mmu"]["cache_mode"],
+        vipt_alias_safe=int(profile["mmu"]["cache_vipt_alias_safe"]),
         ptw_path=profile["mmu"]["ptw"]["path"],
         ptw_outstanding=profile["mmu"]["ptw"]["outstanding"],
         ptw_bus_outstanding=profile["mmu"]["ptw"]["bus_outstanding"],
@@ -577,6 +580,7 @@ def main() -> int:
             f"MMU_SUPERPAGE={int(profile['mmu']['superpage'])}",
             f"MMU_AD_MODE={profile['mmu']['ad_mode']}",
             f"MMU_CACHE_MODE={profile['mmu']['cache_mode']}",
+            f"MMU_CACHE_VIPT_ALIAS_SAFE={int(profile['mmu']['cache_vipt_alias_safe'])}",
             f"MMU_PTW_PATH={profile['mmu']['ptw']['path']}",
             f"MMU_PTW_ARCH={profile['mmu']['ptw']['arch']}",
             f"MMU_PTW_OUTSTANDING={profile['mmu']['ptw']['outstanding']}",

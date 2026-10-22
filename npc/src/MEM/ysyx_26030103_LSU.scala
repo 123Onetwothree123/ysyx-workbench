@@ -18,6 +18,9 @@ class ysyx_26030103_LSU(
     val DCachePMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
     val DCacheVipt: Boolean = false,
+    // VIPT alias 安全模式：index 含 VPN 位时，DCache 需要按物理 tag 失效
+    // 其他 set 中的同名物理行副本。
+    val DCacheViptAliasSafe: Boolean = false,
     // VIPT 并行模式：DCache/LSU 在 PA 到达前就用 VA 选 index 并持有请求，
     // MMU 故障通过 ViptKill 取消该请求。
     val ViptParallel: Boolean = false,
@@ -120,7 +123,8 @@ class ysyx_26030103_LSU(
     CacheableMask = DCacheableMask,
     PMARegions = DCachePMARegions,
     Storage = DCacheStorage,
-    Vipt = DCacheVipt
+    Vipt = DCacheVipt,
+    ViptAliasSafe = DCacheViptAliasSafe
   )
   io.DCachePerfHit := DCache.io.perf_hit
   io.DCachePerfMiss := DCache.io.perf_miss

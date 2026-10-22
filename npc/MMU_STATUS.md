@@ -59,11 +59,19 @@
   使用 ID 2；四类读可以同时在途。PTW AXI 读最多 13 笔并发，超过部分在
   适配器队列等待（4 位下游 ID 的物理上限）。
 - PIPT 和 VIPT：VIPT 使用虚拟地址提前选 index/block offset，物理地址
-  到达后再做 tag/PMA/refill。elaboration 会检查 index+块内偏移是否落在
-  页内，超出 pageBits 的配置明确报错，避免静默 alias。ICache 和 DCache 都有并行 VIPT 路径；
-  DCache 的 load/store 都可以提前受理：store 先按 VA 登记写缓冲，只有
-  携带匹配 VA 标签的 PA 返回后才发 AW/W 或更新缓存镜像，页错误 kill
-  不会留下任何写副作用。
+  到达后再做 tag/PMA/refill。默认要求 index+块内偏移落在页内，超出
+  pageBits 的配置明确报错，避免静默 alias；显式打开
+  `MMU_CACHE_VIPT_ALIAS_SAFE=y` 后允许该几何：
+  - tag 改为完整物理行号（index 含 VPN 位时不能省略 PA 的对应位）；
+  - refill 安装时按物理行失效其他 set 的同名副本；
+  - 写直达 store 完成（BRESP 成功）后失效所有其他 set 的 alias 副本，
+    store 按 VA index 未命中也能清掉旧副本；
+  - 半填行只允许同一 set 的后续请求 partial-hit；
+  - cache line 始终要求不大于页大小，跨页行无法用单个物理行回填。
+  ICache 和 DCache 都有并行 VIPT 路径；DCache 的 load/store 都可以提前
+  受理：store 先按 VA 登记写缓冲，只有携带匹配 VA 标签的 PA 返回后才发
+  AW/W 或更新缓存镜像，页错误 kill 不会留下任何写副作用。VIPT cache
+  使用物理 tag，sfence.vma/satp 切换不需要清 cache，也不会误命中旧映射。
 - 可选 PTW PTE cache（set-associative），支持 4B/8B PTE；8B 表项保存
   低/高两个字，命中后无需重复两次页表读。
 - IFU/LSU 双端口仲裁：两笔翻译可以同时在途，响应按 ID 路由；
@@ -77,8 +85,9 @@
 ```text
 总计 160+ 项 mill 单元测试通过，包含：
 MMU 结构/行为/流、PTW pipeline、AXI 多 outstanding、CSR/U 裁剪、
-IDU 特权级、PLIC、PMP、ICache VIPT、DCache VIPT、LSUMMUVipt、
-LSUVipt、LSUDmmuVipt、LSUStoreVipt；以及 RV64 定向测试：
+IDU 特权级、PLIC、PMP、ICache VIPT、DCache VIPT、CacheViptAlias
+（非标准页大小、PA alias 读写/取指、store 后 alias 一致、satp 切换）、
+LSUMMUVipt、LSUVipt、LSUDmmuVipt、LSUStoreVipt；以及 RV64 定向测试：
 Sv39 三级 walk/权限/U-SUM/R-W-X/超级页/A-D/非规范地址、
 Sv48 四级 walk、Sv39 TLB refill、64 位 satp WARL 与 sepc/stval。
 ```

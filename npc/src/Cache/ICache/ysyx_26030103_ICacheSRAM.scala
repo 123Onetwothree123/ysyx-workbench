@@ -9,13 +9,24 @@ class ysyx_26030103_ICacheSRAM(
     IndexBits: Int = 5,
     AddressWidth: Int = 32,
     Vipt: Boolean = false,
+    // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
+    // 安装前按物理 tag 失效其他 set 的副本，维持每个物理行至多一份。
+    ViptAliasSafe: Boolean = false,
     // true=命中响应的第一拍旁路SRAM输出(保持1拍延迟);
     // false=老实打一拍(响应晚一拍), 用于量化"不旁路"的性能代价
     Bypass: Boolean = true,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_ICacheBase(AddressWidth) {
-  val TagBits = AddressWidth - IndexBits - BlockSizeLog2
+  // alias 模式必须比较完整物理行号：index 含 VPN 位时，PA 中与 index
+  // 对应的位并不由 VA index 决定，若仍省略这些位，两个只有该位不同的
+  // 物理行会在同一 set 中 false hit。页内安全 VIPT 可继续使用窄 tag。
+  val TagBits =
+    if (ViptAliasSafe) AddressWidth - BlockSizeLog2
+    else AddressWidth - IndexBits - BlockSizeLog2
+  private def TagOf(address: UInt): UInt =
+    if (ViptAliasSafe) address(AddressWidth - 1, BlockSizeLog2)
+    else address(AddressWidth - 1, IndexBits + BlockSizeLog2)
   val NumBlocks = 1 << IndexBits
   val WordsPerBlock = 1 << (BlockSizeLog2 - 2) // 块大小 ÷ 4字节
   val WordCntBits = log2Ceil(WordsPerBlock) // 块内字数计数器位宽
@@ -26,6 +37,17 @@ class ysyx_26030103_ICacheSRAM(
   val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
   val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))
   val dataMem = SyncReadMem(NumBlocks * WordsPerBlock, UInt(32.W))
+  // VIPT alias 维护：refill 安装物理行时失效其他 set 中的同 tag 副本。
+  // 仅在 alias 危险几何且显式打开 MMU_CACHE_VIPT_ALIAS_SAFE 时生成。
+  private def InvalidateAliasCopies(AliasTag: UInt, TargetIndex: UInt): Unit = {
+    if (ViptAliasSafe && Enable) {
+      for (i <- valid.indices) {
+        when(valid(i) && tag(i) === AliasTag && i.U =/= TargetIndex) {
+          valid(i) := false.B
+        }
+      }
+    }
+  }
   val indexAddr = if (Vipt) io.fetch_vaddr else io.fetch_addr
   val index = indexAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   // Enable=false时阵列只有一个综合占位项。用Scala期的常量索引访问它，
@@ -35,7 +57,7 @@ class ysyx_26030103_ICacheSRAM(
   val blockOffset =
     if (WordsPerBlock > 1) indexAddr(BlockSizeLog2 - 1, 2)
     else 0.U
-  val reqTag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
+  val reqTag = TagOf(io.fetch_addr)
   // SRAM字地址：组索引与块内word偏移拼成一个线性地址。
   private def WordAddress(BlockIndex: UInt, WordOffset: UInt): UInt =
     if (WordsPerBlock > 1) Cat(BlockIndex, WordOffset) else BlockIndex
@@ -126,7 +148,7 @@ class ysyx_26030103_ICacheSRAM(
   val ref_vindex = Reg(UInt(IndexBits.W))
   val ref_index = if (Vipt) ref_vindex else ref_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   val RefIndexSafe = if (Enable) ref_index else 0.U(IndexBits.W)
-  val ref_tag = ref_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
+  val ref_tag = TagOf(ref_addr)
   val ref_offset =
     if (WordsPerBlock > 1) ref_addr(BlockSizeLog2 - 1, 2)
     else 0.U
@@ -168,10 +190,12 @@ class ysyx_26030103_ICacheSRAM(
       (!ref_cacheable || !burst_mode || refill_cnt === (WordsPerBlock - 1).U)
   val refill_error_now =
     refill_r_fire && (io.axi.R.RRESP =/= 0.U || malformed_refill_beat_now)
+  // 半填行只在“同一 set”内可见：alias 几何下另一个 VA 可能用同一 PA
+  // 命中不同 index，而 refill 只把数据写进 RefIndexSafe。
   val partial_refill_hit =
     (rfstate === rf_req || rfstate === rf_resp) &&
       ref_cacheable && !discard && !refill_error && !refill_error_now &&
-      refill_line_match && requested_word_arrived
+      refill_line_match && (index === ref_index) && requested_word_arrived
   val request_hit =
     incoming_paddr_match && executable && cacheable && (hit || partial_refill_hit)
   // VIPT 的“迟到的 PA”解析：s1 里保存的是受理时的 VA/index/offset，
@@ -180,7 +204,7 @@ class ysyx_26030103_ICacheSRAM(
   val s1_wait_xlate = Vipt.B && s1_valid && !s1_paddr_valid
   val resolve_xlate = s1_wait_xlate && io.fetch_paddr_valid &&
     io.fetch_paddr_vaddr === fetch_vaddr_reg
-  val resolve_tag = io.fetch_addr(AddressWidth - 1, IndexBits + BlockSizeLog2)
+  val resolve_tag = TagOf(io.fetch_addr)
   val resolve_under_refill =
     refill_busy && ref_cacheable && (fetch_index_reg === ref_index)
   val resolve_hit =
@@ -195,7 +219,8 @@ class ysyx_26030103_ICacheSRAM(
   val resolve_partial_refill_hit =
     (rfstate === rf_req || rfstate === rf_resp) &&
       ref_cacheable && !discard && !refill_error && !refill_error_now &&
-      resolve_line_match && resolve_word_arrived
+      resolve_line_match && (fetch_index_reg === ref_index) &&
+      resolve_word_arrived
   val resolve_request_hit =
     executable && cacheable && (resolve_hit || resolve_partial_refill_hit)
   io.access_fault := access_fault_reg
@@ -325,10 +350,7 @@ class ysyx_26030103_ICacheSRAM(
     s1_valid && (!Vipt.B || s1_paddr_valid) && !s1_hit && !s1_ready
   val recheck_hit = cacheable_reg &&
     valid(FetchIndexSafe) &&
-    tag(FetchIndexSafe) === fetch_addr_reg(
-      AddressWidth - 1,
-      IndexBits + BlockSizeLog2
-    )
+    tag(FetchIndexSafe) === TagOf(fetch_addr_reg)
   when(queued_miss && rfstate === rf_idle && !io.kill && !io.flush &&
       !bus_fault) {
     when(recheck_hit) {
@@ -427,6 +449,7 @@ class ysyx_26030103_ICacheSRAM(
         val killed_owner_now = io.kill && s1_waits
         when(ref_cacheable && !discard && !killed_owner_now) {
           valid(RefIndexSafe) := false.B
+          InvalidateAliasCopies(ref_tag, RefIndexSafe)
         }
         ar_exposed := false.B
         rfstate := rf_resp

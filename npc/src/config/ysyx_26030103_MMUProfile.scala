@@ -46,6 +46,11 @@ case class ysyx_26030103_MMUProfile(
     superpage: Boolean = false,
     adMode: String = "fault",
     cacheMode: String = "pipt",
+    // VIPT alias 安全模式：允许 cache index/块偏移越过页内偏移（即 index
+    // 含 VPN 位）。此时同一物理行可能被不同 VA 映射到不同 set，Cache 在
+    // refill/store 时按物理 tag 清除其他 set 的别名副本。false 保持原有
+    // elaboration 期拒绝策略，绝不静默生成会 alias 的硬件。
+    cacheViptAliasSafe: Boolean = false,
     ptwPath: String = "dedicated",
     ptwArch: String = "independent",
     ptwOutstanding: Int = 2,
@@ -241,6 +246,7 @@ case class ysyx_26030103_MMUProfile(
     s"MMU(enabled=$enabled xlen=$xlen va=$computedAddressBits satpMode=$satpMode " +
       s"profile=$pteFormat page=$pageSizeBytes levels=$levels " +
       s"pte=$pteSizeBytes table=$pageTableSizeBytes " +
+      s"cache=$cacheMode vipt_alias_safe=$cacheViptAliasSafe " +
       s"ptw=$ptwPath/$ptwArch/$ptwOutstanding/bus$ptwBusOutstanding) " +
       s"TLB(enabled=$tlbEnabled org=$tlbOrganization storage=$tlbStorage " +
       s"repl=$tlbReplacement asid=$tlbAsidBits)"
@@ -375,6 +381,8 @@ object ysyx_26030103_MMUProfile {
       superpage = envBool(env, "MMU_SUPERPAGE", false),
       adMode = envString(env, "MMU_AD_MODE", "fault"),
       cacheMode = envString(env, "MMU_CACHE_MODE", "pipt"),
+      cacheViptAliasSafe =
+        envBool(env, "MMU_CACHE_VIPT_ALIAS_SAFE", false),
       ptwPath = envString(env, "MMU_PTW_PATH", "dedicated"),
       ptwArch = envString(env, "MMU_PTW_ARCH", "independent"),
       ptwOutstanding = envInt(env, "MMU_PTW_OUTSTANDING", 2),

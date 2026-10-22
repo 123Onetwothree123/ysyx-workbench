@@ -141,23 +141,59 @@ case class ysyx_26030103_NPCConfig(
   // 可以跨两个相邻 word，因此数据行必须至少容纳两个 word。
   require(XLEN == 32 || !DCacheEnable || DCacheBlockSizeLog2 >= 3,
     "XLEN=64 且启用 DCache 时，cache line 必须至少容纳两个 32 位 word")
-  // VIPT 的页内约束在 RV64 下仍按当前 MMU 页大小检查；本阶段 MMU 关闭，
-  // 因此该条件不会触发，但保留逻辑以便后续 Sv39 阶段复用。
+  // VIPT 的页内约束按当前 MMU 页大小检查；RV32 自定义几何和 RV64
+  // Sv39/Sv48 的 pageBits 都从这里取。
   val viptCacheEnabled = MMU.enabled && MMU.cacheMode == "vipt"
+  // cache line 必须落在同一个虚拟页内：行按块大小对齐，只要块不大于页
+  // 就不会跨页。跨页行的不同字节来自两个可能不连续的物理页，无法用
+  // 单个物理行 refill，因此即使打开 alias 安全模式也必须拒绝。
   require(
     !viptCacheEnabled || !ICacheEnable ||
-      ICacheIndexBits + ICacheBlockSizeLog2 <= MMU.pageBits,
-    s"VIPT ICache 非法：ICacheIndexBits($ICacheIndexBits)+" +
-      s"ICacheBlockSizeLog2($ICacheBlockSizeLog2) 超过页内偏移位数" +
-      s"(${MMU.pageBits})；请增大 MMU_PAGE_SIZE_BYTES 或减小 Cache 索引/块大小"
+      ICacheBlockSizeLog2 <= MMU.pageBits,
+    s"VIPT ICache 非法：cache line(${1 << ICacheBlockSizeLog2}B) 大于页大小" +
+      s"(${1 << MMU.pageBits}B)，会跨越虚拟页；要求 " +
+      s"ICacheBlockSizeLog2($ICacheBlockSizeLog2) <= MMU.pageBits(${MMU.pageBits})"
   )
   require(
     !viptCacheEnabled || !DCacheEnable ||
-      DCacheIndexBits + DCacheBlockSizeLog2 <= MMU.pageBits,
+      DCacheBlockSizeLog2 <= MMU.pageBits,
+    s"VIPT DCache 非法：cache line(${1 << DCacheBlockSizeLog2}B) 大于页大小" +
+      s"(${1 << MMU.pageBits}B)，会跨越虚拟页；要求 " +
+      s"DCacheBlockSizeLog2($DCacheBlockSizeLog2) <= MMU.pageBits(${MMU.pageBits})"
+  )
+  // index 含 VPN 位时，不同 VA 可把同一物理行映射到不同 set。默认仍按
+  // 原策略拒绝；显式打开 MMU_CACHE_VIPT_ALIAS_SAFE 后由 Cache 在 refill
+  // 安装和 store 完成时扫描 tag 阵列，失效同物理行的其他 set 副本。
+  private val ICacheAliasGeometry =
+    ICacheIndexBits + ICacheBlockSizeLog2 > MMU.pageBits
+  private val DCacheAliasGeometry =
+    DCacheIndexBits + DCacheBlockSizeLog2 > MMU.pageBits
+  require(
+    !viptCacheEnabled || !ICacheEnable || !ICacheAliasGeometry ||
+      MMU.cacheViptAliasSafe,
+    s"VIPT ICache 非法：ICacheIndexBits($ICacheIndexBits)+" +
+      s"ICacheBlockSizeLog2($ICacheBlockSizeLog2) 超过页内偏移位数" +
+      s"(${MMU.pageBits})，同一物理行可能出现在不同 set。请显式设置 " +
+      "MMU_CACHE_VIPT_ALIAS_SAFE=y 启用物理行 alias 失效，或增大 " +
+      "MMU_PAGE_SIZE_BYTES / 减小 Cache 索引/块大小，或改用 MMU_CACHE_MODE=pipt"
+  )
+  require(
+    !viptCacheEnabled || !DCacheEnable || !DCacheAliasGeometry ||
+      MMU.cacheViptAliasSafe,
     s"VIPT DCache 非法：DCacheIndexBits($DCacheIndexBits)+" +
       s"DCacheBlockSizeLog2($DCacheBlockSizeLog2) 超过页内偏移位数" +
-      s"(${MMU.pageBits})；请增大 MMU_PAGE_SIZE_BYTES 或减小 Cache 索引/块大小"
+      s"(${MMU.pageBits})，同一物理行可能出现在不同 set。请显式设置 " +
+      "MMU_CACHE_VIPT_ALIAS_SAFE=y 启用物理行 alias 失效，或增大 " +
+      "MMU_PAGE_SIZE_BYTES / 减小 Cache 索引/块大小，或改用 MMU_CACHE_MODE=pipt"
   )
+  // 只有几何真的会 alias 时才生成扫描/失效硬件；页内安全几何即使打开
+  // 选项也不需要额外逻辑（同物理行必然同 index）。
+  final val ICacheViptAliasHardware: Boolean =
+    viptCacheEnabled && ICacheEnable && MMU.cacheViptAliasSafe &&
+      ICacheAliasGeometry
+  final val DCacheViptAliasHardware: Boolean =
+    viptCacheEnabled && DCacheEnable && MMU.cacheViptAliasSafe &&
+      DCacheAliasGeometry
   // 只有外部 SoC AXI 实际使用 32 位地址时才要求 PMA 完全位于低
   // 4GiB。SoC64 允许 PMA/Xbar 映射更高物理地址；这些地址会完整送到
   // 64 位 AXI 边界，由下游（或 Xbar 未命中 DECERR）决定行为，绝不
@@ -344,6 +380,16 @@ case class ysyx_26030103_NPCConfig(
       if (DCacheEnable) {
         s"${1 << DCacheBlockSizeLog2}B/${1 << DCacheIndexBits}sets"
       } else { "off" }
+    // VIPT alias 模式必须显式出现在 elaboration 日志中，避免出现
+    // “配置看起来是 VIPT、实际却静默退化”的情况。
+    val ViptAliasDesc =
+      if (!viptCacheEnabled) { "" }
+      else {
+        val Active =
+          if (ICacheViptAliasHardware || DCacheViptAliasHardware) { "(hw)" }
+          else { "" }
+        s",vipt_alias_safe=${OnOff(MMU.cacheViptAliasSafe)}$Active"
+      }
     s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, " +
       s"addr_w=$AddressWidth, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
@@ -352,7 +398,8 @@ case class ysyx_26030103_NPCConfig(
       s"div=${DIVImpl.Name}, div_radix=$DIVRadix, div_iter=$DIVIterBits, " +
       s"iter=$MULIterBits, pipeline=$MULPipeline, split=$MULSplit, " +
       s"mul_early_out=${OnOff(MULEarlyOut)}, div_early_out=${OnOff(DIVEarlyOut)}, " +
-      s"ICache=$ICacheDesc, DCache=$DCacheDesc, icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +
+      s"ICache=$ICacheDesc, DCache=$DCacheDesc$ViptAliasDesc, " +
+      s"icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, observe=${OnOff(EnableAnyObservability)}, " +
       s"gpr_debug=${OnOff(EnableDynamicGPRDebug)}, perf_debug=${OnOff(EnablePerfTrace)}, " +

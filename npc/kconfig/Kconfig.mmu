@@ -195,15 +195,29 @@ menu "虚拟内存管理 (MMU/TLB)"
         bool "VIPT：TLB 与 Cache 并行"
         help
           使用虚拟地址提前选择 Cache index，同时并行翻译物理地址。
-          要求 Cache 的 index 位宽与块内偏移之和不超过页内偏移位数
-          （log2(MMU_PAGE_SIZE_BYTES)）；超出时不同虚拟页可能在
-          Cache 中 alias，elaboration 会明确报错而不是静默生成。
+          Cache 的 index 位宽与块内偏移之和默认不得超过页内偏移位数
+          （log2(MMU_PAGE_SIZE_BYTES)），否则不同虚拟页可能把同一物理
+          行放进不同 set，elaboration 会明确报错。若确需该几何，可打开
+          MMU_CACHE_VIPT_ALIAS_SAFE，由 Cache 在 refill/store 时按物理
+          tag 失效其他 set 的 alias 副本。cache line 本身始终不得跨页。
     endchoice
 
     config MMU_CACHE_MODE
       string
       default "pipt" if MMU_CACHE_PIPT
       default "vipt"
+
+    config MMU_CACHE_VIPT_ALIAS_SAFE
+      bool "VIPT alias 安全：允许 index 越过页内偏移"
+      depends on MMU_CACHE_VIPT
+      default n
+      help
+        允许 Cache index 位与块内偏移之和超过页内偏移位数。此时同一物理
+        行可能通过不同虚拟地址落在不同 set；Cache 在 refill 安装和写直达
+        store 完成时扫描 tag 阵列，失效其他 set 中同物理行的副本，保证
+        别名读写一致。该选项会增加 tag 比较/valid 写口逻辑，默认关闭。
+        关闭时非法几何仍会在 elaboration 期报错，不会静默退化为 PIPT。
+        也可直接选择 MMU_CACHE_PIPT，用物理索引避免 alias。
 
     choice
       prompt "PTW 内存通路"

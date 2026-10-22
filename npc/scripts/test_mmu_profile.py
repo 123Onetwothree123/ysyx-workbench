@@ -77,6 +77,14 @@ class MmuProfileTest(unittest.TestCase):
         self.assertFalse(profile["mmu"]["well_formed"])
         self.assertTrue(profile["warnings"])
 
+    def test_vipt_alias_safe_is_visible(self):
+        values = self.base()
+        values["MMU_CACHE_MODE"] = "vipt"
+        values["MMU_CACHE_VIPT_ALIAS_SAFE"] = True
+        profile = build_profile(Config(values))
+        self.assertEqual(profile["mmu"]["cache_mode"], "vipt")
+        self.assertTrue(profile["mmu"]["cache_vipt_alias_safe"])
+
     def test_pmp_is_visible(self):
         values = self.base()
         values["HAS_PMP"] = True

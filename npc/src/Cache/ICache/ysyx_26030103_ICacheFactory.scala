@@ -27,6 +27,7 @@ object ysyx_26030103_ICacheFactory {
             IndexBits = config.ICacheIndexBits,
             AddressWidth = config.AddressWidth,
             Vipt = config.MMU.cacheMode == "vipt",
+            ViptAliasSafe = config.ICacheViptAliasHardware,
             PMARegions = config.PMARegions
           )
         )
@@ -38,6 +39,7 @@ object ysyx_26030103_ICacheFactory {
             IndexBits = config.ICacheIndexBits,
             AddressWidth = config.AddressWidth,
             Vipt = config.MMU.cacheMode == "vipt",
+            ViptAliasSafe = config.ICacheViptAliasHardware,
             PMARegions = config.PMARegions
           )
         )
@@ -48,6 +50,8 @@ object ysyx_26030103_ICacheFactory {
             BlockSizeLog2 = config.ICacheBlockSizeLog2,
             IndexBits = config.ICacheIndexBits,
             AddressWidth = config.AddressWidth,
+            Vipt = config.MMU.cacheMode == "vipt",
+            ViptAliasSafe = config.ICacheViptAliasHardware,
             Bypass = false,
             PMARegions = config.PMARegions
           )
