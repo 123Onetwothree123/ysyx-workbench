@@ -6,12 +6,12 @@ export class NPCTrap final
 {
 public:
     NPCTrap() = delete;
-    static void Halt(std::uint32_t PC, std::uint32_t Code) noexcept;
+    static void Halt(std::uint64_t PC, std::uint32_t Code) noexcept;
     // An externally forced stop is a failure, not an architectural GOOD trap.
     // Interactive SDB quit is handled separately by SDB::MainLoop.
-    static void Stop(std::uint32_t PC = 0) noexcept;
+    static void Stop(std::uint64_t PC = 0) noexcept;
     [[nodiscard]] static bool HasHalted() noexcept;
-    [[nodiscard]] static std::uint32_t GetPC() noexcept;
+    [[nodiscard]] static std::uint64_t GetPC() noexcept;
     [[nodiscard]] static std::uint32_t GetCode() noexcept;
     [[nodiscard]] static int PrintResult(std::size_t Cycles, std::size_t Instructions);
 #ifdef CONFIG_PERF_STATS

@@ -6,7 +6,7 @@ BinaryOpNode::BinaryOpNode(token Token, std::unique_ptr<ASTNode> Left, std::uniq
     this->Left = std::move(Left);
     this->Right = std::move(Right);
 }
-std::uint32_t BinaryOpNode::Evaluate(const EvaluationContext &context) const
+std::uint64_t BinaryOpNode::Evaluate(const EvaluationContext &context) const
 {
     // 逻辑与
     if (Token.IsLogicalAnd())
@@ -51,7 +51,7 @@ std::uint32_t BinaryOpNode::Evaluate(const EvaluationContext &context) const
     }
     if (Token.IsLessEqual())
     {
-        return static_cast<std::uint32_t>(LeftValue) <= static_cast<std::uint32_t>(RightValue);
+        return static_cast<std::uint64_t>(LeftValue) <= static_cast<std::uint64_t>(RightValue);
     }
     throw ExpressionError("不支持的二元运算符");
 }

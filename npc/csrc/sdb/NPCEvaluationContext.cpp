@@ -4,20 +4,25 @@ import npc.expressions.ExpressionError;
 NPCEvaluationContext::NPCEvaluationContext(DUT &InputDUT) : dut{InputDUT}
 {
 }
-std::uint32_t NPCEvaluationContext::ReadMemory(std::uint32_t address, std::size_t size) const
+std::uint64_t NPCEvaluationContext::ReadMemory(std::uint64_t address, std::size_t size) const
 {
     auto result{dut.ReadMemory(address, size)};
     if (!result)
     {
-        throw ExpressionError(std::format("读取内存失败 0x{:08x}：{}", address, result.error()));
+        throw ExpressionError(std::format("读取内存失败 0x{:x}：{}", address, result.error()));
     }
     return *result;
 }
-std::uint32_t NPCEvaluationContext::GetPC() const
+std::uint64_t NPCEvaluationContext::GetPC() const
 {
-    return dut.ReadPC().value();
+    auto result{dut.ReadPC()};
+    if (!result)
+    {
+        throw ExpressionError(std::format("读取PC失败：{}", result.error()));
+    }
+    return *result;
 }
-std::uint32_t NPCEvaluationContext::ReadRegister(std::string_view name) const
+std::uint64_t NPCEvaluationContext::ReadRegister(std::string_view name) const
 {
     if (IsProgramCounterName(name))
     {

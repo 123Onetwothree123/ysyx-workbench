@@ -15,6 +15,7 @@ SDBCommandUsageList xCommand::usage() const noexcept
         {"Nb EXPR", "从表达式地址开始看N个1字节数据"},
         {"Nh EXPR", "从表达式地址开始看N个2字节数据"},
         {"Nw EXPR", "从表达式地址开始看N个4字节数据"},
+        {"Ng EXPR", "从表达式地址开始看N个8字节数据（RV64 推荐）"},
     };
     return entries;
 }
@@ -23,7 +24,7 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
     args = SDBTrimLeft(args);
     if (args.empty())
     {
-        std::println("用法：x N[b|h|w] EXPR");
+        std::println("用法：x N[b|h|w|g] EXPR");
         return SDBCommandResult::Continue;
     }
     auto Count{std::size_t{0}};
@@ -31,7 +32,7 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
     if (CountResult.ec != std::errc() || Count == 0)
     {
         std::println("错误：缺少有效的扫描数量 N");
-        std::println("用法：x N[b|h|w] EXPR");
+        std::println("用法：x N[b|h|w|g] EXPR");
         return SDBCommandResult::Continue;
     }
     args.remove_prefix(static_cast<std::size_t>(CountResult.ptr - args.data()));
@@ -59,6 +60,12 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
             args.remove_prefix(1);
             break;
         }
+        case 'g':
+        {
+            UnitSize = 8;
+            args.remove_prefix(1);
+            break;
+        }
         default:
         {
             break;
@@ -69,7 +76,7 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
     if (args.empty())
     {
         std::println("错误：缺少地址表达式");
-        std::println("用法：x N[b|h|w] EXPR");
+        std::println("用法：x N[b|h|w|g] EXPR");
         return SDBCommandResult::Continue;
     }
     expressions ExpressionsEngine;
@@ -81,26 +88,26 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
         return SDBCommandResult::Continue;
     }
     const auto StartAddress{AddressResult.value()};
-    if (Count > std::numeric_limits<std::uint32_t>::max() / UnitSize)
+    if (Count > std::numeric_limits<std::uint64_t>::max() / UnitSize)
     {
         std::println("错误：请求范围过大");
         return SDBCommandResult::Continue;
     }
-    const auto TotalBytes{static_cast<std::uint32_t>(Count * UnitSize)};
-    if (StartAddress > std::numeric_limits<std::uint32_t>::max() - (TotalBytes - 1))
+    const auto TotalBytes{static_cast<std::uint64_t>(Count * UnitSize)};
+    if (StartAddress > std::numeric_limits<std::uint64_t>::max() - (TotalBytes - 1))
     {
         std::println("错误：地址范围溢出");
         return SDBCommandResult::Continue;
     }
-    std::println("正在扫描 {} 个项目（每个 {} 字节），从 0x{:08x} 到 0x{:08x}：",
+    std::println("正在扫描 {} 个项目（每个 {} 字节），从 0x{:x} 到 0x{:x}：",
                  Count, UnitSize, StartAddress, StartAddress + TotalBytes - 1);
     for (std::size_t Index{0}; Index < Count; ++Index)
     {
-        const auto CurrentAddress{StartAddress + static_cast<std::uint32_t>(Index * UnitSize)};
+        const auto CurrentAddress{StartAddress + static_cast<std::uint64_t>(Index * UnitSize)};
         auto ValueResult{context.GetDUT().ReadMemory(CurrentAddress, UnitSize)};
         if (!ValueResult)
         {
-            std::println(std::cerr, "错误：在 0x{:08x} 处读取内存失败，扫描停止", CurrentAddress);
+            std::println(std::cerr, "错误：在 0x{:x} 处读取内存失败，扫描停止", CurrentAddress);
             break;
         }
         const auto Value{*ValueResult};
@@ -118,7 +125,12 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
         }
         case 4:
         {
-            std::println("0x{:08x}: 0x{:08x}", CurrentAddress, Value);
+            std::println("0x{:x}: 0x{:08x}", CurrentAddress, Value);
+            break;
+        }
+        case 8:
+        {
+            std::println("0x{:x}: 0x{:016x}", CurrentAddress, Value);
             break;
         }
         default:

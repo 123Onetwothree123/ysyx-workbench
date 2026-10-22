@@ -9,6 +9,6 @@ private:
     std::unique_ptr<ASTNode> child;
 public:
     explicit UnaryMinusNode(std::unique_ptr<ASTNode> child);
-    [[nodiscard]] std::uint32_t Evaluate(const EvaluationContext &context) const override;
+    [[nodiscard]] std::uint64_t Evaluate(const EvaluationContext &context) const override;
     [[nodiscard]] std::string ToString() const override;
 };

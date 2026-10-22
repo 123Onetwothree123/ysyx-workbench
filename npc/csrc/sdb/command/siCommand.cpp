@@ -67,7 +67,8 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
         if (dut->trap_valid)
         {
             const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
-            NPCTrap::Halt(static_cast<std::uint32_t>(dut->trap_pc), halt_code ? *halt_code : 1u);
+            NPCTrap::Halt(dut.ReadHaltPC(),
+                          halt_code ? static_cast<std::uint32_t>(*halt_code) : 1u);
             std::println("收到仿真 halt 请求");
             break;
         }
@@ -95,10 +96,10 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
         if (trapBoundary)
         {
             std::println(
-                "遇到异常，停止单步（pc=0x{:08x}, cause=0x{:08x}, target=0x{:08x}）",
-                static_cast<std::uint32_t>(dut->debug_trap_pc),
-                static_cast<std::uint32_t>(dut->debug_trap_cause),
-                static_cast<std::uint32_t>(dut->debug_trap_target));
+                "遇到异常，停止单步（pc=0x{:x}, cause=0x{:08x}, target=0x{:x}）",
+                dut.ReadTrapPC(),
+                dut.ReadTrapCause(),
+                dut.ReadTrapTarget());
             break;
         }
     }

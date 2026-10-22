@@ -19,6 +19,9 @@ import npc.ysyxSoC;
 #ifndef CONFIG_MSIZE
 #define CONFIG_MSIZE 0x10000000
 #endif
+#ifndef CONFIG_XLEN
+#define CONFIG_XLEN 32
+#endif
 namespace
 {
 #ifdef CONFIG_DIFFTEST
@@ -202,6 +205,14 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
     {
         return {}; // 不用DiffTest，直接返回空expected，成功，但是不干事
     }
+#if CONFIG_XLEN == 64
+    // 当前 NEMU REF 的 difftest_state_size/regcpy ABI 固定为 32 个
+    // 32 位 GPR + 32 位 PC。RV64 继续加载它只会静默截断高 32 位，
+    // 因此这里明确拒绝，而不是错跑出一堆伪差异。
+    return std::unexpected{
+        "RV64 DiffTest/NEMU 未支持：REF 状态 ABI 固定 32 位。"
+        "请改用 RV32 构建，或等待 RV64 NEMU REF 接入"};
+#endif
     REFHandle = dlopen(REFSoFile->c_str(), RTLD_LAZY | RTLD_LOCAL); // 打开REF的动态库
     if (REFHandle == nullptr)
     {

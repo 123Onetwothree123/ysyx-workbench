@@ -43,8 +43,12 @@ __am_enter_supervisor:
   # 从 M 模式进入 S 模式，返回地址仍保存在 ra 中。
   la t0, 1f
   csrw mepc, t0
-  # MPP=S，MPIE=1，SUM=1，MXR=1
+  # MPP=S，MPIE=1，SUM=1，MXR=1；RV64 还要把 SXL/UXL 设为 2（64 位）。
+#if __riscv_xlen == 64
+  li t0, 0xa000c0880
+#else
   li t0, 0xc0880
+#endif
   csrw mstatus, t0
   mret
 1:

@@ -41,6 +41,88 @@ static VerilatedFstC &tfp = *new VerilatedFstC;
 #ifndef CONFIG_MSIZE
 #define CONFIG_MSIZE 0x10000000
 #endif
+#ifndef CONFIG_XLEN
+#define CONFIG_XLEN 32
+#endif
+namespace
+{
+// RV64 direct-NPC 的调试端口拆成低/高两个 32 位字。这里统一拼成完整
+// 64 位；SoC 顶层仍只有低 32 位，但其地址空间本身低于 4GiB，高位为 0。
+template <typename Top>
+std::uint64_t DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
+{
+    return static_cast<std::uint64_t>(Low) |
+           (static_cast<std::uint64_t>(High) << 32U);
+}
+#if defined(VRISCV32E_NPC) && CONFIG_XLEN == 64
+template <typename Top>
+std::uint64_t DebugPC(const Top &top) { return DebugWord(top, top.debug_pc, top.debug_pc_hi); }
+template <typename Top>
+std::uint64_t DebugNextPC(const Top &top) { return DebugWord(top, top.debug_next_pc, top.debug_next_pc_hi); }
+template <typename Top>
+std::uint64_t DebugArchPC(const Top &top) { return DebugWord(top, top.debug_arch_pc, top.debug_arch_pc_hi); }
+template <typename Top>
+std::uint64_t DebugGPR(const Top &top) { return DebugWord(top, top.debug_gpr_rdata, top.debug_gpr_rdata_hi); }
+template <typename Top>
+std::uint64_t DebugMtracePC(const Top &top) { return DebugWord(top, top.debug_mtrace_pc, top.debug_mtrace_pc_hi); }
+template <typename Top>
+std::uint64_t DebugMtraceAddr(const Top &top) { return DebugWord(top, top.debug_mtrace_addr, top.debug_mtrace_addr_hi); }
+template <typename Top>
+std::uint64_t DebugMtraceWdata(const Top &top) { return DebugWord(top, top.debug_mtrace_wdata, top.debug_mtrace_wdata_hi); }
+template <typename Top>
+std::uint64_t DebugMtraceRdata(const Top &top) { return DebugWord(top, top.debug_mtrace_rdata, top.debug_mtrace_rdata_hi); }
+template <typename Top>
+std::uint64_t DebugFaultPC(const Top &top) { return DebugWord(top, top.debug_access_fault_pc, top.debug_access_fault_pc_hi); }
+template <typename Top>
+std::uint64_t DebugTrapPC(const Top &top) { return DebugWord(top, top.debug_trap_pc, top.debug_trap_pc_hi); }
+template <typename Top>
+std::uint64_t DebugTrapTarget(const Top &top) { return DebugWord(top, top.debug_trap_target, top.debug_trap_target_hi); }
+template <typename Top>
+std::uint64_t DebugTrapPCHalt(const Top &top) { return DebugWord(top, top.trap_pc, top.trap_pc_hi); }
+template <typename Top>
+std::uint64_t DebugCSRMtvec(const Top &top) { return DebugWord(top, top.debug_csr_mtvec, top.debug_csr_mtvec_hi); }
+template <typename Top>
+std::uint64_t DebugCSRMepc(const Top &top) { return DebugWord(top, top.debug_csr_mepc, top.debug_csr_mepc_hi); }
+template <typename Top>
+std::uint64_t DebugTrapMtvec(const Top &top) { return DebugWord(top, top.debug_trap_mtvec, top.debug_trap_mtvec_hi); }
+template <typename Top>
+std::uint64_t DebugTrapMepc(const Top &top) { return DebugWord(top, top.debug_trap_mepc, top.debug_trap_mepc_hi); }
+#else
+// RV32 以及 SoC 路径保持历史 32 位端口；SoC 的物理/虚拟地址上界 < 4GiB。
+template <typename Top>
+std::uint64_t DebugPC(const Top &top) { return top.debug_pc; }
+template <typename Top>
+std::uint64_t DebugNextPC(const Top &top) { return top.debug_next_pc; }
+template <typename Top>
+std::uint64_t DebugArchPC(const Top &top) { return top.debug_arch_pc; }
+template <typename Top>
+std::uint64_t DebugGPR(const Top &top) { return top.debug_gpr_rdata; }
+template <typename Top>
+std::uint64_t DebugMtracePC(const Top &top) { return top.debug_mtrace_pc; }
+template <typename Top>
+std::uint64_t DebugMtraceAddr(const Top &top) { return top.debug_mtrace_addr; }
+template <typename Top>
+std::uint64_t DebugMtraceWdata(const Top &top) { return top.debug_mtrace_wdata; }
+template <typename Top>
+std::uint64_t DebugMtraceRdata(const Top &top) { return top.debug_mtrace_rdata; }
+template <typename Top>
+std::uint64_t DebugFaultPC(const Top &top) { return top.debug_access_fault_pc; }
+template <typename Top>
+std::uint64_t DebugTrapPC(const Top &top) { return top.debug_trap_pc; }
+template <typename Top>
+std::uint64_t DebugTrapTarget(const Top &top) { return top.debug_trap_target; }
+template <typename Top>
+std::uint64_t DebugTrapPCHalt(const Top &top) { return top.trap_pc; }
+template <typename Top>
+std::uint64_t DebugCSRMtvec(const Top &top) { return top.debug_csr_mtvec; }
+template <typename Top>
+std::uint64_t DebugCSRMepc(const Top &top) { return top.debug_csr_mepc; }
+template <typename Top>
+std::uint64_t DebugTrapMtvec(const Top &top) { return top.debug_trap_mtvec; }
+template <typename Top>
+std::uint64_t DebugTrapMepc(const Top &top) { return top.debug_trap_mepc; }
+#endif
+}
 #ifdef CONFIG_NVBOARD
 #ifndef CONFIG_NVBOARD_UPDATE_INTERVAL
 #define CONFIG_NVBOARD_UPDATE_INTERVAL 100
@@ -242,12 +324,11 @@ void DUT::step()
             dut->debug_gpr_raddr =
                 static_cast<CData>(debug_gpr_write_address);
             dut->eval();
-            architectural_gpr[debug_gpr_write_address] =
-                static_cast<std::uint32_t>(dut->debug_gpr_rdata);
+            architectural_gpr[debug_gpr_write_address] = DebugGPR(*dut);
         }
     }
     architectural_gpr[0] = 0;
-    architectural_pc = static_cast<std::uint32_t>(dut->debug_arch_pc);
+    architectural_pc = DebugArchPC(*dut);
 #endif
 #ifndef VRISCV32E_NPC
     if (vga_check)
@@ -452,7 +533,7 @@ void DUT::step()
         vga_timed_out = true;
         std::println(std::cerr,
                      "VGA时序检查超过50000000周期，强制终止");
-        NPCTrap::Stop(static_cast<std::uint32_t>(dut->debug_arch_pc));
+        NPCTrap::Stop(DebugArchPC(*dut));
     }
 #endif
 #ifdef CONFIG_PERF_STATS
@@ -754,7 +835,7 @@ void DUT::step()
 #if defined(CONFIG_ITRACE) && !defined(CONFIG_ITRACE_WRITE_FILE)
     if (dut->debug_commit)
     {
-        const auto pc{static_cast<std::uint32_t>(dut->debug_pc)};
+        const auto pc{DebugPC(*dut)};
         const auto instruction{static_cast<std::uint32_t>(dut->debug_instructions)};
         std::array<std::uint8_t, 4> bytes{
             static_cast<std::uint8_t>(instruction),
@@ -781,14 +862,14 @@ void DUT::step()
     if (dut->debug_commit)
     {
         static auto fp = std::ofstream("itrace.txt", std::ios::app);
-        fp << std::hex << "0x" << static_cast<std::uint32_t>(dut->debug_pc) << '\n'
+        fp << std::hex << "0x" << DebugPC(*dut) << '\n'
            << std::dec;
     }
 #endif
 #ifdef CONFIG_IRINGBUF
     if (dut->debug_commit)
     {
-        Iringbuf.push(dut->debug_pc, dut->debug_instructions, 4);
+        Iringbuf.push(DebugPC(*dut), dut->debug_instructions, 4);
     }
 #endif
 #ifdef CONFIG_FTRACE
@@ -797,10 +878,11 @@ void DUT::step()
         // debug_next_pc 与 debug_pc/debug_instructions 属于同一条
         // 退休记录。当拍处理可避免把 trap handler PC 误当作
         // call target，也不会在程序最后一条 call/ret 时丢事件。
+        // RV64 的 PC/NextPC 必须完整保留 64 位。
         GlobalFtrace.OnInstruction(
-            static_cast<std::uint32_t>(dut->debug_pc),
+            DebugPC(*dut),
             static_cast<std::uint32_t>(dut->debug_instructions),
-            static_cast<std::uint32_t>(dut->debug_next_pc));
+            DebugNextPC(*dut));
     }
 #endif
 #ifdef CONFIG_SDB
@@ -809,15 +891,16 @@ void DUT::step()
     // 构建连容器成员和这段逐字节维护代码都不编译，避免影响性能测量。
     if (dut->debug_mtrace_valid && dut->debug_mtrace_wen)
     {
-        const auto address{static_cast<std::uint32_t>(dut->debug_mtrace_addr)};
-        const auto data{static_cast<std::uint32_t>(dut->debug_mtrace_wdata)};
+        const auto address{DebugMtraceAddr(*dut)};
+        const auto data{DebugMtraceWdata(*dut)};
         const auto width{static_cast<unsigned>(dut->debug_mtrace_width)};
-        const auto bytes{width <= 2 ? (1U << width) : 0U};
+        // width=3 表示 8 字节 LD/SD，RV64 下必须支持。
+        const auto bytes{width <= 3 ? (1U << width) : 0U};
 #ifdef VRISCV32E_NPC
         const bool trackable{
-            address >= static_cast<std::uint32_t>(CONFIG_MBASE) &&
-            address - static_cast<std::uint32_t>(CONFIG_MBASE) <
-                static_cast<std::uint32_t>(CONFIG_MSIZE)};
+            address >= static_cast<std::uint64_t>(CONFIG_MBASE) &&
+            address - static_cast<std::uint64_t>(CONFIG_MBASE) <
+                static_cast<std::uint64_t>(CONFIG_MSIZE)};
 #else
         const bool trackable{
             (address >= 0x0f000000U && address < 0x0f008000U) ||
@@ -829,7 +912,7 @@ void DUT::step()
             address >= 0xc0000000U};
 #endif
         if (trackable && bytes != 0 &&
-            address <= std::numeric_limits<std::uint32_t>::max() - (bytes - 1U))
+            address <= std::numeric_limits<std::uint64_t>::max() - (bytes - 1U))
         {
             for (unsigned index{0}; index < bytes; ++index)
             {
@@ -843,10 +926,10 @@ void DUT::step()
     if (dut->debug_mtrace_valid)
     {
         MtraceRecord(
-            dut->debug_mtrace_pc,
-            dut->debug_mtrace_addr,
-            dut->debug_mtrace_wdata,
-            dut->debug_mtrace_rdata,
+            DebugMtracePC(*dut),
+            DebugMtraceAddr(*dut),
+            DebugMtraceWdata(*dut),
+            DebugMtraceRdata(*dut),
             dut->debug_mtrace_width,
             dut->debug_mtrace_wen);
     }
@@ -869,7 +952,7 @@ void DUT::step()
         if (fault_count++ < 20)
         {
         auto resp{static_cast<unsigned>(dut->debug_access_fault_resp)};
-        auto pc{static_cast<std::uint32_t>(dut->debug_access_fault_pc)};
+        auto pc{DebugFaultPC(*dut)};
         if (resp == 2)
         {
             std::println(std::cerr, "Access Fault [SLVERR] at PC=0x{:08x}, cycle={}", pc, cycle);
@@ -908,7 +991,7 @@ const PerfStats &DUT::GetPerfStats() const noexcept
 {
     return perf;
 }
-std::expected<std::uint32_t, std::string> DUT::ReadGPR(std::uint32_t index)
+std::expected<std::uint64_t, std::string> DUT::ReadGPR(std::uint32_t index)
 {
     if (index >= 32)
     {
@@ -916,14 +999,14 @@ std::expected<std::uint32_t, std::string> DUT::ReadGPR(std::uint32_t index)
     }
     dut->debug_gpr_raddr = static_cast<CData>(index);
     dut->eval();
-    return static_cast<std::uint32_t>(dut->debug_gpr_rdata);
+    return DebugGPR(*dut);
 }
-std::expected<std::uint32_t, std::string> DUT::ReadPC()
+std::expected<std::uint64_t, std::string> DUT::ReadPC()
 {
     dut->eval();
-    return static_cast<std::uint32_t>(dut->debug_arch_pc);
+    return DebugArchPC(*dut);
 }
-std::expected<std::uint32_t, std::string>
+std::expected<std::uint64_t, std::string>
 DUT::ReadCachedGPR(std::uint32_t index) const
 {
     if (index >= architectural_gpr.size())
@@ -932,9 +1015,25 @@ DUT::ReadCachedGPR(std::uint32_t index) const
     }
     return architectural_gpr[index];
 }
-std::uint32_t DUT::ReadCachedPC() const noexcept
+std::uint64_t DUT::ReadCachedPC() const noexcept
 {
     return architectural_pc;
+}
+std::uint64_t DUT::ReadHaltPC() const
+{
+    return DebugTrapPCHalt(*dut);
+}
+std::uint64_t DUT::ReadTrapPC() const
+{
+    return DebugTrapPC(*dut);
+}
+std::uint64_t DUT::ReadTrapTarget() const
+{
+    return DebugTrapTarget(*dut);
+}
+std::uint32_t DUT::ReadTrapCause() const
+{
+    return static_cast<std::uint32_t>(dut->debug_trap_cause);
 }
 void DUT::RefreshCachedArchitecturalState()
 {
@@ -942,31 +1041,30 @@ void DUT::RefreshCachedArchitecturalState()
     {
         dut->debug_gpr_raddr = static_cast<CData>(index);
         dut->eval();
-        architectural_gpr[index] =
-            static_cast<std::uint32_t>(dut->debug_gpr_rdata);
+        architectural_gpr[index] = DebugGPR(*dut);
     }
     architectural_gpr[0] = 0;
     dut->debug_gpr_raddr = 0;
     dut->eval();
-    architectural_pc = static_cast<std::uint32_t>(dut->debug_arch_pc);
+    architectural_pc = DebugArchPC(*dut);
 }
-std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, std::size_t size)
+std::expected<std::uint64_t, std::string> DUT::ReadMemory(std::uint64_t addr, std::size_t size)
 {
-    if (size != 1 && size != 2 && size != 4)
+    if (size != 1 && size != 2 && size != 4 && size != 8)
     {
         return std::unexpected{std::format("不支持的内存读取长度：{}", size)};
     }
-    if (addr > std::numeric_limits<std::uint32_t>::max() - (size - 1U))
+    if (addr > std::numeric_limits<std::uint64_t>::max() - (size - 1U))
     {
-        return std::unexpected{std::format("内存读取地址溢出：0x{:08x}", addr)};
+        return std::unexpected{std::format("内存读取地址溢出：0x{:x}", addr)};
     }
 
-    constexpr std::uint32_t IMAGE_BASE{CONFIG_MBASE};
-    constexpr std::uint32_t IMAGE_WINDOW_SIZE{CONFIG_MSIZE};
-    std::uint32_t value{0};
+    constexpr std::uint64_t IMAGE_BASE{CONFIG_MBASE};
+    constexpr std::uint64_t IMAGE_WINDOW_SIZE{CONFIG_MSIZE};
+    std::uint64_t value{0};
     for (std::size_t index{0}; index < size; ++index)
     {
-        const auto current{addr + static_cast<std::uint32_t>(index)};
+        const auto current{addr + static_cast<std::uint64_t>(index)};
         std::optional<std::uint8_t> byte;
 #ifdef CONFIG_SDB
         if (const auto written{debug_memory_writes.find(current)};
@@ -989,11 +1087,11 @@ std::expected<std::uint32_t, std::string> DUT::ReadMemory(std::uint32_t addr, st
         if (!byte)
         {
             return std::unexpected{std::format(
-                "地址 0x{:08x} 没有可验证的实时 RAM 数据；"
+                "地址 0x{:x} 没有可验证的实时 RAM 数据；"
                 "调试器只能读取初始镜像或已退休 store 的 shadow",
                 current)};
         }
-        value |= static_cast<std::uint32_t>(*byte) << (index * 8U);
+        value |= static_cast<std::uint64_t>(*byte) << (index * 8U);
     }
     return value;
 }

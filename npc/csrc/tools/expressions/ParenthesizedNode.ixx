@@ -9,6 +9,6 @@ private:
     std::unique_ptr<ASTNode> inner;
 public:
     explicit ParenthesizedNode(std::unique_ptr<ASTNode> inner);
-    [[nodiscard]] std::uint32_t Evaluate(const EvaluationContext &context) const override;
+    [[nodiscard]] std::uint64_t Evaluate(const EvaluationContext &context) const override;
     [[nodiscard]] std::string ToString() const override;
 };

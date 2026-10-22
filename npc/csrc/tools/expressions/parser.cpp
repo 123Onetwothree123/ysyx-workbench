@@ -117,9 +117,13 @@ std::expected<std::unique_ptr<ASTNode>, std::string> parser::ParseUnary()
         // 构建解引用节点，默认4字节
         return std::make_unique<DereferenceNode>(std::move(*address), 4);
     }
-    if (Token.IsReadMemory8() || Token.IsReadMemory16() || Token.IsReadMemory32())
+    if (Token.IsReadMemory8() || Token.IsReadMemory16() ||
+        Token.IsReadMemory32() || Token.IsReadMemory64())
     {
-        auto size{Token.IsReadMemory8() ? 1 : (Token.IsReadMemory16() ? 2 : 4)};
+        auto size{Token.IsReadMemory8()
+                      ? 1
+                      : (Token.IsReadMemory16() ? 2
+                                                : (Token.IsReadMemory32() ? 4 : 8))};
         Advance();
         if (!Current().IsLeftParen())
         {

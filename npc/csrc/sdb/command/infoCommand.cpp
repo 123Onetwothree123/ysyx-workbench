@@ -127,7 +127,7 @@ static void PrintGPR(DUT &dut)
     {
         std::string arch_name;
         std::string_view abi_name;
-        std::uint32_t value;
+        std::uint64_t value;
         const char *desc;
     };
     constexpr auto nr_rows{std::size_t{33}};

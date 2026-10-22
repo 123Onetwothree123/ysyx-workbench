@@ -3,7 +3,7 @@ RegisterNode::RegisterNode(std::string name)
 {
     this->name = std::move(name);
 }
-std::uint32_t RegisterNode::Evaluate(const EvaluationContext &context) const
+std::uint64_t RegisterNode::Evaluate(const EvaluationContext &context) const
 {
     return context.ReadRegister(name);
 }

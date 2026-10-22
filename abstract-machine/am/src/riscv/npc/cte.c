@@ -23,7 +23,8 @@ Context *__am_irq_handle(Context *c) {
 
   if (user_handler) {
     Event ev = {0};
-    if (c->mcause & 0x80000000u) {
+    // RV64 的中断位是 scause[63]，不能继续用 32 位掩码判断。
+    if (c->mcause >> (__riscv_xlen - 1)) {
       // 目前只接入时钟中断（cause=5）。
       ev.event = EVENT_IRQ_TIMER;
     } else {
@@ -95,7 +96,8 @@ bool cte_init(Context *(*handler)(Event, Context *)) {
 Context *kcontext(Area kstack, void (*entry)(void *), void *arg) {
   Context *c = (Context *)(kstack.end - sizeof(Context));
   memset(c, 0, sizeof(Context));
-  c->mstatus = (MODE_S << 8) | MSTATUS_SPIE | MSTATUS_SUM | MSTATUS_MXR;
+  c->mstatus = (MODE_S << 8) | MSTATUS_SPIE | MSTATUS_SUM | MSTATUS_MXR |
+               MSTATUS_SXL | MSTATUS_UXL;
   c->mepc = (uintptr_t)entry;
   c->gpr[10] = (uintptr_t)arg; // riscv elf psabi 把第一个参数放在 a0
   // 内核栈顶部保留一个 trap frame，内核线程从它下面开始使用栈。

@@ -102,44 +102,65 @@ class ysyx_26030103_IO extends Bundle {
   // 给sdb用的
   val debug_gpr_raddr = Input(UInt(5.W))
   val debug_gpr_rdata = Output(UInt(32.W))
+  // RV64 的高 32 位视图。低 32 位端口保持原样，RV32 恒为 0，
+  // 这样既不改动既有 32 位观测 ABI，也不会让 64 位 GPR 被静默截断。
+  val debug_gpr_rdata_hi = Output(UInt(32.W))
   // 上升沿前实际送入寄存器堆的 GPR 写使能和地址。DiffTest 在低
   // 电平采样，沿后只回读这个物理寄存器来更新 C++ 架构镜像。
   val debug_gpr_wen = Output(Bool())
   val debug_gpr_waddr = Output(UInt(5.W))
   // debug_pc 是本次退休指令的 PC，只能在 debug_commit 时使用。
   val debug_pc = Output(UInt(32.W))
+  val debug_pc_hi = Output(UInt(32.W))
   // debug_next_pc 与退休记录同拍；debug_arch_pc 是调试器应向
   // 用户展示的最新架构 PC（也会跟踪 trap 跳转）。
   val debug_next_pc = Output(UInt(32.W))
+  val debug_next_pc_hi = Output(UInt(32.W))
   val debug_arch_pc = Output(UInt(32.W))
+  val debug_arch_pc_hi = Output(UInt(32.W))
   val debug_instructions = Output(UInt(32.W))
   // 内存访问跟踪
   val debug_mtrace_valid = Output(Bool())
   val debug_mtrace_pc = Output(UInt(32.W))
+  val debug_mtrace_pc_hi = Output(UInt(32.W))
   val debug_mtrace_wen = Output(Bool())
   val debug_mtrace_addr = Output(UInt(32.W))
+  val debug_mtrace_addr_hi = Output(UInt(32.W))
   val debug_mtrace_wdata = Output(UInt(32.W))
+  val debug_mtrace_wdata_hi = Output(UInt(32.W))
   val debug_mtrace_rdata = Output(UInt(32.W))
+  val debug_mtrace_rdata_hi = Output(UInt(32.W))
   val debug_mtrace_width = Output(UInt(2.W))
   // 访问错误
   val debug_access_fault = Output(Bool())
   val debug_access_fault_pc = Output(UInt(32.W))
+  val debug_access_fault_pc_hi = Output(UInt(32.W))
   val debug_access_fault_resp = Output(UInt(2.W))
   val debug_commit = Output(Bool())
   val debug_trap_valid = Output(Bool())
   val debug_trap_pc = Output(UInt(32.W))
+  val debug_trap_pc_hi = Output(UInt(32.W))
   val debug_trap_target = Output(UInt(32.W))
+  val debug_trap_target_hi = Output(UInt(32.W))
   val debug_trap_cause = Output(UInt(32.W))
   // 与 retire/trap 事件分别对齐的 CSR 快照。两组不能共用，
   // 因为同拍可能同时有更老的 WBU 退休与年轻 trap。
   val debug_csr_mstatus = Output(UInt(32.W))
+  val debug_csr_mstatus_hi = Output(UInt(32.W))
   val debug_csr_mtvec = Output(UInt(32.W))
+  val debug_csr_mtvec_hi = Output(UInt(32.W))
   val debug_csr_mepc = Output(UInt(32.W))
+  val debug_csr_mepc_hi = Output(UInt(32.W))
   val debug_csr_mcause = Output(UInt(32.W))
   val debug_trap_mstatus = Output(UInt(32.W))
+  val debug_trap_mstatus_hi = Output(UInt(32.W))
   val debug_trap_mtvec = Output(UInt(32.W))
+  val debug_trap_mtvec_hi = Output(UInt(32.W))
   val debug_trap_mepc = Output(UInt(32.W))
+  val debug_trap_mepc_hi = Output(UInt(32.W))
   val debug_trap_mcause = Output(UInt(32.W))
+  // 仿真 custom halt 提交时的完整 PC（低 32 位仍由 trap_pc 提供）。
+  val trap_pc_hi = Output(UInt(32.W))
   // 性能计数器
   val perf_ifu_fetch = Output(Bool())
   val perf_exu_done = Output(Bool())

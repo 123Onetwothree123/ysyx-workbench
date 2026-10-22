@@ -1,10 +1,17 @@
 module npc.trace.disasm;
 
+#ifndef CONFIG_XLEN
+#define CONFIG_XLEN 32
+#endif
+
 static csh handle{};
 void init_disasm()
 {
     constexpr cs_arch arch{CS_ARCH_RISCV};
-    constexpr cs_mode mode{CS_MODE_RISCV32};
+    // Capstone 必须与实际 XLEN 对齐，否则 RV64 的高位地址和指令语义
+    // 会被按 RV32 解释。
+    constexpr cs_mode mode{CONFIG_XLEN == 64 ? CS_MODE_RISCV64
+                                             : CS_MODE_RISCV32};
     if (const cs_err err{cs_open(arch, mode, &handle)}; err != CS_ERR_OK)
     {
         std::println(std::cerr, "cs_open failed: {}", cs_strerror(err));

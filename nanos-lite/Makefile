@@ -7,7 +7,9 @@ include $(AM_HOME)/Makefile
 
 ifeq ($(ARCH),native)
 ISA = am_native
-else
+else ifneq ($(HAS_NAVY),)
+# 只有启用 Navy 时才依赖 newlib 头文件；RV64 软件回归使用自带的
+# 最小 ELF64 用户程序和 ramdisk，不要求 navy-apps/libs/libc 存在。
 INC_PATH += include $(NAVY_HOME)/libs/libc/include
 endif
 

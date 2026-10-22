@@ -34,7 +34,8 @@ SDBCommandResult pCommand::execute(SDBCommandContext &context, std::string_view 
     if (result)
     {
         auto UnsignedValue{*result};
-        auto signedVal{static_cast<std::int32_t>(UnsignedValue)};
+        // RV64 的表达式结果是 64 位，不能按 32 位有符号数解释。
+        auto signedVal{static_cast<std::int64_t>(UnsignedValue)};
         std::println("有符号（十进制）：{}", signedVal);
         std::println("无符号（十进制）：{}", UnsignedValue);
         std::println("十六进制：        0x{:08x}", UnsignedValue);

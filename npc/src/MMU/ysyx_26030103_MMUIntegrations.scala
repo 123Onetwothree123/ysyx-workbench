@@ -20,6 +20,9 @@ class ysyx_26030103_MMURequestArbiter(
     val dResp = Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth))
     val mmuReq = Decoupled(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
     val mmuResp = Flipped(Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth)))
+    // TLB 全量刷新会清空 MMU 内所有在途翻译，且不会再返回响应；仲裁器
+    // 必须同步清掉 outstanding，否则客户端会永远等不到翻译结果。
+    val flush = Input(Bool())
   })
 
   val iOutstanding = RegInit(false.B)
@@ -34,9 +37,11 @@ class ysyx_26030103_MMURequestArbiter(
   io.dResp.bits := 0.U.asTypeOf(new ysyx_26030103_MMUResponse(XLEN, AddressWidth))
   io.mmuResp.ready := false.B
 
-  // 选择一笔尚未在途的客户端请求送入 MMU。
-  val chooseD = !dOutstanding && io.dReq.valid && (iOutstanding || !io.iReq.valid)
-  val chooseI = !iOutstanding && io.iReq.valid && !chooseD
+  // 选择一笔尚未在途的客户端请求送入 MMU。flush 当拍不接收新请求，
+  // 避免请求刚发出就被清空却没有任何响应。
+  val chooseD = !io.flush && !dOutstanding && io.dReq.valid &&
+    (iOutstanding || !io.iReq.valid)
+  val chooseI = !io.flush && !iOutstanding && io.iReq.valid && !chooseD
   when(chooseD) {
     io.dReq.ready := io.mmuReq.ready
     io.mmuReq.valid := io.dReq.valid
@@ -62,6 +67,12 @@ class ysyx_26030103_MMURequestArbiter(
       io.mmuResp.ready := io.dResp.ready
       when(io.dResp.fire) { dOutstanding := false.B }
     }
+  }
+  // MMU 在 flush 时直接丢弃在途翻译，不会回响应；这里同步撤销
+  // outstanding，让客户端可以在下一拍重新发起翻译。
+  when(io.flush) {
+    iOutstanding := false.B
+    dOutstanding := false.B
   }
 }
 
@@ -334,7 +345,10 @@ class ysyx_26030103_LSUMMU(
       }
     }
     when(state === done) {
-      io.in.ready := io.out.ready
+      // done 拍正把已翻译的访存指令送给 LSU；msgReg 仍被占用，不能在同拍
+      // 再接收 EXU 的下一笔请求，否则 io.in.fire 会把它吞掉却不保存。
+      // 这里固定反压一拍，回到 idle 后再受理后续指令。
+      io.in.ready := false.B
       io.out.valid := true.B
       io.out.bits := msgReg
       io.out.bits.ALUResult := paddrReg

@@ -4,10 +4,10 @@ import npc.log;
 namespace
 {
     bool Halted{false};
-    std::uint32_t HaltPC{0};   // 记录停止的时候的PC
+    std::uint64_t HaltPC{0};   // 记录停止的时候的PC，RV64 保留完整地址
     std::uint32_t HaltCode{0}; // 返回码，0是good，1是bad
 }
-void NPCTrap::Halt(std::uint32_t PC, std::uint32_t Code) noexcept
+void NPCTrap::Halt(std::uint64_t PC, std::uint32_t Code) noexcept
 {
     // Once a checker has reported failure, a later architectural/custom halt
     // must not downgrade the run to GOOD.  A late failure is still allowed to
@@ -18,7 +18,7 @@ void NPCTrap::Halt(std::uint32_t PC, std::uint32_t Code) noexcept
     HaltPC = PC;
     HaltCode = Code;
 }
-void NPCTrap::Stop(std::uint32_t PC) noexcept
+void NPCTrap::Stop(std::uint64_t PC) noexcept
 {
     Halt(PC, 1);
 }
@@ -26,7 +26,7 @@ bool NPCTrap::HasHalted() noexcept
 {
     return Halted;
 }
-std::uint32_t NPCTrap::GetPC() noexcept
+std::uint64_t NPCTrap::GetPC() noexcept
 {
     return HaltPC;
 }

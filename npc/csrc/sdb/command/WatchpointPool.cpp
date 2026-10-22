@@ -106,9 +106,9 @@ bool WatchpointPool::CheckAll(const EvaluationContext &context)
             continue;
         }
         auto newValue{*result};
-        if (newValue != static_cast<std::uint32_t>(wp.GetOldValue()))
+        if (newValue != static_cast<std::uint64_t>(wp.GetOldValue()))
         {
-            std::println("监视点{}触发：{} = 0x{:08x}（旧值 0x{:08x}）", NO, wp.GetExpression(), newValue, static_cast<std::uint32_t>(wp.GetOldValue()));
+            std::println("监视点{}触发：{} = 0x{:x}（旧值 0x{:x}）", NO, wp.GetExpression(), newValue, static_cast<std::uint64_t>(wp.GetOldValue()));
             wp.SetOldValue(newValue);
             wp.SetPC(CurrentPC);
             wp.SetHasPC(true);
@@ -186,7 +186,7 @@ void WatchpointPool::PrintAllWatchpoints(const EvaluationContext &context) const
     struct EvalResult
     {
         bool success{false};
-        std::uint32_t current_val{0};
+        std::uint64_t current_val{0};
         bool changed{false};
     };
     std::vector<EvalResult> evals(wps.size());
@@ -195,18 +195,18 @@ void WatchpointPool::PrintAllWatchpoints(const EvaluationContext &context) const
         const auto *wp{wps[i]};
         if (!wp->IsEnabled())
         {
-            evals[i] = {false, static_cast<std::uint32_t>(wp->GetOldValue()), false};
+            evals[i] = {false, static_cast<std::uint64_t>(wp->GetOldValue()), false};
             continue;
         }
         auto result{ExpressionEvaluate.evaluate(wp->GetExpression(), context)};
         if (result)
         {
             const auto val{result.value()};
-            evals[i] = {true, val, val != static_cast<std::uint32_t>(wp->GetOldValue())};
+            evals[i] = {true, val, val != static_cast<std::uint64_t>(wp->GetOldValue())};
         }
         else
         {
-            evals[i] = {false, static_cast<std::uint32_t>(wp->GetOldValue()), false};
+            evals[i] = {false, static_cast<std::uint64_t>(wp->GetOldValue()), false};
         }
     }
     const int val_width{10};
@@ -328,7 +328,7 @@ void WatchpointPool::PrintAllWatchpoints(const EvaluationContext &context) const
                 cur_str = std::format("{0}0x{1:08x}{2}", ANSI::FG_GREEN, eval.current_val, ANSI::NONE);
                 status_str = std::format("{0}正常{1}", ANSI::FG_GREEN, ANSI::NONE);
             }
-            const auto old_val{static_cast<std::uint32_t>(wp->GetOldValue())};
+            const auto old_val{static_cast<std::uint64_t>(wp->GetOldValue())};
             if (eval.current_val >= old_val)
             {
                 const auto d{eval.current_val - old_val};

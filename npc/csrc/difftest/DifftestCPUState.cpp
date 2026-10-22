@@ -35,9 +35,11 @@ DifftestCPUState DifftestCPUState::ReadDUTState(DUT &dut)
     for (std::size_t Index{0}; Index < State.gpr.size(); ++Index)
     {
         auto result{dut.ReadCachedGPR(static_cast<std::uint32_t>(Index))};
-        State.gpr[Index] = result ? *result : 0;
+        // RV64 下 DiffTestInitialize 会明确拒绝 REF；这里保留固定 RV32
+        // 状态布局，因此截断只发生在不可能启用的 RV64 路径上。
+        State.gpr[Index] = result ? static_cast<std::uint32_t>(*result) : 0U;
     }
-    State.pc = dut.ReadCachedPC();
+    State.pc = static_cast<std::uint32_t>(dut.ReadCachedPC());
     return State;
 }
 bool DifftestCPUState::CheckRegs(const DifftestCPUState &DUT) const

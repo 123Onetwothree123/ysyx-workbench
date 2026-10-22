@@ -6,9 +6,9 @@ import npc.sdb.EvaluationContext;
 export class NumberNode : public ASTNode
 {
 private:
-    std::uint32_t value;
+    std::uint64_t value;
 public:
-    explicit NumberNode(std::uint32_t value);
-    [[nodiscard]] std::uint32_t Evaluate(const EvaluationContext &context) const override;
+    explicit NumberNode(std::uint64_t value);
+    [[nodiscard]] std::uint64_t Evaluate(const EvaluationContext &context) const override;
     [[nodiscard]] std::string ToString() const override;
 };

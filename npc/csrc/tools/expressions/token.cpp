@@ -1,16 +1,16 @@
 module npc.expressions.token;
-token::token(Kind InputKind, std::string_view InputText, std::uint32_t InputValue, std::size_t InputPosition)
+token::token(Kind InputKind, std::string_view InputText, std::uint64_t InputValue, std::size_t InputPosition)
 {
     kind = InputKind;
     text = InputText;
     value = InputValue;
     position = InputPosition;
 }
-token token::MakeNumber(std::string_view text, std::uint32_t value, std::size_t position)
+token token::MakeNumber(std::string_view text, std::uint64_t value, std::size_t position)
 {
     return token(Kind::Number, text, value, position);
 }
-token token::MakeRegister(std::string_view text, std::uint32_t RegisterIndex, std::size_t position)
+token token::MakeRegister(std::string_view text, std::uint64_t RegisterIndex, std::size_t position)
 {
     return token(Kind::Register, text, RegisterIndex, position);
 }
@@ -69,6 +69,10 @@ token token::MakeReadMemory16(std::size_t position)
 token token::MakeReadMemory32(std::size_t position)
 {
     return token(Kind::ReadMemory32, "read32", 0, position);
+}
+token token::MakeReadMemory64(std::size_t position)
+{
+    return token(Kind::ReadMemory64, "read64", 0, position);
 }
 bool token::IsEndOfInput() const noexcept
 {
@@ -134,9 +138,14 @@ bool token::IsReadMemory32() const noexcept
 {
     return kind == Kind::ReadMemory32;
 }
+bool token::IsReadMemory64() const noexcept
+{
+    return kind == Kind::ReadMemory64;
+}
 bool token::IsReadMemory() const noexcept
 {
-    return IsReadMemory8() || IsReadMemory16() || IsReadMemory32();
+    return IsReadMemory8() || IsReadMemory16() || IsReadMemory32() ||
+           IsReadMemory64();
 }
 bool token::IsBinaryOperator() const noexcept
 {
@@ -182,7 +191,7 @@ std::string_view token::GetText() const noexcept
 {
     return text;
 }
-std::uint32_t token::GetValue() const noexcept
+std::uint64_t token::GetValue() const noexcept
 {
     return value;
 }

@@ -28,6 +28,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   private val XLEN = config.XLEN
   private def Widen32(Value: UInt): UInt =
     if (XLEN == 32) Value else Cat(0.U((XLEN - 32).W), Value)
+  // RV64 调试观测的高 32 位视图。低 32 位端口保持历史 ABI 不变，
+  // 高字单独输出，C++ 侧按 XLEN 拼成完整 64 位，避免 RV64 地址/PC 被截断。
+  private def DebugHi(Value: UInt): UInt =
+    if (XLEN == 64) Value(63, 32) else 0.U(32.W)
   val io = IO(new ysyx_26030103_IO)
   val ifu = Module(new ysyx_26030103_IFU(config.ResetAddr, XLEN))
   val idu = Module(new ysyx_26030103_IDU(config))
@@ -372,6 +376,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     val mmuArb = mmuArbOpt.get
     val ptwAxi = ptwToAxiOpt.get
     val mmuFlush = RegNext(pipe_flush, false.B)
+    // satp 写入/sfence.vma 的 TLB 全量刷新会清空 MMU 内的在途翻译；
+    // IFU/LSU 的翻译状态机必须同步回到 idle 并重发请求，否则会永远
+    // 停在 xwait 等一个已被丢弃的响应。
+    val tlbFlush = exu.io.CSRFlushTLB
 
     // 与 IFUMMU 内部 bypass 判定保持一致：satp.Mode=0 或 M 模式时 VA==PA。
     // RV64 的 MODE 位于 satp[63:60]（Sv39=8/Sv48=9），不能只检查 bit31。
@@ -383,7 +391,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     // 取指没有 SUM 豁免；HAS_U=n 时直接绑 0。
     immu.io.sum := fetchSum
     immu.io.mxr := exu.io.CSRCurrentMstatus(19)
-    immu.io.flush := mmuFlush
+    immu.io.flush := mmuFlush || tlbFlush
     if (parallelFetchVipt) {
       // VIPT 并行路径：只翻译 ICache 已受理的 VA；PA 带 VA 标签返回。
       // IFU 可以在 PA 到达前推进 PC（此时 cache 已用 VA 选好 index）。
@@ -421,7 +429,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     dmmu.io.satp := exu.io.CSRSatp
     dmmu.io.sum := dataSum
     dmmu.io.mxr := exu.io.CSRCurrentMstatus(19)
-    dmmu.io.flush := pipe_flush
+    dmmu.io.flush := pipe_flush || tlbFlush
     immu.io.pmpFault := pmpOpt.map(_.io.fetchFault).getOrElse(false.B)
     dmmu.io.pmpFault := pmpOpt.map(_.io.dataFault).getOrElse(false.B)
     pmpOpt.foreach { pmp =>
@@ -438,7 +446,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     mmuArb.io.dResp <> dmmu.io.resp
     mmuArb.io.mmuReq <> mmu.io.req
     mmu.io.resp <> mmuArb.io.mmuResp
-    mmu.io.flush := exu.io.CSRFlushTLB
+    // satp 写入/sfence.vma 会清空 MMU 内所有在途翻译且不再回响应，
+    // 仲裁器必须同步撤销 outstanding，否则后续取指/访存永远等不到翻译。
+    mmuArb.io.flush := tlbFlush
+    mmu.io.flush := tlbFlush
 
     mmu.io.bus.req <> ptwAxi.io.req
     mmu.io.bus.resp <> ptwAxi.io.resp
@@ -829,11 +840,14 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 一拍后暴露给 C++，保证上升沿上的所有更老 GPR 写回已经生效。
   val SimHaltCommit = exu.io.SimHaltValid
   io.trap_valid := RegNext(SimHaltCommit, false.B)
-  io.trap_pc := RegEnable(exu.io.SimHaltPC(31, 0), config.ResetAddr.U(32.W), SimHaltCommit)
+  val SimHaltPC = RegEnable(exu.io.SimHaltPC, config.ResetAddr.U(XLEN.W), SimHaltCommit)
+  io.trap_pc := SimHaltPC(31, 0)
+  io.trap_pc_hi := DebugHi(SimHaltPC)
   // 固定 ABI：关闭动态调试读口时，GPR 模块忽略地址并将这里直连到 a0，
   // 供 custom halt 判定 GOOD/BAD；不会为此保留第三个 32 路读 mux。
   gpr.io.DebugRaddr := io.debug_gpr_raddr
   io.debug_gpr_rdata := gpr.io.DebugRdata(31, 0)
+  io.debug_gpr_rdata_hi := DebugHi(gpr.io.DebugRdata)
   // WBUCommit 与最小架构 PC 不属于可选观测逻辑。异常/中断即使在所有
   // 调试功能关闭时也需要精确的最近架构边界。
   val WBUCommit = wbu.io.in.fire && wbu.io.in.bits.Retire
@@ -848,16 +862,20 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   if (config.EnableRetireTrace) {
     // C++ 在上升沿后看到 commit，此时 GPR 已是该指令提交后的状态。
     io.debug_commit := RegNext(WBUCommit, false.B)
-    io.debug_pc := RegEnable(
+    val RetirePC = RegEnable(
       wbu.io.in.bits.pc,
       config.ResetAddr.U(XLEN.W),
       WBUCommit
-    )(31, 0)
-    io.debug_next_pc := RegEnable(
+    )
+    val RetireNextPC = RegEnable(
       wbu.io.in.bits.NextPC,
       config.ResetAddr.U(XLEN.W),
       WBUCommit
-    )(31, 0)
+    )
+    io.debug_pc := RetirePC(31, 0)
+    io.debug_pc_hi := DebugHi(RetirePC)
+    io.debug_next_pc := RetireNextPC(31, 0)
+    io.debug_next_pc_hi := DebugHi(RetireNextPC)
     io.debug_instructions := RegEnable(
       wbu.io.in.bits.Instruction,
       "h00000013".U(32.W),
@@ -866,7 +884,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   } else {
     io.debug_commit := false.B
     io.debug_pc := 0.U
+    io.debug_pc_hi := 0.U
     io.debug_next_pc := 0.U
+    io.debug_next_pc_hi := 0.U
     io.debug_instructions := 0.U
   }
 
@@ -884,19 +904,24 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     ArchitecturalPC := exu.io.TrapTarget
   }
   io.debug_arch_pc := ArchitecturalPC(31, 0)
+  io.debug_arch_pc_hi := DebugHi(ArchitecturalPC)
 
   if (config.EnableTrapTrace) {
     io.debug_trap_valid := RegNext(exu.io.TrapCommit, false.B)
-    io.debug_trap_pc := RegEnable(
+    val TrapPC = RegEnable(
       exu.io.TrapPC,
       config.ResetAddr.U(XLEN.W),
       exu.io.TrapCommit
-    )(31, 0)
-    io.debug_trap_target := RegEnable(
+    )
+    val TrapTarget = RegEnable(
       exu.io.TrapTarget,
       config.ResetAddr.U(XLEN.W),
       exu.io.TrapCommit
-    )(31, 0)
+    )
+    io.debug_trap_pc := TrapPC(31, 0)
+    io.debug_trap_pc_hi := DebugHi(TrapPC)
+    io.debug_trap_target := TrapTarget(31, 0)
+    io.debug_trap_target_hi := DebugHi(TrapTarget)
     io.debug_trap_cause := RegEnable(
       exu.io.TrapCause,
       0.U(32.W),
@@ -905,45 +930,59 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   } else {
     io.debug_trap_valid := false.B
     io.debug_trap_pc := 0.U
+    io.debug_trap_pc_hi := 0.U
     io.debug_trap_target := 0.U
+    io.debug_trap_target_hi := 0.U
     io.debug_trap_cause := 0.U
   }
   if (config.EnableCSRTrace) {
-    io.debug_csr_mstatus := RegEnable(
+    val RetireMstatus = RegEnable(
       wbu.io.in.bits.CSRStateMstatus,
       Widen32(ysyx_26030103_mstatus.resetValue),
       WBUCommit
-    )(31, 0)
-    io.debug_csr_mtvec := RegEnable(
+    )
+    val RetireMtvec = RegEnable(
       wbu.io.in.bits.CSRStateMtvec,
       0.U(XLEN.W),
       WBUCommit
-    )(31, 0)
-    io.debug_csr_mepc := RegEnable(
+    )
+    val RetireMepc = RegEnable(
       wbu.io.in.bits.CSRStateMepc,
       0.U(XLEN.W),
       WBUCommit
-    )(31, 0)
+    )
+    io.debug_csr_mstatus := RetireMstatus(31, 0)
+    io.debug_csr_mstatus_hi := DebugHi(RetireMstatus)
+    io.debug_csr_mtvec := RetireMtvec(31, 0)
+    io.debug_csr_mtvec_hi := DebugHi(RetireMtvec)
+    io.debug_csr_mepc := RetireMepc(31, 0)
+    io.debug_csr_mepc_hi := DebugHi(RetireMepc)
     io.debug_csr_mcause := RegEnable(
       wbu.io.in.bits.CSRStateMcause,
       0.U(XLEN.W),
       WBUCommit
     )(31, 0)
-    io.debug_trap_mstatus := RegEnable(
+    val TrapMstatus = RegEnable(
       exu.io.CSRStateMstatus,
       Widen32(ysyx_26030103_mstatus.resetValue),
       exu.io.TrapCommit
-    )(31, 0)
-    io.debug_trap_mtvec := RegEnable(
+    )
+    val TrapMtvec = RegEnable(
       exu.io.CSRStateMtvec,
       0.U(XLEN.W),
       exu.io.TrapCommit
-    )(31, 0)
-    io.debug_trap_mepc := RegEnable(
+    )
+    val TrapMepc = RegEnable(
       exu.io.CSRStateMepc,
       0.U(XLEN.W),
       exu.io.TrapCommit
-    )(31, 0)
+    )
+    io.debug_trap_mstatus := TrapMstatus(31, 0)
+    io.debug_trap_mstatus_hi := DebugHi(TrapMstatus)
+    io.debug_trap_mtvec := TrapMtvec(31, 0)
+    io.debug_trap_mtvec_hi := DebugHi(TrapMtvec)
+    io.debug_trap_mepc := TrapMepc(31, 0)
+    io.debug_trap_mepc_hi := DebugHi(TrapMepc)
     io.debug_trap_mcause := RegEnable(
       exu.io.CSRStateMcause,
       0.U(XLEN.W),
@@ -951,12 +990,18 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     )(31, 0)
   } else {
     io.debug_csr_mstatus := 0.U
+    io.debug_csr_mstatus_hi := 0.U
     io.debug_csr_mtvec := 0.U
+    io.debug_csr_mtvec_hi := 0.U
     io.debug_csr_mepc := 0.U
+    io.debug_csr_mepc_hi := 0.U
     io.debug_csr_mcause := 0.U
     io.debug_trap_mstatus := 0.U
+    io.debug_trap_mstatus_hi := 0.U
     io.debug_trap_mtvec := 0.U
+    io.debug_trap_mtvec_hi := 0.U
     io.debug_trap_mepc := 0.U
+    io.debug_trap_mepc_hi := 0.U
     io.debug_trap_mcause := 0.U
   }
 
@@ -966,27 +1011,35 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   if (config.EnableMemoryTrace) {
     val MtraceCommit = WBUCommit && wbu.io.in.bits.MemoryValid
     io.debug_mtrace_valid := RegNext(MtraceCommit, false.B)
-    io.debug_mtrace_pc := RegEnable(wbu.io.in.bits.pc, 0.U(XLEN.W), MtraceCommit)(31, 0)
+    val MtracePC = RegEnable(wbu.io.in.bits.pc, 0.U(XLEN.W), MtraceCommit)
+    val MtraceAddr = RegEnable(
+      wbu.io.in.bits.ALUResult,
+      0.U(XLEN.W),
+      MtraceCommit
+    )
+    val MtraceWdata = RegEnable(
+      wbu.io.in.bits.StoreData,
+      0.U(XLEN.W),
+      MtraceCommit
+    )
+    val MtraceRdata = RegEnable(
+      wbu.io.in.bits.LoadData,
+      0.U(XLEN.W),
+      MtraceCommit
+    )
+    io.debug_mtrace_pc := MtracePC(31, 0)
+    io.debug_mtrace_pc_hi := DebugHi(MtracePC)
     io.debug_mtrace_wen := RegEnable(
       wbu.io.in.bits.MemoryWrite,
       false.B,
       MtraceCommit
     )
-    io.debug_mtrace_addr := RegEnable(
-      wbu.io.in.bits.ALUResult,
-      0.U(XLEN.W),
-      MtraceCommit
-    )(31, 0)
-    io.debug_mtrace_wdata := RegEnable(
-      wbu.io.in.bits.StoreData,
-      0.U(XLEN.W),
-      MtraceCommit
-    )(31, 0)
-    io.debug_mtrace_rdata := RegEnable(
-      wbu.io.in.bits.LoadData,
-      0.U(XLEN.W),
-      MtraceCommit
-    )(31, 0)
+    io.debug_mtrace_addr := MtraceAddr(31, 0)
+    io.debug_mtrace_addr_hi := DebugHi(MtraceAddr)
+    io.debug_mtrace_wdata := MtraceWdata(31, 0)
+    io.debug_mtrace_wdata_hi := DebugHi(MtraceWdata)
+    io.debug_mtrace_rdata := MtraceRdata(31, 0)
+    io.debug_mtrace_rdata_hi := DebugHi(MtraceRdata)
     io.debug_mtrace_width := RegEnable(
       wbu.io.in.bits.WidthSelect,
       0.U(2.W),
@@ -995,10 +1048,14 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   } else {
     io.debug_mtrace_valid := false.B
     io.debug_mtrace_pc := 0.U
+    io.debug_mtrace_pc_hi := 0.U
     io.debug_mtrace_wen := false.B
     io.debug_mtrace_addr := 0.U
+    io.debug_mtrace_addr_hi := 0.U
     io.debug_mtrace_wdata := 0.U
+    io.debug_mtrace_wdata_hi := 0.U
     io.debug_mtrace_rdata := 0.U
+    io.debug_mtrace_rdata_hi := 0.U
     io.debug_mtrace_width := 0.U
   }
 
@@ -1010,11 +1067,13 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     val ICacheAccessFaultCommit = exu.io.FetchAccessFaultCommit
     val AccessFaultCommit = LSUAccessFaultCommit || ICacheAccessFaultCommit
     io.debug_access_fault := RegNext(AccessFaultCommit, false.B)
-    io.debug_access_fault_pc := RegEnable(
+    val AccessFaultPC = RegEnable(
       Mux(LSUAccessFaultCommit, lsu.io.MemTrapPC, exu.io.FetchAccessFaultPC),
       0.U(XLEN.W),
       AccessFaultCommit
-    )(31, 0)
+    )
+    io.debug_access_fault_pc := AccessFaultPC(31, 0)
+    io.debug_access_fault_pc_hi := DebugHi(AccessFaultPC)
     io.debug_access_fault_resp := RegEnable(
       Mux(
         LSUAccessFaultCommit,
@@ -1027,6 +1086,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   } else {
     io.debug_access_fault := false.B
     io.debug_access_fault_pc := 0.U
+    io.debug_access_fault_pc_hi := 0.U
     io.debug_access_fault_resp := 0.U
   }
   // 性能计数器：按Kconfig单计数器开关逐个生成。关闭的计数器在顶层输出

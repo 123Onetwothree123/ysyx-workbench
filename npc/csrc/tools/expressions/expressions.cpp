@@ -1,7 +1,7 @@
 module npc.expressions.expressions;
 import npc.expressions.lexer;
 import npc.expressions.parser;
-std::expected<std::uint32_t, std::string> expressions::evaluate(std::string_view expression, const EvaluationContext &context)
+std::expected<std::uint64_t, std::string> expressions::evaluate(std::string_view expression, const EvaluationContext &context)
 {
     lexer lex{expression};
     auto tokensResult{lex.ScanAll()};

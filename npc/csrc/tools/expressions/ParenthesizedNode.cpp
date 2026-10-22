@@ -3,7 +3,7 @@ ParenthesizedNode::ParenthesizedNode(std::unique_ptr<ASTNode> inner)
 {
     this->inner = std::move(inner);
 }
-std::uint32_t ParenthesizedNode::Evaluate(const EvaluationContext &context) const
+std::uint64_t ParenthesizedNode::Evaluate(const EvaluationContext &context) const
 {
     return inner->Evaluate(context);
 }

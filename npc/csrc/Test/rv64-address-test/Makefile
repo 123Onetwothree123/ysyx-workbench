@@ -18,8 +18,9 @@ main.elf: main.S
 main.bin: main.elf
 	$(OBJCOPY) -O binary $< $@
 
+# .config 默认打开 SDB，非交互运行时送入一次 continue。
 run: main.bin
-	$(BIN) main.bin
+	printf 'c\n' | $(BIN) main.bin
 
 clean:
 	rm -f main.elf main.bin

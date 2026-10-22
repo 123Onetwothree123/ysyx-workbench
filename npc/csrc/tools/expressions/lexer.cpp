@@ -112,11 +112,11 @@ token lexer::ScanNumber()
         Advance();
     }
     const auto text{input.substr(start, position - start)};
-    std::uint32_t value{};
+    std::uint64_t value{};
     const auto [ptr, ec]{std::from_chars(text.data(), text.data() + text.size(), value, 10)};
     if (ec == std::errc::result_out_of_range)
     {
-        error = "十进制数字超出 uint32_t 范围: " + std::string(text);
+        error = "十进制数字超出 uint64_t 范围: " + std::string(text);
         return token::MakeEnd(position);
     }
     if (ec != std::errc{} || ptr != text.data() + text.size())
@@ -143,11 +143,11 @@ token lexer::ScanHexNumber()
         return token::MakeEnd(position);
     }
     const auto digits{input.substr(DigitStart, position - DigitStart)};
-    std::uint32_t value{};
+    std::uint64_t value{};
     const auto [ptr, ec]{std::from_chars(digits.data(), digits.data() + digits.size(), value, 16)};
     if (ec == std::errc::result_out_of_range)
     {
-        error = "十六进制数字超出 uint32_t 范围: " + std::string(text);
+        error = "十六进制数字超出 uint64_t 范围: " + std::string(text);
         return token::MakeEnd(position);
     }
     if (ec != std::errc{} || ptr != digits.data() + digits.size())
@@ -186,6 +186,10 @@ token lexer::ScanRegister()
     if (!HasDollarPrefix && text == "read32")
     {
         return token::MakeReadMemory32(start);
+    }
+    if (!HasDollarPrefix && text == "read64")
+    {
+        return token::MakeReadMemory64(start);
     }
     // 这里的reg_index暂时设为（问过AI，建议的），后面解析的时候会根据text来确定真正的reg_index
     return token::MakeRegister(text, 0, start);
