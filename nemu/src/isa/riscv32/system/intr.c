@@ -17,6 +17,8 @@
 
 static inline word_t mstatus_warl(word_t value)
 {
+  // 与 inst.c 保持一致：RV64 的 UXL/SXL 固定为 2。
+  value = (value & ~(word_t)MSTATUS_XLEN_MASK) | MSTATUS_XLEN_64;
   return value & (word_t)MSTATUS_WRITABLE_MASK;
 }
 
@@ -42,27 +44,28 @@ static inline word_t sstatus_on_trap(word_t old, word_t privilege)
 static word_t trap_vector(word_t vector, word_t cause)
 {
   const word_t base = vector & ~(word_t)3u;
-  const bool vectored_interrupt = (vector & 3u) == 1u && BITS(cause, 31, 31);
-  return vectored_interrupt ? base + ((cause & 0x7fffffffu) << 2) : base;
+  const bool vectored_interrupt =
+      (vector & 3u) == 1u && (cause & RISCV_INTR_MASK) != 0;
+  return vectored_interrupt ? base + ((cause & RISCV_CAUSE_MASK) << 2) : base;
 }
 
 word_t isa_raise_intr(word_t NO, vaddr_t epc)
 {
 #ifdef CONFIG_ETRACE
-  Log("etrace触发异常了, cause=%d, epc=" FMT_WORD ", mtvec=" FMT_WORD ", stvec=" FMT_WORD,
-      NO, epc, cpu.mtvec, cpu.stvec);
+  Log("etrace触发异常了, cause=%" PRIu64 ", epc=" FMT_WORD ", mtvec=" FMT_WORD ", stvec=" FMT_WORD,
+      (uint64_t)NO, epc, cpu.mtvec, cpu.stvec);
 #endif
 
   const bool from_su = cpu.privilege <= RISCV_PRIV_S;
-  const bool is_interrupt = BITS(NO, 31, 31);
-  const word_t cause = NO & 0x7fffffffu;
+  const bool is_interrupt = (NO & RISCV_INTR_MASK) != 0;
+  const word_t cause = NO & RISCV_CAUSE_MASK;
   const word_t delegation = is_interrupt ? cpu.mideleg : cpu.medeleg;
   const bool delegated = from_su && cause < 32u &&
                          ((delegation >> cause) & 1u) != 0;
 
   if (delegated) {
     // S 模式异常：现场写入 scause/sepc/stval，并进入 stvec。
-    if (BITS(NO, 31, 31)) {
+    if (is_interrupt) {
       isa_trap_tval = 0;
     }
     cpu.sepc = epc & ~(word_t)3u;
@@ -74,7 +77,7 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc)
   }
 
   // M 模式异常：现场写入 mcause/mepc/mtval，并进入 mtvec。
-  if (BITS(NO, 31, 31)) {
+  if (is_interrupt) {
     isa_trap_tval = 0;
   }
   cpu.mepc = epc & ~(word_t)3u;
@@ -100,7 +103,7 @@ word_t isa_query_intr()
     for (int bit = 1; bit <= 9; bit += 4) {
       if (enabled & (1u << bit)) {
         cpu.mip &= ~(1u << bit);
-        return 0x80000000u | (word_t)bit;
+        return RISCV_INTR_MASK | (word_t)bit;
       }
     }
   }
@@ -112,7 +115,7 @@ word_t isa_query_intr()
     for (int bit = 3; bit <= 11; bit += 4) {
       if (enabled & (1u << bit)) {
         cpu.mip &= ~(1u << bit);
-        return 0x80000000u | (word_t)bit;
+        return RISCV_INTR_MASK | (word_t)bit;
       }
     }
   }

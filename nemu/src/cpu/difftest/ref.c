@@ -27,8 +27,12 @@
  * buffer by 16 bytes.  Keep the shared ABI fixed at 32 RV32 GPRs plus PC and
  * translate explicitly at this boundary.
  */
+#ifdef CONFIG_ISA_riscv
 _Static_assert(sizeof(riscv_difftest_state_t) == 33 * sizeof(RISCV_GPR_TYPE),
                "unexpected RISC-V DiffTest ABI padding");
+_Static_assert(sizeof(riscv_difftest_csr_state_t) == 4 * sizeof(RISCV_GPR_TYPE),
+               "unexpected RISC-V DiffTest CSR ABI padding");
+#endif
 
 __EXPORT size_t difftest_state_size(void)
 {

@@ -103,6 +103,26 @@ void init_difftest(char *ref_so_file, long img_size, int port,
   void (*ref_difftest_init)(int) = dlsym(handle, "difftest_init");
   assert(ref_difftest_init);
 
+  /*
+   * 外部 REF 可能仍是旧的 RV32 参考模型。RV64 NEMU 的寄存器状态是
+   * 32*8+8 字节，绝不能把它当作 32 位的 132 字节缓冲区来拷贝。
+   * 新 REF 通过 difftest_state_size() 声明 ABI；RV64 下缺少该符号时
+   * 直接拒绝加载，避免静默截断高 32 位后跑出一堆伪差异。
+   */
+  size_t (*ref_state_size)(void) = dlsym(handle, "difftest_state_size");
+  if (ref_state_size != NULL) {
+    const size_t size = ref_state_size();
+    if (size != DIFFTEST_REG_SIZE) {
+      panic("DiffTest REF ABI 不匹配：REF 状态 %zu 字节，本 NEMU 需要 %zu 字节",
+            size, (size_t)DIFFTEST_REG_SIZE);
+    }
+  } else {
+#ifdef CONFIG_RV64
+    panic("DiffTest REF 不支持 RV64 ABI（缺少 difftest_state_size）；"
+          "请使用 RV64 版 NEMU/spike-diff，或改用 RV32 构建");
+#endif
+  }
+
   /* New NEMU references expose an explicit platform selector.  Keep this
    * optional so NEMU can still be used with external reference models. */
   void (*ref_difftest_set_platform)(int) =

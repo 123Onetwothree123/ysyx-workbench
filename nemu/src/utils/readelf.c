@@ -1095,6 +1095,19 @@ bool CheckElfHeader(const ELF_Ehdr *ElfHeader)
         printf("CheckElfHeader失败：e_ident中的版本非法，实际=%d\n", ElfHeader->e_ident[EI_VERSION]);
         return false;
     }
+#ifdef CONFIG_ISA_riscv
+    // RV32/RV64 的 ELF 都必须声明 RISC-V；否则可能是误加载了宿主机的 x86 ELF。
+    if (ElfHeader->e_machine != EM_RISCV)
+    {
+        printf("CheckElfHeader失败：e_machine=%u 不是 RISC-V\n", ElfHeader->e_machine);
+        return false;
+    }
+    if (ElfHeader->e_ident[EI_DATA] != ELFDATA2LSB)
+    {
+        printf("CheckElfHeader失败：RISC-V 参考模型只支持小端 ELF\n");
+        return false;
+    }
+#endif
     if (ElfHeader->e_version != EV_CURRENT)
     {
         printf("CheckElfHeader失败：ELF头版本非法，实际=%u\n", ElfHeader->e_version);
@@ -1179,8 +1192,12 @@ bool FilterElfFunctionSymbolTable(const ELF_Sym *ElfSymbolTable, size_t SymbolCo
     printf("过滤后函数符号数量 = %zu\n", CountOfFunction);
     if (CountOfFunction == 0)
     {
-        printf("FilterElfFunctionSymbolTable失败：没有找到可用的函数符号\n");
-        return false;
+        // 汇编程序可以完全没有 STT_FUNC 符号。此时 ELF 本身仍然有效，
+        // readelf 应继续工作，只是 ftrace 无法把地址解析成函数名。
+        printf("FilterElfFunctionSymbolTable：没有函数符号，ftrace 将只显示地址\n");
+        *FunctionSymbolTable = NULL;
+        *FunctionCount = 0;
+        return true;
     }
     FunctionTable = (ElfFunctionSymbol *)malloc(sizeof(ElfFunctionSymbol) * CountOfFunction);
     if (FunctionTable == NULL)

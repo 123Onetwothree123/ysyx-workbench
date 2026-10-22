@@ -17,6 +17,8 @@ SRCS-y += src/nemu-main.c
 DIRS-y += src/cpu src/monitor src/utils
 DIRS-$(CONFIG_MODE_SYSTEM) += src/memory
 DIRS-BLACKLIST-$(CONFIG_TARGET_AM) += src/monitor/sdb
+# AM 目标没有 dlopen/dlfcn，DiffTest 也不可用；只保留 ref.c 中的导出桩。
+SRCS-BLACKLIST-$(CONFIG_TARGET_AM) += src/cpu/difftest/dut.c
 
 SHARE = $(if $(CONFIG_TARGET_SHARE),1,0)
 LIBS += $(if $(CONFIG_TARGET_NATIVE_ELF),-lreadline -ldl -pie,)

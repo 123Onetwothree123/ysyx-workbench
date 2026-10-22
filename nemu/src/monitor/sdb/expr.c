@@ -450,7 +450,7 @@ word_t eval(int p, int q)
     word_t value;
     if (!safe_paddr_read(addr, &value, sizeof(word_t)))
     {
-      printf("Error: Cannot dereference pointer at address 0x%08x\n", addr);
+      printf("Error: Cannot dereference pointer at address " FMT_WORD "\n", addr);
       eval_success = false;
       g_internal_error = EXP_BAD_MEM;
       return 0;

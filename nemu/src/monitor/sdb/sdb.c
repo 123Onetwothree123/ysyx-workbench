@@ -77,24 +77,26 @@ static int run_expr_test(const char *input_file)
   }
   char line[65536];      // 行缓冲区大小
   char expr_buf[65536];  // 表达式缓冲区大小
-  uint32_t expected = 0; // 存储从文件读取的期望值结果
+  word_t expected = 0;   // 存储从文件读取的期望值结果
   // 循环读文件的内容
   while (fgets(line, sizeof(line), fp) != NULL)
   {
     bool success = false; // 拿来看结果的
-    uint32_t result = 0;  // 实际计算结果
+    word_t result = 0;    // 实际计算结果
+    unsigned long long value = 0;
     // 先读取一个无符号整数，再读取其他字符，失败了，也就是说sscanf函数返回的结果不等于2，就直接跳到下一行继续跑
-    if (sscanf(line, "%u %[^\n]", &expected, expr_buf) != 2)
+    if (sscanf(line, "%llu %[^\n]", &value, expr_buf) != 2)
     {
       continue;
     }
+    expected = (word_t)value;
     // 用expr函数返回计算结果
     result = expr(expr_buf, &success);
     if (!success || result != expected)
     {
       printf("失败\n");
-      printf("期望值: %u\n", expected);
-      printf("实际值: %u\n", result);
+      printf("期望值: %llu\n", value);
+      printf("实际值: %" PRIu64 "\n", (uint64_t)result);
       printf("表达式: %s\n", expr_buf);
       fclose(fp);
       return 1;
@@ -336,14 +338,15 @@ static int cmd_x(char *args)
   if (args == NULL || *args == '\0')
   {
     printf("nemu监视器sdb cmd_x函数检查参数，检测到args==NULL，此参数需要输入\n");
-    printf("用法：x N[b|h|w] 表达式\n");
+    printf("用法：x N[b|h|w|g] 表达式\n");
     printf("  N：要检查的项目数量\n");
-    printf("  [b|h|w]：可选的单位大小（默认为w）：\n");
+    printf("  [b|h|w|g]：可选的单位大小（默认为w）：\n");
     printf("    b - 字节（1字节）\n");
     printf("    h - 半字（2字节）\n");
     printf("    w - 字（4字节）\n");
+    printf("    g - 双字（8字节，RV64）\n");
     printf("  表达式：计算起始地址的表达式\n");
-    printf("示例：x 10h $esp  （从栈指针检查10个半字）\n");
+    printf("示例：x 10h $sp  （从栈指针检查10个半字）\n");
     printf("示例：x 16b 0x80100000 （从0x80100000检查16个字节）\n");
     return 0;
   }
@@ -379,8 +382,12 @@ static int cmd_x(char *args)
     unit_size = 4;
     expr_str++;
     break;
+  case 'g':
+    unit_size = 8;
+    expr_str++;
+    break;
   default:
-    break; // 如果不是b/h/w，说明这里就是没写单位，保持默认4字节
+    break; // 如果不是b/h/w/g，说明这里就是没写单位，保持默认4字节
   }
   while (*expr_str == ' ')
   {
@@ -401,22 +408,23 @@ static int cmd_x(char *args)
     return 0;
   }
   word_t addr = (word_t)addr_signed; // 把有符号结果转成机器字宽的无符号地址值
-  if (n > UINT32_MAX / unit_size)
+  if ((uint64_t)n > (uint64_t)(~(word_t)0) / unit_size)
   {
     printf("错误：请求过大（会导致地址空间溢出）\n");
     return 0;
   }
   word_t total_size = (word_t)n * unit_size; // 总共要读取的字节数，反正就是项目数X每项大小
-  if (addr > UINT32_MAX - total_size)
+  if (addr > ~(word_t)0 - total_size)
   {
-    printf("错误：地址范围会溢出（0x%08x + %u 字节）\n",
-           addr, total_size);
+    printf("错误：地址范围会溢出（" FMT_WORD " + %zu 字节）\n",
+           addr, (size_t)total_size);
     return 0;
   }
 
   word_t end_addr = addr + total_size; // 计算尾后地址，而且真正最后一个被访问的字节地址是end_addr-1
 
-  printf("正在扫描 %ld 个项目（每个%zu字节），从 0x%08x 到 0x%08x：\n", n, unit_size, addr, end_addr - 1);
+  printf("正在扫描 %ld 个项目（每个%zu字节），从 " FMT_WORD " 到 " FMT_WORD "：\n",
+         n, unit_size, addr, end_addr - 1);
   word_t data;                // 用来接收每次从内存里读出的数据
   for (int i = 0; i < n; i++) // 循环读取n个项目
   {
@@ -426,12 +434,12 @@ static int cmd_x(char *args)
     // 安全读取物理内存paddr，失败返回 false
     if (!safe_paddr_read(current_addr, &data, unit_size))
     {
-      printf("错误：在 0x%08x 处读取内存失败（扫描已停止）\n", current_addr);
+      printf("错误：在 " FMT_WORD " 处读取内存失败（扫描已停止）\n", current_addr);
       printf("提示：地址可能无效或不可访问\n");
       return 0;
     }
-    printf("0x%08x: ", current_addr); // 先打印当前地址前缀
-    switch (unit_size)                // 根据读取单位决定显示格式
+    printf(FMT_WORD ": ", current_addr); // 先打印当前地址前缀
+    switch (unit_size)                   // 根据读取单位决定显示格式
     {
     case 1:
       printf("0x%02x\n", (uint8_t)data); // 只取低8位，按2位十六进制打印
@@ -442,14 +450,11 @@ static int cmd_x(char *args)
     case 4:
       printf("0x%08x\n", (uint32_t)data); // 取低32位，按8位十六进制打印
       break;
+    case 8:
+      printf(FMT_WORD "\n", data); // RV64 双字，按机器字宽打印
+      break;
     default:
-      /*
-      以防万一先搞一个兜底分支，大概可能或许好像也许恐
-      怕估计似乎仿佛大约差不多隐约依稀貌似八成说不定没准
-      兴许约莫大抵多半想来想必看似看上去听起来显得算是几
-      乎应该正常不会走到
-      */
-      printf("0x%08x\n", data);
+      printf(FMT_WORD "\n", data);
     }
   }
   return 0;
@@ -472,9 +477,9 @@ static int cmd_p(char *args)
 
     if (success)
     {
-      printf("有符号（十进制）：   %d\n", result_signed);
-      printf("无符号（十进制）： %u\n", result_unsigned);
-      printf("十六进制：            0x%08x\n", result_unsigned);
+      printf("有符号（十进制）：   %" PRId64 "\n", (int64_t)result_signed);
+      printf("无符号（十进制）： %" PRIu64 "\n", (uint64_t)result_unsigned);
+      printf("十六进制：            " FMT_WORD "\n", result_unsigned);
     }
     else
     {
@@ -843,7 +848,8 @@ bool check_memory_address(word_t addr)
   if (addr < CONFIG_MBASE || addr >= CONFIG_MBASE + CONFIG_MSIZE)
   {
     printf("错误：无效的内存地址 " FMT_PADDR "（有效范围：[" FMT_PADDR ", " FMT_PADDR "）\n",
-           addr, CONFIG_MBASE, CONFIG_MBASE + CONFIG_MSIZE);
+           (paddr_t)addr, (paddr_t)CONFIG_MBASE,
+           (paddr_t)(CONFIG_MBASE + CONFIG_MSIZE));
     return false;
   }
   return true;

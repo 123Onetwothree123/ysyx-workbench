@@ -24,7 +24,14 @@ void btrace_write(vaddr_t pc, vaddr_t target, bool taken, char kind,
         }
     }
     if (btrace_fp) {
+#ifdef CONFIG_ISA64
+        // btrace 列宽跟随 XLEN，避免 RV64 地址被截成 32 位。
+        fprintf(btrace_fp, "%016" PRIx64 " %016" PRIx64 " %d %c %016" PRIx64 "\n",
+                (uint64_t)pc, (uint64_t)target, taken ? 1 : 0, kind,
+                (uint64_t)jalr_imm);
+#else
         fprintf(btrace_fp, "%08x %08x %d %c %08x\n",
                 pc, target, taken ? 1 : 0, kind, jalr_imm);
+#endif
     }
 }

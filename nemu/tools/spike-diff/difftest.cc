@@ -79,6 +79,14 @@ void sim_t::diff_memcpy(reg_t dest, void* src, size_t n) {
 
 extern "C" {
 
+/*
+ * 显式声明寄存器状态 ABI。RV64 下 diff_context_t 中的 GPR/PC 都是 64 位，
+ * NEMU 在加载 REF 时用它拒绝位数不匹配的旧参考模型。
+ */
+__EXPORT size_t difftest_state_size(void) {
+  return sizeof(struct diff_context_t);
+}
+
 __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction) {
   if (direction == DIFFTEST_TO_REF) {
     s->diff_memcpy(addr, buf, n);

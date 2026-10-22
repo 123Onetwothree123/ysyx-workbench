@@ -189,8 +189,16 @@ void init_monitor(int argc, char *argv[])
   init_disasm();
 #endif
 #ifdef CONFIG_ReadELF
-  Assert(elf_file != NULL, "FTRACE需要一个ELF文件，使用--elf=FILE指定");
-  Assert(ReadelfInitialization(elf_file), "从ELF文件'%s'初始化失败", elf_file);
+  // ELF 符号是可选输入：内置镜像没有 ELF，此时 readelf/ftrace 只显示地址。
+  if (elf_file != NULL) {
+    Assert(ReadelfInitialization(elf_file), "从ELF文件'%s'初始化失败", elf_file);
+  }
+#endif
+
+#ifdef CONFIG_FTRACE
+  if (elf_file == NULL) {
+    Log("未指定 --elf，ftrace 无法解析函数名（仅记录地址）");
+  }
 #endif
 
 #ifdef CONFIG_FTRACE

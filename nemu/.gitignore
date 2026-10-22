@@ -8,5 +8,8 @@
 !.gitignore
 !README.md
 !Kconfig
+!docs/*.md
+!tests/*.sh
+!tests/rv64/*.[cS]
 include/config
 include/generated

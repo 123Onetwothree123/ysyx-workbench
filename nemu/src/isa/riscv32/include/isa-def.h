@@ -49,7 +49,8 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
   word_t mie;
   word_t mip;
 
-  // PMP：RV32 支持 16 个表项
+  // PMP：16 个表项。RV32 的 pmpcfg0~3 每个装 4 项；
+  // RV64 的 pmpcfg0/pmpcfg2 每个装 8 项，pmpcfg1/3 不存在。
   word_t pmpcfg[4];
   word_t pmpaddr[16];
 
@@ -91,13 +92,45 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
 #define MSTATUS_TVM       (1u << 20)
 #define MSTATUS_TW        (1u << 21)
 #define MSTATUS_TSR       (1u << 22)
+/*
+ * RV64 的 mstatus 在 bit[35:32] 还包含 UXL/SXL。NEMU 只实现 64 位用户态
+ * 和监管态，因此这两位是 WARL 并固定为 2（XLEN=64）。这些位必须纳入
+ * 可写掩码，否则软件写回 mstatus 时会把它们意外清零。
+ */
+#ifdef CONFIG_RV64
+#define MSTATUS_UXL_MASK ((word_t)3 << 32)
+#define MSTATUS_SXL_MASK ((word_t)3 << 34)
+#define MSTATUS_XLEN_MASK (MSTATUS_UXL_MASK | MSTATUS_SXL_MASK)
+#define MSTATUS_XLEN_64   ((word_t)2 << 32 | (word_t)2 << 34)
+#else
+#define MSTATUS_XLEN_MASK 0
+#define MSTATUS_XLEN_64   0
+#endif
 #define MSTATUS_WRITABLE_MASK \
   (MSTATUS_SIE | MSTATUS_MIE | MSTATUS_SPIE | MSTATUS_MPIE | MSTATUS_SPP | \
    MSTATUS_MPP_MASK | MSTATUS_MPRV | MSTATUS_SUM | MSTATUS_MXR | \
-   MSTATUS_TVM | MSTATUS_TW | MSTATUS_TSR)
+   MSTATUS_TVM | MSTATUS_TW | MSTATUS_TSR | MSTATUS_XLEN_MASK)
 #define SSTATUS_MASK \
   (MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_SPP | MSTATUS_SUM | MSTATUS_MXR)
 #define SSTATUS_WRITABLE_MASK SSTATUS_MASK
+
+// 中断位位于 XLEN-1：RV32 为 bit31，RV64 为 bit63。
+#define RISCV_INTR_BIT MUXDEF(CONFIG_RV64, 63, 31)
+#define RISCV_INTR_MASK ((word_t)1 << RISCV_INTR_BIT)
+#define RISCV_CAUSE_MASK (RISCV_INTR_MASK - 1)
+
+// RV64 页表项为 8 字节，satp.MODE 位于 bit[63:60]。
+#define RISCV_PTE_SIZE MUXDEF(CONFIG_RV64, 8, 4)
+#define RISCV_SATP_MODE_SHIFT MUXDEF(CONFIG_RV64, 60, 31)
+#define RISCV_SATP_ASID_SHIFT MUXDEF(CONFIG_RV64, 44, 22)
+#define RISCV_SATP_PPN_BITS MUXDEF(CONFIG_RV64, 44, 22)
+
+// RV64 PMP 配置寄存器每个装 8 个表项，RV32 每个装 4 个表项。
+// RV64 实际存在的 CSR 是 pmpcfg0/pmpcfg2，因此表项 8~15 对应数组下标 2。
+#define PMP_CFG_ENTRIES_PER_REG MUXDEF(CONFIG_RV64, 8, 4)
+#define PMP_CFG_ENTRY_SHIFT(i) (((i) % PMP_CFG_ENTRIES_PER_REG) * 8)
+#define PMP_CFG_REG_INDEX(i) \
+  MUXDEF(CONFIG_RV64, (((i) < 8) ? 0 : 2), ((i) / PMP_CFG_ENTRIES_PER_REG))
 
 // decode
 typedef struct
@@ -106,7 +139,9 @@ typedef struct
 } MUXDEF(CONFIG_RV64, riscv64_ISADecodeInfo, riscv32_ISADecodeInfo);
 
 // 分页规则在 mmu.c 的 isa_mmu_check() 中实现：
-// S/U 模式在 satp.MODE=1 时进行地址转换；M 模式默认直接访问物理地址，
+// RV32 使用 Sv32（satp.MODE=1，4B PTE，两级页表）；
+// RV64 使用 Sv39（MODE=8，8B PTE，三级页表）或 Sv48（MODE=9，四级页表）。
+// S/U 模式在分页开启时进行地址转换；M 模式默认直接访问物理地址，
 // 只有 MPRV=1 的数据访问才按 MPP 指定的特权级进行转换。
 
 #endif

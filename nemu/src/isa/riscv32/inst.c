@@ -21,7 +21,22 @@
 #include <ftrace.h>
 #include <cpu/btrace.h>
 #include <utils.h>
+
+/*
+ * 原生 NEMU 使用宿主 libc 的 setjmp/longjmp；TARGET_AM 是 freestanding，
+ * 没有 setjmp 实现。这里用 GCC 内建版本完成“访存异常跳出取指循环”，
+ * 避免 AM 构建依赖 newlib 的 setjmp.S。
+ */
+#ifdef CONFIG_TARGET_AM
+typedef void *nemu_jmp_buf[5];
+#define nemu_setjmp(buf) __builtin_setjmp(buf)
+#define nemu_longjmp(buf, val) __builtin_longjmp(buf, val)
+#else
 #include <setjmp.h>
+typedef jmp_buf nemu_jmp_buf;
+#define nemu_setjmp(buf) setjmp(buf)
+#define nemu_longjmp(buf, val) longjmp(buf, val)
+#endif
 
 #define R(i) gpr(i)
 #define Mr vaddr_read
@@ -31,7 +46,7 @@ extern uint64_t g_nr_guest_inst;
 
 word_t isa_trap_tval = 0;
 
-static jmp_buf *exception_jmp = NULL;
+static nemu_jmp_buf *exception_jmp = NULL;
 static word_t exception_cause = 0;
 static vaddr_t exception_epc = 0;
 
@@ -39,9 +54,9 @@ void isa_raise_mem_exception(word_t cause, vaddr_t tval) {
   if (exception_jmp != NULL) {
     exception_cause = cause;
     isa_trap_tval = tval;
-    longjmp(*exception_jmp, 1);
+    nemu_longjmp(*exception_jmp, 1);
   }
-  panic("memory exception cause=%d, tval=" FMT_WORD, cause, tval);
+  panic("memory exception cause=%" PRIu64 ", tval=" FMT_WORD, (uint64_t)cause, tval);
 }
 
 static inline word_t mepc_warl(word_t value)
@@ -57,7 +72,25 @@ static inline word_t mtvec_warl(word_t value)
 
 static inline word_t mstatus_warl(word_t value)
 {
+  /* UXL/SXL 是 WARL：NEMU 只支持 64 位，所以两位固定写成 2。 */
+  value = (value & ~(word_t)MSTATUS_XLEN_MASK) | MSTATUS_XLEN_64;
   return value & (word_t)MSTATUS_WRITABLE_MASK;
+}
+
+/* RV64 只有 pmpcfg0 和 pmpcfg2；RV32 四个寄存器都存在。 */
+static inline bool pmpcfg_address_valid(word_t address)
+{
+#ifdef CONFIG_RV64
+  return address == 0x3a0 || address == 0x3a2;
+#else
+  return address >= 0x3a0 && address <= 0x3a3;
+#endif
+}
+
+static inline word_t pmpcfg_entry(int index)
+{
+  return (cpu.pmpcfg[PMP_CFG_REG_INDEX(index)] >>
+          PMP_CFG_ENTRY_SHIFT(index)) & 0xffu;
 }
 
 static inline word_t csr_address(const Decode *s)
@@ -104,6 +137,9 @@ static inline bool csr_priv_ok(word_t address)
 static word_t csr_read(word_t address)
 {
   if (address >= 0x3a0 && address <= 0x3a3) {
+    if (!pmpcfg_address_valid(address)) {
+      panic("RV64 不存在 CSR " FMT_WORD "（pmpcfg1/pmpcfg3 仅为 RV32）", address);
+    }
     return cpu.pmpcfg[address - 0x3a0];
   }
   if (address >= 0x3b0 && address <= 0x3bf) {
@@ -128,7 +164,13 @@ static word_t csr_read(word_t address)
   case 0x144: return cpu.mip & (MSTATUS_SIE | (1u << 5) | (1u << 9));
   case 0x180: return cpu.satp;
   case 0x300: return cpu.mstatus;
-  case 0x301: return (1u << 30) | (1u << 8) | (1u << 12) | (1u << 18) | (1u << 20);
+  case 0x301:
+    // misa.MXL：RV32 为 1，RV64 为 2。扩展位保持 I/M/S/U。
+    return MUXDEF(CONFIG_RV64,
+                  ((word_t)2 << 62) | (1u << 8) | (1u << 12) |
+                      (1u << 18) | (1u << 20),
+                  (1u << 30) | (1u << 8) | (1u << 12) |
+                      (1u << 18) | (1u << 20));
   case 0x302: return cpu.medeleg;
   case 0x303: return cpu.mideleg;
   case 0x304: return cpu.mie;
@@ -151,19 +193,22 @@ static word_t csr_read(word_t address)
   case 0xc80: return (word_t)(g_nr_guest_inst >> 32);
   case 0xc81: return (word_t)(get_time() >> 32);
   case 0xc82: return (word_t)(g_nr_guest_inst >> 32);
-  default: panic("Unknown CSR 0x%x", address); return 0;
+  default: panic("Unknown CSR " FMT_WORD, address); return 0;
   }
 }
 
 static void csr_write(word_t address, word_t value)
 {
   if (address >= 0x3a0 && address <= 0x3a3) {
+    if (!pmpcfg_address_valid(address)) {
+      panic("RV64 不存在 CSR " FMT_WORD "（pmpcfg1/pmpcfg3 仅为 RV32）", address);
+    }
     const int idx = address - 0x3a0;
     const word_t old = cpu.pmpcfg[idx];
     word_t locked = 0;
-    for (int i = 0; i < 4; i++) {
-      if (old & (0x80u << (i * 8))) {
-        locked |= 0xffu << (i * 8);
+    for (int i = 0; i < PMP_CFG_ENTRIES_PER_REG; i++) {
+      if (old & ((word_t)0x80 << (i * 8))) {
+        locked |= (word_t)0xff << (i * 8);
       }
     }
     cpu.pmpcfg[idx] = (old & locked) | (value & ~locked);
@@ -171,8 +216,7 @@ static void csr_write(word_t address, word_t value)
   }
   if (address >= 0x3b0 && address <= 0x3bf) {
     const int idx = address - 0x3b0;
-    const word_t cfg = (cpu.pmpcfg[idx / 4] >> ((idx % 4) * 8)) & 0xffu;
-    if ((cfg & 0x80u) == 0) {
+    if ((pmpcfg_entry(idx) & 0x80u) == 0) {
       cpu.pmpaddr[idx] = value;
     }
     return;
@@ -229,7 +273,7 @@ static void csr_write(word_t address, word_t value)
     g_nr_guest_inst = (g_nr_guest_inst & 0x00000000ffffffffull) |
                       ((uint64_t)value << 32);
     return;
-  default: panic("Unknown CSR 0x%x", address); return;
+  default: panic("Unknown CSR " FMT_WORD, address); return;
   }
 }
 
@@ -315,6 +359,18 @@ enum
     word_t imm11 = BITS(i, 7, 7);                                                   \
     *imm = (SEXT(imm12, 1) << 12) | (imm11 << 11) | (imm10_5 << 5) | (imm4_1 << 1); \
   } while (0)
+
+/* 按当前 XLEN 截断移位量，避免 C 移位量越界产生未定义行为。 */
+static inline word_t shift_amount(word_t value)
+{
+  return value & MUXDEF(CONFIG_RV64, 0x3fu, 0x1fu);
+}
+
+/* RV64 的 *W 指令只运算低 32 位，结果符号扩展到 64 位。 */
+static inline word_t sext32(word_t value)
+{
+  return (word_t)(sword_t)(int32_t)value;
+}
 
 static void decode_operand(Decode *s, int *rd, word_t *src1, word_t *src2, word_t *imm, int type)
 {
@@ -403,6 +459,7 @@ static int decode_exec(Decode *s)
     s->dnpc = (src1 + imm) & ~1;
     // 因为 jalr 既可能 call 也可能 ret
     int rs1 = BITS(s->isa.inst, 19, 15);
+    (void)rs1; // CONFIG_BTRACE/CONFIG_FTRACE 都关闭时也不能触发 -Wunused
     BTRACE_JALR(s, rs1, rd, imm);
 #ifdef CONFIG_FTRACE
     // 标准 RISC-V ABI: ret 为 jalr x0, x1, 0
@@ -417,7 +474,14 @@ static int decode_exec(Decode *s)
     }
 #endif
   });
-  INSTPAT("??????? ????? ????? 010 ????? 00000 11", lw, I, R(rd) = Mr(src1 + imm, 4));
+  INSTPAT("??????? ????? ????? 010 ????? 00000 11", lw, I,
+          R(rd) = MUXDEF(CONFIG_RV64, sext32(Mr(src1 + imm, 4)), Mr(src1 + imm, 4)));
+#ifdef CONFIG_RV64
+  // RV64I：64 位 load/store 与零扩展字 load。
+  INSTPAT("??????? ????? ????? 011 ????? 00000 11", ld, I, R(rd) = Mr(src1 + imm, 8));
+  INSTPAT("??????? ????? ????? 110 ????? 00000 11", lwu, I, R(rd) = Mr(src1 + imm, 4));
+  INSTPAT("??????? ????? ????? 011 ????? 01000 11", sd, S, Mw(src1 + imm, 8, src2));
+#endif
   INSTPAT("0000000 ????? ????? 000 ????? 01100 11", add, R, R(rd) = src1 + src2);
   INSTPAT("0100000 ????? ????? 000 ????? 01100 11", sub, R, R(rd) = src1 - src2);
   INSTPAT("??????? ????? ????? 011 ????? 00100 11", sltiu, I, R(rd) = (src1 < imm) ? 1 : 0);
@@ -431,26 +495,109 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 001 ????? 01000 11", sh, S, Mw(src1 + imm, 2, src2));
   INSTPAT("0000000 ????? ????? 111 ????? 01100 11", and, R, R(rd) = src1 & src2);
   INSTPAT("??????? ????? ????? 111 ????? 00100 11", andi, I, R(rd) = src1 & imm);
-  INSTPAT("0000000 ????? ????? 001 ????? 01100 11", sll, R, R(rd) = src1 << src2);
-  INSTPAT("0000000 ????? ????? 101 ????? 01100 11", srl, R, R(rd) = src1 >> src2);
-  INSTPAT("0100000 ????? ????? 101 ????? 01100 11", sra, R, R(rd) = (sword_t)src1 >> src2);
-  INSTPAT("0000000 ????? ????? 101 ????? 00100 11", srli, I, R(rd) = src1 >> (imm & 0x1F));
-  INSTPAT("0100000 ????? ????? 101 ????? 00100 11", srai, I, R(rd) = (sword_t)src1 >> (imm & 0x1F));
-  INSTPAT("0000000 ????? ????? 001 ????? 00100 11", slli, I, R(rd) = src1 << (imm & 0x1F));
+  INSTPAT("0000000 ????? ????? 001 ????? 01100 11", sll, R, R(rd) = src1 << shift_amount(src2));
+  INSTPAT("0000000 ????? ????? 101 ????? 01100 11", srl, R, R(rd) = src1 >> shift_amount(src2));
+  INSTPAT("0100000 ????? ????? 101 ????? 01100 11", sra, R, R(rd) = (word_t)((sword_t)src1 >> shift_amount(src2)));
+  INSTPAT("0000000 ????? ????? 101 ????? 00100 11", srli, I, R(rd) = src1 >> shift_amount(imm));
+  INSTPAT("0100000 ????? ????? 101 ????? 00100 11", srai, I, R(rd) = (word_t)((sword_t)src1 >> shift_amount(imm)));
+  INSTPAT("0000000 ????? ????? 001 ????? 00100 11", slli, I, R(rd) = src1 << shift_amount(imm));
+#ifdef CONFIG_RV64
+  // RV64I 的 6 位移位量（shamt[5] 位于原 funct7 的最低位）。
+  INSTPAT("010000 ? ????? ????? 101 ????? 00100 11", srai, I,
+          R(rd) = (word_t)((sword_t)src1 >> (imm & 0x3f)));
+  INSTPAT("000000 ? ????? ????? 001 ????? 00100 11", slli, I,
+          R(rd) = src1 << (imm & 0x3f));
+  INSTPAT("000000 ? ????? ????? 101 ????? 00100 11", srli, I,
+          R(rd) = src1 >> (imm & 0x3f));
+
+  // RV64I 的 OP-IMM-32 与 OP-32 指令。
+  INSTPAT("??????? ????? ????? 000 ????? 00110 11", addiw, I, R(rd) = sext32(src1 + imm));
+  INSTPAT("0000000 ????? ????? 001 ????? 00110 11", slliw, I,
+          R(rd) = sext32((uint32_t)src1 << (imm & 0x1f)));
+  INSTPAT("0000000 ????? ????? 101 ????? 00110 11", srliw, I,
+          R(rd) = sext32((uint32_t)src1 >> (imm & 0x1f)));
+  INSTPAT("0100000 ????? ????? 101 ????? 00110 11", sraiw, I,
+          R(rd) = sext32((uint32_t)((int32_t)src1 >> (imm & 0x1f))));
+  INSTPAT("0000000 ????? ????? 000 ????? 01110 11", addw, R, R(rd) = sext32(src1 + src2));
+  INSTPAT("0100000 ????? ????? 000 ????? 01110 11", subw, R, R(rd) = sext32(src1 - src2));
+  INSTPAT("0000000 ????? ????? 001 ????? 01110 11", sllw, R,
+          R(rd) = sext32((uint32_t)src1 << (src2 & 0x1f)));
+  INSTPAT("0000000 ????? ????? 101 ????? 01110 11", srlw, R,
+          R(rd) = sext32((uint32_t)src1 >> (src2 & 0x1f)));
+  INSTPAT("0100000 ????? ????? 101 ????? 01110 11", sraw, R,
+          R(rd) = sext32((uint32_t)((int32_t)src1 >> (src2 & 0x1f))));
+#endif
   INSTPAT("??????? ????? ????? 101 ????? 11000 11", bge, B, BTRACE_BRANCH(s, imm, (sword_t)src1 >= (sword_t)src2));
   INSTPAT("??????? ????? ????? 100 ????? 11000 11", blt, B, BTRACE_BRANCH(s, imm, (sword_t)src1 < (sword_t)src2));
   INSTPAT("??????? ????? ????? ??? ????? 01101 11", lui, U, R(rd) = imm);
   INSTPAT("??????? ????? ????? 111 ????? 11000 11", bgeu, B, BTRACE_BRANCH(s, imm, src1 >= src2));
   INSTPAT("??????? ????? ????? 110 ????? 11000 11", bltu, B, BTRACE_BRANCH(s, imm, src1 < src2));
   INSTPAT("0000001 ????? ????? 000 ????? 01100 11", mul, R, R(rd) = src1 * src2);
+#ifdef CONFIG_RV64
+  // RV64M：64 位乘除余。乘高位使用 128 位中间结果，绝不按 32 位截断。
+  INSTPAT("0000001 ????? ????? 100 ????? 01100 11", div, R, {
+    sword_t s1 = (sword_t)src1, s2 = (sword_t)src2;
+    if (s2 == 0) R(rd) = ~(word_t)0;
+    else if (s1 == INT64_MIN && s2 == -1) R(rd) = (word_t)s1;
+    else R(rd) = (word_t)(s1 / s2);
+  });
+  INSTPAT("0000001 ????? ????? 110 ????? 01100 11", rem, R, {
+    sword_t s1 = (sword_t)src1, s2 = (sword_t)src2;
+    if (s2 == 0) R(rd) = src1;
+    else if (s1 == INT64_MIN && s2 == -1) R(rd) = 0;
+    else R(rd) = (word_t)(s1 % s2);
+  });
+  INSTPAT("0000001 ????? ????? 111 ????? 01100 11", remu, R,
+          R(rd) = (src2 == 0) ? src1 : src1 % src2);
+  INSTPAT("0000001 ????? ????? 001 ????? 01100 11", mulh, R,
+          R(rd) = (word_t)(((__int128)(sword_t)src1 * (__int128)(sword_t)src2) >> 64));
+  INSTPAT("0000001 ????? ????? 101 ????? 01100 11", divu, R,
+          R(rd) = (src2 == 0) ? ~(word_t)0 : src1 / src2);
+  INSTPAT("0000001 ????? ????? 011 ????? 01100 11", mulhu, R,
+          R(rd) = (word_t)(((unsigned __int128)src1 * (unsigned __int128)src2) >> 64));
+  INSTPAT("0000001 ????? ????? 010 ????? 01100 11", mulhsu, R,
+          R(rd) = (word_t)(((__int128)(sword_t)src1 * (unsigned __int128)src2) >> 64));
+
+  // RV64M 的 *W 形式：32 位运算后符号扩展到 64 位。
+  INSTPAT("0000001 ????? ????? 000 ????? 01110 11", mulw, R,
+          R(rd) = sext32((uint32_t)src1 * (uint32_t)src2));
+  INSTPAT("0000001 ????? ????? 100 ????? 01110 11", divw, R, {
+    int32_t s1 = (int32_t)src1, s2 = (int32_t)src2;
+    int32_t result;
+    if (s2 == 0) result = -1;
+    else if (s1 == INT32_MIN && s2 == -1) result = INT32_MIN;
+    else result = s1 / s2;
+    R(rd) = sext32((uint32_t)result);
+  });
+  INSTPAT("0000001 ????? ????? 101 ????? 01110 11", divuw, R, {
+    uint32_t u1 = (uint32_t)src1, u2 = (uint32_t)src2;
+    uint32_t result = (u2 == 0) ? UINT32_MAX : u1 / u2;
+    R(rd) = sext32(result);
+  });
+  INSTPAT("0000001 ????? ????? 110 ????? 01110 11", remw, R, {
+    int32_t s1 = (int32_t)src1, s2 = (int32_t)src2;
+    int32_t result;
+    if (s2 == 0) result = s1;
+    else if (s1 == INT32_MIN && s2 == -1) result = 0;
+    else result = s1 % s2;
+    R(rd) = sext32((uint32_t)result);
+  });
+  INSTPAT("0000001 ????? ????? 111 ????? 01110 11", remuw, R, {
+    uint32_t u1 = (uint32_t)src1, u2 = (uint32_t)src2;
+    uint32_t result = (u2 == 0) ? u1 : u1 % u2;
+    R(rd) = sext32(result);
+  });
+#else
   INSTPAT("0000001 ????? ????? 100 ????? 01100 11", div, R, sword_t s1 = (sword_t)src1; sword_t s2 = (sword_t)src2; if (src2 == 0) { R(rd) = ~(word_t)0; } else if (s1 == INT32_MIN && s2 == -1) { R(rd) = (word_t)s1; } else { R(rd) = (word_t)(s1 / s2); });
   INSTPAT("0000001 ????? ????? 110 ????? 01100 11", rem, R, sword_t s1 = (sword_t)src1; sword_t s2 = (sword_t)src2; if (src2 == 0) { R(rd) = src1; } else if (s1 == INT32_MIN && s2 == -1) { R(rd) = 0; } else { R(rd) = (word_t)(s1 % s2); });
   INSTPAT("0000001 ????? ????? 111 ????? 01100 11", remu, R, if (src2 == 0) { R(rd) = src1; } else { R(rd) = src1 % src2; });
-  INSTPAT("??????? ????? ????? 001 ????? 00000 11", lh, I, R(rd) = SEXT(Mr(src1 + imm, 2), 16));
-  INSTPAT("??????? ????? ????? 101 ????? 00000 11", lhu, I, R(rd) = Mr(src1 + imm, 2));
   INSTPAT("0000001 ????? ????? 001 ????? 01100 11", mulh, R, R(rd) = ((int64_t)(sword_t)src1 * (int64_t)(sword_t)src2) >> 32);
   INSTPAT("0000001 ????? ????? 101 ????? 01100 11", divu, R, if (src2 == 0) { R(rd) = ~(word_t)0; } else { R(rd) = src1 / src2; });
   INSTPAT("0000001 ????? ????? 011 ????? 01100 11", mulhu, R, R(rd) = ((uint64_t)src1 * (uint64_t)src2) >> 32);
+  INSTPAT("0000001 ????? ????? 010 ????? 01100 11", mulhsu, R, R(rd) = ((int64_t)(sword_t)src1 * (uint64_t)src2) >> 32);
+#endif
+  INSTPAT("??????? ????? ????? 001 ????? 00000 11", lh, I, R(rd) = SEXT(Mr(src1 + imm, 2), 16));
+  INSTPAT("??????? ????? ????? 101 ????? 00000 11", lhu, I, R(rd) = Mr(src1 + imm, 2));
   // 到现在还是看不懂fence的设计，目前简单起见，先保持为空
   // Base implementations ignore the reserved rd/rs1 fields of FENCE and
   // FENCE.I.  Keep the reference model aligned with the DUT for those legal
@@ -463,7 +610,6 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 000 ????? 00000 11", lb, I, R(rd) = SEXT(Mr(src1 + imm, 1), 8));
   INSTPAT("0000000 ????? ????? 010 ????? 01100 11", slt, R, R(rd) = ((sword_t)src1 < (sword_t)src2) ? 1 : 0);
   INSTPAT("??????? ????? ????? 010 ????? 00100 11", slti, I, R(rd) = ((sword_t)src1 < (sword_t)imm) ? 1 : 0);
-  INSTPAT("0000001 ????? ????? 010 ????? 01100 11", mulhsu, R, R(rd) = ((int64_t)(sword_t)src1 * (uint64_t)src2) >> 32);
   INSTPAT("0000000 00000 00000 000 00000 11100 11", ecall, N,
           {
             word_t cause = cpu.privilege == RISCV_PRIV_U ? 8 :
@@ -564,12 +710,23 @@ static int decode_exec(Decode *s)
     }
   });
   INSTPAT("0001001 ????? ????? 000 00000 11100 11", sfence_vma, N, {
-    if (cpu.privilege == RISCV_PRIV_U) {
+    // S 模式在 mstatus.TVM=1 时执行 SFENCE.VMA 也是非法指令。
+    if (cpu.privilege == RISCV_PRIV_U ||
+        (cpu.privilege == RISCV_PRIV_S && (cpu.mstatus & MSTATUS_TVM))) {
       s->dnpc = isa_raise_intr(2, s->pc);
     }
   });
-  INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv, N,
-          s->dnpc = isa_raise_intr(2, s->pc));
+  INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv, N, {
+    if (cpu.mtvec == 0 && cpu.stvec == 0) {
+      // 没有安装异常向量时，未实现指令必须让 NEMU 明确停机，
+      // 而不是跳到 0 地址后产生与根因无关的访存错误。
+      Log("非法或未实现的指令 " FMT_WORD "（inst = 0x%08x）",
+          s->pc, s->isa.inst);
+      invalid_inst(s->pc);
+    } else {
+      s->dnpc = isa_raise_intr(2, s->pc);
+    }
+  });
   INSTPAT_END();
 
   R(0) = 0; // reset $zero to 0
@@ -579,12 +736,12 @@ static int decode_exec(Decode *s)
 
 int isa_exec_once(Decode *s)
 {
-  jmp_buf jb;
+  nemu_jmp_buf jb;
   exception_jmp = &jb;
   exception_epc = s->pc;
   isa_trap_tval = 0;
 
-  if (setjmp(jb) != 0) {
+  if (nemu_setjmp(jb) != 0) {
     exception_jmp = NULL;
     R(0) = 0;
     s->dnpc = isa_raise_intr(exception_cause, exception_epc);

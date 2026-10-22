@@ -20,7 +20,11 @@
 #include <macro.h>
 #include <generated/autoconf.h>
 
+// newlib 的 sys/config.h 在 TARGET_AM 下也会定义 __EXPORT（空宏）。
+// 只在本文件没有定义时补充可见性属性，避免 -Werror 下的宏重定义。
+#ifndef __EXPORT
 #define __EXPORT __attribute__((visibility("default")))
+#endif
 enum { DIFFTEST_TO_DUT, DIFFTEST_TO_REF };
 
 #if defined(CONFIG_ISA_x86)

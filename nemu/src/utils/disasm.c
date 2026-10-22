@@ -62,6 +62,23 @@ void init_disasm() {
 void disassemble(char *str, int size, uint64_t pc, uint8_t *code, int nbyte) {
 	cs_insn *insn;
 	size_t count = cs_disasm_dl(handle, code, nbyte, pc, 0, &insn);
+  if (count == 0) {
+    // NEMU 的 custom-0 停机指令不是标准 RISC-V 指令，capstone 无法识别。
+    // 这里按原始机器码输出，避免 ITRACE/iringbuf 因反汇编失败而中止。
+    if (nbyte >= 4) {
+      uint32_t raw;
+      memcpy(&raw, code, sizeof(raw));
+      snprintf(str, size, ".word 0x%08x", raw);
+    } else {
+      snprintf(str, size, ".byte");
+      for (int i = 0; i < nbyte && (int)strlen(str) + 4 < size; i++) {
+        char byte[8];
+        snprintf(byte, sizeof(byte), " %02x", code[i]);
+        strcat(str, byte);
+      }
+    }
+    return;
+  }
   assert(count == 1);
   int ret = snprintf(str, size, "%s", insn->mnemonic);
   if (insn->op_str[0] != '\0') {
