@@ -45,6 +45,13 @@ object ysyx_26030103_Elaborate extends App {
   // ADDRESS_WIDTH 显式覆盖，但 NPCConfig 会拒绝 XLEN=64 使用 32 位
   // 地址，避免架构 PC/分支目标再次被截断。
   val AddressWidth = envIntOr("ADDRESS_WIDTH", if (XLEN == 64) 64 else 32)
+  // ysyxSoC CPU 侧接口位宽独立于 CPU XLEN：
+  //   SOC_XLEN_FOLLOW_CPU=y  -> EffectiveSocXLEN=XLEN
+  //   SOC_XLEN_FOLLOW_CPU=n  -> EffectiveSocXLEN=SOC_XLEN（默认，32）
+  // SOC_XLEN 只在 FOLLOW=n 时生效，NPCConfig 会拒绝 32/64 之外的值。
+  val SocXLENFollowCpu =
+    sys.env.getOrElse("SOC_XLEN_FOLLOW_CPU", "n") == "y"
+  val SocXLEN = envIntOr("SOC_XLEN", 32)
   // 扩展名与位宽解耦，统一使用 RISCV_M/A/C。
   val UseM = sys.env.getOrElse("RISCV_M", "n") == "y"
   val UseA = sys.env.getOrElse("RISCV_A", "n") == "y"
@@ -108,6 +115,8 @@ object ysyx_26030103_Elaborate extends App {
   val config = ysyx_26030103_NPCConfig(
     XLEN = XLEN,
     AddressWidth = AddressWidth,
+    SocXLENFollowCpu = SocXLENFollowCpu,
+    SocXLEN = SocXLEN,
     UseM = UseM,
     UseA = UseA,
     UseC = UseC,
@@ -167,6 +176,13 @@ object ysyx_26030103_Elaborate extends App {
     MMU = mmuProfile
   )
   println(s"[NPC config] ${config.Describe}")
+  if (config.SocXLENNeedsAxiBridge) {
+    println(
+      s"[NPC config][WARN] EffectiveSocXLEN=${config.EffectiveSocXLEN} 的 " +
+        "ysyxSoC AXI 桥接尚未实现：当前顶层 master/slave AXI 仍固定 " +
+        "32 位地址/数据。该配置仅用于后续桥接任务解析与消费。"
+    )
+  }
 
   // 让 firtool 直接输出 yosys 能读的语法:
   //   disallowLocalVariables  禁止 always 块内声明变量(消除 automatic logic 声明+初始化)

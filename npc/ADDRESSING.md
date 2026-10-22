@@ -20,6 +20,33 @@
 - 叶模块（Xbar/ICache/DCache/LSU）可用高于 4GiB 的 PMA 区域做定向
   测试；该能力不改变 SoC 顶层 ABI。
 
+## SoC XLEN 独立配置
+
+- `CONFIG_SOC_XLEN_FOLLOW_CPU`（默认 `n`）控制 ysyxSoC CPU 侧接口
+  是否跟随 CPU 的 `CONFIG_XLEN`；它只是“跟随”，不是强制 CPU 与 SoC
+  同宽。
+- `CONFIG_SOC_XLEN`（默认 32）仅在 FOLLOW=`n` 时可见/生效，只允许
+  32 或 64；有效值为
+  `EffectiveSocXLEN = if (FOLLOW) XLEN else SOC_XLEN`。
+- 配置层允许并测试以下四种组合：
+
+  | CPU XLEN | FOLLOW | SOC_XLEN | EffectiveSocXLEN |
+  | --- | --- | --- | --- |
+  | 32 | n | 32 | 32 |
+  | 64 | n | 32 | 32（64 位 CPU + 32 位 SoC，低 4GiB 窗口） |
+  | 32 | n | 64 | 64（允许配置，等待桥接） |
+  | 64 | n | 64 | 64（允许配置，等待桥接） |
+
+- `NPCConfig` 暴露 `SocXLENFollowCpu`、`SocXLEN`、`EffectiveSocXLEN`
+  与 `SocXLENNeedsAxiBridge`；`Elaborate` 从环境变量读取并原样传入。
+- 当前顶层 AXI RTL/IO 仍是固定 32 位地址/数据，因此
+  `EffectiveSocXLEN=64` 只表示配置已保留，尚不代表 RTL 已支持；
+  elaboration 会打印 WARN。后续 AXI 桥接任务应消费
+  `EffectiveSocXLEN`（和 `SocXLENNeedsAxiBridge`）扩展端口与转换逻辑，
+  而不是重新解释 Kconfig 或直接假设 SoC 与 CPU 同宽。
+- 由于当前实际端口仍是 32 位，`AddressWidth=64` 的 PMA 低 4GiB 约束
+  继续按实际 RTL 生效，不随 `EffectiveSocXLEN` 放宽。
+
 ## 8 字节 LD/SD
 
 - LSU 的 LD/SD 在 32 位 AXI 数据通道上使用两拍 INCR：

@@ -11,8 +11,10 @@ menu "硬件配置"
         GPR/PC/ALU/EXU/IDU/WBU/CSR 与 RV64I/RV64M 语义，且
         PC/分支目标/LSU/IFU/AXI/PMA/Xbar/ICache/DCache/BTB/RAS
         全部使用 64 位地址，LD/SD 以两拍 32 位 AXI 窄传输覆盖 8 字节。
-        外部 ysyxSoC CPU AXI 仍只有 32 位地址：顶层 PMA 必须位于低
-        4GiB，Xbar 对更高地址返回 DECERR，绝不静默截断。
+        外部 ysyxSoC CPU AXI 目前实际仍为 32 位地址/数据，SoC 侧
+        位宽由 SOC_XLEN_FOLLOW_CPU/SOC_XLEN 独立配置。32 位 SoC
+        可以搭配 64 位 CPU：顶层 PMA 必须位于低 4GiB，Xbar 对更高
+        地址返回 DECERR，绝不静默截断。
         XLEN=64 时 MMU 支持标准 Sv39（默认）与可配置 Sv48；页表必须
         使用 8B PTE、4096B 页表页，详见 MMU Profile。
         Sv39/Sv48 基线分别见 configs/rv64_mmu_defconfig 与
@@ -220,6 +222,38 @@ menu "硬件配置"
           余数已为零或商已确定时提前完成。
 
     endmenu
+
+  endmenu
+
+  menu "ysyxSoC 接口"
+
+    config SOC_XLEN_FOLLOW_CPU
+      bool "SoC CPU 侧接口位宽跟随 CPU XLEN"
+      default n
+      help
+        控制 ysyxSoC CPU 侧接口的 XLEN/数据宽度是否跟随 CPU 的 XLEN。
+        n（默认）: 使用 SOC_XLEN，CPU 与 SoC 位宽相互独立。
+        y: EffectiveSocXLEN = XLEN。
+        注意 follow 只是让 SoC 接口跟随 CPU，并不是强制 CPU 与 SoC
+        同宽；关闭后仍可自由组合 32/64，例如 64 位 CPU 搭配 32 位
+        SoC，或 32 位 CPU 搭配 64 位 SoC。
+
+    config SOC_XLEN
+      int "ysyxSoC CPU 侧接口 XLEN"
+      depends on !SOC_XLEN_FOLLOW_CPU
+      default 32
+      # Kconfig 的 int/range 不能表达离散集合；32/64 的最终校验在
+      # NPCConfig/elaboration 中完成。
+      range 32 64
+      help
+        ysyxSoC CPU 侧接口的 XLEN/数据宽度，仅当
+        SOC_XLEN_FOLLOW_CPU=n 时可见并生效，只允许 32 或 64；
+        elaboration 会拒绝 33..63 等其他值。
+        32 位 ysyxSoC 可以搭配 64 位 CPU：CPU 内部仍使用 64 位地址，
+        但经 SoC 边界的访问必须位于低 4GiB，更高地址在 Xbar 内返回
+        DECERR。64 位 SoC 接口的 AXI 桥接尚未接入 RTL，当前该配置
+        只保留给后续桥接任务，生成结果仍是 32 位 AXI。
+        修改后需重新 make verilog。
 
   endmenu
 
