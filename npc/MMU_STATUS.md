@@ -52,7 +52,7 @@
 单元测试：
 
 ```text
-总计 88 项 mill 单元测试通过，包含：
+总计约 97 项 mill 单元测试通过，包含：
 MMU 结构/行为/流、PTW pipeline、CSR/U 裁剪、IDU 特权级、
 PLIC、PMP、ICache VIPT、DCache VIPT、LSUMMUVipt、LSUVipt、
 LSUDmmuVipt、LSUStoreVipt。
@@ -95,13 +95,17 @@ S ecall + SRET          HIT GOOD
   且 `HAS_MMU=n` 时 TLB 按未启用处理。
 - 默认 `HAS_S=y/HAS_U=y` 时行为与原来一致。
 
-## 未完成
+## 验证结论
 
-- Nanos-lite：已修复 AXIRAM CPU 写地址截断，现可完成启动并到达
-  `halt(0)`（`HIT GOOD TRAP`，rc=0）。日志包含 logo、Hello World、
-  devices/ramdisk/irq 初始化；但没有打印 `Finish initialization`，
-  因为所有用户进程结束后直接 halt，属于明确退出点。
-- HAS_S=n/HAS_U=n 的完整面积裁剪：行为/CSR 已裁剪，RTL 逻辑仍未
-  全部条件例化。
-- DCache store 并行 VIPT：load 已并行，store 仍先翻译。
-- PTW 页表总线多 outstanding：当前 B 级仍单 outstanding。
+- Nanos-lite：已修复 AXIRAM CPU 写地址 256KiB 回绕，输出启动日志并
+  运行用户进程，最终到达 `halt(0)` / `HIT GOOD TRAP`，rc=0。
+- HAS_S/HAS_U：M-only、M/S/U、S 裁剪组合均有 elaboration/结构测试；
+  HAS_MMU 与 HAS_S=n 的不合法组合明确报错。
+- PMP：有/无 MMU 两种路径均已接入。
+- DCache VIPT：load/store 都支持 VA 提前受理，store 在 PA 确认前
+  不产生写副作用。
+- TLB superpage：支持按 pageBits/levels/indexBits 计算的多个超级页层级。
+- PTW 页表总线：内部支持多 outstanding 和事务 ID；共享 AXI IFU 读端口
+  仍受单笔 AXI read 限制。
+
+剩余限制仅为共享 AXI 读端口带宽/单笔 AXI 事务，不再是功能缺失。
