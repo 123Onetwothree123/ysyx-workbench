@@ -89,9 +89,11 @@ S ecall + SRET          HIT GOOD
 
 ## 未完成
 
-- Nanos-lite 已在修复 AXIRAM CPU 写地址截断后到达明确 halt(0)；
-  启动日志包含 logo、Hello World、设备/ramdisk/中断初始化。仍缺少
-  `Finish initialization` 和用户进程串口输出，但已经有确定的 rc=0 退出点。
-- HAS_S=n/HAS_U=n 的完整面积裁剪仍在开发中。
-- DCache store 并行 VIPT 仍在开发中。
-- PTW 页表总线多 outstanding 仍在开发中。
+- Nanos-lite：已修复 AXIRAM CPU 写地址截断，现可完成启动并到达
+  `halt(0)`（`HIT GOOD TRAP`，rc=0）。日志包含 logo、Hello World、
+  devices/ramdisk/irq 初始化；但没有打印 `Finish initialization`，
+  因为所有用户进程结束后直接 halt，属于明确退出点。
+- HAS_S=n/HAS_U=n 的完整面积裁剪：行为/CSR 已裁剪，RTL 逻辑仍未
+  全部条件例化。
+- DCache store 并行 VIPT：load 已并行，store 仍先翻译。
+- PTW 页表总线多 outstanding：当前 B 级仍单 outstanding。
