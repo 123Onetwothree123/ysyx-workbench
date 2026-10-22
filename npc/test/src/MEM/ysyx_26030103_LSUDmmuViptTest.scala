@@ -48,6 +48,22 @@ class ysyx_26030103_LSUDmmuViptTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.pc.poke(pc.U(AddrW.W))
   }
 
+  private def pokeStore(
+      dut: ysyx_26030103_LSUDmmuHarness,
+      vaddr: Long,
+      data:  Long,
+      pc:    Long
+  ): Unit = {
+    dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
+    dut.io.in.bits.MemoryValid.poke(true.B)
+    dut.io.in.bits.MemoryWrite.poke(true.B)
+    dut.io.in.bits.ALUResult.poke(vaddr.U(AddrW.W))
+    dut.io.in.bits.VAddr.poke(vaddr.U(AddrW.W))
+    dut.io.in.bits.WidthSelect.poke(2.U(2.W))
+    dut.io.in.bits.StoreData.poke(data.U(32.W))
+    dut.io.in.bits.pc.poke(pc.U(AddrW.W))
+  }
+
   private def pokeResp(
       dut: ysyx_26030103_LSUDmmuHarness,
       fault: Boolean,
@@ -83,6 +99,10 @@ class ysyx_26030103_LSUDmmuViptTest extends AnyFlatSpec with Matchers {
     dut.io.rdata.poke(0.U(32.W))
     dut.io.rresp.poke(0.U(2.W))
     dut.io.rlast.poke(false.B)
+    dut.io.awready.poke(false.B)
+    dut.io.wready.poke(false.B)
+    dut.io.bvalid.poke(false.B)
+    dut.io.bresp.poke(0.U(2.W))
     clock.step()
     dut.io.req.ready.poke(true.B)
   }
@@ -168,6 +188,96 @@ class ysyx_26030103_LSUDmmuViptTest extends AnyFlatSpec with Matchers {
       bool(dut.io.busy) should be(false)
     }
   }
+
+  it should "store 先以 VA 登记，PA 返回后才发 AW/W 并使用物理地址" in {
+    simulate(new ysyx_26030103_LSUDmmuHarness) { dut =>
+      val clock = dut.clock
+      resetDut(dut, clock, dut.reset)
+      val data = 0x11223344L
+      pokeStore(dut, Va, data, pc = 0x3000L)
+      dut.io.in.valid.poke(true.B)
+      waitUntil(clock, bool(dut.io.in.ready), "DMMU 未受理 store")
+      clock.step()
+      dut.io.in.valid.poke(false.B)
+
+      // store 已进入 LSU 写缓冲，但 PA 未确认：不允许任何写通道动作。
+      // req.ready 为高时翻译请求只持续一拍，因此先等 req.valid 再观察，
+      // 不能先走固定拍数，否则会错过握手。
+      waitUntil(clock, bool(dut.io.req.valid), "store 翻译请求未发出")
+      long(dut.io.req.bits.vaddr) should be(Va)
+      bool(dut.io.awvalid) should be(false)
+      bool(dut.io.wvalid) should be(false)
+      clock.step() // 翻译请求握手
+      pokeResp(dut, fault = false, paddr = Pa)
+      dut.io.resp.valid.poke(true.B)
+      clock.step()
+      dut.io.resp.valid.poke(false.B)
+
+      // PA 到达后才提交，且 AWADDR 必须是物理地址。
+      waitUntil(clock, bool(dut.io.awvalid), "PA 到达后 store 未发 AW")
+      long(dut.io.awADDR) should be(Pa)
+      bool(dut.io.wvalid) should be(true)
+      long(dut.io.wdata) should be(data)
+      long(dut.io.wstrb) should be(0xfL)
+      dut.io.awready.poke(true.B)
+      dut.io.wready.poke(true.B)
+      clock.step()
+      dut.io.awready.poke(false.B)
+      dut.io.wready.poke(false.B)
+
+      waitUntil(clock, bool(dut.io.bready), "store 未等待 B 响应")
+      dut.io.bvalid.poke(true.B)
+      dut.io.bresp.poke(0.U(2.W))
+      clock.step()
+      dut.io.bvalid.poke(false.B)
+
+      waitUntil(clock, bool(dut.io.out.valid), "LSU 未返回 store")
+      long(dut.io.out.bits.ALUResult) should be(Pa)
+      long(dut.io.out.bits.StoreData) should be(data)
+      dut.io.out.ready.poke(true.B)
+      clock.step()
+      dut.io.out.ready.poke(false.B)
+      waitUntil(clock, !bool(dut.io.busy), "DMMU 未在 store 排空后释放")
+    }
+  }
+
+  it should "store 页错误撤销写缓冲且绝不产生 AW/W" in {
+    simulate(new ysyx_26030103_LSUDmmuHarness) { dut =>
+      val clock = dut.clock
+      resetDut(dut, clock, dut.reset)
+      pokeStore(dut, VaFault, 0x55667788L, pc = 0x4000L)
+      dut.io.in.valid.poke(true.B)
+      waitUntil(clock, bool(dut.io.in.ready), "DMMU 未受理 store")
+      clock.step()
+      dut.io.in.valid.poke(false.B)
+
+      waitUntil(clock, bool(dut.io.req.valid), "store 翻译请求未发出")
+      bool(dut.io.awvalid) should be(false)
+      bool(dut.io.wvalid) should be(false)
+      clock.step() // 进入 xwait
+      pokeResp(dut, fault = true, paddr = 0L)
+      dut.io.resp.valid.poke(true.B)
+      clock.step()
+      dut.io.resp.valid.poke(false.B)
+
+      // 精确 page fault：无写事务、无 store 退休，faultCommit 一次。
+      clock.step(3)
+      bool(dut.io.awvalid) should be(false)
+      bool(dut.io.wvalid) should be(false)
+      bool(dut.io.out.valid) should be(false)
+      bool(dut.io.faultCommit) should be(true)
+      long(dut.io.faultCause) should be(13)
+      long(dut.io.faultPC) should be(0x4000L)
+      dut.io.flush.poke(true.B)
+      clock.step()
+      dut.io.flush.poke(false.B)
+      clock.step()
+      bool(dut.io.faultCommit) should be(false)
+      bool(dut.io.busy) should be(false)
+      bool(dut.io.awvalid) should be(false)
+      bool(dut.io.wvalid) should be(false)
+    }
+  }
 }
 
 /** 把 LSUMMU 与 LSU/DCache 按顶层方式连起来，只暴露测试需要的信号。 */
@@ -193,6 +303,17 @@ class ysyx_26030103_LSUDmmuHarness extends Module {
     val rresp = Input(UInt(2.W))
     val rlast = Input(Bool())
     val rready = Output(Bool())
+    // store 写通道：用于验证 PA 未确认/页错误时绝不出现 AW/W。
+    val awvalid = Output(Bool())
+    val awADDR = Output(UInt(32.W))
+    val awready = Input(Bool())
+    val wvalid = Output(Bool())
+    val wdata = Output(UInt(32.W))
+    val wstrb = Output(UInt(4.W))
+    val wready = Input(Bool())
+    val bready = Output(Bool())
+    val bvalid = Input(Bool())
+    val bresp = Input(UInt(2.W))
   })
   val dmmu = Module(new ysyx_26030103_LSUMMU(ParallelVipt = true))
   val lsu = Module(
@@ -234,6 +355,7 @@ class ysyx_26030103_LSUDmmuHarness extends Module {
   lsu.io.ViptPAddrVaddr := dmmu.io.memPaddrVaddr
   lsu.io.ViptKill := dmmu.io.memKill
   dmmu.io.memActive := lsu.io.Busy
+  dmmu.io.memTrap := lsu.io.MemTrapCommit
   lsu.io.DCacheFlush := false.B
   // 该 harness 走 MMU 路径，PMP 由 DMMU 翻译后检查。
   lsu.io.PmpFault := false.B
@@ -241,11 +363,11 @@ class ysyx_26030103_LSUDmmuHarness extends Module {
   io.out.bits := lsu.io.out.bits
   lsu.io.out.ready := io.out.ready
 
-  lsu.io.DataBus.AW.AWREADY := false.B
-  lsu.io.DataBus.W.WREADY := false.B
-  lsu.io.DataBus.B.BVALID := false.B
+  lsu.io.DataBus.AW.AWREADY := io.awready
+  lsu.io.DataBus.W.WREADY := io.wready
+  lsu.io.DataBus.B.BVALID := io.bvalid
   lsu.io.DataBus.B.BID := 0.U
-  lsu.io.DataBus.B.BRESP := 0.U
+  lsu.io.DataBus.B.BRESP := io.bresp
   lsu.io.DataBus.AR.ARREADY := io.arready
   lsu.io.DataBus.R.RVALID := io.rvalid
   lsu.io.DataBus.R.RID := 0.U
@@ -256,4 +378,10 @@ class ysyx_26030103_LSUDmmuHarness extends Module {
   io.arADDR := lsu.io.DataBus.AR.ARADDR
   io.arLEN := lsu.io.DataBus.AR.ARLEN
   io.rready := lsu.io.DataBus.R.RREADY
+  io.awvalid := lsu.io.DataBus.AW.AWVALID
+  io.awADDR := lsu.io.DataBus.AW.AWADDR
+  io.wvalid := lsu.io.DataBus.W.WVALID
+  io.wdata := lsu.io.DataBus.W.WDATA
+  io.wstrb := lsu.io.DataBus.W.WSTRB
+  io.bready := lsu.io.DataBus.B.BREADY
 }

@@ -60,6 +60,7 @@ class ysyx_26030103_LSUMMUViptTest extends AnyFlatSpec with Matchers {
     dut.io.flush.poke(false.B)
     dut.io.pmpFault.poke(false.B)
     dut.io.memActive.poke(false.B)
+    dut.io.memTrap.poke(false.B)
     dut.io.req.ready.poke(false.B)
     dut.io.resp.valid.poke(false.B)
     dut.io.resp.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
@@ -174,6 +175,30 @@ class ysyx_26030103_LSUMMUViptTest extends AnyFlatSpec with Matchers {
       clock.step()
       bool(dut.io.busy) should be(false)
       bool(dut.io.memPaddrValid) should be(false)
+    }
+  }
+
+  it should "LSU 已提交访存陷阱时撤销在途翻译，迟到故障不再提交" in {
+    simulate(new ysyx_26030103_LSUMMU(ParallelVipt = true)) { dut =>
+      val clock = dut.clock
+      resetDut(dut, clock, dut.reset)
+      startLoad(dut, clock, pc = 0x3000L)
+      forwardAndRequest(dut, clock)
+      dut.io.memActive.poke(true.B)
+
+      // LSU 已用本地原因（如 misaligned）提交陷阱，翻译结果不再有用。
+      dut.io.memTrap.poke(true.B)
+      clock.step()
+      dut.io.memTrap.poke(false.B)
+      bool(dut.io.busy) should be(false)
+      bool(dut.io.memPaddrValid) should be(false)
+
+      // 旧翻译随后迟到：只能在 idle 被排空，不能产生 faultCommit。
+      respond(dut, clock, fault = true)
+      clock.step(2)
+      bool(dut.io.faultCommit) should be(false)
+      bool(dut.io.memPaddrValid) should be(false)
+      bool(dut.io.busy) should be(false)
     }
   }
 }

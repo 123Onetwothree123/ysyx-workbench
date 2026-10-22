@@ -100,6 +100,20 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     )))
   }
 
+  it should "VIPT 数据缓存打开时顶层可 elaboration" in {
+    // 数据侧并行 VIPT 需要 DCache 打开；store 也会先以 VA 进入 LSU 写
+    // 缓冲，等带 VA 标签的 PA 到达后才提交。这里保证该配置的顶层接线
+    // 与所有端口都能完整 elaboration。
+    emit(new _root_.ysyx_26030103.ysyx_26030103(ysyx_26030103_NPCConfig(
+      DCacheEnable = true,
+      MMU = ysyx_26030103_MMUProfile(
+        enabled = true,
+        tlbEnabled = true,
+        cacheMode = "vipt"
+      )
+    )))
+  }
+
   it should "HAS_PMP=y 且 HAS_MMU=n 时顶层可 elaboration" in {
     emit(new _root_.ysyx_26030103.ysyx_26030103(ysyx_26030103_NPCConfig(
       MMU = ysyx_26030103_MMUProfile(

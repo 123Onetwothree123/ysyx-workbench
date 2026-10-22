@@ -194,11 +194,11 @@ class ysyx_26030103_IFUMMU(ParallelVipt: Boolean = false) extends Module {
   * PIPT（ParallelVipt=false）保持原行为：完整翻译完成后再把指令交给 LSU，
   * MMU 故障不会在 LSU/总线上留下任何副作用。
   *
-  * VIPT 并行模式（ParallelVipt=true）下，load 会先以 VA 交给 LSU/DCache
-  * （DCache 立即用 VA 选 index），MMU 同时翻译；PA 带 VA 标签通过独立端口
-  * 返回。翻译故障通过 memKill 取消 LSU 中已受理的请求，并由 faultCommit
-  * 向 EXU 提交精确 page fault。store 仍保持“先翻译后生效”，绝不在页错误
-  * 确定前进入写缓冲/总线。
+  * VIPT 并行模式（ParallelVipt=true）下，load/store 都会先以 VA 交给 LSU
+  * （DCache 用 VA 选 index），MMU 同时翻译；PA 带 VA 标签通过独立端口返回。
+  * store 只登记到写缓冲，LSU 必须等 PA 标签匹配后才允许发 AW/W 或更新
+  * DCache。翻译故障通过 memKill 取消 LSU 中已受理的请求，并由 faultCommit
+  * 向 EXU 提交精确 page fault，故障 store 不产生任何写副作用。
   */
 class ysyx_26030103_LSUMMU(val ParallelVipt: Boolean = false) extends Module {
   val io = IO(new Bundle {
@@ -226,6 +226,10 @@ class ysyx_26030103_LSUMMU(val ParallelVipt: Boolean = false) extends Module {
     // LSU 是否仍持有更老/当前指令。VIPT 并行模式用它保证翻译结果在
     // 被消费前不被下一笔请求覆盖。
     val memActive = Input(Bool())
+    // LSU 已为更老/当前指令提交访存陷阱（misaligned/PMP/总线故障）。
+    // VIPT 下该指令可能仍在 DMMU 翻译中；必须撤销翻译，避免迟到的
+    // page fault 在陷阱处理程序中造成第二次异常。
+    val memTrap = Input(Bool())
     val req = Decoupled(new ysyx_26030103_MMURequest)
     val resp = Flipped(Decoupled(new ysyx_26030103_MMUResponse))
   })
@@ -334,39 +338,27 @@ class ysyx_26030103_LSUMMU(val ParallelVipt: Boolean = false) extends Module {
         // 新请求受理时先撤销上一笔 PA，防止相同 VA 的旧 PA 被误用。
         paddrValidReg := false.B
       }
-      when(!isMem || (bypass && io.in.bits.MemoryWrite)) {
-        // 非访存和 bypass store 仍组合直通；bypass store 的 VA==PA，
-        // 不会在页错误前产生副作用。
+      when(!isMem) {
+        // 非访存指令组合直通。
         io.out.valid := io.in.valid
         io.out.bits := io.in.bits
-      }.elsewhen(isMem && bypass) {
-        // bypass load：PA 就是 VA，立即有效；仍先锁存再交给 LSU。
-        when(io.in.fire) {
-          msgReg := io.in.bits
-          msgBypass := true.B
+      }.elsewhen(io.in.fire) {
+        // load/store 都先锁存原始 VA 并转发给 LSU：store 此时只进入写
+        // 缓冲登记，不会发 AW/W；PA 由翻译结果带标签返回。
+        msgReg := io.in.bits
+        msgBypass := bypass
+        state := fwd
+        when(bypass) {
+          // bypass 时 VA==PA，可以在 LSU 受理前就给出有效 PA。
           paddrReg := io.in.bits.ALUResult
           paddrVaddrReg := io.in.bits.VAddr
           paddrValidReg := true.B
-          state := fwd
-        }
-      }.elsewhen(isMem && io.in.bits.MemoryWrite) {
-        // store 不允许先进入 LSU：页错误时不能产生任何总线副作用。
-        when(io.in.fire) {
-          msgReg := io.in.bits
-          msgBypass := false.B
-          state := xreq
-        }
-      }.otherwise {
-        // 可翻译 load：先锁存原始 VA 并转发给 LSU，MMU 同时开始翻译。
-        when(io.in.fire) {
-          msgReg := io.in.bits
-          msgBypass := false.B
-          state := fwd
         }
       }
     }
     when(state === fwd) {
       // 这里交给 LSU 的 ALUResult 仍是 VA；物理地址只通过 memPaddr 提供。
+      // store 也只是在此登记到 LSU 写缓冲，PA 有效前不会发 AW/W。
       io.out.valid := true.B
       io.out.bits := msgReg
       when(io.out.fire) {
@@ -409,25 +401,31 @@ class ysyx_26030103_LSUMMU(val ParallelVipt: Boolean = false) extends Module {
       io.memKill := io.resp.valid && io.resp.bits.fault
     }
     when(state === done) {
-      when(msgReg.MemoryValid && !msgReg.MemoryWrite) {
-        // load 已经交给 LSU；翻译结果保持到 LSU 完全排空，之后才允许
-        // 下一笔请求覆盖 paddrReg。
-        when(!io.memActive) {
-          paddrValidReg := false.B
-          state := idle
-        }
-      }.otherwise {
-        // store 在这里才带着 PA 交给 LSU（与 PIPT 的退休时序一致）。
-        io.in.ready := io.out.ready
-        io.out.valid := true.B
-        io.out.bits := msgReg
-        io.out.bits.ALUResult := paddrReg
-        when(io.out.fire) { state := idle }
+      // load/store 都已交给 LSU；翻译结果保持到 LSU 完全排空，之后才允许
+      // 下一笔请求覆盖 paddrReg。store 的 LSU 写缓冲会在 PA 标签匹配后
+      // 自行完成总线提交，因此这里不再重复转发。
+      when(!io.memActive) {
+        paddrValidReg := false.B
+        state := idle
       }
     }
     when(io.flush) {
+      // xreq/xwait/done 表示请求已经交给更老的 LSU 流水级，来自更年轻指令
+      // 的冲刷不能撤销它；否则 store/load 会永远等不到 PA。仍留在 fwd 的
+      // 请求尚未进入 LSU，属于年轻指令，必须丢弃。
+      when(state === idle || state === fwd || state === fault) {
+        state := idle
+        faultReg := false.B
+        paddrValidReg := false.B
+      }
+    }
+    // LSU 已为当前指令提交 misaligned/PMP/总线陷阱：该指令不会再消费
+    // 翻译结果。撤销在途翻译；迟到的 MMU 响应会在 idle 被 resp.ready
+    // 排空，仲裁器在该响应消费前不会为 DMMU 发起下一笔请求。
+    when(io.memTrap) {
       state := idle
       faultReg := false.B
+      paddrValidReg := false.B
     }
   }
 }

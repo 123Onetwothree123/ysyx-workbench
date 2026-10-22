@@ -314,6 +314,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     lsu.io.ViptPAddrVaddr := dmmuOpt.get.io.memPaddrVaddr
     lsu.io.ViptKill := dmmuOpt.get.io.memKill
     dmmuOpt.get.io.memActive := lsu.io.Busy
+    // LSU 本地陷阱（misaligned/PMP/总线错误）优先于尚未返回的翻译；
+    // 撤销在途 DMMU 请求，防止同一个 store/load 二次提交 page fault。
+    dmmuOpt.get.io.memTrap := lsu.io.MemTrapCommit
   } else {
     ysyx_26030103_StageConnect(exu.io.out, lsu.io.in, lsu.io.FlushEXMEM)
     // 无 MMU 时 VA==PA；VIPT 并行端口不使用，绑定安全常量。

@@ -39,7 +39,9 @@
 - PTW 返回 in_order/out_of_order 选择；MMU 层仍保证架构响应顺序。
 - PIPT 和 VIPT：VIPT 使用虚拟地址提前选 index/block offset，物理地址
   到达后再做 tag/PMA/refill。ICache 和 DCache 都有并行 VIPT 路径；
-  DCache 的并行提前访存覆盖 load，store 仍先翻译以避免页错误前产生总线副作用。
+  DCache 的 load/store 都可以提前受理：store 先按 VA 登记写缓冲，只有
+  携带匹配 VA 标签的 PA 返回后才发 AW/W 或更新缓存镜像，页错误 kill
+  不会留下任何写副作用。
 - 可选 PTW PTE cache（set-associative）。
 - IFU/LSU 双端口仲裁：两笔翻译可以同时在途，响应按 ID 路由；
   DMMU 对非访存指令组合直通。
@@ -50,10 +52,10 @@
 单元测试：
 
 ```text
-总计 71 项 mill 单元测试通过，包含：
+总计 88 项 mill 单元测试通过，包含：
 MMU 结构/行为/流、PTW pipeline、CSR/U 裁剪、IDU 特权级、
 PLIC、PMP、ICache VIPT、DCache VIPT、LSUMMUVipt、LSUVipt、
-LSUDmmuVipt。
+LSUDmmuVipt、LSUStoreVipt。
 ```
 
 裸机测试（MMU 开启）：

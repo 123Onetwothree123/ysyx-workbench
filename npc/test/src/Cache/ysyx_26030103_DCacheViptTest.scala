@@ -114,6 +114,27 @@ class ysyx_26030103_DCacheViptTest extends AnyFlatSpec with Matchers {
     io.req.valid.poke(false.B)
   }
 
+  /** 模拟 LSU 在 store 收到成功 BRESP 后发出的写回镜像事件。
+    * StoreVAddr 负责选 index，StoreAddr 是翻译后的 PA，只参与 tag/PMA。
+    */
+  private def issueStore(
+    io:    ysyx_26030103_DCacheInterface,
+    clock: Clock,
+    vaddr: Long,
+    paddr: Long,
+    data:  Long
+  ): Unit = {
+    io.StoreVAddr.poke(vaddr.U(AddrW.W))
+    io.StoreAddr.poke(paddr.U(AddrW.W))
+    io.StoreData.poke(data.U(32.W))
+    io.StoreStrb.poke("hf".U(4.W))
+    io.StoreResp.poke(0.U(2.W))
+    io.StoreValid.poke(true.B)
+    clock.step()
+    io.StoreValid.poke(false.B)
+    io.StoreStrb.poke(0.U(4.W))
+  }
+
   private def resetDut(
     io:    ysyx_26030103_DCacheInterface,
     clock: Clock,
@@ -202,6 +223,21 @@ class ysyx_26030103_DCacheViptTest extends AnyFlatSpec with Matchers {
     issueLoad(io, clock, VaB, PaB, paddrValid = true, paddrVaddr = VaB)
     bool(io.AXI.AR.ARVALID) should be(false)
     expectResponse(io, clock, lineB(0), "VA_B hit lineB")
+
+    // --- 3b) store 镜像：用 VA 选 index、PA 做 tag ---
+    // PA_B 的组索引是 0，而 VA_B 的组索引是 1。只有按 VA 更新才能让
+    // 随后的 VA_B load 命中新数据。
+    issueStore(io, clock, VaB, PaB, 0x12345678L)
+    issueLoad(io, clock, VaB, PaB, paddrValid = true, paddrVaddr = VaB)
+    bool(io.AXI.AR.ARVALID) should be(false)
+    expectResponse(io, clock, 0x12345678L, "store mirror by VA index")
+
+    // 旧/错误 PA 标签不能更新当前 VA 对应的缓存行：StoreVAddr 仍选组 1，
+    // 但 PA_A 的 tag 与组内 PA_B 行不匹配，应保持旧数据。
+    issueStore(io, clock, VaB, PaA, 0xdeadbeefL)
+    issueLoad(io, clock, VaB, PaB, paddrValid = true, paddrVaddr = VaB)
+    bool(io.AXI.AR.ARVALID) should be(false)
+    expectResponse(io, clock, 0x12345678L, "stale PA rejected")
 
     // --- 4) kill 取消等待 PA 的请求，不能留下响应/AR ---
     issueLoad(io, clock, VaC, 0L, paddrValid = false, paddrVaddr = VaC)

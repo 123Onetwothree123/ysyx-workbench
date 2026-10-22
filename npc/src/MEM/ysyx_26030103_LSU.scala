@@ -165,22 +165,24 @@ class ysyx_26030103_LSU(
     MsgReg := StageInputBits
   }
   val ActiveInstruction = Mux(StageIsIdle, StageInputBits, MsgReg)
-  // VIPT 并行 load 进入 LSU 时 ALUResult 仍是 VA；翻译结果通过独立端口
-  // 晚到。退休/mtrace/调试需要和 PIPT 一样看到物理地址，因此这里按 VA
-  // 标签锁存有效的 PA。非访存/非 load 指令保持原始 ALUResult。
-  val ViptActiveLoad = ActiveInstruction.MemoryValid && !ActiveInstruction.MemoryWrite
+  // VIPT 并行 load/store 进入 LSU 时 ALUResult 仍是 VA；翻译结果通过独立
+  // 端口晚到。退休/mtrace/调试需要和 PIPT 一样看到物理地址，因此这里按
+  // VA 标签锁存有效的 PA。非访存指令保持原始 ALUResult。
+  // 只接受“当前指令 VAddr 与 PA 标签匹配”的结果，旧 VA 的迟到 PA 会被
+  // 丢弃；LSUMMU 在受理新请求时还会先撤销上一笔 PA。
+  val ViptActiveMem = ActiveInstruction.MemoryValid
   val EffectiveALUResult = WireDefault(ActiveInstruction.ALUResult)
   if (DCacheVipt && ViptParallel) {
     val PAddrValidReg = RegInit(false.B)
     val PAddrReg = Reg(UInt(32.W))
     when(startMem) { PAddrValidReg := false.B }
     when(io.ViptPAddrValid && io.ViptPAddrVaddr === ActiveInstruction.VAddr &&
-        ViptActiveLoad) {
+        ViptActiveMem) {
       PAddrValidReg := true.B
       PAddrReg := io.ViptPAddr
     }
     EffectiveALUResult :=
-      Mux(PAddrValidReg && ViptActiveLoad, PAddrReg, ActiveInstruction.ALUResult)
+      Mux(PAddrValidReg && ViptActiveMem, PAddrReg, ActiveInstruction.ALUResult)
   }
   private def AddressIsMisaligned(Address: UInt, Width: UInt): Bool =
     Mux(
@@ -506,10 +508,16 @@ class ysyx_26030103_LSU(
   // 这样 RAM 的 SLVERR/DECERR 也能精确转换成 store access fault(cause=7)。
   val wbAddr = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbVAddr = Reg(Vec(WBufDepth, UInt(32.W)))
+  // VIPT 并行 store：wbAddr 暂存 VA，翻译后的 PA 单独保存并带有效位。
+  // 只有该位为 1（或处于 PIPT 模式）才允许驱动 AW/W 和更新 DCache。
+  val wbPAddr = Reg(Vec(WBufDepth, UInt(32.W)))
+  val wbPAddrValid = RegInit(VecInit(Seq.fill(WBufDepth)(false.B)))
   val wbData = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbStrb = Reg(Vec(WBufDepth, UInt(4.W)))
   val wbSize = Reg(Vec(WBufDepth, UInt(3.W)))
   val wbMisaligned = Reg(Vec(WBufDepth, Bool()))
+  // PIPT/无 MMU 时入队地址就是物理地址，保持原有行为完全不变。
+  private val WbNeedsPAddr = DCacheVipt && ViptParallel
   val wbHead = RegInit(0.U(log2Ceil(WBufDepth).max(1).W)) // 队首(最老)
   val wbTail = RegInit(0.U(log2Ceil(WBufDepth).max(1).W)) // 下一个空位
   val wbCount = RegInit(0.U(log2Ceil(WBufDepth + 1).W))
@@ -520,10 +528,20 @@ class ysyx_26030103_LSU(
   // 后续从 PendingStore 提升为活动队首时绝不重复入队。
   val wbPush = io.in.fire && io.in.bits.MemoryValid && io.in.bits.MemoryWrite
   assert(!wbPush || !wbufFull, "LSU accepted a store while its write buffer was full")
+  // bypass store 的 PA 在 LSU 受理拍已经带正确 VA 标签到达，可以同拍登记；
+  // 需要页表翻译的 store 则先保持无效，等独立 PA 端口。
+  val IncomingViptPAddrMatch =
+    io.ViptPAddrValid && io.ViptPAddrVaddr === io.in.bits.VAddr
   when(wbPush) {
     if (WBufDepth == 1) {
       wbAddr(0) := io.in.bits.ALUResult
       wbVAddr(0) := io.in.bits.VAddr
+      wbPAddr(0) := Mux(
+        WbNeedsPAddr.B && IncomingViptPAddrMatch,
+        io.ViptPAddr,
+        io.in.bits.ALUResult
+      )
+      wbPAddrValid(0) := !WbNeedsPAddr.B || IncomingViptPAddrMatch
       wbData(0) := IncomingWriteData
       wbStrb(0) := IncomingWriteMask
       wbSize(0) := IncomingAXISize
@@ -535,6 +553,12 @@ class ysyx_26030103_LSU(
     } else {
       wbAddr(wbTail) := io.in.bits.ALUResult
       wbVAddr(wbTail) := io.in.bits.VAddr
+      wbPAddr(wbTail) := Mux(
+        WbNeedsPAddr.B && IncomingViptPAddrMatch,
+        io.ViptPAddr,
+        io.in.bits.ALUResult
+      )
+      wbPAddrValid(wbTail) := !WbNeedsPAddr.B || IncomingViptPAddrMatch
       wbData(wbTail) := IncomingWriteData
       wbStrb(wbTail) := IncomingWriteMask
       wbSize(wbTail) := IncomingAXISize
@@ -603,25 +627,60 @@ class ysyx_26030103_LSU(
   // OKAY按字节更新命中行；错误响应只失效该行，以覆盖从机可能的部分副作用。
   val wbHeadAddr = if (WBufDepth == 1) wbAddr(0) else wbAddr(wbHead)
   val wbHeadVAddr = if (WBufDepth == 1) wbVAddr(0) else wbVAddr(wbHead)
+  val wbHeadPAddr = if (WBufDepth == 1) wbPAddr(0) else wbPAddr(wbHead)
+  val wbHeadPAddrValid =
+    if (WBufDepth == 1) wbPAddrValid(0) else wbPAddrValid(wbHead)
   val wbHeadData = if (WBufDepth == 1) wbData(0) else wbData(wbHead)
   val wbHeadStrb = if (WBufDepth == 1) wbStrb(0) else wbStrb(wbHead)
   val wbHeadSize = if (WBufDepth == 1) wbSize(0) else wbSize(wbHead)
   val wbHeadMisaligned =
     if (WBufDepth == 1) wbMisaligned(0) else wbMisaligned(wbHead)
+  // 只有写缓冲队首会对总线/DCache 产生副作用。VIPT 下必须等这笔 store
+  // 自己的 PA 带匹配 VA 标签返回；旧标签或尚未翻译的 PA 都被拒绝。
+  val wbHeadReady =
+    !WbNeedsPAddr.B || wbHeadPAddrValid
+  val WbHeadEffectiveAddr =
+    if (WbNeedsPAddr) wbHeadPAddr else wbHeadAddr
+  // 同拍 pop+push 且缓冲满时，tail 会复用即将出队的 head 槽位。此时新
+  // store 的 PA 有效位必须由 wbPush 写入，不能被上一笔 store 的迟到 PA
+  // 覆盖；否则新 store 可能带着旧 PA 发出 AW/W。
+  val WbPushOverwritesHead =
+    wbPush && (if (WBufDepth == 1) true.B else wbTail === wbHead)
+  val WbPAddrMatchesHead = io.ViptPAddrValid &&
+    io.ViptPAddrVaddr === wbHeadVAddr && !wbHeadPAddrValid &&
+    !WbPushOverwritesHead
+  when(!wbufEmpty && WbNeedsPAddr.B && WbPAddrMatchesHead) {
+    if (WBufDepth == 1) {
+      wbPAddr(0) := io.ViptPAddr
+      wbPAddrValid(0) := true.B
+    } else {
+      wbPAddr(wbHead) := io.ViptPAddr
+      wbPAddrValid(wbHead) := true.B
+    }
+  }
+  // 出队槽位不再持有待用 PA。若同拍有新 store 复用它，上面的 wbPush
+  // 已经写入该项自己的有效位，不能被清零覆盖。
+  when(wbPop && !wbPush) {
+    if (WBufDepth == 1) {
+      wbPAddrValid(0) := false.B
+    } else {
+      wbPAddrValid(wbHead) := false.B
+    }
+  }
   DCache.io.StoreValid := wbPop
   DCache.io.StoreResp := io.DataBus.B.BRESP
-  DCache.io.StoreAddr := wbHeadAddr
+  DCache.io.StoreAddr := WbHeadEffectiveAddr
   DCache.io.StoreVAddr := wbHeadVAddr
   DCache.io.StoreData := wbHeadData
   DCache.io.StoreStrb := wbHeadStrb
   // Idle 可直接驱动已经寄存的队首，避免“发现非空→切 Issue→下一拍才
-  // 拉 VALID”的固定空拍。失败/非对齐队首会阻断所有年轻副作用。
-  val wbCanStart = !wbufEmpty && !wbHeadMisaligned &&
+  // 拉 VALID”的固定空拍。失败/非对齐/等待 PA 的队首会阻断所有年轻副作用。
+  val wbCanStart = !wbufEmpty && !wbHeadMisaligned && wbHeadReady &&
     !io.PmpFault && !StoreFaultReg && !MemFaultReg
   val wbDrivingIssue = wbState === wbIssue || (wbState === wbIdle && wbCanStart)
   when(wbDrivingIssue) {
     io.DataBus.AW.AWVALID := !wbAWDone
-    io.DataBus.AW.AWADDR := wbHeadAddr
+    io.DataBus.AW.AWADDR := WbHeadEffectiveAddr
     io.DataBus.AW.AWLEN := 0.U
     io.DataBus.AW.AWSIZE := wbHeadSize
     io.DataBus.AW.AWBURST := 1.U
@@ -870,7 +929,7 @@ class ysyx_26030103_LSU(
   // 无 MMU 的 PMP 检查对象：写缓冲非空时是队首 store（唯一可能在本拍
   // 产生写副作用的项），否则是本拍即将受理的访存指令。store 在写缓冲
   // 中始终保持架构顺序，因此队首地址也对应最老未完成 store。
-  io.PmpAddr := Mux(!wbufEmpty, wbHeadAddr, StageInputBits.ALUResult)
+  io.PmpAddr := Mux(!wbufEmpty, WbHeadEffectiveAddr, StageInputBits.ALUResult)
   io.PmpWrite := Mux(!wbufEmpty, true.B, StageInputBits.MemoryWrite)
   io.IsStore := is_store_transaction
   io.StallReadAR := state === StatesReadRequest
@@ -884,6 +943,9 @@ class ysyx_26030103_LSU(
   // load 退休；精确 page fault 由顶层 LSUMMU 的 faultCommit 提交。
   if (DCacheVipt && ViptParallel) {
     when(io.ViptKill) {
+      // 翻译故障发生在 store 已进入写缓冲、但 PA 尚未确认的阶段。此时
+      // 队首绝不可能已经发过 AW/W（由 wbHeadReady 门控），因此可以连同
+      // 已经排队的年轻 store 一起整体撤销，保持精确异常。
       stageState := StageIdle
       DCacheRequestActive := false.B
       state := StatesIdle
@@ -893,6 +955,16 @@ class ysyx_26030103_LSU(
       AccessFaultRespReg := 0.U
       StoreFaultReg := false.B
       is_store_transaction := false.B
+      PendingStoreCount := 0.U
+      PendingStoreHead := 0.U
+      PendingStoreTail := 0.U
+      wbCount := 0.U
+      wbHead := 0.U
+      wbTail := 0.U
+      wbState := wbIdle
+      wbAWDone := false.B
+      wbWDone := false.B
+      wbPAddrValid.foreach(_ := false.B)
     }
   }
 }
