@@ -90,10 +90,10 @@ S ecall + SRET          HIT GOOD
 ## 未完成
 
 - Nanos-lite 完整退出：AM NPC 的 VME/CTE、页表和 S 模式入口已补齐，
-  新镜像 279,616 字节可加载；`hello` 可 HIT GOOD TRAP。Nanos 新镜像
-  仍在早期跳到 PC=0。裸机隔离测试进一步确认：
-  - `satp=0` 时 S 模式 `mret` 正常；
-  - 设置 Sv32 页表并 `satp` 非零后，`mret` 提交到 S 模式后第一次
-    取指停住，未看到 PTW 总线请求，也未进入 stvec 故障处理。
-  下一步需要继续定位 IFUMMU/MMU 请求在 S 模式 satp 下的握手，或
-  手写页表的地址/权限问题。
+  新镜像 279,616 字节可加载；`hello` 可 HIT GOOD TRAP。Nanos 已能打印
+  启动 logo、`Hello World`、device/ramdisk/irq 日志，并在
+  `schedule()` 无进程可调度时 `halt(0)`，到达 HIT GOOD TRAP。此前
+  PC=0 的根因不是 IFUMMU/MMU，而是 AXIRAM 的 CPU 写地址被截成 16 位，
+  64MiB RAM 的 store 每 256KiB 回绕，导致栈上保存的 `ra` 读回 0。
+- 仍未观察到 S 模式切换后的 `Finish initialization` 和用户进程串口
+  输出；需继续确认内核页表中 UART 的映射/缓存路径。

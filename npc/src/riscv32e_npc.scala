@@ -110,7 +110,9 @@ class riscv32e_npc_AXIRAM extends Module {
   // RAM 只保留一个写端口。主机初始化发生在 reset 期间，
   // 并且优先于 AXI 写，避免为 SyncReadMem 推导额外写端口。
   val cpuWriteValid = WireDefault(false.B)
-  val cpuWriteIndex = WireDefault(0.U(16.W))
+  // 必须和 hostWriteIndex 一样使用完整的 wordIndexBits；此前写成 16 位，
+  // 64MiB RAM 的 CPU store 会在 256KiB 处回绕，高地址栈写入全部丢失。
+  val cpuWriteIndex = WireDefault(0.U(wordIndexBits.W))
   val cpuWriteData = WireDefault(0.U(32.W))
   when(io.hostWriteValid || cpuWriteValid) {
     mem.write(

@@ -9,7 +9,15 @@ void __am_input_keybrd(AM_INPUT_KEYBRD_T *);
 
 static void __am_timer_config(AM_TIMER_CONFIG_T *cfg) { cfg->present = true; cfg->has_rtc = true; }
 static void __am_input_config(AM_INPUT_CONFIG_T *cfg) { cfg->present = true;  }
-static void __am_uart_config(AM_INPUT_CONFIG_T *cfg) { cfg->present = false;  }
+static void __am_uart_config(AM_UART_CONFIG_T *cfg) { cfg->present = false;  }
+// direct-NPC 没有 VGA/GPU：返回一个 0x0 的“不存在”设备，Nanos-lite
+// 的 init_device/init_fs 会据此把 /dev/fb 的大小设为 0，而不是 panic。
+static void __am_gpu_config(AM_GPU_CONFIG_T *cfg) {
+  cfg->present = false;
+  cfg->width = 0;
+  cfg->height = 0;
+}
+static void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl) { (void)ctl; }
 
 typedef void (*handler_t)(void *buf);
 static void *lut[128] = {
@@ -19,6 +27,8 @@ static void *lut[128] = {
   [AM_INPUT_CONFIG] = __am_input_config,
   [AM_INPUT_KEYBRD] = __am_input_keybrd,
   [AM_UART_CONFIG]  = __am_uart_config,
+  [AM_GPU_CONFIG]   = __am_gpu_config,
+  [AM_GPU_FBDRAW]   = __am_gpu_fbdraw,
 };
 
 static void fail(void *buf) { panic("access nonexist register"); }
