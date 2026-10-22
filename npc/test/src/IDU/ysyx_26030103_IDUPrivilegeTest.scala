@@ -126,6 +126,41 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  it should "HAS_S=n/HAS_U=y 时 U 按真实特权级检查 CSR" in {
+    simulate(new ysyx_26030103_IDUPrivilegeHarness(
+      config(hasU = true, hasS = false)
+    )) { dut =>
+      setup(dut)
+
+      // M 模式仍可访问 M 级 CSR。
+      dut.io.instruction.poke(CsrrsMstatus.U)
+      dut.io.privilege.poke(3.U)
+      bool(dut.io.exceptionValid) should be(false)
+
+      // U 模式访问 M 级 CSR 是非法指令（cause=2）。
+      dut.io.privilege.poke(0.U)
+      bool(dut.io.exceptionValid) should be(true)
+      dut.io.exceptionCause.peek().litValue should be(2)
+
+      // mcounteren 全开时 U 可以读用户计数器。
+      dut.io.instruction.poke(CsrrsCycle.U)
+      bool(dut.io.exceptionValid) should be(false)
+
+      // S CSR 已从实现集合裁剪，U/M 访问都非法。
+      dut.io.instruction.poke(CsrrsSstatus.U)
+      bool(dut.io.exceptionValid) should be(true)
+      dut.io.privilege.poke(3.U)
+      bool(dut.io.exceptionValid) should be(true)
+
+      // MRET 只能在 M 执行；U 执行 MRET 是非法指令，不能借机提权。
+      dut.io.instruction.poke(0x30200073L.U)
+      bool(dut.io.exceptionValid) should be(false)
+      dut.io.privilege.poke(0.U)
+      bool(dut.io.exceptionValid) should be(true)
+      dut.io.exceptionCause.peek().litValue should be(2)
+    }
+  }
+
   it should "HAS_S=n 时 SRET/SFENCE.VMA/S 级 CSR 都是非法指令" in {
     simulate(new ysyx_26030103_IDUPrivilegeHarness(
       config(hasU = false, hasS = false)

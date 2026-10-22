@@ -426,6 +426,148 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  it should "M+U：MRET 返回 U，U ecall 以 cause=8 进入 M 且 MPP=U" in {
+    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+      hasS = false,
+      hasU = true
+    )
+    simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
+      setup(dut)
+      // M+U 下 M 模式 ecall 仍然是 cause=11。
+      dut.io.enable.poke(true.B)
+      dut.io.isEcall.poke(true.B)
+      bool(dut.io.trapCommit) should be(true)
+      long(dut.io.committedCause) should be(11L)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isEcall.poke(false.B)
+
+      // M+U 没有 S：软件写 MPP=S(1) 时 WARL 收敛到 U(0)，MRET 进入 U。
+      write(dut, 0x305, 0x80002000L)
+      write(dut, MSTATUS, 0x800)
+      ((read(dut, MSTATUS) >> 11) & 3) should be(0)
+      write(dut, MSTATUS, 0)
+      ((read(dut, MSTATUS) >> 11) & 3) should be(0)
+      write(dut, MEPC, 0x80001000L)
+      dut.io.enable.poke(true.B)
+      dut.io.isMret.poke(true.B)
+      bool(dut.io.exceptionTaken) should be(true)
+      long(dut.io.exceptionTarget) should be(0x80001000L)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isMret.poke(false.B)
+      long(dut.io.privilege) should be(0L)
+
+      // U 模式 ecall 直接进入 M，cause=8，mtvec 是入口。
+      dut.io.pc.poke(0x80001004L)
+      dut.io.enable.poke(true.B)
+      dut.io.isEcall.poke(true.B)
+      bool(dut.io.trapCommit) should be(true)
+      long(dut.io.committedCause) should be(8L)
+      long(dut.io.exceptionTarget) should be(0x80002000L)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isEcall.poke(false.B)
+      long(dut.io.privilege) should be(3L)
+      read(dut, MEPC) should be(0x80001004L)
+      read(dut, 0x342) should be(8L)
+      ((read(dut, MSTATUS) >> 11) & 3) should be(0)
+
+      // MPP 仍是 U，MRET 可以再次回到 U。
+      write(dut, MEPC, 0x80003000L)
+      dut.io.enable.poke(true.B)
+      dut.io.isMret.poke(true.B)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isMret.poke(false.B)
+      long(dut.io.privilege) should be(0L)
+      long(dut.io.exceptionTarget) should be(0x80003000L)
+    }
+  }
+
+  it should "M+U：U 的非法指令和地址异常都进入 M" in {
+    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+      hasS = false,
+      hasU = true
+    )
+    simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
+      setup(dut)
+      write(dut, 0x305, 0x80002000L)
+      write(dut, MSTATUS, 0)
+      write(dut, MEPC, 0x80004000L)
+      dut.io.enable.poke(true.B)
+      dut.io.isMret.poke(true.B)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isMret.poke(false.B)
+      long(dut.io.privilege) should be(0L)
+
+      // cause=2 非法指令，cause=1/5/7 取指/load/store 访问异常。
+      val faults = Seq(
+        2L -> 0xdeadbeefL,
+        1L -> 0x80005000L,
+        5L -> 0x80006000L,
+        7L -> 0x80007000L
+      )
+      for ((cause, tval) <- faults) {
+        val pc = 0x80004000L + (cause << 2)
+        dut.io.pc.poke(pc.U)
+        dut.io.trapTval.poke(tval.U)
+        dut.io.trapCause.poke(cause.U)
+        dut.io.trapValid.poke(true.B)
+        dut.io.enable.poke(true.B)
+        bool(dut.io.trapCommit) should be(true)
+        long(dut.io.committedCause) should be(cause)
+        long(dut.io.exceptionTarget) should be(0x80002000L)
+        dut.clock.step()
+        dut.io.trapValid.poke(false.B)
+        dut.io.enable.poke(false.B)
+        long(dut.io.privilege) should be(3L)
+        read(dut, MEPC) should be(pc)
+        read(dut, 0x342) should be(cause)
+        read(dut, 0x343) should be(tval)
+        ((read(dut, MSTATUS) >> 11) & 3) should be(0)
+
+        // MPP=U，MRET 回到 U 继续下一项。
+        dut.io.enable.poke(true.B)
+        dut.io.isMret.poke(true.B)
+        dut.clock.step()
+        dut.io.enable.poke(false.B)
+        dut.io.isMret.poke(false.B)
+        long(dut.io.privilege) should be(0L)
+      }
+    }
+  }
+
+  it should "M+U 不生成 S CSR，SRET/SFENCE.VMA 不产生副作用" in {
+    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+      hasS = false,
+      hasU = true
+    )
+    val chirrtl = ChiselStage.emitCHIRRTL(new ysyx_26030103_CSR(profile))
+    Seq("SatpReg", "Sscratch", "Stval", "Medeleg", "Mideleg",
+      "SstatusReg").foreach { name =>
+      chirrtl should not include name
+    }
+    simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
+      setup(dut)
+      read(dut, 0x100) should be(0)
+      read(dut, 0x105) should be(0)
+      read(dut, 0x141) should be(0)
+      read(dut, 0x142) should be(0)
+      read(dut, 0x143) should be(0)
+      read(dut, 0x180) should be(0)
+      dut.io.enable.poke(true.B)
+      dut.io.isSret.poke(true.B)
+      bool(dut.io.exceptionTaken) should be(false)
+      dut.io.isSret.poke(false.B)
+      dut.io.isSfenceVma.poke(true.B)
+      bool(dut.io.flushTLB) should be(false)
+      dut.io.isSfenceVma.poke(false.B)
+      dut.io.enable.poke(false.B)
+    }
+  }
+
   it should "HAS_S=n 的结构中不出现 S 模式状态寄存器" in {
     val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
       hasS = false,

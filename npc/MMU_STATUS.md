@@ -114,17 +114,20 @@ Sv48：csrc/Test/rv64-sv48-test HIT GOOD
 - `HAS_PMP=y` 启用基础 PMP：OFF/TOR/NA4/NAPOT、L 锁定和 R/W/X；
   有 MMU 时检查翻译后的物理地址，无 MMU 时直接检查 IFU 物理取指
   地址和 LSU 的 VA==PA 访存地址。
-- `HAS_U=y`：保持 M/S/U 三特权级、U 模式 ecall(cause=8)、U 页
-  U 位/SUM 检查和 SRET 返回 U 的原有行为。
+- `HAS_U=y`：M/S/U 三特权级或 M+U（`HAS_S=n`）配置。U 模式
+  ecall 的 cause=8，MRET 按 mstatus.MPP 返回 U；有 S 时保留 U 页
+  U 位/SUM 检查和 SRET 返回 U 的行为。
 - `HAS_U=n`：MRET/SRET 的最低目标特权级固定为 S（mstatus.MPP/SPP
   的 U 编码在写入时夹到 S）；U 级 CSR 从实现集合裁剪；ecall cause=8
   选择路径被裁掉；TLB/PTW 的 U 位和 SUM 检查固定为不适用，
   S 模式可直接访问 U=1 的页（R/W/X 仍检查）。
-- `HAS_S=n`：M-only 配置。S 级 CSR、`stvec/sepc/scause/stval`、`satp`、
-  委托寄存器、S 中断视图和 S 模式入口逻辑在 elaboration 期直接裁剪；
-  SRET/SFENCE.VMA 在译码阶段按非法指令处理。`HAS_MMU=y` 或 `HAS_U=y`
-  与 `HAS_S=n` 组合会在 elaboration 前明确报错，不会静默保留 S 逻辑。
-- `HAS_MMU=y` 要求 `HAS_S=y`；当前不支持 M-only 的 Sv32/Sv39/Sv48。
+- `HAS_S=n`：M-only 或 M+U 配置。S 级 CSR、`stvec/sepc/scause/stval`、
+  `satp`、委托寄存器、S 中断视图和 S 模式入口逻辑在 elaboration 期
+  直接裁剪；SRET/SFENCE.VMA 在译码阶段按非法指令处理。M+U 时
+  U 的异常/中断全部进入 M（`mepc/mcause/mtval/mstatus.MPP`），
+  `mcounteren` 保留用于门控 U 访问用户计数器。
+- `HAS_MMU=y` 要求 `HAS_S=y`；`HAS_S=n + HAS_MMU=y` 即使
+  `HAS_U=y` 也会在 elaboration 前明确报错，不会静默保留 S 逻辑。
   `HAS_TLB=y` 且 `HAS_MMU=n` 时 TLB 按未启用处理。
 - `XLEN=64 + HAS_MMU=y` 只接受标准 Sv39/Sv48：`MMU_LEVELS=3/4`、
   `MMU_PTE_SIZE_BYTES=8`、`MMU_PTE_FORMAT=riscv64`、
@@ -137,8 +140,8 @@ Sv48：csrc/Test/rv64-sv48-test HIT GOOD
 
 - Nanos-lite：已修复 AXIRAM CPU 写地址 256KiB 回绕，输出启动日志并
   运行用户进程，最终到达 `halt(0)` / `HIT GOOD TRAP`，rc=0。
-- HAS_S/HAS_U：M-only、M/S/U、S 裁剪组合均有 elaboration/结构测试；
-  HAS_MMU 与 HAS_S=n 的不合法组合明确报错。
+- HAS_S/HAS_U：M-only、M+U、M/S/U、S 裁剪组合均有 elaboration/结构测试；
+  HAS_MMU 与 HAS_S=n 的不合法组合（包括 M+U）明确报错。
 - PMP：有/无 MMU 两种路径均已接入。
 - DCache VIPT：load/store 都支持 VA 提前受理，store 在 PA 确认前
   不产生写副作用。

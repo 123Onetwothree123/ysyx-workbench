@@ -117,17 +117,18 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     if (config.MMU.pmpEnabled) Some(Module(new ysyx_26030103_PMP(config.MMU.pmpEntries, config.AddressWidth)))
     else None
   // HAS_U=n 时 MPP 理论上已被 CSR 夹到 S；顶层再做一次防御性夹取，
-  // 避免 MPRV 数据访问把不存在的 U 特权级送进 MMU/PMP。HAS_S=n 时
-  // M-only 不存在 MPRV 降级，数据访问固定按 M 特权级检查。
+  // 避免 MPRV 数据访问把不存在的 U 特权级送进 MMU/PMP。HAS_S=n 但
+  // HAS_U=y 时 M+U 仍可保存 U，MPRV 降级必须按 MPP 而不是固定 M；
+  // 只有 M-only 才没有 MPRV 降级，数据访问固定按 M 特权级检查。
   val hasS = config.MMU.hasS
   val hasU = config.MMU.hasU
   val MprvPrivilege =
-    if (!hasS) 3.U(2.W)
-    else if (hasU) exu.io.CSRCurrentMstatus(12, 11)
-    else Mux(exu.io.CSRCurrentMstatus(12, 11) === 0.U, 1.U(2.W),
+    if (hasU) exu.io.CSRCurrentMstatus(12, 11)
+    else if (hasS) Mux(exu.io.CSRCurrentMstatus(12, 11) === 0.U, 1.U(2.W),
       exu.io.CSRCurrentMstatus(12, 11))
+    else 3.U(2.W)
   val dataPrivilege =
-    if (!hasS) 3.U(2.W)
+    if (!hasS && !hasU) 3.U(2.W)
     else Mux(
       exu.io.CSRPrivilege === 3.U && exu.io.CSRCurrentMstatus(17),
       MprvPrivilege,

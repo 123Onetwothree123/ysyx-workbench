@@ -194,4 +194,46 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       read(dut, STVAL) should be(BigInt("0000000080003000", 16))
     }
   }
+
+  it should "支持 M+U（无 S）的 64 位 MRET/ecall 入口" in {
+    val mPlusU = ysyx_26030103_MMUProfile(
+      enabled = false,
+      xlen = 64,
+      pteSizeBytes = 8,
+      pteFormat = "riscv64",
+      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      hasS = false,
+      hasU = true
+    )
+    simulate(new ysyx_26030103_RV64CSRHarness(mPlusU)) { dut =>
+      setup(dut)
+      write(dut, 0x305, BigInt("0000000080002000", 16))
+      write(dut, MSTATUS, 0)
+      write(dut, MEPC, BigInt("0000000080001000", 16))
+      dut.io.enable.poke(true.B)
+      dut.io.isMret.poke(true.B)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isMret.poke(false.B)
+      big(dut.io.privilege) should be(BigInt(0))
+      big(dut.io.exceptionTarget) should be(BigInt("0000000080001000", 16))
+
+      dut.io.pc.poke(BigInt("0000000080001008", 16).U(64.W))
+      dut.io.enable.poke(true.B)
+      dut.io.isEcall.poke(true.B)
+      bool(dut.io.trapCommit) should be(true)
+      big(dut.io.committedCause) should be(BigInt(8))
+      big(dut.io.exceptionTarget) should be(BigInt("0000000080002000", 16))
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isEcall.poke(false.B)
+      big(dut.io.privilege) should be(BigInt(3))
+      big(dut.io.exceptionTarget) should be(BigInt("0000000080001008", 16))
+      read(dut, 0x341) should be(BigInt("0000000080001008", 16))
+      read(dut, 0x342) should be(BigInt(8))
+      ((read(dut, MSTATUS) >> 11) & 3) should be(BigInt(0))
+      read(dut, 0x100) should be(BigInt(0))
+      read(dut, 0x180) should be(BigInt(0))
+    }
+  }
 }

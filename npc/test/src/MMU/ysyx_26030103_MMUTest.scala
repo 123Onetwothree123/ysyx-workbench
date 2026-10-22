@@ -146,6 +146,28 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     emit(new _root_.ysyx_26030103.ysyx_26030103(config))
   }
 
+  it should "HAS_S=n/HAS_U=y 的 M+U 顶层可 elaboration 且不生成 MMU/TLB/PTW" in {
+    def config = ysyx_26030103_NPCConfig(
+      MMU = ysyx_26030103_MMUProfile(
+        enabled = false,
+        tlbEnabled = false,
+        hasS = false,
+        hasU = true,
+        pmpEnabled = true,
+        pmpEntries = 16
+      )
+    )
+    val chirrtl = ChiselStage.emitCHIRRTL(
+      new _root_.ysyx_26030103.ysyx_26030103(config)
+    )
+    Seq("ysyx_26030103_MMU", "ysyx_26030103_TLB",
+      "ysyx_26030103_PTW", "ysyx_26030103_IFUMMU",
+      "ysyx_26030103_LSUMMU").foreach { name =>
+      chirrtl should not include name
+    }
+    emit(new _root_.ysyx_26030103.ysyx_26030103(config))
+  }
+
   it should "HAS_MMU=y 且 HAS_S=n 时在 elaboration 前明确报错" in {
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_MMUProfile(enabled = true, hasS = false, hasU = false)

@@ -186,14 +186,15 @@ class ysyx_26030103_IDU(
     else csrAddresses.map(a => CSRAddress === a.U(12.W)).reduceOption(_ || _).getOrElse(false.B)
   // 地址位 [9:8] 编码最低可访问特权级：00=U, 01=S, 11=M。
   // HAS_U=n 时 U 级不再存在：防御性地把 0 级请求提升为 S，并显式拒绝
-  // U 级 CSR，避免上游异常状态重新打开 U 模式访问路径。HAS_S=n 时只剩
-  // M 级，只有 [9:8]=11 的 CSR 可通过特权检查。
+  // U 级 CSR，避免上游异常状态重新打开 U 模式访问路径。HAS_S=n 但
+  // HAS_U=y（M+U）时仍按真实 U 特权级检查；S 级地址已由 csrSupported
+  // 从 csrAddresses 裁剪，因此 U/M 都不会看到 S CSR。
   val EffectivePrivilege =
-    if (!hasS) 3.U(2.W)
+    if (!hasS && !hasU) 3.U(2.W)
     else if (hasU) io.Privilege
     else Mux(io.Privilege === 0.U, 1.U(2.W), io.Privilege)
   val CSRPrivilegeOk =
-    if (!hasS) CSRAddress(9, 8) === "b11".U(2.W)
+    if (!hasS && !hasU) CSRAddress(9, 8) === "b11".U(2.W)
     else (EffectivePrivilege >= CSRAddress(9, 8)) &&
       (if (hasU) true.B else CSRAddress(9, 8) =/= 0.U(2.W))
   val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W) ||
@@ -205,7 +206,8 @@ class ysyx_26030103_IDU(
   val CounterBit = CSRAddress(2, 0)
   val CounterAccessOk = !IsUserCounter || EffectivePrivilege === 3.U ||
     (io.Mcounteren(CounterBit) &&
-      (EffectivePrivilege === 1.U || io.Scounteren(CounterBit)))
+      (if (hasS) EffectivePrivilege === 1.U || io.Scounteren(CounterBit)
+       else true.B))
   val CSRIllegal =
     IsCSRInstruction &&
       (!CSRAddressValid || !CSRPrivilegeOk || !CounterAccessOk ||
@@ -222,11 +224,20 @@ class ysyx_26030103_IDU(
   val TwFault =
     if (hasS) (EffectivePrivilege =/= 3.U) && io.Mstatus(21) && IsWfi
     else false.B
+  // 返回指令的固定特权级约束：MRET 只能在 M，SRET/SFENCE.VMA 只能在 S。
+  // M+U 没有 S，U 若执行 MRET 必须作为非法指令陷入 M，而不能提权。
+  val MretFault = IsMret && EffectivePrivilege =/= 3.U
+  val SretFault =
+    if (hasS) IsSret && EffectivePrivilege =/= 1.U else false.B
+  // SFENCE.VMA 在 S/M 都可用，只禁止 U。
+  val SfenceFault =
+    if (hasS) IsSfenceVma && EffectivePrivilege === 0.U else false.B
   // custom-0 不属于通用 ALU decoder 的 opcode 集合；精确匹配的仿真
   // halt 编码在这里显式豁免，custom-0 的其它编码仍然是非法指令。
   val IllegalInsn =
     (ALUCDIllegal && !IsSimHalt) || !IsKnownInstruction || CSRIllegal ||
-      TvmFault || TsrFault || TwFault
+      TvmFault || TsrFault || TwFault ||
+      MretFault || SretFault || SfenceFault
   val needsRs2 = IsRType || IsBType || IsSType
   // 源操作数真正被使用的判断(lui/auipc/jal的rs1字段是立即数,不算使用)
   val usesRs1 = IsRType || IsIType || IsSType || IsBType ||

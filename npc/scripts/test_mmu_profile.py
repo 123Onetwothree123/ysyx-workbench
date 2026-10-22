@@ -108,12 +108,23 @@ class MmuProfileTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "HAS_MMU=y"):
             build_profile(Config(values))
 
-    def test_u_requires_s(self):
+    def test_u_without_s_is_m_plus_u(self):
         values = self.base()
         values["HAS_MMU"] = False
+        values["HAS_TLB"] = False
         values["HAS_S"] = False
         values["HAS_U"] = True
-        with self.assertRaisesRegex(ValueError, "HAS_U=y"):
+        profile = build_profile(Config(values))
+        self.assertFalse(profile["enabled"]["s"])
+        self.assertTrue(profile["enabled"]["u"])
+        self.assertFalse(profile["enabled"]["mmu"])
+        self.assertFalse(profile["enabled"]["tlb"])
+
+    def test_mmu_requires_s_even_with_u(self):
+        values = self.base()
+        values["HAS_S"] = False
+        values["HAS_U"] = True
+        with self.assertRaisesRegex(ValueError, "HAS_MMU=y"):
             build_profile(Config(values))
 
     def test_m_only_without_mmu(self):

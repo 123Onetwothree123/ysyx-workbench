@@ -56,18 +56,33 @@ class ysyx_26030103_PrivilegeConfigTest extends AnyFlatSpec with Matchers {
     p.hasU should be(false)
   }
 
-  it should "明确拒绝 HAS_MMU=y 且 HAS_S=n" in {
-    val error = intercept[IllegalArgumentException] {
-      ysyx_26030103_MMUProfile(enabled = true, hasS = false, hasU = false)
-    }
-    error.getMessage should include("HAS_MMU=y 需要 HAS_S=y")
+  it should "支持 M+U（HAS_S=n/HAS_U=y/HAS_MMU=n）" in {
+    val p = ysyx_26030103_MMUProfile.fromEnv(env(
+      "HAS_S" -> "n",
+      "HAS_U" -> "y",
+      "HAS_MMU" -> "n"
+    ))
+    p.hasS should be(false)
+    p.hasU should be(true)
+    p.lowestPrivilege should be(0)
+    // M 级 CSR 与 M+U 需要的 mcounteren 保留；S 级 CSR 全部裁剪。
+    p.csrSupported(0x300) should be(true)
+    p.csrSupported(0x306) should be(true)
+    p.csrSupported(0x100) should be(false)
+    p.csrSupported(0x180) should be(false)
+    p.csrSupported(0x141) should be(false)
+    p.csrSupported(0x142) should be(false)
+    // 用户计数器仍按 U 级 CSR 保留（是否可访问还受 mcounteren 门控）。
+    p.copy(csrEnabled = p.csrEnabled + 0xc00).csrSupported(0xc00) should be(true)
   }
 
-  it should "明确拒绝 HAS_U=y 且 HAS_S=n" in {
-    val error = intercept[IllegalArgumentException] {
-      ysyx_26030103_MMUProfile(hasS = false, hasU = true)
+  it should "明确拒绝 HAS_MMU=y 且 HAS_S=n（即使 HAS_U=y）" in {
+    for (hasU <- Seq(false, true)) {
+      val error = intercept[IllegalArgumentException] {
+        ysyx_26030103_MMUProfile(enabled = true, hasS = false, hasU = hasU)
+      }
+      error.getMessage should include("HAS_MMU=y 需要 HAS_S=y")
     }
-    error.getMessage should include("HAS_U=y 需要 HAS_S=y")
   }
 
   it should "fromEnv 拒绝 M-only 下打开 MMU" in {

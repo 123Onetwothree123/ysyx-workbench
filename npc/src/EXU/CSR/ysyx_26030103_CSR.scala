@@ -9,8 +9,10 @@ import chisel3.util._
   * 以及异常入口的特权级切换。
   *
   * HAS_S=n 时只生成 M 模式 CSR/异常入口，S 模式寄存器和委托逻辑在
-  * elaboration 期直接省略；HAS_U=n 时 U 级 CSR、ecall cause=8 和返回 U
-  * 的选择路径同样被裁掉。默认 HAS_S=y/HAS_U=y 的行为保持不变。
+  * elaboration 期直接省略；但 HAS_U=y 时仍保留 U 特权级，U 的所有
+  * 异常/中断直接进入 M（ecall cause=8），不生成任何 S CSR 或委托。
+  * HAS_U=n 时 U 级 CSR、ecall cause=8 和返回 U 的选择路径同样被裁掉。
+  * 默认 HAS_S=y/HAS_U=y 的行为保持不变。
   */
 class ysyx_26030103_CSR(
     val profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
@@ -226,9 +228,10 @@ class ysyx_26030103_CSR(
     } else 0.U(XLEN.W)
 
   val Mstatus_rdata = Mstatus.io.rdata
-  // M-only 时特权级恒为 M，不生成寄存器；有 S 时只保存 S/M 两个可达状态
-  // （HAS_U=y 时寄存器自然也可以保存 U）。
-  val Privilege: UInt = if (hasS) RegInit(3.U(2.W)) else 3.U(2.W)
+  // M-only 时特权级恒为 M，不生成寄存器；有 S 或 U 时需要保存可达的
+  // 特权级。M+U 没有 S 级，但 MRET/异常仍会在 M 与 U 之间切换。
+  val Privilege: UInt =
+    if (hasS || hasU) RegInit(3.U(2.W)) else 3.U(2.W)
   val MstatusReadData =
     (Mstatus_rdata & (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(32.W)) |
       (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(32.W)
@@ -336,10 +339,14 @@ class ysyx_26030103_CSR(
     ExceptionCause := 3.U(32.W)
   }.otherwise {
     // ecall 的 cause 由当前特权级决定：U=8，S=9，M=11。
-    // HAS_U=n 时 U 级不可达，直接裁掉 cause=8 的选择路径；HAS_S=n 时
-    // 只剩 M 级，ecall 恒为 cause=11。
+    // HAS_U=n 时 U 级不可达，直接裁掉 cause=8 的选择路径；HAS_S=n
+    // 但 HAS_U=y（M+U）时 U 的 ecall 仍是 8，S 级路径不存在。
     ExceptionCause := (if (!hasS) {
-      11.U(32.W)
+      if (hasU) {
+        Mux(Privilege === 0.U, 8.U(32.W), 11.U(32.W))
+      } else {
+        11.U(32.W)
+      }
     } else if (hasU) {
       Mux(Privilege === 0.U, 8.U(32.W),
         Mux(Privilege === 1.U, 9.U(32.W), 11.U(32.W)))
@@ -552,19 +559,29 @@ class ysyx_26030103_CSR(
     }
   }
   io.Satp := SatpRegOpt.getOrElse(0.U(XLEN.W))
-  if (hasS) {
-    val MretPrivilege =
+  if (hasS || hasU) {
+    val MretPrivilege: UInt =
       if (hasU) Mstatus_rdata(12, 11)
-      else Mux(Mstatus_rdata(12), 3.U(2.W), 1.U(2.W))
-    val SretPrivilege =
-      if (hasU) Mux(Mstatus_rdata(8), 1.U(2.W), 0.U(2.W))
-      else 1.U(2.W)
-    when(ExceptionCommit) {
-      Privilege := Mux(TrapToS, 1.U, 3.U)
-    }.elsewhen(MretCommit) {
-      Privilege := MretPrivilege
-    }.elsewhen(SretCommit) {
-      Privilege := SretPrivilege
+      else if (hasS) Mux(Mstatus_rdata(12), 3.U(2.W), 1.U(2.W))
+      else 3.U(2.W)
+    if (hasS) {
+      val SretPrivilege =
+        if (hasU) Mux(Mstatus_rdata(8), 1.U(2.W), 0.U(2.W))
+        else 1.U(2.W)
+      when(ExceptionCommit) {
+        Privilege := Mux(TrapToS, 1.U, 3.U)
+      }.elsewhen(MretCommit) {
+        Privilege := MretPrivilege
+      }.elsewhen(SretCommit) {
+        Privilege := SretPrivilege
+      }
+    } else {
+      // M+U：没有 S 入口，所有异常/中断都进入 M；MRET 按 MPP 返回 M/U。
+      when(ExceptionCommit) {
+        Privilege := 3.U
+      }.elsewhen(MretCommit) {
+        Privilege := MretPrivilege
+      }
     }
   }
   io.Privilege := Privilege
@@ -646,7 +663,7 @@ class ysyx_26030103_CSR(
         Mux(MretCommit, Mepc_rdata, Sepc_rdata)
       )
     } else {
-      // M-only：MRET 返回 mepc；不存在 S 入口。
+      // HAS_S=n：不存在 S 入口；异常/中断进入 M，MRET 返回 mepc。
       Mux(ExceptionCommit, MtvecTrapTarget, Mepc_rdata)
     }
   )

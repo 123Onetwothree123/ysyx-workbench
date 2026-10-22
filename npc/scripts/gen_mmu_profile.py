@@ -178,10 +178,8 @@ def build_profile(cfg: Config) -> dict:
     has_s = cfg.bool("HAS_S")
     has_u = cfg.bool("HAS_U")
     has_mmu = cfg.bool("HAS_MMU")
-    # S 模式提供 U 模式的 CSR/SRET 入口；M-only 配置不能保留 U 级。
-    if has_u and not has_s:
-        raise ValueError("HAS_U=y 需要 HAS_S=y：U 模式依赖 S 模式 CSR/SRET")
-    # 当前 Sv32 实现依赖 satp/页错误入口/异常委托，必须显式拒绝 M-only MMU。
+    # RISC-V 允许 M+U：没有 S 时 U 的陷阱直接进入 M，不需要 SRET/S CSR。
+    # 只有 MMU/Sv32/Sv39/Sv48 必须依赖 S 模式的 satp/页错误入口。
     if has_mmu and not has_s:
         raise ValueError(
             "HAS_MMU=y 需要 HAS_S=y：MMU/Sv32 依赖 S 模式 satp/页错误入口；"

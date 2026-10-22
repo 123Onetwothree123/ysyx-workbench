@@ -129,8 +129,8 @@ case class ysyx_26030103_MMUProfile(
   require(tlbAsidBits >= 0 && tlbAsidBits <= 16, "tlbAsidBits 必须在 0..16")
   require(utlbLookupPorts >= 1 && utlbLookupPorts <= 2, "utlbLookupPorts 必须在 1..2")
   require(refillPorts >= 1, "refillPorts 必须 >= 1")
-  // U 模式依赖 S 模式提供的 CSR/SRET 入口；HAS_S=n 时不允许保留 U 级。
-  require(hasS || !hasU, "HAS_U=y 需要 HAS_S=y：U 模式依赖 S 模式 CSR/SRET")
+  // RISC-V 允许 M+U：没有 S 时 U 的陷阱直接进入 M，用 mepc/mcause/
+  // mtval/mstatus.MPP 保存状态，MRET 按 MPP 返回 U。只有 MMU 必须依赖 S。
   // Sv32/Sv39/Sv48 页表翻译、satp、页错误入口和异常委托都属于 S 模式。
   // HAS_S=n 时必须显式关闭 MMU，而不是静默保留完整 S 逻辑。
   require(!enabled || hasS,
@@ -154,9 +154,11 @@ case class ysyx_26030103_MMUProfile(
     val csrPrivilege = (addr >> 8) & 0x3
     val uLevel = csrPrivilege == 0
     val sLevel = csrPrivilege == 1
-    // medeleg/mideleg/mcounteren 是 M 级地址，但只控制不存在的 S/U
-    // 状态；HAS_S=n 时一并从实现集合裁剪。
-    val sControl = addr == 0x302 || addr == 0x303 || addr == 0x306
+    // medeleg/mideleg 是 M 级地址，但只控制不存在的 S 状态，HAS_S=n
+    // 时从实现集合裁剪。mcounteren 仍是 M 级寄存器：M+U 下它门控 U
+    // 访问用户计数器，因此只有连 U 都不存在时才裁剪。
+    val sControl =
+      addr == 0x302 || addr == 0x303 || (addr == 0x306 && !hasU)
     // HAS_U=n 时 U 级 CSR 一并从实现集合裁剪；HAS_S=n 时裁剪 S 级 CSR。
     ((hasU || !uLevel) && (hasS || (!sLevel && !sControl))) &&
       (csrEnabled.contains(addr) ||
@@ -164,7 +166,7 @@ case class ysyx_26030103_MMUProfile(
           (addr >= 0x3b0 && addr <= 0x3bf))))
   }
 
-  /** 当前配置允许的最低特权级：HAS_U=n 时最低只能是 S；HAS_S=n 时只有 M。 */
+  /** 当前配置允许的最低特权级：有 U 为 U；否则有 S 为 S；M-only 为 M。 */
   final val lowestPrivilege: Int = if (hasU) 0 else if (hasS) 1 else 3
 
   require(Set("split", "unified").contains(tlbOrganization),
