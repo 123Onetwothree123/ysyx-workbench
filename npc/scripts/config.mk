@@ -23,8 +23,11 @@ $(MCONF): $(KCONFIG_BUILD)/CMakeCache.txt
 
 $(CONF): $(MCONF)
 
+# kconfig 使用 C++20 模块，CMake 必须使用 Ninja 生成器；默认的
+# Unix Makefiles 不支持模块扫描，会在配置阶段直接报错。
 $(KCONFIG_BUILD)/CMakeCache.txt:
-	$(Q)mkdir -p $(KCONFIG_BUILD) && cd $(KCONFIG_BUILD) && cmake ..
+	$(Q)mkdir -p $(KCONFIG_BUILD)
+	$(Q)cd $(KCONFIG_BUILD) && cmake -G Ninja ..
 
 $(FIXDEP):
 	$(Q)$(MAKE) $(silent) -C $(FIXDEP_PATH)

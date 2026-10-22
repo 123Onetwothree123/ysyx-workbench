@@ -38,8 +38,11 @@
 - 页表必须位于低 4GiB（外部 SoC AXI 边界）；更高物理地址的叶模块行为
   仍由 Xbar/Cache 定向测试覆盖。
 - 非标准 RV64 页表几何在 elaboration 期明确报错；`configs/rv64_mmu_defconfig`
-  提供 Sv39 + TLB 基线。
-- 裸机镜像：`csrc/Test/rv64-mmu-test`。
+  提供 Sv39 + TLB 基线，`configs/rv64_sv48_defconfig` 提供 Sv48 + TLB
+  独立基线。
+- 裸机镜像：Sv39 为 `csrc/Test/rv64-mmu-test`，Sv48 为
+  `csrc/Test/rv64-sv48-test`；后者的 `satp.MODE=9`、四级页表与
+  独立构建目录见 `scripts/rv64_sv48_regression.sh`。
 
 ## 本阶段不做
 

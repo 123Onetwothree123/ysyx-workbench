@@ -15,6 +15,8 @@ menu "硬件配置"
         4GiB，Xbar 对更高地址返回 DECERR，绝不静默截断。
         XLEN=64 时 MMU 支持标准 Sv39（默认）与可配置 Sv48；页表必须
         使用 8B PTE、4096B 页表页，详见 MMU Profile。
+        Sv39/Sv48 基线分别见 configs/rv64_mmu_defconfig 与
+        configs/rv64_sv48_defconfig。
 
     config RISCV_M
       bool "M 扩展（乘/除/取余）"

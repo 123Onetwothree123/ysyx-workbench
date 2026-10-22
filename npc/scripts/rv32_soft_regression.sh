@@ -16,7 +16,7 @@ TOOL=${CROSS_COMPILE:-riscv64-unknown-elf-}
 mkdir -p "$WORK" "$NANOS/build"
 
 log_step() { printf '\n===== %s =====\n' "$*"; }
-run_sdb() { printf 'ftrace off\nc\n' | timeout 180 "$BIN" "$@" 2>&1; }
+run_sdb() { printf 'ftrace off\nc\n' | timeout 120 "$BIN" "$@" 2>&1; }
 
 log_step "1. 构建 RV32E direct-NPC（nanos_defconfig）"
 cd "$NPC"
@@ -60,7 +60,7 @@ cd "$NANOS"
 AM_HOME="$AM" make ARCH=riscv32e-npc HAS_NAVY= -j"$(nproc)" \
   >"$WORK/nanos-build.log" 2>&1
 NANOS_BIN="$NANOS/build/nanos-lite-riscv32e-npc.bin"
-timeout 180 bash -c "printf 'ftrace off\nc\n' | '$BIN' '$NANOS_BIN'" \
+timeout 120 bash -c "printf 'ftrace off\nc\n' | '$BIN' '$NANOS_BIN'" \
   >"$WORK/nanos-run.log" 2>&1
 grep -q "'Hello World!' from Nanos-lite" "$WORK/nanos-run.log"
 grep -q 'user: hello from Nanos-lite ELF user program' "$WORK/nanos-run.log"

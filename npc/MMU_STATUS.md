@@ -94,6 +94,9 @@ Sv32：S ecall + SRET          HIT GOOD
 Sv39：csrc/Test/rv64-mmu-test HIT GOOD
       （4KiB walk、TLB refill、1GiB 超级页取指、load/store 页错误、
        U 页 SUM、A/D fault、非规范 VA）
+Sv48：csrc/Test/rv64-sv48-test HIT GOOD
+      （satp.MODE=9、四级 walk、1GiB 超级页取指、4KiB 映射、
+       未映射页与非规范 VA 页错误、TLB 重访）
 ```
 
 ## 配置行为
@@ -146,8 +149,10 @@ Sv39：csrc/Test/rv64-mmu-test HIT GOOD
 - 剩余限制：PTW 内部页表总线可配置到 16 笔，但下游 4 位 AXI ID 在保留
   ICache/LSU/DMA 后只剩 13 个 PTW 槽；更多请求会在 PTWToAXI 队列等待，
   不再退化为单笔串行，也不影响功能正确性。
-- Sv48 已完成参数化 walker/TLB 与顶层 elaboration，并有 PTW 四级 walk
-  单元测试；当前没有独立 Sv48 裸机镜像，默认裸机基线使用 Sv39。
-  未配置对应几何的 satp.MODE 写入按 WARL 收敛到 Bare(0)。
+- Sv48 已完成参数化 walker/TLB、顶层 elaboration、PTW 四级 walk
+  单元测试与独立裸机镜像 `csrc/Test/rv64-sv48-test`
+  （`configs/rv64_sv48_defconfig`，独立 `BUILD_DIR` 构建）。默认裸机
+  基线仍使用 Sv39；未配置对应几何的 satp.MODE 写入按 WARL 收敛到
+  Bare(0)。
 - RV64 顶层仍受外部 ysyxSoC 32 位 AXI 地址限制：页表和数据必须位于
   低 4GiB；Xbar 对更高地址返回 DECERR。

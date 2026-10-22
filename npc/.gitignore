@@ -12,6 +12,7 @@
 !*.py
 !*.scala
 !*.[cSh]
+!*.ld
 !*.v
 !*.cpp
 !*.cc
