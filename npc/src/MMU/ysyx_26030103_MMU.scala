@@ -20,9 +20,11 @@ class ysyx_26030103_MMU(
     "页表级数必须在 1..4")
   require(profile.pageBits + profile.levels * profile.indexBitsPerLevel == 32,
     "pageBits + levels*indexBits 必须等于 32")
-  require(!profile.tlbSuperpage || (profile.pageSizeBytes == 4096 && profile.levels == 2),
-    "TLB 超级页当前只支持 4KiB/2 级 Sv32")
-  require(!profile.tlbSuperpage || profile.superpage, "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
+  // TLB 超级页的 shift/tag 由 profile 几何推导，不再限制 Sv32/2 级。
+  require(!profile.tlbSuperpage || profile.superpage,
+    "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
+  require(!profile.tlbSuperpage || profile.levels <= 4,
+    "TLB_SUPERPAGE 的 fillLevel 只有 2 位，levels 必须在 1..4")
   require(profile.ptwOutstanding >= 1 && profile.ptwOutstanding <= 16,
     "MMU_PTW_OUTSTANDING 必须在 1..16")
   require(profile.refillPorts >= 1, "TLB refill 端口数必须 >= 1")
@@ -90,6 +92,8 @@ class ysyx_26030103_MMU(
     storage = profile.tlbStorage,
     superpage = profile.tlbSuperpage,
     pageBits = profile.pageBits,
+    levels = profile.levels,
+    indexBits = profile.indexBitsPerLevel,
     refillPorts = refillPorts,
     hasU = profile.hasU,
     lookupPorts = lookupPorts

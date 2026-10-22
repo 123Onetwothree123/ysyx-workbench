@@ -115,9 +115,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     pmp.io.addr := exu.io.PmpAddr
     pmp.io.fetchAddr := ifu.io.FetchAddr
     pmp.io.fetchPriv := exu.io.CSRPrivilege
-    pmp.io.dataAddr := 0.U
+    // 默认按无 MMU 路径接 LSU 的访存检查地址；MMU 分支稍后覆盖成
+    // DMMU 给出的物理地址。这样两种配置共用同一个 PMP 例化。
+    pmp.io.dataAddr := lsu.io.PmpAddr
     pmp.io.dataPriv := dataPrivilege
-    pmp.io.dataWrite := false.B
+    pmp.io.dataWrite := lsu.io.PmpWrite
   }
   val mmuUnitOpt =
     if (mmuEnabled) Some(Module(new ysyx_26030103_MMU(config.MMU))) else None
@@ -155,10 +157,21 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val fetchTranslationFault =
     immuOpt.map(_.io.fault).getOrElse(false.B)
   val fetchPaddr = immuOpt.map(_.io.fetchPaddr).getOrElse(ifu.io.FetchAddr)
+  // 无 MMU 时的取指 PMP 检查：PMP 直接看 IFU 的物理取指地址（VA==PA）。
+  // 故障请求不进入 ICache，而是在响应级注入一条带 cause=1 的精确异常。
+  // pending 只产生一次注入；blocked 一直保持到流水冲刷，防止故障 PC 被
+  // 反复取指而灌入一串年轻故障指令。
+  val pmpFetchFault = pmpOpt.map(_.io.fetchFault).getOrElse(false.B)
+  val pmpFetchFaultValid = RegInit(false.B)
+  val pmpFetchFaultPC = RegInit(0.U(32.W))
+  val pmpFetchBlocked = RegInit(false.B)
+  val pmpFetchAllow =
+    if (mmuEnabled) true.B
+    else pmpOpt.map(_ => !pmpFetchFault && !pmpFetchBlocked).getOrElse(true.B)
   // VIPT 在 VA 阶段就受理取指，因此快照队列不能再用 translationValid
   // 门控；PIPT/无 MMU 保持原条件。
   val accept_fetch =
-    ifu.io.FetchValid &&
+    ifu.io.FetchValid && pmpFetchAllow &&
       (if (parallelFetchVipt) !ifuFaultValid else fetchTranslationValid) &&
       icache.io.fetch_ready
   // 两表项虚拟 PC 队列：允许响应与下一笔接受同拍发生。ICache 通常只有
@@ -166,6 +179,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val fetchTag0 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
   val fetchTag1 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
   val fetchTagCount = RegInit(0.U(2.W))
+  // 只有所有更老取指都已交付（快照队列为空）时才注入 PMP 取指故障。
+  // 不能只看 icache.resp_valid：miss/refill 期间更老请求仍在 ICache 内，
+  // resp_valid 可能多拍为低，提前注入会打乱进入 IDU 的指令顺序。
+  val pmpFetchInject =
+    pmpFetchFaultValid && fetchTagCount === 0.U && !icache.io.resp_valid
   val pushTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
   pushTag.pc := ifu.io.FetchAddr
   pushTag.predTaken := ifu.io.PredHit
@@ -225,13 +243,30 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     ifuResp.bits.pred_target := Mux(ifuFaultValid, 0.U, responseTag.predTarget)
     icache.io.resp_ready := ifuResp.ready && !ifuFaultValid
   } else {
-    ifuResp.valid := icache.io.resp_valid
-    ifuResp.bits.Instruction := icache.io.resp_data
-    ifuResp.bits.pc := responseTag.pc
-    ifuResp.bits.ExceptionValid := icache.io.resp_fault
+    // 无 MMU 的取指 PMP 故障注入：PMP 在 IFU 当前物理取指地址上组合
+    // 判定。故障请求被挡在 ICache 之外，由这里合成一条 NOP 响应，
+    // 携带 faulting PC 和 instruction access fault(cause=1)。
+    when(pipe_flush) {
+      // 分支重定向/更老指令异常会丢弃故障路径，重新从目标取指。
+      pmpFetchFaultValid := false.B
+      pmpFetchBlocked := false.B
+    }.elsewhen(pmpFetchFault && ifu.io.FetchValid && !pmpFetchBlocked) {
+      pmpFetchFaultValid := true.B
+      pmpFetchFaultPC := ifu.io.FetchAddr
+      pmpFetchBlocked := true.B
+    }.elsewhen(pmpFetchInject && ifuResp.fire) {
+      // 只注入一次；blocked 保持到真正提交 trap 的冲刷，避免在同一 PC
+      // 反复制造年轻故障。
+      pmpFetchFaultValid := false.B
+    }
+    ifuResp.valid := pmpFetchInject || icache.io.resp_valid
+    ifuResp.bits.Instruction := Mux(pmpFetchInject, 0.U, icache.io.resp_data)
+    ifuResp.bits.pc := Mux(pmpFetchInject, pmpFetchFaultPC, responseTag.pc)
+    ifuResp.bits.ExceptionValid := pmpFetchInject || icache.io.resp_fault
     ifuResp.bits.ExceptionCause := 1.U(4.W)
-    ifuResp.bits.AccessFaultResp := icache.io.access_fault_resp
-    icache.io.resp_ready := ifuResp.ready
+    ifuResp.bits.AccessFaultResp :=
+      Mux(pmpFetchInject, 0.U, icache.io.access_fault_resp)
+    icache.io.resp_ready := ifuResp.ready && !pmpFetchInject
   }
   // 预测标签快照: 取指请求被icache接受时,把取指时刻的预测随请求保存,响应时贴给指令.
   // 根治"取指/响应两阶段查找之间BTB/RAS状态变化,导致标签与实际取指路径不一致"的致命漏洞
@@ -239,8 +274,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   //  错路指令漏网提交,ra被污染. icache最多1个outstanding,单表项快照即够;
   //  背靠背=响应与接受同拍,响应读的是旧值,时序正确)
   if (!mmuEnabled) {
-    ifuResp.bits.pred_taken := responseTag.predTaken
-    ifuResp.bits.pred_target := responseTag.predTarget
+    ifuResp.bits.pred_taken := responseTag.predTaken && !pmpFetchInject
+    ifuResp.bits.pred_target := Mux(pmpFetchInject, 0.U, responseTag.predTarget)
   }
   // 响应级不再重新查表, 预测标签在取指接受时快照保存
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
@@ -343,6 +378,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       pmp.io.dataAddr := dmmu.io.pmpAddr
       pmp.io.dataWrite := dmmu.io.pmpWrite
     }
+    // MMU 路径的 PMP 已在 DMMU 翻译完成后检查，LSU 不需要再检查。
+    lsu.io.PmpFault := false.B
 
     mmuArb.io.iReq <> immu.io.req
     mmuArb.io.iResp <> immu.io.resp
@@ -382,9 +419,13 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     // 无 MMU 时 VA==PA，VIPT 等价于恒等映射，不需要等待翻译。
     icache.io.fetch_paddr_valid := true.B
     icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
-    icache.io.fetch_valid := ifu.io.FetchValid
+    // PMP 故障请求不得进入 ICache；故障 PC 在响应级合成 cause=1。
+    icache.io.fetch_valid := ifu.io.FetchValid && pmpFetchAllow
     icache.io.kill := pipe_flush
-    ifu.io.FetchReady := icache.io.fetch_ready
+    ifu.io.FetchReady := icache.io.fetch_ready && pmpFetchAllow
+    // 无 MMU 时顶层 PMP 直接检查 LSU 给出的 VA==PA 访存地址；
+    // MMU 路径在 DMMU 翻译后检查，LSU 端口保持关闭。
+    lsu.io.PmpFault := pmpOpt.map(_.io.dataFault).getOrElse(false.B)
   }
   // BTB查询1: 用当前取指地址同时查两张表,合并结果回送IFU决定下一PC
   // 传入PC[31:2]; 低位恒为0, 无需参与索引和tag匹配

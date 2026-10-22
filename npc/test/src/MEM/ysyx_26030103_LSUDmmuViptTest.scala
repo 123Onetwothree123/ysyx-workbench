@@ -235,6 +235,8 @@ class ysyx_26030103_LSUDmmuHarness extends Module {
   lsu.io.ViptKill := dmmu.io.memKill
   dmmu.io.memActive := lsu.io.Busy
   lsu.io.DCacheFlush := false.B
+  // 该 harness 走 MMU 路径，PMP 由 DMMU 翻译后检查。
+  lsu.io.PmpFault := false.B
   io.out.valid := lsu.io.out.valid
   io.out.bits := lsu.io.out.bits
   lsu.io.out.ready := io.out.ready

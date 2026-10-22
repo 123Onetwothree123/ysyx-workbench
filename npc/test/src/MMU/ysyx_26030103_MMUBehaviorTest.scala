@@ -243,6 +243,63 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "TLB" should "按 pageBits/levels/indexBits 缓存非标准 16MiB 超级页" in {
+    // 64KiB 基础页、2 级、每级 256 项 => 16 + 2*8 = 32。
+    // fillLevel=1 表示 2^(16+8)=16MiB 超级页，tag 为 vaddr[31:24]。
+    simulate(new ysyx_26030103_TLB(
+      entries = 4, ways = 1, asidBits = 9, globalEnable = true,
+      adMode = "fault", superpage = true,
+      pageBits = 16, levels = 2, indexBits = 8
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.flush.poke(true.B)
+      dut.io.fillValid.poke(false.B)
+      dut.io.fillVaddr.poke(0.U)
+      dut.io.fillAsid.poke(0.U)
+      dut.io.fillPte.poke(0.U)
+      dut.io.fillLevel.poke(0.U)
+      dut.io.lookup(0).vaddr.poke(0.U)
+      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).privilege.poke(0.U)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup(0).sum.poke(false.B)
+      dut.io.lookup(0).mxr.poke(false.B)
+      dut.clock.step()
+      dut.io.flush.poke(false.B)
+      // PPN=0x8200（以 64KiB 为基础页）=> 物理基址 0x82000000。
+      dut.io.fillValid.poke(true.B)
+      dut.io.fillVaddr.poke("h81001234".U)
+      dut.io.fillAsid.poke(0.U)
+      dut.io.fillPte.poke(((BigInt("8200", 16) << 10) | 0xdf).U(32.W))
+      dut.io.fillLevel.poke(1.U)
+      dut.clock.step()
+      dut.io.fillValid.poke(false.B)
+      // 同一 16MiB 超级页的另一处地址应命中，并保留 vaddr[23:0]。
+      dut.io.lookup(0).vaddr.poke("h81abcdef".U)
+      asBool(dut.io.result(0).hit) should be(true)
+      asLong(dut.io.result(0).paddr) should be(BigInt("82abcdef", 16).toLong)
+      // 超级页 tag 不匹配的地址不能命中。
+      dut.io.lookup(0).vaddr.poke("h82abcdef".U)
+      asBool(dut.io.result(0).hit) should be(false)
+
+      // 同一几何下 fillLevel=0 仍按 64KiB 基础页填充。
+      dut.io.flush.poke(true.B)
+      dut.clock.step()
+      dut.io.flush.poke(false.B)
+      dut.io.fillValid.poke(true.B)
+      dut.io.fillVaddr.poke("h81234567".U)
+      dut.io.fillPte.poke(((BigInt("8200", 16) << 10) | 0xdf).U(32.W))
+      dut.io.fillLevel.poke(0.U)
+      dut.clock.step()
+      dut.io.fillValid.poke(false.B)
+      dut.io.lookup(0).vaddr.poke("h81234567".U)
+      asBool(dut.io.result(0).hit) should be(true)
+      asLong(dut.io.result(0).paddr) should be(BigInt("82004567", 16).toLong)
+    }
+  }
+
   "TLB" should "支持 SRAM 存储的一拍查找" in {
     simulate(new ysyx_26030103_TLB(
       entries = 4,
@@ -406,14 +463,15 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     val memory = new Memory
     val superPte = pte(0x80001L, 0xdfL)
     memory.write(Root + 0x0L, superPte)
-    simulate(new ysyx_26030103_PTW("fault", superpage = true)) { dut =>
+    simulate(new ysyx_26030103_PTW("fault", superpage = true,
+      fillSuperpage = true)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
       var pendingData = BigInt(0)
       var busReads = 0
-      var result: Option[(BigInt, Boolean)] = None
+      var result: Option[(BigInt, Boolean, Int)] = None
 
       dut.io.req.valid.poke(false.B)
       dut.io.req.bits.vaddr.poke(0.U)
@@ -449,12 +507,77 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
         if (asBool(dut.io.resp.valid)) {
           result = Some((
             dut.io.resp.bits.paddr.peek().litValue,
-            asBool(dut.io.resp.bits.fillValid)
+            asBool(dut.io.resp.bits.fillValid),
+            dut.io.resp.bits.fillLevel.peek().litValue.toInt
           ))
         }
       }
       busReads should be(1)
-      result should be(Some((BigInt("80001234", 16), false)))
+      // 默认 2 级里 level0 是 4MiB 超级页，fillLevel 编码为 1。
+      result should be(Some((BigInt("80001234", 16), true, 1)))
+    }
+  }
+
+  "PTW" should "非标准页几何的 fillLevel 与 TLB 超级页 shift 对齐" in {
+    // 64KiB 页、2 级、每级 256 项：16 + 2*8 = 32。
+    // 根级叶子是 16MiB 超级页，fillLevel 必须是 1（shift=16+8=24）。
+    val root = 0x30000000L
+    val rootPpn = 0x3000L
+    val memory = scala.collection.mutable.Map[Long, BigInt](
+      (root + 0x81L * 4L) -> ((BigInt("8200", 16) << 10) | 0xdfL)
+    )
+    simulate(new ysyx_26030103_PTW(
+      adMode = "fault", superpage = true, fillSuperpage = true,
+      pageBits = 16, levels = 2, tableEntries = 256
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      var pending = false
+      var pendingData = BigInt(0)
+      var result: Option[(BigInt, Boolean, Int)] = None
+
+      dut.io.req.valid.poke(false.B)
+      dut.io.req.bits.vaddr.poke(0.U)
+      dut.io.req.bits.satp.poke(0.U)
+      dut.io.req.bits.privilege.poke(0.U)
+      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.req.bits.sum.poke(false.B)
+      dut.io.req.bits.mxr.poke(false.B)
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.resp.ready.poke(false.B)
+      dut.io.flush.poke(false.B)
+
+      dut.io.req.valid.poke(true.B)
+      dut.io.req.bits.vaddr.poke("h81001234".U)
+      dut.io.req.bits.satp.poke((0x80000000L | rootPpn).U(32.W))
+      dut.clock.step()
+      dut.io.req.valid.poke(false.B)
+
+      for (_ <- 0 until 15 if result.isEmpty) {
+        if (!pending && asBool(dut.io.bus.req.valid)) {
+          pending = true
+          pendingData = memory.getOrElse(
+            asLong(dut.io.bus.req.bits.addr), BigInt(0)
+          )
+        }
+        dut.io.bus.resp.valid.poke(pending.B)
+        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
+        val ready = asBool(dut.io.bus.resp.ready)
+        dut.clock.step()
+        if (pending && ready) pending = false
+        if (asBool(dut.io.resp.valid)) {
+          result = Some((
+            dut.io.resp.bits.paddr.peek().litValue,
+            asBool(dut.io.resp.bits.fillValid),
+            dut.io.resp.bits.fillLevel.peek().litValue.toInt
+          ))
+        }
+      }
+      result should be(Some((BigInt("82001234", 16), true, 1)))
     }
   }
 

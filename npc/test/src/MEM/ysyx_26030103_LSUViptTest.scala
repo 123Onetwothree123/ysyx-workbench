@@ -52,6 +52,7 @@ class ysyx_26030103_LSUViptTest extends AnyFlatSpec with Matchers {
     dut.io.ViptPAddrValid.poke(false.B)
     dut.io.ViptPAddrVaddr.poke(Va.U(AddrW.W))
     dut.io.ViptKill.poke(false.B)
+    dut.io.PmpFault.poke(false.B)
     dut.io.DataBus.AW.AWREADY.poke(false.B)
     dut.io.DataBus.W.WREADY.poke(false.B)
     dut.io.DataBus.B.BVALID.poke(false.B)

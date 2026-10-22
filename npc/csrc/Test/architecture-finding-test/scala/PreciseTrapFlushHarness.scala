@@ -59,6 +59,7 @@ class PreciseTrapFlushHarness extends Module {
   lsu.io.DataBus.R.RVALID := io.rvalid
   io.rready := lsu.io.DataBus.R.RREADY
   lsu.io.DCacheFlush := false.B
+  lsu.io.PmpFault := false.B
 
   io.mem_trap_commit := lsu.io.MemTrapCommit
   io.flush_exmem := lsu.io.FlushEXMEM

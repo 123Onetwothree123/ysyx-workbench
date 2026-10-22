@@ -223,6 +223,8 @@ class ysyx_26030103_PTWPipeline(
     val offsetMask = (1.U << shift) - 1.U
     (ppn << pageBits) | (vaddr & offsetMask)
   }
+  /** 与 independent PTW 相同：0=基础页，k=第 k 级超级页。 */
+  private def fillLevelOf(level: UInt): UInt = (levels - 1).U - level
 
   // B 级：页表总线任务队列，深度等于可同时在途的上下文数。
   val busQ = Module(new Queue(new BusJob, outstanding, pipe = true,
@@ -401,7 +403,7 @@ class ysyx_26030103_PTWPipeline(
       ctx(resolveCtx).resp.fillPte := d
       ctx(resolveCtx).resp.fillVaddr := vaddr
       ctx(resolveCtx).resp.fillAsid := ctx(resolveCtx).satp(30, 22)
-      ctx(resolveCtx).resp.fillLevel := level
+      ctx(resolveCtx).resp.fillLevel := fillLevelOf(level)
       ctx(resolveCtx).resp.fillValid := !resolveBusFault &&
         !leafFaultOf(d, privilege, access, sum, mxr) &&
         (fillSuperpage.B || level === (levels - 1).U)
@@ -426,7 +428,7 @@ class ysyx_26030103_PTWPipeline(
         ctx(resolveCtx).resp.fillPte := d
         ctx(resolveCtx).resp.fillVaddr := vaddr
         ctx(resolveCtx).resp.fillAsid := ctx(resolveCtx).satp(30, 22)
-        ctx(resolveCtx).resp.fillLevel := level
+        ctx(resolveCtx).resp.fillLevel := fillLevelOf(level)
         ctx(resolveCtx).resp.fillValid := !leafFault &&
           (fillSuperpage.B || level === (levels - 1).U)
       }

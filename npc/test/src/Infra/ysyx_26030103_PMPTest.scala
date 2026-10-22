@@ -2,12 +2,23 @@ package ysyx_26030103.infra
 
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
+import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 /** PMP 的 NAPOT/TOR、特权级和权限测试。 */
 class ysyx_26030103_PMPTest extends AnyFlatSpec with Matchers {
   private def bool(v: Bool): Boolean = v.peek().litValue == 1
+
+  "MMUProfile" should "允许 HAS_PMP=y 且 HAS_MMU=n" in {
+    val profile = ysyx_26030103_MMUProfile(
+      enabled = false,
+      pmpEnabled = true,
+      pmpEntries = 16
+    )
+    profile.pmpEnabled should be(true)
+    profile.enabled should be(false)
+  }
 
   "PMP" should "对 S/U 默认拒绝并按 NAPOT 放行" in {
     simulate(new ysyx_26030103_PMP(4)) { dut =>

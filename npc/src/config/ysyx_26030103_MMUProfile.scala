@@ -117,7 +117,8 @@ case class ysyx_26030103_MMUProfile(
   require(Set("illegal", "zero").contains(csrMissingMode), "CSR_MISSING_MODE 必须是 illegal/zero")
   require(pmpEntries >= 0 && pmpEntries <= 16, "PMP_ENTRIES 必须在 0..16")
   require(!pmpEnabled || pmpEntries > 0, "HAS_PMP=y 时 PMP_ENTRIES 必须 > 0")
-  require(!pmpEnabled || enabled, "HAS_PMP 当前依赖 HAS_MMU 的翻译后物理地址检查")
+  // PMP 不再依赖 MMU：无 MMU 时直接检查 IFU 物理取指地址和 LSU 的 VA==PA
+  // 访存地址；有 MMU 时仍检查翻译后的物理地址。
 
   def csrSupported(addr: Int): Boolean = {
     // CSR 地址位 [9:8] 编码最低特权级：00=U，01=S，11=M。

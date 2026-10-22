@@ -24,7 +24,7 @@ class ysyx_26030103_PTWResponse extends Bundle {
   val fillPte = UInt(32.W)
   val fillVaddr = UInt(32.W)
   val fillAsid = UInt(9.W)
-  // 0=基础页，1=一级超级页，2=二级超级页……
+  // 0=基础页，k=第 k 级超级页；TLB 用 pageBits + k*indexBits 推导 shift。
   val fillLevel = UInt(2.W)
 }
 
@@ -194,6 +194,12 @@ class ysyx_26030103_PTW(
     case "hardware" => d(0) && (!d(6) || (isStore && !d(7)))
     case _          => false.B
   }
+  /** 给 TLB 的填充层级：0=基础页，k=第 k 级超级页。
+    *
+    * PTW 内部 levelReg 从根(0)递增到叶子；超级页层级按“距离基础页
+    * 多少级”编码，TLB 用 pageBits + k*indexBits 计算对应 shift。
+    */
+  def fillLevelOf(level: UInt): UInt = (levels - 1).U - level
   def adUpdated(d: UInt): UInt =
     d | (1.U << pteConfig.aBit) |
       Mux(isStore, 1.U << pteConfig.dBit, 0.U(32.W))
@@ -265,7 +271,7 @@ class ysyx_26030103_PTW(
         respReg.fillPte := d
         respReg.fillVaddr := vaddrReg
         respReg.fillAsid := satpReg(30, 22)
-        fillLevelReg := levelReg
+        fillLevelReg := fillLevelOf(levelReg)
         respReg.fillValid := false.B
         fillPulse := !leafFaultOf(d) &&
           (fillSuperpage.B || levelReg === (levels - 1).U)
@@ -307,7 +313,7 @@ class ysyx_26030103_PTW(
           respReg.fillPte := cacheData
           respReg.fillVaddr := vaddrReg
           respReg.fillAsid := satpReg(30, 22)
-          fillLevelReg := levelReg
+          fillLevelReg := fillLevelOf(levelReg)
           respReg.fillValid := false.B
           fillPulse := !leafFaultOf(cacheData) &&
             (fillSuperpage.B || levelReg === (levels - 1).U)
@@ -359,7 +365,7 @@ class ysyx_26030103_PTW(
         respReg.fillPte := written
         respReg.fillVaddr := vaddrReg
         respReg.fillAsid := satpReg(30, 22)
-        fillLevelReg := levelReg
+        fillLevelReg := fillLevelOf(levelReg)
         respReg.fillValid := false.B
         fillPulse := !leafFaultOf(written) && !io.bus.resp.bits.fault &&
           (fillSuperpage.B || levelReg === (levels - 1).U)

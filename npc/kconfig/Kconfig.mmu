@@ -460,7 +460,8 @@ menu "虚拟内存管理 (MMU/TLB)"
       default n
       help
         启用基础 PMP：支持 OFF/TOR/NA4/NAPOT、L 锁定和 R/W/X 权限。
-        当前 PMP 检查接在 MMU 翻译后的物理地址上，因此依赖 HAS_MMU。
+        有 MMU 时检查翻译后的物理地址；无 MMU 时直接检查取指地址和
+        LSU 的 VA==PA 访存地址，不依赖 HAS_MMU。
     config PMP_ENTRIES
       int "PMP 表项数"
       default 16

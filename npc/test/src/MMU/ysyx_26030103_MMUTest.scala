@@ -39,6 +39,24 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     ))
   }
 
+  it should "支持非标准 pageBits/levels/indexBits 的超级页几何" in {
+    // 64KiB 页 + 2 级 + 256 项/级。
+    emit(new ysyx_26030103_TLB(
+      entries = 4, ways = 1, superpage = true,
+      pageBits = 16, levels = 2, indexBits = 8
+    ))
+    // 1KiB 页 + 2 级 + 2048 项/级。
+    emit(new ysyx_26030103_TLB(
+      entries = 4, ways = 1, superpage = true,
+      pageBits = 10, levels = 2, indexBits = 11
+    ))
+    // 4 级 + 32 项/级，覆盖多个超级页层级。
+    emit(new ysyx_26030103_TLB(
+      entries = 4, ways = 1, superpage = true,
+      pageBits = 12, levels = 4, indexBits = 5
+    ))
+  }
+
   "PTW" should "支持已实现的 A/D 模式" in {
     emit(new ysyx_26030103_PTW("fault"))
     emit(new ysyx_26030103_PTW("ignore"))
@@ -74,6 +92,43 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
         hasU = false
       )
     )))
+  }
+
+  it should "HAS_PMP=y 且 HAS_MMU=n 时顶层可 elaboration" in {
+    emit(new _root_.ysyx_26030103.ysyx_26030103(ysyx_26030103_NPCConfig(
+      MMU = ysyx_26030103_MMUProfile(
+        enabled = false,
+        pmpEnabled = true,
+        pmpEntries = 16
+      )
+    )))
+  }
+
+  it should "非标准 page/levels 的 TLB 超级页可 elaboration" in {
+    val profile = ysyx_26030103_MMUProfile(
+      enabled = true,
+      tlbEnabled = true,
+      pageSizeBytes = 65536,
+      levels = 2,
+      pageTableSizeBytes = 1024,
+      superpage = true,
+      tlbSuperpage = true
+    )
+    emit(new ysyx_26030103_MMU(profile))
+    emit(new _root_.ysyx_26030103.ysyx_26030103(
+      ysyx_26030103_NPCConfig(MMU = profile)
+    ))
+
+    val fourLevel = ysyx_26030103_MMUProfile(
+      enabled = true,
+      tlbEnabled = true,
+      pageSizeBytes = 4096,
+      levels = 4,
+      pageTableSizeBytes = 128,
+      superpage = true,
+      tlbSuperpage = true
+    )
+    emit(new ysyx_26030103_MMU(fourLevel))
   }
 
   it should "支持 unified 双查找端口" in {

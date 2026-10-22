@@ -28,6 +28,8 @@ class ysyx_26030103_TLB(
     storage: String = "reg",
     superpage: Boolean = false,
     pageBits: Int = 12,
+    levels: Int = 2,
+    indexBits: Int = 10,
     refillPorts: Int = 1,
     hasU: Boolean = true,
     lookupPorts: Int = 1
@@ -38,6 +40,12 @@ class ysyx_26030103_TLB(
   require((ways & (ways - 1)) == 0, "TLB ways 必须是 2 的幂")
   require(Set("reg", "sram").contains(storage), "TLB storage 必须是 reg/sram")
   require(lookupPorts >= 1 && lookupPorts <= 2, "TLB lookupPorts 必须在 1..2")
+  require(levels >= 1 && levels <= 4, "TLB levels 必须在 1..4")
+  require(indexBits >= 1 && indexBits <= 30, "TLB indexBits 非法")
+  // 超级页的 shift/tag 由 pageBits/levels/indexBits 推导；非标准几何
+  // 必须满足 32 位地址可完整划分，否则拒绝 elaboration 而不是静默错映射。
+  require(!superpage || pageBits + levels * indexBits == 32,
+    s"TLB 超级页要求 pageBits($pageBits) + levels($levels)*indexBits($indexBits) 等于 32")
 
   private val sets = entries / ways
   private val setBits = if (sets == 1) 0 else log2Ceil(sets)
@@ -94,20 +102,40 @@ class ysyx_26030103_TLB(
 
   val entriesVec = RegInit(VecInit(Seq.fill(entries)(0.U.asTypeOf(new Entry))))
   val rr = RegInit(0.U(log2Ceil(ways.max(2)).W))
-  private val superEntries = if (superpage) 4 else 0
+  // 超级页表项不再硬编码 4MiB/vpn1。每个表项保存填充层级、完整虚拟
+  // 地址和物理基址；比较时按该层级对应的 shift 对齐。fillLevel 约定：
+  // 0=基础页，k=第 k 级超级页，shift = pageBits + k*indexBits。
+  private val superEntries = if (superpage && levels > 1) 4 else 0
   class SuperEntry extends Bundle {
     val valid = Bool()
-    val vpn1 = UInt(10.W)
+    val level = UInt(2.W)
+    val vaddr = UInt(32.W)
     val asid = UInt(asidWidth.W)
     val global = Bool()
-    val ppn = UInt(ppnBits.W)
+    val paddrBase = UInt(32.W)
     val r = Bool(); val w = Bool(); val x = Bool(); val u = Bool()
     val a = Bool(); val d = Bool()
   }
-  val superVec = if (superpage)
+  private val shiftBits = log2Ceil(32)
+  private val maxShift = pageBits + (levels - 1) * indexBits
+  /** 填充层级对应的地址 shift；level 超出配置范围时返回最大 shift。 */
+  private def shiftOfLevel(level: UInt): UInt =
+    MuxLookup(level, maxShift.U(shiftBits.W))(
+      (0 until levels).map(l => l.U -> (pageBits + l * indexBits).U(shiftBits.W))
+    )
+  /** 超级页偏移掩码：低 shift 位为 1。 */
+  private def offsetMaskOf(shift: UInt): UInt =
+    (BigInt("ffffffff", 16).U(32.W) >> (32.U - shift))
+  /** 判断虚拟地址是否落在同一超级页。 */
+  private def superTagMatch(level: UInt, entryVaddr: UInt, lookupVaddr: UInt): Bool = {
+    val mask = ~offsetMaskOf(shiftOfLevel(level))
+    (entryVaddr & mask) === (lookupVaddr & mask)
+  }
+  val superVec = if (superEntries > 0)
     Some(RegInit(VecInit(Seq.fill(superEntries)(0.U.asTypeOf(new SuperEntry)))))
   else None
-  val superRR = if (superpage) Some(RegInit(0.U(2.W))) else None
+  val superRR = if (superEntries > 0)
+    Some(RegInit(0.U(log2Ceil(superEntries.max(2)).W))) else None
   private val sramStorage = storage == "sram"
   val pteMems =
     if (sramStorage) Some((0 until ways).map(_ => SyncReadMem(sets, UInt(32.W))))
@@ -198,18 +226,27 @@ class ysyx_26030103_TLB(
     val hitWay = Mux1H(lookupWays, (0 until ways).map(w => w.U(log2Ceil(ways.max(2)).W)))
     val selected = Mux1H(lookupWays, (0 until ways).map(w => entriesVec(entryIndex(lookupSet, w.U))))
     val selectedPte = Mux1H(lookupWays, sramPtes)
-    val superHits = if (superpage) {
+    val superHits = if (superEntries > 0) {
       (0 until superEntries).map { i =>
         val e = superVec.get(i)
         val asidMatch = if (asidBits == 0) true.B else e.asid === lookup.asid
         val globalMatch = if (globalEnable) e.global else false.B
-        e.valid && e.vpn1 === lookup.vaddr(31, 22) && (globalMatch || asidMatch)
+        e.valid && e.level =/= 0.U &&
+          superTagMatch(e.level, e.vaddr, lookup.vaddr) &&
+          (globalMatch || asidMatch)
       }
     } else Seq.empty
-    val superHit = if (superpage) superHits.reduce(_ || _) else false.B
-    val superSel = if (superpage)
+    val superHit = if (superEntries > 0) superHits.reduce(_ || _) else false.B
+    val superSel = if (superEntries > 0)
       Mux1H(superHits, (0 until superEntries).map(i => superVec.get(i)))
     else 0.U.asTypeOf(new SuperEntry)
+    val superPaddr = if (superEntries > 0) {
+      val paddrs = (0 until superEntries).map { i =>
+        val e = superVec.get(i)
+        e.paddrBase | (lookup.vaddr & offsetMaskOf(shiftOfLevel(e.level)))
+      }
+      Mux1H(superHits, paddrs)
+    } else 0.U(32.W)
     val selR = Mux(superHit, superSel.r,
       if (sramStorage) selectedPte(1) else selected.r)
     val selW = Mux(superHit, superSel.w,
@@ -222,7 +259,7 @@ class ysyx_26030103_TLB(
       if (sramStorage) selectedPte(6) else selected.a)
     val selD = Mux(superHit, superSel.d,
       if (sramStorage) selectedPte(7) else selected.d)
-    val selPpn = Mux(superHit, superSel.ppn,
+    val selPpn = Mux(superHit, 0.U(ppnBits.W),
       if (sramStorage) selectedPte(31, 10) else selected.ppn)
 
     val isFetch = lookup.access === ysyx_26030103_AccessType.Fetch
@@ -252,7 +289,7 @@ class ysyx_26030103_TLB(
     val anyHit = lookupHit || superHit
     io.result(p).hit := anyHit
     io.result(p).fault := anyHit && !permissionOk
-    io.result(p).paddr := Mux(superHit, Cat(selPpn(19, 10), lookup.vaddr(21, 0)),
+    io.result(p).paddr := Mux(superHit, superPaddr,
       Cat(selPpn(ppnBits - 1, 0), lookup.vaddr(pageBits - 1, 0)))
     io.result(p).cause := faultCause
     lastLookupVaddr(p) := lookup.vaddr
@@ -273,24 +310,37 @@ class ysyx_26030103_TLB(
   }
   def doFill(valid: Bool, fillVaddrVal: UInt, fillAsidVal: UInt,
       fillPteVal: UInt, fillLevelVal: UInt): Unit = {
-    if (superpage) {
-      when(!io.flush && valid && fillLevelVal === 1.U) {
-        val hit = (0 until superEntries).map(i => superVec.get(i).valid &&
-          superVec.get(i).vpn1 === fillVaddrVal(31, 22))
+    if (superEntries > 0) {
+      // fillLevel 0 是基础页；1..levels-1 是超级页层级。TLB 只缓存
+      // 配置范围内的层级，超出范围的填充请求被忽略（PTW 不会产生）。
+      when(!io.flush && valid && fillLevelVal =/= 0.U &&
+          fillLevelVal < levels.U) {
+        val hit = (0 until superEntries).map { i =>
+          val e = superVec.get(i)
+          e.valid && e.level === fillLevelVal &&
+            superTagMatch(e.level, e.vaddr, fillVaddrVal)
+        }
         val victim = Mux(hit.reduce(_ || _), PriorityEncoder(hit), superRR.get)
         val e = Wire(new SuperEntry)
         e := 0.U.asTypeOf(new SuperEntry)
         e.valid := true.B
-        e.vpn1 := fillVaddrVal(31, 22)
+        e.level := fillLevelVal
+        e.vaddr := fillVaddrVal
         e.asid := fillAsidVal
         e.global := (if (globalEnable) fillPteVal(5) else false.B)
-        e.ppn := Cat(fillPteVal(29, 20), 0.U(10.W))
+        // 与 PTW 的 paddrOf 保持一致：PPN 以基础页为单位，左移 pageBits
+        // 得到超级页物理基址，低 shift 位由访问地址提供。
+        e.paddrBase := fillPteVal(31, 10) << pageBits
         e.r := fillPteVal(1); e.w := fillPteVal(2); e.x := fillPteVal(3)
         // HAS_U=n 时不保存 U 位，避免保留无用的 U 状态。
         e.u := (if (hasU) fillPteVal(4) else false.B)
         e.a := fillPteVal(6); e.d := fillPteVal(7)
         superVec.get(victim) := e
-        superRR.get := Mux(superRR.get === (superEntries - 1).U, 0.U, superRR.get + 1.U)
+        superRR.get := Mux(
+          superRR.get === (superEntries - 1).U,
+          0.U,
+          superRR.get + 1.U
+        )
       }
     }
     when(!io.flush && valid && (!superpage.B || fillLevelVal === 0.U)) {

@@ -49,6 +49,13 @@ class ysyx_26030103_LSU(
     val ViptPAddrVaddr = Input(UInt(32.W))
     // MMU 翻译故障：取消本 LSU 已受理但尚未取到 PA 的 load。
     val ViptKill = Input(Bool())
+    // 无 MMU 时由顶层 PMP 检查“下一个可能产生总线副作用的访存地址”：
+    // 写缓冲非空时检查最老 store（队首），否则检查即将进入执行槽的访存
+    // 指令。PmpFault 必须在 AW/W/AR 握手前组合生效，故障指令不得产生
+    // 任何总线副作用，随后按普通访问故障精确提交。
+    val PmpAddr = Output(UInt(32.W))
+    val PmpWrite = Output(Bool())
+    val PmpFault = Input(Bool())
     // DCache性能计数器
     val DCachePerfHit = Output(Bool())
     val DCachePerfMiss = Output(Bool())
@@ -185,13 +192,15 @@ class ysyx_26030103_LSU(
     StageInputBits.ALUResult,
     StageInputBits.WidthSelect
   )
+  // PMP 故障只针对访存指令；非访存直通指令不消费 PmpFault。
+  val StageInputPmpFault = io.PmpFault && StageInputBits.MemoryValid
   when(startMem) {
     MisalignedReg := StageInputMisaligned
   }
   when(stageState === StageWait && TransactionComplete) {
     MemFaultReg := TransactionFault
   }.elsewhen(startMem) {
-    MemFaultReg := StageInputMisaligned
+    MemFaultReg := StageInputMisaligned || StageInputPmpFault
   }
   when(
     stageState === StageDone && io.out.ready &&
@@ -216,7 +225,11 @@ class ysyx_26030103_LSU(
       when(StageInputValid && IsMemOp) {
         StageInputReady := true.B
         when(StageInputFire) {
-          stageState := Mux(StageInputMisaligned, StageDone, StageWait)
+          stageState := Mux(
+            StageInputMisaligned || StageInputPmpFault,
+            StageDone,
+            StageWait
+          )
         }
       }.otherwise {
         // 非访存指令单拍直通
@@ -238,7 +251,11 @@ class ysyx_26030103_LSU(
       when(io.out.fire) {
         when(StageInputFire) {
           when(IsMemOp) {
-            stageState := Mux(StageInputMisaligned, StageDone, StageWait)
+            stageState := Mux(
+              StageInputMisaligned || StageInputPmpFault,
+              StageDone,
+              StageWait
+            )
           }.otherwise {
             MsgReg := StageInputBits
             stageState := StageDone
@@ -600,7 +617,7 @@ class ysyx_26030103_LSU(
   // Idle 可直接驱动已经寄存的队首，避免“发现非空→切 Issue→下一拍才
   // 拉 VALID”的固定空拍。失败/非对齐队首会阻断所有年轻副作用。
   val wbCanStart = !wbufEmpty && !wbHeadMisaligned &&
-    !StoreFaultReg && !MemFaultReg
+    !io.PmpFault && !StoreFaultReg && !MemFaultReg
   val wbDrivingIssue = wbState === wbIssue || (wbState === wbIdle && wbCanStart)
   when(wbDrivingIssue) {
     io.DataBus.AW.AWVALID := !wbAWDone
@@ -685,9 +702,9 @@ class ysyx_26030103_LSU(
         AccessFaultRespReg := 0.U
         StoreFaultReg := false.B
         is_store_transaction := StageInputBits.MemoryWrite
-        when(StageInputMisaligned) {
-          // 外层流水状态已直接进入 StageDone；不对齐项只作为写缓冲屏障，
-          // 不产生任何 AXI 请求，随后精确提交 cause 4/6。
+        when(StageInputMisaligned || StageInputPmpFault) {
+          // 非对齐/PMP 故障项只作为写缓冲屏障，不产生任何 AXI 请求，
+          // 随后按 cause 4/6 或 5/7 精确提交。
           state := StatesIdle
         }
           .elsewhen(StageInputBits.MemoryWrite) {
@@ -850,6 +867,11 @@ class ysyx_26030103_LSU(
     DCache.io.AXI.R.RVALID := false.B
   }
   io.Active := state =/= StatesIdle
+  // 无 MMU 的 PMP 检查对象：写缓冲非空时是队首 store（唯一可能在本拍
+  // 产生写副作用的项），否则是本拍即将受理的访存指令。store 在写缓冲
+  // 中始终保持架构顺序，因此队首地址也对应最老未完成 store。
+  io.PmpAddr := Mux(!wbufEmpty, wbHeadAddr, StageInputBits.ALUResult)
+  io.PmpWrite := Mux(!wbufEmpty, true.B, StageInputBits.MemoryWrite)
   io.IsStore := is_store_transaction
   io.StallReadAR := state === StatesReadRequest
   io.StallReadR := state === StatesReadResponse || state === StatesReadDrain
