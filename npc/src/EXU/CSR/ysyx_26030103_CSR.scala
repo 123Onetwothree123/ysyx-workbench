@@ -36,6 +36,12 @@ class ysyx_26030103_CSR(
   // mepc/mtvec/mtval/mscratch 等则天然使用完整 XLEN。
   private def Widen32(Value: UInt): UInt =
     if (XLEN == 32) Value else Cat(0.U((XLEN - 32).W), Value)
+  // RV64 的 mstatus.SXL/UXL 是 WARL，本实现只支持 64 位，因此固定读回 2。
+  // 这两个字段位于 bit[35:32]，必须和 NEMU REF/架构 CSR 视图一起保留，
+  // 否则 RV64 DiffTest 会在任何一次 mstatus 写入后看到高半区差异。
+  private def MstatusArchValue(Value: UInt): UInt =
+    if (XLEN == 32) Value
+    else Widen32(Value) | "h0000000a00000000".U(XLEN.W)
   private def csrOn(addr: Int): Boolean = profile.csrSupported(addr)
   // HAS_U=n 时 mstatus 的 MPP/SPP 最低值被夹到 S；HAS_S=n 时固定为 M。
   private def legalizeMstatus(value: UInt): UInt =
@@ -235,8 +241,8 @@ class ysyx_26030103_CSR(
   val MstatusReadData =
     (Mstatus_rdata & (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(32.W)) |
       (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(32.W)
-  // 32 位 CSR 在 RV64 下读回高 32 位为 0。
-  val MstatusReadDataWide = Widen32(MstatusReadData)
+  // 32 位 CSR 在 RV64 下读回高 32 位为 0；mstatus 例外：SXL/UXL 固定为 2。
+  val MstatusReadDataWide = MstatusArchValue(MstatusReadData)
   val Sstatus_rdata =
     if (!hasS) 0.U(32.W)
     else if (profile.csrViewMode == "independent") SstatusRegOpt.get
@@ -585,7 +591,7 @@ class ysyx_26030103_CSR(
     }
   }
   io.Privilege := Privilege
-  io.CurrentMstatus := Widen32(Mstatus_rdata)
+  io.CurrentMstatus := MstatusArchValue(Mstatus_rdata)
   io.FlushTLB := (if (hasS) SfenceCommit || SatpWen else false.B)
 
   val McycleAccess = IsCSRAddress(CSR_MCYCLE) || IsCSRAddress(CSR_MCYCLEH)
@@ -668,8 +674,9 @@ class ysyx_26030103_CSR(
     }
   )
 
-  // 退休级快照表示本指令执行后的 CSR 状态。
-  io.StateMstatus := Widen32(MuxCase(Mstatus_rdata,
+  // 退休级快照表示本指令执行后的 CSR 状态。高半区也要带上 RV64
+  // mstatus.SXL/UXL，保证 DiffTest 的 CSR 视图与 CSR 读口一致。
+  io.StateMstatus := MstatusArchValue(MuxCase(Mstatus_rdata,
     Seq(
       ExceptionCommit -> MstatusExceptionData,
       MretCommit -> MstatusMretData

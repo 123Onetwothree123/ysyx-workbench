@@ -54,8 +54,8 @@ namespace
         npc::XWord mepc{};
         npc::XWord mcause{};
     };
-    // RV32 下与旧 REF ABI 的 4 x uint32_t 完全一致；RV64 状态在加载
-    // REF 前就会被明确拒绝。
+    // RV32 下与旧 REF ABI 的 4 x uint32_t 完全一致；RV64 下为
+    // 4 x uint64_t，必须由 REF 的 difftest_csr_state_size() 动态确认。
     static_assert(sizeof(DifftestCSRState) == 4 * sizeof(npc::XWord));
     DifftestCSRState LastDUTCSR{};
     /// @brief 从REF .so中按名称加载符号并转为指定函数指针类型
@@ -124,7 +124,7 @@ namespace
             .mstatus = DebugWord(*dut, dut->debug_csr_mstatus, dut->debug_csr_mstatus_hi),
             .mtvec = DebugWord(*dut, dut->debug_csr_mtvec, dut->debug_csr_mtvec_hi),
             .mepc = DebugWord(*dut, dut->debug_csr_mepc, dut->debug_csr_mepc_hi),
-            .mcause = static_cast<npc::XWord>(dut->debug_csr_mcause),
+            .mcause = DebugWord(*dut, dut->debug_csr_mcause, dut->debug_csr_mcause_hi),
         };
     }
 
@@ -134,7 +134,7 @@ namespace
             .mstatus = DebugWord(*dut, dut->debug_trap_mstatus, dut->debug_trap_mstatus_hi),
             .mtvec = DebugWord(*dut, dut->debug_trap_mtvec, dut->debug_trap_mtvec_hi),
             .mepc = DebugWord(*dut, dut->debug_trap_mepc, dut->debug_trap_mepc_hi),
-            .mcause = static_cast<npc::XWord>(dut->debug_trap_mcause),
+            .mcause = DebugWord(*dut, dut->debug_trap_mcause, dut->debug_trap_mcause_hi),
         };
     }
 #else
@@ -270,13 +270,13 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
     {
         return {}; // 不用DiffTest，直接返回空expected，成功，但是不干事
     }
-#if CONFIG_XLEN == 64
-    // 当前 NEMU REF 的 difftest_state_size/regcpy ABI 固定为 32 个
-    // 32 位 GPR + 32 位 PC。RV64 继续加载它只会静默截断高 32 位，
-    // 因此这里明确拒绝，而不是错跑出一堆伪差异。
+#if CONFIG_XLEN == 64 && !defined(VRISCV32E_NPC)
+    // full-SoC 顶层（ysyxSoC 的 CPU 调试端口）目前只导出 32 位
+    // debug_pc/CSR，无法承载 RV64 的高半区。这里拒绝的是该真实 ABI
+    // 限制；direct-NPC 已通过 debug_*_hi 端口支持完整 RV64。
     return std::unexpected{
-        "RV64 DiffTest/NEMU 未支持：REF 状态 ABI 固定 32 位。"
-        "请改用 RV32 构建，或等待 RV64 NEMU REF 接入"};
+        "RV64 full-SoC DiffTest 未支持：ysyxSoC 调试端口固定 32 位。"
+        "请使用 direct-NPC（build/ysyx_26030103_npc）运行 RV64 DiffTest"};
 #endif
     REFHandle = dlopen(REFSoFile->c_str(), RTLD_LAZY | RTLD_LOCAL); // 打开REF的动态库
     if (REFHandle == nullptr)
@@ -298,29 +298,37 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
     auto StateSizeSymbol{LoadSymbol<REFDifftestStateSize>("difftest_state_size")};
     if (!StateSizeSymbol)
     {
-        return std::unexpected{
-            std::format("DiffTest REF 不支持固定 RV32 状态 ABI：{}",
-                        StateSizeSymbol.error())};
+        return std::unexpected{std::format(
+            "DiffTest REF 缺少状态 ABI 协商符号 difftest_state_size：{}",
+            StateSizeSymbol.error())};
     }
     REFStateSize = *StateSizeSymbol;
     if (const auto stateSize{REFStateSize()}; stateSize != sizeof(DifftestCPUState))
     {
         return std::unexpected{std::format(
-            "DiffTest 状态 ABI 不匹配：REF={} 字节，DUT={} 字节",
+            "DiffTest 状态 ABI 不匹配：REF={} 字节，DUT={} 字节"
+            "（CONFIG_XLEN={}；不能用 RV32 REF 驱动 RV64 DUT）",
             stateSize,
-            sizeof(DifftestCPUState))};
+            sizeof(DifftestCPUState),
+            CONFIG_XLEN)};
     }
     auto CSRStateSizeSymbol{
         LoadSymbol<REFDifftestCSRStateSize>("difftest_csr_state_size")};
     if (!CSRStateSizeSymbol)
-        return std::unexpected{CSRStateSizeSymbol.error()};
+    {
+        return std::unexpected{std::format(
+            "DiffTest REF 缺少 CSR 状态 ABI 协商符号 difftest_csr_state_size：{}",
+            CSRStateSizeSymbol.error())};
+    }
     REFCSRStateSize = *CSRStateSizeSymbol;
     if (const auto stateSize{REFCSRStateSize()}; stateSize != sizeof(DifftestCSRState))
     {
         return std::unexpected{std::format(
-            "DiffTest CSR 状态 ABI 不匹配：REF={} 字节，DUT={} 字节",
+            "DiffTest CSR 状态 ABI 不匹配：REF={} 字节，DUT={} 字节"
+            "（CONFIG_XLEN={}）",
             stateSize,
-            sizeof(DifftestCSRState))};
+            sizeof(DifftestCSRState),
+            CONFIG_XLEN)};
     }
     auto CSRcpySymbol{LoadSymbol<REFDifftestCSRcpy>("difftest_csrcpy")};
     if (!CSRcpySymbol)
@@ -368,11 +376,12 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
             FlashMemory.size(),
             static_cast<std::size_t>(CONFIG_MSIZE))};
     }
-#if defined(VRISCV32E_NPC) && CONFIG_XLEN == 32
+#ifdef VRISCV32E_NPC
     // direct RTL 初始化会把镜像及其后 64 KiB 清零，而 NEMU 的堆内存没有
     // 同样的复位保证。因此至少同步历史的 256 KiB 窗口（以及镜像本身），
     // 避免程序第一次读取 RAM 尾部时产生伪差异。同步上限仍由 MSIZE 决定，
     // 不能把某个固定 RAM 大小写成静态断言，否则会拒绝合法配置。
+    // RV32/RV64 direct-NPC 共用这一复位语义，地址参数保持完整 XWord。
     constexpr std::size_t DirectRamBytes{256U * 1024U};
     constexpr std::size_t ZeroMarginBytes{64U * 1024U};
     const auto ramBytes{static_cast<std::size_t>(CONFIG_MSIZE)};
@@ -385,10 +394,6 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
               referenceMemory.data(),
               referenceMemory.size(),
               DifftestCPUState::GetDirectionToRef());
-#elif defined(VRISCV32E_NPC)
-    // RV64 direct-NPC 在函数开头已明确拒绝 REF；这里不再做 32 位 ABI
-    // 的内存同步，避免把 64 位 RAM 配置交给 32 位参考模型。
-    static_cast<void>(ImageSize);
 #else
     // Full SoC MROM is a 256 MiB address window, but only the loaded image is
     // backed by host storage.  Do not manufacture/copy a 256 MiB zero buffer.

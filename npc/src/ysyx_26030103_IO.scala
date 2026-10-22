@@ -162,6 +162,7 @@ class ysyx_26030103_IO(val SocXLEN: Int = 32) extends Bundle {
   val debug_csr_mepc = Output(UInt(32.W))
   val debug_csr_mepc_hi = Output(UInt(32.W))
   val debug_csr_mcause = Output(UInt(32.W))
+  val debug_csr_mcause_hi = Output(UInt(32.W))
   val debug_trap_mstatus = Output(UInt(32.W))
   val debug_trap_mstatus_hi = Output(UInt(32.W))
   val debug_trap_mtvec = Output(UInt(32.W))
@@ -169,6 +170,7 @@ class ysyx_26030103_IO(val SocXLEN: Int = 32) extends Bundle {
   val debug_trap_mepc = Output(UInt(32.W))
   val debug_trap_mepc_hi = Output(UInt(32.W))
   val debug_trap_mcause = Output(UInt(32.W))
+  val debug_trap_mcause_hi = Output(UInt(32.W))
   // 仿真 custom halt 提交时的完整 PC（低 32 位仍由 trap_pc 提供）。
   val trap_pc_hi = Output(UInt(32.W))
   // 性能计数器

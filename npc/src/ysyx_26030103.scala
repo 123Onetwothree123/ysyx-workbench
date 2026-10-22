@@ -32,6 +32,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 高字单独输出，C++ 侧按 XLEN 拼成完整 64 位，避免 RV64 地址/PC 被截断。
   private def DebugHi(Value: UInt): UInt =
     if (XLEN == 64) Value(63, 32) else 0.U(32.W)
+  // CSR 退休快照在首条指令退休前也必须与 CSR 读口一致：RV64 的
+  // mstatus.SXL/UXL 固定为 2（bit[35:32]=0xA）。
+  private def MstatusDebugReset: UInt =
+    if (XLEN == 32) ysyx_26030103_mstatus.resetValue
+    else Cat("h0000000a".U(32.W), ysyx_26030103_mstatus.resetValue)
   // 顶层 AXI 端口宽度由实际生效的 SoC XLEN 决定；CPU 内部地址/数据
   // 宽度不能直接决定这个 ABI。
   val io = IO(new ysyx_26030103_IO(config.EffectiveSocXLEN))
@@ -955,7 +960,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   if (config.EnableCSRTrace) {
     val RetireMstatus = RegEnable(
       wbu.io.in.bits.CSRStateMstatus,
-      Widen32(ysyx_26030103_mstatus.resetValue),
+      MstatusDebugReset,
       WBUCommit
     )
     val RetireMtvec = RegEnable(
@@ -974,14 +979,16 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     io.debug_csr_mtvec_hi := DebugHi(RetireMtvec)
     io.debug_csr_mepc := RetireMepc(31, 0)
     io.debug_csr_mepc_hi := DebugHi(RetireMepc)
-    io.debug_csr_mcause := RegEnable(
+    val RetireMcause = RegEnable(
       wbu.io.in.bits.CSRStateMcause,
       0.U(XLEN.W),
       WBUCommit
-    )(31, 0)
+    )
+    io.debug_csr_mcause := RetireMcause(31, 0)
+    io.debug_csr_mcause_hi := DebugHi(RetireMcause)
     val TrapMstatus = RegEnable(
       exu.io.CSRStateMstatus,
-      Widen32(ysyx_26030103_mstatus.resetValue),
+      MstatusDebugReset,
       exu.io.TrapCommit
     )
     val TrapMtvec = RegEnable(
@@ -1000,11 +1007,13 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     io.debug_trap_mtvec_hi := DebugHi(TrapMtvec)
     io.debug_trap_mepc := TrapMepc(31, 0)
     io.debug_trap_mepc_hi := DebugHi(TrapMepc)
-    io.debug_trap_mcause := RegEnable(
+    val TrapMcause = RegEnable(
       exu.io.CSRStateMcause,
       0.U(XLEN.W),
       exu.io.TrapCommit
-    )(31, 0)
+    )
+    io.debug_trap_mcause := TrapMcause(31, 0)
+    io.debug_trap_mcause_hi := DebugHi(TrapMcause)
   } else {
     io.debug_csr_mstatus := 0.U
     io.debug_csr_mstatus_hi := 0.U
@@ -1013,6 +1022,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     io.debug_csr_mepc := 0.U
     io.debug_csr_mepc_hi := 0.U
     io.debug_csr_mcause := 0.U
+    io.debug_csr_mcause_hi := 0.U
     io.debug_trap_mstatus := 0.U
     io.debug_trap_mstatus_hi := 0.U
     io.debug_trap_mtvec := 0.U
@@ -1020,6 +1030,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     io.debug_trap_mepc := 0.U
     io.debug_trap_mepc_hi := 0.U
     io.debug_trap_mcause := 0.U
+    io.debug_trap_mcause_hi := 0.U
   }
 
   // mtrace 必须与 WBU retire 记录对齐，而不是早一拍的 LSU out.fire。

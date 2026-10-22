@@ -17,11 +17,12 @@ HOST_CXX ?= g++
 NAME = difftest-online-test
 SRCS = main.cpp
 
-# 本测试的 NEMU REF 固定 32 位状态 ABI；RV64 下必须明确失败而不是
-# 用 RV32 guest 去跑 RV64 NPC。XLEN 从 Kconfig 读取。
+# 本测试固定构建 RV32 NEMU REF 和 riscv32e guest；RV64 下必须明确失败
+# 而不是用 RV32 guest 去跑 RV64 NPC。RV64 DiffTest 见 xlen-dual-test。
+# XLEN 从 Kconfig 读取。
 include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../xlen.mk)
 ifeq ($(XLEN_IS_64),1)
-$(error difftest-online-test 仅支持 RV32：NEMU REF 的 DiffTest ABI 固定为 32 位)
+$(error difftest-online-test 固定 RV32 REF/guest；RV64 DiffTest 请用 xlen-dual-test)
 endif
 
 ARCH ?= riscv32e-npc

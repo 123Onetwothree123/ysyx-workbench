@@ -3,6 +3,7 @@
 # RV64：
 #   * t0/t1 保存 64 位高值，t1 还覆盖 bit31 符号扩展；
 #   * 在 PA 0x80001000 写 64 位常量，供 SDB x/read64 读取；
+#   * 把 mtvec/mepc 写成 4GiB 以上的值并读回，验证 DiffTest CSR 高半区；
 #   * 建立 Sv39 映射，把 VA 0x1_0000_0000 映射到代码页、
 #     VA 0x1_0000_2000 映射到 PA 0x80002000；
 #   * 跳到 4GiB 以上的高 VA 执行，并在高地址 store/halt，
@@ -52,6 +53,17 @@ _start:
     li      t0, 0x200008cf
     sd      t0, 16(t3)
 
+    # DiffTest 的 CSR 快照必须保留完整 64 位：先把 mtvec/mepc 写成
+    # 4GiB 以上的值并读回，再安装真正的入口。
+    li      t0, 0x100002344
+    csrw    mtvec, t0
+    csrr    t5, mtvec
+    bne     t5, t0, fail_csr_hi
+    li      t0, 0x100003400
+    csrw    mepc, t0
+    csrr    t5, mepc
+    bne     t5, t0, fail_csr_hi
+
     # S 模式页错误处理：任何意外 trap 都以 BAD 结束，避免静默跑飞。
     la      t0, trap
     csrw    stvec, t0
@@ -86,6 +98,10 @@ high_body:
 
 fail_high:
     li      a0, 9
+    .word   0x0000000b
+
+fail_csr_hi:
+    li      a0, 17
     .word   0x0000000b
 
 trap:

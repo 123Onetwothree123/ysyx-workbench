@@ -8,8 +8,9 @@
 - PC、分支/跳转目标、IFU/LSU 虚拟/物理地址、BTB/RAS、PMA、Xbar、
   ICache/DCache tag 与 refill 地址全部使用 `AddressWidth`，不再在
   32 位处截断。
-- 调试端口（`debug_pc`、`debug_mtrace_*` 等）为固定 32 位观测 ABI，
-  不参与架构地址计算；完整地址在内部寄存器中保持 64 位。
+- direct-NPC 的调试端口按低/高两个 32 位字导出（`debug_pc` /
+  `debug_pc_hi` 等），C++ 侧按 XLEN 拼成完整 `XWord`；外部 ysyxSoC
+  顶层调试 ABI 仍固定 32 位。调试端口不参与架构地址计算。
 
 ## SoC 边界
 
@@ -55,7 +56,10 @@
   RV32 仍为 32 位，RV64 的地址/GPR/PC/CSR 为完整 64 位。
 - csrc 不再生成或读取独立的 32/64 位第二开关；ELF class、反汇编模式、
   DUT 调试状态、SDB 地址宽度和 DiffTest 状态布局都从上述派生值获得。
-- RV64 DiffTest 会明确拒绝当前固定 32 位 REF ABI，RV32 行为保持不变。
+- 状态 ABI 由 REF 的 `difftest_state_size()` / `difftest_csr_state_size()`
+  动态校验：RV32 期望 132/16 字节，RV64 期望 264/32 字节。RV64
+  direct-NPC 完整保留 GPR/PC/CSR 高半区；旧 32 位 REF 会在执行前被
+  明确拒绝。full-SoC 顶层因调试端口固定 32 位，RV64 DiffTest 仍拒绝。
 
 ## 8 字节 LD/SD
 

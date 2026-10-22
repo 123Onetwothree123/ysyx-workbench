@@ -17,10 +17,10 @@ NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \( -name '
 NAME = nemu-difftest-isolation-test
 SRCS = main.cpp
 
-# 本测试的 NEMU REF 固定 32 位状态 ABI；RV64 下必须明确失败。
+# 本测试固定构建 RV32 NEMU REF；RV64 DiffTest 请用 xlen-dual-test。
 include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../xlen.mk)
 ifeq ($(XLEN_IS_64),1)
-$(error nemu-difftest-isolation-test 仅支持 RV32：NEMU REF 的 DiffTest ABI 固定为 32 位)
+$(error nemu-difftest-isolation-test 固定 RV32 REF；RV64 DiffTest 请用 xlen-dual-test)
 endif
 
 ARCH ?= riscv32e-npc

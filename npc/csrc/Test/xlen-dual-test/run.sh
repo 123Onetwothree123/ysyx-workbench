@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # xlen-dual-test 的运行器：按 CONFIG_XLEN 选择 RV32/RV64 期望值。
+# DiffTest 目标需要显式传入与当前 XLEN 匹配的 NEMU REF .so。
 # 所有仿真都用短超时，失败时打印对应日志尾部。
 set -euo pipefail
 
@@ -8,6 +9,13 @@ npc_bin="${2:?npc binary}"
 guest="${3:?guest image}"
 xlen="${4:?xlen}"
 log="${5:?log path}"
+ref_so="${6:-}"
+legacy_ref_so="${7:-}"
+# CONFIG_SDB=y 的 DUT 必须用 -b 才不会在非交互 stdin 上提前退出；
+# 未启用 SDB 的配置不认识该参数，由 Makefile 按 .config 决定是否传入。
+batch_flag="${NPC_BATCH_FLAG:-}"
+batch_args=()
+[[ -n "$batch_flag" ]] && batch_args=("$batch_flag")
 
 mkdir -p "$(dirname -- "$log")"
 
@@ -72,11 +80,13 @@ run_sdb() {
             fail "SDB 未保留 64 位符号扩展 GPR" "$regs_log"
         grep -Fq '无符号（十进制）：4294967296' "$regs_log" ||
             fail "SDB 未把 2^32 当作合法 64 位值" "$regs_log"
-        grep -Fq '0x80001000: 0x1122334455667788' "$regs_log" ||
+        # RV64 SDB 地址按 XWord 宽度补零到 16 个十六进制数字。
+        grep -Eq '0x0*80001000: 0x1122334455667788' "$regs_log" ||
             fail "SDB x/g 未显示 64 位数据" "$regs_log"
         grep -Fq '0x1122334455667788' "$regs_log" ||
             fail "SDB read64 未显示 64 位数据" "$regs_log"
-        grep -Eq '十六进制： +0x1[0-9a-f]{8,}' "$pc_log" ||
+        # XWord 宽度显示会补零；关键是高 32 位不为 0 且 PC 在 4GiB 以上。
+        grep -Eq '十六进制： +0x0*1[0-9a-f]{8,}' "$pc_log" ||
             fail "RV64 halt 后 PC 不是 4GiB 以上的 64 位值" "$pc_log"
     else
         grep -Fq '0x89abcdef' "$regs_log" ||
@@ -113,33 +123,62 @@ run_mtrace() {
     fi
 }
 
+# RV32/RV64 都必须真正加载 REF、逐退休比对并完成最终状态校验。
 run_difftest() {
-    local diff_log="${log%.log}-difftest.log"
+    local diff_log="$log"
+    [[ -n "$ref_so" ]] || fail "DiffTest 缺少 REF .so 参数"
+    [[ -f "$ref_so" ]] || fail "DiffTest REF 不存在: $ref_so"
+
     local status=0
-    timeout 15 "$npc_bin" "$guest" --diff /definitely/not/a/real/nemu-ref.so \
+    timeout 20 "$npc_bin" "$guest" --diff "$ref_so" "${batch_args[@]}" \
         >"$diff_log" 2>&1 || status=$?
 
-    [[ $status -ne 0 ]] ||
-        fail "DiffTest 在 $([[ "$xlen" == 64 ]] && echo RV64 || echo RV32) 下错误地接受了 REF" "$diff_log"
+    [[ $status -eq 0 ]] ||
+        fail "DiffTest 在 CONFIG_XLEN=$xlen 下失败（exit=$status）" "$diff_log"
+    grep -Fq 'DiffTest: ON' "$diff_log" ||
+        fail "DiffTest 未启用" "$diff_log"
+    grep -Fq 'DiffTest: final state PASS' "$diff_log" ||
+        fail "DiffTest 未完成最终状态比对" "$diff_log"
+    grep -Fq 'HIT GOOD TRAP' "$diff_log" ||
+        fail "DiffTest guest 未触发 HIT GOOD TRAP" "$diff_log"
+}
 
-    if [[ "$xlen" == 64 ]]; then
-        grep -Fq 'DiffTest 初始化失败' "$diff_log" ||
-            fail "RV64 DiffTest 失败信息不明确" "$diff_log"
-        grep -Fq 'RV64 DiffTest/NEMU 未支持' "$diff_log" ||
-            fail "RV64 DiffTest 未明确说明 REF ABI 只支持 32 位" "$diff_log"
-    else
-        # RV32 应走到 dlopen 失败，而不是误报“RV64 不支持”。
-        grep -Fq 'DiffTest 初始化失败' "$diff_log" ||
-            fail "RV32 DiffTest 失败信息不明确" "$diff_log"
-        grep -Fq '打开 DiffTest REF 失败' "$diff_log" ||
-            fail "RV32 DiffTest 未按预期加载 REF" "$diff_log"
+# 旧 REF 只声明 32 位 ABI。RV64 DUT 必须在执行前按 ABI 大小明确拒绝，
+# 不能把 264 字节状态截成 132 字节继续跑。RV32 下 132 字节是合法 ABI，
+# 本用例只对 RV64 有意义。
+run_difftest_reject() {
+    if [[ "$xlen" != 64 ]]; then
+        echo "[SKIP] difftest-reject (RV32 的 132 字节 REF ABI 是合法的)"
+        return 0
     fi
+
+    local reject_log="$log"
+    [[ -n "$legacy_ref_so" ]] || fail "DiffTest 负向用例缺少旧 REF .so 参数"
+    [[ -f "$legacy_ref_so" ]] || fail "旧 REF 不存在: $legacy_ref_so"
+
+    local status=0
+    timeout 20 "$npc_bin" "$guest" --diff "$legacy_ref_so" "${batch_args[@]}" \
+        >"$reject_log" 2>&1 || status=$?
+
+    [[ $status -ne 0 ]] ||
+        fail "RV64 DiffTest 错误地接受了 32 位状态 REF" "$reject_log"
+    grep -Fq 'DiffTest 初始化失败' "$reject_log" ||
+        fail "旧 REF 拒绝信息不明确" "$reject_log"
+    grep -Fq '状态 ABI 不匹配' "$reject_log" ||
+        fail "旧 REF 未被状态 ABI 大小校验拒绝" "$reject_log"
+    grep -Fq 'REF=132' "$reject_log" ||
+        fail "拒绝信息未报告旧 REF 的 132 字节状态" "$reject_log"
+    grep -Fq 'DUT=264' "$reject_log" ||
+        fail "拒绝信息未报告 RV64 DUT 的 264 字节状态" "$reject_log"
+    ! grep -Fq 'HIT GOOD TRAP' "$reject_log" ||
+        fail "旧 REF 被拒绝后仍执行了 guest" "$reject_log"
 }
 
 case "$mode" in
     sdb) run_sdb ;;
     mtrace) run_mtrace ;;
     difftest) run_difftest ;;
+    difftest-reject) run_difftest_reject ;;
     *)
         echo "未知 mode: $mode" >&2
         exit 2

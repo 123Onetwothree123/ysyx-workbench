@@ -100,7 +100,7 @@ public:
     [[nodiscard]] npc::XWord ReadHaltPC() const;
     [[nodiscard]] npc::XWord ReadTrapPC() const;
     [[nodiscard]] npc::XWord ReadTrapTarget() const;
-    // mcause 是异常/中断编码，RTL 调试端口固定 32 位，保留真实宽度。
+    // mcause 编码本身在低 32 位；DiffTest 的完整 64 位快照另行读取高半区。
     [[nodiscard]] std::uint32_t ReadTrapCause() const;
     // One-time physical RF rescan used at reset and at the final DiffTest
     // boundary.  Per-retirement snapshots continue to use the write mirror.
