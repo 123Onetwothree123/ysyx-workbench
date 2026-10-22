@@ -227,6 +227,18 @@ menu "虚拟内存管理 (MMU/TLB)"
         balanced 默认 2。多笔在途需要 walk ID、响应队列和
         TLB refill 仲裁；具体数据结构由 MMU_PTW_ARCH 决定。
 
+    config MMU_PTW_BUS_OUTSTANDING
+      int "PTW 页表总线最大在途事务数"
+      default 1 if MMU_PROFILE_MIN_AREA
+      default 4 if MMU_PROFILE_HIGH_PERF
+      default 1
+      range 0 16
+      help
+        控制 PTW 与页表总线之间可同时保持的读/写事务数，0 表示跟随
+        MMU_PTW_OUTSTANDING。independent 结构按 walker 固定事务 ID，
+        pipelined 结构按 B 级槽位分配事务 ID，响应均按 ID 回收。
+        共享 IFU AXI 端口当前仍只支持单笔 AXI 读在途。
+
     choice
       prompt "PTW 返回顺序"
       default MMU_PTW_IN_ORDER

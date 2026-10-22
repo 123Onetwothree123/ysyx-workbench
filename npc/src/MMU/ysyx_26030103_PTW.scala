@@ -45,9 +45,13 @@ class ysyx_26030103_PTW(
     tableEntries: Int = 1024,
     fillSuperpage: Boolean = false,
     pteSizeBytes: Int = 4,
-    hasU: Boolean = true
+    hasU: Boolean = true,
+    // 该 walker 在页表总线上的固定事务 ID；多 walker 簇用 walker 编号，
+    // 单 walker/直连测试保持 0。
+    busId: Int = 0
 ) extends Module {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
+  require(busId >= 0 && busId <= 15, "PTW busId 必须在 0..15")
   require(pageBits >= 2 && pageBits < 32, "pageBits 非法")
   require(levels >= 1 && levels <= 4, "页表级数必须在 1..4")
   require(tableEntries > 0 && (tableEntries & (tableEntries - 1)) == 0,
@@ -235,6 +239,8 @@ class ysyx_26030103_PTW(
   val useBus = state === reqState && !cacheHit
   io.req.ready := state === idle
   io.bus.req.valid := useBus || state === reqHigh || state === writeState
+  // 单 walker 同时只有一笔页表事务；ID 在簇内唯一，用于响应回收。
+  io.bus.req.bits.id := busId.U(4.W)
   io.bus.req.bits.addr := Mux(state === writeState, pteAddrReg,
     Mux(state === reqState, nextPteAddr,
       Mux(state === reqHigh, pteAddrReg + 4.U, pteAddrReg)))

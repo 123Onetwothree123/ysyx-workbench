@@ -28,8 +28,13 @@ class ysyx_26030103_MMUResponse extends Bundle {
   val tval = UInt(32.W)
 }
 
-/** PTW 的物理页表访问总线。 */
+/** PTW 的物理页表访问总线。
+  *
+  * id 用于标识一笔在途事务：PTW pipeline 可以同时发出多笔页表读，总线
+  * 响应允许乱序返回，由 id 匹配回各自 B 级槽位。单笔 walker 固定使用 0。
+  */
 class ysyx_26030103_PTEBusRequest extends Bundle {
+  val id = UInt(4.W)
   val addr = UInt(32.W)
   val write = Bool()
   val data = UInt(32.W)
@@ -37,6 +42,8 @@ class ysyx_26030103_PTEBusRequest extends Bundle {
 }
 
 class ysyx_26030103_PTEBusResponse extends Bundle {
+  // 与请求相同的 id；响应方必须原样带回。
+  val id = UInt(4.W)
   val data = UInt(32.W)
   val fault = Bool()
 }

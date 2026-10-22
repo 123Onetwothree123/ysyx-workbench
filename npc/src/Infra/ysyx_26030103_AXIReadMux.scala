@@ -140,14 +140,30 @@ class ysyx_26030103_AXIReadMux(passWriteA: Boolean = false) extends Module {
   }
 }
 
-/** 把 PTW 的简单 32 位读总线转换成单拍 AXI 读。 */
-class ysyx_26030103_PTWToAXI extends Module {
+/** 把 PTW 的简单 32 位页表总线转换成单拍 AXI 读/写。
+  *
+  * 内部请求队列允许 PTW 同时提交多笔页表访问；队首按序转换成 AXI 事务。
+  * 共享 IFU 读端口（AXIReadMux/Arbiter）仍只允许一笔 AXI 读在途，因此
+  * 这里只保存请求顺序和原事务 id：AXI 响应返回时把 id 送回 PTW。结果是
+  * PTW 内部页表总线可多 outstanding，但 DRAM 级读延迟仍串行，属于当前
+  * AXI 拓扑的限制，而不是 PTW 本身的限制。
+  *
+  * busDepth 必须不小于 PTW 配置的总线 outstanding，否则队列反压会提前
+  * 把多 outstanding 收缩成单笔。
+  */
+class ysyx_26030103_PTWToAXI(busDepth: Int = 16) extends Module {
+  require(busDepth >= 1, "PTWToAXI 请求队列深度必须 >= 1")
   val io = IO(new Bundle {
     val req = Flipped(Decoupled(new ysyx_26030103_PTEBusRequest))
     val resp = Decoupled(new ysyx_26030103_PTEBusResponse)
     val axi = new ysyx_26030103_AXI5IO(32)
     val axiWrite = new ysyx_26030103_AXI5IO(32)
   })
+
+  val reqQ = Module(new Queue(new ysyx_26030103_PTEBusRequest, busDepth,
+    pipe = true, flow = false))
+  reqQ.io.enq <> io.req
+
   io.axi.AW.AWVALID := false.B
   io.axi.AW.AWID := 0.U
   io.axi.AW.AWADDR := 0.U
@@ -162,31 +178,39 @@ class ysyx_26030103_PTWToAXI extends Module {
   io.axi.W.WSTRB := 0.U
   io.axi.W.WLAST := false.B
   io.axi.B.BREADY := false.B
-  io.axi.AR.ARVALID := io.req.valid && !io.req.bits.write
-  io.axi.AR.ARID := 0.U
-  io.axi.AR.ARADDR := io.req.bits.addr
+
+  val idle :: readWait :: writeReq :: writeWait :: Nil = Enum(4)
+  val state = RegInit(idle)
+  val awDone = RegInit(false.B)
+  val wDone = RegInit(false.B)
+  val headValid = reqQ.io.deq.valid
+  val head = reqQ.io.deq.bits
+
+  // 读通道：只在队列非空且队首是读时发起一笔单拍 AXI 读。
+  io.axi.AR.ARVALID := state === idle && headValid && !head.write
+  io.axi.AR.ARID := head.id
+  io.axi.AR.ARADDR := head.addr
   io.axi.AR.ARLEN := 0.U
   io.axi.AR.ARSIZE := 2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
   io.axi.AR.ARCACHE := 0.U
   io.axi.AR.ARQOS := 0.U
+  io.axi.R.RREADY := state === readWait && io.resp.ready
 
-  val awDone = RegInit(false.B)
-  val wDone = RegInit(false.B)
-  val writeActive = RegInit(false.B)
-  io.axiWrite.AW.AWVALID := io.req.valid && io.req.bits.write && !awDone
+  // 写通道：A/D 写回先完成 AW/W，再等待 B。
+  io.axiWrite.AW.AWVALID := state === writeReq && headValid && !awDone
   io.axiWrite.AW.AWID := 0.U
-  io.axiWrite.AW.AWADDR := io.req.bits.addr
+  io.axiWrite.AW.AWADDR := head.addr
   io.axiWrite.AW.AWLEN := 0.U
   io.axiWrite.AW.AWSIZE := 2.U
   io.axiWrite.AW.AWBURST := 1.U
   io.axiWrite.AW.AWPROT := 0.U
   io.axiWrite.AW.AWCACHE := 0.U
   io.axiWrite.AW.AWQOS := 0.U
-  io.axiWrite.W.WVALID := io.req.valid && io.req.bits.write && !wDone
-  io.axiWrite.W.WDATA := io.req.bits.data
-  io.axiWrite.W.WSTRB := io.req.bits.strb
+  io.axiWrite.W.WVALID := state === writeReq && headValid && !wDone
+  io.axiWrite.W.WDATA := head.data
+  io.axiWrite.W.WSTRB := head.strb
   io.axiWrite.W.WLAST := true.B
   io.axiWrite.AR.ARVALID := false.B
   io.axiWrite.AR.ARID := 0.U
@@ -198,27 +222,41 @@ class ysyx_26030103_PTWToAXI extends Module {
   io.axiWrite.AR.ARCACHE := 0.U
   io.axiWrite.AR.ARQOS := 0.U
   io.axiWrite.R.RREADY := false.B
-  io.axiWrite.B.BREADY := io.resp.ready && writeActive
+  io.axiWrite.B.BREADY := state === writeWait && io.resp.ready
 
-  when(io.req.valid && io.req.bits.write) {
-    when(io.axiWrite.AW.AWREADY && !awDone) { awDone := true.B }
-    when(io.axiWrite.W.WREADY && !wDone) { wDone := true.B }
-  }
-  when(io.req.fire && io.req.bits.write) {
-    awDone := false.B
-    wDone := false.B
-    writeActive := true.B
-  }
-  when(writeActive && io.axiWrite.B.BVALID && io.resp.ready) {
-    writeActive := false.B
-  }
+  val awFire = io.axiWrite.AW.AWVALID && io.axiWrite.AW.AWREADY
+  val wFire = io.axiWrite.W.WVALID && io.axiWrite.W.WREADY
+  val readRespFire = state === readWait && io.axi.R.RVALID && io.resp.ready
+  val writeRespFire = state === writeWait && io.axiWrite.B.BVALID && io.resp.ready
 
-  io.req.ready := Mux(io.req.bits.write, awDone && wDone, io.axi.AR.ARREADY)
-  io.resp.valid := Mux(writeActive, io.axiWrite.B.BVALID, io.axi.R.RVALID)
-  io.resp.bits.data := Mux(writeActive, 0.U, io.axi.R.RDATA)
-  io.resp.bits.fault := Mux(writeActive,
+  when(state === idle) {
+    when(headValid) {
+      when(head.write) {
+        state := writeReq
+        awDone := false.B
+        wDone := false.B
+      }.elsewhen(io.axi.AR.ARREADY) {
+        state := readWait
+      }
+    }
+  }
+  when(state === writeReq) {
+    when(awFire) { awDone := true.B }
+    when(wFire) { wDone := true.B }
+    when((awDone || awFire) && (wDone || wFire)) { state := writeWait }
+  }
+  when(readRespFire || writeRespFire) { state := idle }
+
+  io.resp.valid := Mux(state === readWait, io.axi.R.RVALID,
+    Mux(state === writeWait, io.axiWrite.B.BVALID, false.B))
+  // 顺序队列的队首就是当前 AXI 事务；响应时原样带回 PTW 事务 ID。
+  io.resp.bits.id := head.id
+  io.resp.bits.data := Mux(state === writeWait, 0.U, io.axi.R.RDATA)
+  io.resp.bits.fault := Mux(state === writeWait,
     io.axiWrite.B.BRESP =/= 0.U, io.axi.R.RRESP =/= 0.U)
-  io.axi.R.RREADY := Mux(writeActive, false.B, io.resp.ready)
+
+  // 只有响应真正被 PTW 接收后才弹出队首，保证请求/响应一一对应。
+  reqQ.io.deq.ready := readRespFire || writeRespFire
 }
 
 /** 写通道二选一：LSU 与 PTW A/D 写回共用仲裁器的 LSU 写端口。

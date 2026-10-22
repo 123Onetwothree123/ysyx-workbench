@@ -140,7 +140,14 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val mmuArbOpt =
     if (mmuEnabled) Some(Module(new ysyx_26030103_MMURequestArbiter)) else None
   val ptwToAxiOpt =
-    if (mmuEnabled) Some(Module(new ysyx_26030103_PTWToAXI)) else None
+    if (mmuEnabled) {
+      // PTW 侧可多 outstanding；适配器队列深度与配置一致即可，AXI 侧仍
+      // 由共享 IFU 端口顺序发出（见 PTWToAXI 注释）。
+      val busDepth =
+        if (config.MMU.ptwBusOutstanding > 0) config.MMU.ptwBusOutstanding
+        else config.MMU.ptwOutstanding
+      Some(Module(new ysyx_26030103_PTWToAXI(busDepth = busDepth.max(1))))
+    } else None
   val axiReadMuxOpt =
     if (mmuEnabled && config.MMU.ptwPath != "reuse_dcache")
       Some(Module(new ysyx_26030103_AXIReadMux))

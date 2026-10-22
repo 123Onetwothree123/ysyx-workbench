@@ -24,6 +24,7 @@ class MmuProfileTest(unittest.TestCase):
             "MMU_PTW_PATH": "dedicated",
             "MMU_PTW_ARCH": "independent",
             "MMU_PTW_OUTSTANDING": 2,
+            "MMU_PTW_BUS_OUTSTANDING": 1,
             "MMU_PTW_ORDER": "in_order",
             "TLB_ORGANIZATION": "split",
             "TLB_STORAGE": "reg",

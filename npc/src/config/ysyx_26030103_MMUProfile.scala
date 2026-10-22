@@ -38,6 +38,9 @@ case class ysyx_26030103_MMUProfile(
     ptwPath: String = "dedicated",
     ptwArch: String = "independent",
     ptwOutstanding: Int = 2,
+    // 页表总线可同时保持的页表读/写数。0 表示跟随 ptwOutstanding；
+    // 默认 1 保持原有的单笔总线行为，配置 >1 才启用总线级重叠。
+    ptwBusOutstanding: Int = 1,
     ptwOrder: String = "in_order",
     ptwCache: Boolean = false,
     ptwCacheEntries: Int = 16,
@@ -98,7 +101,10 @@ case class ysyx_26030103_MMUProfile(
     s"pageTableSizeBytes=$pageTableSizeBytes 必须能被 pteSizeBytes=$pteSizeBytes 整除"
   )
   requirePowerOfTwo("每级页表项数", pageTableSizeBytes / pteSizeBytes)
-  require(ptwOutstanding >= 1, s"ptwOutstanding=$ptwOutstanding 必须 >= 1")
+  require(ptwOutstanding >= 1 && ptwOutstanding <= 16,
+    s"ptwOutstanding=$ptwOutstanding 必须在 1..16（PTW 事务 ID 为 4 位）")
+  require(ptwBusOutstanding >= 0 && ptwBusOutstanding <= 16,
+    s"ptwBusOutstanding=$ptwBusOutstanding 必须在 0..16（0 表示跟随 ptwOutstanding）")
   require(Set("independent", "pipelined").contains(ptwArch),
     "MMU_PTW_ARCH 必须是 independent/pipelined")
   require(Set("in_order", "out_of_order").contains(ptwOrder),
@@ -164,7 +170,8 @@ case class ysyx_26030103_MMUProfile(
 
   def describe: String =
     s"MMU(enabled=$enabled profile=$pteFormat page=$pageSizeBytes levels=$levels " +
-      s"pte=$pteSizeBytes table=$pageTableSizeBytes ptw=$ptwPath/$ptwArch/$ptwOutstanding) " +
+      s"pte=$pteSizeBytes table=$pageTableSizeBytes " +
+      s"ptw=$ptwPath/$ptwArch/$ptwOutstanding/bus$ptwBusOutstanding) " +
       s"TLB(enabled=$tlbEnabled org=$tlbOrganization storage=$tlbStorage " +
       s"repl=$tlbReplacement asid=$tlbAsidBits)"
 }
@@ -288,6 +295,7 @@ object ysyx_26030103_MMUProfile {
       ptwPath = envString(env, "MMU_PTW_PATH", "dedicated"),
       ptwArch = envString(env, "MMU_PTW_ARCH", "independent"),
       ptwOutstanding = envInt(env, "MMU_PTW_OUTSTANDING", 2),
+      ptwBusOutstanding = envInt(env, "MMU_PTW_BUS_OUTSTANDING", 1),
       ptwOrder = envString(env, "MMU_PTW_ORDER", "in_order"),
       ptwCache = envBool(env, "MMU_PTW_CACHE", false),
       ptwCacheEntries = envInt(env, "MMU_PTW_CACHE_ENTRIES", 16),

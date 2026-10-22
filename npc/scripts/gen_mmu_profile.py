@@ -353,6 +353,7 @@ def build_profile(cfg: Config) -> dict:
                 "path": ptw_path,
                 "arch": ptw_arch,
                 "outstanding": cfg.integer("MMU_PTW_OUTSTANDING", 2),
+                "bus_outstanding": cfg.integer("MMU_PTW_BUS_OUTSTANDING", 1),
                 "order": ptw_order,
                 "cache": {
                     "enabled": cfg.bool("MMU_PTW_CACHE"),
@@ -423,6 +424,7 @@ HEADER_TEMPLATE = """/* 由 scripts/gen_mmu_profile.py 从 .config 生成，请�
 #define YSYX_MMU_CACHE_MODE "{cache_mode}"
 #define YSYX_MMU_PTW_PATH "{ptw_path}"
 #define YSYX_MMU_PTW_OUTSTANDING {ptw_outstanding}u
+#define YSYX_MMU_PTW_BUS_OUTSTANDING {ptw_bus_outstanding}u
 #define YSYX_MMU_AD_MODE "{ad_mode}"
 #define YSYX_MMU_HAS_S {has_s}
 #define YSYX_MMU_HAS_U {has_u}
@@ -476,6 +478,7 @@ def main() -> int:
         cache_mode=profile["mmu"]["cache_mode"],
         ptw_path=profile["mmu"]["ptw"]["path"],
         ptw_outstanding=profile["mmu"]["ptw"]["outstanding"],
+        ptw_bus_outstanding=profile["mmu"]["ptw"]["bus_outstanding"],
         ad_mode=profile["mmu"]["ad_mode"],
         has_s=int(profile["enabled"]["s"]),
         has_u=int(profile["enabled"]["u"]),
@@ -525,6 +528,7 @@ def main() -> int:
             f"MMU_PTW_PATH={profile['mmu']['ptw']['path']}",
             f"MMU_PTW_ARCH={profile['mmu']['ptw']['arch']}",
             f"MMU_PTW_OUTSTANDING={profile['mmu']['ptw']['outstanding']}",
+            f"MMU_PTW_BUS_OUTSTANDING={profile['mmu']['ptw']['bus_outstanding']}",
             f"MMU_PTW_ORDER={profile['mmu']['ptw']['order']}",
             f"MMU_PTW_CACHE={int(profile['mmu']['ptw']['cache']['enabled'])}",
             f"MMU_PTW_CACHE_ENTRIES={profile['mmu']['ptw']['cache']['entries']}",

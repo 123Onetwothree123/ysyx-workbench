@@ -9,18 +9,19 @@ import _root_.ysyx_26030103.config.ysyx_26030103_PteConfig
   * 三级结构：
   *   A 级：为一个在途请求计算当前级 PTE 地址并查询 PTE cache；命中时直接
   *         送入 C 级，缺失时把页表读请求放入总线队列。
-  *   B 级：单端口页表总线引擎，负责 4B/8B PTE 读和 A/D 硬件写回。等待
-  *         总线响应时 A 级仍可服务其它在途请求。
+  *   B 级：多槽页表总线引擎，可同时持有多笔在途页表读/写。每个槽位用
+  *         事务 ID 匹配响应，因此总线可以重叠、甚至乱序返回；8B PTE 的
+  *         低/高字仍由同一槽位顺序读取。
   *   C 级：解析 PTE，完成权限/超级页检查，推进页表级数，或产生最终
   *         响应并交给响应排序逻辑。
   *
   * 同一请求的页表各级天然存在数据依赖，必须等上一级 PTE 返回后才能
-  * 计算下一级地址；流水重叠发生在不同请求之间，以及 A 级与 B 级之间。
-  * 因此本实现不是把多个独立 walker 换个名字，而是共享一份地址生成、
-  * 总线引擎和 PTE 解析流水。
+  * 计算下一级地址；流水重叠发生在不同请求之间、A 级与 B 级之间，以及
+  * B 级多个页表总线槽位之间。
   */
 class ysyx_26030103_PTWPipeline(
     outstanding: Int = 2,
+    busOutstanding: Int = 0,
     adMode: String = "fault",
     cacheEnable: Boolean = false,
     cacheEntries: Int = 16,
@@ -37,7 +38,10 @@ class ysyx_26030103_PTWPipeline(
     hasU: Boolean = true
 ) extends ysyx_26030103_PTWBackend(respPorts) {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
-  require(outstanding >= 1, "PTW outstanding 必须 >= 1")
+  require(outstanding >= 1 && outstanding <= 16,
+    "PTW outstanding 必须在 1..16（页表总线事务 ID 为 4 位）")
+  require(busOutstanding >= 0 && busOutstanding <= 16,
+    "PTW 页表总线 outstanding 必须在 0..16（0 表示跟随 outstanding）")
   require(respPorts >= 1, "PTW 响应端口数必须 >= 1")
   require(pageBits >= 2 && pageBits < 32, "pageBits 非法")
   require(levels >= 1 && levels <= 4, "页表级数必须在 1..4")
@@ -59,6 +63,10 @@ class ysyx_26030103_PTWPipeline(
     s"pageBits($pageBits) + levels($levels)*indexBits($indexBits) 必须等于 32")
 
   private val ctxBits = log2Ceil(outstanding.max(2))
+  // 页表总线槽位数：默认与上下文数相同，每个上下文最多一笔在途事务；
+  // 可通过 busOutstanding 单独收缩，便于面积/时序权衡。
+  private val busSlots =
+    if (busOutstanding <= 0) outstanding else math.min(busOutstanding, outstanding)
   private val ageBits = 16
   private val epochBits = 8
   private val cacheEffective = cacheEnable && pteBytes == 4
@@ -227,16 +235,23 @@ class ysyx_26030103_PTWPipeline(
   /** 与 independent PTW 相同：0=基础页，k=第 k 级超级页。 */
   private def fillLevelOf(level: UInt): UInt = (levels - 1).U - level
 
-  // B 级：页表总线任务队列，深度等于可同时在途的上下文数。
+  // B 级：页表总线任务队列。每个槽位独立持有一笔在途读/写，响应按
+  // 事务 ID 回收；8B PTE 的高字读仍由同一槽位顺序发出。
   val busQ = Module(new Queue(new BusJob, outstanding, pipe = true,
     flow = false, hasFlush = true))
   busQ.io.flush.get := io.flush
 
-  val busIdle :: busReadWait :: busHighReq :: busHighWait :: busWriteWait :: Nil =
-    Enum(5)
-  val busState = RegInit(busIdle)
-  val curJob = RegInit(0.U.asTypeOf(new BusJob))
-  val lowData = RegInit(0.U(32.W))
+  val bIdle :: bReadReq :: bReadWait :: bHighReq :: bHighWait :: bWriteReq :: bWriteWait :: Nil =
+    Enum(7)
+
+  class BusSlot extends Bundle {
+    val state = UInt(3.W)
+    val job = new BusJob
+    val lowData = UInt(32.W)
+  }
+
+  val busSlot = RegInit(VecInit(Seq.fill(busSlots)(0.U.asTypeOf(new BusSlot))))
+
   val s1Out = Wire(Valid(new ResolveJob))
   s1Out.valid := false.B
   s1Out.bits := 0.U.asTypeOf(new ResolveJob)
@@ -244,86 +259,107 @@ class ysyx_26030103_PTWPipeline(
   io.bus.req.valid := false.B
   io.bus.req.bits := 0.U.asTypeOf(new ysyx_26030103_PTEBusRequest)
   busQ.io.deq.ready := false.B
-  io.bus.resp.ready := busState =/= busIdle && busState =/= busHighReq
 
-  // B 级从队列取任务；只有在请求真正握手后才弹出，避免丢请求。
-  when(busState === busIdle) {
-    when(busQ.io.deq.valid) {
-      io.bus.req.valid := true.B
-      io.bus.req.bits.addr := busQ.io.deq.bits.addr
-      io.bus.req.bits.write := busQ.io.deq.bits.write
-      io.bus.req.bits.data := busQ.io.deq.bits.data
-      io.bus.req.bits.strb := Mux(busQ.io.deq.bits.write, "hf".U(4.W), 0.U(4.W))
-      when(io.bus.req.ready) {
-        busQ.io.deq.ready := true.B
-        curJob := busQ.io.deq.bits
-        busState := Mux(busQ.io.deq.bits.write, busWriteWait, busReadWait)
-      }
+  // 从任务队列填充空闲槽位。每拍最多分配一个任务；任务在真正发请求前
+  // 已完整保存在槽位里，flush 后仍能用旧 epoch 收完在途事务并安全丢弃。
+  val idleVec = VecInit((0 until busSlots).map(i => busSlot(i).state === bIdle))
+  val anyIdle = idleVec.reduce(_ || _)
+  val idleIdx = PriorityEncoder(idleVec)
+  busQ.io.deq.ready := anyIdle && !io.flush
+  when(busQ.io.deq.fire) {
+    busSlot(idleIdx).job := busQ.io.deq.bits
+    busSlot(idleIdx).lowData := 0.U
+    busSlot(idleIdx).state := Mux(busQ.io.deq.bits.write, bWriteReq, bReadReq)
+  }
+
+  // 请求仲裁：A/D 写优先，其次是普通读和 8B 高字读；每拍只向页表
+  // 总线发一个请求。事务 ID 固定为槽位号，因此响应可以乱序返回。
+  val writeReqVec = VecInit((0 until busSlots).map(i =>
+    busSlot(i).state === bWriteReq))
+  val readReqVec = VecInit((0 until busSlots).map { i =>
+    busSlot(i).state === bReadReq || busSlot(i).state === bHighReq
+  })
+  val anyWriteReq = writeReqVec.reduce(_ || _)
+  val anyReadReq = readReqVec.reduce(_ || _)
+  val reqVec = Mux(anyWriteReq, writeReqVec, readReqVec)
+  val anyReq = anyWriteReq || anyReadReq
+  val reqIdx = PriorityEncoder(reqVec)
+  val reqSlot = busSlot(reqIdx)
+  // flush 当拍不再向总线提交新请求，避免刚取消的槽位仍产生响应。
+  io.bus.req.valid := anyReq && !io.flush
+  when(anyReq) {
+    io.bus.req.bits.id := reqIdx.pad(4)
+    io.bus.req.bits.addr :=
+      Mux(reqSlot.state === bHighReq, reqSlot.job.addr + 4.U, reqSlot.job.addr)
+    io.bus.req.bits.write := reqSlot.state === bWriteReq
+    io.bus.req.bits.data := Mux(reqSlot.state === bWriteReq, reqSlot.job.data, 0.U)
+    io.bus.req.bits.strb := Mux(reqSlot.state === bWriteReq, "hf".U(4.W), 0.U)
+  }
+  when(io.bus.req.fire) {
+    switch(reqSlot.state) {
+      is(bReadReq)  { busSlot(reqIdx).state := bReadWait }
+      is(bHighReq)  { busSlot(reqIdx).state := bHighWait }
+      is(bWriteReq) { busSlot(reqIdx).state := bWriteWait }
     }
   }
 
-  // 8B PTE 的低/高两个 32 位字由 B 级连续读取，A 级无需等待。
-  when(busState === busReadWait) {
-    when(io.bus.resp.valid) {
-      if (pteBytes == 8) {
-        when(io.bus.resp.bits.fault) {
-          s1Out.valid := true.B
-          s1Out.bits.ctx := curJob.ctx
-          s1Out.bits.pteAddr := curJob.addr
-          s1Out.bits.raw := io.bus.resp.bits.data
-          s1Out.bits.fault := true.B
-          s1Out.bits.write := false.B
-          s1Out.bits.epoch := curJob.epoch
-          busState := busIdle
-        }.otherwise {
-          lowData := io.bus.resp.bits.data
-          busState := busHighReq
+  // 响应按 ID 送回对应槽位。若 ID 不匹配任何等待槽位则保持 ready=0，
+  // 避免吞掉无法归属的响应；正常总线上不应出现未知 ID。
+  val waitVec = VecInit((0 until busSlots).map { i =>
+    busSlot(i).state === bReadWait || busSlot(i).state === bHighWait ||
+      busSlot(i).state === bWriteWait
+  })
+  val matchVec = VecInit((0 until busSlots).map { i =>
+    waitVec(i) && io.bus.resp.bits.id === i.U(4.W)
+  })
+  val anyMatch = matchVec.reduce(_ || _)
+  // 只把响应交给已经进入等待态的槽位。零延迟总线可能在请求握手同拍
+  // 就给出响应，此时槽位状态要到下一拍才更新；保持 ready=0 让响应
+  // 继续有效即可，下一拍再按 ID 接收。
+  io.bus.resp.ready := anyMatch
+
+  def emitResolve(job: BusJob, pteAddr: UInt, raw: UInt, fault: Bool,
+      write: Bool): Unit = {
+    s1Out.valid := true.B
+    s1Out.bits.ctx := job.ctx
+    s1Out.bits.pteAddr := pteAddr
+    s1Out.bits.raw := raw
+    s1Out.bits.fault := fault
+    s1Out.bits.write := write
+    s1Out.bits.epoch := job.epoch
+  }
+
+  for (i <- 0 until busSlots) {
+    when(io.bus.resp.valid && matchVec(i)) {
+      val job = busSlot(i).job
+      switch(busSlot(i).state) {
+        is(bReadWait) {
+          if (pteBytes == 8) {
+            // 8B PTE：先收低字，再由同一槽位发起高字读。
+            when(io.bus.resp.bits.fault) {
+              emitResolve(job, job.addr, io.bus.resp.bits.data, true.B, false.B)
+              busSlot(i).state := bIdle
+            }.otherwise {
+              busSlot(i).lowData := io.bus.resp.bits.data
+              busSlot(i).state := bHighReq
+            }
+          } else {
+            emitResolve(job, job.addr, io.bus.resp.bits.data,
+              io.bus.resp.bits.fault, false.B)
+            busSlot(i).state := bIdle
+          }
         }
-      } else {
-        s1Out.valid := true.B
-        s1Out.bits.ctx := curJob.ctx
-        s1Out.bits.pteAddr := curJob.addr
-        s1Out.bits.raw := io.bus.resp.bits.data
-        s1Out.bits.fault := io.bus.resp.bits.fault
-        s1Out.bits.write := false.B
-        s1Out.bits.epoch := curJob.epoch
-        busState := busIdle
+        is(bHighWait) {
+          emitResolve(job, job.addr,
+            Cat(io.bus.resp.bits.data, busSlot(i).lowData),
+            io.bus.resp.bits.fault, false.B)
+          busSlot(i).state := bIdle
+        }
+        is(bWriteWait) {
+          emitResolve(job, job.addr, job.data, io.bus.resp.bits.fault, true.B)
+          busSlot(i).state := bIdle
+        }
       }
-    }
-  }
-
-  when(busState === busHighReq) {
-    io.bus.req.valid := true.B
-    io.bus.req.bits.addr := curJob.addr + 4.U
-    io.bus.req.bits.write := false.B
-    io.bus.req.bits.data := 0.U
-    io.bus.req.bits.strb := 0.U
-    when(io.bus.req.ready) { busState := busHighWait }
-  }
-
-  when(busState === busHighWait) {
-    when(io.bus.resp.valid) {
-      s1Out.valid := true.B
-      s1Out.bits.ctx := curJob.ctx
-      s1Out.bits.pteAddr := curJob.addr
-      s1Out.bits.raw := Cat(io.bus.resp.bits.data, lowData)
-      s1Out.bits.fault := io.bus.resp.bits.fault
-      s1Out.bits.write := false.B
-      s1Out.bits.epoch := curJob.epoch
-      busState := busIdle
-    }
-  }
-
-  when(busState === busWriteWait) {
-    when(io.bus.resp.valid) {
-      s1Out.valid := true.B
-      s1Out.bits.ctx := curJob.ctx
-      s1Out.bits.pteAddr := curJob.addr
-      s1Out.bits.raw := curJob.data
-      s1Out.bits.fault := io.bus.resp.bits.fault
-      s1Out.bits.write := true.B
-      s1Out.bits.epoch := curJob.epoch
-      busState := busIdle
     }
   }
 
@@ -355,7 +391,7 @@ class ysyx_26030103_PTWPipeline(
 
   // 无论 B 级是否正在等响应，A 级都可以继续为其它上下文算地址。
   val busEnqValid = anyWrite || (anyWalk && !cacheHit)
-  busQ.io.enq.valid := busEnqValid
+  busQ.io.enq.valid := busEnqValid && !io.flush
   busQ.io.enq.bits := newJob
   when(busQ.io.enq.fire) {
     ctx(newJob.ctx).inFlight := true.B
@@ -492,10 +528,18 @@ class ysyx_26030103_PTWPipeline(
     }
   }
 
-  // flush 使旧总线事务的 epoch 失效；B 级会继续收完已在总线上的响应并丢弃，
-  // 避免复位上下文后旧响应污染复用同一槽位的新请求。
+  // flush 使旧总线事务的 epoch 失效；B 级各槽位会继续收完已在总线上的
+  // 响应并丢弃，避免复位上下文后旧响应污染复用同一槽位的新请求。
   when(io.flush) {
     cache.foreach { c => for (i <- 0 until cacheEntries) { c(i).valid := false.B } }
+    // 尚未发到总线上的槽位直接取消；已在等待响应的槽位继续收完，
+    // 之后由 epoch 检查安全丢弃，避免总线响应无人接收。
+    for (i <- 0 until busSlots) {
+      when(busSlot(i).state === bReadReq || busSlot(i).state === bHighReq ||
+          busSlot(i).state === bWriteReq) {
+        busSlot(i).state := bIdle
+      }
+    }
     for (i <- 0 until outstanding) {
       ctx(i) := 0.U.asTypeOf(new Context)
     }

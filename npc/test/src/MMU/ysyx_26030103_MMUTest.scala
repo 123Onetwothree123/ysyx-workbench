@@ -212,4 +212,41 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
       outstanding = 2, levels = 4, tableEntries = 32, pteSizeBytes = 8
     ))
   }
+
+  it should "支持可配置的页表总线多 outstanding" in {
+    emit(new ysyx_26030103_PTWPipeline(
+      outstanding = 4, busOutstanding = 4, adMode = "hardware",
+      cacheEnable = true, superpage = true
+    ))
+    emit(new ysyx_26030103_PTWPipeline(
+      outstanding = 4, busOutstanding = 1, pteSizeBytes = 8,
+      levels = 4, tableEntries = 32
+    ))
+    emit(new ysyx_26030103_PTWCluster(
+      outstanding = 4, busOutstanding = 4, adMode = "hardware",
+      cacheEnable = true, superpage = true
+    ))
+
+    val pipelineProfile = ysyx_26030103_MMUProfile(
+      enabled = true,
+      tlbEnabled = true,
+      ptwArch = "pipelined",
+      ptwOutstanding = 4,
+      ptwBusOutstanding = 4,
+      adMode = "hardware"
+    )
+    emit(new ysyx_26030103_MMU(pipelineProfile))
+    emit(new _root_.ysyx_26030103.ysyx_26030103(
+      ysyx_26030103_NPCConfig(MMU = pipelineProfile)
+    ))
+
+    val independentProfile = pipelineProfile.copy(
+      ptwArch = "independent",
+      ptwBusOutstanding = 2
+    )
+    emit(new ysyx_26030103_MMU(independentProfile))
+    emit(new _root_.ysyx_26030103.ysyx_26030103(
+      ysyx_26030103_NPCConfig(MMU = independentProfile)
+    ))
+  }
 }

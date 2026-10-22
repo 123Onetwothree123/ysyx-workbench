@@ -27,6 +27,8 @@ class ysyx_26030103_MMU(
     "TLB_SUPERPAGE 的 fillLevel 只有 2 位，levels 必须在 1..4")
   require(profile.ptwOutstanding >= 1 && profile.ptwOutstanding <= 16,
     "MMU_PTW_OUTSTANDING 必须在 1..16")
+  require(profile.ptwBusOutstanding >= 0 && profile.ptwBusOutstanding <= 16,
+    "MMU_PTW_BUS_OUTSTANDING 必须在 0..16")
   require(profile.refillPorts >= 1, "TLB refill 端口数必须 >= 1")
   require(Set("follow_tlb", "global").contains(profile.tlbMissQueueMode),
     "TLB miss queue 模式必须是 follow_tlb/global")
@@ -113,6 +115,7 @@ class ysyx_26030103_MMU(
     if (profile.ptwArch == "pipelined") {
       Module(new ysyx_26030103_PTWPipeline(
         outstanding = contexts,
+        busOutstanding = profile.ptwBusOutstanding,
         adMode = profile.adMode,
         cacheEnable = profile.ptwCache,
         cacheEntries = profile.ptwCacheEntries,
@@ -131,6 +134,7 @@ class ysyx_26030103_MMU(
     } else {
       Module(new ysyx_26030103_PTWCluster(
         outstanding = contexts,
+        busOutstanding = profile.ptwBusOutstanding,
         adMode = profile.adMode,
         cacheEnable = profile.ptwCache,
         cacheEntries = profile.ptwCacheEntries,
