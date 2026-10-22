@@ -242,7 +242,8 @@ menu "虚拟内存管理 (MMU/TLB)"
         控制 PTW 与页表总线之间可同时保持的读/写事务数，0 表示跟随
         MMU_PTW_OUTSTANDING。independent 结构按 walker 固定事务 ID，
         pipelined 结构按 B 级槽位分配事务 ID，响应均按 ID 回收。
-        共享 IFU AXI 端口当前仍只支持单笔 AXI 读在途。
+        共享 IFU/LSU AXI 读端口按 3..15 分配页表读 ID，最多 13 笔
+        AXI 读同时在途；超出的请求在适配器队列中等待，不会丢失。
 
     choice
       prompt "PTW 返回顺序"

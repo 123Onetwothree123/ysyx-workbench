@@ -141,12 +141,19 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     if (mmuEnabled) Some(Module(new ysyx_26030103_MMURequestArbiter)) else None
   val ptwToAxiOpt =
     if (mmuEnabled) {
-      // PTW 侧可多 outstanding；适配器队列深度与配置一致即可，AXI 侧仍
-      // 由共享 IFU 端口顺序发出（见 PTWToAXI 注释）。
+      // PTW 页表总线可多 outstanding；适配器内部给每笔读分配独立 AXI ID
+      // （3..15）并保存 PTW 原事务 ID，响应按 ID 回送对应页表槽位。
+      // 4 位下游 ID 还要保留 0/1/2 给 ICache/LSU/DMA，因此 AXI 读槽位
+      // 最多 13 个；超出的页表请求留在适配器队列里等待槽位。
       val busDepth =
         if (config.MMU.ptwBusOutstanding > 0) config.MMU.ptwBusOutstanding
         else config.MMU.ptwOutstanding
-      Some(Module(new ysyx_26030103_PTWToAXI(busDepth = busDepth.max(1))))
+      val axiReadSlots =
+        math.min(busDepth.max(1), ysyx_26030103_AXIReadId.PtwSlots)
+      Some(Module(new ysyx_26030103_PTWToAXI(
+        busDepth = busDepth.max(1),
+        axiReadSlots = axiReadSlots
+      )))
     } else None
   val axiReadMuxOpt =
     if (mmuEnabled && config.MMU.ptwPath != "reuse_dcache")
@@ -1067,18 +1074,13 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // AXI响应协议检查: B响应的错误码不再在这里断言——DECERR/SLVERR会由LSU按
   // store访问故障精确提交(cause=7), 顶层断言会抢先把仿真停掉。
   // 这里保留BID/RID协议检查, 并消费这些顶层AXI响应信号。
-  // CPU自身使用读ID 0/1和写ID 0；入站DMA proxy保留下游ID 2。
+  // 读ID：0=ICache，1=LSU，2=DMA，3..15=PTW；4位ID已全部分配。
+  // 读响应归属由仲裁器的逐ID在途表检查，这里只保留写响应BID约束。
   val b_handshake = io.master_bvalid && io.master_bready
   assert(
     !b_handshake || io.master_bid === 0.U || io.master_bid === 2.U,
     "AXI write: bid=%d",
     io.master_bid
-  )
-  assert(
-    !(io.master_rvalid && io.master_rready) ||
-      io.master_rid === 0.U || io.master_rid === 1.U || io.master_rid === 2.U,
-    "AXI read: rid=%d",
-    io.master_rid
   )
 
 }

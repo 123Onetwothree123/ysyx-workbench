@@ -41,6 +41,11 @@
   - 页表读等待期间 A 级仍可服务其它在途请求；同一请求的各级仍受
     数据依赖约束。
 - PTW 返回 in_order/out_of_order 选择；MMU 层仍保证架构响应顺序。
+- PTW 页表读的共享 AXI 读端口支持多 outstanding：PTWToAXI 为每笔页表读
+  保存原事务 ID 并分配 AXI ID 3..15，AXIReadMux 与 AXI5Arbiter 按 RID
+  路由回对应 PTW 槽位。ICache burst 仍使用 ID 0，LSU 使用 ID 1，DMA
+  使用 ID 2；四类读可以同时在途。PTW AXI 读最多 13 笔并发，超过部分在
+  适配器队列等待（4 位下游 ID 的物理上限）。
 - PIPT 和 VIPT：VIPT 使用虚拟地址提前选 index/block offset，物理地址
   到达后再做 tag/PMA/refill。elaboration 会检查 index+块内偏移是否落在
   页内，超出 pageBits 的配置明确报错，避免静默 alias。ICache 和 DCache 都有并行 VIPT 路径；
@@ -58,10 +63,10 @@
 单元测试：
 
 ```text
-全部 mill 单元测试通过，包含：
-MMU 结构/行为/流、PTW pipeline、CSR/U 裁剪、IDU 特权级、
-PLIC、PMP、ICache VIPT、DCache VIPT、LSUMMUVipt、LSUVipt、
-LSUDmmuVipt、LSUStoreVipt。
+总计约 110 项 mill 单元测试通过，包含：
+MMU 结构/行为/流、PTW pipeline、AXI 多 outstanding、CSR/U 裁剪、
+IDU 特权级、PLIC、PMP、ICache VIPT、DCache VIPT、LSUMMUVipt、
+LSUVipt、LSUDmmuVipt、LSUStoreVipt。
 ```
 
 裸机测试（MMU 开启）：
@@ -113,7 +118,9 @@ S ecall + SRET          HIT GOOD
 - DCache VIPT：load/store 都支持 VA 提前受理，store 在 PA 确认前
   不产生写副作用。
 - TLB superpage：支持按 pageBits/levels/indexBits 计算的多个超级页层级。
-- PTW 页表总线：内部支持多 outstanding 和事务 ID；共享 AXI IFU 读端口
-  仍受单笔 AXI read 限制。
-
-剩余限制仅为共享 AXI 读端口带宽/单笔 AXI 事务，不再是功能缺失。
+- PTW 页表总线：内部支持多 outstanding 和事务 ID；共享 AXI IFU/LSU
+  读端口按 ID 支持多笔 AXI read 重叠。ICache/LSU/DMA 固定占用 0/1/2，
+  PTW 使用 3..15，最多 13 笔 AXI 读同时在途。
+- 剩余限制：PTW 内部页表总线可配置到 16 笔，但下游 4 位 AXI ID 在保留
+  ICache/LSU/DMA 后只剩 13 个 PTW 槽；更多请求会在 PTWToAXI 队列等待，
+  不再退化为单笔串行，也不影响功能正确性。

@@ -27,9 +27,14 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     val DMAWriteInvalidate = Output(Bool())
   })
 
-  private val IFUReadID = 0.U(4.W)
-  private val LSUReadID = 1.U(4.W)
-  private val DMAReadID = 2.U(4.W)
+  // 与 ysyx_26030103_AXIReadId 保持一致：0=ICache，1=LSU，2=DMA，
+  // 3..15=PTW 页表读。IFU/LSU 端口保留各自的局部 ID，仲裁器只把 LSU
+  // 局部 ID 0 映射到下游 1，其余 PTW ID 原样透传。
+  private val IFUReadID = ysyx_26030103_AXIReadId.Ifu.U(4.W)
+  private val LSUReadID = ysyx_26030103_AXIReadId.Lsu.U(4.W)
+  private val DMAReadID = ysyx_26030103_AXIReadId.Dma.U(4.W)
+  private val PtwReadBaseID = ysyx_26030103_AXIReadId.PtwBase.U(4.W)
+  private val PtwReadLastID = ysyx_26030103_AXIReadId.PtwLast.U(4.W)
   private val DMAWriteID = 2.U(4.W)
   private val GrantIFU = 0.U(2.W)
   private val GrantLSU = 1.U(2.W)
@@ -37,6 +42,7 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   private val DECERR = 3.U(2.W)
 
   private class ReadResponsePayload extends Bundle {
+    val Id = UInt(4.W)
     val Data = UInt(32.W)
     val Resp = UInt(2.W)
     val Last = Bool()
@@ -122,11 +128,16 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   io.memory.AR.ARQOS := 0.U
 
   // 读地址仲裁和基于ID的响应路由。
-  val ifuReadOutstanding = RegInit(false.B)
-  val lsuReadOutstanding = RegInit(false.B)
+  //
+  // IFU/LSU 端口不再限制“整个端口只有一笔在途”，而是按下游 AXI ID 逐槽
+  // 记录。ICache 固定使用 IFU ID 0；PTW 适配器使用 3..15，因此同一个 IFU
+  // 端口可以同时容纳 ICache burst 和多笔页表单拍读。LSU 端口在普通路径
+  // 只有局部 ID 0，在 reuse_dcache 路径则同时承载 DCache(0) 与 PTW(3..15)。
+  val ifuReadBusy = RegInit(VecInit(Seq.fill(16)(false.B)))
+  val lsuReadBusy = RegInit(VecInit(Seq.fill(16)(false.B)))
+  val ifuReadIngressDone = RegInit(VecInit(Seq.fill(16)(false.B)))
+  val lsuReadIngressDone = RegInit(VecInit(Seq.fill(16)(false.B)))
   val dmaReadOutstanding = RegInit(false.B)
-  val ifuReadIngressDone = RegInit(false.B)
-  val lsuReadIngressDone = RegInit(false.B)
   val dmaReadIngressDone = RegInit(false.B)
   val dmaReadOriginalID = RegInit(0.U(4.W))
   val dmaReadLocalError = RegInit(false.B)
@@ -136,9 +147,32 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   val lastReadGrant = RegInit(GrantDMA)
   val readGrantHeld = RegInit(false.B)
   val heldReadGrant = RegInit(GrantIFU)
-  val ifuReadRequest = io.ifu.AR.ARVALID && !ifuReadOutstanding
-  val lsuReadRequest = io.lsu.AR.ARVALID && !lsuReadOutstanding
+
+  // IFU 局部 ID 只允许 0（ICache）或 3..15（PTW）；LSU 另外允许局部 0
+  // 映射到下游 1。1/2 是 LSU/DMA 的固定下游 ID，不能作为 PTW 槽位。
+  val ifuLocalID = io.ifu.AR.ARID
+  val lsuLocalID = io.lsu.AR.ARID
+  val ifuIdFormValid = ifuLocalID === IFUReadID ||
+    (ifuLocalID >= PtwReadBaseID && ifuLocalID <= PtwReadLastID)
+  val lsuIdFormValid = lsuLocalID === 0.U ||
+    (lsuLocalID >= PtwReadBaseID && lsuLocalID <= PtwReadLastID)
+  val ifuDownstreamID = ifuLocalID
+  val lsuDownstreamID = Mux(lsuLocalID === 0.U, LSUReadID, lsuLocalID)
+  val ifuReadRequest = io.ifu.AR.ARVALID && ifuIdFormValid &&
+    !ifuReadBusy(ifuDownstreamID) && !lsuReadBusy(ifuDownstreamID) &&
+    ifuDownstreamID =/= DMAReadID
+  val lsuReadRequest = io.lsu.AR.ARVALID && lsuIdFormValid &&
+    !lsuReadBusy(lsuDownstreamID) && !ifuReadBusy(lsuDownstreamID) &&
+    lsuDownstreamID =/= DMAReadID
   val dmaReadRequest = io.dma.AR.ARVALID && !dmaReadOutstanding
+  when(io.ifu.AR.ARVALID) {
+    assert(ifuIdFormValid,
+      "IFU read ID must be 0 or in the PTW 3..15 range")
+  }
+  when(io.lsu.AR.ARVALID) {
+    assert(lsuIdFormValid,
+      "LSU read ID must be local 0 or in the PTW 3..15 range")
+  }
   // 三方round-robin：从上次授权的下一方开始找有效请求。
   val chooseNewIFU = WireDefault(false.B)
   val chooseNewLSU = WireDefault(false.B)
@@ -170,7 +204,7 @@ class ysyx_26030103_AXI5Arbiter extends Module {
 
   when(chooseLSU) {
     io.memory.AR.ARVALID := io.lsu.AR.ARVALID
-    io.memory.AR.ARID := LSUReadID
+    io.memory.AR.ARID := lsuDownstreamID
     io.memory.AR.ARADDR := io.lsu.AR.ARADDR
     io.memory.AR.ARLEN := io.lsu.AR.ARLEN
     io.memory.AR.ARSIZE := io.lsu.AR.ARSIZE
@@ -197,7 +231,7 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     }
   }.elsewhen(chooseIFU) {
     io.memory.AR.ARVALID := io.ifu.AR.ARVALID
-    io.memory.AR.ARID := IFUReadID
+    io.memory.AR.ARID := ifuDownstreamID
     io.memory.AR.ARADDR := io.ifu.AR.ARADDR
     io.memory.AR.ARLEN := io.ifu.AR.ARLEN
     io.memory.AR.ARSIZE := io.ifu.AR.ARSIZE
@@ -247,13 +281,13 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     readGrantHeld := false.B
   }
   when(readAddressFire && chooseLSU) {
-    lsuReadOutstanding := true.B
-    lsuReadIngressDone := false.B
+    lsuReadBusy(lsuDownstreamID) := true.B
+    lsuReadIngressDone(lsuDownstreamID) := false.B
     lastReadGrant := GrantLSU
   }
   when(readAddressFire && chooseIFU) {
-    ifuReadOutstanding := true.B
-    ifuReadIngressDone := false.B
+    ifuReadBusy(ifuDownstreamID) := true.B
+    ifuReadIngressDone(ifuDownstreamID) := false.B
     lastReadGrant := GrantIFU
   }
   when((readAddressFire && chooseDMA) || dmaLocalARFire) {
@@ -270,35 +304,40 @@ class ysyx_26030103_AXI5Arbiter extends Module {
 
   // 每个owner使用独立响应队列。DMA队列能容纳AXI4允许的一整笔最大
   // 256-beat burst；因此即使CPU slave端永久RREADY=0，该笔DMA响应也
-  // 不会占住共享memory.R并阻止IFU/LSU响应。CPU队列覆盖当前4-beat
-  // cache line，并消除不同CPU owner之间的单槽头阻塞。
+  // 不会占住共享memory.R并阻止IFU/LSU响应。CPU队列按 ID 保存多笔
+  // 在途响应，深度覆盖 4-bit ID 的全部槽位，避免 PTW 多 outstanding
+  // 时响应在队列口互相阻塞。
   private val ifuRQueue = Module(
-    new Queue(new ReadResponsePayload, 4, pipe = true, flow = false)
+    new Queue(new ReadResponsePayload, 16, pipe = true, flow = false)
   )
   private val lsuRQueue = Module(
-    new Queue(new ReadResponsePayload, 4, pipe = true, flow = false)
+    new Queue(new ReadResponsePayload, 16, pipe = true, flow = false)
   )
   private val dmaRQueue = Module(
     new Queue(new ReadResponsePayload, 256, pipe = true, flow = false)
   )
   for (queue <- Seq(ifuRQueue, lsuRQueue, dmaRQueue)) {
     queue.io.enq.valid := false.B
+    queue.io.enq.bits.Id := io.memory.R.RID
     queue.io.enq.bits.Data := io.memory.R.RDATA
     queue.io.enq.bits.Resp := io.memory.R.RRESP
     queue.io.enq.bits.Last := io.memory.R.RLAST
   }
 
-  // 有些零延迟从机会在AR握手同拍给出第一拍R。把本拍新接受的owner也
-  // 纳入expected；Queue是非flow-through，响应真正出队时原DMA ID已经
+  // 有些零延迟从机会在AR握手同拍给出第一拍R。把本拍新接受的 ID 也
+  // 纳入 expected；Queue是非flow-through，响应真正出队时原DMA ID已经
   // 在同一上升沿锁存完成。
   val ifuARAcceptedNow = readAddressFire && chooseIFU
   val lsuARAcceptedNow = readAddressFire && chooseLSU
   val dmaARAcceptedNow = readAddressFire && chooseDMA
-  val incomingForIFU = io.memory.R.RID === IFUReadID &&
-    ((ifuReadOutstanding && !ifuReadIngressDone) || ifuARAcceptedNow)
-  val incomingForLSU = io.memory.R.RID === LSUReadID &&
-    ((lsuReadOutstanding && !lsuReadIngressDone) || lsuARAcceptedNow)
-  val incomingForDMA = io.memory.R.RID === DMAReadID &&
+  val rid = io.memory.R.RID
+  val incomingForIFU =
+    (ifuReadBusy(rid) && !ifuReadIngressDone(rid)) ||
+      (ifuARAcceptedNow && ifuDownstreamID === rid)
+  val incomingForLSU =
+    (lsuReadBusy(rid) && !lsuReadIngressDone(rid)) ||
+      (lsuARAcceptedNow && lsuDownstreamID === rid)
+  val incomingForDMA = rid === DMAReadID &&
     ((dmaReadOutstanding && !dmaReadLocalError && !dmaReadIngressDone) ||
       dmaARAcceptedNow)
   val incomingRIDExpected = incomingForIFU || incomingForLSU || incomingForDMA
@@ -316,14 +355,17 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   )
 
   ifuRQueue.io.deq.ready := io.ifu.R.RREADY
-  io.ifu.R.RID := 0.U
+  io.ifu.R.RID := ifuRQueue.io.deq.bits.Id
   io.ifu.R.RDATA := ifuRQueue.io.deq.bits.Data
   io.ifu.R.RRESP := ifuRQueue.io.deq.bits.Resp
   io.ifu.R.RLAST := ifuRQueue.io.deq.bits.Last
   io.ifu.R.RVALID := ifuRQueue.io.deq.valid
 
   lsuRQueue.io.deq.ready := io.lsu.R.RREADY
-  io.lsu.R.RID := 0.U
+  // 下游 LSU ID 1 在端口上恢复成局部 ID 0；reuse_dcache 路径的 AXIReadMux
+  // 用它区分 DCache 与 PTW 的 3..15 响应。
+  io.lsu.R.RID := Mux(lsuRQueue.io.deq.bits.Id === LSUReadID,
+    0.U, lsuRQueue.io.deq.bits.Id)
   io.lsu.R.RDATA := lsuRQueue.io.deq.bits.Data
   io.lsu.R.RRESP := lsuRQueue.io.deq.bits.Resp
   io.lsu.R.RLAST := lsuRQueue.io.deq.bits.Last
@@ -347,21 +389,21 @@ class ysyx_26030103_AXI5Arbiter extends Module {
 
   val memoryRFire = io.memory.R.RVALID && io.memory.R.RREADY
   when(memoryRFire && io.memory.R.RLAST && incomingForLSU) {
-    lsuReadIngressDone := true.B
+    lsuReadIngressDone(rid) := true.B
   }
   when(memoryRFire && io.memory.R.RLAST && incomingForIFU) {
-    ifuReadIngressDone := true.B
+    ifuReadIngressDone(rid) := true.B
   }
   when(memoryRFire && io.memory.R.RLAST && incomingForDMA) {
     dmaReadIngressDone := true.B
   }
   when(lsuRQueue.io.deq.fire && lsuRQueue.io.deq.bits.Last) {
-    lsuReadOutstanding := false.B
-    lsuReadIngressDone := false.B
+    lsuReadBusy(lsuRQueue.io.deq.bits.Id) := false.B
+    lsuReadIngressDone(lsuRQueue.io.deq.bits.Id) := false.B
   }
   when(ifuRQueue.io.deq.fire && ifuRQueue.io.deq.bits.Last) {
-    ifuReadOutstanding := false.B
-    ifuReadIngressDone := false.B
+    ifuReadBusy(ifuRQueue.io.deq.bits.Id) := false.B
+    ifuReadIngressDone(ifuRQueue.io.deq.bits.Id) := false.B
   }
   when(dmaRQueue.io.deq.fire && dmaRQueue.io.deq.bits.Last) {
     dmaReadOutstanding := false.B
@@ -380,6 +422,10 @@ class ysyx_26030103_AXI5Arbiter extends Module {
     assert(
       incomingRIDExpected,
       "AXI arbiter received an unknown read response ID"
+    )
+    assert(
+      !(incomingForIFU && incomingForLSU),
+      "AXI arbiter read response matched both IFU and LSU"
     )
   }
 
