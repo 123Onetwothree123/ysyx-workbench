@@ -798,4 +798,67 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
       bus.reads should be(4)
     }
   }
+
+  "PTWPipeline" should "8B PTE cache 复用低/高字并避免重复页表读" in {
+    val bus = new BusModel(latency = 1)
+    bus.write(0x80001000L, pte(0x80002L, 0x1L))
+    bus.write(0x80002000L, pte(0x80003L, 0x1L))
+    bus.write(0x80003000L, pte(0x80004L, 0x1L))
+    bus.write(0x80004008L, pte(0x80005L, 0xdfL))
+
+    simulate(new ysyx_26030103_PTWPipeline(
+      outstanding = 2,
+      levels = 4,
+      tableEntries = 32,
+      pteSizeBytes = 8,
+      cacheEnable = true,
+      cacheEntries = 8,
+      cacheWays = 8
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.req.valid.poke(false.B)
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.id.poke(0.U)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.resp(0).ready.poke(true.B)
+      dut.io.flush.poke(false.B)
+
+      def access(): Long = {
+        dut.io.req.valid.poke(true.B)
+        dut.io.req.bits.id.poke(0.U)
+        dut.io.req.bits.vaddr.poke(0x1234.U)
+        dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+        dut.io.req.bits.privilege.poke(0.U)
+        dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+        dut.io.req.bits.sum.poke(false.B)
+        dut.io.req.bits.mxr.poke(false.B)
+        var accepted = false
+        while (!accepted) {
+          accepted = asBool(dut.io.req.ready)
+          bus.tick(dut.io.bus, dut.clock)
+        }
+        dut.io.req.valid.poke(false.B)
+        var result: Option[Long] = None
+        var guard = 0
+        while (result.isEmpty && guard < 200) {
+          bus.tick(dut.io.bus, dut.clock)
+          if (asBool(dut.io.resp(0).valid)) {
+            result = Some(asLong(dut.io.resp(0).bits.paddr))
+          }
+          guard += 1
+        }
+        result.get
+      }
+
+      access() should be(0x80005234L)
+      // 4 级 × 低/高两个字。
+      bus.reads should be(8)
+      access() should be(0x80005234L)
+      bus.reads should be(8)
+    }
+  }
 }

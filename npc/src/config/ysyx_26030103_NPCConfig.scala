@@ -119,6 +119,25 @@ case class ysyx_26030103_NPCConfig(
     IndexBits + BlockSizeLog2 < AddressWidth,
     "Cache地址几何必须留出至少1位tag"
   )
+  // VIPT 合法性：VA 选中的 index+块内偏移必须完全落在页内，才能保证
+  // 不同虚拟页映射到不同物理页时不会在 Cache 中错误 alias。若
+  // indexBits+blockSizeLog2 > pageBits，index 会包含页号位，而物理 tag
+  // 尚未到达前无法区分同 VA index 的不同物理页，必须显式拒绝。
+  val viptCacheEnabled = MMU.enabled && MMU.cacheMode == "vipt"
+  require(
+    !viptCacheEnabled || !ICacheEnable ||
+      ICacheIndexBits + ICacheBlockSizeLog2 <= MMU.pageBits,
+    s"VIPT ICache 非法：ICacheIndexBits($ICacheIndexBits)+" +
+      s"ICacheBlockSizeLog2($ICacheBlockSizeLog2) 超过页内偏移位数" +
+      s"(${MMU.pageBits})；请增大 MMU_PAGE_SIZE_BYTES 或减小 Cache 索引/块大小"
+  )
+  require(
+    !viptCacheEnabled || !DCacheEnable ||
+      DCacheIndexBits + DCacheBlockSizeLog2 <= MMU.pageBits,
+    s"VIPT DCache 非法：DCacheIndexBits($DCacheIndexBits)+" +
+      s"DCacheBlockSizeLog2($DCacheBlockSizeLog2) 超过页内偏移位数" +
+      s"(${MMU.pageBits})；请增大 MMU_PAGE_SIZE_BYTES 或减小 Cache 索引/块大小"
+  )
   require(BTBBits >= 0, "BTBBits不能为负数；0表示单组BTB")
   require(
     BTBBits < AddressWidth - 2,

@@ -28,7 +28,11 @@
 - TLB 可选 4MiB 超级页 CAM；PTW 默认不把超级页填 TLB，打开
   `TLB_SUPERPAGE` 后由 PTW 返回 fillLevel=1 并填入超级页 CAM。
 - 独立只读 PTW AXI 通道，或复用 LSU 读端口（`MMU_PTW_PATH=reuse_dcache`）。
-- MMU 请求队列、响应表、序号重排和 1..16 个在途上下文。
+- MMU 请求队列、响应表、序号重排和 1..16 个在途 walk 槽。
+- 真实 TLB miss queue：follow_tlb 下 split 使用独立 ITLB/DTLB 队列、
+  unified 使用 UTLB 队列；global 模式共用一条队列。深度分别由
+  ITLB/DTLB/UTLB/GLOBAL_MISS_QUEUE_ENTRIES 控制，miss 入队后再调度到
+  PTW。
 - PTW 支持 `MMU_PTW_ARCH=independent` 的多 walker 簇，以及
   `MMU_PTW_ARCH=pipelined` 的级间流水实现：
   - A 级为在途请求计算 PTE 地址并查 PTE cache；
@@ -38,11 +42,13 @@
     数据依赖约束。
 - PTW 返回 in_order/out_of_order 选择；MMU 层仍保证架构响应顺序。
 - PIPT 和 VIPT：VIPT 使用虚拟地址提前选 index/block offset，物理地址
-  到达后再做 tag/PMA/refill。ICache 和 DCache 都有并行 VIPT 路径；
+  到达后再做 tag/PMA/refill。elaboration 会检查 index+块内偏移是否落在
+  页内，超出 pageBits 的配置明确报错，避免静默 alias。ICache 和 DCache 都有并行 VIPT 路径；
   DCache 的 load/store 都可以提前受理：store 先按 VA 登记写缓冲，只有
   携带匹配 VA 标签的 PA 返回后才发 AW/W 或更新缓存镜像，页错误 kill
   不会留下任何写副作用。
-- 可选 PTW PTE cache（set-associative）。
+- 可选 PTW PTE cache（set-associative），支持 4B/8B PTE；8B 表项保存
+  低/高两个字，命中后无需重复两次页表读。
 - IFU/LSU 双端口仲裁：两笔翻译可以同时在途，响应按 ID 路由；
   DMMU 对非访存指令组合直通。
 - 所有新增注释为简体中文。
@@ -52,7 +58,7 @@
 单元测试：
 
 ```text
-总计约 97 项 mill 单元测试通过，包含：
+全部 mill 单元测试通过，包含：
 MMU 结构/行为/流、PTW pipeline、CSR/U 裁剪、IDU 特权级、
 PLIC、PMP、ICache VIPT、DCache VIPT、LSUMMUVipt、LSUVipt、
 LSUDmmuVipt、LSUStoreVipt。
@@ -74,7 +80,9 @@ S ecall + SRET          HIT GOOD
 - `HAS_TLB=n`：每次访问走 PTW，TLB 不例化。
 - `HAS_TLB=y, HAS_MMU=n`：生成器按无 TLB 处理并告警。
 - `refillPorts>1` 已支持 TLB 多写回端口和 PTW 多响应端口；
-  `miss_queue_mode=global` 使用统一请求队列深度。
+  `miss_queue_mode=follow_tlb` 使用 ITLB/DTLB 或 UTLB 独立 miss queue，
+  `miss_queue_mode=global` 使用一条共享队列；入队深度由对应 Kconfig
+  项控制，队列满时请求留在查找上下文等待。
 - `unified + utlbLookupPorts=2` 时每拍选择两个不同的 `ctxLookup`
   上下文并行查找；同拍命中按请求序号写入响应表。若与 PTW 响应写回
   冲突则 PTW 优先，TLB 命中延后；每拍仍只发出一个 PTW 请求。

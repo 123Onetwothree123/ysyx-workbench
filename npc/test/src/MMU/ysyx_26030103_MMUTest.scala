@@ -249,4 +249,42 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
       ysyx_26030103_NPCConfig(MMU = independentProfile)
     ))
   }
+
+  it should "支持 follow_tlb/global miss queue 的不同队列组织" in {
+    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+      enabled = true, tlbEnabled = true, tlbOrganization = "split",
+      tlbMissQueueMode = "follow_tlb", itlbMissQueueEntries = 2,
+      dtlbMissQueueEntries = 3, ptwOutstanding = 2
+    )))
+    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+      enabled = true, tlbEnabled = true, tlbOrganization = "unified",
+      tlbMissQueueMode = "follow_tlb", utlbMissQueueEntries = 4,
+      utlbLookupPorts = 2, ptwOutstanding = 2
+    )))
+    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+      enabled = true, tlbEnabled = true, tlbMissQueueMode = "global",
+      globalMissQueueEntries = 4, ptwOutstanding = 2
+    )))
+  }
+
+  it should "8B PTE 打开 PTW cache 时可 elaboration" in {
+    emit(new ysyx_26030103_PTW(
+      adMode = "fault", levels = 4, tableEntries = 32, pteSizeBytes = 8,
+      cacheEnable = true, cacheEntries = 8, cacheWays = 2
+    ))
+    emit(new ysyx_26030103_PTWPipeline(
+      outstanding = 2, levels = 4, tableEntries = 32, pteSizeBytes = 8,
+      cacheEnable = true, cacheEntries = 8, cacheWays = 2
+    ))
+    val eightByteProfile = ysyx_26030103_MMUProfile(
+      enabled = true, tlbEnabled = true, levels = 4,
+      pageTableSizeBytes = 256, pteSizeBytes = 8,
+      ptwCache = true, ptwCacheEntries = 8, ptwCacheWays = 2
+    )
+    emit(new ysyx_26030103_MMU(eightByteProfile))
+    // 顶层同样要验证 8B PTE + PTW cache 的完整接线。
+    emit(new _root_.ysyx_26030103.ysyx_26030103(
+      ysyx_26030103_NPCConfig(MMU = eightByteProfile)
+    ))
+  }
 }

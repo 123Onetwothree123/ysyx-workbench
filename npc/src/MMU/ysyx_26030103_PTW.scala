@@ -59,7 +59,10 @@ class ysyx_26030103_PTW(
   require(pteSizeBytes == 4 || pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
   private val pteShift = log2Ceil(pteSizeBytes)
   private val pteBytes = pteSizeBytes
-  private val cacheEffective = cacheEnable && pteBytes == 4
+  private val pteWidth = pteBytes * 8
+  // 4B/8B PTE 都可以进入 cache：8B 表项保存低/高两个 32 位字，命中时
+  // 不再产生两次页表读。
+  private val cacheEffective = cacheEnable
   private val indexBits = log2Ceil(tableEntries)
   require(pageBits + levels * indexBits == 32,
     s"pageBits($pageBits) + levels($levels)*indexBits($indexBits) 必须等于 32")
@@ -102,7 +105,9 @@ class ysyx_26030103_PTW(
   class CacheEntry extends Bundle {
     val valid = Bool()
     val tag = UInt(32.W)
-    val data = UInt(32.W)
+    // 保存原始 PTE（8B PTE 的低/高字），命中时再按 pteConfig 归一化，
+    // 这样自定义 PTE 编码和 A/D 写回都不会因缓存二次归一化而失真。
+    val data = UInt(pteWidth.W)
   }
   private val cacheSets = if (cacheEffective) cacheEntries / cacheWays else 1
   private val cacheSetBits = if (cacheSets <= 1) 0 else log2Ceil(cacheSets)
@@ -119,10 +124,10 @@ class ysyx_26030103_PTW(
   else None
 
   private def cacheSetOf(addr: UInt): UInt =
-    if (cacheSetBits == 0) 0.U else addr(cacheSetBits + 1, 2)
+    if (cacheSetBits == 0) 0.U else addr(cacheSetBits + pteShift - 1, pteShift)
 
   def cacheLookup(addr: UInt): (Bool, UInt) = {
-    if (!cacheEffective) (false.B, 0.U)
+    if (!cacheEffective) (false.B, 0.U(pteWidth.W))
     else {
       val set = cacheSetOf(addr)
       val hits = (0 until cacheWays).map { w =>
@@ -266,7 +271,8 @@ class ysyx_26030103_PTW(
   }
 
   def processPte(d: UInt, raw: UInt, busFault: Bool): Unit = {
-    when(cacheEffective.B) { cacheFill(pteAddrReg, d) }
+    // cache 保存原始 PTE；4B 时 raw 就是 32 位字，8B 时是低/高字拼接。
+    when(cacheEffective.B) { cacheFill(pteAddrReg, raw) }
     when(busFault || walkFault(d)) {
       setFault()
     }.elsewhen(isLeaf(d)) {
@@ -313,23 +319,25 @@ class ysyx_26030103_PTW(
       // 计算当前级页表项地址。
       pteAddrReg := nextPteAddr
       when(cacheHit) {
-        when(walkFault(cacheData)) {
+        // cache 中保存的是原始 PTE，命中路径与总线读路径一样先归一化。
+        val cachePte = normalizePte(cacheData)
+        when(walkFault(cachePte)) {
           setFault()
-        }.elsewhen(isLeaf(cacheData)) {
-          respReg.paddr := paddrOf(cacheData, levelReg)
-          respReg.fault := leafFaultOf(cacheData)
+        }.elsewhen(isLeaf(cachePte)) {
+          respReg.paddr := paddrOf(cachePte, levelReg)
+          respReg.fault := leafFaultOf(cachePte)
           respReg.cause := pageFaultCause
           respReg.tval := vaddrReg
-          respReg.fillPte := cacheData
+          respReg.fillPte := cachePte
           respReg.fillVaddr := vaddrReg
           respReg.fillAsid := satpReg(30, 22)
           fillLevelReg := fillLevelOf(levelReg)
           respReg.fillValid := false.B
-          fillPulse := !leafFaultOf(cacheData) &&
+          fillPulse := !leafFaultOf(cachePte) &&
             (fillSuperpage.B || levelReg === (levels - 1).U)
           state := done
         }.otherwise {
-          tableReg := Cat(cacheData(31, 10), 0.U(pageBits.W))
+          tableReg := Cat(cachePte(31, 10), 0.U(pageBits.W))
           levelReg := levelReg + 1.U
           state := reqState
         }
@@ -367,7 +375,13 @@ class ysyx_26030103_PTW(
     is(waitWrite) {
       when(io.bus.resp.valid) {
         val written = normalizePte(writeDataReg)
-        cacheFill(pteAddrReg, written)
+        // 写回只更新低 32 位（A/D 位在低字）；cache 保存原始 PTE，
+        // 8B 时高字补零，不影响当前 PTE 字段编码语义。
+        if (pteWidth > 32) {
+          cacheFill(pteAddrReg, Cat(0.U((pteWidth - 32).W), writeDataReg))
+        } else {
+          cacheFill(pteAddrReg, writeDataReg)
+        }
         respReg.paddr := paddrOf(written, levelReg)
         respReg.fault := io.bus.resp.bits.fault || leafFaultOf(written)
         respReg.cause := pageFaultCause

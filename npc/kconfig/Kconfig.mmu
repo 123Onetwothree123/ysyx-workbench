@@ -181,6 +181,11 @@ menu "虚拟内存管理 (MMU/TLB)"
         bool "PIPT：MMU 在 Cache 前"
       config MMU_CACHE_VIPT
         bool "VIPT：TLB 与 Cache 并行"
+        help
+          使用虚拟地址提前选择 Cache index，同时并行翻译物理地址。
+          要求 Cache 的 index 位宽与块内偏移之和不超过页内偏移位数
+          （log2(MMU_PAGE_SIZE_BYTES)）；超出时不同虚拟页可能在
+          Cache 中 alias，elaboration 会明确报错而不是静默生成。
     endchoice
 
     config MMU_CACHE_MODE
@@ -260,6 +265,8 @@ menu "虚拟内存管理 (MMU/TLB)"
       help
         也叫 walk cache/PTE cache。默认关闭，避免额外面积；
         打开后需要与 sfence、PTE 写回和 A/D 更新保持一致。
+        支持 4B 与 8B PTE：8B 表项保存低/高两个字，命中后不再
+        产生两次页表读。
 
     config MMU_PTW_CACHE_ENTRIES
       int "PTW cache 项数"
@@ -393,8 +400,15 @@ menu "虚拟内存管理 (MMU/TLB)"
       default TLB_MISS_QUEUE_FOLLOW
       config TLB_MISS_QUEUE_FOLLOW
         bool "跟随 TLB 组织"
+        help
+          split TLB 使用独立的 ITLB/DTLB miss queue；unified TLB
+          使用一条 UTLB miss queue。TLB 缺失请求先进入对应队列，
+          再由队列调度到 PTW walk 槽。
       config TLB_MISS_QUEUE_GLOBAL
         bool "全局共享队列"
+        help
+          fetch/load/store 的 TLB 缺失请求共用一条全局 miss queue，
+          深度由 GLOBAL_MISS_QUEUE_ENTRIES 控制。
     endchoice
 
     config TLB_MISS_QUEUE_MODE

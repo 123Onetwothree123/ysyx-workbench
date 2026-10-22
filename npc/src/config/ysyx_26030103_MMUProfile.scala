@@ -150,6 +150,10 @@ case class ysyx_26030103_MMUProfile(
   /** 当前配置允许的最低特权级：HAS_U=n 时最低只能是 S；HAS_S=n 时只有 M。 */
   final val lowestPrivilege: Int = if (hasU) 0 else if (hasS) 1 else 3
 
+  require(Set("split", "unified").contains(tlbOrganization),
+    "MMU_TLB_ORGANIZATION 必须是 split/unified")
+  require(Set("follow_tlb", "global").contains(tlbMissQueueMode),
+    "MMU_TLB_MISS_QUEUE_MODE 必须是 follow_tlb/global")
   if (tlbEnabled) {
     requirePowerOfTwo("itlbEntries", itlbEntries)
     requirePowerOfTwo("dtlbEntries", dtlbEntries)
@@ -157,6 +161,20 @@ case class ysyx_26030103_MMUProfile(
     require(itlbEntries % itlbWays == 0, "itlbEntries 必须能被 itlbWays 整除")
     require(dtlbEntries % dtlbWays == 0, "dtlbEntries 必须能被 dtlbWays 整除")
     require(utlbEntries % utlbWays == 0, "utlbEntries 必须能被 utlbWays 整除")
+    // miss queue 是 TLB 缺失请求进入 PTW 前的真实缓冲；深度为 0 会让
+    // 对应 TLB 的 miss 永远无法入队，必须在 elaboration 期拒绝。
+    if (tlbMissQueueMode == "global") {
+      require(globalMissQueueEntries >= 1,
+        "MMU_GLOBAL_MISS_QUEUE_ENTRIES 必须 >= 1")
+    } else if (tlbOrganization == "split") {
+      require(itlbMissQueueEntries >= 1,
+        "MMU_ITLB_MISS_QUEUE_ENTRIES 必须 >= 1")
+      require(dtlbMissQueueEntries >= 1,
+        "MMU_DTLB_MISS_QUEUE_ENTRIES 必须 >= 1")
+    } else {
+      require(utlbMissQueueEntries >= 1,
+        "MMU_UTLB_MISS_QUEUE_ENTRIES 必须 >= 1")
+    }
   }
 
   final val pageBits: Int = Integer.numberOfTrailingZeros(pageSizeBytes)

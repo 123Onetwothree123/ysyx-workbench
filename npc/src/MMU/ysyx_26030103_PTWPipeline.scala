@@ -69,7 +69,10 @@ class ysyx_26030103_PTWPipeline(
     if (busOutstanding <= 0) outstanding else math.min(busOutstanding, outstanding)
   private val ageBits = 16
   private val epochBits = 8
-  private val cacheEffective = cacheEnable && pteBytes == 4
+  private val pteWidth = pteBytes * 8
+  // 4B/8B PTE 都支持 PTE cache；8B 表项保存低/高字，命中后无需再发
+  // 两次页表读。
+  private val cacheEffective = cacheEnable
 
   class Context extends Bundle {
     val id = UInt(4.W)
@@ -105,7 +108,8 @@ class ysyx_26030103_PTWPipeline(
   class ResolveJob extends Bundle {
     val ctx = UInt(ctxBits.W)
     val pteAddr = UInt(32.W)
-    val raw = UInt(32.W)
+    // 8B PTE 时保存低/高字拼接后的完整 64 位原始值。
+    val raw = UInt(pteWidth.W)
     val fault = Bool()
     val write = Bool()
     val epoch = UInt(epochBits.W)
@@ -115,11 +119,11 @@ class ysyx_26030103_PTWPipeline(
   val nextAge = RegInit(0.U(ageBits.W))
   val epoch = RegInit(0.U(epochBits.W))
 
-  // PTE cache 与 independent 版本保持一致：仅缓存 4B PTE。
+  // PTE cache 与 independent 版本一致：保存原始 PTE，4B/8B 都启用。
   class CacheEntry extends Bundle {
     val valid = Bool()
     val tag = UInt(32.W)
-    val data = UInt(32.W)
+    val data = UInt(pteWidth.W)
   }
   private val cacheSets = if (cacheEffective) cacheEntries / cacheWays else 1
   private val cacheSetBits = if (cacheSets <= 1) 0 else log2Ceil(cacheSets)
@@ -136,10 +140,10 @@ class ysyx_26030103_PTWPipeline(
   else None
 
   private def cacheSetOf(addr: UInt): UInt =
-    if (cacheSetBits == 0) 0.U else addr(cacheSetBits + 1, 2)
+    if (cacheSetBits == 0) 0.U else addr(cacheSetBits + pteShift - 1, pteShift)
 
   private def cacheLookup(addr: UInt): (Bool, UInt) = {
-    if (!cacheEffective) (false.B, 0.U)
+    if (!cacheEffective) (false.B, 0.U(pteWidth.W))
     else {
       val set = cacheSetOf(addr)
       val hits = (0 until cacheWays).map { w =>
@@ -423,13 +427,14 @@ class ysyx_26030103_PTWPipeline(
 
     ctx(resolveCtx).inFlight := false.B
     ctx(resolveCtx).pteAddr := resolvePteAddr
-    // 与 independent walker 一致：总线读到的 PTE 先填入 cache，即使它是
-    // 非叶子或权限错误；cache 命中路径不需要重复写。
-    when(resolveFromBus && !resolveWrite) { cacheFill(resolvePteAddr, d) }
+    // 与 independent walker 一致：总线读到的原始 PTE 先填入 cache，即使
+    // 它是非叶子或权限错误；cache 命中路径不需要重复写。8B PTE 的
+    // resolveRaw 已包含低/高两个字，命中时可直接复用完整表项。
+    when(resolveFromBus && !resolveWrite) { cacheFill(resolvePteAddr, resolveRaw) }
 
     when(resolveWrite) {
-      // A/D 写回完成，写回数据就是最终 PTE。
-      cacheFill(resolvePteAddr, d)
+      // A/D 写回完成，写回数据就是最终原始 PTE（只写低 32 位）。
+      cacheFill(resolvePteAddr, resolveRaw.pad(pteWidth))
       ctx(resolveCtx).needWrite := false.B
       ctx(resolveCtx).done := true.B
       ctx(resolveCtx).resp.paddr := paddrOf(d, level, vaddr)
