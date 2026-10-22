@@ -6,8 +6,8 @@
  * 名称与表项视图。公共API有意设计为面向对象的风格：调用者从路径加载一个
  * `Readelf`对象，然后从这个不可变缓存中查询或打印信息。加载错误通过
  * `std::expected`报告，而非进程级状态或errno式副作用通道。
- * 所选的ELF布局遵循NPC构建目标。`NPC_ISA64 == 0`表示使用ELF32类型，
- * `NPC_ISA64 != 0`表示使用ELF64类型。
+ * 所选的ELF布局遵循 NPC 构建目标。`CONFIG_XLEN == 64`使用ELF64类型，
+ * `CONFIG_XLEN == 32`使用ELF32类型；ELF class 只由 Kconfig 派生。
  */
 module;
 #include <elf.h>
@@ -15,8 +15,8 @@ export module npc.trace.readelf;
 import std;
 import npc.trace.ReadelfFunction;
 
-#ifndef NPC_ISA64
-#define NPC_ISA64 0
+#ifndef CONFIG_XLEN
+#define CONFIG_XLEN 32
 #endif
 
 /**
@@ -31,20 +31,20 @@ export class Readelf final
 {
 public:
     // 当本构建期望ELF64文件时为`true`，ELF32文件时为`false`。
-    static constexpr bool is_elf64{NPC_ISA64 != 0};
-    // 由`NPC_ISA64`选择的原生ELF文件头类型。
+    static constexpr bool is_elf64{CONFIG_XLEN == 64};
+    // 由`CONFIG_XLEN`选择的原生ELF文件头类型。
     using header_type = std::conditional_t<is_elf64, Elf64_Ehdr, Elf32_Ehdr>;
-    // 由`NPC_ISA64`选择的原生ELF节头类型。
+    // 由`CONFIG_XLEN`选择的原生ELF节头类型。
     using section_header_type = std::conditional_t<is_elf64, Elf64_Shdr, Elf32_Shdr>;
-    // 由`NPC_ISA64`选择的原生ELF符号表项类型。
+    // 由`CONFIG_XLEN`选择的原生ELF符号表项类型。
     using symbol_type = std::conditional_t<is_elf64, Elf64_Sym, Elf32_Sym>;
-    // 由`NPC_ISA64`选择的原生ELF程序头类型。
+    // 由`CONFIG_XLEN`选择的原生ELF程序头类型。
     using program_header_type = std::conditional_t<is_elf64, Elf64_Phdr, Elf32_Phdr>;
-    // 由`NPC_ISA64`选择的原生ELF半字类型。
+    // 由`CONFIG_XLEN`选择的原生ELF半字类型。
     using half_type = std::conditional_t<is_elf64, Elf64_Half, Elf32_Half>;
-    // 由`NPC_ISA64`选择的原生ELF字类型。
+    // 由`CONFIG_XLEN`选择的原生ELF字类型。
     using word_type = std::conditional_t<is_elf64, Elf64_Word, Elf32_Word>;
-    // 由`NPC_ISA64`选择的原生ELF扩展字/标志类型。
+    // 由`CONFIG_XLEN`选择的原生ELF扩展字/标志类型。
     using xword_type = std::conditional_t<is_elf64, Elf64_Xword, Elf32_Word>;
     // 构造一个空的、未加载的阅读器。
     Readelf();
@@ -64,7 +64,7 @@ public:
      * @return std::expected<Readelf, std::string>，成功时返回已加载的`Readelf`对象，失败时返回人类可读的错误字符串。
      * @details
      * 加载器在将原始字节解释为原生ELF结构之前，先验证魔数、ELF class、
-     * 端序模式、版本以及表项大小。当前仅支持小端ELF文件，且需与`NPC_ISA64`匹配。
+     * 端序模式、版本以及表项大小。当前仅支持小端ELF文件，且需与`CONFIG_XLEN`匹配。
      */
     [[nodiscard]] static std::expected<Readelf, std::string> load(std::filesystem::path elf_file);
     // 返回本实例是否包含已成功解析的ELF文件。

@@ -15,6 +15,9 @@ COMMON_CONFIG := BUILD_DIR=$(NPC_BUILD_DIR) git_commit= \
 	CONFIG_LOG_LEVEL=0 CONFIG_LOG_TO_FILE=n CONFIG_FTRACE=n CONFIG_IRINGBUF=n \
 	CONFIG_WATCHPOINT=n
 
+# SDB 表达式/X 命令的 64 位行为必须与核心实现一致，不能由测试另设 32 位位宽。
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../xlen.mk)
+
 .PHONY: all test clean
 
 all: test
@@ -92,20 +95,18 @@ test: $(GOOD_BIN) $(MEMORY_BIN) $(ILLEGAL_BIN)
 	grep -Eq '^[[:space:]]*2[[:space:]]+history 1$$' \
 		$(BUILD_DIR)/sdb-history-run/output.log
 
-	# Expressions are RV32 values: accepting a host-width unsigned long and
-	# truncating it to uint32_t makes 2^32 silently look like zero.  Commands
-	# whose usage has no arguments must likewise reject, rather than ignore,
-	# trailing tokens.
+	# 表达式引擎按 64 位保存结果：RV32 构建也不得把 2^32 截断成 0。
+	# 无参数命令同样必须拒绝尾随 token，而不是静默忽略。
 	rm -rf $(BUILD_DIR)/sdb-strict-run
 	mkdir -p $(BUILD_DIR)/sdb-strict-run
 	printf 'p 4294967295\np 0xffffffff\np 4294967296\np 0x100000000\nc accidental\nclear accidental\nq accidental\nhistory 1\nq\n' | \
 		$(NPC_BIN) $(abspath $(GOOD_BIN)) > $(BUILD_DIR)/sdb-strict-run/output.log 2>&1
 	test "$$(grep -c '无符号（十进制）：4294967295' \
 		$(BUILD_DIR)/sdb-strict-run/output.log)" -eq 2
-	grep -Fq '十进制数字超出 uint32_t 范围: 4294967296' \
-		$(BUILD_DIR)/sdb-strict-run/output.log
-	grep -Fq '十六进制数字超出 uint32_t 范围: 0x100000000' \
-		$(BUILD_DIR)/sdb-strict-run/output.log
+	test "$$(grep -c '无符号（十进制）：4294967296' \
+		$(BUILD_DIR)/sdb-strict-run/output.log)" -eq 2
+	grep -Fq '0x100000000' $(BUILD_DIR)/sdb-strict-run/output.log
+	! grep -Fq '超出 uint32_t 范围' $(BUILD_DIR)/sdb-strict-run/output.log
 	grep -Fq '用法：c' $(BUILD_DIR)/sdb-strict-run/output.log
 	grep -Fq '用法：clear' $(BUILD_DIR)/sdb-strict-run/output.log
 	grep -Fq '用法：q' $(BUILD_DIR)/sdb-strict-run/output.log

@@ -6,6 +6,10 @@ BUILD_DIR := $(CURDIR)/build
 BIN := $(BUILD_DIR)/ftrace-test
 STD_MODULE_SRC := $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
 
+# 从 Kconfig 读取 XLEN，决定 ftrace 测试构造 ELF32 还是 ELF64。
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../xlen.mk)
+CXXFLAGS += $(XLEN_CFLAGS)
+
 .PHONY: all test clean
 
 all: $(BIN)

@@ -2,6 +2,7 @@
 import std;
 import npc.trace.FtraceEvent;
 import npc.trace.ftrace;
+import npc.trace.readelf;
 
 namespace
 {
@@ -33,26 +34,30 @@ std::filesystem::path fixture_path(std::string_view name)
 }
 
 bool write_minimal_riscv_elf(const std::filesystem::path &path,
-                             Elf32_Half type)
+                             std::uint16_t type)
 {
-    Elf32_Ehdr header{};
+    // ELF class 由 Kconfig 导出的 CONFIG_XLEN 决定，本测试不再写死 ELF32。
+    using Header = Readelf::header_type;
+    using SectionHeader = Readelf::section_header_type;
+
+    Header header{};
     header.e_ident[EI_MAG0] = ELFMAG0;
     header.e_ident[EI_MAG1] = ELFMAG1;
     header.e_ident[EI_MAG2] = ELFMAG2;
     header.e_ident[EI_MAG3] = ELFMAG3;
-    header.e_ident[EI_CLASS] = ELFCLASS32;
+    header.e_ident[EI_CLASS] = Readelf::is_elf64 ? ELFCLASS64 : ELFCLASS32;
     header.e_ident[EI_DATA] = ELFDATA2LSB;
     header.e_ident[EI_VERSION] = EV_CURRENT;
     header.e_type = type;
     header.e_machine = EM_RISCV;
     header.e_version = EV_CURRENT;
-    header.e_ehsize = sizeof(Elf32_Ehdr);
-    header.e_shoff = sizeof(Elf32_Ehdr);
-    header.e_shentsize = sizeof(Elf32_Shdr);
+    header.e_ehsize = sizeof(Header);
+    header.e_shoff = sizeof(Header);
+    header.e_shentsize = sizeof(SectionHeader);
     header.e_shnum = 1;
     header.e_shstrndx = SHN_UNDEF;
 
-    const Elf32_Shdr null_section{};
+    const SectionHeader null_section{};
     std::ofstream output{path, std::ios::binary | std::ios::trunc};
     output.write(reinterpret_cast<const char *>(&header), sizeof(header));
     output.write(reinterpret_cast<const char *>(&null_section),
@@ -203,8 +208,21 @@ int main()
     check(trace.HistorySize() == 1 && trace.Depth() == 1,
           "final retiring call must not be lost");
 
+    // RV64：ftrace 事件 PC/目标按 64 位处理，4GiB 以上地址不得截断。
+    if constexpr (Readelf::is_elf64)
+    {
+        trace.Reset();
+        trace.OnInstruction(0x1'0000'0000ULL, 0x000000efU, 0x1'0000'0100ULL);
+        check(trace.HistorySize() == 1 &&
+                  trace.History().back().GetType() == FtraceEventType::Call &&
+                  trace.History().back().GetTargetPC() == 0x1'0000'0100ULL,
+              "RV64 ftrace must keep a high 64-bit call target");
+    }
+
     if (failures != 0)
         return 1;
-    std::println("[PASS] ftrace retirement, x1/x5 RAS hints, coroutine, and ELF regressions");
+    std::println("[PASS] ftrace retirement, x1/x5 RAS hints, coroutine, and "
+                 "{} ELF regressions",
+                 Readelf::is_elf64 ? "ELF64" : "ELF32");
     return 0;
 }

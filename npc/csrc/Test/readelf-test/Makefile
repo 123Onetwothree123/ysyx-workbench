@@ -6,6 +6,10 @@ BUILD_DIR := $(CURDIR)/build
 BIN := $(BUILD_DIR)/readelf-test
 STD_MODULE_SRC := $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
 
+# 从 Kconfig 读取 CONFIG_XLEN，决定本测试按 ELF32 还是 ELF64 构建。
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../xlen.mk)
+CXXFLAGS += $(XLEN_CFLAGS)
+
 .PHONY: all test clean
 
 all: $(BIN)

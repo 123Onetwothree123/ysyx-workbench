@@ -463,11 +463,9 @@ ifneq ($(PERF_SYNTH_READY),1)
 simtest $(BIN) $(BIN_NPC): | perf-build-metadata
 endif
 endif
-# 向C++侧传递 XLEN 与 ELF class：RV64 构建必须让 readelf/ftrace 解析
-# ELF64，并让 SDB/DUT 使用 64 位观测端口。
+# 向C++侧传递 XLEN：readelf/ftrace 与 SDB/DUT 都只消费 CONFIG_XLEN。
 NPC_XLEN := $(or $(CONFIG_XLEN),32)
-XLEN_CFLAGS = -DCONFIG_XLEN=$(NPC_XLEN) \
-              -DNPC_ISA64=$(if $(filter 64,$(NPC_XLEN)),1,0)
+XLEN_CFLAGS = -DCONFIG_XLEN=$(NPC_XLEN)
 # 向C++侧传递M扩展开关
 ifeq ($(or $(CONFIG_RISCV_M),$(RISCV_M)),y)
 RISCM_CFLAGS = -DCONFIG_RISCV_M
