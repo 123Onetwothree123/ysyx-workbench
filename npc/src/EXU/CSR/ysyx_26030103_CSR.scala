@@ -64,6 +64,7 @@ class ysyx_26030103_CSR(
     val StateMcause = Output(UInt(32.W))
     val PmpCfg = Output(Vec(16, UInt(8.W)))
     val PmpAddr = Output(Vec(16, UInt(32.W)))
+    val Mtime = Input(UInt(64.W))
     val McounterenOut = Output(UInt(32.W))
     val ScounterenOut = Output(UInt(32.W))
   })

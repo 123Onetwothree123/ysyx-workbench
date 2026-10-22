@@ -62,6 +62,7 @@ class ysyx_26030103_CSRHarness(
   csr.io.TrapTval := io.trapTval
   csr.io.Interrupt := io.interrupt
   csr.io.TimerInterrupt := io.timerInterrupt
+  csr.io.Mtime := 0.U
   csr.io.TrapValid := io.trapValid
   csr.io.TrapCause := io.trapCause
   csr.io.MemTrap := io.memTrap

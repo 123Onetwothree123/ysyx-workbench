@@ -3,6 +3,7 @@ import chisel3._
 import chisel3.util._
 class ysyx_26030103_CLINTIO extends ysyx_26030103_AXI5Slave(32) {
   val timer_irq = Output(Bool())
+  val mtime = Output(UInt(64.W))
 }
 
 class ysyx_26030103_AXI5CLINTSlave extends Module {
@@ -18,6 +19,7 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
   val Mtime = Module(new ysyx_26030103_mtime)
   val Mtimecmp = RegInit("hffffffffffffffff".U(64.W))
   io.timer_irq := Mtime.io.value >= Mtimecmp
+  io.mtime := Mtime.io.value
   // 日常默认值，都复制粘贴了
   val AWValidReg = RegInit(false.B)
   val WValidReg = RegInit(false.B)
