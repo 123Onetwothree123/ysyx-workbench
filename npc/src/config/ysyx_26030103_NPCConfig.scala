@@ -96,7 +96,7 @@ case class ysyx_26030103_NPCConfig(
     // 主开关及所属组总开关相与（见EnabledPerfCounters）。
     PerfCounters: Set[String] =
       ysyx_26030103_PerfCounterCatalog.AllPerfCounters,
-    // MMU/TLB 配置；当前已接入标准 Sv32 的 IFU/LSU 翻译路径。
+    // MMU/TLB 配置；RV32 为 Sv32，RV64 为标准 Sv39/Sv48 的 IFU/LSU 翻译路径。
     MMU: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
 ) {
   require(XLEN == 32 || XLEN == 64,
@@ -109,11 +109,15 @@ case class ysyx_26030103_NPCConfig(
     s"AddressWidth 只允许 32 或 64，收到 AddressWidth=$AddressWidth")
   require(XLEN == 32 || AddressWidth == XLEN,
     s"XLEN=64 的架构地址路径必须使用 64 位 AddressWidth，收到 $AddressWidth")
-  // 当前 RV64 只实现无 MMU 的整数/乘除法核。MMU 的页表格式、satp
-  // 和 Sv39 地址翻译属于后续阶段，这里必须在 elaboration 期明确拒绝，
-  // 不能生成一个“看起来能跑”但不满足 RV64 虚存语义的核。
-  require(XLEN == 32 || !MMU.enabled,
-    "XLEN=64 第二阶段暂不支持 MMU/Sv39；请设置 HAS_MMU=n")
+  // RV64 MMU 只接入标准 Sv39/Sv48；MMUProfile 自身会拒绝非标准几何。
+  // 这里再检查 profile 与顶层 XLEN/AddressWidth 一致，避免 RV64 核
+  // 例化出 RV32 satp 语义，或 RV32 核误用 64 位页表。
+  require(!MMU.enabled || MMU.xlen == XLEN,
+    s"MMU profile XLEN(${MMU.xlen}) 与 NPC XLEN($XLEN) 不一致")
+  require(XLEN == 32 || !MMU.enabled ||
+      ((MMU.standardSv39 || MMU.standardSv48) && AddressWidth == 64),
+    "XLEN=64 HAS_MMU=y 只支持 AddressWidth=64 的标准 Sv39/Sv48；" +
+      "请设置 MMU_LEVELS=3(4)、MMU_PTE_SIZE_BYTES=8、MMU_PTE_FORMAT=riscv64")
   // RV64 的 LD/SD 是 8 字节访问。LSU 在 32 位 AXI 数据通道上按两拍
   // 窄传输完成；DCache 内部仍以 32 位 word 存储，但一次 load/store
   // 可以跨两个相邻 word，因此数据行必须至少容纳两个 word。

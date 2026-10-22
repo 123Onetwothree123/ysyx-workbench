@@ -469,7 +469,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "支持 Sv32 4MiB 超级页" in {
     val memory = new Memory
-    val superPte = pte(0x80001L, 0xdfL)
+    val superPte = pte(0x80000L, 0xdfL)
     memory.write(Root + 0x0L, superPte)
     simulate(new ysyx_26030103_PTW("fault", superpage = true,
       fillSuperpage = true)) { dut =>
@@ -1614,7 +1614,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "超级页打开 cache 后仍返回正确 fillLevel" in {
     val memory = new Memory
-    memory.write(Root + 0x0L, pte(0x80001L, 0xdfL))
+    memory.write(Root + 0x0L, pte(0x80000L, 0xdfL))
     simulate(new ysyx_26030103_PTW(
       adMode = "fault", superpage = true, fillSuperpage = true,
       cacheEnable = true, cacheEntries = 16, cacheWays = 2

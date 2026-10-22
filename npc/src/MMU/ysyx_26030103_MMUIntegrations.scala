@@ -9,14 +9,17 @@ import _root_.ysyx_26030103.common.ysyx_26030103_EXUMessage
   * 每个客户端最多保留一笔在途翻译；两笔可以同时进入 MMU 的独立上下文，
   * 响应按请求 ID 回到对应客户端，不再要求 IFU 的翻译先完成。
   */
-class ysyx_26030103_MMURequestArbiter extends Module {
+class ysyx_26030103_MMURequestArbiter(
+    XLEN: Int = 32,
+    AddressWidth: Int = 32
+) extends Module {
   val io = IO(new Bundle {
-    val iReq = Flipped(Decoupled(new ysyx_26030103_MMURequest))
-    val iResp = Decoupled(new ysyx_26030103_MMUResponse)
-    val dReq = Flipped(Decoupled(new ysyx_26030103_MMURequest))
-    val dResp = Decoupled(new ysyx_26030103_MMUResponse)
-    val mmuReq = Decoupled(new ysyx_26030103_MMURequest)
-    val mmuResp = Flipped(Decoupled(new ysyx_26030103_MMUResponse))
+    val iReq = Flipped(Decoupled(new ysyx_26030103_MMURequest(XLEN, AddressWidth)))
+    val iResp = Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth))
+    val dReq = Flipped(Decoupled(new ysyx_26030103_MMURequest(XLEN, AddressWidth)))
+    val dResp = Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth))
+    val mmuReq = Decoupled(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
+    val mmuResp = Flipped(Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth)))
   })
 
   val iOutstanding = RegInit(false.B)
@@ -24,11 +27,11 @@ class ysyx_26030103_MMURequestArbiter extends Module {
   io.iReq.ready := false.B
   io.dReq.ready := false.B
   io.mmuReq.valid := false.B
-  io.mmuReq.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest)
+  io.mmuReq.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
   io.iResp.valid := false.B
-  io.iResp.bits := 0.U.asTypeOf(new ysyx_26030103_MMUResponse)
+  io.iResp.bits := 0.U.asTypeOf(new ysyx_26030103_MMUResponse(XLEN, AddressWidth))
   io.dResp.valid := false.B
-  io.dResp.bits := 0.U.asTypeOf(new ysyx_26030103_MMUResponse)
+  io.dResp.bits := 0.U.asTypeOf(new ysyx_26030103_MMUResponse(XLEN, AddressWidth))
   io.mmuResp.ready := false.B
 
   // 选择一笔尚未在途的客户端请求送入 MMU。
@@ -70,41 +73,49 @@ class ysyx_26030103_MMURequestArbiter extends Module {
   * 接到 fetchValid/fetchVaddr，翻译结果附带请求 VA 作为标签；ICache 只有在
   * 标签匹配时才接收 PA。取指 MMU 不再跑在已受理请求之前。
   */
-class ysyx_26030103_IFUMMU(ParallelVipt: Boolean = false) extends Module {
+class ysyx_26030103_IFUMMU(
+    ParallelVipt: Boolean = false,
+    XLEN: Int = 32,
+    AddressWidth: Int = 32
+) extends Module {
+  require(XLEN == 32 || XLEN == 64, s"IFUMMU XLEN 非法: $XLEN")
   val io = IO(new Bundle {
     val fetchValid = Input(Bool())
     val fetchReady = Output(Bool())
-    val fetchVaddr = Input(UInt(32.W))
-    val fetchPaddr = Output(UInt(32.W))
+    val fetchVaddr = Input(UInt(XLEN.W))
+    val fetchPaddr = Output(UInt(AddressWidth.W))
     // 该 PA 对应的虚拟地址。VIPT 下 ICache 用它校验“迟到的 PA”属于
     // 当前已受理的请求，而不是上一笔/错路请求。
-    val fetchPaddrVaddr = Output(UInt(32.W))
+    val fetchPaddrVaddr = Output(UInt(XLEN.W))
     val translationValid = Output(Bool())
     val cacheReady = Input(Bool())
     val fault = Output(Bool())
     val faultCause = Output(UInt(4.W))
-    val faultVaddr = Output(UInt(32.W))
+    val faultVaddr = Output(UInt(XLEN.W))
     val pmpFault = Input(Bool())
     val privilege = Input(UInt(2.W))
-    val satp = Input(UInt(32.W))
+    val satp = Input(UInt(XLEN.W))
     val sum = Input(Bool())
     val mxr = Input(Bool())
     val flush = Input(Bool())
-    val req = Decoupled(new ysyx_26030103_MMURequest)
-    val resp = Flipped(Decoupled(new ysyx_26030103_MMUResponse))
+    val req = Decoupled(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
+    val resp = Flipped(Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth)))
   })
   val idle :: xwait :: done :: fault :: discard :: Nil = Enum(5)
   val state = RegInit(idle)
-  val paddrReg = RegInit(0.U(32.W))
-  val paddrVaddrReg = RegInit(0.U(32.W))
-  val reqVaddrReg = RegInit(0.U(32.W))
+  val paddrReg = RegInit(0.U(AddressWidth.W))
+  val paddrVaddrReg = RegInit(0.U(XLEN.W))
+  val reqVaddrReg = RegInit(0.U(XLEN.W))
   val faultReg = RegInit(false.B)
   val faultCauseReg = RegInit(0.U(4.W))
-  val faultVaddrReg = RegInit(0.U(32.W))
-  val bypass = io.satp(31) === 0.U || io.privilege === 3.U
+  val faultVaddrReg = RegInit(0.U(XLEN.W))
+  // RV64 satp.MODE 在 bit 63:60；RV32 在 bit 31。
+  private def satpMode(satp: UInt): UInt =
+    if (XLEN == 32) satp(31) else satp(63, 60)
+  val bypass = satpMode(io.satp) === 0.U || io.privilege === 3.U
 
   io.req.valid := false.B
-  io.req.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest)
+  io.req.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
   // flush 后旧 walk 的响应仍可能返回；非等待状态也要接收并丢弃，避免
   // MMU 请求仲裁器卡在响应转发状态。
   io.resp.ready := true.B
@@ -200,27 +211,32 @@ class ysyx_26030103_IFUMMU(ParallelVipt: Boolean = false) extends Module {
   * DCache。翻译故障通过 memKill 取消 LSU 中已受理的请求，并由 faultCommit
   * 向 EXU 提交精确 page fault，故障 store 不产生任何写副作用。
   */
-class ysyx_26030103_LSUMMU(val ParallelVipt: Boolean = false) extends Module {
+class ysyx_26030103_LSUMMU(
+    val ParallelVipt: Boolean = false,
+    val XLEN: Int = 32,
+    val AddressWidth: Int = 32
+) extends Module {
+  require(XLEN == 32 || XLEN == 64, s"LSUMMU XLEN 非法: $XLEN")
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage))
-    val out = Decoupled(new ysyx_26030103_EXUMessage)
+    val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage(XLEN)))
+    val out = Decoupled(new ysyx_26030103_EXUMessage(XLEN))
     val privilege = Input(UInt(2.W))
-    val satp = Input(UInt(32.W))
+    val satp = Input(UInt(XLEN.W))
     val sum = Input(Bool())
     val mxr = Input(Bool())
     val flush = Input(Bool())
     val faultCommit = Output(Bool())
     val faultCause = Output(UInt(32.W))
-    val faultTval = Output(UInt(32.W))
-    val faultPC = Output(UInt(32.W))
+    val faultTval = Output(UInt(XLEN.W))
+    val faultPC = Output(UInt(XLEN.W))
     val busy = Output(Bool())
-    val pmpAddr = Output(UInt(32.W))
+    val pmpAddr = Output(UInt(AddressWidth.W))
     val pmpWrite = Output(Bool())
     val pmpFault = Input(Bool())
     // VIPT 并行模式下，已先行交给 LSU 的 load 所使用的翻译结果。
-    val memPaddr = Output(UInt(32.W))
+    val memPaddr = Output(UInt(AddressWidth.W))
     val memPaddrValid = Output(Bool())
-    val memPaddrVaddr = Output(UInt(32.W))
+    val memPaddrVaddr = Output(UInt(XLEN.W))
     // MMU 翻译故障单拍脉冲：撤销 LSU/DCache 中尚未拿到 PA 的请求。
     val memKill = Output(Bool())
     // LSU 是否仍持有更老/当前指令。VIPT 并行模式用它保证翻译结果在
@@ -230,31 +246,33 @@ class ysyx_26030103_LSUMMU(val ParallelVipt: Boolean = false) extends Module {
     // VIPT 下该指令可能仍在 DMMU 翻译中；必须撤销翻译，避免迟到的
     // page fault 在陷阱处理程序中造成第二次异常。
     val memTrap = Input(Bool())
-    val req = Decoupled(new ysyx_26030103_MMURequest)
-    val resp = Flipped(Decoupled(new ysyx_26030103_MMUResponse))
+    val req = Decoupled(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
+    val resp = Flipped(Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth)))
   })
   // fwd 是 VIPT 并行专用：先把原始 VA 请求交给 LSU，再等待 MMU。
   val idle :: xreq :: xwait :: done :: fault :: fwd :: Nil = Enum(6)
   val state = RegInit(idle)
-  val msgReg = RegInit(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
+  val msgReg = RegInit(0.U.asTypeOf(new ysyx_26030103_EXUMessage(XLEN)))
   val msgBypass = RegInit(false.B)
-  val paddrReg = RegInit(0.U(32.W))
-  val paddrVaddrReg = RegInit(0.U(32.W))
+  val paddrReg = RegInit(0.U(AddressWidth.W))
+  val paddrVaddrReg = RegInit(0.U(XLEN.W))
   // VIPT 并行：PA 有效标志独立于状态机保持，直到 LSU 真正排空；避免
   // 流水冲刷使 state 提前离开 done 时 DCache 永远等不到 PA。
   val paddrValidReg = RegInit(false.B)
   val faultReg = RegInit(false.B)
   val faultCauseReg = RegInit(0.U(32.W))
-  val faultTvalReg = RegInit(0.U(32.W))
-  val faultPCReg = RegInit(0.U(32.W))
-  val bypass = io.satp(31) === 0.U || io.privilege === 3.U
+  val faultTvalReg = RegInit(0.U(XLEN.W))
+  val faultPCReg = RegInit(0.U(XLEN.W))
+  private def satpMode(satp: UInt): UInt =
+    if (XLEN == 32) satp(31) else satp(63, 60)
+  val bypass = satpMode(io.satp) === 0.U || io.privilege === 3.U
   val isMem = io.in.bits.MemoryValid
 
   io.in.ready := false.B
   io.out.valid := false.B
   io.out.bits := io.in.bits
   io.req.valid := false.B
-  io.req.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest)
+  io.req.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
   io.resp.ready := true.B
   io.faultCommit := faultReg
   io.faultCause := faultCauseReg

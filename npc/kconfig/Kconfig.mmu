@@ -25,9 +25,10 @@ menu "虚拟内存管理 (MMU/TLB)"
     depends on HAS_S
     help
       MMU 总开关。关闭时 IFU/LSU 直接使用物理地址，PTW/页表/页错误
-      相关逻辑不实例化。开启时当前 RTL 支持标准 Sv32、split/unified TLB
-      和独立只读 PTW AXI 通道。Sv32 需要 S 模式 satp/页错误入口，
-      因此 HAS_MMU=y 要求 HAS_S=y；违反时 elaboration 明确报错。
+      相关逻辑不实例化。开启时 RTL 支持标准 Sv32（XLEN=32）以及
+      标准 Sv39/Sv48（XLEN=64）、split/unified TLB 和独立只读 PTW
+      AXI 通道。MMU 需要 S 模式 satp/页错误入口，因此 HAS_MMU=y
+      要求 HAS_S=y；违反时 elaboration 明确报错。
 
   config HAS_TLB
     bool "启用 TLB"
@@ -73,16 +74,18 @@ menu "虚拟内存管理 (MMU/TLB)"
 
     config MMU_LEVELS
       int "页表级数"
+      default 3 if XLEN=64
       default 2
       help
-        默认 2，即标准 Sv32 两级页表。级数越小地址切分越少；
-        非 2 属于自定义 profile，需要配套软件。
+        RV32 默认 2（Sv32）；RV64 必须为 3（Sv39）或 4（Sv48）。
+        非标准级数只允许用于 RV32 的自定义 profile。
 
     config MMU_PTE_SIZE_BYTES
       int "PTE 大小 (Byte)"
+      default 8 if XLEN=64
       default 4
       help
-        默认 4，即标准 RISC-V 32-bit PTE。必须是 2 的幂。
+        RV32 默认 4（Sv32）；RV64 必须为 8（Sv39/Sv48 的 64-bit PTE）。
 
     config MMU_PAGE_TABLE_SIZE_BYTES
       int "单级页表页大小 (Byte)"
@@ -93,9 +96,12 @@ menu "虚拟内存管理 (MMU/TLB)"
 
     choice
       prompt "PTE 编码"
+      default MMU_PTE_RISCV64 if XLEN=64
       default MMU_PTE_RISCV32
       config MMU_PTE_RISCV32
-        bool "标准 RISC-V 32-bit PTE"
+        bool "标准 RISC-V 32-bit PTE (Sv32)"
+      config MMU_PTE_RISCV64
+        bool "标准 RISC-V 64-bit PTE (Sv39/Sv48)"
       config MMU_PTE_CUSTOM
         bool "自定义 PTE (EXPERIMENTAL)"
     endchoice
@@ -103,6 +109,7 @@ menu "虚拟内存管理 (MMU/TLB)"
     config MMU_PTE_FORMAT
       string
       default "riscv32" if MMU_PTE_RISCV32
+      default "riscv64" if MMU_PTE_RISCV64
       default "custom"
       help
         PTE 编码名称。自定义编码通过下面的字段位置配置，PTW 会先
@@ -146,8 +153,11 @@ menu "虚拟内存管理 (MMU/TLB)"
       range 0 31
     config MMU_PTE_PPN_HIGH
       int "PTE PPN 高位位置"
+      default 53 if MMU_PTE_RISCV64
       default 31
-      range 0 31
+      range 0 63
+      help
+        Sv32 为 31；Sv39/Sv48 的 64 位 PTE 为 53（44 位 PPN）。
 
     config MMU_SUPERPAGE
       bool "支持超级页"
@@ -336,10 +346,12 @@ menu "虚拟内存管理 (MMU/TLB)"
 
     config TLB_ASID_BITS
       int "TLB ASID 位数"
+      default 16 if XLEN=64
       default 9
-      range 0 9
+      range 0 16
       help
-        0 表示无 ASID，satp.ASID 变化必须全冲刷；9 是标准 Sv32 ASID 宽度。
+        0 表示无 ASID，satp.ASID 变化必须全冲刷；Sv32 通常为 9，
+        Sv39/Sv48 的 satp.ASID 为 16 位。
 
     config TLB_GLOBAL
       bool "支持 Global 位"

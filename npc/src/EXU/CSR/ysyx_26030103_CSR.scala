@@ -23,6 +23,13 @@ class ysyx_26030103_CSR(
   private val hasU = profile.hasU
   private val FullMask: BigInt =
     if (XLEN == 64) (BigInt(1) << 64) - 1 else 0xffffffffL
+  // satp 在 RV64 下使用完整 64 位掩码；RV32 只保留低 32 位。
+  private val SatpReadMaskValue: BigInt =
+    BigInt(profile.csrSatpReadMask) & FullMask
+  private val SatpReadSetValue: BigInt =
+    BigInt(profile.csrSatpReadSet) & FullMask
+  private val SatpWriteMaskValue: BigInt =
+    BigInt(profile.csrSatpWriteMask) & FullMask
   // 32 位 CSR（mstatus/mie/mip 等）在 RV64 下零扩展到 XLEN；
   // mepc/mtvec/mtval/mscratch 等则天然使用完整 XLEN。
   private def Widen32(Value: UInt): UInt =
@@ -132,14 +139,14 @@ class ysyx_26030103_CSR(
       if (csrOn(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
         (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(XLEN.W), full) else full
     if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
-      (profile.csrSatpReadMask.toLong & 0xffffffffL).U(XLEN.W), mstatusMask) else mstatusMask
+      SatpReadMaskValue.U(XLEN.W), mstatusMask) else mstatusMask
   }
   def CsrReadSet: UInt = {
     val mstatusSet =
       if (csrOn(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
         (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(XLEN.W), 0.U(XLEN.W)) else 0.U(XLEN.W)
     if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
-      (profile.csrSatpReadSet.toLong & 0xffffffffL).U(XLEN.W), mstatusSet) else mstatusSet
+      SatpReadSetValue.U(XLEN.W), mstatusSet) else mstatusSet
   }
   def CsrWriteMask: UInt = {
     val full = FullMask.U(XLEN.W)
@@ -147,7 +154,7 @@ class ysyx_26030103_CSR(
       if (csrOn(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
         (profile.csrMstatusWriteMask.toLong & 0xffffffffL).U(XLEN.W), full) else full
     if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
-      (profile.csrSatpWriteMask.toLong & 0xffffffffL).U(XLEN.W), mstatusMask) else mstatusMask
+      SatpWriteMaskValue.U(XLEN.W), mstatusMask) else mstatusMask
   }
 
   val csrrwWen = io.Enable && io.IsCsrrw
@@ -215,8 +222,7 @@ class ysyx_26030103_CSR(
   val SatpReadData =
     if (hasS) {
       val SatpReg = SatpRegOpt.get
-      (SatpReg & (profile.csrSatpReadMask & 0xffffffffL).U(XLEN.W)) |
-        (profile.csrSatpReadSet.toLong & 0xffffffffL).U(XLEN.W)
+      (SatpReg & SatpReadMaskValue.U(XLEN.W)) | SatpReadSetValue.U(XLEN.W)
     } else 0.U(XLEN.W)
 
   val Mstatus_rdata = Mstatus.io.rdata
@@ -527,13 +533,21 @@ class ysyx_26030103_CSR(
   SatpRegOpt.foreach { SatpReg =>
     when(SatpWen) {
       val raw = CSRWriteData(SatpReg)
-      val mask = (profile.csrSatpWriteMask & 0xffffffffL).U(XLEN.W)
+      val mask = SatpWriteMaskValue.U(XLEN.W)
       val data = (SatpReg & ~mask) | (raw & mask)
       if (XLEN == 32) {
         // Sv32 satp.MODE 只支持 0/1。
         SatpReg := Cat(Mux(data(31), 1.U(1.W), 0.U(1.W)), data(30, 0))
       } else {
-        SatpReg := data
+        // RV64 satp：MODE[63:60]=0/8(Sv39)/9(Sv48)，ASID[59:44]，
+        // PPN[43:0]。未配置的 MODE 编码按 WARL 收敛到 Bare(0)，
+        // 不会在几何不匹配时静默产生错误翻译。
+        val requested = data(63, 60)
+        val legalMode = Mux(
+          requested === 0.U, 0.U(4.W),
+          Mux(requested === profile.satpMode.U, profile.satpMode.U(4.W),
+            0.U(4.W)))
+        SatpReg := Cat(legalMode, data(59, 0))
       }
     }
   }

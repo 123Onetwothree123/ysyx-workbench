@@ -13,7 +13,8 @@ menu "硬件配置"
         全部使用 64 位地址，LD/SD 以两拍 32 位 AXI 窄传输覆盖 8 字节。
         外部 ysyxSoC CPU AXI 仍只有 32 位地址：顶层 PMA 必须位于低
         4GiB，Xbar 对更高地址返回 DECERR，绝不静默截断。
-        当前仍不支持 MMU/Sv39；选择 XLEN=64 时必须关闭 HAS_MMU。
+        XLEN=64 时 MMU 支持标准 Sv39（默认）与可配置 Sv48；页表必须
+        使用 8B PTE、4096B 页表页，详见 MMU Profile。
 
     config RISCV_M
       bool "M 扩展（乘/除/取余）"

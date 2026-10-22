@@ -1,10 +1,21 @@
-# NPC Sv32 MMU/TLB 状态
+# NPC Sv32/Sv39/Sv48 MMU/TLB 状态
 
 ## 已接入
 
-- 标准 Sv32：4KiB 页、2 级页表、4B PTE、4KiB 页表页。
+- 标准 Sv32：4KiB 页、2 级页表、4B PTE、4KiB 页表页（XLEN=32）。
+- RV64 标准 Sv39：4KiB 页、3 级页表（9+9+9+12）、8B PTE、44 位 PPN；
+  `satp.MODE=8`、ASID 16 位、PPN 44 位。Sv48 复用同一套参数化
+  walker/TLB：4 级（9+9+9+9+12）、`satp.MODE=9`；未配置对应几何时
+  satp 写入按 WARL 收敛到 Bare(0)，非标准 RV64 几何在 elaboration 期
+  明确报错。
+- 64 位 PTE 支持完整 PPN[53:10]、A/D 硬件写回（只写低 32 位字）与
+  超级页 PPN 对齐检查；Sv39/Sv48 非规范虚拟地址在 TLB 查找前产生
+  页错误，不会与低位别名命中。
+- `satp`、`mstatus`、`sepc`、`stval` 等 CSR 在 RV64 下保持 64 位；
+  `sstatus.SUM/MXR` 字段可写并参与 Sv39 权限检查。
 - 可配置页大小、页表级数、PTE 大小（4/8B）、每级页表项数；RTL 要求
-  `pageBits + levels * indexBits == 32`，支持 1..4 级和 4B/8B PTE。
+  `pageBits + levels * indexBits` 等于 32（Sv32）、39（Sv39）或 48（Sv48），
+  支持 1..4 级和 4B/8B PTE。
 - M 模式旁路；S/U 模式经 `satp` 翻译。
 - `satp`、`sstatus`、`stvec`、`sepc`、`scause`、`stval`、`sscratch`、
   `medeleg`、`mideleg`、`mie/mip/sie/sip`。
@@ -25,8 +36,9 @@
   两个不同上下文同时查找；split 模式每个 TLB 仍为单端口。
 - TLB ASID、Global、RR/PLRU/LRU 替换。
 - TLB Reg-CAM 和同步 SRAM 数据阵列两种存储。
-- TLB 可选 4MiB 超级页 CAM；PTW 默认不把超级页填 TLB，打开
-  `TLB_SUPERPAGE` 后由 PTW 返回 fillLevel=1 并填入超级页 CAM。
+- TLB 可选超级页 CAM（Sv32 4MiB、Sv39 2MiB/1GiB、Sv48 继续扩展到
+  1GiB/512GiB）；PTW 默认不把超级页填 TLB，打开 `TLB_SUPERPAGE` 后由
+  PTW 返回 fillLevel 并填入超级页 CAM。
 - 独立只读 PTW AXI 通道，或复用 LSU 读端口（`MMU_PTW_PATH=reuse_dcache`）。
 - MMU 请求队列、响应表、序号重排和 1..16 个在途 walk 槽。
 - 真实 TLB miss queue：follow_tlb 下 split 使用独立 ITLB/DTLB 队列、
@@ -63,20 +75,25 @@
 单元测试：
 
 ```text
-总计约 110 项 mill 单元测试通过，包含：
+总计 160+ 项 mill 单元测试通过，包含：
 MMU 结构/行为/流、PTW pipeline、AXI 多 outstanding、CSR/U 裁剪、
 IDU 特权级、PLIC、PMP、ICache VIPT、DCache VIPT、LSUMMUVipt、
-LSUVipt、LSUDmmuVipt、LSUStoreVipt。
+LSUVipt、LSUDmmuVipt、LSUStoreVipt；以及 RV64 定向测试：
+Sv39 三级 walk/权限/U-SUM/R-W-X/超级页/A-D/非规范地址、
+Sv48 四级 walk、Sv39 TLB refill、64 位 satp WARL 与 sepc/stval。
 ```
 
 裸机测试（MMU 开启）：
 
 ```text
-S 模式访存              HIT GOOD
-U 模式访存              HIT GOOD
-S load page fault       HIT GOOD
-S store page fault      HIT GOOD
-S ecall + SRET          HIT GOOD
+Sv32：S 模式访存              HIT GOOD
+Sv32：U 模式访存              HIT GOOD
+Sv32：S load page fault       HIT GOOD
+Sv32：S store page fault      HIT GOOD
+Sv32：S ecall + SRET          HIT GOOD
+Sv39：csrc/Test/rv64-mmu-test HIT GOOD
+      （4KiB walk、TLB refill、1GiB 超级页取指、load/store 页错误、
+       U 页 SUM、A/D fault、非规范 VA）
 ```
 
 ## 配置行为
@@ -104,9 +121,14 @@ S ecall + SRET          HIT GOOD
   委托寄存器、S 中断视图和 S 模式入口逻辑在 elaboration 期直接裁剪；
   SRET/SFENCE.VMA 在译码阶段按非法指令处理。`HAS_MMU=y` 或 `HAS_U=y`
   与 `HAS_S=n` 组合会在 elaboration 前明确报错，不会静默保留 S 逻辑。
-- `HAS_MMU=y` 要求 `HAS_S=y`；当前不支持 M-only 的 Sv32。`HAS_TLB=y`
-  且 `HAS_MMU=n` 时 TLB 按未启用处理。
-- 默认 `HAS_S=y/HAS_U=y` 时行为与原来一致。
+- `HAS_MMU=y` 要求 `HAS_S=y`；当前不支持 M-only 的 Sv32/Sv39/Sv48。
+  `HAS_TLB=y` 且 `HAS_MMU=n` 时 TLB 按未启用处理。
+- `XLEN=64 + HAS_MMU=y` 只接受标准 Sv39/Sv48：`MMU_LEVELS=3/4`、
+  `MMU_PTE_SIZE_BYTES=8`、`MMU_PTE_FORMAT=riscv64`、
+  `MMU_PAGE_TABLE_SIZE_BYTES=4096`。使用 `configs/rv64_mmu_defconfig`
+  可直接生成 Sv39 + TLB 配置。
+- 默认 `HAS_S=y/HAS_U=y` 时行为与原来一致；RV32/Sv32 的默认端子宽度
+  与既有实现保持一致（MMURequest/PTW/TLB 默认 32 位）。
 
 ## 验证结论
 
@@ -124,3 +146,8 @@ S ecall + SRET          HIT GOOD
 - 剩余限制：PTW 内部页表总线可配置到 16 笔，但下游 4 位 AXI ID 在保留
   ICache/LSU/DMA 后只剩 13 个 PTW 槽；更多请求会在 PTWToAXI 队列等待，
   不再退化为单笔串行，也不影响功能正确性。
+- Sv48 已完成参数化 walker/TLB 与顶层 elaboration，并有 PTW 四级 walk
+  单元测试；当前没有独立 Sv48 裸机镜像，默认裸机基线使用 Sv39。
+  未配置对应几何的 satp.MODE 写入按 WARL 收敛到 Bare(0)。
+- RV64 顶层仍受外部 ysyxSoC 32 位 AXI 地址限制：页表和数据必须位于
+  低 4GiB；Xbar 对更高地址返回 DECERR。

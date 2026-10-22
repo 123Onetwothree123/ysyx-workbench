@@ -123,12 +123,19 @@ def field_modes(cfg: Config, fields):
 
 
 def build_profile(cfg: Config) -> dict:
+    xlen = cfg.integer("XLEN", 32)
+    if xlen not in (32, 64):
+        raise ValueError(f"XLEN={xlen} 必须是 32/64")
+    default_levels = 3 if xlen == 64 else STANDARD_LEVELS
+    default_pte = 8 if xlen == 64 else STANDARD_PTE
     page_size = cfg.integer("MMU_PAGE_SIZE_BYTES", STANDARD_PAGE)
-    levels = cfg.integer("MMU_LEVELS", STANDARD_LEVELS)
-    pte_size = cfg.integer("MMU_PTE_SIZE_BYTES", STANDARD_PTE)
+    levels = cfg.integer("MMU_LEVELS", default_levels)
+    pte_size = cfg.integer("MMU_PTE_SIZE_BYTES", default_pte)
     table_size = cfg.integer("MMU_PAGE_TABLE_SIZE_BYTES", STANDARD_TABLE)
     pte_format = one_of(
-        "MMU_PTE_FORMAT", cfg.string("MMU_PTE_FORMAT", "riscv32"), ("riscv32", "custom")
+        "MMU_PTE_FORMAT",
+        cfg.string("MMU_PTE_FORMAT", "riscv64" if xlen == 64 else "riscv32"),
+        ("riscv32", "riscv64", "custom"),
     )
     ad_mode = one_of(
         "MMU_AD_MODE", cfg.string("MMU_AD_MODE", "fault"), ("fault", "hardware", "ignore")
@@ -196,14 +203,41 @@ def build_profile(cfg: Config) -> dict:
     table_entries = table_size // pte_size
     index_bits = require_power_of_two("每级页表项数", table_entries)
     address_bits = page_bits + levels * index_bits
-    well_formed = address_bits == 32
-    standard = (
-        page_size == STANDARD_PAGE
+    allowed_bits = 32 if xlen == 32 else (39, 48)
+    well_formed = (address_bits == allowed_bits) if xlen == 32 else (address_bits in allowed_bits)
+    standard_sv32 = (
+        xlen == 32
+        and page_size == STANDARD_PAGE
         and levels == STANDARD_LEVELS
         and pte_size == STANDARD_PTE
         and table_size == STANDARD_TABLE
         and pte_format == "riscv32"
     )
+    standard_sv39 = (
+        xlen == 64
+        and page_size == STANDARD_PAGE
+        and levels == 3
+        and pte_size == 8
+        and table_size == STANDARD_TABLE
+        and pte_format == "riscv64"
+        and address_bits == 39
+    )
+    standard_sv48 = (
+        xlen == 64
+        and page_size == STANDARD_PAGE
+        and levels == 4
+        and pte_size == 8
+        and table_size == STANDARD_TABLE
+        and pte_format == "riscv64"
+        and address_bits == 48
+    )
+    standard = standard_sv32 or standard_sv39 or standard_sv48
+    if has_mmu and xlen == 64 and not standard:
+        raise ValueError(
+            "RV64 HAS_MMU=y 只支持标准 Sv39/Sv48：MMU_LEVELS=3/4、"
+            "MMU_PTE_SIZE_BYTES=8、MMU_PTE_FORMAT=riscv64、"
+            "MMU_PAGE_SIZE_BYTES=4096、MMU_PAGE_TABLE_SIZE_BYTES=4096"
+        )
 
     tlb_org = cfg.string("TLB_ORGANIZATION", "split")
     if tlb_org not in ("split", "unified"):
@@ -304,9 +338,10 @@ def build_profile(cfg: Config) -> dict:
 
     warnings = []
     if not well_formed:
+        expected = "32" if xlen == 32 else "39 或 48"
         warnings.append(
             f"地址位宽=page_bits({page_bits}) + levels({levels})*index_bits({index_bits}) "
-            f"= {address_bits}，不等于 32；该 profile 需要软件/RTL 额外定义高位处理"
+            f"= {address_bits}，不等于 {expected}；该 profile 需要软件/RTL 额外定义高位处理"
         )
     if cfg.bool("HAS_TLB") and not cfg.bool("HAS_MMU"):
         warnings.append("HAS_TLB=y 但 HAS_MMU=n；生成器按有效 TLB=false 处理")
@@ -315,7 +350,10 @@ def build_profile(cfg: Config) -> dict:
         "schema_version": SCHEMA_VERSION,
         "generated_from": ".config",
         "profile": cfg.string("MMU_PROFILE", "custom"),
-        "standard_sv32": standard and well_formed,
+        "xlen": xlen,
+        "standard_sv32": standard_sv32 and well_formed,
+        "standard_sv39": standard_sv39 and well_formed,
+        "standard_sv48": standard_sv48 and well_formed,
         "enabled": {
             "s": has_s,
             "u": has_u,
@@ -330,9 +368,11 @@ def build_profile(cfg: Config) -> dict:
             "page_table_size_bytes": table_size,
             "table_entries": table_entries,
             "index_bits_per_level": index_bits,
-            "address_bits": 32,
+            "address_bits": xlen,
+            "virtual_address_bits": address_bits,
             "computed_address_bits": address_bits,
             "well_formed": well_formed,
+            "satp_mode": 1 if xlen == 32 else (8 if address_bits == 39 else 9),
             "pte_format": pte_format,
             "pte": {
                 "valid_bit": cfg.integer("MMU_PTE_VALID_BIT", 0),
@@ -344,7 +384,9 @@ def build_profile(cfg: Config) -> dict:
                 "a_bit": cfg.integer("MMU_PTE_A_BIT", 6),
                 "d_bit": cfg.integer("MMU_PTE_D_BIT", 7),
                 "ppn_low": cfg.integer("MMU_PTE_PPN_LOW", 10),
-                "ppn_high": cfg.integer("MMU_PTE_PPN_HIGH", 31),
+                "ppn_high": cfg.integer(
+                    "MMU_PTE_PPN_HIGH", 53 if pte_size == 8 else 31
+                ),
             },
             "superpage": cfg.bool("MMU_SUPERPAGE"),
             "ad_mode": ad_mode,
@@ -411,7 +453,12 @@ HEADER_TEMPLATE = """/* 由 scripts/gen_mmu_profile.py 从 .config 生成，请�
 #define YSYX_MMU_PROFILE_SCHEMA {schema}
 #define YSYX_MMU_PROFILE_NAME "{profile}"
 #define YSYX_MMU_ENABLED {mmu}
+#define YSYX_MMU_XLEN {xlen}u
+#define YSYX_MMU_VIRTUAL_ADDRESS_BITS {address_bits}u
+#define YSYX_MMU_SATP_MODE {satp_mode}u
 #define YSYX_MMU_STANDARD_SV32 {standard}
+#define YSYX_MMU_STANDARD_SV39 {standard39}
+#define YSYX_MMU_STANDARD_SV48 {standard48}
 #define YSYX_MMU_PAGE_SIZE_BYTES {page_size}u
 #define YSYX_MMU_PAGE_BITS {page_bits}u
 #define YSYX_MMU_LEVELS {levels}u
@@ -465,7 +512,12 @@ def main() -> int:
         schema=profile["schema_version"],
         profile=profile["profile"],
         mmu=int(profile["enabled"]["mmu"]),
+        xlen=profile["xlen"],
+        address_bits=profile["mmu"]["virtual_address_bits"],
+        satp_mode=profile["mmu"]["satp_mode"],
         standard=int(profile["standard_sv32"]),
+        standard39=int(profile["standard_sv39"]),
+        standard48=int(profile["standard_sv48"]),
         page_size=profile["mmu"]["page_size_bytes"],
         page_bits=profile["mmu"]["page_bits"],
         levels=profile["mmu"]["levels"],
@@ -508,6 +560,7 @@ def main() -> int:
         env_lines = [
             f"MMU_PROFILE={profile['profile']}",
             f"MMU_ENABLED={int(profile['enabled']['mmu'])}",
+            f"MMU_XLEN={profile['xlen']}",
             f"MMU_PAGE_SIZE_BYTES={profile['mmu']['page_size_bytes']}",
             f"MMU_LEVELS={profile['mmu']['levels']}",
             f"MMU_PTE_SIZE_BYTES={profile['mmu']['pte_size_bytes']}",
@@ -583,7 +636,8 @@ def main() -> int:
         print(f"[mmu-profile] warning: {warning}", file=sys.stderr)
     print(
         f"[mmu-profile] {profile['profile']}: mmu={profile['enabled']['mmu']} "
-        f"tlb={profile['enabled']['tlb']} standard={profile['standard_sv32']} "
+        f"tlb={profile['enabled']['tlb']} xlen={profile['xlen']} "
+        f"standard={profile['standard_sv32'] or profile['standard_sv39'] or profile['standard_sv48']} "
         f"page={profile['mmu']['page_size_bytes']} levels={profile['mmu']['levels']} "
         f"ptw_outstanding={profile['mmu']['ptw']['outstanding']}"
     )

@@ -104,7 +104,7 @@ object ysyx_26030103_Elaborate extends App {
       PerfStatsEnable && sys.env
         .getOrElse(s"PERF_COUNTER_${name.toUpperCase}", "y") == "y"
     }
-  val mmuProfile = ysyx_26030103_MMUProfile.fromEnv(sys.env.get)
+  val mmuProfile = ysyx_26030103_MMUProfile.fromEnv(sys.env.get, XLEN)
   val config = ysyx_26030103_NPCConfig(
     XLEN = XLEN,
     AddressWidth = AddressWidth,

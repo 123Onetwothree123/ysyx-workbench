@@ -47,6 +47,28 @@ class MmuProfileTest(unittest.TestCase):
         self.assertEqual(profile["mmu"]["computed_address_bits"], 32)
         self.assertEqual(profile["tlb"]["itlb"]["entries"], 16)
 
+    def test_standard_sv39(self):
+        values = self.base()
+        values.update({
+            "XLEN": 64,
+            "MMU_LEVELS": 3,
+            "MMU_PTE_SIZE_BYTES": 8,
+            "MMU_PTE_FORMAT": "riscv64",
+            "TLB_ASID_BITS": 16,
+        })
+        profile = build_profile(Config(values))
+        self.assertTrue(profile["standard_sv39"])
+        self.assertFalse(profile["standard_sv32"])
+        self.assertEqual(profile["mmu"]["virtual_address_bits"], 39)
+        self.assertEqual(profile["mmu"]["satp_mode"], 8)
+        self.assertEqual(profile["mmu"]["pte"]["ppn_high"], 53)
+
+    def test_rv64_rejects_nonstandard_geometry(self):
+        values = self.base()
+        values.update({"XLEN": 64})
+        with self.assertRaisesRegex(ValueError, "Sv39"):
+            build_profile(Config(values))
+
     def test_nonstandard_page_size_is_described(self):
         values = self.base()
         values["MMU_PAGE_SIZE_BYTES"] = 8192

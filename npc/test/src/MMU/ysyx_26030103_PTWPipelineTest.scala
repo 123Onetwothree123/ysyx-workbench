@@ -692,7 +692,7 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
 
   "PTWPipeline" should "支持 4MiB 超级页" in {
     val bus = new BusModel(latency = 1)
-    bus.write(Root, pte(0x80001L, 0xdfL))
+    bus.write(Root, pte(0x80000L, 0xdfL))
 
     simulate(new ysyx_26030103_PTWPipeline(
       outstanding = 2,

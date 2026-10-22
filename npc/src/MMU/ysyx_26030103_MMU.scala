@@ -17,7 +17,15 @@ class ysyx_26030103_MMU(
     extends Module {
   require(profile.pteSizeBytes == 4 || profile.pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
   require(profile.levels >= 1 && profile.levels <= 4, "页表级数必须在 1..4")
-  require(profile.pageBits + profile.levels * profile.indexBitsPerLevel == 32, "pageBits + levels*indexBits 必须等于 32")
+  require(profile.pageBits + profile.levels * profile.indexBitsPerLevel ==
+    profile.computedAddressBits,
+    "pageBits + levels*indexBits 必须等于 profile 的有效虚拟地址位数")
+  require(profile.xlen == 32 || profile.standardSv39 || profile.standardSv48,
+    "RV64 MMU 只支持标准 Sv39/Sv48 几何")
+  private val xlen = profile.xlen
+  private val addressWidth = if (xlen == 64) 64 else 32
+  private val vaBits = profile.computedAddressBits
+  private val pteWidth = profile.pteSizeBytes * 8
   // TLB 超级页的 shift/tag 由 profile 几何推导，不再限制 Sv32/2 级。
   require(!profile.tlbSuperpage || profile.superpage, "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
   require(!profile.tlbSuperpage || profile.levels <= 4, "TLB_SUPERPAGE 的 fillLevel 只有 2 位，levels 必须在 1..4")
@@ -50,15 +58,15 @@ class ysyx_26030103_MMU(
   private val walkTagBits = log2Ceil(walkSlots.max(2))
 
   val io = IO(new Bundle {
-    val req   = Flipped(Decoupled(new ysyx_26030103_MMURequest))
-    val resp  = Decoupled(new ysyx_26030103_MMUResponse)
-    val bus   = new ysyx_26030103_PTEBusIO
+    val req   = Flipped(Decoupled(new ysyx_26030103_MMURequest(xlen, addressWidth)))
+    val resp  = Decoupled(new ysyx_26030103_MMUResponse(xlen, addressWidth))
+    val bus   = new ysyx_26030103_PTEBusIO(addressWidth)
     val flush = Input(Bool())
   })
 
   val ctxFree :: ctxLookup :: ctxMissWait :: ctxWalk :: Nil = Enum(4)
   class Context extends Bundle {
-    val req = new ysyx_26030103_MMURequest
+    val req = new ysyx_26030103_MMURequest(xlen, addressWidth)
     val seq = UInt(seqBits.W)
   }
   val ctx = RegInit(VecInit(Seq.fill(contexts)(0.U.asTypeOf(new Context))))
@@ -73,7 +81,8 @@ class ysyx_26030103_MMU(
   val nextSeq   = RegInit(0.U(seqBits.W))
   val headSeq   = RegInit(0.U(seqBits.W))
   val respValid = RegInit(VecInit(Seq.fill(tableSize)(false.B)))
-  val respData  = RegInit(VecInit(Seq.fill(tableSize)(0.U.asTypeOf(new ysyx_26030103_MMUResponse))))
+  val respData  = RegInit(VecInit(Seq.fill(tableSize)(
+    0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))))
 
   private def makeMissQueue(entries: Int): ysyx_26030103_TLBMissQueue =
     Module(new ysyx_26030103_TLBMissQueue(entries = entries, width = ctxBits))
@@ -99,7 +108,7 @@ class ysyx_26030103_MMU(
 
   val reqQueue = Module(
     new Queue(
-      new ysyx_26030103_MMURequest,
+      new ysyx_26030103_MMURequest(xlen, addressWidth),
       contexts.max(2),
       pipe = false,
       flow = false
@@ -124,7 +133,13 @@ class ysyx_26030103_MMU(
       refillPorts = profile.refillPorts,
       superpageEntries = profile.tlbSuperpageEntries,
       hasU = profile.hasU,
-      lookupPorts = lookupPorts
+      lookupPorts = lookupPorts,
+      XLEN = xlen,
+      addressWidth = addressWidth,
+      vaBits = vaBits,
+      pteWidth = pteWidth,
+      ptePpnLow = profile.pteConfig.ppnLow,
+      ptePpnHigh = profile.pteConfig.ppnHigh
     )
   )
 
@@ -157,7 +172,10 @@ class ysyx_26030103_MMU(
           pteSizeBytes = profile.pteSizeBytes,
           inOrder = profile.ptwOrder == "in_order",
           respPorts = profile.refillPorts,
-          hasU = profile.hasU
+          hasU = profile.hasU,
+          XLEN = xlen,
+          addressWidth = addressWidth,
+          vaBits = vaBits
         )
       )
     } else {
@@ -178,7 +196,10 @@ class ysyx_26030103_MMU(
           pteSizeBytes = profile.pteSizeBytes,
           inOrder = profile.ptwOrder == "in_order",
           respPorts = profile.refillPorts,
-          hasU = profile.hasU
+          hasU = profile.hasU,
+          XLEN = xlen,
+          addressWidth = addressWidth,
+          vaBits = vaBits
         )
       )
     }
@@ -187,14 +208,15 @@ class ysyx_26030103_MMU(
   // 编号最小的候选，端口 1 在剩余候选中再选一个。split 只有一个端口。
   val lookupValid      = Wire(Vec(lookupPorts, Bool()))
   val lookupIndex      = Wire(Vec(lookupPorts, UInt(ctxBits.W)))
-  val lookupReq        = Wire(Vec(lookupPorts, new ysyx_26030103_MMURequest))
+  val lookupReq        = Wire(Vec(lookupPorts,
+    new ysyx_26030103_MMURequest(xlen, addressWidth)))
   val lookupCandidates = VecInit((0 until contexts).map { i =>
     ctxValid(i) && ctxState(i) === ctxLookup
   })
   for (p <- 0 until lookupPorts) {
     lookupValid(p) := false.B
     lookupIndex(p) := 0.U
-    lookupReq(p)   := 0.U.asTypeOf(new ysyx_26030103_MMURequest)
+    lookupReq(p)   := 0.U.asTypeOf(new ysyx_26030103_MMURequest(xlen, addressWidth))
   }
   lookupValid(0) := lookupCandidates.reduce(_ || _)
   lookupIndex(0) := PriorityEncoder(lookupCandidates)
@@ -212,7 +234,7 @@ class ysyx_26030103_MMU(
   def connectTlb(tlb: ysyx_26030103_TLB):                          Unit = {
     for (p <- 0 until lookupPorts) {
       tlb.io.lookup(p).vaddr     := lookupReq(p).vaddr
-      tlb.io.lookup(p).asid      := lookupReq(p).satp(30, 22)
+      tlb.io.lookup(p).asid      := satpAsid(lookupReq(p).satp)
       tlb.io.lookup(p).privilege := lookupReq(p).privilege
       tlb.io.lookup(p).access    := lookupReq(p).access
       tlb.io.lookup(p).sum       :=
@@ -318,14 +340,34 @@ class ysyx_26030103_MMU(
       )
     else optUInt(utlbOpt, _.io.result(p).cause)
 
+  // satp 字段位置按 XLEN 选择：RV32 mode=31, asid=30:22, ppn=21:0；
+  // RV64 mode=63:60, asid=59:44, ppn=43:0。
+  def satpModeOf(satp: UInt): UInt =
+    if (xlen == 32) satp(31) else satp(63, 60)
+  def satpAsidOf(satp: UInt): UInt =
+    if (xlen == 32) satp(30, 22) else satp(59, 44)
+  def satpAsid(satp: UInt): UInt = satpAsidOf(satp)
+  /** Sv39/Sv48 非规范虚拟地址必须在 TLB 之前就判定为页错误。 */
+  def canonicalOk(vaddr: UInt): Bool = {
+    if (vaBits == xlen) true.B
+    else {
+      val upper = vaddr(xlen - 1, vaBits)
+      val sign = Fill(xlen - vaBits, vaddr(vaBits - 1))
+      upper === sign
+    }
+  }
+
   val laneTlbValid = VecInit((0 until lookupPorts).map(laneResultValid))
   val laneTlbHit   = VecInit((0 until lookupPorts).map(laneHit))
   val laneTlbFault = VecInit((0 until lookupPorts).map(laneFault))
   val lanePaddrVec = VecInit((0 until lookupPorts).map(lanePaddr))
   val laneCauseVec = VecInit((0 until lookupPorts).map(laneCause))
   val laneBypass   = VecInit((0 until lookupPorts).map { p =>
-    !profile.enabled.B || lookupReq(p).satp(31) === 0.U ||
+    !profile.enabled.B || satpModeOf(lookupReq(p).satp) === 0.U ||
     lookupReq(p).privilege === 3.U
+  })
+  val laneNonCanonical = VecInit((0 until lookupPorts).map { p =>
+    !laneBypass(p) && !canonicalOk(lookupReq(p).vaddr)
   })
 
   val ptwDoneVec       = VecInit((0 until profile.refillPorts).map(p => ptw.io.resp(p).valid))
@@ -354,7 +396,11 @@ class ysyx_26030103_MMU(
   // 都延迟到下一拍，避免 TLB 和 PTW 争用响应表写端口。
   val laneHitDone    = VecInit((0 until lookupPorts).map { p =>
     !anyPtwDone && lookupValid(p) && profile.tlbEnabled.B &&
-    !laneBypass(p) && laneTlbValid(p) && laneTlbHit(p)
+    !laneBypass(p) && !laneNonCanonical(p) &&
+    laneTlbValid(p) && laneTlbHit(p)
+  })
+  val laneCanonicalFaultDone = VecInit((0 until lookupPorts).map { p =>
+    !anyPtwDone && lookupValid(p) && !laneBypass(p) && laneNonCanonical(p)
   })
   val laneBypassDone = VecInit((0 until lookupPorts).map { p =>
     !anyPtwDone && lookupValid(p) && laneBypass(p)
@@ -369,7 +415,8 @@ class ysyx_26030103_MMU(
     }
   }
 
-  val ptwResponseVec = WireInit(VecInit(Seq.fill(profile.refillPorts)(0.U.asTypeOf(new ysyx_26030103_MMUResponse))))
+  val ptwResponseVec = WireInit(VecInit(Seq.fill(profile.refillPorts)(
+    0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))))
   for (p <- 0 until profile.refillPorts) {
     ptwResponseVec(p).id    := ctx(ptwCtxIdxVec(p)).req.id
     ptwResponseVec(p).paddr := ptwRespVec(p).paddr
@@ -378,8 +425,12 @@ class ysyx_26030103_MMU(
     ptwResponseVec(p).tval  := ptwRespVec(p).tval
   }
 
-  val laneHitResponse    = WireInit(VecInit(Seq.fill(lookupPorts)(0.U.asTypeOf(new ysyx_26030103_MMUResponse))))
-  val laneBypassResponse = WireInit(VecInit(Seq.fill(lookupPorts)(0.U.asTypeOf(new ysyx_26030103_MMUResponse))))
+  val laneHitResponse    = WireInit(VecInit(Seq.fill(lookupPorts)(
+    0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))))
+  val laneBypassResponse = WireInit(VecInit(Seq.fill(lookupPorts)(
+    0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))))
+  val laneCanonicalFaultResponse = WireInit(VecInit(Seq.fill(lookupPorts)(
+    0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))))
   for (p <- 0 until lookupPorts) {
     laneHitResponse(p).id    := lookupReq(p).id
     laneHitResponse(p).paddr := lanePaddrVec(p)
@@ -392,6 +443,14 @@ class ysyx_26030103_MMU(
     laneBypassResponse(p).fault := false.B
     laneBypassResponse(p).cause := 0.U
     laneBypassResponse(p).tval  := lookupReq(p).vaddr
+
+    laneCanonicalFaultResponse(p).id    := lookupReq(p).id
+    laneCanonicalFaultResponse(p).paddr := 0.U
+    laneCanonicalFaultResponse(p).fault := true.B
+    laneCanonicalFaultResponse(p).cause := Mux(
+      lookupReq(p).access === ysyx_26030103_AccessType.Fetch, 12.U,
+      Mux(lookupReq(p).access === ysyx_26030103_AccessType.Store, 15.U, 13.U))
+    laneCanonicalFaultResponse(p).tval  := lookupReq(p).vaddr
   }
 
   // 两个查找端口可以在同一拍各写一个响应表项；表项按请求序号索引，
@@ -405,7 +464,10 @@ class ysyx_26030103_MMU(
     }
   }
   for (p <- 0 until lookupPorts) {
-    when(laneHitDone(p)) {
+    when(laneCanonicalFaultDone(p)) {
+      writeResponse(true.B, lookupIndex(p), ctxSeq(lookupIndex(p)),
+        laneCanonicalFaultResponse(p))
+    }.elsewhen(laneHitDone(p)) {
       writeResponse(true.B, lookupIndex(p), ctxSeq(lookupIndex(p)), laneHitResponse(p))
     }.elsewhen(laneBypassDone(p)) {
       writeResponse(true.B, lookupIndex(p), ctxSeq(lookupIndex(p)), laneBypassResponse(p))
@@ -417,7 +479,7 @@ class ysyx_26030103_MMU(
   // 未就绪时上下文留在 ctxLookup，下一拍继续查找。
   val laneMiss = VecInit((0 until lookupPorts).map { p =>
     lookupValid(p) && profile.tlbEnabled.B && !laneBypass(p) &&
-    laneTlbValid(p) && !laneTlbHit(p)
+    !laneNonCanonical(p) && laneTlbValid(p) && !laneTlbHit(p)
   })
   def laneFetch(p: Int): Bool =
     lookupReq(p).access === ysyx_26030103_AccessType.Fetch
@@ -499,7 +561,7 @@ class ysyx_26030103_MMU(
   // 无 TLB 时没有 miss queue，保留原行为：ctxLookup 直接占用 PTW。
   val directIssueNeeded =
     !profile.tlbEnabled.B && lookupValid(0) && !laneBypass(0) &&
-      !anyPtwDone && anyFreeWalk && !io.flush
+      !laneNonCanonical(0) && !anyPtwDone && anyFreeWalk && !io.flush
   val issueCtx          = Mux(directIssueNeeded, lookupIndex(0), queueCtx)
 
   def requestPtw(ctxIndex: UInt): Unit = {
@@ -519,7 +581,8 @@ class ysyx_26030103_MMU(
   }
 
   ptw.io.req.valid := directIssueNeeded || queueIssue
-  ptw.io.req.bits  := 0.U.asTypeOf(new ysyx_26030103_PTWRequest)
+  ptw.io.req.bits  := 0.U.asTypeOf(
+    new ysyx_26030103_PTWRequest(xlen, addressWidth))
   when(directIssueNeeded || queueIssue) { requestPtw(issueCtx) }
   for (p <- 0 until profile.refillPorts) {
     ptw.io.resp(p).ready := ptwDoneVec(p)

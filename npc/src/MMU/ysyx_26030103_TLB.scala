@@ -3,20 +3,28 @@ package ysyx_26030103.mmu
 import chisel3._
 import chisel3.util._
 
-class ysyx_26030103_TLBWrite extends Bundle {
+class ysyx_26030103_TLBWrite(
+    val XLEN: Int = 32,
+    val pteWidth: Int = 32
+) extends Bundle {
+  require(XLEN == 32 || XLEN == 64, s"TLBWrite XLEN 非法: $XLEN")
+  require(pteWidth == 32 || pteWidth == 64, s"TLBWrite pteWidth 非法: $pteWidth")
   val valid = Bool()
-  val vaddr = UInt(32.W)
-  val asid = UInt(9.W)
-  val pte = UInt(32.W)
+  val vaddr = UInt(XLEN.W)
+  val asid = UInt(16.W)
+  val pte = UInt(pteWidth.W)
   val level = UInt(2.W)
 }
 
-/** 组相联的 Sv32 TLB，支持 1..2 个同拍查找端口。
+/** 组相联 TLB，支持 Sv32/Sv39/Sv48 和 1..2 个同拍查找端口。
   *
   * split 模式下 I/D TLB 各例化一份且只使用 1 个查找端口；unified 模式下
   * 可以通过 lookupPorts=2 让两个上下文在同一拍并行查找。寄存器阵列的
   * 查找是组合逻辑；SRAM 数据阵列每端口有独立的同步读端口和结果有效
   * 指示（resultValid）。refill 端口仍然独立于查找端口。
+  *
+  * RV64 下虚拟地址为 64 位，VPN 只使用 vaBits-1:pageBits；PTE 为 64 位，
+  * PPN 使用标准 bit 53:10（44 位）。RV32/Sv32 的默认参数保持原行为。
   */
 class ysyx_26030103_TLB(
     entries: Int = 16,
@@ -33,26 +41,41 @@ class ysyx_26030103_TLB(
     refillPorts: Int = 1,
     superpageEntries: Int = 4,
     hasU: Boolean = true,
-    lookupPorts: Int = 1
+    lookupPorts: Int = 1,
+    XLEN: Int = 32,
+    addressWidth: Int = 32,
+    vaBits: Int = 32,
+    pteWidth: Int = 32,
+    ptePpnLow: Int = 10,
+    ptePpnHigh: Int = 31
 ) extends Module {
   require(entries > 0 && ways > 0 && entries % ways == 0, "TLB entries 必须能被 ways 整除")
   require((entries & (entries - 1)) == 0, "TLB entries 必须是 2 的幂")
-  require(asidBits >= 0 && asidBits <= 9, "ASID 位数必须在 0..9")
+  require(asidBits >= 0 && asidBits <= 16, "ASID 位数必须在 0..16")
   require((ways & (ways - 1)) == 0, "TLB ways 必须是 2 的幂")
   require(Set("reg", "sram").contains(storage), "TLB storage 必须是 reg/sram")
   require(lookupPorts >= 1 && lookupPorts <= 2, "TLB lookupPorts 必须在 1..2")
   require(levels >= 1 && levels <= 4, "TLB levels 必须在 1..4")
   require(indexBits >= 1 && indexBits <= 30, "TLB indexBits 非法")
+  require(XLEN == 32 || XLEN == 64, s"TLB XLEN 非法: $XLEN")
+  require(addressWidth == 32 || addressWidth == 64,
+    s"TLB addressWidth 非法: $addressWidth")
+  require(vaBits > pageBits && vaBits <= XLEN, "TLB vaBits 非法")
+  require(pteWidth == 32 || pteWidth == 64, "TLB pteWidth 非法")
+  require(ptePpnLow >= 8 && ptePpnHigh < pteWidth && ptePpnLow <= ptePpnHigh,
+    "TLB PTE PPN 位置非法")
   // 超级页的 shift/tag 由 pageBits/levels/indexBits 推导；非标准几何
-  // 必须满足 32 位地址可完整划分，否则拒绝 elaboration 而不是静默错映射。
-  require(!superpage || pageBits + levels * indexBits == 32,
-    s"TLB 超级页要求 pageBits($pageBits) + levels($levels)*indexBits($indexBits) 等于 32")
+  // 必须满足有效虚拟地址可完整划分，否则拒绝 elaboration 而不是静默错映射。
+  require(!superpage || pageBits + levels * indexBits == vaBits,
+    s"TLB 超级页要求 pageBits($pageBits) + levels($levels)*indexBits($indexBits) 等于 vaBits($vaBits)")
 
   private val sets = entries / ways
   private val setBits = if (sets == 1) 0 else log2Ceil(sets)
   private val asidWidth = asidBits.max(1)
-  private val vpnBits = 32 - pageBits
-  private val ppnBits = 32 - pageBits
+  private val vpnBits = vaBits - pageBits
+  // PTE 中可用的 PPN 位数（Sv32=22，Sv39/Sv48=44），再受物理地址宽度约束。
+  private val ptePpnBits = ptePpnHigh - ptePpnLow + 1
+  private val ppnBits = math.min(ptePpnBits, addressWidth - pageBits)
   private val entryBits = log2Ceil(entries)
 
   class Entry extends Bundle {
@@ -71,7 +94,7 @@ class ysyx_26030103_TLB(
   }
 
   class Lookup extends Bundle {
-    val vaddr = UInt(32.W)
+    val vaddr = UInt(XLEN.W)
     val asid = UInt(asidWidth.W)
     val privilege = UInt(2.W)
     val access = UInt(2.W)
@@ -82,7 +105,7 @@ class ysyx_26030103_TLB(
   class Result extends Bundle {
     val hit = Bool()
     val fault = Bool()
-    val paddr = UInt(32.W)
+    val paddr = UInt(addressWidth.W)
     val cause = UInt(32.W)
     val resultValid = Bool()
   }
@@ -92,13 +115,14 @@ class ysyx_26030103_TLB(
     val lookup = Input(Vec(lookupPorts, new Lookup))
     val result = Output(Vec(lookupPorts, new Result))
     val fillValid = Input(Bool())
-    val fillVaddr = Input(UInt(32.W))
-    val fillAsid = Input(UInt(asidWidth.W))
-    val fillPte = Input(UInt(32.W))
+    val fillVaddr = Input(UInt(XLEN.W))
+    val fillAsid = Input(UInt(16.W))
+    val fillPte = Input(UInt(pteWidth.W))
     val fillLevel = Input(UInt(2.W))
     // 第 2..refillPorts 个写回端口；端口 0 保持上面的兼容接口。
     val fillExtra = if (refillPorts > 1)
-      Some(Input(Vec(refillPorts - 1, new ysyx_26030103_TLBWrite))) else None
+      Some(Input(Vec(refillPorts - 1,
+        new ysyx_26030103_TLBWrite(XLEN, pteWidth)))) else None
     val flush = Input(Bool())
   })
 
@@ -114,15 +138,15 @@ class ysyx_26030103_TLB(
   class SuperEntry extends Bundle {
     val valid = Bool()
     val level = UInt(2.W)
-    val vaddr = UInt(32.W)
+    val vaddr = UInt(XLEN.W)
     val asid = UInt(asidWidth.W)
     val global = Bool()
-    val paddrBase = UInt(32.W)
+    val paddrBase = UInt(addressWidth.W)
     val r = Bool(); val w = Bool(); val x = Bool()
     val u = if (hasU) Some(Bool()) else None
     val a = Bool(); val d = Bool()
   }
-  private val shiftBits = log2Ceil(32)
+  private val shiftBits = log2Ceil(XLEN.max(32))
   private val maxShift = pageBits + (levels - 1) * indexBits
   /** 填充层级对应的地址 shift；level 超出配置范围时返回最大 shift。 */
   private def shiftOfLevel(level: UInt): UInt =
@@ -131,7 +155,7 @@ class ysyx_26030103_TLB(
     )
   /** 超级页偏移掩码：低 shift 位为 1。 */
   private def offsetMaskOf(shift: UInt): UInt =
-    (BigInt("ffffffff", 16).U(32.W) >> (32.U - shift))
+    (~0.U(XLEN.W)) >> (XLEN.U - shift)
   /** 判断虚拟地址是否落在同一超级页。 */
   private def superTagMatch(level: UInt, entryVaddr: UInt, lookupVaddr: UInt): Bool = {
     val mask = ~offsetMaskOf(shiftOfLevel(level))
@@ -144,11 +168,11 @@ class ysyx_26030103_TLB(
     Some(RegInit(0.U(log2Ceil(superEntryCount.max(2)).W))) else None
   private val sramStorage = storage == "sram"
   val pteMems =
-    if (sramStorage) Some((0 until ways).map(_ => SyncReadMem(sets, UInt(32.W))))
+    if (sramStorage) Some((0 until ways).map(_ => SyncReadMem(sets, UInt(pteWidth.W))))
     else None
   // SRAM 读出一拍后才有效；每个查找端口分别记录上一拍地址。
   val lastLookupVaddr =
-    RegInit(VecInit(Seq.fill(lookupPorts)(0.U(32.W))))
+    RegInit(VecInit(Seq.fill(lookupPorts)(0.U(XLEN.W))))
   // tree-PLRU：ways<=8 时使用 heap 索引的 way 选择树；RR 模式下不生成。
   private val plruLevels = if (ways > 1) log2Ceil(ways) else 0
   val plruOpt =
@@ -204,13 +228,15 @@ class ysyx_26030103_TLB(
     }
   }
 
-  private def vpnOf(addr: UInt): UInt = addr(31, pageBits)
+  private def vpnOf(addr: UInt): UInt = addr(vaBits - 1, pageBits)
   private def setOf(vpn: UInt): UInt =
     if (setBits == 0) 0.U else vpn(setBits - 1, 0)
   private def tagOf(vpn: UInt): UInt =
     if (setBits == 0) vpn else vpn(vpnBits - 1, setBits)
   private def entryIndex(set: UInt, way: UInt): UInt =
     if (entryBits == 0) 0.U else (set * ways.U + way)(entryBits - 1, 0)
+  private def ptePpnOf(pte: UInt): UInt =
+    pte(ptePpnLow + ptePpnBits - 1, ptePpnLow)
 
   // 每个查找端口独立做 tag/asid/权限检查。refill 在本拍末尾写入寄存器，
   // 因而不影响本拍已经组合出来的旧表项结果。
@@ -221,7 +247,7 @@ class ysyx_26030103_TLB(
     val lookupTag = tagOf(lookupVpn)
     val sramPtes = pteMems
       .map(_.map(m => m.read(lookupSet)))
-      .getOrElse(Seq.fill(ways)(0.U(32.W)))
+      .getOrElse(Seq.fill(ways)(0.U(pteWidth.W)))
     val lookupWays = (0 until ways).map { w =>
       val e = entriesVec(entryIndex(lookupSet, w.U))
       val asidMatch = if (asidBits == 0) true.B else e.asid === lookup.asid
@@ -252,7 +278,7 @@ class ysyx_26030103_TLB(
         e.paddrBase | (lookup.vaddr & offsetMaskOf(shiftOfLevel(e.level)))
       }
       Mux1H(superHits, paddrs)
-    } else 0.U(32.W)
+    } else 0.U(addressWidth.W)
     val selR = Mux(superHit, superSel.r,
       if (sramStorage) selectedPte(1) else selected.r)
     val selW = Mux(superHit, superSel.w,
@@ -269,7 +295,7 @@ class ysyx_26030103_TLB(
     val selD = Mux(superHit, superSel.d,
       if (sramStorage) selectedPte(7) else selected.d)
     val selPpn = Mux(superHit, 0.U(ppnBits.W),
-      if (sramStorage) selectedPte(31, 10) else selected.ppn)
+      if (sramStorage) ptePpnOf(selectedPte)(ppnBits - 1, 0) else selected.ppn)
 
     val isFetch = lookup.access === ysyx_26030103_AccessType.Fetch
     val isStore = lookup.access === ysyx_26030103_AccessType.Store
@@ -299,8 +325,8 @@ class ysyx_26030103_TLB(
     val anyHit = lookupHit || superHit
     io.result(p).hit := anyHit
     io.result(p).fault := anyHit && !permissionOk
-    io.result(p).paddr := Mux(superHit, superPaddr,
-      Cat(selPpn(ppnBits - 1, 0), lookup.vaddr(pageBits - 1, 0)))
+    val basePaddr = (Cat(selPpn, lookup.vaddr(pageBits - 1, 0))).pad(addressWidth)
+    io.result(p).paddr := Mux(superHit, superPaddr, basePaddr)
     io.result(p).cause := faultCause
     lastLookupVaddr(p) := lookup.vaddr
     io.result(p).resultValid := !sramStorage.B || lastLookupVaddr(p) === lookup.vaddr
@@ -340,7 +366,7 @@ class ysyx_26030103_TLB(
         e.global := (if (globalEnable) fillPteVal(5) else false.B)
         // 与 PTW 的 paddrOf 保持一致：PPN 以基础页为单位，左移 pageBits
         // 得到超级页物理基址，低 shift 位由访问地址提供。
-        e.paddrBase := fillPteVal(31, 10) << pageBits
+        e.paddrBase := (ptePpnOf(fillPteVal) << pageBits).pad(addressWidth)
         e.r := fillPteVal(1); e.w := fillPteVal(2); e.x := fillPteVal(3)
         // HAS_U=n 时不保存 U 位，避免保留无用的 U 状态。
         e.u.foreach { u => u := fillPteVal(4) }
@@ -373,7 +399,7 @@ class ysyx_26030103_TLB(
       fillEntry.tag := tagOf(fillVpn)
       fillEntry.asid := fillAsidVal
       fillEntry.global := (if (globalEnable) fillPteVal(5) else false.B)
-      fillEntry.ppn := fillPteVal(31, 10)(ppnBits - 1, 0)
+      fillEntry.ppn := ptePpnOf(fillPteVal)(ppnBits - 1, 0)
       fillEntry.r := fillPteVal(1)
       fillEntry.w := fillPteVal(2)
       fillEntry.x := fillPteVal(3)

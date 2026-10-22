@@ -24,7 +24,46 @@ class ysyx_26030103_RV64AddressConfigTest extends AnyFlatSpec with Matchers {
     error.getMessage should include("AddressWidth")
   }
 
-  it should "拒绝 XLEN=64 启用 MMU/Sv39" in {
+  it should "接受 XLEN=64 标准 Sv39/Sv48 MMU" in {
+    def sv39 = ysyx_26030103_MMUProfile(
+      enabled = true,
+      xlen = 64,
+      levels = 3,
+      pteSizeBytes = 8,
+      pteFormat = "riscv64",
+      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      tlbEnabled = true,
+      tlbAsidBits = 16
+    )
+    def sv48 = sv39.copy(levels = 4)
+    ysyx_26030103_NPCConfig(XLEN = 64, AddressWidth = 64, MMU = sv39)
+      .MMU.standardSv39 should be(true)
+    ysyx_26030103_NPCConfig(XLEN = 64, AddressWidth = 64, MMU = sv48)
+      .MMU.standardSv48 should be(true)
+  }
+
+  it should "拒绝 XLEN=64 的非标准页表几何" in {
+    val error = intercept[IllegalArgumentException] {
+      ysyx_26030103_MMUProfile(
+        enabled = true,
+        xlen = 64,
+        levels = 2,
+        pteSizeBytes = 4,
+        pteFormat = "riscv32"
+      )
+    }
+    error.getMessage should include("Sv39")
+  }
+
+  it should "fromEnv(XLEN=64) 默认生成标准 Sv39 profile" in {
+    val p = ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 64)
+    p.standardSv39 should be(true)
+    p.xlen should be(64)
+    p.satpMode should be(8)
+    p.pteConfig.ppnHigh should be(53)
+  }
+
+  it should "拒绝 XLEN=64 使用 RV32 的 MMU profile" in {
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
         XLEN = 64,

@@ -35,19 +35,28 @@ class ysyx_26030103_PTWPipeline(
     pteSizeBytes: Int = 4,
     inOrder: Boolean = true,
     respPorts: Int = 1,
-    hasU: Boolean = true
-) extends ysyx_26030103_PTWBackend(respPorts) {
+    hasU: Boolean = true,
+    XLEN: Int = 32,
+    addressWidth: Int = 32,
+    vaBits: Int = 32
+) extends ysyx_26030103_PTWBackend(respPorts, XLEN, addressWidth, pteSizeBytes * 8) {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
+  require(XLEN == 32 || XLEN == 64, s"PTW pipeline XLEN 非法: $XLEN")
+  require(addressWidth == 32 || addressWidth == 64,
+    s"PTW pipeline addressWidth 非法: $addressWidth")
+  require(vaBits >= 2 && vaBits <= XLEN, s"PTW pipeline vaBits 非法: $vaBits")
   require(outstanding >= 1 && outstanding <= 16,
     "PTW outstanding 必须在 1..16（页表总线事务 ID 为 4 位）")
   require(busOutstanding >= 0 && busOutstanding <= 16,
     "PTW 页表总线 outstanding 必须在 0..16（0 表示跟随 outstanding）")
   require(respPorts >= 1, "PTW 响应端口数必须 >= 1")
-  require(pageBits >= 2 && pageBits < 32, "pageBits 非法")
+  require(pageBits >= 2 && pageBits < vaBits, "pageBits 非法")
   require(levels >= 1 && levels <= 4, "页表级数必须在 1..4")
   require(tableEntries > 0 && (tableEntries & (tableEntries - 1)) == 0,
     "每级页表项数必须是 2 的幂")
   require(pteSizeBytes == 4 || pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
+  require(XLEN == 32 || pteConfig.pteBits == pteSizeBytes * 8,
+    "RV64 PTW 的 PTE 字段配置位宽必须与 PTE 大小一致")
   if (cacheEnable) {
     require(cacheEntries > 0 && (cacheEntries & (cacheEntries - 1)) == 0,
       "PTW cache entries 必须是 2 的幂")
@@ -59,8 +68,9 @@ class ysyx_26030103_PTWPipeline(
   private val pteBytes = pteSizeBytes
   private val pteShift = log2Ceil(pteBytes)
   private val indexBits = log2Ceil(tableEntries)
-  require(pageBits + levels * indexBits == 32,
-    s"pageBits($pageBits) + levels($levels)*indexBits($indexBits) 必须等于 32")
+  private val ptePpnBits = pteConfig.ppnHigh - pteConfig.ppnLow + 1
+  require(pageBits + levels * indexBits == vaBits,
+    s"pageBits($pageBits) + levels($levels)*indexBits($indexBits) 必须等于 $vaBits")
 
   private val ctxBits = log2Ceil(outstanding.max(2))
   // 页表总线槽位数：默认与上下文数相同，每个上下文最多一笔在途事务；
@@ -80,34 +90,35 @@ class ysyx_26030103_PTWPipeline(
     val inFlight = Bool()
     val needWrite = Bool()
     val done = Bool()
-    val vaddr = UInt(32.W)
-    val satp = UInt(32.W)
+    val vaddr = UInt(XLEN.W)
+    val satp = UInt(XLEN.W)
     // HAS_U=n 时 U/SUM 检查不存在，Context 不保存这两个字段。
     val privilege = if (hasU) Some(UInt(2.W)) else None
     val access = UInt(2.W)
     val sum = if (hasU) Some(Bool()) else None
     val mxr = Bool()
     val level = UInt(2.W)
-    val table = UInt(32.W)
-    val pteAddr = UInt(32.W)
-    val writeData = UInt(32.W)
+    val table = UInt(addressWidth.W)
+    val pteAddr = UInt(addressWidth.W)
+    val writeData = UInt(pteWidth.W)
     val age = UInt(ageBits.W)
-    val resp = new ysyx_26030103_PTWResponse
+    val resp = new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth)
   }
 
   /** A 级交给 B 级的页表总线任务。 */
   class BusJob extends Bundle {
     val ctx = UInt(ctxBits.W)
-    val addr = UInt(32.W)
+    val addr = UInt(addressWidth.W)
     val write = Bool()
-    val data = UInt(32.W)
+    // A/D 写回时保存完整 PTE，总线只发送低 32 位。
+    val data = UInt(pteWidth.W)
     val epoch = UInt(epochBits.W)
   }
 
   /** B 级交给 C 级的已完成页表项。 */
   class ResolveJob extends Bundle {
     val ctx = UInt(ctxBits.W)
-    val pteAddr = UInt(32.W)
+    val pteAddr = UInt(addressWidth.W)
     // 8B PTE 时保存低/高字拼接后的完整 64 位原始值。
     val raw = UInt(pteWidth.W)
     val fault = Bool()
@@ -122,7 +133,7 @@ class ysyx_26030103_PTWPipeline(
   // PTE cache 与 independent 版本一致：保存原始 PTE，4B/8B 都启用。
   class CacheEntry extends Bundle {
     val valid = Bool()
-    val tag = UInt(32.W)
+    val tag = UInt(addressWidth.W)
     val data = UInt(pteWidth.W)
   }
   private val cacheSets = if (cacheEffective) cacheEntries / cacheWays else 1
@@ -182,36 +193,59 @@ class ysyx_26030103_PTWPipeline(
       d(pteConfig.readBit), d(pteConfig.validBit)
     )
     val ppn = d(pteConfig.ppnHigh, pteConfig.ppnLow)
-    Cat(ppn.pad(22)(21, 0), 0.U(2.W), flags)
+    Cat(ppn.pad(pteWidth - pteConfig.ppnLow),
+      if (pteConfig.ppnLow > 8) 0.U((pteConfig.ppnLow - 8).W) else 0.U,
+      flags)
   }
   private def adRaw(d: UInt, isStore: Bool): UInt =
     d | (1.U << pteConfig.aBit) |
-      Mux(isStore, 1.U << pteConfig.dBit, 0.U(32.W))
+      Mux(isStore, 1.U << pteConfig.dBit, 0.U(pteWidth.W))
 
-  private def isLeaf(d: UInt): Bool = d(3, 1) =/= 0.U
+  private def isLeaf(d: UInt): Bool =
+    Cat(d(pteConfig.writeBit), d(pteConfig.readBit), d(pteConfig.executeBit)) =/= 0.U
   private def leafAllowed(level: UInt): Bool =
     superpage.B || level === (levels - 1).U
+  private def reservedFault(d: UInt): Bool =
+    if (pteConfig.ppnHigh + 1 >= pteWidth) false.B
+    else d(pteWidth - 1, pteConfig.ppnHigh + 1) =/= 0.U
+  private def rawReservedFault(raw: UInt): Bool =
+    if (XLEN <= 32 || pteWidth <= 32) false.B else raw(pteWidth - 1, 54) =/= 0.U
+  private def superpageMisaligned(d: UInt, level: UInt): Bool = {
+    if (levels <= 1) false.B
+    else {
+      val allLowerBits = (levels - 1) * indexBits
+      val shift = level * indexBits.U
+      val mask = ((BigInt(1) << allLowerBits) - 1).U(ptePpnBits.W) >> shift
+      (d(pteConfig.ppnHigh, pteConfig.ppnLow) & mask) =/= 0.U
+    }
+  }
   private def walkFault(d: UInt, level: UInt): Bool =
-    !d(0) || (isLeaf(d) && !leafAllowed(level)) ||
+    !d(pteConfig.validBit) || reservedFault(d) ||
+      (isLeaf(d) && (!leafAllowed(level) || superpageMisaligned(d, level))) ||
       (!isLeaf(d) && level === (levels - 1).U)
   private def leafFaultOf(d: UInt, privilege: UInt, access: UInt,
       sum: Bool, mxr: Bool): Bool = {
     val isFetch = access === ysyx_26030103_AccessType.Fetch
     val isStore = access === ysyx_26030103_AccessType.Store
-    val userFault = if (hasU) privilege === 0.U && !d(4) else false.B
+    val userFault =
+      if (hasU) privilege === 0.U && !d(pteConfig.userBit) else false.B
     val sumFault =
-      if (hasU) privilege === 1.U && d(4) && (!sum || isFetch) else false.B
-    val fetchFault = isFetch && !d(3)
-    val readFault = !isFetch && !isStore && !d(1) && !(mxr && d(3))
-    val writeFault = isStore && !d(2)
+      if (hasU) privilege === 1.U && d(pteConfig.userBit) &&
+        (!sum || isFetch) else false.B
+    val fetchFault = isFetch && !d(pteConfig.executeBit)
+    val readFault = !isFetch && !isStore && !d(pteConfig.readBit) &&
+      !(mxr && d(pteConfig.executeBit))
+    val writeFault = isStore && !d(pteConfig.writeBit)
     val adFault = adMode match {
-      case "fault" => !d(6) || (isStore && !d(7))
+      case "fault" => !d(pteConfig.aBit) ||
+        (isStore && !d(pteConfig.dBit))
       case _       => false.B
     }
     userFault || sumFault || fetchFault || readFault || writeFault || adFault
   }
   private def needsAdUpdate(d: UInt, isStore: Bool): Bool = adMode match {
-    case "hardware" => d(0) && (!d(6) || (isStore && !d(7)))
+    case "hardware" => d(pteConfig.validBit) &&
+      (!d(pteConfig.aBit) || (isStore && !d(pteConfig.dBit)))
     case _          => false.B
   }
   private def pageFaultCause(access: UInt): UInt = {
@@ -220,22 +254,37 @@ class ysyx_26030103_PTWPipeline(
     Mux(isFetch, 12.U, Mux(isStore, 15.U, 13.U))
   }
   private def vpnIndex(vaddr: UInt, level: UInt): UInt =
-    MuxLookup(level, vaddr(31, pageBits))(
+    MuxLookup(level, vaddr(vaBits - 1, pageBits))(
       (0 until levels).map { l =>
         val lo = pageBits + (levels - 1 - l) * indexBits
         l.U -> vaddr(lo + indexBits - 1, lo)
       }
     )
   private def tableAddress(base: UInt, index: UInt): UInt =
-    base + (index << pteShift)
+    base + (index << pteShift).pad(addressWidth)
   private def superOffsetBits(level: UInt): UInt =
     pageBits.U + ((levels - 1).U - level) * indexBits.U
   private def paddrOf(d: UInt, level: UInt, vaddr: UInt): UInt = {
-    val ppn = d(31, 10)
+    val ppn = d(pteConfig.ppnHigh, pteConfig.ppnLow)
     val shift = superOffsetBits(level)
-    val offsetMask = (1.U << shift) - 1.U
-    (ppn << pageBits) | (vaddr & offsetMask)
+    val offsetMask = ((BigInt(1) << vaBits) - 1).U(vaBits.W) >> (vaBits.U - shift)
+    ((ppn << pageBits).pad(addressWidth) |
+      (vaddr & offsetMask).pad(addressWidth))
   }
+  private def canonicalOk(vaddr: UInt): Bool = {
+    if (vaBits == XLEN) true.B
+    else {
+      val upper = vaddr(XLEN - 1, vaBits)
+      val sign = Fill(XLEN - vaBits, vaddr(vaBits - 1))
+      upper === sign
+    }
+  }
+  private def satpPpn(satp: UInt): UInt =
+    if (XLEN == 32) satp(21, 0) else satp(43, 0)
+  private def satpAsid(satp: UInt): UInt =
+    if (XLEN == 32) satp(30, 22) else satp(59, 44)
+  private def tableBaseOf(satp: UInt): UInt =
+    (satpPpn(satp) << pageBits).pad(addressWidth)
   /** 与 independent PTW 相同：0=基础页，k=第 k 级超级页。 */
   private def fillLevelOf(level: UInt): UInt = (levels - 1).U - level
 
@@ -261,7 +310,7 @@ class ysyx_26030103_PTWPipeline(
   s1Out.bits := 0.U.asTypeOf(new ResolveJob)
 
   io.bus.req.valid := false.B
-  io.bus.req.bits := 0.U.asTypeOf(new ysyx_26030103_PTEBusRequest)
+  io.bus.req.bits := 0.U.asTypeOf(new ysyx_26030103_PTEBusRequest(addressWidth))
   busQ.io.deq.ready := false.B
 
   // 从任务队列填充空闲槽位。每拍最多分配一个任务；任务在真正发请求前
@@ -296,7 +345,8 @@ class ysyx_26030103_PTWPipeline(
     io.bus.req.bits.addr :=
       Mux(reqSlot.state === bHighReq, reqSlot.job.addr + 4.U, reqSlot.job.addr)
     io.bus.req.bits.write := reqSlot.state === bWriteReq
-    io.bus.req.bits.data := Mux(reqSlot.state === bWriteReq, reqSlot.job.data, 0.U)
+    io.bus.req.bits.data := Mux(reqSlot.state === bWriteReq,
+      reqSlot.job.data(31, 0), 0.U)
     io.bus.req.bits.strb := Mux(reqSlot.state === bWriteReq, "hf".U(4.W), 0.U)
   }
   when(io.bus.req.fire) {
@@ -444,15 +494,17 @@ class ysyx_26030103_PTWPipeline(
       ctx(resolveCtx).resp.tval := vaddr
       ctx(resolveCtx).resp.fillPte := d
       ctx(resolveCtx).resp.fillVaddr := vaddr
-      ctx(resolveCtx).resp.fillAsid := ctx(resolveCtx).satp(30, 22)
+      ctx(resolveCtx).resp.fillAsid := satpAsid(ctx(resolveCtx).satp)
       ctx(resolveCtx).resp.fillLevel := fillLevelOf(level)
       ctx(resolveCtx).resp.fillValid := !resolveBusFault &&
         !leafFaultOf(d, privilege, access, sum, mxr) &&
         (fillSuperpage.B || level === (levels - 1).U)
-    }.elsewhen(resolveBusFault || walkFault(d, level)) {
+    }.elsewhen(resolveBusFault || rawReservedFault(resolveRaw) ||
+        walkFault(d, level)) {
       ctx(resolveCtx).needWrite := false.B
       ctx(resolveCtx).done := true.B
-      ctx(resolveCtx).resp := 0.U.asTypeOf(new ysyx_26030103_PTWResponse)
+      ctx(resolveCtx).resp := 0.U.asTypeOf(
+        new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth))
       ctx(resolveCtx).resp.id := ctx(resolveCtx).id
       ctx(resolveCtx).resp.fault := true.B
       ctx(resolveCtx).resp.cause := cause
@@ -469,13 +521,14 @@ class ysyx_26030103_PTWPipeline(
         ctx(resolveCtx).resp.tval := vaddr
         ctx(resolveCtx).resp.fillPte := d
         ctx(resolveCtx).resp.fillVaddr := vaddr
-        ctx(resolveCtx).resp.fillAsid := ctx(resolveCtx).satp(30, 22)
+        ctx(resolveCtx).resp.fillAsid := satpAsid(ctx(resolveCtx).satp)
         ctx(resolveCtx).resp.fillLevel := fillLevelOf(level)
         ctx(resolveCtx).resp.fillValid := !leafFault &&
           (fillSuperpage.B || level === (levels - 1).U)
       }
     }.otherwise {
-      ctx(resolveCtx).table := Cat(d(31, 10), 0.U(pageBits.W))
+      ctx(resolveCtx).table :=
+        (d(pteConfig.ppnHigh, pteConfig.ppnLow) << pageBits).pad(addressWidth)
       ctx(resolveCtx).level := level + 1.U
     }
   }
@@ -490,7 +543,6 @@ class ysyx_26030103_PTWPipeline(
     ctx(freeIndex).busy := true.B
     ctx(freeIndex).inFlight := false.B
     ctx(freeIndex).needWrite := false.B
-    ctx(freeIndex).done := false.B
     ctx(freeIndex).vaddr := io.req.bits.vaddr
     ctx(freeIndex).satp := io.req.bits.satp
     ctx(freeIndex).privilege.foreach { p => p := io.req.bits.privilege }
@@ -498,12 +550,22 @@ class ysyx_26030103_PTWPipeline(
     ctx(freeIndex).sum.foreach { s => s := io.req.bits.sum }
     ctx(freeIndex).mxr := io.req.bits.mxr
     ctx(freeIndex).level := 0.U
-    ctx(freeIndex).table := Cat(io.req.bits.satp(21, 0), 0.U(pageBits.W))
     ctx(freeIndex).pteAddr := 0.U
     ctx(freeIndex).writeData := 0.U
     ctx(freeIndex).age := nextAge
-    ctx(freeIndex).resp := 0.U.asTypeOf(new ysyx_26030103_PTWResponse)
+    ctx(freeIndex).resp := 0.U.asTypeOf(
+      new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth))
     ctx(freeIndex).resp.id := io.req.bits.id
+    when(!canonicalOk(io.req.bits.vaddr)) {
+      ctx(freeIndex).done := true.B
+      ctx(freeIndex).table := 0.U
+      ctx(freeIndex).resp.fault := true.B
+      ctx(freeIndex).resp.cause := pageFaultCause(io.req.bits.access)
+      ctx(freeIndex).resp.tval := io.req.bits.vaddr
+    }.otherwise {
+      ctx(freeIndex).done := false.B
+      ctx(freeIndex).table := tableBaseOf(io.req.bits.satp)
+    }
     nextAge := nextAge + 1.U
   }
 

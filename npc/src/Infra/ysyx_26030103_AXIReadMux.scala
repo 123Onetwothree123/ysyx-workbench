@@ -14,11 +14,14 @@ import _root_.ysyx_26030103.mmu._
   * 写通道全部拒绝；复用 LSU 数据通路（passWriteA）时 A 口写通道直通，
   * 不引入新的写主设备。
   */
-class ysyx_26030103_AXIReadMux(passWriteA: Boolean = false) extends Module {
+class ysyx_26030103_AXIReadMux(
+    passWriteA: Boolean = false,
+    val AddressWidth: Int = 32
+) extends Module {
   val io = IO(new Bundle {
-    val a = Flipped(new ysyx_26030103_AXI5IO(32))
-    val b = Flipped(new ysyx_26030103_AXI5IO(32))
-    val out = new ysyx_26030103_AXI5IO(32)
+    val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
+    val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
+    val out = new ysyx_26030103_AXI5IO(AddressWidth)
   })
 
   private val AReadID = ysyx_26030103_AXIReadId.Ifu.U(4.W)
@@ -169,17 +172,18 @@ class ysyx_26030103_AXIReadMux(passWriteA: Boolean = false) extends Module {
   */
 class ysyx_26030103_PTWToAXI(
     busDepth: Int = 16,
-    axiReadSlots: Int = ysyx_26030103_AXIReadId.PtwSlots
+    axiReadSlots: Int = ysyx_26030103_AXIReadId.PtwSlots,
+    val AddressWidth: Int = 32
 ) extends Module {
   require(busDepth >= 1, "PTWToAXI 请求队列深度必须 >= 1")
   require(axiReadSlots >= 1 &&
     axiReadSlots <= ysyx_26030103_AXIReadId.PtwSlots,
     "PTWToAXI AXI 读槽位数必须在 1..13（ID 3..15）")
   val io = IO(new Bundle {
-    val req = Flipped(Decoupled(new ysyx_26030103_PTEBusRequest))
+    val req = Flipped(Decoupled(new ysyx_26030103_PTEBusRequest(AddressWidth)))
     val resp = Decoupled(new ysyx_26030103_PTEBusResponse)
-    val axi = new ysyx_26030103_AXI5IO(32)
-    val axiWrite = new ysyx_26030103_AXI5IO(32)
+    val axi = new ysyx_26030103_AXI5IO(AddressWidth)
+    val axiWrite = new ysyx_26030103_AXI5IO(AddressWidth)
   })
 
   private val ReadBaseID = ysyx_26030103_AXIReadId.PtwBase.U(4.W)
@@ -216,9 +220,9 @@ class ysyx_26030103_PTWToAXI(
   }
 
   // 读/写分流，避免一笔 A/D 写回挡住后续页表读。
-  val readQ = Module(new Queue(new ysyx_26030103_PTEBusRequest, busDepth,
+  val readQ = Module(new Queue(new ysyx_26030103_PTEBusRequest(AddressWidth), busDepth,
     pipe = true, flow = false))
-  val writeQ = Module(new Queue(new ysyx_26030103_PTEBusRequest, busDepth,
+  val writeQ = Module(new Queue(new ysyx_26030103_PTEBusRequest(AddressWidth), busDepth,
     pipe = true, flow = false))
   readQ.io.enq.valid := io.req.valid && !io.req.bits.write
   readQ.io.enq.bits := io.req.bits
@@ -389,11 +393,14 @@ class ysyx_26030103_PTWToAXI(
   *
   * 读通道仍由 LSU 独占；PTW 只做单拍写，因此这里只需要处理 AW/W/B。
   */
-class ysyx_26030103_AXIWriteMux(val PassRead: Boolean = true) extends Module {
+class ysyx_26030103_AXIWriteMux(
+    val PassRead: Boolean = true,
+    val AddressWidth: Int = 32
+) extends Module {
   val io = IO(new Bundle {
-    val a = Flipped(new ysyx_26030103_AXI5IO(32))
-    val b = Flipped(new ysyx_26030103_AXI5IO(32))
-    val out = new ysyx_26030103_AXI5IO(32)
+    val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
+    val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
+    val out = new ysyx_26030103_AXI5IO(AddressWidth)
   })
   val idle :: aWrite :: bWrite :: aResp :: bResp :: Nil = Enum(5)
   val state = RegInit(idle)

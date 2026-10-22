@@ -1,7 +1,12 @@
 package ysyx_26030103.config
 
-/** PTE 字段位置；默认就是标准 RISC-V 32-bit PTE。 */
+/** PTE 字段位置；默认就是标准 RISC-V 32-bit PTE。
+  *
+  * pteBits 表示 PTE 自身的位宽（Sv32=32，Sv39/Sv48=64）。PPN 字段在
+  * 64 位 PTE 中扩展到 bit 53（标准 44 位 PPN），自定义编码仍可按位配置。
+  */
 case class ysyx_26030103_PteConfig(
+    pteBits: Int = 32,
     validBit: Int = 0,
     readBit: Int = 1,
     writeBit: Int = 2,
@@ -13,19 +18,25 @@ case class ysyx_26030103_PteConfig(
     ppnLow: Int = 10,
     ppnHigh: Int = 31
 ) {
-  require(ppnLow >= 0 && ppnHigh < 32 && ppnLow <= ppnHigh, "PTE PPN 位范围非法")
+  require(pteBits == 32 || pteBits == 64, s"PTE 位宽只允许 32/64，收到 $pteBits")
+  require(ppnLow >= 8 && ppnHigh < pteBits && ppnLow <= ppnHigh,
+    "PTE PPN 位范围非法（至少为 8，且必须低于 PTE 位宽）")
   require((0 to 7).forall(b => Seq(validBit, readBit, writeBit, executeBit,
-    userBit, globalBit, aBit, dBit).forall(x => x >= 0 && x < 32)), "PTE 标志位非法")
+    userBit, globalBit, aBit, dBit).forall(x => x >= 0 && x < pteBits)),
+    "PTE 标志位非法")
 }
 
 /** MMU/TLB 的 elaboration 期参数。
   *
   * 这个类由 Elaborate 从 Kconfig 生成的环境变量构造，并驱动 MMU/TLB RTL。
-  * 默认值就是标准 Sv32 balanced profile；当前 RTL 只支持标准 Sv32
-  * 4KiB/2 级/4B PTE/4KiB 页表，非标准参数由生成器和 elaboration 校验。
+  * 默认值就是标准 Sv32 balanced profile；RV64 使用 xlen=64 的标准 Sv39
+  * （3 级/8B PTE）或 Sv48（4 级/8B PTE）。非标准参数由生成器和
+  * elaboration 校验；RV32 的既有自定义 32 位几何保持兼容。
   */
 case class ysyx_26030103_MMUProfile(
     enabled: Boolean = false,
+    // MMU 所属的架构位宽。RV32 默认 32；RV64/Sv39 由 elaborator 设置为 64。
+    xlen: Int = 32,
     pageSizeBytes: Int = 4096,
     levels: Int = 2,
     pteSizeBytes: Int = 4,
@@ -66,12 +77,13 @@ case class ysyx_26030103_MMUProfile(
     utlbMissQueueEntries: Int = 8,
     globalMissQueueEntries: Int = 8,
     refillPorts: Int = 1,
-    csrMstatusReadMask: Int = 0x008a19aa,
+    csrMstatusReadMask: Int = 0x007e19aa,
     csrMstatusReadSet: Int = 0,
-    csrMstatusWriteMask: Int = 0x008a19aa,
-    csrSatpReadMask: Int = 0xffffffff,
-    csrSatpReadSet: Int = 0,
-    csrSatpWriteMask: Int = 0xffffffff,
+    csrMstatusWriteMask: Int = 0x007e19aa,
+    // satp 在 RV64 下是 64 位 CSR，因此掩码使用 Long；RV32 只用低 32 位。
+    csrSatpReadMask: Long = 0xffffffffffffffffL,
+    csrSatpReadSet: Long = 0,
+    csrSatpWriteMask: Long = 0xffffffffffffffffL,
     hasS: Boolean = true,
     hasU: Boolean = true,
     hasSTimerIrq: Boolean = true,
@@ -93,9 +105,13 @@ case class ysyx_26030103_MMUProfile(
   private def requirePowerOfTwo(name: String, value: Int): Unit =
     require(isPowerOfTwo(value), s"$name=$value 必须是正的 2 的幂")
 
+  require(xlen == 32 || xlen == 64, s"MMU XLEN 只允许 32/64，收到 $xlen")
   requirePowerOfTwo("pageSizeBytes", pageSizeBytes)
   requirePowerOfTwo("pteSizeBytes", pteSizeBytes)
   requirePowerOfTwo("pageTableSizeBytes", pageTableSizeBytes)
+  require(pteSizeBytes == 4 || pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
+  require(xlen == 32 || pteConfig.pteBits == pteSizeBytes * 8,
+    s"RV64 PTE 字段配置位宽(${pteConfig.pteBits})必须等于 pteSizeBytes*8(${pteSizeBytes * 8})")
   require(levels >= 1, s"levels=$levels 必须 >= 1")
   require(
     pageTableSizeBytes % pteSizeBytes == 0,
@@ -110,15 +126,15 @@ case class ysyx_26030103_MMUProfile(
     "MMU_PTW_ARCH 必须是 independent/pipelined")
   require(Set("in_order", "out_of_order").contains(ptwOrder),
     "MMU_PTW_ORDER 必须是 in_order/out_of_order")
-  require(tlbAsidBits >= 0 && tlbAsidBits <= 9, "tlbAsidBits 必须在 0..9")
+  require(tlbAsidBits >= 0 && tlbAsidBits <= 16, "tlbAsidBits 必须在 0..16")
   require(utlbLookupPorts >= 1 && utlbLookupPorts <= 2, "utlbLookupPorts 必须在 1..2")
   require(refillPorts >= 1, "refillPorts 必须 >= 1")
   // U 模式依赖 S 模式提供的 CSR/SRET 入口；HAS_S=n 时不允许保留 U 级。
   require(hasS || !hasU, "HAS_U=y 需要 HAS_S=y：U 模式依赖 S 模式 CSR/SRET")
-  // 当前 Sv32 页表翻译、satp、页错误入口和异常委托都属于 S 模式。
+  // Sv32/Sv39/Sv48 页表翻译、satp、页错误入口和异常委托都属于 S 模式。
   // HAS_S=n 时必须显式关闭 MMU，而不是静默保留完整 S 逻辑。
   require(!enabled || hasS,
-    "HAS_MMU=y 需要 HAS_S=y：MMU/Sv32 依赖 S 模式 satp/页错误入口；请设置 HAS_S=y 或 HAS_MMU=n")
+    "HAS_MMU=y 需要 HAS_S=y：MMU/Sv32/Sv39/Sv48 依赖 S 模式 satp/页错误入口；请设置 HAS_S=y 或 HAS_MMU=n")
   require(plicSources >= 2 && plicSources <= 1024, "PLIC source 数必须在 2..1024")
   require(plicPriorityBits >= 1 && plicPriorityBits <= 8, "PLIC 优先级位宽非法")
   require(plicMaxPriority >= 0 && plicMaxPriority < (1 << plicPriorityBits),
@@ -182,13 +198,46 @@ case class ysyx_26030103_MMUProfile(
   final val tableEntries: Int = pageTableSizeBytes / pteSizeBytes
   final val indexBitsPerLevel: Int = Integer.numberOfTrailingZeros(tableEntries)
   final val computedAddressBits: Int = pageBits + levels * indexBitsPerLevel
-  final val wellFormed: Boolean = computedAddressBits == 32
+  // Sv32 的虚拟地址是 32 位；Sv39/Sv48 分别使用 39/48 位有效虚拟地址，
+  // 其余高位必须是指示位的符号扩展（由 PTW/MMU 检查）。
+  final val wellFormed: Boolean =
+    if (xlen == 32) computedAddressBits == 32
+    else computedAddressBits == 39 || computedAddressBits == 48
   final val standardSv32: Boolean =
-    pageSizeBytes == 4096 && levels == 2 && pteSizeBytes == 4 &&
+    xlen == 32 && pageSizeBytes == 4096 && levels == 2 && pteSizeBytes == 4 &&
       pageTableSizeBytes == 4096 && pteFormat == "riscv32"
+  final val standardSv39: Boolean =
+    xlen == 64 && pageSizeBytes == 4096 && levels == 3 && pteSizeBytes == 8 &&
+      pageTableSizeBytes == 4096 && pteFormat == "riscv64" &&
+      computedAddressBits == 39
+  final val standardSv48: Boolean =
+    xlen == 64 && pageSizeBytes == 4096 && levels == 4 && pteSizeBytes == 8 &&
+      pageTableSizeBytes == 4096 && pteFormat == "riscv64" &&
+      computedAddressBits == 48
+  // RTL 只对标准 Sv32/Sv39/Sv48 提供完整语义；其它 32 位地址几何继续
+  // 用于已有自定义 profile 的 elaboration 测试。
+  require(xlen == 32 || !enabled || wellFormed,
+    if (xlen == 32)
+      s"RV32 MMU 要求 pageBits($pageBits)+levels($levels)*indexBits($indexBitsPerLevel)=32，" +
+        s"实际为 $computedAddressBits"
+    else
+      s"RV64 MMU 只支持 Sv39(39) 或 Sv48(48) 地址几何，实际为 $computedAddressBits；" +
+        "请设置 MMU_LEVELS=3/4、MMU_PTE_SIZE_BYTES=8、MMU_PAGE_TABLE_SIZE_BYTES=4096")
+  require(xlen == 64 || pteFormat != "riscv64",
+    "RV32 配置不能使用 riscv64 PTE 编码")
+  require(xlen == 32 || !enabled || standardSv39 || standardSv48,
+    "RV64 HAS_MMU=y 只支持标准 Sv39/Sv48：page=4096, levels=3/4, PTE=8B, " +
+      "page table=4096, pteFormat=riscv64")
+  // satp.MODE 编码：Sv32=1, Sv39=8, Sv48=9。0 始终表示关闭翻译。
+  final val satpMode: Int =
+    if (xlen == 32) 1
+    else if (computedAddressBits == 39) 8
+    else if (computedAddressBits == 48) 9
+    else 0
 
   def describe: String =
-    s"MMU(enabled=$enabled profile=$pteFormat page=$pageSizeBytes levels=$levels " +
+    s"MMU(enabled=$enabled xlen=$xlen va=$computedAddressBits satpMode=$satpMode " +
+      s"profile=$pteFormat page=$pageSizeBytes levels=$levels " +
       s"pte=$pteSizeBytes table=$pageTableSizeBytes " +
       s"ptw=$ptwPath/$ptwArch/$ptwOutstanding/bus$ptwBusOutstanding) " +
       s"TLB(enabled=$tlbEnabled org=$tlbOrganization storage=$tlbStorage " +
@@ -274,9 +323,15 @@ object ysyx_26030103_MMUProfile {
     "mode" -> BigInt("80000000", 16), "asid" -> BigInt("7fc00000", 16),
     "ppn" -> BigInt("003fffff", 16)
   )
+  // RV64 satp：MODE[63:60]，ASID[59:44]，PPN[43:0]。
+  private val SatpFields64 = Seq(
+    "mode" -> (BigInt(0xf) << 60), "asid" -> (BigInt(0xffff) << 44),
+    "ppn" -> ((BigInt(1) << 44) - 1)
+  )
 
-  /** 从 Kconfig 生成的环境变量构造；默认标准 Sv32 balanced。 */
-  def fromEnv(env: String => Option[String]): ysyx_26030103_MMUProfile = {
+  /** 从 Kconfig 生成的环境变量构造；RV32 默认标准 Sv32，RV64 默认 Sv39。 */
+  def fromEnv(env: String => Option[String], xlen: Int = 32): ysyx_26030103_MMUProfile = {
+    require(xlen == 32 || xlen == 64, s"MMUProfile.fromEnv XLEN 非法: $xlen")
     val fieldDefaultRead = envString(env, "CSR_FIELD_DEFAULT_READ", "normal")
     val fieldDefaultWrite = envString(env, "CSR_FIELD_DEFAULT_WRITE", "normal")
     val hasS = envBool(env, "HAS_S", true)
@@ -286,17 +341,24 @@ object ysyx_26030103_MMUProfile {
     val (mstatusReadMask, mstatusReadSet, mstatusWriteMask) =
       fieldMasks(MstatusFields, env, "CSR_MSTATUS", fieldDefaultRead, fieldDefaultWrite)
     val (satpReadMask, satpReadSet, satpWriteMask) =
-      fieldMasks(SatpFields, env, "CSR_SATP", fieldDefaultRead, fieldDefaultWrite)
+      fieldMasks(if (xlen == 64) SatpFields64 else SatpFields,
+        env, "CSR_SATP", fieldDefaultRead, fieldDefaultWrite)
+    val defaultPteBytes = if (xlen == 64) 8 else 4
+    val pteBytes = envInt(env, "MMU_PTE_SIZE_BYTES", defaultPteBytes)
+    val defaultPpnHigh = if (pteBytes * 8 == 64) 53 else 31
     ysyx_26030103_MMUProfile(
       // 生成器输出 MMU_ENABLED；直接使用 Kconfig 风格环境时也接受 HAS_MMU。
       enabled = envBool(env, "MMU_ENABLED",
         envBool(env, "HAS_MMU", false)),
+      xlen = xlen,
       pageSizeBytes = envInt(env, "MMU_PAGE_SIZE_BYTES", 4096),
-      levels = envInt(env, "MMU_LEVELS", 2),
-      pteSizeBytes = envInt(env, "MMU_PTE_SIZE_BYTES", 4),
+      levels = envInt(env, "MMU_LEVELS", if (xlen == 64) 3 else 2),
+      pteSizeBytes = pteBytes,
       pageTableSizeBytes = envInt(env, "MMU_PAGE_TABLE_SIZE_BYTES", 4096),
-      pteFormat = envString(env, "MMU_PTE_FORMAT", "riscv32"),
+      pteFormat = envString(env, "MMU_PTE_FORMAT",
+        if (xlen == 64) "riscv64" else "riscv32"),
       pteConfig = ysyx_26030103_PteConfig(
+        pteBits = pteBytes * 8,
         validBit = envInt(env, "MMU_PTE_VALID_BIT", 0),
         readBit = envInt(env, "MMU_PTE_READ_BIT", 1),
         writeBit = envInt(env, "MMU_PTE_WRITE_BIT", 2),
@@ -306,7 +368,7 @@ object ysyx_26030103_MMUProfile {
         aBit = envInt(env, "MMU_PTE_A_BIT", 6),
         dBit = envInt(env, "MMU_PTE_D_BIT", 7),
         ppnLow = envInt(env, "MMU_PTE_PPN_LOW", 10),
-        ppnHigh = envInt(env, "MMU_PTE_PPN_HIGH", 31)
+        ppnHigh = envInt(env, "MMU_PTE_PPN_HIGH", defaultPpnHigh)
       ),
       superpage = envBool(env, "MMU_SUPERPAGE", false),
       adMode = envString(env, "MMU_AD_MODE", "fault"),
@@ -323,7 +385,8 @@ object ysyx_26030103_MMUProfile {
       tlbOrganization = envString(env, "MMU_TLB_ORGANIZATION", "split"),
       tlbStorage = envString(env, "MMU_TLB_STORAGE", "reg"),
       tlbReplacement = envString(env, "MMU_TLB_REPLACEMENT", "plru"),
-      tlbAsidBits = envInt(env, "MMU_TLB_ASID_BITS", 9),
+      // RV64 satp 的 ASID 为 16 位；未显式配置时 TLB 保留完整 ASID。
+      tlbAsidBits = envInt(env, "MMU_TLB_ASID_BITS", if (xlen == 64) 16 else 9),
       tlbGlobal = envBool(env, "MMU_TLB_GLOBAL", true),
       itlbEntries = envInt(env, "MMU_ITLB_ENTRIES", 16),
       itlbWays = envInt(env, "MMU_ITLB_WAYS", 2),
@@ -343,9 +406,9 @@ object ysyx_26030103_MMUProfile {
       csrMstatusReadMask = envInt(env, "CSR_MSTATUS_READ_MASK", mstatusReadMask.toInt),
       csrMstatusReadSet = envInt(env, "CSR_MSTATUS_READ_SET", mstatusReadSet.toInt),
       csrMstatusWriteMask = envInt(env, "CSR_MSTATUS_WRITE_MASK", mstatusWriteMask.toInt),
-      csrSatpReadMask = envInt(env, "CSR_SATP_READ_MASK", satpReadMask.toInt),
-      csrSatpReadSet = envInt(env, "CSR_SATP_READ_SET", satpReadSet.toInt),
-      csrSatpWriteMask = envInt(env, "CSR_SATP_WRITE_MASK", satpWriteMask.toInt),
+      csrSatpReadMask = envLong(env, "CSR_SATP_READ_MASK", satpReadMask.toLong),
+      csrSatpReadSet = envLong(env, "CSR_SATP_READ_SET", satpReadSet.toLong),
+      csrSatpWriteMask = envLong(env, "CSR_SATP_WRITE_MASK", satpWriteMask.toLong),
       hasS = hasS,
       hasU = hasU,
       hasSTimerIrq = envBool(env, "HAS_S_TIMER_IRQ", true),

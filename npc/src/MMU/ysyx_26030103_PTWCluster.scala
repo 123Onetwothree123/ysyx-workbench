@@ -27,8 +27,11 @@ class ysyx_26030103_PTWCluster(
     pteSizeBytes: Int = 4,
     inOrder: Boolean = true,
     respPorts: Int = 1,
-    hasU: Boolean = true
-) extends ysyx_26030103_PTWBackend(respPorts) {
+    hasU: Boolean = true,
+    XLEN: Int = 32,
+    addressWidth: Int = 32,
+    vaBits: Int = 32
+) extends ysyx_26030103_PTWBackend(respPorts, XLEN, addressWidth, pteSizeBytes * 8) {
   require(outstanding >= 1 && outstanding <= 16,
     "PTW outstanding 必须在 1..16（页表总线事务 ID 为 4 位）")
   require(busOutstanding >= 0 && busOutstanding <= 16,
@@ -51,6 +54,9 @@ class ysyx_26030103_PTWCluster(
     fillSuperpage = fillSuperpage,
     pteSizeBytes = pteSizeBytes,
     hasU = hasU,
+    XLEN = XLEN,
+    addressWidth = addressWidth,
+    vaBits = vaBits,
     busId = i
   )))
   val busy = RegInit(VecInit(Seq.fill(outstanding)(false.B)))

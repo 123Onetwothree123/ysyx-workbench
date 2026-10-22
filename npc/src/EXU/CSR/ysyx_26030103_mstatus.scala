@@ -9,7 +9,7 @@ object ysyx_26030103_mstatus {
   // 其余字段读回零。MPP 允许 U/S/M；保留编码 2 收敛到最低支持特权级。
   // HAS_U=n 时 U 级不存在：MPP/SPP 的最低值固定为 S，从而 MRET/SRET
   // 无法把特权级切回 U；HAS_S=n 时只剩 M 级，MPP 固定为 M。
-  private val FieldMask = BigInt("008a19aa", 16)
+  private val FieldMask = BigInt("007e19aa", 16)
   private val MppMask = BigInt("00001800", 16)
   private val SppMask = BigInt("00000100", 16)
   // 只有 S/U 模式存在的字段：SIE/SPIE/SPP/SUM/TVM/TW/TSR。

@@ -146,14 +146,21 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     if (mmuEnabled) Some(Module(new ysyx_26030103_MMU(config.MMU))) else None
   val immuOpt =
     if (mmuEnabled)
-      Some(Module(new ysyx_26030103_IFUMMU(ParallelVipt = parallelFetchVipt)))
+      Some(Module(new ysyx_26030103_IFUMMU(
+        ParallelVipt = parallelFetchVipt,
+        XLEN = XLEN,
+        AddressWidth = config.AddressWidth)))
     else None
   val dmmuOpt =
     if (mmuEnabled)
-      Some(Module(new ysyx_26030103_LSUMMU(ParallelVipt = parallelDataVipt)))
+      Some(Module(new ysyx_26030103_LSUMMU(
+        ParallelVipt = parallelDataVipt,
+        XLEN = XLEN,
+        AddressWidth = config.AddressWidth)))
     else None
   val mmuArbOpt =
-    if (mmuEnabled) Some(Module(new ysyx_26030103_MMURequestArbiter)) else None
+    if (mmuEnabled) Some(Module(new ysyx_26030103_MMURequestArbiter(
+      XLEN = XLEN, AddressWidth = config.AddressWidth))) else None
   val ptwToAxiOpt =
     if (mmuEnabled) {
       // PTW 页表总线可多 outstanding；适配器内部给每笔读分配独立 AXI ID
@@ -167,22 +174,26 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
         math.min(busDepth.max(1), ysyx_26030103_AXIReadId.PtwSlots)
       Some(Module(new ysyx_26030103_PTWToAXI(
         busDepth = busDepth.max(1),
-        axiReadSlots = axiReadSlots
+        axiReadSlots = axiReadSlots,
+        AddressWidth = config.AddressWidth
       )))
     } else None
   val axiReadMuxOpt =
     if (mmuEnabled && config.MMU.ptwPath != "reuse_dcache")
-      Some(Module(new ysyx_26030103_AXIReadMux))
+      Some(Module(new ysyx_26030103_AXIReadMux(
+        AddressWidth = config.AddressWidth)))
     else None
   val axiReadLsuMuxOpt =
     if (mmuEnabled && config.MMU.ptwPath == "reuse_dcache")
-      Some(Module(new ysyx_26030103_AXIReadMux(passWriteA = true)))
+      Some(Module(new ysyx_26030103_AXIReadMux(
+        passWriteA = true, AddressWidth = config.AddressWidth)))
     else None
   // PTW 只有 A/D=hardware 时才需要写回；其余配置让 LSU 的读写通道
   // 直接接仲裁器，避免写 mux 影响普通 load。
   val axiWriteMuxOpt =
     if (mmuEnabled && config.MMU.adMode == "hardware")
-      Some(Module(new ysyx_26030103_AXIWriteMux(PassRead = false))) else None
+      Some(Module(new ysyx_26030103_AXIWriteMux(
+        PassRead = false, AddressWidth = config.AddressWidth))) else None
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage(XLEN)))
   val ifuFaultValid = RegInit(false.B)
@@ -363,7 +374,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     val mmuFlush = RegNext(pipe_flush, false.B)
 
     // 与 IFUMMU 内部 bypass 判定保持一致：satp.Mode=0 或 M 模式时 VA==PA。
-    val immuBypass = exu.io.CSRSatp(31) === 0.U || exu.io.CSRPrivilege === 3.U
+    // RV64 的 MODE 位于 satp[63:60]（Sv39=8/Sv48=9），不能只检查 bit31。
+    val immuBypass =
+      (if (XLEN == 32) exu.io.CSRSatp(31) === 0.U
+       else exu.io.CSRSatp(63, 60) === 0.U) || exu.io.CSRPrivilege === 3.U
     immu.io.privilege := exu.io.CSRPrivilege
     immu.io.satp := exu.io.CSRSatp
     // 取指没有 SUM 豁免；HAS_U=n 时直接绑 0。
@@ -379,26 +393,26 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       ifu.io.FetchReady := icache.io.fetch_ready && !ifuFaultValid
       // 翻译故障期间停止受理新取指，等 EXU 精确陷阱冲刷。
       icache.io.fetch_valid := ifu.io.FetchValid && !ifuFaultValid
-      icache.io.fetch_vaddr := ifu.io.FetchAddr(31, 0)
+      icache.io.fetch_vaddr := ifu.io.FetchAddr
       icache.io.fetch_addr :=
-        Mux(immuBypass, ifu.io.FetchAddr(31, 0), immu.io.fetchPaddr)
+        Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddr)
       icache.io.fetch_paddr_valid :=
         immuBypass || immu.io.translationValid
       icache.io.fetch_paddr_vaddr :=
-        Mux(immuBypass, ifu.io.FetchAddr(31, 0), immu.io.fetchPaddrVaddr)
+        Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddrVaddr)
       // 翻译故障与重定向都杀死未完成的 VA 请求，错误数据绝不提交。
       icache.io.kill := pipe_flush || immu.io.fault
     } else {
       immu.io.fetchValid := ifu.io.FetchValid
-      immu.io.fetchVaddr := ifu.io.FetchAddr(31, 0)
+      immu.io.fetchVaddr := ifu.io.FetchAddr
       immu.io.cacheReady := icache.io.fetch_ready
       ifu.io.FetchReady := immu.io.fetchReady
       icache.io.fetch_addr := immu.io.fetchPaddr
-      icache.io.fetch_vaddr := ifu.io.FetchAddr(31, 0)
+      icache.io.fetch_vaddr := ifu.io.FetchAddr
       icache.io.fetch_valid := ifu.io.FetchValid && immu.io.translationValid
       // PIPT 实现忽略这两个端口；保持旧路径完全不变。
       icache.io.fetch_paddr_valid := true.B
-      icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr(31, 0)
+      icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
       icache.io.kill := pipe_flush
     }
 

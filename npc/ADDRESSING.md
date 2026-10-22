@@ -29,7 +29,18 @@
   同步更新低/高 word。
 - 32 位 access 仍保持原单拍路径和既有 Cache 时序。
 
+## RV64 MMU/Sv39
+
+- `XLEN=64` 且 `HAS_MMU=y` 支持标准 Sv39（默认，3 级、8B PTE、44 位 PPN、
+  `satp.MODE=8`）以及可配置 Sv48（4 级、`satp.MODE=9`）。
+- MMURequest/PTWRequest/PTWResponse/TLB tag/PPN/PMP 地址均按 XLEN/
+  AddressWidth 参数化；RV32/Sv32 默认参数与既有实现一致。
+- 页表必须位于低 4GiB（外部 SoC AXI 边界）；更高物理地址的叶模块行为
+  仍由 Xbar/Cache 定向测试覆盖。
+- 非标准 RV64 页表几何在 elaboration 期明确报错；`configs/rv64_mmu_defconfig`
+  提供 Sv39 + TLB 基线。
+- 裸机镜像：`csrc/Test/rv64-mmu-test`。
+
 ## 本阶段不做
 
-- Sv39/MMU：`XLEN=64` 且 `HAS_MMU=y` 在 elaboration 期拒绝。
 - A/C 扩展、AM/Nanos ELF64 加载。
