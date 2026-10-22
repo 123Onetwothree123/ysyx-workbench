@@ -59,19 +59,15 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
     NPCEvaluationContext EvaluationContext{dut};
 #endif
     std::size_t completedBoundaries{0};
-    while (completedBoundaries < count && !Verilated::gotFinish() && !NPCTrap::HasHalted())
+    while (completedBoundaries < count && !NPCTrap::HasHalted())
     {
+        if (Verilated::gotFinish())
+            break;
         dut.step();
         if (NPCTrap::HasHalted())
             break;
-        if (dut->trap_valid)
-        {
-            const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
-            NPCTrap::Halt(dut.ReadHaltPC(),
-                          halt_code ? static_cast<std::uint32_t>(*halt_code) : 1u);
-            std::println("收到仿真 halt 请求");
+        if (dut.PollSimulationHalt())
             break;
-        }
         // si 的计数单位是架构边界，不是时钟周期。cache miss、
         // MDU 和 AXI stall 可以经历任意多拍，都不应提前结束单步。
         // 例外指令不会 debug_commit，但 trap 提交同样是一个精确的
@@ -105,10 +101,15 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
     }
     if (Verilated::gotFinish() && !NPCTrap::HasHalted())
     {
-        std::println(
-            "Verilator已请求结束，停止单步（本次完成 {} / {} 个架构边界）",
-            completedBoundaries,
-            count);
+        // 先结算与 $finish 同拍或上一拍已寄存的 halt，只有确实没有
+        // custom halt 时才报告“请求结束但未触发陷阱”。
+        if (!dut.PollSimulationHalt())
+        {
+            std::println(
+                "Verilator已请求结束，停止单步（本次完成 {} / {} 个架构边界）",
+                completedBoundaries,
+                count);
+        }
     }
     return SDBCommandResult::Continue;
 }

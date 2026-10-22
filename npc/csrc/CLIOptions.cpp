@@ -57,6 +57,10 @@ std::expected<CLIOptions, std::string> CLIOptions::Parse(int argc, char const *a
         {
             options.VGACheckEnabled = true;
         }
+        else if (arg == "--batch" || arg == "-b")
+        {
+            options.BatchMode = true;
+        }
         else if (arg.starts_with("-"))
         {
             return std::unexpected{std::format("未知参数: {0}", arg)};
@@ -92,4 +96,8 @@ const std::optional<std::filesystem::path> &CLIOptions::GetResultDir() const noe
 bool CLIOptions::GetVGACheck() const noexcept
 {
     return VGACheckEnabled;
+}
+bool CLIOptions::GetBatchMode() const noexcept
+{
+    return BatchMode;
 }

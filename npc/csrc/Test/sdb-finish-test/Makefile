@@ -64,7 +64,19 @@ test: build-npc $(GOOD_BIN) $(BAD_BIN) $(FINISH_BIN)
 	  printf 'c\n' | $(NPC_BIN) $(BAD_BIN) > $(BUILD_DIR)/bad.log 2>&1; \
 	  status=$${PIPESTATUS[1]}; set -e; test $$status -eq 1
 	grep -Fq 'HIT BAD TRAP' $(BUILD_DIR)/bad.log
-	@echo '[PASS] SDB explicit q/EOF/$$finish exit reasons and trap status'
+
+	# --batch must run to the architectural halt without consuming stdin.
+	$(NPC_BIN) $(GOOD_BIN) --batch </dev/null > $(BUILD_DIR)/good-batch.log 2>&1
+	grep -Fq 'HIT GOOD TRAP' $(BUILD_DIR)/good-batch.log
+	@set +e; \
+	  $(NPC_BIN) $(BAD_BIN) --batch </dev/null > $(BUILD_DIR)/bad-batch.log 2>&1; \
+	  status=$$?; set -e; test $$status -eq 1
+	grep -Fq 'HIT BAD TRAP' $(BUILD_DIR)/bad-batch.log
+	@set +e; \
+	  $(NPC_BIN) $(FINISH_BIN) --batch </dev/null > $(BUILD_DIR)/finish-batch.log 2>&1; \
+	  status=$$?; set -e; test $$status -eq 1
+	grep -Fq 'NPC在未触发陷阱的情况下退出' $(BUILD_DIR)/finish-batch.log
+	@echo '[PASS] SDB explicit q/EOF/$$finish exit reasons, batch mode and trap status'
 
 clean:
 	rm -rf $(BUILD_DIR)

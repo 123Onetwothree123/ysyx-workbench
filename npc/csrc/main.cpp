@@ -55,6 +55,12 @@ int main(int argc, char const *argv[])
             "--result-dir 需要在构建时启用 CONFIG_PERF_SAVE");
     }
 #endif
+#ifndef CONFIG_SDB
+    if (options->GetBatchMode())
+    {
+        return failBeforeDUT("--batch 需要在构建时启用 CONFIG_SDB");
+    }
+#endif
     auto load{ImageLoader::LoadFromCLI(*options)};
     if (!load)
     {
@@ -141,22 +147,24 @@ int main(int argc, char const *argv[])
         dut.EnableVGACheck();
     }
 #ifdef CONFIG_SDB
-    const auto sdbExitReason{SDB::MainLoop(dut)};
+    const auto sdbExitReason{SDB::MainLoop(dut, options->GetBatchMode())};
 #else
-    while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
+    while (!NPCTrap::HasHalted())
     {
+        // $finish 可能与本拍已寄存的 halt 脉冲同时可见。先结算 halt，
+        // 再退出，否则正常的 GOOD/BAD trap 会被误报成未触发陷阱。
+        if (Verilated::gotFinish())
+        {
+            dut.PollSimulationHalt();
+            break;
+        }
         dut.step();
         // DiffTest can mark the run BAD while processing this edge.  Do not
         // let a same-cycle custom halt overwrite that failure with a0 == 0.
         if (NPCTrap::HasHalted())
             break;
-        if (dut->trap_valid)
-        {
-            std::println("收到仿真 halt 请求");
-            const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
-            NPCTrap::Halt(dut.ReadHaltPC(),
-                          halt_code ? static_cast<std::uint32_t>(*halt_code) : 1u);
-        }
+        if (dut.PollSimulationHalt())
+            break;
     }
 #endif
 #ifdef CONFIG_DIFFTEST

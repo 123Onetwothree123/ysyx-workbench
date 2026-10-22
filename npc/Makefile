@@ -723,6 +723,22 @@ $(BIN_NPC): $(NVBOARD_DIRECT_GUARD) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_B
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
 
+# arch-test / CI 通过递归 make 调用 run 时没有交互终端。SDB 在 EOF 上会
+# 立刻退出并报告“未触发陷阱”，程序实际根本没跑；这里在非 tty 下自动加
+# --batch。NPC_BATCH=y/n 可强制批处理或强制交互（例如要手工喂 SDB 命令）。
+ifeq ($(CONFIG_SDB),y)
+NPC_BATCH ?= auto
+ifeq ($(NPC_BATCH),auto)
+NPC_BATCH_FLAG = $$(if [ -t 0 ]; then :; else printf '%s' --batch; fi)
+else ifeq ($(filter y Y yes YES true TRUE 1,$(NPC_BATCH)),)
+NPC_BATCH_FLAG =
+else
+NPC_BATCH_FLAG = --batch
+endif
+else
+NPC_BATCH_FLAG =
+endif
+
 ifeq ($(CONFIG_PGO_AUTO),y)
 # PGO_AUTO（自动一步到位）：make run 等价于 make pgo file=镜像
 # 内部完成 插桩编译→收集profile→优化编译→运行最终程序
@@ -731,14 +747,14 @@ run: pgo
 else
 run: $(BIN_NPC)
 	@echo "警告: PGO_AUTO 目前仅支持 SIM_TOP=soc，本次执行普通运行"
-	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
+	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) $(NPC_BATCH_FLAG) 2>&1
 endif
 else ifeq ($(SIM_TOP),soc)
 run: $(BIN)
-	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
+	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) $(NPC_BATCH_FLAG) 2>&1
 else
 run: $(BIN_NPC)
-	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) 2>&1
+	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) $(NPC_BATCH_FLAG) 2>&1
 endif
 
 .PHONY: pgo

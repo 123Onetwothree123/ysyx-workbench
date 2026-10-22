@@ -30,22 +30,23 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
 #ifdef CONFIG_WATCHPOINT
     NPCEvaluationContext EvaluationContext{dut};
 #endif
-    while (!Verilated::gotFinish() && !NPCTrap::HasHalted())
+    while (!NPCTrap::HasHalted())
     {
+        // $finish 可能与本拍已寄存的 halt 脉冲同时可见。先结算 halt，
+        // 再退出，否则正常的 GOOD/BAD trap 会被误报成未触发陷阱。
+        if (Verilated::gotFinish())
+        {
+            dut.PollSimulationHalt();
+            break;
+        }
         dut.step();
         // A DiffTest mismatch raised by this step has priority over a
         // same-cycle simulation halt, otherwise a0 == 0 could turn BAD into
         // an apparent GOOD result.
         if (NPCTrap::HasHalted())
             break;
-        if (dut->trap_valid)
-        {
-            const auto halt_code{dut.ReadGPR(10)}; // x10 = a0
-            NPCTrap::Halt(dut.ReadHaltPC(),
-                          halt_code ? static_cast<std::uint32_t>(*halt_code) : 1u);
-            std::println("收到仿真 halt 请求");
+        if (dut.PollSimulationHalt())
             break;
-        }
 #ifdef CONFIG_WATCHPOINT
         if ((dut->debug_commit || dut->debug_trap_valid) &&
             GetGlobalWatchpointPool().CheckAll(EvaluationContext))

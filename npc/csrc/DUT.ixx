@@ -78,6 +78,10 @@ public:
     void EnableVGACheck();
     [[nodiscard]] bool VGACheckReport();
     void step();
+    // 在每次时钟沿后立即调用：若本拍 trap_valid 有效，记录 custom halt。
+    // 调用者必须在检查 Verilated::gotFinish() 之前调用，保证同一拍的
+    // $finish 不会把已可见的 GOOD/BAD trap 吞成“未触发陷阱”。
+    [[nodiscard]] bool PollSimulationHalt();
     void reset();
     // 把 ImageLoader 产生的唯一镜像写入 direct-NPC RAM。
     // SoC 路径的 MROM/flash 本来就直接读取这个 vector，因此为 no-op。

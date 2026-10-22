@@ -979,6 +979,19 @@ void DUT::step()
     }
 #endif
 }
+bool DUT::PollSimulationHalt()
+{
+    // 已由 DiffTest/其它检查器记录的失败优先，不能再被同拍的 custom halt
+    // 覆盖；没有已记录停机时，trap_valid 是 RTL 寄存后的单拍脉冲，必须
+    // 在推进下一拍或响应 $finish 之前结算。
+    if (!dut->trap_valid || NPCTrap::HasHalted())
+        return false;
+    std::println("收到仿真 halt 请求");
+    const auto halt_code{ReadGPR(10)}; // x10 = a0
+    NPCTrap::Halt(ReadHaltPC(),
+                  halt_code ? static_cast<std::uint32_t>(*halt_code) : 1u);
+    return true;
+}
 std::size_t DUT::GetCycle() const
 {
     return cycle;
