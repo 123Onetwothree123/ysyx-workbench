@@ -40,6 +40,7 @@ object ysyx_26030103_Elaborate extends App {
   val CacheableMask_npc = 0x80000000L
   val HasChipLink = sys.env.getOrElse("CHIPLINK", "n") == "y"
   // 用kconfig来指挥的指令集扩展开关，然后没有实现的部分就直接让NPCConfig的require判断为失败的条件就可以了
+  val XLEN = envIntOr("XLEN", 32)
   val UseM = sys.env.getOrElse("RV32_M", "n") == "y"
   val UseA = sys.env.getOrElse("RV32_A", "n") == "y"
   val UseC = sys.env.getOrElse("RV32_C", "n") == "y"
@@ -100,6 +101,7 @@ object ysyx_26030103_Elaborate extends App {
     }
   val mmuProfile = ysyx_26030103_MMUProfile.fromEnv(sys.env.get)
   val config = ysyx_26030103_NPCConfig(
+    XLEN = XLEN,
     UseM = UseM,
     UseA = UseA,
     UseC = UseC,

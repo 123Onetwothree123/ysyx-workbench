@@ -10,6 +10,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
   * 做统一合法性校验（require）与派生量计算（使能开关、最大在途数等）。
   */
 case class ysyx_26030103_NPCConfig(
+    XLEN: Int = 32,
     UseM: Boolean = false,
     UseA: Boolean = false,
     UseC: Boolean = false,
@@ -95,6 +96,8 @@ case class ysyx_26030103_NPCConfig(
     // MMU/TLB 配置；当前已接入标准 Sv32 的 IFU/LSU 翻译路径。
     MMU: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
 ) {
+  require(XLEN == 32,
+    s"当前 RTL 只支持 XLEN=32；RV64 尚未实现，收到 XLEN=$XLEN")
   require(!UseA, "RV32_A还没有做")
   require(!UseC, "RV32_C还没做")
   require(

@@ -2,6 +2,16 @@ menu "硬件配置"
 
   menu "指令集扩展"
 
+    config XLEN
+      int "当前 XLEN"
+      default 32
+      range 32 64
+      help
+        指令位宽。32=RV32，64=RV64。当前 RTL 只实现 XLEN=32；
+        选择 64 会在 elaboration 阶段明确报错，防止生成不完整的
+        64 位核。RV64 的 PC、GPR、CSR、AXI 地址和 Sv39/Sv48
+        页表尚未接入。
+
     config RV32_M
       bool "M 扩展（乘/除/取余）"
       default n
