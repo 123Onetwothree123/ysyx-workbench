@@ -6,7 +6,8 @@ import _root_.ysyx_26030103.config._
 class ysyx_26030103_DIVUnit(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
 ) extends Module {
-  val IO = _root_.chisel3.IO(new ysyx_26030103_DIVUnitInterface) //除法适配接口
+  private val XLEN = config.XLEN
+  val IO = _root_.chisel3.IO(new ysyx_26030103_DIVUnitInterface(XLEN)) //除法适配接口
   private val Core = ysyx_26030103_DIVCoreFactory.Create(config)
   private val Pending = RegInit(false.B)
   private val PendingQuotientNegative = RegInit(false.B)
@@ -37,11 +38,13 @@ class ysyx_26030103_DIVUnit(
   Core.IO.Resp.ready := IO.Resp.ready
   val Quotient = ysyx_26030103_DIVAdapterUtils.RestoreSign(
     Core.IO.Resp.bits.Quotient,
-    PendingQuotientNegative
+    PendingQuotientNegative,
+    XLEN
   )
   val Remainder = ysyx_26030103_DIVAdapterUtils.RestoreSign(
     Core.IO.Resp.bits.Remainder,
-    PendingRemainderNegative
+    PendingRemainderNegative,
+    XLEN
   )
   IO.Resp.valid := Pending && Core.IO.Resp.valid
   IO.Resp.bits.Result := ysyx_26030103_DIVAdapterUtils.SelectResult(

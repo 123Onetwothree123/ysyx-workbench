@@ -7,6 +7,7 @@ import _root_.ysyx_26030103.cache._
 import _root_.ysyx_26030103.config._
 // LSU是访存流水级：完成总线事务、提交访存故障并冲刷年轻指令
 class ysyx_26030103_LSU(
+    val XLEN: Int = 32,
     val WBufDepth: Int = 4, // 写缓冲项数(必须是2的幂, 环形队列按位回绕)
     val DCacheEnable: Boolean = false,
     val DCacheStorage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
@@ -21,9 +22,14 @@ class ysyx_26030103_LSU(
     // MMU 故障通过 ViptKill 取消该请求。
     val ViptParallel: Boolean = false
 ) extends Module {
+  require(XLEN == 32 || XLEN == 64, s"LSU XLEN 非法: $XLEN")
+  // 第一阶段 RV64 放宽访问通过两拍 32 位 AXI 窄传输完成；DCache 尚未
+  // 适配 8 字节访问，因此顶层配置会禁止 RV64 + DCache。
+  require(XLEN == 32 || !DCacheEnable, "XLEN=64 第一阶段暂不支持 DCache")
+  private val WideMem = XLEN == 64
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage))
-    val out = Decoupled(new ysyx_26030103_EXUMessage)
+    val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage(XLEN)))
+    val out = Decoupled(new ysyx_26030103_EXUMessage(XLEN))
     // 给EXU: 本级非空(有访存或完成中的指令),EXU的副作用指令要等着
     val Busy = Output(Bool())
     // 只表示仍可能失败或尚未完成的访存/写缓冲。普通 ALU 指令在本级
@@ -66,7 +72,7 @@ class ysyx_26030103_LSU(
     val HazardRd = Output(UInt(5.W))
     val HazardRegWrite = Output(Bool())
     val HazardMemOp = Output(Bool())
-    val FwdData = Output(UInt(32.W))
+    val FwdData = Output(UInt(XLEN.W))
     val FwdReady = Output(Bool())
     // 等待槽冒险检测: 本级被年长访存占用时,EX/MEM流水寄存器里等待的指令
     // 对IDU也必须可见,否则依赖它的消费者会拿着旧寄存器值溜过去
@@ -74,7 +80,7 @@ class ysyx_26030103_LSU(
     val Hazard2Rd = Output(UInt(5.W))
     val Hazard2RegWrite = Output(Bool())
     val Hazard2MemOp = Output(Bool())
-    val Hazard2FwdData = Output(UInt(32.W))
+    val Hazard2FwdData = Output(UInt(XLEN.W))
     val Hazard2FwdReady = Output(Bool())
     // 调试/性能
     val StallWaitLSU = Output(Bool())
@@ -133,7 +139,7 @@ class ysyx_26030103_LSU(
   val PendingStoreValid = PendingStoreCount =/= 0.U
   val PendingStoreHeadBits =
     if (WBufDepth == 1) PendingStore(0) else PendingStore(PendingStoreHead)
-  val LoadDataReg = RegInit(0.U(32.W))
+  val LoadDataReg = RegInit(0.U(XLEN.W))
   val AccessFaultReg = RegInit(false.B)
   val AccessFaultRespReg = RegInit(0.U(2.W))
   val StoreFaultReg = RegInit(false.B) // 等待B响应时锁存写访问错误
@@ -184,11 +190,16 @@ class ysyx_26030103_LSU(
     EffectiveALUResult :=
       Mux(PAddrValidReg && ViptActiveMem, PAddrReg, ActiveInstruction.ALUResult)
   }
+  // LD/SD 要求 8 字节对齐；LW/SW 要求 4 字节；LH/SH、LB/SB 依次降低。
   private def AddressIsMisaligned(Address: UInt, Width: UInt): Bool =
     Mux(
-      Width === "b10".U,
-      Address(1, 0) =/= 0.U,
-      Mux(Width === "b01".U, Address(0), false.B)
+      Width === "b11".U,
+      Address(2, 0) =/= 0.U,
+      Mux(
+        Width === "b10".U,
+        Address(1, 0) =/= 0.U,
+        Mux(Width === "b01".U, Address(0), false.B)
+      )
     )
   val StageInputMisaligned = AddressIsMisaligned(
     StageInputBits.ALUResult,
@@ -359,14 +370,16 @@ class ysyx_26030103_LSU(
   io.Hazard2FwdReady := WaitValid && io.in.bits.RegisterWrite && !io.in.bits.MemoryValid
   io.StallWaitLSU := stageState === StageWait
   io.DebugMemoryWrite := ActiveInstruction.MemoryWrite
-  io.DebugPC := ActiveInstruction.pc
-  io.DebugALUResult := EffectiveALUResult
-  io.DebugStoreDATA := ActiveInstruction.StoreData
-  io.DebugLoadDATA := LoadDataReg
+  io.DebugPC := ActiveInstruction.pc(31, 0)
+  io.DebugALUResult := EffectiveALUResult(31, 0)
+  io.DebugStoreDATA := ActiveInstruction.StoreData(31, 0)
+  io.DebugLoadDATA := LoadDataReg(31, 0)
   io.DebugWidthSelect := ActiveInstruction.WidthSelect
   // 总线事务FSM(原LSU逻辑)
+  // AXI 数据通道固定 32 位：LD/SD 的 8 字节访问拆成两拍 AWSIZE=2。
   private def AXISizeFor(Width: UInt): UInt = MuxLookup(Width, 2.U(3.W))(
-    Seq("b00".U -> 0.U(3.W), "b01".U -> 1.U(3.W), "b10".U -> 2.U(3.W))
+    Seq("b00".U -> 0.U(3.W), "b01".U -> 1.U(3.W), "b10".U -> 2.U(3.W),
+      "b11".U -> 2.U(3.W))
   )
   val AXISize = AXISizeFor(ActiveInstruction.WidthSelect)
   val IncomingAXISize = AXISizeFor(io.in.bits.WidthSelect)
@@ -383,7 +396,7 @@ class ysyx_26030103_LSU(
       Address: UInt,
       Width: UInt
   ): (UInt, UInt) = {
-    val Data = WireDefault(StoreData)
+    val Data = WireDefault(StoreData(31, 0))
     val Mask = WireDefault("b1111".U(4.W))
     switch(Width) {
       is("b00".U) {
@@ -433,7 +446,12 @@ class ysyx_26030103_LSU(
         }
       }
       is("b10".U) {
-        Data := StoreData
+        Data := StoreData(31, 0)
+        Mask := "b1111".U
+      }
+      is("b11".U) {
+        // SD 的第一拍是低 32 位；第二拍由写缓冲的 wbDataHi 提供。
+        Data := StoreData(31, 0)
         Mask := "b1111".U
       }
     }
@@ -446,34 +464,59 @@ class ysyx_26030103_LSU(
   )
   val IncomingWriteData = IncomingWritePayload._1
   val IncomingWriteMask = IncomingWritePayload._2
+  // SD 的第二拍数据。RV32 时该寄存器不会被执行路径使用。
+  val IncomingWriteDataHi =
+    if (WideMem) io.in.bits.StoreData(63, 32) else 0.U(32.W)
+  // 将最多 64 位的原始小端数据格式化为 XLEN 架构结果。
+  //   LB/LH/LW 按 Signed 做符号/零扩展；
+  //   LBU/LHU/LWU 零扩展；
+  //   LD 直接返回 64 位，忽略 Signed。
   private def FormatLoad(
-      Word: UInt,
+      WordLow: UInt,
+      WordHigh: UInt,
       Address: UInt,
       Width: UInt,
       Signed: Bool
   ): UInt = {
+    val Word = WordLow(31, 0)
+    val RawWide = Cat(WordHigh(31, 0), Word)
     val ByteData = MuxLookup(Address(1, 0), Word(7, 0))(
       Seq(1.U -> Word(15, 8), 2.U -> Word(23, 16), 3.U -> Word(31, 24))
     )
     val HalfData = Mux(Address(1), Word(31, 16), Word(15, 0))
-    val ByteResult = Mux(
-      Signed,
-      Cat(Fill(24, ByteData(7)), ByteData),
-      Cat(0.U(24.W), ByteData)
+    def Extend(Value: UInt, Bits: Int): UInt =
+      if (XLEN == Bits) {
+        Value
+      } else {
+        Mux(Signed, Cat(Fill(XLEN - Bits, Value(Bits - 1)), Value),
+          Cat(0.U((XLEN - Bits).W), Value))
+      }
+    val ByteResult = Extend(ByteData, 8)
+    val HalfResult = Extend(HalfData, 16)
+    val WordResult = Extend(Word, 32)
+    MuxLookup(Width, WordResult)(
+      Seq(0.U -> ByteResult, 1.U -> HalfResult, 2.U -> WordResult,
+        3.U -> RawWide)
     )
-    val HalfResult = Mux(
-      Signed,
-      Cat(Fill(16, HalfData(15)), HalfData),
-      Cat(0.U(16.W), HalfData)
-    )
-    MuxLookup(Width, Word)(Seq(0.U -> ByteResult, 1.U -> HalfResult, 2.U -> Word))
   }
-  val DirectLoadData = FormatLoad(
-    io.DataBus.R.RDATA,
-    ActiveInstruction.ALUResult,
-    ActiveInstruction.WidthSelect,
-    ActiveInstruction.LoadSigned
-  )
+  val LoadWord0Reg = RegInit(0.U(32.W))
+  val LoadBeat = RegInit(0.U(1.W))
+  val ReadIsWide = ActiveInstruction.WidthSelect === "b11".U
+  // 第二拍 RDATA 是高 32 位，LoadWord0Reg 是第一拍的低 32 位。
+  // 窄访问始终使用当前 RDATA 作为低字。
+  val DirectLoadData =
+    if (WideMem)
+      Mux(ReadIsWide && LoadBeat === 1.U,
+        FormatLoad(LoadWord0Reg, io.DataBus.R.RDATA,
+          ActiveInstruction.ALUResult, ActiveInstruction.WidthSelect,
+          ActiveInstruction.LoadSigned),
+        FormatLoad(io.DataBus.R.RDATA, 0.U(32.W),
+          ActiveInstruction.ALUResult, ActiveInstruction.WidthSelect,
+          ActiveInstruction.LoadSigned))
+    else
+      FormatLoad(io.DataBus.R.RDATA, 0.U(32.W),
+        ActiveInstruction.ALUResult, ActiveInstruction.WidthSelect,
+        ActiveInstruction.LoadSigned)
   val is_store_transaction = RegInit(false.B)
   // 只在总线故障真正提交的周期产生事件。顶层会再寄存一拍供 C++ 在
   // 上升沿后采样；misaligned 不属于 AXI access fault，必须排除。
@@ -513,8 +556,12 @@ class ysyx_26030103_LSU(
   val wbPAddr = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbPAddrValid = RegInit(VecInit(Seq.fill(WBufDepth)(false.B)))
   val wbData = Reg(Vec(WBufDepth, UInt(32.W)))
+  val wbDataHi = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbStrb = Reg(Vec(WBufDepth, UInt(4.W)))
   val wbSize = Reg(Vec(WBufDepth, UInt(3.W)))
+  // AXISize 对 8 字节访问也编码为 2（每拍 4 字节），因此必须单独保存
+  // 架构宽度以区分 SD 与 SW。
+  val wbWide = Reg(Vec(WBufDepth, Bool()))
   val wbMisaligned = Reg(Vec(WBufDepth, Bool()))
   // PIPT/无 MMU 时入队地址就是物理地址，保持原有行为完全不变。
   private val WbNeedsPAddr = DCacheVipt && ViptParallel
@@ -534,34 +581,38 @@ class ysyx_26030103_LSU(
     io.ViptPAddrValid && io.ViptPAddrVaddr === io.in.bits.VAddr
   when(wbPush) {
     if (WBufDepth == 1) {
-      wbAddr(0) := io.in.bits.ALUResult
-      wbVAddr(0) := io.in.bits.VAddr
+      wbAddr(0) := io.in.bits.ALUResult(31, 0)
+      wbVAddr(0) := io.in.bits.VAddr(31, 0)
       wbPAddr(0) := Mux(
         WbNeedsPAddr.B && IncomingViptPAddrMatch,
         io.ViptPAddr,
-        io.in.bits.ALUResult
+        io.in.bits.ALUResult(31, 0)
       )
       wbPAddrValid(0) := !WbNeedsPAddr.B || IncomingViptPAddrMatch
       wbData(0) := IncomingWriteData
+      wbDataHi(0) := IncomingWriteDataHi
       wbStrb(0) := IncomingWriteMask
       wbSize(0) := IncomingAXISize
+      wbWide(0) := io.in.bits.WidthSelect === "b11".U
       wbMisaligned(0) := AddressIsMisaligned(
         io.in.bits.ALUResult,
         io.in.bits.WidthSelect
       )
       wbTail := 0.U
     } else {
-      wbAddr(wbTail) := io.in.bits.ALUResult
-      wbVAddr(wbTail) := io.in.bits.VAddr
+      wbAddr(wbTail) := io.in.bits.ALUResult(31, 0)
+      wbVAddr(wbTail) := io.in.bits.VAddr(31, 0)
       wbPAddr(wbTail) := Mux(
         WbNeedsPAddr.B && IncomingViptPAddrMatch,
         io.ViptPAddr,
-        io.in.bits.ALUResult
+        io.in.bits.ALUResult(31, 0)
       )
       wbPAddrValid(wbTail) := !WbNeedsPAddr.B || IncomingViptPAddrMatch
       wbData(wbTail) := IncomingWriteData
+      wbDataHi(wbTail) := IncomingWriteDataHi
       wbStrb(wbTail) := IncomingWriteMask
       wbSize(wbTail) := IncomingAXISize
+      wbWide(wbTail) := io.in.bits.WidthSelect === "b11".U
       wbMisaligned(wbTail) := AddressIsMisaligned(
         io.in.bits.ALUResult,
         io.in.bits.WidthSelect
@@ -631,8 +682,10 @@ class ysyx_26030103_LSU(
   val wbHeadPAddrValid =
     if (WBufDepth == 1) wbPAddrValid(0) else wbPAddrValid(wbHead)
   val wbHeadData = if (WBufDepth == 1) wbData(0) else wbData(wbHead)
+  val wbHeadDataHi = if (WBufDepth == 1) wbDataHi(0) else wbDataHi(wbHead)
   val wbHeadStrb = if (WBufDepth == 1) wbStrb(0) else wbStrb(wbHead)
   val wbHeadSize = if (WBufDepth == 1) wbSize(0) else wbSize(wbHead)
+  val wbHeadWide = if (WBufDepth == 1) wbWide(0) else wbWide(wbHead)
   val wbHeadMisaligned =
     if (WBufDepth == 1) wbMisaligned(0) else wbMisaligned(wbHead)
   // 只有写缓冲队首会对总线/DCache 产生副作用。VIPT 下必须等这笔 store
@@ -678,23 +731,34 @@ class ysyx_26030103_LSU(
   val wbCanStart = !wbufEmpty && !wbHeadMisaligned && wbHeadReady &&
     !io.PmpFault && !StoreFaultReg && !MemFaultReg
   val wbDrivingIssue = wbState === wbIssue || (wbState === wbIdle && wbCanStart)
+  // 8 字节 store 在 32 位 AXI 上拆成两拍：AWLEN=1，W 通道低字在前、
+  // 高字在后，第二拍拉 WLAST。窄访问仍是一拍。
+  val WbHeadWide = wbHeadWide
+  val wbBeat = RegInit(0.U(1.W))
   when(wbDrivingIssue) {
     io.DataBus.AW.AWVALID := !wbAWDone
     io.DataBus.AW.AWADDR := WbHeadEffectiveAddr
-    io.DataBus.AW.AWLEN := 0.U
+    io.DataBus.AW.AWLEN := Mux(WbHeadWide, 1.U, 0.U)
     io.DataBus.AW.AWSIZE := wbHeadSize
     io.DataBus.AW.AWBURST := 1.U
     io.DataBus.W.WVALID := !wbWDone
-    io.DataBus.W.WDATA := wbHeadData
-    io.DataBus.W.WSTRB := wbHeadStrb
-    io.DataBus.W.WLAST := !wbWDone
+    io.DataBus.W.WDATA :=
+      Mux(WbHeadWide && wbBeat === 1.U, wbHeadDataHi, wbHeadData)
+    io.DataBus.W.WSTRB :=
+      Mux(WbHeadWide && wbBeat === 1.U, "hf".U, wbHeadStrb)
+    io.DataBus.W.WLAST := !WbHeadWide || wbBeat === 1.U
   }
+  // 本拍 W 握手是否完成整笔 store 的全部数据拍。
+  val wbWFinishes = wbWfire && (!WbHeadWide || wbBeat === 1.U)
   switch(wbState) {
     is(wbIdle) {
       when(wbCanStart) {
         when(wbAWfire) { wbAWDone := true.B }
-        when(wbWfire) { wbWDone := true.B }
-        when(wbAWfire && wbWfire) {
+        when(wbWfire) {
+          when(WbHeadWide && wbBeat === 0.U) { wbBeat := 1.U }
+            .otherwise { wbWDone := true.B }
+        }
+        when(wbAWfire && wbWFinishes) {
           wbState := wbWaitB
         }.otherwise {
           wbState := wbIssue
@@ -702,12 +766,16 @@ class ysyx_26030103_LSU(
       }.otherwise {
         wbAWDone := false.B
         wbWDone := false.B
+        wbBeat := 0.U
       }
     }
     is(wbIssue) {
       when(wbAWfire) { wbAWDone := true.B }
-      when(wbWfire) { wbWDone := true.B }
-      when((wbAWDone || wbAWfire) && (wbWDone || wbWfire)) {
+      when(wbWfire) {
+        when(WbHeadWide && wbBeat === 0.U) { wbBeat := 1.U }
+          .otherwise { wbWDone := true.B }
+      }
+      when((wbAWDone || wbAWfire) && (wbWDone || wbWFinishes)) {
         wbState := wbWaitB
       }
     }
@@ -731,6 +799,7 @@ class ysyx_26030103_LSU(
     }
   }
   when(wbPop) {
+    wbBeat := 0.U
     if (WBufDepth == 1) {
       wbHead := 0.U
     } else {
@@ -744,6 +813,7 @@ class ysyx_26030103_LSU(
     wbState := wbIdle
     wbAWDone := false.B
     wbWDone := false.B
+    wbBeat := 0.U
   }.otherwise {
     wbCount := wbCount + wbPush.asUInt - wbPop.asUInt
   }
@@ -760,6 +830,7 @@ class ysyx_26030103_LSU(
         AccessFaultReg := false.B
         AccessFaultRespReg := 0.U
         StoreFaultReg := false.B
+        LoadBeat := 0.U
         is_store_transaction := StageInputBits.MemoryWrite
         when(StageInputMisaligned || StageInputPmpFault) {
           // 非对齐/PMP 故障项只作为写缓冲屏障，不产生任何 AXI 请求，
@@ -798,12 +869,15 @@ class ysyx_26030103_LSU(
           when(DCache.io.req.fire) { state := StatesReadResponse }
         }.otherwise {
           io.DataBus.AR.ARVALID := true.B
-          io.DataBus.AR.ARADDR := ActiveInstruction.ALUResult
+          io.DataBus.AR.ARADDR := ActiveInstruction.ALUResult(31, 0)
+          io.DataBus.AR.ARLEN := 0.U
           when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
         }
       } else {
         io.DataBus.AR.ARVALID := true.B
-        io.DataBus.AR.ARADDR := ActiveInstruction.ALUResult
+        io.DataBus.AR.ARADDR := ActiveInstruction.ALUResult(31, 0)
+        // LD 在 32 位 AXI 上使用两拍 INCR 读；其余访问保持单拍。
+        io.DataBus.AR.ARLEN := Mux(ReadIsWide, 1.U, 0.U)
         when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
       }
     }
@@ -860,24 +934,78 @@ class ysyx_26030103_LSU(
           when(io.DataBus.R.RRESP =/= 0.U) {
             AccessFaultReg := true.B
             AccessFaultRespReg := io.DataBus.R.RRESP
-          }.otherwise {
-            LoadDataReg := DirectLoadData
           }
-          when(io.DataBus.R.RLAST) {
-            LoadForwardValid := true.B
-            LoadForwardData := DirectLoadData
-            LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-            TransactionComplete := true.B
-            TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-            state := StatesIdle
-          }.otherwise {
-            AccessFaultReg := true.B
-            AccessFaultRespReg := Mux(
-              io.DataBus.R.RRESP =/= 0.U,
-              io.DataBus.R.RRESP,
-              2.U
-            )
-            state := StatesReadDrain
+          if (WideMem) {
+            when(ReadIsWide) {
+              when(LoadBeat === 0.U) {
+                when(io.DataBus.R.RLAST) {
+                  // 两拍读在第一个响应就结束：按协议错误提交访问故障。
+                  AccessFaultReg := true.B
+                  AccessFaultRespReg := Mux(
+                    io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
+                  TransactionComplete := true.B
+                  TransactionFault := true.B
+                  state := StatesIdle
+                }.otherwise {
+                  LoadWord0Reg := io.DataBus.R.RDATA
+                  LoadBeat := 1.U
+                }
+              }.otherwise {
+                when(io.DataBus.R.RLAST) {
+                  val FinalData = DirectLoadData
+                  when(!(AccessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
+                    LoadDataReg := FinalData
+                  }
+                  LoadForwardValid := true.B
+                  LoadForwardData := FinalData
+                  LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
+                  TransactionComplete := true.B
+                  TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
+                  state := StatesIdle
+                }.otherwise {
+                  AccessFaultReg := true.B
+                  AccessFaultRespReg := Mux(
+                    io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
+                  state := StatesReadDrain
+                }
+              }
+            }.otherwise {
+              when(io.DataBus.R.RLAST) {
+                val FinalData = DirectLoadData
+                when(!(AccessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
+                  LoadDataReg := FinalData
+                }
+                LoadForwardValid := true.B
+                LoadForwardData := FinalData
+                LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
+                TransactionComplete := true.B
+                TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
+                state := StatesIdle
+              }.otherwise {
+                AccessFaultReg := true.B
+                AccessFaultRespReg := Mux(
+                  io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
+                state := StatesReadDrain
+              }
+            }
+          } else {
+            when(io.DataBus.R.RLAST) {
+              val FinalData = DirectLoadData
+              when(!(AccessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
+                LoadDataReg := FinalData
+              }
+              LoadForwardValid := true.B
+              LoadForwardData := FinalData
+              LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
+              TransactionComplete := true.B
+              TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
+              state := StatesIdle
+            }.otherwise {
+              AccessFaultReg := true.B
+              AccessFaultRespReg := Mux(
+                io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
+              state := StatesReadDrain
+            }
           }
         }
       }
@@ -929,7 +1057,7 @@ class ysyx_26030103_LSU(
   // 无 MMU 的 PMP 检查对象：写缓冲非空时是队首 store（唯一可能在本拍
   // 产生写副作用的项），否则是本拍即将受理的访存指令。store 在写缓冲
   // 中始终保持架构顺序，因此队首地址也对应最老未完成 store。
-  io.PmpAddr := Mux(!wbufEmpty, WbHeadEffectiveAddr, StageInputBits.ALUResult)
+  io.PmpAddr := Mux(!wbufEmpty, WbHeadEffectiveAddr, StageInputBits.ALUResult(31, 0))
   io.PmpWrite := Mux(!wbufEmpty, true.B, StageInputBits.MemoryWrite)
   io.IsStore := is_store_transaction
   io.StallReadAR := state === StatesReadRequest

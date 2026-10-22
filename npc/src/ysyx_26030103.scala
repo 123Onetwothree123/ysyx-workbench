@@ -16,25 +16,30 @@ import _root_.ysyx_26030103.wbu._
 import _root_.ysyx_26030103.mmu._
 
 /** IFU 接受请求时保存的虚拟 PC/预测快照，用于响应级恢复架构 PC。 */
-class ysyx_26030103_FetchTag extends Bundle {
-  val pc = UInt(32.W)
+class ysyx_26030103_FetchTag(val XLEN: Int = 32) extends Bundle {
+  require(XLEN == 32 || XLEN == 64, s"FetchTag XLEN 非法: $XLEN")
+  val pc = UInt(XLEN.W)
   val predTaken = Bool()
-  val predTarget = UInt(32.W)
+  val predTarget = UInt(XLEN.W)
 }
 
 class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig())
     extends Module {
+  private val XLEN = config.XLEN
+  private def Widen32(Value: UInt): UInt =
+    if (XLEN == 32) Value else Cat(0.U((XLEN - 32).W), Value)
   val io = IO(new ysyx_26030103_IO)
-  val ifu = Module(new ysyx_26030103_IFU(config.ResetAddr))
+  val ifu = Module(new ysyx_26030103_IFU(config.ResetAddr, XLEN))
   val idu = Module(new ysyx_26030103_IDU(config))
   val exu = Module(new ysyx_26030103_EXU(config))
-  val wbu = Module(new ysyx_26030103_WBU)
+  val wbu = Module(new ysyx_26030103_WBU(XLEN))
   // 数据侧 VIPT 并行只在 DCache 打开时才有意义；关闭 DCache 的配置
   // 仍走原来的“先翻译后访存”。
   val parallelDataVipt =
     config.MMU.cacheMode == "vipt" && config.DCacheEnable
   val lsu = Module(
     new ysyx_26030103_LSU(
+      XLEN = XLEN,
       WBufDepth = config.WBufDepth,
       DCacheEnable = config.DCacheEnable,
       DCacheStorage = config.DCacheStorage,
@@ -47,7 +52,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       ViptParallel = parallelDataVipt
     )
   )
-  val gpr = Module(new ysyx_26030103_GPR(config.EnableDynamicGPRDebug))
+  val gpr = Module(new ysyx_26030103_GPR(XLEN, config.EnableDynamicGPRDebug))
   val icache = ysyx_26030103_ICacheFactory.Create(config)
   val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
   val xbar = Module(
@@ -119,7 +124,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   pmpOpt.foreach { pmp =>
     pmp.io.cfg := exu.io.PmpCfg
     pmp.io.addr := exu.io.PmpAddr
-    pmp.io.fetchAddr := ifu.io.FetchAddr
+    pmp.io.fetchAddr := ifu.io.FetchAddr(31, 0)
     pmp.io.fetchPriv := exu.io.CSRPrivilege
     // 默认按无 MMU 路径接 LSU 的访存检查地址；MMU 分支稍后覆盖成
     // DMMU 给出的物理地址。这样两种配置共用同一个 PMP 例化。
@@ -169,21 +174,21 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     if (mmuEnabled && config.MMU.adMode == "hardware")
       Some(Module(new ysyx_26030103_AXIWriteMux(PassRead = false))) else None
   // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
-  val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage))
+  val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage(XLEN)))
   val ifuFaultValid = RegInit(false.B)
-  val ifuFaultPC = RegInit(0.U(32.W))
+  val ifuFaultPC = RegInit(0.U(XLEN.W))
   val fetchTranslationValid =
     immuOpt.map(_.io.translationValid).getOrElse(true.B)
   val fetchTranslationFault =
     immuOpt.map(_.io.fault).getOrElse(false.B)
-  val fetchPaddr = immuOpt.map(_.io.fetchPaddr).getOrElse(ifu.io.FetchAddr)
+  val fetchPaddr = immuOpt.map(_.io.fetchPaddr).getOrElse(ifu.io.FetchAddr(31, 0))
   // 无 MMU 时的取指 PMP 检查：PMP 直接看 IFU 的物理取指地址（VA==PA）。
   // 故障请求不进入 ICache，而是在响应级注入一条带 cause=1 的精确异常。
   // pending 只产生一次注入；blocked 一直保持到流水冲刷，防止故障 PC 被
   // 反复取指而灌入一串年轻故障指令。
   val pmpFetchFault = pmpOpt.map(_.io.fetchFault).getOrElse(false.B)
   val pmpFetchFaultValid = RegInit(false.B)
-  val pmpFetchFaultPC = RegInit(0.U(32.W))
+  val pmpFetchFaultPC = RegInit(0.U(XLEN.W))
   val pmpFetchBlocked = RegInit(false.B)
   val pmpFetchAllow =
     if (mmuEnabled) true.B
@@ -196,20 +201,20 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       icache.io.fetch_ready
   // 两表项虚拟 PC 队列：允许响应与下一笔接受同拍发生。ICache 通常只有
   // 一笔在途，但零延迟响应/背靠背响应必须用队列而不是单寄存器。
-  val fetchTag0 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
-  val fetchTag1 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
+  val fetchTag0 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
+  val fetchTag1 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
   val fetchTagCount = RegInit(0.U(2.W))
   // 只有所有更老取指都已交付（快照队列为空）时才注入 PMP 取指故障。
   // 不能只看 icache.resp_valid：miss/refill 期间更老请求仍在 ICache 内，
   // resp_valid 可能多拍为低，提前注入会打乱进入 IDU 的指令顺序。
   val pmpFetchInject =
     pmpFetchFaultValid && fetchTagCount === 0.U && !icache.io.resp_valid
-  val pushTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
+  val pushTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
   pushTag.pc := ifu.io.FetchAddr
   pushTag.predTaken := ifu.io.PredHit
   pushTag.predTarget := ifu.io.PredTarget
   val popFetch = icache.io.resp_valid && icache.io.resp_ready
-  val responseTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag))
+  val responseTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
   responseTag := Mux(fetchTagCount === 0.U, pushTag, fetchTag0)
   val pushAndPop = accept_fetch && popFetch
   when(pipe_flush || (if (parallelFetchVipt) fetchTranslationFault else false.B)) {
@@ -365,26 +370,26 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       ifu.io.FetchReady := icache.io.fetch_ready && !ifuFaultValid
       // 翻译故障期间停止受理新取指，等 EXU 精确陷阱冲刷。
       icache.io.fetch_valid := ifu.io.FetchValid && !ifuFaultValid
-      icache.io.fetch_vaddr := ifu.io.FetchAddr
+      icache.io.fetch_vaddr := ifu.io.FetchAddr(31, 0)
       icache.io.fetch_addr :=
-        Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddr)
+        Mux(immuBypass, ifu.io.FetchAddr(31, 0), immu.io.fetchPaddr)
       icache.io.fetch_paddr_valid :=
         immuBypass || immu.io.translationValid
       icache.io.fetch_paddr_vaddr :=
-        Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddrVaddr)
+        Mux(immuBypass, ifu.io.FetchAddr(31, 0), immu.io.fetchPaddrVaddr)
       // 翻译故障与重定向都杀死未完成的 VA 请求，错误数据绝不提交。
       icache.io.kill := pipe_flush || immu.io.fault
     } else {
       immu.io.fetchValid := ifu.io.FetchValid
-      immu.io.fetchVaddr := ifu.io.FetchAddr
+      immu.io.fetchVaddr := ifu.io.FetchAddr(31, 0)
       immu.io.cacheReady := icache.io.fetch_ready
       ifu.io.FetchReady := immu.io.fetchReady
       icache.io.fetch_addr := immu.io.fetchPaddr
-      icache.io.fetch_vaddr := ifu.io.FetchAddr
+      icache.io.fetch_vaddr := ifu.io.FetchAddr(31, 0)
       icache.io.fetch_valid := ifu.io.FetchValid && immu.io.translationValid
       // PIPT 实现忽略这两个端口；保持旧路径完全不变。
       icache.io.fetch_paddr_valid := true.B
-      icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
+      icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr(31, 0)
       icache.io.kill := pipe_flush
     }
 
@@ -437,11 +442,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     when(mmuFlush) { ifuFaultValid := false.B }
   } else {
     icache.io.axi <> arbiter.io.ifu
-    icache.io.fetch_addr := ifu.io.FetchAddr
-    icache.io.fetch_vaddr := ifu.io.FetchAddr
+    icache.io.fetch_addr := ifu.io.FetchAddr(31, 0)
+    icache.io.fetch_vaddr := ifu.io.FetchAddr(31, 0)
     // 无 MMU 时 VA==PA，VIPT 等价于恒等映射，不需要等待翻译。
     icache.io.fetch_paddr_valid := true.B
-    icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
+    icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr(31, 0)
     // PMP 故障请求不得进入 ICache；故障 PC 在响应级合成 cause=1。
     icache.io.fetch_valid := ifu.io.FetchValid && pmpFetchAllow
     icache.io.kill := pipe_flush
@@ -456,7 +461,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   jal_btb.io.lookup_pc := ifu.io.FetchAddr(31, 2)
   // Ret只有在RAS非空时才有资格取得优先级；Ret表项的target保存静态
   // JALR immediate，由选择器与动态栈顶相加。分支仍采用BTFN方向预测。
-  predictorSelect.io.fetchPC := ifu.io.FetchAddr
+  predictorSelect.io.fetchPC := ifu.io.FetchAddr(31, 0)
   predictorSelect.io.branchHit := btb.io.hit
   predictorSelect.io.branchTarget := btb.io.target
   predictorSelect.io.jalHit := jal_btb.io.hit
@@ -465,20 +470,20 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   predictorSelect.io.rasNonempty := ras.io.nonempty
   predictorSelect.io.rasTop := ras.io.top
   ifu.io.PredHit := predictorSelect.io.predHit
-  ifu.io.PredTarget := predictorSelect.io.predTarget
+  ifu.io.PredTarget := Widen32(predictorSelect.io.predTarget)
   // BTB更新: EXU提交时按指令类型路由, 分支写分支表, jal/ret写jal表(带kind)
   btb.io.update_valid := exu.io.BTBUpdateValid
   btb.io.update_pc := exu.io.BTBUpdatePC(31, 2)
-  btb.io.update_target := exu.io.BTBUpdateTarget
+  btb.io.update_target := exu.io.BTBUpdateTarget(31, 0)
   btb.io.flush := exu.io.FenceIFlush
   jal_btb.io.update_valid := exu.io.JalBTBUpdateValid
   jal_btb.io.update_pc := exu.io.JalBTBUpdatePC(31, 2)
-  jal_btb.io.update_target := exu.io.JalBTBUpdateTarget
+  jal_btb.io.update_target := exu.io.JalBTBUpdateTarget(31, 0)
   jal_btb.io.update_kind.get := exu.io.JalBTBUpdateKind
   jal_btb.io.flush := exu.io.FenceIFlush
   // RAS更新: call压栈, ret弹栈
   ras.io.push_valid := exu.io.RASPushValid
-  ras.io.push_addr := exu.io.RASPushAddr
+  ras.io.push_addr := exu.io.RASPushAddr(31, 0)
   ras.io.pop_valid := exu.io.RASPopValid
   ras.io.flush := exu.io.FenceIFlush
   if (mmuEnabled) {
@@ -782,11 +787,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 一拍后暴露给 C++，保证上升沿上的所有更老 GPR 写回已经生效。
   val SimHaltCommit = exu.io.SimHaltValid
   io.trap_valid := RegNext(SimHaltCommit, false.B)
-  io.trap_pc := RegEnable(exu.io.SimHaltPC, config.ResetAddr.U(32.W), SimHaltCommit)
+  io.trap_pc := RegEnable(exu.io.SimHaltPC(31, 0), config.ResetAddr.U(32.W), SimHaltCommit)
   // 固定 ABI：关闭动态调试读口时，GPR 模块忽略地址并将这里直连到 a0，
   // 供 custom halt 判定 GOOD/BAD；不会为此保留第三个 32 路读 mux。
   gpr.io.DebugRaddr := io.debug_gpr_raddr
-  io.debug_gpr_rdata := gpr.io.DebugRdata
+  io.debug_gpr_rdata := gpr.io.DebugRdata(31, 0)
   // WBUCommit 与最小架构 PC 不属于可选观测逻辑。异常/中断即使在所有
   // 调试功能关闭时也需要精确的最近架构边界。
   val WBUCommit = wbu.io.in.fire && wbu.io.in.bits.Retire
@@ -803,14 +808,14 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     io.debug_commit := RegNext(WBUCommit, false.B)
     io.debug_pc := RegEnable(
       wbu.io.in.bits.pc,
-      config.ResetAddr.U(32.W),
+      config.ResetAddr.U(XLEN.W),
       WBUCommit
-    )
+    )(31, 0)
     io.debug_next_pc := RegEnable(
       wbu.io.in.bits.NextPC,
-      config.ResetAddr.U(32.W),
+      config.ResetAddr.U(XLEN.W),
       WBUCommit
-    )
+    )(31, 0)
     io.debug_instructions := RegEnable(
       wbu.io.in.bits.Instruction,
       "h00000013".U(32.W),
@@ -826,7 +831,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 调试器的 $pc 不能复用 retire trace PC。正常退休时前进到
   // 该指令的实际后继；异常/中断提交时直接记录 trap 目标。
   // 若同拍既有更老的 WBU 退休又有年轻 trap，trap 必须优先。
-  val ArchitecturalPC = RegInit(config.ResetAddr.U(32.W))
+  val ArchitecturalPC = RegInit(config.ResetAddr.U(XLEN.W))
   // 空流水中断没有随指令携带的 PC；同拍若有更老退休，则以该指令后继
   // 为边界，否则使用最近架构 PC。此路径是架构状态，不能随调试功能裁剪。
   exu.io.IdleIrqPC := Mux(WBUCommit, wbu.io.in.bits.NextPC, ArchitecturalPC)
@@ -836,20 +841,20 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   when(exu.io.TrapCommit) {
     ArchitecturalPC := exu.io.TrapTarget
   }
-  io.debug_arch_pc := ArchitecturalPC
+  io.debug_arch_pc := ArchitecturalPC(31, 0)
 
   if (config.EnableTrapTrace) {
     io.debug_trap_valid := RegNext(exu.io.TrapCommit, false.B)
     io.debug_trap_pc := RegEnable(
       exu.io.TrapPC,
-      config.ResetAddr.U(32.W),
+      config.ResetAddr.U(XLEN.W),
       exu.io.TrapCommit
-    )
+    )(31, 0)
     io.debug_trap_target := RegEnable(
       exu.io.TrapTarget,
-      config.ResetAddr.U(32.W),
+      config.ResetAddr.U(XLEN.W),
       exu.io.TrapCommit
-    )
+    )(31, 0)
     io.debug_trap_cause := RegEnable(
       exu.io.TrapCause,
       0.U(32.W),
@@ -864,44 +869,44 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   if (config.EnableCSRTrace) {
     io.debug_csr_mstatus := RegEnable(
       wbu.io.in.bits.CSRStateMstatus,
-      ysyx_26030103_mstatus.resetValue,
+      Widen32(ysyx_26030103_mstatus.resetValue),
       WBUCommit
-    )
+    )(31, 0)
     io.debug_csr_mtvec := RegEnable(
       wbu.io.in.bits.CSRStateMtvec,
-      0.U(32.W),
+      0.U(XLEN.W),
       WBUCommit
-    )
+    )(31, 0)
     io.debug_csr_mepc := RegEnable(
       wbu.io.in.bits.CSRStateMepc,
-      0.U(32.W),
+      0.U(XLEN.W),
       WBUCommit
-    )
+    )(31, 0)
     io.debug_csr_mcause := RegEnable(
       wbu.io.in.bits.CSRStateMcause,
-      0.U(32.W),
+      0.U(XLEN.W),
       WBUCommit
-    )
+    )(31, 0)
     io.debug_trap_mstatus := RegEnable(
       exu.io.CSRStateMstatus,
-      ysyx_26030103_mstatus.resetValue,
+      Widen32(ysyx_26030103_mstatus.resetValue),
       exu.io.TrapCommit
-    )
+    )(31, 0)
     io.debug_trap_mtvec := RegEnable(
       exu.io.CSRStateMtvec,
-      0.U(32.W),
+      0.U(XLEN.W),
       exu.io.TrapCommit
-    )
+    )(31, 0)
     io.debug_trap_mepc := RegEnable(
       exu.io.CSRStateMepc,
-      0.U(32.W),
+      0.U(XLEN.W),
       exu.io.TrapCommit
-    )
+    )(31, 0)
     io.debug_trap_mcause := RegEnable(
       exu.io.CSRStateMcause,
-      0.U(32.W),
+      0.U(XLEN.W),
       exu.io.TrapCommit
-    )
+    )(31, 0)
   } else {
     io.debug_csr_mstatus := 0.U
     io.debug_csr_mtvec := 0.U
@@ -919,7 +924,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   if (config.EnableMemoryTrace) {
     val MtraceCommit = WBUCommit && wbu.io.in.bits.MemoryValid
     io.debug_mtrace_valid := RegNext(MtraceCommit, false.B)
-    io.debug_mtrace_pc := RegEnable(wbu.io.in.bits.pc, 0.U(32.W), MtraceCommit)
+    io.debug_mtrace_pc := RegEnable(wbu.io.in.bits.pc, 0.U(XLEN.W), MtraceCommit)(31, 0)
     io.debug_mtrace_wen := RegEnable(
       wbu.io.in.bits.MemoryWrite,
       false.B,
@@ -927,19 +932,19 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     )
     io.debug_mtrace_addr := RegEnable(
       wbu.io.in.bits.ALUResult,
-      0.U(32.W),
+      0.U(XLEN.W),
       MtraceCommit
-    )
+    )(31, 0)
     io.debug_mtrace_wdata := RegEnable(
       wbu.io.in.bits.StoreData,
-      0.U(32.W),
+      0.U(XLEN.W),
       MtraceCommit
-    )
+    )(31, 0)
     io.debug_mtrace_rdata := RegEnable(
       wbu.io.in.bits.LoadData,
-      0.U(32.W),
+      0.U(XLEN.W),
       MtraceCommit
-    )
+    )(31, 0)
     io.debug_mtrace_width := RegEnable(
       wbu.io.in.bits.WidthSelect,
       0.U(2.W),
@@ -965,9 +970,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     io.debug_access_fault := RegNext(AccessFaultCommit, false.B)
     io.debug_access_fault_pc := RegEnable(
       Mux(LSUAccessFaultCommit, lsu.io.MemTrapPC, exu.io.FetchAccessFaultPC),
-      0.U(32.W),
+      0.U(XLEN.W),
       AccessFaultCommit
-    )
+    )(31, 0)
     io.debug_access_fault_resp := RegEnable(
       Mux(
         LSUAccessFaultCommit,

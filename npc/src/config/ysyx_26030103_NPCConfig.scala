@@ -96,10 +96,21 @@ case class ysyx_26030103_NPCConfig(
     // MMU/TLB 配置；当前已接入标准 Sv32 的 IFU/LSU 翻译路径。
     MMU: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
 ) {
-  require(XLEN == 32,
-    s"当前 RTL 只支持 XLEN=32；RV64 尚未实现，收到 XLEN=$XLEN")
+  require(XLEN == 32 || XLEN == 64,
+    s"XLEN 只允许 32 或 64，收到 XLEN=$XLEN")
   require(!UseA, "RISCV_A 还没有做")
   require(!UseC, "RISCV_C 还没做")
+  // 第一阶段 RV64 只实现无 MMU 的整数/乘除法核。MMU 的页表格式、satp
+  // 和 Sv39 地址翻译属于后续阶段，这里必须在 elaboration 期明确拒绝，
+  // 不能生成一个“看起来能跑”但不满足 RV64 虚存语义的核。
+  require(XLEN == 32 || !MMU.enabled,
+    "XLEN=64 第一阶段暂不支持 MMU/Sv39；请设置 HAS_MMU=n")
+  // RV64 下 LD/SD 需要一次访问 8 字节。当前 LSU/AXI 数据通路固定 32 位，
+  // 通过两拍窄传输实现；DCache 尚未适配 64 位访问，因此暂不允许同时开启。
+  require(XLEN == 32 || !DCacheEnable,
+    "XLEN=64 第一阶段暂不支持 DCache；请设置 DCACHE=n")
+  require(XLEN == 32 || !MMU.cacheMode.equals("vipt") || !ICacheEnable,
+    "XLEN=64 第一阶段 ICache 只支持物理地址索引")
   require(
     AddressWidth == 32,
     "当前RV32核的PC/PMA/流水线消息固定为32位；暂不支持非32位AddressWidth"
@@ -173,8 +184,11 @@ case class ysyx_26030103_NPCConfig(
   )
   require(
     MULWidth >= 32 && Integer.bitCount(MULWidth) == 1,
-    "RV32 M扩展的MULWidth必须是不小于32的2的幂(32/64/128/... )"
+    "MULWidth必须是不小于32的2的幂(32/64/128/... )"
   )
+  // 乘法器内部操作数宽度至少覆盖架构 XLEN。RV32 时与 MULWidth 完全一致；
+  // RV64 默认 MULWidth=32 会自动提升到 64，保证 MUL/MULH* 的 2*XLEN 乘积。
+  final val MULEffectiveWidth: Int = math.max(XLEN, MULWidth)
   require(
     MULCompressorInputs >= 3 && MULCompressorInputs <= 64,
     "MULCompressorInputs必须在3到64之间"
@@ -267,7 +281,7 @@ case class ysyx_26030103_NPCConfig(
     else { "" }
     val CExt = if (UseC) { "C" }
     else { "" }
-    "RV32I" + MExt + AExt + CExt
+    "RV" + XLEN.toString + "I" + MExt + AExt + CExt
   }
   private def PerfCounterList: String = {
     if (!PerfStatsEnable) { "off" }

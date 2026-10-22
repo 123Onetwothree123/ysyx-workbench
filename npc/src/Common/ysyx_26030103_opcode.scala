@@ -3,6 +3,9 @@ import chisel3._
 import chisel3.util._
 object ysyx_26030103_opcode {
   val OPCODE_Register = "b0110011".U(7.W)
+  // RV64 的 OP-IMM-32 / OP-32（ADDIW/ADDW/...）
+  val OPCODE_ImmediateWord = "b0011011".U(7.W)
+  val OPCODE_RegisterWord = "b0111011".U(7.W)
   val OPCODE_Immediate = "b0010011".U(7.W)
   val OPCODE_Immediate_Lxxx = "b0000011".U(7.W)
   val OPCODE_Immediate_Bxxx = "b1100111".U(7.W)

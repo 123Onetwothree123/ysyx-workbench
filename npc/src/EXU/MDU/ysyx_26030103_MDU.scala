@@ -4,26 +4,29 @@ import chisel3.util._
 import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.config._
 //MDU请求。
-class ysyx_26030103_MDURequest extends Bundle {
-  val LHS = UInt(32.W) //左操作数
-  val RHS = UInt(32.W) //右操作数
+class ysyx_26030103_MDURequest(val XLEN: Int = 32) extends Bundle {
+  require(XLEN == 32 || XLEN == 64, s"MDURequest XLEN 非法: $XLEN")
+  val LHS = UInt(XLEN.W) //左操作数
+  val RHS = UInt(XLEN.W) //右操作数
   val MDUOp = UInt(ysyx_26030103_MDUOp.Width.W) //M扩展操作码
 }
 //MDU结果。
-class ysyx_26030103_MDUResponse extends Bundle {
-  val Result = UInt(32.W) //指令结果
+class ysyx_26030103_MDUResponse(val XLEN: Int = 32) extends Bundle {
+  require(XLEN == 32 || XLEN == 64, s"MDUResponse XLEN 非法: $XLEN")
+  val Result = UInt(XLEN.W) //指令结果
 }
 //MDU路由握手接口。
-class ysyx_26030103_MDUInterface extends Bundle {
-  val Req = Flipped(Decoupled(new ysyx_26030103_MDURequest)) //输入请求
-  val Resp = Decoupled(new ysyx_26030103_MDUResponse) //输出结果
+class ysyx_26030103_MDUInterface(val XLEN: Int = 32) extends Bundle {
+  val Req = Flipped(Decoupled(new ysyx_26030103_MDURequest(XLEN))) //输入请求
+  val Resp = Decoupled(new ysyx_26030103_MDUResponse(XLEN)) //输出结果
   val Flush = Input(Bool()) //取消事务
 }
 //MDU只负责MUL/DIV路由和在途owner。
 class ysyx_26030103_MDU(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
 ) extends Module {
-  val io = IO(new ysyx_26030103_MDUInterface) //MDU接口
+  private val XLEN = config.XLEN
+  val io = IO(new ysyx_26030103_MDUInterface(XLEN)) //MDU接口
   private val MULUnit = Module(new ysyx_26030103_MULUnit(config))
   private val DIVUnit = Module(new ysyx_26030103_DIVUnit(config))
   // MUL与DIV独立执行，而此FIFO在两者延迟不同时仍保持架构请求顺序。

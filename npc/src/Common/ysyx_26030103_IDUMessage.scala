@@ -1,25 +1,28 @@
 package ysyx_26030103.common
 import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction.CtrlWidth
-class ysyx_26030103_IDUMessage extends Bundle {
+
+/** 译码级交付给执行级的消息；所有架构数据通路均为 XLEN 位。 */
+class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
+  require(XLEN == 32 || XLEN == 64, s"IDUMessage XLEN 非法: $XLEN")
   val Instruction = UInt(32.W)
-  val pc = UInt(32.W)
-  val snpc = UInt(32.W)
+  val pc = UInt(XLEN.W)
+  val snpc = UInt(XLEN.W)
 
   val ALUCtrl = UInt(CtrlWidth.W)
   //刚加的M扩展
   val IsMDU = Bool()
   val MDUOp = UInt(ysyx_26030103_MDUOp.Width.W)
-  val ALU_A = UInt(32.W)
-  val ALU_B = UInt(32.W)
+  val ALU_A = UInt(XLEN.W)
+  val ALU_B = UInt(XLEN.W)
 
-  val BranchA = UInt(32.W)
-  val BranchB = UInt(32.W)
+  val BranchA = UInt(XLEN.W)
+  val BranchB = UInt(XLEN.W)
   val BranchFunct3 = UInt(3.W)
   val IsBranch = Bool()
   val IsJal = Bool()
   val IsJalr = Bool()
-  val Immediate = UInt(32.W)
+  val Immediate = UInt(XLEN.W)
 
   val Rd = UInt(5.W)
   val RegisterWrite = Bool()
@@ -29,7 +32,7 @@ class ysyx_26030103_IDUMessage extends Bundle {
   val MemoryWrite = Bool()
   val WidthSelect = UInt(2.W)
   val LoadSigned = Bool()
-  val StoreData = UInt(32.W)
+  val StoreData = UInt(XLEN.W)
 
   val IsCsrrw = Bool()
   val IsCsrrs = Bool()
@@ -51,7 +54,7 @@ class ysyx_26030103_IDUMessage extends Bundle {
   // zimm 字段及其零扩展值。CSRRS[I]/CSRRC[I] 用字段是否为零判断
   // 是否具有写意图。
   val Rs1 = UInt(5.W)
-  val Rs1Data = UInt(32.W)
+  val Rs1Data = UInt(XLEN.W)
 
 
   // 异常标记:可能是IFU传下来的取指错(cause=1),也可能是IDU检测到的非法指令(cause=2)
@@ -61,5 +64,5 @@ class ysyx_26030103_IDUMessage extends Bundle {
   val AccessFaultResp = UInt(2.W)
   // 分支预测信息透传到EXU
   val pred_taken = Bool()
-  val pred_target = UInt(32.W)
+  val pred_target = UInt(XLEN.W)
 }

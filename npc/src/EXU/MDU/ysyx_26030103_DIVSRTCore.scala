@@ -6,15 +6,16 @@ import _root_.ysyx_26030103.config._
 //参数化SRT除法器，使用精确比较选择冗余商数字。
 class ysyx_26030103_DIVSRTCore(
     config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
-) extends ysyx_26030103_DIVCore {
+) extends ysyx_26030103_DIVCore(config.XLEN) {
+  private val CoreWidth = config.XLEN
   private val Radix = config.DIVRadix //除法基数
   private val DigitBits = ysyx_26030103_MULBoothConfig.BoothBits(Radix) //单个基数数字位数
   private val IterationsPerCycle = config.DIVIterBits //每拍处理的基数数字数
   private val CycleDigitBits = DigitBits * IterationsPerCycle //每拍处理的总位数
-  private val CycleCount = (32 + CycleDigitBits - 1) / CycleDigitBits //迭代轮数
+  private val CycleCount = (CoreWidth + CycleDigitBits - 1) / CycleDigitBits //迭代轮数
   private val PaddedBits = CycleCount * CycleDigitBits //补齐后的被除数宽度
-  private val RemainderWidth = DigitBits + 34 //部分余数宽度
-  private val QuotientWidth = 34 //冗余商累加器宽度
+  private val RemainderWidth = DigitBits + CoreWidth + 2 //部分余数宽度
+  private val QuotientWidth = CoreWidth + 2 //冗余商累加器宽度
   private val QuotientDigitWidth = DigitBits + 1 //有符号商数字宽度
   private val CounterWidth = log2Ceil(CycleCount + 1).max(1) //计数器宽度
   private val Busy = RegInit(false.B) //正在迭代
@@ -22,12 +23,12 @@ class ysyx_26030103_DIVSRTCore(
   private val DivZero = RegInit(false.B) //除数为零
   private val RemainderReg = RegInit(0.S(RemainderWidth.W)) //有符号部分余数
   private val DividendReg = RegInit(0.U(PaddedBits.W)) //待处理被除数
-  private val DivisorReg = RegInit(0.U(32.W)) //除数幅值
+  private val DivisorReg = RegInit(0.U(CoreWidth.W)) //除数幅值
   private val QuotientReg = RegInit(0.S(QuotientWidth.W)) //冗余商累加器
-  private val OriginalDividend = RegInit(0.U(32.W)) //除零时返回原被除数
+  private val OriginalDividend = RegInit(0.U(CoreWidth.W)) //除零时返回原被除数
   private val Count = RegInit(0.U(CounterWidth.W)) //迭代计数
-  private val QuotientResult = RegInit(0.U(32.W)) //输出商
-  private val RemainderResult = RegInit(0.U(32.W)) //输出余数
+  private val QuotientResult = RegInit(0.U(CoreWidth.W)) //输出商
+  private val RemainderResult = RegInit(0.U(CoreWidth.W)) //输出余数
   IO.Req.ready := !IO.Flush && !Busy && (!ResultValid || IO.Resp.ready) //可接收请求
   IO.Resp.valid := ResultValid && !IO.Flush //结果有效
   IO.Resp.bits.Quotient := QuotientResult //输出商
@@ -35,7 +36,7 @@ class ysyx_26030103_DIVSRTCore(
   val ReqFire = IO.Req.valid && IO.Req.ready //请求握手
   val RespFire = IO.Resp.valid && IO.Resp.ready //响应握手
   val InputBits = DividendReg(PaddedBits - 1, PaddedBits - CycleDigitBits) //本轮被除数数字
-  val DivisorWide = Cat(0.U((RemainderWidth - 32).W), DivisorReg) //扩展除数
+  val DivisorWide = Cat(0.U((RemainderWidth - CoreWidth).W), DivisorReg) //扩展除数
   var SelectedRemainder: SInt = RemainderReg //当前部分余数
   var SelectedQuotient: SInt = QuotientReg //当前冗余商
   for (Iteration <- 0 until IterationsPerCycle) {
@@ -144,10 +145,10 @@ class ysyx_26030103_DIVSRTCore(
     ResultValid := false.B
     DivZero := IO.Req.bits.DivisorMagnitude === 0.U
     RemainderReg := 0.S
-    if (PaddedBits == 32) {
+    if (PaddedBits == CoreWidth) {
       DividendReg := IO.Req.bits.DividendMagnitude
     } else {
-      DividendReg := Cat(0.U((PaddedBits - 32).W), IO.Req.bits.DividendMagnitude)
+      DividendReg := Cat(0.U((PaddedBits - CoreWidth).W), IO.Req.bits.DividendMagnitude)
     }
     DivisorReg := IO.Req.bits.DivisorMagnitude
     QuotientReg := 0.S
@@ -157,7 +158,7 @@ class ysyx_26030103_DIVSRTCore(
     when (DivZero) {
       Busy := false.B
       ResultValid := true.B
-      QuotientResult := "hffffffff".U
+      QuotientResult := Fill(CoreWidth, 1.U)
       RemainderResult := OriginalDividend
     }.otherwise {
       RemainderReg := NextRemainder
@@ -166,8 +167,8 @@ class ysyx_26030103_DIVSRTCore(
       when (LastIteration || EarlyFinish) {
         Busy := false.B
         ResultValid := true.B
-        QuotientResult := CorrectedQuotientUInt(31, 0)
-        RemainderResult := CorrectedRemainderUInt(31, 0)
+        QuotientResult := CorrectedQuotientUInt(CoreWidth - 1, 0)
+        RemainderResult := CorrectedRemainderUInt(CoreWidth - 1, 0)
       }.otherwise {
         Count := Count + 1.U
       }

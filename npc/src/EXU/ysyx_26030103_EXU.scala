@@ -7,19 +7,25 @@ class ysyx_26030103_EXU(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends Module {
   private val hasS = config.MMU.hasS
+  private val XLEN = config.XLEN
+  // RV64 W 型运算的 32 位结果按 ISA 要求符号扩展到 XLEN。
+  private def Sext32(Value: UInt): UInt =
+    if (XLEN == 32) Value else Cat(Fill(XLEN - 32, Value(31)), Value)
+  private def Zext32(Value: UInt): UInt =
+    if (XLEN == 32) Value else Cat(0.U((XLEN - 32).W), Value)
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new ysyx_26030103_IDUMessage))
-    val out = Decoupled(new ysyx_26030103_EXUMessage)
+    val in = Flipped(Decoupled(new ysyx_26030103_IDUMessage(XLEN)))
+    val out = Decoupled(new ysyx_26030103_EXUMessage(XLEN))
     val Redirect = Output(Bool())
-    val RedirectTarget = Output(UInt(32.W))
+    val RedirectTarget = Output(UInt(XLEN.W))
     val ExceptionTaken = Output(Bool())
-    val ExceptionTarget = Output(UInt(32.W))
+    val ExceptionTarget = Output(UInt(XLEN.W))
     val Interrupt = Input(Bool())
     val TimerInterrupt = Input(Bool())
     // 当EXU没有有效输入、且所有更老指令都已排空时，中断仍必须在当前
     // 架构指令边界提交。该PC由顶层的提交态PC提供，不能使用可能已因
     // 预取而前移的任意流水级bits。
-    val IdleIrqPC = Input(UInt(32.W))
+    val IdleIrqPC = Input(UInt(XLEN.W))
     // MEM的反馈分成两类：MEMBusy只表示年长访存事务，用于
     // branch/fence等只需等待“可能故障的访存”的场景；PipelineBusy
     // 表示任意年长指令仍在MEM流水级，用于IRQ/CSR/异常的精确顺序。
@@ -27,26 +33,26 @@ class ysyx_26030103_EXU(
     val PipelineBusy = Input(Bool())
     val MemTrapCommit = Input(Bool())
     val MemTrapCause = Input(UInt(32.W))
-    val MemTrapPC = Input(UInt(32.W))
-    val MemTrapTval = Input(UInt(32.W))
+    val MemTrapPC = Input(UInt(XLEN.W))
+    val MemTrapTval = Input(UInt(XLEN.W))
 
     // custom-0 仿真 halt 的提交事件；架构 EBREAK 不走这条通路。
     val SimHaltValid = Output(Bool())
-    val SimHaltPC = Output(UInt(32.W))
+    val SimHaltPC = Output(UInt(XLEN.W))
     // 精确架构 trap 提交事件（不包含 MRET），用于 DiffTest
     // 和调试端在正确指令边界观察 PC 改变。
     val TrapCommit = Output(Bool())
-    val TrapPC = Output(UInt(32.W))
-    val TrapTarget = Output(UInt(32.W))
+    val TrapPC = Output(UInt(XLEN.W))
+    val TrapTarget = Output(UInt(XLEN.W))
     val TrapCause = Output(UInt(32.W))
     val CSRPrivilege = Output(UInt(2.W))
-    val CSRSatp = Output(UInt(32.W))
-    val CSRCurrentMstatus = Output(UInt(32.W))
+    val CSRSatp = Output(UInt(XLEN.W))
+    val CSRCurrentMstatus = Output(UInt(XLEN.W))
     val CSRFlushTLB = Output(Bool())
-    val CSRStateMstatus = Output(UInt(32.W))
-    val CSRStateMtvec = Output(UInt(32.W))
-    val CSRStateMepc = Output(UInt(32.W))
-    val CSRStateMcause = Output(UInt(32.W))
+    val CSRStateMstatus = Output(UInt(XLEN.W))
+    val CSRStateMtvec = Output(UInt(XLEN.W))
+    val CSRStateMepc = Output(UInt(XLEN.W))
+    val CSRStateMcause = Output(UInt(XLEN.W))
     val PmpCfg = Output(Vec(16, UInt(8.W)))
     val PmpAddr = Output(Vec(16, UInt(32.W)))
     val Mtime = Input(UInt(64.W))
@@ -54,7 +60,7 @@ class ysyx_26030103_EXU(
     val Scounteren = Output(UInt(32.W))
     // 取指 access fault 只在对应指令真正提交异常时上报。
     val FetchAccessFaultCommit = Output(Bool())
-    val FetchAccessFaultPC = Output(UInt(32.W))
+    val FetchAccessFaultPC = Output(UInt(XLEN.W))
     val FetchAccessFaultResp = Output(UInt(2.W))
     val PerfALUOp = Output(Bool())
     val PerfMemOp = Output(Bool())
@@ -91,30 +97,30 @@ class ysyx_26030103_EXU(
     val PerfIdleNoInput = Output(Bool())
     val PerfTrap = Output(Bool())
     // 转发给IDU: EX阶段生产者的最终写回值,以及该值当前是否可用于转发
-    val FwdData = Output(UInt(32.W))
+    val FwdData = Output(UInt(XLEN.W))
     val FwdReady = Output(Bool())
     // BTB更新: 分支提交时把真实target写回分支BTB
     val BTBUpdateValid = Output(Bool())
-    val BTBUpdatePC = Output(UInt(32.W))
-    val BTBUpdateTarget = Output(UInt(32.W))
+    val BTBUpdatePC = Output(UInt(XLEN.W))
+    val BTBUpdateTarget = Output(UInt(XLEN.W))
     // jal BTB更新: jal/call/ret提交时写回独立jal BTB(方案B), 带2位类型
     val JalBTBUpdateValid = Output(Bool())
-    val JalBTBUpdatePC = Output(UInt(32.W))
-    val JalBTBUpdateTarget = Output(UInt(32.W))
+    val JalBTBUpdatePC = Output(UInt(XLEN.W))
+    val JalBTBUpdateTarget = Output(UInt(XLEN.W))
     val JalBTBUpdateKind =
       Output(UInt(2.W)) // ysyx_26030103_BTBKind：普通跳转/调用/返回
     // RAS更新: call提交压栈(返回地址=snpc), ret提交弹栈
     val RASPushValid = Output(Bool())
-    val RASPushAddr = Output(UInt(32.W))
+    val RASPushAddr = Output(UInt(XLEN.W))
     val RASPopValid = Output(Bool())
   })
-  val ALUUnit = Module(new ysyx_26030103_ALU)
-  val CSRUnit = Module(new ysyx_26030103_CSR(config.MMU))
+  val ALUUnit = Module(new ysyx_26030103_ALU(XLEN))
+  val CSRUnit = Module(new ysyx_26030103_CSR(config.MMU, XLEN))
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
   CSRUnit.io.Interrupt := io.Interrupt
   CSRUnit.io.TimerInterrupt := io.TimerInterrupt
-  val BranchComparatorUnit = Module(new ysyx_26030103_BranchComparator)
+  val BranchComparatorUnit = Module(new ysyx_26030103_BranchComparator(XLEN))
   val inst = io.in.bits
   // M扩展关闭时，这些信号全部折叠为常量；MDU模块和顺序
   // 队列只在elaboration期的UseM分支中生成。这避免了RISCV_M=n时
@@ -125,8 +131,37 @@ class ysyx_26030103_EXU(
   val MDUReqFire = WireDefault(false.B)
   val MDURespFire = WireDefault(false.B)
   val MDURespValid = WireDefault(false.B)
-  val MDURespResult = WireDefault(0.U(32.W))
+  val MDURespResult = WireDefault(0.U(XLEN.W))
   val MDUHiddenWriteMask = WireDefault(0.U(32.W))
+  // RV64 W 型 M 扩展指令映射到对应的 XLEN 基础运算：
+  //   MULW/DIVW/REMW 先符号扩展低 32 位操作数；
+  //   DIVUW/REMUW 先零扩展低 32 位操作数；
+  // 结果再由 Sext32 把低 32 位符号扩展回 XLEN。
+  val IsWordMDU = ysyx_26030103_MDUOp.IsWordOp(inst.MDUOp)
+  val WordMDUUnsigned = inst.MDUOp === ysyx_26030103_MDUOp.DIVUW ||
+    inst.MDUOp === ysyx_26030103_MDUOp.REMUW
+  val MDUBaseOp = MuxLookup(inst.MDUOp, inst.MDUOp)(
+    Seq(
+      ysyx_26030103_MDUOp.MULW -> ysyx_26030103_MDUOp.MUL,
+      ysyx_26030103_MDUOp.DIVW -> ysyx_26030103_MDUOp.DIV,
+      ysyx_26030103_MDUOp.DIVUW -> ysyx_26030103_MDUOp.DIVU,
+      ysyx_26030103_MDUOp.REMW -> ysyx_26030103_MDUOp.REM,
+      ysyx_26030103_MDUOp.REMUW -> ysyx_26030103_MDUOp.REMU
+    )
+  )
+  val MDUWordLHS =
+    if (XLEN == 32) inst.ALU_A
+    else Mux(WordMDUUnsigned, Zext32(inst.ALU_A(31, 0)),
+      Sext32(inst.ALU_A(31, 0)))
+  val MDUWordRHS =
+    if (XLEN == 32) inst.ALU_B
+    else Mux(WordMDUUnsigned, Zext32(inst.ALU_B(31, 0)),
+      Sext32(inst.ALU_B(31, 0)))
+  val MDUReqLHS = if (XLEN == 32) inst.ALU_A
+    else Mux(IsWordMDU, MDUWordLHS, inst.ALU_A)
+  val MDUReqRHS = if (XLEN == 32) inst.ALU_B
+    else Mux(IsWordMDU, MDUWordRHS, inst.ALU_B)
+  val MDUReqOp = if (XLEN == 32) inst.MDUOp else Mux(IsWordMDU, MDUBaseOp, inst.MDUOp)
   // 上游随指令传来的异常标记(IFU取指错cause=1/IDU非法指令cause=2)
   val UpEx = inst.ExceptionValid
 
@@ -142,7 +177,7 @@ class ysyx_26030103_EXU(
   val BranchTaken = inst.IsBranch && BranchComparatorUnit.io.Taken
   val BranchTarget = inst.pc + inst.Immediate
   val JalTarget = ALUUnit.io.result
-  val JalrTarget = Cat(ALUUnit.io.result(31, 1), 0.U(1.W))
+  val JalrTarget = Cat(ALUUnit.io.result(XLEN - 1, 1), 0.U(1.W))
   val ControlTransferTaken = BranchTaken || inst.IsJal || inst.IsJalr
   val ControlTransferTarget = Mux(
     inst.IsJal,
@@ -217,9 +252,9 @@ class ysyx_26030103_EXU(
     // MDU的Flush必须同时屏蔽旧Resp；访存故障提交时，所有已经
     // 接收的年轻M指令都属于待取消事务。
     MDUUnit.io.Flush := io.MemTrapCommit
-    MDUUnit.io.Req.bits.LHS := inst.ALU_A
-    MDUUnit.io.Req.bits.RHS := inst.ALU_B
-    MDUUnit.io.Req.bits.MDUOp := inst.MDUOp
+    MDUUnit.io.Req.bits.LHS := MDUReqLHS
+    MDUUnit.io.Req.bits.RHS := MDUReqRHS
+    MDUUnit.io.Req.bits.MDUOp := MDUReqOp
 
     val MDURespReady = PendingMDU && io.out.ready &&
       !io.MemTrapCommit && !BlockPendingMDUForMEM
@@ -408,7 +443,7 @@ class ysyx_26030103_EXU(
     Mux(
       InstructionAddressMisaligned,
       0.U(32.W),
-      Cat(0.U(28.W), inst.ExceptionCause)
+      Cat(0.U((XLEN - 4).W), inst.ExceptionCause)
     )
   )
 
@@ -476,9 +511,15 @@ class ysyx_26030103_EXU(
     ActiveInst.RegisterWrite && !ActiveInstructionTrapValid &&
       !CSRUnit.io.IrqCommit && !io.MemTrapCommit
   io.out.bits.WBSelect := ActiveInst.WBSelect
-  io.out.bits.ALUResult := Mux(PendingMDU, MDURespResult, ALUUnit.io.result)
+  // RV64 W 型 M 扩展结果只保留低 32 位并按 bit31 符号扩展。
+  val MDUResultFinal =
+    if (XLEN == 64)
+      Mux(ysyx_26030103_MDUOp.IsWordOp(ActiveInst.MDUOp),
+        Sext32(MDURespResult(31, 0)), MDURespResult)
+    else MDURespResult
+  io.out.bits.ALUResult := Mux(PendingMDU, MDUResultFinal, ALUUnit.io.result)
   io.out.bits.VAddr := ALUUnit.io.result
-  io.out.bits.LoadData := 0.U(32.W) // 由MEM在访存完成后填写
+  io.out.bits.LoadData := 0.U(XLEN.W) // 由MEM在访存完成后填写
   io.out.bits.CSRReadData := CSRUnit.io.CSR_rdata
   io.out.bits.CSRStateMstatus := CSRUnit.io.StateMstatus
   io.out.bits.CSRStateMtvec := CSRUnit.io.StateMtvec
@@ -576,7 +617,7 @@ class ysyx_26030103_EXU(
   // (load数据在EXU阶段不可知,由MEM提供它那一级的转发)
   io.FwdData := Mux(
     PendingMDU,
-    MDURespResult,
+    MDUResultFinal,
     Mux(
       ActiveInst.WBSelect === 2.U,
       ActiveInst.snpc,

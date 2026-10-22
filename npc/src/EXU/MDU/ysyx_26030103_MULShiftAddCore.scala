@@ -6,8 +6,8 @@ import _root_.ysyx_26030103.config._
 //移位累加乘法器。
 class ysyx_26030103_MULShiftAddCore(
     config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
-) extends ysyx_26030103_MULCore(config.MULWidth) {
-  private val OperandWidth = config.MULWidth
+) extends ysyx_26030103_MULCore(config.MULEffectiveWidth) {
+  private val OperandWidth = config.MULEffectiveWidth
   private val ProductWidth = 2 * OperandWidth
   private val UseBooth = config.MULEncoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth
   private val BoothRadix = if (UseBooth) config.MULRadix else 2 //单个Booth基数

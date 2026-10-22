@@ -1,10 +1,11 @@
 package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
-class ysyx_26030103_BranchComparator extends Module {
+class ysyx_26030103_BranchComparator(val XLEN: Int = 32) extends Module {
+  require(XLEN == 32 || XLEN == 64, s"BranchComparator XLEN 非法: $XLEN")
   val io = IO(new Bundle {
-    val A = Input(UInt(32.W))
-    val B = Input(UInt(32.W))
+    val A = Input(UInt(XLEN.W))
+    val B = Input(UInt(XLEN.W))
     val Funct3 = Input(UInt(3.W))
     val IsBranch = Input(Bool())
     val Taken = Output(Bool()) // 看看是否跳转

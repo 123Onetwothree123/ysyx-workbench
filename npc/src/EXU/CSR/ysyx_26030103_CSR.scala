@@ -14,11 +14,19 @@ import chisel3.util._
   */
 class ysyx_26030103_CSR(
     val profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
-      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile()
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(),
+    val XLEN: Int = 32
 ) extends Module {
   import ysyx_26030103_mstatus.legalize
+  require(XLEN == 32 || XLEN == 64, s"CSR XLEN 非法: $XLEN")
   private val hasS = profile.hasS
   private val hasU = profile.hasU
+  private val FullMask: BigInt =
+    if (XLEN == 64) (BigInt(1) << 64) - 1 else 0xffffffffL
+  // 32 位 CSR（mstatus/mie/mip 等）在 RV64 下零扩展到 XLEN；
+  // mepc/mtvec/mtval/mscratch 等则天然使用完整 XLEN。
+  private def Widen32(Value: UInt): UInt =
+    if (XLEN == 32) Value else Cat(0.U((XLEN - 32).W), Value)
   private def csrOn(addr: Int): Boolean = profile.csrSupported(addr)
   // HAS_U=n 时 mstatus 的 MPP/SPP 最低值被夹到 S；HAS_S=n 时固定为 M。
   private def legalizeMstatus(value: UInt): UInt =
@@ -37,15 +45,15 @@ class ysyx_26030103_CSR(
     val IsSfenceVma = Input(Bool())
     val CSRAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
-    val Rs1Data = Input(UInt(32.W))
-    val pc = Input(UInt(32.W))
-    val TrapTval = Input(UInt(32.W))
-    val CSR_rdata = Output(UInt(32.W))
+    val Rs1Data = Input(UInt(XLEN.W))
+    val pc = Input(UInt(XLEN.W))
+    val TrapTval = Input(UInt(XLEN.W))
+    val CSR_rdata = Output(UInt(XLEN.W))
     val ExceptionTaken = Output(Bool())
-    val ExceptionTarget = Output(UInt(32.W))
+    val ExceptionTarget = Output(UInt(XLEN.W))
     val FlushTLB = Output(Bool())
     val Privilege = Output(UInt(2.W))
-    val Satp = Output(UInt(32.W))
+    val Satp = Output(UInt(XLEN.W))
 
     val Interrupt = Input(Bool())
     val TimerInterrupt = Input(Bool())
@@ -57,11 +65,11 @@ class ysyx_26030103_CSR(
     val TrapCommit = Output(Bool())
     val CommittedCause = Output(UInt(32.W))
 
-    val CurrentMstatus = Output(UInt(32.W))
-    val StateMstatus = Output(UInt(32.W))
-    val StateMtvec = Output(UInt(32.W))
-    val StateMepc = Output(UInt(32.W))
-    val StateMcause = Output(UInt(32.W))
+    val CurrentMstatus = Output(UInt(XLEN.W))
+    val StateMstatus = Output(UInt(XLEN.W))
+    val StateMtvec = Output(UInt(XLEN.W))
+    val StateMepc = Output(UInt(XLEN.W))
+    val StateMcause = Output(UInt(XLEN.W))
     val PmpCfg = Output(Vec(16, UInt(8.W)))
     val PmpAddr = Output(Vec(16, UInt(32.W)))
     val Mtime = Input(UInt(64.W))
@@ -119,27 +127,27 @@ class ysyx_26030103_CSR(
       .reduceOption(_ || _).getOrElse(false.B)
   val CsrUseSstatusView = profile.csrViewMode == "bound"
   def CsrReadMask: UInt = {
-    val full = 0xffffffffL.U(32.W)
+    val full = FullMask.U(XLEN.W)
     val mstatusMask =
       if (csrOn(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
-        (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(32.W), full) else full
+        (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(XLEN.W), full) else full
     if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
-      (profile.csrSatpReadMask.toLong & 0xffffffffL).U(32.W), mstatusMask) else mstatusMask
+      (profile.csrSatpReadMask.toLong & 0xffffffffL).U(XLEN.W), mstatusMask) else mstatusMask
   }
   def CsrReadSet: UInt = {
     val mstatusSet =
       if (csrOn(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
-        (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(32.W), 0.U(32.W)) else 0.U(32.W)
+        (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(XLEN.W), 0.U(XLEN.W)) else 0.U(XLEN.W)
     if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
-      (profile.csrSatpReadSet.toLong & 0xffffffffL).U(32.W), mstatusSet) else mstatusSet
+      (profile.csrSatpReadSet.toLong & 0xffffffffL).U(XLEN.W), mstatusSet) else mstatusSet
   }
   def CsrWriteMask: UInt = {
-    val full = 0xffffffffL.U(32.W)
+    val full = FullMask.U(XLEN.W)
     val mstatusMask =
       if (csrOn(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
-        (profile.csrMstatusWriteMask.toLong & 0xffffffffL).U(32.W), full) else full
+        (profile.csrMstatusWriteMask.toLong & 0xffffffffL).U(XLEN.W), full) else full
     if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
-      (profile.csrSatpWriteMask.toLong & 0xffffffffL).U(32.W), mstatusMask) else mstatusMask
+      (profile.csrSatpWriteMask.toLong & 0xffffffffL).U(XLEN.W), mstatusMask) else mstatusMask
   }
 
   val csrrwWen = io.Enable && io.IsCsrrw
@@ -159,15 +167,15 @@ class ysyx_26030103_CSR(
   val SfenceCommit = if (hasS) io.Enable && io.IsSfenceVma else false.B
 
   val Mstatus = Module(new ysyx_26030103_mstatus(hasS, hasU))
-  val Mtvec = Module(new ysyx_26030103_mtvec)
-  val Mepc = Module(new ysyx_26030103_mepc)
-  val Mcause = Module(new ysyx_26030103_mcause)
+  val Mtvec = Module(new ysyx_26030103_mtvec(XLEN))
+  val Mepc = Module(new ysyx_26030103_mepc(XLEN))
+  val Mcause = Module(new ysyx_26030103_mcause(XLEN))
   // S 模式入口寄存器只在 HAS_S=y 时例化。HAS_S=n 时顶层不生成 MMU，
   // 也不会有可返回的 S 状态，因此这些寄存器没有保留价值。
-  val StvecOpt = if (hasS) Some(Module(new ysyx_26030103_mtvec)) else None
-  val SepcOpt = if (hasS) Some(Module(new ysyx_26030103_mepc)) else None
-  val ScauseOpt = if (hasS) Some(Module(new ysyx_26030103_mcause)) else None
-  val Mcycle = Module(new ysyx_26030103_mcycle)
+  val StvecOpt = if (hasS) Some(Module(new ysyx_26030103_mtvec(XLEN))) else None
+  val SepcOpt = if (hasS) Some(Module(new ysyx_26030103_mepc(XLEN))) else None
+  val ScauseOpt = if (hasS) Some(Module(new ysyx_26030103_mcause(XLEN))) else None
+  val Mcycle = Module(new ysyx_26030103_mcycle(XLEN))
 
   Mstatus.io.clk := io.clk; Mstatus.io.rst := io.rst
   Mtvec.io.clk := io.clk; Mtvec.io.rst := io.rst
@@ -178,8 +186,8 @@ class ysyx_26030103_CSR(
   ScauseOpt.foreach { m => m.io.clk := io.clk; m.io.rst := io.rst }
   Mcycle.io.clk := io.clk; Mcycle.io.rst := io.rst
 
-  val Mscratch = RegInit(0.U(32.W))
-  val SscratchOpt = if (hasS) Some(RegInit(0.U(32.W))) else None
+  val Mscratch = RegInit(0.U(XLEN.W))
+  val SscratchOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
   // independent 视图需要独立 sstatus；bound 视图直接使用 mstatus 的字段。
   val SstatusRegOpt =
     if (hasS && profile.csrViewMode == "independent") Some(RegInit(0.U(32.W)))
@@ -198,18 +206,18 @@ class ysyx_26030103_CSR(
   val Mcounteren = RegInit(0.U(32.W))
   val Mcountinhibit = RegInit(0.U(32.W))
   Mcycle.io.Enable := !Mcountinhibit(0)
-  val Mtval = RegInit(0.U(32.W))
+  val Mtval = RegInit(0.U(XLEN.W))
   val Minstret = RegInit(0.U(64.W))
   val PmpcfgReg = RegInit(VecInit(Seq.fill(4)(0.U(32.W))))
   val PmpaddrReg = RegInit(VecInit(Seq.fill(16)(0.U(32.W))))
-  val StvalOpt = if (hasS) Some(RegInit(0.U(32.W))) else None
-  val SatpRegOpt = if (hasS) Some(RegInit(0.U(32.W))) else None
+  val StvalOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
+  val SatpRegOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
   val SatpReadData =
     if (hasS) {
       val SatpReg = SatpRegOpt.get
-      (SatpReg & (profile.csrSatpReadMask & 0xffffffffL).U(32.W)) |
-        (profile.csrSatpReadSet.toLong & 0xffffffffL).U(32.W)
-    } else 0.U(32.W)
+      (SatpReg & (profile.csrSatpReadMask & 0xffffffffL).U(XLEN.W)) |
+        (profile.csrSatpReadSet.toLong & 0xffffffffL).U(XLEN.W)
+    } else 0.U(XLEN.W)
 
   val Mstatus_rdata = Mstatus.io.rdata
   // M-only 时特权级恒为 M，不生成寄存器；有 S 时只保存 S/M 两个可达状态
@@ -218,6 +226,8 @@ class ysyx_26030103_CSR(
   val MstatusReadData =
     (Mstatus_rdata & (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(32.W)) |
       (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(32.W)
+  // 32 位 CSR 在 RV64 下读回高 32 位为 0。
+  val MstatusReadDataWide = Widen32(MstatusReadData)
   val Sstatus_rdata =
     if (!hasS) 0.U(32.W)
     else if (profile.csrViewMode == "independent") SstatusRegOpt.get
@@ -225,18 +235,27 @@ class ysyx_26030103_CSR(
   val Mtvec_rdata = Mtvec.io.rdata
   val Mepc_rdata = Mepc.io.rdata
   val Mcause_rdata = Mcause.io.rdata
-  val Stvec_rdata = StvecOpt.map(_.io.rdata).getOrElse(0.U(32.W))
-  val Sepc_rdata = SepcOpt.map(_.io.rdata).getOrElse(0.U(32.W))
-  val Scause_rdata = ScauseOpt.map(_.io.rdata).getOrElse(0.U(32.W))
-  val Mcycle_rdata = Mcycle.io.rdata
-  val Minstret_rdata = Minstret(31, 0)
+  val Stvec_rdata = StvecOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
+  val Sepc_rdata = SepcOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
+  val Scause_rdata = ScauseOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
+  // RV64 的 mcycle 直接返回完整 64 位；RV32 继续按 mcycle/mcycleh 选择。
+  val Mcycle_rdata = if (XLEN == 64) Mcycle.io.rdataFull else Mcycle.io.rdata
+  val Mcycleh_rdata = Mcycle.io.rdataFull(63, 32)
+  val Minstret_rdata =
+    if (XLEN == 64) Minstret else Minstret(31, 0)
   val Minstreth_rdata = Minstret(63, 32)
-  val Misa_rdata = "h40000100".U(32.W)
+  // misa.MXL: 1=RV32, 2=RV64；同时声明 I 扩展。
+  val Misa_rdata = {
+    val Mxl = if (XLEN == 64) BigInt(2) << 62 else BigInt(1) << 30
+    (Mxl | BigInt(0x100)).U(XLEN.W)
+  }
   val Medeleg_rdata = MedelegOpt.getOrElse(0.U(32.W))
   val Mideleg_rdata = MidelegOpt.getOrElse(0.U(32.W))
   val Sscratch_rdata = SscratchOpt.getOrElse(0.U(32.W))
   val Stval_rdata = StvalOpt.getOrElse(0.U(32.W))
   val Scounteren_rdata = ScounterenOpt.getOrElse(0.U(32.W))
+  // 写 32 位 CSR 时只取 CSRWriteData 的低 32 位，高半部保持 0。
+  private def Write32(Old: UInt): UInt = CSRWriteData(Widen32(Old))(31, 0)
 
   val IrqLatch = RegInit(false.B)
   when(io.Interrupt || io.TimerInterrupt) { IrqLatch := true.B }
@@ -375,7 +394,7 @@ class ysyx_26030103_CSR(
     else false.B
   val MstatusWriteMask = (profile.csrMstatusWriteMask.toLong & 0xffffffffL).U(32.W)
   val MstatusCSRData = {
-    val rawWrite = CSRWriteData(Mstatus_rdata)
+    val rawWrite = CSRWriteData(MstatusReadDataWide)(31, 0)
     val masked = (Mstatus_rdata & ~MstatusWriteMask) |
       (rawWrite & MstatusWriteMask)
     if (hasS && csrOn(0x100)) {
@@ -397,7 +416,7 @@ class ysyx_26030103_CSR(
   if (hasS && profile.csrViewMode == "independent") {
     val SstatusReg = SstatusRegOpt.get
     val sWrite = legalizeMstatus((SstatusReg & ~SstatusMask) |
-      (CSRWriteData(SstatusReg) & SstatusMask))
+      (Write32(SstatusReg) & SstatusMask))
     val sTrap = legalizeMstatus((SstatusReg & ~"h00000122".U(32.W)) |
       (SstatusReg(1) << 5) | (Privilege(0) << 8))
     val sRet = legalizeMstatus((SstatusReg & ~"h00000122".U(32.W)) |
@@ -422,7 +441,7 @@ class ysyx_26030103_CSR(
   Mepc.io.wdata := Mux(ExceptionCommit && !TrapToS, io.pc, CSRWriteData(Mepc_rdata))
   val McauseWen = CSRWen && IsCSRAddress(CSR_MCAUSE) && !TrapToS
   Mcause.io.wen := McauseWen || (ExceptionCommit && !TrapToS)
-  Mcause.io.wdata := Mux(ExceptionCommit && !TrapToS, ExceptionCause,
+  Mcause.io.wdata := Mux(ExceptionCommit && !TrapToS, Widen32(ExceptionCause),
     CSRWriteData(Mcause_rdata))
 
   SepcOpt.foreach { Sepc =>
@@ -435,7 +454,7 @@ class ysyx_26030103_CSR(
   ScauseOpt.foreach { Scause =>
     val ScauseWen = CSRWen && IsCSRAddress(CSR_SCAUSE)
     Scause.io.wen := ScauseWen || (ExceptionCommit && TrapToS)
-    Scause.io.wdata := Mux(ExceptionCommit && TrapToS, ExceptionCause,
+    Scause.io.wdata := Mux(ExceptionCommit && TrapToS, Widen32(ExceptionCause),
       CSRWriteData(Scause_rdata))
   }
 
@@ -454,16 +473,16 @@ class ysyx_26030103_CSR(
     }
   }
   when(CSRWen && IsCSRAddress(CSR_MTVAL)) { Mtval := CSRWriteData(Mtval) }
-  when(CSRWen && IsCSRAddress(CSR_MCOUNTEREN)) { Mcounteren := CSRWriteData(Mcounteren) }
-  when(CSRWen && IsCSRAddress(CSR_MCOUNTINHIBIT)) { Mcountinhibit := CSRWriteData(Mcountinhibit) }
+  when(CSRWen && IsCSRAddress(CSR_MCOUNTEREN)) { Mcounteren := Write32(Mcounteren) }
+  when(CSRWen && IsCSRAddress(CSR_MCOUNTINHIBIT)) { Mcountinhibit := Write32(Mcountinhibit) }
   for (word <- 0 until 4) {
     when(CSRWen && io.CSRAddress === (0x3a0 + word).U(12.W)) {
-      PmpcfgReg(word) := CSRWriteData(PmpcfgReg(word)) & "h0f0f0f0f".U(32.W)
+      PmpcfgReg(word) := Write32(PmpcfgReg(word)) & "h0f0f0f0f".U(32.W)
     }
   }
   for (entry <- 0 until 16) {
     when(CSRWen && io.CSRAddress === (0x3b0 + entry).U(12.W)) {
-      PmpaddrReg(entry) := CSRWriteData(PmpaddrReg(entry)) & "h3fffffff".U(32.W)
+      PmpaddrReg(entry) := Write32(PmpaddrReg(entry)) & "h3fffffff".U(32.W)
     }
   }
   // 标准 mcountinhibit：bit0=CY，bit2=IR。
@@ -473,41 +492,46 @@ class ysyx_26030103_CSR(
   }
   when(CSRWen && IsCSRAddress(CSR_MSCRATCH)) { Mscratch := CSRWriteData(Mscratch) }
   MedelegOpt.foreach { Medeleg =>
-    when(CSRWen && IsCSRAddress(CSR_MEDELEG)) { Medeleg := CSRWriteData(Medeleg) }
+    when(CSRWen && IsCSRAddress(CSR_MEDELEG)) { Medeleg := Write32(Medeleg) }
   }
   MidelegOpt.foreach { Mideleg =>
-    when(CSRWen && IsCSRAddress(CSR_MIDELEG)) { Mideleg := CSRWriteData(Mideleg) }
+    when(CSRWen && IsCSRAddress(CSR_MIDELEG)) { Mideleg := Write32(Mideleg) }
   }
-  when(CSRWen && IsCSRAddress(CSR_MIE)) { Mie := CSRWriteData(Mie) }
-  when(CSRWen && IsCSRAddress(CSR_MIP)) { Mip := CSRWriteData(Mip) }
+  when(CSRWen && IsCSRAddress(CSR_MIE)) { Mie := Write32(Mie) }
+  when(CSRWen && IsCSRAddress(CSR_MIP)) { Mip := Write32(Mip) }
   if (hasS && profile.csrViewMode == "independent") {
     val Sie = SieOpt.get
     val Sip = SipOpt.get
-    when(CSRWen && IsCSRAddress(CSR_SIE)) { Sie := CSRWriteData(Sie) }
-    when(CSRWen && IsCSRAddress(CSR_SIP)) { Sip := CSRWriteData(Sip) }
+    when(CSRWen && IsCSRAddress(CSR_SIE)) { Sie := Write32(Sie) }
+    when(CSRWen && IsCSRAddress(CSR_SIP)) { Sip := Write32(Sip) }
   } else if (hasS) {
     when(CSRWen && IsCSRAddress(CSR_SIE)) {
-      Mie := (Mie & ~SInterruptMask) | (CSRWriteData(Mie) & SInterruptMask)
+      Mie := (Mie & ~SInterruptMask) | (Write32(Mie) & SInterruptMask)
     }
     when(CSRWen && IsCSRAddress(CSR_SIP)) {
-      Mip := (Mip & ~SInterruptMask) | (CSRWriteData(Mip) & SInterruptMask)
+      Mip := (Mip & ~SInterruptMask) | (Write32(Mip) & SInterruptMask)
     }
   }
   ScounterenOpt.foreach { Scounteren =>
     when(CSRWen && IsCSRAddress(CSR_SCOUNTEREN)) {
-      Scounteren := CSRWriteData(Scounteren)
+      Scounteren := Write32(Scounteren)
     }
   }
   val SatpWen = if (hasS) CSRWen && IsCSRAddress(CSR_SATP) else false.B
   SatpRegOpt.foreach { SatpReg =>
     when(SatpWen) {
       val raw = CSRWriteData(SatpReg)
-      val data = (SatpReg & ~(profile.csrSatpWriteMask & 0xffffffffL).U(32.W)) |
-        (raw & (profile.csrSatpWriteMask & 0xffffffffL).U(32.W))
-      SatpReg := Cat(Mux(data(31), 1.U(1.W), 0.U(1.W)), data(30, 0))
+      val mask = (profile.csrSatpWriteMask & 0xffffffffL).U(XLEN.W)
+      val data = (SatpReg & ~mask) | (raw & mask)
+      if (XLEN == 32) {
+        // Sv32 satp.MODE 只支持 0/1。
+        SatpReg := Cat(Mux(data(31), 1.U(1.W), 0.U(1.W)), data(30, 0))
+      } else {
+        SatpReg := data
+      }
     }
   }
-  io.Satp := SatpRegOpt.getOrElse(0.U(32.W))
+  io.Satp := SatpRegOpt.getOrElse(0.U(XLEN.W))
   if (hasS) {
     val MretPrivilege =
       if (hasU) Mstatus_rdata(12, 11)
@@ -524,7 +548,7 @@ class ysyx_26030103_CSR(
     }
   }
   io.Privilege := Privilege
-  io.CurrentMstatus := Mstatus_rdata
+  io.CurrentMstatus := Widen32(Mstatus_rdata)
   io.FlushTLB := (if (hasS) SfenceCommit || SatpWen else false.B)
 
   val McycleAccess = IsCSRAddress(CSR_MCYCLE) || IsCSRAddress(CSR_MCYCLEH)
@@ -538,8 +562,8 @@ class ysyx_26030103_CSR(
   def addCsr(addr: UInt, data: => UInt, enabled: Boolean): Unit = {
     if (enabled) { CSRMap += (addr -> data) }
   }
-  addCsr(CSR_MSTATUS, MstatusReadData, csrOn(0x300))
-  addCsr(CSR_SSTATUS, Sstatus_rdata, csrOn(0x100))
+  addCsr(CSR_MSTATUS, MstatusReadDataWide, csrOn(0x300))
+  addCsr(CSR_SSTATUS, Widen32(Sstatus_rdata), csrOn(0x100))
   addCsr(CSR_MTVEC, Mtvec_rdata, csrOn(0x305))
   addCsr(CSR_STVEC, Stvec_rdata, csrOn(0x105))
   addCsr(CSR_MEPC, Mepc_rdata, csrOn(0x341))
@@ -548,49 +572,49 @@ class ysyx_26030103_CSR(
   addCsr(CSR_SCAUSE, Scause_rdata, csrOn(0x142))
   addCsr(CSR_MSCRATCH, Mscratch, csrOn(0x340))
   addCsr(CSR_SSCRATCH, Sscratch_rdata, csrOn(0x140))
-  addCsr(CSR_MEDELEG, Medeleg_rdata, csrOn(0x302))
-  addCsr(CSR_MIDELEG, Mideleg_rdata, csrOn(0x303))
-  addCsr(CSR_MIE, Mie, csrOn(0x304))
-  addCsr(CSR_MIP, Mip, csrOn(0x344))
-  addCsr(CSR_SIE, SieState, csrOn(0x104))
-  addCsr(CSR_SIP, SipState, csrOn(0x144))
-  addCsr(CSR_SCOUNTEREN, Scounteren_rdata, csrOn(0x106))
+  addCsr(CSR_MEDELEG, Widen32(Medeleg_rdata), csrOn(0x302))
+  addCsr(CSR_MIDELEG, Widen32(Mideleg_rdata), csrOn(0x303))
+  addCsr(CSR_MIE, Widen32(Mie), csrOn(0x304))
+  addCsr(CSR_MIP, Widen32(Mip), csrOn(0x344))
+  addCsr(CSR_SIE, Widen32(SieState), csrOn(0x104))
+  addCsr(CSR_SIP, Widen32(SipState), csrOn(0x144))
+  addCsr(CSR_SCOUNTEREN, Widen32(Scounteren_rdata), csrOn(0x106))
   addCsr(CSR_STVAL, Stval_rdata, csrOn(0x143))
   addCsr(CSR_SATP, SatpReadData, csrOn(0x180))
   addCsr(CSR_MCYCLE, Mcycle_rdata, csrOn(0xb00))
-  addCsr(CSR_MCYCLEH, Mcycle_rdata, csrOn(0xb80))
+  addCsr(CSR_MCYCLEH, Widen32(Mcycleh_rdata), csrOn(0xb80))
   addCsr(CSR_MINSTRET, Minstret_rdata, csrOn(0xb02))
-  addCsr(CSR_MINSTRETH, Minstreth_rdata, csrOn(0xb82))
+  addCsr(CSR_MINSTRETH, Widen32(Minstreth_rdata), csrOn(0xb82))
   addCsr(CSR_MISA, Misa_rdata, csrOn(0x301))
   addCsr(CSR_MTVAL, Mtval, csrOn(0x343))
-  addCsr(CSR_MCOUNTEREN, Mcounteren, csrOn(0x306))
-  addCsr(CSR_MCOUNTINHIBIT, Mcountinhibit, csrOn(0x320))
-  addCsr(CSR_MVENDORID, Mvendorid_rdata, csrOn(0xf11))
-  addCsr(CSR_MARCHID, Marchid_rdata, csrOn(0xf12))
+  addCsr(CSR_MCOUNTEREN, Widen32(Mcounteren), csrOn(0x306))
+  addCsr(CSR_MCOUNTINHIBIT, Widen32(Mcountinhibit), csrOn(0x320))
+  addCsr(CSR_MVENDORID, Widen32(Mvendorid_rdata), csrOn(0xf11))
+  addCsr(CSR_MARCHID, Widen32(Marchid_rdata), csrOn(0xf12))
   for (i <- 0 until 4) {
-    addCsr((0x3a0 + i).U(12.W), PmpcfgReg(i), csrOn(0x3a0 + i))
+    addCsr((0x3a0 + i).U(12.W), Widen32(PmpcfgReg(i)), csrOn(0x3a0 + i))
   }
   for (i <- 0 until 16) {
-    addCsr((0x3b0 + i).U(12.W), PmpaddrReg(i), csrOn(0x3b0 + i))
+    addCsr((0x3b0 + i).U(12.W), Widen32(PmpaddrReg(i)), csrOn(0x3b0 + i))
   }
   val CsrRawRdata =
-    if (CSRMap.isEmpty) 0.U(32.W)
-    else MuxLookup(io.CSRAddress, 0.U(32.W))(CSRMap.toSeq)
+    if (CSRMap.isEmpty) 0.U(XLEN.W)
+    else MuxLookup(io.CSRAddress, 0.U(XLEN.W))(CSRMap.toSeq)
   io.CSR_rdata := Mux(CsrImplemented,
-    (CsrRawRdata & CsrReadMask) | CsrReadSet, 0.U(32.W))
+    (CsrRawRdata & CsrReadMask) | CsrReadSet, 0.U(XLEN.W))
 
-  val MtvecBase = Cat(Mtvec_rdata(31, 2), 0.U(2.W))
-  val CauseOffsetWide = ExceptionCause(30, 0) << 2
-  val CauseOffset = CauseOffsetWide(31, 0)
+  val MtvecBase = Cat(Mtvec_rdata(XLEN - 1, 2), 0.U(2.W))
+  val CauseOffsetWide = ExceptionCause(29, 0) << 2
+  val CauseOffset = Widen32(CauseOffsetWide(31, 0))
   val MtvecTrapTarget = Mux(
     Mtvec_rdata(1, 0) === 1.U && ExceptionCause(31),
     MtvecBase + CauseOffset, MtvecBase)
   val StvecTrapTarget =
     if (hasS) {
-      val StvecBase = Cat(Stvec_rdata(31, 2), 0.U(2.W))
+      val StvecBase = Cat(Stvec_rdata(XLEN - 1, 2), 0.U(2.W))
       Mux(Stvec_rdata(1, 0) === 1.U && ExceptionCause(31),
         StvecBase + CauseOffset, StvecBase)
-    } else 0.U(32.W)
+    } else 0.U(XLEN.W)
 
   io.ExceptionTaken := ExceptionCommit || MretCommit ||
     (if (hasS) SretCommit else false.B)
@@ -608,20 +632,20 @@ class ysyx_26030103_CSR(
   )
 
   // 退休级快照表示本指令执行后的 CSR 状态。
-  io.StateMstatus := MuxCase(Mstatus_rdata,
+  io.StateMstatus := Widen32(MuxCase(Mstatus_rdata,
     Seq(
       ExceptionCommit -> MstatusExceptionData,
       MretCommit -> MstatusMretData
     ) ++ (if (hasS) Seq(SretCommit -> MstatusSretDataOpt.get) else Seq.empty) ++
-      Seq(MstatusWen -> MstatusCSRData))
+      Seq(MstatusWen -> MstatusCSRData)))
   val MtvecCSRData = CSRWriteData(Mtvec_rdata)
   val MtvecLegalMode = Mux(MtvecCSRData(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
   io.StateMtvec := Mux(CSRWen && IsCSRAddress(CSR_MTVEC),
-    Cat(MtvecCSRData(31, 2), MtvecLegalMode), Mtvec_rdata)
+    Cat(MtvecCSRData(XLEN - 1, 2), MtvecLegalMode), Mtvec_rdata)
   io.StateMepc := Mux(ExceptionCommit && !TrapToS,
-    Cat(io.pc(31, 2), 0.U(2.W)),
-    Mux(MepcWen, Cat(CSRWriteData(Mepc_rdata)(31, 2), 0.U(2.W)), Mepc_rdata))
-  io.StateMcause := Mux(ExceptionCommit && !TrapToS, ExceptionCause,
+    Cat(io.pc(XLEN - 1, 2), 0.U(2.W)),
+    Mux(MepcWen, Cat(CSRWriteData(Mepc_rdata)(XLEN - 1, 2), 0.U(2.W)), Mepc_rdata))
+  io.StateMcause := Mux(ExceptionCommit && !TrapToS, Widen32(ExceptionCause),
     Mux(McauseWen, CSRWriteData(Mcause_rdata), Mcause_rdata))
   io.McounterenOut := Mcounteren
   io.ScounterenOut := Scounteren_rdata

@@ -2,18 +2,19 @@ package ysyx_26030103.wbu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
-class ysyx_26030103_WBU extends Module {
+class ysyx_26030103_WBU(val XLEN: Int = 32) extends Module {
+  require(XLEN == 32 || XLEN == 64, s"WBU XLEN 非法: $XLEN")
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage))
+    val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage(XLEN)))
     // 给ysyx_26030103_GPR的
     val WriteSELECT = Output(UInt(5.W))
     val WriteEN = Output(Bool())
-    val wdata = Output(UInt(32.W))
+    val wdata = Output(UInt(XLEN.W))
   })
   io.in.ready := true.B
   io.WriteSELECT := io.in.bits.Rd
   io.WriteEN := io.in.fire && io.in.bits.RegisterWrite
-  io.wdata := 0.U(32.W)
+  io.wdata := 0.U(XLEN.W)
   switch(io.in.bits.WBSelect) {
     is("b00".U) {
       io.wdata := io.in.bits.ALUResult

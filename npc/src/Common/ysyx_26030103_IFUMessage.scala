@@ -1,9 +1,17 @@
 package ysyx_26030103.common
 import chisel3._
-class ysyx_26030103_IFUMessage extends Bundle {
+import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction.CtrlWidth
+
+/** 取指级交付给译码级的消息。
+  *
+  * Instruction 始终是 32 位，PC/预测目标跟随 XLEN。默认值 32 保证既有
+  * 单元测试和 RV32 配置的端口布局完全不变。
+  */
+class ysyx_26030103_IFUMessage(val XLEN: Int = 32) extends Bundle {
+  require(XLEN == 32 || XLEN == 64, s"IFUMessage XLEN 非法: $XLEN")
   val Instruction = UInt(32.W)
   val pc = UInt(
-    32.W
+    XLEN.W
   ) // 和ysyx_26030103_IFU的ysyx_26030103_PC做区别，这个是取的那一刻的ysyx_26030103_PC
   // 取指时检测到的异常(目前只有指令访问错误,cause=1),随指令传递到EXU提交点统一处理
   val ExceptionValid = Bool()
@@ -13,5 +21,6 @@ class ysyx_26030103_IFUMessage extends Bundle {
   val AccessFaultResp = UInt(2.W)
   // 分支预测信息: IFU取指时由BTB+BTFN给出,随指令传到EXU做"预测错误才重定向"
   val pred_taken = Bool()
-  val pred_target = UInt(32.W)
+  val pred_target = UInt(XLEN.W)
 }
+

@@ -245,8 +245,8 @@ private object ysyx_26030103_MULCompressionUtils {
 abstract class ysyx_26030103_MULCompressionCore(
     config: ysyx_26030103_NPCConfig,
     UseDadda: Boolean
-) extends ysyx_26030103_MULCore(config.MULWidth) {
-  private val OperandWidth = config.MULWidth
+) extends ysyx_26030103_MULCore(config.MULEffectiveWidth) {
+  private val OperandWidth = config.MULEffectiveWidth
   private val ProductWidth = 2 * OperandWidth
   private val CompressorConfig = config.MULCompressorConfig
   private val UseBooth = config.MULEncoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth编码

@@ -7,10 +7,10 @@ menu "硬件配置"
       default 32
       range 32 64
       help
-        指令位宽。32=RV32，64=RV64。当前 RTL 只实现 XLEN=32；
-        选择 64 会在 elaboration 阶段明确报错，防止生成不完整的
-        64 位核。RV64 的 PC、GPR、CSR、AXI 地址和 Sv39/Sv48
-        页表尚未接入。
+        指令位宽。32=RV32，64=RV64。当前 RV64 第一阶段已接通
+        GPR/PC/ALU/EXU/IDU/WBU/CSR 与 RV64I/RV64M 语义；
+        物理地址与 AXI 仍为 32 位，且暂不支持 MMU/Sv39 和 DCache。
+        选择 XLEN=64 时必须同时关闭 HAS_MMU 与 DCACHE。
 
     config RISCV_M
       bool "M 扩展（乘/除/取余）"

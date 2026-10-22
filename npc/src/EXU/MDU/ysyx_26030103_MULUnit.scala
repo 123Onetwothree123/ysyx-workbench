@@ -6,9 +6,9 @@ import _root_.ysyx_26030103.config._
 //MUL ISA适配层。
 class ysyx_26030103_MULUnit(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
-) extends ysyx_26030103_MULAdapter {
+) extends ysyx_26030103_MULAdapter(config.XLEN) {
   private val Core = ysyx_26030103_MULCoreFactory.Create(config)
-  private val CoreWidth = config.MULWidth
+  private val CoreWidth = config.MULEffectiveWidth
   private val CoreProductWidth = 2 * CoreWidth
   // 流水压缩核能够保留的每项在途请求都必须有一项符号/高半部元数据。
   // 仅使用一个Pending位会使原本II=1的Wallace/Dadda核串行化。
@@ -63,12 +63,15 @@ class ysyx_26030103_MULUnit(
   IO.Req.ready := !IO.Flush && MetadataHasSpace && Core.IO.Req.ready
   Core.IO.Req.valid := !IO.Flush && IO.Req.valid && MetadataHasSpace
   val CoreReqFire = Core.IO.Req.valid && Core.IO.Req.ready
-  val CoreProductWidthAdjusted = if (CoreProductWidth == 64) {
-    Core.IO.Resp.bits.Product(63, 0)
-  } else if (CoreProductWidth > 64) {
-    Core.IO.Resp.bits.Product(63, 0)
+  // 适配层只需要 2*XLEN 位乘积。MULWidth 可能大于 XLEN（例如为
+  // 时序/复用预留的 128 位乘法器），高位不参与架构结果。
+  private val ArchProductWidth = 2 * config.XLEN
+  val CoreProductWidthAdjusted = if (CoreProductWidth == ArchProductWidth) {
+    Core.IO.Resp.bits.Product
+  } else if (CoreProductWidth > ArchProductWidth) {
+    Core.IO.Resp.bits.Product(ArchProductWidth - 1, 0)
   } else {
-    Cat(0.U((64 - CoreProductWidth).W), Core.IO.Resp.bits.Product)
+    Cat(0.U((ArchProductWidth - CoreProductWidth).W), Core.IO.Resp.bits.Product)
   }
   val CoreProduct = ysyx_26030103_MULAdapterUtils.RestoreSign(
     CoreProductWidthAdjusted,
@@ -77,7 +80,8 @@ class ysyx_26030103_MULUnit(
   IO.Resp.valid := !IO.Flush && MetadataValid && Core.IO.Resp.valid
   IO.Resp.bits.Result := ysyx_26030103_MULAdapterUtils.SelectResult(
     CoreProduct,
-    HeadTakeHigh
+    HeadTakeHigh,
+    config.XLEN
   )
   val NextMetadataHead = Mux(
     MetadataHead === (MetadataDepth - 1).U,

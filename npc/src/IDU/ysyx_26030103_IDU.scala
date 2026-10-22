@@ -10,11 +10,12 @@ class ysyx_26030103_IDU(
 ) extends Module {
   private val hasS = config.MMU.hasS
   private val hasU = config.MMU.hasU
+  private val XLEN = config.XLEN
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new ysyx_26030103_IFUMessage))
-    val out = Decoupled(new ysyx_26030103_IDUMessage)
-    val ReadDATA1 = Input(UInt(32.W))
-    val ReadDATA2 = Input(UInt(32.W))
+    val in = Flipped(Decoupled(new ysyx_26030103_IFUMessage(XLEN)))
+    val out = Decoupled(new ysyx_26030103_IDUMessage(XLEN))
+    val ReadDATA1 = Input(UInt(XLEN.W))
+    val ReadDATA2 = Input(UInt(XLEN.W))
     val Read1SELECT = Output(UInt(5.W))
     val Read2SELECT = Output(UInt(5.W))
     val ex_valid = Input(Bool())
@@ -26,29 +27,29 @@ class ysyx_26030103_IDU(
     val ex_memop = Input(Bool())
     // 转发: EX阶段的最终写回值及其就绪标志, WB阶段的写回值(总是就绪)
     val ex_fwd_ready = Input(Bool())
-    val ex_fwd_data = Input(UInt(32.W))
+    val ex_fwd_data = Input(UInt(XLEN.W))
     val ex_mdu_hidden_writes = Input(UInt(32.W))
-    val wb_fwd_data = Input(UInt(32.W))
+    val wb_fwd_data = Input(UInt(XLEN.W))
     // MEM级(MEM)的冒险检测与转发
     val me_valid = Input(Bool())
     val me_rd = Input(UInt(5.W))
     val me_regWrite = Input(Bool())
     val me_memop = Input(Bool())
     val me_fwd_ready = Input(Bool())
-    val me_fwd_data = Input(UInt(32.W))
+    val me_fwd_data = Input(UInt(XLEN.W))
     // MEM级等待槽(EX/MEM流水寄存器里等待的指令,比MEM级年轻)
     val me2_valid = Input(Bool())
     val me2_rd = Input(UInt(5.W))
     val me2_regWrite = Input(Bool())
     val me2_memop = Input(Bool())
     val me2_fwd_ready = Input(Bool())
-    val me2_fwd_data = Input(UInt(32.W))
+    val me2_fwd_data = Input(UInt(XLEN.W))
     val pipeline_mode = Input(Bool())
     // DMMU 正在翻译一条访存指令时阻塞 IDU，避免后续消费者带着陈旧寄存器值
     // 越过尚未进入 LSU 的 load/store。
     val mmu_stall = Input(Bool())
     val Privilege = Input(UInt(2.W))
-    val Mstatus = Input(UInt(32.W))
+    val Mstatus = Input(UInt(XLEN.W))
     val Mcounteren = Input(UInt(32.W))
     val Scounteren = Input(UInt(32.W))
     val perf_stall_raw = Output(Bool())
@@ -57,7 +58,7 @@ class ysyx_26030103_IDU(
   })
   val Instruction = io.in.bits.Instruction
   val pc = io.in.bits.pc
-  val snpc = pc + 4.U(32.W)
+  val snpc = pc + 4.U(XLEN.W)
   val Rs1 = Instruction(19, 15)
   val Rs2 = Instruction(24, 20)
   io.Read1SELECT := Rs1
@@ -66,9 +67,13 @@ class ysyx_26030103_IDU(
   val opcode = Instruction(6, 0)
   val funct3 = Instruction(14, 12)
   val funct7 = Instruction(31, 25)
-  val IsRType = (opcode === OPCODE_Register)
+  // OP-32 在 RV64 下复用同一套 R 型/立即数数据通路；RV32 时这些 opcode
+  // 会被 ALUDecoder 判为非法指令。
+  val IsRType =
+    (opcode === OPCODE_Register) || (opcode === OPCODE_RegisterWord)
   val IsIType =
-    (opcode === OPCODE_Immediate) || (opcode === OPCODE_Immediate_Lxxx) || (opcode === OPCODE_Immediate_Bxxx)
+    (opcode === OPCODE_Immediate) || (opcode === OPCODE_ImmediateWord) ||
+      (opcode === OPCODE_Immediate_Lxxx) || (opcode === OPCODE_Immediate_Bxxx)
   val IsSType = (opcode === OPCODE_Store)
   val IsBType = (opcode === OPCODE_Branch)
   val IsUType =
@@ -146,7 +151,7 @@ class ysyx_26030103_IDU(
   }.otherwise { // 正常写回的普通指令
     WBSelect := WB_ALU
   }
-  val ImmediateGeneratorModule = Module(new ysyx_26030103_ImmediateGenerator)
+  val ImmediateGeneratorModule = Module(new ysyx_26030103_ImmediateGenerator(XLEN))
   ImmediateGeneratorModule.io.Instruction := Instruction
   val Immediate = ImmediateGeneratorModule.io.Immediate
   // ALU 控制解码已经合并为一个模块，直接使用 opcode/funct3/funct7 完成译码。
@@ -282,13 +287,13 @@ class ysyx_26030103_IDU(
   val ALU_A = WireDefault(src1) // 默认所有指令的第一个计算的数是寄存器值
   switch(opcode) {
     is(OPCODE_UpperImmediate_lui) {
-      ALU_A := 0.U(32.W)
+      ALU_A := 0.U(XLEN.W)
     }
     is(OPCODE_UpperImmediate_auipc, OPCODE_Jump) {
       ALU_A := pc
     }
   }
-  val ALU_B = Mux(opcode === OPCODE_Register, src2, Immediate)
+  val ALU_B = Mux((opcode === OPCODE_Register) || (opcode === OPCODE_RegisterWord), src2, Immediate)
   val ex_hazard = io.ex_valid && io.ex_regWrite && io.ex_rd =/= 0.U &&
     ((usesRs1 && io.ex_rd === Rs1) || (needsRs2 && io.ex_rd === Rs2))
   val me2_hazard = io.me2_valid && io.me2_regWrite && io.me2_rd =/= 0.U &&
@@ -365,7 +370,7 @@ class ysyx_26030103_IDU(
   io.out.bits.IsFenceI := IsFenceI
   io.out.bits.CSRAddress := CSRAddress
   io.out.bits.Rs1 := Rs1
-  io.out.bits.Rs1Data := Mux(IsCSRImmediate, Cat(0.U(27.W), Rs1), src1)
+  io.out.bits.Rs1Data := Mux(IsCSRImmediate, Cat(0.U((XLEN - 5).W), Rs1), src1)
   // 异常传递:IFU的取指错优先(此时指令本身是垃圾,IDU的译码结果不可信),否则报非法指令(cause=2)
   io.out.bits.ExceptionValid := io.in.bits.ExceptionValid || IllegalInsn
   io.out.bits.ExceptionCause := Mux(
