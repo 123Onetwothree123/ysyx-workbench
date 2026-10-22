@@ -44,7 +44,7 @@ static void defaults(DUT &dut) {
 
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
-  return run_test("RV32_M enabled IDU decode and hidden-writer hazard", [] {
+  return run_test("RISCV_M enabled IDU decode and hidden-writer hazard", [] {
     DUT dut;
     defaults(dut);
 
@@ -58,9 +58,9 @@ int main(int argc, char **argv) {
       check(dut.io_in_ready && dut.io_out_valid,
             "enabled M instruction was unexpectedly stalled");
       check(dut.io_out_bits_IsMDU,
-            "RV32_M=y failed to decode an M instruction");
+            "RISCV_M=y failed to decode an M instruction");
       check(!dut.io_out_bits_ExceptionValid,
-            "RV32_M=y marked an M instruction illegal");
+            "RISCV_M=y marked an M instruction illegal");
       check(dut.io_out_bits_MDUOp == funct3,
             "M instruction selected the wrong MDU operation");
       check(dut.io_out_bits_RegisterWrite && dut.io_out_bits_Rd == 3,

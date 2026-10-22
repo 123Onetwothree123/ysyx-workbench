@@ -204,10 +204,10 @@ void DUT::step()
 #ifdef CONFIG_PERF_COUNTER_LSU_STORE
     const bool perf_event_lsu_store = dut->perf_lsu_store;
 #endif
-#if defined(CONFIG_RV32_M) && defined(CONFIG_PERF_COUNTER_MDU_REQ)
+#if defined(CONFIG_RISCV_M) && defined(CONFIG_PERF_COUNTER_MDU_REQ)
     const bool perf_event_mdu_req = dut->perf_mdu_req;
 #endif
-#if defined(CONFIG_RV32_M) && defined(CONFIG_PERF_COUNTER_MDU_DONE)
+#if defined(CONFIG_RISCV_M) && defined(CONFIG_PERF_COUNTER_MDU_DONE)
     const bool perf_event_mdu_done = dut->perf_mdu_done;
 #if defined(CONFIG_PERF_COUNTER_MDU_OP)
     const auto perf_event_mdu_op = dut->perf_mdu_op;
@@ -472,14 +472,14 @@ void DUT::step()
         ++perf.execution_complete;
     }
 #endif
-#if defined(CONFIG_RV32_M) && defined(CONFIG_PERF_COUNTER_MDU_REQ)
+#if defined(CONFIG_RISCV_M) && defined(CONFIG_PERF_COUNTER_MDU_REQ)
     // M扩展关闭时译码不出M指令, 这些信号恒为0, 不再逐拍采集
     if (perf_event_mdu_req)
     {
         ++perf.mdu_request;
     }
 #endif
-#if defined(CONFIG_RV32_M) && defined(CONFIG_PERF_COUNTER_MDU_DONE)
+#if defined(CONFIG_RISCV_M) && defined(CONFIG_PERF_COUNTER_MDU_DONE)
     if (perf_event_mdu_done)
     {
         ++perf.mdu_complete;

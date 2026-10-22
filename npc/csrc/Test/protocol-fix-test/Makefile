@@ -85,7 +85,7 @@ $(GEN_STAMP): $(SCALA_SOURCES) Makefile
 	  ICACHE=y DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 \
 	  CHIPLINK=n \
 	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RV32_M=n RV32_A=n RV32_C=n \
+	  RISCV_M=n RISCV_A=n RISCV_C=n \
 	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_STATS=y \
 	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(RTL_DIR)
 	@ln -sf layers-ysyx_26030103-Verification.sv \
@@ -97,12 +97,12 @@ $(GEN_STAMP): $(SCALA_SOURCES) Makefile
 	fi
 	@if grep -E '^module ysyx_26030103_(MDU|MUL|DIV)' \
 	    $(RTL_DIR)/ysyx_26030103.sv $(RTL_DIR)/ysyx_26030103_npc.sv; then \
-	  echo "RV32_M=n still generated an MDU/MUL/DIV module" >&2; \
+	  echo "RISCV_M=n still generated an MDU/MUL/DIV module" >&2; \
 	  exit 1; \
 	fi
 	@if grep -E 'MDUInstQueue|MDUQueue(Head|Tail|Count)' \
 	    $(RTL_DIR)/ysyx_26030103.sv $(RTL_DIR)/ysyx_26030103_npc.sv; then \
-	  echo "RV32_M=n still generated EXU MDU queue state" >&2; \
+	  echo "RISCV_M=n still generated EXU MDU queue state" >&2; \
 	  exit 1; \
 	fi
 	@touch $@
@@ -114,7 +114,7 @@ $(CHIPLINK_GEN_STAMP): $(SCALA_SOURCES) Makefile
 	  ICACHE=y DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 \
 	  CHIPLINK=y \
 	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RV32_M=n RV32_A=n RV32_C=n \
+	  RISCV_M=n RISCV_A=n RISCV_C=n \
 	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_STATS=y \
 	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(CHIPLINK_RTL_DIR)
 	@ln -sf layers-ysyx_26030103-Verification.sv \
@@ -150,7 +150,7 @@ $(ICACHE_DISABLED_GEN_STAMP): $(SCALA_SOURCES) Makefile
 	  ICACHE=n DCACHE=n WBUF_DEPTH=4 CACHE_PADDING=0 \
 	  CHIPLINK=n \
 	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RV32_M=n RV32_A=n RV32_C=n \
+	  RISCV_M=n RISCV_A=n RISCV_C=n \
 	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_STATS=y \
 	  mill --no-server runMain ysyx_26030103_Elaborate \
 	    --target-dir $(ICACHE_DISABLED_RTL_DIR) 2>&1 | tee $(ICACHE_DISABLED_LOG)

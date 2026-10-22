@@ -64,7 +64,7 @@ static void expect_fence(DUT &dut, uint32_t instruction,
 
 static void expect_disabled_m_instruction_illegal(DUT &dut, uint8_t funct3) {
   // funct7=0000001/opcode=OP is one of MUL[H]*, DIV[U] or REM[U].  This
-  // test is built from the RV32_M=n production RTL, so every one must remain
+  // test is built from the RISCV_M=n production RTL, so every one must remain
   // a precise illegal instruction instead of entering an absent MDU path.
   dut.io_in_bits_Instruction = 0x02000033U |
                                (static_cast<uint32_t>(funct3 & 0x7U) << 12);
@@ -72,7 +72,7 @@ static void expect_disabled_m_instruction_illegal(DUT &dut, uint8_t funct3) {
   check(dut.io_in_ready && dut.io_out_valid,
         "disabled M instruction was unexpectedly stalled");
   check(dut.io_out_bits_ExceptionValid,
-        "RV32_M=n accepted an M instruction");
+        "RISCV_M=n accepted an M instruction");
   check(dut.io_out_bits_ExceptionCause == 2,
         "disabled M instruction did not raise illegal-instruction cause 2");
 }
@@ -116,7 +116,7 @@ static void expect_illegal_system(DUT &dut, uint32_t instruction,
 
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
-  return run_test("IDU FENCE/WFI and RV32_M-disabled illegal traps", [] {
+  return run_test("IDU FENCE/WFI and RISCV_M-disabled illegal traps", [] {
     DUT dut;
     defaults(dut);
 

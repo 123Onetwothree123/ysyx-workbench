@@ -76,7 +76,7 @@ void NPCTrap::PrintPerformanceStatistics(
     std::println("LSU完成读操作(含故障完成): {}", stats.load_data);
     std::println("LSU完成写操作(含故障完成): {}", stats.store_data);
     std::println("ALU指令: {}", stats.arithmetic_operation);
-#ifdef CONFIG_RV32_M
+#ifdef CONFIG_RISCV_M
     std::println("MDU请求: {}", stats.mdu_request);
     std::println("MDU完成: {}", stats.mdu_complete);
     std::println("  MUL: {}", stats.mdu_mul);
@@ -97,7 +97,7 @@ void NPCTrap::PrintPerformanceStatistics(
     const auto classified_instructions{ClassifiedInstructionCount(stats)};
     std::println("已分类EXU操作合计: {}", classified_instructions);
     std::println("  注: 该口径不含halt/fence/异常等未分类操作，不应与推测IFU取指强求相等");
-#ifdef CONFIG_RV32_M
+#ifdef CONFIG_RISCV_M
     if (stats.mdu_complete > 0)
     {
         std::println("MDU发射或在途活动: {} 周期, 每次完成摊销 {:.2f} 周期", stats.mdu_active_cycle,
@@ -115,7 +115,7 @@ void NPCTrap::PrintPerformanceStatistics(
     {
         auto total_instructions = static_cast<double>(classified_instructions);
         std::println("ALU指令占比: {:.1f}%", 100.0 * stats.arithmetic_operation / total_instructions);
-#ifdef CONFIG_RV32_M
+#ifdef CONFIG_RISCV_M
         std::println("MDU指令占比: {:.1f}%", 100.0 * stats.mdu_complete / total_instructions);
 #endif
         std::println("访存指令占比: {:.1f}%", 100.0 * stats.memory_access_operation / total_instructions);

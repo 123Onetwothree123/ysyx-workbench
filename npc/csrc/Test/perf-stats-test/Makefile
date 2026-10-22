@@ -175,7 +175,7 @@ $(BUILD_DIR)/NPCSimResult.base.o: $(RESULT_IMPL_SRC) $(BUILD_DIR)/NPCSimResult.i
 
 $(BUILD_DIR)/NPCSimResult.all.o: $(RESULT_IMPL_SRC) $(BUILD_DIR)/NPCSimResult.ixx.o
 	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) $(RESULT_CPPFLAGS) \
-	  -DCONFIG_ICACHE -DCONFIG_DCACHE -DCONFIG_RV32_M -DVRISCV32E_NPC \
+	  -DCONFIG_ICACHE -DCONFIG_DCACHE -DCONFIG_RISCV_M -DVRISCV32E_NPC \
 	  -c $(abspath $<) -o NPCSimResult.all.o
 
 $(BUILD_DIR)/main.o: main.cpp $(BUILD_DIR)/NPCSimResult.ixx.o
