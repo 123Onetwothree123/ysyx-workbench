@@ -5,7 +5,8 @@ import chisel3.util._
 // 取指流水化后的IFU: 退化为纯PC发生器
 // 每拍向icache发一个取指请求,被接受就PC+4;重定向/异常时停发一拍并改写PC
 // 指令的锁存、交付和冲刷全部由icache响应级+下游流水寄存器完成。
-// FetchAddr 是架构 PC（XLEN 位）；顶层在接入 32 位物理 ICache 时截断。
+// FetchAddr 是架构 PC（XLEN 位）；顶层在无 MMU 时直接接到同宽
+// 物理 ICache/AXI 地址，不再截断到 32 位。
 class ysyx_26030103_IFU(
     resetAddr: Long = 0x30000000L,
     val XLEN: Int = 32

@@ -20,13 +20,19 @@ class ysyx_26030103_LSU(
     val DCacheVipt: Boolean = false,
     // VIPT 并行模式：DCache/LSU 在 PA 到达前就用 VA 选 index 并持有请求，
     // MMU 故障通过 ViptKill 取消该请求。
-    val ViptParallel: Boolean = false
+    val ViptParallel: Boolean = false,
+    val AddressWidth: Int = 32
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"LSU XLEN 非法: $XLEN")
-  // 第一阶段 RV64 放宽访问通过两拍 32 位 AXI 窄传输完成；DCache 尚未
-  // 适配 8 字节访问，因此顶层配置会禁止 RV64 + DCache。
-  require(XLEN == 32 || !DCacheEnable, "XLEN=64 第一阶段暂不支持 DCache")
+  require(AddressWidth == 32 || AddressWidth == 64,
+    s"LSU AddressWidth 非法: $AddressWidth")
+  require(AddressWidth <= XLEN,
+    s"LSU AddressWidth($AddressWidth) 不能超过 XLEN($XLEN)")
+  // RV64 的 LD/SD 是 8 字节访问。基本 AXI 数据通道仍是 32 位（与
+  // ysyxSoC 兼容），由两拍窄传输完成；DCache 内部按两个相邻 32 位
+  // word 处理同一次 8 字节 load/store。
   private val WideMem = XLEN == 64
+  private def AddrOf(value: UInt): UInt = value(AddressWidth - 1, 0)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage(XLEN)))
     val out = Decoupled(new ysyx_26030103_EXUMessage(XLEN))
@@ -38,28 +44,28 @@ class ysyx_26030103_LSU(
     // 访存故障提交(CSR后门)
     val MemTrapCommit = Output(Bool())
     val MemTrapCause = Output(UInt(32.W))
-    val MemTrapPC = Output(UInt(32.W))
-    val MemTrapTval = Output(UInt(32.W))
+    val MemTrapPC = Output(UInt(XLEN.W))
+    val MemTrapTval = Output(UInt(XLEN.W))
     // 访存故障提交时冲刷IDU→EXU和EXU→LSU流水寄存器(里面全是年轻指令)
     val FlushIDEX = Output(Bool())
     val FlushEXMEM = Output(Bool())
     // 直接连总线
-    val DataBus = new ysyx_26030103_AXI5IO(32)
+    val DataBus = new ysyx_26030103_AXI5IO(AddressWidth)
     // 为未来 DMA/其他非 CPU 写入者保留的数据缓存一致性失效口。
     // Fence.I 只同步指令取值，当前写直达 DCache 不因 Fence.I 清空。
     val DCacheFlush = Input(Bool())
     // VIPT 并行翻译结果：PAddr 可能晚于 DCache 请求到达；PAddrVaddr 是
     // 该物理地址对应的虚拟地址标签。非并行模式忽略这些输入。
-    val ViptPAddr = Input(UInt(32.W))
+    val ViptPAddr = Input(UInt(AddressWidth.W))
     val ViptPAddrValid = Input(Bool())
-    val ViptPAddrVaddr = Input(UInt(32.W))
+    val ViptPAddrVaddr = Input(UInt(AddressWidth.W))
     // MMU 翻译故障：取消本 LSU 已受理但尚未取到 PA 的 load。
     val ViptKill = Input(Bool())
     // 无 MMU 时由顶层 PMP 检查“下一个可能产生总线副作用的访存地址”：
     // 写缓冲非空时检查最老 store（队首），否则检查即将进入执行槽的访存
     // 指令。PmpFault 必须在 AW/W/AR 握手前组合生效，故障指令不得产生
     // 任何总线副作用，随后按普通访问故障精确提交。
-    val PmpAddr = Output(UInt(32.W))
+    val PmpAddr = Output(UInt(AddressWidth.W))
     val PmpWrite = Output(Bool())
     val PmpFault = Input(Bool())
     // DCache性能计数器
@@ -108,7 +114,8 @@ class ysyx_26030103_LSU(
     Enable = DCacheEnable,
     BlockSizeLog2 = DCacheBlockSizeLog2,
     IndexBits = DCacheIndexBits,
-    AddressWidth = 32,
+    AddressWidth = AddressWidth,
+    DataWidth = XLEN,
     CacheableBase = DCacheableBase,
     CacheableMask = DCacheableMask,
     PMARegions = DCachePMARegions,
@@ -180,7 +187,7 @@ class ysyx_26030103_LSU(
   val EffectiveALUResult = WireDefault(ActiveInstruction.ALUResult)
   if (DCacheVipt && ViptParallel) {
     val PAddrValidReg = RegInit(false.B)
-    val PAddrReg = Reg(UInt(32.W))
+    val PAddrReg = Reg(UInt(AddressWidth.W))
     when(startMem) { PAddrValidReg := false.B }
     when(io.ViptPAddrValid && io.ViptPAddrVaddr === ActiveInstruction.VAddr &&
         ViptActiveMem) {
@@ -549,11 +556,11 @@ class ysyx_26030103_LSU(
   io.Complete := TransactionComplete
   // 所有 store 都先进入写缓冲，但只有属于该指令的 B 响应成功后才能退休。
   // 这样 RAM 的 SLVERR/DECERR 也能精确转换成 store access fault(cause=7)。
-  val wbAddr = Reg(Vec(WBufDepth, UInt(32.W)))
-  val wbVAddr = Reg(Vec(WBufDepth, UInt(32.W)))
+  val wbAddr = Reg(Vec(WBufDepth, UInt(AddressWidth.W)))
+  val wbVAddr = Reg(Vec(WBufDepth, UInt(AddressWidth.W)))
   // VIPT 并行 store：wbAddr 暂存 VA，翻译后的 PA 单独保存并带有效位。
   // 只有该位为 1（或处于 PIPT 模式）才允许驱动 AW/W 和更新 DCache。
-  val wbPAddr = Reg(Vec(WBufDepth, UInt(32.W)))
+  val wbPAddr = Reg(Vec(WBufDepth, UInt(AddressWidth.W)))
   val wbPAddrValid = RegInit(VecInit(Seq.fill(WBufDepth)(false.B)))
   val wbData = Reg(Vec(WBufDepth, UInt(32.W)))
   val wbDataHi = Reg(Vec(WBufDepth, UInt(32.W)))
@@ -581,12 +588,12 @@ class ysyx_26030103_LSU(
     io.ViptPAddrValid && io.ViptPAddrVaddr === io.in.bits.VAddr
   when(wbPush) {
     if (WBufDepth == 1) {
-      wbAddr(0) := io.in.bits.ALUResult(31, 0)
-      wbVAddr(0) := io.in.bits.VAddr(31, 0)
+      wbAddr(0) := AddrOf(io.in.bits.ALUResult)
+      wbVAddr(0) := AddrOf(io.in.bits.VAddr)
       wbPAddr(0) := Mux(
         WbNeedsPAddr.B && IncomingViptPAddrMatch,
         io.ViptPAddr,
-        io.in.bits.ALUResult(31, 0)
+        AddrOf(io.in.bits.ALUResult)
       )
       wbPAddrValid(0) := !WbNeedsPAddr.B || IncomingViptPAddrMatch
       wbData(0) := IncomingWriteData
@@ -600,12 +607,12 @@ class ysyx_26030103_LSU(
       )
       wbTail := 0.U
     } else {
-      wbAddr(wbTail) := io.in.bits.ALUResult(31, 0)
-      wbVAddr(wbTail) := io.in.bits.VAddr(31, 0)
+      wbAddr(wbTail) := AddrOf(io.in.bits.ALUResult)
+      wbVAddr(wbTail) := AddrOf(io.in.bits.VAddr)
       wbPAddr(wbTail) := Mux(
         WbNeedsPAddr.B && IncomingViptPAddrMatch,
         io.ViptPAddr,
-        io.in.bits.ALUResult(31, 0)
+        AddrOf(io.in.bits.ALUResult)
       )
       wbPAddrValid(wbTail) := !WbNeedsPAddr.B || IncomingViptPAddrMatch
       wbData(wbTail) := IncomingWriteData
@@ -724,8 +731,12 @@ class ysyx_26030103_LSU(
   DCache.io.StoreResp := io.DataBus.B.BRESP
   DCache.io.StoreAddr := WbHeadEffectiveAddr
   DCache.io.StoreVAddr := wbHeadVAddr
-  DCache.io.StoreData := wbHeadData
-  DCache.io.StoreStrb := wbHeadStrb
+  DCache.io.StoreData :=
+    (if (XLEN == 64) Cat(wbHeadDataHi, wbHeadData) else wbHeadData)
+  DCache.io.StoreStrb :=
+    (if (XLEN == 64)
+       Mux(wbHeadWide, "hff".U(8.W), Cat(0.U(4.W), wbHeadStrb))
+     else wbHeadStrb)
   // Idle 可直接驱动已经寄存的队首，避免“发现非空→切 Issue→下一拍才
   // 拉 VALID”的固定空拍。失败/非对齐/等待 PA 的队首会阻断所有年轻副作用。
   val wbCanStart = !wbufEmpty && !wbHeadMisaligned && wbHeadReady &&
@@ -869,13 +880,13 @@ class ysyx_26030103_LSU(
           when(DCache.io.req.fire) { state := StatesReadResponse }
         }.otherwise {
           io.DataBus.AR.ARVALID := true.B
-          io.DataBus.AR.ARADDR := ActiveInstruction.ALUResult(31, 0)
+          io.DataBus.AR.ARADDR := AddrOf(ActiveInstruction.ALUResult)
           io.DataBus.AR.ARLEN := 0.U
           when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
         }
       } else {
         io.DataBus.AR.ARVALID := true.B
-        io.DataBus.AR.ARADDR := ActiveInstruction.ALUResult(31, 0)
+        io.DataBus.AR.ARADDR := AddrOf(ActiveInstruction.ALUResult)
         // LD 在 32 位 AXI 上使用两拍 INCR 读；其余访问保持单拍。
         io.DataBus.AR.ARLEN := Mux(ReadIsWide, 1.U, 0.U)
         when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
@@ -1057,7 +1068,7 @@ class ysyx_26030103_LSU(
   // 无 MMU 的 PMP 检查对象：写缓冲非空时是队首 store（唯一可能在本拍
   // 产生写副作用的项），否则是本拍即将受理的访存指令。store 在写缓冲
   // 中始终保持架构顺序，因此队首地址也对应最老未完成 store。
-  io.PmpAddr := Mux(!wbufEmpty, WbHeadEffectiveAddr, StageInputBits.ALUResult(31, 0))
+  io.PmpAddr := Mux(!wbufEmpty, WbHeadEffectiveAddr, AddrOf(StageInputBits.ALUResult))
   io.PmpWrite := Mux(!wbufEmpty, true.B, StageInputBits.MemoryWrite)
   io.IsStore := is_store_transaction
   io.StallReadAR := state === StatesReadRequest

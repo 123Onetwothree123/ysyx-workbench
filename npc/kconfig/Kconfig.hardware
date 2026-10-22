@@ -7,10 +7,13 @@ menu "硬件配置"
       default 32
       range 32 64
       help
-        指令位宽。32=RV32，64=RV64。当前 RV64 第一阶段已接通
-        GPR/PC/ALU/EXU/IDU/WBU/CSR 与 RV64I/RV64M 语义；
-        物理地址与 AXI 仍为 32 位，且暂不支持 MMU/Sv39 和 DCache。
-        选择 XLEN=64 时必须同时关闭 HAS_MMU 与 DCACHE。
+        指令位宽。32=RV32，64=RV64。RV64 已接通
+        GPR/PC/ALU/EXU/IDU/WBU/CSR 与 RV64I/RV64M 语义，且
+        PC/分支目标/LSU/IFU/AXI/PMA/Xbar/ICache/DCache/BTB/RAS
+        全部使用 64 位地址，LD/SD 以两拍 32 位 AXI 窄传输覆盖 8 字节。
+        外部 ysyxSoC CPU AXI 仍只有 32 位地址：顶层 PMA 必须位于低
+        4GiB，Xbar 对更高地址返回 DECERR，绝不静默截断。
+        当前仍不支持 MMU/Sv39；选择 XLEN=64 时必须关闭 HAS_MMU。
 
     config RISCV_M
       bool "M 扩展（乘/除/取余）"

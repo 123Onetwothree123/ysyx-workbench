@@ -8,24 +8,26 @@ import chisel3.util._
   * 支持 OFF/TOR/NA4/NAPOT 四种 A 字段；最低编号匹配项优先。
   * 未匹配时 M 模式放行，S/U 模式拒绝；带 L 的匹配项对 M 也强制权限。
   */
-class ysyx_26030103_PMP(entries: Int = 16) extends Module {
+class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Module {
   require(entries >= 0 && entries <= 16, "PMP entries 必须在 0..16")
   private val activeEntries = 16
 
   val io = IO(new Bundle {
     val cfg = Input(Vec(activeEntries, UInt(8.W)))
-    val addr = Input(Vec(activeEntries, UInt(32.W)))
-    val fetchAddr = Input(UInt(32.W))
+    // pmpaddr 保存 address[AddressWidth-1:2]，与 RISC-V PMP 语义一致。
+    val addr = Input(Vec(activeEntries, UInt(AddressWidth.W)))
+    val fetchAddr = Input(UInt(AddressWidth.W))
     val fetchPriv = Input(UInt(2.W))
     val fetchFault = Output(Bool())
-    val dataAddr = Input(UInt(32.W))
+    val dataAddr = Input(UInt(AddressWidth.W))
     val dataPriv = Input(UInt(2.W))
     val dataWrite = Input(Bool())
     val dataFault = Output(Bool())
   })
 
   private def trailingOnes(value: UInt): UInt = {
-    val bits = 30
+    // pmpaddr 的低 AddressWidth-2 位有效；统计末尾连续 1 的个数。
+    val bits = AddressWidth - 2
     val firstZero = PriorityEncoder(~value(bits - 1, 0))
     firstZero
   }
@@ -36,10 +38,11 @@ class ysyx_26030103_PMP(entries: Int = 16) extends Module {
       val config = io.cfg(index)
       val mode = config(4, 3)
       val current = io.addr(index)
-      val lower = if (index == 0) 0.U(32.W) else io.addr(index - 1) << 2
+      val lower =
+        if (index == 0) 0.U(AddressWidth.W) else io.addr(index - 1) << 2
       val upper = current << 2
       val tor = address >= lower && address < upper
-      val na4 = address(31, 2) === current(29, 0)
+      val na4 = address(AddressWidth - 1, 2) === current(AddressWidth - 3, 0)
       val ones = trailingOnes(current)
       val napotMask = (1.U << (ones + 3.U)) - 1.U
       val napotBase = (current & ~((1.U << (ones + 1.U)) - 1.U)) << 2

@@ -11,18 +11,20 @@ import _root_.ysyx_26030103.common.ysyx_26030103_BTBKind
   * `(rasTop + immediate) & ~1` 预测目标，与体系结构规定的 JALR
   * 目标计算方式一致。
   */
-class ysyx_26030103_PredictorSelect extends Module {
+class ysyx_26030103_PredictorSelect(AddressWidth: Int = 32) extends Module {
+  require(AddressWidth == 32 || AddressWidth == 64,
+    s"PredictorSelect AddressWidth 非法: $AddressWidth")
   val io = IO(new Bundle {
-    val fetchPC = Input(UInt(32.W))
+    val fetchPC = Input(UInt(AddressWidth.W))
     val branchHit = Input(Bool())
-    val branchTarget = Input(UInt(32.W))
+    val branchTarget = Input(UInt(AddressWidth.W))
     val jalHit = Input(Bool())
-    val jalTarget = Input(UInt(32.W))
+    val jalTarget = Input(UInt(AddressWidth.W))
     val jalKind = Input(UInt(2.W))
     val rasNonempty = Input(Bool())
-    val rasTop = Input(UInt(32.W))
+    val rasTop = Input(UInt(AddressWidth.W))
     val predHit = Output(Bool())
-    val predTarget = Output(UInt(32.W))
+    val predTarget = Output(UInt(AddressWidth.W))
   })
 
   val JalRet = io.jalHit && io.jalKind === ysyx_26030103_BTBKind.Ret
@@ -30,7 +32,7 @@ class ysyx_26030103_PredictorSelect extends Module {
   val JalStatic = io.jalHit && io.jalKind =/= ysyx_26030103_BTBKind.Ret
   val BranchTaken = io.branchHit && io.branchTarget < io.fetchPC
   val RetSum = io.rasTop + io.jalTarget
-  val RetTarget = Cat(RetSum(31, 1), 0.U(1.W))
+  val RetTarget = Cat(RetSum(AddressWidth - 1, 1), 0.U(1.W))
 
   io.predHit := JalRetUsable || JalStatic || BranchTaken
   io.predTarget := Mux(

@@ -54,7 +54,7 @@ class ysyx_26030103_EXU(
     val CSRStateMepc = Output(UInt(XLEN.W))
     val CSRStateMcause = Output(UInt(XLEN.W))
     val PmpCfg = Output(Vec(16, UInt(8.W)))
-    val PmpAddr = Output(Vec(16, UInt(32.W)))
+    val PmpAddr = Output(Vec(16, UInt(XLEN.W)))
     val Mtime = Input(UInt(64.W))
     val Mcounteren = Output(UInt(32.W))
     val Scounteren = Output(UInt(32.W))

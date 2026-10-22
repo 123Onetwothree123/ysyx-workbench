@@ -93,6 +93,7 @@ class ysyx_26030103_RV64ALUIDUTest extends AnyFlatSpec with Matchers {
     })
     val config = _root_.ysyx_26030103.config.ysyx_26030103_NPCConfig(
       XLEN = xlen,
+      AddressWidth = xlen,
       MMU = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
         hasS = false,
         hasU = false

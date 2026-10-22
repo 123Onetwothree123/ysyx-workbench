@@ -11,13 +11,18 @@ class ysyx_26030103_DCacheReg(
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
     AddressWidth: Int = 32,
+    DataWidth: Int = 32,
     Vipt: Boolean = false,
     CacheableBase: Long = 0x80000000L,
     CacheableMask: Long = 0x80000000L,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
-) extends ysyx_26030103_DCacheBase(AddressWidth) {
+) extends ysyx_26030103_DCacheBase(AddressWidth, DataWidth) {
+  require(DataWidth == 32 || DataWidth == 64,
+    s"DCache DataWidth 非法: $DataWidth")
   require(BlockSizeLog2 >= 2, "DCache line must contain at least one 32-bit word")
+  require(DataWidth == 32 || BlockSizeLog2 >= 3,
+    "64 位 DCache 访问需要至少两个 32 位 word 的 cache line")
   require(IndexBits >= 1, "DCache must contain at least two sets")
   require(
     IndexBits + BlockSizeLog2 < AddressWidth,
@@ -30,6 +35,10 @@ class ysyx_26030103_DCacheReg(
   private val OffsetWidth = (BlockSizeLog2 - 2).max(1)
   private val CountWidth = log2Ceil(WordsPerBlock).max(1)
   private val ArrayBlocks = if (Enable) NumBlocks else 1
+  // 8 字节访问要求低/高两个相邻 word 同处一行。LD/SD 按 ISA 必须
+  // 8 字节对齐，因此块内 word 偏移总是偶数，NextOffset 不会越过行尾。
+  private def NextOffset(offset: UInt): UInt =
+    (offset + 1.U)(CountWidth - 1, 0)
   // 一致性 flush 是 DCache 自身的可验证接口；生产顶层已由 DMA 写 B
   // 握手的失效脉冲驱动（ysyx_26030103.scala），dontTouch 保证该端口在
   // 叶模块 elaboration 中不被裁掉。
@@ -70,6 +79,7 @@ class ysyx_26030103_DCacheReg(
   val WaitWidthReg = Reg(UInt(2.W))
   val WaitSignedReg = Reg(Bool())
   val WaitDataReg = Reg(UInt(32.W))
+  val WaitDataHiReg = Reg(UInt(32.W))
   val ViptNeedWait = Vipt.B && !IncomingPaddrMatch
   // PA 带受理时的 VA 标签返回：只接受属于这笔等待请求的翻译结果。
   // flush/kill 同拍时优先放弃本次 resolve，避免把已失效行或故障请求的数据
@@ -108,7 +118,11 @@ class ysyx_26030103_DCacheReg(
   // RLAST 时，才退化成逐字单拍补齐剩余数据，避免需求 load 永久挂起。
   val RefillBurst = RegInit(false.B)
   val RefillError = RegInit(false.B)
-  val ResponseData = RegInit(0.U(32.W))
+  val ResponseData = RegInit(0.U(DataWidth.W))
+  // 非缓存 8 字节读需要两拍：第一拍暂存低 word，第二拍拼成 64 位响应。
+  val WideLowReg = RegInit(0.U(32.W))
+  val WideBeat = RegInit(0.U(1.W))
+  val WideLowFault = RegInit(false.B)
   val ResponseFault = RegInit(false.B)
   val ResponseFaultResp = RegInit(0.U(2.W))
   val ResponseValid = RegInit(false.B)
@@ -124,7 +138,18 @@ class ysyx_26030103_DCacheReg(
   // 本次flush的缓存行重新变为有效。
   val suppressFill = RegInit(false.B)
   val ReqIndexSafe = if (Enable) ReqIndexReg else 0.U(IndexWidth.W)
-  def FormatLoad(word: UInt, address: UInt, width: UInt, signed: Bool): UInt = {
+  // 将最多两个 32 位 word 格式化为架构 load 结果。
+  // width=0/1/2 分别是 LB/LH/LW，按 DataWidth 做符号/零扩展；
+  // width=3 只在 64 位 DCache 下出现，直接拼接高/低 word。
+  def FormatLoad(
+      wordLow: UInt,
+      wordHigh: UInt,
+      address: UInt,
+      width: UInt,
+      signed: Bool
+  ): UInt = {
+    val word = wordLow(31, 0)
+    val rawWide = Cat(wordHigh(31, 0), word)
     val ByteData = MuxLookup(address(1, 0), word(7, 0))(
       Seq(
         1.U -> word(15, 8),
@@ -133,23 +158,30 @@ class ysyx_26030103_DCacheReg(
       )
     )
     val HalfData = Mux(address(1), word(31, 16), word(15, 0))
-    val ByteResult = Mux(
-      signed,
-      Cat(Fill(24, ByteData(7)), ByteData),
-      Cat(0.U(24.W), ByteData)
-    )
-    val HalfResult = Mux(
-      signed,
-      Cat(Fill(16, HalfData(15)), HalfData),
-      Cat(0.U(16.W), HalfData)
-    )
-    MuxLookup(width, word)(
-      Seq(
-        0.U -> ByteResult,
-        1.U -> HalfResult,
-        2.U -> word
+    def Extend(Value: UInt, Bits: Int): UInt =
+      if (DataWidth == Bits) Value
+      else Mux(
+        signed,
+        Cat(Fill(DataWidth - Bits, Value(Bits - 1)), Value),
+        Cat(0.U((DataWidth - Bits).W), Value)
       )
-    )
+    val ByteResult = Extend(ByteData, 8)
+    val HalfResult = Extend(HalfData, 16)
+    val WordResult = Extend(word, 32)
+    if (DataWidth == 32) {
+      MuxLookup(width, WordResult)(
+        Seq(0.U -> ByteResult, 1.U -> HalfResult, 2.U -> WordResult)
+      )
+    } else {
+      MuxLookup(width, WordResult)(
+        Seq(
+          0.U -> ByteResult,
+          1.U -> HalfResult,
+          2.U -> WordResult,
+          3.U -> rawWide
+        )
+      )
+    }
   }
   def StoreMaskWord(strb: UInt): UInt = Cat(
     Mux(strb(3), "hff".U(8.W), 0.U(8.W)),
@@ -223,7 +255,12 @@ class ysyx_26030103_DCacheReg(
   val SameRefillLine = cacheable && RefillActive &&
     io.req.bits.addr(AddressWidth - 1, BlockSizeLog2) ===
       RefillBaseReg(AddressWidth - 1, BlockSizeLog2)
-  val RefillWordReady = VecInit(RefillWordValid.asBools)(WordOffset)
+  // 64 位 load 需要关键词和下一个 word 都已返回；32 位路径保持原判定。
+  val WideWordReady =
+    if (DataWidth == 64) VecInit(RefillWordValid.asBools)(NextOffset(WordOffset))
+    else true.B
+  val RefillWordReady = VecInit(RefillWordValid.asBools)(WordOffset) &&
+    (!(io.req.bits.WidthSelect === 3.U) || WideWordReady)
   val PriorDemandLeaves = DemandResponseDone || io.resp.fire
   val RefillInProgress = state === SReadReq || state === SReadResp
   val LastRefillWord = RefillCount === (WordsPerBlock - 1).U
@@ -274,15 +311,32 @@ class ysyx_26030103_DCacheReg(
     }
     when(StoreHit) {
       when(io.StoreResp === 0.U) {
-        // 成功的单拍store精确知道新字节值，可以直接维护写直达镜像。
+        // 成功的写直达 store 直接更新缓存镜像。RV64 的 8 字节 store
+        // 同时更新低/高两个相邻 word；低 32 位掩码始终来自 StoreData
+        // 的低半部分，高半部分仅在高 4 位字节使能非零时写入。
+        val LowMask = StoreMaskWord(io.StoreStrb(3, 0))
+        val LowData = io.StoreData(31, 0)
         if (WordsPerBlock > 1) {
           data(StoreIndexSafe)(StoreOffset) :=
-            (data(StoreIndexSafe)(StoreOffset) & ~StoreMaskWord(io.StoreStrb)) |
-              (io.StoreData & StoreMaskWord(io.StoreStrb))
+            (data(StoreIndexSafe)(StoreOffset) & ~LowMask) |
+              (LowData & LowMask)
         } else {
           data(StoreIndexSafe)(0) :=
-            (data(StoreIndexSafe)(0) & ~StoreMaskWord(io.StoreStrb)) |
-              (io.StoreData & StoreMaskWord(io.StoreStrb))
+            (data(StoreIndexSafe)(0) & ~LowMask) | (LowData & LowMask)
+        }
+        if (DataWidth == 64) {
+          when(io.StoreStrb(7, 4) =/= 0.U) {
+            val HighMask = StoreMaskWord(io.StoreStrb(7, 4))
+            val HighData = io.StoreData(63, 32)
+            if (WordsPerBlock > 1) {
+              data(StoreIndexSafe)(NextOffset(StoreOffset)) :=
+                (data(StoreIndexSafe)(NextOffset(StoreOffset)) & ~HighMask) |
+                  (HighData & HighMask)
+            } else {
+              data(StoreIndexSafe)(0) :=
+                (data(StoreIndexSafe)(0) & ~HighMask) | (HighData & HighMask)
+            }
+          }
         }
       }.otherwise {
         // SLVERR/DECERR不保证从机完全没有副作用。不能把失败store的数据
@@ -304,6 +358,8 @@ class ysyx_26030103_DCacheReg(
       // MSHR元数据，也不要改变正在进行的AR/R状态。
       ResponseData := FormatLoad(
         data(IndexSafe)(WordOffset),
+        (if (WordsPerBlock > 1) data(IndexSafe)(NextOffset(WordOffset))
+         else 0.U(32.W)),
         io.req.bits.addr,
         io.req.bits.WidthSelect,
         io.req.bits.signed
@@ -323,6 +379,9 @@ class ysyx_26030103_DCacheReg(
       WaitDataReg :=
         (if (WordsPerBlock > 1) data(IndexSafe)(WordOffset)
          else data(IndexSafe)(0))
+      WaitDataHiReg :=
+        (if (WordsPerBlock > 1) data(IndexSafe)(NextOffset(WordOffset))
+         else 0.U(32.W))
     }.otherwise {
       ReqAddrReg := io.req.bits.addr
       ReqWidthReg := io.req.bits.WidthSelect
@@ -330,6 +389,8 @@ class ysyx_26030103_DCacheReg(
       ReqIndexReg := index
       ReqTagReg := ReqTag
       ReqOffsetReg := WordOffset
+      WideBeat := 0.U
+      WideLowFault := false.B
       ResponseFault := false.B
       ResponseFaultResp := 0.U
       ResponseValid := false.B
@@ -339,6 +400,7 @@ class ysyx_26030103_DCacheReg(
         if (WordsPerBlock > 1) {
           ResponseData := FormatLoad(
             data(IndexSafe)(WordOffset),
+            data(IndexSafe)(NextOffset(WordOffset)),
             io.req.bits.addr,
             io.req.bits.WidthSelect,
             io.req.bits.signed
@@ -346,6 +408,7 @@ class ysyx_26030103_DCacheReg(
         } else {
           ResponseData := FormatLoad(
             data(IndexSafe)(0),
+            0.U(32.W),
             io.req.bits.addr,
             io.req.bits.WidthSelect,
             io.req.bits.signed
@@ -376,6 +439,7 @@ class ysyx_26030103_DCacheReg(
     when(ResolveHit) {
       ResponseData := FormatLoad(
         WaitDataReg,
+        WaitDataHiReg,
         WaitVaddrReg,
         WaitWidthReg,
         WaitSignedReg
@@ -391,6 +455,8 @@ class ysyx_26030103_DCacheReg(
       ReqIndexReg := WaitIndexReg
       ReqTagReg := ResolveTag
       ReqOffsetReg := WaitOffsetReg
+      WideBeat := 0.U
+      WideLowFault := false.B
       ResponseFault := false.B
       ResponseFaultResp := 0.U
       ResponseValid := false.B
@@ -424,9 +490,14 @@ class ysyx_26030103_DCacheReg(
       io.AXI.AR.ARLEN := Mux(
         RefillActive && RefillBurst,
         (WordsPerBlock - 1).U,
-        0.U
+        Mux(!RefillActive && ReqWidthReg === 3.U, 1.U, 0.U)
       )
-      io.AXI.AR.ARSIZE := Mux(RefillActive, 2.U, ReqWidthReg)
+      // 32 位 AXI 数据通道上，8 字节非缓存访问拆成两拍 ARSIZE=2。
+      io.AXI.AR.ARSIZE := Mux(
+        RefillActive || ReqWidthReg === 3.U,
+        2.U,
+        ReqWidthReg
+      )
       // AXI要求ARVALID一旦提出就保持到握手。即使flush到来，也继续完成
       // 地址和R通道事务；响应仍交付demand，但不安装该次回填的cache line。
       when(io.AXI.AR.ARREADY) {
@@ -439,10 +510,14 @@ class ysyx_26030103_DCacheReg(
         when(RefillActive) {
           val BeatError = io.AXI.R.RRESP =/= 0.U
           val KeywordBeat = RefillCount === ReqOffsetReg
+          val ReqWide = ReqWidthReg === 3.U
+          val WideHighBeat = ReqWide &&
+            RefillCount === NextOffset(ReqOffsetReg)
+          val ResponseBeat = KeywordBeat || WideHighBeat
           when(BeatError) {
             RefillError := true.B
             RefillWordValid := 0.U
-            when(KeywordBeat && !DemandResponseDone) {
+            when(ResponseBeat && !DemandResponseDone && !ResponseValid) {
               ResponseFault := true.B
               ResponseFaultResp := io.AXI.R.RRESP
               ResponseValid := true.B
@@ -465,7 +540,27 @@ class ysyx_26030103_DCacheReg(
                 RefillWordValid | UIntToOH(RefillCount, WordsPerBlock)
             }
             when(KeywordBeat && !DemandResponseDone) {
+              when(ReqWide) {
+                // 8 字节 load 关键词只是低 word；等下一拍高 word 到齐后再
+                // 形成响应，避免把半条数据提前交给 LSU。
+                WideLowReg := io.AXI.R.RDATA
+              }.otherwise {
+                ResponseData := FormatLoad(
+                  io.AXI.R.RDATA,
+                  0.U(32.W),
+                  ReqAddrReg,
+                  ReqWidthReg,
+                  ReqSignedReg
+                )
+                ResponseFault := false.B
+                ResponseFaultResp := 0.U
+                ResponseValid := true.B
+              }
+            }
+            when(WideHighBeat && !DemandResponseDone && !ResponseValid &&
+                !RefillError && !BeatError) {
               ResponseData := FormatLoad(
+                WideLowReg,
                 io.AXI.R.RDATA,
                 ReqAddrReg,
                 ReqWidthReg,
@@ -529,31 +624,82 @@ class ysyx_26030103_DCacheReg(
             }
           }
         }.otherwise {
-          when(io.AXI.R.RRESP =/= 0.U) {
-            ResponseFault := true.B
-            ResponseFaultResp := io.AXI.R.RRESP
+          when(ReqWidthReg === 3.U) {
+            // 非缓存 8 字节读：两拍窄传输，低 word 先到。
+            when(WideBeat === 0.U) {
+              when(io.AXI.R.RLAST) {
+                ResponseFault := true.B
+                ResponseFaultResp := Mux(
+                  io.AXI.R.RRESP =/= 0.U,
+                  io.AXI.R.RRESP,
+                  2.U
+                )
+                ResponseValid := true.B
+                state := SIdle
+              }.otherwise {
+                WideLowReg := io.AXI.R.RDATA
+                WideLowFault := io.AXI.R.RRESP =/= 0.U
+                WideBeat := 1.U
+              }
+            }.otherwise {
+              when(io.AXI.R.RLAST) {
+                when(WideLowFault || io.AXI.R.RRESP =/= 0.U) {
+                  ResponseFault := true.B
+                  ResponseFaultResp := Mux(
+                    io.AXI.R.RRESP =/= 0.U,
+                    io.AXI.R.RRESP,
+                    2.U
+                  )
+                }.otherwise {
+                  ResponseData := FormatLoad(
+                    WideLowReg,
+                    io.AXI.R.RDATA,
+                    ReqAddrReg,
+                    ReqWidthReg,
+                    ReqSignedReg
+                  )
+                }
+                ResponseValid := true.B
+                suppressFill := false.B
+                state := SIdle
+              }.otherwise {
+                ResponseFault := true.B
+                ResponseFaultResp := Mux(
+                  io.AXI.R.RRESP =/= 0.U,
+                  io.AXI.R.RRESP,
+                  2.U
+                )
+                state := SDrain
+              }
+            }
           }.otherwise {
-            ResponseData := FormatLoad(
-              io.AXI.R.RDATA,
-              ReqAddrReg,
-              ReqWidthReg,
-              ReqSignedReg
-            )
-          }
-          ResponseValid := true.B
-          when(io.AXI.R.RLAST) {
-            suppressFill := false.B
-            state := SIdle
-          }.otherwise {
-            // 每个非缓存请求都是单拍AXI事务。缺少RLAST属于协议故障，必须先将其
-            // 排空，另一个LSU读请求才能复用固定的读ID。
-            ResponseFault := true.B
-            ResponseFaultResp := Mux(
-              io.AXI.R.RRESP =/= 0.U,
-              io.AXI.R.RRESP,
-              2.U
-            )
-            state := SDrain
+            when(io.AXI.R.RRESP =/= 0.U) {
+              ResponseFault := true.B
+              ResponseFaultResp := io.AXI.R.RRESP
+            }.otherwise {
+              ResponseData := FormatLoad(
+                io.AXI.R.RDATA,
+                0.U(32.W),
+                ReqAddrReg,
+                ReqWidthReg,
+                ReqSignedReg
+              )
+            }
+            ResponseValid := true.B
+            when(io.AXI.R.RLAST) {
+              suppressFill := false.B
+              state := SIdle
+            }.otherwise {
+              // 每个非缓存请求都是单拍AXI事务。缺少RLAST属于协议故障，必须先将其
+              // 排空，另一个LSU读请求才能复用固定的读ID。
+              ResponseFault := true.B
+              ResponseFaultResp := Mux(
+                io.AXI.R.RRESP =/= 0.U,
+                io.AXI.R.RRESP,
+                2.U
+              )
+              state := SDrain
+            }
           }
         }
       }

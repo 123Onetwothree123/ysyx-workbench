@@ -10,17 +10,24 @@ import chisel3.util._
   * DMA读可以同时在途，并明确响应归属。DMA的上游ID在请求被接受时保存，
   * 统一以下游ID 2发出，返回CPU slave端口时恢复原ID。
   */
-class ysyx_26030103_AXI5Arbiter extends Module {
+class ysyx_26030103_AXI5Arbiter(
+    AddressWidth: Int = 32,
+    DataWidth: Int = 32,
+    IdWidth: Int = 4
+) extends Module {
+  // 固定 ID 分配（ICache=0/LSU=1/DMA=2/PTW=3..15）按 4 位 ID 设计；
+  // 地址/数据宽度可参数化，但 ID 宽度暂不支持其它值。
+  require(IdWidth == 4, s"AXI5Arbiter IdWidth 只支持 4，收到 $IdWidth")
   val io = IO(new Bundle {
-    val ifu = Flipped(new ysyx_26030103_AXI5IO(32))
-    val lsu = Flipped(new ysyx_26030103_AXI5IO(32))
-    val dma = Flipped(new ysyx_26030103_AXI5IO(32))
+    val ifu = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth))
+    val lsu = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth))
+    val dma = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth))
     // CPU slave口带有AXI exclusive属性，而内部精简AXI bundle没有LOCK字段。
     // 显式旁带进来，任何exclusive DMA请求都必须在本地以DECERR终止，
     // 绝不能静默降级成普通下游访问。
     val dmaARLock = Input(Bool())
     val dmaAWLock = Input(Bool())
-    val memory = new ysyx_26030103_AXI5IO(32)
+    val memory = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth)
     // 匹配的DMA写B响应首次出现，表示下游写已终止。顶层用这个单拍事件
     // 使写直达DCache失效；后续B反压不重复阻塞CPU load。错误响应也必须
     // 失效，因为SLVERR/DECERR并不保证从设备没有产生部分副作用。
@@ -42,14 +49,16 @@ class ysyx_26030103_AXI5Arbiter extends Module {
   private val DECERR = 3.U(2.W)
 
   private class ReadResponsePayload extends Bundle {
-    val Id = UInt(4.W)
-    val Data = UInt(32.W)
+    val Id = UInt(IdWidth.W)
+    val Data = UInt(DataWidth.W)
     val Resp = UInt(2.W)
     val Last = Bool()
   }
 
-  /** CPU slave只代理ChipLink MEM窗口。使用33位末字节计算同时拒绝越过
-    * 4GiB边界、超出32位数据总线拍宽以及不支持的burst类型。
+  /** CPU slave只代理ChipLink MEM窗口。使用 AddressWidth+1 位末字节计算
+    * 同时拒绝越过 4GiB 边界、超出数据总线拍宽以及不支持的 burst 类型。
+    * 64 位内部地址路径下，DMA 端口也可能携带高位；任何超出 0xc0000000
+    * ..0xffffffff 的请求都在本地 DECERR，绝不截断后转发。
     */
   private def DMARequestPermitted(
       Address: UInt,
@@ -57,13 +66,14 @@ class ysyx_26030103_AXI5Arbiter extends Module {
       Size: UInt,
       Burst: UInt
   ): Bool = {
+    val ExtendedWidth = AddressWidth + 1
     val ExtendedAddress = Cat(0.U(1.W), Address)
-    val BeatBytes = 1.U(33.W) << Size
+    val BeatBytes = 1.U(ExtendedWidth.W) << Size
     val LastBeatOffset = Mux(Burst === 1.U, Len * BeatBytes, 0.U)
     val LastByte = ExtendedAddress + LastBeatOffset + BeatBytes - 1.U
     val Supported = Size <= 2.U && (Burst === 0.U || Burst === 1.U)
-    Supported && ExtendedAddress >= "hc0000000".U(33.W) &&
-    LastByte < "h100000000".U(33.W)
+    Supported && ExtendedAddress >= "hc0000000".U(ExtendedWidth.W) &&
+    LastByte < (BigInt(1) << 32).U(ExtendedWidth.W)
   }
 
   io.ifu.AW.AWREADY := false.B

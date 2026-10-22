@@ -1,21 +1,34 @@
 package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
-class ysyx_26030103_CLINTIO extends ysyx_26030103_AXI5Slave(32) {
+class ysyx_26030103_CLINTIO(
+    AddressWidth: Int = 32,
+    DataWidth: Int = 32,
+    IdWidth: Int = 4
+) extends ysyx_26030103_AXI5Slave(AddressWidth, DataWidth, IdWidth) {
   val timer_irq = Output(Bool())
   val mtime = Output(UInt(64.W))
 }
 
-class ysyx_26030103_AXI5CLINTSlave extends Module {
-  val io = IO(new ysyx_26030103_CLINTIO)
+/** CLINT 从设备。地址寄存器跟随 AddressWidth，读数据仍为 32 位；
+  * RV64 通过两次 32 位访问读写 mtime/mtimecmp。
+  */
+class ysyx_26030103_AXI5CLINTSlave(
+    AddressWidth: Int = 32,
+    DataWidth: Int = 32,
+    IdWidth: Int = 4
+) extends Module {
+  val io = IO(new ysyx_26030103_CLINTIO(AddressWidth, DataWidth, IdWidth))
+  private val AddrW = AddressWidth
+  private val DataW = DataWidth
   io.ACLK := clock.asBool
   io.ARESETn := !reset.asBool
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
-  val MtimeLowAddress = "h0200bff8".U(32.W) // RISC-V标准CLINT的mtime寄存器
-  val MtimeHighAddress = "h0200bffc".U(32.W)
-  val MtimecmpLowAddress = "h02004000".U(32.W)
-  val MtimecmpHighAddress = "h02004004".U(32.W)
+  val MtimeLowAddress = "h0200bff8".U(AddrW.W) // RISC-V标准CLINT的mtime寄存器
+  val MtimeHighAddress = "h0200bffc".U(AddrW.W)
+  val MtimecmpLowAddress = "h02004000".U(AddrW.W)
+  val MtimecmpHighAddress = "h02004004".U(AddrW.W)
   val Mtime = Module(new ysyx_26030103_mtime)
   val Mtimecmp = RegInit("hffffffffffffffff".U(64.W))
   io.timer_irq := Mtime.io.value >= Mtimecmp
@@ -25,20 +38,20 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
   val WValidReg = RegInit(false.B)
   val WLastReg = RegInit(false.B)
   val BValidReg = RegInit(false.B)
-  val AWIDReg = RegInit(0.U(4.W))
-  val AWAddrReg = RegInit(0.U(32.W))
-  val WDataReg = RegInit(0.U(32.W))
-  val WStrbReg = RegInit(0.U(4.W))
+  val AWIDReg = RegInit(0.U(IdWidth.W))
+  val AWAddrReg = RegInit(0.U(AddrW.W))
+  val WDataReg = RegInit(0.U(DataW.W))
+  val WStrbReg = RegInit(0.U((DataW / 8).W))
   val BRESPReg = RegInit(OKAY)
   val RValidReg = RegInit(false.B)
-  val ARIDReg = RegInit(0.U(4.W))
-  val ARAddrReg = RegInit(0.U(32.W))
+  val ARIDReg = RegInit(0.U(IdWidth.W))
+  val ARAddrReg = RegInit(0.U(AddrW.W))
   val ARLenReg = RegInit(0.U(8.W))
   val ARSizeReg = RegInit(2.U(3.W))
   val ARBurstReg = RegInit(0.U(2.W))
   val ARBeatReg = RegInit(0.U(8.W))
   val ARConfigErrorReg = RegInit(false.B)
-  val RDataReg = RegInit(0.U(32.W))
+  val RDataReg = RegInit(0.U(DataW.W))
   val RRESPReg = RegInit(OKAY)
   val RLastReg = RegInit(false.B)
   io.AW.AWREADY := !AWValidReg && !BValidReg
@@ -103,11 +116,11 @@ class ysyx_26030103_AXI5CLINTSlave extends Module {
         Mux(address === MtimecmpLowAddress, Mtimecmp(31, 0),
           Mux(address === MtimecmpHighAddress, Mtimecmp(63, 32), 0.U))))
 
-  val ARStep = MuxLookup(ARSizeReg, 0.U(32.W))(
+  val ARStep = MuxLookup(ARSizeReg, 0.U(AddrW.W))(
     Seq(
-      0.U -> 1.U(32.W),
-      1.U -> 2.U(32.W),
-      2.U -> 4.U(32.W)
+      0.U -> 1.U(AddrW.W),
+      1.U -> 2.U(AddrW.W),
+      2.U -> 4.U(AddrW.W)
     )
   )
   val NextARAddr = Mux(ARBurstReg === 1.U, ARAddrReg + ARStep, ARAddrReg)

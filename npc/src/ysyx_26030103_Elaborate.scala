@@ -41,6 +41,10 @@ object ysyx_26030103_Elaborate extends App {
   val HasChipLink = sys.env.getOrElse("CHIPLINK", "n") == "y"
   // 用kconfig来指挥的指令集扩展开关，然后没有实现的部分就直接让NPCConfig的require判断为失败的条件就可以了
   val XLEN = envIntOr("XLEN", 32)
+  // 物理地址宽度跟随架构位宽：RV32 保持 32，RV64 默认 64。允许
+  // ADDRESS_WIDTH 显式覆盖，但 NPCConfig 会拒绝 XLEN=64 使用 32 位
+  // 地址，避免架构 PC/分支目标再次被截断。
+  val AddressWidth = envIntOr("ADDRESS_WIDTH", if (XLEN == 64) 64 else 32)
   // 扩展名与位宽解耦，统一使用 RISCV_M/A/C。
   val UseM = sys.env.getOrElse("RISCV_M", "n") == "y"
   val UseA = sys.env.getOrElse("RISCV_A", "n") == "y"
@@ -103,6 +107,7 @@ object ysyx_26030103_Elaborate extends App {
   val mmuProfile = ysyx_26030103_MMUProfile.fromEnv(sys.env.get)
   val config = ysyx_26030103_NPCConfig(
     XLEN = XLEN,
+    AddressWidth = AddressWidth,
     UseM = UseM,
     UseA = UseA,
     UseC = UseC,

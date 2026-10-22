@@ -49,26 +49,30 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DCacheableMask = config.CacheableMask,
       DCachePMARegions = config.PMARegions,
       DCacheVipt = config.MMU.cacheMode == "vipt",
-      ViptParallel = parallelDataVipt
+      ViptParallel = parallelDataVipt,
+      AddressWidth = config.AddressWidth
     )
   )
   val gpr = Module(new ysyx_26030103_GPR(XLEN, config.EnableDynamicGPRDebug))
   val icache = ysyx_26030103_ICacheFactory.Create(config)
-  val arbiter = Module(new ysyx_26030103_AXI5Arbiter)
+  val arbiter = Module(new ysyx_26030103_AXI5Arbiter(config.AddressWidth))
   val xbar = Module(
     new ysyx_26030103_AXI5Xbar(
-      config.AddressWidth,
-      config.PMARegions,
-      BigInt(config.MMU.plicBase),
-      BigInt(0x04000000)
+      AddressWidth = config.AddressWidth,
+      PMARegions = config.PMARegions,
+      PLICBaseValue = BigInt(config.MMU.plicBase),
+      PLICSizeBytes = BigInt(0x04000000),
+      DataWidth = 32,
+      IdWidth = 4
     )
   )
-  val clint = Module(new ysyx_26030103_AXI5CLINTSlave)
+  val clint = Module(new ysyx_26030103_AXI5CLINTSlave(config.AddressWidth))
   val plic = Module(new ysyx_26030103_PLIC(
     numSources = config.MMU.plicSources,
     priorityBits = config.MMU.plicPriorityBits,
     maxPriority = config.MMU.plicMaxPriority,
-    base = BigInt(config.MMU.plicBase)
+    base = BigInt(config.MMU.plicBase),
+    AddressWidth = config.AddressWidth
   ))
   // ysyxSoC的ChipLink内存窗口。只有当当前PMA明确覆盖完整
   // 0xc0000000--0xffffffff可读写区域时，才允许CPU slave端口代理
@@ -88,17 +92,23 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 分支目标缓冲(BTB): IFU取指级查询决定下一PC,取指被icache接受时快照预测标签随请求保存,
   // EXU提交时更新分支的真实target; 另设独立jal BTB(方案B: 与分支表零干扰, 表项带kind区分Jal/Call/Ret)
   // + 返回地址栈RAS(ret的预测目标=栈顶, EXU提交call/ret时压/弹, 非投机无需修复)
-  val btb = Module(new ysyx_26030103_BTB(config.BTBBits, config.BTBWays))
+  val btb = Module(new ysyx_26030103_BTB(config.BTBBits, config.BTBWays, config.AddressWidth))
   val jal_btb =
-    Module(new ysyx_26030103_BTB(config.JalBTBBits, config.JalBTBWays, 32, 2))
-  val ras = Module(new ysyx_26030103_RAS(config.RASBits))
-  val predictorSelect = Module(new ysyx_26030103_PredictorSelect)
+    Module(new ysyx_26030103_BTB(
+      config.JalBTBBits,
+      config.JalBTBWays,
+      config.AddressWidth,
+      2
+    ))
+  val ras = Module(new ysyx_26030103_RAS(config.RASBits, config.AddressWidth))
+  val predictorSelect =
+    Module(new ysyx_26030103_PredictorSelect(config.AddressWidth))
   val mmuEnabled = config.MMU.enabled
   // VIPT 取指并行：ICache 先用 VA 选 index，再等待带 VA 标签的 PA。
   // PIPT 走原来的“翻译完成后再取指”路径，行为不变。
   val parallelFetchVipt = config.MMU.cacheMode == "vipt"
   val pmpOpt =
-    if (config.MMU.pmpEnabled) Some(Module(new ysyx_26030103_PMP(config.MMU.pmpEntries)))
+    if (config.MMU.pmpEnabled) Some(Module(new ysyx_26030103_PMP(config.MMU.pmpEntries, config.AddressWidth)))
     else None
   // HAS_U=n 时 MPP 理论上已被 CSR 夹到 S；顶层再做一次防御性夹取，
   // 避免 MPRV 数据访问把不存在的 U 特权级送进 MMU/PMP。HAS_S=n 时
@@ -124,7 +134,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   pmpOpt.foreach { pmp =>
     pmp.io.cfg := exu.io.PmpCfg
     pmp.io.addr := exu.io.PmpAddr
-    pmp.io.fetchAddr := ifu.io.FetchAddr(31, 0)
+    pmp.io.fetchAddr := ifu.io.FetchAddr
     pmp.io.fetchPriv := exu.io.CSRPrivilege
     // 默认按无 MMU 路径接 LSU 的访存检查地址；MMU 分支稍后覆盖成
     // DMMU 给出的物理地址。这样两种配置共用同一个 PMP 例化。
@@ -181,7 +191,6 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     immuOpt.map(_.io.translationValid).getOrElse(true.B)
   val fetchTranslationFault =
     immuOpt.map(_.io.fault).getOrElse(false.B)
-  val fetchPaddr = immuOpt.map(_.io.fetchPaddr).getOrElse(ifu.io.FetchAddr(31, 0))
   // 无 MMU 时的取指 PMP 检查：PMP 直接看 IFU 的物理取指地址（VA==PA）。
   // 故障请求不进入 ICache，而是在响应级注入一条带 cause=1 的精确异常。
   // pending 只产生一次注入；blocked 一直保持到流水冲刷，防止故障 PC 被
@@ -442,11 +451,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     when(mmuFlush) { ifuFaultValid := false.B }
   } else {
     icache.io.axi <> arbiter.io.ifu
-    icache.io.fetch_addr := ifu.io.FetchAddr(31, 0)
-    icache.io.fetch_vaddr := ifu.io.FetchAddr(31, 0)
+    icache.io.fetch_addr := ifu.io.FetchAddr
+    icache.io.fetch_vaddr := ifu.io.FetchAddr
     // 无 MMU 时 VA==PA，VIPT 等价于恒等映射，不需要等待翻译。
     icache.io.fetch_paddr_valid := true.B
-    icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr(31, 0)
+    icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
     // PMP 故障请求不得进入 ICache；故障 PC 在响应级合成 cause=1。
     icache.io.fetch_valid := ifu.io.FetchValid && pmpFetchAllow
     icache.io.kill := pipe_flush
@@ -456,12 +465,12 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     lsu.io.PmpFault := pmpOpt.map(_.io.dataFault).getOrElse(false.B)
   }
   // BTB查询1: 用当前取指地址同时查两张表,合并结果回送IFU决定下一PC
-  // 传入PC[31:2]; 低位恒为0, 无需参与索引和tag匹配
-  btb.io.lookup_pc := ifu.io.FetchAddr(31, 2)
-  jal_btb.io.lookup_pc := ifu.io.FetchAddr(31, 2)
+  // 传入PC[AddressWidth-1:2]; 低位恒为0, 无需参与索引和tag匹配
+  btb.io.lookup_pc := ifu.io.FetchAddr(config.AddressWidth - 1, 2)
+  jal_btb.io.lookup_pc := ifu.io.FetchAddr(config.AddressWidth - 1, 2)
   // Ret只有在RAS非空时才有资格取得优先级；Ret表项的target保存静态
   // JALR immediate，由选择器与动态栈顶相加。分支仍采用BTFN方向预测。
-  predictorSelect.io.fetchPC := ifu.io.FetchAddr(31, 0)
+  predictorSelect.io.fetchPC := ifu.io.FetchAddr
   predictorSelect.io.branchHit := btb.io.hit
   predictorSelect.io.branchTarget := btb.io.target
   predictorSelect.io.jalHit := jal_btb.io.hit
@@ -470,20 +479,20 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   predictorSelect.io.rasNonempty := ras.io.nonempty
   predictorSelect.io.rasTop := ras.io.top
   ifu.io.PredHit := predictorSelect.io.predHit
-  ifu.io.PredTarget := Widen32(predictorSelect.io.predTarget)
+  ifu.io.PredTarget := predictorSelect.io.predTarget
   // BTB更新: EXU提交时按指令类型路由, 分支写分支表, jal/ret写jal表(带kind)
   btb.io.update_valid := exu.io.BTBUpdateValid
-  btb.io.update_pc := exu.io.BTBUpdatePC(31, 2)
-  btb.io.update_target := exu.io.BTBUpdateTarget(31, 0)
+  btb.io.update_pc := exu.io.BTBUpdatePC(config.AddressWidth - 1, 2)
+  btb.io.update_target := exu.io.BTBUpdateTarget
   btb.io.flush := exu.io.FenceIFlush
   jal_btb.io.update_valid := exu.io.JalBTBUpdateValid
-  jal_btb.io.update_pc := exu.io.JalBTBUpdatePC(31, 2)
-  jal_btb.io.update_target := exu.io.JalBTBUpdateTarget(31, 0)
+  jal_btb.io.update_pc := exu.io.JalBTBUpdatePC(config.AddressWidth - 1, 2)
+  jal_btb.io.update_target := exu.io.JalBTBUpdateTarget
   jal_btb.io.update_kind.get := exu.io.JalBTBUpdateKind
   jal_btb.io.flush := exu.io.FenceIFlush
   // RAS更新: call压栈, ret弹栈
   ras.io.push_valid := exu.io.RASPushValid
-  ras.io.push_addr := exu.io.RASPushAddr(31, 0)
+  ras.io.push_addr := exu.io.RASPushAddr
   ras.io.pop_valid := exu.io.RASPopValid
   ras.io.flush := exu.io.FenceIFlush
   if (mmuEnabled) {
@@ -543,9 +552,28 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   arbiter.io.memory.B <> xbar.io.in.B
   arbiter.io.memory.AR <> xbar.io.in.AR
   arbiter.io.memory.R <> xbar.io.in.R
+  // SoC 边界：内部 Xbar/PMA/Cache 使用 AddressWidth（RV64 为 64），
+  // 而 ysyxSoC 的 CPU AXI 黑盒接口固定 32 位地址。Xbar 已保证只有
+  // 落在低 4GiB PMA 的请求才会到达 SoCBus；这里再显式检查高位，
+  // 任何越界请求都应先在 Xbar 内变成 DECERR，而不是被静默截断后访问
+  // 错误外设。超过 4GiB 的物理地址能力由叶模块/Xbar 定向测试覆盖。
+  private def SoCBoundaryAddress(Address: UInt): UInt = {
+    if (config.AddressWidth == 32) Address
+    else {
+      assert(
+        Address(config.AddressWidth - 1, 32) === 0.U,
+        "SoC AXI has only 32 address bits; Xbar forwarded an address above 4GiB"
+      )
+      Address(31, 0)
+    }
+  }
+  private def SoCSlaveAddress(Address: UInt): UInt = {
+    if (config.AddressWidth == 32) Address
+    else Cat(0.U((config.AddressWidth - 32).W), Address)
+  }
   val soc = xbar.io.SoCBus
   io.master_awvalid := soc.AW.AWVALID
-  io.master_awaddr := soc.AW.AWADDR
+  io.master_awaddr := SoCBoundaryAddress(soc.AW.AWADDR)
   io.master_awid := soc.AW.AWID
   io.master_awlen := soc.AW.AWLEN
   io.master_awsize := soc.AW.AWSIZE
@@ -568,7 +596,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   soc.B.BRESP := io.master_bresp
 
   io.master_arvalid := soc.AR.ARVALID
-  io.master_araddr := soc.AR.ARADDR
+  io.master_araddr := SoCBoundaryAddress(soc.AR.ARADDR)
   io.master_arid := soc.AR.ARID
   io.master_arlen := soc.AR.ARLEN
   io.master_arsize := soc.AR.ARSIZE
@@ -593,7 +621,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     arbiter.io.dmaAWLock := io.slave_awlock
     arbiter.io.dmaARLock := io.slave_arlock
     arbiter.io.dma.AW.AWVALID := io.slave_awvalid
-    arbiter.io.dma.AW.AWADDR := io.slave_awaddr
+    arbiter.io.dma.AW.AWADDR := SoCSlaveAddress(io.slave_awaddr)
     arbiter.io.dma.AW.AWID := io.slave_awid
     arbiter.io.dma.AW.AWLEN := io.slave_awlen
     arbiter.io.dma.AW.AWSIZE := io.slave_awsize
@@ -615,7 +643,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     io.slave_bid := arbiter.io.dma.B.BID
 
     arbiter.io.dma.AR.ARVALID := io.slave_arvalid
-    arbiter.io.dma.AR.ARADDR := io.slave_araddr
+    arbiter.io.dma.AR.ARADDR := SoCSlaveAddress(io.slave_araddr)
     arbiter.io.dma.AR.ARID := io.slave_arid
     arbiter.io.dma.AR.ARLEN := io.slave_arlen
     arbiter.io.dma.AR.ARSIZE := io.slave_arsize

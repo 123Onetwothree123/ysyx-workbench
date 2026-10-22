@@ -7,22 +7,24 @@ class ysyx_26030103_AXI5Xbar(
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
     PLICBaseValue: BigInt = BigInt("0c000000", 16),
-    PLICSizeBytes: BigInt = BigInt("04000000", 16)
+    PLICSizeBytes: BigInt = BigInt("04000000", 16),
+    DataWidth: Int = 32,
+    IdWidth: Int = 4
 ) extends Module {
   val io = IO(new Bundle {
     // 先做过笔记，因为这个是接裁决器的，裁决器是master，所以这里的对反
-    val in = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
-    val SoCBus = new ysyx_26030103_AXI5IO(AddressWidth)
-    val CLINT = new ysyx_26030103_AXI5IO(AddressWidth)
-    val PLIC = new ysyx_26030103_AXI5IO(AddressWidth)
+    val in = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth))
+    val SoCBus = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth)
+    val CLINT = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth)
+    val PLIC = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth)
   })
   // 我真的是烦死了ARM的命名规则
   val OKAY = "b00".U(2.W)
   val DECERR = "b11".U(2.W)
   // RISC-V标准CLINT区间：0x02000000 ~ 0x0200FFFF（64KiB）；与SDRAM窗口
   // (0xa0000000)本就不相交，解码按区间独立判定。
-  val CLINTBase = "h02000000".U(32.W)
-  val CLINTEnd = "h02010000".U(32.W)
+  val CLINTBase = "h02000000".U(AddressWidth.W)
+  val CLINTEnd = "h02010000".U(AddressWidth.W)
   require(PLICBaseValue >= 0 && PLICBaseValue < (BigInt(1) << AddressWidth),
     "PLIC 基地址超出地址宽度")
   require(PLICSizeBytes > 0 && PLICBaseValue + PLICSizeBytes <= (BigInt(1) << AddressWidth),
@@ -151,7 +153,7 @@ class ysyx_26030103_AXI5Xbar(
   }
   // AXI读写通道相互独立。读状态按RID分别保存，因此固定的IFU/LSU ID
   // 都可以同时处于下游互连结构的在途状态。
-  private val ReadSlotCount = 16
+  private val ReadSlotCount = 1 << IdWidth
   val readSlotStates = Enum(5)
   val ReadSlotFree = readSlotStates(0)
   val ReadSlotRequest = readSlotStates(1)
@@ -164,7 +166,7 @@ class ysyx_26030103_AXI5Xbar(
   val ReadTargetReg = RegInit(
     VecInit(Seq.fill(ReadSlotCount)(TargetInvalid))
   )
-  val ARAddressReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(32.W))))
+  val ARAddressReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(AddressWidth.W))))
   val ARLENReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(8.W))))
   val ARSIZEReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(2.U(3.W))))
   val ARBURSTReg = RegInit(VecInit(Seq.fill(ReadSlotCount)(0.U(2.W))))
@@ -186,16 +188,16 @@ class ysyx_26030103_AXI5Xbar(
   val writeState = RegInit(StateWriteIdle)
   val AWValidReg = RegInit(false.B)
   val WValidReg = RegInit(false.B)
-  val AWIDReg = RegInit(0.U(4.W))
-  val AWAddressReg = RegInit(0.U(32.W))
+  val AWIDReg = RegInit(0.U(IdWidth.W))
+  val AWAddressReg = RegInit(0.U(AddressWidth.W))
   val AWLENReg = RegInit(0.U(8.W))
   val AWSIZEReg = RegInit(2.U(3.W))
   val AWBURSTReg = RegInit(0.U(2.W))
   val AWPROTReg = RegInit(0.U(3.W))
   val AWCACHEReg = RegInit(0.U(4.W))
   val AWQOSReg = RegInit(0.U(4.W))
-  val WDataReg = RegInit(0.U(32.W))
-  val WSTRBReg = RegInit(0.U(4.W))
+  val WDataReg = RegInit(0.U(DataWidth.W))
+  val WSTRBReg = RegInit(0.U((DataWidth / 8).W))
   val WLASTReg = RegInit(false.B)
   // 写响应B通道回来时也没有地址，所以要记住写请求目标
   val WriteTargetReg = RegInit(TargetInvalid)
@@ -742,11 +744,11 @@ class ysyx_26030103_AXI5Xbar(
     ReadTargetReg(id) === TargetPLIC
   }).asUInt
   val SoCARHeld = RegInit(false.B)
-  val SoCARHeldID = RegInit(0.U(4.W))
+  val SoCARHeldID = RegInit(0.U(IdWidth.W))
   val CLINTARHeld = RegInit(false.B)
-  val CLINTARHeldID = RegInit(0.U(4.W))
+  val CLINTARHeldID = RegInit(0.U(IdWidth.W))
   val PLICARHeld = RegInit(false.B)
-  val PLICARHeldID = RegInit(0.U(4.W))
+  val PLICARHeldID = RegInit(0.U(IdWidth.W))
   val SoCRequestCandidateID = PriorityEncoder(SoCRequestMask)
   val CLINTRequestCandidateID = PriorityEncoder(CLINTRequestMask)
   val PLICRequestCandidateID = PriorityEncoder(PLICRequestMask)
@@ -829,8 +831,8 @@ class ysyx_26030103_AXI5Xbar(
   // 被反压的响应会独占通道、阻塞无关owner的响应（队头阻塞）；深度取4与
   // 仲裁器CPU侧队列一致，正常路径仍为1拍穿透。
   private class RPayload extends Bundle {
-    val Id = UInt(4.W)
-    val Data = UInt(32.W)
+    val Id = UInt(IdWidth.W)
+    val Data = UInt(DataWidth.W)
     val Resp = UInt(2.W)
     val Last = Bool()
   }

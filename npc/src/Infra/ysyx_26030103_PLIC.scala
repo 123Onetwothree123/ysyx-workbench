@@ -12,7 +12,10 @@ class ysyx_26030103_PLIC(
     numSources: Int = 32,
     priorityBits: Int = 3,
     maxPriority: Int = 7,
-    base: BigInt = BigInt("0c000000", 16)
+    base: BigInt = BigInt("0c000000", 16),
+    AddressWidth: Int = 32,
+    DataWidth: Int = 32,
+    IdWidth: Int = 4
 ) extends Module {
   require(numSources >= 1 && numSources <= 1024, "PLIC source 数非法")
   require(priorityBits >= 1 && priorityBits <= 8, "PLIC priority 位宽非法")
@@ -20,7 +23,7 @@ class ysyx_26030103_PLIC(
   private val IdBits = log2Ceil(numSources.max(2))
   private val PriorityMax = maxPriority.U(priorityBits.W)
 
-  val io = IO(new ysyx_26030103_AXI5Slave(32))
+  val io = IO(new ysyx_26030103_AXI5Slave(AddressWidth, DataWidth, IdWidth))
   val sources = IO(Input(UInt(numSources.W)))
   val external_irq = IO(Output(Bool()))
   io.ACLK := clock.asBool
@@ -37,7 +40,7 @@ class ysyx_26030103_PLIC(
   })
   external_irq := enabledPending.reduce(_ || _)
 
-  def addrOf(offset: BigInt): UInt = (base + offset).U(32.W)
+  def addrOf(offset: BigInt): UInt = (base + offset).U(AddressWidth.W)
   def priorityAddr(i: Int): UInt = addrOf(4L * i)
   def enableAddr(word: Int): UInt = addrOf(0x2000L + 4L * word)
   val PendingAddr = addrOf(0x1000L)
@@ -50,14 +53,14 @@ class ysyx_26030103_PLIC(
   val AWValid = RegInit(false.B)
   val WValid = RegInit(false.B)
   val BValid = RegInit(false.B)
-  val AWID = RegInit(0.U(4.W))
-  val AWAddr = RegInit(0.U(32.W))
-  val WData = RegInit(0.U(32.W))
-  val WStrb = RegInit(0.U(4.W))
+  val AWID = RegInit(0.U(IdWidth.W))
+  val AWAddr = RegInit(0.U(AddressWidth.W))
+  val WData = RegInit(0.U(DataWidth.W))
+  val WStrb = RegInit(0.U((DataWidth / 8).W))
   val BResp = RegInit(OKAY)
   val RValid = RegInit(false.B)
-  val RID = RegInit(0.U(4.W))
-  val RData = RegInit(0.U(32.W))
+  val RID = RegInit(0.U(IdWidth.W))
+  val RData = RegInit(0.U(DataWidth.W))
   val RResp = RegInit(OKAY)
 
   io.AW.AWREADY := !AWValid && !BValid

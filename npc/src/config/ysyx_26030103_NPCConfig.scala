@@ -35,6 +35,9 @@ case class ysyx_26030103_NPCConfig(
     MULEarlyOut: Boolean = false,
     // 目标平台
     ResetAddr: Long = 0x30000000L,
+    // 架构/总线物理地址宽度。RV32 保持 32；RV64 由 elaborator 设为 64。
+    // 该宽度同时用于 PC/分支目标、IFU/LSU、AXI、PMA/Xbar、Cache tag 与
+    // BTB/RAS，避免任何一级再截断到 32 位。
     AddressWidth: Int = 32,
     // 缓存
     ICacheEnable: Boolean = true,
@@ -98,22 +101,50 @@ case class ysyx_26030103_NPCConfig(
 ) {
   require(XLEN == 32 || XLEN == 64,
     s"XLEN 只允许 32 或 64，收到 XLEN=$XLEN")
-  require(!UseA, "RISCV_A 还没有做")
-  require(!UseC, "RISCV_C 还没做")
-  // 第一阶段 RV64 只实现无 MMU 的整数/乘除法核。MMU 的页表格式、satp
+  require(UseA == false, "RISCV_A 还没有做")
+  require(UseC == false, "RISCV_C 还没做")
+  // 物理地址宽度不能超过架构 XLEN；RV32 使用 32，RV64 必须使用 64，
+  // 保证 PC/分支目标/LSU/IFU/AXI 全链路都不会再次退化为 32 位。
+  require(AddressWidth == 32 || AddressWidth == 64,
+    s"AddressWidth 只允许 32 或 64，收到 AddressWidth=$AddressWidth")
+  require(XLEN == 32 || AddressWidth == XLEN,
+    s"XLEN=64 的架构地址路径必须使用 64 位 AddressWidth，收到 $AddressWidth")
+  // 当前 RV64 只实现无 MMU 的整数/乘除法核。MMU 的页表格式、satp
   // 和 Sv39 地址翻译属于后续阶段，这里必须在 elaboration 期明确拒绝，
   // 不能生成一个“看起来能跑”但不满足 RV64 虚存语义的核。
   require(XLEN == 32 || !MMU.enabled,
-    "XLEN=64 第一阶段暂不支持 MMU/Sv39；请设置 HAS_MMU=n")
-  // RV64 下 LD/SD 需要一次访问 8 字节。当前 LSU/AXI 数据通路固定 32 位，
-  // 通过两拍窄传输实现；DCache 尚未适配 64 位访问，因此暂不允许同时开启。
-  require(XLEN == 32 || !DCacheEnable,
-    "XLEN=64 第一阶段暂不支持 DCache；请设置 DCACHE=n")
-  require(XLEN == 32 || !MMU.cacheMode.equals("vipt") || !ICacheEnable,
-    "XLEN=64 第一阶段 ICache 只支持物理地址索引")
+    "XLEN=64 第二阶段暂不支持 MMU/Sv39；请设置 HAS_MMU=n")
+  // RV64 的 LD/SD 是 8 字节访问。LSU 在 32 位 AXI 数据通道上按两拍
+  // 窄传输完成；DCache 内部仍以 32 位 word 存储，但一次 load/store
+  // 可以跨两个相邻 word，因此数据行必须至少容纳两个 word。
+  require(XLEN == 32 || !DCacheEnable || DCacheBlockSizeLog2 >= 3,
+    "XLEN=64 且启用 DCache 时，cache line 必须至少容纳两个 32 位 word")
+  // VIPT 的页内约束在 RV64 下仍按当前 MMU 页大小检查；本阶段 MMU 关闭，
+  // 因此该条件不会触发，但保留逻辑以便后续 Sv39 阶段复用。
+  val viptCacheEnabled = MMU.enabled && MMU.cacheMode == "vipt"
   require(
-    AddressWidth == 32,
-    "当前RV32核的PC/PMA/流水线消息固定为32位；暂不支持非32位AddressWidth"
+    !viptCacheEnabled || !ICacheEnable ||
+      ICacheIndexBits + ICacheBlockSizeLog2 <= MMU.pageBits,
+    s"VIPT ICache 非法：ICacheIndexBits($ICacheIndexBits)+" +
+      s"ICacheBlockSizeLog2($ICacheBlockSizeLog2) 超过页内偏移位数" +
+      s"(${MMU.pageBits})；请增大 MMU_PAGE_SIZE_BYTES 或减小 Cache 索引/块大小"
+  )
+  require(
+    !viptCacheEnabled || !DCacheEnable ||
+      DCacheIndexBits + DCacheBlockSizeLog2 <= MMU.pageBits,
+    s"VIPT DCache 非法：DCacheIndexBits($DCacheIndexBits)+" +
+      s"DCacheBlockSizeLog2($DCacheBlockSizeLog2) 超过页内偏移位数" +
+      s"(${MMU.pageBits})；请增大 MMU_PAGE_SIZE_BYTES 或减小 Cache 索引/块大小"
+  )
+  // 外部 ysyxSoC 的 CPU AXI 接口只有 32 位地址。顶层在 64 位内部地址
+  // 与 32 位 SoC 边界之间做显式检查：PMA 必须完全位于低 4GiB，Xbar 对
+  // 更高地址返回 DECERR，绝不静默截断后访问错误设备。超过 4GiB 的
+  // Cache/Xbar 行为由叶模块定向测试覆盖。
+  require(
+    AddressWidth <= 32 ||
+      PMARegions.forall(r => BigInt(r.EndExclusive) <= (BigInt(1) << 32)),
+    "AddressWidth=64 时顶层 PMA 必须位于低 4GiB：外部 SoC AXI 只有 32 位地址；" +
+      "更高地址应在 Xbar 内局部 DECERR"
   )
   require(BlockSizeLog2 >= 2, "Cache block必须至少容纳1个32位字")
   require(IndexBits >= 1, "Cache必须至少包含2个set")
@@ -132,25 +163,6 @@ case class ysyx_26030103_NPCConfig(
   require(
     IndexBits + BlockSizeLog2 < AddressWidth,
     "Cache地址几何必须留出至少1位tag"
-  )
-  // VIPT 合法性：VA 选中的 index+块内偏移必须完全落在页内，才能保证
-  // 不同虚拟页映射到不同物理页时不会在 Cache 中错误 alias。若
-  // indexBits+blockSizeLog2 > pageBits，index 会包含页号位，而物理 tag
-  // 尚未到达前无法区分同 VA index 的不同物理页，必须显式拒绝。
-  val viptCacheEnabled = MMU.enabled && MMU.cacheMode == "vipt"
-  require(
-    !viptCacheEnabled || !ICacheEnable ||
-      ICacheIndexBits + ICacheBlockSizeLog2 <= MMU.pageBits,
-    s"VIPT ICache 非法：ICacheIndexBits($ICacheIndexBits)+" +
-      s"ICacheBlockSizeLog2($ICacheBlockSizeLog2) 超过页内偏移位数" +
-      s"(${MMU.pageBits})；请增大 MMU_PAGE_SIZE_BYTES 或减小 Cache 索引/块大小"
-  )
-  require(
-    !viptCacheEnabled || !DCacheEnable ||
-      DCacheIndexBits + DCacheBlockSizeLog2 <= MMU.pageBits,
-    s"VIPT DCache 非法：DCacheIndexBits($DCacheIndexBits)+" +
-      s"DCacheBlockSizeLog2($DCacheBlockSizeLog2) 超过页内偏移位数" +
-      s"(${MMU.pageBits})；请增大 MMU_PAGE_SIZE_BYTES 或减小 Cache 索引/块大小"
   )
   require(BTBBits >= 0, "BTBBits不能为负数；0表示单组BTB")
   require(
@@ -310,6 +322,7 @@ case class ysyx_26030103_NPCConfig(
         s"${1 << DCacheBlockSizeLog2}B/${1 << DCacheIndexBits}sets"
       } else { "off" }
     s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, " +
+      s"addr_w=$AddressWidth, " +
       s"mul=${MULImpl.Name}/${MULEncoding.Name}, " +
       s"mul_width=$MULWidth, mul_gpc=${MULCompressorConfig.Describe}, mul_radix=$MULRadix, " +
       s"div=${DIVImpl.Name}, div_radix=$DIVRadix, div_iter=$DIVIterBits, " +

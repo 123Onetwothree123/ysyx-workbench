@@ -17,9 +17,12 @@ case class ysyx_26030103_PMARegion(
 ) {
   require(Base >= 0L, "PMA区域基地址必须非负")
   require(Size > 0L, "PMA区域大小必须为正")
+  // Long 的 EndExclusive 最高只能到 2^63；实际支持的低 4GiB 镜像与
+  // 高位标签测试都远小于该上限。需要完整 64 位无符号区间时应改为
+  // BigInt 表示，但当前 SoC 边界只使用低 32 位，故显式限制在 2^63。
   require(
-    BigInt(Base) + BigInt(Size) <= (BigInt(1) << 32),
-    "PMA区域必须位于32位物理地址空间内"
+    BigInt(Base) + BigInt(Size) <= (BigInt(1) << 63),
+    "PMA区域必须位于可表示的64位物理地址空间内"
   )
   require(!Cacheable || Readable, "可缓存PMA区域必须可读")
   require(!Executable || Readable, "可执行PMA区域必须可读")

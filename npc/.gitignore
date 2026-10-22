@@ -60,3 +60,5 @@ test_run_dir/
 gcm.cache/
 
 !MMU_STATUS.md
+
+!ADDRESSING.md

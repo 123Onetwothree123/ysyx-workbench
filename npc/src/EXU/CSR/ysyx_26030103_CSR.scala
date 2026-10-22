@@ -71,7 +71,7 @@ class ysyx_26030103_CSR(
     val StateMepc = Output(UInt(XLEN.W))
     val StateMcause = Output(UInt(XLEN.W))
     val PmpCfg = Output(Vec(16, UInt(8.W)))
-    val PmpAddr = Output(Vec(16, UInt(32.W)))
+    val PmpAddr = Output(Vec(16, UInt(XLEN.W)))
     val Mtime = Input(UInt(64.W))
     val McounterenOut = Output(UInt(32.W))
     val ScounterenOut = Output(UInt(32.W))
@@ -209,7 +209,7 @@ class ysyx_26030103_CSR(
   val Mtval = RegInit(0.U(XLEN.W))
   val Minstret = RegInit(0.U(64.W))
   val PmpcfgReg = RegInit(VecInit(Seq.fill(4)(0.U(32.W))))
-  val PmpaddrReg = RegInit(VecInit(Seq.fill(16)(0.U(32.W))))
+  val PmpaddrReg = RegInit(VecInit(Seq.fill(16)(0.U(XLEN.W))))
   val StvalOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
   val SatpRegOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
   val SatpReadData =
@@ -482,7 +482,13 @@ class ysyx_26030103_CSR(
   }
   for (entry <- 0 until 16) {
     when(CSRWen && io.CSRAddress === (0x3b0 + entry).U(12.W)) {
-      PmpaddrReg(entry) := Write32(PmpaddrReg(entry)) & "h3fffffff".U(32.W)
+      // RV32 PMP 地址为 30 位；RV64 pmpaddr 为标准 54 位。
+      if (XLEN == 64) {
+        PmpaddrReg(entry) := CSRWriteData(PmpaddrReg(entry)) &
+          "h003fffffffffffff".U(64.W)
+      } else {
+        PmpaddrReg(entry) := Write32(PmpaddrReg(entry)) & "h3fffffff".U(32.W)
+      }
     }
   }
   // 标准 mcountinhibit：bit0=CY，bit2=IR。
@@ -595,7 +601,7 @@ class ysyx_26030103_CSR(
     addCsr((0x3a0 + i).U(12.W), Widen32(PmpcfgReg(i)), csrOn(0x3a0 + i))
   }
   for (i <- 0 until 16) {
-    addCsr((0x3b0 + i).U(12.W), Widen32(PmpaddrReg(i)), csrOn(0x3b0 + i))
+    addCsr((0x3b0 + i).U(12.W), PmpaddrReg(i), csrOn(0x3b0 + i))
   }
   val CsrRawRdata =
     if (CSRMap.isEmpty) 0.U(XLEN.W)

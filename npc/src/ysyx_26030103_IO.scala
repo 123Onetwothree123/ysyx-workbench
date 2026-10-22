@@ -1,6 +1,15 @@
 package ysyx_26030103
 import chisel3._
 
+/** 顶层端口 ABI。
+  *
+  * 外部 AXI master/slave 为兼容 ysyxSoC 黑盒接口固定 32 位地址和 32 位
+  * 数据；RV64 的内部 PC/LSU/IFU/AXI/PMA/Xbar/Cache 使用 config.AddressWidth
+  * （64 位）。Xbar 只把低 4GiB PMA 请求送到该边界，顶层再做高位断言，
+  * 超过 4GiB 的访问在 Xbar 内 DECERR，不会静默截断。
+  * 调试端口同样保持 32 位 ABI：它们只用于 C++ 观测/比对，不参与
+  * 架构地址计算。
+  */
 class ysyx_26030103_IO extends Bundle {
   val interrupt = Input(Bool())
   // 仿真 ABI 的 custom-0 halt 提交脉冲；不是架构异常/EBREAK 指示。
