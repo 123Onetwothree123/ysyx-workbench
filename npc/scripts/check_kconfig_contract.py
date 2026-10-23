@@ -31,6 +31,14 @@ PAGE_TABLE_SIZE_MIN = 8          # 至少容纳 2 个 4B PTE
 SATP_PPN_BITS = 44
 XLEN_VALUES = (32, 64)
 SOC_XLEN_VALUES = (32, 64)
+FPU_FLEN_VALUES = (32, 64)
+FPU_IMPL_VALUES = ("none", "hardfloat", "fudian", "external")
+FPU_IMPL_CHOICES = (
+    ("FPU_IMPL_HARDFLOAT", "hardfloat"),
+    ("FPU_IMPL_FUDIAN", "fudian"),
+    ("FPU_IMPL_EXTERNAL", "external"),
+    ("FPU_IMPL_NONE", "none"),
+)
 
 _CONFIG_RE = re.compile(r"CONFIG_([A-Za-z0-9_]+)=(.*)$")
 
@@ -147,6 +155,62 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
                 f"SOC_XLEN={soc_xlen} 非法：只允许 32 或 64"
                 "（SOC_XLEN_FOLLOW_CPU=n 时生效）"
             )
+
+    # ---- F/D 与 FPU 后端 -------------------------------------------------
+    use_f = _as_bool(values, "RISCV_F", False)
+    use_d = _as_bool(values, "RISCV_D", False)
+    fpu_impl = _derived_choice_string(
+        values, "FPU_IMPL", FPU_IMPL_CHOICES, "none"
+    ).strip().lower()
+    if fpu_impl not in FPU_IMPL_VALUES:
+        err(
+            f"FPU_IMPL={fpu_impl!r} 非法：只允许 "
+            f"{'/'.join(FPU_IMPL_VALUES)}"
+        )
+    # 字符串派生项和 choice 布尔项必须一致；否则 savedefconfig 或手工
+    # 修改 .config 会让 Makefile 和 Kconfig 菜单看到不同后端。
+    for symbol, choice in FPU_IMPL_CHOICES:
+        if _as_bool(values, symbol, False) and choice != fpu_impl:
+            err(
+                f"{symbol}=y 与 FPU_IMPL={fpu_impl!r} 不一致；"
+                "请重新运行 menuconfig/olddefconfig"
+            )
+    if use_d and not use_f:
+        err("RISCV_D=y 依赖 RISCV_F=y：D 扩展不能脱离 F 单独启用")
+    if not use_f and fpu_impl != "none":
+        err(
+            f"RISCV_F=n 时 FPU_IMPL 必须为 none，收到 {fpu_impl!r}；"
+            "请同时启用 RISCV_F 或清除后端选择"
+        )
+    if use_f and fpu_impl == "none":
+        err("RISCV_F=y 但 FPU_IMPL=none：必须选择 hardfloat/fudian 等后端")
+    if fpu_impl == "external":
+        err(
+            "FPU_IMPL=external 只是预留接口，当前没有外部 FPU 实现；"
+            "请选择 hardfloat/fudian，或关闭 RISCV_F"
+        )
+
+    fpu_flen = _as_int(values, "FPU_FLEN", 64)
+    if fpu_flen not in FPU_FLEN_VALUES:
+        err(f"FPU_FLEN={fpu_flen} 非法：只允许 32 或 64")
+    if use_d and fpu_flen != 64:
+        err(
+            f"启用 RISCV_D 要求 FPU_FLEN=64，收到 FPU_FLEN={fpu_flen}"
+        )
+    if use_f:
+        fpu_pipeline = _as_int(values, "FPU_PIPELINE", 0)
+        if not 0 <= fpu_pipeline <= 8:
+            err(
+                f"FPU_PIPELINE={fpu_pipeline} 非法：必须在 0..8 之间"
+            )
+        # FDIV/FSQRT、完整舍入和 fflags 是 F/D 的必备语义；允许关闭
+        # 会让构建声称支持 F/D 却缺少指令或异常状态。
+        if not _as_bool(values, "FPU_DIVSQRT", True):
+            err("启用 RISCV_F/D 要求 FPU_DIVSQRT=y：FDIV/FSQRT 是必备指令")
+        if not _as_bool(values, "FPU_ROUNDING", True):
+            err("启用 RISCV_F/D 要求 FPU_ROUNDING=y：必须支持完整舍入模式")
+        if not _as_bool(values, "FPU_FLAGS", True):
+            err("启用 RISCV_F/D 要求 FPU_FLAGS=y：fflags 是必备状态")
 
     has_s = _as_bool(values, "HAS_S", False)
     has_mmu = _as_bool(values, "HAS_MMU", False)

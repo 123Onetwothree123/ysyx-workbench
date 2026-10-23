@@ -14,11 +14,15 @@ case class ysyx_26030103_NPCConfig(
     UseM: Boolean = false,
     UseA: Boolean = false,
     UseC: Boolean = false,
-    // 浮点扩展目前只有配置占位，RTL 尚未实现。保留字段是为了后续
-    // Linux 硬浮点配置和 Kconfig/Elaborate 接口稳定，不要让配置被静默
-    // 丢弃；启用时由下面的 require 明确拒绝。
+    // 浮点扩展：UseF/UseD 是 ISA 开关，FPUImpl 选择具体后端，
+    // FPULen 是浮点寄存器/数据通路宽度，FPUProfile 承载后端的公开
+    // 调优参数。当前骨架只接通配置；未接入的 backend 由 require
+    // 明确拒绝，绝不静默生成没有浮点数据通路的 F/D 核。
     UseF: Boolean = false,
     UseD: Boolean = false,
+    FPUImpl: ysyx_26030103_FPUImpl = ysyx_26030103_FPUImpl.None,
+    FPULen: Int = 64,
+    FPUProfile: ysyx_26030103_FPUProfile = ysyx_26030103_FPUProfile(),
     MULImpl: ysyx_26030103_MULImpl = ysyx_26030103_MULImpl.ShiftAdd,
     MULEncoding: ysyx_26030103_MULEncoding = ysyx_26030103_MULEncoding.Plain,
     DIVImpl: ysyx_26030103_DIVImpl = ysyx_26030103_DIVImpl.Restoring,
@@ -121,12 +125,40 @@ case class ysyx_26030103_NPCConfig(
     s"XLEN 只允许 32 或 64，收到 XLEN=$XLEN")
   // C 扩展（RV32C/RV64C）已接通 IFU/IDU/CSR：允许 2 字节 PC 步进、
   // 16/32 位拼装和 mepc/sepc 只清 bit0。默认仍由 Kconfig 保持关闭。
-  // F/D 目前是 Kconfig 占位项，RTL 还没有浮点寄存器、fcsr 和指令语义。
-  // 必须在 elaboration 期拒绝，避免 Linux 硬浮点镜像在缺少 F/D 时静默跑错。
-  require(UseF == false,
-    "RISCV_F 目前只有 Kconfig 占位，RTL 尚未实现；请暂时使用软浮点构建")
-  require(UseD == false,
-    "RISCV_D 目前只有 Kconfig 占位，RTL 尚未实现；请暂时使用软浮点构建")
+  // F/D 的结构一致性。先检查依赖关系和 backend/FLEN 组合，再检查
+  // 后端是否已经接入；所有失败都给出可执行的修复提示。
+  require(!UseD || UseF,
+    "RISCV_D=y 依赖 RISCV_F=y：D 扩展不能脱离 F 单独启用")
+  require(FPULen == 32 || FPULen == 64,
+    s"FPU_FLEN 只允许 32 或 64，收到 FPULen=$FPULen")
+  require(!UseD || FPULen == 64,
+    s"启用 RISCV_D 要求 FPU_FLEN=64，收到 FPULen=$FPULen")
+  require(!UseF || FPUImpl != ysyx_26030103_FPUImpl.None,
+    "RISCV_F=y 但 FPU_IMPL=none：必须选择 hardfloat/fudian 等 FPU 后端")
+  require(UseF || FPUImpl == ysyx_26030103_FPUImpl.None,
+    s"RISCV_F=n 时 FPU_IMPL 必须为 none，收到 ${FPUImpl.Name}；" +
+      "请同时启用 RISCV_F 或清除后端选择")
+  require(FPUImpl != ysyx_26030103_FPUImpl.External,
+    "FPU_IMPL=external 只是预留接口，当前没有外部 FPU 实现；" +
+      "请选择 hardfloat/fudian，或关闭 RISCV_F")
+  require(FPUProfile.Pipeline >= 0 && FPUProfile.Pipeline <= 8,
+    s"FPU_PIPELINE 必须在 0 到 8 之间，收到 ${FPUProfile.Pipeline}")
+  // FDIV/FSQRT、完整舍入模式和 fflags 是 RISC-V F/D 的必备语义，
+  // 不能通过 Kconfig 裁掉后仍宣称支持 F/D。
+  require(!UseF || FPUProfile.DivSqrt,
+    "启用 RISCV_F/D 要求 FPU_DIVSQRT=y：FDIV/FSQRT 是 F/D 必备指令")
+  require(!UseF || FPUProfile.Rounding,
+    "启用 RISCV_F/D 要求 FPU_ROUNDING=y：RISC-V 要求完整舍入模式")
+  require(!UseF || FPUProfile.Flags,
+    "启用 RISCV_F/D 要求 FPU_FLAGS=y：fflags 是 F/D 必备状态")
+  // 后端的“结构配置”合法并不代表已有 RTL。当前骨架阶段所有
+  // HardFloat/Fudian 都未接入，必须在这里拒绝，防止顶层根本没有
+  // FPU 实例却宣称 F/D 可用。
+  require(!UseF || FPUImpl.Implemented,
+    s"RISCV_F=y 但 FPU_IMPL=${FPUImpl.Name} 尚未接入 RTL；" +
+      "当前骨架不会生成假浮点核。请等待后端实现接入，或使用软浮点构建")
+  /** 当前选中的后端是否真的能生成 RTL；日志用它区分配置值与可用性。 */
+  final val FPUBackendImplemented: Boolean = FPUImpl.Implemented
   // 物理地址宽度不能超过架构 XLEN；RV32 使用 32，RV64 必须使用 64，
   // 保证 PC/分支目标/LSU/IFU/AXI 全链路都不会再次退化为 32 位。
   require(AddressWidth == 32 || AddressWidth == 64,
@@ -575,6 +607,8 @@ case class ysyx_26030103_NPCConfig(
         else s"hardware_snoop(line-invalidate:$Which)"
       } else "software_flush(legacy-b-invalidate)"
     s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, F=$FOff, D=$DOff, " +
+      s"fpu=${FPUImpl.Name}/flen=$FPULen, " +
+      s"fpu_params=${FPUProfile.Describe(FPUImpl)}, " +
       s"addr_w=$AddressWidth, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
       s"mul=${MULImpl.Name}/${MULEncoding.Name}, " +

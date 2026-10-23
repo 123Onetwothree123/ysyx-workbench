@@ -215,6 +215,111 @@ class KconfigContractTest(unittest.TestCase):
         values["MMU_PTE_SIZE_BYTES"] = 16
         self.assert_error(values, "PTE_SIZE_BYTES=8")
 
+    # ---- F/D 与 FPU 后端 -------------------------------------------------
+    def test_fpu_defaults_keep_fd_off_and_backend_none(self):
+        values = {"XLEN": 32}
+        self.assertEqual(validate_config(values), [])
+
+    def test_fpu_f_without_backend_rejected(self):
+        values = {"XLEN": 32, "RISCV_F": True, "FPU_IMPL": "none"}
+        self.assert_error(values, "FPU_IMPL=none")
+
+    def test_fpu_d_without_f_rejected(self):
+        values = {"XLEN": 32, "RISCV_D": True, "FPU_IMPL": "hardfloat"}
+        self.assert_error(values, "依赖 RISCV_F=y")
+
+    def test_fpu_d_with_flen32_rejected(self):
+        values = {
+            "XLEN": 32,
+            "RISCV_F": True,
+            "RISCV_D": True,
+            "FPU_IMPL": "hardfloat",
+            "FPU_FLEN": 32,
+        }
+        self.assert_error(values, "FPU_FLEN=64")
+
+    def test_fpu_flen_48_rejected(self):
+        values = {
+            "XLEN": 32,
+            "RISCV_F": True,
+            "FPU_IMPL": "hardfloat",
+            "FPU_FLEN": 48,
+        }
+        self.assert_error(values, "FPU_FLEN=48")
+
+    def test_fpu_external_rejected(self):
+        values = {
+            "XLEN": 32,
+            "RISCV_F": True,
+            "FPU_IMPL": "external",
+            "FPU_FLEN": 64,
+        }
+        self.assert_error(values, "external")
+
+    def test_fpu_hardfloat_f32_accepted(self):
+        values = {
+            "XLEN": 32,
+            "RISCV_F": True,
+            "FPU_IMPL": "hardfloat",
+            "FPU_FLEN": 32,
+            "FPU_PIPELINE": 2,
+        }
+        self.assertEqual(validate_config(values), [])
+
+    def test_fpu_fudian_fd64_accepted(self):
+        values = {
+            "XLEN": 64,
+            "RISCV_F": True,
+            "RISCV_D": True,
+            "FPU_IMPL": "fudian",
+            "FPU_FLEN": 64,
+        }
+        self.assertEqual(validate_config(values), [])
+
+    def test_fpu_savedefconfig_choice_inferred(self):
+        values = {
+            "XLEN": 64,
+            "RISCV_F": True,
+            "RISCV_D": True,
+            "FPU_IMPL_HARDFLOAT": True,
+            "FPU_FLEN": 64,
+        }
+        self.assertEqual(validate_config(values), [])
+
+    def test_fpu_divsqrt_off_rejected(self):
+        values = {
+            "XLEN": 32,
+            "RISCV_F": True,
+            "FPU_IMPL": "fudian",
+            "FPU_FLEN": 64,
+            "FPU_DIVSQRT": False,
+        }
+        self.assert_error(values, "FPU_DIVSQRT=y")
+
+    def test_fpu_rounding_off_rejected(self):
+        values = {
+            "XLEN": 32,
+            "RISCV_F": True,
+            "FPU_IMPL": "fudian",
+            "FPU_FLEN": 64,
+            "FPU_ROUNDING": False,
+        }
+        self.assert_error(values, "FPU_ROUNDING=y")
+
+    def test_fpu_flags_off_rejected(self):
+        values = {
+            "XLEN": 32,
+            "RISCV_F": True,
+            "FPU_IMPL": "fudian",
+            "FPU_FLEN": 64,
+            "FPU_FLAGS": False,
+        }
+        self.assert_error(values, "FPU_FLAGS=y")
+
+    def test_fpu_backend_selected_without_f_rejected(self):
+        values = {"XLEN": 32, "FPU_IMPL": "fudian", "FPU_FLEN": 64}
+        self.assert_error(values, "FPU_IMPL 必须为 none")
+
     def test_rv32_standard_still_passes(self):
         values = {
             "XLEN": 32,

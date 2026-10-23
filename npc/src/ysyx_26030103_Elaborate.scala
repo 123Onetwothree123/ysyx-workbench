@@ -13,6 +13,8 @@ object ysyx_26030103_Elaborate extends App {
   // 每级缓存可单独配置几何；未设置时跟随共享的 CACHE_BLOCK_SIZE_LOG2/INDEX_BITS。
   private def envIntOr(key: String, fallback: Int): Int =
     sys.env.get(key).filter(_.nonEmpty).map(_.toInt).getOrElse(fallback)
+  private def envBoolOr(key: String, fallback: Boolean): Boolean =
+    sys.env.get(key).filter(_.nonEmpty).map(_ == "y").getOrElse(fallback)
   val ICacheBlockSizeLog2 = envIntOr("ICACHE_BLOCK_SIZE_LOG2", BlockSizeLog2)
   val ICacheIndexBits = envIntOr("ICACHE_INDEX_BITS", IndexBits)
   val DCacheBlockSizeLog2 = envIntOr("DCACHE_BLOCK_SIZE_LOG2", BlockSizeLog2)
@@ -62,9 +64,24 @@ object ysyx_26030103_Elaborate extends App {
   val UseM = sys.env.getOrElse("RISCV_M", "n") == "y"
   val UseA = sys.env.getOrElse("RISCV_A", "n") == "y"
   val UseC = sys.env.getOrElse("RISCV_C", "n") == "y"
-  // F/D 目前只做配置占位；NPCConfig 会明确拒绝启用。
+  // F/D 与 FPU 后端。后端未接入时 NPCConfig 会明确拒绝，绝不静默
+  // 忽略 RISCV_F；未设置的环境变量取 Kconfig 默认值，保证既有构建
+  // 脚本无需修改即可保持 F/D=n、backend=none。
   val UseF = sys.env.getOrElse("RISCV_F", "n") == "y"
   val UseD = sys.env.getOrElse("RISCV_D", "n") == "y"
+  val FPUImplName =
+    sys.env.get("FPU_IMPL").filter(_.nonEmpty).getOrElse("none")
+  val FPULen = envIntOr("FPU_FLEN", 64)
+  val FPUPipeline = envIntOr("FPU_PIPELINE", 0)
+  val FPUFMA = envBoolOr("FPU_FMA", true)
+  val FPUDivSqrt = envBoolOr("FPU_DIVSQRT", true)
+  val FPURounding = envBoolOr("FPU_ROUNDING", true)
+  val FPUFlags = envBoolOr("FPU_FLAGS", true)
+  val FPUHardFloatRecode = envBoolOr("FPU_HARDFLOAT_RECODE", true)
+  val FPUHardFloatTininessBefore =
+    envBoolOr("FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING", false)
+  val FPUFudianSharedDivSqrt =
+    envBoolOr("FPU_FUDIAN_SHARED_DIVSQRT", true)
   val MULImplName =
     sys.env.get("MUL_IMPL").filter(_.nonEmpty).getOrElse("shift_add")
   val MULEncodingName =
@@ -131,6 +148,22 @@ object ysyx_26030103_Elaborate extends App {
     UseC = UseC,
     UseF = UseF,
     UseD = UseD,
+    FPUImpl = ysyx_26030103_FPUImpl.FromString(FPUImplName),
+    FPULen = FPULen,
+    FPUProfile = ysyx_26030103_FPUProfile(
+      Pipeline = FPUPipeline,
+      FMA = FPUFMA,
+      DivSqrt = FPUDivSqrt,
+      Rounding = FPURounding,
+      Flags = FPUFlags,
+      HardFloat = ysyx_26030103_HardFloatParams(
+        Recode = FPUHardFloatRecode,
+        DetectTininessBeforeRounding = FPUHardFloatTininessBefore
+      ),
+      Fudian = ysyx_26030103_FudianParams(
+        SharedDivSqrt = FPUFudianSharedDivSqrt
+      )
+    ),
     MULImpl = ysyx_26030103_MULImpl.FromString(MULImplName),
     MULEncoding = ysyx_26030103_MULEncoding.FromString(MULEncodingName),
     DIVImpl = ysyx_26030103_DIVImpl.FromString(DIVImplName),
