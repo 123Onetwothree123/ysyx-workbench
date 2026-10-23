@@ -28,3 +28,7 @@ HDLcode/**/obj_dir/
 !README.md
 !.gitignore
 !init.sh
+!/xv6-riscv/
+!/xv6-riscv/**
+!XV6_PORT.md
+!XV6_PORT.patch

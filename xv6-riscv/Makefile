@@ -1,0 +1,250 @@
+K=kernel
+U=user
+
+# NPC port: no compressed instructions and no floating point.
+# The NPC core currently implements RV64IMA + Zicsr + Zifencei.
+ARCH ?= rv64ima_zicsr_zifencei
+ABI  ?= lp64
+
+# npc: skip QEMU-only M-mode setup (PMP) and use the NPC UART model.
+# qemu: keep the upstream PMP setup; useful only as a reference boot test.
+PLATFORM ?= npc
+
+OBJS = \
+  $K/entry.o \
+  $K/start.o \
+  $K/timer.o \
+  $K/console.o \
+  $K/printk.o \
+  $K/uart.o \
+  $K/kalloc.o \
+  $K/spinlock.o \
+  $K/string.o \
+  $K/main.o \
+  $K/vm.o \
+  $K/proc.o \
+  $K/swtch.o \
+  $K/trampoline.o \
+  $K/trap.o \
+  $K/syscall.o \
+  $K/sysproc.o \
+  $K/bio.o \
+  $K/fs.o \
+  $K/log.o \
+  $K/sleeplock.o \
+  $K/file.o \
+  $K/pipe.o \
+  $K/exec.o \
+  $K/sysfile.o \
+  $K/kernelvec.o \
+  $K/plic.o \
+  $K/ramdisk.o \
+  $K/ramdisk_img.o
+
+# riscv64-unknown-elf- or riscv64-linux-gnu-
+# perhaps in /opt/riscv/bin
+#TOOLPREFIX = 
+
+# Try to infer the correct TOOLPREFIX if not set
+ifndef TOOLPREFIX
+TOOLPREFIX := $(shell if riscv64-unknown-elf-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+	then echo 'riscv64-unknown-elf-'; \
+	elif riscv64-elf-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+	then echo 'riscv64-elf-'; \
+	elif riscv64-none-elf-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+	then echo 'riscv64-none-elf-'; \
+	elif riscv64-linux-gnu-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+	then echo 'riscv64-linux-gnu-'; \
+	elif riscv64-unknown-linux-gnu-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+	then echo 'riscv64-unknown-linux-gnu-'; \
+	else echo "***" 1>&2; \
+	echo "*** Error: Couldn't find a riscv64 version of GCC/binutils." 1>&2; \
+	echo "*** To turn off this error, run 'gmake TOOLPREFIX= ...'." 1>&2; \
+	echo "***" 1>&2; exit 1; fi)
+endif
+
+QEMU = qemu-system-riscv64
+MIN_QEMU_VERSION = 7.2
+
+CC = $(TOOLPREFIX)gcc
+LD = $(TOOLPREFIX)ld
+OBJCOPY = $(TOOLPREFIX)objcopy
+OBJDUMP = $(TOOLPREFIX)objdump
+READELF = $(TOOLPREFIX)readelf
+
+# Deterministic builds.
+DETFLAGS = -ffile-prefix-map=$(CURDIR)=.
+
+CFLAGS = -Wall -Werror -Wno-unknown-attributes -O -fno-omit-frame-pointer -ggdb -gdwarf-2
+CFLAGS += $(DETFLAGS)
+CFLAGS += -march=$(ARCH) -mabi=$(ABI)
+CFLAGS += -std=gnu99
+CFLAGS += -MD
+CFLAGS += -mcmodel=medany
+CFLAGS += -ffreestanding
+CFLAGS += -fno-common -nostdlib
+CFLAGS += -fno-delete-null-pointer-checks
+CFLAGS += -fno-builtin-strncpy -fno-builtin-strncmp -fno-builtin-strlen -fno-builtin-memset
+CFLAGS += -fno-builtin-memmove -fno-builtin-memcmp -fno-builtin-log -fno-builtin-bzero
+CFLAGS += -fno-builtin-strchr -fno-builtin-exit -fno-builtin-malloc -fno-builtin-putc
+CFLAGS += -fno-builtin-free
+CFLAGS += -fno-builtin-memcpy -Wno-main
+CFLAGS += -fno-builtin-printf -fno-builtin-fprintf -fno-builtin-vprintf
+CFLAGS += -I.
+CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+ifeq ($(PLATFORM),npc)
+CFLAGS += -DXV6_PLATFORM_NPC
+endif
+
+# Disable PIE when possible (for Ubuntu 16.10 toolchain)
+ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]no-pie'),)
+CFLAGS += -fno-pie -no-pie
+endif
+ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]nopie'),)
+CFLAGS += -fno-pie -nopie
+endif
+
+LDFLAGS = -z max-page-size=4096
+
+all: $K/kernel $K/kernel.bin
+
+# fs.img is linked into the kernel as the ramdisk image (see kernel/ramdisk.S).
+# Keeping it as a separate file as well makes the ramdisk inspectable.
+$K/kernel: $(OBJS) $K/kernel.ld fs.img
+	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS)
+	$(OBJDUMP) -S $K/kernel > $K/kernel.asm
+	$(OBJDUMP) -t $K/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $K/kernel.sym
+
+$K/kernel.bin: $K/kernel
+	$(OBJCOPY) -O binary $< $@
+
+# ramdisk_img.S embeds fs.img via .incbin; the path is relative to the
+# top-level xv6-riscv directory because all compile commands run there.
+$K/ramdisk_img.o: $K/ramdisk_img.S fs.img
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$K/%.o: $K/%.S
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+tags: $(OBJS)
+	etags kernel/*.S kernel/*.c
+
+ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
+
+_%: %.o $(ULIB) $U/user.ld
+	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $< $(ULIB)
+	$(OBJDUMP) -S $@ > $*.asm
+	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $*.sym
+
+$U/usys.S : $U/usys.pl
+	perl $U/usys.pl > $U/usys.S
+
+$U/usys.o : $U/usys.S
+	$(CC) $(CFLAGS) -c -o $U/usys.o $U/usys.S
+
+$U/_forktest: $U/forktest.o $(ULIB)
+	# forktest has less library code linked in - needs to be small
+	# in order to be able to max out the proc table.
+	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_forktest $U/forktest.o $U/ulib.o $U/usys.o
+	$(OBJDUMP) -S $U/_forktest > $U/forktest.asm
+
+mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
+	gcc -Wno-unknown-attributes -I. -o mkfs/mkfs mkfs/mkfs.c
+
+# Prevent deletion of intermediate files, e.g. cat.o, after first build, so
+# that disk image changes after first build are persistent until clean.  More
+# details:
+# http://www.gnu.org/software/make/manual/html_node/Chained-Rules.html
+.PRECIOUS: %.o
+
+UPROGS=\
+	$U/_cat\
+	$U/_echo\
+	$U/_forktest\
+	$U/_grep\
+	$U/_init\
+	$U/_kill\
+	$U/_ln\
+	$U/_ls\
+	$U/_mkdir\
+	$U/_rm\
+	$U/_sh\
+	$U/_stressfs\
+	$U/_usertests\
+	$U/_grind\
+	$U/_wc\
+	$U/_zombie\
+	$U/_logstress\
+	$U/_forphan\
+	$U/_dorphan\
+	$U/_sync\
+
+fs.img: mkfs/mkfs README $(UPROGS)
+	mkfs/mkfs fs.img README $(UPROGS)
+
+-include kernel/*.d user/*.d
+
+clean: 
+	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
+	*/*.o */*.d */*.asm */*.sym \
+	$K/kernel $K/kernel.bin $K/ramdisk.o fs.img \
+	mkfs/mkfs .gdbinit \
+        $U/usys.S \
+	$(UPROGS)
+
+# try to generate a unique GDB port
+GDBPORT = $(shell expr `id -u` % 5000 + 25000)
+# QEMU's gdb stub command line changed in 0.11
+QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
+	then echo "-gdb tcp::$(GDBPORT)"; \
+	else echo "-s -p $(GDBPORT)"; fi)
+ifndef CPUS
+CPUS := 1
+endif
+
+# QEMU is only a reference runner for this port: the disk is the same
+# embedded ramdisk, so no virtio drive is passed to the machine.
+QEMUOPTS = -machine virt -bios none -kernel $K/kernel -m 64M -smp $(CPUS) -nographic
+
+qemu: check-qemu-version $K/kernel
+	$(QEMU) $(QEMUOPTS)
+
+.gdbinit: .gdbinit.tmpl-riscv
+	sed "s/:1234/:$(GDBPORT)/" < $^ > $@
+
+qemu-gdb: $K/kernel .gdbinit
+	@echo "*** Now run 'gdb' in another window." 1>&2
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
+print-gdbport:
+	@echo $(GDBPORT)
+
+QEMU_VERSION := $(shell $(QEMU) --version | head -n 1 | sed -E 's/^QEMU emulator version ([0-9]+\.[0-9]+)\..*/\1/')
+check-qemu-version:
+	@if [ "$(shell echo "$(QEMU_VERSION) >= $(MIN_QEMU_VERSION)" | bc)" -eq 0 ]; then \
+		echo "ERROR: Need qemu version >= $(MIN_QEMU_VERSION)"; \
+		exit 1; \
+	fi
+
+# The pre-built direct-NPC simulator defaults to 64 MiB RAM at 0x80000000
+# and loads an ELF image.  Override NPC=... to point at another build.
+NPC ?= $(HOME)/ysyx-workbench/npc/build/ysyx_26030103_npc
+
+run-npc: $K/kernel
+	$(NPC) $K/kernel --elf $K/kernel
+
+run-npc-batch: $K/kernel
+	$(NPC) $K/kernel --elf $K/kernel --batch
+
+# Verify that the toolchain really honoured -march=... (no C extension).
+check-isa: $K/kernel
+	@echo "== ELF flags =="
+	$(READELF) -h $K/kernel | grep -E "Class|Machine|Flags" || true
+	@echo "== compressed mnemonics (must be empty) =="
+	@$(OBJDUMP) -d $K/kernel | grep -E '\bc\.' || true
+	@echo "== A-extension instructions =="
+	@$(OBJDUMP) -d $K/kernel | grep -E '\b(amo|lr\.|sc\.)' || true
+
+.PHONY: all qemu qemu-gdb run-npc run-npc-batch check-isa fmt
+fmt:
+	clang-format -i $(wildcard kernel/*.[ch] user/*.[ch] mkfs/*.c)
