@@ -12,9 +12,10 @@ import chisel3._
   * 在边界完成 32<->64 转换和地址越界 DECERR。任何一侧都不会靠截断
   * 高位地址或丢弃宽数据来“适配”端口。
   *
-  * 调试/trap 观测 ABI 刻意不跟随 SocXLEN：ysyxSoC 黑盒的 debug/trap
-  * 端口始终是 32 位，NPC 用低 32 位连接该 ABI，高 32 位继续通过
-  * `*_hi` 端口输出。SoC 的 32 位观测值绝不写回 NPC 的 64 位架构状态。
+  * 调试/trap 观测 ABI 刻意不跟随 SocXLEN：低 32 位端口保持历史
+  * 名称/宽度，RV64 的完整 PC/GPR/CSR/trap 状态通过 `_hi` 端口并行
+  * 导出。direct-NPC 与 full-SoC 的 ysyxSoCFull 都连接并导出这组
+  * `_hi` 端口，C++ DiffTest 使用同一套低/高字拼接逻辑。
   */
 class ysyx_26030103_IO(val SocXLEN: Int = 32) extends Bundle {
   require(SocXLEN == 32 || SocXLEN == 64,

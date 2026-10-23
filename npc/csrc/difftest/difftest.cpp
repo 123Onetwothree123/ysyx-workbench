@@ -86,8 +86,10 @@ namespace
 #endif
     }
 
-    // direct-NPC RV64 才导出高 32 位调试字；SoC 顶层调试 ABI 固定 32 位。
-#if defined(VRISCV32E_NPC) && CONFIG_XLEN == 64
+    // RV64 的调试字拆成低/高两个 32 位端口。direct-NPC 与 full-SoC
+    // 现在都导出同一组 `_hi` 端口，DiffTest 使用完全相同的拼接逻辑；
+    // RV32 只读取历史低端口。
+#if CONFIG_XLEN == 64
     npc::XWord ReadRetirePC(DUT &dut) { return DebugWord(*dut, dut->debug_pc, dut->debug_pc_hi); }
     npc::XWord ReadNextPC(DUT &dut) { return DebugWord(*dut, dut->debug_next_pc, dut->debug_next_pc_hi); }
     npc::XWord ReadMtracePC(DUT &dut) { return DebugWord(*dut, dut->debug_mtrace_pc, dut->debug_mtrace_pc_hi); }
@@ -117,7 +119,7 @@ namespace
         return state;
     }
 
-#if defined(VRISCV32E_NPC) && CONFIG_XLEN == 64
+#if CONFIG_XLEN == 64
     DifftestCSRState ReadDUTRetireCSR(DUT &dut)
     {
         return {
@@ -138,8 +140,7 @@ namespace
         };
     }
 #else
-    // RV32 以及 SoC 路径只有 32 位 CSR 调试端口；RV64 SoC 在
-    // DifftestInitialize 中会被明确拒绝，不会走到这里。
+    // RV32 只有 32 位 CSR 调试端口；两种顶层都无需高半区。
     DifftestCSRState ReadDUTRetireCSR(DUT &dut)
     {
         return {
@@ -270,14 +271,6 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
     {
         return {}; // 不用DiffTest，直接返回空expected，成功，但是不干事
     }
-#if CONFIG_XLEN == 64 && !defined(VRISCV32E_NPC)
-    // full-SoC 顶层（ysyxSoC 的 CPU 调试端口）目前只导出 32 位
-    // debug_pc/CSR，无法承载 RV64 的高半区。这里拒绝的是该真实 ABI
-    // 限制；direct-NPC 已通过 debug_*_hi 端口支持完整 RV64。
-    return std::unexpected{
-        "RV64 full-SoC DiffTest 未支持：ysyxSoC 调试端口固定 32 位。"
-        "请使用 direct-NPC（build/ysyx_26030103_npc）运行 RV64 DiffTest"};
-#endif
     REFHandle = dlopen(REFSoFile->c_str(), RTLD_LAZY | RTLD_LOCAL); // 打开REF的动态库
     if (REFHandle == nullptr)
     {

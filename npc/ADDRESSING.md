@@ -58,8 +58,9 @@
   DUT 调试状态、SDB 地址宽度和 DiffTest 状态布局都从上述派生值获得。
 - 状态 ABI 由 REF 的 `difftest_state_size()` / `difftest_csr_state_size()`
   动态校验：RV32 期望 132/16 字节，RV64 期望 264/32 字节。RV64
-  direct-NPC 完整保留 GPR/PC/CSR 高半区；旧 32 位 REF 会在执行前被
-  明确拒绝。full-SoC 顶层因调试端口固定 32 位，RV64 DiffTest 仍拒绝。
+  direct-NPC 与 full-SoC 都完整保留 GPR/PC/CSR 高半区；旧 32 位 REF
+  会在执行前被明确拒绝。full-SoC 通过新增的 `debug_*_hi` 端口导出
+  64 位状态，C++ 侧与 direct-NPC 共用同一套低/高字拼接与 ABI 校验。
 
 ## 8 字节 LD/SD
 

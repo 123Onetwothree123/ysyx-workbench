@@ -69,6 +69,31 @@ class ysyx_26030103(xlen: Int, idBits: Int) extends BlackBox {
     val io_debug_trap_mtvec = Output(UInt(32.W))
     val io_debug_trap_mepc = Output(UInt(32.W))
     val io_debug_trap_mcause = Output(UInt(32.W))
+    // RV64 调试/trap 观测 ABI 的高 32 位视图。上面所有低 32 位端口
+    // 的名称、宽度与语义保持历史定义，既有 32 位 C++/仿真连接不变；
+    // 这里只做加法。RV32 构建中 NPC 把全部 `_hi` 驱动为 0。
+    // 高/低两半必须与同一拍的事件对齐，不能在 SoC 内自行拼接或寄存。
+    val io_debug_gpr_rdata_hi = Output(UInt(32.W))
+    val io_debug_pc_hi = Output(UInt(32.W))
+    val io_debug_next_pc_hi = Output(UInt(32.W))
+    val io_debug_arch_pc_hi = Output(UInt(32.W))
+    val io_debug_mtrace_pc_hi = Output(UInt(32.W))
+    val io_debug_mtrace_addr_hi = Output(UInt(32.W))
+    val io_debug_mtrace_wdata_hi = Output(UInt(32.W))
+    val io_debug_mtrace_rdata_hi = Output(UInt(32.W))
+    val io_debug_access_fault_pc_hi = Output(UInt(32.W))
+    val io_debug_trap_pc_hi = Output(UInt(32.W))
+    val io_debug_trap_target_hi = Output(UInt(32.W))
+    val io_debug_csr_mstatus_hi = Output(UInt(32.W))
+    val io_debug_csr_mtvec_hi = Output(UInt(32.W))
+    val io_debug_csr_mepc_hi = Output(UInt(32.W))
+    val io_debug_csr_mcause_hi = Output(UInt(32.W))
+    val io_debug_trap_mstatus_hi = Output(UInt(32.W))
+    val io_debug_trap_mtvec_hi = Output(UInt(32.W))
+    val io_debug_trap_mepc_hi = Output(UInt(32.W))
+    val io_debug_trap_mcause_hi = Output(UInt(32.W))
+    // 仿真 custom halt 提交时的完整 PC；低 32 位仍由 io_trap_pc 提供。
+    val io_trap_pc_hi = Output(UInt(32.W))
     // 性能计数器
     val io_perf_ifu_fetch  = Output(Bool())
     val io_perf_exu_done   = Output(Bool())
@@ -219,6 +244,47 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
     debug_trap_mtvec := cpu.io.io_debug_trap_mtvec
     debug_trap_mepc := cpu.io.io_debug_trap_mepc
     debug_trap_mcause := cpu.io.io_debug_trap_mcause
+    // 64 位观测 ABI：高 32 位原样上送，不在这一层做任何截断/拼接。
+    val debug_gpr_rdata_hi = IO(Output(UInt(32.W)))
+    val debug_pc_hi = IO(Output(UInt(32.W)))
+    val debug_next_pc_hi = IO(Output(UInt(32.W)))
+    val debug_arch_pc_hi = IO(Output(UInt(32.W)))
+    val debug_mtrace_pc_hi = IO(Output(UInt(32.W)))
+    val debug_mtrace_addr_hi = IO(Output(UInt(32.W)))
+    val debug_mtrace_wdata_hi = IO(Output(UInt(32.W)))
+    val debug_mtrace_rdata_hi = IO(Output(UInt(32.W)))
+    val debug_access_fault_pc_hi = IO(Output(UInt(32.W)))
+    val debug_trap_pc_hi = IO(Output(UInt(32.W)))
+    val debug_trap_target_hi = IO(Output(UInt(32.W)))
+    val debug_csr_mstatus_hi = IO(Output(UInt(32.W)))
+    val debug_csr_mtvec_hi = IO(Output(UInt(32.W)))
+    val debug_csr_mepc_hi = IO(Output(UInt(32.W)))
+    val debug_csr_mcause_hi = IO(Output(UInt(32.W)))
+    val debug_trap_mstatus_hi = IO(Output(UInt(32.W)))
+    val debug_trap_mtvec_hi = IO(Output(UInt(32.W)))
+    val debug_trap_mepc_hi = IO(Output(UInt(32.W)))
+    val debug_trap_mcause_hi = IO(Output(UInt(32.W)))
+    val trap_pc_hi = IO(Output(UInt(32.W)))
+    debug_gpr_rdata_hi := cpu.io.io_debug_gpr_rdata_hi
+    debug_pc_hi := cpu.io.io_debug_pc_hi
+    debug_next_pc_hi := cpu.io.io_debug_next_pc_hi
+    debug_arch_pc_hi := cpu.io.io_debug_arch_pc_hi
+    debug_mtrace_pc_hi := cpu.io.io_debug_mtrace_pc_hi
+    debug_mtrace_addr_hi := cpu.io.io_debug_mtrace_addr_hi
+    debug_mtrace_wdata_hi := cpu.io.io_debug_mtrace_wdata_hi
+    debug_mtrace_rdata_hi := cpu.io.io_debug_mtrace_rdata_hi
+    debug_access_fault_pc_hi := cpu.io.io_debug_access_fault_pc_hi
+    debug_trap_pc_hi := cpu.io.io_debug_trap_pc_hi
+    debug_trap_target_hi := cpu.io.io_debug_trap_target_hi
+    debug_csr_mstatus_hi := cpu.io.io_debug_csr_mstatus_hi
+    debug_csr_mtvec_hi := cpu.io.io_debug_csr_mtvec_hi
+    debug_csr_mepc_hi := cpu.io.io_debug_csr_mepc_hi
+    debug_csr_mcause_hi := cpu.io.io_debug_csr_mcause_hi
+    debug_trap_mstatus_hi := cpu.io.io_debug_trap_mstatus_hi
+    debug_trap_mtvec_hi := cpu.io.io_debug_trap_mtvec_hi
+    debug_trap_mepc_hi := cpu.io.io_debug_trap_mepc_hi
+    debug_trap_mcause_hi := cpu.io.io_debug_trap_mcause_hi
+    trap_pc_hi := cpu.io.io_trap_pc_hi
     // 性能计数器
     val perf_mem_waitslot = IO(Output(Bool()))
     perf_mem_waitslot := cpu.io.io_perf_mem_waitslot

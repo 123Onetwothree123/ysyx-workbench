@@ -610,9 +610,9 @@ VERILATOR_CFLAGS = $(SHARED_CFLAGS) $(VERILATOR_CXX_STD_FLAG)
 USER_CXXFLAGS = $(USER_CXX_STD_FLAG) $(MODULE_CFLAGS) $(WALL_CFLAGS) $(WERROR_CFLAGS) $(PEDANTIC_CFLAGS) $(WCONVERSION_CFLAGS)
 #verilator的部分
 VERILATOR_OPT_FLAG ?= -O3
-# NPC 顶层比 ysyxSoC 的 CPU 黑盒多出 `_hi` 观测端口和直接仿真别名
-# （如 perf_trap_count）。这些端口在 SoC 实例中故意不连接，PINMISSING
-# 是预期行为，不应让整个 SoC 仿真构建失败。
+# NPC 顶层比 ysyxSoC 的 CPU 黑盒多出直接仿真别名（如 perf_trap_count）；
+# 这些别名在 SoC 实例中故意不连接，PINMISSING 是预期行为，不应让整个
+# SoC 仿真构建失败。RV64 调试 `_hi` 端口已由 ysyxSoC 黑盒显式连接。
 VERILATOR_WARN_FLAGS ?= -Wno-PINMISSING
 ifneq ($(CONFIG_VERILATOR_OPT),)
 VERILATOR_OPT_FLAG = $(call remove_quote,$(CONFIG_VERILATOR_OPT))

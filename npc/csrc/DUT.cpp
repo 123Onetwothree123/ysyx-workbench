@@ -44,8 +44,9 @@ static VerilatedFstC &tfp = *new VerilatedFstC;
 #endif
 namespace
 {
-// RV64 direct-NPC 的调试端口拆成低/高两个 32 位字。这里统一拼成完整
-// XWord；RV32 构建不读取不存在的高位端口。
+// RV64 的调试端口拆成低/高两个 32 位字。direct-NPC 与 full-SoC
+// （ysyxSoCFull）现在导出同一组 `_hi` 端口，因此两条路径共用这一套
+// 拼接逻辑；RV32 构建不读取不存在的高位端口。
 template <typename Top>
 npc::XWord DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
 {
@@ -57,7 +58,7 @@ npc::XWord DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
     return static_cast<npc::XWord>(Low);
 #endif
 }
-#if defined(VRISCV32E_NPC) && CONFIG_XLEN == 64
+#if CONFIG_XLEN == 64
 template <typename Top>
 npc::XWord DebugPC(const Top &top) { return DebugWord(top, top.debug_pc, top.debug_pc_hi); }
 template <typename Top>
@@ -91,8 +92,8 @@ npc::XWord DebugTrapMtvec(const Top &top) { return DebugWord(top, top.debug_trap
 template <typename Top>
 npc::XWord DebugTrapMepc(const Top &top) { return DebugWord(top, top.debug_trap_mepc, top.debug_trap_mepc_hi); }
 #else
-// RV32 保持历史 32 位端口；SoC 顶层调试 ABI 目前固定 32 位，但其地址
-// 空间上界 < 4GiB。RV64 direct-NPC 走上面的低/高字拼接路径。
+// RV32 保持历史 32 位端口；两种 RV64 顶层（direct-NPC / full-SoC）
+// 都走上面的低/高字拼接路径。
 template <typename Top>
 npc::XWord DebugPC(const Top &top) { return static_cast<npc::XWord>(top.debug_pc); }
 template <typename Top>

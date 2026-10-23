@@ -61,13 +61,10 @@ class ysyxSoCTop extends Module {
 
 object Elaborate extends App {
   if (Config.socXlen == 64) {
-    // 不能静默假装 64 位调试 ABI 已经打通：SoC 黑盒端口仍只有 32 位
-    // 调试/trap 观测字段。完整 64 位 PC/GPR 需要 NPC 侧边界桥接提供
-    // 高 32 位端口（或 debug_*_hi 观测 ABI）。
     println(
-      "[ysyxSoC] SOC_XLEN=64: CPU AXI4 is 64-bit; debug/trap ports remain a " +
-        "32-bit observation ABI. The high 32 bits must be provided by the NPC " +
-        "boundary bridge; the SoC never silently truncates architectural state."
+      "[ysyxSoC] SOC_XLEN=64: CPU AXI4 is 64-bit. Debug/trap ports expose " +
+        "the historical 32-bit low words plus `_hi` words, so RV64 " +
+        "PC/GPR/CSR/trap state is observable without truncation."
     )
   }
   val firtoolOptions = Array("--disable-annotation-unknown")
