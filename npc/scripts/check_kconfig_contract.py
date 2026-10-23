@@ -2,9 +2,9 @@
 """Kconfig 配置契约校验：把“能配置”收紧到 RTL 真正支持的范围。
 
 Kconfig 的 int/range 只能表达连续区间，无法直接写出
-``XLEN ∈ {32,64}``、``MMU_PTE_SIZE_BYTES ∈ {4,8}`` 或“页大小必须是
+``XLEN ∈ {32,64}``、``SOC_XLEN ∈ {32,64}`` 或“页大小/PTE 大小必须是
 2 的幂”。本脚本在配置阶段补上这些约束，并给 make defconfig /
-menuconfig 调用；非法值不会静默进入 RTL elaboration。
+menuconfig 调用；非标准但可表达的几何会放行，不可表达的几何明确报错。
 
 用法：
   python3 scripts/check_kconfig_contract.py --config .config
@@ -19,12 +19,14 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Mapping, Tuple
 
-# 当前 RTL 契约。若 RTL 扩展这些上限（例如大页代理放宽 1MiB），
-# 必须同时修改 Kconfig 的 range 和这里的常量，并补充测试。
-MAX_MMU_LEVELS = 4
-PTE_SIZE_VALUES = (4, 8)
+# 当前 RTL/大页实现的几何上限。Kconfig 不再用 range 锁死页大小和
+# 级数；这里只拒绝明确不可能或当前 RTL 无法表达的几何。若 RTL 扩展
+# 这些上限，必须同时更新本文件和测试。
+MAX_MMU_LEVELS = 8
 PAGE_SIZE_MIN = 4
-PAGE_SIZE_MAX = 1 << 20          # 1MiB，来自 RV64 satp.PPN 44 位
+# pageSizeBytes 是有符号 32 位 Int，最大的 2 的幂是 1GiB。具体组合
+# 还受 pageBits + levels*indexBits <= 64 等几何约束限制。
+PAGE_SIZE_MAX = 1 << 30
 PAGE_TABLE_SIZE_MIN = 8          # 至少容纳 2 个 4B PTE
 SATP_PPN_BITS = 44
 XLEN_VALUES = (32, 64)
@@ -158,43 +160,25 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
             f"1..{MAX_MMU_LEVELS} 级"
         )
 
-    pte_4b = _as_bool(values, "MMU_PTE_SIZE_4B", False)
-    pte_8b = _as_bool(values, "MMU_PTE_SIZE_8B", False)
-    pte_size_present = "MMU_PTE_SIZE_BYTES" in values
-    if pte_size_present:
-        pte_size = _as_int(values, "MMU_PTE_SIZE_BYTES", 8 if xlen == 64 else 4)
-    elif pte_4b and not pte_8b:
-        # savedefconfig 可能只保留 choice，省略派生整数；按 choice 推导。
-        pte_size = 4
-    elif pte_8b and not pte_4b:
-        pte_size = 8
-    else:
-        pte_size = 8 if xlen == 64 else 4
-    if pte_size not in PTE_SIZE_VALUES:
+    pte_size = _as_int(values, "MMU_PTE_SIZE_BYTES", 8 if xlen == 64 else 4)
+    if pte_size <= 0 or not _is_power_of_two(pte_size):
         err(
-            f"MMU_PTE_SIZE_BYTES={pte_size} 非法：RTL 只支持 4 或 8 字节 PTE"
+            f"MMU_PTE_SIZE_BYTES={pte_size} 非法：必须是正的 2 的幂；"
+            "当前 RTL 实际只实现 4B/8B，其他值由生成器/elaboration 明确拒绝"
         )
-
-    # choice 与派生整数必须一致；数值符号缺省时以 choice 为准。
-    if pte_4b and pte_8b:
-        err("MMU_PTE_SIZE_4B 与 MMU_PTE_SIZE_8B 不能同时为 y")
-    elif pte_4b and pte_size != 4:
-        err(f"PTE 大小 choice=4B，但 MMU_PTE_SIZE_BYTES={pte_size}")
-    elif pte_8b and pte_size != 8:
-        err(f"PTE 大小 choice=8B，但 MMU_PTE_SIZE_BYTES={pte_size}")
 
     page_size = _as_int(values, "MMU_PAGE_SIZE_BYTES", 4096)
     page_bits = 0
     if not _is_power_of_two(page_size):
         err(
             f"MMU_PAGE_SIZE_BYTES={page_size} 非法：必须是 2 的幂，"
-            f"当前支持 {PAGE_SIZE_MIN}B..{PAGE_SIZE_MAX}B"
+            f"当前实现可表示 {PAGE_SIZE_MIN}B..{PAGE_SIZE_MAX}B"
         )
     elif not PAGE_SIZE_MIN <= page_size <= PAGE_SIZE_MAX:
         err(
-            f"MMU_PAGE_SIZE_BYTES={page_size} 超出当前支持范围 "
-            f"{PAGE_SIZE_MIN}..{PAGE_SIZE_MAX}（RV64 satp.PPN 44 位，"
-            "页大小上限 1MiB）"
+            f"MMU_PAGE_SIZE_BYTES={page_size} 超出当前可实现范围 "
+            f"{PAGE_SIZE_MIN}..{PAGE_SIZE_MAX}（pageSizeBytes 为 32 位 "
+            "有符号 Int，最大 2 的幂为 1GiB）"
         )
     else:
         page_bits = _log2(page_size)
@@ -276,7 +260,7 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
                 f"MMU_CUSTOM_SATP_MODE={satp_mode} 非法：必须使用保留的 "
                 "satp MODE 10..15，不能复用标准 8/9"
             )
-        if pte_size in PTE_SIZE_VALUES:
+        if pte_size > 0 and _is_power_of_two(pte_size):
             pte_bits = pte_size * 8
             ppn_low = _as_int(values, "MMU_PTE_PPN_LOW", 10)
             ppn_high = _as_int(
@@ -307,20 +291,16 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
                 )
             if any(bit > ppn_high for bit in flags):
                 err(f"PTE 标志位必须位于 PPN 高位({ppn_high})以下")
-            if pte_size == 8 and pte_format not in ("custom", "riscv64"):
-                err(
-                    f"8B PTE 只能使用 MMU_PTE_FORMAT=custom 或 riscv64，"
-                    f"收到 {pte_format}"
-                )
-            if pte_size == 4 and pte_format not in ("custom", "riscv32"):
-                err(
-                    f"4B PTE 只能使用 MMU_PTE_FORMAT=custom 或 riscv32，"
-                    f"收到 {pte_format}"
-                )
-            if pte_format == "riscv64" and not _standard_pte_layout(values, 64):
-                err("MMU_PTE_FORMAT=riscv64 要求标准 64-bit PTE 字段布局")
-            if pte_format == "riscv32" and not _standard_pte_layout(values, 32):
-                err("MMU_PTE_FORMAT=riscv32 要求标准 32-bit PTE 字段布局")
+            # 标准编码名必须与 PTE 位宽/字段布局完全一致；CUSTOM 不限制
+            # 4/8 之外的值，交由生成器/elaboration 按 RTL 实际能力拒绝。
+            if pte_format == "riscv64" and (
+                pte_bits != 64 or not _standard_pte_layout(values, 64)
+            ):
+                err("MMU_PTE_FORMAT=riscv64 要求 64-bit PTE 与标准字段布局")
+            if pte_format == "riscv32" and (
+                pte_bits != 32 or not _standard_pte_layout(values, 32)
+            ):
+                err("MMU_PTE_FORMAT=riscv32 要求 32-bit PTE 与标准字段布局")
             ad_mode = _derived_choice_string(
                 values,
                 "MMU_AD_MODE",
@@ -333,24 +313,29 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
             )
             if (
                 ad_mode == "hardware"
-                and pte_size == 8
+                and pte_size > 4
                 and (flags[6] >= 32 or flags[7] >= 32)
             ):
                 err(
-                    "MMU_AD_MODE=hardware 且 PTE=8B 时，A/D 位必须在低 "
-                    "32 位字内（<32）；当前 32 位页表写端口无法更新高字"
+                    f"MMU_AD_MODE=hardware 且 PTE={pte_size}B 时，A/D 位必须"
+                    "在低 32 位字内（<32）；当前 32 位页表写端口无法更新高字"
                 )
             if page_bits:
                 ppn_bits = ppn_high - ppn_low + 1
-                if page_bits + ppn_bits > 64:
+                # PTE/satp 的 PPN 字段可以比物理地址更宽；超出 64 位的
+                # 高位不可用，RTL walk 会按保留位检查并要求为 0。这里只
+                # 要求每个字段仍至少有 1 位可寻址的 PPN。
+                paddr_ppn_bits = min(ppn_bits, 64 - page_bits)
+                satp_ppn_bits = min(SATP_PPN_BITS, 64 - page_bits)
+                if paddr_ppn_bits < 1:
                     err(
-                        f"pageBits({page_bits}) + PPN 位宽({ppn_bits}) "
-                        "超过 64 位物理地址"
+                        f"pageBits({page_bits}) 已占满 64 位物理地址，"
+                        f"PTE PPN 位宽({ppn_bits}) 没有可用位"
                     )
-                if page_bits + SATP_PPN_BITS > 64:
+                if satp_ppn_bits < 1:
                     err(
-                        f"pageBits({page_bits}) + {SATP_PPN_BITS} 位 "
-                        "satp.PPN 超过 64，页大小上限为 1MiB"
+                        f"pageBits({page_bits}) 已占满 64 位物理地址，"
+                        f"satp.PPN({SATP_PPN_BITS} 位) 没有可用位"
                     )
                 index_bits = _log2(table_size // pte_size) if (
                     pte_size > 0
@@ -374,24 +359,9 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
     return errors
 
 
-def _old_style_pte_warning(values: Mapping[str, object]) -> List[str]:
-    """旧 defconfig 可能仍写数值 PTE；choice 会让它失效，给出迁移提示。"""
-    if "MMU_PTE_SIZE_BYTES" not in values:
-        return []
-    if _as_bool(values, "MMU_PTE_SIZE_4B", False) or _as_bool(
-        values, "MMU_PTE_SIZE_8B", False
-    ):
-        return []
-    return [
-        "检测到旧式 CONFIG_MMU_PTE_SIZE_BYTES=... 赋值：PTE 大小现由 "
-        "MMU_PTE_SIZE_4B/8B choice 决定，Kconfig 会忽略该数值并采用默认值"
-        "（XLEN=64 -> 8B，XLEN=32 -> 4B）；请迁移到 choice 符号"
-    ]
-
-
-def check_file(path: Path) -> Tuple[List[str], List[str]]:
+def check_file(path: Path) -> List[str]:
     values = parse_config(path)
-    return validate_config(values, path.name), _old_style_pte_warning(values)
+    return validate_config(values, path.name)
 
 
 def _default_configs_dir() -> Path:
@@ -420,9 +390,7 @@ def main(argv: List[str] | None = None) -> int:
         if not args.config.is_file():
             print(f"错误: 配置文件不存在: {args.config}", file=sys.stderr)
             return 2
-        errors, warnings = check_file(args.config)
-        for warning in warnings:
-            print(f"[warn] {warning}", file=sys.stderr)
+        errors = check_file(args.config)
         if errors:
             for message in errors:
                 print(f"[FAIL] {message}", file=sys.stderr)
@@ -438,9 +406,7 @@ def main(argv: List[str] | None = None) -> int:
         return 2
     failed = 0
     for path in files:
-        errors, warnings = check_file(path)
-        for warning in warnings:
-            print(f"[warn] {path.name}: {warning}", file=sys.stderr)
+        errors = check_file(path)
         if errors:
             failed += 1
             for message in errors:

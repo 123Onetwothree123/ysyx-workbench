@@ -102,63 +102,50 @@ menu "虚拟内存管理 (MMU/TLB)"
     config MMU_PAGE_SIZE_BYTES
       int "基础页大小 (Byte)"
       default 4096
-      # 上限 1MiB 来自当前 RV64 CUSTOM 约束 pageBits + 44 位 satp.PPN
-      # <= 64；RTL 同时要求页大小是 2 的幂。Kconfig 的 range 只能表达
-      # 连续区间，非 2 的幂由 scripts/check_kconfig_contract.py 在配置
-      # 阶段拒绝。若后续大页代理放宽 satp.PPN/页大小上限，必须同时调整
-      # 这里的 range 与校验脚本的 PAGE_SIZE_MAX。
-      range 4 1048576
+      # 不做 range 限制：页大小与级数/页表项数共同决定几何，Kconfig
+      # 的连续 range 无法表达这些组合。RTL 只要求 2 的幂；非标准值由
+      # scripts/check_kconfig_contract.py 检查几何，必要时再由 elaboration
+      # 按实际 RTL 能力明确拒绝。
       help
         默认 4096，即标准 Sv32/Sv39/Sv48 的 4KiB 页。
-        RTL 只接受 2 的幂，当前支持范围是 4B..1MiB：
-        4, 8, 16, 32, 64, 128, 256, 512, 1KiB, 2KiB, 4KiB,
-        8KiB, 16KiB, 32KiB, 64KiB, 128KiB, 256KiB, 512KiB, 1MiB。
-        1MiB 上限来自 RV64 satp.PPN 的 44 位（pageBits + 44 <= 64）。
-        RV64 STANDARD 只能使用 4096；其他 2 的幂必须显式启用 CUSTOM
-        几何并配套软件页表生成器。非 2 的幂、超出范围的值在配置阶段由
-        check-kconfig-contract 拒绝，不会静默生成 RTL 参数。
+        该值是自由输入的非负整数，RTL 要求它是 2 的幂；当前实现可
+        表示到 1GiB（pageSizeBytes 为 32 位有符号 Int），但具体页大小
+        还必须满足 pageBits + levels * indexBits 的 VA 位宽不超过 64，
+        以及 PTE/satp.PPN 至少保留 1 位可寻址位。
+        常用值：4, 8, 16, 32, 64, 128, 256, 512, 1KiB, 2KiB, 4KiB,
+        8KiB, 16KiB, 32KiB, 64KiB, 128KiB, 256KiB, 512KiB, 1MiB,
+        2MiB, 4MiB, ...。RV64 STANDARD 只能使用 4096；其他 2 的幂
+        必须显式启用 CUSTOM 几何并配套软件页表生成器。非 2 的幂、
+        地址位宽溢出等不可表达的几何由 check-kconfig-contract 明确
+        拒绝；超出当前 RTL 能力的组合由 elaboration/生成器报错。
 
     config MMU_LEVELS
       int "页表级数"
       default 3 if XLEN=64
       default 2
-      range 1 4
       help
-        RTL 的 fillLevel 为 2 位，当前只支持 1..4 级；范围外的值会被
-        Kconfig range 夹回合法区间。
-        RV32 默认 2（Sv32）。RV64 STANDARD 只能为 3（Sv39）或 4（Sv48），
-        选 1/2 会在配置校验阶段明确报错并要求改用 CUSTOM。
-        CUSTOM 模式支持 1..4 级，并要求
-        pageBits + levels * indexBits 的虚拟地址位数在 2..64 之间。
-        大页代理若把层级扩展到 8 级，合并时需同步放宽此 range 和
-        scripts/check_kconfig_contract.py 的 MAX_MMU_LEVELS。
-
-    choice
-      prompt "PTE 大小"
-      default MMU_PTE_SIZE_8B if XLEN=64
-      default MMU_PTE_SIZE_4B
-      help
-        RTL 只支持 4B/8B PTE。标准 Sv32 使用 4B；标准 Sv39/Sv48
-        使用 8B。RV64 CUSTOM 也允许 4B，但必须显式选择并配套
-        MMU_PTE_FORMAT=custom（或与标准 32 位布局完全一致的 riscv32）。
-        该 choice 是唯一用户输入口，CONFIG_MMU_PTE_SIZE_BYTES 由它
-        派生，保持生成器和 RTL 读取数值符号的方式不变。
-
-      config MMU_PTE_SIZE_4B
-        bool "4 字节 PTE (Sv32 / 32-bit 自定义)"
-      config MMU_PTE_SIZE_8B
-        bool "8 字节 PTE (Sv39/Sv48 / 64-bit 自定义)"
-    endchoice
+        默认 RV32=2（Sv32）、RV64=3（Sv39）；RV64 STANDARD 还允许
+        4（Sv48）。该值是自由输入整数，不做 Kconfig range 限制。
+        当前大页实现把 fillLevel/层级字段扩展到 3 位，因此实际支持
+        1..8 级；超出 1..8、pageBits + levels * indexBits 超过 64 位
+        VA，或 STANDARD 下选择了非 3/4 的值，会由配置校验/elaboration
+        明确报错，而不是在 Kconfig 中静默夹值。
+        CUSTOM 模式支持 1..8 级，并允许非标准页大小/索引位宽；需要
+        更深层级时应先扩展 RTL 的 fillLevel 位宽。
 
     config MMU_PTE_SIZE_BYTES
-      int
-      default 4 if MMU_PTE_SIZE_4B
-      default 8 if MMU_PTE_SIZE_8B
+      int "PTE 大小 (Byte)"
+      default 8 if XLEN=64
+      default 4
       help
-        由上面的“PTE 大小”choice 自动派生，供 .config、MMU profile
-        生成器和 RTL 读取。请不要在 defconfig 或 .config 中直接给该
-        数值符号赋值：Kconfig 会按 choice 默认值（RV64=8B，RV32=4B）
-        重新生成它，直接赋值不会生效。
+        默认 RV32=4（Sv32）、RV64=8（Sv39/Sv48）。
+        该值是自由输入整数，Kconfig 不做 4/8 锁定；可以使用 4/8/16
+        等 2 的幂试验私有几何（字段位置必须能放下 flags 与 PPN）。
+        当前 RTL 的 PTE 存储/写端口实际只支持 4B 与 8B；其他值会在
+        MMU profile 生成或 elaboration 阶段明确报错。标准 Sv32 必须
+        为 4，标准 Sv39/Sv48 必须为 8。
+        CUSTOM 模式允许 4/8，PTE 字段位置由下面各项配置；非 2 的幂、
+        字段越界/重叠、PPN 位宽溢出由 check-kconfig-contract 拒绝。
 
     config MMU_PAGE_TABLE_SIZE_BYTES
       int "单级页表页大小 (Byte)"

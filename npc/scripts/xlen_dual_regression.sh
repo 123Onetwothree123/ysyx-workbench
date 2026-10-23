@@ -135,7 +135,8 @@ build_nemu_ref() {
 # ---- 2. Kconfig 配置生成矩阵 --------------------------------------------
 log_step "1. Kconfig 配置生成矩阵（CONFIG_XLEN / SoC）"
 DEFCONFIGS=(mmu_default_defconfig nanos_defconfig rv64_mmu_defconfig \
-            rv64_soft_defconfig rv64_sv48_defconfig rv64_custom_page_defconfig)
+            rv64_soft_defconfig rv64_sv48_defconfig rv64_custom_page_defconfig \
+            rv64_custom_large_defconfig rv64_custom_deep_defconfig)
 for defconfig in "${DEFCONFIGS[@]}"; do
     select_defconfig "$defconfig"
     xlen=$(config_value CONFIG_XLEN)
@@ -147,7 +148,8 @@ for defconfig in "${DEFCONFIGS[@]}"; do
     case "$defconfig:$xlen" in
         mmu_default_defconfig:32|nanos_defconfig:32|\
         rv64_mmu_defconfig:64|rv64_soft_defconfig:64|\
-        rv64_sv48_defconfig:64|rv64_custom_page_defconfig:64)
+        rv64_sv48_defconfig:64|rv64_custom_page_defconfig:64|\
+        rv64_custom_large_defconfig:64|rv64_custom_deep_defconfig:64)
             ;;
         *)
             die "$defconfig 生成了意外的 CONFIG_XLEN=$xlen"
