@@ -222,6 +222,18 @@ sbi-test:
 
 opensbi-test: sbi-test
 
+# 显式构建 RustSBI 固件，不影响默认构建，也不与 make opensbi 共用产物。
+# 脚本读取 .config 中的 SBI_FW_BASE/SBI_FW_SIZE/SBI_NEXT_ADDR/SBI_PLATFORM
+# 和 CONFIG_HAS_PMP，输出到 build/rustsbi/。
+RUSTSBI_BUILD_SCRIPT := $(abspath scripts/build_rustsbi.sh)
+rustsbi:
+	@$(RUSTSBI_BUILD_SCRIPT)
+
+rustsbi-clean:
+	rm -rf $(BUILD_DIR)/rustsbi
+
+.PHONY: rustsbi rustsbi-clean
+
 # npc 独立仿真路径的复位 PC：0x80000000 + CACHE_PADDING（镜像在内存中整体后移 CACHE_PADDING 字节）
 NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(CACHE_PADDING))))
 CACHE_PADDING_CFLAGS = -DCONFIG_CACHE_PADDING=$(CACHE_PADDING)

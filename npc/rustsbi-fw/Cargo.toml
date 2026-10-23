@@ -1,0 +1,22 @@
+[package]
+name = "rustsbi-npc"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT OR MulanPSL-2.0"
+description = "NPC 最小 RustSBI M 模式固件"
+
+[dependencies]
+# 直接使用仓库内 vendor 的 RustSBI 库，避免构建时依赖 crates.io 上的
+# RustSBI 版本漂移。这里不启用 rustsbi 的 machine feature：
+# NPC 目前没有实现 mimpid CSR，machine feature 访问 mimpid 会触发
+# illegal instruction；改用自定义 EnvInfo 显式提供 Base 扩展信息。
+rustsbi = { path = "../../vendor/rustsbi/library/rustsbi" }
+sbi-spec = { path = "../../vendor/rustsbi/library/sbi-spec", features = ["legacy"] }
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
+debug = 1

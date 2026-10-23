@@ -1,0 +1,16 @@
+# NPC 当前默认配置（rv64_xv6_defconfig 等）没有打开 C 扩展，因此
+# 固件必须避免压缩指令。Rust 1.92 的 riscv64imac target 使用 RISC-V
+# 2024 命名：压缩指令由 zca 控制，只写 -c 仍然会生成 c.* 指令，
+# 必须同时关闭 zca。
+#
+# A 扩展保留在 target 中，但固件本身不使用原子指令；这样即使
+# NPC 关闭 A 扩展，编译器也不会自行生成 AMO/LR/SC。
+#
+# 注意：预编译的 libcore/compiler_builtins 仍带 zca，若最终镜像里
+# 出现来自 core 的压缩指令，需要 CONFIG_RISCV_C=y 或使用 nightly
+# 的 -Zbuild-std 重建 core。构建脚本会检查最终镜像并给出明确提示。
+[build]
+target = "riscv64imac-unknown-none-elf"
+
+[target.riscv64imac-unknown-none-elf]
+rustflags = ["-C", "target-feature=-c,-zca"]

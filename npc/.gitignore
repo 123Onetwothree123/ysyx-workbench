@@ -63,3 +63,11 @@ gcm.cache/
 !MMU_STATUS.md
 
 !ADDRESSING.md
+
+# RustSBI 固件源码、测试与文档（vendor 源码在根 .gitignore 单独放行）
+!/rustsbi-fw/
+!/rustsbi-fw/**/*
+/rustsbi-fw/target/
+!/test/
+!/test/**/*
+!/README_RUSTSBI.md

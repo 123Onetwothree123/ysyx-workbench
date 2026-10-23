@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# 构建 NPC 最小 RustSBI M 模式固件。
+#
+# 输入来自 npc/.config（与 Kconfig.sbi 对齐）：
+#   CONFIG_SBI_FW_BASE / CONFIG_SBI_FW_SIZE / CONFIG_SBI_NEXT_ADDR
+#   CONFIG_SBI_PLATFORM / CONFIG_SBI_BUILD_JOBS / CONFIG_HAS_PMP
+#   CONFIG_XLEN / CONFIG_HAS_S
+#
+# 输出：
+#   npc/build/rustsbi/rustsbi-npc.elf
+#   npc/build/rustsbi/rustsbi-npc.bin
+#
+# 本脚本只构建 RustSBI，不修改 .config，也不影响 make opensbi / 默认构建。
+set -euo pipefail
+
+NPC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG_FILE="$NPC_HOME/.config"
+FW_DIR="$NPC_HOME/rustsbi-fw"
+VENDOR_DIR="$NPC_HOME/../vendor/rustsbi"
+OUT_DIR="${RUSTSBI_OUT_DIR:-$NPC_HOME/build/rustsbi}"
+TARGET="riscv64imac-unknown-none-elf"
+TARGET_DIR="$OUT_DIR/target"
+
+die() {
+    echo "错误: $*" >&2
+    exit 1
+}
+
+cfg_value() {
+    local key="$1"
+    local default="$2"
+    local value=""
+    if [ -f "$CONFIG_FILE" ]; then
+        value="$(sed -n "s/^${key}=//p" "$CONFIG_FILE" | tail -n 1)"
+    fi
+    value="${value%\"}"
+    value="${value#\"}"
+    if [ -z "$value" ]; then
+        printf '%s' "$default"
+    else
+        printf '%s' "$value"
+    fi
+}
+
+cfg_bool() {
+    local key="$1"
+    local default="$2"
+    local value
+    value="$(cfg_value "$key" "$default")"
+    case "$value" in
+        y|Y|1|true|TRUE) printf 'y' ;;
+        *) printf 'n' ;;
+    esac
+}
+
+[ -f "$CONFIG_FILE" ] || die "缺少 npc/.config；请先在 npc/ 下执行 make defconfig 或 make menuconfig"
+[ -d "$FW_DIR" ] || die "缺少固件源码目录 $FW_DIR"
+[ -d "$VENDOR_DIR/library/rustsbi" ] || die "缺少 vendor/rustsbi；请确认源码已纳入仓库"
+[ -f "$FW_DIR/Cargo.lock" ] || die "缺少 $FW_DIR/Cargo.lock；拒绝在无锁文件的情况下构建"
+
+command -v cargo >/dev/null 2>&1 || die "找不到 cargo；请安装 Rust 工具链"
+command -v rustc >/dev/null 2>&1 || die "找不到 rustc；请安装 Rust 工具链"
+command -v rustup >/dev/null 2>&1 || die "找不到 rustup；无法检查 RISC-V target 是否安装"
+
+if ! rustup target list --installed | grep -qx "$TARGET"; then
+    die "未安装 Rust target $TARGET。
+请执行：
+  rustup target add $TARGET
+网络较慢时可使用镜像：
+  export RUSTUP_DIST_SERVER=https://rsproxy.cn
+  export RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup
+  rustup target add $TARGET"
+fi
+
+XLEN="$(cfg_value CONFIG_XLEN 32)"
+if [ "$XLEN" != "64" ]; then
+    die "RustSBI NPC 固件当前只支持 RV64（CONFIG_XLEN=$XLEN）。
+请选择 RV64 配置，或为 RV32 单独实现启动/陷入汇编。"
+fi
+if [ "$(cfg_bool CONFIG_HAS_S n)" != "y" ]; then
+    die "RustSBI 需要 S 模式（CONFIG_HAS_S=y）；当前配置没有 S 模式"
+fi
+
+# 允许命令行/环境变量临时覆盖，便于验证不同 next-stage 布局；默认仍以
+# Kconfig 为准。
+FW_BASE="${SBI_FW_BASE:-$(cfg_value CONFIG_SBI_FW_BASE 0x80000000)}"
+FW_SIZE="${SBI_FW_SIZE:-$(cfg_value CONFIG_SBI_FW_SIZE 0x00200000)}"
+NEXT_ADDR="${SBI_NEXT_ADDR:-$(cfg_value CONFIG_SBI_NEXT_ADDR 0x80200000)}"
+PLATFORM="${SBI_PLATFORM:-$(cfg_value CONFIG_SBI_PLATFORM npc)}"
+JOBS="$(cfg_value CONFIG_SBI_BUILD_JOBS 0)"
+# SBI_HAS_PMP=y 可用于 QEMU 交叉验证（QEMU virt 实现了 PMP，NPC 默认没有）。
+HAS_PMP="${SBI_HAS_PMP:-$(cfg_bool CONFIG_HAS_PMP n)}"
+case "$HAS_PMP" in
+    y|Y|1|true|TRUE) HAS_PMP=y ;;
+    *) HAS_PMP=n ;;
+esac
+
+case "$FW_BASE" in 0x*|0X*) ;; *) die "CONFIG_SBI_FW_BASE 必须是 0x 开头的十六进制数：$FW_BASE" ;; esac
+case "$FW_SIZE" in 0x*|0X*) ;; *) die "CONFIG_SBI_FW_SIZE 必须是 0x 开头的十六进制数：$FW_SIZE" ;; esac
+case "$NEXT_ADDR" in 0x*|0X*) ;; *) die "CONFIG_SBI_NEXT_ADDR 必须是 0x 开头的十六进制数：$NEXT_ADDR" ;; esac
+
+# direct-NPC 的复位 PC = 0x80000000 + CONFIG_CACHE_PADDING。固件 ELF
+# 入口必须与它完全一致，否则 ImageLoader 会拒绝加载。
+CACHE_PADDING="$(cfg_value CONFIG_CACHE_PADDING 0)"
+RESET_PC=$((0x80000000 + CACHE_PADDING))
+if [ $((FW_BASE)) -ne "$RESET_PC" ]; then
+    die "CONFIG_SBI_FW_BASE=$FW_BASE 与 NPC 复位 PC=$RESET_PC（0x80000000 + CACHE_PADDING）不一致"
+fi
+if [ $((NEXT_ADDR)) -lt $((FW_BASE + FW_SIZE)) ]; then
+    die "CONFIG_SBI_NEXT_ADDR=$NEXT_ADDR 落在固件保留区 [$(printf '0x%x' $((FW_BASE))), $(printf '0x%x' $((FW_BASE + FW_SIZE)))) 内"
+fi
+
+if [ "$JOBS" -gt 0 ] 2>/dev/null; then
+    JOBS_ARGS=(-j "$JOBS")
+else
+    JOBS_ARGS=(-j "$(nproc 2>/dev/null || echo 4)")
+fi
+
+if [ "$(cfg_bool CONFIG_SBI_ENABLE n)" != "y" ]; then
+    echo "提示: CONFIG_SBI_ENABLE=n，本次仅按显式请求构建 RustSBI 固件。"
+fi
+IMPL="$(cfg_value CONFIG_SBI_IMPL none)"
+if [ "$IMPL" != "rustsbi" ]; then
+    echo "提示: 当前 CONFIG_SBI_IMPL=$IMPL；make rustsbi 仍会构建 RustSBI，但默认 SBI 选择不是它。"
+fi
+
+echo "构建 RustSBI NPC 固件"
+echo "  源码:   $VENDOR_DIR (rustsbi 0.4.1, HEAD 27a9c7d)"
+echo "  target: $TARGET"
+echo "  基地址: $FW_BASE  大小: $FW_SIZE"
+echo "  next:   $NEXT_ADDR  platform: $PLATFORM  PMP: $HAS_PMP"
+echo "  输出:   $OUT_DIR"
+
+mkdir -p "$OUT_DIR"
+
+export SBI_FW_BASE="$FW_BASE"
+export SBI_FW_SIZE="$FW_SIZE"
+export SBI_NEXT_ADDR="$NEXT_ADDR"
+export SBI_PLATFORM="$PLATFORM"
+export SBI_HAS_PMP="$HAS_PMP"
+export CARGO_TARGET_DIR="$TARGET_DIR"
+
+(
+    cd "$FW_DIR"
+    cargo build --release --locked "${JOBS_ARGS[@]}"
+)
+
+ELF_SRC="$TARGET_DIR/$TARGET/release/rustsbi-npc"
+[ -f "$ELF_SRC" ] || die "cargo 构建结束但找不到 $ELF_SRC"
+cp "$ELF_SRC" "$OUT_DIR/rustsbi-npc.elf"
+
+OBJCOPY=""
+for candidate in riscv64-unknown-elf-objcopy llvm-objcopy rust-objcopy objcopy; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        OBJCOPY="$candidate"
+        break
+    fi
+done
+[ -n "$OBJCOPY" ] || die "找不到 objcopy，无法生成 rustsbi-npc.bin"
+"$OBJCOPY" -O binary "$OUT_DIR/rustsbi-npc.elf" "$OUT_DIR/rustsbi-npc.bin"
+
+READELF=""
+for candidate in riscv64-unknown-elf-readelf llvm-readelf readelf; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        READELF="$candidate"
+        break
+    fi
+done
+
+if [ -n "$READELF" ]; then
+    ENTRY="$("$READELF" -h "$OUT_DIR/rustsbi-npc.elf" |
+        sed -n 's/.*Entry point address:[[:space:]]*//p' | head -n 1)"
+    if [ -n "$ENTRY" ]; then
+        ENTRY_NUM=$((ENTRY))
+        BASE_NUM=$((FW_BASE))
+        if [ "$ENTRY_NUM" -ne "$BASE_NUM" ]; then
+            die "ELF 入口 $ENTRY 与 CONFIG_SBI_FW_BASE=$FW_BASE 不一致"
+        fi
+    fi
+
+    # RISC-V 2024 命名下压缩指令标记为 zca；核心/依赖若带压缩指令，
+    # NPC 在 CONFIG_RISCV_C=n 时无法执行。这里显式拒绝，而不是静默产出一个
+    # 只能在实际启用 C 扩展的配置上运行的固件。
+    ARCH_ATTR="$("$READELF" -A "$OUT_DIR/rustsbi-npc.elf" 2>/dev/null |
+        grep 'Tag_RISCV_arch' | head -n 1 || true)"
+    case "$ARCH_ATTR" in
+        *zca*|*_c[0-9]*)
+            die "固件包含压缩指令（$ARCH_ATTR）。
+请使用 CONFIG_RISCV_C=y 的 NPC 配置，或改用 nightly 的 -Zbuild-std 重新编译 libcore。"
+            ;;
+    esac
+fi
+
+BIN_SIZE="$(stat -c '%s' "$OUT_DIR/rustsbi-npc.bin")"
+FW_SIZE_NUM=$((FW_SIZE))
+if [ "$BIN_SIZE" -gt "$FW_SIZE_NUM" ]; then
+    die "固件 $BIN_SIZE 字节超过 CONFIG_SBI_FW_SIZE=$FW_SIZE"
+fi
+
+echo "完成:"
+echo "  $OUT_DIR/rustsbi-npc.elf"
+echo "  $OUT_DIR/rustsbi-npc.bin ($BIN_SIZE 字节)"

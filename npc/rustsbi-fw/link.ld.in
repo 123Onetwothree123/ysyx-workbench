@@ -1,0 +1,65 @@
+/* NPC RustSBI 固件链接脚本模板。
+ * build.rs 会把 @FW_BASE@ / @FW_SIZE@ / @STACK_SIZE@ 替换为
+ * Kconfig 或环境变量中的实际值。
+ */
+OUTPUT_ARCH(riscv)
+ENTRY(_start)
+
+MEMORY
+{
+  RAM (rwx) : ORIGIN = @FW_BASE@, LENGTH = @FW_SIZE@
+}
+
+SECTIONS
+{
+  . = ORIGIN(RAM);
+
+  /* _start 必须位于固件基地址，NPC ImageLoader 会检查 ELF e_entry
+   * 是否等于复位 PC。 */
+  .text : ALIGN(4)
+  {
+    KEEP(*(.text.entry))
+    *(.text .text.*)
+  } > RAM
+
+  .rodata : ALIGN(8)
+  {
+    *(.rodata .rodata.*)
+    *(.srodata .srodata.*)
+  } > RAM
+
+  .data : ALIGN(8)
+  {
+    __global_pointer$ = . + 0x800;
+    *(.sdata .sdata.*)
+    *(.data .data.*)
+    *(.got .got.*)
+  } > RAM
+
+  .bss (NOLOAD) : ALIGN(8)
+  {
+    __bss_start = .;
+    *(.sbss .sbss.*)
+    *(.bss .bss.*)
+    *(COMMON)
+    . = ALIGN(8);
+    __bss_end = .;
+  } > RAM
+
+  /* 单 hart 固件只需要一份栈。栈放在 BSS 之后，仍受 SBI_FW_SIZE 限制。 */
+  .stack (NOLOAD) : ALIGN(16)
+  {
+    __stack_bottom = .;
+    . += @STACK_SIZE@;
+    __stack_top = .;
+  } > RAM
+
+  /DISCARD/ :
+  {
+    *(.eh_frame .eh_frame_hdr)
+    *(.note .note.*)
+  }
+
+  ASSERT(__stack_top <= ORIGIN(RAM) + LENGTH(RAM),
+         "RustSBI 固件（含 64KiB 栈）超出 SBI_FW_SIZE")
+}

@@ -29,3 +29,14 @@ To generate Verilog:
 ```bash
 make verilog
 ```
+
+## 可选 SBI 固件
+
+NPC 支持 OpenSBI / RustSBI 两种可选的 M 模式 SBI 固件，默认关闭
+（`CONFIG_SBI_ENABLE=n`），xv6 仍直接以 M 模式启动。RustSBI 的来源、
+Kconfig、构建和测试见 [README_RUSTSBI.md](README_RUSTSBI.md)。
+构建 RustSBI：
+
+```bash
+make rustsbi
+```
