@@ -27,6 +27,16 @@ word_t vaddr_ifetch(vaddr_t addr, int len) {
   if (isa_mmu_check(addr, len, MEM_TYPE_IFETCH) == MMU_TRANSLATE) {
     addr = isa_mmu_translate(addr, len, MEM_TYPE_IFETCH);
   }
+  /*
+   * 取指只能来自真实的后备存储器。可变长度取指会把一条 32 位指令拆成
+   * 两次 16 位访问，如果高半字已经越过内存末尾，这里必须按指令访问
+   * 异常（cause 1）报告，而不是落进 paddr_read 的越界 panic。
+   * 对合法的 16 位指令位于内存最后两个字节的情况，单次 2 字节访问仍
+   * 在范围内，因此可以正常执行。
+   */
+  if (!in_backed_memory_range(addr, len)) {
+    isa_raise_mem_exception(1, va);
+  }
   if (!isa_pmp_check(addr, len, MEM_TYPE_IFETCH)) {
     isa_raise_mem_exception(access_fault_cause(MEM_TYPE_IFETCH), va);
   }

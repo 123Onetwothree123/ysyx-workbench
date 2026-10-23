@@ -136,7 +136,22 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
 typedef struct
 {
   uint32_t inst;
+  // 当前指令的真实长度：RVC 下为 2 或 4。ITRACE/iringbuf/DiffTest
+  // 诊断都必须使用真实宽度，不能一律按 4 字节处理。
+  uint8_t ilen;
 } MUXDEF(CONFIG_RV64, riscv64_ISADecodeInfo, riscv32_ISADecodeInfo);
+
+/*
+ * 指令地址对齐掩码。RVC 打开时 IALIGN=16，PC 和 mepc/sepc 只要求
+ * 2 字节对齐（bit0 必须为 0）；未打开时 IALIGN=32，低两位都必须为 0。
+ * 注意：打开 RVC 后 32 位指令也可以从 2 mod 4 的地址开始，取指时
+ * 通过低两位是否为 11 来区分 16/32 位，而不是依赖 4 字节对齐。
+ */
+#ifdef CONFIG_RVC
+#define RISCV_EPC_ALIGN_MASK ((word_t)1)
+#else
+#define RISCV_EPC_ALIGN_MASK ((word_t)3)
+#endif
 
 // 分页规则在 mmu.c 的 isa_mmu_check() 中实现：
 // RV32 使用 Sv32（satp.MODE=1，4B PTE，两级页表）；

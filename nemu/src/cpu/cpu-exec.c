@@ -89,8 +89,8 @@ static void exec_once(Decode *s, vaddr_t pc)
   s->snpc = pc;
   isa_exec_once(s);
 #ifdef CONFIG_ISA_riscv
-  // 该诊断 ABI 只定义 RISC-V 的 32 位指令字；其它 ISA 保持 0，
-  // 不影响它们原有的 DiffTest 行为。
+  // 该诊断 ABI 记录真实的指令编码：RVC 下可能是 16 位（高位为 0），
+  // 也可能是 32 位；其它 ISA 保持 0，不影响它们原有的 DiffTest 行为。
   g_difftest_last_pc = (uint64_t)s->pc;
   g_difftest_last_inst = (uint64_t)s->isa.inst;
 #endif

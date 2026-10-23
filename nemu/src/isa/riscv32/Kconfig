@@ -15,4 +15,19 @@ config RISCV_A
     实现 RV32/RV64 的 LR/SC 与 AMO 指令。xv6-riscv 的
     spinlock 需要 AMOSWAP.W；其余 AMO 也一并实现，供 DiffTest
     与编译器原子模式使用。
+
+config RISCV_C
+  bool "C extension (compressed 16-bit instructions)"
+  default n
+  help
+    实现 RV32C/RV64C 压缩指令扩展：取指长度可在 16/32 位之间
+    变化，PC 允许 2 字节对齐，misa.C 置位。默认关闭，避免改变
+    现有 RV32/RV64 参考模型的 IALIGN=32 行为。
+    开启后仍只接受合法的 C 编码；保留/非法编码按非法指令陷入。
+
+# 兼容外部脚本常用的 CONFIG_RVC 名称。真正的菜单项是 RISCV_C，
+# 这个隐藏符号只负责在 autoconf.h 中同时生成 CONFIG_RVC。
+config RVC
+  bool
+  default y if RISCV_C
 endmenu

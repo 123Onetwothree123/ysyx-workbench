@@ -31,16 +31,36 @@ void set_nemu_state(int state, vaddr_t pc, int halt_ret)
 
 __attribute__((noinline)) void invalid_inst(vaddr_t thispc)
 {
-  uint32_t temp[2];
+  uint32_t temp[2] = {};
   vaddr_t pc = thispc;
+#ifdef CONFIG_RVC
+  // 先按真实宽度取指令：16 位非法编码不能为了打印现场而多读两个字节，
+  // 否则指令恰好位于内存末尾时会拿到与根因无关的访存异常。
+  int ilen = 2;
+  temp[0] = inst_fetch(&pc, 2);
+  if ((temp[0] & 3u) == 3u) {
+    temp[0] |= inst_fetch(&pc, 2) << 16;
+    ilen = 4;
+  }
+  temp[1] = inst_fetch(&pc, 2);
+#else
   temp[0] = inst_fetch(&pc, 4);
   temp[1] = inst_fetch(&pc, 4);
+#endif
 
   uint8_t *p = (uint8_t *)temp;
+#ifdef CONFIG_RVC
+  printf("invalid opcode(PC = " FMT_WORD "):\n\t", thispc);
+  for (int i = 0; i < ilen; i++) {
+    printf("%02x ", p[i]);
+  }
+  printf("...\n\t%0*x...\n", ilen * 2, temp[0]);
+#else
   printf("invalid opcode(PC = " FMT_WORD "):\n"
          "\t%02x %02x %02x %02x %02x %02x %02x %02x ...\n"
          "\t%08x %08x...\n",
          thispc, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], temp[0], temp[1]);
+#endif
 
   printf("There are two cases which will trigger this unexpected exception:\n"
          "1. The instruction at PC = " FMT_WORD " is not implemented.\n"

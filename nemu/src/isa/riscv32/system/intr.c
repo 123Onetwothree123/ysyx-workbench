@@ -68,7 +68,7 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc)
     if (is_interrupt) {
       isa_trap_tval = 0;
     }
-    cpu.sepc = epc & ~(word_t)3u;
+    cpu.sepc = epc & ~(word_t)RISCV_EPC_ALIGN_MASK;
     cpu.scause = NO;
     cpu.stval = isa_trap_tval;
     cpu.mstatus = sstatus_on_trap(cpu.mstatus, cpu.privilege);
@@ -80,7 +80,7 @@ word_t isa_raise_intr(word_t NO, vaddr_t epc)
   if (is_interrupt) {
     isa_trap_tval = 0;
   }
-  cpu.mepc = epc & ~(word_t)3u;
+  cpu.mepc = epc & ~(word_t)RISCV_EPC_ALIGN_MASK;
   cpu.mcause = NO;
   cpu.mtval = isa_trap_tval;
   cpu.mstatus = mstatus_on_trap(cpu.mstatus, cpu.privilege);

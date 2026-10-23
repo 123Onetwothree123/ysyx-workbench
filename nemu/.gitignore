@@ -11,5 +11,8 @@
 !docs/*.md
 !tests/*.sh
 !tests/rv64/*.[cS]
+!tests/rvc/*.[cSh]
+!tests/rvc/*.ld
+!configs/*_defconfig
 include/config
 include/generated

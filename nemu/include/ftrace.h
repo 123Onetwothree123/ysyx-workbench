@@ -58,7 +58,8 @@ void FtraceDisable(FtraceState *State);                              // 关闭 f
 bool FtraceIsEnabled(const FtraceState *State);                      // 返回当前 ftrace 是否开启
 void FtraceSetRecordHistory(FtraceState *State, bool RecordHistory); // 设置是否记录历史事件
 // 这是对外接口，指令事件入口的部分
-bool FtraceOnCall(FtraceState *State, vaddr_t CallPC, vaddr_t FunctionAddress); // 处理一次函数调用事件并更新栈/历史
+// ReturnPC 显式传入，兼容 RVC：16 位 call 的返回地址是 CallPC+2，而不是 +4。
+bool FtraceOnCall(FtraceState *State, vaddr_t CallPC, vaddr_t FunctionAddress, vaddr_t ReturnPC); // 处理一次函数调用事件并更新栈/历史
 bool FtraceOnReturn(FtraceState *State, vaddr_t CurrentPc, vaddr_t TargetPc);   // 处理一次函数返回事件并更新栈/历史
 // 这是对外接口，状态查询的部分
 size_t FtraceGetDepth(const FtraceState *State);                 // 获取当前调用深度（栈大小）

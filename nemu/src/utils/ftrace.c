@@ -263,7 +263,7 @@ void FtraceSetRecordHistory(FtraceState *State, bool RecordHistory)
  * @return 处理成功返回 true；若 State 为 NULL 或内部操作失败则返回 false。
  *         若 ftrace 未启用，也返回 true（表示无需处理）。
  */
-bool FtraceOnCall(FtraceState *State, vaddr_t CallPC, vaddr_t FunctionAddress)
+bool FtraceOnCall(FtraceState *State, vaddr_t CallPC, vaddr_t FunctionAddress, vaddr_t ReturnPC)
 {
     if (State == NULL)
     {
@@ -275,7 +275,7 @@ bool FtraceOnCall(FtraceState *State, vaddr_t CallPC, vaddr_t FunctionAddress)
     }
     FtraceFrame Frame;
     Frame.CallPC = CallPC;
-    Frame.ReturnPC = CallPC + 4;
+    Frame.ReturnPC = ReturnPC;
     Frame.FunctionAddress = FunctionAddress;
     Frame.FunctionName = ReadelfFindFunctionName(FunctionAddress);
     if (!FtraceFrameStackPushExact(&State->CallStack, &Frame))

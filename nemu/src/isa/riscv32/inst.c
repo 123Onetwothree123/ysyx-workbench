@@ -61,7 +61,9 @@ void isa_raise_mem_exception(word_t cause, vaddr_t tval) {
 
 static inline word_t mepc_warl(word_t value)
 {
-  return value & ~(word_t)3u;
+  // mepc/sepc 的低位对齐取决于 IALIGN：RVC 下 bit1 可保存 2 字节对齐的
+  // 返回地址，bit0 始终为 0；未启用 RVC 时低两位都必须清零。
+  return value & ~(word_t)RISCV_EPC_ALIGN_MASK;
 }
 
 static inline word_t mtvec_warl(word_t value)
@@ -165,12 +167,14 @@ static word_t csr_read(word_t address)
   case 0x180: return cpu.satp;
   case 0x300: return cpu.mstatus;
   case 0x301:
-    // misa.MXL：RV32 为 1，RV64 为 2。扩展位为 I/M/A/S/U。
-    // bit 0 = A；打开 CONFIG_RISCV_A 时才向软件宣告原子扩展。
+    // misa.MXL：RV32 为 1，RV64 为 2。扩展位为 I/M/A/C/S/U。
+    // bit 0 = A，bit 2 = C；只有对应 Kconfig 打开时才向软件宣告。
     return MUXDEF(CONFIG_RV64,
                   ((word_t)2 << 62) | MUXDEF(CONFIG_RISCV_A, 1u << 0, 0u) |
+                      MUXDEF(CONFIG_RVC, 1u << 2, 0u) |
                       (1u << 8) | (1u << 12) | (1u << 18) | (1u << 20),
                   (1u << 30) | MUXDEF(CONFIG_RISCV_A, 1u << 0, 0u) |
+                      MUXDEF(CONFIG_RVC, 1u << 2, 0u) |
                       (1u << 8) | (1u << 12) | (1u << 18) | (1u << 20));
   case 0x302: return cpu.medeleg;
   case 0x303: return cpu.mideleg;
@@ -509,6 +513,518 @@ static void decode_operand(Decode *s, int *rd, word_t *src1, word_t *src2, word_
   }
 }
 
+/*
+ * 取指/跳转目标对齐检查。
+ *
+ * IALIGN 由 C 扩展决定：未启用 RVC 时 PC 必须是 4 的倍数；启用后
+ * 可以是 2 的倍数，32 位指令也可以从 2 mod 4 开始（低两位为 11 即
+ * 表示 32 位）。分支/JAL 的立即数本身低位为 0，所以这里主要拦截
+ * “无 C 扩展时跳到 2 mod 4”这种非法目标；JALR 则必须只清 bit0，
+ * 不能像旧代码那样把 bit1 也清掉。
+ */
+static inline bool riscv_target_misaligned(vaddr_t target)
+{
+  return (target & RISCV_EPC_ALIGN_MASK) != 0;
+}
+
+static inline void riscv_raise_inst_misaligned(Decode *s, vaddr_t target)
+{
+  isa_trap_tval = target;
+  s->dnpc = isa_raise_intr(0, s->pc);
+}
+
+/* 条件分支：只有真正跳转时才检查目标对齐；不跳转时目标非法无影响。 */
+#define RV_BRANCH(s, offset, cond)                                         \
+  do                                                                       \
+  {                                                                        \
+    vaddr_t _target = (s)->pc + (offset);                                  \
+    if (cond)                                                              \
+    {                                                                      \
+      if (riscv_target_misaligned(_target))                                \
+      {                                                                    \
+        riscv_raise_inst_misaligned((s), _target);                         \
+      }                                                                    \
+      else                                                                 \
+      {                                                                    \
+        (s)->dnpc = _target;                                               \
+        BTRACE_BRANCH((s), (offset), true);                                \
+      }                                                                    \
+    }                                                                      \
+    else                                                                   \
+    {                                                                      \
+      BTRACE_BRANCH((s), (offset), false);                                 \
+    }                                                                      \
+  } while (0)
+
+// ---------------------------------------------------------------------------
+// RVC（压缩指令）解码
+// ---------------------------------------------------------------------------
+
+#ifdef CONFIG_RVC
+
+static inline word_t rvc_imm_cj(uint16_t i)
+{
+  // C.J/C.JAL: imm[11|4|9:8|10|6|7|3:1|5]
+  word_t imm = (BITS(i, 12, 12) << 11) | (BITS(i, 8, 8) << 10) |
+               (BITS(i, 10, 9) << 8) | (BITS(i, 6, 6) << 7) |
+               (BITS(i, 7, 7) << 6) | (BITS(i, 2, 2) << 5) |
+               (BITS(i, 11, 11) << 4) | (BITS(i, 5, 3) << 1);
+  return SEXT(imm, 12);
+}
+
+static inline word_t rvc_imm_cb(uint16_t i)
+{
+  // C.BEQZ/C.BNEZ: imm[8|4:3|7:6|2:1|5]
+  word_t imm = (BITS(i, 12, 12) << 8) | (BITS(i, 11, 10) << 3) |
+               (BITS(i, 6, 5) << 6) | (BITS(i, 4, 3) << 1) |
+               (BITS(i, 2, 2) << 5);
+  return SEXT(imm, 9);
+}
+
+static inline word_t rvc_imm_ci(uint16_t i)
+{
+  return SEXT((BITS(i, 12, 12) << 5) | BITS(i, 6, 2), 6);
+}
+
+static inline word_t rvc_imm_addi16sp(uint16_t i)
+{
+  // nzimm[9|4|6|8:7|5]
+  word_t imm = (BITS(i, 12, 12) << 9) | (BITS(i, 6, 6) << 4) |
+               (BITS(i, 5, 5) << 6) | (BITS(i, 4, 3) << 7) |
+               (BITS(i, 2, 2) << 5);
+  return SEXT(imm, 10);
+}
+
+static inline word_t rvc_imm_addi4spn(uint16_t i)
+{
+  // nzuimm[5:4|9:6|2|3]
+  return (BITS(i, 12, 11) << 4) | (BITS(i, 10, 7) << 6) |
+         (BITS(i, 6, 6) << 2) | (BITS(i, 5, 5) << 3);
+}
+
+static inline word_t rvc_uimm_cl(uint16_t i)
+{
+  // C.LW/C.SW: uimm[5:3|2|6]
+  return (BITS(i, 12, 10) << 3) | (BITS(i, 6, 6) << 2) |
+         (BITS(i, 5, 5) << 6);
+}
+
+static inline word_t rvc_uimm_cl_d(uint16_t i)
+{
+  // C.LD/C.SD: uimm[5:3|7:6]
+  return (BITS(i, 12, 10) << 3) | (BITS(i, 6, 5) << 6);
+}
+
+static inline word_t rvc_uimm_lwsp(uint16_t i)
+{
+  // C.LWSP: uimm[5|4:2|7:6]
+  return (BITS(i, 12, 12) << 5) | (BITS(i, 6, 4) << 2) |
+         (BITS(i, 3, 2) << 6);
+}
+
+static inline word_t rvc_uimm_ldsp(uint16_t i)
+{
+  // C.LDSP: uimm[5|4:3|8:6]
+  return (BITS(i, 12, 12) << 5) | (BITS(i, 6, 5) << 3) |
+         (BITS(i, 4, 2) << 6);
+}
+
+static inline word_t rvc_uimm_swsp(uint16_t i)
+{
+  // C.SWSP: uimm[5:2|7:6]
+  return (BITS(i, 12, 9) << 2) | (BITS(i, 8, 7) << 6);
+}
+
+static inline word_t rvc_uimm_sdsp(uint16_t i)
+{
+  // C.SDSP: uimm[5:3|8:6]
+  return (BITS(i, 12, 10) << 3) | (BITS(i, 9, 7) << 6);
+}
+
+static inline word_t rv_load_w(Decode *s, vaddr_t addr)
+{
+  (void)s;
+#ifdef CONFIG_RV64
+  return sext32(Mr(addr, 4));
+#else
+  return Mr(addr, 4);
+#endif
+}
+
+/*
+ * 非法/保留的 C 编码必须按 16 位指令整体报告，不能把它和后面的字节
+ * 拼成一条 32 位指令后静默执行。mtvec/stvec 都未安装时保持 NEMU 原有
+ * 的“明确停机并打印现场”行为；否则按非法指令异常（cause 2）陷入，
+ * mtval 写入真实的 16 位编码。
+ */
+static void rvc_illegal(Decode *s)
+{
+  isa_trap_tval = s->isa.inst;
+  if (cpu.mtvec == 0 && cpu.stvec == 0)
+  {
+    Log("非法或未实现的 C 指令 " FMT_WORD "（inst = 0x%04x）",
+        s->pc, (unsigned)(s->isa.inst & 0xffffu));
+    invalid_inst(s->pc);
+  }
+  else
+  {
+    s->dnpc = isa_raise_intr(2, s->pc);
+  }
+}
+
+#define RVC_ILLEGAL()        \
+  do                         \
+  {                          \
+    rvc_illegal(s);          \
+    R(0) = 0;                \
+    return 0;                \
+  } while (0)
+
+static int decode_exec_c(Decode *s)
+{
+  const uint16_t i = (uint16_t)s->isa.inst;
+  const int op = BITS(i, 1, 0);
+  s->dnpc = s->snpc;
+
+  const int rd = BITS(i, 11, 7);
+  const int rs2 = BITS(i, 6, 2);
+  const int rdp = 8 + (int)BITS(i, 4, 2);
+  const int rs1p = 8 + (int)BITS(i, 9, 7);
+  const int rs2p = 8 + (int)BITS(i, 4, 2);
+
+  switch (op)
+  {
+  case 0: // Quadrant 0：寄存器压栈形式（rd'/rs1'/rs2' 为 x8~x15）
+    switch (BITS(i, 15, 13))
+    {
+    case 0: {
+      const word_t uimm = rvc_imm_addi4spn(i);
+      if (uimm == 0)
+      {
+        RVC_ILLEGAL(); // 全零编码保留
+      }
+      R(rdp) = R(2) + uimm;
+      break;
+    }
+    case 1:
+      RVC_ILLEGAL(); // C.FLD：未实现 D 扩展
+    case 2: {
+      const vaddr_t addr = R(rs1p) + rvc_uimm_cl(i);
+      R(rdp) = rv_load_w(s, addr);
+      break;
+    }
+    case 3:
+#ifdef CONFIG_RV64
+      R(rdp) = Mr(R(rs1p) + rvc_uimm_cl_d(i), 8); // C.LD
+      break;
+#else
+      RVC_ILLEGAL(); // RV32 的 C.FLW 需要 F 扩展
+#endif
+    case 4:
+      RVC_ILLEGAL(); // 保留（Zcb 等扩展未实现）
+    case 5:
+      RVC_ILLEGAL(); // C.FSD：未实现 D 扩展
+    case 6:
+      Mw(R(rs1p) + rvc_uimm_cl(i), 4, R(rs2p)); // C.SW
+      break;
+    case 7:
+#ifdef CONFIG_RV64
+      Mw(R(rs1p) + rvc_uimm_cl_d(i), 8, R(rs2p)); // C.SD
+      break;
+#else
+      RVC_ILLEGAL(); // RV32 的 C.FSW 需要 F 扩展
+#endif
+    }
+    break;
+
+  case 1: // Quadrant 1
+    switch (BITS(i, 15, 13))
+    {
+    case 0: // C.NOP / C.ADDI（rd=0 为 HINT）
+      R(rd) = R(rd) + rvc_imm_ci(i);
+      break;
+    case 1:
+#ifdef CONFIG_RV64
+      // RV64：该编码是 C.ADDIW，rd=0 保留
+      if (rd == 0)
+      {
+        RVC_ILLEGAL();
+      }
+      R(rd) = sext32((uint32_t)R(rd) + (uint32_t)rvc_imm_ci(i));
+#else
+    {
+      // RV32：C.JAL
+      const word_t imm = rvc_imm_cj(i);
+      const vaddr_t target = s->pc + imm;
+      if (riscv_target_misaligned(target))
+      {
+        riscv_raise_inst_misaligned(s, target);
+      }
+      else
+      {
+        R(1) = s->pc + 2;
+        s->dnpc = target;
+        BTRACE_JAL(s, imm, 1);
+#ifdef CONFIG_FTRACE
+        FtraceOnCall(&GlobalFtraceState, s->pc, s->dnpc, s->pc + 2);
+#endif
+      }
+    }
+#endif
+    break;
+    case 2: // C.LI（rd=0 为 HINT）
+      R(rd) = rvc_imm_ci(i);
+      break;
+    case 3:
+      if (rd == 2)
+      {
+        // C.ADDI16SP：nzimm=0 保留
+        const word_t imm = rvc_imm_addi16sp(i);
+        if (imm == 0)
+        {
+          RVC_ILLEGAL();
+        }
+        R(2) = R(2) + imm;
+      }
+      else
+      {
+        // C.LUI：imm=0 保留；rd=0 为 HINT
+        const word_t imm = (word_t)SEXT((BITS(i, 12, 12) << 5) | BITS(i, 6, 2), 6) << 12;
+        if (imm == 0)
+        {
+          RVC_ILLEGAL();
+        }
+        R(rd) = imm;
+      }
+      break;
+    case 4: {
+      const int funct2 = BITS(i, 11, 10);
+      if (funct2 == 0 || funct2 == 1)
+      {
+        // C.SRLI / C.SRAI。RV32 的 shamt[5]（bit12）必须为 0；
+        // RV64 允许 0~63。shamt=0 属于 HINT，按无操作处理。
+        int shamt = BITS(i, 6, 2);
+#ifndef CONFIG_RV64
+        if (BITS(i, 12, 12) != 0)
+        {
+          RVC_ILLEGAL();
+        }
+#else
+        shamt |= (int)BITS(i, 12, 12) << 5;
+#endif
+        if (shamt != 0)
+        {
+          if (funct2 == 0)
+          {
+            R(rs1p) = R(rs1p) >> shamt;
+          }
+          else
+          {
+            R(rs1p) = (word_t)((sword_t)R(rs1p) >> shamt);
+          }
+        }
+      }
+      else if (funct2 == 2)
+      {
+        R(rs1p) = R(rs1p) & rvc_imm_ci(i); // C.ANDI
+      }
+      else
+      {
+        // funct2=11 是寄存器-寄存器组：bits[6:5] 选操作，bits[4:2]
+        // 就是 rs2'，不是保留位。bit12=1 在 RV32 上没有定义；
+        // RV64 只定义了 C.SUBW/C.ADDW 两种。
+        const int funct = BITS(i, 6, 5);
+        if (BITS(i, 12, 12) == 0)
+        {
+          switch (funct)
+          {
+          case 0: R(rs1p) = R(rs1p) - R(rs2p); break; // C.SUB
+          case 1: R(rs1p) = R(rs1p) ^ R(rs2p); break; // C.XOR
+          case 2: R(rs1p) = R(rs1p) | R(rs2p); break; // C.OR
+          case 3: R(rs1p) = R(rs1p) & R(rs2p); break; // C.AND
+          }
+        }
+        else
+        {
+#ifdef CONFIG_RV64
+          if (funct == 0)
+          {
+            R(rs1p) = sext32((uint32_t)R(rs1p) - (uint32_t)R(rs2p)); // C.SUBW
+          }
+          else if (funct == 1)
+          {
+            R(rs1p) = sext32((uint32_t)R(rs1p) + (uint32_t)R(rs2p)); // C.ADDW
+          }
+          else
+          {
+            RVC_ILLEGAL();
+          }
+#else
+          RVC_ILLEGAL(); // RV32 没有 C.SUBW/C.ADDW
+#endif
+        }
+      }
+      break;
+    }
+    case 5: {
+      // C.J
+      const word_t imm = rvc_imm_cj(i);
+      const vaddr_t target = s->pc + imm;
+      if (riscv_target_misaligned(target))
+      {
+        riscv_raise_inst_misaligned(s, target);
+      }
+      else
+      {
+        s->dnpc = target;
+        BTRACE_JAL(s, imm, 0);
+      }
+      break;
+    }
+    case 6: // C.BEQZ
+      RV_BRANCH(s, rvc_imm_cb(i), R(rs1p) == 0);
+      break;
+    case 7: // C.BNEZ
+      RV_BRANCH(s, rvc_imm_cb(i), R(rs1p) != 0);
+      break;
+    }
+    break;
+
+  case 2: // Quadrant 2
+    switch (BITS(i, 15, 13))
+    {
+    case 0: { // C.SLLI（rd=0 为 HINT）
+      int shamt = BITS(i, 6, 2);
+#ifndef CONFIG_RV64
+      if (BITS(i, 12, 12) != 0)
+      {
+        RVC_ILLEGAL();
+      }
+#else
+      shamt |= (int)BITS(i, 12, 12) << 5;
+#endif
+      if (shamt != 0)
+      {
+        R(rd) = R(rd) << shamt;
+      }
+      break;
+    }
+    case 1:
+      RVC_ILLEGAL(); // C.FLDSP：未实现 D 扩展
+    case 2: { // C.LWSP：rd=0 保留
+      if (rd == 0)
+      {
+        RVC_ILLEGAL();
+      }
+      const vaddr_t addr = R(2) + rvc_uimm_lwsp(i);
+      R(rd) = rv_load_w(s, addr);
+      break;
+    }
+    case 3:
+#ifdef CONFIG_RV64
+      // C.LDSP：rd=0 保留
+      if (rd == 0)
+      {
+        RVC_ILLEGAL();
+      }
+      R(rd) = Mr(R(2) + rvc_uimm_ldsp(i), 8);
+      break;
+#else
+      RVC_ILLEGAL(); // RV32 的 C.FLWSP 需要 F 扩展
+#endif
+    case 4:
+      if (BITS(i, 12, 12) == 0)
+      {
+        if (rs2 == 0)
+        {
+          // C.JR：rs1=0 保留
+          if (rd == 0)
+          {
+            RVC_ILLEGAL();
+          }
+          const vaddr_t target = R(rd) & ~(vaddr_t)1;
+          if (riscv_target_misaligned(target))
+          {
+            riscv_raise_inst_misaligned(s, target);
+          }
+          else
+          {
+            s->dnpc = target;
+            BTRACE_JALR(s, rd, 0, 0);
+#ifdef CONFIG_FTRACE
+            if (rd == 1)
+            {
+              FtraceOnReturn(&GlobalFtraceState, s->pc, s->dnpc);
+            }
+#endif
+          }
+        }
+        else
+        {
+          // C.MV（rd=0 为 HINT）
+          R(rd) = R(rs2);
+        }
+      }
+      else
+      {
+        if (rs2 == 0)
+        {
+          if (rd == 0)
+          {
+            // C.EBREAK
+            s->dnpc = isa_raise_intr(3, s->pc);
+          }
+          else
+          {
+            // C.JALR：rs1=rd，rs1=0 保留
+            const vaddr_t target = R(rd) & ~(vaddr_t)1;
+            if (riscv_target_misaligned(target))
+            {
+              riscv_raise_inst_misaligned(s, target);
+            }
+            else
+            {
+              R(1) = s->pc + 2;
+              s->dnpc = target;
+              BTRACE_JALR(s, rd, 1, 0);
+#ifdef CONFIG_FTRACE
+              FtraceOnCall(&GlobalFtraceState, s->pc, s->dnpc, s->pc + 2);
+#endif
+            }
+          }
+        }
+        else
+        {
+          // C.ADD（rd=0 为 HINT）
+          R(rd) = R(rd) + R(rs2);
+        }
+      }
+      break;
+    case 6: // C.SWSP
+      Mw(R(2) + rvc_uimm_swsp(i), 4, R(rs2));
+      break;
+    case 7:
+#ifdef CONFIG_RV64
+      Mw(R(2) + rvc_uimm_sdsp(i), 8, R(rs2)); // C.SDSP
+      break;
+#else
+      RVC_ILLEGAL(); // RV32 的 C.FSWSP 需要 F 扩展
+#endif
+    }
+    break;
+
+  default:
+    // 低两位为 11 的不是 C 指令，正常取指流程不会走到这里。
+    RVC_ILLEGAL();
+  }
+
+  R(0) = 0;
+  return 0;
+}
+
+
+#endif // CONFIG_RVC
+
 static int decode_exec(Decode *s)
 {
   s->dnpc = s->snpc;
@@ -541,36 +1057,47 @@ static int decode_exec(Decode *s)
   // 自己写的
   INSTPAT("??????? ????? ????? 000 ????? 00100 11", addi, I, R(rd) = src1 + imm);
   INSTPAT("??????? ????? ????? ??? ????? 11011 11", jal, J, {
-    R(rd) = s->pc + 4;
-    BTRACE_JAL(s, imm, rd);
+    const vaddr_t target = s->pc + imm;
+    if (riscv_target_misaligned(target)) {
+      riscv_raise_inst_misaligned(s, target);
+    } else {
+      R(rd) = s->pc + 4;
+      BTRACE_JAL(s, imm, rd);
 #ifdef CONFIG_FTRACE
-    // 标准 RISC-V ABI: 只有 jal ra, offset (rd == x1) 才是函数调用
-    if (rd == 1)
-    {
-      FtraceOnCall(&GlobalFtraceState, s->pc, s->dnpc);
-    }
+      // 标准 RISC-V ABI: 只有 jal ra, offset (rd == x1) 才是函数调用
+      if (rd == 1)
+      {
+        FtraceOnCall(&GlobalFtraceState, s->pc, s->dnpc, s->pc + 4);
+      }
 #endif
+    }
   });
   INSTPAT("??????? ????? ????? 010 ????? 01000 11", sw, S, Mw(src1 + imm, 4, src2));
   INSTPAT("??????? ????? ????? 000 ????? 11001 11", jalr, I, {
-    R(rd) = s->pc + 4;
-    s->dnpc = (src1 + imm) & ~1;
-    // 因为 jalr 既可能 call 也可能 ret
-    int rs1 = BITS(s->isa.inst, 19, 15);
-    (void)rs1; // CONFIG_BTRACE/CONFIG_FTRACE 都关闭时也不能触发 -Wunused
-    BTRACE_JALR(s, rs1, rd, imm);
+    const vaddr_t target = (src1 + imm) & ~(vaddr_t)1;
+    if (riscv_target_misaligned(target)) {
+      // 目标非法时指令不退休，目标寄存器不应被写入。
+      riscv_raise_inst_misaligned(s, target);
+    } else {
+      R(rd) = s->pc + 4;
+      s->dnpc = target;
+      // 因为 jalr 既可能 call 也可能 ret
+      int rs1 = BITS(s->isa.inst, 19, 15);
+      (void)rs1; // CONFIG_BTRACE/CONFIG_FTRACE 都关闭时也不能触发 -Wunused
+      BTRACE_JALR(s, rs1, rd, imm);
 #ifdef CONFIG_FTRACE
-    // 标准 RISC-V ABI: ret 为 jalr x0, x1, 0
-    if (rd == 0 && rs1 == 1 && imm == 0)
-    {
-      FtraceOnReturn(&GlobalFtraceState, s->pc, s->dnpc);
-    }
-    else if (rd == 1)
-    {
-      // 标准 RISC-V ABI: 只有 jalr ra, ... (rd == x1) 才是函数调用
-      FtraceOnCall(&GlobalFtraceState, s->pc, s->dnpc);
-    }
+      // 标准 RISC-V ABI: ret 为 jalr x0, x1, 0
+      if (rd == 0 && rs1 == 1 && imm == 0)
+      {
+        FtraceOnReturn(&GlobalFtraceState, s->pc, s->dnpc);
+      }
+      else if (rd == 1)
+      {
+        // 标准 RISC-V ABI: 只有 jalr ra, ... (rd == x1) 才是函数调用
+        FtraceOnCall(&GlobalFtraceState, s->pc, s->dnpc, s->pc + 4);
+      }
 #endif
+    }
   });
   INSTPAT("??????? ????? ????? 010 ????? 00000 11", lw, I,
           R(rd) = MUXDEF(CONFIG_RV64, sext32(Mr(src1 + imm, 4)), Mr(src1 + imm, 4)));
@@ -583,8 +1110,8 @@ static int decode_exec(Decode *s)
   INSTPAT("0000000 ????? ????? 000 ????? 01100 11", add, R, R(rd) = src1 + src2);
   INSTPAT("0100000 ????? ????? 000 ????? 01100 11", sub, R, R(rd) = src1 - src2);
   INSTPAT("??????? ????? ????? 011 ????? 00100 11", sltiu, I, R(rd) = (src1 < imm) ? 1 : 0);
-  INSTPAT("??????? ????? ????? 000 ????? 11000 11", beq, B, BTRACE_BRANCH(s, imm, src1 == src2));
-  INSTPAT("??????? ????? ????? 001 ????? 11000 11", bne, B, BTRACE_BRANCH(s, imm, src1 != src2));
+  INSTPAT("??????? ????? ????? 000 ????? 11000 11", beq, B, RV_BRANCH(s, imm, src1 == src2));
+  INSTPAT("??????? ????? ????? 001 ????? 11000 11", bne, B, RV_BRANCH(s, imm, src1 != src2));
   INSTPAT("0000000 ????? ????? 011 ????? 01100 11", sltu, R, R(rd) = (src1 < src2) ? 1 : 0);
   INSTPAT("??????? ????? ????? 100 ????? 00100 11", xori, I, R(rd) = src1 ^ imm);
   INSTPAT("0000000 ????? ????? 100 ????? 01100 11", xor, R, R(rd) = src1 ^ src2);
@@ -625,11 +1152,11 @@ static int decode_exec(Decode *s)
   INSTPAT("0100000 ????? ????? 101 ????? 01110 11", sraw, R,
           R(rd) = sext32((uint32_t)((int32_t)src1 >> (src2 & 0x1f))));
 #endif
-  INSTPAT("??????? ????? ????? 101 ????? 11000 11", bge, B, BTRACE_BRANCH(s, imm, (sword_t)src1 >= (sword_t)src2));
-  INSTPAT("??????? ????? ????? 100 ????? 11000 11", blt, B, BTRACE_BRANCH(s, imm, (sword_t)src1 < (sword_t)src2));
+  INSTPAT("??????? ????? ????? 101 ????? 11000 11", bge, B, RV_BRANCH(s, imm, (sword_t)src1 >= (sword_t)src2));
+  INSTPAT("??????? ????? ????? 100 ????? 11000 11", blt, B, RV_BRANCH(s, imm, (sword_t)src1 < (sword_t)src2));
   INSTPAT("??????? ????? ????? ??? ????? 01101 11", lui, U, R(rd) = imm);
-  INSTPAT("??????? ????? ????? 111 ????? 11000 11", bgeu, B, BTRACE_BRANCH(s, imm, src1 >= src2));
-  INSTPAT("??????? ????? ????? 110 ????? 11000 11", bltu, B, BTRACE_BRANCH(s, imm, src1 < src2));
+  INSTPAT("??????? ????? ????? 111 ????? 11000 11", bgeu, B, RV_BRANCH(s, imm, src1 >= src2));
+  INSTPAT("??????? ????? ????? 110 ????? 11000 11", bltu, B, RV_BRANCH(s, imm, src1 < src2));
   INSTPAT("0000001 ????? ????? 000 ????? 01100 11", mul, R, R(rd) = src1 * src2);
 #ifdef CONFIG_RV64
   // RV64M：64 位乘除余。乘高位使用 128 位中间结果，绝不按 32 位截断。
@@ -867,6 +1394,7 @@ static int decode_exec(Decode *s)
     }
   });
   INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv, N, {
+    isa_trap_tval = s->isa.inst;
     if (cpu.mtvec == 0 && cpu.stvec == 0) {
       // 没有安装异常向量时，未实现指令必须让 NEMU 明确停机，
       // 而不是跳到 0 地址后产生与根因无关的访存错误。
@@ -898,10 +1426,59 @@ int isa_exec_once(Decode *s)
     return 0;
   }
 
+  /*
+   * 可变长度取指：
+   * - 先取低 16 位。低两位不是 11 时就是一条 RVC 指令，PC 前进 2。
+   * - 低两位为 11 表示 32 位指令，再单独取高 16 位并拼装。
+   *
+   * 两半分别走一次 vaddr_ifetch，好处是：
+   * 1. 每一半都单独做 MMU 转换/PMP 检查，不会把跨页访问误当成一次
+   *    连续物理读；
+   * 2. 16 位指令正好位于页尾/内存边界时也只访问合法的 2 个字节；
+   * 3. RVC 允许 32 位指令从任意 16 位边界开始，因此它可能跨越页边界；
+   *    分别取两半后，每一半都能落在自己的页里，页错误也能报告正确的
+   *    半字地址。
+   */
+  s->snpc = s->pc;
+#ifdef CONFIG_RVC
+  if ((s->pc & 1) != 0) {
+    // IALIGN=16 仍然要求 PC 至少 2 字节对齐。
+    exception_jmp = NULL;
+    isa_trap_tval = s->pc;
+    s->dnpc = isa_raise_intr(0, s->pc);
+    return 0;
+  }
+
+  uint32_t lo = inst_fetch(&s->snpc, 2);
+  if ((lo & 3u) != 3u) {
+    s->isa.inst = lo;
+    s->isa.ilen = 2;
+  } else {
+    // C 扩展下 32 位指令只要求 16 位对齐（低两位为 11 即表明是 32 位），
+    // 允许出现在 2 mod 4 的地址，也允许跨页。
+    uint32_t hi = inst_fetch(&s->snpc, 2);
+    s->isa.inst = lo | (hi << 16);
+    s->isa.ilen = 4;
+  }
+#else
+  // 未启用 C 扩展时 IALIGN=32，保持原有“一次取 4 字节”的参考行为。
+  if ((s->pc & 3u) != 0) {
+    exception_jmp = NULL;
+    isa_trap_tval = s->pc;
+    s->dnpc = isa_raise_intr(0, s->pc);
+    return 0;
+  }
   s->isa.inst = inst_fetch(&s->snpc, 4);
-  // 自己加的，snpc-pc就是指令长度
-  RecordAInstruction(s->pc, s->isa.inst, s->snpc - s->pc);
+  s->isa.ilen = 4;
+#endif
+
+  // 自己加的，snpc-pc 就是真实指令长度（16 位或 32 位）。
+  RecordAInstruction(s->pc, s->isa.inst, s->isa.ilen);
+#ifdef CONFIG_RVC
+  int ret = (s->isa.ilen == 2) ? decode_exec_c(s) : decode_exec(s);
+#else
   int ret = decode_exec(s);
+#endif
   exception_jmp = NULL;
   return ret;
 }
