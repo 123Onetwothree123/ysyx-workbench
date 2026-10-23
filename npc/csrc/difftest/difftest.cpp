@@ -1,13 +1,23 @@
 // doxygen是deepseek ai写的
 module;
+#include <algorithm>
+#include <cstdio>
+#include <expected>
+#include <filesystem>
+#include <optional>
+#include <print>
+#include <string>
+#include <utility>
+#include <vector>
 #ifdef CONFIG_DIFFTEST
 #include <dlfcn.h>
-#include <cstdio>
+#include "DifftestReport.h"
 #endif
 #include "../Config.h"
 module npc.difftest.difftest;
 import npc.difftest.DifftestCPUState;
 import npc.NPCTrap;
+import npc.trace.disasm;
 import npc.ysyxSoC;
 // 兜底值必须与 Kconfig 的 CONFIG_MBASE / CONFIG_RESET_PC 默认值一致，
 // 否则脱离 Makefile 直接编译时 DiffTest 与 SoC 地址映射会不一致
@@ -39,6 +49,11 @@ namespace
     using REFDifftestCSRStateSize = std::size_t (*)();
     using REFDifftestCSRcpy = void (*)(void *dut, bool direction);
     using REFDifftestSetPlatform = void (*)(int ysyxsoc);
+    // 可选诊断 ABI：旧 REF 没有这两个符号时只影响失败报告，不影响比对。
+    using REFDifftestLastInstruction = void (*)(std::uint64_t *pc,
+                                                std::uint64_t *inst);
+    using REFDifftestGetCSR = bool (*)(std::uint32_t csr,
+                                       std::uint64_t *value);
     void *REFHandle{nullptr};
     REFDifftestMemcpy REFMemcpy{nullptr};
     REFDifftestRegcpy REFRegcpy{nullptr};
@@ -49,6 +64,8 @@ namespace
     REFDifftestCSRStateSize REFCSRStateSize{nullptr};
     REFDifftestCSRcpy REFCSRcpy{nullptr};
     REFDifftestSetPlatform REFSetPlatform{nullptr};
+    REFDifftestLastInstruction REFLastInstruction{nullptr};
+    REFDifftestGetCSR REFGetCSR{nullptr};
     bool Enabled{false};
     bool Failed{false};
     std::size_t SkipCount{0};
@@ -76,6 +93,19 @@ namespace
         if (const char *Error{dlerror()}; Error != nullptr)
         {
             return std::unexpected{std::format("加载 DiffTest 符号 {0} 失败: {1}", Name, Error)};
+        }
+        return reinterpret_cast<Fn>(Symbol);
+    }
+
+    /// @brief 尝试加载可选符号；缺失时返回 nullptr，不产生启动错误
+    template <typename Fn>
+    Fn TryLoadSymbol(const char *Name)
+    {
+        dlerror();
+        auto *Symbol{dlsym(REFHandle, Name)};
+        if (dlerror() != nullptr)
+        {
+            return nullptr;
         }
         return reinterpret_cast<Fn>(Symbol);
     }
@@ -184,40 +214,13 @@ namespace
     }
 
     bool CheckCSR(const DifftestCSRState &reference,
-                  const DifftestCSRState &dut,
-                  std::string_view event,
-                  npc::XWord pc)
+                  const DifftestCSRState &dut)
     {
-        if (reference.mstatus == dut.mstatus && reference.mtvec == dut.mtvec &&
-            reference.mepc == dut.mepc && reference.mcause == dut.mcause)
-            return true;
-        std::println(
-            std::cerr,
-            "DiffTest {} CSR 不匹配（pc=0x{:0{}x}）:\n"
-            "  mstatus REF=0x{:0{}x} DUT=0x{:0{}x}\n"
-            "  mtvec   REF=0x{:0{}x} DUT=0x{:0{}x}\n"
-            "  mepc    REF=0x{:0{}x} DUT=0x{:0{}x}\n"
-            "  mcause  REF=0x{:0{}x} DUT=0x{:0{}x}",
-            event,
-            pc,
-            npc::XHexDigits,
-            reference.mstatus,
-            npc::XHexDigits,
-            dut.mstatus,
-            npc::XHexDigits,
-            reference.mtvec,
-            npc::XHexDigits,
-            dut.mtvec,
-            npc::XHexDigits,
-            reference.mepc,
-            npc::XHexDigits,
-            dut.mepc,
-            npc::XHexDigits,
-            reference.mcause,
-            npc::XHexDigits,
-            dut.mcause,
-            npc::XHexDigits);
-        return false;
+        // 与 CheckRegs 一样只判定。差异由完整报告统一打印。
+        return reference.mstatus == dut.mstatus &&
+               reference.mtvec == dut.mtvec &&
+               reference.mepc == dut.mepc &&
+               reference.mcause == dut.mcause;
     }
 
     constexpr bool RangeContains(npc::XWord address,
@@ -264,15 +267,249 @@ namespace
         return address == 0xb00U || address == 0xb80U;
     }
 
-    void ReportMismatch(DUT &dut, std::string_view event, npc::XWord dutPC)
+#ifdef VRISCV32E_NPC
+    // direct-NPC 导出了 debug_trap_tval/_hi；full-SoC 目前没有该端口，
+    // 报告必须明确标成“不可用”，不能把 0 当成真实 tval。
+    constexpr bool DUTTrapTvalAvailable{true};
+#else
+    constexpr bool DUTTrapTvalAvailable{false};
+#endif
+
+    std::string DisassembleWord(std::uint64_t pc, std::uint32_t instruction)
+    {
+        init_disasm();
+        std::array<std::uint8_t, 4> bytes{
+            static_cast<std::uint8_t>(instruction),
+            static_cast<std::uint8_t>(instruction >> 8U),
+            static_cast<std::uint8_t>(instruction >> 16U),
+            static_cast<std::uint8_t>(instruction >> 24U),
+        };
+        std::array<char, 128> assembly{};
+        disassemble(assembly.data(),
+                    static_cast<int>(assembly.size()),
+                    pc,
+                    bytes.data(),
+                    static_cast<int>(bytes.size()));
+        if (assembly.front() == '\0')
+            return "<反汇编失败>";
+        return std::string{assembly.data()};
+    }
+
+    npc::difftest::ReportGPRState MakeReportGPRState(
+        const DifftestCPUState &state)
+    {
+        npc::difftest::ReportGPRState result{};
+        for (std::size_t index{0}; index < result.GPR.size(); ++index)
+            result.GPR[index] = state.GetGPR(index);
+        result.PC = state.GetPC();
+        return result;
+    }
+
+    npc::difftest::ReportCSRState MakeReportCSRState(
+        const DifftestCSRState &state)
+    {
+        return {
+            .Mstatus = state.mstatus,
+            .Mtvec = state.mtvec,
+            .Mepc = state.mepc,
+            .Mcause = state.mcause,
+        };
+    }
+
+    void FillDUTInstruction(npc::difftest::DifftestReport &report,
+                            DUT &dut,
+                            bool trapEvent)
+    {
+        report.HasDUTInstruction = true;
+        report.DUTInstructionPC = ReadRetirePC(dut);
+        report.DUTInstruction =
+            static_cast<std::uint32_t>(dut->debug_instructions);
+        report.DUTAssembly =
+            DisassembleWord(report.DUTInstructionPC, report.DUTInstruction);
+        report.DUTInstructionNote =
+            trapEvent ? "最近退休指令，不一定是触发 trap 的指令"
+                      : "本步退休指令";
+    }
+
+    void FillRefInstruction(npc::difftest::DifftestReport &report,
+                            bool current,
+                            std::string_view note)
+    {
+        if (REFLastInstruction == nullptr)
+        {
+            report.RefInstructionNote =
+                "REF 缺少 difftest_get_last_instruction";
+            return;
+        }
+
+        std::uint64_t pc{0};
+        std::uint64_t instruction{0};
+        REFLastInstruction(&pc, &instruction);
+        report.HasRefInstruction = true;
+        report.RefInstructionIsCurrent = current;
+        report.RefInstructionPC = pc;
+        report.RefInstruction = static_cast<std::uint32_t>(instruction);
+        report.RefAssembly = DisassembleWord(pc, report.RefInstruction);
+        if (!note.empty())
+            report.RefInstructionNote = std::string{note};
+    }
+
+    void FillTrapReport(npc::difftest::DifftestReport &report, DUT &dut)
+    {
+        report.HasTrap = true;
+        report.TrapCause = dut.ReadTrapCause();
+        report.TrapEPC = ReadTrapPC(dut);
+        report.TrapTarget = ReadTrapTarget(dut);
+        report.TrapTvalAvailable = DUTTrapTvalAvailable;
+        if constexpr (DUTTrapTvalAvailable)
+            report.TrapTval = ReadTrapTval(dut);
+
+        // trap 指令通常不会进入 WBU 退休路径，debug_instructions 可能是
+        // 更老的指令。这里再读一次 trap PC 处的取指内存作为补充。
+        if (const auto instruction{dut.ReadMemory(report.TrapEPC, 4)};
+            instruction)
+        {
+            report.HasTrapInstruction = true;
+            report.TrapInstructionPC = report.TrapEPC;
+            report.TrapInstruction =
+                static_cast<std::uint32_t>(*instruction);
+            report.TrapAssembly =
+                DisassembleWord(report.TrapInstructionPC,
+                                report.TrapInstruction);
+        }
+
+        // REF 的 mtval/stval 是可选 ABI；旧 REF 缺符号时保持不可用。
+        if (REFGetCSR != nullptr)
+        {
+            std::uint64_t value{0};
+            if (REFGetCSR(0x343U, &value))
+            {
+                report.HasRefMtval = true;
+                report.RefMtval = value;
+            }
+            value = 0;
+            if (REFGetCSR(0x143U, &value))
+            {
+                report.HasRefStval = true;
+                report.RefStval = value;
+            }
+        }
+    }
+
+    // 把 CSR 快照里与 trap tval 对应的那一项补进报告：委托到 S 时
+    // REF 写 stval，M 模式 trap 写 mtval。优先选择与 DUT tval 一致的
+    // 那个，避免把合法的 S 模式 trap 误报成 mtval 差异。
+    void FillTrapTvalCSR(npc::difftest::DifftestReport &report,
+                         npc::difftest::ReportCSRState &refCSR,
+                         npc::difftest::ReportCSRState &dutCSR)
+    {
+        if (!report.HasTrap || !report.TrapTvalAvailable)
+            return;
+        dutCSR.HasMtval = true;
+        dutCSR.Mtval = report.TrapTval;
+
+        if (report.HasRefStval && report.RefStval == report.TrapTval)
+        {
+            refCSR.HasMtval = true;
+            refCSR.Mtval = report.RefStval;
+            refCSR.MtvalLabel = "stval";
+        }
+        else if (report.HasRefMtval)
+        {
+            refCSR.HasMtval = true;
+            refCSR.Mtval = report.RefMtval;
+            refCSR.MtvalLabel = "mtval";
+        }
+        else if (report.HasRefStval)
+        {
+            refCSR.HasMtval = true;
+            refCSR.Mtval = report.RefStval;
+            refCSR.MtvalLabel = "stval";
+        }
+    }
+
+    void AppendMemoryDump(npc::difftest::DifftestReport &report,
+                          DUT &dut,
+                          std::string_view label,
+                          npc::XWord address)
+    {
+        const auto wordBytes{npc::XLen == 64 ? std::size_t{8}
+                                             : std::size_t{4}};
+        const auto base{static_cast<std::uint64_t>(address) &
+                        ~static_cast<std::uint64_t>(wordBytes - 1U)};
+        npc::difftest::ReportMemoryDump dump{};
+        dump.Label = std::string{label};
+        dump.Address = base;
+        dump.WordBytes = wordBytes;
+        for (std::size_t index{0}; index < dump.Words.size(); ++index)
+        {
+            const auto value{dut.ReadMemory(
+                base + index * wordBytes, wordBytes)};
+            if (!value)
+            {
+                if (dump.Count == 0)
+                    return;
+                break;
+            }
+            dump.Words[dump.Count++] = *value;
+        }
+        report.Memory.push_back(std::move(dump));
+    }
+
+    npc::difftest::DifftestReport MakeBaseReport(DUT &dut,
+                                                 std::string_view event,
+                                                 bool trapEvent)
+    {
+        npc::difftest::DifftestReport report{};
+        report.Event = std::string{event};
+        report.XLen = npc::XLen;
+        report.Cycle = dut.GetCycle();
+        report.DUTRetirePC = ReadRetirePC(dut);
+        report.HasDUTNextPC = true;
+        FillDUTInstruction(report, dut, trapEvent);
+        if (trapEvent)
+        {
+            FillTrapReport(report, dut);
+            // trap 事件的“下一 PC”是 trap 目标，不是最近一条退休指令
+            // 的 next PC；否则报告里的 next PC 会误导定位。
+            report.DUTNextPC = report.TrapTarget;
+        }
+        else
+        {
+            report.DUTNextPC = ReadNextPC(dut);
+        }
+        return report;
+    }
+
+    void ReportMismatch(DUT &dut,
+                        std::string_view event,
+                        npc::XWord dutPC,
+                        npc::difftest::DifftestReport report)
     {
         Failed = true;
-        std::println(std::cerr,
-                     "DiffTest {} 校验失败（retire PC=0x{:0{}x}, cycle={}）",
-                     event,
-                     ReadRetirePC(dut),
-                     npc::XHexDigits,
-                     dut.GetCycle());
+        report.Event = std::string{event};
+
+        // 只在第一次失败时抓内存，最多 PC/SP/TP 三小段；读不到就跳过。
+        // trap 现场已经单独反汇编了 trap PC，这里不再重复 dump 同一段。
+        if (!report.HasTrap && report.HasDUTInstruction)
+            AppendMemoryDump(report, dut, "PC", report.DUTInstructionPC);
+        if (report.DUTState)
+        {
+            const auto sp{report.DUTState->GPR[2]};
+            const auto tp{report.DUTState->GPR[4]};
+            const auto pc{report.HasTrap ? report.TrapEPC
+                                         : report.DUTInstructionPC};
+            if (sp != pc)
+                AppendMemoryDump(report, dut, "SP", sp);
+            if (tp != pc && tp != sp)
+                AppendMemoryDump(report, dut, "TP", tp);
+        }
+
+        const auto text{npc::difftest::FormatDifftestReport(report)};
+        std::fwrite(text.data(), 1, text.size(), stderr);
+        if (!text.empty() && text.back() != '\n')
+            std::fputc('\n', stderr);
+        std::fflush(stderr);
         NPCTrap::Halt(dutPC, 1);
     }
 #endif
@@ -378,6 +615,33 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
             "DiffTest: 警告：REF 缺少 difftest_trap，tval 注入不可用；"
             "含非零 mtval/stval 的 trap 将明确失败，请更新 REF");
     }
+    // 失败诊断是可选扩展：缺失时打印一条明确降级提示即可，绝不能
+    // 让原本可以工作的旧 REF 启动失败。
+    if (auto symbol{TryLoadSymbol<REFDifftestLastInstruction>(
+            "difftest_get_last_instruction")};
+        symbol != nullptr)
+    {
+        REFLastInstruction = symbol;
+    }
+    else
+    {
+        std::println(
+            std::cerr,
+            "DiffTest: 警告：REF 缺少 difftest_get_last_instruction，"
+            "失败报告将不显示 REF 实际执行的指令（逐退休比对不受影响）");
+    }
+    if (auto symbol{TryLoadSymbol<REFDifftestGetCSR>("difftest_get_csr")};
+        symbol != nullptr)
+    {
+        REFGetCSR = symbol;
+    }
+    else
+    {
+        std::println(
+            std::cerr,
+            "DiffTest: 警告：REF 缺少 difftest_get_csr，"
+            "失败报告将不显示 REF 侧 mtval/stval（逐退休比对不受影响）");
+    }
 #ifndef VRISCV32E_NPC
     std::println(std::cerr,
                  "DiffTest: 警告：full-SoC 调试端口未导出 trap tval，"
@@ -466,13 +730,10 @@ void DifftestStep(DUT &dut)
     const auto before{ReadReferenceState()};
     if (before.GetPC() != retirePC)
     {
-        std::println(std::cerr,
-                     "DiffTest 执行前 PC 不匹配：REF=0x{:0{}x}, DUT retire=0x{:0{}x}",
-                     before.GetPC(),
-                     npc::XHexDigits,
-                     retirePC,
-                     npc::XHexDigits);
-        ReportMismatch(dut, "retire-pre", retirePC);
+        auto report{MakeBaseReport(dut, "retire-pre", false)};
+        report.RefPC = before.GetPC();
+        FillRefInstruction(report, false, "");
+        ReportMismatch(dut, "retire-pre", retirePC, std::move(report));
         return;
     }
 
@@ -496,14 +757,24 @@ void DifftestStep(DUT &dut)
 
     REFExec(1);
     const auto REFState{ReadReferenceState()};
-    if (!REFState.CheckRegs(DUTState))
+    const auto REFCSR{ReadReferenceCSR()};
+    const bool regsOk{REFState.CheckRegs(DUTState)};
+    const bool csrOk{CheckCSR(REFCSR, DUTCSR)};
+    if (!regsOk || !csrOk)
     {
-        ReportMismatch(dut, "retire-post", nextPC);
-        return;
-    }
-    if (!CheckCSR(ReadReferenceCSR(), DUTCSR, "retire-post", nextPC))
-    {
-        ReportMismatch(dut, "retire-post-csr", nextPC);
+        auto report{MakeBaseReport(
+            dut, regsOk ? "retire-post-csr" : "retire-post", false)};
+        report.RefPC = REFState.GetPC();
+        report.RefState = MakeReportGPRState(REFState);
+        report.DUTState = MakeReportGPRState(DUTState);
+        report.DUTNextPC = report.DUTState->PC;
+        report.RefCSR = MakeReportCSRState(REFCSR);
+        report.DUTCSR = MakeReportCSRState(DUTCSR);
+        FillRefInstruction(report, true, "");
+        ReportMismatch(dut,
+                       regsOk ? "retire-post-csr" : "retire-post",
+                       nextPC,
+                       std::move(report));
         return;
     }
     LastDUTCSR = DUTCSR;
@@ -523,13 +794,10 @@ void DifftestTrapStep(DUT &dut)
     const auto before{ReadReferenceState()};
     if (before.GetPC() != trapPC)
     {
-        std::println(std::cerr,
-                     "DiffTest trap 前 PC 不匹配：REF=0x{:0{}x}, DUT trap=0x{:0{}x}",
-                     before.GetPC(),
-                     npc::XHexDigits,
-                     trapPC,
-                     npc::XHexDigits);
-        ReportMismatch(dut, "trap-pre", trapPC);
+        auto report{MakeBaseReport(dut, "trap-pre", true)};
+        report.RefPC = before.GetPC();
+        FillRefInstruction(report, false, "");
+        ReportMismatch(dut, "trap-pre", trapPC, std::move(report));
         return;
     }
 
@@ -550,14 +818,12 @@ void DifftestTrapStep(DUT &dut)
     {
         // 旧 REF 只能传 cause，无法表达非零 tval；明确失败而不是让
         // 后续 csrr mtval/stval 产生难以定位的寄存器差异。
-        std::println(std::cerr,
-                     "DiffTest trap tval=0x{:0{}x} 无法注入：REF 缺少 "
-                     "difftest_trap（trap PC=0x{:0{}x}）",
-                     tval,
-                     npc::XHexDigits,
-                     trapPC,
-                     npc::XHexDigits);
-        ReportMismatch(dut, "trap-tval-unsupported", trapPC);
+        auto report{MakeBaseReport(dut, "trap-tval-unsupported", true)};
+        report.RefPC = before.GetPC();
+        FillRefInstruction(report, false,
+                           "trap 注入被拒绝，这是上一条 REF 指令");
+        ReportMismatch(dut, "trap-tval-unsupported", trapPC,
+                       std::move(report));
         return;
     }
     else
@@ -574,14 +840,28 @@ void DifftestTrapStep(DUT &dut)
     const auto target{ReadTrapTarget(dut)};
     const auto DUTState{ReadDUTStateAtPC(dut, target)};
     const auto DUTCSR{ReadDUTTrapCSR(dut)};
-    if (!REFState.CheckRegs(DUTState))
+    const auto REFCSR{ReadReferenceCSR()};
+    const bool regsOk{REFState.CheckRegs(DUTState)};
+    const bool csrOk{CheckCSR(REFCSR, DUTCSR)};
+    if (!regsOk || !csrOk)
     {
-        ReportMismatch(dut, "trap-post", target);
-        return;
-    }
-    if (!CheckCSR(ReadReferenceCSR(), DUTCSR, "trap-post", target))
-    {
-        ReportMismatch(dut, "trap-post-csr", target);
+        auto report{MakeBaseReport(
+            dut, regsOk ? "trap-post-csr" : "trap-post", true)};
+        report.RefPC = REFState.GetPC();
+        report.RefState = MakeReportGPRState(REFState);
+        report.DUTState = MakeReportGPRState(DUTState);
+        auto refCSR{MakeReportCSRState(REFCSR)};
+        auto dutCSR{MakeReportCSRState(DUTCSR)};
+        FillTrapTvalCSR(report, refCSR, dutCSR);
+        report.RefCSR = std::move(refCSR);
+        report.DUTCSR = std::move(dutCSR);
+        FillRefInstruction(
+            report, false,
+            "REF 本步仅注入 trap，未执行指令（显示上一条）");
+        ReportMismatch(dut,
+                       regsOk ? "trap-post-csr" : "trap-post",
+                       target,
+                       std::move(report));
         return;
     }
     LastDUTCSR = DUTCSR;
@@ -613,16 +893,27 @@ bool DifftestFinalCheck(DUT &dut)
     // guard against unintended writes outside that port or bookkeeping bugs.
     dut.RefreshCachedArchitecturalState();
     const auto REFState{ReadReferenceState()};
+    const auto REFCSR{ReadReferenceCSR()};
     const auto DUTState{DifftestCPUState::ReadDUTState(dut)};
-    const bool matched{REFState.CheckRegs(DUTState)};
-    if (!matched)
+    const bool regsOk{REFState.CheckRegs(DUTState)};
+    const bool csrOk{CheckCSR(REFCSR, LastDUTCSR)};
+    if (!regsOk || !csrOk)
     {
-        ReportMismatch(dut, "final", DUTState.GetPC());
-        return false;
-    }
-    if (!CheckCSR(ReadReferenceCSR(), LastDUTCSR, "final", DUTState.GetPC()))
-    {
-        ReportMismatch(dut, "final-csr", DUTState.GetPC());
+        auto report{MakeBaseReport(
+            dut, regsOk ? "final-csr" : "final", false)};
+        report.RefPC = REFState.GetPC();
+        report.RefState = MakeReportGPRState(REFState);
+        report.DUTState = MakeReportGPRState(DUTState);
+        report.DUTNextPC = report.DUTState->PC;
+        report.RefCSR = MakeReportCSRState(REFCSR);
+        report.DUTCSR = MakeReportCSRState(LastDUTCSR);
+        FillRefInstruction(
+            report, false,
+            "REF 最后执行的指令（最终检查未再执行）");
+        ReportMismatch(dut,
+                       regsOk ? "final-csr" : "final",
+                       DUTState.GetPC(),
+                       std::move(report));
         return false;
     }
     if (SkipCount != 0)

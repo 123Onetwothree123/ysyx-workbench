@@ -44,25 +44,14 @@ DifftestCPUState DifftestCPUState::ReadDUTState(DUT &dut)
 }
 bool DifftestCPUState::CheckRegs(const DifftestCPUState &DUT) const
 {
+    // 这里只做判定，不打印。失败时由 difftest.cpp 汇总完整报告，
+    // 避免“只报第一个差异”与完整报告重复刷屏。
     for (std::size_t Index{0}; Index < gpr.size(); ++Index)
     {
         if (gpr[Index] != DUT.gpr[Index])
-        {
-            std::println(stderr,
-                         "DiffTest 不匹配: x{} 参考实现 = 0x{:0{}x}, DUT = 0x{:0{}x}, DUT pc = 0x{:0{}x}",
-                         Index, gpr[Index], npc::XHexDigits, DUT.gpr[Index],
-                         npc::XHexDigits, DUT.pc, npc::XHexDigits);
             return false;
-        }
     }
-    if (pc != DUT.pc)
-    {
-        std::println(stderr,
-                     "DiffTest 不匹配: pc 参考实现 = 0x{:0{}x}, DUT = 0x{:0{}x}",
-                     pc, npc::XHexDigits, DUT.pc, npc::XHexDigits);
-        return false;
-    }
-    return true;
+    return pc == DUT.pc;
 }
 int DifftestCPUState::GetDirectionToDUT()
 {

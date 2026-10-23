@@ -51,6 +51,20 @@
    - 运行日志在 `/tmp/opencode/xlen-dual`，结束时恢复 `.config` 和
      `include/config`、`include/generated`，不把构建产物带入提交。
 
+## DiffTest 失败报告测试
+
+失败报告本身不依赖 RTL，可单独验证四类人为构造的差异：
+
+```bash
+# GPR / CSR（含 RV64 mtval 高半区）/ PC / trap 差异与旧 REF 降级
+make -C npc/csrc/Test/difftest-report-test run
+
+# NEMU 可选诊断 ABI：最后执行指令 + mtval/stval 完整 XLEN
+make -C npc/csrc/Test/difftest-last-inst-abi-test run \
+    REF32=/path/riscv32-nemu-interpreter-so \
+    REF64=/path/riscv64-nemu-interpreter-so
+```
+
 ## 运行方式
 
 ```bash

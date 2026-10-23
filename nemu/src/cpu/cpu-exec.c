@@ -33,6 +33,27 @@ uint64_t g_nr_guest_inst = 0;
 static uint64_t g_timer = 0; // unit: us
 static bool g_print_step = false;
 
+/*
+ * 最近一条进入执行阶段的指令。isa_exec_once() 会保留原始 s->pc 和已取
+ * 到的 s->isa.inst，因此即使该指令触发同步异常，诊断报告仍能指出 REF
+ * 实际看到了哪条指令。该数据只服务 DiffTest 失败报告，正常比对路径仍
+ * 只读 difftest_regcpy()/difftest_csrcpy() 的固定 ABI。
+ */
+static uint64_t g_difftest_last_pc = 0;
+static uint64_t g_difftest_last_inst = 0;
+
+__EXPORT void difftest_get_last_instruction(uint64_t *pc, uint64_t *inst)
+{
+  if (pc != NULL)
+  {
+    *pc = g_difftest_last_pc;
+  }
+  if (inst != NULL)
+  {
+    *inst = g_difftest_last_inst;
+  }
+}
+
 void device_update();
 
 void set_watchpoint(const char *expr);
@@ -67,6 +88,12 @@ static void exec_once(Decode *s, vaddr_t pc)
   s->pc = pc;
   s->snpc = pc;
   isa_exec_once(s);
+#ifdef CONFIG_ISA_riscv
+  // 该诊断 ABI 只定义 RISC-V 的 32 位指令字；其它 ISA 保持 0，
+  // 不影响它们原有的 DiffTest 行为。
+  g_difftest_last_pc = (uint64_t)s->pc;
+  g_difftest_last_inst = (uint64_t)s->isa.inst;
+#endif
   cpu.pc = s->dnpc;
 #ifdef CONFIG_ITRACE
   /*

@@ -121,6 +121,53 @@ __EXPORT void difftest_csrcpy(void *dut, bool direction)
   }
 }
 
+/*
+ * 可选诊断接口：按 CSR 编号读取 REF 当前值。失败报告用它确认 trap 后
+ * tval 实际落在 mtval 还是 stval，以及 64 位值没有被截断。
+ *
+ * 这里只暴露不会改变架构状态的普通读取；未实现/只读编号返回 false，
+ * 调用方据此降级，而不是把 0 当成真实 CSR 值。
+ */
+__EXPORT bool difftest_get_csr(uint32_t csr, uint64_t *value)
+{
+  if (value == NULL)
+  {
+    return false;
+  }
+
+  word_t result = 0;
+  switch (csr)
+  {
+  case 0x100: result = cpu.mstatus & SSTATUS_MASK; break;
+  case 0x104: result = cpu.mie; break;
+  case 0x105: result = cpu.stvec; break;
+  case 0x106: result = cpu.scounteren; break;
+  case 0x140: result = cpu.sscratch; break;
+  case 0x141: result = cpu.sepc; break;
+  case 0x142: result = cpu.scause; break;
+  case 0x143: result = cpu.stval; break;
+  case 0x144: result = cpu.mip; break;
+  case 0x180: result = cpu.satp; break;
+  case 0x300: result = cpu.mstatus; break;
+  case 0x302: result = cpu.medeleg; break;
+  case 0x303: result = cpu.mideleg; break;
+  case 0x304: result = cpu.mie; break;
+  case 0x305: result = cpu.mtvec; break;
+  case 0x306: result = cpu.mcounteren; break;
+  case 0x320: result = cpu.mcountinhibit; break;
+  case 0x340: result = cpu.mscratch; break;
+  case 0x341: result = cpu.mepc; break;
+  case 0x342: result = cpu.mcause; break;
+  case 0x343: result = cpu.mtval; break;
+  case 0x344: result = cpu.mip; break;
+  default: return false;
+  }
+
+  /* word_t 跟随 XLEN；RV32 高 32 位自然为 0，RV64 保留完整 64 位。 */
+  *value = (uint64_t)result;
+  return true;
+}
+
 __EXPORT void difftest_exec(uint64_t n)
 {
   // assert(0);

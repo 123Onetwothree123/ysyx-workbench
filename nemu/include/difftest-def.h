@@ -68,6 +68,21 @@ typedef struct {
 extern "C" {
 #endif
 __EXPORT void difftest_trap(uint64_t no, uint64_t epc, uint64_t tval);
+
+/*
+ * 可选的失败诊断扩展。
+ *
+ * difftest_get_last_instruction() 返回 REF 最近一条实际执行的指令
+ * （PC + 32 位指令字）。DUT 在 difftest_exec(1) 后读取，用于在首次
+ * mismatch 时把 DUT/REF 指令并列打印；旧 REF 没有该符号时 DUT 必须
+ * 明确降级为“REF 指令不可用”，不能影响原有逐退休比对。
+ *
+ * difftest_get_csr() 按 CSR 编号读取 REF 当前值，主要用于 trap 后
+ * 检查 mtval/stval。找不到的定义（例如只读 CSR）返回 false。
+ * 两个符号都是可选扩展，不改变既有的 33 x XLEN / 4 x XLEN 快照 ABI。
+ */
+__EXPORT void difftest_get_last_instruction(uint64_t *pc, uint64_t *inst);
+__EXPORT bool difftest_get_csr(uint32_t csr, uint64_t *value);
 #ifdef __cplusplus
 }
 #endif

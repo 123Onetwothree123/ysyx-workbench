@@ -19,9 +19,9 @@ public:
     /// @param Top Verilator生成的顶层模块引用
     /// @return 包含GPR和PC的CPU状态快照
     static DifftestCPUState ReadDUTState(DUT &dut);
-    /// @brief 逐寄存器比对REF（this）与DUT状态，不一致时打印差异并返回false
-    /// @param DUT DUT寄存器状态
-    /// @return 全部一致返回true，否则返回false
+    /// @brief 逐寄存器比对 REF（this）与 DUT 状态；只判定，不打印
+    /// @param DUT DUT 寄存器状态
+    /// @return 全部一致返回 true，否则返回 false
     [[nodiscard]] bool CheckRegs(const DifftestCPUState &DUT) const;
     /// @brief 获取DIFFTEST_TO_DUT方向值（用于difftest_regcpy）
     /// @return 方向常量 0

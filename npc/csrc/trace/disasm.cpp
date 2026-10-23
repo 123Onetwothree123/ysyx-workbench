@@ -3,8 +3,13 @@ module;
 module npc.trace.disasm;
 
 static csh handle{};
+static bool initialized{false};
 void init_disasm()
 {
+    // DiffTest 失败报告与 itrace/iringbuf 可能先后触发初始化；
+    // 重复 cs_open 会泄漏句柄并替换全局状态，这里保持幂等。
+    if (initialized)
+        return;
     constexpr cs_arch arch{CS_ARCH_RISCV};
     // Capstone 必须与实际 XLEN 对齐，否则 RV64 的高位地址和指令语义
     // 会被按 RV32 解释。
@@ -15,6 +20,7 @@ void init_disasm()
         std::println(std::cerr, "cs_open failed: {}", cs_strerror(err));
         std::abort();
     }
+    initialized = true;
 }
 void disassemble(char *str, int size, std::uint64_t pc, std::uint8_t *code, int nbyte)
 {
