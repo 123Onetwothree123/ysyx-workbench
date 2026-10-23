@@ -197,10 +197,19 @@ object ysyx_26030103_Elaborate extends App {
     )
   }
   if (config.ICacheViptAliasHardware || config.DCacheViptAliasHardware) {
+    val mode = config.MMU.cacheViptAliasScanMode
+    val detail = mode match {
+      case "parallel_n" =>
+        s"ICache=${config.ICacheViptAliasScanWidth}/DCache=${config.DCacheViptAliasScanWidth} set/拍；"
+      case "directory" =>
+        s"目录项 ICache=${config.ICacheViptAliasDirectoryEntries}/" +
+          s"DCache=${config.DCacheViptAliasDirectoryEntries}；"
+      case "serial" => "serial 模式在扫描期间反压新请求；"
+      case _ => ""
+    }
     println(
-      s"[NPC config] VIPT alias 维护已生成：scan_mode=" +
-        s"${config.MMU.cacheViptAliasScanMode}；" +
-        "serial 模式在扫描期间反压新请求。"
+      s"[NPC config] VIPT alias 维护已生成：scan_mode=$mode；$detail" +
+        "refill/store/snoop 在旧副本清理完成前不交付新请求。"
     )
   }
   println(

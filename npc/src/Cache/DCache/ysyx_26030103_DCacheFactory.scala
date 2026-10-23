@@ -31,7 +31,9 @@ object ysyx_26030103_DCacheFactory {
       Vipt: Boolean = false,
       ViptAliasSafe: Boolean = false,
       ViptAliasScanMode: String = "all_sets",
-      DmaSnoop: Boolean = false
+      DmaSnoop: Boolean = false,
+      ViptAliasScanWidth: Int = 0,
+      ViptAliasDirectoryEntries: Int = 0
   ): ysyx_26030103_DCacheBase = {
     Storage match {
       case ysyx_26030103_CacheStorage.Reg =>
@@ -46,6 +48,8 @@ object ysyx_26030103_DCacheFactory {
             ViptAliasSafe = ViptAliasSafe,
             ViptAliasScanMode = ViptAliasScanMode,
             DmaSnoop = DmaSnoop,
+            ViptAliasScanWidth = ViptAliasScanWidth,
+            ViptAliasDirectoryEntries = ViptAliasDirectoryEntries,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             PMARegions = PMARegions
@@ -63,6 +67,8 @@ object ysyx_26030103_DCacheFactory {
             ViptAliasSafe = ViptAliasSafe,
             ViptAliasScanMode = ViptAliasScanMode,
             DmaSnoop = DmaSnoop,
+            ViptAliasScanWidth = ViptAliasScanWidth,
+            ViptAliasDirectoryEntries = ViptAliasDirectoryEntries,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             PMARegions = PMARegions
@@ -80,6 +86,8 @@ object ysyx_26030103_DCacheFactory {
             ViptAliasSafe = ViptAliasSafe,
             ViptAliasScanMode = ViptAliasScanMode,
             DmaSnoop = DmaSnoop,
+            ViptAliasScanWidth = ViptAliasScanWidth,
+            ViptAliasDirectoryEntries = ViptAliasDirectoryEntries,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             Bypass = false,

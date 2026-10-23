@@ -211,10 +211,52 @@ case class ysyx_26030103_NPCConfig(
   final val DCacheViptAliasHardware: Boolean =
     viptCacheEnabled && DCacheEnable && MMU.cacheViptAliasSafe &&
       DCacheAliasGeometry
-  // alias 扫描方式只对真正生成 alias 维护硬件的 Cache 生效；all_sets
-  // 保持原有时序，serial 每周期扫描一个 set 并反压新请求。
+  // alias 扫描/目录参数只对真正生成 alias 维护硬件的 Cache 生效。
+  // parallel_n 的配置宽度在每个 Cache 内按实际 set 数截断：Kconfig 的
+  // 静态 range 无法知道 ICache/DCache 各自的 set 数，因此这里给出实际
+  // 传入 RTL 的有效值并记录到 elaboration 日志。
+  private def AliasScanWidthFor(
+      mode: String,
+      configured: Int,
+      sets: Int
+  ): Int =
+    mode match {
+      case "all_sets" => sets
+      case "serial" | "directory" => 1
+      case "parallel_n" =>
+        if (configured <= 0) math.min(4, sets) else math.min(configured, sets)
+      case other =>
+        throw new IllegalArgumentException(
+          s"未知 MMU_CACHE_VIPT_ALIAS_SCAN_MODE: $other")
+    }
+  private def AliasDirectoryEntriesFor(configured: Int, sets: Int): Int = {
+    val entries = if (configured <= 0) sets else math.min(configured, sets)
+    require(entries >= 1 && (entries & (entries - 1)) == 0,
+      s"VIPT alias 目录项数($entries) 必须是 2 的幂")
+    entries
+  }
   final val ICacheViptAliasScanMode: String = MMU.cacheViptAliasScanMode
   final val DCacheViptAliasScanMode: String = MMU.cacheViptAliasScanMode
+  final val ICacheViptAliasScanWidth: Int = AliasScanWidthFor(
+    ICacheViptAliasScanMode,
+    MMU.cacheViptAliasScanWidth,
+    1 << ICacheIndexBits
+  )
+  final val DCacheViptAliasScanWidth: Int = AliasScanWidthFor(
+    DCacheViptAliasScanMode,
+    MMU.cacheViptAliasScanWidth,
+    1 << DCacheIndexBits
+  )
+  final val ICacheViptAliasDirectoryEntries: Int =
+    AliasDirectoryEntriesFor(
+      MMU.cacheViptAliasDirectoryEntries,
+      1 << ICacheIndexBits
+    )
+  final val DCacheViptAliasDirectoryEntries: Int =
+    AliasDirectoryEntriesFor(
+      MMU.cacheViptAliasDirectoryEntries,
+      1 << DCacheIndexBits
+    )
   final val ICacheLineExceedsPage: Boolean =
     ICacheEnable && ICacheBlockSizeLog2 > MMU.pageBits
   final val DCacheLineExceedsPage: Boolean =
@@ -461,8 +503,17 @@ case class ysyx_26030103_NPCConfig(
         val Active =
           if (ICacheViptAliasHardware || DCacheViptAliasHardware) { "(hw)" }
           else { "" }
+        val ScanDetail =
+          if (MMU.cacheViptAliasScanMode == "parallel_n") {
+            s"(${ICacheViptAliasScanWidth}/${DCacheViptAliasScanWidth})"
+          } else { "" }
+        val DirDetail =
+          if (MMU.cacheViptAliasScanMode == "directory") {
+            s"(entries=${ICacheViptAliasDirectoryEntries}/" +
+              s"${DCacheViptAliasDirectoryEntries})"
+          } else { "" }
         s",vipt_alias_safe=${OnOff(MMU.cacheViptAliasSafe)}$Active" +
-          s",vipt_alias_scan=${MMU.cacheViptAliasScanMode}"
+          s",vipt_alias_scan=${MMU.cacheViptAliasScanMode}$ScanDetail$DirDetail"
       }
     // PIPT 是唯一允许 line > page 的模式；把它显式打印出来，避免出现
     // “配置成大头行却按页内截断索引”的误解。

@@ -95,10 +95,23 @@
   - alias 扫描方式由 `MMU_CACHE_VIPT_ALIAS_SCAN_MODE` 选择：
     `all_sets`（默认）单拍并行比较所有 set，refill/store 无额外等待；
     `serial` 每周期只扫描一个 set，面积小，扫描期间反压新的 Cache
-    请求，refill 最多增加 set 数拍。两种模式都在扫描完成前拒绝可能
-    命中旧 alias 副本的请求。DCache 的 store 完成事件不能被反压，
-    因此 serial 模式用小队列排队扫描；队列溢出时清空整个 Cache，
-    绝不保留陈旧副本。
+    请求，refill 最多增加 set 数拍；`parallel_n` 每周期扫描 N 个 set
+    （`MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH`，2..64，实际按该 Cache 的 set
+    数截断），扫描等待为 ceil(sets/N) 拍；`directory` 维护“物理行 ->
+    set”目录，只在 refill/store/ICache snoop 事件拍做 CAM 比较，普通
+    命中路径不经过目录。目录项数由
+    `MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES` 配置，0 表示跟随 set 数
+    （每个 set 独占一项，无冲突）；更小的 2 的幂会按 set 低位分桶，
+    桶冲突时显式失效被挤出的 Cache 行，正确性不变、命中率可能下降。
+    所有模式都在旧 alias 副本清理完成前拒绝可能命中它的请求；serial/
+    parallel_n 还把新行 valid 推迟到本轮扫描完成，扫描窗口内不会出现
+    两份同时有效的副本。DCache 的 store 完成事件不能被反压，因此
+    serial/parallel_n 用小队列排队扫描；队列溢出时清空整个 Cache，
+    绝不保留陈旧副本。directory 的目录更新与旧副本失效在 refill AR
+    握手/ store 完成同一时钟沿生效，新行由 refill 最后一拍置 valid。
+    DMA 地址级 hardware snoop 按物理行范围同步清除目录项并失效对应
+    Cache 行；fence/原子提交等全量 flush 同时清空目录和扫描队列，
+    serial/parallel_n 窗口内的挂起安装也会被 DMA snoop 取消。
   - VIPT 下 cache line 不得大于页，跨页行无法用单个物理行回填，
     elaboration 会明确报错并提示改用 `MMU_CACHE_MODE=pipt`；
     PIPT 用物理地址索引/回填，允许 line > page，地址不会被截断。

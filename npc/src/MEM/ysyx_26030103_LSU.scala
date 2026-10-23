@@ -21,10 +21,13 @@ class ysyx_26030103_LSU(
     // VIPT alias 安全模式：index 含 VPN 位时，DCache 需要按物理 tag 失效
     // 其他 set 中的同名物理行副本。
     val DCacheViptAliasSafe: Boolean = false,
-    // alias 失效扫描方式：all_sets 单拍全扫描 / serial 每周期一个 set。
+    // alias 失效扫描方式：all_sets 单拍全扫描 / serial 每周期一个 set /
+    // parallel_n 每周期 N 个 set / directory 物理行目录。
     val DCacheViptAliasScanMode: String = "all_sets",
     // DMA 地址级硬件 snoop：只有 DMA_COHERENCE=hardware_snoop 生成。
     val DCacheDmaSnoop: Boolean = false,
+    val DCacheViptAliasScanWidth: Int = 0,
+    val DCacheViptAliasDirectoryEntries: Int = 0,
     // VIPT 并行模式：DCache/LSU 在 PA 到达前就用 VA 选 index 并持有请求，
     // MMU 故障通过 ViptKill 取消该请求。
     val ViptParallel: Boolean = false,
@@ -154,7 +157,9 @@ class ysyx_26030103_LSU(
     Vipt = DCacheVipt,
     ViptAliasSafe = DCacheViptAliasSafe,
     ViptAliasScanMode = DCacheViptAliasScanMode,
-    DmaSnoop = DCacheDmaSnoop
+    DmaSnoop = DCacheDmaSnoop,
+    ViptAliasScanWidth = DCacheViptAliasScanWidth,
+    ViptAliasDirectoryEntries = DCacheViptAliasDirectoryEntries
   )
   DCache.io.dma_snoop_valid := io.DCacheDmaSnoopValid
   DCache.io.dma_snoop_start := io.DCacheDmaSnoopStart

@@ -156,8 +156,30 @@ def build_profile(cfg: Config) -> dict:
     cache_vipt_alias_scan_mode = one_of(
         "MMU_CACHE_VIPT_ALIAS_SCAN_MODE",
         cfg.string("MMU_CACHE_VIPT_ALIAS_SCAN_MODE", "all_sets"),
-        ("all_sets", "serial"),
+        ("all_sets", "serial", "parallel_n", "directory"),
     )
+    cache_vipt_alias_scan_width = cfg.integer(
+        "MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH", 4
+    )
+    if not 2 <= cache_vipt_alias_scan_width <= 1024:
+        raise ValueError(
+            "MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH="
+            f"{cache_vipt_alias_scan_width} 必须在 2..1024"
+        )
+    cache_vipt_alias_directory_entries = cfg.integer(
+        "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES", 0
+    )
+    if not 0 <= cache_vipt_alias_directory_entries <= 1024:
+        raise ValueError(
+            "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES="
+            f"{cache_vipt_alias_directory_entries} 必须在 0..1024"
+        )
+    if (cache_vipt_alias_directory_entries != 0
+            and not is_power_of_two(cache_vipt_alias_directory_entries)):
+        raise ValueError(
+            "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES="
+            f"{cache_vipt_alias_directory_entries} 必须是 2 的幂或 0"
+        )
     ptw_path = one_of(
         "MMU_PTW_PATH", cfg.string("MMU_PTW_PATH", "dedicated"),
         ("dedicated", "reuse_dcache"),
@@ -539,6 +561,9 @@ def build_profile(cfg: Config) -> dict:
             "cache_mode": cache_mode,
             "cache_vipt_alias_safe": cfg.bool("MMU_CACHE_VIPT_ALIAS_SAFE"),
             "cache_vipt_alias_scan_mode": cache_vipt_alias_scan_mode,
+            "cache_vipt_alias_scan_width": cache_vipt_alias_scan_width,
+            "cache_vipt_alias_directory_entries":
+                cache_vipt_alias_directory_entries,
             "ptw": {
                 "path": ptw_path,
                 "arch": ptw_arch,
@@ -623,6 +648,8 @@ HEADER_TEMPLATE = """/* 由 scripts/gen_mmu_profile.py 从 .config 生成，请�
 #define YSYX_MMU_CACHE_MODE "{cache_mode}"
 #define YSYX_MMU_CACHE_VIPT_ALIAS_SAFE {vipt_alias_safe}u
 #define YSYX_MMU_CACHE_VIPT_ALIAS_SCAN_MODE "{vipt_alias_scan_mode}"
+#define YSYX_MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH {vipt_alias_scan_width}u
+#define YSYX_MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES {vipt_alias_dir_entries}u
 #define YSYX_MMU_PTW_PATH "{ptw_path}"
 #define YSYX_MMU_PTW_OUTSTANDING {ptw_outstanding}u
 #define YSYX_MMU_PTW_BUS_OUTSTANDING {ptw_bus_outstanding}u
@@ -687,6 +714,8 @@ def main() -> int:
         cache_mode=profile["mmu"]["cache_mode"],
         vipt_alias_safe=int(profile["mmu"]["cache_vipt_alias_safe"]),
         vipt_alias_scan_mode=profile["mmu"]["cache_vipt_alias_scan_mode"],
+        vipt_alias_scan_width=profile["mmu"]["cache_vipt_alias_scan_width"],
+        vipt_alias_dir_entries=profile["mmu"]["cache_vipt_alias_directory_entries"],
         ptw_path=profile["mmu"]["ptw"]["path"],
         ptw_outstanding=profile["mmu"]["ptw"]["outstanding"],
         ptw_bus_outstanding=profile["mmu"]["ptw"]["bus_outstanding"],
@@ -741,6 +770,8 @@ def main() -> int:
             f"MMU_CACHE_MODE={profile['mmu']['cache_mode']}",
             f"MMU_CACHE_VIPT_ALIAS_SAFE={int(profile['mmu']['cache_vipt_alias_safe'])}",
             f"MMU_CACHE_VIPT_ALIAS_SCAN_MODE={profile['mmu']['cache_vipt_alias_scan_mode']}",
+            f"MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH={profile['mmu']['cache_vipt_alias_scan_width']}",
+            f"MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES={profile['mmu']['cache_vipt_alias_directory_entries']}",
             f"MMU_PTW_PATH={profile['mmu']['ptw']['path']}",
             f"MMU_PTW_ARCH={profile['mmu']['ptw']['arch']}",
             f"MMU_PTW_OUTSTANDING={profile['mmu']['ptw']['outstanding']}",

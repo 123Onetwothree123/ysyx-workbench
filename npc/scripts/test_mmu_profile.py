@@ -284,10 +284,46 @@ class MmuProfileTest(unittest.TestCase):
         values["MMU_CACHE_VIPT_ALIAS_SCAN_MODE"] = "serial"
         profile = build_profile(Config(values))
         self.assertEqual(profile["mmu"]["cache_vipt_alias_scan_mode"], "serial")
+        self.assertEqual(profile["mmu"]["cache_vipt_alias_scan_width"], 4)
+        self.assertEqual(
+            profile["mmu"]["cache_vipt_alias_directory_entries"], 0)
+
+        for mode in ("parallel_n", "directory"):
+            with self.subTest(mode=mode):
+                values["MMU_CACHE_VIPT_ALIAS_SCAN_MODE"] = mode
+                profile = build_profile(Config(values))
+                self.assertEqual(
+                    profile["mmu"]["cache_vipt_alias_scan_mode"], mode)
+
+    def test_vipt_alias_parallel_width_and_directory_entries(self):
+        values = self.base()
+        values.update({
+            "MMU_CACHE_MODE": "vipt",
+            "MMU_CACHE_VIPT_ALIAS_SAFE": True,
+            "MMU_CACHE_VIPT_ALIAS_SCAN_MODE": "parallel_n",
+            "MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH": 8,
+            "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES": 16,
+        })
+        profile = build_profile(Config(values))
+        self.assertEqual(profile["mmu"]["cache_vipt_alias_scan_width"], 8)
+        self.assertEqual(
+            profile["mmu"]["cache_vipt_alias_directory_entries"], 16)
+
+        for key, bad in (
+            ("MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH", 1),
+            ("MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH", 1025),
+            ("MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES", 3),
+            ("MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES", 2048),
+        ):
+            with self.subTest(key=key, bad=bad):
+                broken = dict(values)
+                broken[key] = bad
+                with self.assertRaises(ValueError):
+                    build_profile(Config(broken))
 
     def test_invalid_vipt_alias_scan_mode(self):
         values = self.base()
-        values["MMU_CACHE_VIPT_ALIAS_SCAN_MODE"] = "directory"
+        values["MMU_CACHE_VIPT_ALIAS_SCAN_MODE"] = "burst"
         with self.assertRaisesRegex(ValueError, "all_sets"):
             build_profile(Config(values))
 

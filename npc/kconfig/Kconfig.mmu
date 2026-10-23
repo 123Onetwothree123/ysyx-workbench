@@ -302,19 +302,56 @@ menu "虚拟内存管理 (MMU/TLB)"
           但 tag 比较器和 valid 写译码面积随 set 数线性增长（默认）。
         SERIAL：每个周期只扫描一个 set，只有一套比较器/写译码，面积小；
           扫描期间反压新的 Cache 请求，refill 完成后可能多等 1..set 数拍。
-        两种模式都保证扫描完成前不接受可能命中旧 alias 副本的请求。
+        PARALLEL_N：每周期扫描 N 个 set（N 由下面的
+          MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH 配置），面积/等待介于
+          SERIAL 与 ALL_SETS 之间；N=sets 时等价于单拍全扫描。
+        DIRECTORY：不扫描 tag 阵列，维护“物理行 -> set”目录；refill 安装、
+          写直达 store 和 ICache store snoop 只查目录。目录项默认等于
+          set 数（每个 set 独占一项，无冲突）；也可配置更少目录项，
+          此时多个 set 共享目录桶，冲突会显式失效被挤出的 Cache 行，
+          不会留下无法追踪的有效 alias 副本。
+        所有模式都保证旧副本清理完成前不接受可能命中它的请求。
 
       config MMU_CACHE_VIPT_ALIAS_SCAN_ALL_SETS
         bool "ALL_SETS：单拍扫描全部 set"
       config MMU_CACHE_VIPT_ALIAS_SCAN_SERIAL
         bool "SERIAL：每周期扫描一个 set"
+      config MMU_CACHE_VIPT_ALIAS_SCAN_PARALLEL_N
+        bool "PARALLEL_N：每周期扫描 N 个 set"
+      config MMU_CACHE_VIPT_ALIAS_SCAN_DIRECTORY
+        bool "DIRECTORY：物理行 -> set 目录"
     endchoice
 
     config MMU_CACHE_VIPT_ALIAS_SCAN_MODE
       string
       default "all_sets" if MMU_CACHE_VIPT_ALIAS_SCAN_ALL_SETS
       default "serial" if MMU_CACHE_VIPT_ALIAS_SCAN_SERIAL
+      default "parallel_n" if MMU_CACHE_VIPT_ALIAS_SCAN_PARALLEL_N
+      default "directory" if MMU_CACHE_VIPT_ALIAS_SCAN_DIRECTORY
       default "all_sets"
+
+    config MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH
+      int "PARALLEL_N 每周期扫描的 set 数 N"
+      depends on MMU_CACHE_VIPT_ALIAS_SAFE && MMU_CACHE_VIPT_ALIAS_SCAN_PARALLEL_N
+      range 2 1024
+      default 4
+      help
+        PARALLEL_N 每周期并行比较/失效的 set 数。实际 RTL 宽度会在
+        每个 Cache 内按 set 数截断（N>sets 等价于单拍全扫描），因此
+        8/16/32 set 的默认值 4 分别对应 2/4/8 拍完成一轮扫描。
+        N 越大，比较器/valid 写译码越多、扫描等待越短。
+
+    config MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES
+      int "DIRECTORY 目录项数（0=跟随 set 数）"
+      depends on MMU_CACHE_VIPT_ALIAS_SAFE && MMU_CACHE_VIPT_ALIAS_SCAN_DIRECTORY
+      range 0 1024
+      default 0
+      help
+        DIRECTORY 模式的物理行 -> set 目录项数，必须是 2 的幂。
+        0 表示跟随每个 Cache 的 set 数（每个 set 独占一个目录桶，
+        目录完整、无冲突）。显式配置更小的值可以观察目录容量对
+        命中率的影响：多个 set 共享目录桶时，安装新行会失效被挤出
+        的 Cache 行，正确性不受影响，只是可能多一次 refill。
 
     choice
       prompt "PTW 内存通路"

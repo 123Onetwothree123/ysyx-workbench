@@ -60,7 +60,12 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
     withClue(s"$message（等待 $cycles 拍）") { cond should be(true) }
   }
 
-  private def create(kind: String, snoop: Boolean): ysyx_26030103_ICacheBase =
+  private def create(
+      kind: String,
+      snoop: Boolean,
+      aliasMode: String = ysyx_26030103_ViptAliasScan.AllSets
+  ): ysyx_26030103_ICacheBase = {
+    val directory = aliasMode == ysyx_26030103_ViptAliasScan.Directory
     kind match {
       case "reg" =>
         new ysyx_26030103_ICacheReg(
@@ -68,6 +73,9 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
           BlockSizeLog2 = BlockLog2,
           IndexBits = IndexBits,
           AddressWidth = AddrW,
+          Vipt = directory,
+          ViptAliasSafe = directory,
+          ViptAliasScanMode = aliasMode,
           Snoop = snoop,
           PMARegions = Pma
         )
@@ -77,11 +85,15 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
           BlockSizeLog2 = BlockLog2,
           IndexBits = IndexBits,
           AddressWidth = AddrW,
+          Vipt = directory,
+          ViptAliasSafe = directory,
+          ViptAliasScanMode = aliasMode,
           Snoop = snoop,
           PMARegions = Pma
         )
       case other => throw new IllegalArgumentException(other)
     }
+  }
 
   private def resetDut(
       io:    ysyx_26030103_ICacheInterface,
@@ -232,8 +244,11 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  private def runSnoopPath(kind: String): Unit = {
-    simulate(create(kind, snoop = true)) { dut =>
+  private def runSnoopPath(
+      kind: String,
+      aliasMode: String = ysyx_26030103_ViptAliasScan.AllSets
+  ): Unit = {
+    simulate(create(kind, snoop = true, aliasMode)) { dut =>
       val io = dut.io
       val clock = dut.clock
       resetDut(io, clock, dut.reset)
@@ -252,8 +267,11 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  private def runCrossLineSnoopPath(kind: String): Unit = {
-    simulate(create(kind, snoop = true)) { dut =>
+  private def runCrossLineSnoopPath(
+      kind: String,
+      aliasMode: String = ysyx_26030103_ViptAliasScan.AllSets
+  ): Unit = {
+    simulate(create(kind, snoop = true, aliasMode)) { dut =>
       val io = dut.io
       val clock = dut.clock
       resetDut(io, clock, dut.reset)
@@ -270,8 +288,11 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  private def runInflightSnoopPath(kind: String): Unit = {
-    simulate(create(kind, snoop = true)) { dut =>
+  private def runInflightSnoopPath(
+      kind: String,
+      aliasMode: String = ysyx_26030103_ViptAliasScan.AllSets
+  ): Unit = {
+    simulate(create(kind, snoop = true, aliasMode)) { dut =>
       val io = dut.io
       val clock = dut.clock
       resetDut(io, clock, dut.reset)
@@ -332,6 +353,15 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
     }
     it should "HARDWARE_SNOOP 在 refill 在途时丢弃旧事务并重取" in {
       runInflightSnoopPath(kind)
+    }
+    it should "DIRECTORY 模式下 snoop 同步失效 alias 行" in {
+      runSnoopPath(kind, ysyx_26030103_ViptAliasScan.Directory)
+    }
+    it should "DIRECTORY 模式下跨行 snoop 同步失效" in {
+      runCrossLineSnoopPath(kind, ysyx_26030103_ViptAliasScan.Directory)
+    }
+    it should "DIRECTORY 模式下在途 refill 被 snoop 丢弃并重取" in {
+      runInflightSnoopPath(kind, ysyx_26030103_ViptAliasScan.Directory)
     }
   }
 }

@@ -312,7 +312,9 @@ class ysyx_26030103_CacheViptAliasTest extends AnyFlatSpec with Matchers {
     dcacheExpect(io, clock, 0x11112222L, "DCache VaB after alias store")
 
     // 3) store 命中 VaB 的副本，镜像与内存同时更新；VaB 应立即命中，
-    // VaA 的旧副本则必须 miss 后取到新值。
+    // VaA 的旧副本则必须 miss 后取到新值。serial/parallel 的 refill 扫描
+    // 可能仍在进行，先等 alias 维护完成再检查“命中”语义。
+    waitUntil(clock, bool(io.req.ready), "DCache alias 维护未完成")
     dcacheStore(io, clock, VaB, PaLineA, 0x33334444L, mem)
     dcacheLoad(io, clock, VaB, PaLineA)
     dcacheExpect(io, clock, 0x33334444L, "DCache VaB store hit")
@@ -339,48 +341,89 @@ class ysyx_26030103_CacheViptAliasTest extends AnyFlatSpec with Matchers {
     dcacheExpect(io, clock, 0x33334444L, "DCache VaA after VaB refill")
   }
 
-  private def newIcacheReg(): ysyx_26030103_ICacheReg =
+  private def newIcacheReg(
+      mode: String = ysyx_26030103_ViptAliasScan.AllSets,
+      width: Int = 0,
+      entries: Int = 0
+  ): ysyx_26030103_ICacheReg =
     new ysyx_26030103_ICacheReg(
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddrW,
       Vipt = true,
-      ViptAliasSafe = true
+      ViptAliasSafe = true,
+      ViptAliasScanMode = mode,
+      ViptAliasScanWidth = width,
+      ViptAliasDirectoryEntries = entries
     )
 
-  private def newIcacheSram(): ysyx_26030103_ICacheSRAM =
+  private def newIcacheSram(
+      mode: String = ysyx_26030103_ViptAliasScan.AllSets,
+      width: Int = 0,
+      entries: Int = 0
+  ): ysyx_26030103_ICacheSRAM =
     new ysyx_26030103_ICacheSRAM(
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddrW,
       Vipt = true,
-      ViptAliasSafe = true
+      ViptAliasSafe = true,
+      ViptAliasScanMode = mode,
+      ViptAliasScanWidth = width,
+      ViptAliasDirectoryEntries = entries
     )
 
-  private def newDcacheReg(): ysyx_26030103_DCacheReg =
+  private def newDcacheReg(
+      mode: String = ysyx_26030103_ViptAliasScan.AllSets,
+      width: Int = 0,
+      entries: Int = 0
+  ): ysyx_26030103_DCacheReg =
     new ysyx_26030103_DCacheReg(
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddrW,
       Vipt = true,
-      ViptAliasSafe = true
+      ViptAliasSafe = true,
+      ViptAliasScanMode = mode,
+      ViptAliasScanWidth = width,
+      ViptAliasDirectoryEntries = entries
     )
 
-  private def newDcacheSram(): ysyx_26030103_DCacheSRAM =
+  private def newDcacheSram(
+      mode: String = ysyx_26030103_ViptAliasScan.AllSets,
+      width: Int = 0,
+      entries: Int = 0
+  ): ysyx_26030103_DCacheSRAM =
     new ysyx_26030103_DCacheSRAM(
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddrW,
       Vipt = true,
-      ViptAliasSafe = true
+      ViptAliasSafe = true,
+      ViptAliasScanMode = mode,
+      ViptAliasScanWidth = width,
+      ViptAliasDirectoryEntries = entries
     )
 
+  private val modes = Seq(
+    (ysyx_26030103_ViptAliasScan.AllSets, 0),
+    (ysyx_26030103_ViptAliasScan.Serial, 0),
+    (ysyx_26030103_ViptAliasScan.ParallelN, 4),
+    (ysyx_26030103_ViptAliasScan.Directory, 0)
+  )
+
   "ICacheReg VIPT alias-safe" should "按物理行失效其他 set 的别名副本" in {
-    simulate(newIcacheReg()) { dut => runIcache(dut.io, dut.clock, dut.reset) }
+    for ((mode, width) <- modes) {
+      withClue(s"ICacheReg mode=$mode") {
+        simulate(newIcacheReg(mode, width)) { dut =>
+          runIcache(dut.io, dut.clock, dut.reset)
+        }
+      }
+    }
   }
 
   "ICacheSRAM VIPT alias-safe" should "按物理行失效其他 set 的别名副本" in {
@@ -388,7 +431,13 @@ class ysyx_26030103_CacheViptAliasTest extends AnyFlatSpec with Matchers {
   }
 
   "DCacheReg VIPT alias-safe" should "store 后所有 VA alias 读取一致" in {
-    simulate(newDcacheReg()) { dut => runDcache(dut.io, dut.clock, dut.reset) }
+    for ((mode, width) <- modes) {
+      withClue(s"DCacheReg mode=$mode") {
+        simulate(newDcacheReg(mode, width)) { dut =>
+          runDcache(dut.io, dut.clock, dut.reset)
+        }
+      }
+    }
   }
 
   "DCacheSRAM VIPT alias-safe" should "store 后所有 VA alias 读取一致" in {

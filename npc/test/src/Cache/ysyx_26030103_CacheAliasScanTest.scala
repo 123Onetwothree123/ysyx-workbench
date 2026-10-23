@@ -58,6 +58,53 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
     cycles
   }
 
+  /** 一轮 alias 维护需要的扫描拍数；0 表示单拍/目录模式无扫描等待。 */
+  private def scanChunks(sets: Int, mode: String, width: Int): Int =
+    mode match {
+      case m if m == ysyx_26030103_ViptAliasScan.Serial => sets
+      case m if m == ysyx_26030103_ViptAliasScan.ParallelN =>
+        (sets + width - 1) / width
+      case _ => 0
+    }
+
+  private def scanWait(
+      io:    ysyx_26030103_ICacheInterface,
+      clock: Clock,
+      sets:  Int,
+      mode:  String,
+      width: Int,
+      label: String
+  ): Unit = {
+    val chunks = scanChunks(sets, mode, width)
+    if (chunks == 0) {
+      bool(io.fetch_ready) should be(true)
+    } else {
+      val cycles = waitReady(clock, bool(io.fetch_ready), chunks + 12)
+      withClue(s"$label 扫描等待 $cycles 拍超过预期 $chunks") {
+        cycles should be <= (chunks + 12)
+      }
+    }
+  }
+
+  private def scanWait(
+      io:    ysyx_26030103_DCacheInterface,
+      clock: Clock,
+      sets:  Int,
+      mode:  String,
+      width: Int,
+      label: String
+  ): Unit = {
+    val chunks = scanChunks(sets, mode, width)
+    if (chunks == 0) {
+      bool(io.req.ready) should be(true)
+    } else {
+      val cycles = waitReady(clock, bool(io.req.ready), chunks + 12)
+      withClue(s"$label 扫描等待 $cycles 拍超过预期 $chunks") {
+        cycles should be <= (chunks + 12)
+      }
+    }
+  }
+
   // ---------------- ICache ----------------
 
   private def icacheReset(
@@ -118,16 +165,17 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
   private def icacheRefill(
       io:    ysyx_26030103_ICacheInterface,
       clock: Clock,
-      mem:   Memory
+      mem:   Memory,
+      line:  Long = PaLine
   ): Int = {
     waitUntil(clock, bool(io.axi.AR.ARVALID), "ICache 没有 refill AR")
-    long(io.axi.AR.ARADDR) should be(PaLine)
+    long(io.axi.AR.ARADDR) should be(line)
     val beats = long(io.axi.AR.ARLEN).toInt + 1
     io.axi.AR.ARREADY.poke(true.B)
     clock.step()
     io.axi.AR.ARREADY.poke(false.B)
     for (beat <- 0 until beats) {
-      io.axi.R.RDATA.poke(mem.read(PaLine + beat * 4L).U(32.W))
+      io.axi.R.RDATA.poke(mem.read(line + beat * 4L).U(32.W))
       io.axi.R.RRESP.poke(0.U(2.W))
       io.axi.R.RLAST.poke((beat + 1 == beats).B)
       io.axi.R.RVALID.poke(true.B)
@@ -143,43 +191,35 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       clock:     Clock,
       reset:     Reset,
       sets:      Int,
-      scanMode:  String
+      scanMode:  String,
+      scanWidth: Int
   ): Unit = {
     icacheReset(io, clock, reset)
     val mem = new Memory
 
-    // 第一次回填 A：AR 握手启动 serial 扫描；refill 只有 4 拍，
-    // 消费响应时 8/16/32 set 的扫描尚未结束，fetch_ready 必须保持低。
+    // 第一次回填 A：AR 握手启动扫描；refill 只有 4 拍，扫描尚未完成时
+    // fetch_ready 必须保持低。directory 在 AR 拍完成失效，不需要扫描等待。
     icacheFetch(io, clock, VaA, PaLine)
     val beats = icacheRefill(io, clock, mem)
     icacheExpect(io, clock, VaA, mem.read(PaLine))
-    val scanCycles =
-      if (scanMode == ysyx_26030103_ViptAliasScan.Serial) {
-        bool(io.fetch_ready) should be(false)
-        waitReady(clock, bool(io.fetch_ready), sets + 8)
-      } else {
-        bool(io.fetch_ready) should be(true)
-        0
-      }
-    if (scanMode == ysyx_26030103_ViptAliasScan.Serial) {
-      scanCycles should be > 0
-      scanCycles should be <= sets
-    }
-    withClue("扫描拍数不应短于 refill 拍数") { beats should be(4) }
+    scanWait(io, clock, sets, scanMode, scanWidth, "ICache refill A")
+    withClue("refill 拍数不应异常") { beats should be(4) }
 
     // 同一个物理行换到另一个 set：必须先 miss 再回填；这次回填的扫描
     // 会失效 A 的副本。
     icacheFetch(io, clock, VaB, PaLine)
     icacheRefill(io, clock, mem)
     icacheExpect(io, clock, VaB, mem.read(PaLine))
+    scanWait(io, clock, sets, scanMode, scanWidth, "ICache refill B")
 
     // A 的旧副本必须已被 B 的回填扫描失效，因此这里必须再次 miss。
     // 若 alias 扫描没有真正执行，icacheRefill 会等不到 AR 而超时。
     icacheFetch(io, clock, VaA, PaLine)
     icacheRefill(io, clock, mem)
     icacheExpect(io, clock, VaA, mem.read(PaLine))
+    scanWait(io, clock, sets, scanMode, scanWidth, "ICache refill A2")
 
-    // flush 后不残留扫描状态，仍能正常取指。
+    // flush 后不残留扫描/目录状态，仍能正常取指。
     io.flush.poke(true.B)
     clock.step()
     io.flush.poke(false.B)
@@ -262,16 +302,17 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
   private def dcacheRefill(
       io:    ysyx_26030103_DCacheInterface,
       clock: Clock,
-      mem:   Memory
+      mem:   Memory,
+      line:  Long = PaLine
   ): Int = {
     waitUntil(clock, bool(io.AXI.AR.ARVALID), "DCache 没有 refill AR")
-    long(io.AXI.AR.ARADDR) should be(PaLine)
+    long(io.AXI.AR.ARADDR) should be(line)
     val beats = long(io.AXI.AR.ARLEN).toInt + 1
     io.AXI.AR.ARREADY.poke(true.B)
     clock.step()
     io.AXI.AR.ARREADY.poke(false.B)
     for (beat <- 0 until beats) {
-      io.AXI.R.RDATA.poke(mem.read(PaLine + beat * 4L).U(32.W))
+      io.AXI.R.RDATA.poke(mem.read(line + beat * 4L).U(32.W))
       io.AXI.R.RRESP.poke(0.U(2.W))
       io.AXI.R.RLAST.poke((beat + 1 == beats).B)
       io.AXI.R.RVALID.poke(true.B)
@@ -296,56 +337,38 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
   }
 
   private def runDcache(
-      io:       ysyx_26030103_DCacheInterface,
-      clock:    Clock,
-      reset:    Reset,
-      sets:     Int,
-      scanMode: String
+      io:        ysyx_26030103_DCacheInterface,
+      clock:     Clock,
+      reset:     Reset,
+      sets:      Int,
+      scanMode:  String,
+      scanWidth: Int
   ): Unit = {
     dcacheReset(io, clock, reset)
     val mem = new Memory
 
-    // 第一次回填 A，并在 refill 响应被消费后检查 serial 扫描是否仍在
-    // 反压新请求（4 拍 refill < 8/16/32 拍扫描）。
+    // 第一次回填 A，并在 refill 响应被消费后检查扫描是否仍在反压新请求。
     dcacheLoad(io, clock, VaA, PaLine)
     dcacheRefill(io, clock, mem)
     dcacheExpect(io, clock, mem.read(PaLine))
-    if (scanMode == ysyx_26030103_ViptAliasScan.Serial) {
-      bool(io.req.ready) should be(false)
-      val scanCycles = waitReady(clock, bool(io.req.ready), sets + 8)
-      scanCycles should be > 0
-      scanCycles should be <= sets
-    } else {
-      bool(io.req.ready) should be(true)
-    }
+    scanWait(io, clock, sets, scanMode, scanWidth, "DCache refill A")
 
     // B 回填（安装时扫描并失效 A 的副本）。
     dcacheLoad(io, clock, VaB, PaLine)
     dcacheRefill(io, clock, mem)
     dcacheExpect(io, clock, mem.read(PaLine))
-    if (scanMode == ysyx_26030103_ViptAliasScan.Serial) {
-      waitReady(clock, bool(io.req.ready), sets + 8)
-    }
+    scanWait(io, clock, sets, scanMode, scanWidth, "DCache refill B")
 
     // store 走 A：按 VA index 未命中，但物理行还在 B 的 set 里。
-    // serial 下该 store 事件进入扫描队列，并反压后续 load。
+    // 扫描模式把该 store 事件放入队列并反压后续 load。
     dcacheStore(io, clock, VaA, PaLine, 0x11112222L, mem)
-    if (scanMode == ysyx_26030103_ViptAliasScan.Serial) {
-      bool(io.req.ready) should be(false)
-      val scanCycles = waitReady(clock, bool(io.req.ready), sets + 8)
-      scanCycles should be > 0
-      scanCycles should be <= sets
-    } else {
-      bool(io.req.ready) should be(true)
-    }
+    scanWait(io, clock, sets, scanMode, scanWidth, "DCache store A")
 
-    // B 的旧副本必须已被 store 扫描失效，因此这里要重新回填并读到新值。
+    // B 的旧副本必须已被 store 扫描/目录失效，因此这里要重新回填并读到新值。
     dcacheLoad(io, clock, VaB, PaLine)
     dcacheRefill(io, clock, mem)
     dcacheExpect(io, clock, 0x11112222L)
-    if (scanMode == ysyx_26030103_ViptAliasScan.Serial) {
-      waitReady(clock, bool(io.req.ready), sets + 8)
-    }
+    scanWait(io, clock, sets, scanMode, scanWidth, "DCache refill B2")
 
     // store 命中 B：该行是唯一副本，应直接更新镜像，不产生扫描等待。
     dcacheStore(io, clock, VaB, PaLine, 0x33334444L, mem)
@@ -353,11 +376,39 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
     dcacheLoad(io, clock, VaB, PaLine)
     dcacheExpect(io, clock, 0x33334444L)
     bool(io.AXI.AR.ARVALID) should be(false)
+
+    // flush/DMA 失效后不能命中旧行；目录/扫描状态也必须一起清空。
+    io.flush.poke(true.B)
+    clock.step()
+    io.flush.poke(false.B)
+    dcacheLoad(io, clock, VaB, PaLine)
+    dcacheRefill(io, clock, mem)
+    dcacheExpect(io, clock, 0x33334444L)
   }
 
   // ---------------- 模块构造 ----------------
 
-  private def icacheReg(setsLog2: Int, mode: String): ysyx_26030103_ICacheBase =
+  private case class AliasCase(mode: String, width: Int) {
+    def label: String =
+      if (mode == ysyx_26030103_ViptAliasScan.ParallelN)
+        s"$mode/$width"
+      else mode
+  }
+
+  private val AliasCases = Seq(
+    AliasCase(ysyx_26030103_ViptAliasScan.AllSets, 0),
+    AliasCase(ysyx_26030103_ViptAliasScan.Serial, 0),
+    AliasCase(ysyx_26030103_ViptAliasScan.ParallelN, 2),
+    AliasCase(ysyx_26030103_ViptAliasScan.ParallelN, 4),
+    AliasCase(ysyx_26030103_ViptAliasScan.ParallelN, 8),
+    AliasCase(ysyx_26030103_ViptAliasScan.Directory, 0)
+  )
+
+  private def icacheReg(
+      setsLog2: Int,
+      c: AliasCase,
+      dirEntries: Int = 0
+  ): ysyx_26030103_ICacheBase =
     new ysyx_26030103_ICacheReg(
       Enable = true,
       BlockSizeLog2 = BlockLog2,
@@ -365,10 +416,16 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       AddressWidth = AddrW,
       Vipt = true,
       ViptAliasSafe = true,
-      ViptAliasScanMode = mode
+      ViptAliasScanMode = c.mode,
+      ViptAliasScanWidth = c.width,
+      ViptAliasDirectoryEntries = dirEntries
     )
 
-  private def icacheSram(setsLog2: Int, mode: String): ysyx_26030103_ICacheBase =
+  private def icacheSram(
+      setsLog2: Int,
+      c: AliasCase,
+      dirEntries: Int = 0
+  ): ysyx_26030103_ICacheBase =
     new ysyx_26030103_ICacheSRAM(
       Enable = true,
       BlockSizeLog2 = BlockLog2,
@@ -376,10 +433,16 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       AddressWidth = AddrW,
       Vipt = true,
       ViptAliasSafe = true,
-      ViptAliasScanMode = mode
+      ViptAliasScanMode = c.mode,
+      ViptAliasScanWidth = c.width,
+      ViptAliasDirectoryEntries = dirEntries
     )
 
-  private def dcacheReg(setsLog2: Int, mode: String): ysyx_26030103_DCacheBase =
+  private def dcacheReg(
+      setsLog2: Int,
+      c: AliasCase,
+      dirEntries: Int = 0
+  ): ysyx_26030103_DCacheBase =
     new ysyx_26030103_DCacheReg(
       Enable = true,
       BlockSizeLog2 = BlockLog2,
@@ -387,10 +450,16 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       AddressWidth = AddrW,
       Vipt = true,
       ViptAliasSafe = true,
-      ViptAliasScanMode = mode
+      ViptAliasScanMode = c.mode,
+      ViptAliasScanWidth = c.width,
+      ViptAliasDirectoryEntries = dirEntries
     )
 
-  private def dcacheSram(setsLog2: Int, mode: String): ysyx_26030103_DCacheBase =
+  private def dcacheSram(
+      setsLog2: Int,
+      c: AliasCase,
+      dirEntries: Int = 0
+  ): ysyx_26030103_DCacheBase =
     new ysyx_26030103_DCacheSRAM(
       Enable = true,
       BlockSizeLog2 = BlockLog2,
@@ -398,55 +467,158 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       AddressWidth = AddrW,
       Vipt = true,
       ViptAliasSafe = true,
-      ViptAliasScanMode = mode
+      ViptAliasScanMode = c.mode,
+      ViptAliasScanWidth = c.width,
+      ViptAliasDirectoryEntries = dirEntries
     )
 
-  private def forEachGeometry(body: (Int, String) => Unit): Unit = {
+  private def forEachGeometry(body: (Int, AliasCase) => Unit): Unit = {
     for {
       setsLog2 <- Seq(3, 4, 5)
-      mode <- Seq(
-        ysyx_26030103_ViptAliasScan.AllSets,
-        ysyx_26030103_ViptAliasScan.Serial
-      )
-    } body(setsLog2, mode)
+      c <- AliasCases
+    } body(setsLog2, c)
   }
 
-  "ICacheReg alias scan" should "在 8/16/32 set 下 ALL_SETS 与 SERIAL 都正确失效" in {
-    forEachGeometry { (setsLog2, mode) =>
-      val label = s"ICacheReg sets=${1 << setsLog2} mode=$mode"
+  /** 目录容量小于 set 数时的冲突测试。
+    *
+    * 8 set、4 项目录：set 0 与 set 4 共享 0 号桶。依次安装 line0..line4
+    * 后，line4 的安装必须把 line0 挤出（同时失效 set0）；重新安装 line0
+    * 又会挤出 line4。若目录冲突没有真正失效 Cache 行，后续访问会命中
+    * 旧副本而不发 AR，测试中的 refill 等待会超时。
+    */
+  private def runIcacheDirectoryCapacity(
+      io:    ysyx_26030103_ICacheInterface,
+      clock: Clock,
+      reset: Reset
+  ): Unit = {
+    icacheReset(io, clock, reset)
+    val mem = new Memory
+    val base = 0x80000000L
+    def line(i: Int): Long = base + i.toLong * 0x10L
+    def va(i: Int): Long = i.toLong << 4
+
+    for (i <- 0 until 5) {
+      icacheFetch(io, clock, va(i), line(i))
+      icacheRefill(io, clock, mem, line(i))
+      icacheExpect(io, clock, va(i), mem.read(line(i)))
+    }
+    // line0 已被 line4 的目录桶冲突挤出。
+    icacheFetch(io, clock, va(0), line(0))
+    icacheRefill(io, clock, mem, line(0))
+    icacheExpect(io, clock, va(0), mem.read(line(0)))
+    // line0 重新安装后，line4 也被挤出。
+    icacheFetch(io, clock, va(4), line(4))
+    icacheRefill(io, clock, mem, line(4))
+    icacheExpect(io, clock, va(4), mem.read(line(4)))
+  }
+
+  private def runDcacheDirectoryCapacity(
+      io:    ysyx_26030103_DCacheInterface,
+      clock: Clock,
+      reset: Reset
+  ): Unit = {
+    dcacheReset(io, clock, reset)
+    val mem = new Memory
+    val base = 0x80000000L
+    def line(i: Int): Long = base + i.toLong * 0x10L
+    def va(i: Int): Long = i.toLong << 4
+
+    for (i <- 0 until 5) {
+      dcacheLoad(io, clock, va(i), line(i))
+      dcacheRefill(io, clock, mem, line(i))
+      dcacheExpect(io, clock, mem.read(line(i)))
+    }
+    dcacheLoad(io, clock, va(0), line(0))
+    dcacheRefill(io, clock, mem, line(0))
+    dcacheExpect(io, clock, mem.read(line(0)))
+    dcacheLoad(io, clock, va(4), line(4))
+    dcacheRefill(io, clock, mem, line(4))
+    dcacheExpect(io, clock, mem.read(line(4)))
+  }
+
+  "ICacheReg alias scan" should "在 8/16/32 set 下所有扫描/目录模式都正确失效" in {
+    forEachGeometry { (setsLog2, c) =>
+      val label = s"ICacheReg sets=${1 << setsLog2} mode=${c.label}"
       withClue(label) {
-        simulate(icacheReg(setsLog2, mode)) { dut =>
-          runIcache(dut.io, dut.clock, dut.reset, 1 << setsLog2, mode)
+        simulate(icacheReg(setsLog2, c)) { dut =>
+          runIcache(
+            dut.io,
+            dut.clock,
+            dut.reset,
+            1 << setsLog2,
+            c.mode,
+            c.width
+          )
         }
       }
     }
   }
 
-  "DCacheReg alias scan" should "在 8/16/32 set 下 ALL_SETS 与 SERIAL 都正确失效" in {
-    forEachGeometry { (setsLog2, mode) =>
-      val label = s"DCacheReg sets=${1 << setsLog2} mode=$mode"
+  "DCacheReg alias scan" should "在 8/16/32 set 下所有扫描/目录模式都正确失效" in {
+    forEachGeometry { (setsLog2, c) =>
+      val label = s"DCacheReg sets=${1 << setsLog2} mode=${c.label}"
       withClue(label) {
-        simulate(dcacheReg(setsLog2, mode)) { dut =>
-          runDcache(dut.io, dut.clock, dut.reset, 1 << setsLog2, mode)
+        simulate(dcacheReg(setsLog2, c)) { dut =>
+          runDcache(
+            dut.io,
+            dut.clock,
+            dut.reset,
+            1 << setsLog2,
+            c.mode,
+            c.width
+          )
         }
       }
     }
   }
 
   "ICacheSRAM/DCacheSRAM alias scan" should "与 Reg 实现保持相同语义" in {
-    for (mode <- Seq(
-        ysyx_26030103_ViptAliasScan.AllSets,
-        ysyx_26030103_ViptAliasScan.Serial
-      )) {
-      withClue(s"ICacheSRAM mode=$mode") {
-        simulate(icacheSram(3, mode)) { dut =>
-          runIcache(dut.io, dut.clock, dut.reset, 8, mode)
+    for (c <- AliasCases) {
+      withClue(s"ICacheSRAM mode=${c.label}") {
+        simulate(icacheSram(3, c)) { dut =>
+          runIcache(dut.io, dut.clock, dut.reset, 8, c.mode, c.width)
         }
       }
-      withClue(s"DCacheSRAM mode=$mode") {
-        simulate(dcacheSram(3, mode)) { dut =>
-          runDcache(dut.io, dut.clock, dut.reset, 8, mode)
+      withClue(s"DCacheSRAM mode=${c.label}") {
+        simulate(dcacheSram(3, c)) { dut =>
+          runDcache(dut.io, dut.clock, dut.reset, 8, c.mode, c.width)
         }
+      }
+    }
+  }
+
+  "DIRECTORY 容量冲突" should "显式失效被挤出目录的 Cache 行" in {
+    val dirCase = AliasCase(ysyx_26030103_ViptAliasScan.Directory, 0)
+    withClue("ICacheReg directory entries=4") {
+      simulate(icacheReg(3, dirCase, dirEntries = 4)) { dut =>
+        runIcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+      }
+    }
+    withClue("ICacheSRAM directory entries=4") {
+      simulate(icacheSram(3, dirCase, dirEntries = 4)) { dut =>
+        runIcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+      }
+    }
+    withClue("DCacheReg directory entries=4") {
+      simulate(dcacheReg(3, dirCase, dirEntries = 4)) { dut =>
+        runDcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+      }
+    }
+    withClue("DCacheSRAM directory entries=4") {
+      simulate(dcacheSram(3, dirCase, dirEntries = 4)) { dut =>
+        runDcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+      }
+    }
+    // 最小目录（1 项）也必须保证“目录命中缺失 = 没有有效副本”：所有
+    // set 共用一个桶，每次安装都失效前一行，仍不能出现陈旧 alias。
+    withClue("ICacheReg directory entries=1") {
+      simulate(icacheReg(3, dirCase, dirEntries = 1)) { dut =>
+        runIcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+      }
+    }
+    withClue("DCacheReg directory entries=1") {
+      simulate(dcacheReg(3, dirCase, dirEntries = 1)) { dut =>
+        runDcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
       }
     }
   }

@@ -63,6 +63,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DCacheViptAliasSafe = config.DCacheViptAliasHardware,
       DCacheViptAliasScanMode = config.DCacheViptAliasScanMode,
       DCacheDmaSnoop = config.DmaHardwareSnoop && config.DCacheEnable,
+      DCacheViptAliasScanWidth = config.DCacheViptAliasScanWidth,
+      DCacheViptAliasDirectoryEntries =
+        config.DCacheViptAliasDirectoryEntries,
       ViptParallel = parallelDataVipt,
       AddressWidth = config.AddressWidth
     )

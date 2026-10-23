@@ -37,6 +37,9 @@ object ysyx_26030103_ICacheFactory {
             Vipt = config.MMU.cacheMode == "vipt",
             ViptAliasSafe = config.ICacheViptAliasHardware,
             ViptAliasScanMode = config.ICacheViptAliasScanMode,
+            ViptAliasScanWidth = config.ICacheViptAliasScanWidth,
+            ViptAliasDirectoryEntries =
+              config.ICacheViptAliasDirectoryEntries,
             Snoop = Snoop,
             DmaSnoop = DmaSnoop,
             PMARegions = config.CachePMARegions
@@ -52,6 +55,9 @@ object ysyx_26030103_ICacheFactory {
             Vipt = config.MMU.cacheMode == "vipt",
             ViptAliasSafe = config.ICacheViptAliasHardware,
             ViptAliasScanMode = config.ICacheViptAliasScanMode,
+            ViptAliasScanWidth = config.ICacheViptAliasScanWidth,
+            ViptAliasDirectoryEntries =
+              config.ICacheViptAliasDirectoryEntries,
             Snoop = Snoop,
             DmaSnoop = DmaSnoop,
             PMARegions = config.CachePMARegions
@@ -67,6 +73,9 @@ object ysyx_26030103_ICacheFactory {
             Vipt = config.MMU.cacheMode == "vipt",
             ViptAliasSafe = config.ICacheViptAliasHardware,
             ViptAliasScanMode = config.ICacheViptAliasScanMode,
+            ViptAliasScanWidth = config.ICacheViptAliasScanWidth,
+            ViptAliasDirectoryEntries =
+              config.ICacheViptAliasDirectoryEntries,
             Bypass = false,
             Snoop = Snoop,
             DmaSnoop = DmaSnoop,

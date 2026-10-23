@@ -71,9 +71,16 @@ case class ysyx_26030103_MMUProfile(
     // elaboration 期拒绝策略，绝不静默生成会 alias 的硬件。
     cacheViptAliasSafe: Boolean = false,
     // alias 失效扫描方式：all_sets 单拍全扫描（默认，refill 无额外等待）；
-    // serial 每周期扫描一个 set（面积小，扫描期间反压新请求）。只有
-    // cacheViptAliasSafe 真正生成 alias 维护硬件时才影响 RTL。
+    // serial 每周期扫描一个 set；parallel_n 每周期扫描 N 个 set；
+    // directory 维护物理行 -> set 目录。只有 cacheViptAliasSafe 真正生成
+    // alias 维护硬件时才影响 RTL。
     cacheViptAliasScanMode: String = "all_sets",
+    // parallel_n 的每周期扫描宽度（2..1024）。超过实际 set 数时在该
+    // Cache 内截断为 sets；Kconfig 默认 4，对应 8/16/32 set 的 2/4/8 拍。
+    cacheViptAliasScanWidth: Int = 4,
+    // directory 的目录项数。0 表示跟随实际 set 数（每个 set 独占目录桶，
+    // 无冲突）；显式值必须是 2 的幂且不超过 set 数。
+    cacheViptAliasDirectoryEntries: Int = 0,
     ptwPath: String = "dedicated",
     ptwArch: String = "independent",
     ptwOutstanding: Int = 2,
@@ -163,8 +170,21 @@ case class ysyx_26030103_MMUProfile(
     "MMU_PTW_ARCH 必须是 independent/pipelined")
   require(Set("in_order", "out_of_order").contains(ptwOrder),
     "MMU_PTW_ORDER 必须是 in_order/out_of_order")
-  require(Set("all_sets", "serial").contains(cacheViptAliasScanMode),
-    "MMU_CACHE_VIPT_ALIAS_SCAN_MODE 必须是 all_sets/serial")
+  require(
+    Set("all_sets", "serial", "parallel_n", "directory")
+      .contains(cacheViptAliasScanMode),
+    "MMU_CACHE_VIPT_ALIAS_SCAN_MODE 必须是 all_sets/serial/parallel_n/directory"
+  )
+  // parallel_n 的宽度在真正生成硬件的 Cache 内按 sets 截断；这里只校验
+  // 配置值本身可实现，避免 Kconfig 的静态 range 与实际 sets 不一致。
+  require(cacheViptAliasScanWidth >= 2 && cacheViptAliasScanWidth <= 1024,
+    s"MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH=$cacheViptAliasScanWidth 必须在 2..1024")
+  require(cacheViptAliasDirectoryEntries >= 0 &&
+    cacheViptAliasDirectoryEntries <= 1024,
+    s"MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES=$cacheViptAliasDirectoryEntries 必须在 0..1024")
+  require(cacheViptAliasDirectoryEntries == 0 ||
+    (cacheViptAliasDirectoryEntries & (cacheViptAliasDirectoryEntries - 1)) == 0,
+    s"MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES=$cacheViptAliasDirectoryEntries 必须是 2 的幂或 0")
   require(tlbAsidBits >= 0 && tlbAsidBits <= 16, "tlbAsidBits 必须在 0..16")
   require(utlbLookupPorts >= 1 && utlbLookupPorts <= 2, "utlbLookupPorts 必须在 1..2")
   require(refillPorts >= 1, "refillPorts 必须 >= 1")
@@ -340,16 +360,24 @@ case class ysyx_26030103_MMUProfile(
   final val standardSatpMode: Boolean =
     satpMode == 1 || satpMode == 8 || satpMode == 9
 
-  def describe: String =
+  def describe: String = {
+    val aliasScanDetail =
+      cacheViptAliasScanMode match {
+        case "parallel_n" => s"parallel_n(width=$cacheViptAliasScanWidth)"
+        case "directory" =>
+          s"directory(entries=$cacheViptAliasDirectoryEntries)"
+        case other => other
+      }
     s"MMU(enabled=$enabled xlen=$xlen geometry=$geometryMode va=$computedAddressBits " +
       s"satpMode=$satpMode${if (customGeometry) "(non-standard)" else ""} " +
       s"profile=$pteFormat page=$pageSizeBytes levels=$levels " +
       s"pte=$pteSizeBytes table=$pageTableSizeBytes " +
       s"cache=$cacheMode vipt_alias_safe=$cacheViptAliasSafe " +
-      s"vipt_alias_scan=$cacheViptAliasScanMode " +
+      s"vipt_alias_scan=$aliasScanDetail " +
       s"ptw=$ptwPath/$ptwArch/$ptwOutstanding/bus$ptwBusOutstanding) " +
       s"TLB(enabled=$tlbEnabled org=$tlbOrganization storage=$tlbStorage " +
       s"repl=$tlbReplacement asid=$tlbAsidBits)"
+  }
 }
 
 object ysyx_26030103_MMUProfile {
@@ -496,6 +524,10 @@ object ysyx_26030103_MMUProfile {
         envBool(env, "MMU_CACHE_VIPT_ALIAS_SAFE", false),
       cacheViptAliasScanMode =
         envString(env, "MMU_CACHE_VIPT_ALIAS_SCAN_MODE", "all_sets"),
+      cacheViptAliasScanWidth =
+        envInt(env, "MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH", 4),
+      cacheViptAliasDirectoryEntries =
+        envInt(env, "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES", 0),
       ptwPath = envString(env, "MMU_PTW_PATH", "dedicated"),
       ptwArch = envString(env, "MMU_PTW_ARCH", "independent"),
       ptwOutstanding = envInt(env, "MMU_PTW_OUTSTANDING", 2),

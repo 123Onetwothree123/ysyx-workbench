@@ -12,9 +12,14 @@ class ysyx_26030103_ICacheReg(
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装前按物理 tag 失效其他 set 的副本，维持每个物理行至多一份。
     ViptAliasSafe: Boolean = false,
-    // alias 失效扫描方式：all_sets 单拍全扫描；serial 每周期扫描一个 set，
-    // 扫描期间反压新取指。
+    // alias 失效扫描方式：all_sets 单拍全扫描；serial 每周期扫描一个 set；
+    // parallel_n 每周期扫描 N 个 set；directory 维护物理行目录。
     ViptAliasScanMode: String = "all_sets",
+    // parallel_n 的每周期扫描宽度；0=自动(min(4, sets))，超过 sets 时截断。
+    ViptAliasScanWidth: Int = 0,
+    // directory 的目录项数；0=跟随 sets（完整无冲突），小于 sets 时按
+    // set 低位分桶，桶冲突会失效被挤出的 Cache 行。
+    ViptAliasDirectoryEntries: Int = 0,
     // 自修改代码 store snoop：store B 完成时按物理地址失效对应 ICache 行。
     // 默认关闭（仅标准 fence.i），显式选择 HARDWARE_SNOOP 才生成比较逻辑。
     Snoop: Boolean = false,
@@ -25,10 +30,22 @@ class ysyx_26030103_ICacheReg(
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_ICacheBase(AddressWidth) {
   ysyx_26030103_ViptAliasScan.requireMode(ViptAliasScanMode, "ICacheReg")
-  // serial 只在真正需要 alias 维护的几何下生成扫描硬件。
+  // 只在真正需要 alias 维护的几何下生成扫描/目录硬件。
+  private val AliasScanActive =
+    ViptAliasSafe && Enable &&
+      ysyx_26030103_ViptAliasScan.isScan(ViptAliasScanMode)
   private val AliasScanSerial =
     ViptAliasSafe && Enable &&
       ysyx_26030103_ViptAliasScan.isSerial(ViptAliasScanMode)
+  private val AliasScanParallel =
+    ViptAliasSafe && Enable &&
+      ysyx_26030103_ViptAliasScan.isParallel(ViptAliasScanMode)
+  private val AliasAllSets =
+    ViptAliasSafe && Enable &&
+      ysyx_26030103_ViptAliasScan.isAllSets(ViptAliasScanMode)
+  private val AliasDirectoryMode =
+    ViptAliasSafe && Enable &&
+      ysyx_26030103_ViptAliasScan.isDirectory(ViptAliasScanMode)
   // alias 模式必须比较完整物理行号：index 含 VPN 位时，PA 中与 index
   // 对应的位并不由 VA index 决定，若仍省略这些位，两个只有该位不同的
   // 物理行会在同一 set 中 false hit。页内安全 VIPT 可继续使用窄 tag。
@@ -41,17 +58,31 @@ class ysyx_26030103_ICacheReg(
   val NumBlocks = 1 << IndexBits
   val WordsPerBlock = 1 << (BlockSizeLog2 - 2) // 块大小 ÷ 4字节
   val WordCntBits = log2Ceil(WordsPerBlock) // 块内字数计数器位宽
+  // 扫描/目录参数只在对应模式生效，但先统一解析，非法配置在 elaboration
+  // 期明确报错，不会生成“看起来是 parallel 实际退化成 serial”的硬件。
+  private val ScanWidth =
+    ysyx_26030103_ViptAliasScan.resolveScanWidth(
+      ViptAliasScanMode,
+      ViptAliasScanWidth,
+      NumBlocks
+    )
+  private val DirectoryEntries =
+    if (ViptAliasDirectoryEntries <= 0) NumBlocks
+    else {
+      require(ViptAliasDirectoryEntries <= NumBlocks,
+        s"VIPT alias 目录项数($ViptAliasDirectoryEntries) 不能超过 set 数($NumBlocks)")
+      ViptAliasDirectoryEntries
+    }
   // 直接映射cache存储阵列：valid+tag+data
   // 关闭缓存时阵列只留1项占位(其余逻辑不可达), 综合会把这些触发器/组合逻辑全部剪掉
   private val ArrayBlocks = if (Enable) NumBlocks else 1
   val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
   val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))
   val data = Reg(Vec(ArrayBlocks, Vec(WordsPerBlock, UInt(32.W))))
-  // VIPT alias 维护：同一物理行被不同 VA 映射到不同 set 时，refill 安装
-  // 新行会驱逐旧副本。扫描是 elaboration 期展开的（仅 alias 危险几何且
-  // 显式打开 MMU_CACHE_VIPT_ALIAS_SAFE 时生成），不在默认配置增加面积。
+  // 仅 all_sets 在 refill 安装时展开全组 tag 比较；serial/parallel 由
+  // 扫描引擎完成，directory 由目录完成，避免同时生成两套专用阵列。
   private def InvalidateAliasCopies(AliasTag: UInt, TargetIndex: UInt): Unit = {
-    if (ViptAliasSafe && Enable && !AliasScanSerial) {
+    if (AliasAllSets) {
       for (i <- valid.indices) {
         when(valid(i) && tag(i) === AliasTag && i.U =/= TargetIndex) {
           valid(i) := false.B
@@ -59,10 +90,27 @@ class ysyx_26030103_ICacheReg(
       }
     }
   }
+  // directory 模式的事件目录：只在 refill/snoop 事件拍做 CAM 比较。
+  private val AliasDirectory =
+    if (AliasDirectoryMode) {
+      Some(
+        Module(
+          new ysyx_26030103_ViptAliasDirectory(
+            LineBits = AddressWidth - BlockSizeLog2,
+            SetBits = IndexBits,
+            NumSets = NumBlocks,
+            Entries = DirectoryEntries
+          )
+        )
+      )
+    } else {
+      None
+    }
   // 自修改代码 store snoop 的行匹配。默认几何下 tag 不含 index 位，
   // 必须同时比较 set；alias-safe 几何下 tag 是完整物理行号，可扫描所有 set。
+  // directory 模式改由目录失效，不再生成 tag 扫描阵列。
   private def SnoopHitVec(address: UInt): UInt =
-    if (!Snoop || !Enable) 0.U(ArrayBlocks.W)
+    if (!Snoop || !Enable || AliasDirectoryMode) 0.U(ArrayBlocks.W)
     else
       VecInit(valid.indices.map { set =>
         val indexMatch =
@@ -253,25 +301,95 @@ class ysyx_26030103_ICacheReg(
       (!ref_cacheable || !burst_mode || refill_cnt === (WordsPerBlock - 1).U)
   val refill_error_now =
     refill_r_fire && (io.axi.R.RRESP =/= 0.U || malformed_refill_beat_now)
-  // serial alias 扫描的启动事件：真正被接受的 cacheable refill AR。
+  // serial/parallel alias 扫描的启动事件：真正被接受的 cacheable refill AR。
   // 被 kill/flush 取消的错路 refill 不驱逐其它 set 的有效行。
   val RefillAliasEvent = rfstate === rf_req && io.axi.AR.ARREADY &&
     ref_cacheable && !discard && !(io.kill && s1_waits)
-  // serial 扫描/启动拍反压新取指，确保不会在旧 alias 副本尚未清完时
-  // 受理可能命中它的请求。all_sets 模式恒为 false，时序与原来一致。
-  val AliasScanBusy =
-    if (AliasScanSerial) {
-      ysyx_26030103_ViptAliasScan.serialRefillScan(
+  // 扫描/启动拍反压新取指，确保不会在旧 alias 副本尚未清完时受理可能
+  // 命中它的请求。all_sets/directory 不需要扫描反压。
+  val AliasScanStatus =
+    if (AliasScanActive) {
+      ysyx_26030103_ViptAliasScan.chunkedRefillScan(
         valid,
         tag,
         RefillAliasEvent,
         ref_tag,
         RefIndexSafe,
-        io.flush
+        io.flush,
+        ScanWidth
       )
     } else {
-      false.B
+      ysyx_26030103_ViptAliasScan.ScanStatus(
+        false.B,
+        true.B,
+        false.B,
+        false.B
+      )
     }
+  val AliasScanBusy = AliasScanStatus.busy
+  // directory 模式在 AR 握手拍更新目录并失效旧副本；同一拍不允许受理
+  // 新取指，避免组合命中尚未失效的旧行。下一拍目录/valid 已同步。
+  val AliasDirectoryInstallBusy =
+    if (AliasDirectoryMode) RefillAliasEvent else false.B
+  // 扫描模式把新行 valid 推迟到本轮扫描完成：扫描窗口内不出现两份同时
+  // 有效的副本。directory/all_sets 不生成这些状态寄存器，避免默认配置
+  // 多出 valid 写口/read mux。
+  private val DeferredAliasInstall = AliasScanActive
+  private val AliasDeferred =
+    if (AliasScanActive) {
+      Some(
+        (
+          Reg(UInt(IndexBits.W)),
+          Reg(UInt(TagBits.W)),
+          RegInit(false.B)
+        )
+      )
+    } else {
+      None
+    }
+  // 目录模式：refill 安装事件插入目录；store snoop 按物理行查目录；
+  // flush 清空目录。
+  AliasDirectory.foreach { dir =>
+    dir.io.install := RefillAliasEvent
+    dir.io.installLine := ref_tag
+    dir.io.installSet := RefIndexSafe
+    dir.io.invalidateLine :=
+      (if (Snoop && Enable) io.snoop_valid else false.B)
+    dir.io.invalidateLineAddr := io.snoop_addr(AddressWidth - 1, BlockSizeLog2)
+    dir.io.keepSet := false.B
+    dir.io.keepSetIndex := 0.U
+    dir.io.invalidateLine2 :=
+      (if (Snoop && Enable) io.snoop_valid else false.B)
+    dir.io.invalidateLine2Addr :=
+      io.snoop_addr_hi(AddressWidth - 1, BlockSizeLog2)
+    // DMA 地址级 snoop 按物理行范围清目录项；Cache valid 由
+    // DmaSnoopHitVec/refill 丢弃路径同步清除。
+    dir.io.invalidateRange := DmaSnoopActive.B && io.dma_snoop_valid
+    dir.io.invalidateRangeStart := DmaStartLine
+    dir.io.invalidateRangeEnd := DmaEndLine
+    dir.io.release := false.B
+    dir.io.releaseSet := 0.U
+    dir.io.clear := io.flush
+  }
+  // 扫描结束后补装被推迟的新行。中途 flush/同一行的 store snoop 必须
+  // 取消补装，否则会把 store 之前取到的旧指令重新置为 valid。
+  if (AliasScanActive) {
+    val (deferredIndex, deferredTag, deferredValid) = AliasDeferred.get
+    when(deferredValid && AliasScanStatus.installAllowed && !io.flush) {
+      valid(deferredIndex) := true.B
+      deferredValid := false.B
+    }
+    if (Snoop && Enable) {
+      when(
+        io.snoop_valid && deferredValid &&
+          (deferredTag === io.snoop_addr(AddressWidth - 1, BlockSizeLog2) ||
+            deferredTag ===
+              io.snoop_addr_hi(AddressWidth - 1, BlockSizeLog2))
+      ) {
+        deferredValid := false.B
+      }
+    }
+  }
   // 半填行只在“同一 set”内可见：alias 几何下另一个 VA 可能用同一 PA
   // 命中不同 index，而 refill 只把数据写进 RefIndexSafe。若不比较 index，
   // 会把目标 set 的未完成数据当成另一个 set 的内容返回。
@@ -358,6 +476,7 @@ class ysyx_26030103_ICacheReg(
     !io.flush &&
       !io.kill &&
       !AliasScanBusy &&
+      !AliasDirectoryInstallBusy &&
       response_slot_available &&
       (rfstate === rf_idle || rfstate === rf_drain_fault || request_hit)
   val accept = io.fetch_valid && io.fetch_ready
@@ -572,12 +691,23 @@ class ysyx_26030103_ICacheReg(
                 UIntToOH(refill_cnt, WordsPerBlock)
             }
             // 只有整条line无任何错误时才允许变为valid；当前beat为成功
-            // 响应，refill_error覆盖此前已经发生的错误。
+            // 响应，refill_error覆盖此前已经发生的错误。serial/parallel
+            // 扫描尚未覆盖全部 set 时先挂起，扫描最后一拍再补置 valid。
             when(
               refill_cnt === (WordsPerBlock - 1).U &&
                 io.axi.R.RLAST && !refill_error
             ) {
-              valid(RefIndexSafe) := true.B
+              when(AliasScanStatus.installAllowed) {
+                valid(RefIndexSafe) := true.B
+              }.otherwise {
+                if (DeferredAliasInstall) {
+                  val (deferredIndex, deferredTag, deferredValid) =
+                    AliasDeferred.get
+                  deferredValid := true.B
+                  deferredIndex := RefIndexSafe
+                  deferredTag := ref_tag
+                }
+              }
             }
           }
         }
@@ -727,6 +857,7 @@ class ysyx_26030103_ICacheReg(
     s1_waits := false.B
     s1_paddr_valid := false.B
     refill_word_valid := 0.U
+    if (AliasScanActive) { AliasDeferred.get._3 := false.B }
     valid.foreach(_ := false.B)
     when(rfstate === rf_req) {
       discard := true.B
@@ -778,9 +909,31 @@ class ysyx_26030103_ICacheReg(
       refill_word_valid := 0.U
       valid(RefIndexSafe) := false.B
     }
+    // 放在 refill RLAST 之后：同拍 RLAST 可能刚把新行挂到 deferred，
+    // 或被本拍 DMA snoop 丢弃，必须立刻取消，扫描结束后不得补装。
+    if (AliasScanActive) {
+      val (deferredIndex, deferredTag, deferredValid) = AliasDeferred.get
+      when(io.dma_snoop_valid && deferredValid &&
+          DmaLineInRange(deferredTag)) {
+        valid(deferredIndex) := false.B
+        deferredValid := false.B
+      }
+      when(dmaSnoopFirstPoison) {
+        deferredValid := false.B
+      }
+    }
     when(io.dma_snoop_valid && dmaSnoopS1LineHit) {
       s1_hit := false.B
       s1_ready := false.B
+    }
+  }
+  // 目录失效放在所有 valid 置位路径之后：store snoop / DMA 范围失效 /
+  // 目录冲突挤出的旧行必须压掉同拍 refill 最后一拍的 valid 写回。
+  AliasDirectory.foreach { dir =>
+    for (set <- valid.indices) {
+      when(dir.io.invalidate(set)) {
+        valid(set) := false.B
+      }
     }
   }
 }

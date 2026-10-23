@@ -57,15 +57,22 @@ class ysyx_26030103_ICacheDmaSnoopTest extends AnyFlatSpec with Matchers {
 
   private def create(
     kind:      String,
-    blockLog2: Int
+    blockLog2: Int,
+    vipt:      Boolean = false,
+    scanMode:  String = "all_sets",
+    indexBits: Int = IndexBits
   ): ysyx_26030103_ICacheBase =
     kind match {
       case "reg"  =>
         new ysyx_26030103_ICacheReg(
           Enable = true,
           BlockSizeLog2 = blockLog2,
-          IndexBits = IndexBits,
+          IndexBits = indexBits,
           AddressWidth = AddrW,
+          Vipt = vipt,
+          ViptAliasSafe = vipt,
+          ViptAliasScanMode = scanMode,
+          ViptAliasScanWidth = 2,
           DmaSnoop = true,
           PMARegions = Pma
         )
@@ -73,8 +80,12 @@ class ysyx_26030103_ICacheDmaSnoopTest extends AnyFlatSpec with Matchers {
         new ysyx_26030103_ICacheSRAM(
           Enable = true,
           BlockSizeLog2 = blockLog2,
-          IndexBits = IndexBits,
+          IndexBits = indexBits,
           AddressWidth = AddrW,
+          Vipt = vipt,
+          ViptAliasSafe = vipt,
+          ViptAliasScanMode = scanMode,
+          ViptAliasScanWidth = 2,
           DmaSnoop = true,
           PMARegions = Pma
         )
@@ -207,8 +218,13 @@ class ysyx_26030103_ICacheDmaSnoopTest extends AnyFlatSpec with Matchers {
     io.dma_snoop_valid.poke(false.B)
   }
 
-  private def runHitInvalidate(kind: String, blockLog2: Int): Unit = {
-    simulate(create(kind, blockLog2)) { dut =>
+  private def runHitInvalidate(
+    kind:      String,
+    blockLog2: Int,
+    vipt:      Boolean = false,
+    scanMode:  String = "all_sets"
+  ): Unit = {
+    simulate(create(kind, blockLog2, vipt, scanMode)) { dut =>
       val io       = dut.io
       val clock    = dut.clock
       resetDut(io, clock, dut.reset)
@@ -314,6 +330,42 @@ class ysyx_26030103_ICacheDmaSnoopTest extends AnyFlatSpec with Matchers {
       // 自动重取必须读到新指令。
       refill(io, clock, line, mem, s"$kind/${lineSize}B replay")
       expectResponse(io, clock, 0x44444413L, s"$kind/${lineSize}B replay")
+    }
+  }
+
+  // VIPT alias-safe + DIRECTORY：目录项必须在 DMA 范围失效后同步清空，
+  // 后续取指重新 miss，而不是命中陈旧目录/有效行。
+  for (kind <- Seq("reg", "sram")) {
+    s"ICache($kind,VIPT directory)" should "DMA 范围失效同步清目录并重新取指" in {
+      runHitInvalidate(kind, 4, vipt = true, scanMode = "directory")
+    }
+  }
+
+  private def runScanDeferredDma(kind: String): Unit = {
+    simulate(
+      create(kind, 4, vipt = true, scanMode = "serial", indexBits = 4)
+    ) { dut =>
+      val io    = dut.io
+      val clock = dut.clock
+      resetDut(io, clock, dut.reset)
+      val mem   = new Memory
+      val line  = LineA & ~15L
+
+      // 16 组 serial 扫描远长于 4 拍 refill：新行在 RLAST 时只能挂起。
+      fetchExpectMiss(io, clock, line, line, mem, s"$kind scan 填充")
+      pulseSnoop(io, clock, line, line + 15L)
+      clock.step(30)
+
+      // 若挂起安装未被 DMA snoop 取消，这里会错误命中而永远等不到 AR。
+      issueFetch(io, clock, line)
+      refill(io, clock, line, mem, s"$kind scan deferred DMA 后重取")
+      expectResponse(io, clock, mem.read(line), s"$kind scan deferred DMA 后取指")
+    }
+  }
+
+  for (kind <- Seq("reg", "sram")) {
+    s"ICache($kind,VIPT serial)" should "DMA snoop 取消扫描窗口内的延迟安装" in {
+      runScanDeferredDma(kind)
     }
   }
 

@@ -259,13 +259,40 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     )
     val profile = ysyx_26030103_MMUProfile.fromEnv(env.get, xlen = 32)
     profile.cacheViptAliasScanMode should be("serial")
+    profile.cacheViptAliasScanWidth should be(4)
+    profile.cacheViptAliasDirectoryEntries should be(0)
     profile.describe should include("vipt_alias_scan=serial")
 
-    val badEnv = env + ("MMU_CACHE_VIPT_ALIAS_SCAN_MODE" -> "directory")
+    val badEnv = env + ("MMU_CACHE_VIPT_ALIAS_SCAN_MODE" -> "burst")
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_MMUProfile.fromEnv(badEnv.get, xlen = 32)
     }
-    error.getMessage should include("all_sets/serial")
+    error.getMessage should include("all_sets/serial/parallel_n/directory")
+  }
+
+  it should "读取并校验 PARALLEL_N 宽度与 DIRECTORY 目录项数" in {
+    val base = Map(
+      "MMU_ENABLED" -> "1",
+      "MMU_CACHE_MODE" -> "vipt",
+      "MMU_CACHE_VIPT_ALIAS_SAFE" -> "1",
+      "MMU_CACHE_VIPT_ALIAS_SCAN_MODE" -> "parallel_n",
+      "MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH" -> "8",
+      "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES" -> "16"
+    )
+    val profile = ysyx_26030103_MMUProfile.fromEnv(base.get, xlen = 32)
+    profile.cacheViptAliasScanWidth should be(8)
+    profile.cacheViptAliasDirectoryEntries should be(16)
+    profile.describe should include("parallel_n(width=8)")
+
+    val badWidth = base + ("MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH" -> "1")
+    intercept[IllegalArgumentException] {
+      ysyx_26030103_MMUProfile.fromEnv(badWidth.get, xlen = 32)
+    }.getMessage should include("2..1024")
+
+    val badEntries = base + ("MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES" -> "3")
+    intercept[IllegalArgumentException] {
+      ysyx_26030103_MMUProfile.fromEnv(badEntries.get, xlen = 32)
+    }.getMessage should include("2 的幂")
   }
 
   it should "把 serial alias 扫描方式传给 Cache 工厂" in {
@@ -290,6 +317,10 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     )
     config.ICacheViptAliasScanMode should be("serial")
     config.DCacheViptAliasScanMode should be("serial")
+    config.ICacheViptAliasScanWidth should be(1)
+    config.DCacheViptAliasScanWidth should be(1)
+    config.ICacheViptAliasDirectoryEntries should be(256)
+    config.DCacheViptAliasDirectoryEntries should be(256)
     config.ICacheViptAliasHardware should be(true)
     config.DCacheViptAliasHardware should be(true)
     // 工厂必须把模式传进叶模块；elaboration 成功即说明参数路径完整。
@@ -308,6 +339,90 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
         PMARegions = config.PMARegions
       )
     }) should include("module")
+  }
+
+  it should "把 PARALLEL_N/DIRECTORY 参数传给 Cache 工厂" in {
+    // pageBits=10，index 8 + block 4 = 12 > 10，确实生成 alias 维护硬件。
+    def profile(mode: String) = ysyx_26030103_MMUProfile(
+      enabled = true,
+      cacheMode = "vipt",
+      cacheViptAliasSafe = true,
+      cacheViptAliasScanMode = mode,
+      cacheViptAliasScanWidth = 8,
+      cacheViptAliasDirectoryEntries = 32,
+      pageSizeBytes = 1024,
+      levels = 2,
+      pageTableSizeBytes = 8192
+    )
+    val parallel = ysyx_26030103_NPCConfig(
+      ICacheEnable = true,
+      ICacheBlockSizeLog2 = 4,
+      ICacheIndexBits = 8,
+      DCacheEnable = true,
+      DCacheBlockSizeLog2 = 4,
+      DCacheIndexBits = 8,
+      MMU = profile("parallel_n")
+    )
+    parallel.ICacheViptAliasScanWidth should be(8)
+    parallel.DCacheViptAliasScanWidth should be(8)
+    parallel.ICacheViptAliasDirectoryEntries should be(32)
+    parallel.DCacheViptAliasDirectoryEntries should be(32)
+    _root_.circt.stage.ChiselStage.emitCHIRRTL(new Module {
+      val cache = ysyx_26030103.cache.ysyx_26030103_ICacheFactory.Create(
+        parallel)
+    }) should include("module")
+    _root_.circt.stage.ChiselStage.emitCHIRRTL(new Module {
+      val cache = ysyx_26030103.cache.ysyx_26030103_DCacheFactory.Create(
+        Enable = parallel.DCacheEnable,
+        BlockSizeLog2 = parallel.DCacheBlockSizeLog2,
+        IndexBits = parallel.DCacheIndexBits,
+        AddressWidth = parallel.AddressWidth,
+        Vipt = parallel.MMU.cacheMode == "vipt",
+        ViptAliasSafe = parallel.DCacheViptAliasHardware,
+        ViptAliasScanMode = parallel.DCacheViptAliasScanMode,
+        ViptAliasScanWidth = parallel.DCacheViptAliasScanWidth,
+        ViptAliasDirectoryEntries =
+          parallel.DCacheViptAliasDirectoryEntries,
+        PMARegions = parallel.PMARegions
+      )
+    }) should include("module")
+
+    val directory = ysyx_26030103_NPCConfig(
+      ICacheEnable = true,
+      ICacheBlockSizeLog2 = 4,
+      ICacheIndexBits = 8,
+      DCacheEnable = true,
+      DCacheBlockSizeLog2 = 4,
+      DCacheIndexBits = 8,
+      MMU = profile("directory")
+    )
+    directory.ICacheViptAliasScanMode should be("directory")
+    directory.ICacheViptAliasDirectoryEntries should be(32)
+    _root_.circt.stage.ChiselStage.emitCHIRRTL(new Module {
+      val cache = ysyx_26030103.cache.ysyx_26030103_ICacheFactory.Create(
+        directory)
+    }) should include("module")
+  }
+
+  it should "按实际 set 数截断 PARALLEL_N 宽度与目录项" in {
+    val mmu = ysyx_26030103_MMUProfile(
+      cacheViptAliasScanMode = "parallel_n",
+      cacheViptAliasScanWidth = 8,
+      cacheViptAliasDirectoryEntries = 64
+    )
+    val config = ysyx_26030103_NPCConfig(
+      ICacheEnable = true,
+      ICacheBlockSizeLog2 = 2,
+      ICacheIndexBits = 1,
+      DCacheEnable = true,
+      DCacheBlockSizeLog2 = 2,
+      DCacheIndexBits = 1,
+      MMU = mmu
+    )
+    config.ICacheViptAliasScanWidth should be(2)
+    config.DCacheViptAliasScanWidth should be(2)
+    config.ICacheViptAliasDirectoryEntries should be(2)
+    config.DCacheViptAliasDirectoryEntries should be(2)
   }
 
   it should "拒绝深度为 0 的 TLB miss queue" in {
