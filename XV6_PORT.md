@@ -1,5 +1,12 @@
 # xv6-riscv → NPC 移植记录
 
+> **2026-10-23 更新**：主线的 A 扩展已合入，本移植已实际启动到
+> `xv6 kernel is booting`、用户态 `/init` 和 `init: starting sh`。当前
+> 配置、实际日志、已修复的核心 bug（AXI WidthBridge / PLIC 写响应）和
+> 剩余核心问题（IFU/ICache 旧指令重放，已用一跳垫片规避）见
+> `XV6_NPC_BOOT.md`。下文第 1、7、8 节关于“A 扩展未实现”的描述是移植
+> 当时的历史记录。
+
 ## 1. 结论
 
 - 源码：MIT `xv6-riscv`，commit `f780d7850765d74cbdcd1fff4b822d8829f7c9bd`
@@ -521,3 +528,18 @@ xv6-riscv/kernel/virtio.h         (removed)
 ```
 
 相对上游的完整补丁见仓库根目录的 `XV6_PORT.patch`。
+
+## 11. 2026-10-23 启动状态
+
+见 `XV6_NPC_BOOT.md`。要点：
+
+- 使用 `npc/configs/rv64_xv6_defconfig`（RV64IMA/Sv39/ICache/SDB）。
+- 实际到达 `xv6 kernel is booting`、用户态 `/init`、`init: starting sh`
+  和 shell 提示符 `$ `。
+- 已修：AXI5WidthBridge 在 RV64 CPU + 32 位 SoC 下不消费下游 B；
+  AXI5Xbar 的 PLIC 写响应缺少 BVALID/BREADY。
+- 仍有一个核心 IFU/ICache bug：redirect 后把 `userret` 的残留指令字
+  （`fence.i`）配到 `usertrap` 的新 PC，丢掉 `addi sp,sp,-32`。当前用
+  `usertrap_entry.S` 一跳垫片规避；去掉垫片会在第一次 usertrap 递归
+  page fault。详见 `XV6_NPC_BOOT.md` 第 4.3 节。
+- `run-npc.sh` 提供可复现的构建/运行/日志检查。

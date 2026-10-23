@@ -433,14 +433,39 @@ class ysyx_26030103_AXI5WidthBridge(
     }
 
     is(wResp) {
-      if (Downsize || AddressNarrows) {
-        // 64->32 或地址越界：本地已经收齐所有下游响应，生成一个
-        // 上游 B。地址越界时固定 DECERR。
+      if (Downsize) {
+        // 64->32：wDnWaitB 已经收齐所有下游响应，本地生成一个上游 B。
         io.in.B.BVALID := true.B
         io.in.B.BID := wId
         io.in.B.BRESP := Mux(wError, DECERR, wRespCode)
         when(io.in.B.BREADY) {
           wState := wIdle
+        }
+      } else if (AddressNarrows) {
+        // 地址变窄但数据同宽（RV64 CPU + 32 位 SoC）：AW/W 走 wUpsize，
+        // 下游 B 仍在途，必须等它返回后再交给上游，不能提前伪造 B。
+        // 越界事务没有下发 AW/W，必须本地生成 DECERR。
+        when(wError) {
+          io.in.B.BVALID := true.B
+          io.in.B.BID := wId
+          io.in.B.BRESP := DECERR
+          when(io.in.B.BREADY) {
+            wState := wIdle
+          }
+        }.otherwise {
+          io.in.B.BVALID := io.out.B.BVALID
+          io.in.B.BID := io.out.B.BID
+          io.in.B.BRESP := io.out.B.BRESP
+          io.out.B.BREADY := io.in.B.BREADY
+          when(io.out.B.BVALID) {
+            assert(
+              io.out.B.BID === wId,
+              "AXI5WidthBridge: downstream write response ID mismatch"
+            )
+          }
+          when(io.out.B.BVALID && io.in.B.BREADY) {
+            wState := wIdle
+          }
         }
       } else {
         // 32->64 且地址未越界：下游 B 直接透传，保持 ID/响应语义。

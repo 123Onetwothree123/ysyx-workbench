@@ -30,13 +30,34 @@
 #define PLIC                 0x0c000000L
 #define PLIC_PRIORITY        (PLIC + 0x0)
 #define PLIC_PENDING         (PLIC + 0x1000)
+#ifdef XV6_PLATFORM_NPC
+// NPC's simplified PLIC implements only context 0:
+//   enable      0x0c002000
+//   threshold   0x0c200000
+//   claim/complete 0x0c200004
+// The standard SiFive layout puts S-mode hart 0 at context 1
+// (enable 0x2080, threshold 0x201000), which the NPC model rejects with
+// SLVERR.  Keep the standard layout for the QEMU reference build.
+#define PLIC_SENABLE(hart)   (PLIC + 0x2000)
+#define PLIC_SPRIORITY(hart) (PLIC + 0x200000)
+#define PLIC_SCLAIM(hart)    (PLIC + 0x200004)
+#else
 #define PLIC_SENABLE(hart)   (PLIC + 0x2080 + (hart) * 0x100)
 #define PLIC_SPRIORITY(hart) (PLIC + 0x201000 + (hart) * 0x2000)
 #define PLIC_SCLAIM(hart)    (PLIC + 0x201004 + (hart) * 0x2000)
+#endif
 
 // RAM visible to the kernel.
+//
+// The direct-NPC simulator provides 64 MiB, but xv6's kinit() writes junk
+// over every free page.  Under Verilator that costs roughly 8 pages/second,
+// i.e. ~30 minutes for the full 64 MiB.  The allocator therefore defaults to
+// the first 4 MiB (still enough for init/sh and the buffer cache).  Build with
+// -DPHYSTOP='(KERNBASE + 64*1024*1024)' to exercise all of RAM.
 #define KERNBASE 0x80000000L
-#define PHYSTOP  (KERNBASE + 64 * 1024 * 1024)
+#ifndef PHYSTOP
+#define PHYSTOP  (KERNBASE + 4 * 1024 * 1024)
+#endif
 
 #define TRAMPOLINE (MAXVA - PGSIZE)
 #define KSTACK(p)  (TRAMPOLINE - ((p) + 1) * 2 * PGSIZE)

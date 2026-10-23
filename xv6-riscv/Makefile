@@ -26,6 +26,7 @@ OBJS = \
   $K/swtch.o \
   $K/trampoline.o \
   $K/trap.o \
+  $K/usertrap_entry.o \
   $K/syscall.o \
   $K/sysproc.o \
   $K/bio.o \

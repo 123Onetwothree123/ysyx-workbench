@@ -533,6 +533,9 @@ forkret(void)
     if (p->trapframe->a0 == -1) {
       panic("exec");
     }
+#ifdef XV6_PLATFORM_NPC
+    printk("[npc] /init loaded, entering user mode\n");
+#endif
   }
 
   // return to user space, mimicing usertrap()'s return.

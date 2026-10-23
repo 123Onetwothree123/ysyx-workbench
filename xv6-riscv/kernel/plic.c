@@ -24,6 +24,7 @@ void
 plicinithart(void)
 {
   int hart = cpuid();
+  (void)hart;
 
   // set enable bits for this hart's S-mode for the uart.
   *(volatile uint32 *)PLIC_SENABLE(hart) = (1 << UART0_IRQ);
@@ -37,6 +38,7 @@ int
 plic_claim(void)
 {
   int hart = cpuid();
+  (void)hart;
   int irq = *(volatile uint32 *)PLIC_SCLAIM(hart);
   return irq;
 }
@@ -46,5 +48,6 @@ void
 plic_complete(int irq)
 {
   int hart = cpuid();
+  (void)hart;
   *(volatile uint32 *)PLIC_SCLAIM(hart) = irq;
 }

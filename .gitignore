@@ -31,4 +31,5 @@ HDLcode/**/obj_dir/
 !/xv6-riscv/
 !/xv6-riscv/**
 !XV6_PORT.md
+!XV6_NPC_BOOT.md
 !XV6_PORT.patch
