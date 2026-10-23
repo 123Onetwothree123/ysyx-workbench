@@ -13,7 +13,11 @@ import chisel3.util._
 class ysyx_26030103_AXI5Arbiter(
     AddressWidth: Int = 32,
     DataWidth: Int = 32,
-    IdWidth: Int = 4
+    IdWidth: Int = 4,
+    // DMA_COHERENCE=hardware_snoop：DMA 写 B 先不交给 CPU slave，而是把
+    // 本次 burst 覆盖的字节范围送给 ICache/DCache 做行失效，等到
+    // dmaSnoopDone 后才释放 B。关闭时保持原有“B 到达即释放”的时序。
+    HardwareSnoop: Boolean = false
 ) extends Module {
   // 固定 ID 分配（ICache=0/LSU=1/DMA=2/PTW=3..15）按 4 位 ID 设计；
   // 地址/数据宽度可参数化，但 ID 宽度暂不支持其它值。
@@ -37,6 +41,13 @@ class ysyx_26030103_AXI5Arbiter(
     // 使写直达DCache失效；后续B反压不重复阻塞CPU load。错误响应也必须
     // 失效，因为SLVERR/DECERR并不保证从设备没有产生部分副作用。
     val DMAWriteInvalidate = Output(Bool())
+    // hardware_snoop 的地址级失效请求。B 到达后 valid 保持到 done，
+    // [start, end] 是本次 burst 实际可能写入的字节范围（含端点）。
+    // 缓存按各自 line 大小把范围展开成所有重叠行。
+    val dmaSnoopValid = Output(Bool())
+    val dmaSnoopStart = Output(UInt(AddressWidth.W))
+    val dmaSnoopEnd = Output(UInt(AddressWidth.W))
+    val dmaSnoopDone = Input(Bool())
   })
 
   // 与 ysyx_26030103_AXIReadId 保持一致：0=ICache，1=LSU，2=DMA，
@@ -117,6 +128,9 @@ class ysyx_26030103_AXI5Arbiter(
   io.dma.R.RLAST := false.B
   io.dma.R.RVALID := false.B
   io.DMAWriteInvalidate := false.B
+  io.dmaSnoopValid := false.B
+  io.dmaSnoopStart := 0.U
+  io.dmaSnoopEnd := 0.U
 
   io.memory.AW.AWVALID := false.B
   io.memory.AW.AWID := 0.U
@@ -462,11 +476,25 @@ class ysyx_26030103_AXI5Arbiter(
   val dmaWritePermitted = RegInit(false.B)
   val dmaWriteOutstanding = RegInit(false.B)
   val downstreamWriteID = RegInit(0.U(4.W))
+  // DMA AW 载荷快照：B 到达时用 [addr, addr + beats*bytes - 1] 生成
+  // snoop 范围，因此 B 不再需要反查已经推进的 W 通道。
+  val dmaWriteAddr = RegInit(0.U(AddressWidth.W))
+  val dmaWriteLen = RegInit(0.U(8.W))
+  val dmaWriteSize = RegInit(0.U(3.W))
+  val dmaWriteBurst = RegInit(0.U(2.W))
+  val dmaSnoopPending = RegInit(false.B)
+  val dmaSnoopStartReg = RegInit(0.U(AddressWidth.W))
+  val dmaSnoopEndReg = RegInit(0.U(AddressWidth.W))
   // DMA专属B弹性槽。下游B一旦进入此槽，写仲裁器立即可服务LSU；
   // CPU slave的BREADY只控制该槽出队，不再反压共享memory.B。
   val dmaBValid = RegInit(false.B)
   val dmaBID = RegInit(0.U(4.W))
   val dmaBResp = RegInit(0.U(2.W))
+  // hardware_snoop 下下游 B 先进入该槽，等 Cache 失效完成后再搬到
+  // dmaBValid（对外 BVALID）。软件看到的 B 因此是“失效后”的完成事件。
+  val dmaBPending = RegInit(false.B)
+  val dmaBPendingID = RegInit(0.U(4.W))
+  val dmaBPendingResp = RegInit(0.U(2.W))
   io.dma.B.BVALID := dmaBValid
   io.dma.B.BID := dmaBID
   io.dma.B.BRESP := dmaBResp
@@ -474,6 +502,29 @@ class ysyx_26030103_AXI5Arbiter(
   when(dmaBFire) {
     dmaBValid := false.B
     dmaWriteOutstanding := false.B
+  }
+  // 一次 burst 实际覆盖的字节范围。FIXED burst 每拍都写同一组字节，
+  // INCR 按 LEN+1 个 beat 展开；DMARequestPermitted 已保证不越过 4GiB，
+  // 因此 AddressWidth+1 位计算不会回绕。
+  private val SnoopExtendedWidth = AddressWidth + 1
+  private val DmaBeatBytes = 1.U(SnoopExtendedWidth.W) << dmaWriteSize
+  private val DmaBeats = (dmaWriteLen +& 1.U).pad(SnoopExtendedWidth)
+  private val DmaBurstBytes =
+    Mux(dmaWriteBurst === 0.U, DmaBeatBytes, DmaBeats * DmaBeatBytes)
+  private val DmaRangeStart = Cat(0.U(1.W), dmaWriteAddr)
+  private val DmaRangeEnd = DmaRangeStart + DmaBurstBytes - 1.U
+  if (HardwareSnoop) {
+    io.dmaSnoopValid := dmaSnoopPending
+    io.dmaSnoopStart := dmaSnoopStartReg
+    io.dmaSnoopEnd := dmaSnoopEndReg
+    when(dmaSnoopPending && io.dmaSnoopDone) {
+      assert(!dmaBValid, "DMA B slot occupied while snoop completes")
+      dmaSnoopPending := false.B
+      dmaBPending := false.B
+      dmaBValid := true.B
+      dmaBID := dmaBPendingID
+      dmaBResp := dmaBPendingResp
+    }
   }
 
   switch(writeState) {
@@ -542,6 +593,10 @@ class ysyx_26030103_AXI5Arbiter(
           dmaWriteOriginalID := io.dma.AW.AWID
           dmaWritePermitted := DMAAWPermitted
           dmaWriteOutstanding := true.B
+          dmaWriteAddr := io.dma.AW.AWADDR
+          dmaWriteLen := io.dma.AW.AWLEN
+          dmaWriteSize := io.dma.AW.AWSIZE
+          dmaWriteBurst := io.dma.AW.AWBURST
         }
       }
       when(wLastFire) { wDone := true.B }
@@ -577,10 +632,24 @@ class ysyx_26030103_AXI5Arbiter(
       }
       when(MatchingBFire) {
         when(OwnerDMA) {
-          dmaBValid := true.B
-          dmaBID := dmaWriteOriginalID
-          dmaBResp := io.memory.B.BRESP
           io.DMAWriteInvalidate := true.B
+          if (HardwareSnoop) {
+            // B 已证明下游写完成。先锁存地址级失效请求，等 ICache/DCache
+            // 都确认失效后再把 B 交给 CPU slave；这保证“看到 B”时缓存里
+            // 不可能还留着 DMA 之前的旧副本。
+            assert(!dmaSnoopPending,
+              "new DMA B arrived while previous snoop is still pending")
+            dmaSnoopStartReg := DmaRangeStart(AddressWidth - 1, 0)
+            dmaSnoopEndReg := DmaRangeEnd(AddressWidth - 1, 0)
+            dmaSnoopPending := true.B
+            dmaBPending := true.B
+            dmaBPendingID := dmaWriteOriginalID
+            dmaBPendingResp := io.memory.B.BRESP
+          } else {
+            dmaBValid := true.B
+            dmaBID := dmaWriteOriginalID
+            dmaBResp := io.memory.B.BRESP
+          }
         }
         writeState := WriteIdle
       }

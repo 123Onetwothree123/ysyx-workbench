@@ -23,6 +23,8 @@ class ysyx_26030103_LSU(
     val DCacheViptAliasSafe: Boolean = false,
     // alias 失效扫描方式：all_sets 单拍全扫描 / serial 每周期一个 set。
     val DCacheViptAliasScanMode: String = "all_sets",
+    // DMA 地址级硬件 snoop：只有 DMA_COHERENCE=hardware_snoop 生成。
+    val DCacheDmaSnoop: Boolean = false,
     // VIPT 并行模式：DCache/LSU 在 PA 到达前就用 VA 选 index 并持有请求，
     // MMU 故障通过 ViptKill 取消该请求。
     val ViptParallel: Boolean = false,
@@ -70,6 +72,12 @@ class ysyx_26030103_LSU(
     // （最小接口，不做 alias 行扫描），并通过 StoreCommit 让 ICache
     // 复用现有行失效通路。
     val AtomicCommit = Output(Bool())
+    // DMA_COHERENCE=hardware_snoop 的地址级失效握手。Ready 为低时 DMA
+    // 的 B 保持等待，直到所有匹配行失效且旧 refill/响应不再可能被使用。
+    val DCacheDmaSnoopValid = Input(Bool())
+    val DCacheDmaSnoopStart = Input(UInt(AddressWidth.W))
+    val DCacheDmaSnoopEnd = Input(UInt(AddressWidth.W))
+    val DCacheDmaSnoopReady = Output(Bool())
     // store 的 B 响应完成事件：ICache HARDWARE_SNOOP 用它在写落地后
     // 失效对应行。Addr 是 store 首字节物理地址，LastAddr 覆盖本次访问的
     // 最后一个字节（RV64 的 8B store 在 4B 行上可能跨两行）。
@@ -145,8 +153,13 @@ class ysyx_26030103_LSU(
     Storage = DCacheStorage,
     Vipt = DCacheVipt,
     ViptAliasSafe = DCacheViptAliasSafe,
-    ViptAliasScanMode = DCacheViptAliasScanMode
+    ViptAliasScanMode = DCacheViptAliasScanMode,
+    DmaSnoop = DCacheDmaSnoop
   )
+  DCache.io.dma_snoop_valid := io.DCacheDmaSnoopValid
+  DCache.io.dma_snoop_start := io.DCacheDmaSnoopStart
+  DCache.io.dma_snoop_end := io.DCacheDmaSnoopEnd
+  io.DCacheDmaSnoopReady := DCache.io.dma_snoop_ready
   io.DCachePerfHit := DCache.io.perf_hit
   io.DCachePerfMiss := DCache.io.perf_miss
   io.DCachePerfRefillReq := DCache.io.perf_refill_req

@@ -48,4 +48,11 @@ class ysyx_26030103_ICacheInterface(val AddressWidth: Int = 32)
   val snoop_valid = Input(Bool())
   val snoop_addr = Input(UInt(AddressWidth.W))
   val snoop_addr_hi = Input(UInt(AddressWidth.W))
+  // DMA 地址级 snoop（仅 DMA_COHERENCE=hardware_snoop 生成）：
+  // [dma_snoop_start, dma_snoop_end] 内的所有物理行都必须失效。
+  // ready 为低表示匹配的在途 refill 尚未排空/丢弃，DMA 的 B 必须等待。
+  val dma_snoop_valid = Input(Bool())
+  val dma_snoop_start = Input(UInt(AddressWidth.W))
+  val dma_snoop_end = Input(UInt(AddressWidth.W))
+  val dma_snoop_ready = Output(Bool())
 }

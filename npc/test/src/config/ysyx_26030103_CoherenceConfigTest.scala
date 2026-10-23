@@ -99,13 +99,42 @@ class ysyx_26030103_CoherenceConfigTest extends AnyFlatSpec with Matchers {
     )
   }
 
-  "DmaCoherence" should "明确拒绝未实现的 hardware_snoop" in {
-    val error = intercept[IllegalArgumentException] {
-      ysyx_26030103_DmaCoherence.FromString("hardware_snoop")
-    }
-    error.getMessage should include("DMA_COHERENCE=hardware_snoop 未实现")
-    error.getMessage should include("software_flush")
-    error.getMessage should include("uncached")
+  "DmaCoherence" should "接受 hardware_snoop 并在日志中标注生效缓存" in {
+    ysyx_26030103_DmaCoherence.FromString("hardware_snoop") should be(
+      ysyx_26030103_DmaCoherence.HardwareSnoop
+    )
+    val active = ysyx_26030103_NPCConfig(
+      ICacheEnable = true,
+      DCacheEnable = true,
+      PMARegions = ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = true),
+      DmaCoherence = ysyx_26030103_DmaCoherence.HardwareSnoop
+    )
+    active.DmaHardwareSnoop should be(true)
+    active.Describe should include("dma_coherence=hardware_snoop")
+    active.Describe should include("ICache+DCache")
+    // uncached 的 PMA 视图切换不能因为选择 snoop 而被误打开。
+    active.CachePMARegions should be(active.PMARegions)
+  }
+
+  it should "在没有 DMA 窗口或没有缓存时标注 snoop 未生效" in {
+    val noWindow = ysyx_26030103_NPCConfig(
+      ResetAddr = 0x80000000L,
+      PMARegions = ysyx_26030103_PhysicalMemoryMap.NPC,
+      DmaCoherence = ysyx_26030103_DmaCoherence.HardwareSnoop
+    )
+    noWindow.Describe should include(
+      "dma_coherence=hardware_snoop(inactive:no-dma-window)"
+    )
+
+    val noCache = ysyx_26030103_NPCConfig(
+      ICacheEnable = false,
+      DCacheEnable = false,
+      PMARegions = ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = true),
+      DmaCoherence = ysyx_26030103_DmaCoherence.HardwareSnoop
+    )
+    noCache.Describe should include(
+      "dma_coherence=hardware_snoop(inactive:no-cache)"
+    )
   }
 
   it should "拒绝未知字符串而不是静默回退" in {

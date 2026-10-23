@@ -22,6 +22,10 @@ object ysyx_26030103_ICacheFactory {
     // ICACHE=n 时没有可失效的阵列，模式在日志中标注为未生效。
     val Snoop = config.ICacheEnable &&
       config.ICacheCoherence == ysyx_26030103_ICacheCoherence.HardwareSnoop
+    // DMA 行失效只由 DMA_COHERENCE=hardware_snoop 生成；ICACHE=n 时没有
+    // 可失效的阵列，端口在叶模块内恒 ready。
+    val DmaSnoop = config.ICacheEnable &&
+      config.DmaCoherence == ysyx_26030103_DmaCoherence.HardwareSnoop
     config.ICacheStorage match {
       case ysyx_26030103_CacheStorage.Reg =>
         Module(
@@ -34,6 +38,7 @@ object ysyx_26030103_ICacheFactory {
             ViptAliasSafe = config.ICacheViptAliasHardware,
             ViptAliasScanMode = config.ICacheViptAliasScanMode,
             Snoop = Snoop,
+            DmaSnoop = DmaSnoop,
             PMARegions = config.CachePMARegions
           )
         )
@@ -48,6 +53,7 @@ object ysyx_26030103_ICacheFactory {
             ViptAliasSafe = config.ICacheViptAliasHardware,
             ViptAliasScanMode = config.ICacheViptAliasScanMode,
             Snoop = Snoop,
+            DmaSnoop = DmaSnoop,
             PMARegions = config.CachePMARegions
           )
         )
@@ -63,6 +69,7 @@ object ysyx_26030103_ICacheFactory {
             ViptAliasScanMode = config.ICacheViptAliasScanMode,
             Bypass = false,
             Snoop = Snoop,
+            DmaSnoop = DmaSnoop,
             PMARegions = config.CachePMARegions
           )
         )

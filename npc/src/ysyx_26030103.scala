@@ -62,13 +62,19 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DCacheVipt = config.MMU.cacheMode == "vipt",
       DCacheViptAliasSafe = config.DCacheViptAliasHardware,
       DCacheViptAliasScanMode = config.DCacheViptAliasScanMode,
+      DCacheDmaSnoop = config.DmaHardwareSnoop && config.DCacheEnable,
       ViptParallel = parallelDataVipt,
       AddressWidth = config.AddressWidth
     )
   )
   val gpr = Module(new ysyx_26030103_GPR(XLEN, config.EnableDynamicGPRDebug))
   val icache = ysyx_26030103_ICacheFactory.Create(config)
-  val arbiter = Module(new ysyx_26030103_AXI5Arbiter(config.AddressWidth))
+  val arbiter = Module(
+    new ysyx_26030103_AXI5Arbiter(
+      AddressWidth = config.AddressWidth,
+      HardwareSnoop = config.DmaHardwareSnoop
+    )
+  )
   val xbar = Module(
     new ysyx_26030103_AXI5Xbar(
       AddressWidth = config.AddressWidth,
@@ -854,6 +860,17 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
      else false.B)
   icache.io.snoop_addr := lsu.io.StoreCommitAddr
   icache.io.snoop_addr_hi := lsu.io.StoreCommitLastAddr
+  // DMA 地址级 snoop：仲裁器在 DMA 写 B 到达时给出本次 burst 覆盖的
+  // 字节范围，ICache/DCache 各自展开为重叠行并失效。两个 ready 都为高
+  // 后仲裁器才把 B 交给 CPU slave，因此 DMA 完成事件不会早于失效完成。
+  icache.io.dma_snoop_valid := arbiter.io.dmaSnoopValid
+  icache.io.dma_snoop_start := arbiter.io.dmaSnoopStart
+  icache.io.dma_snoop_end := arbiter.io.dmaSnoopEnd
+  lsu.io.DCacheDmaSnoopValid := arbiter.io.dmaSnoopValid
+  lsu.io.DCacheDmaSnoopStart := arbiter.io.dmaSnoopStart
+  lsu.io.DCacheDmaSnoopEnd := arbiter.io.dmaSnoopEnd
+  arbiter.io.dmaSnoopDone :=
+    icache.io.dma_snoop_ready && lsu.io.DCacheDmaSnoopReady
   // 当前 DCache 是写直达/不写分配，成功 store 会更新命中行，并且
   // Fence.I 在提交前已经等待更老的 store 排空。因此指令一致性只需
   // 失效 ICache/取指流水；清空 DCache 只会制造无意义的数据 miss。
@@ -864,10 +881,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 不在这里异步冲ICache：现有ICache flush与流水线重定向成对，
   // DMA修改可执行内存后由软件执行fence.i完成指令一致性。
   // DMA_COHERENCE=uncached 时 DMA 窗口本身不进入 Cache，不再需要这个
-  // 全局失效；显式关闭可以避免无意义地清空无关数据行。
+  // 全局失效；hardware_snoop 改用上面的地址级行失效，也不清空无关行。
   // 原子写完成后必须让 DCache 中的旧行失效；这里复用现有全量 flush
   // 接口（写直达缓存无脏数据），避免为 alias 情形新增行扫描硬件。
-  // DMA 写失效仍按原一致性模式生效。
   lsu.io.DCacheFlush :=
     (if (config.DmaCoherence ==
           ysyx_26030103_DmaCoherence.SoftwareFlush)

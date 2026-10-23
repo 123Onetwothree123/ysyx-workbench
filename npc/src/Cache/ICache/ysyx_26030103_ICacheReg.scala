@@ -18,6 +18,9 @@ class ysyx_26030103_ICacheReg(
     // 自修改代码 store snoop：store B 完成时按物理地址失效对应 ICache 行。
     // 默认关闭（仅标准 fence.i），显式选择 HARDWARE_SNOOP 才生成比较逻辑。
     Snoop: Boolean = false,
+    // DMA 地址级 snoop：DMA 写 B 到达时按字节范围失效所有重叠行。
+    // 只有 DMA_COHERENCE=hardware_snoop 才生成。
+    DmaSnoop: Boolean = false,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_ICacheBase(AddressWidth) {
@@ -72,6 +75,24 @@ class ysyx_26030103_ICacheReg(
   private def SnoopLineMatch(address: UInt): Bool =
     LineOf(address) === LineOf(io.snoop_addr) ||
       LineOf(address) === LineOf(io.snoop_addr_hi)
+  private val DmaSnoopActive = DmaSnoop && Enable
+  // DMA 范围失效同样是“所有重叠物理行”：普通几何拼回完整行号，
+  // alias-safe 几何 tag 本身就是完整行号。
+  private def DmaLineOfSet(set: Int): UInt =
+    if (ViptAliasSafe) tag(set)
+    else Cat(tag(set), set.U(IndexBits.W))
+  private val DmaStartLine = io.dma_snoop_start(AddressWidth - 1, BlockSizeLog2)
+  private val DmaEndLine = io.dma_snoop_end(AddressWidth - 1, BlockSizeLog2)
+  private def DmaLineInRange(line: UInt): Bool =
+    line >= DmaStartLine && line <= DmaEndLine
+  private def DmaLineMatch(address: UInt): Bool =
+    DmaLineInRange(LineOf(address))
+  private def DmaSnoopHitVec: UInt =
+    if (!DmaSnoopActive) 0.U(ArrayBlocks.W)
+    else
+      VecInit(valid.indices.map { set =>
+        valid(set) && DmaLineInRange(DmaLineOfSet(set))
+      }).asUInt
   val indexAddr = if (Vipt) io.fetch_vaddr else io.fetch_addr
   val index = indexAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   // Enable=false时阵列只有一个综合占位项。用Scala期的常量索引访问它，
@@ -151,11 +172,23 @@ class ysyx_26030103_ICacheReg(
   // 已被 s1 锁存、且 PA 已知的请求命中 store 行：撤回本拍响应，让它
   // 在 store 完成后的新一次 refill 中重新取指。异常响应不能撤回，否则
   // 会把不可执行区域的故障取指错误地变成一次总线读。
+  // DMA 写的行失效与 CPU store snoop 使用同一套“同拍命中必须让路”的
+  // 规则，但地址范围独立，两个事件可以同拍发生。
+  val dmaSnoopLineHitNow =
+    if (DmaSnoopActive) io.dma_snoop_valid && DmaLineMatch(io.fetch_addr)
+    else false.B
+  val anySnoopLineHitNow = snoopLineHitNow || dmaSnoopLineHitNow
   val snoopS1LineHit =
     if (Snoop && Enable)
       io.snoop_valid && s1_valid && s1_paddr_valid && !access_fault_reg &&
         SnoopLineMatch(fetch_addr_reg)
     else false.B
+  val dmaSnoopS1LineHit =
+    if (DmaSnoopActive)
+      io.dma_snoop_valid && s1_valid && s1_paddr_valid && !access_fault_reg &&
+        DmaLineMatch(fetch_addr_reg)
+    else false.B
+  val anySnoopS1LineHit = snoopS1LineHit || dmaSnoopS1LineHit
   // refill状态机(单MSHR: 同一时刻只处理一个缺失)
   val rfstates = Enum(5)
   val rf_idle = rfstates(0)
@@ -207,7 +240,7 @@ class ysyx_26030103_ICacheReg(
   val under_refill = refill_busy && ref_cacheable && (index === ref_index)
   val hit =
     valid(IndexSafe) && tag(IndexSafe) === reqTag && !under_refill &&
-      !snoopLineHitNow
+      !anySnoopLineHitNow
   val refill_line_match =
     io.fetch_addr(AddressWidth - 1, BlockSizeLog2) ===
       ref_addr(AddressWidth - 1, BlockSizeLog2)
@@ -246,7 +279,7 @@ class ysyx_26030103_ICacheReg(
     (rfstate === rf_req || rfstate === rf_resp) &&
       ref_cacheable && !discard && !refill_error && !refill_error_now &&
       refill_line_match && (index === ref_index) && requested_word_arrived &&
-      !snoopLineHitNow
+      !anySnoopLineHitNow
   val request_hit =
     incoming_paddr_match && executable && cacheable && (hit || partial_refill_hit)
   // VIPT 的“迟到的 PA”解析：s1 里保存的是受理时的 VA/index/offset，
@@ -260,7 +293,7 @@ class ysyx_26030103_ICacheReg(
     refill_busy && ref_cacheable && (fetch_index_reg === ref_index)
   val resolve_hit =
     valid(FetchIndexSafe) && tag(FetchIndexSafe) === resolve_tag &&
-      !resolve_under_refill && !snoopLineHitNow
+      !resolve_under_refill && !anySnoopLineHitNow
   val resolve_line_match =
     io.fetch_addr(AddressWidth - 1, BlockSizeLog2) ===
       ref_addr(AddressWidth - 1, BlockSizeLog2)
@@ -271,7 +304,7 @@ class ysyx_26030103_ICacheReg(
     (rfstate === rf_req || rfstate === rf_resp) &&
       ref_cacheable && !discard && !refill_error && !refill_error_now &&
       resolve_line_match && (fetch_index_reg === ref_index) &&
-      resolve_word_arrived && !snoopLineHitNow
+      resolve_word_arrived && !anySnoopLineHitNow
   val resolve_request_hit =
     executable && cacheable && (resolve_hit || resolve_partial_refill_hit)
   io.access_fault := access_fault_reg
@@ -302,7 +335,7 @@ class ysyx_26030103_ICacheReg(
   io.axi.R.RREADY := true.B // 始终接收并排空 AXI 响应
   // 响应级: 命中(s1_hit)用受理时锁存的数据; 关键词返回/refill完成(s1_ready)后,
   // 可缓存的从阵列读(关键词所在拍已写入), 不可缓存的用R拍锁存的数据; 错误一律给NOP
-  val responding = s1_valid && (s1_hit || s1_ready) && !snoopS1LineHit
+  val responding = s1_valid && (s1_hit || s1_ready) && !anySnoopS1LineHit
   io.resp_valid := responding
   // 响应携带架构 PC：VIPT 用受理时锁存的 VA；PIPT 的 VA==PA，保持原行为。
   io.resp_addr := Mux(Vipt.B, fetch_vaddr_reg, fetch_addr_reg)
@@ -412,6 +445,27 @@ class ysyx_26030103_ICacheReg(
   val recheck_hit = cacheable_reg &&
     valid(FetchIndexSafe) &&
     tag(FetchIndexSafe) === TagOf(fetch_addr_reg)
+  // DMA snoop 握手：如果事件到来时已有属于被改写行的 refill，必须等它
+  // 把旧事务排空（discard 已置位）后再放行 DMA B。s1 的旧命中在本拍已经
+  // 被 anySnoopS1LineHit 压掉，可以在同一沿清掉，不必额外等待。
+  // handled 保证同一个 snoop 事件只毒化一次：排空后自动重取的新 refill
+  // 读的是 DMA 完成后的内存，不能再被同一个事件打断。
+  val dmaSnoopActiveRefill = DmaSnoopActive.B && (rfstate =/= rf_idle) &&
+    DmaLineMatch(ref_addr)
+  val dmaSnoopStaleRefill = RegInit(false.B)
+  val dmaSnoopHandled = RegInit(false.B)
+  when(!io.dma_snoop_valid) { dmaSnoopHandled := false.B }
+  when(io.dma_snoop_valid && !dmaSnoopHandled) {
+    dmaSnoopHandled := true.B
+    when(dmaSnoopActiveRefill) { dmaSnoopStaleRefill := true.B }
+  }
+  when(dmaSnoopStaleRefill && rfstate === rf_idle) {
+    dmaSnoopStaleRefill := false.B
+  }
+  val dmaSnoopFirstPoison =
+    io.dma_snoop_valid && !dmaSnoopHandled && dmaSnoopActiveRefill
+  io.dma_snoop_ready := (!DmaSnoopActive).B ||
+    (!dmaSnoopStaleRefill && !dmaSnoopFirstPoison)
   when(queued_miss && rfstate === rf_idle && !io.kill && !io.flush &&
       !bus_fault) {
     when(recheck_hit) {
@@ -704,6 +758,27 @@ class ysyx_26030103_ICacheReg(
       valid(Mux(snoopActiveRefill, RefIndexSafe, FetchIndexSafe)) := false.B
     }
     when(io.snoop_valid && snoopS1LineHit) {
+      s1_hit := false.B
+      s1_ready := false.B
+    }
+  }
+  // DMA 地址级 snoop：失效所有重叠行；匹配的 refill 丢弃并在排空后由
+  // queued_miss 自动重取（此时内存已含 DMA 新数据）。s1 的旧命中同样
+  // 撤回，不能把 DMA 之前的指令继续交付。
+  if (DmaSnoopActive) {
+    val dmaSnoopHit = DmaSnoopHitVec
+    for (set <- valid.indices) {
+      when(io.dma_snoop_valid && dmaSnoopHit(set)) {
+        valid(set) := false.B
+      }
+    }
+    when(io.dma_snoop_valid && !dmaSnoopHandled &&
+        dmaSnoopActiveRefill) {
+      discard := true.B
+      refill_word_valid := 0.U
+      valid(RefIndexSafe) := false.B
+    }
+    when(io.dma_snoop_valid && dmaSnoopS1LineHit) {
       s1_hit := false.B
       s1_ready := false.B
     }

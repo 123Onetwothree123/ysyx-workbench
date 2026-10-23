@@ -30,7 +30,8 @@ object ysyx_26030103_DCacheFactory {
       Storage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
       Vipt: Boolean = false,
       ViptAliasSafe: Boolean = false,
-      ViptAliasScanMode: String = "all_sets"
+      ViptAliasScanMode: String = "all_sets",
+      DmaSnoop: Boolean = false
   ): ysyx_26030103_DCacheBase = {
     Storage match {
       case ysyx_26030103_CacheStorage.Reg =>
@@ -44,6 +45,7 @@ object ysyx_26030103_DCacheFactory {
             Vipt = Vipt,
             ViptAliasSafe = ViptAliasSafe,
             ViptAliasScanMode = ViptAliasScanMode,
+            DmaSnoop = DmaSnoop,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             PMARegions = PMARegions
@@ -60,6 +62,7 @@ object ysyx_26030103_DCacheFactory {
             Vipt = Vipt,
             ViptAliasSafe = ViptAliasSafe,
             ViptAliasScanMode = ViptAliasScanMode,
+            DmaSnoop = DmaSnoop,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             PMARegions = PMARegions
@@ -76,6 +79,7 @@ object ysyx_26030103_DCacheFactory {
             Vipt = Vipt,
             ViptAliasSafe = ViptAliasSafe,
             ViptAliasScanMode = ViptAliasScanMode,
+            DmaSnoop = DmaSnoop,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             Bypass = false,

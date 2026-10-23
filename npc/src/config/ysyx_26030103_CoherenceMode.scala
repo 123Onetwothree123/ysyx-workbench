@@ -60,18 +60,22 @@ object ysyx_26030103_DmaCoherence {
     val Name = "uncached"
   }
 
+  /** DMA 地址级硬件 snoop：DMA 写的 B 响应到达后，按本次 burst 覆盖的
+    * 物理字节范围失效 ICache/DCache 中所有匹配行；DMA 写的 B 会一直
+    * 保持到两个 Cache 完成失效，因此软件看到 B 时旧副本必然已经失效。
+    * DMA 读不产生额外动作：写直达 Cache 没有脏数据，内存始终是最新的。
+    */
+  case object HardwareSnoop extends ysyx_26030103_DmaCoherence {
+    val Name = "hardware_snoop"
+  }
+
   def FromString(value: String): ysyx_26030103_DmaCoherence = value match {
     case "software_flush" => SoftwareFlush
     case "uncached"       => Uncached
-    case "hardware_snoop" =>
-      // 明确未实现，绝不注册成看似可用、实际不生效的 Kconfig 选项。
-      throw new IllegalArgumentException(
-        "DMA_COHERENCE=hardware_snoop 未实现：当前没有 DMA 地址级 " +
-          "snoop/失效硬件。请选择 software_flush 或 uncached"
-      )
+    case "hardware_snoop" => HardwareSnoop
     case other =>
       throw new IllegalArgumentException(
-        s"DMA_COHERENCE 只支持 software_flush/uncached，收到: $other"
+        s"DMA_COHERENCE 只支持 software_flush/uncached/hardware_snoop，收到: $other"
       )
   }
 }

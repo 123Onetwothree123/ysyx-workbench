@@ -153,6 +153,9 @@ object ysyx_26030103_Elaborate extends App {
       ysyx_26030103_ICacheCoherence.FromString(ICacheCoherenceName),
     DmaCoherence =
       ysyx_26030103_DmaCoherence.FromString(DmaCoherenceName),
+    // 日志中的 Describe 必须反映实际 SoC PMA（DMA 窗口是否存在），
+    // 否则 CHIPLINK=y 时 hardware_snoop/uncached 会误标成 inactive。
+    PMARegions = ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink),
     BlockSizeLog2 = BlockSizeLog2,
     IndexBits = IndexBits,
     ICacheBlockSizeLog2 = ICacheBlockSizeLog2,
@@ -214,6 +217,15 @@ object ysyx_26030103_Elaborate extends App {
          if (config.DmaWindowPresent)
            "（0xc0000000--0xffffffff 在 CPU 侧不可缓存，绕过 DCache/ICache）"
          else "（未生效：当前 PMA 没有可代理的 DMA 窗口，CHIPLINK=n？）"
+       } else if (config.DmaCoherence ==
+                    ysyx_26030103_DmaCoherence.HardwareSnoop) {
+         if (!config.DmaWindowPresent)
+           "（未生效：当前 PMA 没有可代理的 DMA 窗口，CHIPLINK=n？）"
+         else if (!config.ICacheEnable && !config.DCacheEnable)
+           "（未生效：ICACHE=n 且 DCACHE=n，没有可失效的缓存）"
+         else
+           "（DMA 写 B 到达后按物理字节范围失效对应行，B 等待失效完成；" +
+             "DMA 读不产生动作，已取入流水线的旧指令仍需 fence.i）"
        } else "（保持 DMA 写 B 完成时失效 DCache；软件负责 DMA 完成顺序）")
   )
   if (config.SocXLENNeedsAxiBridge) {

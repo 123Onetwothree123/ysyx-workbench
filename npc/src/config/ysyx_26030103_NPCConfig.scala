@@ -312,6 +312,12 @@ case class ysyx_26030103_NPCConfig(
       BigInt(region.Base) <= BigInt(DmaWindowBase) &&
       BigInt(region.EndExclusive) >= BigInt(DmaWindowEnd)
     }
+  /** DMA 地址级 snoop 需要 ICache/DCache 生成行失效硬件；没有 DMA 窗口
+    * 时仲裁器根本不会收到入站写，直接不生成额外比较/握手逻辑。
+    */
+  final val DmaHardwareSnoop: Boolean =
+    DmaCoherence == ysyx_26030103_DmaCoherence.HardwareSnoop &&
+      DmaWindowPresent
   require(
     Integer.bitCount(WBufDepth) == 1,
     "WBufDepth必须是2的幂(1/2/4/8/16)"
@@ -482,6 +488,15 @@ case class ysyx_26030103_NPCConfig(
       if (DmaCoherence == ysyx_26030103_DmaCoherence.Uncached) {
         if (DmaWindowPresent) "uncached(dma_window)"
         else "uncached(inactive:no-dma-window)"
+      } else if (DmaCoherence == ysyx_26030103_DmaCoherence.HardwareSnoop) {
+        val Which =
+          Seq(
+            if (ICacheEnable) Some("ICache") else None,
+            if (DCacheEnable) Some("DCache") else None
+          ).flatten.mkString("+")
+        if (!DmaWindowPresent) "hardware_snoop(inactive:no-dma-window)"
+        else if (Which.isEmpty) "hardware_snoop(inactive:no-cache)"
+        else s"hardware_snoop(line-invalidate:$Which)"
       } else "software_flush(legacy-b-invalidate)"
     s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, " +
       s"addr_w=$AddressWidth, " +
@@ -492,7 +507,7 @@ case class ysyx_26030103_NPCConfig(
       s"iter=$MULIterBits, pipeline=$MULPipeline, split=$MULSplit, " +
       s"mul_early_out=${OnOff(MULEarlyOut)}, div_early_out=${OnOff(DIVEarlyOut)}, " +
       s"ICache=$ICacheDesc, DCache=$DCacheDesc$ViptAliasDesc$LargeLineDesc, " +
-      s"icache_coherence=$ICacheCoherenceDesc, dma_coherence=$DmaCoherenceDesc, "
+      s"icache_coherence=$ICacheCoherenceDesc, dma_coherence=$DmaCoherenceDesc, " +
       s"icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, observe=${OnOff(EnableAnyObservability)}, " +

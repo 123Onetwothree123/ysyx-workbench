@@ -441,18 +441,23 @@ menu "硬件配置"
           侧标记为不可缓存，load/store/取指绕过 Cache 直接访问内存，
           不再依赖 DMA 写 B 触发的 DCache 失效。DMA 传输在途时软件仍
           不得消费目标区域。
-        hardware_snoop（DMA 地址级 snoop）当前未实现，因此不提供该选项；
-        若环境变量强制指定，elaboration 会明确报错，不会静默降级。
+        hardware_snoop: DMA 写的 B 响应到达后，按本次 burst 覆盖的物理
+          字节范围失效 ICache/DCache 中所有匹配行；B 会保持到失效完成，
+          因此软件看到 DMA 完成时旧缓存副本已经消失。DMA 读不生成额外
+          动作。CPU 流水线里已经取入的旧指令仍需 fence.i 冲刷。
       config DMA_COHERENCE_SOFTWARE_FLUSH
         bool "软件维护 + DMA 写 B 失效（现有行为，默认）"
       config DMA_COHERENCE_UNCACHED
         bool "DMA 窗口按不可缓存访问"
+      config DMA_COHERENCE_HARDWARE_SNOOP
+        bool "DMA 地址级硬件 snoop（失效 ICache/DCache 对应行）"
     endchoice
 
     config DMA_COHERENCE
       string
       default "software_flush" if DMA_COHERENCE_SOFTWARE_FLUSH
       default "uncached" if DMA_COHERENCE_UNCACHED
+      default "hardware_snoop" if DMA_COHERENCE_HARDWARE_SNOOP
       default "software_flush"
 
   endmenu

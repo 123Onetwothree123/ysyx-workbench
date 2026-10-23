@@ -38,10 +38,12 @@ PERFSEM_MIXED_BIN := $(BIN_DIR)/perf_counter_semantics_mixed_test
 XBAR_HOL_BIN := $(BIN_DIR)/xbar_r_hol_test
 CHIPLINK_RTL := $(BUILD_DIR)/rtl-chiplink
 DMA_UNCACHED_RTL := $(BUILD_DIR)/rtl-dma-uncached
+DMA_SNOOP_RTL := $(BUILD_DIR)/rtl-dma-snoop
 PROD_RTL := $(BUILD_DIR)/rtl-prod
 MIXED_RTL := $(BUILD_DIR)/rtl-mixed
 DMA_WINDOW_BIN := $(BIN_DIR)/dma_coherence_window_test
 DMA_UNCACHED_BIN := $(BIN_DIR)/dma_uncached_test
+DMA_SNOOP_BIN := $(BIN_DIR)/dma_snoop_test
 ICACHE_SRAM_BIN := $(BIN_DIR)/icache_sram_test
 DIVCFG_BIN := $(BIN_DIR)/div_config_core_test
 DCACHE_REFILL_REG_BIN := $(BIN_DIR)/dcache_refill_reg_test
@@ -51,7 +53,7 @@ BINS := $(IDU_BIN) $(IRQ_BIN) $(DCACHE_REG_BIN) $(DCACHE_SRAM_BIN) \
         $(DCACHE_NOBYPASS_BIN) $(ICACHE_BIN) $(ICACHE_SMALL_BIN) \
         $(MUL_DEFAULT_BIN) $(MUL_ALT_BIN) $(MCYCLE_BIN) $(AXIRAM_BIN) $(BTB2_BIN) $(DCACHE_REFILL_REG_BIN) $(DCACHE_REFILL_SRAM_BIN) $(DCACHE_REFILL_NOBYPASS_BIN) $(MULCFG_BIN) $(DIVCFG_BIN) $(MDU_BLOCK_BIN) $(MDU_BLOCK_FAST_BIN) $(FULLCORE_BIN) $(PERFSEM_BIN) $(PERFSEM_MIXED_BIN) $(XBAR_HOL_BIN) $(DCACHE_SMALL_BIN) $(DMA_WINDOW_BIN) $(ICACHE_SRAM_BIN)
 
-.PHONY: all test run rtl-check clean dma-uncached-test
+.PHONY: all test run rtl-check clean dma-uncached-test dma-snoop-test
 
 all: $(BINS)
 
@@ -348,6 +350,34 @@ $(DMA_UNCACHED_BIN): dma_coherence_window_test.cpp test_common.hpp \
 
 dma-uncached-test: $(DMA_UNCACHED_BIN)
 	$(DMA_UNCACHED_BIN)
+
+# DMA_COHERENCE=hardware_snoop 的 SoC 快照：DMA 写 B 要等 ICache/DCache
+# 完成地址级行失效后才交给 CPU slave。复用同一个窗口测试程序验证端到端
+# B 顺序与失效后可见性；地址级行选择/跨行/在途 refill 由 Scala 叶测试覆盖。
+$(DMA_SNOOP_RTL)/ysyx_26030103.sv:
+	@mkdir -p $(DMA_SNOOP_RTL)
+	cd $(NPC_DIR) && env \
+	  CACHE_BLOCK_SIZE_LOG2=2 CACHE_INDEX_BITS=5 \
+	  ICACHE=y DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=y \
+	  DMA_COHERENCE=hardware_snoop \
+	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
+	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y MTRACE=y DIFFTEST=y PERF_STATS=y \
+	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(DMA_SNOOP_RTL)
+	ln -sf layers-ysyx_26030103-Verification.sv $(DMA_SNOOP_RTL)/layers-riscv32e_npc_AXIRAM-Verification.sv
+
+$(DMA_SNOOP_BIN): dma_coherence_window_test.cpp test_common.hpp \
+                  $(DMA_SNOOP_RTL)/ysyx_26030103.sv
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VFLAGS) --assert \
+	  --top-module ysyx_26030103 \
+	  --Mdir $(BUILD_DIR)/obj-dma-snoop-audit \
+	  -I$(DMA_SNOOP_RTL) \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(DMA_SNOOP_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
+
+dma-snoop-test: $(DMA_SNOOP_BIN)
+	$(DMA_SNOOP_BIN)
 
 $(DMA_WINDOW_DIAG_BIN): dma_coherence_window_test.cpp test_common.hpp \
                         $(CHIPLINK_RTL)/ysyx_26030103.sv rtl-check

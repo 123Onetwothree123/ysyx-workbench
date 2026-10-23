@@ -19,6 +19,9 @@ class ysyx_26030103_DCacheSRAM(
     // alias 失效扫描方式：all_sets 单拍全扫描；serial 每周期扫描一个 set，
     // 扫描期间反压新 load，store 事件进入小队列等待扫描。
     ViptAliasScanMode: String = "all_sets",
+    // DMA 地址级 snoop：只有 DMA_COHERENCE=hardware_snoop 才生成行失效
+    // 与在途 refill 等待硬件，默认配置完全保留原有时序。
+    DmaSnoop: Boolean = false,
     CacheableBase: Long = 0x80000000L,
     CacheableMask: Long = 0x80000000L,
     // true=命中响应第一拍旁路SRAM输出(保持1拍延迟);
@@ -78,6 +81,22 @@ class ysyx_26030103_DCacheSRAM(
       }
     }
   }
+  private val DmaSnoopActive = DmaSnoop && Enable
+  // 每个 set 的完整物理行号。alias-safe 的 tag 已含物理行号；普通几何
+  // 需要把 tag 与 set index 拼回去，才能对任意 burst 范围做行号比较。
+  private def DmaLineOfSet(set: Int): UInt =
+    if (ViptAliasSafe) tag(set)
+    else Cat(tag(set), set.U(IndexBits.W))
+  private val DmaStartLine = io.dma_snoop_start(AddressWidth - 1, BlockSizeLog2)
+  private val DmaEndLine = io.dma_snoop_end(AddressWidth - 1, BlockSizeLog2)
+  private def DmaLineInRange(line: UInt): Bool =
+    line >= DmaStartLine && line <= DmaEndLine
+  private def DmaSnoopHitVec: UInt =
+    if (!DmaSnoopActive) 0.U(ArrayBlocks.W)
+    else
+      VecInit(valid.indices.map { set =>
+        valid(set) && DmaLineInRange(DmaLineOfSet(set))
+      }).asUInt
   // data改为同步读SRAM：单块NumBlocks×WordsPerBlock的32位SRAM，1读口+2写口
   // (refill填充、store镜像更新)，写口自带字节掩码。SRAM.masked配合
   // UseSRAMBlackbox由Chisel直接生成Verilog(内联黑盒)，不经过CIRCT的
@@ -108,8 +127,12 @@ class ysyx_26030103_DCacheSRAM(
     PMARegions
   )
   io.req_cacheable := cacheable
+  // DMA snoop 与 CPU 请求同拍时，失效必须优先于命中。
+  private val DmaReqLineHit = DmaSnoopActive.B && io.dma_snoop_valid &&
+    DmaLineInRange(io.req.bits.addr(AddressWidth - 1, BlockSizeLog2))
   val hit =
-    cacheable && valid(IndexSafe) && tag(IndexSafe) === ReqTag // 这个直接拿来做一个命中条件
+    cacheable && valid(IndexSafe) && tag(IndexSafe) === ReqTag &&
+      !DmaReqLineHit // 这个直接拿来做一个命中条件
   // VIPT 等待 PA 的请求状态。SRAM 读口在受理拍就用 VA index 提前发起，
   // 数据下一拍锁存到 WaitDataReg；PA 标签匹配后若 tag 仍命中即可返回。
   val WaitPaddr = RegInit(false.B)
@@ -265,6 +288,18 @@ class ysyx_26030103_DCacheSRAM(
   val SramReqAddr = Reg(UInt(AddressWidth.W))
   val SramReqWidth = Reg(UInt(2.W))
   val SramReqSigned = Reg(Bool())
+  // 当前响应对应的完整物理访问；DMA snoop 用它判断旧响应归属，并在需要
+  // 时按原访问重新发起读取。SRAM 命中响应可能来自另一个请求，不能只看
+  // ReqAddrReg。
+  val ResponseAddrReg = Reg(UInt(AddressWidth.W))
+  val ResponseWidthReg = Reg(UInt(2.W))
+  val ResponseSignedReg = Reg(Bool())
+  val ResponseCacheableReg = RegInit(false.B)
+  val DmaReplayWait = RegInit(false.B)
+  val DmaReplayAddr = Reg(UInt(AddressWidth.W))
+  val DmaReplayWidth = Reg(UInt(2.W))
+  val DmaReplaySigned = Reg(Bool())
+  val DmaReplayCacheable = RegInit(false.B)
   val ResponseOccupied = ResponseValid || SramRespPending
   // 非旁路模式响应要等数据锁存后（晚两拍）才可见，槽位只能在真实 fire
   // 时释放；否则 SramRespPending 期间（响应尚不可见）也会放行新请求，
@@ -277,8 +312,40 @@ class ysyx_26030103_DCacheSRAM(
       "DCache non-bypass response slot over-subscribed"
     )
   }
+  // DMA snoop 握手：匹配行还有在途 R beat 或尚未被 CPU 取走的旧响应时，
+  // ready 保持为低，顶层据此继续扣住 DMA B。SReadReq 阶段的 AR 尚未被
+  // 接受，此时读到的已经是 DMA 完成后的内存，不需要等待。
+  private val DmaSnoopRespValid = ResponseValid || SramRespPending
+  private val DmaSnoopResponseAddr =
+    Mux(SramRespPending, SramReqAddr, ResponseAddrReg)
+  private val DmaSnoopRefillLineHit = DmaSnoopActive.B && RefillActive &&
+    (state === SReadResp || state === SDrain) &&
+    DmaLineInRange(RefillBaseReg(AddressWidth - 1, BlockSizeLog2))
+  private val DmaSnoopRespMatch = DmaSnoopActive.B && DmaSnoopRespValid &&
+    DmaLineInRange(DmaSnoopResponseAddr(AddressWidth - 1, BlockSizeLog2))
+  private val DmaSnoopRespReplay = DmaSnoopRespMatch &&
+    ResponseCacheableReg && !DemandResponseDone
+  private val DmaSnoopRefillOwnDemand = DmaSnoopRefillLineHit &&
+    ResponseCacheableReg &&
+    DmaSnoopResponseAddr(AddressWidth - 1, BlockSizeLog2) ===
+      RefillBaseReg(AddressWidth - 1, BlockSizeLog2)
+  private val DmaSnoopReplay = DmaSnoopActive.B && !DemandResponseDone &&
+    (DmaSnoopRespReplay || DmaSnoopRefillOwnDemand)
+  private val DmaSnoopWillReplay =
+    DmaSnoopActive.B && io.dma_snoop_valid && DmaSnoopReplay
+  private val DmaSnoopResponseBusy = DmaSnoopActive.B && DmaSnoopRespMatch &&
+    !DmaSnoopRespReplay && !io.resp.fire
+  private val DmaSnoopViptWaitBusy = DmaSnoopActive.B && Vipt.B && WaitPaddr
+  io.dma_snoop_ready := (!DmaSnoopActive).B ||
+    (!DmaSnoopRefillLineHit && !DmaSnoopResponseBusy &&
+      !DmaSnoopWillReplay && !DmaReplayWait && !DmaSnoopViptWaitBusy)
   // 响应状态与回填状态解耦，使关键字能在缓存行其余数据到达前重启流水线。
-  io.resp.valid := (if (Bypass) ResponseOccupied else ResponseValid)
+  // 被 DMA snoop 命中的旧响应不能交付：本拍压掉 valid，下一拍重新发起
+  // 读取（此时内存已包含 DMA 新数据）。
+  private val DmaDropResponse = DmaSnoopActive.B && io.dma_snoop_valid &&
+    DmaSnoopRespReplay
+  io.resp.valid := (if (Bypass) ResponseOccupied else ResponseValid) &&
+    !DmaDropResponse && !DmaReplayWait
   io.resp.bits.fault := ResponseFault
   io.resp.bits.FaultResp := ResponseFaultResp
   io.axi_active := state === SReadReq || state === SReadResp || state === SDrain
@@ -407,6 +474,7 @@ class ysyx_26030103_DCacheSRAM(
   // VIPT 缺少 PA 时只允许在空闲且无回填时受理；等待期间不再接新请求。
   val ViptAcceptable = !ViptNeedWait || (state === SIdle && !RefillActive)
   io.req.ready := ResponseSlotReady && !io.flush && !io.req_kill &&
+    !(DmaSnoopActive.B && io.dma_snoop_valid) && !DmaReplayWait &&
     !WaitPaddr && ViptAcceptable && !AliasScanBusy &&
     (state === SIdle || (HitUnderRefill && !ViptNeedWait)) &&
     !StoreConflictsRequest
@@ -437,8 +505,11 @@ class ysyx_26030103_DCacheSRAM(
   val ResolveWordHi = Mux(WaitSramRead, sramReadWordHi, WaitDataHiReg)
   val ResolveWordValid = WaitDataValid || WaitSramRead
   val ResolveReady = ResolveVaddrMatch && ResolveWordValid
+  private val DmaResolveLineHit = DmaSnoopActive.B && io.dma_snoop_valid &&
+    DmaLineInRange(ResolvePaddr(AddressWidth - 1, BlockSizeLog2))
   val ResolveHit = ResolveReady && ResolveCacheable &&
-    valid(ResolveIndexSafe) && tag(ResolveIndexSafe) === ResolveTag
+    valid(ResolveIndexSafe) && tag(ResolveIndexSafe) === ResolveTag &&
+    !DmaResolveLineHit
   io.perf_hit := (io.req.fire && !ViptNeedWait && AcceptedHit) ||
     (ResolveReady && ResolveHit)
   io.perf_miss := (io.req.fire && !ViptNeedWait && cacheable && !AcceptedHit) ||
@@ -538,6 +609,10 @@ class ysyx_26030103_DCacheSRAM(
     DemandResponseDone := true.B
   }
   when(io.req.fire) {
+    ResponseAddrReg := io.req.bits.addr
+    ResponseWidthReg := io.req.bits.WidthSelect
+    ResponseSignedReg := io.req.bits.signed
+    ResponseCacheableReg := cacheable
     when(HitUnderRefill) {
       // 此请求的数据已经在先前R拍写入SRAM。不要覆盖ReqIndex/Tag/Base等
       // MSHR元数据，也不要改变正在进行的AR/R状态。响应数据在下一拍
@@ -592,6 +667,10 @@ class ysyx_26030103_DCacheSRAM(
   // 安装位置仍是 VA index。
   when(ResolveReady) {
     WaitPaddr := false.B
+    ResponseAddrReg := ResolvePaddr
+    ResponseWidthReg := WaitWidthReg
+    ResponseSignedReg := WaitSignedReg
+    ResponseCacheableReg := ResolveCacheable
     when(ResolveHit) {
       ResponseData := FormatLoad(
         ResolveWord,
@@ -871,9 +950,64 @@ class ysyx_26030103_DCacheSRAM(
       }
     }
   }
-  when(io.flush) { // DMA/其他外部一致性事件使全部数据缓存行失效
+  // DMA 地址级 snoop 必须放在所有 refill/store 写回之后：同一拍 refill
+  // 刚把旧行安装为 valid 时，这里的失效写回优先级更高。
+  if (DmaSnoopActive) {
+    // 旧 refill 排空、状态回 SIdle 后，按原访问重新发起读取。此时 DMA B
+    // 已到达（下游写完成），新读取必然看到新数据。
+    when(DmaReplayWait && state === SIdle && !WaitPaddr && !io.flush) {
+      val ReplayLine =
+        Cat(DmaReplayAddr(AddressWidth - 1, BlockSizeLog2),
+          0.U(BlockSizeLog2.W))
+      ReqAddrReg := DmaReplayAddr
+      ReqWidthReg := DmaReplayWidth
+      ReqSignedReg := DmaReplaySigned
+      ReqIndexReg :=
+        DmaReplayAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+      ReqTagReg := TagOf(DmaReplayAddr)
+      ReqOffsetReg :=
+        (if (WordsPerBlock > 1) DmaReplayAddr(BlockSizeLog2 - 1, 2)
+         else 0.U(OffsetWidth.W))
+      RefillActive := DmaReplayCacheable
+      RefillBurst := DmaReplayCacheable
+      RefillCount := 0.U
+      RefillError := false.B
+      RefillWordValid := 0.U
+      RefillBaseReg := ReplayLine
+      ResponseValid := false.B
+      SramRespPending := false.B
+      DemandResponseDone := false.B
+      suppressFill := false.B
+      state := SReadReq
+      DmaReplayWait := false.B
+    }
+    val DmaSnoopHit = DmaSnoopHitVec
+    for (set <- valid.indices) {
+      when(io.dma_snoop_valid && DmaSnoopHit(set)) {
+        valid(set) := false.B
+      }
+    }
+    when(io.dma_snoop_valid && DmaSnoopRefillLineHit) {
+      suppressFill := true.B
+      RefillWordValid := 0.U
+      valid(ReqIndexSafe) := false.B
+    }
+    when(io.dma_snoop_valid && DmaSnoopReplay) {
+      DmaReplayWait := true.B
+      DmaReplayAddr := DmaSnoopResponseAddr
+      DmaReplayWidth :=
+        Mux(SramRespPending, SramReqWidth, ResponseWidthReg)
+      DmaReplaySigned :=
+        Mux(SramRespPending, SramReqSigned, ResponseSignedReg)
+      DmaReplayCacheable := ResponseCacheableReg
+      ResponseValid := false.B
+      SramRespPending := false.B
+    }
+  }
+  when(io.flush) { // fence.i/外部全局一致性：清空全部行并取消 snoop 重放
     valid.foreach(_ := false.B)
     RefillWordValid := 0.U
+    DmaReplayWait := false.B
     when(state =/= SIdle) { suppressFill := true.B }
   }
 }

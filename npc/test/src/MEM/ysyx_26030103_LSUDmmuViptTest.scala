@@ -360,6 +360,10 @@ class ysyx_26030103_LSUDmmuHarness extends Module {
   // 普通访存不受原子总线独占影响；该 harness 不覆盖 A 扩展。
   lsu.io.BusQuiet := true.B
   lsu.io.ReservationClear := false.B
+  // 该 harness 不启用 DMA snoop，显式绑零避免内部 sink 悬空。
+  lsu.io.DCacheDmaSnoopValid := false.B
+  lsu.io.DCacheDmaSnoopStart := 0.U
+  lsu.io.DCacheDmaSnoopEnd := 0.U
   // 该 harness 走 MMU 路径，PMP 由 DMMU 翻译后检查。
   lsu.io.PmpFault := false.B
   io.out.valid := lsu.io.out.valid

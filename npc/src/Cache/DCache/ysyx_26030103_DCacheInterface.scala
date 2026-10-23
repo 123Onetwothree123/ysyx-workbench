@@ -49,6 +49,15 @@ class ysyx_26030103_DCacheInterface(
   val StoreStrb = Input(UInt((DataWidth / 8).W))
   val AXI = new ysyx_26030103_AXI5IO(AddressWidth) // DCache只使用AR/R通道
   val flush = Input(Bool())
+  // DMA 地址级 snoop（仅 DMA_COHERENCE=hardware_snoop 生成）：
+  // [dma_snoop_start, dma_snoop_end] 是 DMA 写实际覆盖的字节范围。
+  // 每个重叠的物理行都必须失效；alias-safe 几何下扫描全部 set。
+  // ready 为低表示还有匹配的在途 refill 或尚未交付的旧响应，DMA 的 B
+  // 必须继续等待，不能在失效完成前对软件可见。
+  val dma_snoop_valid = Input(Bool())
+  val dma_snoop_start = Input(UInt(AddressWidth.W))
+  val dma_snoop_end = Input(UInt(AddressWidth.W))
+  val dma_snoop_ready = Output(Bool())
   val perf_hit = Output(Bool())
   val perf_miss = Output(Bool())
   val perf_refill_req = Output(Bool())
