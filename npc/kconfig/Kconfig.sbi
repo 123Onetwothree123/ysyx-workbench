@@ -1,0 +1,70 @@
+menu "SBI 固件"
+
+  config SBI_ENABLE
+    bool "启用 SBI 固件"
+    default n
+    help
+      启用后，NPC 可加载 M 模式 SBI 固件，再跳转到 S 模式
+      next-stage（例如 Linux）。默认关闭，xv6 仍按 M 模式直接启动。
+
+      当前提供 OpenSBI 与 RustSBI 两个实现选项；未构建对应固件时，
+      构建脚本会明确报错，不会静默使用其他实现。
+
+  choice
+    prompt "SBI 实现"
+    depends on SBI_ENABLE
+    default SBI_IMPL_OPENSBI
+
+    config SBI_IMPL_OPENSBI
+      bool "OpenSBI"
+      help
+        使用 vendor/opensbi 中的 OpenSBI 固件。
+
+    config SBI_IMPL_RUSTSBI
+      bool "RustSBI"
+      help
+        使用 vendor/rustsbi 中的 RustSBI 固件。
+        需要 rustup 的 RISC-V bare-metal target；构建脚本会在缺失时明确报错。
+  endchoice
+
+  config SBI_IMPL
+    string
+    default "opensbi" if SBI_IMPL_OPENSBI
+    default "rustsbi" if SBI_IMPL_RUSTSBI
+    default "none"
+
+  config SBI_FW_BASE
+    hex "SBI 固件加载地址"
+    default 0x80000000
+    help
+      SBI 固件的 M 模式入口/加载地址。必须与 NPC reset PC 和
+      next-stage 布局一致。
+
+  config SBI_FW_SIZE
+    hex "SBI 固件最大大小"
+    default 0x00200000
+    help
+      为 SBI 固件预留的地址空间大小。next-stage 必须位于
+      SBI_FW_BASE + SBI_FW_SIZE 之后，除非显式覆盖 SBI_NEXT_ADDR。
+
+  config SBI_NEXT_ADDR
+    hex "SBI 跳转的 next-stage 地址"
+    default 0x80200000
+    help
+      OpenSBI/RustSBI 启动完成后跳转到的 S 模式入口。
+      Linux 通常放在 0x80200000 附近；具体以镜像链接地址为准。
+
+  config SBI_PLATFORM
+    string "SBI 平台名"
+    default "npc"
+    help
+      SBI 固件的平台适配名。当前为 NPC 最小平台：
+      UART 0x10000000、CLINT 0x02000000、PLIC 0x0c000000、RAM 0x80000000。
+
+  config SBI_BUILD_JOBS
+    int "SBI 构建并行度"
+    default 0
+    help
+      传给 SBI 构建脚本的并行任务数；0 表示使用当前 CPU 核数。
+
+endmenu

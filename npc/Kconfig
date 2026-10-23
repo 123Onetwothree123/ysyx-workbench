@@ -8,4 +8,5 @@ source "kconfig/Kconfig.verilator" # Verilator 仿真
 source "kconfig/Kconfig.hardware"  # 硬件配置（ISA/乘法器/缓存/外设）
 source "kconfig/Kconfig.mmu"       # 虚存管理（MMU/TLB/CSR字段/中断）
 source "kconfig/Kconfig.debug"     # 运行时调试（SDB/追踪/性能计数器）
+source "kconfig/Kconfig.sbi"       # M 模式 SBI 固件（OpenSBI/RustSBI）
 source "kconfig/Kconfig.synth"     # 综合 (Synthesis)
