@@ -16,4 +16,6 @@ object ysyx_26030103_opcode {
   val OPCODE_Jump = "b1101111".U(7.W)
   val OPCODE_System = "b1110011".U(7.W)
   val OPCODE_MiscMem = "b0001111".U(7.W)
+  // A 扩展：LR/SC/AMO 共用 0101111 操作码。
+  val OPCODE_Amo = "b0101111".U(7.W)
 }

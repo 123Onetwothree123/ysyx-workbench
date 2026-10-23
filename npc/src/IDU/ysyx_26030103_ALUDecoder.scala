@@ -135,8 +135,19 @@ class ysyx_26030103_ALUDecoder(
     ) else Nil)
   } else Nil
 
+  // A 扩展：AMO/LR/SC 的地址计算仍使用 ADD；操作号由 IDU 直接取 funct5。
+  // funct3 的 .W/.D 合法性也在 IDU 中检查，这里只负责把操作码从
+  // “未知指令”集合中放行。
+  private val AtomicRows: Seq[(BitPat, BitPat)] = if (config.UseA) {
+    Seq(
+      key(OPCODE_Amo, "b010_???????") -> encode(ADD)
+    ) ++ (if (XLen64) Seq(
+      key(OPCODE_Amo, "b011_???????") -> encode(ADD)
+    ) else Nil)
+  } else Nil
+
   private val table: TruthTable = TruthTable(
-    BaseRows ++ RV64Rows ++ MDURows,
+    BaseRows ++ RV64Rows ++ MDURows ++ AtomicRows,
     encode(NOP, illegal = true)
   )
   private val decoded =

@@ -36,6 +36,7 @@ class ysyx_26030103_PMPTest extends AnyFlatSpec with Matchers {
       dut.io.fetchPriv.poke(1.U)
       dut.io.dataAddr.poke("h80000004".U)
       dut.io.dataPriv.poke(1.U)
+      dut.io.dataRead.poke(true.B)
       dut.io.dataWrite.poke(false.B)
       bool(dut.io.fetchFault) should be(false)
       bool(dut.io.dataFault) should be(false)
@@ -63,9 +64,11 @@ class ysyx_26030103_PMPTest extends AnyFlatSpec with Matchers {
       dut.io.addr(0).poke("h200001ff".U)
       dut.io.dataAddr.poke("h80000000".U)
       dut.io.dataPriv.poke(3.U)
+      dut.io.dataRead.poke(false.B)
       dut.io.dataWrite.poke(true.B)
       bool(dut.io.dataFault) should be(true)
       dut.io.dataWrite.poke(false.B)
+      dut.io.dataRead.poke(true.B)
       bool(dut.io.dataFault) should be(false)
     }
   }

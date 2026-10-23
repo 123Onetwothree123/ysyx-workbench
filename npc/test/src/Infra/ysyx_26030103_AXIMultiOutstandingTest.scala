@@ -383,6 +383,7 @@ class ysyx_26030103_AXIMultiOutstandingTest
       idleSlaveInputs(dut.io.dma)
       idleMasterInputs(dut.io.memory)
       dut.io.dmaARLock.poke(false.B)
+      dut.io.atomicBusy.poke(false.B)
       dut.io.dmaAWLock.poke(false.B)
 
       case class Req(addr: Long, id: Int, len: Int)

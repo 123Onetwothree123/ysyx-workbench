@@ -33,6 +33,9 @@ class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   val WidthSelect = UInt(2.W)
   val LoadSigned = Bool()
   val StoreData = UInt(XLEN.W)
+  // A 扩展：LR/SC/AMO 的原子访存标记与 funct5 操作号。
+  val IsAtomic = Bool()
+  val AtomicOp = UInt(ysyx_26030103_AtomicOp.Width.W)
 
   val IsCsrrw = Bool()
   val IsCsrrs = Bool()

@@ -114,7 +114,7 @@ case class ysyx_26030103_NPCConfig(
 ) {
   require(XLEN == 32 || XLEN == 64,
     s"XLEN 只允许 32 或 64，收到 XLEN=$XLEN")
-  require(UseA == false, "RISCV_A 还没有做")
+  // A 扩展已实现（RV32 仅 .W，RV64 支持 .W/.D）；C 扩展仍未实现。
   require(UseC == false, "RISCV_C 还没做")
   // 物理地址宽度不能超过架构 XLEN；RV32 使用 32，RV64 必须使用 64，
   // 保证 PC/分支目标/LSU/IFU/AXI 全链路都不会再次退化为 32 位。

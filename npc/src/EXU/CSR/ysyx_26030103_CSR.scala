@@ -17,7 +17,9 @@ import chisel3.util._
 class ysyx_26030103_CSR(
     val profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(),
-    val XLEN: Int = 32
+    val XLEN: Int = 32,
+    // RISCV_A 打开时 misa.A 必须置位；关闭时该位保持 0。
+    val UseA: Boolean = false
 ) extends Module {
   import ysyx_26030103_mstatus.legalize
   require(XLEN == 32 || XLEN == 64, s"CSR XLEN 非法: $XLEN")
@@ -259,10 +261,12 @@ class ysyx_26030103_CSR(
   val Minstret_rdata =
     if (XLEN == 64) Minstret else Minstret(31, 0)
   val Minstreth_rdata = Minstret(63, 32)
-  // misa.MXL: 1=RV32, 2=RV64；同时声明 I 扩展。
+  // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A 随 RISCV_A 配置。
+  // 位编号按 RISC-V 规范：bit0=A，bit8=I。
   val Misa_rdata = {
     val Mxl = if (XLEN == 64) BigInt(2) << 62 else BigInt(1) << 30
-    (Mxl | BigInt(0x100)).U(XLEN.W)
+    val AExt = if (UseA) BigInt(1) << 0 else BigInt(0)
+    (Mxl | BigInt(0x100) | AExt).U(XLEN.W)
   }
   val Medeleg_rdata = MedelegOpt.getOrElse(0.U(32.W))
   val Mideleg_rdata = MidelegOpt.getOrElse(0.U(32.W))

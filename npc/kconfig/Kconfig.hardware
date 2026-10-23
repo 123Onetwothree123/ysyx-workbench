@@ -36,10 +36,14 @@ menu "硬件配置"
         difftest时NEMU必须使用相同ISA(如riscv32im)。
 
     config RISCV_A
-      bool "A 扩展（原子访存）(暂未实现)"
+      bool "A 扩展（原子访存）"
       default n
       help
-        尚未实现: 启用后 elaboration 会直接报错, 防止生成功能不完整的核。
+        启用 LR/SC 与全部 AMO 指令。RV32 支持 .W；RV64 支持 .W 和 .D。
+        原子访存绕过 DCache，走 LSU 串行 uncached 事务，完成写后失效
+        对应 DCache/ICache 行；aq/rl 首版保守地按完整 fence 处理。
+        打开后 misa.A 置位。difftest 时 NEMU 必须使用相同 ISA
+        （如 riscv32ima / riscv64ima）。
 
     config RISCV_C
       bool "C 扩展（压缩指令）(暂未实现)"

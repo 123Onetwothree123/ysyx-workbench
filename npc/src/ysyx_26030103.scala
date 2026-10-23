@@ -154,6 +154,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     // DMMU 给出的物理地址。这样两种配置共用同一个 PMP 例化。
     pmp.io.dataAddr := lsu.io.PmpAddr
     pmp.io.dataPriv := dataPrivilege
+    pmp.io.dataRead := lsu.io.PmpRead
     pmp.io.dataWrite := lsu.io.PmpWrite
   }
   val mmuUnitOpt =
@@ -445,6 +446,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     pmpOpt.foreach { pmp =>
       pmp.io.fetchAddr := immu.io.fetchPaddr
       pmp.io.dataAddr := dmmu.io.pmpAddr
+      pmp.io.dataRead := dmmu.io.pmpRead
       pmp.io.dataWrite := dmmu.io.pmpWrite
     }
     // MMU 路径的 PMP 已在 DMMU 翻译完成后检查，LSU 不需要再检查。
@@ -863,11 +865,19 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // DMA修改可执行内存后由软件执行fence.i完成指令一致性。
   // DMA_COHERENCE=uncached 时 DMA 窗口本身不进入 Cache，不再需要这个
   // 全局失效；显式关闭可以避免无意义地清空无关数据行。
+  // 原子写完成后必须让 DCache 中的旧行失效；这里复用现有全量 flush
+  // 接口（写直达缓存无脏数据），避免为 alias 情形新增行扫描硬件。
+  // DMA 写失效仍按原一致性模式生效。
   lsu.io.DCacheFlush :=
     (if (config.DmaCoherence ==
           ysyx_26030103_DmaCoherence.SoftwareFlush)
-       arbiter.io.DMAWriteInvalidate
-     else false.B)
+       arbiter.io.DMAWriteInvalidate || lsu.io.AtomicCommit
+     else lsu.io.AtomicCommit)
+  // 原子事务总线独占：LSU 先等总线安静，再拉 AtomicBusy 阻止 DMA 插入。
+  arbiter.io.atomicBusy := lsu.io.AtomicBusy
+  lsu.io.BusQuiet := arbiter.io.busQuiet
+  // 异常或 CSR 提交（上下文切换）后，旧 reservation 不再有效。
+  lsu.io.ReservationClear := exu.io.ExceptionTaken || exu.io.CSRCommit
   gpr.io.WriteSELECT := wbu.io.WriteSELECT
   gpr.io.WriteEN := wbu.io.WriteEN
   gpr.io.wdata := wbu.io.wdata

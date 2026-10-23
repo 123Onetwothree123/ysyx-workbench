@@ -21,6 +21,8 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
     val fetchFault = Output(Bool())
     val dataAddr = Input(UInt(AddressWidth.W))
     val dataPriv = Input(UInt(2.W))
+    // 读/写权限分别检查：AMO 需要两者同时通过，LR 只读，SC 只写。
+    val dataRead = Input(Bool())
     val dataWrite = Input(Bool())
     val dataFault = Output(Bool())
   })
@@ -73,6 +75,8 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
   }
 
   io.fetchFault := check(io.fetchAddr, io.fetchPriv, 0.U)
-  io.dataFault := check(io.dataAddr, io.dataPriv,
-    Mux(io.dataWrite, 2.U, 1.U))
+  // 同一次 AMO 的读/写检查必须都通过；普通 load/store 只使能其中一侧。
+  val readFault = check(io.dataAddr, io.dataPriv, 1.U)
+  val writeFault = check(io.dataAddr, io.dataPriv, 2.U)
+  io.dataFault := (io.dataRead && readFault) || (io.dataWrite && writeFault)
 }

@@ -5,6 +5,7 @@ import _root_.ysyx_26030103.config.ysyx_26030103_NPCConfig
 import _root_.ysyx_26030103.common.ysyx_26030103_opcode._
 import _root_.ysyx_26030103.common.ysyx_26030103_IFUMessage
 import _root_.ysyx_26030103.common.ysyx_26030103_IDUMessage
+import _root_.ysyx_26030103.common.ysyx_26030103_AtomicOp
 class ysyx_26030103_IDU(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends Module {
@@ -117,10 +118,32 @@ class ysyx_26030103_IDU(
   val IsFence =
     (opcode === OPCODE_MiscMem) && (funct3 === "b000".U(3.W))
   val IsFenceI = (opcode === OPCODE_MiscMem) && (funct3 === "b001".U(3.W))
+  // A 扩展：funct3=010 为 .W，RV64 另外允许 .D(funct3=011)。
+  // 其余 funct3 以及 RISCV_A=n 时整个 AMO 操作码都按非法指令处理。
+  val AmoFunct5 = Instruction(31, 27)
+  // 只放行标准定义的 11 个 funct5；其余保留编码必须落入非法指令。
+  val AmoFunct5Valid = Seq(
+    ysyx_26030103_AtomicOp.ADD, ysyx_26030103_AtomicOp.SWAP,
+    ysyx_26030103_AtomicOp.LR, ysyx_26030103_AtomicOp.SC,
+    ysyx_26030103_AtomicOp.XOR, ysyx_26030103_AtomicOp.OR,
+    ysyx_26030103_AtomicOp.AND, ysyx_26030103_AtomicOp.MIN,
+    ysyx_26030103_AtomicOp.MAX, ysyx_26030103_AtomicOp.MINU,
+    ysyx_26030103_AtomicOp.MAXU
+  ).map(AmoFunct5 === _).reduce(_ || _)
+  val IsAtomic =
+    if (config.UseA)
+      (opcode === OPCODE_Amo) && AmoFunct5Valid &&
+        ((funct3 === "b010".U(3.W)) ||
+          (if (XLEN == 64) funct3 === "b011".U(3.W) else false.B))
+    else false.B
+  // funct5 直接作为原子操作号（00010=LR，00011=SC，其余为 AMO）。
+  val AtomicOp = Mux(IsAtomic, AmoFunct5, 0.U(5.W))
+  val IsLr = IsAtomic && AtomicOp === ysyx_26030103_AtomicOp.LR
   val RegisterWrite =
-    IsRType || IsIType || IsUType || IsJType || IsCSRInstruction
-  val MemoryValid = IsLoad || IsSType
-  val MemoryWrite = IsSType
+    IsRType || IsIType || IsUType || IsJType || IsCSRInstruction || IsAtomic
+  val MemoryValid = IsLoad || IsSType || IsAtomic
+  // AMO 同时需要读/写权限，SC 只需要写权限；LR 只读。
+  val MemoryWrite = IsSType || (IsAtomic && !IsLr)
   /*
   又忘记了为什么这样做，就是想要减少代码量，主要是代码量多是负担，就是只看末尾的两位，我怀疑可能是RISCV故意这么设计的，也可以简化
   000 LB和SB 1byte
@@ -130,7 +153,8 @@ class ysyx_26030103_IDU(
   100 LBU 1byte（没有符号）
   101 LHU 2byte（没有符号）
    */
-  val WidthSelect = Mux(IsLoad || IsSType, funct3(1, 0), 2.U(2.W))
+  val WidthSelect = Mux(IsLoad || IsSType || IsAtomic, funct3(1, 0), 2.U(2.W))
+  // 原子结果在 LSU 内按 ISA 规则完成符号扩展，WBU 只负责写寄存器。
   val LoadSigned = Mux(IsLoad, (~funct3(2)).asBool, false.B)
   // 控制ysyx_26030103_WBU的，不知道该不该让ysyx_26030103_IDU来控制ysyx_26030103_WBU，本来想手搓一个控制模块的，结果模块多了，还分不清
   val WB_ALU = 0.U(2.W)
@@ -140,8 +164,8 @@ class ysyx_26030103_IDU(
   val WBSelect = Wire(UInt(2.W))
   when(IsCSRInstruction) {
     WBSelect := WB_CSR // ysyx_26030103_CSR指令写回ysyx_26030103_CSR读出值
-  }.elsewhen(IsLoad) {
-    WBSelect := WB_MEMORY // load就直接写回访存结果
+  }.elsewhen(IsLoad || IsAtomic) {
+    WBSelect := WB_MEMORY // load/AMO/LR/SC 都写回 LSU 提供的结果
   }.elsewhen(
     (opcode === OPCODE_Immediate_Bxxx) && (funct3 === "b000".U(3.W))
   ) { // 间接跳转并链接（JALR）
@@ -169,7 +193,7 @@ class ysyx_26030103_IDU(
   val IsKnownInstruction =
     IsRType || IsIType || IsSType || IsBType || IsUType || IsJType ||
       IsCSRInstruction || IsEcall || IsEbreak || IsSimHalt || IsMret ||
-      IsSret || IsSfenceVma || IsWfi || IsFenceI || IsFence
+      IsSret || IsSfenceVma || IsWfi || IsFenceI || IsFence || IsAtomic
   // CSR 访问合法性在译码时检查，而不是依赖 CSRUnit 的读取数据多路选择器。
   // 本核心目前只实现下面明确列出的机器态 CSR 集合，访问集合外的 CSR
   // 将被视为非法指令。
@@ -238,9 +262,11 @@ class ysyx_26030103_IDU(
     (ALUCDIllegal && !IsSimHalt) || !IsKnownInstruction || CSRIllegal ||
       TvmFault || TsrFault || TwFault ||
       MretFault || SretFault || SfenceFault
-  val needsRs2 = IsRType || IsBType || IsSType
+  // LR 的 rs2 字段必须为 0，但统一按 A 扩展读 rs1/rs2 不会引入错误转发，
+  // 反而让 SC/AMO 的源操作数冒险检测与普通指令完全一致。
+  val needsRs2 = IsRType || IsBType || IsSType || IsAtomic
   // 源操作数真正被使用的判断(lui/auipc/jal的rs1字段是立即数,不算使用)
-  val usesRs1 = IsRType || IsIType || IsSType || IsBType ||
+  val usesRs1 = IsRType || IsIType || IsSType || IsBType || IsAtomic ||
     (IsCSRInstruction && !IsCSRImmediate)
   // 转发命中(EXU > MEM等待槽 > MEM级 > WBU: 多条同时命中时选最年轻生产者)
   // 显式检查生产者 valid：虽然顶层契约把 valid 折进了 *_fwd_ready
@@ -368,6 +394,8 @@ class ysyx_26030103_IDU(
   io.out.bits.LoadSigned := LoadSigned
   // 写就直接上rs2第二个寄存器
   io.out.bits.StoreData := src2
+  io.out.bits.IsAtomic := IsAtomic
+  io.out.bits.AtomicOp := AtomicOp
   io.out.bits.IsCsrrw := IsCsrrw
   io.out.bits.IsCsrrs := IsCsrrs
   io.out.bits.IsCsrrc := IsCsrrc

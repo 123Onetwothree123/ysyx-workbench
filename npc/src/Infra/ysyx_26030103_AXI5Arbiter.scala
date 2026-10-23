@@ -27,6 +27,11 @@ class ysyx_26030103_AXI5Arbiter(
     // 绝不能静默降级成普通下游访问。
     val dmaARLock = Input(Bool())
     val dmaAWLock = Input(Bool())
+    // LSU 正在执行 LR/SC/AMO 的读改写事务。期间暂停新的 DMA 读写，
+    // 保证原子事务内部不会被外部写插入；busQuiet 让 LSU 在发起原子
+    // 事务前等待已在途的 DMA 排空。
+    val atomicBusy = Input(Bool())
+    val busQuiet = Output(Bool())
     val memory = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth)
     // 匹配的DMA写B响应首次出现，表示下游写已终止。顶层用这个单拍事件
     // 使写直达DCache失效；后续B反压不重复阻塞CPU load。错误响应也必须
@@ -174,7 +179,9 @@ class ysyx_26030103_AXI5Arbiter(
   val lsuReadRequest = io.lsu.AR.ARVALID && lsuIdFormValid &&
     !lsuReadBusy(lsuDownstreamID) && !ifuReadBusy(lsuDownstreamID) &&
     lsuDownstreamID =/= DMAReadID
-  val dmaReadRequest = io.dma.AR.ARVALID && !dmaReadOutstanding
+  // 原子事务期间不接受新的 DMA 读；已经在途的 DMA 读由 busQuiet 等待排空。
+  val dmaReadRequest =
+    io.dma.AR.ARVALID && !dmaReadOutstanding && !io.atomicBusy
   when(io.ifu.AR.ARVALID) {
     assert(ifuIdFormValid,
       "IFU read ID must be 0 or in the PTW 3..15 range")
@@ -474,7 +481,9 @@ class ysyx_26030103_AXI5Arbiter(
       awDone := false.B
       wDone := false.B
       val LSURequest = io.lsu.AW.AWVALID || io.lsu.W.WVALID
-      val DMARequest = !dmaWriteOutstanding &&
+      // 原子读改写期间不接受新的 DMA 写，避免在 AMO 的读与写之间插入
+      // 外部 store；已在途的 DMA 写由 busQuiet 在原子事务开始前排空。
+      val DMARequest = !io.atomicBusy && !dmaWriteOutstanding &&
         (io.dma.AW.AWVALID || io.dma.W.WVALID)
       val ChooseDMA = DMARequest && (!LSURequest || lastWriteGrant === GrantLSU)
       when(LSURequest || DMARequest) {
@@ -577,4 +586,8 @@ class ysyx_26030103_AXI5Arbiter(
       }
     }
   }
+  // 只有写通道空闲且没有 DMA 读写事务在途时才允许 LSU 开始原子事务。
+  // 该信号与 atomicBusy 配合：先等 quiet，再拉 busy 锁住新的 DMA 请求。
+  io.busQuiet := writeState === WriteIdle && !dmaWriteOutstanding &&
+    !dmaReadOutstanding
 }

@@ -20,6 +20,8 @@ class ysyx_26030103_LSU64Test extends AnyFlatSpec with Matchers {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage(64)))
     dut.io.out.ready.poke(true.B)
     dut.io.DCacheFlush.poke(false.B)
+    dut.io.BusQuiet.poke(true.B)
+    dut.io.ReservationClear.poke(false.B)
     dut.io.ViptPAddr.poke(0.U(32.W))
     dut.io.ViptPAddrValid.poke(false.B)
     dut.io.ViptPAddrVaddr.poke(0.U(32.W))

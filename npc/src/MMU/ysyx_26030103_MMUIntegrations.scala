@@ -3,6 +3,7 @@ package ysyx_26030103.mmu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_EXUMessage
+import _root_.ysyx_26030103.common.ysyx_26030103_AtomicOp
 
 /** IFU/LSU 双端口 MMU 仲裁器。
   *
@@ -242,6 +243,8 @@ class ysyx_26030103_LSUMMU(
     val faultPC = Output(UInt(XLEN.W))
     val busy = Output(Bool())
     val pmpAddr = Output(UInt(AddressWidth.W))
+    // AMO 同时需要读/写权限；LR 只读，SC/普通 store 只写。
+    val pmpRead = Output(Bool())
     val pmpWrite = Output(Bool())
     val pmpFault = Input(Bool())
     // VIPT 并行模式下，已先行交给 LSU 的 load 所使用的翻译结果。
@@ -292,6 +295,10 @@ class ysyx_26030103_LSUMMU(
   io.busy := state =/= idle
   io.pmpAddr := Mux(state === xwait, io.resp.bits.paddr, paddrReg)
   io.pmpWrite := msgReg.MemoryWrite
+  // 普通 load 与 LR 读；AMO 读+写；SC 只写。
+  io.pmpRead := !msgReg.MemoryWrite ||
+    (msgReg.IsAtomic &&
+      msgReg.AtomicOp =/= ysyx_26030103_AtomicOp.SC)
   io.memPaddr := paddrReg
   if (ParallelVipt) {
     io.memPaddrValid := paddrValidReg

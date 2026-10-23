@@ -38,6 +38,10 @@ class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
   val WidthSelect = UInt(2.W)
   val LoadSigned = Bool()
   val StoreData = UInt(XLEN.W)
+  // A 扩展原子访存标记。IsAtomic=1 时 LSU 走独立的 uncached 串行事务，
+  // 不进入写缓冲/DCache；AtomicOp 使用 funct5 原值（见 AtomicOp 对象）。
+  val IsAtomic = Bool()
+  val AtomicOp = UInt(ysyx_26030103_AtomicOp.Width.W)
 
   // 异常信息(MEM故障提交时写mepc用)
   val pc = UInt(XLEN.W)

@@ -80,6 +80,9 @@ class ysyx_26030103_EXU(
     val PerfExecutionActive = Output(Bool())
 
     val FenceIFlush = Output(Bool())
+    // 任一条 CSR 指令真正提交（含 sfence.vma）。顶层用它保守地让
+    // LR  reservation 失效，覆盖上下文切换/页表切换等场景。
+    val CSRCommit = Output(Bool())
 
     // 统一冲刷输出: 分支/跳转/fence.i重定向或异常(ecall/mret/中断/各类异常)提交时,
     // 冲刷IFU内部状态和IFU→IDU流水寄存器里的年轻指令
@@ -115,7 +118,7 @@ class ysyx_26030103_EXU(
     val RASPopValid = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU(XLEN))
-  val CSRUnit = Module(new ysyx_26030103_CSR(config.MMU, XLEN))
+  val CSRUnit = Module(new ysyx_26030103_CSR(config.MMU, XLEN, config.UseA))
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
   CSRUnit.io.Interrupt := io.Interrupt
@@ -534,6 +537,9 @@ class ysyx_26030103_EXU(
   io.out.bits.WidthSelect := ActiveInst.WidthSelect
   io.out.bits.LoadSigned := ActiveInst.LoadSigned
   io.out.bits.StoreData := ActiveInst.StoreData
+  // A 扩展：把译码得到的原子标记/操作号透传到 LSU。
+  io.out.bits.IsAtomic := ActiveInst.IsAtomic
+  io.out.bits.AtomicOp := ActiveInst.AtomicOp
   io.out.bits.ExceptionValid := ActiveInstructionTrapValid
   io.out.bits.ExceptionCause := ActiveExceptionCause
 
@@ -601,6 +607,10 @@ class ysyx_26030103_EXU(
   // 这些是“当前EXU指令”的副作用。中断接受或更老访存故障提交时，
   // 当前指令会被重做/丢弃，不能训练预测器，也不能产生重定向或FenceI刷新。
   io.FenceIFlush := InstructionCommit && inst.IsFenceI
+  // CSR 指令提交视为上下文/地址空间可能切换，保守地清除 LR reservation。
+  io.CSRCommit := InstructionCommit &&
+    (inst.IsCsrrw || inst.IsCsrrs || inst.IsCsrrc ||
+      (if (hasS) inst.IsSfenceVma else false.B))
   io.FlushIF := io.Redirect || io.ExceptionTaken
 
   io.HazardValid := io.in.valid || PendingMDU

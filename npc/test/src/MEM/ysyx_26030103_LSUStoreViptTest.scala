@@ -88,6 +88,8 @@ class ysyx_26030103_LSUStoreViptTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
     dut.io.out.ready.poke(false.B)
     dut.io.DCacheFlush.poke(false.B)
+    dut.io.BusQuiet.poke(true.B)
+    dut.io.ReservationClear.poke(false.B)
     dut.io.ViptPAddr.poke(0.U(AddrW.W))
     dut.io.ViptPAddrValid.poke(false.B)
     dut.io.ViptPAddrVaddr.poke(0.U(AddrW.W))
