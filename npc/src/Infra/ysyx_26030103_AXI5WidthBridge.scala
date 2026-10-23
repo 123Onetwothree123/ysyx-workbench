@@ -21,10 +21,15 @@ import chisel3.util._
   *     ysyxSoC 的 AXI4Downsizer 串行化策略一致，不要求下游支持
   *     多笔同 ID 在途事务。
   *
-  * 64->32 时把每个上游 beat 拆成若干单拍 4 字节事务，再把多个 B
-  * 聚合成一个上游 B；读方向则逐块收集并拼回上游宽 beat。32->64
-  * 时一个上游 beat 直接对应一个下游 beat，只把数据搬到正确的字节
-  * 半区，保持 AWSIZE/ARLEN 不变，由下游宽总线继续处理。
+  * 64->32 时把每个上游 beat 拆成若干单拍 4 字节事务，逐笔收完所有
+  * 下游 B 后再聚合成一个上游 B；读方向则逐块收齐并拼回上游宽 beat。
+  * 32->64 时一个上游 beat 直接对应一个下游 beat，只把数据搬到正确
+  * 的字节半区，保持 AWSIZE/ARLEN 不变，由下游宽总线继续处理。
+  *
+  * 响应完成语义：只要某笔事务真的向下游发过 AW/AR，上游 B/R 就必须
+  * 来自下游实际返回的响应（64->32 聚合或 32->64 透传）。只有完全没有
+  * 下发下游事务的本地拒绝（地址越界 DECERR）才允许本地生成响应。
+  * `AddressNarrows` 只改变地址位宽，不是本地响应的理由。
   */
 class ysyx_26030103_AXI5WidthBridge(
     UpstreamAddressWidth: Int = 64,
@@ -85,30 +90,57 @@ class ysyx_26030103_AXI5WidthBridge(
     }
   }
 
-  /** 检查整笔 burst 的最后一个字节是否越过下游地址空间。
+  /** 检查整笔 burst 访问的最后一个字节是否越过下游地址空间。
     *
     * 只看起始地址的高位不够：`0xfffffffc + 4B` 这类跨 4GiB 边界的
-    * burst 起始高位全 0，但最后一拍会回绕。这里用扩展位计算末字节，
-    * 一旦越界就让整笔事务在本地 DECERR。
+    * burst 起始高位全 0，但最后一拍会回绕。这里按 AXI 地址规则分别
+    * 计算 INCR/WRAP/FIXED 的末字节：
+    *   - INCR：首拍可以非对齐，后续拍从 size 对齐边界开始；
+    *   - WRAP：整笔落在 wrap 容器内；
+    *   - FIXED：每拍地址不变，只占一个 size 窗口。
+    *
+    * `Len + 1` 显式扩到 9 位，避免 AWLEN=255（256 拍）在 8 位加法里
+    * 回绕成 0 后把末字节算错。越界事务不会走到下游，因此
+    * `DownAddress` 的高位切片不构成静默地址丢失。
     */
   private def OutOfRange(
       Address: UInt,
       Len: UInt,
-      Size: UInt
+      Size: UInt,
+      Burst: UInt
   ): Bool = {
     if (!AddressNarrows) {
       false.B
     } else {
       val Width = UpstreamAddressWidth + 1
       val Start = Cat(0.U(1.W), Address)
-      val Bytes = (Len + 1.U) << Size
-      val LastByte = Start + (Bytes - 1.U).pad(Width)
-      Start(UpstreamAddressWidth) ||
+      val SizeBytes = (1.U << Size).pad(Width)
+      val TotalBytes = ((Len.pad(9) + 1.U) << Size).pad(Width)
+      val SizeMask = SizeBytes - 1.U
+      val WrapMask = TotalBytes - 1.U
+      val AlignedStart = (Start & (~SizeMask).asUInt)(Width - 1, 0)
+      val WrapBase = (Start & (~WrapMask).asUInt)(Width - 1, 0)
+      val LastByte = Mux(
+        Burst === 0.U,
+        (AlignedStart + SizeMask)(Width - 1, 0),
+        Mux(
+          Burst === 2.U,
+          (WrapBase + WrapMask)(Width - 1, 0),
+          (AlignedStart + TotalBytes - 1.U)(Width - 1, 0)
+        )
+      )
+      Start(UpstreamAddressWidth, DownstreamAddressWidth).orR ||
       LastByte(UpstreamAddressWidth, DownstreamAddressWidth).orR
     }
   }
 
-  /** 计算 burst 中第 Beat 拍的起始地址。 */
+  /** 计算 burst 中第 Beat 拍的起始地址。
+    *
+    * AXI 对非对齐 INCR 首拍的规定是：首拍从原始地址开始，只传输到该
+    * size 自然窗口的末尾；后续拍从 `align_down(Base, size)` 开始按
+    * size 递增。每拍都保留首拍偏移会把非对齐 burst 的后续拍搬到错误
+    * 地址。
+    */
   private def BeatAddress(
       Base: UInt,
       Beat: UInt,
@@ -118,14 +150,18 @@ class ysyx_26030103_AXI5WidthBridge(
   ): UInt = {
     val Width = math.max(UpstreamAddressWidth, DownstreamAddressWidth) + 1
     val BaseExt = Base.pad(Width)
-    val Inc = (BaseExt + (Beat.pad(Width) << Size))(Width - 1, 0)
-    val WrapMask = ((((Len + 1.U) << Size) - 1.U)).pad(Width)
+    val SizeMask = ((1.U << Size) - 1.U).pad(Width)
+    val AlignedBase = (BaseExt & (~SizeMask).asUInt)(Width - 1, 0)
+    val Step = (Beat.pad(Width) << Size)(Width - 1, 0)
+    val Inc = (AlignedBase + Step)(Width - 1, 0)
+    val IncAddress = Mux(Beat === 0.U, BaseExt, Inc)
+    val WrapMask = ((((Len.pad(9) + 1.U) << Size) - 1.U)).pad(Width)
     val Wrapped =
       ((BaseExt & (~WrapMask).asUInt) | (Inc & WrapMask))(Width - 1, 0)
     Mux(
       Burst === 2.U,
       Wrapped,
-      Mux(Burst === 1.U, Inc, BaseExt)
+      Mux(Burst === 1.U, IncAddress, BaseExt)
     )
   }
 
@@ -139,15 +175,26 @@ class ysyx_26030103_AXI5WidthBridge(
     Base + (Chunk << DownLaneBits)
   }
 
-  /** 一个上游 beat 需要拆成多少个下游 beat。
+  /** 一个上游 beat 需要拆成多少个下游 beat（下游更窄时）。
     *
     * 正常对齐访问只需要 1 个；宽 beat（8 字节）或跨 4 字节边界的
-    * 非对齐 beat 需要 2 个。
+    * 非对齐 beat 需要 2 个。INCR 首拍和 FIXED 的每一拍只传输到该
+    * size 自然窗口的末尾，所以有效字节数要从 `地址 % size` 算起，
+    * 不能无条件使用 `1 << Size`，否则会多发全零 WSTRB 的空写。
     */
-  private def BeatChunkCount(BeatAddr: UInt, Size: UInt): UInt = {
+  private def BeatChunkCount(
+      BeatAddr: UInt,
+      Size: UInt,
+      Partial: Bool
+  ): UInt = {
     val Lane = BeatAddr(UpLaneBits - 1, 0)
-    val BeatBytes = 1.U(8.W) << Size
-    ((((Lane + BeatBytes - 1.U) >> DownLaneBits) + 1.U))(1, 0)
+    val SizeBytes = (1.U << Size).pad(UpLaneBits + 1)
+    val Offset = Lane.pad(UpLaneBits + 1) & (SizeBytes - 1.U)
+    val Span = Mux(Partial, SizeBytes - Offset, SizeBytes)
+    val FirstChunk = Lane >> DownLaneBits
+    val LastChunk =
+      ((Lane.pad(UpLaneBits + 1) + Span - 1.U) >> DownLaneBits)
+    (LastChunk - FirstChunk + 1.U)(1, 0)
   }
 
   /** 从宽上游数据中取出下游宽度的字节块。
@@ -168,10 +215,16 @@ class ysyx_26030103_AXI5WidthBridge(
     Shifted(DownBytes - 1, 0)
   }
 
-  /** 32->64 时上游 beat 落在下游 64 位总线的哪个字节半区。 */
+  /** 32->64 时上游 32 位字落在下游 64 位总线的哪个字节半区。
+    *
+    * 总线上的字节 lane 由 `地址 % 总线字节数` 决定，因此整个上游字要
+    * 搬到下游字内与地址 bit[2] 对应的半区。若直接按 `地址 % 8` 移位，
+    * 地址 `0x...2` 的窄访问会从 lane 2 漂到 lane 4，写到错误地址。
+    */
   private def UpsizeLane(BeatAddr: UInt): UInt =
-    if (Upsize) { BeatAddr(DownLaneBits - 1, 0) }
-    else { 0.U }
+    if (Upsize) {
+      Cat(BeatAddr(DownLaneBits - 1, UpLaneBits), 0.U(UpLaneBits.W))
+    } else { 0.U }
 
   private def UpDataToDown(Data: UInt, Lane: UInt): UInt = {
     val Shift = Lane << 3
@@ -258,16 +311,35 @@ class ysyx_26030103_AXI5WidthBridge(
   val wChunkAwSent = RegInit(false.B)
   val wChunkWSent = RegInit(false.B)
 
+  // 响应完成语义的观测寄存器：下游 AW 已发出、B 未返回的数量。
+  // 桥串行处理事务，正常情况下该计数最多为 1。
+  val wDnAwFire = io.out.AW.AWVALID && io.out.AW.AWREADY
+  val wDnBFire = io.out.B.BVALID && io.out.B.BREADY
+  val wDnOutstanding = RegInit(0.U(2.W))
+  val wUpWLastSeen = RegInit(false.B)
+  val wUpBSeen = RegInit(false.B)
+  val wTxnIssuedAw = RegInit(false.B)
+  val wDnWLastSeen = RegInit(false.B)
+
   val incomingWError = OutOfRange(
     io.in.AW.AWADDR,
     io.in.AW.AWLEN,
-    io.in.AW.AWSIZE
+    io.in.AW.AWSIZE,
+    io.in.AW.AWBURST
   )
 
   switch(wState) {
     is(wIdle) {
       io.in.AW.AWREADY := true.B
       when(io.in.AW.AWVALID) {
+        assert(
+          io.in.AW.AWSIZE <= UpLaneBits.U,
+          "AXI5WidthBridge: AWSIZE exceeds upstream data bus width"
+        )
+        assert(
+          io.in.AW.AWBURST =/= 3.U,
+          "AXI5WidthBridge: reserved AWBURST encoding"
+        )
         wId := io.in.AW.AWID
         wAddr := io.in.AW.AWADDR
         wLen := io.in.AW.AWLEN
@@ -321,9 +393,17 @@ class ysyx_26030103_AXI5WidthBridge(
 
       val BeatAddr = BeatAddress(wAddr, wBeat, wSize, wBurst, wLen)
       val Lane = UpsizeLane(BeatAddr)
+      val SizeBytes = 1.U << wSize
+      val Partial = wBeat === 0.U || wBurst === 0.U
+      val BeatBytes =
+        Mux(
+          Partial,
+          SizeBytes - (BeatAddr & (SizeBytes - 1.U)),
+          SizeBytes
+        )
       when(io.in.W.WVALID || wBeatValid) {
         assert(
-          Lane + (1.U << wSize) <= DownBytes.U,
+          Lane + BeatBytes <= DownBytes.U,
           "AXI5WidthBridge: upstream beat does not fit a downstream wide beat"
         )
       }
@@ -376,7 +456,6 @@ class ysyx_26030103_AXI5WidthBridge(
       val ByteBase = BeatByteBase(BeatAddr)
       val ChunkAddr = ChunkAddress(BeatAddr, wChunk)
       val ByteOffset = (ChunkAddr - ByteBase)(UpLaneBits - 1, 0)
-      val LastChunk = BeatChunkCount(BeatAddr, wSize) - 1.U
 
       io.out.AW.AWVALID := !wChunkAwSent
       io.out.AW.AWID := wId
@@ -391,7 +470,9 @@ class ysyx_26030103_AXI5WidthBridge(
       io.out.W.WVALID := !wChunkWSent
       io.out.W.WDATA := ExtractData(wBeatData, ByteOffset)
       io.out.W.WSTRB := ExtractStrb(wBeatStrb, ByteOffset)
-      io.out.W.WLAST := wBeatLast && (wChunk === LastChunk)
+      // 每个 chunk 都是独立的 AWLEN=0 单拍事务，WLAST 必须逐笔拉高；
+      // 上游 burst 的最后一拍只用于决定何时聚合出上游 B。
+      io.out.W.WLAST := true.B
 
       val AwFire = io.out.AW.AWVALID && io.out.AW.AWREADY
       val WFire = io.out.W.WVALID && io.out.W.WREADY
@@ -406,7 +487,8 @@ class ysyx_26030103_AXI5WidthBridge(
 
     is(wDnWaitB) {
       val BeatAddr = BeatAddress(wAddr, wBeat, wSize, wBurst, wLen)
-      val LastChunk = BeatChunkCount(BeatAddr, wSize) - 1.U
+      val Partial = wBeat === 0.U || wBurst === 0.U
+      val LastChunk = BeatChunkCount(BeatAddr, wSize, Partial) - 1.U
       io.out.B.BREADY := true.B
       when(io.out.B.BVALID) {
         assert(
@@ -434,7 +516,8 @@ class ysyx_26030103_AXI5WidthBridge(
 
     is(wResp) {
       if (Downsize) {
-        // 64->32：wDnWaitB 已经收齐所有下游响应，本地生成一个上游 B。
+        // 64->32：wDnWaitB 已经逐块收齐所有下游 B，本地聚合成一个
+        // 上游 B。越界事务没有下发 AW/W，也在这里返回 DECERR。
         io.in.B.BVALID := true.B
         io.in.B.BID := wId
         io.in.B.BRESP := Mux(wError, DECERR, wRespCode)
@@ -468,22 +551,116 @@ class ysyx_26030103_AXI5WidthBridge(
           }
         }
       } else {
-        // 32->64 且地址未越界：下游 B 直接透传，保持 ID/响应语义。
-        io.in.B.BVALID := io.out.B.BVALID
-        io.in.B.BID := io.out.B.BID
-        io.in.B.BRESP := io.out.B.BRESP
-        io.out.B.BREADY := io.in.B.BREADY
-        when(io.out.B.BVALID) {
-          assert(
-            io.out.B.BID === wId,
-            "AXI5WidthBridge: downstream write response ID mismatch"
-          )
-        }
-        when(io.out.B.BVALID && io.in.B.BREADY) {
-          wState := wIdle
+        when(wError) {
+          // 地址越界但数据同宽/变宽：没有下发任何下游 AW/W，本地
+          // 返回 DECERR，不能等待一个不存在的下游 B。
+          io.in.B.BVALID := true.B
+          io.in.B.BID := wId
+          io.in.B.BRESP := DECERR
+          when(io.in.B.BREADY) {
+            wState := wIdle
+          }
+        }.otherwise {
+          // 数据同宽（包括 AddressNarrows）或 32->64：下游 AW/W 已经
+          // 下发，必须等下游 B 返回后再透传给上游。地址窄化本身不
+          // 产生本地响应。
+          io.in.B.BVALID := io.out.B.BVALID
+          io.in.B.BID := io.out.B.BID
+          io.in.B.BRESP := io.out.B.BRESP
+          io.out.B.BREADY := io.in.B.BREADY
+          when(io.out.B.BVALID) {
+            assert(
+              io.out.B.BID === wId,
+              "AXI5WidthBridge: downstream write response ID mismatch"
+            )
+          }
+          when(io.out.B.BVALID && io.in.B.BREADY) {
+            wState := wIdle
+          }
         }
       }
     }
+  }
+
+  // ------------------------------------------------------------------
+  // 写通道协议断言
+  // ------------------------------------------------------------------
+  when(wState === wIdle && io.in.AW.AWVALID && io.in.AW.AWREADY) {
+    wUpWLastSeen := false.B
+    wUpBSeen := false.B
+    wTxnIssuedAw := false.B
+    wDnWLastSeen := false.B
+  }
+  when(wDnAwFire) { wTxnIssuedAw := true.B }
+  when(io.in.W.WVALID && io.in.W.WREADY && io.in.W.WLAST) {
+    wUpWLastSeen := true.B
+  }
+  when(io.out.W.WVALID && io.out.W.WREADY && io.out.W.WLAST) {
+    wDnWLastSeen := true.B
+  }
+  when(io.in.B.BVALID && io.in.B.BREADY) {
+    wUpBSeen := true.B
+  }
+  when(wDnAwFire =/= wDnBFire) {
+    wDnOutstanding := Mux(
+      wDnAwFire,
+      wDnOutstanding + 1.U,
+      wDnOutstanding - 1.U
+    )
+  }
+
+  when(wDnOutstanding > 1.U) {
+    assert(
+      false.B,
+      "AXI5WidthBridge: more than one downstream write outstanding"
+    )
+  }
+  when(wState === wIdle) {
+    assert(
+      wDnOutstanding === 0.U,
+      "AXI5WidthBridge: idle with downstream write outstanding"
+    )
+  }
+  when(io.out.B.BVALID) {
+    assert(
+      io.out.B.BID === wId,
+      "AXI5WidthBridge: downstream write response ID mismatch"
+    )
+    assert(
+      wDnWLastSeen || (io.out.W.WVALID && io.out.W.WREADY && io.out.W.WLAST),
+      "AXI5WidthBridge: downstream B before downstream WLAST"
+    )
+  }
+  when(io.in.B.BVALID) {
+    assert(
+      wUpWLastSeen,
+      "AXI5WidthBridge: upstream B before last upstream W beat"
+    )
+    assert(!wUpBSeen, "AXI5WidthBridge: duplicate upstream B")
+    assert(
+      io.in.B.BID === wId,
+      "AXI5WidthBridge: upstream write response ID mismatch"
+    )
+    assert(
+      wDnOutstanding === 0.U || io.out.B.BVALID,
+      "AXI5WidthBridge: upstream B while downstream write is outstanding"
+    )
+    when(wError) {
+      assert(
+        !wTxnIssuedAw,
+        "AXI5WidthBridge: local DECERR B after issuing downstream AW"
+      )
+    }
+  }
+  when(io.in.W.WVALID && io.in.W.WREADY && !wError) {
+    assert(
+      wBeat <= wLen,
+      "AXI5WidthBridge: upstream W beat exceeds AWLEN"
+    )
+    assert(
+      io.in.W.WLAST === (wBeat === wLen),
+      "AXI5WidthBridge: upstream WLAST does not match AWLEN"
+    )
   }
 
   // ==================================================================
@@ -507,17 +684,32 @@ class ysyx_26030103_AXI5WidthBridge(
   val rData = RegInit(0.U(UpstreamDataWidth.W))
   val rArSent = RegInit(false.B)
 
+  // 读方向的完成语义观测：下游 AR 已发出、RLAST 未返回的数量。
+  val rDnArFire = io.out.AR.ARVALID && io.out.AR.ARREADY
+  val rDnRLastFire = io.out.R.RVALID && io.out.R.RREADY && io.out.R.RLAST
+  val rDnOutstanding = RegInit(0.U(2.W))
+  val rUpRLastSeen = RegInit(false.B)
+  val rTxnIssuedAr = RegInit(false.B)
+
   val incomingRError = OutOfRange(
     io.in.AR.ARADDR,
     io.in.AR.ARLEN,
-    io.in.AR.ARSIZE
+    io.in.AR.ARSIZE,
+    io.in.AR.ARBURST
   )
-
 
   switch(rState) {
     is(rIdle) {
       io.in.AR.ARREADY := true.B
       when(io.in.AR.ARVALID) {
+        assert(
+          io.in.AR.ARSIZE <= UpLaneBits.U,
+          "AXI5WidthBridge: ARSIZE exceeds upstream data bus width"
+        )
+        assert(
+          io.in.AR.ARBURST =/= 3.U,
+          "AXI5WidthBridge: reserved ARBURST encoding"
+        )
         rId := io.in.AR.ARID
         rAddr := io.in.AR.ARADDR
         rLen := io.in.AR.ARLEN
@@ -573,10 +765,18 @@ class ysyx_26030103_AXI5WidthBridge(
           io.out.R.RLAST === (rBeat === rLen),
           "AXI5WidthBridge: downstream RLAST does not match ARLEN"
         )
-        // 32 位上游数据放进 64 位总线的一半；若 beat 本身跨半区，
-        // 说明该窄传输无法由单个下游 beat 表示，必须在这里暴露。
+        // 32 位上游数据放进 64 位总线的一半；非对齐首拍只占该 size
+        // 自然窗口的剩余部分，后续拍必须是完整且对齐的 size 窗口。
+        val SizeBytes = 1.U << rSize
+        val Partial = rBeat === 0.U || rBurst === 0.U
+        val BeatBytes =
+          Mux(
+            Partial,
+            SizeBytes - (BeatAddr & (SizeBytes - 1.U)),
+            SizeBytes
+          )
         assert(
-          Lane + (1.U << rSize) <= DownBytes.U,
+          Lane + BeatBytes <= DownBytes.U,
           "AXI5WidthBridge: upstream read beat does not fit a downstream wide beat"
         )
       }
@@ -628,12 +828,17 @@ class ysyx_26030103_AXI5WidthBridge(
       val ByteBase = BeatByteBase(BeatAddr)
       val ChunkAddr = ChunkAddress(BeatAddr, rChunk)
       val ByteOffset = (ChunkAddr - ByteBase)(UpLaneBits - 1, 0)
-      val LastChunk = BeatChunkCount(BeatAddr, rSize) - 1.U
+      val Partial = rBeat === 0.U || rBurst === 0.U
+      val LastChunk = BeatChunkCount(BeatAddr, rSize, Partial) - 1.U
       io.out.R.RREADY := true.B
       when(io.out.R.RVALID) {
         assert(
           io.out.R.RID === rId,
           "AXI5WidthBridge: downstream read response ID mismatch"
+        )
+        assert(
+          io.out.R.RLAST,
+          "AXI5WidthBridge: single-beat downstream read missing RLAST"
         )
         val Shift = ByteOffset << 3
         rData := rData |
@@ -670,6 +875,80 @@ class ysyx_26030103_AXI5WidthBridge(
           rState := rDnSend
         }
       }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // 读通道协议断言
+  // ------------------------------------------------------------------
+  when(rState === rIdle && io.in.AR.ARVALID && io.in.AR.ARREADY) {
+    rUpRLastSeen := false.B
+    rTxnIssuedAr := false.B
+  }
+  when(rDnArFire) { rTxnIssuedAr := true.B }
+  when(io.in.R.RVALID && io.in.R.RREADY && io.in.R.RLAST) {
+    rUpRLastSeen := true.B
+  }
+  when(rDnArFire =/= rDnRLastFire) {
+    rDnOutstanding := Mux(
+      rDnArFire,
+      rDnOutstanding + 1.U,
+      rDnOutstanding - 1.U
+    )
+  }
+
+  when(rDnOutstanding > 1.U) {
+    assert(
+      false.B,
+      "AXI5WidthBridge: more than one downstream read outstanding"
+    )
+  }
+  when(rState === rIdle) {
+    assert(
+      rDnOutstanding === 0.U,
+      "AXI5WidthBridge: idle with downstream read outstanding"
+    )
+  }
+  when(io.out.AR.ARVALID) {
+    assert(
+      io.out.AR.ARID === rId,
+      "AXI5WidthBridge: downstream read request ID mismatch"
+    )
+  }
+  when(io.out.R.RVALID) {
+    assert(
+      rDnOutstanding =/= 0.U || rDnArFire,
+      "AXI5WidthBridge: downstream R without outstanding AR"
+    )
+    assert(
+      io.out.R.RID === rId,
+      "AXI5WidthBridge: downstream read response ID mismatch"
+    )
+  }
+  when(io.in.R.RVALID) {
+    assert(rState =/= rIdle, "AXI5WidthBridge: upstream R while idle")
+    assert(
+      io.in.R.RID === rId,
+      "AXI5WidthBridge: upstream read response ID mismatch"
+    )
+    assert(!rUpRLastSeen, "AXI5WidthBridge: duplicate upstream RLAST")
+    assert(
+      io.in.R.RLAST === (rBeat === rLen),
+      "AXI5WidthBridge: upstream RLAST does not match ARLEN"
+    )
+    when(io.in.R.RLAST) {
+      assert(
+        rDnOutstanding === 0.U ||
+          (io.out.R.RVALID && io.out.R.RLAST) ||
+          rState === rErrData,
+        "AXI5WidthBridge: upstream final R while downstream read is outstanding"
+      )
+    }
+    when(rState === rErrData) {
+      assert(
+        !rTxnIssuedAr,
+        "AXI5WidthBridge: local DECERR R after issuing downstream AR"
+      )
     }
   }
 }

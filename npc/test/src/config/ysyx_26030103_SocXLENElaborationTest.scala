@@ -120,6 +120,17 @@ class ysyx_26030103_SocXLENElaborationTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  it should "RV64 CPU + SoC32 顶层 smoke：64 位 CPU 地址经桥接到 32 位 SoC 边界" in {
+    val cpu64soc32 = config(64, 32)
+    cpu64soc32.AddressWidth should be(64)
+    cpu64soc32.EffectiveSocXLEN should be(32)
+
+    val chirrtl = ChiselStage.emitCHIRRTL(new ysyx_26030103(cpu64soc32))
+    // 顶层 SoC 边界仍是 32 位地址/数据，桥负责 64->32 地址检查。
+    checkPorts(chirrtl, 32)
+    chirrtl should include("socMasterBridge")
+  }
+
   "NPC top" should "在 CPU32/64 x SoC32/64 四种组合下 elaboration 一致的端口宽度" in {
     val Cases = Seq(
       (32, 32),
