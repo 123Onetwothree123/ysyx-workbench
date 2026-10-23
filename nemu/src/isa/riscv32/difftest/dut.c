@@ -56,6 +56,36 @@ bool isa_difftest_checkregs(const void *ref_state, vaddr_t pc)
   return true;
 }
 
+bool isa_difftest_checkfpregs(const void *ref_state, vaddr_t pc)
+{
+#ifdef CONFIG_RISCV_F
+  const riscv_difftest_fp_state_t *ref_fp =
+      (const riscv_difftest_fp_state_t *)ref_state;
+  for (int i = 0; i < 32; i++)
+  {
+    if (ref_fp->freg[i] != cpu.f[i])
+    {
+      Log("浮点比对失败，pc = " FMT_WORD "，f%d 参考 = 0x%016" PRIx64
+          "，实际 = 0x%016" PRIx64,
+          pc, i, ref_fp->freg[i], cpu.f[i]);
+      return false;
+    }
+  }
+  if ((ref_fp->fcsr & 0xffu) != (uint64_t)(cpu.fcsr & 0xffu))
+  {
+    Log("浮点比对失败，pc = " FMT_WORD "，fcsr 参考 = 0x%02" PRIx64
+        "，实际 = 0x%02" PRIx64,
+        pc, ref_fp->fcsr & 0xffu, (uint64_t)(cpu.fcsr & 0xffu));
+    return false;
+  }
+  return true;
+#else
+  (void)ref_state;
+  (void)pc;
+  return true;
+#endif
+}
+
 void isa_difftest_attach()
 {
 }

@@ -54,6 +54,11 @@ static void restart()
   /* Set the initial program counter. */
   cpu.pc = CONFIG_MBASE;
   cpu.gpr[0] = 0;
+#ifdef CONFIG_RISCV_F
+  /* 浮点寄存器与 fcsr 复位为 0；mstatus.FS=Off，软件需先使能 FS。 */
+  memset(cpu.f, 0, sizeof(cpu.f));
+  cpu.fcsr = 0;
+#endif
   /* Match the RTL reset state.  DiffTest must not begin with an invisible
    * mstatus mismatch and wait until a later CSR read to discover it. */
   cpu.mstatus = MUXDEF(CONFIG_RV64, 0xa00001800ull, 0x1800u);

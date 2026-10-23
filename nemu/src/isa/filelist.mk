@@ -20,3 +20,13 @@ RISCV_ISA_DIR := $(if $(filter riscv32 riscv64,$(GUEST_ISA)),riscv32,$(GUEST_ISA
 
 INC_PATH += $(NEMU_HOME)/src/isa/$(RISCV_ISA_DIR)/include
 DIRS-y += src/isa/$(RISCV_ISA_DIR)
+
+# F/D 扩展使用仓库内的 Berkeley SoftFloat（RISC-V 特殊化）。
+# 源码放在 tools/ 下以保持第三方代码与 NEMU 自身代码分离；NEMU 的
+# filelist 只从 src/ 收集 DIRS，因此这里显式加入源文件和头文件路径。
+ifeq ($(CONFIG_RISCV_F),y)
+SOFTFLOAT_HOME := $(NEMU_HOME)/tools/softfloat
+INC_PATH += $(SOFTFLOAT_HOME)/include $(SOFTFLOAT_HOME)/source/RISCV $(SOFTFLOAT_HOME)
+SRCS-y += $(patsubst $(NEMU_HOME)/%,%,$(wildcard $(SOFTFLOAT_HOME)/source/*.c))
+SRCS-y += $(patsubst $(NEMU_HOME)/%,%,$(wildcard $(SOFTFLOAT_HOME)/source/RISCV/*.c))
+endif

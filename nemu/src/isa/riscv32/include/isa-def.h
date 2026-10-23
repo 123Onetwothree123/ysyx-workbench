@@ -23,6 +23,17 @@ typedef struct
   word_t gpr[MUXDEF(CONFIG_RVE, 16, 32)];
   vaddr_t pc;
 
+#ifdef CONFIG_RISCV_F
+  /*
+   * 浮点寄存器固定按 FLEN=64 保存。RV32F-only 时架构上只观察低 32 位，
+   * 但统一使用 64 位槽位可以让 RV32D/RV64FD 共用同一套 NaN boxing
+   * 代码，也便于 DiffTest 使用固定宽度的 freg ABI。
+   */
+  uint64_t f[32];
+  /* fcsr[4:0] = fflags，fcsr[7:5] = frm，其余位为 0。 */
+  word_t fcsr;
+#endif
+
   /*
   riscv32
 riscv32提供ecall指令作为自陷指令, 并提供一个mtvec寄存器来存放异常入口地址. 为了保存程序当前的状态, riscv32提供了一些特殊的系统寄存器, 叫控制状态寄存器(CSR寄存器). 在PA中, 我们只使用如下3个CSR寄存器:
@@ -93,6 +104,26 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
 #define MSTATUS_TW        (1u << 21)
 #define MSTATUS_TSR       (1u << 22)
 /*
+ * mstatus.FS 记录浮点单元状态：
+ *   0=Off（执行浮点指令非法），1=Initial，2=Clean，3=Dirty。
+ * 写 f 寄存器、fflags 或 fcsr 后置为 Dirty，与 Spike 的脏状态跟踪
+ * 一致；单纯 FSW/比较指令不改变浮点状态。SD 是 FS==3 的只读汇总位：
+ * RV32 在 bit31，RV64 在 bit63。关闭 F/D 时这些位保持 0。
+ */
+#define MSTATUS_FS_SHIFT   13
+#define MSTATUS_FS_OFF     ((word_t)0 << MSTATUS_FS_SHIFT)
+#define MSTATUS_FS_INITIAL ((word_t)1 << MSTATUS_FS_SHIFT)
+#define MSTATUS_FS_CLEAN   ((word_t)2 << MSTATUS_FS_SHIFT)
+#define MSTATUS_FS_DIRTY   ((word_t)3 << MSTATUS_FS_SHIFT)
+#ifdef CONFIG_RISCV_F
+#define MSTATUS_FS_MASK    ((word_t)3 << MSTATUS_FS_SHIFT)
+#define MSTATUS_SD         ((word_t)1 << MUXDEF(CONFIG_RV64, 63, 31))
+#else
+/* 未启用 F/D 时这些位不存在，WARL 收敛时会被清掉。 */
+#define MSTATUS_FS_MASK    ((word_t)0)
+#define MSTATUS_SD         ((word_t)0)
+#endif
+/*
  * RV64 的 mstatus 在 bit[35:32] 还包含 UXL/SXL。NEMU 只实现 64 位用户态
  * 和监管态，因此这两位是 WARL 并固定为 2（XLEN=64）。这些位必须纳入
  * 可写掩码，否则软件写回 mstatus 时会把它们意外清零。
@@ -109,10 +140,31 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
 #define MSTATUS_WRITABLE_MASK \
   (MSTATUS_SIE | MSTATUS_MIE | MSTATUS_SPIE | MSTATUS_MPIE | MSTATUS_SPP | \
    MSTATUS_MPP_MASK | MSTATUS_MPRV | MSTATUS_SUM | MSTATUS_MXR | \
-   MSTATUS_TVM | MSTATUS_TW | MSTATUS_TSR | MSTATUS_XLEN_MASK)
+   MSTATUS_TVM | MSTATUS_TW | MSTATUS_TSR | MSTATUS_XLEN_MASK | \
+   MSTATUS_FS_MASK)
+/* sstatus 视图包含 FS 和只读的 SD；写回时 SD 由 mstatus_warl 重新计算。 */
 #define SSTATUS_MASK \
-  (MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_SPP | MSTATUS_SUM | MSTATUS_MXR)
-#define SSTATUS_WRITABLE_MASK SSTATUS_MASK
+  (MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_SPP | MSTATUS_SUM | MSTATUS_MXR | \
+   MSTATUS_FS_MASK | MSTATUS_SD)
+#define SSTATUS_WRITABLE_MASK (SSTATUS_MASK & ~MSTATUS_SD)
+
+/*
+ * mstatus 的 WARL 收敛点。所有 mstatus/sstatus 写路径（CSR、trap、
+ * mret/sret）都必须经过这里，保证 UXL/SXL、FS 掩码和 SD 汇总位一致。
+ */
+static inline word_t riscv_mstatus_warl(word_t value)
+{
+  value = (value & ~(word_t)MSTATUS_XLEN_MASK) | MSTATUS_XLEN_64;
+  value &= (word_t)MSTATUS_WRITABLE_MASK;
+#ifdef CONFIG_RISCV_F
+  if ((value & MSTATUS_FS_MASK) == MSTATUS_FS_DIRTY) {
+    value |= MSTATUS_SD;
+  } else {
+    value &= ~(word_t)MSTATUS_SD;
+  }
+#endif
+  return value;
+}
 
 // 中断位位于 XLEN-1：RV32 为 bit31，RV64 为 bit63。
 #define RISCV_INTR_BIT MUXDEF(CONFIG_RV64, 63, 31)

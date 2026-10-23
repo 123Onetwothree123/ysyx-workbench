@@ -15,12 +15,8 @@
 
 #include <isa.h>
 
-static inline word_t mstatus_warl(word_t value)
-{
-  // 与 inst.c 保持一致：RV64 的 UXL/SXL 固定为 2。
-  value = (value & ~(word_t)MSTATUS_XLEN_MASK) | MSTATUS_XLEN_64;
-  return value & (word_t)MSTATUS_WRITABLE_MASK;
-}
+/* mstatus 的公共 WARL 收敛逻辑位于 isa-def.h，CSR 路径共用。 */
+#define mstatus_warl(value) riscv_mstatus_warl(value)
 
 static inline word_t mstatus_on_trap(word_t old, word_t privilege)
 {

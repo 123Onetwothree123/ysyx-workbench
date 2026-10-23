@@ -1654,6 +1654,22 @@ void PrintElfFileHeader(void)
     printf("  %s%*s %lu (bytes into file)\n", Labels[10], (int)(Width - LabelWidths[10] + 1), "", (unsigned long)GlobalElfHeader.e_phoff);
     printf("  %s%*s %lu (bytes into file)\n", Labels[11], (int)(Width - LabelWidths[11] + 1), "", (unsigned long)GlobalElfHeader.e_shoff);
     printf("  %s%*s 0x%x\n", Labels[12], (int)(Width - LabelWidths[12] + 1), "", GlobalElfHeader.e_flags);
+    if (GlobalElfHeader.e_machine == EM_RISCV)
+    {
+        // RISC-V e_flags：bit0=RVC，bit[2:1]=浮点调用约定，bit3=RVE。
+        const unsigned flags = GlobalElfHeader.e_flags;
+        const char *float_abi = "soft-float";
+        switch ((flags >> 1) & 3u)
+        {
+        case 1: float_abi = "single-float"; break;
+        case 2: float_abi = "double-float"; break;
+        case 3: float_abi = "quad-float"; break;
+        default: break;
+        }
+        printf("  RISC-V ABI：%s%s%s\n", float_abi,
+               (flags & 1u) ? " + RVC" : "",
+               (flags & 8u) ? " + RVE" : "");
+    }
     printf("  %s%*s %u (bytes)\n", Labels[13], (int)(Width - LabelWidths[13] + 1), "", GlobalElfHeader.e_ehsize);
     printf("  %s%*s %u (bytes)\n", Labels[14], (int)(Width - LabelWidths[14] + 1), "", GlobalElfHeader.e_phentsize);
     printf("  %s%*s %u\n", Labels[15], (int)(Width - LabelWidths[15] + 1), "", GlobalElfHeader.e_phnum);

@@ -65,3 +65,8 @@ else
 # Include rules to build NEMU
 include $(NEMU_HOME)/scripts/native.mk
 endif
+
+# Berkeley SoftFloat 是逐文件引入的第三方代码，上游只要求
+# -Werror-implicit-function-declaration。关闭其 -Wall 警告，避免把
+# 上游为多格式共用代码保留的未用变量当成 NEMU 自身的构建错误。
+$(OBJ_DIR)/tools/softfloat/%.o: CFLAGS += -w

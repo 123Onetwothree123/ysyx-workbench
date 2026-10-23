@@ -13,6 +13,8 @@
 !tests/rv64/*.[cS]
 !tests/rvc/*.[cSh]
 !tests/rvc/*.ld
+!tests/fpu/*.ld
 !configs/*_defconfig
+!tools/softfloat/COPYING.txt
 include/config
 include/generated

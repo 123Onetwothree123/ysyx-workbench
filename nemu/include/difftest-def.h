@@ -17,6 +17,7 @@
 #define __DIFFTEST_DEF_H__
 
 #include <stdint.h>
+#include <stddef.h>
 #include <macro.h>
 #include <generated/autoconf.h>
 
@@ -53,6 +54,28 @@ typedef struct {
 } riscv_difftest_csr_state_t;
 
 /*
+ * 可选的浮点寄存器快照 ABI（版本 1）。
+ *
+ * 独立的 freg/fcsr 接口不改变原有 riscv_difftest_state_t（33 x XLEN）
+ * 和 CSR 快照布局，因此旧 REF/DUT 可以继续只交换整数状态。支持浮点的
+ * REF 额外导出：
+ *   difftest_fp_abi_version()  返回 DIFFTEST_FP_ABI_VERSION
+ *   difftest_fp_state_size()   返回 sizeof(riscv_difftest_fp_state_t)
+ *   difftest_fp_regcpy()       在 REF 与调用方之间双向复制
+ * 调用方必须先用 size 校验，再按相同版本解释结构体。
+ *
+ * freg 固定使用 64 位槽位（FLEN=64），与 RV32/RV64 无关；RV32F-only
+ * REF 的高 32 位应为 0。fcsr 只使用低 8 位（fflags[4:0], frm[7:5]）。
+ */
+#define DIFFTEST_FP_ABI_VERSION 1U
+typedef struct {
+  uint64_t freg[32];
+  uint64_t fcsr;
+} riscv_difftest_fp_state_t;
+
+#define DIFFTEST_FP_REG_SIZE (sizeof(riscv_difftest_fp_state_t))
+
+/*
  * 带 tval 的 trap 注入扩展（可选符号）。
  *
  * 旧的 difftest_raise_intr(no) 只能传递 cause，REF 会沿用自己上次的
@@ -83,6 +106,11 @@ __EXPORT void difftest_trap(uint64_t no, uint64_t epc, uint64_t tval);
  */
 __EXPORT void difftest_get_last_instruction(uint64_t *pc, uint64_t *inst);
 __EXPORT bool difftest_get_csr(uint32_t csr, uint64_t *value);
+
+/* 可选浮点状态扩展：旧 REF 不导出这些符号时，DUT 必须跳过 freg 比对。 */
+__EXPORT uint32_t difftest_fp_abi_version(void);
+__EXPORT size_t difftest_fp_state_size(void);
+__EXPORT void difftest_fp_regcpy(void *dut, bool direction);
 #ifdef __cplusplus
 }
 #endif

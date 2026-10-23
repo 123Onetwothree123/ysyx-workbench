@@ -59,6 +59,58 @@ const char *regs[] = {
     "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
     "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"};
 
+#ifdef CONFIG_RISCV_F
+// RISC-V 浮点 ABI 寄存器名（f0-f31 的别名）。
+static const char *freg_names[] = {
+    "ft0", "ft1", "ft2", "ft3", "ft4", "ft5", "ft6", "ft7",
+    "fs0", "fs1", "fa0", "fa1", "fa2", "fa3", "fa4", "fa5",
+    "fa6", "fa7", "fs2", "fs3", "fs4", "fs5", "fs6", "fs7",
+    "fs8", "fs9", "fs10", "fs11", "ft8", "ft9", "ft10", "ft11"};
+
+// 接受 f0-f31 或 ABI 别名；无法识别时返回 -1。
+static int freg_index(const char *s)
+{
+  if (s == NULL || s[0] != 'f')
+  {
+    return -1;
+  }
+  if (s[1] >= '0' && s[1] <= '9')
+  {
+    int value = 0;
+    for (const char *p = s + 1; *p != '\0'; p++)
+    {
+      if (*p < '0' || *p > '9')
+      {
+        return -1;
+      }
+      value = value * 10 + (*p - '0');
+      if (value > 31)
+      {
+        return -1;
+      }
+    }
+    return value;
+  }
+  for (int i = 0; i < 32; i++)
+  {
+    if (strcmp(s, freg_names[i]) == 0)
+    {
+      return i;
+    }
+  }
+  return -1;
+}
+
+static void freg_mark_dirty(void)
+{
+  if ((cpu.mstatus & MSTATUS_FS_MASK) != MSTATUS_FS_OFF)
+  {
+    cpu.mstatus = riscv_mstatus_warl(
+        (cpu.mstatus & ~MSTATUS_FS_MASK) | MSTATUS_FS_DIRTY);
+  }
+}
+#endif
+
 // 自己写的
 typedef struct
 {
@@ -485,6 +537,22 @@ void isa_reg_display()
     putchar('\n');
     reg_table_print_border(col_widths, nr_cols); // 行分割线
   }
+
+#ifdef CONFIG_RISCV_F
+  // 浮点寄存器单独成表，避免打乱原有整数寄存器表格的对齐逻辑。
+  printf("\n浮点寄存器（FLEN=64，原始位型）：\n");
+  printf("+--------+-------+------------------+\n");
+  for (int i = 0; i < 32; i++)
+  {
+    printf("| f%-5d | %-5s | 0x%016" PRIx64 " |\n",
+           i, freg_names[i], cpu.f[i]);
+  }
+  printf("+--------+-------+------------------+\n");
+  printf("fcsr=0x%02x  fflags=0x%02x  frm=%u  mstatus.FS=%u\n",
+         (unsigned)(cpu.fcsr & 0xffu), (unsigned)(cpu.fcsr & 0x1fu),
+         (unsigned)BITS(cpu.fcsr, 7, 5),
+         (unsigned)BITS(cpu.mstatus, 14, 13));
+#endif
 }
 
 word_t isa_reg_str2val(const char *s, bool *success)
@@ -557,6 +625,33 @@ word_t isa_reg_str2val(const char *s, bool *success)
     return cpu.privilege;
   }
 
+#ifdef CONFIG_RISCV_F
+  if (strcmp(s, "fcsr") == 0)
+  {
+    *success = true;
+    return cpu.fcsr & 0xffu;
+  }
+  if (strcmp(s, "fflags") == 0)
+  {
+    *success = true;
+    return cpu.fcsr & 0x1fu;
+  }
+  if (strcmp(s, "frm") == 0)
+  {
+    *success = true;
+    return BITS(cpu.fcsr, 7, 5);
+  }
+  {
+    const int fi = freg_index(s);
+    if (fi >= 0)
+    {
+      *success = true;
+      // word_t 在 RV32 只有 32 位；RV32D 的高 32 位请用 info r 查看。
+      return (word_t)cpu.f[fi];
+    }
+  }
+#endif
+
   for (const char *p = s; *p != '\0'; p++)
   {
     if (!isalnum((unsigned char)*p))
@@ -622,6 +717,43 @@ isa_reg_set_result_t isa_reg_setval(const char *s, word_t val)
     cpu.pc = val;
     return ISA_REG_SET_SUCCESS;
   }
+#ifdef CONFIG_RISCV_F
+  if (strcmp(s, "fcsr") == 0)
+  {
+    cpu.fcsr = val & 0xffu;
+    freg_mark_dirty();
+    return ISA_REG_SET_SUCCESS;
+  }
+  if (strcmp(s, "fflags") == 0)
+  {
+    cpu.fcsr = (cpu.fcsr & ~(word_t)0x1fu) | (val & 0x1fu);
+    freg_mark_dirty();
+    return ISA_REG_SET_SUCCESS;
+  }
+  if (strcmp(s, "frm") == 0)
+  {
+    cpu.fcsr = (cpu.fcsr & ~(word_t)(7u << 5)) | ((val & 0x7u) << 5);
+    freg_mark_dirty();
+    return ISA_REG_SET_SUCCESS;
+  }
+  {
+    const int fi = freg_index(s);
+    if (fi >= 0)
+    {
+      /*
+       * SDB 表达式仍是 word_t：RV64 可写完整 64 位；RV32 只能写低 32 位，
+       * 高 32 位保持原值（或由 NaN boxing 指令自行生成）。
+       */
+#ifdef CONFIG_RV64
+      cpu.f[fi] = (uint64_t)val;
+#else
+      cpu.f[fi] = (cpu.f[fi] & 0xffffffff00000000ull) | (uint32_t)val;
+#endif
+      freg_mark_dirty();
+      return ISA_REG_SET_SUCCESS;
+    }
+  }
+#endif
   for (const char *p = s; *p != '\0'; p++)
   {
     // 拿来过滤非法字符

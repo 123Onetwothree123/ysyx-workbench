@@ -14,6 +14,7 @@
  ***************************************************************************************/
 
 #include "local-include/reg.h"
+#include "local-include/fpu.h"
 #include <cpu/cpu.h>
 #include <cpu/ifetch.h>
 #include <cpu/decode.h>
@@ -72,12 +73,8 @@ static inline word_t mtvec_warl(word_t value)
   return (value & ~(word_t)3u) | mode;
 }
 
-static inline word_t mstatus_warl(word_t value)
-{
-  /* UXL/SXL 是 WARL：NEMU 只支持 64 位，所以两位固定写成 2。 */
-  value = (value & ~(word_t)MSTATUS_XLEN_MASK) | MSTATUS_XLEN_64;
-  return value & (word_t)MSTATUS_WRITABLE_MASK;
-}
+/* mstatus 的公共 WARL 收敛逻辑位于 isa-def.h，trap 路径共用。 */
+#define mstatus_warl(value) riscv_mstatus_warl(value)
 
 /* RV64 只有 pmpcfg0 和 pmpcfg2；RV32 四个寄存器都存在。 */
 static inline bool pmpcfg_address_valid(word_t address)
@@ -121,6 +118,17 @@ static inline bool csr_priv_ok(word_t address)
     return false;
   }
 
+#ifdef CONFIG_RISCV_F
+  /*
+   * fflags/frm/fcsr 属于浮点状态。mstatus.FS=Off 时访问它们与执行
+   * 普通浮点指令一样按非法指令处理；其余 FS 值允许访问。
+   */
+  if (address >= 0x001 && address <= 0x003 &&
+      (cpu.mstatus & MSTATUS_FS_MASK) == MSTATUS_FS_OFF) {
+    return false;
+  }
+#endif
+
   // U 模式读取 cycle/time/instret 还受 mcounteren/scounteren 控制。
   if (cpu.privilege == RISCV_PRIV_U) {
     word_t bit = 0;
@@ -150,6 +158,12 @@ static word_t csr_read(word_t address)
 
   switch (address)
   {
+#ifdef CONFIG_RISCV_F
+  /* fflags / frm / fcsr：fcsr = {frm[2:0], fflags[4:0]}。 */
+  case 0x001: return cpu.fcsr & 0x1fu;
+  case 0x002: return BITS(cpu.fcsr, 7, 5);
+  case 0x003: return cpu.fcsr & 0xffu;
+#endif
   case 0xf11: return 0x79737978u;
   case 0xf12: return 0x018d3017u;
   case 0xf13: return 0;
@@ -167,14 +181,18 @@ static word_t csr_read(word_t address)
   case 0x180: return cpu.satp;
   case 0x300: return cpu.mstatus;
   case 0x301:
-    // misa.MXL：RV32 为 1，RV64 为 2。扩展位为 I/M/A/C/S/U。
-    // bit 0 = A，bit 2 = C；只有对应 Kconfig 打开时才向软件宣告。
+    // misa.MXL：RV32 为 1，RV64 为 2。扩展位为 I/M/A/C/F/D/S/U。
+    // bit 0=A，bit 2=C，bit 3=D，bit 5=F；只有对应 Kconfig 打开时才宣告。
     return MUXDEF(CONFIG_RV64,
                   ((word_t)2 << 62) | MUXDEF(CONFIG_RISCV_A, 1u << 0, 0u) |
                       MUXDEF(CONFIG_RVC, 1u << 2, 0u) |
+                      MUXDEF(CONFIG_RISCV_D, 1u << 3, 0u) |
+                      MUXDEF(CONFIG_RISCV_F, 1u << 5, 0u) |
                       (1u << 8) | (1u << 12) | (1u << 18) | (1u << 20),
                   (1u << 30) | MUXDEF(CONFIG_RISCV_A, 1u << 0, 0u) |
                       MUXDEF(CONFIG_RVC, 1u << 2, 0u) |
+                      MUXDEF(CONFIG_RISCV_D, 1u << 3, 0u) |
+                      MUXDEF(CONFIG_RISCV_F, 1u << 5, 0u) |
                       (1u << 8) | (1u << 12) | (1u << 18) | (1u << 20));
   case 0x302: return cpu.medeleg;
   case 0x303: return cpu.mideleg;
@@ -229,6 +247,28 @@ static void csr_write(word_t address, word_t value)
 
   switch (address)
   {
+#ifdef CONFIG_RISCV_F
+  /*
+   * fflags 只保留 5 位，frm 只保留 3 位。写入浮点 CSR 也属于修改
+   * 浮点状态，因此把 mstatus.FS 标为 Dirty，并同步只读的 SD 位。
+   */
+  case 0x001:
+    cpu.fcsr = (cpu.fcsr & ~(word_t)0x1fu) | (value & 0x1fu);
+    cpu.mstatus = riscv_mstatus_warl(
+        (cpu.mstatus & ~MSTATUS_FS_MASK) | MSTATUS_FS_DIRTY);
+    return;
+  case 0x002:
+    cpu.fcsr = (cpu.fcsr & ~(word_t)(7u << 5)) |
+               ((value & 0x7u) << 5);
+    cpu.mstatus = riscv_mstatus_warl(
+        (cpu.mstatus & ~MSTATUS_FS_MASK) | MSTATUS_FS_DIRTY);
+    return;
+  case 0x003:
+    cpu.fcsr = value & 0xffu;
+    cpu.mstatus = riscv_mstatus_warl(
+        (cpu.mstatus & ~MSTATUS_FS_MASK) | MSTATUS_FS_DIRTY);
+    return;
+#endif
   /* The decoder rejects write-intent accesses to these read-only CSRs. */
   case 0xf11:
   case 0xf12:
@@ -707,7 +747,12 @@ static int decode_exec_c(Decode *s)
       break;
     }
     case 1:
-      RVC_ILLEGAL(); // C.FLD：未实现 D 扩展
+#ifdef CONFIG_RISCV_D
+      riscv_fp_load(s, R(rs1p) + rvc_uimm_cl_d(i), 8, rdp); // C.FLD
+#else
+      RVC_ILLEGAL(); // C.FLD 需要 D 扩展
+#endif
+      break;
     case 2: {
       const vaddr_t addr = R(rs1p) + rvc_uimm_cl(i);
       R(rdp) = rv_load_w(s, addr);
@@ -716,24 +761,33 @@ static int decode_exec_c(Decode *s)
     case 3:
 #ifdef CONFIG_RV64
       R(rdp) = Mr(R(rs1p) + rvc_uimm_cl_d(i), 8); // C.LD
-      break;
+#elif defined(CONFIG_RISCV_F)
+      riscv_fp_load(s, R(rs1p) + rvc_uimm_cl(i), 4, rdp); // C.FLW
 #else
       RVC_ILLEGAL(); // RV32 的 C.FLW 需要 F 扩展
 #endif
+      break;
     case 4:
       RVC_ILLEGAL(); // 保留（Zcb 等扩展未实现）
     case 5:
-      RVC_ILLEGAL(); // C.FSD：未实现 D 扩展
+#ifdef CONFIG_RISCV_D
+      riscv_fp_store(s, R(rs1p) + rvc_uimm_cl_d(i), 8, rs2p); // C.FSD
+#else
+      RVC_ILLEGAL(); // C.FSD 需要 D 扩展
+#endif
+      break;
     case 6:
       Mw(R(rs1p) + rvc_uimm_cl(i), 4, R(rs2p)); // C.SW
       break;
     case 7:
 #ifdef CONFIG_RV64
       Mw(R(rs1p) + rvc_uimm_cl_d(i), 8, R(rs2p)); // C.SD
-      break;
+#elif defined(CONFIG_RISCV_F)
+      riscv_fp_store(s, R(rs1p) + rvc_uimm_cl(i), 4, rs2p); // C.FSW
 #else
       RVC_ILLEGAL(); // RV32 的 C.FSW 需要 F 扩展
 #endif
+      break;
     }
     break;
 
@@ -909,8 +963,17 @@ static int decode_exec_c(Decode *s)
       }
       break;
     }
-    case 1:
-      RVC_ILLEGAL(); // C.FLDSP：未实现 D 扩展
+    case 1: // C.FLDSP：rd=0 保留
+#ifdef CONFIG_RISCV_D
+      if (rd == 0)
+      {
+        RVC_ILLEGAL();
+      }
+      riscv_fp_load(s, R(2) + rvc_uimm_ldsp(i), 8, rd);
+#else
+      RVC_ILLEGAL(); // C.FLDSP 需要 D 扩展
+#endif
+      break;
     case 2: { // C.LWSP：rd=0 保留
       if (rd == 0)
       {
@@ -928,10 +991,17 @@ static int decode_exec_c(Decode *s)
         RVC_ILLEGAL();
       }
       R(rd) = Mr(R(2) + rvc_uimm_ldsp(i), 8);
-      break;
+#elif defined(CONFIG_RISCV_F)
+      // RV32 C.FLWSP：rd=0 保留
+      if (rd == 0)
+      {
+        RVC_ILLEGAL();
+      }
+      riscv_fp_load(s, R(2) + rvc_uimm_lwsp(i), 4, rd);
 #else
       RVC_ILLEGAL(); // RV32 的 C.FLWSP 需要 F 扩展
 #endif
+      break;
     case 4:
       if (BITS(i, 12, 12) == 0)
       {
@@ -1000,16 +1070,25 @@ static int decode_exec_c(Decode *s)
         }
       }
       break;
+    case 5:
+#ifdef CONFIG_RISCV_D
+      riscv_fp_store(s, R(2) + rvc_uimm_sdsp(i), 8, rs2); // C.FSDSP
+#else
+      RVC_ILLEGAL(); // C.FSDSP 需要 D 扩展
+#endif
+      break;
     case 6: // C.SWSP
       Mw(R(2) + rvc_uimm_swsp(i), 4, R(rs2));
       break;
     case 7:
 #ifdef CONFIG_RV64
       Mw(R(2) + rvc_uimm_sdsp(i), 8, R(rs2)); // C.SDSP
-      break;
+#elif defined(CONFIG_RISCV_F)
+      riscv_fp_store(s, R(2) + rvc_uimm_swsp(i), 4, rs2); // C.FSWSP
 #else
       RVC_ILLEGAL(); // RV32 的 C.FSWSP 需要 F 扩展
 #endif
+      break;
     }
     break;
 
@@ -1028,6 +1107,18 @@ static int decode_exec_c(Decode *s)
 static int decode_exec(Decode *s)
 {
   s->dnpc = s->snpc;
+
+#ifdef CONFIG_RISCV_F
+  /*
+   * 浮点指令在独立文件 fpu.c 中集中解码，避免把 SoftFloat 调用和
+   * 大量 opcode 分支塞进整数译码表。返回 true 表示已经处理（包括
+   * 非法编码陷入），此时不能再落入整数 INSTPAT。
+   */
+  if (riscv_fp_decode_exec(s)) {
+    R(0) = 0;
+    return 0;
+  }
+#endif
 
 #define INSTPAT_INST(s) ((s)->isa.inst)
 #define INSTPAT_MATCH(s, name, type, ... /* execute body */)         \

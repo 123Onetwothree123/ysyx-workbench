@@ -58,6 +58,11 @@ word_t isa_query_intr();
 /* `ref_r` uses the external DiffTest ABI, which is not necessarily laid out
  * like private CPU_state (notably for RV32E). */
 bool isa_difftest_checkregs(const void *ref_r, vaddr_t pc);
+/*
+ * 可选浮点状态比对。ref_fp 指向 riscv_difftest_fp_state_t；只有 REF
+ * 导出 difftest_fp_regcpy 时 DUT 才会调用，旧 REF 不受影响。
+ */
+bool isa_difftest_checkfpregs(const void *ref_fp, vaddr_t pc);
 void isa_difftest_attach();
 
 //自己写的

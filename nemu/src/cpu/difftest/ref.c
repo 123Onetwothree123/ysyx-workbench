@@ -44,6 +44,47 @@ __EXPORT size_t difftest_csr_state_size(void)
   return sizeof(riscv_difftest_csr_state_t);
 }
 
+#ifdef CONFIG_RISCV_F
+_Static_assert(sizeof(riscv_difftest_fp_state_t) == 33 * sizeof(uint64_t),
+               "unexpected RISC-V DiffTest FP ABI padding");
+
+/*
+ * 可选浮点状态 ABI。未打开 F/D 的 REF 不导出这些符号，旧 DUT 也
+ * 不会尝试 dlsym，因此整数 DiffTest 的 33 x XLEN 布局完全不变。
+ */
+__EXPORT uint32_t difftest_fp_abi_version(void)
+{
+  return DIFFTEST_FP_ABI_VERSION;
+}
+
+__EXPORT size_t difftest_fp_state_size(void)
+{
+  return sizeof(riscv_difftest_fp_state_t);
+}
+
+__EXPORT void difftest_fp_regcpy(void *dut, bool direction)
+{
+  assert(dut != NULL);
+  riscv_difftest_fp_state_t *state = (riscv_difftest_fp_state_t *)dut;
+  if (direction == DIFFTEST_TO_REF)
+  {
+    for (int i = 0; i < 32; i++)
+    {
+      cpu.f[i] = state->freg[i];
+    }
+    cpu.fcsr = (word_t)(state->fcsr & 0xffu);
+  }
+  else
+  {
+    for (int i = 0; i < 32; i++)
+    {
+      state->freg[i] = cpu.f[i];
+    }
+    state->fcsr = (uint64_t)(cpu.fcsr & 0xffu);
+  }
+}
+#endif
+
 __EXPORT void difftest_set_platform(int ysyxsoc)
 {
   set_ysyxsoc_memory_mode(ysyxsoc != 0);
@@ -138,6 +179,12 @@ __EXPORT bool difftest_get_csr(uint32_t csr, uint64_t *value)
   word_t result = 0;
   switch (csr)
   {
+#ifdef CONFIG_RISCV_F
+  /* 浮点 CSR 便于失败诊断时核对 fflags/frm，不改变 REF 状态。 */
+  case 0x001: result = cpu.fcsr & 0x1fu; break;
+  case 0x002: result = BITS(cpu.fcsr, 7, 5); break;
+  case 0x003: result = cpu.fcsr & 0xffu; break;
+#endif
   case 0x100: result = cpu.mstatus & SSTATUS_MASK; break;
   case 0x104: result = cpu.mie; break;
   case 0x105: result = cpu.stvec; break;

@@ -8,6 +8,26 @@ config RVE
   bool "Use E extension"
   default n
 
+config RISCV_F
+  bool "F extension (single-precision floating point)"
+  default n
+  depends on !TARGET_AM && !RVE
+  help
+    实现 RV32/RV64 的 F 扩展：FLW/FSW、FMV、FADD/SUB/MUL/DIV/
+    SQRT、FMIN/MAX、FSGNJ、FEQ/FLT/FLE、FCLASS、FCVT 和 FMA。
+    浮点运算由仓库内 tools/softfloat 的 Berkeley SoftFloat 完成，
+    严格执行 RISC-V 的舍入模式、canonical NaN 与 fflags 语义。
+    默认关闭，避免改变现有整数参考模型和 DiffTest 状态布局。
+
+config RISCV_D
+  bool "D extension (double-precision floating point)"
+  default n
+  depends on RISCV_F && !TARGET_AM
+  help
+    实现 RV32/RV64 的 D 扩展：FLD/FSD、D 精度算术/比较/转换/FMA，
+    以及 RV64 的 FMV.X.D/FMV.D.X。D 依赖 F。打开后 f 寄存器按
+    FLEN=64 保存，单精度结果使用标准 NaN boxing。
+
 config RISCV_A
   bool "A extension (LR/SC and AMO)"
   default y
