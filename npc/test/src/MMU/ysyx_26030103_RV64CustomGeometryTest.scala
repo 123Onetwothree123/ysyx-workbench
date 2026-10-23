@@ -351,20 +351,22 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
     error.getMessage should include("satp MODE")
   }
 
-  it should "拒绝超过 64 位地址空间或 PPN 无法容纳的 CUSTOM 几何" in {
+  it should "拒绝超过 64 位地址空间或超过 8 级的 CUSTOM 几何" in {
+    // 2MiB 页 + 5 级 × 11 位索引 = 76 位 VA，无法在 64 位 VA 中自洽。
     val tooWide = intercept[IllegalArgumentException] {
       custom1KProfile().copy(
         pageSizeBytes = 2 * 1024 * 1024,
-        levels = 3,
+        levels = 5,
         pageTableSizeBytes = 16384
       )
     }
     tooWide.getMessage should include("无法表达")
 
+    // fillLevel 统一 3 位，最多 8 级；第 9 级必须拒绝。
     val tooManyLevels = intercept[IllegalArgumentException] {
-      custom2KProfile().copy(levels = 5)
+      custom2KProfile().copy(levels = 9)
     }
-    tooManyLevels.getMessage should include("MMU_LEVELS")
+    tooManyLevels.getMessage should include("1..8")
   }
 
   it should "拒绝把私有 PTE 字段位置标成 riscv64" in {

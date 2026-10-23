@@ -16,7 +16,9 @@ class ysyx_26030103_MMU(
   profile: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile())
     extends Module {
   require(profile.pteSizeBytes == 4 || profile.pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
-  require(profile.levels >= 1 && profile.levels <= 4, "页表级数必须在 1..4")
+  require(profile.levels >= 1 &&
+    profile.levels <= ysyx_26030103_MMUProfile.MaxLevels,
+    s"页表级数必须在 1..${ysyx_26030103_MMUProfile.MaxLevels}")
   require(profile.pageBits + profile.levels * profile.indexBitsPerLevel ==
     profile.computedAddressBits,
     "pageBits + levels*indexBits 必须等于 profile 的有效虚拟地址位数")
@@ -29,9 +31,9 @@ class ysyx_26030103_MMU(
   private val addressWidth = if (xlen == 64) 64 else 32
   private val vaBits = profile.computedAddressBits
   private val pteWidth = profile.pteSizeBytes * 8
-  // TLB 超级页的 shift/tag 由 profile 几何推导，不再限制 Sv32/2 级。
+  // TLB 超级页的 shift/tag 由 profile 几何推导，fillLevel 使用统一
+  // 3 位编码，因此不再限制 4 级；上限由 profile 的 8 级约束保证。
   require(!profile.tlbSuperpage || profile.superpage, "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
-  require(!profile.tlbSuperpage || profile.levels <= 4, "TLB_SUPERPAGE 的 fillLevel 只有 2 位，levels 必须在 1..4")
   require(profile.ptwOutstanding >= 1 && profile.ptwOutstanding <= 16, "MMU_PTW_OUTSTANDING 必须在 1..16")
   require(profile.ptwBusOutstanding >= 0 && profile.ptwBusOutstanding <= 16, "MMU_PTW_BUS_OUTSTANDING 必须在 0..16")
   require(profile.refillPorts >= 1, "TLB refill 端口数必须 >= 1")

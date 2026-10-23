@@ -143,12 +143,18 @@ case class ysyx_26030103_MMUProfile(
   require(adMode != "hardware" || pteSizeBytes <= 4 ||
     (pteConfig.aBit < 32 && pteConfig.dBit < 32),
     "64 位 PTE 的 A/D 硬件写回要求 A/D 位位于低 32 位字内（32 位页表写端口只更新低字）")
-  require(levels >= 1, s"levels=$levels 必须 >= 1")
+  // fillLevel/页表层级字段统一为 3 位，因此 RTL 最多能表达 8 级；
+  // 更深的几何必须在 elaboration 期明确拒绝，不能截断层级编号。
+  require(levels >= 1 && levels <= ysyx_26030103_MMUProfile.MaxLevels,
+    s"levels=$levels 必须在 1..${ysyx_26030103_MMUProfile.MaxLevels}" +
+      s"（fillLevel/层级字段为 ${ysyx_26030103_MMUProfile.LevelBits} 位）")
   require(
     pageTableSizeBytes % pteSizeBytes == 0,
     s"pageTableSizeBytes=$pageTableSizeBytes 必须能被 pteSizeBytes=$pteSizeBytes 整除"
   )
   requirePowerOfTwo("每级页表项数", pageTableSizeBytes / pteSizeBytes)
+  require(pageTableSizeBytes / pteSizeBytes >= 2,
+    s"每级页表项数(${pageTableSizeBytes / pteSizeBytes})必须至少为 2，否则索引位宽为 0")
   require(ptwOutstanding >= 1 && ptwOutstanding <= 16,
     s"ptwOutstanding=$ptwOutstanding 必须在 1..16（PTW 事务 ID 为 4 位）")
   require(ptwBusOutstanding >= 0 && ptwBusOutstanding <= 16,
@@ -276,18 +282,22 @@ case class ysyx_26030103_MMUProfile(
     customSatpMode >= 10 && customSatpMode <= 15
   final val addressBitsWithinXlen: Boolean =
     computedAddressBits >= 2 && computedAddressBits <= xlen
-  final val customPaddrFits: Boolean =
-    pageBits + (pteConfig.ppnHigh - pteConfig.ppnLow + 1) <= 64
-  // RV64 satp.PPN 固定 44 位，根页表基址 = PPN << pageBits；页内偏移
-  // 过大时根表地址本身就无法在 64 位物理地址中表示，必须提前拒绝。
-  final val customSatpPaddrFits: Boolean = pageBits + 44 <= 64
+  final val ptePpnBits: Int = pteConfig.ppnHigh - pteConfig.ppnLow + 1
+  // PTE PPN 字段可以比物理地址空间更宽。例如 2MiB 页(pageBits=21) 配
+  // 标准 44 位 PPN 时，PPN<<21 需要 65 位；64 位物理地址只能容纳低
+  // 43 位 PPN，其余高位必须为 0，由 PTW 在 walk 时按保留位检查并报
+  // page fault，绝不能静默截断。satp.PPN 同理：根表基址 =
+  // satp.PPN << pageBits，超出物理地址宽度的高位不可用。
+  final val paddrPpnBits: Int = math.min(ptePpnBits, xlen - pageBits)
+  final val satpPpnBits: Int = math.min(44, xlen - pageBits)
+  final val customPageFits: Boolean =
+    pageBits < computedAddressBits && paddrPpnBits >= 1 && satpPpnBits >= 1
   // Sv32 的虚拟地址是 32 位；Sv39/Sv48 分别使用 39/48 位有效虚拟地址，
   // 其余高位必须是指示位的符号扩展（由 PTW/MMU 检查）。CUSTOM 模式
   // 允许任意 2..XLEN 位的有效 VA，只要高位仍按符号扩展检查。
   final val wellFormed: Boolean =
     if (xlen == 32) computedAddressBits == 32
-    else if (customGeometry)
-      addressBitsWithinXlen && customPaddrFits && customSatpPaddrFits
+    else if (customGeometry) addressBitsWithinXlen && customPageFits
     else computedAddressBits == 39 || computedAddressBits == 48
   // RV32 既有自定义 32 位几何保持不变；RV64 只有在 STANDARD 下要求
   // 完整标准 Sv39/Sv48，或在显式 CUSTOM 下才接受非标准几何。
@@ -296,24 +306,20 @@ case class ysyx_26030103_MMUProfile(
     "RV64 HAS_MMU=y 只支持标准 Sv39/Sv48，或显式设置 MMU_GEOMETRY_MODE=custom：" +
       s"page=$pageSizeBytes levels=$levels pte=$pteSizeBytes " +
       s"table=$pageTableSizeBytes fmt=$pteFormat va=$computedAddressBits")
-  require(!customGeometry || (levels >= 1 && levels <= 4),
-    s"RV64 CUSTOM 的 MMU_LEVELS 必须在 1..4（RTL fillLevel 为 2 位），收到 $levels")
-  require(!customGeometry ||
-    (addressBitsWithinXlen && customPaddrFits && customSatpPaddrFits),
+  require(!customGeometry || (addressBitsWithinXlen && customPageFits),
     s"RV64 CUSTOM 几何无法表达：pageBits($pageBits)+levels($levels)*" +
-      s"indexBits($indexBitsPerLevel)=$computedAddressBits 位 VA 必须在 2..64，" +
-      s"pageBits($pageBits)+PPN 位宽(${pteConfig.ppnHigh - pteConfig.ppnLow + 1}) 必须 <=64，" +
-      "且 pageBits+44 位 satp.PPN 必须 <=64（页大小上限 1MiB）")
+      s"indexBits($indexBitsPerLevel)=$computedAddressBits 位 VA 必须在 2..$xlen；" +
+      s"PTE PPN 字段($ptePpnBits 位)只有低 $paddrPpnBits 位能装入 " +
+      s"$xlen 位物理地址，其余高位在 walk 时按保留位必须为 0；" +
+      s"satp.PPN 只有低 $satpPpnBits 位可用（根表基址 = PPN << pageBits）")
   require(!customGeometry || customSatpModeLegal,
     s"RV64 CUSTOM 必须使用非标准 satp MODE 10..15（8/9 是标准 Sv39/Sv48），" +
       s"收到 $customSatpMode")
   // 超级页要求 PPN 的低 (levels-1)*indexBits 位为 0。PPN 字段比这个
   // 对齐宽度还窄时，对齐检查本身无法表达，必须在 elaboration 期拒绝。
-  require(!superpage ||
-    pteConfig.ppnHigh - pteConfig.ppnLow + 1 >=
-      (levels - 1) * indexBitsPerLevel,
+  require(!superpage || ptePpnBits >= (levels - 1) * indexBitsPerLevel,
     s"超级页对齐位(${(levels - 1) * indexBitsPerLevel})超过 PTE PPN 位宽" +
-      s"(${pteConfig.ppnHigh - pteConfig.ppnLow + 1})，无法正确检查")
+      s"($ptePpnBits)，无法正确检查")
   require(!customGeometry ||
     (pteSizeBytes == 8 && (pteFormat == "custom" ||
       (pteFormat == "riscv64" && standardPteLayout64))) ||
@@ -347,6 +353,14 @@ case class ysyx_26030103_MMUProfile(
 }
 
 object ysyx_26030103_MMUProfile {
+  /** fillLevel 以及 PTW/TLB 内部层级字段的统一位宽。
+    *
+    * 3 位可表示 0..7，因此 RTL 最多支持 8 级页表；超过 8 级的几何在
+    * profile/PTW/TLB elaboration 期明确拒绝，避免层级编号被截断。
+    */
+  val LevelBits: Int = 3
+  val MaxLevels: Int = 1 << LevelBits
+
   /** 配置生成器未显式给出 CSR 集合时的标准实现集合。 */
   val DefaultCsrAddresses: Set[Int] = Set(
     0x300, 0x301, 0x302, 0x303, 0x304, 0x305, 0x306,

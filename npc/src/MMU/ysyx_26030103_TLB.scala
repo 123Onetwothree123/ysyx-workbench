@@ -2,6 +2,7 @@ package ysyx_26030103.mmu
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
 class ysyx_26030103_TLBWrite(
     val XLEN: Int = 32,
@@ -13,7 +14,8 @@ class ysyx_26030103_TLBWrite(
   val vaddr = UInt(XLEN.W)
   val asid = UInt(16.W)
   val pte = UInt(pteWidth.W)
-  val level = UInt(2.W)
+  // fillLevel 使用统一 3 位编码，支持最多 8 级页表。
+  val level = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
 }
 
 /** 组相联 TLB，支持 Sv32/Sv39/Sv48 和 1..2 个同拍查找端口。
@@ -55,7 +57,8 @@ class ysyx_26030103_TLB(
   require((ways & (ways - 1)) == 0, "TLB ways 必须是 2 的幂")
   require(Set("reg", "sram").contains(storage), "TLB storage 必须是 reg/sram")
   require(lookupPorts >= 1 && lookupPorts <= 2, "TLB lookupPorts 必须在 1..2")
-  require(levels >= 1 && levels <= 4, "TLB levels 必须在 1..4")
+  require(levels >= 1 && levels <= ysyx_26030103_MMUProfile.MaxLevels,
+    s"TLB levels 必须在 1..${ysyx_26030103_MMUProfile.MaxLevels}")
   require(indexBits >= 1 && indexBits <= 30, "TLB indexBits 非法")
   require(XLEN == 32 || XLEN == 64, s"TLB XLEN 非法: $XLEN")
   require(addressWidth == 32 || addressWidth == 64,
@@ -76,6 +79,7 @@ class ysyx_26030103_TLB(
   // PTE 中可用的 PPN 位数（Sv32=22，Sv39/Sv48=44），再受物理地址宽度约束。
   private val ptePpnBits = ptePpnHigh - ptePpnLow + 1
   private val ppnBits = math.min(ptePpnBits, addressWidth - pageBits)
+  require(ppnBits >= 1, "TLB 的 PPN 字段无法装入物理地址宽度")
   private val entryBits = log2Ceil(entries)
 
   class Entry extends Bundle {
@@ -118,7 +122,7 @@ class ysyx_26030103_TLB(
     val fillVaddr = Input(UInt(XLEN.W))
     val fillAsid = Input(UInt(16.W))
     val fillPte = Input(UInt(pteWidth.W))
-    val fillLevel = Input(UInt(2.W))
+    val fillLevel = Input(UInt(ysyx_26030103_MMUProfile.LevelBits.W))
     // 第 2..refillPorts 个写回端口；端口 0 保持上面的兼容接口。
     val fillExtra = if (refillPorts > 1)
       Some(Input(Vec(refillPorts - 1,
@@ -137,7 +141,7 @@ class ysyx_26030103_TLB(
     if (superpage && levels > 1) superpageEntries else 0
   class SuperEntry extends Bundle {
     val valid = Bool()
-    val level = UInt(2.W)
+    val level = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
     val vaddr = UInt(XLEN.W)
     val asid = UInt(asidWidth.W)
     val global = Bool()
@@ -365,8 +369,10 @@ class ysyx_26030103_TLB(
         e.asid := fillAsidVal
         e.global := (if (globalEnable) fillPteVal(5) else false.B)
         // 与 PTW 的 paddrOf 保持一致：PPN 以基础页为单位，左移 pageBits
-        // 得到超级页物理基址，低 shift 位由访问地址提供。
-        e.paddrBase := (ptePpnOf(fillPteVal) << pageBits).pad(addressWidth)
+        // 得到超级页物理基址，低 shift 位由访问地址提供。只保留能装入
+        // 物理地址宽度的低 ppnBits 位；PTW 已拒绝高位非零的 PTE。
+        e.paddrBase := (ptePpnOf(fillPteVal)(ppnBits - 1, 0) << pageBits)
+          .pad(addressWidth)
         e.r := fillPteVal(1); e.w := fillPteVal(2); e.x := fillPteVal(3)
         // HAS_U=n 时不保存 U 位，避免保留无用的 U 状态。
         e.u.foreach { u => u := fillPteVal(4) }

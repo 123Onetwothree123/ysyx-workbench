@@ -142,6 +142,85 @@ class MmuProfileTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "satp MODE"):
             build_profile(Config(values))
 
+    def test_rv64_custom_2m_page_4level_geometry(self):
+        values = self.base()
+        values.update({
+            "XLEN": 64,
+            "MMU_GEOMETRY_MODE": "custom",
+            "MMU_CUSTOM_SATP_MODE": 10,
+            "MMU_PAGE_SIZE_BYTES": 2 * 1024 * 1024,
+            "MMU_LEVELS": 4,
+            "MMU_PTE_SIZE_BYTES": 8,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 4096,
+            "MMU_PTE_FORMAT": "custom",
+            "TLB_ASID_BITS": 16,
+        })
+        profile = build_profile(Config(values))
+        self.assertEqual(profile["mmu"]["page_bits"], 21)
+        self.assertEqual(profile["mmu"]["virtual_address_bits"], 57)
+        self.assertEqual(profile["mmu"]["satp_mode"], 10)
+        self.assertTrue(profile["mmu"]["well_formed"])
+
+    def test_rv64_custom_2m_page_5level_small_table_geometry(self):
+        values = self.base()
+        values.update({
+            "XLEN": 64,
+            "MMU_GEOMETRY_MODE": "custom",
+            "MMU_CUSTOM_SATP_MODE": 13,
+            "MMU_PAGE_SIZE_BYTES": 2 * 1024 * 1024,
+            "MMU_LEVELS": 5,
+            "MMU_PTE_SIZE_BYTES": 8,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 2048,
+            "MMU_PTE_FORMAT": "custom",
+            "TLB_ASID_BITS": 16,
+        })
+        profile = build_profile(Config(values))
+        self.assertEqual(profile["mmu"]["virtual_address_bits"], 61)
+        self.assertEqual(profile["mmu"]["index_bits_per_level"], 8)
+        self.assertEqual(profile["mmu"]["levels"], 5)
+        self.assertTrue(profile["mmu"]["well_formed"])
+
+    def test_rv64_custom_5level_4k_geometry(self):
+        values = self.base()
+        values.update({
+            "XLEN": 64,
+            "MMU_GEOMETRY_MODE": "custom",
+            "MMU_CUSTOM_SATP_MODE": 11,
+            "MMU_PAGE_SIZE_BYTES": 4096,
+            "MMU_LEVELS": 5,
+            "MMU_PTE_SIZE_BYTES": 8,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 4096,
+            "MMU_PTE_FORMAT": "custom",
+            "TLB_ASID_BITS": 16,
+        })
+        profile = build_profile(Config(values))
+        self.assertEqual(profile["mmu"]["virtual_address_bits"], 57)
+        self.assertEqual(profile["mmu"]["levels"], 5)
+        self.assertTrue(profile["mmu"]["well_formed"])
+
+    def test_rv64_custom_6level_needs_smaller_index(self):
+        values = self.base()
+        values.update({
+            "XLEN": 64,
+            "MMU_GEOMETRY_MODE": "custom",
+            "MMU_CUSTOM_SATP_MODE": 12,
+            "MMU_PAGE_SIZE_BYTES": 4096,
+            "MMU_LEVELS": 6,
+            "MMU_PTE_SIZE_BYTES": 8,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 4096,
+            "MMU_PTE_FORMAT": "custom",
+            "TLB_ASID_BITS": 16,
+        })
+        # 6 级 × 9 位索引 + 12 位页内偏移 = 66 位 VA，超过 64 位。
+        with self.assertRaisesRegex(ValueError, "66"):
+            build_profile(Config(values))
+
+        values["MMU_PAGE_TABLE_SIZE_BYTES"] = 2048
+        profile = build_profile(Config(values))
+        self.assertEqual(profile["mmu"]["virtual_address_bits"], 60)
+        self.assertEqual(profile["mmu"]["index_bits_per_level"], 8)
+        self.assertTrue(profile["mmu"]["well_formed"])
+
     def test_rv64_custom_rejects_unrepresentable_geometry(self):
         values = self.base()
         values.update({
@@ -149,12 +228,18 @@ class MmuProfileTest(unittest.TestCase):
             "MMU_GEOMETRY_MODE": "custom",
             "MMU_CUSTOM_SATP_MODE": 10,
             "MMU_PAGE_SIZE_BYTES": 2 * 1024 * 1024,
-            "MMU_LEVELS": 3,
+            "MMU_LEVELS": 5,
             "MMU_PTE_SIZE_BYTES": 8,
-            "MMU_PAGE_TABLE_SIZE_BYTES": 16384,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 4096,
             "MMU_PTE_FORMAT": "custom",
         })
-        with self.assertRaisesRegex(ValueError, "无法表达"):
+        # 21 + 5*9 = 66 位 VA，无法在 64 位 VA 中自洽。
+        with self.assertRaisesRegex(ValueError, "66"):
+            build_profile(Config(values))
+
+        values["MMU_PAGE_SIZE_BYTES"] = 4096
+        values["MMU_LEVELS"] = 9
+        with self.assertRaisesRegex(ValueError, "上限 8"):
             build_profile(Config(values))
 
     def test_custom_mode_is_rv64_only(self):

@@ -8,17 +8,21 @@
   walker/TLB：4 级（9+9+9+9+12）、`satp.MODE=9`；未配置对应几何时
   satp 写入按 WARL 收敛到 Bare(0)。
 - RV64 显式 CUSTOM 模式（`MMU_GEOMETRY_MODE=custom`）：允许非标准
-  页大小、1..4 级页表、任意 2 的幂页表项数、4B/8B PTE 以及私有 PTE
+  页大小、1..8 级页表、任意 2 的幂页表项数、4B/8B PTE 以及私有 PTE
   字段位置。CUSTOM 使用保留的 `satp.MODE=10..15` 作为非标准扩展，
   标准 8/9 的语义完全不变；在 CUSTOM 几何下写入 8/9 会按 WARL
   收敛到 Bare(0)。示例配置：
   - 1KiB 页 + 3 级 + 每级 2048 项（11 位索引）→ 43 位 VA，
     `MMU_CUSTOM_SATP_MODE=10`；
-  - 2KiB 页 + 4 级 + 每级 512 项（9 位索引）→ 47 位 VA。
-  `configs/rv64_custom_page_defconfig` 提供 1KiB 示例；
-  `configs/rv64_custom_large_defconfig`（2MiB/5 级/2KiB 页表）和
-  `configs/rv64_custom_deep_defconfig`（4KiB/5 级）演示自由页大小
-  与级数输入，非法组合由配置校验/elaboration 拒绝。
+  - 2KiB 页 + 4 级 + 每级 512 项（9 位索引）→ 47 位 VA；
+  - 2MiB 页 + 4 级 + 每级 512 项 → 57 位 VA；
+  - 2MiB 页 + 5 级 + 每级 256 项（8 位索引）→ 61 位 VA
+    （`rv64_custom_large_defconfig`）；
+  - 4MiB 页 + 6 级 + 每级 64 项（6 位索引）→ 58 位 VA；
+  - 4KiB 页 + 5 级 + 每级 512 项 → 57 位 VA（`rv64_custom_deep_defconfig`）；
+  - 4KiB 页 + 6 级 + 每级 256 项（8 位索引）→ 60 位 VA；
+  - 最大 8 级：2MiB 页 + 8 级 + 每级 32 项（5 位索引）→ 61 位 VA。
+  `configs/rv64_custom_page_defconfig` 提供 1KiB 示例。
 - 64 位 PTE 支持完整 PPN 字段、A/D 硬件写回（只写低 32 位字，因此
   CUSTOM 的 A/D 位必须位于低字）与超级页 PPN 对齐检查；
   STANDARD/CUSTOM 非规范虚拟地址都在 TLB 查找前产生页错误，不会与
@@ -28,15 +32,15 @@
   `sstatus.SUM/MXR` 字段可写并参与 Sv39/CUSTOM 权限检查。
 - 可配置页大小、页表级数、PTE 大小（4/8B）、每级页表项数；RV32
   自定义几何和 STANDARD Sv32/Sv39/Sv48 保持原有约束。CUSTOM 要求
-  `pageBits + levels*indexBits` 在 2..64 之间，且 PTE/satp.PPN
-  至少保留 1 位可寻址位，否则配置校验/elaboration 明确报错。
-- 配置契约允许自由输入页大小、PTE 大小和页表级数，默认保持标准
-  Sv32（4B/4KiB/2 级）与 Sv39/Sv48（8B/4KiB/3 或 4 级）。Kconfig
-  不再用 range/choice 锁死非标准值；配置校验只拒绝非 2 的幂、PTE
-  字段越界/重叠、页表项数不是 2 的幂、地址位宽溢出等不可表达几何。
-  `XLEN`/`SOC_XLEN` 仍只允许 32/64。`make kconfig-contract-check`
-  会校验全部 defconfig 并运行轻量单元测试；RTL 实际不支持的 4B/8B
-  之外 PTE 大小等由生成器/elaboration 明确拒绝。
+  `pageBits + levels*indexBits` 在 2..64 之间；PTE/satp 的 PPN 字段
+  可以比 64 位物理地址更宽，超出物理地址宽度的高位在 walk 时按保留位
+  必须为 0，否则产生页错误，不会静默截断。页大小上限为 1GiB
+  （`pageSizeBytes` 为有符号 Int），具体上限还受 VA 几何约束。
+- 配置契约在 defconfig/menuconfig 阶段收紧：`MMU_LEVELS` 限制 1..8，
+  PTE 大小改为 4B/8B choice（派生的 `CONFIG_MMU_PTE_SIZE_BYTES`
+  仍供 RTL/生成器读取），页大小限制为 4B..1GiB 且必须是 2 的幂，
+  `XLEN`/`SOC_XLEN` 只允许 32/64。`make kconfig-contract-check`
+  会校验全部 defconfig 并运行轻量单元测试；非法值在配置阶段明确报错。
 - M 模式旁路；S/U 模式经 `satp` 翻译。
 - `satp`、`sstatus`、`stvec`、`sepc`、`scause`、`stval`、`sscratch`、
   `medeleg`、`mideleg`、`mie/mip/sie/sip`。
@@ -124,7 +128,9 @@ Sv39 三级 walk/权限/U-SUM/R-W-X/超级页/A-D/非规范地址、
 Sv48 四级 walk、Sv39 TLB refill、64 位 satp WARL 与 sepc/stval；
 RV64 CUSTOM：1KiB/3 级与 2KiB/4 级几何、43/47 位 VA、私有 PTE
 字段位置、CUSTOM 超级页、TLB refill、权限/A/D、非规范 VA、
-标准 MODE 拒绝与标准 Sv39/Sv48、RV32 自定义几何回归。
+标准 MODE 拒绝与标准 Sv39/Sv48、RV32 自定义几何回归；
+2MiB/4 级大页与 4MiB 几何、5 级/6 级（8 位索引）walk、
+大页超级页/TLB/PTW/权限/A-D、6 级 × 4KiB 的 66 位 VA 明确拒绝。
 ```
 
 裸机测试（MMU 开启）：
@@ -181,7 +187,9 @@ Sv48：csrc/Test/rv64-sv48-test HIT GOOD
   10..15 的 `MMU_CUSTOM_SATP_MODE`。生成器会在 JSON/header/env 中
   写入 `geometry_mode`、`non_standard` 和 `custom_satp_mode`；私有
   PTE 字段位置还必须使用 `MMU_PTE_FORMAT=custom`，否则按“伪装成
-  标准编码”拒绝。`configs/rv64_custom_page_defconfig` 是 1KiB 示例。
+  标准编码”拒绝。`configs/rv64_custom_page_defconfig` 是 1KiB 示例，
+  `rv64_custom_large_defconfig` 是 2MiB/4 级大页示例，
+  `rv64_custom_deep_defconfig` 是 4KiB/5 级深页表示例。
 - RV32 的既有自定义 32 位几何不变，仍使用 `satp.MODE=1`；
   `MMU_GEOMETRY_MODE=custom` 仅用于 RV64。
 - 默认 `HAS_S=y/HAS_U=y` 时行为与原来一致；RV32/Sv32 的默认端子宽度
@@ -203,15 +211,17 @@ Sv48：csrc/Test/rv64-sv48-test HIT GOOD
 - 剩余限制：PTW 内部页表总线可配置到 16 笔，但下游 4 位 AXI ID 在保留
   ICache/LSU/DMA 后只剩 13 个 PTW 槽；更多请求会在 PTWToAXI 队列等待，
   不再退化为单笔串行，也不影响功能正确性。
-- CUSTOM 限制：配置层按大页 RTL 的 3 位 fillLevel/层级字段允许 1..8 级，
-  并按 32 位有符号 Int 允许最大 1GiB 页（更具体的组合仍须满足
-  `pageBits + levels*indexBits <= 64` 与 PPN 可用位约束）；未合入
-  大页 RTL 的树仍会在 elaboration 按 1..4 级/1MiB 的既有能力拒绝。
-  有效 VA 必须 2..64 位；PTE/satp.PPN 字段可以比物理地址宽，但至少
-  要保留 1 位可用 PPN，超出物理地址的高位在 walk 时按保留位检查。
-  A/D 硬件写回仍只更新低 32 位字，因此 8B（或更宽）PTE 的 A/D 位
-  落在高字时由配置校验/elaboration 拒绝。PTE 标志位不能彼此重叠、
-  不能与 PPN 字段重叠，也不能占用 PPN 高位以上的保留位区域。
+- CUSTOM 限制：fillLevel/层级字段统一为 3 位，页表级数上限 8；有效
+  VA 必须 2..64 位。PTE PPN 字段可以比 64 位物理地址更宽（例如
+  2MiB 页 + 44 位 PPN = 65 位），超出物理地址宽度的高位必须为 0，
+  PTW 会显式检查并报页错误；satp.PPN 同理。页大小上限 1GiB
+  （`pageSizeBytes` 为有符号 Int），且必须满足
+  `pageBits + levels*indexBits <= 64`。6 级 × 4KiB 页表（9 位索引）
+  是 66 位 VA，必须改用更小的每级页表项数（例如 8 位索引 → 60 位）
+  或减少级数。A/D 硬件写回仍只更新低 32 位字，因此 8B PTE 的 A/D
+  位落在高字时 elaboration 拒绝。PTE 标志位不能彼此重叠、不能与
+  PPN 字段重叠，也不能占用 PPN 高位以上的保留位区域。这些组合
+  无法用现有 satp/页表格式/32 位页表写端口正确表达，已明确报错。
 - Sv48 已完成参数化 walker/TLB、顶层 elaboration、PTW 四级 walk
   单元测试与独立裸机镜像 `csrc/Test/rv64-sv48-test`
   （`configs/rv64_sv48_defconfig`，独立 `BUILD_DIR` 构建）。默认裸机

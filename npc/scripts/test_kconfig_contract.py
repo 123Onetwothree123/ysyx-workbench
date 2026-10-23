@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""配置契约校验的轻量单元测试（不需要 mill/Verilator）。
-
-原则：非标准但几何上可表达的页大小/PTE 大小/级数应被接受；只有
-非 2 的幂、字段重叠/越界、地址位宽溢出等明确不可能的几何才在配置
-阶段失败。RTL 实际只实现 4B/8B PTE 等限制由生成器/elaboration 拒绝。
-"""
+"""配置契约校验的轻量单元测试（不需要 mill/Verilator）。"""
 
 import unittest
 from pathlib import Path
@@ -19,6 +14,7 @@ class KconfigContractTest(unittest.TestCase):
             "HAS_S": True,
             "HAS_MMU": True,
             "MMU_LEVELS": 3,
+            "MMU_PTE_SIZE_8B": True,
             "MMU_PTE_SIZE_BYTES": 8,
             "MMU_PAGE_SIZE_BYTES": 4096,
             "MMU_PAGE_TABLE_SIZE_BYTES": 4096,
@@ -54,7 +50,8 @@ class KconfigContractTest(unittest.TestCase):
         self.assertTrue(files, "没有找到 defconfig")
         for path in files:
             with self.subTest(defconfig=path.name):
-                self.assertEqual(check_file(path), [], f"{path.name} 校验失败")
+                errors, _ = check_file(path)
+                self.assertEqual(errors, [], f"{path.name} 校验失败")
 
     def test_xlen_33_rejected(self):
         values = self.base_rv64()
@@ -73,15 +70,6 @@ class KconfigContractTest(unittest.TestCase):
         values["SOC_XLEN"] = 48
         self.assertEqual(validate_config(values), [])
 
-    def test_mmu_levels_5_accepted_with_4k_table(self):
-        values = self.base_custom_rv64()
-        values.update({
-            "MMU_LEVELS": 5,
-            "MMU_PAGE_SIZE_BYTES": 4096,
-            "MMU_PAGE_TABLE_SIZE_BYTES": 4096,
-        })
-        self.assertEqual(validate_config(values), [])
-
     def test_mmu_levels_9_rejected(self):
         values = self.base_custom_rv64()
         values["MMU_LEVELS"] = 9
@@ -92,32 +80,26 @@ class KconfigContractTest(unittest.TestCase):
         values["MMU_LEVELS"] = 0
         self.assert_error(values, "1..8")
 
-    def test_6level_4k_table_rejected(self):
+    def test_mmu_levels_5_accepted_with_4k_tables(self):
         values = self.base_custom_rv64()
-        values.update({
-            "MMU_LEVELS": 6,
-            "MMU_PAGE_SIZE_BYTES": 4096,
-            "MMU_PAGE_TABLE_SIZE_BYTES": 4096,
-        })
-        # 12 + 6*9 = 66 位 VA，超过 64。
-        self.assert_error(values, "地址位宽=66")
-
-    def test_pte_size_6_rejected(self):
-        values = self.base_custom_rv64()
-        values["MMU_PTE_SIZE_BYTES"] = 6
-        self.assert_error(values, "2 的幂")
-
-    def test_pte_size_16_is_geometry_checked_not_locked(self):
-        """16B PTE 不是当前 RTL 能力，但配置阶段不做 4/8 锁定。"""
-        values = self.base_custom_rv64()
-        values["MMU_PTE_SIZE_BYTES"] = 16
+        values["MMU_LEVELS"] = 5
+        values["MMU_PAGE_TABLE_SIZE_BYTES"] = 4096
         self.assertEqual(validate_config(values), [])
 
-    def test_pte_field_overlap_rejected(self):
+    def test_pte_size_6_rejected(self):
+        values = self.base_rv64()
+        values.pop("MMU_PTE_SIZE_8B")
+        values["MMU_PTE_SIZE_BYTES"] = 6
+        self.assert_error(values, "只支持 4 或 8")
+
+    def test_pte_choice_only_defconfig_is_inferred(self):
+        """savedefconfig 可只保留 choice，省略派生的数值符号。"""
         values = self.base_custom_rv64()
-        values["MMU_PTE_READ_BIT"] = 2
-        values["MMU_PTE_WRITE_BIT"] = 2
-        self.assert_error(values, "不能重复")
+        values.pop("MMU_PTE_SIZE_BYTES")
+        values.pop("MMU_PTE_SIZE_8B")
+        values["MMU_PTE_SIZE_4B"] = True
+        values["MMU_PAGE_TABLE_SIZE_BYTES"] = 8192
+        self.assertEqual(validate_config(values), [])
 
     def test_savedefconfig_sparse_choices_are_inferred(self):
         """savedefconfig 会省略字符串派生符号，只保留 choice。"""
@@ -129,6 +111,12 @@ class KconfigContractTest(unittest.TestCase):
         values["MMU_PTE_CUSTOM"] = True
         values["MMU_AD_FAULT"] = True
         self.assertEqual(validate_config(values), [])
+
+    def test_pte_choice_mismatch_rejected(self):
+        values = self.base_rv64()
+        values["MMU_PTE_SIZE_8B"] = False
+        values["MMU_PTE_SIZE_4B"] = True
+        self.assert_error(values, "choice=4B")
 
     def test_page_size_not_power_of_two_rejected(self):
         values = self.base_custom_rv64()
@@ -155,6 +143,35 @@ class KconfigContractTest(unittest.TestCase):
         # 21 + 5*9 = 66 位 VA，超过 64。
         self.assert_error(values, "地址位宽=66")
 
+    def test_6level_4k_table_rejected(self):
+        values = self.base_custom_rv64()
+        values.update({
+            "MMU_LEVELS": 6,
+            "MMU_PAGE_SIZE_BYTES": 4096,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 4096,
+        })
+        self.assert_error(values, "地址位宽=66")
+
+    def test_page_size_2mib_5level_small_table_accepted(self):
+        values = self.base_custom_rv64()
+        values.update({
+            "MMU_LEVELS": 5,
+            "MMU_PAGE_SIZE_BYTES": 2 * 1024 * 1024,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 2048,
+            "MMU_SUPERPAGE": True,
+        })
+        self.assertEqual(validate_config(values), [])
+
+    def test_4mib_6level_small_table_accepted(self):
+        values = self.base_custom_rv64()
+        values.update({
+            "MMU_LEVELS": 6,
+            "MMU_PAGE_SIZE_BYTES": 4 * 1024 * 1024,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 512,
+            "MMU_SUPERPAGE": True,
+        })
+        self.assertEqual(validate_config(values), [])
+
     def test_page_size_beyond_int_power_of_two_rejected(self):
         values = self.base_custom_rv64()
         values["MMU_PAGE_SIZE_BYTES"] = 2 * 1024 * 1024 * 1024
@@ -165,6 +182,8 @@ class KconfigContractTest(unittest.TestCase):
         values.update({
             "XLEN": 32,
             "MMU_LEVELS": 2,
+            "MMU_PTE_SIZE_8B": False,
+            "MMU_PTE_SIZE_4B": True,
             "MMU_PTE_SIZE_BYTES": 4,
             "MMU_PAGE_SIZE_BYTES": 1024,
             "MMU_PAGE_TABLE_SIZE_BYTES": 8192,
@@ -190,17 +209,13 @@ class KconfigContractTest(unittest.TestCase):
         values["MMU_LEVELS"] = 2
         self.assert_error(values, "Sv39")
 
-    def test_standard_rv64_rejects_nonstandard_pte_size(self):
-        values = self.base_rv64()
-        values["MMU_PTE_SIZE_BYTES"] = 16
-        self.assert_error(values, "PTE_SIZE_BYTES=8")
-
     def test_rv32_standard_still_passes(self):
         values = {
             "XLEN": 32,
             "HAS_S": True,
             "HAS_MMU": True,
             "MMU_LEVELS": 2,
+            "MMU_PTE_SIZE_4B": True,
             "MMU_PTE_SIZE_BYTES": 4,
             "MMU_PAGE_SIZE_BYTES": 4096,
             "MMU_PAGE_TABLE_SIZE_BYTES": 4096,

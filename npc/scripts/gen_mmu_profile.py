@@ -23,6 +23,10 @@ STANDARD_PAGE = 4096
 STANDARD_LEVELS = 2
 STANDARD_PTE = 4
 STANDARD_TABLE = 4096
+# RTL 的 fillLevel/层级字段统一为 3 位，最多支持 8 级页表。
+MAX_LEVELS = 8
+# pageSizeBytes 在 RTL 中是有符号 Int，最大的 2 的幂为 1GiB。
+MAX_PAGE_SIZE = 1 << 30
 
 
 def parse_config(path: Path) -> Dict[str, object]:
@@ -198,11 +202,21 @@ def build_profile(cfg: Config) -> dict:
         )
 
     page_bits = require_power_of_two("MMU_PAGE_SIZE_BYTES", page_size)
+    if page_size > MAX_PAGE_SIZE:
+        raise ValueError(
+            f"MMU_PAGE_SIZE_BYTES={page_size} 超过 RTL 上限 {MAX_PAGE_SIZE}"
+            "（pageSizeBytes 为有符号 Int，最大 2 的幂为 1GiB）"
+        )
     require_power_of_two("MMU_PTE_SIZE_BYTES", pte_size)
     require_power_of_two("MMU_PAGE_TABLE_SIZE_BYTES", table_size)
 
     if levels < 1:
         raise ValueError(f"MMU_LEVELS={levels} 必须 >= 1")
+    if levels > MAX_LEVELS:
+        raise ValueError(
+            f"MMU_LEVELS={levels} 超过 RTL 上限 {MAX_LEVELS}"
+            "（fillLevel/层级字段为 3 位）"
+        )
     if table_size % pte_size != 0:
         raise ValueError(
             f"MMU_PAGE_TABLE_SIZE_BYTES={table_size} 必须能被 "
@@ -262,11 +276,15 @@ def build_profile(cfg: Config) -> dict:
     standard_well_formed = (
         address_bits == allowed_bits if xlen == 32 else address_bits in allowed_bits
     )
-    custom_satp_paddr_fits = page_bits + 44 <= 64
-    custom_well_formed = (
-        2 <= address_bits <= 64 and page_bits + pte_ppn_bits <= 64
-        and custom_satp_paddr_fits
+    # PTE PPN/satp.PPN 字段可能比物理地址空间更宽。超出 address_bits 的
+    # 高位不可用，RTL 在 walk 时按保留位要求为 0；这里只要求仍有至少
+    # 一位可用 PPN，且有效 VA 能装入 XLEN。
+    paddr_ppn_bits = min(pte_ppn_bits, xlen - page_bits)
+    satp_ppn_bits = min(44, xlen - page_bits)
+    custom_page_fits = (
+        page_bits < address_bits and paddr_ppn_bits >= 1 and satp_ppn_bits >= 1
     )
+    custom_well_formed = 2 <= address_bits <= xlen and custom_page_fits
     well_formed = custom_well_formed if geometry_mode == "custom" else standard_well_formed
     standard_sv32 = (
         geometry_mode == "standard"
@@ -306,15 +324,20 @@ def build_profile(cfg: Config) -> dict:
                 "MMU_GEOMETRY_MODE=custom 只用于 RV64；RV32 既有自定义 32 位"
                 "几何继续使用 standard 模式"
             )
-        if levels < 1 or levels > 4:
-            raise ValueError(f"RV64 CUSTOM 的 MMU_LEVELS 必须在 1..4，收到 {levels}")
+        if levels < 1 or levels > MAX_LEVELS:
+            raise ValueError(
+                f"RV64 CUSTOM 的 MMU_LEVELS 必须在 1..{MAX_LEVELS}"
+                "（fillLevel/层级字段为 3 位），"
+                f"收到 {levels}"
+            )
         if not custom_well_formed:
             raise ValueError(
                 "RV64 CUSTOM 几何无法表达：page_bits("
                 f"{page_bits})+levels({levels})*index_bits({index_bits})="
-                f"{address_bits} 位 VA 必须在 2..64，page_bits({page_bits})+"
-                f"PPN 位宽({pte_ppn_bits}) 必须 <=64，且 page_bits+44 位 "
-                "satp.PPN 必须 <=64（页大小上限 1MiB）"
+                f"{address_bits} 位 VA 必须在 2..{xlen}；PTE PPN 字段"
+                f"({pte_ppn_bits} 位)只有低 {paddr_ppn_bits} 位能装入 "
+                f"{xlen} 位物理地址，其余高位在 walk 时必须为 0；"
+                f"satp.PPN 只有低 {satp_ppn_bits} 位可用"
             )
         if not 10 <= custom_satp_mode <= 15:
             raise ValueError(

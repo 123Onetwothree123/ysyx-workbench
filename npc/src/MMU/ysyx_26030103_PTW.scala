@@ -3,6 +3,7 @@ package ysyx_26030103.mmu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.config.ysyx_26030103_PteConfig
+import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
 class ysyx_26030103_PTWRequest(
     val XLEN: Int = 32,
@@ -40,7 +41,8 @@ class ysyx_26030103_PTWResponse(
   val fillVaddr = UInt(XLEN.W)
   val fillAsid = UInt(16.W)
   // 0=基础页，k=第 k 级超级页；TLB 用 pageBits + k*indexBits 推导 shift。
-  val fillLevel = UInt(2.W)
+  // 3 位统一编码支持最多 8 级页表，不再把 CUSTOM 限制在 4 级。
+  val fillLevel = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
 }
 
 /** 可配置页大小/级数/页表项数的 page-table walker。
@@ -81,9 +83,11 @@ class ysyx_26030103_PTW(
     s"PTW addressWidth 非法: $addressWidth")
   require(vaBits >= 2 && vaBits <= XLEN, s"PTW vaBits 非法: $vaBits")
   require(pageBits >= 2 && pageBits < vaBits, "pageBits 非法")
-  require(levels >= 1 && levels <= 4, "页表级数必须在 1..4")
-  require(tableEntries > 0 && (tableEntries & (tableEntries - 1)) == 0,
-    "每级页表项数必须是 2 的幂")
+  require(levels >= 1 && levels <= ysyx_26030103_MMUProfile.MaxLevels,
+    s"页表级数必须在 1..${ysyx_26030103_MMUProfile.MaxLevels}" +
+      s"（fillLevel 为 ${ysyx_26030103_MMUProfile.LevelBits} 位）")
+  require(tableEntries >= 2 && (tableEntries & (tableEntries - 1)) == 0,
+    "每级页表项数必须是不小于 2 的 2 的幂")
   require(pteSizeBytes == 4 || pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
   // RV64 标准 Sv39/Sv48 必须使用 64 位 PTE 字段配置；32 位自定义几何
   // 仍允许 8B PTE 配默认 32 位字段模板（兼容既有测试与实验 profile）。
@@ -99,6 +103,13 @@ class ysyx_26030103_PTW(
   private val pteWidth = pteBytes * 8
   // 标准 PTE 的 PPN 位数：Sv32=22（bit31:10），Sv39/48=44（bit53:10）。
   private val ptePpnBits = pteConfig.ppnHigh - pteConfig.ppnLow + 1
+  // 物理地址宽度可能小于 pageBits+PPN 字段宽度（例如 2MiB 页 + 44 位
+  // PPN = 65 位）。只能使用能装入 addressWidth 的低位 PPN，高位必须
+  // 为 0；walk 时显式检查并报 page fault，不能依赖赋值截断。
+  private val paddrPpnBits = math.min(ptePpnBits, addressWidth - pageBits)
+  require(paddrPpnBits >= 1, "PPN 字段无法装入物理地址宽度")
+  private val satpPpnBits = math.min(44, addressWidth - pageBits)
+  require(satpPpnBits >= 1, "satp.PPN 无法装入物理地址宽度")
   // 4B/8B PTE 都可以进入 cache：8B 表项保存低/高两个 32 位字，命中时
   // 不再产生两次页表读。
   private val cacheEffective = cacheEnable
@@ -137,13 +148,13 @@ class ysyx_26030103_PTW(
   val accessReg = RegInit(0.U(2.W))
   val sumRegOpt = if (hasU) Some(RegInit(false.B)) else None
   val mxrReg = RegInit(false.B)
-  val levelReg = RegInit(0.U(2.W))
+  val levelReg = RegInit(0.U(ysyx_26030103_MMUProfile.LevelBits.W))
   val tableReg = RegInit(0.U(addressWidth.W))
   val pteAddrReg = RegInit(0.U(addressWidth.W))
   val pteLowReg = RegInit(0.U(32.W))
   val respReg = RegInit(0.U.asTypeOf(new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth)))
   val fillPulse = RegInit(false.B)
-  val fillLevelReg = RegInit(0.U(2.W))
+  val fillLevelReg = RegInit(0.U(ysyx_26030103_MMUProfile.LevelBits.W))
   val writeDataReg = RegInit(0.U(pteWidth.W))
 
   class CacheEntry extends Bundle {
@@ -261,8 +272,21 @@ class ysyx_26030103_PTW(
       (d(pteConfig.ppnHigh, pteConfig.ppnLow) & mask) =/= 0.U
     }
   }
+  /** PTE PPN 是否落在物理地址宽度内。
+    *
+    * pageBits+PPN 超过物理地址宽度时，PPN 字段的高位无法表达；这些位
+    * 必须为 0，否则叶子和非叶子 PTE 都会产生 page fault。
+    */
+  def ppnFits(d: UInt): Bool = {
+    if (paddrPpnBits >= ptePpnBits) true.B
+    else d(pteConfig.ppnLow + ptePpnBits - 1,
+      pteConfig.ppnLow + paddrPpnBits) === 0.U
+  }
+  /** 去掉不可用的 PPN 高位；调用前必须已检查 ppnFits。 */
+  def ppnValue(d: UInt): UInt =
+    d(pteConfig.ppnLow + paddrPpnBits - 1, pteConfig.ppnLow)
   def walkFault(d: UInt): Bool =
-    !d(0) || reservedFault(d) || // 归一化 valid = bit0
+    !d(0) || !ppnFits(d) || reservedFault(d) || // 归一化 valid = bit0
       (isLeaf(d) && (!leafAllowed(d) || superpageMisaligned(d))) ||
       (!isLeaf(d) && levelReg === (levels - 1).U)
   def leafFaultOf(d: UInt): Bool = {
@@ -310,7 +334,7 @@ class ysyx_26030103_PTW(
   def superOffsetBits(level: UInt): UInt =
     pageBits.U + ((levels - 1).U - level) * indexBits.U
   def paddrOf(d: UInt, level: UInt): UInt = {
-    val ppn = d(pteConfig.ppnHigh, pteConfig.ppnLow)
+    val ppn = ppnValue(d)
     val shift = superOffsetBits(level)
     val offsetMask = ((BigInt(1) << vaBits) - 1).U(vaBits.W) >> (vaBits.U - shift)
     ((ppn << pageBits).pad(addressWidth) |
@@ -330,8 +354,14 @@ class ysyx_26030103_PTW(
     if (XLEN == 32) satp(21, 0) else satp(43, 0)
   def satpAsid(satp: UInt): UInt =
     if (XLEN == 32) satp(30, 22) else satp(59, 44)
+  /** satp.PPN 的高位必须能装入物理地址宽度。 */
+  def satpRootFits(satp: UInt): Bool = {
+    val ppn = satpPpn(satp)
+    if (satpPpnBits >= (if (XLEN == 32) 22 else 44)) true.B
+    else ppn((if (XLEN == 32) 21 else 43), satpPpnBits) === 0.U
+  }
   def tableBaseOf(satp: UInt): UInt =
-    (satpPpn(satp) << pageBits).pad(addressWidth)
+    (satpPpn(satp)(satpPpnBits - 1, 0) << pageBits).pad(addressWidth)
 
   val nextPteAddr = tableAddress(tableReg, vpnIndex(levelReg))
   val (cacheHit, cacheData) = cacheLookup(nextPteAddr)
@@ -392,7 +422,7 @@ class ysyx_26030103_PTW(
         finishLeaf(d, leafFaultOf(d))
       }
     }.otherwise {
-      tableReg := (d(pteConfig.ppnHigh, pteConfig.ppnLow) << pageBits).pad(addressWidth)
+      tableReg := (ppnValue(d) << pageBits).pad(addressWidth)
       levelReg := levelReg + 1.U
       state := reqState
     }
@@ -409,8 +439,9 @@ class ysyx_26030103_PTW(
     levelReg := 0.U
     tableReg := tableBaseOf(io.req.bits.satp)
     pteAddrReg := 0.U
-    when(!canonicalOk(io.req.bits.vaddr)) {
-      // 非规范虚拟地址在查页表前就产生 page fault，避免高位别名。
+    when(!canonicalOk(io.req.bits.vaddr) || !satpRootFits(io.req.bits.satp)) {
+      // 非规范虚拟地址或无法装入物理地址的 satp.PPN 在查页表前就产生
+      // page fault，避免高位别名或根表地址截断。
       respReg := 0.U.asTypeOf(new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth))
       respReg.id := io.req.bits.id
       respReg.paddr := 0.U
@@ -436,7 +467,7 @@ class ysyx_26030103_PTW(
         }.elsewhen(isLeaf(cachePte)) {
           finishLeaf(cachePte, leafFaultOf(cachePte))
         }.otherwise {
-          tableReg := (cachePte(pteConfig.ppnHigh, pteConfig.ppnLow) << pageBits).pad(addressWidth)
+          tableReg := (ppnValue(cachePte) << pageBits).pad(addressWidth)
           levelReg := levelReg + 1.U
           state := reqState
         }

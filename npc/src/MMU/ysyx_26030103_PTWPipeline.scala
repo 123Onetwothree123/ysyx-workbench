@@ -3,6 +3,7 @@ package ysyx_26030103.mmu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.config.ysyx_26030103_PteConfig
+import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
 /** 级间流水化的 page-table walker。
   *
@@ -51,9 +52,11 @@ class ysyx_26030103_PTWPipeline(
     "PTW 页表总线 outstanding 必须在 0..16（0 表示跟随 outstanding）")
   require(respPorts >= 1, "PTW 响应端口数必须 >= 1")
   require(pageBits >= 2 && pageBits < vaBits, "pageBits 非法")
-  require(levels >= 1 && levels <= 4, "页表级数必须在 1..4")
-  require(tableEntries > 0 && (tableEntries & (tableEntries - 1)) == 0,
-    "每级页表项数必须是 2 的幂")
+  require(levels >= 1 && levels <= ysyx_26030103_MMUProfile.MaxLevels,
+    s"页表级数必须在 1..${ysyx_26030103_MMUProfile.MaxLevels}" +
+      s"（fillLevel 为 ${ysyx_26030103_MMUProfile.LevelBits} 位）")
+  require(tableEntries >= 2 && (tableEntries & (tableEntries - 1)) == 0,
+    "每级页表项数必须是不小于 2 的 2 的幂")
   require(pteSizeBytes == 4 || pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
   require(XLEN == 32 || pteConfig.pteBits == pteSizeBytes * 8,
     "RV64 PTW 的 PTE 字段配置位宽必须与 PTE 大小一致")
@@ -74,6 +77,12 @@ class ysyx_26030103_PTWPipeline(
   private val pteShift = log2Ceil(pteBytes)
   private val indexBits = log2Ceil(tableEntries)
   private val ptePpnBits = pteConfig.ppnHigh - pteConfig.ppnLow + 1
+  // 与 independent PTW 相同：pageBits+PPN 超过物理地址宽度时，只使用
+  // 低位 PPN，高位在 walk 时按保留位检查并要求为 0。
+  private val paddrPpnBits = math.min(ptePpnBits, addressWidth - pageBits)
+  require(paddrPpnBits >= 1, "PPN 字段无法装入物理地址宽度")
+  private val satpPpnBits = math.min(44, addressWidth - pageBits)
+  require(satpPpnBits >= 1, "satp.PPN 无法装入物理地址宽度")
   require(pageBits + levels * indexBits == vaBits,
     s"pageBits($pageBits) + levels($levels)*indexBits($indexBits) 必须等于 $vaBits")
   require(!(superpage || fillSuperpage) ||
@@ -105,7 +114,7 @@ class ysyx_26030103_PTWPipeline(
     val access = UInt(2.W)
     val sum = if (hasU) Some(Bool()) else None
     val mxr = Bool()
-    val level = UInt(2.W)
+    val level = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
     val table = UInt(addressWidth.W)
     val pteAddr = UInt(addressWidth.W)
     val writeData = UInt(pteWidth.W)
@@ -233,8 +242,15 @@ class ysyx_26030103_PTWPipeline(
       (d(pteConfig.ppnHigh, pteConfig.ppnLow) & mask) =/= 0.U
     }
   }
+  private def ppnFits(d: UInt): Bool = {
+    if (paddrPpnBits >= ptePpnBits) true.B
+    else d(pteConfig.ppnLow + ptePpnBits - 1,
+      pteConfig.ppnLow + paddrPpnBits) === 0.U
+  }
+  private def ppnValue(d: UInt): UInt =
+    d(pteConfig.ppnLow + paddrPpnBits - 1, pteConfig.ppnLow)
   private def walkFault(d: UInt, level: UInt): Bool =
-    !d(0) || reservedFault(d) || // 归一化 valid = bit0
+    !d(0) || !ppnFits(d) || reservedFault(d) || // 归一化 valid = bit0
       (isLeaf(d) && (!leafAllowed(level) || superpageMisaligned(d, level))) ||
       (!isLeaf(d) && level === (levels - 1).U)
   private def leafFaultOf(d: UInt, privilege: UInt, access: UInt,
@@ -275,7 +291,7 @@ class ysyx_26030103_PTWPipeline(
   private def superOffsetBits(level: UInt): UInt =
     pageBits.U + ((levels - 1).U - level) * indexBits.U
   private def paddrOf(d: UInt, level: UInt, vaddr: UInt): UInt = {
-    val ppn = d(pteConfig.ppnHigh, pteConfig.ppnLow)
+    val ppn = ppnValue(d)
     val shift = superOffsetBits(level)
     val offsetMask = ((BigInt(1) << vaBits) - 1).U(vaBits.W) >> (vaBits.U - shift)
     ((ppn << pageBits).pad(addressWidth) |
@@ -293,8 +309,13 @@ class ysyx_26030103_PTWPipeline(
     if (XLEN == 32) satp(21, 0) else satp(43, 0)
   private def satpAsid(satp: UInt): UInt =
     if (XLEN == 32) satp(30, 22) else satp(59, 44)
+  private def satpRootFits(satp: UInt): Bool = {
+    val ppn = satpPpn(satp)
+    if (satpPpnBits >= (if (XLEN == 32) 22 else 44)) true.B
+    else ppn((if (XLEN == 32) 21 else 43), satpPpnBits) === 0.U
+  }
   private def tableBaseOf(satp: UInt): UInt =
-    (satpPpn(satp) << pageBits).pad(addressWidth)
+    (satpPpn(satp)(satpPpnBits - 1, 0) << pageBits).pad(addressWidth)
   /** 与 independent PTW 相同：0=基础页，k=第 k 级超级页。 */
   private def fillLevelOf(level: UInt): UInt = (levels - 1).U - level
 
@@ -540,7 +561,7 @@ class ysyx_26030103_PTWPipeline(
       }
     }.otherwise {
       ctx(resolveCtx).table :=
-        (d(pteConfig.ppnHigh, pteConfig.ppnLow) << pageBits).pad(addressWidth)
+        (ppnValue(d) << pageBits).pad(addressWidth)
       ctx(resolveCtx).level := level + 1.U
     }
   }
@@ -568,7 +589,8 @@ class ysyx_26030103_PTWPipeline(
     ctx(freeIndex).resp := 0.U.asTypeOf(
       new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth))
     ctx(freeIndex).resp.id := io.req.bits.id
-    when(!canonicalOk(io.req.bits.vaddr)) {
+    when(!canonicalOk(io.req.bits.vaddr) || !satpRootFits(io.req.bits.satp)) {
+      // 非规范 VA 或无法装入物理地址的 satp.PPN 在查页表前直接页错误。
       ctx(freeIndex).done := true.B
       ctx(freeIndex).table := 0.U
       ctx(freeIndex).resp.fault := true.B
