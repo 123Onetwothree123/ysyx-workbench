@@ -36,11 +36,11 @@ object ysyx_26030103_PhysicalMemoryMap {
 
   val NPC: Seq[ysyx_26030103_PMARegion] = Seq(
     CLINT,
-    // 直接 NPC 的 UART 是 AXIRAM 中一个只写的单字寄存器。
+    // 直接 NPC 的 UART 由 AXIRAM 中的 16550 兼容模型提供：TX 输出到仿真
+    // stdout，RX 寄存器/LSR 可读，因此 PMA 必须允许读访问。
     ysyx_26030103_PMARegion(
       0x10000000L,
-      0x4L,
-      Readable = false
+      0x00001000L
     ),
     ysyx_26030103_PMARegion(
       0x80000000L,

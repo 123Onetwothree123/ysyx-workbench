@@ -794,8 +794,18 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   xbar.io.CLINT.B <> clint.io.B
   xbar.io.CLINT.AR <> clint.io.AR
   xbar.io.CLINT.R <> clint.io.R
-  plic.sources := Cat(0.U((config.MMU.plicSources - 2).W),
-    clint.io.timer_irq && config.MMU.hasSTimerIrq.B, io.interrupt)
+  // PLIC 的 bit/寄存器下标就是 source ID（source 0 保留）：
+  //   source 1  = CLINT timer
+  //   source 10 = UART（与 xv6 memlayout.h 的 UART0_IRQ 一致）
+  // direct-NPC 顶层把 AXIRAM 的 UART 中断接到 io.interrupt；full-SoC 该
+  // 引脚保持 0。其余 source 保持未连接。
+  private val UartPlicSource = 10
+  val plicSourceBits = (0 until config.MMU.plicSources).map { i =>
+    if (i == 1) clint.io.timer_irq && config.MMU.hasSTimerIrq.B
+    else if (i == UartPlicSource) io.interrupt
+    else false.B
+  }
+  plic.sources := Cat(plicSourceBits.reverse)
   xbar.io.PLIC.AW <> plic.io.AW
   xbar.io.PLIC.W <> plic.io.W
   xbar.io.PLIC.B <> plic.io.B

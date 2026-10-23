@@ -319,6 +319,22 @@ class ysyx_26030103_AXI5Xbar(
     WLASTReg := io.in.W.WLAST
     WValidReg := true.B
   }
+  // 直接把 BREADY 表达成“响应态 + 目标选择 + 上游 ready”的组合条件，
+  // 不要放在 B 响应 when 分支里赋值。Chisel/firtool 在后者会生成
+  // `~(... | writeState==Response) & (writeState==Response)` 的恒假表达式，
+  // 导致 PLIC 写永远等不到 B 握手（读路径不受影响）。
+  val InWriteResponse = writeState === StateWriteResponse
+  io.SoCBus.B.BREADY :=
+    InWriteResponse && WriteTargetReg === TargetSoCBus && io.in.B.BREADY
+  io.CLINT.B.BREADY :=
+    InWriteResponse && WriteTargetReg === TargetCLINT && io.in.B.BREADY
+  io.PLIC.B.BREADY :=
+    InWriteResponse && WriteTargetReg === TargetPLIC && io.in.B.BREADY
+  // B 通道默认值；各目标分支和下方 PLIC 专用组合逻辑会覆盖它。
+  io.in.B.BID := 0.U
+  io.in.B.BVALID := false.B
+  io.in.B.BRESP := OKAY
+
   when(writeState === StateWriteIdle) {
     val HasWriteRequest =
       io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || WValidReg
@@ -508,7 +524,6 @@ class ysyx_26030103_AXI5Xbar(
       io.in.B.BID := io.SoCBus.B.BID
       io.in.B.BVALID := io.SoCBus.B.BVALID
       io.in.B.BRESP := io.SoCBus.B.BRESP
-      io.SoCBus.B.BREADY := io.in.B.BREADY
       // B响应没有地址，ID必须与本级发出的AWID一致；错配说明从设备违规，
       // 提前在交叉开关处报错，避免把故障点误定位到上一级仲裁器。
       when(io.SoCBus.B.BVALID) {
@@ -529,7 +544,6 @@ class ysyx_26030103_AXI5Xbar(
       io.in.B.BID := io.CLINT.B.BID
       io.in.B.BVALID := io.CLINT.B.BVALID
       io.in.B.BRESP := io.CLINT.B.BRESP
-      io.CLINT.B.BREADY := io.in.B.BREADY
       when(io.CLINT.B.BVALID) {
         assert(
           io.CLINT.B.BID === AWIDReg,
@@ -644,7 +658,6 @@ class ysyx_26030103_AXI5Xbar(
       io.in.B.BID := io.SoCBus.B.BID
       io.in.B.BVALID := io.SoCBus.B.BVALID
       io.in.B.BRESP := io.SoCBus.B.BRESP
-      io.SoCBus.B.BREADY := io.in.B.BREADY
       // B响应没有地址，ID必须与本级发出的AWID一致；错配说明从设备违规，
       // 提前在交叉开关处报错，避免把故障点误定位到上一级仲裁器。
       when(io.SoCBus.B.BVALID) {
@@ -661,27 +674,6 @@ class ysyx_26030103_AXI5Xbar(
         DownstreamWDone := false.B
         writeState := StateWriteIdle
       }
-    }.elsewhen(WriteTargetReg === TargetPLIC) {
-      io.in.B.BID := io.PLIC.B.BID
-      io.in.B.BVALID := io.PLIC.B.BVALID
-      io.in.B.BRESP := io.PLIC.B.BRESP
-      io.PLIC.B.BREADY := io.in.B.BREADY
-      when(io.PLIC.B.BVALID) {
-        assert(
-          io.PLIC.B.BID === AWIDReg,
-          "PLIC returned a write response with an unknown ID"
-        )
-      }
-
-      when(io.PLIC.B.BVALID && io.in.B.BREADY) {
-        AWValidReg := false.B
-        WValidReg := false.B
-        DownstreamAWDone := false.B
-        DownstreamWDone := false.B
-        writeState := StateWriteIdle
-      }
-    }.otherwise {
-      writeState := StateWriteDECERR
     }
   }.elsewhen(writeState === StateWriteDECERR) {
     // 地址空洞和不支持的burst在CPU内部完成，不访问任何下游设备。
@@ -696,6 +688,35 @@ class ysyx_26030103_AXI5Xbar(
       DownstreamWDone := false.B
       writeState := StateWriteIdle
     }
+  }
+
+  // PLIC 的 B 响应单独放在写状态机之外。把它写在 StateWriteResponse 的
+  // 最后一个 elsewhen 分支里会触发 firtool 生成恒假的 BREADY（该分支的
+  // 条件被同时并入取反项与正向项），表现为 PLIC 写永远等不到 B 握手。
+  // 这里用简单的“响应态 + 目标 + 下游有效”组合条件，避免该代码生成问题。
+  val PLICWriteResponse =
+    writeState === StateWriteResponse && WriteTargetReg === TargetPLIC
+  when(PLICWriteResponse) {
+    io.in.B.BID := io.PLIC.B.BID
+    io.in.B.BVALID := io.PLIC.B.BVALID
+    io.in.B.BRESP := io.PLIC.B.BRESP
+    when(io.PLIC.B.BVALID) {
+      assert(
+        io.PLIC.B.BID === AWIDReg,
+        "PLIC returned a write response with an unknown ID"
+      )
+    }
+  }
+  when(PLICWriteResponse && io.PLIC.B.BVALID && io.in.B.BREADY) {
+    AWValidReg := false.B
+    WValidReg := false.B
+    DownstreamAWDone := false.B
+    DownstreamWDone := false.B
+    writeState := StateWriteIdle
+  }
+  // 防御：无效目标本应在进入转发前走 DECERR，不能停在 Response 等 B。
+  when(InWriteResponse && WriteTargetReg === TargetInvalid) {
+    writeState := StateWriteDECERR
   }
 
   // -------------------- 读通道 --------------------

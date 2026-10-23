@@ -49,6 +49,8 @@ static void defaults(DUT &dut) {
   dut.io_hostWriteValid = 0;
   dut.io_hostWriteIndex = 0;
   dut.io_hostWriteData = 0;
+  dut.io_uartRxValid = 0;
+  dut.io_uartRxData = 0;
 }
 
 static void host_write(DUT &dut, uint16_t word_index, uint32_t data) {

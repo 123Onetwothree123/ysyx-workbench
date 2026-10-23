@@ -83,6 +83,8 @@ int main(int argc, char **argv) {
     dut.clock = 0;
     dut.reset = 1;
     dut.ram_init_valid = 0;
+    dut.uart_rx_valid = 0;
+    dut.uart_rx_data = 0;
     dut.ram_init_index = 0;
     dut.ram_init_data = 0;
     dut.debug_gpr_raddr = 0;

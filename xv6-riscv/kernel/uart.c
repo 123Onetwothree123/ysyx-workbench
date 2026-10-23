@@ -1,10 +1,11 @@
 //
 // low-level driver for 16550a UART.
 //
-// On NPC the UART model exposes only the transmit holding register at
-// 0x10000000.  Reads (LSR/RHR/ISR) are DECERR and there is no input path,
-// so the NPC build writes THR directly and polls nothing.  The QEMU build
-// keeps the interrupt-driven 16550 path as a reference.
+// On NPC the UART model exposes a minimal 16550 register set at
+// 0x10000000: THR/RBR, IER, IIR/FCR and LSR.  RX bytes are injected by the
+// simulator and delivered as PLIC source 10 (UART0_IRQ).  TX remains
+// polling-free on NPC because the model consumes THR immediately.  The QEMU
+// build keeps the full interrupt-driven 16550 path as a reference.
 //
 
 #include "types.h"
@@ -57,8 +58,9 @@ void
 uartinit(void)
 {
 #ifdef XV6_PLATFORM_NPC
-  // No register initialization is possible: NPC only accepts a store to
-  // 0x10000000.  The THR is always ready from the software point of view.
+  // NPC 的 16550 模型只需要打开接收中断；LCR/FCR 默认已可用，
+  // THR/LSR 由模型固定为始终可发送。
+  WriteReg(IER, IER_RX_ENABLE);
   initsleeplock(&tx_lock, "uart");
 #else
   // disable interrupts.
@@ -147,7 +149,6 @@ uartputc_sync(int c)
 
 // try to read one input character from the uart.
 // return -1 if none is waiting.
-#ifndef XV6_PLATFORM_NPC
 static int
 uartgetc(void)
 {
@@ -158,7 +159,6 @@ uartgetc(void)
     return -1;
   }
 }
-#endif
 
 // handle a uart interrupt, raised because input has
 // arrived, or the uart is ready for more output, or
@@ -166,15 +166,14 @@ uartgetc(void)
 void
 uartintr(void)
 {
-#ifdef XV6_PLATFORM_NPC
-  // No UART interrupt source is wired in the direct-NPC top.
-#else
   ReadReg(ISR); // acknowledge the interrupt
 
+#ifndef XV6_PLATFORM_NPC
   if (ReadReg(LSR) & LSR_TX_IDLE) {
     // UART finished transmitting; wake up sending thread.
     wakeup(&tx_chan);
   }
+#endif
 
   // read and process incoming characters, if any.
   while (1) {
@@ -183,5 +182,4 @@ uartintr(void)
       break;
     consoleintr(c);
   }
-#endif
 }

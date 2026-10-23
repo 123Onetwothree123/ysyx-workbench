@@ -6,8 +6,8 @@
 // 02000000 -- CLINT (mtime/mtimecmp only)
 // 0c000000 -- PLIC (routed by the NPC crossbar even though it is not listed
 //             as a PMA region; it is not cacheable)
-// 10000000 -- UART (NPC models only the TX holding register; reads are
-//             DECERR and there is no input path)
+// 10000000 -- UART (minimal 16550: THR/RBR, IER, IIR/FCR, LSR; RX is
+//             injected by the simulator and raises PLIC source 10)
 // 80000000 -- RAM, 64 MiB, 0x80000000..0x84000000
 //
 // The kernel itself is loaded at 0x80000000.  fs.img is linked into the

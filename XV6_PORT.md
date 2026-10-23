@@ -190,21 +190,21 @@ NPC RV64 MMU 配置：
 
 ### 5.6 UART
 
-NPC 的 UART 模型（`riscv32e_npc.scala`）：
+NPC 的 UART 模型（`npc/src/Common/ysyx_26030103_UART16550.scala`，
+由 `riscv32e_npc_AXIRAM` 例化）实现了最小 16550 子集：
 
-- 只匹配地址 `0x10000000`；
-- 只在 `WSTRB[0]` 有效时把低字节 `printf` 到仿真 stdout；
-- 读 UART 会得到 DECERR；
-- direct-NPC 顶层把 `io_interrupt` 固定为 0。
+- 地址 `0x10000000` 起 8 个字节寄存器：THR/RBR、IER、IIR/FCR、
+  LCR、MCR、LSR、MSR、SCR；
+- TX：写 THR 仍直接 `printf` 到仿真 stdout，不产生 TX 中断；
+- RX：64 字节 FIFO，读 RBR 弹出；LSR.DataReady 反映 FIFO 非空；
+  IER.RX 使能且 FIFO 非空时 `uart_irq` 保持高电平；
+- direct-NPC 顶层新增 `uart_rx_valid/uart_rx_data/uart_rx_ready` 端口，
+  C++ 在 SDB `c`/非 SDB 主循环中把 stdin 非阻塞转发进来；
+- UART PMA 区域改为可读，空 FIFO 读 RBR 返回 0，不再 DECERR。
 
-因此 NPC 路径的 `uart.c`：
-
-- `uartinit()` 只初始化 `tx_lock`，不写 IER/LCR/FCR；
-- `uartputc_sync()` 直接写 THR，不轮询 LSR；
-- `uartwrite()` 同步逐字节写，不使用 TX 中断/sleep；
-- `uartgetc()`/`uartintr()` 在 NPC 下没有输入路径。
-
-QEMU 参考构建保留完整 16550 中断驱动路径，用 `PLATFORM=qemu` 区分。
+NPC 路径的 `uart.c` 现在也打开 IER.RX，并在 `uartintr()` 中读 ISR、
+轮询 LSR/RBR 排空输入。`uartputc_sync()`/`uartwrite()` 仍直接写 THR，
+避免依赖 TX 中断。QEMU 参考构建保留完整 16550 路径。
 
 ### 5.7 PLIC / CLINT
 
@@ -212,12 +212,15 @@ QEMU 参考构建保留完整 16550 中断驱动路径，用 `PLATFORM=qemu` 区
 - NPC xbar 的 `decode()` 在检查 PMA 列表之前先匹配 PLIC 窗口，所以即使
   PLIC 不在 PMA 列表中，xv6 的 `plicinit()`/`plicinithart()` 写入仍可到达
   PLIC 从设备。
-- 但 NPC `ysyx_26030103.scala` 把 PLIC source 1 接 `io.interrupt`，
-  source 2 接 CLINT timer；direct-NPC `riscv32e_npc_SimTop.sv` 把
-  `io_interrupt` 接 `1'b0`。xv6 使用的 UART IRQ 10 没有接到任何 source，
-  所以 NPC 上不会有 UART 外部中断。
-- `plic.c` 仍按 UART IRQ 10 编程；这既不阻碍启动，也为以后接入 UART
-  RX 中断保留代码。
+- PLIC 的 bit/寄存器下标就是 source ID（bit 0 保留）：
+  source 1 = CLINT timer，source 10 = UART。direct-NPC 顶层把
+  AXIRAM 的 `uart_irq` 接到 `io_interrupt`，再由 PLIC 交给 CPU。
+- PLIC 同时支持标准 RISC-V 上下文地址（S 上下文 enable `0x2080`、
+  threshold `0x201000`、claim/complete `0x201004`）和早期测试使用的
+  M 上下文地址（`0x200000/0x200004`）。xv6 的 `plic.c` 无需修改。
+- xbar 的 PLIC 写响应曾因 firtool 把最后一个 `elsewhen` 分支条件同时
+  并入取反项与正向项，生成恒假的 BREADY；现已改为独立的组合 BREADY/
+  响应逻辑，PLIC 写能够完成 B 握手（见 `uart-irq-test`）。
 - CLINT 只实现 `mtime/mtimecmp`，没有 `msip`。xv6 不使用 `msip`。
 
 ### 5.8 其它 CSR / 指令
@@ -420,22 +423,27 @@ amoswap.w.aq  a5, a4, (s1)     # acquire(), 0x80001024
 `fence`/`fence.i` 已由 NPC 支持；`__atomic_store_n(..., RELEASE)` 编译为
 `fence rw,w` + `sw`，不需要 A。
 
-### 8.2 交互式 shell 需要：UART RX + IRQ
+### 8.2 交互式 shell：UART RX + IRQ（已实现）
 
-当前 NPC direct 顶层：
+direct-NPC 现在具备：
 
-- UART 模型只写不读；
-- `io_interrupt` 固定 0；
-- PLIC source 10（xv6 的 `UART0_IRQ`）没有连接。
+- 16550 最小 RX 寄存器组（RBR/LSR/IIR/IER/FCR）；
+- 仿真 stdin/测试平台可注入接收字节，FIFO 满时停止读取而非阻塞；
+- UART 中断接 PLIC source 10，PLIC 标准 S 上下文寄存器地址可用；
+- `npc/csrc/Test/uart-irq-test/` 裸机回归：配置 PLIC/UART 后注入 `'Z'`，
+  S 模式外部中断 claim 到 10、读到 LSR.DataReady 与 RBR，再 complete
+  并 GOOD halt。
 
-因此即使 A 扩展完成，NPC 上也只会启动到 shell 提示符，无法实际输入命令。
-若需要交互，需要：
+运行方式：
 
-1. 给 UART 模型增加 RX holding register / LSR；
-2. 把 UART 中断接到 PLIC 的 source 10（或修改 xv6 使用实际 source）；
-3. 让 `io_interrupt` 接入该中断线。
+```sh
+make -C npc/csrc/Test/uart-irq-test test
+```
 
-在此之前，xv6 的 PLIC 代码可以保留，不会造成启动失败。
+注意：本环境下 RV64 direct-NPC 存在与 UART 无关的“store 后紧接 load
+卡死”问题，未修改的 c140c1cd9 基线也能复现，因此 RV64 xv6 的实际
+shell 输入尚未完成端到端验证。上述 UART/PLIC 回归使用 RV32；UART 和
+PLIC 的寄存器/中断路径与 XLEN 无关。
 
 ### 8.3 非阻塞的差异
 

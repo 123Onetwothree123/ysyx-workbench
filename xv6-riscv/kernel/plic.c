@@ -9,8 +9,8 @@
 //
 // NPC decodes 0x0c000000 in its crossbar even though this window is not part
 // of the PMA list; S-mode accesses are therefore legal.  The direct-NPC top
-// ties io_interrupt to zero, so UART interrupts are not delivered, but the
-// register programming is kept compatible with the QEMU reference build.
+// routes UART RX interrupts to PLIC source 10 and its 0x2080/0x201000
+// context registers, matching the QEMU reference layout.
 //
 
 void

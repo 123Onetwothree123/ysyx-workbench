@@ -2,6 +2,7 @@ package ysyx_26030103
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.infra._
 
 class riscv32e_npc_AXIRAM extends Module {
@@ -13,6 +14,12 @@ class riscv32e_npc_AXIRAM extends Module {
     val hostWriteValid = Input(Bool())
     val hostWriteIndex = Input(UInt(24.W))
     val hostWriteData = Input(UInt(32.W))
+    // 仿真 stdin/测试平台注入的 UART 接收字节。rxReady 为高表示 FIFO
+    // 还能接收；上层不注入时保持 valid=0 即可，不会阻塞仿真。
+    val uartRxValid = Input(Bool())
+    val uartRxData = Input(UInt(8.W))
+    val uartRxReady = Output(Bool())
+    val uartIrq = Output(Bool())
   })
 
   // direct-NPC 使用 64MiB RAM；足以容纳 Nanos-lite 的常驻数据，
@@ -20,13 +27,29 @@ class riscv32e_npc_AXIRAM extends Module {
   val depth = 64 * 1024 * 1024 / 4
   val wordIndexBits = 24
   val mem = SyncReadMem(depth, UInt(32.W))
+  // 16550 兼容的 UART：TX 保持 printf 行为，RX 由仿真顶层注入。
+  val uart = Module(new ysyx_26030103_UART16550())
 
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
   val DECERR = 3.U(2.W)
   val RamBase = "h80000000".U(32.W)
   val RamLast = "h83ffffff".U(32.W)
-  val UARTAddress = "h10000000".U(32.W)
+  val UartBase = "h10000000".U(32.W)
+  val UartLast = "h1000001f".U(32.W)
+
+  // UART 窗口只有 8 个字节寄存器。与 RAM 一样，必须保证整个访问都落在
+  // 窗口内，避免跨窗口访问被错误地当成 UART 寄存器。
+  def IsUARTBeat(address: UInt, size: UInt): Bool = {
+    val lastStart = MuxLookup(size, 0.U(32.W))(
+      Seq(
+        0.U -> UartLast,
+        1.U -> (UartLast - 1.U),
+        2.U -> (UartLast - 3.U)
+      )
+    )
+    size <= 2.U && address >= UartBase && address <= lastStart
+  }
 
   // 只有 AxSIZE 选中的每个字节都位于 64MiB 仿真内存窗口内时，该拍才属于
   // RAM。尤其要避免窗口外地址通过截断后的 SyncReadMem 索引发生回绕。
@@ -52,6 +75,8 @@ class riscv32e_npc_AXIRAM extends Module {
   val readBeat = RegInit(0.U(8.W))
   val readConfigError = RegInit(false.B)
   val readResp = RegInit(OKAY)
+  val readIsUart = RegInit(false.B)
+  val readUartData = RegInit(0.U(8.W))
   val readStep = MuxLookup(arSize, 0.U(32.W))(
     Seq(
       0.U -> 1.U(32.W),
@@ -60,6 +85,7 @@ class riscv32e_npc_AXIRAM extends Module {
     )
   )
   val readAddressIsRAM = IsRAMBeat(arAddr, arSize)
+  val readAddressIsUART = IsUARTBeat(arAddr, arSize)
   val readWordIndex = ((arAddr - RamBase) >> 2)(wordIndexBits - 1, 0)
   val rd = mem.read(
     readWordIndex,
@@ -85,7 +111,7 @@ class riscv32e_npc_AXIRAM extends Module {
   // 后续状态中合并并写回；如果在请求当拍使用读结果，就会合并陈旧或未定义的
   // 数据。
   val writeAddressIsRAM = IsRAMBeat(awAddr, awSize)
-  val writeAddressIsUART = awAddr === UARTAddress
+  val writeAddressIsUART = IsUARTBeat(awAddr, awSize)
   val writeWordIndex = ((awAddr - RamBase) >> 2)(wordIndexBits - 1, 0)
   val writeOld = mem.read(
     writeWordIndex,
@@ -135,6 +161,23 @@ class riscv32e_npc_AXIRAM extends Module {
   val haveAW = awPending || awFire
   val haveW = wPending || wCollectFire
 
+  // UART 寄存器是单拍字节访问。读请求在 AR 握手当拍采样，读 RBR 的
+  // 弹出副作用也只发生一次；写请求在 sWriteCommit 产生 THR/寄存器写。
+  val uartArFire = arFire &&
+    IsUARTBeat(io.axi.AR.ARADDR, io.axi.AR.ARSIZE) &&
+    io.axi.AR.ARBURST <= 1.U && io.axi.AR.ARLEN === 0.U
+  uart.io.rxValid := io.uartRxValid
+  uart.io.rxData := io.uartRxData
+  uart.io.rdAddr := io.axi.AR.ARADDR(4, 0)
+  uart.io.rdEn := uartArFire
+  uart.io.wrAddr := awAddr(4, 0)
+  uart.io.wrEn := state === sWriteCommit && !writeConfigError &&
+    writeAddressIsUART && wStrb =/= 0.U
+  // AXI 字节通道由地址低两位选择；xv6 的 UART 寄存器都是单字节访问。
+  uart.io.wrData := (wData >> (awAddr(1, 0) << 3))(7, 0)
+  io.uartRxReady := uart.io.rxReady
+  io.uartIrq := uart.io.irq
+
   when(awFire) {
     awAddr := io.axi.AW.AWADDR
     awId := io.axi.AW.AWID
@@ -142,9 +185,13 @@ class riscv32e_npc_AXIRAM extends Module {
     awSize := io.axi.AW.AWSIZE
     awBurst := io.axi.AW.AWBURST
     writeBeat := 0.U
-    writeConfigError := io.axi.AW.AWSIZE > 2.U || io.axi.AW.AWBURST > 1.U
+    writeConfigError := io.axi.AW.AWSIZE > 2.U || io.axi.AW.AWBURST > 1.U ||
+      (IsUARTBeat(io.axi.AW.AWADDR, io.axi.AW.AWSIZE) &&
+        io.axi.AW.AWLEN =/= 0.U)
     writeResp := Mux(
-      io.axi.AW.AWSIZE > 2.U || io.axi.AW.AWBURST > 1.U,
+      io.axi.AW.AWSIZE > 2.U || io.axi.AW.AWBURST > 1.U ||
+        (IsUARTBeat(io.axi.AW.AWADDR, io.axi.AW.AWSIZE) &&
+          io.axi.AW.AWLEN =/= 0.U),
       SLVERR,
       OKAY
     )
@@ -158,7 +205,13 @@ class riscv32e_npc_AXIRAM extends Module {
   }
 
   io.axi.R.RVALID := state === sReadResp
-  io.axi.R.RDATA := Mux(readResp === OKAY, rd, 0.U)
+  // UART 是字节寄存器，按 16550 常见做法复制到四个字节通道；LSU 会按
+  // 访问地址选择正确通道，因此字/半字/字节读都能得到同一寄存器值。
+  io.axi.R.RDATA := Mux(
+    readIsUart,
+    Cat(readUartData, readUartData, readUartData, readUartData),
+    Mux(readResp === OKAY, rd, 0.U)
+  )
   io.axi.R.RRESP := readResp
   io.axi.R.RLAST := state === sReadResp && readBeat === arLen
   io.axi.R.RID := arId
@@ -176,7 +229,13 @@ class riscv32e_npc_AXIRAM extends Module {
         arSize := io.axi.AR.ARSIZE
         arBurst := io.axi.AR.ARBURST
         readBeat := 0.U
-        readConfigError := io.axi.AR.ARSIZE > 2.U || io.axi.AR.ARBURST > 1.U
+        readIsUart := uartArFire
+        readUartData := uart.io.rdData
+        // UART 不支持突发读；突发请求按配置错误安全终止，且不产生
+        // RBR 弹出等副作用。
+        readConfigError := io.axi.AR.ARSIZE > 2.U || io.axi.AR.ARBURST > 1.U ||
+          (IsUARTBeat(io.axi.AR.ARADDR, io.axi.AR.ARSIZE) &&
+            io.axi.AR.ARLEN =/= 0.U)
         state := sReadWait
       }.elsewhen(haveAW && haveW) {
         state := sWriteRead
@@ -186,7 +245,7 @@ class riscv32e_npc_AXIRAM extends Module {
       readResp := Mux(
         readConfigError,
         SLVERR,
-        Mux(readAddressIsRAM, OKAY, DECERR)
+        Mux(readAddressIsRAM || readAddressIsUART, OKAY, DECERR)
       )
       state := sReadResp
     }
@@ -214,11 +273,8 @@ class riscv32e_npc_AXIRAM extends Module {
           cpuWriteIndex := writeWordIndex
           cpuWriteData := writeMerged
         }.elsewhen(writeAddressIsUART) {
-          // UART 是只有副作用的目标，并且刻意与 RAM 窗口分离。只有低字节使能时
-          // 才会输出字符。
-          when(wStrb(0)) {
-            printf("%c", wData(7, 0))
-          }
+          // UART 写由 uart.io.wrEn 在 sWriteCommit 产生副作用（THR 打印或
+          // 控制寄存器更新），这里不写 RAM。
         }.otherwise {
           when(writeResp === OKAY) {
             writeResp := DECERR

@@ -17,6 +17,11 @@ module;
 #include <nvboard.h>
 #endif
 #include "Config.h"
+#ifdef VRISCV32E_NPC
+#include <cerrno>
+#include <poll.h>
+#include <unistd.h>
+#endif
 module npc.DUT;
 import npc.trace.itrace;
 import npc.trace.disasm;
@@ -146,6 +151,8 @@ DUT::DUT()
     dut->ram_init_valid = 0;
     dut->ram_init_index = 0;
     dut->ram_init_data = 0;
+    dut->uart_rx_valid = 0;
+    dut->uart_rx_data = 0;
 #endif
 #if defined(CONFIG_ITRACE) || defined(CONFIG_IRINGBUF)
     init_disasm();
@@ -230,11 +237,88 @@ void DUT::final()
 #endif
     dut->final();
 }
+void DUT::EnableUARTStdin(bool enable)
+{
+#ifdef VRISCV32E_NPC
+    uart_stdin_enabled = enable;
+    uart_stdin_eof = false;
+#else
+    static_cast<void>(enable);
+#endif
+}
+
+#ifdef VRISCV32E_NPC
+void DUT::PumpUARTStdin()
+{
+    dut->uart_rx_valid = 0;
+    dut->uart_rx_data = 0;
+    if (!uart_stdin_enabled || uart_stdin_eof)
+    {
+        return;
+    }
+    // FIFO 满时不读 stdin，把字节留在管道里；这样既不会丢字符，也不会
+    // 因为提前吞掉整行输入而绕过 UART 流控。
+    if (!dut->uart_rx_ready)
+    {
+        return;
+    }
+    if (!uart_input_pending)
+    {
+        // 每 256 拍才做一次 poll()，避免在逐拍仿真热路径上增加系统调用。
+        if (uart_poll_countdown != 0)
+        {
+            --uart_poll_countdown;
+            return;
+        }
+        uart_poll_countdown = 255;
+        pollfd descriptor{.fd = STDIN_FILENO, .events = POLLIN, .revents = 0};
+        const int ready = ::poll(&descriptor, 1, 0);
+        if (ready <= 0)
+        {
+            return;
+        }
+        if ((descriptor.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0 &&
+            (descriptor.revents & POLLIN) == 0)
+        {
+            uart_stdin_eof = true;
+            return;
+        }
+        char byte{};
+        const ssize_t count = ::read(STDIN_FILENO, &byte, 1);
+        if (count == 0)
+        {
+            uart_stdin_eof = true;
+            return;
+        }
+        if (count < 0)
+        {
+            if (errno == EAGAIN || errno == EINTR)
+            {
+                return;
+            }
+            uart_stdin_eof = true;
+            return;
+        }
+        uart_input_byte = static_cast<std::uint8_t>(byte);
+        uart_input_pending = true;
+    }
+    dut->uart_rx_valid = 1;
+    dut->uart_rx_data = uart_input_byte;
+    uart_input_pending = false;
+}
+#endif
+
 void DUT::reset()
 {
     dut->clock = 0;
     dut->reset = 1;
     dut->debug_gpr_raddr = 0;
+#ifdef VRISCV32E_NPC
+    dut->uart_rx_valid = 0;
+    dut->uart_rx_data = 0;
+    uart_input_pending = false;
+    uart_poll_countdown = 0;
+#endif
     // 同步复位必须有时钟边沿才能生效，先拉高 reset 跑几个周期。
     // 注意: SoC 的 cpu_reset_chain 有 10 级移位寄存器(Verilator 随机初始化),
     // 复位保持时间必须明显超过 10 拍, 否则链中的随机初始值会形成滞后的
@@ -259,6 +343,9 @@ void DUT::reset()
 }
 void DUT::step()
 {
+#ifdef VRISCV32E_NPC
+    PumpUARTStdin();
+#endif
     dut->clock = 0;
     dut->eval();
 #ifdef CONFIG_DIFFTEST

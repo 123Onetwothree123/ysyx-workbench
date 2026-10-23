@@ -9,6 +9,8 @@ static void defaults(DUT &dut) {
   dut.io_hostWriteValid = 0;
   dut.io_hostWriteIndex = 0;
   dut.io_hostWriteData = 0;
+  dut.io_uartRxValid = 0;
+  dut.io_uartRxData = 0;
   dut.io_axi_AW_AWID = 0;
   dut.io_axi_AW_AWADDR = 0;
   dut.io_axi_AW_AWLEN = 0;
@@ -128,6 +130,15 @@ static uint32_t read_word(DUT &dut, uint32_t address, uint8_t id) {
   return result.data;
 }
 
+static uint8_t read_byte(DUT &dut, uint32_t address, uint8_t id) {
+  send_ar(dut, address, id, 0, 0, 1);
+  const ReadBeat result = receive_r(dut);
+  check(result.id == id, "AXIRAM returned the wrong RID for a byte read");
+  check(result.resp == 0 && result.last,
+        "AXIRAM returned an invalid byte read response");
+  return static_cast<uint8_t>(result.data & 0xffU);
+}
+
 static std::vector<ReadBeat> read_burst(DUT &dut, uint32_t address,
                                         uint8_t id, uint8_t len,
                                         uint8_t size, uint8_t burst) {
@@ -236,8 +247,9 @@ int main(int argc, char **argv) {
             "AXIRAM FIXED read beat was incorrect");
     }
 
-    write_single(dut, 0x8003fffcU, 0xfeedc0deU, 0xf, 2, 7);
-    const auto crossing = read_burst(dut, 0x8003fffcU, 8, 1, 2, 1);
+    // direct-NPC RAM 为 64MiB，最后一个是 0x83fffffc。
+    write_single(dut, 0x83fffffcU, 0xfeedc0deU, 0xf, 2, 7);
+    const auto crossing = read_burst(dut, 0x83fffffcU, 8, 1, 2, 1);
     check(crossing[0].data == 0xfeedc0deU && crossing[0].resp == 0 &&
               !crossing[0].last,
           "AXIRAM rejected the final in-range RAM beat");
@@ -249,12 +261,45 @@ int main(int argc, char **argv) {
     write_single(dut, 0x10000000U, '.', 0xf, 2, 10);
     check(read_word(dut, 0x80000000U, 11) == ram_zero_before,
           "UART output aliased and modified RAM word zero");
-    write_single(dut, 0x80040000U, 0xdeadc0deU, 0xf, 2, 12, false, 3);
+    write_single(dut, 0x84000000U, 0xdeadc0deU, 0xf, 2, 12, false, 3);
     write_single(dut, 0x00000000U, 0xbadc0de0U, 0xf, 2, 13, false, 3);
     check(read_word(dut, 0x80000000U, 14) == ram_zero_before,
           "an unmapped write wrapped into RAM word zero");
 
-    const auto unmapped = read_burst(dut, 0x10000000U, 1, 1, 2, 0);
+    // UART 16550 最小 RX 路径：空 FIFO 的 LSR 只置 THRE/TEMT；
+    // 注入字节后 LSR.DataReady 和 PLIC 中断线都应为高。
+    write_single(dut, 0x80000000U, 0x13572468U, 0xf, 2, 20);
+    check(static_cast<uint8_t>(read_byte(dut, 0x10000005U, 21) & 0x61U) ==
+              0x60U,
+          "empty UART LSR did not report THRE/TEMT without DataReady");
+    dut.io_uartRxData = static_cast<uint8_t>('A');
+    dut.io_uartRxValid = 1;
+    check(dut.io_uartRxReady, "UART RX FIFO was unexpectedly full");
+    tick(dut);
+    dut.io_uartRxValid = 0;
+    check((read_byte(dut, 0x10000005U, 22) & 0x61U) == 0x61U,
+          "UART LSR did not report DataReady after RX injection");
+    check(read_byte(dut, 0x10000000U, 23) == static_cast<uint8_t>('A'),
+          "UART RBR did not return the injected byte");
+    check((read_byte(dut, 0x10000005U, 24) & 0x01U) == 0,
+          "UART LSR DataReady did not clear after RBR read");
+
+    // IER 是地址 +1 的字节寄存器：WSTRB[1] 有效，数据在 WDATA[15:8]。
+    write_single(dut, 0x10000001U, 0x00000100U, 0x2, 0, 25);
+    dut.io_uartRxData = static_cast<uint8_t>('B');
+    dut.io_uartRxValid = 1;
+    tick(dut);
+    dut.io_uartRxValid = 0;
+    check(dut.io_uartIrq, "UART IRQ did not assert with IER.RX and DataReady");
+    check(read_byte(dut, 0x10000000U, 26) == static_cast<uint8_t>('B'),
+          "UART RBR missed the second injected byte");
+    check(!dut.io_uartIrq, "UART IRQ did not deassert after FIFO drained");
+    check(read_byte(dut, 0x10000000U, 28) == 0,
+          "empty UART RBR did not return 0 without DECERR");
+    check(read_word(dut, 0x80000000U, 27) == 0x13572468U,
+          "UART register traffic corrupted RAM");
+
+    const auto unmapped = read_burst(dut, 0x10001000U, 1, 1, 2, 0);
     check(unmapped[0].resp == 3 && !unmapped[0].last &&
               unmapped[1].resp == 3 && unmapped[1].last,
           "AXIRAM did not return a complete DECERR read burst");

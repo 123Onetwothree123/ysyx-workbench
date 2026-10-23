@@ -32,21 +32,57 @@ class ysyx_26030103_PLIC(
   val priority = RegInit(VecInit(Seq.fill(numSources)(0.U(priorityBits.W))))
   val enable = RegInit(VecInit(Seq.fill(Words)(0.U(32.W))))
   val threshold = RegInit(0.U(priorityBits.W))
+  // 与 RISC-V PLIC 规范一致：bit/寄存器下标就是 source ID，source 0
+  // 保留不用。因此 xv6 的 (1 << UART0_IRQ)=bit10 对应 source 10。
   val pending = RegInit(0.U(numSources.W))
   val claimed = RegInit(0.U(numSources.W))
   pending := pending | sources
   val enabledPending = VecInit((0 until numSources).map { i =>
-    pending(i) && enable(i / 32)(i % 32) && priority(i) > threshold
+    i.U =/= 0.U && pending(i) && enable(i / 32)(i % 32) && priority(i) > threshold
   })
   external_irq := enabledPending.reduce(_ || _)
 
   def addrOf(offset: BigInt): UInt = (base + offset).U(AddressWidth.W)
   def priorityAddr(i: Int): UInt = addrOf(4L * i)
-  def enableAddr(word: Int): UInt = addrOf(0x2000L + 4L * word)
+  // 兼容两套 enable 布局：
+  //   - QEMU/RISC-V 标准：hart0 M 上下文 0x2000，S 上下文 0x2080；
+  //   - 早期简化 PLIC：0x2000 起的连续 enable word。
+  // 单 hart 模型把两个上下文映射到同一份 enable 状态。xv6 使用
+  // PLIC_SENABLE(0)=0x2080。
+  val LegacyEnableBase = 0x2000L
+  val StandardSEnableBase = 0x2080L
+  val StandardThresholdAddr = addrOf(0x201000L)
+  val StandardClaimAddr = addrOf(0x201004L)
   val PendingAddr = addrOf(0x1000L)
+  // 早期地址 0x200000/0x200004 实际对应标准 PLIC 的 M 上下文 0，
+  // 继续支持以保持既有测试/软件兼容。
   val ThresholdAddr = addrOf(0x200000L)
   val ClaimAddr = addrOf(0x200004L)
   val CompleteAddr = addrOf(0x200004L)
+
+  def enableBaseIsValid(address: UInt, base: BigInt): Bool =
+    address >= addrOf(base) &&
+      address < addrOf(base + 4L * Words) &&
+      ((address - addrOf(base)) & 3.U) === 0.U
+
+  def isEnableAddr(address: UInt): Bool =
+    enableBaseIsValid(address, LegacyEnableBase) ||
+      enableBaseIsValid(address, StandardSEnableBase)
+
+  def enableWordIndex(address: UInt): UInt = {
+    val offset = Mux(
+      address >= addrOf(StandardSEnableBase),
+      (address - addrOf(StandardSEnableBase)) >> 2,
+      (address - addrOf(LegacyEnableBase)) >> 2
+    )
+    if (Words == 1) 0.U
+    else offset(log2Ceil(Words) - 1, 0)
+  }
+
+  def isThresholdAddr(address: UInt): Bool =
+    address === ThresholdAddr || address === StandardThresholdAddr
+  def isClaimAddr(address: UInt): Bool =
+    address === ClaimAddr || address === StandardClaimAddr
 
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
@@ -88,17 +124,14 @@ class ysyx_26030103_PLIC(
     val idx = (AWAddr - addrOf(0L)) >> 2
     val isPriority = AWAddr >= addrOf(0L) && AWAddr < addrOf(4L * numSources) &&
       idx > 0.U && idx < numSources.U
-    val isEnable = AWAddr >= addrOf(0x2000L) &&
-      AWAddr < addrOf(0x2000L + 4L * Words)
-    val isThreshold = AWAddr === ThresholdAddr
-    val isComplete = AWAddr === CompleteAddr
+    val isEnable = isEnableAddr(AWAddr)
+    val isThreshold = isThresholdAddr(AWAddr)
+    val isComplete = isClaimAddr(AWAddr)
     when(isPriority && WStrb =/= 0.U) {
       priority(idx(IdBits - 1, 0)) := Mux(WData(priorityBits - 1, 0) > PriorityMax,
         PriorityMax, WData(priorityBits - 1, 0))
     }.elsewhen(isEnable && WStrb =/= 0.U) {
-      val word = if (Words == 1) 0.U
-        else ((AWAddr - addrOf(0x2000L)) >> 2)(log2Ceil(Words) - 1, 0)
-      enable(word) := WData
+      enable(enableWordIndex(AWAddr)) := WData
     }.elsewhen(isThreshold && WStrb =/= 0.U) {
       threshold := Mux(WData(priorityBits - 1, 0) > PriorityMax,
         PriorityMax, WData(priorityBits - 1, 0))
@@ -115,18 +148,18 @@ class ysyx_26030103_PLIC(
 
   // 读 claim 有副作用：选择最高优先级 pending source 并清 pending。
   val claimCandidates = (0 until numSources).map { i =>
-    pending(i) && enable(i / 32)(i % 32)
+    i.U =/= 0.U && pending(i) && enable(i / 32)(i % 32) && priority(i) > threshold
   }
   val claimIndex = PriorityEncoder(claimCandidates)
   val claimValid = claimCandidates.reduce(_ || _)
-  val claimId = Mux(claimValid, claimIndex + 1.U, 0.U)
+  val claimId = Mux(claimValid, claimIndex, 0.U)
 
   when(ARFire) {
     RID := io.AR.ARID
     RValid := true.B
     RResp := OKAY
     val idx = (io.AR.ARADDR - addrOf(0L)) >> 2
-    when(io.AR.ARADDR === ClaimAddr) {
+    when(isClaimAddr(io.AR.ARADDR)) {
       RData := claimId
       when(claimValid) {
         pending := pending & ~UIntToOH(claimIndex, numSources)
@@ -134,16 +167,13 @@ class ysyx_26030103_PLIC(
       }
     }.elsewhen(io.AR.ARADDR === PendingAddr) {
       RData := pending
-    }.elsewhen(io.AR.ARADDR === ThresholdAddr) {
+    }.elsewhen(isThresholdAddr(io.AR.ARADDR)) {
       RData := threshold
     }.elsewhen(io.AR.ARADDR >= addrOf(0L) && io.AR.ARADDR < addrOf(4L * numSources) &&
       idx > 0.U && idx < numSources.U) {
       RData := priority(idx(IdBits - 1, 0))
-    }.elsewhen(io.AR.ARADDR >= addrOf(0x2000L) &&
-      io.AR.ARADDR < addrOf(0x2000L + 4L * Words)) {
-      val word = if (Words == 1) 0.U
-        else ((io.AR.ARADDR - addrOf(0x2000L)) >> 2)(log2Ceil(Words) - 1, 0)
-      RData := enable(word)
+    }.elsewhen(isEnableAddr(io.AR.ARADDR)) {
+      RData := enable(enableWordIndex(io.AR.ARADDR))
     }.otherwise {
       RData := 0.U
       RResp := SLVERR

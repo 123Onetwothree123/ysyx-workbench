@@ -5,6 +5,12 @@ module riscv32e_npc_SimTop(
   input         ram_init_valid,
   input  [23:0] ram_init_index,
   input  [31:0] ram_init_data,
+  // UART 接收字节由仿真 stdin/测试平台注入；ready 为流控，valid=0 时
+  // 不消费输入，不会阻塞 CPU 或仿真主循环。
+  input         uart_rx_valid,
+  input  [7:0]  uart_rx_data,
+  output        uart_rx_ready,
+  output        uart_irq,
   output        trap_valid,
   output [31:0] trap_pc,
   output [31:0] trap_pc_hi,
@@ -95,7 +101,7 @@ module riscv32e_npc_SimTop(
 
   ysyx_26030103 cpu (
     .clock(clock), .reset(reset),
-    .io_interrupt(1'b0),
+    .io_interrupt(uart_irq),
     .io_trap_valid(trap_valid), .io_trap_pc(trap_pc),
     .io_trap_pc_hi(trap_pc_hi),
     .io_master_awready(cpu_awready), .io_master_awvalid(cpu_awvalid),
@@ -216,6 +222,8 @@ module riscv32e_npc_SimTop(
     .io_hostWriteValid(ram_init_valid),
     .io_hostWriteIndex(ram_init_index),
     .io_hostWriteData(ram_init_data),
+    .io_uartRxValid(uart_rx_valid), .io_uartRxData(uart_rx_data),
+    .io_uartRxReady(uart_rx_ready), .io_uartIrq(uart_irq),
     .io_axi_AW_AWVALID(cpu_awvalid), .io_axi_AW_AWREADY(cpu_awready),
     .io_axi_AW_AWADDR(cpu_awaddr),
     .io_axi_AW_AWID(cpu_awid), .io_axi_AW_AWLEN(cpu_awlen), .io_axi_AW_AWSIZE(cpu_awsize),

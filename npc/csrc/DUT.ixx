@@ -55,6 +55,16 @@ private:
     PerfStats perf{};
     std::size_t fault_count{0}; // AXI fault 打印限流计数
     bool finalized{false};
+#ifdef VRISCV32E_NPC
+    // direct-NPC 的 UART 接收注入。stdin 只在 SDB 的 `c`/非 SDB 主循环
+    // 中启用，避免调试器命令被误当成串口输入。
+    bool uart_stdin_enabled{false};
+    bool uart_stdin_eof{false};
+    bool uart_input_pending{false};
+    std::uint8_t uart_input_byte{0};
+    std::size_t uart_poll_countdown{0};
+    void PumpUARTStdin();
+#endif
     // Seeded once when a REF is enabled, then updated by reading the physical
     // destination after each real write.  DiffTest can snapshot all 32 GPRs
     // without 32 debug-address changes/evals per retirement.
@@ -79,6 +89,9 @@ public:
     void EnableVGACheck();
     [[nodiscard]] bool VGACheckReport();
     void step();
+    // 控制是否把仿真进程 stdin 非阻塞地转发给 direct-NPC UART。
+    // full-SoC 构建没有该注入端口，方法为空操作。
+    void EnableUARTStdin(bool enable);
     // 在每次时钟沿后立即调用：若本拍 trap_valid 有效，记录 custom halt。
     // 调用者必须在检查 Verilated::gotFinish() 之前调用，保证同一拍的
     // $finish 不会把已可见的 GOOD/BAD trap 吞成“未触发陷阱”。

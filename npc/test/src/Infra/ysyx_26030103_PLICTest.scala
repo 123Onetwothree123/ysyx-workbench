@@ -71,7 +71,7 @@ class ysyx_26030103_PLICTest extends AnyFlatSpec with Matchers {
       (read(dut, 0x0c001000L) & 3) should be(BigInt(2))
       dut.sources.poke(0.U)
       dut.clock.step()
-      read(dut, 0x0c200004L) should be(BigInt(2))
+      read(dut, 0x0c200004L) should be(BigInt(1))
       (read(dut, 0x0c001000L) & 3) should be(BigInt(0))
     }
   }
@@ -85,6 +85,25 @@ class ysyx_26030103_PLICTest extends AnyFlatSpec with Matchers {
       dut.sources.poke(2.U)
       dut.clock.step()
       bool(dut.external_irq) should be(false)
+    }
+  }
+
+  it should "支持 xv6 的 S-mode 上下文地址与 source 10" in {
+    simulate(new ysyx_26030103_PLIC()) { dut =>
+      setup(dut)
+      // xv6: PLIC + UART0_IRQ*4、SENABLE=0x2080、
+      // SPRIORITY=0x201000、SCLAIM=0x201004。
+      write(dut, 0x0c000028L, 1)
+      write(dut, 0x0c002080L, 1 << 10)
+      write(dut, 0x0c201000L, 0)
+      dut.sources.poke(1 << 10) // PLIC source 10
+      dut.clock.step()
+      bool(dut.external_irq) should be(true)
+      // 模拟软件在 claim 前读走 RBR，UART 电平中断撤销。
+      dut.sources.poke(0.U)
+      read(dut, 0x0c201004L) should be(BigInt(10))
+      (read(dut, 0x0c001000L) & (BigInt(1) << 10)) should be(BigInt(0))
+      write(dut, 0x0c201004L, 10) // complete
     }
   }
 }

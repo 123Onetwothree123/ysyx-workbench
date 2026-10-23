@@ -149,6 +149,8 @@ int main(int argc, char const *argv[])
 #ifdef CONFIG_SDB
     const auto sdbExitReason{SDB::MainLoop(dut, options->GetBatchMode())};
 #else
+    // 无 SDB 时 stdin 专供客户机串口使用。
+    dut.EnableUARTStdin(true);
     while (!NPCTrap::HasHalted())
     {
         // $finish 可能与本拍已寄存的 halt 脉冲同时可见。先结算 halt，

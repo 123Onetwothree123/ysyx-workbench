@@ -23,6 +23,8 @@ void direct_npc_reset_pc_must_match_ram_image_base() {
   dut.clock = 0;
   dut.reset = 1;
   dut.ram_init_valid = 0;
+  dut.uart_rx_valid = 0;
+  dut.uart_rx_data = 0;
   dut.ram_init_index = 0;
   dut.ram_init_data = 0x02a00513U; // addi a0, x0, 42
   dut.debug_gpr_raddr = 10;

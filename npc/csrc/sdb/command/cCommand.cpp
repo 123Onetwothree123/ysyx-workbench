@@ -30,6 +30,9 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
 #ifdef CONFIG_WATCHPOINT
     NPCEvaluationContext EvaluationContext{dut};
 #endif
+    // 运行期间把 stdin 非阻塞转发给 direct-NPC UART；SDB 命令读取发生
+    // 在 c 返回之后，因此不会与客户机输入冲突。
+    dut.EnableUARTStdin(true);
     while (!NPCTrap::HasHalted())
     {
         // $finish 可能与本拍已寄存的 halt 脉冲同时可见。先结算 halt，
@@ -56,5 +59,6 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
         }
 #endif
     }
+    dut.EnableUARTStdin(false);
     return SDBCommandResult::Continue;
 }
