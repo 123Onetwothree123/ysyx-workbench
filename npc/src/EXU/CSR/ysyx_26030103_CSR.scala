@@ -87,6 +87,9 @@ class ysyx_26030103_CSR(
     val StateMtvec = Output(UInt(XLEN.W))
     val StateMepc = Output(UInt(XLEN.W))
     val StateMcause = Output(UInt(XLEN.W))
+    // 本拍 trap 写入 mtval/stval 的最终值（含 TrapTval=0 时回退到 PC）。
+    // DiffTest 用它把 DUT 的真实 tval 注入 REF，不参与 CSR 快照 ABI。
+    val StateTval = Output(UInt(XLEN.W))
     val PmpCfg = Output(Vec(16, UInt(8.W)))
     val PmpAddr = Output(Vec(16, UInt(XLEN.W)))
     val Mtime = Input(UInt(64.W))
@@ -481,18 +484,21 @@ class ysyx_26030103_CSR(
       CSRWriteData(Scause_rdata))
   }
 
+  // trap 写 tval 的统一取值：DUT 对没有专门 tval 的异常使用故障指令
+  // 的 PC（例如 illegal/ecall），有地址的异常使用访存/取指地址。
+  val TrapTvalValue = Mux(io.TrapTval =/= 0.U, io.TrapTval, io.pc)
   if (hasS) {
     val Stval = StvalOpt.get
     when(ExceptionCommit && TrapToS) {
-      Stval := Mux(io.TrapTval =/= 0.U, io.TrapTval, io.pc)
+      Stval := TrapTvalValue
     }.elsewhen(ExceptionCommit) {
-      Mtval := Mux(io.TrapTval =/= 0.U, io.TrapTval, io.pc)
+      Mtval := TrapTvalValue
     }.elsewhen(CSRWen && IsCSRAddress(CSR_STVAL)) {
       Stval := CSRWriteData(Stval)
     }
   } else {
     when(ExceptionCommit) {
-      Mtval := Mux(io.TrapTval =/= 0.U, io.TrapTval, io.pc)
+      Mtval := TrapTvalValue
     }
   }
   when(CSRWen && IsCSRAddress(CSR_MTVAL)) { Mtval := CSRWriteData(Mtval) }
@@ -696,6 +702,9 @@ class ysyx_26030103_CSR(
     Mux(MepcWen, Cat(CSRWriteData(Mepc_rdata)(XLEN - 1, 2), 0.U(2.W)), Mepc_rdata))
   io.StateMcause := Mux(ExceptionCommit && !TrapToS, Widen32(ExceptionCause),
     Mux(McauseWen, CSRWriteData(Mcause_rdata), Mcause_rdata))
+  // 只在 trap 提交拍给出本次写入的 tval；普通指令/软件写 CSR 不参与
+  // DiffTest 的 trap 注入。
+  io.StateTval := Mux(ExceptionCommit, TrapTvalValue, 0.U(XLEN.W))
   io.McounterenOut := Mcounteren
   io.ScounterenOut := Scounteren_rdata
   for (entry <- 0 until 16) {

@@ -53,6 +53,8 @@ class ysyx_26030103_EXU(
     val CSRStateMtvec = Output(UInt(XLEN.W))
     val CSRStateMepc = Output(UInt(XLEN.W))
     val CSRStateMcause = Output(UInt(XLEN.W))
+    // 本次 trap 写入 mtval/stval 的最终值，供顶层在 TrapCommit 拍锁存。
+    val CSRStateTval = Output(UInt(XLEN.W))
     val PmpCfg = Output(Vec(16, UInt(8.W)))
     val PmpAddr = Output(Vec(16, UInt(XLEN.W)))
     val Mtime = Input(UInt(64.W))
@@ -478,6 +480,7 @@ class ysyx_26030103_EXU(
   io.CSRStateMtvec := CSRUnit.io.StateMtvec
   io.CSRStateMepc := CSRUnit.io.StateMepc
   io.CSRStateMcause := CSRUnit.io.StateMcause
+  io.CSRStateTval := CSRUnit.io.StateTval
   io.PmpCfg := CSRUnit.io.PmpCfg
   io.PmpAddr := CSRUnit.io.PmpAddr
   CSRUnit.io.Mtime := io.Mtime

@@ -10,6 +10,7 @@ extern "C" {
 
 volatile uint32_t trap_count = 0;
 volatile uint32_t last_trap_cause = 0;
+volatile uint32_t last_trap_tval = 0;
 volatile uint32_t timer_observation = 0;
 volatile uint32_t zicsr_observation = 0;
 
@@ -59,6 +60,11 @@ __attribute__((naked, aligned(4))) void difftest_trap_entry() {
       "csrr t0, mcause\n"
       "la t1, last_trap_cause\n"
       "sw t0, 0(t1)\n"
+      // 读取 mtval 才能验证 DiffTest 是否把 DUT 的真实 tval 注入 REF；
+      // 只看 mcause 时，stval/mtval 的差异会拖到 handler 后续指令才暴露。
+      "csrr t0, mtval\n"
+      "la t1, last_trap_tval\n"
+      "sw t0, 0(t1)\n"
       "la t1, trap_count\n"
       "lw t2, 0(t1)\n"
       "addi t2, t2, 1\n"
@@ -102,19 +108,38 @@ extern "C" int main() {
                : "r"(difftest_trap_entry)
                : "memory");
 
-  asm volatile("ecall" ::: "memory");
-  const bool ecall_ok = trap_count == 1u && last_trap_cause == 11u;
+  uintptr_t ecall_pc = 0;
+  asm volatile("la %0, 1f\n"
+               "1: ecall\n"
+               : "=r"(ecall_pc)
+               :
+               : "memory");
+  const bool ecall_ok = trap_count == 1u && last_trap_cause == 11u &&
+                        last_trap_tval == ecall_pc;
 
   // NEMU's ordinary memory path permits this address, so a correct online
-  // DiffTest must inject the DUT-classified cause instead of executing the
-  // faulting load in the reference model.
-  asm volatile("lw t0, 1(%0)" : : "r"(&words[0]) : "t0", "memory");
-  const bool misaligned_ok = trap_count == 2u && last_trap_cause == 4u;
+  // DiffTest must inject the DUT-classified cause/tval instead of executing
+  // the faulting load in the reference model.
+  uintptr_t misaligned_pc = 0;
+  asm volatile("la %0, 1f\n"
+               "1: lw t0, 1(%1)\n"
+               : "=r"(misaligned_pc)
+               : "r"(&words[0])
+               : "t0", "memory");
+  const bool misaligned_ok =
+      trap_count == 2u && last_trap_cause == 4u &&
+      last_trap_tval == reinterpret_cast<uintptr_t>(&words[0]) + 1u;
 
   // Likewise, the reference decoder must never execute this instruction: its
   // normal invalid-instruction path aborts rather than entering the DUT trap.
-  asm volatile(".word 0xffffffff" ::: "memory");
-  const bool illegal_ok = trap_count == 3u && last_trap_cause == 2u;
+  uintptr_t illegal_pc = 0;
+  asm volatile("la %0, 1f\n"
+               "1: .word 0xffffffff\n"
+               : "=r"(illegal_pc)
+               :
+               : "memory");
+  const bool illegal_ok = trap_count == 3u && last_trap_cause == 2u &&
+                          last_trap_tval == illegal_pc;
 
   asm volatile("csrw mtvec, %0" : : "r"(old_mtvec) : "memory");
 

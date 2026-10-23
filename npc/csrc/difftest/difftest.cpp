@@ -29,6 +29,11 @@ namespace
     using REFDifftestRegcpy = void (*)(void *dut, bool direction);
     using REFDifftestExec = void (*)(std::uint64_t n);
     using REFDifftestRaiseIntr = void (*)(std::uint64_t no);
+    // 带 tval 的 trap 注入扩展。三个参数固定 64 位，与寄存器/CSR 快照
+    // ABI 解耦；RV32 REF 在内部截断到 32 位。
+    using REFDifftestTrap = void (*)(std::uint64_t no,
+                                     std::uint64_t epc,
+                                     std::uint64_t tval);
     using REFDifftestInit = void (*)(int port);
     using REFDifftestStateSize = std::size_t (*)();
     using REFDifftestCSRStateSize = std::size_t (*)();
@@ -39,6 +44,7 @@ namespace
     REFDifftestRegcpy REFRegcpy{nullptr};
     REFDifftestExec REFExec{nullptr};
     REFDifftestRaiseIntr REFRaiseIntr{nullptr};
+    REFDifftestTrap REFTrap{nullptr};
     REFDifftestStateSize REFStateSize{nullptr};
     REFDifftestCSRStateSize REFCSRStateSize{nullptr};
     REFDifftestCSRcpy REFCSRcpy{nullptr};
@@ -96,6 +102,7 @@ namespace
     npc::XWord ReadMtraceAddr(DUT &dut) { return DebugWord(*dut, dut->debug_mtrace_addr, dut->debug_mtrace_addr_hi); }
     npc::XWord ReadTrapPC(DUT &dut) { return DebugWord(*dut, dut->debug_trap_pc, dut->debug_trap_pc_hi); }
     npc::XWord ReadTrapTarget(DUT &dut) { return DebugWord(*dut, dut->debug_trap_target, dut->debug_trap_target_hi); }
+    npc::XWord ReadTrapTval(DUT &dut) { return DebugWord(*dut, dut->debug_trap_tval, dut->debug_trap_tval_hi); }
 #else
     npc::XWord ReadRetirePC(DUT &dut) { return static_cast<npc::XWord>(dut->debug_pc); }
     npc::XWord ReadNextPC(DUT &dut) { return static_cast<npc::XWord>(dut->debug_next_pc); }
@@ -103,6 +110,13 @@ namespace
     npc::XWord ReadMtraceAddr(DUT &dut) { return static_cast<npc::XWord>(dut->debug_mtrace_addr); }
     npc::XWord ReadTrapPC(DUT &dut) { return static_cast<npc::XWord>(dut->debug_trap_pc); }
     npc::XWord ReadTrapTarget(DUT &dut) { return static_cast<npc::XWord>(dut->debug_trap_target); }
+#ifdef VRISCV32E_NPC
+    npc::XWord ReadTrapTval(DUT &dut) { return static_cast<npc::XWord>(dut->debug_trap_tval); }
+#else
+    // full-SoC 调试端口尚未导出 trap tval（由独立任务补齐）。这里明确
+    // 返回不可用标记，初始化时告警并降级为旧接口，不能伪装成 tval=0。
+    npc::XWord ReadTrapTval(DUT &) { return 0; }
+#endif
 #endif
 
     DifftestCPUState ReadReferenceState()
@@ -344,6 +358,26 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
         return std::unexpected{RaiseIntrSymbol.error()};
     }
     REFRaiseIntr = *RaiseIntrSymbol;
+    // tval 注入是可选 ABI 扩展：旧 REF 没有该符号时允许启动，但必须
+    // 明确告警；之后遇到非零 tval 的 trap 会拒绝继续比对，避免用陈旧
+    // mtval/stval 静默错跑。
+    auto TrapSymbol{LoadSymbol<REFDifftestTrap>("difftest_trap")};
+    if (TrapSymbol)
+    {
+        REFTrap = *TrapSymbol;
+    }
+    else
+    {
+        std::println(
+            std::cerr,
+            "DiffTest: 警告：REF 缺少 difftest_trap，tval 注入不可用；"
+            "含非零 mtval/stval 的 trap 将明确失败，请更新 REF");
+    }
+#ifndef VRISCV32E_NPC
+    std::println(std::cerr,
+                 "DiffTest: 警告：full-SoC 调试端口未导出 trap tval，"
+                 "本平台 tval 注入降级为旧接口（仅 cause）");
+#endif
     auto InitSymbol{LoadSymbol<REFDifftestInit>("difftest_init")};
     if (!InitSymbol)
     {
@@ -503,7 +537,37 @@ void DifftestTrapStep(DUT &dut)
     // executing the faulting instruction in REF is unsafe for PMA faults,
     // illegal instructions, and misaligned control transfers that the simple
     // reference memory/decoder may not model.
+    const auto tval{ReadTrapTval(dut)};
+#if defined(VRISCV32E_NPC)
+    if (REFTrap != nullptr)
+    {
+        // 新版 REF：cause/epc/tval 一次注入，REF 在同一个架构边界写入
+        // mcause/mepc/mtval（或委托到 S 时的 scause/sepc/stval）。
+        REFTrap(cause, trapPC, tval);
+    }
+    else if (tval != 0)
+    {
+        // 旧 REF 只能传 cause，无法表达非零 tval；明确失败而不是让
+        // 后续 csrr mtval/stval 产生难以定位的寄存器差异。
+        std::println(std::cerr,
+                     "DiffTest trap tval=0x{:0{}x} 无法注入：REF 缺少 "
+                     "difftest_trap（trap PC=0x{:0{}x}）",
+                     tval,
+                     npc::XHexDigits,
+                     trapPC,
+                     npc::XHexDigits);
+        ReportMismatch(dut, "trap-tval-unsupported", trapPC);
+        return;
+    }
+    else
+    {
+        REFRaiseIntr(cause);
+    }
+#else
+    // full-SoC 调试端口暂未导出 tval；初始化时已明确告警，这里保持旧
+    // 行为。等待 full-SoC tval 端口补齐后再切换到 REFTrap。
     REFRaiseIntr(cause);
+#endif
 
     const auto REFState{ReadReferenceState()};
     const auto target{ReadTrapTarget(dut)};

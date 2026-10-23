@@ -127,9 +127,30 @@ __EXPORT void difftest_exec(uint64_t n)
   cpu_exec(n);
 }
 
+/*
+ * 旧 ABI：只注入 cause，没有 tval。这里显式把暂存 tval 清零，避免
+ * 上一次异常遗留的 isa_trap_tval 污染本次 mtval/stval。需要真实 tval
+ * 的 DUT 应改用 difftest_trap()。
+ */
 __EXPORT void difftest_raise_intr(uint64_t NO)
 {
+  isa_trap_tval = 0;
   cpu.pc = isa_raise_intr((word_t)NO, cpu.pc);
+}
+
+/*
+ * 带 tval 的 trap 注入：先建立 epc 和 tval，再由 isa_raise_intr() 一次性
+ * 写入 cause/epc/tval 和 MPP，保证三者对应同一个架构边界。tval 在
+ * isa_raise_intr() 内部按委托目标写入 mtval 或 stval；RV32 REF 在此处
+ * 自然截断为 32 位。
+ */
+__EXPORT void difftest_trap(uint64_t no, uint64_t epc, uint64_t tval)
+{
+  cpu.pc = (word_t)epc;
+  isa_trap_tval = (word_t)tval;
+  cpu.pc = isa_raise_intr((word_t)no, (vaddr_t)epc);
+  /* 已落入 mtval/stval；清空暂存，后续旧接口调用不会复用本次 tval。 */
+  isa_trap_tval = 0;
 }
 
 __EXPORT void difftest_init(int port)

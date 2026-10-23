@@ -51,6 +51,26 @@ typedef struct {
   RISCV_GPR_TYPE mepc;
   RISCV_GPR_TYPE mcause;
 } riscv_difftest_csr_state_t;
+
+/*
+ * 带 tval 的 trap 注入扩展（可选符号）。
+ *
+ * 旧的 difftest_raise_intr(no) 只能传递 cause，REF 会沿用自己上次的
+ * tval，无法表达 DUT 的 mtval/stval。新接口把 no/epc/tval 作为三个
+ * 固定 64 位参数传递，不改变寄存器快照（33/264 字节）和 CSR 快照
+ * （4 x XLEN）的布局；RV32 REF 在内部自行截断到 32 位。
+ *
+ * 该符号是可选的：NPC 加载不到时降级为旧接口并在启动时明确告警；
+ * 若 trap 的 tval 非零则拒绝继续比对，避免静默错跑。
+ */
+#define DIFFTEST_TRAP_ABI_VERSION 1U
+#ifdef __cplusplus
+extern "C" {
+#endif
+__EXPORT void difftest_trap(uint64_t no, uint64_t epc, uint64_t tval);
+#ifdef __cplusplus
+}
+#endif
 #elif defined(CONFIG_ISA_loongarch32r)
 # define DIFFTEST_REG_SIZE (sizeof(uint32_t) * 33) // GPRs + pc
 #else

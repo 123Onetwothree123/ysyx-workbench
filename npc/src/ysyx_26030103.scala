@@ -992,6 +992,14 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       0.U(32.W),
       exu.io.TrapCommit
     )
+    // 与 cause 同一拍锁存，保证 DiffTest 看到的是本次 trap 的 tval。
+    val TrapTval = RegEnable(
+      exu.io.CSRStateTval,
+      0.U(XLEN.W),
+      exu.io.TrapCommit
+    )
+    io.debug_trap_tval := TrapTval(31, 0)
+    io.debug_trap_tval_hi := DebugHi(TrapTval)
   } else {
     io.debug_trap_valid := false.B
     io.debug_trap_pc := 0.U
@@ -999,6 +1007,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     io.debug_trap_target := 0.U
     io.debug_trap_target_hi := 0.U
     io.debug_trap_cause := 0.U
+    io.debug_trap_tval := 0.U
+    io.debug_trap_tval_hi := 0.U
   }
   if (config.EnableCSRTrace) {
     val RetireMstatus = RegEnable(

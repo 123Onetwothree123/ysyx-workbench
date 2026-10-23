@@ -154,6 +154,10 @@ class ysyx_26030103_IO(val SocXLEN: Int = 32) extends Bundle {
   val debug_trap_target = Output(UInt(32.W))
   val debug_trap_target_hi = Output(UInt(32.W))
   val debug_trap_cause = Output(UInt(32.W))
+  // 本次 trap 写入 mtval/stval 的最终值。单独成组，不并入 CSR 快照，
+  // 避免改变现有 DiffTest CSR ABI 宽度。
+  val debug_trap_tval = Output(UInt(32.W))
+  val debug_trap_tval_hi = Output(UInt(32.W))
   // 与 retire/trap 事件分别对齐的 CSR 快照。两组不能共用，
   // 因为同拍可能同时有更老的 WBU 退休与年轻 trap。
   val debug_csr_mstatus = Output(UInt(32.W))
