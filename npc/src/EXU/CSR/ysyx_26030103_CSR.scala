@@ -38,6 +38,14 @@ class ysyx_26030103_CSR(
   // mepc/mtvec/mtval/mscratch 等则天然使用完整 XLEN。
   private def Widen32(Value: UInt): UInt =
     if (XLEN == 32) Value else Cat(0.U((XLEN - 32).W), Value)
+  // mcause/scause 的中断位在 XLEN-1，而本实现的 ExceptionCause 是 32 位
+  // 编码。RV64 下必须把 bit31 搬到 bit63，而不是零扩展或普通符号扩展：
+  //   0x80000009 -> 0x8000000000000009
+  //   0x0000000b -> 0x000000000000000b
+  // 零扩展会让 xv6 的 `scause == 0x8000000000000009` 判断失败。
+  private def WidenCause32(Value: UInt): UInt =
+    if (XLEN == 32) Value
+    else Cat(Value(31), 0.U((XLEN - 32).W), Value(30, 0))
   // RV64 的 mstatus.SXL/UXL 是 WARL，本实现只支持 64 位，因此固定读回 2。
   // 这两个字段位于 bit[35:32]，必须和 NEMU REF/架构 CSR 视图一起保留，
   // 否则 RV64 DiffTest 会在任何一次 mstatus 写入后看到高半区差异。
@@ -467,7 +475,7 @@ class ysyx_26030103_CSR(
   Mepc.io.wdata := Mux(ExceptionCommit && !TrapToS, io.pc, CSRWriteData(Mepc_rdata))
   val McauseWen = CSRWen && IsCSRAddress(CSR_MCAUSE) && !TrapToS
   Mcause.io.wen := McauseWen || (ExceptionCommit && !TrapToS)
-  Mcause.io.wdata := Mux(ExceptionCommit && !TrapToS, Widen32(ExceptionCause),
+  Mcause.io.wdata := Mux(ExceptionCommit && !TrapToS, WidenCause32(ExceptionCause),
     CSRWriteData(Mcause_rdata))
 
   SepcOpt.foreach { Sepc =>
@@ -480,7 +488,7 @@ class ysyx_26030103_CSR(
   ScauseOpt.foreach { Scause =>
     val ScauseWen = CSRWen && IsCSRAddress(CSR_SCAUSE)
     Scause.io.wen := ScauseWen || (ExceptionCommit && TrapToS)
-    Scause.io.wdata := Mux(ExceptionCommit && TrapToS, Widen32(ExceptionCause),
+    Scause.io.wdata := Mux(ExceptionCommit && TrapToS, WidenCause32(ExceptionCause),
       CSRWriteData(Scause_rdata))
   }
 
@@ -700,7 +708,7 @@ class ysyx_26030103_CSR(
   io.StateMepc := Mux(ExceptionCommit && !TrapToS,
     Cat(io.pc(XLEN - 1, 2), 0.U(2.W)),
     Mux(MepcWen, Cat(CSRWriteData(Mepc_rdata)(XLEN - 1, 2), 0.U(2.W)), Mepc_rdata))
-  io.StateMcause := Mux(ExceptionCommit && !TrapToS, Widen32(ExceptionCause),
+  io.StateMcause := Mux(ExceptionCommit && !TrapToS, WidenCause32(ExceptionCause),
     Mux(McauseWen, CSRWriteData(Mcause_rdata), Mcause_rdata))
   // 只在 trap 提交拍给出本次写入的 tval；普通指令/软件写 CSR 不参与
   // DiffTest 的 trap 注入。

@@ -31,13 +31,13 @@
 #define PLIC_PRIORITY        (PLIC + 0x0)
 #define PLIC_PENDING         (PLIC + 0x1000)
 #ifdef XV6_PLATFORM_NPC
-// NPC's simplified PLIC implements only context 0:
+// NPC's PLIC accepts both the simplified context 0 layout
 //   enable      0x0c002000
 //   threshold   0x0c200000
 //   claim/complete 0x0c200004
-// The standard SiFive layout puts S-mode hart 0 at context 1
-// (enable 0x2080, threshold 0x201000), which the NPC model rejects with
-// SLVERR.  Keep the standard layout for the QEMU reference build.
+// and the standard SiFive S-mode hart 0 context 1
+// (enable 0x2080, threshold 0x201000).  This port uses context 0; the
+// QEMU reference build keeps the standard layout.
 #define PLIC_SENABLE(hart)   (PLIC + 0x2000)
 #define PLIC_SPRIORITY(hart) (PLIC + 0x200000)
 #define PLIC_SCLAIM(hart)    (PLIC + 0x200004)

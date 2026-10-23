@@ -28,6 +28,7 @@ class ysyx_26030103_RV64CSRHarness(
     val trapValid = Input(Bool())
     val trapCause = Input(UInt(32.W))
     val memTrap = Input(Bool())
+    val interrupt = Input(Bool())
     val rdata = Output(UInt(64.W))
     val exceptionTaken = Output(Bool())
     val exceptionTarget = Output(UInt(64.W))
@@ -54,7 +55,7 @@ class ysyx_26030103_RV64CSRHarness(
   csr.io.Rs1Data := io.rs1Data
   csr.io.pc := io.pc
   csr.io.TrapTval := io.trapTval
-  csr.io.Interrupt := false.B
+  csr.io.Interrupt := io.interrupt
   csr.io.TimerInterrupt := false.B
   csr.io.TrapValid := io.trapValid
   csr.io.TrapCause := io.trapCause
@@ -115,6 +116,7 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
     dut.io.trapValid.poke(false.B)
     dut.io.trapCause.poke(0.U)
     dut.io.memTrap.poke(false.B)
+    dut.io.interrupt.poke(false.B)
   }
 
   private def write(dut: ysyx_26030103_RV64CSRHarness, addr: Int, data: BigInt): Unit = {
@@ -234,6 +236,37 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       ((read(dut, MSTATUS) >> 11) & 3) should be(BigInt(0))
       read(dut, 0x100) should be(BigInt(0))
       read(dut, 0x180) should be(BigInt(0))
+    }
+  }
+
+  it should "把 32 位中断 cause 映射到 RV64 的 bit63" in {
+    simulate(new ysyx_26030103_RV64CSRHarness(profile)) { dut =>
+      setup(dut)
+      // M -> S，并提前配置 S 外部中断委托/使能。
+      write(dut, MSTATUS, BigInt("00000800", 16))
+      write(dut, MEPC, BigInt("0000000080001000", 16))
+      write(dut, 0x303, BigInt(1) << 9) // mideleg.SEIE
+      write(dut, 0x304, BigInt(1) << 9) // mie.SEIE
+      dut.io.enable.poke(true.B)
+      dut.io.isMret.poke(true.B)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isMret.poke(false.B)
+      big(dut.io.privilege) should be(BigInt(1))
+
+      write(dut, 0x100, BigInt(2)) // sstatus.SIE
+      dut.io.pc.poke(BigInt("0000000080001000", 16).U(64.W))
+      dut.io.enable.poke(true.B)
+      dut.io.interrupt.poke(true.B)
+      bool(dut.io.trapCommit) should be(true)
+      big(dut.io.committedCause) should be(BigInt("80000009", 16))
+      dut.clock.step()
+      dut.io.interrupt.poke(false.B)
+      dut.io.enable.poke(false.B)
+
+      // RV64 架构 scause = 0x8000_0000_0000_0009，而不是
+      // 0x0000_0000_8000_0009 或 0xffff_ffff_8000_0009。
+      read(dut, 0x142) should be(BigInt("8000000000000009", 16))
     }
   }
 }
