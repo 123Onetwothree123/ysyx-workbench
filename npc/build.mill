@@ -20,6 +20,14 @@ object `package` extends ScalaModule with ScalafmtModule { m =>
   override def mvnDeps             = Seq(mvn"org.chipsalliance::chisel:7.7.0")
   override def scalacPluginMvnDeps = Seq(mvn"org.chipsalliance:::chisel-plugin:7.7.0")
 
+  // Fudian 后端以源码方式接入：vendor/fudian 保持上游目录布局，NPC 只把
+  // 其 main/scala 加入编译，不复制、不改写 vendor 代码。这样生成 RTL 可复现，
+  // 也不需要额外的 Verilog BlackBox 生成步骤。
+  override def sources = Task.Sources(
+    moduleDir / "src",
+    moduleDir / ".." / "vendor" / "fudian" / "src" / "main" / "scala"
+  )
+
   object test extends ScalaTests with TestModule.ScalaTest with ScalafmtModule {
     override def mvnDeps = m.mvnDeps() ++ Seq(
       mvn"org.scalatest::scalatest::3.2.19",

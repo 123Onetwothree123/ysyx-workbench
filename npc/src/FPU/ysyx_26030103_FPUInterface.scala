@@ -130,9 +130,8 @@ abstract class ysyx_26030103_FPU(val Config: ysyx_26030103_NPCConfig)
 
 /** FPU 工厂：按后端选择实现。
   *
-  * 当前只搭骨架，HardFloat/Fudian 的 vendor RTL 尚未接入。这里明确抛出
-  * NotImplementedError，避免 F/D 配置在没有任何浮点运算单元的情况下
-  * 被误认为可用。后端代理接入后，把对应分支替换为具体 Module 即可。
+  * Fudian 已通过源码级 vendor 接入实现；HardFloat 仍在后续任务中接入。
+  * 工厂只返回统一的 `ysyx_26030103_FPU` 抽象类型，上层不依赖 vendor。
   */
 object ysyx_26030103_FPU {
   def apply(Config: ysyx_26030103_NPCConfig): ysyx_26030103_FPU = {
@@ -147,9 +146,7 @@ object ysyx_26030103_FPU {
           "Berkeley HardFloat 后端尚未接入：vendor 实现与 " +
             "FPU_HARDFLOAT_* 参数映射完成后才能启用 RISCV_F/D")
       case ysyx_26030103_FPUImpl.Fudian =>
-        throw new NotImplementedError(
-          "Fudian 后端尚未接入：vendor 实现与 FPU_FUDIAN_* 参数映射完成后" +
-            "才能启用 RISCV_F/D")
+        new ysyx_26030103_FudianFPU(Config)
       case ysyx_26030103_FPUImpl.External =>
         throw new NotImplementedError(
           "FPU_IMPL=external 只是预留接口，当前没有外部 FPU 实现")

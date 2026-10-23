@@ -6,9 +6,9 @@ import _root_.ysyx_26030103.fpu.ysyx_26030103_FPU
 
 /** F/D 与 FPU 后端配置规则。
   *
-  * 骨架阶段 HardFloat/Fudian 尚未接入 vendor RTL：配置结构可以表达，
-  * 但 NPCConfig 必须在 elaboration 前拒绝，避免顶层没有 FPU 实例却
-  * 宣称支持 F/D。后端接入后只需把对应 FPUImpl.Implemented 改为 true。
+  * Fudian 已接入 vendor RTL：配置结构可以表达，NPCConfig 也允许
+  * RISCV_F/D + FPU_IMPL=fudian。HardFloat/External 仍未接入，必须在
+  * elaboration 前拒绝，避免顶层没有 FPU 实例却宣称支持 F/D。
   */
 class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
   "NPCConfig" should "默认关闭 F/D 且后端为 none" in {
@@ -61,6 +61,17 @@ class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
     }
     error.getMessage should include("hardfloat")
     error.getMessage should include("尚未接入 RTL")
+  }
+
+  it should "接受已接入的 Fudian 后端" in {
+    val config = ysyx_26030103_NPCConfig(
+      UseF = true,
+      UseD = true,
+      FPUImpl = ysyx_26030103_FPUImpl.Fudian
+    )
+    config.FPUBackendImplemented should be(true)
+    config.Describe should include("fpu=fudian")
+    config.Describe should include("shared_divsqrt=on")
   }
 
   it should "拒绝预留的 external 后端" in {

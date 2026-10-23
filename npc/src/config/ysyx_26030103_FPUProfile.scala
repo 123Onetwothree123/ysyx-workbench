@@ -2,10 +2,9 @@ package ysyx_26030103.config
 
 /** 由 Kconfig 选择的 FPU 后端。
   *
-  * `Implemented` 表示当前仓库是否已经接入该后端的 RTL。骨架阶段只有
-  * `None` 是可直接 elaboration 的配置；HardFloat/Fudian 的公开参数和
-  * 工厂分支已经预留，但在 vendor 实现接入前必须明确拒绝，不能静默
-  * 生成一个没有浮点数据通路的 F/D 核。
+  * `Implemented` 表示当前仓库是否已经接入该后端的 RTL。Fudian 已通过
+  * `vendor/fudian` 源码级接入；HardFloat/External 仍只是预留，必须在
+  * elaboration 前拒绝，不能静默生成一个没有浮点数据通路的 F/D 核。
   */
 sealed trait ysyx_26030103_FPUImpl {
   def Name: String
@@ -23,7 +22,7 @@ object ysyx_26030103_FPUImpl {
   }
   case object Fudian extends ysyx_26030103_FPUImpl {
     val Name = "fudian"
-    val Implemented = false
+    val Implemented = true
   }
   case object External extends ysyx_26030103_FPUImpl {
     val Name = "external"
