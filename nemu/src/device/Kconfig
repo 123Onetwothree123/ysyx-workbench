@@ -12,6 +12,14 @@ config HAS_PORT_IO
   default y if ISA_x86
   default n
 
+menuconfig HAS_RISCV_XV6
+  bool "Enable xv6-riscv platform devices (CLINT/PLIC/16550 UART)"
+  default n
+  help
+    在 0x02000000/0x0c000000/0x10000000 添加 xv6-riscv 与 direct-NPC
+    共用的最小 CLINT、PLIC 和 16550 UART 模型。NEMU 独立运行 xv6
+    时需要；作为 DiffTest REF 时设备访问由 DUT 注入，不依赖该选项。
+
 menuconfig HAS_SERIAL
   bool "Enable serial"
   default y

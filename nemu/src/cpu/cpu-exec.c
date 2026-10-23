@@ -69,31 +69,38 @@ static void exec_once(Decode *s, vaddr_t pc)
   isa_exec_once(s);
   cpu.pc = s->dnpc;
 #ifdef CONFIG_ITRACE
-  char *p = s->logbuf;
-  p += snprintf(p, sizeof(s->logbuf), FMT_WORD ":", s->pc);
-  int ilen = s->snpc - s->pc;
-  int i;
-  uint8_t *inst = (uint8_t *)&s->isa.inst;
+  /*
+   * ITRACE_COND 为假时不要反汇编。否则即便只跟踪一个小 PC 窗口，
+   * 每条指令仍会调用 capstone，xv6 这种长启动会被拖慢一个数量级。
+   */
+  if (ITRACE_COND)
+  {
+    char *p = s->logbuf;
+    p += snprintf(p, sizeof(s->logbuf), FMT_WORD ":", s->pc);
+    int ilen = s->snpc - s->pc;
+    int i;
+    uint8_t *inst = (uint8_t *)&s->isa.inst;
 #ifdef CONFIG_ISA_x86
-  for (i = 0; i < ilen; i++)
-  {
+    for (i = 0; i < ilen; i++)
+    {
 #else
-  for (i = ilen - 1; i >= 0; i--)
-  {
+    for (i = ilen - 1; i >= 0; i--)
+    {
 #endif
-    p += snprintf(p, 4, " %02x", inst[i]);
-  }
-  int ilen_max = MUXDEF(CONFIG_ISA_x86, 8, 4);
-  int space_len = ilen_max - ilen;
-  if (space_len < 0)
-    space_len = 0;
-  space_len = space_len * 3 + 1;
-  memset(p, ' ', space_len);
-  p += space_len;
+      p += snprintf(p, 4, " %02x", inst[i]);
+    }
+    int ilen_max = MUXDEF(CONFIG_ISA_x86, 8, 4);
+    int space_len = ilen_max - ilen;
+    if (space_len < 0)
+      space_len = 0;
+    space_len = space_len * 3 + 1;
+    memset(p, ' ', space_len);
+    p += space_len;
 
-  void disassemble(char *str, int size, uint64_t pc, uint8_t *code, int nbyte);
-  disassemble(p, s->logbuf + sizeof(s->logbuf) - p,
-              MUXDEF(CONFIG_ISA_x86, s->snpc, s->pc), (uint8_t *)&s->isa.inst, ilen);
+    void disassemble(char *str, int size, uint64_t pc, uint8_t *code, int nbyte);
+    disassemble(p, s->logbuf + sizeof(s->logbuf) - p,
+                MUXDEF(CONFIG_ISA_x86, s->snpc, s->pc), (uint8_t *)&s->isa.inst, ilen);
+  }
 #endif
 }
 static void execute(uint64_t n)
@@ -103,6 +110,13 @@ static void execute(uint64_t n)
   {
     exec_once(&s, cpu.pc);
     g_nr_guest_inst++;
+#ifndef CONFIG_TARGET_AM
+    if (sdb_breakpoint_hit(cpu.pc))
+    {
+      printf("断点命中：pc = " FMT_WORD "\n", cpu.pc);
+      nemu_state.state = NEMU_STOP;
+    }
+#endif
     trace_and_difftest(&s, cpu.pc);
     if (nemu_state.state != NEMU_RUNNING)
       break;

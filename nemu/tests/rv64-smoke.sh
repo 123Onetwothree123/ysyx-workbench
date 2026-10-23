@@ -23,7 +23,7 @@ build_nemu() {
 build_asm_test() {
   local name=$1
   local src=$ROOT/npc/csrc/Test/$name/main.S
-  "$CC" -march=rv64im_zicsr -mabi=lp64 -nostdlib -nostartfiles \
+  "$CC" -march=rv64ima_zicsr -mabi=lp64 -nostdlib -nostartfiles \
     -Ttext=0x80000000 -Wl,--no-relax \
     -o "$TEST_BUILD/$name.elf" "$src"
   "$OBJCOPY" -O binary "$TEST_BUILD/$name.elf" "$TEST_BUILD/$name.bin"
@@ -32,7 +32,7 @@ build_asm_test() {
 build_local_test() {
   local name=$1
   local src=$NEMU_HOME/tests/rv64/$name.S
-  "$CC" -march=rv64im_zicsr -mabi=lp64 -nostdlib -nostartfiles \
+  "$CC" -march=rv64ima_zicsr -mabi=lp64 -nostdlib -nostartfiles \
     -Ttext=0x80000000 -Wl,--no-relax \
     -o "$TEST_BUILD/$name.elf" "$src"
   "$OBJCOPY" -O binary "$TEST_BUILD/$name.elf" "$TEST_BUILD/$name.bin"
@@ -54,7 +54,7 @@ for test in rv64-ui-um-test rv64-address-test rv64-mmu-test rv64-sv48-test; do
   grep -q "HIT GOOD TRAP" "$TEST_BUILD/$test.log"
   echo "  PASS $test"
 done
-for test in csr64 intr64; do
+for test in csr64 intr64 a64; do
   build_local_test "$test"
   "$NEMU64" -b --elf="$TEST_BUILD/$test.elf" "$TEST_BUILD/$test.bin" \
     >"$TEST_BUILD/$test.log" 2>&1

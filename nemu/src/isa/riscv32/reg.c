@@ -515,6 +515,48 @@ word_t isa_reg_str2val(const char *s, bool *success)
     *success = true;
     return cpu.pc;
   }
+
+  /*
+   * SDB 表达式直接读取 CSR。xv6/IFU 调试需要 p $sepc/$sscratch/$stvec/
+   * $satp 等；这些值不属于 GPR 表，之前只能通过 info r 的 GPR 视图
+   * 间接推断。这里按名字暴露常用 M/S CSR。
+   */
+#define CSR_NAME_VALUE(name)                       \
+  if (strcmp(s, #name) == 0)                       \
+  {                                                \
+    *success = true;                               \
+    return (word_t)cpu.name;                       \
+  }
+  CSR_NAME_VALUE(mstatus);
+  CSR_NAME_VALUE(mtvec);
+  CSR_NAME_VALUE(mepc);
+  CSR_NAME_VALUE(mcause);
+  CSR_NAME_VALUE(mtval);
+  CSR_NAME_VALUE(mscratch);
+  CSR_NAME_VALUE(mie);
+  CSR_NAME_VALUE(mip);
+  CSR_NAME_VALUE(medeleg);
+  CSR_NAME_VALUE(mideleg);
+  CSR_NAME_VALUE(mcounteren);
+  CSR_NAME_VALUE(stvec);
+  CSR_NAME_VALUE(sepc);
+  CSR_NAME_VALUE(scause);
+  CSR_NAME_VALUE(stval);
+  CSR_NAME_VALUE(sscratch);
+  CSR_NAME_VALUE(satp);
+  CSR_NAME_VALUE(scounteren);
+#undef CSR_NAME_VALUE
+  if (strcmp(s, "sstatus") == 0)
+  {
+    *success = true;
+    return cpu.mstatus & SSTATUS_MASK;
+  }
+  if (strcmp(s, "priv") == 0 || strcmp(s, "privilege") == 0)
+  {
+    *success = true;
+    return cpu.privilege;
+  }
+
   for (const char *p = s; *p != '\0'; p++)
   {
     if (!isalnum((unsigned char)*p))

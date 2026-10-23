@@ -21,6 +21,8 @@
 #endif
 
 void init_map();
+void init_riscv_xv6();
+void riscv_xv6_update();
 void init_serial();
 void init_timer();
 void init_vga();
@@ -34,6 +36,10 @@ void send_key(uint8_t, bool);
 void vga_update_screen();
 
 void device_update() {
+  // xv6 平台设备需要每个 guest 指令后维护 CLINT/PLIC 电平；
+  // UART 输入轮询在 riscv_xv6_update() 内部限频到 1 ms。
+  IFDEF(CONFIG_HAS_RISCV_XV6, riscv_xv6_update());
+
   static uint64_t last = 0;
   uint64_t now = get_time();
   if (now - last < 1000000 / TIMER_HZ) {
@@ -77,6 +83,7 @@ void init_device() {
   IFDEF(CONFIG_TARGET_AM, ioe_init());
   init_map();
 
+  IFDEF(CONFIG_HAS_RISCV_XV6, init_riscv_xv6());
   IFDEF(CONFIG_HAS_SERIAL, init_serial());
   IFDEF(CONFIG_HAS_TIMER, init_timer());
   IFDEF(CONFIG_HAS_VGA, init_vga());

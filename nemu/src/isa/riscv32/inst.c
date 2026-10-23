@@ -165,12 +165,13 @@ static word_t csr_read(word_t address)
   case 0x180: return cpu.satp;
   case 0x300: return cpu.mstatus;
   case 0x301:
-    // misa.MXL：RV32 为 1，RV64 为 2。扩展位保持 I/M/S/U。
+    // misa.MXL：RV32 为 1，RV64 为 2。扩展位为 I/M/A/S/U。
+    // bit 0 = A；打开 CONFIG_RISCV_A 时才向软件宣告原子扩展。
     return MUXDEF(CONFIG_RV64,
-                  ((word_t)2 << 62) | (1u << 8) | (1u << 12) |
-                      (1u << 18) | (1u << 20),
-                  (1u << 30) | (1u << 8) | (1u << 12) |
-                      (1u << 18) | (1u << 20));
+                  ((word_t)2 << 62) | MUXDEF(CONFIG_RISCV_A, 1u << 0, 0u) |
+                      (1u << 8) | (1u << 12) | (1u << 18) | (1u << 20),
+                  (1u << 30) | MUXDEF(CONFIG_RISCV_A, 1u << 0, 0u) |
+                      (1u << 8) | (1u << 12) | (1u << 18) | (1u << 20));
   case 0x302: return cpu.medeleg;
   case 0x303: return cpu.mideleg;
   case 0x304: return cpu.mie;
@@ -371,6 +372,103 @@ static inline word_t sext32(word_t value)
 {
   return (word_t)(sword_t)(int32_t)value;
 }
+
+#ifdef CONFIG_RISCV_A
+/*
+ * RISC-V A 扩展（单 hart 参考实现）。
+ *
+ * NEMU 只模拟一个 hart，因此 reservation 只需要记录“最近一次 LR 的
+ * 地址”。LR/SC 与 AMO 都要求自然对齐；非对齐访问按 store/AMO
+ * address-misaligned（cause 6）处理。AMO 的读改写是解释器中的原子
+ * 操作，天然不存在中间可见状态。
+ *
+ * AMO 的 funct5 编码直接作为下面的 op 值使用。
+ */
+enum {
+  AMO_ADD   = 0x00,
+  AMO_SWAP  = 0x01,
+  AMO_XOR   = 0x04,
+  AMO_OR    = 0x08,
+  AMO_AND   = 0x0c,
+  AMO_MIN   = 0x10,
+  AMO_MAX   = 0x14,
+  AMO_MINU  = 0x18,
+  AMO_MAXU  = 0x1c,
+};
+
+static bool reservation_valid = false;
+static vaddr_t reservation_addr = 0;
+
+static inline bool amo_aligned(Decode *s, vaddr_t addr, int size)
+{
+  if ((addr & (vaddr_t)(size - 1)) == 0) {
+    return true;
+  }
+  s->dnpc = isa_raise_intr(6, s->pc); // store/AMO address misaligned
+  return false;
+}
+
+static void amo_exec(Decode *s, vaddr_t addr, word_t rhs, int rd, int size, int op)
+{
+  if (!amo_aligned(s, addr, size)) {
+    return;
+  }
+
+  const word_t old = Mr(addr, size);
+  const word_t a = (size == 4) ? (uint32_t)old : old;
+  const word_t b = (size == 4) ? (uint32_t)rhs : rhs;
+  word_t result;
+
+  switch (op) {
+    case AMO_ADD:  result = a + b; break;
+    case AMO_SWAP: result = b; break;
+    case AMO_XOR:  result = a ^ b; break;
+    case AMO_OR:   result = a | b; break;
+    case AMO_AND:  result = a & b; break;
+    case AMO_MIN:
+      result = (size == 4) ? ((int32_t)a < (int32_t)b ? a : b)
+                           : ((sword_t)a < (sword_t)b ? a : b);
+      break;
+    case AMO_MAX:
+      result = (size == 4) ? ((int32_t)a > (int32_t)b ? a : b)
+                           : ((sword_t)a > (sword_t)b ? a : b);
+      break;
+    case AMO_MINU: result = (a < b) ? a : b; break;
+    case AMO_MAXU: result = (a > b) ? a : b; break;
+    default: panic("未知 AMO funct5 = 0x%x", op); result = 0;
+  }
+
+  Mw(addr, size, (size == 4) ? (uint32_t)result : result);
+  // AMO 返回旧值；.W 结果按 bit31 符号扩展到 XLEN。
+  R(rd) = (size == 4) ? sext32(old) : old;
+  reservation_valid = false;
+}
+
+static void lr_exec(Decode *s, vaddr_t addr, int rd, int size)
+{
+  if (!amo_aligned(s, addr, size)) {
+    return;
+  }
+  const word_t old = Mr(addr, size);
+  R(rd) = (size == 4) ? sext32(old) : old;
+  reservation_addr = addr;
+  reservation_valid = true;
+}
+
+static void sc_exec(Decode *s, vaddr_t addr, word_t value, int rd, int size)
+{
+  if (!amo_aligned(s, addr, size)) {
+    return;
+  }
+  if (reservation_valid && reservation_addr == addr) {
+    Mw(addr, size, value);
+    R(rd) = 0; // 成功
+  } else {
+    R(rd) = 1; // 失败，不写内存
+  }
+  reservation_valid = false;
+}
+#endif
 
 static void decode_operand(Decode *s, int *rd, word_t *src1, word_t *src2, word_t *imm, int type)
 {
@@ -607,6 +705,58 @@ static int decode_exec(Decode *s)
    * ordering and preserves forward compatibility with reserved fm values. */
   INSTPAT("??????? ????? ????? 000 ????? 0001111", fence, N, );
   INSTPAT("??????? ????? ????? 001 ????? 0001111", fence_i, N, );
+#ifdef CONFIG_RISCV_A
+  /*
+   * A 扩展：opcode 0101111，funct3=010(.W)/011(.D)。
+   * aq/rl 在单 hart 解释器中按完整顺序执行，无需额外动作。
+   */
+  INSTPAT("00010 ?? 00000 ????? 010 ????? 01011 11", lr_w, R,
+          lr_exec(s, src1, rd, 4));
+  INSTPAT("00011 ?? ????? ????? 010 ????? 01011 11", sc_w, R,
+          sc_exec(s, src1, src2, rd, 4));
+  INSTPAT("00000 ?? ????? ????? 010 ????? 01011 11", amoadd_w, R,
+          amo_exec(s, src1, src2, rd, 4, AMO_ADD));
+  INSTPAT("00001 ?? ????? ????? 010 ????? 01011 11", amoswap_w, R,
+          amo_exec(s, src1, src2, rd, 4, AMO_SWAP));
+  INSTPAT("00100 ?? ????? ????? 010 ????? 01011 11", amoxor_w, R,
+          amo_exec(s, src1, src2, rd, 4, AMO_XOR));
+  INSTPAT("01000 ?? ????? ????? 010 ????? 01011 11", amoor_w, R,
+          amo_exec(s, src1, src2, rd, 4, AMO_OR));
+  INSTPAT("01100 ?? ????? ????? 010 ????? 01011 11", amoand_w, R,
+          amo_exec(s, src1, src2, rd, 4, AMO_AND));
+  INSTPAT("10000 ?? ????? ????? 010 ????? 01011 11", amomin_w, R,
+          amo_exec(s, src1, src2, rd, 4, AMO_MIN));
+  INSTPAT("10100 ?? ????? ????? 010 ????? 01011 11", amomax_w, R,
+          amo_exec(s, src1, src2, rd, 4, AMO_MAX));
+  INSTPAT("11000 ?? ????? ????? 010 ????? 01011 11", amominu_w, R,
+          amo_exec(s, src1, src2, rd, 4, AMO_MINU));
+  INSTPAT("11100 ?? ????? ????? 010 ????? 01011 11", amomaxu_w, R,
+          amo_exec(s, src1, src2, rd, 4, AMO_MAXU));
+#ifdef CONFIG_RV64
+  INSTPAT("00010 ?? 00000 ????? 011 ????? 01011 11", lr_d, R,
+          lr_exec(s, src1, rd, 8));
+  INSTPAT("00011 ?? ????? ????? 011 ????? 01011 11", sc_d, R,
+          sc_exec(s, src1, src2, rd, 8));
+  INSTPAT("00000 ?? ????? ????? 011 ????? 01011 11", amoadd_d, R,
+          amo_exec(s, src1, src2, rd, 8, AMO_ADD));
+  INSTPAT("00001 ?? ????? ????? 011 ????? 01011 11", amoswap_d, R,
+          amo_exec(s, src1, src2, rd, 8, AMO_SWAP));
+  INSTPAT("00100 ?? ????? ????? 011 ????? 01011 11", amoxor_d, R,
+          amo_exec(s, src1, src2, rd, 8, AMO_XOR));
+  INSTPAT("01000 ?? ????? ????? 011 ????? 01011 11", amoor_d, R,
+          amo_exec(s, src1, src2, rd, 8, AMO_OR));
+  INSTPAT("01100 ?? ????? ????? 011 ????? 01011 11", amoand_d, R,
+          amo_exec(s, src1, src2, rd, 8, AMO_AND));
+  INSTPAT("10000 ?? ????? ????? 011 ????? 01011 11", amomin_d, R,
+          amo_exec(s, src1, src2, rd, 8, AMO_MIN));
+  INSTPAT("10100 ?? ????? ????? 011 ????? 01011 11", amomax_d, R,
+          amo_exec(s, src1, src2, rd, 8, AMO_MAX));
+  INSTPAT("11000 ?? ????? ????? 011 ????? 01011 11", amominu_d, R,
+          amo_exec(s, src1, src2, rd, 8, AMO_MINU));
+  INSTPAT("11100 ?? ????? ????? 011 ????? 01011 11", amomaxu_d, R,
+          amo_exec(s, src1, src2, rd, 8, AMO_MAXU));
+#endif
+#endif
   INSTPAT("??????? ????? ????? 000 ????? 00000 11", lb, I, R(rd) = SEXT(Mr(src1 + imm, 1), 8));
   INSTPAT("0000000 ????? ????? 010 ????? 01100 11", slt, R, R(rd) = ((sword_t)src1 < (sword_t)src2) ? 1 : 0);
   INSTPAT("??????? ????? ????? 010 ????? 00100 11", slti, I, R(rd) = ((sword_t)src1 < (sword_t)imm) ? 1 : 0);

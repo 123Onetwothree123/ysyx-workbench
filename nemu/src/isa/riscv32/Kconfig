@@ -7,4 +7,12 @@ config RV64
 config RVE
   bool "Use E extension"
   default n
+
+config RISCV_A
+  bool "A extension (LR/SC and AMO)"
+  default y
+  help
+    实现 RV32/RV64 的 LR/SC 与 AMO 指令。xv6-riscv 的
+    spinlock 需要 AMOSWAP.W；其余 AMO 也一并实现，供 DiffTest
+    与编译器原子模式使用。
 endmenu

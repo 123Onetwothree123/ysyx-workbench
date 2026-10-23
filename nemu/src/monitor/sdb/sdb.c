@@ -25,6 +25,21 @@
 
 static int is_batch_mode = false;
 
+/* 单 PC 断点：执行完一条指令后、下一条指令执行前检查。
+ * 这样命中时 cpu.pc 正好等于断点地址，si 1 可以精确单步断点指令。 */
+static vaddr_t breakpoint_pc = 0;
+static bool breakpoint_enabled = false;
+
+bool sdb_breakpoint_hit(vaddr_t pc)
+{
+  return breakpoint_enabled && pc == breakpoint_pc;
+}
+
+bool sdb_batch_mode(void)
+{
+  return is_batch_mode;
+}
+
 #ifdef CONFIG_FTRACE
 extern FtraceState GlobalFtraceState;
 #endif
@@ -64,6 +79,40 @@ static int cmd_q(char *args)
   }
   printf("退出\n");
   return -1;
+}
+
+static int cmd_b(char *args)
+{
+  while (args != NULL && *args == ' ')
+  {
+    args++;
+  }
+  if (args == NULL || *args == '\0')
+  {
+    printf("用法：b <地址>（例：b 0x800037e4）\n");
+    return 0;
+  }
+
+  char *end = NULL;
+  const unsigned long long value = strtoull(args, &end, 0);
+  if (end == args)
+  {
+    printf("断点地址无效：%s\n", args);
+    return 0;
+  }
+  breakpoint_pc = (vaddr_t)value;
+  breakpoint_enabled = true;
+  printf("断点已设置：" FMT_WORD "\n", breakpoint_pc);
+  return 0;
+}
+
+static int cmd_db(char *args)
+{
+  (void)args;
+  breakpoint_enabled = false;
+  breakpoint_pc = 0;
+  printf("断点已删除\n");
+  return 0;
 }
 
 static int run_expr_test(const char *input_file)
@@ -135,6 +184,8 @@ static int cmd_set(char *args);
 static int cmd_iringbuf(char *args);
 static int cmd_readelf(char *args);
 static int cmd_ftrace(char *args);
+static int cmd_b(char *args);
+static int cmd_db(char *args);
 
 static struct
 {
@@ -160,6 +211,8 @@ static struct
     {"iringbuf", "打印最近记录的指令环形缓冲区", cmd_iringbuf},
     {"readelf", "查看elf信息的", cmd_readelf},
     {"ftrace", "开函数跟踪的", cmd_ftrace},
+    {"b", "设置 PC 断点：b <addr>", cmd_b},
+    {"db", "删除 PC 断点", cmd_db},
 };
 
 #define NR_CMD ARRLEN(cmd_table)

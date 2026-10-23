@@ -1,0 +1,33 @@
+# RV64 NEMU 独立运行 xv6-riscv（RV64IMA + CLINT/PLIC/16550）
+CONFIG_ISA_riscv=y
+CONFIG_RV64=y
+CONFIG_RISCV_A=y
+CONFIG_TARGET_NATIVE_ELF=y
+CONFIG_MSIZE=0x8000000
+CONFIG_DEVICE=y
+CONFIG_HAS_RISCV_XV6=y
+# 只保留 xv6 平台设备，避免 SDL/VGA/键鼠/音频/磁盘依赖
+# CONFIG_HAS_SERIAL is not set
+# CONFIG_HAS_TIMER is not set
+# CONFIG_HAS_KEYBOARD is not set
+# CONFIG_HAS_VGA is not set
+# CONFIG_HAS_AUDIO is not set
+# CONFIG_HAS_DISK is not set
+# 保留 TRACE 以启用 ftrace；expr/watchpoint 的逐指令日志已移除，
+# 不会像旧版本那样把单步输出淹没。
+CONFIG_TRACE=y
+CONFIG_TRACE_START=0
+CONFIG_TRACE_END=2000000000
+# xv6 启动指令量大，逐条 ITRACE 会拖慢并占满磁盘
+# CONFIG_ITRACE is not set
+CONFIG_WATCHPOINT=y
+CONFIG_IRINGBUF=y
+CONFIG_IRINGBUF_SIZE=4096
+# 用于 --elf 和 ftrace 符号解析
+CONFIG_ReadELF=y
+CONFIG_FTRACE=y
+# CONFIG_MTRACE is not set
+# CONFIG_DTRACE is not set
+# CONFIG_ETRACE is not set
+# CONFIG_BTRACE is not set
+# CONFIG_DIFFTEST is not set

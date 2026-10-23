@@ -56,6 +56,11 @@ bool check_string_length(const char *str, size_t max_len, const char *name);
 //  Check all watchpoints, return whether any watchpoint is triggered
 bool check_watchpoints(void);
 
+// 轻量级 PC 断点：避免用表达式监视点逐指令解析表达式。
+bool sdb_breakpoint_hit(vaddr_t pc);
+// UART 输入轮询只能在 batch 模式读 stdin，否则会吞掉 SDB 命令。
+bool sdb_batch_mode(void);
+
 bool safe_paddr_read(word_t addr, word_t *result, size_t size);
 
 /**

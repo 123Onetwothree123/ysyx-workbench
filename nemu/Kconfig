@@ -160,7 +160,7 @@ config WATCHPOINT
     When disabled, improves performance by skipping watchpoint checks.
 #IRINGBUF和IRINGBUF_SIZE也是我自己写的
 config IRINGBUF
-  depends on TRACE && TARGET_NATIVE_ELF && ENGINE_INTERPRETER
+  depends on TARGET_NATIVE_ELF && ENGINE_INTERPRETER
   bool "Enable instruction ring buffer"
   default y
   help

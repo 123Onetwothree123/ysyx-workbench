@@ -241,7 +241,12 @@ namespace
         const auto bytes{static_cast<npc::XWord>(1U << width)};
         const auto address{ReadMtraceAddr(dut)};
 #ifdef VRISCV32E_NPC
-        return RangeContains(address, bytes, 0x80000000U, 0x00040000U);
+        // direct-NPC 的 RAM 窗口就是 CONFIG_MBASE/CONFIG_MSIZE。不能写死
+        // 旧版的 256 KiB：xv6 的内核数据、页表和用户页都在这之后，
+        // 否则这些 load/store 会被当成 MMIO 注入，REF 内存永远不更新。
+        return RangeContains(address, bytes,
+                             static_cast<npc::XWord>(CONFIG_MBASE),
+                             static_cast<npc::XWord>(CONFIG_MSIZE));
 #else
         return RangeContains(address, bytes, 0x0f000000U, 0x00008000U) ||
                RangeContains(address, bytes, 0x30000000U, 0x10000000U) ||
@@ -404,17 +409,13 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
             static_cast<std::size_t>(CONFIG_MSIZE))};
     }
 #ifdef VRISCV32E_NPC
-    // direct RTL 初始化会把镜像及其后 64 KiB 清零，而 NEMU 的堆内存没有
-    // 同样的复位保证。因此至少同步历史的 256 KiB 窗口（以及镜像本身），
-    // 避免程序第一次读取 RAM 尾部时产生伪差异。同步上限仍由 MSIZE 决定，
-    // 不能把某个固定 RAM 大小写成静态断言，否则会拒绝合法配置。
+    // direct RTL 初始化会把整个 CONFIG_MSIZE RAM 清零，而 NEMU REF 的
+    // 堆内存没有同样的复位保证（MEM_RANDOM 默认为 y）。xv6 的页分配器
+    // 会遍历到 64 MiB 尾部，只同步旧的 256 KiB 会让 REF 读到随机值。
+    // 因此按完整 RAM 窗口同步：RTL 与 REF 都从“镜像 + 零”开始。
     // RV32/RV64 direct-NPC 共用这一复位语义，地址参数保持完整 XWord。
-    constexpr std::size_t DirectRamBytes{256U * 1024U};
-    constexpr std::size_t ZeroMarginBytes{64U * 1024U};
     const auto ramBytes{static_cast<std::size_t>(CONFIG_MSIZE)};
-    const auto syncBytes{std::min<std::size_t>(
-        ramBytes,
-        std::max(DirectRamBytes, FlashMemory.size() + ZeroMarginBytes))};
+    const auto syncBytes{ramBytes};
     std::vector<std::uint8_t> referenceMemory(syncBytes, 0);
     std::ranges::copy(FlashMemory, referenceMemory.begin());
     REFMemcpy(CONFIG_MBASE,

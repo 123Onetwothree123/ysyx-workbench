@@ -196,9 +196,8 @@ static bool make_token(char *e)
         char *substr_start = e + position;
         int substr_len = pmatch.rm_eo;
 
-        Log("match rules[%d] = \"%s\" at position %d with len %d: %.*s",
-            i, rules[i].regex, position, substr_len, substr_len, substr_start);
-
+        // 表达式求值可能被 watchpoint 每条指令调用，不能在这里打日志，
+        // 否则单步/监视点会被日志淹没并慢几个数量级。
         position += substr_len;
 
         /* TODO: Now a new token is recognized with rules[i]. Add codes
@@ -494,9 +493,6 @@ static void identify_unary_operators()
     if (is_unary)
     {
       tokens[i].type = (tokens[i].type == '-') ? TK_MINUS : TK_POINTER;
-      Log("Token %d: '%c' 被识别为一元%s", i,
-          tokens[i].type == TK_MINUS ? '-' : '*',
-          tokens[i].type == TK_MINUS ? "负号" : "解引用");
     }
   }
 }
