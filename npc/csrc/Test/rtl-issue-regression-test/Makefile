@@ -25,9 +25,11 @@ LSU_BIN := $(BIN_DIR)/lsu_bad_bid_test
 STAGE_CONNECT_BIN := $(BIN_DIR)/stage_connect_flush_test
 ICACHE_PMA_BIN := $(BIN_DIR)/icache_pma_boundary_test
 ZERO_PREDICTOR_BIN := $(BIN_DIR)/zero_predictor_geometry_test
-BINS := $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(ICACHE_PMA_BIN) $(ZERO_PREDICTOR_BIN)
+IFU_MMU_BIN := $(BIN_DIR)/ifu_mmu_stale_resp_test
+ICACHE_REDIR_BIN := $(BIN_DIR)/icache_redirect_test
+BINS := $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(ICACHE_PMA_BIN) $(ZERO_PREDICTOR_BIN) $(IFU_MMU_BIN) $(ICACHE_REDIR_BIN)
 
-.PHONY: all test run functional-test config-test xbar-test mul-core-test exu-test idu-mdu-test lsu-test stage-connect-test icache-pma-test zero-predictor-test clean
+.PHONY: all test run functional-test config-test xbar-test mul-core-test exu-test idu-mdu-test lsu-test stage-connect-test icache-pma-test zero-predictor-test ifu-mmu-test icache-redirect-test clean
 
 all: $(BINS)
 
@@ -45,13 +47,15 @@ test run: all
 # Focused gate for the production RTL fixes.  Broader `make test` intentionally
 # retains the independent ICache custom-PMA and configuration-guard findings as
 # future work.
-functional-test: $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN)
+functional-test: $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(IFU_MMU_BIN) $(ICACHE_REDIR_BIN)
 	$(XBAR_BIN)
 	$(MUL_CORE_BIN)
 	$(EXU_BIN)
 	$(IDU_MDU_BIN)
 	$(LSU_BIN)
 	$(STAGE_CONNECT_BIN)
+	$(IFU_MMU_BIN)
+	$(ICACHE_REDIR_BIN)
 
 config-test:
 	cd $(TEST_DIR) && $(MILL) --no-server runMain ysyx_26030103.test.ConfigGuardTest
@@ -79,6 +83,12 @@ icache-pma-test: $(ICACHE_PMA_BIN)
 
 zero-predictor-test: $(ZERO_PREDICTOR_BIN)
 	$(ZERO_PREDICTOR_BIN)
+
+ifu-mmu-test: $(IFU_MMU_BIN)
+	$(IFU_MMU_BIN)
+
+icache-redirect-test: $(ICACHE_REDIR_BIN)
+	$(ICACHE_REDIR_BIN)
 
 # Generate one production snapshot with a genuinely pipelined compression-tree
 # core.  The leaf EXU, LSU and Xbar modules are then selected as independent
@@ -116,9 +126,13 @@ $(HARNESS_STAMP): $(LOCAL_SCALA_SOURCES) build.mill \
 	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
 	  ysyx_26030103.test.ZeroPredictorGeometryHarnessElaborate \
 	  --target-dir $(HARNESS_RTL_DIR)
+	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
+	  ysyx_26030103.test.IFUMMUHarnessElaborate \
+	  --target-dir $(HARNESS_RTL_DIR)
 	@cp $(TEST_DIR)/layers-StageConnectHarness-Verification.sv $(HARNESS_RTL_DIR)/
 	@cp $(TEST_DIR)/layers-ICachePmaBoundaryHarness-Verification.sv $(HARNESS_RTL_DIR)/
 	@cp $(TEST_DIR)/layers-ZeroPredictorGeometryHarness-Verification.sv $(HARNESS_RTL_DIR)/
+	@cp $(TEST_DIR)/layers-IFUMMUHarness-Verification.sv $(HARNESS_RTL_DIR)/
 	@touch $@
 
 $(XBAR_BIN): xbar_local_decerr_interleave_test.cpp test_common.hpp $(GEN_STAMP)
@@ -195,6 +209,25 @@ $(ZERO_PREDICTOR_BIN): zero_predictor_geometry_test.cpp test_common.hpp $(HARNES
 	  -CFLAGS '$(CXXFLAGS)' \
 	  -o $(abspath $@) \
 	  $(HARNESS_RTL_DIR)/ZeroPredictorGeometryHarness.sv $<
+
+$(IFU_MMU_BIN): ifu_mmu_stale_resp_test.cpp test_common.hpp $(HARNESS_STAMP)
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
+	  -I$(HARNESS_RTL_DIR) \
+	  --top-module IFUMMUHarness \
+	  --Mdir $(BUILD_DIR)/obj-ifu-mmu-stale-resp \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(HARNESS_RTL_DIR)/IFUMMUHarness.sv $<
+
+$(ICACHE_REDIR_BIN): icache_redirect_test.cpp test_common.hpp $(GEN_STAMP)
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) $(VERILATOR_FLAGS) \
+	  --top-module ysyx_26030103_ICacheReg \
+	  --Mdir $(BUILD_DIR)/obj-icache-redirect \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(RTL_DIR)/ysyx_26030103.sv $<
 
 clean:
 	rm -rf $(BUILD_DIR) out

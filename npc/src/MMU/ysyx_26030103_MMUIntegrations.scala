@@ -168,7 +168,12 @@ class ysyx_26030103_IFUMMU(
       is(xwait) {
         io.resp.ready := true.B
         when(io.resp.valid) {
-          when(io.resp.bits.fault) {
+          // MMU 响应不带请求序号，只带原始虚拟地址 tval。redirect/flush 后
+          // 旧 walk 的响应仍可能迟到；若不校验 tval，就会把旧 PA 当成当前
+          // PC 的翻译结果（ICache 随后用新 PC 标签取到旧指令字）。
+          when(io.resp.bits.tval =/= reqVaddrReg) {
+            // 丢弃迟到响应，继续等待本请求的翻译结果。
+          }.elsewhen(io.resp.bits.fault) {
             faultReg := true.B
             faultCauseReg := io.resp.bits.cause(3, 0)
             faultVaddrReg := reqVaddrReg
@@ -338,7 +343,11 @@ class ysyx_26030103_LSUMMU(
     when(state === xwait) {
       io.resp.ready := true.B
       when(io.resp.valid) {
-        when(io.resp.bits.fault) {
+        // 同 IFU：只接受 tval 与当前请求 VA 一致的响应，旧 walk 的迟到
+        // 响应必须丢弃，不能把旧 PA 贴到新访存指令上。
+        when(io.resp.bits.tval =/= msgReg.ALUResult) {
+          // 丢弃迟到响应。
+        }.elsewhen(io.resp.bits.fault) {
           faultReg := true.B
           faultCauseReg := io.resp.bits.cause
           faultTvalReg := msgReg.ALUResult
@@ -420,7 +429,9 @@ class ysyx_26030103_LSUMMU(
     when(state === xwait) {
       io.resp.ready := true.B
       when(io.resp.valid) {
-        when(io.resp.bits.fault) {
+        when(io.resp.bits.tval =/= msgReg.ALUResult) {
+          // 丢弃迟到的旧翻译响应；当前请求继续等待自己的响应。
+        }.elsewhen(io.resp.bits.fault) {
           // load 已经进入 LSU。先撤销它和 DCache 的等待请求，
           // 下一拍 faultReg 作为精确 page fault 提交给 EXU/CSR。
           faultReg := true.B
@@ -437,7 +448,10 @@ class ysyx_26030103_LSUMMU(
       }
     }
     when(state === xwait) {
-      io.memKill := io.resp.valid && io.resp.bits.fault
+      // 只有属于当前请求的故障响应才能 kill LSU/DCache；迟到旧响应的
+      // fault 位不得误伤正在等待翻译的新访存。
+      io.memKill := io.resp.valid && io.resp.bits.fault &&
+        io.resp.bits.tval === msgReg.ALUResult
     }
     when(state === done) {
       // load/store 都已交给 LSU；翻译结果保持到 LSU 完全排空，之后才允许

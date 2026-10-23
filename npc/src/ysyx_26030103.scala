@@ -347,6 +347,15 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     ifuResp.bits.pred_target := Mux(pmpFetchInject, 0.U, responseTag.predTarget)
   }
   // 响应级不再重新查表, 预测标签在取指接受时快照保存
+  // 不变量：ICache 的每个响应都必须对应一个已受理取指的快照。
+  // 若 redirect/flush 后仍残留旧响应，fetchTagCount 会先被清零，
+  // 这里立即报错而不是把旧指令字配到新 PC 上。
+  when(icache.io.resp_valid && !ifuFaultValid && !pmpFetchInject) {
+    assert(
+      fetchTagCount =/= 0.U,
+      "ICache response arrived without a fetch PC tag snapshot"
+    )
+  }
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
   // icache.kill 在下面按 PIPT/VIPT 分支连接：VIPT 还需要在翻译故障时
   // 杀死未完成的 VA 请求。

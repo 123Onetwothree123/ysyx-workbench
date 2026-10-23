@@ -464,6 +464,46 @@ class ysyx_26030103_AXI5Xbar(
       when((DownstreamAWDone || AWFire) && (DownstreamWDone || WLastFire)) {
         writeState := StateWriteResponse
       }
+    }.elsewhen(WriteTargetReg === TargetPLIC) {
+      val SendAW = !DownstreamAWDone
+      val UseBufferedW = WValidReg
+      val StreamW = !WValidReg && !DownstreamWDone
+
+      io.PLIC.AW.AWVALID := SendAW
+      io.PLIC.AW.AWID := AWIDReg
+      io.PLIC.AW.AWADDR := AWAddressReg
+      io.PLIC.AW.AWLEN := AWLENReg
+      io.PLIC.AW.AWSIZE := AWSIZEReg
+      io.PLIC.AW.AWBURST := AWBURSTReg
+      io.PLIC.AW.AWPROT := AWPROTReg
+      io.PLIC.AW.AWCACHE := AWCACHEReg
+      io.PLIC.AW.AWQOS := AWQOSReg
+
+      io.PLIC.W.WVALID := Mux(UseBufferedW, true.B, StreamW && io.in.W.WVALID)
+      io.PLIC.W.WDATA := Mux(UseBufferedW, WDataReg, io.in.W.WDATA)
+      io.PLIC.W.WSTRB := Mux(UseBufferedW, WSTRBReg, io.in.W.WSTRB)
+      io.PLIC.W.WLAST := Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
+      InWReady := StreamW && io.PLIC.W.WREADY
+
+      val AWFire = SendAW && io.PLIC.AW.AWREADY
+      val BufferedWFire = UseBufferedW && io.PLIC.W.WREADY
+      val StreamWFire = StreamW && io.in.W.WVALID && io.PLIC.W.WREADY
+      val WFire = BufferedWFire || StreamWFire
+      val WLastFire = WFire && Mux(UseBufferedW, WLASTReg, io.in.W.WLAST)
+
+      when(AWFire) {
+        DownstreamAWDone := true.B
+      }
+      when(BufferedWFire) {
+        WValidReg := false.B
+      }
+      when(WLastFire) {
+        DownstreamWDone := true.B
+      }
+
+      when((DownstreamAWDone || AWFire) && (DownstreamWDone || WLastFire)) {
+        writeState := StateWriteResponse
+      }
     }.otherwise {
       writeState := Mux(
         WValidReg && WLASTReg,
@@ -518,10 +558,10 @@ class ysyx_26030103_AXI5Xbar(
         DownstreamWDone := false.B
         writeState := StateWriteIdle
       }
-    }.otherwise {
-      // 无效目标本应在进入转发前走 DECERR，不能停在 Response 等 B。
-      writeState := StateWriteDECERR
     }
+    // PLIC 的 B 在状态机外的 PLICWriteResponse 中转发；无效目标由下方
+    // TargetInvalid 防御分支转 DECERR。这里不能再写 otherwise->DECERR，
+    // 否则会在 PLIC 的 B 尚未返回时把合法 PLIC 事务提前判错。
   }.elsewhen(writeState === StateWriteDECERR) {
     // 地址空洞和不支持的burst在CPU内部完成，不访问任何下游设备。
     io.in.B.BID := AWIDReg
