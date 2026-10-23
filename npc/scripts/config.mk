@@ -10,6 +10,8 @@ Q            := @
 KCONFIG_PATH := $(NPC_HOME)/tools/kconfig
 FIXDEP_PATH  := $(NPC_HOME)/tools/fixdep
 Kconfig      := $(NPC_HOME)/Kconfig
+CONFIG_CONTRACT := $(NPC_HOME)/scripts/check_kconfig_contract.py
+PYTHON       ?= python3
 rm-distclean += include/generated include/config .config .config.old
 silent := -s
 
@@ -35,13 +37,16 @@ $(FIXDEP):
 menuconfig: $(MCONF) $(CONF) $(FIXDEP)
 	$(Q)TERM=xterm LC_ALL=C.utf8 $(MCONF) $(Kconfig)
 	$(Q)$(CONF) $(silent) --syncconfig $(Kconfig)
+	$(Q)$(PYTHON) $(CONFIG_CONTRACT) --config .config
 
 savedefconfig: $(CONF)
 	$(Q)$< $(silent) --$@=configs/defconfig $(Kconfig)
 
 %defconfig: $(CONF) $(FIXDEP)
+	$(Q)$(PYTHON) $(CONFIG_CONTRACT) --config configs/$@
 	$(Q)$< $(silent) --defconfig=configs/$@ $(Kconfig)
 	$(Q)$< $(silent) --syncconfig $(Kconfig)
+	$(Q)$(PYTHON) $(CONFIG_CONTRACT) --config .config
 
 .PHONY: menuconfig savedefconfig defconfig
 

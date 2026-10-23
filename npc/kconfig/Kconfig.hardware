@@ -5,11 +5,17 @@ menu "硬件配置"
     config XLEN
       int "当前 XLEN"
       default 32
+      # Kconfig 的 int/range 只能表达连续区间，无法直接写成 {32,64}；
+      # 33..63 由 scripts/check_kconfig_contract.py 在配置阶段拒绝，
+      # elaboration 也会再次校验。保持 int 是为了让现有
+      # CONFIG_XLEN=32/64 的 defconfig 和脚本继续可用。
       range 32 64
       help
-        指令位宽。32=RV32，64=RV64。RV64 已接通
-        GPR/PC/ALU/EXU/IDU/WBU/CSR 与 RV64I/RV64M 语义，且
-        PC/分支目标/LSU/IFU/AXI/PMA/Xbar/ICache/DCache/BTB/RAS
+        指令位宽，只允许 32（RV32）或 64（RV64）。Kconfig 的 range
+        无法表达离散集合，33..63 虽然能填入，但会在 make defconfig/
+        menuconfig 后的配置契约检查阶段被明确拒绝，不会进入 elaboration。
+        RV64 已接通 GPR/PC/ALU/EXU/IDU/WBU/CSR 与 RV64I/RV64M 语义，
+        且 PC/分支目标/LSU/IFU/AXI/PMA/Xbar/ICache/DCache/BTB/RAS
         全部使用 64 位地址，LD/SD 以两拍 32 位 AXI 窄传输覆盖 8 字节。
         外部 ysyxSoC CPU AXI 目前实际仍为 32 位地址/数据，SoC 侧
         位宽由 SOC_XLEN_FOLLOW_CPU/SOC_XLEN 独立配置。32 位 SoC
@@ -242,13 +248,14 @@ menu "硬件配置"
       int "ysyxSoC CPU 侧接口 XLEN"
       depends on !SOC_XLEN_FOLLOW_CPU
       default 32
-      # Kconfig 的 int/range 不能表达离散集合；32/64 的最终校验在
-      # NPCConfig/elaboration 中完成。
+      # Kconfig 的 int/range 不能表达离散集合；32/64 由配置契约脚本
+      # 在配置阶段校验，elaboration 也会再次校验。
       range 32 64
       help
         ysyxSoC CPU 侧接口的 XLEN/数据宽度，仅当
         SOC_XLEN_FOLLOW_CPU=n 时可见并生效，只允许 32 或 64；
-        elaboration 会拒绝 33..63 等其他值。
+        33..63 会在 make defconfig/menuconfig 后的配置契约检查阶段
+        被明确拒绝，不会静默生成。
         32 位 ysyxSoC 可以搭配 64 位 CPU：CPU 内部仍使用 64 位地址，
         但经 SoC 边界的访问必须位于低 4GiB，更高地址在 Xbar 内返回
         DECERR。64 位 SoC 接口的 AXI 桥接尚未接入 RTL，当前该配置

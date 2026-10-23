@@ -98,6 +98,7 @@ MMU_PROFILE_DEPS   := .config $(MMU_PROFILE_SCRIPT)
 
 $(MMU_PROFILE_JSON) $(MMU_PROFILE_HEADER) $(MMU_PROFILE_ENV): $(MMU_PROFILE_DEPS)
 	@mkdir -p $(BUILD_DIR)/generated include/generated
+	python3 scripts/check_kconfig_contract.py --config .config
 	python3 $(MMU_PROFILE_SCRIPT) \
 		--config .config \
 		--json $(MMU_PROFILE_JSON) \
@@ -110,7 +111,15 @@ mmu-profile: $(MMU_PROFILE_JSON) $(MMU_PROFILE_HEADER) $(MMU_PROFILE_ENV)
 mmu-profile-check:
 	python3 scripts/test_mmu_profile.py
 
-.PHONY: mmu-profile mmu-profile-check
+# 配置契约：Kconfig 只能表达连续 range，这里补齐 XLEN/SOC_XLEN、
+# PTE 大小、页大小 2 的幂以及 CUSTOM A/D 高位等离散约束。
+KCONFIG_CONTRACT_SCRIPT := $(abspath scripts/check_kconfig_contract.py)
+kconfig-contract-check:
+	python3 $(KCONFIG_CONTRACT_SCRIPT) --defconfigs
+	python3 scripts/test_kconfig_contract.py
+	@if [ -f .config ]; then python3 $(KCONFIG_CONTRACT_SCRIPT) --config .config; fi
+
+.PHONY: mmu-profile mmu-profile-check kconfig-contract-check
 # npc 独立仿真路径的复位 PC：0x80000000 + CACHE_PADDING（镜像在内存中整体后移 CACHE_PADDING 字节）
 NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(CACHE_PADDING))))
 CACHE_PADDING_CFLAGS = -DCONFIG_CACHE_PADDING=$(CACHE_PADDING)

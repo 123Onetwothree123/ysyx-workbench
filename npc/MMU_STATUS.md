@@ -27,6 +27,11 @@
   自定义几何和 STANDARD Sv32/Sv39/Sv48 保持原有约束。CUSTOM 要求
   `pageBits + levels*indexBits` 在 2..64 之间，且
   `pageBits + PPN 位宽 <= 64`，否则 elaboration 明确报错。
+- 配置契约在 defconfig/menuconfig 阶段收紧：`MMU_LEVELS` 限制 1..4，
+  PTE 大小改为 4B/8B choice（派生的 `CONFIG_MMU_PTE_SIZE_BYTES`
+  仍供 RTL/生成器读取），页大小限制为 4B..1MiB 且必须是 2 的幂，
+  `XLEN`/`SOC_XLEN` 只允许 32/64。`make kconfig-contract-check`
+  会校验全部 defconfig 并运行轻量单元测试；非法值在配置阶段明确报错。
 - M 模式旁路；S/U 模式经 `satp` 翻译。
 - `satp`、`sstatus`、`stvec`、`sepc`、`scause`、`stval`、`sscratch`、
   `medeleg`、`mideleg`、`mie/mip/sie/sip`。
