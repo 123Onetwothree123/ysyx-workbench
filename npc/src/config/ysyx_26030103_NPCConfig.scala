@@ -14,6 +14,11 @@ case class ysyx_26030103_NPCConfig(
     UseM: Boolean = false,
     UseA: Boolean = false,
     UseC: Boolean = false,
+    // 浮点扩展目前只有配置占位，RTL 尚未实现。保留字段是为了后续
+    // Linux 硬浮点配置和 Kconfig/Elaborate 接口稳定，不要让配置被静默
+    // 丢弃；启用时由下面的 require 明确拒绝。
+    UseF: Boolean = false,
+    UseD: Boolean = false,
     MULImpl: ysyx_26030103_MULImpl = ysyx_26030103_MULImpl.ShiftAdd,
     MULEncoding: ysyx_26030103_MULEncoding = ysyx_26030103_MULEncoding.Plain,
     DIVImpl: ysyx_26030103_DIVImpl = ysyx_26030103_DIVImpl.Restoring,
@@ -116,6 +121,12 @@ case class ysyx_26030103_NPCConfig(
     s"XLEN 只允许 32 或 64，收到 XLEN=$XLEN")
   // A 扩展已实现（RV32 仅 .W，RV64 支持 .W/.D）；C 扩展仍未实现。
   require(UseC == false, "RISCV_C 还没做")
+  // F/D 目前是 Kconfig 占位项，RTL 还没有浮点寄存器、fcsr 和指令语义。
+  // 必须在 elaboration 期拒绝，避免 Linux 硬浮点镜像在缺少 F/D 时静默跑错。
+  require(UseF == false,
+    "RISCV_F 目前只有 Kconfig 占位，RTL 尚未实现；请暂时使用软浮点构建")
+  require(UseD == false,
+    "RISCV_D 目前只有 Kconfig 占位，RTL 尚未实现；请暂时使用软浮点构建")
   // 物理地址宽度不能超过架构 XLEN；RV32 使用 32，RV64 必须使用 64，
   // 保证 PC/分支目标/LSU/IFU/AXI 全链路都不会再次退化为 32 位。
   require(AddressWidth == 32 || AddressWidth == 64,
@@ -467,7 +478,11 @@ case class ysyx_26030103_NPCConfig(
     else { "" }
     val CExt = if (UseC) { "C" }
     else { "" }
-    "RV" + XLEN.toString + "I" + MExt + AExt + CExt
+    val FExt = if (UseF) { "F" }
+    else { "" }
+    val DExt = if (UseD) { "D" }
+    else { "" }
+    "RV" + XLEN.toString + "I" + MExt + AExt + CExt + FExt + DExt
   }
   private def PerfCounterList: String = {
     if (!PerfStatsEnable) { "off" }
@@ -487,6 +502,8 @@ case class ysyx_26030103_NPCConfig(
     val MOff = OnOff(UseM)
     val AOff = OnOff(UseA)
     val COff = OnOff(UseC)
+    val FOff = OnOff(UseF)
+    val DOff = OnOff(UseD)
     val ICacheDesc =
       if (ICacheEnable) {
         s"${1 << ICacheBlockSizeLog2}B/${1 << ICacheIndexBits}sets"
@@ -549,7 +566,7 @@ case class ysyx_26030103_NPCConfig(
         else if (Which.isEmpty) "hardware_snoop(inactive:no-cache)"
         else s"hardware_snoop(line-invalidate:$Which)"
       } else "software_flush(legacy-b-invalidate)"
-    s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, " +
+    s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, F=$FOff, D=$DOff, " +
       s"addr_w=$AddressWidth, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
       s"mul=${MULImpl.Name}/${MULEncoding.Name}, " +

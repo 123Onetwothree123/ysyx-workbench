@@ -62,6 +62,9 @@ object ysyx_26030103_Elaborate extends App {
   val UseM = sys.env.getOrElse("RISCV_M", "n") == "y"
   val UseA = sys.env.getOrElse("RISCV_A", "n") == "y"
   val UseC = sys.env.getOrElse("RISCV_C", "n") == "y"
+  // F/D 目前只做配置占位；NPCConfig 会明确拒绝启用。
+  val UseF = sys.env.getOrElse("RISCV_F", "n") == "y"
+  val UseD = sys.env.getOrElse("RISCV_D", "n") == "y"
   val MULImplName =
     sys.env.get("MUL_IMPL").filter(_.nonEmpty).getOrElse("shift_add")
   val MULEncodingName =
@@ -126,6 +129,8 @@ object ysyx_26030103_Elaborate extends App {
     UseM = UseM,
     UseA = UseA,
     UseC = UseC,
+    UseF = UseF,
+    UseD = UseD,
     MULImpl = ysyx_26030103_MULImpl.FromString(MULImplName),
     MULEncoding = ysyx_26030103_MULEncoding.FromString(MULEncodingName),
     DIVImpl = ysyx_26030103_DIVImpl.FromString(DIVImplName),

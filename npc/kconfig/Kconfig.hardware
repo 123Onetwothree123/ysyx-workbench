@@ -51,6 +51,23 @@ menu "硬件配置"
       help
         尚未实现: 启用后 elaboration 会直接报错, 防止生成功能不完整的核。
 
+    config RISCV_F
+      bool "F 扩展（单精度浮点）(占位，未实现)"
+      default n
+      help
+        目前只提供配置占位，RTL 尚未实现 F 扩展。
+        启用后 elaboration 会明确报错，不会生成半成品浮点核。
+        目标：后续 Linux 硬浮点支持。
+
+    config RISCV_D
+      bool "D 扩展（双精度浮点）(占位，未实现)"
+      depends on RISCV_F
+      default n
+      help
+        目前只提供配置占位，RTL 尚未实现 D 扩展。
+        D 依赖 F；启用后 elaboration 会明确报错。
+        目标：后续 Linux 硬浮点支持。
+
     menu "乘法器配置"
       depends on RISCV_M
 
