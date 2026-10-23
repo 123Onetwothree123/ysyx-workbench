@@ -334,6 +334,52 @@ class KconfigContractTest(unittest.TestCase):
         }
         self.assertEqual(validate_config(values), [])
 
+    def base_sbi(self):
+        values = self.base_rv64()
+        values.update({
+            "RISCV_A": True,
+            "HAS_PMP": True,
+            "SBI_ENABLE": True,
+            "SBI_IMPL_OPENSBI": True,
+            "SBI_PLATFORM": "npc",
+            "SBI_FW_BASE": 0x80000000,
+            "SBI_FW_SIZE": 0x00200000,
+            "SBI_NEXT_ADDR": 0x80200000,
+        })
+        return values
+
+    def test_sbi_opensbi_default_layout_passes(self):
+        self.assertEqual(validate_config(self.base_sbi()), [])
+
+    def test_sbi_next_addr_overlaps_firmware_rejected(self):
+        values = self.base_sbi()
+        values["SBI_NEXT_ADDR"] = 0x80100000
+        self.assert_error(values, "越过")
+
+    def test_sbi_next_addr_alignment_rejected(self):
+        values = self.base_sbi()
+        values["SBI_NEXT_ADDR"] = 0x80300000
+        self.assert_error(values, "2 MiB")
+
+    def test_sbi_opensbi_requires_a_extension(self):
+        values = self.base_sbi()
+        values["RISCV_A"] = False
+        self.assert_error(values, "RISCV_A=y")
+
+    def test_sbi_opensbi_requires_pmp(self):
+        values = self.base_sbi()
+        values["HAS_PMP"] = False
+        self.assert_error(values, "HAS_PMP=y")
+
+    def test_sbi_disabled_ignores_layout(self):
+        values = self.base_rv64()
+        values.update({
+            "SBI_ENABLE": False,
+            "SBI_FW_BASE": 0,
+            "SBI_NEXT_ADDR": 0,
+        })
+        self.assertEqual(validate_config(values), [])
+
 
 if __name__ == "__main__":
     unittest.main()

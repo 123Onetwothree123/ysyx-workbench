@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# NPC（ysyx-workbench 教学 RISC-V 核）平台。
+#
+# 固定内存映射，不依赖设备树：
+#   UART  0x10000000
+#   CLINT 0x02000000
+#   PLIC  0x0c000000
+#   RAM   0x80000000
+#
+# 单 hart、无 F/D 的固件只需要 IMA + Zicsr/Zifencei。
+
+config PLATFORM_NPC
+	bool
+	# 单 hart 且 NPC CLINT 未实现 MSIP 寄存器，因此不注册 MSWI/IPI
+	# 设备：OpenSBI 的 IPI 框架在没有设备时会安全退化。
+	select IRQCHIP_PLIC
+	select SERIAL_UART8250
+	select TIMER_MTIMER
+	default y

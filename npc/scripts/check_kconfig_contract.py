@@ -420,6 +420,53 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
                         f"PTE PPN 位宽({ppn_bits})，无法正确检查"
                     )
 
+    # SBI 固件布局：Kconfig 的 hex 只表达数值，这里补齐对齐和区间约束。
+    # 默认 SBI_ENABLE=n，不会影响现有 xv6/NPC 配置。
+    if _as_bool(values, "SBI_ENABLE", False):
+        sbi_impl = _derived_choice_string(
+            values,
+            "SBI_IMPL",
+            (
+                ("SBI_IMPL_OPENSBI", "opensbi"),
+                ("SBI_IMPL_RUSTSBI", "rustsbi"),
+            ),
+            "none",
+        )
+        if sbi_impl == "none":
+            err("SBI_ENABLE=y 但未选择 SBI 实现（SBI_IMPL_OPENSBI/RUSTSBI）")
+
+        base = _as_int(values, "SBI_FW_BASE", 0x80000000)
+        size = _as_int(values, "SBI_FW_SIZE", 0x00200000)
+        next_addr = _as_int(values, "SBI_NEXT_ADDR", 0x80200000)
+        if base <= 0 or base % 4096 != 0:
+            err(f"SBI_FW_BASE=0x{base:x} 必须是正的 4 KiB 对齐地址")
+        if size <= 0 or size % 4096 != 0:
+            err(f"SBI_FW_SIZE=0x{size:x} 必须是正的 4 KiB 倍数")
+        if next_addr <= base:
+            err("SBI_NEXT_ADDR 必须大于 SBI_FW_BASE")
+        elif base > 0 and size > 0 and base + size > next_addr:
+            err(
+                f"SBI_FW_BASE+SBI_FW_SIZE=0x{base + size:x} 越过 "
+                f"SBI_NEXT_ADDR=0x{next_addr:x}，固件会覆盖 next-stage"
+            )
+        else:
+            jump_align = 2 * 1024 * 1024 if xlen == 64 else 4 * 1024 * 1024
+            if next_addr % jump_align != 0:
+                err(
+                    f"SBI_NEXT_ADDR=0x{next_addr:x} 必须按 "
+                    f"{jump_align // 1024 // 1024} MiB 对齐（RV{xlen}）"
+                )
+
+        if sbi_impl == "opensbi":
+            # OpenSBI 的 _start 需要 A 扩展；S 模式服务和 PMP 隔离分别
+            # 依赖 HAS_S/HAS_PMP。缺失时在配置阶段就明确拒绝。
+            if not _as_bool(values, "RISCV_A", False):
+                err("SBI_IMPL_OPENSBI 需要 RISCV_A=y（_start 使用 amoswap.w）")
+            if not has_s:
+                err("SBI_IMPL_OPENSBI 需要 HAS_S=y")
+            if not _as_bool(values, "HAS_PMP", False):
+                err("SBI_IMPL_OPENSBI 需要 HAS_PMP=y（隔离 M/S 访问）")
+
     return errors
 
 

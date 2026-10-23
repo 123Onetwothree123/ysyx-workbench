@@ -33,7 +33,8 @@ HDLcode/**/obj_dir/
 !XV6_PORT.md
 !XV6_NPC_BOOT.md
 !XV6_PORT.patch
-# 第三方 FPU 源码（vendor，本地跟踪，非 git submodule）
+!SBI_NPC.md
+# 第三方源码（vendor，本地跟踪，非 git submodule）
 !/vendor/
 !/vendor/**
 # vendor 内不跟踪构建产物
