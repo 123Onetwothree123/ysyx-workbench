@@ -120,7 +120,8 @@ class ysyx_26030103_EXU(
     val RASPopValid = Output(Bool())
   })
   val ALUUnit = Module(new ysyx_26030103_ALU(XLEN))
-  val CSRUnit = Module(new ysyx_26030103_CSR(config.MMU, XLEN, config.UseA))
+  val CSRUnit = Module(new ysyx_26030103_CSR(
+    config.MMU, XLEN, config.UseA, config.UseC))
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
   CSRUnit.io.Interrupt := io.Interrupt
@@ -170,8 +171,9 @@ class ysyx_26030103_EXU(
   // 上游随指令传来的异常标记(IFU取指错cause=1/IDU非法指令cause=2)
   val UpEx = inst.ExceptionValid
 
-  // IALIGN=32: 只有实际发生转移的 branch/JAL/JALR 才检查目标低两位。
-  // JALR 先按 ISA 清 bit0，若 bit1 仍为 1 则产生 instruction-address-misaligned(cause=0)。
+  // IALIGN=32 时只有实际发生转移的 branch/JAL/JALR 才检查目标低两位；
+  // 启用 C 扩展后 IALIGN=16，目标只需 2 字节对齐（bit0=0），bit1 可以
+  // 为 1。JALR 在两种配置下都只清 bit0。
   ALUUnit.io.A := inst.ALU_A
   ALUUnit.io.B := inst.ALU_B
   ALUUnit.io.ALUCtrl := inst.ALUCtrl
@@ -189,8 +191,11 @@ class ysyx_26030103_EXU(
     JalTarget,
     Mux(inst.IsJalr, JalrTarget, BranchTarget)
   )
+  val InstructionTargetAlignMask =
+    if (config.UseC) 1.U(XLEN.W) else 3.U(XLEN.W)
   val InstructionAddressMisaligned =
-    !UpEx && ControlTransferTaken && ControlTransferTarget(1, 0) =/= 0.U
+    !UpEx && ControlTransferTaken &&
+      (ControlTransferTarget & InstructionTargetAlignMask) =/= 0.U
   val InstructionTrapValid = UpEx || InstructionAddressMisaligned
   val IsMemoryForCommit = inst.MemoryValid && !InstructionTrapValid
   val IsMDUInstruction =
@@ -393,8 +398,22 @@ class ysyx_26030103_EXU(
     Mux(IdleIrqCommit, io.IdleIrqPC, inst.pc)
   )
   CSRUnit.io.pc := TrapBoundaryPC
-  CSRUnit.io.TrapTval := Mux(io.MemTrapCommit, io.MemTrapTval,
-    Mux(inst.MemoryValid, ALUUnit.io.result, inst.pc))
+  // 非法压缩指令的 mtval 写入原始 16 位编码（零扩展）。32 位非法指令
+  // 保持既有 ABI（DiffTest/回归测试以 PC 作为 tval）；load/store 使用
+  // 故障地址，取指访问错误和 ecall 仍回退到 PC。
+  val ActiveIllegalCompressed =
+    ActiveInst.ExceptionValid && ActiveInst.ExceptionCause === 2.U &&
+      ActiveInst.IsCompressed
+  val ActiveInstructionVisible = io.in.valid || PendingMDU
+  val ActiveTrapTval = Mux(
+    ActiveIllegalCompressed,
+    ActiveInst.Instruction,
+    Mux(ActiveInst.MemoryValid, ALUUnit.io.result, ActiveInst.pc)
+  )
+  val ActiveTrapTvalValid = ActiveInstructionVisible &&
+    (ActiveIllegalCompressed || ActiveInst.MemoryValid)
+  CSRUnit.io.TrapTval := Mux(io.MemTrapCommit, io.MemTrapTval, ActiveTrapTval)
+  CSRUnit.io.TrapTvalValid := io.MemTrapCommit || ActiveTrapTvalValid
   // fence.i也要产生"重定向": 目标是自己的snpc(即fence.i+4),
   // 借此把流水线里比fence.i年轻的、可能过时的指令全部冲刷并重新取指
   // 实际下一PC: jalr最低位清零由JalrTarget给出;分支not-taken与fence.i都回snpc
@@ -501,6 +520,7 @@ class ysyx_26030103_EXU(
   io.ExceptionTarget := CSRUnit.io.ExceptionTarget
 
   io.out.bits.Instruction := ActiveInst.Instruction
+  io.out.bits.IsCompressed := ActiveInst.IsCompressed
   // 同步异常指令不退休；IRQ抢占的指令会从mepc重做，也不退休。
   // load/store先携带退休意图进入MEM，若总线故障则由LSU清除。
   io.out.bits.Retire := !ActiveInstructionTrapValid && !ActiveInst.IsEcall &&

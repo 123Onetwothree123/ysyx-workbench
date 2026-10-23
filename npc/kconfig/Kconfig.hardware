@@ -46,10 +46,18 @@ menu "硬件配置"
         （如 riscv32ima / riscv64ima）。
 
     config RISCV_C
-      bool "C 扩展（压缩指令）(暂未实现)"
+      bool "C 扩展（压缩指令）"
       default n
       help
-        尚未实现: 启用后 elaboration 会直接报错, 防止生成功能不完整的核。
+        启用 RV32C/RV64C：IFU 改为 IALIGN=16，可 2 字节步进并拼装
+        16/32 位指令；IDU 完整展开整数 RVC 指令，保留的非法编码
+        明确按非法指令陷入；misa.C 置位，mepc/sepc 只清 bit0。
+        RV32 的 C.JAL 与 RV64 的 C.ADDIW 按 XLEN 区分；未实现 F/D，
+        因此浮点压缩编码按非法指令处理。
+        关闭时压缩编码不会被当作 32 位指令执行，而是明确触发
+        illegal instruction(cause=2)。
+        difftest 时 NEMU 必须使用相同 ISA（如 riscv32imac）。
+        修改后需重新 make verilog。
 
     config RISCV_F
       bool "F 扩展（单精度浮点）(占位，未实现)"

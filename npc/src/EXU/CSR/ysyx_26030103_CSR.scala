@@ -19,7 +19,9 @@ class ysyx_26030103_CSR(
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(),
     val XLEN: Int = 32,
     // RISCV_A 打开时 misa.A 必须置位；关闭时该位保持 0。
-    val UseA: Boolean = false
+    val UseA: Boolean = false,
+    // RISCV_C 打开时 misa.C 置位，mepc/sepc 只清 bit0（IALIGN=16）。
+    val UseC: Boolean = false
 ) extends Module {
   import ysyx_26030103_mstatus.legalize
   require(XLEN == 32 || XLEN == 64, s"CSR XLEN 非法: $XLEN")
@@ -73,6 +75,9 @@ class ysyx_26030103_CSR(
     val Rs1Data = Input(UInt(XLEN.W))
     val pc = Input(UInt(XLEN.W))
     val TrapTval = Input(UInt(XLEN.W))
+    // TrapTval 本身可能合法地为 0（例如全零的非法压缩编码），因此
+    // 必须显式区分“使用给定 tval”与“回退到故障 PC”。
+    val TrapTvalValid = Input(Bool())
     val CSR_rdata = Output(UInt(XLEN.W))
     val ExceptionTaken = Output(Bool())
     val ExceptionTarget = Output(UInt(XLEN.W))
@@ -196,12 +201,12 @@ class ysyx_26030103_CSR(
 
   val Mstatus = Module(new ysyx_26030103_mstatus(hasS, hasU))
   val Mtvec = Module(new ysyx_26030103_mtvec(XLEN))
-  val Mepc = Module(new ysyx_26030103_mepc(XLEN))
+  val Mepc = Module(new ysyx_26030103_mepc(XLEN, UseC))
   val Mcause = Module(new ysyx_26030103_mcause(XLEN))
   // S 模式入口寄存器只在 HAS_S=y 时例化。HAS_S=n 时顶层不生成 MMU，
   // 也不会有可返回的 S 状态，因此这些寄存器没有保留价值。
   val StvecOpt = if (hasS) Some(Module(new ysyx_26030103_mtvec(XLEN))) else None
-  val SepcOpt = if (hasS) Some(Module(new ysyx_26030103_mepc(XLEN))) else None
+  val SepcOpt = if (hasS) Some(Module(new ysyx_26030103_mepc(XLEN, UseC))) else None
   val ScauseOpt = if (hasS) Some(Module(new ysyx_26030103_mcause(XLEN))) else None
   val Mcycle = Module(new ysyx_26030103_mcycle(XLEN))
 
@@ -272,12 +277,13 @@ class ysyx_26030103_CSR(
   val Minstret_rdata =
     if (XLEN == 64) Minstret else Minstret(31, 0)
   val Minstreth_rdata = Minstret(63, 32)
-  // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A 随 RISCV_A 配置。
-  // 位编号按 RISC-V 规范：bit0=A，bit8=I。
+  // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A/C 随 RISCV_A/RISCV_C 配置。
+  // 位编号按 RISC-V 规范：bit0=A，bit2=C，bit8=I。
   val Misa_rdata = {
     val Mxl = if (XLEN == 64) BigInt(2) << 62 else BigInt(1) << 30
     val AExt = if (UseA) BigInt(1) << 0 else BigInt(0)
-    (Mxl | BigInt(0x100) | AExt).U(XLEN.W)
+    val CExt = if (UseC) BigInt(1) << 2 else BigInt(0)
+    (Mxl | BigInt(0x100) | AExt | CExt).U(XLEN.W)
   }
   val Medeleg_rdata = MedelegOpt.getOrElse(0.U(32.W))
   val Mideleg_rdata = MidelegOpt.getOrElse(0.U(32.W))
@@ -492,9 +498,14 @@ class ysyx_26030103_CSR(
       CSRWriteData(Scause_rdata))
   }
 
-  // trap 写 tval 的统一取值：DUT 对没有专门 tval 的异常使用故障指令
-  // 的 PC（例如 illegal/ecall），有地址的异常使用访存/取指地址。
-  val TrapTvalValue = Mux(io.TrapTval =/= 0.U, io.TrapTval, io.pc)
+  // trap 写 tval 的统一取值：有明确 tval 的异常（访存地址、压缩非法
+  // 指令编码等）直接使用输入；没有专门 tval 的异常回退到故障 PC。
+  // 不能用“tval != 0”判断，因为全零的非法压缩编码是合法的 tval=0。
+  val TrapTvalValue = Mux(io.TrapTvalValid, io.TrapTval, io.pc)
+  // IALIGN=16 时 mepc/sepc 只清 bit0；IALIGN=32 清低两位。
+  private def AlignEPC(Value: UInt): UInt =
+    if (UseC) Cat(Value(XLEN - 1, 1), 0.U(1.W))
+    else Cat(Value(XLEN - 1, 2), 0.U(2.W))
   if (hasS) {
     val Stval = StvalOpt.get
     when(ExceptionCommit && TrapToS) {
@@ -706,8 +717,8 @@ class ysyx_26030103_CSR(
   io.StateMtvec := Mux(CSRWen && IsCSRAddress(CSR_MTVEC),
     Cat(MtvecCSRData(XLEN - 1, 2), MtvecLegalMode), Mtvec_rdata)
   io.StateMepc := Mux(ExceptionCommit && !TrapToS,
-    Cat(io.pc(XLEN - 1, 2), 0.U(2.W)),
-    Mux(MepcWen, Cat(CSRWriteData(Mepc_rdata)(XLEN - 1, 2), 0.U(2.W)), Mepc_rdata))
+    AlignEPC(io.pc),
+    Mux(MepcWen, AlignEPC(CSRWriteData(Mepc_rdata)), Mepc_rdata))
   io.StateMcause := Mux(ExceptionCommit && !TrapToS, WidenCause32(ExceptionCause),
     Mux(McauseWen, CSRWriteData(Mcause_rdata), Mcause_rdata))
   // 只在 trap 提交拍给出本次写入的 tval；普通指令/软件写 CSR 不参与

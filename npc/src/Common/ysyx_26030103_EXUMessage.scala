@@ -10,7 +10,10 @@ import chisel3._
 class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"EXUMessage XLEN 非法: $XLEN")
   // 与提交记录同行传递，供退休级调试/trace精确对齐。
+  // Instruction 保留原始编码（16 位压缩指令零扩展）；IsCompressed 供
+  // 提交点区分 mepc 对齐和非法指令 mtval 语义。
   val Instruction = UInt(32.W)
+  val IsCompressed = Bool()
   val Retire = Bool()
   // EXU算好交给MEM/WBU的最终写回相关字段
   val Rd = UInt(5.W)

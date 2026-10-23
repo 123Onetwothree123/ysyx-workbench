@@ -57,9 +57,29 @@ class ysyx_26030103_IDU(
     val perf_stall_raw_loaduse = Output(Bool())
     val perf_stall_raw_alu = Output(Bool())
   })
-  val Instruction = io.in.bits.Instruction
+  // 取指消息保留原始编码；RVC 展开后的 32 位形式只用于本模块译码。
+  // 这样 EXU/trace/非法指令 mtval 仍能看到真实的 16 位编码。
+  val RawInstruction = io.in.bits.Instruction
+  val IsCompressed = io.in.bits.IsCompressed
+  val Instruction = WireDefault(RawInstruction)
+  val RvcIllegal = WireDefault(false.B)
+  if (config.UseC) {
+    val RVCDecoderModule = Module(new ysyx_26030103_RVCDecoder(XLEN))
+    RVCDecoderModule.io.in := RawInstruction
+    when(IsCompressed) {
+      Instruction := RVCDecoderModule.io.out
+    }
+    RvcIllegal := IsCompressed && RVCDecoderModule.io.illegal
+  }
+  // C 扩展关闭时，任何低两位不是 11 的取指槽都是压缩指令，必须明确
+  // 按非法指令陷入，不能把相邻的半字误拼成一条 32 位指令执行。
+  val CExtensionDisabledIllegal =
+    if (config.UseC) false.B
+    else RawInstruction(1, 0) =/= "b11".U(2.W)
   val pc = io.in.bits.pc
-  val snpc = pc + 4.U(XLEN.W)
+  // 压缩指令只前进 2 字节；这也是分支/JAL 链接值和 trap 返回地址的
+  // 顺序后继语义。
+  val snpc = pc + Mux(IsCompressed, 2.U(XLEN.W), 4.U(XLEN.W))
   val Rs1 = Instruction(19, 15)
   val Rs2 = Instruction(24, 20)
   io.Read1SELECT := Rs1
@@ -261,7 +281,8 @@ class ysyx_26030103_IDU(
   val IllegalInsn =
     (ALUCDIllegal && !IsSimHalt) || !IsKnownInstruction || CSRIllegal ||
       TvmFault || TsrFault || TwFault ||
-      MretFault || SretFault || SfenceFault
+      MretFault || SretFault || SfenceFault ||
+      RvcIllegal || CExtensionDisabledIllegal
   // LR 的 rs2 字段必须为 0，但统一按 A 扩展读 rs1/rs2 不会引入错误转发，
   // 反而让 SC/AMO 的源操作数冒险检测与普通指令完全一致。
   val needsRs2 = IsRType || IsBType || IsSType || IsAtomic
@@ -369,7 +390,9 @@ class ysyx_26030103_IDU(
   io.perf_stall_raw := io.in.valid && isRAW
   io.perf_stall_raw_loaduse := io.in.valid && isRAW && raw_loaduse
   io.perf_stall_raw_alu := io.in.valid && isRAW && !raw_loaduse
-  io.out.bits.Instruction := Instruction
+  // 退休/trace/mtval 使用原始编码；展开结果只影响控制信号。
+  io.out.bits.Instruction := RawInstruction
+  io.out.bits.IsCompressed := IsCompressed
   io.out.bits.pc := pc
   io.out.bits.snpc := snpc
   io.out.bits.ALUCtrl := ALUCtrl

@@ -11,19 +11,24 @@ class ysyx_26030103_BTB(
     BTBBits: Int = 4,
     BTBWays: Int = 1,
     AddressWidth: Int = 32,
-    KindBits: Int = 0
+    KindBits: Int = 0,
+    // 启用 C 扩展时 IALIGN=16，PC 可能落在 2 字节边界。索引/标签必须
+    // 保留 bit1，避免同一条 32 位指令的两个半字或相邻 16 位指令互相
+    // 混叠预测目标。
+    UseC: Boolean = false
 ) extends Module {
   require(BTBBits >= 0, "BTBBits must be non-negative")
   require(BTBWays >= 1, "BTB must contain at least one way")
   require(AddressWidth >= 3, "BTB address width must include PC alignment and tag bits")
+  private val PcShift = if (UseC) 1 else 2
   require(
-    BTBBits < AddressWidth - 2,
+    BTBBits < AddressWidth - PcShift,
     "BTB geometry must leave at least one tag bit after removing PC alignment bits"
   )
   require(KindBits >= 0, "BTB kind width must be non-negative")
   val NumSets = 1 << BTBBits
-  val TagBits = AddressWidth - BTBBits - 2 // PC>>2后去掉index位
-  val AddrShiftedWidth = AddressWidth - 2 // PC[31:2], 低位始终为0
+  val TagBits = AddressWidth - BTBBits - PcShift // PC>>PcShift 后去掉 index 位
+  val AddrShiftedWidth = AddressWidth - PcShift // PC[31:1] 或 PC[31:2]
   val HasKind = KindBits > 0
   val io = IO(new Bundle {
     // 查询端口(组合逻辑,IFU每拍用当前PC[31:2]查,决定下一PC)

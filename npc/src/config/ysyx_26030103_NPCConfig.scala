@@ -119,8 +119,8 @@ case class ysyx_26030103_NPCConfig(
 ) {
   require(XLEN == 32 || XLEN == 64,
     s"XLEN 只允许 32 或 64，收到 XLEN=$XLEN")
-  // A 扩展已实现（RV32 仅 .W，RV64 支持 .W/.D）；C 扩展仍未实现。
-  require(UseC == false, "RISCV_C 还没做")
+  // C 扩展（RV32C/RV64C）已接通 IFU/IDU/CSR：允许 2 字节 PC 步进、
+  // 16/32 位拼装和 mepc/sepc 只清 bit0。默认仍由 Kconfig 保持关闭。
   // F/D 目前是 Kconfig 占位项，RTL 还没有浮点寄存器、fcsr 和指令语义。
   // 必须在 elaboration 期拒绝，避免 Linux 硬浮点镜像在缺少 F/D 时静默跑错。
   require(UseF == false,
@@ -305,15 +305,18 @@ case class ysyx_26030103_NPCConfig(
     IndexBits + BlockSizeLog2 < AddressWidth,
     "Cache地址几何必须留出至少1位tag"
   )
+  // C 扩展打开时 IALIGN=16，BTB 索引/标签必须保留 PC bit1，因此只去掉
+  // 1 个对齐位；关闭时仍按 4 字节对齐去掉 2 位。
+  private val BtbPcShift = if (UseC) 1 else 2
   require(BTBBits >= 0, "BTBBits不能为负数；0表示单组BTB")
   require(
-    BTBBits < AddressWidth - 2,
+    BTBBits < AddressWidth - BtbPcShift,
     "BTB地址几何必须在去除PC对齐位后留出至少1位tag"
   )
   require(BTBWays >= 1, "BTB必须至少包含1路")
   require(JalBTBBits >= 0, "JalBTBBits不能为负数；0表示单组JAL BTB")
   require(
-    JalBTBBits < AddressWidth - 2,
+    JalBTBBits < AddressWidth - BtbPcShift,
     "JAL BTB地址几何必须在去除PC对齐位后留出至少1位tag"
   )
   require(JalBTBWays >= 1, "JAL BTB必须至少包含1路")
@@ -321,7 +324,12 @@ case class ysyx_26030103_NPCConfig(
     RASBits >= 0 && RASBits < 31,
     "RASBits必须在0到30之间；0表示单项RAS"
   )
-  require((ResetAddr & 0x3L) == 0L, "未启用RISCV_C时ResetAddr必须按4字节对齐")
+  // IALIGN=16 时复位地址只要求 2 字节对齐；关闭 C 时仍要求 4 字节。
+  require(
+    (ResetAddr & (if (UseC) 0x1L else 0x3L)) == 0L,
+    if (UseC) "启用RISCV_C时ResetAddr只需按2字节对齐"
+    else "未启用RISCV_C时ResetAddr必须按4字节对齐"
+  )
   require(PMARegions.nonEmpty, "物理地址图不能为空")
   require(
     PMARegions.exists(r => ResetAddr >= r.Base && ResetAddr < r.EndExclusive && r.Executable),

@@ -40,7 +40,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 顶层 AXI 端口宽度由实际生效的 SoC XLEN 决定；CPU 内部地址/数据
   // 宽度不能直接决定这个 ABI。
   val io = IO(new ysyx_26030103_IO(config.EffectiveSocXLEN))
-  val ifu = Module(new ysyx_26030103_IFU(config.ResetAddr, XLEN))
+  val ifu = Module(
+    new ysyx_26030103_IFU(config.ResetAddr, XLEN, config.UseC))
   val idu = Module(new ysyx_26030103_IDU(config))
   val exu = Module(new ysyx_26030103_EXU(config))
   val wbu = Module(new ysyx_26030103_WBU(XLEN))
@@ -114,13 +115,23 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 分支目标缓冲(BTB): IFU取指级查询决定下一PC,取指被icache接受时快照预测标签随请求保存,
   // EXU提交时更新分支的真实target; 另设独立jal BTB(方案B: 与分支表零干扰, 表项带kind区分Jal/Call/Ret)
   // + 返回地址栈RAS(ret的预测目标=栈顶, EXU提交call/ret时压/弹, 非投机无需修复)
-  val btb = Module(new ysyx_26030103_BTB(config.BTBBits, config.BTBWays, config.AddressWidth))
+  // C 扩展打开时 BTB 索引/标签保留 PC bit1，避免同一条 32 位指令的
+  // 两个半字或相邻 16 位指令互相混叠。
+  val btb = Module(
+    new ysyx_26030103_BTB(
+      config.BTBBits,
+      config.BTBWays,
+      config.AddressWidth,
+      0,
+      config.UseC
+    ))
   val jal_btb =
     Module(new ysyx_26030103_BTB(
       config.JalBTBBits,
       config.JalBTBWays,
       config.AddressWidth,
-      2
+      2,
+      config.UseC
     ))
   val ras = Module(new ysyx_26030103_RAS(config.RASBits, config.AddressWidth))
   val predictorSelect =
@@ -218,7 +229,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     if (mmuEnabled && config.MMU.adMode == "hardware")
       Some(Module(new ysyx_26030103_AXIWriteMux(
         PassRead = false, AddressWidth = config.AddressWidth))) else None
-  // icache响应(携带取指地址和错误标志)经冲刷流水寄存器直接进IDU
+  // ICache 响应(携带取指地址和错误标志)经冲刷流水寄存器直接进 IDU。
+  // C 模式下响应先进入 IFU 的半字拼装状态机，由 IFU 输出完整指令；
+  // 非 C 模式保持原有“ICache 响应直连 IDU + PC 快照队列”的数据通路。
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage(XLEN)))
   val ifuFaultValid = RegInit(false.B)
   val ifuFaultPC = RegInit(0.U(XLEN.W))
@@ -243,74 +256,78 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     ifu.io.FetchValid && pmpFetchAllow &&
       (if (parallelFetchVipt) !ifuFaultValid else fetchTranslationValid) &&
       icache.io.fetch_ready
-  // 两表项虚拟 PC 队列：允许响应与下一笔接受同拍发生。ICache 通常只有
-  // 一笔在途，但零延迟响应/背靠背响应必须用队列而不是单寄存器。
+  // 两表项虚拟 PC 队列（仅非 C 路径）：允许响应与下一笔接受同拍发生。
+  // C 路径由 IFU 内部串行状态机保存 arch PC，不依赖 ICache 响应级重新
+  // 对齐 PC，因此不需要这个队列。
   val fetchTag0 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
   val fetchTag1 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
   val fetchTagCount = RegInit(0.U(2.W))
-  // 只有所有更老取指都已交付（快照队列为空）时才注入 PMP 取指故障。
-  // 不能只看 icache.resp_valid：miss/refill 期间更老请求仍在 ICache 内，
-  // resp_valid 可能多拍为低，提前注入会打乱进入 IDU 的指令顺序。
+  // C 模式没有 fetchTagCount：只有 IFU 当前没有待交付指令、ICache 也没有
+  // 更老响应时才注入 PMP 故障，保证故障指令严格排在已取指令之后。
   val pmpFetchInject =
-    pmpFetchFaultValid && fetchTagCount === 0.U && !icache.io.resp_valid
+    if (config.UseC)
+      pmpFetchFaultValid && !ifu.io.Out.valid && !icache.io.resp_valid
+    else pmpFetchFaultValid && fetchTagCount === 0.U && !icache.io.resp_valid
   val pushTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
-  pushTag.pc := ifu.io.FetchAddr
+  // FetchPC 是架构 PC（指令起点）；非 C 时与 FetchAddr 相同。
+  pushTag.pc := ifu.io.FetchPC
   pushTag.predTaken := ifu.io.PredHit
   pushTag.predTarget := ifu.io.PredTarget
   val popFetch = icache.io.resp_valid && icache.io.resp_ready
   val responseTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
-  responseTag := Mux(fetchTagCount === 0.U, pushTag, fetchTag0)
-  val pushAndPop = accept_fetch && popFetch
-  when(pipe_flush || (if (parallelFetchVipt) fetchTranslationFault else false.B)) {
-    // VIPT 下翻译故障对应的请求已经被 ICache 受理并推入过快照；该请求不会
-    // 产生正常响应（故障由 ifuResp 注入），因此连同年轻请求一起清空。
-    fetchTagCount := 0.U
-  }.elsewhen(pushAndPop) {
-    when(fetchTagCount === 0.U) {
+  if (!config.UseC) {
+    responseTag := Mux(fetchTagCount === 0.U, pushTag, fetchTag0)
+    val pushAndPop = accept_fetch && popFetch
+    when(pipe_flush || (if (parallelFetchVipt) fetchTranslationFault else false.B)) {
+      // VIPT 下翻译故障对应的请求已经被 ICache 受理并推入过快照；该请求不会
+      // 产生正常响应（故障由 ifuResp 注入），因此连同年轻请求一起清空。
       fetchTagCount := 0.U
-    }.elsewhen(fetchTagCount === 1.U) {
-      fetchTag0 := pushTag
-    }.otherwise {
-      fetchTag0 := fetchTag1
-      fetchTag1 := pushTag
-    }
-  }.elsewhen(accept_fetch) {
-    when(fetchTagCount === 0.U) {
-      fetchTag0 := pushTag
-      fetchTagCount := 1.U
-    }.elsewhen(fetchTagCount === 1.U) {
-      fetchTag1 := pushTag
-      fetchTagCount := 2.U
-    }
-  }.elsewhen(popFetch) {
-    when(fetchTagCount === 2.U) {
-      fetchTag0 := fetchTag1
-      fetchTagCount := 1.U
-    }.otherwise {
-      fetchTagCount := 0.U
+    }.elsewhen(pushAndPop) {
+      when(fetchTagCount === 0.U) {
+        fetchTagCount := 0.U
+      }.elsewhen(fetchTagCount === 1.U) {
+        fetchTag0 := pushTag
+      }.otherwise {
+        fetchTag0 := fetchTag1
+        fetchTag1 := pushTag
+      }
+    }.elsewhen(accept_fetch) {
+      when(fetchTagCount === 0.U) {
+        fetchTag0 := pushTag
+        fetchTagCount := 1.U
+      }.elsewhen(fetchTagCount === 1.U) {
+        fetchTag1 := pushTag
+        fetchTagCount := 2.U
+      }
+    }.elsewhen(popFetch) {
+      when(fetchTagCount === 2.U) {
+        fetchTag0 := fetchTag1
+        fetchTagCount := 1.U
+      }.otherwise {
+        fetchTagCount := 0.U
+      }
     }
   }
+
+  // IFU 的响应端口在两种模式下都连接；非 C 模式内部忽略。
+  ifu.io.RespData := icache.io.resp_data
+  ifu.io.RespValid := icache.io.resp_valid
+  ifu.io.RespExceptionValid := icache.io.resp_fault
+  ifu.io.RespExceptionCause := 1.U(4.W)
+  ifu.io.RespAccessFaultResp := icache.io.access_fault_resp
 
   if (mmuEnabled) {
     // 取指虚拟 PC 与 ICache 的物理取指地址分离；ICache 只有一笔在途，
     // 因此一个虚拟 PC 快照足够把响应恢复成架构 PC。
     when(immuOpt.get.io.fault) {
       ifuFaultValid := true.B
-      ifuFaultPC := immuOpt.get.io.faultVaddr
+      // C 模式下 IFU 的 pcReg 停在故障指令起点；第二个半字跨页/跨行
+      // 故障时 mepc 仍指向这条指令的起点。
+      ifuFaultPC := (if (config.UseC) ifu.io.FetchPC
+                     else immuOpt.get.io.faultVaddr)
     }.elsewhen(ifuResp.fire) {
       ifuFaultValid := false.B
     }
-    ifuResp.valid := ifuFaultValid || icache.io.resp_valid
-    ifuResp.bits.Instruction := Mux(ifuFaultValid, 0.U, icache.io.resp_data)
-    // 响应使用队首快照；同拍响应/接受由队列处理，AUIPC 不会拿到下一 PC。
-    ifuResp.bits.pc := Mux(ifuFaultValid, ifuFaultPC, responseTag.pc)
-    ifuResp.bits.ExceptionValid := ifuFaultValid || icache.io.resp_fault
-    ifuResp.bits.ExceptionCause := Mux(ifuFaultValid,
-      immuOpt.map(_.io.faultCause).getOrElse(12.U), 1.U(4.W))
-    ifuResp.bits.AccessFaultResp := Mux(ifuFaultValid, 0.U, icache.io.access_fault_resp)
-    ifuResp.bits.pred_taken := !ifuFaultValid && responseTag.predTaken
-    ifuResp.bits.pred_target := Mux(ifuFaultValid, 0.U, responseTag.predTarget)
-    icache.io.resp_ready := ifuResp.ready && !ifuFaultValid
   } else {
     // 无 MMU 的取指 PMP 故障注入：PMP 在 IFU 当前物理取指地址上组合
     // 判定。故障请求被挡在 ICache 之外，由这里合成一条 NOP 响应，
@@ -321,40 +338,64 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       pmpFetchBlocked := false.B
     }.elsewhen(pmpFetchFault && ifu.io.FetchValid && !pmpFetchBlocked) {
       pmpFetchFaultValid := true.B
-      pmpFetchFaultPC := ifu.io.FetchAddr
+      pmpFetchFaultPC := (if (config.UseC) ifu.io.FetchPC
+                          else ifu.io.FetchAddr)
       pmpFetchBlocked := true.B
     }.elsewhen(pmpFetchInject && ifuResp.fire) {
       // 只注入一次；blocked 保持到真正提交 trap 的冲刷，避免在同一 PC
       // 反复制造年轻故障。
       pmpFetchFaultValid := false.B
     }
-    ifuResp.valid := pmpFetchInject || icache.io.resp_valid
-    ifuResp.bits.Instruction := Mux(pmpFetchInject, 0.U, icache.io.resp_data)
-    ifuResp.bits.pc := Mux(pmpFetchInject, pmpFetchFaultPC, responseTag.pc)
-    ifuResp.bits.ExceptionValid := pmpFetchInject || icache.io.resp_fault
-    ifuResp.bits.ExceptionCause := 1.U(4.W)
-    ifuResp.bits.AccessFaultResp :=
-      Mux(pmpFetchInject, 0.U, icache.io.access_fault_resp)
-    icache.io.resp_ready := ifuResp.ready && !pmpFetchInject
   }
-  // 预测标签快照: 取指请求被icache接受时,把取指时刻的预测随请求保存,响应时贴给指令.
-  // 根治"取指/响应两阶段查找之间BTB/RAS状态变化,导致标签与实际取指路径不一致"的致命漏洞
-  // (反例: ret取指时RAS顶是A(错),响应时弹栈后变B(对),标签=B与实际执行一致=>不冲刷,
-  //  错路指令漏网提交,ra被污染. icache最多1个outstanding,单表项快照即够;
-  //  背靠背=响应与接受同拍,响应读的是旧值,时序正确)
-  if (!mmuEnabled) {
-    ifuResp.bits.pred_taken := responseTag.predTaken && !pmpFetchInject
-    ifuResp.bits.pred_target := Mux(pmpFetchInject, 0.U, responseTag.predTarget)
-  }
-  // 响应级不再重新查表, 预测标签在取指接受时快照保存
-  // 不变量：ICache 的每个响应都必须对应一个已受理取指的快照。
-  // 若 redirect/flush 后仍残留旧响应，fetchTagCount 会先被清零，
-  // 这里立即报错而不是把旧指令字配到新 PC 上。
-  when(icache.io.resp_valid && !ifuFaultValid && !pmpFetchInject) {
-    assert(
-      fetchTagCount =/= 0.U,
-      "ICache response arrived without a fetch PC tag snapshot"
-    )
+
+  // 合成故障响应的公共格式。
+  val fetchFaultPC =
+    if (mmuEnabled) (if (config.UseC) ifu.io.FetchPC else ifuFaultPC)
+    else pmpFetchFaultPC
+  val fetchFaultCause =
+    if (mmuEnabled) immuOpt.map(_.io.faultCause).getOrElse(12.U(4.W))
+    else 1.U(4.W)
+  val fetchFaultInject =
+    (if (mmuEnabled) ifuFaultValid else false.B) || pmpFetchInject
+  val faultBits = WireInit(0.U.asTypeOf(new ysyx_26030103_IFUMessage(XLEN)))
+  faultBits.Instruction := "h00000013".U(32.W)
+  faultBits.IsCompressed := false.B
+  faultBits.pc := fetchFaultPC
+  faultBits.ExceptionValid := true.B
+  faultBits.ExceptionCause := fetchFaultCause
+  faultBits.AccessFaultResp := 0.U(2.W)
+  faultBits.pred_taken := false.B
+  faultBits.pred_target := 0.U(XLEN.W)
+
+  if (config.UseC) {
+    // IFU 已把 16/32 位编码拼装完整；pc/异常/预测标签都由 IFU 给出。
+    ifuResp.valid := fetchFaultInject || ifu.io.Out.valid
+    ifuResp.bits := Mux(fetchFaultInject, faultBits, ifu.io.Out.bits)
+    ifu.io.Out.ready := ifuResp.ready && !fetchFaultInject
+    icache.io.resp_ready := ifu.io.RespReady && !fetchFaultInject
+  } else {
+    val normalBits = WireInit(0.U.asTypeOf(new ysyx_26030103_IFUMessage(XLEN)))
+    normalBits.Instruction := icache.io.resp_data
+    normalBits.IsCompressed := false.B
+    normalBits.pc := responseTag.pc
+    normalBits.ExceptionValid := icache.io.resp_fault
+    normalBits.ExceptionCause := 1.U(4.W)
+    normalBits.AccessFaultResp := icache.io.access_fault_resp
+    normalBits.pred_taken := responseTag.predTaken
+    normalBits.pred_target := responseTag.predTarget
+    ifuResp.valid := fetchFaultInject || icache.io.resp_valid
+    ifuResp.bits := Mux(fetchFaultInject, faultBits, normalBits)
+    ifu.io.Out.ready := false.B
+    icache.io.resp_ready := ifuResp.ready && !fetchFaultInject
+    // 响应级不再重新查表, 预测标签在取指接受时快照保存。不变量：ICache
+    // 的每个响应都必须对应一个已受理取指的快照；若 redirect/flush 后仍
+    // 残留旧响应，fetchTagCount 会先被清零，这里立即报错。
+    when(icache.io.resp_valid && !ifuFaultValid && !pmpFetchInject) {
+      assert(
+        fetchTagCount =/= 0.U,
+        "ICache response arrived without a fetch PC tag snapshot"
+      )
+    }
   }
   ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
   // icache.kill 在下面按 PIPT/VIPT 分支连接：VIPT 还需要在翻译故障时
@@ -519,13 +560,17 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     // MMU 路径在 DMMU 翻译后检查，LSU 端口保持关闭。
     lsu.io.PmpFault := pmpOpt.map(_.io.dataFault).getOrElse(false.B)
   }
-  // BTB查询1: 用当前取指地址同时查两张表,合并结果回送IFU决定下一PC
-  // 传入PC[AddressWidth-1:2]; 低位恒为0, 无需参与索引和tag匹配
-  btb.io.lookup_pc := ifu.io.FetchAddr(config.AddressWidth - 1, 2)
-  jal_btb.io.lookup_pc := ifu.io.FetchAddr(config.AddressWidth - 1, 2)
+  // BTB 查询使用架构 PC（C 模式下可能落在字内高半字），并按 IALIGN
+  // 决定去掉 1 位还是 2 位对齐位。预测只在 IFU 的指令起点取指上生效。
+  val FetchPredictPC =
+    if (config.UseC) ifu.io.FetchPC else ifu.io.FetchAddr
+  val BtbPcShift = if (config.UseC) 1 else 2
+  btb.io.lookup_pc := FetchPredictPC(config.AddressWidth - 1, BtbPcShift)
+  jal_btb.io.lookup_pc := FetchPredictPC(
+    config.AddressWidth - 1, BtbPcShift)
   // Ret只有在RAS非空时才有资格取得优先级；Ret表项的target保存静态
   // JALR immediate，由选择器与动态栈顶相加。分支仍采用BTFN方向预测。
-  predictorSelect.io.fetchPC := ifu.io.FetchAddr
+  predictorSelect.io.fetchPC := FetchPredictPC
   predictorSelect.io.branchHit := btb.io.hit
   predictorSelect.io.branchTarget := btb.io.target
   predictorSelect.io.jalHit := jal_btb.io.hit
@@ -537,11 +582,13 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   ifu.io.PredTarget := predictorSelect.io.predTarget
   // BTB更新: EXU提交时按指令类型路由, 分支写分支表, jal/ret写jal表(带kind)
   btb.io.update_valid := exu.io.BTBUpdateValid
-  btb.io.update_pc := exu.io.BTBUpdatePC(config.AddressWidth - 1, 2)
+  btb.io.update_pc := exu.io.BTBUpdatePC(
+    config.AddressWidth - 1, BtbPcShift)
   btb.io.update_target := exu.io.BTBUpdateTarget
   btb.io.flush := exu.io.FenceIFlush
   jal_btb.io.update_valid := exu.io.JalBTBUpdateValid
-  jal_btb.io.update_pc := exu.io.JalBTBUpdatePC(config.AddressWidth - 1, 2)
+  jal_btb.io.update_pc := exu.io.JalBTBUpdatePC(
+    config.AddressWidth - 1, BtbPcShift)
   jal_btb.io.update_target := exu.io.JalBTBUpdateTarget
   jal_btb.io.update_kind.get := exu.io.JalBTBUpdateKind
   jal_btb.io.flush := exu.io.FenceIFlush

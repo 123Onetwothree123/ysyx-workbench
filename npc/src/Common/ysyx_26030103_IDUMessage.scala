@@ -5,8 +5,12 @@ import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction.CtrlWidth
 /** 译码级交付给执行级的消息；所有架构数据通路均为 XLEN 位。 */
 class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"IDUMessage XLEN 非法: $XLEN")
+  // 原始指令编码（16 位压缩指令零扩展），用于 trace 和非法指令 mtval。
   val Instruction = UInt(32.W)
+  // 1=16 位压缩指令；IDU 已用展开后的 32 位形式完成译码。
+  val IsCompressed = Bool()
   val pc = UInt(XLEN.W)
+  // 顺序后继：16 位指令为 pc+2，32 位指令为 pc+4。
   val snpc = UInt(XLEN.W)
 
   val ALUCtrl = UInt(CtrlWidth.W)
