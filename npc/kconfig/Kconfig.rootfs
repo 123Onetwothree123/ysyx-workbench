@@ -1,0 +1,50 @@
+menu "根文件系统 (rootfs)"
+
+  config ROOTFS_ENABLE
+    bool "启用 rootfs"
+    default n
+    help
+      启用后，构建系统会使用下面选择的 rootfs 实现生成
+      initramfs 或 rootfs 镜像。当前 Linux 启动链尚未自动构建，
+      该开关只负责选择 rootfs 来源；Linux kernel 仍由用户自行
+      下载和编译。
+
+  choice
+    prompt "rootfs 实现"
+    depends on ROOTFS_ENABLE
+    default ROOTFS_BUSYBOX
+
+    config ROOTFS_BUSYBOX
+      bool "BusyBox"
+      help
+        使用 vendor/busybox 中的 BusyBox 源码构建最小 rootfs。
+        当前只提供这一种实现；后续新增实现必须在此 choice 中
+        显式增加，不能静默回退到 BusyBox。
+  endchoice
+
+  config ROOTFS_TYPE
+    string
+    default "busybox" if ROOTFS_BUSYBOX
+    default "none"
+    help
+      当前生效的 rootfs 类型。ROOTFS_ENABLE=n 时为 none；
+      启用后只能选择已实现的 BusyBox。
+
+  config ROOTFS_BUSYBOX_PATH
+    string "BusyBox 源码路径"
+    depends on ROOTFS_BUSYBOX
+    default "vendor/busybox"
+    help
+      BusyBox 源码目录，相对路径按 ysyx-workbench 根目录解析。
+      当前树内版本为 BusyBox 1.36.1，源码随仓库跟踪，不使用
+      git submodule，也不在构建时联网下载。
+
+  config ROOTFS_BUSYBOX_VERSION
+    string "BusyBox 版本"
+    depends on ROOTFS_BUSYBOX
+    default "1.36.1"
+    help
+      仅用于记录和检查树内 BusyBox 源码版本。版本变化时必须
+      同时更新 vendor/busybox 源码和校验信息。
+
+endmenu
