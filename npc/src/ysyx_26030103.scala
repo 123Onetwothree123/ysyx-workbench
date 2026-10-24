@@ -170,10 +170,15 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 让相关逻辑在综合和仿真中被常量传播裁剪。
   val fetchSum = if (hasU) exu.io.CSRCurrentMstatus(18) else false.B
   val dataSum = if (hasU) exu.io.CSRCurrentMstatus(18) else false.B
+  // PMP 检查的是物理地址。MMU 关闭时虚拟地址等于物理地址；MMU 打开
+  // 后由 IMMU 给出翻译结果，下面会覆盖这个默认连接。此前一直送虚拟
+  // 地址，导致高虚拟地址（0xffffffff8...）永远不匹配 OpenSBI 的全内存
+  // NAPOT，S 模式取指被误判为 instruction access fault。
+  val pmpFetchAddr = WireDefault(ifu.io.FetchAddr)
   pmpOpt.foreach { pmp =>
     pmp.io.cfg := exu.io.PmpCfg
     pmp.io.addr := exu.io.PmpAddr
-    pmp.io.fetchAddr := ifu.io.FetchAddr
+    pmp.io.fetchAddr := pmpFetchAddr
     pmp.io.fetchPriv := exu.io.CSRPrivilege
     // 默认按无 MMU 路径接 LSU 的访存检查地址；MMU 分支稍后覆盖成
     // DMMU 给出的物理地址。这样两种配置共用同一个 PMP 例化。
@@ -498,6 +503,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
       icache.io.kill := pipe_flush
     }
+    // PMP 必须在物理地址上检查；Bare 模式没有翻译，仍用虚拟地址。
+    pmpFetchAddr :=
+      Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddr)
 
     // mstatus.MPRV：M 模式数据访问按 MPP 的特权级翻译；取指仍用当前特权级。
     dmmu.io.privilege := dataPrivilege

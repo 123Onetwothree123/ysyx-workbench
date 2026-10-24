@@ -8,7 +8,7 @@
  *
  * 布局宏默认对应 NPC 标准 Linux 布局，实际值由 build_dtb.sh 按
  * CONFIG_SBI_* / CONFIG_LINUX_* 传入：
- *   RAM       0x80000000 + 64 MiB
+ *   RAM       0x80000000 + NPC_RAM_SIZE（默认 64 MiB；U-Boot 128 MiB）
  *   SBI FW    0x80000000 + 2 MiB
  *   Image     0x80200000（SBI_NEXT_ADDR，Linux S 模式入口）
  *   initramfs 0x82000000（可关闭）

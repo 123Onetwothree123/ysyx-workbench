@@ -35,6 +35,7 @@ HDLcode/**/obj_dir/
 !XV6_PORT.patch
 !SBI_NPC.md
 !UBOOT_NEMU.md
+!UBOOT_NPC.md
 # 第三方源码（vendor，本地跟踪，非 git submodule）
 !/vendor/
 !/vendor/**

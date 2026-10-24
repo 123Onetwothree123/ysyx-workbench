@@ -34,7 +34,13 @@ case class ysyx_26030103_PMARegion(
 object ysyx_26030103_PhysicalMemoryMap {
   val CLINT = ysyx_26030103_PMARegion(0x02000000L, 0x00010000L)
 
-  val NPC: Seq[ysyx_26030103_PMARegion] = Seq(
+  /** direct-NPC RAM 区间。
+    *
+    * RAM 大小由 Kconfig 的 NPC_RAM_SIZE 决定，并同时传给 AXIRAM 与
+    * C++ CONFIG_MSIZE；默认 64MiB 保持既有行为，128MiB 用于 U-Boot
+    * 加载 Debian EFI 内核。
+    */
+  def NPCWithSize(ramBytes: Long): Seq[ysyx_26030103_PMARegion] = Seq(
     CLINT,
     // 直接 NPC 的 UART 由 AXIRAM 中的 16550 兼容模型提供：TX 输出到仿真
     // stdout，RX 寄存器/LSR 可读，因此 PMA 必须允许读访问。
@@ -42,13 +48,28 @@ object ysyx_26030103_PhysicalMemoryMap {
       0x10000000L,
       0x00001000L
     ),
+    // PLIC 在 CPU 内部实例化并接到 Xbar 的 PLIC 端口；PMA 必须显式
+    // 覆盖它，否则 S 模式（U-Boot/Linux）访问 PLIC enable/threshold/
+    // claim 会被 PMA 拒绝，表现为 Store/AMO access fault 和外部中断
+    // 无法清除。DTB 已声明同一窗口 0x0c000000+0x04000000。
+    ysyx_26030103_PMARegion(
+      0x0c000000L,
+      0x04000000L
+    ),
     ysyx_26030103_PMARegion(
       0x80000000L,
-      0x04000000L, // 64MiB：覆盖 Nanos-lite 常驻数据
+      ramBytes,
       Cacheable = true,
       Executable = true
     )
   )
+
+  /** 默认 direct-NPC 映射（64MiB）。
+    *
+    * 单元测试仍可引用该固定值；elaboration 使用 NPCWithSize 读取实际
+    * Kconfig 配置。
+    */
+  val NPC: Seq[ysyx_26030103_PMARegion] = NPCWithSize(0x04000000L)
 
   def SoC(HasChipLink: Boolean): Seq[ysyx_26030103_PMARegion] = {
     val Local = Seq(

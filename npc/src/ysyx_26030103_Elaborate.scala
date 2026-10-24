@@ -42,6 +42,27 @@ object ysyx_26030103_Elaborate extends App {
   // ICache 对齐填充：npc 独立仿真的复位地址 = 0x80000000 + CACHE_PADDING
   // 与 Makefile 的 NPC_RESET_PC、ImageLoader 写入 direct RAM 的前置零保持一致
   val CachePadding = sys.env.getOrElse("CACHE_PADDING", "0").toInt
+  // direct-NPC RAM 大小（字节），由 Kconfig 的 NPC_RAM_SIZE 经 Makefile
+  // 传入。AXIRAM 深度、CPU PMA 与 C++ CONFIG_MSIZE 必须使用同一个值。
+  val NpcRamSize: Long = {
+    val raw = sys.env.get("NPC_RAM_SIZE").filter(_.nonEmpty).getOrElse("0x04000000")
+    val parsed =
+      try {
+        if (raw.startsWith("0x") || raw.startsWith("0X"))
+          java.lang.Long.parseLong(raw.substring(2), 16)
+        else raw.toLong
+      } catch {
+        case _: NumberFormatException =>
+          throw new IllegalArgumentException(
+            s"NPC_RAM_SIZE='$raw' 不是合法的整数（支持十进制或 0x 十六进制）"
+          )
+      }
+    require(parsed >= 4096L, s"NPC_RAM_SIZE=$parsed 太小")
+    require((parsed & (parsed - 1L)) == 0L, s"NPC_RAM_SIZE=$parsed 必须是 2 的幂")
+    require(parsed % 4L == 0L, s"NPC_RAM_SIZE=$parsed 必须是 4 字节的倍数")
+    parsed
+  }
+  println(s"[NPC config] direct-NPC RAM: 0x${NpcRamSize.toHexString} ($NpcRamSize bytes)")
   val CacheableBase_ysyxsoc = 0x00000000L
   val CacheableMask_ysyxsoc = 0x00000000L
   val CacheableBase_npc = 0x80000000L
@@ -301,7 +322,7 @@ object ysyx_26030103_Elaborate extends App {
         ResetAddr = 0x80000000L + CachePadding,
         CacheableBase = CacheableBase_npc,
         CacheableMask = CacheableMask_npc,
-        PMARegions = ysyx_26030103_PhysicalMemoryMap.NPC
+        PMARegions = ysyx_26030103_PhysicalMemoryMap.NPCWithSize(NpcRamSize)
       )
     ),
     Array("--target-dir", targetDir),
@@ -326,7 +347,7 @@ object ysyx_26030103_Elaborate extends App {
   )
 
   emitVerilog(
-    new _root_.ysyx_26030103.riscv32e_npc_AXIRAM,
+    new _root_.ysyx_26030103.riscv32e_npc_AXIRAM(NpcRamSize),
     Array("--target-dir", targetDir),
     yosysFirtoolOpts
   )

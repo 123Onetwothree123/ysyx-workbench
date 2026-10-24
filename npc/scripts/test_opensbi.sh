@@ -64,6 +64,7 @@ make -C "$NPC_HOME/csrc/Test/sbi/opensbi_payload" \
 	SBI_NAME=OpenSBI \
 	FDT_EXPECTED="$FDT_EXPECTED" \
 	FDT_ADDR="$SBI_FDT_ADDR" \
+	NPC_RAM_SIZE="${NPC_RAM_SIZE:-0x04000000}" \
 	-j"$(nproc)"
 
 info "构建 OpenSBI FW_PAYLOAD"

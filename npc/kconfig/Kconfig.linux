@@ -76,3 +76,79 @@ menu "Linux 启动镜像"
       make linux-image 会自动使用新值并重新校验。
 
 endmenu
+
+menu "U-Boot EFI 启动镜像"
+
+  config NPC_UBOOT_ENABLE
+    bool "启用 NPC U-Boot EFI 打包"
+    depends on SBI_ENABLE && SBI_FDT_ENABLE
+    default n
+    help
+      启用后可使用 `make uboot-image` 把 OpenSBI FW_JUMP、U-Boot、
+      可选的 EFI 应用/initramfs/EFI 内核拼成一个 direct-NPC 可直接
+      加载的 raw binary。该路径与 NEMU 的 U-Boot 板级共用同一套
+      S-mode 设备地址（UART 0x10000000、CLINT 0x02000000、
+      PLIC 0x0c000000），因此复用 vendor/u-boot 的
+      nemu_riscv64_smode_defconfig；DTB 由 NPC 的 450 MHz 配置生成。
+
+      本菜单不会下载/编译 Linux，也不使用 `make linux-image` 的 raw
+      Image 布局；kernel/initrd 由调用者提供并放在下面配置的固定地址。
+
+  config NPC_UBOOT_INITRAMFS_PATH
+    string "initramfs 路径"
+    depends on NPC_UBOOT_ENABLE
+    default ""
+    help
+      BusyBox initramfs 路径，相对 ysyx-workbench 根目录或绝对路径。
+      留空表示不打包 initramfs，仅验证 U-Boot。
+
+  config NPC_UBOOT_KERNEL_PATH
+    string "EFI 内核路径"
+    depends on NPC_UBOOT_ENABLE
+    default ""
+    help
+      Debian EFI PE 内核（install/vmlinux）路径。留空表示只启动
+      U-Boot，不执行 bootefi。
+
+  config NPC_UBOOT_EFI_APP_PATH
+    string "EFI 测试应用路径"
+    depends on NPC_UBOOT_ENABLE
+    default ""
+    help
+      可选 EFI 应用（如 U-Boot 的 initrddump.efi）。留空时若有
+      initramfs，脚本会自动使用 U-Boot 构建目录中的 initrddump.efi。
+
+  config NPC_UBOOT_EFI_APP_ADDR
+    hex "EFI 测试应用加载地址"
+    depends on NPC_UBOOT_ENABLE
+    default 0x80600000
+    help
+      EFI 应用在 RAM 中的物理地址，必须 4 KiB 对齐且位于 U-Boot
+      映像之后、initramfs 之前。
+
+  config NPC_UBOOT_INITRAMFS_ADDR
+    hex "initramfs 加载地址"
+    depends on NPC_UBOOT_ENABLE
+    default 0x80800000
+    help
+      initramfs 在 RAM 中的物理地址。U-Boot 通过 EFI_LOAD_FILE2
+      把它交给内核，因此 DTB 不写 linux,initrd-start/end。
+
+  config NPC_UBOOT_KERNEL_ADDR
+    hex "EFI 内核加载地址"
+    depends on NPC_UBOOT_ENABLE
+    default 0x81000000
+    help
+      EFI PE 内核在 RAM 中的物理地址。U-Boot 的 efi_load_pe() 会
+      再分配一份目标页，所以该地址只放源文件，不会原地执行。
+
+  config NPC_UBOOT_BOOTARGS
+    string "U-Boot 传给 Linux 的 bootargs"
+    depends on NPC_UBOOT_ENABLE
+    default "console=ttyS0,115200 earlycon=sbi no5lvl cpuidle.off=1 loglevel=7"
+    help
+      写入 DTB /chosen/bootargs，U-Boot 的 bootefi 也会把它作为
+      load options。no5lvl 是必需的：Debian 6.12 默认选择 Sv57，
+      而 NPC 只实现 Bare/Sv39/Sv48。
+
+endmenu

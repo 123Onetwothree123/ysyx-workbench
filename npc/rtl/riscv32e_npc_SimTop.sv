@@ -3,7 +3,9 @@ module riscv32e_npc_SimTop(
   input         clock,
   input         reset,
   input         ram_init_valid,
-  input  [23:0] ram_init_index,
+  // 32 位主机写地址；AXIRAM 内部按实际 RAM 大小截取低位，
+  // 64MiB/128MiB 共用同一顶层端口。
+  input  [31:0] ram_init_index,
   input  [31:0] ram_init_data,
   // UART 接收字节由仿真 stdin/测试平台注入；ready 为流控，valid=0 时
   // 不消费输入，不会阻塞 CPU 或仿真主循环。

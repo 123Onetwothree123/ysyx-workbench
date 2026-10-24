@@ -203,8 +203,10 @@ DUT::DUT()
 void DUT::InitializeMemory(std::span<const std::uint8_t> image)
 {
 #ifdef VRISCV32E_NPC
-    constexpr std::size_t RamBytes{64U * 1024U * 1024U};
-    // 只清零镜像及其后的一段 BSS/堆边距，避免 64MiB 逐字初始化把
+    // 与 RTL AXIRAM/PMA 使用同一个 Kconfig 值（默认 64MiB，U-Boot
+    // 128MiB 配置时此处也会同步扩大）。
+    constexpr std::size_t RamBytes{CONFIG_MSIZE};
+    // 只清零镜像及其后的一段 BSS/堆边距，避免整个 RAM 逐字初始化把
     // 仿真启动时间拖到几分钟；Verilator RAM 其余部分保持工具链的初始值。
     constexpr std::size_t ZeroMarginBytes{64U * 1024U};
     constexpr std::size_t WordBytes{sizeof(std::uint32_t)};

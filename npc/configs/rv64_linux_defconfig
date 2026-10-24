@@ -11,6 +11,9 @@
 # 不会下载、编译或运行 Linux。首次使用前请把 Image / initramfs.cpio
 # 放到 ysyx-workbench 根目录，或修改下面两个路径。
 CONFIG_XLEN=64
+# 默认 direct-NPC RAM 仍为 64 MiB；Debian EFI 的 128 MiB 配置见
+# rv64_linux_uboot_128m_defconfig。
+CONFIG_NPC_RAM_SIZE=0x04000000
 CONFIG_RISCV_M=y
 CONFIG_RISCV_A=y
 CONFIG_RISCV_C=y

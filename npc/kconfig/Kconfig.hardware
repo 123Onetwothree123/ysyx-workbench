@@ -708,6 +708,21 @@ menu "硬件配置"
 
   menu "目标体系结构"
 
+    config NPC_RAM_SIZE
+      hex "direct-NPC 仿真 RAM 大小（字节）"
+      default 0x04000000
+      help
+        direct-NPC 从 0x80000000 起的 RAM 窗口大小，必须为 2 的幂且
+        至少 4 KiB。该值同时决定 AXIRAM 深度、CPU PMA、C++ CONFIG_MSIZE、
+        DTB /memory 与 reserved-memory 边界，以及 SBI/U-Boot/Linux
+        打包脚本的 RAM 上限，不要在其它位置另写一份。
+
+        默认 0x04000000（64 MiB），保持 xv6/Nanos-lite 现有布局不变。
+        Debian EFI vmlinux（约 31 MB EFI PE）经 U-Boot efi_load_pe()
+        需要再分配一份目标页，64 MiB 不足；rv64_linux_uboot_128m_defconfig
+        使用 0x08000000（128 MiB）。修改后必须重新 make verilog 和
+        重新构建仿真器，否则 RTL PMA/AXIRAM 与 C++ 加载器会不一致。
+
     config CACHE_PADDING
       int "ICache字节填充（用于对齐热点循环到cache块边界）"
       default 0

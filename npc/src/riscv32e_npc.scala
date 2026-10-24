@@ -5,14 +5,19 @@ import chisel3.util._
 import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.infra._
 
-class riscv32e_npc_AXIRAM extends Module {
+class riscv32e_npc_AXIRAM(val ramBytes: Long = 64L * 1024L * 1024L) extends Module {
+  require(ramBytes > 0, "direct-NPC RAM 大小必须为正")
+  require((ramBytes & (ramBytes - 1)) == 0, "direct-NPC RAM 大小必须是 2 的幂")
+  require(ramBytes % 4 == 0, "direct-NPC RAM 大小必须是 4 字节的倍数")
   val io = IO(new Bundle {
     val axi = Flipped(new ysyx_26030103_AXI5IO(32, 32, 4))
     // direct-NPC 在构造 DUT 后由 C++ 将命令行镜像写入 RAM。
     // 这使 RTL 和 DiffTest/调试器共用同一份 FlashMemory，
     // 不再依赖当前工作目录下可能过期的 program.hex。
+    // 地址端口固定 32 位，由 wordIndexBits 截取实际深度；这样 64/128 MiB
+    // 共用同一个 SimTop 端口，不需要为每种 RAM 大小重写顶层。
     val hostWriteValid = Input(Bool())
-    val hostWriteIndex = Input(UInt(24.W))
+    val hostWriteIndex = Input(UInt(32.W))
     val hostWriteData = Input(UInt(32.W))
     // 仿真 stdin/测试平台注入的 UART 接收字节。rxReady 为高表示 FIFO
     // 还能接收；上层不注入时保持 valid=0 即可，不会阻塞仿真。
@@ -22,10 +27,11 @@ class riscv32e_npc_AXIRAM extends Module {
     val uartIrq = Output(Bool())
   })
 
-  // direct-NPC 使用 64MiB RAM；足以容纳 Nanos-lite 的常驻数据，
-  // 同时避免仿真初始化 128MiB 主机内存的过长启动时间。
-  val depth = 64 * 1024 * 1024 / 4
-  val wordIndexBits = 24
+  // RAM 大小由 Kconfig 的 NPC_RAM_SIZE 决定（默认 64MiB，Linux U-Boot
+  // 配置为 128MiB）。深度与地址位宽都从同一个字节数推导，避免 PMA、
+  // AXI 窗口和 SyncReadMem 索引各写一份常量。
+  val depth = (ramBytes / 4).toInt
+  val wordIndexBits = log2Ceil(depth)
   val mem = SyncReadMem(depth, UInt(32.W))
   // 16550 兼容的 UART：TX 保持 printf 行为，RX 由仿真顶层注入。
   val uart = Module(new ysyx_26030103_UART16550())
@@ -34,7 +40,7 @@ class riscv32e_npc_AXIRAM extends Module {
   val SLVERR = 2.U(2.W)
   val DECERR = 3.U(2.W)
   val RamBase = "h80000000".U(32.W)
-  val RamLast = "h83ffffff".U(32.W)
+  val RamLast = (0x80000000L + ramBytes - 1L).U(32.W)
   val UartBase = "h10000000".U(32.W)
   val UartLast = "h1000001f".U(32.W)
 
@@ -51,7 +57,7 @@ class riscv32e_npc_AXIRAM extends Module {
     size <= 2.U && address >= UartBase && address <= lastStart
   }
 
-  // 只有 AxSIZE 选中的每个字节都位于 64MiB 仿真内存窗口内时，该拍才属于
+  // 只有 AxSIZE 选中的每个字节都位于当前 RAM 窗口内时，该拍才属于
   // RAM。尤其要避免窗口外地址通过截断后的 SyncReadMem 索引发生回绕。
   def IsRAMBeat(address: UInt, size: UInt): Bool = {
     val lastStart = MuxLookup(size, 0.U(32.W))(
@@ -140,9 +146,12 @@ class riscv32e_npc_AXIRAM extends Module {
   // 64MiB RAM 的 CPU store 会在 256KiB 处回绕，高地址栈写入全部丢失。
   val cpuWriteIndex = WireDefault(0.U(wordIndexBits.W))
   val cpuWriteData = WireDefault(0.U(32.W))
+  // 主机地址端口固定 32 位，只取实际深度需要的低位，避免 128MiB 时
+  // 高 bit 丢失（64MiB 时多余的高位自然被忽略）。
+  val hostWriteIndex = io.hostWriteIndex(wordIndexBits - 1, 0)
   when(io.hostWriteValid || cpuWriteValid) {
     mem.write(
-      Mux(io.hostWriteValid, io.hostWriteIndex, cpuWriteIndex),
+      Mux(io.hostWriteValid, hostWriteIndex, cpuWriteIndex),
       Mux(io.hostWriteValid, io.hostWriteData, cpuWriteData)
     )
   }

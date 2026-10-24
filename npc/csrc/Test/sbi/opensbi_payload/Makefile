@@ -17,6 +17,7 @@ ABI ?= lp64
 SBI_NAME ?= OpenSBI
 FDT_EXPECTED ?= 0
 FDT_ADDR ?= 0x80f00000
+NPC_RAM_SIZE ?= 0x04000000
 # PMP 严格执行的平台（如 NEMU Linux）不能从 S 模式直接读 CLINT，
 # 置 1 时改用 time CSR；NPC 默认仍验证 CLINT MMIO。
 USE_TIME_CSR ?= 0
@@ -25,6 +26,7 @@ CFLAGS := -march=$(ISA) -mabi=$(ABI) -mcmodel=medany -mno-relax \
 	-ffreestanding -fno-builtin -fno-stack-protector -nostdlib \
 	-O2 -Wall -Wextra -Werror
 CFLAGS += -DPAYLOAD_SBI_NAME=\"$(SBI_NAME)\"
+CFLAGS += -DPAYLOAD_NPC_RAM_SIZE=$(NPC_RAM_SIZE)
 ifneq ($(filter 1 y yes Y YES,$(USE_TIME_CSR)),)
 CFLAGS += -DPAYLOAD_USE_TIME_CSR
 endif

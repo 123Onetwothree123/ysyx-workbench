@@ -294,7 +294,17 @@ class ysyx_26030103_CSR(
   val FFlagsReg = RegInit(0.U(5.W))
   val FrmReg = RegInit(0.U(3.W))
   val Minstret = RegInit(0.U(64.W))
-  val PmpcfgReg = RegInit(VecInit(Seq.fill(4)(0.U(32.W))))
+  // RV64 的 pmpcfg0/pmpcfg2 是 64 位 CSR，分别容纳 8 个 8 位配置项；
+  // RV32 的 pmpcfg0..3 才是 4x32 位。此前 RV64 也按 4x32 位实现，
+  // 会把 OpenSBI 写入 pmpcfg0 的高 32 位（entry 4..7）丢掉，导致
+  // 全内存 NAPOT entry 丢失、S 模式取指被 PMP 拒绝。
+  private val PmpEntriesPerCfg = if (XLEN == 64) 8 else 4
+  private val PmpCfgWords = 16 / PmpEntriesPerCfg
+  private val PmpCfgWordBits = PmpEntriesPerCfg * 8
+  private val PmpCfgMask =
+    BigInt("0f" * PmpEntriesPerCfg, 16)
+  val PmpcfgReg = RegInit(
+    VecInit(Seq.fill(PmpCfgWords)(0.U(PmpCfgWordBits.W))))
   val PmpaddrReg = RegInit(VecInit(Seq.fill(16)(0.U(XLEN.W))))
   val StvalOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
   val SatpRegOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
@@ -624,9 +634,14 @@ class ysyx_26030103_CSR(
   }
   io.Frm := FrmReg
   io.Fcsr := Cat(FrmReg, FFlagsReg)
-  for (word <- 0 until 4) {
-    when(CSRWen && io.CSRAddress === (0x3a0 + word).U(12.W)) {
-      PmpcfgReg(word) := Write32(PmpcfgReg(word)) & "h0f0f0f0f".U(32.W)
+  for (word <- 0 until PmpCfgWords) {
+    // RV64：pmpcfg0=0x3a0（entry 0..7），pmpcfg2=0x3a2（entry 8..15）。
+    // RV32：pmpcfg0..3=0x3a0..0x3a3（每个 4 项）。
+    val cfgAddress =
+      if (XLEN == 64) 0x3a0 + word * 2 else 0x3a0 + word
+    when(CSRWen && io.CSRAddress === cfgAddress.U(12.W)) {
+      PmpcfgReg(word) :=
+        CSRWriteData(PmpcfgReg(word)) & PmpCfgMask.U(PmpCfgWordBits.W)
     }
   }
   for (entry <- 0 until 16) {
@@ -774,7 +789,12 @@ class ysyx_26030103_CSR(
   addCsr(CSR_MIMPID, Widen32(Mimpid_rdata), csrOn(0xf13))
   addCsr(CSR_MHARTID, Widen32(Mhartid_rdata), csrOn(0xf14))
   for (i <- 0 until 4) {
-    addCsr((0x3a0 + i).U(12.W), Widen32(PmpcfgReg(i)), csrOn(0x3a0 + i))
+    val cfgAddress = if (XLEN == 64) 0x3a0 + i * 2 else 0x3a0 + i
+    addCsr(
+      cfgAddress.U(12.W),
+      PmpcfgReg(i),
+      csrOn(cfgAddress)
+    )
   }
   for (i <- 0 until 16) {
     addCsr((0x3b0 + i).U(12.W), PmpaddrReg(i), csrOn(0x3b0 + i))
@@ -837,7 +857,10 @@ class ysyx_26030103_CSR(
   io.McounterenOut := Mcounteren
   io.ScounterenOut := Scounteren_rdata
   for (entry <- 0 until 16) {
-    io.PmpCfg(entry) := PmpcfgReg(entry / 4)(8 * (entry % 4) + 7, 8 * (entry % 4))
+    io.PmpCfg(entry) := PmpcfgReg(entry / PmpEntriesPerCfg)(
+      8 * (entry % PmpEntriesPerCfg) + 7,
+      8 * (entry % PmpEntriesPerCfg)
+    )
     io.PmpAddr(entry) := PmpaddrReg(entry)
   }
 }

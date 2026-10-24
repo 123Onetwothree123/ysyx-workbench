@@ -31,7 +31,7 @@
 | UART | `0x10000000` | 8250 兼容，TX 轮询发送，RX FIFO 可由仿真注入 |
 | CLINT | `0x02000000` | `mtimecmp=0x02004000`、`mtime=0x0200bff8` |
 | PLIC | `0x0c000000` | 32 个 source 编号（0 保留），M context 0 / S context 1 |
-| RAM | `0x80000000` | direct-NPC 默认 64 MiB |
+| RAM | `0x80000000` | direct-NPC 默认 64 MiB；`CONFIG_NPC_RAM_SIZE` 可设为 128 MiB（U-Boot/Debian EFI） |
 
 标准 Linux 布局（`make rv64_linux_defconfig`）：
 
@@ -48,6 +48,13 @@
 必须按 RV64 2 MiB、RV32 4 MiB 对齐；且
 `SBI_FW_BASE + SBI_FW_SIZE <= SBI_NEXT_ADDR`。配置契约脚本会在
 `make defconfig` 阶段检查这些约束。
+
+direct-NPC 的 RAM 大小由 `CONFIG_NPC_RAM_SIZE` 统一决定（默认
+`0x04000000` = 64 MiB）。`rv64_linux_uboot_128m_defconfig` 使用
+`0x08000000`（128 MiB），并把 DTB 移到 `0x87f00000`；该配置走
+U-Boot EFI 路径，见 [`UBOOT_NPC.md`](UBOOT_NPC.md)。RAM 值同时
+驱动 AXIRAM 深度、CPU PMA、C++ `CONFIG_MSIZE`、DTB 和打包脚本，
+不存在第二份 Linux 专用常量。
 
 ## 3. Kconfig
 
@@ -402,3 +409,32 @@ make kconfig-contract-check
 测试覆盖 RV32IMA/RV64IMA/RV64IMAFDC、关闭 C/D/F、Sv32/Sv39/Sv48、
 CUSTOM+Linux 拒绝、initramfs 地址/大小/关闭、DTB 地址变化、打包重叠/
 越界/对齐/缺失文件等负向场景。
+
+## 12. U-Boot EFI 128 MiB 路径
+
+Debian riscv64 `install/vmlinux` 是约 31 MB 的 EFI PE；U-Boot 的
+`efi_load_pe()` 需要再分配约 30 MB 目标页，64 MiB 放不下。NPC 新增
+`rv64_linux_uboot_128m_defconfig` 和 `make uboot-image`：
+
+```sh
+cd npc
+make rv64_linux_uboot_128m_defconfig
+make -j"$(nproc)" build/ysyx_26030103_npc
+NPC_UBOOT_KERNEL_PATH=/path/vmlinux \
+NPC_UBOOT_INITRAMFS_PATH=/path/initramfs.cpio.gz \
+  make uboot-image
+./build/ysyx_26030103_npc build/uboot/npc-uboot.bin --batch
+```
+
+布局为 OpenSBI `0x80000000`、U-Boot `0x80200000`、initramfs
+`0x80800000`、EFI 内核 `0x81000000`、DTB `0x87f00000`、RAM 结束
+`0x88000000`。U-Boot 板级复用 `nemu_riscv64_smode_defconfig`，因为
+NPC 与 NEMU 的 S-mode UART/CLINT/PLIC 地址和 SBI 接口相同；差异是
+NPC 的 450 MHz timebase、`CONFIG_BOOTDELAY=-1` 和 EFI 终端尺寸查询
+应答。详见 [`UBOOT_NPC.md`](UBOOT_NPC.md)。
+
+该路径还修正了三个与 128 MiB/Debian 直接相关的 RTL 问题：RV64
+`pmpcfg0/2` 的 64 位布局、MMU 打开后 PMP 取指改用物理地址、以及
+direct-NPC PMA 缺少 PLIC 窗口。没有这些修正，内核会在
+`EFI stub: Exiting boot services...` 后发生 instruction access fault，
+或者 S 模式访问 PLIC 时发生 Store/AMO access fault。

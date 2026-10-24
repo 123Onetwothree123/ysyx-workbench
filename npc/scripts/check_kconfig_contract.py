@@ -197,6 +197,19 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
             "无法表达离散集合，33..63 由本校验拒绝"
         )
 
+    # direct-NPC RAM 窗口：AXIRAM 深度、PMA、C++ CONFIG_MSIZE 和
+    # DTB/打包脚本共用这一个值。只接受 2 的幂，避免 SyncReadMem 索引
+    # 与 AXI 窗口出现未覆盖的高地址。
+    ram_size = _as_int(values, "NPC_RAM_SIZE", 0x04000000)
+    ram_base = 0x80000000
+    if ram_size < 0x1000:
+        err(f"NPC_RAM_SIZE=0x{ram_size:x} 太小：至少 4 KiB")
+    elif not _is_power_of_two(ram_size):
+        err(f"NPC_RAM_SIZE=0x{ram_size:x} 非法：必须是 2 的幂")
+    elif ram_size > 0x80000000:
+        err(f"NPC_RAM_SIZE=0x{ram_size:x} 超过 32 位物理地址窗口")
+    ram_end = ram_base + ram_size
+
     if not _as_bool(values, "SOC_XLEN_FOLLOW_CPU", False):
         soc_xlen = _as_int(values, "SOC_XLEN", 32)
         if soc_xlen not in SOC_XLEN_VALUES:
@@ -516,8 +529,6 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
                 err("SBI_FDT_ENABLE=y 但 SBI_FDT_PATH 为空")
             if fdt_addr % 8 != 0:
                 err(f"SBI_FDT_ADDR=0x{fdt_addr:x} 必须按 8 字节对齐")
-            ram_base = 0x80000000
-            ram_end = 0x84000000  # direct-NPC 固定 64 MiB 窗口
             fdt_reserve = 0x10000
             if fdt_addr < ram_base or fdt_addr + fdt_reserve > ram_end:
                 err(
@@ -571,8 +582,6 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
         if not _as_str(values, "LINUX_IMAGE_PATH", ""):
             err("LINUX_BOOT_ENABLE=y 但 LINUX_IMAGE_PATH 为空")
 
-        ram_base = 0x80000000
-        ram_end = 0x84000000  # direct-NPC 固定 64 MiB 窗口
         next_addr = _as_int(values, "SBI_NEXT_ADDR", 0x80200000)
         fdt_addr = _as_int(values, "SBI_FDT_ADDR", 0x83F00000)
         fdt_reserve = 0x10000
@@ -622,6 +631,52 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
                     f"LINUX_INITRAMFS_ADDR=0x{initrd_addr:x} 落在 DTB "
                     f"保留区 [0x{fdt_addr:x}, 0x{fdt_addr + fdt_reserve:x}) 内"
                 )
+
+    # U-Boot EFI 路径：U-Boot 自己占 0x80200000 起的映像区，EFI 应用/
+    # initramfs/内核源文件依次放在固定地址，DTB 放在 RAM 末尾前 1 MiB。
+    # 实际大小由 scripts/build_uboot_npc.sh 检查；这里先拒绝明显越界、
+    # 未对齐和相互重叠的配置。
+    if _as_bool(values, "NPC_UBOOT_ENABLE", False):
+        if not _as_bool(values, "SBI_ENABLE", False):
+            err("NPC_UBOOT_ENABLE=y 需要 SBI_ENABLE=y")
+        if not _as_bool(values, "SBI_FDT_ENABLE", False):
+            err("NPC_UBOOT_ENABLE=y 需要 SBI_FDT_ENABLE=y（U-Boot 需要 a1=DTB）")
+        next_addr = _as_int(values, "SBI_NEXT_ADDR", 0x80200000)
+        fdt_addr = _as_int(values, "SBI_FDT_ADDR", 0x80F00000)
+        fdt_reserve = 0x10000
+        uboot_payloads = (
+            ("NPC_UBOOT_EFI_APP_ADDR", 0x80600000),
+            ("NPC_UBOOT_INITRAMFS_ADDR", 0x80800000),
+            ("NPC_UBOOT_KERNEL_ADDR", 0x81000000),
+        )
+        previous_end = next_addr + 0x1000
+        for symbol, default in uboot_payloads:
+            address = _as_int(values, symbol, default)
+            if address % 4096 != 0:
+                err(f"{symbol}=0x{address:x} 必须按 4 KiB 对齐")
+            if address < next_addr + 0x1000:
+                err(
+                    f"{symbol}=0x{address:x} 覆盖 U-Boot 入口区 "
+                    f"0x{next_addr:x}..0x{next_addr + 0x1000:x}"
+                )
+            if address < previous_end:
+                err(
+                    f"{symbol}=0x{address:x} 与前一个载荷区结束地址 "
+                    f"0x{previous_end:x} 重叠或顺序错误"
+                )
+            if address + 0x1000 > ram_end:
+                err(f"{symbol}=0x{address:x} 超出 NPC RAM 结束 0x{ram_end:x}")
+            previous_end = address + 0x1000
+        if fdt_addr < ram_base or fdt_addr + fdt_reserve > ram_end:
+            err(
+                f"SBI_FDT_ADDR=0x{fdt_addr:x} 的 64 KiB 保留区超出 "
+                f"NPC RAM [0x{ram_base:x}, 0x{ram_end:x})"
+            )
+        if fdt_addr < previous_end:
+            err(
+                f"SBI_FDT_ADDR=0x{fdt_addr:x} 与 EFI 载荷区结束地址 "
+                f"0x{previous_end:x} 重叠或顺序错误"
+            )
 
     return errors
 

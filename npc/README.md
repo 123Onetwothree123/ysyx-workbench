@@ -57,6 +57,20 @@ CPU ISA、`mmu-type` 和 timebase 由 Kconfig 自动生成，`make dtb`
 可单独生成到 `build/dtb/`。Linux Image/initramfs 打包见
 `make rv64_linux_defconfig && make linux-image`（不会下载/编译 Linux）。
 
+direct-NPC RAM 默认 64 MiB，由 `CONFIG_NPC_RAM_SIZE` 统一控制。
+Debian EFI 内核经 U-Boot 启动需要 128 MiB：
+
+```bash
+make rv64_linux_uboot_128m_defconfig
+make -j"$(nproc)" build/ysyx_26030103_npc
+NPC_UBOOT_KERNEL_PATH=/path/to/debian/install/vmlinux \
+NPC_UBOOT_INITRAMFS_PATH=/path/to/busybox-initramfs.cpio.gz \
+  make uboot-image
+./build/ysyx_26030103_npc build/uboot/npc-uboot.bin --batch
+```
+
+布局和 NEMU 差异见 [`../UBOOT_NPC.md`](../UBOOT_NPC.md)。
+
 ## BusyBox rootfs / initramfs
 
 rootfs 默认关闭（`CONFIG_ROOTFS_ENABLE=n`）。当前只实现 BusyBox
