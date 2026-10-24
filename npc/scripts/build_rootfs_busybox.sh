@@ -15,7 +15,7 @@
 #
 # 输出（默认 npc/build/rootfs）：
 #   busybox/                      BusyBox out-of-tree 构建目录
-#   tree/                         最小 rootfs 树
+#   tree/                         最小 rootfs 树（启用时含 usr/bin/fastfetch）
 #   applets.txt                   当前 BusyBox 配置启用的 applet 清单
 #   busybox-initramfs.cpio.gz     newc + gzip initramfs
 #   busybox-initramfs.cpio.gz.info
@@ -75,6 +75,41 @@ cfg_bool() {
 	fi
 }
 
+# 区分“未写入 .config”和显式 =n，用于 Kconfig 中 default y 的新选项。
+cfg_bool_or() {
+	local key="CONFIG_$1"
+	local default="$2"
+	local value
+	if [ -f "$CONFIG_FILE" ] && grep -Fqx -- "# $key is not set" "$CONFIG_FILE"; then
+		printf 'n'
+		return
+	fi
+	value="$(cfg_raw "$key")"
+	case "$value" in
+		y) printf 'y' ;;
+		n) printf 'n' ;;
+		*) printf '%s' "$default" ;;
+	esac
+}
+
+# 优先读取 build_fastfetch.sh 生成的 .info，其次从二进制字符串和
+# vendor 源码中获取版本。只用于 rootfs 摘要，不执行目标架构二进制。
+fastfetch_version() {
+	local bin="$1"
+	local version=""
+	if [ -f "$bin.info" ]; then
+		version="$(sed -n 's/^fastfetch \([0-9][0-9.]*\).*/\1/p' "$bin.info" | head -n 1)"
+	fi
+	if [ -z "$version" ] && command -v strings >/dev/null 2>&1; then
+		version="$(strings "$bin" | grep -m 1 -xE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+	fi
+	if [ -z "$version" ] && [ -f "$WORKBENCH_HOME/vendor/fastfetch/CMakeLists.txt" ]; then
+		version="$(sed -n 's/^    VERSION \([0-9][0-9.]*\)$/\1/p' \
+			"$WORKBENCH_HOME/vendor/fastfetch/CMakeLists.txt" | head -n 1)"
+	fi
+	printf '%s' "${version:-unknown}"
+}
+
 CLEAN=0
 while (($# > 0)); do
 	case "$1" in
@@ -116,6 +151,12 @@ ROOTFS_BUSYBOX_APPLETS="${ROOTFS_BUSYBOX_APPLETS:-$(cfg_str ROOTFS_BUSYBOX_APPLE
 ROOTFS_BUSYBOX_JOBS="${ROOTFS_BUSYBOX_JOBS:-$(cfg_raw CONFIG_ROOTFS_BUSYBOX_JOBS)}"
 ROOTFS_BUSYBOX_JOBS="${ROOTFS_BUSYBOX_JOBS:-0}"
 
+# fastfetch 默认随 rootfs 安装；旧 .config 没有该符号时也按 Kconfig
+# 的 default y 处理，而不是静默变成 n。
+ROOTFS_FASTFETCH="${ROOTFS_FASTFETCH:-$(cfg_bool_or ROOTFS_FASTFETCH y)}"
+ROOTFS_FASTFETCH_PATH="${ROOTFS_FASTFETCH_PATH:-$(cfg_str ROOTFS_FASTFETCH_PATH)}"
+ROOTFS_FASTFETCH_PATH="${ROOTFS_FASTFETCH_PATH:-build/fastfetch/fastfetch}"
+
 ROOTFS_OUT_DIR="${ROOTFS_OUT_DIR:-$(cfg_str ROOTFS_OUT_DIR)}"
 ROOTFS_OUT_DIR="${ROOTFS_OUT_DIR:-build/rootfs}"
 case "$ROOTFS_OUT_DIR" in
@@ -131,6 +172,12 @@ ROOTFS_TREE="$(realpath -m -- "$ROOTFS_TREE")"
 ROOTFS_IMAGE="${ROOTFS_IMAGE:-$ROOTFS_OUT_DIR/busybox-initramfs.cpio.gz}"
 ROOTFS_IMAGE="$(realpath -m -- "$ROOTFS_IMAGE")"
 INFO_FILE="$ROOTFS_IMAGE.info"
+
+case "$ROOTFS_FASTFETCH_PATH" in
+	/*) FASTFETCH_BIN="$ROOTFS_FASTFETCH_PATH" ;;
+	*) FASTFETCH_BIN="$NPC_HOME/$ROOTFS_FASTFETCH_PATH" ;;
+esac
+FASTFETCH_BIN="$(realpath -m -- "$FASTFETCH_BIN")"
 
 # 删除目录前做最基本的安全检查，避免空值或误配把工作区根目录删掉。
 safe_rm_rf() {
@@ -193,6 +240,13 @@ for path in "$ROOTFS_OUT_DIR" "$ROOTFS_BUSYBOX_BUILD_DIR" "$ROOTFS_TREE" "$ROOTF
 			;;
 	esac
 done
+if [ "$ROOTFS_FASTFETCH" = "y" ]; then
+	case "$FASTFETCH_BIN" in
+		"$ROOTFS_TREE"|"$ROOTFS_TREE"/*)
+			die "ROOTFS_FASTFETCH_PATH 不能位于 ROOTFS_TREE 内（构建时会删除 tree）：$FASTFETCH_BIN"
+			;;
+	esac
+fi
 
 # ---- 工具链与依赖检查 ----
 TOOLCHAIN_PREFIX="$ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX"
@@ -229,6 +283,66 @@ if [ "$ROOTFS_BUSYBOX_JOBS" -eq 0 ]; then
 	ROOTFS_BUSYBOX_JOBS="$(nproc 2>/dev/null || echo 4)"
 fi
 [ "$ROOTFS_BUSYBOX_JOBS" -le 256 ] || die "ROOTFS_BUSYBOX_JOBS=$ROOTFS_BUSYBOX_JOBS 超过上限 256。"
+
+# ---- fastfetch：缺失时自动构建，安装前做静态 ELF 审计 ----
+if [ "$ROOTFS_FASTFETCH" = "y" ]; then
+	if [ ! -f "$FASTFETCH_BIN" ]; then
+		[ -x "$NPC_HOME/scripts/build_fastfetch.sh" ] || die \
+			"fastfetch 不存在（$FASTFETCH_BIN），且找不到可执行的 npc/scripts/build_fastfetch.sh。"
+		info "fastfetch 不存在，自动构建：$FASTFETCH_BIN"
+		if ! FASTFETCH_OUT_DIR="$(dirname -- "$FASTFETCH_BIN")" \
+			"$NPC_HOME/scripts/build_fastfetch.sh"; then
+			die "fastfetch 自动构建失败（目标：$FASTFETCH_BIN）。"
+		fi
+	fi
+	[ -f "$FASTFETCH_BIN" ] || die \
+		"fastfetch 自动构建后仍找不到 $FASTFETCH_BIN；请检查 ROOTFS_FASTFETCH_PATH 是否指向名为 fastfetch 的文件。"
+
+	FASTFETCH_ELF_HEADER="$(readelf -h "$FASTFETCH_BIN")"
+	FASTFETCH_ELF_ATTRS="$(readelf -A "$FASTFETCH_BIN")"
+	FASTFETCH_ELF_PROGRAM_HEADERS="$(readelf -l "$FASTFETCH_BIN")"
+	grep -q 'Class:[[:space:]]*ELF64' <<<"$FASTFETCH_ELF_HEADER" || die \
+		"fastfetch ELF 审计失败：不是 ELF64：$FASTFETCH_BIN"
+	grep -q 'Machine:[[:space:]]*RISC-V' <<<"$FASTFETCH_ELF_HEADER" || die \
+		"fastfetch ELF 审计失败：Machine 不是 RISC-V：$FASTFETCH_BIN"
+	if grep -q 'Type:[[:space:]]*EXEC' <<<"$FASTFETCH_ELF_HEADER"; then
+		:
+	elif grep -q 'Type:[[:space:]]*DYN' <<<"$FASTFETCH_ELF_HEADER" &&
+		! grep -q 'INTERP' <<<"$FASTFETCH_ELF_PROGRAM_HEADERS"; then
+		: # 允许无解释器的 static PIE
+	else
+		die "fastfetch ELF 审计失败：不是静态可执行文件（需要 EXEC 或 static PIE）：$FASTFETCH_BIN"
+	fi
+	grep -Eq 'Flags:.*double-float ABI' <<<"$FASTFETCH_ELF_HEADER" || die \
+		"fastfetch ELF 审计失败：不是 lp64d/double-float ABI：$FASTFETCH_BIN"
+	if grep -q 'INTERP' <<<"$FASTFETCH_ELF_PROGRAM_HEADERS"; then
+		die "fastfetch ELF 审计失败：存在动态解释器（INTERP）：$FASTFETCH_BIN"
+	fi
+	if readelf -d "$FASTFETCH_BIN" 2>/dev/null | grep -q 'NEEDED'; then
+		die "fastfetch ELF 审计失败：存在动态库依赖（NEEDED）：$FASTFETCH_BIN"
+	fi
+	FASTFETCH_ELF_ARCH="$(sed -n 's/.*Tag_RISCV_arch: "\(.*\)"/\1/p' <<<"$FASTFETCH_ELF_ATTRS" | head -n 1)"
+	FASTFETCH_ELF_FLAGS="$(sed -n 's/^[[:space:]]*Flags:[[:space:]]*//p' <<<"$FASTFETCH_ELF_HEADER" | head -n 1)"
+	case "$FASTFETCH_ELF_ARCH" in
+		rv64*) ;;
+		*) die "fastfetch ELF 审计失败：Tag_RISCV_arch='$FASTFETCH_ELF_ARCH' 不是 rv64*。" ;;
+	esac
+	case "$FASTFETCH_ELF_ARCH" in
+		*_f*_d*|*_d*_f*) ;;
+		*) die "fastfetch ELF 审计失败：Tag_RISCV_arch='$FASTFETCH_ELF_ARCH' 未同时包含 F/D 扩展。" ;;
+	esac
+	case "$FASTFETCH_ELF_ARCH" in
+		*_c*) ;;
+		*) die "fastfetch ELF 审计失败：Tag_RISCV_arch='$FASTFETCH_ELF_ARCH' 不包含 C 扩展。" ;;
+	esac
+	FASTFETCH_VERSION="$(fastfetch_version "$FASTFETCH_BIN")"
+	FASTFETCH_BYTES="$(stat -c '%s' "$FASTFETCH_BIN")"
+	FASTFETCH_SHA256="$(sha256sum "$FASTFETCH_BIN" | awk '{print $1}')"
+	info "fastfetch：$FASTFETCH_BIN（版本 $FASTFETCH_VERSION，$FASTFETCH_BYTES 字节，静态）"
+	info "fastfetch ELF：$FASTFETCH_ELF_FLAGS，Tag_RISCV_arch=$FASTFETCH_ELF_ARCH"
+else
+	info "fastfetch：ROOTFS_FASTFETCH=n，不安装"
+fi
 
 mkdir -p "$ROOTFS_OUT_DIR/logs" "$ROOTFS_BUSYBOX_BUILD_DIR"
 CONFIG_LOG="$ROOTFS_OUT_DIR/logs/busybox-config.log"
@@ -354,6 +468,14 @@ install -d -m 0755 \
 	"$ROOTFS_TREE/tmp" \
 	"$ROOTFS_TREE/etc"
 install -m 0755 "$BUSYBOX_BIN" "$ROOTFS_TREE/bin/busybox"
+if [ "$ROOTFS_FASTFETCH" = "y" ]; then
+	if ! install -d -m 0755 "$ROOTFS_TREE/usr/bin" ||
+		! install -m 0755 "$FASTFETCH_BIN" "$ROOTFS_TREE/usr/bin/fastfetch"; then
+		die "安装 fastfetch 到 rootfs tree 失败：$ROOTFS_TREE/usr/bin/fastfetch"
+	fi
+	[ "$(stat -c '%a' "$ROOTFS_TREE/usr/bin/fastfetch")" = "755" ] || die \
+		"fastfetch 安装后权限不是 0755：$ROOTFS_TREE/usr/bin/fastfetch"
+fi
 
 # 从 BusyBox 生成的 applet_tables.h 提取实际启用的 applet，
 # 不依赖在宿主机上执行 RISC-V 二进制。
@@ -437,7 +559,11 @@ BUSYBOX_SHA256="$(sha256sum "$BUSYBOX_BIN" | awk '{print $1}')"
 # GNU cpio 列出 newc 成员时可能去掉 find 传入的 "./" 前缀；
 # 统一规范化后再自检，避免依赖具体 cpio 版本的显示方式。
 ARCHIVE_LIST="$(gzip -dc "$ROOTFS_IMAGE" | cpio -it --quiet | sed 's|^\./||')"
-for path in bin/busybox bin/sh dev proc sys tmp etc; do
+REQUIRED_PATHS=(bin/busybox bin/sh dev proc sys tmp etc)
+if [ "$ROOTFS_FASTFETCH" = "y" ]; then
+	REQUIRED_PATHS+=(usr/bin/fastfetch)
+fi
+for path in "${REQUIRED_PATHS[@]}"; do
 	grep -Fqx -- "$path" <<<"$ARCHIVE_LIST" || die "initramfs 缺少关键路径：$path"
 done
 if [ "$INIT_KIND" = "script" ]; then
@@ -465,6 +591,17 @@ INFO_TMP="$INFO_FILE.tmp.$$"
 	printf 'busybox_binary=%s\n' "$BUSYBOX_BIN"
 	printf 'busybox_binary_bytes=%s\n' "$BUSYBOX_BYTES"
 	printf 'busybox_binary_sha256=%s\n' "$BUSYBOX_SHA256"
+	printf 'fastfetch=%s\n' "$ROOTFS_FASTFETCH"
+	if [ "$ROOTFS_FASTFETCH" = "y" ]; then
+		printf 'fastfetch_version=%s\n' "$FASTFETCH_VERSION"
+		printf 'fastfetch_path=/usr/bin/fastfetch\n'
+		printf 'fastfetch_binary=%s\n' "$FASTFETCH_BIN"
+		printf 'fastfetch_binary_bytes=%s\n' "$FASTFETCH_BYTES"
+		printf 'fastfetch_binary_sha256=%s\n' "$FASTFETCH_SHA256"
+		printf 'fastfetch_static=yes\n'
+		printf 'fastfetch_elf_flags=%s\n' "$FASTFETCH_ELF_FLAGS"
+		printf 'fastfetch_elf_riscv_arch=%s\n' "$FASTFETCH_ELF_ARCH"
+	fi
 	printf 'toolchain_prefix=%s\n' "$TOOLCHAIN_PREFIX"
 	printf 'toolchain_cc=%s\n' "$TOOLCHAIN_CC"
 	printf 'toolchain_target=%s\n' "$TOOLCHAIN_TARGET"

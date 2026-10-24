@@ -81,6 +81,25 @@ menu "根文件系统 (rootfs)"
       当前构建脚本只支持 y；设为 n 会明确报错，而不会生成
       缺少动态加载器和 libc 的不可启动镜像。
 
+  config ROOTFS_FASTFETCH
+    bool "安装 fastfetch"
+    depends on ROOTFS_BUSYBOX
+    default y
+    help
+      将静态链接的 RV64GC/lp64d fastfetch 安装到 rootfs 的
+      /usr/bin/fastfetch。目标二进制不存在时，构建脚本会调用
+      npc/scripts/build_fastfetch.sh 自动交叉编译。
+
+  config ROOTFS_FASTFETCH_PATH
+    string "fastfetch 二进制路径"
+    depends on ROOTFS_FASTFETCH
+    default "build/fastfetch/fastfetch"
+    help
+      fastfetch 二进制路径。相对路径按 npc/ 解析；默认使用
+      npc/scripts/build_fastfetch.sh 的输出。也可指向预先构建
+      好的静态 RV64GC/lp64d 二进制。构建脚本会校验 ELF64
+      RISC-V、RVC、double-float ABI 和静态链接。
+
   config ROOTFS_BUSYBOX_INIT_SCRIPT
     bool "生成 BusyBox sh /init 脚本"
     depends on ROOTFS_BUSYBOX
