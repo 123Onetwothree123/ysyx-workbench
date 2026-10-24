@@ -1,6 +1,10 @@
 NPC_HOME := $(CURDIR)
 SHELL := /bin/bash
 BUILD_DIR = ./build
+# direct-NPC 固定 RAM 窗口。DTB、Linux 打包和 SBI 测试共享同一组值，
+# 不在各个脚本中另造 Linux 专用 RAM 常量。
+NPC_RAM_BASE ?= 0x80000000
+NPC_RAM_SIZE ?= 0x04000000
 PERF_BUILD_METADATA := $(abspath $(BUILD_DIR)/perf_build_metadata.txt)
 PERF_SYNTH := $(abspath $(BUILD_DIR)/synth.txt)
 YSYXSOC_DIR = ../ysyxSoC
@@ -42,6 +46,9 @@ CSRC_DIR=./csrc
 CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -path "$(CSRC_DIR)/tools/branchsim" -prune -o -path "$(CSRC_DIR)/tools/dcachesim" -prune -o -name "*.cpp" -print 2>/dev/null)
 VERILATOR=verilator
 remove_quote = $(patsubst "%",%,$(1))
+# Kconfig 字符串可能包含空格/逗号（如 bootargs）。patsubst 会按空格拆词，
+# 不能用来去掉这类字符串的引号；这里只删除引号并保留原样。
+unquote_config = $(strip $(subst ",,$(1)))
 # Quote one make value as one POSIX-shell word.  This is used for generated
 # performance metadata, where configuration strings may contain commas.
 perf_shell_quote = '$(subst ','"'"',$(1))'
@@ -142,6 +149,20 @@ kconfig-contract-check:
 # 后续增加 RustSBI 时只需新增 Kconfig choice + scripts/build_rustsbi.sh，
 # 本 Makefile 的目标逻辑不需要改。
 # ============================================================================
+
+# Linux 启动镜像选项。地址完全复用 SBI_NEXT_ADDR / SBI_FDT_ADDR：
+# Image 没有独立地址符号，DTB 使用 SBI_FDT_ADDR。
+LINUX_BOOT_ENABLE ?= $(or $(CONFIG_LINUX_BOOT_ENABLE),n)
+LINUX_IMAGE_PATH ?= $(call unquote_config,$(CONFIG_LINUX_IMAGE_PATH))
+LINUX_INITRAMFS_ENABLE ?= $(or $(CONFIG_LINUX_INITRAMFS_ENABLE),n)
+LINUX_INITRAMFS_PATH ?= $(call unquote_config,$(CONFIG_LINUX_INITRAMFS_PATH))
+LINUX_INITRAMFS_ADDR ?= $(or $(CONFIG_LINUX_INITRAMFS_ADDR),0x82000000)
+LINUX_BOOTARGS ?= $(call unquote_config,$(CONFIG_LINUX_BOOTARGS))
+LINUX_OUT_DIR ?= $(abspath $(BUILD_DIR)/linux)
+LINUX_SBI_OUT_DIR ?= $(LINUX_OUT_DIR)/sbi
+LINUX_DTB_OUT_DIR ?= $(LINUX_OUT_DIR)/dtb
+LINUX_PACK_SCRIPT ?= $(abspath scripts/pack_linux_image.sh)
+
 SBI_IMPL ?= $(or $(call remove_quote,$(CONFIG_SBI_IMPL)),opensbi)
 SBI_PLATFORM ?= $(or $(call remove_quote,$(CONFIG_SBI_PLATFORM)),npc)
 SBI_FW_BASE ?= $(or $(CONFIG_SBI_FW_BASE),0x80000000)
@@ -149,8 +170,16 @@ SBI_FW_SIZE ?= $(or $(CONFIG_SBI_FW_SIZE),0x00200000)
 SBI_NEXT_ADDR ?= $(or $(CONFIG_SBI_NEXT_ADDR),0x80200000)
 SBI_BUILD_JOBS ?= $(or $(CONFIG_SBI_BUILD_JOBS),0)
 SBI_FDT_ENABLE ?= $(or $(CONFIG_SBI_FDT_ENABLE),n)
-SBI_FDT_PATH ?= $(or $(call remove_quote,$(CONFIG_SBI_FDT_PATH)),dts/npc.dts)
+SBI_FDT_PATH ?= $(or $(call unquote_config,$(CONFIG_SBI_FDT_PATH)),dts/npc.dts)
 SBI_FDT_ADDR ?= $(or $(CONFIG_SBI_FDT_ADDR),0x80f00000)
+# mtime 每个 CPU 周期 +1，实际增量频率 = SYNTH_FREQ(MHz) * 1,000,000。
+# DTB timebase-frequency 与 OpenSBI NPC 平台的 mtime_freq 使用同一个值。
+SBI_TIMEBASE_FREQ ?= $(shell expr $(SYNTH_FREQ) \* 1000000)
+SBI_FDT_LINUX ?= $(LINUX_BOOT_ENABLE)
+SBI_INITRAMFS_ENABLE ?= $(LINUX_INITRAMFS_ENABLE)
+SBI_INITRAMFS_PATH ?= $(LINUX_INITRAMFS_PATH)
+SBI_INITRAMFS_ADDR ?= $(LINUX_INITRAMFS_ADDR)
+SBI_BOOTARGS ?= $(LINUX_BOOTARGS)
 SBI_FDT_OUT_DIR ?= $(abspath $(BUILD_DIR)/dtb)
 SBI_DTB_SCRIPT ?= $(abspath scripts/build_dtb.sh)
 SBI_TOOLCHAIN_PREFIX ?= riscv64-unknown-elf-
@@ -175,6 +204,14 @@ SBI_ENV = env \
 	SBI_FDT_PATH="$(SBI_FDT_PATH)" \
 	SBI_FDT_ADDR="$(SBI_FDT_ADDR)" \
 	SBI_FDT_OUT_DIR="$(SBI_FDT_OUT_DIR)" \
+	SBI_TIMEBASE_FREQ="$(SBI_TIMEBASE_FREQ)" \
+	SBI_FDT_LINUX="$(SBI_FDT_LINUX)" \
+	SBI_INITRAMFS_ENABLE="$(SBI_INITRAMFS_ENABLE)" \
+	SBI_INITRAMFS_PATH="$(SBI_INITRAMFS_PATH)" \
+	SBI_INITRAMFS_ADDR="$(SBI_INITRAMFS_ADDR)" \
+	SBI_BOOTARGS="$(SBI_BOOTARGS)" \
+	NPC_RAM_BASE="$(NPC_RAM_BASE)" \
+	NPC_RAM_SIZE="$(NPC_RAM_SIZE)" \
 	SBI_TOOLCHAIN_PREFIX="$(SBI_TOOLCHAIN_PREFIX)" \
 	SBI_ISA="$(SBI_ISA)" \
 	SBI_ABI="$(SBI_ABI)" \
@@ -184,6 +221,16 @@ SBI_ENV = env \
 	SBI_PAYLOAD_PATH="$(SBI_PAYLOAD_PATH)" \
 	NPC_HOME="$(NPC_HOME)" \
 	WORKBENCH_HOME="$(abspath $(NPC_HOME)/..)"
+
+# Linux 打包环境 = SBI 公共环境 + Linux 专属路径/参数。
+LINUX_ENV = $(SBI_ENV) \
+	LINUX_BOOT_ENABLE="$(LINUX_BOOT_ENABLE)" \
+	LINUX_IMAGE_PATH="$(LINUX_IMAGE_PATH)" \
+	LINUX_INITRAMFS_ENABLE="$(LINUX_INITRAMFS_ENABLE)" \
+	LINUX_INITRAMFS_PATH="$(LINUX_INITRAMFS_PATH)" \
+	LINUX_INITRAMFS_ADDR="$(LINUX_INITRAMFS_ADDR)" \
+	LINUX_BOOTARGS="$(LINUX_BOOTARGS)" \
+	LINUX_OUT_DIR="$(LINUX_OUT_DIR)"
 
 # 校验开关和实现名。实现名会拼进脚本路径，必须限制字符集。
 define sbi_check_enabled
@@ -240,6 +287,52 @@ dtb-clean:
 	rm -rf $(SBI_FDT_OUT_DIR)
 
 .PHONY: dtb dtb-clean
+
+# 打包 Linux 启动镜像：SBI 固件 + 用户提供的 Image + 可选 initramfs + DTB。
+# 本目标不会下载/编译 Linux；Image/initramfs 缺失时明确报错。
+# 顺序很重要：先让 build_<impl>.sh 按当前 Kconfig/initramfs 生成并内嵌
+# DTB，再由 pack_linux_image.sh 重新生成同一 DTB、校验固件内嵌哈希并打包。
+linux-image:
+	$(sbi_check_enabled)
+	@set -eu; \
+	if [ "$(LINUX_BOOT_ENABLE)" != "y" ]; then \
+		echo "错误：LINUX_BOOT_ENABLE=$(LINUX_BOOT_ENABLE)，Linux 启动镜像未启用。" >&2; \
+		echo "      先运行 'make rv64_linux_defconfig' 或 'make menuconfig' 打开 Linux 启动镜像。" >&2; \
+		exit 2; \
+	fi; \
+	if [ -z "$(LINUX_IMAGE_PATH)" ]; then \
+		echo "错误：LINUX_IMAGE_PATH 为空；请提供用户自己的 Linux Image 路径。" >&2; \
+		exit 2; \
+	fi; \
+	if [ "$(SBI_FDT_ENABLE)" != "y" ]; then \
+		echo "错误：Linux 需要 a1=DTB，但 SBI_FDT_ENABLE=$(SBI_FDT_ENABLE)。" >&2; \
+		echo "      请打开 CONFIG_SBI_FDT_ENABLE 后重试。" >&2; \
+		exit 2; \
+	fi; \
+	if [ ! -f "$(LINUX_PACK_SCRIPT)" ]; then \
+		echo "错误：找不到打包脚本 $(LINUX_PACK_SCRIPT)" >&2; \
+		exit 2; \
+	fi; \
+	mkdir -p "$(LINUX_OUT_DIR)"; \
+	$(SBI_ENV) \
+		SBI_OUT_DIR="$(LINUX_SBI_OUT_DIR)" \
+		SBI_FDT_OUT_DIR="$(LINUX_DTB_OUT_DIR)" \
+		"$(SBI_BUILD_SCRIPT)"; \
+	$(LINUX_ENV) \
+		SBI_OUT_DIR="$(LINUX_SBI_OUT_DIR)" \
+		SBI_FDT_OUT_DIR="$(LINUX_DTB_OUT_DIR)" \
+		"$(LINUX_PACK_SCRIPT)"
+
+linux-image-clean:
+	rm -rf $(LINUX_OUT_DIR)
+
+# 配置矩阵测试：dummy Image/initramfs + DTB 生成 + 打包负向测试。
+# 不构建/运行 Linux，也不需要 NPC 仿真器。
+LINUX_BOOT_TEST_SCRIPT ?= $(abspath scripts/test_linux_boot.py)
+linux-boot-test:
+	python3 $(LINUX_BOOT_TEST_SCRIPT)
+
+.PHONY: linux-image linux-image-clean linux-boot-test
 
 # 显式构建 RustSBI 固件，不影响默认构建，也不与 make opensbi 共用产物。
 # 脚本读取 Kconfig 参数；这里复用 SBI_ENV 传入 SBI_FW_*/SBI_FDT_*，

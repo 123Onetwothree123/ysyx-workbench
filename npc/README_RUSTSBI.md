@@ -54,7 +54,14 @@ rustup target add riscv64imac-unknown-none-elf
 | `CONFIG_SBI_BUILD_JOBS` | `0` | 构建并行度，0 表示 `nproc` |
 | `CONFIG_SBI_FDT_ENABLE` | `n` | 是否把 DTB 复制到 `SBI_FDT_ADDR` 并通过 a1 传递 |
 | `CONFIG_SBI_FDT_PATH` | `"dts/npc.dts"` | DTS/DTB 源文件 |
-| `CONFIG_SBI_FDT_ADDR` | `0x80f00000` | DTB 最终加载/传递地址 |
+| `CONFIG_SBI_FDT_ADDR` | `0x80f00000` | DTB 最终加载/传递地址（标准 Linux defconfig 为 `0x83f00000`） |
+
+Linux 打包选项（`npc/kconfig/Kconfig.linux`）与 OpenSBI 共用同一套
+`SBI_NEXT_ADDR` / `SBI_FDT_ADDR`；Image 地址没有第二个配置项。
+`make rv64_linux_defconfig` 的 DTB 会由 Kconfig 自动生成
+`rv64imafdc_zicsr_zifencei`、`riscv,isa-extensions` 和标准 `mmu-type`，
+不需要手改 DTS。RustSBI 固件本身仍按软浮点 RV64IMAC 构建，DTB 描述的是
+RTL/Linux 看到的 CPU，两者不冲突。
 
 OpenSBI 与 RustSBI 位于同一个 Kconfig `choice` 中，二者互斥；选择
 RustSBI 时 `CONFIG_SBI_IMPL_OPENSBI` 会自动变为未选中，反之亦然。
@@ -148,6 +155,13 @@ NPC 默认 `CONFIG_RISCV_C=n`，必须显式 `-C target-feature=-c,-zca`。
 该警告不影响构建；脚本会检查最终 ELF 的 `Tag_RISCV_arch`，若仍包含
 `zca`/`c` 会明确报错。
 
+固件不使用 F/D 不等于 DTB 不能声明 F/D：DTB 由
+`npc/scripts/build_dtb.sh` 按 `CONFIG_XLEN`、`CONFIG_RISCV_M/A/C/F/D`
+生成，`rv64_linux_defconfig` 会得到 `rv64imafdc_zicsr_zifencei`。
+`mtime` 每 CPU 周期 +1，DTB `timebase-frequency` 与 OpenSBI
+`mtime_freq` 都由 `CONFIG_SYNTH_FREQ(MHz) * 1,000,000` 生成；RustSBI
+只负责写 `mtimecmp`，不需要单独的频率常量。
+
 ## 6. 测试
 
 统一入口（与 OpenSBI 共用 `npc/csrc/Test/sbi/opensbi_payload/` 和 FDT 断言）：
@@ -237,14 +251,16 @@ timeout；NPC 模式则用 `.word 0x0000000b` 正常结束并得到 GOOD TRAP。
 2. 只支持单 hart；IPI 只对自己生效，HSM 只能查询/停止 hart 0。
 3. 已支持内嵌 DTB 并通过 a1 传递（`SBI_FDT_ENABLE`），但 RustSBI 本身
    不解析 DTB；UART/CLINT 地址仍为编译期常量。未启用 FDT 时 `a1=0`。
+   `make linux-image` 会调用 `make rustsbi` 的同一构建脚本，并校验
+   固件内嵌 DTB 的 sha256 后再打包用户提供的 Image/initramfs。
 4. 没有实现完整的 PMP 策略；默认 `CONFIG_HAS_PMP=n` 时不写 PMP。
    若打开 PMP，固件配置一条覆盖全部物理地址的 NAPOT 项，不是最小权限。
 5. 没有 UART 中断/PLIC 初始化；console 使用轮询，S 模式外部中断需要
    payload 自己配置 PLIC。
 6. `SRST`/`hart_stop` 使用 NPC 仿真的 custom-0 halt 指令结束仿真，不是
    真实硬件的复位/电源管理。
-7. 未在 Linux 上验证；当前目标是先提供可构建、可启动、可回归的最小
-   SBI 环境。
+7. 未在真实 Linux 上验证；当前提供的是可构建、可启动、可回归的最小
+   SBI 环境，以及只打包用户 Image/initramfs 的 `make linux-image`。
 8. Rust 预编译 `libcore` 带 `zca` 标记；当前最终镜像检查未发现压缩指令。
    如未来工具链变化导致 core 引入压缩指令，需要 `CONFIG_RISCV_C=y` 或
    用 nightly `-Zbuild-std` 重建 core。

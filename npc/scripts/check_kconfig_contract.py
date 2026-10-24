@@ -130,6 +130,55 @@ def _derived_choice_string(
     return default
 
 
+def _linux_mmu_type(values: Mapping[str, object], xlen: int) -> str:
+    """返回 Linux DTB 可声明的标准 mmu-type；非标准几何返回空串。
+
+    这里与 npc/scripts/build_dtb.sh 的推导保持一致：只有标准 Sv32
+    （RV32，4KiB 页/4B PTE/2 级）和 Sv39/Sv48（RV64，4KiB 页/8B PTE/
+    3/4 级）才能写入 mmu-type。CUSTOM 或任意非标准几何不能伪装成标准
+    类型，Linux 打包必须在配置阶段就拒绝。
+    """
+    if not _as_bool(values, "HAS_MMU", False):
+        return ""
+    geometry = _derived_choice_string(
+        values,
+        "MMU_GEOMETRY_MODE",
+        (("MMU_GEOMETRY_CUSTOM", "custom"),
+         ("MMU_GEOMETRY_STANDARD", "standard")),
+        "standard",
+    ).strip().lower()
+    if geometry != "standard":
+        return ""
+    levels = _as_int(values, "MMU_LEVELS", 3 if xlen == 64 else 2)
+    page_size = _as_int(values, "MMU_PAGE_SIZE_BYTES", 4096)
+    table_size = _as_int(values, "MMU_PAGE_TABLE_SIZE_BYTES", 4096)
+    pte_format = _derived_choice_string(
+        values,
+        "MMU_PTE_FORMAT",
+        (
+            ("MMU_PTE_CUSTOM", "custom"),
+            ("MMU_PTE_RISCV64", "riscv64"),
+            ("MMU_PTE_RISCV32", "riscv32"),
+        ),
+        "riscv64" if xlen == 64 else "riscv32",
+    ).strip().lower()
+    if xlen == 32:
+        pte_size = _as_int(values, "MMU_PTE_SIZE_BYTES", 4)
+        if (levels == 2 and page_size == 4096 and table_size == 4096
+                and pte_size == 4 and pte_format == "riscv32"):
+            return "riscv,sv32"
+        return ""
+    pte_size = _as_int(values, "MMU_PTE_SIZE_BYTES", 8)
+    if (page_size != 4096 or table_size != 4096
+            or pte_size != 8 or pte_format != "riscv64"):
+        return ""
+    if levels == 3:
+        return "riscv,sv39"
+    if levels == 4:
+        return "riscv,sv48"
+    return ""
+
+
 def validate_config(values: Mapping[str, object], source: str = ".config") -> List[str]:
     """返回配置契约错误列表；空列表表示可以进入 elaboration。
 
@@ -502,6 +551,77 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
                 err("SBI_IMPL_OPENSBI 需要 HAS_S=y")
             if not _as_bool(values, "HAS_PMP", False):
                 err("SBI_IMPL_OPENSBI 需要 HAS_PMP=y（隔离 M/S 访问）")
+
+    # Linux 启动镜像：地址完全复用 SBI_NEXT_ADDR / SBI_FDT_ADDR，
+    # 这里只检查配置阶段能确定的布局与标准 MMU 约束；Image/initramfs
+    # 的实际大小与最终不重叠由 pack_linux_image.sh 再检查。
+    if _as_bool(values, "LINUX_BOOT_ENABLE", False):
+        if not _as_bool(values, "SBI_ENABLE", False):
+            err("LINUX_BOOT_ENABLE=y 需要 SBI_ENABLE=y")
+        if not _as_bool(values, "SBI_FDT_ENABLE", False):
+            err("LINUX_BOOT_ENABLE=y 需要 SBI_FDT_ENABLE=y（Linux 需要 a1=DTB）")
+        if not has_s:
+            err("LINUX_BOOT_ENABLE=y 需要 HAS_S=y")
+        if not has_mmu:
+            err("LINUX_BOOT_ENABLE=y 需要 HAS_MMU=y")
+        if not _as_bool(values, "RISCV_M", False):
+            err("LINUX_BOOT_ENABLE=y 需要 RISCV_M=y（Linux 使用乘除法）")
+        if not _as_bool(values, "RISCV_A", False):
+            err("LINUX_BOOT_ENABLE=y 需要 RISCV_A=y（Linux 原子操作）")
+        if not _as_str(values, "LINUX_IMAGE_PATH", ""):
+            err("LINUX_BOOT_ENABLE=y 但 LINUX_IMAGE_PATH 为空")
+
+        ram_base = 0x80000000
+        ram_end = 0x84000000  # direct-NPC 固定 64 MiB 窗口
+        next_addr = _as_int(values, "SBI_NEXT_ADDR", 0x80200000)
+        fdt_addr = _as_int(values, "SBI_FDT_ADDR", 0x83F00000)
+        fdt_reserve = 0x10000
+        fw_base = _as_int(values, "SBI_FW_BASE", 0x80000000)
+        fw_size = _as_int(values, "SBI_FW_SIZE", 0x00200000)
+        fw_end = fw_base + fw_size
+        mmu_type = _linux_mmu_type(values, xlen)
+        if not mmu_type:
+            err(
+                "LINUX_BOOT_ENABLE=y 要求标准 Sv32/Sv39/Sv48 MMU 几何；"
+                "CUSTOM 或其他非标准几何不能伪装成标准 mmu-type"
+            )
+        if _as_bool(values, "LINUX_INITRAMFS_ENABLE", False):
+            initramfs_path = _as_str(
+                values, "LINUX_INITRAMFS_PATH", ""
+            )
+            if not initramfs_path:
+                err(
+                    "LINUX_INITRAMFS_ENABLE=y 但 LINUX_INITRAMFS_PATH 为空"
+                )
+            initrd_addr = _as_int(
+                values, "LINUX_INITRAMFS_ADDR", 0x82000000
+            )
+            if initrd_addr % 4096 != 0:
+                err(
+                    f"LINUX_INITRAMFS_ADDR=0x{initrd_addr:x} 必须按 "
+                    "4 KiB 对齐"
+                )
+            if initrd_addr < ram_base or initrd_addr >= ram_end:
+                err(
+                    f"LINUX_INITRAMFS_ADDR=0x{initrd_addr:x} 超出 NPC RAM "
+                    f"[0x{ram_base:x}, 0x{ram_end:x})"
+                )
+            if initrd_addr < next_addr + 0x1000:
+                err(
+                    f"LINUX_INITRAMFS_ADDR=0x{initrd_addr:x} 落在 "
+                    f"Linux Image 入口 0x{next_addr:x} 附近；initramfs "
+                    "必须位于 Image 之后"
+                )
+            if initrd_addr < fw_end and initrd_addr + 0x1000 > fw_base:
+                err(
+                    f"LINUX_INITRAMFS_ADDR=0x{initrd_addr:x} 与 SBI 固件区 "
+                    f"[0x{fw_base:x}, 0x{fw_end:x}) 重叠"
+                )
+            if fdt_addr <= initrd_addr < fdt_addr + fdt_reserve:
+                err(
+                    f"LINUX_INITRAMFS_ADDR=0x{initrd_addr:x} 落在 DTB "
+                    f"保留区 [0x{fdt_addr:x}, 0x{fdt_addr + fdt_reserve:x}) 内"
+                )
 
     return errors
 

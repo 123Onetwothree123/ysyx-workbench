@@ -92,6 +92,18 @@ FDT_ENABLE="${SBI_FDT_ENABLE:-$(cfg_bool CONFIG_SBI_FDT_ENABLE n)}"
 FDT_PATH="${SBI_FDT_PATH:-$(cfg_value CONFIG_SBI_FDT_PATH dts/npc.dts)}"
 FDT_ADDR="${SBI_FDT_ADDR:-$(cfg_value CONFIG_SBI_FDT_ADDR 0x80f00000)}"
 FDT_OUT_DIR="${SBI_FDT_OUT_DIR:-$OUT_DIR/fdt}"
+FDT_LINUX="${SBI_FDT_LINUX:-$(cfg_bool CONFIG_LINUX_BOOT_ENABLE n)}"
+INITRAMFS_ENABLE="${SBI_INITRAMFS_ENABLE:-$(cfg_bool CONFIG_LINUX_INITRAMFS_ENABLE n)}"
+INITRAMFS_PATH="${SBI_INITRAMFS_PATH:-$(cfg_value CONFIG_LINUX_INITRAMFS_PATH "")}"
+INITRAMFS_ADDR="${SBI_INITRAMFS_ADDR:-$(cfg_value CONFIG_LINUX_INITRAMFS_ADDR 0x82000000)}"
+BOOTARGS="${SBI_BOOTARGS:-$(cfg_value CONFIG_LINUX_BOOTARGS "console=ttyS0,115200 earlycon=sbi")}"
+RAM_BASE="${NPC_RAM_BASE:-0x80000000}"
+RAM_SIZE="${NPC_RAM_SIZE:-0x04000000}"
+# mtime 每个 CPU 周期 +1，频率 = CONFIG_SYNTH_FREQ(MHz) * 1,000,000。
+# RustSBI 本身只写 mtimecmp，不需要频率；这里传给 DTB，保证 Linux 看到
+# 的 timebase 与 RTL/OpenSBI 一致。
+SYNTH_FREQ="$(cfg_value CONFIG_SYNTH_FREQ 450)"
+TIMEBASE_FREQ="${SBI_TIMEBASE_FREQ:-$((SYNTH_FREQ * 1000000))}"
 # SBI_HAS_PMP=y 可用于 QEMU 交叉验证（QEMU virt 实现了 PMP，NPC 默认没有）。
 HAS_PMP="${SBI_HAS_PMP:-$(cfg_bool CONFIG_HAS_PMP n)}"
 case "$HAS_PMP" in
@@ -145,6 +157,14 @@ if [ "$FDT_ENABLE" = "y" ]; then
     SBI_FW_BASE="$FW_BASE" \
     SBI_FW_SIZE="$FW_SIZE" \
     SBI_NEXT_ADDR="$NEXT_ADDR" \
+    SBI_TIMEBASE_FREQ="$TIMEBASE_FREQ" \
+    SBI_FDT_LINUX="$FDT_LINUX" \
+    SBI_INITRAMFS_ENABLE="$INITRAMFS_ENABLE" \
+    SBI_INITRAMFS_PATH="$INITRAMFS_PATH" \
+    SBI_INITRAMFS_ADDR="$INITRAMFS_ADDR" \
+    SBI_BOOTARGS="$BOOTARGS" \
+    NPC_RAM_BASE="$RAM_BASE" \
+    NPC_RAM_SIZE="$RAM_SIZE" \
     NPC_HOME="$NPC_HOME" \
         "$NPC_HOME/scripts/build_dtb.sh"
     FDT_DTB_PATH="$FDT_OUT_DIR/npc.dtb"
@@ -228,6 +248,25 @@ FW_SIZE_NUM=$((FW_SIZE))
 if [ "$BIN_SIZE" -gt "$FW_SIZE_NUM" ]; then
     die "固件 $BIN_SIZE 字节超过 CONFIG_SBI_FW_SIZE=$FW_SIZE"
 fi
+
+{
+    echo "impl=rustsbi"
+    echo "platform=$PLATFORM"
+    echo "fw_base=$(printf '0x%x' $((FW_BASE)))"
+    echo "fw_size=$(printf '0x%x' $((FW_SIZE)))"
+    echo "next_addr=$(printf '0x%x' $((NEXT_ADDR)))"
+    echo "fdt_enable=$FDT_ENABLE"
+    if [ -n "$FDT_DTB_PATH" ]; then
+        echo "fdt_path=$FDT_DTB_PATH"
+        echo "fdt_addr=$(printf '0x%x' $((FDT_ADDR)))"
+        echo "fdt_bytes=$(stat -c '%s' "$FDT_DTB_PATH")"
+        echo "fdt_sha256=$(sha256sum "$FDT_DTB_PATH" | cut -d' ' -f1)"
+    fi
+    echo "timebase_freq=$TIMEBASE_FREQ"
+    echo "fw_bytes=$BIN_SIZE"
+    echo "fw_sha256=$(sha256sum "$OUT_DIR/rustsbi-npc.bin" | cut -d' ' -f1)"
+} >"$OUT_DIR/rustsbi-npc.info.tmp"
+mv -f "$OUT_DIR/rustsbi-npc.info.tmp" "$OUT_DIR/rustsbi-npc.info"
 
 echo "完成:"
 echo "  $OUT_DIR/rustsbi-npc.elf"

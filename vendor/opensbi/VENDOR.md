@@ -22,6 +22,11 @@ platform/npc/
 ├── configs/defconfig
 ├── objects.mk              # 默认 rv64ima/lp64，允许命令行覆盖
 └── platform.c              # UART/CLINT/PLIC 固定地址；单 hart；接受 FDT
+
+`objects.mk` 额外把 `NPC_MTIME_FREQ`（由
+`npc/scripts/build_opensbi.sh` 按 `CONFIG_SYNTH_FREQ` 传入）编译进平台，
+使 OpenSBI 的 `mtime_freq` 与 DTB `timebase-frequency` 一致；直接在上游
+树构建时默认 450MHz。
 ```
 
 对上游核心的最小补丁（均由 `platform/npc/objects.mk` 中的宏控制，

@@ -441,6 +441,62 @@ class KconfigContractTest(unittest.TestCase):
         })
         self.assertEqual(validate_config(values), [])
 
+    def base_linux(self):
+        values = self.base_sbi()
+        values.update({
+            "RISCV_M": True,
+            "RISCV_A": True,
+            "SBI_FDT_ENABLE": True,
+            "SBI_FDT_PATH": "dts/npc.dts",
+            "SBI_FDT_ADDR": 0x83F00000,
+            "LINUX_BOOT_ENABLE": True,
+            "LINUX_IMAGE_PATH": "Image",
+            "LINUX_BOOTARGS": "console=ttyS0,115200 earlycon=sbi",
+            "LINUX_INITRAMFS_ENABLE": True,
+            "LINUX_INITRAMFS_PATH": "initramfs.cpio",
+            "LINUX_INITRAMFS_ADDR": 0x82000000,
+        })
+        return values
+
+    def test_linux_standard_layout_passes(self):
+        self.assertEqual(validate_config(self.base_linux()), [])
+
+    def test_linux_requires_fdt(self):
+        values = self.base_linux()
+        values["SBI_FDT_ENABLE"] = False
+        self.assert_error(values, "SBI_FDT_ENABLE=y")
+
+    def test_linux_custom_mmu_rejected(self):
+        values = self.base_linux()
+        values.update({
+            "MMU_GEOMETRY_MODE": "custom",
+            "MMU_LEVELS": 3,
+            "MMU_PAGE_SIZE_BYTES": 1024,
+            "MMU_PAGE_TABLE_SIZE_BYTES": 16384,
+            "MMU_PTE_FORMAT": "custom",
+        })
+        self.assert_error(values, "标准 Sv32/Sv39/Sv48")
+
+    def test_linux_initramfs_overlaps_dtb_rejected(self):
+        values = self.base_linux()
+        values["LINUX_INITRAMFS_ADDR"] = 0x83F00000
+        self.assert_error(values, "DTB 保留区")
+
+    def test_linux_initramfs_before_image_rejected(self):
+        values = self.base_linux()
+        values["LINUX_INITRAMFS_ADDR"] = 0x80200000
+        self.assert_error(values, "initramfs")
+
+    def test_linux_initramfs_unaligned_rejected(self):
+        values = self.base_linux()
+        values["LINUX_INITRAMFS_ADDR"] = 0x82000004
+        self.assert_error(values, "4 KiB 对齐")
+
+    def test_linux_empty_image_path_rejected(self):
+        values = self.base_linux()
+        values["LINUX_IMAGE_PATH"] = ""
+        self.assert_error(values, "LINUX_IMAGE_PATH")
+
 
 if __name__ == "__main__":
     unittest.main()

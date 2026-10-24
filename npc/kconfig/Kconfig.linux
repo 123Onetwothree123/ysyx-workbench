@@ -1,0 +1,78 @@
+menu "Linux 启动镜像"
+
+  config LINUX_BOOT_ENABLE
+    bool "启用 Linux 启动镜像打包"
+    depends on SBI_ENABLE
+    default n
+    help
+      启用后，可使用 `make linux-image` 把以下内容打包成一个 NPC
+      可直接加载的 binary：
+        - M 模式 SBI 固件（OpenSBI/RustSBI，按 SBI_IMPL 选择）
+        - 用户提供的 Linux Image
+        - 可选的 initramfs
+        - 按本菜单和 MMU/ISA 配置生成的 DTB
+
+      本选项只负责打包用户已经准备好的文件；不会下载、编译或运行
+      Linux kernel/rootfs。Image 必须位于 SBI_NEXT_ADDR（SBI 的
+      S 模式入口），DTB 复用 SBI_FDT_ADDR，不再提供第二套镜像地址。
+
+      启用本选项要求 SBI_ENABLE=y、SBI_FDT_ENABLE=y、HAS_S=y、
+      HAS_MMU=y，并且 MMU 必须是标准 Sv32/Sv39/Sv48；CUSTOM 非标准
+      几何无法用标准 DTB 描述，会在配置契约和 DTB 生成阶段明确拒绝。
+
+  config LINUX_IMAGE_PATH
+    string "Linux Image 路径"
+    depends on LINUX_BOOT_ENABLE
+    default "Image"
+    help
+      用户提供的 RISC-V Linux Image（不是 vmlinux ELF）。相对路径按
+      ysyx-workbench 根目录解析，也支持绝对路径和 ~/ 开头路径。
+
+      Image 必须带标准 RISC-V Linux image header（偏移 0x38 的
+      "RISCV\0\0\0" 与偏移 0x40 的 "RSC\x05"），其 text_offset
+      （若不为 0）必须与 SBI_NEXT_ADDR - 0x80000000 一致。
+      地址固定复用 SBI_NEXT_ADDR，不单独配置 Image 地址。
+
+  config LINUX_BOOTARGS
+    string "Linux 内核命令行"
+    depends on LINUX_BOOT_ENABLE
+    default "console=ttyS0,115200 earlycon=sbi"
+    help
+      写入 DTB /chosen/bootargs。由 build_dtb.sh 展开到 DTS，不在
+      DTS 中硬编码。
+
+  config LINUX_INITRAMFS_ENABLE
+    bool "使用独立 initramfs"
+    depends on LINUX_BOOT_ENABLE
+    default y
+    help
+      打开后，DTB 会在 /chosen 写入标准 linux,initrd-start 和
+      linux,initrd-end，地址取 LINUX_INITRAMFS_ADDR，结束地址按
+      initramfs 文件实际大小计算。关闭时不生成这两个属性。
+
+      启用时 initramfs 文件必须存在；构建脚本不会截断或忽略缺失文件。
+
+  config LINUX_INITRAMFS_PATH
+    string "initramfs 路径"
+    depends on LINUX_INITRAMFS_ENABLE
+    default "initramfs.cpio"
+    help
+      initramfs/rootfs 文件路径。相对路径按 ysyx-workbench 根目录解析，
+      也支持绝对路径和 ~/ 开头路径。
+
+      脚本接受未压缩 newc/crc cpio，以及 gzip/xz/zstd/lz4/bzip2/lzma
+      压缩的 initramfs；其他格式会明确报错。
+
+  config LINUX_INITRAMFS_ADDR
+    hex "initramfs 加载地址"
+    depends on LINUX_INITRAMFS_ENABLE
+    default 0x82000000
+    help
+      initramfs 在物理内存中的起始地址，必须 4 KiB 对齐，位于 NPC RAM
+      内，并且不能与 SBI 固件、Linux Image、DTB 保留区重叠。
+
+      默认标准布局为 Image 0x80200000、initramfs 0x82000000、
+      DTB 0x83f00000、RAM 结束 0x84000000；修改地址后 make dtb /
+      make linux-image 会自动使用新值并重新校验。
+
+endmenu

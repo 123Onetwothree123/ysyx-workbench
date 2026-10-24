@@ -8,6 +8,12 @@
 
 platform-objs-y += platform.o
 
+# mtime 每个 CPU 周期 +1；NPC_MTIME_FREQ 由 npc/scripts/build_opensbi.sh
+# 按 CONFIG_SYNTH_FREQ 传入，保证与 DTB timebase-frequency 一致。
+# 直接在上游树里构建本平台时退回 450MHz（NPC 默认 SYNTH_FREQ）。
+NPC_MTIME_FREQ ?= 450000000
+platform-genflags-y += -DNPC_MTIME_FREQ=$(NPC_MTIME_FREQ)
+
 # NPC 目前没有实现 mhartid CSR（0xf14）。OpenSBI 正常冷启动会在
 # _start_warm 读取它，因此本平台改为从上一级传入的 a0 取得 boot hart
 # id，并把 current_hartid() 固定为 0（单 hart）。若以后 RTL 增加

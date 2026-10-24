@@ -24,25 +24,24 @@
 | SBI 固件 | `0x80000000` | NPC 复位入口，`SBI_FW_BASE` |
 | 固件预留 | `0x80000000` + 2 MiB | `SBI_FW_SIZE` 默认 `0x00200000` |
 | next-stage | `0x80200000` | `SBI_NEXT_ADDR`，OpenSBI 以 S 模式跳转 |
-| UART | `0x10000000` | 8250 兼容，只实现 TX |
+| UART | `0x10000000` | 8250 兼容，TX 轮询发送，RX FIFO 可由仿真注入 |
 | CLINT | `0x02000000` | `mtimecmp=0x02004000`、`mtime=0x0200bff8` |
-| PLIC | `0x0c000000` | 32 个 source 编号（0 保留），S context 1 |
+| PLIC | `0x0c000000` | 32 个 source 编号（0 保留），M context 0 / S context 1 |
 | RAM | `0x80000000` | direct-NPC 默认 64 MiB |
 
-后续 Linux 建议布局：
+标准 Linux 布局（`make rv64_linux_defconfig`）：
 
 ```text
-0x80000000  OpenSBI fw_jump/fw_payload（2 MiB 预留）
-0x80200000  Linux kernel Image（S 模式入口）
-0x80f00000  DTB（SBI_FDT_ADDR，a1 指向这里）
+0x80000000  OpenSBI/RustSBI 固件（2 MiB 预留）
+0x80200000  Linux Image（SBI_NEXT_ADDR，S 模式入口）
+0x82000000  initramfs（LINUX_INITRAMFS_ADDR，可关闭）
+0x83f00000  DTB（SBI_FDT_ADDR，a1 指向这里）
 0x84000000  RAM 结束（64 MiB）
 ```
 
-启用 `SBI_FDT_ENABLE=y` 后，`0x80200000..0x80f00000` 约 13 MiB
-留给内核镜像；如果 Linux Image 更大，必须同时上移 `SBI_FDT_ADDR`
-或下移 `SBI_NEXT_ADDR`。
-
-`SBI_NEXT_ADDR` 必须按 RV64 2 MiB、RV32 4 MiB 对齐；且
+该布局全部由 Kconfig 生成：Image 地址固定复用 `SBI_NEXT_ADDR`，DTB
+复用 `SBI_FDT_ADDR`，脚本中没有第二套硬编码地址。`SBI_NEXT_ADDR`
+必须按 RV64 2 MiB、RV32 4 MiB 对齐；且
 `SBI_FW_BASE + SBI_FW_SIZE <= SBI_NEXT_ADDR`。配置契约脚本会在
 `make defconfig` 阶段检查这些约束。
 
@@ -65,6 +64,22 @@ FPU/ISA 选项冲突。当前符号：
 | `SBI_FDT_ENABLE` | `n` | 是否向 next-stage 传递 DTB |
 | `SBI_FDT_PATH` | `"dts/npc.dts"` | DTS/DTB 源文件，相对 `npc/` 或绝对路径 |
 | `SBI_FDT_ADDR` | `0x80f00000` | DTB 最终加载/传递地址（a1） |
+
+Linux 打包选项在 `npc/kconfig/Kconfig.linux`：
+
+| 符号 | 默认 | 说明 |
+| --- | --- | --- |
+| `LINUX_BOOT_ENABLE` | `n` | 启用 `make linux-image`；依赖 SBI_ENABLE |
+| `LINUX_IMAGE_PATH` | `"Image"` | 用户提供的 Image，相对 workbench 根目录 |
+| `LINUX_BOOTARGS` | `console=ttyS0,115200 earlycon=sbi` | 写入 DTB `/chosen/bootargs` |
+| `LINUX_INITRAMFS_ENABLE` | `y` | 是否使用独立 initramfs |
+| `LINUX_INITRAMFS_PATH` | `"initramfs.cpio"` | initramfs 路径，相对 workbench 根目录 |
+| `LINUX_INITRAMFS_ADDR` | `0x82000000` | initramfs 物理地址，4 KiB 对齐 |
+
+Linux Image 没有独立地址符号，固定使用 `SBI_NEXT_ADDR`；DTB 固定使用
+`SBI_FDT_ADDR`。`SBI_TIMEBASE_FREQ` 由 Makefile 从 `CONFIG_SYNTH_FREQ`
+推导（`mtime` 每周期 +1），同时传给 DTB 和 OpenSBI NPC 平台的
+`mtime_freq`，不是用户手填的第二个常量。
 
 OpenSBI 的 ISA/ABI/链接器不新增 Kconfig 项（避免和 RustSBI 接口冲突），
 由 Makefile 变量/环境覆盖，默认：
@@ -129,13 +144,29 @@ DTS 源文件 `npc/dts/npc.dts` 由 cpp 展开布局宏后交给 dtc；可用
 
 | 节点 | 内容 |
 | --- | --- |
-| `/cpus` | 单 hart，`riscv,isa="rv64ima_zicsr_zifencei"`，`mmu-type="riscv,sv39"`，`timebase-frequency=10MHz` |
+| `/cpus` | 单 hart，`riscv,isa` / `riscv,isa-base` / `riscv,isa-extensions` 由 Kconfig 生成；`mmu-type` 按标准 Sv32/Sv39/Sv48 生成；`timebase-frequency` 等于 `SYNTH_FREQ*1e6` |
 | `/memory@80000000` | 64 MiB |
 | `/soc/clint@2000000` | CLINT，mtimecmp/mtime 兼容布局 |
-| `/soc/interrupt-controller@c000000` | PLIC，`riscv,ndev=31`，S context |
+| `/soc/interrupt-controller@c000000` | PLIC，`riscv,ndev=31`，M/S context |
 | `/soc/serial@10000000` | ns16550a，IRQ 10，10 MHz 输入时钟 |
-| `/chosen` | `bootargs="console=ttyS0,115200 earlycon=sbi"`，`stdout-path` 指向 UART |
+| `/chosen` | `bootargs` 来自 `CONFIG_LINUX_BOOTARGS`；initramfs 启用时写 `linux,initrd-start/end` |
 | `/reserved-memory` | SBI 固件区、next-stage 入口页、DTB 保留区，均按 Kconfig 生成 |
+
+CPU ISA 字符串规则（`scripts/build_dtb.sh` 从 `.config` 读取）：
+
+- base 为 `rv32i` 或 `rv64i`；
+- 按规范顺序追加实际启用的 `m a f d c`，只写启用项；
+- 再追加 `_zicsr_zifencei`（NPC 始终实现 CSR 与 fence.i）；
+- `riscv,isa-extensions` 列出同一组扩展；未启用项不会出现。
+
+例如 `RISCV_M/A/C/F/D` 全开得到 `rv64imafdc_zicsr_zifencei`，
+关闭 C 得到 `rv64imafd_zicsr_zifencei`，关闭 F/D 得到
+`rv64imac_zicsr_zifencei`。DTS 不再硬编码 `rv64ima`。
+
+`mmu-type` 只对标准几何生成：RV32 标准 Sv32，RV64 标准 3/4 级
+Sv39/Sv48。CUSTOM 非标准几何在普通 DTB 中省略该属性；如果
+`LINUX_BOOT_ENABLE=y`，配置契约和 DTB 生成会明确拒绝，避免把非标准
+MMU 伪装成 Linux 能识别的标准类型。
 
 单独生成/检查 DTB：
 
@@ -176,14 +207,16 @@ make sbi-test SBI_IMPL=rustsbi SBI_FDT_ENABLE=y   # RustSBI + DTB
 ```text
 OpenSBI v1.9
 ...
+Platform Timer Device      : aclint-mtimer @ 450000000Hz
+...
 Domain0 Next Address        : 0x0000000080200000
-Domain0 Next Arg1           : 0x0000000080f00000
+Domain0 Next Arg1           : 0x0000000083f00000
 Domain0 Next Mode           : S-mode
 ...
 Boot HART MIDELEG           : 0x0000000000000222
 Boot HART MEDELEG           : 0x000000000004b109
-SBI-NPC-PAYLOAD: entered S-mode via OpenSBI (a0=0x0000000000000000, a1=0x0000000080f00000)
-SBI-NPC-PAYLOAD: FDT magic=0x00000000d00dfeed totalsize=0x00000000000006be
+SBI-NPC-PAYLOAD: entered S-mode via OpenSBI (a0=0x0000000000000000, a1=0x0000000083f00000)
+SBI-NPC-PAYLOAD: FDT magic=0x00000000d00dfeed totalsize=0x000000000000076e
 SBI-NPC-PAYLOAD: FDT model=ysyx,npc
 SBI-NPC-PAYLOAD: FDT memory OK: 0x0000000080000000+0x0000000004000000
 SBI-NPC-PAYLOAD: FDT uart OK: 0x0000000010000000 irq=10
@@ -200,9 +233,10 @@ SBI-NPC-PAYLOAD: PASS
 `FDT none (a1=0)`，用于回归旧行为。`mtime` 的值随仿真运行变化；
 `spec_version=0x03000000` 表示 SBI 3.0。
 
-## 7. 无 F/D 构建
+## 7. SBI 固件 ISA 与 DTB ISA
 
-本任务的实际固件按 **无 F/D** 构建：
+SBI 固件默认仍按无 F/D 的软浮点构建，避免把固件本身绑定到某个 FPU
+后端：
 
 ```text
 ISA = rv64ima_zicsr_zifencei
@@ -210,22 +244,31 @@ ABI = lp64
 ```
 
 OpenSBI 的 `_start` 使用 `amoswap.w` 抢 boot lottery，因此 **A 扩展是
-硬性要求**；NPC 配置必须 `RISCV_A=y`。没有 F/D 也能完整构建和启动，
-`readelf -A` 显示：
+硬性要求**；NPC 配置必须 `RISCV_A=y`。默认固件的 `readelf -A` 显示：
 
 ```text
 Tag_RISCV_arch: "rv64i2p1_m2p0_a2p1_zicsr2p0_zifencei2p0_zmmul1p0_zaamo1p0_zalrsc1p0"
 ```
 
-如果后续要构建 F/D 版本（例如为 Linux 硬浮点准备），可在命令上覆盖：
+DTB 的 CPU 描述与固件 ISA 是两件事：DTB 必须准确描述 **RTL/内核**
+看到的 CPU，因此由 `CONFIG_XLEN`、`CONFIG_RISCV_M/A/C/F/D` 生成。
+`rv64_linux_defconfig` 打开 F/D/C，得到：
 
-```sh
-make sbi SBI_ISA=rv64imafdc_zicsr_zifencei SBI_ABI=lp64d
+```text
+riscv,isa = "rv64imafdc_zicsr_zifencei"
+riscv,isa-extensions = "i", "m", "a", "f", "d", "c", "zicsr", "zifencei"
+mmu-type = "riscv,sv39"
+timebase-frequency = <450000000>;   # CONFIG_SYNTH_FREQ=450
 ```
 
-但当前 NPC RTL 的 F/D 仍是 Kconfig 占位，打开会在 elaboration 明确报错；
-因此 F/D 版本只能验证编译，不能在现有 NPC 上运行。无 F/D 的
-`rv64ima` 版本是当前唯一可运行配置。
+不需要、也不允许为了实现 Linux DTB 而手工把 DTS 改成 `rv64imafdc`；
+只改 Kconfig，`make dtb` / `make linux-image` 会自动重新生成匹配的
+ISA、MMU 类型和 timebase。若 RTL 配置关闭 C/F/D，对应扩展会从
+`riscv,isa` 和 `riscv,isa-extensions` 中消失。
+
+`mmu-type` 只写标准几何：RV32 Sv32，RV64 Sv39/Sv48。CUSTOM 非标准
+页大小/级数/PTE 几何不会写成标准类型；`LINUX_BOOT_ENABLE=y` 时
+`check_kconfig_contract.py` 和 `build_dtb.sh` 都会明确失败。
 
 ## 8. NPC 平台限制与 vendor 补丁
 
@@ -248,18 +291,18 @@ CSR 行为；CPU 侧不再依赖 SBI 伪造 `mhartid`、`misa` 或 identity 值�
 
 - 单 hart；没有 IPI/HSM 多核启动能力。
 - DTB 已可通过 `SBI_FDT_ENABLE` 传递，但平台仍不解析 FDT：UART/PLIC/
-  CLINT 地址是编译期常量；Linux 使用 DTB 自行发现设备。默认
-  `SBI_FDT_ADDR=0x80f00000` 只给内核镜像留约 13 MiB，内核更大时必须
-  调整布局。
-- DTS 的 `riscv,isa` 固定为 `rv64ima_zicsr_zifencei`，没有 F/D；若后续
-  构建带 F/D 的 SBI/Linux，需要同步修改 DTS（当前任务不修改 FPU/C）。
+  CLINT 地址是编译期常量；Linux 使用 DTB 自行发现设备。
+- DTB 的 CPU 描述由 Kconfig 生成；`rv64_linux_defconfig` 是标准
+  RV64GC 描述，其他配置会生成对应 ISA。`mmu-type` 只支持标准
+  Sv32/Sv39/Sv48，CUSTOM 几何不能用于 Linux 打包。
 - `misa.S/U` 现在由 RTL 按 `HAS_S`/`HAS_U` 真实报告；若运行在旧 RTL 或
   旧 bitstream 上，仍需平台宏 `FW_ASSUME_SU_MODE` 兼容。
 - OpenSBI 的 system reset/suspend 没有平台实现；测试 payload 用 `wfi`
   循环，脚本以超时结束（124 属预期）。
-- `NPC_ACLINT_MTIMER_FREQ` 目前按 10 MHz 约定填写；NPC 的 `mtime` 实际
-  是周期计数器。若后续 Linux 对时间的精度有要求，应按仿真/综合目标
-  时钟调整 `platform/npc/platform.c` 中的频率或改为可配置参数。
+- `mtime` 是每 CPU 周期 +1 的计数器；DTB `timebase-frequency` 和
+  OpenSBI `mtime_freq` 都由 `CONFIG_SYNTH_FREQ(MHz) * 1,000,000`
+  生成（默认 450MHz），不再写死 10MHz。若修改 `SYNTH_FREQ`，需要
+  重新生成 DTB/SBI；`make sbi` 的 build tag 会随 timebase 变化。
 - xv6 不经过 SBI，仍使用 `rv64_xv6_defconfig` 直接 M 模式启动。
 
 ## 9. RustSBI 接入约定
@@ -274,8 +317,10 @@ OpenSBI。RustSBI 代理只需：
    - 输入环境变量：`SBI_ENABLE`、`SBI_IMPL`、`SBI_PLATFORM`、
      `SBI_FW_BASE`、`SBI_FW_SIZE`、`SBI_NEXT_ADDR`、`SBI_BUILD_JOBS`、
      `SBI_FDT_ENABLE`、`SBI_FDT_PATH`、`SBI_FDT_ADDR`、
-     `SBI_FDT_OUT_DIR`、`SBI_TOOLCHAIN_PREFIX`、`SBI_OUT_DIR`、
-     `SBI_PAYLOAD_PATH`、`NPC_HOME`、`WORKBENCH_HOME`；
+     `SBI_FDT_OUT_DIR`、`SBI_TIMEBASE_FREQ`、`SBI_INITRAMFS_*`、
+     `SBI_BOOTARGS`、`NPC_RAM_BASE`、`NPC_RAM_SIZE`、
+     `SBI_TOOLCHAIN_PREFIX`、`SBI_OUT_DIR`、`SBI_PAYLOAD_PATH`、
+     `NPC_HOME`、`WORKBENCH_HOME`；
    - 输出 `$SBI_OUT_DIR/fw.bin` 与 `$SBI_OUT_DIR/fw.elf`；RustSBI 当前
      输出 `rustsbi-npc.bin`/`rustsbi-npc.elf`，测试脚本按同一布局拼接；
    - 输出 `$SBI_OUT_DIR/fw.bin` 与 `$SBI_OUT_DIR/fw.elf`；
@@ -298,3 +343,58 @@ OpenSBI。RustSBI 代理只需：
 - xv6/NPC 的编译、RTL 生成和启动路径不受影响；
 - `PERF_CONFIG_SUMMARY` 会记录 `SBI_ENABLE=n;SBI_IMPL=none;...`，
   便于构建产物追溯。
+
+## 11. Linux 启动镜像打包
+
+`make rv64_linux_defconfig` 使用标准布局：
+
+```text
+0x80000000  SBI 固件 2 MiB
+0x80200000  Linux Image = SBI_NEXT_ADDR
+0x82000000  initramfs = LINUX_INITRAMFS_ADDR（可关闭）
+0x83f00000  DTB = SBI_FDT_ADDR
+0x84000000  RAM 结束
+```
+
+使用前把用户自己的 `Image` 和 `initramfs.cpio` 放到 workbench 根目录
+（或修改 Kconfig 路径），然后：
+
+```sh
+cd npc
+make rv64_linux_defconfig
+make linux-image
+```
+
+输出：
+
+```text
+npc/build/linux/linux-image.bin
+npc/build/linux/linux-image.bin.info
+npc/build/linux/linux-image.bin.sha256
+npc/build/linux/dtb/npc.dtb
+```
+
+`make linux-image` 只打包用户提供的文件，不下载、编译或运行 Linux。
+打包脚本会：
+
+- 校验 Image 的 RISC-V image header magic（`RISCV\0\0\0` / `RSC\x05`）、
+  `text_offset` 与 `SBI_NEXT_ADDR`、`image_size` 与 RAM 上限；
+- 校验 initramfs 格式（cpio/gzip/xz/zstd/lz4/bzip2/lzma）和实际大小；
+- 按 `LINUX_INITRAMFS_ADDR + 实际大小` 重新生成 DTB 的
+  `linux,initrd-start/end`；initramfs 关闭时不生成这两个属性；
+- 校验 SBI 固件内嵌 DTB 的 sha256 与当前 DTB 一致；
+- 校验 SBI 固件、Image、initramfs、DTB 互不重叠且不越过
+  `0x84000000`；任何错误都非零退出，不截断、不静默覆盖；
+- 输出 `.info` 和可直接 `sha256sum -c` 的 `.sha256`。
+
+配置矩阵测试（dummy Image/initramfs，不运行 Linux）：
+
+```sh
+cd npc
+make linux-boot-test
+make kconfig-contract-check
+```
+
+测试覆盖 RV32IMA/RV64IMA/RV64IMAFDC、关闭 C/D/F、Sv32/Sv39/Sv48、
+CUSTOM+Linux 拒绝、initramfs 地址/大小/关闭、DTB 地址变化、打包重叠/
+越界/对齐/缺失文件等负向场景。

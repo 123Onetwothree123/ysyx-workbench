@@ -3,17 +3,20 @@
  *
  * 该文件由 npc/scripts/build_dtb.sh 先用 cpp 展开宏，再交给 dtc 编译。
  * 直接执行 `dtc -I dts -O dtb npc/dts/npc.dts` 会因为下面的 #define/
- * #ifndef 而失败；请使用 `make dtb` 或脚本，保证 DTB 中的地址与
- * CONFIG_SBI_* 和 NPC 固定内存映射一致。
+ * #ifndef 而失败；请使用 `make dtb` 或脚本，保证 DTB 中的地址、ISA、
+ * MMU 类型和 timebase 与 .config 一致。
  *
- * 默认布局（可用 cpp -D 覆盖，构建脚本会按 Kconfig 传入）：
- *   RAM      0x80000000 + 64 MiB
- *   SBI FW   0x80000000 + 2 MiB
- *   next     0x80200000（Linux Image / 测试 payload 的 S 模式入口）
- *   FDT      0x80f00000（SBI 传递给 next-stage 的 a1）
+ * 布局宏默认对应 NPC 标准 Linux 布局，实际值由 build_dtb.sh 按
+ * CONFIG_SBI_* / CONFIG_LINUX_* 传入：
+ *   RAM       0x80000000 + 64 MiB
+ *   SBI FW    0x80000000 + 2 MiB
+ *   Image     0x80200000（SBI_NEXT_ADDR，Linux S 模式入口）
+ *   initramfs 0x82000000（可关闭）
+ *   FDT       0x83f00000（SBI_FDT_ADDR，a1 指向这里）
  *
- * 注意：本 DTS 不描述 F/D 扩展；CPU ISA 与当前 SBI 固件保持一致，
- * 使用 rv64ima_zicsr_zifencei。
+ * CPU 描述不是硬编码：riscv,isa、riscv,isa-extensions、mmu-type 和
+ * timebase-frequency 都由 Kconfig 生成。标准 RV64GC Linux 配置会得到
+ * rv64imafdc_zicsr_zifencei；关闭 F/D/C 时对应扩展会从字符串中消失。
  */
 
 #ifndef NPC_RAM_BASE
@@ -47,13 +50,46 @@
 #endif
 
 #ifndef SBI_FDT_ADDR
-#define SBI_FDT_ADDR 0x80f00000
+#define SBI_FDT_ADDR 0x83f00000
 #endif
 #ifndef SBI_FDT_ADDR_NAME
-#define SBI_FDT_ADDR_NAME 80f00000
+#define SBI_FDT_ADDR_NAME 83f00000
 #endif
 #ifndef SBI_FDT_RESERVE_SIZE
 #define SBI_FDT_RESERVE_SIZE 0x00010000
+#endif
+
+/* CPU 描述：build_dtb.sh 从 .config 生成，默认值与 RV64IMA 一致。 */
+#ifndef NPC_RISCV_ISA
+#define NPC_RISCV_ISA "rv64ima_zicsr_zifencei"
+#endif
+#ifndef NPC_RISCV_ISA_BASE
+#define NPC_RISCV_ISA_BASE "rv64i"
+#endif
+#ifndef NPC_RISCV_ISA_EXTENSIONS
+#define NPC_RISCV_ISA_EXTENSIONS "i", "m", "a", "zicsr", "zifencei"
+#endif
+#ifndef NPC_MMU_TYPE
+#define NPC_MMU_TYPE "riscv,sv39"
+#endif
+#ifndef NPC_MMU_TYPE_VALID
+#define NPC_MMU_TYPE_VALID 1
+#endif
+#ifndef NPC_TIMEBASE_FREQ
+/* mtime 每个 CPU 周期 +1；默认 SYNTH_FREQ=450MHz。 */
+#define NPC_TIMEBASE_FREQ 450000000
+#endif
+#ifndef NPC_BOOTARGS
+#define NPC_BOOTARGS "console=ttyS0,115200 earlycon=sbi"
+#endif
+#ifndef SBI_INITRAMFS_ADDR
+#define SBI_INITRAMFS_ADDR 0x82000000
+#endif
+#ifndef SBI_INITRAMFS_SIZE
+#define SBI_INITRAMFS_SIZE 0
+#endif
+#ifndef SBI_INITRAMFS_END
+#define SBI_INITRAMFS_END (SBI_INITRAMFS_ADDR + SBI_INITRAMFS_SIZE)
 #endif
 
 /dts-v1/;
@@ -65,24 +101,46 @@
 	model = "ysyx,npc";
 
 	chosen {
-		/* Linux 控制台：SBI 早期控制台 + 8250 UART。 */
-		bootargs = "console=ttyS0,115200 earlycon=sbi";
+		/* 由 CONFIG_LINUX_BOOTARGS 生成；SBI 早期控制台 + 8250 UART。 */
+		bootargs = NPC_BOOTARGS;
 		stdout-path = "/soc/serial@10000000";
+#if SBI_INITRAMFS_SIZE > 0
+		/* Linux 标准 initrd 属性；关闭 initramfs 时不生成。 */
+		linux,initrd-start = <0x0 SBI_INITRAMFS_ADDR>;
+		linux,initrd-end = <0x0 SBI_INITRAMFS_END>;
+#endif
 	};
 
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
-		timebase-frequency = <10000000>;
+		/*
+		 * mtime 每个 CPU 周期 +1，因此这里必须等于 SYNTH_FREQ（MHz）
+		 * 换算后的 Hz，而不是固定 10MHz。build_dtb.sh 派生该值，
+		 * OpenSBI NPC 平台的 mtime_freq 使用同一个数。
+		 */
+		timebase-frequency = <NPC_TIMEBASE_FREQ>;
 
 		cpu@0 {
 			device_type = "cpu";
 			compatible = "riscv";
 			reg = <0>;
 			status = "okay";
-			/* 不声明 F/D；与当前 SBI 固件和 NPC 默认 RTL 配置一致。 */
-			riscv,isa = "rv64ima_zicsr_zifencei";
-			mmu-type = "riscv,sv39";
+			/*
+			 * 由 CONFIG_XLEN / CONFIG_RISCV_M/A/C/F/D 生成；
+			 * 标准顺序为 rv{32,64}i + m a f d c + _zicsr_zifencei。
+			 * 只写实际启用的扩展，不硬编码 rv64ima。
+			 */
+			riscv,isa = NPC_RISCV_ISA;
+			riscv,isa-base = NPC_RISCV_ISA_BASE;
+			riscv,isa-extensions = NPC_RISCV_ISA_EXTENSIONS;
+#if NPC_MMU_TYPE_VALID
+			/*
+			 * 仅标准 Sv32/Sv39/Sv48 写 mmu-type；
+			 * CUSTOM 非标准几何在 DTB 中省略，Linux 打包会明确拒绝。
+			 */
+			mmu-type = NPC_MMU_TYPE;
+#endif
 
 			cpu0_intc: interrupt-controller {
 				#interrupt-cells = <1>;
@@ -110,7 +168,11 @@
 			interrupts-extended = <&cpu0_intc 3 &cpu0_intc 7>;
 		};
 
-		/* PLIC：source 1..31，UART 使用 source 10。 */
+		/*
+		 * PLIC：source 编号 0..31（0 保留），UART 使用 source 10。
+		 * 同时实现 M context 0（enable 0x2000 / claim 0x200000）和
+		 * S context 1（enable 0x2080 / claim 0x201000）。
+		 */
 		plic: interrupt-controller@c000000 {
 			compatible = "riscv,plic0";
 			reg = <0x0 0x0c000000 0x0 0x04000000>;
@@ -120,7 +182,11 @@
 			interrupts-extended = <&cpu0_intc 11 &cpu0_intc 9>;
 		};
 
-		/* 16550 兼容 UART，只有 TX 在 NPC 上真正实现。 */
+		/*
+		 * 16550 兼容 UART：TX 打印到仿真 stdout，RX 由仿真顶层注入
+		 * 到接收 FIFO；LSR.THRE/TEMT 有真实仿真时序，RX 数据可用和
+		 * THRE 都通过 source 10 的电平中断接到 PLIC。
+		 */
 		serial@10000000 {
 			compatible = "ns16550a";
 			reg = <0x0 0x10000000 0x0 0x00000100>;
@@ -134,11 +200,13 @@
 	};
 
 	/*
-	 * 保留区按 SBI 配置生成：
+	 * 保留区按 SBI/Kconfig 配置生成：
 	 *   - SBI 固件区标记 no-map，Linux 不能把它当普通 RAM 使用；
 	 *   - next-stage/FDT 只声明占用范围，不标记 no-map，避免影响内核
 	 *     自身的镜像映射；Linux 还会通过 early_init_fdt_reserve_self()
 	 *     再次保留 DTB。
+	 * initramfs 不在这里声明保留区：它由 /chosen 的
+	 * linux,initrd-start/end 描述，内核会自行保留。
 	 */
 	reserved-memory {
 		#address-cells = <2>;

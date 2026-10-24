@@ -52,4 +52,7 @@ make sbi-test
 ```
 
 DTB 源文件在 `npc/dts/npc.dts`，默认加载/传递地址
-`SBI_FDT_ADDR=0x80f00000`；`make dtb` 可单独生成到 `build/dtb/`。
+`SBI_FDT_ADDR=0x80f00000`；标准 Linux 布局使用 `0x83f00000`。
+CPU ISA、`mmu-type` 和 timebase 由 Kconfig 自动生成，`make dtb`
+可单独生成到 `build/dtb/`。Linux Image/initramfs 打包见
+`make rv64_linux_defconfig && make linux-image`（不会下载/编译 Linux）。

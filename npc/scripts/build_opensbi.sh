@@ -45,6 +45,15 @@ SBI_BUILD_JOBS="${SBI_BUILD_JOBS:-0}"
 SBI_FDT_ENABLE="${SBI_FDT_ENABLE:-n}"
 SBI_FDT_PATH="${SBI_FDT_PATH:-dts/npc.dts}"
 SBI_FDT_ADDR="${SBI_FDT_ADDR:-0x80f00000}"
+SBI_TIMEBASE_FREQ="${SBI_TIMEBASE_FREQ:-}"
+SBI_FDT_LINUX="${SBI_FDT_LINUX:-}"
+SBI_INITRAMFS_ENABLE="${SBI_INITRAMFS_ENABLE:-}"
+SBI_INITRAMFS_PATH="${SBI_INITRAMFS_PATH:-}"
+SBI_INITRAMFS_ADDR="${SBI_INITRAMFS_ADDR:-}"
+SBI_BOOTARGS="${SBI_BOOTARGS:-}"
+NPC_RAM_BASE="${NPC_RAM_BASE:-0x80000000}"
+NPC_RAM_SIZE="${NPC_RAM_SIZE:-0x04000000}"
+NPC_CONFIG_FILE="${NPC_CONFIG_FILE:-$NPC_HOME/.config}"
 SBI_TOOLCHAIN_PREFIX="${SBI_TOOLCHAIN_PREFIX:-riscv64-unknown-elf-}"
 SBI_ISA="${SBI_ISA:-rv64ima_zicsr_zifencei}"
 SBI_ABI="${SBI_ABI:-lp64}"
@@ -76,6 +85,25 @@ parse_int() {
 	fi
 	printf '%d' "$((value))"
 }
+
+cfg_value() {
+	local key="$1" default="$2" value
+	if [[ -f "$NPC_CONFIG_FILE" ]]; then
+		value="$(sed -n "s/^${key}=//p" "$NPC_CONFIG_FILE" | tail -n 1)"
+	fi
+	value="${value%\"}"
+	value="${value#\"}"
+	if [[ -z "$value" ]]; then
+		printf '%s' "$default"
+	else
+		printf '%s' "$value"
+	fi
+}
+
+# mtime 每个 CPU 周期 +1；频率由 CONFIG_SYNTH_FREQ 推导，并与 DTB
+# timebase-frequency 共用同一个值。显式环境变量优先（测试/命令行覆盖）。
+SYNTH_FREQ="$(parse_int CONFIG_SYNTH_FREQ "$(cfg_value CONFIG_SYNTH_FREQ 450)")"
+SBI_TIMEBASE_FREQ="$(parse_int SBI_TIMEBASE_FREQ "${SBI_TIMEBASE_FREQ:-$((SYNTH_FREQ * 1000000))}")"
 
 [[ "$SBI_ENABLE" == "y" ]] || die \
 	"SBI_ENABLE=$SBI_ENABLE，SBI 固件未启用。请先运行 'make rv64_sbi_defconfig' 或 'make menuconfig' 打开 SBI。"
@@ -165,7 +193,16 @@ case "$SBI_FDT_ENABLE" in
 		SBI_FW_BASE="0x$(printf '%x' "$BASE")" \
 		SBI_FW_SIZE="0x$(printf '%x' "$SIZE")" \
 		SBI_NEXT_ADDR="0x$(printf '%x' "$NEXT")" \
+		SBI_TIMEBASE_FREQ="$SBI_TIMEBASE_FREQ" \
+		SBI_FDT_LINUX="$SBI_FDT_LINUX" \
+		SBI_INITRAMFS_ENABLE="$SBI_INITRAMFS_ENABLE" \
+		SBI_INITRAMFS_PATH="$SBI_INITRAMFS_PATH" \
+		SBI_INITRAMFS_ADDR="$SBI_INITRAMFS_ADDR" \
+		SBI_BOOTARGS="$SBI_BOOTARGS" \
+		NPC_RAM_BASE="$NPC_RAM_BASE" \
+		NPC_RAM_SIZE="$NPC_RAM_SIZE" \
 		NPC_HOME="$NPC_HOME" \
+		WORKBENCH_HOME="$WORKBENCH_HOME" \
 			"$HERE/build_dtb.sh"
 		DTB_PATH="$SBI_FDT_OUT_DIR/npc.dtb"
 		[[ -f "$DTB_PATH" ]] || die "DTB 构建脚本未生成 $DTB_PATH"
@@ -190,10 +227,10 @@ mkdir -p "$SBI_OUT_DIR"
 # OpenSBI 的 Kbuild 不跟踪命令行 -D 宏变化；FDT 开关/地址/路径变化时
 # 必须换 build 目录，否则会复用上一次带 FW_FDT_PATH 的 fw_*.o。
 if [[ "$SBI_FDT_ENABLE" == "y" ]]; then
-	FDT_TAG="fdt-$(printf '%s\n' "$SBI_PLATFORM|$SBI_FW_BASE|$SBI_FW_SIZE|$SBI_NEXT_ADDR|$SBI_ISA|$SBI_ABI|$SBI_FDT_PATH|$SBI_FDT_ADDR|$SBI_PAYLOAD_PATH" |
+	FDT_TAG="fdt-$(printf '%s\n' "$SBI_PLATFORM|$SBI_FW_BASE|$SBI_FW_SIZE|$SBI_NEXT_ADDR|$SBI_ISA|$SBI_ABI|$SBI_FDT_PATH|$SBI_FDT_ADDR|$SBI_PAYLOAD_PATH|$SBI_TIMEBASE_FREQ|$SBI_FDT_LINUX|$SBI_INITRAMFS_ENABLE|$SBI_INITRAMFS_PATH|$SBI_INITRAMFS_ADDR|$SBI_BOOTARGS|$NPC_RAM_BASE|$NPC_RAM_SIZE" |
 		sha256sum | cut -c1-8)"
 else
-	FDT_TAG="nofdt-$(printf '%s\n' "$SBI_PLATFORM|$SBI_FW_BASE|$SBI_FW_SIZE|$SBI_NEXT_ADDR|$SBI_ISA|$SBI_ABI|$SBI_PAYLOAD_PATH" |
+	FDT_TAG="nofdt-$(printf '%s\n' "$SBI_PLATFORM|$SBI_FW_BASE|$SBI_FW_SIZE|$SBI_NEXT_ADDR|$SBI_ISA|$SBI_ABI|$SBI_PAYLOAD_PATH|$SBI_TIMEBASE_FREQ" |
 		sha256sum | cut -c1-8)"
 fi
 BUILD_DIR="$SBI_OUT_DIR/opensbi-build-$MODE-$FDT_TAG"
@@ -213,6 +250,7 @@ CMD=(
 	"PLATFORM_RISCV_ABI=$SBI_ABI"
 	"PLATFORM_RISCV_ISA=$SBI_ISA"
 	"FW_TEXT_START=0x$(printf '%x' "$BASE")"
+	"NPC_MTIME_FREQ=$SBI_TIMEBASE_FREQ"
 	"${LD_ARGS[@]}"
 	"${FW_ARGS[@]}"
 	-j"$JOBS"
@@ -256,7 +294,9 @@ fi
 		echo "fdt_path=$DTB_PATH"
 		echo "fdt_addr=0x$(printf '%x' "$FDT_ADDR_NUM")"
 		echo "fdt_bytes=$(stat -c '%s' "$DTB_PATH")"
+		echo "fdt_sha256=$(sha256sum "$DTB_PATH" | cut -d' ' -f1)"
 	fi
+	echo "timebase_freq=$SBI_TIMEBASE_FREQ"
 	echo "isa=$SBI_ISA"
 	echo "abi=$SBI_ABI"
 	echo "build_jobs=$JOBS"

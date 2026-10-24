@@ -3,7 +3,7 @@
  * NPC（ysyx-workbench）OpenSBI 平台适配。
  *
  * 固定内存映射：
- *   UART  0x10000000  (8250 兼容，只实现 TX)
+ *   UART  0x10000000  (8250 兼容，TX 轮询发送；NPC 模型也实现 RX FIFO)
  *   CLINT 0x02000000  (MTIMER；MSIP 未实现，不注册 IPI 设备)
  *   PLIC  0x0c000000  (单 hart，M context 0 / S context 1)
  *   RAM   0x80000000  (direct-NPC 默认 64 MiB)
@@ -31,7 +31,15 @@
 #define NPC_UART_BAUDRATE		115200UL
 
 #define NPC_CLINT_ADDR			0x02000000UL
-#define NPC_ACLINT_MTIMER_FREQ		10000000UL
+/*
+ * NPC 的 mtime 每个 CPU 周期 +1，实际增量频率等于综合目标频率
+ * SYNTH_FREQ(MHz)。构建脚本通过 NPC_MTIME_FREQ 传入该值，并与 DTB
+ * timebase-frequency 保持一致；不要再写死 10MHz。
+ */
+#ifndef NPC_MTIME_FREQ
+#define NPC_MTIME_FREQ			450000000UL
+#endif
+#define NPC_ACLINT_MTIMER_FREQ		((unsigned long)NPC_MTIME_FREQ)
 
 #define NPC_PLIC_ADDR			0x0c000000UL
 #define NPC_PLIC_SIZE			0x04000000UL
