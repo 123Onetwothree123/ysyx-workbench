@@ -216,6 +216,11 @@ DUT::DUT()
     {
         checkpoint_file = value;
     }
+    if (const char *value{std::getenv("NPC_CHECKPOINT_MARKER")};
+        value != nullptr && *value != '\0')
+    {
+        checkpoint_marker = value;
+    }
     if (const char *value{std::getenv("NPC_CHECKPOINT_CONTINUE")};
         value != nullptr)
     {
@@ -284,6 +289,39 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
 #endif
 }
 #ifdef CONFIG_VERILATOR_SAVABLE
+bool DUT::SaveCheckpointNow()
+{
+    if (checkpoint_file.empty())
+    {
+        std::println(std::cerr, "检查点触发但 NPC_CHECKPOINT_FILE 为空");
+        final();
+        std::_Exit(1);
+    }
+    const auto begin{std::chrono::steady_clock::now()};
+    auto result{SaveCheckpoint(checkpoint_file)};
+    const auto end{std::chrono::steady_clock::now()};
+    if (!result)
+    {
+        std::println(std::cerr, "检查点保存失败：{}", result.error());
+    }
+    else
+    {
+        std::error_code error;
+        const auto bytes{std::filesystem::file_size(checkpoint_file, error)};
+        std::println(std::cerr,
+                     "检查点已保存: {} cycle={} bytes={} elapsed_ms={}",
+                     checkpoint_file.string(), cycle, error ? 0 : bytes,
+                     std::chrono::duration_cast<std::chrono::milliseconds>(
+                         end - begin)
+                         .count());
+    }
+    if (!checkpoint_continue)
+    {
+        final();
+        std::_Exit(result ? 0 : 1);
+    }
+    return result.has_value();
+}
 std::expected<void, std::string>
 DUT::SaveCheckpoint(const std::filesystem::path &path)
 {
@@ -523,32 +561,28 @@ void DUT::step()
     if (checkpoint_cycle && cycle == *checkpoint_cycle &&
         !checkpoint_file.empty())
     {
-        const auto begin{std::chrono::steady_clock::now()};
-        auto result{SaveCheckpoint(checkpoint_file)};
-        const auto end{std::chrono::steady_clock::now()};
-        if (!result)
-        {
-            std::println(std::cerr, "检查点保存失败：{}", result.error());
-        }
-        else
-        {
-            std::error_code error;
-            const auto bytes{std::filesystem::file_size(checkpoint_file, error)};
-            std::println(std::cerr,
-                         "检查点已保存: {} cycle={} bytes={} elapsed_ms={}",
-                         checkpoint_file.string(), cycle,
-                         error ? 0 : bytes,
-                         std::chrono::duration_cast<std::chrono::milliseconds>(
-                             end - begin)
-                             .count());
-        }
         checkpoint_cycle.reset();
-        if (!checkpoint_continue)
+        SaveCheckpointNow();
+    }
+#ifdef VRISCV32E_NPC
+    // UART TX 的 host 可见副本用于按 console marker 精确定位检查点。
+    // 只保留 marker 长度 + 1 个字符，避免长期运行累积字符串。
+    if (!checkpoint_marker.empty() && static_cast<bool>(dut->uart_tx_valid))
+    {
+        uart_marker_buffer.push_back(
+            static_cast<char>(static_cast<unsigned>(dut->uart_tx_data)));
+        if (uart_marker_buffer.size() > checkpoint_marker.size())
         {
-            final();
-            std::_Exit(result ? 0 : 1);
+            uart_marker_buffer.erase(0, 1);
+        }
+        if (uart_marker_buffer == checkpoint_marker)
+        {
+            std::println(std::cerr, "UART marker 命中: {}", checkpoint_marker);
+            checkpoint_marker.clear();
+            SaveCheckpointNow();
         }
     }
+#endif
 #endif
 #ifdef VRISCV32E_NPC
     if (fork_cycle && cycle == *fork_cycle)

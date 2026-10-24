@@ -13,6 +13,18 @@ make VERILATOR_SAVABLE=y BUILD_DIR=build-cp \
   -j"$(nproc)" build-cp/ysyx_26030103_npc
 ```
 
+也可以按 UART 输出 marker 精确定位（推荐用户态检查点）：
+
+```sh
+NPC_CHECKPOINT_MARKER=NPC_USER_READY \
+NPC_CHECKPOINT_FILE=/home/abc/ysyx-workbench/npc/checkpoints/npc-user/cp-user.bin \
+  build-cp/ysyx_26030103_npc ... --batch
+```
+
+marker 由 AXIRAM 的 UART TX 字节流在 C++ 侧匹配；保存后默认退出。
+用户态 fastfetch initramfs 在打印 `NPC_USER_READY` 后阻塞等待串口输入，
+因此检查点正好落在 fastfetch 尚未执行的位置。
+
 在指定周期保存（保存后默认退出）：
 
 ```sh

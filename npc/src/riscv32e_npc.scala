@@ -24,6 +24,8 @@ class riscv32e_npc_AXIRAM(val ramBytes: Long = 64L * 1024L * 1024L) extends Modu
     val uartRxValid = Input(Bool())
     val uartRxData = Input(UInt(8.W))
     val uartRxReady = Output(Bool())
+    val uartTxValid = Output(Bool())
+    val uartTxData = Output(UInt(8.W))
     val uartIrq = Output(Bool())
   })
 
@@ -185,6 +187,8 @@ class riscv32e_npc_AXIRAM(val ramBytes: Long = 64L * 1024L * 1024L) extends Modu
   // AXI 字节通道由地址低两位选择；xv6 的 UART 寄存器都是单字节访问。
   uart.io.wrData := (wData >> (awAddr(1, 0) << 3))(7, 0)
   io.uartRxReady := uart.io.rxReady
+  io.uartTxValid := uart.io.txValid
+  io.uartTxData := uart.io.txData
   io.uartIrq := uart.io.irq
 
   when(awFire) {

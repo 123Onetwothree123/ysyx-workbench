@@ -58,7 +58,10 @@ private:
 #ifdef CONFIG_VERILATOR_SAVABLE
     std::optional<std::size_t> checkpoint_cycle;
     std::filesystem::path checkpoint_file;
+    std::string checkpoint_marker;
+    std::string uart_marker_buffer;
     bool checkpoint_continue{false};
+    bool SaveCheckpointNow();
 #endif
 #ifdef VRISCV32E_NPC
     std::optional<std::size_t> fork_cycle;

@@ -50,6 +50,10 @@ class ysyx_26030103_UART16550(
     val wrAddr = Input(UInt(AddressWidth.W))
     val wrEn = Input(Bool())
     val wrData = Input(UInt(8.W))
+    // THR 写入的 host 可见副本。仅用于仿真器 marker/检查点触发，
+    // 不改变 16550 的 TX 行为。
+    val txValid = Output(Bool())
+    val txData = Output(UInt(8.W))
     // 电平中断，接到 PLIC source 10。
     val irq = Output(Bool())
   })
@@ -62,6 +66,8 @@ class ysyx_26030103_UART16550(
   val ier = RegInit(0.U(4.W))
   val fcr = RegInit(0.U(8.W))
   val lcr = RegInit(0.U(8.W))
+  io.txValid := io.wrEn && wrOffset === 0.U && !lcr(7)
+  io.txData := io.wrData
   val mcr = RegInit(0.U(8.W))
   val scr = RegInit(0.U(8.W))
   val divisorLow = RegInit(0.U(8.W))

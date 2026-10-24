@@ -46,3 +46,6 @@ HDLcode/**/obj_dir/
 /vendor/**/.bsp/
 /vendor/**/obj_dir/
 
+
+# 实验/检查点构建目录不纳入版本管理
+/npc/build-*/

@@ -1,5 +1,6 @@
 *.*
 *
+/build-*/
 !*/
 !Makefile
 !*.mk
@@ -73,3 +74,6 @@ gcm.cache/
 # NPC 设备树源文件（生成的 DTB 在 build/ 下，不跟踪）
 !/dts/
 !/dts/**/*
+
+# 检查点/实验构建目录不纳入版本管理
+/build-*/**
