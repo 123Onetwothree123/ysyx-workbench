@@ -4,6 +4,9 @@
 
 void do_syscall(Context *c);
 
+// 真实发生的时钟中断次数，用于验证抢占频率和时间片数量。
+static unsigned long timer_irq_count = 0;
+
 static Context *do_event(Event e, Context *c)
 {
   switch (e.event)
@@ -11,6 +14,11 @@ static Context *do_event(Event e, Context *c)
   case EVENT_YIELD:
     return schedule(c);
   case EVENT_IRQ_TIMER:
+    // 时钟中断不依赖用户进程主动 yield：AM 把 S 模式 STIP 打包成
+    // EVENT_IRQ_TIMER 后，这里直接轮转 PCB。
+    timer_irq_count ++;
+    Log("[preempt] timer irq #%lu: pid %d -> schedule",
+        timer_irq_count, current == NULL ? -1 : current->pid);
     return schedule(c);
   case EVENT_SYSCALL:
     // 用户进程调用 yield 时直接调度，避免在内核态再次陷入造成嵌套上下文。

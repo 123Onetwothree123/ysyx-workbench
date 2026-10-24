@@ -1,10 +1,11 @@
 #include <common.h>
 
-#if defined(MULTIPROGRAM) && !defined(TIME_SHARING)
-# define MULTIPROGRAM_YIELD() yield()
-#else
-# define MULTIPROGRAM_YIELD()
-#endif
+/*
+ * PA4.4：设备访问不再插入协作式 yield()。
+ * 时钟中断会在任意用户指令边界抢占当前进程，因此串口/键盘等设备
+ * 操作不需要伪装成调度点；保留 MULTIPROGRAM_YIELD 宏反而会破坏
+ * “抢占”的语义。
+ */
 
 #define NAME(key) \
   [AM_KEY_##key] = #key,

@@ -50,8 +50,11 @@ CONFIG_TLB_REFILL_PORTS=1
 
 CONFIG_HAS_S_TIMER_IRQ=y
 CONFIG_HAS_S_EXTERNAL_IRQ=y
-CONFIG_TIMER_CLINT_MTIP=y
-CONFIG_TIMER_PATH="clint_mtip"
+# Nanos-lite 直接运行在 S 模式，没有 M 模式 SBI 把 MTIP 转换成 STIP。
+# 因此 CLINT 的 mtime>=mtimecmp 事件直接映射为 mip.STIP，经
+# mie.STIE + mideleg.STIP 委托给 S 模式（scause=5）。
+CONFIG_TIMER_DIRECT_STIP=y
+CONFIG_TIMER_PATH="direct_stip"
 CONFIG_PLIC_SOURCES=32
 CONFIG_PLIC_PRIORITY_BITS=3
 CONFIG_PLIC_MAX_PRIORITY=7
@@ -91,8 +94,10 @@ CONFIG_HAS_CSR_STVAL=y
 CONFIG_HAS_CSR_SATP=y
 CONFIG_HAS_CSR_SCOUNTEREN=y
 
-# Nanos-lite / Navy-apps 的 riscv32e 用户程序使用 RV32EM。
+# Nanos-lite / Navy-apps 的 rv32g/ilp32 用户程序包含 I/M/A，使用 RV32IMA。
+# 不启用 C/F/D：现有用户镜像没有压缩/浮点指令，NPC 默认也不生成这些单元。
 CONFIG_RISCV_M=y
+CONFIG_RISCV_A=y
 CONFIG_ICACHE=y
 CONFIG_DCACHE=y
 CONFIG_SDB=n

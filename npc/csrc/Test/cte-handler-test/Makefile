@@ -1,6 +1,6 @@
 NAME = cte-handler-test
-SRCS = main.cpp
+SRCS = main.c
 
 include $(AM_HOME)/Makefile
 
-override CXXFLAGS += -std=c++17 -D_GLIBCXX_ASSERTIONS
+override CFLAGS += -std=gnu11

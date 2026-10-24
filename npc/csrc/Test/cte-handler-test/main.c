@@ -1,26 +1,22 @@
 #include <am.h>
 #include <klib.h>
 
-namespace {
+static volatile int observed_event = EVENT_NULL;
+static int failures = 0;
 
-volatile int observed_event = Event::EVENT_NULL;
-int failures = 0;
-
-Context *handle_event(Event event, Context *context) {
+static Context *handle_event(Event event, Context *context) {
   observed_event = event.event;
   return context;
 }
 
-void check(const char *name, bool condition) {
+static void check(const char *name, bool condition) {
   printf("[%s] %s\n", name, condition ? "PASS" : "FAIL");
   if (!condition) {
     ++failures;
   }
 }
 
-} // namespace
-
-int main() {
+int main(void) {
   check("cte-init", cte_init(handle_event));
 
   iset(false);
@@ -29,9 +25,9 @@ int main() {
   check("interrupt-enable", ienabled());
   iset(false);
 
-  observed_event = Event::EVENT_NULL;
+  observed_event = EVENT_NULL;
   yield();
-  check("yield-handler", observed_event == Event::EVENT_YIELD);
+  check("yield-handler", observed_event == EVENT_YIELD);
 
   printf("CTE HANDLER TEST %s\n", failures == 0 ? "PASS" : "FAIL");
   return failures == 0 ? 0 : 1;

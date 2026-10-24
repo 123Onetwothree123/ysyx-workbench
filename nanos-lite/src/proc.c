@@ -70,10 +70,20 @@ void init_proc() {
 
   Log("Initializing processes...");
 
-  context_uload(&pcb[0], "/bin/pal", NULL, NULL);
+  /*
+   * PA4.4 的两个用户进程。
+   *
+   * 讲义示例使用 /bin/pal + /bin/hello；本仓库没有 pal-navy 的
+   * 源码和游戏数据，无法生成真实的 pal 镜像，因此使用两个等价的
+   * 无限循环用户程序：
+   *   - /bin/hello 持续打印 Hello World；
+   *   - /bin/spin  持续做普通循环并周期打印，从不调用 yield。
+   * 两者都由 S 模式时钟中断抢占，日志交替出现即可证明时间片轮转。
+   */
+  context_uload(&pcb[0], "/bin/hello", NULL, NULL);
   pcb[0].pid = 1;
 
-  context_uload(&pcb[1], "/bin/hello", NULL, NULL);
+  context_uload(&pcb[1], "/bin/spin", NULL, NULL);
   pcb[1].pid = 2;
 }
 

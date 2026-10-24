@@ -648,7 +648,10 @@ class ysyx_26030103_CSR(
   addCsr(CSR_MEDELEG, Widen32(Medeleg_rdata), csrOn(0x302))
   addCsr(CSR_MIDELEG, Widen32(Mideleg_rdata), csrOn(0x303))
   addCsr(CSR_MIE, Widen32(Mie), csrOn(0x304))
-  addCsr(CSR_MIP, Widen32(Mip), csrOn(0x344))
+  // mip 读口必须包含 CLINT/PLIC 实时拉起的 pending 位，不能只返回
+  // 软件可写寄存器 Mip。否则 M 模式读取 mip 时看不到 MTIP，S 模式
+  // 通过 mip 观察 STIP 的路径也会与 sip 不一致。
+  addCsr(CSR_MIP, Widen32(MipState), csrOn(0x344))
   addCsr(CSR_SIE, Widen32(SieState), csrOn(0x104))
   addCsr(CSR_SIP, Widen32(SipState), csrOn(0x144))
   addCsr(CSR_SCOUNTEREN, Widen32(Scounteren_rdata), csrOn(0x106))

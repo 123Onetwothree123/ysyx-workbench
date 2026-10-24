@@ -14,8 +14,10 @@ Context *__am_irq_handle(Context *c)
   if (user_handler)
   {
     Event ev = {0};
-    if (c->mcause & 0x80000000u) {
-      // 目前只接入时钟中断。
+    // 中断位在 RV32 是 mcause[31]，在 RV64 是 mcause[63]。
+    // 不能只判断低 32 位，否则 RV64 下会把时钟中断误当成异常。
+    if (c->mcause >> (__riscv_xlen - 1)) {
+      // 目前只接入时钟中断（S 模式 STIP，cause=5）。
       ev.event = EVENT_IRQ_TIMER;
     } else {
       switch (c->mcause)
@@ -118,9 +120,18 @@ void yield()
 
 bool ienabled()
 {
-  return false;
+  // 内核运行在 S 模式，全局中断使能位是 sstatus.SIE。
+  uintptr_t sstatus;
+  asm volatile("csrr %0, sstatus" : "=r"(sstatus));
+  return (sstatus & MSTATUS_SIE) != 0;
 }
 
 void iset(bool enable)
 {
+  // 只切换 SIE，保留 SPIE/SPP/SUM/MXR 等上下文相关字段。
+  if (enable) {
+    asm volatile("csrs sstatus, %0" : : "r"((uintptr_t)MSTATUS_SIE) : "memory");
+  } else {
+    asm volatile("csrc sstatus, %0" : : "r"((uintptr_t)MSTATUS_SIE) : "memory");
+  }
 }

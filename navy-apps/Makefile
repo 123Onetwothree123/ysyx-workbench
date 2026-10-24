@@ -177,8 +177,15 @@ $(CLEAN_ALL):
 .PHONY: clean-all $(CLEAN_ALL)
 
 ### Build fsimg and ramdisk for Nanos-lite
+# pal-navy 是外部仓库（apps/pal/repo），部分离线 worktree 中不存在。
+# 缺失时不要把 pal 放进 ramdisk 依赖，否则整个 fsimg 无法构建；
+# Nanos-lite 的 PA4.4 测试使用 hello + spin 两个等价的用户进程。
+ifneq ($(wildcard apps/pal/repo/include/palcommon.h),)
 APPS = pal
-TESTS = dummy hello file-test bmp-test event-test timer-test sdl-test malloc-test
+else
+APPS =
+endif
+TESTS = dummy hello file-test bmp-test event-test timer-test spin sdl-test malloc-test
 
 fsimg: $(addprefix apps/, $(APPS)) $(addprefix tests/, $(TESTS))
 	-for t in $^; do $(MAKE) -s -C $(NAVY_HOME)/$$t install; done

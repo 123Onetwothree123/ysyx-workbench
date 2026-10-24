@@ -17,6 +17,13 @@ static Context *(*user_handler)(Event, Context *) = NULL;
 
 extern void __am_get_cur_as(Context *c);
 extern void __am_switch(Context *c);
+// CLINT 的 mtimecmp 需要软件在每次中断后重新装载。
+extern void __am_timer_set_next(void);
+
+// 去掉中断位后的异常/中断 cause。
+static inline uintptr_t irq_cause(Context *c) {
+  return c->mcause & ~((uintptr_t)1 << (__riscv_xlen - 1));
+}
 
 Context *__am_irq_handle(Context *c) {
   __am_get_cur_as(c);
@@ -25,8 +32,16 @@ Context *__am_irq_handle(Context *c) {
     Event ev = {0};
     // RV64 的中断位是 scause[63]，不能继续用 32 位掩码判断。
     if (c->mcause >> (__riscv_xlen - 1)) {
-      // 目前只接入时钟中断（cause=5）。
-      ev.event = EVENT_IRQ_TIMER;
+      // direct-NPC 的 CLINT 走 S 模式 STIP，cause=5。
+      if (irq_cause(c) == 5) {
+        ev.event = EVENT_IRQ_TIMER;
+        // 先重新装载 mtimecmp，再返回被抢占的上下文；否则 STIP 会
+        // 一直保持高电平，sret 后会立即重复进入同一个中断。
+        __am_timer_set_next();
+      } else {
+        // 其余中断（例如 PLIC 外部中断）交给 AM 的通用设备事件。
+        ev.event = EVENT_IRQ_IODEV;
+      }
     } else {
       switch (c->mcause) {
       case 8:
@@ -87,6 +102,10 @@ bool cte_init(Context *(*handler)(Event, Context *)) {
   // 注册事件处理函数。
   user_handler = handler;
 
+  // 装载第一个 10ms 时间片。此时 SIE 仍关闭，定时器到期后只会把
+  // STIP 挂起，等第一次 sret 到 U 模式时才真正抢占用户进程。
+  __am_timer_set_next();
+
   // 从 M 模式切换到 S 模式，之后内核代码运行在 S 模式。
   __am_enter_supervisor();
 
@@ -115,8 +134,17 @@ void yield() {
 }
 
 bool ienabled() {
-  return false;
+  // 内核运行在 S 模式，全局中断使能位是 sstatus.SIE。
+  uintptr_t sstatus;
+  asm volatile("csrr %0, sstatus" : "=r"(sstatus));
+  return (sstatus & MSTATUS_SIE) != 0;
 }
 
 void iset(bool enable) {
+  // 只切换 SIE，保留 SPIE/SPP/SUM/MXR 等上下文相关字段。
+  if (enable) {
+    asm volatile("csrs sstatus, %0" : : "r"((uintptr_t)MSTATUS_SIE) : "memory");
+  } else {
+    asm volatile("csrc sstatus, %0" : : "r"((uintptr_t)MSTATUS_SIE) : "memory");
+  }
 }
