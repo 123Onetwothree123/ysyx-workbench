@@ -123,6 +123,17 @@ class ysyx_26030103_IO(val SocXLEN: Int = 32) extends Bundle {
   // 电平采样，沿后只回读这个物理寄存器来更新 C++ 架构镜像。
   val debug_gpr_wen = Output(Bool())
   val debug_gpr_waddr = Output(UInt(5.W))
+  // 浮点 DiffTest 观测口。fpr 读口在时钟沿后回读物理寄存器；写口与 GPR
+  // 写口同拍，供 C++ 只更新真正被写的 f 寄存器。fcsr 是 WBU 退休边界
+  // 的快照，不能直接采样实时 CSR：年轻 FP 指令可能已经改了 fflags。
+  // FLEN=32 的高 32 位固定为 0；RV32F 因此不会泄漏 NaN-box 高位。
+  val debug_fpr_raddr = Input(UInt(5.W))
+  val debug_fpr_rdata = Output(UInt(32.W))
+  val debug_fpr_rdata_hi = Output(UInt(32.W))
+  val debug_fpr_wen = Output(Bool())
+  val debug_fpr_waddr = Output(UInt(5.W))
+  val debug_fcsr = Output(UInt(32.W))
+  val debug_fp_valid = Output(Bool())
   // debug_pc 是本次退休指令的 PC，只能在 debug_commit 时使用。
   val debug_pc = Output(UInt(32.W))
   val debug_pc_hi = Output(UInt(32.W))

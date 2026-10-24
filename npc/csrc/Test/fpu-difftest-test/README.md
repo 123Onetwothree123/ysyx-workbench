@@ -20,6 +20,7 @@ F/D 尚未实现时，正向用例明确打印 `[SKIP]`，不会用软浮点、�
 | `guest_crt0.S` / `guest_c.ld` | C 程序的裸机 `_start`、静态栈和段布局 |
 | `ref_probe.cpp` | 直接 dlopen NEMU REF，注入 FADD.S/FADD.D，判断 REF 是否已实现 F/D；避免把 REF 缺失误报为 DUT 分叉 |
 | `corrupt_ref.cpp` | 包装真实 REF，读取状态时给 `x5/t0` 注入 +1，验证第一次分叉报告 |
+| `fp_ref_shim.cpp` | 浮点 REF shim：`corrupt-fp-ref.so` 在读取时篡改已写入的 f2，验证 NPC 真比较 FPR；`legacy-fp-ref.so` 故意隐藏 `difftest_fp_*`，验证旧 REF 明确告警并降级为整数比对 |
 | `audit.sh` | 检查 C 镜像为 lp64d 硬浮点、反汇编含 F/D 指令、没有 `__adddf3` 等 libgcc 软浮点符号；同时审计 RV64D/RV32F 汇编镜像 |
 
 退出约定沿用 `csrc/Test` 裸机镜像：`a0==0` + `.word 0x0000000b`
@@ -61,6 +62,16 @@ make -C npc/csrc/Test/fpu-difftest-test negative \
 # 只有 F、D 关闭：F 正常，D 指令 illegal
 make -C npc/csrc/Test/fpu-difftest-test negative \
     NEG_XLEN=64 BIN_NEG=/path/to/rv64-npc-f-only
+```
+
+正向流程会自动追加两条浮点 ABI 负向检查：
+
+```bash
+# 用 corrupt-fp FPR shim 注入 f2 差异，必须报“差异 FPR”而不是只报 GPR
+# 用 legacy-fp shim 隐藏 difftest_fp_*，必须告警后继续整数比对并通过
+make -C npc/csrc/Test/fpu-difftest-test rv64 \
+    BIN_RV64=/path/to/rv64-npc \
+    REF_RV64=/path/to/riscv64-nemu-interpreter-so
 ```
 
 第一次分叉报告自检：
@@ -117,9 +128,9 @@ make -C npc/csrc/Test/fpu-difftest-test test STRICT=1
    - 出现 `DiffTest 校验失败` 时打印第一次分叉报告并 FAIL；
    - 要求 `DiffTest: final state PASS` 且 guest 到达 `HIT GOOD TRAP`。
 
-所有浮点期望值最终都转换成整数寄存器比较；即使 REF 暂未比较 FPR，
-DUT 的浮点结果错误也会通过 GPR/PC 暴露。实现 DiffTest FPR 快照后，
-还会额外比较 f0–f31/fcsr。
+所有浮点期望值都转换成整数寄存器比较；NPC 接入可选浮点 ABI 后，还会在
+每次退休额外比较 f0–f31 与 fcsr。即使 REF 是旧版本，整数期望值检查仍然
+独立成立。
 
 ## 设备/MMIO 与超时
 
@@ -140,11 +151,16 @@ DUT 的浮点结果错误也会通过 GPR/PC 暴露。实现 DiffTest FPR 快照
      指令或静默 NOP；FS=0 时 F 指令和浮点 load/store 同样 illegal；
    - trap 必须精确写 `mepc`，并保持 `MPIE/MPP`；handler 中可用 CSR 打开
      FS 后继续使用浮点寄存器；
-   - DiffTest 状态 ABI：现有 `GPR[32] + PC` 前缀保持不变；FP 状态建议
-     使用 NEMU 已约定的可选符号
+   - DiffTest 状态 ABI：现有 `GPR[32] + PC` 前缀保持不变；浮点状态使用
+     NEMU 已约定的可选符号
      `difftest_fp_abi_version` / `difftest_fp_state_size` /
-     `difftest_fp_regcpy`，或追加到状态尾部并在启动时协商 size；
-   - 失败报告继续复用 `DifftestReport`，包含 PC、DUT 指令、GPR 差异。
+     `difftest_fp_regcpy`，只有三个符号同时存在且版本/大小匹配时才启用；
+   - DUT 顶层导出 `debug_fpr_raddr`、`debug_fpr_rdata/_hi`、写入地址和
+     `debug_fcsr`，逐退休比较 f0–f31 与 fcsr；FLEN=32 高 32 位固定为 0；
+   - full-SoC 顶层目前尚未导出这组浮点调试端口，NPC 会明确告警并只做
+     整数/CSR 比对，不会把全零伪装成浮点状态；
+   - 失败报告继续复用 `DifftestReport`，包含 PC、DUT 指令、GPR/CSR 与
+     FPR/fcsr 差异。
 2. NEMU REF：
    - F/D 译码、f0–f31、fcsr、FS 门控、NaN 规范化和完整舍入/flags；
    - `difftest_state_size()`/`difftest_csr_state_size()` 与 DUT XLEN
@@ -157,20 +173,19 @@ DUT 的浮点结果错误也会通过 GPR/PC 暴露。实现 DiffTest FPR 快照
    - 错误信息应包含 `RISCV_D`/`RISCV_F`/`FPU_FLEN` 等关键字，便于测试
      区分真实规则与“占位未实现”错误。
 
-## 当前状态（HardFloat 后端接入后）
+## 当前状态（NPC 接入浮点 DiffTest ABI 后）
 
 - 镜像构建和 ELF 审计：PASS；
-- RV64D 正向 DiffTest：PASS（`guest-rv64d`、`guest-f-trap-rv64d`、
-  GCC `-march=rv64imafd -mabi=lp64d` 的 `guest-rv64d-c` 全部
-  `HIT GOOD TRAP`，且逐退休 GPR/PC/CSR 比对无分叉）；
-- RV32F 正向 DiffTest：PASS（`guest-rv32f`、`guest-f-trap-rv32f`）；
-- F/D 探针：PASS（F/D 均可执行，首条浮点指令后 `mstatus.FS` 进入
-  Dirty）；
-- `RISCV_F=n` 负向与配置错误检查：本分支未改动相关规则，沿用主线
-  测试；本报告只记录本次实际运行的正向用例；
-- DUT 的 `--diff` 目前比较 GPR/PC/CSR，NEMU REF 已导出可选的
-  `difftest_fp_*` ABI，但 NPC 尚未接入逐 f 寄存器快照；浮点结果由
-  guest 写回 RAM 后以整数比较和 C 程序断言覆盖。
+- RV64D 正向 DiffTest：DUT 与 NEMU REF 均导出浮点 ABI 时逐退休比较
+  f0–f31/fcsr；日志包含 `DiffTest: 浮点状态 ABI ON`；
+- RV32F 正向 DiffTest：同样比较浮点状态；RV32F 只比较低 32 位，TO_REF
+  时按 NEMU 的 NaN boxing 约定补齐高半区，不会把单精度值变成 canonical NaN；
+- `corrupt-fp-ref.so`：篡改 f2 后必须出现 `差异 FPR`，证明不是只比较整数；
+- `legacy-fp-ref.so`：隐藏 `difftest_fp_*` 后必须打印旧 REF 告警、跳过浮点
+  比较并继续通过整数比对；
+- full-SoC 顶层尚未导出浮点调试端口；使用 full-SoC + F/D 时 NPC 会明确
+  告警并降级为整数/CSR 比对。该路径的逐 f 寄存器比较是剩余限制；
+- `RISCV_F=n` 负向与配置错误检查：沿用主线测试。
 
 测试资产同时修正了三处自身错误：probe 的 8 字节 scratch 对齐、
 `fsflags` 是 CSRRW 而不是 OR、以及 `fcvt.lu.d` 测试常量笔误。

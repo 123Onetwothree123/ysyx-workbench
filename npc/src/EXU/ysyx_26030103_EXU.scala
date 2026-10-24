@@ -112,8 +112,10 @@ class ysyx_26030103_EXU(
     val HazardFPRegWrite = Output(Bool())
     val FwdFPData = Output(UInt(64.W))
     val FwdFPReady = Output(Bool())
-    // 当前 frm 给 IDU 解析动态舍入。
+    // 当前 frm 给 IDU 解析动态舍入；Fcsr 是 fflags/frm 的实时 8 位视图，
+    // 顶层在 WBU 退休沿锁存后供 DiffTest 比较。
     val CSRFrm = Output(UInt(3.W))
+    val CSRFcsr = Output(UInt(8.W))
     // 浮点运算提交时累积 fflags（EXU 提交点；FPU 运算不会在 MEM 故障）。
     val FPCommit = Output(Bool())
     val FPCommitFlags = Output(UInt(5.W))
@@ -736,6 +738,7 @@ class ysyx_26030103_EXU(
   CSRUnit.io.FPFlags := FpRespBits.fflags
   CSRUnit.io.FPStateDirtyCommit := io.FPStateDirtyCommit
   io.CSRFrm := CSRUnit.io.Frm
+  io.CSRFcsr := CSRUnit.io.Fcsr
 
   io.HazardValid := io.in.valid || PendingMDU || FpPending
   io.HazardRd := ActiveInst.Rd

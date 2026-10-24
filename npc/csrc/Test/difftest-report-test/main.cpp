@@ -184,6 +184,31 @@ void checkTrapMismatch() {
   contains(text, "stval", "委托 trap 的 tval CSR 名称");
 }
 
+void checkFPMismatch() {
+  auto report = makeBase("retire-post-fp", 64);
+  report.RefState = npc::difftest::ReportGPRState{};
+  report.DUTState = npc::difftest::ReportGPRState{};
+  report.RefCSR = npc::difftest::ReportCSRState{};
+  report.DUTCSR = npc::difftest::ReportCSRState{};
+  report.RefFP = npc::difftest::ReportFPState{};
+  report.DUTFP = npc::difftest::ReportFPState{};
+  report.RefFP->FReg[0] = 0x3ff0000000000000ULL;
+  report.DUTFP->FReg[0] = 0x3ff0000000000001ULL;
+  report.RefFP->FReg[31] = 0x7ff8000000000000ULL;
+  report.DUTFP->FReg[31] = 0x7ff8000000000000ULL;
+  report.RefFP->FCSR = 0x05;
+  report.DUTFP->FCSR = 0x25;
+
+  const auto text = npc::difftest::FormatDifftestReport(report);
+  contains(text, "event=retire-post-fp", "FP 用例 event");
+  contains(text, "差异 FPR（1/32）", "FP 差异计数");
+  contains(text, "f0  REF=0x3ff0000000000000  DUT=0x3ff0000000000001",
+           "FP f0 差异");
+  contains(text, "fcsr 差异：REF=0x05  DUT=0x25", "fcsr 差异");
+  check(text.find("f31") == std::string::npos,
+        "FP 用例不应报告没有差异的 f31");
+}
+
 void checkRefInstructionUnavailable() {
   auto report = makeBase("retire-post", 64);
   report.HasRefInstruction = false;
@@ -201,6 +226,7 @@ void checkRefInstructionUnavailable() {
 int main() {
   checkGPRMismatch();
   checkCSRMismatch();
+  checkFPMismatch();
   checkPCMismatch();
   checkTrapMismatch();
   checkRefInstructionUnavailable();
@@ -209,6 +235,6 @@ int main() {
     std::cerr << failures << " DiffTest report check(s) failed\n";
     return 1;
   }
-  std::cout << "[PASS] DiffTest mismatch report: GPR/CSR/PC/trap + REF fallback\n";
+  std::cout << "[PASS] DiffTest mismatch report: GPR/CSR/FP/PC/trap + REF fallback\n";
   return 0;
 }

@@ -124,6 +124,8 @@ class ysyx_26030103_CSR(
     // F/D：当前 frm 给 IDU 解析动态舍入；浮点运算在 EXU 提交时把
     // fflags 累积到 fcsr；WBU 退休 FP 指令时把 mstatus.FS 置 Dirty。
     val Frm = Output(UInt(3.W))
+    // fcsr={frm,fflags} 的实时 8 位视图。DiffTest 在顶层退休沿锁存。
+    val Fcsr = Output(UInt(8.W))
     val FPCommit = Input(Bool())
     val FPFlags = Input(UInt(5.W))
     val FPStateDirtyCommit = Input(Bool())
@@ -607,6 +609,7 @@ class ysyx_26030103_CSR(
     FFlagsReg := FcsrWrite(4, 0)
   }
   io.Frm := FrmReg
+  io.Fcsr := Cat(FrmReg, FFlagsReg)
   for (word <- 0 until 4) {
     when(CSRWen && io.CSRAddress === (0x3a0 + word).U(12.W)) {
       PmpcfgReg(word) := Write32(PmpcfgReg(word)) & "h0f0f0f0f".U(32.W)

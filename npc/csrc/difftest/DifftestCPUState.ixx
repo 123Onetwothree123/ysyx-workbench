@@ -38,3 +38,32 @@ private:
         DIFFTEST_TO_REF = 1,
     };
 };
+
+/// @brief NEMU 可选浮点 DiffTest ABI 的固定布局：freg[32] + fcsr。
+///
+/// 槽位固定为 64 位，与 DUT 的 XLEN 无关。RV32F（FLEN=32）只有低 32 位
+/// 有效，高 32 位在读取后统一清零；NEMU 内部对单精度使用 NaN boxing，
+/// 因此 TO_REF 方向会写入 0xffffffff 高半区，不能把未装箱的 0 送进去。
+export class DifftestFPState
+{
+public:
+    static constexpr std::size_t RegCount{32};
+    static constexpr std::uint64_t FRegMask{
+        npc::XLen == 32 ? 0xffff'ffffULL : ~0ULL};
+
+    [[nodiscard]] std::uint64_t GetFReg(std::size_t Index) const;
+    void SetFReg(std::size_t Index, std::uint64_t Value);
+    [[nodiscard]] std::uint64_t GetFCSR() const;
+    void SetFCSR(std::uint64_t Value);
+    /// @brief 从 DUT 的退休镜像读取 f0-f31/fcsr；FLEN=32 时清零高半区
+    static DifftestFPState ReadDUTState(DUT &dut);
+    /// @brief 逐 f 寄存器与 fcsr 比对；只判定，不打印
+    [[nodiscard]] bool Check(const DifftestFPState &DUT) const;
+    /// @brief 把 ABI 值归一化为本 DUT 可比较的宽度（RV32 只保留低 32 位）
+    void NormalizeFromABI();
+    /// @brief TO_REF 前按 NEMU RV32F 的 NaN boxing 约定补齐高 32 位
+    void PrepareForREF();
+private:
+    std::array<std::uint64_t, RegCount> freg{};
+    std::uint64_t fcsr{};
+};

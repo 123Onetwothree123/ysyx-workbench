@@ -1,4 +1,7 @@
 module;
+#include <cstdint>
+#include <format>
+#include <stdexcept>
 #include <stdio.h>
 #include "../Config.h"
 module npc.difftest.DifftestCPUState;
@@ -60,4 +63,73 @@ int DifftestCPUState::GetDirectionToDUT()
 int DifftestCPUState::GetDirectionToRef()
 {
     return Direction::DIFFTEST_TO_REF;
+}
+static_assert(std::is_standard_layout_v<DifftestFPState>);
+static_assert(sizeof(DifftestFPState) == 33 * sizeof(std::uint64_t));
+std::uint64_t DifftestFPState::GetFReg(std::size_t Index) const
+{
+    if (Index >= freg.size())
+    {
+        throw std::out_of_range{"DifftestFPState::GetFReg: 索引超出范围"};
+    }
+    return freg[Index];
+}
+void DifftestFPState::SetFReg(std::size_t Index, std::uint64_t Value)
+{
+    if (Index >= freg.size())
+    {
+        throw std::out_of_range{"DifftestFPState::SetFReg: 索引超出范围"};
+    }
+    freg[Index] = Value & FRegMask;
+}
+std::uint64_t DifftestFPState::GetFCSR() const
+{
+    return fcsr;
+}
+void DifftestFPState::SetFCSR(std::uint64_t Value)
+{
+    // fflags[4:0] + frm[7:5]；其余位不属于架构状态。
+    fcsr = Value & 0xffU;
+}
+DifftestFPState DifftestFPState::ReadDUTState(DUT &dut)
+{
+    DifftestFPState State{};
+    for (std::size_t Index{0}; Index < State.freg.size(); ++Index)
+    {
+        const auto Value{dut.ReadCachedFPR(static_cast<std::uint32_t>(Index))};
+        if (!Value)
+        {
+            throw std::runtime_error{std::format(
+                "DifftestFPState: 读取 DUT f{} 失败：{}", Index, Value.error())};
+        }
+        State.freg[Index] = *Value & FRegMask;
+    }
+    State.fcsr = dut.ReadCachedFCSR() & 0xffU;
+    return State;
+}
+bool DifftestFPState::Check(const DifftestFPState &DUT) const
+{
+    for (std::size_t Index{0}; Index < freg.size(); ++Index)
+    {
+        if ((freg[Index] & FRegMask) != (DUT.freg[Index] & FRegMask))
+            return false;
+    }
+    return (fcsr & 0xffU) == (DUT.fcsr & 0xffU);
+}
+void DifftestFPState::NormalizeFromABI()
+{
+    for (auto &Value : freg)
+        Value &= FRegMask;
+    fcsr &= 0xffU;
+}
+void DifftestFPState::PrepareForREF()
+{
+    NormalizeFromABI();
+#if CONFIG_XLEN == 32
+    // RV32F 的 REF 用 64 位槽位做单精度 NaN boxing。ABI 文档建议高 32 位
+    // 为 0，但 NEMU 的运行时表示要求高 32 位全 1；在 TO_REF 边界补齐，
+    // 既保留低 32 位架构值，又不会让 REF 把 0 误判成 canonical NaN。
+    for (auto &Value : freg)
+        Value |= 0xffff'ffff'0000'0000ULL;
+#endif
 }

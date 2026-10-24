@@ -896,7 +896,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   idu.io.ReadDATA2 := gpr.io.ReadDATA2
   gpr.io.Read1SELECT := idu.io.Read1SELECT
   gpr.io.Read2SELECT := idu.io.Read2SELECT
-  // 浮点寄存器堆：三个组合读口 + WBU 单写口。
+  // 浮点寄存器堆：三个组合读口 + WBU 单写口；另有 DiffTest 专用只读口。
   fprOpt match {
     case Some(fpr) =>
       fpr.io.raddr1 := idu.io.Read1FSELECT
@@ -908,11 +908,20 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       fpr.io.wen := wbu.io.FPWriteEN
       fpr.io.waddr := wbu.io.FPWriteSELECT
       fpr.io.wdata := wbu.io.FPWriteData
+      // 调试口固定按 FLEN 读物理寄存器。FLEN=32 时再零扩展到 64 位，
+      // 与 NEMU ABI 的固定 64 位槽位对齐；高 32 位不会带出 NaN-box。
+      fpr.io.DebugRaddr := io.debug_fpr_raddr
+      val DebugFPR = fpr.io.DebugRdata.pad(64)
+      io.debug_fpr_rdata := DebugFPR(31, 0)
+      io.debug_fpr_rdata_hi := DebugHi(DebugFPR)
     case None =>
       idu.io.ReadFPR1 := 0.U
       idu.io.ReadFPR2 := 0.U
       idu.io.ReadFPR3 := 0.U
+      io.debug_fpr_rdata := 0.U
+      io.debug_fpr_rdata_hi := 0.U
   }
+  io.debug_fp_valid := config.UseF.B
   idu.io.Frm := exu.io.CSRFrm
   // 年长访存事务与年长普通指令必须分开。控制转移只需等
   // 可能故障的访存，不应被LSU中单拍直通的普通ALU指令拖慢；
@@ -1033,13 +1042,28 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // WBUCommit 与最小架构 PC 不属于可选观测逻辑。异常/中断即使在所有
   // 调试功能关闭时也需要精确的最近架构边界。
   val WBUCommit = wbu.io.in.fire && wbu.io.in.bits.Retire
+  // fcsr 的 DiffTest 快照必须与 WBU 退休事件对齐。CSR 在 EXU 提交点已
+  // 更新 fflags/frm；这里在退休沿锁存，避免年轻但尚未退休的 FP 指令
+  // 把未提交状态提前暴露给 DiffTest。FLEN=32/RV32F 同样只有低 8 位有效。
+  if (config.UseF) {
+    val RetireFcsr = RegEnable(exu.io.CSRFcsr, 0.U(8.W), WBUCommit)
+    io.debug_fcsr := Cat(0.U(24.W), RetireFcsr)
+  } else {
+    io.debug_fcsr := 0.U
+  }
   if (config.EnableDynamicGPRDebug) {
     // DiffTest 在上升沿前采样实际物理写口，沿后只回读被写寄存器。
     io.debug_gpr_wen := wbu.io.WriteEN && (wbu.io.WriteSELECT =/= 0.U)
     io.debug_gpr_waddr := wbu.io.WriteSELECT
+    // 浮点写口与 GPR 写口同拍、同一边沿语义。C++ 只需要回读真正被写的
+    // f 寄存器，避免每条退休指令都做 32 次差分读。
+    io.debug_fpr_wen := wbu.io.FPWriteEN
+    io.debug_fpr_waddr := wbu.io.FPWriteSELECT
   } else {
     io.debug_gpr_wen := false.B
     io.debug_gpr_waddr := 0.U
+    io.debug_fpr_wen := false.B
+    io.debug_fpr_waddr := 0.U
   }
   if (config.EnableRetireTrace) {
     // C++ 在上升沿后看到 commit，此时 GPR 已是该指令提交后的状态。

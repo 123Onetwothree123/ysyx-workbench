@@ -60,6 +60,8 @@ GUESTS := $(PROBE_RV32) $(PROBE_RV64) $(GUEST_RV32F) $(GUEST_RV64D) \
 
 REF_PROBE := $(BUILD_DIR)/ref-probe
 MISMATCH_SHIM := $(BUILD_DIR)/corrupt-ref.so
+FP_MISMATCH_SHIM := $(BUILD_DIR)/corrupt-fp-ref.so
+LEGACY_FP_SHIM := $(BUILD_DIR)/legacy-fp-ref.so
 
 # DUT/REF 默认来自当前工作树；RV32/RV64 必须分别指向对应 XLEN 的资产。
 BIN_RV32 ?= $(NPC_DIR)/build/ysyx_26030103_npc
@@ -146,6 +148,15 @@ $(MISMATCH_SHIM): corrupt_ref.cpp | $(BUILD_DIR)
 	$(HOST_CXX) -std=c++17 -O2 -Wall -Wextra -Werror -fPIC -shared \
 		-o $@ $< -ldl
 
+# 同一个 shim 源文件按宏编译成“注入 f2 差异”和“隐藏浮点 ABI”两个变体。
+$(FP_MISMATCH_SHIM): fp_ref_shim.cpp | $(BUILD_DIR)
+	$(HOST_CXX) -std=c++17 -O2 -Wall -Wextra -Werror -fPIC -shared \
+		-DDIFFTEST_SHIM_CORRUPT_FP -o $@ $< -ldl
+
+$(LEGACY_FP_SHIM): fp_ref_shim.cpp | $(BUILD_DIR)
+	$(HOST_CXX) -std=c++17 -O2 -Wall -Wextra -Werror -fPIC -shared \
+		-DDIFFTEST_SHIM_LEGACY_FP -o $@ $< -ldl
+
 # ELF 审计：确保 C 源程序真的是 lp64d 硬浮点，且没有退回 libgcc 软浮点。
 audit: $(C_ELF) $(GUEST_RV64D:.bin=.elf) $(GUEST_RV32F:.bin=.elf)
 	@$(TEST_DIR)/audit.sh c $(READELF64) $(OBJDUMP64) $(NM64) $(C_ELF)
@@ -155,15 +166,29 @@ audit: $(C_ELF) $(GUEST_RV64D:.bin=.elf) $(GUEST_RV32F:.bin=.elf)
 # ---------------------------------------------------------------------------
 # 运行
 # ---------------------------------------------------------------------------
-rv32: $(PROBE_RV32) $(GUEST_RV32F) $(TRAP_RV32F) $(REF_PROBE)
+rv32: $(PROBE_RV32) $(GUEST_RV32F) $(TRAP_RV32F) $(REF_PROBE) \
+	$(FP_MISMATCH_SHIM) $(LEGACY_FP_SHIM)
 	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh forward 32 \
 		"$(BIN_RV32)" "$(PROBE_RV32)" "$(GUEST_RV32F)" "$(TRAP_RV32F)" \
 		"$(REF_RV32)" "$(REF_PROBE)" "$(LOG_DIR)"
+	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh fp-mismatch 32 \
+		"$(BIN_RV32)" "$(PROBE_RV32)" "$(FP_MISMATCH_SHIM)" \
+		"$(REF_RV32)" "$(LOG_DIR)"
+	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh legacy-fp 32 \
+		"$(BIN_RV32)" "$(PROBE_RV32)" "$(LEGACY_FP_SHIM)" \
+		"$(REF_RV32)" "$(LOG_DIR)"
 
-rv64: $(PROBE_RV64) $(GUEST_RV64D) $(TRAP_RV64D) $(GUEST_C) $(REF_PROBE)
+rv64: $(PROBE_RV64) $(GUEST_RV64D) $(TRAP_RV64D) $(GUEST_C) $(REF_PROBE) \
+	$(FP_MISMATCH_SHIM) $(LEGACY_FP_SHIM)
 	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh forward 64 \
 		"$(BIN_RV64)" "$(PROBE_RV64)" "$(GUEST_RV64D)" "$(TRAP_RV64D)" \
 		"$(REF_RV64)" "$(REF_PROBE)" "$(LOG_DIR)" "$(GUEST_C)"
+	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh fp-mismatch 64 \
+		"$(BIN_RV64)" "$(PROBE_RV64)" "$(FP_MISMATCH_SHIM)" \
+		"$(REF_RV64)" "$(LOG_DIR)"
+	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh legacy-fp 64 \
+		"$(BIN_RV64)" "$(PROBE_RV64)" "$(LEGACY_FP_SHIM)" \
+		"$(REF_RV64)" "$(LOG_DIR)"
 
 negative: $(PROBE_NEG)
 	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh negative "$(NEG_XLEN)" \

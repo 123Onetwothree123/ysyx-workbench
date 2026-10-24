@@ -63,6 +63,16 @@ npc::XWord DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
     return static_cast<npc::XWord>(Low);
 #endif
 }
+#ifdef VRISCV32E_NPC
+// 浮点槽位固定为 64 位，与 CONFIG_XLEN 解耦：RV32F 的低端口有效、
+// 高端口恒为 0；RV64D 两半拼成完整 FLEN=64 值。
+template <typename Top>
+std::uint64_t DebugFPR(const Top &top)
+{
+    return static_cast<std::uint64_t>(top.debug_fpr_rdata) |
+           (static_cast<std::uint64_t>(top.debug_fpr_rdata_hi) << 32U);
+}
+#endif
 #if CONFIG_XLEN == 64
 template <typename Top>
 npc::XWord DebugPC(const Top &top) { return DebugWord(top, top.debug_pc, top.debug_pc_hi); }
@@ -147,6 +157,9 @@ DUT::DUT()
 #endif
     dut = std::make_unique<TOP_MODULE>();
     dut->debug_gpr_raddr = 0;
+#ifdef VRISCV32E_NPC
+    dut->debug_fpr_raddr = 0;
+#endif
 #ifdef VRISCV32E_NPC
     dut->ram_init_valid = 0;
     dut->ram_init_index = 0;
@@ -314,6 +327,9 @@ void DUT::reset()
     dut->reset = 1;
     dut->debug_gpr_raddr = 0;
 #ifdef VRISCV32E_NPC
+    dut->debug_fpr_raddr = 0;
+#endif
+#ifdef VRISCV32E_NPC
     dut->uart_rx_valid = 0;
     dut->uart_rx_data = 0;
     uart_input_pending = false;
@@ -358,6 +374,12 @@ void DUT::step()
         DifftestIsEnabled() && static_cast<bool>(dut->debug_gpr_wen)};
     const auto debug_gpr_write_address{
         static_cast<std::size_t>(dut->debug_gpr_waddr)};
+#ifdef VRISCV32E_NPC
+    const bool debug_fpr_write{
+        DifftestIsEnabled() && static_cast<bool>(dut->debug_fpr_wen)};
+    const auto debug_fpr_write_address{
+        static_cast<std::size_t>(dut->debug_fpr_waddr)};
+#endif
 #endif
 #if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
     tfp.dump(cycle * 2);
@@ -420,6 +442,20 @@ void DUT::step()
         }
     }
     architectural_gpr[0] = 0;
+#ifdef VRISCV32E_NPC
+    if (debug_fpr_write)
+    {
+        if (debug_fpr_write_address < architectural_fpr.size())
+        {
+            // 与 GPR 一样回读物理 FPR，防止“写使能/写地址正确但数据错误”
+            // 被 C++ 镜像掩盖。FLEN=32 时顶层高半区固定为 0。
+            dut->debug_fpr_raddr =
+                static_cast<CData>(debug_fpr_write_address);
+            dut->eval();
+            architectural_fpr[debug_fpr_write_address] = DebugFPR(*dut);
+        }
+    }
+#endif
     architectural_pc = DebugArchPC(*dut);
 #endif
 #ifndef VRISCV32E_NPC
@@ -1132,6 +1168,39 @@ npc::XWord DUT::ReadCachedPC() const noexcept
 {
     return architectural_pc;
 }
+bool DUT::HasFPDebugState() const
+{
+#ifdef VRISCV32E_NPC
+    return static_cast<bool>(dut->debug_fp_valid);
+#else
+    // full-SoC 的 CPU 黑盒端口尚未包含浮点调试口；明确报告不可用，
+    // DiffTest 会告警并降级为整数比对，而不是拿全零伪造浮点状态。
+    return false;
+#endif
+}
+std::expected<std::uint64_t, std::string>
+DUT::ReadCachedFPR(std::uint32_t index) const
+{
+#ifdef VRISCV32E_NPC
+    if (index >= architectural_fpr.size())
+    {
+        return std::unexpected{std::format("FPR 编号超出 31: {0}", index)};
+    }
+    return architectural_fpr[index];
+#else
+    static_cast<void>(index);
+    return std::unexpected{"full-SoC 顶层未导出浮点调试端口"};
+#endif
+}
+std::uint64_t DUT::ReadCachedFCSR() const noexcept
+{
+#ifdef VRISCV32E_NPC
+    // fcsr 只有 fflags[4:0]+frm[7:5] 共 8 位；顶层已按退休沿锁存。
+    return static_cast<std::uint64_t>(dut->debug_fcsr) & 0xffU;
+#else
+    return 0;
+#endif
+}
 npc::XWord DUT::ReadHaltPC() const
 {
     return DebugTrapPCHalt(*dut);
@@ -1158,6 +1227,18 @@ void DUT::RefreshCachedArchitecturalState()
     }
     architectural_gpr[0] = 0;
     dut->debug_gpr_raddr = 0;
+#ifdef VRISCV32E_NPC
+    if (static_cast<bool>(dut->debug_fp_valid))
+    {
+        for (std::size_t index{0}; index < architectural_fpr.size(); ++index)
+        {
+            dut->debug_fpr_raddr = static_cast<CData>(index);
+            dut->eval();
+            architectural_fpr[index] = DebugFPR(*dut);
+        }
+        dut->debug_fpr_raddr = 0;
+    }
+#endif
     dut->eval();
     architectural_pc = DebugArchPC(*dut);
 }

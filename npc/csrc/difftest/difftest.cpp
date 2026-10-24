@@ -48,6 +48,10 @@ namespace
     using REFDifftestStateSize = std::size_t (*)();
     using REFDifftestCSRStateSize = std::size_t (*)();
     using REFDifftestCSRcpy = void (*)(void *dut, bool direction);
+    // 可选浮点状态 ABI（版本 1）：32×uint64 freg + uint64 fcsr。
+    using REFDifftestFPAbiVersion = std::uint32_t (*)();
+    using REFDifftestFPStateSize = std::size_t (*)();
+    using REFDifftestFPRegcpy = void (*)(void *dut, bool direction);
     using REFDifftestSetPlatform = void (*)(int ysyxsoc);
     // 可选诊断 ABI：旧 REF 没有这两个符号时只影响失败报告，不影响比对。
     using REFDifftestLastInstruction = void (*)(std::uint64_t *pc,
@@ -63,11 +67,15 @@ namespace
     REFDifftestStateSize REFStateSize{nullptr};
     REFDifftestCSRStateSize REFCSRStateSize{nullptr};
     REFDifftestCSRcpy REFCSRcpy{nullptr};
+    REFDifftestFPRegcpy REFFPRegcpy{nullptr};
     REFDifftestSetPlatform REFSetPlatform{nullptr};
     REFDifftestLastInstruction REFLastInstruction{nullptr};
     REFDifftestGetCSR REFGetCSR{nullptr};
     bool Enabled{false};
     bool Failed{false};
+    // 只有 REF 导出全部浮点符号且 DUT 确实有浮点调试口时才置真。旧 REF
+    // 与未启用 F 的 DUT 都保持 false，此时只做整数/CSR 比对。
+    bool FPCompareEnabled{false};
     std::size_t SkipCount{0};
 
     struct DifftestCSRState
@@ -160,6 +168,15 @@ namespace
     {
         auto state{DifftestCPUState::ReadDUTState(dut)};
         state.SetPC(pc);
+        return state;
+    }
+
+    DifftestFPState ReadReferenceFPState()
+    {
+        DifftestFPState state;
+        REFFPRegcpy(&state, DifftestCPUState::GetDirectionToDUT());
+        // RV32F 只比较低 32 位；REF 内部高半区可能是 NaN boxing。
+        state.NormalizeFromABI();
         return state;
     }
 
@@ -316,6 +333,26 @@ namespace
             .Mepc = state.mepc,
             .Mcause = state.mcause,
         };
+    }
+
+    npc::difftest::ReportFPState MakeReportFPState(
+        const DifftestFPState &state)
+    {
+        npc::difftest::ReportFPState result{};
+        for (std::size_t index{0}; index < result.FReg.size(); ++index)
+            result.FReg[index] = state.GetFReg(index);
+        result.FCSR = state.GetFCSR();
+        return result;
+    }
+
+    std::string PostEvent(bool regsOk, bool csrOk, bool fpOk)
+    {
+        std::string event{"retire-post"};
+        if (!csrOk)
+            event += "-csr";
+        if (!fpOk)
+            event += "-fp";
+        return event;
     }
 
     void FillDUTInstruction(npc::difftest::DifftestReport &report,
@@ -585,6 +622,65 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
     if (!CSRcpySymbol)
         return std::unexpected{CSRcpySymbol.error()};
     REFCSRcpy = *CSRcpySymbol;
+
+    // 浮点状态是可选 ABI。三个符号必须同时存在；缺一个就视为旧 REF，
+    // 绝不能用“部分接口”猜布局。DUT 没有浮点调试口时也要明确告警，
+    // 不能把老 REF 的整数比对伪装成完整浮点比对。
+    auto FPAbiVersion{TryLoadSymbol<REFDifftestFPAbiVersion>(
+        "difftest_fp_abi_version")};
+    auto FPStateSize{TryLoadSymbol<REFDifftestFPStateSize>(
+        "difftest_fp_state_size")};
+    auto FPRegcpy{TryLoadSymbol<REFDifftestFPRegcpy>(
+        "difftest_fp_regcpy")};
+    const unsigned FPSymbolCount{
+        static_cast<unsigned>(FPAbiVersion != nullptr) +
+        static_cast<unsigned>(FPStateSize != nullptr) +
+        static_cast<unsigned>(FPRegcpy != nullptr)};
+    if (FPSymbolCount != 0 && FPSymbolCount != 3)
+    {
+        return std::unexpected{
+            "DiffTest REF 只导出了部分浮点 ABI 符号"
+            "（difftest_fp_abi_version/state_size/regcpy 必须同时存在）"};
+    }
+    if (FPSymbolCount == 3)
+    {
+        if (const auto version{FPAbiVersion()}; version != 1U)
+        {
+            return std::unexpected{std::format(
+                "DiffTest REF 浮点 ABI 版本不匹配：REF={}，需要=1",
+                version)};
+        }
+        if (const auto size{FPStateSize()}; size != sizeof(DifftestFPState))
+        {
+            return std::unexpected{std::format(
+                "DiffTest REF 浮点状态大小不匹配：REF={}，DUT={}",
+                size,
+                sizeof(DifftestFPState))};
+        }
+        REFFPRegcpy = FPRegcpy;
+        FPCompareEnabled = dut.HasFPDebugState();
+        if (FPCompareEnabled)
+        {
+            std::println(
+                "DiffTest: 浮点状态 ABI ON（freg[32] + fcsr，XLEN={}）",
+                CONFIG_XLEN);
+        }
+        else
+        {
+            std::println(
+                std::cerr,
+                "DiffTest: 警告：REF 导出了浮点状态 ABI，但当前 DUT 未导出"
+                "浮点调试端口/未启用 F，f0-f31/fcsr 不参与比对；"
+                "仅整数与 CSR 比对继续");
+        }
+    }
+    else
+    {
+        std::println(
+            std::cerr,
+            "DiffTest: 警告：REF 未导出可选浮点状态 ABI"
+            "（difftest_fp_*），f0-f31/fcsr 未比对，仅整数与 CSR 比对");
+    }
     auto SetPlatformSymbol{
         LoadSymbol<REFDifftestSetPlatform>("difftest_set_platform")};
     if (!SetPlatformSymbol)
@@ -705,6 +801,14 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
     REFRegcpy(&DUTState, DifftestCPUState::GetDirectionToRef());
     LastDUTCSR = ReadDUTRetireCSR(dut);
     REFCSRcpy(&LastDUTCSR, DifftestCPUState::GetDirectionToRef());
+    if (FPCompareEnabled)
+    {
+        // 初始 FPR 也必须与 REF 对齐；RV32F 按 NEMU 的 NaN boxing 约定
+        // 补齐高 32 位，避免 REF 把未装箱值当成 canonical NaN。
+        auto DUTFP{DifftestFPState::ReadDUTState(dut)};
+        DUTFP.PrepareForREF();
+        REFFPRegcpy(&DUTFP, DifftestCPUState::GetDirectionToRef());
+    }
     Enabled = true;
     Failed = false;
     SkipCount = 0;
@@ -752,6 +856,14 @@ void DifftestStep(DUT &dut)
         auto injectedCSR{DUTCSR};
         REFRegcpy(&injectedState, DifftestCPUState::GetDirectionToRef());
         REFCSRcpy(&injectedCSR, DifftestCPUState::GetDirectionToRef());
+        if (FPCompareEnabled)
+        {
+            // MMIO 加载可能写 f 寄存器，CSR 注入也可能改变后续执行路径；
+            // 同步浮点状态，避免下一条指令出现伪造的 FP 差异。
+            auto injectedFP{DifftestFPState::ReadDUTState(dut)};
+            injectedFP.PrepareForREF();
+            REFFPRegcpy(&injectedFP, DifftestCPUState::GetDirectionToRef());
+        }
         LastDUTCSR = DUTCSR;
         ++SkipCount;
         return;
@@ -762,21 +874,32 @@ void DifftestStep(DUT &dut)
     const auto REFCSR{ReadReferenceCSR()};
     const bool regsOk{REFState.CheckRegs(DUTState)};
     const bool csrOk{CheckCSR(REFCSR, DUTCSR)};
-    if (!regsOk || !csrOk)
+    std::optional<DifftestFPState> REFFP;
+    std::optional<DifftestFPState> DUTFP;
+    bool fpOk{true};
+    if (FPCompareEnabled)
     {
-        auto report{MakeBaseReport(
-            dut, regsOk ? "retire-post-csr" : "retire-post", false)};
+        REFFP = ReadReferenceFPState();
+        DUTFP = DifftestFPState::ReadDUTState(dut);
+        fpOk = REFFP->Check(*DUTFP);
+    }
+    if (!regsOk || !csrOk || !fpOk)
+    {
+        const auto event{PostEvent(regsOk, csrOk, fpOk)};
+        auto report{MakeBaseReport(dut, event, false)};
         report.RefPC = REFState.GetPC();
         report.RefState = MakeReportGPRState(REFState);
         report.DUTState = MakeReportGPRState(DUTState);
         report.DUTNextPC = report.DUTState->PC;
         report.RefCSR = MakeReportCSRState(REFCSR);
         report.DUTCSR = MakeReportCSRState(DUTCSR);
+        if (REFFP && DUTFP)
+        {
+            report.RefFP = MakeReportFPState(*REFFP);
+            report.DUTFP = MakeReportFPState(*DUTFP);
+        }
         FillRefInstruction(report, true, "");
-        ReportMismatch(dut,
-                       regsOk ? "retire-post-csr" : "retire-post",
-                       nextPC,
-                       std::move(report));
+        ReportMismatch(dut, event, nextPC, std::move(report));
         return;
     }
     LastDUTCSR = DUTCSR;
@@ -845,10 +968,25 @@ void DifftestTrapStep(DUT &dut)
     const auto REFCSR{ReadReferenceCSR()};
     const bool regsOk{REFState.CheckRegs(DUTState)};
     const bool csrOk{CheckCSR(REFCSR, DUTCSR)};
-    if (!regsOk || !csrOk)
+    std::optional<DifftestFPState> REFFP;
+    std::optional<DifftestFPState> DUTFP;
+    bool fpOk{true};
+    if (FPCompareEnabled)
     {
-        auto report{MakeBaseReport(
-            dut, regsOk ? "trap-post-csr" : "trap-post", true)};
+        // trap 不改变 freg/fcsr；若 DUT 在 faulting 指令上错误写了浮点
+        // 状态，这里必须立刻暴露，而不是等后续 FP 指令。
+        REFFP = ReadReferenceFPState();
+        DUTFP = DifftestFPState::ReadDUTState(dut);
+        fpOk = REFFP->Check(*DUTFP);
+    }
+    if (!regsOk || !csrOk || !fpOk)
+    {
+        std::string event{"trap-post"};
+        if (!csrOk)
+            event += "-csr";
+        if (!fpOk)
+            event += "-fp";
+        auto report{MakeBaseReport(dut, event, true)};
         report.RefPC = REFState.GetPC();
         report.RefState = MakeReportGPRState(REFState);
         report.DUTState = MakeReportGPRState(DUTState);
@@ -857,13 +995,15 @@ void DifftestTrapStep(DUT &dut)
         FillTrapTvalCSR(report, refCSR, dutCSR);
         report.RefCSR = std::move(refCSR);
         report.DUTCSR = std::move(dutCSR);
+        if (REFFP && DUTFP)
+        {
+            report.RefFP = MakeReportFPState(*REFFP);
+            report.DUTFP = MakeReportFPState(*DUTFP);
+        }
         FillRefInstruction(
             report, false,
             "REF 本步仅注入 trap，未执行指令（显示上一条）");
-        ReportMismatch(dut,
-                       regsOk ? "trap-post-csr" : "trap-post",
-                       target,
-                       std::move(report));
+        ReportMismatch(dut, event, target, std::move(report));
         return;
     }
     LastDUTCSR = DUTCSR;
@@ -899,23 +1039,38 @@ bool DifftestFinalCheck(DUT &dut)
     const auto DUTState{DifftestCPUState::ReadDUTState(dut)};
     const bool regsOk{REFState.CheckRegs(DUTState)};
     const bool csrOk{CheckCSR(REFCSR, LastDUTCSR)};
-    if (!regsOk || !csrOk)
+    std::optional<DifftestFPState> REFFP;
+    std::optional<DifftestFPState> DUTFP;
+    bool fpOk{true};
+    if (FPCompareEnabled)
     {
-        auto report{MakeBaseReport(
-            dut, regsOk ? "final-csr" : "final", false)};
+        REFFP = ReadReferenceFPState();
+        DUTFP = DifftestFPState::ReadDUTState(dut);
+        fpOk = REFFP->Check(*DUTFP);
+    }
+    if (!regsOk || !csrOk || !fpOk)
+    {
+        std::string event{"final"};
+        if (!csrOk)
+            event += "-csr";
+        if (!fpOk)
+            event += "-fp";
+        auto report{MakeBaseReport(dut, event, false)};
         report.RefPC = REFState.GetPC();
         report.RefState = MakeReportGPRState(REFState);
         report.DUTState = MakeReportGPRState(DUTState);
         report.DUTNextPC = report.DUTState->PC;
         report.RefCSR = MakeReportCSRState(REFCSR);
         report.DUTCSR = MakeReportCSRState(LastDUTCSR);
+        if (REFFP && DUTFP)
+        {
+            report.RefFP = MakeReportFPState(*REFFP);
+            report.DUTFP = MakeReportFPState(*DUTFP);
+        }
         FillRefInstruction(
             report, false,
             "REF 最后执行的指令（最终检查未再执行）");
-        ReportMismatch(dut,
-                       regsOk ? "final-csr" : "final",
-                       DUTState.GetPC(),
-                       std::move(report));
+        ReportMismatch(dut, event, DUTState.GetPC(), std::move(report));
         return false;
     }
     if (SkipCount != 0)

@@ -127,6 +127,7 @@ probe_fpu() {
 
 check_diff_log() {
     local log="$1"
+    local require_fp="${2:-1}"
     grep -Fq 'DiffTest: ON' "$log" ||
         fail "DiffTest 未启用（日志缺少 'DiffTest: ON'）"
     ! grep -Fq 'DiffTest 校验失败' "$log" ||
@@ -136,6 +137,10 @@ check_diff_log() {
         }
     grep -Fq 'DiffTest: final state PASS' "$log" ||
         fail "DiffTest 未完成最终状态比对"
+    if [[ "$require_fp" == 1 ]]; then
+        grep -Fq 'DiffTest: 浮点状态 ABI ON' "$log" ||
+            fail "REF/DUT 未启用浮点状态 ABI，本轮没有逐 f 寄存器比较"
+    fi
     grep -Fq 'HIT GOOD TRAP' "$log" ||
         fail "guest 未触发 HIT GOOD TRAP"
     # MMIO/mcycle 由现有 DifftestStep 在退休边界注入，测试镜像只访问 RAM，
@@ -231,6 +236,81 @@ run_forward() {
         check_diff_log "$log"
         echo "[PASS] RV${xlen} ${names[$i]} DiffTest ($(basename "${images[$i]}"))"
     done
+}
+
+run_fp_mismatch() {
+    local xlen="$1" binary="$2" guest="$3" shim="$4" real_ref="$5" logdir="$6"
+    local log="$logdir/fp-mismatch-rv${xlen}.log"
+
+    require_file "$binary" "RV${xlen} NPC binary"
+    require_file "$guest" "RV${xlen} 浮点探针镜像"
+    require_file "$shim" "浮点分叉 REF shim"
+    require_file "$real_ref" "真实 NEMU REF"
+
+    echo "[INFO] 用 corrupt-fp REF shim 注入 f2 差异，验证逐 f 寄存器比较"
+    export DIFFTEST_REAL_REF="$real_ref"
+    run_npc 120 "$log" "$binary" "$guest" --diff "$shim"
+    local status="$LAST_STATUS"
+    unset DIFFTEST_REAL_REF
+
+    [[ "$status" -ne 0 ]] || {
+        show_log "$log"
+        fail "注入 f2 差异后 NPC 仍正常退出"
+    }
+    ! grep -Fq 'DiffTest: final state PASS' "$log" ||
+        fail "注入 f2 差异后仍报告 final state PASS"
+    grep -Fq 'DiffTest 校验失败' "$log" ||
+        {
+            show_log "$log"
+            fail "缺少浮点分叉报告"
+        }
+    grep -Fq '差异 FPR' "$log" ||
+        {
+            show_first_divergence "$log"
+            fail "分叉报告没有 FPR 差异，NPC 可能仍在只比较整数"
+        }
+    grep -Fq 'f2 ' "$log" ||
+        {
+            show_first_divergence "$log"
+            fail "分叉报告未定位到被注入的 f2"
+        }
+    grep -Fq '差异 GPR：无' "$log" ||
+        {
+            show_first_divergence "$log"
+            fail "注入 f2 差异时不应同时出现 GPR 差异"
+        }
+    echo "[PASS] RV${xlen} 注入 f2 差异后报告 FPR 分叉"
+}
+
+run_legacy_fp() {
+    local xlen="$1" binary="$2" guest="$3" shim="$4" real_ref="$5" logdir="$6"
+    local log="$logdir/legacy-fp-rv${xlen}.log"
+
+    require_file "$binary" "RV${xlen} NPC binary"
+    require_file "$guest" "RV${xlen} 浮点探针镜像"
+    require_file "$shim" "旧浮点 ABI REF shim"
+    require_file "$real_ref" "真实 NEMU REF"
+
+    echo "[INFO] 用不导出 difftest_fp_* 的 shim 验证旧 REF 降级路径"
+    export DIFFTEST_REAL_REF="$real_ref"
+    run_npc 120 "$log" "$binary" "$guest" --diff "$shim"
+    local status="$LAST_STATUS"
+    unset DIFFTEST_REAL_REF
+
+    [[ "$status" -eq 0 ]] || {
+        show_first_divergence "$log"
+        show_log "$log"
+        fail "旧 REF/无浮点 ABI 路径运行失败（exit=$status）"
+    }
+    grep -Fq 'REF 未导出可选浮点状态 ABI' "$log" ||
+        {
+            show_log "$log"
+            fail "旧 REF 路径没有明确告警浮点状态未比对"
+        }
+    ! grep -Fq 'DiffTest: 浮点状态 ABI ON' "$log" ||
+        fail "旧 REF 路径不应启用浮点状态比较"
+    check_diff_log "$log" 0
+    echo "[PASS] RV${xlen} 旧 REF/无浮点 ABI：明确告警并继续整数比对"
 }
 
 run_negative() {
@@ -416,7 +496,7 @@ run_config_errors() {
 }
 
 if [[ $# -lt 1 ]]; then
-    echo "用法: $0 <forward|negative|mismatch|config> ..." >&2
+    echo "用法: $0 <forward|negative|mismatch|fp-mismatch|legacy-fp|config> ..." >&2
     exit 2
 fi
 
@@ -426,6 +506,14 @@ case "$mode" in
     forward)
         [[ $# -eq 8 || $# -eq 9 ]] || { echo "forward 需要 8 或 9 个参数" >&2; exit 2; }
         run_forward "$@"
+        ;;
+    fp-mismatch)
+        [[ $# -eq 6 ]] || { echo "fp-mismatch 需要 6 个参数" >&2; exit 2; }
+        run_fp_mismatch "$@"
+        ;;
+    legacy-fp)
+        [[ $# -eq 6 ]] || { echo "legacy-fp 需要 6 个参数" >&2; exit 2; }
+        run_legacy_fp "$@"
         ;;
     negative)
         [[ $# -eq 4 ]] || { echo "negative 需要 4 个参数" >&2; exit 2; }

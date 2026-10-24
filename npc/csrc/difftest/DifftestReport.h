@@ -41,6 +41,13 @@ struct ReportCSRState
     std::string MtvalLabel{"mtval"};
 };
 
+struct ReportFPState
+{
+    // RV32F 只有低 32 位有效，报告统一按 XLEN 宽度显示；RV64D 为完整 64 位。
+    std::array<std::uint64_t, 32> FReg{};
+    std::uint64_t FCSR{};
+};
+
 struct ReportMemoryDump
 {
     std::string Label;
@@ -87,6 +94,10 @@ struct DifftestReport
     std::optional<ReportGPRState> DUTState;
     std::optional<ReportCSRState> RefCSR;
     std::optional<ReportCSRState> DUTCSR;
+    // 只有 REF 与 DUT 都启用了可选浮点 ABI 时才填充；旧 REF 路径保持
+    // 两个 optional 为空，不伪造“浮点无差异”。
+    std::optional<ReportFPState> RefFP;
+    std::optional<ReportFPState> DUTFP;
 
     bool HasTrap{};
     std::uint32_t TrapCause{};
@@ -327,6 +338,43 @@ struct DifftestReport
         {
             Add(Out, "  注：mtval 只在 trap 边界比较"
                      "（DUT 未导出 retire mtval 调试端口）");
+        }
+    }
+
+    if (Report.RefFP && Report.DUTFP)
+    {
+        std::vector<std::size_t> Differences;
+        for (std::size_t Index{0}; Index < 32; ++Index)
+        {
+            if (Report.RefFP->FReg[Index] != Report.DUTFP->FReg[Index])
+                Differences.push_back(Index);
+        }
+        if (Differences.empty())
+        {
+            Add(Out, "  差异 FPR：无");
+        }
+        else
+        {
+            Add(Out, std::format("  差异 FPR（{}/32）：", Differences.size()));
+            for (const auto Index : Differences)
+            {
+                Add(Out, std::format("    f{:<2} REF={}  DUT={}",
+                                     Index,
+                                     HexValue(Report.RefFP->FReg[Index], XLen),
+                                     HexValue(Report.DUTFP->FReg[Index], XLen)));
+            }
+        }
+        if (Report.RefFP->FCSR != Report.DUTFP->FCSR)
+        {
+            Add(Out, std::format("  fcsr 差异：REF=0x{:02x}  DUT=0x{:02x}",
+                                 Report.RefFP->FCSR & 0xffU,
+                                 Report.DUTFP->FCSR & 0xffU));
+        }
+        else
+        {
+            Add(Out, std::format("  fcsr: REF=0x{:02x}  DUT=0x{:02x}",
+                                 Report.RefFP->FCSR & 0xffU,
+                                 Report.DUTFP->FCSR & 0xffU));
         }
     }
 

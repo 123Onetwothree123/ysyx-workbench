@@ -19,6 +19,11 @@ class ysyx_26030103_FPR(val FLEN: Int = 64) extends Module {
     val rdata1 = Output(UInt(FLEN.W))
     val rdata2 = Output(UInt(FLEN.W))
     val rdata3 = Output(UInt(FLEN.W))
+    // DiffTest 专用只读口。不能复用上面三个执行级读口：C++ 在时钟沿后
+    // 临时改地址回读会让 IDU 当拍的组合读数据跟着变化。独立读口只增加
+    // 一个 32 选 1 mux，不引入任何调试专用寄存器。
+    val DebugRaddr = Input(UInt(5.W))
+    val DebugRdata = Output(UInt(FLEN.W))
   })
   val Regs = RegInit(VecInit(Seq.fill(32)(0.U(FLEN.W))))
   when(io.wen) {
@@ -27,4 +32,5 @@ class ysyx_26030103_FPR(val FLEN: Int = 64) extends Module {
   io.rdata1 := Regs(io.raddr1)
   io.rdata2 := Regs(io.raddr2)
   io.rdata3 := Regs(io.raddr3)
+  io.DebugRdata := Regs(io.DebugRaddr)
 }
