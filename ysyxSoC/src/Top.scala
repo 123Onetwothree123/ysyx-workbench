@@ -57,6 +57,9 @@ class ysyxSoCTop extends Module {
   mdut.dontTouchPorts()
   mdut.externalPins := DontCare
   mdut.debug_gpr_raddr := 0.U
+  // ysyxSoCTop 只是图形/Verilog 导出壳，不接仿真调试读口；
+  // 真正的调试/DiffTest 顶层 ysyxSoCFull 由 npc 直接实例化。
+  mdut.debug_fpr_raddr := 0.U
 }
 
 object Elaborate extends App {

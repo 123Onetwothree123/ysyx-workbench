@@ -143,6 +143,21 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     debug_gpr_rdata := cpu.module.debug_gpr_rdata
     debug_gpr_wen := cpu.module.debug_gpr_wen
     debug_gpr_waddr := cpu.module.debug_gpr_waddr
+    // 浮点调试口与 direct-NPC 顶层语义一致，ASIC 层原样上送。
+    val debug_fpr_raddr = IO(Input(UInt(5.W)))
+    val debug_fpr_rdata = IO(Output(UInt(32.W)))
+    val debug_fpr_rdata_hi = IO(Output(UInt(32.W)))
+    val debug_fpr_wen = IO(Output(Bool()))
+    val debug_fpr_waddr = IO(Output(UInt(5.W)))
+    val debug_fcsr = IO(Output(UInt(32.W)))
+    val debug_fp_valid = IO(Output(Bool()))
+    cpu.module.debug_fpr_raddr := debug_fpr_raddr
+    debug_fpr_rdata := cpu.module.debug_fpr_rdata
+    debug_fpr_rdata_hi := cpu.module.debug_fpr_rdata_hi
+    debug_fpr_wen := cpu.module.debug_fpr_wen
+    debug_fpr_waddr := cpu.module.debug_fpr_waddr
+    debug_fcsr := cpu.module.debug_fcsr
+    debug_fp_valid := cpu.module.debug_fp_valid
     debug_pc := cpu.module.debug_pc
     debug_next_pc := cpu.module.debug_next_pc
     debug_arch_pc := cpu.module.debug_arch_pc
@@ -180,6 +195,11 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     debug_trap_pc := cpu.module.debug_trap_pc
     debug_trap_target := cpu.module.debug_trap_target
     debug_trap_cause := cpu.module.debug_trap_cause
+    // trap tval 低/高半字与 cause 同拍上送，不在 ASIC 层寄存。
+    val debug_trap_tval = IO(Output(UInt(32.W)))
+    val debug_trap_tval_hi = IO(Output(UInt(32.W)))
+    debug_trap_tval := cpu.module.debug_trap_tval
+    debug_trap_tval_hi := cpu.module.debug_trap_tval_hi
     val debug_csr_mstatus = IO(Output(UInt(32.W)))
     val debug_csr_mtvec = IO(Output(UInt(32.W)))
     val debug_csr_mepc = IO(Output(UInt(32.W)))
@@ -465,6 +485,21 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     debug_gpr_rdata := masic.debug_gpr_rdata
     debug_gpr_wen := masic.debug_gpr_wen
     debug_gpr_waddr := masic.debug_gpr_waddr
+    // full-SoC 顶层导出与 direct-NPC 相同的浮点 DiffTest 观测口。
+    val debug_fpr_raddr = IO(Input(UInt(5.W)))
+    val debug_fpr_rdata = IO(Output(UInt(32.W)))
+    val debug_fpr_rdata_hi = IO(Output(UInt(32.W)))
+    val debug_fpr_wen = IO(Output(Bool()))
+    val debug_fpr_waddr = IO(Output(UInt(5.W)))
+    val debug_fcsr = IO(Output(UInt(32.W)))
+    val debug_fp_valid = IO(Output(Bool()))
+    masic.debug_fpr_raddr := debug_fpr_raddr
+    debug_fpr_rdata := masic.debug_fpr_rdata
+    debug_fpr_rdata_hi := masic.debug_fpr_rdata_hi
+    debug_fpr_wen := masic.debug_fpr_wen
+    debug_fpr_waddr := masic.debug_fpr_waddr
+    debug_fcsr := masic.debug_fcsr
+    debug_fp_valid := masic.debug_fp_valid
     debug_pc := masic.debug_pc
     debug_next_pc := masic.debug_next_pc
     debug_arch_pc := masic.debug_arch_pc
@@ -503,6 +538,11 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     debug_trap_pc := masic.debug_trap_pc
     debug_trap_target := masic.debug_trap_target
     debug_trap_cause := masic.debug_trap_cause
+    // trap tval 低/高半字与 cause 同拍上送，供 DiffTest 注入 REF。
+    val debug_trap_tval = IO(Output(UInt(32.W)))
+    val debug_trap_tval_hi = IO(Output(UInt(32.W)))
+    debug_trap_tval := masic.debug_trap_tval
+    debug_trap_tval_hi := masic.debug_trap_tval_hi
     val debug_csr_mstatus = IO(Output(UInt(32.W)))
     val debug_csr_mtvec = IO(Output(UInt(32.W)))
     val debug_csr_mepc = IO(Output(UInt(32.W)))

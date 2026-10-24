@@ -157,8 +157,9 @@ make -C npc/csrc/Test/fpu-difftest-test test STRICT=1
      `difftest_fp_regcpy`，只有三个符号同时存在且版本/大小匹配时才启用；
    - DUT 顶层导出 `debug_fpr_raddr`、`debug_fpr_rdata/_hi`、写入地址和
      `debug_fcsr`，逐退休比较 f0–f31 与 fcsr；FLEN=32 高 32 位固定为 0；
-   - full-SoC 顶层目前尚未导出这组浮点调试端口，NPC 会明确告警并只做
-     整数/CSR 比对，不会把全零伪装成浮点状态；
+   - direct-NPC 与 full-SoC（`ysyxSoCFull`）导出同一组浮点/trap 调试端口；
+     旧 RTL 没有端口时 NPC 明确告警并只做整数/CSR 比对，不会把全零伪装成
+     浮点状态，也不会因缺少成员而编译失败；
    - 失败报告继续复用 `DifftestReport`，包含 PC、DUT 指令、GPR/CSR 与
      FPR/fcsr 差异。
 2. NEMU REF：
@@ -183,8 +184,10 @@ make -C npc/csrc/Test/fpu-difftest-test test STRICT=1
 - `corrupt-fp-ref.so`：篡改 f2 后必须出现 `差异 FPR`，证明不是只比较整数；
 - `legacy-fp-ref.so`：隐藏 `difftest_fp_*` 后必须打印旧 REF 告警、跳过浮点
   比较并继续通过整数比对；
-- full-SoC 顶层尚未导出浮点调试端口；使用 full-SoC + F/D 时 NPC 会明确
-  告警并降级为整数/CSR 比对。该路径的逐 f 寄存器比较是剩余限制；
+- full-SoC 顶层已导出与 direct-NPC 相同的 FPR/fcsr/trap-tval 调试端口；
+  `npc/csrc/Test/fullsoc-fp-debug-test` 用端口级探针和 `--diff` 最小 guest
+  验证 f2/f3、fcsr、mcause/mtval，日志必须出现
+  `DiffTest: 浮点状态 ABI ON` 且不得出现 tval 降级告警；
 - `RISCV_F=n` 负向与配置错误检查：沿用主线测试。
 
 测试资产同时修正了三处自身错误：probe 的 8 字节 scratch 对齐、

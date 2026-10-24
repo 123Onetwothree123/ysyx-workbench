@@ -127,6 +127,8 @@ class ysyx_26030103_IO(val SocXLEN: Int = 32) extends Bundle {
   // 写口同拍，供 C++ 只更新真正被写的 f 寄存器。fcsr 是 WBU 退休边界
   // 的快照，不能直接采样实时 CSR：年轻 FP 指令可能已经改了 fflags。
   // FLEN=32 的高 32 位固定为 0；RV32F 因此不会泄漏 NaN-box 高位。
+  // direct-NPC 由 rtl/riscv32e_npc_SimTop.sv 直连，full-SoC 由
+  // ysyxSoC CPU/SoC 黑盒把同名端口逐级导出，两边语义完全一致。
   val debug_fpr_raddr = Input(UInt(5.W))
   val debug_fpr_rdata = Output(UInt(32.W))
   val debug_fpr_rdata_hi = Output(UInt(32.W))
@@ -169,7 +171,8 @@ class ysyx_26030103_IO(val SocXLEN: Int = 32) extends Bundle {
   val debug_trap_target_hi = Output(UInt(32.W))
   val debug_trap_cause = Output(UInt(32.W))
   // 本次 trap 写入 mtval/stval 的最终值。单独成组，不并入 CSR 快照，
-  // 避免改变现有 DiffTest CSR ABI 宽度。
+  // 避免改变现有 DiffTest CSR ABI 宽度。direct-NPC 与 full-SoC 都通过
+  // 同一组低/高半字导出，C++ 侧共用拼接逻辑。
   val debug_trap_tval = Output(UInt(32.W))
   val debug_trap_tval_hi = Output(UInt(32.W))
   // 与 retire/trap 事件分别对齐的 CSR 快照。两组不能共用，

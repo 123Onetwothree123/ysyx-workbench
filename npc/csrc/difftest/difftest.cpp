@@ -140,7 +140,7 @@ namespace
     npc::XWord ReadMtraceAddr(DUT &dut) { return DebugWord(*dut, dut->debug_mtrace_addr, dut->debug_mtrace_addr_hi); }
     npc::XWord ReadTrapPC(DUT &dut) { return DebugWord(*dut, dut->debug_trap_pc, dut->debug_trap_pc_hi); }
     npc::XWord ReadTrapTarget(DUT &dut) { return DebugWord(*dut, dut->debug_trap_target, dut->debug_trap_target_hi); }
-    npc::XWord ReadTrapTval(DUT &dut) { return DebugWord(*dut, dut->debug_trap_tval, dut->debug_trap_tval_hi); }
+    npc::XWord ReadTrapTval(DUT &dut) { return dut.ReadTrapTval(); }
 #else
     npc::XWord ReadRetirePC(DUT &dut) { return static_cast<npc::XWord>(dut->debug_pc); }
     npc::XWord ReadNextPC(DUT &dut) { return static_cast<npc::XWord>(dut->debug_next_pc); }
@@ -148,13 +148,7 @@ namespace
     npc::XWord ReadMtraceAddr(DUT &dut) { return static_cast<npc::XWord>(dut->debug_mtrace_addr); }
     npc::XWord ReadTrapPC(DUT &dut) { return static_cast<npc::XWord>(dut->debug_trap_pc); }
     npc::XWord ReadTrapTarget(DUT &dut) { return static_cast<npc::XWord>(dut->debug_trap_target); }
-#ifdef VRISCV32E_NPC
-    npc::XWord ReadTrapTval(DUT &dut) { return static_cast<npc::XWord>(dut->debug_trap_tval); }
-#else
-    // full-SoC 调试端口尚未导出 trap tval（由独立任务补齐）。这里明确
-    // 返回不可用标记，初始化时告警并降级为旧接口，不能伪装成 tval=0。
-    npc::XWord ReadTrapTval(DUT &) { return 0; }
-#endif
+    npc::XWord ReadTrapTval(DUT &dut) { return dut.ReadTrapTval(); }
 #endif
 
     DifftestCPUState ReadReferenceState()
@@ -286,14 +280,6 @@ namespace
         return address == 0xb00U || address == 0xb80U;
     }
 
-#ifdef VRISCV32E_NPC
-    // direct-NPC 导出了 debug_trap_tval/_hi；full-SoC 目前没有该端口，
-    // 报告必须明确标成“不可用”，不能把 0 当成真实 tval。
-    constexpr bool DUTTrapTvalAvailable{true};
-#else
-    constexpr bool DUTTrapTvalAvailable{false};
-#endif
-
     std::string DisassembleWord(std::uint64_t pc, std::uint32_t instruction)
     {
         init_disasm();
@@ -399,8 +385,8 @@ namespace
         report.TrapCause = dut.ReadTrapCause();
         report.TrapEPC = ReadTrapPC(dut);
         report.TrapTarget = ReadTrapTarget(dut);
-        report.TrapTvalAvailable = DUTTrapTvalAvailable;
-        if constexpr (DUTTrapTvalAvailable)
+        report.TrapTvalAvailable = dut.HasTrapTvalDebugState();
+        if (report.TrapTvalAvailable)
             report.TrapTval = ReadTrapTval(dut);
 
         // trap 指令通常不会进入 WBU 退休路径，debug_instructions 可能是
@@ -740,11 +726,17 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
             "DiffTest: 警告：REF 缺少 difftest_get_csr，"
             "失败报告将不显示 REF 侧 mtval/stval（逐退休比对不受影响）");
     }
-#ifndef VRISCV32E_NPC
-    std::println(std::cerr,
-                 "DiffTest: 警告：full-SoC 调试端口未导出 trap tval，"
-                 "本平台 tval 注入降级为旧接口（仅 cause）");
-#endif
+    if (dut.HasTrapTvalDebugState())
+    {
+        std::println(
+            "DiffTest: trap tval ABI ON（trap 注入携带 mtval/stval）");
+    }
+    else
+    {
+        std::println(std::cerr,
+                     "DiffTest: 警告：当前 RTL 未导出 debug_trap_tval，"
+                     "tval 注入降级为旧接口（仅 cause）");
+    }
     auto InitSymbol{LoadSymbol<REFDifftestInit>("difftest_init")};
     if (!InitSymbol)
     {
@@ -931,35 +923,38 @@ void DifftestTrapStep(DUT &dut)
     // executing the faulting instruction in REF is unsafe for PMA faults,
     // illegal instructions, and misaligned control transfers that the simple
     // reference memory/decoder may not model.
-    const auto tval{ReadTrapTval(dut)};
-#if defined(VRISCV32E_NPC)
-    if (REFTrap != nullptr)
+    const auto tval{dut.ReadTrapTval()};
+    if (dut.HasTrapTvalDebugState())
     {
-        // 新版 REF：cause/epc/tval 一次注入，REF 在同一个架构边界写入
-        // mcause/mepc/mtval（或委托到 S 时的 scause/sepc/stval）。
-        REFTrap(cause, trapPC, tval);
-    }
-    else if (tval != 0)
-    {
-        // 旧 REF 只能传 cause，无法表达非零 tval；明确失败而不是让
-        // 后续 csrr mtval/stval 产生难以定位的寄存器差异。
-        auto report{MakeBaseReport(dut, "trap-tval-unsupported", true)};
-        report.RefPC = before.GetPC();
-        FillRefInstruction(report, false,
-                           "trap 注入被拒绝，这是上一条 REF 指令");
-        ReportMismatch(dut, "trap-tval-unsupported", trapPC,
-                       std::move(report));
-        return;
+        if (REFTrap != nullptr)
+        {
+            // 新版 REF：cause/epc/tval 一次注入，REF 在同一个架构边界写入
+            // mcause/mepc/mtval（或委托到 S 时的 scause/sepc/stval）。
+            REFTrap(cause, trapPC, tval);
+        }
+        else if (tval != 0)
+        {
+            // 旧 REF 只能传 cause，无法表达非零 tval；明确失败而不是让
+            // 后续 csrr mtval/stval 产生难以定位的寄存器差异。
+            auto report{MakeBaseReport(dut, "trap-tval-unsupported", true)};
+            report.RefPC = before.GetPC();
+            FillRefInstruction(report, false,
+                               "trap 注入被拒绝，这是上一条 REF 指令");
+            ReportMismatch(dut, "trap-tval-unsupported", trapPC,
+                           std::move(report));
+            return;
+        }
+        else
+        {
+            REFRaiseIntr(cause);
+        }
     }
     else
     {
+        // 旧 RTL 没有 tval 端口；初始化时已明确告警，这里保持
+        // cause-only 注入，不把伪造的 0 当作真实 mtval。
         REFRaiseIntr(cause);
     }
-#else
-    // full-SoC 调试端口暂未导出 tval；初始化时已明确告警，这里保持旧
-    // 行为。等待 full-SoC tval 端口补齐后再切换到 REFTrap。
-    REFRaiseIntr(cause);
-#endif
 
     const auto REFState{ReadReferenceState()};
     const auto target{ReadTrapTarget(dut)};

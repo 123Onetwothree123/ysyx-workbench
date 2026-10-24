@@ -71,11 +71,10 @@ private:
     // RV64 下必须保留完整 64 位，不能沿用只够 RV32 的 32 位镜像。
     std::array<npc::XWord, 32> architectural_gpr{};
     npc::XWord architectural_pc{0};
-#ifdef VRISCV32E_NPC
-    // 与 GPR 镜像同理：只在 WBU 真正写 f 寄存器后回读物理 FPR。fcsr 由
-    // 顶层在退休沿锁存，这里直接读取，不复制到第二份状态。
+    // 浮点退休镜像。direct-NPC 与 full-SoC 都导出同一组 FPR/fcsr
+    // 调试端口；旧 RTL 没有端口时保持全零并明确报告不可用。只在 WBU
+    // 真正写 f 寄存器后回读物理 FPR，fcsr 直接读取顶层退休沿快照。
     std::array<std::uint64_t, 32> architectural_fpr{};
-#endif
 #ifdef CONFIG_SDB
     // Verilator 顶层没有稳定的 RAM 读端口。只记录已精确退休的
     // CPU store，与初始镜像合并成可证明正确的调试内存视图。
@@ -114,8 +113,8 @@ public:
     [[nodiscard]] std::expected<npc::XWord, std::string>
         ReadCachedGPR(std::uint32_t index) const;
     [[nodiscard]] npc::XWord ReadCachedPC() const noexcept;
-    // 浮点退休镜像。FLEN=32 时高 32 位固定为 0；full-SoC 顶层尚未导出
-    // 这组调试端口的构建会明确返回“不可用”，不能伪造全零状态。
+    // 浮点退休镜像。FLEN=32 时高 32 位固定为 0；顶层没有导出这组
+    // 调试端口（旧 RTL）时明确返回“不可用”，不能伪造全零状态。
     [[nodiscard]] bool HasFPDebugState() const;
     [[nodiscard]] std::expected<std::uint64_t, std::string>
         ReadCachedFPR(std::uint32_t index) const;
@@ -124,6 +123,11 @@ public:
     [[nodiscard]] npc::XWord ReadHaltPC() const;
     [[nodiscard]] npc::XWord ReadTrapPC() const;
     [[nodiscard]] npc::XWord ReadTrapTarget() const;
+    // full-SoC 与 direct-NPC 都导出 debug_trap_tval/_hi 时返回 true；
+    // 旧 RTL 没有端口时返回 false，DiffTest 保持旧 REF 的 cause-only
+    // 注入路径并打印明确告警。
+    [[nodiscard]] bool HasTrapTvalDebugState() const noexcept;
+    [[nodiscard]] npc::XWord ReadTrapTval() const;
     // mcause 编码本身在低 32 位；DiffTest 的完整 64 位快照另行读取高半区。
     [[nodiscard]] std::uint32_t ReadTrapCause() const;
     // One-time physical RF rescan used at reset and at the final DiffTest

@@ -43,6 +43,17 @@ class ysyx_26030103(xlen: Int, idBits: Int) extends BlackBox {
     val io_debug_gpr_rdata = Output(UInt(32.W))
     val io_debug_gpr_wen = Output(Bool())
     val io_debug_gpr_waddr = Output(UInt(5.W))
+    // 浮点 DiffTest 观测口：与 direct-NPC 顶层完全同名、同宽、同拍。
+    // fpr 读口在时钟沿后回读物理寄存器；写口与 GPR 写口同沿，
+    // fcsr 是 WBU 退休边界快照，fp_valid 表示本构建是否启用 F。
+    // FLEN=32 时高 32 位固定为 0，低/高两半必须来自同一拍。
+    val io_debug_fpr_raddr = Input(UInt(5.W))
+    val io_debug_fpr_rdata = Output(UInt(32.W))
+    val io_debug_fpr_rdata_hi = Output(UInt(32.W))
+    val io_debug_fpr_wen = Output(Bool())
+    val io_debug_fpr_waddr = Output(UInt(5.W))
+    val io_debug_fcsr = Output(UInt(32.W))
+    val io_debug_fp_valid = Output(Bool())
     val io_debug_pc = Output(UInt(32.W))
     val io_debug_next_pc = Output(UInt(32.W))
     val io_debug_arch_pc = Output(UInt(32.W))
@@ -64,6 +75,10 @@ class ysyx_26030103(xlen: Int, idBits: Int) extends BlackBox {
     val io_debug_trap_pc = Output(UInt(32.W))
     val io_debug_trap_target = Output(UInt(32.W))
     val io_debug_trap_cause = Output(UInt(32.W))
+    // 本次 trap 写入 mtval/stval 的最终值。低/高半字与 trap_cause
+    // 同一拍锁存；RV32 高半区由 NPC 顶层驱动为 0。
+    val io_debug_trap_tval = Output(UInt(32.W))
+    val io_debug_trap_tval_hi = Output(UInt(32.W))
     val io_debug_csr_mstatus = Output(UInt(32.W))
     val io_debug_csr_mtvec = Output(UInt(32.W))
     val io_debug_csr_mepc = Output(UInt(32.W))
@@ -196,6 +211,21 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
     debug_gpr_rdata := cpu.io.io_debug_gpr_rdata
     debug_gpr_wen := cpu.io.io_debug_gpr_wen
     debug_gpr_waddr := cpu.io.io_debug_gpr_waddr
+    // 浮点观测口只做同拍直连，不在 SoC 层寄存或拆分低/高半字。
+    val debug_fpr_raddr = IO(Input(UInt(5.W)))
+    val debug_fpr_rdata = IO(Output(UInt(32.W)))
+    val debug_fpr_rdata_hi = IO(Output(UInt(32.W)))
+    val debug_fpr_wen = IO(Output(Bool()))
+    val debug_fpr_waddr = IO(Output(UInt(5.W)))
+    val debug_fcsr = IO(Output(UInt(32.W)))
+    val debug_fp_valid = IO(Output(Bool()))
+    cpu.io.io_debug_fpr_raddr := debug_fpr_raddr
+    debug_fpr_rdata := cpu.io.io_debug_fpr_rdata
+    debug_fpr_rdata_hi := cpu.io.io_debug_fpr_rdata_hi
+    debug_fpr_wen := cpu.io.io_debug_fpr_wen
+    debug_fpr_waddr := cpu.io.io_debug_fpr_waddr
+    debug_fcsr := cpu.io.io_debug_fcsr
+    debug_fp_valid := cpu.io.io_debug_fp_valid
     debug_pc := cpu.io.io_debug_pc
     debug_next_pc := cpu.io.io_debug_next_pc
     debug_arch_pc := cpu.io.io_debug_arch_pc
@@ -233,6 +263,11 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
     debug_trap_pc := cpu.io.io_debug_trap_pc
     debug_trap_target := cpu.io.io_debug_trap_target
     debug_trap_cause := cpu.io.io_debug_trap_cause
+    // tval 与 cause 同拍直连，低/高半字不做 SoC 侧拼接。
+    val debug_trap_tval = IO(Output(UInt(32.W)))
+    val debug_trap_tval_hi = IO(Output(UInt(32.W)))
+    debug_trap_tval := cpu.io.io_debug_trap_tval
+    debug_trap_tval_hi := cpu.io.io_debug_trap_tval_hi
     val debug_csr_mstatus = IO(Output(UInt(32.W)))
     val debug_csr_mtvec = IO(Output(UInt(32.W)))
     val debug_csr_mepc = IO(Output(UInt(32.W)))
