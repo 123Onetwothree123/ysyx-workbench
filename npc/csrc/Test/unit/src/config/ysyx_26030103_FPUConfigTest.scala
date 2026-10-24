@@ -84,17 +84,33 @@ class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
     error.getMessage should include("recoded")
   }
 
-  it should "拒绝当前 LSU 不支持 RV32D" in {
+  it should "接受 RV32D + FLEN=64 并生成 8 字节访存配置" in {
+    val config = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      UseF = true,
+      UseD = true,
+      FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
+      FPULen = 64
+    )
+    config.XLEN should be(32)
+    config.HasWideMemAccess should be(true)
+    config.ISAString should include("RV32")
+    config.ISAString should include("FD")
+  }
+
+  it should "拒绝 RV32D 使用不足两个 word 的 DCache line" in {
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
         XLEN = 32,
         UseF = true,
         UseD = true,
         FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
-        FPULen = 64
+        FPULen = 64,
+        DCacheEnable = true,
+        DCacheBlockSizeLog2 = 2
       )
     }
-    error.getMessage should include("RV64")
+    error.getMessage should include("cache line")
   }
 
   it should "接受已接入的 Fudian 后端" in {

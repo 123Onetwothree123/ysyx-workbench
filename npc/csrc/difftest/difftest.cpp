@@ -238,8 +238,10 @@ namespace
             ReadMtracePC(dut) != ReadRetirePC(dut))
             return true;
         const auto width{static_cast<unsigned>(dut->debug_mtrace_width)};
-        // RV32 最多 4 字节；RV64 的 LD/SD 是 8 字节，不能误判为不可建模。
-        if (width > (npc::XLen == 64 ? 3U : 2U))
+        // RV32D 的 FLD/FSD 与 RV64 的 LD/SD 都是 8 字节（width=3）。
+        // NEMU REF 会按两个 32 位对齐字实现 RV32D 访存，因此这里不能
+        // 再把 RV32 的 width=3 误判成“REF 不建模”的 MMIO 注入。
+        if (width > 3U)
             return false;
         const auto bytes{static_cast<npc::XWord>(1U << width)};
         const auto address{ReadMtraceAddr(dut)};

@@ -37,7 +37,9 @@ class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   val MemoryWrite = Bool()
   val WidthSelect = UInt(2.W)
   val LoadSigned = Bool()
-  val StoreData = UInt(XLEN.W)
+  // 与 EXUMessage 一致：保留完整 64 位 store 数据，供 RV64 SD/FSD 和
+  // RV32D FSD 使用；整数 store 的高位为零扩展。
+  val StoreData = UInt(64.W)
   // A 扩展：LR/SC/AMO 的原子访存标记与 funct5 操作号。
   val IsAtomic = Bool()
   val AtomicOp = UInt(ysyx_26030103_AtomicOp.Width.W)

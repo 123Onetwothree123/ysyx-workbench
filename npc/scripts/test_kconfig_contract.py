@@ -276,6 +276,19 @@ class KconfigContractTest(unittest.TestCase):
         }
         self.assertEqual(validate_config(values), [])
 
+    def test_fpu_rv32d_hardfloat_accepted(self):
+        # RV32D 的 8 字节 FLD/FSD 已由 LSU/DCache 接入；配置阶段不得因
+        # XLEN=32 拒绝，只有 FLEN/后端依赖关系仍适用。
+        values = {
+            "XLEN": 32,
+            "RISCV_C": True,
+            "RISCV_F": True,
+            "RISCV_D": True,
+            "FPU_IMPL": "hardfloat",
+            "FPU_FLEN": 64,
+        }
+        self.assertEqual(validate_config(values), [])
+
     def test_fpu_savedefconfig_choice_inferred(self):
         values = {
             "XLEN": 64,

@@ -9,17 +9,25 @@ import chisel3.util._
   * 输出等价的 32 位基础指令。保留 RVC 的差异语义：
   *   - RV32 的 C.JAL 与 RV64 的 C.ADDIW 共用 funct3=001；
   *   - C.LD/C.SD/C.LDSP/C.SDSP/C.SUBW/C.ADDW 只在 RV64 合法；
+  *   - RV32 的 C.FLW/C.FSW/C.FLWSP/C.FSWSP 使用 C.LW/C.SW 的立即数
+  *     布局，与 RV64 同编码位的 C.LD/C.SD 互斥；
+  *   - C.FLD/C.FSD/C.FLDSP/C.FSDSP 由 D 扩展开关使能，RV32/RV64 共用；
   *   - RV32 的 SLLI/SRLI/SRAI 要求 shamt[5]=0；
-  *   - C.ADDI4SPN/C.ADDI16SP/C.LUI 的零立即数、C.ADDIW/C.LWSP/C.LDSP
-  *     的 rd=0、C.JR 的 rs1=0 都是保留编码，必须显式报非法。
+  *   - C.ADDI4SPN/C.ADDI16SP/C.LUI 的零立即数、C.ADDIW/C.LWSP/C.LDSP/
+  *     C.FLDSP/C.FLWSP 的 rd=0、C.JR 的 rs1=0 都是保留编码，必须显式报非法。
   *
-  * 未实现 F/D 扩展，因此 C.FLD/C.FLW/C.FSD/C.FSW 及其 SP 形式一律非法；
-  * 这样 RISCV_C=y 不会把浮点压缩编码误当成整数指令执行。
+  * F/D 关闭时 C.FLD/C.FSD/C.FLW/C.FSW 及其 SP 形式保持非法，绝不把浮点
+  * 压缩编码误当成整数指令执行。
   * 规范允许的 HINT（例如 rd=0 的 C.ADDI/C.LI/C.MV/C.ADD、shamt=0 的
   * 移位）展开为写 x0 的等价指令，正常退休但不产生架构副作用。
   */
-class ysyx_26030103_RVCDecoder(val XLEN: Int = 32) extends Module {
+class ysyx_26030103_RVCDecoder(
+    val XLEN: Int = 32,
+    val UseF: Boolean = false,
+    val UseD: Boolean = false
+) extends Module {
   require(XLEN == 32 || XLEN == 64, s"RVCDecoder XLEN 非法: $XLEN")
+  require(!UseD || UseF, "RVCDecoder 的 D 扩展依赖 F 扩展")
 
   val io = IO(new Bundle {
     // 原始取指槽：只有 IsCompressed=1 时才把低 16 位当作压缩指令。
@@ -48,14 +56,24 @@ class ysyx_26030103_RVCDecoder(val XLEN: Int = 32) extends Module {
   private val immLw = Cat(x(5), x(12, 10), x(6), "b00".U(2.W)) // 7 位
   private val immLd =
     Cat(x(6, 5), x(12, 10), "b000".U(3.W)) // 8 位
+  // C.FLD/C.FSD 的 8 字节对齐偏移：uimm[7:6|5|4:3] = x[6:5|12|11:10]。
+  private val immFld =
+    Cat(x(6, 5), x(12), x(11, 10), "b000".U(3.W)) // 8 位
+  // C.FLW/C.FSW 共用 C.LW/C.SW 的偏移布局：uimm[5:3|2|6]。
+  // （C.FLW/C.FSW 只在 RV32 存在；RV64 同编码位是 C.LD/C.SD。）
+  private val immFlw =
+    Cat(x(5), x(12, 10), x(6), "b00".U(2.W)) // 7 位
   private val immLwsp =
     Cat(x(3, 2), x(12), x(6, 4), "b00".U(2.W)) // 8 位
   private val immLdsp =
     Cat(x(4, 2), x(12), x(6, 5), "b000".U(3.W)) // 9 位
+  // C.FLDSP/C.FSDSP 分别复用 C.LDSP/C.SDSP 的偏移布局。
+  private val immFldsp = immLdsp
   private val immSwsp =
     Cat(x(8, 7), x(12, 9), "b00".U(2.W)) // 8 位
   private val immSdsp =
     Cat(x(9, 7), x(12, 10), "b000".U(3.W)) // 9 位
+  private val immFsdsp = immSdsp
   // C.ADDI/C.LI/C.ANDI 的 6 位有符号立即数，符号扩展到 12 位。
   private val immAddi = Cat(Fill(7, x(12)), x(6, 2))
   // C.ADDI16SP 的 10 位有符号立即数，再扩展到 12 位。
@@ -158,10 +176,20 @@ class ysyx_26030103_RVCDecoder(val XLEN: Int = 32) extends Module {
     encI(0x03, rs2p, 2, rs1p, Cat("b00000".U(5.W), immLw))
   private val ld =
     encI(0x03, rs2p, 3, rs1p, Cat("b0000".U(4.W), immLd))
+  // C.FLD/C.FSD：rd'/rs2' 是 f8..f15，rs1' 仍是 x8..x15。
+  private val fld =
+    encI(0x07, rs2p, 3, rs1p, Cat("b0000".U(4.W), immFld))
+  // C.FLW/C.FSW：RV32 专用，偏移布局与 C.LW/C.SW 完全一致。
+  private val flw =
+    encI(0x07, rs2p, 2, rs1p, Cat("b00000".U(5.W), immFlw))
   private val sw =
     encS(0x23, 2, rs1p, rs2p, Cat("b00000".U(5.W), immLw))
   private val sd =
     encS(0x23, 3, rs1p, rs2p, Cat("b0000".U(4.W), immLd))
+  private val fsd =
+    encS(0x27, 3, rs1p, rs2p, Cat("b0000".U(4.W), immFld))
+  private val fsw =
+    encS(0x27, 2, rs1p, rs2p, Cat("b00000".U(5.W), immFlw))
 
   // 象限 1：算术、跳转、条件分支与 MISC-ALU。
   private val addi = encI(0x13, rd, 0, rd, immAddi)
@@ -194,6 +222,10 @@ class ysyx_26030103_RVCDecoder(val XLEN: Int = 32) extends Module {
     encI(0x03, rd, 2, sp, Cat("b0000".U(4.W), immLwsp))
   private val ldsp =
     encI(0x03, rd, 3, sp, Cat("b000".U(3.W), immLdsp))
+  private val fldsp =
+    encI(0x07, rd, 3, sp, Cat("b000".U(3.W), immFldsp))
+  private val flwsp =
+    encI(0x07, rd, 2, sp, Cat("b0000".U(4.W), immLwsp))
   private val jr = encI(0x67, x0, 0, rd, 0.U(12.W))
   private val mv = encR(0x33, rd, 0, x0, rs2, 0x00)
   private val ebreak = "h00100073".U(32.W)
@@ -203,6 +235,10 @@ class ysyx_26030103_RVCDecoder(val XLEN: Int = 32) extends Module {
     encS(0x23, 2, sp, rs2, Cat("b0000".U(4.W), immSwsp))
   private val sdsp =
     encS(0x23, 3, sp, rs2, Cat("b000".U(3.W), immSdsp))
+  private val fsdsp =
+    encS(0x27, 3, sp, rs2, Cat("b000".U(3.W), immFsdsp))
+  private val fswsp =
+    encS(0x27, 2, sp, rs2, Cat("b0000".U(4.W), immSwsp))
 
   private val out = WireDefault(0.U(32.W))
   private val illegal = WireDefault(false.B)
@@ -214,27 +250,31 @@ class ysyx_26030103_RVCDecoder(val XLEN: Int = 32) extends Module {
       out := addi4spn
       illegal := immAddi4spn.orR === 0.U
     }
-    is("b00_001".U(5.W)) { // C.FLD（无 D 扩展）
-      illegal := true.B
+    is("b00_001".U(5.W)) { // C.FLD（需要 D 扩展）
+      if (UseD) { out := fld }
+      else { illegal := true.B }
     }
     is("b00_010".U(5.W)) { // C.LW
       out := lw
     }
-    is("b00_011".U(5.W)) { // RV64 C.LD
+    is("b00_011".U(5.W)) { // RV64 C.LD / RV32 C.FLW
       if (XLEN == 64) { out := ld }
+      else if (UseF) { out := flw }
       else { illegal := true.B }
     }
     is("b00_100".U(5.W)) { // 保留
       illegal := true.B
     }
-    is("b00_101".U(5.W)) { // C.FSD（无 D 扩展）
-      illegal := true.B
+    is("b00_101".U(5.W)) { // C.FSD（需要 D 扩展）
+      if (UseD) { out := fsd }
+      else { illegal := true.B }
     }
     is("b00_110".U(5.W)) { // C.SW
       out := sw
     }
-    is("b00_111".U(5.W)) { // RV64 C.SD
+    is("b00_111".U(5.W)) { // RV64 C.SD / RV32 C.FSW
       if (XLEN == 64) { out := sd }
+      else if (UseF) { out := fsw }
       else { illegal := true.B }
     }
 
@@ -315,16 +355,24 @@ class ysyx_26030103_RVCDecoder(val XLEN: Int = 32) extends Module {
       out := slli
       if (XLEN == 32) { illegal := x(12) }
     }
-    is("b10_001".U(5.W)) { // C.FLDSP（无 D 扩展）
-      illegal := true.B
+    is("b10_001".U(5.W)) { // C.FLDSP（需要 D 扩展）
+      if (UseD) {
+        out := fldsp
+        // C.FLDSP 的 rd=0 是保留编码。
+        illegal := rd === 0.U
+      } else { illegal := true.B }
     }
     is("b10_010".U(5.W)) { // C.LWSP
       out := lwsp
       illegal := rd === 0.U
     }
-    is("b10_011".U(5.W)) { // RV64 C.LDSP
+    is("b10_011".U(5.W)) { // RV64 C.LDSP / RV32 C.FLWSP
       if (XLEN == 64) {
         out := ldsp
+        illegal := rd === 0.U
+      } else if (UseF) {
+        out := flwsp
+        // C.FLWSP 的 rd=0 是保留编码。
         illegal := rd === 0.U
       } else {
         illegal := true.B
@@ -350,14 +398,16 @@ class ysyx_26030103_RVCDecoder(val XLEN: Int = 32) extends Module {
         }
       }
     }
-    is("b10_101".U(5.W)) { // C.FSDSP（无 D 扩展）
-      illegal := true.B
+    is("b10_101".U(5.W)) { // C.FSDSP（需要 D 扩展）
+      if (UseD) { out := fsdsp }
+      else { illegal := true.B }
     }
     is("b10_110".U(5.W)) { // C.SWSP
       out := swsp
     }
-    is("b10_111".U(5.W)) { // RV64 C.SDSP
+    is("b10_111".U(5.W)) { // RV64 C.SDSP / RV32 C.FSWSP
       if (XLEN == 64) { out := sdsp }
+      else if (UseF) { out := fswsp }
       else { illegal := true.B }
     }
 

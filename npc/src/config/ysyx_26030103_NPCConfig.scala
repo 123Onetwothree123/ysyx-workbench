@@ -123,6 +123,10 @@ case class ysyx_26030103_NPCConfig(
 ) {
   require(XLEN == 32 || XLEN == 64,
     s"XLEN 只允许 32 或 64，收到 XLEN=$XLEN")
+  // 是否存在 8 字节架构访存：RV64 的 LD/SD，或 RV32D 的 FLD/FSD。
+  // LSU/DCache 的宽访存数据通路、写缓冲高字和 cache line 几何都由
+  // 这个派生量统一决定，避免 RV32D 只接通一半数据。
+  final val HasWideMemAccess: Boolean = XLEN == 64 || UseD
   // C 扩展（RV32C/RV64C）已接通 IFU/IDU/CSR：允许 2 字节 PC 步进、
   // 16/32 位拼装和 mepc/sepc 只清 bit0。默认仍由 Kconfig 保持关闭。
   // F/D 的结构一致性。先检查依赖关系和 backend/FLEN 组合，再检查
@@ -133,12 +137,6 @@ case class ysyx_26030103_NPCConfig(
     s"FPU_FLEN 只允许 32 或 64，收到 FPULen=$FPULen")
   require(!UseD || FPULen == 64,
     s"启用 RISCV_D 要求 FPU_FLEN=64，收到 FPULen=$FPULen")
-  // 当前 LSU 在 XLEN=64 时才把 8 字节 load/store 拆成两拍 32 位总线事务。
-  // RV32D 还需要扩展 LSU 的 64 位访存路径；在接入前明确拒绝，避免
-  // 生成 FLD/FSD 只能访问一半数据的核。
-  require(!UseD || XLEN == 64,
-    s"当前 D 扩展只支持 RV64（XLEN=64），收到 XLEN=$XLEN；" +
-      "RV32D 需要先接入 64 位 LSU 访存路径")
   require(!UseF || FPUImpl != ysyx_26030103_FPUImpl.None,
     "RISCV_F=y 但 FPU_IMPL=none：必须选择 hardfloat/fudian 等 FPU 后端")
   // Berkeley HardFloat 的算术模块只有 recoded 内部格式。Recode=n 无法
@@ -201,11 +199,11 @@ case class ysyx_26030103_NPCConfig(
     "XLEN=64 HAS_MMU=y 只支持标准 Sv39/Sv48，或显式 MMU_GEOMETRY_MODE=custom")
   require(XLEN == 32 || !MMU.enabled || !MMU.customGeometry || MMU.customSatpModeLegal,
     "XLEN=64 CUSTOM MMU 必须使用 satp MODE 10..15，不能复用标准 8/9")
-  // RV64 的 LD/SD 是 8 字节访问。LSU 在 32 位 AXI 数据通道上按两拍
-  // 窄传输完成；DCache 内部仍以 32 位 word 存储，但一次 load/store
-  // 可以跨两个相邻 word，因此数据行必须至少容纳两个 word。
-  require(XLEN == 32 || !DCacheEnable || DCacheBlockSizeLog2 >= 3,
-    "XLEN=64 且启用 DCache 时，cache line 必须至少容纳两个 32 位 word")
+  // 8 字节访存（RV64 LD/SD 或 RV32D FLD/FSD）要求 DCache 一行
+  // 至少容纳两个相邻 32 位 word；LSU/DCache 以 DataWidth=64 处理宽访问。
+  require(!HasWideMemAccess || !DCacheEnable || DCacheBlockSizeLog2 >= 3,
+    "启用 8 字节访存（RV64 LD/SD 或 RV32D FLD/FSD）且启用 DCache 时，" +
+      "cache line 必须至少容纳两个 32 位 word")
   // VIPT 的页内约束按当前 MMU 页大小检查；RV32 自定义几何和 RV64
   // Sv39/Sv48 的 pageBits 都从这里取。
   val viptCacheEnabled = MMU.enabled && MMU.cacheMode == "vipt"

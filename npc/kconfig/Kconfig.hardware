@@ -52,11 +52,14 @@ menu "硬件配置"
         启用 RV32C/RV64C：IFU 改为 IALIGN=16，可 2 字节步进并拼装
         16/32 位指令；IDU 完整展开整数 RVC 指令，保留的非法编码
         明确按非法指令陷入；misa.C 置位，mepc/sepc 只清 bit0。
-        RV32 的 C.JAL 与 RV64 的 C.ADDIW 按 XLEN 区分；未实现 F/D，
-        因此浮点压缩编码按非法指令处理。
+        RV32 的 C.JAL 与 RV64 的 C.ADDIW 按 XLEN 区分；C.FLD/C.FSD/
+        C.FLDSP/C.FSDSP 需要 D 扩展，RV32 的 C.FLW/C.FSW/C.FLWSP/
+        C.FSWSP 需要 F 扩展，扩展关闭时这些编码按非法指令处理。
+        RV32/RV64 的同编码位差异（C.FLW 对 C.LD、C.FSW 对 C.SD）
+        由 XLEN 精确选择，不会把浮点压缩编码误当成整数访存。
         关闭时压缩编码不会被当作 32 位指令执行，而是明确触发
         illegal instruction(cause=2)。
-        difftest 时 NEMU 必须使用相同 ISA（如 riscv32imac）。
+        difftest 时 NEMU 必须使用相同 ISA（如 rv32gc / rv64gc）。
         修改后需重新 make verilog。
 
     config RISCV_F
@@ -69,8 +72,8 @@ menu "硬件配置"
         elaboration 阶段明确报错，不会生成只有 ISA 标志、没有浮点
         数据通路的半成品。
         Berkeley HardFloat 已通过 vendor 源码接入，可真正执行 RV32F/
-        RV64D；Fudian 仍只有配置骨架，选择它会在 elaboration 阶段
-        明确报错，绝不假装支持。
+        RV32D/RV64F/RV64D；Fudian 仍只有配置骨架，选择它会在 elaboration
+        阶段明确报错，绝不假装支持。
         修改后需重新 make verilog。
 
     config RISCV_D
@@ -80,9 +83,11 @@ menu "硬件配置"
       help
         D 依赖 F，并要求 FPU_FLEN=64：D 的 64 位格式和浮点寄存器
         需要 64 位数据通路。只启用 D 而不启用 F、或 FLEN=32 时，
-        配置契约和 elaboration 会明确拒绝。当前 D 的 64 位访存路径
-        只在 XLEN=64（RV64D）下接入；RV32D 会在 elaboration 明确拒绝，
-        需先扩展 LSU 的 8 字节访存。
+        配置契约和 elaboration 会明确拒绝。
+        RV32D 与 RV64D 都已接入：XLEN=32 时 LSU/DCache 仍以 32 位
+        AXI 数据 beat 完成 FLD/FSD 的 8 字节访问（两拍窄传输），
+        无 MMU 的 RV32 配置可直接使用；RV32D 需要 DCache 时 cache
+        line 必须至少 8 字节。
 
     menu "FPU 后端"
       depends on RISCV_F

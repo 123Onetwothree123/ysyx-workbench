@@ -52,6 +52,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val lsu = Module(
     new ysyx_26030103_LSU(
       XLEN = XLEN,
+      UseD = config.UseD,
       WBufDepth = config.WBufDepth,
       DCacheEnable = config.DCacheEnable,
       DCacheStorage = config.DCacheStorage,

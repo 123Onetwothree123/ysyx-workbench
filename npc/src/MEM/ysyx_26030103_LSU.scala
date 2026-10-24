@@ -8,6 +8,8 @@ import _root_.ysyx_26030103.config._
 // LSU是访存流水级：完成总线事务、提交访存故障并冲刷年轻指令
 class ysyx_26030103_LSU(
     val XLEN: Int = 32,
+    // D 扩展存在时，即使 XLEN=32 也必须支持 8 字节 FLD/FSD 访存。
+    val UseD: Boolean = false,
     val WBufDepth: Int = 4, // 写缓冲项数(必须是2的幂, 环形队列按位回绕)
     val DCacheEnable: Boolean = false,
     val DCacheStorage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
@@ -38,10 +40,10 @@ class ysyx_26030103_LSU(
     s"LSU AddressWidth 非法: $AddressWidth")
   require(AddressWidth <= XLEN,
     s"LSU AddressWidth($AddressWidth) 不能超过 XLEN($XLEN)")
-  // RV64 的 LD/SD 是 8 字节访问。基本 AXI 数据通道仍是 32 位（与
-  // ysyxSoC 兼容），由两拍窄传输完成；DCache 内部按两个相邻 32 位
-  // word 处理同一次 8 字节 load/store。
-  private val WideMem = XLEN == 64
+  // RV64 的 LD/SD 与 RV32D 的 FLD/FSD 都是 8 字节访问。基本 AXI 数据
+  // 通道仍是 32 位（与 ysyxSoC 兼容），由两拍窄传输完成；DCache 内部
+  // 按两个相邻 32 位 word 处理同一次 8 字节 load/store。
+  private val WideMem = XLEN == 64 || UseD
   private def AddrOf(value: UInt): UInt = value(AddressWidth - 1, 0)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage(XLEN)))
@@ -158,7 +160,9 @@ class ysyx_26030103_LSU(
     BlockSizeLog2 = DCacheBlockSizeLog2,
     IndexBits = DCacheIndexBits,
     AddressWidth = AddressWidth,
-    DataWidth = XLEN,
+    // RV32D 的 FLD/FSD 和 RV64 的 LD/SD 一样是 8 字节访问：DCache
+    // 对外提供 64 位响应/写数据，内部仍按 32 位 word 存放。
+    DataWidth = if (XLEN == 64 || UseD) 64 else 32,
     CacheableBase = DCacheableBase,
     CacheableMask = DCacheableMask,
     PMARegions = DCachePMARegions,
@@ -198,7 +202,9 @@ class ysyx_26030103_LSU(
   val PendingStoreValid = PendingStoreCount =/= 0.U
   val PendingStoreHeadBits =
     if (WBufDepth == 1) PendingStore(0) else PendingStore(PendingStoreHead)
-  val LoadDataReg = RegInit(0.U(XLEN.W))
+  // 架构 load 结果统一保留 64 位：RV64 的 LD 和 RV32D 的 FLD 都要完整
+  // 高字；整数 load 只消费低 XLEN 位，FP load 由 FPWriteData 写 f 寄存器。
+  val LoadDataReg = RegInit(0.U(64.W))
   val AccessFaultReg = RegInit(false.B)
   val AccessFaultRespReg = RegInit(0.U(2.W))
   val StoreFaultReg = RegInit(false.B) // 等待B响应时锁存写访问错误
@@ -602,7 +608,7 @@ class ysyx_26030103_LSU(
   )
   val IncomingWriteData = IncomingWritePayload._1
   val IncomingWriteMask = IncomingWritePayload._2
-  // SD 的第二拍数据。RV32 时该寄存器不会被执行路径使用。
+  // SD 的第二拍数据。RV32 且无 D 扩展时该寄存器不会被执行路径使用。
   val IncomingWriteDataHi =
     if (WideMem) io.in.bits.StoreData(63, 32) else 0.U(32.W)
   // 将最多 64 位的原始小端数据格式化为 XLEN 架构结果。
@@ -864,9 +870,9 @@ class ysyx_26030103_LSU(
   DCache.io.StoreAddr := WbHeadEffectiveAddr
   DCache.io.StoreVAddr := wbHeadVAddr
   DCache.io.StoreData :=
-    (if (XLEN == 64) Cat(wbHeadDataHi, wbHeadData) else wbHeadData)
+    (if (WideMem) Cat(wbHeadDataHi, wbHeadData) else wbHeadData)
   DCache.io.StoreStrb :=
-    (if (XLEN == 64)
+    (if (WideMem)
        Mux(wbHeadWide, "hff".U(8.W), Cat(0.U(4.W), wbHeadStrb))
      else wbHeadStrb)
   // store B 完成事件同时送给 ICache snoop。LastAddr 用本次访问的字节数
@@ -882,7 +888,7 @@ class ysyx_26030103_LSU(
     WbHeadEffectiveAddr +
       Mux(
         wbHeadWide,
-        (XLEN / 8 - 1).U(AddressWidth.W),
+        (if (WideMem) 7.U(AddressWidth.W) else (XLEN / 8 - 1).U(AddressWidth.W)),
         (1.U(AddressWidth.W) << wbHeadSize) - 1.U(AddressWidth.W)
       )
   )

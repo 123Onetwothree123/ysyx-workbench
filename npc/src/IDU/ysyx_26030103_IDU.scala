@@ -98,7 +98,8 @@ class ysyx_26030103_IDU(
   val Instruction = WireDefault(RawInstruction)
   val RvcIllegal = WireDefault(false.B)
   if (config.UseC) {
-    val RVCDecoderModule = Module(new ysyx_26030103_RVCDecoder(XLEN))
+    val RVCDecoderModule =
+      Module(new ysyx_26030103_RVCDecoder(XLEN, UseF, UseD))
     RVCDecoderModule.io.in := RawInstruction
     when(IsCompressed) {
       Instruction := RVCDecoderModule.io.out
