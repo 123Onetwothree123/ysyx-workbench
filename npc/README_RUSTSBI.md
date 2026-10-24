@@ -52,6 +52,9 @@ rustup target add riscv64imac-unknown-none-elf
 | `CONFIG_SBI_NEXT_ADDR` | `0x80200000` | 跳转的 S 模式入口 |
 | `CONFIG_SBI_PLATFORM` | `"npc"` | 平台名，打印到启动日志 |
 | `CONFIG_SBI_BUILD_JOBS` | `0` | 构建并行度，0 表示 `nproc` |
+| `CONFIG_SBI_FDT_ENABLE` | `n` | 是否把 DTB 复制到 `SBI_FDT_ADDR` 并通过 a1 传递 |
+| `CONFIG_SBI_FDT_PATH` | `"dts/npc.dts"` | DTS/DTB 源文件 |
+| `CONFIG_SBI_FDT_ADDR` | `0x80f00000` | DTB 最终加载/传递地址 |
 
 OpenSBI 与 RustSBI 位于同一个 Kconfig `choice` 中，二者互斥；选择
 RustSBI 时 `CONFIG_SBI_IMPL_OPENSBI` 会自动变为未选中，反之亦然。
@@ -114,7 +117,10 @@ make rustsbi-clean
 - machine timer 中断（MTIP）在 M 模式清 `mtimecmp`，再向 `mip.STIP`
   注入 S 模式定时器中断（NPC 默认 `timer_path=clint_mtip` 不会自动产生
   STIP）；
-- `mret` 到 `CONFIG_SBI_NEXT_ADDR`，`a0=0`（单 hart），`a1=0`（无设备树）。
+- `mret` 到 `CONFIG_SBI_NEXT_ADDR`，`a0=0`（单 hart）；
+  `CONFIG_SBI_FDT_ENABLE=y` 时先把内嵌 DTB 复制到
+  `CONFIG_SBI_FDT_ADDR`，再以 `a1=DTB 地址` 进入 S 模式；关闭时
+  `a1=0`（保持旧行为）。
 
 实现的 SBI 扩展：
 
@@ -144,7 +150,42 @@ NPC 默认 `CONFIG_RISCV_C=n`，必须显式 `-C target-feature=-c,-zca`。
 
 ## 6. 测试
 
-测试源码在 `npc/test/rustsbi/`，payload 是一个最小 S 模式程序，验证
+统一入口（与 OpenSBI 共用 `npc/test/opensbi_payload/` 和 FDT 断言）：
+
+```bash
+cd npc
+make sbi-test SBI_IMPL=rustsbi                  # a1=0，旧行为
+make sbi-test SBI_IMPL=rustsbi SBI_FDT_ENABLE=y # DTB -> a1=0x80f00000
+```
+
+实际 NPC 日志（RustSBI + FDT，节选）：
+
+```text
+[rustsbi-npc] RustSBI 0.4.1 (vendor/rustsbi 27a9c7d)
+[rustsbi-npc] platform : npc
+[rustsbi-npc] firmware : 0x0000000080000000
+[rustsbi-npc] uart     : 0x0000000010000000
+[rustsbi-npc] clint    : 0x0000000002000000
+[rustsbi-npc] next     : 0x0000000080200000
+[rustsbi-npc] entering supervisor mode
+[rustsbi-npc] fdt      : 0x0000000080f00000
+[rustsbi-npc] fdt size : 0x00000000000006be
+SBI-NPC-PAYLOAD: entered S-mode via RustSBI (a0=0x0000000000000000, a1=0x0000000080f00000)
+SBI-NPC-PAYLOAD: FDT magic=0x00000000d00dfeed totalsize=0x00000000000006be
+SBI-NPC-PAYLOAD: FDT model=ysyx,npc
+SBI-NPC-PAYLOAD: FDT memory OK: 0x0000000080000000+0x0000000004000000
+SBI-NPC-PAYLOAD: FDT uart OK: 0x0000000010000000 irq=10
+SBI-NPC-PAYLOAD: FDT plic OK: 0x000000000c000000+0x0000000004000000 ndev=31
+SBI-NPC-PAYLOAD: FDT chosen OK: /soc/serial@10000000
+SBI-NPC-PAYLOAD: FDT reserved-memory OK
+SBI-NPC-PAYLOAD: FDT PASS
+SBI-NPC-PAYLOAD: PASS
+```
+
+`SBI_FDT_ENABLE=n` 时 RustSBI 打印 `fdt : none (a1=0)`，payload 同样
+检查 `a1=0`。
+
+独立测试源码在 `npc/test/rustsbi/`，payload 是一个最小 S 模式程序，验证
 next-stage 跳转、legacy console、DBCN、Base、TIME、sPI：
 
 ```bash
@@ -194,7 +235,8 @@ timeout；NPC 模式则用 `.word 0x0000000b` 正常结束并得到 GOOD TRAP。
 
 1. 只支持 RV64；RV32 启动/陷入汇编尚未实现，脚本会明确拒绝。
 2. 只支持单 hart；IPI 只对自己生效，HSM 只能查询/停止 hart 0。
-3. 没有设备树解析；进入 S 模式时 `a1=0`，不能直接启动需要 DTB 的 Linux。
+3. 已支持内嵌 DTB 并通过 a1 传递（`SBI_FDT_ENABLE`），但 RustSBI 本身
+   不解析 DTB；UART/CLINT 地址仍为编译期常量。未启用 FDT 时 `a1=0`。
 4. 没有实现完整的 PMP 策略；默认 `CONFIG_HAS_PMP=n` 时不写 PMP。
    若打开 PMP，固件配置一条覆盖全部物理地址的 NAPOT 项，不是最小权限。
 5. 没有 UART 中断/PLIC 初始化；console 使用轮询，S 模式外部中断需要

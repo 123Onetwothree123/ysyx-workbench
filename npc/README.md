@@ -40,3 +40,15 @@ Kconfig、构建和测试见 [README_RUSTSBI.md](README_RUSTSBI.md)。
 ```bash
 make rustsbi
 ```
+
+需要给 Linux 传递设备树时，使用 `rv64_sbi_fdt_defconfig` 或打开
+`CONFIG_SBI_FDT_ENABLE=y`：
+
+```bash
+make rv64_sbi_fdt_defconfig
+make sbi
+make sbi-test
+```
+
+DTB 源文件在 `npc/dts/npc.dts`，默认加载/传递地址
+`SBI_FDT_ADDR=0x80f00000`；`make dtb` 可单独生成到 `build/dtb/`。

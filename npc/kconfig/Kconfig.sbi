@@ -67,4 +67,42 @@ menu "SBI 固件"
     help
       传给 SBI 构建脚本的并行任务数；0 表示使用当前 CPU 核数。
 
+  config SBI_FDT_ENABLE
+    bool "向 next-stage 传递设备树 (DTB)"
+    depends on SBI_ENABLE
+    default n
+    help
+      打开后，SBI 固件会内嵌 npc/dts/npc.dts 生成的 DTB，并在进入
+      S 模式时把它放到 SBI_FDT_ADDR，通过 a1 传给 next-stage
+      （Linux 约定 a1=DTB 物理地址）。
+
+      默认关闭：SBI 仍按编译期固定的平台设备初始化，进入 S 模式时
+      a1=0，和之前的 OpenSBI/RustSBI 行为完全一致。
+
+  config SBI_FDT_PATH
+    string "设备树源文件/二进制路径"
+    depends on SBI_FDT_ENABLE
+    default "dts/npc.dts"
+    help
+      DTS 或 DTB 文件。相对路径按 npc/ 目录解析；也可以写绝对路径。
+      .dts 会先经 cpp 展开布局宏，再由 dtc 编译；.dtb 直接使用。
+
+      默认的 npc/dts/npc.dts 会读取 SBI_FW_BASE/SBI_FW_SIZE/
+      SBI_NEXT_ADDR/SBI_FDT_ADDR，使 reserved-memory 与实际 SBI
+      布局一致。
+
+  config SBI_FDT_ADDR
+    hex "DTB 加载/传递地址"
+    depends on SBI_FDT_ENABLE
+    default 0x80f00000
+    help
+      DTB 在物理内存中的最终地址。OpenSBI 通过 FW_JUMP_FDT_ADDR/
+      FW_PAYLOAD_FDT_ADDR 把内嵌 DTB 复制到这里；RustSBI 也会把
+      内嵌 DTB 复制到这里，再以 a1 传给 S 模式。
+
+      该地址必须 8 字节对齐，位于 NPC RAM 内，且不能与 SBI 固件区
+      重叠。默认 0x80f00000 位于 next-stage 0x80200000 之后，给
+      Linux Image 预留约 13 MiB；如果内核更大，请同时上移
+      SBI_FDT_ADDR 或下移 SBI_NEXT_ADDR。
+
 endmenu

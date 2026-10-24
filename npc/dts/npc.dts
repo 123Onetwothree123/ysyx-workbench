@@ -1,0 +1,161 @@
+/*
+ * NPC（ysyx-workbench）最小设备树。
+ *
+ * 该文件由 npc/scripts/build_dtb.sh 先用 cpp 展开宏，再交给 dtc 编译。
+ * 直接执行 `dtc -I dts -O dtb npc/dts/npc.dts` 会因为下面的 #define/
+ * #ifndef 而失败；请使用 `make dtb` 或脚本，保证 DTB 中的地址与
+ * CONFIG_SBI_* 和 NPC 固定内存映射一致。
+ *
+ * 默认布局（可用 cpp -D 覆盖，构建脚本会按 Kconfig 传入）：
+ *   RAM      0x80000000 + 64 MiB
+ *   SBI FW   0x80000000 + 2 MiB
+ *   next     0x80200000（Linux Image / 测试 payload 的 S 模式入口）
+ *   FDT      0x80f00000（SBI 传递给 next-stage 的 a1）
+ *
+ * 注意：本 DTS 不描述 F/D 扩展；CPU ISA 与当前 SBI 固件保持一致，
+ * 使用 rv64ima_zicsr_zifencei。
+ */
+
+#ifndef NPC_RAM_BASE
+#define NPC_RAM_BASE 0x80000000
+#endif
+#ifndef NPC_RAM_SIZE
+#define NPC_RAM_SIZE 0x04000000
+#endif
+#ifndef NPC_RAM_BASE_NAME
+#define NPC_RAM_BASE_NAME 80000000
+#endif
+
+#ifndef SBI_FW_BASE
+#define SBI_FW_BASE 0x80000000
+#endif
+#ifndef SBI_FW_SIZE
+#define SBI_FW_SIZE 0x00200000
+#endif
+#ifndef SBI_FW_BASE_NAME
+#define SBI_FW_BASE_NAME 80000000
+#endif
+
+#ifndef SBI_NEXT_ADDR
+#define SBI_NEXT_ADDR 0x80200000
+#endif
+#ifndef SBI_NEXT_ADDR_NAME
+#define SBI_NEXT_ADDR_NAME 80200000
+#endif
+#ifndef SBI_NEXT_RESERVE_SIZE
+#define SBI_NEXT_RESERVE_SIZE 0x00001000
+#endif
+
+#ifndef SBI_FDT_ADDR
+#define SBI_FDT_ADDR 0x80f00000
+#endif
+#ifndef SBI_FDT_ADDR_NAME
+#define SBI_FDT_ADDR_NAME 80f00000
+#endif
+#ifndef SBI_FDT_RESERVE_SIZE
+#define SBI_FDT_RESERVE_SIZE 0x00010000
+#endif
+
+/dts-v1/;
+
+/ {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	compatible = "ysyx,npc";
+	model = "ysyx,npc";
+
+	chosen {
+		/* Linux 控制台：SBI 早期控制台 + 8250 UART。 */
+		bootargs = "console=ttyS0,115200 earlycon=sbi";
+		stdout-path = "/soc/serial@10000000";
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		timebase-frequency = <10000000>;
+
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "riscv";
+			reg = <0>;
+			status = "okay";
+			/* 不声明 F/D；与当前 SBI 固件和 NPC 默认 RTL 配置一致。 */
+			riscv,isa = "rv64ima_zicsr_zifencei";
+			mmu-type = "riscv,sv39";
+
+			cpu0_intc: interrupt-controller {
+				#interrupt-cells = <1>;
+				compatible = "riscv,cpu-intc";
+				interrupt-controller;
+			};
+		};
+	};
+
+	memory@NPC_RAM_BASE_NAME {
+		device_type = "memory";
+		reg = <0x0 NPC_RAM_BASE 0x0 NPC_RAM_SIZE>;
+	};
+
+	soc {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		compatible = "simple-bus";
+		ranges;
+
+		/* SiFive CLINT：mtimecmp=+0x4000，mtime=+0xbff8。 */
+		clint@2000000 {
+			compatible = "riscv,clint0";
+			reg = <0x0 0x02000000 0x0 0x00010000>;
+			interrupts-extended = <&cpu0_intc 3 &cpu0_intc 7>;
+		};
+
+		/* PLIC：source 1..31，UART 使用 source 10。 */
+		plic: interrupt-controller@c000000 {
+			compatible = "riscv,plic0";
+			reg = <0x0 0x0c000000 0x0 0x04000000>;
+			#interrupt-cells = <1>;
+			interrupt-controller;
+			riscv,ndev = <31>;
+			interrupts-extended = <&cpu0_intc 11 &cpu0_intc 9>;
+		};
+
+		/* 16550 兼容 UART，只有 TX 在 NPC 上真正实现。 */
+		serial@10000000 {
+			compatible = "ns16550a";
+			reg = <0x0 0x10000000 0x0 0x00000100>;
+			clock-frequency = <10000000>;
+			current-speed = <115200>;
+			reg-shift = <0>;
+			reg-io-width = <1>;
+			interrupt-parent = <&plic>;
+			interrupts = <10>;
+		};
+	};
+
+	/*
+	 * 保留区按 SBI 配置生成：
+	 *   - SBI 固件区标记 no-map，Linux 不能把它当普通 RAM 使用；
+	 *   - next-stage/FDT 只声明占用范围，不标记 no-map，避免影响内核
+	 *     自身的镜像映射；Linux 还会通过 early_init_fdt_reserve_self()
+	 *     再次保留 DTB。
+	 */
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		sbi-firmware@SBI_FW_BASE_NAME {
+			reg = <0x0 SBI_FW_BASE 0x0 SBI_FW_SIZE>;
+			no-map;
+		};
+
+		next-stage@SBI_NEXT_ADDR_NAME {
+			reg = <0x0 SBI_NEXT_ADDR 0x0 SBI_NEXT_RESERVE_SIZE>;
+		};
+
+		fdt@SBI_FDT_ADDR_NAME {
+			reg = <0x0 SBI_FDT_ADDR 0x0 SBI_FDT_RESERVE_SIZE>;
+		};
+	};
+};

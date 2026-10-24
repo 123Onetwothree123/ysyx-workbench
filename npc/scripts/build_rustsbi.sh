@@ -17,7 +17,7 @@ NPC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG_FILE="$NPC_HOME/.config"
 FW_DIR="$NPC_HOME/rustsbi-fw"
 VENDOR_DIR="$NPC_HOME/../vendor/rustsbi"
-OUT_DIR="${RUSTSBI_OUT_DIR:-$NPC_HOME/build/rustsbi}"
+OUT_DIR="${RUSTSBI_OUT_DIR:-${SBI_OUT_DIR:-$NPC_HOME/build/rustsbi}}"
 TARGET="riscv64imac-unknown-none-elf"
 TARGET_DIR="$OUT_DIR/target"
 
@@ -88,6 +88,10 @@ FW_SIZE="${SBI_FW_SIZE:-$(cfg_value CONFIG_SBI_FW_SIZE 0x00200000)}"
 NEXT_ADDR="${SBI_NEXT_ADDR:-$(cfg_value CONFIG_SBI_NEXT_ADDR 0x80200000)}"
 PLATFORM="${SBI_PLATFORM:-$(cfg_value CONFIG_SBI_PLATFORM npc)}"
 JOBS="$(cfg_value CONFIG_SBI_BUILD_JOBS 0)"
+FDT_ENABLE="${SBI_FDT_ENABLE:-$(cfg_bool CONFIG_SBI_FDT_ENABLE n)}"
+FDT_PATH="${SBI_FDT_PATH:-$(cfg_value CONFIG_SBI_FDT_PATH dts/npc.dts)}"
+FDT_ADDR="${SBI_FDT_ADDR:-$(cfg_value CONFIG_SBI_FDT_ADDR 0x80f00000)}"
+FDT_OUT_DIR="${SBI_FDT_OUT_DIR:-$OUT_DIR/fdt}"
 # SBI_HAS_PMP=y 可用于 QEMU 交叉验证（QEMU virt 实现了 PMP，NPC 默认没有）。
 HAS_PMP="${SBI_HAS_PMP:-$(cfg_bool CONFIG_HAS_PMP n)}"
 case "$HAS_PMP" in
@@ -98,6 +102,12 @@ esac
 case "$FW_BASE" in 0x*|0X*) ;; *) die "CONFIG_SBI_FW_BASE 必须是 0x 开头的十六进制数：$FW_BASE" ;; esac
 case "$FW_SIZE" in 0x*|0X*) ;; *) die "CONFIG_SBI_FW_SIZE 必须是 0x 开头的十六进制数：$FW_SIZE" ;; esac
 case "$NEXT_ADDR" in 0x*|0X*) ;; *) die "CONFIG_SBI_NEXT_ADDR 必须是 0x 开头的十六进制数：$NEXT_ADDR" ;; esac
+case "$FDT_ENABLE" in
+    y|Y|1|true|TRUE) FDT_ENABLE=y ;;
+    n|N|0|false|FALSE|'') FDT_ENABLE=n ;;
+    *) die "CONFIG_SBI_FDT_ENABLE 必须是 y/n：$FDT_ENABLE" ;;
+esac
+case "$FDT_ADDR" in 0x*|0X*) ;; *) die "CONFIG_SBI_FDT_ADDR 必须是 0x 开头的十六进制数：$FDT_ADDR" ;; esac
 
 # direct-NPC 的复位 PC = 0x80000000 + CONFIG_CACHE_PADDING。固件 ELF
 # 入口必须与它完全一致，否则 ImageLoader 会拒绝加载。
@@ -124,11 +134,29 @@ if [ "$IMPL" != "rustsbi" ]; then
     echo "提示: 当前 CONFIG_SBI_IMPL=$IMPL；make rustsbi 仍会构建 RustSBI，但默认 SBI 选择不是它。"
 fi
 
+# 设备树：RustSBI 不支持 OpenSBI 的 FW_FDT_PATH，因此由本脚本先
+# 生成 DTB，再通过 cargo 环境变量让 build.rs 把 DTB 编进 .rodata；
+# 运行时 rust_main 会把它复制到 SBI_FDT_ADDR，并以 a1 传给 S 模式。
+FDT_DTB_PATH=""
+if [ "$FDT_ENABLE" = "y" ]; then
+    SBI_FDT_OUT_DIR="$FDT_OUT_DIR" \
+    SBI_FDT_PATH="$FDT_PATH" \
+    SBI_FDT_ADDR="$FDT_ADDR" \
+    SBI_FW_BASE="$FW_BASE" \
+    SBI_FW_SIZE="$FW_SIZE" \
+    SBI_NEXT_ADDR="$NEXT_ADDR" \
+    NPC_HOME="$NPC_HOME" \
+        "$NPC_HOME/scripts/build_dtb.sh"
+    FDT_DTB_PATH="$FDT_OUT_DIR/npc.dtb"
+    [ -f "$FDT_DTB_PATH" ] || die "DTB 构建脚本未生成 $FDT_DTB_PATH"
+fi
+
 echo "构建 RustSBI NPC 固件"
 echo "  源码:   $VENDOR_DIR (rustsbi 0.4.1, HEAD 27a9c7d)"
 echo "  target: $TARGET"
 echo "  基地址: $FW_BASE  大小: $FW_SIZE"
 echo "  next:   $NEXT_ADDR  platform: $PLATFORM  PMP: $HAS_PMP"
+echo "  FDT:    $FDT_ENABLE${FDT_DTB_PATH:+ ($FDT_DTB_PATH -> $FDT_ADDR)}"
 echo "  输出:   $OUT_DIR"
 
 mkdir -p "$OUT_DIR"
@@ -138,6 +166,10 @@ export SBI_FW_SIZE="$FW_SIZE"
 export SBI_NEXT_ADDR="$NEXT_ADDR"
 export SBI_PLATFORM="$PLATFORM"
 export SBI_HAS_PMP="$HAS_PMP"
+export SBI_FDT_ENABLE="$FDT_ENABLE"
+export SBI_FDT_PATH="$FDT_PATH"
+export SBI_FDT_ADDR="$FDT_ADDR"
+export SBI_FDT_DTB_PATH="$FDT_DTB_PATH"
 export CARGO_TARGET_DIR="$TARGET_DIR"
 
 (

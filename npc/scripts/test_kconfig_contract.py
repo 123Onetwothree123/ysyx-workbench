@@ -371,6 +371,54 @@ class KconfigContractTest(unittest.TestCase):
         values["HAS_PMP"] = False
         self.assert_error(values, "HAS_PMP=y")
 
+    def test_sbi_fdt_default_layout_passes(self):
+        values = self.base_sbi()
+        values.update({
+            "SBI_FDT_ENABLE": True,
+            "SBI_FDT_PATH": "dts/npc.dts",
+            "SBI_FDT_ADDR": 0x80F00000,
+        })
+        self.assertEqual(validate_config(values), [])
+
+    def test_sbi_fdt_unaligned_rejected(self):
+        values = self.base_sbi()
+        values.update({
+            "SBI_FDT_ENABLE": True,
+            "SBI_FDT_ADDR": 0x80F00004,
+        })
+        self.assert_error(values, "8 字节对齐")
+
+    def test_sbi_fdt_overlaps_firmware_rejected(self):
+        values = self.base_sbi()
+        values.update({
+            "SBI_FDT_ENABLE": True,
+            "SBI_FDT_ADDR": 0x80100000,
+        })
+        self.assert_error(values, "SBI 固件区")
+
+    def test_sbi_fdt_outside_ram_rejected(self):
+        values = self.base_sbi()
+        values.update({
+            "SBI_FDT_ENABLE": True,
+            "SBI_FDT_ADDR": 0x84000000,
+        })
+        self.assert_error(values, "NPC RAM")
+
+    def test_sbi_fdt_before_next_stage_must_fit(self):
+        values = self.base_sbi()
+        values.update({
+            "SBI_FDT_ENABLE": True,
+            "SBI_NEXT_ADDR": 0x80400000,
+            "SBI_FDT_ADDR": 0x803F8000,
+        })
+        self.assert_error(values, "SBI_NEXT_ADDR")
+
+    def test_sbi_fdt_disabled_ignores_addr(self):
+        values = self.base_sbi()
+        values["SBI_FDT_ENABLE"] = False
+        values["SBI_FDT_ADDR"] = 0x1
+        self.assertEqual(validate_config(values), [])
+
     def test_sbi_disabled_ignores_layout(self):
         values = self.base_rv64()
         values.update({

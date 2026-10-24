@@ -13,6 +13,10 @@
 #   SBI_FW_SIZE            固件区域最大尺寸
 #   SBI_NEXT_ADDR          next-stage S 模式入口
 #   SBI_BUILD_JOBS         make -j 并行度，0 表示 nproc
+#   SBI_FDT_ENABLE         是否内嵌并传递 DTB（y/n）
+#   SBI_FDT_PATH           DTS/DTB 源文件
+#   SBI_FDT_ADDR           DTB 最终加载/传递地址
+#   SBI_FDT_OUT_DIR        DTB 输出目录
 #   SBI_TOOLCHAIN_PREFIX   RISC-V GCC 前缀
 #   SBI_ISA / SBI_ABI      固件 ISA/ABI（默认 rv64ima_zicsr_zifencei/lp64）
 #   SBI_LD                 链接器（默认为支持 PIE 的 ld.lld）
@@ -38,12 +42,16 @@ SBI_FW_BASE="${SBI_FW_BASE:-0x80000000}"
 SBI_FW_SIZE="${SBI_FW_SIZE:-0x00200000}"
 SBI_NEXT_ADDR="${SBI_NEXT_ADDR:-0x80200000}"
 SBI_BUILD_JOBS="${SBI_BUILD_JOBS:-0}"
+SBI_FDT_ENABLE="${SBI_FDT_ENABLE:-n}"
+SBI_FDT_PATH="${SBI_FDT_PATH:-dts/npc.dts}"
+SBI_FDT_ADDR="${SBI_FDT_ADDR:-0x80f00000}"
 SBI_TOOLCHAIN_PREFIX="${SBI_TOOLCHAIN_PREFIX:-riscv64-unknown-elf-}"
 SBI_ISA="${SBI_ISA:-rv64ima_zicsr_zifencei}"
 SBI_ABI="${SBI_ABI:-lp64}"
 SBI_LD="${SBI_LD:-ld.lld}"
 SBI_VENDOR_DIR="${SBI_VENDOR_DIR:-$WORKBENCH_HOME/vendor/opensbi}"
 SBI_OUT_DIR="${SBI_OUT_DIR:-$NPC_HOME/build/opensbi}"
+SBI_FDT_OUT_DIR="${SBI_FDT_OUT_DIR:-$SBI_OUT_DIR/fdt}"
 SBI_PAYLOAD_PATH="${SBI_PAYLOAD_PATH:-}"
 
 # 固定来源，便于报告/复现；与 vendor/opensbi/VENDOR.md 保持一致。
@@ -144,8 +152,51 @@ if [[ -n "$SBI_PAYLOAD_PATH" ]]; then
 	info "构建 FW_PAYLOAD 测试镜像：payload=$PAYLOAD_ABS @ 0x$(printf '%x' "$NEXT")"
 fi
 
+# 设备树：先独立生成 DTB，再让 OpenSBI 把它嵌进固件并复制到
+# SBI_FDT_ADDR。FW_FDT_PATH 只负责“嵌入”，*_FDT_ADDR 才决定
+# next-stage 最终收到的 a1；两者必须同时设置。
+DTB_PATH=""
+case "$SBI_FDT_ENABLE" in
+	y)
+		FDT_ADDR_NUM="$(parse_int SBI_FDT_ADDR "$SBI_FDT_ADDR")"
+		SBI_FDT_OUT_DIR="$SBI_FDT_OUT_DIR" \
+		SBI_FDT_PATH="$SBI_FDT_PATH" \
+		SBI_FDT_ADDR="0x$(printf '%x' "$FDT_ADDR_NUM")" \
+		SBI_FW_BASE="0x$(printf '%x' "$BASE")" \
+		SBI_FW_SIZE="0x$(printf '%x' "$SIZE")" \
+		SBI_NEXT_ADDR="0x$(printf '%x' "$NEXT")" \
+		NPC_HOME="$NPC_HOME" \
+			"$HERE/build_dtb.sh"
+		DTB_PATH="$SBI_FDT_OUT_DIR/npc.dtb"
+		[[ -f "$DTB_PATH" ]] || die "DTB 构建脚本未生成 $DTB_PATH"
+		if [[ "$MODE" == "jump" ]]; then
+			FW_ARGS+=("FW_FDT_PATH=$DTB_PATH" \
+				  "FW_JUMP_FDT_ADDR=0x$(printf '%x' "$FDT_ADDR_NUM")")
+		else
+			FW_ARGS+=("FW_FDT_PATH=$DTB_PATH" \
+				  "FW_PAYLOAD_FDT_ADDR=0x$(printf '%x' "$FDT_ADDR_NUM")")
+		fi
+		info "FDT：$DTB_PATH -> 0x$(printf '%x' "$FDT_ADDR_NUM")（a1）"
+		;;
+	n)
+		info "FDT：未启用（next-stage 的 a1=0）"
+		;;
+	*)
+		die "SBI_FDT_ENABLE='$SBI_FDT_ENABLE' 非法（只允许 y/n）"
+		;;
+esac
+
 mkdir -p "$SBI_OUT_DIR"
-BUILD_DIR="$SBI_OUT_DIR/opensbi-build-$MODE"
+# OpenSBI 的 Kbuild 不跟踪命令行 -D 宏变化；FDT 开关/地址/路径变化时
+# 必须换 build 目录，否则会复用上一次带 FW_FDT_PATH 的 fw_*.o。
+if [[ "$SBI_FDT_ENABLE" == "y" ]]; then
+	FDT_TAG="fdt-$(printf '%s\n' "$SBI_PLATFORM|$SBI_FW_BASE|$SBI_FW_SIZE|$SBI_NEXT_ADDR|$SBI_ISA|$SBI_ABI|$SBI_FDT_PATH|$SBI_FDT_ADDR|$SBI_PAYLOAD_PATH" |
+		sha256sum | cut -c1-8)"
+else
+	FDT_TAG="nofdt-$(printf '%s\n' "$SBI_PLATFORM|$SBI_FW_BASE|$SBI_FW_SIZE|$SBI_NEXT_ADDR|$SBI_ISA|$SBI_ABI|$SBI_PAYLOAD_PATH" |
+		sha256sum | cut -c1-8)"
+fi
+BUILD_DIR="$SBI_OUT_DIR/opensbi-build-$MODE-$FDT_TAG"
 
 info "源码：$SBI_VENDOR_DIR（$OPENSBI_VERSION / ${OPENSBI_COMMIT:0:12}）"
 info "平台：$SBI_PLATFORM；ISA=$SBI_ISA；ABI=$SBI_ABI；XLEN=$SBI_XLEN"
@@ -200,6 +251,12 @@ fi
 	echo "fw_base=0x$(printf '%x' "$BASE")"
 	echo "fw_size=0x$(printf '%x' "$SIZE")"
 	echo "next_addr=0x$(printf '%x' "$NEXT")"
+	echo "fdt_enable=$SBI_FDT_ENABLE"
+	if [[ -n "$DTB_PATH" ]]; then
+		echo "fdt_path=$DTB_PATH"
+		echo "fdt_addr=0x$(printf '%x' "$FDT_ADDR_NUM")"
+		echo "fdt_bytes=$(stat -c '%s' "$DTB_PATH")"
+	fi
 	echo "isa=$SBI_ISA"
 	echo "abi=$SBI_ABI"
 	echo "build_jobs=$JOBS"

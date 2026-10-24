@@ -9,8 +9,9 @@
 //!
 //! 本固件只实现 NPC 需要的 SBI 子集：Base、TIME、sPI、RFNC、HSM、SRST、
 //! DBCN，以及兼容旧 payload 的 legacy 0x00..0x08。没有 F/D、MMU、多 hart
-//! 和设备树解析；PMP 只在 CONFIG_HAS_PMP=y 时配置。这些限制在
-//! npc/README_RUSTSBI.md 中说明。
+//! 和设备树解析；SBI_FDT_ENABLE=y 时只把内嵌 DTB 复制到约定地址并
+//! 通过 a1 传给 next-stage，不解析 DTB。PMP 只在 CONFIG_HAS_PMP=y 时
+//! 配置。这些限制在 npc/README_RUSTSBI.md 中说明。
 
 #![no_std]
 #![no_main]
@@ -32,6 +33,12 @@ const FIRMWARE_BASE: usize = parse_hex(env!("NPC_SBI_FW_BASE"));
 const NEXT_STAGE: usize = parse_hex(env!("NPC_SBI_NEXT_ADDR"));
 const PLATFORM_NAME: &str = env!("NPC_SBI_PLATFORM");
 const HAS_PMP: bool = matches!(env!("NPC_SBI_HAS_PMP").as_bytes(), b"y" | b"Y" | b"1");
+const FDT_ENABLE: bool = matches!(env!("NPC_SBI_FDT_ENABLE").as_bytes(), b"y" | b"Y" | b"1");
+#[cfg_attr(not(npc_fdt), allow(dead_code))]
+const FDT_ADDR: usize = parse_hex(env!("NPC_SBI_FDT_ADDR"));
+
+#[cfg(npc_fdt)]
+static FDT_BLOB: &[u8] = include_bytes!(env!("NPC_SBI_FDT_DTB_PATH"));
 
 const MEDELEG_VALUE: usize = 0xf5ff; // 除 S/M ecall 外全部委托给 S 模式
 const MIDELEG_VALUE: usize = 0x222; // SSIP | STIP | SEIP
@@ -49,7 +56,7 @@ const fn parse_hex(text: &str) -> usize {
             b'0'..=b'9' => bytes[index] - b'0',
             b'a'..=b'f' => bytes[index] - b'a' + 10,
             b'A'..=b'F' => bytes[index] - b'A' + 10,
-            _ => panic!("NPC_SBI_FW_BASE/NEXT_ADDR 不是合法十六进制数"),
+            _ => panic!("NPC_SBI_* 地址不是合法十六进制数"),
         };
         value = value * 16 + digit as usize;
         index += 1;
@@ -131,6 +138,9 @@ pub extern "C" fn rust_main() -> ! {
     uart_put_hex("[rustsbi-npc] uart     : ", 0x1000_0000);
     uart_put_hex("[rustsbi-npc] clint    : ", 0x0200_0000);
     uart_put_hex("[rustsbi-npc] next     : ", NEXT_STAGE);
+    if !FDT_ENABLE {
+        uart_puts("[rustsbi-npc] fdt      : none (a1=0)\r\n");
+    }
 
     trap::install();
 
@@ -163,6 +173,46 @@ unsafe fn stack_top() -> usize {
     core::ptr::addr_of!(__stack_top) as usize
 }
 
+/// 把内嵌 DTB 复制到 SBI_FDT_ADDR，并返回应放进 a1 的值。
+///
+/// 没有启用 FDT 时返回 0，保持进入 S 模式时 a1=0 的旧行为。
+fn fdt_next_arg1() -> usize {
+    if !FDT_ENABLE {
+        return 0;
+    }
+
+    #[cfg(npc_fdt)]
+    {
+        unsafe {
+            let destination = FDT_ADDR as *mut u8;
+            // 逐字节 volatile 写：不依赖 MMU，也不依赖编译器生成 memcpy。
+            for (offset, byte) in FDT_BLOB.iter().enumerate() {
+                core::ptr::write_volatile(destination.add(offset), *byte);
+            }
+            asm!("fence rw, rw");
+
+            let magic = [
+                core::ptr::read_volatile((FDT_ADDR + 0) as *const u8),
+                core::ptr::read_volatile((FDT_ADDR + 1) as *const u8),
+                core::ptr::read_volatile((FDT_ADDR + 2) as *const u8),
+                core::ptr::read_volatile((FDT_ADDR + 3) as *const u8),
+            ];
+            if u32::from_be_bytes(magic) != 0xd00d_feed {
+                uart_put_hex("[rustsbi-npc] invalid DTB at ", FDT_ADDR);
+                platform::halt_simulation(1);
+            }
+            uart_put_hex("[rustsbi-npc] fdt      : ", FDT_ADDR);
+            uart_put_hex("[rustsbi-npc] fdt size : ", FDT_BLOB.len());
+        }
+        FDT_ADDR
+    }
+
+    #[cfg(not(npc_fdt))]
+    {
+        0
+    }
+}
+
 fn enter_supervisor() -> ! {
     unsafe {
         // 读取当前 mstatus，设置 MPP=S、MPIE=1、SIE=0。
@@ -183,15 +233,17 @@ fn enter_supervisor() -> ! {
             asm!("csrw pmpcfg0, {}", in(reg) 0x1fusize);
         }
 
-        // 进入 S 模式时 a0=hartid，a1=opaque（当前没有设备树，传 0）。
+        // 进入 S 模式时 a0=hartid，a1=FDT 地址（未启用 FDT 时为 0）。
         // NPC 目前没有实现 mhartid CSR，读取会触发 illegal instruction；
         // 本固件只支持单 hart，直接传 0。
         let hartid: usize = 0;
+        let fdt = fdt_next_arg1();
         asm!(
             "mv a0, {hartid}",
-            "mv a1, zero",
+            "mv a1, {fdt}",
             "mret",
             hartid = in(reg) hartid,
+            fdt = in(reg) fdt,
             options(noreturn)
         );
     }

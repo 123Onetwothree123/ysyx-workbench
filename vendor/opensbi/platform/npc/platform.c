@@ -8,9 +8,12 @@
  *   PLIC  0x0c000000  (单 hart，M context 0 / S context 1)
  *   RAM   0x80000000  (direct-NPC 默认 64 MiB)
  *
- * 本平台不解析设备树：上一级（NPC 复位）不会传入有效 FDT，所有设备
- * 地址都是编译期常量。单 hart 时 OpenSBI 的 lottery、IPI、HSM 都会
- * 退化到安全路径。
+ * 本平台不解析设备树：上一级（NPC 复位/WR）不会传入有效 FDT，所有
+ * 设备地址都是编译期常量。但平台显式接受 FDT：使用 FW_FDT_PATH/
+ * FW_JUMP_FDT_ADDR 时，OpenSBI 通用固件会把内嵌 DTB 复制到
+ * SBI_FDT_ADDR，并通过 fw_platform_init 的返回值/next_arg1 传给
+ * Linux（a1=DTB 物理地址）。单 hart 时 OpenSBI 的 lottery、IPI、HSM
+ * 都会退化到安全路径。
  */
 
 #include <sbi/riscv_asm.h>
@@ -39,6 +42,25 @@
  */
 #define NPC_PLIC_NUM_SOURCES		31
 #define NPC_HART_COUNT			1
+
+/*
+ * 平台显式接受 FDT。
+ *
+ * NPC 的设备地址固定，不需要从 FDT 发现 UART/PLIC/CLINT；这里保留
+ * 上一级或 FW_FDT_PATH 传入的 FDT 指针并原样返回，交给 OpenSBI 通用
+ * 固件完成 FDT relocation，并最终作为 a1 传给 S 模式 next-stage。
+ * 返回值会被 fw_base.S 写回 a1，因此不能在这里改成 0。
+ */
+unsigned long fw_platform_init(unsigned long arg0, unsigned long arg1,
+			       unsigned long arg2, unsigned long arg3,
+			       unsigned long arg4)
+{
+	(void)arg0;
+	(void)arg2;
+	(void)arg3;
+	(void)arg4;
+	return arg1;
+}
 
 /*
  * NPC 的 PLIC 同时兼容标准布局和早期简化布局：

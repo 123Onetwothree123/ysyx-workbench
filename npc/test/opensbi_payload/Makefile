@@ -14,10 +14,17 @@ OUT ?= build
 ADDR ?= 0x80200000
 ISA ?= rv64ima_zicsr_zifencei
 ABI ?= lp64
+SBI_NAME ?= OpenSBI
+FDT_EXPECTED ?= 0
+FDT_ADDR ?= 0x80f00000
 
 CFLAGS := -march=$(ISA) -mabi=$(ABI) -mcmodel=medany -mno-relax \
 	-ffreestanding -fno-builtin -fno-stack-protector -nostdlib \
 	-O2 -Wall -Wextra -Werror
+CFLAGS += -DPAYLOAD_SBI_NAME=\"$(SBI_NAME)\"
+ifneq ($(filter 1 y yes Y YES,$(FDT_EXPECTED)),)
+CFLAGS += -DFDT_EXPECTED -DFDT_EXPECT_ADDR=$(FDT_ADDR)
+endif
 LDFLAGS := -nostdlib -fuse-ld=lld -Wl,-T,link.ld \
 	-Wl,--defsym=PAYLOAD_ADDR=$(ADDR) -Wl,--no-relax \
 	-Wl,--build-id=none -Wl,-e,_start

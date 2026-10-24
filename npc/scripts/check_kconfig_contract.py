@@ -457,6 +457,42 @@ def validate_config(values: Mapping[str, object], source: str = ".config") -> Li
                     f"{jump_align // 1024 // 1024} MiB 对齐（RV{xlen}）"
                 )
 
+        if _as_bool(values, "SBI_FDT_ENABLE", False):
+            # DTB 由 SBI 复制到 SBI_FDT_ADDR 后通过 a1 传给 next-stage。
+            # 这里只做与固定 NPC RAM/固件布局有关的硬约束；DTB 实际大小
+            # 在 scripts/build_dtb.sh 中按生成物再次校验。
+            fdt_addr = _as_int(values, "SBI_FDT_ADDR", 0x80F00000)
+            fdt_path = str(values.get("SBI_FDT_PATH", "dts/npc.dts"))
+            if not fdt_path:
+                err("SBI_FDT_ENABLE=y 但 SBI_FDT_PATH 为空")
+            if fdt_addr % 8 != 0:
+                err(f"SBI_FDT_ADDR=0x{fdt_addr:x} 必须按 8 字节对齐")
+            ram_base = 0x80000000
+            ram_end = 0x84000000  # direct-NPC 固定 64 MiB 窗口
+            fdt_reserve = 0x10000
+            if fdt_addr < ram_base or fdt_addr + fdt_reserve > ram_end:
+                err(
+                    f"SBI_FDT_ADDR=0x{fdt_addr:x} 超出 NPC RAM "
+                    f"[0x{ram_base:x}, 0x{ram_end:x})，或末尾越过 RAM"
+                )
+            fw_end = base + size
+            if fdt_addr < fw_end and fdt_addr + fdt_reserve > base:
+                err(
+                    f"SBI_FDT_ADDR=0x{fdt_addr:x} 与 SBI 固件区 "
+                    f"[0x{base:x}, 0x{fw_end:x}) 重叠"
+                )
+            if fdt_addr < next_addr:
+                if fdt_addr + fdt_reserve > next_addr:
+                    err(
+                        f"SBI_FDT_ADDR=0x{fdt_addr:x} 位于 next-stage 之前，"
+                        f"但 64 KiB 保留区越过 SBI_NEXT_ADDR=0x{next_addr:x}"
+                    )
+            elif fdt_addr < next_addr + 0x1000:
+                err(
+                    f"SBI_FDT_ADDR=0x{fdt_addr:x} 覆盖 next-stage 入口页 "
+                    f"0x{next_addr:x}..0x{next_addr + 0x1000:x}"
+                )
+
         if sbi_impl == "opensbi":
             # OpenSBI 的 _start 需要 A 扩展；S 模式服务和 PMP 隔离分别
             # 依赖 HAS_S/HAS_PMP。缺失时在配置阶段就明确拒绝。

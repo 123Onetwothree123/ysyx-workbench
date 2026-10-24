@@ -21,7 +21,7 @@ platform/npc/
 ├── Kconfig                 # 选择 PLIC/UART8250/MTIMER，不选 MSWI
 ├── configs/defconfig
 ├── objects.mk              # 默认 rv64ima/lp64，允许命令行覆盖
-└── platform.c              # UART/CLINT/PLIC 固定地址；单 hart
+└── platform.c              # UART/CLINT/PLIC 固定地址；单 hart；接受 FDT
 ```
 
 对上游核心的最小补丁（均由 `platform/npc/objects.mk` 中的宏控制，
@@ -41,6 +41,9 @@ platform/npc/
   `has_64bit_mmio`，因为 NPC Xbar 不接受 64 位多拍 CLINT 写。
 - NPC CLINT 没有 MSIP，因此不注册 MSWI/IPI 设备；单 hart 下 OpenSBI
   的 IPI 框架会安全退化。
+- `platform.c` 的 `fw_platform_init` 原样接受上一级或 `FW_FDT_PATH`
+  传入的 FDT；设备仍按固定地址初始化，DTB 由通用固件复制到
+  `FW_JUMP_FDT_ADDR`/`FW_PAYLOAD_FDT_ADDR` 并作为 a1 传给 Linux。
 
 ## 升级方法
 

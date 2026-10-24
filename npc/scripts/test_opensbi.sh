@@ -22,6 +22,8 @@ SBI_OUT_DIR="${SBI_OUT_DIR:-$NPC_HOME/build/opensbi}"
 SBI_NEXT_ADDR="${SBI_NEXT_ADDR:-0x80200000}"
 SBI_ISA="${SBI_ISA:-rv64ima_zicsr_zifencei}"
 SBI_ABI="${SBI_ABI:-lp64}"
+SBI_FDT_ENABLE="${SBI_FDT_ENABLE:-n}"
+SBI_FDT_ADDR="${SBI_FDT_ADDR:-0x80f00000}"
 SBI_TOOLCHAIN_PREFIX="${SBI_TOOLCHAIN_PREFIX:-riscv64-unknown-elf-}"
 NPC_BIN="${NPC_BIN:-$NPC_HOME/build/ysyx_26030103_npc}"
 SBI_TEST_TIMEOUT="${SBI_TEST_TIMEOUT:-60}"
@@ -46,16 +48,27 @@ info() {
 mkdir -p "$TEST_OUT"
 
 info "构建最小 S-mode payload（ADDR=$SBI_NEXT_ADDR）"
+# FDT_EXPECTED/FDT_ADDR 是命令行宏，make 不会因为宏变化而重建目标；
+# 这里显式清掉旧产物，避免 FDT=n 复用上次的 FDT 断言 payload。
+rm -f "$PAYLOAD_OUT/payload.elf" "$PAYLOAD_OUT/payload.bin"
+FDT_EXPECTED=0
+if [[ "$SBI_FDT_ENABLE" == "y" ]]; then
+	FDT_EXPECTED=1
+fi
 make -C "$NPC_HOME/test/opensbi_payload" \
 	OUT="$PAYLOAD_OUT" \
 	ADDR="$SBI_NEXT_ADDR" \
 	ISA="$SBI_ISA" \
 	ABI="$SBI_ABI" \
 	CROSS_COMPILE="$SBI_TOOLCHAIN_PREFIX" \
+	SBI_NAME=OpenSBI \
+	FDT_EXPECTED="$FDT_EXPECTED" \
+	FDT_ADDR="$SBI_FDT_ADDR" \
 	-j"$(nproc)"
 
 info "构建 OpenSBI FW_PAYLOAD"
 SBI_OUT_DIR="$TEST_OUT" \
+SBI_FDT_OUT_DIR="$TEST_OUT/fdt" \
 SBI_PAYLOAD_PATH="$PAYLOAD_OUT/payload.bin" \
 	"$HERE/build_opensbi.sh"
 
@@ -89,6 +102,21 @@ if grep -qF "SBI-NPC-PAYLOAD: console ecall OK" "$LOG"; then
 else
 	echo "FAIL: SBI console ecall 未成功"
 	fail=1
+fi
+if [[ "$SBI_FDT_ENABLE" == "y" ]]; then
+	if grep -qF "SBI-NPC-PAYLOAD: FDT PASS" "$LOG"; then
+		echo "PASS: next-stage 收到并解析 DTB (a1=0x$(printf '%x' "$SBI_FDT_ADDR"))"
+	else
+		echo "FAIL: DTB 未正确传递给 next-stage 或节点校验失败"
+		fail=1
+	fi
+else
+	if grep -qF "SBI-NPC-PAYLOAD: FDT none (a1=0)" "$LOG"; then
+		echo "PASS: SBI_FDT=n 时 a1=0（行为不变）"
+	else
+		echo "FAIL: SBI_FDT=n 但 payload 没有看到 a1=0"
+		fail=1
+	fi
 fi
 if grep -qF "SBI-NPC-PAYLOAD: PASS" "$LOG"; then
 	echo "PASS: payload 完成"
