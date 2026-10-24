@@ -1,0 +1,204 @@
+/*
+ * NEMU 独立 Linux 平台的设备树源文件。
+ *
+ * 该 DTS 由 nemu/scripts/build_linux_dtb.sh 通过 cpp+dtc 生成；不要
+ * 直接 dtc 编译（宏未展开）。NEMU 复用 NPC/xv6 的固定设备地址，
+ * 但有两处关键差异：
+ *   - timebase-frequency 取 NEMU 的 CONFIG_RISCV_XV6_MTIME_FREQ
+ *     （默认 1000000），不是 NPC 按周期递增的 SYNTH_FREQ=450MHz；
+ *   - RAM 大小来自 NEMU 的 CONFIG_MSIZE（Linux 默认 64 MiB）。
+ *
+ * model 仍写 "ysyx,npc"，因为仓库内现有 SBI 测试 payload 校验这个
+ * 字符串；NEMU 与 NPC 共享同一套 CLINT/PLIC/16550 地址契约，但
+ * 行为/时序并不等价。NEMU 专用的 DTB 文件和时间戳信息由构建脚本
+ * 单独生成，不能把 NPC 的 450MHz DTB 直接交给 NEMU。
+ */
+
+#ifndef NPC_RAM_BASE
+#define NPC_RAM_BASE 0x80000000
+#endif
+#ifndef NPC_RAM_SIZE
+#define NPC_RAM_SIZE 0x04000000
+#endif
+#ifndef NPC_RAM_BASE_NAME
+#define NPC_RAM_BASE_NAME 80000000
+#endif
+
+#ifndef SBI_FW_BASE
+#define SBI_FW_BASE 0x80000000
+#endif
+#ifndef SBI_FW_SIZE
+#define SBI_FW_SIZE 0x00200000
+#endif
+#ifndef SBI_FW_BASE_NAME
+#define SBI_FW_BASE_NAME 80000000
+#endif
+
+#ifndef SBI_NEXT_ADDR
+#define SBI_NEXT_ADDR 0x80200000
+#endif
+#ifndef SBI_NEXT_ADDR_NAME
+#define SBI_NEXT_ADDR_NAME 80200000
+#endif
+#ifndef SBI_NEXT_RESERVE_SIZE
+#define SBI_NEXT_RESERVE_SIZE 0x00001000
+#endif
+
+#ifndef SBI_FDT_ADDR
+#define SBI_FDT_ADDR 0x83f00000
+#endif
+#ifndef SBI_FDT_ADDR_NAME
+#define SBI_FDT_ADDR_NAME 83f00000
+#endif
+#ifndef SBI_FDT_RESERVE_SIZE
+#define SBI_FDT_RESERVE_SIZE 0x00010000
+#endif
+
+/* CPU 描述由脚本从 NEMU .config 生成。 */
+#ifndef NPC_RISCV_ISA
+#define NPC_RISCV_ISA "rv64imafdc_zicsr_zifencei"
+#endif
+#ifndef NPC_RISCV_ISA_BASE
+#define NPC_RISCV_ISA_BASE "rv64i"
+#endif
+#ifndef NPC_RISCV_ISA_EXTENSIONS
+#define NPC_RISCV_ISA_EXTENSIONS "i", "m", "a", "f", "d", "c", "zicsr", "zifencei"
+#endif
+#ifndef NPC_MMU_TYPE
+#define NPC_MMU_TYPE "riscv,sv39"
+#endif
+#ifndef NPC_MMU_TYPE_VALID
+#define NPC_MMU_TYPE_VALID 1
+#endif
+/*
+ * NEMU 的 mtime 以宿主微秒为基准，默认 1MHz；脚本会覆盖为
+ * CONFIG_RISCV_XV6_MTIME_FREQ，并校验它等于 OpenSBI NPC_MTIME_FREQ。
+ */
+#ifndef NPC_TIMEBASE_FREQ
+#define NPC_TIMEBASE_FREQ 1000000
+#endif
+#ifndef NPC_BOOTARGS
+#define NPC_BOOTARGS "console=ttyS0,115200 earlycon=sbi"
+#endif
+#ifndef SBI_INITRAMFS_ADDR
+#define SBI_INITRAMFS_ADDR 0x82000000
+#endif
+#ifndef SBI_INITRAMFS_SIZE
+#define SBI_INITRAMFS_SIZE 0
+#endif
+#ifndef SBI_INITRAMFS_END
+#define SBI_INITRAMFS_END (SBI_INITRAMFS_ADDR + SBI_INITRAMFS_SIZE)
+#endif
+
+/dts-v1/;
+
+/ {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	/* 与仓库内 SBI payload/启动脚本的既有平台契约保持一致。 */
+	compatible = "ysyx,npc";
+	model = "ysyx,npc";
+
+	chosen {
+		bootargs = NPC_BOOTARGS;
+		stdout-path = "/soc/serial@10000000";
+#if SBI_INITRAMFS_SIZE > 0
+		linux,initrd-start = <0x0 SBI_INITRAMFS_ADDR>;
+		linux,initrd-end = <0x0 SBI_INITRAMFS_END>;
+#endif
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		/*
+		 * NEMU：mtime 按宿主时间缩放，默认 1MHz。这里必须与
+		 * CONFIG_RISCV_XV6_MTIME_FREQ 和 OpenSBI 的
+		 * NPC_MTIME_FREQ 完全一致。
+		 */
+		timebase-frequency = <NPC_TIMEBASE_FREQ>;
+
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "riscv";
+			reg = <0>;
+			status = "okay";
+			riscv,isa = NPC_RISCV_ISA;
+			riscv,isa-base = NPC_RISCV_ISA_BASE;
+			riscv,isa-extensions = NPC_RISCV_ISA_EXTENSIONS;
+#if NPC_MMU_TYPE_VALID
+			mmu-type = NPC_MMU_TYPE;
+#endif
+
+			cpu0_intc: interrupt-controller {
+				#interrupt-cells = <1>;
+				compatible = "riscv,cpu-intc";
+				interrupt-controller;
+			};
+		};
+	};
+
+	memory@NPC_RAM_BASE_NAME {
+		device_type = "memory";
+		reg = <0x0 NPC_RAM_BASE 0x0 NPC_RAM_SIZE>;
+	};
+
+	soc {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		compatible = "simple-bus";
+		ranges;
+
+		/* NEMU riscv_xv6.c：mtimecmp=+0x4000，mtime=+0xbff8。 */
+		clint@2000000 {
+			compatible = "riscv,clint0";
+			reg = <0x0 0x02000000 0x0 0x00010000>;
+			interrupts-extended = <&cpu0_intc 3 &cpu0_intc 7>;
+		};
+
+		/*
+		 * NEMU PLIC：标准 S context 1（enable 0x2080，
+		 * threshold/claim 0x201000/0x201004），同时兼容 NPC 的
+		 * context 0 地址。UART source 固定为 10。
+		 */
+		plic: interrupt-controller@c000000 {
+			compatible = "riscv,plic0";
+			reg = <0x0 0x0c000000 0x0 0x04000000>;
+			#interrupt-cells = <1>;
+			interrupt-controller;
+			riscv,ndev = <31>;
+			interrupts-extended = <&cpu0_intc 11 &cpu0_intc 9>;
+		};
+
+		/* NEMU 16550：TX 写 stderr，RX 由 batch 模式 stdin 注入。 */
+		serial@10000000 {
+			compatible = "ns16550a";
+			reg = <0x0 0x10000000 0x0 0x00000100>;
+			clock-frequency = <10000000>;
+			current-speed = <115200>;
+			reg-shift = <0>;
+			reg-io-width = <1>;
+			interrupt-parent = <&plic>;
+			interrupts = <10>;
+		};
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		sbi-firmware@SBI_FW_BASE_NAME {
+			reg = <0x0 SBI_FW_BASE 0x0 SBI_FW_SIZE>;
+			no-map;
+		};
+
+		next-stage@SBI_NEXT_ADDR_NAME {
+			reg = <0x0 SBI_NEXT_ADDR 0x0 SBI_NEXT_RESERVE_SIZE>;
+		};
+
+		fdt@SBI_FDT_ADDR_NAME {
+			reg = <0x0 SBI_FDT_ADDR 0x0 SBI_FDT_RESERVE_SIZE>;
+		};
+	};
+};

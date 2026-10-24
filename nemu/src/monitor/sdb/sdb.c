@@ -18,6 +18,10 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include "sdb.h"
+
+#ifndef CONFIG_SDB
+#error "CONFIG_SDB 必须为 y：NEMU 的 monitor/设备轮询和 --batch 依赖 SDB"
+#endif
 #include <memory/paddr.h>
 #include <iringbuf.h>
 #include <readelf.h>

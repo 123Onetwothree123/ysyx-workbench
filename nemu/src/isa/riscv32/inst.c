@@ -144,6 +144,73 @@ static inline bool csr_priv_ok(word_t address)
   return true;
 }
 
+/*
+ * CSR 是否存在。未知 CSR 访问必须按非法指令陷入，而不是让 NEMU
+ * 直接 panic：OpenSBI 的特性探测会用“能否访问”区分可选 CSR
+ * （menvcfg、mstateen、PMPADDR16+ 等），这些探测依赖可恢复的
+ * illegal-instruction trap。保留 csr_read/csr_write 内部的 panic
+ * 作为内部一致性检查，正常路径在进入前先调用本函数。
+ */
+static bool csr_exists(word_t address)
+{
+  if (address >= 0x3a0 && address <= 0x3a3) {
+    return pmpcfg_address_valid(address);
+  }
+  if (address >= 0x3b0 && address <= 0x3bf) {
+    return true;
+  }
+
+  switch (address) {
+#ifdef CONFIG_RISCV_F
+    case 0x001:
+    case 0x002:
+    case 0x003:
+#endif
+    case 0xf11:
+    case 0xf12:
+    case 0xf13:
+    case 0xf14:
+    case 0xf15:
+    case 0x100:
+    case 0x104:
+    case 0x105:
+    case 0x106:
+    case 0x140:
+    case 0x141:
+    case 0x142:
+    case 0x143:
+    case 0x144:
+    case 0x180:
+    case 0x300:
+    case 0x301:
+    case 0x302:
+    case 0x303:
+    case 0x304:
+    case 0x305:
+    case 0x306:
+    case 0x310:
+    case 0x320:
+    case 0x340:
+    case 0x341:
+    case 0x342:
+    case 0x343:
+    case 0x344:
+    case 0xb00:
+    case 0xb02:
+    case 0xb80:
+    case 0xb82:
+    case 0xc00:
+    case 0xc01:
+    case 0xc02:
+    case 0xc80:
+    case 0xc81:
+    case 0xc82:
+      return true;
+    default:
+      return false;
+  }
+}
+
 static word_t csr_read(word_t address)
 {
   if (address >= 0x3a0 && address <= 0x3a3) {
@@ -211,10 +278,10 @@ static word_t csr_read(word_t address)
   case 0xb80: return (word_t)(g_nr_guest_inst >> 32);
   case 0xb82: return (word_t)(g_nr_guest_inst >> 32);
   case 0xc00: return (word_t)g_nr_guest_inst;
-  case 0xc01: return (word_t)get_time();
+  case 0xc01: return (word_t)get_mtime();
   case 0xc02: return (word_t)g_nr_guest_inst;
   case 0xc80: return (word_t)(g_nr_guest_inst >> 32);
-  case 0xc81: return (word_t)(get_time() >> 32);
+  case 0xc81: return (word_t)(get_mtime() >> 32);
   case 0xc82: return (word_t)(g_nr_guest_inst >> 32);
   default: panic("Unknown CSR " FMT_WORD, address); return 0;
   }
@@ -1386,7 +1453,7 @@ static int decode_exec(Decode *s)
           });
   INSTPAT("??????? ????? ????? 001 ????? 11100 11", csrrw, N, {
     const word_t address = csr_address(s);
-    if (!csr_priv_ok(address)) {
+    if (!csr_priv_ok(address) || !csr_exists(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
     } else if (csr_is_read_only(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
@@ -1399,7 +1466,7 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 010 ????? 11100 11", csrrs, N, {
     const word_t address = csr_address(s);
     const bool write = BITS(s->isa.inst, 19, 15) != 0;
-    if (!csr_priv_ok(address)) {
+    if (!csr_priv_ok(address) || !csr_exists(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
     } else if (write && csr_is_read_only(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
@@ -1412,7 +1479,7 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 011 ????? 11100 11", csrrc, N, {
     const word_t address = csr_address(s);
     const bool write = BITS(s->isa.inst, 19, 15) != 0;
-    if (!csr_priv_ok(address)) {
+    if (!csr_priv_ok(address) || !csr_exists(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
     } else if (write && csr_is_read_only(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
@@ -1424,7 +1491,7 @@ static int decode_exec(Decode *s)
   });
   INSTPAT("??????? ????? ????? 101 ????? 11100 11", csrrwi, N, {
     const word_t address = csr_address(s);
-    if (!csr_priv_ok(address)) {
+    if (!csr_priv_ok(address) || !csr_exists(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
     } else if (csr_is_read_only(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
@@ -1437,7 +1504,7 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 110 ????? 11100 11", csrrsi, N, {
     const word_t address = csr_address(s);
     const word_t source = csr_zimm(s);
-    if (!csr_priv_ok(address)) {
+    if (!csr_priv_ok(address) || !csr_exists(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
     } else if (source != 0 && csr_is_read_only(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
@@ -1450,7 +1517,7 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 111 ????? 11100 11", csrrci, N, {
     const word_t address = csr_address(s);
     const word_t source = csr_zimm(s);
-    if (!csr_priv_ok(address)) {
+    if (!csr_priv_ok(address) || !csr_exists(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);
     } else if (source != 0 && csr_is_read_only(address)) {
       s->dnpc = isa_raise_intr(2, s->pc);

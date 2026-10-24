@@ -254,6 +254,21 @@ INFO_FDT_SHA="$(sed -n 's/^fdt_sha256=//p' "$FW_INFO" | tail -n1)"
 
 # 按实际 initramfs 地址和文件大小重新生成 DTB。即使 Makefile 已经生成过，
 # 这里也再生成一次，保证 /chosen/linux,initrd-start/end 与真实文件一致。
+#
+# NEMU 等非 NPC 平台可以显式传入 CPU/MMU 描述，避免 build_dtb.sh 从
+# NPC 专属的 CONFIG_XLEN/CONFIG_RISCV_*/CONFIG_MMU_* 读取默认值。
+# 这些变量为空时不导出，保持 NPC 原有行为。
+DTB_EXTRA_ENV=()
+for _key in SBI_XLEN SBI_RISCV_M SBI_RISCV_A SBI_RISCV_C SBI_RISCV_F \
+            SBI_RISCV_D SBI_HAS_S SBI_HAS_U SBI_HAS_MMU SBI_MMU_LEVELS \
+            SBI_MMU_GEOMETRY_MODE SBI_MMU_PAGE_SIZE SBI_MMU_PTE_SIZE \
+            SBI_MMU_PAGE_TABLE_SIZE SBI_MMU_PTE_FORMAT; do
+	if [[ -n "${!_key:-}" ]]; then
+		DTB_EXTRA_ENV+=("${_key}=${!_key}")
+	fi
+done
+unset _key
+
 info "按当前 Kconfig/initramfs 重新生成 DTB：$SBI_FDT_OUT_DIR/npc.dtb"
 SBI_CONFIG_FILE="$CONFIG_FILE" \
 SBI_FDT_OUT_DIR="$SBI_FDT_OUT_DIR" \
@@ -272,7 +287,7 @@ NPC_RAM_BASE="0x$(printf '%x' "$RAM_BASE_NUM")" \
 NPC_RAM_SIZE="0x$(printf '%x' "$RAM_SIZE_NUM")" \
 NPC_HOME="$NPC_HOME" \
 WORKBENCH_HOME="$WORKBENCH_HOME" \
-	"$HERE/build_dtb.sh"
+	env "${DTB_EXTRA_ENV[@]}" "$HERE/build_dtb.sh"
 
 DTB_PATH="$SBI_FDT_OUT_DIR/npc.dtb"
 [[ -f "$DTB_PATH" ]] || die "DTB 生成脚本未生成 $DTB_PATH"

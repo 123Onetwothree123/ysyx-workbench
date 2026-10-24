@@ -9,6 +9,8 @@
 !README.md
 !Kconfig
 !docs/*.md
+!dts/*.dts
+!scripts/*.sh
 !tests/*.sh
 !tests/rv64/*.[cS]
 !tests/rvc/*.[cSh]

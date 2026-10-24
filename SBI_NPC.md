@@ -3,6 +3,10 @@
 本文记录 ysyx-workbench 内置 OpenSBI 的来源、NPC 平台适配、Kconfig 接口、
 构建/测试方法，以及与 xv6/NPC 直接启动路径的边界。
 
+> NEMU 独立运行 OpenSBI + Linux 风格 next-stage 时使用 **1MHz**
+> timebase，并有单独的 DTB/固件/打包脚本。不要把本文的 450MHz DTB
+> 直接给 NEMU；见 [`nemu/docs/linux.md`](nemu/docs/linux.md)。
+
 ## 1. 状态与来源
 
 - 上游：<https://github.com/riscv-software-src/opensbi>

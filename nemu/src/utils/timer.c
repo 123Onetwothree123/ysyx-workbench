@@ -44,6 +44,23 @@ uint64_t get_time() {
   return now - boot_time;
 }
 
+uint64_t get_mtime() {
+  const uint64_t us = get_time();
+#ifdef CONFIG_HAS_RISCV_XV6
+  /*
+   * mtime 的物理时间基准与宿主一致，只改变计数频率。默认
+   * CONFIG_RISCV_XV6_MTIME_FREQ=1000000 时乘除抵消，mtime 就是
+   * 宿主微秒，完全保留旧 xv6 行为。
+   *
+   * 用 128 位中间值避免 450MHz 等较高配置在长仿真中溢出。
+   */
+  return (uint64_t)(((__uint128_t)us * (uint64_t)CONFIG_RISCV_XV6_MTIME_FREQ) /
+                    1000000u);
+#else
+  return us;
+#endif
+}
+
 void init_rand() {
   srand(get_time_internal());
 }

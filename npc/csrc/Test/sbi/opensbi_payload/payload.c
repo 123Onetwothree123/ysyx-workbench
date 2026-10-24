@@ -468,7 +468,9 @@ void payload_main(u64 fdt_address, u64 hartid)
 	long version = 0;
 	long version_error;
 	long timer_error;
+#ifndef PAYLOAD_USE_TIME_CSR
 	volatile unsigned int *mtime = (volatile unsigned int *)0x0200bff8UL;
+#endif
 	unsigned long mtime_value;
 #ifdef FDT_EXPECTED
 	int fdt_ok;
@@ -518,15 +520,24 @@ void payload_main(u64 fdt_address, u64 hartid)
 	sbi_puthex((u64)version_error);
 	sbi_puts(")\n");
 
-	/* SBI TIME 扩展只有 set_timer（FID 0）；get_time 由 S-mode 直接读
-	 * CLINT mtime。这里同时验证 ecall 和 S-mode CLINT 访问。 */
+	/* SBI TIME 扩展只有 set_timer（FID 0）。
+	 *
+	 * 默认（NPC）直接读 CLINT mtime，验证 S-mode MMIO。PMP 严格
+	 * 执行的平台（NEMU Linux）不能从 S 模式访问 M-only CLINT，
+	 * 此时用 PAYLOAD_USE_TIME_CSR 改读架构 time CSR；两者返回同一
+	 * 个 mtime。 */
 	timer_error = sbi_call(0x54494D45, 0, 0x7fffffff, 0, 0, 0);
 	sbi_puts("SBI-NPC-PAYLOAD: set_timer error=0x");
 	sbi_puthex((u64)timer_error);
 	sbi_puts("\n");
 
+#ifdef PAYLOAD_USE_TIME_CSR
+	asm volatile("rdtime %0" : "=r"(mtime_value));
+	sbi_puts("SBI-NPC-PAYLOAD: mtime(time CSR)=0x");
+#else
 	mtime_value = ((unsigned long)mtime[1] << 32) | mtime[0];
 	sbi_puts("SBI-NPC-PAYLOAD: mtime=0x");
+#endif
 	sbi_puthex((u64)mtime_value);
 	sbi_puts("\n");
 

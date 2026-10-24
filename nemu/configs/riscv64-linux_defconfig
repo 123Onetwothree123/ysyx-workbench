@@ -1,0 +1,55 @@
+# RV64 NEMU 独立运行 OpenSBI + DTB + Linux 风格 next-stage 的平台配置。
+#
+# 这是功能级参考模型，不是 NPC RTL 的等价模型：
+#   - 没有 cache/AXI/SoC64/DMA，也没有 NPC 的周期级时序；
+#   - CLINT mtime 由宿主单调时钟缩放，默认 1 MHz（不是 NPC 的
+#     SYNTH_FREQ=450MHz 每周期 +1）；
+#   - 设备地址与 NPC/xv6 平台一致，但行为由 NEMU 软件模型决定。
+# 因此本配置生成的 NEMU DTB（timebase-frequency=1000000）不能直接
+# 换成 NPC 的 450MHz DTB。
+CONFIG_ISA_riscv=y
+CONFIG_RV64=y
+CONFIG_RISCV_A=y
+CONFIG_RISCV_C=y
+CONFIG_RISCV_F=y
+CONFIG_RISCV_D=y
+
+# 独立可执行文件；Linux 启动不经过 DiffTest REF 共享库。
+CONFIG_TARGET_NATIVE_ELF=y
+CONFIG_DEVICE=y
+CONFIG_HAS_RISCV_XV6=y
+# 只保留 OpenSBI/Linux 平台设备，避免 SDL/VGA/键鼠/音频/磁盘依赖。
+# CONFIG_HAS_SERIAL is not set
+# CONFIG_HAS_TIMER is not set
+# CONFIG_HAS_KEYBOARD is not set
+# CONFIG_HAS_VGA is not set
+# CONFIG_HAS_AUDIO is not set
+# CONFIG_HAS_DISK is not set
+
+# 与 NPC 默认 Linux 布局一致：64 MiB RAM @ 0x80000000。
+CONFIG_MBASE=0x80000000
+CONFIG_MSIZE=0x04000000
+CONFIG_PC_RESET_OFFSET=0
+CONFIG_PMEM_GARRAY=y
+
+# NEMU CLINT/Linux timebase：宿主微秒直通，DTB 和 OpenSBI 必须相同。
+CONFIG_RISCV_XV6_MTIME_FREQ=1000000
+
+# SDB/--batch 是启动脚本非交互运行所必需的；该符号在本树固定为 y。
+CONFIG_SDB=y
+# 保留 ftrace/readelf 以便 OpenSBI/内核符号调试，但不逐条打印 ITRACE。
+CONFIG_TRACE=y
+CONFIG_TRACE_START=0
+CONFIG_TRACE_END=2000000000
+# CONFIG_ITRACE is not set
+CONFIG_IRINGBUF=y
+CONFIG_IRINGBUF_SIZE=4096
+CONFIG_ReadELF=y
+CONFIG_FTRACE=y
+# CONFIG_MTRACE is not set
+# CONFIG_DTRACE is not set
+# CONFIG_ETRACE is not set
+# CONFIG_BTRACE is not set
+
+# 独立运行，不启用 DiffTest。
+# CONFIG_DIFFTEST is not set

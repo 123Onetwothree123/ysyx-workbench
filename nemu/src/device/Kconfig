@@ -16,9 +16,26 @@ menuconfig HAS_RISCV_XV6
   bool "Enable xv6-riscv platform devices (CLINT/PLIC/16550 UART)"
   default n
   help
-    在 0x02000000/0x0c000000/0x10000000 添加 xv6-riscv 与 direct-NPC
-    共用的最小 CLINT、PLIC 和 16550 UART 模型。NEMU 独立运行 xv6
-    时需要；作为 DiffTest REF 时设备访问由 DUT 注入，不依赖该选项。
+    在 0x02000000/0x0c000000/0x10000000 添加 xv6-riscv、direct-NPC
+    与 OpenSBI/Linux 共用的最小 CLINT、PLIC 和 16550 UART 模型。
+    NEMU 独立运行 xv6 或作为 Linux 的 M/S 模式参考模型时需要；
+    作为 DiffTest REF 时设备访问由 DUT 注入，不依赖该选项。
+
+if HAS_RISCV_XV6
+config RISCV_XV6_MTIME_FREQ
+  int "CLINT mtime frequency (Hz)"
+  default 1000000
+  range 1000 1000000000
+  help
+    NEMU 的 CLINT mtime 由宿主单调时钟（微秒）缩放得到，不是每个
+    guest 指令 +1。这里声明的频率必须与 NEMU 专用 DTB 的
+    timebase-frequency 以及 OpenSBI 的 NPC_MTIME_FREQ 完全一致。
+
+    默认 1000000（1 MHz），此时 mtime 直接等于宿主微秒数，与
+    原有 xv6 行为相同。NPC 的 450 MHz timebase 属于按周期递增的
+    RTL 约定，不能直接套用到 NEMU；给 NEMU 使用 NPC DTB 会造成
+    定时器频率错误。
+endif # HAS_RISCV_XV6
 
 menuconfig HAS_SERIAL
   bool "Enable serial"

@@ -33,6 +33,13 @@ extern NEMUState nemu_state;
 // ----------- timer -----------
 
 uint64_t get_time();
+/*
+ * 返回 guest 可观察的 mtime。未启用 RISC-V xv6/Linux 平台设备时与
+ * get_time() 相同（宿主微秒）；启用后按 CONFIG_RISCV_XV6_MTIME_FREQ
+ * 缩放，保证 CLINT mtime、time CSR 和 DTB timebase-frequency 使用
+ * 同一套频率约定。
+ */
+uint64_t get_mtime();
 
 // ----------- log -----------
 

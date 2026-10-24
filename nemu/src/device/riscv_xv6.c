@@ -14,8 +14,11 @@
  * 设备行为对 DiffTest 的影响：
  *   - UART/PLIC/CLINT 都是 MMIO，NEMU 作为 REF 时由 DUT 侧注入结果，
  *     不依赖本文件；本文件只服务于 NEMU 独立运行。
- *   - mtime 使用宿主时间（微秒），因此定时器中断不是指令级确定的；
- *     需要确定性指令流时应在第一个定时器中断前截断，或由 DUT 注入 trap。
+ *   - mtime 以宿主单调时间为基准，按 CONFIG_RISCV_XV6_MTIME_FREQ
+ *     缩放（默认 1 MHz，即宿主微秒），因此定时器中断不是指令级
+ *     确定的；需要确定性指令流时应在第一个定时器中断前截断，或由
+ *     DUT 注入 trap。DTB timebase 和 OpenSBI NPC_MTIME_FREQ 必须
+ *     使用同一个频率。
  ***************************************************************************************/
 
 #include <isa.h>
@@ -289,7 +292,7 @@ static void plic_io_handler(uint32_t offset, int len, bool is_write)
 
 static void clint_update(void)
 {
-  if (get_time() >= clint_mtimecmp) {
+  if (get_mtime() >= clint_mtimecmp) {
     cpu.mip |= (1u << 7); // MTIP
   } else {
     cpu.mip &= ~(1u << 7);
@@ -300,7 +303,7 @@ static void clint_io_handler(uint32_t offset, int len, bool is_write)
 {
   if (!is_write) {
     if (offset >= CLINT_MTIME_OFF && offset + len <= CLINT_MTIME_OFF + 8) {
-      const uint64_t now = get_time();
+      const uint64_t now = get_mtime();
       memcpy(clint_base + offset, (const uint8_t *)&now + (offset - CLINT_MTIME_OFF), len);
     } else if (offset >= CLINT_MTIMECMP_OFF &&
                offset + len <= CLINT_MTIMECMP_OFF + 8) {
@@ -351,7 +354,7 @@ void riscv_xv6_update(void)
 
   static uint64_t last_poll = 0;
   static bool last_uart_level = false;
-  const uint64_t now = get_time();
+  const uint64_t now = get_mtime();
 
   clint_update();
   if (now - last_poll >= 1000) { // 1 ms
