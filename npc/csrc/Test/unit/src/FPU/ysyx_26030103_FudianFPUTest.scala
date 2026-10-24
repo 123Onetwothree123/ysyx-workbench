@@ -286,6 +286,14 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
           box(QNaN32), one) should be((BigInt(0), 0))
         send(dut, 64, ysyx_26030103_FpuOp.FEq.Int, 0, 0,
           box(SNaN32), one) should be((BigInt(0), NV))
+        // RISC-V 的 FLT/FLE 是 signaling 比较：qNaN 也必须置 NV。
+        send(dut, 64, ysyx_26030103_FpuOp.FLt.Int, 0, 0,
+          box(QNaN32), one) should be((BigInt(0), NV))
+        send(dut, 64, ysyx_26030103_FpuOp.FLe.Int, 0, 0,
+          one, box(QNaN32)) should be((BigInt(0), NV))
+        // D 格式走同一套比较语义，不能只在 S 格式修复。
+        send(dut, 64, ysyx_26030103_FpuOp.FLt.Int, 1, 0,
+          f64(Double.NaN), f64(1.0)) should be((BigInt(0), NV))
       }
 
       withClue("NaN 与标志: ") {

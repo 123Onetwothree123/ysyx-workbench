@@ -197,8 +197,9 @@ class ysyx_26030103_FudianFPU(override val Config: ysyx_26030103_NPCConfig)
   private val sCmp = Module(new FCMP(SExpWidth, SPrecision))
   sCmp.io.a := aS
   sCmp.io.b := bS
-  // FEQ/FLT/FLE 是 quiet 比较：只有 sNaN 置 NV。
-  sCmp.io.signaling := false.B
+  // RISC-V 语义：FEQ 是 quiet 比较，只有 sNaN 置 NV；FLT/FLE 是
+  // signaling 比较，任一 NaN（含 qNaN）都必须置 NV。
+  sCmp.io.signaling := op =/= ysyx_26030103_FpuOp.FEq
 
   // 整数转换的 W/WU 与 L/LU 宽度由 FpuRequest.intWord 区分：
   // intWord=true 只使用低 32 位，false 使用完整 XLEN（RV32 只允许 W/WU）。
@@ -268,7 +269,8 @@ class ysyx_26030103_FudianFPU(override val Config: ysyx_26030103_NPCConfig)
 
     dCmp.get.io.a := aD
     dCmp.get.io.b := bD
-    dCmp.get.io.signaling := false.B
+    // 与 F 格式一致：FLT/FLE 对 qNaN 也要置 NV，FEQ 只在 sNaN 时置 NV。
+    dCmp.get.io.signaling := op =/= ysyx_26030103_FpuOp.FEq
 
     dFpToInt.get.io.a := aD
     dFpToInt.get.io.rm := rm
