@@ -744,6 +744,14 @@ def main() -> int:
             for name, value in profile["csr"]["enabled"].items()
             if value and name in csr_names
         ]
+        # 机器 identity CSR（mvendorid/marchid/mimpid/mhartid）是标准只读
+        # 寄存器：mvendorid/marchid/mimpid 允许读 0，单 hart 的 mhartid
+        # 固定读 0。它们不属于可裁剪的 MMU 功能集合，必须始终导出，
+        # 否则 IDU 会把 0xf13/0xf14 当成未实现 CSR 并报非法指令。
+        for identity_addr in (0xf11, 0xf12, 0xf13, 0xf14):
+            encoded = f"0x{identity_addr:x}"
+            if encoded not in enabled_csr:
+                enabled_csr.append(encoded)
         env_lines = [
             f"MMU_PROFILE={profile['profile']}",
             f"MMU_ENABLED={int(profile['enabled']['mmu'])}",

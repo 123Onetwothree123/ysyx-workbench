@@ -229,16 +229,20 @@ make sbi SBI_ISA=rv64imafdc_zicsr_zifencei SBI_ABI=lp64d
 
 ## 8. NPC 平台限制与 vendor 补丁
 
-NPC 当前 RTL 的若干简化需要 OpenSBI 侧适配（未修改 CPU RTL）：
+CPU 侧现已实现标准机器 identity CSR 与 `misa.S/U`：
 
-| 现象 | 适配 |
-| --- | --- |
-| 未实现 `mhartid` (0xf14) | 单 hart 从上一级 `a0` 取 boot hart id；`current_hartid()` 固定 0 |
-| `misa` 只报告 I/A/C，未置 S/U | 平台宏声明 S/U 可用（RTL 已实现） |
-| 未实现 `mvendorid`/`mimpid` | 不注册 vendor 扩展；BASE 查询返回 0 |
-| CLINT 无 MSIP | 不注册 MSWI/IPI 设备；单 hart 下安全退化 |
-| Xbar 不接受 64 位多拍 CLINT 写 | `has_64bit_mmio=false`，驱动拆成两个 32 位写 |
-| PLIC 源编号 0..31 | OpenSBI `num_src=31` |
+| 项目 | 当前 RTL | OpenSBI 平台侧 |
+| --- | --- | --- |
+| `mhartid` (0xf14) | 已实现；单 hart 固定读 0；仅 M 级可访问 | `FW_HARTID_FROM_BOOT_ARG` 仅用于兼容旧 RTL，固定 `current_hartid()=0` |
+| `misa` (0x301) | 已实现；MXL/I/A/C/F/D 不变，S/U 随 `HAS_S`/`HAS_U` 置位；只读 | `FW_ASSUME_SU_MODE` 仅用于兼容旧 RTL |
+| `mvendorid`/`marchid` | 已实现，分别读 `0x79737978`/`0x018d3017`；只读 | `FW_NO_MVENDORID` 不注册 vendor 扩展 |
+| `mimpid` (0xf13) | 已实现，固定读 0；只读 | BASE 查询按平台宏返回 0 |
+| CLINT 无 MSIP | 硬件未实现 | 不注册 MSWI/IPI 设备；单 hart 下安全退化 |
+| Xbar 不接受 64 位多拍 CLINT 写 | 总线约束 | `has_64bit_mmio=false`，驱动拆成两个 32 位写 |
+| PLIC 源编号 0..31 | 硬件约束 | OpenSBI `num_src=31` |
+
+上述 vendor 宏是早期 RTL 缺口的历史适配，保留它们不会改变新 RTL 的
+CSR 行为；CPU 侧不再依赖 SBI 伪造 `mhartid`、`misa` 或 identity 值。
 
 剩余限制：
 
@@ -249,8 +253,8 @@ NPC 当前 RTL 的若干简化需要 OpenSBI 侧适配（未修改 CPU RTL）：
   调整布局。
 - DTS 的 `riscv,isa` 固定为 `rv64ima_zicsr_zifencei`，没有 F/D；若后续
   构建带 F/D 的 SBI/Linux，需要同步修改 DTS（当前任务不修改 FPU/C）。
-- NPC `misa` 对 S-mode 仍不报告 S/U；如果后续 Linux 依赖 `misa` 判断，
-  需要在 RTL 修正，而不是继续在 SBI 侧伪装。
+- `misa.S/U` 现在由 RTL 按 `HAS_S`/`HAS_U` 真实报告；若运行在旧 RTL 或
+  旧 bitstream 上，仍需平台宏 `FW_ASSUME_SU_MODE` 兼容。
 - OpenSBI 的 system reset/suspend 没有平台实现；测试 payload 用 `wfi`
   循环，脚本以超时结束（124 属预期）。
 - `NPC_ACLINT_MTIMER_FREQ` 目前按 10 MHz 约定填写；NPC 的 `mtime` 实际

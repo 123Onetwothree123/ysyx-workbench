@@ -29,11 +29,11 @@ platform/npc/
 
 | 文件 | 宏 | 原因 |
 | --- | --- | --- |
-| `firmware/fw_base.S` | `FW_HARTID_FROM_BOOT_ARG` | NPC 未实现 `mhartid` CSR，单 hart 从上一级 `a0` 取 boot hart id |
-| `include/sbi/riscv_asm.h` | `FW_HARTID_FROM_BOOT_ARG` | `current_hartid()` 固定为 0 |
-| `lib/sbi/riscv_asm.c` | `FW_ASSUME_SU_MODE` | NPC 的 `misa` 未置 S/U 位，但 RTL 已实现 S/U |
-| `lib/sbi/sbi_ecall_vendor.c` | `FW_NO_MVENDORID` | NPC 未实现 `mvendorid`，不注册 vendor 扩展 |
-| `lib/sbi/sbi_ecall_base.c` | `FW_NO_MVENDORID` | BASE 扩展对缺失的 `mvendorid`/`mimpid` 返回 0 |
+| `firmware/fw_base.S` | `FW_HARTID_FROM_BOOT_ARG` | 历史上 NPC 未实现 `mhartid`；现 RTL 已实现并固定读 0，该宏仅保留以兼容旧 RTL |
+| `include/sbi/riscv_asm.h` | `FW_HARTID_FROM_BOOT_ARG` | `current_hartid()` 固定为 0（单 hart） |
+| `lib/sbi/riscv_asm.c` | `FW_ASSUME_SU_MODE` | 历史上 `misa` 未置 S/U；现 RTL 按 HAS_S/HAS_U 真实置位，该宏仅用于旧 RTL |
+| `lib/sbi/sbi_ecall_vendor.c` | `FW_NO_MVENDORID` | 平台不注册 vendor 扩展；RTL 已实现 `mvendorid`/`marchid`/`mimpid` |
+| `lib/sbi/sbi_ecall_base.c` | `FW_NO_MVENDORID` | BASE 扩展按平台宏固定返回 0；不再用于规避缺失 CSR |
 
 平台侧还做了两项硬件适配（未改 RTL）：
 

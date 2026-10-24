@@ -9,7 +9,11 @@ import org.scalatest.matchers.should.Matchers
 /** 测试用的 CSR 顶层，把显式 clk/rst 连接到仿真器的隐式时钟复位。 */
 class ysyx_26030103_CSRHarness(
     profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
-      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile()
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(),
+    useA: Boolean = false,
+    useC: Boolean = false,
+    useF: Boolean = false,
+    useD: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val enable = Input(Bool())
@@ -43,7 +47,8 @@ class ysyx_26030103_CSRHarness(
     val stateMepc = Output(UInt(32.W))
     val stateMcause = Output(UInt(32.W))
   })
-  val csr = Module(new ysyx_26030103_CSR(profile))
+  val csr = Module(new ysyx_26030103_CSR(
+    profile, UseA = useA, UseC = useC, UseF = useF, UseD = useD))
   csr.io.clk := clock
   csr.io.rst := reset
   csr.io.Enable := io.enable
@@ -60,12 +65,18 @@ class ysyx_26030103_CSRHarness(
   csr.io.Rs1Data := io.rs1Data
   csr.io.pc := io.pc
   csr.io.TrapTval := io.trapTval
+  // 测试通过 trapTval 注入明确 tval（包括合法的 0）。
+  csr.io.TrapTvalValid := true.B
   csr.io.Interrupt := io.interrupt
   csr.io.TimerInterrupt := io.timerInterrupt
   csr.io.Mtime := 0.U
   csr.io.TrapValid := io.trapValid
   csr.io.TrapCause := io.trapCause
   csr.io.MemTrap := io.memTrap
+  // 本测试不提交浮点状态；F/D 只用于检查 misa.F/D 常量。
+  csr.io.FPCommit := false.B
+  csr.io.FPFlags := 0.U
+  csr.io.FPStateDirtyCommit := false.B
   io.rdata := csr.io.CSR_rdata
   io.exceptionTaken := csr.io.ExceptionTaken
   io.exceptionTarget := csr.io.ExceptionTarget
@@ -89,6 +100,11 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   private val SCAUSE = 0x142
   private val STVAL = 0x143
   private val SATP = 0x180
+  private val MISA = 0x301
+  private val MVENDORID = 0xf11
+  private val MARCHID = 0xf12
+  private val MIMPID = 0xf13
+  private val MHARTID = 0xf14
 
   private def bool(v: Bool): Boolean = v.peek().litValue == 1
   private def long(v: UInt): Long = v.peek().litValue.toLong
@@ -233,6 +249,79 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
     (p.csrMstatusReadMask & 0x100) should be(0x100)
     (p.csrMstatusReadSet & 0x100) should be(0x100)
     (p.csrSatpReadMask & BigInt("7fc00000", 16).toInt) should be(0)
+  }
+
+  it should "实现 mvendorid/marchid/mimpid/mhartid 只读常量" in {
+    simulate(new ysyx_26030103_CSRHarness) { dut =>
+      setup(dut)
+      read(dut, MVENDORID) should be(BigInt("79737978", 16))
+      read(dut, MARCHID) should be(BigInt("018d3017", 16))
+      // mimpid 固定 0，mhartid 在单 hart 实现中固定 0。
+      read(dut, MIMPID) should be(0)
+      read(dut, MHARTID) should be(0)
+
+      // 这些地址在规范中是只读的：直接驱动 CSR 写口也不能改变读值。
+      write(dut, MVENDORID, BigInt("ffffffff", 16))
+      write(dut, MARCHID, BigInt("ffffffff", 16))
+      write(dut, MIMPID, BigInt("ffffffff", 16))
+      write(dut, MHARTID, BigInt("ffffffff", 16))
+      read(dut, MVENDORID) should be(BigInt("79737978", 16))
+      read(dut, MARCHID) should be(BigInt("018d3017", 16))
+      read(dut, MIMPID) should be(0)
+      read(dut, MHARTID) should be(0)
+    }
+  }
+
+  it should "identity CSR 不受 CSR_ENABLED 裁剪" in {
+    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+      csrEnabled = Set(0x300)
+    )
+    simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
+      setup(dut)
+      // mvendorid/marchid 的非零常量可以区分“已实现”与“未实现读 0”。
+      read(dut, MVENDORID) should be(BigInt("79737978", 16))
+      read(dut, MARCHID) should be(BigInt("018d3017", 16))
+      read(dut, MIMPID) should be(0)
+      read(dut, MHARTID) should be(0)
+    }
+  }
+
+  it should "misa 随 HAS_S/HAS_U 设置 S/U 位" in {
+    val cases = Seq(
+      // (hasS, hasU, 期望的 misa)
+      (true, true, BigInt("40140100", 16)),
+      (true, false, BigInt("40040100", 16)),
+      (false, true, BigInt("40100100", 16)),
+      (false, false, BigInt("40000100", 16))
+    )
+    for ((hasS, hasU, expected) <- cases) {
+      val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+        hasS = hasS,
+        hasU = hasU
+      )
+      simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
+        setup(dut)
+        // RV32: MXL=1、I 始终置位，S=bit18、U=bit20。
+        read(dut, MISA) should be(expected)
+        // misa 是只读 CSR，写口不能改变其内容。
+        write(dut, MISA, 0)
+        read(dut, MISA) should be(expected)
+      }
+    }
+  }
+
+  it should "misa 保留 A/C/F/D 扩展位" in {
+    simulate(new ysyx_26030103_CSRHarness(
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(),
+      useA = true,
+      useC = true,
+      useF = true,
+      useD = true
+    )) { dut =>
+      setup(dut)
+      // bit0=A，bit2=C，bit3=D，bit5=F，bit8=I，bit18=S，bit20=U。
+      read(dut, MISA) should be(BigInt("4014012d", 16))
+    }
   }
 
   it should "关闭的 CSR 读 0 且写忽略" in {

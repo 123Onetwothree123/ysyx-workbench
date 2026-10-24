@@ -25,6 +25,7 @@ class ysyx_26030103_IDUAtomicHarness(config: ysyx_26030103_NPCConfig)
   val idu = Module(new ysyx_26030103_IDU(config))
   idu.io.in.valid := true.B
   idu.io.in.bits.Instruction := io.instruction
+  idu.io.in.bits.IsCompressed := false.B
   idu.io.in.bits.pc := 0.U
   idu.io.in.bits.ExceptionValid := false.B
   idu.io.in.bits.ExceptionCause := 0.U
@@ -34,6 +35,29 @@ class ysyx_26030103_IDUAtomicHarness(config: ysyx_26030103_NPCConfig)
   idu.io.out.ready := true.B
   idu.io.ReadDATA1 := 0.U
   idu.io.ReadDATA2 := 0.U
+  idu.io.ReadFPR1 := 0.U
+  idu.io.ReadFPR2 := 0.U
+  idu.io.ReadFPR3 := 0.U
+  idu.io.Frm := 0.U
+  idu.io.ex_fp_valid := false.B
+  idu.io.ex_fp_rd := 0.U
+  idu.io.ex_fp_regWrite := false.B
+  idu.io.ex_fp_fwd_ready := false.B
+  idu.io.ex_fp_fwd_data := 0.U
+  idu.io.me_fp_valid := false.B
+  idu.io.me_fp_rd := 0.U
+  idu.io.me_fp_regWrite := false.B
+  idu.io.me_fp_fwd_ready := false.B
+  idu.io.me_fp_fwd_data := 0.U
+  idu.io.me2_fp_valid := false.B
+  idu.io.me2_fp_rd := 0.U
+  idu.io.me2_fp_regWrite := false.B
+  idu.io.me2_fp_fwd_ready := false.B
+  idu.io.me2_fp_fwd_data := 0.U
+  idu.io.wb_fp_valid := false.B
+  idu.io.wb_fp_rd := 0.U
+  idu.io.wb_fp_regWrite := false.B
+  idu.io.wb_fp_fwd_data := 0.U
   idu.io.ex_valid := false.B
   idu.io.ex_rd := 0.U
   idu.io.ex_regWrite := false.B
@@ -98,12 +122,16 @@ class ysyx_26030103_AtomicMisaHarness(useA: Boolean) extends Module {
   csr.io.Rs1Data := 0.U
   csr.io.pc := 0.U
   csr.io.TrapTval := 0.U
+  csr.io.TrapTvalValid := false.B
   csr.io.Interrupt := false.B
   csr.io.TimerInterrupt := false.B
   csr.io.TrapValid := false.B
   csr.io.TrapCause := 0.U
   csr.io.MemTrap := false.B
   csr.io.Mtime := 0.U
+  csr.io.FPCommit := false.B
+  csr.io.FPFlags := 0.U
+  csr.io.FPStateDirtyCommit := false.B
   io.rdata := csr.io.CSR_rdata
 }
 

@@ -55,12 +55,16 @@ class ysyx_26030103_RV64CSRHarness(
   csr.io.Rs1Data := io.rs1Data
   csr.io.pc := io.pc
   csr.io.TrapTval := io.trapTval
+  csr.io.TrapTvalValid := true.B
   csr.io.Interrupt := io.interrupt
   csr.io.TimerInterrupt := false.B
   csr.io.TrapValid := io.trapValid
   csr.io.TrapCause := io.trapCause
   csr.io.MemTrap := io.memTrap
   csr.io.Mtime := 0.U
+  csr.io.FPCommit := false.B
+  csr.io.FPFlags := 0.U
+  csr.io.FPStateDirtyCommit := false.B
   io.rdata := csr.io.CSR_rdata
   io.exceptionTaken := csr.io.ExceptionTaken
   io.exceptionTarget := csr.io.ExceptionTarget
@@ -267,6 +271,29 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       // RV64 架构 scause = 0x8000_0000_0000_0009，而不是
       // 0x0000_0000_8000_0009 或 0xffff_ffff_8000_0009。
       read(dut, 0x142) should be(BigInt("8000000000000009", 16))
+    }
+  }
+
+  it should "RV64 misa 使用 MXL=2，并保留 S/U 与只读语义" in {
+    simulate(new ysyx_26030103_RV64CSRHarness(profile)) { dut =>
+      setup(dut)
+      // MXL=2 位于 bit[63:62]；I=bit8，S=bit18，U=bit20。
+      val expected = BigInt("8000000000140100", 16)
+      read(dut, 0x301) should be(expected)
+      write(dut, 0x301, 0)
+      read(dut, 0x301) should be(expected)
+    }
+  }
+
+  it should "RV64 下 identity CSR 零扩展且 mhartid/mimpid 固定 0" in {
+    simulate(new ysyx_26030103_RV64CSRHarness(profile)) { dut =>
+      setup(dut)
+      read(dut, 0xf11) should be(BigInt("0000000079737978", 16))
+      read(dut, 0xf12) should be(BigInt("00000000018d3017", 16))
+      read(dut, 0xf13) should be(0)
+      read(dut, 0xf14) should be(0)
+      write(dut, 0xf14, BigInt("ffffffffffffffff", 16))
+      read(dut, 0xf14) should be(0)
     }
   }
 }

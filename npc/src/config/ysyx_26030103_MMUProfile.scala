@@ -221,6 +221,7 @@ case class ysyx_26030103_MMUProfile(
     // HAS_U=n 时 U 级 CSR 一并从实现集合裁剪；HAS_S=n 时裁剪 S 级 CSR。
     ((hasU || !uLevel) && (hasS || (!sLevel && !sControl))) &&
       (csrEnabled.contains(addr) ||
+        ysyx_26030103_MMUProfile.IdentityCsrAddresses.contains(addr) ||
         (pmpEnabled && ((addr >= 0x3a0 && addr <= 0x3a3) ||
           (addr >= 0x3b0 && addr <= 0x3bf))))
   }
@@ -389,14 +390,22 @@ object ysyx_26030103_MMUProfile {
   val LevelBits: Int = 3
   val MaxLevels: Int = 1 << LevelBits
 
+  /** 机器 identity CSR：标准只读寄存器，始终随核实现。
+    *
+    * mvendorid/marchid/mimpid 可以合法读 0，mhartid 在单 hart 核中固定
+    * 为 0。它们不参与可裁剪的功能配置，避免 CSR_ENABLED 漏列后
+    * mhartid/mimpid 在译码阶段被误判为非法指令。
+    */
+  val IdentityCsrAddresses: Set[Int] = Set(0xf11, 0xf12, 0xf13, 0xf14)
+
   /** 配置生成器未显式给出 CSR 集合时的标准实现集合。 */
   val DefaultCsrAddresses: Set[Int] = Set(
     0x300, 0x301, 0x302, 0x303, 0x304, 0x305, 0x306,
     0x320, 0x340, 0x341, 0x342, 0x343, 0x344,
     0x100, 0x104, 0x105, 0x106, 0x140, 0x141, 0x142,
     0x143, 0x144, 0x180,
-    0xb00, 0xb02, 0xb80, 0xb82, 0xf11, 0xf12
-  )
+    0xb00, 0xb02, 0xb80, 0xb82
+  ) ++ IdentityCsrAddresses
 
   private def envBool(env: String => Option[String], key: String, fallback: Boolean): Boolean =
     env(key).filter(_.nonEmpty).map(v => v == "y" || v == "1").getOrElse(fallback)
@@ -577,7 +586,8 @@ object ysyx_26030103_MMUProfile {
       csrMissingMode = envString(env, "CSR_MISSING_MODE", "illegal"),
       pmpEnabled = envBool(env, "HAS_PMP", false),
       pmpEntries = envInt(env, "PMP_ENTRIES", 16),
-      csrEnabled = envAddressSet(env, "CSR_ENABLED", DefaultCsrAddresses)
+      csrEnabled = envAddressSet(env, "CSR_ENABLED", DefaultCsrAddresses) ++
+        IdentityCsrAddresses
     )
   }
 }

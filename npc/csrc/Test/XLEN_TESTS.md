@@ -41,7 +41,11 @@
    - 直接调用 `MtraceRecord`，验证 4GiB 以上 PC/Addr/Data 不被截断。
    - 说明：当前 RTL 的 MMU 集成路径把 mtrace `Addr` 记录为翻译后的
      物理地址，高 VA 由 `xlen-dual-test` 的 `p $pc` 覆盖。
-3. `npc/scripts/xlen_dual_regression.sh`
+3. `npc/csrc/Test/csr-ident-test/`
+   - M 模式读取 `mhartid`/`mimpid`/`mvendorid`/`marchid` 与 `misa`；
+   - `misa.MXL/I` 以及由 Kconfig 注入的 S/U 位断言；
+   - `misa`/`mimpid`/`mhartid` 的写意图触发非法指令。
+4. `npc/scripts/xlen_dual_regression.sh`
    - 生成 `mmu_default_defconfig`、`nanos_defconfig`、`rv64_mmu_defconfig`、
      `rv64_soft_defconfig`、`rv64_sv48_defconfig`，检查 `CONFIG_XLEN` /
      `CONFIG_SOC_XLEN`；

@@ -166,12 +166,18 @@ class ysyx_26030103_CSR(
   val CSR_MCOUNTINHIBIT = 0x320.U(12.W)
   val CSR_MVENDORID = 0xf11.U(12.W)
   val CSR_MARCHID = 0xf12.U(12.W)
+  val CSR_MIMPID = 0xf13.U(12.W)
+  val CSR_MHARTID = 0xf14.U(12.W)
   val CSR_FFLAGS = 0x001.U(12.W)
   val CSR_FRM = 0x002.U(12.W)
   val CSR_FCSR = 0x003.U(12.W)
 
   val Mvendorid_rdata = 0x79737978.U(32.W)
   val Marchid_rdata = "h018d3017".U(32.W)
+  // 单 hart 实现：mhartid 固定为 0。mimpid 遵循与 NEMU REF 一致的
+  // 约定，固定返回 0（表示不提供额外的实现版本号）。
+  val Mimpid_rdata = 0.U(32.W)
+  val Mhartid_rdata = 0.U(32.W)
   // SIE SPIE SPP SUM MXR；RISCV_F 时 sstatus 也包含 FS[14:13]。
   val SstatusMask = "h000c0122".U(32.W) |
     (if (UseF) "h00006000".U(32.W) else 0.U(32.W))
@@ -180,6 +186,9 @@ class ysyx_26030103_CSR(
     if (UseF) Seq(0x001, 0x002, 0x003) else Seq.empty
   private val enabledCsrAddresses = (
     profile.csrEnabled.toSeq ++
+      // identity CSR 始终存在，不依赖 CSR_ENABLED 是否列出。
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
+        .IdentityCsrAddresses.toSeq ++
       Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82) ++
       FpCsrAddresses ++
       (if (profile.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
@@ -336,15 +345,20 @@ class ysyx_26030103_CSR(
   val Minstret_rdata =
     if (XLEN == 64) Minstret else Minstret(31, 0)
   val Minstreth_rdata = Minstret(63, 32)
-  // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A/C/F/D 随配置置位。
-  // 位编号按 RISC-V 规范：bit0=A，bit2=C，bit3=D，bit5=F，bit8=I。
+  // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A/C/F/D 随配置置位，
+  // S/U 分别随 HAS_S/HAS_U 置位。位编号按 RISC-V 规范：
+  // bit0=A，bit2=C，bit3=D，bit5=F，bit8=I，bit18=S，bit20=U。
+  // misa 整体只读（IDU 拒绝任何写意图），因此这里只生成常量读口。
   val Misa_rdata = {
     val Mxl = if (XLEN == 64) BigInt(2) << 62 else BigInt(1) << 30
     val AExt = if (UseA) BigInt(1) << 0 else BigInt(0)
     val CExt = if (UseC) BigInt(1) << 2 else BigInt(0)
     val DExt = if (UseD) BigInt(1) << 3 else BigInt(0)
     val FExt = if (UseF) BigInt(1) << 5 else BigInt(0)
-    (Mxl | BigInt(0x100) | AExt | CExt | DExt | FExt).U(XLEN.W)
+    val SExt = if (hasS) BigInt(1) << 18 else BigInt(0)
+    val UExt = if (hasU) BigInt(1) << 20 else BigInt(0)
+    (Mxl | BigInt(0x100) | AExt | CExt | DExt | FExt |
+      SExt | UExt).U(XLEN.W)
   }
   val Medeleg_rdata = MedelegOpt.getOrElse(0.U(32.W))
   val Mideleg_rdata = MidelegOpt.getOrElse(0.U(32.W))
@@ -757,6 +771,8 @@ class ysyx_26030103_CSR(
   addCsr(CSR_MCOUNTINHIBIT, Widen32(Mcountinhibit), csrOn(0x320))
   addCsr(CSR_MVENDORID, Widen32(Mvendorid_rdata), csrOn(0xf11))
   addCsr(CSR_MARCHID, Widen32(Marchid_rdata), csrOn(0xf12))
+  addCsr(CSR_MIMPID, Widen32(Mimpid_rdata), csrOn(0xf13))
+  addCsr(CSR_MHARTID, Widen32(Mhartid_rdata), csrOn(0xf14))
   for (i <- 0 until 4) {
     addCsr((0x3a0 + i).U(12.W), Widen32(PmpcfgReg(i)), csrOn(0x3a0 + i))
   }

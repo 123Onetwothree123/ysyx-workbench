@@ -419,7 +419,11 @@ class ysyx_26030103_IDU(
   private val fpCsrAddresses =
     if (UseF) Seq(0x001, 0x002, 0x003) else Seq.empty
   private val csrAddresses = (
-    config.MMU.csrEnabled.toSeq ++ userCounterAddresses ++ fpCsrAddresses ++
+    config.MMU.csrEnabled.toSeq ++
+      // identity CSR 始终实现，不依赖 CSR_ENABLED 是否列出。
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
+        .IdentityCsrAddresses.toSeq ++
+      userCounterAddresses ++ fpCsrAddresses ++
       (if (config.MMU.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
   ).filter(a => config.MMU.csrSupported(a) || userCounterAddresses.contains(a) ||
     fpCsrAddresses.contains(a))

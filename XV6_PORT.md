@@ -125,11 +125,11 @@ xv6 侧：
 
 ### 5.2 `mhartid` / 单 hart
 
-NPC 没有实现 `mhartid`（CSR `0xf14`，`ysyx_26030103_CSR.scala` 中没有
-`CSR_MHARTID`）。原 `entry.S` 和 `start.c` 会读它，导致启动第一条 CSR
-就非法指令。
+NPC 已实现 `mhartid`（CSR `0xf14`）：单 hart 固定读 0，M 级可访问，
+S/U 级访问按 CSR 权限产生非法指令。现有 xv6 移植路径仍不依赖该 CSR：
 
-- `entry.S`：NPC 路径直接用 `stack0 + 4096`，不读 `mhartid`。
+- `entry.S`：NPC 路径直接用 `stack0 + 4096`，不读 `mhartid`。这是为
+  兼容旧 RTL 保留的启动路径，不是硬件缺口。
 - `start.c`：`tp = 0`，`timerinit()` 也固定 hart 0。
 - `NCPU` 仍为 8，但 NPC 实际只使用 hart 0；该移植不宣称 SMP。
 
@@ -234,7 +234,8 @@ NPC 路径的 `uart.c` 现在也打开 IER.RX，并在 `uartintr()` 中读 ISR�
 
 | 项目 | NPC | 移植处理 |
 | --- | --- | --- |
-| `mhartid` | 未实现 | 单 hart，固定 0 |
+| `mhartid` | 已实现，固定 0 | 单 hart；启动路径仍固定 hart 0 |
+| `misa` | 已实现，S/U 随 `HAS_S`/`HAS_U` 置位 | 只读，MXL/I/A/C/F/D 按配置 |
 | `menvcfg` | 未实现 | 不使用 |
 | `stimecmp` | 未实现 | 改用 CLINT M-mode timer |
 | `time` (0xc01) | 未实现 | 不再使用；计时用 `ticks` |
@@ -454,7 +455,7 @@ PLIC 的寄存器/中断路径与 XLEN 无关。
 
 ### 8.3 非阻塞的差异
 
-- 无 `mhartid`：已按单 hart 处理；
+- `mhartid` 已实现并固定为 0，单 hart 行为不变；
 - 无 PMP：已跳过；
 - 无 `menvcfg/stimecmp`：已改用 CLINT M-mode timer；
 - 无 `time` CSR：已不使用；
