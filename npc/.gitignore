@@ -4,6 +4,7 @@
 !Makefile
 !*.mk
 !Kconfig
+!CHECKPOINT.md
 # Kconfig 拆分文件：整目录白名单，文件可任意命名
 !kconfig/
 !kconfig/**/*

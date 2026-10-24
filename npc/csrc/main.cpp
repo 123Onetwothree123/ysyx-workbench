@@ -103,7 +103,28 @@ int main(int argc, char const *argv[])
 
     Verilated::commandArgs(argc, argv);
     DUT dut;
-    dut.InitializeMemory(FlashMemory);
+    bool restored{false};
+    if (const auto &restoreFile{options->GetRestoreFile()}; restoreFile)
+    {
+#ifdef CONFIG_VERILATOR_SAVABLE
+        if (auto result{dut.RestoreCheckpoint(*restoreFile)}; !result)
+        {
+            std::println(std::cerr, "{}", result.error());
+            return 1;
+        }
+        std::println("已恢复 Verilator 状态：{}", restoreFile->string());
+        restored = true;
+#else
+        std::println(std::cerr,
+                     "--restore 需要在构建时启用 Verilator --savable "
+                     "（make VERILATOR_SAVABLE=y）");
+        return 1;
+#endif
+    }
+    if (!restored)
+    {
+        dut.InitializeMemory(FlashMemory);
+    }
 #ifdef CONFIG_NVBOARD
     nvboard_bind_all_pins(&*dut);
     nvboard_init();
@@ -123,7 +144,10 @@ int main(int argc, char const *argv[])
     // Establish the DUT's architectural reset state before synchronizing a
     // reference model.  GPRs other than x0 have no ISA-defined reset value,
     // so DiffTest must copy the values actually seen by this RTL instance.
-    dut.reset();
+    if (!restored)
+    {
+        dut.reset();
+    }
     // DifftestInitialize 在 CONFIG_DIFFTEST=n 时也会显式拒绝
     // --diff。不能用预处理把用户参数和错误一起删掉。
     if (options->GetDiffFile())

@@ -55,6 +55,15 @@ private:
     PerfStats perf{};
     std::size_t fault_count{0}; // AXI fault 打印限流计数
     bool finalized{false};
+#ifdef CONFIG_VERILATOR_SAVABLE
+    std::optional<std::size_t> checkpoint_cycle;
+    std::filesystem::path checkpoint_file;
+    bool checkpoint_continue{false};
+#endif
+#ifdef VRISCV32E_NPC
+    std::optional<std::size_t> fork_cycle;
+    std::filesystem::path fork_pidfile;
+#endif
 #ifdef VRISCV32E_NPC
     // direct-NPC 的 UART 接收注入。stdin 只在 SDB 的 `c`/非 SDB 主循环
     // 中启用，避免调试器命令被误当成串口输入。
@@ -104,6 +113,14 @@ public:
     // 把 ImageLoader 产生的唯一镜像写入 direct-NPC RAM。
     // SoC 路径的 MROM/flash 本来就直接读取这个 vector，因此为 no-op。
     void InitializeMemory(std::span<const std::uint8_t> image);
+#ifdef CONFIG_VERILATOR_SAVABLE
+    // Verilator --savable 状态保存/恢复。只保存 RTL 模型状态；镜像
+    // 加载、调试镜像等 host 状态由调用者重新建立。
+    std::expected<void, std::string>
+        SaveCheckpoint(const std::filesystem::path &path);
+    std::expected<void, std::string>
+        RestoreCheckpoint(const std::filesystem::path &path);
+#endif
     std::size_t GetCycle() const;
     std::size_t GetInstructions() const;
     [[nodiscard]] const PerfStats &GetPerfStats() const noexcept;

@@ -13,12 +13,18 @@ module;
 #ifdef CONFIG_TRACE_FST
 #include <verilated_fst_c.h>
 #endif
+#ifdef CONFIG_VERILATOR_SAVABLE
+#include <verilated_save.h>
+#endif
 #ifdef CONFIG_NVBOARD
 #include <nvboard.h>
 #endif
 #include "Config.h"
 #ifdef VRISCV32E_NPC
 #include <cerrno>
+#include <chrono>
+#include <csignal>
+#include <fstream>
 #include <poll.h>
 #include <unistd.h>
 #endif
@@ -199,6 +205,35 @@ DUT::DUT()
         std::filesystem::create_directories(parent);
     tfp.open(CONFIG_TRACE_FILE);
 #endif
+#ifdef CONFIG_VERILATOR_SAVABLE
+    if (const char *value{std::getenv("NPC_CHECKPOINT_CYCLE")};
+        value != nullptr && *value != '\0')
+    {
+        checkpoint_cycle = static_cast<std::size_t>(std::stoull(value));
+    }
+    if (const char *value{std::getenv("NPC_CHECKPOINT_FILE")};
+        value != nullptr && *value != '\0')
+    {
+        checkpoint_file = value;
+    }
+    if (const char *value{std::getenv("NPC_CHECKPOINT_CONTINUE")};
+        value != nullptr)
+    {
+        checkpoint_continue = std::string{value} == "1";
+    }
+#endif
+#ifdef VRISCV32E_NPC
+    if (const char *value{std::getenv("NPC_FORK_AT")};
+        value != nullptr && *value != '\0')
+    {
+        fork_cycle = static_cast<std::size_t>(std::stoull(value));
+    }
+    if (const char *value{std::getenv("NPC_FORK_PIDFILE")};
+        value != nullptr && *value != '\0')
+    {
+        fork_pidfile = value;
+    }
+#endif
 }
 void DUT::InitializeMemory(std::span<const std::uint8_t> image)
 {
@@ -248,6 +283,42 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
     static_cast<void>(image);
 #endif
 }
+#ifdef CONFIG_VERILATOR_SAVABLE
+std::expected<void, std::string>
+DUT::SaveCheckpoint(const std::filesystem::path &path)
+{
+    try
+    {
+        VerilatedSave os;
+        os.open(path.string());
+        os << *dut;
+        os.close();
+    }
+    catch (const std::exception &error)
+    {
+        return std::unexpected{
+            std::format("保存检查点 {} 失败：{}", path.string(), error.what())};
+    }
+    return {};
+}
+std::expected<void, std::string>
+DUT::RestoreCheckpoint(const std::filesystem::path &path)
+{
+    try
+    {
+        VerilatedRestore is;
+        is.open(path.string());
+        is >> *dut;
+        is.close();
+    }
+    catch (const std::exception &error)
+    {
+        return std::unexpected{
+            std::format("恢复检查点 {} 失败：{}", path.string(), error.what())};
+    }
+    return {};
+}
+#endif
 TOP_MODULE &DUT::operator*()
 {
     return *dut;
@@ -448,6 +519,72 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
+#ifdef CONFIG_VERILATOR_SAVABLE
+    if (checkpoint_cycle && cycle == *checkpoint_cycle &&
+        !checkpoint_file.empty())
+    {
+        const auto begin{std::chrono::steady_clock::now()};
+        auto result{SaveCheckpoint(checkpoint_file)};
+        const auto end{std::chrono::steady_clock::now()};
+        if (!result)
+        {
+            std::println(std::cerr, "检查点保存失败：{}", result.error());
+        }
+        else
+        {
+            std::error_code error;
+            const auto bytes{std::filesystem::file_size(checkpoint_file, error)};
+            std::println(std::cerr,
+                         "检查点已保存: {} cycle={} bytes={} elapsed_ms={}",
+                         checkpoint_file.string(), cycle,
+                         error ? 0 : bytes,
+                         std::chrono::duration_cast<std::chrono::milliseconds>(
+                             end - begin)
+                             .count());
+        }
+        checkpoint_cycle.reset();
+        if (!checkpoint_continue)
+        {
+            final();
+            std::_Exit(result ? 0 : 1);
+        }
+    }
+#endif
+#ifdef VRISCV32E_NPC
+    if (fork_cycle && cycle == *fork_cycle)
+    {
+        const auto begin{std::chrono::steady_clock::now()};
+        const pid_t child{::fork()};
+        if (child < 0)
+        {
+            std::println(std::cerr, "fork 检查点失败: errno={}", errno);
+        }
+        else if (child == 0)
+        {
+            // 子进程保留 fork 时刻的完整 RTL/内存状态，阻塞到调试器
+            // 发送 SIGCONT；父进程退出后它就是唯一的仿真实例。
+            ::raise(SIGSTOP);
+        }
+        else
+        {
+            if (!fork_pidfile.empty())
+            {
+                std::ofstream out{fork_pidfile};
+                out << child << "\n";
+                out.flush();
+            }
+            const auto end{std::chrono::steady_clock::now()};
+            std::println(std::cerr,
+                         "fork 检查点: pid={} cycle={} fork_us={}",
+                         child, cycle,
+                         std::chrono::duration_cast<std::chrono::microseconds>(
+                             end - begin)
+                             .count());
+            std::_Exit(0);
+        }
+        fork_cycle.reset();
+    }
+#endif
 #ifdef CONFIG_DIFFTEST
     // Apply the pre-edge sample only after that edge has taken effect.
     if (debug_gpr_write)

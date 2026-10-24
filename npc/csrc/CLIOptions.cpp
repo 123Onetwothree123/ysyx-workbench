@@ -53,6 +53,18 @@ std::expected<CLIOptions, std::string> CLIOptions::Parse(int argc, char const *a
             }
             options.ResultDir = result_dir;
         }
+        else if (arg == "--restore")
+        {
+            if (i + 1 >= argc)
+            {
+                return std::unexpected("--restore 需要跟一个 Verilator 状态文件路径");
+            }
+            options.RestoreFile = std::filesystem::path{argv[++i]};
+        }
+        else if (arg.starts_with("--restore="))
+        {
+            options.RestoreFile = std::filesystem::path{std::string{arg.substr(10)}};
+        }
         else if (arg == "--vga-check")
         {
             options.VGACheckEnabled = true;
@@ -92,6 +104,10 @@ const std::optional<std::filesystem::path> &CLIOptions::GetDiffFile() const noex
 const std::optional<std::filesystem::path> &CLIOptions::GetResultDir() const noexcept
 {
     return ResultDir;
+}
+const std::optional<std::filesystem::path> &CLIOptions::GetRestoreFile() const noexcept
+{
+    return RestoreFile;
 }
 bool CLIOptions::GetVGACheck() const noexcept
 {
