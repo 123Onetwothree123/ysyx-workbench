@@ -75,10 +75,27 @@ static inline unsigned uart_rx_available(void)
   return uart_rx_count;
 }
 
+static bool uart_tx_irq_enabled(void)
+{
+  // IER bit1 = THR empty（发送保持寄存器空）中断使能。
+  return (uart_base != NULL) && (uart_base[1] & 0x02);
+}
+
 static bool uart_irq_level(void)
 {
-  // IER bit0 = 接收中断使能；FIFO 非空时保持电平有效。
-  return (uart_base != NULL) && (uart_base[1] & 0x01) && (uart_rx_count != 0);
+  if (uart_base == NULL) {
+    return false;
+  }
+  // 接收：IER bit0 且 RX FIFO 非空。
+  const bool rx = (uart_base[1] & 0x01) && (uart_rx_count != 0);
+  /*
+   * 发送：NEMU 的 THR 立即输出到宿主，因此 LSR.THRE 始终为 1。
+   * Linux 8250 tty 先用轮询方式填满 16 字节 TX FIFO，之后依赖
+   * THRE 中断继续发送；如果不报告 TX 中断，普通 write(2) 输出会
+   * 在 16 字节处永久停住（内核 printk 的轮询 console 路径仍可用）。
+   */
+  const bool tx = uart_tx_irq_enabled();
+  return rx || tx;
 }
 
 static void uart_rx_push(uint8_t ch)
@@ -154,8 +171,14 @@ static void uart_io_handler(uint32_t offset, int len, bool is_write)
       case 1: // IER
         value = uart_base[1];
         break;
-      case 2: // IIR：FIFO 非空且接收中断使能时报告 RX data available
-        value = (uart_irq_level() ? 0x04 : 0x01);
+      case 2: // IIR：RX 数据优先于 THRE；无中断时报告 0x01
+        if ((uart_base[1] & 0x01) && uart_rx_available()) {
+          value = 0x04;
+        } else if (uart_tx_irq_enabled()) {
+          value = 0x02;
+        } else {
+          value = 0x01;
+        }
         break;
       case 3: // LCR
         value = uart_base[3];

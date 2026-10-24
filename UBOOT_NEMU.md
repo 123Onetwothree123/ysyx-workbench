@@ -1,14 +1,14 @@
 # U-Boot S-mode on NEMU
 
 本文记录 ysyx-workbench 的 U-Boot S-mode 启动路径、NEMU 板级适配、
-EFI loader/initramfs 传递验证，以及 Debian riscv64 EFI 内核在 64 MiB
-RAM 下的阻塞结论。
+EFI loader/initramfs 传递验证，以及 Debian riscv64 EFI 内核在 NEMU
+上从 early boot 进入用户态的过程。
 
-本轮**没有下载/编译 Linux，也没有构建 rootfs**。Debian
+本轮**没有下载/编译 Linux，也没有构建 Debian rootfs**。Debian
 `install/vmlinux` 和 BusyBox initramfs 都是调用者提供的现成文件。
 64 MiB 默认布局下 Debian 内核在 U-Boot 的 PE loader 中因内存不足
-失败，没有进入内核；随后用单独的 128 MiB NEMU 评估配置验证了
-EFI -> Debian 6.12.107 -> earlycon/console 路径（见第 5.4 节）。
+失败；128 MiB 评估配置下已修复两个 NEMU 平台缺陷，并实际执行
+`/init`、`uname`、`/proc/cpuinfo`、`id` 和内核停机（见 5.7、5.8）。
 
 ## 1. 结论
 
@@ -18,9 +18,11 @@ EFI -> Debian 6.12.107 -> earlycon/console 路径（见第 5.4 节）。
 | NEMU 64 MiB RAM / 16550 / timer | **通过**，`bdinfo`/`coninfo`/`mtest`/`time` 均正常 |
 | EFI loader / `bootefi` | **通过**，`bootefi hello` 输出 `Hello, world!` |
 | EFI_LOAD_FILE2 initrd 传递 | **通过**，`initrddump.efi` 读到的长度和 CRC32 与 BusyBox initramfs 完全一致 |
-| Debian EFI `install/vmlinux` | **64 MiB 阻塞**；**128 MiB 通过**，打印 Linux 6.12.107 + earlycon/console |
-| Debian installer initrd (49 MB) | **不可行**，单 initrd 已接近 64 MiB RAM 总量 |
+| Debian EFI `install/vmlinux` | **64 MiB 阻塞**；**128 MiB 用户态通过**（Linux 6.12.107 + BusyBox initramfs `/init`） |
+| Debian installer 自带 BusyBox/glibc | **通过**，裁剪 initramfs 中运行 BusyBox v1.37.0（PIE + glibc） |
+| Debian installer initrd (49 MB) | **128 MiB 未通过**；loader 已接近上限，解包后需要数百 MiB，未作为成功标准 |
 | NPC RTL | **未验证**，本轮只做 NEMU；NPC 的 450 MHz DTB/timebase 不同 |
+
 
 U-Boot 版本、来源和 SHA256 见 `vendor/u-boot/VENDOR.md`：
 
@@ -394,6 +396,146 @@ EFI pool/initrd buffer      ~1-3 MiB
 默认 `riscv64-linux_defconfig` 仍是 64 MiB，NPC 仍是 64 MiB/450 MHz
 契约。
 
+### 5.7 进入用户态前修复的两个 NEMU 平台缺陷
+
+128 MiB 下第一次启动时，日志停在
+`check_unaligned_access_all_cpus`，之后 4 分钟没有任何输出，但
+NEMU 的 guest 指令数持续增长。用 gdb 读取 `cpu.pc`/`jiffies`
+确认内核在一个 `while (time_before(jiffies, timeout))` 循环里空转：
+**M 模式时钟中断没有送达 S-mode**。
+
+#### 5.7.1 M 模式中断在 S/U 模式下必须全局使能
+
+RISC-V 特权规范规定：当前特权级低于 M 时，M 模式中断总是全局
+使能，不受 `mstatus.MIE` 控制；只有当前在 M 模式执行时才要求
+`MIE=1`。原来的 `isa_query_intr()` 无条件要求
+`cpu.privilege == M && MIE`，而 OpenSBI 进入 S 模式时把
+`mstatus.MPIE` 清 0，导致 S-mode 下 `MIE=0`，CLINT 的 MTIP 永远
+不会被 NEMU 取走，OpenSBI 也就无法给 Linux 注入 STIP。
+
+修复位置：`nemu/src/isa/riscv32/system/intr.c`。修复后同一个
+initcall 从“无限等待”变为 36 ms 完成：
+
+```text
+[    9.735949] calling  check_unaligned_access_all_cpus+0x0/0x1a0 @ 1
+[    9.787890] initcall check_unaligned_access_all_cpus+0x0/0x1a0 returned 0 after 36000 usecs
+[    8.419446] cpu0: Ratio of byte access time to unaligned word access is 9.86, unaligned accesses are fast
+```
+
+#### 5.7.2 16550 必须报告 THRE（发送保持寄存器空）中断
+
+用户态 `/init` 第一次运行时，输出恰好停在 16 字节：
+
+```text
+/bin/sh: can't a
+```
+
+16 字节正是 8250 TX FIFO 的深度。内核 `printk` 的 console 路径用
+轮询直接写 THR，所以内核日志正常；普通 `write(2)` 走 tty 层，填满
+16 字节 FIFO 后要等 THRE 中断继续发送。NEMU 原来只在 RX FIFO
+非空时报告 `IIR=0x04`，从不报告 `IIR=0x02`，因此 tty 输出永久
+停在 16 字节。
+
+修复位置：`nemu/src/device/riscv_xv6.c`。`IER.THRI` 使能时报告
+THRE 中断（RX 仍优先），并让 PLIC 的 UART source 10 在 TX 中断
+使能时保持电平。修复后用户态输出完整。
+
+### 5.8 128 MiB 用户态实测日志
+
+测试用 `nemu/tests/uboot-debian-userland.sh`：它在临时目录里把
+BusyBox initramfs 的 `/init` 替换成
+`nemu/tests/debian-userland-init.sh`（非交互），再通过
+`build_uboot_nemu.sh` 打包并运行。命令：
+
+```sh
+NEMU_DEBIAN_VMLINUX=/path/to/debian/install/vmlinux \
+NEMU_DEBIAN_INITRD=/path/to/busybox-initramfs.cpio.gz \
+  nemu/tests/uboot-debian-userland.sh
+```
+
+实际日志（NEMU 128 MiB，`no5lvl`）：
+
+```text
+[   70.001481] Trying to unpack rootfs image as initramfs...
+[  149.177310] Freeing initrd memory: 1152K
+...
+[  333.906490] Run /init as init process
+NEMU_USER_INIT_START
+NEMU_USER_PID=1
+Linux (none) 6.12.107+deb13-riscv64 #1 SMP Debian 6.12.107-1 (2026-08-29) riscv64 GNU/Linux
+--- /proc/cpuinfo ---
+processor	: 0
+hart		: 0
+isa		: rv64imafdc_zicsr_zifencei_zca_zcd
+mmu		: sv48
+...
+--- userland command ---
+uid=0 gid=0
+NEMU_USER_CMD_OK
+Linux version 6.12.107+deb13-riscv64 (debian-kernel@lists.debian.org) ... #1 SMP Debian 6.12.107-1 (2026-08-29)
+NEMU_USER_INIT_END
+[  388.540070] reboot: Power off not available: System halted instead
+```
+
+这说明：initramfs 已真正解包（`Freeing initrd memory`）、内核已
+`execve("/init")`、BusyBox 用户态命令已执行，最后内核进入
+`System halted`。测试脚本以固定标记、`uname`、`cpuinfo`、`id`
+和停机输出作为 PASS 条件，不依赖交互 shell 或键盘输入。
+
+OpenSBI 没有 SRST 复位设备，所以 `poweroff -f` 最终打印
+`Power off not available: System halted instead`，而不是让 NEMU
+进程退出；测试在标记出现后主动结束模拟器。这是平台限制，不是
+用户态失败。
+
+### 5.9 Debian installer initrd 的边界
+
+Debian 13.7 netinst 的 `install/initrd.gz` 为 49,382,269 字节。
+128 MiB 下仅 loader 阶段就需要源 initrd 49 MB + PE 目标页 30 MB
++ 源内核 30 MB + U-Boot/OpenSBI 约 7 MB，已经接近上限；即使能
+加载，解包后的 installer rootfs 还需要数百 MiB 内存。本轮没有把
+它作为成功标准，也没有为了它构建更大的 NEMU 配置。要运行 Debian
+installer 用户态，需要至少数百 MiB RAM 和更长的解释执行时间，
+属于后续工作。
+
+### 5.10 Debian installer 自带 BusyBox 的用户态验证
+
+作为“Debian 用户态二进制”而不是本树交叉编译 BusyBox 的补充验证，
+从 `install/initrd.gz` 中抽取 Debian 自带的：
+
+```text
+usr/bin/busybox                                  BusyBox v1.37.0 (Debian 1:1.37.0-6+b9)
+usr/lib/riscv64-linux-gnu/ld-linux-riscv64-lp64d.so.1
+usr/lib/riscv64-linux-gnu/libc.so.6
+```
+
+再配一个 `/init`（`#!/bin/sh`，调用 `/bin/busybox uname -a`、
+`id`、`mount -t proc` 和 `poweroff -f`），打成约 1.1 MB 的
+initramfs。它仍然走同一条 U-Boot EFI -> Debian 6.12 路径。实测：
+
+```text
+[  348.863205] Run /init as init process
+DEBIAN_USER_INIT_START
+Linux (none) 6.12.107+deb13-riscv64 #1 SMP Debian 6.12.107-1 (2026-08-29) riscv64 GNU/Linux
+DEBIAN_USER_BUSYBOX_VERSION_BEGIN
+BusyBox v1.37.0 (Debian 1:1.37.0-6+b9) multi-call binary.
+DEBIAN_USER_BUSYBOX_VERSION_END
+--- /proc/cpuinfo ---
+processor	: 0
+hart		: 0
+isa		: rv64imafdc_zicsr_zifencei_zca_zcd
+mmu		: sv48
+...
+--- userland command ---
+uid=0 gid=0
+DEBIAN_USER_CMD_OK
+DEBIAN_USER_INIT_END
+[  407.393888] reboot: Power off not available: System halted instead
+```
+
+这证明 PIE 动态链接的 Debian BusyBox、Debian glibc 和动态加载器
+在 NEMU 用户态都能正常运行。它不是完整的 Debian installer
+用户态；完整 installer initrd 的内存边界见 5.9。
+
 ## 6. 替代方案
 
 1. **把 NEMU RAM 提高到 128 MiB**（已实现并验证）。
@@ -421,10 +563,16 @@ EFI pool/initrd buffer      ~1-3 MiB
   （`CONFIG_ENV_IS_NOWHERE`）。所有 payload 由 NEMU 镜像预装载。
 - `nemu_reserve` 是板级命令，只解决“预装载区不被 EFI 分配器覆盖”；
   它不会让 64 MiB 容纳两份 30 MiB 内核。
-- 64 MiB 默认布局下 Debian 内核未进入；128 MiB 评估配置下已执行到
-  earlycon/console（Linux 6.12.107、内存初始化、devtmpfs），但没有
-  等到完整 initramfs shell——NEMU 解释执行较慢，验证到内核启动即停止。
-- Debian installer initrd 未尝试；49 MB 大小在 64 MiB 下没有可行布局。
+- 64 MiB 默认布局下 Debian 内核未进入；128 MiB 评估配置下已进入
+  BusyBox initramfs 用户态，执行了 `/init`、`uname`、`cat
+  /proc/cpuinfo`、`id`，并走到 `System halted`。验证的是 Debian
+  内核 + BusyBox initramfs，不是 Debian installer/full rootfs。
+- Debian installer initrd 为 49 MB，128 MiB 下没有可行布局；需要
+  数百 MiB RAM，未纳入本轮成功标准。
+- `no5lvl` 仍然是必需的；否则 Debian 6.12 选择 Sv57，本树 NEMU
+  只实现 Bare/Sv39/Sv48。
+- OpenSBI 没有 SRST/reset 设备，`poweroff -f` 只能进入
+  `System halted instead`，不会让 NEMU 主机进程自动退出。
 
 ## 8. 相关文件
 
@@ -436,6 +584,10 @@ vendor/u-boot/include/configs/nemu-riscv.h
 vendor/u-boot/arch/riscv/dts/nemu-riscv64.dts
 vendor/u-boot/arch/riscv/Kconfig                 TARGET_NEMU_RISCV64
 nemu/scripts/build_uboot_nemu.sh                 构建/打包脚本
-nemu/tests/uboot-efi-smoke.sh                    冒烟测试
+nemu/tests/uboot-efi-smoke.sh                    U-Boot/EFI 冒烟测试
+nemu/tests/uboot-debian-userland.sh              Debian EFI + initramfs 用户态测试
+nemu/tests/debian-userland-init.sh                  非交互测试 /init
 nemu/configs/riscv64-linux-128m_defconfig        Debian EFI 评估用 128 MiB 配置
+nemu/src/isa/riscv32/system/intr.c               S/U 模式下 M 中断使能修复
+nemu/src/device/riscv_xv6.c                      16550 RX/THRE 中断修复
 ```

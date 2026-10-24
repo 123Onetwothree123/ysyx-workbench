@@ -105,8 +105,15 @@ word_t isa_query_intr()
   }
 
   // M 模式中断：MSIP/MTIP/MEIP。
+  //
+  // 特权规范规定：当前特权级低于 M 时，M 模式中断总是全局使能，
+  // 不受 mstatus.MIE 控制；只有当前就在 M 模式时才要求 MIE=1。
+  // OpenSBI 进入 S 模式时把 mstatus.MPIE 清 0（因此 MIE=0），随后
+  // 依赖 M 模式时钟中断在 S 模式下抢占并注入 STIP。若这里错误地
+  // 要求 MIE=1，S 模式 Linux 的 jiffies 将永远不前进。
   const word_t m_pending = (1u << 3) | (1u << 7) | (1u << 11);
-  if (cpu.privilege == RISCV_PRIV_M && (cpu.mstatus & MSTATUS_MIE)) {
+  if (cpu.privilege < RISCV_PRIV_M ||
+      (cpu.privilege == RISCV_PRIV_M && (cpu.mstatus & MSTATUS_MIE))) {
     const word_t enabled = cpu.mip & cpu.mie & m_pending;
     for (int bit = 3; bit <= 11; bit += 4) {
       if (enabled & (1u << bit)) {
