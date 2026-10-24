@@ -146,8 +146,24 @@ class ysyx_26030103_ALUDecoder(
     ) else Nil)
   } else Nil
 
+  // F/D 指令有自己的执行单元；这里负责把 opcode 从“未知指令”集合
+  // 中放行。浮点 load/store 仍需整数 ALU 计算地址（rs1+imm），因此
+  // 使用 ADD；OP-FP/FMA 不产生整数 ALU 结果，使用 NOP。细粒度编码
+  // 合法性（fmt/rs2/funct3）由 IDU 按 RISC-V 规则检查。
+  private val FpRows: Seq[(BitPat, BitPat)] = if (config.UseF) {
+    Seq(
+      key(OPCODE_LoadFP, "b???_???????") -> encode(ADD),
+      key(OPCODE_StoreFP, "b???_???????") -> encode(ADD),
+      key(OPCODE_OpFP, "b???_???????") -> encode(NOP),
+      key(OPCODE_Fmadd, "b???_???????") -> encode(NOP),
+      key(OPCODE_Fmsub, "b???_???????") -> encode(NOP),
+      key(OPCODE_Fnmsub, "b???_???????") -> encode(NOP),
+      key(OPCODE_Fnmadd, "b???_???????") -> encode(NOP)
+    )
+  } else Nil
+
   private val table: TruthTable = TruthTable(
-    BaseRows ++ RV64Rows ++ MDURows ++ AtomicRows,
+    BaseRows ++ RV64Rows ++ MDURows ++ AtomicRows ++ FpRows,
     encode(NOP, illegal = true)
   )
   private val decoded =

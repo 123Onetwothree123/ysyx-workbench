@@ -6,12 +6,16 @@ import _root_.ysyx_26030103.common.ysyx_26030103_opcode._
 import _root_.ysyx_26030103.common.ysyx_26030103_IFUMessage
 import _root_.ysyx_26030103.common.ysyx_26030103_IDUMessage
 import _root_.ysyx_26030103.common.ysyx_26030103_AtomicOp
+import _root_.ysyx_26030103.fpu._
 class ysyx_26030103_IDU(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends Module {
   private val hasS = config.MMU.hasS
   private val hasU = config.MMU.hasU
   private val XLEN = config.XLEN
+  private val FLEN = config.FPULen
+  private val UseF = config.UseF
+  private val UseD = config.UseD
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_IFUMessage(XLEN)))
     val out = Decoupled(new ysyx_26030103_IDUMessage(XLEN))
@@ -19,6 +23,36 @@ class ysyx_26030103_IDU(
     val ReadDATA2 = Input(UInt(XLEN.W))
     val Read1SELECT = Output(UInt(5.W))
     val Read2SELECT = Output(UInt(5.W))
+    // 浮点寄存器堆读口。FLEN 可能大于 XLEN（RV32F 的 FLEN=32 时相等；
+    // RV64 的 FLEN=64 与 XLEN 相等；这里统一用 64 位转发总线）。
+    val ReadFPR1 = Input(UInt(64.W))
+    val ReadFPR2 = Input(UInt(64.W))
+    val ReadFPR3 = Input(UInt(64.W))
+    val Read1FSELECT = Output(UInt(5.W))
+    val Read2FSELECT = Output(UInt(5.W))
+    val Read3FSELECT = Output(UInt(5.W))
+    // 当前 frm；动态舍入在译码级解析，非法 frm 直接判非法指令。
+    val Frm = Input(UInt(3.W))
+    // EXU/MEM/WB 的浮点结果转发（与整数转发端口独立）。
+    val ex_fp_valid = Input(Bool())
+    val ex_fp_rd = Input(UInt(5.W))
+    val ex_fp_regWrite = Input(Bool())
+    val ex_fp_fwd_ready = Input(Bool())
+    val ex_fp_fwd_data = Input(UInt(64.W))
+    val me_fp_valid = Input(Bool())
+    val me_fp_rd = Input(UInt(5.W))
+    val me_fp_regWrite = Input(Bool())
+    val me_fp_fwd_ready = Input(Bool())
+    val me_fp_fwd_data = Input(UInt(64.W))
+    val me2_fp_valid = Input(Bool())
+    val me2_fp_rd = Input(UInt(5.W))
+    val me2_fp_regWrite = Input(Bool())
+    val me2_fp_fwd_ready = Input(Bool())
+    val me2_fp_fwd_data = Input(UInt(64.W))
+    val wb_fp_valid = Input(Bool())
+    val wb_fp_rd = Input(UInt(5.W))
+    val wb_fp_regWrite = Input(Bool())
+    val wb_fp_fwd_data = Input(UInt(64.W))
     val ex_valid = Input(Bool())
     val ex_rd = Input(UInt(5.W))
     val ex_regWrite = Input(Bool())
@@ -84,6 +118,10 @@ class ysyx_26030103_IDU(
   val Rs2 = Instruction(24, 20)
   io.Read1SELECT := Rs1
   io.Read2SELECT := Rs2
+  // 浮点读口：rs1/rs2/rs3 都是 5 位字段；无效时读取结果不会被使用。
+  io.Read1FSELECT := Rs1
+  io.Read2FSELECT := Rs2
+  io.Read3FSELECT := Instruction(31, 27)
   val Rd = Instruction(11, 7)
   val opcode = Instruction(6, 0)
   val funct3 = Instruction(14, 12)
@@ -159,11 +197,164 @@ class ysyx_26030103_IDU(
   // funct5 直接作为原子操作号（00010=LR，00011=SC，其余为 AMO）。
   val AtomicOp = Mux(IsAtomic, AmoFunct5, 0.U(5.W))
   val IsLr = IsAtomic && AtomicOp === ysyx_26030103_AtomicOp.LR
+
+  // ---------------------------------------------------------------- F/D 译码
+  // 所有 F/D 编码在这里集中解析；vendor 内部操作码不会进入上层。
+  val FpLoadOpcode = opcode === OPCODE_LoadFP
+  val FpStoreOpcode = opcode === OPCODE_StoreFP
+  val FpOpcode = opcode === OPCODE_OpFP
+  val FpFmaOpcode = (opcode === OPCODE_Fmadd) || (opcode === OPCODE_Fmsub) ||
+    (opcode === OPCODE_Fnmsub) || (opcode === OPCODE_Fnmadd)
+  val FpMemOpcode = FpLoadOpcode || FpStoreOpcode
+  // FLW=010, FLD=011 / FSW=010, FSD=011。
+  val FpMemFunct3Legal = funct3 === "b010".U(3.W) ||
+    (UseD.B && funct3 === "b011".U(3.W))
+  // 格式：load/store 由 funct3 bit0 选择，OP-FP/FMA 由指令 bit[26:25] 选择。
+  val FpFmt = Mux(FpMemOpcode, Mux(funct3(0), ysyx_26030103_FpuFmt.D,
+    ysyx_26030103_FpuFmt.S), Instruction(26, 25))
+  val FpUseD = FpFmt === ysyx_26030103_FpuFmt.D
+  val FpOp5 = funct7(6, 2)
+  val FpRs2 = Instruction(24, 20)
+  val IsFPLoad = UseF.B && FpLoadOpcode && FpMemFunct3Legal
+  val IsFPStore = UseF.B && FpStoreOpcode && FpMemFunct3Legal
+  val IsFpOp = UseF.B && FpOpcode
+  val IsFpFma = UseF.B && FpFmaOpcode
+  val IsFP = IsFPLoad || IsFPStore || IsFpOp || IsFpFma
+  val FpIsFpu = IsFpOp || IsFpFma
+  // 使用 rm 的编码：FADD/FSUB/FMUL/FDIV/FSQRT/FCVT/FMA。
+  val FpUsesRm = IsFpFma || (IsFpOp && (
+    (FpOp5 === 0.U) || (FpOp5 === 1.U) || (FpOp5 === 2.U) ||
+      (FpOp5 === 3.U) || (FpOp5 === 11.U) || (FpOp5 === 8.U) ||
+      (FpOp5 === 24.U) || (FpOp5 === 26.U)))
+  val FpRmRaw = Mux(FpUsesRm, funct3, 0.U(3.W))
+  val FpRm = Mux(FpRmRaw === ysyx_26030103_FpuRm.DYN, io.Frm, FpRmRaw)
+  // FCVT.W/WU/L/LU 的宽度由 rs2[1] 选择；FMV.X.W/D 与 FMV.W.X/D.X
+  // 的宽度由 fmt 决定（rs2 恒为 0）。
+  val FpMvOp = IsFpOp && ((FpOp5 === 28.U) || (FpOp5 === 30.U))
+  val FpIntWord = Mux(FpMvOp, FpFmt === ysyx_26030103_FpuFmt.S,
+    FpRs2(1) === 0.U)
+  val FpIntSigned = FpRs2(0) === 0.U
+  // FCVT.S.D 的源是 D，FCVT.D.S 的源是 S；其余指令源/目的同格式。
+  val FpSrcFmt = Mux(IsFpOp && FpOp5 === 8.U,
+    Mux(FpFmt === ysyx_26030103_FpuFmt.S, ysyx_26030103_FpuFmt.D,
+      ysyx_26030103_FpuFmt.S), FpFmt)
+
+  // 编码合法性。未识别/保留编码必须精确落入 illegal instruction。
+  val FpFmtLegal = (FpFmt === ysyx_26030103_FpuFmt.S) ||
+    (UseD.B && FpFmt === ysyx_26030103_FpuFmt.D)
+  val FpMemEncodingLegal =
+    !FpMemOpcode || (funct3 === "b010".U(3.W) ||
+      (UseD.B && funct3 === "b011".U(3.W)))
+  val FpOp5Legal = !IsFpOp || (
+    (FpOp5 === 0.U) || (FpOp5 === 1.U) || (FpOp5 === 2.U) ||
+      (FpOp5 === 3.U) || (FpOp5 === 4.U) || (FpOp5 === 5.U) ||
+      (FpOp5 === 11.U) || (FpOp5 === 8.U) || (FpOp5 === 20.U) ||
+      (FpOp5 === 24.U) || (FpOp5 === 26.U) || (FpOp5 === 28.U) ||
+      (FpOp5 === 30.U))
+  val FpFunct3Legal = !IsFpOp || (
+    (FpOp5 =/= 4.U || (funct3 === 0.U || funct3 === 1.U || funct3 === 2.U)) &&
+      (FpOp5 =/= 5.U || (funct3 === 0.U || funct3 === 1.U)) &&
+      (FpOp5 =/= 20.U || (funct3 === 0.U || funct3 === 1.U ||
+        funct3 === 2.U)) &&
+      (FpOp5 =/= 28.U || (funct3 === 0.U || funct3 === 1.U)) &&
+      (FpOp5 =/= 30.U || funct3 === 0.U))
+  val FpRs2Legal = !IsFpOp || MuxCase(false.B, Seq(
+    (FpOp5 === 0.U) -> true.B,
+    (FpOp5 === 1.U) -> true.B,
+    (FpOp5 === 2.U) -> true.B,
+    (FpOp5 === 3.U) -> true.B,
+    (FpOp5 === 4.U) -> true.B,
+    (FpOp5 === 5.U) -> true.B,
+    (FpOp5 === 11.U) -> (FpRs2 === 0.U),
+    // FCVT.S.D: fmt=S, rs2=1；FCVT.D.S: fmt=D, rs2=0。
+    (FpOp5 === 8.U) -> (FpRs2 === Mux(FpFmt === ysyx_26030103_FpuFmt.S,
+      1.U, 0.U)),
+    (FpOp5 === 20.U) -> true.B,
+    (FpOp5 === 24.U) -> (FpRs2 <= 3.U && (if (XLEN == 64) true.B else FpRs2 <= 1.U)),
+    (FpOp5 === 26.U) -> (FpRs2 <= 3.U && (if (XLEN == 64) true.B else FpRs2 <= 1.U)),
+    (FpOp5 === 28.U) -> (FpRs2 === 0.U),
+    (FpOp5 === 30.U) -> (FpRs2 === 0.U)
+  ))
+  val FpRmLegal = !FpUsesRm ||
+    (FpRmRaw <= 4.U) || (FpRmRaw === ysyx_26030103_FpuRm.DYN && io.Frm <= 4.U)
+  // mstatus.FS=Off 时任何 F/D 指令都是非法指令；fflags/frm/fcsr 属于
+  // 浮点状态，访问它们同样必须陷入，不能只拦截算术/访存指令。
+  val FpStateEnabled = !UseF.B || io.Mstatus(14, 13) =/= 0.U(2.W)
+  val FpCsrIllegal = IsCSRInstruction && UseF.B &&
+    (Instruction(31, 20) === 1.U || Instruction(31, 20) === 2.U ||
+      Instruction(31, 20) === 3.U) && !FpStateEnabled
+  val FpIllegal = FpCsrIllegal || (IsFP && (!FpFmtLegal || !FpMemEncodingLegal ||
+    !FpOp5Legal || !FpFunct3Legal || !FpRs2Legal ||
+    !FpRmLegal || !FpStateEnabled))
+
+  // 指令 -> 后端无关的 FpuOp。
+  val FpOp = WireDefault(0.U(ysyx_26030103_FpuOp.Width.W))
+  when(IsFpFma) {
+    FpOp := Mux(opcode === OPCODE_Fmadd, ysyx_26030103_FpuOp.FFma,
+      Mux(opcode === OPCODE_Fmsub, ysyx_26030103_FpuOp.FFms,
+        Mux(opcode === OPCODE_Fnmsub, ysyx_26030103_FpuOp.FFnms,
+          ysyx_26030103_FpuOp.FFnma)))
+  }.elsewhen(IsFpOp) {
+    switch(FpOp5) {
+      is(0.U) { FpOp := ysyx_26030103_FpuOp.FAdd }
+      is(1.U) { FpOp := ysyx_26030103_FpuOp.FSub }
+      is(2.U) { FpOp := ysyx_26030103_FpuOp.FMul }
+      is(3.U) { FpOp := ysyx_26030103_FpuOp.FDiv }
+      is(4.U) {
+        FpOp := Mux(funct3 === 0.U, ysyx_26030103_FpuOp.FSgnj,
+          Mux(funct3 === 1.U, ysyx_26030103_FpuOp.FSgnjn,
+            ysyx_26030103_FpuOp.FSgnjx))
+      }
+      is(5.U) {
+        FpOp := Mux(funct3 === 0.U, ysyx_26030103_FpuOp.FMin,
+          ysyx_26030103_FpuOp.FMax)
+      }
+      is(11.U) { FpOp := ysyx_26030103_FpuOp.FSqrt }
+      is(8.U) { FpOp := ysyx_26030103_FpuOp.FCvtFpToFp }
+      is(20.U) {
+        FpOp := Mux(funct3 === 2.U, ysyx_26030103_FpuOp.FEq,
+          Mux(funct3 === 1.U, ysyx_26030103_FpuOp.FLt,
+            ysyx_26030103_FpuOp.FLe))
+      }
+      is(24.U) {
+        FpOp := Mux(FpIntSigned, ysyx_26030103_FpuOp.FCvtFpToInt,
+          ysyx_26030103_FpuOp.FCvtFpToUInt)
+      }
+      is(26.U) {
+        FpOp := Mux(FpIntSigned, ysyx_26030103_FpuOp.FCvtIntToFp,
+          ysyx_26030103_FpuOp.FCvtUIntToFp)
+      }
+      is(28.U) {
+        FpOp := Mux(funct3 === 1.U, ysyx_26030103_FpuOp.FClass,
+          ysyx_26030103_FpuOp.FMvFpToInt)
+      }
+      is(30.U) { FpOp := ysyx_26030103_FpuOp.FMvIntToFp }
+    }
+  }
+  // 源寄存器语义。
+  val FpGprSource1 = IsFPLoad || IsFPStore ||
+    (IsFpOp && (FpOp5 === 26.U || FpOp5 === 30.U))
+  val FpUsesFpr1 = IsFP && !FpGprSource1
+  val FpUsesFpr2 = IsFPStore || IsFpFma || (IsFpOp &&
+    ((FpOp5 === 0.U) || (FpOp5 === 1.U) || (FpOp5 === 2.U) ||
+      (FpOp5 === 3.U) || (FpOp5 === 4.U) || (FpOp5 === 5.U) ||
+      (FpOp5 === 20.U)))
+  val FpUsesFpr3 = IsFpFma
+  // 写回目标。浮点 load/算术写 f 寄存器；比较/转换到整数/FCLASS 写 GPR。
+  val FpWritesFPR = IsFPLoad || IsFpFma || (IsFpOp && (
+    (FpOp5 === 0.U) || (FpOp5 === 1.U) || (FpOp5 === 2.U) ||
+      (FpOp5 === 3.U) || (FpOp5 === 4.U) || (FpOp5 === 5.U) ||
+      (FpOp5 === 8.U) || (FpOp5 === 11.U) || (FpOp5 === 26.U) ||
+      (FpOp5 === 30.U)))
+  val FpWritesGPR = IsFpOp && ((FpOp5 === 20.U) || (FpOp5 === 24.U) ||
+    (FpOp5 === 28.U))
+
   val RegisterWrite =
-    IsRType || IsIType || IsUType || IsJType || IsCSRInstruction || IsAtomic
-  val MemoryValid = IsLoad || IsSType || IsAtomic
+    IsRType || IsIType || IsUType || IsJType || IsCSRInstruction || IsAtomic ||
+      FpWritesGPR
+  val MemoryValid = IsLoad || IsSType || IsAtomic || IsFPLoad || IsFPStore
   // AMO 同时需要读/写权限，SC 只需要写权限；LR 只读。
-  val MemoryWrite = IsSType || (IsAtomic && !IsLr)
+  val MemoryWrite = IsSType || (IsAtomic && !IsLr) || IsFPStore
   /*
   又忘记了为什么这样做，就是想要减少代码量，主要是代码量多是负担，就是只看末尾的两位，我怀疑可能是RISCV故意这么设计的，也可以简化
   000 LB和SB 1byte
@@ -173,7 +364,8 @@ class ysyx_26030103_IDU(
   100 LBU 1byte（没有符号）
   101 LHU 2byte（没有符号）
    */
-  val WidthSelect = Mux(IsLoad || IsSType || IsAtomic, funct3(1, 0), 2.U(2.W))
+  val WidthSelect = Mux(IsLoad || IsSType || IsAtomic || IsFPLoad || IsFPStore,
+    funct3(1, 0), 2.U(2.W))
   // 原子结果在 LSU 内按 ISA 规则完成符号扩展，WBU 只负责写寄存器。
   val LoadSigned = Mux(IsLoad, (~funct3(2)).asBool, false.B)
   // 控制ysyx_26030103_WBU的，不知道该不该让ysyx_26030103_IDU来控制ysyx_26030103_WBU，本来想手搓一个控制模块的，结果模块多了，还分不清
@@ -184,8 +376,8 @@ class ysyx_26030103_IDU(
   val WBSelect = Wire(UInt(2.W))
   when(IsCSRInstruction) {
     WBSelect := WB_CSR // ysyx_26030103_CSR指令写回ysyx_26030103_CSR读出值
-  }.elsewhen(IsLoad || IsAtomic) {
-    WBSelect := WB_MEMORY // load/AMO/LR/SC 都写回 LSU 提供的结果
+  }.elsewhen(IsLoad || IsAtomic || IsFPLoad) {
+    WBSelect := WB_MEMORY // load/AMO/LR/SC/FLW/FLD 都写回 LSU 提供的结果
   }.elsewhen(
     (opcode === OPCODE_Immediate_Bxxx) && (funct3 === "b000".U(3.W))
   ) { // 间接跳转并链接（JALR）
@@ -213,17 +405,23 @@ class ysyx_26030103_IDU(
   val IsKnownInstruction =
     IsRType || IsIType || IsSType || IsBType || IsUType || IsJType ||
       IsCSRInstruction || IsEcall || IsEbreak || IsSimHalt || IsMret ||
-      IsSret || IsSfenceVma || IsWfi || IsFenceI || IsFence || IsAtomic
+      IsSret || IsSfenceVma || IsWfi || IsFenceI || IsFence || IsAtomic ||
+      IsFP
   // CSR 访问合法性在译码时检查，而不是依赖 CSRUnit 的读取数据多路选择器。
   // 本核心目前只实现下面明确列出的机器态 CSR 集合，访问集合外的 CSR
   // 将被视为非法指令。
   val CSRAddress = Instruction(31, 20)
   private val userCounterAddresses =
     Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
+  // F/D 的 fflags(0x001)/frm(0x002)/fcsr(0x003) 是 U 级可访问 CSR；
+  // 是否实现由 RISCV_F 决定，不依赖 MMU profile 的整数 CSR 集合。
+  private val fpCsrAddresses =
+    if (UseF) Seq(0x001, 0x002, 0x003) else Seq.empty
   private val csrAddresses = (
-    config.MMU.csrEnabled.toSeq ++ userCounterAddresses ++
+    config.MMU.csrEnabled.toSeq ++ userCounterAddresses ++ fpCsrAddresses ++
       (if (config.MMU.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
-  ).filter(a => config.MMU.csrSupported(a) || userCounterAddresses.contains(a))
+  ).filter(a => config.MMU.csrSupported(a) || userCounterAddresses.contains(a) ||
+    fpCsrAddresses.contains(a))
     .distinct.sorted
   val CSRAddressValid =
     if (config.MMU.csrMissingMode == "zero") true.B
@@ -237,10 +435,17 @@ class ysyx_26030103_IDU(
     if (!hasS && !hasU) 3.U(2.W)
     else if (hasU) io.Privilege
     else Mux(io.Privilege === 0.U, 1.U(2.W), io.Privilege)
-  val CSRPrivilegeOk =
-    if (!hasS && !hasU) CSRAddress(9, 8) === "b11".U(2.W)
-    else (EffectivePrivilege >= CSRAddress(9, 8)) &&
-      (if (hasU) true.B else CSRAddress(9, 8) =/= 0.U(2.W))
+  // fcsr/fflags/frm 是 U 级 CSR，但 M 模式始终可访问；M-only 配置不能
+  // 因为不存在 U 级就把它们判成非法。
+  val IsFpCsr = if (UseF)
+    (CSRAddress === 0x001.U) || (CSRAddress === 0x002.U) ||
+      (CSRAddress === 0x003.U)
+  else false.B
+  val CSRPrivilegeOk = IsFpCsr || (if (!hasS && !hasU)
+    CSRAddress(9, 8) === "b11".U(2.W)
+  else
+    (EffectivePrivilege >= CSRAddress(9, 8)) &&
+      (if (hasU) true.B else CSRAddress(9, 8) =/= 0.U(2.W)))
   val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W) ||
     CSRAddress === "h301".U(12.W) // misa 当前只读 */
   // 读只读 CSR 合法；CSRRW/带非零源的 CSRRS/CSRRC 写只读 CSR 非法。
@@ -282,13 +487,15 @@ class ysyx_26030103_IDU(
     (ALUCDIllegal && !IsSimHalt) || !IsKnownInstruction || CSRIllegal ||
       TvmFault || TsrFault || TwFault ||
       MretFault || SretFault || SfenceFault ||
-      RvcIllegal || CExtensionDisabledIllegal
+      RvcIllegal || CExtensionDisabledIllegal || FpIllegal
   // LR 的 rs2 字段必须为 0，但统一按 A 扩展读 rs1/rs2 不会引入错误转发，
   // 反而让 SC/AMO 的源操作数冒险检测与普通指令完全一致。
+  // GPR rs2 只有整数寄存器型/分支/整数 store/AMO 使用；浮点 store 的
+  // rs2 字段是 f 寄存器，不能触发 GPR 转发/冒险。
   val needsRs2 = IsRType || IsBType || IsSType || IsAtomic
   // 源操作数真正被使用的判断(lui/auipc/jal的rs1字段是立即数,不算使用)
   val usesRs1 = IsRType || IsIType || IsSType || IsBType || IsAtomic ||
-    (IsCSRInstruction && !IsCSRImmediate)
+    (IsCSRInstruction && !IsCSRImmediate) || FpGprSource1
   // 转发命中(EXU > MEM等待槽 > MEM级 > WBU: 多条同时命中时选最年轻生产者)
   // 显式检查生产者 valid：虽然顶层契约把 valid 折进了 *_fwd_ready
   // （EXU/LSU 的 FwdReady 含 HazardValid），这里保持与下方冒险谓词同口径，
@@ -342,6 +549,73 @@ class ysyx_26030103_IDU(
       )
     )
   )
+  // ---------------------------------------------------------------- FPR 读/转发
+  // 三个 f 源操作数与 GPR 使用同一优先级：EXU > MEM 等待槽 > MEM > WBU。
+  // f0 是普通寄存器，不做零硬连线，因此这里不排除 rd=0。
+  val ex_fp_fwd_rs1 = FpUsesFpr1 && io.ex_fp_valid && io.ex_fp_regWrite &&
+    io.ex_fp_rd === Rs1 && io.ex_fp_fwd_ready
+  val ex_fp_fwd_rs2 = FpUsesFpr2 && io.ex_fp_valid && io.ex_fp_regWrite &&
+    io.ex_fp_rd === Rs2 && io.ex_fp_fwd_ready
+  val ex_fp_fwd_rs3 = (FpUsesFpr3 && io.ex_fp_valid && io.ex_fp_regWrite &&
+    io.ex_fp_rd === Instruction(31, 27) && io.ex_fp_fwd_ready)
+  val me2_fp_fwd_rs1 = FpUsesFpr1 && io.me2_fp_valid && io.me2_fp_regWrite &&
+    io.me2_fp_rd === Rs1 && io.me2_fp_fwd_ready
+  val me2_fp_fwd_rs2 = FpUsesFpr2 && io.me2_fp_valid && io.me2_fp_regWrite &&
+    io.me2_fp_rd === Rs2 && io.me2_fp_fwd_ready
+  val me2_fp_fwd_rs3 = (FpUsesFpr3 && io.me2_fp_valid && io.me2_fp_regWrite &&
+    io.me2_fp_rd === Instruction(31, 27) && io.me2_fp_fwd_ready)
+  val me_fp_fwd_rs1 = FpUsesFpr1 && io.me_fp_valid && io.me_fp_regWrite &&
+    io.me_fp_rd === Rs1 && io.me_fp_fwd_ready
+  val me_fp_fwd_rs2 = FpUsesFpr2 && io.me_fp_valid && io.me_fp_regWrite &&
+    io.me_fp_rd === Rs2 && io.me_fp_fwd_ready
+  val me_fp_fwd_rs3 = (FpUsesFpr3 && io.me_fp_valid && io.me_fp_regWrite &&
+    io.me_fp_rd === Instruction(31, 27) && io.me_fp_fwd_ready)
+  val wb_fp_fwd_rs1 = FpUsesFpr1 && io.wb_fp_valid && io.wb_fp_regWrite &&
+    io.wb_fp_rd === Rs1
+  val wb_fp_fwd_rs2 = FpUsesFpr2 && io.wb_fp_valid && io.wb_fp_regWrite &&
+    io.wb_fp_rd === Rs2
+  val wb_fp_fwd_rs3 = FpUsesFpr3 && io.wb_fp_valid && io.wb_fp_regWrite &&
+    io.wb_fp_rd === Instruction(31, 27)
+  val fp_src1 = Mux(ex_fp_fwd_rs1, io.ex_fp_fwd_data,
+    Mux(me2_fp_fwd_rs1, io.me2_fp_fwd_data,
+      Mux(me_fp_fwd_rs1, io.me_fp_fwd_data,
+        Mux(wb_fp_fwd_rs1, io.wb_fp_fwd_data, io.ReadFPR1))))
+  val fp_src2 = Mux(ex_fp_fwd_rs2, io.ex_fp_fwd_data,
+    Mux(me2_fp_fwd_rs2, io.me2_fp_fwd_data,
+      Mux(me_fp_fwd_rs2, io.me_fp_fwd_data,
+        Mux(wb_fp_fwd_rs2, io.wb_fp_fwd_data, io.ReadFPR2))))
+  val fp_src3 = Mux(ex_fp_fwd_rs3, io.ex_fp_fwd_data,
+    Mux(me2_fp_fwd_rs3, io.me2_fp_fwd_data,
+      Mux(me_fp_fwd_rs3, io.me_fp_fwd_data,
+        Mux(wb_fp_fwd_rs3, io.wb_fp_fwd_data, io.ReadFPR3))))
+
+  val fp_ex_hazard =
+    io.ex_fp_valid && io.ex_fp_regWrite &&
+      ((FpUsesFpr1 && io.ex_fp_rd === Rs1) ||
+        (FpUsesFpr2 && io.ex_fp_rd === Rs2) ||
+        (FpUsesFpr3 && io.ex_fp_rd === Instruction(31, 27)))
+  val fp_me2_hazard =
+    io.me2_fp_valid && io.me2_fp_regWrite &&
+      ((FpUsesFpr1 && io.me2_fp_rd === Rs1) ||
+        (FpUsesFpr2 && io.me2_fp_rd === Rs2) ||
+        (FpUsesFpr3 && io.me2_fp_rd === Instruction(31, 27)))
+  val fp_me_hazard =
+    io.me_fp_valid && io.me_fp_regWrite &&
+      ((FpUsesFpr1 && io.me_fp_rd === Rs1) ||
+        (FpUsesFpr2 && io.me_fp_rd === Rs2) ||
+        (FpUsesFpr3 && io.me_fp_rd === Instruction(31, 27)))
+  // 只有生产者的值尚未就绪时才阻塞（例如未完成的 FLW/FLD）。
+  val fp_isRAW = Mux(io.pipeline_mode,
+    (fp_ex_hazard && !io.ex_fp_fwd_ready) ||
+      (fp_me2_hazard && !io.me2_fp_fwd_ready) ||
+      (fp_me_hazard && !io.me_fp_fwd_ready),
+    false.B)
+  // FCVT.S.W/L 与 FMV.W.X/D.X 的整数源来自 GPR rs1，而不是 f 寄存器；
+  // 其余浮点运算的三个源操作数都来自 FPR。RV32 的 src1 零扩展即可，
+  // RV64 的 L/D 形式需要完整 64 位。
+  val StoreDataSource = Mux(IsFPStore, fp_src2, src2)
+  val FpRs1Source = Mux(FpGprSource1, src1, fp_src1)
+
   val ALU_A = WireDefault(src1) // 默认所有指令的第一个计算的数是寄存器值
   switch(opcode) {
     is(OPCODE_UpperImmediate_lui) {
@@ -374,8 +648,9 @@ class ysyx_26030103_IDU(
       (me_hazard && !io.me_fwd_ready) || hidden_mdu_hazard,
     false.B
   )
-  io.in.ready := io.out.ready && !isRAW && !io.mmu_stall
-  io.out.valid := io.in.valid && !isRAW && !io.mmu_stall
+  val AnyIsRAW = isRAW || fp_isRAW
+  io.in.ready := io.out.ready && !AnyIsRAW && !io.mmu_stall
+  io.out.valid := io.in.valid && !AnyIsRAW && !io.mmu_stall
   // 停顿分类口径：load-use 只统计“确实由未就绪的访存生产者造成”的停顿。
   // me 端口的 load 可能已经就绪（StageDone 或 R 响应当拍），此时它只是被
   // 隐藏 MDU 写掩码顺带命中，不能算作 load-use。ex/me2 上的 load 恒未就绪，
@@ -383,13 +658,16 @@ class ysyx_26030103_IDU(
   val raw_loaduse =
     (ex_hazard && io.ex_memop && !io.ex_fwd_ready) ||
       (me2_hazard && io.me2_memop && !io.me2_fwd_ready) ||
-      (me_hazard && io.me_memop && !io.me_fwd_ready)
+      (me_hazard && io.me_memop && !io.me_fwd_ready) ||
+      (fp_ex_hazard && io.ex_memop && !io.ex_fp_fwd_ready) ||
+      (fp_me2_hazard && io.me2_memop && !io.me2_fp_fwd_ready) ||
+      (fp_me_hazard && io.me_memop && !io.me_fp_fwd_ready)
   // 注意：raw_alu 是“非 load-use 的 RAW 停顿”桶，包含 MDU 队首未就绪、
   // MDU 隐藏写掩码等非访存生产者造成的停顿（ALU 生产者恒就绪，本身不产生
   // 停顿），命名沿用历史。
-  io.perf_stall_raw := io.in.valid && isRAW
-  io.perf_stall_raw_loaduse := io.in.valid && isRAW && raw_loaduse
-  io.perf_stall_raw_alu := io.in.valid && isRAW && !raw_loaduse
+  io.perf_stall_raw := io.in.valid && AnyIsRAW
+  io.perf_stall_raw_loaduse := io.in.valid && AnyIsRAW && raw_loaduse
+  io.perf_stall_raw_alu := io.in.valid && AnyIsRAW && !raw_loaduse
   // 退休/trace/mtval 使用原始编码；展开结果只影响控制信号。
   io.out.bits.Instruction := RawInstruction
   io.out.bits.IsCompressed := IsCompressed
@@ -415,8 +693,8 @@ class ysyx_26030103_IDU(
   io.out.bits.MemoryWrite := MemoryWrite
   io.out.bits.WidthSelect := WidthSelect
   io.out.bits.LoadSigned := LoadSigned
-  // 写就直接上rs2第二个寄存器
-  io.out.bits.StoreData := src2
+  // 写就直接上rs2第二个寄存器；浮点 store 使用 f 寄存器读口。
+  io.out.bits.StoreData := StoreDataSource
   io.out.bits.IsAtomic := IsAtomic
   io.out.bits.AtomicOp := AtomicOp
   io.out.bits.IsCsrrw := IsCsrrw
@@ -430,6 +708,19 @@ class ysyx_26030103_IDU(
   io.out.bits.IsSfenceVma := IsSfenceVma
   io.out.bits.IsFence := IsFence
   io.out.bits.IsFenceI := IsFenceI
+  io.out.bits.IsFP := IsFP
+  io.out.bits.IsFPU := FpIsFpu
+  io.out.bits.FpOp := FpOp
+  io.out.bits.FpFmt := FpFmt
+  io.out.bits.FpSrcFmt := FpSrcFmt
+  io.out.bits.FpRm := FpRm
+  io.out.bits.FpIntWord := FpIntWord
+  io.out.bits.FpRs1 := FpRs1Source.pad(64)
+  io.out.bits.FpRs2 := fp_src2.pad(64)
+  io.out.bits.FpRs3 := fp_src3.pad(64)
+  io.out.bits.FPRegisterWrite := FpWritesFPR
+  io.out.bits.FPWriteData := 0.U(64.W)
+  io.out.bits.FP64 := FpUseD
   io.out.bits.CSRAddress := CSRAddress
   io.out.bits.Rs1 := Rs1
   io.out.bits.Rs1Data := Mux(IsCSRImmediate, Cat(0.U((XLEN - 5).W), Rs1), src1)

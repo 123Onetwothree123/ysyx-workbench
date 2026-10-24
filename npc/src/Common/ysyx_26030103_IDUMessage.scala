@@ -1,6 +1,7 @@
 package ysyx_26030103.common
 import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction.CtrlWidth
+import _root_.ysyx_26030103.fpu.{ysyx_26030103_FpuOp, ysyx_26030103_FpuFmt, ysyx_26030103_FpuRm}
 
 /** 译码级交付给执行级的消息；所有架构数据通路均为 XLEN 位。 */
 class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
@@ -63,6 +64,27 @@ class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   val Rs1 = UInt(5.W)
   val Rs1Data = UInt(XLEN.W)
 
+  // ---------------- F/D 扩展 ----------------
+  // IsFP 覆盖所有 F/D 指令（含 load/store/mv），用于 mstatus.FS 的
+  // retire 级 Dirty 更新；IsFPU 只表示需要进入浮点运算单元
+  // （算术/比较/转换/分类/符号注入），不含 FLW/FSW/FLD/FSD。
+  val IsFP = Bool()
+  val IsFPU = Bool()
+  val FpOp = UInt(ysyx_26030103_FpuOp.Width.W)
+  val FpFmt = UInt(ysyx_26030103_FpuFmt.Width.W)
+  val FpSrcFmt = UInt(ysyx_26030103_FpuFmt.Width.W)
+  // 已按 frm 解析的舍入模式；DYN 不会进入 EXU/FPU。
+  val FpRm = UInt(ysyx_26030103_FpuRm.Width.W)
+  val FpIntWord = Bool()
+  // 经 FPR 读口与转发后的三个浮点源操作数，统一保留 64 位。
+  val FpRs1 = UInt(64.W)
+  val FpRs2 = UInt(64.W)
+  val FpRs3 = UInt(64.W)
+  // 由于 EXUMessage 的 FLEN 固定为 64 的位模式视图，FPU 结果和
+  // load 结果都用这组字段传给 WBU；FP64 用于 FLW 的 NaN-boxing。
+  val FPRegisterWrite = Bool()
+  val FPWriteData = UInt(64.W)
+  val FP64 = Bool()
 
   // 异常标记:可能是IFU传下来的取指错(cause=1),也可能是IDU检测到的非法指令(cause=2)
   // 统一在EXU提交点处理,带异常标记的指令不得产生任何副作用

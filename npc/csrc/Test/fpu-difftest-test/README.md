@@ -157,17 +157,23 @@ DUT 的浮点结果错误也会通过 GPR/PC 暴露。实现 DiffTest FPR 快照
    - 错误信息应包含 `RISCV_D`/`RISCV_F`/`FPU_FLEN` 等关键字，便于测试
      区分真实规则与“占位未实现”错误。
 
-## 当前状态（基线 3599df4d5）
+## 当前状态（HardFloat 后端接入后）
 
 - 镜像构建和 ELF 审计：PASS；
-- RV64D/RV32F 正向 DiffTest：SKIP（主线 F/D 仅为 Kconfig 占位，
-  DUT 第一条浮点指令即 illegal）；
-- `RISCV_F=n` 负向：PASS（用主线 `npc/build/ysyx_26030103_npc` 实测
-  F/D 均触发 illegal）；
-- 第一次分叉报告：PASS（corrupt-ref 注入 x5）；
-- 配置错误：主线 SKIP（被占位检查拒绝）；在 `fpu-kconfig` 分支上两条
-  规则均 PASS；
-- RV32 运行：需要单独的 RV32 DUT/NEMU REF；未提供时 SKIP。
+- RV64D 正向 DiffTest：PASS（`guest-rv64d`、`guest-f-trap-rv64d`、
+  GCC `-march=rv64imafd -mabi=lp64d` 的 `guest-rv64d-c` 全部
+  `HIT GOOD TRAP`，且逐退休 GPR/PC/CSR 比对无分叉）；
+- RV32F 正向 DiffTest：PASS（`guest-rv32f`、`guest-f-trap-rv32f`）；
+- F/D 探针：PASS（F/D 均可执行，首条浮点指令后 `mstatus.FS` 进入
+  Dirty）；
+- `RISCV_F=n` 负向与配置错误检查：本分支未改动相关规则，沿用主线
+  测试；本报告只记录本次实际运行的正向用例；
+- DUT 的 `--diff` 目前比较 GPR/PC/CSR，NEMU REF 已导出可选的
+  `difftest_fp_*` ABI，但 NPC 尚未接入逐 f 寄存器快照；浮点结果由
+  guest 写回 RAM 后以整数比较和 C 程序断言覆盖。
+
+测试资产同时修正了三处自身错误：probe 的 8 字节 scratch 对齐、
+`fsflags` 是 CSRRW 而不是 OR、以及 `fcvt.lu.d` 测试常量笔误。
 
 ## 清理
 

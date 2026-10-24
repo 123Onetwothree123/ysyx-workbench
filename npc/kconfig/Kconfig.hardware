@@ -68,10 +68,9 @@ menu "硬件配置"
         “FPU 后端”菜单）；FPU_IMPL=none 时会在配置契约和
         elaboration 阶段明确报错，不会生成只有 ISA 标志、没有浮点
         数据通路的半成品。
-        当前 FPU-B 只建立 Kconfig 与统一接口骨架，HardFloat/Fudian
-        的 RTL 尚未接入；选择这两个后端并启用 F 时，elaboration
-        会明确报告 backend 尚未实现，绝不假装支持。后端代理接入
-        vendor 实现后，只需在工厂中替换对应后端。
+        Berkeley HardFloat 已通过 vendor 源码接入，可真正执行 RV32F/
+        RV64D；Fudian 仍只有配置骨架，选择它会在 elaboration 阶段
+        明确报错，绝不假装支持。
         修改后需重新 make verilog。
 
     config RISCV_D
@@ -81,9 +80,9 @@ menu "硬件配置"
       help
         D 依赖 F，并要求 FPU_FLEN=64：D 的 64 位格式和浮点寄存器
         需要 64 位数据通路。只启用 D 而不启用 F、或 FLEN=32 时，
-        配置契约和 elaboration 会明确拒绝。
-        当前同样只有配置与接口骨架；RTL 后端接入前启用会在
-        elaboration 明确报错。
+        配置契约和 elaboration 会明确拒绝。当前 D 的 64 位访存路径
+        只在 XLEN=64（RV64D）下接入；RV32D 会在 elaboration 明确拒绝，
+        需先扩展 LSU 的 8 字节访存。
 
     menu "FPU 后端"
       depends on RISCV_F
@@ -189,10 +188,10 @@ menu "硬件配置"
           bool "内部使用 recoded 浮点格式"
           default y
           help
-            HardFloat 公开的 recoded 内部格式选择。开启时后端在
-            IEEE 754 输入/输出与 recoded 格式之间转换；关闭时要求
-            后端直接使用 IEEE 位模式。该参数只影响后端内部表示，
-            不改变 FpuRequest/Response 的 IEEE 位模式。
+            HardFloat 的算术模块只提供 recoded 内部格式；后端在
+            IEEE 754 输入/输出与 RecFN 之间转换。该参数保留为公开
+            契约的一部分，但当前只接受 y；设为 n 会在 elaboration
+            明确拒绝，不会静默选择 IEEE 直通实现。
 
         config FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING
           bool "舍入前检测 tininess"

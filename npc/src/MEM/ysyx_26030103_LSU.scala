@@ -114,6 +114,11 @@ class ysyx_26030103_LSU(
     val HazardMemOp = Output(Bool())
     val FwdData = Output(UInt(XLEN.W))
     val FwdReady = Output(Bool())
+    // 浮点寄存器写口/转发。FLW/FLD 的数据在本级完成后才有效。
+    val HazardFPRegWrite = Output(Bool())
+    val HazardFPRd = Output(UInt(5.W))
+    val FwdFPData = Output(UInt(64.W))
+    val FwdFPReady = Output(Bool())
     // 等待槽冒险检测: 本级被年长访存占用时,EX/MEM流水寄存器里等待的指令
     // 对IDU也必须可见,否则依赖它的消费者会拿着旧寄存器值溜过去
     val Hazard2Valid = Output(Bool())
@@ -122,6 +127,10 @@ class ysyx_26030103_LSU(
     val Hazard2MemOp = Output(Bool())
     val Hazard2FwdData = Output(UInt(XLEN.W))
     val Hazard2FwdReady = Output(Bool())
+    val Hazard2FPRegWrite = Output(Bool())
+    val Hazard2FPRd = Output(UInt(5.W))
+    val Hazard2FwdFPData = Output(UInt(64.W))
+    val Hazard2FwdFPReady = Output(Bool())
     // 调试/性能
     val StallWaitLSU = Output(Bool())
     val Complete = Output(Bool())
@@ -424,6 +433,18 @@ class ysyx_26030103_LSU(
   io.out.bits.LoadData := LoadDataReg
   io.out.bits.RegisterWrite := ActiveInstruction.RegisterWrite && !MemFaultReg // 读错误时禁止写回
   io.out.bits.Retire := ActiveInstruction.Retire && !MemFaultReg
+  // F/D load：FLW 必须把低 32 位结果 NaN-box 到 64 位 f 寄存器；FLD
+  // 直接使用完整 64 位 LoadData。非 load 的 FPU 结果沿用 EXU 字段。
+  val FpLoadWriteData = Mux(ActiveInstruction.FP64,
+    LoadDataReg,
+    Cat(Fill(32, 1.U(1.W)), LoadDataReg(31, 0)))
+  io.out.bits.FPRegisterWrite :=
+    ActiveInstruction.FPRegisterWrite && !MemFaultReg
+  io.out.bits.FPWriteData := Mux(
+    ActiveInstruction.MemoryValid && ActiveInstruction.FPRegisterWrite,
+    FpLoadWriteData, ActiveInstruction.FPWriteData)
+  io.out.bits.IsFP := ActiveInstruction.IsFP
+  io.out.bits.FP64 := ActiveInstruction.FP64
   // Busy的赋值在写缓冲声明之后(见下)
   io.HazardValid := StageInputValid || (stageState =/= StageIdle)
   io.HazardRd := ActiveInstruction.Rd
@@ -446,6 +467,18 @@ class ysyx_26030103_LSU(
   io.FwdReady := io.HazardValid && io.HazardRegWrite &&
     (!ActiveInstruction.MemoryValid || stageState === StageDone ||
       (LoadForwardValid && !LoadForwardFault))
+  io.HazardFPRegWrite := ActiveInstruction.FPRegisterWrite && !MemFaultReg
+  io.HazardFPRd := ActiveInstruction.Rd
+  val FpFwdLoadData = Mux(ActiveInstruction.FP64,
+    Mux(LoadForwardValid, LoadForwardData, LoadDataReg),
+    Cat(Fill(32, 1.U(1.W)),
+      Mux(LoadForwardValid, LoadForwardData, LoadDataReg)(31, 0)))
+  io.FwdFPData := Mux(
+    ActiveInstruction.MemoryValid && ActiveInstruction.FPRegisterWrite,
+    FpFwdLoadData, ActiveInstruction.FPWriteData)
+  io.FwdFPReady := io.HazardValid && io.HazardFPRegWrite &&
+    (!ActiveInstruction.MemoryValid || stageState === StageDone ||
+      (LoadForwardValid && !LoadForwardFault))
   val WaitValid =
     ((stageState =/= StageIdle) || PendingStoreValid) && io.in.valid // 本级忙时等待槽中的年轻指令
   io.Hazard2Valid := WaitValid
@@ -462,6 +495,11 @@ class ysyx_26030103_LSU(
     )
   )
   io.Hazard2FwdReady := WaitValid && io.in.bits.RegisterWrite && !io.in.bits.MemoryValid
+  io.Hazard2FPRegWrite := io.in.bits.FPRegisterWrite
+  io.Hazard2FPRd := io.in.bits.Rd
+  io.Hazard2FwdFPData := io.in.bits.FPWriteData
+  io.Hazard2FwdFPReady :=
+    WaitValid && io.in.bits.FPRegisterWrite && !io.in.bits.MemoryValid
   io.StallWaitLSU := stageState === StageWait
   io.DebugMemoryWrite := ActiveInstruction.MemoryWrite
   io.DebugPC := ActiveInstruction.pc(31, 0)

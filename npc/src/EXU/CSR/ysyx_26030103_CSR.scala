@@ -21,10 +21,14 @@ class ysyx_26030103_CSR(
     // RISCV_A 打开时 misa.A 必须置位；关闭时该位保持 0。
     val UseA: Boolean = false,
     // RISCV_C 打开时 misa.C 置位，mepc/sepc 只清 bit0（IALIGN=16）。
-    val UseC: Boolean = false
+    val UseC: Boolean = false,
+    // RISCV_F/D 打开时实现 fflags/frm/fcsr 与 mstatus.FS，misa.F/D 置位。
+    val UseF: Boolean = false,
+    val UseD: Boolean = false
 ) extends Module {
   import ysyx_26030103_mstatus.legalize
   require(XLEN == 32 || XLEN == 64, s"CSR XLEN 非法: $XLEN")
+  require(!UseD || UseF, "CSR 的 D 扩展依赖 F 扩展")
   private val hasS = profile.hasS
   private val hasU = profile.hasU
   private val FullMask: BigInt =
@@ -51,13 +55,22 @@ class ysyx_26030103_CSR(
   // RV64 的 mstatus.SXL/UXL 是 WARL，本实现只支持 64 位，因此固定读回 2。
   // 这两个字段位于 bit[35:32]，必须和 NEMU REF/架构 CSR 视图一起保留，
   // 否则 RV64 DiffTest 会在任何一次 mstatus 写入后看到高半区差异。
-  private def MstatusArchValue(Value: UInt): UInt =
-    if (XLEN == 32) Value
-    else Widen32(Value) | "h0000000a00000000".U(XLEN.W)
+  // SD 是 FS==3 的只读汇总位：RV32 在 bit31，RV64 在 bit63；软件不能
+  // 直接写它，但读回/NEMU DiffTest 必须一致。
+  private def MstatusSdBit(Fs: UInt): UInt =
+    if (!UseF) 0.U(XLEN.W)
+    else Mux(Fs === 3.U,
+      (BigInt(1) << (XLEN - 1)).U(XLEN.W), 0.U(XLEN.W))
+  private def MstatusArchValue(Value: UInt): UInt = {
+    val WithXlen =
+      if (XLEN == 32) Value
+      else Widen32(Value) | "h0000000a00000000".U(XLEN.W)
+    WithXlen | MstatusSdBit(Value(14, 13))
+  }
   private def csrOn(addr: Int): Boolean = profile.csrSupported(addr)
   // HAS_U=n 时 mstatus 的 MPP/SPP 最低值被夹到 S；HAS_S=n 时固定为 M。
   private def legalizeMstatus(value: UInt): UInt =
-    legalize(value, hasU = hasU, hasS = hasS)
+    legalize(value, hasU = hasU, hasS = hasS, hasF = UseF)
   val io = IO(new Bundle {
     val clk = Input(Clock())
     val rst = Input(Bool())
@@ -108,6 +121,12 @@ class ysyx_26030103_CSR(
     val Mtime = Input(UInt(64.W))
     val McounterenOut = Output(UInt(32.W))
     val ScounterenOut = Output(UInt(32.W))
+    // F/D：当前 frm 给 IDU 解析动态舍入；浮点运算在 EXU 提交时把
+    // fflags 累积到 fcsr；WBU 退休 FP 指令时把 mstatus.FS 置 Dirty。
+    val Frm = Output(UInt(3.W))
+    val FPCommit = Input(Bool())
+    val FPFlags = Input(UInt(5.W))
+    val FPStateDirtyCommit = Input(Bool())
   })
 
   val CSR_MSTATUS = 0x300.U(12.W)
@@ -145,25 +164,44 @@ class ysyx_26030103_CSR(
   val CSR_MCOUNTINHIBIT = 0x320.U(12.W)
   val CSR_MVENDORID = 0xf11.U(12.W)
   val CSR_MARCHID = 0xf12.U(12.W)
+  val CSR_FFLAGS = 0x001.U(12.W)
+  val CSR_FRM = 0x002.U(12.W)
+  val CSR_FCSR = 0x003.U(12.W)
 
   val Mvendorid_rdata = 0x79737978.U(32.W)
   val Marchid_rdata = "h018d3017".U(32.W)
-  val SstatusMask = "h000c0122".U(32.W) // SIE SPIE SPP SUM MXR
+  // SIE SPIE SPP SUM MXR；RISCV_F 时 sstatus 也包含 FS[14:13]。
+  val SstatusMask = "h000c0122".U(32.W) |
+    (if (UseF) "h00006000".U(32.W) else 0.U(32.W))
   def IsCSRAddress(addr: UInt): Bool = io.CSRAddress === addr
+  private val FpCsrAddresses =
+    if (UseF) Seq(0x001, 0x002, 0x003) else Seq.empty
   private val enabledCsrAddresses = (
     profile.csrEnabled.toSeq ++
       Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82) ++
+      FpCsrAddresses ++
       (if (profile.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
-  ).filter(profile.csrSupported).distinct.sorted
+  ).filter(a => profile.csrSupported(a) || FpCsrAddresses.contains(a))
+    .distinct.sorted
   val CsrImplemented =
     enabledCsrAddresses.map(a => io.CSRAddress === a.U(12.W))
       .reduceOption(_ || _).getOrElse(false.B)
   val CsrUseSstatusView = profile.csrViewMode == "bound"
+  // mstatus.FS 只有在 RISCV_F 时存在；profile 默认读/写掩码没有包含
+  // bit[14:13]，这里按 F 开关补上，避免软件写 mstatus 后 FS 被静默清零。
+  private val MstatusFsMask = if (UseF) 0x6000L else 0L
+  private val MstatusProfileReadMask =
+    profile.csrMstatusReadMask.toLong & 0xffffffffL
+  private val MstatusProfileWriteMask =
+    profile.csrMstatusWriteMask.toLong & 0xffffffffL
+  private val MstatusReadMaskValue = MstatusProfileReadMask | MstatusFsMask
+  private val MstatusWriteMaskValue = MstatusProfileWriteMask | MstatusFsMask
   def CsrReadMask: UInt = {
     val full = FullMask.U(XLEN.W)
-    val mstatusMask =
-      if (csrOn(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
-        (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(XLEN.W), full) else full
+    // mstatus 的字段掩码已经在 MstatusReadData 里应用；这里不能再按
+    // 32 位读写掩码截断，否则 SD(bit31/63) 和 RV64 的 UXL/SXL(35:32)
+    // 会在 CSR 读口被清掉（NEMU REF 与架构读回都包含这些只读位）。
+    val mstatusMask = full
     if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
       SatpReadMaskValue.U(XLEN.W), mstatusMask) else mstatusMask
   }
@@ -178,7 +216,7 @@ class ysyx_26030103_CSR(
     val full = FullMask.U(XLEN.W)
     val mstatusMask =
       if (csrOn(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
-        (profile.csrMstatusWriteMask.toLong & 0xffffffffL).U(XLEN.W), full) else full
+        MstatusWriteMaskValue.U(XLEN.W), full) else full
     if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
       SatpWriteMaskValue.U(XLEN.W), mstatusMask) else mstatusMask
   }
@@ -199,7 +237,7 @@ class ysyx_26030103_CSR(
   val SretCommit = if (hasS) io.Enable && io.IsSret else false.B
   val SfenceCommit = if (hasS) io.Enable && io.IsSfenceVma else false.B
 
-  val Mstatus = Module(new ysyx_26030103_mstatus(hasS, hasU))
+  val Mstatus = Module(new ysyx_26030103_mstatus(hasS, hasU, UseF))
   val Mtvec = Module(new ysyx_26030103_mtvec(XLEN))
   val Mepc = Module(new ysyx_26030103_mepc(XLEN, UseC))
   val Mcause = Module(new ysyx_26030103_mcause(XLEN))
@@ -240,6 +278,10 @@ class ysyx_26030103_CSR(
   val Mcountinhibit = RegInit(0.U(32.W))
   Mcycle.io.Enable := !Mcountinhibit(0)
   val Mtval = RegInit(0.U(XLEN.W))
+  // fcsr = {frm[2:0], fflags[4:0]}；复位值 0（RISC-V 允许实现定义，
+  // 0 使裸机/回放有确定初值）。
+  val FFlagsReg = RegInit(0.U(5.W))
+  val FrmReg = RegInit(0.U(3.W))
   val Minstret = RegInit(0.U(64.W))
   val PmpcfgReg = RegInit(VecInit(Seq.fill(4)(0.U(32.W))))
   val PmpaddrReg = RegInit(VecInit(Seq.fill(16)(0.U(XLEN.W))))
@@ -251,13 +293,23 @@ class ysyx_26030103_CSR(
       (SatpReg & SatpReadMaskValue.U(XLEN.W)) | SatpReadSetValue.U(XLEN.W)
     } else 0.U(XLEN.W)
 
-  val Mstatus_rdata = Mstatus.io.rdata
+  // 年长的 FP 指令可能在 WBU 退休的同一拍把 FS 置 Dirty；EXU 里的
+  // 年轻 CSR 指令必须看到这个更新。用有效值参与所有 trap/CSR 运算，
+  // 并在寄存器写回时持久化。仅产生非零 fflags、未写 f 寄存器
+  // （例如 FCMP/FCLASS）时也属于修改浮点状态；这里必须用寄存器隔开
+  // EXU 的 FPCommit（它依赖 IrqCommit），否则会形成组合环。
+  val FpFlagsDirtyReg =
+    RegNext(io.FPCommit && io.FPFlags =/= 0.U(5.W), false.B)
+  private val FsDirtyValue = (Mstatus.io.rdata & ~"h6000".U(32.W)) |
+    (if (UseF) "h6000".U(32.W) else 0.U(32.W))
+  val FsDirtyCommit = UseF.B && (io.FPStateDirtyCommit || FpFlagsDirtyReg)
+  val Mstatus_rdata = Mux(FsDirtyCommit, FsDirtyValue, Mstatus.io.rdata)
   // M-only 时特权级恒为 M，不生成寄存器；有 S 或 U 时需要保存可达的
   // 特权级。M+U 没有 S 级，但 MRET/异常仍会在 M 与 U 之间切换。
   val Privilege: UInt =
     if (hasS || hasU) RegInit(3.U(2.W)) else 3.U(2.W)
   val MstatusReadData =
-    (Mstatus_rdata & (profile.csrMstatusReadMask.toLong & 0xffffffffL).U(32.W)) |
+    (Mstatus_rdata & MstatusReadMaskValue.U(32.W)) |
       (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(32.W)
   // 32 位 CSR 在 RV64 下读回高 32 位为 0；mstatus 例外：SXL/UXL 固定为 2。
   val MstatusReadDataWide = MstatusArchValue(MstatusReadData)
@@ -265,6 +317,11 @@ class ysyx_26030103_CSR(
     if (!hasS) 0.U(32.W)
     else if (profile.csrViewMode == "independent") SstatusRegOpt.get
     else MstatusReadData & SstatusMask
+  // sstatus 是 mstatus 的受限视图，但 SD 仍是 FS==3 的只读汇总位
+  // （RV32 bit31 / RV64 bit63）；读口必须和 mstatus/NEMU 一致。
+  val SstatusArchValue =
+    Widen32(Sstatus_rdata) |
+      MstatusSdBit(Sstatus_rdata(14, 13))
   val Mtvec_rdata = Mtvec.io.rdata
   val Mepc_rdata = Mepc.io.rdata
   val Mcause_rdata = Mcause.io.rdata
@@ -277,13 +334,15 @@ class ysyx_26030103_CSR(
   val Minstret_rdata =
     if (XLEN == 64) Minstret else Minstret(31, 0)
   val Minstreth_rdata = Minstret(63, 32)
-  // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A/C 随 RISCV_A/RISCV_C 配置。
-  // 位编号按 RISC-V 规范：bit0=A，bit2=C，bit8=I。
+  // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A/C/F/D 随配置置位。
+  // 位编号按 RISC-V 规范：bit0=A，bit2=C，bit3=D，bit5=F，bit8=I。
   val Misa_rdata = {
     val Mxl = if (XLEN == 64) BigInt(2) << 62 else BigInt(1) << 30
     val AExt = if (UseA) BigInt(1) << 0 else BigInt(0)
     val CExt = if (UseC) BigInt(1) << 2 else BigInt(0)
-    (Mxl | BigInt(0x100) | AExt | CExt).U(XLEN.W)
+    val DExt = if (UseD) BigInt(1) << 3 else BigInt(0)
+    val FExt = if (UseF) BigInt(1) << 5 else BigInt(0)
+    (Mxl | BigInt(0x100) | AExt | CExt | DExt | FExt).U(XLEN.W)
   }
   val Medeleg_rdata = MedelegOpt.getOrElse(0.U(32.W))
   val Mideleg_rdata = MidelegOpt.getOrElse(0.U(32.W))
@@ -432,7 +491,7 @@ class ysyx_26030103_CSR(
     if (hasS && profile.csrViewMode == "independent" && csrOn(0x100))
       CSRWen && IsCSRAddress(CSR_SSTATUS)
     else false.B
-  val MstatusWriteMask = (profile.csrMstatusWriteMask.toLong & 0xffffffffL).U(32.W)
+  val MstatusWriteMask = MstatusWriteMaskValue.U(32.W)
   val MstatusCSRData = {
     val rawWrite = CSRWriteData(MstatusReadDataWide)(31, 0)
     val masked = (Mstatus_rdata & ~MstatusWriteMask) |
@@ -446,12 +505,22 @@ class ysyx_26030103_CSR(
       )
     } else legalizeMstatus(masked)
   }
+  // 写 fflags/frm/fcsr 也属于修改浮点状态：mstatus.FS 应变 Dirty。
+  val FpCsrWriteIntent =
+    CSRWen && (IsCSRAddress(CSR_FFLAGS) || IsCSRAddress(CSR_FRM) ||
+      IsCSRAddress(CSR_FCSR))
+  val FsDirtyData = FsDirtyValue
   val MstatusWdataSel = Seq(
     ExceptionCommit -> MstatusExceptionData,
     MretCommit -> MstatusMretData
-  ) ++ (if (hasS) Seq(SretCommit -> MstatusSretDataOpt.get) else Seq.empty)
+  ) ++ (if (hasS) Seq(SretCommit -> MstatusSretDataOpt.get) else Seq.empty) ++ Seq(
+    MstatusWen -> MstatusCSRData,
+    FpCsrWriteIntent -> FsDirtyData,
+    FsDirtyCommit -> FsDirtyData
+  )
   Mstatus.io.wen := MstatusWen || ExceptionCommit || MretCommit ||
-    (if (hasS && profile.csrViewMode == "bound") SretCommit else false.B)
+    (if (hasS && profile.csrViewMode == "bound") SretCommit else false.B) ||
+    FpCsrWriteIntent || FsDirtyCommit
   Mstatus.io.wdata := MuxCase(MstatusCSRData, MstatusWdataSel)
   if (hasS && profile.csrViewMode == "independent") {
     val SstatusReg = SstatusRegOpt.get
@@ -523,6 +592,21 @@ class ysyx_26030103_CSR(
   when(CSRWen && IsCSRAddress(CSR_MTVAL)) { Mtval := CSRWriteData(Mtval) }
   when(CSRWen && IsCSRAddress(CSR_MCOUNTEREN)) { Mcounteren := Write32(Mcounteren) }
   when(CSRWen && IsCSRAddress(CSR_MCOUNTINHIBIT)) { Mcountinhibit := Write32(Mcountinhibit) }
+  // 浮点运算在 EXU 提交时累积 fflags；CSR 写覆盖顺序放在后面，保证
+  // 同一拍即使出现（架构上单发射不会同时发生）也以软件写为准。
+  when(io.FPCommit) { FFlagsReg := FFlagsReg | io.FPFlags }
+  when(CSRWen && IsCSRAddress(CSR_FFLAGS)) {
+    FFlagsReg := CSRWriteData(Widen32(FFlagsReg))(4, 0)
+  }
+  when(CSRWen && IsCSRAddress(CSR_FRM)) {
+    FrmReg := CSRWriteData(Widen32(FrmReg))(2, 0)
+  }
+  when(CSRWen && IsCSRAddress(CSR_FCSR)) {
+    val FcsrWrite = CSRWriteData(Widen32(Cat(FrmReg, FFlagsReg)))
+    FrmReg := FcsrWrite(7, 5)
+    FFlagsReg := FcsrWrite(4, 0)
+  }
+  io.Frm := FrmReg
   for (word <- 0 until 4) {
     when(CSRWen && io.CSRAddress === (0x3a0 + word).U(12.W)) {
       PmpcfgReg(word) := Write32(PmpcfgReg(word)) & "h0f0f0f0f".U(32.W)
@@ -636,7 +720,10 @@ class ysyx_26030103_CSR(
     if (enabled) { CSRMap += (addr -> data) }
   }
   addCsr(CSR_MSTATUS, MstatusReadDataWide, csrOn(0x300))
-  addCsr(CSR_SSTATUS, Widen32(Sstatus_rdata), csrOn(0x100))
+  addCsr(CSR_SSTATUS, SstatusArchValue, csrOn(0x100))
+  addCsr(CSR_FFLAGS, Widen32(FFlagsReg), UseF)
+  addCsr(CSR_FRM, Widen32(FrmReg), UseF)
+  addCsr(CSR_FCSR, Widen32(Cat(FrmReg, FFlagsReg)), UseF)
   addCsr(CSR_MTVEC, Mtvec_rdata, csrOn(0x305))
   addCsr(CSR_STVEC, Stvec_rdata, csrOn(0x105))
   addCsr(CSR_MEPC, Mepc_rdata, csrOn(0x341))
@@ -714,7 +801,8 @@ class ysyx_26030103_CSR(
       ExceptionCommit -> MstatusExceptionData,
       MretCommit -> MstatusMretData
     ) ++ (if (hasS) Seq(SretCommit -> MstatusSretDataOpt.get) else Seq.empty) ++
-      Seq(MstatusWen -> MstatusCSRData)))
+      Seq(MstatusWen -> MstatusCSRData, FpCsrWriteIntent -> FsDirtyValue,
+        FsDirtyCommit -> FsDirtyValue)))
   val MtvecCSRData = CSRWriteData(Mtvec_rdata)
   val MtvecLegalMode = Mux(MtvecCSRData(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
   io.StateMtvec := Mux(CSRWen && IsCSRAddress(CSR_MTVEC),

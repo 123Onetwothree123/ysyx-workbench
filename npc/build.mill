@@ -7,7 +7,28 @@ import mill.scalalib.scalafmt.ScalafmtModule
 import mill.scalalib.TestModule.ScalaTest
 import mill.scalalib._
 
+// Berkeley HardFloat 以源码形式接入，避免复制/手工维护生成的 Verilog。
+// 上游按 Chisel 3.5/5.x 编写；单独模块在 Chisel 7.7 下编译，NPC 通过
+// moduleDeps 使用其类，vendor 的 build/test 配置不参与构建。
 object `package` extends ScalaModule with ScalafmtModule { m =>
+  object vendorHardFloat extends ScalaModule {
+    override def scalaVersion = "2.13.18"
+    // 仅编译 vendor RTL 源码目录；上游 build/test 配置不进入本仓库构建。
+    // moduleDir 是 Mill 提供的本模块源目录（npc/vendorHardFloat），
+    // 因此不依赖调用 mill 时的工作目录。
+    override def sources = Task.Sources(
+      moduleDir / ".." / ".." / "vendor" / "berkeley-hardfloat" / "hardfloat" /
+        "src" / "main" / "scala")
+    override def scalacOptions = Seq(
+      "-language:reflectiveCalls",
+      "-deprecation",
+      "-feature",
+      "-Xcheckinit"
+    )
+    override def mvnDeps             = Seq(mvn"org.chipsalliance::chisel:7.7.0")
+    override def scalacPluginMvnDeps = Seq(mvn"org.chipsalliance:::chisel-plugin:7.7.0")
+  }
+
   override def scalaVersion = "2.13.18"
 
   override def scalacOptions = Seq(
@@ -16,6 +37,8 @@ object `package` extends ScalaModule with ScalafmtModule { m =>
     "-feature",
     "-Xcheckinit"
   )
+
+  override def moduleDeps = Seq(`vendorHardFloat`)
 
   override def mvnDeps             = Seq(mvn"org.chipsalliance::chisel:7.7.0")
   override def scalacPluginMvnDeps = Seq(mvn"org.chipsalliance:::chisel-plugin:7.7.0")

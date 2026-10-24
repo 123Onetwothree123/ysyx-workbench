@@ -468,7 +468,7 @@ _start:
     li t1, 1
     bne a0, t1, fail46
 
-    li t0, 0xbf80000000000000  # -1.0
+    li t0, 0xbff0000000000000  # -1.0
     fmv.d.x ft0, t0
     csrw fcsr, zero
     fcvt.lu.d a0, ft0, rtz
@@ -655,9 +655,9 @@ _start:
     li t1, 1
     bne a0, t1, fail67
     li t0, 0x10
-    fsflags t0                 # OR 入 NV
+    fsflags t0                 # fsflags 是 CSRRW：写入 NV
     frflags a0
-    li t1, 0x11
+    li t1, 0x10
     bne a0, t1, fail67
 
     li t0, 0x24                # frm=RTZ(1<<5), flags=OF(4)

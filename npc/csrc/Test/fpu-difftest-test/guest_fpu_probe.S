@@ -21,6 +21,7 @@
 phase:      .word 0
 f_ok:       .word 0
 d_ok:       .word 0
+    .align 3
 scratch:    .zero 16
 
 .section .text

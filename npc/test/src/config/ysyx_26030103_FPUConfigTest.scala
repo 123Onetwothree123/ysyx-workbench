@@ -6,9 +6,9 @@ import _root_.ysyx_26030103.fpu.ysyx_26030103_FPU
 
 /** F/D 与 FPU 后端配置规则。
   *
-  * Fudian 已接入 vendor RTL：配置结构可以表达，NPCConfig 也允许
-  * RISCV_F/D + FPU_IMPL=fudian。HardFloat/External 仍未接入，必须在
-  * elaboration 前拒绝，避免顶层没有 FPU 实例却宣称支持 F/D。
+  * HardFloat 与 Fudian 均已接入 vendor RTL：NPCConfig 同时允许
+  * RISCV_F/D + FPU_IMPL=hardfloat/fudian。external 仍必须在 elaboration
+  * 前明确拒绝，避免顶层没有 FPU 实例却宣称支持 F/D。
   */
 class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
   "NPCConfig" should "默认关闭 F/D 且后端为 none" in {
@@ -52,19 +52,53 @@ class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
     error.getMessage should include("FPU_IMPL=none")
   }
 
-  it should "拒绝未接入的 HardFloat 后端，不能假支持" in {
+  it should "接受 HardFloat F/D 配置" in {
+    val f32 = ysyx_26030103_NPCConfig(
+      UseF = true,
+      FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
+      FPULen = 32
+    )
+    f32.FPUBackendImplemented should be(true)
+    f32.FPUProfile.HardFloat.Recode should be(true)
+    val fd = ysyx_26030103_NPCConfig(
+      XLEN = 64,
+      UseF = true,
+      UseD = true,
+      FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
+      FPULen = 64
+    )
+    fd.ISAString should include("FD")
+  }
+
+  it should "拒绝 HardFloat 的 recode=off" in {
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
         UseF = true,
-        FPUImpl = ysyx_26030103_FPUImpl.HardFloat
+        FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
+        FPUProfile = ysyx_26030103_FPUProfile(
+          HardFloat = ysyx_26030103_HardFloatParams(Recode = false)
+        )
       )
     }
-    error.getMessage should include("hardfloat")
-    error.getMessage should include("尚未接入 RTL")
+    error.getMessage should include("recoded")
+  }
+
+  it should "拒绝当前 LSU 不支持 RV32D" in {
+    val error = intercept[IllegalArgumentException] {
+      ysyx_26030103_NPCConfig(
+        XLEN = 32,
+        UseF = true,
+        UseD = true,
+        FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
+        FPULen = 64
+      )
+    }
+    error.getMessage should include("RV64")
   }
 
   it should "接受已接入的 Fudian 后端" in {
     val config = ysyx_26030103_NPCConfig(
+      XLEN = 64,
       UseF = true,
       UseD = true,
       FPUImpl = ysyx_26030103_FPUImpl.Fudian

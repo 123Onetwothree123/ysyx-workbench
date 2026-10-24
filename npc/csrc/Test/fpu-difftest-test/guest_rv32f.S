@@ -288,9 +288,9 @@ _start:
     frflags a0
     bne a0, t1, fail31
     li t0, 0x10
-    fsflags t0
+    fsflags t0                 # fsflags 是 CSRRW：写入 NV
     frflags a0
-    li t1, 0x11
+    li t1, 0x10
     bne a0, t1, fail31
 
     li t0, 0x24

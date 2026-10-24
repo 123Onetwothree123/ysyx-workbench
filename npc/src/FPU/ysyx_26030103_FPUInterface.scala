@@ -87,8 +87,14 @@ object ysyx_26030103_FpuFlags {
 class ysyx_26030103_FpuRequest(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FpuRequest FLEN 非法: $FLEN")
   val op = UInt(ysyx_26030103_FpuOp.Width.W)
+  // 目的/运算格式。FCVT.S.D / FCVT.D.S 的源格式由 srcFmt 给出。
   val fmt = UInt(ysyx_26030103_FpuFmt.Width.W)
+  val srcFmt = UInt(ysyx_26030103_FpuFmt.Width.W)
+  // 已解析的动态舍入；后端不再看到 DYN，也不读取 frm。
   val rm = UInt(ysyx_26030103_FpuRm.Width.W)
+  // FCVT.W/WU/L/LU 与 FMV.X.W/D、FMV.W.X/D.X 的整数宽度选择：
+  // true=32 位（W/WU），false=XLEN（RV64 的 L/LU/D）。
+  val intWord = Bool()
   val rs1 = UInt(FLEN.W)
   val rs2 = UInt(FLEN.W)
   val rs3 = UInt(FLEN.W)
@@ -111,6 +117,8 @@ class ysyx_26030103_FPUInterface(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FPUInterface FLEN 非法: $FLEN")
   val req = Flipped(Decoupled(new ysyx_26030103_FpuRequest(FLEN)))
   val resp = Decoupled(new ysyx_26030103_FpuResponse(FLEN))
+  // 冲刷在途请求/结果（更老指令的精确 trap 或流水线重定向）。
+  val flush = Input(Bool())
 }
 
 /** FPU 顶层抽象骨架。
@@ -130,8 +138,10 @@ abstract class ysyx_26030103_FPU(val Config: ysyx_26030103_NPCConfig)
 
 /** FPU 工厂：按后端选择实现。
   *
-  * Fudian 已通过源码级 vendor 接入实现；HardFloat 仍在后续任务中接入。
-  * 工厂只返回统一的 `ysyx_26030103_FPU` 抽象类型，上层不依赖 vendor。
+  * HardFloat 已通过 vendor/berkeley-hardfloat 源码模块接入；Fudian 已通过
+  * vendor/fudian 源码接入。external 仍明确拒绝，避免 F/D 配置在没有任何
+  * 浮点数据通路时被误认为可用。工厂只返回统一的 `ysyx_26030103_FPU`
+  * 抽象类型，上层不依赖任何 vendor 模块。
   */
 object ysyx_26030103_FPU {
   def apply(Config: ysyx_26030103_NPCConfig): ysyx_26030103_FPU = {
@@ -142,9 +152,7 @@ object ysyx_26030103_FPU {
         throw new IllegalArgumentException(
           "FPU_IMPL=none 不能创建 FPU；请选择 hardfloat/fudian")
       case ysyx_26030103_FPUImpl.HardFloat =>
-        throw new NotImplementedError(
-          "Berkeley HardFloat 后端尚未接入：vendor 实现与 " +
-            "FPU_HARDFLOAT_* 参数映射完成后才能启用 RISCV_F/D")
+        new ysyx_26030103_HardFloatFPU(Config)
       case ysyx_26030103_FPUImpl.Fudian =>
         new ysyx_26030103_FudianFPU(Config)
       case ysyx_26030103_FPUImpl.External =>

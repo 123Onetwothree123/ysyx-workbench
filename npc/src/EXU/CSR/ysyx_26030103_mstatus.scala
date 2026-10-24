@@ -5,12 +5,14 @@ import chisel3.util._
 object ysyx_26030103_mstatus {
   // 已实现的 mstatus 字段：
   //   SIE(1) SPIE(5) MIE(3) MPIE(7) SPP(8) MPP(12:11)
-  //   MPRV(17) SUM(18) MXR(19) TVM(20) TW(21) TSR(22)
+  //   FS(14:13，仅 RISCV_F=y) MPRV(17) SUM(18) MXR(19) TVM(20)
+  //   TW(21) TSR(22)
   // 其余字段读回零。MPP 允许 U/S/M；保留编码 2 收敛到最低支持特权级。
   // HAS_U=n 时 U 级不存在：MPP/SPP 的最低值固定为 S，从而 MRET/SRET
   // 无法把特权级切回 U。HAS_S=n/HAS_U=y（M+U）时 MPP 仍可保存 U，
   // 但 SPP 不存在；M-only 时 MPP 固定为 M。
   private val FieldMask = BigInt("007e19aa", 16)
+  private val FsMask = BigInt("00006000", 16)
   private val MppMask = BigInt("00001800", 16)
   private val SppMask = BigInt("00000100", 16)
   // 只有 S/U 模式存在的字段：SIE/SPIE/SPP/SUM/TVM/TW/TSR。
@@ -20,12 +22,13 @@ object ysyx_26030103_mstatus {
   private val MachineMpp = BigInt("00001800", 16)
   def resetValue: UInt = MachineMpp.U(32.W)
   def legalize(value: UInt, hasU: Boolean = true,
-      hasS: Boolean = true): UInt = {
+      hasS: Boolean = true, hasF: Boolean = false): UInt = {
     val extended = value.pad(32)
+    val baseMask = if (hasF) FieldMask | FsMask else FieldMask
     val activeMask =
-      if (!hasS) FieldMask & ~SOnlyFields
-      else if (!hasU) FieldMask & ~SumField
-      else FieldMask
+      if (!hasS) baseMask & ~SOnlyFields
+      else if (!hasU) baseMask & ~SumField
+      else baseMask
     val masked = extended & activeMask.U(32.W)
     val rawMpp = Mux(masked(12, 11) === 2.U, 0.U(2.W), masked(12, 11))
     val mpp =
@@ -42,7 +45,8 @@ object ysyx_26030103_mstatus {
 }
 class ysyx_26030103_mstatus(
     val hasS: Boolean = true,
-    val hasU: Boolean = true
+    val hasU: Boolean = true,
+    val hasF: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val clk = Input(Clock())
@@ -54,7 +58,7 @@ class ysyx_26030103_mstatus(
   import ysyx_26030103_mstatus._
   val RegMstatus = withClockAndReset(io.clk, io.rst) { RegInit(resetValue) }
   when(io.wen) {
-    RegMstatus := legalize(io.wdata, hasU, hasS)
+    RegMstatus := legalize(io.wdata, hasU, hasS, hasF)
   }
   io.rdata := RegMstatus
 }

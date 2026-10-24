@@ -133,8 +133,20 @@ case class ysyx_26030103_NPCConfig(
     s"FPU_FLEN 只允许 32 或 64，收到 FPULen=$FPULen")
   require(!UseD || FPULen == 64,
     s"启用 RISCV_D 要求 FPU_FLEN=64，收到 FPULen=$FPULen")
+  // 当前 LSU 在 XLEN=64 时才把 8 字节 load/store 拆成两拍 32 位总线事务。
+  // RV32D 还需要扩展 LSU 的 64 位访存路径；在接入前明确拒绝，避免
+  // 生成 FLD/FSD 只能访问一半数据的核。
+  require(!UseD || XLEN == 64,
+    s"当前 D 扩展只支持 RV64（XLEN=64），收到 XLEN=$XLEN；" +
+      "RV32D 需要先接入 64 位 LSU 访存路径")
   require(!UseF || FPUImpl != ysyx_26030103_FPUImpl.None,
     "RISCV_F=y 但 FPU_IMPL=none：必须选择 hardfloat/fudian 等 FPU 后端")
+  // Berkeley HardFloat 的算术模块只有 recoded 内部格式。Recode=n 无法
+  // 在不把 vendor 内部表示暴露给上层的前提下实现，必须在配置期拒绝。
+  require(FPUImpl != ysyx_26030103_FPUImpl.HardFloat ||
+    FPUProfile.HardFloat.Recode,
+    "Berkeley HardFloat 只支持 recoded 内部格式；" +
+      "FPU_HARDFLOAT_RECODE=n 不受支持")
   require(UseF || FPUImpl == ysyx_26030103_FPUImpl.None,
     s"RISCV_F=n 时 FPU_IMPL 必须为 none，收到 ${FPUImpl.Name}；" +
       "请同时启用 RISCV_F 或清除后端选择")

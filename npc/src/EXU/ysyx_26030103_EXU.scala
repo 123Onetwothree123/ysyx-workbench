@@ -3,11 +3,13 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.config._
+import _root_.ysyx_26030103.fpu._
 class ysyx_26030103_EXU(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends Module {
   private val hasS = config.MMU.hasS
   private val XLEN = config.XLEN
+  private val UseF = config.UseF
   // RV64 W 型运算的 32 位结果按 ISA 要求符号扩展到 XLEN。
   private def Sext32(Value: UInt): UInt =
     if (XLEN == 32) Value else Cat(Fill(XLEN - 32, Value(31)), Value)
@@ -104,6 +106,19 @@ class ysyx_26030103_EXU(
     // 转发给IDU: EX阶段生产者的最终写回值,以及该值当前是否可用于转发
     val FwdData = Output(UInt(XLEN.W))
     val FwdReady = Output(Bool())
+    // 浮点寄存器写口/冒险/转发（与 GPR 端口独立）。
+    val HazardFPValid = Output(Bool())
+    val HazardFPRd = Output(UInt(5.W))
+    val HazardFPRegWrite = Output(Bool())
+    val FwdFPData = Output(UInt(64.W))
+    val FwdFPReady = Output(Bool())
+    // 当前 frm 给 IDU 解析动态舍入。
+    val CSRFrm = Output(UInt(3.W))
+    // 浮点运算提交时累积 fflags（EXU 提交点；FPU 运算不会在 MEM 故障）。
+    val FPCommit = Output(Bool())
+    val FPCommitFlags = Output(UInt(5.W))
+    // WBU 退休任意 FP 指令时置 mstatus.FS=Dirty（含 FLW/FSW/FLD/FSD）。
+    val FPStateDirtyCommit = Input(Bool())
     // BTB更新: 分支提交时把真实target写回分支BTB
     val BTBUpdateValid = Output(Bool())
     val BTBUpdatePC = Output(UInt(XLEN.W))
@@ -121,13 +136,25 @@ class ysyx_26030103_EXU(
   })
   val ALUUnit = Module(new ysyx_26030103_ALU(XLEN))
   val CSRUnit = Module(new ysyx_26030103_CSR(
-    config.MMU, XLEN, config.UseA, config.UseC))
+    config.MMU, XLEN, config.UseA, config.UseC, config.UseF, config.UseD))
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
   CSRUnit.io.Interrupt := io.Interrupt
   CSRUnit.io.TimerInterrupt := io.TimerInterrupt
   val BranchComparatorUnit = Module(new ysyx_26030103_BranchComparator(XLEN))
   val inst = io.in.bits
+  // FPU 是 EXU 内的独立执行单元：FPU 指令在 EXU 原地等待响应，期间
+  // 不消耗后续指令。FpPending/FpInstReg 保存唯一在途 FP 指令。
+  val FpuUnitOpt =
+    if (UseF) Some(Module(ysyx_26030103_FPU(config))) else None
+  val FpuReq = Wire(Decoupled(new ysyx_26030103_FpuRequest(config.FPULen)))
+  val FpPending = RegInit(false.B)
+  val FpInstReg = Reg(chiselTypeOf(io.in.bits))
+  val FpRespValid = FpuUnitOpt.map(_.io.resp.valid).getOrElse(false.B)
+  val FpRespBits = FpuUnitOpt
+    .map(_.io.resp.bits)
+    .getOrElse(0.U.asTypeOf(new ysyx_26030103_FpuResponse(config.FPULen)))
+  val FpRespFire = FpPending && FpRespValid && io.out.ready && !io.MemTrapCommit
   // M扩展关闭时，这些信号全部折叠为常量；MDU模块和顺序
   // 队列只在elaboration期的UseM分支中生成。这避免了RISCV_M=n时
   // 仅靠译码器“不使用”但仍然生成完整乘除法器的问题。
@@ -208,16 +235,19 @@ class ysyx_26030103_EXU(
   // 越过该精确边界。branch/JAL/JALR只需等待年长访存：普通ALU
   // 不会故障，不应该让控制转移多停一拍；但年长load/store仍可能
   // 提交精确故障，在它完成前不能留下无法回滚的BTB/RAS状态。
+  // FPU 运算在 EXU 提交点累积 fflags，必须在所有可能故障的更老 MEM
+  // 指令排空后才能提交；因此 FPU 指令也要求 pipeline drain。
   val RequiresPipelineDrain =
     inst.IsCsrrw || inst.IsCsrrs || inst.IsCsrrc || inst.IsEcall || inst.IsEbreak ||
       inst.IsSimHalt || inst.IsMret ||
       (if (hasS) inst.IsSret || inst.IsSfenceVma else false.B) ||
+      (if (UseF) inst.IsFPU else false.B) ||
       InstructionTrapValid
   val RequiresMemoryDrain =
     inst.IsFenceI || inst.IsFence || inst.IsBranch || inst.IsJal || inst.IsJalr
   // MEMBusy在顶层是PipelineBusy的子集。这里仍取或作为防御，
   // 也让叶子EXU回归可以只驱动MEMBusy来表示年长访存。
-  val OlderPipelineBusy = io.PipelineBusy || io.MEMBusy
+  val OlderPipelineBusy = io.PipelineBusy || io.MEMBusy || FpPending
   // IRQ是动态精确副作用：只要任意年长MEM级指令未越过，
   // 就不能在当前指令边界提交IRQ。
   val BlockIrqForPipeline = OlderPipelineBusy && CSRUnit.io.IrqPending
@@ -229,7 +259,7 @@ class ysyx_26030103_EXU(
   // 仅在EXU输入、MDU队列及所有更老流水级都为空时，才可使用顶层给出的
   // 精确架构PC建立一个空流水指令边界。MemTrap属于更老指令，优先级更高。
   val IdleIrqCommit =
-    !io.in.valid && !PendingMDU && !OlderPipelineBusy &&
+    !io.in.valid && !PendingMDU && !FpPending && !OlderPipelineBusy &&
       CSRUnit.io.IrqPending && !io.MemTrapCommit
 
   val BlockPendingMDUForMEM =
@@ -338,18 +368,60 @@ class ysyx_26030103_EXU(
     MDUHiddenWriteMask := HiddenMDUWriteMask | CurrentMDUWriteMask
   }
 
+  // FPU 请求：只在所有更老 MEM 指令排空后发射，避免 fflags 在更老
+  // 访存故障之前被提交。FpuReq.ready 来自后端，支持 DIV/SQRT 多周期。
+  val IsFPUInstruction =
+    (if (UseF) inst.IsFPU && !InstructionTrapValid else false.B)
+  val FpuFlush = WireDefault(false.B)
+  val FpuReqFire = FpuReq.valid && FpuReq.ready
+  FpuReq.valid := io.in.valid && IsFPUInstruction && !FpPending &&
+    !io.MemTrapCommit && !BlockForOlder
+  FpuReq.bits.op := inst.FpOp
+  FpuReq.bits.fmt := inst.FpFmt
+  FpuReq.bits.srcFmt := inst.FpSrcFmt
+  FpuReq.bits.rm := inst.FpRm
+  FpuReq.bits.intWord := inst.FpIntWord
+  FpuReq.bits.rs1 := inst.FpRs1
+  FpuReq.bits.rs2 := inst.FpRs2
+  FpuReq.bits.rs3 := inst.FpRs3
+  FpuUnitOpt match {
+    case Some(fpu) =>
+      fpu.io.req.valid := FpuReq.valid
+      fpu.io.req.bits := FpuReq.bits
+      FpuReq.ready := fpu.io.req.ready
+      fpu.io.resp.ready := FpRespFire
+      fpu.io.flush := FpuFlush
+    case None =>
+      FpuReq.ready := false.B
+  }
+  when(FpuReqFire) {
+    FpPending := true.B
+    FpInstReg := inst
+  }
+  when(FpRespFire) {
+    FpPending := false.B
+  }
+  when(FpuFlush) {
+    FpPending := false.B
+  }
+
   io.in.ready := Mux(
     IsMDUInstruction,
-    Mux(MDUInputKilledByIRQ, true.B, MDUReqReady),
-    // 待处理的MDU结果会占用本周期唯一的输出槽位。更年轻的非MDU指令必须留在
-    // IDU->EXU寄存器中，直到该结果发出；若在这里接收它，就会在未产生其EXU输出
-    // 的情况下将其消耗。
-    !PendingMDU && io.out.ready && !BlockForOlder
+    Mux(MDUInputKilledByIRQ, true.B, MDUReqReady) && !FpPending,
+    Mux(
+      IsFPUInstruction,
+      !FpPending && FpuReq.ready && !BlockForOlder && !io.MemTrapCommit,
+      // 待处理的MDU/FPU结果会占用本周期唯一的输出槽位。更年轻的普通指令
+      // 必须留在 IDU->EXU 寄存器中，直到结果发出。
+      !PendingMDU && !FpPending && io.out.ready && !BlockForOlder
+    )
   )
   io.out.valid := Mux(
     PendingMDU,
     MDURespValid && !io.MemTrapCommit && !BlockPendingMDUForMEM,
-    io.in.valid && !IsMDUInstruction && !PendingMDU && !BlockForOlder
+    Mux(FpPending, FpRespValid && !io.MemTrapCommit,
+      io.in.valid && !IsMDUInstruction && !IsFPUInstruction && !PendingMDU &&
+        !FpPending && !BlockForOlder)
   )
 
   val ActiveInst = Wire(chiselTypeOf(io.in.bits))
@@ -357,13 +429,16 @@ class ysyx_26030103_EXU(
   when(PendingMDU) {
     ActiveInst := PendingMDUInst
   }
+  when(FpPending) {
+    ActiveInst := FpInstReg
+  }
   val ActiveIsMDU = if (config.UseM) ActiveInst.IsMDU else false.B
   val ActiveMDUOp =
     if (config.UseM) ActiveInst.MDUOp else 0.U(ysyx_26030103_MDUOp.Width.W)
   val ActiveInstructionTrapValid = Mux(
     PendingMDU,
     ActiveInst.ExceptionValid,
-    InstructionTrapValid
+    Mux(FpPending, FpInstReg.ExceptionValid, InstructionTrapValid)
   )
   val ActiveExceptionCause = Mux(
     PendingMDU,
@@ -378,7 +453,7 @@ class ysyx_26030103_EXU(
   // 因此所有“当前指令”控制必须显式由valid门控，不能让上一个MRET/CSR
   // 留下的bits与IRQ同时产生副作用。
   val ValidInstructionForCSR =
-    io.in.valid && !PendingMDU && !InstructionTrapValid
+    io.in.valid && !PendingMDU && !FpPending && !InstructionTrapValid
   CSRUnit.io.IsCsrrw := ValidInstructionForCSR && inst.IsCsrrw
   CSRUnit.io.IsCsrrs := ValidInstructionForCSR && inst.IsCsrrs
   CSRUnit.io.IsCsrrc := ValidInstructionForCSR && inst.IsCsrrc
@@ -460,7 +535,7 @@ class ysyx_26030103_EXU(
   CSRUnit.io.Enable := InstructionCSRCommit || IdleIrqCommit
   CSRUnit.io.MemTrap := io.MemTrapCommit
   CSRUnit.io.TrapValid :=
-    io.in.valid && !PendingMDU && InstructionTrapValid
+    io.in.valid && !PendingMDU && !FpPending && InstructionTrapValid
   CSRUnit.io.TrapCause := Mux(
     io.MemTrapCommit,
     io.MemTrapCause,
@@ -530,7 +605,8 @@ class ysyx_26030103_EXU(
   io.out.bits.snpc := ActiveInst.snpc
   // Pending MDU 不可能是控制转移；其它指令使用本拍已
   // 计算的实际后继 PC，MRET 则使用 mepc。
-  io.out.bits.NextPC := Mux(PendingMDU, ActiveInst.snpc, CommitNextPC)
+  io.out.bits.NextPC :=
+    Mux(PendingMDU || FpPending, ActiveInst.snpc, CommitNextPC)
   io.out.bits.Rd := ActiveInst.Rd
   // 带异常标记的指令不得写回GPR;被中断压掉的指令(IrqCommit)也不得写回
   io.out.bits.RegisterWrite :=
@@ -543,7 +619,8 @@ class ysyx_26030103_EXU(
       Mux(ysyx_26030103_MDUOp.IsWordOp(ActiveInst.MDUOp),
         Sext32(MDURespResult(31, 0)), MDURespResult)
     else MDURespResult
-  io.out.bits.ALUResult := Mux(PendingMDU, MDUResultFinal, ALUUnit.io.result)
+  io.out.bits.ALUResult := Mux(PendingMDU, MDUResultFinal,
+    Mux(FpPending, FpRespBits.result(XLEN - 1, 0), ALUUnit.io.result))
   io.out.bits.VAddr := ALUUnit.io.result
   io.out.bits.LoadData := 0.U(XLEN.W) // 由MEM在访存完成后填写
   io.out.bits.CSRReadData := CSRUnit.io.CSR_rdata
@@ -560,6 +637,15 @@ class ysyx_26030103_EXU(
   io.out.bits.WidthSelect := ActiveInst.WidthSelect
   io.out.bits.LoadSigned := ActiveInst.LoadSigned
   io.out.bits.StoreData := ActiveInst.StoreData
+  // F/D：FPU 结果直接从这里写入 f 寄存器；FLW/FLD 的 FPWriteData 由
+  // LSU 在 load 完成时按 FP64 做 NaN-boxing。
+  io.out.bits.IsFP := ActiveInst.IsFP
+  io.out.bits.FPRegisterWrite :=
+    ActiveInst.FPRegisterWrite && !ActiveInstructionTrapValid &&
+      !CSRUnit.io.IrqCommit && !io.MemTrapCommit
+  io.out.bits.FPWriteData :=
+    Mux(FpPending, FpRespBits.result, ActiveInst.FPWriteData)
+  io.out.bits.FP64 := ActiveInst.FP64
   // A 扩展：把译码得到的原子标记/操作号透传到 LSU。
   io.out.bits.IsAtomic := ActiveInst.IsAtomic
   io.out.bits.AtomicOp := ActiveInst.AtomicOp
@@ -634,9 +720,24 @@ class ysyx_26030103_EXU(
   io.CSRCommit := InstructionCommit &&
     (inst.IsCsrrw || inst.IsCsrrs || inst.IsCsrrc ||
       (if (hasS) inst.IsSfenceVma else false.B))
-  io.FlushIF := io.Redirect || io.ExceptionTaken
+  val LocalFlush =
+    (InstructionCommit && Redirect) || CSRUnit.io.ExceptionTaken
+  io.FlushIF := LocalFlush
+  // 更老指令的精确 trap/重定向必须取消在途 FPU 请求（尤其 DIV/SQRT）。
+  FpuFlush := LocalFlush
 
-  io.HazardValid := io.in.valid || PendingMDU
+  // FPU 运算在 EXU 提交点累积 fflags。此时所有更老 MEM 指令已排空
+  // （RequiresPipelineDrain），因此不会出现“更老访存随后才 trap”的情况。
+  val FpFlagsCommit =
+    FpPending && FpRespFire && !CSRUnit.io.IrqCommit
+  io.FPCommit := FpFlagsCommit
+  io.FPCommitFlags := Mux(FpPending, FpRespBits.fflags, 0.U(5.W))
+  CSRUnit.io.FPCommit := FpFlagsCommit
+  CSRUnit.io.FPFlags := FpRespBits.fflags
+  CSRUnit.io.FPStateDirtyCommit := io.FPStateDirtyCommit
+  io.CSRFrm := CSRUnit.io.Frm
+
+  io.HazardValid := io.in.valid || PendingMDU || FpPending
   io.HazardRd := ActiveInst.Rd
   // 带异常标记的指令不会真正写回,不应让IDU白白等它;被中断压掉的指令同理
   io.HazardRegWrite :=
@@ -652,14 +753,33 @@ class ysyx_26030103_EXU(
     PendingMDU,
     MDUResultFinal,
     Mux(
-      ActiveInst.WBSelect === 2.U,
-      ActiveInst.snpc,
-      Mux(ActiveInst.WBSelect === 3.U, CSRUnit.io.CSR_rdata, ALUUnit.io.result)
+      FpPending,
+      FpRespBits.result(XLEN - 1, 0),
+      Mux(
+        ActiveInst.WBSelect === 2.U,
+        ActiveInst.snpc,
+        Mux(ActiveInst.WBSelect === 3.U, CSRUnit.io.CSR_rdata, ALUUnit.io.result)
+      )
     )
   )
-  // 可转发条件: 会写rd,且不是load(load要等MEM完成)
+  // 可转发条件: 会写rd,且不是load(load要等MEM完成)；FPU 运算必须
+  // 等响应 valid，不能把尚未发射/尚未返回的占位 ALU 结果前递给
+  // 紧随其后的分支或整数消费者（FCVT/FCMP/FCLASS 写 GPR）。
   io.FwdReady := io.HazardValid && io.HazardRegWrite && !ActiveInst.MemoryValid &&
-    (!ActiveIsMDU || MDURespValid)
+    (!ActiveIsMDU || MDURespValid) &&
+    (!ActiveInst.IsFPU || (FpPending && FpRespValid))
+  // 浮点写口转发。Fcvt/Fmv/比较写 GPR 时 HazardFPRegWrite=0；FLW/FLD
+  // 的数据在 MEM 级才可用，因此 EXU 不声明 FP 转发 ready。FPU 运算
+  // 在请求尚未返回（甚至尚未发射）时也不能声称可转发，否则 IDU 会把
+  // IDU 侧的占位 FPWriteData(0) 当结果前递。
+  io.HazardFPValid := io.in.valid || PendingMDU || FpPending
+  io.HazardFPRd := ActiveInst.Rd
+  io.HazardFPRegWrite :=
+    ActiveInst.FPRegisterWrite && !ActiveInstructionTrapValid &&
+      !CSRUnit.io.IrqCommit && !io.MemTrapCommit
+  io.FwdFPData := Mux(FpPending, FpRespBits.result, ActiveInst.FPWriteData)
+  io.FwdFPReady := io.HazardFPValid && io.HazardFPRegWrite &&
+    !ActiveInst.MemoryValid && FpPending && FpRespValid
 
   // 分支BTB只保存BTFN有可能预测taken的后向条件分支。前向表项即使命中，
   // PredictorSelect仍会选择顺序PC；将它写入只会占用容量并驱逐有用的

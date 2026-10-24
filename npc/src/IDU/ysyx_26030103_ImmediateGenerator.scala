@@ -40,10 +40,11 @@ class ysyx_26030103_ImmediateGenerator(val XLEN: Int = 32) extends Module {
   val u_ext = SignExtend(u_imm, 32)
   io.Immediate := 0.U(XLEN.W)
   switch(opcode) {
-    is(OPCODE_Immediate, OPCODE_ImmediateWord, OPCODE_Immediate_Lxxx, OPCODE_Immediate_Bxxx) {
+    is(OPCODE_Immediate, OPCODE_ImmediateWord, OPCODE_Immediate_Lxxx,
+      OPCODE_Immediate_Bxxx, OPCODE_LoadFP) {
       io.Immediate := i_ext
     }
-    is(OPCODE_Store) {
+    is(OPCODE_Store, OPCODE_StoreFP) {
       io.Immediate := s_ext
     }
     is(OPCODE_Branch) {

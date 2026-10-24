@@ -46,6 +46,14 @@ class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
   val IsAtomic = Bool()
   val AtomicOp = UInt(ysyx_26030103_AtomicOp.Width.W)
 
+  // F/D 扩展：IsFP 表示任意浮点指令（用于 retire 时 mstatus.FS=Dirty），
+  // FPRegisterWrite/FPWriteData 描述独立的 f 寄存器写口。FP64 区分
+  // FLD/FSD 与 FLW/FSW，LSU 用它在 load 完成时做 NaN-boxing。
+  val IsFP = Bool()
+  val FPRegisterWrite = Bool()
+  val FPWriteData = UInt(64.W)
+  val FP64 = Bool()
+
   // 异常信息(MEM故障提交时写mepc用)
   val pc = UInt(XLEN.W)
   val ExceptionValid = Bool()

@@ -72,6 +72,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     )
   )
   val gpr = Module(new ysyx_26030103_GPR(XLEN, config.EnableDynamicGPRDebug))
+  // 浮点寄存器堆独立于 GPR；FLEN=64 固定 32 个 f 寄存器。
+  val fprOpt =
+    if (config.UseF) Some(Module(new ysyx_26030103_FPR(config.FPULen)))
+    else None
   val icache = ysyx_26030103_ICacheFactory.Create(config)
   val arbiter = Module(
     new ysyx_26030103_AXI5Arbiter(
@@ -888,6 +892,24 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   idu.io.ReadDATA2 := gpr.io.ReadDATA2
   gpr.io.Read1SELECT := idu.io.Read1SELECT
   gpr.io.Read2SELECT := idu.io.Read2SELECT
+  // 浮点寄存器堆：三个组合读口 + WBU 单写口。
+  fprOpt match {
+    case Some(fpr) =>
+      fpr.io.raddr1 := idu.io.Read1FSELECT
+      fpr.io.raddr2 := idu.io.Read2FSELECT
+      fpr.io.raddr3 := idu.io.Read3FSELECT
+      idu.io.ReadFPR1 := fpr.io.rdata1.pad(64)
+      idu.io.ReadFPR2 := fpr.io.rdata2.pad(64)
+      idu.io.ReadFPR3 := fpr.io.rdata3.pad(64)
+      fpr.io.wen := wbu.io.FPWriteEN
+      fpr.io.waddr := wbu.io.FPWriteSELECT
+      fpr.io.wdata := wbu.io.FPWriteData
+    case None =>
+      idu.io.ReadFPR1 := 0.U
+      idu.io.ReadFPR2 := 0.U
+      idu.io.ReadFPR3 := 0.U
+  }
+  idu.io.Frm := exu.io.CSRFrm
   // 年长访存事务与年长普通指令必须分开。控制转移只需等
   // 可能故障的访存，不应被LSU中单拍直通的普通ALU指令拖慢；
   // IRQ/CSR/异常则仍使用全流水级Busy保证精确顺序。
@@ -915,6 +937,26 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   idu.io.me2_memop := lsu.io.Hazard2MemOp
   idu.io.me2_fwd_ready := lsu.io.Hazard2FwdReady
   idu.io.me2_fwd_data := lsu.io.Hazard2FwdData
+  // 浮点转发/冒险端口。
+  idu.io.ex_fp_valid := exu.io.HazardFPValid
+  idu.io.ex_fp_rd := exu.io.HazardFPRd
+  idu.io.ex_fp_regWrite := exu.io.HazardFPRegWrite
+  idu.io.ex_fp_fwd_ready := exu.io.FwdFPReady
+  idu.io.ex_fp_fwd_data := exu.io.FwdFPData
+  idu.io.me_fp_valid := lsu.io.HazardValid
+  idu.io.me_fp_rd := lsu.io.HazardFPRd
+  idu.io.me_fp_regWrite := lsu.io.HazardFPRegWrite
+  idu.io.me_fp_fwd_ready := lsu.io.FwdFPReady
+  idu.io.me_fp_fwd_data := lsu.io.FwdFPData
+  idu.io.me2_fp_valid := lsu.io.Hazard2Valid
+  idu.io.me2_fp_rd := lsu.io.Hazard2FPRd
+  idu.io.me2_fp_regWrite := lsu.io.Hazard2FPRegWrite
+  idu.io.me2_fp_fwd_ready := lsu.io.Hazard2FwdFPReady
+  idu.io.me2_fp_fwd_data := lsu.io.Hazard2FwdFPData
+  idu.io.wb_fp_valid := wbu.io.in.valid
+  idu.io.wb_fp_rd := wbu.io.in.bits.Rd
+  idu.io.wb_fp_regWrite := wbu.io.in.bits.FPRegisterWrite
+  idu.io.wb_fp_fwd_data := wbu.io.FPWriteData
   ifu.io.Redirect := exu.io.Redirect
   ifu.io.RedirectTarget := exu.io.RedirectTarget
   ifu.io.ExceptionTaken := exu.io.ExceptionTaken
@@ -966,6 +1008,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   gpr.io.WriteSELECT := wbu.io.WriteSELECT
   gpr.io.WriteEN := wbu.io.WriteEN
   gpr.io.wdata := wbu.io.wdata
+  // FP 指令在 WBU 真正退休时才置 FS=Dirty（故障 load/store 不置）。
+  exu.io.FPStateDirtyCommit := wbu.io.FPCommit
   // 临时新加的处理中断的
   exu.io.Interrupt := io.interrupt || plic.external_irq
   exu.io.TimerInterrupt := clint.io.timer_irq
