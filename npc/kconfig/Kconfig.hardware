@@ -71,9 +71,8 @@ menu "硬件配置"
         “FPU 后端”菜单）；FPU_IMPL=none 时会在配置契约和
         elaboration 阶段明确报错，不会生成只有 ISA 标志、没有浮点
         数据通路的半成品。
-        Berkeley HardFloat 已通过 vendor 源码接入，可真正执行 RV32F/
-        RV32D/RV64F/RV64D；Fudian 仍只有配置骨架，选择它会在 elaboration
-        阶段明确报错，绝不假装支持。
+        Berkeley HardFloat 与 Fudian 均已通过 vendor 源码接入，可真正
+        执行 RV32F/RV32D/RV64F/RV64D；具体后端由 FPU 后端菜单选择。
         修改后需重新 make verilog。
 
     config RISCV_D
@@ -143,20 +142,26 @@ menu "硬件配置"
         range 0 8
         default 0
         help
-          后端公开的流水深度参数：0 表示组合/单拍路径，数值越大允许
-          后端插入越多流水寄存器。它只描述公开时序契约，不暴露 vendor
-          内部状态机或迭代计数器。实际延迟由后端在 FpuResponse 握手
-          前完成，上层必须按 Decoupled 处理可变延迟。
+          响应边界的公开流水深度：0 表示后端的组合/单拍路径，不增加
+          额外寄存器；N>0 时在 FpuResponse 与顶层端口之间插入 N 级
+          valid/ready 寄存器。每级只在整条下游 ready 链允许前进时移动，
+          因此反压会正确传回后端；flush 会清空全部在途级。该参数不改变
+          F/D 指令语义，也不暴露 vendor 内部状态机或迭代计数器。上层
+          必须按 Decoupled 处理可变延迟。
 
       config FPU_FMA
         bool "融合乘加（FMA）数据通路"
         depends on RISCV_F
         default y
         help
-          选择后端是否实例化融合乘加数据通路。关闭时后端仍必须按
-          RISC-V 语义实现 FMADD/FMSUB/FNMADD/FNMSUB（可用分离乘法+
-          加法并在单次舍入中完成）；无法保持语义的后端应在
-          elaboration 明确拒绝，不能把未实现指令伪装成可用。
+          开启时后端实例化 vendor 融合乘加单元（HardFloat 的
+          MulAddRecFN 或 Fudian 的 FCMA）。关闭时不得继续使用同一个
+          融合单元：后端改用基于 vendor 基础模块（Multiplier、
+          ShiftRightJam、RoundingUnit）实现的“精确乘积 + 定点对齐
+          加法 + 单次舍入”数据通路，仍按 RISC-V 语义实现
+          FMADD/FMSUB/FNMADD/FNMSUB 并产生正确的 NV/OF/UF/NX。
+          两种结构在配置摘要（fma=fused/exact）和生成 RTL 的模块名
+          中可以区分。
 
       config FPU_DIVSQRT
         bool "硬件除法/开方单元"
@@ -214,9 +219,14 @@ menu "硬件配置"
           bool "F/D 共享除法/开方迭代单元"
           default y
           help
-            Fudian FDIV 同时支持除法与开方。开启时 F 与 D 共享同一
-            迭代单元以节省面积；关闭时每个格式各实例化一个。该参数
-            是集成层公开选择，不暴露 Fudian 内部的迭代状态/CSA 细节。
+            Fudian FDIV 同时支持除法与开方。开启且启用 D 时，F/D 共用
+            同一套 D 精度 FDIV 迭代硬件：F 操作数精确提升到 D，迭代与
+            第一次舍入在 D 精度完成，再按原舍入模式回舍到 S，并按 S
+            结果重算 UF/NX/OF。53 位中间精度满足 2*24+2 的双舍入安全
+            条件，边界/随机回归会与独立 F 引擎及 NEMU 比对。关闭时 F
+            与 D 各实例化一个独立 FDIV（每个格式内部仍共享 FDIV/FSQRT）。
+            该参数是集成层公开选择，不暴露 Fudian 内部的迭代状态/CSA
+            细节。
       endmenu
     endmenu
 

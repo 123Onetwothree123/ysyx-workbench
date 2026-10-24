@@ -341,8 +341,27 @@ run_negative() {
     esac
 }
 
-run_mismatch() {
-    local xlen="$1" binary="$2" guest="$3" shim="$4" real_ref="$5" logdir="$6"
+run_fdiv_shared() {
+    local xlen="$1" binary="$2" guest="$3" ref="$4" logdir="$5"
+    local log="$logdir/fdiv-shared-rv${xlen}.log"
+
+    require_file "$binary" "RV${xlen} NPC binary"
+    require_file "$guest" "RV${xlen} 共享 FDIV/FSQRT 压力镜像"
+    require_file "$ref" "RV${xlen} NEMU REF"
+
+    local status=0
+    run_npc 240 "$log" "$binary" "$guest" --diff "$ref"
+    status="$LAST_STATUS"
+    [[ "$status" -eq 0 ]] || {
+        show_first_divergence "$log"
+        show_log "$log"
+        fail "RV${xlen} 共享 FDIV/FSQRT 压力 DiffTest 运行失败（exit=$status）"
+    }
+    check_diff_log "$log"
+    echo "[PASS] RV${xlen} 共享 FDIV/FSQRT 边界+随机 DiffTest"
+}
+
+run_mismatch() {    local xlen="$1" binary="$2" guest="$3" shim="$4" real_ref="$5" logdir="$6"
     local log="$logdir/mismatch-rv${xlen}.log"
 
     require_file "$binary" "RV${xlen} NPC binary"
@@ -522,6 +541,10 @@ case "$mode" in
     mismatch)
         [[ $# -eq 6 ]] || { echo "mismatch 需要 6 个参数" >&2; exit 2; }
         run_mismatch "$@"
+        ;;
+    fdiv-shared)
+        [[ $# -eq 5 ]] || { echo "fdiv-shared 需要 5 个参数" >&2; exit 2; }
+        run_fdiv_shared "$@"
         ;;
     config)
         [[ $# -eq 2 ]] || { echo "config 需要 2 个参数" >&2; exit 2; }

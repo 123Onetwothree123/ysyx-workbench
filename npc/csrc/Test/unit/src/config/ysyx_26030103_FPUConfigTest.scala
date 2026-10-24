@@ -224,6 +224,37 @@ class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
     )
   }
 
+  it should "在摘要中区分 fused/exact FMA 与流水深度" in {
+    val fused = ysyx_26030103_FPUProfile(Pipeline = 0, FMA = true)
+    fused.Describe(ysyx_26030103_FPUImpl.Fudian) should include("fma=fused")
+    fused.Describe(ysyx_26030103_FPUImpl.HardFloat) should include("fma=fused")
+    val exact = ysyx_26030103_FPUProfile(Pipeline = 4, FMA = false)
+    exact.Describe(ysyx_26030103_FPUImpl.Fudian) should include("fma=exact")
+    exact.Describe(ysyx_26030103_FPUImpl.Fudian) should include("pipeline=4")
+    exact.Describe(ysyx_26030103_FPUImpl.HardFloat) should include("fma=exact")
+    exact.Describe(ysyx_26030103_FPUImpl.HardFloat) should include("pipeline=4")
+  }
+
+  it should "接受 FMA=n 与 Fudian 独立 DIV/SQRT 配置" in {
+    val config = ysyx_26030103_NPCConfig(
+      XLEN = 64,
+      AddressWidth = 64,
+      UseF = true,
+      UseD = true,
+      FPUImpl = ysyx_26030103_FPUImpl.Fudian,
+      FPUProfile = ysyx_26030103_FPUProfile(
+        Pipeline = 3,
+        FMA = false,
+        Fudian = ysyx_26030103_FudianParams(SharedDivSqrt = false)
+      )
+    )
+    config.FPUProfile.FMA should be(false)
+    config.FPUProfile.Pipeline should be(3)
+    config.Describe should include("fma=exact")
+    config.Describe should include("pipeline=3")
+    config.Describe should include("shared_divsqrt=off")
+  }
+
   "ysyx_26030103_FPU 工厂" should "对未接入后端明确报错" in {
     val config = ysyx_26030103_NPCConfig()
     // 工厂自身会先检查 RISCV_F，不允许在软浮点配置下静默创建。

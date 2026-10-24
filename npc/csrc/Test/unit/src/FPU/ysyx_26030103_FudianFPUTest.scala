@@ -86,12 +86,14 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
       rm: Int,
       rs1: BigInt,
       rs2: BigInt = 0,
-      rs3: BigInt = 0
+      rs3: BigInt = 0,
+      intWord: Boolean = false
   ): (BigInt, BigInt) = {
     waitUntil(dut, dut.io.req.ready.peek().litToBoolean)
     dut.io.req.bits.op.poke(op.U(ysyx_26030103_FpuOp.Width.W))
     dut.io.req.bits.fmt.poke(fmt.U(ysyx_26030103_FpuFmt.Width.W))
     dut.io.req.bits.rm.poke(rm.U(ysyx_26030103_FpuRm.Width.W))
+    dut.io.req.bits.intWord.poke(intWord.B)
     dut.io.req.bits.rs1.poke(rs1.U(flen.W))
     dut.io.req.bits.rs2.poke(rs2.U(flen.W))
     dut.io.req.bits.rs3.poke(rs3.U(flen.W))
@@ -312,6 +314,21 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
           BigInt(-42) & BigInt("ffffffffffffffff", 16), NX))
         send(dut, 64, ysyx_26030103_FpuOp.FCvtUIntToFp.Int, 1,
           ysyx_26030103_FpuRm.RNE.Int, 42) should be((f64(42.0), 0))
+        // W/WU 只使用低 32 位：RV64 下 -1 的 FCVT.D.WU 是 0xffffffff。
+        send(dut, 64, ysyx_26030103_FpuOp.FCvtUIntToFp.Int, 1,
+          ysyx_26030103_FpuRm.RNE.Int, BigInt("ffffffffffffffff", 16),
+          intWord = true) should be((f64(4294967295.0), 0))
+        send(dut, 64, ysyx_26030103_FpuOp.FCvtIntToFp.Int, 1,
+          ysyx_26030103_FpuRm.RNE.Int, BigInt("fffffffffffffff9", 16),
+          intWord = true) should be((f64(-7.0), 0))
+        // FCVT.W.D 负结果要符号扩展到 XLEN；WU 仍为零扩展并只报 NV。
+        send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToInt.Int, 1,
+          ysyx_26030103_FpuRm.RTZ.Int, f64(-1.5),
+          intWord = true) should be((
+          BigInt("ffffffffffffffff", 16), NX))
+        send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToUInt.Int, 1,
+          ysyx_26030103_FpuRm.RTZ.Int, f64(-1.0),
+          intWord = true) should be((BigInt(0), NV))
         send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToUInt.Int, 1,
           ysyx_26030103_FpuRm.RTZ.Int, f64(-1.0)) should be((
           BigInt(0), NV))

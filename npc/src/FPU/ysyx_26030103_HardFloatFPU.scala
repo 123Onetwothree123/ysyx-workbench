@@ -15,14 +15,18 @@ import hardfloat._
   *   - HardFloat 的 5 位 exceptionFlags 位序与 RISC-V fflags 相同。
   *
   * 加/乘/FMA/比较/转换使用 vendor 的组合模块并在本层寄存结果；
-  * DIV/SQRT 使用 DivSqrtRecFN_small 的多周期握手。请求/响应均遵守
-  * Decoupled 反压，CPU 不依赖固定 latency。
+  * `FPU_FMA=y` 时 FMA 使用 `MulAddRecFN`，`=n` 时改用基于 vendor
+  * 基础模块的单次舍入非融合 ExactFMA；DIV/SQRT 使用
+  * DivSqrtRecFN_small 的多周期握手。请求/响应均遵守 Decoupled 反压，
+  * `FPU_PIPELINE=N` 在响应边界增加 N 级 valid/ready 寄存器，CPU 不
+  * 依赖固定 latency。
   */
 class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
     extends ysyx_26030103_FPU(Config) {
   private val FLEN = Config.FPULen
   private val HasD = Config.UseD && FLEN == 64
   private val Params = Config.FPUProfile.HardFloat
+  private val UseFMA = Config.FPUProfile.FMA
   require(Params.Recode,
     "Berkeley HardFloat 只能使用 recoded 内部格式；FPU_HARDFLOAT_RECODE=n 不受支持")
 
@@ -109,8 +113,8 @@ class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
   mulD.io.roundingMode := rm
   mulD.io.detectTininess := DetectTininessBool
 
-  val fmaS = Module(new MulAddRecFN(ExpS, SigS))
-  val fmaD = Module(new MulAddRecFN(ExpD, SigD))
+  val fmaS = if (UseFMA) Some(Module(new MulAddRecFN(ExpS, SigS))) else None
+  val fmaD = if (UseFMA) Some(Module(new MulAddRecFN(ExpD, SigD))) else None
   private def FmaOp(Operation: UInt): UInt = MuxLookup(Operation, 0.U(2.W))(
     Seq(
       ysyx_26030103_FpuOp.FFma -> 0.U(2.W),
@@ -121,18 +125,49 @@ class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
       ysyx_26030103_FpuOp.FFnma -> 3.U(2.W)
     )
   )
-  fmaS.io.op := FmaOp(op)
-  fmaS.io.a := aRecS
-  fmaS.io.b := bRecS
-  fmaS.io.c := cRecS
-  fmaS.io.roundingMode := rm
-  fmaS.io.detectTininess := DetectTininessUInt
-  fmaD.io.op := FmaOp(op)
-  fmaD.io.a := aRecD
-  fmaD.io.b := bRecD
-  fmaD.io.c := cRecD
-  fmaD.io.roundingMode := rm
-  fmaD.io.detectTininess := DetectTininessUInt
+  if (UseFMA) {
+    fmaS.get.io.op := FmaOp(op)
+    fmaS.get.io.a := aRecS
+    fmaS.get.io.b := bRecS
+    fmaS.get.io.c := cRecS
+    fmaS.get.io.roundingMode := rm
+    fmaS.get.io.detectTininess := DetectTininessUInt
+    fmaD.get.io.op := FmaOp(op)
+    fmaD.get.io.a := aRecD
+    fmaD.get.io.b := bRecD
+    fmaD.get.io.c := cRecD
+    fmaD.get.io.roundingMode := rm
+    fmaD.get.io.detectTininess := DetectTininessUInt
+  }
+
+  // FPU_FMA=n：不使用 vendor 融合乘加，改用 ExactFMA 的“精确乘积 +
+  // 定点对齐加法 + 单次舍入”数据通路。两种结构在生成 RTL 中模块名不同。
+  val exactFmaS =
+    if (!UseFMA)
+      Some(Module(new ysyx_26030103_ExactFMA(
+        ExpS, SigS, Params.DetectTininessBeforeRounding)))
+    else None
+  val exactFmaD =
+    if (!UseFMA)
+      Some(Module(new ysyx_26030103_ExactFMA(
+        ExpD, SigD, Params.DetectTininessBeforeRounding)))
+    else None
+  private val FlipFmaA = op === ysyx_26030103_FpuOp.FFnms ||
+    op === ysyx_26030103_FpuOp.FFnma
+  private val FlipFmaC = op === ysyx_26030103_FpuOp.FFms ||
+    op === ysyx_26030103_FpuOp.FFnma
+  private def FlipSign(Value: UInt, Width: Int): UInt =
+    Value ^ Cat(1.U(1.W), 0.U((Width - 1).W))
+  if (!UseFMA) {
+    exactFmaS.get.io.a := Mux(FlipFmaA, FlipSign(aS, 32), aS)
+    exactFmaS.get.io.b := bS
+    exactFmaS.get.io.c := Mux(FlipFmaC, FlipSign(cS, 32), cS)
+    exactFmaS.get.io.rm := rm
+    exactFmaD.get.io.a := Mux(FlipFmaA, FlipSign(aD, 64), aD)
+    exactFmaD.get.io.b := bD
+    exactFmaD.get.io.c := Mux(FlipFmaC, FlipSign(cD, 64), cD)
+    exactFmaD.get.io.rm := rm
+  }
 
   // 比较器同时服务 FCMP 与 FMIN/FMAX；signaling 由操作选择。
   val cmpS = Module(new CompareRecFN(ExpS, SigS))
@@ -357,6 +392,17 @@ class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
   val isDivSqrt = op === ysyx_26030103_FpuOp.FDiv ||
     op === ysyx_26030103_FpuOp.FSqrt
 
+  val fmaResultS: UInt =
+    if (UseFMA) fNFromRecFN(ExpS, SigS, fmaS.get.io.out)
+    else exactFmaS.get.io.result
+  val fmaResultD: UInt =
+    if (UseFMA) fNFromRecFN(ExpD, SigD, fmaD.get.io.out)
+    else exactFmaD.get.io.result
+  val fmaFlagsS: UInt =
+    if (UseFMA) fmaS.get.io.exceptionFlags else exactFmaS.get.io.fflags
+  val fmaFlagsD: UInt =
+    if (UseFMA) fmaD.get.io.exceptionFlags else exactFmaD.get.io.fflags
+
   switch(op) {
     is(ysyx_26030103_FpuOp.FAdd, ysyx_26030103_FpuOp.FSub) {
       fastResult := Mux(fmtS,
@@ -372,10 +418,8 @@ class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
     }
     is(ysyx_26030103_FpuOp.FFma, ysyx_26030103_FpuOp.FFms,
       ysyx_26030103_FpuOp.FFnma, ysyx_26030103_FpuOp.FFnms) {
-      fastResult := Mux(fmtS,
-        BoxF32(fNFromRecFN(ExpS, SigS, fmaS.io.out)),
-        BoxD(fNFromRecFN(ExpD, SigD, fmaD.io.out)))
-      fastFlags := Mux(fmtS, fmaS.io.exceptionFlags, fmaD.io.exceptionFlags)
+      fastResult := Mux(fmtS, BoxF32(fmaResultS), BoxD(fmaResultD))
+      fastFlags := Mux(fmtS, fmaFlagsS, fmaFlagsD)
     }
     is(ysyx_26030103_FpuOp.FSgnj, ysyx_26030103_FpuOp.FSgnjn,
       ysyx_26030103_FpuOp.FSgnjx) {
@@ -464,17 +508,29 @@ class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
   val divAbandoned = RegInit(false.B)
   val divStartedS = RegInit(false.B)
 
+  // 公开的 FPU_PIPELINE：0=原有组合/单拍路径，N>0 在响应边界插入 N 级
+  // valid/ready 寄存器。反压会沿 ready 链传回 respValid；flush 清空。
+  val respPipe =
+    Module(new ysyx_26030103_FpuResponsePipeline(FLEN, Config.FPUProfile.Pipeline))
+  respPipe.io.flush := io.flush
+  respPipe.io.in.valid := respValid
+  respPipe.io.in.bits.result := respResult
+  respPipe.io.in.bits.fflags := respFlags
+  io.resp <> respPipe.io.out
+  val respPipeReady = respPipe.io.in.ready
+
   val selectedDivReady = Mux(fmtS, divS.io.inReady, divD.io.inReady)
   val divRequestFire = io.req.valid && !respValid && !divActive &&
     isDivSqrt && selectedDivReady
-  divS.io.inValid := divRequestFire && fmtS
-  divD.io.inValid := divRequestFire && fmtD
+  divS.io.inValid := divRequestFire && fmtS && !io.flush
+  divD.io.inValid := divRequestFire && fmtD && !io.flush
   io.req.ready := !respValid && !divActive &&
     Mux(isDivSqrt, selectedDivReady, true.B)
 
   when(divRequestFire) {
     divActive := true.B
     divStartedS := fmtS
+    divAbandoned := false.B
   }
 
   val divOutValid = Mux(divStartedS,
@@ -501,7 +557,7 @@ class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
     respResult := fastResult
     respFlags := fastFlags
   }
-  when(io.resp.fire) {
+  when(respValid && respPipeReady) {
     respValid := false.B
   }
   when(io.flush) {
@@ -509,9 +565,7 @@ class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
     when(divActive) { divAbandoned := true.B }
   }
 
-  io.resp.valid := respValid
-  io.resp.bits.result := respResult
-  io.resp.bits.fflags := respFlags
+  // io.resp 已由响应流水级驱动，不再直接暴露 respValid。
 
   // 未使用的 compare 结果显式消费，避免 lint 误报。
   dontTouch(cmpS.io.gt)

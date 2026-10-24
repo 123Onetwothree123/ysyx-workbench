@@ -55,7 +55,12 @@ case class ysyx_26030103_HardFloatParams(
     DetectTininessBeforeRounding: Boolean = false
 )
 
-/** Fudian 的公开集成参数。 */
+/** Fudian 的公开集成参数。
+  *
+  * `SharedDivSqrt=true` 且启用 D 时，F/D 共用一套 D 精度 `FDIV` 迭代
+  * 硬件：F 输入精确提升到 D，结果按请求舍入模式回舍到 S；`false` 时
+  * F 与 D 各保留一套独立 `FDIV`。
+  */
 case class ysyx_26030103_FudianParams(
     SharedDivSqrt: Boolean = true
 )
@@ -64,6 +69,9 @@ case class ysyx_26030103_FudianParams(
   *
   * `FPUImpl`/`FPULen` 单独放在 NPCConfig 顶层，便于上层快速判断是否
   * 启用以及寄存器宽度；本 profile 只承载实现相关的公开调优参数。
+  *
+  * `Pipeline` 是响应边界真实有效的流水级数；`FMA` 选择 vendor 融合
+  * 乘加（on）或基于 vendor 基础模块的单次舍入非融合数据通路（off）。
   */
 case class ysyx_26030103_FPUProfile(
     Pipeline: Int = 0,
@@ -82,12 +90,14 @@ case class ysyx_26030103_FPUProfile(
   def Describe(Impl: ysyx_26030103_FPUImpl): String = Impl match {
     case ysyx_26030103_FPUImpl.None => "none"
     case ysyx_26030103_FPUImpl.HardFloat =>
-      s"pipeline=$Pipeline,fma=${OnOff(FMA)},divsqrt=${OnOff(DivSqrt)}," +
+      s"pipeline=$Pipeline,fma=${if (FMA) "fused" else "exact"}," +
+        s"divsqrt=${OnOff(DivSqrt)}," +
         s"rounding=${OnOff(Rounding)},flags=${OnOff(Flags)}," +
         s"recode=${OnOff(HardFloat.Recode)}," +
         s"tininess=${if (HardFloat.DetectTininessBeforeRounding) "before" else "after"}"
     case ysyx_26030103_FPUImpl.Fudian =>
-      s"pipeline=$Pipeline,fma=${OnOff(FMA)},divsqrt=${OnOff(DivSqrt)}," +
+      s"pipeline=$Pipeline,fma=${if (FMA) "fused" else "exact"}," +
+        s"divsqrt=${OnOff(DivSqrt)}," +
         s"rounding=${OnOff(Rounding)},flags=${OnOff(Flags)}," +
         s"shared_divsqrt=${OnOff(Fudian.SharedDivSqrt)}"
     case ysyx_26030103_FPUImpl.External => "external(reserved)"

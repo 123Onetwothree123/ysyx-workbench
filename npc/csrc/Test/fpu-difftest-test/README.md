@@ -52,6 +52,15 @@ make -C npc/csrc/Test/fpu-difftest-test rv32 \
     REF_RV32=/path/to/riscv32-nemu-interpreter-so
 ```
 
+共享 FDIV/FSQRT 的边界+随机压力 DiffTest（RV64D，F/D 除法与开方，
+结果和 fcsr 逐笔进入 GPR，由 NEMU 逐退休比对）：
+
+```bash
+make -C npc/csrc/Test/fpu-difftest-test fdiv-shared \
+    BIN_RV64=/path/to/rv64-npc \
+    REF_RV64=/path/to/riscv64-nemu-interpreter-so
+```
+
 负向 `RISCV_F=n` / `RISCV_D=n`（必须显式给禁用 F 或 D 的 DUT）：
 
 ```bash
@@ -174,7 +183,7 @@ make -C npc/csrc/Test/fpu-difftest-test test STRICT=1
    - 错误信息应包含 `RISCV_D`/`RISCV_F`/`FPU_FLEN` 等关键字，便于测试
      区分真实规则与“占位未实现”错误。
 
-## 当前状态（NPC 接入浮点 DiffTest ABI 后）
+## 当前状态（FPU 参数与浮点 DiffTest ABI 接入后）
 
 - 镜像构建和 ELF 审计：PASS；
 - RV64D 正向 DiffTest：DUT 与 NEMU REF 均导出浮点 ABI 时逐退休比较
@@ -188,6 +197,11 @@ make -C npc/csrc/Test/fpu-difftest-test test STRICT=1
   `npc/csrc/Test/fullsoc-fp-debug-test` 用端口级探针和 `--diff` 最小 guest
   验证 f2/f3、fcsr、mcause/mtval，日志必须出现
   `DiffTest: 浮点状态 ABI ON` 且不得出现 tval 降级告警；
+- `FPU_FMA=n` 的非融合 ExactFMA、`FPU_PIPELINE=1..8` 的响应流水、
+  `FPU_FUDIAN_SHARED_DIVSQRT` 的共享 F/D 除法/开方均有单元/定向测试；
+- 共享 FDIV/FSQRT 压力 DiffTest：PASS（`make fdiv-shared`，边界+随机
+  F/D 除法/开方，结果和 fcsr 逐笔进入 GPR 与 NEMU 比对）；
+- F/D 探针：PASS（F/D 均可执行，首条浮点指令后 `mstatus.FS` 进入 Dirty）；
 - `RISCV_F=n` 负向与配置错误检查：沿用主线测试。
 
 测试资产同时修正了三处自身错误：probe 的 8 字节 scratch 对齐、
