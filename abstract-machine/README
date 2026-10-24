@@ -53,6 +53,17 @@ AM 只委托 STIP（cause 5），因此该配置下不会产生时钟中断，�
 的 NPC 配置，这属于硬件配置选择，AM 不会把 M 模式 MTIP 冒充成
 S 模式 STIP。
 
+Nanos-lite + Navy-apps 的 RV64GC 使用方式：
+
+  ARCH=riscv64gc-npc  ->  ISA=riscv64gc  ->  navy-apps/scripts/riscv64gc.mk
+  ISA=riscv64gc       ->  -march=rv64gc_zicsr_zifencei -mabi=lp64d
+
+Nanos-lite 的 `update` 会把 `ISA=riscv64gc VME=1` 传给 Navy-apps，
+用户程序和内核因此使用同一套 lp64d ABI。NPC 侧需要
+`make rv64_nanos_gc_defconfig`（RV64IMAFDC、Sv39、S/U、
+ICache/DCache、direct STIP），它不构建 Linux。完整命令见
+nanos-lite/README.md 和 navy-apps/README.md。
+
 CONTACTS
 
 Bug reports and suggestions go to Yanyan Jiang (jyy@nju.edu.cn) and Zihao 

@@ -185,7 +185,7 @@ APPS = pal
 else
 APPS =
 endif
-TESTS = dummy hello file-test bmp-test event-test timer-test spin sdl-test malloc-test
+TESTS = dummy hello file-test bmp-test event-test timer-test spin fp-test sdl-test malloc-test
 
 fsimg: $(addprefix apps/, $(APPS)) $(addprefix tests/, $(TESTS))
 	-for t in $^; do $(MAKE) -s -C $(NAVY_HOME)/$$t install; done

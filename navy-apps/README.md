@@ -70,9 +70,43 @@ make ISA=xxx ramdisk
 make ISA=native run mainargs="参数1 参数2 ..."
 ```
 
-### x86, mips32, riscv32, am_native (Nanos, Nanos-lite)
+### x86, mips32, riscv32, riscv64gc, am_native (Nanos, Nanos-lite)
 
 其中`am_native`是指在[AM项目](https://github.com/NJU-ProjectN/abstract-machine)的`native`上运行操作系统.
+
+#### riscv64gc (RV64GC / lp64d)
+
+`ISA=riscv64gc` 是 Nanos-lite 的 `ARCH=riscv64gc-npc` 自动选择的
+用户态目标，对应 `navy-apps/scripts/riscv64gc.mk`：
+
+* `-march=rv64gc_zicsr_zifencei`：用户程序可以包含 RVC 和 F/D 指令；
+* `-mabi=lp64d`：64 位指针 + 双精度硬浮点调用约定，绝不静默退化为
+  lp64 软浮点；
+* `-mcmodel=medany --no-relax -Ttext-segment $(LNK_ADDR)`：代码可放在
+  Sv39 的高地址窗口；Nanos-lite 传 `VME=1` 时 `LNK_ADDR=0x40000000`。
+
+单独构建或安装用户程序时必须带上 `VME=1`，否则会链接到
+`0x83000000`，无法被 Nanos-lite 的用户地址空间装入：
+
+```bash
+make ISA=riscv64gc VME=1
+make ISA=riscv64gc VME=1 install
+```
+
+如果同一个 `build/$(ISA)` 目录之前用不同的 `VME` 参数构建过，请先
+运行 `make clean` 再切换，避免复用到旧链接地址的目标文件。
+
+整个 ramdisk 由 Nanos-lite 驱动，不需要手工拼装：
+
+```bash
+cd ../nanos-lite
+make ARCH=riscv64gc-npc update   # 内部执行 make -C navy-apps ISA=riscv64gc VME=1 ramdisk
+make ARCH=riscv64gc-npc run
+```
+
+`tests/fp-test` 是 RV64GC 专用的第三个用户进程，执行
+`fdiv.d/fmul.d/fmadd.d/fcvt.d.l` 并打印 double 位模式；它只在
+RV64GC/lp64d 的 Nanos-lite 中装入，RV32 PA4.4 不受影响。
 
 ## 运行时环境
 

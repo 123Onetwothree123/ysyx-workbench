@@ -21,6 +21,13 @@ int main() {
 
 #ifdef HAS_CTE
   init_irq();
+  /*
+   * 初始化期间关闭 S 模式中断。RV64GC 需要装入三个 ELF 用户程序，
+   * 耗时可能超过一个 10ms 时间片；若 STIP 在 Context 尚未建立时
+   * 到达，schedule() 找不到可运行 PCB，只能 halt。用户上下文第一次
+   * sret 时会按保存的 SPIE 重新开中断，因此不影响后续抢占。
+   */
+  iset(false);
 #endif
 
   init_fs();

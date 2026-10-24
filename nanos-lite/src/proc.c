@@ -85,6 +85,18 @@ void init_proc() {
 
   context_uload(&pcb[1], "/bin/spin", NULL, NULL);
   pcb[1].pid = 2;
+
+#if defined(__riscv_xlen) && __riscv_xlen == 64 && \
+    defined(__riscv_flen) && __riscv_flen >= 64
+  /*
+   * RV64GC/lp64d 额外装入浮点用户程序：它在 U 模式真正执行
+   * fdiv.d/fmul.d/fadd.d 等指令，日志中的结果由 NPC 的 F/D 数据
+   * 通路算出。RV32 和 RV64IM 目标不进入这里，PA4.4 仍只有
+   * hello + spin 两个进程。
+   */
+  context_uload(&pcb[2], "/bin/fp-test", NULL, NULL);
+  pcb[2].pid = 3;
+#endif
 }
 
 Context* schedule(Context *prev) {
