@@ -56,3 +56,51 @@ DTB 源文件在 `npc/dts/npc.dts`，默认加载/传递地址
 CPU ISA、`mmu-type` 和 timebase 由 Kconfig 自动生成，`make dtb`
 可单独生成到 `build/dtb/`。Linux Image/initramfs 打包见
 `make rv64_linux_defconfig && make linux-image`（不会下载/编译 Linux）。
+
+## BusyBox rootfs / initramfs
+
+rootfs 默认关闭（`CONFIG_ROOTFS_ENABLE=n`）。当前只实现 BusyBox
+1.36.1，源码在 `vendor/busybox`，构建时不做网络下载。该流程只生成
+rootfs/initramfs，**不下载、编译或运行 Linux kernel**。
+
+```bash
+make menuconfig          # 根文件系统 (rootfs) -> 启用 rootfs -> BusyBox
+make rootfs
+```
+
+`ROOTFS_ENABLE=n` 时 `make rootfs` 会明确报错，不会静默跳过。主要
+Kconfig 选项：
+
+- `ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX`：默认 `riscv64-linux-gnu-`；
+- `ROOTFS_BUSYBOX_MARCH` / `ROOTFS_BUSYBOX_MABI`：默认 `rv64gc` / `lp64d`；
+- `ROOTFS_BUSYBOX_STATIC`：默认 y，当前只支持静态链接；
+- `ROOTFS_BUSYBOX_INIT_SCRIPT`：默认 y，生成 BusyBox sh 的 `/init`；
+  关闭后使用 `/sbin/init` 和最小 `/etc/inittab`；
+- `ROOTFS_BUSYBOX_APPLETS`：`/bin` 下创建的 applet 符号链接集合；
+- `ROOTFS_OUT_DIR`：默认 `build/rootfs`。
+
+构建脚本是 `scripts/build_rootfs_busybox.sh`，在
+`build/rootfs/busybox/` 做 out-of-tree 构建，不修改 `vendor/busybox`。
+输出：
+
+```text
+build/rootfs/busybox/busybox                  # 静态 RV64GC/lp64d BusyBox
+build/rootfs/tree/                            # 最小 rootfs 树
+build/rootfs/busybox-initramfs.cpio.gz        # newc + gzip
+build/rootfs/busybox-initramfs.cpio.gz.info   # 大小、sha256、版本、工具链、ABI
+```
+
+脚本会用 `readelf` 审计 ELF 是 64 位 RISC-V、double-float ABI、
+静态链接且没有动态解释器。检查与清理：
+
+```bash
+gzip -dc build/rootfs/busybox-initramfs.cpio.gz | cpio -it
+readelf -h build/rootfs/busybox/busybox
+readelf -A build/rootfs/busybox/busybox
+make rootfs-clean
+```
+
+剩余限制：镜像只包含 BusyBox 和空目录，不含内核模块、网络配置或
+设备节点；`/dev/console` 由 `/init` 在运行时创建。initramfs 没有
+写死加载地址，由内核/引导加载器自行决定放置位置；内核仍需由用户
+自行准备，并通过其 initramfs/initrd 加载机制传入该 cpio.gz。

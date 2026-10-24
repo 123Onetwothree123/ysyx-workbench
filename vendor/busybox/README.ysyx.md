@@ -42,6 +42,20 @@ ROOTFS_BUSYBOX
 vendor/busybox
 ```
 
+## 构建
+
+在 `npc/` 下打开 `CONFIG_ROOTFS_ENABLE=y` 后运行：
+
+```bash
+make rootfs
+```
+
+构建脚本 `npc/scripts/build_rootfs_busybox.sh` 使用
+`O=npc/build/rootfs/busybox` 做 out-of-tree 构建，目标为静态
+RV64GC/lp64d，不会在源码目录生成 `.config` 或对象文件。产物、
+`.info` 摘要和清理方式见 `npc/README.md` 的“BusyBox rootfs /
+initramfs”一节。构建过程不下载任何文件，也不编译内核。
+
 ## 更新方式
 
 1. 下载新版本 tarball，并校验 SHA-256。

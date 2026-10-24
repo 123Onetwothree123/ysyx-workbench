@@ -350,6 +350,86 @@ rustsbi-clean:
 
 .PHONY: rustsbi rustsbi-clean
 
+# ============================================================================
+# 根文件系统（BusyBox initramfs）
+#
+# ROOTFS_ENABLE=n 时 make rootfs 明确报错，不静默跳过。当前只实现
+# BusyBox，脚本读取 .config 并在 npc/build/rootfs/ 下做 out-of-tree
+# 构建，不修改 vendor/busybox。Linux kernel 的下载、编译和启动不在
+# 本目标范围内，rootfs 只产出可被内核加载的 initramfs。
+# ============================================================================
+ROOTFS_TYPE ?= $(or $(call remove_quote,$(CONFIG_ROOTFS_TYPE)),none)
+ROOTFS_OUT_DIR ?= $(abspath $(or $(call remove_quote,$(CONFIG_ROOTFS_OUT_DIR)),build/rootfs))
+ROOTFS_BUSYBOX_BUILD_DIR ?= $(ROOTFS_OUT_DIR)/busybox
+ROOTFS_TREE ?= $(ROOTFS_OUT_DIR)/tree
+ROOTFS_IMAGE ?= $(ROOTFS_OUT_DIR)/busybox-initramfs.cpio.gz
+ROOTFS_BUILD_SCRIPT ?= $(abspath scripts/build_rootfs_busybox.sh)
+ROOTFS_BUSYBOX_PATH ?= $(or $(call remove_quote,$(CONFIG_ROOTFS_BUSYBOX_PATH)),vendor/busybox)
+ROOTFS_BUSYBOX_VERSION ?= $(or $(call remove_quote,$(CONFIG_ROOTFS_BUSYBOX_VERSION)),1.36.1)
+ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX ?= $(or $(call remove_quote,$(CONFIG_ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX)),riscv64-linux-gnu-)
+ROOTFS_BUSYBOX_MARCH ?= $(or $(call remove_quote,$(CONFIG_ROOTFS_BUSYBOX_MARCH)),rv64gc)
+ROOTFS_BUSYBOX_MABI ?= $(or $(call remove_quote,$(CONFIG_ROOTFS_BUSYBOX_MABI)),lp64d)
+# auto.conf 只记录 y；缺失即表示 n，不能在这里回填 Kconfig 的 y 默认值。
+ROOTFS_BUSYBOX_STATIC ?= $(or $(CONFIG_ROOTFS_BUSYBOX_STATIC),n)
+ROOTFS_BUSYBOX_INIT_SCRIPT ?= $(or $(CONFIG_ROOTFS_BUSYBOX_INIT_SCRIPT),n)
+# applet 列表本身含空格，不能使用按词匹配的 remove_quote。
+ROOTFS_BUSYBOX_APPLETS ?= $(or $(subst ",,$(CONFIG_ROOTFS_BUSYBOX_APPLETS)),sh ls cat echo mount umount mkdir mknod ps kill sleep dmesg ifconfig ip vi grep sed awk find cp mv rm ln chmod chown df du free uname hostname reboot poweroff halt switch_root mdev insmod lsmod rmmod modprobe tar gzip gunzip wc head tail sort uniq tr cut printf test true false date id whoami env pwd touch sync init)
+ROOTFS_BUSYBOX_JOBS ?= $(or $(CONFIG_ROOTFS_BUSYBOX_JOBS),0)
+
+# 把配置一次传给实现脚本；脚本自身仍会读取 .config 并重新校验。
+ROOTFS_ENV = env \
+	ROOTFS_ENABLE="$(or $(CONFIG_ROOTFS_ENABLE),n)" \
+	ROOTFS_TYPE="$(ROOTFS_TYPE)" \
+	ROOTFS_BUSYBOX="$(or $(CONFIG_ROOTFS_BUSYBOX),n)" \
+	ROOTFS_BUSYBOX_PATH="$(ROOTFS_BUSYBOX_PATH)" \
+	ROOTFS_BUSYBOX_VERSION="$(ROOTFS_BUSYBOX_VERSION)" \
+	ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX="$(ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX)" \
+	ROOTFS_BUSYBOX_MARCH="$(ROOTFS_BUSYBOX_MARCH)" \
+	ROOTFS_BUSYBOX_MABI="$(ROOTFS_BUSYBOX_MABI)" \
+	ROOTFS_BUSYBOX_STATIC="$(ROOTFS_BUSYBOX_STATIC)" \
+	ROOTFS_BUSYBOX_INIT_SCRIPT="$(ROOTFS_BUSYBOX_INIT_SCRIPT)" \
+	ROOTFS_BUSYBOX_APPLETS="$(ROOTFS_BUSYBOX_APPLETS)" \
+	ROOTFS_BUSYBOX_JOBS="$(ROOTFS_BUSYBOX_JOBS)" \
+	ROOTFS_OUT_DIR="$(ROOTFS_OUT_DIR)" \
+	ROOTFS_BUSYBOX_BUILD_DIR="$(ROOTFS_BUSYBOX_BUILD_DIR)" \
+	ROOTFS_TREE="$(ROOTFS_TREE)" \
+	ROOTFS_IMAGE="$(ROOTFS_IMAGE)" \
+	NPC_HOME="$(NPC_HOME)" \
+	WORKBENCH_HOME="$(abspath $(NPC_HOME)/..)"
+
+define rootfs_check_enabled
+	@set -eu; \
+	if [ "$(or $(CONFIG_ROOTFS_ENABLE),n)" != "y" ]; then \
+		echo "错误：ROOTFS_ENABLE=n，rootfs 未启用。" >&2; \
+		echo "      先运行 'make menuconfig' 打开“根文件系统 (rootfs)”，或使用带 CONFIG_ROOTFS_ENABLE=y 的 defconfig。" >&2; \
+		exit 2; \
+	fi; \
+	if [ "$(ROOTFS_TYPE)" != "busybox" ]; then \
+		echo "错误：ROOTFS_ENABLE=y 但 ROOTFS_TYPE='$(ROOTFS_TYPE)'；当前只实现 BusyBox。" >&2; \
+		exit 2; \
+	fi
+endef
+
+.PHONY: rootfs rootfs-clean
+
+rootfs:
+	$(rootfs_check_enabled)
+	@set -eu; \
+	if [ ! -f "$(ROOTFS_BUILD_SCRIPT)" ]; then \
+		echo "错误：rootfs 构建脚本不存在：$(ROOTFS_BUILD_SCRIPT)" >&2; \
+		exit 2; \
+	fi; \
+	$(ROOTFS_ENV) "$(ROOTFS_BUILD_SCRIPT)"
+
+# 清理只删除 rootfs 输出目录（默认 build/rootfs），不触碰 vendor/busybox。
+rootfs-clean:
+	@set -eu; \
+	if [ ! -f "$(ROOTFS_BUILD_SCRIPT)" ]; then \
+		echo "错误：rootfs 构建脚本不存在：$(ROOTFS_BUILD_SCRIPT)" >&2; \
+		exit 2; \
+	fi; \
+	$(ROOTFS_ENV) "$(ROOTFS_BUILD_SCRIPT)" --clean
+
 # npc 独立仿真路径的复位 PC：0x80000000 + CACHE_PADDING（镜像在内存中整体后移 CACHE_PADDING 字节）
 NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(CACHE_PADDING))))
 CACHE_PADDING_CFLAGS = -DCONFIG_CACHE_PADDING=$(CACHE_PADDING)

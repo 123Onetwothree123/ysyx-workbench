@@ -4,10 +4,10 @@ menu "根文件系统 (rootfs)"
     bool "启用 rootfs"
     default n
     help
-      启用后，构建系统会使用下面选择的 rootfs 实现生成
-      initramfs 或 rootfs 镜像。当前 Linux 启动链尚未自动构建，
-      该开关只负责选择 rootfs 来源；Linux kernel 仍由用户自行
-      下载和编译。
+      启用后，make rootfs 会使用下面选择的 rootfs 实现生成
+      initramfs 镜像；关闭时 make rootfs 会明确报错。该开关只
+      负责 rootfs 前道工序，Linux kernel 仍由用户自行下载、
+      编译和启动，本构建不会联网或构建内核。
 
   choice
     prompt "rootfs 实现"
@@ -46,5 +46,77 @@ menu "根文件系统 (rootfs)"
     help
       仅用于记录和检查树内 BusyBox 源码版本。版本变化时必须
       同时更新 vendor/busybox 源码和校验信息。
+
+  config ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX
+    string "BusyBox 交叉工具链前缀"
+    depends on ROOTFS_BUSYBOX
+    default "riscv64-linux-gnu-"
+    help
+      编译 BusyBox 使用的工具链前缀。构建脚本要求
+      <前缀>gcc 存在，且 -dumpmachine 的目标为 riscv64；
+      不满足时明确报错。可用同名环境变量覆盖。
+
+  config ROOTFS_BUSYBOX_MARCH
+    string "BusyBox -march"
+    depends on ROOTFS_BUSYBOX
+    default "rv64gc"
+    help
+      传给 BusyBox 编译器的 -march。默认 rv64gc，覆盖
+      RV64GC（含 F/D 与压缩指令）。可用同名环境变量覆盖。
+
+  config ROOTFS_BUSYBOX_MABI
+    string "BusyBox -mabi"
+    depends on ROOTFS_BUSYBOX
+    default "lp64d"
+    help
+      传给 BusyBox 编译器的 -mabi。默认 lp64d，与 rv64gc
+      的硬件浮点调用约定一致。可用同名环境变量覆盖。
+
+  config ROOTFS_BUSYBOX_STATIC
+    bool "静态链接 BusyBox"
+    depends on ROOTFS_BUSYBOX
+    default y
+    help
+      最小 initramfs 只包含 BusyBox 本身，因此必须静态链接。
+      当前构建脚本只支持 y；设为 n 会明确报错，而不会生成
+      缺少动态加载器和 libc 的不可启动镜像。
+
+  config ROOTFS_BUSYBOX_INIT_SCRIPT
+    bool "生成 BusyBox sh /init 脚本"
+    depends on ROOTFS_BUSYBOX
+    default y
+    help
+      启用时生成 /init：用 BusyBox sh 挂载 proc/sys（失败不
+      致命）、创建 /dev/console，最后 exec /bin/sh。
+      关闭时不生成 /init，改为 /sbin/init -> BusyBox init 和
+      最小 /etc/inittab，由内核回退到 /sbin/init。
+
+  config ROOTFS_BUSYBOX_APPLETS
+    string "BusyBox applet 符号链接"
+    depends on ROOTFS_BUSYBOX
+    default "sh ls cat echo mount umount mkdir mknod ps kill sleep dmesg ifconfig ip vi grep sed awk find cp mv rm ln chmod chown df du free uname hostname reboot poweroff halt switch_root mdev insmod lsmod rmmod modprobe tar gzip gunzip wc head tail sort uniq tr cut printf test true false date id whoami env pwd touch sync init"
+    help
+      以空格分隔的 applet 名称，构建脚本在 rootfs 的 /bin 下
+      为它们创建指向 busybox 的相对符号链接。每个名称必须是
+      当前 BusyBox 配置实际启用的 applet，否则构建明确失败。
+      至少需要包含 sh（/init 的交互 shell）。
+
+  config ROOTFS_BUSYBOX_JOBS
+    int "BusyBox 并行任务数"
+    depends on ROOTFS_BUSYBOX
+    default 0
+    range 0 256
+    help
+      BusyBox 的 make -j 数量。0 表示使用 nproc（上限 256）。
+      可用同名环境变量覆盖。
+
+  config ROOTFS_OUT_DIR
+    string "rootfs 输出目录"
+    depends on ROOTFS_ENABLE
+    default "build/rootfs"
+    help
+      相对路径按 npc/ 解析；默认在 npc/build/rootfs 下存放
+      BusyBox out-of-tree 构建目录、rootfs 树和 initramfs。
+      可用同名环境变量覆盖。
 
 endmenu
