@@ -162,7 +162,7 @@ make sbi-test SBI_IMPL=rustsbi SBI_FDT_ENABLE=y   # RustSBI + DTB
 
 `sbi-test` 会：
 
-1. 用 `npc/test/opensbi_payload/` 构建最小 S 模式 payload，链接到
+1. 用 `npc/csrc/Test/sbi/opensbi_payload/` 构建最小 S 模式 payload，链接到
    `SBI_NEXT_ADDR`；
 2. 以 `FW_PAYLOAD` 方式把 payload 嵌入 `build/opensbi/test/fw.bin`；
 3. 用 direct-NPC 运行并检查 OpenSBI banner、S 模式入口、SBI console

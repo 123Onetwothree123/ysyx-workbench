@@ -12,9 +12,10 @@ Contents at a glance:
 * `src/GCD.scala` - GCD source file
 * `src/DecoupledGCD.scala` - another GCD source file
 * `src/Elaborate.scala` - wrapper file to call chisel command with the GCD module
-* `test/src/GCDSpec.scala` - GCD tester
+* `csrc/Test/unit/src` - Scala/Chisel 单元测试
+* `csrc/Test/sbi` - OpenSBI/RustSBI 冒烟测试资产
 
-Feel free to rename or delete files under `src/` and `test/` or use them as a reference/template.
+Feel free to rename or delete files under `src/` or use them as a reference/template.
 
 ## Getting Started
 

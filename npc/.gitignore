@@ -68,8 +68,6 @@ gcm.cache/
 !/rustsbi-fw/
 !/rustsbi-fw/**/*
 /rustsbi-fw/target/
-!/test/
-!/test/**/*
 !/README_RUSTSBI.md
 # NPC 设备树源文件（生成的 DTB 在 build/ 下，不跟踪）
 !/dts/

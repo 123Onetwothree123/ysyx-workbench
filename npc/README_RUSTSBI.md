@@ -150,7 +150,7 @@ NPC 默认 `CONFIG_RISCV_C=n`，必须显式 `-C target-feature=-c,-zca`。
 
 ## 6. 测试
 
-统一入口（与 OpenSBI 共用 `npc/test/opensbi_payload/` 和 FDT 断言）：
+统一入口（与 OpenSBI 共用 `npc/csrc/Test/sbi/opensbi_payload/` 和 FDT 断言）：
 
 ```bash
 cd npc
@@ -185,12 +185,12 @@ SBI-NPC-PAYLOAD: PASS
 `SBI_FDT_ENABLE=n` 时 RustSBI 打印 `fdt : none (a1=0)`，payload 同样
 检查 `a1=0`。
 
-独立测试源码在 `npc/test/rustsbi/`，payload 是一个最小 S 模式程序，验证
+独立测试源码在 `npc/csrc/Test/sbi/rustsbi/`，payload 是一个最小 S 模式程序，验证
 next-stage 跳转、legacy console、DBCN、Base、TIME、sPI：
 
 ```bash
-./npc/test/rustsbi/run.sh npc     # 需要先构建 NPC 仿真器
-./npc/test/rustsbi/run.sh qemu    # 可选；QEMU 需要 PMP，脚本自动打开
+./npc/csrc/Test/sbi/rustsbi/run.sh npc     # 需要先构建 NPC 仿真器
+./npc/csrc/Test/sbi/rustsbi/run.sh qemu    # 可选；QEMU 需要 PMP，脚本自动打开
 ```
 
 期望输出包含 `LDBPTIOK`。实际 NPC 运行日志（`rv64_xv6_defconfig`，

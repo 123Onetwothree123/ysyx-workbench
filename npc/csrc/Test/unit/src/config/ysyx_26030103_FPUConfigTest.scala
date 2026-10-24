@@ -62,6 +62,7 @@ class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
     f32.FPUProfile.HardFloat.Recode should be(true)
     val fd = ysyx_26030103_NPCConfig(
       XLEN = 64,
+      AddressWidth = 64,
       UseF = true,
       UseD = true,
       FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
@@ -99,6 +100,7 @@ class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
   it should "接受已接入的 Fudian 后端" in {
     val config = ysyx_26030103_NPCConfig(
       XLEN = 64,
+      AddressWidth = 64,
       UseF = true,
       UseD = true,
       FPUImpl = ysyx_26030103_FPUImpl.Fudian

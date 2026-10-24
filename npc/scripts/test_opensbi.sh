@@ -55,7 +55,7 @@ FDT_EXPECTED=0
 if [[ "$SBI_FDT_ENABLE" == "y" ]]; then
 	FDT_EXPECTED=1
 fi
-make -C "$NPC_HOME/test/opensbi_payload" \
+make -C "$NPC_HOME/csrc/Test/sbi/opensbi_payload" \
 	OUT="$PAYLOAD_OUT" \
 	ADDR="$SBI_NEXT_ADDR" \
 	ISA="$SBI_ISA" \

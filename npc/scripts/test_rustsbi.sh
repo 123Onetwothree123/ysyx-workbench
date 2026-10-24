@@ -58,7 +58,7 @@ fi
 info "构建最小 S-mode payload（ADDR=$SBI_NEXT_ADDR）"
 # FDT_EXPECTED/FDT_ADDR 是命令行宏，make 不会因为宏变化而重建目标。
 rm -f "$PAYLOAD_OUT/payload.elf" "$PAYLOAD_OUT/payload.bin"
-make -C "$NPC_HOME/test/opensbi_payload" \
+make -C "$NPC_HOME/csrc/Test/sbi/opensbi_payload" \
 	OUT="$PAYLOAD_OUT" \
 	ADDR="$SBI_NEXT_ADDR" \
 	ISA="$SBI_ISA" \

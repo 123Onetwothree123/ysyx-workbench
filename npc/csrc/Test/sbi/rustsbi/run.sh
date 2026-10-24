@@ -13,7 +13,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NPC_HOME="$(cd "$HERE/../.." && pwd)"
+NPC_HOME="$(cd "$HERE/../../../.." && pwd)"
 MODE="${1:-npc}"
 BUILD="$NPC_HOME/build/rustsbi-test"
 CC="${RISCV_CC:-riscv64-unknown-elf-gcc}"
