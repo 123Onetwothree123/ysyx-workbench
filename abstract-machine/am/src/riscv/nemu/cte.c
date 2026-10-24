@@ -100,7 +100,8 @@ Context *kcontext(Area kstack, void (*entry)(void *), void *arg)
   // return NULL;
   Context *c = (Context *)(kstack.end - sizeof(Context)); // end是栈最高位然后减掉长度，找开头部分建指针
   memset(c, 0, sizeof(Context));                          // 和rtthreadam一样，ai建议手动清零
-  c->mstatus = (MODE_S << 8) | MSTATUS_SPIE | MSTATUS_SUM | MSTATUS_MXR; // SPP=S，sret 后开中断
+  c->mstatus = (MODE_S << 8) | MSTATUS_SPIE | MSTATUS_SUM | MSTATUS_MXR |
+               MSTATUS_SXL | MSTATUS_UXL | MSTATUS_FS_INIT; // SPP=S，sret 后开中断
   c->mepc = (uintptr_t)entry;
   c->gpr[10] = (uintptr_t)arg; // riscv elf psabi写的是参数写到a0
   // 内核栈顶部保留一个 trap frame，内核线程从它下面开始使用栈。

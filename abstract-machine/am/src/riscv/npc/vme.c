@@ -278,7 +278,7 @@ Context *ucontext(AddrSpace *as, Area kstack, void *entry) {
   c->mepc = (uintptr_t)entry;
   // SPP=U，sret 后开中断；RV64 还需要 UXL/SXL=2（64 位用户/监督态）。
   c->mstatus = (MODE_U << 8) | MSTATUS_SPIE | MSTATUS_MXR | MSTATUS_SUM |
-               MSTATUS_SXL | MSTATUS_UXL;
+               MSTATUS_SXL | MSTATUS_UXL | MSTATUS_FS_INIT;
   c->gpr[2] = (uintptr_t)as->area.end; // 初始用户栈顶
   c->pdir = as->ptr;                   // 用户页目录
 

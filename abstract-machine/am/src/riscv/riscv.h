@@ -26,6 +26,23 @@ enum { MODE_U, MODE_S, MODE_M = 3 };
 #define MSTATUS_MXR  (1 << 19)
 #define MSTATUS_SUM  (1 << 18)
 
+// mstatus.FS[14:13]：0=Off，1=Initial，2=Clean，3=Dirty。
+// AM_RV64GC 目标的 F/D 上下文只有在 FS!=Off 时才允许执行浮点指令。
+#define MSTATUS_FS_SHIFT   13
+#define MSTATUS_FS_OFF     (0ull << MSTATUS_FS_SHIFT)
+#define MSTATUS_FS_INITIAL (1ull << MSTATUS_FS_SHIFT)
+#define MSTATUS_FS_CLEAN   (2ull << MSTATUS_FS_SHIFT)
+#define MSTATUS_FS_DIRTY   (3ull << MSTATUS_FS_SHIFT)
+#define MSTATUS_FS_MASK    (3ull << MSTATUS_FS_SHIFT)
+
+// 只有 RV64GC 目标的 Context 保存浮点状态，因此也只在这些目标上
+// 让新上下文以 FS=Dirty 启动。IM/lp64 目标保持旧 mstatus 值不变。
+#ifdef AM_RV64GC
+#define MSTATUS_FS_INIT MSTATUS_FS_DIRTY
+#else
+#define MSTATUS_FS_INIT 0
+#endif
+
 #if __riscv_xlen == 64
 #define MSTATUS_SXL  (2ull << 34)
 #define MSTATUS_UXL  (2ull << 32)

@@ -1,0 +1,56 @@
+RV64GC 浮点上下文回归
+====================
+
+验证 AM 在 RV64GC/lp64d 下真正保存和恢复浮点上下文，而不是只改
+-march：
+
+  * 两个 kcontext() 任务交替运行；
+  * 每次运行都向 f0-f31 写入不同的 double/float 值（奇数号 f 寄存器
+    使用 float + NaN-box），并写入带 tag 的 fcsr；
+  * 在浮点状态为脏值时 ecall 让出，期间可能被时钟中断抢占；
+  * 恢复后逐项校验 f0-f31 和 fcsr，然后才返回。
+
+若 trap.S 漏存浮点寄存器、Context 偏移错误，或 kcontext()/ucontext()
+没有设置 mstatus.FS，测试会打印失败编号或直接触发非法指令。
+
+构建与运行
+----------
+
+  export AM_HOME=/path/to/abstract-machine
+  cd abstract-machine/tests/rv64gc-fp
+
+  # direct-NPC（需要支持 F/D/C 的 RTL，例如 npc rv64_fd_defconfig）
+  make ARCH=riscv64gc-npc
+  make ARCH=riscv64gc-npc check-isa
+  make ARCH=riscv64gc-npc run
+
+  # NEMU（riscv64-fd_defconfig 或等价的 F/D/C 配置）
+  make ARCH=riscv64gc-nemu
+  make ARCH=riscv64gc-nemu run
+
+`check-isa` 会审计：
+
+  * ELF64/RISC-V；
+  * Tag_RISCV_arch 为 rv64 + A/F/D/C + Zicsr/Zifencei；
+  * ELF flags 为 RVC + double-float ABI（lp64d）；
+  * 反汇编包含 F/D 与 16 位压缩指令；
+  * 没有 __adddf3/__divsf3 等软浮点 helper；
+  * AM/KLIB 的每个目标文件都是 double-float ABI，并打印实际使用的
+    libgcc 路径。
+
+预期结尾：
+
+  RV64GC FP context test PASSED
+  HIT GOOD TRAP ...
+
+短回归
+------
+
+`PROBE_SPIN` 和 `ITERS` 可以在编译时覆盖，例如：
+
+  make ARCH=riscv64gc-npc clean
+  make ARCH=riscv64gc-npc EXTRA_CFLAGS='-DPROBE_SPIN=2000 -DITERS=4'
+
+注意 NPC rv64_fd_defconfig 的定时器路径是 clint_mtip，S 模式 AM 只
+处理 STIP，因此 NPC 上可能看到 timer_irqs=0。此时仍会通过 yield
+完成上下文切换校验；NEMU 的 F/D 配置使用 STIP，可观察时钟中断。

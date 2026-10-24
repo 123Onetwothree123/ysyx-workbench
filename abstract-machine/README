@@ -7,6 +7,52 @@ abstraction layer of the computer hardware:
 * virtual memory and protection (Virtual Memory Extension);
 * multiprocessing (Multiprocessing Extension).
 
+RV64GC / LP64D 目标
+
+AM 提供两个独立的 RV64GC 目标，与原有 RV64IM 目标并存：
+
+  ARCH=riscv64gc-npc    direct-NPC（RV64IMAFDC + Zicsr/Zifencei）
+  ARCH=riscv64gc-nemu   NEMU（需要 RV64 F/D/C 配置，例如 riscv64-fd_defconfig）
+
+两个脚本显式使用：
+
+  -march=rv64gc_zicsr_zifencei
+  -mabi=lp64d
+  -DAM_RV64GC=1
+
+行为约定：
+
+  * Context 在 AM_RV64GC 下增加 fpr[32] 和 fcsr；trap.S 保存/恢复
+    f0-f31/fcsr，Context 为 544 字节且保持 16 字节栈对齐。
+  * 浮点上下文只在 AM_RV64GC 下启用。原有 riscv64-npc / riscv64-nemu
+    （RV64IM/lp64）的 Context 仍为 GPR + mcause/mstatus/mepc（280 字节），
+    不会在无 F/D 的核上执行浮点保存。
+  * __am_enter_supervisor、kcontext()、ucontext() 在新目标下把
+    mstatus.FS 置为 Dirty；trap 保存的 sstatus 包含 FS，sret 返回后
+    第一条浮点指令不会非法。
+  * C 扩展由 -march=rv64gc 启用。AM/KLIB 目标文件均为 lp64d；当前
+    riscv64-unknown-elf 是非 multilib 工具链，默认 libgcc 即
+    rv64gc/lp64d，与目标 ABI 一致。若工具链只有 lp64 多库，
+    -mabi=lp64d 会直接报错，不会静默退化为软浮点。
+
+使用示例（在 AM 程序目录中）：
+
+  make ARCH=riscv64gc-npc
+  make ARCH=riscv64gc-npc check-isa
+  make ARCH=riscv64gc-npc run
+  make ARCH=riscv64gc-nemu run
+
+定向回归位于 abstract-machine/tests/rv64gc-fp，覆盖 f0-f31/fcsr 在
+yield 与时钟中断切换后的隔离，并提供 check-isa 审计 ELF 的
+rv64gc/lp64d、F/D/C 指令和软浮点 helper。
+
+注意：NPC 的 rv64_fd_defconfig 使用 clint_mtip 定时器路径，S 模式
+AM 只委托 STIP（cause 5），因此该配置下不会产生时钟中断，测试仍会
+通过 yield 切换完成浮点上下文校验；NEMU 的 F/D 配置使用 STIP，
+可以观察到时钟中断抢占。需要 NPC 时钟中断时，应使用 RV64 + direct_stip
+的 NPC 配置，这属于硬件配置选择，AM 不会把 M 模式 MTIP 冒充成
+S 模式 STIP。
+
 CONTACTS
 
 Bug reports and suggestions go to Yanyan Jiang (jyy@nju.edu.cn) and Zihao 
