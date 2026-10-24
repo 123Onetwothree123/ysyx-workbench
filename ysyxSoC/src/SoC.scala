@@ -343,6 +343,10 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     // connect interrupt signal to cpu
     val intr_from_chipSlave = IO(Input(Bool()))
     cpu.module.interrupt := intr_from_chipSlave
+    // APBUart16550 的 16550 中断进入 CPU 内部 PLIC source 10。full-SoC
+    // 不把 UART 中断接到 intr_from_chipSlave：该端口只表示 ChipLink
+    // 外部中断，S 模式软件必须通过标准 PLIC 寄存器 claim/complete。
+    cpu.module.uart_irq := luart.module.interrupt
 
     val sdramBundle =
       if (Config.sdramUseAXI) lsdram_axi.get.module.sdram_bundle

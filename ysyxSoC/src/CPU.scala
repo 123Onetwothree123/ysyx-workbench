@@ -30,6 +30,9 @@ class ysyx_26030103(xlen: Int, idBits: Int) extends BlackBox {
     val clock = Input(Clock())
     val reset = Input(Reset())
     val io_interrupt = Input(Bool())
+    // UART 中断进入 CPU 内部 PLIC source 10；与外部中断直连端口分离，
+    // 避免 full-SoC 把 PLIC 路径伪装成一根 M/S 外部中断线。
+    val io_uart_irq = Input(Bool())
     val io_master = AXI4Bundle(CPUAXI4BundleParameters(xlen, xlen, idBits))
     val io_slave = Flipped(AXI4Bundle(CPUAXI4BundleParameters(xlen, xlen, idBits)))
     // 加的接口，本来以为OSOC代码只要改一个学号就可以的，结果发现居然还得改，因为OSOC的文档讲了要把这个SOC作为顶层模块
@@ -164,12 +167,14 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
       s"CPU AXI4 数据宽度 ${master.params.dataBits} 与 SOC_XLEN=$xlen 不一致"
     )
     val interrupt = IO(Input(Bool()))
+    val uart_irq = IO(Input(Bool()))
     val slave = IO(Flipped(AXI4Bundle(CPUAXI4BundleParameters(xlen, xlen, idBits))))
 
     val cpu = Module(new ysyx_26030103(xlen, idBits))
     cpu.io.clock := clock
     cpu.io.reset := reset
     cpu.io.io_interrupt := interrupt
+    cpu.io.io_uart_irq := uart_irq
     cpu.io.io_slave <> slave
     master <> cpu.io.io_master
 

@@ -23,6 +23,9 @@ class ysyx_26030103_IO(val SocXLEN: Int = 32) extends Bundle {
   private val SocDataWidth = SocXLEN
   private val SocStrbWidth = SocXLEN / 8
   val interrupt = Input(Bool())
+  // UART 中断单独成口，full-SoC 把它接到内部 PLIC source 10；direct-NPC
+  // 同时把该信号与 interrupt 相连，保持既有“外部中断线直连”的测试语义。
+  val uart_irq = Input(Bool())
   // 仿真 ABI 的 custom-0 halt 提交脉冲；不是架构异常/EBREAK 指示。
   val trap_valid = Output(Bool())
   val trap_pc = Output(UInt(32.W))

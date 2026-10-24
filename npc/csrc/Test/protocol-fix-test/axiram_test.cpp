@@ -258,20 +258,13 @@ int main(int argc, char **argv) {
           "AXIRAM did not DECERR an INCR beat outside RAM");
 
     const uint32_t ram_zero_before = read_word(dut, 0x80000000U, 9);
-    write_single(dut, 0x10000000U, '.', 0xf, 2, 10);
-    check(read_word(dut, 0x80000000U, 11) == ram_zero_before,
-          "UART output aliased and modified RAM word zero");
-    write_single(dut, 0x84000000U, 0xdeadc0deU, 0xf, 2, 12, false, 3);
-    write_single(dut, 0x00000000U, 0xbadc0de0U, 0xf, 2, 13, false, 3);
-    check(read_word(dut, 0x80000000U, 14) == ram_zero_before,
-          "an unmapped write wrapped into RAM word zero");
 
-    // UART 16550 最小 RX 路径：空 FIFO 的 LSR 只置 THRE/TEMT；
+    // UART 16550 最小 RX 路径：先确认空 FIFO 的 LSR 只置 THRE/TEMT；
     // 注入字节后 LSR.DataReady 和 PLIC 中断线都应为高。
-    write_single(dut, 0x80000000U, 0x13572468U, 0xf, 2, 20);
-    check(static_cast<uint8_t>(read_byte(dut, 0x10000005U, 21) & 0x61U) ==
+    check(static_cast<uint8_t>(read_byte(dut, 0x10000005U, 20) & 0x61U) ==
               0x60U,
           "empty UART LSR did not report THRE/TEMT without DataReady");
+    write_single(dut, 0x80000000U, 0x13572468U, 0xf, 2, 20);
     dut.io_uartRxData = static_cast<uint8_t>('A');
     dut.io_uartRxValid = 1;
     check(dut.io_uartRxReady, "UART RX FIFO was unexpectedly full");
@@ -298,6 +291,16 @@ int main(int argc, char **argv) {
           "empty UART RBR did not return 0 without DECERR");
     check(read_word(dut, 0x80000000U, 27) == 0x13572468U,
           "UART register traffic corrupted RAM");
+
+    // TX 路径仍只打印、不写 RAM。写 THR 会进入发送窗口，因此这里不再
+    // 立即要求 LSR.THRE=1；THRE/TEMT 的时序由 uart-irq-test 覆盖。
+    write_single(dut, 0x10000000U, '.', 0xf, 2, 10);
+    check(read_word(dut, 0x80000000U, 11) == 0x13572468U,
+          "UART output aliased and modified RAM word zero");
+    write_single(dut, 0x84000000U, 0xdeadc0deU, 0xf, 2, 12, false, 3);
+    write_single(dut, 0x00000000U, 0xbadc0de0U, 0xf, 2, 13, false, 3);
+    check(read_word(dut, 0x80000000U, 14) == 0x13572468U,
+          "an unmapped write wrapped into RAM word zero");
 
     const auto unmapped = read_burst(dut, 0x10001000U, 1, 1, 2, 0);
     check(unmapped[0].resp == 3 && !unmapped[0].last &&

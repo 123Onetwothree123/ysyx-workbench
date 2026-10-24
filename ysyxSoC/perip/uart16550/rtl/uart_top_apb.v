@@ -13,6 +13,8 @@ module uart_top_apb (
      , input   wire [3:0]  in_pstrb
      , input   wire        uart_rx       // serial output
      , output  wire        uart_tx       // serial input
+     // 16550 中断汇总（RX 数据可用、THRE 等），由 SoC 接 CPU PLIC source 10。
+     , output  wire        interrupt
 );
    //--------------------------------------------------
    wire   rtsn;
@@ -21,7 +23,6 @@ module uart_top_apb (
    wire   dsr_pad_i=1'b0;
    wire   ri_pad_i =1'b0;
    wire   dcd_pad_i=1'b0;
-   wire   interrupt;
    //--------------------------------------------------------
    wire       reg_we;   // Write enable for registers
    wire       reg_re;   // Read enable for registers

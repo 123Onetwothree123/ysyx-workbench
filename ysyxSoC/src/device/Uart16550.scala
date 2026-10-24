@@ -19,6 +19,8 @@ class uart_top_apb extends BlackBox {
     val reset = Input(Reset())
     val in = Flipped(new APBBundle(APBBundleParameters(addrBits = 32, dataBits = 32)))
     val uart = new UARTIO
+    // opencores 16550 的 int_o：RX/THRE 等中断的电平汇总，接 PLIC。
+    val interrupt = Output(Bool())
   })
 }
 
@@ -35,11 +37,13 @@ class APBUart16550(address: Seq[AddressSet])(implicit p: Parameters) extends Laz
   class Impl extends LazyModuleImp(this) {
     val (in, _) = node.in(0)
     val uart = IO(new UARTIO)
+    val interrupt = IO(Output(Bool()))
 
     val muart = Module(new uart_top_apb)
     muart.io.clock := clock
     muart.io.reset := reset
     muart.io.in <> in
     uart <> muart.io.uart
+    interrupt := muart.io.interrupt
   }
 }

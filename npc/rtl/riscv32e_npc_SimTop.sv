@@ -101,7 +101,9 @@ module riscv32e_npc_SimTop(
 
   ysyx_26030103 cpu (
     .clock(clock), .reset(reset),
-    .io_interrupt(uart_irq),
+    // direct-NPC 保留传统外部中断直连，同时把同一 UART 中断送入内部
+    // PLIC source 10，保证两套软件路径（直连/PLIC）都能工作。
+    .io_interrupt(uart_irq), .io_uart_irq(uart_irq),
     .io_trap_valid(trap_valid), .io_trap_pc(trap_pc),
     .io_trap_pc_hi(trap_pc_hi),
     .io_master_awready(cpu_awready), .io_master_awvalid(cpu_awvalid),
