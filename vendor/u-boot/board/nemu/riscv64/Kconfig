@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-2.0+
+#
+# ysyx-workbench NEMU RV64 S-mode board
+
+if TARGET_NEMU_RISCV64
+
+config SYS_BOARD
+	default "riscv64"
+
+config SYS_VENDOR
+	default "nemu"
+
+config SYS_CPU
+	default "generic"
+
+config SYS_CONFIG_NAME
+	default "nemu-riscv"
+
+config TEXT_BASE
+	default 0x80200000
+
+config BOARD_SPECIFIC_OPTIONS
+	def_bool y
+	select GENERIC_RISCV
+	select LMB
+	select OF_HAS_PRIOR_STAGE
+	imply DM_SERIAL
+	imply RISCV_TIMER
+	imply SYSRESET
+	imply SYSRESET_SBI
+	imply SYS_NS16550
+	imply CMD_POWEROFF
+	imply CMD_SBI
+
+endif

@@ -1,0 +1,54 @@
+# RV64 NEMU 128 MiB 配置，仅用于评估 Debian EFI 内核。
+#
+# 默认的 riscv64-linux_defconfig 固定 64 MiB，是 NPC/NEMU 的基准布局。
+# Debian install/vmlinux 是 31 MB 的 EFI PE；U-Boot 的 efi_load_pe() 需要
+# 再分配一份约 30 MB 的目标页，64 MiB 放不下源文件 + 目标页 + initrd。
+# 这个配置只把 CONFIG_MSIZE 提高到 128 MiB，其他设备/timebase 契约不变。
+#
+# 用法：
+#   cd nemu
+#   make NEMU_HOME=$PWD ARCH=riscv64-nemu \
+#     AM_HOME=../abstract-machine riscv64-linux-128m_defconfig
+#   make NEMU_HOME=$PWD ARCH=riscv64-nemu AM_HOME=../abstract-machine -j"$(nproc)"
+#   NEMU_UBOOT_CONFIG_FILE=$PWD/.config ./scripts/build_uboot_nemu.sh
+#
+# 注意：这不是 NPC RTL 的配置；NPC 仍是 64 MiB/450 MHz 契约。
+CONFIG_ISA_riscv=y
+CONFIG_RV64=y
+CONFIG_RISCV_A=y
+CONFIG_RISCV_C=y
+CONFIG_RISCV_F=y
+CONFIG_RISCV_D=y
+
+CONFIG_TARGET_NATIVE_ELF=y
+CONFIG_DEVICE=y
+CONFIG_HAS_RISCV_XV6=y
+# CONFIG_HAS_SERIAL is not set
+# CONFIG_HAS_TIMER is not set
+# CONFIG_HAS_KEYBOARD is not set
+# CONFIG_HAS_VGA is not set
+# CONFIG_HAS_AUDIO is not set
+# CONFIG_HAS_DISK is not set
+
+CONFIG_MBASE=0x80000000
+CONFIG_MSIZE=0x08000000
+CONFIG_PC_RESET_OFFSET=0
+CONFIG_PMEM_GARRAY=y
+
+CONFIG_RISCV_XV6_MTIME_FREQ=1000000
+
+CONFIG_SDB=y
+CONFIG_TRACE=y
+CONFIG_TRACE_START=0
+CONFIG_TRACE_END=2000000000
+# CONFIG_ITRACE is not set
+CONFIG_IRINGBUF=y
+CONFIG_IRINGBUF_SIZE=4096
+CONFIG_ReadELF=y
+CONFIG_FTRACE=y
+# CONFIG_MTRACE is not set
+# CONFIG_DTRACE is not set
+# CONFIG_ETRACE is not set
+# CONFIG_BTRACE is not set
+
+# CONFIG_DIFFTEST is not set

@@ -1,0 +1,6 @@
+NEMU RV64 BOARD
+M:	ysyx-workbench <noreply@example.invalid>
+S:	Maintained
+F:	board/nemu/riscv64/
+F:	include/configs/nemu-riscv.h
+F:	configs/nemu_riscv64_smode_defconfig
