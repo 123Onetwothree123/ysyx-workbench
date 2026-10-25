@@ -55,6 +55,7 @@ private:
     PerfStats perf{};
     std::size_t fault_count{0}; // AXI fault 打印限流计数
     bool finalized{false};
+    bool heartbeat{false};
 #ifdef CONFIG_VERILATOR_SAVABLE
     std::optional<std::size_t> checkpoint_cycle;
     std::filesystem::path checkpoint_file;

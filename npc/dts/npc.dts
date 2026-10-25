@@ -104,6 +104,16 @@
 		/* 由 CONFIG_LINUX_BOOTARGS 生成；SBI 早期控制台 + 8250 UART。 */
 		bootargs = NPC_BOOTARGS;
 		stdout-path = "/soc/serial@10000000";
+		/*
+		 * direct-NPC 没有硬件 RNG，而 Debian 的 jent 熵源在 450 MHz
+		 * timebase 下会按墙钟采样数小时。给内核一个固定的 bootloader
+		 * rng-seed，使 crng 在 early boot 即可用；这仅是仿真平台适配，
+		 * 不用于真实安全场景。
+		 */
+		rng-seed = <0x6a09e667 0xbb67ae85 0x3c6ef372 0xa54ff53a
+			    0x510e527f 0x9b05688c 0x1f83d9ab 0x5be0cd19
+			    0x428a2f98 0x71374491 0xb5c0fbcf 0xe9b5dba5
+			    0x3956c25b 0x59f111f1 0x923f82a4 0xab1c5ed5>;
 #if SBI_INITRAMFS_SIZE > 0
 		/* Linux 标准 initrd 属性；关闭 initramfs 时不生成。 */
 		linux,initrd-start = <0x0 SBI_INITRAMFS_ADDR>;

@@ -34,7 +34,7 @@ sed -i \
 	-e "s|^initrd_bytes=.*|initrd_bytes=$INITRD_BYTES|" \
 	-e "s|^initrd_bytes_hex=.*|initrd_bytes_hex=$(printf '0x%x' "$INITRD_BYTES")|" \
 	-e "s|^initrd_sha256=.*|initrd_sha256=$(sha256sum "$INITRD" | cut -d' ' -f1)|" \
-	-e "s|^bootargs=.*|bootargs=console=ttyS0,115200 earlycon=sbi no5lvl cpuidle.off=1 quiet loglevel=3 initcall_blacklist=jent_mod_init random.trust_cpu=on|" \
+	-e "s|^bootargs=.*|bootargs=console=ttyS0,115200 earlycon=sbi no5lvl cpuidle.off=1 quiet loglevel=3 initcall_blacklist=jent_mod_init,check_unaligned_access_all_cpus init_on_alloc=0 init_on_free=0 random.trust_cpu=on|" \
 	"$DST_INFO"
 
 info "生成：$DST"

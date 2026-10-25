@@ -181,6 +181,7 @@ DUT::DUT()
     Verilated::traceEverOn(true);
 #endif
     dut = std::make_unique<TOP_MODULE>();
+    heartbeat = std::getenv("NPC_HEARTBEAT") != nullptr;
     dut->debug_gpr_raddr = 0;
     if constexpr (HasFPDebugPorts<TOP_MODULE>)
         dut->debug_fpr_raddr = 0;
@@ -557,6 +558,12 @@ void DUT::step()
     tfp.dump(cycle * 2 + 1);
 #endif
     ++cycle;
+    if (heartbeat && cycle % 10000000U == 0U)
+    {
+        std::println(std::cerr,
+                     "[heartbeat] cycle={} pc=0x{:016x} arch_pc=0x{:016x}",
+                     cycle, DebugPC(*dut), DebugArchPC(*dut));
+    }
 #ifdef CONFIG_VERILATOR_SAVABLE
     if (checkpoint_cycle && cycle == *checkpoint_cycle &&
         !checkpoint_file.empty())
