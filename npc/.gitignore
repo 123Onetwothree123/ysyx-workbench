@@ -77,3 +77,4 @@ gcm.cache/
 
 # 检查点/实验构建目录不纳入版本管理
 /build-*/**
+/checkpoints/
