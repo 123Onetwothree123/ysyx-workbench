@@ -48,8 +48,6 @@ mkdir -p "$OUT_DIR"
 
 TOOLCHAIN="$BUILD_DIR/riscv64-toolchain.cmake"
 SYSROOT="${FASTFETCH_SYSROOT:-/usr/riscv64-linux-gnu}"
-# 即使未来打开某个可选依赖，也让 pkg-config 只在目标 sysroot 里查找，
-# 不把主机的 x86_64 .pc 文件带进交叉构建。
 export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
 mkdir -p "$BUILD_DIR"

@@ -45,8 +45,6 @@ info() {
 	echo "[opensbi] $*"
 }
 
-# Kconfig 的 hex 值在 shell 里用 $((...)) 解析；先严格校验，避免把
-# 非法字符串带进 make/链接命令。
 parse_int() {
 	local name="$1" value="$2"
 	if [[ ! "$value" =~ ^(0[xX][0-9a-fA-F]+|[0-9]+)$ ]]; then
@@ -69,8 +67,6 @@ cfg_value() {
 	fi
 }
 
-# mtime 每个 CPU 周期 +1；频率由 CONFIG_SYNTH_FREQ 推导，并与 DTB
-# timebase-frequency 共用同一个值。显式环境变量优先（测试/命令行覆盖）。
 SYNTH_FREQ="$(parse_int CONFIG_SYNTH_FREQ "$(cfg_value CONFIG_SYNTH_FREQ 450)")"
 SBI_TIMEBASE_FREQ="$(parse_int SBI_TIMEBASE_FREQ "${SBI_TIMEBASE_FREQ:-$((SYNTH_FREQ * 1000000))}")"
 
@@ -95,8 +91,6 @@ NEXT="$(parse_int SBI_NEXT_ADDR "$SBI_NEXT_ADDR")"
 (( BASE + SIZE <= NEXT )) || die \
 	"SBI_FW_BASE+SBI_FW_SIZE=0x$(printf '%x' $((BASE + SIZE))) 越过 SBI_NEXT_ADDR=0x$(printf '%x' "$NEXT")；固件会覆盖 next-stage"
 
-# direct-NPC 的复位入口是 0x80000000；允许覆盖，但必须与工具链可链接
-# 地址一致。OpenSBI 的 FW_JUMP_ADDR 按 XLEN 要求 2/4 MiB 对齐。
 case "$SBI_ISA" in
 	rv64*) SBI_XLEN=64; JUMP_ALIGN=$((2 * 1024 * 1024)) ;;
 	rv32*) SBI_XLEN=32; JUMP_ALIGN=$((4 * 1024 * 1024)) ;;
@@ -121,8 +115,6 @@ else
 	JOBS="$SBI_BUILD_JOBS"
 fi
 
-# OpenSBI 1.9 的固件是 PIE；当前 binutils 2.47 的 RISC-V ld.bfd 不支持
-# -pie。默认用 ld.lld，并让 GCC 通过 -fuse-ld=lld 调用它。
 LD_ARGS=()
 if [[ -n "$SBI_LD" ]]; then
 	command -v "$SBI_LD" >/dev/null 2>&1 || die \
@@ -149,9 +141,6 @@ if [[ -n "$SBI_PAYLOAD_PATH" ]]; then
 	info "构建 FW_PAYLOAD 测试镜像：payload=$PAYLOAD_ABS @ 0x$(printf '%x' "$NEXT")"
 fi
 
-# 设备树：先独立生成 DTB，再让 OpenSBI 把它嵌进固件并复制到
-# SBI_FDT_ADDR。FW_FDT_PATH 只负责“嵌入”，*_FDT_ADDR 才决定
-# next-stage 最终收到的 a1；两者必须同时设置。
 DTB_PATH=""
 case "$SBI_FDT_ENABLE" in
 	y)
@@ -193,8 +182,6 @@ case "$SBI_FDT_ENABLE" in
 esac
 
 mkdir -p "$SBI_OUT_DIR"
-# OpenSBI 的 Kbuild 不跟踪命令行 -D 宏变化；FDT 开关/地址/路径变化时
-# 必须换 build 目录，否则会复用上一次带 FW_FDT_PATH 的 fw_*.o。
 if [[ "$SBI_FDT_ENABLE" == "y" ]]; then
 	FDT_TAG="fdt-$(printf '%s\n' "$SBI_PLATFORM|$SBI_FW_BASE|$SBI_FW_SIZE|$SBI_NEXT_ADDR|$SBI_ISA|$SBI_ABI|$SBI_FDT_PATH|$SBI_FDT_ADDR|$SBI_PAYLOAD_PATH|$SBI_TIMEBASE_FREQ|$SBI_FDT_LINUX|$SBI_INITRAMFS_ENABLE|$SBI_INITRAMFS_PATH|$SBI_INITRAMFS_ADDR|$SBI_BOOTARGS|$NPC_RAM_BASE|$NPC_RAM_SIZE" |
 		sha256sum | cut -c1-8)"
@@ -237,8 +224,6 @@ if [[ "$MODE" == "jump" ]]; then
 	(( ACTUAL_SIZE <= SIZE )) || die \
 		"固件大小 $ACTUAL_SIZE 字节超过 SBI_FW_SIZE=$SIZE；请增大 SBI_FW_SIZE 或调整 next-stage"
 else
-	# FW_PAYLOAD 的 bin 包含 next-stage，因此总大小 = 偏移 + payload，
-	# 不能拿 SBI_FW_SIZE 限制；固件与 payload 不重叠由链接脚本保证。
 	(( ACTUAL_SIZE >= OFFSET )) || die \
 		"FW_PAYLOAD 镜像大小 $ACTUAL_SIZE 小于 next-stage 偏移 0x$(printf '%x' "$OFFSET")"
 fi

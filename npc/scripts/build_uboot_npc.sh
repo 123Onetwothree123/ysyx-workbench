@@ -25,9 +25,6 @@ EFI_APP_ADDR="${NPC_UBOOT_EFI_APP_ADDR:-0x80600000}"
 INITRAMFS_ADDR="${NPC_UBOOT_INITRAMFS_ADDR:-0x80800000}"
 KERNEL_ADDR="${NPC_UBOOT_KERNEL_ADDR:-0x81000000}"
 BOOTARGS="${NPC_UBOOT_BOOTARGS:-console=ttyS0,115200 earlycon=sbi no5lvl cpuidle.off=1 loglevel=7}"
-# NPC 的 mtime 每 CPU 周期 +1，timebase=450MHz。U-Boot 默认 bootdelay=2
-# 会等待 900M 个仿真周期；-1 表示直接进入 prompt，不启动 autoboot。
-# 这不是 NEMU 的 1MHz 行为，必须作为 NPC 板级适配显式处理。
 BOOTDELAY="${NPC_UBOOT_BOOTDELAY:--1}"
 EFI_APP_PATH="${NPC_UBOOT_EFI_APP_PATH:-}"
 INITRAMFS_PATH="${NPC_UBOOT_INITRAMFS_PATH:-}"
@@ -144,7 +141,6 @@ UBOOT_BIN="$UBOOT_BUILD/u-boot.bin"
 UBOOT_BYTES="$(stat -c '%s' "$UBOOT_BIN")"
 (( UBOOT_BYTES > 0 )) || die "U-Boot 映像为空"
 
-# U-Boot 配置契约：EFI loader/bootefi/EFI_LOAD_FILE2 缺一不可。
 for key in \
 	CONFIG_RISCV_SMODE=y \
 	CONFIG_EFI_LOADER=y \
@@ -218,15 +214,11 @@ fi
 [[ -z "$INITRAMFS" || -f "$INITRAMFS" ]] || die "initramfs 不存在：$INITRAMFS"
 [[ -z "$KERNEL" || -f "$KERNEL" ]] || die "EFI 内核不存在：$KERNEL"
 
-# 有 initramfs 但没有指定 EFI 应用时，使用 U-Boot 自带的
-# initrddump.efi 验证 EFI_LOAD_FILE2（不会执行 Linux）。
 if [[ -n "$INITRAMFS" && -z "$EFI_APP" ]]; then
 	EFI_APP="$UBOOT_BUILD/lib/efi_loader/initrddump.efi"
 	[[ -f "$EFI_APP" ]] || die "找不到 U-Boot initrddump.efi：$EFI_APP"
 fi
 
-# U-Boot 源文件占用 [NEXT_ADDR, NEXT_ADDR+UBOOT_BYTES)。它的 BSS/栈会
-# 在运行时重定位到 RAM 顶部，不占这里；EFI 应用地址必须在这段之后。
 (( NEXT_NUM + UBOOT_BYTES <= EFI_APP_ADDR_NUM )) || die \
 	"U-Boot $UBOOT_BYTES 字节与 EFI 应用地址 0x$(printf '%x' "$EFI_APP_ADDR_NUM") 重叠"
 for pair in \

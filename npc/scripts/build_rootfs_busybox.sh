@@ -51,7 +51,6 @@ cfg_bool() {
 	fi
 }
 
-# 区分“未写入 .config”和显式 =n，用于 Kconfig 中 default y 的新选项。
 cfg_bool_or() {
 	local key="CONFIG_$1"
 	local default="$2"
@@ -124,8 +123,6 @@ ROOTFS_BUSYBOX_APPLETS="${ROOTFS_BUSYBOX_APPLETS:-$(cfg_str ROOTFS_BUSYBOX_APPLE
 ROOTFS_BUSYBOX_JOBS="${ROOTFS_BUSYBOX_JOBS:-$(cfg_raw CONFIG_ROOTFS_BUSYBOX_JOBS)}"
 ROOTFS_BUSYBOX_JOBS="${ROOTFS_BUSYBOX_JOBS:-0}"
 
-# fastfetch 默认随 rootfs 安装；旧 .config 没有该符号时也按 Kconfig
-# 的 default y 处理，而不是静默变成 n。
 ROOTFS_FASTFETCH="${ROOTFS_FASTFETCH:-$(cfg_bool_or ROOTFS_FASTFETCH y)}"
 ROOTFS_FASTFETCH_PATH="${ROOTFS_FASTFETCH_PATH:-$(cfg_str ROOTFS_FASTFETCH_PATH)}"
 ROOTFS_FASTFETCH_PATH="${ROOTFS_FASTFETCH_PATH:-build/fastfetch/fastfetch}"
@@ -153,7 +150,6 @@ esac
 FASTFETCH_BIN="$(realpath -m -- "$FASTFETCH_BIN")"
 ELF_AUDIT_BIN="${ELF_AUDIT_BIN:-$NPC_HOME/tools/build/audit_rootfs_elf}"
 
-# 删除目录前做最基本的安全检查，避免空值或误配把工作区根目录删掉。
 safe_rm_rf() {
 	local path="$1"
 	case "$path" in
@@ -332,9 +328,6 @@ set_config_bool() {
 set_config_raw CONFIG_CROSS_COMPILER_PREFIX "\"$TOOLCHAIN_PREFIX\""
 set_config_raw CONFIG_EXTRA_CFLAGS "\"-march=$ROOTFS_BUSYBOX_MARCH -mabi=$ROOTFS_BUSYBOX_MABI\""
 set_config_bool CONFIG_STATIC "$ROOTFS_BUSYBOX_STATIC"
-# BusyBox 1.36.1 的 networking/tc.c 依赖已被新内核头文件移除的 CBQ
-# 结构；最小 rootfs 不需要 tc，关闭以保证在 riscv64-linux-gnu 工具链
-# 上可复现地编译。其余 applet 保持 defconfig 的常用集合。
 set_config_bool CONFIG_TC "n"
 set_config_bool CONFIG_INSTALL_APPLET_SYMLINKS "y"
 
@@ -386,8 +379,6 @@ if [ "$ROOTFS_FASTFETCH" = "y" ]; then
 		"fastfetch 安装后权限不是 0755：$ROOTFS_TREE/usr/bin/fastfetch"
 fi
 
-# 从 BusyBox 生成的 applet_tables.h 提取实际启用的 applet，
-# 不依赖在宿主机上执行 RISC-V 二进制。
 sed -n '/^const char applet_names/,/;$/p' "$ROOTFS_BUSYBOX_BUILD_DIR/include/applet_tables.h" |
 	sed -n 's/^"\([^"]*\)"[[:space:]]*"\\0"$/\1/p' >"$APPLET_LIST_FILE"
 [ -s "$APPLET_LIST_FILE" ] || die "无法从 applet_tables.h 提取 applet 清单。"
@@ -409,7 +400,6 @@ done
 if [ "$ROOTFS_BUSYBOX_INIT_SCRIPT" = "y" ]; then
 	cat >"$ROOTFS_TREE/init" <<'EOF'
 #!/bin/busybox sh
-# 最小 initramfs 初始化：挂载失败不致命，最后进入 BusyBox sh。
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 /bin/busybox mkdir -p /proc /sys /dev /tmp /etc
 /bin/busybox mount -t proc proc /proc 2>/dev/null || true
@@ -425,8 +415,6 @@ EOF
 	chmod 0755 "$ROOTFS_TREE/init"
 	INIT_KIND="script"
 else
-	# 不使用 /init 脚本时，内核会回退到 /sbin/init；BusyBox init
-	# 读取 /etc/inittab 启动 shell。
 	install -d -m 0755 "$ROOTFS_TREE/sbin"
 	ln -sfn ../bin/busybox "$ROOTFS_TREE/sbin/init"
 	cat >"$ROOTFS_TREE/etc/inittab" <<'EOF'
@@ -463,9 +451,6 @@ IMAGE_SHA256="$(sha256sum "$ROOTFS_IMAGE" | awk '{print $1}')"
 BUSYBOX_BYTES="$(stat -c '%s' "$BUSYBOX_BIN")"
 BUSYBOX_SHA256="$(sha256sum "$BUSYBOX_BIN" | awk '{print $1}')"
 
-# 归档自检：关键路径缺失时明确失败，而不是产出一个看似成功的空镜像。
-# GNU cpio 列出 newc 成员时可能去掉 find 传入的 "./" 前缀；
-# 统一规范化后再自检，避免依赖具体 cpio 版本的显示方式。
 ARCHIVE_LIST="$(gzip -dc "$ROOTFS_IMAGE" | cpio -it --quiet | sed 's|^\./||')"
 REQUIRED_PATHS=(bin/busybox bin/sh dev proc sys tmp etc)
 if [ "$ROOTFS_FASTFETCH" = "y" ]; then

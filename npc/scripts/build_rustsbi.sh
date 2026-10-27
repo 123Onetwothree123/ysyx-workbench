@@ -85,9 +85,6 @@ INITRAMFS_ADDR="${SBI_INITRAMFS_ADDR:-$(cfg_value CONFIG_LINUX_INITRAMFS_ADDR 0x
 BOOTARGS="${SBI_BOOTARGS:-$(cfg_value CONFIG_LINUX_BOOTARGS "console=ttyS0,115200 earlycon=sbi")}"
 RAM_BASE="${NPC_RAM_BASE:-0x80000000}"
 RAM_SIZE="${NPC_RAM_SIZE:-0x04000000}"
-# mtime 每个 CPU 周期 +1，频率 = CONFIG_SYNTH_FREQ(MHz) * 1,000,000。
-# RustSBI 本身只写 mtimecmp，不需要频率；这里传给 DTB，保证 Linux 看到
-# 的 timebase 与 RTL/OpenSBI 一致。
 SYNTH_FREQ="$(cfg_value CONFIG_SYNTH_FREQ 450)"
 TIMEBASE_FREQ="${SBI_TIMEBASE_FREQ:-$((SYNTH_FREQ * 1000000))}"
 HAS_PMP="${SBI_HAS_PMP:-$(cfg_bool CONFIG_HAS_PMP n)}"
@@ -106,8 +103,6 @@ case "$FDT_ENABLE" in
 esac
 case "$FDT_ADDR" in 0x*|0X*) ;; *) die "CONFIG_SBI_FDT_ADDR 必须是 0x 开头的十六进制数：$FDT_ADDR" ;; esac
 
-# direct-NPC 的复位 PC = 0x80000000 + CONFIG_CACHE_PADDING。固件 ELF
-# 入口必须与它完全一致，否则 ImageLoader 会拒绝加载。
 CACHE_PADDING="$(cfg_value CONFIG_CACHE_PADDING 0)"
 RESET_PC=$((0x80000000 + CACHE_PADDING))
 if [ $((FW_BASE)) -ne "$RESET_PC" ]; then
@@ -131,9 +126,6 @@ if [ "$IMPL" != "rustsbi" ]; then
     echo "提示: 当前 CONFIG_SBI_IMPL=$IMPL；make rustsbi 仍会构建 RustSBI，但默认 SBI 选择不是它。"
 fi
 
-# 设备树：RustSBI 不支持 OpenSBI 的 FW_FDT_PATH，因此由本脚本先
-# 生成 DTB，再通过 cargo 环境变量让 build.rs 把 DTB 编进 .rodata；
-# 运行时 rust_main 会把它复制到 SBI_FDT_ADDR，并以 a1 传给 S 模式。
 FDT_DTB_PATH=""
 if [ "$FDT_ENABLE" = "y" ]; then
     SBI_FDT_OUT_DIR="$FDT_OUT_DIR" \
@@ -215,9 +207,6 @@ if [ -n "$READELF" ]; then
         fi
     fi
 
-    # RISC-V 2024 命名下压缩指令标记为 zca；核心/依赖若带压缩指令，
-    # NPC 在 CONFIG_RISCV_C=n 时无法执行。这里显式拒绝，而不是静默产出一个
-    # 只能在实际启用 C 扩展的配置上运行的固件。
     ARCH_ATTR="$("$READELF" -A "$OUT_DIR/rustsbi-npc.elf" 2>/dev/null |
         grep 'Tag_RISCV_arch' | head -n 1 || true)"
     case "$ARCH_ATTR" in

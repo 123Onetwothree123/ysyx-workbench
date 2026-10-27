@@ -42,8 +42,6 @@ $(MCONF): $(KCONFIG_BUILD)/CMakeCache.txt $(KCONFIG_SOURCES)
 
 $(CONF): $(MCONF)
 
-# kconfig 使用 C++20 模块，CMake 必须使用 Ninja 生成器；默认的
-# Unix Makefiles 不支持模块扫描，会在配置阶段直接报错。
 $(KCONFIG_BUILD)/CMakeCache.txt:
 	$(Q)mkdir -p $(KCONFIG_BUILD)
 	$(Q)cd $(KCONFIG_BUILD) && cmake -G Ninja ..
@@ -65,10 +63,6 @@ savedefconfig: $(CONF)
 	$(Q)$< $(silent) --syncconfig $(Kconfig)
 	$(Q)$(CONFIG_CONTRACT) --config .config
 
-# 组合配置片段：profile 位于 configs/profiles/，其片段位于
-# configs/fragments/。用法：
-#   make profile-defconfig PROFILE=rv64_linux
-#   make rv64_linux_profile
 profile-defconfig: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT) $(MERGE_CONFIG)
 	$(Q)if [ -z "$(strip $(PROFILE))" ]; then \
 		echo "错误：PROFILE 为空。" >&2; \

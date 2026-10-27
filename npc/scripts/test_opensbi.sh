@@ -33,8 +33,6 @@ info() {
 mkdir -p "$TEST_OUT"
 
 info "构建最小 S-mode payload（ADDR=$SBI_NEXT_ADDR）"
-# FDT_EXPECTED/FDT_ADDR 是命令行宏，make 不会因为宏变化而重建目标；
-# 这里显式清掉旧产物，避免 FDT=n 复用上次的 FDT 断言 payload。
 rm -f "$PAYLOAD_OUT/payload.elf" "$PAYLOAD_OUT/payload.bin"
 FDT_EXPECTED=0
 if [[ "$SBI_FDT_ENABLE" == "y" ]]; then
@@ -59,8 +57,6 @@ SBI_PAYLOAD_PATH="$PAYLOAD_OUT/payload.bin" \
 	"$HERE/build_opensbi.sh"
 
 info "运行 $NPC_BIN（timeout ${SBI_TEST_TIMEOUT}s）"
-# NPC ImageLoader 只接受 ET_EXEC，而 OpenSBI 输出的是 PIE(ET_DYN)；
-# 因此这里加载原始 fw.bin（固件 + payload 已按 next-stage 偏移拼好）。
 rc=0
 timeout -k 5 "$SBI_TEST_TIMEOUT" "$NPC_BIN" "$TEST_OUT/fw.bin" --batch >"$LOG" 2>&1 || rc=$?
 

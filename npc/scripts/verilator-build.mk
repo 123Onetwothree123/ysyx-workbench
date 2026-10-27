@@ -5,14 +5,8 @@ ifndef NPC_CSRC_DIR
 $(error NPC_CSRC_DIR is not set)
 endif
 
-# 唯一 C++ 配置模块。它的内容也进入构建签名，切换 CONFIG_XLEN/SOC_XLEN
-# 或修改派生类型时，模块图不会复用旧 BMI。模块由顶层 Makefile 从 .config
-# 生成；这里只负责把它放在模块依赖链最前面。
 NPC_CONFIG_MODULE := $(NPC_CSRC_DIR)/generated/npc_config.ixx
 NPC_CONFIG_JSON := $(abspath $(NPC_CSRC_DIR)/../include/generated/npc_config.json)
-# 顶层 Makefile 会把叠加了 Makefile/命令行覆盖的 effective JSON 路径传进来。
-# 此时模块已经由顶层按同一份 JSON 生成，子 make 只复用，绝不再从原始
-# Kconfig JSON 重新生成出与 Scala 不同的值。
 NPC_CONFIG_EFFECTIVE_JSON ?=
 ifneq ($(wildcard $(NPC_CONFIG_EFFECTIVE_JSON)),)
 NPC_CONFIG_EXTERNAL_MODULE := 1
@@ -22,9 +16,6 @@ NPC_CONFIG_GEN_BIN := $(abspath $(NPC_CSRC_DIR)/../tools/build/npc_config_gen)
 NPC_SAVABLE ?= n
 NPC_CONFIG_OVERRIDE_ARGS := $(foreach item,$(filter CONFIG_%,$(MAKEOVERRIDES)),--set '$(item)')
 
-# Remember the wrapper itself before including Verilator's generated makefiles.
-# Its content is part of the build signature, so changes to the custom module
-# rules cannot silently reuse artifacts produced by an older version.
 NPC_BUILD_WRAPPER := $(abspath $(firstword $(MAKEFILE_LIST)))
 
 include $(VERILATOR_GENERATED_MK)
@@ -35,11 +26,9 @@ else
 NPC_COMPILER := gcc
 endif
 
-# 拉 Kconfig 配置以选择标准库
 NPC_AUTO_CONF := $(NPC_CSRC_DIR)/../include/config/auto.conf
 -include $(NPC_AUTO_CONF)
 
-# 标准库模块源: clang+libc++ → libc++ 自带 std.cppm; 其余 → libstdc++ 的 bits/std.cc
 ifeq ($(NPC_COMPILER)-$(CONFIG_STDLIB_LIBCXX),clang-y)
 NPC_STD_MODULE_SRC := /usr/share/libc++/v1/std.cppm
 NPC_STDLIB_FLAG := -stdlib=libc++
@@ -52,8 +41,6 @@ STD_MODULE_SRC := $(NPC_STD_MODULE_SRC)
 
 STD_MODULE_OBJ := std_module.o
 
-# 顶层 Makefile 通常已经生成 JSON/模块；这些规则让直接进入 obj_dir 的
-# 构建也能自举。Kconfig 的 c_conf 是唯一的 .config 解析器。
 $(NPC_CONFIG_JSON): $(NPC_CSRC_DIR)/../.config $(NPC_CSRC_DIR)/../tools/build/c_conf
 	cd $(NPC_CSRC_DIR)/.. && ./tools/build/c_conf -s --syncconfig Kconfig
 
@@ -150,19 +137,9 @@ NPC_IXX_SRCS := \
 
 NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))))
 
-# Compiler options are command-line inputs rather than ordinary makefile
-# prerequisites.  Without a content stamp, switching Kconfig options,
-# compiler versions, language standards, sanitizers, PGO/LTO modes, or link
-# options can silently reuse incompatible objects and BMIs.  Re-evaluate this
-# target on every invocation, but preserve its mtime when every input is
-# unchanged.  Downstream targets therefore rebuild exactly when the signature
-# content changes instead of on every sub-make.
 .PHONY: npc_build_signature_force
 npc_build_signature_force:
 
-# Quote arbitrary make-variable text as one POSIX-shell argument.  In
-# particular, this keeps macro values such as -DNAME=\"value\" literal and
-# avoids parse-time writes (so `make -n` remains side-effect free).
 npc_shell_quote = '$(subst ','"'"',$(1))'
 
 .npc_build_signature: $(NPC_CONFIG_MODULE) npc_build_signature_force
@@ -217,49 +194,26 @@ npc_shell_quote = '$(subst ','"'"',$(1))'
 	   mv -f "$$tmp" $@; \
 	 fi
 
-# Verilator rewrites its public header on every invocation even when its
-# contents are unchanged.  Track a content signature so that the expensive
-# C++ module graph is invalidated only when the actual top-level API changes.
 .npc_top_header_signature: $(VM_PREFIX).h
 	@new_sig=$$(sha256sum $< | cut -d' ' -f1); \
 	 old_sig=$$(test -f $@ && sed -n '1p' $@ || true); \
 	 if test "$$new_sig" != "$$old_sig"; then printf '%s\n' "$$new_sig" > $@; fi
 
-# ============ GCC module compilation ============
 ifeq ($(NPC_COMPILER),gcc)
 
-# GCC's default module dependency output introduces phony `*.c++-module`
-# aliases.  Since those aliases never exist as files, every importer is then
-# considered out of date on every make.  The module stamp below is the real,
-# content-aware dependency, so retain normal header dependencies while
-# suppressing those always-dirty module aliases.
 NPC_MODULE_DEP_FLAGS := -Mno-modules
 
-# One-time compatibility for dependency files produced before
-# -Mno-modules was enabled.  Their imported named-module aliases may no
-# longer be defined by freshly regenerated interface .d files; defining the
-# accumulated aliases here lets make rebuild those importers once, after
-# which their dependency files no longer contain the aliases.
 ifneq ($(strip $(CXX_IMPORTS)),)
 .PHONY: $(CXX_IMPORTS)
 $(CXX_IMPORTS):
 endif
 
-# Compile import <xxx>; headers as header units
 NPC_HEADER_GCM := $(foreach h,$(NPC_IMPORT_HEADERS),gcm.cache/$(h).gcm)
 $(NPC_HEADER_GCM): gcm.cache/%.gcm: .npc_build_signature
 	@mkdir -p gcm.cache
 	@echo "  CXX HEADER <$*>"
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS) -x c++-system-header $*
 
-# DUT.ixx imports the generated top class.  Rebuild the complete module graph
-# whenever Verilator changes that public header; otherwise GCC can silently
-# reuse an old npc.DUT BMI and report newly-added RTL ports as nonexistent.
-#
-# 每个模块对象使用独立规则编译。原先整张清单展开进一条shell命令，编译标志
-# 增多（例如按需性能计数器宏）后整行会超过单个参数128KiB上限，触发
-# "Argument list too long"。逐对象规则同时天然获得增量编译；顺序用前置依赖
-# 链保持：GCC的模块可见性要求导入者晚于被导入者构建。
 npc_module_obj = $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(1)))
 define npc_module_chain
 $(if $(wordlist 2,$(words $(1)),$(1)),$(word 2,$(1)): $(word 1,$(1))
@@ -289,7 +243,6 @@ $(VK_USER_OBJS): private CPPFLAGS += $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS
 
 endif
 
-# ============ Clang module compilation ============
 ifeq ($(NPC_COMPILER),clang)
 
 NPC_PCM_DIR := $(CURDIR)/pcm_cache
@@ -303,16 +256,12 @@ $(NPC_PCM_DIR)/std.pcm: $(STD_MODULE_SRC) .npc_build_signature
 $(STD_MODULE_OBJ): $(NPC_PCM_DIR)/std.pcm
 	@$(CXX) $(NPC_STD_FLAG) $(NPC_STDLIB_FLAG) -c $< -o $@
 
-# Compile import <xxx>; headers as header units
 NPC_HEADER_PCM := $(foreach h,$(NPC_IMPORT_HEADERS),$(NPC_PCM_DIR)/$(subst /,_,$(h)).pcm)
 $(NPC_HEADER_PCM): $(NPC_PCM_DIR)/%.pcm: .npc_build_signature
 	@mkdir -p $(NPC_PCM_DIR)
 	@echo "  CXX HEADER <$(subst _,/,$*)>"
 	$(CXX) $(NPC_STD_FLAG) -x c++-system-header $(subst _,/,$*) --precompile -o $@
 
-# 与GCC分支同理：逐模块规则，避免把整张清单塞进一条shell命令。
-# clang的pcm文件名由源码路径唯一决定，使用显式规则，不会与上面的
-# 头文件pcm模式规则冲突。
 npc_module_obj = $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(1)))
 npc_module_pcm = $(NPC_PCM_DIR)/$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.pcm,$(1)))
 define npc_module_chain
