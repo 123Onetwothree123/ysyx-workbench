@@ -26,9 +26,11 @@ class axi4_delayer extends BlackBox {
   val io = IO(new AXI4DelayerIO)
 }
 
-class AXI4DelayerChisel(val CPU_MHZ: Int = sys.env.get("AXI_CPU_FREQ_MHZ").map(_.toInt).getOrElse(450),
-    val DEVICE_MHZ: Int = sys.env.get("AXI_DEVICE_FREQ_MHZ").map(_.toInt).getOrElse(100),
-    val S: Int = sys.env.get("AXI_DELAY_SCALE_FACTOR").map(_.toInt).getOrElse(64)) extends Module {
+class AXI4DelayerChisel(
+    val CPU_MHZ: Int = Config.axiCpuFreqMhz,
+    val DEVICE_MHZ: Int = Config.axiDeviceFreqMhz,
+    val S: Int = Config.axiDelayScale
+) extends Module {
   require(CPU_MHZ > 0, "AXI CPU frequency must be positive")
   require(DEVICE_MHZ > 0, "AXI device frequency must be positive")
   require(S > 0, "AXI delay scale must be positive")

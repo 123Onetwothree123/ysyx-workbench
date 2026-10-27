@@ -20,7 +20,6 @@ SDBCommandUsageList historyCommand::usage() const noexcept
 }
 void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Registry)
 {
-#ifdef CONFIG_SDB
     if (history_length == 0)
     {
         std::println("没有历史记录");
@@ -50,11 +49,6 @@ void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Re
             std::println("{:5}  {} [未知命令]", i + history_base, line);
         }
     }
-#else
-    static_cast<void>(n);
-    static_cast<void>(Registry);
-    std::println("SDB 未开启，无历史记录");
-#endif
 }
 SDBCommandResult historyCommand::execute(SDBCommandContext &context, std::string_view args)
 {

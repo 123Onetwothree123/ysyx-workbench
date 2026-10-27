@@ -6,7 +6,7 @@ menu "硬件配置"
       int "当前 XLEN"
       default 32
       # Kconfig 的 int/range 只能表达连续区间，无法直接写成 {32,64}；
-      # 33..63 由 scripts/check_kconfig_contract.py 在配置阶段拒绝，
+      # 33..63 由 tools/kconfig_contract.cpp 在配置阶段拒绝，
       # elaboration 也会再次校验。保持 int 是为了让现有
       # CONFIG_XLEN=32/64 的 defconfig 和脚本继续可用。
       range 32 64
@@ -132,7 +132,7 @@ menu "硬件配置"
         help
           FLEN 只允许 32 或 64。仅 F 可使用 32 或 64；启用 D 时必须
           为 64。Kconfig 的 range 不能表达离散集合，33..63 会由
-          scripts/check_kconfig_contract.py 明确拒绝。
+          tools/kconfig_contract.cpp 明确拒绝。
           默认 64，便于后续同时支持 F/D，并让 F 的 NaN-boxing 与
           D 共用同一套 64 位浮点寄存器。
 
@@ -416,6 +416,22 @@ menu "硬件配置"
 
   menu "ysyxSoC 接口"
 
+    config CHIPLINK
+      bool "启用 ChipLink 外部存储/中断接口"
+      default n
+      help
+        打开 ysyxSoC 的 ChipLink master/slave 与 DMA 代理。
+        该值写入 typed JSON 的 soc.chiplink，由 SoC elaboration 消费；
+        CPU 侧 PMA/DMA 一致性设置仍由 Makefile 从同一值派生。
+
+    config SDRAM_USE_AXI
+      bool "SDRAM 使用 AXI 数据通路"
+      default y
+      help
+        选择 ysyxSoC 的 SDRAM 控制器接在 32 位 AXI xbar 上；关闭时
+        使用 APB SDRAM 路径。该值写入 typed JSON 的
+        soc.sdram_use_axi，由 SoC 拓扑选择直接消费。
+
     config SOC_XLEN_FOLLOW_CPU
       bool "SoC CPU 侧接口位宽跟随 CPU XLEN"
       default n
@@ -431,8 +447,8 @@ menu "硬件配置"
       int "ysyxSoC CPU 侧接口 XLEN"
       depends on !SOC_XLEN_FOLLOW_CPU
       default 32
-      # Kconfig 的 int/range 不能表达离散集合；32/64 由配置契约脚本
-      # 在配置阶段校验，elaboration 也会再次校验。
+      # Kconfig 的 int/range 不能表达离散集合；32/64 由配置契约校验
+      # 在配置阶段检查，elaboration 也会再次校验。
       range 32 64
       help
         ysyxSoC CPU 侧接口的 XLEN/数据宽度，仅当
@@ -441,9 +457,10 @@ menu "硬件配置"
         被明确拒绝，不会静默生成。
         32 位 ysyxSoC 可以搭配 64 位 CPU：CPU 内部仍使用 64 位地址，
         但经 SoC 边界的访问必须位于低 4GiB，更高地址在 Xbar 内返回
-        DECERR。64 位 SoC 接口的 AXI 桥接尚未接入 RTL，当前该配置
-        只保留给后续桥接任务，生成结果仍是 32 位 AXI。
-        修改后需重新 make verilog。
+        DECERR。64 位 SoC 接口已经由 AXI4Downsizer 接入 32 位
+        xbar/外设，配置会写入 typed JSON 的 soc.soc_xlen，由
+        ysyxSoC elaboration 直接消费。
+        修改后需重新 make verilog 或 make build/ysyx_26030103。
 
   endmenu
 
@@ -755,7 +772,8 @@ menu "硬件配置"
       range 1 10000
       help
         APB总线上外设（如SDRAM控制器）的运行频率。
-        用于APB延迟模块计算频率比校准访存延迟。
+        用于APB延迟模块计算频率比校准访存延迟；该值进入 typed JSON
+        的 soc.apb.device_freq_mhz，由 ysyxSoC 统一读取。
 
     config APB_DELAY_SCALE
       int "APB延迟缩放因子 S"

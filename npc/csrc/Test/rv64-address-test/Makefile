@@ -1,6 +1,6 @@
 # RV64 裸机地址/Cache 回归。
 # 需要先用 XLEN=64 / ADDRESS_WIDTH=64 / ICACHE=y / DCACHE=y 生成并编译
-# direct-NPC（见 npc/ADDRESSING.md），然后：
+# direct-NPC，然后：
 #   make -C npc/csrc/Test/rv64-address-test run
 NPC_HOME := ../../..
 CROSS ?= riscv64-unknown-elf-

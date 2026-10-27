@@ -5,7 +5,6 @@
 !Makefile
 !*.mk
 !Kconfig
-!CHECKPOINT.md
 # Kconfig 拆分文件：整目录白名单，文件可任意命名
 !kconfig/
 !kconfig/**/*
@@ -20,7 +19,6 @@
 !*.cc
 !.gitignore
 !.scalafmt.conf
-!README.md
 //新加的
 !*hpp
 !*ixx
@@ -37,7 +35,9 @@
 
 build/
 include/config/
-include/generated/mmu_profile.h
+include/generated/npc_config.json
+# C++ 配置模块生成目录（由 .config 派生，不纳入版本管理）
+/csrc/generated/
 
 # mill
 !*.mill
@@ -62,15 +62,12 @@ test_run_dir/
 # GCC C++ modules cache (build artifact)
 gcm.cache/
 
-!MMU_STATUS.md
 
-!ADDRESSING.md
 
 # RustSBI 固件源码、测试与文档（vendor 源码在根 .gitignore 单独放行）
 !/rustsbi-fw/
 !/rustsbi-fw/**/*
 /rustsbi-fw/target/
-!/README_RUSTSBI.md
 # NPC 设备树源文件（生成的 DTB 在 build/ 下，不跟踪）
 !/dts/
 !/dts/**/*

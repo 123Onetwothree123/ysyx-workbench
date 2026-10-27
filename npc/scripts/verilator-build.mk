@@ -5,9 +5,22 @@ ifndef NPC_CSRC_DIR
 $(error NPC_CSRC_DIR is not set)
 endif
 
-# 唯一 XLEN 配置头。它的内容也进入构建签名，切换 CONFIG_XLEN/SOC_XLEN
-# 或修改派生类型时，模块图不会复用旧 BMI。
-NPC_CONFIG_HEADER := $(NPC_CSRC_DIR)/Config.h
+# 唯一 C++ 配置模块。它的内容也进入构建签名，切换 CONFIG_XLEN/SOC_XLEN
+# 或修改派生类型时，模块图不会复用旧 BMI。模块由顶层 Makefile 从 .config
+# 生成；这里只负责把它放在模块依赖链最前面。
+NPC_CONFIG_MODULE := $(NPC_CSRC_DIR)/generated/npc_config.ixx
+NPC_CONFIG_JSON := $(abspath $(NPC_CSRC_DIR)/../include/generated/npc_config.json)
+# 顶层 Makefile 会把叠加了 Makefile/命令行覆盖的 effective JSON 路径传进来。
+# 此时模块已经由顶层按同一份 JSON 生成，子 make 只复用，绝不再从原始
+# Kconfig JSON 重新生成出与 Scala 不同的值。
+NPC_CONFIG_EFFECTIVE_JSON ?=
+ifneq ($(wildcard $(NPC_CONFIG_EFFECTIVE_JSON)),)
+NPC_CONFIG_EXTERNAL_MODULE := 1
+endif
+NPC_CONFIG_GEN_SRC := $(abspath $(NPC_CSRC_DIR)/../tools/npc_config_gen.cpp)
+NPC_CONFIG_GEN_BIN := $(abspath $(NPC_CSRC_DIR)/../tools/build/npc_config_gen)
+NPC_SAVABLE ?= n
+NPC_CONFIG_OVERRIDE_ARGS := $(foreach item,$(filter CONFIG_%,$(MAKEOVERRIDES)),--set '$(item)')
 
 # Remember the wrapper itself before including Verilator's generated makefiles.
 # Its content is part of the build signature, so changes to the custom module
@@ -39,9 +52,35 @@ STD_MODULE_SRC := $(NPC_STD_MODULE_SRC)
 
 STD_MODULE_OBJ := std_module.o
 
+# 顶层 Makefile 通常已经生成 JSON/模块；这些规则让直接进入 obj_dir 的
+# 构建也能自举。Kconfig 的 c_conf 是唯一的 .config 解析器。
+$(NPC_CONFIG_JSON): $(NPC_CSRC_DIR)/../.config $(NPC_CSRC_DIR)/../tools/build/c_conf
+	cd $(NPC_CSRC_DIR)/.. && ./tools/build/c_conf -s --syncconfig Kconfig
+
+$(NPC_CONFIG_GEN_BIN): $(NPC_CONFIG_GEN_SRC)
+	@mkdir -p $(@D)
+	$(CXX) -std=c++23 -O2 -Wall -Wextra -o $@ $<
+
+ifeq ($(NPC_CONFIG_EXTERNAL_MODULE),1)
+$(NPC_CONFIG_MODULE): $(NPC_CONFIG_EFFECTIVE_JSON)
+	@test -f $@ || { \
+		echo "错误：顶层 Makefile 未生成 $(NPC_CONFIG_MODULE)" >&2; \
+		exit 1; \
+	}
+else
+$(NPC_CONFIG_MODULE): $(NPC_CONFIG_JSON) $(NPC_CONFIG_GEN_BIN)
+	@mkdir -p $(@D)
+	$(NPC_CONFIG_GEN_BIN) \
+		--config-json $(NPC_CONFIG_JSON) \
+		--savable $(NPC_SAVABLE) \
+		$(NPC_CONFIG_OVERRIDE_ARGS) \
+		--output $@
+endif
+
 NPC_IMPORT_HEADERS := $(shell grep -rhoP '(?<=import <)[^>]+' $(NPC_CSRC_DIR) --include='*.ixx' --include='*.cpp' 2>/dev/null | sort -u)
 
 NPC_IXX_SRCS := \
+  $(NPC_CONFIG_MODULE) \
   $(NPC_CSRC_DIR)/log/log.ixx \
   $(NPC_CSRC_DIR)/unicode.ixx \
   $(NPC_CSRC_DIR)/PerfStats.ixx \
@@ -126,7 +165,7 @@ npc_build_signature_force:
 # avoids parse-time writes (so `make -n` remains side-effect free).
 npc_shell_quote = '$(subst ','"'"',$(1))'
 
-.npc_build_signature: npc_build_signature_force
+.npc_build_signature: $(NPC_CONFIG_MODULE) npc_build_signature_force
 	@set -eu; \
 	 tmp=$@.tmp; \
 	 cxx_frontend=$$(command -v '$(firstword $(CXX))' 2>/dev/null || printf '%s' unavailable); \
@@ -168,7 +207,7 @@ npc_shell_quote = '$(subst ','"'"',$(1))'
 	   $(LINK) --version 2>&1; \
 	   printf '%s\n' 'LINK_VERSION_END'; \
 	   printf 'WRAPPER_SHA256='; sha256sum '$(NPC_BUILD_WRAPPER)' | cut -d' ' -f1; \
-	   printf 'CONFIG_HEADER_SHA256='; sha256sum '$(NPC_CONFIG_HEADER)' | cut -d' ' -f1; \
+	   printf 'CONFIG_MODULE_SHA256='; sha256sum '$(NPC_CONFIG_MODULE)' | cut -d' ' -f1; \
 	   printf 'AUTO_CONF_SHA256='; \
 	   if test -f '$(NPC_AUTO_CONF)'; then sha256sum '$(NPC_AUTO_CONF)' | cut -d' ' -f1; else printf '%s\n' missing; fi; \
 	 } > "$$tmp"; \
@@ -235,13 +274,13 @@ $(STD_MODULE_OBJ): $(STD_MODULE_SRC) .npc_build_signature
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS) -x c++ -c $< -o $@
 
 define NPC_GCC_MODULE_RULE
-$(call npc_module_obj,$(1)): $(1) $(NPC_CONFIG_HEADER) .npc_build_signature .npc_top_header_signature $(NPC_HEADER_GCM)
+$(call npc_module_obj,$(1)): $(1) $(NPC_CONFIG_MODULE) .npc_build_signature .npc_top_header_signature $(NPC_HEADER_GCM)
 	@echo "  CXX MODULE $(notdir $(1))"
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS) -x c++ -c $(1) -o $(call npc_module_obj,$(1))
 endef
 $(foreach src,$(NPC_IXX_SRCS),$(eval $(call NPC_GCC_MODULE_RULE,$(src))))
 
-.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_MODULE_OBJS_IXX) $(NPC_HEADER_GCM) $(NPC_IXX_SRCS) $(NPC_CONFIG_HEADER) $(STD_MODULE_SRC) .npc_top_header_signature .npc_build_signature
+.npc_modules_built: $(STD_MODULE_OBJ) $(NPC_MODULE_OBJS_IXX) $(NPC_HEADER_GCM) $(NPC_IXX_SRCS) $(NPC_CONFIG_MODULE) $(STD_MODULE_SRC) .npc_top_header_signature .npc_build_signature
 	@mkdir -p gcm.cache
 	@touch $@
 

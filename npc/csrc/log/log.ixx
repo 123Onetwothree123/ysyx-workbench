@@ -1,12 +1,9 @@
 export module npc.log;
 import std;
-
-#ifndef CONFIG_LOG_LEVEL
-#define CONFIG_LOG_LEVEL 3
-#endif
+import npc.config;
 
 export enum class LogLevel { Silent = 0, Error = 1, Warn = 2, Info = 3, Debug = 4 };
-export inline constexpr auto CURRENT_LOG_LEVEL = static_cast<LogLevel>(CONFIG_LOG_LEVEL);
+export inline constexpr auto CURRENT_LOG_LEVEL = static_cast<LogLevel>(npc::LogLevel);
 
 // Logging is initialized before the DUT exists.  Report filesystem/open
 // failures to main instead of allowing filesystem_error to terminate the

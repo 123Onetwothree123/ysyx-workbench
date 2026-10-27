@@ -1,6 +1,6 @@
 module;
-#include "../Config.h"
 module npc.SoCMemoryMap.SoCMemoryMap;
+import npc.config;
 std::optional<AddressRange> SoCMemoryMap::find(npc::XWord address, npc::XWord length)
 {
     // 有效 SoC 只有 32 位时，高于 4GiB 的查询不可能命中任何外设，

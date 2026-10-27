@@ -11,7 +11,7 @@ CONFIG_HAS_TLB=y
 # 66 位 VA，超过 64 位，配置校验会明确拒绝；必须像这里一样减小每级
 # 页表项数。2MiB 页配 44 位 PPN 时物理地址需要 65 位，因此 PTE/satp
 # 的 PPN 最高位必须为 0（RTL walk 会检查并报页错误）。
-# 配置层允许这些自由参数；未合入大页 RTL 的树会在 mmu-profile/
+# 配置层允许这些自由参数；未合入大页 RTL 的树会在
 # elaboration 阶段按旧的 1..4 级/1MiB 能力明确拒绝。
 CONFIG_MMU_PROFILE_CUSTOM=y
 CONFIG_MMU_GEOMETRY_CUSTOM=y

@@ -8,55 +8,47 @@ import java.nio.file.{Files, Paths, StandardCopyOption}
 object ysyx_26030103_Elaborate extends App {
   val targetDir = args(args.indexOf("--target-dir") + 1)
 
-  val BlockSizeLog2 = sys.env.getOrElse("CACHE_BLOCK_SIZE_LOG2", "4").toInt
-  val IndexBits = sys.env.getOrElse("CACHE_INDEX_BITS", "5").toInt
+  // 硬件配置只从生成后的 typed JSON 读取；命令行覆盖由 Makefile
+  // 通过 npc_config_gen --set 合并进同一份文件，Scala 不再读取 sys.env
+  // 中的 CACHE_*/FPU_* 等开关，避免 RTL 与 C++ 模块出现两套配置。
+  val configJsonPath = ysyx_26030103_JsonConfig.resolvePath()
+  val cfg = ysyx_26030103_JsonConfig.load(configJsonPath)
+  println(s"[NPC config] source: $configJsonPath")
+
+  val BlockSizeLog2 = cfg.int("cache.block_size_log2", 4)
+  val IndexBits = cfg.int("cache.index_bits", 5)
   // 每级缓存可单独配置几何；未设置时跟随共享的 CACHE_BLOCK_SIZE_LOG2/INDEX_BITS。
-  private def envIntOr(key: String, fallback: Int): Int =
-    sys.env.get(key).filter(_.nonEmpty).map(_.toInt).getOrElse(fallback)
-  private def envBoolOr(key: String, fallback: Boolean): Boolean =
-    sys.env.get(key).filter(_.nonEmpty).map(_ == "y").getOrElse(fallback)
-  val ICacheBlockSizeLog2 = envIntOr("ICACHE_BLOCK_SIZE_LOG2", BlockSizeLog2)
-  val ICacheIndexBits = envIntOr("ICACHE_INDEX_BITS", IndexBits)
-  val DCacheBlockSizeLog2 = envIntOr("DCACHE_BLOCK_SIZE_LOG2", BlockSizeLog2)
-  val DCacheIndexBits = envIntOr("DCACHE_INDEX_BITS", IndexBits)
-  val ICacheEnable = sys.env.getOrElse("ICACHE", "y") == "y"
+  val ICacheBlockSizeLog2 =
+    cfg.int("cache.icache.block_size_log2", BlockSizeLog2)
+  val ICacheIndexBits = cfg.int("cache.icache.index_bits", IndexBits)
+  val DCacheBlockSizeLog2 =
+    cfg.int("cache.dcache.block_size_log2", BlockSizeLog2)
+  val DCacheIndexBits = cfg.int("cache.dcache.index_bits", IndexBits)
+  val ICacheEnable = cfg.bool("cache.icache.enabled", true)
   // ICache数据阵列存储介质："reg"=寄存器阵列(默认)，"sram"=SyncReadMem同步读阵列
-  val ICacheStorageName =
-    sys.env.get("ICACHE_STORAGE").filter(_.nonEmpty).getOrElse("reg")
-  val DCacheEnable = sys.env.getOrElse("DCACHE", "n") == "y"
+  val ICacheStorageName = cfg.string("cache.icache.storage", "reg")
+  val DCacheEnable = cfg.bool("cache.dcache.enabled", false)
   // DCache数据阵列存储介质："reg"=寄存器阵列(默认)，"sram"=SyncReadMem同步读阵列
-  val DCacheStorageName =
-    sys.env.get("DCACHE_STORAGE").filter(_.nonEmpty).getOrElse("reg")
+  val DCacheStorageName = cfg.string("cache.dcache.storage", "reg")
   // 一致性模式：默认分别是标准 fence.i 与既有 DMA 写 B 失效行为。
   // 未实现的值会在 FromString 中明确报错，绝不静默回退。
   val ICacheCoherenceName =
-    sys.env.get("ICACHE_COHERENCE").filter(_.nonEmpty).getOrElse("fence_i")
+    cfg.string("cache.icache.coherence", "fence_i")
   val DmaCoherenceName =
-    sys.env.get("DMA_COHERENCE").filter(_.nonEmpty).getOrElse("software_flush")
-  val WBufDepth = sys.env.getOrElse("WBUF_DEPTH", "4").toInt
-  val BTBBits = sys.env.getOrElse("BTB_BITS", "4").toInt
-  val BTBWays = sys.env.getOrElse("BTB_WAYS", "1").toInt
-  val JalBTBBits = sys.env.getOrElse("JAL_BTB_BITS", "4").toInt
-  val JalBTBWays = sys.env.getOrElse("JAL_BTB_WAYS", "1").toInt
-  val RASBits = sys.env.getOrElse("RAS_BITS", "4").toInt
+    cfg.string("cache.dma_coherence", "software_flush")
+  val WBufDepth = cfg.int("cache.wbuf_depth", 4)
+  val BTBBits = cfg.int("frontend.btb_bits", 4)
+  val BTBWays = cfg.int("frontend.btb_ways", 1)
+  val JalBTBBits = cfg.int("frontend.jal_btb_bits", 4)
+  val JalBTBWays = cfg.int("frontend.jal_btb_ways", 1)
+  val RASBits = cfg.int("frontend.ras_bits", 4)
   // ICache 对齐填充：npc 独立仿真的复位地址 = 0x80000000 + CACHE_PADDING
   // 与 Makefile 的 NPC_RESET_PC、ImageLoader 写入 direct RAM 的前置零保持一致
-  val CachePadding = sys.env.getOrElse("CACHE_PADDING", "0").toInt
-  // direct-NPC RAM 大小（字节），由 Kconfig 的 NPC_RAM_SIZE 经 Makefile
-  // 传入。AXIRAM 深度、CPU PMA 与 C++ CONFIG_MSIZE 必须使用同一个值。
+  val CachePadding = cfg.int("platform.cache_padding", 0)
+  // direct-NPC RAM 大小（字节），Kconfig 的 NPC_RAM_SIZE 经 Makefile 投影
+  // 到同一份 JSON。AXIRAM 深度、CPU PMA 与 C++ CONFIG_MSIZE 使用同一个值。
   val NpcRamSize: Long = {
-    val raw = sys.env.get("NPC_RAM_SIZE").filter(_.nonEmpty).getOrElse("0x04000000")
-    val parsed =
-      try {
-        if (raw.startsWith("0x") || raw.startsWith("0X"))
-          java.lang.Long.parseLong(raw.substring(2), 16)
-        else raw.toLong
-      } catch {
-        case _: NumberFormatException =>
-          throw new IllegalArgumentException(
-            s"NPC_RAM_SIZE='$raw' 不是合法的整数（支持十进制或 0x 十六进制）"
-          )
-      }
+    val parsed = cfg.long("platform.ram_size", 0x04000000L)
     require(parsed >= 4096L, s"NPC_RAM_SIZE=$parsed 太小")
     require((parsed & (parsed - 1L)) == 0L, s"NPC_RAM_SIZE=$parsed 必须是 2 的幂")
     require(parsed % 4L == 0L, s"NPC_RAM_SIZE=$parsed 必须是 4 字节的倍数")
@@ -67,82 +59,75 @@ object ysyx_26030103_Elaborate extends App {
   val CacheableMask_ysyxsoc = 0x00000000L
   val CacheableBase_npc = 0x80000000L
   val CacheableMask_npc = 0x80000000L
-  val HasChipLink = sys.env.getOrElse("CHIPLINK", "n") == "y"
+  val HasChipLink = cfg.bool("platform.chip_link", false)
   // 用kconfig来指挥的指令集扩展开关，然后没有实现的部分就直接让NPCConfig的require判断为失败的条件就可以了
-  val XLEN = envIntOr("XLEN", 32)
+  val XLEN = cfg.int("isa.xlen", 32)
   // 物理地址宽度跟随架构位宽：RV32 保持 32，RV64 默认 64。允许
   // ADDRESS_WIDTH 显式覆盖，但 NPCConfig 会拒绝 XLEN=64 使用 32 位
   // 地址，避免架构 PC/分支目标再次被截断。
-  val AddressWidth = envIntOr("ADDRESS_WIDTH", if (XLEN == 64) 64 else 32)
+  val AddressWidth =
+    cfg.int("platform.address_width", if (XLEN == 64) 64 else 32)
   // ysyxSoC CPU 侧接口位宽独立于 CPU XLEN：
   //   SOC_XLEN_FOLLOW_CPU=y  -> EffectiveSocXLEN=XLEN
   //   SOC_XLEN_FOLLOW_CPU=n  -> EffectiveSocXLEN=SOC_XLEN（默认，32）
   // SOC_XLEN 只在 FOLLOW=n 时生效，NPCConfig 会拒绝 32/64 之外的值。
-  val SocXLENFollowCpu =
-    sys.env.getOrElse("SOC_XLEN_FOLLOW_CPU", "n") == "y"
-  val SocXLEN = envIntOr("SOC_XLEN", 32)
+  val SocXLENFollowCpu = cfg.bool("isa.soc_xlen_follow_cpu", false)
+  val SocXLEN = cfg.int("isa.soc_xlen", 32)
   // 扩展名与位宽解耦，统一使用 RISCV_M/A/C。
-  val UseM = sys.env.getOrElse("RISCV_M", "n") == "y"
-  val UseA = sys.env.getOrElse("RISCV_A", "n") == "y"
-  val UseC = sys.env.getOrElse("RISCV_C", "n") == "y"
+  val UseM = cfg.bool("isa.m", false)
+  val UseA = cfg.bool("isa.a", false)
+  val UseC = cfg.bool("isa.c", false)
   // F/D 与 FPU 后端。后端未接入时 NPCConfig 会明确拒绝，绝不静默
-  // 忽略 RISCV_F；未设置的环境变量取 Kconfig 默认值，保证既有构建
-  // 脚本无需修改即可保持 F/D=n、backend=none。
-  val UseF = sys.env.getOrElse("RISCV_F", "n") == "y"
-  val UseD = sys.env.getOrElse("RISCV_D", "n") == "y"
-  val FPUImplName =
-    sys.env.get("FPU_IMPL").filter(_.nonEmpty).getOrElse("none")
-  val FPULen = envIntOr("FPU_FLEN", 64)
-  val FPUPipeline = envIntOr("FPU_PIPELINE", 0)
-  val FPUFMA = envBoolOr("FPU_FMA", true)
-  val FPUDivSqrt = envBoolOr("FPU_DIVSQRT", true)
-  val FPURounding = envBoolOr("FPU_ROUNDING", true)
-  val FPUFlags = envBoolOr("FPU_FLAGS", true)
-  val FPUHardFloatRecode = envBoolOr("FPU_HARDFLOAT_RECODE", true)
+  // 忽略 RISCV_F；JSON 未提供时取 Kconfig 默认值，保证既有构建脚本
+  // 无需修改即可保持 F/D=n、backend=none。
+  val UseF = cfg.bool("isa.f", false)
+  val UseD = cfg.bool("isa.d", false)
+  val FPUImplName = cfg.string("fpu.impl", "none")
+  val FPULen = cfg.int("fpu.flen", 64)
+  val FPUPipeline = cfg.int("fpu.pipeline", 0)
+  val FPUFMA = cfg.bool("fpu.fma", true)
+  val FPUDivSqrt = cfg.bool("fpu.divsqrt", true)
+  val FPURounding = cfg.bool("fpu.rounding", true)
+  val FPUFlags = cfg.bool("fpu.flags", true)
+  val FPUHardFloatRecode = cfg.bool("fpu.hardfloat.recode", true)
   val FPUHardFloatTininessBefore =
-    envBoolOr("FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING", false)
+    cfg.bool("fpu.hardfloat.tininess_before_rounding", false)
   val FPUFudianSharedDivSqrt =
-    envBoolOr("FPU_FUDIAN_SHARED_DIVSQRT", true)
-  val MULImplName =
-    sys.env.get("MUL_IMPL").filter(_.nonEmpty).getOrElse("shift_add")
-  val MULEncodingName =
-    sys.env.get("MUL_ENCODING").filter(_.nonEmpty).getOrElse("plain")
-  val DIVImplName =
-    sys.env.get("DIV_IMPL").filter(_.nonEmpty).getOrElse("restoring")
-  val MULRadix = sys.env.getOrElse("MUL_RADIX", "4").toInt
-  val MULWidth = sys.env.getOrElse("MUL_WIDTH", "32").toInt
-  val MULCompressorInputs = sys.env.getOrElse("MUL_COMPRESSOR_INPUTS", "3").toInt
-  val MULCompressorOutputs = sys.env.getOrElse("MUL_COMPRESSOR_OUTPUTS", "2").toInt
-  val MULCompressorOutputOffsets = sys.env
-    .getOrElse("MUL_COMPRESSOR_OUTPUT_OFFSETS", "0,1")
-    .split(',')
-    .map(_.trim)
-    .filter(_.nonEmpty)
-    .map(_.toInt)
-    .toIndexedSeq
-  val MULCompressorHasCin = sys.env.getOrElse("MUL_COMPRESSOR_HAS_CIN", "n") == "y"
-  val MULCompressorHasCout = sys.env.getOrElse("MUL_COMPRESSOR_HAS_COUT", "n") == "y"
-  val MULCompressorCoutOffset = sys.env.getOrElse("MUL_COMPRESSOR_COUT_OFFSET", "1").toInt
-  val MULCompressorAllowRedundant = sys.env.getOrElse("MUL_COMPRESSOR_ALLOW_REDUNDANT", "n") == "y"
-  val DIVRadix = sys.env.getOrElse("DIV_RADIX", "2").toInt
-  val DIVIterBits = sys.env.getOrElse("DIV_ITER_BITS", "1").toInt
-  val DIVEarlyOut = sys.env.getOrElse("DIV_EARLY_OUT", "n") == "y"
-  val MULIterBits = sys.env.getOrElse("MUL_ITER_BITS", "1").toInt
-  val MULPipeline = sys.env.getOrElse("MUL_PIPELINE", "0").toInt
-  val MULSplit = sys.env.getOrElse("MUL_SPLIT", "1").toInt
-  val MULEarlyOut = sys.env.getOrElse("MUL_EARLY_OUT", "n") == "y"
-  val SDBEnable = sys.env.getOrElse("SDB", "n") == "y"
-  val DiffTestEnable = sys.env.getOrElse("DIFFTEST", "n") == "y"
-  val MTraceEnable = sys.env.getOrElse("MTRACE", "n") == "y"
-  val ITraceEnable = sys.env.getOrElse("ITRACE", "n") == "y"
-  val FTraceEnable = sys.env.getOrElse("FTRACE", "n") == "y"
-  val IRingBufEnable = sys.env.getOrElse("IRINGBUF", "n") == "y"
-  val PerfStatsEnable = sys.env.getOrElse("PERF_STATS", "n") == "y"
+    cfg.bool("fpu.fudian.shared_divsqrt", true)
+  val MULImplName = cfg.string("mdu.mul_impl", "shift_add")
+  val MULEncodingName = cfg.string("mdu.mul_encoding", "plain")
+  val DIVImplName = cfg.string("mdu.div_impl", "restoring")
+  val MULRadix = cfg.int("mdu.mul_radix", 4)
+  val MULWidth = cfg.int("mdu.mul_width", 32)
+  val MULCompressorInputs = cfg.int("mdu.mul_compressor.inputs", 3)
+  val MULCompressorOutputs = cfg.int("mdu.mul_compressor.outputs", 2)
+  val MULCompressorOutputOffsets =
+    cfg.ints("mdu.mul_compressor.output_offsets", Seq(0, 1)).toIndexedSeq
+  val MULCompressorHasCin = cfg.bool("mdu.mul_compressor.has_cin", false)
+  val MULCompressorHasCout = cfg.bool("mdu.mul_compressor.has_cout", false)
+  val MULCompressorCoutOffset = cfg.int("mdu.mul_compressor.cout_offset", 1)
+  val MULCompressorAllowRedundant =
+    cfg.bool("mdu.mul_compressor.allow_redundant", false)
+  val DIVRadix = cfg.int("mdu.div_radix", 2)
+  val DIVIterBits = cfg.int("mdu.div_iter_bits", 1)
+  val DIVEarlyOut = cfg.bool("mdu.div_early_out", false)
+  val MULIterBits = cfg.int("mdu.mul_iter_bits", 1)
+  val MULPipeline = cfg.int("mdu.mul_pipeline", 0)
+  val MULSplit = cfg.int("mdu.mul_split", 1)
+  val MULEarlyOut = cfg.bool("mdu.mul_early_out", false)
+  val SDBEnable = cfg.bool("debug.sdb", false)
+  val DiffTestEnable = cfg.bool("debug.difftest", false)
+  val MTraceEnable = cfg.bool("debug.mtrace", false)
+  val ITraceEnable = cfg.bool("debug.itrace", false)
+  val FTraceEnable = cfg.bool("debug.ftrace", false)
+  val IRingBufEnable = cfg.bool("debug.iringbuf", false)
+  val PerfStatsEnable = cfg.bool("debug.perf_stats", false)
   // 性能计数器：组总开关与单计数器开关。主开关关闭时全部关闭；未提供的
   // 符号按默认开启，与Kconfig默认值以及尚未重新生成配置的工作区保持一致。
   // 单计数器与组总开关的相与在NPCConfig里统一完成。
   def PerfGroupEnabled(name: String): Boolean =
-    sys.env.getOrElse(name, "y") == "y"
+    cfg.bool(s"debug.perf_groups.${name.stripPrefix("PERF_COUNTER_").toLowerCase}",
+      true)
   val PerfCounterBasic = PerfGroupEnabled("PERF_COUNTER_BASIC")
   val PerfCounterOpClass = PerfGroupEnabled("PERF_COUNTER_OPCLASS")
   val PerfCounterMDU = PerfGroupEnabled("PERF_COUNTER_MDU")
@@ -155,10 +140,13 @@ object ysyx_26030103_Elaborate extends App {
   val PerfCounterTrap = PerfGroupEnabled("PERF_COUNTER_TRAP")
   val PerfCounters: Set[String] =
     ysyx_26030103_PerfCounterCatalog.AllPerfCounters.filter { name =>
-      PerfStatsEnable && sys.env
-        .getOrElse(s"PERF_COUNTER_${name.toUpperCase}", "y") == "y"
+      PerfStatsEnable && cfg.bool(
+        s"debug.perf_counters.$name",
+        true
+      )
     }
-  val mmuProfile = ysyx_26030103_MMUProfile.fromEnv(sys.env.get, XLEN)
+  val mmuProfile =
+    ysyx_26030103_MMUProfile.fromEnv(key => cfg.flat.get(key), XLEN)
   val config = ysyx_26030103_NPCConfig(
     XLEN = XLEN,
     AddressWidth = AddressWidth,

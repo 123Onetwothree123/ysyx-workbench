@@ -1,6 +1,6 @@
 module;
-#include "../Config.h"
 export module npc.SoCMemoryMap.AddressRange;
+import npc.config;
 import std;
 
 export class AddressRange

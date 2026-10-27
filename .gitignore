@@ -17,6 +17,9 @@ HDLLearn/**/obj_dir/
 HDLcode/**/build/
 HDLcode/**/obj_dir/
 !/npc/rtl/**
+# ysyxSoC 的 JSON 配置读取器：顶层 .gitignore 默认忽略未列出的新文件，
+# 这里显式放行，保证 SoC 配置源与 Makefile 改动一起进入版本管理。
+!/ysyxSoC/src/SoCConfig.scala
 !/yosys-sta/*
 !/riscv-arch-test-am
 !/riscv-tests
@@ -30,12 +33,7 @@ HDLcode/**/obj_dir/
 !init.sh
 !/xv6-riscv/
 !/xv6-riscv/**
-!XV6_PORT.md
-!XV6_NPC_BOOT.md
 !XV6_PORT.patch
-!SBI_NPC.md
-!UBOOT_NEMU.md
-!UBOOT_NPC.md
 # 第三方源码（vendor，本地跟踪，非 git submodule）
 !/vendor/
 !/vendor/**

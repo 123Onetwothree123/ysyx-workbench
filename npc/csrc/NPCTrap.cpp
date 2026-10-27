@@ -1,6 +1,6 @@
 module;
-#include "Config.h"
 module npc.NPCTrap;
+import npc.config;
 import npc.trace.itrace;
 import npc.log;
 namespace
@@ -43,31 +43,48 @@ int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Instructions)
         std::println(std::cerr, "NPC在未触发陷阱的情况下退出");
         return 1;
     }
-#ifdef CONFIG_PERF_STATS
-    auto ipc{Cycles > 0 ? static_cast<double>(Instructions) / static_cast<double>(Cycles) : 0.0};
-#endif
     // 按 XLEN 补齐地址宽度，长地址不会被格式化宽度截断。
     const auto haltPC{std::format("0x{:0{}x}", HaltPC, npc::XHexDigits)};
     if (HaltCode == 0)
     {
-#ifdef CONFIG_PERF_STATS
-        std::println("HIT GOOD TRAP at pc = {0}, cycles = {1}, instructions = {2}, ipc = {3:.4f}", haltPC, Cycles, Instructions, ipc);
-#else
-        std::println("HIT GOOD TRAP at pc = {0}, cycles = {1}", haltPC, Cycles);
-#endif
+        if constexpr (npc::HasPerfStats)
+        {
+            const auto ipc{Cycles > 0
+                               ? static_cast<double>(Instructions) /
+                                     static_cast<double>(Cycles)
+                               : 0.0};
+            std::println("HIT GOOD TRAP at pc = {0}, cycles = {1}, instructions = {2}, ipc = {3:.4f}",
+                         haltPC, Cycles, Instructions, ipc);
+        }
+        else
+        {
+            std::println("HIT GOOD TRAP at pc = {0}, cycles = {1}",
+                         haltPC, Cycles);
+        }
         return 0;
     }
-#ifdef CONFIG_PERF_STATS
-    std::println(std::cerr, "HIT BAD TRAP at pc = {0}, code = {1}, cycles = {2}, instructions = {3}, ipc = {4:.4f}", haltPC, HaltCode, Cycles, Instructions, ipc);
-#else
-    std::println(std::cerr, "HIT BAD TRAP at pc = {0}, code = {1}, cycles = {2}", haltPC, HaltCode, Cycles);
-#endif
-#ifdef CONFIG_IRINGBUF
-    PrintIringbuf(HaltPC);
-#endif
+    if constexpr (npc::HasPerfStats)
+    {
+        const auto ipc{Cycles > 0
+                           ? static_cast<double>(Instructions) /
+                                 static_cast<double>(Cycles)
+                           : 0.0};
+        std::println(std::cerr,
+                     "HIT BAD TRAP at pc = {0}, code = {1}, cycles = {2}, instructions = {3}, ipc = {4:.4f}",
+                     haltPC, HaltCode, Cycles, Instructions, ipc);
+    }
+    else
+    {
+        std::println(std::cerr,
+                     "HIT BAD TRAP at pc = {0}, code = {1}, cycles = {2}",
+                     haltPC, HaltCode, Cycles);
+    }
+    if constexpr (npc::HasIRingBuf)
+    {
+        PrintIringbuf(HaltPC);
+    }
     return 1;
 }
-#ifdef CONFIG_PERF_STATS
 void NPCTrap::PrintPerformanceStatistics(
     const PerfStats &stats,
     std::size_t total_cycles,
@@ -80,7 +97,8 @@ void NPCTrap::PrintPerformanceStatistics(
     std::println("LSU完成读操作(含故障完成): {}", stats.load_data);
     std::println("LSU完成写操作(含故障完成): {}", stats.store_data);
     std::println("ALU指令: {}", stats.arithmetic_operation);
-#ifdef CONFIG_RISCV_M
+    if constexpr (npc::HasM)
+    {
     std::println("MDU请求: {}", stats.mdu_request);
     std::println("MDU完成: {}", stats.mdu_complete);
     std::println("  MUL: {}", stats.mdu_mul);
@@ -91,7 +109,7 @@ void NPCTrap::PrintPerformanceStatistics(
     std::println("  DIVU: {}", stats.mdu_divu);
     std::println("  REM: {}", stats.mdu_rem);
     std::println("  REMU: {}", stats.mdu_remu);
-#endif
+    }
     std::println("访存指令: {}", stats.memory_access_operation);
     std::println("CSR指令: {}", stats.control_status_register_operation);
     std::println("分支/跳转指令: {}", stats.branch_operation);
@@ -101,16 +119,17 @@ void NPCTrap::PrintPerformanceStatistics(
     const auto classified_instructions{ClassifiedInstructionCount(stats)};
     std::println("已分类EXU操作合计: {}", classified_instructions);
     std::println("  注: 该口径不含halt/fence/异常等未分类操作，不应与推测IFU取指强求相等");
-#ifdef CONFIG_RISCV_M
-    if (stats.mdu_complete > 0)
+    if constexpr (npc::HasM)
     {
-        std::println("MDU发射或在途活动: {} 周期, 每次完成摊销 {:.2f} 周期", stats.mdu_active_cycle,
-            static_cast<double>(stats.mdu_active_cycle) / stats.mdu_complete);
-        std::println("MDU等待计算结果: {} 周期, 每次完成摊销 {:.2f} 周期", stats.mdu_wait_cycle,
-            static_cast<double>(stats.mdu_wait_cycle) / stats.mdu_complete);
-        std::println("  注: 以上是队列占用/吞吐指标，流水化MDU下不等于单条指令延迟");
+        if (stats.mdu_complete > 0)
+        {
+            std::println("MDU发射或在途活动: {} 周期, 每次完成摊销 {:.2f} 周期", stats.mdu_active_cycle,
+                static_cast<double>(stats.mdu_active_cycle) / stats.mdu_complete);
+            std::println("MDU等待计算结果: {} 周期, 每次完成摊销 {:.2f} 周期", stats.mdu_wait_cycle,
+                static_cast<double>(stats.mdu_wait_cycle) / stats.mdu_complete);
+            std::println("  注: 以上是队列占用/吞吐指标，流水化MDU下不等于单条指令延迟");
+        }
     }
-#endif
     auto load_store_sum{stats.load_data + stats.store_data};
     std::println("LSU完成操作合计: {}", load_store_sum);
     std::println();
@@ -119,9 +138,10 @@ void NPCTrap::PrintPerformanceStatistics(
     {
         auto total_instructions = static_cast<double>(classified_instructions);
         std::println("ALU指令占比: {:.1f}%", 100.0 * stats.arithmetic_operation / total_instructions);
-#ifdef CONFIG_RISCV_M
-        std::println("MDU指令占比: {:.1f}%", 100.0 * stats.mdu_complete / total_instructions);
-#endif
+        if constexpr (npc::HasM)
+        {
+            std::println("MDU指令占比: {:.1f}%", 100.0 * stats.mdu_complete / total_instructions);
+        }
         std::println("访存指令占比: {:.1f}%", 100.0 * stats.memory_access_operation / total_instructions);
         if (stats.memory_access_operation > 0)
         {
@@ -190,7 +210,8 @@ void NPCTrap::PrintPerformanceStatistics(
         std::println("  写响应在途(可后台重叠): {} 周期, 占总周期 {:.1f}%", stats.lsu_stall_write_b, 100.0 * stats.lsu_stall_write_b / total);
     }
     std::println();
-#ifdef CONFIG_ICACHE
+    if constexpr (npc::HasICache)
+    {
     std::println("ICache 性能:");
     std::println("  命中: {} 次", stats.icache_hit);
     std::println("  缺失: {} 次", stats.icache_miss);
@@ -205,8 +226,9 @@ void NPCTrap::PrintPerformanceStatistics(
             std::println("  refill平均服务周期: {:.1f}", icache.miss_service_cycle);
         std::println("  AMAT估算(hit基线=1): {:.1f} 周期", icache.amat);
     }
-#endif
-#ifdef CONFIG_DCACHE
+    }
+    if constexpr (npc::HasDCache)
+    {
     std::println("DCache 性能:");
     std::println("  load命中: {} 次", stats.dcache_hit);
     std::println("  可缓存load缺失: {} 次", stats.dcache_miss);
@@ -223,6 +245,5 @@ void NPCTrap::PrintPerformanceStatistics(
             std::println("  每个可缓存miss的refill服务周期: {:.1f}", dcache.miss_service_cycle);
         std::println("  AMAT估算(hit基线=1): {:.1f} 周期", dcache.amat);
     }
-#endif
+    }
 }
-#endif

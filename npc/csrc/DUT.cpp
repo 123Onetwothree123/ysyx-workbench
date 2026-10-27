@@ -7,19 +7,14 @@ module;
 #include "VysyxSoCFull.h"
 #define TOP_MODULE VysyxSoCFull
 #endif
-#ifdef CONFIG_TRACE_VCD
 #include <verilated_vcd_c.h>
-#endif
-#ifdef CONFIG_TRACE_FST
 #include <verilated_fst_c.h>
-#endif
-#ifdef CONFIG_VERILATOR_SAVABLE
 #include <verilated_save.h>
-#endif
-#ifdef CONFIG_NVBOARD
+#if __has_include(<nvboard.h>)
 #include <nvboard.h>
+#else
+void nvboard_update(void);
 #endif
-#include "Config.h"
 #ifdef VRISCV32E_NPC
 #include <cerrno>
 #include <chrono>
@@ -29,6 +24,7 @@ module;
 #include <unistd.h>
 #endif
 module npc.DUT;
+import npc.config;
 import npc.trace.itrace;
 import npc.trace.disasm;
 import npc.trace.mtrace;
@@ -36,23 +32,35 @@ import npc.trace.ftrace;
 import npc.difftest.difftest;
 import npc.ysyxSoC;
 import npc.NPCTrap;
-// 注意: 这里故意泄漏堆上的trace对象. 此前用静态对象, 退出时其析构函数调用
-// Verilated::removeFlushCb, 在Verilator 5.050下会访问已损毁的回调链表而段错误
-#ifdef CONFIG_TRACE_VCD
-static VerilatedVcdC &tfp = *new VerilatedVcdC;
-#endif
-#ifdef CONFIG_TRACE_FST
-static VerilatedFstC &tfp = *new VerilatedFstC;
-#endif
-#ifndef CONFIG_TRACE_FILE
-#define CONFIG_TRACE_FILE "waveform.vcd"
-#endif
-#ifndef CONFIG_MBASE
-#define CONFIG_MBASE 0x30000000
-#endif
-#ifndef CONFIG_MSIZE
-#define CONFIG_MSIZE 0x10000000
-#endif
+// 注意: 这里故意泄漏堆上的 trace 对象。此前用静态对象，退出时其析构
+// 函数调用 Verilated::removeFlushCb，在 Verilator 5.050 下会访问已损毁
+// 的回调链表而段错误。
+static VerilatedVcdC *vcdTracer{nullptr};
+static VerilatedFstC *fstTracer{nullptr};
+
+static void TraceDump(std::uint64_t time)
+{
+    if constexpr (npc::HasTraceVCD)
+    {
+        vcdTracer->dump(time);
+    }
+    else if constexpr (npc::HasTraceFST)
+    {
+        fstTracer->dump(time);
+    }
+}
+
+static void TraceClose()
+{
+    if constexpr (npc::HasTraceVCD)
+    {
+        vcdTracer->close();
+    }
+    else if constexpr (npc::HasTraceFST)
+    {
+        fstTracer->close();
+    }
+}
 namespace
 {
 // RV64 的调试端口拆成低/高两个 32 位字。direct-NPC 与 full-SoC
@@ -61,13 +69,16 @@ namespace
 template <typename Top>
 npc::XWord DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
 {
-#if CONFIG_XLEN == 64
-    return static_cast<npc::XWord>(Low) |
-           (static_cast<npc::XWord>(High) << 32U);
-#else
-    static_cast<void>(High);
-    return static_cast<npc::XWord>(Low);
-#endif
+    if constexpr (npc::XLen == 64)
+    {
+        return static_cast<npc::XWord>(Low) |
+               (static_cast<npc::XWord>(High) << 32U);
+    }
+    else
+    {
+        static_cast<void>(High);
+        return static_cast<npc::XWord>(Low);
+    }
 }
 // 顶层端口能力在编译期探测：新 direct-NPC 与 full-SoC 都导出浮点/
 // tval 调试口；旧 RTL 没有这些成员时，下面的 if constexpr 分支不会被
@@ -89,7 +100,7 @@ inline constexpr bool HasTrapTvalDebugPorts = requires(const Top &top) {
     top.debug_trap_tval_hi;
 };
 
-// 浮点槽位固定为 64 位，与 CONFIG_XLEN 解耦：RV32F 的低端口有效、
+// 浮点槽位固定为 64 位，与 npc::XLen 解耦：RV32F 的低端口有效、
 // 高端口恒为 0；RV64D 两半拼成完整 FLEN=64 值。调用点必须先经过
 // HasFPDebugPorts 判定。
 template <typename Top>
@@ -98,7 +109,6 @@ std::uint64_t DebugFPR(const Top &top)
     return static_cast<std::uint64_t>(top.debug_fpr_rdata) |
            (static_cast<std::uint64_t>(top.debug_fpr_rdata_hi) << 32U);
 }
-#if CONFIG_XLEN == 64
 template <typename Top>
 npc::XWord DebugPC(const Top &top) { return DebugWord(top, top.debug_pc, top.debug_pc_hi); }
 template <typename Top>
@@ -131,55 +141,15 @@ template <typename Top>
 npc::XWord DebugTrapMtvec(const Top &top) { return DebugWord(top, top.debug_trap_mtvec, top.debug_trap_mtvec_hi); }
 template <typename Top>
 npc::XWord DebugTrapMepc(const Top &top) { return DebugWord(top, top.debug_trap_mepc, top.debug_trap_mepc_hi); }
-#else
-// RV32 保持历史 32 位端口；两种 RV64 顶层（direct-NPC / full-SoC）
-// 都走上面的低/高字拼接路径。
-template <typename Top>
-npc::XWord DebugPC(const Top &top) { return static_cast<npc::XWord>(top.debug_pc); }
-template <typename Top>
-npc::XWord DebugNextPC(const Top &top) { return static_cast<npc::XWord>(top.debug_next_pc); }
-template <typename Top>
-npc::XWord DebugArchPC(const Top &top) { return static_cast<npc::XWord>(top.debug_arch_pc); }
-template <typename Top>
-npc::XWord DebugGPR(const Top &top) { return static_cast<npc::XWord>(top.debug_gpr_rdata); }
-template <typename Top>
-npc::XWord DebugMtracePC(const Top &top) { return static_cast<npc::XWord>(top.debug_mtrace_pc); }
-template <typename Top>
-npc::XWord DebugMtraceAddr(const Top &top) { return static_cast<npc::XWord>(top.debug_mtrace_addr); }
-template <typename Top>
-npc::XWord DebugMtraceWdata(const Top &top) { return static_cast<npc::XWord>(top.debug_mtrace_wdata); }
-template <typename Top>
-npc::XWord DebugMtraceRdata(const Top &top) { return static_cast<npc::XWord>(top.debug_mtrace_rdata); }
-template <typename Top>
-npc::XWord DebugFaultPC(const Top &top) { return static_cast<npc::XWord>(top.debug_access_fault_pc); }
-template <typename Top>
-npc::XWord DebugTrapPC(const Top &top) { return static_cast<npc::XWord>(top.debug_trap_pc); }
-template <typename Top>
-npc::XWord DebugTrapTarget(const Top &top) { return static_cast<npc::XWord>(top.debug_trap_target); }
-template <typename Top>
-npc::XWord DebugTrapPCHalt(const Top &top) { return static_cast<npc::XWord>(top.trap_pc); }
-template <typename Top>
-npc::XWord DebugCSRMtvec(const Top &top) { return static_cast<npc::XWord>(top.debug_csr_mtvec); }
-template <typename Top>
-npc::XWord DebugCSRMepc(const Top &top) { return static_cast<npc::XWord>(top.debug_csr_mepc); }
-template <typename Top>
-npc::XWord DebugTrapMtvec(const Top &top) { return static_cast<npc::XWord>(top.debug_trap_mtvec); }
-template <typename Top>
-npc::XWord DebugTrapMepc(const Top &top) { return static_cast<npc::XWord>(top.debug_trap_mepc); }
-#endif
 }
-#ifdef CONFIG_NVBOARD
-#ifndef CONFIG_NVBOARD_UPDATE_INTERVAL
-#define CONFIG_NVBOARD_UPDATE_INTERVAL 100
-#endif
-static_assert(CONFIG_NVBOARD_UPDATE_INTERVAL > 0,
+static_assert(npc::NvBoardUpdateInterval > 0,
               "NVBoard刷新周期必须是正整数");
-#endif
 DUT::DUT()
 {
-#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
-    Verilated::traceEverOn(true);
-#endif
+    if constexpr (npc::HasTraceVCD || npc::HasTraceFST)
+    {
+        Verilated::traceEverOn(true);
+    }
     dut = std::make_unique<TOP_MODULE>();
     heartbeat = std::getenv("NPC_HEARTBEAT") != nullptr;
     dut->debug_gpr_raddr = 0;
@@ -192,21 +162,30 @@ DUT::DUT()
     dut->uart_rx_valid = 0;
     dut->uart_rx_data = 0;
 #endif
-#if defined(CONFIG_ITRACE) || defined(CONFIG_IRINGBUF)
-    init_disasm();
-#endif
-#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
-#if !defined(CONFIG_TRACE_DEPTH) || CONFIG_TRACE_DEPTH == 0
-    dut->trace(&tfp, 99);
-#else
-    dut->trace(&tfp, CONFIG_TRACE_DEPTH);
-#endif
-    auto parent = std::filesystem::path{CONFIG_TRACE_FILE}.parent_path();
-    if (!parent.empty())
-        std::filesystem::create_directories(parent);
-    tfp.open(CONFIG_TRACE_FILE);
-#endif
-#ifdef CONFIG_VERILATOR_SAVABLE
+    if constexpr (npc::HasITrace || npc::HasIRingBuf)
+    {
+        init_disasm();
+    }
+    if constexpr (npc::HasTraceVCD)
+    {
+        vcdTracer = new VerilatedVcdC;
+        dut->trace(vcdTracer,
+                   npc::TraceDepth == 0 ? 99 : static_cast<int>(npc::TraceDepth));
+        auto parent{std::filesystem::path{npc::TraceFile}.parent_path()};
+        if (!parent.empty())
+            std::filesystem::create_directories(parent);
+        vcdTracer->open(std::string{npc::TraceFile}.c_str());
+    }
+    else if constexpr (npc::HasTraceFST)
+    {
+        fstTracer = new VerilatedFstC;
+        dut->trace(fstTracer,
+                   npc::TraceDepth == 0 ? 99 : static_cast<int>(npc::TraceDepth));
+        auto parent{std::filesystem::path{npc::TraceFile}.parent_path()};
+        if (!parent.empty())
+            std::filesystem::create_directories(parent);
+        fstTracer->open(std::string{npc::TraceFile}.c_str());
+    }
     if (const char *value{std::getenv("NPC_CHECKPOINT_CYCLE")};
         value != nullptr && *value != '\0')
     {
@@ -227,7 +206,6 @@ DUT::DUT()
     {
         checkpoint_continue = std::string{value} == "1";
     }
-#endif
 #ifdef VRISCV32E_NPC
     if (const char *value{std::getenv("NPC_FORK_AT")};
         value != nullptr && *value != '\0')
@@ -246,7 +224,7 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
 #ifdef VRISCV32E_NPC
     // 与 RTL AXIRAM/PMA 使用同一个 Kconfig 值（默认 64MiB，U-Boot
     // 128MiB 配置时此处也会同步扩大）。
-    constexpr std::size_t RamBytes{CONFIG_MSIZE};
+    constexpr std::size_t RamBytes{npc::MSize};
     // 只清零镜像及其后的一段 BSS/堆边距，避免整个 RAM 逐字初始化把
     // 仿真启动时间拖到几分钟；Verilator RAM 其余部分保持工具链的初始值。
     constexpr std::size_t ZeroMarginBytes{64U * 1024U};
@@ -289,7 +267,6 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
     static_cast<void>(image);
 #endif
 }
-#ifdef CONFIG_VERILATOR_SAVABLE
 bool DUT::SaveCheckpointNow()
 {
     if (checkpoint_file.empty())
@@ -323,41 +300,72 @@ bool DUT::SaveCheckpointNow()
     }
     return result.has_value();
 }
+
+template <typename Top>
+std::expected<void, std::string>
+SaveCheckpointImpl(Top &top, const std::filesystem::path &path)
+{
+    if constexpr (requires(VerilatedSave &os, Top &model) { os << model; })
+    {
+        try
+        {
+            VerilatedSave os;
+            os.open(path.string());
+            os << top;
+            os.close();
+        }
+        catch (const std::exception &error)
+        {
+            return std::unexpected{
+                std::format("保存检查点 {} 失败：{}", path.string(), error.what())};
+        }
+        return {};
+    }
+    else
+    {
+        return std::unexpected{
+            "当前 RTL 未使用 Verilator --savable 构建，无法保存检查点"};
+    }
+}
+
+template <typename Top>
+std::expected<void, std::string>
+RestoreCheckpointImpl(Top &top, const std::filesystem::path &path)
+{
+    if constexpr (requires(VerilatedRestore &is, Top &model) { is >> model; })
+    {
+        try
+        {
+            VerilatedRestore is;
+            is.open(path.string());
+            is >> top;
+            is.close();
+        }
+        catch (const std::exception &error)
+        {
+            return std::unexpected{
+                std::format("恢复检查点 {} 失败：{}", path.string(), error.what())};
+        }
+        return {};
+    }
+    else
+    {
+        return std::unexpected{
+            "当前 RTL 未使用 Verilator --savable 构建，无法恢复检查点"};
+    }
+}
+
 std::expected<void, std::string>
 DUT::SaveCheckpoint(const std::filesystem::path &path)
 {
-    try
-    {
-        VerilatedSave os;
-        os.open(path.string());
-        os << *dut;
-        os.close();
-    }
-    catch (const std::exception &error)
-    {
-        return std::unexpected{
-            std::format("保存检查点 {} 失败：{}", path.string(), error.what())};
-    }
-    return {};
+    return SaveCheckpointImpl(*dut, path);
 }
+
 std::expected<void, std::string>
 DUT::RestoreCheckpoint(const std::filesystem::path &path)
 {
-    try
-    {
-        VerilatedRestore is;
-        is.open(path.string());
-        is >> *dut;
-        is.close();
-    }
-    catch (const std::exception &error)
-    {
-        return std::unexpected{
-            std::format("恢复检查点 {} 失败：{}", path.string(), error.what())};
-    }
-    return {};
+    return RestoreCheckpointImpl(*dut, path);
 }
-#endif
 TOP_MODULE &DUT::operator*()
 {
     return *dut;
@@ -375,9 +383,7 @@ void DUT::final()
     if (finalized)
         return;
     finalized = true;
-#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
-    tfp.close();
-#endif
+    TraceClose();
     dut->final();
 }
 void DUT::EnableUARTStdin(bool enable)
@@ -478,13 +484,15 @@ void DUT::reset()
     dut->reset = 0;
     cycle = 0;
     fault_count = 0;
-#ifdef CONFIG_SDB
-    debug_memory_writes.clear();
-#endif
-#ifdef CONFIG_PERF_STATS
-    instructions = 0;
-    perf = {};
-#endif
+    if constexpr (npc::HasSDB)
+    {
+        debug_memory_writes.clear();
+    }
+    if constexpr (npc::HasPerfStats)
+    {
+        instructions = 0;
+        perf = {};
+    }
 }
 void DUT::step()
 {
@@ -493,7 +501,6 @@ void DUT::step()
 #endif
     dut->clock = 0;
     dut->eval();
-#ifdef CONFIG_DIFFTEST
     // Sample the exact writeback that will occur at the upcoming edge.  The
     // RTL exports these combinationally to avoid adding debug-only registers
     // to every synthesized core.
@@ -514,49 +521,34 @@ void DUT::step()
         debug_fpr_write_address =
             static_cast<std::size_t>(dut->debug_fpr_waddr);
     }
-#endif
-#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
-    tfp.dump(cycle * 2);
-#endif
-#ifdef CONFIG_PERF_STATS
+    TraceDump(cycle * 2);
     // These are combinational/pre-edge events.  Sample them before the rising
     // edge; several are intentionally cleared or replaced by that edge.
-    // 只采样本构建实际启用的单计数器，关闭的计数器不产生逐拍读取开销。
-#ifdef CONFIG_PERF_COUNTER_IFU_FETCH
-    const bool perf_event_ifu_fetch = dut->perf_ifu_fetch;
-#endif
-#ifdef CONFIG_PERF_COUNTER_EXU_DONE
-    const bool perf_event_exu_done = dut->perf_exu_done;
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_LOAD
-    const bool perf_event_lsu_load = dut->perf_lsu_load;
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_STORE
-    const bool perf_event_lsu_store = dut->perf_lsu_store;
-#endif
-#if defined(CONFIG_RISCV_M) && defined(CONFIG_PERF_COUNTER_MDU_REQ)
-    const bool perf_event_mdu_req = dut->perf_mdu_req;
-#endif
-#if defined(CONFIG_RISCV_M) && defined(CONFIG_PERF_COUNTER_MDU_DONE)
-    const bool perf_event_mdu_done = dut->perf_mdu_done;
-#if defined(CONFIG_PERF_COUNTER_MDU_OP)
-    const auto perf_event_mdu_op = dut->perf_mdu_op;
-#endif
-#endif
-#if defined(CONFIG_PERF_COUNTER_ALU_OP) || defined(CONFIG_PERF_COUNTER_MEM_OP) || \
-    defined(CONFIG_PERF_COUNTER_CSR_OP) || defined(CONFIG_PERF_COUNTER_BRANCH_OP) || \
-    defined(CONFIG_PERF_COUNTER_JAL_OP) || defined(CONFIG_PERF_COUNTER_JALR_OP)
-    const auto perf_event_kind = dut->perf_exu_event_kind;
-#endif
-#ifdef CONFIG_PERF_COUNTER_IFU_STALL_REDIRECT
-    const bool perf_event_redirect = dut->perf_ifu_stall_redirect;
-#endif
-#endif
+    // 端口始终存在，关闭的计数器在 RTL 侧绑 0；这里的 constexpr 开关让
+    // 编译器裁掉未启用的逻辑。
+    const bool perf_event_ifu_fetch{
+        npc::PerfCounterIfuFetch && static_cast<bool>(dut->perf_ifu_fetch)};
+    const bool perf_event_exu_done{
+        npc::PerfCounterExuDone && static_cast<bool>(dut->perf_exu_done)};
+    const bool perf_event_lsu_load{
+        npc::PerfCounterLsuLoad && static_cast<bool>(dut->perf_lsu_load)};
+    const bool perf_event_lsu_store{
+        npc::PerfCounterLsuStore && static_cast<bool>(dut->perf_lsu_store)};
+    const bool perf_event_mdu_req{
+        npc::PerfCounterMduReq && static_cast<bool>(dut->perf_mdu_req)};
+    const bool perf_event_mdu_done{
+        npc::PerfCounterMduDone && static_cast<bool>(dut->perf_mdu_done)};
+    const auto perf_event_mdu_op{
+        npc::PerfCounterMduOp ? static_cast<unsigned>(dut->perf_mdu_op) : 0U};
+    const auto perf_event_kind{
+        npc::HasPerfStats ? static_cast<unsigned>(dut->perf_exu_event_kind)
+                          : 0U};
+    const bool perf_event_redirect{
+        npc::PerfCounterIfuStallRedirect &&
+        static_cast<bool>(dut->perf_ifu_stall_redirect)};
     dut->clock = 1;
     dut->eval();
-#if defined(CONFIG_TRACE_VCD) || defined(CONFIG_TRACE_FST)
-    tfp.dump(cycle * 2 + 1);
-#endif
+    TraceDump(cycle * 2 + 1);
     ++cycle;
     if (heartbeat && cycle % 10000000U == 0U)
     {
@@ -564,7 +556,8 @@ void DUT::step()
                      "[heartbeat] cycle={} pc=0x{:016x} arch_pc=0x{:016x}",
                      cycle, DebugPC(*dut), DebugArchPC(*dut));
     }
-#ifdef CONFIG_VERILATOR_SAVABLE
+    if constexpr (npc::HasVerilatorSavable)
+    {
     if (checkpoint_cycle && cycle == *checkpoint_cycle &&
         !checkpoint_file.empty())
     {
@@ -590,7 +583,7 @@ void DUT::step()
         }
     }
 #endif
-#endif
+    }
 #ifdef VRISCV32E_NPC
     if (fork_cycle && cycle == *fork_cycle)
     {
@@ -626,7 +619,6 @@ void DUT::step()
         fork_cycle.reset();
     }
 #endif
-#ifdef CONFIG_DIFFTEST
     // Apply the pre-edge sample only after that edge has taken effect.
     if (debug_gpr_write)
     {
@@ -660,7 +652,6 @@ void DUT::step()
         }
     }
     architectural_pc = DebugArchPC(*dut);
-#endif
 #ifndef VRISCV32E_NPC
     if (vga_check)
     {
@@ -867,36 +858,29 @@ void DUT::step()
         NPCTrap::Stop(DebugArchPC(*dut));
     }
 #endif
-#ifdef CONFIG_PERF_STATS
+if constexpr (npc::HasPerfStats)
+{
     if (dut->debug_commit)
     {
         ++instructions;
     }
-#ifdef CONFIG_PERF_COUNTER_IFU_FETCH
-    if (perf_event_ifu_fetch)
+    if (npc::PerfCounterIfuFetch && perf_event_ifu_fetch)
     {
         ++perf.instruction_fetch;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_EXU_DONE
-    if (perf_event_exu_done)
+    if (npc::PerfCounterExuDone && perf_event_exu_done)
     {
         ++perf.execution_complete;
     }
-#endif
-#if defined(CONFIG_RISCV_M) && defined(CONFIG_PERF_COUNTER_MDU_REQ)
     // M扩展关闭时译码不出M指令, 这些信号恒为0, 不再逐拍采集
-    if (perf_event_mdu_req)
+    if (npc::PerfCounterMduReq && perf_event_mdu_req)
     {
         ++perf.mdu_request;
     }
-#endif
-#if defined(CONFIG_RISCV_M) && defined(CONFIG_PERF_COUNTER_MDU_DONE)
-    if (perf_event_mdu_done)
+    if (npc::PerfCounterMduDone && perf_event_mdu_done)
     {
         ++perf.mdu_complete;
-#if defined(CONFIG_PERF_COUNTER_MDU_OP)
-        switch (static_cast<unsigned>(perf_event_mdu_op))
+        if (npc::PerfCounterMduOp) switch (static_cast<unsigned>(perf_event_mdu_op))
         {
         case 0: ++perf.mdu_mul; break;
         case 1: ++perf.mdu_mulh; break;
@@ -908,262 +892,169 @@ void DUT::step()
         case 7: ++perf.mdu_remu; break;
         default: break;
         }
-#endif
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_MDU_ACTIVE
-    if (dut->perf_mdu_active)
+    if (npc::PerfCounterMduActive && dut->perf_mdu_active)
     {
         ++perf.mdu_active_cycle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_MDU_WAIT
-    if (dut->perf_mdu_wait)
+    if (npc::PerfCounterMduWait && dut->perf_mdu_wait)
     {
         ++perf.mdu_wait_cycle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_LOAD
-    if (perf_event_lsu_load)
+    if (npc::PerfCounterLsuLoad && perf_event_lsu_load)
     {
         ++perf.load_data;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_STORE
-    if (perf_event_lsu_store)
+    if (npc::PerfCounterLsuStore && perf_event_lsu_store)
     {
         ++perf.store_data;
     }
-#endif
-#if defined(CONFIG_PERF_COUNTER_ALU_OP) || defined(CONFIG_PERF_COUNTER_MEM_OP) || \
-    defined(CONFIG_PERF_COUNTER_CSR_OP) || defined(CONFIG_PERF_COUNTER_BRANCH_OP) || \
-    defined(CONFIG_PERF_COUNTER_JAL_OP) || defined(CONFIG_PERF_COUNTER_JALR_OP)
     // 事件分类按单计数器开关合取，只统计本构建实际启用的类型。
     unsigned perf_event_mask = 0;
-#ifdef CONFIG_PERF_COUNTER_ALU_OP
-    perf_event_mask |= PerfEventALU;
-#endif
-#ifdef CONFIG_PERF_COUNTER_MEM_OP
-    perf_event_mask |= PerfEventMEM;
-#endif
-#ifdef CONFIG_PERF_COUNTER_CSR_OP
-    perf_event_mask |= PerfEventCSR;
-#endif
-#ifdef CONFIG_PERF_COUNTER_BRANCH_OP
-    perf_event_mask |= PerfEventBRANCH;
-#endif
-#ifdef CONFIG_PERF_COUNTER_JAL_OP
-    perf_event_mask |= PerfEventJAL;
-#endif
-#ifdef CONFIG_PERF_COUNTER_JALR_OP
-    perf_event_mask |= PerfEventJALR;
-#endif
+    if (npc::PerfCounterAluOp) perf_event_mask |= PerfEventALU;
+    if (npc::PerfCounterMemOp) perf_event_mask |= PerfEventMEM;
+    if (npc::PerfCounterCsrOp) perf_event_mask |= PerfEventCSR;
+    if (npc::PerfCounterBranchOp) perf_event_mask |= PerfEventBRANCH;
+    if (npc::PerfCounterJalOp) perf_event_mask |= PerfEventJAL;
+    if (npc::PerfCounterJalrOp) perf_event_mask |= PerfEventJALR;
     RecordExecutionEvent(
         perf, static_cast<unsigned>(perf_event_kind), perf_event_mask);
-#endif
-#ifdef CONFIG_PERF_COUNTER_IFU_STALL_PIPELINE
-    if (dut->perf_ifu_stall_pipeline)
+    if (npc::PerfCounterIfuStallPipeline && dut->perf_ifu_stall_pipeline)
     {
         ++perf.instruction_fetch_stall_pipeline;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_IFU_STALL_AXI
-    if (dut->perf_ifu_stall_axi)
+    if (npc::PerfCounterIfuStallAxi && dut->perf_ifu_stall_axi)
     {
         ++perf.instruction_fetch_stall_axi;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_IFU_STALL_AR
-    if (dut->perf_ifu_stall_ar)
+    if (npc::PerfCounterIfuStallAr && dut->perf_ifu_stall_ar)
     {
         ++perf.instruction_fetch_stall_ar;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_IFU_STALL_R
-    if (dut->perf_ifu_stall_r)
+    if (npc::PerfCounterIfuStallR && dut->perf_ifu_stall_r)
     {
         ++perf.instruction_fetch_stall_r;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_IFU_STALL_REDIRECT
-    if (perf_event_redirect)
+    if (npc::PerfCounterIfuStallRedirect && perf_event_redirect)
     {
         ++perf.instruction_fetch_stall_redirect;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_IFU_STALL_IDLE
-    if (dut->perf_ifu_stall_idle)
+    if (npc::PerfCounterIfuStallIdle && dut->perf_ifu_stall_idle)
     {
         ++perf.instruction_fetch_stall_idle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_EXECUTION_ACTIVE
-    if (dut->perf_execution_active)
+    if (npc::PerfCounterExecutionActive && dut->perf_execution_active)
     {
         ++perf.execution_active_cycle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_EXU_STALL_LSU
-    if (dut->perf_exu_stall_lsu)
+    if (npc::PerfCounterExuStallLsu && dut->perf_exu_stall_lsu)
     {
         ++perf.exu_stall_lsu;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_MEM_WAITSLOT
-    if (dut->perf_mem_waitslot)
+    if (npc::PerfCounterMemWaitslot && dut->perf_mem_waitslot)
     {
         ++perf.mem_waitslot;
     }
-#endif
-#if defined(CONFIG_PERF_COUNTER_ALU_OP) || defined(CONFIG_PERF_COUNTER_MEM_OP) || \
-    defined(CONFIG_PERF_COUNTER_CSR_OP) || defined(CONFIG_PERF_COUNTER_BRANCH_OP)
     // 类型活跃周期：Scala 侧已用 ActiveInst 生成类型电平。这里再排除 MDU
     // 在途周期作为防御；MDU相关计数器关闭时该端口为常量0，防御自动退化。
-#if defined(CONFIG_PERF_COUNTER_MDU_ACTIVE)
-    const bool classify_exu_level = dut->perf_execution_active && !dut->perf_mdu_active;
-#else
-    const bool classify_exu_level = static_cast<bool>(dut->perf_execution_active);
-#endif
-#ifdef CONFIG_PERF_COUNTER_ALU_OP
-    if (classify_exu_level && dut->perf_alu_op)
+    const bool classify_exu_level = dut->perf_execution_active &&
+        (!npc::PerfCounterMduActive || !dut->perf_mdu_active);
+    if (npc::PerfCounterAluOp && classify_exu_level && dut->perf_alu_op)
     {
         ++perf.arithmetic_operation_active_cycle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_MEM_OP
-    if (classify_exu_level && dut->perf_mem_op)
+    if (npc::PerfCounterMemOp && classify_exu_level && dut->perf_mem_op)
     {
         ++perf.memory_access_operation_active_cycle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_CSR_OP
-    if (classify_exu_level && dut->perf_csr_op)
+    if (npc::PerfCounterCsrOp && classify_exu_level && dut->perf_csr_op)
     {
         ++perf.control_status_register_operation_active_cycle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_BRANCH_OP
-    if (classify_exu_level && dut->perf_branch_op)
+    if (npc::PerfCounterBranchOp && classify_exu_level && dut->perf_branch_op)
     {
         ++perf.branch_operation_active_cycle;
     }
-#endif
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_ACTIVE
-    if (dut->perf_lsu_active)
+    if (npc::PerfCounterLsuActive && dut->perf_lsu_active)
     {
         ++perf.load_store_unit_active_cycle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_LOAD_ACTIVE
-    if (dut->perf_lsu_load_active)
+    if (npc::PerfCounterLsuLoadActive && dut->perf_lsu_load_active)
     {
         ++perf.load_store_unit_load_active_cycle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_STORE_ACTIVE
-    if (dut->perf_lsu_store_active)
+    if (npc::PerfCounterLsuStoreActive && dut->perf_lsu_store_active)
     {
         ++perf.load_store_unit_store_active_cycle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_STALL_READ_AR
-    if (dut->perf_lsu_stall_read_ar)
+    if (npc::PerfCounterLsuStallReadAr && dut->perf_lsu_stall_read_ar)
     {
         ++perf.lsu_stall_read_ar;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_STALL_READ_R
-    if (dut->perf_lsu_stall_read_r)
+    if (npc::PerfCounterLsuStallReadR && dut->perf_lsu_stall_read_r)
     {
         ++perf.lsu_stall_read_r;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_STALL_WRITE_REQ
-    if (dut->perf_lsu_stall_write_req)
+    if (npc::PerfCounterLsuStallWriteReq && dut->perf_lsu_stall_write_req)
     {
         ++perf.lsu_stall_write_req;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_LSU_STALL_WRITE_B
-    if (dut->perf_lsu_stall_write_b)
+    if (npc::PerfCounterLsuStallWriteB && dut->perf_lsu_stall_write_b)
     {
         ++perf.lsu_stall_write_b;
     }
-#endif
-#if defined(CONFIG_ICACHE) && defined(CONFIG_PERF_COUNTER_ICACHE_HIT)
     // ICache关闭时取指直连AXI, 这些信号恒为0, 不再逐拍采集
-    if (dut->perf_icache_hit)
+    if (npc::PerfCounterIcacheHit && dut->perf_icache_hit)
     {
         ++perf.icache_hit;
     }
-#endif
-#if defined(CONFIG_ICACHE) && defined(CONFIG_PERF_COUNTER_ICACHE_MISS)
-    if (dut->perf_icache_miss)
+    if (npc::PerfCounterIcacheMiss && dut->perf_icache_miss)
     {
         ++perf.icache_miss;
     }
-#endif
-#if defined(CONFIG_DCACHE) && defined(CONFIG_PERF_COUNTER_DCACHE_HIT)
     // DCache关闭时这些信号恒为0, 不再逐拍采集
-    if (dut->perf_dcache_hit)
+    if (npc::PerfCounterDcacheHit && dut->perf_dcache_hit)
     {
         ++perf.dcache_hit;
     }
-#endif
-#if defined(CONFIG_DCACHE) && defined(CONFIG_PERF_COUNTER_DCACHE_MISS)
-    if (dut->perf_dcache_miss)
+    if (npc::PerfCounterDcacheMiss && dut->perf_dcache_miss)
     {
         ++perf.dcache_miss;
     }
-#endif
-#if defined(CONFIG_DCACHE) && defined(CONFIG_PERF_COUNTER_DCACHE_REFILL_REQ)
-    if (dut->perf_dcache_refill_req)
+    if (npc::PerfCounterDcacheRefillReq && dut->perf_dcache_refill_req)
     {
         ++perf.dcache_refill_req_cycle;
     }
-#endif
-#if defined(CONFIG_DCACHE) && defined(CONFIG_PERF_COUNTER_DCACHE_REFILL_RESP)
-    if (dut->perf_dcache_refill_resp)
+    if (npc::PerfCounterDcacheRefillResp && dut->perf_dcache_refill_resp)
     {
         ++perf.dcache_refill_resp_cycle;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_IDU_STALL_RAW
-    if (dut->perf_idu_stall_raw)
+    if (npc::PerfCounterIduStallRaw && dut->perf_idu_stall_raw)
     {
         ++perf.idu_stall_raw;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_IDU_STALL_RAW_LOADUSE
-    if (dut->perf_idu_stall_raw_loaduse)
+    if (npc::PerfCounterIduStallRawLoaduse && dut->perf_idu_stall_raw_loaduse)
     {
         ++perf.idu_stall_raw_loaduse;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_IDU_STALL_RAW_ALU
-    if (dut->perf_idu_stall_raw_alu)
+    if (npc::PerfCounterIduStallRawAlu && dut->perf_idu_stall_raw_alu)
     {
         ++perf.idu_stall_raw_alu;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_EXU_IDLE_NOINPUT
-    if (dut->perf_exu_idle_noinput)
+    if (npc::PerfCounterExuIdleNoinput && dut->perf_exu_idle_noinput)
     {
         ++perf.exu_idle_noinput;
     }
-#endif
-#ifdef CONFIG_PERF_COUNTER_TRAP_COUNT
     // TrapCommit is a pre-edge combinational pulse and can disappear when the
     // pipeline flushes on that same edge.  debug_trap_valid is its registered,
     // architecturally precise counterpart and is safe to sample here.
-    if (dut->debug_trap_valid)
+    if (npc::PerfCounterTrapCount && dut->debug_trap_valid)
     {
         ++perf.trap_count;
     }
-#endif
-#endif
-#if defined(CONFIG_ITRACE) && !defined(CONFIG_ITRACE_WRITE_FILE)
+}
+    if constexpr (npc::HasITrace && !npc::HasITraceWriteFile)
+    {
     if (dut->debug_commit)
     {
         const auto pc{DebugPC(*dut)};
@@ -1190,8 +1081,9 @@ void DUT::step()
                      instruction,
                      assemblyText);
     }
-#endif
-#ifdef CONFIG_ITRACE_WRITE_FILE
+    }
+    if constexpr (npc::HasITraceWriteFile)
+    {
     // 文件 itrace 只依赖退休信号，不应被 PERF_STATS
     // 意外控制。
     if (dut->debug_commit)
@@ -1200,14 +1092,16 @@ void DUT::step()
         fp << std::hex << "0x" << DebugPC(*dut) << '\n'
            << std::dec;
     }
-#endif
-#ifdef CONFIG_IRINGBUF
+    }
+    if constexpr (npc::HasIRingBuf)
+    {
     if (dut->debug_commit)
     {
         Iringbuf.push(DebugPC(*dut), dut->debug_instructions, 4);
     }
-#endif
-#ifdef CONFIG_FTRACE
+    }
+    if constexpr (npc::HasFTrace)
+    {
     if (dut->debug_commit)
     {
         // debug_next_pc 与 debug_pc/debug_instructions 属于同一条
@@ -1219,8 +1113,9 @@ void DUT::step()
             static_cast<std::uint32_t>(dut->debug_instructions),
             DebugNextPC(*dut));
     }
-#endif
-#ifdef CONFIG_SDB
+    }
+    if constexpr (npc::HasSDB)
+    {
     // 维护调试器的安全 live-memory shadow。只有成功退休的 store
     // 才会产生 mtrace；总线错误和非对齐访问不会污染它。非 SDB
     // 构建连容器成员和这段逐字节维护代码都不编译，避免影响性能测量。
@@ -1233,9 +1128,9 @@ void DUT::step()
         const auto bytes{width <= 3 ? (1U << width) : 0U};
 #ifdef VRISCV32E_NPC
         const bool trackable{
-            address >= static_cast<std::uint64_t>(CONFIG_MBASE) &&
-            address - static_cast<std::uint64_t>(CONFIG_MBASE) <
-                static_cast<std::uint64_t>(CONFIG_MSIZE)};
+            address >= static_cast<std::uint64_t>(npc::MBase) &&
+            address - static_cast<std::uint64_t>(npc::MBase) <
+                static_cast<std::uint64_t>(npc::MSize)};
 #else
         const bool trackable{
             (address >= 0x0f000000U && address < 0x0f008000U) ||
@@ -1256,8 +1151,9 @@ void DUT::step()
             }
         }
     }
-#endif
-#ifdef CONFIG_MTRACE
+    }
+    if constexpr (npc::HasMTrace)
+    {
     if (dut->debug_mtrace_valid)
     {
         MtraceRecord(
@@ -1268,8 +1164,9 @@ void DUT::step()
             dut->debug_mtrace_width,
             dut->debug_mtrace_wen);
     }
-#endif
-#ifdef CONFIG_DIFFTEST
+    }
+    if constexpr (npc::HasDiffTest)
+    {
     // 同拍可能同时有更老的 WBU 退休和年轻的 EXU trap。
     // 按程序顺序先比对退休，再同步 trap。
     if (dut->debug_commit)
@@ -1280,7 +1177,7 @@ void DUT::step()
     {
         DifftestTrapStep(*this);
     }
-#endif
+    }
     if (dut->debug_access_fault)
     {
         // 限流: 连续fault时只打前几条, 防止日志撑爆磁盘(/tmp只有12G)
@@ -1308,14 +1205,15 @@ void DUT::step()
         }
         }
     }
-#ifdef CONFIG_NVBOARD
-    // DUT::step 是非SDB主循环、SDB c 和 SDB si 共用的唯一时钟步进
-    // 入口。把GUI服务放在这里，确保所有运行模式遵循同一个刷新周期。
-    if (cycle % static_cast<std::size_t>(CONFIG_NVBOARD_UPDATE_INTERVAL) == 0)
+    if constexpr (npc::HasNvBoard)
     {
-        nvboard_update();
+        // DUT::step 是非SDB主循环、SDB c 和 SDB si 共用的唯一时钟步进
+        // 入口。把GUI服务放在这里，确保所有运行模式遵循同一个刷新周期。
+        if (cycle % npc::NvBoardUpdateInterval == 0)
+        {
+            nvboard_update();
+        }
     }
-#endif
 }
 bool DUT::PollSimulationHalt()
 {
@@ -1492,26 +1390,27 @@ std::expected<std::uint64_t, std::string> DUT::ReadMemory(std::uint64_t addr, st
         return std::unexpected{std::format("内存读取地址溢出：0x{:x}", addr)};
     }
 
-    constexpr std::uint64_t IMAGE_BASE{CONFIG_MBASE};
-    constexpr std::uint64_t IMAGE_WINDOW_SIZE{CONFIG_MSIZE};
+    constexpr std::uint64_t IMAGE_BASE{npc::MBase};
+    constexpr std::uint64_t IMAGE_WINDOW_SIZE{npc::MSize};
     std::uint64_t value{0};
     for (std::size_t index{0}; index < size; ++index)
     {
         const auto current{addr + static_cast<std::uint64_t>(index)};
         std::optional<std::uint8_t> byte;
-#ifdef CONFIG_SDB
-        if (const auto written{debug_memory_writes.find(current)};
-            written != debug_memory_writes.end())
+        if constexpr (npc::HasSDB)
         {
-            byte = written->second;
+            if (const auto written{debug_memory_writes.find(current)};
+                written != debug_memory_writes.end())
+            {
+                byte = written->second;
+            }
         }
-#endif
         if (!byte && current >= IMAGE_BASE)
         {
             const auto offset{static_cast<std::size_t>(current - IMAGE_BASE)};
             // direct-NPC 的 InitializeMemory 会把整个 RAM 尾部清零；SoC
             // MROM 的 DPI LoadU32 也对镜像之后的窗口返回零。调试视图
-            // 必须与硬件的完整 CONFIG_MSIZE 窗口一致，但不能把窗口
+            // 必须与硬件的完整 npc::MSize 窗口一致，但不能把窗口
             // 之外的 SoC RAM/MMIO 猜成已知零。
             if (offset < static_cast<std::size_t>(IMAGE_WINDOW_SIZE))
                 byte = offset < FlashMemory.size() ? FlashMemory[offset] : std::uint8_t{0};

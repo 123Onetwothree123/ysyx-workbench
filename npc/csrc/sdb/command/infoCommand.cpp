@@ -1,15 +1,11 @@
 module;
-#include "../../Config.h"
 module npc.sdb.command.infoCommand;
+import npc.config;
 import npc.DUT;
 import npc.unicode;
-#ifdef CONFIG_WATCHPOINT
 import npc.sdb.NPCEvaluationContext;
-#endif
 import npc.sdb.TablePrinter;
-#ifdef CONFIG_WATCHPOINT
 import npc.sdb.command.WatchpointPool;
-#endif
 
 static constexpr std::string_view get_reg_abi_name(std::size_t idx) noexcept
 {
@@ -224,15 +220,19 @@ std::string_view infoCommand::name() const noexcept
 }
 SDBCommandUsageList infoCommand::usage() const noexcept
 {
-#ifdef CONFIG_WATCHPOINT
-    static const SDBCommandUsage entries[]{
-        {"r", "打印通用寄存器"},
-        {"w", "打印监视点状态"}};
-#else
-    static const SDBCommandUsage entries[]{
-        {"r", "打印通用寄存器"}};
-#endif
-    return entries;
+    if constexpr (npc::HasWatchpoint)
+    {
+        static const SDBCommandUsage entries[]{
+            {"r", "打印通用寄存器"},
+            {"w", "打印监视点状态"}};
+        return entries;
+    }
+    else
+    {
+        static const SDBCommandUsage entries[]{
+            {"r", "打印通用寄存器"}};
+        return entries;
+    }
 }
 SDBCommandResult infoCommand::execute(SDBCommandContext &context, std::string_view args)
 {
@@ -241,18 +241,19 @@ SDBCommandResult infoCommand::execute(SDBCommandContext &context, std::string_vi
         PrintGPR(context.GetDUT());
         return SDBCommandResult::Continue;
     }
-#ifdef CONFIG_WATCHPOINT
-    if (args == "w")
+    if constexpr (npc::HasWatchpoint)
     {
-        NPCEvaluationContext EvalContext{context.GetDUT()};
-        GetGlobalWatchpointPool().PrintAllWatchpoints(EvalContext);
-        return SDBCommandResult::Continue;
+        if (args == "w")
+        {
+            NPCEvaluationContext EvalContext{context.GetDUT()};
+            GetGlobalWatchpointPool().PrintAllWatchpoints(EvalContext);
+            return SDBCommandResult::Continue;
+        }
+        std::println("用法：info r 或 info w");
     }
-#endif
-#ifdef CONFIG_WATCHPOINT
-    std::println("用法：info r 或 info w");
-#else
-    std::println("用法：info r（监视点未启用）");
-#endif
+    else
+    {
+        std::println("用法：info r（监视点未启用）");
+    }
     return SDBCommandResult::Continue;
 }

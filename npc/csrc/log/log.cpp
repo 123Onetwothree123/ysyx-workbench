@@ -3,40 +3,39 @@ module;
 #include <cstdio>
 
 module npc.log;
+import npc.config;
 
 static std::ofstream log_file;
 
-#ifndef CONFIG_LOG_DIR
-#define CONFIG_LOG_DIR "log"
-#endif
-
 std::expected<void, std::string> log_init() noexcept {
-#ifdef CONFIG_LOG_TO_FILE
-    try
+    if constexpr (npc::HasLogToFile)
     {
-        std::filesystem::create_directories(CONFIG_LOG_DIR);
-        auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
-        auto filename{std::format("{}/{:%Y%m%d-%H%M%S}.log", CONFIG_LOG_DIR, now)};
-        log_file.open(filename, std::ios::out | std::ios::app);
-        if (!log_file.is_open())
+        try
+        {
+            std::filesystem::create_directories(std::filesystem::path{npc::LogDir});
+            auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
+            auto filename{std::format("{}/{:%Y%m%d-%H%M%S}.log", npc::LogDir, now)};
+            log_file.open(filename, std::ios::out | std::ios::app);
+            if (!log_file.is_open())
+            {
+                return std::unexpected{
+                    std::format("无法打开日志文件 {}", filename)};
+            }
+        }
+        catch (const std::exception &error)
         {
             return std::unexpected{
-                std::format("无法打开日志文件 {}", filename)};
+                std::format("无法初始化日志目录 {}：{}", npc::LogDir, error.what())};
         }
     }
-    catch (const std::exception &error)
-    {
-        return std::unexpected{
-            std::format("无法初始化日志目录 {}：{}", CONFIG_LOG_DIR, error.what())};
-    }
-#endif
     return {};
 }
 
 void log_close() {
-#ifdef CONFIG_LOG_TO_FILE
-    if (log_file.is_open()) log_file.close();
-#endif
+    if constexpr (npc::HasLogToFile)
+    {
+        if (log_file.is_open()) log_file.close();
+    }
 }
 
 static std::string_view level_str(LogLevel level) {
@@ -51,17 +50,20 @@ static std::string_view level_str(LogLevel level) {
 
 void log_write(LogLevel level, std::string_view msg, std::source_location loc) {
     std::string line;
-#ifdef CONFIG_LOG_TIMESTAMP
-    auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
-    line += std::format("[{:%H:%M:%S}] ", now);
-#endif
+    if constexpr (npc::HasLogTimestamp)
+    {
+        auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
+        line += std::format("[{:%H:%M:%S}] ", now);
+    }
     line += std::format("[{}] ", level_str(level));
-#ifdef CONFIG_LOG_SOURCE_LOCATION
-    line += std::format("{}:{} ", loc.file_name(), loc.line());
-#endif
+    if constexpr (npc::HasLogSourceLocation)
+    {
+        line += std::format("{}:{} ", loc.file_name(), loc.line());
+    }
     line += msg;
     std::println(std::cerr, "{}", line);
-#ifdef CONFIG_LOG_TO_FILE
-    if (log_file.is_open()) log_file << line << std::endl;
-#endif
+    if constexpr (npc::HasLogToFile)
+    {
+        if (log_file.is_open()) log_file << line << std::endl;
+    }
 }

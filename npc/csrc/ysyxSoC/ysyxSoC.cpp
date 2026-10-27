@@ -1,10 +1,6 @@
 module;
 module npc.ysyxSoC;
-// Fixed ysyxSoC MROM base; Makefile supplies the same platform constant.
-#ifndef CONFIG_MBASE
-#define CONFIG_MBASE 0x30000000u
-#endif
-
+import npc.config;
 static_assert(std::endian::native == std::endian::little, "NPC 仅支持小端主机");
 
 static std::uint32_t LoadU32(const std::vector<std::uint8_t> &Memory, std::uint32_t Aligned)
@@ -28,7 +24,7 @@ extern "C" void flash_read(std::int32_t addr, std::int32_t *data)
 }
 extern "C" void mrom_read(std::int32_t addr, std::int32_t *data)
 {
-    std::uint32_t offset{static_cast<std::uint32_t>(addr) - static_cast<std::uint32_t>(CONFIG_MBASE)}; // 脑残编译器，这里auto会解读成ui32，他妈的那每次auto写了后，还得检查一遍，这和没写auto有什么区别，他妈的
+    std::uint32_t offset{static_cast<std::uint32_t>(addr) - static_cast<std::uint32_t>(npc::SocMBase)}; // 脑残编译器，这里auto会解读成ui32，他妈的那每次auto写了后，还得检查一遍，这和没写auto有什么区别，他妈的
     std::uint32_t aligned{offset & ~3u};
     *data = static_cast<std::int32_t>(LoadU32(mrom, aligned));
 }

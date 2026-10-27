@@ -6,8 +6,8 @@ module;
 #include "VysyxSoCFull.h"
 #define TOP_MODULE VysyxSoCFull
 #endif
-#include "Config.h"
 export module npc.DUT;
+import npc.config;
 import std;
 import npc.PerfStats;
 
@@ -56,14 +56,12 @@ private:
     std::size_t fault_count{0}; // AXI fault 打印限流计数
     bool finalized{false};
     bool heartbeat{false};
-#ifdef CONFIG_VERILATOR_SAVABLE
     std::optional<std::size_t> checkpoint_cycle;
     std::filesystem::path checkpoint_file;
     std::string checkpoint_marker;
     std::string uart_marker_buffer;
     bool checkpoint_continue{false};
     bool SaveCheckpointNow();
-#endif
 #ifdef VRISCV32E_NPC
     std::optional<std::size_t> fork_cycle;
     std::filesystem::path fork_pidfile;
@@ -88,12 +86,11 @@ private:
     // 调试端口；旧 RTL 没有端口时保持全零并明确报告不可用。只在 WBU
     // 真正写 f 寄存器后回读物理 FPR，fcsr 直接读取顶层退休沿快照。
     std::array<std::uint64_t, 32> architectural_fpr{};
-#ifdef CONFIG_SDB
     // Verilator 顶层没有稳定的 RAM 读端口。只记录已精确退休的
     // CPU store，与初始镜像合并成可证明正确的调试内存视图。
-    // RV64 地址使用完整 64 位键。
+    // RV64 地址使用完整 64 位键。非 SDB 构建保留空容器，便于用
+    // if constexpr 统一编译。
     std::unordered_map<std::uint64_t, std::uint8_t> debug_memory_writes;
-#endif
 
 public:
     DUT();
@@ -117,14 +114,13 @@ public:
     // 把 ImageLoader 产生的唯一镜像写入 direct-NPC RAM。
     // SoC 路径的 MROM/flash 本来就直接读取这个 vector，因此为 no-op。
     void InitializeMemory(std::span<const std::uint8_t> image);
-#ifdef CONFIG_VERILATOR_SAVABLE
     // Verilator --savable 状态保存/恢复。只保存 RTL 模型状态；镜像
-    // 加载、调试镜像等 host 状态由调用者重新建立。
+    // 加载、调试镜像等 host 状态由调用者重新建立。未启用 --savable 时
+    // 方法仍存在，但返回明确的“未启用”错误。
     std::expected<void, std::string>
         SaveCheckpoint(const std::filesystem::path &path);
     std::expected<void, std::string>
         RestoreCheckpoint(const std::filesystem::path &path);
-#endif
     std::size_t GetCycle() const;
     std::size_t GetInstructions() const;
     [[nodiscard]] const PerfStats &GetPerfStats() const noexcept;

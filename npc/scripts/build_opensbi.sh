@@ -63,7 +63,7 @@ SBI_OUT_DIR="${SBI_OUT_DIR:-$NPC_HOME/build/opensbi}"
 SBI_FDT_OUT_DIR="${SBI_FDT_OUT_DIR:-$SBI_OUT_DIR/fdt}"
 SBI_PAYLOAD_PATH="${SBI_PAYLOAD_PATH:-}"
 
-# 固定来源，便于报告/复现；与 vendor/opensbi/VENDOR.md 保持一致。
+# 固定来源，便于报告/复现。
 OPENSBI_VERSION="v1.9"
 OPENSBI_COMMIT="cbf9f6734dd85a982c63e3cb5db7ffe09da839ca"
 

@@ -1,29 +1,16 @@
 module;
 #include <elf.h>
-#include "Config.h"
 module npc.ImageLoader;
+import npc.config;
 import npc.ysyxSoC;
-
-#ifndef CONFIG_CACHE_PADDING
-#define CONFIG_CACHE_PADDING 0
-#endif
-#ifndef CONFIG_MBASE
-#define CONFIG_MBASE 0x30000000U
-#endif
-#ifndef CONFIG_MSIZE
-#define CONFIG_MSIZE 0x10000000U
-#endif
-#ifndef CONFIG_RESET_PC
-#define CONFIG_RESET_PC CONFIG_MBASE
-#endif
 
 // CACHE_PADDING 只影响 npc 独立仿真路径（VRISCV32E_NPC）：
 // 镜像内容在内存中整体后移 N 字节，复位 PC 由 Makefile 同步加 N（NPC_RESET_PC）。
 // SoC 路径的启动地址由 RTL 固定，不能在 csrc 侧移动镜像，否则启动会执行到填充字节。
 #ifdef VRISCV32E_NPC
-constexpr std::size_t kCachePadding{CONFIG_CACHE_PADDING};
+constexpr std::size_t kCachePadding{npc::CachePadding};
 // 镜像容量必须与 direct-NPC 的 AXI RAM/加载器窗口一致。
-constexpr std::uintmax_t kImageCapacity{CONFIG_MSIZE};
+constexpr std::uintmax_t kImageCapacity{npc::MSize};
 #else
 constexpr std::size_t kCachePadding{0};
 constexpr std::uintmax_t kImageCapacity{0x10000000U}; // ysyxSoC MROM window
@@ -32,7 +19,7 @@ constexpr std::uintmax_t kImageCapacity{0x10000000U}; // ysyxSoC MROM window
 namespace
 {
 // 镜像地址按构建 XLEN 保存：RV32 不允许把 64 位 ELF 地址截成低 32 位。
-constexpr npc::XWord kImageBase{CONFIG_MBASE};
+constexpr npc::XWord kImageBase{npc::MBase};
 
 std::expected<std::vector<std::uint8_t>, std::string> ReadWholeFile(
     const std::filesystem::path &Path,
@@ -60,7 +47,7 @@ std::expected<std::vector<std::uint8_t>, std::string> ReadWholeFile(
     return bytes;
 }
 
-// 将 ELF32/ELF64 的 PT_LOAD 段展开成从 CONFIG_MBASE 开始的连续仿真镜像。
+// 将 ELF32/ELF64 的 PT_LOAD 段展开成从 npc::MBase 开始的连续仿真镜像。
 // 物理地址使用 p_paddr；裸机 RISC-V ELF 通常 p_vaddr == p_paddr。
 template <typename Ehdr, typename Phdr>
 std::expected<std::size_t, std::string> LoadElfImage(
@@ -185,12 +172,12 @@ std::expected<std::size_t, std::string> LoadElfImage(
     // ELF 当成裸二进制加载后从错误位置开始执行。
     if (!npc::FitsXWord(header.e_entry) ||
         static_cast<npc::XWord>(header.e_entry) !=
-            static_cast<npc::XWord>(CONFIG_RESET_PC))
+            static_cast<npc::XWord>(npc::ResetPC))
     {
         return std::unexpected{std::format(
             "ELF 入口 0x{:x} 与仿真复位 PC 0x{:x} 不一致",
             static_cast<std::uint64_t>(header.e_entry),
-            static_cast<std::uint64_t>(CONFIG_RESET_PC))};
+            static_cast<std::uint64_t>(npc::ResetPC))};
     }
 
     std::println("ELF 镜像加载完成: {}，{} 个程序头，镜像 {} 字节",

@@ -1,12 +1,11 @@
 module;
 #include <verilated.h>
 module npc.sdb.command.cCommand;
+import npc.config;
 import npc.NPCTrap;
 import npc.DUT;
-#ifdef CONFIG_WATCHPOINT
 import npc.sdb.NPCEvaluationContext;
 import npc.sdb.command.WatchpointPool;
-#endif
 
 [[nodiscard]] std::string_view cCommand::name() const noexcept
 {
@@ -27,9 +26,7 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
         return SDBCommandResult::Continue;
     }
     auto &dut{context.GetDUT()};
-#ifdef CONFIG_WATCHPOINT
     NPCEvaluationContext EvaluationContext{dut};
-#endif
     // 运行期间把 stdin 非阻塞转发给 direct-NPC UART；SDB 命令读取发生
     // 在 c 返回之后，因此不会与客户机输入冲突。
     dut.EnableUARTStdin(true);
@@ -50,14 +47,15 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
             break;
         if (dut.PollSimulationHalt())
             break;
-#ifdef CONFIG_WATCHPOINT
-        if ((dut->debug_commit || dut->debug_trap_valid) &&
-            GetGlobalWatchpointPool().CheckAll(EvaluationContext))
+        if constexpr (npc::HasWatchpoint)
         {
-            std::println("因为要检查监视点，所以程序现在先停止");
-            break;
+            if ((dut->debug_commit || dut->debug_trap_valid) &&
+                GetGlobalWatchpointPool().CheckAll(EvaluationContext))
+            {
+                std::println("因为要检查监视点，所以程序现在先停止");
+                break;
+            }
         }
-#endif
     }
     dut.EnableUARTStdin(false);
     return SDBCommandResult::Continue;

@@ -1143,6 +1143,83 @@ static int conf_touch_deps(void)
 	return 0;
 }
 
+static const char *conf_get_npc_json_name(void)
+{
+	const char *name = getenv("KCONFIG_NPC_CONFIG_JSON");
+
+	return name ? name : "include/generated/npc_config.json";
+}
+
+static void json_print_escaped(FILE *fp, const char *value)
+{
+	const unsigned char *p = reinterpret_cast<const unsigned char *>(value);
+
+	for (; *p; p++) {
+		switch (*p) {
+		case '"':  fputs("\\\"", fp); break;
+		case '\\': fputs("\\\\", fp); break;
+		case '\b': fputs("\\b", fp); break;
+		case '\f': fputs("\\f", fp); break;
+		case '\n': fputs("\\n", fp); break;
+		case '\r': fputs("\\r", fp); break;
+		case '\t': fputs("\\t", fp); break;
+		default:
+			if (*p < 0x20)
+				fprintf(fp, "\\u%04x", *p);
+			else
+				fputc(*p, fp);
+			break;
+		}
+	}
+}
+
+/*
+ * Emit a flat JSON object for the C++ module generator and other tools.
+ * Values are strings so the writer does not need to guess Kconfig symbol
+ * types; bools are "y"/"n", numeric values keep their Kconfig spelling.
+ */
+static int conf_write_npc_json(void)
+{
+	const char *name = conf_get_npc_json_name();
+	struct symbol *sym;
+	bool first = true;
+
+	if (make_parent_dir(name))
+		return 1;
+
+	FilePtr out_owner(fopen(".tmpconfig.json", "w"));
+	if (!out_owner)
+		return 1;
+	FILE *out = out_owner.get();
+
+	fprintf(out, "{\n");
+	for (struct symbol *candidate : all_symbols()) {
+		sym = candidate;
+		sym_calc_value(sym);
+		if (!(sym->flags & SYMBOL_WRITE) || !sym->name)
+			continue;
+
+		const char *value = sym_get_string_value(sym);
+
+		if (!first)
+			fprintf(out, ",\n");
+		first = false;
+		fprintf(out, "  \"");
+		json_print_escaped(out, sym->name);
+		fprintf(out, "\": \"");
+		json_print_escaped(out, value ? value : "");
+		fprintf(out, "\"");
+	}
+	fprintf(out, "\n}\n");
+	out_owner.reset();
+
+	if (rename(".tmpconfig.json", name)) {
+		remove(".tmpconfig.json");
+		return 1;
+	}
+	return 0;
+}
+
 int conf_write_autoconf(int overwrite)
 {
 	struct symbol *sym;
@@ -1150,7 +1227,7 @@ int conf_write_autoconf(int overwrite)
 	const char *autoconf_name = conf_get_autoconfig_name();
 
 	if (!overwrite && is_present(autoconf_name))
-		return 0;
+		return conf_write_npc_json();
 
 	conf_write_dep("include/config/auto.conf.cmd");
 
@@ -1209,6 +1286,8 @@ int conf_write_autoconf(int overwrite)
 		remove(".tmpconfig");
 		return 1;
 	}
+	if (conf_write_npc_json())
+		return 1;
 
 	return 0;
 }

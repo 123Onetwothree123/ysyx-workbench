@@ -9,7 +9,7 @@
 #       REF_SO=/path/to/riscv32-nemu-interpreter-so
 #
 # RV64 高地址用例要求 CONFIG_HAS_MMU=y；SDB/mtrace/DiffTest 目标分别要求
-# 对应 Kconfig 选项已启用（脚本 npc/scripts/xlen_dual_regression.sh 会统一配置）。
+# 对应 Kconfig 选项已启用。
 SHELL := /bin/bash
 
 TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))

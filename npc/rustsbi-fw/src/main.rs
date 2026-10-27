@@ -11,7 +11,7 @@
 //! DBCN，以及兼容旧 payload 的 legacy 0x00..0x08。没有 F/D、MMU、多 hart
 //! 和设备树解析；SBI_FDT_ENABLE=y 时只把内嵌 DTB 复制到约定地址并
 //! 通过 a1 传给 next-stage，不解析 DTB。PMP 只在 CONFIG_HAS_PMP=y 时
-//! 配置。这些限制在 npc/README_RUSTSBI.md 中说明。
+//! 配置。相关限制由本目录实现和 Kconfig 约束。
 
 #![no_std]
 #![no_main]

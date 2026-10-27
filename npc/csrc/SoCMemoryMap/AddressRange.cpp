@@ -1,6 +1,6 @@
 module;
-#include "../Config.h"
 module npc.SoCMemoryMap.AddressRange;
+import npc.config;
 std::string_view AddressRange::GetName() const
 {
     return Name;

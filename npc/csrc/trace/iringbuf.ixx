@@ -1,15 +1,12 @@
 export module npc.trace.iringbuf;
 import std;
+import npc.config;
 import npc.trace.RecordInstruction;
-
-#ifndef CONFIG_IRINGBUF_SIZE
-#define CONFIG_IRINGBUF_SIZE 512
-#endif
 
 export class iringbuf
 {
 public:
-    static constexpr std::size_t IRINGBUF_SIZE{CONFIG_IRINGBUF_SIZE};
+    static constexpr std::size_t IRINGBUF_SIZE{npc::IRingBufSize};
 private:
     std::array<RecordInstruction, IRINGBUF_SIZE> buffer{};
     std::size_t head{0};

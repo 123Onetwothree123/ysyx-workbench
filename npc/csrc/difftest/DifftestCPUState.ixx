@@ -1,6 +1,6 @@
 module;
-#include "../Config.h"
 export module npc.difftest.DifftestCPUState;
+import npc.config;
 import std;
 import npc.DUT;
 

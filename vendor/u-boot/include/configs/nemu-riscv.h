@@ -2,7 +2,7 @@
 /*
  * ysyx-workbench NEMU RV64 S-mode configuration.
  *
- * 固定布局（与 nemu/docs/linux.md、nemu/scripts/build_uboot_nemu.sh 一致）：
+ * 固定布局（与 nemu/scripts/build_uboot_nemu.sh 一致）：
  *   0x80000000  OpenSBI FW_JUMP（预留 2 MiB）
  *   0x80200000  U-Boot
  *   0x80600000  可选 EFI 测试应用（如 initrddump.efi）

@@ -65,6 +65,6 @@ fi
 if grep -qF "init: starting sh" "$LOG"; then
   echo "PASS: init: starting sh"
 else
-  echo "BLOCKED: 'init: starting sh' not reached (see XV6_NPC_BOOT.md)"
+  echo "BLOCKED: 'init: starting sh' not reached"
 fi
 exit 0

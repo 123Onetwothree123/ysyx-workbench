@@ -1,16 +1,8 @@
 module;
-#include "../Config.h"
 export module npc.SoCMemoryMap.SoCMemoryMap;
+import npc.config;
 import std;
 import npc.SoCMemoryMap.AddressRange;
-
-#ifndef CONFIG_MBASE
-// Fixed ysyxSoC platform map (not a Kconfig tuning option).
-#define CONFIG_MBASE 0x30000000u
-#endif
-#ifndef CONFIG_MSIZE
-#define CONFIG_MSIZE 0x10000000u
-#endif
 
 export class SoCMemoryMap
 {
@@ -18,7 +10,7 @@ public:
     SoCMemoryMap() = delete;
     ~SoCMemoryMap() = default;
     static inline const AddressRange CLINT{"clint", 0x02000000u, 0x10000u};
-    static inline const AddressRange FLASH{"flash", CONFIG_MBASE, CONFIG_MSIZE};
+    static inline const AddressRange FLASH{"flash", npc::SocMBase, npc::SocMSize};
     static inline const AddressRange UART{"uart", 0x10000000u, 0x1000u};
     static inline const AddressRange SPI{"spi", 0x10001000u, 0x1000u};
     static inline const AddressRange GPIO{"gpio", 0x10002000u, 0x10u};

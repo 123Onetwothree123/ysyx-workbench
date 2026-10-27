@@ -1,5 +1,6 @@
 module npc.NPCSimResult;
 import std;
+import npc.config;
 
 namespace
 {
@@ -154,13 +155,12 @@ void NPCSimResult::Save(
         stats.dcache_miss,
         stats.dcache_refill_req_cycle + stats.dcache_refill_resp_cycle)};
     std::filesystem::create_directories(result_dir);
-#define XSTR(s) #s
-#define STR(s) XSTR(s)
-
     Metadata build_metadata;
-#ifdef CONFIG_PERF_BUILD_METADATA_FILE
-    build_metadata = LoadMetadata(CONFIG_PERF_BUILD_METADATA_FILE);
-#endif
+    if (!npc::PerfBuildMetadataFile.empty())
+    {
+        build_metadata = LoadMetadata(
+            std::filesystem::path{npc::PerfBuildMetadataFile});
+    }
 #ifdef VRISCV32E_NPC
     constexpr std::string_view rtl_target{"npc"};
     constexpr std::string_view rtl_hash_key{"rtl_npc_sha256"};
@@ -174,32 +174,36 @@ void NPCSimResult::Save(
     const auto config_sha256{MetadataValue(build_metadata, "config_sha256")};
     const auto config_summary{MetadataValue(build_metadata, "config_summary")};
     const auto rtl_sha256{MetadataValue(build_metadata, rtl_hash_key)};
-    const auto pdk{MetadataValue(build_metadata, "pdk", STR(CONFIG_PDK))};
+    const auto pdk{MetadataValue(build_metadata, "pdk", npc::PDK)};
 
     std::string freq{"0"};
     std::string area{"0"};
     bool synth_metadata_valid{false};
-#ifdef CONFIG_PERF_SYNTH_FILE
-    const auto synth_metadata{LoadMetadata(CONFIG_PERF_SYNTH_FILE)};
-    const auto synth_frequency{MetadataValue(synth_metadata, "frequency_mhz", "")};
-    const auto synth_area{MetadataValue(synth_metadata, "area_um2", "")};
-    synth_metadata_valid =
-        MetadataValue(build_metadata, "format", "") == "1" &&
-        MetadataValue(synth_metadata, "format", "") == "2" &&
-        MetadataValue(synth_metadata, "target", "") == rtl_target &&
-        MetadataValue(synth_metadata, "pdk", "") == pdk &&
-        MetadataValue(synth_metadata, "config_sha256", "") == config_sha256 &&
-        MetadataValue(synth_metadata, "rtl_sha256", "") == rtl_sha256 &&
-        MetadataValue(synth_metadata, "measurement_valid", "") == "1" &&
-        config_sha256 != "unknown" && rtl_sha256 != "unknown" &&
-        IsPositiveFiniteNumber(synth_frequency) &&
-        IsPositiveFiniteNumber(synth_area);
-    if (synth_metadata_valid)
+    if (!npc::PerfSynthFile.empty())
     {
-        freq = synth_frequency;
-        area = synth_area;
+        const auto synth_metadata{
+            LoadMetadata(std::filesystem::path{npc::PerfSynthFile})};
+        const auto synth_frequency{
+            MetadataValue(synth_metadata, "frequency_mhz", "")};
+        const auto synth_area{
+            MetadataValue(synth_metadata, "area_um2", "")};
+        synth_metadata_valid =
+            MetadataValue(build_metadata, "format", "") == "1" &&
+            MetadataValue(synth_metadata, "format", "") == "2" &&
+            MetadataValue(synth_metadata, "target", "") == rtl_target &&
+            MetadataValue(synth_metadata, "pdk", "") == pdk &&
+            MetadataValue(synth_metadata, "config_sha256", "") == config_sha256 &&
+            MetadataValue(synth_metadata, "rtl_sha256", "") == rtl_sha256 &&
+            MetadataValue(synth_metadata, "measurement_valid", "") == "1" &&
+            config_sha256 != "unknown" && rtl_sha256 != "unknown" &&
+            IsPositiveFiniteNumber(synth_frequency) &&
+            IsPositiveFiniteNumber(synth_area);
+        if (synth_metadata_valid)
+        {
+            freq = synth_frequency;
+            area = synth_area;
+        }
     }
-#endif
 
     const std::vector<std::string_view> csv_header{
         "schema_version", "commit", "git_dirty", "config_sha256",
@@ -272,9 +276,9 @@ void NPCSimResult::Save(
 
     auto csv_file{
 #ifdef VRISCV32E_NPC
-        result_dir / (std::string{"result_npc_"} + std::string{STR(CONFIG_PDK)} + ".csv")
+        result_dir / (std::string{"result_npc_"} + std::string{npc::PDK} + ".csv")
 #else
-        result_dir / (std::string{"result_ysyxsoc_"} + std::string{STR(CONFIG_PDK)} + ".csv")
+        result_dir / (std::string{"result_ysyxsoc_"} + std::string{npc::PDK} + ".csv")
 #endif
     };
 

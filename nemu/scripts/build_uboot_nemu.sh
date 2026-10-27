@@ -242,4 +242,4 @@ if [[ -n "$EFI_APP" ]]; then
 	info "EFI 应用：0x80600000（$(stat -c '%s' "$EFI_APP") 字节）"
 fi
 info "运行：cd $NEMU_HOME && ./build/riscv64-nemu-interpreter -b $OUT/nemu-uboot.bin"
-info "详见 UBOOT_NEMU.md；布局与命令在 $PACK_INFO"
+info "布局与运行命令见 $PACK_INFO"

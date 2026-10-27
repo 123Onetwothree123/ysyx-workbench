@@ -3,8 +3,8 @@ module;
 #include <format>
 #include <stdexcept>
 #include <stdio.h>
-#include "../Config.h"
 module npc.difftest.DifftestCPUState;
+import npc.config;
 static_assert(std::is_standard_layout_v<DifftestCPUState>);
 static_assert(sizeof(DifftestCPUState) == 33 * sizeof(npc::XWord));
 npc::XWord DifftestCPUState::GetGPR(std::size_t Index) const
@@ -125,11 +125,12 @@ void DifftestFPState::NormalizeFromABI()
 void DifftestFPState::PrepareForREF()
 {
     NormalizeFromABI();
-#if CONFIG_XLEN == 32
-    // RV32F 的 REF 用 64 位槽位做单精度 NaN boxing。ABI 文档建议高 32 位
-    // 为 0，但 NEMU 的运行时表示要求高 32 位全 1；在 TO_REF 边界补齐，
-    // 既保留低 32 位架构值，又不会让 REF 把 0 误判成 canonical NaN。
-    for (auto &Value : freg)
-        Value |= 0xffff'ffff'0000'0000ULL;
-#endif
+    if constexpr (npc::XLen == 32)
+    {
+        // RV32F 的 REF 用 64 位槽位做单精度 NaN boxing。ABI 文档建议高 32 位
+        // 为 0，但 NEMU 的运行时表示要求高 32 位全 1；在 TO_REF 边界补齐，
+        // 既保留低 32 位架构值，又不会让 REF 把 0 误判成 canonical NaN。
+        for (auto &Value : freg)
+            Value |= 0xffff'ffff'0000'0000ULL;
+    }
 }

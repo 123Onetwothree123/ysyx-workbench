@@ -45,6 +45,32 @@ NPC_VINCDIRS = $(BUILD_DIR) \
 
 CSRC_DIR=./csrc
 CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -path "$(CSRC_DIR)/tools/branchsim" -prune -o -path "$(CSRC_DIR)/tools/dcachesim" -prune -o -name "*.cpp" -print 2>/dev/null)
+# C++ 侧配置入口是生成的模块，不是头文件。模块只从 .config 派生，
+# 不构成第二配置源；verilator-build.mk 会把它放在模块依赖链最前面。
+NPC_CONFIG_JSON   := $(abspath include/generated/npc_config.json)
+NPC_CONFIG_MODULE := $(abspath $(CSRC_DIR)/generated/npc_config.ixx)
+# C++ 模块、Scala elaboration 和脚本共用同一次 Kconfig + Makefile/命令行
+# 覆盖的结果；effective 保留扁平键值，typed 是同一结果的结构化投影。
+NPC_CONFIG_EFFECTIVE_JSON := $(abspath $(BUILD_DIR)/generated/npc_config.effective.json)
+# RTL elaboration 使用嵌套 typed JSON；effective flat JSON 保留给 C++ 模块、
+# 脚本和仍按扁平键读取的兼容路径。
+NPC_CONFIG_TYPED_JSON := $(abspath $(BUILD_DIR)/generated/npc_config.typed.json)
+NPC_CONFIG_GEN_SRC := $(abspath tools/npc_config_gen.cpp)
+NPC_CONFIG_GEN_BIN := $(abspath tools/build/npc_config_gen)
+NPC_CONFIG_STAMP  := $(abspath $(BUILD_DIR)/generated/npc_config.stamp)
+# C++ 生成器负责所有派生值。Makefile 只转发用户显式写在命令行上的
+# 配置覆盖；不再生成 MMU profile env，也不在 Makefile 里维护第二套默认值。
+NPC_CONFIG_CLI_PATTERNS := \
+	CONFIG_% CHIPLINK=% SDRAM_USE_AXI=% SOC_% XLEN=% ADDRESS_WIDTH=% \
+	NPC_RAM_SIZE=% CACHE_% ICACHE% DCACHE% WBUF_DEPTH=% \
+	BTB_% JAL_BTB_% RAS_% ITRACE% RISCV_% FPU_% MUL_% DIV_% \
+	MMU_% TLB_% ITLB_% DTLB_% UTLB_% \
+	SYNTH_FREQ=% APB_% AXI_% \
+	PERF_% HAS_% CSR_% PLIC_% PMP_% TIMER_% \
+	SBI_% LINUX_% TRACE_% LOG_% NVBOARD% \
+	SDB=% DIFFTEST=% MTRACE=% FTRACE=% IRINGBUF=%
+NPC_CONFIG_OVERRIDE_ARGS = $(foreach item,$(filter $(NPC_CONFIG_CLI_PATTERNS),$(MAKEOVERRIDES)),--set '$(item)')
+
 VERILATOR=verilator
 remove_quote = $(patsubst "%",%,$(1))
 # Kconfig 字符串可能包含空格/逗号（如 bootargs）。patsubst 会按空格拆词，
@@ -73,13 +99,14 @@ VERILATOR_THREADS := $(shell if [ "$(SIM_THREADS)" -gt 1 ] 2>/dev/null; then ech
 test:
 	mill -i test
 
+# 下面这些 Make 变量只用于构建身份摘要和命令行兼容；真正的配置默认值
+# 由 npc_config_gen.cpp 从 Kconfig JSON 派生，不再从 Makefile 注入。
 # 物理地址宽度：RV64 默认 64，RV32 默认 32；可在命令行显式覆盖。
 ADDRESS_WIDTH ?= $(if $(filter 64,$(or $(CONFIG_XLEN),32)),64,32)
 # ysyxSoC CPU 侧接口位宽独立于 CPU XLEN。FOLLOW_CPU=y 时跟随 CPU；
 # 否则使用 SOC_XLEN（仅允许 32/64，由 elaboration 校验）。
 SOC_XLEN_FOLLOW_CPU ?= $(or $(CONFIG_SOC_XLEN_FOLLOW_CPU),n)
 SOC_XLEN ?= $(or $(CONFIG_SOC_XLEN),32)
-SOC_XLEN_EFFECTIVE := $(if $(filter y,$(SOC_XLEN_FOLLOW_CPU)),$(or $(CONFIG_XLEN),32),$(SOC_XLEN))
 CACHE_BLOCK_SIZE_LOG2 ?= $(or $(CONFIG_CACHE_BLOCK_SIZE_LOG2),4)
 CACHE_INDEX_BITS ?= $(or $(CONFIG_CACHE_INDEX_BITS),5)
 # 每级缓存可单独配置几何；未设置时跟随共享值（既有脚本零改动）
@@ -93,8 +120,12 @@ JAL_BTB_BITS ?= $(or $(CONFIG_JAL_BTB_BITS),4)
 JAL_BTB_WAYS ?= $(or $(CONFIG_JAL_BTB_WAYS),1)
 RAS_BITS ?= $(or $(CONFIG_RAS_BITS),4)
 CACHE_PADDING ?= $(or $(CONFIG_CACHE_PADDING),0)
-CHIPLINK ?= n
+CHIPLINK ?= $(or $(CONFIG_CHIPLINK),n)
 export CHIPLINK
+# SoC 的 SDRAM 数据通路选择。当前 ysyxSoC 只实现了 AXI SDRAM；
+# Kconfig 仍是唯一真源，命令行同名变量可覆盖用于短测试。
+SDRAM_USE_AXI ?= $(or $(CONFIG_SDRAM_USE_AXI),y)
+export SDRAM_USE_AXI
 # FPU 配置：Kconfig 是唯一真源，命令行同名变量可覆盖用于短测试。
 # 未生成的 .config 保持 F/D=n、backend=none，与 Kconfig 默认一致。
 FPU_IMPL ?= $(or $(call remove_quote,$(CONFIG_FPU_IMPL)),none)
@@ -108,38 +139,68 @@ FPU_HARDFLOAT_RECODE ?= $(or $(CONFIG_FPU_HARDFLOAT_RECODE),y)
 FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING ?= $(or $(CONFIG_FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING),n)
 FPU_FUDIAN_SHARED_DIVSQRT ?= $(or $(CONFIG_FPU_FUDIAN_SHARED_DIVSQRT),y)
 
-# MMU/TLB profile：.config 是唯一真源，生成 JSON/C header/env 三个派生产物。
-# RTL 尚未接入该 profile，本阶段只做配置与生成器。
-MMU_PROFILE_JSON   := $(abspath $(BUILD_DIR)/generated/mmu_profile.json)
-MMU_PROFILE_HEADER := $(abspath include/generated/mmu_profile.h)
-MMU_PROFILE_ENV    := $(abspath $(BUILD_DIR)/generated/mmu_profile.env)
-MMU_PROFILE_SCRIPT := $(abspath scripts/gen_mmu_profile.py)
-MMU_PROFILE_DEPS   := .config $(MMU_PROFILE_SCRIPT)
+# Kconfig 是唯一配置解析器：c_conf --syncconfig 直接生成
+# include/generated/npc_config.json。C++ 构建期小工具再把 JSON 投影成
+# 编译期模块 npc.config；运行时不解析 JSON，因为 XLen/数组大小/if
+# constexpr 都必须是编译期常量。
+$(NPC_CONFIG_JSON): .config $(CONF)
+	$(CONF) -s --syncconfig $(Kconfig)
 
-$(MMU_PROFILE_JSON) $(MMU_PROFILE_HEADER) $(MMU_PROFILE_ENV): $(MMU_PROFILE_DEPS)
-	@mkdir -p $(BUILD_DIR)/generated include/generated
-	python3 scripts/check_kconfig_contract.py --config .config
-	python3 $(MMU_PROFILE_SCRIPT) \
-		--config .config \
-		--json $(MMU_PROFILE_JSON) \
-		--header $(MMU_PROFILE_HEADER) \
-		--env $(MMU_PROFILE_ENV)
+$(NPC_CONFIG_GEN_BIN): $(NPC_CONFIG_GEN_SRC)
+	@mkdir -p $(@D)
+	$(CXX) -std=c++23 -O2 -Wall -Wextra -o $@ $<
 
-mmu-profile: $(MMU_PROFILE_JSON) $(MMU_PROFILE_HEADER) $(MMU_PROFILE_ENV)
-	@cat $(MMU_PROFILE_ENV)
+.PHONY: npc-config-stamp-force
+npc-config-stamp-force:
+$(NPC_CONFIG_STAMP): npc-config-stamp-force
+	@mkdir -p $(@D)
+	@printf '%s\n' \
+		"savable=$(VERILATOR_SAVABLE)" \
+		"perf_build=$(PERF_BUILD_METADATA)" \
+		"perf_synth=$(PERF_SYNTH)" \
+		"overrides=$(NPC_CONFIG_OVERRIDE_ARGS)" > $@.tmp
+	@if test -f $@ && cmp -s $@.tmp $@; then rm -f $@.tmp; else mv -f $@.tmp $@; fi
 
-mmu-profile-check:
-	python3 scripts/test_mmu_profile.py
+# 三个产物必须一起生成：模块给 C++，flat JSON 给脚本/C++ 构建，
+# typed JSON 给 Scala elaboration。grouped target 保证任一缺失时会重跑
+# 同一份配置生成命令。
+$(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON) &: $(NPC_CONFIG_JSON) $(NPC_CONFIG_GEN_BIN) $(NPC_CONFIG_STAMP)
+	@mkdir -p $(dir $(NPC_CONFIG_MODULE))
+	$(NPC_CONFIG_GEN_BIN) \
+		--config-json $(NPC_CONFIG_JSON) \
+		--effective-json $(NPC_CONFIG_EFFECTIVE_JSON) \
+		--typed-json $(NPC_CONFIG_TYPED_JSON) \
+		--perf-build-metadata $(PERF_BUILD_METADATA) \
+		--perf-synth $(PERF_SYNTH) \
+		--savable $(VERILATOR_SAVABLE) \
+		$(NPC_CONFIG_OVERRIDE_ARGS) \
+		--output $(NPC_CONFIG_MODULE)
+
+npc-config-json: $(NPC_CONFIG_JSON)
+npc-config-tool: $(NPC_CONFIG_GEN_BIN)
+npc-config: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON)
+
+.PHONY: npc-config npc-config-json npc-config-tool
 
 # 配置契约：Kconfig 只能表达连续 range，这里补齐 XLEN/SOC_XLEN、
 # PTE 大小、页大小 2 的幂以及 CUSTOM A/D 高位等离散约束。
-KCONFIG_CONTRACT_SCRIPT := $(abspath scripts/check_kconfig_contract.py)
-kconfig-contract-check:
-	python3 $(KCONFIG_CONTRACT_SCRIPT) --defconfigs
-	python3 scripts/test_kconfig_contract.py
-	@if [ -f .config ]; then python3 $(KCONFIG_CONTRACT_SCRIPT) --config .config; fi
+# 校验器是纯 C++ 工具，配置阶段和回归都不再依赖 Python。
+KCONFIG_CONTRACT_SRC := $(abspath tools/kconfig_contract.cpp)
+KCONFIG_CONTRACT_BIN := $(abspath tools/build/kconfig_contract)
+KCONFIG_CONTRACT_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
 
-.PHONY: mmu-profile mmu-profile-check kconfig-contract-check
+$(KCONFIG_CONTRACT_BIN): $(KCONFIG_CONTRACT_SRC)
+	@mkdir -p $(@D)
+	$(CXX) $(KCONFIG_CONTRACT_CXXFLAGS) -o $@ $<
+
+kconfig-contract-check: $(KCONFIG_CONTRACT_BIN)
+	$(KCONFIG_CONTRACT_BIN) --defconfigs
+	$(KCONFIG_CONTRACT_BIN) --self-test
+	@if [ -f .config ]; then $(KCONFIG_CONTRACT_BIN) --config .config; fi
+
+kconfig-contract-tool: $(KCONFIG_CONTRACT_BIN)
+
+.PHONY: kconfig-contract-check kconfig-contract-tool
 
 # ============================================================================
 # M 模式 SBI 固件
@@ -281,7 +342,8 @@ opensbi-test: sbi-test
 
 # 单独生成设备树，便于检查 DTS 或给外部加载器使用。
 # 即使 SBI_FDT_ENABLE=n 也允许显式生成（不会改变 SBI 启动行为）。
-dtb:
+# 依赖 effective JSON，确保 .config 改变后不会继续使用旧的配置投影。
+dtb: $(NPC_CONFIG_EFFECTIVE_JSON)
 	@$(SBI_ENV) "$(SBI_DTB_SCRIPT)"
 
 dtb-clean:
@@ -329,9 +391,18 @@ linux-image-clean:
 
 # 配置矩阵测试：dummy Image/initramfs + DTB 生成 + 打包负向测试。
 # 不构建/运行 Linux，也不需要 NPC 仿真器。
-LINUX_BOOT_TEST_SCRIPT ?= $(abspath scripts/test_linux_boot.py)
-linux-boot-test:
-	python3 $(LINUX_BOOT_TEST_SCRIPT)
+# 测试器是纯 C++ 工具，直接调用 build_dtb.sh/pack_linux_image.sh；
+# 不再依赖 Python。
+LINUX_BOOT_TEST_SRC := $(abspath tools/linux_boot_test.cpp)
+LINUX_BOOT_TEST_BIN := $(abspath tools/build/linux_boot_test)
+LINUX_BOOT_TEST_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
+
+$(LINUX_BOOT_TEST_BIN): $(LINUX_BOOT_TEST_SRC)
+	@mkdir -p $(@D)
+	$(CXX) $(LINUX_BOOT_TEST_CXXFLAGS) -o $@ $<
+
+linux-boot-test: $(LINUX_BOOT_TEST_BIN)
+	$(LINUX_BOOT_TEST_BIN)
 
 .PHONY: linux-image linux-image-clean linux-boot-test
 
@@ -356,8 +427,16 @@ NPC_UBOOT_INITRAMFS_ADDR ?= $(or $(CONFIG_NPC_UBOOT_INITRAMFS_ADDR),0x80800000)
 NPC_UBOOT_KERNEL_ADDR ?= $(or $(CONFIG_NPC_UBOOT_KERNEL_ADDR),0x81000000)
 NPC_UBOOT_BOOTARGS ?= $(or $(call unquote_config,$(CONFIG_NPC_UBOOT_BOOTARGS)),console=ttyS0,115200 earlycon=sbi no5lvl cpuidle.off=1 loglevel=7)
 NPC_UBOOT_JOBS ?= $(or $(CONFIG_NPC_UBOOT_JOBS),0)
+NPC_UBOOT_PACK_SRC := $(abspath tools/pack_uboot_image.cpp)
+NPC_UBOOT_PACK_BIN := $(abspath tools/build/pack_uboot_image)
+NPC_UBOOT_PACK_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
+
+$(NPC_UBOOT_PACK_BIN): $(NPC_UBOOT_PACK_SRC)
+	@mkdir -p $(@D)
+	$(CXX) $(NPC_UBOOT_PACK_CXXFLAGS) -o $@ $<
 
 NPC_UBOOT_ENV = $(SBI_ENV) \
+	NPC_UBOOT_PACK_BIN="$(NPC_UBOOT_PACK_BIN)" \
 	NPC_UBOOT_OUT_DIR="$(NPC_UBOOT_OUT_DIR)" \
 	NPC_UBOOT_DEFCONFIG="$(NPC_UBOOT_DEFCONFIG)" \
 	NPC_UBOOT_EFI_APP_PATH="$(NPC_UBOOT_EFI_APP_PATH)" \
@@ -369,7 +448,7 @@ NPC_UBOOT_ENV = $(SBI_ENV) \
 	NPC_UBOOT_BOOTARGS="$(NPC_UBOOT_BOOTARGS)" \
 	NPC_UBOOT_JOBS="$(NPC_UBOOT_JOBS)"
 
-uboot-image:
+uboot-image: $(NPC_UBOOT_PACK_BIN)
 	@set -eu; \
 	if [ "$(NPC_UBOOT_ENABLE)" != "y" ]; then \
 		echo "错误：NPC_UBOOT_ENABLE=$(NPC_UBOOT_ENABLE)，U-Boot EFI 镜像未启用。" >&2; \
@@ -485,124 +564,7 @@ rootfs-clean:
 
 # npc 独立仿真路径的复位 PC：0x80000000 + CACHE_PADDING（镜像在内存中整体后移 CACHE_PADDING 字节）
 NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(CACHE_PADDING))))
-CACHE_PADDING_CFLAGS = -DCONFIG_CACHE_PADDING=$(CACHE_PADDING)
 
-VERILOG_ENV = env \
-	NPC_RAM_SIZE=$(NPC_RAM_SIZE) \
-	CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2) \
-	CACHE_INDEX_BITS=$(CACHE_INDEX_BITS) \
-	ICACHE_BLOCK_SIZE_LOG2=$(ICACHE_BLOCK_SIZE_LOG2) \
-	ICACHE_INDEX_BITS=$(ICACHE_INDEX_BITS) \
-	DCACHE_BLOCK_SIZE_LOG2=$(DCACHE_BLOCK_SIZE_LOG2) \
-	DCACHE_INDEX_BITS=$(DCACHE_INDEX_BITS) \
-	ICACHE=$(CONFIG_ICACHE) \
-	DCACHE=$(CONFIG_DCACHE) \
-	ICACHE_COHERENCE=$(or $(call remove_quote,$(CONFIG_ICACHE_COHERENCE)),fence_i) \
-	DMA_COHERENCE=$(or $(call remove_quote,$(CONFIG_DMA_COHERENCE)),software_flush) \
-	ICACHE_STORAGE=$(or $(call remove_quote,$(CONFIG_ICACHE_STORAGE)),reg) \
-	DCACHE_STORAGE=$(or $(call remove_quote,$(CONFIG_DCACHE_STORAGE)),reg) \
-	WBUF_DEPTH=$(CONFIG_WBUF_DEPTH) \
-	CACHE_PADDING=$(CACHE_PADDING) \
-	CHIPLINK=$(CHIPLINK) \
-	XLEN=$(or $(CONFIG_XLEN),32) \
-	SOC_XLEN_FOLLOW_CPU=$(SOC_XLEN_FOLLOW_CPU) \
-	SOC_XLEN=$(SOC_XLEN) \
-	ADDRESS_WIDTH=$(ADDRESS_WIDTH) \
-	MMU_ENABLED=$(if $(filter y,$(CONFIG_HAS_MMU)),1,0) \
-	MMU_TLB_ENABLED=$(if $(and $(filter y,$(CONFIG_HAS_TLB)),$(filter y,$(CONFIG_HAS_MMU))),1,0) \
-	MMU_GEOMETRY_MODE=$(or $(call remove_quote,$(CONFIG_MMU_GEOMETRY_MODE)),standard) \
-	MMU_CUSTOM_SATP_MODE=$(or $(CONFIG_MMU_CUSTOM_SATP_MODE),10) \
-	MMU_PAGE_SIZE_BYTES=$(or $(CONFIG_MMU_PAGE_SIZE_BYTES),4096) \
-	MMU_LEVELS=$(or $(CONFIG_MMU_LEVELS),2) \
-	MMU_PTE_SIZE_BYTES=$(or $(CONFIG_MMU_PTE_SIZE_BYTES),4) \
-	MMU_PAGE_TABLE_SIZE_BYTES=$(or $(CONFIG_MMU_PAGE_TABLE_SIZE_BYTES),4096) \
-	MMU_PTE_FORMAT=$(or $(call remove_quote,$(CONFIG_MMU_PTE_FORMAT)),riscv32) \
-	MMU_SUPERPAGE=$(or $(CONFIG_MMU_SUPERPAGE),n) \
-	MMU_AD_MODE=$(or $(call remove_quote,$(CONFIG_MMU_AD_MODE)),fault) \
-	MMU_CACHE_MODE=$(or $(call remove_quote,$(CONFIG_MMU_CACHE_MODE)),pipt) \
-	MMU_CACHE_VIPT_ALIAS_SAFE=$(or $(CONFIG_MMU_CACHE_VIPT_ALIAS_SAFE),n) \
-	MMU_CACHE_VIPT_ALIAS_SCAN_MODE=$(or $(call remove_quote,$(CONFIG_MMU_CACHE_VIPT_ALIAS_SCAN_MODE)),all_sets) \
-	MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH=$(or $(CONFIG_MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH),4) \
-	MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES=$(or $(CONFIG_MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES),0) \
-	MMU_PTW_PATH=$(or $(call remove_quote,$(CONFIG_MMU_PTW_PATH)),dedicated) \
-	MMU_PTW_ARCH=$(or $(call remove_quote,$(CONFIG_MMU_PTW_ARCH)),independent) \
-	MMU_PTW_OUTSTANDING=$(or $(CONFIG_MMU_PTW_OUTSTANDING),2) \
-	MMU_PTW_ORDER=$(or $(call remove_quote,$(CONFIG_MMU_PTW_ORDER)),in_order) \
-	MMU_PTW_CACHE=$(or $(CONFIG_MMU_PTW_CACHE),n) \
-	MMU_PTW_CACHE_ENTRIES=$(or $(CONFIG_MMU_PTW_CACHE_ENTRIES),16) \
-	MMU_PTW_CACHE_WAYS=$(or $(CONFIG_MMU_PTW_CACHE_WAYS),2) \
-	MMU_TLB_ORGANIZATION=$(or $(call remove_quote,$(CONFIG_TLB_ORGANIZATION)),split) \
-	MMU_TLB_STORAGE=$(or $(call remove_quote,$(CONFIG_TLB_STORAGE)),reg) \
-	MMU_TLB_REPLACEMENT=$(or $(call remove_quote,$(CONFIG_TLB_REPLACEMENT)),plru) \
-	MMU_TLB_ASID_BITS=$(or $(CONFIG_TLB_ASID_BITS),9) \
-	MMU_TLB_GLOBAL=$(or $(CONFIG_TLB_GLOBAL),y) \
-	MMU_ITLB_ENTRIES=$(or $(CONFIG_ITLB_ENTRIES),16) \
-	MMU_ITLB_WAYS=$(or $(CONFIG_ITLB_WAYS),2) \
-	MMU_DTLB_ENTRIES=$(or $(CONFIG_DTLB_ENTRIES),32) \
-	MMU_DTLB_WAYS=$(or $(CONFIG_DTLB_WAYS),4) \
-	MMU_UTLB_ENTRIES=$(or $(CONFIG_UTLB_ENTRIES),32) \
-	MMU_UTLB_WAYS=$(or $(CONFIG_UTLB_WAYS),4) \
-	MMU_TLB_SUPERPAGE=$(or $(CONFIG_TLB_SUPERPAGE),n) \
-	MMU_TLB_MISS_QUEUE_MODE=$(or $(call remove_quote,$(CONFIG_TLB_MISS_QUEUE_MODE)),follow_tlb) \
-	MMU_ITLB_MISS_QUEUE_ENTRIES=$(or $(CONFIG_ITLB_MISS_QUEUE_ENTRIES),4) \
-	MMU_DTLB_MISS_QUEUE_ENTRIES=$(or $(CONFIG_DTLB_MISS_QUEUE_ENTRIES),4) \
-	MMU_UTLB_MISS_QUEUE_ENTRIES=$(or $(CONFIG_UTLB_MISS_QUEUE_ENTRIES),8) \
-	MMU_GLOBAL_MISS_QUEUE_ENTRIES=$(or $(CONFIG_GLOBAL_MISS_QUEUE_ENTRIES),8) \
-	MMU_TLB_REFILL_PORTS=$(or $(CONFIG_TLB_REFILL_PORTS),1) \
-	$(shell cat $(MMU_PROFILE_ENV)) \
-	BTB_BITS=$(BTB_BITS) \
-	BTB_WAYS=$(BTB_WAYS) \
-	JAL_BTB_BITS=$(JAL_BTB_BITS) \
-	JAL_BTB_WAYS=$(JAL_BTB_WAYS) \
-	RAS_BITS=$(RAS_BITS) \
-	SDB=$(or $(CONFIG_SDB),n) \
-	DIFFTEST=$(or $(CONFIG_DIFFTEST),n) \
-	MTRACE=$(or $(CONFIG_MTRACE),n) \
-	ITRACE=$(if $(filter y,$(CONFIG_ITRACE) $(CONFIG_ITRACE_WRITE_FILE)),y,n) \
-	FTRACE=$(or $(CONFIG_FTRACE),n) \
-	IRINGBUF=$(or $(CONFIG_IRINGBUF),n) \
-	PERF_STATS=$(or $(CONFIG_PERF_STATS),n) \
-	$(PERF_COUNTER_ENVS) \
-	RISCV_M=$(or $(CONFIG_RISCV_M),$(RISCV_M),n) \
-	RISCV_A=$(or $(CONFIG_RISCV_A),$(RISCV_A),n) \
-	RISCV_C=$(or $(CONFIG_RISCV_C),$(RISCV_C),n) \
-	RISCV_F=$(or $(CONFIG_RISCV_F),$(RISCV_F),n) \
-	RISCV_D=$(or $(CONFIG_RISCV_D),$(RISCV_D),n) \
-	FPU_IMPL=$(FPU_IMPL) \
-	FPU_FLEN=$(FPU_FLEN) \
-	FPU_PIPELINE=$(FPU_PIPELINE) \
-	FPU_FMA=$(FPU_FMA) \
-	FPU_DIVSQRT=$(FPU_DIVSQRT) \
-	FPU_ROUNDING=$(FPU_ROUNDING) \
-	FPU_FLAGS=$(FPU_FLAGS) \
-	FPU_HARDFLOAT_RECODE=$(FPU_HARDFLOAT_RECODE) \
-	FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING=$(FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING) \
-	FPU_FUDIAN_SHARED_DIVSQRT=$(FPU_FUDIAN_SHARED_DIVSQRT) \
-	MUL_IMPL=$(or $(call remove_quote,$(CONFIG_MUL_IMPL)),shift_add) \
-	MUL_ENCODING=$(or $(call remove_quote,$(CONFIG_MUL_ENCODING)),plain) \
-	MUL_RADIX=$(or $(CONFIG_MUL_RADIX),4) \
-	MUL_WIDTH=$(or $(CONFIG_MUL_WIDTH),32) \
-	MUL_COMPRESSOR_INPUTS=$(or $(CONFIG_MUL_COMPRESSOR_INPUTS),3) \
-	MUL_COMPRESSOR_OUTPUTS=$(or $(CONFIG_MUL_COMPRESSOR_OUTPUTS),2) \
-	MUL_COMPRESSOR_OUTPUT_OFFSETS=$(or $(call remove_quote,$(CONFIG_MUL_COMPRESSOR_OUTPUT_OFFSETS)),0$(comma)1) \
-	MUL_COMPRESSOR_HAS_CIN=$(CONFIG_MUL_COMPRESSOR_HAS_CIN) \
-	MUL_COMPRESSOR_HAS_COUT=$(CONFIG_MUL_COMPRESSOR_HAS_COUT) \
-	MUL_COMPRESSOR_COUT_OFFSET=$(or $(CONFIG_MUL_COMPRESSOR_COUT_OFFSET),1) \
-	MUL_COMPRESSOR_ALLOW_REDUNDANT=$(CONFIG_MUL_COMPRESSOR_ALLOW_REDUNDANT) \
-	DIV_IMPL=$(or $(call remove_quote,$(CONFIG_DIV_IMPL)),restoring) \
-	DIV_RADIX=$(or $(CONFIG_DIV_RADIX),2) \
-	DIV_ITER_BITS=$(or $(CONFIG_DIV_ITER_BITS),1) \
-	DIV_EARLY_OUT=$(CONFIG_DIV_EARLY_OUT) \
-	MUL_ITER_BITS=$(or $(CONFIG_MUL_ITER_BITS),1) \
-	MUL_PIPELINE=$(or $(CONFIG_MUL_PIPELINE),0) \
-	MUL_SPLIT=$(or $(CONFIG_MUL_SPLIT),1) \
-	MUL_EARLY_OUT=$(CONFIG_MUL_EARLY_OUT) \
-	APB_CPU_FREQ_MHZ=$(SYNTH_FREQ) \
-	APB_DEVICE_FREQ_MHZ=$(APB_DEVICE_FREQ) \
-	APB_DELAY_SCALE_FACTOR=$(APB_DELAY_SCALE) \
-	AXI_CPU_FREQ_MHZ=$(SYNTH_FREQ) \
-	AXI_DEVICE_FREQ_MHZ=$(AXI_DEVICE_FREQ) \
-	AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE)
 
 # Keep the effective hardware knobs in one stable, human-readable record.
 # The hash of this exact string identifies configurations even when two builds
@@ -626,21 +588,19 @@ PERF_COUNTER_KEYS := $(foreach g,$(PERF_COUNTER_GROUPS),$(PERF_COUNTERS_$(g)))
 perf_group_on = $(filter y,$(or $(CONFIG_PERF_COUNTER_$(1)),y))
 # 单计数器是否生效：所属组与子开关都必须为y。
 perf_counter_on = $(and $(call perf_group_on,$(2)),$(filter y,$(or $(CONFIG_PERF_COUNTER_$(1)),y)))
-perf_counter_flag = $(if $(call perf_counter_on,$(1),$(2)),-DCONFIG_PERF_COUNTER_$(1),)
-perf_counter_env = $(if $(call perf_counter_on,$(1),$(2)),y,n)
 _perf_counter_empty :=
 _perf_counter_space := $(_perf_counter_empty) $(_perf_counter_empty)
-# 组开关与单计数器开关一起传给 elaboration。
-PERF_COUNTER_ENVS = $(foreach g,$(PERF_COUNTER_GROUPS),PERF_COUNTER_$(g)=$(or $(CONFIG_PERF_COUNTER_$(g)),y)) $(foreach g,$(PERF_COUNTER_GROUPS),$(foreach k,$(PERF_COUNTERS_$(g)),PERF_COUNTER_$(k)=$(call perf_counter_env,$(k),$(g))))
+# 组开关与单计数器开关由 npc_config_gen.cpp 展开；这里只保留构建身份摘要。
 # 构建身份摘要用的启用清单；主开关关闭为off，全部子计数器关闭为none。
 PERF_COUNTER_KEYS_ENABLED = $(foreach g,$(PERF_COUNTER_GROUPS),$(foreach k,$(PERF_COUNTERS_$(g)),$(if $(call perf_counter_on,$(k),$(g)),$(k) ,)))
 PERF_COUNTERS_SUMMARY = $(if $(filter y,$(or $(CONFIG_PERF_STATS),n)),$(if $(strip $(PERF_COUNTER_KEYS_ENABLED)),$(subst $(_perf_counter_space),+,$(strip $(PERF_COUNTER_KEYS_ENABLED))),none),off)
-PERF_CONFIG_SUMMARY = NPC_RAM_SIZE=$(NPC_RAM_SIZE);ICACHE=$(or $(CONFIG_ICACHE),n);DCACHE=$(or $(CONFIG_DCACHE),n);CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2);CACHE_INDEX_BITS=$(CACHE_INDEX_BITS);ICACHE_BLOCK_SIZE_LOG2=$(ICACHE_BLOCK_SIZE_LOG2);ICACHE_INDEX_BITS=$(ICACHE_INDEX_BITS);DCACHE_BLOCK_SIZE_LOG2=$(DCACHE_BLOCK_SIZE_LOG2);DCACHE_INDEX_BITS=$(DCACHE_INDEX_BITS);ICACHE_STORAGE=$(or $(call remove_quote,$(CONFIG_ICACHE_STORAGE)),reg);DCACHE_STORAGE=$(or $(call remove_quote,$(CONFIG_DCACHE_STORAGE)),reg);ICACHE_COHERENCE=$(or $(call remove_quote,$(CONFIG_ICACHE_COHERENCE)),fence_i);DMA_COHERENCE=$(or $(call remove_quote,$(CONFIG_DMA_COHERENCE)),software_flush);WBUF_DEPTH=$(or $(CONFIG_WBUF_DEPTH),4);CACHE_PADDING=$(CACHE_PADDING);BTB_BITS=$(BTB_BITS);BTB_WAYS=$(BTB_WAYS);JAL_BTB_BITS=$(JAL_BTB_BITS);JAL_BTB_WAYS=$(JAL_BTB_WAYS);RAS_BITS=$(RAS_BITS);SDB=$(or $(CONFIG_SDB),n);DIFFTEST=$(or $(CONFIG_DIFFTEST),n);MTRACE=$(or $(CONFIG_MTRACE),n);ITRACE=$(or $(CONFIG_ITRACE),n);ITRACE_WRITE_FILE=$(or $(CONFIG_ITRACE_WRITE_FILE),n);FTRACE=$(or $(CONFIG_FTRACE),n);IRINGBUF=$(or $(CONFIG_IRINGBUF),n);PERF_STATS=$(or $(CONFIG_PERF_STATS),n);RISCV_M=$(or $(CONFIG_RISCV_M),$(RISCV_M),n);RISCV_A=$(or $(CONFIG_RISCV_A),$(RISCV_A),n);RISCV_C=$(or $(CONFIG_RISCV_C),$(RISCV_C),n);RISCV_F=$(or $(CONFIG_RISCV_F),n);RISCV_D=$(or $(CONFIG_RISCV_D),n);FPU_IMPL=$(FPU_IMPL);FPU_FLEN=$(FPU_FLEN);FPU_PIPELINE=$(FPU_PIPELINE);FPU_FMA=$(FPU_FMA);FPU_DIVSQRT=$(FPU_DIVSQRT);FPU_ROUNDING=$(FPU_ROUNDING);FPU_FLAGS=$(FPU_FLAGS);FPU_HARDFLOAT_RECODE=$(FPU_HARDFLOAT_RECODE);FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING=$(FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING);FPU_FUDIAN_SHARED_DIVSQRT=$(FPU_FUDIAN_SHARED_DIVSQRT);MUL_IMPL=$(or $(call remove_quote,$(CONFIG_MUL_IMPL)),shift_add);MUL_ENCODING=$(or $(call remove_quote,$(CONFIG_MUL_ENCODING)),plain);MUL_RADIX=$(or $(CONFIG_MUL_RADIX),4);MUL_WIDTH=$(or $(CONFIG_MUL_WIDTH),32);MUL_COMPRESSOR_INPUTS=$(or $(CONFIG_MUL_COMPRESSOR_INPUTS),3);MUL_COMPRESSOR_OUTPUTS=$(or $(CONFIG_MUL_COMPRESSOR_OUTPUTS),2);MUL_COMPRESSOR_OUTPUT_OFFSETS=$(or $(call remove_quote,$(CONFIG_MUL_COMPRESSOR_OUTPUT_OFFSETS)),0$(comma)1);MUL_COMPRESSOR_HAS_CIN=$(or $(CONFIG_MUL_COMPRESSOR_HAS_CIN),n);MUL_COMPRESSOR_HAS_COUT=$(or $(CONFIG_MUL_COMPRESSOR_HAS_COUT),n);MUL_COMPRESSOR_COUT_OFFSET=$(or $(CONFIG_MUL_COMPRESSOR_COUT_OFFSET),1);MUL_COMPRESSOR_ALLOW_REDUNDANT=$(or $(CONFIG_MUL_COMPRESSOR_ALLOW_REDUNDANT),n);DIV_IMPL=$(or $(call remove_quote,$(CONFIG_DIV_IMPL)),restoring);DIV_RADIX=$(or $(CONFIG_DIV_RADIX),2);DIV_ITER_BITS=$(or $(CONFIG_DIV_ITER_BITS),1);DIV_EARLY_OUT=$(or $(CONFIG_DIV_EARLY_OUT),n);MUL_ITER_BITS=$(or $(CONFIG_MUL_ITER_BITS),1);MUL_PIPELINE=$(or $(CONFIG_MUL_PIPELINE),0);MUL_SPLIT=$(or $(CONFIG_MUL_SPLIT),1);MUL_EARLY_OUT=$(or $(CONFIG_MUL_EARLY_OUT),n);CHIPLINK=$(or $(CHIPLINK),n);SOC_XLEN_FOLLOW_CPU=$(SOC_XLEN_FOLLOW_CPU);SOC_XLEN=$(SOC_XLEN);SOC_XLEN_EFFECTIVE=$(SOC_XLEN_EFFECTIVE);ADDRESS_WIDTH=$(ADDRESS_WIDTH);APB_CPU_FREQ_MHZ=$(SYNTH_FREQ);APB_DEVICE_FREQ_MHZ=$(APB_DEVICE_FREQ);APB_DELAY_SCALE_FACTOR=$(APB_DELAY_SCALE);AXI_CPU_FREQ_MHZ=$(SYNTH_FREQ);AXI_DEVICE_FREQ_MHZ=$(AXI_DEVICE_FREQ);AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE);SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE);SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX);SYNTH_NOMAP=$(SYNTH_NOMAP);SYNTH_NOABC=$(SYNTH_NOABC);PERF_COUNTERS=$(PERF_COUNTERS_SUMMARY);SBI_ENABLE=$(or $(CONFIG_SBI_ENABLE),n);SBI_IMPL=$(SBI_IMPL);SBI_PLATFORM=$(SBI_PLATFORM);SBI_FW_BASE=$(SBI_FW_BASE);SBI_NEXT_ADDR=$(SBI_NEXT_ADDR);SBI_FDT_ENABLE=$(SBI_FDT_ENABLE);SBI_FDT_ADDR=$(SBI_FDT_ADDR)
+PERF_CONFIG_SUMMARY = NPC_RAM_SIZE=$(NPC_RAM_SIZE);ICACHE=$(or $(CONFIG_ICACHE),n);DCACHE=$(or $(CONFIG_DCACHE),n);CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2);CACHE_INDEX_BITS=$(CACHE_INDEX_BITS);ICACHE_BLOCK_SIZE_LOG2=$(ICACHE_BLOCK_SIZE_LOG2);ICACHE_INDEX_BITS=$(ICACHE_INDEX_BITS);DCACHE_BLOCK_SIZE_LOG2=$(DCACHE_BLOCK_SIZE_LOG2);DCACHE_INDEX_BITS=$(DCACHE_INDEX_BITS);ICACHE_STORAGE=$(or $(call remove_quote,$(CONFIG_ICACHE_STORAGE)),reg);DCACHE_STORAGE=$(or $(call remove_quote,$(CONFIG_DCACHE_STORAGE)),reg);ICACHE_COHERENCE=$(or $(call remove_quote,$(CONFIG_ICACHE_COHERENCE)),fence_i);DMA_COHERENCE=$(or $(call remove_quote,$(CONFIG_DMA_COHERENCE)),software_flush);WBUF_DEPTH=$(or $(CONFIG_WBUF_DEPTH),4);CACHE_PADDING=$(CACHE_PADDING);BTB_BITS=$(BTB_BITS);BTB_WAYS=$(BTB_WAYS);JAL_BTB_BITS=$(JAL_BTB_BITS);JAL_BTB_WAYS=$(JAL_BTB_WAYS);RAS_BITS=$(RAS_BITS);SDB=$(or $(CONFIG_SDB),n);DIFFTEST=$(or $(CONFIG_DIFFTEST),n);MTRACE=$(or $(CONFIG_MTRACE),n);ITRACE=$(or $(CONFIG_ITRACE),n);ITRACE_WRITE_FILE=$(or $(CONFIG_ITRACE_WRITE_FILE),n);FTRACE=$(or $(CONFIG_FTRACE),n);IRINGBUF=$(or $(CONFIG_IRINGBUF),n);PERF_STATS=$(or $(CONFIG_PERF_STATS),n);RISCV_M=$(or $(CONFIG_RISCV_M),$(RISCV_M),n);RISCV_A=$(or $(CONFIG_RISCV_A),$(RISCV_A),n);RISCV_C=$(or $(CONFIG_RISCV_C),$(RISCV_C),n);RISCV_F=$(or $(CONFIG_RISCV_F),n);RISCV_D=$(or $(CONFIG_RISCV_D),n);FPU_IMPL=$(FPU_IMPL);FPU_FLEN=$(FPU_FLEN);FPU_PIPELINE=$(FPU_PIPELINE);FPU_FMA=$(FPU_FMA);FPU_DIVSQRT=$(FPU_DIVSQRT);FPU_ROUNDING=$(FPU_ROUNDING);FPU_FLAGS=$(FPU_FLAGS);FPU_HARDFLOAT_RECODE=$(FPU_HARDFLOAT_RECODE);FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING=$(FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING);FPU_FUDIAN_SHARED_DIVSQRT=$(FPU_FUDIAN_SHARED_DIVSQRT);MUL_IMPL=$(or $(call remove_quote,$(CONFIG_MUL_IMPL)),shift_add);MUL_ENCODING=$(or $(call remove_quote,$(CONFIG_MUL_ENCODING)),plain);MUL_RADIX=$(or $(CONFIG_MUL_RADIX),4);MUL_WIDTH=$(or $(CONFIG_MUL_WIDTH),32);MUL_COMPRESSOR_INPUTS=$(or $(CONFIG_MUL_COMPRESSOR_INPUTS),3);MUL_COMPRESSOR_OUTPUTS=$(or $(CONFIG_MUL_COMPRESSOR_OUTPUTS),2);MUL_COMPRESSOR_OUTPUT_OFFSETS=$(or $(call remove_quote,$(CONFIG_MUL_COMPRESSOR_OUTPUT_OFFSETS)),0$(comma)1);MUL_COMPRESSOR_HAS_CIN=$(or $(CONFIG_MUL_COMPRESSOR_HAS_CIN),n);MUL_COMPRESSOR_HAS_COUT=$(or $(CONFIG_MUL_COMPRESSOR_HAS_COUT),n);MUL_COMPRESSOR_COUT_OFFSET=$(or $(CONFIG_MUL_COMPRESSOR_COUT_OFFSET),1);MUL_COMPRESSOR_ALLOW_REDUNDANT=$(or $(CONFIG_MUL_COMPRESSOR_ALLOW_REDUNDANT),n);DIV_IMPL=$(or $(call remove_quote,$(CONFIG_DIV_IMPL)),restoring);DIV_RADIX=$(or $(CONFIG_DIV_RADIX),2);DIV_ITER_BITS=$(or $(CONFIG_DIV_ITER_BITS),1);DIV_EARLY_OUT=$(or $(CONFIG_DIV_EARLY_OUT),n);MUL_ITER_BITS=$(or $(CONFIG_MUL_ITER_BITS),1);MUL_PIPELINE=$(or $(CONFIG_MUL_PIPELINE),0);MUL_SPLIT=$(or $(CONFIG_MUL_SPLIT),1);MUL_EARLY_OUT=$(or $(CONFIG_MUL_EARLY_OUT),n);CHIPLINK=$(or $(CHIPLINK),n);SOC_XLEN_FOLLOW_CPU=$(SOC_XLEN_FOLLOW_CPU);SOC_XLEN=$(SOC_XLEN);ADDRESS_WIDTH=$(ADDRESS_WIDTH);APB_CPU_FREQ_MHZ=$(SYNTH_FREQ);APB_DEVICE_FREQ_MHZ=$(APB_DEVICE_FREQ);APB_DELAY_SCALE_FACTOR=$(APB_DELAY_SCALE);AXI_CPU_FREQ_MHZ=$(SYNTH_FREQ);AXI_DEVICE_FREQ_MHZ=$(AXI_DEVICE_FREQ);AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE);SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE);SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX);SYNTH_NOMAP=$(SYNTH_NOMAP);SYNTH_NOABC=$(SYNTH_NOABC);PERF_COUNTERS=$(PERF_COUNTERS_SUMMARY);SBI_ENABLE=$(or $(CONFIG_SBI_ENABLE),n);SBI_IMPL=$(SBI_IMPL);SBI_PLATFORM=$(SBI_PLATFORM);SBI_FW_BASE=$(SBI_FW_BASE);SBI_NEXT_ADDR=$(SBI_NEXT_ADDR);SBI_FDT_ENABLE=$(SBI_FDT_ENABLE);SBI_FDT_ADDR=$(SBI_FDT_ADDR)
 
-verilog: mmu-profile
+verilog: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_TYPED_JSON)
 	$(call git_commit, "generate verilog")
 	mkdir -p $(BUILD_DIR)
-	$(VERILOG_ENV) mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
+	env NPC_CONFIG_JSON='$(NPC_CONFIG_TYPED_JSON)' \
+		mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
 	ln -sf layers-ysyx_26030103-Verification.sv $(BUILD_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
 
 
@@ -737,7 +697,7 @@ ifeq ($(CONFIG_NVBOARD),y)
 NVBOARD_HOME ?= $(abspath $(NPC_HOME)/../nvboard)
 NVBOARD_ARCHIVE = $(NVBOARD_HOME)/build/nvboard.a
 NVBOARD_AUTOBIND = $(BUILD_DIR)/auto_bind.cpp
-NVBOARD_CFLAGS = -DCONFIG_NVBOARD -DCONFIG_NVBOARD_UPDATE_INTERVAL=$(call remove_quote,$(CONFIG_NVBOARD_UPDATE_INTERVAL)) -I$(NVBOARD_HOME)/usr/include $(shell sdl2-config --cflags 2>/dev/null)
+NVBOARD_CFLAGS = -I$(NVBOARD_HOME)/usr/include $(shell sdl2-config --cflags 2>/dev/null)
 NVBOARD_LDADD = $(NVBOARD_ARCHIVE) $(shell sdl2-config --libs 2>/dev/null) -lSDL2_image -lSDL2_ttf
 NVBOARD_LDFLAGS = $(addprefix -LDFLAGS ,$(NVBOARD_LDADD))
 NVBOARD_DIRECT_GUARD = nvboard-direct-unsupported
@@ -747,54 +707,8 @@ nvboard-direct-unsupported:
 	@echo "错误：NVBoard 只能绑定 ysyxSoCFull 的外设引脚；direct-NPC 顶层没有可绑定的 GPIO/VGA/UART 引脚。请使用 SIM_TOP=soc。" >&2
 	@exit 2
 endif
-ifeq ($(CONFIG_SDB),y)
-SDB_CFLAGS = -DCONFIG_SDB
-endif
-ifeq ($(CONFIG_TRACE),y)
-TRACE_CFLAGS = -DCONFIG_TRACE
-endif
-ifneq ($(CONFIG_TRACE_DEPTH),)
-TRACE_CFLAGS += -DCONFIG_TRACE_DEPTH=$(call remove_quote,$(CONFIG_TRACE_DEPTH))
-endif
-ifeq ($(CONFIG_ITRACE),y)
-ITRACE_CFLAGS = -DCONFIG_ITRACE
-endif
-ifeq ($(CONFIG_ITRACE_WRITE_FILE),y)
-ITRACE_WRITE_FILE_CFLAGS = -DCONFIG_ITRACE_WRITE_FILE
-endif
-ifeq ($(CONFIG_MTRACE),y)
-MTRACE_CFLAGS = -DCONFIG_MTRACE
-endif
-ifeq ($(CONFIG_FTRACE),y)
-FTRACE_CFLAGS = -DCONFIG_FTRACE
-endif
-ifeq ($(CONFIG_IRINGBUF),y)
-IRINGBUF_CFLAGS = -DCONFIG_IRINGBUF
-ifneq ($(CONFIG_IRINGBUF_SIZE),)
-IRINGBUF_CFLAGS += -DCONFIG_IRINGBUF_SIZE=$(call remove_quote,$(CONFIG_IRINGBUF_SIZE))
-endif
-endif
-ifeq ($(CONFIG_WATCHPOINT),y)
-WATCHPOINT_CFLAGS = -DCONFIG_WATCHPOINT
-ifneq ($(CONFIG_WATCHPOINT_NUM),)
-WATCHPOINT_CFLAGS += -DCONFIG_WATCHPOINT_NUM=$(call remove_quote,$(CONFIG_WATCHPOINT_NUM))
-endif
-endif
-ifeq ($(CONFIG_DIFFTEST),y)
-DIFFTEST_CFLAGS = -DCONFIG_DIFFTEST
-endif
 # 性能计数器：与Kconfig默认值一致，缺失的符号按y处理，尚未重新生成配置的
 # 旧工作区保持与原行为一致。组宏与单计数器宏都会注入，单计数器宏要求组为y。
-ifeq ($(CONFIG_PERF_STATS),y)
-PERF_STATS_CFLAGS = -DCONFIG_PERF_STATS \
-	$(foreach g,$(PERF_COUNTER_GROUPS),$(call perf_counter_flag,$(g),$(g))) \
-	$(foreach g,$(PERF_COUNTER_GROUPS),$(foreach k,$(PERF_COUNTERS_$(g)),$(call perf_counter_flag,$(k),$(g))))
-endif
-ifeq ($(CONFIG_PERF_SAVE),y)
-PERF_SAVE_CFLAGS = -DCONFIG_PERF_SAVE
-PERF_SAVE_CFLAGS += -DCONFIG_PERF_BUILD_METADATA_FILE='\"$(PERF_BUILD_METADATA)\"'
-PERF_SAVE_CFLAGS += -DCONFIG_PERF_SYNTH_FILE='\"$(PERF_SYNTH)\"'
-endif
 
 # The perf recipe's ordered sub-make reuses the RTL and metadata that its
 # successful synth prerequisite just produced.  All ordinary binary targets
@@ -850,25 +764,8 @@ ifneq ($(PERF_SYNTH_READY),1)
 simtest $(BIN) $(BIN_NPC): | perf-build-metadata
 endif
 endif
-# 向 C++ 侧传递唯一的 XLEN 配置：CPU XLEN 来自 Kconfig，SoC XLEN 是
-# 已解析 FOLLOW_CPU 的有效值。csrc/Config.h 只消费这两个宏，不再生成
-# 任何独立的 32/64 位第二开关。
-NPC_XLEN := $(or $(CONFIG_XLEN),32)
-NPC_SOC_XLEN := $(or $(SOC_XLEN_EFFECTIVE),32)
-XLEN_CFLAGS = -DCONFIG_XLEN=$(NPC_XLEN) \
-              -DCONFIG_SOC_XLEN=$(NPC_SOC_XLEN)
-# 向C++侧传递M扩展开关
-ifeq ($(or $(CONFIG_RISCV_M),$(RISCV_M)),y)
-RISCM_CFLAGS = -DCONFIG_RISCV_M
-endif
-# 向C++侧传递指令缓存开关
-ifeq ($(CONFIG_ICACHE),y)
-ICACHE_CFLAGS = -DCONFIG_ICACHE
-endif
-# 向C++侧传递数据缓存开关
-ifeq ($(CONFIG_DCACHE),y)
-DCACHE_CFLAGS = -DCONFIG_DCACHE
-endif
+# C++ 侧的配置入口是生成的 npc.config 模块。C++ 源码不再消费任何
+# CONFIG_* 编译宏，模块由 .config 派生，构建命令只需区分目标顶层。
 COMMON_INCFLAGS = $(addprefix -I, $(abspath $(CSRC_DIR)) $(abspath $(CSRC_DIR)/sdb) $(abspath $(CSRC_DIR)/sdb/command) $(abspath $(CSRC_DIR)/tools/expressions) $(abspath $(CSRC_DIR)/trace) $(abspath $(OBJ_DIR)))
 CC_OPT ?= -O3
 ifneq ($(CONFIG_CC_OPT),)
@@ -945,22 +842,6 @@ endif
 ifeq ($(CONFIG_BUILD_TIMESTAMP),y)
 TIMESTAMP_CFLAGS = -DBUILD_TIMESTAMP='"$(shell date "+%Y-%m-%d %H:%M:%S")"'
 endif
-ifneq ($(CONFIG_LOG_LEVEL),)
-LOG_CFLAGS = -DCONFIG_LOG_LEVEL=$(call remove_quote,$(CONFIG_LOG_LEVEL))
-endif
-ifeq ($(CONFIG_LOG_TO_FILE),y)
-LOG_CFLAGS += -DCONFIG_LOG_TO_FILE
-endif
-ifneq ($(CONFIG_LOG_DIR),)
-# 字符串字面值需要穿过两层 shell（make → verilator → 子 make → g++），故用 '\"..\"' 形式
-LOG_CFLAGS += -DCONFIG_LOG_DIR='\"$(call remove_quote,$(CONFIG_LOG_DIR))\"'
-endif
-ifeq ($(CONFIG_LOG_TIMESTAMP),y)
-LOG_CFLAGS += -DCONFIG_LOG_TIMESTAMP
-endif
-ifeq ($(CONFIG_LOG_SOURCE_LOCATION),y)
-LOG_CFLAGS += -DCONFIG_LOG_SOURCE_LOCATION
-endif
 ifeq ($(CONFIG_CC_GPROF),y)
 GPROF_CFLAGS = -pg
 endif
@@ -981,9 +862,8 @@ endif
 # These are properties of the fixed ysyxSoC platform, not tunable simulator
 # options.  Keeping stale Kconfig values here previously let the C++ loader and
 # DiffTest disagree with the hard-wired RTL/PMA map.
-SOC_MEMORY_CFLAGS = -DCONFIG_MBASE=0x30000000 -DCONFIG_MSIZE=0x10000000 -DCONFIG_RESET_PC=0x30000000
 COMMON_INCFLAGS += $(addprefix -I, $(abspath $(CSRC_DIR)/difftest))
-SHARED_CFLAGS += $(COMMON_INCFLAGS) $(XLEN_CFLAGS) $(SDB_CFLAGS) $(TRACE_CFLAGS) $(ITRACE_CFLAGS) $(ITRACE_WRITE_FILE_CFLAGS) $(MTRACE_CFLAGS) $(FTRACE_CFLAGS) $(IRINGBUF_CFLAGS) $(WATCHPOINT_CFLAGS) $(DIFFTEST_CFLAGS) $(PERF_STATS_CFLAGS) $(PERF_SAVE_CFLAGS) $(RISCM_CFLAGS) $(ICACHE_CFLAGS) $(DCACHE_CFLAGS) $(SOC_MEMORY_CFLAGS) $(PDK_CFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(PGO_CFLAGS) $(ASAN_CFLAGS) $(UBSAN_CFLAGS) $(TSAN_CFLAGS) $(COVERAGE_CFLAGS) $(COLOR_CFLAGS) $(PIPE_CFLAGS) $(SPLIT_DWARF_CFLAGS) $(GC_SECTIONS_CFLAGS) $(VISIBILITY_CFLAGS) $(MARCH_CFLAGS) $(IPA_PTA_CFLAGS) $(PREFETCH_CFLAGS) $(GPROF_CFLAGS) $(TIME_REPORT_CFLAGS) $(TIMESTAMP_CFLAGS) $(LOG_CFLAGS) $(NO_OMIT_FP_CFLAGS) $(TRACE_VCD_CFLAGS) $(TRACE_FST_CFLAGS) $(TRACE_FILE_CFLAGS) $(CACHE_PADDING_CFLAGS) $(ICPX_NOSTDINCXX_CFLAGS) $(STDLIB_FLAG) $(HARDENING_CFLAGS) $(CC_OPT) $(NVBOARD_CFLAGS)
+SHARED_CFLAGS += $(COMMON_INCFLAGS) $(DEBUG_CFLAGS) $(LTO_CFLAGS) $(PGO_CFLAGS) $(ASAN_CFLAGS) $(UBSAN_CFLAGS) $(TSAN_CFLAGS) $(COVERAGE_CFLAGS) $(COLOR_CFLAGS) $(PIPE_CFLAGS) $(SPLIT_DWARF_CFLAGS) $(GC_SECTIONS_CFLAGS) $(VISIBILITY_CFLAGS) $(MARCH_CFLAGS) $(IPA_PTA_CFLAGS) $(PREFETCH_CFLAGS) $(GPROF_CFLAGS) $(TIME_REPORT_CFLAGS) $(TIMESTAMP_CFLAGS) $(NO_OMIT_FP_CFLAGS) $(ICPX_NOSTDINCXX_CFLAGS) $(STDLIB_FLAG) $(HARDENING_CFLAGS) $(CC_OPT) $(NVBOARD_CFLAGS)
 VERILATOR_CFLAGS = $(SHARED_CFLAGS) $(VERILATOR_CXX_STD_FLAG)
 USER_CXXFLAGS = $(USER_CXX_STD_FLAG) $(MODULE_CFLAGS) $(WALL_CFLAGS) $(WERROR_CFLAGS) $(PEDANTIC_CFLAGS) $(WCONVERSION_CFLAGS)
 #verilator的部分
@@ -993,7 +873,6 @@ VERILATOR_OPT_FLAG ?= -O3
 #   make VERILATOR_SAVABLE=y BUILD_DIR=... build-xxx/ysyx_26030103_npc
 VERILATOR_SAVABLE ?= n
 SAVABLE_VERILATOR_FLAG = $(if $(filter y,$(VERILATOR_SAVABLE)),--savable,)
-SAVABLE_CFLAGS = $(if $(filter y,$(VERILATOR_SAVABLE)),-DCONFIG_VERILATOR_SAVABLE,)
 # NPC 顶层比 ysyxSoC 的 CPU 黑盒多出直接仿真别名（如 perf_trap_count）；
 # 这些别名在 SoC 实例中故意不连接，PINMISSING 是预期行为，不应让整个
 # SoC 仿真构建失败。RV64 调试 `_hi` 端口已由 ysyxSoC 黑盒显式连接。
@@ -1003,11 +882,9 @@ VERILATOR_OPT_FLAG = $(call remove_quote,$(CONFIG_VERILATOR_OPT))
 endif
 ifeq ($(CONFIG_TRACE_VCD),y)
 VERILATOR_TRACE = --trace
-TRACE_VCD_CFLAGS = -DCONFIG_TRACE_VCD
 endif
 ifeq ($(CONFIG_TRACE_FST),y)
 VERILATOR_TRACE = --trace-fst
-TRACE_FST_CFLAGS = -DCONFIG_TRACE_FST
 endif
 ifneq ($(CONFIG_TRACE_DEPTH),)
 TRACE_DEPTH_VAL := $(call remove_quote,$(CONFIG_TRACE_DEPTH))
@@ -1016,7 +893,6 @@ VERILATOR_TRACE += --trace-depth $(TRACE_DEPTH_VAL)
 endif
 endif
 ifneq ($(CONFIG_TRACE_FILE),)
-TRACE_FILE_CFLAGS = -DCONFIG_TRACE_FILE='\"$(call remove_quote,$(CONFIG_TRACE_FILE))\"'
 endif
 ifeq ($(CONFIG_PROF_CFUNCS),y)
 VERILATOR_PROF = --prof-cfuncs
@@ -1064,7 +940,7 @@ $(NVBOARD_AUTOBIND): $(call remove_quote,$(CONFIG_NVBOARD_NXDC))
 	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $< $@
 endif
 
-simtest: $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
+simtest: $(NPC_CONFIG_MODULE) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_WARN_FLAGS) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -1073,14 +949,16 @@ simtest: $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 		--top-module $(SOC_TOPNAME) \
 		$(VSRCS) $(CSRCS) $(NVBOARD_AUTOBIND) \
 		$(addprefix -CFLAGS , $(VERILATOR_CFLAGS)) \
-		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) $(NVBOARD_LDFLAGS) \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline -LDFLAGS -ldl $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) $(NVBOARD_LDFLAGS) \
 		--Mdir $(OBJ_DIR) \
 		--exe -o $(abspath $(BIN))
 	$(MAKE) -C $(OBJ_DIR) -f $(VERILATOR_BUILD_WRAPPER) -j $(NPROC) \
 		VERILATOR_GENERATED_MK=$(VERILATOR_GENERATED_MK) \
 		CXX=$(CXX) LINK=$(CXX) \
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
-		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
+		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))' \
+		NPC_SAVABLE='$(VERILATOR_SAVABLE)' \
+		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)'
 
 # Always enter the SoC sub-build.  Its own config stamp and Scala dependencies
 # decide whether regeneration is necessary; checking only for the final file
@@ -1088,20 +966,13 @@ simtest: $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 .PHONY: ysyxsoc-verilog-force
 ysyxSoC-verilog-force:
 
-$(YSYXSOC_FULL_V): ysyxsoc-verilog-force
+$(YSYXSOC_FULL_V): ysyxsoc-verilog-force $(NPC_CONFIG_TYPED_JSON)
 	@echo "[perf] (re)building ysyxSoC ..."
 	@$(MAKE) -C $(YSYXSOC_DIR) \
-		CHIPLINK=$(CHIPLINK) \
-		SOC_XLEN=$(SOC_XLEN_EFFECTIVE) \
-		APB_CPU_FREQ_MHZ=$(SYNTH_FREQ) \
-		APB_DEVICE_FREQ_MHZ=$(APB_DEVICE_FREQ) \
-		APB_DELAY_SCALE_FACTOR=$(APB_DELAY_SCALE) \
-		AXI_CPU_FREQ_MHZ=$(SYNTH_FREQ) \
-		AXI_DEVICE_FREQ_MHZ=$(AXI_DEVICE_FREQ) \
-		AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE) \
+		NPC_CONFIG_JSON='$(NPC_CONFIG_TYPED_JSON)' \
 		verilog
 
-$(BIN): $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V)
+$(BIN): $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_WARN_FLAGS) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -1110,15 +981,17 @@ $(BIN): $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTO
 		--top-module $(SOC_TOPNAME) \
 		$(VSRCS) $(CSRCS) $(NVBOARD_AUTOBIND) \
 		$(addprefix -CFLAGS , $(VERILATOR_CFLAGS)) \
-		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) $(NVBOARD_LDFLAGS) \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline -LDFLAGS -ldl $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) $(NVBOARD_LDFLAGS) \
 		--Mdir $(OBJ_DIR) \
 		--exe -o $(abspath $(BIN))
 	$(MAKE) -C $(OBJ_DIR) -f $(VERILATOR_BUILD_WRAPPER) -j $(NPROC) \
 		VERILATOR_GENERATED_MK=$(VERILATOR_GENERATED_MK) \
 		CXX=$(CXX) LINK=$(CXX) \
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
-		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
-$(BIN_NPC): $(NVBOARD_DIRECT_GUARD) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))' \
+		NPC_SAVABLE='$(VERILATOR_SAVABLE)' \
+		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)'
+$(BIN_NPC): $(NVBOARD_DIRECT_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(SAVABLE_VERILATOR_FLAG) $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_WARN_FLAGS) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -1126,15 +999,17 @@ $(BIN_NPC): $(NVBOARD_DIRECT_GUARD) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_B
 		$(addprefix -I,$(NPC_VINCDIRS)) \
 		--top-module riscv32e_npc_SimTop \
 		$(NPC_VSRCS) $(CSRCS) \
-		$(addprefix -CFLAGS , $(filter-out -DCONFIG_MBASE=% -DCONFIG_MSIZE=% -DCONFIG_RESET_PC=%,$(VERILATOR_CFLAGS)) $(SAVABLE_CFLAGS) -DVRISCV32E_NPC -DCONFIG_RESET_PC=$(NPC_RESET_PC) -DCONFIG_MBASE=$(NPC_RAM_BASE) -DCONFIG_MSIZE=$(NPC_RAM_SIZE)) \
-		-LDFLAGS -lcapstone -LDFLAGS -lreadline $(if $(DIFFTEST_CFLAGS),-LDFLAGS -ldl,) $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) \
+		$(addprefix -CFLAGS , $(VERILATOR_CFLAGS) -DVRISCV32E_NPC) \
+		-LDFLAGS -lcapstone -LDFLAGS -lreadline -LDFLAGS -ldl $(if $(LTO_CFLAGS),-LDFLAGS $(LTO_CFLAGS),) $(if $(PGO_CFLAGS),-LDFLAGS $(PGO_CFLAGS),) $(if $(ASAN_CFLAGS),-LDFLAGS $(ASAN_CFLAGS),) $(if $(UBSAN_CFLAGS),-LDFLAGS $(UBSAN_CFLAGS),) $(if $(TSAN_CFLAGS),-LDFLAGS $(TSAN_CFLAGS),) $(if $(COVERAGE_CFLAGS),-LDFLAGS $(COVERAGE_CFLAGS),) $(if $(GPROF_CFLAGS),-LDFLAGS $(GPROF_CFLAGS),) $(if $(STDLIB_FLAG),-LDFLAGS $(STDLIB_FLAG),) $(if $(CONFIG_STDLIB_LIBCXX),-LDFLAGS -lc++ -LDFLAGS -lc++abi,) $(if $(LD_FLAG),-LDFLAGS $(LD_FLAG),) $(if $(GC_SECTIONS_LDFLAGS),-LDFLAGS $(GC_SECTIONS_LDFLAGS),) $(if $(CONFIG_CC_STRIP),-LDFLAGS -s,) \
 		--Mdir $(NPC_OBJ_DIR) \
 		--exe -o $(abspath $(BIN_NPC))
 	$(MAKE) -C $(NPC_OBJ_DIR) -f $(VERILATOR_BUILD_WRAPPER) -j $(NPROC) \
 		VERILATOR_GENERATED_MK=$(NPC_VERILATOR_MK) \
 		CXX=$(CXX) LINK=$(CXX) \
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
-		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))'
+		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))' \
+		NPC_SAVABLE='$(VERILATOR_SAVABLE)' \
+		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)'
 
 # arch-test / CI 通过递归 make 调用 run 时没有交互终端。SDB 在 EOF 上会
 # 立刻退出并报告“未触发陷阱”，程序实际根本没跑；这里在非 tty 下自动加
@@ -1203,7 +1078,6 @@ PDK_VALUE = $(call remove_quote,$(CONFIG_PDK))
 else
 PDK_VALUE = icsprout55
 endif
-PDK_CFLAGS = -DCONFIG_PDK=$(PDK_VALUE)
 
 ifneq ($(CONFIG_SYNTH_STRATEGY_TYPE),)
 SYNTH_STRATEGY_TYPE = $(call remove_quote,$(CONFIG_SYNTH_STRATEGY_TYPE))

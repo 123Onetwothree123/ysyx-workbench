@@ -10,17 +10,23 @@ Q            := @
 KCONFIG_PATH := $(NPC_HOME)/tools/kconfig
 FIXDEP_PATH  := $(NPC_HOME)/tools/fixdep
 Kconfig      := $(NPC_HOME)/Kconfig
-CONFIG_CONTRACT := $(NPC_HOME)/scripts/check_kconfig_contract.py
-PYTHON       ?= python3
-rm-distclean += include/generated include/config .config .config.old
+CONFIG_CONTRACT := $(NPC_HOME)/tools/build/kconfig_contract
+rm-distclean += include/generated include/config csrc/generated \
+	tools/build/npc_config_gen tools/build/kconfig_contract \
+	tools/build/linux_boot_test tools/build/pack_uboot_image \
+	.config .config.old
 silent := -s
 
 CONF          := $(KCONFIG_PATH)/../build/c_conf
 MCONF         := $(KCONFIG_PATH)/../build/c_mconf
 KCONFIG_BUILD := $(KCONFIG_PATH)/build
 FIXDEP        := $(FIXDEP_PATH)/build/fixdep
+PROFILE       ?=
+MERGE_CONFIG  := $(NPC_HOME)/scripts/merge_config.sh
 
-$(MCONF): $(KCONFIG_BUILD)/CMakeCache.txt
+KCONFIG_SOURCES := $(wildcard $(KCONFIG_PATH)/*.cpp $(KCONFIG_PATH)/*.ixx $(KCONFIG_PATH)/*.h $(KCONFIG_PATH)/*.hpp $(KCONFIG_PATH)/*.c $(KCONFIG_PATH)/*.y $(KCONFIG_PATH)/*.l $(KCONFIG_PATH)/lxdialog/*.cpp $(KCONFIG_PATH)/lxdialog/*.hpp)
+
+$(MCONF): $(KCONFIG_BUILD)/CMakeCache.txt $(KCONFIG_SOURCES)
 	$(Q)cmake --build $(KCONFIG_BUILD) -j $$(nproc)
 
 $(CONF): $(MCONF)
@@ -34,21 +40,36 @@ $(KCONFIG_BUILD)/CMakeCache.txt:
 $(FIXDEP):
 	$(Q)$(MAKE) $(silent) -C $(FIXDEP_PATH)
 
-menuconfig: $(MCONF) $(CONF) $(FIXDEP)
+menuconfig: $(MCONF) $(CONF) $(FIXDEP) $(CONFIG_CONTRACT)
 	$(Q)TERM=xterm LC_ALL=C.utf8 $(MCONF) $(Kconfig)
 	$(Q)$(CONF) $(silent) --syncconfig $(Kconfig)
-	$(Q)$(PYTHON) $(CONFIG_CONTRACT) --config .config
+	$(Q)$(CONFIG_CONTRACT) --config .config
 
 savedefconfig: $(CONF)
 	$(Q)$< $(silent) --$@=configs/defconfig $(Kconfig)
 
-%defconfig: $(CONF) $(FIXDEP)
-	$(Q)$(PYTHON) $(CONFIG_CONTRACT) --config configs/$@
+%defconfig: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT)
+	$(Q)$(CONFIG_CONTRACT) --config configs/$@
 	$(Q)$< $(silent) --defconfig=configs/$@ $(Kconfig)
 	$(Q)$< $(silent) --syncconfig $(Kconfig)
-	$(Q)$(PYTHON) $(CONFIG_CONTRACT) --config .config
+	$(Q)$(CONFIG_CONTRACT) --config .config
 
-.PHONY: menuconfig savedefconfig defconfig
+# 组合配置片段：profile 位于 configs/profiles/，其片段位于
+# configs/fragments/。用法：
+#   make profile-defconfig PROFILE=rv64_linux
+#   make rv64_linux_profile
+profile-defconfig: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT)
+	$(Q)if [ -z "$(strip $(PROFILE))" ]; then \
+		echo "错误：PROFILE 为空。" >&2; \
+		echo "用法：make profile-defconfig PROFILE=rv64_linux" >&2; \
+		exit 2; \
+	fi
+	$(Q)$(MERGE_CONFIG) "$(PROFILE)"
+
+%_profile: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT)
+	$(Q)$(MERGE_CONFIG) "$*"
+
+.PHONY: menuconfig savedefconfig defconfig profile-defconfig
 
 distclean: clean
 	-@rm -rf $(rm-distclean)

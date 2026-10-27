@@ -45,6 +45,9 @@ RV64_ELF := $(BUILD_DIR)/guest-rv64d-cfp.elf
 RV64_BIN := $(BUILD_DIR)/guest-rv64d-cfp.bin
 
 NPROC := $(shell nproc 2>/dev/null || echo 4)
+HOST_CXX ?= g++
+AUDIT_SRC := $(TEST_DIR)/audit_cfp.cpp
+AUDIT_BIN := $(BUILD_DIR)/audit_cfp
 
 .PHONY: all guests audit audit32 audit64 ref32 ref64 test clean clean-logs
 
@@ -69,13 +72,16 @@ $(RV32_BIN): $(RV32_ELF)
 $(RV64_BIN): $(RV64_ELF)
 	$(OBJCOPY64) -O binary $< $@
 
+$(AUDIT_BIN): $(AUDIT_SRC) | $(BUILD_DIR)
+	$(HOST_CXX) -std=c++20 -O2 -Wall -Wextra -o $@ $<
+
 audit: audit32 audit64
 
-audit32: $(RV32_ELF)
-	@OBJDUMP="$(OBJDUMP32)" python3 audit_cfp.py 32 $<
+audit32: $(RV32_ELF) $(AUDIT_BIN)
+	@OBJDUMP="$(OBJDUMP32)" $(AUDIT_BIN) 32 $<
 
-audit64: $(RV64_ELF)
-	@OBJDUMP="$(OBJDUMP64)" python3 audit_cfp.py 64 $<
+audit64: $(RV64_ELF) $(AUDIT_BIN)
+	@OBJDUMP="$(OBJDUMP64)" $(AUDIT_BIN) 64 $<
 
 # NEMU 的 BUILD_DIR 固定为自己的 build/；每次切换配置后重新编译。
 ref32:

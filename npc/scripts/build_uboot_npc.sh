@@ -18,7 +18,8 @@
 #   0x84000000  64 MiB RAM 结束（128 MiB 时为 0x88000000）
 #
 # 所有地址都来自 Makefile/Kconfig 传入的环境变量；脚本只负责校验
-# 实际文件大小、拼接和生成摘要。
+# 实际文件大小、拼接和生成摘要。最终 raw image 由 C++ 工具
+# tools/pack_uboot_image.cpp 生成（Makefile 通过 NPC_UBOOT_PACK_BIN 传入）。
 #
 # 输出（$NPC_UBOOT_OUT_DIR，默认 npc/build/uboot）：
 #   npc-uboot.bin        direct-NPC 可直接加载的 raw binary
@@ -101,7 +102,6 @@ resolve_path() {
 [[ -d "$UBOOT_DIR/board/nemu/riscv64" ]] || die \
 	"找不到 U-Boot 板级目录：$UBOOT_DIR/board/nemu/riscv64"
 [[ -d "$SBI_VENDOR_DIR" ]] || die "找不到 OpenSBI 源码：$SBI_VENDOR_DIR"
-command -v python3 >/dev/null || die "找不到 python3（打包镜像需要）"
 command -v "${CROSS_COMPILE}gcc" >/dev/null || die \
 	"找不到 ${CROSS_COMPILE}gcc"
 
@@ -288,7 +288,11 @@ done
 # 4) 拼接 raw image：与 NEMU 一样从 0x80000000 起，地址写进文件偏移。
 # ---------------------------------------------------------------------------
 info "打包 $OUT/npc-uboot.bin"
-python3 - "$OUT/npc-uboot.bin" "$FW_BIN" "$UBOOT_BIN" \
+
+NPC_UBOOT_PACK_BIN="${NPC_UBOOT_PACK_BIN:-$WORKBENCH_HOME/npc/tools/build/pack_uboot_image}"
+[[ -x "$NPC_UBOOT_PACK_BIN" ]] || die \
+	"找不到 U-Boot 打包工具：$NPC_UBOOT_PACK_BIN（先运行 make uboot-image）"
+"$NPC_UBOOT_PACK_BIN" "$OUT/npc-uboot.bin" "$FW_BIN" "$UBOOT_BIN" \
 	"$EFI_APP" "$INITRAMFS" "$KERNEL" \
 	"$((FW_BASE_NUM - RAM_BASE_NUM))" \
 	"$((NEXT_NUM - RAM_BASE_NUM))" \
@@ -296,74 +300,7 @@ python3 - "$OUT/npc-uboot.bin" "$FW_BIN" "$UBOOT_BIN" \
 	"$((INITRAMFS_ADDR_NUM - RAM_BASE_NUM))" \
 	"$((KERNEL_ADDR_NUM - RAM_BASE_NUM))" \
 	"$((DTB_ADDR_NUM - RAM_BASE_NUM))" \
-	"$RAM_SIZE_NUM" <<'PY'
-import hashlib
-import os
-import sys
-
-(
-    out,
-    fw,
-    uboot,
-    efi_app,
-    initrd,
-    kernel,
-    fw_off,
-    uboot_off,
-    efi_app_off,
-    initrd_off,
-    kernel_off,
-    dtb_off,
-    ram_size,
-) = sys.argv[1:14]
-offsets = {
-    "opensbi": int(fw_off),
-    "u-boot": int(uboot_off),
-    "efi_app": int(efi_app_off),
-    "initrd": int(initrd_off),
-    "kernel": int(kernel_off),
-}
-files = {
-    "opensbi": fw,
-    "u-boot": uboot,
-    "efi_app": efi_app,
-    "initrd": initrd,
-    "kernel": kernel,
-}
-dtb_off = int(dtb_off)
-ram_size = int(ram_size)
-loaded = []
-for name, path in files.items():
-    if not path:
-        continue
-    data = open(path, "rb").read()
-    loaded.append((name, offsets[name], data))
-
-end = max(off + len(data) for _, off, data in loaded)
-if end > dtb_off:
-    sys.exit(f"错误：镜像结束地址 0x{end:x} 超过 DTB 区偏移 0x{dtb_off:x}")
-if end > ram_size:
-    sys.exit(f"错误：镜像结束地址 0x{end:x} 超过 RAM 大小 0x{ram_size:x}")
-
-spans = sorted((off, off + len(data), name) for name, off, data in loaded)
-for (_, prev_end, prev_name), (cur_start, _, cur_name) in zip(spans, spans[1:]):
-    if prev_end > cur_start:
-        sys.exit(f"错误：{prev_name} 与 {cur_name} 在 RAM 中重叠")
-
-buf = bytearray(end)
-for name, off, data in loaded:
-    buf[off:off + len(data)] = data
-
-with open(out, "wb") as f:
-    f.write(buf)
-
-for name, off, data in loaded:
-    print(f"{name}_addr=0x{0x80000000 + off:x}")
-    print(f"{name}_bytes={len(data)}")
-    print(f"{name}_sha256={hashlib.sha256(data).hexdigest()}")
-print(f"image_bytes={len(buf)}")
-print(f"image_sha256={hashlib.sha256(buf).hexdigest()}")
-PY
+	"$RAM_SIZE_NUM"
 
 PACK_INFO="$OUT/npc-uboot.bin.info"
 {

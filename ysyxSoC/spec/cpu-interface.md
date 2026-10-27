@@ -5,7 +5,7 @@
 > `io_master_wdata`、`io_master_rdata` 及其 `io_slave_*` 对应端口
 > 扩展到 64 位，`io_master_wstrb`/`io_slave_wstrb` 扩展到 8 位；
 > ID、len/size/burst 等控制字段保持不变。调试/trap 观测端口仍为
-> 32 位 ABI，详见 `../SOC_XLEN.md`。
+> 32 位 ABI；XLEN 与 CPU 侧 AXI 宽度由 Kconfig/Makefile 配置决定。
 
 | | | | | | |
 | --- | --- | --- | --- | --- | --- |

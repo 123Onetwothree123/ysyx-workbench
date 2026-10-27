@@ -10,6 +10,11 @@ STD_MODULE_SRC := $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
 PERF_MODULE_SRC := $(NPC_HOME)/csrc/PerfStats.ixx
 RESULT_MODULE_SRC := $(NPC_HOME)/csrc/NPCSimResult/NPCSimResult.ixx
 RESULT_IMPL_SRC := $(NPC_HOME)/csrc/NPCSimResult/NPCSimResult.cpp
+NPC_CONFIG_JSON := $(NPC_HOME)/include/generated/npc_config.json
+NPC_CONFIG_GEN_SRC := $(NPC_HOME)/tools/npc_config_gen.cpp
+NPC_CONFIG_GEN := $(BUILD_DIR)/npc_config_gen
+NPC_CONFIG_MODULE_SRC := $(BUILD_DIR)/npc_config.ixx
+NPC_CONFIG_MODULE_OBJ := $(BUILD_DIR)/npc_config.ixx.o
 METADATA_DIR := $(abspath $(BUILD_DIR)/custom-metadata)
 BUILD_METADATA_FILE := $(METADATA_DIR)/perf_build_metadata.txt
 SYNTH_FILE := $(METADATA_DIR)/synth.txt
@@ -21,10 +26,7 @@ SYNTH_MISSING_STAT := $(abspath $(BUILD_DIR)/missing-stat)
 SYNTH_FAILURE := $(abspath $(BUILD_DIR)/synth-failure)
 PERF_FORCE_LOG := $(abspath $(BUILD_DIR)/perf-force-rebuild.log)
 PERF_ORDER_LOG := $(abspath $(BUILD_DIR)/perf-ordering.log)
-RESULT_CPPFLAGS := \
-	-DCONFIG_PERF_BUILD_METADATA_FILE='"$(BUILD_METADATA_FILE)"' \
-	-DCONFIG_PERF_SYNTH_FILE='"$(SYNTH_FILE)"' \
-	-DCONFIG_PDK=testpdk
+RESULT_CPPFLAGS :=
 
 .PHONY: all test prepare-fixtures synth-isolation-test synth-missing-stat-test \
 	synth-failure-test perf-ordering-test clean
@@ -167,15 +169,30 @@ $(BUILD_DIR)/std.o: $(STD_MODULE_SRC) | $(BUILD_DIR)
 $(BUILD_DIR)/PerfStats.o: $(PERF_MODULE_SRC) $(BUILD_DIR)/std.o
 	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) -x c++ -c $(abspath $<) -o PerfStats.o
 
-$(BUILD_DIR)/NPCSimResult.ixx.o: $(RESULT_MODULE_SRC) $(BUILD_DIR)/PerfStats.o
+$(NPC_CONFIG_JSON): $(NPC_HOME)/.config
+	$(MAKE) -C $(NPC_HOME) npc-config-json
+
+$(NPC_CONFIG_GEN): $(NPC_CONFIG_GEN_SRC) | $(BUILD_DIR)
+	$(CXX) -std=c++23 -O2 -Wall -Wextra -o $@ $<
+
+$(NPC_CONFIG_MODULE_SRC): $(NPC_CONFIG_JSON) $(NPC_CONFIG_GEN) | $(BUILD_DIR)
+	$(NPC_CONFIG_GEN) --config-json $(NPC_CONFIG_JSON) \
+	  --soc-xlen 32 --pdk testpdk \
+	  --perf-build-metadata $(BUILD_METADATA_FILE) \
+	  --perf-synth $(SYNTH_FILE) \
+	  --output $@
+
+$(NPC_CONFIG_MODULE_OBJ): $(NPC_CONFIG_MODULE_SRC) $(BUILD_DIR)/std.o
+	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) -x c++ -c $(abspath $<) -o npc_config.ixx.o
+
+$(BUILD_DIR)/NPCSimResult.ixx.o: $(RESULT_MODULE_SRC) $(BUILD_DIR)/PerfStats.o $(NPC_CONFIG_MODULE_OBJ)
 	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) -x c++ -c $(abspath $<) -o NPCSimResult.ixx.o
 
-$(BUILD_DIR)/NPCSimResult.base.o: $(RESULT_IMPL_SRC) $(BUILD_DIR)/NPCSimResult.ixx.o
+$(BUILD_DIR)/NPCSimResult.base.o: $(RESULT_IMPL_SRC) $(BUILD_DIR)/NPCSimResult.ixx.o $(NPC_CONFIG_MODULE_OBJ)
 	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) $(RESULT_CPPFLAGS) -c $(abspath $<) -o NPCSimResult.base.o
 
-$(BUILD_DIR)/NPCSimResult.all.o: $(RESULT_IMPL_SRC) $(BUILD_DIR)/NPCSimResult.ixx.o
-	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) $(RESULT_CPPFLAGS) \
-	  -DCONFIG_ICACHE -DCONFIG_DCACHE -DCONFIG_RISCV_M -DVRISCV32E_NPC \
+$(BUILD_DIR)/NPCSimResult.all.o: $(RESULT_IMPL_SRC) $(BUILD_DIR)/NPCSimResult.ixx.o $(NPC_CONFIG_MODULE_OBJ)
+	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) $(RESULT_CPPFLAGS) -DVRISCV32E_NPC \
 	  -c $(abspath $<) -o NPCSimResult.all.o
 
 $(BUILD_DIR)/main.o: main.cpp $(BUILD_DIR)/NPCSimResult.ixx.o
@@ -199,13 +216,13 @@ prepare-fixtures: | $(METADATA_DIR)
 	  'frequency_mhz=777' 'area_um2=123.5' > $(SYNTH_FILE)
 
 $(BIN_BASE): $(BUILD_DIR)/std.o $(BUILD_DIR)/PerfStats.o \
-	$(BUILD_DIR)/NPCSimResult.ixx.o $(BUILD_DIR)/NPCSimResult.base.o \
-	$(BUILD_DIR)/main.o
+	$(NPC_CONFIG_MODULE_OBJ) $(BUILD_DIR)/NPCSimResult.ixx.o \
+	$(BUILD_DIR)/NPCSimResult.base.o $(BUILD_DIR)/main.o
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 $(BIN_ALL): $(BUILD_DIR)/std.o $(BUILD_DIR)/PerfStats.o \
-	$(BUILD_DIR)/NPCSimResult.ixx.o $(BUILD_DIR)/NPCSimResult.all.o \
-	$(BUILD_DIR)/main.o
+	$(NPC_CONFIG_MODULE_OBJ) $(BUILD_DIR)/NPCSimResult.ixx.o \
+	$(BUILD_DIR)/NPCSimResult.all.o $(BUILD_DIR)/main.o
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean:

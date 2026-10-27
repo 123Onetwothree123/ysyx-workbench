@@ -86,8 +86,8 @@ menu "虚拟内存管理 (MMU/TLB)"
       default "standard" if MMU_GEOMETRY_STANDARD
       default "custom"
       help
-        RTL 侧几何模式名称；CUSTOM 会出现在 elaboration 日志和生成的
-        mmu_profile.json/header 中，明确标记 non-standard。
+        RTL 侧几何模式名称；CUSTOM 会出现在 elaboration 日志和
+        npc_config.typed.json 的 soc/mmu 配置中，明确标记 non-standard。
 
     config MMU_CUSTOM_SATP_MODE
       int "CUSTOM 模式的 satp MODE"
@@ -104,7 +104,7 @@ menu "虚拟内存管理 (MMU/TLB)"
       default 4096
       # 不做 range 限制：页大小与级数/页表项数共同决定几何，Kconfig
       # 的连续 range 无法表达这些组合。RTL 只要求 2 的幂；非标准值由
-      # scripts/check_kconfig_contract.py 检查几何，必要时再由 elaboration
+      # tools/kconfig_contract.cpp 检查几何，必要时再由 elaboration
       # 按实际 RTL 能力明确拒绝。
       help
         默认 4096，即标准 Sv32/Sv39/Sv48 的 4KiB 页。
@@ -116,7 +116,7 @@ menu "虚拟内存管理 (MMU/TLB)"
         8KiB, 16KiB, 32KiB, 64KiB, 128KiB, 256KiB, 512KiB, 1MiB,
         2MiB, 4MiB, ...。RV64 STANDARD 只能使用 4096；其他 2 的幂
         必须显式启用 CUSTOM 几何并配套软件页表生成器。非 2 的幂、
-        地址位宽溢出等不可表达的几何由 check-kconfig-contract 明确
+        地址位宽溢出等不可表达的几何由 kconfig-contract-check 明确
         拒绝；超出当前 RTL 能力的组合由 elaboration/生成器报错。
 
     config MMU_LEVELS
@@ -145,7 +145,7 @@ menu "虚拟内存管理 (MMU/TLB)"
         MMU profile 生成或 elaboration 阶段明确报错。标准 Sv32 必须
         为 4，标准 Sv39/Sv48 必须为 8。
         CUSTOM 模式允许 4/8，PTE 字段位置由下面各项配置；非 2 的幂、
-        字段越界/重叠、PPN 位宽溢出由 check-kconfig-contract 拒绝。
+        字段越界/重叠、PPN 位宽溢出由 kconfig-contract-check 拒绝。
 
     config MMU_PAGE_TABLE_SIZE_BYTES
       int "单级页表页大小 (Byte)"
@@ -155,7 +155,7 @@ menu "虚拟内存管理 (MMU/TLB)"
         MMU_PAGE_TABLE_SIZE_BYTES / MMU_PTE_SIZE_BYTES。
         该值必须是 2 的幂、能被 PTE 大小整除，且每级至少 2 个 PTE；
         非 4096 的页表页只应与 CUSTOM 几何/软件页表生成器一起使用。
-        违反这些约束时 check-kconfig-contract 或 elaboration 会明确报错。
+        违反这些约束时 kconfig-contract-check 或 elaboration 会明确报错。
 
     choice
       prompt "PTE 编码"

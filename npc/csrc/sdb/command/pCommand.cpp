@@ -1,6 +1,6 @@
 module;
-#include "../../Config.h"
 module npc.sdb.command.pCommand;
+import npc.config;
 import npc.sdb.SDBCommandUtils;
 import npc.expressions.expressions;
 import npc.sdb.NPCEvaluationContext;

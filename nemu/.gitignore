@@ -8,7 +8,6 @@
 !.gitignore
 !README.md
 !Kconfig
-!docs/*.md
 !dts/*.dts
 !scripts/*.sh
 !tests/*.sh

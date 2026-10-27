@@ -9,7 +9,7 @@ CONFIG_HAS_TLB=y
 # 有效 VA=12+5*9=57 位。satp MODE=11 是显式 CUSTOM 扩展。
 # 6 级 × 9 位索引会得到 66 位 VA，超过 64 位；需要 6 级时必须减小
 # 每级页表项数（例如 2048B 页表/8B PTE = 8 位索引 → 60 位 VA）。
-# 配置层允许这些自由参数；未合入大页 RTL 的树会在 mmu-profile/
+# 配置层允许这些自由参数；未合入大页 RTL 的树会在
 # elaboration 阶段按旧的 1..4 级能力明确拒绝。
 CONFIG_MMU_PROFILE_CUSTOM=y
 CONFIG_MMU_GEOMETRY_CUSTOM=y

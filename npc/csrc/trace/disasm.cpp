@@ -1,7 +1,7 @@
 module;
-#include "../Config.h"
 module npc.trace.disasm;
 
+import npc.config;
 static csh handle{};
 static bool initialized{false};
 void init_disasm()

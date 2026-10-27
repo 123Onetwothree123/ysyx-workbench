@@ -4,9 +4,6 @@ NEMU(NJU Emulator) is a simple but complete full-system emulator designed for te
 Currently it supports x86, mips32, riscv32 and riscv64.
 To build programs run above NEMU, refer to the [AM project](https://github.com/NJU-ProjectN/abstract-machine).
 
-RV64 OpenSBI + DTB + Linux 风格 next-stage 的独立运行配置、1MHz
-timebase 契约和 NEMU/NPC 差异见 [`docs/linux.md`](docs/linux.md)。
-
 The main features of NEMU include
 * a small monitor with a simple debugger
   * single step

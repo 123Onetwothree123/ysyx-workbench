@@ -1,4 +1,5 @@
 module npc.sdb.command.ftraceCommand;
+import npc.config;
 import npc.trace.ftrace;
 
 std::string_view ftraceCommand::name() const noexcept
@@ -22,7 +23,8 @@ SDBCommandUsageList ftraceCommand::usage() const noexcept
 SDBCommandResult ftraceCommand::execute(SDBCommandContext &context, std::string_view args)
 {
     static_cast<void>(context);
-#ifdef CONFIG_FTRACE
+    if constexpr (npc::HasFTrace)
+    {
     if (args.empty() || args == "status")
     {
         GlobalFtrace.PrintStatus();
@@ -69,9 +71,11 @@ SDBCommandResult ftraceCommand::execute(SDBCommandContext &context, std::string_
         return SDBCommandResult::Continue;
     }
     std::println("用法：ftrace on | off | status | now | history | history on | history off | reset");
-#else
-    static_cast<void>(args);
-    std::println("FTRACE没有开启，请使用 make CONFIG_FTRACE=y");
-#endif
+    }
+    else
+    {
+        static_cast<void>(args);
+        std::println("FTRACE没有开启，请使用 make CONFIG_FTRACE=y");
+    }
     return SDBCommandResult::Continue;
 }

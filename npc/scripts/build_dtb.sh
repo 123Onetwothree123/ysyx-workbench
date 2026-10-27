@@ -2,8 +2,16 @@
 #
 # 生成 NPC 设备树 DTB。
 #
-# 输入（Makefile 的 SBI_ENV 或手工环境变量可覆盖 .config）：
-#   SBI_CONFIG_FILE        Kconfig 文件（默认 npc/.config）
+# 输入（Makefile 的 SBI_ENV 或手工环境变量可覆盖 JSON）：
+#   SBI_CONFIG_JSON /
+#   NPC_CONFIG_JSON /
+#   NPC_CONFIG_EFFECTIVE_JSON
+#                          有效配置 JSON；按上述顺序取第一个非空值，
+#                          默认 npc/build/generated/npc_config.effective.json
+#   NPC_CONFIG_GEN         npc_config_gen 工具路径
+#                          （默认 npc/tools/build/npc_config_gen）
+#   SBI_CONFIG_FILE        legacy Kconfig 文件；仅在 JSON 不存在时回退
+#                          （默认 npc/.config）
 #   SBI_FDT_PATH           DTS 或 DTB 源文件；相对路径按 npc/ 解析
 #   SBI_FDT_ADDR           DTB 加载/传递地址（默认取 CONFIG_SBI_FDT_ADDR）
 #   SBI_FW_BASE            固件基地址
@@ -23,15 +31,15 @@
 #   NPC_RAM_BASE/SIZE      direct-NPC 的 RAM 窗口
 #
 # CPU 描述（riscv,isa / riscv,isa-extensions / mmu-type）全部由
-# .config 的 CONFIG_XLEN、CONFIG_RISCV_M/A/C/F/D、CONFIG_HAS_S/HAS_U、
-# CONFIG_HAS_MMU、CONFIG_MMU_* 生成，不在 DTS 中硬编码。
+# 有效配置的 XLEN、RISCV_M/A/C/F/D、HAS_S/HAS_U、HAS_MMU、MMU_*
+# 生成，不在 DTS 中硬编码。
 #
 # 输出：
 #   $SBI_FDT_OUT_DIR/npc.dtb       最终 DTB
 #   $SBI_FDT_OUT_DIR/npc.dts       cpp 展开后的可读 DTS（源为 DTS 时）
 #   $SBI_FDT_OUT_DIR/npc.dtb.info  地址、大小、ISA、timebase、sha256 摘要
 #
-# 本脚本不修改 .config；是否把 DTB 嵌入/传递给 next-stage 由
+# 本脚本只读配置，不修改 JSON/.config；是否把 DTB 嵌入/传递给 next-stage 由
 # build_opensbi.sh / build_rustsbi.sh 根据 SBI_FDT_ENABLE 决定。
 set -euo pipefail
 
@@ -39,6 +47,7 @@ HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NPC_HOME="${NPC_HOME:-$(cd -- "$HERE/.." && pwd)}"
 WORKBENCH_HOME="${WORKBENCH_HOME:-$(cd -- "$NPC_HOME/.." && pwd)}"
 CONFIG_FILE="${SBI_CONFIG_FILE:-${NPC_CONFIG_FILE:-$NPC_HOME/.config}}"
+CONFIG_JSON="${SBI_CONFIG_JSON:-${NPC_CONFIG_JSON:-${NPC_CONFIG_EFFECTIVE_JSON:-$NPC_HOME/build/generated/npc_config.effective.json}}}"
 
 die() {
 	echo "错误：$*" >&2
@@ -49,10 +58,40 @@ info() {
 	echo "[dtb] $*"
 }
 
-# ---- 只读解析 .config，不 source，避免把配置值当 shell 代码执行 ----
+# 有效 JSON 是首选输入；只有 JSON 不存在且 legacy Kconfig 文件存在时
+# 才回退到直接解析 .config。
+CONFIG_SOURCE=json
+if [[ -f "$CONFIG_JSON" ]]; then
+	CONFIG_SOURCE=json
+elif [[ -f "$CONFIG_FILE" ]]; then
+	CONFIG_SOURCE=file
+	info "配置 JSON 不存在：$CONFIG_JSON；回退解析 legacy 文件 $CONFIG_FILE"
+else
+	die "找不到配置 JSON：$CONFIG_JSON；先运行 make -C npc npc-config 生成，或设置 SBI_CONFIG_FILE 使用 legacy 配置"
+fi
+
+if [[ "$CONFIG_SOURCE" == "json" ]]; then
+	NPC_CONFIG_GEN="${NPC_CONFIG_GEN:-$NPC_HOME/tools/build/npc_config_gen}"
+	[[ -f "$NPC_CONFIG_GEN" ]] || die \
+		"找不到 npc_config_gen：$NPC_CONFIG_GEN；先运行 make -C npc npc-config-tool 或设置 NPC_CONFIG_GEN"
+	[[ -x "$NPC_CONFIG_GEN" ]] || die "npc_config_gen 不可执行：$NPC_CONFIG_GEN"
+fi
+
+# ---- 只读读取有效 JSON；--get 对缺失键输出空行并正常退出 ----
+json_get() {
+	local key="$1" value
+	if ! value="$("$NPC_CONFIG_GEN" --config-json "$CONFIG_JSON" --get "$key")"; then
+		die "读取配置 JSON 失败：$CONFIG_JSON（键 $key）"
+	fi
+	printf '%s' "$value"
+}
+
+# ---- 只读解析 legacy .config，不 source，避免把配置值当 shell 代码执行 ----
 cfg_raw() {
 	local key="$1"
-	if [[ -f "$CONFIG_FILE" ]]; then
+	if [[ "$CONFIG_SOURCE" == "json" ]]; then
+		json_get "$key"
+	elif [[ -f "$CONFIG_FILE" ]]; then
 		sed -n "s/^${key}=//p" "$CONFIG_FILE" | tail -n 1
 	fi
 }
@@ -60,8 +99,10 @@ cfg_raw() {
 cfg_value() {
 	local key="$1" default="$2" value
 	value="$(cfg_raw "$key")"
-	value="${value%\"}"
-	value="${value#\"}"
+	if [[ "$CONFIG_SOURCE" == "file" ]]; then
+		value="${value%\"}"
+		value="${value#\"}"
+	fi
 	if [[ -z "$value" ]]; then
 		printf '%s' "$default"
 	else
@@ -72,8 +113,10 @@ cfg_value() {
 cfg_bool() {
 	local key="$1" default="$2" value
 	# Kconfig 对显式关闭的符号写 "# CONFIG_X is not set"；如果只看
-	# CONFIG_X= 会把默认 y 的符号误判为 y。
-	if [[ -f "$CONFIG_FILE" ]] && grep -qxF "# ${key} is not set" "$CONFIG_FILE"; then
+	# CONFIG_X= 会把默认 y 的符号误判为 y。有效 JSON 会显式写出 n，
+	# 因此只有 legacy .config 回退路径需要这个特殊判断。
+	if [[ "$CONFIG_SOURCE" == "file" ]] && [[ -f "$CONFIG_FILE" ]] && \
+	   grep -qxF "# ${key} is not set" "$CONFIG_FILE"; then
 		printf 'n'
 		return
 	fi

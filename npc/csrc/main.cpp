@@ -7,29 +7,41 @@
 #include "VysyxSoCFull.h"
 #define TOP_MODULE VysyxSoCFull
 #endif
-#ifdef CONFIG_NVBOARD
+#if __has_include(<nvboard.h>)
 #include <nvboard.h>
-extern void nvboard_bind_all_pins(TOP_MODULE* top);
+#else
+void nvboard_init(int vga_clk_cycle = 1);
+void nvboard_quit();
 #endif
+extern void nvboard_bind_all_pins(TOP_MODULE* top);
 import std;
 import npc;
 
 int main(int argc, char const *argv[])
 {
     setvbuf(stdout, NULL, _IONBF, 0);
-#if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
-    if (auto logResult{log_init()}; !logResult)
+    if constexpr (npc::LogLevel > 0)
     {
-        std::println(std::cerr, "日志初始化失败：{}", logResult.error());
-        log_close();
-        return 1;
+        if (auto logResult{log_init()}; !logResult)
+        {
+            std::println(std::cerr, "日志初始化失败：{}", logResult.error());
+            log_close();
+            return 1;
+        }
     }
-#endif
+    if constexpr (npc::LogLevel > 0)
+    {
+        // 与 checkpoint/DTS 使用的 .config 摘要保持一致，便于确认本次仿真
+        // 实际加载的是哪一份配置。
+        std::println(std::cerr, "[NPC config] hash={}", npc::ConfigHash);
+    }
+
     const auto failBeforeDUT = [](std::string_view error) {
         std::println(std::cerr, "{}", error);
-#if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
-        log_close();
-#endif
+        if constexpr (npc::LogLevel > 0)
+        {
+            log_close();
+        }
         return 1;
     };
 
@@ -48,98 +60,102 @@ int main(int argc, char const *argv[])
             "--vga-check 仅支持带 VGA 引脚的 SoC 仿真，direct-NPC 不支持");
     }
 #endif
-#ifndef CONFIG_PERF_SAVE
-    if (options->GetResultDir())
+    if constexpr (!npc::HasPerfSave)
     {
-        return failBeforeDUT(
-            "--result-dir 需要在构建时启用 CONFIG_PERF_SAVE");
+        if (options->GetResultDir())
+        {
+            return failBeforeDUT(
+                "--result-dir 需要在构建时启用 CONFIG_PERF_SAVE");
+        }
     }
-#endif
-#ifndef CONFIG_SDB
-    if (options->GetBatchMode())
+    if constexpr (!npc::HasSDB)
     {
-        return failBeforeDUT("--batch 需要在构建时启用 CONFIG_SDB");
+        if (options->GetBatchMode())
+        {
+            return failBeforeDUT("--batch 需要在构建时启用 CONFIG_SDB");
+        }
     }
-#endif
     auto load{ImageLoader::LoadFromCLI(*options)};
     if (!load)
     {
-#ifdef CONFIG_SDB
-        // 没传镜像才是合法的空 SDB；显式给出了坏路径或
-        // 过大/损坏镜像时必须失败，不能静默运行旧内存。
-        if (options->GetImageFile())
+        if constexpr (npc::HasSDB)
+        {
+            // 没传镜像才是合法的空 SDB；显式给出了坏路径或
+            // 过大/损坏镜像时必须失败，不能静默运行旧内存。
+            if (options->GetImageFile())
+            {
+                return failBeforeDUT(load.error());
+            }
+            FlashMemory.clear();
+            mrom.clear();
+            std::println("未指定镜像文件，进入空 SDB");
+        }
+        else
         {
             return failBeforeDUT(load.error());
         }
-        FlashMemory.clear();
-        mrom.clear();
-        std::println("未指定镜像文件，进入空 SDB");
-#else
-        return failBeforeDUT(load.error());
-#endif
     }
 
     if (const auto &elfFile{options->GetElfFile()}; elfFile)
     {
-#ifdef CONFIG_FTRACE
-        constexpr bool EnableConfiguredFtrace{true};
-#else
-        constexpr bool EnableConfiguredFtrace{false};
-#endif
-        auto result{InitializeFtrace(*elfFile, EnableConfiguredFtrace)};
+        auto result{InitializeFtrace(*elfFile, npc::HasFTrace)};
         if (!result)
         {
             return failBeforeDUT(std::format("ELF 初始化失败：{}", result.error()));
         }
     }
-#ifdef CONFIG_FTRACE
-    else
+    else if constexpr (npc::HasFTrace)
     {
         // FTRACE 是编译期功能开关：开启后不需要再进 SDB
         // 手工执行 `ftrace on`。没有 ELF 时仍跟踪，函数名显示 ???。
         GlobalFtrace.Enable();
     }
-#endif
 
     Verilated::commandArgs(argc, argv);
     DUT dut;
     bool restored{false};
     if (const auto &restoreFile{options->GetRestoreFile()}; restoreFile)
     {
-#ifdef CONFIG_VERILATOR_SAVABLE
-        if (auto result{dut.RestoreCheckpoint(*restoreFile)}; !result)
+        if constexpr (npc::HasVerilatorSavable)
         {
-            std::println(std::cerr, "{}", result.error());
+            if (auto result{dut.RestoreCheckpoint(*restoreFile)}; !result)
+            {
+                std::println(std::cerr, "{}", result.error());
+                return 1;
+            }
+            std::println("已恢复 Verilator 状态：{}", restoreFile->string());
+            restored = true;
+        }
+        else
+        {
+            std::println(std::cerr,
+                         "--restore 需要在构建时启用 Verilator --savable "
+                         "（make VERILATOR_SAVABLE=y）");
             return 1;
         }
-        std::println("已恢复 Verilator 状态：{}", restoreFile->string());
-        restored = true;
-#else
-        std::println(std::cerr,
-                     "--restore 需要在构建时启用 Verilator --savable "
-                     "（make VERILATOR_SAVABLE=y）");
-        return 1;
-#endif
     }
     if (!restored)
     {
         dut.InitializeMemory(FlashMemory);
     }
-#ifdef CONFIG_NVBOARD
-    nvboard_bind_all_pins(&*dut);
-    nvboard_init();
-#endif
+    if constexpr (npc::HasNvBoard)
+    {
+        nvboard_bind_all_pins(&*dut);
+        nvboard_init();
+    }
     // All exits after the DUT/NVBoard have been created use the same one-shot
     // cleanup path.  This also keeps DiffTest initialization failures from
     // bypassing Verilator/NVBoard finalization.
     const auto finalize = [&dut]() {
-#if defined(CONFIG_LOG_LEVEL) && CONFIG_LOG_LEVEL > 0
-        log_close();
-#endif
+        if constexpr (npc::LogLevel > 0)
+        {
+            log_close();
+        }
         dut.final();
-#ifdef CONFIG_NVBOARD
-        nvboard_quit();
-#endif
+        if constexpr (npc::HasNvBoard)
+        {
+            nvboard_quit();
+        }
     };
     // Establish the DUT's architectural reset state before synchronizing a
     // reference model.  GPRs other than x0 have no ISA-defined reset value,
@@ -170,30 +186,34 @@ int main(int argc, char const *argv[])
     {
         dut.EnableVGACheck();
     }
-#ifdef CONFIG_SDB
-    const auto sdbExitReason{SDB::MainLoop(dut, options->GetBatchMode())};
-#else
-    // 无 SDB 时 stdin 专供客户机串口使用。
-    dut.EnableUARTStdin(true);
-    while (!NPCTrap::HasHalted())
+    SDBExitReason sdbExitReason{SDBExitReason::UserQuit};
+    if constexpr (npc::HasSDB)
     {
-        // $finish 可能与本拍已寄存的 halt 脉冲同时可见。先结算 halt，
-        // 再退出，否则正常的 GOOD/BAD trap 会被误报成未触发陷阱。
-        if (Verilated::gotFinish())
-        {
-            dut.PollSimulationHalt();
-            break;
-        }
-        dut.step();
-        // DiffTest can mark the run BAD while processing this edge.  Do not
-        // let a same-cycle custom halt overwrite that failure with a0 == 0.
-        if (NPCTrap::HasHalted())
-            break;
-        if (dut.PollSimulationHalt())
-            break;
+        sdbExitReason = SDB::MainLoop(dut, options->GetBatchMode());
     }
-#endif
-#ifdef CONFIG_DIFFTEST
+    else
+    {
+        // 无 SDB 时 stdin 专供客户机串口使用。
+        dut.EnableUARTStdin(true);
+        while (!NPCTrap::HasHalted())
+        {
+            // $finish 可能与本拍已寄存的 halt 脉冲同时可见。先结算 halt，
+            // 再退出，否则正常的 GOOD/BAD trap 会被误报成未触发陷阱。
+            if (Verilated::gotFinish())
+            {
+                dut.PollSimulationHalt();
+                break;
+            }
+            dut.step();
+            // DiffTest can mark the run BAD while processing this edge.  Do
+            // not let a same-cycle custom halt overwrite that failure with
+            // a0 == 0.
+            if (NPCTrap::HasHalted())
+                break;
+            if (dut.PollSimulationHalt())
+                break;
+        }
+    }
     // 逐退休比对已经把 REF 推进到 DUT 的当前架构边界。
     // GOOD/BAD trap 都在 final() 之前校验，不再让 REF 盲跑固定条数。
     if (!DifftestFinalCheck(dut))
@@ -201,59 +221,63 @@ int main(int argc, char const *argv[])
         const auto pc{dut.ReadPC()};
         NPCTrap::Halt(pc ? *pc : 0U, 1U);
     }
-#endif
     if (!dut.VGACheckReport())
     {
         const auto pc{dut.ReadPC()};
         NPCTrap::Halt(pc ? *pc : 0U, 1U);
     }
-#ifdef CONFIG_SDB
     int result;
-    if (sdbExitReason == SDBExitReason::UserQuit &&
-        !Verilated::gotFinish() && !NPCTrap::HasHalted())
+    if constexpr (npc::HasSDB)
     {
-        std::println("SDB用户主动退出（程序未结束）");
-        result = 0;
+        if (sdbExitReason == SDBExitReason::UserQuit &&
+            !Verilated::gotFinish() && !NPCTrap::HasHalted())
+        {
+            std::println("SDB用户主动退出（程序未结束）");
+            result = 0;
+        }
+        else
+        {
+            result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
+        }
     }
     else
     {
         result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
     }
-#else
-    int result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
-#endif
-#ifdef CONFIG_PERF_STATS
-    NPCTrap::PrintPerformanceStatistics(
-        dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
-#endif
-#ifdef CONFIG_PERF_SAVE
-    std::optional<std::filesystem::path> default_result_dir;
-    try
+    if constexpr (npc::HasPerfStats)
     {
-        std::filesystem::path result_dir;
-        if (options->GetResultDir())
-        {
-            result_dir = *options->GetResultDir();
-        }
-        else
-        {
-            result_dir = NPCSimResult::CreateDefaultResultDirectory();
-            default_result_dir = result_dir;
-        }
-        NPCSimResult::Save(
-            result_dir, dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
+        NPCTrap::PrintPerformanceStatistics(
+            dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
     }
-    catch (const std::exception &error)
+    if constexpr (npc::HasPerfSave)
     {
-        std::println(std::cerr, "性能结果保存失败：{}", error.what());
-        if (default_result_dir)
+        std::optional<std::filesystem::path> default_result_dir;
+        try
         {
-            std::error_code ignored;
-            std::filesystem::remove(*default_result_dir, ignored);
+            std::filesystem::path result_dir;
+            if (options->GetResultDir())
+            {
+                result_dir = *options->GetResultDir();
+            }
+            else
+            {
+                result_dir = NPCSimResult::CreateDefaultResultDirectory();
+                default_result_dir = result_dir;
+            }
+            NPCSimResult::Save(
+                result_dir, dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
         }
-        result = 1;
+        catch (const std::exception &error)
+        {
+            std::println(std::cerr, "性能结果保存失败：{}", error.what());
+            if (default_result_dir)
+            {
+                std::error_code ignored;
+                std::filesystem::remove(*default_result_dir, ignored);
+            }
+            result = 1;
+        }
     }
-#endif
     // Verilator/NVBoard 的收尾每个只执行一次，且必须在所有
     // 读取 DUT 状态的检查之后。
     finalize();

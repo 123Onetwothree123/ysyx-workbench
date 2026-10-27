@@ -37,7 +37,7 @@ CONFIG_DISPLAY_BOARDINFO=y
 
 CONFIG_BOOTDELAY=2
 CONFIG_USE_BOOTCOMMAND=y
-CONFIG_BOOTCOMMAND="echo NEMU U-Boot S-mode ready; echo Use nemu_reserve + bootefi, see UBOOT_NEMU.md"
+CONFIG_BOOTCOMMAND="echo NEMU U-Boot S-mode ready; echo Use nemu_reserve + bootefi"
 
 # 控制台/定时器/复位：NEMU 的 16550 与 OpenSBI SBI timer/SRST。
 CONFIG_DM_SERIAL=y

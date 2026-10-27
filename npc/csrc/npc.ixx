@@ -1,4 +1,5 @@
 export module npc;
+export import npc.config;
 export import npc.log;
 export import npc.unicode;
 export import npc.PerfStats;
