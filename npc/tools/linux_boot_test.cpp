@@ -5,16 +5,17 @@
 //   - Kconfig(.config) -> DTB 的 riscv,isa / riscv,isa-extensions / mmu-type；
 //   - SYNTH_FREQ -> timebase-frequency；
 //   - initramfs 地址 + 实际大小 -> linux,initrd-start/end；
-//   - pack_linux_image.sh 的地址校验、重叠检测、负向失败与 sha256 输出；
+//   - C++ pack_linux_image 的地址校验、重叠检测、负向失败与 sha256 输出；
 //   - CUSTOM MMU + Linux 必须明确失败。
 //
 // 用法：
 //   cd npc && make linux-boot-test
 //   npc/tools/build/linux_boot_test
 //
-// 本程序通过显式构造 envp 调用 scripts/build_dtb.sh 与
-// scripts/pack_linux_image.sh，并把 SBI_CONFIG_JSON 指向不存在的文件，
-// 以便脚本使用测试生成的 legacy .config，避免误读工作区里已有的
+// 本程序通过显式构造 envp 调用兼容入口 scripts/build_dtb.sh 与
+// scripts/pack_linux_image.sh；入口会转发到 C++ 工具，并把
+// SBI_CONFIG_JSON 指向不存在的文件，
+// 以便工具使用测试生成的 legacy .config，避免误读工作区里已有的
 // build/generated/npc_config.effective.json。
 
 #include <array>

@@ -6,8 +6,8 @@
 #   - 只处理 rootfs 前道工序；不下载、编译或运行 Linux kernel。
 #   - BusyBox 使用 vendor/busybox 树内源码，做 out-of-tree 构建，
 #     不修改源码目录，也不在构建时联网。
-#   - BusyBox 必须静态链接为 RV64GC/lp64d，并审计 ELF 类型、ABI
-#     和动态解释器。
+#   - BusyBox 必须静态链接为 RV64GC/lp64d；ELF 类型、ABI、
+#     动态解释器和动态依赖由 C++ 工具 tools/audit_rootfs_elf.cpp 审计。
 #
 # 配置来源：
 #   默认读取 npc/.config（可用 ROOTFS_CONFIG 覆盖），随后允许同名
@@ -178,6 +178,7 @@ case "$ROOTFS_FASTFETCH_PATH" in
 	*) FASTFETCH_BIN="$NPC_HOME/$ROOTFS_FASTFETCH_PATH" ;;
 esac
 FASTFETCH_BIN="$(realpath -m -- "$FASTFETCH_BIN")"
+ELF_AUDIT_BIN="${ELF_AUDIT_BIN:-$NPC_HOME/tools/build/audit_rootfs_elf}"
 
 # 删除目录前做最基本的安全检查，避免空值或误配把工作区根目录删掉。
 safe_rm_rf() {
@@ -201,6 +202,9 @@ if ((CLEAN)); then
 	info "已删除 rootfs 输出目录：$ROOTFS_OUT_DIR"
 	exit 0
 fi
+
+[ -x "$ELF_AUDIT_BIN" ] || die \
+	"找不到 ELF 审计工具 $ELF_AUDIT_BIN；先运行 make -C $NPC_HOME audit-rootfs-elf-tool。"
 
 # ---- 正常构建前的显式检查 ----
 [ -f "$CONFIG_FILE" ] || die "找不到配置文件 $CONFIG_FILE；请先运行 make menuconfig 或 defconfig。"
@@ -298,43 +302,10 @@ if [ "$ROOTFS_FASTFETCH" = "y" ]; then
 	[ -f "$FASTFETCH_BIN" ] || die \
 		"fastfetch 自动构建后仍找不到 $FASTFETCH_BIN；请检查 ROOTFS_FASTFETCH_PATH 是否指向名为 fastfetch 的文件。"
 
-	FASTFETCH_ELF_HEADER="$(readelf -h "$FASTFETCH_BIN")"
-	FASTFETCH_ELF_ATTRS="$(readelf -A "$FASTFETCH_BIN")"
-	FASTFETCH_ELF_PROGRAM_HEADERS="$(readelf -l "$FASTFETCH_BIN")"
-	grep -q 'Class:[[:space:]]*ELF64' <<<"$FASTFETCH_ELF_HEADER" || die \
-		"fastfetch ELF 审计失败：不是 ELF64：$FASTFETCH_BIN"
-	grep -q 'Machine:[[:space:]]*RISC-V' <<<"$FASTFETCH_ELF_HEADER" || die \
-		"fastfetch ELF 审计失败：Machine 不是 RISC-V：$FASTFETCH_BIN"
-	if grep -q 'Type:[[:space:]]*EXEC' <<<"$FASTFETCH_ELF_HEADER"; then
-		:
-	elif grep -q 'Type:[[:space:]]*DYN' <<<"$FASTFETCH_ELF_HEADER" &&
-		! grep -q 'INTERP' <<<"$FASTFETCH_ELF_PROGRAM_HEADERS"; then
-		: # 允许无解释器的 static PIE
-	else
-		die "fastfetch ELF 审计失败：不是静态可执行文件（需要 EXEC 或 static PIE）：$FASTFETCH_BIN"
+	if ! FASTFETCH_ELF_AUDIT="$("$ELF_AUDIT_BIN" --kind fastfetch "$FASTFETCH_BIN")"; then
+		die "fastfetch ELF 审计失败：$FASTFETCH_BIN"
 	fi
-	grep -Eq 'Flags:.*double-float ABI' <<<"$FASTFETCH_ELF_HEADER" || die \
-		"fastfetch ELF 审计失败：不是 lp64d/double-float ABI：$FASTFETCH_BIN"
-	if grep -q 'INTERP' <<<"$FASTFETCH_ELF_PROGRAM_HEADERS"; then
-		die "fastfetch ELF 审计失败：存在动态解释器（INTERP）：$FASTFETCH_BIN"
-	fi
-	if readelf -d "$FASTFETCH_BIN" 2>/dev/null | grep -q 'NEEDED'; then
-		die "fastfetch ELF 审计失败：存在动态库依赖（NEEDED）：$FASTFETCH_BIN"
-	fi
-	FASTFETCH_ELF_ARCH="$(sed -n 's/.*Tag_RISCV_arch: "\(.*\)"/\1/p' <<<"$FASTFETCH_ELF_ATTRS" | head -n 1)"
-	FASTFETCH_ELF_FLAGS="$(sed -n 's/^[[:space:]]*Flags:[[:space:]]*//p' <<<"$FASTFETCH_ELF_HEADER" | head -n 1)"
-	case "$FASTFETCH_ELF_ARCH" in
-		rv64*) ;;
-		*) die "fastfetch ELF 审计失败：Tag_RISCV_arch='$FASTFETCH_ELF_ARCH' 不是 rv64*。" ;;
-	esac
-	case "$FASTFETCH_ELF_ARCH" in
-		*_f*_d*|*_d*_f*) ;;
-		*) die "fastfetch ELF 审计失败：Tag_RISCV_arch='$FASTFETCH_ELF_ARCH' 未同时包含 F/D 扩展。" ;;
-	esac
-	case "$FASTFETCH_ELF_ARCH" in
-		*_c*) ;;
-		*) die "fastfetch ELF 审计失败：Tag_RISCV_arch='$FASTFETCH_ELF_ARCH' 不包含 C 扩展。" ;;
-	esac
+	IFS=$'\t' read -r FASTFETCH_ELF_FLAGS FASTFETCH_ELF_ARCH FASTFETCH_ELF_ABI <<<"$FASTFETCH_ELF_AUDIT"
 	FASTFETCH_VERSION="$(fastfetch_version "$FASTFETCH_BIN")"
 	FASTFETCH_BYTES="$(stat -c '%s' "$FASTFETCH_BIN")"
 	FASTFETCH_SHA256="$(sha256sum "$FASTFETCH_BIN" | awk '{print $1}')"
@@ -425,36 +396,10 @@ fi
 [ -f "$BUSYBOX_BIN" ] || die "BusyBox 编译结束但找不到 $BUSYBOX_BIN"
 
 # ---- ELF 审计：64 位 RISC-V、lp64d、静态、无解释器 ----
-ELF_HEADER="$(readelf -h "$BUSYBOX_BIN")"
-ELF_ATTRS="$(readelf -A "$BUSYBOX_BIN")"
-ELF_PROGRAM_HEADERS="$(readelf -l "$BUSYBOX_BIN")"
-
-grep -q 'Class:[[:space:]]*ELF64' <<<"$ELF_HEADER" || die "ELF 审计失败：不是 ELF64。"
-grep -q 'Machine:[[:space:]]*RISC-V' <<<"$ELF_HEADER" || die "ELF 审计失败：Machine 不是 RISC-V。"
-grep -q 'Type:[[:space:]]*EXEC' <<<"$ELF_HEADER" || die "ELF 审计失败：不是静态 EXEC（可能是 PIE/DYN）。"
-grep -Eq 'Flags:.*double-float ABI' <<<"$ELF_HEADER" || die "ELF 审计失败：不是 lp64d/double-float ABI。"
-if grep -q 'INTERP' <<<"$ELF_PROGRAM_HEADERS"; then
-	die "ELF 审计失败：存在动态解释器（INTERP）。"
+if ! ELF_AUDIT_RESULT="$("$ELF_AUDIT_BIN" --kind busybox "$BUSYBOX_BIN")"; then
+	die "ELF 审计失败：$BUSYBOX_BIN"
 fi
-if readelf -d "$BUSYBOX_BIN" 2>/dev/null | grep -q 'NEEDED'; then
-	die "ELF 审计失败：存在动态库依赖（NEEDED）。"
-fi
-
-ELF_ARCH="$(sed -n 's/.*Tag_RISCV_arch: "\(.*\)"/\1/p' <<<"$ELF_ATTRS" | head -n 1)"
-ELF_ABI="$(sed -n 's/.*Tag_RISCV_abi: "\(.*\)"/\1/p' <<<"$ELF_ATTRS" | head -n 1)"
-case "$ELF_ARCH" in
-	rv64*) ;;
-	*) die "ELF 审计失败：Tag_RISCV_arch='$ELF_ARCH' 不是 rv64*。" ;;
-esac
-case "$ELF_ARCH" in
-	*_f*_d*|*_d*_f*) ;;
-	*) die "ELF 审计失败：Tag_RISCV_arch='$ELF_ARCH' 未同时包含 F/D 扩展。" ;;
-esac
-case "$ELF_ARCH" in
-	*_c*) ;;
-	*) die "ELF 审计失败：Tag_RISCV_arch='$ELF_ARCH' 不包含 C 扩展，未达到 RV64GC。" ;;
-esac
-ELF_FLAGS="$(sed -n 's/^[[:space:]]*Flags:[[:space:]]*//p' <<<"$ELF_HEADER" | head -n 1)"
+IFS=$'\t' read -r ELF_FLAGS ELF_ARCH ELF_ABI <<<"$ELF_AUDIT_RESULT"
 info "ELF 审计通过：ELF64 RISC-V，$ELF_FLAGS，Tag_RISCV_arch=$ELF_ARCH"
 [ -n "$ELF_ABI" ] && info "ELF Tag_RISCV_abi：$ELF_ABI"
 

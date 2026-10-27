@@ -14,7 +14,9 @@ CONFIG_CONTRACT := $(NPC_HOME)/tools/build/kconfig_contract
 rm-distclean += include/generated include/config csrc/generated \
 	tools/build/npc_config_gen tools/build/kconfig_contract \
 	tools/build/linux_boot_test tools/build/pack_uboot_image \
-	.config .config.old
+	tools/build/audit_rootfs_elf tools/build/build_dtb \
+	tools/build/pack_linux_image \
+	.config .config.old tools/build/merge_config
 silent := -s
 
 CONF          := $(KCONFIG_PATH)/../build/c_conf
@@ -22,7 +24,16 @@ MCONF         := $(KCONFIG_PATH)/../build/c_mconf
 KCONFIG_BUILD := $(KCONFIG_PATH)/build
 FIXDEP        := $(FIXDEP_PATH)/build/fixdep
 PROFILE       ?=
-MERGE_CONFIG  := $(NPC_HOME)/scripts/merge_config.sh
+MERGE_CONFIG_SRC := $(NPC_HOME)/tools/merge_config.cpp
+MERGE_CONFIG := $(NPC_HOME)/tools/build/merge_config
+MERGE_CONFIG_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
+
+$(MERGE_CONFIG): $(MERGE_CONFIG_SRC) $(NPC_HOME)/tools/linux_image_common.hpp
+	$(Q)mkdir -p $(@D)
+	$(Q)$(CXX) $(MERGE_CONFIG_CXXFLAGS) -o $@ $<
+
+merge-config-tool: $(MERGE_CONFIG)
+.PHONY: merge-config-tool
 
 KCONFIG_SOURCES := $(wildcard $(KCONFIG_PATH)/*.cpp $(KCONFIG_PATH)/*.ixx $(KCONFIG_PATH)/*.h $(KCONFIG_PATH)/*.hpp $(KCONFIG_PATH)/*.c $(KCONFIG_PATH)/*.y $(KCONFIG_PATH)/*.l $(KCONFIG_PATH)/lxdialog/*.cpp $(KCONFIG_PATH)/lxdialog/*.hpp)
 
@@ -58,7 +69,7 @@ savedefconfig: $(CONF)
 # configs/fragments/。用法：
 #   make profile-defconfig PROFILE=rv64_linux
 #   make rv64_linux_profile
-profile-defconfig: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT)
+profile-defconfig: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT) $(MERGE_CONFIG)
 	$(Q)if [ -z "$(strip $(PROFILE))" ]; then \
 		echo "错误：PROFILE 为空。" >&2; \
 		echo "用法：make profile-defconfig PROFILE=rv64_linux" >&2; \
@@ -66,7 +77,7 @@ profile-defconfig: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT)
 	fi
 	$(Q)$(MERGE_CONFIG) "$(PROFILE)"
 
-%_profile: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT)
+%_profile: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT) $(MERGE_CONFIG)
 	$(Q)$(MERGE_CONFIG) "$*"
 
 .PHONY: menuconfig savedefconfig defconfig profile-defconfig

@@ -3,9 +3,9 @@ SHELL := /bin/bash
 BUILD_DIR = ./build
 # direct-NPC RAM 窗口。大小来自 Kconfig（默认 64 MiB），DTB、RTL、
 # C++ 加载器、Linux 打包和 SBI 测试共享同一个值，不在各个脚本中
-# 另造 Linux 专用 RAM 常量。命令行可直接覆盖，便于短测试。
-NPC_RAM_BASE ?= 0x80000000
-NPC_RAM_SIZE ?= $(or $(CONFIG_NPC_RAM_SIZE),0x04000000)
+# 另造 Linux 专用 RAM 常量。需要改值时使用 CONFIG_NPC_RAM_SIZE。
+override NPC_RAM_BASE := 0x80000000
+override NPC_RAM_SIZE := $(or $(CONFIG_NPC_RAM_SIZE),0x04000000)
 PERF_BUILD_METADATA := $(abspath $(BUILD_DIR)/perf_build_metadata.txt)
 PERF_SYNTH := $(abspath $(BUILD_DIR)/synth.txt)
 YSYXSOC_DIR = ../ysyxSoC
@@ -58,28 +58,15 @@ NPC_CONFIG_TYPED_JSON := $(abspath $(BUILD_DIR)/generated/npc_config.typed.json)
 NPC_CONFIG_GEN_SRC := $(abspath tools/npc_config_gen.cpp)
 NPC_CONFIG_GEN_BIN := $(abspath tools/build/npc_config_gen)
 NPC_CONFIG_STAMP  := $(abspath $(BUILD_DIR)/generated/npc_config.stamp)
-# C++ 生成器负责所有派生值。Makefile 只转发用户显式写在命令行上的
-# 配置覆盖；不再生成 MMU profile env，也不在 Makefile 里维护第二套默认值。
-NPC_CONFIG_CLI_PATTERNS := \
-	CONFIG_% CHIPLINK=% SDRAM_USE_AXI=% SOC_% XLEN=% ADDRESS_WIDTH=% \
-	NPC_RAM_SIZE=% CACHE_% ICACHE% DCACHE% WBUF_DEPTH=% \
-	BTB_% JAL_BTB_% RAS_% ITRACE% RISCV_% FPU_% MUL_% DIV_% \
-	MMU_% TLB_% ITLB_% DTLB_% UTLB_% \
-	SYNTH_FREQ=% APB_% AXI_% \
-	PERF_% HAS_% CSR_% PLIC_% PMP_% TIMER_% \
-	SBI_% LINUX_% TRACE_% LOG_% NVBOARD% \
-	SDB=% DIFFTEST=% MTRACE=% FTRACE=% IRINGBUF=%
-NPC_CONFIG_OVERRIDE_ARGS = $(foreach item,$(filter $(NPC_CONFIG_CLI_PATTERNS),$(MAKEOVERRIDES)),--set '$(item)')
+# C++ 生成器负责所有派生值。Makefile 只转发 Kconfig 风格的 CONFIG_*
+# 命令行覆盖；不再提供 SOC_XLEN/CHIPLINK 等裸 Make 变量兼容入口。
+NPC_CONFIG_OVERRIDE_ARGS = $(foreach item,$(filter CONFIG_%,$(MAKEOVERRIDES)),--set '$(item)')
 
 VERILATOR=verilator
 remove_quote = $(patsubst "%",%,$(1))
 # Kconfig 字符串可能包含空格/逗号（如 bootargs）。patsubst 会按空格拆词，
 # 不能用来去掉这类字符串的引号；这里只删除引号并保留原样。
 unquote_config = $(strip $(subst ",,$(1)))
-# Quote one make value as one POSIX-shell word.  This is used for generated
-# performance metadata, where configuration strings may contain commas.
-perf_shell_quote = '$(subst ','"'"',$(1))'
-comma := ,
 -include include/config/auto.conf
 NPROC_MAX := $(shell nproc 2>/dev/null || echo 4)
 ifneq ($(CONFIG_BUILD_THREADS),)
@@ -99,45 +86,6 @@ VERILATOR_THREADS := $(shell if [ "$(SIM_THREADS)" -gt 1 ] 2>/dev/null; then ech
 test:
 	mill -i test
 
-# 下面这些 Make 变量只用于构建身份摘要和命令行兼容；真正的配置默认值
-# 由 npc_config_gen.cpp 从 Kconfig JSON 派生，不再从 Makefile 注入。
-# 物理地址宽度：RV64 默认 64，RV32 默认 32；可在命令行显式覆盖。
-ADDRESS_WIDTH ?= $(if $(filter 64,$(or $(CONFIG_XLEN),32)),64,32)
-# ysyxSoC CPU 侧接口位宽独立于 CPU XLEN。FOLLOW_CPU=y 时跟随 CPU；
-# 否则使用 SOC_XLEN（仅允许 32/64，由 elaboration 校验）。
-SOC_XLEN_FOLLOW_CPU ?= $(or $(CONFIG_SOC_XLEN_FOLLOW_CPU),n)
-SOC_XLEN ?= $(or $(CONFIG_SOC_XLEN),32)
-CACHE_BLOCK_SIZE_LOG2 ?= $(or $(CONFIG_CACHE_BLOCK_SIZE_LOG2),4)
-CACHE_INDEX_BITS ?= $(or $(CONFIG_CACHE_INDEX_BITS),5)
-# 每级缓存可单独配置几何；未设置时跟随共享值（既有脚本零改动）
-ICACHE_BLOCK_SIZE_LOG2 ?= $(or $(CONFIG_ICACHE_BLOCK_SIZE_LOG2),$(CACHE_BLOCK_SIZE_LOG2))
-ICACHE_INDEX_BITS ?= $(or $(CONFIG_ICACHE_INDEX_BITS),$(CACHE_INDEX_BITS))
-DCACHE_BLOCK_SIZE_LOG2 ?= $(or $(CONFIG_DCACHE_BLOCK_SIZE_LOG2),$(CACHE_BLOCK_SIZE_LOG2))
-DCACHE_INDEX_BITS ?= $(or $(CONFIG_DCACHE_INDEX_BITS),$(CACHE_INDEX_BITS))
-BTB_BITS ?= $(or $(CONFIG_BTB_BITS),4)
-BTB_WAYS ?= $(or $(CONFIG_BTB_WAYS),1)
-JAL_BTB_BITS ?= $(or $(CONFIG_JAL_BTB_BITS),4)
-JAL_BTB_WAYS ?= $(or $(CONFIG_JAL_BTB_WAYS),1)
-RAS_BITS ?= $(or $(CONFIG_RAS_BITS),4)
-CACHE_PADDING ?= $(or $(CONFIG_CACHE_PADDING),0)
-CHIPLINK ?= $(or $(CONFIG_CHIPLINK),n)
-export CHIPLINK
-# SoC 的 SDRAM 数据通路选择。当前 ysyxSoC 只实现了 AXI SDRAM；
-# Kconfig 仍是唯一真源，命令行同名变量可覆盖用于短测试。
-SDRAM_USE_AXI ?= $(or $(CONFIG_SDRAM_USE_AXI),y)
-export SDRAM_USE_AXI
-# FPU 配置：Kconfig 是唯一真源，命令行同名变量可覆盖用于短测试。
-# 未生成的 .config 保持 F/D=n、backend=none，与 Kconfig 默认一致。
-FPU_IMPL ?= $(or $(call remove_quote,$(CONFIG_FPU_IMPL)),none)
-FPU_FLEN ?= $(or $(CONFIG_FPU_FLEN),64)
-FPU_PIPELINE ?= $(or $(CONFIG_FPU_PIPELINE),0)
-FPU_FMA ?= $(or $(CONFIG_FPU_FMA),y)
-FPU_DIVSQRT ?= $(or $(CONFIG_FPU_DIVSQRT),y)
-FPU_ROUNDING ?= $(or $(CONFIG_FPU_ROUNDING),y)
-FPU_FLAGS ?= $(or $(CONFIG_FPU_FLAGS),y)
-FPU_HARDFLOAT_RECODE ?= $(or $(CONFIG_FPU_HARDFLOAT_RECODE),y)
-FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING ?= $(or $(CONFIG_FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING),n)
-FPU_FUDIAN_SHARED_DIVSQRT ?= $(or $(CONFIG_FPU_FUDIAN_SHARED_DIVSQRT),y)
 
 # Kconfig 是唯一配置解析器：c_conf --syncconfig 直接生成
 # include/generated/npc_config.json。C++ 构建期小工具再把 JSON 投影成
@@ -223,7 +171,19 @@ LINUX_BOOTARGS ?= $(call unquote_config,$(CONFIG_LINUX_BOOTARGS))
 LINUX_OUT_DIR ?= $(abspath $(BUILD_DIR)/linux)
 LINUX_SBI_OUT_DIR ?= $(LINUX_OUT_DIR)/sbi
 LINUX_DTB_OUT_DIR ?= $(LINUX_OUT_DIR)/dtb
-LINUX_PACK_SCRIPT ?= $(abspath scripts/pack_linux_image.sh)
+LINUX_PACK_SRC := $(abspath tools/pack_linux_image.cpp)
+LINUX_IMAGE_COMMON := $(abspath tools/linux_image_common.hpp)
+LINUX_PACK_TOOL := $(abspath tools/build/pack_linux_image)
+# 主构建直接调用 C++ 工具；shell 入口保留给 NEMU/直接调用。
+LINUX_PACK_SCRIPT ?= $(LINUX_PACK_TOOL)
+LINUX_PACK_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
+
+$(LINUX_PACK_TOOL): $(LINUX_PACK_SRC) $(LINUX_IMAGE_COMMON)
+	@mkdir -p $(@D)
+	$(CXX) $(LINUX_PACK_CXXFLAGS) -o $@ $<
+
+pack-linux-tool: $(LINUX_PACK_TOOL)
+.PHONY: pack-linux-tool
 
 SBI_IMPL ?= $(or $(call remove_quote,$(CONFIG_SBI_IMPL)),opensbi)
 SBI_PLATFORM ?= $(or $(call remove_quote,$(CONFIG_SBI_PLATFORM)),npc)
@@ -243,7 +203,18 @@ SBI_INITRAMFS_PATH ?= $(LINUX_INITRAMFS_PATH)
 SBI_INITRAMFS_ADDR ?= $(LINUX_INITRAMFS_ADDR)
 SBI_BOOTARGS ?= $(LINUX_BOOTARGS)
 SBI_FDT_OUT_DIR ?= $(abspath $(BUILD_DIR)/dtb)
-SBI_DTB_SCRIPT ?= $(abspath scripts/build_dtb.sh)
+SBI_DTB_SRC := $(abspath tools/build_dtb.cpp)
+SBI_DTB_TOOL := $(abspath tools/build/build_dtb)
+# 主构建直接调用 C++ 工具；shell 入口保留给 NEMU/直接调用。
+SBI_DTB_SCRIPT ?= $(SBI_DTB_TOOL)
+SBI_DTB_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
+
+$(SBI_DTB_TOOL): $(SBI_DTB_SRC) $(LINUX_IMAGE_COMMON)
+	@mkdir -p $(@D)
+	$(CXX) $(SBI_DTB_CXXFLAGS) -o $@ $<
+
+build-dtb-tool: $(SBI_DTB_TOOL)
+.PHONY: build-dtb-tool
 SBI_TOOLCHAIN_PREFIX ?= riscv64-unknown-elf-
 SBI_ISA ?= rv64ima_zicsr_zifencei
 SBI_ABI ?= lp64
@@ -315,7 +286,7 @@ endef
 
 .PHONY: sbi opensbi sbi-test opensbi-test
 
-sbi:
+sbi: $(SBI_DTB_TOOL)
 	$(sbi_check_enabled)
 	@set -eu; \
 	if [ ! -f "$(SBI_BUILD_SCRIPT)" ]; then \
@@ -343,7 +314,7 @@ opensbi-test: sbi-test
 # 单独生成设备树，便于检查 DTS 或给外部加载器使用。
 # 即使 SBI_FDT_ENABLE=n 也允许显式生成（不会改变 SBI 启动行为）。
 # 依赖 effective JSON，确保 .config 改变后不会继续使用旧的配置投影。
-dtb: $(NPC_CONFIG_EFFECTIVE_JSON)
+dtb: $(NPC_CONFIG_EFFECTIVE_JSON) $(SBI_DTB_TOOL)
 	@$(SBI_ENV) "$(SBI_DTB_SCRIPT)"
 
 dtb-clean:
@@ -354,8 +325,8 @@ dtb-clean:
 # 打包 Linux 启动镜像：SBI 固件 + 用户提供的 Image + 可选 initramfs + DTB。
 # 本目标不会下载/编译 Linux；Image/initramfs 缺失时明确报错。
 # 顺序很重要：先让 build_<impl>.sh 按当前 Kconfig/initramfs 生成并内嵌
-# DTB，再由 pack_linux_image.sh 重新生成同一 DTB、校验固件内嵌哈希并打包。
-linux-image:
+# DTB，再由 C++ pack_linux_image 重新生成同一 DTB、校验固件内嵌哈希并打包。
+linux-image: $(LINUX_PACK_TOOL) $(SBI_DTB_TOOL)
 	$(sbi_check_enabled)
 	@set -eu; \
 	if [ "$(LINUX_BOOT_ENABLE)" != "y" ]; then \
@@ -373,7 +344,7 @@ linux-image:
 		exit 2; \
 	fi; \
 	if [ ! -f "$(LINUX_PACK_SCRIPT)" ]; then \
-		echo "错误：找不到打包脚本 $(LINUX_PACK_SCRIPT)" >&2; \
+		echo "错误：找不到打包工具 $(LINUX_PACK_SCRIPT)" >&2; \
 		exit 2; \
 	fi; \
 	mkdir -p "$(LINUX_OUT_DIR)"; \
@@ -391,7 +362,7 @@ linux-image-clean:
 
 # 配置矩阵测试：dummy Image/initramfs + DTB 生成 + 打包负向测试。
 # 不构建/运行 Linux，也不需要 NPC 仿真器。
-# 测试器是纯 C++ 工具，直接调用 build_dtb.sh/pack_linux_image.sh；
+# 测试器是纯 C++ 工具，通过兼容脚本调用 C++ DTB/pack 工具；
 # 不再依赖 Python。
 LINUX_BOOT_TEST_SRC := $(abspath tools/linux_boot_test.cpp)
 LINUX_BOOT_TEST_BIN := $(abspath tools/build/linux_boot_test)
@@ -401,7 +372,7 @@ $(LINUX_BOOT_TEST_BIN): $(LINUX_BOOT_TEST_SRC)
 	@mkdir -p $(@D)
 	$(CXX) $(LINUX_BOOT_TEST_CXXFLAGS) -o $@ $<
 
-linux-boot-test: $(LINUX_BOOT_TEST_BIN)
+linux-boot-test: $(LINUX_BOOT_TEST_BIN) $(LINUX_PACK_TOOL) $(SBI_DTB_TOOL)
 	$(LINUX_BOOT_TEST_BIN)
 
 .PHONY: linux-image linux-image-clean linux-boot-test
@@ -448,7 +419,7 @@ NPC_UBOOT_ENV = $(SBI_ENV) \
 	NPC_UBOOT_BOOTARGS="$(NPC_UBOOT_BOOTARGS)" \
 	NPC_UBOOT_JOBS="$(NPC_UBOOT_JOBS)"
 
-uboot-image: $(NPC_UBOOT_PACK_BIN)
+uboot-image: $(NPC_UBOOT_PACK_BIN) $(SBI_DTB_TOOL)
 	@set -eu; \
 	if [ "$(NPC_UBOOT_ENABLE)" != "y" ]; then \
 		echo "错误：NPC_UBOOT_ENABLE=$(NPC_UBOOT_ENABLE)，U-Boot EFI 镜像未启用。" >&2; \
@@ -474,7 +445,7 @@ RUSTSBI_BUILD_SCRIPT := $(abspath scripts/build_rustsbi.sh)
 RUSTSBI_ENV = $(SBI_ENV) \
 	SBI_OUT_DIR="$(abspath $(BUILD_DIR)/rustsbi)" \
 	RUSTSBI_OUT_DIR="$(abspath $(BUILD_DIR)/rustsbi)"
-rustsbi:
+rustsbi: $(SBI_DTB_TOOL)
 	@$(RUSTSBI_ENV) "$(RUSTSBI_BUILD_SCRIPT)"
 
 rustsbi-clean:
@@ -487,7 +458,8 @@ rustsbi-clean:
 #
 # ROOTFS_ENABLE=n 时 make rootfs 明确报错，不静默跳过。当前只实现
 # BusyBox，脚本读取 .config 并在 npc/build/rootfs/ 下做 out-of-tree
-# 构建，不修改 vendor/busybox。Linux kernel 的下载、编译和启动不在
+# 构建，不修改 vendor/busybox。ELF 审计由 C++ 工具
+# tools/audit_rootfs_elf.cpp 完成；Linux kernel 的下载、编译和启动不在
 # 本目标范围内，rootfs 只产出可被内核加载的 initramfs。
 # ============================================================================
 ROOTFS_TYPE ?= $(or $(call remove_quote,$(CONFIG_ROOTFS_TYPE)),none)
@@ -507,6 +479,16 @@ ROOTFS_BUSYBOX_INIT_SCRIPT ?= $(or $(CONFIG_ROOTFS_BUSYBOX_INIT_SCRIPT),n)
 # applet 列表本身含空格，不能使用按词匹配的 remove_quote。
 ROOTFS_BUSYBOX_APPLETS ?= $(or $(subst ",,$(CONFIG_ROOTFS_BUSYBOX_APPLETS)),sh ls cat echo mount umount mkdir mknod ps kill sleep dmesg ifconfig ip vi grep sed awk find cp mv rm ln chmod chown df du free uname hostname reboot poweroff halt switch_root mdev insmod lsmod rmmod modprobe tar gzip gunzip wc head tail sort uniq tr cut printf test true false date id whoami env pwd touch sync init)
 ROOTFS_BUSYBOX_JOBS ?= $(or $(CONFIG_ROOTFS_BUSYBOX_JOBS),0)
+ROOTFS_ELF_AUDIT_SRC := $(abspath tools/audit_rootfs_elf.cpp)
+ROOTFS_ELF_AUDIT_TOOL := $(abspath tools/build/audit_rootfs_elf)
+ROOTFS_ELF_AUDIT_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
+
+$(ROOTFS_ELF_AUDIT_TOOL): $(ROOTFS_ELF_AUDIT_SRC) $(LINUX_IMAGE_COMMON)
+	@mkdir -p $(@D)
+	$(CXX) $(ROOTFS_ELF_AUDIT_CXXFLAGS) -o $@ $<
+
+audit-rootfs-elf-tool: $(ROOTFS_ELF_AUDIT_TOOL)
+.PHONY: audit-rootfs-elf-tool
 
 # 把配置一次传给实现脚本；脚本自身仍会读取 .config 并重新校验。
 ROOTFS_ENV = env \
@@ -526,6 +508,7 @@ ROOTFS_ENV = env \
 	ROOTFS_BUSYBOX_BUILD_DIR="$(ROOTFS_BUSYBOX_BUILD_DIR)" \
 	ROOTFS_TREE="$(ROOTFS_TREE)" \
 	ROOTFS_IMAGE="$(ROOTFS_IMAGE)" \
+	ELF_AUDIT_BIN="$(ROOTFS_ELF_AUDIT_TOOL)" \
 	NPC_HOME="$(NPC_HOME)" \
 	WORKBENCH_HOME="$(abspath $(NPC_HOME)/..)"
 
@@ -544,7 +527,7 @@ endef
 
 .PHONY: rootfs rootfs-clean
 
-rootfs:
+rootfs: $(ROOTFS_ELF_AUDIT_TOOL)
 	$(rootfs_check_enabled)
 	@set -eu; \
 	if [ ! -f "$(ROOTFS_BUILD_SCRIPT)" ]; then \
@@ -562,8 +545,8 @@ rootfs-clean:
 	fi; \
 	$(ROOTFS_ENV) "$(ROOTFS_BUILD_SCRIPT)" --clean
 
-# npc 独立仿真路径的复位 PC：0x80000000 + CACHE_PADDING（镜像在内存中整体后移 CACHE_PADDING 字节）
-NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(CACHE_PADDING))))
+# npc 独立仿真路径的复位 PC：0x80000000 + Kconfig 的 CACHE_PADDING。
+NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(or $(CONFIG_CACHE_PADDING),0))))
 
 
 # Keep the effective hardware knobs in one stable, human-readable record.
@@ -572,29 +555,6 @@ NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(CACHE_PADDING))))
 # one elaboration emits both the direct-NPC and SoC CPU wrappers.
 # 性能计数器：组 → 组内单计数器键。键名与Kconfig符号后缀、RTL端口后缀
 # 以及C++宏名一一对应；单计数器同时受所属组总开关与PERF_STATS约束。
-PERF_COUNTER_GROUPS := BASIC OPCLASS MDU IFU_STALL ICACHE DCACHE EXU_STALL LSU IDU_STALL TRAP
-PERF_COUNTERS_BASIC := IFU_FETCH EXU_DONE LSU_LOAD LSU_STORE
-PERF_COUNTERS_OPCLASS := ALU_OP MEM_OP CSR_OP BRANCH_OP JAL_OP JALR_OP EXECUTION_ACTIVE
-PERF_COUNTERS_MDU := MDU_REQ MDU_DONE MDU_OP MDU_ACTIVE MDU_WAIT
-PERF_COUNTERS_IFU_STALL := IFU_STALL_PIPELINE IFU_STALL_AXI IFU_STALL_AR IFU_STALL_R IFU_STALL_REDIRECT IFU_STALL_IDLE
-PERF_COUNTERS_ICACHE := ICACHE_HIT ICACHE_MISS
-PERF_COUNTERS_DCACHE := DCACHE_HIT DCACHE_MISS DCACHE_REFILL_REQ DCACHE_REFILL_RESP
-PERF_COUNTERS_EXU_STALL := EXU_STALL_LSU EXU_IDLE_NOINPUT MEM_WAITSLOT
-PERF_COUNTERS_LSU := LSU_ACTIVE LSU_LOAD_ACTIVE LSU_STORE_ACTIVE LSU_STALL_READ_AR LSU_STALL_READ_R LSU_STALL_WRITE_REQ LSU_STALL_WRITE_B
-PERF_COUNTERS_IDU_STALL := IDU_STALL_RAW IDU_STALL_RAW_LOADUSE IDU_STALL_RAW_ALU
-PERF_COUNTERS_TRAP := TRAP_COUNT
-PERF_COUNTER_KEYS := $(foreach g,$(PERF_COUNTER_GROUPS),$(PERF_COUNTERS_$(g)))
-# 组总开关是否打开（缺省按y，兼容未重新生成配置的旧工作区）。
-perf_group_on = $(filter y,$(or $(CONFIG_PERF_COUNTER_$(1)),y))
-# 单计数器是否生效：所属组与子开关都必须为y。
-perf_counter_on = $(and $(call perf_group_on,$(2)),$(filter y,$(or $(CONFIG_PERF_COUNTER_$(1)),y)))
-_perf_counter_empty :=
-_perf_counter_space := $(_perf_counter_empty) $(_perf_counter_empty)
-# 组开关与单计数器开关由 npc_config_gen.cpp 展开；这里只保留构建身份摘要。
-# 构建身份摘要用的启用清单；主开关关闭为off，全部子计数器关闭为none。
-PERF_COUNTER_KEYS_ENABLED = $(foreach g,$(PERF_COUNTER_GROUPS),$(foreach k,$(PERF_COUNTERS_$(g)),$(if $(call perf_counter_on,$(k),$(g)),$(k) ,)))
-PERF_COUNTERS_SUMMARY = $(if $(filter y,$(or $(CONFIG_PERF_STATS),n)),$(if $(strip $(PERF_COUNTER_KEYS_ENABLED)),$(subst $(_perf_counter_space),+,$(strip $(PERF_COUNTER_KEYS_ENABLED))),none),off)
-PERF_CONFIG_SUMMARY = NPC_RAM_SIZE=$(NPC_RAM_SIZE);ICACHE=$(or $(CONFIG_ICACHE),n);DCACHE=$(or $(CONFIG_DCACHE),n);CACHE_BLOCK_SIZE_LOG2=$(CACHE_BLOCK_SIZE_LOG2);CACHE_INDEX_BITS=$(CACHE_INDEX_BITS);ICACHE_BLOCK_SIZE_LOG2=$(ICACHE_BLOCK_SIZE_LOG2);ICACHE_INDEX_BITS=$(ICACHE_INDEX_BITS);DCACHE_BLOCK_SIZE_LOG2=$(DCACHE_BLOCK_SIZE_LOG2);DCACHE_INDEX_BITS=$(DCACHE_INDEX_BITS);ICACHE_STORAGE=$(or $(call remove_quote,$(CONFIG_ICACHE_STORAGE)),reg);DCACHE_STORAGE=$(or $(call remove_quote,$(CONFIG_DCACHE_STORAGE)),reg);ICACHE_COHERENCE=$(or $(call remove_quote,$(CONFIG_ICACHE_COHERENCE)),fence_i);DMA_COHERENCE=$(or $(call remove_quote,$(CONFIG_DMA_COHERENCE)),software_flush);WBUF_DEPTH=$(or $(CONFIG_WBUF_DEPTH),4);CACHE_PADDING=$(CACHE_PADDING);BTB_BITS=$(BTB_BITS);BTB_WAYS=$(BTB_WAYS);JAL_BTB_BITS=$(JAL_BTB_BITS);JAL_BTB_WAYS=$(JAL_BTB_WAYS);RAS_BITS=$(RAS_BITS);SDB=$(or $(CONFIG_SDB),n);DIFFTEST=$(or $(CONFIG_DIFFTEST),n);MTRACE=$(or $(CONFIG_MTRACE),n);ITRACE=$(or $(CONFIG_ITRACE),n);ITRACE_WRITE_FILE=$(or $(CONFIG_ITRACE_WRITE_FILE),n);FTRACE=$(or $(CONFIG_FTRACE),n);IRINGBUF=$(or $(CONFIG_IRINGBUF),n);PERF_STATS=$(or $(CONFIG_PERF_STATS),n);RISCV_M=$(or $(CONFIG_RISCV_M),$(RISCV_M),n);RISCV_A=$(or $(CONFIG_RISCV_A),$(RISCV_A),n);RISCV_C=$(or $(CONFIG_RISCV_C),$(RISCV_C),n);RISCV_F=$(or $(CONFIG_RISCV_F),n);RISCV_D=$(or $(CONFIG_RISCV_D),n);FPU_IMPL=$(FPU_IMPL);FPU_FLEN=$(FPU_FLEN);FPU_PIPELINE=$(FPU_PIPELINE);FPU_FMA=$(FPU_FMA);FPU_DIVSQRT=$(FPU_DIVSQRT);FPU_ROUNDING=$(FPU_ROUNDING);FPU_FLAGS=$(FPU_FLAGS);FPU_HARDFLOAT_RECODE=$(FPU_HARDFLOAT_RECODE);FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING=$(FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING);FPU_FUDIAN_SHARED_DIVSQRT=$(FPU_FUDIAN_SHARED_DIVSQRT);MUL_IMPL=$(or $(call remove_quote,$(CONFIG_MUL_IMPL)),shift_add);MUL_ENCODING=$(or $(call remove_quote,$(CONFIG_MUL_ENCODING)),plain);MUL_RADIX=$(or $(CONFIG_MUL_RADIX),4);MUL_WIDTH=$(or $(CONFIG_MUL_WIDTH),32);MUL_COMPRESSOR_INPUTS=$(or $(CONFIG_MUL_COMPRESSOR_INPUTS),3);MUL_COMPRESSOR_OUTPUTS=$(or $(CONFIG_MUL_COMPRESSOR_OUTPUTS),2);MUL_COMPRESSOR_OUTPUT_OFFSETS=$(or $(call remove_quote,$(CONFIG_MUL_COMPRESSOR_OUTPUT_OFFSETS)),0$(comma)1);MUL_COMPRESSOR_HAS_CIN=$(or $(CONFIG_MUL_COMPRESSOR_HAS_CIN),n);MUL_COMPRESSOR_HAS_COUT=$(or $(CONFIG_MUL_COMPRESSOR_HAS_COUT),n);MUL_COMPRESSOR_COUT_OFFSET=$(or $(CONFIG_MUL_COMPRESSOR_COUT_OFFSET),1);MUL_COMPRESSOR_ALLOW_REDUNDANT=$(or $(CONFIG_MUL_COMPRESSOR_ALLOW_REDUNDANT),n);DIV_IMPL=$(or $(call remove_quote,$(CONFIG_DIV_IMPL)),restoring);DIV_RADIX=$(or $(CONFIG_DIV_RADIX),2);DIV_ITER_BITS=$(or $(CONFIG_DIV_ITER_BITS),1);DIV_EARLY_OUT=$(or $(CONFIG_DIV_EARLY_OUT),n);MUL_ITER_BITS=$(or $(CONFIG_MUL_ITER_BITS),1);MUL_PIPELINE=$(or $(CONFIG_MUL_PIPELINE),0);MUL_SPLIT=$(or $(CONFIG_MUL_SPLIT),1);MUL_EARLY_OUT=$(or $(CONFIG_MUL_EARLY_OUT),n);CHIPLINK=$(or $(CHIPLINK),n);SOC_XLEN_FOLLOW_CPU=$(SOC_XLEN_FOLLOW_CPU);SOC_XLEN=$(SOC_XLEN);ADDRESS_WIDTH=$(ADDRESS_WIDTH);APB_CPU_FREQ_MHZ=$(SYNTH_FREQ);APB_DEVICE_FREQ_MHZ=$(APB_DEVICE_FREQ);APB_DELAY_SCALE_FACTOR=$(APB_DELAY_SCALE);AXI_CPU_FREQ_MHZ=$(SYNTH_FREQ);AXI_DEVICE_FREQ_MHZ=$(AXI_DEVICE_FREQ);AXI_DELAY_SCALE_FACTOR=$(AXI_DELAY_SCALE);SYNTH_STRATEGY_TYPE=$(SYNTH_STRATEGY_TYPE);SYNTH_STRATEGY_IDX=$(SYNTH_STRATEGY_IDX);SYNTH_NOMAP=$(SYNTH_NOMAP);SYNTH_NOABC=$(SYNTH_NOABC);PERF_COUNTERS=$(PERF_COUNTERS_SUMMARY);SBI_ENABLE=$(or $(CONFIG_SBI_ENABLE),n);SBI_IMPL=$(SBI_IMPL);SBI_PLATFORM=$(SBI_PLATFORM);SBI_FW_BASE=$(SBI_FW_BASE);SBI_NEXT_ADDR=$(SBI_NEXT_ADDR);SBI_FDT_ENABLE=$(SBI_FDT_ENABLE);SBI_FDT_ADDR=$(SBI_FDT_ADDR)
 
 verilog: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_TYPED_JSON)
 	$(call git_commit, "generate verilog")
@@ -707,9 +667,6 @@ nvboard-direct-unsupported:
 	@echo "错误：NVBoard 只能绑定 ysyxSoCFull 的外设引脚；direct-NPC 顶层没有可绑定的 GPIO/VGA/UART 引脚。请使用 SIM_TOP=soc。" >&2
 	@exit 2
 endif
-# 性能计数器：与Kconfig默认值一致，缺失的符号按y处理，尚未重新生成配置的
-# 旧工作区保持与原行为一致。组宏与单计数器宏都会注入，单计数器宏要求组为y。
-
 # The perf recipe's ordered sub-make reuses the RTL and metadata that its
 # successful synth prerequisite just produced.  All ordinary binary targets
 # retain the normal PHONY elaboration dependency.
@@ -722,13 +679,16 @@ else
 NPC_VERILOG_PREREQ := verilog
 endif
 
+# 仅用于性能记录的简短摘要；硬件有效值以 effective JSON 的 SHA256 为准。
+PERF_CONFIG_SUMMARY = XLEN=$(or $(CONFIG_XLEN),32);SOC_XLEN=$(or $(CONFIG_SOC_XLEN),32);CHIPLINK=$(or $(CONFIG_CHIPLINK),n);SDRAM_USE_AXI=$(or $(CONFIG_SDRAM_USE_AXI),y);SYNTH_FREQ=$(or $(CONFIG_SYNTH_FREQ),450)
+
 .PHONY: perf-build-metadata
-perf-build-metadata: verilog
+perf-build-metadata: verilog $(NPC_CONFIG_EFFECTIVE_JSON)
 	@set -eu; \
 	mkdir -p "$(dir $(PERF_BUILD_METADATA))"; \
 	tmp="$(PERF_BUILD_METADATA).tmp.$$$$"; \
-	summary=$(call perf_shell_quote,$(PERF_CONFIG_SUMMARY)); \
-	config_sha256=$$(printf '%s' "$$summary" | sha256sum | cut -d' ' -f1); \
+	summary='$(PERF_CONFIG_SUMMARY)'; \
+	config_sha256=$$(sha256sum "$(NPC_CONFIG_EFFECTIVE_JSON)" | cut -d' ' -f1); \
 	npc_rtl="$(abspath $(BUILD_DIR)/ysyx_26030103_npc.sv)"; \
 	soc_rtl="$(abspath $(BUILD_DIR)/ysyx_26030103.sv)"; \
 	test -f "$$npc_rtl"; \
@@ -1068,11 +1028,7 @@ YOSYS_STA_HOME ?= $(abspath $(NPC_HOME)/../yosys-sta)
 # identity subdirectory prevents two concurrent builds (or two synthesis
 # strategies for the same RTL) from sharing a synth_stat.txt.
 SYNTH_OUTPUT_BASE ?= $(abspath $(BUILD_DIR)/yosys-sta)
-ifneq ($(CONFIG_SYNTH_FREQ),)
-SYNTH_FREQ = $(call remove_quote,$(CONFIG_SYNTH_FREQ))
-else
-SYNTH_FREQ ?= 450
-endif
+override SYNTH_FREQ := $(or $(call remove_quote,$(CONFIG_SYNTH_FREQ)),450)
 ifneq ($(CONFIG_PDK),)
 PDK_VALUE = $(call remove_quote,$(CONFIG_PDK))
 else
@@ -1098,27 +1054,6 @@ ifeq ($(CONFIG_SYNTH_NOABC),y)
 SYNTH_NOABC = 1
 else
 SYNTH_NOABC = 0
-endif
-
-ifneq ($(CONFIG_APB_DEVICE_FREQ),)
-APB_DEVICE_FREQ = $(call remove_quote,$(CONFIG_APB_DEVICE_FREQ))
-else
-APB_DEVICE_FREQ = 100
-endif
-ifneq ($(CONFIG_APB_DELAY_SCALE),)
-APB_DELAY_SCALE = $(call remove_quote,$(CONFIG_APB_DELAY_SCALE))
-else
-APB_DELAY_SCALE = 64
-endif
-ifneq ($(CONFIG_AXI_DEVICE_FREQ),)
-AXI_DEVICE_FREQ = $(call remove_quote,$(CONFIG_AXI_DEVICE_FREQ))
-else
-AXI_DEVICE_FREQ = 100
-endif
-ifneq ($(CONFIG_AXI_DELAY_SCALE),)
-AXI_DELAY_SCALE = $(call remove_quote,$(CONFIG_AXI_DELAY_SCALE))
-else
-AXI_DELAY_SCALE = 64
 endif
 
 ifeq ($(SIM_TOP),soc)
