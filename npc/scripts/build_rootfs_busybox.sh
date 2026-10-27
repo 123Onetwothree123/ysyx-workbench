@@ -1,26 +1,4 @@
 #!/usr/bin/env bash
-#
-# 构建 BusyBox 最小 rootfs / initramfs。
-#
-# 设计边界：
-#   - 只处理 rootfs 前道工序；不下载、编译或运行 Linux kernel。
-#   - BusyBox 使用 vendor/busybox 树内源码，做 out-of-tree 构建，
-#     不修改源码目录，也不在构建时联网。
-#   - BusyBox 必须静态链接为 RV64GC/lp64d；ELF 类型、ABI、
-#     动态解释器和动态依赖由 C++ 工具 tools/audit_rootfs_elf.cpp 审计。
-#
-# 配置来源：
-#   默认读取 npc/.config（可用 ROOTFS_CONFIG 覆盖），随后允许同名
-#   环境变量覆盖单个值；npc/Makefile 的 rootfs 目标会传入这些变量。
-#
-# 输出（默认 npc/build/rootfs）：
-#   busybox/                      BusyBox out-of-tree 构建目录
-#   tree/                         最小 rootfs 树（启用时含 usr/bin/fastfetch）
-#   applets.txt                   当前 BusyBox 配置启用的 applet 清单
-#   busybox-initramfs.cpio.gz     newc + gzip initramfs
-#   busybox-initramfs.cpio.gz.info
-#   logs/                         defconfig/oldconfig/编译日志
-#
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,8 +29,6 @@ usage() {
 EOF
 }
 
-# 从 .config 读取原始值。文件不存在时返回空，便于 rootfs-clean 在
-# 尚未配置的树上也能使用。
 cfg_raw() {
 	local key="$1"
 	[ -f "$CONFIG_FILE" ] || return 0
@@ -92,8 +68,6 @@ cfg_bool_or() {
 	esac
 }
 
-# 优先读取 build_fastfetch.sh 生成的 .info，其次从二进制字符串和
-# vendor 源码中获取版本。只用于 rootfs 摘要，不执行目标架构二进制。
 fastfetch_version() {
 	local bin="$1"
 	local version=""
@@ -127,7 +101,6 @@ while (($# > 0)); do
 	shift
 done
 
-# ---- 解析配置；环境变量优先于 .config ----
 ROOTFS_ENABLE="${ROOTFS_ENABLE:-$(cfg_bool ROOTFS_ENABLE)}"
 ROOTFS_TYPE="${ROOTFS_TYPE:-$(cfg_str ROOTFS_TYPE)}"
 ROOTFS_TYPE="${ROOTFS_TYPE:-none}"
@@ -206,7 +179,6 @@ fi
 [ -x "$ELF_AUDIT_BIN" ] || die \
 	"找不到 ELF 审计工具 $ELF_AUDIT_BIN；先运行 make -C $NPC_HOME audit-rootfs-elf-tool。"
 
-# ---- 正常构建前的显式检查 ----
 [ -f "$CONFIG_FILE" ] || die "找不到配置文件 $CONFIG_FILE；请先运行 make menuconfig 或 defconfig。"
 [ "$ROOTFS_ENABLE" = "y" ] || die \
 	"ROOTFS_ENABLE=$ROOTFS_ENABLE，rootfs 未启用。请先运行 make menuconfig 打开“根文件系统 (rootfs)”，不要静默跳过。"
@@ -252,7 +224,6 @@ if [ "$ROOTFS_FASTFETCH" = "y" ]; then
 	esac
 fi
 
-# ---- 工具链与依赖检查 ----
 TOOLCHAIN_PREFIX="$ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX"
 TOOLCHAIN_CC="${TOOLCHAIN_PREFIX}gcc"
 command -v "$TOOLCHAIN_CC" >/dev/null 2>&1 || die \
@@ -269,7 +240,6 @@ esac
 TOOLCHAIN_VERSION="$("$TOOLCHAIN_CC" --version | head -n 1)"
 [ -n "$TOOLCHAIN_VERSION" ] || die "无法读取 $TOOLCHAIN_CC 的版本信息。"
 
-# 校验树内源码版本与 Kconfig 记录一致，避免在错误版本上静默构建。
 SRC_VERSION="$(
 	{
 		sed -n 's/^VERSION = //p' "$ROOTFS_BUSYBOX_SRC/Makefile" | head -n 1
@@ -288,7 +258,6 @@ if [ "$ROOTFS_BUSYBOX_JOBS" -eq 0 ]; then
 fi
 [ "$ROOTFS_BUSYBOX_JOBS" -le 256 ] || die "ROOTFS_BUSYBOX_JOBS=$ROOTFS_BUSYBOX_JOBS 超过上限 256。"
 
-# ---- fastfetch：缺失时自动构建，安装前做静态 ELF 审计 ----
 if [ "$ROOTFS_FASTFETCH" = "y" ]; then
 	if [ ! -f "$FASTFETCH_BIN" ]; then
 		[ -x "$NPC_HOME/scripts/build_fastfetch.sh" ] || die \
@@ -326,7 +295,6 @@ info "工具链：$TOOLCHAIN_CC（$TOOLCHAIN_TARGET）"
 info "目标：$ROOTFS_BUSYBOX_MARCH / $ROOTFS_BUSYBOX_MABI / 静态"
 info "构建目录：$ROOTFS_BUSYBOX_BUILD_DIR"
 
-# ---- BusyBox out-of-tree 配置 ----
 if [ ! -f "$ROOTFS_BUSYBOX_BUILD_DIR/.config" ]; then
 	info "生成 BusyBox defconfig ..."
 	if ! make -C "$ROOTFS_BUSYBOX_SRC" O="$ROOTFS_BUSYBOX_BUILD_DIR" \
@@ -337,8 +305,6 @@ if [ ! -f "$ROOTFS_BUSYBOX_BUILD_DIR/.config" ]; then
 	fi
 fi
 
-# 只改输出目录中的 .config；symbol 的写入方式必须是 Kconfig 能识别的
-# "KEY=value" 或 "# KEY is not set"。
 set_config_raw() {
 	local key="$1"
 	local value="$2"
@@ -395,7 +361,6 @@ if ! make -C "$ROOTFS_BUSYBOX_SRC" O="$ROOTFS_BUSYBOX_BUILD_DIR" \
 fi
 [ -f "$BUSYBOX_BIN" ] || die "BusyBox 编译结束但找不到 $BUSYBOX_BIN"
 
-# ---- ELF 审计：64 位 RISC-V、lp64d、静态、无解释器 ----
 if ! ELF_AUDIT_RESULT="$("$ELF_AUDIT_BIN" --kind busybox "$BUSYBOX_BIN")"; then
 	die "ELF 审计失败：$BUSYBOX_BIN"
 fi
@@ -403,7 +368,6 @@ IFS=$'\t' read -r ELF_FLAGS ELF_ARCH ELF_ABI <<<"$ELF_AUDIT_RESULT"
 info "ELF 审计通过：ELF64 RISC-V，$ELF_FLAGS，Tag_RISCV_arch=$ELF_ARCH"
 [ -n "$ELF_ABI" ] && info "ELF Tag_RISCV_abi：$ELF_ABI"
 
-# ---- 生成最小 rootfs 树 ----
 safe_rm_rf "$ROOTFS_TREE"
 install -d -m 0755 \
 	"$ROOTFS_TREE/bin" \
@@ -477,7 +441,6 @@ EOF
 	INIT_KIND="busybox-init"
 fi
 
-# ---- 生成 newc + gzip initramfs ----
 CPIO_TMP="$ROOTFS_OUT_DIR/.busybox-initramfs.cpio.tmp.$$"
 IMAGE_TMP="$ROOTFS_IMAGE.tmp.$$"
 cleanup() {

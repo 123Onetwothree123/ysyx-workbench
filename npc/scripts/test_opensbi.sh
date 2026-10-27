@@ -1,19 +1,4 @@
 #!/usr/bin/env bash
-#
-# OpenSBI NPC 冒烟测试：
-#   1. 构建最小 S 模式 payload（链接到 SBI_NEXT_ADDR）；
-#   2. 以 FW_PAYLOAD 方式构建 OpenSBI（固件 + payload 放进一个 ELF）；
-#   3. 用已构建的 direct-NPC 运行，检查 OpenSBI banner、SBI 控制台与
-#      S-mode 入口标记。
-#
-# 前置条件：
-#   - 已运行 make rv64_sbi_defconfig（SBI_ENABLE=y、SDB=y）；
-#   - 已构建 npc/build/ysyx_26030103_npc。
-#
-# 用法：
-#   make sbi-test                 # 或 make opensbi-test
-#   NPC_BIN=/path/to/npc SBI_TEST_TIMEOUT=30 ./scripts/test_opensbi.sh
-#
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

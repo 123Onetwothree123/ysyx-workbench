@@ -1,20 +1,4 @@
 #!/usr/bin/env bash
-#
-# RustSBI NPC 冒烟测试：
-#   1. 构建最小 S 模式 payload（链接到 SBI_NEXT_ADDR）；
-#   2. 构建 RustSBI 固件（可选内嵌 DTB）；
-#   3. 把固件补齐到 next-stage 偏移后拼上 payload，用 direct-NPC 运行；
-#   4. 检查 RustSBI banner、S-mode 入口、SBI ecall 和可选 FDT 节点。
-#
-# 前置条件：
-#   - 已运行 make rv64_sbi_defconfig（SBI_ENABLE=y、SDB=y）；
-#   - 已构建 npc/build/ysyx_26030103_npc；
-#   - 已安装 Rust target riscv64imac-unknown-none-elf。
-#
-# 用法：
-#   make sbi-test SBI_IMPL=rustsbi
-#   make sbi-test SBI_IMPL=rustsbi SBI_FDT_ENABLE=y
-#
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

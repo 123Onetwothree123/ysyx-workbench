@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-#
-# Compatibility entry point for the C++ profile merger.
-#
-# Profile resolution, fragment merging and the c_conf/kconfig_contract calls
-# live in npc/tools/merge_config.cpp.
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

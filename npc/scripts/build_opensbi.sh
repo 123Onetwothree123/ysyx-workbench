@@ -1,34 +1,4 @@
 #!/usr/bin/env bash
-#
-# 构建 NPC 平台的 OpenSBI 固件。
-#
-# 该脚本是 SBI_IMPL=opensbi 的实现后端；Makefile 只负责按 SBI_IMPL
-# 分派，不包含任何 OpenSBI 专属逻辑。后续 RustSBI 应提供同签名的
-# scripts/build_rustsbi.sh。
-#
-# 输入（全部来自 Makefile 的 SBI_ENV，也允许手工覆盖）：
-#   SBI_ENABLE             必须为 y
-#   SBI_PLATFORM           OpenSBI PLATFORM，目前只支持 npc
-#   SBI_FW_BASE            固件链接/加载地址
-#   SBI_FW_SIZE            固件区域最大尺寸
-#   SBI_NEXT_ADDR          next-stage S 模式入口
-#   SBI_BUILD_JOBS         make -j 并行度，0 表示 nproc
-#   SBI_FDT_ENABLE         是否内嵌并传递 DTB（y/n）
-#   SBI_FDT_PATH           DTS/DTB 源文件
-#   SBI_FDT_ADDR           DTB 最终加载/传递地址
-#   SBI_FDT_OUT_DIR        DTB 输出目录
-#   SBI_TOOLCHAIN_PREFIX   RISC-V GCC 前缀
-#   SBI_ISA / SBI_ABI      固件 ISA/ABI（默认 rv64ima_zicsr_zifencei/lp64）
-#   SBI_LD                 链接器（默认为支持 PIE 的 ld.lld）
-#   SBI_OUT_DIR            输出目录，默认 npc/build/opensbi
-#   SBI_VENDOR_DIR         OpenSBI 源码目录
-#   SBI_PAYLOAD_PATH       可选；非空时构建 FW_PAYLOAD 测试镜像
-#
-# 输出：
-#   $SBI_OUT_DIR/fw.bin    可直接加载的固件
-#   $SBI_OUT_DIR/fw.elf    带调试信息的 ELF
-#   $SBI_OUT_DIR/fw.info   来源 commit、配置和大小摘要
-#
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -63,7 +33,6 @@ SBI_OUT_DIR="${SBI_OUT_DIR:-$NPC_HOME/build/opensbi}"
 SBI_FDT_OUT_DIR="${SBI_FDT_OUT_DIR:-$SBI_OUT_DIR/fdt}"
 SBI_PAYLOAD_PATH="${SBI_PAYLOAD_PATH:-}"
 
-# 固定来源，便于报告/复现。
 OPENSBI_VERSION="v1.9"
 OPENSBI_COMMIT="cbf9f6734dd85a982c63e3cb5db7ffe09da839ca"
 

@@ -1,16 +1,4 @@
 #!/usr/bin/env bash
-# 交叉编译 fastfetch（RV64GC / lp64d），供 Debian riscv64 rootfs 使用。
-#
-# 源码：vendor/fastfetch（官方 2.70.0，普通文件，非 submodule）
-# 工具链：riscv64-linux-gnu-gcc（可用 CROSS_COMPILE 覆盖）
-# 输出：
-#   npc/build/fastfetch/fastfetch
-#   npc/build/fastfetch/fastfetch.info
-#
-# 默认静态链接，避免依赖目标 rootfs 的 glibc 版本。若静态链接确实不可行，
-# 可用 FASTFETCH_LINK_TYPE=dynamic 重新构建；.info 会列出 DT_NEEDED。
-#
-# 本脚本只做 out-of-tree 构建，不修改 vendor/fastfetch。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,7 +42,6 @@ else
     GENERATOR="Unix Makefiles"
 fi
 
-# 每次从干净目录配置，避免残留 cache 把静态/动态或主机库带进来。
 rm -rf "$BUILD_DIR"
 mkdir -p "$OUT_DIR"
 : > "$LOG"
@@ -81,8 +68,6 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 EOF
 
-# 与当前 fastfetch CMakeLists.txt 的选项名保持一致。
-# 所有外部图形/桌面/网络/压缩/脚本依赖关闭，只保留 Linux 基础信息检测。
 CMAKE_OPTIONS=(
     -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN"
     -DCMAKE_BUILD_TYPE=Release

@@ -1,30 +1,4 @@
 #!/usr/bin/env bash
-#
-# 构建 NPC 的 OpenSBI FW_JUMP + U-Boot S-mode EFI 启动镜像。
-#
-# 该脚本不下载/编译 Linux；Debian EFI vmlinux 和 BusyBox initramfs
-# 只作为调用者提供的输入文件嵌入。U-Boot 板级复用 vendor/u-boot 的
-# nemu_riscv64_smode_defconfig：NPC 与 NEMU 在 S-mode 看到相同的
-# UART/CLINT/PLIC 地址和 SBI 接口，区别只在 NPC 的 450 MHz DTB 与
-# 可配置的 RAM 大小。
-#
-# 固定布局（默认 64 MiB；128 MiB 配置只把 DTB 移到 0x87f00000）：
-#   0x80000000  OpenSBI FW_JUMP（预留 SBI_FW_SIZE，默认 2 MiB）
-#   0x80200000  U-Boot（CONFIG_TEXT_BASE / SBI_NEXT_ADDR）
-#   0x80600000  可选 EFI 测试应用（默认 initrddump.efi）
-#   0x80800000  可选 initramfs
-#   0x81000000  可选 EFI 内核（Debian install/vmlinux）
-#   0x83f00000  64 MiB 配置的 DTB（128 MiB 时为 0x87f00000）
-#   0x84000000  64 MiB RAM 结束（128 MiB 时为 0x88000000）
-#
-# 所有地址都来自 Makefile/Kconfig 传入的环境变量；脚本只负责校验
-# 实际文件大小、拼接和生成摘要。最终 raw image 由 C++ 工具
-# tools/pack_uboot_image.cpp 生成（Makefile 通过 NPC_UBOOT_PACK_BIN 传入）。
-#
-# 输出（$NPC_UBOOT_OUT_DIR，默认 npc/build/uboot）：
-#   npc-uboot.bin        direct-NPC 可直接加载的 raw binary
-#   npc-uboot.bin.info   布局、大小、SHA256、运行命令
-#
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -153,9 +127,6 @@ mkdir -p "$OUT"
 info "配置：$CONFIG_FILE"
 info "RAM：0x$(printf '%x' "$RAM_BASE_NUM")+0x$(printf '%x' "$RAM_SIZE_NUM")，DTB 0x$(printf '%x' "$DTB_ADDR_NUM")"
 
-# ---------------------------------------------------------------------------
-# 1) U-Boot：板级与 NEMU 相同（同地址 UART/CLINT/PLIC + OpenSBI SBI）。
-# ---------------------------------------------------------------------------
 info "构建 U-Boot（$UBOOT_DIR，O=$UBOOT_BUILD）"
 make -C "$UBOOT_DIR" O="$UBOOT_BUILD" ARCH=riscv \
 	CROSS_COMPILE="$CROSS_COMPILE" "$UBOOT_DEFCONFIG" \
@@ -163,8 +134,6 @@ make -C "$UBOOT_DIR" O="$UBOOT_BUILD" ARCH=riscv \
 make -C "$UBOOT_DIR" O="$UBOOT_BUILD" ARCH=riscv \
 	CROSS_COMPILE="$CROSS_COMPILE" olddefconfig \
 	</dev/null >>"$OUT/uboot-defconfig.log" 2>&1
-# 只在构建产物 .config 中覆盖 bootdelay，不修改 vendor/u-boot 的
-# defconfig。负数表示跳过 autoboot，直接进入 U-Boot prompt。
 sed -i "s/^CONFIG_BOOTDELAY=.*/CONFIG_BOOTDELAY=$BOOTDELAY/" \
 	"$UBOOT_BUILD/.config"
 make -C "$UBOOT_DIR" O="$UBOOT_BUILD" ARCH=riscv \
@@ -189,9 +158,6 @@ done
 grep -qx "CONFIG_TEXT_BASE=0x$(printf '%x' "$NEXT_NUM")" "$UBOOT_BUILD/.config" || \
 	die "U-Boot CONFIG_TEXT_BASE 与 SBI_NEXT_ADDR=0x$(printf '%x' "$NEXT_NUM") 不一致"
 
-# ---------------------------------------------------------------------------
-# 2) OpenSBI FW_JUMP + NPC DTB（timebase/RAM 来自当前 NPC 配置）。
-# ---------------------------------------------------------------------------
 info "生成 NPC DTB + OpenSBI FW_JUMP"
 NPC_CONFIG_FILE="$CONFIG_FILE" \
 NPC_HOME="$NPC_HOME" \
@@ -233,9 +199,6 @@ DTB_PATH="$OUT/dtb/npc.dtb"
 [[ -f "$DTB_PATH" ]] || die "没有生成 $DTB_PATH"
 DTB_BYTES="$(stat -c '%s' "$DTB_PATH")"
 
-# ---------------------------------------------------------------------------
-# 3) 可选载荷路径解析。
-# ---------------------------------------------------------------------------
 if [[ -n "$EFI_APP_PATH" ]]; then
 	EFI_APP="$(resolve_path "$EFI_APP_PATH")"
 else
@@ -284,9 +247,6 @@ for pair in \
 	fi
 done
 
-# ---------------------------------------------------------------------------
-# 4) 拼接 raw image：与 NEMU 一样从 0x80000000 起，地址写进文件偏移。
-# ---------------------------------------------------------------------------
 info "打包 $OUT/npc-uboot.bin"
 
 NPC_UBOOT_PACK_BIN="${NPC_UBOOT_PACK_BIN:-$WORKBENCH_HOME/npc/tools/build/pack_uboot_image}"

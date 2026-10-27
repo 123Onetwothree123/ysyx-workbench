@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-#
-# Compatibility entry point for the C++ Linux-image packer.
-#
-# The Image header checks, initramfs format detection, DTB hash verification,
-# RAM layout checks and binary assembly live in
-# npc/tools/pack_linux_image.cpp.
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

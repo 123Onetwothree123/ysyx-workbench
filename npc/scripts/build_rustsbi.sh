@@ -1,16 +1,4 @@
 #!/usr/bin/env bash
-# 构建 NPC 最小 RustSBI M 模式固件。
-#
-# 输入来自 npc/.config（与 Kconfig.sbi 对齐）：
-#   CONFIG_SBI_FW_BASE / CONFIG_SBI_FW_SIZE / CONFIG_SBI_NEXT_ADDR
-#   CONFIG_SBI_PLATFORM / CONFIG_SBI_BUILD_JOBS / CONFIG_HAS_PMP
-#   CONFIG_XLEN / CONFIG_HAS_S
-#
-# 输出：
-#   npc/build/rustsbi/rustsbi-npc.elf
-#   npc/build/rustsbi/rustsbi-npc.bin
-#
-# 本脚本只构建 RustSBI，不修改 .config，也不影响 make opensbi / 默认构建。
 set -euo pipefail
 
 NPC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -81,8 +69,6 @@ if [ "$(cfg_bool CONFIG_HAS_S n)" != "y" ]; then
     die "RustSBI 需要 S 模式（CONFIG_HAS_S=y）；当前配置没有 S 模式"
 fi
 
-# 允许命令行/环境变量临时覆盖，便于验证不同 next-stage 布局；默认仍以
-# Kconfig 为准。
 FW_BASE="${SBI_FW_BASE:-$(cfg_value CONFIG_SBI_FW_BASE 0x80000000)}"
 FW_SIZE="${SBI_FW_SIZE:-$(cfg_value CONFIG_SBI_FW_SIZE 0x00200000)}"
 NEXT_ADDR="${SBI_NEXT_ADDR:-$(cfg_value CONFIG_SBI_NEXT_ADDR 0x80200000)}"
@@ -104,7 +90,6 @@ RAM_SIZE="${NPC_RAM_SIZE:-0x04000000}"
 # 的 timebase 与 RTL/OpenSBI 一致。
 SYNTH_FREQ="$(cfg_value CONFIG_SYNTH_FREQ 450)"
 TIMEBASE_FREQ="${SBI_TIMEBASE_FREQ:-$((SYNTH_FREQ * 1000000))}"
-# SBI_HAS_PMP=y 可用于 QEMU 交叉验证（QEMU virt 实现了 PMP，NPC 默认没有）。
 HAS_PMP="${SBI_HAS_PMP:-$(cfg_bool CONFIG_HAS_PMP n)}"
 case "$HAS_PMP" in
     y|Y|1|true|TRUE) HAS_PMP=y ;;

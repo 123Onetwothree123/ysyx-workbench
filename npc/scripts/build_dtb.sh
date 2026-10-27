@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-#
-# Compatibility entry point for the C++ DTB generator.
-#
-# The configuration/ISA/MMU derivation, address validation and metadata output
-# live in npc/tools/build_dtb.cpp.  This wrapper exists because NEMU and the
-# SBI/Linux scripts invoke scripts/build_dtb.sh directly.
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
