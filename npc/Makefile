@@ -55,7 +55,15 @@ NPC_CONFIG_EFFECTIVE_JSON := $(abspath $(BUILD_DIR)/generated/npc_config.effecti
 # RTL elaboration 使用嵌套 typed JSON；effective flat JSON 保留给 C++ 模块、
 # 脚本和仍按扁平键读取的兼容路径。
 NPC_CONFIG_TYPED_JSON := $(abspath $(BUILD_DIR)/generated/npc_config.typed.json)
-NPC_CONFIG_GEN_SRC := $(abspath tools/npc_config_gen.cpp)
+NPC_CONFIG_GEN_DIR := $(abspath tools/NPCConfigGEN)
+NPC_CONFIG_GEN_SOURCES := $(wildcard $(NPC_CONFIG_GEN_DIR)/*.cpp) \
+	$(wildcard $(NPC_CONFIG_GEN_DIR)/JsonConfig/*.cpp) \
+	$(wildcard $(NPC_CONFIG_GEN_DIR)/DeriveConfig/*.cpp) \
+	$(wildcard $(NPC_CONFIG_GEN_DIR)/ModuleConfig/*.cpp) \
+	$(wildcard $(NPC_CONFIG_GEN_DIR)/TypedConfig/*.cpp)
+NPC_CONFIG_GEN_MODULE := $(NPC_CONFIG_GEN_DIR)/npc.configgen.ixx
+NPC_CONFIG_GEN_CMAKE := $(NPC_CONFIG_GEN_DIR)/CMakeLists.txt
+NPC_CONFIG_GEN_BUILD_DIR := $(abspath tools/build/NPCConfigGEN)
 NPC_CONFIG_GEN_BIN := $(abspath tools/build/npc_config_gen)
 NPC_CONFIG_STAMP  := $(abspath $(BUILD_DIR)/generated/npc_config.stamp)
 # C++ 生成器负责所有派生值。Makefile 只转发 Kconfig 风格的 CONFIG_*
@@ -94,9 +102,11 @@ test:
 $(NPC_CONFIG_JSON): .config $(CONF)
 	$(CONF) -s --syncconfig $(Kconfig)
 
-$(NPC_CONFIG_GEN_BIN): $(NPC_CONFIG_GEN_SRC)
-	@mkdir -p $(@D)
-	$(CXX) -std=c++23 -O2 -Wall -Wextra -o $@ $<
+$(NPC_CONFIG_GEN_BIN): $(NPC_CONFIG_GEN_SOURCES) $(NPC_CONFIG_GEN_MODULE) $(NPC_CONFIG_GEN_CMAKE)
+	@cmake -S "$(NPC_CONFIG_GEN_DIR)" -B "$(NPC_CONFIG_GEN_BUILD_DIR)" -G Ninja \
+		-DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$(CXX)"
+	@cmake --build "$(NPC_CONFIG_GEN_BUILD_DIR)" --target npc_config_gen -j $(NPROC)
+	@cp -f "$(NPC_CONFIG_GEN_BUILD_DIR)/npc_config_gen" "$@"
 
 .PHONY: npc-config-stamp-force
 npc-config-stamp-force:

@@ -15,7 +15,7 @@ rm-distclean += include/generated include/config csrc/generated \
 	tools/build/npc_config_gen tools/build/kconfig_contract \
 	tools/build/linux_boot_test tools/build/pack_uboot_image \
 	tools/build/audit_rootfs_elf tools/build/build_dtb \
-	tools/build/pack_linux_image \
+	tools/build/pack_linux_image tools/build/NPCConfigGEN \
 	.config .config.old tools/build/merge_config
 silent := -s
 

@@ -11,7 +11,15 @@ PERF_MODULE_SRC := $(NPC_HOME)/csrc/PerfStats.ixx
 RESULT_MODULE_SRC := $(NPC_HOME)/csrc/NPCSimResult/NPCSimResult.ixx
 RESULT_IMPL_SRC := $(NPC_HOME)/csrc/NPCSimResult/NPCSimResult.cpp
 NPC_CONFIG_JSON := $(NPC_HOME)/include/generated/npc_config.json
-NPC_CONFIG_GEN_SRC := $(NPC_HOME)/tools/npc_config_gen.cpp
+NPC_CONFIG_GEN_DIR := $(NPC_HOME)/tools/NPCConfigGEN
+NPC_CONFIG_GEN_SOURCES := $(wildcard $(NPC_CONFIG_GEN_DIR)/*.cpp) \
+	$(wildcard $(NPC_CONFIG_GEN_DIR)/JsonConfig/*.cpp) \
+	$(wildcard $(NPC_CONFIG_GEN_DIR)/DeriveConfig/*.cpp) \
+	$(wildcard $(NPC_CONFIG_GEN_DIR)/ModuleConfig/*.cpp) \
+	$(wildcard $(NPC_CONFIG_GEN_DIR)/TypedConfig/*.cpp)
+NPC_CONFIG_GEN_MODULE := $(NPC_CONFIG_GEN_DIR)/npc.configgen.ixx
+NPC_CONFIG_GEN_CMAKE := $(NPC_CONFIG_GEN_DIR)/CMakeLists.txt
+NPC_CONFIG_GEN_BUILD_DIR := $(abspath $(BUILD_DIR)/npc_config_gen-cmake)
 NPC_CONFIG_GEN := $(BUILD_DIR)/npc_config_gen
 NPC_CONFIG_MODULE_SRC := $(BUILD_DIR)/npc_config.ixx
 NPC_CONFIG_MODULE_OBJ := $(BUILD_DIR)/npc_config.ixx.o
@@ -172,8 +180,11 @@ $(BUILD_DIR)/PerfStats.o: $(PERF_MODULE_SRC) $(BUILD_DIR)/std.o
 $(NPC_CONFIG_JSON): $(NPC_HOME)/.config
 	$(MAKE) -C $(NPC_HOME) npc-config-json
 
-$(NPC_CONFIG_GEN): $(NPC_CONFIG_GEN_SRC) | $(BUILD_DIR)
-	$(CXX) -std=c++23 -O2 -Wall -Wextra -o $@ $<
+$(NPC_CONFIG_GEN): $(NPC_CONFIG_GEN_SOURCES) $(NPC_CONFIG_GEN_MODULE) $(NPC_CONFIG_GEN_CMAKE) | $(BUILD_DIR)
+	@cmake -S "$(NPC_CONFIG_GEN_DIR)" -B "$(NPC_CONFIG_GEN_BUILD_DIR)" -G Ninja \
+		-DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$(CXX)"
+	@cmake --build "$(NPC_CONFIG_GEN_BUILD_DIR)" --target npc_config_gen -j $(shell nproc)
+	@cp -f "$(NPC_CONFIG_GEN_BUILD_DIR)/npc_config_gen" "$@"
 
 $(NPC_CONFIG_MODULE_SRC): $(NPC_CONFIG_JSON) $(NPC_CONFIG_GEN) | $(BUILD_DIR)
 	$(NPC_CONFIG_GEN) --config-json $(NPC_CONFIG_JSON) \
