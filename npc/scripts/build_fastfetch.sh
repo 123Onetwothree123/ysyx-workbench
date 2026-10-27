@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ELF_AUDIT_BIN="${ELF_AUDIT_BIN:-$REPO_ROOT/npc/tools/build/audit_rootfs_elf}"
 SRC_DIR="$REPO_ROOT/vendor/fastfetch"
 OUT_DIR="${FASTFETCH_OUT_DIR:-$REPO_ROOT/npc/build/fastfetch}"
 BUILD_DIR="$OUT_DIR/build"
@@ -11,7 +12,6 @@ OUT_INFO="$OUT_DIR/fastfetch.info"
 LOG="$OUT_DIR/build.log"
 CROSS_COMPILE="${CROSS_COMPILE:-riscv64-linux-gnu-}"
 CC="${CC:-${CROSS_COMPILE}gcc}"
-READELF="${READELF:-${CROSS_COMPILE}readelf}"
 LINK_TYPE="${FASTFETCH_LINK_TYPE:-static}"
 JOBS="${FASTFETCH_JOBS:-$(nproc 2>/dev/null || echo 4)}"
 KEEP_BUILD="${FASTFETCH_KEEP_BUILD:-0}"
@@ -23,8 +23,8 @@ die() {
 
 command -v "$CC" >/dev/null 2>&1 || die "找不到交叉编译器 $CC"
 command -v cmake >/dev/null 2>&1 || die "找不到 cmake"
-command -v "$READELF" >/dev/null 2>&1 || die "找不到 $READELF"
 command -v file >/dev/null 2>&1 || die "找不到 file"
+[ -x "$ELF_AUDIT_BIN" ] || die "找不到 ELF 审计工具 $ELF_AUDIT_BIN"
 [ -f "$SRC_DIR/CMakeLists.txt" ] || die "缺少 $SRC_DIR/CMakeLists.txt；vendor/fastfetch 未就绪"
 [ -f "$SRC_DIR/LICENSE" ] || die "缺少 $SRC_DIR/LICENSE"
 
@@ -130,20 +130,12 @@ cmake --build "$BUILD_DIR" --parallel "$JOBS" 2>&1 | tee -a "$LOG"
 cp -f "$BUILD_DIR/fastfetch" "$OUT_BIN"
 chmod 755 "$OUT_BIN"
 
-ELF_CLASS="$("$READELF" -h "$OUT_BIN" | sed -n 's/^ *Class: *//p')"
-ELF_MACHINE="$("$READELF" -h "$OUT_BIN" | sed -n 's/^ *Machine: *//p')"
-RISCV_ARCH="$("$READELF" -A "$OUT_BIN" | sed -n 's/.*Tag_RISCV_arch: *//p' | tr -d '"')"
-[ "$ELF_CLASS" = "ELF64" ] || die "输出不是 ELF64: $ELF_CLASS"
-echo "$ELF_MACHINE" | grep -q 'RISC-V' || die "输出不是 RISC-V: $ELF_MACHINE"
-echo "$RISCV_ARCH" | grep -q '^rv64' || die "Tag_RISCV_arch 不是 rv64: $RISCV_ARCH"
-echo "$RISCV_ARCH" | grep -q '_d' || die "Tag_RISCV_arch 缺少 double-float: $RISCV_ARCH"
-
-NEEDED="$("$READELF" -d "$OUT_BIN" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' || true)"
-if [ -n "$NEEDED" ]; then
-    RUNTIME_DEPS="$(echo "$NEEDED" | paste -sd ' ' -)"
-else
-    RUNTIME_DEPS="none"
-fi
+ELF_AUDIT_OPT=()
+[ "$LINK_TYPE" = "dynamic" ] && ELF_AUDIT_OPT=(--allow-dynamic)
+ELF_AUDIT_OUT="$("$ELF_AUDIT_BIN" --kind fastfetch "${ELF_AUDIT_OPT[@]}" "$OUT_BIN")"
+IFS=$'\t' read -r ELF_FLAGS RISCV_ARCH ELF_ABI <<<"$ELF_AUDIT_OUT"
+RUNTIME_DEPS="none"
+[ "$LINK_TYPE" = "dynamic" ] && RUNTIME_DEPS="dynamic"
 
 {
     echo "fastfetch $VERSION (riscv64)"
@@ -156,18 +148,14 @@ fi
     echo "[file]"
     file "$OUT_BIN"
     echo
-    echo "[elf header]"
-    "$READELF" -h "$OUT_BIN" | grep -E 'Class:|Data:|Type:|Machine:'
-    echo
-    echo "[riscv attributes]"
-    "$READELF" -A "$OUT_BIN" | grep -E 'Tag_RISCV_arch|Tag_RISCV_stack_align'
-    echo
+    echo "[elf]"
+    echo "class=ELF64"
+    echo "machine=RISC-V"
+    echo "flags=$ELF_FLAGS"
+    echo "riscv_arch=$RISCV_ARCH"
+    echo "riscv_abi=$ELF_ABI"
     echo "[dynamic dependencies]"
-    if [ -n "$NEEDED" ]; then
-        echo "$NEEDED"
-    else
-        echo "none (statically linked, no DT_NEEDED)"
-    fi
+    echo "$RUNTIME_DEPS"
     echo
     echo "size_bytes: $(stat -c %s "$OUT_BIN")"
     echo "size_human: $(du -h "$OUT_BIN" | cut -f1)"

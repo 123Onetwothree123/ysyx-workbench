@@ -166,10 +166,9 @@ info "timebase：$MTIME_FREQ Hz（必须与 OpenSBI NPC_MTIME_FREQ 相同）"
 info "布局：SBI=0x$(printf '%x' "$FW_BASE") Image=0x$(printf '%x' "$NEXT_ADDR") DTB=0x$(printf '%x' "$FDT_ADDR")"
 
 NEMU_CONFIG_FILE="$CONFIG_FILE" \
-NPC_CONFIG_FILE="$CONFIG_FILE" \
 NPC_HOME="$WORKBENCH_HOME/npc" \
 WORKBENCH_HOME="$WORKBENCH_HOME" \
-SBI_CONFIG_FILE="$CONFIG_FILE" \
+SBI_CONFIG_JSON=/dev/null \
 SBI_FDT_PATH="$NEMU_DTS" \
 SBI_FDT_OUT_DIR="$NEMU_FDT_OUT_DIR" \
 SBI_FDT_ADDR="0x$(printf '%x' "$FDT_ADDR")" \

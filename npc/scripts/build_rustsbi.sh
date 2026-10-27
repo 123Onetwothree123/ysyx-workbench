@@ -2,7 +2,6 @@
 set -euo pipefail
 
 NPC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG_FILE="$NPC_HOME/.config"
 FW_DIR="$NPC_HOME/rustsbi-fw"
 VENDOR_DIR="$NPC_HOME/../vendor/rustsbi"
 OUT_DIR="${RUSTSBI_OUT_DIR:-${SBI_OUT_DIR:-$NPC_HOME/build/rustsbi}}"
@@ -14,42 +13,6 @@ die() {
     exit 1
 }
 
-cfg_value() {
-    local key="$1"
-    local default="$2"
-    local value=""
-    if [ -f "$CONFIG_FILE" ]; then
-        value="$(sed -n "s/^${key}=//p" "$CONFIG_FILE" | tail -n 1)"
-    fi
-    value="${value%\"}"
-    value="${value#\"}"
-    if [ -z "$value" ]; then
-        printf '%s' "$default"
-    else
-        printf '%s' "$value"
-    fi
-}
-
-cfg_bool() {
-    local key="$1"
-    local default="$2"
-    local value
-    value="$(cfg_value "$key" "$default")"
-    case "$value" in
-        y|Y|1|true|TRUE) printf 'y' ;;
-        *) printf 'n' ;;
-    esac
-}
-
-[ -f "$CONFIG_FILE" ] || die "缺少 npc/.config；请先在 npc/ 下执行 make defconfig 或 make menuconfig"
-[ -d "$FW_DIR" ] || die "缺少固件源码目录 $FW_DIR"
-[ -d "$VENDOR_DIR/library/rustsbi" ] || die "缺少 vendor/rustsbi；请确认源码已纳入仓库"
-[ -f "$FW_DIR/Cargo.lock" ] || die "缺少 $FW_DIR/Cargo.lock；拒绝在无锁文件的情况下构建"
-
-command -v cargo >/dev/null 2>&1 || die "找不到 cargo；请安装 Rust 工具链"
-command -v rustc >/dev/null 2>&1 || die "找不到 rustc；请安装 Rust 工具链"
-command -v rustup >/dev/null 2>&1 || die "找不到 rustup；无法检查 RISC-V target 是否安装"
-
 if ! rustup target list --installed | grep -qx "$TARGET"; then
     die "未安装 Rust target $TARGET。
 请执行：
@@ -60,50 +23,33 @@ if ! rustup target list --installed | grep -qx "$TARGET"; then
   rustup target add $TARGET"
 fi
 
-XLEN="$(cfg_value CONFIG_XLEN 32)"
+XLEN="${SBI_XLEN:-64}"
 if [ "$XLEN" != "64" ]; then
-    die "RustSBI NPC 固件当前只支持 RV64（CONFIG_XLEN=$XLEN）。
+    die "RustSBI NPC 固件当前只支持 RV64（SBI_XLEN=$XLEN）。
 请选择 RV64 配置，或为 RV32 单独实现启动/陷入汇编。"
 fi
-if [ "$(cfg_bool CONFIG_HAS_S n)" != "y" ]; then
-    die "RustSBI 需要 S 模式（CONFIG_HAS_S=y）；当前配置没有 S 模式"
+if [ "${SBI_HAS_S:-n}" != "y" ]; then
+    die "RustSBI 需要 S 模式（SBI_HAS_S=y）；当前配置没有 S 模式"
 fi
-
-FW_BASE="${SBI_FW_BASE:-$(cfg_value CONFIG_SBI_FW_BASE 0x80000000)}"
-FW_SIZE="${SBI_FW_SIZE:-$(cfg_value CONFIG_SBI_FW_SIZE 0x00200000)}"
-NEXT_ADDR="${SBI_NEXT_ADDR:-$(cfg_value CONFIG_SBI_NEXT_ADDR 0x80200000)}"
-PLATFORM="${SBI_PLATFORM:-$(cfg_value CONFIG_SBI_PLATFORM npc)}"
-JOBS="$(cfg_value CONFIG_SBI_BUILD_JOBS 0)"
-FDT_ENABLE="${SBI_FDT_ENABLE:-$(cfg_bool CONFIG_SBI_FDT_ENABLE n)}"
-FDT_PATH="${SBI_FDT_PATH:-$(cfg_value CONFIG_SBI_FDT_PATH dts/npc.dts)}"
-FDT_ADDR="${SBI_FDT_ADDR:-$(cfg_value CONFIG_SBI_FDT_ADDR 0x80f00000)}"
+FW_BASE="${SBI_FW_BASE:-0x80000000}"
+FW_SIZE="${SBI_FW_SIZE:-0x00200000}"
+NEXT_ADDR="${SBI_NEXT_ADDR:-0x80200000}"
+PLATFORM="${SBI_PLATFORM:-npc}"
+JOBS="${SBI_BUILD_JOBS:-0}"
+FDT_ENABLE="${SBI_FDT_ENABLE:-n}"
+FDT_PATH="${SBI_FDT_PATH:-dts/npc.dts}"
+FDT_ADDR="${SBI_FDT_ADDR:-0x80f00000}"
 FDT_OUT_DIR="${SBI_FDT_OUT_DIR:-$OUT_DIR/fdt}"
-FDT_LINUX="${SBI_FDT_LINUX:-$(cfg_bool CONFIG_LINUX_BOOT_ENABLE n)}"
-INITRAMFS_ENABLE="${SBI_INITRAMFS_ENABLE:-$(cfg_bool CONFIG_LINUX_INITRAMFS_ENABLE n)}"
-INITRAMFS_PATH="${SBI_INITRAMFS_PATH:-$(cfg_value CONFIG_LINUX_INITRAMFS_PATH "")}"
-INITRAMFS_ADDR="${SBI_INITRAMFS_ADDR:-$(cfg_value CONFIG_LINUX_INITRAMFS_ADDR 0x82000000)}"
-BOOTARGS="${SBI_BOOTARGS:-$(cfg_value CONFIG_LINUX_BOOTARGS "console=ttyS0,115200 earlycon=sbi")}"
+FDT_LINUX="${SBI_FDT_LINUX:-n}"
+INITRAMFS_ENABLE="${SBI_INITRAMFS_ENABLE:-n}"
+INITRAMFS_PATH="${SBI_INITRAMFS_PATH:-}"
+INITRAMFS_ADDR="${SBI_INITRAMFS_ADDR:-0x82000000}"
+BOOTARGS="${SBI_BOOTARGS:-console=ttyS0,115200 earlycon=sbi}"
 RAM_BASE="${NPC_RAM_BASE:-0x80000000}"
 RAM_SIZE="${NPC_RAM_SIZE:-0x04000000}"
-SYNTH_FREQ="$(cfg_value CONFIG_SYNTH_FREQ 450)"
-TIMEBASE_FREQ="${SBI_TIMEBASE_FREQ:-$((SYNTH_FREQ * 1000000))}"
-HAS_PMP="${SBI_HAS_PMP:-$(cfg_bool CONFIG_HAS_PMP n)}"
-case "$HAS_PMP" in
-    y|Y|1|true|TRUE) HAS_PMP=y ;;
-    *) HAS_PMP=n ;;
-esac
-
-case "$FW_BASE" in 0x*|0X*) ;; *) die "CONFIG_SBI_FW_BASE 必须是 0x 开头的十六进制数：$FW_BASE" ;; esac
-case "$FW_SIZE" in 0x*|0X*) ;; *) die "CONFIG_SBI_FW_SIZE 必须是 0x 开头的十六进制数：$FW_SIZE" ;; esac
-case "$NEXT_ADDR" in 0x*|0X*) ;; *) die "CONFIG_SBI_NEXT_ADDR 必须是 0x 开头的十六进制数：$NEXT_ADDR" ;; esac
-case "$FDT_ENABLE" in
-    y|Y|1|true|TRUE) FDT_ENABLE=y ;;
-    n|N|0|false|FALSE|'') FDT_ENABLE=n ;;
-    *) die "CONFIG_SBI_FDT_ENABLE 必须是 y/n：$FDT_ENABLE" ;;
-esac
-case "$FDT_ADDR" in 0x*|0X*) ;; *) die "CONFIG_SBI_FDT_ADDR 必须是 0x 开头的十六进制数：$FDT_ADDR" ;; esac
-
-CACHE_PADDING="$(cfg_value CONFIG_CACHE_PADDING 0)"
+TIMEBASE_FREQ="${SBI_TIMEBASE_FREQ:-450000000}"
+HAS_PMP="${SBI_HAS_PMP:-n}"
+CACHE_PADDING="${SBI_CACHE_PADDING:-0}"
 RESET_PC=$((0x80000000 + CACHE_PADDING))
 if [ $((FW_BASE)) -ne "$RESET_PC" ]; then
     die "CONFIG_SBI_FW_BASE=$FW_BASE 与 NPC 复位 PC=$RESET_PC（0x80000000 + CACHE_PADDING）不一致"
@@ -118,10 +64,10 @@ else
     JOBS_ARGS=(-j "$(nproc 2>/dev/null || echo 4)")
 fi
 
-if [ "$(cfg_bool CONFIG_SBI_ENABLE n)" != "y" ]; then
+if [ "${SBI_ENABLE:-n}" != "y" ]; then
     echo "提示: CONFIG_SBI_ENABLE=n，本次仅按显式请求构建 RustSBI 固件。"
 fi
-IMPL="$(cfg_value CONFIG_SBI_IMPL none)"
+IMPL="${SBI_IMPL:-none}"
 if [ "$IMPL" != "rustsbi" ]; then
     echo "提示: 当前 CONFIG_SBI_IMPL=$IMPL；make rustsbi 仍会构建 RustSBI，但默认 SBI 选择不是它。"
 fi

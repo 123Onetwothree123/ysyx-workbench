@@ -12,11 +12,6 @@
 //   cd npc && make linux-boot-test
 //   npc/tools/build/linux_boot_test
 //
-// 本程序通过显式构造 envp 调用兼容入口 scripts/build_dtb.sh 与
-// scripts/pack_linux_image.sh；入口会转发到 C++ 工具，并把
-// SBI_CONFIG_JSON 指向不存在的文件，
-// 以便工具使用测试生成的 legacy .config，避免误读工作区里已有的
-// build/generated/npc_config.effective.json。
 
 #include <array>
 #include <cerrno>
@@ -520,6 +515,29 @@ void emit_config_string(std::ostringstream &out, const std::string &key,
     out << "CONFIG_" << key << "=\"" << value << "\"\n";
 }
 
+std::string json_escape(const std::string &value) {
+    std::string result;
+    for (const char character : value) {
+        switch (character) {
+        case '"': result += "\\\""; break;
+        case '\\': result += "\\\\"; break;
+        case '\n': result += "\\n"; break;
+        case '\r': result += "\\r"; break;
+        case '\t': result += "\\t"; break;
+        default: result.push_back(character); break;
+        }
+    }
+    return result;
+}
+
+void emit_json_string(std::ostringstream &out, bool &first,
+                      const std::string &key, const std::string &value) {
+    if (!first)
+        out << ",\n";
+    first = false;
+    out << "  \"" << key << "\": \"" << json_escape(value) << "\"";
+}
+
 fs::path write_config(const fs::path &path, const Config &config) {
     std::ostringstream out;
     emit_config_int(out, "XLEN", config.xlen);
@@ -558,6 +576,47 @@ fs::path write_config(const fs::path &path, const Config &config) {
         emit_config_int(out, "FPU_FLEN", 64);
     }
     write_text(path, out.str());
+
+    std::ostringstream json;
+    json << "{\n";
+    bool first = true;
+    emit_json_string(json, first, "XLEN", std::to_string(config.xlen));
+    emit_json_string(json, first, "RISCV_M", config.m ? "y" : "n");
+    emit_json_string(json, first, "RISCV_A", config.a ? "y" : "n");
+    emit_json_string(json, first, "RISCV_C", config.c ? "y" : "n");
+    emit_json_string(json, first, "RISCV_F", config.f ? "y" : "n");
+    emit_json_string(json, first, "RISCV_D", config.d ? "y" : "n");
+    emit_json_string(json, first, "HAS_S", config.has_s ? "y" : "n");
+    emit_json_string(json, first, "HAS_U", config.has_u ? "y" : "n");
+    emit_json_string(json, first, "HAS_MMU", config.has_mmu ? "y" : "n");
+    emit_json_string(json, first, "MMU_LEVELS", std::to_string(config.levels));
+    emit_json_string(json, first, "MMU_GEOMETRY_MODE", config.geometry);
+    emit_json_string(json, first, "MMU_PAGE_SIZE_BYTES", std::to_string(config.page_size));
+    emit_json_string(json, first, "MMU_PTE_SIZE_BYTES", std::to_string(config.pte_size));
+    emit_json_string(json, first, "MMU_PAGE_TABLE_SIZE_BYTES", std::to_string(config.table_size));
+    emit_json_string(json, first, "MMU_PTE_FORMAT", config.pte_format);
+    emit_json_string(json, first, "SYNTH_FREQ", std::to_string(config.synth_freq));
+    emit_json_string(json, first, "SBI_FW_BASE", std::to_string(config.fw_base));
+    emit_json_string(json, first, "SBI_FW_SIZE", std::to_string(config.fw_size));
+    emit_json_string(json, first, "SBI_NEXT_ADDR", std::to_string(config.next_addr));
+    emit_json_string(json, first, "SBI_FDT_ADDR", std::to_string(config.fdt_addr));
+    emit_json_string(json, first, "SBI_FDT_ENABLE", config.fdt_enable ? "y" : "n");
+    emit_json_string(json, first, "SBI_FDT_PATH", config.fdt_path);
+    emit_json_string(json, first, "SBI_FDT_RESERVE_SIZE", std::to_string(config.fdt_reserve_size));
+    emit_json_string(json, first, "NPC_RAM_BASE", std::to_string(config.ram_base));
+    emit_json_string(json, first, "NPC_RAM_SIZE", std::to_string(config.ram_size));
+    emit_json_string(json, first, "LINUX_BOOT_ENABLE", config.linux ? "y" : "n");
+    emit_json_string(json, first, "LINUX_IMAGE_PATH", config.image_path);
+    emit_json_string(json, first, "LINUX_BOOTARGS", config.bootargs);
+    emit_json_string(json, first, "LINUX_INITRAMFS_ENABLE", config.initramfs ? "y" : "n");
+    emit_json_string(json, first, "LINUX_INITRAMFS_PATH", config.initramfs_path);
+    emit_json_string(json, first, "LINUX_INITRAMFS_ADDR", std::to_string(config.initramfs_addr));
+    if (config.f) {
+        emit_json_string(json, first, "FPU_IMPL", "hardfloat");
+        emit_json_string(json, first, "FPU_FLEN", "64");
+    }
+    json << "\n}\n";
+    write_text(path.string() + ".json", json.str());
     return path;
 }
 
@@ -680,11 +739,7 @@ Env common_env(const fs::path &config, const fs::path &dtb_dir) {
     Env env;
     env["NPC_HOME"] = g_ctx.npc_home.string();
     env["WORKBENCH_HOME"] = g_ctx.workbench_home.string();
-    env["SBI_CONFIG_FILE"] = config.string();
-    // build_dtb.sh 优先使用 JSON。这里显式指向不存在的文件，强制它回退到
-    // 测试生成的 legacy .config；pack_linux_image.sh 调 build_dtb.sh 时
-    // 也会继承这个变量。
-    env["SBI_CONFIG_JSON"] = config.string() + ".missing.json";
+    env["SBI_CONFIG_JSON"] = config.string() + ".json";
     env["SBI_FDT_OUT_DIR"] = dtb_dir.string();
     env["SBI_FDT_PATH"] = "dts/npc.dts";
     env["SBI_FDT_ENABLE"] = "y";

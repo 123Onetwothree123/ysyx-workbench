@@ -21,6 +21,7 @@ NPC_CONFIG_GEN_MODULE := $(NPC_CONFIG_GEN_DIR)/npc.configgen.ixx
 NPC_CONFIG_GEN_CMAKE := $(NPC_CONFIG_GEN_DIR)/CMakeLists.txt
 NPC_CONFIG_GEN_BUILD_DIR := $(abspath $(NPC_CSRC_DIR)/../tools/build/NPCConfigGEN)
 NPC_CONFIG_GEN_BIN := $(abspath $(NPC_CSRC_DIR)/../tools/build/npc_config_gen)
+include $(NPC_CONFIG_GEN_DIR)/build.mk
 NPC_SAVABLE ?= n
 NPC_CONFIG_OVERRIDE_ARGS := $(foreach item,$(filter CONFIG_%,$(MAKEOVERRIDES)),--set '$(item)')
 
@@ -51,12 +52,6 @@ STD_MODULE_OBJ := std_module.o
 
 $(NPC_CONFIG_JSON): $(NPC_CSRC_DIR)/../.config $(NPC_CSRC_DIR)/../tools/build/c_conf
 	cd $(NPC_CSRC_DIR)/.. && ./tools/build/c_conf -s --syncconfig Kconfig
-
-$(NPC_CONFIG_GEN_BIN): $(NPC_CONFIG_GEN_SOURCES) $(NPC_CONFIG_GEN_MODULE) $(NPC_CONFIG_GEN_CMAKE)
-	@cmake -S "$(NPC_CONFIG_GEN_DIR)" -B "$(NPC_CONFIG_GEN_BUILD_DIR)" -G Ninja \
-		-DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$(CXX)"
-	@cmake --build "$(NPC_CONFIG_GEN_BUILD_DIR)" --target npc_config_gen -j $(shell nproc)
-	@cp -f "$(NPC_CONFIG_GEN_BUILD_DIR)/npc_config_gen" "$@"
 
 ifeq ($(NPC_CONFIG_EXTERNAL_MODULE),1)
 $(NPC_CONFIG_MODULE): $(NPC_CONFIG_EFFECTIVE_JSON)

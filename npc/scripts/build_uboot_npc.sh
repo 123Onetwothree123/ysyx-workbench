@@ -4,7 +4,6 @@ set -euo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NPC_HOME="${NPC_HOME:-$(cd -- "$HERE/.." && pwd)}"
 WORKBENCH_HOME="${WORKBENCH_HOME:-$(cd -- "$NPC_HOME/.." && pwd)}"
-CONFIG_FILE="${NPC_UBOOT_CONFIG_FILE:-${NPC_CONFIG_FILE:-$NPC_HOME/.config}}"
 OUT="${NPC_UBOOT_OUT_DIR:-$NPC_HOME/build/uboot}"
 UBOOT_DIR="$WORKBENCH_HOME/vendor/u-boot"
 UBOOT_BUILD="$OUT/uboot-build"
@@ -121,7 +120,6 @@ fi
 
 mkdir -p "$OUT"
 
-info "配置：$CONFIG_FILE"
 info "RAM：0x$(printf '%x' "$RAM_BASE_NUM")+0x$(printf '%x' "$RAM_SIZE_NUM")，DTB 0x$(printf '%x' "$DTB_ADDR_NUM")"
 
 info "构建 U-Boot（$UBOOT_DIR，O=$UBOOT_BUILD）"
@@ -155,7 +153,6 @@ grep -qx "CONFIG_TEXT_BASE=0x$(printf '%x' "$NEXT_NUM")" "$UBOOT_BUILD/.config" 
 	die "U-Boot CONFIG_TEXT_BASE 与 SBI_NEXT_ADDR=0x$(printf '%x' "$NEXT_NUM") 不一致"
 
 info "生成 NPC DTB + OpenSBI FW_JUMP"
-NPC_CONFIG_FILE="$CONFIG_FILE" \
 NPC_HOME="$NPC_HOME" \
 WORKBENCH_HOME="$WORKBENCH_HOME" \
 SBI_ENABLE=y \

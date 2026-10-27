@@ -65,6 +65,18 @@ NPC_CONFIG_GEN_MODULE := $(NPC_CONFIG_GEN_DIR)/npc.configgen.ixx
 NPC_CONFIG_GEN_CMAKE := $(NPC_CONFIG_GEN_DIR)/CMakeLists.txt
 NPC_CONFIG_GEN_BUILD_DIR := $(abspath tools/build/NPCConfigGEN)
 NPC_CONFIG_GEN_BIN := $(abspath tools/build/npc_config_gen)
+include $(NPC_CONFIG_GEN_DIR)/build.mk
+NPC_BUILD_TOOLS_DIR := $(abspath tools/BuildTools)
+NPC_BUILD_TOOLS_SOURCES := $(wildcard $(NPC_BUILD_TOOLS_DIR)/*.cpp)
+NPC_BUILD_TOOLS_MODULE := $(NPC_BUILD_TOOLS_DIR)/npc.buildtools.ixx
+NPC_BUILD_TOOLS_CMAKE := $(NPC_BUILD_TOOLS_DIR)/CMakeLists.txt
+NPC_BUILD_TOOLS_BUILD_DIR := $(abspath tools/build/BuildTools)
+NPC_BUILD_TOOLS_STAMP := $(NPC_BUILD_TOOLS_BUILD_DIR)/.built
+NPC_BUILD_TOOLS_JOBS ?= $(shell nproc 2>/dev/null || echo 4)
+$(NPC_BUILD_TOOLS_STAMP): $(NPC_BUILD_TOOLS_SOURCES) $(NPC_BUILD_TOOLS_MODULE) $(NPC_BUILD_TOOLS_CMAKE)
+	@cmake -S "$(NPC_BUILD_TOOLS_DIR)" -B "$(NPC_BUILD_TOOLS_BUILD_DIR)" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$(CXX)"
+	@cmake --build "$(NPC_BUILD_TOOLS_BUILD_DIR)" -j $(NPC_BUILD_TOOLS_JOBS)
+	@touch $@
 NPC_CONFIG_STAMP  := $(abspath $(BUILD_DIR)/generated/npc_config.stamp)
 # C++ 生成器负责所有派生值。Makefile 只转发 Kconfig 风格的 CONFIG_*
 # 命令行覆盖；不再提供 SOC_XLEN/CHIPLINK 等裸 Make 变量兼容入口。
@@ -101,12 +113,6 @@ test:
 # constexpr 都必须是编译期常量。
 $(NPC_CONFIG_JSON): .config $(CONF)
 	$(CONF) -s --syncconfig $(Kconfig)
-
-$(NPC_CONFIG_GEN_BIN): $(NPC_CONFIG_GEN_SOURCES) $(NPC_CONFIG_GEN_MODULE) $(NPC_CONFIG_GEN_CMAKE)
-	@cmake -S "$(NPC_CONFIG_GEN_DIR)" -B "$(NPC_CONFIG_GEN_BUILD_DIR)" -G Ninja \
-		-DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$(CXX)"
-	@cmake --build "$(NPC_CONFIG_GEN_BUILD_DIR)" --target npc_config_gen -j $(NPROC)
-	@cp -f "$(NPC_CONFIG_GEN_BUILD_DIR)/npc_config_gen" "$@"
 
 .PHONY: npc-config-stamp-force
 npc-config-stamp-force:
@@ -181,16 +187,12 @@ LINUX_BOOTARGS ?= $(call unquote_config,$(CONFIG_LINUX_BOOTARGS))
 LINUX_OUT_DIR ?= $(abspath $(BUILD_DIR)/linux)
 LINUX_SBI_OUT_DIR ?= $(LINUX_OUT_DIR)/sbi
 LINUX_DTB_OUT_DIR ?= $(LINUX_OUT_DIR)/dtb
-LINUX_PACK_SRC := $(abspath tools/pack_linux_image.cpp)
-LINUX_IMAGE_COMMON := $(abspath tools/linux_image_common.hpp)
 LINUX_PACK_TOOL := $(abspath tools/build/pack_linux_image)
 # 主构建直接调用 C++ 工具；shell 入口保留给 NEMU/直接调用。
 LINUX_PACK_SCRIPT ?= $(LINUX_PACK_TOOL)
-LINUX_PACK_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
 
-$(LINUX_PACK_TOOL): $(LINUX_PACK_SRC) $(LINUX_IMAGE_COMMON)
-	@mkdir -p $(@D)
-	$(CXX) $(LINUX_PACK_CXXFLAGS) -o $@ $<
+$(LINUX_PACK_TOOL): $(NPC_BUILD_TOOLS_STAMP)
+	@cp -f "$(NPC_BUILD_TOOLS_BUILD_DIR)/pack_linux_image" "$@"
 
 pack-linux-tool: $(LINUX_PACK_TOOL)
 .PHONY: pack-linux-tool
@@ -213,15 +215,12 @@ SBI_INITRAMFS_PATH ?= $(LINUX_INITRAMFS_PATH)
 SBI_INITRAMFS_ADDR ?= $(LINUX_INITRAMFS_ADDR)
 SBI_BOOTARGS ?= $(LINUX_BOOTARGS)
 SBI_FDT_OUT_DIR ?= $(abspath $(BUILD_DIR)/dtb)
-SBI_DTB_SRC := $(abspath tools/build_dtb.cpp)
 SBI_DTB_TOOL := $(abspath tools/build/build_dtb)
 # 主构建直接调用 C++ 工具；shell 入口保留给 NEMU/直接调用。
 SBI_DTB_SCRIPT ?= $(SBI_DTB_TOOL)
-SBI_DTB_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
 
-$(SBI_DTB_TOOL): $(SBI_DTB_SRC) $(LINUX_IMAGE_COMMON)
-	@mkdir -p $(@D)
-	$(CXX) $(SBI_DTB_CXXFLAGS) -o $@ $<
+$(SBI_DTB_TOOL): $(NPC_BUILD_TOOLS_STAMP)
+	@cp -f "$(NPC_BUILD_TOOLS_BUILD_DIR)/build_dtb" "$@"
 
 build-dtb-tool: $(SBI_DTB_TOOL)
 .PHONY: build-dtb-tool
@@ -249,6 +248,10 @@ SBI_ENV = env \
 	SBI_FDT_OUT_DIR="$(SBI_FDT_OUT_DIR)" \
 	SBI_TIMEBASE_FREQ="$(SBI_TIMEBASE_FREQ)" \
 	SBI_FDT_LINUX="$(SBI_FDT_LINUX)" \
+	SBI_XLEN="$(or $(CONFIG_XLEN),64)" \
+	SBI_HAS_S="$(or $(CONFIG_HAS_S),n)" \
+	SBI_HAS_PMP="$(or $(CONFIG_HAS_PMP),n)" \
+	SBI_CACHE_PADDING="$(or $(CONFIG_CACHE_PADDING),0)" \
 	SBI_INITRAMFS_ENABLE="$(SBI_INITRAMFS_ENABLE)" \
 	SBI_INITRAMFS_PATH="$(SBI_INITRAMFS_PATH)" \
 	SBI_INITRAMFS_ADDR="$(SBI_INITRAMFS_ADDR)" \
@@ -382,7 +385,7 @@ $(LINUX_BOOT_TEST_BIN): $(LINUX_BOOT_TEST_SRC)
 	@mkdir -p $(@D)
 	$(CXX) $(LINUX_BOOT_TEST_CXXFLAGS) -o $@ $<
 
-linux-boot-test: $(LINUX_BOOT_TEST_BIN) $(LINUX_PACK_TOOL) $(SBI_DTB_TOOL)
+linux-boot-test: $(LINUX_BOOT_TEST_BIN) $(LINUX_PACK_TOOL) $(SBI_DTB_TOOL) $(NPC_CONFIG_GEN_BIN)
 	$(LINUX_BOOT_TEST_BIN)
 
 .PHONY: linux-image linux-image-clean linux-boot-test
@@ -467,9 +470,9 @@ rustsbi-clean:
 # 根文件系统（BusyBox initramfs）
 #
 # ROOTFS_ENABLE=n 时 make rootfs 明确报错，不静默跳过。当前只实现
-# BusyBox，脚本读取 .config 并在 npc/build/rootfs/ 下做 out-of-tree
+# BusyBox；Makefile 传入 ROOTFS_ENV，脚本在 npc/build/rootfs/ 下做 out-of-tree
 # 构建，不修改 vendor/busybox。ELF 审计由 C++ 工具
-# tools/audit_rootfs_elf.cpp 完成；Linux kernel 的下载、编译和启动不在
+# tools/BuildTools/audit_rootfs_elf.cpp 完成；Linux kernel 的下载、编译和启动不在
 # 本目标范围内，rootfs 只产出可被内核加载的 initramfs。
 # ============================================================================
 ROOTFS_TYPE ?= $(or $(call remove_quote,$(CONFIG_ROOTFS_TYPE)),none)
@@ -489,18 +492,17 @@ ROOTFS_BUSYBOX_INIT_SCRIPT ?= $(or $(CONFIG_ROOTFS_BUSYBOX_INIT_SCRIPT),n)
 # applet 列表本身含空格，不能使用按词匹配的 remove_quote。
 ROOTFS_BUSYBOX_APPLETS ?= $(or $(subst ",,$(CONFIG_ROOTFS_BUSYBOX_APPLETS)),sh ls cat echo mount umount mkdir mknod ps kill sleep dmesg ifconfig ip vi grep sed awk find cp mv rm ln chmod chown df du free uname hostname reboot poweroff halt switch_root mdev insmod lsmod rmmod modprobe tar gzip gunzip wc head tail sort uniq tr cut printf test true false date id whoami env pwd touch sync init)
 ROOTFS_BUSYBOX_JOBS ?= $(or $(CONFIG_ROOTFS_BUSYBOX_JOBS),0)
-ROOTFS_ELF_AUDIT_SRC := $(abspath tools/audit_rootfs_elf.cpp)
+ROOTFS_FASTFETCH ?= $(or $(CONFIG_ROOTFS_FASTFETCH),y)
+ROOTFS_FASTFETCH_PATH ?= $(or $(call remove_quote,$(CONFIG_ROOTFS_FASTFETCH_PATH)),build/fastfetch/fastfetch)
 ROOTFS_ELF_AUDIT_TOOL := $(abspath tools/build/audit_rootfs_elf)
-ROOTFS_ELF_AUDIT_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
 
-$(ROOTFS_ELF_AUDIT_TOOL): $(ROOTFS_ELF_AUDIT_SRC) $(LINUX_IMAGE_COMMON)
-	@mkdir -p $(@D)
-	$(CXX) $(ROOTFS_ELF_AUDIT_CXXFLAGS) -o $@ $<
+$(ROOTFS_ELF_AUDIT_TOOL): $(NPC_BUILD_TOOLS_STAMP)
+	@cp -f "$(NPC_BUILD_TOOLS_BUILD_DIR)/audit_rootfs_elf" "$@"
 
 audit-rootfs-elf-tool: $(ROOTFS_ELF_AUDIT_TOOL)
 .PHONY: audit-rootfs-elf-tool
 
-# 把配置一次传给实现脚本；脚本自身仍会读取 .config 并重新校验。
+# 把配置通过环境传给实现脚本；脚本不再自行解析 .config。
 ROOTFS_ENV = env \
 	ROOTFS_ENABLE="$(or $(CONFIG_ROOTFS_ENABLE),n)" \
 	ROOTFS_TYPE="$(ROOTFS_TYPE)" \
@@ -514,6 +516,8 @@ ROOTFS_ENV = env \
 	ROOTFS_BUSYBOX_INIT_SCRIPT="$(ROOTFS_BUSYBOX_INIT_SCRIPT)" \
 	ROOTFS_BUSYBOX_APPLETS="$(ROOTFS_BUSYBOX_APPLETS)" \
 	ROOTFS_BUSYBOX_JOBS="$(ROOTFS_BUSYBOX_JOBS)" \
+	ROOTFS_FASTFETCH="$(ROOTFS_FASTFETCH)" \
+	ROOTFS_FASTFETCH_PATH="$(ROOTFS_FASTFETCH_PATH)" \
 	ROOTFS_OUT_DIR="$(ROOTFS_OUT_DIR)" \
 	ROOTFS_BUSYBOX_BUILD_DIR="$(ROOTFS_BUSYBOX_BUILD_DIR)" \
 	ROOTFS_TREE="$(ROOTFS_TREE)" \

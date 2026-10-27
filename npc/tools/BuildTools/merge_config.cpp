@@ -4,11 +4,10 @@
 // scripts/merge_config.sh.  c_conf and kconfig_contract remain external
 // binaries because they are the Kconfig implementation itself.
 
-#include "linux_image_common.hpp"
+#include <unistd.h>
 
-#include <chrono>
-#include <iostream>
-#include <sstream>
+import npc.buildtools;
+import std;
 
 namespace {
 

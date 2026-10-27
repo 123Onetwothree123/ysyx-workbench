@@ -23,7 +23,6 @@ SBI_INITRAMFS_ADDR="${SBI_INITRAMFS_ADDR:-}"
 SBI_BOOTARGS="${SBI_BOOTARGS:-}"
 NPC_RAM_BASE="${NPC_RAM_BASE:-0x80000000}"
 NPC_RAM_SIZE="${NPC_RAM_SIZE:-0x04000000}"
-NPC_CONFIG_FILE="${NPC_CONFIG_FILE:-$NPC_HOME/.config}"
 SBI_TOOLCHAIN_PREFIX="${SBI_TOOLCHAIN_PREFIX:-riscv64-unknown-elf-}"
 SBI_ISA="${SBI_ISA:-rv64ima_zicsr_zifencei}"
 SBI_ABI="${SBI_ABI:-lp64}"
@@ -53,22 +52,7 @@ parse_int() {
 	printf '%d' "$((value))"
 }
 
-cfg_value() {
-	local key="$1" default="$2" value
-	if [[ -f "$NPC_CONFIG_FILE" ]]; then
-		value="$(sed -n "s/^${key}=//p" "$NPC_CONFIG_FILE" | tail -n 1)"
-	fi
-	value="${value%\"}"
-	value="${value#\"}"
-	if [[ -z "$value" ]]; then
-		printf '%s' "$default"
-	else
-		printf '%s' "$value"
-	fi
-}
-
-SYNTH_FREQ="$(parse_int CONFIG_SYNTH_FREQ "$(cfg_value CONFIG_SYNTH_FREQ 450)")"
-SBI_TIMEBASE_FREQ="$(parse_int SBI_TIMEBASE_FREQ "${SBI_TIMEBASE_FREQ:-$((SYNTH_FREQ * 1000000))}")"
+SBI_TIMEBASE_FREQ="$(parse_int SBI_TIMEBASE_FREQ "${SBI_TIMEBASE_FREQ:-450000000}")"
 
 [[ "$SBI_ENABLE" == "y" ]] || die \
 	"SBI_ENABLE=$SBI_ENABLE，SBI 固件未启用。请先运行 'make rv64_sbi_defconfig' 或 'make menuconfig' 打开 SBI。"

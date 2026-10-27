@@ -8,53 +8,56 @@ import org.json4s.jackson.JsonMethods
 /** ysyxSoC 的配置入口。
   *
   * npc/Makefile 生成的 typed JSON 是 SoC 与 NPC 共用的唯一有效配置源。
-  * 这里只读取 `soc` 段；JSON 不存在时才回退到旧环境变量，方便单独构建
-  * ysyxSoC 或兼容旧工作区。JSON 一旦存在但格式/路径错误则直接失败，
-  * 不再静默读取第二套配置。
+  * 这里只读取 `soc` 段；JSON 缺失或格式错误时直接失败。
   */
 object SoCConfig {
-  private val configPath: Option[Path] = {
+  private val configPath: Path = {
     val candidates = Seq("NPC_CONFIG_JSON", "NPC_CONFIG_EFFECTIVE_JSON")
-    candidates.iterator
+    val path = candidates.iterator
       .flatMap(name => sys.env.get(name).iterator)
       .map(_.trim)
       .find(_.nonEmpty)
       .map(Paths.get(_))
-  }
-
-  private lazy val document: Option[JValue] = configPath.map { path =>
+      .getOrElse {
+        throw new IllegalArgumentException(
+          "缺少 NPC_CONFIG_JSON；请先运行 make -C npc npc-config"
+        )
+      }
     if (!Files.isRegularFile(path)) {
       throw new IllegalArgumentException(
         s"NPC_CONFIG_JSON 指向的 SoC 配置文件不存在：$path"
       )
     }
+    path
+  }
+
+  private lazy val document: JValue = {
     try {
-      JsonMethods.parse(Files.readString(path))
+      JsonMethods.parse(Files.readString(configPath))
     } catch {
       case error: Exception =>
         throw new IllegalArgumentException(
-          s"无法解析 SoC 配置 JSON：$path：${error.getMessage}",
+          s"无法解析 SoC 配置 JSON：$configPath：${error.getMessage}",
           error
         )
     }
   }
 
-  def source: String = configPath.map(_.toString).getOrElse("<legacy environment>")
+  def source: String = configPath.toString
 
-  def hasJson: Boolean = document.isDefined
+  def hasJson: Boolean = true
 
   private def lookup(path: String): Option[JValue] = {
-    document.flatMap { root =>
-      path
-        .split('.')
-        .foldLeft(Option(root)) {
-          case (Some(JObject(fields)), segment) =>
-            fields.collectFirst {
-              case (key, value) if key == segment => value
-            }
-          case _ => None
-        }
-    }.filterNot(value => value == JNothing || value == JNull)
+    path
+      .split('.')
+      .foldLeft(Option(document)) {
+        case (Some(JObject(fields)), segment) =>
+          fields.collectFirst {
+            case (key, value) if key == segment => value
+          }
+        case _ => None
+      }
+      .filterNot(value => value == JNothing || value == JNull)
   }
 
   def int(path: String, fallback: => Int): Int = lookup(path) match {

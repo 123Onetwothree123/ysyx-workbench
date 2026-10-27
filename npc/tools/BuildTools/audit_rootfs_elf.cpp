@@ -9,12 +9,8 @@
 // The shell rootfs builder uses these only for its generated summary.  All
 // rejection rules live here, not in grep pipelines.
 
-#include "linux_image_common.hpp"
-
-#include <algorithm>
-#include <cstdint>
-#include <iostream>
-#include <sstream>
+import npc.buildtools;
+import std;
 
 namespace {
 
@@ -122,6 +118,7 @@ int main(int argc, char **argv)
 {
     try {
         std::string kind = "busybox";
+        bool allowDynamic = false;
         fs::path path;
         for (int index = 1; index < argc; ++index) {
             const std::string argument = argv[index];
@@ -129,9 +126,12 @@ int main(int argc, char **argv)
                 if (++index >= argc)
                     throw std::runtime_error("--kind 缺少参数");
                 kind = argv[index];
+            } else if (argument == "--allow-dynamic") {
+                allowDynamic = true;
             } else if (argument == "-h" || argument == "--help") {
                 std::cerr
-                    << "用法: audit_rootfs_elf [--kind busybox|fastfetch] ELF\n";
+                    << "用法: audit_rootfs_elf [--kind busybox|fastfetch] "
+                       "[--allow-dynamic] ELF\n";
                 return 0;
             } else if (argument.starts_with("-")) {
                 throw std::runtime_error("未知参数：" + argument);
@@ -204,15 +204,17 @@ int main(int argc, char **argv)
         } else {
             require(type == kEtExec || type == kEtDyn, prefix,
                     "不是可执行文件：" + path.string());
-            if (type == kEtDyn) {
+            if (type == kEtDyn && !allowDynamic) {
                 require(!hasInterpreter, prefix,
                         "static PIE 不能带动态解释器：" + path.string());
             }
         }
-        require(!hasInterpreter, prefix,
-                "存在动态解释器（INTERP）：" + path.string());
-        require(!hasNeeded, prefix,
-                "存在动态库依赖（NEEDED）：" + path.string());
+        if (!allowDynamic) {
+            require(!hasInterpreter, prefix,
+                    "存在动态解释器（INTERP）：" + path.string());
+            require(!hasNeeded, prefix,
+                    "存在动态库依赖（NEEDED）：" + path.string());
+        }
         require((flags & 0x6U) == 0x4U, prefix,
                 "不是 lp64d/double-float ABI：" + path.string());
 

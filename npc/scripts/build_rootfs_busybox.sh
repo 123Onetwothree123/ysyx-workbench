@@ -4,7 +4,6 @@ set -euo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NPC_HOME="${NPC_HOME:-$(cd -- "$HERE/.." && pwd)}"
 WORKBENCH_HOME="${WORKBENCH_HOME:-$(cd -- "$NPC_HOME/.." && pwd)}"
-CONFIG_FILE="${ROOTFS_CONFIG:-$NPC_HOME/.config}"
 
 command -v realpath >/dev/null 2>&1 || {
 	echo "错误：缺少必要工具：realpath" >&2
@@ -27,44 +26,6 @@ usage() {
   --clean   删除 ROOTFS_OUT_DIR（默认 npc/build/rootfs），不触碰
             vendor/busybox 源码。
 EOF
-}
-
-cfg_raw() {
-	local key="$1"
-	[ -f "$CONFIG_FILE" ] || return 0
-	sed -n "s/^${key}=//p" "$CONFIG_FILE" | tail -n 1
-}
-
-cfg_str() {
-	local value
-	value="$(cfg_raw "CONFIG_$1")"
-	value="${value%\"}"
-	value="${value#\"}"
-	printf '%s' "$value"
-}
-
-cfg_bool() {
-	if [ "$(cfg_raw "CONFIG_$1")" = "y" ]; then
-		printf 'y'
-	else
-		printf 'n'
-	fi
-}
-
-cfg_bool_or() {
-	local key="CONFIG_$1"
-	local default="$2"
-	local value
-	if [ -f "$CONFIG_FILE" ] && grep -Fqx -- "# $key is not set" "$CONFIG_FILE"; then
-		printf 'n'
-		return
-	fi
-	value="$(cfg_raw "$key")"
-	case "$value" in
-		y) printf 'y' ;;
-		n) printf 'n' ;;
-		*) printf '%s' "$default" ;;
-	esac
 }
 
 fastfetch_version() {
@@ -100,34 +61,21 @@ while (($# > 0)); do
 	shift
 done
 
-ROOTFS_ENABLE="${ROOTFS_ENABLE:-$(cfg_bool ROOTFS_ENABLE)}"
-ROOTFS_TYPE="${ROOTFS_TYPE:-$(cfg_str ROOTFS_TYPE)}"
+ROOTFS_ENABLE="${ROOTFS_ENABLE:-n}"
 ROOTFS_TYPE="${ROOTFS_TYPE:-none}"
-ROOTFS_BUSYBOX="${ROOTFS_BUSYBOX:-$(cfg_bool ROOTFS_BUSYBOX)}"
-
-ROOTFS_BUSYBOX_PATH="${ROOTFS_BUSYBOX_PATH:-$(cfg_str ROOTFS_BUSYBOX_PATH)}"
+ROOTFS_BUSYBOX="${ROOTFS_BUSYBOX:-n}"
 ROOTFS_BUSYBOX_PATH="${ROOTFS_BUSYBOX_PATH:-vendor/busybox}"
-ROOTFS_BUSYBOX_VERSION="${ROOTFS_BUSYBOX_VERSION:-$(cfg_str ROOTFS_BUSYBOX_VERSION)}"
 ROOTFS_BUSYBOX_VERSION="${ROOTFS_BUSYBOX_VERSION:-1.36.1}"
-ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX="${ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX:-$(cfg_str ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX)}"
 ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX="${ROOTFS_BUSYBOX_TOOLCHAIN_PREFIX:-riscv64-linux-gnu-}"
-ROOTFS_BUSYBOX_MARCH="${ROOTFS_BUSYBOX_MARCH:-$(cfg_str ROOTFS_BUSYBOX_MARCH)}"
 ROOTFS_BUSYBOX_MARCH="${ROOTFS_BUSYBOX_MARCH:-rv64gc}"
-ROOTFS_BUSYBOX_MABI="${ROOTFS_BUSYBOX_MABI:-$(cfg_str ROOTFS_BUSYBOX_MABI)}"
 ROOTFS_BUSYBOX_MABI="${ROOTFS_BUSYBOX_MABI:-lp64d}"
-ROOTFS_BUSYBOX_STATIC="${ROOTFS_BUSYBOX_STATIC:-$(cfg_bool ROOTFS_BUSYBOX_STATIC)}"
-ROOTFS_BUSYBOX_STATIC="${ROOTFS_BUSYBOX_STATIC:-y}"
-ROOTFS_BUSYBOX_INIT_SCRIPT="${ROOTFS_BUSYBOX_INIT_SCRIPT:-$(cfg_bool ROOTFS_BUSYBOX_INIT_SCRIPT)}"
-ROOTFS_BUSYBOX_INIT_SCRIPT="${ROOTFS_BUSYBOX_INIT_SCRIPT:-y}"
-ROOTFS_BUSYBOX_APPLETS="${ROOTFS_BUSYBOX_APPLETS:-$(cfg_str ROOTFS_BUSYBOX_APPLETS)}"
-ROOTFS_BUSYBOX_JOBS="${ROOTFS_BUSYBOX_JOBS:-$(cfg_raw CONFIG_ROOTFS_BUSYBOX_JOBS)}"
+ROOTFS_BUSYBOX_STATIC="${ROOTFS_BUSYBOX_STATIC:-n}"
+ROOTFS_BUSYBOX_INIT_SCRIPT="${ROOTFS_BUSYBOX_INIT_SCRIPT:-n}"
+ROOTFS_BUSYBOX_APPLETS="${ROOTFS_BUSYBOX_APPLETS:-}"
 ROOTFS_BUSYBOX_JOBS="${ROOTFS_BUSYBOX_JOBS:-0}"
-
-ROOTFS_FASTFETCH="${ROOTFS_FASTFETCH:-$(cfg_bool_or ROOTFS_FASTFETCH y)}"
-ROOTFS_FASTFETCH_PATH="${ROOTFS_FASTFETCH_PATH:-$(cfg_str ROOTFS_FASTFETCH_PATH)}"
+ROOTFS_FASTFETCH="${ROOTFS_FASTFETCH:-y}"
 ROOTFS_FASTFETCH_PATH="${ROOTFS_FASTFETCH_PATH:-build/fastfetch/fastfetch}"
-
-ROOTFS_OUT_DIR="${ROOTFS_OUT_DIR:-$(cfg_str ROOTFS_OUT_DIR)}"
+ROOTFS_OUT_DIR="${ROOTFS_OUT_DIR:-build/rootfs}"
 ROOTFS_OUT_DIR="${ROOTFS_OUT_DIR:-build/rootfs}"
 case "$ROOTFS_OUT_DIR" in
 	/*) ;;
@@ -175,7 +123,6 @@ fi
 [ -x "$ELF_AUDIT_BIN" ] || die \
 	"找不到 ELF 审计工具 $ELF_AUDIT_BIN；先运行 make -C $NPC_HOME audit-rootfs-elf-tool。"
 
-[ -f "$CONFIG_FILE" ] || die "找不到配置文件 $CONFIG_FILE；请先运行 make menuconfig 或 defconfig。"
 [ "$ROOTFS_ENABLE" = "y" ] || die \
 	"ROOTFS_ENABLE=$ROOTFS_ENABLE，rootfs 未启用。请先运行 make menuconfig 打开“根文件系统 (rootfs)”，不要静默跳过。"
 [ "$ROOTFS_BUSYBOX" = "y" ] || die "ROOTFS_ENABLE=y 但没有选择 BusyBox（ROOTFS_BUSYBOX != y）。"

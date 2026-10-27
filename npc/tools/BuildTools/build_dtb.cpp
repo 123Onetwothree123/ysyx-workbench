@@ -5,10 +5,8 @@
 // interpretation, address validation, ISA/MMU derivation and output metadata
 // live here.
 
-#include "linux_image_common.hpp"
-
-#include <iostream>
-#include <sstream>
+import npc.buildtools;
+import std;
 
 namespace {
 
@@ -128,10 +126,8 @@ int main(int argc, char **argv)
         const std::string workbenchHome = locateWorkbenchHome(npcHome);
         ConfigReader config{npcHome, workbenchHome};
 
-        if (!config.isJson()) {
-            info("配置 JSON 不存在；回退解析 legacy 文件 " +
-                 config.sourcePath());
-        }
+        if (!config.isJson())
+            info("配置 JSON 不存在；使用环境变量和默认值");
 
         const std::string fdtPathValue =
             envOrConfig("SBI_FDT_PATH", config, "CONFIG_SBI_FDT_PATH",

@@ -15,7 +15,7 @@ rm-distclean += include/generated include/config csrc/generated \
 	tools/build/npc_config_gen tools/build/kconfig_contract \
 	tools/build/linux_boot_test tools/build/pack_uboot_image \
 	tools/build/audit_rootfs_elf tools/build/build_dtb \
-	tools/build/pack_linux_image tools/build/NPCConfigGEN \
+	tools/build/pack_linux_image tools/build/NPCConfigGEN tools/build/BuildTools \
 	.config .config.old tools/build/merge_config
 silent := -s
 
@@ -24,13 +24,11 @@ MCONF         := $(KCONFIG_PATH)/../build/c_mconf
 KCONFIG_BUILD := $(KCONFIG_PATH)/build
 FIXDEP        := $(FIXDEP_PATH)/build/fixdep
 PROFILE       ?=
-MERGE_CONFIG_SRC := $(NPC_HOME)/tools/merge_config.cpp
 MERGE_CONFIG := $(NPC_HOME)/tools/build/merge_config
-MERGE_CONFIG_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
 
-$(MERGE_CONFIG): $(MERGE_CONFIG_SRC) $(NPC_HOME)/tools/linux_image_common.hpp
+$(MERGE_CONFIG): $(NPC_BUILD_TOOLS_STAMP)
 	$(Q)mkdir -p $(@D)
-	$(Q)$(CXX) $(MERGE_CONFIG_CXXFLAGS) -o $@ $<
+	$(Q)cp -f "$(NPC_BUILD_TOOLS_BUILD_DIR)/merge_config" "$@"
 
 merge-config-tool: $(MERGE_CONFIG)
 .PHONY: merge-config-tool

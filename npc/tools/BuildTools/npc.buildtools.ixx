@@ -1,36 +1,26 @@
+module;
+
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+export module npc.buildtools;
+
+import std;
+
 // Shared helpers for the C++ NPC build/audit tools.
 //
 // These tools intentionally keep the process boundary at the external
 // programs (cpp, dtc, sha256sum).  Build-system and binary-layout rules live
 // in C++; vendor programs remain ordinary child processes.
 
-#pragma once
 
-#include <algorithm>
-#include <array>
-#include <cstdlib>
-#include <cerrno>
-#include <cstdint>
-#include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
-#include <limits>
-#include <optional>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <string_view>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
 
-#include <fcntl.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
-namespace npc::linux_image {
+export namespace npc::linux_image {
 
 namespace fs = std::filesystem;
 
@@ -53,13 +43,6 @@ inline std::string firstNonEmpty(std::initializer_list<std::string> values)
             return value;
     }
     return {};
-}
-
-inline std::string stripOuterQuotes(std::string value)
-{
-    if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
-        return value.substr(1, value.size() - 2);
-    return value;
 }
 
 inline std::string removeTrailingNewlines(std::string value)
@@ -369,44 +352,25 @@ public:
              "npc_config.effective.json")
                 .string(),
         });
-        configPath_ = firstNonEmpty({
-            envValue("SBI_CONFIG_FILE"),
-            envValue("NPC_CONFIG_FILE"),
-            (fs::path{npcHome_} / ".config").string(),
-        });
-
         std::error_code error;
-        if (fs::is_regular_file(jsonPath_, error)) {
-            jsonSource_ = true;
-            configGen_ = envDefault("NPC_CONFIG_GEN",
-                                    (fs::path{npcHome_} / "tools" / "build" /
-                                     "npc_config_gen")
-                                        .string());
-            if (!fs::is_regular_file(configGen_, error) ||
-                ::access(configGen_.c_str(), X_OK) != 0) {
-                throw std::runtime_error(
-                    "找不到 npc_config_gen：" + configGen_ +
-                    "；先运行 make -C npc npc-config-tool 或设置 "
-                    "NPC_CONFIG_GEN");
-            }
+        jsonSource_ = fs::is_regular_file(jsonPath_, error);
+        if (!jsonSource_)
             return;
+        configGen_ = envDefault("NPC_CONFIG_GEN",
+                                (fs::path{npcHome_} / "tools" / "build" /
+                                 "npc_config_gen")
+                                    .string());
+        if (!fs::is_regular_file(configGen_, error) ||
+            ::access(configGen_.c_str(), X_OK) != 0) {
+            throw std::runtime_error(
+                "找不到 npc_config_gen：" + configGen_ +
+                "；先运行 make -C npc npc-config-tool 或设置 "
+                "NPC_CONFIG_GEN");
         }
-        if (fs::is_regular_file(configPath_, error)) {
-            jsonSource_ = false;
-            loadLegacyConfig();
-            return;
-        }
-        throw std::runtime_error(
-            "找不到配置 JSON：" + jsonPath_ +
-            "；先运行 make -C npc npc-config 生成，或设置 "
-            "SBI_CONFIG_FILE 使用 legacy 配置");
     }
 
     [[nodiscard]] bool isJson() const { return jsonSource_; }
-    [[nodiscard]] const std::string &sourcePath() const
-    {
-        return jsonSource_ ? jsonPath_ : configPath_;
-    }
+    [[nodiscard]] const std::string &sourcePath() const { return jsonPath_; }
     [[nodiscard]] const std::string &npcHome() const { return npcHome_; }
     [[nodiscard]] const std::string &workbenchHome() const
     {
@@ -415,70 +379,40 @@ public:
 
     std::string raw(const std::string &key)
     {
-        if (jsonSource_) {
-            const auto cached = cache_.find(key);
-            if (cached != cache_.end())
-                return cached->second;
-            const auto result = runCapture(
-                {configGen_, "--config-json", jsonPath_, "--get", key});
-            if (result.exitCode != 0)
-                throw std::runtime_error("读取配置 JSON 失败：" + jsonPath_ +
-                                         "（键 " + key + "）");
-            std::string value = removeTrailingNewlines(result.output);
-            cache_.emplace(key, value);
-            return value;
-        }
-        const auto found = legacy_.find(key);
-        return found == legacy_.end() ? std::string{} : found->second;
+        if (!jsonSource_)
+            return {};
+        const auto cached = cache_.find(key);
+        if (cached != cache_.end())
+            return cached->second;
+        const auto result =
+            runCapture({configGen_, "--config-json", jsonPath_, "--get", key});
+        if (result.exitCode != 0)
+            throw std::runtime_error("读取配置 JSON 失败：" + jsonPath_ +
+                                     "（键 " + key + "）");
+        std::string value = removeTrailingNewlines(result.output);
+        cache_.emplace(key, value);
+        return value;
     }
 
     std::string value(const std::string &key, const std::string &fallback = {})
     {
         const auto rawValue = raw(key);
-        if (rawValue.empty())
-            return fallback;
-        return jsonSource_ ? rawValue : stripOuterQuotes(rawValue);
+        return rawValue.empty() ? fallback : rawValue;
     }
 
     bool boolean(const std::string &key, bool fallback)
     {
-        if (!jsonSource_ && notSet_.contains(key))
-            return false;
         const auto rawValue = value(key, fallback ? "y" : "n");
         return rawValue == "y" || rawValue == "Y" || rawValue == "1" ||
                rawValue == "true" || rawValue == "TRUE";
     }
 
 private:
-    void loadLegacyConfig()
-    {
-        std::ifstream input{configPath_};
-        if (!input)
-            throw std::runtime_error("无法读取配置文件：" + configPath_);
-        std::string line;
-        while (std::getline(input, line)) {
-            if (line.starts_with("# ") && line.ends_with(" is not set")) {
-                const auto key = line.substr(2, line.size() - 2 -
-                                                   std::string{" is not set"}.size());
-                legacy_[key] = "";
-                notSet_.insert(key);
-                continue;
-            }
-            const auto equals = line.find('=');
-            if (equals == std::string::npos)
-                continue;
-            legacy_[line.substr(0, equals)] = line.substr(equals + 1);
-        }
-    }
-
     std::string npcHome_;
     std::string workbenchHome_;
     std::string jsonPath_;
-    std::string configPath_;
     std::string configGen_;
     bool jsonSource_ = false;
-    std::unordered_map<std::string, std::string> legacy_;
-    std::unordered_set<std::string> notSet_;
     std::unordered_map<std::string, std::string> cache_;
 };
 

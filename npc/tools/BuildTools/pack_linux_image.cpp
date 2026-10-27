@@ -4,12 +4,10 @@
 // This is the C++ implementation of the former shell body.  The shell entry
 // point remains as a compatibility wrapper for NEMU and direct callers.
 
-#include "linux_image_common.hpp"
+#include <unistd.h>
 
-#include <algorithm>
-#include <iostream>
-#include <sstream>
-#include <utility>
+import npc.buildtools;
+import std;
 
 namespace {
 
@@ -207,8 +205,8 @@ void place(std::vector<std::uint8_t> &binary,
 }
 
 std::vector<std::pair<std::string, std::string>>
-dtbEnvironment(const std::string &configFile, const std::string &dtbOutDir,
-               const std::string &fdtPath, const std::string &fdtAddr,
+dtbEnvironment(const std::string &dtbOutDir, const std::string &fdtPath,
+               const std::string &fdtAddr,
                const std::string &fwBase, const std::string &fwSize,
                const std::string &nextAddr,
                const std::string &timebaseFreq, const std::string &bootargs,
@@ -219,7 +217,6 @@ dtbEnvironment(const std::string &configFile, const std::string &dtbOutDir,
                const std::string &workbenchHome)
 {
     std::vector<std::pair<std::string, std::string>> environment{
-        {"SBI_CONFIG_FILE", configFile},
         {"SBI_FDT_OUT_DIR", dtbOutDir},
         {"SBI_FDT_PATH", fdtPath},
         {"SBI_FDT_ADDR", fdtAddr},
@@ -523,9 +520,6 @@ int main(int argc, char **argv)
         runInherit(
             {(fs::path{npcHome} / "scripts" / "build_dtb.sh").string()},
             dtbEnvironment(
-                firstNonEmpty({envValue("SBI_CONFIG_FILE"),
-                               envValue("NPC_CONFIG_FILE"),
-                               (fs::path{npcHome} / ".config").string()}),
                 fdtOutDir, fdtPathValue, hexU64(layout.fdtAddr),
                 hexU64(layout.fwBase), hexU64(layout.fwSize),
                 hexU64(layout.nextAddr), timebaseFreq, linuxBootargs,

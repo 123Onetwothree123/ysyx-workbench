@@ -1,0 +1,31 @@
+function(npc_add_std_module target)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        file(GLOB std_candidates "/usr/include/c++/*/bits/std.cc")
+        if(NOT std_candidates)
+            message(FATAL_ERROR "找不到 GCC 的 bits/std.cc")
+        endif()
+        list(SORT std_candidates)
+        list(GET std_candidates -1 std_source)
+        file(COPY ${std_source} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+        set(std_file ${CMAKE_CURRENT_BINARY_DIR}/std.cc)
+        set(std_flags)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(std_source /usr/share/libc++/v1/std.cppm)
+        if(NOT EXISTS ${std_source})
+            message(FATAL_ERROR "找不到 libc++ 的 std.cppm")
+        endif()
+        file(COPY ${std_source} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+        set(std_file ${CMAKE_CURRENT_BINARY_DIR}/std.cppm)
+        set(std_flags -stdlib=libc++)
+    else()
+        message(FATAL_ERROR "仅支持 GCC 或 Clang 的 std 模块")
+    endif()
+
+    target_sources(${target} PRIVATE
+        FILE_SET CXX_MODULES
+        BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
+        FILES ${std_file}
+    )
+    target_compile_options(${target} PRIVATE ${std_flags})
+    target_link_options(${target} PRIVATE ${std_flags})
+endfunction()

@@ -24,6 +24,7 @@ SCALA_SOURCES := $(shell find $(NPC_DIR)/src -type f -name '*.scala' | sort)
 SOC_SCALA := $(shell find $(SOC_DIR)/src -type f -name '*.scala' | sort)
 PERIP_VSRCS := $(shell find $(SOC_DIR)/perip -type f -name '*.v' | sort)
 SOC_RTL := $(SOC_DIR)/build/ysyxSoCFull.v
+SOC_CONFIG_JSON := $(NPC_DIR)/build/generated/npc_config.typed.json
 RTL_STAMP := $(RTL_DIR)/.generated
 TEST_BIN := $(BIN_DIR)/uart_soc_irq_test
 IMAGE := $(BUILD_DIR)/main.bin
@@ -42,11 +43,11 @@ $(RTL_STAMP): $(SCALA_SOURCES) Makefile
 	  $(MILL) --no-server runMain ysyx_26030103_Elaborate --target-dir $(RTL_DIR)
 	@touch $@
 
-$(SOC_RTL): $(SOC_SCALA) $(PERIP_VSRCS)
-	$(MAKE) -C $(SOC_DIR) CHIPLINK=n SOC_XLEN=32 \
-	  APB_CPU_FREQ_MHZ=450 APB_DEVICE_FREQ_MHZ=100 APB_DELAY_SCALE_FACTOR=64 \
-	  AXI_CPU_FREQ_MHZ=450 AXI_DEVICE_FREQ_MHZ=100 AXI_DELAY_SCALE_FACTOR=64 \
-	  verilog
+$(SOC_CONFIG_JSON):
+	$(MAKE) -C $(NPC_DIR) npc-config
+
+$(SOC_RTL): $(SOC_SCALA) $(PERIP_VSRCS) $(SOC_CONFIG_JSON)
+	$(MAKE) -C $(SOC_DIR) NPC_CONFIG_JSON=$(SOC_CONFIG_JSON) verilog
 
 $(IMAGE): main.S
 	@mkdir -p $(BUILD_DIR)
