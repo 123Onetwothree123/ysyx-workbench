@@ -50,6 +50,20 @@ void addFpu(TypedFields &root, const Config &values)
     addField(fpu, "fudian", TypedJson::object(std::move(fudian)));
     addField(root, "fpu", TypedJson::object(std::move(fpu)));
 }
+void addAlu(TypedFields &root, const Config &values)
+{
+    TypedFields alu;
+    addField(alu, "impl",
+             TypedJson::string(flatString(values, "ALU_IMPL", "standard")));
+    addField(alu, "adder_impl",
+             TypedJson::string(
+                 flatString(values, "ALU_ADDER_IMPL", "native")));
+    addField(alu, "carry_select_group",
+             TypedJson::integer(
+                 flatInt(values, "ALU_CARRY_SELECT_GROUP", 8)));
+    addField(root, "alu", TypedJson::object(std::move(alu)));
+}
+
 void addMdu(TypedFields &root, const Config &values)
 {
     TypedFields mdu;

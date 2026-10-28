@@ -164,6 +164,62 @@ std::vector<std::string> validate_config(const Config& values,
       err("启用 RISCV_F/D 要求 FPU_FLAGS=y：fflags 是必备状态");
     }
   }
+  const std::string alu_impl = lower_ascii(strip(derived_choice_string(
+      values, "ALU_IMPL",
+      {{"ALU_IMPL_STANDARD", "standard"},
+       {"ALU_IMPL_COMPACT", "compact"},
+       {"ALU_IMPL_EXTERNAL", "external"}},
+      "standard")));
+  if (alu_impl != "standard" && alu_impl != "compact" &&
+      alu_impl != "external") {
+    err("ALU_IMPL='" + alu_impl + "' 非法：只允许 standard/compact/external");
+  }
+  if (alu_impl == "external") {
+    err("ALU_IMPL=external 只是预留接口，当前没有外部 ALU 实现；"
+        "请选择 standard/compact");
+  }
+  for (const auto& [symbol, choice] : ChoiceList{
+           {"ALU_IMPL_STANDARD", "standard"},
+           {"ALU_IMPL_COMPACT", "compact"},
+           {"ALU_IMPL_EXTERNAL", "external"}}) {
+    if (as_bool(values, std::string(symbol), false) &&
+        std::string(choice) != alu_impl) {
+      err(std::string(symbol) + "=y 与 ALU_IMPL='" + alu_impl + "' 不一致；"
+          "请重新运行 menuconfig/olddefconfig");
+    }
+  }
+  const std::string alu_adder_impl = lower_ascii(strip(derived_choice_string(
+      values, "ALU_ADDER_IMPL",
+      {{"ALU_ADDER_NATIVE", "native"},
+       {"ALU_ADDER_RIPPLE", "ripple"},
+       {"ALU_ADDER_CARRY_SELECT", "carry_select"},
+       {"ALU_ADDER_CARRY_LOOKAHEAD", "carry_lookahead"}},
+      "native")));
+  if (alu_adder_impl != "native" && alu_adder_impl != "ripple" &&
+      alu_adder_impl != "carry_select" &&
+      alu_adder_impl != "carry_lookahead") {
+    err("ALU_ADDER_IMPL='" + alu_adder_impl +
+        "' 非法：只允许 native/ripple/carry_select/carry_lookahead");
+  }
+  for (const auto& [symbol, choice] : ChoiceList{
+           {"ALU_ADDER_NATIVE", "native"},
+           {"ALU_ADDER_RIPPLE", "ripple"},
+           {"ALU_ADDER_CARRY_SELECT", "carry_select"},
+           {"ALU_ADDER_CARRY_LOOKAHEAD", "carry_lookahead"}}) {
+    if (as_bool(values, std::string(symbol), false) &&
+        std::string(choice) != alu_adder_impl) {
+      err(std::string(symbol) + "=y 与 ALU_ADDER_IMPL='" +
+          alu_adder_impl + "' 不一致；请重新运行 menuconfig/olddefconfig");
+    }
+  }
+  if (alu_adder_impl == "carry_select") {
+    const long long group = as_int(values, "ALU_CARRY_SELECT_GROUP", 8);
+    if (group < 2 || !is_power_of_two(group) || group > 64 ||
+        xlen % group != 0) {
+      err("ALU_CARRY_SELECT_GROUP=" + std::to_string(group) +
+          " 非法：必须是能整除 XLEN 的 2 的幂（2..64）");
+    }
+  }
   const bool has_s = as_bool(values, "HAS_S", false);
   const bool has_mmu = as_bool(values, "HAS_MMU", false);
   if (has_mmu && !has_s) {

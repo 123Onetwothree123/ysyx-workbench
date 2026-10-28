@@ -16,6 +16,7 @@ std::string renderTypedJson(const Config &values, const std::string &digest,
     addField(root, "config_hash", TypedJson::string(digest));
     addIsa(root, values, xlen, socXlen);
     addFpu(root, values);
+    addAlu(root, values);
     addMdu(root, values);
     addCache(root, values);
     addFrontend(root, values);

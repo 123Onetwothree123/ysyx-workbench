@@ -195,6 +195,7 @@ void writeIfChanged(const std::string &path, const std::string &content);
 void addIsa(TypedFields &root, const Config &values, long long xlen,
             long long socXlen);
 void addFpu(TypedFields &root, const Config &values);
+void addAlu(TypedFields &root, const Config &values);
 void addMdu(TypedFields &root, const Config &values);
 void addCache(TypedFields &root, const Config &values);
 void addFrontend(TypedFields &root, const Config &values);

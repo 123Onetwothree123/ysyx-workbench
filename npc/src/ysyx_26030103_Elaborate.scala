@@ -94,6 +94,10 @@ object ysyx_26030103_Elaborate extends App {
     cfg.bool("fpu.hardfloat.tininess_before_rounding", false)
   val FPUFudianSharedDivSqrt =
     cfg.bool("fpu.fudian.shared_divsqrt", true)
+  // 整数 ALU 后端与加法器结构。旧配置没有 alu.* 字段时保持 standard/native。
+  val ALUImplName = cfg.string("alu.impl", "standard")
+  val ALUAdderImplName = cfg.string("alu.adder_impl", "native")
+  val ALUCarrySelectGroup = cfg.int("alu.carry_select_group", 8)
   val MDUImplName = cfg.string("mdu.impl", "standard")
   val MULImplName = cfg.string("mdu.mul_impl", "shift_add")
   val MULEncodingName = cfg.string("mdu.mul_encoding", "plain")
@@ -228,6 +232,13 @@ object ysyx_26030103_Elaborate extends App {
       ),
       Fudian = ysyx_26030103_FudianParams(
         SharedDivSqrt = FPUFudianSharedDivSqrt
+      )
+    ),
+    ALUImpl = ysyx_26030103_ALUImpl.FromString(ALUImplName),
+    ALUProfile = ysyx_26030103_ALUProfile(
+      Adder = ysyx_26030103_ALUAdderImpl.FromString(ALUAdderImplName),
+      AdderParams = ysyx_26030103_ALUAdderParams(
+        CarrySelectGroup = ALUCarrySelectGroup
       )
     ),
     MDUImpl = ysyx_26030103_MDUImpl.FromString(MDUImplName),

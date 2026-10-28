@@ -238,11 +238,26 @@ menu "硬件配置"
         所有 MDU 实现都必须提供统一的 ysyx_26030103_MDUInterface。
         standard：内置 MUL+DIV 路由和 NPC 自研乘除法核心。
         rocket：移植 Rocket Chip 的 MulDiv 引擎，作为独立 MDU 后端。
+        nutshell：移植 NutShell 的 MDU 乘除法引擎，支持 RV32/RV64。
         external：预留接口，当前没有外部实现。
       config MDU_IMPL_STANDARD
         bool "standard（内置 MUL+DIV）"
       config MDU_IMPL_ROCKET
         bool "Rocket Chip MulDiv"
+      config MDU_IMPL_NUTSHELL
+        bool "NutShell MDU"
+      config MDU_IMPL_IBEX
+        bool "Ibex multdiv (RV32)"
+        depends on XLEN = 32
+      config MDU_IMPL_CVE2
+        bool "CVE2 multdiv (RV32)"
+        depends on XLEN = 32
+      config MDU_IMPL_CV32E40P
+        bool "CV32E40P mult/div (RV32)"
+        depends on XLEN = 32
+      config MDU_IMPL_PICORV32
+        bool "PicoRV32 PCPI mul/div (RV32)"
+        depends on XLEN = 32
       config MDU_IMPL_EXTERNAL
         bool "external（预留，未实现）"
     endchoice
@@ -251,6 +266,11 @@ menu "硬件配置"
       string
       default "standard" if MDU_IMPL_STANDARD
       default "rocket" if MDU_IMPL_ROCKET
+      default "nutshell" if MDU_IMPL_NUTSHELL
+      default "ibex" if MDU_IMPL_IBEX && XLEN = 32
+      default "cve2" if MDU_IMPL_CVE2 && XLEN = 32
+      default "cv32e40p" if MDU_IMPL_CV32E40P && XLEN = 32
+      default "picorv32" if MDU_IMPL_PICORV32 && XLEN = 32
       default "external" if MDU_IMPL_EXTERNAL
       default "standard"
 
@@ -539,6 +559,75 @@ menu "硬件配置"
           help
             余数已为零或商已确定时提前完成。
       endmenu
+    endmenu
+
+    menu "ALU 实现"
+
+      choice
+        prompt "ALU 实现后端"
+        default ALU_IMPL_STANDARD
+        help
+          所有 ALU 后端共享统一的 ysyx_26030103_ALUInterface，上层只依赖
+          A/B/ALUCtrl/result，不直接引用子模块实现。
+          standard：加法、减法、移位、位逻辑并行计算，结果浅 mux。
+          compact：复用一个算术单元完成加减，减少一个宽加法器，面积更小，
+            代价是算术选择路径更深。
+          external：预留接口，当前没有外部 ALU 实现。
+      config ALU_IMPL_STANDARD
+        bool "standard（并行子模块）"
+      config ALU_IMPL_COMPACT
+        bool "compact（共享加减法器）"
+      config ALU_IMPL_EXTERNAL
+        bool "external（预留，未实现）"
+      endchoice
+
+      config ALU_IMPL
+        string
+        default "standard" if ALU_IMPL_STANDARD
+        default "compact" if ALU_IMPL_COMPACT
+        default "external" if ALU_IMPL_EXTERNAL
+        default "standard"
+        help
+          ALU 后端名称的字符串派生项，供 elaborator 构造工厂。配置契约
+          会从 ALU_IMPL_* 反推；两者不一致时明确报错。
+
+      choice
+        prompt "ALU 加法器实现"
+        default ALU_ADDER_NATIVE
+        help
+          加法器是 ALU 的关键组合路径。所有实现都提供相同的
+          A/B/Cin -> sum/carryOut 语义，只改变结构与面积/时延。
+          native：使用 Chisel 加法并由综合工具映射到工艺库。
+          ripple：逐位全加器，面积最小，进位链最长。
+          carry_select：分组双路加法器，用进位选择，面积和时延折中。
+          carry_lookahead：块内超前进位，块间 ripple，时延更短。
+      config ALU_ADDER_NATIVE
+        bool "native（工艺库加法）"
+      config ALU_ADDER_RIPPLE
+        bool "ripple carry"
+      config ALU_ADDER_CARRY_SELECT
+        bool "carry select"
+      config ALU_ADDER_CARRY_LOOKAHEAD
+        bool "carry lookahead"
+      endchoice
+
+      config ALU_ADDER_IMPL
+        string
+        default "native" if ALU_ADDER_NATIVE
+        default "ripple" if ALU_ADDER_RIPPLE
+        default "carry_select" if ALU_ADDER_CARRY_SELECT
+        default "carry_lookahead" if ALU_ADDER_CARRY_LOOKAHEAD
+        default "native"
+
+      config ALU_CARRY_SELECT_GROUP
+        int "carry-select 分组宽度"
+        depends on ALU_ADDER_CARRY_SELECT
+        range 2 64
+        default 8
+        help
+          carry-select 每组处理的位数，必须是能整除 XLEN 的 2 的幂。
+          RV32 可选 2/4/8/16/32，RV64 还可选 64；非法值会在
+          Kconfig 契约和 elaboration 阶段明确拒绝。
     endmenu
 
   endmenu

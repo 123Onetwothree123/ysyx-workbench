@@ -1,52 +1,54 @@
 package ysyx_26030103.exu
 import chisel3._
-import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction._
+import _root_.ysyx_26030103.config._
 
-// ALU 顶层：数据通路按复用性拆成子块。
-// Adder/Subtractor/Shifter/BitLogic 并行计算，ResultSelect 做最后的浅 mux；
-// SLT/SLTU 不单独做比较器，直接由 Subtractor 的借位派生。
-class ysyx_26030103_ALU(val XLEN: Int = 32) extends Module {
+/** 所有 ALU 后端共用的组合接口。
+  *
+  * ALU 是单拍组合执行单元，不需要 Decoupled 握手；`result` 必须只由
+  * 当前 A/B/ALUCtrl 决定，后端不得依赖隐藏状态。
+  */
+class ysyx_26030103_ALUInterface(val XLEN: Int = 32) extends Bundle {
+  require(XLEN == 32 || XLEN == 64, s"ALUInterface XLEN 非法: $XLEN")
+  val A = Input(UInt(XLEN.W))
+  val B = Input(UInt(XLEN.W))
+  val ALUCtrl = Input(UInt(CtrlWidth.W))
+  val result = Output(UInt(XLEN.W))
+}
+
+/** ALU 顶层抽象骨架。
+  *
+  * 后端实现继承本类，只实现统一接口；EXU 只依赖该抽象类型，不直接
+  * 引用 Standard/Compact 或任何加法器子模块。
+  */
+abstract class ysyx_26030103_ALU(
+    val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
+) extends Module {
+  private val XLEN = config.XLEN
   require(XLEN == 32 || XLEN == 64, s"ALU XLEN 非法: $XLEN")
-  private val ShamtWidth = if (XLEN == 64) 6 else 5
-  val io = IO(new Bundle {
-    val A = Input(UInt(XLEN.W))
-    val B = Input(UInt(XLEN.W))
-    val ALUCtrl = Input(UInt(CtrlWidth.W))
-    val result = Output(UInt(XLEN.W))
-  })
-  val AdderUnit = Module(new ysyx_26030103_ALUAdder(XLEN))
-  val SubtractorUnit = Module(new ysyx_26030103_ALUSubtractor(XLEN))
-  val ShifterUnit = Module(new ysyx_26030103_ALUShifter(XLEN))
-  val BitLogicUnit = Module(new ysyx_26030103_ALUBitLogic(XLEN))
-  val ResultSelectUnit = Module(new ysyx_26030103_ALUResultSelect(XLEN))
+  require(config.ALUImpl != ysyx_26030103_ALUImpl.External,
+    "ALU_IMPL=external 只是预留接口，当前没有外部 ALU 实现")
+  val io = IO(new ysyx_26030103_ALUInterface(XLEN))
+}
 
-  AdderUnit.io.A := io.A
-  AdderUnit.io.B := io.B
-  SubtractorUnit.io.A := io.A
-  SubtractorUnit.io.B := io.B
-  ShifterUnit.io.A := io.A
-  // 普通移位取低 6 位（RV64）或低 5 位（RV32）；W 型在 Shifter 内只取低 5 位。
-  ShifterUnit.io.shamt := io.B(ShamtWidth - 1, 0)
-  BitLogicUnit.io.A := io.A
-  BitLogicUnit.io.B := io.B
+/** ALU 工厂：按 Kconfig 选择后端。 */
+object ysyx_26030103_ALU {
+  def apply(config: ysyx_26030103_NPCConfig): ysyx_26030103_ALU = {
+    config.ALUImpl match {
+      case ysyx_26030103_ALUImpl.Standard =>
+        new ysyx_26030103_StandardALU(config)
+      case ysyx_26030103_ALUImpl.Compact =>
+        new ysyx_26030103_CompactALU(config)
+      case ysyx_26030103_ALUImpl.External =>
+        throw new NotImplementedError(
+          "ALU_IMPL=external 只是预留接口，当前没有外部 ALU 实现"
+        )
+    }
+  }
 
-  ResultSelectUnit.io.ALUCtrl := io.ALUCtrl
-  ResultSelectUnit.io.adderSum := AdderUnit.io.sum
-  ResultSelectUnit.io.subResult := SubtractorUnit.io.sub
-  ResultSelectUnit.io.slt := SubtractorUnit.io.slt
-  ResultSelectUnit.io.sltu := SubtractorUnit.io.sltu
-  ResultSelectUnit.io.sll := ShifterUnit.io.sll
-  ResultSelectUnit.io.srl := ShifterUnit.io.srl
-  ResultSelectUnit.io.sra := ShifterUnit.io.sra
-  ResultSelectUnit.io.xorResult := BitLogicUnit.io.xorResult
-  ResultSelectUnit.io.orResult := BitLogicUnit.io.orResult
-  ResultSelectUnit.io.andResult := BitLogicUnit.io.andResult
-  ResultSelectUnit.io.addw := AdderUnit.io.sumWord
-  ResultSelectUnit.io.subw := SubtractorUnit.io.subWord
-  ResultSelectUnit.io.sllw := ShifterUnit.io.sllw
-  ResultSelectUnit.io.srlw := ShifterUnit.io.srlw
-  ResultSelectUnit.io.sraw := ShifterUnit.io.sraw
-
-  io.result := ResultSelectUnit.io.result
+  /** 单元测试/直接实例化便利入口；生产路径应使用带完整配置的 apply。 */
+  def apply(xlen: Int): ysyx_26030103_ALU = {
+    require(xlen == 32 || xlen == 64, s"ALU XLEN 非法: $xlen")
+    apply(ysyx_26030103_NPCConfig(XLEN = xlen, AddressWidth = xlen))
+  }
 }

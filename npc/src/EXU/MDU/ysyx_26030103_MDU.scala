@@ -40,6 +40,16 @@ object ysyx_26030103_MDU {
         new ysyx_26030103_StandardMDU(config)
       case ysyx_26030103_MDUImpl.Rocket =>
         new ysyx_26030103_RocketMDU(config)
+      case ysyx_26030103_MDUImpl.NutShell =>
+        new ysyx_26030103_NutShellMDU(config)
+      case ysyx_26030103_MDUImpl.Ibex =>
+        new ysyx_26030103_IbexMDU(config)
+      case ysyx_26030103_MDUImpl.Cve2 =>
+        new ysyx_26030103_CVE2MDU(config)
+      case ysyx_26030103_MDUImpl.Cv32e40p =>
+        new ysyx_26030103_CV32E40PMDU(config)
+      case ysyx_26030103_MDUImpl.PicoRV32 =>
+        new ysyx_26030103_PicoRV32MDU(config)
       case ysyx_26030103_MDUImpl.External =>
         throw new NotImplementedError(
           "MDU_IMPL=external 只是预留接口，当前没有外部 MDU 实现"

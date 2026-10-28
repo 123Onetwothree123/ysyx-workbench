@@ -27,6 +27,10 @@ case class ysyx_26030103_NPCConfig(
     MULImpl: ysyx_26030103_MULImpl = ysyx_26030103_MULImpl.ShiftAdd,
     DIVImpl: ysyx_26030103_DIVImpl = ysyx_26030103_DIVImpl.Restoring,
     MDUProfile: ysyx_26030103_MDUProfile = ysyx_26030103_MDUProfile(),
+    // ALU 后端与加法器结构。ALU 是所有整数指令的必经路径，因此这里
+    // 不做 ISA 开关；后端选择只影响实现结构，不改变 RV32/RV64 语义。
+    ALUImpl: ysyx_26030103_ALUImpl = ysyx_26030103_ALUImpl.Standard,
+    ALUProfile: ysyx_26030103_ALUProfile = ysyx_26030103_ALUProfile(),
     // 目标平台
     ResetAddr: Long = 0x30000000L,
     // 架构/总线物理地址宽度。RV32 保持 32；RV64 由 elaborator 设为 64。
@@ -414,6 +418,22 @@ case class ysyx_26030103_NPCConfig(
     "MDU_IMPL=external 只是预留接口，当前没有外部 MDU 实现")
   require(!UseM || MDUImpl.Implemented,
     s"RISCV_M=y 但 MDU_IMPL=${MDUImpl.Name} 尚未接入 RTL")
+  require(MDUImpl.SupportsXLen(XLEN),
+    s"MDU_IMPL=${MDUImpl.Name} 不支持 XLEN=$XLEN；该后端只允许 RV32")
+  require(ALUImpl != ysyx_26030103_ALUImpl.External,
+    "ALU_IMPL=external 只是预留接口，当前没有外部 ALU 实现")
+  require(ALUImpl.Implemented,
+    s"ALU_IMPL=${ALUImpl.Name} 尚未接入 RTL")
+  require(ALUImpl.SupportsXLen(XLEN),
+    s"ALU_IMPL=${ALUImpl.Name} 不支持 XLEN=$XLEN")
+  require(
+    ALUProfile.Adder != ysyx_26030103_ALUAdderImpl.CarrySelect ||
+      (ALUProfile.AdderParams.CarrySelectGroup >= 2 &&
+        Integer.bitCount(ALUProfile.AdderParams.CarrySelectGroup) == 1 &&
+        XLEN % ALUProfile.AdderParams.CarrySelectGroup == 0),
+    "ALU_CARRY_SELECT_GROUP 必须是能整除 XLEN 的 2 的幂" +
+      s"（收到 ${ALUProfile.AdderParams.CarrySelectGroup}，XLEN=$XLEN）"
+  )
   private val MULParams = MDUProfile.MUL
   private val DIVBackendParams = Seq(
     MDUProfile.DIV.Restoring,
@@ -615,6 +635,8 @@ case class ysyx_26030103_NPCConfig(
     s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, F=$FOff, D=$DOff, " +
       s"fpu=${FPUImpl.Name}/flen=$FPULen, " +
       s"fpu_params=${FPUProfile.Describe(FPUImpl)}, " +
+      s"alu=${ALUImpl.Name}, " +
+      s"alu_params=${ALUProfile.Describe(ALUImpl)}, " +
       s"addr_w=$AddressWidth, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
       s"mdu=${MDUImpl.Name}, " +

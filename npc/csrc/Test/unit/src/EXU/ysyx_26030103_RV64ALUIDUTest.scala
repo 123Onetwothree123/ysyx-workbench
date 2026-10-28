@@ -5,6 +5,7 @@ import chisel3.simulator.EphemeralSimulator._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction._
+import _root_.ysyx_26030103.config._
 
 /** RV64I 数据通路定向测试：ALU 字运算/64 位运算、GPR、IDU 译码。 */
 class ysyx_26030103_RV64ALUIDUTest extends AnyFlatSpec with Matchers {
@@ -12,7 +13,10 @@ class ysyx_26030103_RV64ALUIDUTest extends AnyFlatSpec with Matchers {
 
   private def alu(ctrl: UInt, a: BigInt, b: BigInt): BigInt = {
     var result = BigInt(0)
-    simulate(new ysyx_26030103_ALU(64)) { dut =>
+    simulate(ysyx_26030103_ALU(ysyx_26030103_NPCConfig(
+      XLEN = 64,
+      AddressWidth = 64
+    ))) { dut =>
       dut.io.A.poke(a.U(64.W))
       dut.io.B.poke(b.U(64.W))
       dut.io.ALUCtrl.poke(ctrl)

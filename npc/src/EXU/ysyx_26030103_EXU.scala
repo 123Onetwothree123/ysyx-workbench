@@ -136,7 +136,7 @@ class ysyx_26030103_EXU(
     val RASPushAddr = Output(UInt(XLEN.W))
     val RASPopValid = Output(Bool())
   })
-  val ALUUnit = Module(new ysyx_26030103_ALU(XLEN))
+  val ALUUnit = Module(ysyx_26030103_ALU(config))
   val CSRUnit = Module(new ysyx_26030103_CSR(
     config.MMU, XLEN, config.UseA, config.UseC, config.UseF, config.UseD))
   CSRUnit.io.clk := clock
