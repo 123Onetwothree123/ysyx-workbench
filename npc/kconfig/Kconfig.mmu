@@ -104,7 +104,7 @@ menu "虚拟内存管理 (MMU/TLB)"
       default 4096
       # 不做 range 限制：页大小与级数/页表项数共同决定几何，Kconfig
       # 的连续 range 无法表达这些组合。RTL 只要求 2 的幂；非标准值由
-      # tools/kconfig_contract.cpp 检查几何，必要时再由 elaboration
+      # tools/KconfigContract/ 检查几何，必要时再由 elaboration
       # 按实际 RTL 能力明确拒绝。
       help
         默认 4096，即标准 Sv32/Sv39/Sv48 的 4KiB 页。

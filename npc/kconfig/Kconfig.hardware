@@ -6,7 +6,7 @@ menu "硬件配置"
       int "当前 XLEN"
       default 32
       # Kconfig 的 int/range 只能表达连续区间，无法直接写成 {32,64}；
-      # 33..63 由 tools/kconfig_contract.cpp 在配置阶段拒绝，
+      # 33..63 由 tools/KconfigContract/ 在配置阶段拒绝，
       # elaboration 也会再次校验。保持 int 是为了让现有
       # CONFIG_XLEN=32/64 的 defconfig 和脚本继续可用。
       range 32 64
@@ -132,7 +132,7 @@ menu "硬件配置"
         help
           FLEN 只允许 32 或 64。仅 F 可使用 32 或 64；启用 D 时必须
           为 64。Kconfig 的 range 不能表达离散集合，33..63 会由
-          tools/kconfig_contract.cpp 明确拒绝。
+          tools/KconfigContract/ 明确拒绝。
           默认 64，便于后续同时支持 F/D，并让 F 的 NaN-boxing 与
           D 共用同一套 64 位浮点寄存器。
 

@@ -5,13 +5,8 @@
 // 以及旧 REF 缺少 difftest_get_last_instruction 时的降级文本。
 // 断言重点是：首次失败即可看到 PC、指令字/反汇编、具体差异项。
 
-#include <cstdint>
-#include <iostream>
-#include <string>
-#include <string_view>
-#include <utility>
-
-#include "../../difftest/DifftestReport.h"
+import npc.difftest.report;
+import std;
 
 namespace {
 

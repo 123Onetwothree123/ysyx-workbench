@@ -1,9 +1,3 @@
-// Pack an NPC U-Boot firmware image from already-built artifacts.
-//
-// This is the C++ replacement for the small Python heredoc that used to live
-// in npc/scripts/build_uboot_npc.sh.  Offsets are relative to the NPC RAM
-// base (0x80000000), matching the shell script's layout calculations.
-
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
@@ -15,16 +9,13 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
 namespace {
-
 struct Payload {
     std::string name;
     std::string path;
     std::uint64_t offset;
     std::vector<std::uint8_t> bytes;
 };
-
 std::uint64_t parseNumber(const std::string &text, const char *name)
 {
     if (text.empty())
@@ -40,7 +31,6 @@ std::uint64_t parseNumber(const std::string &text, const char *name)
         throw std::runtime_error(std::string{"非法数字 "} + name + ": " + text);
     return static_cast<std::uint64_t>(value);
 }
-
 std::vector<std::uint8_t> readFile(const std::string &path)
 {
     std::ifstream input{path, std::ios::binary};
@@ -58,7 +48,6 @@ std::vector<std::uint8_t> readFile(const std::string &path)
         throw std::runtime_error("读取文件失败: " + path);
     return data;
 }
-
 void usage(const char *program)
 {
     std::cerr
@@ -67,9 +56,7 @@ void usage(const char *program)
            "FW_OFF UBOOT_OFF EFI_APP_OFF INITRAMFS_OFF KERNEL_OFF "
            "DTB_OFF RAM_SIZE\n";
 }
-
-} // namespace
-
+}
 int main(int argc, char **argv)
 {
     try {
@@ -87,7 +74,6 @@ int main(int argc, char **argv)
         };
         const std::uint64_t dtbOffset = parseNumber(argv[12], "DTB_OFF");
         const std::uint64_t ramSize = parseNumber(argv[13], "RAM_SIZE");
-
         std::vector<Payload> payloads;
         for (const auto &spec : payloadSpecs) {
             if (spec.path.empty())
@@ -98,7 +84,6 @@ int main(int argc, char **argv)
         }
         if (payloads.empty())
             throw std::runtime_error("没有可打包的载荷");
-
         std::uint64_t imageEnd = 0;
         for (const auto &payload : payloads) {
             if (payload.offset >
@@ -128,7 +113,6 @@ int main(int argc, char **argv)
                     text << std::hex << ramSize;
                     return text.str();
                 }());
-
         std::vector<Payload> ordered = payloads;
         std::sort(ordered.begin(), ordered.end(),
                   [](const Payload &left, const Payload &right) {
@@ -141,13 +125,11 @@ int main(int argc, char **argv)
                 throw std::runtime_error("载荷在 RAM 中重叠: " +
                                          previous.name + " 与 " + current.name);
         }
-
         std::vector<std::uint8_t> image(static_cast<std::size_t>(imageEnd), 0);
         for (const auto &payload : payloads) {
             std::copy(payload.bytes.begin(), payload.bytes.end(),
                       image.begin() + static_cast<std::ptrdiff_t>(payload.offset));
         }
-
         std::ofstream out{output, std::ios::binary | std::ios::trunc};
         if (!out)
             throw std::runtime_error("无法创建输出文件: " + output);
@@ -155,7 +137,6 @@ int main(int argc, char **argv)
                   static_cast<std::streamsize>(image.size()));
         if (!out)
             throw std::runtime_error("写入输出文件失败: " + output);
-
         for (const auto &payload : payloads) {
             std::cout << payload.name << "_addr=0x" << std::hex
                       << (0x80000000ULL + payload.offset) << std::dec << '\n'

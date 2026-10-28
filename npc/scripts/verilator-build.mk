@@ -105,6 +105,7 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/ImageLoader.ixx \
   $(NPC_CSRC_DIR)/DUT.ixx \
   $(NPC_CSRC_DIR)/difftest/DifftestCPUState.ixx \
+  $(NPC_CSRC_DIR)/difftest/DifftestReport.ixx \
   $(NPC_CSRC_DIR)/trace/itrace.ixx \
   $(NPC_CSRC_DIR)/trace/ftrace.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/NumberNode.ixx \
@@ -117,6 +118,7 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/sdb/SDBCommandContext.ixx \
   $(NPC_CSRC_DIR)/sdb/SDBCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/NPCEvaluationContext.ixx \
+  $(NPC_CSRC_DIR)/difftest/DifftestDetail.ixx \
   $(NPC_CSRC_DIR)/difftest/difftest.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/parser.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/expressions.ixx \

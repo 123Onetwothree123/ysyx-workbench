@@ -47,7 +47,7 @@ DifftestCPUState DifftestCPUState::ReadDUTState(DUT &dut)
 }
 bool DifftestCPUState::CheckRegs(const DifftestCPUState &DUT) const
 {
-    // 这里只做判定，不打印。失败时由 difftest.cpp 汇总完整报告，
+    // 这里只做判定，不打印。失败时由 difftest_detail.cpp 汇总完整报告，
     // 避免“只报第一个差异”与完整报告重复刷屏。
     for (std::size_t Index{0}; Index < gpr.size(); ++Index)
     {

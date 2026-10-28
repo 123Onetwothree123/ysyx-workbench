@@ -149,13 +149,22 @@ npc-config: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED
 # 配置契约：Kconfig 只能表达连续 range，这里补齐 XLEN/SOC_XLEN、
 # PTE 大小、页大小 2 的幂以及 CUSTOM A/D 高位等离散约束。
 # 校验器是纯 C++ 工具，配置阶段和回归都不再依赖 Python。
-KCONFIG_CONTRACT_SRC := $(abspath tools/kconfig_contract.cpp)
+KCONFIG_CONTRACT_DIR := $(abspath tools/KconfigContract)
+KCONFIG_CONTRACT_SOURCES := $(wildcard $(KCONFIG_CONTRACT_DIR)/*.cpp)
+KCONFIG_CONTRACT_MODULE := $(KCONFIG_CONTRACT_DIR)/npc.kconfig_contract.ixx
+KCONFIG_CONTRACT_CMAKE := $(KCONFIG_CONTRACT_DIR)/CMakeLists.txt
+KCONFIG_CONTRACT_BUILD_DIR := $(abspath tools/build/KconfigContract)
+KCONFIG_CONTRACT_STAMP := $(KCONFIG_CONTRACT_BUILD_DIR)/.built
 KCONFIG_CONTRACT_BIN := $(abspath tools/build/kconfig_contract)
-KCONFIG_CONTRACT_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
+KCONFIG_CONTRACT_JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
-$(KCONFIG_CONTRACT_BIN): $(KCONFIG_CONTRACT_SRC)
-	@mkdir -p $(@D)
-	$(CXX) $(KCONFIG_CONTRACT_CXXFLAGS) -o $@ $<
+$(KCONFIG_CONTRACT_STAMP): $(KCONFIG_CONTRACT_SOURCES) $(KCONFIG_CONTRACT_MODULE) $(KCONFIG_CONTRACT_CMAKE)
+	@cmake -S "$(KCONFIG_CONTRACT_DIR)" -B "$(KCONFIG_CONTRACT_BUILD_DIR)" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$(CXX)"
+	@cmake --build "$(KCONFIG_CONTRACT_BUILD_DIR)" -j $(KCONFIG_CONTRACT_JOBS)
+	@touch $@
+
+$(KCONFIG_CONTRACT_BIN): $(KCONFIG_CONTRACT_STAMP)
+	@cp -f "$(KCONFIG_CONTRACT_BUILD_DIR)/kconfig_contract" "$@"
 
 kconfig-contract-check: $(KCONFIG_CONTRACT_BIN)
 	$(KCONFIG_CONTRACT_BIN) --defconfigs
@@ -377,13 +386,22 @@ linux-image-clean:
 # 不构建/运行 Linux，也不需要 NPC 仿真器。
 # 测试器是纯 C++ 工具，通过兼容脚本调用 C++ DTB/pack 工具；
 # 不再依赖 Python。
-LINUX_BOOT_TEST_SRC := $(abspath tools/linux_boot_test.cpp)
+LINUX_BOOT_TEST_DIR := $(abspath tools/LinuxBootTest)
+LINUX_BOOT_TEST_SOURCES := $(wildcard $(LINUX_BOOT_TEST_DIR)/*.cpp)
+LINUX_BOOT_TEST_MODULE := $(LINUX_BOOT_TEST_DIR)/npc.linux_boot_test.ixx
+LINUX_BOOT_TEST_CMAKE := $(LINUX_BOOT_TEST_DIR)/CMakeLists.txt
+LINUX_BOOT_TEST_BUILD_DIR := $(abspath tools/build/LinuxBootTest)
+LINUX_BOOT_TEST_STAMP := $(LINUX_BOOT_TEST_BUILD_DIR)/.built
 LINUX_BOOT_TEST_BIN := $(abspath tools/build/linux_boot_test)
-LINUX_BOOT_TEST_CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra
+LINUX_BOOT_TEST_JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
-$(LINUX_BOOT_TEST_BIN): $(LINUX_BOOT_TEST_SRC)
-	@mkdir -p $(@D)
-	$(CXX) $(LINUX_BOOT_TEST_CXXFLAGS) -o $@ $<
+$(LINUX_BOOT_TEST_STAMP): $(LINUX_BOOT_TEST_SOURCES) $(LINUX_BOOT_TEST_MODULE) $(LINUX_BOOT_TEST_CMAKE)
+	@cmake -S "$(LINUX_BOOT_TEST_DIR)" -B "$(LINUX_BOOT_TEST_BUILD_DIR)" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$(CXX)"
+	@cmake --build "$(LINUX_BOOT_TEST_BUILD_DIR)" -j $(LINUX_BOOT_TEST_JOBS)
+	@touch $@
+
+$(LINUX_BOOT_TEST_BIN): $(LINUX_BOOT_TEST_STAMP)
+	@cp -f "$(LINUX_BOOT_TEST_BUILD_DIR)/linux_boot_test" "$@"
 
 linux-boot-test: $(LINUX_BOOT_TEST_BIN) $(LINUX_PACK_TOOL) $(SBI_DTB_TOOL) $(NPC_CONFIG_GEN_BIN)
 	$(LINUX_BOOT_TEST_BIN)
@@ -932,7 +950,8 @@ simtest: $(NPC_CONFIG_MODULE) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTO
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))' \
 		NPC_SAVABLE='$(VERILATOR_SAVABLE)' \
-		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)'
+		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)' \
+		default
 
 # Always enter the SoC sub-build.  Its own config stamp and Scala dependencies
 # decide whether regeneration is necessary; checking only for the final file
@@ -964,7 +983,8 @@ $(BIN): $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WR
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))' \
 		NPC_SAVABLE='$(VERILATOR_SAVABLE)' \
-		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)'
+		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)' \
+		default
 $(BIN_NPC): $(NVBOARD_DIRECT_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(SAVABLE_VERILATOR_FLAG) $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_WARN_FLAGS) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
@@ -983,7 +1003,8 @@ $(BIN_NPC): $(NVBOARD_DIRECT_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $
 		NPC_USER_CXXFLAGS='$(USER_CXXFLAGS)' \
 		NPC_CSRC_DIR='$(abspath $(CSRC_DIR))' \
 		NPC_SAVABLE='$(VERILATOR_SAVABLE)' \
-		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)'
+		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)' \
+		default
 
 # arch-test / CI 通过递归 make 调用 run 时没有交互终端。SDB 在 EOF 上会
 # 立刻退出并报告“未触发陷阱”，程序实际根本没跑；这里在非 tty 下自动加
