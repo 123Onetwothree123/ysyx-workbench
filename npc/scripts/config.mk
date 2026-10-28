@@ -8,7 +8,6 @@ endif
 
 Q            := @
 KCONFIG_PATH := $(NPC_HOME)/tools/kconfig
-FIXDEP_PATH  := $(NPC_HOME)/tools/fixdep
 Kconfig      := $(NPC_HOME)/Kconfig
 CONFIG_CONTRACT := $(NPC_HOME)/tools/build/kconfig_contract
 rm-distclean += include/generated include/config csrc/generated \
@@ -22,7 +21,6 @@ silent := -s
 CONF          := $(KCONFIG_PATH)/../build/c_conf
 MCONF         := $(KCONFIG_PATH)/../build/c_mconf
 KCONFIG_BUILD := $(KCONFIG_PATH)/build
-FIXDEP        := $(FIXDEP_PATH)/build/fixdep
 PROFILE       ?=
 MERGE_CONFIG := $(NPC_HOME)/tools/build/merge_config
 
@@ -44,10 +42,7 @@ $(KCONFIG_BUILD)/CMakeCache.txt:
 	$(Q)mkdir -p $(KCONFIG_BUILD)
 	$(Q)cd $(KCONFIG_BUILD) && cmake -G Ninja ..
 
-$(FIXDEP):
-	$(Q)$(MAKE) $(silent) -C $(FIXDEP_PATH)
-
-menuconfig: $(MCONF) $(CONF) $(FIXDEP) $(CONFIG_CONTRACT)
+menuconfig: $(MCONF) $(CONF) $(CONFIG_CONTRACT)
 	$(Q)TERM=xterm LC_ALL=C.utf8 $(MCONF) $(Kconfig)
 	$(Q)$(CONF) $(silent) --syncconfig $(Kconfig)
 	$(Q)$(CONFIG_CONTRACT) --config .config
@@ -55,13 +50,13 @@ menuconfig: $(MCONF) $(CONF) $(FIXDEP) $(CONFIG_CONTRACT)
 savedefconfig: $(CONF)
 	$(Q)$< $(silent) --$@=configs/defconfig $(Kconfig)
 
-%defconfig: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT)
+%defconfig: $(CONF) $(CONFIG_CONTRACT)
 	$(Q)$(CONFIG_CONTRACT) --config configs/$@
 	$(Q)$< $(silent) --defconfig=configs/$@ $(Kconfig)
 	$(Q)$< $(silent) --syncconfig $(Kconfig)
 	$(Q)$(CONFIG_CONTRACT) --config .config
 
-profile-defconfig: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT) $(MERGE_CONFIG)
+profile-defconfig: $(CONF) $(CONFIG_CONTRACT) $(MERGE_CONFIG)
 	$(Q)if [ -z "$(strip $(PROFILE))" ]; then \
 		echo "错误：PROFILE 为空。" >&2; \
 		echo "用法：make profile-defconfig PROFILE=rv64_linux" >&2; \
@@ -69,7 +64,7 @@ profile-defconfig: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT) $(MERGE_CONFIG)
 	fi
 	$(Q)$(MERGE_CONFIG) "$(PROFILE)"
 
-%_profile: $(CONF) $(FIXDEP) $(CONFIG_CONTRACT) $(MERGE_CONFIG)
+%_profile: $(CONF) $(CONFIG_CONTRACT) $(MERGE_CONFIG)
 	$(Q)$(MERGE_CONFIG) "$*"
 
 .PHONY: menuconfig savedefconfig defconfig profile-defconfig
@@ -78,8 +73,3 @@ distclean: clean
 	-@rm -rf $(rm-distclean)
 
 .PHONY: distclean
-
-define call_fixdep
-	@$(FIXDEP) $(1) $(2) unused > $(1).tmp
-	@mv $(1).tmp $(1)
-endef
