@@ -230,14 +230,67 @@ menu "硬件配置"
       endmenu
     endmenu
 
-    config MDU_IMPL
-      string
-      default "standard"
+    choice
+      prompt "MDU 实现"
       depends on RISCV_M
+      default MDU_IMPL_STANDARD
       help
         所有 MDU 实现都必须提供统一的 ysyx_26030103_MDUInterface。
-        当前只有 standard（内置 MUL+DIV 路由）实现；external 是
-        Scala 侧的预留枚举，暂不通过 Kconfig 选择。
+        standard：内置 MUL+DIV 路由和 NPC 自研乘除法核心。
+        rocket：移植 Rocket Chip 的 MulDiv 引擎，作为独立 MDU 后端。
+        external：预留接口，当前没有外部实现。
+      config MDU_IMPL_STANDARD
+        bool "standard（内置 MUL+DIV）"
+      config MDU_IMPL_ROCKET
+        bool "Rocket Chip MulDiv"
+      config MDU_IMPL_EXTERNAL
+        bool "external（预留，未实现）"
+    endchoice
+
+    config MDU_IMPL
+      string
+      default "standard" if MDU_IMPL_STANDARD
+      default "rocket" if MDU_IMPL_ROCKET
+      default "external" if MDU_IMPL_EXTERNAL
+      default "standard"
+
+    menu "Rocket MDU 参数"
+      depends on MDU_IMPL_ROCKET
+
+      config ROCKET_MUL_UNROLL
+        int "Rocket 乘法展开因子"
+        range 1 8
+        default 1
+        help
+          传给 Rocket Chip MulDiv 的 mulUnroll；越大组合路径越宽、拍数越少。
+
+      config ROCKET_DIV_UNROLL
+        int "Rocket 除法展开因子"
+        range 1 8
+        default 1
+        help
+          传给 Rocket Chip MulDiv 的 divUnroll；越大组合路径越宽、拍数越少。
+
+      config ROCKET_MUL_EARLY_OUT
+        bool "Rocket 乘法提前结束"
+        default n
+        help
+          传给 Rocket Chip MulDiv 的 mulEarlyOut。
+
+      config ROCKET_DIV_EARLY_OUT
+        bool "Rocket 除法提前结束"
+        default n
+        help
+          传给 Rocket Chip MulDiv 的 divEarlyOut。
+
+      config ROCKET_DIV_EARLY_OUT_GRANULARITY
+        int "Rocket 除法提前结束粒度"
+        range 1 8
+        default 1
+        depends on ROCKET_DIV_EARLY_OUT
+        help
+          传给 Rocket Chip MulDiv 的 divEarlyOutGranularity。
+    endmenu
     menu "乘法器配置"
       depends on RISCV_M
 

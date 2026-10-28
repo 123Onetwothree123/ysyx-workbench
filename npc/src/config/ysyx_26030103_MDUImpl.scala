@@ -10,16 +10,21 @@ object ysyx_26030103_MDUImpl {
     val Name = "standard"
     val Implemented = true
   }
+  case object Rocket extends ysyx_26030103_MDUImpl {
+    val Name = "rocket"
+    val Implemented = true
+  }
   case object External extends ysyx_26030103_MDUImpl {
     val Name = "external"
     val Implemented = false
   }
 
-  val All: Seq[ysyx_26030103_MDUImpl] = Seq(Standard, External)
+  val All: Seq[ysyx_26030103_MDUImpl] = Seq(Standard, Rocket, External)
 
   def FromString(s: String): ysyx_26030103_MDUImpl =
     s.trim.toLowerCase match {
       case "standard" => Standard
+      case "rocket" => Rocket
       case "external" => External
       case other =>
         throw new IllegalArgumentException(

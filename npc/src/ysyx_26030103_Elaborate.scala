@@ -162,6 +162,14 @@ object ysyx_26030103_Elaborate extends App {
       Restoring = divParams("restoring"),
       NonRestoring = divParams("nonrestoring"),
       SRT = divParams("srt")
+    ),
+    Rocket = ysyx_26030103_RocketMDUParams(
+      MULUnroll = cfg.int("mdu.rocket.mul_unroll", 1),
+      DIVUnroll = cfg.int("mdu.rocket.div_unroll", 1),
+      MULEarlyOut = cfg.bool("mdu.rocket.mul_early_out", false),
+      DIVEarlyOut = cfg.bool("mdu.rocket.div_early_out", false),
+      DIVEarlyOutGranularity =
+        cfg.int("mdu.rocket.div_early_out_granularity", 1)
     )
   )
   val SDBEnable = cfg.bool("debug.sdb", false)

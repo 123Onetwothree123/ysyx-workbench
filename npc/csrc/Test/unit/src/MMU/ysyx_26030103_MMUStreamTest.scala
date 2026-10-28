@@ -28,7 +28,7 @@ class ysyx_26030103_MMUStreamTest extends AnyFlatSpec with Matchers {
       dut.io.resp.bits.paddr.poke(0.U)
       dut.io.resp.bits.fault.poke(false.B)
       dut.io.resp.bits.cause.poke(0.U)
-      dut.io.resp.bits.tval.poke(0.U)
+      dut.io.resp.bits.tval.poke(0x80000100L.U)
 
       dut.io.fetchValid.poke(true.B)
       dut.io.fetchVaddr.poke(0x80000100L.U)

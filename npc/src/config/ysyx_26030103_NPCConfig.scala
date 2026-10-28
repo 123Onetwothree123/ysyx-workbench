@@ -445,6 +445,14 @@ case class ysyx_26030103_NPCConfig(
     require(params.IterBits >= 1 && params.IterBits <= 4,
       "DIVIterBits必须在1到4之间")
   }
+  val RocketParams = MDUProfile.Rocket
+  require(RocketParams.MULUnroll >= 1 && RocketParams.MULUnroll <= 8,
+    "ROCKET_MUL_UNROLL必须在1到8之间")
+  require(RocketParams.DIVUnroll >= 1 && RocketParams.DIVUnroll <= 8,
+    "ROCKET_DIV_UNROLL必须在1到8之间")
+  require(RocketParams.DIVEarlyOutGranularity >= 1 &&
+    RocketParams.DIVEarlyOutGranularity <= 8,
+    "ROCKET_DIV_EARLY_OUT_GRANULARITY必须在1到8之间")
   // 压缩树核心包含 MULPipeline+1 个弹性结果槽。迭代移位加法核心始终只允许
   // 一笔在途请求，不受这个对它并不适用的设置影响。MDU 还会增加一个独立的
   // DIV 槽位。

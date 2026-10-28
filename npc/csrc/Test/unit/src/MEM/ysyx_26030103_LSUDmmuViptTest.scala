@@ -67,14 +67,15 @@ class ysyx_26030103_LSUDmmuViptTest extends AnyFlatSpec with Matchers {
   private def pokeResp(
       dut: ysyx_26030103_LSUDmmuHarness,
       fault: Boolean,
-      paddr: Long
+      paddr: Long,
+      vaddr: Long
   ): Unit = {
     dut.io.resp.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
     dut.io.resp.bits.id.poke(1.U)
     dut.io.resp.bits.paddr.poke(paddr.U(32.W))
     dut.io.resp.bits.fault.poke(fault.B)
     dut.io.resp.bits.cause.poke((if (fault) 13 else 0).U(32.W))
-    dut.io.resp.bits.tval.poke(0.U(32.W))
+    dut.io.resp.bits.tval.poke(vaddr.U(32.W))
   }
 
   private def resetDut(
@@ -122,7 +123,7 @@ class ysyx_26030103_LSUDmmuViptTest extends AnyFlatSpec with Matchers {
       long(dut.io.req.bits.vaddr) should be(Va)
       bool(dut.io.arvalid) should be(false)
       clock.step() // 请求握手后进入 xwait 才接收翻译响应
-      pokeResp(dut, fault = false, paddr = Pa)
+      pokeResp(dut, fault = false, paddr = Pa, vaddr = Va)
       dut.io.resp.valid.poke(true.B)
       clock.step()
       dut.io.resp.valid.poke(false.B)
@@ -167,7 +168,7 @@ class ysyx_26030103_LSUDmmuViptTest extends AnyFlatSpec with Matchers {
 
       waitUntil(clock, bool(dut.io.req.valid), "MMU 翻译请求未发出")
       clock.step() // 进入 xwait
-      pokeResp(dut, fault = true, paddr = 0L)
+      pokeResp(dut, fault = true, paddr = 0L, vaddr = VaFault)
       dut.io.resp.valid.poke(true.B)
       clock.step()
       dut.io.resp.valid.poke(false.B)
@@ -208,7 +209,7 @@ class ysyx_26030103_LSUDmmuViptTest extends AnyFlatSpec with Matchers {
       bool(dut.io.awvalid) should be(false)
       bool(dut.io.wvalid) should be(false)
       clock.step() // 翻译请求握手
-      pokeResp(dut, fault = false, paddr = Pa)
+      pokeResp(dut, fault = false, paddr = Pa, vaddr = Va)
       dut.io.resp.valid.poke(true.B)
       clock.step()
       dut.io.resp.valid.poke(false.B)
@@ -255,7 +256,7 @@ class ysyx_26030103_LSUDmmuViptTest extends AnyFlatSpec with Matchers {
       bool(dut.io.awvalid) should be(false)
       bool(dut.io.wvalid) should be(false)
       clock.step() // 进入 xwait
-      pokeResp(dut, fault = true, paddr = 0L)
+      pokeResp(dut, fault = true, paddr = 0L, vaddr = VaFault)
       dut.io.resp.valid.poke(true.B)
       clock.step()
       dut.io.resp.valid.poke(false.B)

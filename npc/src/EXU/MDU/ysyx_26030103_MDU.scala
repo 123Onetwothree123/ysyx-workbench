@@ -38,6 +38,8 @@ object ysyx_26030103_MDU {
     config.MDUImpl match {
       case ysyx_26030103_MDUImpl.Standard =>
         new ysyx_26030103_StandardMDU(config)
+      case ysyx_26030103_MDUImpl.Rocket =>
+        new ysyx_26030103_RocketMDU(config)
       case ysyx_26030103_MDUImpl.External =>
         throw new NotImplementedError(
           "MDU_IMPL=external 只是预留接口，当前没有外部 MDU 实现"

@@ -161,6 +161,20 @@ void addMdu(TypedFields &root, const Config &values)
     addField(div, "srt", TypedJson::object(std::move(srt)));
     addField(mdu, "div", TypedJson::object(std::move(div)));
 
+    TypedFields rocket;
+    addField(rocket, "mul_unroll",
+             TypedJson::integer(flatInt(values, "ROCKET_MUL_UNROLL", 1)));
+    addField(rocket, "div_unroll",
+             TypedJson::integer(flatInt(values, "ROCKET_DIV_UNROLL", 1)));
+    addField(rocket, "mul_early_out",
+             TypedJson::boolean(flatBool(values, "ROCKET_MUL_EARLY_OUT")));
+    addField(rocket, "div_early_out",
+             TypedJson::boolean(flatBool(values, "ROCKET_DIV_EARLY_OUT")));
+    addField(rocket, "div_early_out_granularity",
+             TypedJson::integer(
+                 flatInt(values, "ROCKET_DIV_EARLY_OUT_GRANULARITY", 1)));
+    addField(mdu, "rocket", TypedJson::object(std::move(rocket)));
+
     addField(root, "mdu", TypedJson::object(std::move(mdu)));
 }
 

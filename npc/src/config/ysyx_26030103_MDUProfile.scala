@@ -39,7 +39,16 @@ case class ysyx_26030103_DIVProfile(
   }
 }
 
+case class ysyx_26030103_RocketMDUParams(
+    MULUnroll: Int = 1,
+    DIVUnroll: Int = 1,
+    MULEarlyOut: Boolean = false,
+    DIVEarlyOut: Boolean = false,
+    DIVEarlyOutGranularity: Int = 1
+)
+
 case class ysyx_26030103_MDUProfile(
     MUL: ysyx_26030103_MULProfile = ysyx_26030103_MULProfile(),
-    DIV: ysyx_26030103_DIVProfile = ysyx_26030103_DIVProfile()
+    DIV: ysyx_26030103_DIVProfile = ysyx_26030103_DIVProfile(),
+    Rocket: ysyx_26030103_RocketMDUParams = ysyx_26030103_RocketMDUParams()
 )
