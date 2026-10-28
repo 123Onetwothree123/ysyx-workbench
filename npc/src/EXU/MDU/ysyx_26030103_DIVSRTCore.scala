@@ -7,10 +7,11 @@ import _root_.ysyx_26030103.config._
 class ysyx_26030103_DIVSRTCore(
     config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
 ) extends ysyx_26030103_DIVCore(config.XLEN) {
+  private val Params = config.MDUProfile.DIV.For(config.DIVImpl)
   private val CoreWidth = config.XLEN
-  private val Radix = config.DIVRadix //除法基数
+  private val Radix = Params.Radix //除法基数
   private val DigitBits = ysyx_26030103_MULBoothConfig.BoothBits(Radix) //单个基数数字位数
-  private val IterationsPerCycle = config.DIVIterBits //每拍处理的基数数字数
+  private val IterationsPerCycle = Params.IterBits //每拍处理的基数数字数
   private val CycleDigitBits = DigitBits * IterationsPerCycle //每拍处理的总位数
   private val CycleCount = (CoreWidth + CycleDigitBits - 1) / CycleDigitBits //迭代轮数
   private val PaddedBits = CycleCount * CycleDigitBits //补齐后的被除数宽度
@@ -109,7 +110,7 @@ class ysyx_26030103_DIVSRTCore(
   val NextRemainder = SelectedRemainder //本周期结束余数
   val NextQuotient = SelectedQuotient //本周期结束商
   val NextDividend = (DividendReg << CycleDigitBits)(PaddedBits - 1, 0) //被除数推进
-  val EarlyFinish = if (config.DIVEarlyOut) NextDividend === 0.U && NextRemainder === 0.S else false.B //后续全为零且余数不再变化
+  val EarlyFinish = if (Params.EarlyOut) NextDividend === 0.U && NextRemainder === 0.S else false.B //后续全为零且余数不再变化
   val RemainingCycles = (CycleCount - 1).U(CounterWidth.W) - Count //提前结束时尚未展开的周期数
   val RemainingShift = RemainingCycles * CycleDigitBits.U //提前结束时尚未展开的位数
   val AlignedEarlyQuotient = (NextQuotient << RemainingShift)(QuotientWidth - 1, 0).asSInt //补齐被省略的低位零

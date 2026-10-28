@@ -276,7 +276,7 @@ class ysyx_26030103_EXU(
     MDUInputBlockedByIRQ && !PendingMDU && !OlderPipelineBusy
 
   if (config.UseM) {
-    val MDUUnit = Module(new ysyx_26030103_MDU(config))
+    val MDUUnit = Module(ysyx_26030103_MDU(config))
     // MDU请求保存在顺序指令队列中。这样，即使最老结果仍在
     // 等待LSU/WBU级，流水乘法器也能接收连续的M扩展指令。
     val MDUQueueDepth = config.MDUMaxInflight

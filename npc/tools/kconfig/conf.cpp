@@ -580,9 +580,12 @@ static int run_conf(int ac, char **av)
 			/*
 			 * syncconfig is invoked during the build stage.
 			 * Suppress distracting "configuration written to ..."
+			 * New symbols use their defaults; interactive prompts belong to
+			 * menuconfig/oldconfig, not the non-interactive build sync.
 			 */
 			conf_set_message_callback(nullptr);
 			sync_kconfig = 1;
+			input_mode = olddefconfig;
 			break;
 		case defconfig:
 		case savedefconfig:

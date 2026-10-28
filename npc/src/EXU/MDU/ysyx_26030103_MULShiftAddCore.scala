@@ -9,12 +9,12 @@ class ysyx_26030103_MULShiftAddCore(
 ) extends ysyx_26030103_MULCore(config.MULEffectiveWidth) {
   private val OperandWidth = config.MULEffectiveWidth
   private val ProductWidth = 2 * OperandWidth
-  private val UseBooth = config.MULEncoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth
-  private val BoothRadix = if (UseBooth) config.MULRadix else 2 //单个Booth基数
+  private val UseBooth = config.MDUProfile.MUL.Encoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth
+  private val BoothRadix = if (UseBooth) config.MDUProfile.MUL.Radix else 2 //单个Booth基数
   private val BoothBits = if (UseBooth) ysyx_26030103_MULBoothConfig.BoothBits(BoothRadix) else 1 //单个Booth组宽度
-  private val BaseGroupsPerCycle = if (UseBooth) (config.MULIterBits + BoothBits - 1) / BoothBits else 1 //未分块时每拍处理的组数
-  private val GroupsPerCycle = if (UseBooth) ((BaseGroupsPerCycle + config.MULSplit - 1) / config.MULSplit).max(1) else 1 //分块后每拍Booth组数
-  private val CycleBits = if (UseBooth) GroupsPerCycle * BoothBits else ((config.MULIterBits + config.MULSplit - 1) / config.MULSplit).max(1) //每拍实际处理位数
+  private val BaseGroupsPerCycle = if (UseBooth) (config.MDUProfile.MUL.ShiftAdd.IterBits + BoothBits - 1) / BoothBits else 1 //未分块时每拍处理的组数
+  private val GroupsPerCycle = if (UseBooth) ((BaseGroupsPerCycle + config.MDUProfile.MUL.ShiftAdd.Split - 1) / config.MDUProfile.MUL.ShiftAdd.Split).max(1) else 1 //分块后每拍Booth组数
+  private val CycleBits = if (UseBooth) GroupsPerCycle * BoothBits else ((config.MDUProfile.MUL.ShiftAdd.IterBits + config.MDUProfile.MUL.ShiftAdd.Split - 1) / config.MDUProfile.MUL.ShiftAdd.Split).max(1) //每拍实际处理位数
   private val TotalGroups = if (UseBooth) (OperandWidth + 1 + BoothBits - 1) / BoothBits else OperandWidth //总组数
   private val CycleCount = if (UseBooth) (TotalGroups + GroupsPerCycle - 1) / GroupsPerCycle else (OperandWidth + CycleBits - 1) / CycleBits //总轮数
   private val PaddedGroups = if (UseBooth) CycleCount * GroupsPerCycle else 0 //补齐后的Booth组数
@@ -72,7 +72,7 @@ class ysyx_26030103_MULShiftAddCore(
   val NextAccumulator = (Accumulator +& CurrentAddend)(InternalWidth - 1, 0) //计算下一累加值
   val NextMultiplier = Multiplier >> CycleBits //计算下一乘数
   val LastIteration = Iteration === (CycleCount - 1).U(CounterWidth.W) //判断最后一轮
-  val EarlyFinish = if (config.MULEarlyOut) NextMultiplier === 0.U else false.B //提前结束
+  val EarlyFinish = if (config.MDUProfile.MUL.ShiftAdd.EarlyOut) NextMultiplier === 0.U else false.B //提前结束
   when (IO.Flush) {
     Busy := false.B
     ResultValid := false.B

@@ -230,6 +230,14 @@ menu "硬件配置"
       endmenu
     endmenu
 
+    config MDU_IMPL
+      string
+      default "standard"
+      depends on RISCV_M
+      help
+        所有 MDU 实现都必须提供统一的 ysyx_26030103_MDUInterface。
+        当前只有 standard（内置 MUL+DIV 路由）实现；external 是
+        Scala 侧的预留枚举，暂不通过 Kconfig 选择。
     menu "乘法器配置"
       depends on RISCV_M
 
@@ -390,26 +398,94 @@ menu "硬件配置"
         default "restoring"
 
     config DIV_RADIX
-      int "除法基数"
+      int
       default 2
-      range 2 16
       help
-        输入2、4、8、16；elaboration会拒绝其他数值。过大的基数会让
-        恢复余数后端静态展开过长的试减链，因此上限为16。
+        旧版通用除法参数，仅作为各后端参数的兼容默认值。
 
-      config DIV_ITER_BITS
-        int "每拍展开的基数数字数"
-        default 1
-        range 1 4
-        help
-          每拍连续处理的基数数字数; 越大拍数越少, 组合路径越长。
+    config DIV_ITER_BITS
+      int
+      default 1
+      help
+        旧版通用除法参数，仅作为各后端参数的兼容默认值。
 
-      config DIV_EARLY_OUT
-        bool "提前结束"
-        default n
-        help
-          余数已为零或商已确定时提前完成。
+    config DIV_EARLY_OUT
+      bool
+      default n
+      help
+        旧版通用除法参数，仅作为各后端参数的兼容默认值。
 
+      menu "恢复余数法参数"
+        depends on DIV_RESTORING
+
+        config DIV_RESTORING_RADIX
+          int "除法基数"
+          default DIV_RADIX
+          range 2 16
+          help
+            恢复余数法每次试减的基数；必须是 2 的幂。
+
+        config DIV_RESTORING_ITER_BITS
+          int "每拍展开的基数数字数"
+          default DIV_ITER_BITS
+          range 1 4
+          help
+            每拍处理的基数数字数。
+
+        config DIV_RESTORING_EARLY_OUT
+          bool "提前结束"
+          default DIV_EARLY_OUT
+          help
+            余数已为零或商已确定时提前完成。
+      endmenu
+
+      menu "不恢复余数法参数"
+        depends on DIV_NONRESTORING
+
+        config DIV_NONRESTORING_RADIX
+          int "除法基数"
+          default DIV_RADIX
+          range 2 16
+          help
+            不恢复余数法每次试减的基数；必须是 2 的幂。
+
+        config DIV_NONRESTORING_ITER_BITS
+          int "每拍展开的基数数字数"
+          default DIV_ITER_BITS
+          range 1 4
+          help
+            每拍处理的基数数字数。
+
+        config DIV_NONRESTORING_EARLY_OUT
+          bool "提前结束"
+          default DIV_EARLY_OUT
+          help
+            余数已为零或商已确定时提前完成。
+      endmenu
+
+      menu "SRT 除法参数"
+        depends on DIV_SRT
+
+        config DIV_SRT_RADIX
+          int "除法基数"
+          default DIV_RADIX
+          range 2 16
+          help
+            SRT 每拍产生的冗余商数字基数；必须是 2 的幂。
+
+        config DIV_SRT_ITER_BITS
+          int "每拍展开的基数数字数"
+          default DIV_ITER_BITS
+          range 1 4
+          help
+            每拍处理的基数数字数。
+
+        config DIV_SRT_EARLY_OUT
+          bool "提前结束"
+          default DIV_EARLY_OUT
+          help
+            余数已为零或商已确定时提前完成。
+      endmenu
     endmenu
 
   endmenu

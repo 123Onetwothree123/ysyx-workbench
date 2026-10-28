@@ -23,25 +23,10 @@ case class ysyx_26030103_NPCConfig(
     FPUImpl: ysyx_26030103_FPUImpl = ysyx_26030103_FPUImpl.None,
     FPULen: Int = 64,
     FPUProfile: ysyx_26030103_FPUProfile = ysyx_26030103_FPUProfile(),
+    MDUImpl: ysyx_26030103_MDUImpl = ysyx_26030103_MDUImpl.Standard,
     MULImpl: ysyx_26030103_MULImpl = ysyx_26030103_MULImpl.ShiftAdd,
-    MULEncoding: ysyx_26030103_MULEncoding = ysyx_26030103_MULEncoding.Plain,
     DIVImpl: ysyx_26030103_DIVImpl = ysyx_26030103_DIVImpl.Restoring,
-    MULRadix: Int = 4,
-    MULWidth: Int = 32,
-    MULCompressorInputs: Int = 3,
-    MULCompressorOutputs: Int = 2,
-    MULCompressorOutputOffsets: IndexedSeq[Int] = IndexedSeq(0, 1),
-    MULCompressorHasCin: Boolean = false,
-    MULCompressorHasCout: Boolean = false,
-    MULCompressorCoutOffset: Int = 1,
-    MULCompressorAllowRedundant: Boolean = false,
-    DIVRadix: Int = 2,
-    DIVIterBits: Int = 1,
-    DIVEarlyOut: Boolean = false,
-    MULIterBits: Int = 1,
-    MULPipeline: Int = 0,
-    MULSplit: Int = 1,
-    MULEarlyOut: Boolean = false,
+    MDUProfile: ysyx_26030103_MDUProfile = ysyx_26030103_MDUProfile(),
     // 目标平台
     ResetAddr: Long = 0x30000000L,
     // 架构/总线物理地址宽度。RV32 保持 32；RV64 由 elaborator 设为 64。
@@ -425,44 +410,47 @@ case class ysyx_26030103_NPCConfig(
     Integer.bitCount(WBufDepth) == 1,
     "WBufDepth必须是2的幂(1/2/4/8/16)"
   )
+  require(MDUImpl != ysyx_26030103_MDUImpl.External,
+    "MDU_IMPL=external 只是预留接口，当前没有外部 MDU 实现")
+  require(!UseM || MDUImpl.Implemented,
+    s"RISCV_M=y 但 MDU_IMPL=${MDUImpl.Name} 尚未接入 RTL")
+  private val MULParams = MDUProfile.MUL
+  private val DIVBackendParams = Seq(
+    MDUProfile.DIV.Restoring,
+    MDUProfile.DIV.NonRestoring,
+    MDUProfile.DIV.SRT
+  )
   require(
-    ysyx_26030103_MULBoothConfig.IsValidRadix(MULRadix),
+    ysyx_26030103_MULBoothConfig.IsValidRadix(MULParams.Radix),
     "MULRadix必须是大于等于2的2的幂"
   )
   require(
-    MULWidth >= 32 && Integer.bitCount(MULWidth) == 1,
+    MULParams.Width >= 32 && Integer.bitCount(MULParams.Width) == 1,
     "MULWidth必须是不小于32的2的幂(32/64/128/... )"
   )
   // 乘法器内部操作数宽度至少覆盖架构 XLEN。RV32 时与 MULWidth 完全一致；
   // RV64 默认 MULWidth=32 会自动提升到 64，保证 MUL/MULH* 的 2*XLEN 乘积。
-  final val MULEffectiveWidth: Int = math.max(XLEN, MULWidth)
-  require(
-    MULCompressorInputs >= 3 && MULCompressorInputs <= 64,
-    "MULCompressorInputs必须在3到64之间"
-  )
-  final val MULCompressorConfig = ysyx_26030103_MULGPCConfig(
-    Inputs = MULCompressorInputs,
-    Outputs = MULCompressorOutputs,
-    OutputOffsets = MULCompressorOutputOffsets,
-    HasCin = MULCompressorHasCin,
-    HasCout = MULCompressorHasCout,
-    CoutOffset = MULCompressorCoutOffset,
-    AllowRedundant = MULCompressorAllowRedundant
-  )
-  require(
-    ysyx_26030103_MULBoothConfig.IsValidRadix(DIVRadix) && DIVRadix <= 16,
-    "DIVRadix必须是2/4/8/16之一，避免恢复余数除法器发生不可综合的静态展开"
-  )
-  require(DIVIterBits >= 1 && DIVIterBits <= 4, "DIVIterBits必须在1到4之间")
-  require(MULIterBits >= 1 && MULIterBits <= 8, "MULIterBits必须在1到8之间")
-  require(MULPipeline >= 0 && MULPipeline <= 4, "MULPipeline必须在0到4之间")
-  require(MULSplit >= 1 && MULSplit <= 4, "MULSplit必须在1到4之间")
+  final val MULEffectiveWidth: Int = math.max(XLEN, MULParams.Width)
+  require(MULParams.ShiftAdd.IterBits >= 1 && MULParams.ShiftAdd.IterBits <= 8,
+    "MULIterBits必须在1到8之间")
+  require(MULParams.ShiftAdd.Split >= 1 && MULParams.ShiftAdd.Split <= 4,
+    "MULSplit必须在1到4之间")
+  require(MULParams.Compression.Pipeline >= 0 && MULParams.Compression.Pipeline <= 4,
+    "MULPipeline必须在0到4之间")
+  DIVBackendParams.foreach { params =>
+    require(
+      ysyx_26030103_MULBoothConfig.IsValidRadix(params.Radix) && params.Radix <= 16,
+      "DIVRadix必须是2/4/8/16之一，避免恢复余数除法器发生不可综合的静态展开"
+    )
+    require(params.IterBits >= 1 && params.IterBits <= 4,
+      "DIVIterBits必须在1到4之间")
+  }
   // 压缩树核心包含 MULPipeline+1 个弹性结果槽。迭代移位加法核心始终只允许
   // 一笔在途请求，不受这个对它并不适用的设置影响。MDU 还会增加一个独立的
   // DIV 槽位。
   final val MULMaxInflight: Int = MULImpl match {
     case ysyx_26030103_MULImpl.ShiftAdd => 1
-    case _                              => MULPipeline + 1
+    case _                              => MULParams.Compression.Pipeline + 1
   }
   final val MDUMaxInflight: Int = MULMaxInflight + 1
   final val EnableDynamicGPRDebug: Boolean = SDBEnable || DiffTestEnable
@@ -621,11 +609,19 @@ case class ysyx_26030103_NPCConfig(
       s"fpu_params=${FPUProfile.Describe(FPUImpl)}, " +
       s"addr_w=$AddressWidth, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
-      s"mul=${MULImpl.Name}/${MULEncoding.Name}, " +
-      s"mul_width=$MULWidth, mul_gpc=${MULCompressorConfig.Describe}, mul_radix=$MULRadix, " +
-      s"div=${DIVImpl.Name}, div_radix=$DIVRadix, div_iter=$DIVIterBits, " +
-      s"iter=$MULIterBits, pipeline=$MULPipeline, split=$MULSplit, " +
-      s"mul_early_out=${OnOff(MULEarlyOut)}, div_early_out=${OnOff(DIVEarlyOut)}, " +
+      s"mdu=${MDUImpl.Name}, " +
+      s"mul=${MULImpl.Name}/${MULParams.Encoding.Name}, " +
+      s"mul_width=${MULParams.Width}, " +
+      s"mul_gpc=${MULParams.Compression.Compressor.Describe}, " +
+      s"mul_radix=${MULParams.Radix}, " +
+      s"div=${DIVImpl.Name}, " +
+      s"div_radix=${MDUProfile.DIV.For(DIVImpl).Radix}, " +
+      s"div_iter=${MDUProfile.DIV.For(DIVImpl).IterBits}, " +
+      s"iter=${MULParams.ShiftAdd.IterBits}, " +
+      s"pipeline=${MULParams.Compression.Pipeline}, " +
+      s"split=${MULParams.ShiftAdd.Split}, " +
+      s"mul_early_out=${OnOff(MULParams.ShiftAdd.EarlyOut)}, " +
+      s"div_early_out=${OnOff(MDUProfile.DIV.For(DIVImpl).EarlyOut)}, " +
       s"ICache=$ICacheDesc, DCache=$DCacheDesc$ViptAliasDesc$LargeLineDesc, " +
       s"icache_coherence=$ICacheCoherenceDesc, dma_coherence=$DmaCoherenceDesc, " +
       s"icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +

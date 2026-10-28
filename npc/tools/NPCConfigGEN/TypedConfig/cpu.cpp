@@ -53,6 +53,8 @@ void addFpu(TypedFields &root, const Config &values)
 void addMdu(TypedFields &root, const Config &values)
 {
     TypedFields mdu;
+    addField(mdu, "impl",
+             TypedJson::string(flatString(values, "MDU_IMPL", "standard")));
     addField(mdu, "mul_impl",
              TypedJson::string(
                  flatString(values, "MUL_IMPL", "shift_add")));
@@ -64,6 +66,7 @@ void addMdu(TypedFields &root, const Config &values)
              TypedJson::integer(flatInt(values, "MUL_RADIX", 4)));
     addField(mdu, "mul_width",
              TypedJson::integer(flatInt(values, "MUL_WIDTH", 32)));
+
     TypedFields compressor;
     addField(compressor, "inputs",
              TypedJson::integer(
@@ -92,8 +95,30 @@ void addMdu(TypedFields &root, const Config &values)
     addField(compressor, "allow_redundant",
              TypedJson::boolean(
                  flatBool(values, "MUL_COMPRESSOR_ALLOW_REDUNDANT")));
-    addField(mdu, "mul_compressor",
-             TypedJson::object(std::move(compressor)));
+
+    TypedFields shiftAdd;
+    addField(shiftAdd, "iter_bits",
+             TypedJson::integer(flatInt(values, "MUL_ITER_BITS", 1)));
+    addField(shiftAdd, "split",
+             TypedJson::integer(flatInt(values, "MUL_SPLIT", 1)));
+    addField(shiftAdd, "early_out",
+             TypedJson::boolean(flatBool(values, "MUL_EARLY_OUT")));
+
+    TypedFields compression;
+    addField(compression, "pipeline",
+             TypedJson::integer(flatInt(values, "MUL_PIPELINE", 0)));
+    addField(compression, "compressor", TypedJson::object(std::move(compressor)));
+
+    TypedFields mul;
+    addField(mul, "width", TypedJson::integer(flatInt(values, "MUL_WIDTH", 32)));
+    addField(mul, "encoding",
+             TypedJson::string(flatString(values, "MUL_ENCODING", "plain")));
+    addField(mul, "radix",
+             TypedJson::integer(flatInt(values, "MUL_RADIX", 4)));
+    addField(mul, "shift_add", TypedJson::object(std::move(shiftAdd)));
+    addField(mul, "compression", TypedJson::object(std::move(compression)));
+    addField(mdu, "mul", TypedJson::object(std::move(mul)));
+
     addField(mdu, "div_radix",
              TypedJson::integer(flatInt(values, "DIV_RADIX", 2)));
     addField(mdu, "div_iter_bits",
@@ -108,8 +133,37 @@ void addMdu(TypedFields &root, const Config &values)
              TypedJson::integer(flatInt(values, "MUL_SPLIT", 1)));
     addField(mdu, "mul_early_out",
              TypedJson::boolean(flatBool(values, "MUL_EARLY_OUT")));
+
+    TypedFields div;
+    addField(div, "impl",
+             TypedJson::string(flatString(values, "DIV_IMPL", "restoring")));
+    auto addDivParams = [&](TypedFields &target, const char *prefix) {
+        addField(target, "radix",
+                 TypedJson::integer(flatInt(
+                     values, std::string{prefix} + "_RADIX",
+                     flatInt(values, "DIV_RADIX", 2))));
+        addField(target, "iter_bits",
+                 TypedJson::integer(flatInt(
+                     values, std::string{prefix} + "_ITER_BITS",
+                     flatInt(values, "DIV_ITER_BITS", 1))));
+        addField(target, "early_out",
+                 TypedJson::boolean(flatBool(
+                     values, std::string{prefix} + "_EARLY_OUT")));
+    };
+    TypedFields restoring;
+    addDivParams(restoring, "DIV_RESTORING");
+    TypedFields nonrestoring;
+    addDivParams(nonrestoring, "DIV_NONRESTORING");
+    TypedFields srt;
+    addDivParams(srt, "DIV_SRT");
+    addField(div, "restoring", TypedJson::object(std::move(restoring)));
+    addField(div, "nonrestoring", TypedJson::object(std::move(nonrestoring)));
+    addField(div, "srt", TypedJson::object(std::move(srt)));
+    addField(mdu, "div", TypedJson::object(std::move(div)));
+
     addField(root, "mdu", TypedJson::object(std::move(mdu)));
 }
+
 void addCache(TypedFields &root, const Config &values)
 {
     const long long blockSizeLog2 =

@@ -248,9 +248,9 @@ abstract class ysyx_26030103_MULCompressionCore(
 ) extends ysyx_26030103_MULCore(config.MULEffectiveWidth) {
   private val OperandWidth = config.MULEffectiveWidth
   private val ProductWidth = 2 * OperandWidth
-  private val CompressorConfig = config.MULCompressorConfig
-  private val UseBooth = config.MULEncoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth编码
-  private val BoothRadix = if (UseBooth) config.MULRadix else 2 //Booth基数
+  private val CompressorConfig = config.MDUProfile.MUL.Compression.Compressor
+  private val UseBooth = config.MDUProfile.MUL.Encoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth编码
+  private val BoothRadix = if (UseBooth) config.MDUProfile.MUL.Radix else 2 //Booth基数
   private val BoothBits = if (UseBooth) ysyx_26030103_MULBoothConfig.BoothBits(BoothRadix) else 1 //每组处理位数
   private val BoothGroups = if (UseBooth) (OperandWidth + 1 + BoothBits - 1) / BoothBits else 0 //Booth部分积行数
   private val BoothPaddedBits = BoothGroups * BoothBits //补齐后的乘数宽度
@@ -341,11 +341,11 @@ abstract class ysyx_26030103_MULCompressionCore(
       CompressorConfig
     )
   }
-  private val Schedule = if (BaseSchedule.length < config.MULPipeline) BaseSchedule ++ Seq.fill(config.MULPipeline - BaseSchedule.length)(2) else BaseSchedule
-  private val BoundarySteps = (1 to config.MULPipeline).map { Boundary =>
-    math.ceil(Schedule.length.toDouble * Boundary / (config.MULPipeline + 1)).toInt - 1
+  private val Schedule = if (BaseSchedule.length < config.MDUProfile.MUL.Compression.Pipeline) BaseSchedule ++ Seq.fill(config.MDUProfile.MUL.Compression.Pipeline - BaseSchedule.length)(2) else BaseSchedule
+  private val BoundarySteps = (1 to config.MDUProfile.MUL.Compression.Pipeline).map { Boundary =>
+    math.ceil(Schedule.length.toDouble * Boundary / (config.MDUProfile.MUL.Compression.Pipeline + 1)).toInt - 1
   }.toSet
-  private val Valid = RegInit(VecInit(Seq.fill(config.MULPipeline + 1)(false.B)))
+  private val Valid = RegInit(VecInit(Seq.fill(config.MDUProfile.MUL.Compression.Pipeline + 1)(false.B)))
   private val Product = RegInit(0.U(ProductWidth.W))
   private val Advance = !Valid.last || IO.Resp.ready
   private val PipelineEnable = !IO.Flush && Advance

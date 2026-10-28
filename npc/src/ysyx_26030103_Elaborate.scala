@@ -94,6 +94,7 @@ object ysyx_26030103_Elaborate extends App {
     cfg.bool("fpu.hardfloat.tininess_before_rounding", false)
   val FPUFudianSharedDivSqrt =
     cfg.bool("fpu.fudian.shared_divsqrt", true)
+  val MDUImplName = cfg.string("mdu.impl", "standard")
   val MULImplName = cfg.string("mdu.mul_impl", "shift_add")
   val MULEncodingName = cfg.string("mdu.mul_encoding", "plain")
   val DIVImplName = cfg.string("mdu.div_impl", "restoring")
@@ -115,6 +116,54 @@ object ysyx_26030103_Elaborate extends App {
   val MULPipeline = cfg.int("mdu.mul_pipeline", 0)
   val MULSplit = cfg.int("mdu.mul_split", 1)
   val MULEarlyOut = cfg.bool("mdu.mul_early_out", false)
+  def divParams(name: String): ysyx_26030103_DIVParams =
+    ysyx_26030103_DIVParams(
+      Radix = cfg.int(s"mdu.div.$name.radix", DIVRadix),
+      IterBits = cfg.int(s"mdu.div.$name.iter_bits", DIVIterBits),
+      EarlyOut = cfg.bool(s"mdu.div.$name.early_out", DIVEarlyOut)
+    )
+  val mduProfile = ysyx_26030103_MDUProfile(
+    MUL = ysyx_26030103_MULProfile(
+      Width = cfg.int("mdu.mul.width", MULWidth),
+      Encoding = ysyx_26030103_MULEncoding.FromString(
+        cfg.string("mdu.mul.encoding", MULEncodingName)
+      ),
+      Radix = cfg.int("mdu.mul.radix", MULRadix),
+      ShiftAdd = ysyx_26030103_MULShiftAddParams(
+        IterBits = cfg.int("mdu.mul.shift_add.iter_bits", MULIterBits),
+        Split = cfg.int("mdu.mul.shift_add.split", MULSplit),
+        EarlyOut = cfg.bool("mdu.mul.shift_add.early_out", MULEarlyOut)
+      ),
+      Compression = ysyx_26030103_MULCompressionParams(
+        Pipeline = cfg.int("mdu.mul.compression.pipeline", MULPipeline),
+        Compressor = ysyx_26030103_MULGPCConfig(
+          Inputs = cfg.int("mdu.mul.compression.compressor.inputs",
+            MULCompressorInputs),
+          Outputs = cfg.int("mdu.mul.compression.compressor.outputs",
+            MULCompressorOutputs),
+          OutputOffsets = cfg.ints(
+            "mdu.mul.compression.compressor.output_offsets",
+            MULCompressorOutputOffsets
+          ).toIndexedSeq,
+          HasCin = cfg.bool("mdu.mul.compression.compressor.has_cin",
+            MULCompressorHasCin),
+          HasCout = cfg.bool("mdu.mul.compression.compressor.has_cout",
+            MULCompressorHasCout),
+          CoutOffset = cfg.int("mdu.mul.compression.compressor.cout_offset",
+            MULCompressorCoutOffset),
+          AllowRedundant = cfg.bool(
+            "mdu.mul.compression.compressor.allow_redundant",
+            MULCompressorAllowRedundant
+          )
+        )
+      )
+    ),
+    DIV = ysyx_26030103_DIVProfile(
+      Restoring = divParams("restoring"),
+      NonRestoring = divParams("nonrestoring"),
+      SRT = divParams("srt")
+    )
+  )
   val SDBEnable = cfg.bool("debug.sdb", false)
   val DiffTestEnable = cfg.bool("debug.difftest", false)
   val MTraceEnable = cfg.bool("debug.mtrace", false)
@@ -173,25 +222,10 @@ object ysyx_26030103_Elaborate extends App {
         SharedDivSqrt = FPUFudianSharedDivSqrt
       )
     ),
+    MDUImpl = ysyx_26030103_MDUImpl.FromString(MDUImplName),
     MULImpl = ysyx_26030103_MULImpl.FromString(MULImplName),
-    MULEncoding = ysyx_26030103_MULEncoding.FromString(MULEncodingName),
     DIVImpl = ysyx_26030103_DIVImpl.FromString(DIVImplName),
-    MULRadix = MULRadix,
-    MULWidth = MULWidth,
-    MULCompressorInputs = MULCompressorInputs,
-    MULCompressorOutputs = MULCompressorOutputs,
-    MULCompressorOutputOffsets = MULCompressorOutputOffsets,
-    MULCompressorHasCin = MULCompressorHasCin,
-    MULCompressorHasCout = MULCompressorHasCout,
-    MULCompressorCoutOffset = MULCompressorCoutOffset,
-    MULCompressorAllowRedundant = MULCompressorAllowRedundant,
-    DIVRadix = DIVRadix,
-    DIVIterBits = DIVIterBits,
-    DIVEarlyOut = DIVEarlyOut,
-    MULIterBits = MULIterBits,
-    MULPipeline = MULPipeline,
-    MULSplit = MULSplit,
-    MULEarlyOut = MULEarlyOut,
+    MDUProfile = mduProfile,
     ICacheEnable = ICacheEnable,
     ICacheStorage = ysyx_26030103_CacheStorage.FromString(ICacheStorageName),
     DCacheEnable = DCacheEnable,
