@@ -353,6 +353,14 @@ class ysyx_26030103_LSUMMU(
           faultTvalReg := msgReg.ALUResult
           faultPCReg := msgReg.pc
           state := fault
+        }.elsewhen(io.pmpFault) {
+          // 页表翻译成功，但物理地址被 PMP 拒绝：load=5，store/AMO=7。
+          // PIPT 下请求尚未交给 LSU，因此不会产生任何总线副作用。
+          faultReg := true.B
+          faultCauseReg := Mux(msgReg.MemoryWrite, 7.U, 5.U)
+          faultTvalReg := msgReg.ALUResult
+          faultPCReg := msgReg.pc
+          state := fault
         }.otherwise {
           paddrReg := io.resp.bits.paddr
           paddrVaddrReg := msgReg.ALUResult
@@ -439,6 +447,14 @@ class ysyx_26030103_LSUMMU(
           faultTvalReg := msgReg.ALUResult
           faultPCReg := msgReg.pc
           state := fault
+        }.elsewhen(io.pmpFault) {
+          // 翻译成功但 PMP 拒绝：与 page fault 一样撤销已转发给 LSU/DCache
+          // 的请求，保证故障 load/store 不产生总线副作用。
+          faultReg := true.B
+          faultCauseReg := Mux(msgReg.MemoryWrite, 7.U, 5.U)
+          faultTvalReg := msgReg.ALUResult
+          faultPCReg := msgReg.pc
+          state := fault
         }.otherwise {
           paddrReg := io.resp.bits.paddr
           paddrVaddrReg := msgReg.ALUResult
@@ -449,9 +465,10 @@ class ysyx_26030103_LSUMMU(
     }
     when(state === xwait) {
       // 只有属于当前请求的故障响应才能 kill LSU/DCache；迟到旧响应的
-      // fault 位不得误伤正在等待翻译的新访存。
-      io.memKill := io.resp.valid && io.resp.bits.fault &&
-        io.resp.bits.tval === msgReg.ALUResult
+      // fault 位不得误伤正在等待翻译的新访存。PMP access fault 同样要
+      // 撤销已经进入 LSU/DCache 的请求。
+      io.memKill := io.resp.valid && io.resp.bits.tval === msgReg.ALUResult &&
+        (io.resp.bits.fault || io.pmpFault)
     }
     when(state === done) {
       // load/store 都已交给 LSU；翻译结果保持到 LSU 完全排空，之后才允许

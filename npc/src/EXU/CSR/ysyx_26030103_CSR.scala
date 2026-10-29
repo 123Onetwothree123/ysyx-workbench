@@ -113,7 +113,8 @@ class ysyx_26030103_CSR(
     val StateMtvec = Output(UInt(XLEN.W))
     val StateMepc = Output(UInt(XLEN.W))
     val StateMcause = Output(UInt(XLEN.W))
-    // 本拍 trap 写入 mtval/stval 的最终值（含 TrapTval=0 时回退到 PC）。
+    // 本拍 trap 写入 mtval/stval 的最终值：访存/非法压缩/misaligned
+    // 使用明确 tval，ecall/中断固定为 0，其余回退到 PC。
     // DiffTest 用它把 DUT 的真实 tval 注入 REF，不参与 CSR 快照 ABI。
     val StateTval = Output(UInt(XLEN.W))
     val PmpCfg = Output(Vec(16, UInt(8.W)))
@@ -184,15 +185,21 @@ class ysyx_26030103_CSR(
   def IsCSRAddress(addr: UInt): Bool = io.CSRAddress === addr
   private val FpCsrAddresses =
     if (UseF) Seq(0x001, 0x002, 0x003) else Seq.empty
+  // 用户只读计数器始终随核实现：M 模式在任何配置下都可读；U 模式是否
+  // 可读由 mcounteren/scounteren 在 IDU 检查。它们不能因为 CSR_ENABLED
+  // 未列出而被裁剪，否则 rdcycle/rdtime/rdinstret 会读回 0。
+  private val UserCounterAddresses =
+    Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
   private val enabledCsrAddresses = (
     profile.csrEnabled.toSeq ++
       // identity CSR 始终存在，不依赖 CSR_ENABLED 是否列出。
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
         .IdentityCsrAddresses.toSeq ++
-      Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82) ++
+      UserCounterAddresses ++
       FpCsrAddresses ++
       (if (profile.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
-  ).filter(a => profile.csrSupported(a) || FpCsrAddresses.contains(a))
+  ).filter(a => profile.csrSupported(a) || FpCsrAddresses.contains(a) ||
+    UserCounterAddresses.contains(a))
     .distinct.sorted
   val CsrImplemented =
     enabledCsrAddresses.map(a => io.CSRAddress === a.U(12.W))
@@ -340,8 +347,10 @@ class ysyx_26030103_CSR(
     else MstatusReadData & SstatusMask
   // sstatus 是 mstatus 的受限视图，但 SD 仍是 FS==3 的只读汇总位
   // （RV32 bit31 / RV64 bit63）；读口必须和 mstatus/NEMU 一致。
+  // RV64 下还要补 SXL/UXL=2（bit[35:32]=0xA），与 MstatusArchValue 一致。
   val SstatusArchValue =
     Widen32(Sstatus_rdata) |
+      (if (XLEN == 64) "h0000000a00000000".U(XLEN.W) else 0.U(XLEN.W)) |
       MstatusSdBit(Sstatus_rdata(14, 13))
   val Mtvec_rdata = Mtvec.io.rdata
   val Mepc_rdata = Mepc.io.rdata
@@ -355,6 +364,10 @@ class ysyx_26030103_CSR(
   val Minstret_rdata =
     if (XLEN == 64) Minstret else Minstret(31, 0)
   val Minstreth_rdata = Minstret(63, 32)
+  // TIME 来自 CLINT 的 mtime。RV64 直接返回完整 64 位；RV32 的 time
+  // 返回低 32 位，timeh 返回 bit[63:32]。
+  val Time_rdata = if (XLEN == 64) io.Mtime else io.Mtime(31, 0)
+  val Timeh_rdata = io.Mtime(63, 32)
   // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A/C/F/D 随配置置位，
   // S/U 分别随 HAS_S/HAS_U 置位。位编号按 RISC-V 规范：
   // bit0=A，bit2=C，bit3=D，bit5=F，bit8=I，bit18=S，bit20=U。
@@ -596,7 +609,16 @@ class ysyx_26030103_CSR(
   // trap 写 tval 的统一取值：有明确 tval 的异常（访存地址、压缩非法
   // 指令编码等）直接使用输入；没有专门 tval 的异常回退到故障 PC。
   // 不能用“tval != 0”判断，因为全零的非法压缩编码是合法的 tval=0。
-  val TrapTvalValue = Mux(io.TrapTvalValid, io.TrapTval, io.pc)
+  // ecall 的 mtval 按规范固定为 0；只有当前提交的 ecall 生效，
+  // MemTrap/其他异常优先级更高，仍走原来的 tval 路径。
+  // 中断没有 tval，mtval 同样固定为 0。
+  // breakpoint(cause=3) 没有专门 tval，继续回退到故障 PC。
+  val EcallTvalCommit = io.Enable && io.IsEcall && !io.MemTrap &&
+    !HasInterrupt && !io.TrapValid && !io.IsEbreak
+  val InterruptTvalCommit = io.Enable && HasInterrupt && !io.MemTrap
+  val TrapTvalValue =
+    Mux(InterruptTvalCommit || EcallTvalCommit, 0.U(XLEN.W),
+      Mux(io.TrapTvalValid, io.TrapTval, io.pc))
   // IALIGN=16 时 mepc/sepc 只清 bit0；IALIGN=32 清低两位。
   private def AlignEPC(Value: UInt): UInt =
     if (UseC) Cat(Value(XLEN - 1, 1), 0.U(1.W))
@@ -780,6 +802,15 @@ class ysyx_26030103_CSR(
   addCsr(CSR_MCYCLEH, Widen32(Mcycleh_rdata), csrOn(0xb80))
   addCsr(CSR_MINSTRET, Minstret_rdata, csrOn(0xb02))
   addCsr(CSR_MINSTRETH, Widen32(Minstreth_rdata), csrOn(0xb82))
+  // 用户计数器别名：rdcycle/rdtime/rdinstret 及其 RV32 高半字。
+  // CYCLE/CYCLEH 跟随 mcycle，INSTRET/INSTRETH 跟随 minstret；
+  // TIME/TIMEH 直接来自 CLINT mtime，不需要对应的机器计数器。
+  addCsr(CSR_CYCLE, Mcycle_rdata, enabled = true)
+  addCsr(CSR_CYCLEH, Widen32(Mcycleh_rdata), enabled = true)
+  addCsr(CSR_TIME, Time_rdata, enabled = true)
+  addCsr(CSR_TIMEH, Widen32(Timeh_rdata), enabled = true)
+  addCsr(CSR_INSTRET, Minstret_rdata, enabled = true)
+  addCsr(CSR_INSTRETH, Widen32(Minstreth_rdata), enabled = true)
   addCsr(CSR_MISA, Misa_rdata, csrOn(0x301))
   addCsr(CSR_MTVAL, Mtval, csrOn(0x343))
   addCsr(CSR_MCOUNTEREN, Widen32(Mcounteren), csrOn(0x306))

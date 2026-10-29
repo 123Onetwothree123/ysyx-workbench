@@ -29,9 +29,11 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
 
   private def trailingOnes(value: UInt): UInt = {
     // pmpaddr 的低 AddressWidth-2 位有效；统计末尾连续 1 的个数。
+    // 全 1 时 PriorityEncoder 的输入为 0，会错误地返回 0，必须显式
+    // 返回 bits，否则全地址空间 NAPOT 会退化成 8 字节区域。
     val bits = AddressWidth - 2
-    val firstZero = PriorityEncoder(~value(bits - 1, 0))
-    firstZero
+    val inverted = ~value(bits - 1, 0)
+    Mux(inverted.andR, bits.U, PriorityEncoder(inverted))
   }
 
   private def matchEntry(index: Int, address: UInt): Bool = {
@@ -46,9 +48,18 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
       val tor = address >= lower && address < upper
       val na4 = address(AddressWidth - 1, 2) === current(AddressWidth - 3, 0)
       val ones = trailingOnes(current)
-      val napotMask = (1.U << (ones + 3.U)) - 1.U
-      val napotBase = (current & ~((1.U << (ones + 1.U)) - 1.U)) << 2
-      val napot = (address & ~napotMask) === (napotBase & ~napotMask)
+      // pmpaddr 全 1 表示覆盖整个地址空间。非全 1 时 ones <= bits-2，
+      // 因此 ones+3 不会超过 AddressWidth，右移求掩码是安全的。
+      val napotAllOnes = current(AddressWidth - 3, 0).andR
+      val napotMask = Mux(napotAllOnes, ~0.U(AddressWidth.W),
+        ((~0.U(AddressWidth.W)) >>
+          (AddressWidth.U - (ones + 3.U)))(AddressWidth - 1, 0))
+      val napotLowMask =
+        ((1.U(AddressWidth.W) << (ones + 1.U)) - 1.U)(AddressWidth - 1, 0)
+      val napotBase =
+        ((current & ~napotLowMask) << 2)(AddressWidth - 1, 0)
+      val napot = napotAllOnes ||
+        ((address & ~napotMask) === (napotBase & ~napotMask))
       Mux(mode === 1.U, tor,
         Mux(mode === 2.U, na4,
           Mux(mode === 3.U, napot, false.B)))
@@ -65,10 +76,12 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
         Mux(access === 1.U, config(0), config(1)))
       unlockedM || allowed
     }
-    val allowed = Mux1H(matches, permissions)
-    val lockedMatch = (0 until activeEntries).map { i =>
-      matches(i) && io.cfg(i)(7)
-    }.reduceOption(_ || _).getOrElse(false.B)
+    // RISC-V PMP 规定最低编号的匹配项优先，不能对多个匹配项的权限做 OR。
+    // lockedMatch 也必须取同一个（第一个）匹配项，否则低编号 unlocked
+    // allow 会被高编号 locked deny 的 L 位误伤，或反之。
+    val allowed = PriorityMux(matches.zip(permissions))
+    val lockedMatch = PriorityMux(matches.zip(
+      (0 until activeEntries).map(i => io.cfg(i)(7))))
     val noMatchFault = !anyMatch && privilege =/= 3.U
     val permissionFault = anyMatch && !(allowed || (privilege === 3.U && !lockedMatch))
     noMatchFault || permissionFault

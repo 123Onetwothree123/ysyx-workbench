@@ -319,7 +319,9 @@ class ysyx_26030103_TLB(
       case "fault" => selA && (!isStore || selD)
       case _       => true.B
     }
-    val permissionOk = userOk && sumOk && accessOk && adOk
+    // R=0 且 W=1 是保留编码；TLB 中已有的表项也不能绕过该检查。
+    val reservedPte = !selR && selW
+    val permissionOk = !reservedPte && userOk && sumOk && accessOk && adOk
     val faultCause = Mux(isFetch, 12.U, Mux(isStore, 15.U, 13.U))
 
     when(lookupHit) {

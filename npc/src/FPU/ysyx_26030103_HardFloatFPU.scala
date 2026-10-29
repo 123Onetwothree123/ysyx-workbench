@@ -520,12 +520,15 @@ class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
   val respPipeReady = respPipe.io.in.ready
 
   val selectedDivReady = Mux(fmtS, divS.io.inReady, divD.io.inReady)
-  val divRequestFire = io.req.valid && !respValid && !divActive &&
-    isDivSqrt && selectedDivReady
-  divS.io.inValid := divRequestFire && fmtS && !io.flush
-  divD.io.inValid := divRequestFire && fmtD && !io.flush
+  // io.req.ready 不能组合依赖 io.flush：EXU 的 FpuFlush 又依赖
+  // CSRUnit.ExceptionTaken，而后者经过 Enable 回到 FpuReq.ready，会形成
+  // 组合环。保持 ready 只看内部空闲；flush 同拍不启动 DIV/SQRT，
+  // divActive 不会被置位，EXU 侧的 FpPending 由 FpuFlush 当拍清掉。
   io.req.ready := !respValid && !divActive &&
     Mux(isDivSqrt, selectedDivReady, true.B)
+  val divRequestFire = io.req.valid && io.req.ready && isDivSqrt && !io.flush
+  divS.io.inValid := divRequestFire && fmtS && !io.flush
+  divD.io.inValid := divRequestFire && fmtD && !io.flush
 
   when(divRequestFire) {
     divActive := true.B
@@ -552,7 +555,7 @@ class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
   }
 
   // 非 DIV/SQRT 在接收请求的下一拍给出寄存结果。
-  when(io.req.valid && io.req.ready && !isDivSqrt) {
+  when(io.req.valid && io.req.ready && !isDivSqrt && !io.flush) {
     respValid := true.B
     respResult := fastResult
     respFlags := fastFlags

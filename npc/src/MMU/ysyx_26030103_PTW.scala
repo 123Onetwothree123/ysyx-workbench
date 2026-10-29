@@ -249,6 +249,8 @@ class ysyx_26030103_PTW(
   // 位置去解释归一化结果，否则 CUSTOM 的私有 PTE 布局会被误判。
   def isLeaf(d: UInt): Bool =
     Cat(d(2), d(1), d(3)) =/= 0.U // 归一化 W/R/X = bit2/1/3
+  /** R=0 且 W=1 是保留编码；无论叶子还是非叶子都必须 page fault。 */
+  def reservedEncoding(d: UInt): Bool = !d(1) && d(2)
   def leafAllowed(d: UInt): Bool = superpage.B || levelReg === (levels - 1).U
   /** 非叶子 PTE 的保留位（PPN 高位以外）必须为 0。 */
   def reservedFault(d: UInt): Bool =
@@ -287,6 +289,7 @@ class ysyx_26030103_PTW(
     d(pteConfig.ppnLow + paddrPpnBits - 1, pteConfig.ppnLow)
   def walkFault(d: UInt): Bool =
     !d(0) || !ppnFits(d) || reservedFault(d) || // 归一化 valid = bit0
+      reservedEncoding(d) ||
       (isLeaf(d) && (!leafAllowed(d) || superpageMisaligned(d))) ||
       (!isLeaf(d) && levelReg === (levels - 1).U)
   def leafFaultOf(d: UInt): Bool = {
@@ -305,7 +308,8 @@ class ysyx_26030103_PTW(
       case "fault" => !d(6) || (isStore && !d(7))
       case _       => false.B
     }
-    userFault || sumFault || fetchFault || readFault || writeFault || adFault
+    reservedEncoding(d) ||
+      userFault || sumFault || fetchFault || readFault || writeFault || adFault
   }
   def needsAdUpdate(d: UInt): Bool = adMode match {
     case "hardware" => d(0) && (!d(6) || (isStore && !d(7)))
@@ -411,7 +415,8 @@ class ysyx_26030103_PTW(
 
   def processPte(d: UInt, raw: UInt, busFault: Bool): Unit = {
     // cache 保存原始 PTE；4B 时 raw 就是 32 位字，8B 时是低/高字拼接。
-    when(cacheEffective.B) { cacheFill(pteAddrReg, raw) }
+    // 总线错误的读数据不是有效 PTE，不能写入 cache。
+    when(cacheEffective.B && !busFault) { cacheFill(pteAddrReg, raw) }
     when(busFault || rawReservedFault(raw) || walkFault(d)) {
       setFault()
     }.elsewhen(isLeaf(d)) {
@@ -506,7 +511,10 @@ class ysyx_26030103_PTW(
       when(io.bus.resp.valid) {
         val written = normalizePte(writeDataReg)
         // A/D 写回只更新低 32 位；cache 保存完整 PTE，8B 时高字保留原值。
-        cacheFill(pteAddrReg, writeDataReg)
+        // 写总线出错时不更新 cache，避免缓存未成功写回的表项。
+        when(cacheEffective.B && !io.bus.resp.bits.fault) {
+          cacheFill(pteAddrReg, writeDataReg)
+        }
         respReg.paddr := paddrOf(written, levelReg)
         respReg.fault := io.bus.resp.bits.fault || leafFaultOf(written)
         respReg.cause := pageFaultCause

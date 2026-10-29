@@ -1777,4 +1777,91 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       }
     }
   }
+
+  "MMU" should "flush 后排空 reqQueue 且不让旧请求在新 satp 下继续翻译" in {
+    val profile = ysyx_26030103_MMUProfile(
+      enabled = true,
+      tlbEnabled = false,
+      ptwOutstanding = 1
+    )
+    simulate(new ysyx_26030103_MMU(profile)) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.req.valid.poke(false.B)
+      dut.io.req.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMURequest))
+      dut.io.bus.req.ready.poke(false.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.poke(0.U.asTypeOf(new ysyx_26030103_PTEBusResponse))
+      dut.io.resp.ready.poke(true.B)
+      dut.io.flush.poke(false.B)
+
+      val pagingSatp = 0x80000000L | RootPPN
+
+      def offer(id: Int, vaddr: Long, satp: Long): Boolean = {
+        dut.io.req.bits.id.poke(id.U(4.W))
+        dut.io.req.bits.vaddr.poke(vaddr.U(32.W))
+        dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+        dut.io.req.bits.privilege.poke(0.U(2.W))
+        dut.io.req.bits.sum.poke(false.B)
+        dut.io.req.bits.mxr.poke(false.B)
+        dut.io.req.bits.satp.poke(satp.U(32.W))
+        dut.io.req.valid.poke(true.B)
+        val ready = asBool(dut.io.req.ready)
+        if (ready) { dut.clock.step() }
+        ready
+      }
+
+      // 1 个上下文 + 深度 2 的 reqQueue：先让第一笔进入 PTW（不响应），
+      // 后续请求就会积压在 reqQueue 中。
+      var issued = 0
+      while (issued < 6 && offer(issued,
+          0x1000L + issued.toLong * 0x100L, pagingSatp)) {
+        issued += 1
+      }
+      dut.io.req.valid.poke(false.B)
+      issued should be(3)
+      asBool(dut.io.req.ready) should be(false)
+
+      dut.io.flush.poke(true.B)
+      // flush 当拍也必须拒绝新请求。
+      asBool(dut.io.req.ready) should be(false)
+      dut.clock.step()
+      dut.io.flush.poke(false.B)
+      // 队列里仍有旧请求，flushDrain 期间必须拒绝新请求。
+      asBool(dut.io.req.ready) should be(false)
+
+      var drainCycles = 0
+      while (!asBool(dut.io.req.ready) && drainCycles < 20) {
+        dut.clock.step()
+        drainCycles += 1
+      }
+      withClue(s"reqQueue 未在 flush 后排空（$drainCycles 拍）") {
+        asBool(dut.io.req.ready) should be(true)
+      }
+
+      // 新请求使用 Bare 模式，只需旁路即可返回；若旧请求仍在队列中，
+      // 它会挡在 FIFO 前面并等待页表总线，导致这里等不到新响应。
+      val freshId = 9
+      offer(freshId, 0x2000L, 0L) should be(true)
+      dut.io.req.valid.poke(false.B)
+
+      var response: Option[(Long, Long, Boolean)] = None
+      var guard = 0
+      while (response.isEmpty && guard < 40) {
+        if (asBool(dut.io.resp.valid)) {
+          response = Some((
+            asLong(dut.io.resp.bits.id),
+            asLong(dut.io.resp.bits.paddr),
+            asBool(dut.io.resp.bits.fault)
+          ))
+        }
+        dut.clock.step()
+        guard += 1
+      }
+      withClue(s"flush 后新请求未返回（$guard 拍）") {
+        response should be(Some((freshId.toLong, 0x2000L, false)))
+      }
+    }
+  }
 }

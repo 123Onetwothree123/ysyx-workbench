@@ -119,8 +119,14 @@ class ysyx_26030103_MMU(
       flow = false
     )
   )
-  reqQueue.io.enq <> io.req
-  io.req.ready := reqQueue.io.enq.ready
+  // flush 时队列里可能还有已入队但尚未分配上下文的请求。直接用 flush
+  // 清空会丢失“这些请求曾经属于旧 satp”的事实；若保留又会在新地址空间
+  // 下继续翻译。这里用 flushDrain 逐拍把旧请求 deq 掉但不分配上下文，
+  // 排空之前也不接收任何新请求。
+  val flushDrain = RegInit(false.B)
+  reqQueue.io.enq.valid := io.req.valid && !io.flush && !flushDrain
+  reqQueue.io.enq.bits  := io.req.bits
+  io.req.ready          := reqQueue.io.enq.ready && !io.flush && !flushDrain
 
   def makeTlb(entries: Int, ways: Int) = Module(
     new ysyx_26030103_TLB(
@@ -632,13 +638,20 @@ class ysyx_26030103_MMU(
   val freeCandidates = VecInit((0 until contexts).map(i => !ctxValid(i)))
   val anyFree        = freeCandidates.reduce(_ || _)
   val freeIndex      = PriorityEncoder(freeCandidates)
-  reqQueue.io.deq.ready := anyFree && !io.flush
-  when(reqQueue.io.deq.fire) {
+  reqQueue.io.deq.ready := flushDrain || (anyFree && !io.flush)
+  when(reqQueue.io.deq.fire && !flushDrain) {
     ctx(freeIndex).req  := reqQueue.io.deq.bits
     ctxSeq(freeIndex)   := nextSeq
     ctxValid(freeIndex) := true.B
     ctxState(freeIndex) := ctxLookup
     nextSeq             := nextSeq + 1.U
+  }
+  // io.flush 当拍置位，队列真正排空后撤销。队列空时 deq.ready 仍保持
+  // 高电平，但 deq.valid 为低，不会产生虚假握手。
+  when(io.flush) {
+    flushDrain := true.B
+  }.elsewhen(reqQueue.io.count === 0.U) {
+    flushDrain := false.B
   }
 
   // 响应表队首出队。

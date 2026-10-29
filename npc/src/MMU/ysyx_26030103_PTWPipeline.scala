@@ -223,6 +223,8 @@ class ysyx_26030103_PTWPipeline(
   // 归一化结果。
   private def isLeaf(d: UInt): Bool =
     Cat(d(2), d(1), d(3)) =/= 0.U // 归一化 W/R/X = bit2/1/3
+  /** R=0 且 W=1 是保留编码；无论叶子还是非叶子都必须 page fault。 */
+  private def reservedEncoding(d: UInt): Bool = !d(1) && d(2)
   private def leafAllowed(level: UInt): Bool =
     superpage.B || level === (levels - 1).U
   private def reservedFault(d: UInt): Bool =
@@ -251,6 +253,7 @@ class ysyx_26030103_PTWPipeline(
     d(pteConfig.ppnLow + paddrPpnBits - 1, pteConfig.ppnLow)
   private def walkFault(d: UInt, level: UInt): Bool =
     !d(0) || !ppnFits(d) || reservedFault(d) || // 归一化 valid = bit0
+      reservedEncoding(d) ||
       (isLeaf(d) && (!leafAllowed(level) || superpageMisaligned(d, level))) ||
       (!isLeaf(d) && level === (levels - 1).U)
   private def leafFaultOf(d: UInt, privilege: UInt, access: UInt,
@@ -268,7 +271,8 @@ class ysyx_26030103_PTWPipeline(
       case "fault" => !d(6) || (isStore && !d(7))
       case _       => false.B
     }
-    userFault || sumFault || fetchFault || readFault || writeFault || adFault
+    reservedEncoding(d) ||
+      userFault || sumFault || fetchFault || readFault || writeFault || adFault
   }
   private def needsAdUpdate(d: UInt, isStore: Bool): Bool = adMode match {
     case "hardware" => d(0) && (!d(6) || (isStore && !d(7)))
@@ -510,12 +514,17 @@ class ysyx_26030103_PTWPipeline(
     ctx(resolveCtx).pteAddr := resolvePteAddr
     // 与 independent walker 一致：总线读到的原始 PTE 先填入 cache，即使
     // 它是非叶子或权限错误；cache 命中路径不需要重复写。8B PTE 的
-    // resolveRaw 已包含低/高两个字，命中时可直接复用完整表项。
-    when(resolveFromBus && !resolveWrite) { cacheFill(resolvePteAddr, resolveRaw) }
+    // resolveRaw 已包含低/高两个字，命中时可直接复用完整表项。总线
+    // 错误的数据不是有效 PTE，不能写入 cache。
+    when(resolveFromBus && !resolveWrite && !resolveBusFault) {
+      cacheFill(resolvePteAddr, resolveRaw)
+    }
 
     when(resolveWrite) {
       // A/D 写回完成，写回数据就是最终原始 PTE（只写低 32 位）。
-      cacheFill(resolvePteAddr, resolveRaw.pad(pteWidth))
+      when(cacheEffective.B && !resolveBusFault) {
+        cacheFill(resolvePteAddr, resolveRaw.pad(pteWidth))
+      }
       ctx(resolveCtx).needWrite := false.B
       ctx(resolveCtx).done := true.B
       ctx(resolveCtx).resp.paddr := paddrOf(d, level, vaddr)

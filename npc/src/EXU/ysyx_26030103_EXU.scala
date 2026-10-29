@@ -442,11 +442,15 @@ class ysyx_26030103_EXU(
     ActiveInst.ExceptionValid,
     Mux(FpPending, FpInstReg.ExceptionValid, InstructionTrapValid)
   )
+  // InstructionAddressMisaligned 由当前输入 inst 计算；PendingMDU/FpPending
+  // 时 ActiveInst 是更老的排队指令，不能误用年轻 inst 的 misaligned 信号。
+  val ActiveInstructionAddressMisaligned =
+    Mux(PendingMDU || FpPending, false.B, InstructionAddressMisaligned)
   val ActiveExceptionCause = Mux(
     PendingMDU,
     ActiveInst.ExceptionCause,
     Mux(
-      InstructionAddressMisaligned,
+      ActiveInstructionAddressMisaligned,
       0.U,
       ActiveInst.ExceptionCause
     )
@@ -477,18 +481,27 @@ class ysyx_26030103_EXU(
   CSRUnit.io.pc := TrapBoundaryPC
   // 非法压缩指令的 mtval 写入原始 16 位编码（零扩展）。32 位非法指令
   // 保持既有 ABI（DiffTest/回归测试以 PC 作为 tval）；load/store 使用
-  // 故障地址，取指访问错误和 ecall 仍回退到 PC。
+  // 故障地址，misaligned 使用目标地址，取指访问错误/breakpoint 仍回退
+  // 到 PC；ecall/中断由 CSR 侧固定写 0。
   val ActiveIllegalCompressed =
     ActiveInst.ExceptionValid && ActiveInst.ExceptionCause === 2.U &&
       ActiveInst.IsCompressed
   val ActiveInstructionVisible = io.in.valid || PendingMDU
+  // misaligned 的 mtval 是错误的目标地址，而不是故障指令 PC；
+  // 其余无专门 tval 的异常（breakpoint、instruction access fault 等）
+  // 仍回退到 ActiveInst.pc。
   val ActiveTrapTval = Mux(
     ActiveIllegalCompressed,
     ActiveInst.Instruction,
-    Mux(ActiveInst.MemoryValid, ALUUnit.io.result, ActiveInst.pc)
+    Mux(
+      ActiveInstructionAddressMisaligned,
+      ControlTransferTarget,
+      Mux(ActiveInst.MemoryValid, ALUUnit.io.result, ActiveInst.pc)
+    )
   )
   val ActiveTrapTvalValid = ActiveInstructionVisible &&
-    (ActiveIllegalCompressed || ActiveInst.MemoryValid)
+    (ActiveIllegalCompressed || ActiveInst.MemoryValid ||
+      ActiveInstructionAddressMisaligned)
   CSRUnit.io.TrapTval := Mux(io.MemTrapCommit, io.MemTrapTval, ActiveTrapTval)
   CSRUnit.io.TrapTvalValid := io.MemTrapCommit || ActiveTrapTvalValid
   // fence.i也要产生"重定向": 目标是自己的snpc(即fence.i+4),
@@ -519,9 +532,13 @@ class ysyx_26030103_EXU(
   // MRET 的实际下一PC是mepc，不参与这里的顺序PC比较：它的重定向完全由
   // ExceptionTaken 承担。此前陈旧BTB表项会让 MRET 走 Mispredict 产生一次
   // 伪 Redirect（目标虽已修正为mepc，但事件语义/计数仍会误导）。
+  // SFENCE.VMA 改变地址空间后，年轻指令可能已按旧翻译取指/译码；
+  // 提交时必须像 fence.i 一样冲刷年轻取指，并从 snpc 重新取指。
   val Redirect =
-    (Mispredict || inst.IsFenceI) && !InstructionTrapValid &&
-      !inst.IsMret && (if (hasS) !inst.IsSret else true.B)
+    (Mispredict || inst.IsFenceI ||
+      (if (hasS) inst.IsSfenceVma else false.B)) &&
+      !InstructionTrapValid && !inst.IsMret &&
+      (if (hasS) !inst.IsSret else true.B)
   // CSR提交(csr写/ecall/ebreak/mret/异常/中断): 普通访存不访问CSR单元；
   // 但已使能IRQ可以在load/store执行前的指令边界提交，并压掉该访存。
   // 带异常标记的访存指令(取指错/非法编码)必须在EXU提交异常, 提交视角下不算访存指令,

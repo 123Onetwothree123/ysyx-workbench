@@ -42,6 +42,20 @@ class ysyx_26030103_LSUMMUViptTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.pc.poke(pc.U(AddrW.W))
   }
 
+  private def pokeStore(
+    dut: ysyx_26030103_LSUMMU,
+    pc:  Long
+  ): Unit = {
+    dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
+    dut.io.in.bits.MemoryValid.poke(true.B)
+    dut.io.in.bits.MemoryWrite.poke(true.B)
+    dut.io.in.bits.ALUResult.poke(Va.U(AddrW.W))
+    dut.io.in.bits.VAddr.poke(Va.U(AddrW.W))
+    dut.io.in.bits.WidthSelect.poke(2.U(2.W))
+    dut.io.in.bits.StoreData.poke(0x11223344L.U(64.W))
+    dut.io.in.bits.pc.poke(pc.U(AddrW.W))
+  }
+
   private def resetDut(
     dut:   ysyx_26030103_LSUMMU,
     clock: Clock,
@@ -74,6 +88,18 @@ class ysyx_26030103_LSUMMUViptTest extends AnyFlatSpec with Matchers {
     pokeLoad(dut, pc)
     dut.io.in.valid.poke(true.B)
     waitUntil(clock, bool(dut.io.in.ready), "LSUMMU 未受理 load")
+    clock.step()
+    dut.io.in.valid.poke(false.B)
+  }
+
+  private def startStore(
+    dut:   ysyx_26030103_LSUMMU,
+    clock: Clock,
+    pc:    Long
+  ): Unit = {
+    pokeStore(dut, pc)
+    dut.io.in.valid.poke(true.B)
+    waitUntil(clock, bool(dut.io.in.ready), "LSUMMU 未受理 store")
     clock.step()
     dut.io.in.valid.poke(false.B)
   }
@@ -198,6 +224,105 @@ class ysyx_26030103_LSUMMUViptTest extends AnyFlatSpec with Matchers {
       clock.step(2)
       bool(dut.io.faultCommit) should be(false)
       bool(dut.io.memPaddrValid) should be(false)
+      bool(dut.io.busy) should be(false)
+    }
+  }
+
+  "LSUMMU PIPT" should "把翻译成功但 PMP 拒绝的 load 报告为 access fault" in {
+    simulate(new ysyx_26030103_LSUMMU(ParallelVipt = false)) { dut =>
+      val clock = dut.clock
+      resetDut(dut, clock, dut.reset)
+      startLoad(dut, clock, pc = 0x5000L)
+      waitUntil(clock, bool(dut.io.req.valid), "MMU 翻译请求未发出")
+      long(dut.io.req.bits.vaddr) should be(Va)
+      dut.io.req.ready.poke(true.B)
+      clock.step()
+      dut.io.req.ready.poke(false.B)
+
+      // 翻译成功，但 PMP 在当前响应物理地址上拒绝访问。
+      pokeResponse(dut, fault = false, paddr = Pa)
+      dut.io.pmpFault.poke(true.B)
+      dut.io.resp.valid.poke(true.B)
+      bool(dut.io.faultCommit) should be(false)
+      bool(dut.io.out.valid) should be(false)
+      clock.step()
+      dut.io.resp.valid.poke(false.B)
+      dut.io.pmpFault.poke(false.B)
+
+      // PIPT 下请求从未交给 LSU，只提交一次精确 load access fault。
+      bool(dut.io.faultCommit) should be(true)
+      long(dut.io.faultCause) should be(5)
+      long(dut.io.faultTval) should be(Va)
+      long(dut.io.faultPC) should be(0x5000L)
+      bool(dut.io.out.valid) should be(false)
+      bool(dut.io.busy) should be(true)
+      clock.step()
+      bool(dut.io.faultCommit) should be(true)
+      bool(dut.io.out.valid) should be(false)
+
+      dut.io.flush.poke(true.B)
+      clock.step()
+      dut.io.flush.poke(false.B)
+      clock.step()
+      bool(dut.io.faultCommit) should be(false)
+      bool(dut.io.busy) should be(false)
+
+      // 同拍 page fault 与 PMP access fault 并存时，page fault 优先。
+      startLoad(dut, clock, pc = 0x5100L)
+      waitUntil(clock, bool(dut.io.req.valid), "第二笔翻译请求未发出")
+      dut.io.req.ready.poke(true.B)
+      clock.step()
+      dut.io.req.ready.poke(false.B)
+      pokeResponse(dut, fault = true, paddr = 0L)
+      dut.io.pmpFault.poke(true.B)
+      dut.io.resp.valid.poke(true.B)
+      clock.step()
+      dut.io.resp.valid.poke(false.B)
+      dut.io.pmpFault.poke(false.B)
+      bool(dut.io.faultCommit) should be(true)
+      long(dut.io.faultCause) should be(13)
+      long(dut.io.faultTval) should be(Va)
+      long(dut.io.faultPC) should be(0x5100L)
+
+      dut.io.flush.poke(true.B)
+      clock.step()
+      dut.io.flush.poke(false.B)
+    }
+  }
+
+  "LSUMMU VIPT parallel" should "PMP 拒绝翻译成功的 store 时 kill 已转发请求并提交 store access fault" in {
+    simulate(new ysyx_26030103_LSUMMU(ParallelVipt = true)) { dut =>
+      val clock = dut.clock
+      resetDut(dut, clock, dut.reset)
+      startStore(dut, clock, pc = 0x6000L)
+      forwardAndRequest(dut, clock)
+      dut.io.memActive.poke(true.B)
+
+      // store 已登记到 LSU 写缓冲；翻译成功但 PMP 拒绝写。
+      pokeResponse(dut, fault = false, paddr = Pa)
+      dut.io.pmpFault.poke(true.B)
+      dut.io.resp.valid.poke(true.B)
+      // 采样响应的同拍必须 kill，撤销已进入 LSU/DCache 的 store。
+      bool(dut.io.memKill) should be(true)
+      clock.step()
+      dut.io.resp.valid.poke(false.B)
+      dut.io.pmpFault.poke(false.B)
+
+      bool(dut.io.faultCommit) should be(true)
+      long(dut.io.faultCause) should be(7)
+      long(dut.io.faultTval) should be(Va)
+      long(dut.io.faultPC) should be(0x6000L)
+      bool(dut.io.out.valid) should be(false)
+      bool(dut.io.memPaddrValid) should be(false)
+      clock.step()
+      bool(dut.io.faultCommit) should be(true)
+      bool(dut.io.memPaddrValid) should be(false)
+
+      dut.io.flush.poke(true.B)
+      clock.step()
+      dut.io.flush.poke(false.B)
+      clock.step()
+      bool(dut.io.faultCommit) should be(false)
       bool(dut.io.busy) should be(false)
     }
   }
