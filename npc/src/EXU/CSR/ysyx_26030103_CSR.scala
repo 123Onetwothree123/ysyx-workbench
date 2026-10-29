@@ -678,7 +678,24 @@ class ysyx_26030103_CSR(
     }
   }
   // 标准 mcountinhibit：bit0=CY，bit2=IR。
-  when(io.Enable && !Mcountinhibit(2) && !io.MemTrap) { Minstret := Minstret + 1.U }
+  // minstret 只统计真正提交的指令：中断提交（IdleIrqCommit 或抢占当前
+  // 指令的 IrqCommit）没有指令退休，不能自增。minstret/minstreth 是
+  // 可写计数器；写口优先于本拍自增，避免写入指令再被计数一次。
+  val MinstretWen = CSRWen &&
+    (IsCSRAddress(CSR_MINSTRET) || IsCSRAddress(CSR_MINSTRETH))
+  when(MinstretWen) {
+    val Written = CSRWriteData(Minstret)
+    if (XLEN == 64) {
+      Minstret := Written
+    } else {
+      Minstret := Cat(
+        Mux(IsCSRAddress(CSR_MINSTRETH), Written(31, 0), Minstret(63, 32)),
+        Mux(IsCSRAddress(CSR_MINSTRET), Written(31, 0), Minstret(31, 0))
+      )
+    }
+  }.elsewhen(io.Enable && !HasIrqCommit && !Mcountinhibit(2) && !io.MemTrap) {
+    Minstret := Minstret + 1.U
+  }
   SscratchOpt.foreach { Sscratch =>
     when(CSRWen && IsCSRAddress(CSR_SSCRATCH)) { Sscratch := CSRWriteData(Sscratch) }
   }

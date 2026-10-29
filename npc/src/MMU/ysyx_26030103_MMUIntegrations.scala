@@ -298,12 +298,17 @@ class ysyx_26030103_LSUMMU(
   io.faultTval := faultTvalReg
   io.faultPC := faultPCReg
   io.busy := state =/= idle
-  io.pmpAddr := Mux(state === xwait, io.resp.bits.paddr, paddrReg)
-  io.pmpWrite := msgReg.MemoryWrite
+  // idle 拍也要把即将直通的访存地址交给 PMP：MMU 打开但 satp.MODE=0
+  // 或当前为 M 模式时 bypass 翻译，顶层仍把 lsu.PmpFault 绑 0，因此
+  // 必须由 LSUMMU 自己检查，否则 bare/M 模式的数据 PMP 完全失效。
+  val PmpMsg = Mux(state === idle, io.in.bits, msgReg)
+  io.pmpAddr := Mux(state === idle, io.in.bits.ALUResult,
+    Mux(state === xwait, io.resp.bits.paddr, paddrReg))
+  io.pmpWrite := PmpMsg.MemoryWrite
   // 普通 load 与 LR 读；AMO 读+写；SC 只写。
-  io.pmpRead := !msgReg.MemoryWrite ||
-    (msgReg.IsAtomic &&
-      msgReg.AtomicOp =/= ysyx_26030103_AtomicOp.SC)
+  io.pmpRead := !PmpMsg.MemoryWrite ||
+    (PmpMsg.IsAtomic &&
+      PmpMsg.AtomicOp =/= ysyx_26030103_AtomicOp.SC)
   io.memPaddr := paddrReg
   if (ParallelVipt) {
     io.memPaddrValid := paddrValidReg
@@ -318,9 +323,22 @@ class ysyx_26030103_LSUMMU(
     when(state === idle) {
       // 始终使用同一个握手条件，避免 in.ready 依赖 in.bits 形成组合环。
       io.in.ready := io.out.ready
-      when(!isMem || bypass) {
+      when(!isMem) {
         io.out.valid := io.in.valid
         io.out.bits := io.in.bits
+      }.elsewhen(bypass) {
+        // Bare/M 模式没有页表翻译，但 PMP 仍然必须检查；故障时消费输入
+        // 并进入 fault，不能把访存指令直通给 LSU。
+        when(io.in.valid && io.pmpFault) {
+          faultReg := true.B
+          faultCauseReg := Mux(io.in.bits.MemoryWrite, 7.U, 5.U)
+          faultTvalReg := io.in.bits.ALUResult
+          faultPCReg := io.in.bits.pc
+          state := fault
+        }.otherwise {
+          io.out.valid := io.in.valid
+          io.out.bits := io.in.bits
+        }
       }.otherwise {
         when(io.in.fire) {
           msgReg := io.in.bits
@@ -401,14 +419,24 @@ class ysyx_26030103_LSUMMU(
       }.elsewhen(io.in.fire) {
         // load/store 都先锁存原始 VA 并转发给 LSU：store 此时只进入写
         // 缓冲登记，不会发 AW/W；PA 由翻译结果带标签返回。
-        msgReg := io.in.bits
-        msgBypass := bypass
-        state := fwd
-        when(bypass) {
-          // bypass 时 VA==PA，可以在 LSU 受理前就给出有效 PA。
-          paddrReg := io.in.bits.ALUResult
-          paddrVaddrReg := io.in.bits.VAddr
-          paddrValidReg := true.B
+        when(bypass && io.pmpFault) {
+          // Bare/M 模式没有翻译，但 PMP 必须先生效；不要进入 fwd，
+          // 否则故障 load/store 会被 LSU 当成正常请求接收。
+          faultReg := true.B
+          faultCauseReg := Mux(io.in.bits.MemoryWrite, 7.U, 5.U)
+          faultTvalReg := io.in.bits.ALUResult
+          faultPCReg := io.in.bits.pc
+          state := fault
+        }.otherwise {
+          msgReg := io.in.bits
+          msgBypass := bypass
+          state := fwd
+          when(bypass) {
+            // bypass 时 VA==PA，可以在 LSU 受理前就给出有效 PA。
+            paddrReg := io.in.bits.ALUResult
+            paddrVaddrReg := io.in.bits.VAddr
+            paddrValidReg := true.B
+          }
         }
       }
     }

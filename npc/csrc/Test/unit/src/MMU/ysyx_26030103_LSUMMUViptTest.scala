@@ -326,4 +326,32 @@ class ysyx_26030103_LSUMMUViptTest extends AnyFlatSpec with Matchers {
       bool(dut.io.busy) should be(false)
     }
   }
+
+  "LSUMMU PIPT bypass" should "在 Bare 模式检查 PMP 并提交 load access fault" in {
+    simulate(new ysyx_26030103_LSUMMU(ParallelVipt = false)) { dut =>
+      val clock = dut.clock
+      resetDut(dut, clock, dut.reset)
+      // satp.MODE=0：bypass 翻译，但 PMP 仍必须生效。
+      dut.io.satp.poke(0.U(AddrW.W))
+      dut.io.privilege.poke(1.U(2.W))
+      dut.io.pmpFault.poke(true.B)
+      pokeLoad(dut, pc = 0x2000L)
+      dut.io.in.valid.poke(true.B)
+      waitUntil(clock, bool(dut.io.in.ready), "LSUMMU 未受理 bypass load")
+      clock.step()
+      dut.io.in.valid.poke(false.B)
+      waitUntil(clock, bool(dut.io.faultCommit), "未提交 bypass PMP fault")
+      long(dut.io.faultCause) should be(5)
+      long(dut.io.faultTval) should be(Va)
+      long(dut.io.faultPC) should be(0x2000L)
+      bool(dut.io.out.valid) should be(false)
+      bool(dut.io.busy) should be(true)
+      dut.io.flush.poke(true.B)
+      clock.step()
+      dut.io.flush.poke(false.B)
+      clock.step()
+      bool(dut.io.faultCommit) should be(false)
+      bool(dut.io.busy) should be(false)
+    }
+  }
 }

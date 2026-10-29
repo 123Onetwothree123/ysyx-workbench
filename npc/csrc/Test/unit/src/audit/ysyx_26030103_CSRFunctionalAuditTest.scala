@@ -232,6 +232,36 @@ class ysyx_26030103_CSRFunctionalAuditTest
     }
   }
 
+  it should "不因纯中断提交自增 minstret" in {
+    val irqProfile = profile.copy(hasSExternalIrq = false)
+    simulate(new ysyx_26030103_CSRAuditHarness(irqProfile)) { dut =>
+      setup(dut)
+      writeCsr(dut, MSTATUS, BigInt(0x8))
+      writeCsr(dut, 0x304, BigInt(0x800))
+      writeCsr(dut, MTVEC, BigInt("0000000080002000", 16))
+      val before = peekCsr(dut, MINSTRET)
+      dut.io.pc.poke(BigInt("0000000080001000", 16).U(64.W))
+      dut.io.enable.poke(true.B)
+      dut.io.interrupt.poke(true.B)
+      dut.io.trapCommit.peek().litToBoolean should be(true)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.interrupt.poke(false.B)
+      // 中断没有退休指令，minstret 不能增加。
+      peekCsr(dut, MINSTRET) should be(before)
+    }
+  }
+
+  it should "支持 RV64 minstret 写入且写入拍不再自增" in {
+    simulate(new ysyx_26030103_CSRAuditHarness(profile)) { dut =>
+      setup(dut)
+      writeCsr(dut, MINSTRET, BigInt(0x1234))
+      peekCsr(dut, MINSTRET) should be(BigInt(0x1234))
+      stepEnable(dut, 1)
+      peekCsr(dut, MINSTRET) should be(BigInt(0x1235))
+    }
+  }
+
   it should "在中断提交时把 mtval 写成 0" in {
     // 默认 profile 的外部中断走 S 级；这里裁剪 hasSExternalIrq，让
     // io.interrupt 直接作为 M 级外部中断，在 M 模式验证中断 tval。
