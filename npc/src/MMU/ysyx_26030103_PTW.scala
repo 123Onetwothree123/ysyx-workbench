@@ -138,6 +138,10 @@ class ysyx_26030103_PTW(
 
   val idle :: reqState :: waitState :: reqHigh :: waitHigh :: writeState :: waitWrite :: done :: Nil = Enum(8)
   val state = RegInit(idle)
+  // flush 时如果已有页表事务在途，必须继续把它收完（否则总线上会留下
+  // 无人接收的响应，且后续 walk 可能误认领旧响应），但绝不能再让旧 walk
+  // 的 PTE 回填 cache 或向上层返回结果。discard 标记这段收尾过程。
+  val discard = RegInit(false.B)
 
   val idReg = RegInit(0.U(4.W))
   val vaddrReg = RegInit(0.U(XLEN.W))
@@ -215,6 +219,7 @@ class ysyx_26030103_PTW(
 
   when(io.flush) {
     cache.foreach { c => for (i <- 0 until cacheEntries) { c(i).valid := false.B } }
+    when(state =/= idle) { discard := true.B }
   }
 
   val isFetch = accessReg === ysyx_26030103_AccessType.Fetch
@@ -375,8 +380,12 @@ class ysyx_26030103_PTW(
   val nextPteAddr = tableAddress(tableReg, vpnIndex(levelReg))
   val (cacheHit, cacheData) = cacheLookup(nextPteAddr)
   val useBus = state === reqState && !cacheHit
-  io.req.ready := state === idle
-  io.bus.req.valid := useBus || state === reqHigh || state === writeState
+  io.req.ready := state === idle && !io.flush && !discard
+  // flush/收尾期间不再发起新的页表事务；reqState/reqHigh/writeState 的
+  // 推进也必须改用 fire，否则 valid 被 flush 门控掉时仍会误判为已发请求。
+  io.bus.req.valid :=
+    (useBus || state === reqHigh || state === writeState) &&
+      !io.flush && !discard
   // 单 walker 同时只有一笔页表事务；ID 在簇内唯一，用于响应回收。
   io.bus.req.bits.id := busId.U(4.W)
   io.bus.req.bits.addr := Mux(state === writeState, pteAddrReg,
@@ -386,7 +395,7 @@ class ysyx_26030103_PTW(
   io.bus.req.bits.data := Mux(state === writeState, writeDataReg(31, 0), 0.U)
   io.bus.req.bits.strb := Mux(state === writeState, "hf".U(4.W), 0.U)
   io.bus.resp.ready := state === waitState || state === waitHigh || state === waitWrite
-  io.resp.valid := state === done
+  io.resp.valid := state === done && !io.flush && !discard
   io.resp.bits := respReg
 
   def setFault(cause: UInt = pageFaultCause): Unit = {
@@ -418,8 +427,11 @@ class ysyx_26030103_PTW(
 
   def processPte(d: UInt, raw: UInt, busFault: Bool): Unit = {
     // cache 保存原始 PTE；4B 时 raw 就是 32 位字，8B 时是低/高字拼接。
-    // 总线错误的读数据不是有效 PTE，不能写入 cache。
-    when(cacheEffective.B && !busFault) { cacheFill(pteAddrReg, raw) }
+    // 总线错误的读数据不是有效 PTE，不能写入 cache。flush 当拍或该 walk
+    // 已被 flush 丢弃时也不能回填，否则旧 PTE 会跨 sfence 残留。
+    when(cacheEffective.B && !busFault && !io.flush && !discard) {
+      cacheFill(pteAddrReg, raw)
+    }
     when(busFault || rawReservedFault(raw) || walkFault(d)) {
       // 总线故障是 access fault；保留位/权限/几何错误仍是 page fault。
       setFault(Mux(busFault, accessFaultCause, pageFaultCause))
@@ -467,25 +479,39 @@ class ysyx_26030103_PTW(
     is(reqState) {
       // 计算当前级页表项地址。
       pteAddrReg := nextPteAddr
-      when(cacheHit) {
+      when(discard) {
+        state := idle
+        discard := false.B
+      }.elsewhen(cacheHit) {
         // cache 中保存的是原始 PTE，命中路径与总线读路径一样先归一化。
         val cachePte = normalizePte(cacheData)
         when(rawReservedFault(cacheData) || walkFault(cachePte)) {
           setFault()
         }.elsewhen(isLeaf(cachePte)) {
-          finishLeaf(cachePte, leafFaultOf(cachePte))
+          // cache 命中与总线读路径必须执行同一套 A/D 处理：命中项可能
+          // 是之前 load 留下的 A=1,D=0，同页 store 仍要把 D 写回页表。
+          when(needsAdUpdate(cachePte)) {
+            writeDataReg := adRaw(cacheData)
+            state := writeState
+          }.otherwise {
+            finishLeaf(cachePte, leafFaultOf(cachePte))
+          }
         }.otherwise {
           tableReg := (ppnValue(cachePte) << pageBits).pad(addressWidth)
           levelReg := levelReg + 1.U
           state := reqState
         }
-      }.elsewhen(io.bus.req.ready) {
+      }.elsewhen(io.bus.req.fire) {
         state := waitState
       }
     }
     is(waitState) {
       when(io.bus.resp.valid) {
-        when(io.bus.resp.bits.fault) {
+        when(discard) {
+          // 旧 walk 的响应只用于排空总线，不再解析/缓存。
+          state := idle
+          discard := false.B
+        }.elsewhen(io.bus.resp.bits.fault) {
           setFault(accessFaultCause)
         }.otherwise {
           if (pteBytes == 8) {
@@ -499,42 +525,69 @@ class ysyx_26030103_PTW(
       }
     }
     is(reqHigh) {
-      when(io.bus.req.ready) { state := waitHigh }
+      when(discard) {
+        state := idle
+        discard := false.B
+      }.elsewhen(io.bus.req.fire) {
+        state := waitHigh
+      }
     }
     is(waitHigh) {
       when(io.bus.resp.valid) {
-        val raw = Cat(io.bus.resp.bits.data, pteLowReg)
-        processPte(normalizePte(raw), raw, io.bus.resp.bits.fault)
+        when(discard) {
+          state := idle
+          discard := false.B
+        }.otherwise {
+          val raw = Cat(io.bus.resp.bits.data, pteLowReg)
+          processPte(normalizePte(raw), raw, io.bus.resp.bits.fault)
+        }
       }
     }
     is(writeState) {
-      when(io.bus.req.ready) { state := waitWrite }
+      when(discard) {
+        state := idle
+        discard := false.B
+      }.elsewhen(io.bus.req.fire) {
+        state := waitWrite
+      }
     }
     is(waitWrite) {
       when(io.bus.resp.valid) {
-        val written = normalizePte(writeDataReg)
-        // A/D 写回只更新低 32 位；cache 保存完整 PTE，8B 时高字保留原值。
-        // 写总线出错时不更新 cache，避免缓存未成功写回的表项。
-        when(cacheEffective.B && !io.bus.resp.bits.fault) {
-          cacheFill(pteAddrReg, writeDataReg)
+        when(discard) {
+          state := idle
+          discard := false.B
+        }.otherwise {
+          val written = normalizePte(writeDataReg)
+          // A/D 写回只更新低 32 位；cache 保存完整 PTE，8B 时高字保留原值。
+          // 写总线出错时不更新 cache，避免缓存未成功写回的表项。
+          when(cacheEffective.B && !io.bus.resp.bits.fault && !io.flush &&
+              !discard) {
+            cacheFill(pteAddrReg, writeDataReg)
+          }
+          respReg.paddr := paddrOf(written, levelReg)
+          respReg.fault := io.bus.resp.bits.fault || leafFaultOf(written)
+          respReg.cause := Mux(io.bus.resp.bits.fault,
+            accessFaultCause, pageFaultCause)
+          respReg.tval := vaddrReg
+          respReg.fillPte := written
+          respReg.fillVaddr := vaddrReg
+          respReg.fillAsid := satpAsid(satpReg)
+          fillLevelReg := fillLevelOf(levelReg)
+          respReg.fillValid := !leafFaultOf(written) &&
+            !io.bus.resp.bits.fault &&
+            (fillSuperpage.B || levelReg === (levels - 1).U)
+          state := done
         }
-        respReg.paddr := paddrOf(written, levelReg)
-        respReg.fault := io.bus.resp.bits.fault || leafFaultOf(written)
-        respReg.cause := Mux(io.bus.resp.bits.fault,
-          accessFaultCause, pageFaultCause)
-        respReg.tval := vaddrReg
-        respReg.fillPte := written
-        respReg.fillVaddr := vaddrReg
-        respReg.fillAsid := satpAsid(satpReg)
-        fillLevelReg := fillLevelOf(levelReg)
-        respReg.fillValid := !leafFaultOf(written) &&
-          !io.bus.resp.bits.fault &&
-          (fillSuperpage.B || levelReg === (levels - 1).U)
-        state := done
       }
     }
     is(done) {
-        when(io.resp.ready) { state := idle }
+      when(io.resp.ready || io.flush || discard) {
+        state := idle
+        discard := false.B
+      }
+    }
+    is(idle) {
+      discard := false.B
     }
   }
 

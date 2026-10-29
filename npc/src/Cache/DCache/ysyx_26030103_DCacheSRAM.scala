@@ -919,7 +919,9 @@ class ysyx_26030103_DCacheSRAM(
               RefillWordValid :=
                 RefillWordValid | UIntToOH(RefillCount, WordsPerBlock)
             }
-            when(KeywordBeat && !DemandResponseDone) {
+            // 早期 beat 已经产生 fault 时，关键词 beat 不得把响应覆盖成
+            // 成功数据；RefillError 在本次回填结束前保持锁存。
+            when(KeywordBeat && !DemandResponseDone && !RefillError) {
               when(ReqWide) {
                 WideLowReg := io.AXI.R.RDATA
               }.otherwise {

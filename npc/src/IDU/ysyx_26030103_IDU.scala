@@ -189,9 +189,13 @@ class ysyx_26030103_IDU(
     ysyx_26030103_AtomicOp.MAX, ysyx_26030103_AtomicOp.MINU,
     ysyx_26030103_AtomicOp.MAXU
   ).map(AmoFunct5 === _).reduce(_ || _)
+  // LR 的编码把 rs2 固定为 0；rs2 非零属于保留编码，必须按非法指令
+  // 陷入（NEMU REF 的 lr_w/lr_d 模式也只匹配 rs2=00000）。
+  val AtomicRs2Legal =
+    AmoFunct5 =/= ysyx_26030103_AtomicOp.LR || Rs2 === 0.U
   val IsAtomic =
     if (config.UseA)
-      (opcode === OPCODE_Amo) && AmoFunct5Valid &&
+      (opcode === OPCODE_Amo) && AmoFunct5Valid && AtomicRs2Legal &&
         ((funct3 === "b010".U(3.W)) ||
           (if (XLEN == 64) funct3 === "b011".U(3.W) else false.B))
     else false.B

@@ -445,11 +445,19 @@ class ysyx_26030103_CSR(
   def pendingCause(pending: UInt, sMode: Boolean): UInt = {
     val base = BigInt(0x80000000L)
     if (sMode) {
+      // S 级中断优先级：SEI(9) > SSI(1) > STI(5)。旧实现先查 STIP，
+      // 会把自己拉起的 SSIP/STIP 同时 pending 误报为 STI。
       Mux(pending(9), (base | 9).U(32.W),
-        Mux(pending(5), (base | 5).U(32.W), (base | 1).U(32.W)))
+        Mux(pending(1), (base | 1).U(32.W), (base | 5).U(32.W)))
     } else {
+      // M 入口也可能处理未委托的 S 级中断（mideleg 对应位为 0）；
+      // cause 必须取实际 pending 位，例如未委托的 SEIP 是 cause 9，
+      // 不能落进 MSI(3) 的默认分支。
       Mux(pending(11), (base | 11).U(32.W),
-        Mux(pending(7), (base | 7).U(32.W), (base | 3).U(32.W)))
+        Mux(pending(7), (base | 7).U(32.W),
+          Mux(pending(3), (base | 3).U(32.W),
+            Mux(pending(9), (base | 9).U(32.W),
+              Mux(pending(1), (base | 1).U(32.W), (base | 5).U(32.W))))))
     }
   }
   val MIrqCause = pendingCause(MIntPending, sMode = false)
@@ -657,7 +665,11 @@ class ysyx_26030103_CSR(
     FrmReg := FcsrWrite(7, 5)
     FFlagsReg := FcsrWrite(4, 0)
   }
-  io.Frm := FrmReg
+  val FrmNext = Mux(CSRWen && IsCSRAddress(CSR_FCSR),
+    CSRWriteData(Widen32(Cat(FrmReg, FFlagsReg)))(7, 5),
+    Mux(CSRWen && IsCSRAddress(CSR_FRM),
+      CSRWriteData(Widen32(FrmReg))(2, 0), FrmReg))
+  io.Frm := FrmNext
   io.Fcsr := Cat(FrmReg, FFlagsReg)
   for (word <- 0 until PmpCfgWords) {
     // RV64：pmpcfg0=0x3a0（entry 0..7），pmpcfg2=0x3a2（entry 8..15）。
@@ -721,7 +733,13 @@ class ysyx_26030103_CSR(
     when(CSRWen && IsCSRAddress(CSR_MEDELEG)) { Medeleg := Write32(Medeleg) }
   }
   MidelegOpt.foreach { Mideleg =>
-    when(CSRWen && IsCSRAddress(CSR_MIDELEG)) { Mideleg := Write32(Mideleg) }
+    // M 级中断（MSIP/MTIP/MEIP，bit3/7/11）不能委托给 S，mideleg 中
+    // 对应位是只读零。若把软件误写值原样保存，MIntPending 里的
+    // `~Mideleg` 会把 M 中断从 M 入口排除，而 SipState 又只看 S 位，
+    // 最终把中断整个吞掉。
+    when(CSRWen && IsCSRAddress(CSR_MIDELEG)) {
+      Mideleg := Write32(Mideleg) & SInterruptMask
+    }
   }
   when(CSRWen && IsCSRAddress(CSR_MIE)) { Mie := Write32(Mie) }
   when(CSRWen && IsCSRAddress(CSR_MIP)) { Mip := Write32(Mip) }
@@ -793,7 +811,14 @@ class ysyx_26030103_CSR(
     }
   }
   io.Privilege := Privilege
-  io.CurrentMstatus := MstatusArchValue(Mstatus_rdata)
+  // CSR 写提交与紧随其后的指令译码发生在同一拍：IDU 在译码级用
+  // mstatus/frm 判断 F 指令、DYN 舍入以及 TVM/TSR/TW 陷门。
+  // CSR 寄存器在时钟沿才更新，若这里不旁路本拍的写数据，紧邻 CSR 写的
+  // 第一条指令会看到旧值（例如清 FS 后的 fadd.s 不陷入、写 frm 后的
+  // DYN 指令仍用旧舍入模式）。异常/MRET/SRET 会冲刷年轻指令，只有软件
+  // CSR 写需要旁路。
+  io.CurrentMstatus := Mux(MstatusWen,
+    MstatusArchValue(MstatusCSRData), MstatusArchValue(Mstatus_rdata))
   io.FlushTLB := (if (hasS) SfenceCommit || SatpWen else false.B)
 
   val McycleAccess = IsCSRAddress(CSR_MCYCLE) || IsCSRAddress(CSR_MCYCLEH)

@@ -386,6 +386,9 @@ class ysyx_26030103_ICacheReg(
             deferredTag ===
               io.snoop_addr_hi(AddressWidth - 1, BlockSizeLog2))
       ) {
+        // 若 snoop 恰好落在扫描最后一拍，上面刚把 deferred 行置为
+        // valid；必须在同一沿压掉这次补装，store 之前的指令不能留下。
+        valid(deferredIndex) := false.B
         deferredValid := false.B
       }
     }
@@ -703,9 +706,18 @@ class ysyx_26030103_ICacheReg(
                 if (DeferredAliasInstall) {
                   val (deferredIndex, deferredTag, deferredValid) =
                     AliasDeferred.get
-                  deferredValid := true.B
-                  deferredIndex := RefIndexSafe
-                  deferredTag := ref_tag
+                  // store snoop 与 RLAST 同拍时，这次 refill 的数据早于
+                  // store；不能挂成 deferred，否则扫描结束后又会把旧行
+                  // 置 valid（上面的 snoop 取消逻辑只看已寄存的 deferred）。
+                  val deferredSnooped =
+                    if (Snoop && Enable)
+                      io.snoop_valid && SnoopLineMatch(ref_addr)
+                    else false.B
+                  when(!deferredSnooped) {
+                    deferredValid := true.B
+                    deferredIndex := RefIndexSafe
+                    deferredTag := ref_tag
+                  }
                 }
               }
             }

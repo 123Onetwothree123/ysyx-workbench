@@ -316,9 +316,10 @@ class ysyx_26030103_TLB(
       if (hasU) !(privilegeS && selU) || (lookup.sum && !isFetch) else true.B
     val accessOk = Mux(isFetch, fetchOk, Mux(isStore, writeOk, readOk))
     // hardware 模式的 A/D 写回由 PTW 在填表前完成，TLB 只缓存已处理的
-    // PTE。若某表项由 load 填入（A=1,D=0），之后的 store 命中不会单独
-    // 更新 D；要补齐这一点需要给 TLB 增加页表写回端口，属于已知限制，
-    // 不在本次修改范围内。fault 模式仍按 A/D 位拒绝访问。
+    // PTE。若某表项由 load 填入（A=1,D=0），之后的 store 命中不能直接
+    // 放行：这里把 A=0 或 store 且 D=0 的命中降级为 miss，交给带 A/D
+    // 写端口的 PTW 重新 walk 并写回，再用新 PTE 回填。这样无需给 TLB
+    // 增加页表写端口，也不会让 D 永远不更新。fault 模式仍按 A/D 位拒绝。
     val adOk = adMode match {
       case "fault" => selA && (!isStore || selD)
       case _       => true.B
@@ -333,8 +334,12 @@ class ysyx_26030103_TLB(
       lruUpdate(lookupSet, hitWay)
     }
     val anyHit = lookupHit || superHit
-    io.result(p).hit := anyHit
-    io.result(p).fault := anyHit && !permissionOk
+    val adRefillNeeded =
+      if (adMode == "hardware") anyHit && (!selA || (isStore && !selD))
+      else false.B
+    val effectiveHit = anyHit && !adRefillNeeded
+    io.result(p).hit := effectiveHit
+    io.result(p).fault := effectiveHit && !permissionOk
     val basePaddr = (Cat(selPpn, lookup.vaddr(pageBits - 1, 0))).pad(addressWidth)
     io.result(p).paddr := Mux(superHit, superPaddr, basePaddr)
     io.result(p).cause := faultCause

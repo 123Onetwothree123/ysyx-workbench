@@ -844,7 +844,9 @@ class ysyx_26030103_DCacheReg(
               RefillWordValid :=
                 RefillWordValid | UIntToOH(RefillCount, WordsPerBlock)
             }
-            when(KeywordBeat && !DemandResponseDone) {
+            // 早期 beat 已经产生 fault 时，关键词 beat 不得把响应覆盖成
+            // 成功数据；RefillError 在本次回填结束前保持锁存。
+            when(KeywordBeat && !DemandResponseDone && !RefillError) {
               when(ReqWide) {
                 // 8 字节 load 关键词只是低 word；等下一拍高 word 到齐后再
                 // 形成响应，避免把半条数据提前交给 LSU。
