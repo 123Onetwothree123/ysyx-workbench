@@ -44,7 +44,9 @@ class riscv32e_npc_AXIRAM(val ramBytes: Long = 64L * 1024L * 1024L) extends Modu
   val RamBase = "h80000000".U(32.W)
   val RamLast = (0x80000000L + ramBytes - 1L).U(32.W)
   val UartBase = "h10000000".U(32.W)
-  val UartLast = "h1000001f".U(32.W)
+  // 16550 实际寄存器只占偏移 0..7。窗口若继续覆盖 0x08..0x1f，地址
+  // 截断会把它们别名到 RBR，读 0x10000008 会误弹 RX FIFO。
+  val UartLast = "h10000007".U(32.W)
 
   // UART 窗口只有 8 个字节寄存器。与 RAM 一样，必须保证整个访问都落在
   // 窗口内，避免跨窗口访问被错误地当成 UART 寄存器。
@@ -179,9 +181,9 @@ class riscv32e_npc_AXIRAM(val ramBytes: Long = 64L * 1024L * 1024L) extends Modu
     io.axi.AR.ARBURST <= 1.U && io.axi.AR.ARLEN === 0.U
   uart.io.rxValid := io.uartRxValid
   uart.io.rxData := io.uartRxData
-  uart.io.rdAddr := io.axi.AR.ARADDR(4, 0)
+  uart.io.rdAddr := io.axi.AR.ARADDR(2, 0)
   uart.io.rdEn := uartArFire
-  uart.io.wrAddr := awAddr(4, 0)
+  uart.io.wrAddr := awAddr(2, 0)
   uart.io.wrEn := state === sWriteCommit && !writeConfigError &&
     writeAddressIsUART && wStrb =/= 0.U
   // AXI 字节通道由地址低两位选择；xv6 的 UART 寄存器都是单字节访问。

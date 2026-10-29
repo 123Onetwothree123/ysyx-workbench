@@ -283,6 +283,12 @@ class ysyx_26030103_PTWPipeline(
     val isStore = access === ysyx_26030103_AccessType.Store
     Mux(isFetch, 12.U, Mux(isStore, 15.U, 13.U))
   }
+  /** 页表总线错误的 cause：取指=1，load=5，store=7。 */
+  private def accessFaultCause(access: UInt): UInt = {
+    val isFetch = access === ysyx_26030103_AccessType.Fetch
+    val isStore = access === ysyx_26030103_AccessType.Store
+    Mux(isFetch, 1.U, Mux(isStore, 7.U, 5.U))
+  }
   private def vpnIndex(vaddr: UInt, level: UInt): UInt =
     MuxLookup(level, vaddr(vaBits - 1, pageBits))(
       (0 until levels).map { l =>
@@ -507,6 +513,7 @@ class ysyx_26030103_PTWPipeline(
     val mxr = ctx(resolveCtx).mxr
     val isStore = access === ysyx_26030103_AccessType.Store
     val cause = pageFaultCause(access)
+    val busFaultCause = accessFaultCause(access)
     val leaf = isLeaf(d)
     val leafFault = leafFaultOf(d, privilege, access, sum, mxr)
 
@@ -530,7 +537,8 @@ class ysyx_26030103_PTWPipeline(
       ctx(resolveCtx).resp.paddr := paddrOf(d, level, vaddr)
       ctx(resolveCtx).resp.fault := resolveBusFault ||
         leafFaultOf(d, privilege, access, sum, mxr)
-      ctx(resolveCtx).resp.cause := cause
+      ctx(resolveCtx).resp.cause :=
+        Mux(resolveBusFault, busFaultCause, cause)
       ctx(resolveCtx).resp.tval := vaddr
       ctx(resolveCtx).resp.fillPte := d
       ctx(resolveCtx).resp.fillVaddr := vaddr
@@ -547,7 +555,8 @@ class ysyx_26030103_PTWPipeline(
         new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth))
       ctx(resolveCtx).resp.id := ctx(resolveCtx).id
       ctx(resolveCtx).resp.fault := true.B
-      ctx(resolveCtx).resp.cause := cause
+      ctx(resolveCtx).resp.cause :=
+        Mux(resolveBusFault, busFaultCause, cause)
       ctx(resolveCtx).resp.tval := vaddr
     }.elsewhen(leaf) {
       when(needsAdUpdate(d, isStore)) {

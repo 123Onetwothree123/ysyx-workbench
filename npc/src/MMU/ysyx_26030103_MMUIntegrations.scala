@@ -136,9 +136,11 @@ class ysyx_26030103_IFUMMU(
   // 重定向后 IFU 的虚拟 PC 已改变；即使 flush 晚一拍，旧 paddr 也绝不能
   // 再被当成新 PC 的物理地址送给 ICache。
   // VIPT 下 PMP 也必须在 PA 有效后先通过，才能把 PA 交给 ICache。
-  io.translationValid := bypass ||
-    (state === done && paddrVaddrReg === io.fetchVaddr &&
-      (!ParallelVipt.B || !io.pmpFault))
+  // PIPT 同样不能在 PMP 拒绝的当拍放出 valid：顶层用 translationValid
+  // 直接门控 icache.fetch_valid，晚一拍撤销就已经受理了故障取指。
+  io.translationValid :=
+    (bypass && state === idle && !io.pmpFault) ||
+      (state === done && paddrVaddrReg === io.fetchVaddr && !io.pmpFault)
   io.fetchReady := io.translationValid && io.cacheReady
   io.fault := faultReg
   io.faultCause := faultCauseReg
@@ -150,18 +152,29 @@ class ysyx_26030103_IFUMMU(
   }.otherwise {
     switch(state) {
       is(idle) {
-        when(io.fetchValid && !bypass) {
-          io.req.valid := true.B
-          io.req.bits.id := 0.U // IFU
-          io.req.bits.vaddr := io.fetchVaddr
-          io.req.bits.access := ysyx_26030103_AccessType.Fetch
-          io.req.bits.privilege := io.privilege
-          io.req.bits.sum := io.sum
-          io.req.bits.mxr := io.mxr
-          io.req.bits.satp := io.satp
-          when(io.req.fire) {
-            reqVaddrReg := io.fetchVaddr
-            state := xwait
+        when(io.fetchValid) {
+          when(bypass) {
+            // Bare/M 模式不做页表翻译，但 PMP 仍然必须生效。故障取指
+            // 不能进入 ICache，也不能进入 done（没有翻译响应可等）。
+            when(io.pmpFault) {
+              faultReg := true.B
+              faultCauseReg := 1.U
+              faultVaddrReg := io.fetchVaddr
+              state := fault
+            }
+          }.otherwise {
+            io.req.valid := true.B
+            io.req.bits.id := 0.U // IFU
+            io.req.bits.vaddr := io.fetchVaddr
+            io.req.bits.access := ysyx_26030103_AccessType.Fetch
+            io.req.bits.privilege := io.privilege
+            io.req.bits.sum := io.sum
+            io.req.bits.mxr := io.mxr
+            io.req.bits.satp := io.satp
+            when(io.req.fire) {
+              reqVaddrReg := io.fetchVaddr
+              state := xwait
+            }
           }
         }
       }

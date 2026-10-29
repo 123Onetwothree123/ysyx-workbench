@@ -28,6 +28,9 @@ class ysyx_26030103_EXU(
     // 架构指令边界提交。该PC由顶层的提交态PC提供，不能使用可能已因
     // 预取而前移的任意流水级bits。
     val IdleIrqPC = Input(UInt(XLEN.W))
+    // WBU 退休事件：minstret 在退休级精确计数，EXU 的提交拍不能再作为
+    // 计数依据（普通 load/store 不在 EXU 访问 CSR，且 MEM 故障会取消退休）。
+    val RetireCommit = Input(Bool())
     // MEM的反馈分成两类：MEMBusy只表示年长访存事务，用于
     // branch/fence等只需等待“可能故障的访存”的场景；PipelineBusy
     // 表示任意年长指令仍在MEM流水级，用于IRQ/CSR/异常的精确顺序。
@@ -141,6 +144,7 @@ class ysyx_26030103_EXU(
     config.MMU, XLEN, config.UseA, config.UseC, config.UseF, config.UseD))
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
+  CSRUnit.io.RetireCommit := io.RetireCommit
   CSRUnit.io.Interrupt := io.Interrupt
   CSRUnit.io.TimerInterrupt := io.TimerInterrupt
   val BranchComparatorUnit = Module(new ysyx_26030103_BranchComparator(XLEN))
@@ -308,7 +312,7 @@ class ysyx_26030103_EXU(
     MDUReqReady := IsMDUInstruction && !MDUInputBlockedByIRQ &&
       MDUQueueHasSpace && MDUUnit.io.Req.ready
     MDUUnit.io.Req.valid := io.in.valid && IsMDUInstruction &&
-      !MDUInputBlockedByIRQ && MDUQueueHasSpace
+      !MDUInputBlockedByIRQ && MDUQueueHasSpace && !FpPending
     MDUReqFire := MDUUnit.io.Req.valid && MDUUnit.io.Req.ready
     assert(!MDUReqFire || MDUQueueHasSpace, "EXU MDU instruction queue overflow")
     assert(
@@ -377,7 +381,7 @@ class ysyx_26030103_EXU(
   val FpuFlush = WireDefault(false.B)
   val FpuReqFire = FpuReq.valid && FpuReq.ready
   FpuReq.valid := io.in.valid && IsFPUInstruction && !FpPending &&
-    !io.MemTrapCommit && !BlockForOlder
+    !PendingMDU && !io.MemTrapCommit && !BlockForOlder
   FpuReq.bits.op := inst.FpOp
   FpuReq.bits.fmt := inst.FpFmt
   FpuReq.bits.srcFmt := inst.FpSrcFmt
@@ -412,7 +416,8 @@ class ysyx_26030103_EXU(
     Mux(MDUInputKilledByIRQ, true.B, MDUReqReady) && !FpPending,
     Mux(
       IsFPUInstruction,
-      !FpPending && FpuReq.ready && !BlockForOlder && !io.MemTrapCommit,
+      !FpPending && !PendingMDU && FpuReq.ready && !BlockForOlder &&
+        !io.MemTrapCommit,
       // 待处理的MDU/FPU结果会占用本周期唯一的输出槽位。更年轻的普通指令
       // 必须留在 IDU->EXU 寄存器中，直到结果发出。
       !PendingMDU && !FpPending && io.out.ready && !BlockForOlder
@@ -430,8 +435,7 @@ class ysyx_26030103_EXU(
   ActiveInst := inst
   when(PendingMDU) {
     ActiveInst := PendingMDUInst
-  }
-  when(FpPending) {
+  }.elsewhen(FpPending) {
     ActiveInst := FpInstReg
   }
   val ActiveIsMDU = if (config.UseM) ActiveInst.IsMDU else false.B

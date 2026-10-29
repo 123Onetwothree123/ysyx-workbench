@@ -1031,6 +1031,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   gpr.io.wdata := wbu.io.wdata
   // FP 指令在 WBU 真正退休时才置 FS=Dirty（故障 load/store 不置）。
   exu.io.FPStateDirtyCommit := wbu.io.FPCommit
+  // minstret 按 WBU 真实退休计数：load/store 只有在 MEM 完成后才退休，
+  // 故障/被中断取消的指令 Retire=0，不计入。
+  exu.io.RetireCommit := wbu.io.in.fire && wbu.io.in.bits.Retire
   // 临时新加的处理中断的
   exu.io.Interrupt := io.interrupt || plic.external_irq
   exu.io.TimerInterrupt := clint.io.timer_irq

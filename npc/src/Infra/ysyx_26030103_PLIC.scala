@@ -36,13 +36,28 @@ class ysyx_26030103_PLIC(
   // 保留不用。因此 xv6 的 (1 << UART0_IRQ)=bit10 对应 source 10。
   val pending = RegInit(0.U(numSources.W))
   val claimed = RegInit(0.U(numSources.W))
-  pending := pending | sources
+  // gateway 只把尚未被 claim 的 source 电平转成 pending；这样 claim 后
+  // source 仍为高也不会立刻重新触发，complete 清 claimed 后才重新挂起。
+  pending := pending | (sources & ~claimed)
   val enabledPending = VecInit((0 until numSources).map { i =>
-    i.U =/= 0.U && pending(i) && enable(i / 32)(i % 32) && priority(i) > threshold
+    i.U =/= 0.U && pending(i) && !claimed(i) &&
+      enable(i / 32)(i % 32) && priority(i) > threshold
   })
   external_irq := enabledPending.reduce(_ || _)
 
   def addrOf(offset: BigInt): UInt = (base + offset).U(AddressWidth.W)
+  // AXI 字节写：只覆盖 WSTRB 选中的字节，其余字节保留寄存器原值。
+  def merge32(old: UInt, data: UInt, strb: UInt): UInt = {
+    val Old = old.pad(32)
+    val Data = data.pad(32)
+    val Strb = strb.pad(4)
+    Cat(
+      Mux(Strb(3), Data(31, 24), Old(31, 24)),
+      Mux(Strb(2), Data(23, 16), Old(23, 16)),
+      Mux(Strb(1), Data(15, 8), Old(15, 8)),
+      Mux(Strb(0), Data(7, 0), Old(7, 0))
+    )
+  }
   def priorityAddr(i: Int): UInt = addrOf(4L * i)
   // 兼容两套 enable 布局：
   //   - QEMU/RISC-V 标准：hart0 M 上下文 0x2000，S 上下文 0x2080；
@@ -128,15 +143,25 @@ class ysyx_26030103_PLIC(
     val isThreshold = isThresholdAddr(AWAddr)
     val isComplete = isClaimAddr(AWAddr)
     when(isPriority && WStrb =/= 0.U) {
-      priority(idx(IdBits - 1, 0)) := Mux(WData(priorityBits - 1, 0) > PriorityMax,
-        PriorityMax, WData(priorityBits - 1, 0))
+      val merged = merge32(priority(idx(IdBits - 1, 0)), WData, WStrb)
+      priority(idx(IdBits - 1, 0)) := Mux(
+        merged(priorityBits - 1, 0) > PriorityMax,
+        PriorityMax,
+        merged(priorityBits - 1, 0)
+      )
     }.elsewhen(isEnable && WStrb =/= 0.U) {
-      enable(enableWordIndex(AWAddr)) := WData
+      enable(enableWordIndex(AWAddr)) :=
+        merge32(enable(enableWordIndex(AWAddr)), WData, WStrb)
     }.elsewhen(isThreshold && WStrb =/= 0.U) {
-      threshold := Mux(WData(priorityBits - 1, 0) > PriorityMax,
-        PriorityMax, WData(priorityBits - 1, 0))
+      val merged = merge32(threshold, WData, WStrb)
+      threshold := Mux(
+        merged(priorityBits - 1, 0) > PriorityMax,
+        PriorityMax,
+        merged(priorityBits - 1, 0)
+      )
     }.elsewhen(isComplete && WStrb =/= 0.U && WData =/= 0.U) {
-      val doneIdx = (WData - 1.U)(IdBits - 1, 0)
+      // claim 返回值就是 source ID（bit 下标），complete 必须清同一 bit。
+      val doneIdx = WData(IdBits - 1, 0)
       claimed := claimed & ~UIntToOH(doneIdx, numSources)
     }
     BResp := Mux(isPriority || isEnable || isThreshold || isComplete, OKAY, SLVERR)
@@ -146,12 +171,22 @@ class ysyx_26030103_PLIC(
   }
   when(BFire) { BValid := false.B }
 
-  // 读 claim 有副作用：选择最高优先级 pending source 并清 pending。
-  val claimCandidates = (0 until numSources).map { i =>
-    i.U =/= 0.U && pending(i) && enable(i / 32)(i % 32) && priority(i) > threshold
-  }
-  val claimIndex = PriorityEncoder(claimCandidates)
+  // 读 claim 有副作用：选择最高优先级的未 claim source，并清 pending。
+  // 同优先级时 PriorityEncoder 返回最低 ID。
+  val claimCandidates = VecInit((0 until numSources).map { i =>
+    i.U =/= 0.U && pending(i) && !claimed(i) &&
+      enable(i / 32)(i % 32) && priority(i) > threshold
+  })
   val claimValid = claimCandidates.reduce(_ || _)
+  val candidatePriority = VecInit((0 until numSources).map { i =>
+    Mux(claimCandidates(i), priority(i), 0.U(priorityBits.W))
+  })
+  val highestPriority =
+    candidatePriority.reduce((a, b) => Mux(a > b, a, b))
+  val highestPriorityMask = VecInit((0 until numSources).map { i =>
+    claimCandidates(i) && priority(i) === highestPriority
+  })
+  val claimIndex = PriorityEncoder(highestPriorityMask)
   val claimId = Mux(claimValid, claimIndex, 0.U)
 
   when(ARFire) {

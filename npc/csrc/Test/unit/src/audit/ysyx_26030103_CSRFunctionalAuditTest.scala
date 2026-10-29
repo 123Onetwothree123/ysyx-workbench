@@ -17,6 +17,7 @@ class ysyx_26030103_CSRAuditHarness(
 ) extends Module {
   val io = IO(new Bundle {
     val enable = Input(Bool())
+    val retireCommit = Input(Bool())
     val isCsrrw = Input(Bool())
     val isCsrrs = Input(Bool())
     val isCsrrc = Input(Bool())
@@ -49,6 +50,7 @@ class ysyx_26030103_CSRAuditHarness(
   csr.io.clk := clock
   csr.io.rst := reset
   csr.io.Enable := io.enable
+  csr.io.RetireCommit := io.retireCommit
   csr.io.IsCsrrw := io.isCsrrw
   csr.io.IsCsrrs := io.isCsrrs
   csr.io.IsCsrrc := io.isCsrrc
@@ -114,6 +116,7 @@ class ysyx_26030103_CSRFunctionalAuditTest
     dut.clock.step(2)
     dut.reset.poke(false.B)
     dut.io.enable.poke(false.B)
+    dut.io.retireCommit.poke(false.B)
     dut.io.isCsrrw.poke(false.B)
     dut.io.isCsrrs.poke(false.B)
     dut.io.isCsrrc.poke(false.B)
@@ -150,9 +153,13 @@ class ysyx_26030103_CSRFunctionalAuditTest
       dut: ysyx_26030103_CSRAuditHarness,
       cycles: Int
   ): Unit = {
+    // 旧测试用 enable 代表“退休了一拍”；新语义下 minstret 只跟随 WBU
+    // 退休事件，因此这里同时驱动 retireCommit。
     dut.io.enable.poke(true.B)
+    dut.io.retireCommit.poke(true.B)
     for (_ <- 0 until cycles) { dut.clock.step() }
     dut.io.enable.poke(false.B)
+    dut.io.retireCommit.poke(false.B)
   }
 
   private def writeCsr(

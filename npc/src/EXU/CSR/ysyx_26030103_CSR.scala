@@ -75,6 +75,9 @@ class ysyx_26030103_CSR(
     val clk = Input(Clock())
     val rst = Input(Bool())
     val Enable = Input(Bool())
+    // WBU 真正的架构退休事件。minstret 只随该事件自增；EXU 提交拍不等于
+    // 退休拍（load/store 可能随后在 MEM 故障，MDU 后续项也在队列中）。
+    val RetireCommit = Input(Bool())
     val IsCsrrw = Input(Bool())
     val IsCsrrs = Input(Bool())
     val IsCsrrc = Input(Bool())
@@ -308,8 +311,7 @@ class ysyx_26030103_CSR(
   private val PmpEntriesPerCfg = if (XLEN == 64) 8 else 4
   private val PmpCfgWords = 16 / PmpEntriesPerCfg
   private val PmpCfgWordBits = PmpEntriesPerCfg * 8
-  private val PmpCfgMask =
-    BigInt("0f" * PmpEntriesPerCfg, 16)
+  private val PmpCfgByteMask = 0x9fL
   val PmpcfgReg = RegInit(
     VecInit(Seq.fill(PmpCfgWords)(0.U(PmpCfgWordBits.W))))
   val PmpaddrReg = RegInit(VecInit(Seq.fill(16)(0.U(XLEN.W))))
@@ -425,7 +427,8 @@ class ysyx_26030103_CSR(
     if (hasS) MipState & Mie & ~Mideleg_rdata
     else MipState & Mie
   val SIntPending = if (hasS) SipState & SieState & Mideleg_rdata else false.B
-  val MIntTaken = MIntPending.orR && Mstatus_rdata(3)
+  val MIntTaken = MIntPending.orR &&
+    (Privilege =/= 3.U || Mstatus_rdata(3))
   val SStatusIE =
     if (!hasS) false.B
     else if (profile.csrViewMode == "independent") SstatusRegOpt.get(1)
@@ -661,13 +664,26 @@ class ysyx_26030103_CSR(
     // RV32：pmpcfg0..3=0x3a0..0x3a3（每个 4 项）。
     val cfgAddress =
       if (XLEN == 64) 0x3a0 + word * 2 else 0x3a0 + word
+    // 每个 8 位表项保留 L/A[1:0]/X/W/R，清掉保留位 [6:5]；已经被 L
+    // 锁定的表项忽略本次写入（包括试图把 L 清 0 的写）。
+    val WritableBytes = VecInit(
+      (0 until PmpEntriesPerCfg).map { entry =>
+        Mux(PmpcfgReg(word)(8 * entry + 7),
+          0.U(8.W), PmpCfgByteMask.U(8.W))
+      }
+    ).asUInt
     when(CSRWen && io.CSRAddress === cfgAddress.U(12.W)) {
+      val WriteData = CSRWriteData(PmpcfgReg(word))
       PmpcfgReg(word) :=
-        CSRWriteData(PmpcfgReg(word)) & PmpCfgMask.U(PmpCfgWordBits.W)
+        (PmpcfgReg(word) & ~WritableBytes) | (WriteData & WritableBytes)
     }
   }
   for (entry <- 0 until 16) {
-    when(CSRWen && io.CSRAddress === (0x3b0 + entry).U(12.W)) {
+    // 锁定表项的 pmpaddr 同样不可写。
+    val EntryLocked = PmpcfgReg(entry / PmpEntriesPerCfg)(
+      8 * (entry % PmpEntriesPerCfg) + 7)
+    when(CSRWen && io.CSRAddress === (0x3b0 + entry).U(12.W) &&
+      !EntryLocked) {
       // RV32 PMP 地址为 30 位；RV64 pmpaddr 为标准 54 位。
       if (XLEN == 64) {
         PmpaddrReg(entry) := CSRWriteData(PmpaddrReg(entry)) &
@@ -678,9 +694,10 @@ class ysyx_26030103_CSR(
     }
   }
   // 标准 mcountinhibit：bit0=CY，bit2=IR。
-  // minstret 只统计真正提交的指令：中断提交（IdleIrqCommit 或抢占当前
-  // 指令的 IrqCommit）没有指令退休，不能自增。minstret/minstreth 是
-  // 可写计数器；写口优先于本拍自增，避免写入指令再被计数一次。
+  // minstret 只统计 WBU 真正退休的指令：EXU 的提交拍不能作为计数依据，
+  // 普通 load/store 不在 EXU 访问 CSR，MDU 后续项也可能在队列中等待。
+  // 同步异常/中断和被 MEM 故障取消的指令 Retire=0，因此不会计数。
+  // minstret/minstreth 是可写计数器；写口优先于本拍退休自增。
   val MinstretWen = CSRWen &&
     (IsCSRAddress(CSR_MINSTRET) || IsCSRAddress(CSR_MINSTRETH))
   when(MinstretWen) {
@@ -693,7 +710,7 @@ class ysyx_26030103_CSR(
         Mux(IsCSRAddress(CSR_MINSTRET), Written(31, 0), Minstret(31, 0))
       )
     }
-  }.elsewhen(io.Enable && !HasIrqCommit && !Mcountinhibit(2) && !io.MemTrap) {
+  }.elsewhen(io.RetireCommit && !Mcountinhibit(2)) {
     Minstret := Minstret + 1.U
   }
   SscratchOpt.foreach { Sscratch =>

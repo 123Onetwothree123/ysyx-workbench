@@ -488,6 +488,7 @@ class ysyx_26030103_AXIWriteMux(
 
   def drive(sel: ysyx_26030103_AXI5IO, isA: Boolean): Unit = {
     io.out.AW.AWVALID := sel.AW.AWVALID && !awDone
+    io.out.AW.AWID := sel.AW.AWID
     io.out.AW.AWADDR := sel.AW.AWADDR
     io.out.AW.AWLEN := sel.AW.AWLEN
     io.out.AW.AWSIZE := sel.AW.AWSIZE

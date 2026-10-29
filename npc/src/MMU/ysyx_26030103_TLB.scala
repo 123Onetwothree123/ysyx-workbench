@@ -315,6 +315,10 @@ class ysyx_26030103_TLB(
     val sumOk =
       if (hasU) !(privilegeS && selU) || (lookup.sum && !isFetch) else true.B
     val accessOk = Mux(isFetch, fetchOk, Mux(isStore, writeOk, readOk))
+    // hardware 模式的 A/D 写回由 PTW 在填表前完成，TLB 只缓存已处理的
+    // PTE。若某表项由 load 填入（A=1,D=0），之后的 store 命中不会单独
+    // 更新 D；要补齐这一点需要给 TLB 增加页表写回端口，属于已知限制，
+    // 不在本次修改范围内。fault 模式仍按 A/D 位拒绝访问。
     val adOk = adMode match {
       case "fault" => selA && (!isStore || selD)
       case _       => true.B

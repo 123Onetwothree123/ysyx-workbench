@@ -20,9 +20,6 @@ class ysyx_26030103_DCacheDrainAuditTest
   private def long(v: UInt): Long = v.peek().litValue.toLong
 
   "DCache" should "在 refill 缺少 RLAST 时最终恢复而不是永久挂死" in {
-    // 已确认当前实现会永久停在 SDrain（测试主体保留作回归）。DCache
-    // 还没有 drain timeout / drain-fault 状态，修复后删除 pending。
-    pending
     val region = ysyx_26030103_PMARegion(
       Base = 0x80000000L,
       Size = 0x10000000L,

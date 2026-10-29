@@ -195,6 +195,12 @@ case class ysyx_26030103_NPCConfig(
       "cache line 必须至少容纳两个 32 位 word")
   // VIPT 的页内约束按当前 MMU 页大小检查；RV32 自定义几何和 RV64
   // Sv39/Sv48 的 pageBits 都从这里取。
+  // VIPT 依赖 MMU 翻译通路产生 PA/VA 标签。没有 MMU 时顶层仍会按
+  // vipt 配置生成 LSU 并行端口，但永远没有翻译结果，必须显式拒绝。
+  require(MMU.enabled || MMU.cacheMode != "vipt",
+    "MMU_CACHE_MODE=vipt 需要 HAS_MMU=y：没有 MMU 时 IFU/LSU 不会产生" +
+      "物理地址，Cache 会永远等不到翻译结果；请设置 HAS_MMU=y 或改用 " +
+      "MMU_CACHE_MODE=pipt")
   val viptCacheEnabled = MMU.enabled && MMU.cacheMode == "vipt"
   // VIPT 用虚拟地址选 index，cache line 必须落在同一个虚拟页内：行按块
   // 大小对齐，只要块不大于页就不会跨页。跨页行的不同字节来自两个可能

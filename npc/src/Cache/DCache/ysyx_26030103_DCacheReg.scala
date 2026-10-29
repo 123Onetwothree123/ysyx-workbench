@@ -214,6 +214,9 @@ class ysyx_26030103_DCacheReg(
   // RLAST 时，才退化成逐字单拍补齐剩余数据，避免需求 load 永久挂起。
   val RefillBurst = RegInit(false.B)
   val RefillError = RegInit(false.B)
+  // 记录本次 refill 第一次错误 beat 的 RRESP，供最后统一产生 fault 时
+  // 保留 SLVERR/DECERR 编码。
+  val RefillErrorResp = RegInit(0.U(2.W))
   val ResponseData = RegInit(0.U(DataWidth.W))
   // 非缓存 8 字节读需要两拍：第一拍暂存低 word，第二拍拼成 64 位响应。
   val WideLowReg = RegInit(0.U(32.W))
@@ -235,12 +238,20 @@ class ysyx_26030103_DCacheReg(
   val DmaReplayWidth = Reg(UInt(2.W))
   val DmaReplaySigned = Reg(Bool())
   val DmaReplayCacheable = RegInit(false.B)
-  val states = Enum(4)
+  val states = Enum(5)
   val SIdle = states(0)
   val SReadReq = states(1)
   val SReadResp = states(2)
   val SDrain = states(3)
+  val SDrainFault = states(4)
   val state = RegInit(SIdle)
+  // AXI 从设备违规不给 RLAST 时，SDrain 不能永久等待。超时后先为尚未
+  // 交付的 demand 产生 fault 响应，再进入 SDrainFault 继续吸收迟到 beat；
+  // 总线安静足够久后自动回到 Idle，使 DCache 可以继续服务。
+  val DrainTimer = RegInit(0.U(10.W))
+  val DrainRetryTimer = RegInit(0.U(10.W))
+  when(state =/= SDrain) { DrainTimer := 0.U }
+  when(state =/= SDrainFault) { DrainRetryTimer := 0.U }
   // flush会使缓存状态失效，但不能取消已经接受的需求请求：LSU没有取消握手，
   // 并且正在等待恰好一个响应。suppressFill在维持在途请求的同时，防止跨越
   // 本次flush的缓存行重新变为有效。
@@ -257,13 +268,15 @@ class ysyx_26030103_DCacheReg(
   private val DmaSnoopRespMatch = DmaSnoopActive.B && ResponseValid &&
     DmaLineInRange(ResponseAddrReg(AddressWidth - 1, BlockSizeLog2))
   private val DmaSnoopRespReplay = DmaSnoopRespMatch &&
-    ResponseCacheableReg && !DemandResponseDone
+    ResponseCacheableReg && !DemandResponseDone && !ResponseFault
   private val DmaSnoopRefillOwnDemand = DmaSnoopRefillLineHit &&
     ResponseCacheableReg &&
     ResponseAddrReg(AddressWidth - 1, BlockSizeLog2) ===
       RefillBaseReg(AddressWidth - 1, BlockSizeLog2)
+  // 故障响应不能被“重新读取”覆盖：DMA 重放只适用于成功的数据响应。
+  // 否则一次成功 replay 会把原始 fault 吞掉，LSU 将错误地写回数据。
   private val DmaSnoopReplay = DmaSnoopActive.B && !DemandResponseDone &&
-    (DmaSnoopRespReplay || DmaSnoopRefillOwnDemand)
+    !ResponseFault && (DmaSnoopRespReplay || DmaSnoopRefillOwnDemand)
   private val DmaSnoopWillReplay =
     DmaSnoopActive.B && io.dma_snoop_valid && DmaSnoopReplay
   private val DmaSnoopResponseBusy = DmaSnoopActive.B && DmaSnoopRespMatch &&
@@ -361,7 +374,8 @@ class ysyx_26030103_DCacheReg(
   io.resp.bits.data := ResponseData
   io.resp.bits.fault := ResponseFault
   io.resp.bits.FaultResp := ResponseFaultResp
-  io.axi_active := state === SReadReq || state === SReadResp || state === SDrain
+  io.axi_active := state === SReadReq || state === SReadResp ||
+    state === SDrain || state === SDrainFault
   io.perf_refill_req := RefillActive && state === SReadReq
   io.perf_refill_resp := RefillActive && state === SReadResp
   val storeIndexAddr = if (Vipt) io.StoreVAddr else io.StoreAddr
@@ -696,6 +710,7 @@ class ysyx_26030103_DCacheReg(
         RefillBurst := cacheable
         RefillCount := 0.U
         RefillError := false.B
+        RefillErrorResp := 0.U
         RefillWordValid := 0.U
         RefillBaseReg := Cat(
           io.req.bits.addr(AddressWidth - 1, BlockSizeLog2),
@@ -745,6 +760,7 @@ class ysyx_26030103_DCacheReg(
       RefillBurst := ResolveCacheable
       RefillCount := 0.U
       RefillError := false.B
+      RefillErrorResp := 0.U
       RefillWordValid := 0.U
       RefillBaseReg := Cat(
         ResolvePaddr(AddressWidth - 1, BlockSizeLog2),
@@ -797,11 +813,16 @@ class ysyx_26030103_DCacheReg(
           val ReqWide = ReqWidthReg === 3.U
           val WideHighBeat = ReqWide &&
             RefillCount === NextOffset(ReqOffsetReg)
-          val ResponseBeat = KeywordBeat || WideHighBeat
           when(BeatError) {
             RefillError := true.B
             RefillWordValid := 0.U
-            when(ResponseBeat && !DemandResponseDone && !ResponseValid) {
+            when(!RefillError) {
+              RefillErrorResp := io.AXI.R.RRESP
+            }
+            // 任一 beat 出错都意味着本次 refill 不可安装。若 demand 还没有
+            // 拿到响应，就立即以该错误产生 fault，而不是只对 keyword/high
+            // beat 报错，导致后续成功 beat 被 RefillError 挡住后永久等待。
+            when(!DemandResponseDone && !ResponseValid) {
               ResponseFault := true.B
               ResponseFaultResp := io.AXI.R.RRESP
               ResponseValid := true.B
@@ -876,6 +897,18 @@ class ysyx_26030103_DCacheReg(
                 }
               }.otherwise {
                 valid(ReqIndexSafe) := false.B
+              }
+              // 兜底：即使错误 beat 发生时响应槽恰好被别的路径挡住，也不能
+              // 在 refill 结束、缓存行已失效后留下一个永不返回的 demand。
+              when((RefillError || BeatError) && !DemandResponseDone &&
+                  !ResponseValid) {
+                ResponseFault := true.B
+                ResponseFaultResp := Mux(
+                  RefillErrorResp =/= 0.U,
+                  RefillErrorResp,
+                  Mux(BeatError, io.AXI.R.RRESP, 2.U)
+                )
+                ResponseValid := true.B
               }
               RefillActive := false.B
               RefillBurst := false.B
@@ -1013,6 +1046,38 @@ class ysyx_26030103_DCacheReg(
         RefillWordValid := 0.U
         suppressFill := false.B
         state := SIdle
+      }.elsewhen(DrainTimer === 255.U) {
+        // 从设备长期不给 RLAST：为尚未交付的 demand 产生 fault，缓存行
+        // 保持无效，然后进入吸收态，迟到的 beat 不能再被后续请求使用。
+        when(!DemandResponseDone) {
+          ResponseFault := true.B
+          when(!(ResponseValid && ResponseFault)) {
+            ResponseFaultResp := 2.U
+          }
+          ResponseValid := true.B
+        }
+        valid(ReqIndexSafe) := false.B
+        RefillActive := false.B
+        RefillBurst := false.B
+        RefillError := false.B
+        RefillErrorResp := 0.U
+        RefillWordValid := 0.U
+        suppressFill := false.B
+        state := SDrainFault
+      }.otherwise {
+        DrainTimer := DrainTimer + 1.U
+      }
+    }
+    is(SDrainFault) {
+      // 继续吸收违规从设备的迟到拍，直到 RLAST 使总线重新同步。
+      io.AXI.R.RREADY := true.B
+      when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
+        state := SIdle
+      }.elsewhen(DrainRetryTimer === 255.U && !io.AXI.R.RVALID) {
+        // 通道已安静足够久：放弃这笔无法同步的事务，恢复服务。
+        state := SIdle
+      }.otherwise {
+        DrainRetryTimer := DrainRetryTimer + 1.U
       }
     }
   }
@@ -1038,6 +1103,7 @@ class ysyx_26030103_DCacheReg(
       RefillBurst := DmaReplayCacheable
       RefillCount := 0.U
       RefillError := false.B
+      RefillErrorResp := 0.U
       RefillWordValid := 0.U
       RefillBaseReg := ReplayLine
       ResponseValid := false.B

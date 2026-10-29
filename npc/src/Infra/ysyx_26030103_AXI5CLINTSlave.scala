@@ -29,6 +29,18 @@ class ysyx_26030103_AXI5CLINTSlave(
   val MtimeHighAddress = "h0200bffc".U(AddrW.W)
   val MtimecmpLowAddress = "h02004000".U(AddrW.W)
   val MtimecmpHighAddress = "h02004004".U(AddrW.W)
+  // AXI 字节写：只覆盖 WSTRB 选中的字节，其余字节保留寄存器原值。
+  def merge32(old: UInt, data: UInt, strb: UInt): UInt = {
+    val Old = old.pad(32)
+    val Data = data.pad(32)
+    val Strb = strb.pad(4)
+    Cat(
+      Mux(Strb(3), Data(31, 24), Old(31, 24)),
+      Mux(Strb(2), Data(23, 16), Old(23, 16)),
+      Mux(Strb(1), Data(15, 8), Old(15, 8)),
+      Mux(Strb(0), Data(7, 0), Old(7, 0))
+    )
+  }
   val Mtime = Module(new ysyx_26030103_mtime)
   val Mtimecmp = RegInit("hffffffffffffffff".U(64.W))
   io.timer_irq := Mtime.io.value >= Mtimecmp
@@ -84,10 +96,16 @@ class ysyx_26030103_AXI5CLINTSlave(
   when(AWValidReg && WValidReg && !BValidReg) {
     when(WLastReg) {
       when(AWAddrReg === MtimecmpLowAddress && WStrbReg =/= 0.U) {
-        Mtimecmp := Cat(Mtimecmp(63, 32), WDataReg)
+        Mtimecmp := Cat(
+          Mtimecmp(63, 32),
+          merge32(Mtimecmp(31, 0), WDataReg, WStrbReg)
+        )
         BRESPReg := OKAY
       }.elsewhen(AWAddrReg === MtimecmpHighAddress && WStrbReg =/= 0.U) {
-        Mtimecmp := Cat(WDataReg, Mtimecmp(31, 0))
+        Mtimecmp := Cat(
+          merge32(Mtimecmp(63, 32), WDataReg, WStrbReg),
+          Mtimecmp(31, 0)
+        )
         BRESPReg := OKAY
       }.otherwise {
         BRESPReg := SLVERR

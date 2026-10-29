@@ -224,7 +224,14 @@ class ysyx_26030103_PTW(
     val store = access === ysyx_26030103_AccessType.Store
     Mux(fetch, 12.U, Mux(store, 15.U, 13.U))
   }
+  /** 页表总线错误不是页错误：取指/load/store 分别报告 1/5/7。 */
+  def accessCauseOf(access: UInt): UInt = {
+    val fetch = access === ysyx_26030103_AccessType.Fetch
+    val store = access === ysyx_26030103_AccessType.Store
+    Mux(fetch, 1.U, Mux(store, 7.U, 5.U))
+  }
   val pageFaultCause = causeOf(accessReg)
+  val accessFaultCause = accessCauseOf(accessReg)
 
   /** 把原始 PTE 归一化为内部标准布局：低 8 位标志，PPN 从 ppnLow 开始。 */
   private def normalizePte(d: UInt): UInt = {
@@ -382,10 +389,10 @@ class ysyx_26030103_PTW(
   io.resp.valid := state === done
   io.resp.bits := respReg
 
-  def setFault(): Unit = {
+  def setFault(cause: UInt = pageFaultCause): Unit = {
     respReg.paddr := 0.U
     respReg.fault := true.B
-    respReg.cause := pageFaultCause
+    respReg.cause := cause
     respReg.tval := vaddrReg
     respReg.fillValid := false.B
     respReg.fillPte := 0.U
@@ -414,7 +421,8 @@ class ysyx_26030103_PTW(
     // 总线错误的读数据不是有效 PTE，不能写入 cache。
     when(cacheEffective.B && !busFault) { cacheFill(pteAddrReg, raw) }
     when(busFault || rawReservedFault(raw) || walkFault(d)) {
-      setFault()
+      // 总线故障是 access fault；保留位/权限/几何错误仍是 page fault。
+      setFault(Mux(busFault, accessFaultCause, pageFaultCause))
     }.elsewhen(isLeaf(d)) {
       when(needsAdUpdate(d)) {
         writeDataReg := adRaw(raw)
@@ -478,7 +486,7 @@ class ysyx_26030103_PTW(
     is(waitState) {
       when(io.bus.resp.valid) {
         when(io.bus.resp.bits.fault) {
-          setFault()
+          setFault(accessFaultCause)
         }.otherwise {
           if (pteBytes == 8) {
             pteLowReg := io.bus.resp.bits.data
@@ -512,7 +520,8 @@ class ysyx_26030103_PTW(
         }
         respReg.paddr := paddrOf(written, levelReg)
         respReg.fault := io.bus.resp.bits.fault || leafFaultOf(written)
-        respReg.cause := pageFaultCause
+        respReg.cause := Mux(io.bus.resp.bits.fault,
+          accessFaultCause, pageFaultCause)
         respReg.tval := vaddrReg
         respReg.fillPte := written
         respReg.fillVaddr := vaddrReg

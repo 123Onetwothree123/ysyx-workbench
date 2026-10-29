@@ -535,6 +535,15 @@ class ysyx_26030103_LSU(
   val StatesAtomicWriteWaitB = StateMachine(9)
   val state = RegInit(StatesIdle)
   val DCacheRequestActive = RegInit(false.B)
+  // DCache 与原子事务共用 AR/R。只要 DCache 还有在途 refill（含 SDrain）
+  // 或尚未交付的 demand，外部 AR/R 通道就属于 DCache；原子事务必须等
+  // 它完全排空后才能发自己的 AR/R，否则 ARREADY 会被误当成原子握手。
+  val DCacheBusActive =
+    if (DCacheEnable) DCacheRequestActive || DCache.io.axi_active else false.B
+  // 非 DCache 直读在缺少 RLAST 时的排空超时。AXI 从设备必须给 RLAST，
+  // 超时后按访问故障完成，避免 LSU 永久停在 StatesReadDrain。
+  val ReadDrainTimer = RegInit(0.U(10.W))
+  when(state =/= StatesReadDrain) { ReadDrainTimer := 0.U }
   private def AlignStore(
       StoreData: UInt,
       Address: UInt,
@@ -1054,7 +1063,10 @@ class ysyx_26030103_LSU(
     is(StatesAtomicQuiet) {
       // 等到物理地址（VIPT 并行）与总线都安静后，才允许发第一笔请求。
       // AtomicBusy 已在本状态之前拉高，仲裁器会挡住新的 DMA 读写。
-      when(AtomicPAddrReady && io.BusQuiet) {
+      // DCache 可能正在后台完成一次 load miss 的回填；此时 AR/R 仍被它
+      // 占用，必须等 axi_active 与 DCacheRequestActive 都归零，否则原子
+      // 会把 DCache 的 ARREADY/R beat 误当成自己的事务。
+      when(AtomicPAddrReady && io.BusQuiet && !DCacheBusActive) {
         AtomicAddrReg := AddrOf(EffectiveALUResult)
         when(AtomicOpReg === ysyx_26030103_AtomicOp.SC) {
           // SC 失败路径完全不碰内存：rd=1，清除 reservation。
@@ -1087,7 +1099,9 @@ class ysyx_26030103_LSU(
       io.DataBus.AR.ARLEN := Mux(AtomicWide, 1.U, 0.U)
       io.DataBus.AR.ARSIZE := 2.U
       io.DataBus.AR.ARBURST := 1.U
-      when(io.DataBus.AR.ARREADY) {
+      // 只有 AR 确实由原子事务驱动时，ARREADY 才算自己的握手。
+      when(!DCacheBusActive && io.DataBus.AR.ARVALID &&
+          io.DataBus.AR.ARREADY) {
         state := StatesAtomicReadResponse
       }
     }
@@ -1433,11 +1447,24 @@ class ysyx_26030103_LSU(
         TransactionFault := true.B
         AtomicActive := false.B
         state := StatesIdle
+      }.elsewhen(ReadDrainTimer === 255.U) {
+        // 从设备缺少 RLAST：继续等待只会让 LSU 永久忙。按访问故障完成
+        // 当前指令，让流水线恢复（迟到的 beat 由后续事务承担风险，和
+        // DCache 的 drain 超时恢复策略一致）。
+        AccessFaultReg := true.B
+        when(AccessFaultRespReg === 0.U) {
+          AccessFaultRespReg := 2.U
+        }
+        TransactionComplete := true.B
+        TransactionFault := true.B
+        AtomicActive := false.B
+        state := StatesIdle
+      }.otherwise {
+        ReadDrainTimer := ReadDrainTimer + 1.U
       }
     }
   }
   if (DCacheEnable) {
-    val DCacheBusActive = DCacheRequestActive || DCache.io.axi_active
     when(DCacheBusActive) {
       io.DataBus.AR.ARVALID := DCache.io.AXI.AR.ARVALID
       io.DataBus.AR.ARID := DCache.io.AXI.AR.ARID

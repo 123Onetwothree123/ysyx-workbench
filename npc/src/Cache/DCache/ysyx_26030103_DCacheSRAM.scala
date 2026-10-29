@@ -220,6 +220,8 @@ class ysyx_26030103_DCacheSRAM(
   // RLAST 时，才退化成逐字单拍补齐剩余数据，避免需求 load 永久挂起。
   val RefillBurst = RegInit(false.B)
   val RefillError = RegInit(false.B)
+  // 本次 refill 第一次错误 beat 的 RRESP，用于最后统一产生 fault。
+  val RefillErrorResp = RegInit(0.U(2.W))
   val ResponseData = RegInit(0.U(DataWidth.W))
   val WideLowReg = RegInit(0.U(32.W))
   val WideBeat = RegInit(0.U(1.W))
@@ -228,12 +230,18 @@ class ysyx_26030103_DCacheSRAM(
   val ResponseFaultResp = RegInit(0.U(2.W))
   val ResponseValid = RegInit(false.B)
   val DemandResponseDone = RegInit(false.B)
-  val states = Enum(4)
+  val states = Enum(5)
   val SIdle = states(0)
   val SReadReq = states(1)
   val SReadResp = states(2)
   val SDrain = states(3)
+  val SDrainFault = states(4)
   val state = RegInit(SIdle)
+  // 缺少 RLAST 的排空超时/恢复，语义与 DCacheReg 一致。
+  val DrainTimer = RegInit(0.U(10.W))
+  val DrainRetryTimer = RegInit(0.U(10.W))
+  when(state =/= SDrain) { DrainTimer := 0.U }
+  when(state =/= SDrainFault) { DrainRetryTimer := 0.U }
   // flush会使缓存状态失效，但不能取消已经接受的需求请求：LSU没有取消握手，
   // 并且正在等待恰好一个响应。suppressFill在维持在途请求的同时，防止跨越
   // 本次flush的缓存行重新变为有效。
@@ -364,13 +372,14 @@ class ysyx_26030103_DCacheSRAM(
   private val DmaSnoopRespMatch = DmaSnoopActive.B && DmaSnoopRespValid &&
     DmaLineInRange(DmaSnoopResponseAddr(AddressWidth - 1, BlockSizeLog2))
   private val DmaSnoopRespReplay = DmaSnoopRespMatch &&
-    ResponseCacheableReg && !DemandResponseDone
+    ResponseCacheableReg && !DemandResponseDone && !ResponseFault
   private val DmaSnoopRefillOwnDemand = DmaSnoopRefillLineHit &&
     ResponseCacheableReg &&
     DmaSnoopResponseAddr(AddressWidth - 1, BlockSizeLog2) ===
       RefillBaseReg(AddressWidth - 1, BlockSizeLog2)
+  // 故障响应不能被成功的 DMA 重放覆盖。
   private val DmaSnoopReplay = DmaSnoopActive.B && !DemandResponseDone &&
-    (DmaSnoopRespReplay || DmaSnoopRefillOwnDemand)
+    !ResponseFault && (DmaSnoopRespReplay || DmaSnoopRefillOwnDemand)
   private val DmaSnoopWillReplay =
     DmaSnoopActive.B && io.dma_snoop_valid && DmaSnoopReplay
   private val DmaSnoopResponseBusy = DmaSnoopActive.B && DmaSnoopRespMatch &&
@@ -388,7 +397,8 @@ class ysyx_26030103_DCacheSRAM(
     !DmaDropResponse && !DmaReplayWait
   io.resp.bits.fault := ResponseFault
   io.resp.bits.FaultResp := ResponseFaultResp
-  io.axi_active := state === SReadReq || state === SReadResp || state === SDrain
+  io.axi_active := state === SReadReq || state === SReadResp ||
+    state === SDrain || state === SDrainFault
   io.perf_refill_req := RefillActive && state === SReadReq
   io.perf_refill_resp := RefillActive && state === SReadResp
   val storeIndexAddr = if (Vipt) io.StoreVAddr else io.StoreAddr
@@ -778,6 +788,7 @@ class ysyx_26030103_DCacheSRAM(
         RefillBurst := cacheable
         RefillCount := 0.U
         RefillError := false.B
+        RefillErrorResp := 0.U
         RefillWordValid := 0.U
         RefillBaseReg := Cat(
           io.req.bits.addr(AddressWidth - 1, BlockSizeLog2),
@@ -827,6 +838,7 @@ class ysyx_26030103_DCacheSRAM(
       RefillBurst := ResolveCacheable
       RefillCount := 0.U
       RefillError := false.B
+      RefillErrorResp := 0.U
       RefillWordValid := 0.U
       RefillBaseReg := Cat(
         ResolvePaddr(AddressWidth - 1, BlockSizeLog2),
@@ -880,11 +892,15 @@ class ysyx_26030103_DCacheSRAM(
           val ReqWide = ReqWidthReg === 3.U
           val WideHighBeat = ReqWide &&
             RefillCount === NextOffset(ReqOffsetReg)
-          val ResponseBeat = KeywordBeat || WideHighBeat
           when(BeatError) {
             RefillError := true.B
             RefillWordValid := 0.U
-            when(ResponseBeat && !DemandResponseDone && !ResponseValid) {
+            when(!RefillError) {
+              RefillErrorResp := io.AXI.R.RRESP
+            }
+            // 任一 beat 出错都使本次 refill 不可安装；demand 尚未获得响应
+            // 时必须立即产生 fault，避免后续成功 beat 被 RefillError 挡住。
+            when(!DemandResponseDone && !ResponseValid) {
               ResponseFault := true.B
               ResponseFaultResp := io.AXI.R.RRESP
               ResponseValid := true.B
@@ -953,6 +969,17 @@ class ysyx_26030103_DCacheSRAM(
                 }
               }.otherwise {
                 valid(ReqIndexSafe) := false.B
+              }
+              // refill 结束前的兜底 fault：不能留下永不返回的 demand。
+              when((RefillError || BeatError) && !DemandResponseDone &&
+                  !ResponseValid) {
+                ResponseFault := true.B
+                ResponseFaultResp := Mux(
+                  RefillErrorResp =/= 0.U,
+                  RefillErrorResp,
+                  Mux(BeatError, io.AXI.R.RRESP, 2.U)
+                )
+                ResponseValid := true.B
               }
               RefillActive := false.B
               RefillBurst := false.B
@@ -1089,6 +1116,36 @@ class ysyx_26030103_DCacheSRAM(
         RefillWordValid := 0.U
         suppressFill := false.B
         state := SIdle
+      }.elsewhen(DrainTimer === 255.U) {
+        // 从设备长期不给 RLAST：为尚未交付的 demand 产生 fault，然后
+        // 进入吸收态，迟到的 beat 不能再被后续请求使用。
+        when(!DemandResponseDone) {
+          ResponseFault := true.B
+          when(!(ResponseValid && ResponseFault)) {
+            ResponseFaultResp := 2.U
+          }
+          ResponseValid := true.B
+        }
+        valid(ReqIndexSafe) := false.B
+        RefillActive := false.B
+        RefillBurst := false.B
+        RefillError := false.B
+        RefillErrorResp := 0.U
+        RefillWordValid := 0.U
+        suppressFill := false.B
+        state := SDrainFault
+      }.otherwise {
+        DrainTimer := DrainTimer + 1.U
+      }
+    }
+    is(SDrainFault) {
+      io.AXI.R.RREADY := true.B
+      when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
+        state := SIdle
+      }.elsewhen(DrainRetryTimer === 255.U && !io.AXI.R.RVALID) {
+        state := SIdle
+      }.otherwise {
+        DrainRetryTimer := DrainRetryTimer + 1.U
       }
     }
   }
@@ -1114,6 +1171,7 @@ class ysyx_26030103_DCacheSRAM(
       RefillBurst := DmaReplayCacheable
       RefillCount := 0.U
       RefillError := false.B
+      RefillErrorResp := 0.U
       RefillWordValid := 0.U
       RefillBaseReg := ReplayLine
       ResponseValid := false.B

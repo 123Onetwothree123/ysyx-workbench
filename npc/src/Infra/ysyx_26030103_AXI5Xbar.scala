@@ -133,6 +133,10 @@ class ysyx_26030103_AXI5Xbar(
     val ConfigSupported = size <= 2.U && (burst === 0.U || burst === 1.U)
     val PermittedRegions = if (isWrite) WritableRegions else ReadableRegions
     val CLINTPermitted = if (isWrite) WritableCLINT else ReadableCLINT
+    // PLIC 叶子只实现单拍寄存器访问：它不处理 AWLEN/WLAST，读响应也
+    // 只在首拍置 RLAST。因此地址落在 PLIC 窗口但 burst 非单拍时，必须
+    // 在 Xbar 本地判为非法，不能继续按起始地址转发给 PLIC。
+    val PLICAddress = IsPLIC(address, 0.U, size, burst)
     Mux(
       !ConfigSupported,
       TargetInvalid,
@@ -140,12 +144,16 @@ class ysyx_26030103_AXI5Xbar(
         CLINTPermitted.B && IsCLINT(address, len, size, burst),
         TargetCLINT,
         Mux(
-          IsPLIC(address, len, size, burst),
+          PLICAddress && len === 0.U,
           TargetPLIC,
           Mux(
-            InAnyRegion(address, len, size, burst, PermittedRegions),
-            TargetSoCBus,
-            TargetInvalid
+            PLICAddress,
+            TargetInvalid,
+            Mux(
+              InAnyRegion(address, len, size, burst, PermittedRegions),
+              TargetSoCBus,
+              TargetInvalid
+            )
           )
         )
       )
@@ -290,7 +298,8 @@ class ysyx_26030103_AXI5Xbar(
   val WCollected = WValidReg || InWFire
   val FirstWLastAfterW = Mux(InWFire, io.in.W.WLAST, WLASTReg)
   val WriteCannotForward = WriteTargetAfterAW === TargetInvalid ||
-    (WriteTargetAfterAW === TargetCLINT && WriteLenAfterAW =/= 0.U)
+    (WriteTargetAfterAW === TargetCLINT && WriteLenAfterAW =/= 0.U) ||
+    (WriteTargetAfterAW === TargetPLIC && WriteLenAfterAW =/= 0.U)
   when(InAWFire) {
     AWIDReg := io.in.AW.AWID
     AWAddressReg := io.in.AW.AWADDR

@@ -12,6 +12,7 @@ class ysyx_26030103_RV64CSRHarness(
 ) extends Module {
   val io = IO(new Bundle {
     val enable = Input(Bool())
+    val retireCommit = Input(Bool())
     val isCsrrw = Input(Bool())
     val isCsrrs = Input(Bool())
     val isCsrrc = Input(Bool())
@@ -42,6 +43,7 @@ class ysyx_26030103_RV64CSRHarness(
   csr.io.clk := clock
   csr.io.rst := reset
   csr.io.Enable := io.enable
+  csr.io.RetireCommit := io.retireCommit
   csr.io.IsCsrrw := io.isCsrrw
   csr.io.IsCsrrs := io.isCsrrs
   csr.io.IsCsrrc := io.isCsrrc
@@ -104,6 +106,7 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
     dut.clock.step(2)
     dut.reset.poke(false.B)
     dut.io.enable.poke(false.B)
+    dut.io.retireCommit.poke(false.B)
     dut.io.isCsrrw.poke(false.B)
     dut.io.isCsrrs.poke(false.B)
     dut.io.isCsrrc.poke(false.B)
