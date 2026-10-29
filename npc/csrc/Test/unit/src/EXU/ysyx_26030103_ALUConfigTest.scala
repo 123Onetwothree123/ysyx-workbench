@@ -18,13 +18,15 @@ class ysyx_26030103_ALUConfigTest extends AnyFlatSpec with Matchers {
     ysyx_26030103_ALUAdderImpl.Native,
     ysyx_26030103_ALUAdderImpl.Ripple,
     ysyx_26030103_ALUAdderImpl.CarrySelect,
-    ysyx_26030103_ALUAdderImpl.CarryLookahead
+    ysyx_26030103_ALUAdderImpl.CarryLookahead,
+    ysyx_26030103_ALUAdderImpl.Elau
   )
 
   private def config(
       xlen: Int,
       backend: ysyx_26030103_ALUImpl,
-      adder: ysyx_26030103_ALUAdderImpl
+      adder: ysyx_26030103_ALUAdderImpl,
+      elauSpeed: ysyx_26030103_ElauSpeed = ysyx_26030103_ElauSpeed.Fast
   ): ysyx_26030103_NPCConfig =
     ysyx_26030103_NPCConfig(
       XLEN = xlen,
@@ -32,7 +34,8 @@ class ysyx_26030103_ALUConfigTest extends AnyFlatSpec with Matchers {
       ALUImpl = backend,
       ALUProfile = ysyx_26030103_ALUProfile(
         Adder = adder,
-        AdderParams = ysyx_26030103_ALUAdderParams(CarrySelectGroup = 8)
+        AdderParams = ysyx_26030103_ALUAdderParams(CarrySelectGroup = 8),
+        Elau = ysyx_26030103_ElauParams(Speed = elauSpeed)
       )
     )
 
@@ -75,6 +78,19 @@ class ysyx_26030103_ALUConfigTest extends AnyFlatSpec with Matchers {
     } {
       withClue(s"xlen=$xlen backend=${backend.Name} adder=${adder.Name}: ") {
         check(config(xlen, backend, adder))
+      }
+    }
+  }
+
+  "ELAU speed backends" should "在 slow/medium/fast 下保持相同语义" in {
+    for (speed <- ysyx_26030103_ElauSpeed.All) {
+      withClue(s"elau speed=${speed.Name}: ") {
+        check(config(
+          xlen = 32,
+          backend = ysyx_26030103_ALUImpl.Standard,
+          adder = ysyx_26030103_ALUAdderImpl.Elau,
+          elauSpeed = speed
+        ))
       }
     }
   }

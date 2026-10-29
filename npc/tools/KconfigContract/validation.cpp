@@ -193,23 +193,49 @@ std::vector<std::string> validate_config(const Config& values,
       {{"ALU_ADDER_NATIVE", "native"},
        {"ALU_ADDER_RIPPLE", "ripple"},
        {"ALU_ADDER_CARRY_SELECT", "carry_select"},
-       {"ALU_ADDER_CARRY_LOOKAHEAD", "carry_lookahead"}},
+       {"ALU_ADDER_CARRY_LOOKAHEAD", "carry_lookahead"},
+       {"ALU_ADDER_ELAU", "elau"}},
       "native")));
   if (alu_adder_impl != "native" && alu_adder_impl != "ripple" &&
       alu_adder_impl != "carry_select" &&
-      alu_adder_impl != "carry_lookahead") {
+      alu_adder_impl != "carry_lookahead" &&
+      alu_adder_impl != "elau") {
     err("ALU_ADDER_IMPL='" + alu_adder_impl +
-        "' 非法：只允许 native/ripple/carry_select/carry_lookahead");
+        "' 非法：只允许 native/ripple/carry_select/carry_lookahead/elau");
   }
   for (const auto& [symbol, choice] : ChoiceList{
            {"ALU_ADDER_NATIVE", "native"},
            {"ALU_ADDER_RIPPLE", "ripple"},
            {"ALU_ADDER_CARRY_SELECT", "carry_select"},
-           {"ALU_ADDER_CARRY_LOOKAHEAD", "carry_lookahead"}}) {
+           {"ALU_ADDER_CARRY_LOOKAHEAD", "carry_lookahead"},
+           {"ALU_ADDER_ELAU", "elau"}}) {
     if (as_bool(values, std::string(symbol), false) &&
         std::string(choice) != alu_adder_impl) {
       err(std::string(symbol) + "=y 与 ALU_ADDER_IMPL='" +
           alu_adder_impl + "' 不一致；请重新运行 menuconfig/olddefconfig");
+    }
+  }
+  if (alu_adder_impl == "elau") {
+    const std::string elau_speed = lower_ascii(strip(derived_choice_string(
+        values, "ALU_ELAU_SPEED",
+        {{"ALU_ELAU_SPEED_SLOW", "slow"},
+         {"ALU_ELAU_SPEED_MEDIUM", "medium"},
+         {"ALU_ELAU_SPEED_FAST", "fast"}},
+        "fast")));
+    if (elau_speed != "slow" && elau_speed != "medium" &&
+        elau_speed != "fast") {
+      err("ALU_ELAU_SPEED='" + elau_speed +
+          "' 非法：只允许 slow/medium/fast");
+    }
+    for (const auto& [symbol, choice] : ChoiceList{
+             {"ALU_ELAU_SPEED_SLOW", "slow"},
+             {"ALU_ELAU_SPEED_MEDIUM", "medium"},
+             {"ALU_ELAU_SPEED_FAST", "fast"}}) {
+      if (as_bool(values, std::string(symbol), false) &&
+          std::string(choice) != elau_speed) {
+        err(std::string(symbol) + "=y 与 ALU_ELAU_SPEED='" + elau_speed +
+            "' 不一致；请重新运行 menuconfig/olddefconfig");
+      }
     }
   }
   if (alu_adder_impl == "carry_select") {

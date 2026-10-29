@@ -10,6 +10,11 @@ case class ysyx_26030103_ALUAdderParams(
     CarrySelectGroup: Int = 8
 )
 
+/** ELAU 加法器的公开参数。 */
+case class ysyx_26030103_ElauParams(
+    Speed: ysyx_26030103_ElauSpeed = ysyx_26030103_ElauSpeed.Fast
+)
+
 /** ALU 的通用公开参数 profile。
   *
   * `ALUImpl` 单独放在 NPCConfig 顶层，便于上层快速判断后端；本 profile
@@ -19,7 +24,8 @@ case class ysyx_26030103_ALUAdderParams(
 case class ysyx_26030103_ALUProfile(
     Adder: ysyx_26030103_ALUAdderImpl = ysyx_26030103_ALUAdderImpl.Native,
     AdderParams: ysyx_26030103_ALUAdderParams =
-      ysyx_26030103_ALUAdderParams()
+      ysyx_26030103_ALUAdderParams(),
+    Elau: ysyx_26030103_ElauParams = ysyx_26030103_ElauParams()
 ) {
   def Describe(Impl: ysyx_26030103_ALUImpl): String = {
     val backend = Impl match {
@@ -30,6 +36,8 @@ case class ysyx_26030103_ALUProfile(
     val adder = Adder match {
       case ysyx_26030103_ALUAdderImpl.CarrySelect =>
         s"${Adder.Name}(group=${AdderParams.CarrySelectGroup})"
+      case ysyx_26030103_ALUAdderImpl.Elau =>
+        s"elau(speed=${Elau.Speed.Name})"
       case _ => Adder.Name
     }
     s"backend=$backend,adder=$adder"

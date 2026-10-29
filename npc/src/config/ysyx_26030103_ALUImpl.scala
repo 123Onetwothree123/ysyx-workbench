@@ -44,8 +44,9 @@ object ysyx_26030103_ALUImpl {
   *
   * 加法器是 ALU 最关键的组合路径之一：`Native` 交给 Chisel/Synthesis
   * 映射到工艺库加法器；`Ripple` 展成逐位全加器；`CarrySelect` 用
-  * 分组双路加法器选择进位；`CarryLookahead` 使用 4 位块内超前进位。
-  * 四种实现共享相同的端口语义，切换不会改变 RISC-V 指令结果。
+  * 分组双路加法器选择进位；`CarryLookahead` 使用 4 位块内超前进位；
+  * `Elau` 复用 PULP ELAU 的 AddC。所有实现共享相同的端口语义，
+  * 切换不会改变 RISC-V 指令结果。
   */
 sealed trait ysyx_26030103_ALUAdderImpl {
   def Name: String
@@ -64,9 +65,12 @@ object ysyx_26030103_ALUAdderImpl {
   case object CarryLookahead extends ysyx_26030103_ALUAdderImpl {
     val Name = "carry_lookahead"
   }
+  case object Elau extends ysyx_26030103_ALUAdderImpl {
+    val Name = "elau"
+  }
 
   val All: Seq[ysyx_26030103_ALUAdderImpl] =
-    Seq(Native, Ripple, CarrySelect, CarryLookahead)
+    Seq(Native, Ripple, CarrySelect, CarryLookahead, Elau)
 
   def FromString(s: String): ysyx_26030103_ALUAdderImpl =
     s.trim.toLowerCase match {
@@ -74,9 +78,50 @@ object ysyx_26030103_ALUAdderImpl {
       case "ripple"          => Ripple
       case "carry_select"    => CarrySelect
       case "carry_lookahead" => CarryLookahead
+      case "elau"            => Elau
       case other =>
         throw new IllegalArgumentException(
           s"未知 ALU_ADDER_IMPL=$other；只允许 " +
+            All.map(_.Name).mkString("/")
+        )
+    }
+}
+
+/** ELAU `AddC` 的 speed 选择。
+  *
+  * 上游 `lau_pkg::speed_e` 的编码为 SLOW=0、MEDIUM=1、FAST=2；
+  * 这里把整数编码固定下来，避免把 SystemVerilog enum 暴露到 Chisel
+  * 或 typed JSON 中。
+  */
+sealed trait ysyx_26030103_ElauSpeed {
+  def Name: String
+  def Code: Int
+}
+
+object ysyx_26030103_ElauSpeed {
+  case object Slow extends ysyx_26030103_ElauSpeed {
+    val Name = "slow"
+    val Code = 0
+  }
+  case object Medium extends ysyx_26030103_ElauSpeed {
+    val Name = "medium"
+    val Code = 1
+  }
+  case object Fast extends ysyx_26030103_ElauSpeed {
+    val Name = "fast"
+    val Code = 2
+  }
+
+  val All: Seq[ysyx_26030103_ElauSpeed] = Seq(Slow, Medium, Fast)
+
+  def FromString(s: String): ysyx_26030103_ElauSpeed =
+    s.trim.toLowerCase match {
+      case "slow"   => Slow
+      case "medium" => Medium
+      case "fast"   => Fast
+      case other =>
+        throw new IllegalArgumentException(
+          s"未知 ALU_ELAU_SPEED=$other；只允许 " +
             All.map(_.Name).mkString("/")
         )
     }

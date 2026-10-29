@@ -98,6 +98,7 @@ object ysyx_26030103_Elaborate extends App {
   val ALUImplName = cfg.string("alu.impl", "standard")
   val ALUAdderImplName = cfg.string("alu.adder_impl", "native")
   val ALUCarrySelectGroup = cfg.int("alu.carry_select_group", 8)
+  val ALUElauSpeedName = cfg.string("alu.elau.speed", "fast")
   val MDUImplName = cfg.string("mdu.impl", "standard")
   val MULImplName = cfg.string("mdu.mul_impl", "shift_add")
   val MULEncodingName = cfg.string("mdu.mul_encoding", "plain")
@@ -239,6 +240,9 @@ object ysyx_26030103_Elaborate extends App {
       Adder = ysyx_26030103_ALUAdderImpl.FromString(ALUAdderImplName),
       AdderParams = ysyx_26030103_ALUAdderParams(
         CarrySelectGroup = ALUCarrySelectGroup
+      ),
+      Elau = ysyx_26030103_ElauParams(
+        Speed = ysyx_26030103_ElauSpeed.FromString(ALUElauSpeedName)
       )
     ),
     MDUImpl = ysyx_26030103_MDUImpl.FromString(MDUImplName),

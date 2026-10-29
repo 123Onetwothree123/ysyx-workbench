@@ -601,6 +601,7 @@ menu "硬件配置"
           ripple：逐位全加器，面积最小，进位链最长。
           carry_select：分组双路加法器，用进位选择，面积和时延折中。
           carry_lookahead：块内超前进位，块间 ripple，时延更短。
+          elau：PULP ELAU 的 AddC 前缀加法器，支持 SLOW/MEDIUM/FAST。
       config ALU_ADDER_NATIVE
         bool "native（工艺库加法）"
       config ALU_ADDER_RIPPLE
@@ -609,6 +610,8 @@ menu "硬件配置"
         bool "carry select"
       config ALU_ADDER_CARRY_LOOKAHEAD
         bool "carry lookahead"
+      config ALU_ADDER_ELAU
+        bool "PULP ELAU AddC（开源库）"
       endchoice
 
       config ALU_ADDER_IMPL
@@ -617,7 +620,34 @@ menu "硬件配置"
         default "ripple" if ALU_ADDER_RIPPLE
         default "carry_select" if ALU_ADDER_CARRY_SELECT
         default "carry_lookahead" if ALU_ADDER_CARRY_LOOKAHEAD
+        default "elau" if ALU_ADDER_ELAU
         default "native"
+
+      menu "ELAU 参数"
+        depends on ALU_ADDER_ELAU
+
+        choice
+          prompt "ELAU prefix 结构"
+          default ALU_ELAU_SPEED_FAST
+          help
+            ELAU AddC 的公开 speed 参数：
+            slow：ripple carry；medium：Brent-Kung；fast：Sklansky。
+            三种结构结果完全一致，只影响面积和关键路径。
+        config ALU_ELAU_SPEED_SLOW
+          bool "slow（ripple）"
+        config ALU_ELAU_SPEED_MEDIUM
+          bool "medium（Brent-Kung）"
+        config ALU_ELAU_SPEED_FAST
+          bool "fast（Sklansky）"
+        endchoice
+
+        config ALU_ELAU_SPEED
+          string
+          default "slow" if ALU_ELAU_SPEED_SLOW
+          default "medium" if ALU_ELAU_SPEED_MEDIUM
+          default "fast" if ALU_ELAU_SPEED_FAST
+          default "fast"
+      endmenu
 
       config ALU_CARRY_SELECT_GROUP
         int "carry-select 分组宽度"

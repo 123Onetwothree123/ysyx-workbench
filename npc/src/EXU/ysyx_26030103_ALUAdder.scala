@@ -108,6 +108,15 @@ class ysyx_26030103_ALUAdder(
       }
       io.sum := Cat(sums.reverse)
       io.carryOut := carry
+    case ysyx_26030103_ALUAdderImpl.Elau =>
+      val elau = Module(
+        new ysyx_26030103_ElauAdder(XLEN, config.ALUProfile.Elau.Speed)
+      )
+      elau.io.A := io.A
+      elau.io.B := io.B
+      elau.io.CI := io.Cin
+      io.sum := elau.io.S
+      io.carryOut := elau.io.CO
   }
 
   io.sumWord := io.sum(31, 0)

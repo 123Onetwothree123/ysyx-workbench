@@ -61,6 +61,10 @@ void addAlu(TypedFields &root, const Config &values)
     addField(alu, "carry_select_group",
              TypedJson::integer(
                  flatInt(values, "ALU_CARRY_SELECT_GROUP", 8)));
+    TypedFields elau;
+    addField(elau, "speed",
+             TypedJson::string(flatString(values, "ALU_ELAU_SPEED", "fast")));
+    addField(alu, "elau", TypedJson::object(std::move(elau)));
     addField(root, "alu", TypedJson::object(std::move(alu)));
 }
 

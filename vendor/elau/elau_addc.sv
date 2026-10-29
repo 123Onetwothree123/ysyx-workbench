@@ -1,0 +1,289 @@
+// -----------------------------------------------------------------------------
+// Vendored ELAU AddC backend for NPC.
+// Upstream: https://github.com/pulp-platform/ELAU
+// License: Solderpad Hardware License v0.51 (see LICENSE).
+// This file combines upstream src/arith_utils.sv, src/PrefixAndOr.sv and
+// src/AddC.sv, followed by a small NPC wrapper. Keep the upstream copyright
+// and license headers when updating this file.
+// -----------------------------------------------------------------------------
+// Copyright 2024 ETH Zurich and University of Bologna.
+// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+// SPDX-License-Identifier: SHL-0.51
+//
+// Based on the work by Reto Zimmermann 1998 - ETH Zürich
+// Originally written in VHDL, available under: 
+// https://iis-people.ee.ethz.ch/~zimmi/arith_lib.html#library
+//
+// Authors:
+// - Thomas Benz <tbenz@iis.ee.ethz.ch>
+// - Philippe Sauter <phsauter@iis.ee.ethz.ch>
+// - Paul Scheffler <paulsc@iis.ee.ethz.ch>
+
+package lau_pkg;
+
+
+	// Computes floor(log2(n))
+	// Input n should be greater than 0 for meaningful results
+	function automatic integer log2floor;
+		input integer n;
+		integer m;
+		integer p;
+		begin
+			m = -1;
+			p = 1;
+			while (p <= n) begin
+				m = m + 1;
+				p = p * 2;
+			end
+			log2floor = m;
+		end
+	endfunction
+
+	typedef enum logic [1:0] {
+		SLOW = 2'b00,
+		MEDIUM = 2'b01,
+		FAST = 2'b10
+	} speed_e;
+
+endpackage
+// Copyright 2024 ETH Zurich and University of Bologna.
+// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+// SPDX-License-Identifier: SHL-0.51
+//
+// Based on the work by Reto Zimmermann 1998 - ETH Zürich
+// Originally written in VHDL, available under: 
+// https://iis-people.ee.ethz.ch/~zimmi/arith_lib.html#library
+//
+// Authors:
+// - Thomas Benz <tbenz@iis.ee.ethz.ch>
+// - Philippe Sauter <phsauter@iis.ee.ethz.ch>
+// - Paul Scheffler <paulsc@iis.ee.ethz.ch>
+//
+// Description :
+// Prefix structures of different depth (i.e. speed) for carry calculation
+// in binary adders. Compute in m levels new generate/propagate signal pairs
+// for always larger groups of bits. Generate signals of the last level correspond
+// to carries in binary addition. Basic logic operations: AND-OR for generate
+// signals, AND for propagate signals.
+
+module PrefixAndOr #(
+	parameter int              width = 8,             // word width
+	parameter lau_pkg::speed_e speed = lau_pkg::FAST  // performance parameter
+) (
+	input  logic [width-1:0] GI,  // gen./prop. in
+	input  logic [width-1:0] PI,  // gen./prop. in
+	output logic [width-1:0] GO,  // gen./prop. out
+	output logic [width-1:0] PO   // gen./prop. out
+);
+
+	// Constants
+	localparam int n = width;  // prefix structure width
+	localparam int m = $clog2(width);  // prefix structure depth
+
+	// Sklansky parallel-prefix carry-lookahead structure
+	if (speed == lau_pkg::FAST) begin : fastPrefix
+		logic [(m+1)*n-1:0] GT, PT;  // gen./prop. temp
+			assign GT[n-1:0] = GI;
+			assign PT[n-1:0] = PI;
+			for (genvar l = 1; l <= m; l++) begin : levels
+				for (genvar k = 0; k < 2 ** (m - l); k++) begin : groups
+					for (genvar i = 0; i < 2 ** (l - 1); i++) begin : bits
+						// pass prop and gen to following nodes
+						if ((k * 2 ** l + i) < n) begin : white
+							assign GT[l*n+k*2**l+i] = GT[(l-1)*n+k*2**l+i];
+							assign PT[l*n+k*2**l+i] = PT[(l-1)*n+k*2**l+i];
+						end
+						// calculate new propagate and generate
+						if ((k * 2 ** l + 2 ** (l - 1) + i) < n) begin : black
+							assign GT[l*n + k*2**l + 2**(l-1) + i] = 
+												GT[(l-1)*n + k*2**l + 2**(l-1) + i]
+											  | (  PT[(l-1)*n + k*2**l + 2**(l-1) + i]
+												 & GT[(l-1)*n + k*2**l + 2**(l-1) - 1] );
+							assign PT[l*n + k*2**l + 2**(l-1) + i] = 
+													PT[(l-1)*n + k*2**l + 2**(l-1) + i]
+												  & PT[(l-1)*n + k*2**l + 2**(l-1) - 1];
+						end
+					end
+				end
+			end
+			assign GO = GT[(m+1)*n-1 : m*n];
+			assign PO = PT[(m+1)*n-1 : m*n];
+	end
+
+	// Brent-Kung parallel-prefix carry-lookahead structure
+	if (speed == lau_pkg::MEDIUM) begin : mediumPrefix
+		logic [(2*m)*n -1:0] GT, PT;  // gen./prop. temp
+		assign GT[n-1:0] = GI;
+		assign PT[n-1:0] = PI;
+
+		for (genvar l = 1; l <= m; l++) begin : levels1
+			for (genvar k = 0; k < 2**(m-l); k++) begin : groups
+				for (genvar i = 0; i < 2**l -1; i++) begin : bits
+					if ((k* 2**l +i) < n) begin : white
+						assign GT[l*n + k* 2**l +i] = GT[(l-1)*n + k* 2**l +i];
+						assign PT[l*n + k* 2**l +i] = PT[(l-1)*n + k* 2**l +i];
+					end // white
+				end // bits
+				if ((k* 2**l + 2**l -1) < n) begin : black
+					assign GT[l*n + k* 2**l + 2**l -1] =
+								GT[(l-1)*n + k* 2**l + 2**l - 1] |
+							  | (  PT[(l-1)*n + k* 2**l + 2**l     -1] 
+							     & GT[(l-1)*n + k* 2**l + 2**(l-1) -1]);
+					assign PT[l*n + k* 2**l + 2**l -1] =
+								PT[(l-1)*n + k*2**l + 2**l     -1] 
+							  & PT[(l-1)*n + k*2**l + 2**(l-1) -1];
+				end // black
+			end
+		end // level1
+		for (genvar l = m +1; l < 2*m; l++) begin : levels2
+			for (genvar i = 0; i < 2**(2*m -l); i++) begin : bits
+				if (i < n) begin : white
+					assign GT[l*n +i] = GT[(l-1)*n +i];
+					assign PT[l*n +i] = PT[(l-1)*n +i];
+				end // white
+			end // bits
+			for (genvar k = 1; k < 2**(l-m); k++) begin : groups
+				if (l < 2*m -1) begin : empty
+					for (genvar i = 0; i < 2**(2*m -l -1) -1; i++) begin : bits
+						if ((k* 2**(2*m -l) +i) < n) begin : white
+							assign GT[l*n + k* 2**(2*m -l) +i] = GT[(l-1)*n + k* 2**(2*m -l) +i];
+							assign PT[l*n + k* 2**(2*m -l) +i] = PT[(l-1)*n + k* 2**(2*m -l) +i];
+						end // white
+					end
+				end // empty
+				if ((k* 2**(2*m -l) + 2**(2*m -l -1) -1) < n) begin : black
+					assign GT[l*n + k* 2**(2*m -l) + 2**(2*m -l-1) -1] = 
+								GT[(l-1)*n + k* 2**(2*m-l) + 2**(2*m -l-1) -1]
+							  | (  PT[(l-1)*n + k* 2**(2*m-l) + 2**(2*m-l-1) -1] 
+								 & GT[(l-1)*n + k* 2**(2*m-l) -1] );
+					assign PT[l*n + k* 2**(2*m -l) + 2**(2*m -l-1) -1] = 
+								PT[(l-1)*n + k* 2**(2*m -l) + 2**(2*m -l-1) -1]
+							  & PT[(l-1)*n + k* 2**(2*m -l) -1];
+				end // black
+				for (genvar i = 2**(2*m -l-1); i < 2**(2*m -l); i++) begin : bits
+					if ((k* 2**(2*m -l) +i) < n) begin : white
+						assign GT[l*n + k* 2**(2*m -l) +i] = GT[(l-1)*n + k* 2**(2*m -l) +i];
+						assign PT[l*n + k* 2**(2*m -l) +i] = PT[(l-1)*n + k* 2**(2*m -l) +i];
+					end // white
+				end
+			end
+		end // level2
+		assign GO = GT[2*m*n -1 : (2*m -1) * n];
+		assign PO = PT[2*m*n -1 : (2*m -1) * n];
+	end  // Serial-prefix carry-lookahead structure
+	else if (speed == lau_pkg::SLOW) begin : slowPrefix
+		logic [n-1:0] GT, PT;  // gen./prop. temp
+		assign GT[0] = GI[0];
+		assign PT[0] = PI[0];
+		
+		for (genvar i = 1; i < n; i++) begin : bits
+			assign GT[i] = GI[i] | (PI[i] & GT[i-1]);
+			assign PT[i] = PI[i] & PT[i-1];
+		end
+		assign GO = GT;
+		assign PO = PT;
+	end
+
+endmodule
+// Copyright 2024 ETH Zurich and University of Bologna.
+// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+// SPDX-License-Identifier: SHL-0.51
+//
+// Based on the work by Reto Zimmermann 1998 - ETH Zürich
+// Originally written in VHDL, available under: 
+// https://iis-people.ee.ethz.ch/~zimmi/arith_lib.html#library
+//
+// Authors:
+// - Thomas Benz <tbenz@iis.ee.ethz.ch>
+// - Philippe Sauter <phsauter@iis.ee.ethz.ch>
+// - Paul Scheffler <paulsc@iis.ee.ethz.ch>
+//
+// Description :
+// Binary adder using parallel-prefix carry-lookahead logic with:
+//   - carry-in (CI)
+//   - carry-out (CO)
+// {CO,S} = A+B+CI
+
+module AddC #(
+	parameter int              width = 8,             // word width
+	parameter lau_pkg::speed_e speed = lau_pkg::FAST  // performance parameter
+) (
+	input  logic [width-1:0] A,   // operands
+	input  logic [width-1:0] B,
+	input  logic             CI,  // carry in
+	output logic [width-1:0] S,   // sum
+	output logic             CO   // carry out
+);
+
+	logic [width-1:0] GI, PI;  // prefix gen./prop. in
+	logic [width-1:0] GO, PO;  // prefix gen./prop. out
+	logic [width-1:0] PT;  // adder propagate temp
+
+	// calculate prefix input generate/propagate signal (0)
+	assign GI[0] = (A[0] & B[0]) | (A[0] & CI) | (B[0] & CI);
+	assign PI[0] = 1'b0;
+	// calculate adder propagate signal (0) (PT = A xor B)
+	assign PT[0] = A[0] ^ B[0];
+	// calculate prefix input generate/propagate signals (1 to width-1)
+	for (genvar i = 1; i < width; i++) begin : preprocess
+		assign GI[i] = A[i] & B[i];
+		assign PI[i] = A[i] | B[i];
+		// calculate adder propagate signal (1 to width-1) (PT = A xor B)
+		assign PT[i] = ~GI[i] & PI[i];
+	end
+
+	// calculate prefix output generate/propagate signals
+	PrefixAndOr #(width, speed) prefix (
+		.GI(GI),
+		.PI(PI),
+		.GO(GO),
+		.PO(PO)
+	);
+
+	// calculate sum and carry-out bits
+	assign S  = PT ^ {GO[width-2:0], CI};
+	assign CO = GO[width-1];
+
+endmodule
+
+
+
+module behavioural_AddC #(
+	parameter int              width = 8,             // word width
+	parameter lau_pkg::speed_e speed = lau_pkg::FAST  // performance parameter
+) (
+	input  logic [width-1:0] A,   // operands
+	input  logic [width-1:0] B,
+	input  logic             CI,  // carry in
+	output logic [width-1:0] S,   // sum
+	output logic             CO   // carry out
+);
+	assign {CO,S} = A + B + CI;
+endmodule
+// NPC adapter: keep the ELAU enum parameter out of Chisel and expose an
+// integer speed selector (0=SLOW, 1=MEDIUM, 2=FAST).
+module ysyx_26030103_ElauAdder #(
+    parameter int WIDTH = 32,
+    parameter int SPEED = 2
+) (
+    input  logic [WIDTH-1:0] A,
+    input  logic [WIDTH-1:0] B,
+    input  logic             CI,
+    output logic [WIDTH-1:0] S,
+    output logic             CO
+);
+    localparam lau_pkg::speed_e SPEED_E =
+        (SPEED == 0) ? lau_pkg::SLOW :
+        (SPEED == 1) ? lau_pkg::MEDIUM : lau_pkg::FAST;
+
+    AddC #(
+        .width(WIDTH),
+        .speed(SPEED_E)
+    ) u_addc (
+        .A(A),
+        .B(B),
+        .CI(CI),
+        .S(S),
+        .CO(CO)
+    );
+endmodule
