@@ -130,4 +130,63 @@ class ysyx_26030103_PTWReservedPteAuditTest
       }
     }
   }
+
+  it should "在 resp 反压时保持 fillValid，直到响应被接收" in {
+    // 1 级 Sv32 页表：vaddr 0 的根 PTE 直接是叶子。
+    val root = 0x80001000L
+    val bus = new BusModel
+    bus.write(root, pte(0x80002L, 0x7L)) // V|R|W|X
+
+    simulate(new ysyx_26030103_PTW(
+      adMode = "ignore",
+      pteSizeBytes = 4,
+      levels = 1,
+      tableEntries = 1024,
+      pageBits = 12,
+      XLEN = 32,
+      addressWidth = 32,
+      vaBits = 22
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.bus.req.ready.poke(true.B)
+      dut.io.bus.resp.valid.poke(false.B)
+      dut.io.bus.resp.bits.id.poke(0.U)
+      dut.io.bus.resp.bits.data.poke(0.U)
+      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.flush.poke(false.B)
+      // 先不接收响应，检查 fillValid 是否保持到握手。
+      dut.io.resp.ready.poke(false.B)
+      dut.io.req.valid.poke(true.B)
+      dut.io.req.bits.id.poke(0.U)
+      dut.io.req.bits.vaddr.poke(0.U(32.W))
+      dut.io.req.bits.satp.poke(
+        (BigInt(1) << 31 | BigInt("80001", 16)).U(32.W))
+      dut.io.req.bits.privilege.poke(3.U)
+      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.req.bits.sum.poke(false.B)
+      dut.io.req.bits.mxr.poke(false.B)
+
+      var cycles = 0
+      while (!bool(dut.io.resp.valid) && cycles < 100) {
+        bus.tick(dut, dut.clock)
+        cycles += 1
+      }
+      withClue("PTW did not respond: ") {
+        bool(dut.io.resp.valid) should be(true)
+      }
+      bool(dut.io.resp.bits.fillValid) should be(true)
+      // 保持 ready=0 一拍：Decoupled 响应有效期间 fillValid 必须稳定。
+      dut.clock.step()
+      bool(dut.io.resp.valid) should be(true)
+      withClue("fillValid dropped while resp.ready was low: ") {
+        bool(dut.io.resp.bits.fillValid) should be(true)
+      }
+      dut.io.resp.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.req.valid.poke(false.B)
+      dut.io.resp.ready.poke(false.B)
+    }
+  }
 }

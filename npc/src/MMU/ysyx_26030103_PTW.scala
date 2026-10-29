@@ -153,7 +153,6 @@ class ysyx_26030103_PTW(
   val pteAddrReg = RegInit(0.U(addressWidth.W))
   val pteLowReg = RegInit(0.U(32.W))
   val respReg = RegInit(0.U.asTypeOf(new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth)))
-  val fillPulse = RegInit(false.B)
   val fillLevelReg = RegInit(0.U(ysyx_26030103_MMUProfile.LevelBits.W))
   val writeDataReg = RegInit(0.U(pteWidth.W))
 
@@ -216,7 +215,6 @@ class ysyx_26030103_PTW(
 
   when(io.flush) {
     cache.foreach { c => for (i <- 0 until cacheEntries) { c(i).valid := false.B } }
-    fillPulse := false.B
   }
 
   val isFetch = accessReg === ysyx_26030103_AccessType.Fetch
@@ -394,7 +392,6 @@ class ysyx_26030103_PTW(
     respReg.fillVaddr := 0.U
     respReg.fillAsid := 0.U
     fillLevelReg := 0.U
-    fillPulse := false.B
     state := done
   }
 
@@ -407,8 +404,7 @@ class ysyx_26030103_PTW(
     respReg.fillVaddr := vaddrReg
     respReg.fillAsid := satpAsid(satpReg)
     fillLevelReg := fillLevelOf(levelReg)
-    respReg.fillValid := false.B
-    fillPulse := !fault &&
+    respReg.fillValid := !fault &&
       (fillSuperpage.B || levelReg === (levels - 1).U)
     state := done
   }
@@ -453,8 +449,7 @@ class ysyx_26030103_PTW(
       respReg.fault := true.B
       respReg.cause := causeOf(io.req.bits.access)
       respReg.tval := io.req.bits.vaddr
-      fillPulse := false.B
-      state := done
+        state := done
     }.otherwise {
       state := reqState
     }
@@ -523,19 +518,17 @@ class ysyx_26030103_PTW(
         respReg.fillVaddr := vaddrReg
         respReg.fillAsid := satpAsid(satpReg)
         fillLevelReg := fillLevelOf(levelReg)
-        respReg.fillValid := false.B
-        fillPulse := !leafFaultOf(written) && !io.bus.resp.bits.fault &&
+        respReg.fillValid := !leafFaultOf(written) &&
+          !io.bus.resp.bits.fault &&
           (fillSuperpage.B || levelReg === (levels - 1).U)
         state := done
       }
     }
     is(done) {
-      fillPulse := false.B
-      when(io.resp.ready) { state := idle }
+        when(io.resp.ready) { state := idle }
     }
   }
 
-  io.resp.bits.fillValid := fillPulse
   io.resp.bits.fillLevel := fillLevelReg
   io.resp.bits.id := idReg
 }
