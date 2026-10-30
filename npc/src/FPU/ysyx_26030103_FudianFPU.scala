@@ -593,7 +593,7 @@ class ysyx_26030103_FudianFPU(override val Config: ysyx_26030103_NPCConfig)
   private val respFlags = RegInit(0.U(5.W))
 
   private val respPipe =
-    Module(new ysyx_26030103_FpuResponsePipeline(FLEN, Config.FPUProfile.Pipeline))
+    Module(new ysyx_26030103_FPUResponsePipeline(FLEN, Config.FPUProfile.Pipeline))
   respPipe.io.flush := io.flush
   respPipe.io.in.valid := respValid
   respPipe.io.in.bits.result := respResult

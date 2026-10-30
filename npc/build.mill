@@ -16,8 +16,11 @@ object `package` extends ScalaModule with ScalafmtModule { m =>
     // 仅编译 vendor RTL 源码目录；上游 build/test 配置不进入本仓库构建。
     // moduleDir 是 Mill 提供的本模块源目录（npc/vendorHardFloat），
     // 因此不依赖调用 mill 时的工作目录。
+    // 注意：Mill BSP 要求源码路径位于构建根目录（npc/）内，否则
+    // `subRelativeTo` 会因 `../` 崩溃；这里通过 npc/vendor 软链接访问
+    // 仓库根目录下的 vendor，避免把 `..` 传给 BSP。
     override def sources = Task.Sources(
-      moduleDir / ".." / ".." / "vendor" / "berkeley-hardfloat" / "hardfloat" /
+      moduleDir / ".." / "vendor" / "berkeley-hardfloat" / "hardfloat" /
         "src" / "main" / "scala")
     override def scalacOptions = Seq(
       "-language:reflectiveCalls",
@@ -46,9 +49,11 @@ object `package` extends ScalaModule with ScalafmtModule { m =>
   // Fudian 后端以源码方式接入：vendor/fudian 保持上游目录布局，NPC 只把
   // 其 main/scala 加入编译，不复制、不改写 vendor 代码。这样生成 RTL 可复现，
   // 也不需要额外的 Verilog BlackBox 生成步骤。
+  // npc/vendor 是指向仓库根目录 vendor 的软链接，保证源码路径位于
+  // Mill 构建根目录内，避免 BSP 服务因 `../` 路径崩溃。
   override def sources = Task.Sources(
     moduleDir / "src",
-    moduleDir / ".." / "vendor" / "fudian" / "src" / "main" / "scala"
+    moduleDir / "vendor" / "fudian" / "src" / "main" / "scala"
   )
 
   object test extends ScalaTests with TestModule.ScalaTest with ScalafmtModule {

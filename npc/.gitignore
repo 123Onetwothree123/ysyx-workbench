@@ -2,6 +2,8 @@
 *
 /build-*/
 !*/
+# Mill BSP 需要源码位于构建根目录内：npc/vendor -> ../vendor
+!/vendor
 !Makefile
 !*.mk
 !Kconfig

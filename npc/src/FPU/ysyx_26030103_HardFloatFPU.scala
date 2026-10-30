@@ -511,7 +511,7 @@ class ysyx_26030103_HardFloatFPU(override val Config: ysyx_26030103_NPCConfig)
   // 公开的 FPU_PIPELINE：0=原有组合/单拍路径，N>0 在响应边界插入 N 级
   // valid/ready 寄存器。反压会沿 ready 链传回 respValid；flush 清空。
   val respPipe =
-    Module(new ysyx_26030103_FpuResponsePipeline(FLEN, Config.FPUProfile.Pipeline))
+    Module(new ysyx_26030103_FPUResponsePipeline(FLEN, Config.FPUProfile.Pipeline))
   respPipe.io.flush := io.flush
   respPipe.io.in.valid := respValid
   respPipe.io.in.bits.result := respResult
