@@ -255,6 +255,11 @@ struct SelfTest {
     expect_ok("fpu_hardfloat_f32_accepted", values);
     values = {{"XLEN", Value::make_int(64)},
               {"RISCV_F", Value::make_bool(true)},
+              {"FPU_IMPL", Value::make_string("hardfloat")},
+              {"FPU_FLEN", Value::make_int(32)}};
+    expect_error("fpu_rv64_f32_rejected", values, "FPU_FLEN 必须为 64");
+    values = {{"XLEN", Value::make_int(64)},
+              {"RISCV_F", Value::make_bool(true)},
               {"RISCV_D", Value::make_bool(true)},
               {"FPU_IMPL", Value::make_string("fudian")},
               {"FPU_FLEN", Value::make_int(64)}};

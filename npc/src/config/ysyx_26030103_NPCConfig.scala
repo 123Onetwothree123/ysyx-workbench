@@ -124,6 +124,11 @@ case class ysyx_26030103_NPCConfig(
     "RISCV_D=y 依赖 RISCV_F=y：D 扩展不能脱离 F 单独启用")
   require(FPULen == 32 || FPULen == 64,
     s"FPU_FLEN 只允许 32 或 64，收到 FPULen=$FPULen")
+  // RV64F 的浮点寄存器与数据通路固定为 64 位；FLEN=32 只适用于 RV32F。
+  // 该约束仅在启用 F 时生效，RV64 软浮点配置（UseF=false）的 FPULen
+  // 不参与 RTL 生成，不能被误拒绝。
+  require(!UseF || XLEN == 32 || FPULen == 64,
+    s"RV64 下 FPU_FLEN 必须为 64，收到 FPULen=$FPULen（XLEN=$XLEN）")
   require(!UseD || FPULen == 64,
     s"启用 RISCV_D 要求 FPU_FLEN=64，收到 FPULen=$FPULen")
   require(!UseF || FPUImpl != ysyx_26030103_FPUImpl.None,

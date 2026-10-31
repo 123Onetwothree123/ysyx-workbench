@@ -261,6 +261,8 @@ class ysyx_26030103_LSUMMU(
     val faultPC = Output(UInt(XLEN.W))
     val busy = Output(Bool())
     val pmpAddr = Output(UInt(AddressWidth.W))
+    // 本次数据访问最后一个字节的物理地址，供 PMP 做完整范围检查。
+    val pmpLastAddr = Output(UInt(AddressWidth.W))
     // AMO 同时需要读/写权限；LR 只读，SC/普通 store 只写。
     val pmpRead = Output(Bool())
     val pmpWrite = Output(Bool())
@@ -317,6 +319,17 @@ class ysyx_26030103_LSUMMU(
   val PmpMsg = Mux(state === idle, io.in.bits, msgReg)
   io.pmpAddr := Mux(state === idle, io.in.bits.ALUResult,
     Mux(state === xwait, io.resp.bits.paddr, paddrReg))
+  // 与 pmpAddr 使用同一个物理基址，再加上本次访问宽度对应的末字节偏移
+  // （0/1/2/3 = 1/2/4/8 字节），覆盖可能跨 4B PMP granule 的访问。
+  val PmpLastOffset = MuxLookup(PmpMsg.WidthSelect, 0.U(AddressWidth.W))(
+    Seq(
+      0.U -> 0.U(AddressWidth.W),
+      1.U -> 1.U(AddressWidth.W),
+      2.U -> 3.U(AddressWidth.W),
+      3.U -> 7.U(AddressWidth.W)
+    )
+  )
+  io.pmpLastAddr := io.pmpAddr + PmpLastOffset
   io.pmpWrite := PmpMsg.MemoryWrite
   // 普通 load 与 LR 读；AMO 读+写；SC 只写。
   io.pmpRead := !PmpMsg.MemoryWrite ||

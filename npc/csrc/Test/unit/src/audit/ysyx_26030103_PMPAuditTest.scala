@@ -28,6 +28,7 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
     dut.io.fetchAddr.poke(0.U)
     dut.io.fetchPriv.poke(3.U)
     dut.io.dataAddr.poke(0.U)
+    dut.io.dataLastAddr.poke(0.U)
     dut.io.dataPriv.poke(1.U) // S 模式
     dut.io.dataRead.poke(false.B)
     dut.io.dataWrite.poke(false.B)
@@ -51,6 +52,7 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
       dut.io.cfg(1).poke(cfg1.U)
       dut.io.addr(1).poke(addr1.U)
       dut.io.dataAddr.poke("h80000000".U)
+      dut.io.dataLastAddr.poke("h80000000".U)
       dut.io.dataPriv.poke(1.U)
       dut.io.dataRead.poke(true.B)
       // 最低编号 entry0 拒绝读，因此应 fault；Mux1H 会 OR 成 allow。
@@ -65,6 +67,7 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
       dut.io.cfg(0).poke("h1f".U)
       dut.io.addr(0).poke("h3fffffff".U)
       dut.io.dataAddr.poke("h80000000".U)
+      dut.io.dataLastAddr.poke("h80000000".U)
       dut.io.dataPriv.poke(1.U)
       dut.io.dataRead.poke(true.B)
       bool(dut.io.dataFault) should be(false)
@@ -78,6 +81,7 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
       dut.io.cfg(0).poke("h1f".U)
       dut.io.addr(0).poke("h200001ff".U)
       dut.io.dataAddr.poke("h80000000".U)
+      dut.io.dataLastAddr.poke("h80000000".U)
       dut.io.dataPriv.poke(1.U)
       dut.io.dataRead.poke(true.B)
       bool(dut.io.dataFault) should be(false)

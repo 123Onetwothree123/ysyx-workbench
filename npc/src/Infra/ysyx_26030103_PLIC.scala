@@ -172,10 +172,12 @@ class ysyx_26030103_PLIC(
   when(BFire) { BValid := false.B }
 
   // 读 claim 有副作用：选择最高优先级的未 claim source，并清 pending。
-  // 同优先级时 PriorityEncoder 返回最低 ID。
+  // 同优先级时 PriorityEncoder 返回最低 ID。threshold 只控制是否向 hart
+  // 发出中断通知（external_irq），规范要求已 enable、已挂起且未 claim 的
+  // source 即使优先级不高于 threshold 也必须能被 claim。
   val claimCandidates = VecInit((0 until numSources).map { i =>
     i.U =/= 0.U && pending(i) && !claimed(i) &&
-      enable(i / 32)(i % 32) && priority(i) > threshold
+      enable(i / 32)(i % 32)
   })
   val claimValid = claimCandidates.reduce(_ || _)
   val candidatePriority = VecInit((0 until numSources).map { i =>

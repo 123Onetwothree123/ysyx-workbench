@@ -183,6 +183,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     // 默认按无 MMU 路径接 LSU 的访存检查地址；MMU 分支稍后覆盖成
     // DMMU 给出的物理地址。这样两种配置共用同一个 PMP 例化。
     pmp.io.dataAddr := lsu.io.PmpAddr
+    pmp.io.dataLastAddr := lsu.io.PmpLastAddr
     pmp.io.dataPriv := dataPrivilege
     pmp.io.dataRead := lsu.io.PmpRead
     pmp.io.dataWrite := lsu.io.PmpWrite
@@ -518,6 +519,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     pmpOpt.foreach { pmp =>
       pmp.io.fetchAddr := immu.io.fetchPaddr
       pmp.io.dataAddr := dmmu.io.pmpAddr
+      pmp.io.dataLastAddr := dmmu.io.pmpLastAddr
       pmp.io.dataRead := dmmu.io.pmpRead
       pmp.io.dataWrite := dmmu.io.pmpWrite
     }

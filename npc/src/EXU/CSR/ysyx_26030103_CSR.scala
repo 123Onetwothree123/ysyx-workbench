@@ -439,8 +439,11 @@ class ysyx_26030103_CSR(
     if (!hasS) false.B
     else if (profile.csrViewMode == "independent") SstatusRegOpt.get(1)
     else Mstatus_rdata(1)
+  // sstatus.SIE 只屏蔽 S 模式自身的 S 级中断；U 模式下 S 级中断始终
+  // 使能（此时 sstatus.SIE 只是保存的 S 模式使能位，不参与判断）。
   val SIntTaken =
-    if (hasS) SIntPending.orR && SStatusIE && Privilege =/= 3.U
+    if (hasS) SIntPending.orR && Privilege =/= 3.U &&
+      (Privilege === 0.U || SStatusIE)
     else false.B
   val HasInterrupt = MIntTaken || SIntTaken
   io.IrqPending := HasInterrupt
@@ -458,17 +461,21 @@ class ysyx_26030103_CSR(
     } else {
       // M 入口也可能处理未委托的 S 级中断（mideleg 对应位为 0）；
       // cause 必须取实际 pending 位，例如未委托的 SEIP 是 cause 9，
-      // 不能落进 MSI(3) 的默认分支。
+      // 不能落进 MSI(3) 的默认分支。规范优先级：
+      // MEI(11) > MSI(3) > MTI(7) > SEI(9) > SSI(1) > STI(5)。
       Mux(pending(11), (base | 11).U(32.W),
-        Mux(pending(7), (base | 7).U(32.W),
-          Mux(pending(3), (base | 3).U(32.W),
+        Mux(pending(3), (base | 3).U(32.W),
+          Mux(pending(7), (base | 7).U(32.W),
             Mux(pending(9), (base | 9).U(32.W),
               Mux(pending(1), (base | 1).U(32.W), (base | 5).U(32.W))))))
     }
   }
   val MIrqCause = pendingCause(MIntPending, sMode = false)
   val SIrqCause = if (hasS) pendingCause(SIntPending, sMode = true) else 0.U(32.W)
-  val IrqCause = if (hasS) Mux(SIntTaken, SIrqCause, MIrqCause) else MIrqCause
+  // M 级中断优先于已委托的 S 级中断：只要 MIntTaken 成立就走 M 入口，
+  // 不能因为 SIntTaken 同时有效而改报 S cause。
+  val IrqCause =
+    if (hasS) Mux(MIntTaken, MIrqCause, SIrqCause) else MIrqCause
 
   val ExceptionCause = WireDefault(0.U(32.W))
   when(io.MemTrap) {

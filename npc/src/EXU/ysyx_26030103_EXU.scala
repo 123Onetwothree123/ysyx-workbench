@@ -492,12 +492,14 @@ class ysyx_26030103_EXU(
     ActiveInst.ExceptionValid && ActiveInst.ExceptionCause === 2.U &&
       ActiveInst.IsCompressed
   val ActiveInstructionVisible = io.in.valid || PendingMDU
-  // misaligned 的 mtval 是错误的目标地址，而不是故障指令 PC；
-  // 其余无专门 tval 的异常（breakpoint、instruction access fault 等）
-  // 仍回退到 ActiveInst.pc。
+  // 上游已标记的异常（取指 access fault、非法指令）优先于指令形状：
+  // 取指故障的访存指令仍带 MemoryValid，但 mtval 必须是故障 PC，不能
+  // 取 ALU 计算出的访存地址。压缩非法指令仍是原始 16 位编码，32 位
+  // 非法指令沿用既有 ABI 以 PC 作为 tval。misaligned 的 mtval 是错误
+  // 的目标地址；其余无专门 tval 的异常回退到 ActiveInst.pc。
   val ActiveTrapTval = Mux(
-    ActiveIllegalCompressed,
-    ActiveInst.Instruction,
+    ActiveInst.ExceptionValid,
+    Mux(ActiveIllegalCompressed, ActiveInst.Instruction, ActiveInst.pc),
     Mux(
       ActiveInstructionAddressMisaligned,
       ControlTransferTarget,
@@ -505,8 +507,8 @@ class ysyx_26030103_EXU(
     )
   )
   val ActiveTrapTvalValid = ActiveInstructionVisible &&
-    (ActiveIllegalCompressed || ActiveInst.MemoryValid ||
-      ActiveInstructionAddressMisaligned)
+    (ActiveInst.ExceptionValid || ActiveIllegalCompressed ||
+      ActiveInst.MemoryValid || ActiveInstructionAddressMisaligned)
   CSRUnit.io.TrapTval := Mux(io.MemTrapCommit, io.MemTrapTval, ActiveTrapTval)
   CSRUnit.io.TrapTvalValid := io.MemTrapCommit || ActiveTrapTvalValid
   // fence.i也要产生"重定向": 目标是自己的snpc(即fence.i+4),

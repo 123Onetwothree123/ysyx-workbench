@@ -247,6 +247,16 @@ class ysyx_26030103_IDU(
   // 编码合法性。未识别/保留编码必须精确落入 illegal instruction。
   val FpFmtLegal = (FpFmt === ysyx_26030103_FpuFmt.S) ||
     (UseD.B && FpFmt === ysyx_26030103_FpuFmt.D)
+  // FCVT.S.D 的源格式是 D：D 扩展关闭时即使目的格式是 S 也必须陷入。
+  // FCVT.D.S 由目的格式 D 的 FpFmtLegal 拒绝，不走这里。
+  val FpSrcFmtIllegal = IsFpOp && FpSrcFmt === ysyx_26030103_FpuFmt.D &&
+    !UseD.B
+  // FMV.X.D / FMV.D.X 只在 RV64D 中定义；RV32 的 64 位浮点寄存器无法
+  // 与 32 位整数寄存器整字搬移。FCLASS.D 是 funct3=1，不受影响。
+  val FpMvDoubleIllegal = (if (XLEN == 32) {
+    IsFpOp && FpFmt === ysyx_26030103_FpuFmt.D && funct3 === 0.U &&
+      (FpOp5 === 28.U || FpOp5 === 30.U)
+  } else false.B)
   val FpMemEncodingLegal =
     !FpMemOpcode || (funct3 === "b010".U(3.W) ||
       (UseD.B && funct3 === "b011".U(3.W)))
@@ -290,7 +300,7 @@ class ysyx_26030103_IDU(
       Instruction(31, 20) === 3.U) && !FpStateEnabled
   val FpIllegal = FpCsrIllegal || (IsFP && (!FpFmtLegal || !FpMemEncodingLegal ||
     !FpOp5Legal || !FpFunct3Legal || !FpRs2Legal ||
-    !FpRmLegal || !FpStateEnabled))
+    !FpRmLegal || !FpStateEnabled || FpSrcFmtIllegal || FpMvDoubleIllegal))
 
   // 指令 -> 后端无关的 FpuOp。
   val FpOp = WireDefault(0.U(ysyx_26030103_FpuOp.Width.W))

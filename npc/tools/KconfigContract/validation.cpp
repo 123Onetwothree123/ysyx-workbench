@@ -149,6 +149,10 @@ std::vector<std::string> validate_config(const Config& values,
         std::to_string(fpu_flen));
   }
   if (use_f) {
+    if (xlen == 64 && fpu_flen != 64) {
+      err("RV64 下 FPU_FLEN 必须为 64，收到 FPU_FLEN=" +
+          std::to_string(fpu_flen));
+    }
     const long long fpu_pipeline = as_int(values, "FPU_PIPELINE", 0);
     if (fpu_pipeline < 0 || fpu_pipeline > 8) {
       err("FPU_PIPELINE=" + std::to_string(fpu_pipeline) +

@@ -101,6 +101,9 @@ class ysyx_26030103_LSU(
     // 指令。PmpFault 必须在 AW/W/AR 握手前组合生效，故障指令不得产生
     // 任何总线副作用，随后按普通访问故障精确提交。
     val PmpAddr = Output(UInt(AddressWidth.W))
+    // 本次访问最后一个字节的地址。PMP 需要同时检查起始与末字节所在的
+    // 4 字节 granule，防止 8 字节访问跨出 NA4/TOR 区域边界。
+    val PmpLastAddr = Output(UInt(AddressWidth.W))
     val PmpRead = Output(Bool())
     val PmpWrite = Output(Bool())
     val PmpFault = Input(Bool())
@@ -335,7 +338,10 @@ class ysyx_26030103_LSU(
       Mux(MsgReg.MemoryWrite, 7.U(32.W), 5.U(32.W))) // 访问故障：写=7，读=5
   )
   io.MemTrapPC := MsgReg.pc
-  io.MemTrapTval := EffectiveALUResult
+  // RISC-V 要求访存异常的 mtval 是原始有效地址（VA）。DMMU 翻译后
+  // ALUResult/EffectiveALUResult 已是物理地址（PIPT 下二者相同，VIPT
+  // 并行下由 PA 端口更新），因此这里必须取随指令携带的 VAddr。
+  io.MemTrapTval := MsgReg.VAddr
   io.FlushIDEX := MemTrapCommit
   io.FlushEXMEM := MemTrapCommit
   io.out.valid := false.B
@@ -1507,7 +1513,26 @@ class ysyx_26030103_LSU(
   // 无 MMU 的 PMP 检查对象：写缓冲非空时是队首 store（唯一可能在本拍
   // 产生写副作用的项），否则是本拍即将受理的访存指令。store 在写缓冲
   // 中始终保持架构顺序，因此队首地址也对应最老未完成 store。
-  io.PmpAddr := Mux(!wbufEmpty, WbHeadEffectiveAddr, AddrOf(StageInputBits.ALUResult))
+  val PmpBase =
+    Mux(!wbufEmpty, WbHeadEffectiveAddr, AddrOf(StageInputBits.ALUResult))
+  // 宽度编码与架构 WidthSelect 一致：0/1/2/3 = 1/2/4/8 字节。写缓冲
+  // 队首的 wbHeadSize 是 AXI size（8B 访问仍编码为 2），须用 wbHeadWide
+  // 单独区分 8 字节访问。
+  val PmpWidth = Mux(
+    !wbufEmpty,
+    Mux(wbHeadWide, 3.U, wbHeadSize),
+    StageInputBits.WidthSelect
+  )
+  val PmpLastOffset = MuxLookup(PmpWidth, 0.U(AddressWidth.W))(
+    Seq(
+      0.U -> 0.U(AddressWidth.W),
+      1.U -> 1.U(AddressWidth.W),
+      2.U -> 3.U(AddressWidth.W),
+      3.U -> 7.U(AddressWidth.W)
+    )
+  )
+  io.PmpAddr := PmpBase
+  io.PmpLastAddr := PmpBase + PmpLastOffset
   io.PmpWrite := Mux(!wbufEmpty, true.B, StageInputBits.MemoryWrite)
   // AMO 同时检查读/写权限；LR 只读，SC/普通 store 只写。
   io.PmpRead := Mux(
