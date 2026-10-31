@@ -4,6 +4,10 @@ CONFIG_XLEN=32
 CONFIG_RISCV_M=y
 CONFIG_RISCV_C=y
 
+# 保持无 MMU 的裸机回归基线，不跟随 RV64 Linux 的默认 MMU 配置。
+CONFIG_HAS_MMU=n
+CONFIG_HAS_TLB=n
+
 # Trap/CSR：M 模式基础 + S 模式 sepc/stval 委托测试。
 CONFIG_HAS_S=y
 CONFIG_HAS_U=y

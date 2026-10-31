@@ -2,7 +2,7 @@ menu "虚拟内存管理 (MMU/TLB)"
 
   config HAS_S
     bool "启用 S 模式"
-    default n
+    default y if XLEN=64
     help
       启用 S 模式状态、S 模式 CSR、异常委托和 S 模式异常入口。
       HAS_S=n 时 S 级 CSR、S 模式寄存器和委托逻辑在 elaboration 期
@@ -12,7 +12,7 @@ menu "虚拟内存管理 (MMU/TLB)"
 
   config HAS_U
     bool "启用 U 模式"
-    default n
+    default y if HAS_S
     help
       启用 U 模式状态、U 模式 ecall/权限检查和 MRET 返回 U。
       HAS_U=y 且 HAS_S=y 时为完整 M/S/U；HAS_S=n 时为 M+U，
@@ -23,7 +23,7 @@ menu "虚拟内存管理 (MMU/TLB)"
 
   config HAS_MMU
     bool "启用 MMU"
-    default n
+    default y if HAS_S
     depends on HAS_S
     help
       MMU 总开关。关闭时 IFU/LSU 直接使用物理地址，PTW/页表/页错误
@@ -34,7 +34,7 @@ menu "虚拟内存管理 (MMU/TLB)"
 
   config HAS_TLB
     bool "启用 TLB"
-    default n
+    default y if HAS_MMU
     help
       TLB 总开关。关闭时每次访问都由 PTW 查页表；TLB 阵列不实例化。
       当前支持 Reg-CAM 存储、RR/PLRU/LRU 替换和 ASID/Global。
@@ -233,7 +233,7 @@ menu "虚拟内存管理 (MMU/TLB)"
 
     config MMU_SUPERPAGE
       bool "支持超级页"
-      default n
+      default y if HAS_MMU
       help
         打开后 PTW 接受非末级叶子 PTE，并按对应页大小生成物理地址。
         TLB 是否缓存超级页由 TLB_SUPERPAGE 单独控制。
@@ -553,7 +553,7 @@ menu "虚拟内存管理 (MMU/TLB)"
 
     config TLB_SUPERPAGE
       bool "TLB 缓存超级页"
-      default n
+      default y if HAS_TLB
       help
         打开后 TLB 增加超级页 CAM，按 pageBits/levels/indexBits
         计算超级页大小。
@@ -659,7 +659,7 @@ menu "虚拟内存管理 (MMU/TLB)"
 
     config HAS_PMP
       bool "启用 PMP"
-      default n
+      default y if HAS_MMU
       help
         启用基础 PMP：支持 OFF/TOR/NA4/NAPOT、L 锁定和 R/W/X 权限。
         有 MMU 时检查翻译后的物理地址；无 MMU 时直接检查取指地址和
@@ -730,10 +730,10 @@ menu "虚拟内存管理 (MMU/TLB)"
       default y
     config HAS_CSR_MTVAL
       bool "mtval"
-      default n
+      default y if HAS_S
     config HAS_CSR_MSCRATCH
       bool "mscratch"
-      default n
+      default y if HAS_S
     config HAS_CSR_MIE
       bool "mie"
       default y
@@ -742,53 +742,53 @@ menu "虚拟内存管理 (MMU/TLB)"
       default y
     config HAS_CSR_MEDELEG
       bool "medeleg"
-      default n
+      default y if HAS_S
     config HAS_CSR_MIDELEG
       bool "mideleg"
-      default n
+      default y if HAS_S
     config HAS_CSR_MCOUNTEREN
       bool "mcounteren"
-      default n
+      default y if HAS_S
     config HAS_CSR_MCOUNTINHIBIT
       bool "mcountinhibit"
-      default n
+      default y if HAS_S
     config HAS_CSR_MCYCLE
       bool "mcycle"
       default y
     config HAS_CSR_MINSTRET
       bool "minstret"
-      default n
+      default y if HAS_S
 
     config HAS_CSR_SSTATUS
       bool "sstatus"
-      default n
+      default y if HAS_S
     config HAS_CSR_SIE
       bool "sie"
-      default n
+      default y if HAS_S
     config HAS_CSR_SIP
       bool "sip"
-      default n
+      default y if HAS_S
     config HAS_CSR_STVEC
       bool "stvec"
-      default n
+      default y if HAS_S
     config HAS_CSR_SSCRATCH
       bool "sscratch"
-      default n
+      default y if HAS_S
     config HAS_CSR_SEPC
       bool "sepc"
-      default n
+      default y if HAS_S
     config HAS_CSR_SCAUSE
       bool "scause"
-      default n
+      default y if HAS_S
     config HAS_CSR_STVAL
       bool "stval"
-      default n
+      default y if HAS_S
     config HAS_CSR_SATP
       bool "satp"
-      default n
+      default y if HAS_S
     config HAS_CSR_SCOUNTEREN
       bool "scounteren"
-      default n
+      default y if HAS_S
 
     config CSR_MSTATUS_MIE_READ
       string "mstatus.MIE 读行为"

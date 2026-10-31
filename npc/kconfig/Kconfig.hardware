@@ -2,18 +2,24 @@ menu "硬件配置"
 
   menu "指令集扩展"
 
+    # 默认目标：RV64GC + S/U + Sv39，构成可运行 Linux 的处理器。
+    # Linux Image / SBI / U-Boot 等启动选项仍在各自菜单中默认关闭，
+    # 因此默认产物是“能跑 Linux 的硬件”，不是“默认启动 Linux”。
+
     config XLEN
       int "当前 XLEN"
-      default 32
+      default 64
       # Kconfig 的 int/range 只能表达连续区间，无法直接写成 {32,64}；
       # 33..63 由 tools/KconfigContract/ 在配置阶段拒绝，
       # elaboration 也会再次校验。保持 int 是为了让现有
       # CONFIG_XLEN=32/64 的 defconfig 和脚本继续可用。
       range 32 64
       help
-        指令位宽，只允许 32（RV32）或 64（RV64）。Kconfig 的 range
-        无法表达离散集合，33..63 虽然能填入，但会在 make defconfig/
-        menuconfig 后的配置契约检查阶段被明确拒绝，不会进入 elaboration。
+        指令位宽，只允许 32（RV32）或 64（RV64）。默认 64，配合下面的
+        ISA/MMU 默认值构成可运行 Linux 的 RV64GC 处理器。Kconfig 的
+        range 无法表达离散集合，33..63 虽然能填入，但会在 make
+        defconfig/menuconfig 后的配置契约检查阶段被明确拒绝，不会进入
+        elaboration。
         RV64 已接通 GPR/PC/ALU/EXU/IDU/WBU/CSR 与 RV64I/RV64M 语义，
         且 PC/分支目标/LSU/IFU/AXI/PMA/Xbar/ICache/DCache/BTB/RAS
         全部使用 64 位地址，LD/SD 以两拍 32 位 AXI 窄传输覆盖 8 字节。
@@ -28,7 +34,7 @@ menu "硬件配置"
 
     config RISCV_M
       bool "M 扩展（乘/除/取余）"
-      default n
+      default y if XLEN=64
       help
         启用后生成MDU(乘法器+除法器)并在译码表加入M类指令;
         关闭时M类指令按非法指令处理(cause=2)。
@@ -37,7 +43,7 @@ menu "硬件配置"
 
     config RISCV_A
       bool "A 扩展（原子访存）"
-      default n
+      default y if XLEN=64
       help
         启用 LR/SC 与全部 AMO 指令。RV32 支持 .W；RV64 支持 .W 和 .D。
         原子访存绕过 DCache，走 LSU 串行 uncached 事务，完成写后失效
@@ -47,7 +53,7 @@ menu "硬件配置"
 
     config RISCV_C
       bool "C 扩展（压缩指令）"
-      default n
+      default y if XLEN=64
       help
         启用 RV32C/RV64C：IFU 改为 IALIGN=16，可 2 字节步进并拼装
         16/32 位指令；IDU 完整展开整数 RVC 指令，保留的非法编码
@@ -64,7 +70,7 @@ menu "硬件配置"
 
     config RISCV_F
       bool "F 扩展（单精度浮点）"
-      default n
+      default y if XLEN=64
       help
         启用 RISC-V F 扩展：32 个浮点寄存器、fcsr/fflags/frm 以及
         单精度浮点指令。F 必须选择一个具体的 FPU 后端（见下面的
@@ -78,7 +84,7 @@ menu "硬件配置"
     config RISCV_D
       bool "D 扩展（双精度浮点）"
       depends on RISCV_F && FPU_FLEN=64
-      default n
+      default y if XLEN=64
       help
         D 依赖 F，并要求 FPU_FLEN=64：D 的 64 位格式和浮点寄存器
         需要 64 位数据通路。只启用 D 而不启用 F、或 FLEN=32 时，
@@ -93,7 +99,8 @@ menu "硬件配置"
 
       choice
         prompt "FPU 实现后端"
-        default FPU_IMPL_NONE
+        default FPU_IMPL_HARDFLOAT if RISCV_F
+        default FPU_IMPL_NONE if !RISCV_F
         help
           选择浮点数据通路的来源。所有后端都通过统一的
           ysyx_26030103_FPUInterface（Decoupled 请求/响应）接入，
@@ -316,7 +323,7 @@ menu "硬件配置"
 
       choice
         prompt "乘法器实现"
-        default MUL_SHIFT_ADD
+        default MUL_WALLACE
         help
           多种实现共用同一个乘法接口, 通过 elaboration 期条件例化选出一种,
           未选中的实现不会进入生成的RTL。
@@ -336,7 +343,7 @@ menu "硬件配置"
         default "shift_add" if MUL_SHIFT_ADD
         default "wallace" if MUL_WALLACE
         default "dadda" if MUL_DADDA
-        default "shift_add"
+        default "wallace"
 
       choice
         prompt "乘法部分积编码方式"
@@ -694,6 +701,7 @@ menu "硬件配置"
     config SOC_XLEN
       int "ysyxSoC CPU 侧接口 XLEN"
       depends on !SOC_XLEN_FOLLOW_CPU
+      default 64 if XLEN=64
       default 32
       # Kconfig 的 int/range 不能表达离散集合；32/64 由配置契约校验
       # 在配置阶段检查，elaboration 也会再次校验。
@@ -701,6 +709,7 @@ menu "硬件配置"
       help
         ysyxSoC CPU 侧接口的 XLEN/数据宽度，仅当
         SOC_XLEN_FOLLOW_CPU=n 时可见并生效，只允许 32 或 64；
+        XLEN=64 时默认 64，XLEN=32 时默认 32。
         33..63 会在 make defconfig/menuconfig 后的配置契约检查阶段
         被明确拒绝，不会静默生成。
         32 位 ysyxSoC 可以搭配 64 位 CPU：CPU 内部仍使用 64 位地址，
