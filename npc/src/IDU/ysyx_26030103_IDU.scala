@@ -203,7 +203,7 @@ class ysyx_26030103_IDU(
   val AtomicOp = Mux(IsAtomic, AmoFunct5, 0.U(5.W))
   val IsLr = IsAtomic && AtomicOp === ysyx_26030103_AtomicOp.LR
 
-  // ---------------------------------------------------------------- F/D 译码
+  // F/D 译码
   // 所有 F/D 编码在这里集中解析；vendor 内部操作码不会进入上层。
   val FpLoadOpcode = opcode === OPCODE_LoadFP
   val FpStoreOpcode = opcode === OPCODE_StoreFP
@@ -558,7 +558,7 @@ class ysyx_26030103_IDU(
       )
     )
   )
-  // ---------------------------------------------------------------- FPR 读/转发
+  // FPR 读/转发
   // 三个 f 源操作数与 GPR 使用同一优先级：EXU > MEM 等待槽 > MEM > WBU。
   // f0 是普通寄存器，不做零硬连线，因此这里不排除 rd=0。
   val ex_fp_fwd_rs1 = FpUsesFpr1 && io.ex_fp_valid && io.ex_fp_regWrite &&

@@ -221,7 +221,7 @@ class ysyx_26030103_LSU(
   val LoadForwardValid = WireDefault(false.B)
   val LoadForwardData = WireDefault(LoadDataReg)
   val LoadForwardFault = WireDefault(false.B)
-  // ---------------- A 扩展原子事务状态 ----------------
+  // A 扩展原子事务状态
   // 原子事务绕过 DCache 与写缓冲，直接使用 LSU 的 AR/R + AW/W 通道。
   // AtomicActive 从受理一直保持到读改写全部完成，期间总线仲裁器不再
   // 接受新的 DMA 读写，后续 LSU 访存也被本级 Busy 挡住。
@@ -1059,7 +1059,7 @@ class ysyx_26030103_LSU(
         state := StatesIdle
       }
     }
-    // ---------------- A 扩展原子事务 ----------------
+    // A 扩展原子事务
     is(StatesAtomicQuiet) {
       // 等到物理地址（VIPT 并行）与总线都安静后，才允许发第一笔请求。
       // AtomicBusy 已在本状态之前拉高，仲裁器会挡住新的 DMA 读写。

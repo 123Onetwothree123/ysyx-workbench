@@ -332,7 +332,7 @@ class ysyx_26030103_LSUMMU(
   io.memKill := false.B
 
   if (!ParallelVipt) {
-    // ---------------- 原有 PIPT 路径：翻译完成后才发 LSU ----------------
+    // 原有 PIPT 路径：翻译完成后才发 LSU
     when(state === idle) {
       // 始终使用同一个握手条件，避免 in.ready 依赖 in.bits 形成组合环。
       io.in.ready := io.out.ready
@@ -414,7 +414,7 @@ class ysyx_26030103_LSUMMU(
       faultReg := false.B
     }
   } else {
-    // ---------------- VIPT 并行路径 ----------------
+    // VIPT 并行路径
     // 只有 LSU 完全空闲时才受理新的内存指令，保证 paddrReg 在 DCache
     // 取用前不会被下一笔请求覆盖，同时让翻译故障的 kill 不会误伤更老指令。
     // 注意 in.ready 不能依赖 in.bits（否则 EXU 形成组合环），因此统一取

@@ -66,7 +66,7 @@ class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   val Rs1 = UInt(5.W)
   val Rs1Data = UInt(XLEN.W)
 
-  // ---------------- F/D 扩展 ----------------
+  // F/D 扩展
   // IsFP 覆盖所有 F/D 指令（含 load/store/mv），用于 mstatus.FS 的
   // retire 级 Dirty 更新；IsFPU 只表示需要进入浮点运算单元
   // （算术/比较/转换/分类/符号注入），不含 FLW/FSW/FLD/FSD。

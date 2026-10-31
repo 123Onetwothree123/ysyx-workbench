@@ -40,7 +40,7 @@ class ysyx_26030103_RVCDecoder(
   private val x = io.in(15, 0)
   io.isCompressed := x(1, 0) =/= "b11".U(2.W)
 
-  // ---- 通用寄存器编号 ----
+  // 通用寄存器编号
   private val x0 = 0.U(5.W)
   private val ra = 1.U(5.W)
   private val sp = 2.U(5.W)
@@ -50,7 +50,7 @@ class ysyx_26030103_RVCDecoder(
   private val rs2p = Cat("b01".U(2.W), x(4, 2))
   private val rs2 = x(6, 2)
 
-  // ---- 立即数位拼接（与 RVC 规范的字段重排一一对应）----
+  // 立即数位拼接（与 RVC 规范的字段重排一一对应）
   private val immAddi4spn =
     Cat(x(10, 7), x(12, 11), x(5), x(6), "b00".U(2.W)) // 10 位
   private val immLw = Cat(x(5), x(12, 10), x(6), "b00".U(2.W)) // 7 位
@@ -108,7 +108,7 @@ class ysyx_26030103_RVCDecoder(
   // RV64 的 6 位移位量；RV32 已通过 illegal 条件拒绝 shamt[5]。
   private val shamt = Cat(x(12), x(6, 2))
 
-  // ---- 32 位指令编码辅助函数 ----
+  // 32 位指令编码辅助函数
   private def encR(
       opcode: Int,
       rd: UInt,
@@ -168,7 +168,7 @@ class ysyx_26030103_RVCDecoder(
       opcode.U(7.W)
     )
 
-  // ---- 各压缩指令展开候选 ----
+  // 各压缩指令展开候选
   // 象限 0：栈指针相对寻址与压缩寄存器访存。
   private val addi4spn =
     encI(0x13, rs2p, 0, sp, Cat("b00".U(2.W), immAddi4spn))
@@ -245,7 +245,7 @@ class ysyx_26030103_RVCDecoder(
 
   // 象限 3（低两位=11）不是压缩指令；正常路径不会进入，保留为非法。
   switch(Cat(x(1, 0), x(15, 13))) {
-    // ---------------- 象限 0 ----------------
+    // 象限 0
     is("b00_000".U(5.W)) { // C.ADDI4SPN
       out := addi4spn
       illegal := immAddi4spn.orR === 0.U
@@ -278,7 +278,7 @@ class ysyx_26030103_RVCDecoder(
       else { illegal := true.B }
     }
 
-    // ---------------- 象限 1 ----------------
+    // 象限 1
     is("b01_000".U(5.W)) { // C.ADDI（rd=0 为 HINT）
       out := addi
     }
@@ -350,7 +350,7 @@ class ysyx_26030103_RVCDecoder(
       out := bnez
     }
 
-    // ---------------- 象限 2 ----------------
+    // 象限 2
     is("b10_000".U(5.W)) { // C.SLLI（rd/shamt=0 为 HINT）
       out := slli
       if (XLEN == 32) { illegal := x(12) }
@@ -411,7 +411,7 @@ class ysyx_26030103_RVCDecoder(
       else { illegal := true.B }
     }
 
-    // ---------------- 象限 3 ----------------
+    // 象限 3
     is("b11_000".U(5.W)) { illegal := true.B }
     is("b11_001".U(5.W)) { illegal := true.B }
     is("b11_010".U(5.W)) { illegal := true.B }

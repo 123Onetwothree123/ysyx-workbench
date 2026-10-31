@@ -284,9 +284,7 @@ class ysyx_26030103_AXI5WidthBridge(
   io.out.AR.ARQOS := 0.U
   io.out.R.RREADY := false.B
 
-  // ==================================================================
   // 写通道
-  // ==================================================================
   val wIdle :: wUpsize :: wErrDrain :: wResp :: wDnBeat :: wDnSend :: wDnWaitB :: Nil =
     Enum(7)
   val wState = RegInit(wIdle)
@@ -582,9 +580,7 @@ class ysyx_26030103_AXI5WidthBridge(
     }
   }
 
-  // ------------------------------------------------------------------
   // 写通道协议断言
-  // ------------------------------------------------------------------
   when(wState === wIdle && io.in.AW.AWVALID && io.in.AW.AWREADY) {
     wUpWLastSeen := false.B
     wUpBSeen := false.B
@@ -663,9 +659,7 @@ class ysyx_26030103_AXI5WidthBridge(
     )
   }
 
-  // ==================================================================
   // 读通道
-  // ==================================================================
   val rIdle :: rUpsize :: rErrData :: rDnSend :: rDnWait :: rDnOut :: Nil =
     Enum(6)
   val rState = RegInit(rIdle)
@@ -878,9 +872,7 @@ class ysyx_26030103_AXI5WidthBridge(
     }
   }
 
-  // ------------------------------------------------------------------
   // 读通道协议断言
-  // ------------------------------------------------------------------
   when(rState === rIdle && io.in.AR.ARVALID && io.in.AR.ARREADY) {
     rUpRLastSeen := false.B
     rTxnIssuedAr := false.B

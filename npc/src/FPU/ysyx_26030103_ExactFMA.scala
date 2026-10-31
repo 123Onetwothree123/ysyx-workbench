@@ -154,7 +154,7 @@ class ysyx_26030103_ExactFMA(
   private val eRes = Wire(SInt(ExpW.W))
   eRes := lExp + 1.S(ExpW.W) - lzD.zext.asSInt
 
-  // ------------------------------------------------------------ 正常数舍入
+  // 正常数舍入
   private val normalRounder = Module(new RoundingUnit(P - 1))
   normalRounder.io.in := dn(A - 2, A - P)
   normalRounder.io.roundIn := dn(A - P - 1)
@@ -173,7 +173,7 @@ class ysyx_26030103_ExactFMA(
     normalRounder.io.out
   )
 
-  // ------------------------------------------------------------ 次正规数舍入
+  // 次正规数舍入
   private val subLsbExp = (1 - Bias) - (P - 1)
   private val subShiftS = Wire(SInt(ExpW.W))
   subShiftS := subLsbExp.S(ExpW.W) -
@@ -236,7 +236,7 @@ class ysyx_26030103_ExactFMA(
   private val exactResult = Mux(dZero, cancelZero, exactBits)
   private val exactFlags = Cat(exactOf, exactUf, exactNx)
 
-  // ------------------------------------------------------------ 特殊值结果
+  // 特殊值结果
   private val canonicalNaN = Cat(
     0.U(1.W),
     Fill(expWidth + 1, 1.U(1.W)),

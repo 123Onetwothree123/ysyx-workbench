@@ -496,7 +496,7 @@ class ysyx_26030103_MMU(
     }
   }
 
-  // ---------------- TLB miss 入队 ----------------
+  // TLB miss 入队
   // 只有“TLB 结果有效且确实缺失”的查找才会进入队列；SRAM TLB 结果
   // 未就绪时上下文留在 ctxLookup，下一拍继续查找。
   val laneMiss = VecInit((0 until lookupPorts).map { p =>
@@ -540,7 +540,7 @@ class ysyx_26030103_MMU(
     commitMissEnqueue(globalMissQOpt.get, gCands)
   }
 
-  // ---------------- miss queue -> PTW 调度 ----------------
+  // miss queue -> PTW 调度
   // PTW 只有一个请求端口，每拍最多启动一笔 walk。split follow_tlb 下
   // I/D 队列用一位 round-robin 防止一侧长期饿死；global/unified 只有
   // 一条队列，直接取队首。

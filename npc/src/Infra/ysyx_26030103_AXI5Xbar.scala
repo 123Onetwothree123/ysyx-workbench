@@ -280,7 +280,7 @@ class ysyx_26030103_AXI5Xbar(
   val InWFire = io.in.W.WVALID && InWReady
   val InARFire = io.in.AR.ARVALID && InARReady
 
-  // -------------------- 写通道 --------------------
+  // 写通道
   val WriteTargetAfterAW =
     Mux(
       InAWFire,
@@ -615,7 +615,7 @@ class ysyx_26030103_AXI5Xbar(
     writeState := StateWriteDECERR
   }
 
-  // -------------------- 读通道 --------------------
+  // 读通道
   // 每个AXI ID独占一个槽位，直到其RLAST被上游消费。仲裁器为IFU/LSU/DMA
   // 分别使用ID 0/1/2，而包含16项的表让此交叉开关能明确定义每个可表示ID的行为。
   val IncomingReadID = io.in.AR.ARID
