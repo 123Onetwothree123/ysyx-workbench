@@ -13,7 +13,8 @@ import org.scalatest.matchers.should.Matchers
   * 规范不一致，测试会失败，从而把差异定位到一个具体 CSR/字段。
   */
 class ysyx_26030103_CSRAuditHarness(
-    profile: ysyx_26030103_MMUProfile
+    profile: ysyx_26030103_MMUProfile,
+    useM: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val enable = Input(Bool())
@@ -46,7 +47,7 @@ class ysyx_26030103_CSRAuditHarness(
     val stateMstatus = Output(UInt(64.W))
   })
   val csr = Module(new ysyx_26030103_CSR(
-    profile, XLEN = 64, UseF = true, UseD = true))
+    profile, XLEN = 64, UseF = true, UseD = true, UseM = useM))
   csr.io.clk := clock
   csr.io.rst := reset
   csr.io.Enable := io.enable
@@ -207,15 +208,15 @@ class ysyx_26030103_CSRFunctionalAuditTest
     }
   }
 
-  it should "在 RV64 的 sstatus 中保留 SXL/UXL=2" in {
+  it should "在 RV64 的 sstatus 中只保留 UXL=2" in {
     simulate(new ysyx_26030103_CSRAuditHarness(profile)) { dut =>
       setup(dut)
       val mstatus = peekCsr(dut, MSTATUS)
       val sstatus = peekCsr(dut, SSTATUS)
       // mstatus 是参照：CSR.scala 的 MstatusArchValue 会补 SXL/UXL。
       ((mstatus >> 32) & 0xf) should be(BigInt(0xa))
-      // sstatus 是 mstatus 的受限视图，RV64 下同样应读回 SXL/UXL=2。
-      ((sstatus >> 32) & 0xf) should be(BigInt(0xa))
+      // sstatus 只包含 UXL[33:32]；SXL 仅存在于 mstatus。
+      ((sstatus >> 32) & 0xf) should be(BigInt(0x2))
     }
   }
 

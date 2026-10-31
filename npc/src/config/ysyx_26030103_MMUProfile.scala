@@ -218,8 +218,13 @@ case class ysyx_26030103_MMUProfile(
     // 访问用户计数器，因此只有连 U 都不存在时才裁剪。
     val sControl =
       addr == 0x302 || addr == 0x303 || (addr == 0x306 && !hasU)
+    // RV64 的计数器是完整 64 位；RV32 的高半字别名在 RV64 中未实现。
+    val highHalfCounter =
+      xlen == 64 && (addr == 0xb80 || addr == 0xb82 ||
+        addr == 0xc80 || addr == 0xc81 || addr == 0xc82)
     // HAS_U=n 时 U 级 CSR 一并从实现集合裁剪；HAS_S=n 时裁剪 S 级 CSR。
-    ((hasU || !uLevel) && (hasS || (!sLevel && !sControl))) &&
+    !highHalfCounter &&
+      ((hasU || !uLevel) && (hasS || (!sLevel && !sControl))) &&
       (csrEnabled.contains(addr) ||
         ysyx_26030103_MMUProfile.IdentityCsrAddresses.contains(addr) ||
         (pmpEnabled && ((addr >= 0x3a0 && addr <= 0x3a3) ||

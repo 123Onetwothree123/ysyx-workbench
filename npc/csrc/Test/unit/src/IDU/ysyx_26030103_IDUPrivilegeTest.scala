@@ -91,6 +91,8 @@ class ysyx_26030103_IDUPrivilegeHarness(config: ysyx_26030103_NPCConfig)
 class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
   // csrrs x1, 0xc00, x0：读用户级 cycle CSR。
   private val CsrrsCycle = 0xc00020f3L
+  // csrrs x1, 0x000, x0：读未实现的 U 级 ustatus CSR。
+  private val CsrrsUstatus = 0x000020f3L
   // csrrs x1, 0x100, x0：读 S 级 sstatus。
   private val CsrrsSstatus = 0x100020f3L
   // csrrs x1, 0x300, x0：读 M 级 mstatus。
@@ -131,10 +133,12 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  it should "HAS_U=n 时 U 级 CSR 被判为非法指令" in {
+  it should "HAS_U=n 时未实现的 U 级 CSR 仍被判为非法指令" in {
     simulate(new ysyx_26030103_IDUPrivilegeHarness(config(hasU = false))) { dut =>
       setup(dut)
-      dut.io.instruction.poke(CsrrsCycle.U)
+      // 用户计数器由 M 模式访问是合法的；这里用一个未实现的 U 级 CSR
+      // 检查 HAS_U=n 的 U 级地址裁剪。
+      dut.io.instruction.poke(CsrrsUstatus.U)
       dut.io.privilege.poke(3.U)
       bool(dut.io.exceptionValid) should be(true)
       dut.io.exceptionCause.peek().litValue should be(2)

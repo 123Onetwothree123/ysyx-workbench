@@ -511,6 +511,12 @@ class ysyx_26030103_LSUMMU(
       io.memKill := io.resp.valid && io.resp.bits.tval === msgReg.ALUResult &&
         (io.resp.bits.fault || io.pmpFault)
     }
+    when(io.flush && (state === xreq || state === xwait)) {
+      // MMU/仲裁器 flush 会直接丢弃在途翻译且不再返回响应；此时继续等
+      // xwait 会永久保持 busy。该请求尚未拿到 PA，属于可撤销的年轻
+      // 访存，连同已交给 LSU/DCache 的登记一起 kill。
+      io.memKill := true.B
+    }
     when(state === done) {
       // load/store 都已交给 LSU；翻译结果保持到 LSU 完全排空，之后才允许
       // 下一笔请求覆盖 paddrReg。store 的 LSU 写缓冲会在 PA 标签匹配后
@@ -521,10 +527,11 @@ class ysyx_26030103_LSUMMU(
       }
     }
     when(io.flush) {
-      // xreq/xwait/done 表示请求已经交给更老的 LSU 流水级，来自更年轻指令
-      // 的冲刷不能撤销它；否则 store/load 会永远等不到 PA。仍留在 fwd 的
-      // 请求尚未进入 LSU，属于年轻指令，必须丢弃。
-      when(state === idle || state === fwd || state === fault) {
+      // xreq/xwait 的 MMU 请求已被 flush 丢弃，不会再返回响应；必须撤销
+      // 并 kill 已登记到 LSU/DCache 的年轻访存。done 表示已有 PA 且可能
+      // 已被 LSU 接收，仍按原逻辑保持到 memActive 撤销。
+      when(state === idle || state === fwd || state === fault ||
+          state === xreq || state === xwait) {
         state := idle
         faultReg := false.B
         paddrValidReg := false.B

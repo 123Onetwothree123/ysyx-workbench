@@ -24,7 +24,9 @@ class ysyx_26030103_CSR(
     val UseC: Boolean = false,
     // RISCV_F/D 打开时实现 fflags/frm/fcsr 与 mstatus.FS，misa.F/D 置位。
     val UseF: Boolean = false,
-    val UseD: Boolean = false
+    val UseD: Boolean = false,
+    // RISCV_M 打开时 misa.M 必须置位；MDU 是否例化由 EXU 单独决定。
+    val UseM: Boolean = false
 ) extends Module {
   import ysyx_26030103_mstatus.legalize
   require(XLEN == 32 || XLEN == 64, s"CSR XLEN 非法: $XLEN")
@@ -191,8 +193,11 @@ class ysyx_26030103_CSR(
   // 用户只读计数器始终随核实现：M 模式在任何配置下都可读；U 模式是否
   // 可读由 mcounteren/scounteren 在 IDU 检查。它们不能因为 CSR_ENABLED
   // 未列出而被裁剪，否则 rdcycle/rdtime/rdinstret 会读回 0。
+  // RV32 才有高半字别名；RV64 的 mcycle/minstret 已是完整 64 位，
+  // mcycleh/minstreth/cycleh/timeh/instreth 在 RV64 属于未实现 CSR。
   private val UserCounterAddresses =
-    Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
+    if (XLEN == 32) Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
+    else Seq(0xc00, 0xc01, 0xc02)
   private val enabledCsrAddresses = (
     profile.csrEnabled.toSeq ++
       // identity CSR 始终存在，不依赖 CSR_ENABLED 是否列出。
@@ -348,11 +353,11 @@ class ysyx_26030103_CSR(
     else if (profile.csrViewMode == "independent") SstatusRegOpt.get
     else MstatusReadData & SstatusMask
   // sstatus 是 mstatus 的受限视图，但 SD 仍是 FS==3 的只读汇总位
-  // （RV32 bit31 / RV64 bit63）；读口必须和 mstatus/NEMU 一致。
-  // RV64 下还要补 SXL/UXL=2（bit[35:32]=0xA），与 MstatusArchValue 一致。
+  // （RV32 bit31 / RV64 bit63）。RV64 的 sstatus 只包含 UXL[33:32]，
+  // SXL 仅存在于 mstatus；因此这里只补 UXL=2，不能把 SXL 一起暴露。
   val SstatusArchValue =
     Widen32(Sstatus_rdata) |
-      (if (XLEN == 64) "h0000000a00000000".U(XLEN.W) else 0.U(XLEN.W)) |
+      (if (XLEN == 64) "h0000000200000000".U(XLEN.W) else 0.U(XLEN.W)) |
       MstatusSdBit(Sstatus_rdata(14, 13))
   val Mtvec_rdata = Mtvec.io.rdata
   val Mepc_rdata = Mepc.io.rdata
@@ -372,7 +377,7 @@ class ysyx_26030103_CSR(
   val Timeh_rdata = io.Mtime(63, 32)
   // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A/C/F/D 随配置置位，
   // S/U 分别随 HAS_S/HAS_U 置位。位编号按 RISC-V 规范：
-  // bit0=A，bit2=C，bit3=D，bit5=F，bit8=I，bit18=S，bit20=U。
+  // bit0=A，bit2=C，bit3=D，bit5=F，bit8=I，bit12=M，bit18=S，bit20=U。
   // misa 整体只读（IDU 拒绝任何写意图），因此这里只生成常量读口。
   val Misa_rdata = {
     val Mxl = if (XLEN == 64) BigInt(2) << 62 else BigInt(1) << 30
@@ -380,9 +385,10 @@ class ysyx_26030103_CSR(
     val CExt = if (UseC) BigInt(1) << 2 else BigInt(0)
     val DExt = if (UseD) BigInt(1) << 3 else BigInt(0)
     val FExt = if (UseF) BigInt(1) << 5 else BigInt(0)
+    val MExt = if (UseM) BigInt(1) << 12 else BigInt(0)
     val SExt = if (hasS) BigInt(1) << 18 else BigInt(0)
     val UExt = if (hasU) BigInt(1) << 20 else BigInt(0)
-    (Mxl | BigInt(0x100) | AExt | CExt | DExt | FExt |
+    (Mxl | BigInt(0x100) | AExt | CExt | DExt | FExt | MExt |
       SExt | UExt).U(XLEN.W)
   }
   val Medeleg_rdata = MedelegOpt.getOrElse(0.U(32.W))
@@ -865,11 +871,11 @@ class ysyx_26030103_CSR(
   // CYCLE/CYCLEH 跟随 mcycle，INSTRET/INSTRETH 跟随 minstret；
   // TIME/TIMEH 直接来自 CLINT mtime，不需要对应的机器计数器。
   addCsr(CSR_CYCLE, Mcycle_rdata, enabled = true)
-  addCsr(CSR_CYCLEH, Widen32(Mcycleh_rdata), enabled = true)
+  addCsr(CSR_CYCLEH, Widen32(Mcycleh_rdata), enabled = XLEN == 32)
   addCsr(CSR_TIME, Time_rdata, enabled = true)
-  addCsr(CSR_TIMEH, Widen32(Timeh_rdata), enabled = true)
+  addCsr(CSR_TIMEH, Widen32(Timeh_rdata), enabled = XLEN == 32)
   addCsr(CSR_INSTRET, Minstret_rdata, enabled = true)
-  addCsr(CSR_INSTRETH, Widen32(Minstreth_rdata), enabled = true)
+  addCsr(CSR_INSTRETH, Widen32(Minstreth_rdata), enabled = XLEN == 32)
   addCsr(CSR_MISA, Misa_rdata, csrOn(0x301))
   addCsr(CSR_MTVAL, Mtval, csrOn(0x343))
   addCsr(CSR_MCOUNTEREN, Widen32(Mcounteren), csrOn(0x306))

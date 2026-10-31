@@ -184,7 +184,13 @@ trait ysyx_26030103_FudianFPUResult {
       fastFlags := byFmt(sFpToInt.io.fflags, dFpToInt.get.io.fflags)
     }
     is(ysyx_26030103_FpuOp.FCvtFpToUInt) {
-      fastResult := asResp(byFmt(sFpToInt.io.result, dFpToInt.get.io.result))
+      val raw = asResp(byFmt(sFpToInt.io.result, dFpToInt.get.io.result))
+      // RV64 的 FCVT.WU 也按 W 型规则把 32 位结果符号扩展到 XLEN；
+      // FPToInt 对 WU 只产生低 32 位（高半清零），必须在这里补齐。
+      fastResult := (if (XLEN == 64)
+        Mux(io.req.bits.intWord,
+          Cat(Fill(32, raw(31)), raw(31, 0)), raw)
+      else raw)
       fastFlags := byFmt(sFpToInt.io.fflags, dFpToInt.get.io.fflags)
     }
     is(ysyx_26030103_FpuOp.FCvtIntToFp) {

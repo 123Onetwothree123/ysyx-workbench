@@ -141,7 +141,8 @@ class ysyx_26030103_EXU(
   })
   val ALUUnit = Module(ysyx_26030103_ALU(config))
   val CSRUnit = Module(new ysyx_26030103_CSR(
-    config.MMU, XLEN, config.UseA, config.UseC, config.UseF, config.UseD))
+    config.MMU, XLEN, config.UseA, config.UseC, config.UseF, config.UseD,
+    config.UseM))
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
   CSRUnit.io.RetireCommit := io.RetireCommit

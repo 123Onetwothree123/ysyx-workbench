@@ -329,7 +329,8 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
         send(dut, 64, ysyx_26030103_FpuOp.FCvtIntToFp.Int, 1,
           ysyx_26030103_FpuRm.RNE.Int, BigInt("fffffffffffffff9", 16),
           intWord = true) should be((f64(-7.0), 0))
-        // FCVT.W.D 负结果要符号扩展到 XLEN；WU 仍为零扩展并只报 NV。
+        // FCVT.W.D/WU 的 32 位结果都要按 W 型规则符号扩展到 XLEN；
+        // 负的 WU 结果只报 NV 并返回 0。
         send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToInt.Int, 1,
           ysyx_26030103_FpuRm.RTZ.Int, f64(-1.5),
           intWord = true) should be((

@@ -417,7 +417,8 @@ class ysyx_26030103_IDU(
   // 将被视为非法指令。
   val CSRAddress = Instruction(31, 20)
   private val userCounterAddresses =
-    Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
+    if (XLEN == 32) Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
+    else Seq(0xc00, 0xc01, 0xc02)
   // F/D 的 fflags(0x001)/frm(0x002)/fcsr(0x003) 是 U 级可访问 CSR；
   // 是否实现由 RISCV_F 决定，不依赖 MMU profile 的整数 CSR 集合。
   private val fpCsrAddresses =
@@ -450,7 +451,12 @@ class ysyx_26030103_IDU(
     (CSRAddress === 0x001.U) || (CSRAddress === 0x002.U) ||
       (CSRAddress === 0x003.U)
   else false.B
-  val CSRPrivilegeOk = IsFpCsr || (if (!hasS && !hasU)
+  // 用户只读计数器是 U 级地址，但 M 模式始终可以访问；S 模式由
+  // mcounteren 控制，U 模式再由 scounteren 控制。HAS_U=n 时它们仍
+  // 由 CSR 模块实现，不能因为地址位 [9:8]=00 就被判成非法。
+  val IsUserCounter = userCounterAddresses.map(a => CSRAddress === a.U(12.W))
+    .reduceOption(_ || _).getOrElse(false.B)
+  val CSRPrivilegeOk = IsFpCsr || IsUserCounter || (if (!hasS && !hasU)
     CSRAddress(9, 8) === "b11".U(2.W)
   else
     (EffectivePrivilege >= CSRAddress(9, 8)) &&
@@ -459,9 +465,9 @@ class ysyx_26030103_IDU(
     CSRAddress === "h301".U(12.W) // misa 当前只读 */
   // 读只读 CSR 合法；CSRRW/带非零源的 CSRRS/CSRRC 写只读 CSR 非法。
   val CSRWriteIntent = IsCsrrw || ((IsCsrrs || IsCsrrc) && (Rs1 =/= 0.U))
-  val IsUserCounter = userCounterAddresses.map(a => CSRAddress === a.U(12.W))
-    .reduceOption(_ || _).getOrElse(false.B)
-  val CounterBit = CSRAddress(2, 0)
+  // 计数器使能位只可能落在 0..7（cycle/time/instret 及其高半字）；
+  // 用 5 位索引与 32 位 mcounteren/scounteren 对齐，避免窄索引警告。
+  val CounterBit = Cat(0.U(2.W), CSRAddress(2, 0))
   val CounterAccessOk = !IsUserCounter || EffectivePrivilege === 3.U ||
     (io.Mcounteren(CounterBit) &&
       (if (hasS) EffectivePrivilege === 1.U || io.Scounteren(CounterBit)
