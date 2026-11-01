@@ -67,6 +67,16 @@ class ysyx_26030103_MMU(
     val resp  = Decoupled(new ysyx_26030103_MMUResponse(xlen, addressWidth))
     val bus   = new ysyx_26030103_PTEBusIO(addressWidth)
     val flush = Input(Bool())
+    val perf_itlb_hit = Output(Bool())
+    val perf_itlb_miss = Output(Bool())
+    val perf_dtlb_hit = Output(Bool())
+    val perf_dtlb_miss = Output(Bool())
+    val perf_tlb_refill = Output(Bool())
+    val perf_ptw_walk = Output(Bool())
+    val perf_ptw_walk_cycle = Output(Bool())
+    val perf_page_fault = Output(Bool())
+    val perf_superpage_hit = Output(Bool())
+    val perf_asid_hit = Output(Bool())
   })
 
   val ctxFree :: ctxLookup :: ctxMissWait :: ctxWalk :: Nil = Enum(4)
@@ -332,6 +342,24 @@ class ysyx_26030103_MMU(
         optBool(dtlbOpt, _.io.result(0).fault)
       )
     else optBool(utlbOpt, _.io.result(p).fault)
+  def laneSuperpage(p: Int):   Bool =
+    if (!profile.tlbEnabled) false.B
+    else if (split)
+      Mux(
+        lookupReq(p).access === ysyx_26030103_AccessType.Fetch,
+        optBool(itlbOpt, _.io.result(0).superpage),
+        optBool(dtlbOpt, _.io.result(0).superpage)
+      )
+    else optBool(utlbOpt, _.io.result(p).superpage)
+  def laneAsidHit(p: Int):     Bool =
+    if (!profile.tlbEnabled) false.B
+    else if (split)
+      Mux(
+        lookupReq(p).access === ysyx_26030103_AccessType.Fetch,
+        optBool(itlbOpt, _.io.result(0).asidHit),
+        optBool(dtlbOpt, _.io.result(0).asidHit)
+      )
+    else optBool(utlbOpt, _.io.result(p).asidHit)
   def lanePaddr(p: Int):       UInt =
     if (!profile.tlbEnabled) lookupReq(p).vaddr
     else if (split)
@@ -671,6 +699,41 @@ class ysyx_26030103_MMU(
     nextSeq := 0.U
     rrITLB  := true.B
   }
+
+  val perfFetchHit = VecInit((0 until lookupPorts).map(p =>
+    lookupValid(p) && lookupReq(p).access === ysyx_26030103_AccessType.Fetch &&
+      !laneBypass(p) && laneTlbHit(p)
+  )).reduce(_ || _)
+  val perfFetchMiss = VecInit((0 until lookupPorts).map(p =>
+    lookupValid(p) && lookupReq(p).access === ysyx_26030103_AccessType.Fetch &&
+      profile.tlbEnabled.B && !laneBypass(p) && !laneTlbHit(p)
+  )).reduce(_ || _)
+  val perfDataHit = VecInit((0 until lookupPorts).map(p =>
+    lookupValid(p) && lookupReq(p).access =/= ysyx_26030103_AccessType.Fetch &&
+      !laneBypass(p) && laneTlbHit(p)
+  )).reduce(_ || _)
+  val perfDataMiss = VecInit((0 until lookupPorts).map(p =>
+    lookupValid(p) && lookupReq(p).access =/= ysyx_26030103_AccessType.Fetch &&
+      profile.tlbEnabled.B && !laneBypass(p) && !laneTlbHit(p)
+  )).reduce(_ || _)
+  val perfTlbRefill = VecInit((0 until profile.refillPorts).map(p =>
+    ptwCtxValidVec(p) && ptwRespVec(p).fillValid
+  )).reduce(_ || _)
+  io.perf_itlb_hit := perfFetchHit
+  io.perf_itlb_miss := perfFetchMiss
+  io.perf_dtlb_hit := perfDataHit
+  io.perf_dtlb_miss := perfDataMiss
+  io.perf_tlb_refill := perfTlbRefill
+  io.perf_ptw_walk := directIssueNeeded || queueIssue
+  io.perf_ptw_walk_cycle := walkValid.reduce(_ || _)
+  io.perf_page_fault :=
+    respValid(headIdx) && io.resp.ready && respData(headIdx).fault
+  io.perf_superpage_hit := VecInit((0 until lookupPorts).map(p =>
+    lookupValid(p) && !laneBypass(p) && laneHit(p) && laneSuperpage(p)
+  )).reduce(_ || _)
+  io.perf_asid_hit := VecInit((0 until lookupPorts).map(p =>
+    lookupValid(p) && !laneBypass(p) && laneHit(p) && laneAsidHit(p)
+  )).reduce(_ || _)
 
   ptw.io.bus.req <> io.bus.req
   ptw.io.bus.resp <> io.bus.resp

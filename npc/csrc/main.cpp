@@ -244,10 +244,10 @@ int main(int argc, char const *argv[])
     {
         result = NPCTrap::PrintResult(dut.GetCycle(), dut.GetInstructions());
     }
-    if constexpr (npc::HasPerfStats)
+    if constexpr (npc::HasDicArchCounter)
     {
-        NPCTrap::PrintPerformanceStatistics(
-            dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
+        NPCTrap::PrintDicArchCounterStatistics(
+            dut.GetDicArchCounterStats(), dut.GetCycle(), dut.GetInstructions());
     }
     if constexpr (npc::HasPerfSave)
     {
@@ -265,7 +265,7 @@ int main(int argc, char const *argv[])
                 default_result_dir = result_dir;
             }
             NPCSimResult::Save(
-                result_dir, dut.GetPerfStats(), dut.GetCycle(), dut.GetInstructions());
+                result_dir, dut.GetDicArchCounterStats(), dut.GetCycle(), dut.GetInstructions());
         }
         catch (const std::exception &error)
         {

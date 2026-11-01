@@ -89,24 +89,39 @@ case class ysyx_26030103_NPCConfig(
     ITraceEnable: Boolean = true,
     FTraceEnable: Boolean = true,
     IRingBufEnable: Boolean = true,
-    PerfStatsEnable: Boolean = true,
-    // 性能计数器细分：仅在PerfStatsEnable打开时有意义。关闭的组在顶层
+    DicArchCounterEnable: Boolean = true,
+    // 性能计数器细分：仅在DicArchCounterEnable打开时有意义。关闭的组在顶层
     // 输出常量，未被读取的叶模块信号会被综合展平/常量传播优化掉，
     // 仿真侧也不再逐拍采样，从而同时节省面积与编译产物。
-    PerfCounterBasic: Boolean = true,
-    PerfCounterOpClass: Boolean = true,
-    PerfCounterMDU: Boolean = true,
-    PerfCounterIfuStall: Boolean = true,
-    PerfCounterICache: Boolean = true,
-    PerfCounterDCache: Boolean = true,
-    PerfCounterExuStall: Boolean = true,
-    PerfCounterLSU: Boolean = true,
-    PerfCounterIduStall: Boolean = true,
-    PerfCounterTrap: Boolean = true,
+    PerfDicArchCounterBasic: Boolean = true,
+    PerfDicArchCounterOpClass: Boolean = true,
+    PerfDicArchCounterMDU: Boolean = true,
+    PerfDicArchCounterIfuStall: Boolean = true,
+    PerfDicArchCounterICache: Boolean = true,
+    PerfDicArchCounterDCache: Boolean = true,
+    PerfDicArchCounterExuStall: Boolean = true,
+    PerfDicArchCounterLSU: Boolean = true,
+    PerfDicArchCounterIduStall: Boolean = true,
+    PerfDicArchCounterTrap: Boolean = true,
+    PerfDicArchCounterBranchPred: Boolean = true,
+    PerfDicArchCounterMMU: Boolean = true,
+    PerfDicArchCounterFPU: Boolean = true,
+    PerfDicArchCounterAXI: Boolean = true,
+    PerfDicArchCounterInstMix: Boolean = true,
+    PerfDicArchCounterCacheDetail: Boolean = true,
+    PerfDicArchCounterInterrupt: Boolean = true,
+    PerfDicArchCounterWBuf: Boolean = true,
+    PerfDicArchCounterCSR: Boolean = true,
+    PerfDicArchCounterMDUDetail: Boolean = true,
+    PerfDicArchCounterQueue: Boolean = true,
+    // 架构 PMU：Zicntr 基础计数器始终存在；Zihpm/Sscofpmf 由这里控制。
+    RiscvArchPMU: Boolean = false,
+    RiscvArchPMUZihpm: Boolean = true,
+    RiscvArchPMUSscofpmf: Boolean = true,
     // 单计数器选择：键名如"ifu_fetch"/"mdu_req"。实际生效集合还要与
-    // 主开关及所属组总开关相与（见EnabledPerfCounters）。
-    PerfCounters: Set[String] =
-      ysyx_26030103_PerfCounterCatalog.AllPerfCounters,
+    // 主开关及所属组总开关相与（见EnabledPerfDicArchCounters）。
+    PerfDicArchCounters: Set[String] =
+      ysyx_26030103_PerfDicArchCounterCatalog.AllPerfDicArchCounters,
     // MMU/TLB 配置；RV32 为 Sv32，RV64 为标准 Sv39/Sv48 的 IFU/LSU 翻译路径。
     MMU: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile(),
     // IDU 译码真值表的最小化算法；只影响 elaboration 生成的组合逻辑，
@@ -499,41 +514,52 @@ case class ysyx_26030103_NPCConfig(
   final val EnableDynamicGPRDebug: Boolean = SDBEnable || DiffTestEnable
   final val EnableRetireTrace: Boolean =
     SDBEnable || DiffTestEnable || MTraceEnable || ITraceEnable ||
-      FTraceEnable || IRingBufEnable || PerfStatsEnable
+      FTraceEnable || IRingBufEnable || DicArchCounterEnable
   // 性能统计也从注册后的 trap 事件计数，不能只保留 retire 事件。
   final val EnableTrapTrace: Boolean =
-    SDBEnable || DiffTestEnable || PerfStatsEnable
+    SDBEnable || DiffTestEnable || DicArchCounterEnable
   final val EnableCSRTrace: Boolean = DiffTestEnable
   final val EnableMemoryTrace: Boolean =
     SDBEnable || DiffTestEnable || MTraceEnable
-  final val EnablePerfTrace: Boolean = PerfStatsEnable
+
   // 性能计数器分组总开关。
-  private val PerfCounterGroupFlags: Map[String, Boolean] = Map(
-    "basic" -> PerfCounterBasic,
-    "opclass" -> PerfCounterOpClass,
-    "mdu" -> PerfCounterMDU,
-    "ifu_stall" -> PerfCounterIfuStall,
-    "icache" -> PerfCounterICache,
-    "dcache" -> PerfCounterDCache,
-    "exu_stall" -> PerfCounterExuStall,
-    "lsu" -> PerfCounterLSU,
-    "idu_stall" -> PerfCounterIduStall,
-    "trap" -> PerfCounterTrap
+  private val PerfDicArchCounterGroupFlags: Map[String, Boolean] = Map(
+    "basic" -> PerfDicArchCounterBasic,
+    "opclass" -> PerfDicArchCounterOpClass,
+    "mdu" -> PerfDicArchCounterMDU,
+    "ifu_stall" -> PerfDicArchCounterIfuStall,
+    "icache" -> PerfDicArchCounterICache,
+    "dcache" -> PerfDicArchCounterDCache,
+    "exu_stall" -> PerfDicArchCounterExuStall,
+    "lsu" -> PerfDicArchCounterLSU,
+    "idu_stall" -> PerfDicArchCounterIduStall,
+    "trap" -> PerfDicArchCounterTrap,
+    "branch_pred" -> PerfDicArchCounterBranchPred,
+    "mmu" -> PerfDicArchCounterMMU,
+    "fpu" -> PerfDicArchCounterFPU,
+    "axi" -> PerfDicArchCounterAXI,
+    "inst_mix" -> PerfDicArchCounterInstMix,
+    "cache_detail" -> PerfDicArchCounterCacheDetail,
+    "interrupt" -> PerfDicArchCounterInterrupt,
+    "wbuf" -> PerfDicArchCounterWBuf,
+    "csr" -> PerfDicArchCounterCSR,
+    "mdu_detail" -> PerfDicArchCounterMDUDetail,
+    "queue" -> PerfDicArchCounterQueue
   )
   // 单计数器实际生效集合 = 主开关 ∩ 组总开关 ∩ 单计数器开关。
-  final val EnabledPerfCounters: Set[String] = {
-    if (!PerfStatsEnable) { Set.empty }
+  final val EnabledPerfDicArchCounters: Set[String] = {
+    if (!DicArchCounterEnable) { Set.empty }
     else {
-      ysyx_26030103_PerfCounterCatalog.PerfCounterGroups.flatMap {
+      ysyx_26030103_PerfDicArchCounterCatalog.PerfDicArchCounterGroups.flatMap {
         case (group, counters) =>
-          if (PerfCounterGroupFlags(group)) {
-            counters.filter(PerfCounters.contains(_))
+          if (PerfDicArchCounterGroupFlags(group)) {
+            counters.filter(PerfDicArchCounters.contains(_))
           } else { Seq.empty }
       }.toSet
     }
   }
-  final def EnablePerfCounter(Key: String): Boolean =
-    EnabledPerfCounters.contains(Key)
+  final def EnablePerfDicArchCounter(Key: String): Boolean =
+    EnabledPerfDicArchCounters.contains(Key)
   // 事件分类码与执行活跃电平是多个单计数器的公共信号：消费方任一开启
   // 就生成，否则绑常量以便综合裁剪。
   final val EnablePerfEventKind: Boolean = Seq(
@@ -543,10 +569,10 @@ case class ysyx_26030103_NPCConfig(
     "branch_op",
     "jal_op",
     "jalr_op"
-  ).exists(EnablePerfCounter)
+  ).exists(EnablePerfDicArchCounter)
   final val EnablePerfExecutionActive: Boolean =
-    EnablePerfCounter("execution_active") ||
-      Seq("alu_op", "mem_op", "csr_op", "branch_op").exists(EnablePerfCounter)
+    EnablePerfDicArchCounter("execution_active") ||
+      Seq("alu_op", "mem_op", "csr_op", "branch_op").exists(EnablePerfDicArchCounter)
   final val EnableAnyObservability: Boolean = EnableRetireTrace
   private def OnOff(Flag: Boolean): String = {
     if (Flag) { "on" }
@@ -565,17 +591,17 @@ case class ysyx_26030103_NPCConfig(
     else { "" }
     "RV" + XLEN.toString + "I" + MExt + AExt + CExt + FExt + DExt
   }
-  private def PerfCounterList: String = {
-    if (!PerfStatsEnable) { "off" }
+  private def PerfDicArchCounterList: String = {
+    if (!DicArchCounterEnable) { "off" }
     else {
       val EnabledGroups =
-        ysyx_26030103_PerfCounterCatalog.PerfCounterGroups.collect {
-          case (group, _) if PerfCounterGroupFlags(group) => group
+        ysyx_26030103_PerfDicArchCounterCatalog.PerfDicArchCounterGroups.collect {
+          case (group, _) if PerfDicArchCounterGroupFlags(group) => group
         }
       val GroupText =
         if (EnabledGroups.isEmpty) { "none" }
         else { EnabledGroups.mkString("+") }
-      s"$GroupText(${EnabledPerfCounters.size}/${ysyx_26030103_PerfCounterCatalog.AllPerfCounters.size})"
+      s"$GroupText(${EnabledPerfDicArchCounters.size}/${ysyx_26030103_PerfDicArchCounterCatalog.AllPerfDicArchCounters.size})"
     }
   }
   def Describe: String = {
@@ -673,8 +699,11 @@ case class ysyx_26030103_NPCConfig(
       s"icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, observe=${OnOff(EnableAnyObservability)}, " +
-      s"gpr_debug=${OnOff(EnableDynamicGPRDebug)}, perf_debug=${OnOff(EnablePerfTrace)}, " +
-      s"perf_counters=${PerfCounterList}, " +
+      s"gpr_debug=${OnOff(EnableDynamicGPRDebug)}, dic_arch_counter=${OnOff(DicArchCounterEnable)}, " +
+      s"riscv_arch_pmu=${OnOff(RiscvArchPMU)}, " +
+      s"riscv_arch_pmu_zihpm=${OnOff(RiscvArchPMUZihpm)}, " +
+      s"riscv_arch_pmu_sscofpmf=${OnOff(RiscvArchPMUSscofpmf)}, " +
+      s"dic_arch_counter_events=${PerfDicArchCounterList}, " +
       s"mmu=${MMU.describe}, " +
       s"reset=0x${ResetAddr.toHexString}"
   }

@@ -119,11 +119,11 @@ std::filesystem::path NPCSimResult::CreateDefaultResultDirectory()
 
 void NPCSimResult::Save(
     std::filesystem::path result_dir,
-    const PerfStats &stats,
+    const DicArchCounterStats &stats,
     std::size_t total_cycles,
     std::size_t total_instructions)
 {
-    constexpr unsigned schema_version{3};
+    constexpr unsigned schema_version{9};
     double ipc{0.0};
     if (total_cycles > 0)
     {
@@ -224,7 +224,29 @@ void NPCSimResult::Save(
         "IDU_RAW_loaduse", "IDU_RAW_非load未就绪", "EXU空转等输入",
         "异常提交", "EX/MEM等待槽占用", "MDU请求", "MDU完成", "MUL",
         "MULH", "MULHSU", "MULHU", "DIV", "DIVU", "REM", "REMU",
-        "MDU发射或在途活动周期", "MDU等待计算结果周期"};
+        "MDU发射或在途活动周期", "MDU等待计算结果周期",
+        "BTB命中", "BTB缺失", "JAL_BTB命中", "RAS命中", "分支误预测",
+        "ITLB命中", "ITLB缺失", "DTLB命中", "DTLB缺失", "TLB回填",
+        "FPU请求", "FPU完成",
+        "AXI_AR", "AXI_AW", "AXI_R", "AXI_W", "AXI_B",
+        "load指令", "store指令", "AMO指令",
+        "分支taken", "分支not-taken", "TLB冲刷", "FPU忙碌周期",
+        "fence指令", "RVC指令", "system指令",
+        "ICache回填", "DCache回填",
+        "定时器中断", "外部中断", "进入中断",
+        "写缓冲无空位", "写缓冲排空", "CSR读", "CSR写",
+        "乘法活跃周期", "除法活跃周期",
+        "PTW walk", "PTW活跃周期", "page fault", "RAS缺失",
+        "重定向branch", "重定向fence.i", "重定向trap", "重定向mret",
+        "FPU等待周期", "非法指令", "AXI_stall", "AXI_error",
+        "FPU_DIVSQRT", "FPU_FMA", "FPU异常", "CSR非法",
+        "PLIC_claim", "PLIC_complete", "冲刷周期",
+        "非缓存访问", "写缓冲占用周期和",
+        "TLB超级页命中", "TLB_ASID命中",
+        "ICache行填充", "DCache行填充", "DCache写直达更新",
+        "中断pending周期", "中断延迟周期和", "中断最大延迟", "中断延迟样本数",
+        "WFI指令", "发射槽占用周期", "退休槽占用周期", "EXU气泡周期",
+        "除法实际迭代位数", "除法提前结束"};
     const std::vector<std::string> csv_row{
         std::to_string(schema_version), commit, git_dirty, config_sha256,
         config_summary, std::string{rtl_target}, rtl_sha256, pdk,
@@ -270,7 +292,57 @@ void NPCSimResult::Save(
         std::to_string(stats.mdu_mulhu), std::to_string(stats.mdu_div),
         std::to_string(stats.mdu_divu), std::to_string(stats.mdu_rem),
         std::to_string(stats.mdu_remu), std::to_string(stats.mdu_active_cycle),
-        std::to_string(stats.mdu_wait_cycle)};
+        std::to_string(stats.mdu_wait_cycle),
+        std::to_string(stats.btb_hit), std::to_string(stats.btb_miss),
+        std::to_string(stats.jal_btb_hit), std::to_string(stats.ras_hit),
+        std::to_string(stats.branch_mispredict),
+        std::to_string(stats.itlb_hit), std::to_string(stats.itlb_miss),
+        std::to_string(stats.dtlb_hit), std::to_string(stats.dtlb_miss),
+        std::to_string(stats.tlb_refill),
+        std::to_string(stats.fpu_req), std::to_string(stats.fpu_done),
+        std::to_string(stats.axi_ar), std::to_string(stats.axi_aw),
+        std::to_string(stats.axi_r), std::to_string(stats.axi_w),
+        std::to_string(stats.axi_b),
+        std::to_string(stats.load_op), std::to_string(stats.store_op),
+        std::to_string(stats.amo_op),
+        std::to_string(stats.branch_taken),
+        std::to_string(stats.branch_not_taken),
+        std::to_string(stats.tlb_flush),
+        std::to_string(stats.fpu_active_cycle),
+        std::to_string(stats.fence_op), std::to_string(stats.rvc_inst),
+        std::to_string(stats.system_op),
+        std::to_string(stats.icache_refill),
+        std::to_string(stats.dcache_refill),
+        std::to_string(stats.timer_irq), std::to_string(stats.external_irq),
+        std::to_string(stats.interrupt_taken),
+        std::to_string(stats.wbuf_full), std::to_string(stats.wbuf_drain),
+        std::to_string(stats.csr_read), std::to_string(stats.csr_write),
+        std::to_string(stats.mul_active_cycle),
+        std::to_string(stats.div_active_cycle),
+        std::to_string(stats.ptw_walk), std::to_string(stats.ptw_walk_cycle),
+        std::to_string(stats.page_fault), std::to_string(stats.ras_miss),
+        std::to_string(stats.redirect_branch),
+        std::to_string(stats.redirect_fence_i),
+        std::to_string(stats.redirect_trap), std::to_string(stats.redirect_mret),
+        std::to_string(stats.fpu_stall_cycle), std::to_string(stats.illegal_inst),
+        std::to_string(stats.axi_stall_cycle), std::to_string(stats.axi_error),
+        std::to_string(stats.fpu_divsqrt), std::to_string(stats.fpu_fma),
+        std::to_string(stats.fpu_exception), std::to_string(stats.csr_illegal),
+        std::to_string(stats.plic_claim), std::to_string(stats.plic_complete),
+        std::to_string(stats.flush_cycle), std::to_string(stats.uncached_access),
+        std::to_string(stats.wbuf_occupancy_cycle),
+        std::to_string(stats.tlb_superpage_hit), std::to_string(stats.tlb_asid_hit),
+        std::to_string(stats.icache_line_fill), std::to_string(stats.dcache_line_fill),
+        std::to_string(stats.dcache_writeback),
+        std::to_string(stats.interrupt_pending_cycle),
+        std::to_string(stats.interrupt_latency_cycle),
+        std::to_string(stats.interrupt_latency_max),
+        std::to_string(stats.interrupt_latency_count),
+        std::to_string(stats.wfi_inst),
+        std::to_string(stats.issue_occupancy_cycle),
+        std::to_string(stats.retire_occupancy_cycle),
+        std::to_string(stats.bubble_cycle),
+        std::to_string(stats.div_iterations), std::to_string(stats.div_early_out)};
     if (csv_header.size() != csv_row.size())
         throw std::logic_error{"性能 CSV 表头与数据列数不一致"};
 

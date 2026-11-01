@@ -169,11 +169,11 @@ inline std::vector<long long> parseIntList(const std::string &key,
     }
     return result;
 }
-struct PerfGroup {
+struct DicArchCounterGroup {
     const char *name;
     std::vector<const char *> counters;
 };
-const std::vector<PerfGroup> &perfGroups();
+const std::vector<DicArchCounterGroup> &dicArchCounterGroups();
 bool hasConfigValue(const Config &values, const std::string &key);
 void setConfigDefault(Config &values, std::string key, std::string value);
 void copyConfigDefault(Config &values, const std::string &target,

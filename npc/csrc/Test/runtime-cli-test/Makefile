@@ -26,7 +26,7 @@ build-npc:
 
 build-perf-npc:
 	$(MAKE) -C $(NPC_DIR) git_commit= CONFIG_SDB=n CONFIG_DIFFTEST=n \
-	  CONFIG_PERF_STATS=y CONFIG_PERF_SAVE=y \
+	  CONFIG_PERF_DIC_ARCH_COUNTER=y CONFIG_PERF_SAVE=y \
 	  BUILD_DIR=$(abspath $(PERF_SAVE_BUILD_DIR)) \
 	  $(abspath $(PERF_SAVE_BIN))
 

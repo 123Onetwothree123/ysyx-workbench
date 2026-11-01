@@ -79,6 +79,7 @@ class ysyx_26030103_CSRExceptionAuditHarness(
   csr.io.FPCommit := false.B
   csr.io.FPFlags := 0.U
   csr.io.FPStateDirtyCommit := false.B
+  csr.io.PMUEvents := 0.U
   io.rdata := csr.io.CSR_rdata
   io.exceptionTaken := csr.io.ExceptionTaken
   io.exceptionTarget := csr.io.ExceptionTarget

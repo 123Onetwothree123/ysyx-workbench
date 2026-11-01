@@ -219,6 +219,11 @@ int main(int argc, char **argv)
                 mmuPteFormat = "riscv32";
         }
 
+        const std::string pmuEnabledValue =
+            requireYN("NPC_PMU",
+                      boolEnvOrConfig("NPC_PMU", config,
+                                      "CONFIG_PERF_RISCV_ARCH_PMU", false));
+        const bool pmuEnabled = pmuEnabledValue == "y";
         const std::string synthFreqValue =
             envOrConfig("SBI_SYNTH_FREQ", config, "CONFIG_SYNTH_FREQ", "450");
         const std::string linuxValue = requireYN(
@@ -500,6 +505,7 @@ int main(int argc, char **argv)
                 "-DNPC_RISCV_ISA_EXTENSIONS=" + extensionList,
                 "-DNPC_MMU_TYPE=\"" + cppEscape(mmuType) + "\"",
                 "-DNPC_MMU_TYPE_VALID=" + std::to_string(mmuTypeValid ? 1 : 0),
+                "-DNPC_PMU_ENABLED=" + std::to_string(pmuEnabled ? 1 : 0),
                 "-DNPC_BOOTARGS=\"" + cppEscape(bootargs) + "\"",
                 "-DSBI_INITRAMFS_ADDR=" + hexU64(layout.initramfsAddr),
                 "-DSBI_INITRAMFS_SIZE=" + hexU64(layout.initramfsSize),

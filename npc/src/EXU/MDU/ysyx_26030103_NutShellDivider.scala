@@ -11,6 +11,8 @@ class ysyx_26030103_NutShellDivider(val len: Int = 64) extends Module {
     val sign = Input(Bool())
     val out = Decoupled(UInt((2 * len).W))
     val flush = Input(Bool())
+    val iteration_count = Output(UInt(16.W))
+    val early_out = Output(Bool())
   })
 
   private def abs(value: UInt, signed: Bool): (Bool, UInt) = {
@@ -33,6 +35,8 @@ class ysyx_26030103_NutShellDivider(val len: Int = 64) extends Module {
   private val bReg = RegEnable(bVal, newReq)
   private val aValx2Reg = RegEnable(Cat(aVal, 0.U(1.W)), newReq)
   private val cnt = Counter(len)
+  io.iteration_count := cnt.value.pad(16)
+  io.early_out := state === s_finish && cnt.value =/= (len - 1).U
 
   when(io.flush) {
     state := s_idle

@@ -86,7 +86,7 @@ $(GEN_STAMP): $(SCALA_SOURCES) Makefile
 	  CHIPLINK=n \
 	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
 	  RISCV_M=n RISCV_A=n RISCV_C=n \
-	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_STATS=y \
+	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_DIC_ARCH_COUNTER=y \
 	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(RTL_DIR)
 	@ln -sf layers-ysyx_26030103-Verification.sv \
 	  $(RTL_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
@@ -115,7 +115,7 @@ $(CHIPLINK_GEN_STAMP): $(SCALA_SOURCES) Makefile
 	  CHIPLINK=y \
 	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
 	  RISCV_M=n RISCV_A=n RISCV_C=n \
-	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_STATS=y \
+	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_DIC_ARCH_COUNTER=y \
 	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(CHIPLINK_RTL_DIR)
 	@ln -sf layers-ysyx_26030103-Verification.sv \
 	  $(CHIPLINK_RTL_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
@@ -151,7 +151,7 @@ $(ICACHE_DISABLED_GEN_STAMP): $(SCALA_SOURCES) Makefile
 	  CHIPLINK=n \
 	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
 	  RISCV_M=n RISCV_A=n RISCV_C=n \
-	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_STATS=y \
+	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_DIC_ARCH_COUNTER=y \
 	  mill --no-server runMain ysyx_26030103_Elaborate \
 	    --target-dir $(ICACHE_DISABLED_RTL_DIR) 2>&1 | tee $(ICACHE_DISABLED_LOG)
 	@if grep -E '\[W004\]|Dynamic index.*Vec of size 1' \

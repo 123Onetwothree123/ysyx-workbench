@@ -112,6 +112,8 @@ class ysyx_26030103_TLB(
     val paddr = UInt(addressWidth.W)
     val cause = UInt(32.W)
     val resultValid = Bool()
+    val superpage = Bool()
+    val asidHit = Bool()
   }
 
   val io = IO(new Bundle {
@@ -338,8 +340,27 @@ class ysyx_26030103_TLB(
       if (adMode == "hardware") anyHit && (!selA || (isStore && !selD))
       else false.B
     val effectiveHit = anyHit && !adRefillNeeded
+    val normalGlobal = Mux1H(
+      lookupWays,
+      (0 until ways).map(w =>
+        if (globalEnable)
+          entriesVec(entryIndex(lookupSet, w.U)).global
+        else false.B
+      )
+    )
+    val superGlobal =
+      if (superEntryCount > 0)
+        Mux1H(superHits,
+          (0 until superEntryCount).map(i => superVec.get(i).global))
+      else false.B
+    val selectedGlobal = Mux(superHit, superGlobal, normalGlobal)
+    val asidHit =
+      if (asidBits == 0) false.B
+      else effectiveHit && !selectedGlobal
     io.result(p).hit := effectiveHit
     io.result(p).fault := effectiveHit && !permissionOk
+    io.result(p).superpage := effectiveHit && superHit
+    io.result(p).asidHit := asidHit
     val basePaddr = (Cat(selPpn, lookup.vaddr(pageBits - 1, 0))).pad(addressWidth)
     io.result(p).paddr := Mux(superHit, superPaddr, basePaddr)
     io.result(p).cause := faultCause

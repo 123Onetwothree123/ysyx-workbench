@@ -62,6 +62,8 @@ class ysyx_26030103_DCacheInterface(
   val perf_miss = Output(Bool())
   val perf_refill_req = Output(Bool())
   val perf_refill_resp = Output(Bool())
+  val perf_line_fill = Output(Bool())
+  val perf_writeback = Output(Bool())
   val req_cacheable = Output(Bool())
   val axi_active = Output(Bool())
 }

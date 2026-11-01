@@ -488,7 +488,7 @@ void DUT::reset()
     {
         debug_memory_writes.clear();
     }
-    if constexpr (npc::HasPerfStats)
+    if constexpr (npc::HasDicArchCounter)
     {
         instructions = 0;
         perf = {};
@@ -527,24 +527,24 @@ void DUT::step()
     // 端口始终存在，关闭的计数器在 RTL 侧绑 0；这里的 constexpr 开关让
     // 编译器裁掉未启用的逻辑。
     const bool perf_event_ifu_fetch{
-        npc::PerfCounterIfuFetch && static_cast<bool>(dut->perf_ifu_fetch)};
+        npc::PerfDicArchCounterIfuFetch && static_cast<bool>(dut->perf_ifu_fetch)};
     const bool perf_event_exu_done{
-        npc::PerfCounterExuDone && static_cast<bool>(dut->perf_exu_done)};
+        npc::PerfDicArchCounterExuDone && static_cast<bool>(dut->perf_exu_done)};
     const bool perf_event_lsu_load{
-        npc::PerfCounterLsuLoad && static_cast<bool>(dut->perf_lsu_load)};
+        npc::PerfDicArchCounterLsuLoad && static_cast<bool>(dut->perf_lsu_load)};
     const bool perf_event_lsu_store{
-        npc::PerfCounterLsuStore && static_cast<bool>(dut->perf_lsu_store)};
+        npc::PerfDicArchCounterLsuStore && static_cast<bool>(dut->perf_lsu_store)};
     const bool perf_event_mdu_req{
-        npc::PerfCounterMduReq && static_cast<bool>(dut->perf_mdu_req)};
+        npc::PerfDicArchCounterMduReq && static_cast<bool>(dut->perf_mdu_req)};
     const bool perf_event_mdu_done{
-        npc::PerfCounterMduDone && static_cast<bool>(dut->perf_mdu_done)};
+        npc::PerfDicArchCounterMduDone && static_cast<bool>(dut->perf_mdu_done)};
     const auto perf_event_mdu_op{
-        npc::PerfCounterMduOp ? static_cast<unsigned>(dut->perf_mdu_op) : 0U};
+        npc::PerfDicArchCounterMduOp ? static_cast<unsigned>(dut->perf_mdu_op) : 0U};
     const auto perf_event_kind{
-        npc::HasPerfStats ? static_cast<unsigned>(dut->perf_exu_event_kind)
+        npc::HasDicArchCounter ? static_cast<unsigned>(dut->perf_exu_event_kind)
                           : 0U};
     const bool perf_event_redirect{
-        npc::PerfCounterIfuStallRedirect &&
+        npc::PerfDicArchCounterIfuStallRedirect &&
         static_cast<bool>(dut->perf_ifu_stall_redirect)};
     dut->clock = 1;
     dut->eval();
@@ -858,29 +858,29 @@ void DUT::step()
         NPCTrap::Stop(DebugArchPC(*dut));
     }
 #endif
-if constexpr (npc::HasPerfStats)
+if constexpr (npc::HasDicArchCounter)
 {
     if (dut->debug_commit)
     {
         ++instructions;
     }
-    if (npc::PerfCounterIfuFetch && perf_event_ifu_fetch)
+    if (npc::PerfDicArchCounterIfuFetch && perf_event_ifu_fetch)
     {
         ++perf.instruction_fetch;
     }
-    if (npc::PerfCounterExuDone && perf_event_exu_done)
+    if (npc::PerfDicArchCounterExuDone && perf_event_exu_done)
     {
         ++perf.execution_complete;
     }
     // M扩展关闭时译码不出M指令, 这些信号恒为0, 不再逐拍采集
-    if (npc::PerfCounterMduReq && perf_event_mdu_req)
+    if (npc::PerfDicArchCounterMduReq && perf_event_mdu_req)
     {
         ++perf.mdu_request;
     }
-    if (npc::PerfCounterMduDone && perf_event_mdu_done)
+    if (npc::PerfDicArchCounterMduDone && perf_event_mdu_done)
     {
         ++perf.mdu_complete;
-        if (npc::PerfCounterMduOp) switch (static_cast<unsigned>(perf_event_mdu_op))
+        if (npc::PerfDicArchCounterMduOp) switch (static_cast<unsigned>(perf_event_mdu_op))
         {
         case 0: ++perf.mdu_mul; break;
         case 1: ++perf.mdu_mulh; break;
@@ -893,164 +893,482 @@ if constexpr (npc::HasPerfStats)
         default: break;
         }
     }
-    if (npc::PerfCounterMduActive && dut->perf_mdu_active)
+    if (npc::PerfDicArchCounterMduActive && dut->perf_mdu_active)
     {
         ++perf.mdu_active_cycle;
     }
-    if (npc::PerfCounterMduWait && dut->perf_mdu_wait)
+    if (npc::PerfDicArchCounterMduWait && dut->perf_mdu_wait)
     {
         ++perf.mdu_wait_cycle;
     }
-    if (npc::PerfCounterLsuLoad && perf_event_lsu_load)
+    if (npc::PerfDicArchCounterLsuLoad && perf_event_lsu_load)
     {
         ++perf.load_data;
     }
-    if (npc::PerfCounterLsuStore && perf_event_lsu_store)
+    if (npc::PerfDicArchCounterLsuStore && perf_event_lsu_store)
     {
         ++perf.store_data;
     }
     // 事件分类按单计数器开关合取，只统计本构建实际启用的类型。
     unsigned perf_event_mask = 0;
-    if (npc::PerfCounterAluOp) perf_event_mask |= PerfEventALU;
-    if (npc::PerfCounterMemOp) perf_event_mask |= PerfEventMEM;
-    if (npc::PerfCounterCsrOp) perf_event_mask |= PerfEventCSR;
-    if (npc::PerfCounterBranchOp) perf_event_mask |= PerfEventBRANCH;
-    if (npc::PerfCounterJalOp) perf_event_mask |= PerfEventJAL;
-    if (npc::PerfCounterJalrOp) perf_event_mask |= PerfEventJALR;
+    if (npc::PerfDicArchCounterAluOp) perf_event_mask |= PerfEventALU;
+    if (npc::PerfDicArchCounterMemOp) perf_event_mask |= PerfEventMEM;
+    if (npc::PerfDicArchCounterCsrOp) perf_event_mask |= PerfEventCSR;
+    if (npc::PerfDicArchCounterBranchOp) perf_event_mask |= PerfEventBRANCH;
+    if (npc::PerfDicArchCounterJalOp) perf_event_mask |= PerfEventJAL;
+    if (npc::PerfDicArchCounterJalrOp) perf_event_mask |= PerfEventJALR;
     RecordExecutionEvent(
         perf, static_cast<unsigned>(perf_event_kind), perf_event_mask);
-    if (npc::PerfCounterIfuStallPipeline && dut->perf_ifu_stall_pipeline)
+    if (npc::PerfDicArchCounterIfuStallPipeline && dut->perf_ifu_stall_pipeline)
     {
         ++perf.instruction_fetch_stall_pipeline;
     }
-    if (npc::PerfCounterIfuStallAxi && dut->perf_ifu_stall_axi)
+    if (npc::PerfDicArchCounterIfuStallAxi && dut->perf_ifu_stall_axi)
     {
         ++perf.instruction_fetch_stall_axi;
     }
-    if (npc::PerfCounterIfuStallAr && dut->perf_ifu_stall_ar)
+    if (npc::PerfDicArchCounterIfuStallAr && dut->perf_ifu_stall_ar)
     {
         ++perf.instruction_fetch_stall_ar;
     }
-    if (npc::PerfCounterIfuStallR && dut->perf_ifu_stall_r)
+    if (npc::PerfDicArchCounterIfuStallR && dut->perf_ifu_stall_r)
     {
         ++perf.instruction_fetch_stall_r;
     }
-    if (npc::PerfCounterIfuStallRedirect && perf_event_redirect)
+    if (npc::PerfDicArchCounterIfuStallRedirect && perf_event_redirect)
     {
         ++perf.instruction_fetch_stall_redirect;
     }
-    if (npc::PerfCounterIfuStallIdle && dut->perf_ifu_stall_idle)
+    if (npc::PerfDicArchCounterIfuStallIdle && dut->perf_ifu_stall_idle)
     {
         ++perf.instruction_fetch_stall_idle;
     }
-    if (npc::PerfCounterExecutionActive && dut->perf_execution_active)
+    if (npc::PerfDicArchCounterExecutionActive && dut->perf_execution_active)
     {
         ++perf.execution_active_cycle;
     }
-    if (npc::PerfCounterExuStallLsu && dut->perf_exu_stall_lsu)
+    if (npc::PerfDicArchCounterExuStallLsu && dut->perf_exu_stall_lsu)
     {
         ++perf.exu_stall_lsu;
     }
-    if (npc::PerfCounterMemWaitslot && dut->perf_mem_waitslot)
+    if (npc::PerfDicArchCounterMemWaitslot && dut->perf_mem_waitslot)
     {
         ++perf.mem_waitslot;
     }
     // 类型活跃周期：Scala 侧已用 ActiveInst 生成类型电平。这里再排除 MDU
     // 在途周期作为防御；MDU相关计数器关闭时该端口为常量0，防御自动退化。
     const bool classify_exu_level = dut->perf_execution_active &&
-        (!npc::PerfCounterMduActive || !dut->perf_mdu_active);
-    if (npc::PerfCounterAluOp && classify_exu_level && dut->perf_alu_op)
+        (!npc::PerfDicArchCounterMduActive || !dut->perf_mdu_active);
+    if (npc::PerfDicArchCounterAluOp && classify_exu_level && dut->perf_alu_op)
     {
         ++perf.arithmetic_operation_active_cycle;
     }
-    if (npc::PerfCounterMemOp && classify_exu_level && dut->perf_mem_op)
+    if (npc::PerfDicArchCounterMemOp && classify_exu_level && dut->perf_mem_op)
     {
         ++perf.memory_access_operation_active_cycle;
     }
-    if (npc::PerfCounterCsrOp && classify_exu_level && dut->perf_csr_op)
+    if (npc::PerfDicArchCounterCsrOp && classify_exu_level && dut->perf_csr_op)
     {
         ++perf.control_status_register_operation_active_cycle;
     }
-    if (npc::PerfCounterBranchOp && classify_exu_level && dut->perf_branch_op)
+    if (npc::PerfDicArchCounterBranchOp && classify_exu_level && dut->perf_branch_op)
     {
         ++perf.branch_operation_active_cycle;
     }
-    if (npc::PerfCounterLsuActive && dut->perf_lsu_active)
+    if (npc::PerfDicArchCounterLsuActive && dut->perf_lsu_active)
     {
         ++perf.load_store_unit_active_cycle;
     }
-    if (npc::PerfCounterLsuLoadActive && dut->perf_lsu_load_active)
+    if (npc::PerfDicArchCounterLsuLoadActive && dut->perf_lsu_load_active)
     {
         ++perf.load_store_unit_load_active_cycle;
     }
-    if (npc::PerfCounterLsuStoreActive && dut->perf_lsu_store_active)
+    if (npc::PerfDicArchCounterLsuStoreActive && dut->perf_lsu_store_active)
     {
         ++perf.load_store_unit_store_active_cycle;
     }
-    if (npc::PerfCounterLsuStallReadAr && dut->perf_lsu_stall_read_ar)
+    if (npc::PerfDicArchCounterLsuStallReadAr && dut->perf_lsu_stall_read_ar)
     {
         ++perf.lsu_stall_read_ar;
     }
-    if (npc::PerfCounterLsuStallReadR && dut->perf_lsu_stall_read_r)
+    if (npc::PerfDicArchCounterLsuStallReadR && dut->perf_lsu_stall_read_r)
     {
         ++perf.lsu_stall_read_r;
     }
-    if (npc::PerfCounterLsuStallWriteReq && dut->perf_lsu_stall_write_req)
+    if (npc::PerfDicArchCounterLsuStallWriteReq && dut->perf_lsu_stall_write_req)
     {
         ++perf.lsu_stall_write_req;
     }
-    if (npc::PerfCounterLsuStallWriteB && dut->perf_lsu_stall_write_b)
+    if (npc::PerfDicArchCounterLsuStallWriteB && dut->perf_lsu_stall_write_b)
     {
         ++perf.lsu_stall_write_b;
     }
     // ICache关闭时取指直连AXI, 这些信号恒为0, 不再逐拍采集
-    if (npc::PerfCounterIcacheHit && dut->perf_icache_hit)
+    if (npc::PerfDicArchCounterIcacheHit && dut->perf_icache_hit)
     {
         ++perf.icache_hit;
     }
-    if (npc::PerfCounterIcacheMiss && dut->perf_icache_miss)
+    if (npc::PerfDicArchCounterIcacheMiss && dut->perf_icache_miss)
     {
         ++perf.icache_miss;
     }
     // DCache关闭时这些信号恒为0, 不再逐拍采集
-    if (npc::PerfCounterDcacheHit && dut->perf_dcache_hit)
+    if (npc::PerfDicArchCounterDcacheHit && dut->perf_dcache_hit)
     {
         ++perf.dcache_hit;
     }
-    if (npc::PerfCounterDcacheMiss && dut->perf_dcache_miss)
+    if (npc::PerfDicArchCounterDcacheMiss && dut->perf_dcache_miss)
     {
         ++perf.dcache_miss;
     }
-    if (npc::PerfCounterDcacheRefillReq && dut->perf_dcache_refill_req)
+    if (npc::PerfDicArchCounterDcacheRefillReq && dut->perf_dcache_refill_req)
     {
         ++perf.dcache_refill_req_cycle;
     }
-    if (npc::PerfCounterDcacheRefillResp && dut->perf_dcache_refill_resp)
+    if (npc::PerfDicArchCounterDcacheRefillResp && dut->perf_dcache_refill_resp)
     {
         ++perf.dcache_refill_resp_cycle;
     }
-    if (npc::PerfCounterIduStallRaw && dut->perf_idu_stall_raw)
+    if (npc::PerfDicArchCounterIduStallRaw && dut->perf_idu_stall_raw)
     {
         ++perf.idu_stall_raw;
     }
-    if (npc::PerfCounterIduStallRawLoaduse && dut->perf_idu_stall_raw_loaduse)
+    if (npc::PerfDicArchCounterIduStallRawLoaduse && dut->perf_idu_stall_raw_loaduse)
     {
         ++perf.idu_stall_raw_loaduse;
     }
-    if (npc::PerfCounterIduStallRawAlu && dut->perf_idu_stall_raw_alu)
+    if (npc::PerfDicArchCounterIduStallRawAlu && dut->perf_idu_stall_raw_alu)
     {
         ++perf.idu_stall_raw_alu;
     }
-    if (npc::PerfCounterExuIdleNoinput && dut->perf_exu_idle_noinput)
+    if (npc::PerfDicArchCounterExuIdleNoinput && dut->perf_exu_idle_noinput)
     {
         ++perf.exu_idle_noinput;
     }
     // TrapCommit is a pre-edge combinational pulse and can disappear when the
     // pipeline flushes on that same edge.  debug_trap_valid is its registered,
     // architecturally precise counterpart and is safe to sample here.
-    if (npc::PerfCounterTrapCount && dut->debug_trap_valid)
+    if (npc::PerfDicArchCounterTrapCount && dut->debug_trap_valid)
     {
         ++perf.trap_count;
+    }
+    if (npc::PerfDicArchCounterBtbHit && dut->perf_btb_hit)
+    {
+        ++perf.btb_hit;
+    }
+    if (npc::PerfDicArchCounterBtbMiss && dut->perf_btb_miss)
+    {
+        ++perf.btb_miss;
+    }
+    if (npc::PerfDicArchCounterJalBtbHit && dut->perf_jal_btb_hit)
+    {
+        ++perf.jal_btb_hit;
+    }
+    if (npc::PerfDicArchCounterRasHit && dut->perf_ras_hit)
+    {
+        ++perf.ras_hit;
+    }
+    if (npc::PerfDicArchCounterBranchMispredict && dut->perf_branch_mispredict)
+    {
+        ++perf.branch_mispredict;
+    }
+    if (npc::PerfDicArchCounterItlbHit && dut->perf_itlb_hit)
+    {
+        ++perf.itlb_hit;
+    }
+    if (npc::PerfDicArchCounterItlbMiss && dut->perf_itlb_miss)
+    {
+        ++perf.itlb_miss;
+    }
+    if (npc::PerfDicArchCounterDtlbHit && dut->perf_dtlb_hit)
+    {
+        ++perf.dtlb_hit;
+    }
+    if (npc::PerfDicArchCounterDtlbMiss && dut->perf_dtlb_miss)
+    {
+        ++perf.dtlb_miss;
+    }
+    if (npc::PerfDicArchCounterTlbRefill && dut->perf_tlb_refill)
+    {
+        ++perf.tlb_refill;
+    }
+    if (npc::PerfDicArchCounterFpuReq && dut->perf_fpu_req)
+    {
+        ++perf.fpu_req;
+    }
+    if (npc::PerfDicArchCounterFpuDone && dut->perf_fpu_done)
+    {
+        ++perf.fpu_done;
+    }
+    if (npc::PerfDicArchCounterAxiAr && dut->perf_axi_ar)
+    {
+        ++perf.axi_ar;
+    }
+    if (npc::PerfDicArchCounterAxiAw && dut->perf_axi_aw)
+    {
+        ++perf.axi_aw;
+    }
+    if (npc::PerfDicArchCounterAxiR && dut->perf_axi_r)
+    {
+        ++perf.axi_r;
+    }
+    if (npc::PerfDicArchCounterAxiW && dut->perf_axi_w)
+    {
+        ++perf.axi_w;
+    }
+    if (npc::PerfDicArchCounterAxiB && dut->perf_axi_b)
+    {
+        ++perf.axi_b;
+    }
+    if (npc::PerfDicArchCounterLoadOp && dut->perf_load_op)
+    {
+        ++perf.load_op;
+    }
+    if (npc::PerfDicArchCounterStoreOp && dut->perf_store_op)
+    {
+        ++perf.store_op;
+    }
+    if (npc::PerfDicArchCounterAmoOp && dut->perf_amo_op)
+    {
+        ++perf.amo_op;
+    }
+    if (npc::PerfDicArchCounterBranchTaken && dut->perf_branch_taken)
+    {
+        ++perf.branch_taken;
+    }
+    if (npc::PerfDicArchCounterBranchNotTaken && dut->perf_branch_not_taken)
+    {
+        ++perf.branch_not_taken;
+    }
+    if (npc::PerfDicArchCounterTlbFlush && dut->perf_tlb_flush)
+    {
+        ++perf.tlb_flush;
+    }
+    if (npc::PerfDicArchCounterFpuActive && dut->perf_fpu_active)
+    {
+        ++perf.fpu_active_cycle;
+    }
+    if (npc::PerfDicArchCounterFenceOp && dut->perf_fence_op)
+    {
+        ++perf.fence_op;
+    }
+    if (npc::PerfDicArchCounterRvcInst && dut->perf_rvc_inst)
+    {
+        ++perf.rvc_inst;
+    }
+    if (npc::PerfDicArchCounterSystemOp && dut->perf_system_op)
+    {
+        ++perf.system_op;
+    }
+    if (npc::PerfDicArchCounterIcacheRefill && dut->perf_icache_refill)
+    {
+        ++perf.icache_refill;
+    }
+    if (npc::PerfDicArchCounterDcacheRefill && dut->perf_dcache_refill)
+    {
+        ++perf.dcache_refill;
+    }
+    if (npc::PerfDicArchCounterTimerIrq && dut->perf_timer_irq)
+    {
+        ++perf.timer_irq;
+    }
+    if (npc::PerfDicArchCounterExternalIrq && dut->perf_external_irq)
+    {
+        ++perf.external_irq;
+    }
+    if (npc::PerfDicArchCounterInterruptTaken && dut->perf_interrupt_taken)
+    {
+        ++perf.interrupt_taken;
+    }
+    if (npc::PerfDicArchCounterWbufFull && dut->perf_wbuf_full)
+    {
+        ++perf.wbuf_full;
+    }
+    if (npc::PerfDicArchCounterWbufDrain && dut->perf_wbuf_drain)
+    {
+        ++perf.wbuf_drain;
+    }
+    if (npc::PerfDicArchCounterCsrRead && dut->perf_csr_read)
+    {
+        ++perf.csr_read;
+    }
+    if (npc::PerfDicArchCounterCsrWrite && dut->perf_csr_write)
+    {
+        ++perf.csr_write;
+    }
+    if (npc::PerfDicArchCounterMulActive && dut->perf_mul_active)
+    {
+        ++perf.mul_active_cycle;
+    }
+    if (npc::PerfDicArchCounterDivActive && dut->perf_div_active)
+    {
+        ++perf.div_active_cycle;
+    }
+    if (npc::PerfDicArchCounterPtwWalk && dut->perf_ptw_walk)
+    {
+        ++perf.ptw_walk;
+    }
+    if (npc::PerfDicArchCounterPtwWalkCycle && dut->perf_ptw_walk_cycle)
+    {
+        ++perf.ptw_walk_cycle;
+    }
+    if (npc::PerfDicArchCounterPageFault && dut->perf_page_fault)
+    {
+        ++perf.page_fault;
+    }
+    if (npc::PerfDicArchCounterRasMiss && dut->perf_ras_miss)
+    {
+        ++perf.ras_miss;
+    }
+    if (npc::PerfDicArchCounterRedirectBranch && dut->perf_redirect_branch)
+    {
+        ++perf.redirect_branch;
+    }
+    if (npc::PerfDicArchCounterRedirectFenceI && dut->perf_redirect_fence_i)
+    {
+        ++perf.redirect_fence_i;
+    }
+    if (npc::PerfDicArchCounterRedirectTrap && dut->perf_redirect_trap)
+    {
+        ++perf.redirect_trap;
+    }
+    if (npc::PerfDicArchCounterRedirectMret && dut->perf_redirect_mret)
+    {
+        ++perf.redirect_mret;
+    }
+    if (npc::PerfDicArchCounterFpuStall && dut->perf_fpu_stall)
+    {
+        ++perf.fpu_stall_cycle;
+    }
+    if (npc::PerfDicArchCounterIllegalInst && dut->perf_illegal_inst)
+    {
+        ++perf.illegal_inst;
+    }
+    if (npc::PerfDicArchCounterAxiStall && dut->perf_axi_stall)
+    {
+        ++perf.axi_stall_cycle;
+    }
+    if (npc::PerfDicArchCounterAxiError && dut->perf_axi_error)
+    {
+        ++perf.axi_error;
+    }
+    if (npc::PerfDicArchCounterFpuDivsqrt && dut->perf_fpu_divsqrt)
+    {
+        ++perf.fpu_divsqrt;
+    }
+    if (npc::PerfDicArchCounterFpuFma && dut->perf_fpu_fma)
+    {
+        ++perf.fpu_fma;
+    }
+    if (npc::PerfDicArchCounterFpuException && dut->perf_fpu_exception)
+    {
+        ++perf.fpu_exception;
+    }
+    if (npc::PerfDicArchCounterCsrIllegal && dut->perf_csr_illegal)
+    {
+        ++perf.csr_illegal;
+    }
+    if (npc::PerfDicArchCounterPlicClaim && dut->perf_plic_claim)
+    {
+        ++perf.plic_claim;
+    }
+    if (npc::PerfDicArchCounterPlicComplete && dut->perf_plic_complete)
+    {
+        ++perf.plic_complete;
+    }
+    if (npc::PerfDicArchCounterFlushCycle && dut->perf_flush_cycle)
+    {
+        ++perf.flush_cycle;
+    }
+    if (npc::PerfDicArchCounterUncachedAccess && dut->perf_uncached_access)
+    {
+        ++perf.uncached_access;
+    }
+    if (npc::PerfDicArchCounterWbufOccupancy)
+    {
+        perf.wbuf_occupancy_cycle += dut->perf_wbuf_count;
+    }
+    if (npc::PerfDicArchCounterTlbSuperpageHit && dut->perf_tlb_superpage_hit)
+    {
+        ++perf.tlb_superpage_hit;
+    }
+    if (npc::PerfDicArchCounterTlbAsidHit && dut->perf_tlb_asid_hit)
+    {
+        ++perf.tlb_asid_hit;
+    }
+    if (npc::PerfDicArchCounterIcacheLineFill && dut->perf_icache_line_fill)
+    {
+        ++perf.icache_line_fill;
+    }
+    if (npc::PerfDicArchCounterDcacheLineFill && dut->perf_dcache_line_fill)
+    {
+        ++perf.dcache_line_fill;
+    }
+    if (npc::PerfDicArchCounterDcacheWriteback && dut->perf_dcache_writeback)
+    {
+        ++perf.dcache_writeback;
+    }
+    if (npc::PerfDicArchCounterInterruptPendingCycle && dut->perf_irq_pending)
+    {
+        ++perf.interrupt_pending_cycle;
+    }
+    if (npc::PerfDicArchCounterInterruptLatency)
+    {
+        const bool pending = dut->perf_irq_pending;
+        const bool taken = dut->perf_interrupt_taken;
+        if (taken)
+        {
+            if (irq_latency_active)
+            {
+                perf.interrupt_latency_cycle += irq_latency_current;
+                perf.interrupt_latency_max =
+                    std::max(perf.interrupt_latency_max, irq_latency_current);
+                ++perf.interrupt_latency_count;
+            }
+            irq_latency_active = false;
+            irq_latency_current = 0;
+        }
+        else if (pending)
+        {
+            if (!irq_latency_active)
+            {
+                irq_latency_active = true;
+                irq_latency_current = 0;
+            }
+            else
+            {
+                ++irq_latency_current;
+            }
+        }
+        else
+        {
+            irq_latency_active = false;
+        }
+    }
+    if (npc::PerfDicArchCounterWfiInst && dut->perf_wfi_inst)
+    {
+        ++perf.wfi_inst;
+    }
+    if (npc::PerfDicArchCounterIssueOccupancy && dut->perf_issue_occupancy)
+    {
+        ++perf.issue_occupancy_cycle;
+    }
+    if (npc::PerfDicArchCounterRetireOccupancy && dut->perf_retire_occupancy)
+    {
+        ++perf.retire_occupancy_cycle;
+    }
+    if (npc::PerfDicArchCounterBubbleCycle && dut->perf_bubble_cycle)
+    {
+        ++perf.bubble_cycle;
+    }
+    if (npc::PerfDicArchCounterDivIterations && dut->perf_div_done)
+    {
+        perf.div_iterations += dut->perf_div_iterations;
+    }
+    if (npc::PerfDicArchCounterDivEarlyOut && dut->perf_div_done &&
+        dut->perf_div_early_out)
+    {
+        ++perf.div_early_out;
     }
 }
     if constexpr (npc::HasITrace && !npc::HasITraceWriteFile)
@@ -1084,7 +1402,7 @@ if constexpr (npc::HasPerfStats)
     }
     if constexpr (npc::HasITraceWriteFile)
     {
-    // 文件 itrace 只依赖退休信号，不应被 PERF_STATS
+    // 文件 itrace 只依赖退休信号，不应被 PERF_DIC_ARCH_COUNTER
     // 意外控制。
     if (dut->debug_commit)
     {
@@ -1237,7 +1555,7 @@ std::size_t DUT::GetInstructions() const
 {
     return instructions;
 }
-const PerfStats &DUT::GetPerfStats() const noexcept
+const DicArchCounterStats &DUT::GetDicArchCounterStats() const noexcept
 {
     return perf;
 }

@@ -184,27 +184,43 @@ object ysyx_26030103_Elaborate extends App {
   val ITraceEnable = cfg.bool("debug.itrace", false)
   val FTraceEnable = cfg.bool("debug.ftrace", false)
   val IRingBufEnable = cfg.bool("debug.iringbuf", false)
-  val PerfStatsEnable = cfg.bool("debug.perf_stats", false)
+  val DicArchCounterEnable = cfg.bool("debug.dic_arch_counter", false)
+  val RiscvArchPMU = cfg.bool("debug.riscv_arch_pmu", false)
+  val RiscvArchPMUZihpm =
+    cfg.bool("debug.riscv_arch_pmu_zihpm", true)
+  val RiscvArchPMUSscofpmf =
+    cfg.bool("debug.riscv_arch_pmu_sscofpmf", true)
   // 性能计数器：组总开关与单计数器开关。主开关关闭时全部关闭；未提供的
   // 符号按默认开启，与Kconfig默认值以及尚未重新生成配置的工作区保持一致。
   // 单计数器与组总开关的相与在NPCConfig里统一完成。
   def PerfGroupEnabled(name: String): Boolean =
-    cfg.bool(s"debug.perf_groups.${name.stripPrefix("PERF_COUNTER_").toLowerCase}",
+    cfg.bool(s"debug.dic_arch_counter_groups.${name.stripPrefix("PERF_DIC_ARCH_COUNTER_").toLowerCase}",
       true)
-  val PerfCounterBasic = PerfGroupEnabled("PERF_COUNTER_BASIC")
-  val PerfCounterOpClass = PerfGroupEnabled("PERF_COUNTER_OPCLASS")
-  val PerfCounterMDU = PerfGroupEnabled("PERF_COUNTER_MDU")
-  val PerfCounterIfuStall = PerfGroupEnabled("PERF_COUNTER_IFU_STALL")
-  val PerfCounterICache = PerfGroupEnabled("PERF_COUNTER_ICACHE")
-  val PerfCounterDCache = PerfGroupEnabled("PERF_COUNTER_DCACHE")
-  val PerfCounterExuStall = PerfGroupEnabled("PERF_COUNTER_EXU_STALL")
-  val PerfCounterLSU = PerfGroupEnabled("PERF_COUNTER_LSU")
-  val PerfCounterIduStall = PerfGroupEnabled("PERF_COUNTER_IDU_STALL")
-  val PerfCounterTrap = PerfGroupEnabled("PERF_COUNTER_TRAP")
-  val PerfCounters: Set[String] =
-    ysyx_26030103_PerfCounterCatalog.AllPerfCounters.filter { name =>
-      PerfStatsEnable && cfg.bool(
-        s"debug.perf_counters.$name",
+  val PerfDicArchCounterBasic = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_BASIC")
+  val PerfDicArchCounterOpClass = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_OPCLASS")
+  val PerfDicArchCounterMDU = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_MDU")
+  val PerfDicArchCounterIfuStall = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_IFU_STALL")
+  val PerfDicArchCounterICache = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_ICACHE")
+  val PerfDicArchCounterDCache = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_DCACHE")
+  val PerfDicArchCounterExuStall = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_EXU_STALL")
+  val PerfDicArchCounterLSU = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_LSU")
+  val PerfDicArchCounterIduStall = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_IDU_STALL")
+  val PerfDicArchCounterTrap = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_TRAP")
+  val PerfDicArchCounterBranchPred = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_BRANCH_PRED")
+  val PerfDicArchCounterMMU = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_MMU")
+  val PerfDicArchCounterFPU = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_FPU")
+  val PerfDicArchCounterAXI = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_AXI")
+  val PerfDicArchCounterInstMix = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_INST_MIX")
+  val PerfDicArchCounterCacheDetail = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_CACHE_DETAIL")
+  val PerfDicArchCounterInterrupt = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_INTERRUPT")
+  val PerfDicArchCounterWBuf = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_WBUF")
+  val PerfDicArchCounterCSR = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_CSR")
+  val PerfDicArchCounterMDUDetail = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_MDU_DETAIL")
+  val PerfDicArchCounterQueue = PerfGroupEnabled("PERF_DIC_ARCH_COUNTER_QUEUE")
+  val PerfDicArchCounters: Set[String] =
+    ysyx_26030103_PerfDicArchCounterCatalog.AllPerfDicArchCounters.filter { name =>
+      DicArchCounterEnable && cfg.bool(
+        s"debug.dic_arch_counter_events.$name",
         true
       )
     }
@@ -281,18 +297,32 @@ object ysyx_26030103_Elaborate extends App {
     ITraceEnable = ITraceEnable,
     FTraceEnable = FTraceEnable,
     IRingBufEnable = IRingBufEnable,
-    PerfStatsEnable = PerfStatsEnable,
-    PerfCounterBasic = PerfCounterBasic,
-    PerfCounterOpClass = PerfCounterOpClass,
-    PerfCounterMDU = PerfCounterMDU,
-    PerfCounterIfuStall = PerfCounterIfuStall,
-    PerfCounterICache = PerfCounterICache,
-    PerfCounterDCache = PerfCounterDCache,
-    PerfCounterExuStall = PerfCounterExuStall,
-    PerfCounterLSU = PerfCounterLSU,
-    PerfCounterIduStall = PerfCounterIduStall,
-    PerfCounterTrap = PerfCounterTrap,
-    PerfCounters = PerfCounters,
+    DicArchCounterEnable = DicArchCounterEnable,
+    PerfDicArchCounterBasic = PerfDicArchCounterBasic,
+    PerfDicArchCounterOpClass = PerfDicArchCounterOpClass,
+    PerfDicArchCounterMDU = PerfDicArchCounterMDU,
+    PerfDicArchCounterIfuStall = PerfDicArchCounterIfuStall,
+    PerfDicArchCounterICache = PerfDicArchCounterICache,
+    PerfDicArchCounterDCache = PerfDicArchCounterDCache,
+    PerfDicArchCounterExuStall = PerfDicArchCounterExuStall,
+    PerfDicArchCounterLSU = PerfDicArchCounterLSU,
+    PerfDicArchCounterIduStall = PerfDicArchCounterIduStall,
+    PerfDicArchCounterTrap = PerfDicArchCounterTrap,
+    PerfDicArchCounterBranchPred = PerfDicArchCounterBranchPred,
+    PerfDicArchCounterMMU = PerfDicArchCounterMMU,
+    PerfDicArchCounterFPU = PerfDicArchCounterFPU,
+    PerfDicArchCounterAXI = PerfDicArchCounterAXI,
+    PerfDicArchCounterInstMix = PerfDicArchCounterInstMix,
+    PerfDicArchCounterCacheDetail = PerfDicArchCounterCacheDetail,
+    PerfDicArchCounterInterrupt = PerfDicArchCounterInterrupt,
+    PerfDicArchCounterWBuf = PerfDicArchCounterWBuf,
+    PerfDicArchCounterCSR = PerfDicArchCounterCSR,
+    PerfDicArchCounterMDUDetail = PerfDicArchCounterMDUDetail,
+    PerfDicArchCounterQueue = PerfDicArchCounterQueue,
+    RiscvArchPMU = RiscvArchPMU,
+    RiscvArchPMUZihpm = RiscvArchPMUZihpm,
+    RiscvArchPMUSscofpmf = RiscvArchPMUSscofpmf,
+    PerfDicArchCounters = PerfDicArchCounters,
     MMU = mmuProfile
   )
   println(s"[NPC config] ${config.Describe}")

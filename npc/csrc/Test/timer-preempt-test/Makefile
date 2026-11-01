@@ -32,7 +32,7 @@ $(RTL_STAMP): $(SCALA_SOURCES) Makefile
 	  MMU_ENABLED=0 MMU_TLB_ENABLED=0 \
 	  RISCV_M=n RISCV_A=n RISCV_C=n \
 	  TIMER_PATH=direct_stip HAS_S_TIMER_IRQ=y \
-	  SDB=n DIFFTEST=n MTRACE=n ITRACE=n FTRACE=n IRINGBUF=n PERF_STATS=n \
+	  SDB=n DIFFTEST=n MTRACE=n ITRACE=n FTRACE=n IRINGBUF=n PERF_DIC_ARCH_COUNTER=n \
 	  $(MILL) --no-server runMain ysyx_26030103_Elaborate --target-dir $(RTL_DIR)
 	@touch $@
 

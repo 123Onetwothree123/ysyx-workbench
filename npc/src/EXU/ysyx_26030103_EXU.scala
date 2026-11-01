@@ -31,6 +31,8 @@ class ysyx_26030103_EXU(
     // WBU 退休事件：minstret 在退休级精确计数，EXU 的提交拍不能再作为
     // 计数依据（普通 load/store 不在 EXU 访问 CSR，且 MEM 故障会取消退休）。
     val RetireCommit = Input(Bool())
+    // 架构 PMU 事件总线；顶层把缓存/TLB/AXI/中断等事件汇总后送入 CSR。
+    val PMUEvents = Input(UInt(_root_.ysyx_26030103.common.ysyx_26030103_PMUEventId.BusWidth.W))
     // MEM的反馈分成两类：MEMBusy只表示年长访存事务，用于
     // branch/fence等只需等待“可能故障的访存”的场景；PipelineBusy
     // 表示任意年长指令仍在MEM流水级，用于IRQ/CSR/异常的精确顺序。
@@ -85,6 +87,37 @@ class ysyx_26030103_EXU(
     val PerfMDUActive = Output(Bool())
     val PerfMDUWait = Output(Bool())
     val PerfExecutionActive = Output(Bool())
+    val PerfBranchMispredict = Output(Bool())
+    val PerfBranchTaken = Output(Bool())
+    val PerfFpuReq = Output(Bool())
+    val PerfFpuDone = Output(Bool())
+    val PerfLoadOp = Output(Bool())
+    val PerfStoreOp = Output(Bool())
+    val PerfAmoOp = Output(Bool())
+    val PerfBranchNotTaken = Output(Bool())
+    val PerfFpuActive = Output(Bool())
+    val PerfFenceOp = Output(Bool())
+    val PerfRvcInst = Output(Bool())
+    val PerfSystemOp = Output(Bool())
+    val PerfInterruptTaken = Output(Bool())
+    val PerfCsrRead = Output(Bool())
+    val PerfCsrWrite = Output(Bool())
+    val PerfMulActive = Output(Bool())
+    val PerfDivActive = Output(Bool())
+    val PerfRedirectBranch = Output(Bool())
+    val PerfRedirectFenceI = Output(Bool())
+    val PerfRedirectTrap = Output(Bool())
+    val PerfRedirectMret = Output(Bool())
+    val PerfFpuStall = Output(Bool())
+    val PerfIllegalInst = Output(Bool())
+    val PerfFpuDivSqrt = Output(Bool())
+    val PerfFpuFma = Output(Bool())
+    val PerfFpuException = Output(Bool())
+    val PerfCsrIllegal = Output(Bool())
+    val PerfIrqPending = Output(Bool())
+    val PerfDivIterations = Output(UInt(16.W))
+    val PerfDivEarlyOut = Output(Bool())
+    val PerfDivDone = Output(Bool())
 
     val FenceIFlush = Output(Bool())
     // 任一条 CSR 指令真正提交（含 sfence.vma）。顶层用它保守地让
@@ -142,10 +175,12 @@ class ysyx_26030103_EXU(
   val ALUUnit = Module(ysyx_26030103_ALU(config))
   val CSRUnit = Module(new ysyx_26030103_CSR(
     config.MMU, XLEN, config.UseA, config.UseC, config.UseF, config.UseD,
-    config.UseM))
+    config.UseM, config.RiscvArchPMU, config.RiscvArchPMUZihpm,
+    config.RiscvArchPMUSscofpmf))
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
   CSRUnit.io.RetireCommit := io.RetireCommit
+  CSRUnit.io.PMUEvents := io.PMUEvents
   CSRUnit.io.Interrupt := io.Interrupt
   CSRUnit.io.TimerInterrupt := io.TimerInterrupt
   val BranchComparatorUnit = Module(new ysyx_26030103_BranchComparator(XLEN))
@@ -172,6 +207,8 @@ class ysyx_26030103_EXU(
   val MDURespFire = WireDefault(false.B)
   val MDURespValid = WireDefault(false.B)
   val MDURespResult = WireDefault(0.U(XLEN.W))
+  val MDUPerfDivIterations = WireDefault(0.U(16.W))
+  val MDUPerfDivEarlyOut = WireDefault(false.B)
   val MDUHiddenWriteMask = WireDefault(0.U(32.W))
   // RV64 W 型 M 扩展指令映射到对应的 XLEN 基础运算：
   //   MULW/DIVW/REMW 先符号扩展低 32 位操作数；
@@ -308,6 +345,8 @@ class ysyx_26030103_EXU(
     MDUUnit.io.Resp.ready := MDURespReady
     MDURespValid := MDUUnit.io.Resp.valid
     MDURespResult := MDUUnit.io.Resp.bits.Result
+    MDUPerfDivIterations := MDUUnit.io.PerfDivIterations
+    MDUPerfDivEarlyOut := MDUUnit.io.PerfDivEarlyOut
     MDURespFire := MDUUnit.io.Resp.valid && MDURespReady
     val MDUQueueHasSpace = MDUQueueCount < MDUQueueDepth.U || MDURespFire
     MDUReqReady := IsMDUInstruction && !MDUInputBlockedByIRQ &&
@@ -724,6 +763,50 @@ class ysyx_26030103_EXU(
   io.PerfBranchOp := ActiveInst.IsBranch || ActiveInst.IsJal || ActiveInst.IsJalr
   io.PerfJalOp := ActiveInst.IsJal
   io.PerfJalrOp := ActiveInst.IsJalr
+  io.PerfBranchMispredict := InstructionCommit && Mispredict
+  io.PerfBranchTaken := InstructionCommit && BranchTaken
+  io.PerfFpuReq := FpuReqFire
+  io.PerfFpuDone := FpRespFire
+  io.PerfLoadOp := ActiveInst.MemoryValid && !ActiveInst.MemoryWrite &&
+    !ActiveInst.IsAtomic && !ActiveInstructionTrapValid
+  io.PerfStoreOp := ActiveInst.MemoryValid && ActiveInst.MemoryWrite &&
+    !ActiveInst.IsAtomic && !ActiveInstructionTrapValid
+  io.PerfAmoOp := ActiveInst.IsAtomic && !ActiveInstructionTrapValid
+  io.PerfBranchNotTaken := InstructionCommit && inst.IsBranch && !BranchTaken
+  io.PerfFpuActive := FpPending
+  io.PerfFenceOp := ActiveInst.IsFence || ActiveInst.IsFenceI
+  io.PerfRvcInst := ActiveInst.IsCompressed
+  io.PerfSystemOp := ActiveInst.IsEcall || ActiveInst.IsEbreak ||
+    ActiveInst.IsMret || ActiveInst.IsSret || ActiveInst.IsSfenceVma
+  io.PerfInterruptTaken := CSRUnit.io.IrqCommit
+  io.PerfCsrRead := ActiveInst.IsCsrrw || ActiveInst.IsCsrrs ||
+    ActiveInst.IsCsrrc
+  io.PerfCsrWrite := ActiveInst.IsCsrrw ||
+    ((ActiveInst.IsCsrrs || ActiveInst.IsCsrrc) && ActiveInst.Rs1 =/= 0.U)
+  io.PerfRedirectBranch := InstructionCommit && Mispredict
+  io.PerfRedirectFenceI := InstructionCommit &&
+    (inst.IsFenceI || (if (hasS) inst.IsSfenceVma else false.B))
+  io.PerfRedirectTrap := CSRUnit.io.ExceptionTaken
+  io.PerfRedirectMret := InstructionCommit &&
+    (inst.IsMret || (if (hasS) inst.IsSret else false.B))
+  io.PerfFpuStall := FpPending && !FpRespValid
+  io.PerfIllegalInst :=
+    CSRUnit.io.TrapCommit && CSRUnit.io.CommittedCause === 2.U
+  io.PerfFpuDivSqrt := FpPending &&
+    (FpInstReg.FpOp === ysyx_26030103_FpuOp.FDiv ||
+      FpInstReg.FpOp === ysyx_26030103_FpuOp.FSqrt)
+  io.PerfFpuFma := FpPending &&
+    (FpInstReg.FpOp === ysyx_26030103_FpuOp.FFma ||
+      FpInstReg.FpOp === ysyx_26030103_FpuOp.FFms ||
+      FpInstReg.FpOp === ysyx_26030103_FpuOp.FFnma ||
+      FpInstReg.FpOp === ysyx_26030103_FpuOp.FFnms)
+  io.PerfFpuException := FpRespFire && FpRespBits.fflags =/= 0.U
+  io.PerfCsrIllegal :=
+    CSRUnit.io.TrapCommit && CSRUnit.io.CommittedCause === 2.U &&
+      (ActiveInst.IsCsrrw || ActiveInst.IsCsrrs || ActiveInst.IsCsrrc)
+  io.PerfIrqPending := CSRUnit.io.IrqPending
+  io.PerfDivIterations := MDUPerfDivIterations
+  io.PerfDivEarlyOut := MDUPerfDivEarlyOut
   io.PerfEventKind := PerfEventKind
   io.PerfMDUReq := MDUReqFire
   io.PerfMDUDone := ActiveCommit && ActiveIsMDU && !ActiveInst.ExceptionValid
@@ -734,7 +817,12 @@ class ysyx_26030103_EXU(
   val WaitingForFirstMDUResult =
     !PendingMDU && io.in.valid && IsMDUInstruction && !MDUInputBlockedByIRQ
   val WaitingForPendingMDUResult = PendingMDU && !MDURespValid
-  io.PerfMDUActive := PendingMDU || MDUReqFire
+  val MDUActiveLevel = PendingMDU || MDUReqFire
+  val MDUIsMul = ActiveMDUOp < 4.U || ActiveMDUOp === 8.U
+  io.PerfDivDone := ActiveCommit && ActiveIsMDU && !MDUIsMul
+  io.PerfMDUActive := MDUActiveLevel
+  io.PerfMulActive := MDUActiveLevel && MDUIsMul
+  io.PerfDivActive := MDUActiveLevel && !MDUIsMul
   io.PerfMDUWait := !io.out.fire &&
     (WaitingForFirstMDUResult || WaitingForPendingMDUResult)
   io.PerfExecutionActive := io.in.valid || PendingMDU

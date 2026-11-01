@@ -26,6 +26,8 @@ class ysyx_26030103_PLIC(
   val io = IO(new ysyx_26030103_AXI5Slave(AddressWidth, DataWidth, IdWidth))
   val sources = IO(Input(UInt(numSources.W)))
   val external_irq = IO(Output(Bool()))
+  val perf_claim = IO(Output(Bool()))
+  val perf_complete = IO(Output(Bool()))
   io.ACLK := clock.asBool
   io.ARESETn := !reset.asBool
 
@@ -131,6 +133,8 @@ class ysyx_26030103_PLIC(
   val BFire = io.B.BVALID && io.B.BREADY
   val ARFire = io.AR.ARVALID && io.AR.ARREADY
   val RFire = io.R.RVALID && io.R.RREADY
+  val perfComplete = WireDefault(false.B)
+  perf_complete := perfComplete
   when(AWFire) { AWID := io.AW.AWID; AWAddr := io.AW.AWADDR; AWValid := true.B }
   when(WFire) { WData := io.W.WDATA; WStrb := io.W.WSTRB; WValid := true.B }
 
@@ -163,6 +167,7 @@ class ysyx_26030103_PLIC(
       // claim 返回值就是 source ID（bit 下标），complete 必须清同一 bit。
       val doneIdx = WData(IdBits - 1, 0)
       claimed := claimed & ~UIntToOH(doneIdx, numSources)
+      perfComplete := true.B
     }
     BResp := Mux(isPriority || isEnable || isThreshold || isComplete, OKAY, SLVERR)
     BValid := true.B
@@ -190,6 +195,7 @@ class ysyx_26030103_PLIC(
   })
   val claimIndex = PriorityEncoder(highestPriorityMask)
   val claimId = Mux(claimValid, claimIndex, 0.U)
+  perf_claim := ARFire && isClaimAddr(io.AR.ARADDR) && claimValid
 
   when(ARFire) {
     RID := io.AR.ARID

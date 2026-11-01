@@ -1,6 +1,7 @@
 package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common._
 
 /** 机器/监管者 CSR 与精确异常入口。
   *
@@ -26,7 +27,11 @@ class ysyx_26030103_CSR(
     val UseF: Boolean = false,
     val UseD: Boolean = false,
     // RISCV_M 打开时 misa.M 必须置位；MDU 是否例化由 EXU 单独决定。
-    val UseM: Boolean = false
+    val UseM: Boolean = false,
+    // 架构 PMU：Zihpm 的 mhpmcounter/mhpmevent 与 Sscofpmf 溢出控制。
+    val PMUEnable: Boolean = false,
+    val PMUZihpm: Boolean = true,
+    val PMUSscofpmf: Boolean = true
 ) extends Module {
   import ysyx_26030103_mstatus.legalize
   require(XLEN == 32 || XLEN == 64, s"CSR XLEN 非法: $XLEN")
@@ -70,6 +75,23 @@ class ysyx_26030103_CSR(
     WithXlen | MstatusSdBit(Value(14, 13))
   }
   private def csrOn(addr: Int): Boolean = profile.csrSupported(addr)
+  private val pmuZihpm = PMUEnable && PMUZihpm
+  private val pmuSscofpmf = pmuZihpm && PMUSscofpmf
+  private val PMUCounterCount = ysyx_26030103_PMUEventId.CounterCount
+  private val PMUMachineAddresses: Seq[Int] =
+    if (pmuZihpm)
+      (0 until PMUCounterCount).flatMap { i =>
+        Seq(0xb03 + i, 0x323 + i) ++
+          (if (XLEN == 32) Seq(0xb83 + i) else Seq.empty)
+      } ++ (if (pmuSscofpmf) Seq(0xda0) else Seq.empty)
+    else Seq.empty
+  private val PMUUserAddresses: Seq[Int] =
+    if (pmuZihpm)
+      (0 until PMUCounterCount).flatMap { i =>
+        Seq(0xc03 + i) ++
+          (if (XLEN == 32) Seq(0xc83 + i) else Seq.empty)
+      }
+    else Seq.empty
   // HAS_U=n 时 mstatus 的 MPP/SPP 最低值被夹到 S；HAS_S=n 时固定为 M。
   private def legalizeMstatus(value: UInt): UInt =
     legalize(value, hasU = hasU, hasS = hasS, hasF = UseF)
@@ -135,6 +157,8 @@ class ysyx_26030103_CSR(
     val FPCommit = Input(Bool())
     val FPFlags = Input(UInt(5.W))
     val FPStateDirtyCommit = Input(Bool())
+    // 顶层 PMU 事件总线；只有 PMUEnable 打开时才会被消费者使用。
+    val PMUEvents = Input(UInt(ysyx_26030103_PMUEventId.BusWidth.W))
   })
 
   val CSR_MSTATUS = 0x300.U(12.W)
@@ -170,6 +194,12 @@ class ysyx_26030103_CSR(
   val CSR_MTVAL = 0x343.U(12.W)
   val CSR_MCOUNTEREN = 0x306.U(12.W)
   val CSR_MCOUNTINHIBIT = 0x320.U(12.W)
+  val CSR_MHPMCOUNTER3 = 0xb03.U(12.W)
+  val CSR_MHPMCOUNTER31 = 0xb1f.U(12.W)
+  val CSR_MHPMCOUNTER3H = 0xb83.U(12.W)
+  val CSR_MHPMEVENT3 = 0x323.U(12.W)
+  val CSR_MHPMEVENT31 = 0x33f.U(12.W)
+  val CSR_SCOUNTOVF = 0xda0.U(12.W)
   val CSR_MVENDORID = 0xf11.U(12.W)
   val CSR_MARCHID = 0xf12.U(12.W)
   val CSR_MIMPID = 0xf13.U(12.W)
@@ -195,9 +225,11 @@ class ysyx_26030103_CSR(
   // 未列出而被裁剪，否则 rdcycle/rdtime/rdinstret 会读回 0。
   // RV32 才有高半字别名；RV64 的 mcycle/minstret 已是完整 64 位，
   // mcycleh/minstreth/cycleh/timeh/instreth 在 RV64 属于未实现 CSR。
-  private val UserCounterAddresses =
+  private val BaseUserCounterAddresses =
     if (XLEN == 32) Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
     else Seq(0xc00, 0xc01, 0xc02)
+  private val UserCounterAddresses =
+    BaseUserCounterAddresses ++ PMUUserAddresses
   private val enabledCsrAddresses = (
     profile.csrEnabled.toSeq ++
       // identity CSR 始终存在，不依赖 CSR_ENABLED 是否列出。
@@ -205,9 +237,10 @@ class ysyx_26030103_CSR(
         .IdentityCsrAddresses.toSeq ++
       UserCounterAddresses ++
       FpCsrAddresses ++
+      PMUMachineAddresses ++
       (if (profile.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
   ).filter(a => profile.csrSupported(a) || FpCsrAddresses.contains(a) ||
-    UserCounterAddresses.contains(a))
+    UserCounterAddresses.contains(a) || PMUMachineAddresses.contains(a))
     .distinct.sorted
   val CsrImplemented =
     enabledCsrAddresses.map(a => io.CSRAddress === a.U(12.W))
@@ -273,6 +306,9 @@ class ysyx_26030103_CSR(
   val SepcOpt = if (hasS) Some(Module(new ysyx_26030103_mepc(XLEN, UseC))) else None
   val ScauseOpt = if (hasS) Some(Module(new ysyx_26030103_mcause(XLEN))) else None
   val Mcycle = Module(new ysyx_26030103_mcycle(XLEN))
+  val PMUOpt =
+    if (pmuZihpm) Some(Module(new ysyx_26030103_PMU(XLEN, pmuSscofpmf)))
+    else None
 
   Mstatus.io.clk := io.clk; Mstatus.io.rst := io.rst
   Mtvec.io.clk := io.clk; Mtvec.io.rst := io.rst
@@ -401,7 +437,13 @@ class ysyx_26030103_CSR(
 
   val IrqLatch = RegInit(false.B)
   when(io.Interrupt || io.TimerInterrupt) { IrqLatch := true.B }
-  val SInterruptMask = "h00000222".U(32.W) // SSIP/STIP/SEIP
+  val LcofiView =
+    if (pmuSscofpmf)
+      Mux(PMUOpt.get.io.lcofiPending, "h00002000".U(32.W), 0.U(32.W))
+    else 0.U(32.W)
+  // SSIP/STIP/SEIP；Sscofpmf 打开时 LCOFI 也可以委托给 S。
+  val SInterruptMask =
+    (0x222 | (if (pmuSscofpmf) 0x2000 else 0)).U(32.W)
   // HAS_S=n 时不存在 S 级中断视图：timer/external 全部按 M 级中断处理。
   val TimerView =
     if (!hasS) 0.U(32.W)
@@ -420,14 +462,15 @@ class ysyx_26030103_CSR(
   val ExternalMView = if (!hasS || !profile.hasSExternalIrq)
     Mux(io.Interrupt, "h00000800".U(32.W), 0.U(32.W))
   else 0.U(32.W)
-  val MipState = Mip | TimerView | MTimerView | ExternalSView | ExternalMView
+  val MipState =
+    Mip | TimerView | MTimerView | ExternalSView | ExternalMView | LcofiView
   val SieState =
     if (!hasS) 0.U(32.W)
     else if (profile.csrViewMode == "independent") SieOpt.get
     else Mie & SInterruptMask
   val SipState =
     if (!hasS) 0.U(32.W)
-    else if (profile.csrViewMode == "independent") SipOpt.get
+    else if (profile.csrViewMode == "independent") SipOpt.get | LcofiView
     else MipState & SInterruptMask
   val MIntPending =
     if (hasS) MipState & Mie & ~Mideleg_rdata
@@ -449,6 +492,14 @@ class ysyx_26030103_CSR(
   io.IrqPending := HasInterrupt
   // CSR 写只在真正接受中断时被压掉；原始中断线为高但 MIE=0 时软件仍可写 CSR。
   val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !HasInterrupt && CsrImplemented
+  PMUOpt.foreach { pmu =>
+    pmu.io.events := io.PMUEvents
+    pmu.io.privilege := Privilege
+    pmu.io.csrAddr := io.CSRAddress
+    pmu.io.csrWen := CSRWen
+    pmu.io.csrWdata := CSRWriteData(pmu.io.readData)
+    pmu.io.mcountinhibit := Mcountinhibit
+  }
   val IsException = io.IsEcall || io.IsEbreak || HasInterrupt || io.TrapValid
 
   def pendingCause(pending: UInt, sMode: Boolean): UInt = {
@@ -457,17 +508,19 @@ class ysyx_26030103_CSR(
       // S 级中断优先级：SEI(9) > SSI(1) > STI(5)。旧实现先查 STIP，
       // 会把自己拉起的 SSIP/STIP 同时 pending 误报为 STI。
       Mux(pending(9), (base | 9).U(32.W),
-        Mux(pending(1), (base | 1).U(32.W), (base | 5).U(32.W)))
+        Mux(pending(1), (base | 1).U(32.W),
+          Mux(pending(5), (base | 5).U(32.W), (base | 13).U(32.W))))
     } else {
       // M 入口也可能处理未委托的 S 级中断（mideleg 对应位为 0）；
       // cause 必须取实际 pending 位，例如未委托的 SEIP 是 cause 9，
       // 不能落进 MSI(3) 的默认分支。规范优先级：
-      // MEI(11) > MSI(3) > MTI(7) > SEI(9) > SSI(1) > STI(5)。
+      // MEI(11) > MSI(3) > MTI(7) > SEI(9) > SSI(1) > STI(5) > LCOFI(13)。
       Mux(pending(11), (base | 11).U(32.W),
         Mux(pending(3), (base | 3).U(32.W),
           Mux(pending(7), (base | 7).U(32.W),
             Mux(pending(9), (base | 9).U(32.W),
-              Mux(pending(1), (base | 1).U(32.W), (base | 5).U(32.W))))))
+              Mux(pending(1), (base | 1).U(32.W),
+                Mux(pending(5), (base | 5).U(32.W), (base | 13).U(32.W)))))))
     }
   }
   val MIrqCause = pendingCause(MIntPending, sMode = false)
@@ -754,19 +807,26 @@ class ysyx_26030103_CSR(
       Mideleg := Write32(Mideleg) & SInterruptMask
     }
   }
+  val LcofiWriteMask =
+    (if (pmuSscofpmf) (0xffffffffL ^ 0x2000L) else 0xffffffffL).U(32.W)
   when(CSRWen && IsCSRAddress(CSR_MIE)) { Mie := Write32(Mie) }
-  when(CSRWen && IsCSRAddress(CSR_MIP)) { Mip := Write32(Mip) }
+  when(CSRWen && IsCSRAddress(CSR_MIP)) {
+    Mip := Write32(Mip) & LcofiWriteMask
+  }
   if (hasS && profile.csrViewMode == "independent") {
     val Sie = SieOpt.get
     val Sip = SipOpt.get
     when(CSRWen && IsCSRAddress(CSR_SIE)) { Sie := Write32(Sie) }
-    when(CSRWen && IsCSRAddress(CSR_SIP)) { Sip := Write32(Sip) }
+    when(CSRWen && IsCSRAddress(CSR_SIP)) {
+      Sip := Write32(Sip) & LcofiWriteMask
+    }
   } else if (hasS) {
     when(CSRWen && IsCSRAddress(CSR_SIE)) {
       Mie := (Mie & ~SInterruptMask) | (Write32(Mie) & SInterruptMask)
     }
     when(CSRWen && IsCSRAddress(CSR_SIP)) {
-      Mip := (Mip & ~SInterruptMask) | (Write32(Mip) & SInterruptMask)
+      Mip := (Mip & ~SInterruptMask) |
+        (Write32(Mip) & SInterruptMask & LcofiWriteMask)
     }
   }
   ScounterenOpt.foreach { Scounteren =>
@@ -887,6 +947,20 @@ class ysyx_26030103_CSR(
   addCsr(CSR_MTVAL, Mtval, csrOn(0x343))
   addCsr(CSR_MCOUNTEREN, Widen32(Mcounteren), csrOn(0x306))
   addCsr(CSR_MCOUNTINHIBIT, Widen32(Mcountinhibit), csrOn(0x320))
+  PMUOpt.foreach { pmu =>
+    for (i <- 0 until PMUCounterCount) {
+      addCsr((0xb03 + i).U(12.W), pmu.io.readData, enabled = true)
+      addCsr((0x323 + i).U(12.W), pmu.io.readData, enabled = true)
+      addCsr((0xc03 + i).U(12.W), pmu.io.readData, enabled = true)
+      if (XLEN == 32) {
+        addCsr((0xb83 + i).U(12.W), pmu.io.readData, enabled = true)
+        addCsr((0xc83 + i).U(12.W), pmu.io.readData, enabled = true)
+      }
+    }
+    if (pmuSscofpmf) {
+      addCsr(CSR_SCOUNTOVF, Widen32(pmu.io.scountovf), enabled = true)
+    }
+  }
   addCsr(CSR_MVENDORID, Widen32(Mvendorid_rdata), csrOn(0xf11))
   addCsr(CSR_MARCHID, Widen32(Marchid_rdata), csrOn(0xf12))
   addCsr(CSR_MIMPID, Widen32(Mimpid_rdata), csrOn(0xf13))

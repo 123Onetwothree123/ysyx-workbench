@@ -27,7 +27,7 @@ $(STAMP): $(SCALA_SRCS)
 	cd $(NPC_DIR) && env \
 		ICACHE=y DCACHE=n WBUF_DEPTH=4 \
 		RISCV_M=n RISCV_A=n RISCV_C=n \
-		SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_STATS=y \
+		SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_DIC_ARCH_COUNTER=y \
 		$(MILL) --no-server runMain ysyx_26030103_Elaborate \
 			--target-dir $(RTL_DIR)
 	touch $(STAMP)

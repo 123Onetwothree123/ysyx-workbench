@@ -1,7 +1,7 @@
-export module npc.PerfStats;
+export module npc.DicArchCounterStats;
 import std;
 
-export struct PerfStats
+export struct DicArchCounterStats
 {
     std::size_t instruction_fetch{0};
     std::size_t execution_complete{0};
@@ -62,18 +62,92 @@ export struct PerfStats
     std::size_t exu_idle_noinput{0};
     std::size_t trap_count{0};
     std::size_t mem_waitslot{0};
+    std::size_t btb_hit{0};
+    std::size_t btb_miss{0};
+    std::size_t jal_btb_hit{0};
+    std::size_t ras_hit{0};
+    std::size_t branch_mispredict{0};
+    std::size_t itlb_hit{0};
+    std::size_t itlb_miss{0};
+    std::size_t dtlb_hit{0};
+    std::size_t dtlb_miss{0};
+    std::size_t tlb_refill{0};
+    std::size_t fpu_req{0};
+    std::size_t fpu_done{0};
+    std::size_t axi_ar{0};
+    std::size_t axi_aw{0};
+    std::size_t axi_r{0};
+    std::size_t axi_w{0};
+    std::size_t axi_b{0};
+    std::size_t load_op{0};
+    std::size_t store_op{0};
+    std::size_t amo_op{0};
+    std::size_t branch_taken{0};
+    std::size_t branch_not_taken{0};
+    std::size_t tlb_flush{0};
+    std::size_t fpu_active_cycle{0};
+    std::size_t fence_op{0};
+    std::size_t rvc_inst{0};
+    std::size_t system_op{0};
+    std::size_t icache_refill{0};
+    std::size_t dcache_refill{0};
+    std::size_t timer_irq{0};
+    std::size_t external_irq{0};
+    std::size_t interrupt_taken{0};
+    std::size_t wbuf_full{0};
+    std::size_t wbuf_drain{0};
+    std::size_t csr_read{0};
+    std::size_t csr_write{0};
+    std::size_t mul_active_cycle{0};
+    std::size_t div_active_cycle{0};
+    std::size_t ptw_walk{0};
+    std::size_t ptw_walk_cycle{0};
+    std::size_t page_fault{0};
+    std::size_t ras_miss{0};
+    std::size_t redirect_branch{0};
+    std::size_t redirect_fence_i{0};
+    std::size_t redirect_trap{0};
+    std::size_t redirect_mret{0};
+    std::size_t fpu_stall_cycle{0};
+    std::size_t illegal_inst{0};
+    std::size_t axi_stall_cycle{0};
+    std::size_t axi_error{0};
+    std::size_t fpu_divsqrt{0};
+    std::size_t fpu_fma{0};
+    std::size_t fpu_exception{0};
+    std::size_t csr_illegal{0};
+    std::size_t plic_claim{0};
+    std::size_t plic_complete{0};
+    std::size_t flush_cycle{0};
+    std::size_t uncached_access{0};
+    std::size_t wbuf_occupancy_cycle{0};
+    std::size_t tlb_superpage_hit{0};
+    std::size_t tlb_asid_hit{0};
+    std::size_t icache_line_fill{0};
+    std::size_t dcache_line_fill{0};
+    std::size_t dcache_writeback{0};
+    std::size_t interrupt_pending_cycle{0};
+    std::size_t interrupt_latency_cycle{0};
+    std::size_t interrupt_latency_max{0};
+    std::size_t interrupt_latency_count{0};
+    std::size_t wfi_inst{0};
+    std::size_t issue_occupancy_cycle{0};
+    std::size_t retire_occupancy_cycle{0};
+    std::size_t bubble_cycle{0};
+    std::size_t div_iterations{0};
+    std::size_t div_early_out{0};
 };
 
 // branch_operation 的统一语义是“条件分支 + JAL + JALR 总数”。单独的
 // jal_operation/jalr_operation 是它的子集。保留饱和减法，使读取旧记录或
 // 手工构造统计值时也不会因无符号下溢打印一个接近 SIZE_MAX 的数字。
-export constexpr std::size_t ConditionalBranchCount(const PerfStats &stats) noexcept
+export constexpr std::size_t ConditionalBranchCount(const DicArchCounterStats &stats) noexcept
 {
     const auto jumps{stats.jal_operation + stats.jalr_operation};
     return stats.branch_operation >= jumps ? stats.branch_operation - jumps : 0;
 }
 
-export constexpr std::size_t ClassifiedInstructionCount(const PerfStats &stats) noexcept
+export constexpr std::size_t ClassifiedInstructionCount(const DicArchCounterStats &stats) noexcept
 {
     return stats.arithmetic_operation + stats.mdu_complete +
            stats.memory_access_operation + stats.control_status_register_operation +
@@ -93,7 +167,7 @@ export inline constexpr unsigned PerfEventAll =
     PerfEventALU | PerfEventMEM | PerfEventCSR | PerfEventBRANCH | PerfEventJAL |
     PerfEventJALR;
 export constexpr void RecordExecutionEvent(
-    PerfStats &stats, unsigned event_kind,
+    DicArchCounterStats &stats, unsigned event_kind,
     unsigned enabled = PerfEventAll) noexcept
 {
     switch (event_kind)

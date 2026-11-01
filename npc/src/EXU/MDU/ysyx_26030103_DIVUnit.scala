@@ -54,6 +54,8 @@ class ysyx_26030103_DIVUnit(
   )
   val ReqFire = IO.Req.valid && IO.Req.ready
   val RespFire = IO.Resp.valid && IO.Resp.ready
+  IO.PerfIterations := Core.IO.IterationCount
+  IO.PerfEarlyOut := Core.IO.EarlyOut
   when(IO.Flush) {
     Pending := false.B
     PendingQuotientNegative := false.B

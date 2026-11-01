@@ -75,6 +75,7 @@ class ysyx_26030103_CSRAuditHarness(
   csr.io.FPCommit := false.B
   csr.io.FPFlags := 0.U
   csr.io.FPStateDirtyCommit := false.B
+  csr.io.PMUEvents := 0.U
   io.rdata := csr.io.CSR_rdata
   io.stateTval := csr.io.StateTval
   io.trapCommit := csr.io.TrapCommit

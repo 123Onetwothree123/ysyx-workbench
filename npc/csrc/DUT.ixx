@@ -9,7 +9,7 @@ module;
 export module npc.DUT;
 import npc.config;
 import std;
-import npc.PerfStats;
+import npc.DicArchCounterStats;
 
 export class DUT
 {
@@ -52,7 +52,10 @@ private:
     std::vector<std::uint8_t> vga_frame;
     std::vector<std::uint8_t> vga_pixel_coverage;
     std::size_t instructions{0};
-    PerfStats perf{};
+    DicArchCounterStats perf{};
+    // 中断延迟在软件侧跨周期跟踪：从 IRQ pending 首次拉高到 trap 入口。
+    std::size_t irq_latency_current{0};
+    bool irq_latency_active{false};
     std::size_t fault_count{0}; // AXI fault 打印限流计数
     bool finalized{false};
     bool heartbeat{false};
@@ -123,7 +126,7 @@ public:
         RestoreCheckpoint(const std::filesystem::path &path);
     std::size_t GetCycle() const;
     std::size_t GetInstructions() const;
-    [[nodiscard]] const PerfStats &GetPerfStats() const noexcept;
+    [[nodiscard]] const DicArchCounterStats &GetDicArchCounterStats() const noexcept;
     // 给 SDB 的读口统一返回 XWord：RV32 是 32 位，RV64 是完整 64 位。
     [[nodiscard]] std::expected<npc::XWord, std::string> ReadGPR(std::uint32_t index);
     [[nodiscard]] std::expected<npc::XWord, std::string> ReadPC();

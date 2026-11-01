@@ -38,6 +38,8 @@ class ysyx_26030103_NutShellMDU(
   private val busy = RegInit(false.B)
   private val pending = RegInit(false.B)
   private val resultReg = RegInit(0.U(xlen.W))
+  private val divIterationsReg = RegInit(0.U(16.W))
+  private val divEarlyOutReg = RegInit(false.B)
   private val mulResult = Mux(opReg === ysyx_26030103_MDUOp.MUL,
     mul.io.out.bits(xlen - 1, 0), mul.io.out.bits(2 * xlen - 1, xlen))
   private val divResult = Mux(opReg === ysyx_26030103_MDUOp.REM ||
@@ -69,7 +71,13 @@ class ysyx_26030103_NutShellMDU(
   when(selectedOutValid && !pending && !io.Flush) {
     pending := true.B
     resultReg := selectedResult
+    when(divSelected) {
+      divIterationsReg := div.io.iteration_count
+      divEarlyOutReg := div.io.early_out
+    }
   }
+  io.PerfDivIterations := divIterationsReg
+  io.PerfDivEarlyOut := divEarlyOutReg
   io.Resp.valid := pending && !io.Flush
   io.Resp.bits.Result := resultReg
   when(io.Resp.fire) {

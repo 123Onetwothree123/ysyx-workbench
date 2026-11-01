@@ -213,6 +213,9 @@ SBI_FW_SIZE ?= $(or $(CONFIG_SBI_FW_SIZE),0x00200000)
 SBI_NEXT_ADDR ?= $(or $(CONFIG_SBI_NEXT_ADDR),0x80200000)
 SBI_BUILD_JOBS ?= $(or $(CONFIG_SBI_BUILD_JOBS),0)
 SBI_FDT_ENABLE ?= $(or $(CONFIG_SBI_FDT_ENABLE),n)
+SBI_PMU_ENABLE ?= $(or $(CONFIG_SBI_PMU_ENABLE),n)
+SBI_RUSTSBI_PMU ?= $(or $(CONFIG_SBI_RUSTSBI_PMU),n)
+SBI_RISCV_C ?= $(or $(CONFIG_RISCV_C),n)
 SBI_FDT_PATH ?= $(or $(call unquote_config,$(CONFIG_SBI_FDT_PATH)),dts/npc.dts)
 SBI_FDT_ADDR ?= $(or $(CONFIG_SBI_FDT_ADDR),0x80f00000)
 # mtime 每个 CPU 周期 +1，实际增量频率 = SYNTH_FREQ(MHz) * 1,000,000。
@@ -252,6 +255,9 @@ SBI_ENV = env \
 	SBI_NEXT_ADDR="$(SBI_NEXT_ADDR)" \
 	SBI_BUILD_JOBS="$(SBI_BUILD_JOBS)" \
 	SBI_FDT_ENABLE="$(SBI_FDT_ENABLE)" \
+	SBI_PMU_ENABLE="$(SBI_PMU_ENABLE)" \
+	SBI_RUSTSBI_PMU="$(SBI_RUSTSBI_PMU)" \
+	SBI_RISCV_C="$(SBI_RISCV_C)" \
 	SBI_FDT_PATH="$(SBI_FDT_PATH)" \
 	SBI_FDT_ADDR="$(SBI_FDT_ADDR)" \
 	SBI_FDT_OUT_DIR="$(SBI_FDT_OUT_DIR)" \
@@ -586,7 +592,7 @@ NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(or $(CONFIG_CACHE_PADDI
 # come from the same git commit.  Target selection is recorded separately:
 # one elaboration emits both the direct-NPC and SoC CPU wrappers.
 # 性能计数器：组 → 组内单计数器键。键名与Kconfig符号后缀、RTL端口后缀
-# 以及C++宏名一一对应；单计数器同时受所属组总开关与PERF_STATS约束。
+# 以及C++宏名一一对应；单计数器同时受所属组总开关与PERF_DIC_ARCH_COUNTER约束。
 
 verilog: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_TYPED_JSON)
 	$(call git_commit, "generate verilog")

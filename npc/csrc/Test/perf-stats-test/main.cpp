@@ -1,5 +1,5 @@
 import std;
-import npc.PerfStats;
+import npc.DicArchCounterStats;
 import npc.NPCSimResult;
 
 namespace
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
     }
     const bool expect_valid_synth{std::string_view{argv[1]} == "valid"};
     const std::string_view expected_target{argv[3]};
-    PerfStats event_stats{};
+    DicArchCounterStats event_stats{};
     RecordExecutionEvent(event_stats, 4);
     RecordExecutionEvent(event_stats, 5);
     RecordExecutionEvent(event_stats, 6);
@@ -99,7 +99,7 @@ int main(int argc, char **argv)
     check(ConditionalBranchCount(event_stats) == 1,
           "conditional branch subset after event classification");
 
-    PerfStats stats{};
+    DicArchCounterStats stats{};
     stats.arithmetic_operation = 2;
     stats.mdu_complete = 3;
     stats.memory_access_operation = 5;
@@ -161,10 +161,10 @@ int main(int argc, char **argv)
           "CSV schema must identify its version and target-frequency semantics");
     check(header_fields.size() == row_fields.size(),
           "CSV header and data row must contain the same number of fields");
-    check(header_fields.size() == 69,
-          "CSV schema must keep a fixed 69 fields with optional RTL features off or on");
-    check(value_for(header_fields, row_fields, "schema_version") == "3",
-          "CSV row must use schema version 3");
+    check(header_fields.size() == 143,
+          "CSV schema must keep a fixed 143 fields with optional RTL features off or on");
+    check(value_for(header_fields, row_fields, "schema_version") == "9",
+          "CSV row must use schema version 9");
     check(value_for(header_fields, row_fields, "commit") == "abc123def456" &&
               value_for(header_fields, row_fields, "git_dirty") == "1",
           "CSV must preserve git commit and dirty status");

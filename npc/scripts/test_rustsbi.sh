@@ -55,6 +55,7 @@ make -C "$NPC_HOME/csrc/Test/sbi/opensbi_payload" \
 info "构建 RustSBI 固件"
 SBI_OUT_DIR="$FW_OUT" \
 SBI_FDT_OUT_DIR="$TEST_OUT/fdt" \
+SBI_RUSTSBI_PMU="${SBI_RUSTSBI_PMU:-n}" \
 RUSTSBI_OUT_DIR="$FW_OUT" \
 	"$HERE/build_rustsbi.sh"
 

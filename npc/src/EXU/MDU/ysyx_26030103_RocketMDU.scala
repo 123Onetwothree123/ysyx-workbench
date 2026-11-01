@@ -35,4 +35,6 @@ class ysyx_26030103_RocketMDU(
   core.io.resp.ready := io.Resp.ready && !io.Flush
   io.Resp.valid := core.io.resp.valid && !io.Flush
   io.Resp.bits.Result := core.io.resp.bits.data
+  io.PerfDivIterations := core.io.div_iterations
+  io.PerfDivEarlyOut := core.io.div_early_out
 }

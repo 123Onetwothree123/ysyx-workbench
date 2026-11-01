@@ -69,29 +69,35 @@ void addDebug(TypedFields &root, const Config &values)
              TypedJson::boolean(flatBool(values, "FTRACE")));
     addField(debug, "iringbuf",
              TypedJson::boolean(flatBool(values, "IRINGBUF")));
-    addField(debug, "perf_stats",
-             TypedJson::boolean(flatBool(values, "PERF_STATS")));
+    addField(debug, "dic_arch_counter",
+             TypedJson::boolean(flatBool(values, "PERF_DIC_ARCH_COUNTER")));
+    addField(debug, "riscv_arch_pmu",
+             TypedJson::boolean(flatBool(values, "PERF_RISCV_ARCH_PMU", false)));
+    addField(debug, "riscv_arch_pmu_zihpm",
+             TypedJson::boolean(flatBool(values, "PERF_RISCV_ARCH_PMU_ZIHPM", true)));
+    addField(debug, "riscv_arch_pmu_sscofpmf",
+             TypedJson::boolean(flatBool(values, "PERF_RISCV_ARCH_PMU_SSCOFPMF", true)));
     addField(debug, "perf_save",
              TypedJson::boolean(flatBool(values, "PERF_SAVE")));
     addField(debug, "watchpoint",
              TypedJson::boolean(flatBool(values, "WATCHPOINT")));
     addField(debug, "watchpoint_num",
              TypedJson::integer(flatInt(values, "WATCHPOINT_NUM", 32)));
-    TypedFields perfGroupFields;
-    for (const auto &group : perfGroups()) {
+    TypedFields dicArchCounterGroupFields;
+    for (const auto &group : dicArchCounterGroups()) {
         std::string name = group.name;
         std::transform(name.begin(), name.end(), name.begin(),
                        [](unsigned char character) {
                            return static_cast<char>(std::tolower(character));
                        });
-        addField(perfGroupFields, std::move(name),
+        addField(dicArchCounterGroupFields, std::move(name),
                  TypedJson::boolean(flatBool(
-                     values, "PERF_COUNTER_" + std::string{group.name}, true)));
+                     values, "PERF_DIC_ARCH_COUNTER_" + std::string{group.name}, true)));
     }
-    addField(debug, "perf_groups",
-             TypedJson::object(std::move(perfGroupFields)));
-    TypedFields perfCounterFields;
-    for (const auto &group : perfGroups()) {
+    addField(debug, "dic_arch_counter_groups",
+             TypedJson::object(std::move(dicArchCounterGroupFields)));
+    TypedFields dicArchCounterFields;
+    for (const auto &group : dicArchCounterGroups()) {
         for (const char *counter : group.counters) {
             std::string name = counter;
             std::transform(name.begin(), name.end(), name.begin(),
@@ -99,14 +105,14 @@ void addDebug(TypedFields &root, const Config &values)
                                return static_cast<char>(
                                    std::tolower(character));
                            });
-            addField(perfCounterFields, std::move(name),
+            addField(dicArchCounterFields, std::move(name),
                      TypedJson::boolean(flatBool(
-                         values, "PERF_COUNTER_" + std::string{counter},
+                         values, "PERF_DIC_ARCH_COUNTER_" + std::string{counter},
                          true)));
         }
     }
-    addField(debug, "perf_counters",
-             TypedJson::object(std::move(perfCounterFields)));
+    addField(debug, "dic_arch_counter_events",
+             TypedJson::object(std::move(dicArchCounterFields)));
     addField(root, "debug", TypedJson::object(std::move(debug)));
 }
 }

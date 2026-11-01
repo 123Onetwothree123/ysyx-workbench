@@ -16,6 +16,10 @@ class ysyx_26030103_IDU(
   private val FLEN = config.FPULen
   private val UseF = config.UseF
   private val UseD = config.UseD
+  private val PMUZihpm = config.RiscvArchPMU && config.RiscvArchPMUZihpm
+  private val PMUSscofpmf = PMUZihpm && config.RiscvArchPMUSscofpmf
+  private val PMUCounterCount =
+    _root_.ysyx_26030103.common.ysyx_26030103_PMUEventId.CounterCount
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_IFUMessage(XLEN)))
     val out = Decoupled(new ysyx_26030103_IDUMessage(XLEN))
@@ -90,6 +94,7 @@ class ysyx_26030103_IDU(
     val perf_stall_raw = Output(Bool())
     val perf_stall_raw_loaduse = Output(Bool())
     val perf_stall_raw_alu = Output(Bool())
+    val PerfWfi = Output(Bool())
   })
   // 取指消息保留原始编码；RVC 展开后的 32 位形式只用于本模块译码。
   // 这样 EXU/trace/非法指令 mtval 仍能看到真实的 16 位编码。
@@ -426,9 +431,25 @@ class ysyx_26030103_IDU(
   // 本核心目前只实现下面明确列出的机器态 CSR 集合，访问集合外的 CSR
   // 将被视为非法指令。
   val CSRAddress = Instruction(31, 20)
-  private val userCounterAddresses =
+  private val baseUserCounterAddresses =
     if (XLEN == 32) Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
     else Seq(0xc00, 0xc01, 0xc02)
+  private val pmuUserCounterAddresses =
+    if (PMUZihpm)
+      (0 until PMUCounterCount).flatMap { i =>
+        Seq(0xc03 + i) ++
+          (if (XLEN == 32) Seq(0xc83 + i) else Seq.empty)
+      }
+    else Seq.empty
+  private val userCounterAddresses =
+    baseUserCounterAddresses ++ pmuUserCounterAddresses
+  private val pmuMachineAddresses =
+    if (PMUZihpm)
+      (0 until PMUCounterCount).flatMap { i =>
+        Seq(0xb03 + i, 0x323 + i) ++
+          (if (XLEN == 32) Seq(0xb83 + i) else Seq.empty)
+      } ++ (if (PMUSscofpmf) Seq(0xda0) else Seq.empty)
+    else Seq.empty
   // F/D 的 fflags(0x001)/frm(0x002)/fcsr(0x003) 是 U 级可访问 CSR；
   // 是否实现由 RISCV_F 决定，不依赖 MMU profile 的整数 CSR 集合。
   private val fpCsrAddresses =
@@ -438,10 +459,10 @@ class ysyx_26030103_IDU(
       // identity CSR 始终实现，不依赖 CSR_ENABLED 是否列出。
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
         .IdentityCsrAddresses.toSeq ++
-      userCounterAddresses ++ fpCsrAddresses ++
+      userCounterAddresses ++ fpCsrAddresses ++ pmuMachineAddresses ++
       (if (config.MMU.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
   ).filter(a => config.MMU.csrSupported(a) || userCounterAddresses.contains(a) ||
-    fpCsrAddresses.contains(a))
+    fpCsrAddresses.contains(a) || pmuMachineAddresses.contains(a))
     .distinct.sorted
   val CSRAddressValid =
     if (config.MMU.csrMissingMode == "zero") true.B
@@ -475,9 +496,9 @@ class ysyx_26030103_IDU(
     CSRAddress === "h301".U(12.W) // misa 当前只读 */
   // 读只读 CSR 合法；CSRRW/带非零源的 CSRRS/CSRRC 写只读 CSR 非法。
   val CSRWriteIntent = IsCsrrw || ((IsCsrrs || IsCsrrc) && (Rs1 =/= 0.U))
-  // 计数器使能位只可能落在 0..7（cycle/time/instret 及其高半字）；
-  // 用 5 位索引与 32 位 mcounteren/scounteren 对齐，避免窄索引警告。
-  val CounterBit = Cat(0.U(2.W), CSRAddress(2, 0))
+  // mcounteren/scounteren 的第 N 位对应 CSR 的计数器编号 N；
+  // 5 位索引覆盖 hpmcounter3..31 以及 cycle/time/instret 别名。
+  val CounterBit = CSRAddress(4, 0)
   val CounterAccessOk = !IsUserCounter || EffectivePrivilege === 3.U ||
     (io.Mcounteren(CounterBit) &&
       (if (hasS) EffectivePrivilege === 1.U || io.Scounteren(CounterBit)
@@ -693,6 +714,7 @@ class ysyx_26030103_IDU(
   io.perf_stall_raw := io.in.valid && AnyIsRAW
   io.perf_stall_raw_loaduse := io.in.valid && AnyIsRAW && raw_loaduse
   io.perf_stall_raw_alu := io.in.valid && AnyIsRAW && !raw_loaduse
+  io.PerfWfi := io.in.valid && IsWfi
   // 退休/trace/mtval 使用原始编码；展开结果只影响控制信号。
   io.out.bits.Instruction := RawInstruction
   io.out.bits.IsCompressed := IsCompressed

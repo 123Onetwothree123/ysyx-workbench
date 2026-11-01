@@ -33,7 +33,7 @@ class ysyx_26030103_SocXLENElaborationTest extends AnyFlatSpec with Matchers {
       ITraceEnable = false,
       FTraceEnable = false,
       IRingBufEnable = false,
-      PerfStatsEnable = false
+      DicArchCounterEnable = false
     )
 
   private def elaborate(cpuXlen: Int, socXlen: Int): String =

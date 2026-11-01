@@ -67,6 +67,8 @@ class ysyx_26030103_StandardMDU(
     DIVUnit.IO.Resp.bits.Result
   )
   val RespFire = io.Resp.valid && io.Resp.ready
+  io.PerfDivIterations := DIVUnit.IO.PerfIterations
+  io.PerfDivEarlyOut := DIVUnit.IO.PerfEarlyOut
   val OwnerHasSpace = OwnerCount < OwnerDepth.U || RespFire
   val SelectedReqReady = Mux(
     IsMULRequest,

@@ -492,6 +492,8 @@ class ysyx_26030103_ICacheSRAM(
       (resolve_xlate && executable && cacheable && !resolve_request_hit)
   io.perf_refill_req := rfstate === rf_req
   io.perf_refill_resp := rfstate === rf_resp
+  val PerfLineFill = WireDefault(false.B)
+  io.perf_line_fill := PerfLineFill
   when(responding && io.resp_ready) {
     s1_valid := false.B
     s1_waits := false.B
@@ -732,6 +734,7 @@ class ysyx_26030103_ICacheSRAM(
               refill_cnt === (WordsPerBlock - 1).U &&
                 io.axi.R.RLAST && !refill_error
             ) {
+              PerfLineFill := true.B
               when(AliasScanStatus.installAllowed) {
                 valid(RefIndexSafe) := true.B
               }.otherwise {

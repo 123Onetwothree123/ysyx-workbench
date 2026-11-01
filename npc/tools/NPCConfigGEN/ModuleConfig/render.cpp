@@ -2,9 +2,9 @@ module npc.configgen;
 import std;
 namespace npc::configgen {
 namespace {
-std::string perfName(const std::string &key)
+std::string dicArchCounterName(const std::string &key)
 {
-    std::string result{"PerfCounter"};
+    std::string result{"PerfDicArchCounter"};
     bool upper = true;
     for (const char character : key) {
         if (character == '_') {
@@ -35,7 +35,7 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     const bool hasM = asBool(values, "RISCV_M");
     const bool hasICache = asBool(values, "ICACHE");
     const bool hasDCache = asBool(values, "DCACHE");
-    const bool hasPerf = asBool(values, "PERF_STATS");
+    const bool hasPerf = asBool(values, "PERF_DIC_ARCH_COUNTER");
     const auto flag = [&](const char *key) {
         return asBool(values, key);
     };
@@ -98,7 +98,7 @@ std::string renderModule(const std::map<std::string, std::string> &values,
         {"HasFTrace", flag("FTRACE")},
         {"HasIRingBuf", flag("IRINGBUF")},
         {"HasWatchpoint", flag("WATCHPOINT")},
-        {"HasPerfStats", hasPerf},
+        {"HasDicArchCounter", hasPerf},
         {"HasPerfSave", flag("PERF_SAVE")},
         {"HasTraceVCD", flag("TRACE_VCD")},
         {"HasTraceFST", flag("TRACE_FST")},
@@ -132,18 +132,18 @@ std::string renderModule(const std::map<std::string, std::string> &values,
         << cppString(perfBuildMetadata) << "};\n";
     out << "inline constexpr std::string_view PerfSynthFile{"
         << cppString(perfSynth) << "};\n\n";
-    for (const auto &group : perfGroups()) {
-        const bool groupOn = asBool(values, "PERF_COUNTER_" + std::string{group.name}, true);
+    for (const auto &group : dicArchCounterGroups()) {
+        const bool groupOn = asBool(values, "PERF_DIC_ARCH_COUNTER_" + std::string{group.name}, true);
         for (const char *counter : group.counters) {
             bool enabled = hasPerf && groupOn &&
-                           asBool(values, "PERF_COUNTER_" + std::string{counter}, true);
+                           asBool(values, "PERF_DIC_ARCH_COUNTER_" + std::string{counter}, true);
             if (std::string_view{group.name} == "MDU")
                 enabled = enabled && hasM;
             else if (std::string_view{group.name} == "ICACHE")
                 enabled = enabled && hasICache;
             else if (std::string_view{group.name} == "DCACHE")
                 enabled = enabled && hasDCache;
-            out << "inline constexpr bool " << perfName(counter) << "{"
+            out << "inline constexpr bool " << dicArchCounterName(counter) << "{"
                 << cppBool(enabled) << "};\n";
         }
     }

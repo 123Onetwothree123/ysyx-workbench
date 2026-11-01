@@ -12,6 +12,8 @@ abstract class ysyx_26030103_RV32BackendMDU(
   core.io.Req <> io.Req
   core.io.Resp <> io.Resp
   core.io.Flush := io.Flush
+  io.PerfDivIterations := core.io.PerfDivIterations
+  io.PerfDivEarlyOut := core.io.PerfDivEarlyOut
 }
 
 class ysyx_26030103_IbexMDU(

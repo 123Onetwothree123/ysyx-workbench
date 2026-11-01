@@ -306,7 +306,7 @@ $(CHIPLINK_RTL)/ysyx_26030103.sv:
 	  CACHE_BLOCK_SIZE_LOG2=2 CACHE_INDEX_BITS=5 \
 	  ICACHE=n DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=y \
 	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y DIFFTEST=y PERF_STATS=y \
+	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y DIFFTEST=y PERF_DIC_ARCH_COUNTER=y \
 	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(CHIPLINK_RTL)
 	ln -sf layers-ysyx_26030103-Verification.sv $(CHIPLINK_RTL)/layers-riscv32e_npc_AXIRAM-Verification.sv
 
@@ -333,7 +333,7 @@ $(DMA_UNCACHED_RTL)/ysyx_26030103.sv:
 	  ICACHE=n DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=y \
 	  DMA_COHERENCE=uncached \
 	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y DIFFTEST=y PERF_STATS=y \
+	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y DIFFTEST=y PERF_DIC_ARCH_COUNTER=y \
 	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(DMA_UNCACHED_RTL)
 	ln -sf layers-ysyx_26030103-Verification.sv $(DMA_UNCACHED_RTL)/layers-riscv32e_npc_AXIRAM-Verification.sv
 
@@ -361,7 +361,7 @@ $(DMA_SNOOP_RTL)/ysyx_26030103.sv:
 	  ICACHE=y DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=y \
 	  DMA_COHERENCE=hardware_snoop \
 	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y MTRACE=y DIFFTEST=y PERF_STATS=y \
+	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y MTRACE=y DIFFTEST=y PERF_DIC_ARCH_COUNTER=y \
 	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(DMA_SNOOP_RTL)
 	ln -sf layers-ysyx_26030103-Verification.sv $(DMA_SNOOP_RTL)/layers-riscv32e_npc_AXIRAM-Verification.sv
 

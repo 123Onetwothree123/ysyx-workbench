@@ -13,7 +13,7 @@ endif()
 set(NPC_CONFIG_GEN_SOURCES
     main.cpp
     io.cpp
-    perf.cpp
+    dic_arch_counter.cpp
     JsonConfig/format.cpp
     JsonConfig/parser.cpp
     DeriveConfig/derive.cpp

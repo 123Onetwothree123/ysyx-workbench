@@ -28,6 +28,10 @@ class ysyx_26030103_DIVRestoringCore(
   private val Count = RegInit(0.U(CounterWidth.W)) //迭代计数
   private val QuotientResult = RegInit(0.U(CoreWidth.W)) //输出商
   private val RemainderResult = RegInit(0.U(CoreWidth.W)) //输出余数
+  private val IterationResult = RegInit(0.U(16.W)) //本次除法实际迭代位数
+  private val EarlyOutResult = RegInit(false.B) //本次除法提前结束标志
+  IO.IterationCount := IterationResult
+  IO.EarlyOut := EarlyOutResult
   IO.Req.ready := !IO.Flush && !Busy && (!ResultValid || IO.Resp.ready) //可接收请求
   IO.Resp.valid := ResultValid && !IO.Flush //结果有效
   IO.Resp.bits.Quotient := QuotientResult //输出商
@@ -77,6 +81,8 @@ class ysyx_26030103_DIVRestoringCore(
     Count := 0.U
     QuotientResult := 0.U
     RemainderResult := 0.U
+    IterationResult := 0.U
+    EarlyOutResult := false.B
   }.elsewhen (ReqFire) {
     Busy := true.B
     ResultValid := false.B
@@ -91,12 +97,16 @@ class ysyx_26030103_DIVRestoringCore(
     QuotientReg := 0.U
     OriginalDividend := IO.Req.bits.DividendMagnitude
     Count := 0.U
+    IterationResult := 0.U
+    EarlyOutResult := false.B
   }.elsewhen (Busy) {
     when (DivZero) {
       Busy := false.B
       ResultValid := true.B
       QuotientResult := Fill(CoreWidth, 1.U)
       RemainderResult := OriginalDividend
+      IterationResult := 0.U
+      EarlyOutResult := false.B
     }.otherwise {
       RemainderReg := SelectedRemainder
       DividendReg := NextDividend
@@ -106,6 +116,9 @@ class ysyx_26030103_DIVRestoringCore(
         ResultValid := true.B
         QuotientResult := FinalQuotient
         RemainderResult := SelectedRemainder(CoreWidth - 1, 0)
+        IterationResult :=
+          ((Count + 1.U) * CycleDigitBits.U).pad(16)
+        EarlyOutResult := EarlyFinish
       }.otherwise {
         Count := Count + 1.U
       }

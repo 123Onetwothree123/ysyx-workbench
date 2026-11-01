@@ -112,6 +112,9 @@ class ysyx_26030103_LSU(
     val DCachePerfMiss = Output(Bool())
     val DCachePerfRefillReq = Output(Bool())
     val DCachePerfRefillResp = Output(Bool())
+    val DCachePerfLineFill = Output(Bool())
+    val DCachePerfWriteback = Output(Bool())
+    val PerfWBufCount = Output(UInt(5.W))
     // 给IDU做数据冒险检测和转发用
     val HazardValid = Output(Bool())
     val HazardRd = Output(UInt(5.W))
@@ -185,6 +188,8 @@ class ysyx_26030103_LSU(
   io.DCachePerfMiss := DCache.io.perf_miss
   io.DCachePerfRefillReq := DCache.io.perf_refill_req
   io.DCachePerfRefillResp := DCache.io.perf_refill_resp
+  io.DCachePerfLineFill := DCache.io.perf_line_fill
+  io.DCachePerfWriteback := DCache.io.perf_writeback
   // 阶段级FSM: 接受/等待/退休
   val StageStates = Enum(3)
   val StageIdle = StageStates(0)
@@ -729,6 +734,7 @@ class ysyx_26030103_LSU(
   val wbCount = RegInit(0.U(log2Ceil(WBufDepth + 1).W))
   val wbufEmpty = wbCount === 0.U
   val wbufFull = wbCount === WBufDepth.U
+  io.PerfWBufCount := wbCount
   val storeBufIdx = Reg(UInt(log2Ceil(WBufDepth).max(1).W)) // 当前写操作的缓冲槽位
   // 每条外部 store 在第一次被 LSU 接收时就占据一个真实写缓冲项。
   // 后续从 PendingStore 提升为活动队首时绝不重复入队。

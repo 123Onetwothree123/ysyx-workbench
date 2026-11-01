@@ -19,8 +19,12 @@
 #include <sbi/riscv_asm.h>
 #include <sbi/riscv_encoding.h>
 #include <sbi/sbi_const.h>
+#include <sbi/sbi_ecall_interface.h>
+#include <sbi/sbi_error.h>
 #include <sbi/sbi_platform.h>
 
+#include <sbi_utils/fdt/fdt_helper.h>
+#include <sbi_utils/fdt/fdt_pmu.h>
 #include <sbi_utils/irqchip/plic.h>
 #include <sbi_utils/serial/uart8250.h>
 #include <sbi_utils/timer/aclint_mtimer.h>
@@ -145,11 +149,44 @@ static int npc_timer_init(void)
 	return aclint_mtimer_cold_init(&mtimer, NULL);
 }
 
+#ifdef CONFIG_FDT_PMU
+static int npc_pmu_init(void)
+{
+	int rc;
+
+	rc = fdt_pmu_setup(fdt_get_address());
+	if (rc && rc != SBI_ENOENT)
+		return rc;
+
+	return 0;
+}
+
+static uint64_t npc_pmu_xlate_to_mhpmevent(uint32_t event_idx, uint64_t data)
+{
+	uint64_t value;
+
+	if (event_idx == SBI_PMU_EVENT_RAW_IDX ||
+	    event_idx == SBI_PMU_EVENT_RAW_V2_IDX) {
+		value = data;
+	} else {
+		value = fdt_pmu_get_select_value(event_idx);
+		if (!value)
+			value = (uint64_t)event_idx;
+	}
+
+	return value;
+}
+#endif
+
 const struct sbi_platform_operations platform_ops = {
 	.early_init		= npc_early_init,
 	.final_init		= npc_final_init,
 	.irqchip_init		= npc_irqchip_init,
 	.timer_init		= npc_timer_init,
+#ifdef CONFIG_FDT_PMU
+	.pmu_init		= npc_pmu_init,
+	.pmu_xlate_to_mhpmevent	= npc_pmu_xlate_to_mhpmevent,
+#endif
 };
 
 const struct sbi_platform platform = {

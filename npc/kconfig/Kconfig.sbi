@@ -91,6 +91,31 @@ menu "SBI 固件"
       SBI_NEXT_ADDR/SBI_FDT_ADDR，使 reserved-memory 与实际 SBI
       布局一致。
 
+  config SBI_PMU_ENABLE
+    bool "启用 SBI PMU 扩展（OpenSBI）"
+    depends on SBI_ENABLE
+    depends on SBI_IMPL_OPENSBI
+    depends on SBI_FDT_ENABLE
+    depends on PERF_RISCV_ARCH_PMU
+    default y
+    help
+      通过 OpenSBI 的 SBI PMU 扩展向 S 模式/Linux perf 暴露硬件
+      mhpmcounter/mhpmevent。打开后构建脚本会启用 OpenSBI 的
+      FDT、FDT_PMU、SBI_ECALL_PMU，并由 NPC 平台解析 DTB 中的
+      riscv,pmu 事件映射。
+
+  config SBI_RUSTSBI_PMU
+    bool "启用 SBI PMU 扩展（RustSBI）"
+    depends on SBI_ENABLE
+    depends on SBI_IMPL_RUSTSBI
+    depends on SBI_FDT_ENABLE
+    depends on PERF_RISCV_ARCH_PMU
+    default y
+    help
+      RustSBI NPC 固件解析 DTB 中的 riscv,pmu 节点，使用
+      riscv,event-to-mhpmevent / riscv,event-to-mhpmcounters
+      映射，向 S 模式暴露 mcycle/minstret/mhpmcounter3..31。
+
   config SBI_FDT_ADDR
     hex "DTB 加载/传递地址"
     depends on SBI_FDT_ENABLE

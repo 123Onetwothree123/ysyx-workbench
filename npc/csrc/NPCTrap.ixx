@@ -2,7 +2,7 @@ module;
 export module npc.NPCTrap;
 import npc.config;
 import std;
-import npc.PerfStats;
+import npc.DicArchCounterStats;
 
 export class NPCTrap final
 {
@@ -17,8 +17,8 @@ public:
     [[nodiscard]] static npc::XWord GetPC() noexcept;
     [[nodiscard]] static std::uint32_t GetCode() noexcept;
     [[nodiscard]] static int PrintResult(std::size_t Cycles, std::size_t Instructions);
-    static void PrintPerformanceStatistics(
-        const PerfStats &stats,
+    static void PrintDicArchCounterStatistics(
+        const DicArchCounterStats &stats,
         std::size_t total_cycles,
         std::size_t retired_instructions);
 };

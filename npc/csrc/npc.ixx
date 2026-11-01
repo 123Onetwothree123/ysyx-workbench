@@ -2,7 +2,7 @@ export module npc;
 export import npc.config;
 export import npc.log;
 export import npc.unicode;
-export import npc.PerfStats;
+export import npc.DicArchCounterStats;
 export import npc.NPCTrap;
 export import npc.CLIOptions;
 export import npc.ImageLoader;

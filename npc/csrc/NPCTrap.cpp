@@ -47,7 +47,7 @@ int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Instructions)
     const auto haltPC{std::format("0x{:0{}x}", HaltPC, npc::XHexDigits)};
     if (HaltCode == 0)
     {
-        if constexpr (npc::HasPerfStats)
+        if constexpr (npc::HasDicArchCounter)
         {
             const auto ipc{Cycles > 0
                                ? static_cast<double>(Instructions) /
@@ -63,7 +63,7 @@ int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Instructions)
         }
         return 0;
     }
-    if constexpr (npc::HasPerfStats)
+    if constexpr (npc::HasDicArchCounter)
     {
         const auto ipc{Cycles > 0
                            ? static_cast<double>(Instructions) /
@@ -85,12 +85,12 @@ int NPCTrap::PrintResult(std::size_t Cycles, std::size_t Instructions)
     }
     return 1;
 }
-void NPCTrap::PrintPerformanceStatistics(
-    const PerfStats &stats,
+void NPCTrap::PrintDicArchCounterStatistics(
+    const DicArchCounterStats &stats,
     std::size_t total_cycles,
     std::size_t retired_instructions)
 {
-    std::println("性能计数器");
+    std::println("数字集成电路计算机体系结构性能计数器");
     std::println("退休指令: {}", retired_instructions);
     std::println("IFU交付指令响应(含后续可能冲刷的指令): {}", stats.instruction_fetch);
     std::println("EXU输出握手: {}", stats.execution_complete);
@@ -184,6 +184,99 @@ void NPCTrap::PrintPerformanceStatistics(
     }
     std::println();
     std::println("异常/中断提交: {} 次", stats.trap_count);
+    std::println();
+    std::println("分支预测:");
+    std::println("  BTB命中/缺失: {} / {}", stats.btb_hit, stats.btb_miss);
+    std::println("  JAL-BTB命中: {}", stats.jal_btb_hit);
+    std::println("  RAS命中: {}", stats.ras_hit);
+    std::println("  分支/跳转误预测: {}", stats.branch_mispredict);
+    std::println("  条件分支 taken/not-taken: {} / {}",
+        stats.branch_taken, stats.branch_not_taken);
+    std::println("  RAS缺失: {}", stats.ras_miss);
+    std::println("  重定向 branch/fence.i/trap/mret: {} / {} / {} / {}",
+        stats.redirect_branch, stats.redirect_fence_i,
+        stats.redirect_trap, stats.redirect_mret);
+    std::println();
+    std::println("MMU/TLB:");
+    std::println("  ITLB命中/缺失: {} / {}", stats.itlb_hit, stats.itlb_miss);
+    std::println("  DTLB命中/缺失: {} / {}", stats.dtlb_hit, stats.dtlb_miss);
+    std::println("  TLB回填/冲刷: {} / {}", stats.tlb_refill, stats.tlb_flush);
+    std::println("  PTW walk/活跃周期/page fault: {} / {} / {}",
+        stats.ptw_walk, stats.ptw_walk_cycle, stats.page_fault);
+    std::println("  超级页/ASID命中: {} / {}",
+        stats.tlb_superpage_hit, stats.tlb_asid_hit);
+    std::println();
+    std::println("FPU:");
+    std::println("  请求/完成: {} / {}", stats.fpu_req, stats.fpu_done);
+    std::println("  忙碌/等待周期: {} / {}",
+        stats.fpu_active_cycle, stats.fpu_stall_cycle);
+    std::println("  DIV/SQRT、FMA、fflags异常: {} / {} / {}",
+        stats.fpu_divsqrt, stats.fpu_fma, stats.fpu_exception);
+    std::println();
+    std::println("AXI:");
+    std::println("  AR/AW/R/W/B: {} / {} / {} / {} / {}",
+        stats.axi_ar, stats.axi_aw, stats.axi_r, stats.axi_w, stats.axi_b);
+    std::println("  stall/error: {} / {}", stats.axi_stall_cycle, stats.axi_error);
+    std::println();
+    std::println("指令细分:");
+    std::println("  load/store/AMO: {} / {} / {}",
+        stats.load_op, stats.store_op, stats.amo_op);
+    std::println("  fence/RVC/system: {} / {} / {}",
+        stats.fence_op, stats.rvc_inst, stats.system_op);
+    std::println("  非法指令: {}", stats.illegal_inst);
+    std::println("  流水线冲刷周期: {}", stats.flush_cycle);
+    std::println("  WFI 指令(按NOP执行): {}", stats.wfi_inst);
+    std::println();
+    std::println("缓存细节:");
+    std::println("  ICache/DCache实际回填: {} / {}",
+        stats.icache_refill, stats.dcache_refill);
+    std::println("  非缓存/MMIO完成访问: {}", stats.uncached_access);
+    std::println("  ICache/DCache行填充: {} / {}",
+        stats.icache_line_fill, stats.dcache_line_fill);
+    std::println("  DCache写直达/store行更新: {}", stats.dcache_writeback);
+    std::println();
+    std::println("中断:");
+    std::println("  timer/external: {} / {}", stats.timer_irq, stats.external_irq);
+    std::println("  实际进入中断: {}", stats.interrupt_taken);
+    std::println("  PLIC claim/complete: {} / {}",
+        stats.plic_claim, stats.plic_complete);
+    std::println("  pending周期: {}", stats.interrupt_pending_cycle);
+    if (stats.interrupt_latency_count > 0)
+    {
+        std::println("  平均/最大 pending→trap 延迟: {:.2f} / {} 周期 ({} 次)",
+            static_cast<double>(stats.interrupt_latency_cycle) /
+                static_cast<double>(stats.interrupt_latency_count),
+            stats.interrupt_latency_max, stats.interrupt_latency_count);
+    }
+    std::println();
+    std::println("写缓冲:");
+    std::println("  无空位/排空: {} / {}", stats.wbuf_full, stats.wbuf_drain);
+    if (total_cycles > 0)
+    {
+        std::println("  平均占用: {:.2f} 项",
+            static_cast<double>(stats.wbuf_occupancy_cycle) /
+                static_cast<double>(total_cycles));
+    }
+    std::println();
+    std::println("CSR 读写: {} / {}", stats.csr_read, stats.csr_write);
+    std::println("CSR 非法: {}", stats.csr_illegal);
+    std::println("MDU 活跃周期: mul={} div={}",
+        stats.mul_active_cycle, stats.div_active_cycle);
+    std::println("MDU 除法实际迭代位数/提前结束: {} / {}",
+        stats.div_iterations, stats.div_early_out);
+    std::println("队列/气泡:");
+    if (total_cycles > 0)
+    {
+        std::println("  EXU输入槽占用率: {:.1f}%",
+            100.0 * static_cast<double>(stats.issue_occupancy_cycle) /
+                static_cast<double>(total_cycles));
+        std::println("  EXU输出/退休槽占用率: {:.1f}%",
+            100.0 * static_cast<double>(stats.retire_occupancy_cycle) /
+                static_cast<double>(total_cycles));
+        std::println("  EXU输入气泡占比: {:.1f}%",
+            100.0 * static_cast<double>(stats.bubble_cycle) /
+                static_cast<double>(total_cycles));
+    }
     std::println();
     std::println("LSU内存事务FSM占用(请求/响应/写缓冲等待，非端到端指令延迟):");
     auto load_store_total{stats.load_data + stats.store_data};

@@ -8,8 +8,9 @@
 //!    next-stage（默认 0x80200000）。
 //!
 //! 本固件只实现 NPC 需要的 SBI 子集：Base、TIME、sPI、RFNC、HSM、SRST、
-//! DBCN，以及兼容旧 payload 的 legacy 0x00..0x08。没有 F/D、MMU、多 hart
-//! 和设备树解析；SBI_FDT_ENABLE=y 时只把内嵌 DTB 复制到约定地址并
+//! DBCN，以及兼容旧 payload 的 legacy 0x00..0x08；打开
+//! CONFIG_SBI_RUSTSBI_PMU 时额外提供 PMU 扩展。没有 F/D、MMU、多 hart
+//! 和 DTB 解析；SBI_FDT_ENABLE=y 时只把内嵌 DTB 复制到约定地址并
 //! 通过 a1 传给 next-stage，不解析 DTB。PMP 只在 CONFIG_HAS_PMP=y 时
 //! 配置。相关限制由本目录实现和 Kconfig 约束。
 
@@ -21,11 +22,12 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 
 mod platform;
+mod pmu;
 mod trap;
 
 use platform::{
-    uart_init, uart_put_hex, uart_puts, NpcConsole, NpcEnvInfo, NpcFence, NpcHsm, NpcIpi, NpcReset,
-    NpcTimer,
+    uart_init, uart_put_hex, uart_puts, NpcConsole, NpcEnvInfo, NpcFence, NpcHsm, NpcIpi, NpcPMU,
+    NpcReset, NpcTimer,
 };
 use rustsbi::RustSBI;
 
@@ -34,6 +36,10 @@ const NEXT_STAGE: usize = parse_hex(env!("NPC_SBI_NEXT_ADDR"));
 const PLATFORM_NAME: &str = env!("NPC_SBI_PLATFORM");
 const HAS_PMP: bool = matches!(env!("NPC_SBI_HAS_PMP").as_bytes(), b"y" | b"Y" | b"1");
 const FDT_ENABLE: bool = matches!(env!("NPC_SBI_FDT_ENABLE").as_bytes(), b"y" | b"Y" | b"1");
+const PMU_ENABLE: bool = match option_env!("NPC_RUSTSBI_PMU") {
+    Some(value) => matches!(value.as_bytes(), b"y" | b"Y" | b"1"),
+    None => false,
+};
 #[cfg_attr(not(npc_fdt), allow(dead_code))]
 const FDT_ADDR: usize = parse_hex(env!("NPC_SBI_FDT_ADDR"));
 
@@ -73,6 +79,7 @@ pub struct NpcSbi {
     pub hsm: NpcHsm,
     pub reset: NpcReset,
     pub info: NpcEnvInfo,
+    pub pmu: Option<NpcPMU>,
 }
 
 impl NpcSbi {
@@ -85,6 +92,7 @@ impl NpcSbi {
             hsm: NpcHsm,
             reset: NpcReset,
             info: NpcEnvInfo,
+            pmu: if PMU_ENABLE { Some(NpcPMU) } else { None },
         }
     }
 }
@@ -127,6 +135,10 @@ _start:
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
     uart_init();
+    #[cfg(npc_fdt)]
+    if PMU_ENABLE {
+        crate::pmu::init(FDT_BLOB);
+    }
     uart_puts("\r\n");
     uart_puts("[rustsbi-npc] RustSBI ");
     uart_puts(rustsbi::VERSION);
@@ -141,6 +153,13 @@ pub extern "C" fn rust_main() -> ! {
     if !FDT_ENABLE {
         uart_puts("[rustsbi-npc] fdt      : none (a1=0)\r\n");
     }
+    if PMU_ENABLE {
+        uart_puts("[rustsbi-npc] pmu      : dtb\r\n");
+        uart_put_hex(
+            "[rustsbi-npc] pmu sel  : ",
+            crate::pmu::event_select(5).unwrap_or(0) as usize,
+        );
+    }
 
     trap::install();
 
@@ -151,7 +170,8 @@ pub extern "C" fn rust_main() -> ! {
         asm!("csrw mideleg, {}", in(reg) MIDELEG_VALUE);
         asm!("csrw medeleg, {}", in(reg) MEDELEG_VALUE);
         // 允许 S 模式读取 cycle/time/instret（NPC 的 time 目前恒为 0）。
-        asm!("csrw mcounteren, {}", in(reg) 0x7usize);
+        asm!("csrw mcounteren, {}", in(reg) 0xffff_ffffusize);
+        asm!("csrw mcountinhibit, zero");
         asm!("csrw satp, zero");
         asm!("csrw stvec, zero");
         asm!("csrw sie, zero");

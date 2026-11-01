@@ -37,6 +37,7 @@ NEXT_ADDR="${SBI_NEXT_ADDR:-0x80200000}"
 PLATFORM="${SBI_PLATFORM:-npc}"
 JOBS="${SBI_BUILD_JOBS:-0}"
 FDT_ENABLE="${SBI_FDT_ENABLE:-n}"
+PMU_ENABLE="${SBI_RUSTSBI_PMU:-n}"
 FDT_PATH="${SBI_FDT_PATH:-dts/npc.dts}"
 FDT_ADDR="${SBI_FDT_ADDR:-0x80f00000}"
 FDT_OUT_DIR="${SBI_FDT_OUT_DIR:-$OUT_DIR/fdt}"
@@ -49,6 +50,7 @@ RAM_BASE="${NPC_RAM_BASE:-0x80000000}"
 RAM_SIZE="${NPC_RAM_SIZE:-0x04000000}"
 TIMEBASE_FREQ="${SBI_TIMEBASE_FREQ:-450000000}"
 HAS_PMP="${SBI_HAS_PMP:-n}"
+RISCV_C="${SBI_RISCV_C:-n}"
 CACHE_PADDING="${SBI_CACHE_PADDING:-0}"
 RESET_PC=$((0x80000000 + CACHE_PADDING))
 if [ $((FW_BASE)) -ne "$RESET_PC" ]; then
@@ -73,6 +75,9 @@ if [ "$IMPL" != "rustsbi" ]; then
 fi
 
 FDT_DTB_PATH=""
+if [ "$PMU_ENABLE" = "y" ] && [ "$FDT_ENABLE" != "y" ]; then
+    die "SBI_RUSTSBI_PMU=y 需要 SBI_FDT_ENABLE=y（RustSBI 从 DTB riscv,pmu 读取事件映射）"
+fi
 if [ "$FDT_ENABLE" = "y" ]; then
     SBI_FDT_OUT_DIR="$FDT_OUT_DIR" \
     SBI_FDT_PATH="$FDT_PATH" \
@@ -110,6 +115,7 @@ export SBI_NEXT_ADDR="$NEXT_ADDR"
 export SBI_PLATFORM="$PLATFORM"
 export SBI_HAS_PMP="$HAS_PMP"
 export SBI_FDT_ENABLE="$FDT_ENABLE"
+export NPC_RUSTSBI_PMU="$PMU_ENABLE"
 export SBI_FDT_PATH="$FDT_PATH"
 export SBI_FDT_ADDR="$FDT_ADDR"
 export SBI_FDT_DTB_PATH="$FDT_DTB_PATH"
@@ -157,8 +163,10 @@ if [ -n "$READELF" ]; then
         grep 'Tag_RISCV_arch' | head -n 1 || true)"
     case "$ARCH_ATTR" in
         *zca*|*_c[0-9]*)
-            die "固件包含压缩指令（$ARCH_ATTR）。
+            if [ "$RISCV_C" != "y" ]; then
+                die "固件包含压缩指令（$ARCH_ATTR）。
 请使用 CONFIG_RISCV_C=y 的 NPC 配置，或改用 nightly 的 -Zbuild-std 重新编译 libcore。"
+            fi
             ;;
     esac
 fi

@@ -7,7 +7,7 @@ BUILD_DIR := build
 BIN_BASE := $(BUILD_DIR)/perf-stats-test-base
 BIN_ALL := $(BUILD_DIR)/perf-stats-test-all-features
 STD_MODULE_SRC := $(lastword $(wildcard /usr/include/c++/*/bits/std.cc))
-PERF_MODULE_SRC := $(NPC_HOME)/csrc/PerfStats.ixx
+PERF_MODULE_SRC := $(NPC_HOME)/csrc/DicArchCounterStats.ixx
 RESULT_MODULE_SRC := $(NPC_HOME)/csrc/NPCSimResult/NPCSimResult.ixx
 RESULT_IMPL_SRC := $(NPC_HOME)/csrc/NPCSimResult/NPCSimResult.cpp
 NPC_CONFIG_JSON := $(NPC_HOME)/include/generated/npc_config.json
@@ -21,6 +21,7 @@ NPC_CONFIG_GEN_MODULE := $(NPC_CONFIG_GEN_DIR)/npc.configgen.ixx
 NPC_CONFIG_GEN_CMAKE := $(NPC_CONFIG_GEN_DIR)/CMakeLists.txt
 NPC_CONFIG_GEN_BUILD_DIR := $(abspath $(BUILD_DIR)/npc_config_gen-cmake)
 NPC_CONFIG_GEN := $(BUILD_DIR)/npc_config_gen
+NPC_CONFIG_GEN_BIN := $(NPC_CONFIG_GEN)
 include $(NPC_CONFIG_GEN_DIR)/build.mk
 NPC_CONFIG_MODULE_SRC := $(BUILD_DIR)/npc_config.ixx
 NPC_CONFIG_MODULE_OBJ := $(BUILD_DIR)/npc_config.ixx.o
@@ -175,8 +176,8 @@ $(BUILD_DIR):
 $(BUILD_DIR)/std.o: $(STD_MODULE_SRC) | $(BUILD_DIR)
 	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) -x c++ -c $(abspath $<) -o std.o
 
-$(BUILD_DIR)/PerfStats.o: $(PERF_MODULE_SRC) $(BUILD_DIR)/std.o
-	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) -x c++ -c $(abspath $<) -o PerfStats.o
+$(BUILD_DIR)/DicArchCounterStats.o: $(PERF_MODULE_SRC) $(BUILD_DIR)/std.o
+	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) -x c++ -c $(abspath $<) -o DicArchCounterStats.o
 
 $(NPC_CONFIG_JSON): $(NPC_HOME)/.config
 	$(MAKE) -C $(NPC_HOME) npc-config-json
@@ -191,7 +192,7 @@ $(NPC_CONFIG_MODULE_SRC): $(NPC_CONFIG_JSON) $(NPC_CONFIG_GEN) | $(BUILD_DIR)
 $(NPC_CONFIG_MODULE_OBJ): $(NPC_CONFIG_MODULE_SRC) $(BUILD_DIR)/std.o
 	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) -x c++ -c $(abspath $<) -o npc_config.ixx.o
 
-$(BUILD_DIR)/NPCSimResult.ixx.o: $(RESULT_MODULE_SRC) $(BUILD_DIR)/PerfStats.o $(NPC_CONFIG_MODULE_OBJ)
+$(BUILD_DIR)/NPCSimResult.ixx.o: $(RESULT_MODULE_SRC) $(BUILD_DIR)/DicArchCounterStats.o $(NPC_CONFIG_MODULE_OBJ)
 	cd $(BUILD_DIR) && $(CXX) $(CXXFLAGS) -x c++ -c $(abspath $<) -o NPCSimResult.ixx.o
 
 $(BUILD_DIR)/NPCSimResult.base.o: $(RESULT_IMPL_SRC) $(BUILD_DIR)/NPCSimResult.ixx.o $(NPC_CONFIG_MODULE_OBJ)
@@ -221,12 +222,12 @@ prepare-fixtures: | $(METADATA_DIR)
 	  'measurement_valid=1' \
 	  'frequency_mhz=777' 'area_um2=123.5' > $(SYNTH_FILE)
 
-$(BIN_BASE): $(BUILD_DIR)/std.o $(BUILD_DIR)/PerfStats.o \
+$(BIN_BASE): $(BUILD_DIR)/std.o $(BUILD_DIR)/DicArchCounterStats.o \
 	$(NPC_CONFIG_MODULE_OBJ) $(BUILD_DIR)/NPCSimResult.ixx.o \
 	$(BUILD_DIR)/NPCSimResult.base.o $(BUILD_DIR)/main.o
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-$(BIN_ALL): $(BUILD_DIR)/std.o $(BUILD_DIR)/PerfStats.o \
+$(BIN_ALL): $(BUILD_DIR)/std.o $(BUILD_DIR)/DicArchCounterStats.o \
 	$(NPC_CONFIG_MODULE_OBJ) $(BUILD_DIR)/NPCSimResult.ixx.o \
 	$(BUILD_DIR)/NPCSimResult.all.o $(BUILD_DIR)/main.o
 	$(CXX) $(CXXFLAGS) $^ -o $@

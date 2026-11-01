@@ -38,6 +38,7 @@ class ysyx_26030103_ICacheInterface(val AddressWidth: Int = 32)
   val perf_miss = Output(Bool())
   val perf_refill_req = Output(Bool())
   val perf_refill_resp = Output(Bool())
+  val perf_line_fill = Output(Bool())
   val access_fault = Output(Bool())
   val access_fault_resp = Output(UInt(2.W))
   val flush = Input(Bool()) // fence.i: 清cache行并丢弃在飞refill

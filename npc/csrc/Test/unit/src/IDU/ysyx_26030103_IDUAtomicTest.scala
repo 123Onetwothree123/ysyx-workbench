@@ -133,6 +133,7 @@ class ysyx_26030103_AtomicMisaHarness(useA: Boolean) extends Module {
   csr.io.FPCommit := false.B
   csr.io.FPFlags := 0.U
   csr.io.FPStateDirtyCommit := false.B
+  csr.io.PMUEvents := 0.U
   io.rdata := csr.io.CSR_rdata
 }
 

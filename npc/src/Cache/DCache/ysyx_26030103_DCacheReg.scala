@@ -378,6 +378,8 @@ class ysyx_26030103_DCacheReg(
     state === SDrain || state === SDrainFault
   io.perf_refill_req := RefillActive && state === SReadReq
   io.perf_refill_resp := RefillActive && state === SReadResp
+  val PerfLineFill = WireDefault(false.B)
+  io.perf_line_fill := PerfLineFill
   val storeIndexAddr = if (Vipt) io.StoreVAddr else io.StoreAddr
   val StoreIndex = storeIndexAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   val StoreIndexSafe = if (Enable) StoreIndex else 0.U(IndexWidth.W)
@@ -394,6 +396,7 @@ class ysyx_26030103_DCacheReg(
     CacheableMask,
     PMARegions
   )
+  io.perf_writeback := io.StoreValid && StoreCacheable
   val StoreHit = StoreCacheable &&
     valid(StoreIndexSafe) && tag(StoreIndexSafe) === StoreTag
   val StoreConflictsRefill = io.StoreValid && RefillActive && StoreCacheable &&
@@ -883,6 +886,7 @@ class ysyx_26030103_DCacheReg(
               val RefillInstallOk =
                 !suppressFill && !io.flush && !StoreConflictsRefill &&
                   !RefillError && !BeatError
+              PerfLineFill := RefillInstallOk
               when(RefillInstallOk) {
                 // serial/parallel 扫描尚未清完旧副本时先挂起，扫描结束
                 // 后再置 valid；扫描窗口内不出现两份有效副本。

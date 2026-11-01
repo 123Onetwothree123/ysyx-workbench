@@ -11,7 +11,7 @@
 use core::arch::asm;
 use core::ptr::{read_volatile, write_volatile};
 
-use rustsbi::{Console, EnvInfo, Fence, HartMask, Hsm, Ipi, Physical, Reset, SbiRet, Timer};
+use rustsbi::{Console, EnvInfo, Fence, HartMask, Hsm, Ipi, Physical, Pmu as RustSbiPMU, Reset, SbiRet, Timer};
 
 pub const UART_BASE: usize = 0x1000_0000;
 pub const CLINT_BASE: usize = 0x0200_0000;
@@ -353,6 +353,256 @@ impl Reset for NpcReset {
             }
             _ => SbiRet::invalid_param(),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PMU：mcycle/minstret + mhpmcounter3..31
+// ---------------------------------------------------------------------------
+
+const PMU_COUNTERS: usize = 32;
+const PMU_RAW_EVENT: usize = 0x20000;
+const PMU_RAW_EVENT_V2: usize = 0x30000;
+const PMU_CFG_SKIP_MATCH: usize = 1 << 0;
+const PMU_CFG_CLEAR_VALUE: usize = 1 << 1;
+const PMU_CFG_AUTO_START: usize = 1 << 2;
+const PMU_CFG_UINH: usize = 1 << 5;
+const PMU_CFG_SINH: usize = 1 << 6;
+const PMU_CFG_MINH: usize = 1 << 7;
+const MHPMEVENT_UINH: usize = 1 << 60;
+const MHPMEVENT_SINH: usize = 1 << 61;
+const MHPMEVENT_MINH: usize = 1 << 62;
+
+macro_rules! write_hpm_csrw {
+    ($index:expr, $value:expr; $($idx:literal => $csr:literal),* $(,)?) => {
+        match $index {
+            $(
+                $idx => unsafe {
+                    asm!("csrw {csr}, {value}", csr = const $csr, value = in(reg) $value)
+                },
+            )*
+            _ => {}
+        }
+    };
+}
+
+unsafe fn write_hpmcounter(index: usize, value: usize) {
+    write_hpm_csrw!(index, value;
+        3 => 0xb03, 4 => 0xb04, 5 => 0xb05, 6 => 0xb06,
+        7 => 0xb07, 8 => 0xb08, 9 => 0xb09, 10 => 0xb0a,
+        11 => 0xb0b, 12 => 0xb0c, 13 => 0xb0d, 14 => 0xb0e,
+        15 => 0xb0f, 16 => 0xb10, 17 => 0xb11, 18 => 0xb12,
+        19 => 0xb13, 20 => 0xb14, 21 => 0xb15, 22 => 0xb16,
+        23 => 0xb17, 24 => 0xb18, 25 => 0xb19, 26 => 0xb1a,
+        27 => 0xb1b, 28 => 0xb1c, 29 => 0xb1d, 30 => 0xb1e,
+        31 => 0xb1f,
+    );
+}
+
+unsafe fn write_mhpmevent(index: usize, value: usize) {
+    write_hpm_csrw!(index, value;
+        3 => 0x323, 4 => 0x324, 5 => 0x325, 6 => 0x326,
+        7 => 0x327, 8 => 0x328, 9 => 0x329, 10 => 0x32a,
+        11 => 0x32b, 12 => 0x32c, 13 => 0x32d, 14 => 0x32e,
+        15 => 0x32f, 16 => 0x330, 17 => 0x331, 18 => 0x332,
+        19 => 0x333, 20 => 0x334, 21 => 0x335, 22 => 0x336,
+        23 => 0x337, 24 => 0x338, 25 => 0x339, 26 => 0x33a,
+        27 => 0x33b, 28 => 0x33c, 29 => 0x33d, 30 => 0x33e,
+        31 => 0x33f,
+    );
+}
+
+unsafe fn write_pmu_counter(index: usize, value: usize) {
+    match index {
+        0 => asm!("csrw mcycle, {}", in(reg) value),
+        2 => asm!("csrw minstret, {}", in(reg) value),
+        3..=31 => write_hpmcounter(index, value),
+        _ => {}
+    }
+}
+
+unsafe fn update_mcountinhibit(index: usize, inhibit: bool) {
+    let bit = match index {
+        0 => 1usize,
+        2 => 1usize << 2,
+        3..=31 => 1usize << index,
+        _ => return,
+    };
+    let mut value: usize;
+    asm!("csrr {}, mcountinhibit", out(reg) value);
+    if inhibit {
+        value |= bit;
+    } else {
+        value &= !bit;
+    }
+    asm!("csrw mcountinhibit, {}", in(reg) value);
+}
+
+fn counter_mask_valid(base: usize, mask: usize) -> bool {
+    if mask == 0 {
+        return false;
+    }
+    for bit in 0..(usize::BITS as usize) {
+        if mask & (1usize << bit) != 0 && base + bit >= PMU_COUNTERS {
+            return false;
+        }
+    }
+    true
+}
+
+fn hardware_event_selector(event_idx: usize, event_data: u64) -> Option<usize> {
+    if event_idx == PMU_RAW_EVENT || event_idx == PMU_RAW_EVENT_V2 {
+        return Some(event_data as usize);
+    }
+    if let Some(select) = crate::pmu::event_select(event_idx as u32) {
+        if select != 0 {
+            return Some(select as usize);
+        }
+        return None;
+    }
+    // 没有 DTB 映射时只接受与硬件事件号天然一致的通用事件。
+    match event_idx {
+        1..=4 => Some(event_idx),
+        _ => None,
+    }
+}
+
+pub struct NpcPMU;
+
+impl RustSbiPMU for NpcPMU {
+    fn num_counters(&self) -> usize {
+        PMU_COUNTERS
+    }
+
+    fn counter_get_info(&self, counter_idx: usize) -> SbiRet {
+        if counter_idx >= PMU_COUNTERS {
+            return SbiRet::invalid_param();
+        }
+        // S 模式通过 cycle/time/instret/hpmcounter3..31 只读别名访问。
+        let csr = 0xc00 + counter_idx;
+        let info = csr | (63usize << 12);
+        SbiRet::success(info)
+    }
+
+    fn counter_config_matching(
+        &self,
+        counter_idx_base: usize,
+        counter_idx_mask: usize,
+        config_flags: usize,
+        event_idx: usize,
+        event_data: u64,
+    ) -> SbiRet {
+        if !counter_mask_valid(counter_idx_base, counter_idx_mask) {
+            return SbiRet::invalid_param();
+        }
+        let Some(selector) = hardware_event_selector(event_idx, event_data) else {
+            return SbiRet::not_supported();
+        };
+
+        let mut selected = None;
+        for bit in 0..(usize::BITS as usize) {
+            if counter_idx_mask & (1usize << bit) == 0 {
+                continue;
+            }
+            let index = counter_idx_base + bit;
+            if index == 1 {
+                continue;
+            }
+            if index < 3 {
+                let fixed_match = (index == 0 && event_idx == 1) ||
+                    (index == 2 && event_idx == 2);
+                if !fixed_match {
+                    continue;
+                }
+            } else if let Some(mask) = crate::pmu::event_counter_mask(event_idx as u32) {
+                if mask & (1u32 << index) == 0 {
+                    continue;
+                }
+            }
+            selected = Some(index);
+            break;
+        }
+        let Some(index) = selected else {
+            return SbiRet::not_supported();
+        };
+
+        if index >= 3 {
+            let mut event = selector;
+            if config_flags & PMU_CFG_UINH != 0 {
+                event |= MHPMEVENT_UINH;
+            }
+            if config_flags & PMU_CFG_SINH != 0 {
+                event |= MHPMEVENT_SINH;
+            }
+            if config_flags & PMU_CFG_MINH != 0 {
+                event |= MHPMEVENT_MINH;
+            }
+            unsafe { write_mhpmevent(index, event) };
+        }
+        if config_flags & PMU_CFG_CLEAR_VALUE != 0 {
+            unsafe { write_pmu_counter(index, 0) };
+        }
+        if config_flags & PMU_CFG_AUTO_START != 0 {
+            unsafe { update_mcountinhibit(index, false) };
+        }
+
+        let _ = PMU_CFG_SKIP_MATCH;
+        SbiRet::success(index)
+    }
+
+    fn counter_start(
+        &self,
+        counter_idx_base: usize,
+        counter_idx_mask: usize,
+        start_flags: usize,
+        initial_value: u64,
+    ) -> SbiRet {
+        if !counter_mask_valid(counter_idx_base, counter_idx_mask) {
+            return SbiRet::invalid_param();
+        }
+        for bit in 0..(usize::BITS as usize) {
+            if counter_idx_mask & (1usize << bit) == 0 {
+                continue;
+            }
+            let index = counter_idx_base + bit;
+            if index == 1 {
+                continue;
+            }
+            if start_flags & 1 != 0 {
+                unsafe { write_pmu_counter(index, initial_value as usize) };
+            }
+            unsafe { update_mcountinhibit(index, false) };
+        }
+        SbiRet::success(0)
+    }
+
+    fn counter_stop(
+        &self,
+        counter_idx_base: usize,
+        counter_idx_mask: usize,
+        stop_flags: usize,
+    ) -> SbiRet {
+        if !counter_mask_valid(counter_idx_base, counter_idx_mask) {
+            return SbiRet::invalid_param();
+        }
+        for bit in 0..(usize::BITS as usize) {
+            if counter_idx_mask & (1usize << bit) == 0 {
+                continue;
+            }
+            let index = counter_idx_base + bit;
+            if index == 1 {
+                continue;
+            }
+            unsafe { update_mcountinhibit(index, true) };
+            if stop_flags & 1 != 0 && index >= 3 {
+                unsafe { write_mhpmevent(index, 0) };
+            }
+        }
+        SbiRet::success(0)
+    }
+
+    fn counter_fw_read(&self, _counter_idx: usize) -> SbiRet {
+        SbiRet::invalid_param()
     }
 }
 

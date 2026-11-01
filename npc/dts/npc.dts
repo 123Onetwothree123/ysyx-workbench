@@ -75,6 +75,9 @@
 #ifndef NPC_MMU_TYPE_VALID
 #define NPC_MMU_TYPE_VALID 1
 #endif
+#ifndef NPC_PMU_ENABLED
+#define NPC_PMU_ENABLED 0
+#endif
 #ifndef NPC_TIMEBASE_FREQ
 /* mtime 每个 CPU 周期 +1；默认 SYNTH_FREQ=450MHz。 */
 #define NPC_TIMEBASE_FREQ 450000000
@@ -159,6 +162,25 @@
 			};
 		};
 	};
+
+#if NPC_PMU_ENABLED
+	/*
+	 * 架构 PMU 的 SBI/设备树映射。通用事件 1..6 对应
+	 * mhpmevent 实现编码 1..8；所有事件都可以使用 hpmcounter3..31。
+	 */
+	pmu {
+		compatible = "riscv,pmu";
+		riscv,event-to-mhpmevent =
+			<0x00001 0x00000000 0x00000001>, /* CPU cycles */
+			<0x00002 0x00000000 0x00000002>, /* instructions */
+			<0x00003 0x00000000 0x00000003>, /* cache references */
+			<0x00004 0x00000000 0x00000004>, /* cache misses */
+			<0x00005 0x00000000 0x00000007>, /* branch instructions */
+			<0x00006 0x00000000 0x00000008>; /* branch misses */
+		riscv,event-to-mhpmcounters =
+			<0x00001 0x00006 0xfffffff8>;
+	};
+#endif
 
 	memory@NPC_RAM_BASE_NAME {
 		device_type = "memory";

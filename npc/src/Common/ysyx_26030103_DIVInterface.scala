@@ -19,6 +19,8 @@ class ysyx_26030103_DIVUnitInterface(val XLEN: Int = 32) extends Bundle {
   val Req = Flipped(Decoupled(new ysyx_26030103_DIVInstructionRequest(XLEN))) //输入请求
   val Resp = Decoupled(new ysyx_26030103_DIVInstructionResponse(XLEN)) //输出结果
   val Flush = Input(Bool()) //取消事务
+  val PerfIterations = Output(UInt(16.W)) //最近一次除法的实际迭代位数
+  val PerfEarlyOut = Output(Bool()) //最近一次除法是否提前结束
 }
 //DIV后端接收的无符号幅值。
 class ysyx_26030103_DIVCoreRequest(val Width: Int = 32) extends Bundle {
@@ -35,6 +37,8 @@ class ysyx_26030103_DIVCoreInterface(val Width: Int = 32) extends Bundle {
   val Req = Flipped(Decoupled(new ysyx_26030103_DIVCoreRequest(Width))) //输入请求
   val Resp = Decoupled(new ysyx_26030103_DIVCoreResponse(Width)) //输出商余数
   val Flush = Input(Bool()) //取消事务
+  val IterationCount = Output(UInt(16.W)) //本次除法实际迭代的位数
+  val EarlyOut = Output(Bool()) //本次除法是否提前结束
 }
 //DIV适配层辅助函数。
 object ysyx_26030103_DIVAdapterUtils {

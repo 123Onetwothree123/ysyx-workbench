@@ -51,6 +51,8 @@ class ysyx_26030103_RocketMultiplierIO(val dataBits: Int = 64, val tagBits: Int 
   val req = Flipped(Decoupled(new ysyx_26030103_RocketMultiplierReq(dataBits, tagBits)))
   val kill = Input(Bool())
   val resp = Decoupled(new ysyx_26030103_RocketMultiplierResp(dataBits, tagBits))
+  val div_iterations = Output(UInt(16.W))
+  val div_early_out = Output(Bool())
 }
 
 class ysyx_26030103_RocketMulDiv(
@@ -197,4 +199,7 @@ class ysyx_26030103_RocketMulDiv(
   io.resp.bits.full_data := Cat(remainder(2 * w, w + 1), remainder(w - 1, 0))
   io.resp.valid := state === s_done_mul || state === s_done_div
   io.req.ready := state === s_ready
+  io.div_iterations := (count * divUnroll.U).pad(16)
+  io.div_early_out := state === s_done_div &&
+    count < (w / divUnroll + 1).U
 }

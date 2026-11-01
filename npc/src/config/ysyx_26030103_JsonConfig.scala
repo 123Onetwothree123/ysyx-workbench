@@ -323,16 +323,21 @@ object ysyx_26030103_JsonConfig {
             case "itrace_write_file"   => Some("ITRACE_WRITE_FILE")
             case "ftrace"              => Some("FTRACE")
             case "iringbuf"            => Some("IRINGBUF")
-            case "perf_stats"          => Some("PERF_STATS")
+            case "dic_arch_counter"    => Some("PERF_DIC_ARCH_COUNTER")
+            case "riscv_arch_pmu"      => Some("PERF_RISCV_ARCH_PMU")
+            case "riscv_arch_pmu_zihpm" =>
+              Some("PERF_RISCV_ARCH_PMU_ZIHPM")
+            case "riscv_arch_pmu_sscofpmf" =>
+              Some("PERF_RISCV_ARCH_PMU_SSCOFPMF")
             case "perf_save"           => Some("PERF_SAVE")
             case "watchpoint"          => Some("WATCHPOINT")
             case "watchpoint_num"      => Some("WATCHPOINT_NUM")
-            case value if value.startsWith("perf_groups.") =>
-              Some("PERF_COUNTER_" +
-                upper(value.stripPrefix("perf_groups.")))
-            case value if value.startsWith("perf_counters.") =>
-              Some("PERF_COUNTER_" +
-                upper(value.stripPrefix("perf_counters.")))
+            case value if value.startsWith("dic_arch_counter_groups.") =>
+              Some("PERF_DIC_ARCH_COUNTER_" +
+                upper(value.stripPrefix("dic_arch_counter_groups.")))
+            case value if value.startsWith("dic_arch_counter_events.") =>
+              Some("PERF_DIC_ARCH_COUNTER_" +
+                upper(value.stripPrefix("dic_arch_counter_events.")))
             case _ => Some("DEBUG_" + joined(tail))
           }
         case "platform" =>

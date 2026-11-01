@@ -75,7 +75,7 @@ NPC_IXX_SRCS := \
   $(NPC_CONFIG_MODULE) \
   $(NPC_CSRC_DIR)/log/log.ixx \
   $(NPC_CSRC_DIR)/unicode.ixx \
-  $(NPC_CSRC_DIR)/PerfStats.ixx \
+  $(NPC_CSRC_DIR)/DicArchCounterStats.ixx \
   $(NPC_CSRC_DIR)/NPCTrap.ixx \
   $(NPC_CSRC_DIR)/CLIOptions.ixx \
   $(NPC_CSRC_DIR)/SoCMemoryMap/AddressRange.ixx \
