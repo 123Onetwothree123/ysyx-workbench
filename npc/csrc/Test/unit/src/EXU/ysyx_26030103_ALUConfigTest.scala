@@ -1,19 +1,17 @@
 package ysyx_26030103.exu
-
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction._
 import _root_.ysyx_26030103.config._
-
+//AI注释
 /** ALU 后端/加法器结构矩阵测试：所有组合都必须保持 RV32/RV64 语义。 */
 class ysyx_26030103_ALUConfigTest extends AnyFlatSpec with Matchers {
   private val Backends = Seq(
     ysyx_26030103_ALUImpl.Standard,
     ysyx_26030103_ALUImpl.Compact
   )
-
   private val Adders = Seq(
     ysyx_26030103_ALUAdderImpl.Native,
     ysyx_26030103_ALUAdderImpl.Ripple,
@@ -21,7 +19,6 @@ class ysyx_26030103_ALUConfigTest extends AnyFlatSpec with Matchers {
     ysyx_26030103_ALUAdderImpl.CarryLookahead,
     ysyx_26030103_ALUAdderImpl.Elau
   )
-
   private def config(
       xlen: Int,
       backend: ysyx_26030103_ALUImpl,
@@ -38,7 +35,6 @@ class ysyx_26030103_ALUConfigTest extends AnyFlatSpec with Matchers {
         Elau = ysyx_26030103_ElauParams(Speed = elauSpeed)
       )
     )
-
   /** 每个配置只仿真一次，在同一组合 DUT 上依次检查多个操作。 */
   private def check(cfg: ysyx_26030103_NPCConfig): Unit = {
     simulate(ysyx_26030103_ALU(cfg)) { dut =>
@@ -48,7 +44,6 @@ class ysyx_26030103_ALUConfigTest extends AnyFlatSpec with Matchers {
         dut.io.ALUCtrl.poke(ctrl)
         dut.io.result.peek().litValue
       }
-
       val mask = (BigInt(1) << cfg.XLEN) - 1
       alu(ADD, mask, 1) should be(0)
       // 全 1 相加会穿过所有分组/进位链，专门覆盖 carry-select 的边界。
@@ -58,18 +53,27 @@ class ysyx_26030103_ALUConfigTest extends AnyFlatSpec with Matchers {
       alu(SLTU, mask, 1) should be(0)
       alu(SLL, 1, 4) should be(16)
       alu(SRL, mask, 4) should be(mask >> 4)
+      alu(SRA, mask, 4) should be(mask)
       alu(XOR, BigInt("a5a5a5a5", 16), BigInt("0f0f0f0f", 16)) should
         be(BigInt("aaaaaaaa", 16))
+      alu(OR, BigInt("a5a5a5a5", 16), BigInt("0f0f0f0f", 16)) should
+        be(BigInt("afafafaf", 16))
+      alu(AND, BigInt("a5a5a5a5", 16), BigInt("0f0f0f0f", 16)) should
+        be(BigInt("05050505", 16))
+      alu(NOP, mask, mask) should be(0)
       if (cfg.XLEN == 64) {
         alu(ADDW, BigInt("7fffffff", 16), 1) should
           be(BigInt("ffffffff80000000", 16))
         alu(SUBW, BigInt("80000000", 16), 1) should
           be(BigInt("000000007fffffff", 16))
         alu(SLLW, 1, 33) should be(2)
+        alu(SRLW, BigInt("80000000", 16), 1) should
+          be(BigInt("0000000040000000", 16))
+        alu(SRAW, BigInt("80000000", 16), 1) should
+          be(BigInt("ffffffffc0000000", 16))
       }
     }
   }
-
   "ALU configuration matrix" should "保持 RV32/RV64 算术、比较和 W 型语义" in {
     for {
       xlen <- Seq(32, 64)
@@ -81,20 +85,20 @@ class ysyx_26030103_ALUConfigTest extends AnyFlatSpec with Matchers {
       }
     }
   }
-
   "ELAU speed backends" should "在 slow/medium/fast 下保持相同语义" in {
     for (speed <- ysyx_26030103_ElauSpeed.All) {
       withClue(s"elau speed=${speed.Name}: ") {
-        check(config(
-          xlen = 32,
-          backend = ysyx_26030103_ALUImpl.Standard,
-          adder = ysyx_26030103_ALUAdderImpl.Elau,
-          elauSpeed = speed
-        ))
+        check(
+          config(
+            xlen = 32,
+            backend = ysyx_26030103_ALUImpl.Standard,
+            adder = ysyx_26030103_ALUAdderImpl.Elau,
+            elauSpeed = speed
+          )
+        )
       }
     }
   }
-
   "ALU external backend" should "在配置期和工厂入口明确拒绝" in {
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
@@ -105,7 +109,6 @@ class ysyx_26030103_ALUConfigTest extends AnyFlatSpec with Matchers {
     }
     error.getMessage should include("ALU_IMPL=external")
   }
-
   "ALU carry-select" should "拒绝不能整除 XLEN 的分组宽度" in {
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
