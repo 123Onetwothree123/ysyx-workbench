@@ -108,7 +108,11 @@ case class ysyx_26030103_NPCConfig(
     PerfCounters: Set[String] =
       ysyx_26030103_PerfCounterCatalog.AllPerfCounters,
     // MMU/TLB 配置；RV32 为 Sv32，RV64 为标准 Sv39/Sv48 的 IFU/LSU 翻译路径。
-    MMU: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile()
+    MMU: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile(),
+    // IDU 译码真值表的最小化算法；只影响 elaboration 生成的组合逻辑，
+    // 不改变指令语义。
+    IDUDecodeMinimizer: ysyx_26030103_IDUDecodeMinimizer =
+      ysyx_26030103_IDUDecodeMinimizer.QMC
 ) {
   require(XLEN == 32 || XLEN == 64,
     s"XLEN 只允许 32 或 64，收到 XLEN=$XLEN")
@@ -648,6 +652,7 @@ case class ysyx_26030103_NPCConfig(
       s"fpu_params=${FPUProfile.Describe(FPUImpl)}, " +
       s"alu=${ALUImpl.Name}, " +
       s"alu_params=${ALUProfile.Describe(ALUImpl)}, " +
+      s"idu_decode=${IDUDecodeMinimizer.Name}, " +
       s"addr_w=$AddressWidth, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
       s"mdu=${MDUImpl.Name}, " +

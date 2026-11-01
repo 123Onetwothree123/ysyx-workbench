@@ -99,6 +99,7 @@ object ysyx_26030103_Elaborate extends App {
   val ALUAdderImplName = cfg.string("alu.adder_impl", "native")
   val ALUCarrySelectGroup = cfg.int("alu.carry_select_group", 8)
   val ALUElauSpeedName = cfg.string("alu.elau.speed", "fast")
+  val IDUDecodeMinimizerName = cfg.string("idu.decode_minimizer", "qmc")
   val MDUImplName = cfg.string("mdu.impl", "standard")
   val MULImplName = cfg.string("mdu.mul_impl", "shift_add")
   val MULEncodingName = cfg.string("mdu.mul_encoding", "plain")
@@ -245,6 +246,8 @@ object ysyx_26030103_Elaborate extends App {
         Speed = ysyx_26030103_ElauSpeed.FromString(ALUElauSpeedName)
       )
     ),
+    IDUDecodeMinimizer =
+      ysyx_26030103_IDUDecodeMinimizer.FromString(IDUDecodeMinimizerName),
     MDUImpl = ysyx_26030103_MDUImpl.FromString(MDUImplName),
     MULImpl = ysyx_26030103_MULImpl.FromString(MULImplName),
     DIVImpl = ysyx_26030103_DIVImpl.FromString(DIVImplName),

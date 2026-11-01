@@ -4,6 +4,7 @@ import chisel3.util._
 import chisel3.util.experimental.decode._
 import _root_.ysyx_26030103.common.ysyx_26030103_opcode._
 import _root_.ysyx_26030103.config.ysyx_26030103_NPCConfig
+import _root_.ysyx_26030103.config.ysyx_26030103_IDUDecodeMinimizer
 import _root_.ysyx_26030103.common.ysyx_26030103_MDUOp
 class ysyx_26030103_ALUDecoder(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
@@ -31,12 +32,9 @@ class ysyx_26030103_ALUDecoder(
     val funct7 = Input(UInt(7.W))
     val ALUCtrl = Output(UInt(CtrlWidth.W))
     val Illegal = Output(Bool())
-    // M扩展
     val IsMDU = Output(Bool())
     val MDUOp = Output(UInt(ysyx_26030103_MDUOp.Width.W))
   })
-  // 输出布局(低位到高位): Illegal(0) | ALUCtrl(4:1) | IsMDU(5) | MDUOp(8:6)
-  // MDUOp 扩展为 4 位后整体宽度为 10 位。
   private def encode(
       ctrl: UInt,
       illegal: Boolean = false,
@@ -49,8 +47,6 @@ class ysyx_26030103_ALUDecoder(
   private def key(opcode: UInt, f3f7: String): BitPat =
     BitPat(opcode) ## BitPat(f3f7)
 
-  // RV64 的移位立即数允许 shamt[5] 位于 funct7 的 bit0。RV32 仍要求
-  // 该位为 0，保持原有非法编码判定不变。
   private val SlliKey = if (XLen64) "b001_000000?" else "b001_0000000"
   private val SrliKey = if (XLen64) "b101_000000?" else "b101_0000000"
   private val SraiKey = if (XLen64) "b101_010000?" else "b101_0100000"
@@ -65,9 +61,9 @@ class ysyx_26030103_ALUDecoder(
     key(OPCODE_Store, "b001_???????") -> encode(ADD), // SH
     key(OPCODE_Store, "b010_???????") -> encode(ADD), // SW
     key(OPCODE_Immediate_Bxxx, "b000_???????") -> encode(ADD), // JALR
-    key(OPCODE_UpperImmediate_auipc, "b???_???????") -> encode(ADD),
-    key(OPCODE_Jump, "b???_???????") -> encode(ADD),
-    key(OPCODE_UpperImmediate_lui, "b???_???????") -> encode(ADD),
+    key(OPCODE_UpperImmediate_auipc, "b???_???????") -> encode(ADD), // AUIPC
+    key(OPCODE_Jump, "b???_???????") -> encode(ADD), // JAL
+    key(OPCODE_UpperImmediate_lui, "b???_???????") -> encode(ADD), // LUI
     key(OPCODE_Branch, "b000_???????") -> encode(SUB), // BEQ
     key(OPCODE_Branch, "b001_???????") -> encode(SUB), // BNE
     key(OPCODE_Branch, "b100_???????") -> encode(SUB), // BLT
@@ -75,29 +71,28 @@ class ysyx_26030103_ALUDecoder(
     key(OPCODE_Branch, "b110_???????") -> encode(SUB), // BLTU
     key(OPCODE_Branch, "b111_???????") -> encode(SUB), // BGEU
     key(OPCODE_Immediate, "b000_???????") -> encode(ADD), // ADDI
-    key(OPCODE_Immediate, SlliKey) -> encode(SLL),
+    key(OPCODE_Immediate, SlliKey) -> encode(SLL), // SLLI
     key(OPCODE_Immediate, "b010_???????") -> encode(SLT), // SLTI
     key(OPCODE_Immediate, "b011_???????") -> encode(SLTU), // SLTIU
     key(OPCODE_Immediate, "b100_???????") -> encode(XOR), // XORI
-    key(OPCODE_Immediate, SrliKey) -> encode(SRL),
-    key(OPCODE_Immediate, SraiKey) -> encode(SRA),
+    key(OPCODE_Immediate, SrliKey) -> encode(SRL), // SRLI
+    key(OPCODE_Immediate, SraiKey) -> encode(SRA), // SRAI
     key(OPCODE_Immediate, "b110_???????") -> encode(OR), // ORI
     key(OPCODE_Immediate, "b111_???????") -> encode(AND), // ANDI
-    key(OPCODE_Register, "b000_0000000") -> encode(ADD),
-    key(OPCODE_Register, "b000_0100000") -> encode(SUB),
-    key(OPCODE_Register, "b001_0000000") -> encode(SLL),
-    key(OPCODE_Register, "b010_0000000") -> encode(SLT),
-    key(OPCODE_Register, "b011_0000000") -> encode(SLTU),
-    key(OPCODE_Register, "b100_0000000") -> encode(XOR),
-    key(OPCODE_Register, "b101_0000000") -> encode(SRL),
-    key(OPCODE_Register, "b101_0100000") -> encode(SRA),
-    key(OPCODE_Register, "b110_0000000") -> encode(OR),
-    key(OPCODE_Register, "b111_0000000") -> encode(AND),
-    key(OPCODE_System, "b???_???????") -> encode(NOP),
-    key(OPCODE_MiscMem, "b???_???????") -> encode(NOP)
+    key(OPCODE_Register, "b000_0000000") -> encode(ADD), // ADD
+    key(OPCODE_Register, "b000_0100000") -> encode(SUB), // SUB
+    key(OPCODE_Register, "b001_0000000") -> encode(SLL), // SLL
+    key(OPCODE_Register, "b010_0000000") -> encode(SLT), // SLT
+    key(OPCODE_Register, "b011_0000000") -> encode(SLTU), // SLTU
+    key(OPCODE_Register, "b100_0000000") -> encode(XOR), // XOR
+    key(OPCODE_Register, "b101_0000000") -> encode(SRL), // SRL
+    key(OPCODE_Register, "b101_0100000") -> encode(SRA), // SRA
+    key(OPCODE_Register, "b110_0000000") -> encode(OR), // OR
+    key(OPCODE_Register, "b111_0000000") -> encode(AND), // AND
+    key(OPCODE_System, "b???_???????") -> encode(NOP), // SYSTEM/CSR
+    key(OPCODE_MiscMem, "b???_???????") -> encode(NOP) // FENCE
   )
 
-  // RV64I 专属编码：LD/LWU/SD 以及 OP-IMM-32/OP-32。
   private val RV64Rows: Seq[(BitPat, BitPat)] = if (XLen64) {
     Seq(
       key(OPCODE_Immediate_Lxxx, "b011_???????") -> encode(ADD), // LD
@@ -115,50 +110,42 @@ class ysyx_26030103_ALUDecoder(
     )
   } else Nil
 
-  // M扩展：RV32 只有 OP；RV64 额外支持 OP-32 的 MULW/DIVW/...
   private val MDURows: Seq[(BitPat, BitPat)] = if (config.UseM) {
     Seq(
-      key(OPCODE_Register, "b000_0000001") -> encode(NOP, isMDU = true, mduOp = MUL),
-      key(OPCODE_Register, "b001_0000001") -> encode(NOP, isMDU = true, mduOp = MULH),
-      key(OPCODE_Register, "b010_0000001") -> encode(NOP, isMDU = true, mduOp = MULHSU),
-      key(OPCODE_Register, "b011_0000001") -> encode(NOP, isMDU = true, mduOp = MULHU),
-      key(OPCODE_Register, "b100_0000001") -> encode(NOP, isMDU = true, mduOp = DIV),
-      key(OPCODE_Register, "b101_0000001") -> encode(NOP, isMDU = true, mduOp = DIVU),
-      key(OPCODE_Register, "b110_0000001") -> encode(NOP, isMDU = true, mduOp = REM),
-      key(OPCODE_Register, "b111_0000001") -> encode(NOP, isMDU = true, mduOp = REMU)
+      key(OPCODE_Register, "b000_0000001") -> encode(NOP, isMDU = true, mduOp = MUL), // MUL
+      key(OPCODE_Register, "b001_0000001") -> encode(NOP, isMDU = true, mduOp = MULH), // MULH
+      key(OPCODE_Register, "b010_0000001") -> encode(NOP, isMDU = true, mduOp = MULHSU), // MULHSU
+      key(OPCODE_Register, "b011_0000001") -> encode(NOP, isMDU = true, mduOp = MULHU), // MULHU
+      key(OPCODE_Register, "b100_0000001") -> encode(NOP, isMDU = true, mduOp = DIV), // DIV
+      key(OPCODE_Register, "b101_0000001") -> encode(NOP, isMDU = true, mduOp = DIVU), // DIVU
+      key(OPCODE_Register, "b110_0000001") -> encode(NOP, isMDU = true, mduOp = REM), // REM
+      key(OPCODE_Register, "b111_0000001") -> encode(NOP, isMDU = true, mduOp = REMU) // REMU
     ) ++ (if (XLen64) Seq(
-      key(OPCODE_RegisterWord, "b000_0000001") -> encode(NOP, isMDU = true, mduOp = MULW),
-      key(OPCODE_RegisterWord, "b100_0000001") -> encode(NOP, isMDU = true, mduOp = DIVW),
-      key(OPCODE_RegisterWord, "b101_0000001") -> encode(NOP, isMDU = true, mduOp = DIVUW),
-      key(OPCODE_RegisterWord, "b110_0000001") -> encode(NOP, isMDU = true, mduOp = REMW),
-      key(OPCODE_RegisterWord, "b111_0000001") -> encode(NOP, isMDU = true, mduOp = REMUW)
+      key(OPCODE_RegisterWord, "b000_0000001") -> encode(NOP, isMDU = true, mduOp = MULW), // MULW
+      key(OPCODE_RegisterWord, "b100_0000001") -> encode(NOP, isMDU = true, mduOp = DIVW), // DIVW
+      key(OPCODE_RegisterWord, "b101_0000001") -> encode(NOP, isMDU = true, mduOp = DIVUW), // DIVUW
+      key(OPCODE_RegisterWord, "b110_0000001") -> encode(NOP, isMDU = true, mduOp = REMW), // REMW
+      key(OPCODE_RegisterWord, "b111_0000001") -> encode(NOP, isMDU = true, mduOp = REMUW) // REMUW
     ) else Nil)
   } else Nil
 
-  // A 扩展：AMO/LR/SC 的地址计算仍使用 ADD；操作号由 IDU 直接取 funct5。
-  // funct3 的 .W/.D 合法性也在 IDU 中检查，这里只负责把操作码从
-  // “未知指令”集合中放行。
   private val AtomicRows: Seq[(BitPat, BitPat)] = if (config.UseA) {
     Seq(
-      key(OPCODE_Amo, "b010_???????") -> encode(ADD)
+      key(OPCODE_Amo, "b010_???????") -> encode(ADD) // AMO/LR/SC.W
     ) ++ (if (XLen64) Seq(
-      key(OPCODE_Amo, "b011_???????") -> encode(ADD)
+      key(OPCODE_Amo, "b011_???????") -> encode(ADD) // AMO/LR/SC.D
     ) else Nil)
   } else Nil
 
-  // F/D 指令有自己的执行单元；这里负责把 opcode 从“未知指令”集合
-  // 中放行。浮点 load/store 仍需整数 ALU 计算地址（rs1+imm），因此
-  // 使用 ADD；OP-FP/FMA 不产生整数 ALU 结果，使用 NOP。细粒度编码
-  // 合法性（fmt/rs2/funct3）由 IDU 按 RISC-V 规则检查。
   private val FpRows: Seq[(BitPat, BitPat)] = if (config.UseF) {
     Seq(
-      key(OPCODE_LoadFP, "b???_???????") -> encode(ADD),
-      key(OPCODE_StoreFP, "b???_???????") -> encode(ADD),
-      key(OPCODE_OpFP, "b???_???????") -> encode(NOP),
-      key(OPCODE_Fmadd, "b???_???????") -> encode(NOP),
-      key(OPCODE_Fmsub, "b???_???????") -> encode(NOP),
-      key(OPCODE_Fnmsub, "b???_???????") -> encode(NOP),
-      key(OPCODE_Fnmadd, "b???_???????") -> encode(NOP)
+      key(OPCODE_LoadFP, "b???_???????") -> encode(ADD), // FLW/FLD
+      key(OPCODE_StoreFP, "b???_???????") -> encode(ADD), // FSW/FSD
+      key(OPCODE_OpFP, "b???_???????") -> encode(NOP), // OP-FP
+      key(OPCODE_Fmadd, "b???_???????") -> encode(NOP), // FMADD
+      key(OPCODE_Fmsub, "b???_???????") -> encode(NOP), // FMSUB
+      key(OPCODE_Fnmsub, "b???_???????") -> encode(NOP), // FNMSUB
+      key(OPCODE_Fnmadd, "b???_???????") -> encode(NOP) // FNMADD
     )
   } else Nil
 
@@ -166,12 +153,45 @@ class ysyx_26030103_ALUDecoder(
     BaseRows ++ RV64Rows ++ MDURows ++ AtomicRows ++ FpRows,
     encode(NOP, illegal = true)
   )
-  private val decoded =
-    decoder(
-      QMCMinimizer,
-      Cat(io.opcode, io.funct3, io.funct7),
-      table
-    )
+  private val decodeInput = Cat(io.opcode, io.funct3, io.funct7)
+  private def decodeWith(minimizer: Minimizer): UInt =
+    try {
+      decoder(minimizer, decodeInput, table)
+    } catch {
+      case e: java.io.IOException =>
+        throw new RuntimeException(
+          s"IDU_DECODE_MINIMIZER=${config.IDUDecodeMinimizer.Name} " +
+            s"执行失败：${e.getMessage}",
+          e
+        )
+    }
+  private val decoded = config.IDUDecodeMinimizer match {
+    case ysyx_26030103_IDUDecodeMinimizer.QMC =>
+      decoder(QMCMinimizer, decodeInput, table)
+    case ysyx_26030103_IDUDecodeMinimizer.Espresso =>
+      try {
+        decoder(EspressoMinimizer, decodeInput, table)
+      } catch {
+        case EspressoNotFoundException =>
+          throw new RuntimeException(
+            "IDU_DECODE_MINIMIZER=espresso 但 PATH 中找不到 espresso；" +
+              "请安装 espresso，或改用 auto/qmc"
+          )
+        case e: java.io.IOException =>
+          throw new RuntimeException(
+            s"IDU_DECODE_MINIMIZER=espresso 执行失败：${e.getMessage}",
+            e
+          )
+      }
+    case ysyx_26030103_IDUDecodeMinimizer.Auto =>
+      decoder(decodeInput, table)
+    case ysyx_26030103_IDUDecodeMinimizer.None =>
+      decoder(ysyx_26030103_IdentityMinimizer, decodeInput, table)
+    case ysyx_26030103_IDUDecodeMinimizer.Bdd =>
+      decodeWith(ysyx_26030103_AbcBddMinimizer)
+    case ysyx_26030103_IDUDecodeMinimizer.Sat =>
+      decodeWith(ysyx_26030103_AbcSatMinimizer)
+  }
   io.ALUCtrl := decoded(CtrlWidth, 1)
   io.Illegal := decoded(0)
   io.IsMDU := decoded(CtrlWidth + 1)

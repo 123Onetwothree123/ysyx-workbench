@@ -250,6 +250,34 @@ std::vector<std::string> validate_config(const Config& values,
           " 非法：必须是能整除 XLEN 的 2 的幂（2..64）");
     }
   }
+  const std::string idu_minimizer = lower_ascii(strip(derived_choice_string(
+      values, "IDU_DECODE_MINIMIZER",
+      {{"IDU_DECODE_QMC", "qmc"},
+       {"IDU_DECODE_ESPRESSO", "espresso"},
+       {"IDU_DECODE_AUTO", "auto"},
+       {"IDU_DECODE_NONE", "none"},
+       {"IDU_DECODE_BDD", "bdd"},
+       {"IDU_DECODE_SAT", "sat"}},
+      "qmc")));
+  if (idu_minimizer != "qmc" && idu_minimizer != "espresso" &&
+      idu_minimizer != "auto" && idu_minimizer != "none" &&
+      idu_minimizer != "bdd" && idu_minimizer != "sat") {
+    err("IDU_DECODE_MINIMIZER='" + idu_minimizer +
+        "' 非法：只允许 qmc/espresso/auto/none/bdd/sat");
+  }
+  for (const auto& [symbol, choice] : ChoiceList{
+           {"IDU_DECODE_QMC", "qmc"},
+           {"IDU_DECODE_ESPRESSO", "espresso"},
+           {"IDU_DECODE_AUTO", "auto"},
+           {"IDU_DECODE_NONE", "none"},
+           {"IDU_DECODE_BDD", "bdd"},
+           {"IDU_DECODE_SAT", "sat"}}) {
+    if (as_bool(values, std::string(symbol), false) &&
+        std::string(choice) != idu_minimizer) {
+      err(std::string(symbol) + "=y 与 IDU_DECODE_MINIMIZER='" +
+          idu_minimizer + "' 不一致；请重新运行 menuconfig/olddefconfig");
+    }
+  }
   const bool has_s = as_bool(values, "HAS_S", false);
   const bool has_mmu = as_bool(values, "HAS_MMU", false);
   if (has_mmu && !has_s) {

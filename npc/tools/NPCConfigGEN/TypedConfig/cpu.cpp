@@ -68,6 +68,15 @@ void addAlu(TypedFields &root, const Config &values)
     addField(root, "alu", TypedJson::object(std::move(alu)));
 }
 
+void addIdu(TypedFields &root, const Config &values)
+{
+    TypedFields idu;
+    addField(idu, "decode_minimizer",
+             TypedJson::string(
+                 flatString(values, "IDU_DECODE_MINIMIZER", "qmc")));
+    addField(root, "idu", TypedJson::object(std::move(idu)));
+}
+
 void addMdu(TypedFields &root, const Config &values)
 {
     TypedFields mdu;

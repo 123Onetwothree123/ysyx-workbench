@@ -669,6 +669,48 @@ menu "硬件配置"
 
   endmenu
 
+  menu "IDU 译码"
+
+    choice
+      prompt "译码最小化算法"
+      default IDU_DECODE_QMC
+      help
+        选择 IDU 真值表生成组合逻辑时使用的最小化算法。
+        QMC：Quine-McCluskey，精确算法，结果稳定，但大表可能很慢；
+        Espresso：启发式算法，需要 PATH 中有 espresso 可执行文件；
+        Auto：优先使用 Espresso，找不到或执行失败时自动回退 QMC；
+        None：不最小化，elaboration 最快、生成逻辑最大，适合作 baseline；
+        BDD：用外部 abc 的 bdd 引擎提取覆盖，需要 PATH 中有 abc；
+        SAT：用外部 abc 的 dc2 两级优化，需要 PATH 中有 abc。
+        该选项只影响 elaboration 生成的逻辑结构和编译时间，不改变
+        任何指令语义。
+
+      config IDU_DECODE_QMC
+        bool "Quine-McCluskey（QMC，精确）"
+      config IDU_DECODE_ESPRESSO
+        bool "Espresso（启发式，需要外部 espresso）"
+      config IDU_DECODE_AUTO
+        bool "Auto（优先 Espresso，失败回退 QMC）"
+      config IDU_DECODE_NONE
+        bool "None（不最小化，baseline）"
+      config IDU_DECODE_BDD
+        bool "BDD（外部 abc bdd）"
+      config IDU_DECODE_SAT
+        bool "SAT（外部 abc dc2）"
+    endchoice
+
+    config IDU_DECODE_MINIMIZER
+      string
+      default "qmc" if IDU_DECODE_QMC
+      default "espresso" if IDU_DECODE_ESPRESSO
+      default "auto" if IDU_DECODE_AUTO
+      default "none" if IDU_DECODE_NONE
+      default "bdd" if IDU_DECODE_BDD
+      default "sat" if IDU_DECODE_SAT
+      default "qmc"
+
+  endmenu
+
   menu "ysyxSoC 接口"
 
     config CHIPLINK
