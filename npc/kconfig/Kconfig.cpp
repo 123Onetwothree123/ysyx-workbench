@@ -40,9 +40,10 @@ menu "C++ 配置"
 
   config STDLIB_FLAG
     string
-    default "-stdlib=libstdc++" if STDLIB_LIBSTDCXX
+    # -stdlib 是 clang/icpx 的参数；g++ 不识别，GNU 构建必须留空。
+    default "-stdlib=libstdc++" if STDLIB_LIBSTDCXX && (CC_CLANG || CC_ICPX)
     default "-stdlib=libc++" if STDLIB_LIBCXX
-    default "-stdlib=libstdc++"
+    default ""
 
   config LIB_HARDENING
     bool "标准库硬化 (Standard Library Hardening)"

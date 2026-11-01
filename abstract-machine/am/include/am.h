@@ -4,6 +4,17 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+
+// AM 头文件同时被 C 和 C++ 编译单元包含。C11 使用关键字
+// `_Static_assert`，C++ 则只接受 `static_assert`；统一通过该宏隔离。
+#ifndef AM_STATIC_ASSERT
+#ifdef __cplusplus
+#define AM_STATIC_ASSERT static_assert
+#else
+#define AM_STATIC_ASSERT _Static_assert
+#endif
+#endif
+
 #include ARCH_H // this macro is defined in $CFLAGS
                 // examples: "arch/x86-qemu.h", "arch/native.h", ...
 

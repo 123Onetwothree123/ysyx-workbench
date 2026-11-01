@@ -53,6 +53,9 @@ Context *kcontext(Area kstack, void (*entry)(void *), void *arg)
     Context *c = (Context *)(kstack.end - sizeof(Context)); // end是栈最高位然后减掉长度，找开头部分建指针
     memset(c, 0, sizeof(Context));                          // 和rtthreadam一样，ai建议手动清零
     c->mstatus = MODE_M << 11;                              // 也是ai建议的，清除掉原本的#，避免mstatus和mcause和寄存器是垃圾
+#ifdef AM_RV64GC
+    c->mstatus |= 3u << 13;                                 // FS=Dirty，保留 f0-f31/fcsr
+#endif
     c->mepc = (uintptr_t)entry;
     c->gpr[10] = (uintptr_t)arg; // riscv elf psabi写的是参数写到a0
     return c;

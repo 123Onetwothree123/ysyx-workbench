@@ -51,10 +51,16 @@ object ysyx_26030103_PhysicalMemoryMap {
     // PLIC 在 CPU 内部实例化并接到 Xbar 的 PLIC 端口；PMA 必须显式
     // 覆盖它，否则 S 模式（U-Boot/Linux）访问 PLIC enable/threshold/
     // claim 会被 PMA 拒绝，表现为 Store/AMO access fault 和外部中断
-    // 无法清除。DTB 已声明同一窗口 0x0c000000+0x04000000。
+    // 无法清除。
+    //
+    // 窗口必须止于 0x0f000000：ysyxSoC 的片上 SRAM 正好从这里开始，
+    // 若沿用标准 64MiB PLIC 孔径，0x0f000000 会先被 PLIC 解码吞掉，
+    // full-SoC 的 FSBL 第一次写 SRAM 就会收到 SLVERR。3MiB 已覆盖
+    // 0x0c200000 起的 256 个 context，且与 SoC SRAM 不重叠；DTB 必须
+    // 使用同一 reg 大小。
     ysyx_26030103_PMARegion(
       0x0c000000L,
-      0x04000000L
+      0x00300000L
     ),
     ysyx_26030103_PMARegion(
       0x80000000L,

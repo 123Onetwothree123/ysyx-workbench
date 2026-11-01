@@ -207,7 +207,7 @@
 		 */
 		plic: interrupt-controller@c000000 {
 			compatible = "riscv,plic0";
-			reg = <0x0 0x0c000000 0x0 0x04000000>;
+			reg = <0x0 0x0c000000 0x0 0x00300000>;
 			#interrupt-cells = <1>;
 			interrupt-controller;
 			riscv,ndev = <31>;

@@ -1,99 +1,126 @@
+#if __riscv_xlen == 64
+#define TABLE_ENTRY .dword
+#define TABLE_LOAD  ld
+#define PTR         8
+#else
+#define TABLE_ENTRY .word
+#define TABLE_LOAD  lw
+#define PTR         4
+#endif
+
 .section entry, "ax"
 .globl _start
 .type _start, @function
 
 _start:
   mv s0, zero
-  lui sp, %hi(_stack_pointer)
-  addi sp, sp, %lo(_stack_pointer)
 
-  # FSBL: copy .ssbl from flash to on-chip SRAM
-  lui t0, %hi(_ssbl_lma)
-  addi t0, t0, %lo(_ssbl_lma)
-  lui t1, %hi(_ssbl_start)
-  addi t1, t1, %lo(_ssbl_start)
-  lui t2, %hi(_ssbl_end)
-  addi t2, t2, %lo(_ssbl_end)
+  # FSBL 通过 PC 相对地址读取 64/32 位地址表，避免 RV64 的 lui
+  # 对 0x80000000 以上地址做符号扩展。
+  lla t0, .Lfsbl_table
+  TABLE_LOAD sp, (0 * PTR)(t0)
+  TABLE_LOAD t3, (1 * PTR)(t0)  # _ssbl_lma
+  TABLE_LOAD t4, (2 * PTR)(t0)  # _ssbl_start
+  TABLE_LOAD t5, (3 * PTR)(t0)  # _ssbl_end
+  TABLE_LOAD t6, (4 * PTR)(t0)  # ssbl_entry
+
 1:
-  bge t1, t2, 2f
-  lw t3, 0(t0)
-  sw t3, 0(t1)
-  addi t0, t0, 4
-  addi t1, t1, 4
+  bgeu t4, t5, 2f
+  lw t0, 0(t3)
+  sw t0, 0(t4)
+  addi t3, t3, 4
+  addi t4, t4, 4
   j 1b
 2:
 
-  # fence.i: 保证后续取指能看到上面store写入的SSBL代码(RISC-V手册要求)
-  # 工具链的rv32i不带zifencei扩展, 直接用机器码 0x0000100f
+  # fence.i: 保证后续取指能看到上面 store 写入的 SSBL 代码
   .word 0x0000100f
 
-  # FSBL: jump to SSBL in on-chip SRAM
-  lui t0, %hi(ssbl_entry)
-  addi t0, t0, %lo(ssbl_entry)
-  jalr zero, 0(t0)
+  jalr zero, 0(t6)
+
+.align 3
+.Lfsbl_table:
+  TABLE_ENTRY _stack_pointer
+  TABLE_ENTRY _ssbl_lma
+  TABLE_ENTRY _ssbl_start
+  TABLE_ENTRY _ssbl_end
+  TABLE_ENTRY ssbl_entry
 
 .section .ssbl, "ax"
 .globl ssbl_entry
 .type ssbl_entry, @function
 
 ssbl_entry:
-  # SSBL runs from SRAM, can use PC-relative la
-
-  # copy .text from flash to PSRAM
-  la t0, _text_lma
-  la t1, _text_start
-  la t2, _text_end
+  # SSBL 在 on-chip SRAM 中运行，用同一张表拿到 SDRAM 地址。
+  lla t0, .Lssbl_table
+  TABLE_LOAD t3, (0 * PTR)(t0)  # _text_lma
+  TABLE_LOAD t4, (1 * PTR)(t0)  # _text_start
+  TABLE_LOAD t5, (2 * PTR)(t0)  # _text_end
 1:
-  bge t1, t2, 2f
-  lw t3, 0(t0)
-  sw t3, 0(t1)
-  addi t0, t0, 4
-  addi t1, t1, 4
+  bgeu t4, t5, 2f
+  lw t1, 0(t3)
+  sw t1, 0(t4)
+  addi t3, t3, 4
+  addi t4, t4, 4
   j 1b
 2:
 
-  # copy .data.extra from flash to PSRAM
-  la t0, _data_extra_lma
-  la t1, _data_extra_start
-  la t2, _data_extra_end
+  lla t0, .Lssbl_table
+  TABLE_LOAD t3, (3 * PTR)(t0)  # _data_extra_lma
+  TABLE_LOAD t4, (4 * PTR)(t0)  # _data_extra_start
+  TABLE_LOAD t5, (5 * PTR)(t0)  # _data_extra_end
 1:
-  bge t1, t2, 2f
-  lw t3, 0(t0)
-  sw t3, 0(t1)
-  addi t0, t0, 4
-  addi t1, t1, 4
+  bgeu t4, t5, 2f
+  lw t1, 0(t3)
+  sw t1, 0(t4)
+  addi t3, t3, 4
+  addi t4, t4, 4
   j 1b
 2:
 
-  # copy .data from flash to PSRAM
-  la t0, _data_lma
-  la t1, _data_start
-  la t2, _edata
+  lla t0, .Lssbl_table
+  TABLE_LOAD t3, (6 * PTR)(t0)  # _data_lma
+  TABLE_LOAD t4, (7 * PTR)(t0)  # _data_start
+  TABLE_LOAD t5, (8 * PTR)(t0)  # _edata
 1:
-  bge t1, t2, 2f
-  lw t3, 0(t0)
-  sw t3, 0(t1)
-  addi t0, t0, 4
-  addi t1, t1, 4
+  bgeu t4, t5, 2f
+  lw t1, 0(t3)
+  sw t1, 0(t4)
+  addi t3, t3, 4
+  addi t4, t4, 4
   j 1b
 2:
 
-  # BSS zeroing
-  la t0, _bss_start
-  la t1, _bss_end
+  lla t0, .Lssbl_table
+  TABLE_LOAD t3, (9 * PTR)(t0)   # _bss_start
+  TABLE_LOAD t4, (10 * PTR)(t0)  # _bss_end
 1:
-  bge t0, t1, 2f
-  sw zero, 0(t0)
-  addi t0, t0, 4
+  bgeu t3, t4, 2f
+  sw zero, 0(t3)
+  addi t3, t3, 4
   j 1b
 2:
 
-  # fence.i: 保证后续取指能看到上面store写入PSRAM/SDRAM的程序代码
+  # fence.i: 保证后续取指能看到上面 store 写入 PSRAM/SDRAM 的程序代码
   .word 0x0000100f
 
-  # SSBL: absolute jump to _trm_init in PSRAM
-  lui t0, %hi(_trm_init)
-  addi t0, t0, %lo(_trm_init)
-  jalr zero, 0(t0)
+  lla t0, .Lssbl_table
+  TABLE_LOAD t1, (11 * PTR)(t0)  # _trm_init
+  jalr zero, 0(t1)
+
+.align 3
+.Lssbl_table:
+  TABLE_ENTRY _text_lma
+  TABLE_ENTRY _text_start
+  TABLE_ENTRY _text_end
+  TABLE_ENTRY _data_extra_lma
+  TABLE_ENTRY _data_extra_start
+  TABLE_ENTRY _data_extra_end
+  TABLE_ENTRY _data_lma
+  TABLE_ENTRY _data_start
+  TABLE_ENTRY _edata
+  TABLE_ENTRY _bss_start
+  TABLE_ENTRY _bss_end
+  TABLE_ENTRY _trm_init
 
 .size ssbl_entry, . - ssbl_entry

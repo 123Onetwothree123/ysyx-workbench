@@ -126,6 +126,10 @@ reg [3:0]   req_id_q;
 reg [1:0]   req_axburst_q;
 reg [7:0]   req_axlen_q;
 reg         req_prio_q;
+// SDRAM core 只有一份读数据缓冲。burst 的下一拍必须等上一拍的 ram_ack
+// 返回后再发，否则连续读会把 data_buffer_q 覆盖，64 位 LD 的高/低字
+// 会互换（full-SoC 上表现为 PC 变成 0xa0003ac600000000）。
+reg         read_pending_q;
 reg         req_hold_rd_q;
 reg         req_hold_wr_q;
 
@@ -145,17 +149,29 @@ begin
     req_axburst_q <= 2'b0;
     req_axlen_q   <= 8'b0;
     req_prio_q    <= 1'b0;
+    read_pending_q <= 1'b0;
 end
 else
 begin
+    if (ram_rd_o && ram_accept_i)
+        read_pending_q <= 1'b1;
+    else if (ram_ack_i)
+        read_pending_q <= 1'b0;
+
     // Burst continuation
     // 注意: AR/AW握手那一拍同时也是第一个命令(地址已发给RAM), 因此:
     // 1) 接受AR/AW时就要把地址推进到下一拍(见下方AR/AW分支), 否则第一个
     //    后续命令会重复第一个地址(实测ARLEN=3发出了col0,col0,col2,col4,col6);
-    // 2) req_len_q==1时表示正在发最后一个字, 必须停发, 否则会多发一拍越界数据
+    // 2) 读和写的 req_len_q 语义不同：
+    //    - AR 握手那一拍已经发出第一个读命令，因此 req_len_q 表示“后续还有
+    //      几个读 beat”，req_len_q<=1 时当前就是最后一拍（原逻辑）。
+    //    - AXI4Delayer 会把 AW 与第一个 W beat 分开一拍，AW 握手时并没有
+    //      发出第一个写 beat；因此第一个 W beat 也必须被计数，req_len_q==0
+    //      才是最后一个写 beat。否则 AWLEN=1 的 64 位 store 会在第一拍就
+    //      清掉 req_wr_q，第二个 W beat 永远等不到 B。
     if ((ram_wr_o != 4'b0 || ram_rd_o) && ram_accept_i)
     begin
-        if (req_len_q <= 8'd1)
+        if (req_wr_q ? (req_len_q == 8'd0) : (req_len_q <= 8'd1))
         begin
             req_rd_q   <= 1'b0;
             req_wr_q   <= 1'b0;
@@ -176,10 +192,11 @@ begin
         req_id_q      <= axi_awid_i;
         req_axburst_q <= axi_awburst_i;
         req_axlen_q   <= axi_awlen_i;
-        // 首拍命令已随AW握手发出, 突发时地址直接推进到第二拍
-        req_addr_q    <= (axi_awlen_i != 8'd0) ?
-                         calculate_addr_next(axi_awaddr_i, axi_awburst_i, axi_awlen_i) :
-                         axi_awaddr_i;
+        // AW 握手时还没有发出第一个 W beat（AXI4Delayer 会把两者分开），
+        // 因此当前地址必须先停在 AW 地址，等第一个 W beat 真正握手后再
+        // 在 continuation 里推进。若这里直接推进到第二拍，首个 W 会写
+        // 到 addr+4，第二个 W 再写到 addr+8，导致 64 位 store 高低字错位。
+        req_addr_q    <= axi_awaddr_i;
         req_prio_q    <= !req_prio_q;
     end
     // Read command accepted
@@ -239,9 +256,11 @@ begin
     else if (axi_awvalid_i && axi_awready_o)
         req_in_r = {1'b0, (axi_awlen_i == 8'd0), axi_awid_i};
     // In burst
-    // req_len_q==1即最后一拍(配合continuation的停发条件), RLAST才能对齐
+    // 读用 <=1、写用 ==0，理由见上面 continuation 的注释。
     else
-        req_in_r = {ram_rd_o, (req_len_q <= 8'd1), req_id_q};
+        req_in_r = {ram_rd_o,
+                    req_wr_q ? (req_len_q == 8'd0) : (req_len_q <= 8'd1),
+                    req_id_q};
 end
 
 sdram_axi_pmem_fifo2
@@ -299,7 +318,7 @@ wire write_prio_w   = ((req_prio_q  & !req_hold_rd_q) | req_hold_wr_q);
 wire read_prio_w    = ((!req_prio_q & !req_hold_wr_q) | req_hold_rd_q);
 
 wire write_active_w  = (axi_awvalid_i || req_wr_q) && !req_rd_q && req_fifo_accept_w && (write_prio_w || req_wr_q || !axi_arvalid_i);
-wire read_active_w   = (axi_arvalid_i || req_rd_q) && !req_wr_q && req_fifo_accept_w && (read_prio_w || req_rd_q || !axi_awvalid_i);
+wire read_active_w   = (axi_arvalid_i || req_rd_q) && !req_wr_q && !read_pending_q && req_fifo_accept_w && (read_prio_w || req_rd_q || !axi_awvalid_i);
 
 assign axi_awready_o = write_active_w && !req_wr_q && req_fifo_accept_w;
 assign axi_wready_o  = write_active_w &&              ram_accept_i && req_fifo_accept_w;
