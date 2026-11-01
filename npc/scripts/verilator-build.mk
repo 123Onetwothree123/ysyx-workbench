@@ -270,14 +270,18 @@ $(NPC_HEADER_PCM): $(NPC_PCM_DIR)/%.pcm: .npc_build_signature
 	$(CXX) $(NPC_STD_FLAG) -x c++-system-header $(subst _,/,$*) --precompile -o $@
 
 npc_module_obj = $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(1)))
-npc_module_pcm = $(NPC_PCM_DIR)/$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.pcm,$(1)))
+# clang 的 -fprebuilt-module-path 按模块名查找 <module-name>.pcm，
+# 不能沿用源文件路径。分区模块 m:part 的 PCM 文件名是 m-part.pcm。
+npc_module_name = $(shell sed -n 's/^\(export \)\?module \([^;][^;]*\);.*/\2/p' $(1) | head -n1 | tr -d '[:space:]')
+npc_module_pcm = $(NPC_PCM_DIR)/$(subst :,-,$(call npc_module_name,$(1))).pcm
 define npc_module_chain
 $(if $(wordlist 2,$(words $(1)),$(1)),$(word 2,$(1)): $(word 1,$(1))
 $(call npc_module_chain,$(wordlist 2,$(words $(1)),$(1))))
 endef
 NPC_MODULE_OBJS_IXX := $(foreach src,$(NPC_IXX_SRCS),$(call npc_module_obj,$(src)))
 NPC_MODULE_PCMS := $(foreach src,$(NPC_IXX_SRCS),$(call npc_module_pcm,$(src)))
-$(eval $(call npc_module_chain,$(NPC_MODULE_PCMS)))
+# 首个 import std 的模块必须等 std.pcm 生成，不能只对项目模块排依赖。
+$(eval $(call npc_module_chain,$(NPC_PCM_DIR)/std.pcm $(NPC_MODULE_PCMS)))
 $(eval $(call npc_module_chain,$(NPC_MODULE_OBJS_IXX)))
 
 define NPC_CLANG_MODULE_RULE
