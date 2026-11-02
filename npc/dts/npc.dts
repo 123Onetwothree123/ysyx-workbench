@@ -59,6 +59,21 @@
 #define SBI_FDT_RESERVE_SIZE 0x00010000
 #endif
 
+/* PLIC：base/size/ndev 由 Kconfig 的 PLIC_BASE/PLIC_SIZE/PLIC_SOURCES
+ * 经 build_dtb 传入，默认 3MiB 正好止于 ysyxSoC 片上 SRAM 之前。 */
+#ifndef NPC_PLIC_BASE
+#define NPC_PLIC_BASE 0x0c000000
+#endif
+#ifndef NPC_PLIC_BASE_NAME
+#define NPC_PLIC_BASE_NAME c000000
+#endif
+#ifndef NPC_PLIC_SIZE
+#define NPC_PLIC_SIZE 0x00300000
+#endif
+#ifndef NPC_PLIC_NDEV
+#define NPC_PLIC_NDEV 31
+#endif
+
 /* CPU 描述：build_dtb.sh 从 .config 生成，默认值与 RV64IMA 一致。 */
 #ifndef NPC_RISCV_ISA
 #define NPC_RISCV_ISA "rv64ima_zicsr_zifencei"
@@ -205,12 +220,12 @@
 		 * 同时实现 M context 0（enable 0x2000 / claim 0x200000）和
 		 * S context 1（enable 0x2080 / claim 0x201000）。
 		 */
-		plic: interrupt-controller@c000000 {
+		plic: interrupt-controller@NPC_PLIC_BASE_NAME {
 			compatible = "riscv,plic0";
-			reg = <0x0 0x0c000000 0x0 0x00300000>;
+			reg = <0x0 NPC_PLIC_BASE 0x0 NPC_PLIC_SIZE>;
 			#interrupt-cells = <1>;
 			interrupt-controller;
-			riscv,ndev = <31>;
+			riscv,ndev = <NPC_PLIC_NDEV>;
 			interrupts-extended = <&cpu0_intc 11 &cpu0_intc 9>;
 		};
 

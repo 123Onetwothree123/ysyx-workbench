@@ -24,6 +24,9 @@ SBI_INITRAMFS_ADDR="${SBI_INITRAMFS_ADDR:-}"
 SBI_BOOTARGS="${SBI_BOOTARGS:-}"
 NPC_RAM_BASE="${NPC_RAM_BASE:-0x80000000}"
 NPC_RAM_SIZE="${NPC_RAM_SIZE:-0x04000000}"
+PLIC_BASE="${PLIC_BASE:-0x0c000000}"
+PLIC_SIZE="${PLIC_SIZE:-0x00300000}"
+PLIC_SOURCES="${PLIC_SOURCES:-32}"
 SBI_TOOLCHAIN_PREFIX="${SBI_TOOLCHAIN_PREFIX:-riscv64-unknown-elf-}"
 SBI_ISA="${SBI_ISA:-rv64ima_zicsr_zifencei}"
 SBI_ABI="${SBI_ABI:-lp64}"
@@ -54,6 +57,14 @@ parse_int() {
 }
 
 SBI_TIMEBASE_FREQ="$(parse_int SBI_TIMEBASE_FREQ "${SBI_TIMEBASE_FREQ:-450000000}")"
+PLIC_BASE_NUM="$(parse_int PLIC_BASE "$PLIC_BASE")"
+PLIC_SIZE_NUM="$(parse_int PLIC_SIZE "$PLIC_SIZE")"
+PLIC_SOURCES_NUM="$(parse_int PLIC_SOURCES "$PLIC_SOURCES")"
+[[ "$PLIC_SIZE_NUM" -gt 0 ]] || die "PLIC_SIZE 必须为正"
+(( PLIC_BASE_NUM + PLIC_SIZE_NUM <= 0x100000000 )) || \
+	die "PLIC_BASE + PLIC_SIZE 超出 32 位地址空间"
+(( PLIC_SOURCES_NUM >= 2 && PLIC_SOURCES_NUM <= 1024 )) || \
+	die "PLIC_SOURCES 必须在 2..1024（source 0 保留）"
 
 [[ "$SBI_ENABLE" == "y" ]] || die \
 	"SBI_ENABLE=$SBI_ENABLE，SBI 固件未启用。请先运行 'make rv64_sbi_defconfig' 或 'make menuconfig' 打开 SBI。"
@@ -205,6 +216,9 @@ CMD=(
 	"PLATFORM_RISCV_ISA=$SBI_ISA"
 	"FW_TEXT_START=0x$(printf '%x' "$BASE")"
 	"NPC_MTIME_FREQ=$SBI_TIMEBASE_FREQ"
+	"NPC_PLIC_BASE=0x$(printf '%x' "$PLIC_BASE_NUM")"
+	"NPC_PLIC_SIZE=0x$(printf '%x' "$PLIC_SIZE_NUM")"
+	"NPC_PLIC_SOURCES=$PLIC_SOURCES_NUM"
 	"${LD_ARGS[@]}"
 	"${FW_ARGS[@]}"
 	-j"$JOBS"

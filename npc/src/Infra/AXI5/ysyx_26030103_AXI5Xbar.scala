@@ -7,7 +7,7 @@ class ysyx_26030103_AXI5Xbar(
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
     PLICBaseValue: BigInt = BigInt("0c000000", 16),
-    PLICSizeBytes: BigInt = BigInt("04000000", 16),
+    PLICSizeBytes: BigInt = BigInt("00300000", 16),
     DataWidth: Int = 32,
     IdWidth: Int = 4
 ) extends Module {

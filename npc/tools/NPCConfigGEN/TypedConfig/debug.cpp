@@ -50,6 +50,9 @@ void addInterrupt(TypedFields &root, const Config &values)
     addField(plic, "base",
              TypedJson::integer(
                  flatInt(values, "PLIC_BASE", 0x0c000000LL)));
+    addField(plic, "size",
+             TypedJson::integer(
+                 flatInt(values, "PLIC_SIZE", 0x00300000LL)));
     addField(interrupt, "plic", TypedJson::object(std::move(plic)));
     addField(root, "interrupt", TypedJson::object(std::move(interrupt)));
 }

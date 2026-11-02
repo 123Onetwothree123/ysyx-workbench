@@ -60,6 +60,9 @@ struct Layout {
     std::uint64_t nextReserve = 0;
     std::uint64_t ramBase = 0;
     std::uint64_t ramSize = 0;
+    std::uint64_t plicBase = 0;
+    std::uint64_t plicSize = 0;
+    std::uint64_t plicSources = 0;
     std::uint64_t xlen = 0;
     std::uint64_t mmuLevels = 0;
     std::uint64_t mmuPageSize = 0;
@@ -155,6 +158,15 @@ int main(int argc, char **argv)
             envDefault("NPC_RAM_BASE", hexU64(kDefaultRamBase));
         const std::string ramSizeValue =
             envDefault("NPC_RAM_SIZE", hexU64(kDefaultRamSize));
+        const std::string plicBaseValue =
+            envOrConfig("PLIC_BASE", config, "CONFIG_PLIC_BASE",
+                        "0x0c000000");
+        const std::string plicSizeValue =
+            envOrConfig("PLIC_SIZE", config, "CONFIG_PLIC_SIZE",
+                        "0x00300000");
+        const std::string plicSourcesValue =
+            envOrConfig("PLIC_SOURCES", config, "CONFIG_PLIC_SOURCES",
+                        "32");
 
         const std::string xlenValue =
             envOrConfig("SBI_XLEN", config, "CONFIG_XLEN", "64");
@@ -255,6 +267,9 @@ int main(int argc, char **argv)
             parseU64(nextReserveValue, "SBI_NEXT_RESERVE_SIZE");
         layout.ramBase = parseU64(ramBaseValue, "NPC_RAM_BASE");
         layout.ramSize = parseU64(ramSizeValue, "NPC_RAM_SIZE");
+        layout.plicBase = parseU64(plicBaseValue, "PLIC_BASE");
+        layout.plicSize = parseU64(plicSizeValue, "PLIC_SIZE");
+        layout.plicSources = parseU64(plicSourcesValue, "PLIC_SOURCES");
         layout.xlen = parseU64(xlenValue, "XLEN");
         layout.mmuLevels = parseU64(mmuLevelsValue, "MMU_LEVELS");
         layout.mmuPageSize = parseU64(mmuPageSizeValue, "MMU_PAGE_SIZE");
@@ -389,6 +404,14 @@ int main(int argc, char **argv)
             throw std::runtime_error("SBI_NEXT_RESERVE_SIZE 必须为正");
         if (layout.ramSize == 0)
             throw std::runtime_error("NPC_RAM_SIZE 必须为正");
+        if (layout.plicSize == 0)
+            throw std::runtime_error("PLIC_SIZE 必须为正");
+        if (layout.plicSources < 2 || layout.plicSources > 1024)
+            throw std::runtime_error(
+                "PLIC_SOURCES 必须在 2..1024（source 0 保留）");
+        if (layout.plicBase + layout.plicSize > (1ULL << 32))
+            throw std::runtime_error(
+                "PLIC_BASE + PLIC_SIZE 超出 32 位地址空间");
 
         layout.ramEnd =
             checkedAdd(layout.ramBase, layout.ramSize, "NPC RAM");
@@ -490,6 +513,11 @@ int main(int argc, char **argv)
                 "-DNPC_RAM_BASE=" + hexU64(layout.ramBase),
                 "-DNPC_RAM_SIZE=" + hexU64(layout.ramSize),
                 "-DNPC_RAM_BASE_NAME=" + hexName(layout.ramBase),
+                "-DNPC_PLIC_BASE=" + hexU64(layout.plicBase),
+                "-DNPC_PLIC_BASE_NAME=" + hexName(layout.plicBase),
+                "-DNPC_PLIC_SIZE=" + hexU64(layout.plicSize),
+                "-DNPC_PLIC_NDEV=" +
+                    std::to_string(layout.plicSources - 1),
                 "-DSBI_FW_BASE=" + hexU64(layout.fwBase),
                 "-DSBI_FW_SIZE=" + hexU64(layout.fwSize),
                 "-DSBI_FW_BASE_NAME=" + hexName(layout.fwBase),

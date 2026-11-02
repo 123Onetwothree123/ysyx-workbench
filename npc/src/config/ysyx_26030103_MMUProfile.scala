@@ -128,6 +128,7 @@ case class ysyx_26030103_MMUProfile(
     plicPriorityBits: Int = 3,
     plicMaxPriority: Int = 7,
     plicBase: Long = 0x0c000000L,
+    plicSize: Long = 0x00300000L,
     csrViewMode: String = "bound",
     csrMissingMode: String = "illegal",
     pmpEnabled: Boolean = false,
@@ -199,6 +200,9 @@ case class ysyx_26030103_MMUProfile(
   require(plicMaxPriority >= 0 && plicMaxPriority < (1 << plicPriorityBits),
     "PLIC_MAX_PRIORITY 超出优先级位宽")
   require(plicBase >= 0 && plicBase < (1L << 32), "PLIC_BASE 超出 32 位地址空间")
+  require(plicSize > 0, "PLIC_SIZE 必须为正")
+  require(plicBase + plicSize <= (1L << 32),
+    "PLIC_BASE + PLIC_SIZE 超出 32 位地址空间")
   require(Set("clint_mtip", "direct_stip").contains(timerPath), "TIMER_PATH 必须是 clint_mtip/direct_stip")
   require(Set("bound", "independent").contains(csrViewMode), "CSR_VIEW_MODE 必须是 bound/independent")
   require(Set("illegal", "zero").contains(csrMissingMode), "CSR_MISSING_MODE 必须是 illegal/zero")
@@ -587,6 +591,7 @@ object ysyx_26030103_MMUProfile {
       plicPriorityBits = envInt(env, "PLIC_PRIORITY_BITS", 3),
       plicMaxPriority = envInt(env, "PLIC_MAX_PRIORITY", 7),
       plicBase = envLong(env, "PLIC_BASE", 0x0c000000L),
+      plicSize = envLong(env, "PLIC_SIZE", 0x00300000L),
       csrViewMode = envString(env, "CSR_VIEW_MODE", "bound"),
       csrMissingMode = envString(env, "CSR_MISSING_MODE", "illegal"),
       pmpEnabled = envBool(env, "HAS_PMP", false),

@@ -58,11 +58,16 @@ void deriveEffectiveConfig(std::map<std::string, std::string> &values)
         if (hasConfigValue(values, key))
             values[key] = asBool(values, key) ? "1" : "0";
     }
-    if (hasConfigValue(values, "PLIC_BASE")) {
-        std::ostringstream base;
-        base << "0x" << std::hex
-             << asInt(values, "PLIC_BASE", 0x0c000000LL);
-        values["PLIC_BASE"] = base.str();
+    for (const auto &[key, fallback] :
+         std::initializer_list<std::pair<const char *, long long>>{
+             {"PLIC_BASE", 0x0c000000LL},
+             {"PLIC_SIZE", 0x00300000LL}}) {
+        if (hasConfigValue(values, key)) {
+            std::ostringstream formatted;
+            formatted << "0x" << std::hex
+                      << asInt(values, key, fallback);
+            values[key] = formatted.str();
+        }
     }
 }
 }

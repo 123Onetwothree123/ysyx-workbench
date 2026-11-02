@@ -45,14 +45,26 @@
 #endif
 #define NPC_ACLINT_MTIMER_FREQ		((unsigned long)NPC_MTIME_FREQ)
 
-#define NPC_PLIC_ADDR			0x0c000000UL
-#define NPC_PLIC_SIZE			0x04000000UL
 /*
- * NPC 的 PLIC 共 32 个 source 编号（0..31），其中 0 保留。
- * OpenSBI 的 num_src 表示“最大 source ID”，因此填 31，初始化循环
- * 1..31，避免访问 source 32 的 priority（0x0c000080）触发 SLVERR。
+ * PLIC 参数由 Kconfig 的 PLIC_BASE/PLIC_SIZE/PLIC_SOURCES 经
+ * npc/scripts/build_opensbi.sh -> objects.mk -> platform-genflags-y 传入。
+ * 直接在上游树构建时退回 NPC 默认值。
  */
-#define NPC_PLIC_NUM_SOURCES		31
+#ifndef NPC_PLIC_BASE
+#define NPC_PLIC_BASE			0x0c000000UL
+#endif
+#ifndef NPC_PLIC_SIZE
+#define NPC_PLIC_SIZE			0x00300000UL
+#endif
+#ifndef NPC_PLIC_SOURCES
+#define NPC_PLIC_SOURCES		32
+#endif
+/*
+ * OpenSBI 的 num_src 表示“最大 source ID”，因此取
+ * PLIC_SOURCES - 1；source 0 保留。初始化循环只访问 1..最大 ID，
+ * 避免访问不存在的 priority 触发 SLVERR。
+ */
+#define NPC_PLIC_NUM_SOURCES		(NPC_PLIC_SOURCES - 1)
 #define NPC_HART_COUNT			1
 
 /*
@@ -82,7 +94,7 @@ unsigned long fw_platform_init(unsigned long arg0, unsigned long arg1,
  */
 static struct plic_data plic = {
 	.unique_id = 0,
-	.addr = NPC_PLIC_ADDR,
+	.addr = NPC_PLIC_BASE,
 	.size = NPC_PLIC_SIZE,
 	.num_src = NPC_PLIC_NUM_SOURCES,
 	.context_map = {

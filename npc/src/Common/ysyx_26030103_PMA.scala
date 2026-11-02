@@ -40,7 +40,11 @@ object ysyx_26030103_PhysicalMemoryMap {
     * C++ CONFIG_MSIZE；默认 64MiB 保持既有行为，128MiB 用于 U-Boot
     * 加载 Debian EFI 内核。
     */
-  def NPCWithSize(ramBytes: Long): Seq[ysyx_26030103_PMARegion] = Seq(
+  def NPCWithSize(
+      ramBytes: Long,
+      PlicBase: Long = 0x0c000000L,
+      PlicSize: Long = 0x00300000L
+  ): Seq[ysyx_26030103_PMARegion] = Seq(
     CLINT,
     // 直接 NPC 的 UART 由 AXIRAM 中的 16550 兼容模型提供：TX 输出到仿真
     // stdout，RX 寄存器/LSR 可读，因此 PMA 必须允许读访问。
@@ -53,14 +57,13 @@ object ysyx_26030103_PhysicalMemoryMap {
     // claim 会被 PMA 拒绝，表现为 Store/AMO access fault 和外部中断
     // 无法清除。
     //
-    // 窗口必须止于 0x0f000000：ysyxSoC 的片上 SRAM 正好从这里开始，
-    // 若沿用标准 64MiB PLIC 孔径，0x0f000000 会先被 PLIC 解码吞掉，
-    // full-SoC 的 FSBL 第一次写 SRAM 就会收到 SLVERR。3MiB 已覆盖
-    // 0x0c200000 起的 256 个 context，且与 SoC SRAM 不重叠；DTB 必须
-    // 使用同一 reg 大小。
+    // 窗口大小由 Kconfig 的 PLIC_SIZE 决定。ysyxSoC 的片上 SRAM 在
+    // 0x0f000000，若 PLIC 孔径覆盖到这里，SRAM 访问会先被 Xbar 的
+    // PLIC 解码吞掉；默认 3MiB 正好止于 SRAM 之前。DTB/OpenSBI 必须
+    // 使用同一个值。
     ysyx_26030103_PMARegion(
-      0x0c000000L,
-      0x00300000L
+      PlicBase,
+      PlicSize
     ),
     ysyx_26030103_PMARegion(
       0x80000000L,
@@ -77,9 +80,16 @@ object ysyx_26030103_PhysicalMemoryMap {
     */
   val NPC: Seq[ysyx_26030103_PMARegion] = NPCWithSize(0x04000000L)
 
-  def SoC(HasChipLink: Boolean): Seq[ysyx_26030103_PMARegion] = {
+  def SoC(
+      HasChipLink: Boolean,
+      PlicBase: Long = 0x0c000000L,
+      PlicSize: Long = 0x00300000L
+  ): Seq[ysyx_26030103_PMARegion] = {
     val Local = Seq(
       CLINT,
+      // PLIC 在 Xbar 里有独立端口，但 PMA 仍要显式覆盖它，保证缓存/
+      // 权限判断和地址解码使用同一窗口。Cacheable=false 与 MMIO 语义一致。
+      ysyx_26030103_PMARegion(PlicBase, PlicSize),
       ysyx_26030103_PMARegion(
         0x0f000000L,
         0x00008000L,

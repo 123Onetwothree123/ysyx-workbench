@@ -89,9 +89,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       AddressWidth = config.AddressWidth,
       PMARegions = config.PMARegions,
       PLICBaseValue = BigInt(config.MMU.plicBase),
-      // 必须止于 0x0f000000，避免覆盖 ysyxSoC 的片上 SRAM。详见
-      // ysyx_26030103_PhysicalMemoryMap.SoC 中 PLIC 区的注释。
-      PLICSizeBytes = BigInt(0x00300000),
+      // 孔径由 Kconfig 的 PLIC_SIZE 决定；默认 3MiB，止于 0x0f000000，
+      // 避免覆盖 ysyxSoC 的片上 SRAM。详见 PMA 中 PLIC 区的注释。
+      PLICSizeBytes = BigInt(config.MMU.plicSize),
       DataWidth = 32,
       IdWidth = 4
     )

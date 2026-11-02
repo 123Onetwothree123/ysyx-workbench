@@ -278,7 +278,11 @@ object ysyx_26030103_Elaborate extends App {
       ysyx_26030103_DmaCoherence.FromString(DmaCoherenceName),
     // 日志中的 Describe 必须反映实际 SoC PMA（DMA 窗口是否存在），
     // 否则 CHIPLINK=y 时 hardware_snoop/uncached 会误标成 inactive。
-    PMARegions = ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink),
+    PMARegions = ysyx_26030103_PhysicalMemoryMap.SoC(
+      HasChipLink,
+      mmuProfile.plicBase,
+      mmuProfile.plicSize
+    ),
     BlockSizeLog2 = BlockSizeLog2,
     IndexBits = IndexBits,
     ICacheBlockSizeLog2 = ICacheBlockSizeLog2,
@@ -400,7 +404,11 @@ object ysyx_26030103_Elaborate extends App {
         ResetAddr = 0x80000000L + CachePadding,
         CacheableBase = CacheableBase_npc,
         CacheableMask = CacheableMask_npc,
-        PMARegions = ysyx_26030103_PhysicalMemoryMap.NPCWithSize(NpcRamSize)
+        PMARegions = ysyx_26030103_PhysicalMemoryMap.NPCWithSize(
+          NpcRamSize,
+          mmuProfile.plicBase,
+          mmuProfile.plicSize
+        )
       )
     ),
     Array("--target-dir", targetDir),
@@ -417,7 +425,11 @@ object ysyx_26030103_Elaborate extends App {
         ResetAddr = 0x30000000L,
         CacheableBase = CacheableBase_ysyxsoc,
         CacheableMask = CacheableMask_ysyxsoc,
-        PMARegions = ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink)
+        PMARegions = ysyx_26030103_PhysicalMemoryMap.SoC(
+          HasChipLink,
+          mmuProfile.plicBase,
+          mmuProfile.plicSize
+        )
       )
     ),
     Array("--target-dir", targetDir),
