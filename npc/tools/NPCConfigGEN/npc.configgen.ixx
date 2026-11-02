@@ -209,6 +209,7 @@ void addPlatform(TypedFields &root, const Config &values,
 void addSoc(TypedFields &root, const Config &values, long long xlen,
             long long socXlen);
 void addBoot(TypedFields &root, const Config &values);
+void addFpga(TypedFields &root, const Config &values);
 void addBuild(TypedFields &root, const Config &values,
               const std::string &pdkOverride);
 void addFlat(TypedFields &root, const Config &values);

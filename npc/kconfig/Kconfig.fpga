@@ -1,0 +1,744 @@
+menu "FPGA 部署"
+
+  config FPGA_ENABLE
+    bool "启用 FPGA 部署配置框架"
+    default n
+    help
+      打开后展开 FPGA 厂商、器件、板卡、工具链、时钟、存储、
+      外设、调试和资源预算选项。
+
+      当前阶段先建立完整的配置框架：这些选项会进入 .config、
+      autoconf.h 和 typed JSON，供后续 Vivado/Quartus 工程生成、
+      约束文件、引脚绑定和板级脚本消费；具体的综合/实现流程
+      尚未接入。
+
+  if FPGA_ENABLE
+
+    menu "目标厂商与器件"
+
+      choice
+        prompt "FPGA 厂商"
+        default FPGA_VENDOR_AMD
+        help
+          当前先列出 AMD (Xilinx) 和 Intel (Altera) 两家；
+          具体器件、板卡和工具链版本后续再细化。
+        config FPGA_VENDOR_AMD
+          bool "AMD (Xilinx)"
+        config FPGA_VENDOR_INTEL
+          bool "Intel (Altera)"
+      endchoice
+
+      config FPGA_VENDOR
+        string
+        default "amd" if FPGA_VENDOR_AMD
+        default "intel" if FPGA_VENDOR_INTEL
+        default "amd"
+
+      if FPGA_VENDOR_AMD
+        choice
+          prompt "AMD FPGA 系列"
+          default FPGA_AMD_FAMILY_7SERIES
+          config FPGA_AMD_FAMILY_7SERIES
+            bool "7-series (Artix-7 / Kintex-7 / Virtex-7)"
+          config FPGA_AMD_FAMILY_ULTRASCALE
+            bool "UltraScale"
+          config FPGA_AMD_FAMILY_ULTRASCALE_PLUS
+            bool "UltraScale+"
+          config FPGA_AMD_FAMILY_VERSAL
+            bool "Versal"
+        endchoice
+      endif
+
+      if FPGA_VENDOR_INTEL
+        choice
+          prompt "Intel FPGA 系列"
+          default FPGA_INTEL_FAMILY_CYCLONE_10
+          config FPGA_INTEL_FAMILY_CYCLONE_IV
+            bool "Cyclone IV"
+          config FPGA_INTEL_FAMILY_CYCLONE_V
+            bool "Cyclone V"
+          config FPGA_INTEL_FAMILY_CYCLONE_10
+            bool "Cyclone 10"
+          config FPGA_INTEL_FAMILY_ARRIA_10
+            bool "Arria 10"
+          config FPGA_INTEL_FAMILY_STRATIX_10
+            bool "Stratix 10"
+          config FPGA_INTEL_FAMILY_AGILEX
+            bool "Agilex"
+        endchoice
+      endif
+
+      config FPGA_FAMILY
+        string
+        default "7series" if FPGA_AMD_FAMILY_7SERIES
+        default "ultrascale" if FPGA_AMD_FAMILY_ULTRASCALE
+        default "ultrascale_plus" if FPGA_AMD_FAMILY_ULTRASCALE_PLUS
+        default "versal" if FPGA_AMD_FAMILY_VERSAL
+        default "cyclone_iv" if FPGA_INTEL_FAMILY_CYCLONE_IV
+        default "cyclone_v" if FPGA_INTEL_FAMILY_CYCLONE_V
+        default "cyclone_10" if FPGA_INTEL_FAMILY_CYCLONE_10
+        default "arria_10" if FPGA_INTEL_FAMILY_ARRIA_10
+        default "stratix_10" if FPGA_INTEL_FAMILY_STRATIX_10
+        default "agilex" if FPGA_INTEL_FAMILY_AGILEX
+        default "unknown"
+
+      config FPGA_DEVICE_CUSTOM
+        bool "自定义器件型号"
+        default n
+        help
+          不勾选时按厂商/系列自动选择默认器件；
+          勾选后使用下面的 FPGA_DEVICE_CUSTOM_VALUE。
+
+      config FPGA_DEVICE_CUSTOM_VALUE
+        string "器件型号"
+        depends on FPGA_DEVICE_CUSTOM
+        default ""
+        help
+          完整的器件型号，例如：
+            xc7a100tcsg324-1
+            xczu9eg-ffvb1156-2-e
+            10M50DAF484C7G
+          Kconfig 只负责记录；具体器件支持情况由后续综合脚本校验。
+
+      config FPGA_DEVICE
+        string
+        default FPGA_DEVICE_CUSTOM_VALUE if FPGA_DEVICE_CUSTOM
+        default "xc7a100tcsg324-1" if FPGA_AMD_FAMILY_7SERIES
+        default "xcku040-ffva1156-2-e" if FPGA_AMD_FAMILY_ULTRASCALE
+        default "xczu9eg-ffvb1156-2-e" if FPGA_AMD_FAMILY_ULTRASCALE_PLUS
+        default "xcvc1902-vsva2197-2MP-e-S" if FPGA_AMD_FAMILY_VERSAL
+        default "EP4CE115F29C7" if FPGA_INTEL_FAMILY_CYCLONE_IV
+        default "5CSXFC6D6F31C6" if FPGA_INTEL_FAMILY_CYCLONE_V
+        default "10M50DAF484C7G" if FPGA_INTEL_FAMILY_CYCLONE_10
+        default "10AX115N2F45E1SG" if FPGA_INTEL_FAMILY_ARRIA_10
+        default "1SG280HU2F50E2VG" if FPGA_INTEL_FAMILY_STRATIX_10
+        default "AGFB014R24B2E2V" if FPGA_INTEL_FAMILY_AGILEX
+        default ""
+
+      config FPGA_PACKAGE
+        string "封装"
+        default ""
+        help
+          可选。若器件型号中已经包含封装，可留空。
+
+      config FPGA_SPEED_GRADE
+        string "速度等级"
+        default ""
+        help
+          可选。若器件型号中已经包含速度等级，可留空。
+
+      config FPGA_BOARD
+        string "板卡/自定义标识"
+        default "custom"
+        help
+          板卡名称或自定义标识。常用板卡示例：
+            Nexys A7 / Arty A7 / KC705 / ZCU102 / ZCU104 / VCK190
+            DE10-Standard / DE10-Nano / DE2-115 / C5G / Agilex
+          具体引脚约束和板级时钟后续由约束文件与脚本确定。
+
+    endmenu
+
+    menu "工具链与工程"
+
+      choice
+        prompt "FPGA 工具链"
+        default FPGA_TOOLCHAIN_VIVADO if FPGA_VENDOR_AMD
+        default FPGA_TOOLCHAIN_QUARTUS if FPGA_VENDOR_INTEL
+        help
+          通常与厂商匹配：AMD 使用 Vivado，Intel 使用 Quartus Prime。
+        config FPGA_TOOLCHAIN_VIVADO
+          bool "AMD Vivado"
+          depends on FPGA_VENDOR_AMD
+        config FPGA_TOOLCHAIN_QUARTUS
+          bool "Intel Quartus Prime"
+          depends on FPGA_VENDOR_INTEL
+      endchoice
+
+      config FPGA_TOOLCHAIN
+        string
+        default "vivado" if FPGA_TOOLCHAIN_VIVADO
+        default "quartus" if FPGA_TOOLCHAIN_QUARTUS
+        default "vivado"
+
+      config FPGA_VIVADO_VERSION
+        string "Vivado 版本"
+        depends on FPGA_TOOLCHAIN_VIVADO
+        default "2025.1"
+
+      config FPGA_QUARTUS_VERSION
+        string "Quartus 版本"
+        depends on FPGA_TOOLCHAIN_QUARTUS
+        default "24.1"
+
+      config FPGA_TOOLCHAIN_VERSION
+        string
+        default FPGA_VIVADO_VERSION if FPGA_TOOLCHAIN_VIVADO
+        default FPGA_QUARTUS_VERSION if FPGA_TOOLCHAIN_QUARTUS
+        default ""
+
+      config FPGA_TOOLCHAIN_PATH
+        string "工具链安装路径"
+        default ""
+        help
+          可选。留空表示使用 PATH 中的 vivado/quartus 命令。
+
+      config FPGA_PROJECT_NAME
+        string "工程名称"
+        default "npc_fpga"
+
+      config FPGA_BUILD_DIR
+        string "FPGA 构建输出目录"
+        default "build/fpga"
+
+      config FPGA_VIVADO_TIMING_CONSTRAINTS
+        string "Vivado 时序约束文件"
+        depends on FPGA_TOOLCHAIN_VIVADO
+        default "fpga/timing.xdc"
+
+      config FPGA_QUARTUS_TIMING_CONSTRAINTS
+        string "Quartus 时序约束文件"
+        depends on FPGA_TOOLCHAIN_QUARTUS
+        default "fpga/timing.sdc"
+
+      config FPGA_TIMING_CONSTRAINTS
+        string
+        default FPGA_VIVADO_TIMING_CONSTRAINTS if FPGA_TOOLCHAIN_VIVADO
+        default FPGA_QUARTUS_TIMING_CONSTRAINTS if FPGA_TOOLCHAIN_QUARTUS
+        default "fpga/timing.xdc"
+
+      config FPGA_VIVADO_PIN_CONSTRAINTS
+        string "Vivado 引脚约束文件"
+        depends on FPGA_TOOLCHAIN_VIVADO
+        default "fpga/pins.xdc"
+
+      config FPGA_QUARTUS_PIN_CONSTRAINTS
+        string "Quartus 引脚约束文件"
+        depends on FPGA_TOOLCHAIN_QUARTUS
+        default "fpga/pins.qsf"
+
+      config FPGA_PIN_CONSTRAINTS
+        string
+        default FPGA_VIVADO_PIN_CONSTRAINTS if FPGA_TOOLCHAIN_VIVADO
+        default FPGA_QUARTUS_PIN_CONSTRAINTS if FPGA_TOOLCHAIN_QUARTUS
+        default "fpga/pins.xdc"
+
+      config FPGA_TCL_HOOK
+        string "工程 TCL 钩子"
+        default ""
+        help
+          可选。综合/实现流程中额外执行的 TCL 脚本路径。
+
+      config FPGA_JOBS
+        int "并行任务数，0 = 使用全部核心"
+        default 0
+        range 0 1024
+
+      config FPGA_NON_PROJECT_MODE
+        bool "使用非工程模式（脚本化流程）"
+        default y
+        help
+          Vivado 的 -mode batch / Quartus 的 quartus_sh 脚本流程。
+
+      choice
+        prompt "综合策略"
+        default FPGA_SYNTH_DEFAULT
+        config FPGA_SYNTH_DEFAULT
+          bool "default"
+        config FPGA_SYNTH_AREA
+          bool "area"
+        config FPGA_SYNTH_SPEED
+          bool "speed"
+        config FPGA_SYNTH_PERFORMANCE
+          bool "performance"
+      endchoice
+
+      config FPGA_SYNTH_STRATEGY
+        string
+        default "default" if FPGA_SYNTH_DEFAULT
+        default "area" if FPGA_SYNTH_AREA
+        default "speed" if FPGA_SYNTH_SPEED
+        default "performance" if FPGA_SYNTH_PERFORMANCE
+        default "default"
+
+      choice
+        prompt "实现策略"
+        default FPGA_IMPL_DEFAULT
+        config FPGA_IMPL_DEFAULT
+          bool "default"
+        config FPGA_IMPL_EXPLORE
+          bool "explore"
+        config FPGA_IMPL_PERFORMANCE
+          bool "performance"
+      endchoice
+
+      config FPGA_IMPL_STRATEGY
+        string
+        default "default" if FPGA_IMPL_DEFAULT
+        default "explore" if FPGA_IMPL_EXPLORE
+        default "performance" if FPGA_IMPL_PERFORMANCE
+        default "default"
+
+      config FPGA_INCREMENTAL
+        bool "增量实现"
+        default n
+
+      config FPGA_PHYS_OPT
+        bool "物理优化"
+        default n
+
+      config FPGA_REPORT_TIMING
+        bool "生成时序报告"
+        default y
+
+      config FPGA_REPORT_UTILIZATION
+        bool "生成资源利用率报告"
+        default y
+
+    endmenu
+
+    menu "时钟与复位"
+
+      config FPGA_INPUT_CLOCK_MHZ
+        int "板级输入时钟 (MHz)"
+        default 100
+        range 1 1000
+
+      config FPGA_SYSTEM_CLOCK_MHZ
+        int "系统时钟 (MHz)"
+        default 50
+        range 1 2000
+        help
+          FPGA 初步目标频率。最终频率由时序收敛结果决定，
+          与 ASIC 综合使用的 SYNTH_FREQ 相互独立。
+
+      choice
+        prompt "时钟生成方式"
+        default FPGA_CLOCK_MMCM if FPGA_VENDOR_AMD
+        default FPGA_CLOCK_PLL if FPGA_VENDOR_INTEL
+        config FPGA_CLOCK_MMCM
+          bool "MMCM (AMD)"
+          depends on FPGA_VENDOR_AMD
+        config FPGA_CLOCK_PLL
+          bool "PLL (Intel)"
+          depends on FPGA_VENDOR_INTEL
+        config FPGA_CLOCK_EXTERNAL
+          bool "外部时钟直连"
+      endchoice
+
+      config FPGA_CLOCK_SOURCE
+        string
+        default "mmcm" if FPGA_CLOCK_MMCM
+        default "pll" if FPGA_CLOCK_PLL
+        default "external" if FPGA_CLOCK_EXTERNAL
+        default "mmcm"
+
+      config FPGA_CLOCK_BUFFER
+        bool "使用全局时钟缓冲"
+        default y
+
+      choice
+        prompt "复位极性"
+        default FPGA_RESET_ACTIVE_LOW
+        config FPGA_RESET_ACTIVE_LOW
+          bool "低有效"
+        config FPGA_RESET_ACTIVE_HIGH
+          bool "高有效"
+      endchoice
+
+      config FPGA_RESET_POLARITY
+        string
+        default "active_low" if FPGA_RESET_ACTIVE_LOW
+        default "active_high" if FPGA_RESET_ACTIVE_HIGH
+        default "active_low"
+
+      config FPGA_RESET_SYNC
+        bool "复位同步释放"
+        default y
+
+      config FPGA_CLOCK_UNCERTAINTY_NS
+        string "时钟不确定度 (ns)"
+        default "0.100"
+
+      config FPGA_TIMING_MARGIN_NS
+        string "额外时序裕量 (ns)"
+        default "0.000"
+
+    endmenu
+
+    menu "存储与 DDR"
+
+      choice
+        prompt "存储模型"
+        default FPGA_MEMORY_DDR
+        config FPGA_MEMORY_BRAM_ONLY
+          bool "仅片上 BRAM/URAM"
+        config FPGA_MEMORY_DDR
+          bool "DDR + 片上 BRAM"
+      endchoice
+
+      config FPGA_MEMORY_MODEL
+        string
+        default "bram_only" if FPGA_MEMORY_BRAM_ONLY
+        default "ddr" if FPGA_MEMORY_DDR
+        default "ddr"
+
+      if FPGA_MEMORY_DDR
+        choice
+          prompt "DDR 类型"
+          default FPGA_DDR_TYPE_DDR4
+          config FPGA_DDR_TYPE_DDR3
+            bool "DDR3"
+          config FPGA_DDR_TYPE_DDR4
+            bool "DDR4"
+          config FPGA_DDR_TYPE_LPDDR4
+            bool "LPDDR4"
+          config FPGA_DDR_TYPE_LPDDR5
+            bool "LPDDR5"
+        endchoice
+
+        config FPGA_DDR_TYPE
+          string
+          default "ddr3" if FPGA_DDR_TYPE_DDR3
+          default "ddr4" if FPGA_DDR_TYPE_DDR4
+          default "lpddr4" if FPGA_DDR_TYPE_LPDDR4
+          default "lpddr5" if FPGA_DDR_TYPE_LPDDR5
+          default "ddr4"
+
+        config FPGA_DDR_SIZE_MB
+          int "DDR 容量 (MiB)"
+          default 1024
+          range 16 65536
+
+        config FPGA_DDR_DATA_WIDTH
+          int "DDR 数据位宽"
+          default 64
+          range 8 512
+          help
+            常用值：8/16/32/64/128/256/512。
+
+        config FPGA_DDR_FREQ_MHZ
+          int "DDR 时钟频率 (MHz)"
+          default 800
+          range 1 3200
+
+        choice
+          prompt "DDR 控制器"
+          default FPGA_DDR_CTRL_YSYXSOC
+          config FPGA_DDR_CTRL_YSYXSOC
+            bool "ysyxSoC SDRAM AXI 控制器"
+          config FPGA_DDR_CTRL_VENDOR
+            bool "厂商 MIG/EMIF IP"
+          config FPGA_DDR_CTRL_CUSTOM
+            bool "自定义控制器"
+        endchoice
+
+        config FPGA_DDR_CONTROLLER
+          string
+          default "ysyx_soc" if FPGA_DDR_CTRL_YSYXSOC
+          default "vendor" if FPGA_DDR_CTRL_VENDOR
+          default "custom" if FPGA_DDR_CTRL_CUSTOM
+          default "ysyx_soc"
+      endif
+
+      config FPGA_BRAM_BUDGET_KB
+        int "片上 BRAM 预算 (KiB)，0 = 不限制"
+        default 4096
+        range 0 1048576
+
+      config FPGA_URAM_ENABLE
+        bool "使用 URAM"
+        depends on FPGA_VENDOR_AMD && (FPGA_AMD_FAMILY_ULTRASCALE_PLUS || FPGA_AMD_FAMILY_VERSAL)
+        default y
+
+      config FPGA_BOOTROM_SIZE_KB
+        int "Boot ROM 大小 (KiB)"
+        default 128
+        range 0 65536
+
+      config FPGA_SCRATCHPAD_SIZE_KB
+        int "片上 Scratchpad 大小 (KiB)"
+        default 256
+        range 0 1048576
+
+      config FPGA_MEMORY_INIT_FILE
+        string "存储器初始化文件"
+        default ""
+        help
+          可选。例如 .hex/.bin/.mif；路径相对于 npc 目录。
+
+      choice
+        prompt "存储器初始化格式"
+        default FPGA_MEM_INIT_HEX
+        config FPGA_MEM_INIT_HEX
+          bool "hex"
+        config FPGA_MEM_INIT_BIN
+          bool "bin"
+        config FPGA_MEM_INIT_MIF
+          bool "mif"
+      endchoice
+
+      config FPGA_MEMORY_INIT_FORMAT
+        string
+        default "hex" if FPGA_MEM_INIT_HEX
+        default "bin" if FPGA_MEM_INIT_BIN
+        default "mif" if FPGA_MEM_INIT_MIF
+        default "hex"
+
+    endmenu
+
+    menu "外设与接口"
+
+      config FPGA_UART_ENABLE
+        bool "启用 UART"
+        default y
+
+      config FPGA_UART_COUNT
+        int "UART 数量"
+        depends on FPGA_UART_ENABLE
+        default 1
+        range 1 8
+
+      config FPGA_UART_BAUD
+        int "UART 波特率"
+        depends on FPGA_UART_ENABLE
+        default 115200
+        range 1200 4000000
+
+      config FPGA_SPI_FLASH_ENABLE
+        bool "启用 SPI/QSPI Flash"
+        default y
+
+      config FPGA_SPI_FLASH_SIZE_MB
+        int "SPI Flash 容量 (MiB)"
+        depends on FPGA_SPI_FLASH_ENABLE
+        default 16
+        range 1 1024
+
+      choice
+        prompt "SPI Flash 模式"
+        depends on FPGA_SPI_FLASH_ENABLE
+        default FPGA_SPI_MODE_QSPI
+        config FPGA_SPI_MODE_SPI
+          bool "SPI"
+        config FPGA_SPI_MODE_QSPI
+          bool "QSPI"
+      endchoice
+
+      config FPGA_SPI_FLASH_MODE
+        string
+        default "spi" if FPGA_SPI_MODE_SPI
+        default "qspi" if FPGA_SPI_MODE_QSPI
+        default "qspi"
+
+      config FPGA_SD_ENABLE
+        bool "启用 SD 卡"
+        default n
+
+      config FPGA_ETH_ENABLE
+        bool "启用以太网"
+        default n
+
+      choice
+        prompt "以太网 PHY 接口"
+        depends on FPGA_ETH_ENABLE
+        default FPGA_ETH_PHY_RGMII
+        config FPGA_ETH_PHY_MII
+          bool "MII"
+        config FPGA_ETH_PHY_GMII
+          bool "GMII"
+        config FPGA_ETH_PHY_RGMII
+          bool "RGMII"
+      endchoice
+
+      config FPGA_ETH_PHY
+        string
+        default "mii" if FPGA_ETH_PHY_MII
+        default "gmii" if FPGA_ETH_PHY_GMII
+        default "rgmii" if FPGA_ETH_PHY_RGMII
+        default "rgmii"
+
+      config FPGA_GPIO_ENABLE
+        bool "启用 GPIO"
+        default y
+
+      config FPGA_GPIO_WIDTH
+        int "GPIO 位宽"
+        depends on FPGA_GPIO_ENABLE
+        default 16
+        range 1 256
+
+      config FPGA_VGA_ENABLE
+        bool "启用 VGA"
+        default n
+
+      config FPGA_HDMI_ENABLE
+        bool "启用 HDMI"
+        default n
+
+      config FPGA_PS2_ENABLE
+        bool "启用 PS/2"
+        default n
+
+      config FPGA_DMA_ENABLE
+        bool "启用 DMA"
+        default y
+
+      config FPGA_JTAG_ENABLE
+        bool "启用 JTAG 调试接口"
+        default y
+
+    endmenu
+
+    menu "调试与观测"
+
+      config FPGA_ILA_ENABLE
+        bool "启用 ILA/SignalTap 逻辑分析仪"
+        default n
+
+      config FPGA_ILA_DEPTH
+        int "ILA 采样深度"
+        depends on FPGA_ILA_ENABLE
+        default 1024
+        range 1 1048576
+
+      choice
+        prompt "ILA 采样时钟"
+        depends on FPGA_ILA_ENABLE
+        default FPGA_ILA_CLOCK_SYSTEM
+        config FPGA_ILA_CLOCK_SYSTEM
+          bool "系统时钟"
+        config FPGA_ILA_CLOCK_CORE
+          bool "CPU 核心时钟"
+      endchoice
+
+      config FPGA_ILA_CLOCK
+        string
+        default "system" if FPGA_ILA_CLOCK_SYSTEM
+        default "core" if FPGA_ILA_CLOCK_CORE
+        default "system"
+
+      config FPGA_VIO_ENABLE
+        bool "启用 VIO 虚拟 IO"
+        default n
+
+      config FPGA_SIGNALTAP_ENABLE
+        bool "启用 SignalTap"
+        depends on FPGA_VENDOR_INTEL
+        default n
+
+      config FPGA_TRACE_ENABLE
+        bool "启用指令/访存 Trace"
+        default n
+
+      config FPGA_PROBE_WIDTH
+        int "调试探针位宽"
+        default 32
+        range 1 512
+
+      config FPGA_DEBUG_UART
+        bool "启用调试串口"
+        default y
+
+    endmenu
+
+    menu "资源预算与时序"
+
+      config FPGA_LUT_BUDGET
+        int "LUT 预算，0 = 不限制"
+        default 0
+        range 0 10000000
+
+      config FPGA_FF_BUDGET
+        int "FF 预算，0 = 不限制"
+        default 0
+        range 0 10000000
+
+      config FPGA_BRAM_TILE_BUDGET
+        int "BRAM 块预算，0 = 不限制"
+        default 0
+        range 0 10000000
+
+      config FPGA_DSP_BUDGET
+        int "DSP 块预算，0 = 不限制"
+        default 0
+        range 0 10000000
+
+      config FPGA_MAX_FANOUT
+        int "最大扇出，0 = 不限制"
+        default 0
+        range 0 1000000
+
+      config FPGA_RESOURCE_REPORT
+        bool "生成资源利用率汇总"
+        default y
+
+      config FPGA_TIMING_SUMMARY
+        bool "生成时序收敛汇总"
+        default y
+
+    endmenu
+
+    menu "烧录与启动"
+
+      config FPGA_BITSTREAM
+        bool "生成 bitstream"
+        default y
+
+      choice
+        prompt "bitstream 格式"
+        default FPGA_BITSTREAM_BIT
+        config FPGA_BITSTREAM_BIT
+          bool "bit"
+        config FPGA_BITSTREAM_BIN
+          bool "bin"
+        config FPGA_BITSTREAM_MCS
+          bool "mcs"
+      endchoice
+
+      config FPGA_BITSTREAM_FORMAT
+        string
+        default "bit" if FPGA_BITSTREAM_BIT
+        default "bin" if FPGA_BITSTREAM_BIN
+        default "mcs" if FPGA_BITSTREAM_MCS
+        default "bit"
+
+      choice
+        prompt "启动/烧录方式"
+        default FPGA_PROGRAM_JTAG
+        config FPGA_PROGRAM_JTAG
+          bool "JTAG"
+        config FPGA_PROGRAM_QSPI
+          bool "QSPI Flash"
+        config FPGA_PROGRAM_SD
+          bool "SD 卡"
+        config FPGA_PROGRAM_EMMC
+          bool "eMMC"
+        config FPGA_PROGRAM_NET
+          bool "网络/TFTP"
+      endchoice
+
+      config FPGA_PROGRAM_MODE
+        string
+        default "jtag" if FPGA_PROGRAM_JTAG
+        default "qspi" if FPGA_PROGRAM_QSPI
+        default "sd" if FPGA_PROGRAM_SD
+        default "emmc" if FPGA_PROGRAM_EMMC
+        default "net" if FPGA_PROGRAM_NET
+        default "jtag"
+
+      config FPGA_PROGRAMMER
+        string "烧录器/编程电缆"
+        default "auto"
+        help
+          Vivado 示例：Digilent JTAG-HS3、xilinx_tcf；
+          Quartus 示例：USB-Blaster。
+
+      config FPGA_FLASH_OFFSET
+        hex "Flash 烧录偏移"
+        default 0x00000000
+
+    endmenu
+
+  endif
+
+endmenu

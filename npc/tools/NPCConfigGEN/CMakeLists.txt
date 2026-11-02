@@ -22,6 +22,7 @@ set(NPC_CONFIG_GEN_SOURCES
     ModuleConfig/render.cpp
     TypedConfig/cpu.cpp
     TypedConfig/debug.cpp
+    TypedConfig/fpga.cpp
     TypedConfig/mmu.cpp
     TypedConfig/platform.cpp
     TypedConfig/render.cpp

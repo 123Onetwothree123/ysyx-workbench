@@ -28,6 +28,7 @@ std::string renderTypedJson(const Config &values, const std::string &digest,
     addPlatform(root, values, addressWidth, socXlen);
     addSoc(root, values, xlen, socXlen);
     addBoot(root, values);
+    addFpga(root, values);
     addBuild(root, values, pdkOverride);
     addFlat(root, values);
     std::ostringstream out;
