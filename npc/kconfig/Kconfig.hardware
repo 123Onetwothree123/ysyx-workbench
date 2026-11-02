@@ -1,4 +1,4 @@
-menu "硬件配置"
+menu "CPU 与平台"
 
   menu "指令集扩展"
 
@@ -711,57 +711,6 @@ menu "硬件配置"
 
   endmenu
 
-  menu "ysyxSoC 接口"
-
-    config CHIPLINK
-      bool "启用 ChipLink 外部存储/中断接口"
-      default n
-      help
-        打开 ysyxSoC 的 ChipLink master/slave 与 DMA 代理。
-        该值写入 typed JSON 的 soc.chiplink，由 SoC elaboration 消费；
-        CPU 侧 PMA/DMA 一致性设置仍由 Makefile 从同一值派生。
-
-    config SDRAM_USE_AXI
-      bool "SDRAM 使用 AXI 数据通路"
-      default y
-      help
-        选择 ysyxSoC 的 SDRAM 控制器接在 32 位 AXI xbar 上；关闭时
-        使用 APB SDRAM 路径。该值写入 typed JSON 的
-        soc.sdram_use_axi，由 SoC 拓扑选择直接消费。
-
-    config SOC_XLEN_FOLLOW_CPU
-      bool "SoC CPU 侧接口位宽跟随 CPU XLEN"
-      default n
-      help
-        控制 ysyxSoC CPU 侧接口的 XLEN/数据宽度是否跟随 CPU 的 XLEN。
-        n（默认）: 使用 SOC_XLEN，CPU 与 SoC 位宽相互独立。
-        y: EffectiveSocXLEN = XLEN。
-        注意 follow 只是让 SoC 接口跟随 CPU，并不是强制 CPU 与 SoC
-        同宽；关闭后仍可自由组合 32/64，例如 64 位 CPU 搭配 32 位
-        SoC，或 32 位 CPU 搭配 64 位 SoC。
-
-    config SOC_XLEN
-      int "ysyxSoC CPU 侧接口 XLEN"
-      depends on !SOC_XLEN_FOLLOW_CPU
-      default 64 if XLEN=64
-      default 32
-      # Kconfig 的 int/range 不能表达离散集合；32/64 由配置契约校验
-      # 在配置阶段检查，elaboration 也会再次校验。
-      range 32 64
-      help
-        ysyxSoC CPU 侧接口的 XLEN/数据宽度，仅当
-        SOC_XLEN_FOLLOW_CPU=n 时可见并生效，只允许 32 或 64；
-        XLEN=64 时默认 64，XLEN=32 时默认 32。
-        33..63 会在 make defconfig/menuconfig 后的配置契约检查阶段
-        被明确拒绝，不会静默生成。
-        32 位 ysyxSoC 可以搭配 64 位 CPU：CPU 内部仍使用 64 位地址，
-        但经 SoC 边界的访问必须位于低 4GiB，更高地址在 Xbar 内返回
-        DECERR。64 位 SoC 接口已经由 AXI4Downsizer 接入 32 位
-        xbar/外设，配置会写入 typed JSON 的 soc.soc_xlen，由
-        ysyxSoC elaboration 直接消费。
-        修改后需重新 make verilog 或 make build/ysyx_26030103。
-
-  endmenu
 
   menu "缓存"
 
@@ -1052,79 +1001,277 @@ menu "硬件配置"
 
   endmenu
 
-  menu "SoC 总线延迟模型"
-
-    config SYNTH_FREQ
-      int "综合目标频率 (MHz)"
-      default 450
-      range 1 10000
+  menu "特权级与 CSR"
+    config HAS_S
+      bool "启用 S 模式"
+      default y if XLEN=64
       help
-        综合器尝试达到的目标频率。设置越高，综合器可能使用更多
-        面积换取更低的逻辑延迟。受限于工艺库和寄存器堆/加法器/SRAM等
-        关键部件的最大工作频率。
-        该值同时作为 APB/AXI 延迟模型的 CPU 频率传入 RTL，
-        修改后需重新 make verilog。
+        启用 S 模式状态、S 模式 CSR、异常委托和 S 模式异常入口。
+        HAS_S=n 时 S 级 CSR、S 模式寄存器和委托逻辑在 elaboration 期
+        裁剪，SRET/SFENCE.VMA 视为非法指令。HAS_U 可独立于 HAS_S
+        打开，此时 U 的陷阱直接进入 M。MMU/Sv32 依赖 S 模式；
+        HAS_S=n 时必须同时关闭 HAS_MMU。
 
-    config APB_DEVICE_FREQ
-      int "APB设备频率 (MHz)"
-      default 100
-      range 1 10000
+    config HAS_U
+      bool "启用 U 模式"
+      default y if HAS_S
       help
-        APB总线上外设（如SDRAM控制器）的运行频率。
-        用于APB延迟模块计算频率比校准访存延迟；该值进入 typed JSON
-        的 soc.apb.device_freq_mhz，由 ysyxSoC 统一读取。
+        启用 U 模式状态、U 模式 ecall/权限检查和 MRET 返回 U。
+        HAS_U=y 且 HAS_S=y 时为完整 M/S/U；HAS_S=n 时为 M+U，
+        U 的异常/中断直接进入 M，使用 mepc/mcause/mtval/mstatus.MPP，
+        不生成任何 S CSR 或委托逻辑。HAS_U=n 时 MRET/SRET 只能返回 S
+        （MPP/SPP 的 U 编码被夹到 S），U 级 CSR 被裁剪，页表 U 位与
+        SUM 检查固定为不适用。
 
-    config APB_DELAY_SCALE
-      int "APB延迟缩放因子 S"
-      default 64
-      range 1 1048576
-      help
-        APB延迟模块中频率比累加的放大系数。
+    menu "中断与 PMP"
 
-    config AXI_DEVICE_FREQ
-      int "AXI设备频率 (MHz)"
-      default 100
-      range 1 10000
-      help
-        AXI总线上外设（如SDRAM控制器）的运行频率。
-        用于AXI延迟模块计算频率比校准访存延迟。
+      config HAS_S_TIMER_IRQ
+        bool "启用 S 模式时钟中断"
+        default y
+        depends on HAS_S
+      config HAS_S_EXTERNAL_IRQ
+        bool "启用 S 模式外部中断"
+        default y
+        depends on HAS_S
 
-    config AXI_DELAY_SCALE
-      int "AXI延迟缩放因子 S"
-      default 64
-      range 1 1048576
-      help
-        AXI延迟模块中频率比累加的放大系数。
+      choice
+        prompt "Timer 中断路径"
+        default TIMER_CLINT_MTIP
+        config TIMER_CLINT_MTIP
+          bool "CLINT MTIP + M-mode/SBI 桥接"
+        config TIMER_DIRECT_STIP
+          bool "直接产生 STIP"
+      endchoice
 
+      config TIMER_PATH
+        string
+        default "clint_mtip" if TIMER_CLINT_MTIP
+        default "direct_stip"
+
+      config HAS_PMP
+        bool "启用 PMP"
+        default y if HAS_MMU
+        help
+          启用基础 PMP：支持 OFF/TOR/NA4/NAPOT、L 锁定和 R/W/X 权限。
+          有 MMU 时检查翻译后的物理地址；无 MMU 时直接检查取指地址和
+          LSU 的 VA==PA 访存地址，不依赖 HAS_MMU。
+      config PMP_ENTRIES
+        int "PMP 表项数"
+        default 16
+        range 1 16
+        depends on HAS_PMP
+
+    endmenu
+    menu "CSR 与字段行为"
+
+      choice
+        prompt "缺失 CSR 的访问行为"
+        default CSR_MISSING_ILLEGAL
+        config CSR_MISSING_ILLEGAL
+          bool "非法指令 cause 2"
+        config CSR_MISSING_ZERO
+          bool "读 0 / 写忽略 (自定义)"
+      endchoice
+
+      config CSR_MISSING_MODE
+        string
+        default "illegal" if CSR_MISSING_ILLEGAL
+        default "zero"
+
+      choice
+        prompt "sstatus/sie/sip 视图"
+        default CSR_VIEW_BOUND
+        config CSR_VIEW_BOUND
+          bool "与 mstatus/mie/mip 绑定"
+        config CSR_VIEW_INDEPENDENT
+          bool "独立开关"
+      endchoice
+
+      config CSR_VIEW_MODE
+        string
+        default "bound" if CSR_VIEW_BOUND
+        default "independent"
+
+      config CSR_FIELD_DEFAULT_READ
+        string "字段默认读行为"
+        default "normal"
+        help
+          可选 normal/zero/one。每个字段可在下面覆盖。
+      config CSR_FIELD_DEFAULT_WRITE
+        string "字段默认写行为"
+        default "normal"
+        help
+          可选 normal/ignore。每个字段可在下面覆盖。
+
+      config HAS_CSR_MSTATUS
+        bool "mstatus"
+        default y
+      config HAS_CSR_MISA
+        bool "misa"
+        default y
+      config HAS_CSR_MTVEC
+        bool "mtvec"
+        default y
+      config HAS_CSR_MEPC
+        bool "mepc"
+        default y
+      config HAS_CSR_MCAUSE
+        bool "mcause"
+        default y
+      config HAS_CSR_MTVAL
+        bool "mtval"
+        default y if HAS_S
+      config HAS_CSR_MSCRATCH
+        bool "mscratch"
+        default y if HAS_S
+      config HAS_CSR_MIE
+        bool "mie"
+        default y
+      config HAS_CSR_MIP
+        bool "mip"
+        default y
+      config HAS_CSR_MEDELEG
+        bool "medeleg"
+        default y if HAS_S
+      config HAS_CSR_MIDELEG
+        bool "mideleg"
+        default y if HAS_S
+      config HAS_CSR_MCOUNTEREN
+        bool "mcounteren"
+        default y if HAS_S
+      config HAS_CSR_MCOUNTINHIBIT
+        bool "mcountinhibit"
+        default y if HAS_S
+      config HAS_CSR_MCYCLE
+        bool "mcycle"
+        default y
+      config HAS_CSR_MINSTRET
+        bool "minstret"
+        default y if HAS_S
+
+      config HAS_CSR_SSTATUS
+        bool "sstatus"
+        default y if HAS_S
+      config HAS_CSR_SIE
+        bool "sie"
+        default y if HAS_S
+      config HAS_CSR_SIP
+        bool "sip"
+        default y if HAS_S
+      config HAS_CSR_STVEC
+        bool "stvec"
+        default y if HAS_S
+      config HAS_CSR_SSCRATCH
+        bool "sscratch"
+        default y if HAS_S
+      config HAS_CSR_SEPC
+        bool "sepc"
+        default y if HAS_S
+      config HAS_CSR_SCAUSE
+        bool "scause"
+        default y if HAS_S
+      config HAS_CSR_STVAL
+        bool "stval"
+        default y if HAS_S
+      config HAS_CSR_SATP
+        bool "satp"
+        default y if HAS_S
+      config HAS_CSR_SCOUNTEREN
+        bool "scounteren"
+        default y if HAS_S
+
+      config CSR_MSTATUS_MIE_READ
+        string "mstatus.MIE 读行为"
+        default "normal"
+      config CSR_MSTATUS_MIE_WRITE
+        string "mstatus.MIE 写行为"
+        default "normal"
+      config CSR_MSTATUS_MPIE_READ
+        string "mstatus.MPIE 读行为"
+        default "normal"
+      config CSR_MSTATUS_MPIE_WRITE
+        string "mstatus.MPIE 写行为"
+        default "normal"
+      config CSR_MSTATUS_MPP_READ
+        string "mstatus.MPP 读行为"
+        default "normal"
+      config CSR_MSTATUS_MPP_WRITE
+        string "mstatus.MPP 写行为"
+        default "normal"
+      config CSR_MSTATUS_SIE_READ
+        string "mstatus.SIE 读行为"
+        default "normal"
+      config CSR_MSTATUS_SIE_WRITE
+        string "mstatus.SIE 写行为"
+        default "normal"
+      config CSR_MSTATUS_SPIE_READ
+        string "mstatus.SPIE 读行为"
+        default "normal"
+      config CSR_MSTATUS_SPIE_WRITE
+        string "mstatus.SPIE 写行为"
+        default "normal"
+      config CSR_MSTATUS_SPP_READ
+        string "mstatus.SPP 读行为"
+        default "normal"
+      config CSR_MSTATUS_SPP_WRITE
+        string "mstatus.SPP 写行为"
+        default "normal"
+      config CSR_MSTATUS_MPRV_READ
+        string "mstatus.MPRV 读行为"
+        default "normal"
+      config CSR_MSTATUS_MPRV_WRITE
+        string "mstatus.MPRV 写行为"
+        default "normal"
+      config CSR_MSTATUS_SUM_READ
+        string "mstatus.SUM 读行为"
+        default "normal"
+      config CSR_MSTATUS_SUM_WRITE
+        string "mstatus.SUM 写行为"
+        default "normal"
+      config CSR_MSTATUS_MXR_READ
+        string "mstatus.MXR 读行为"
+        default "normal"
+      config CSR_MSTATUS_MXR_WRITE
+        string "mstatus.MXR 写行为"
+        default "normal"
+      config CSR_MSTATUS_TVM_READ
+        string "mstatus.TVM 读行为"
+        default "normal"
+      config CSR_MSTATUS_TVM_WRITE
+        string "mstatus.TVM 写行为"
+        default "normal"
+      config CSR_MSTATUS_TW_READ
+        string "mstatus.TW 读行为"
+        default "normal"
+      config CSR_MSTATUS_TW_WRITE
+        string "mstatus.TW 写行为"
+        default "normal"
+      config CSR_MSTATUS_TSR_READ
+        string "mstatus.TSR 读行为"
+        default "normal"
+      config CSR_MSTATUS_TSR_WRITE
+        string "mstatus.TSR 写行为"
+        default "normal"
+
+      config CSR_SATP_MODE_READ
+        string "satp.MODE 读行为"
+        default "normal"
+      config CSR_SATP_MODE_WRITE
+        string "satp.MODE 写行为"
+        default "normal"
+      config CSR_SATP_ASID_READ
+        string "satp.ASID 读行为"
+        default "normal"
+      config CSR_SATP_ASID_WRITE
+        string "satp.ASID 写行为"
+        default "normal"
+      config CSR_SATP_PPN_READ
+        string "satp.PPN 读行为"
+        default "normal"
+      config CSR_SATP_PPN_WRITE
+        string "satp.PPN 写行为"
+        default "normal"
+
+    endmenu
   endmenu
-
-  menu "外设 / NVBoard"
-
-    config NVBOARD
-      bool "启用 NVBoard (LED/数码管/拨码开关可视化)"
-      default n
-      help
-        链接 NVBoard，把 ysyxSoCFull 的 GPIO 引脚绑定到虚拟板卡的
-        LED/数码管/拨码开关。需要 SDL2 (libsdl2-dev libsdl2-image-dev
-        libsdl2-ttf-dev)，且 nvboard.a 要与本工程的 C++ 标准库 ABI 一致。
-        仅支持 SIM_TOP=soc；direct-NPC 顶层没有这些外设引脚，构建时会
-        明确拒绝该组合。
-
-    config NVBOARD_NXDC
-      string "NVBoard 约束文件(.nxdc)路径"
-      depends on NVBOARD
-      default "csrc/nvboard/gpio.nxdc"
-      help
-        描述 RTL 引脚到 NVBoard 组件的绑定关系
-
-    config NVBOARD_UPDATE_INTERVAL
-      int "每多少周期刷新一次 NVBoard GUI"
-      depends on NVBOARD
-      default 100
-      range 1 1000000
-      help
-        每周期都刷新太慢，隔 N 个周期调用一次 nvboard_update 折中
-
-  endmenu
-
 endmenu

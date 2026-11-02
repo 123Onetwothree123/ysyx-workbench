@@ -1,0 +1,167 @@
+menu "SoC 与外设"
+
+  menu "中断控制器 (PLIC)"
+    config PLIC_SOURCES
+      int "PLIC 中断源数量"
+      default 32
+      range 2 1024
+      depends on HAS_S_EXTERNAL_IRQ
+      help
+        source 0 保留，实际可用 source 1..PLIC_SOURCES-1。
+        DTB 的 riscv,ndev 和 OpenSBI 的 num_src 会自动取
+        PLIC_SOURCES-1，不需要另外配置。
+    config PLIC_PRIORITY_BITS
+      int "PLIC 优先级位宽"
+      default 3
+      range 1 8
+      depends on HAS_S_EXTERNAL_IRQ
+    config PLIC_MAX_PRIORITY
+      int "PLIC 最大优先级"
+      default 7
+      depends on HAS_S_EXTERNAL_IRQ
+    config PLIC_BASE
+      hex "PLIC MMIO 基地址"
+      default 0x0c000000
+      depends on HAS_S_EXTERNAL_IRQ
+    config PLIC_SIZE
+      hex "PLIC MMIO 窗口大小"
+      default 0x00300000
+      depends on HAS_S_EXTERNAL_IRQ
+      help
+        PLIC 地址窗口大小。必须覆盖实际使用的 context 寄存器：
+          0x200000 + 0x1000 * context 数
+        当前实现使用 M context 0 和 S context 1，最小 0x202000。
+        ysyxSoC 的片上 SRAM 从 0x0f000000 开始，因此默认 3MiB
+        （0x00300000）正好止于 SRAM 之前。该值会同步到 CPU Xbar、
+        PMA、DTB 和 OpenSBI 平台。
+
+  endmenu
+
+  menu "ysyxSoC 接口"
+
+    config CHIPLINK
+      bool "启用 ChipLink 外部存储/中断接口"
+      default n
+      help
+        打开 ysyxSoC 的 ChipLink master/slave 与 DMA 代理。
+        该值写入 typed JSON 的 soc.chiplink，由 SoC elaboration 消费；
+        CPU 侧 PMA/DMA 一致性设置仍由 Makefile 从同一值派生。
+
+    config SDRAM_USE_AXI
+      bool "SDRAM 使用 AXI 数据通路"
+      default y
+      help
+        选择 ysyxSoC 的 SDRAM 控制器接在 32 位 AXI xbar 上；关闭时
+        使用 APB SDRAM 路径。该值写入 typed JSON 的
+        soc.sdram_use_axi，由 SoC 拓扑选择直接消费。
+
+    config SOC_XLEN_FOLLOW_CPU
+      bool "SoC CPU 侧接口位宽跟随 CPU XLEN"
+      default n
+      help
+        控制 ysyxSoC CPU 侧接口的 XLEN/数据宽度是否跟随 CPU 的 XLEN。
+        n（默认）: 使用 SOC_XLEN，CPU 与 SoC 位宽相互独立。
+        y: EffectiveSocXLEN = XLEN。
+        注意 follow 只是让 SoC 接口跟随 CPU，并不是强制 CPU 与 SoC
+        同宽；关闭后仍可自由组合 32/64，例如 64 位 CPU 搭配 32 位
+        SoC，或 32 位 CPU 搭配 64 位 SoC。
+
+    config SOC_XLEN
+      int "ysyxSoC CPU 侧接口 XLEN"
+      depends on !SOC_XLEN_FOLLOW_CPU
+      default 64 if XLEN=64
+      default 32
+      # Kconfig 的 int/range 不能表达离散集合；32/64 由配置契约校验
+      # 在配置阶段检查，elaboration 也会再次校验。
+      range 32 64
+      help
+        ysyxSoC CPU 侧接口的 XLEN/数据宽度，仅当
+        SOC_XLEN_FOLLOW_CPU=n 时可见并生效，只允许 32 或 64；
+        XLEN=64 时默认 64，XLEN=32 时默认 32。
+        33..63 会在 make defconfig/menuconfig 后的配置契约检查阶段
+        被明确拒绝，不会静默生成。
+        32 位 ysyxSoC 可以搭配 64 位 CPU：CPU 内部仍使用 64 位地址，
+        但经 SoC 边界的访问必须位于低 4GiB，更高地址在 Xbar 内返回
+        DECERR。64 位 SoC 接口已经由 AXI4Downsizer 接入 32 位
+        xbar/外设，配置会写入 typed JSON 的 soc.soc_xlen，由
+        ysyxSoC elaboration 直接消费。
+        修改后需重新 make verilog 或 make build/ysyx_26030103。
+
+  endmenu
+
+  menu "SoC 总线延迟模型"
+
+    config SYNTH_FREQ
+      int "综合目标频率 (MHz)"
+      default 450
+      range 1 10000
+      help
+        综合器尝试达到的目标频率。设置越高，综合器可能使用更多
+        面积换取更低的逻辑延迟。受限于工艺库和寄存器堆/加法器/SRAM等
+        关键部件的最大工作频率。
+        该值同时作为 APB/AXI 延迟模型的 CPU 频率传入 RTL，
+        修改后需重新 make verilog。
+
+    config APB_DEVICE_FREQ
+      int "APB设备频率 (MHz)"
+      default 100
+      range 1 10000
+      help
+        APB总线上外设（如SDRAM控制器）的运行频率。
+        用于APB延迟模块计算频率比校准访存延迟；该值进入 typed JSON
+        的 soc.apb.device_freq_mhz，由 ysyxSoC 统一读取。
+
+    config APB_DELAY_SCALE
+      int "APB延迟缩放因子 S"
+      default 64
+      range 1 1048576
+      help
+        APB延迟模块中频率比累加的放大系数。
+
+    config AXI_DEVICE_FREQ
+      int "AXI设备频率 (MHz)"
+      default 100
+      range 1 10000
+      help
+        AXI总线上外设（如SDRAM控制器）的运行频率。
+        用于AXI延迟模块计算频率比校准访存延迟。
+
+    config AXI_DELAY_SCALE
+      int "AXI延迟缩放因子 S"
+      default 64
+      range 1 1048576
+      help
+        AXI延迟模块中频率比累加的放大系数。
+
+  endmenu
+
+  menu "外设 / NVBoard"
+
+    config NVBOARD
+      bool "启用 NVBoard (LED/数码管/拨码开关可视化)"
+      default n
+      help
+        链接 NVBoard，把 ysyxSoCFull 的 GPIO 引脚绑定到虚拟板卡的
+        LED/数码管/拨码开关。需要 SDL2 (libsdl2-dev libsdl2-image-dev
+        libsdl2-ttf-dev)，且 nvboard.a 要与本工程的 C++ 标准库 ABI 一致。
+        仅支持 SIM_TOP=soc；direct-NPC 顶层没有这些外设引脚，构建时会
+        明确拒绝该组合。
+
+    config NVBOARD_NXDC
+      string "NVBoard 约束文件(.nxdc)路径"
+      depends on NVBOARD
+      default "csrc/nvboard/gpio.nxdc"
+      help
+        描述 RTL 引脚到 NVBoard 组件的绑定关系
+
+    config NVBOARD_UPDATE_INTERVAL
+      int "每多少周期刷新一次 NVBoard GUI"
+      depends on NVBOARD
+      default 100
+      range 1 1000000
+      help
+        每周期都刷新太慢，隔 N 个周期调用一次 nvboard_update 折中
+
+  endmenu
+
+endmenu

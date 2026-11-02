@@ -1,4 +1,4 @@
-menu "运行时调试"
+menu "调试、追踪与性能"
 
   config SDB
     bool "启用SDB调试器"

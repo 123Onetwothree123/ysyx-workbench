@@ -1,14 +1,25 @@
 mainmenu "NPC配置菜单"
 
-# 拆分文件统一放在 kconfig/ 目录（整目录已在 .gitignore 白名单内），顶层
-# 只保留 mainmenu 与 source；source 路径相对 npc/ 根目录解析。
-source "kconfig/Kconfig.cpp"       # C++ 配置（工具链/语言标准/编译选项）
-source "kconfig/Kconfig.log"       # 日志
-source "kconfig/Kconfig.verilator" # Verilator 仿真
-source "kconfig/Kconfig.hardware"  # 硬件配置（ISA/乘法器/缓存/外设）
-source "kconfig/Kconfig.mmu"       # 虚存管理（MMU/TLB/CSR字段/中断）
-source "kconfig/Kconfig.debug"     # 运行时调试（SDB/追踪/性能计数器）
-source "kconfig/Kconfig.sbi"       # M 模式 SBI 固件（OpenSBI/RustSBI）
-source "kconfig/Kconfig.linux"     # Linux 启动镜像打包（Image/initramfs/DTB）
-source "kconfig/Kconfig.rootfs"    # 根文件系统（BusyBox）
-source "kconfig/Kconfig.synth"     # 综合 (Synthesis)
+# 顶层只做主题分组；具体选项在 kconfig/ 下的子文件里。
+# 重排只移动 menu，不改变 CONFIG_* 符号名、默认值或依赖关系。
+
+source "kconfig/Kconfig.hardware"   # CPU 与平台
+source "kconfig/Kconfig.mmu"        # MMU/TLB
+source "kconfig/Kconfig.soc"        # SoC 与外设
+
+menu "运行时与调试"
+  source "kconfig/Kconfig.debug"    # 调试、追踪与性能
+  source "kconfig/Kconfig.log"      # 日志
+endmenu
+
+menu "固件与启动"
+  source "kconfig/Kconfig.sbi"
+  source "kconfig/Kconfig.linux"
+  source "kconfig/Kconfig.rootfs"
+endmenu
+
+menu "构建与仿真"
+  source "kconfig/Kconfig.cpp"      # 编译器与构建选项
+  source "kconfig/Kconfig.verilator"
+  source "kconfig/Kconfig.synth"
+endmenu
