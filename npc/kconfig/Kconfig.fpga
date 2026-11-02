@@ -1,40 +1,34 @@
-menu "FPGA 部署"
-
-  comment "CPU 体系结构参数（缓存/TLB/BTB/PMU 等）请在“CPU 与平台”中配置；本菜单只负责 FPGA 厂商、板级、工具链、存储与外设"
-  comment "这些 CPU 参数对应 ysyx_26030103 CPU Scala 代码中的可配置项，不在 FPGA 菜单里重复定义"
-
-  config FPGA_ENABLE
-    bool "启用 FPGA 部署配置框架"
-    default n
-    help
-      打开后展开 FPGA 厂商、器件、板卡、工具链、时钟、存储、
-      外设、调试和资源预算选项。
-
-      当前阶段先建立完整的配置框架：这些选项会进入 .config、
-      autoconf.h 和 typed JSON，供后续 Vivado/Quartus 工程生成、
-      约束文件、引脚绑定和板级脚本消费；具体的综合/实现流程
-      尚未接入。
+menu "运行模式"
 
   choice
-    prompt "FPGA 与仿真构建关系"
-    depends on FPGA_ENABLE
-    default FPGA_SIM_COEXIST
+    prompt "目标运行模式"
+    default NPC_MODE_YSYX_ONLY
     help
-      互斥：开启 FPGA 时关闭 Verilator 仿真选项与仿真构建目标。
-      共存：FPGA 与 Verilator 仿真可以同时开启。
-    config FPGA_SIM_COEXIST
-      bool "FPGA 与仿真同时开启"
-    config FPGA_SIM_EXCLUSIVE
-      bool "开启 FPGA 时关闭仿真"
+      FPGA 模式：保留 FPGA 部署选项，关闭一生一芯 Verilator 仿真。
+      一生一芯模式：只保留 Verilator 仿真，关闭 FPGA 部署。
+      同时开启：FPGA 与 Verilator 仿真都保留。
+    config NPC_MODE_FPGA_ONLY
+      bool "FPGA 模式（关闭一生一芯仿真）"
+    config NPC_MODE_YSYX_ONLY
+      bool "一生一芯模式（关闭 FPGA）"
+    config NPC_MODE_BOTH
+      bool "FPGA + 一生一芯同时开启"
   endchoice
 
-  if FPGA_ENABLE
+  config NPC_TARGET_MODE
+    string
+    default "fpga" if NPC_MODE_FPGA_ONLY
+    default "ysyx" if NPC_MODE_YSYX_ONLY
+    default "both" if NPC_MODE_BOTH
+    default "ysyx"
 
-    config FPGA_SIM_MODE
-      string
-      default "coexist" if FPGA_SIM_COEXIST
-      default "exclusive" if FPGA_SIM_EXCLUSIVE
-      default "coexist"
+endmenu
+
+if NPC_MODE_FPGA_ONLY || NPC_MODE_BOTH
+  menu "FPGA 部署"
+
+    comment "CPU 体系结构参数（缓存/TLB/BTB/PMU 等）请在“CPU 与平台”中配置；本菜单只负责 FPGA 厂商、板级、工具链、存储与外设"
+    comment "这些 CPU 参数对应 ysyx_26030103 CPU Scala 代码中的可配置项，不在 FPGA 菜单里重复定义"
 
     menu "目标厂商与器件"
 
@@ -922,6 +916,5 @@ menu "FPGA 部署"
 
     endmenu
 
-  endif
-
-endmenu
+  endmenu
+endif

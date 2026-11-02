@@ -88,12 +88,10 @@ remove_quote = $(patsubst "%",%,$(1))
 # 不能用来去掉这类字符串的引号；这里只删除引号并保留原样。
 unquote_config = $(strip $(subst ",,$(1)))
 -include include/config/auto.conf
-# FPGA 互斥模式：关闭 Verilator 仿真构建，但保留 verilog/synth。
+# FPGA 模式：关闭 Verilator 仿真构建，但保留 verilog/synth。
 SIM_GUARD :=
-ifeq ($(CONFIG_FPGA_ENABLE),y)
-ifeq ($(CONFIG_FPGA_SIM_EXCLUSIVE),y)
+ifeq ($(CONFIG_NPC_MODE_FPGA_ONLY),y)
 SIM_GUARD := sim-disabled
-endif
 endif
 NPROC_MAX := $(shell nproc 2>/dev/null || echo 4)
 ifneq ($(CONFIG_BUILD_THREADS),)
@@ -660,8 +658,8 @@ sim: $(SIM_GUARD)
 
 .PHONY: sim-disabled
 sim-disabled:
-	@echo "错误：当前配置为 FPGA 互斥模式（FPGA_SIM_EXCLUSIVE=y），Verilator 仿真构建已关闭。" >&2
-	@echo "请选择 FPGA_SIM_COEXIST，或关闭 FPGA_ENABLE。" >&2
+	@echo "错误：当前配置为 FPGA 模式（NPC_MODE_FPGA_ONLY=y），Verilator 仿真构建已关闭。" >&2
+	@echo "请切换为“一生一芯模式”或“FPGA + 一生一芯同时开启”。" >&2
 	@exit 1
 
 #C++

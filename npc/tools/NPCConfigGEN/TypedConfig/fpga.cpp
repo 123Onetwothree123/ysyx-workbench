@@ -3,14 +3,15 @@ import std;
 namespace npc::configgen {
 void addFpga(TypedFields &root, const Config &values)
 {
-    const bool fpgaEnabled = flatBool(values, "FPGA_ENABLE");
-    const bool simEnabled =
-        !(fpgaEnabled && flatBool(values, "FPGA_SIM_EXCLUSIVE"));
+    const bool fpgaEnabled =
+        flatBool(values, "NPC_MODE_FPGA_ONLY") ||
+        flatBool(values, "NPC_MODE_BOTH");
+    const bool simEnabled = !flatBool(values, "NPC_MODE_FPGA_ONLY");
     TypedFields fpga;
     addField(fpga, "enabled", TypedJson::boolean(fpgaEnabled));
     addField(fpga, "sim_mode",
              TypedJson::string(
-                 flatString(values, "FPGA_SIM_MODE", "coexist")));
+                 flatString(values, "NPC_TARGET_MODE", "ysyx")));
     addField(fpga, "sim_enabled", TypedJson::boolean(simEnabled));
     addField(fpga, "vendor",
              TypedJson::string(flatString(values, "FPGA_VENDOR", "amd")));

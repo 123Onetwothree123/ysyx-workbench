@@ -155,6 +155,7 @@ menu "编译器与构建选项"
 
   choice
     prompt "Verilator生成代码语言标准"
+    depends on !NPC_MODE_FPGA_ONLY
     default VERILATOR_CXX_STD_CXX20
     help
       设置Verilator运行库、预编译头和生成模型使用的语言标准
@@ -171,6 +172,7 @@ menu "编译器与构建选项"
 
   config VERILATOR_CXX_STD
     string
+    depends on !NPC_MODE_FPGA_ONLY
     default "c++17" if VERILATOR_CXX_STD_CXX17
     default "c++20" if VERILATOR_CXX_STD_CXX20
     default "c++23" if VERILATOR_CXX_STD_CXX23

@@ -669,7 +669,10 @@ std::vector<std::string> validate_config(const Config& values,
           hex0x(previous_end) + " 重叠或顺序错误");
     }
   }
-  if (as_bool(values, "FPGA_ENABLE", false)) {
+  const bool fpga_enabled =
+      as_bool(values, "NPC_MODE_FPGA_ONLY", false) ||
+      as_bool(values, "NPC_MODE_BOTH", false);
+  if (fpga_enabled) {
     const std::string vendor =
         lower_ascii(strip(as_str(values, "FPGA_VENDOR", "amd")));
     const std::string toolchain =
@@ -707,7 +710,7 @@ std::vector<std::string> validate_config(const Config& values,
           "cyclone_10/arria_10/stratix_10/agilex");
     }
     if (as_str(values, "FPGA_DEVICE", "").empty()) {
-      err("FPGA_ENABLE=y 但 FPGA_DEVICE 为空");
+      err("FPGA 模式但 FPGA_DEVICE 为空");
     }
     const std::string bitstream = lower_ascii(
         strip(as_str(values, "FPGA_BITSTREAM_FORMAT", "bit")));

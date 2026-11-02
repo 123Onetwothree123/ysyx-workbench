@@ -60,7 +60,7 @@ struct SelfTest {
   }
   static Config base_fpga_amd() {
     Config values;
-    values["FPGA_ENABLE"] = Value::make_bool(true);
+    values["NPC_MODE_BOTH"] = Value::make_bool(true);
     values["FPGA_VENDOR"] = Value::make_string("amd");
     values["FPGA_FAMILY"] = Value::make_string("ultrascale_plus");
     values["FPGA_DEVICE"] = Value::make_string("xczu9eg-ffvb1156-2-e");
@@ -79,7 +79,7 @@ struct SelfTest {
   }
   static Config base_fpga_intel() {
     Config values;
-    values["FPGA_ENABLE"] = Value::make_bool(true);
+    values["NPC_MODE_BOTH"] = Value::make_bool(true);
     values["FPGA_VENDOR"] = Value::make_string("intel");
     values["FPGA_FAMILY"] = Value::make_string("arria_10");
     values["FPGA_DEVICE"] = Value::make_string("10AX115N2F45E1SG");
