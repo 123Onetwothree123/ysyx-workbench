@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
-project(kconfig LANGUAGES CXX C)
+# 工具本身没有 C 源文件：生成的 .c 都会先转成 .cpp 再编译，
+# lxdialog 也已经全部是 .cpp。只启用 CXX，避免 CMake 再去探测
+# 一个用不到的 C 编译器（例如 CXX 选了 Clang，C 却还是系统 GCC）。
+project(kconfig LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
