@@ -17,8 +17,18 @@ if(NOT CMAKE_GENERATOR MATCHES "Ninja|Visual Studio")
         "请用 Ninja 配置：cmake -B build -S . -G Ninja")
 endif()
 
-# === Compiler detection and std setup ===
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+# === Compiler / standard library selection ===
+# 由 Kconfig 的“Kconfig 工具”菜单经 scripts/config.mk 传入；默认 libstdc++。
+set(KCONFIG_STDLIB "libstdc++" CACHE STRING "Kconfig tool standard library")
+set_property(CACHE KCONFIG_STDLIB PROPERTY STRINGS libstdc++ libc++)
+message(STATUS "Kconfig tool stdlib: ${KCONFIG_STDLIB}")
+
+if(KCONFIG_STDLIB STREQUAL "libc++")
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
+        message(FATAL_ERROR
+            "KCONFIG_STDLIB=libc++ 需要 Clang/icpx，当前编译器是 "
+            "${CMAKE_CXX_COMPILER_ID} (${CMAKE_CXX_COMPILER})")
+    endif()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
     set(STD_SRC /usr/share/libc++/v1/std.cppm)
     set(STD_PCM ${BUILD_DIR}/std.pcm)
@@ -35,8 +45,14 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         set(STD_MOD_FLAGS -fmodule-file=std=${STD_PCM})
         message(STATUS "Clang: precompiling std.pcm")
     endif()
-else()
-    # GCC: use traditional includes via -include to avoid module conflicts
+elseif(KCONFIG_STDLIB STREQUAL "libstdc++")
+    # GCC 的模块实现硬编码 libstdc++；Clang + libstdc++ 没有可用的 std 模块，
+    # 因此这里只允许 GCC/GNU 工具链走兼容头分支。
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
+        message(FATAL_ERROR
+            "Kconfig 工具暂不支持 Clang/icpx + libstdc++；"
+            "请选择 libc++，或把 Kconfig 工具编译器切换为 GCC")
+    endif()
     file(WRITE ${BUILD_DIR}/std_compat.h
         "#ifndef _STD_COMPAT_H_\n"
         "#define _STD_COMPAT_H_\n"
@@ -45,6 +61,9 @@ else()
     )
     set(STD_COMPAT_FLAGS -include ${BUILD_DIR}/std_compat.h)
     message(STATUS "GCC: using -include std_compat.h")
+else()
+    message(FATAL_ERROR
+        "未知 KCONFIG_STDLIB=${KCONFIG_STDLIB}；只允许 libstdc++ 或 libc++")
 endif()
 
 # === Flex and Bison ===

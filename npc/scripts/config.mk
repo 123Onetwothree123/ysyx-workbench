@@ -22,6 +22,12 @@ silent := -s
 CONF          := $(KCONFIG_PATH)/../build/c_conf
 MCONF         := $(KCONFIG_PATH)/../build/c_mconf
 KCONFIG_BUILD := $(KCONFIG_PATH)/build
+# Kconfig 工具自己的编译器/标准库，由 Kconfig 的“Kconfig 工具”菜单选择；
+# 与 NPC 仿真器的 CONFIG_CC/CONFIG_STDLIB 相互独立。没有 .config 时回退到
+# GCC + libstdc++，保证第一次 make menuconfig 可以启动。
+KCONFIG_CXX    ?= $(or $(call remove_quote,$(CONFIG_KCONFIG_CC)),g++)
+KCONFIG_STDLIB ?= $(or $(call remove_quote,$(CONFIG_KCONFIG_STDLIB)),libstdc++)
+KCONFIG_TOOL_STAMP := $(KCONFIG_BUILD)/.tool-compiler
 PROFILE       ?=
 MERGE_CONFIG := $(NPC_HOME)/tools/build/merge_config
 
@@ -39,9 +45,22 @@ $(MCONF): $(KCONFIG_BUILD)/CMakeCache.txt $(KCONFIG_SOURCES)
 
 $(CONF): $(MCONF)
 
-$(KCONFIG_BUILD)/CMakeCache.txt:
+# 编译器/标准库选择变化时删除 CMakeCache，强制用新参数重新 configure。
+$(KCONFIG_TOOL_STAMP): $(if $(wildcard .config),.config,)
 	$(Q)mkdir -p $(KCONFIG_BUILD)
-	$(Q)cd $(KCONFIG_BUILD) && cmake -G Ninja ..
+	$(Q)printf '%s\n' "$(KCONFIG_CXX)|$(KCONFIG_STDLIB)" > $@.tmp
+	$(Q)if test -f $@ && cmp -s $@.tmp $@; then \
+		rm -f $@.tmp; \
+	else \
+		rm -f $(KCONFIG_BUILD)/CMakeCache.txt; \
+		mv -f $@.tmp $@; \
+	fi
+
+$(KCONFIG_BUILD)/CMakeCache.txt: $(KCONFIG_TOOL_STAMP)
+	$(Q)mkdir -p $(KCONFIG_BUILD)
+	$(Q)cd $(KCONFIG_BUILD) && cmake -G Ninja \
+		-DCMAKE_CXX_COMPILER="$(KCONFIG_CXX)" \
+		-DKCONFIG_STDLIB="$(KCONFIG_STDLIB)" ..
 
 menuconfig: $(MCONF) $(CONF) $(CONFIG_CONTRACT)
 	$(Q)TERM=xterm LC_ALL=C.utf8 $(MCONF) $(Kconfig)

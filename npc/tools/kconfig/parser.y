@@ -13,6 +13,12 @@
 
 using namespace kconfig;
 
+/*
+ * 注意：Bison 生成的代码属于全局模块，引用 kconfig.core 导出的类型时
+ * 必须写 kconfig::menu / kconfig::symbol 等限定名；否则 Clang 会把
+ * `struct menu` 当作全局模块里的新声明并报模块冲突。
+ */
+
 #define printd(mask, fmt...) if (cdebug & (mask)) printf(fmt)
 
 #define PRINTD		0x0001
@@ -43,9 +49,9 @@ static bool zconf_endtoken(const char *tokenname,
 %union
 {
 	char *string;
-	struct symbol *symbol;
-	struct expr *expr;
-	struct menu *menu;
+	kconfig::symbol *symbol;
+	kconfig::expr *expr;
+	kconfig::menu *menu;
 	enum symbol_type type;
 	enum variable_flavor flavor;
 }
@@ -269,7 +275,7 @@ config_option: T_OPTION T_ALLNOCONFIG_Y T_EOL
 
 choice: T_CHOICE word_opt T_EOL
 {
-	struct symbol *sym = sym_lookup($2, SYMBOL_CHOICE);
+	kconfig::symbol *sym = sym_lookup($2, SYMBOL_CHOICE);
 	sym->flags |= SYMBOL_NO_WRITE;
 	menu_add_entry(sym);
 	menu_add_expr(P_CHOICE, NULL, NULL);
@@ -533,7 +539,7 @@ namespace kconfig {
  *
  * Return: -1 if an error is found, 0 otherwise.
  */
-static int transitional_check_sanity(const struct menu *menu)
+static int transitional_check_sanity(const kconfig::menu *menu)
 {
 	if (!menu->sym || !(menu->sym->flags & SYMBOL_TRANS))
 		return 0;
@@ -553,7 +559,7 @@ static int transitional_check_sanity(const struct menu *menu)
 	 * jump-to-definition); it is not a real property, so it is
 	 * exempted here.
 	 */
-	for (struct property *prop : menu->sym->prop) {
+	for (kconfig::property *prop : menu->sym->prop) {
 		if (prop->type != P_COMMENT && prop->type != P_SYMBOL) {
 			fprintf(stderr, "%s:%d: error: %s",
 				prop->file->name, prop->lineno,
@@ -572,12 +578,12 @@ static int transitional_check_sanity(const struct menu *menu)
  *
  * Return: -1 表示发现错误，0 表示正常。
  */
-static int choice_check_sanity(const struct menu *menu)
+static int choice_check_sanity(const kconfig::menu *menu)
 {
-	struct property *prop;
+	kconfig::property *prop;
 	int ret = 0;
 
-	for (struct property *prop : menu->sym->prop) {
+	for (kconfig::property *prop : menu->sym->prop) {
 		if (prop->type == P_DEFAULT) {
 			fprintf(stderr, "%s:%d: error: %s",
 				prop->file->name, prop->lineno,
@@ -596,12 +602,12 @@ static int choice_check_sanity(const struct menu *menu)
 	return ret;
 }
 
-static int transitional_check_menus(struct menu *menu)
+static int transitional_check_menus(kconfig::menu *menu)
 {
 	int errors = 0;
 
 	for (auto &child_owner : menu->children) {
-		struct menu *child = child_owner.get();
+		kconfig::menu *child = child_owner.get();
 
 		if (transitional_check_sanity(child))
 			errors++;
@@ -642,7 +648,7 @@ void conf_parse(const char *name)
 	}
 
 	menu_finalize(&kconf.root);
-	for (struct symbol *sym : all_symbols()) {
+	for (kconfig::symbol *sym : all_symbols()) {
 		if (sym_check_deps(sym))
 			yynerrs++;
 	}
@@ -723,9 +729,9 @@ static void print_quoted_string(FILE *out, const char *str)
 	putc('"', out);
 }
 
-static void print_symbol(FILE *out, struct menu *menu)
+static void print_symbol(FILE *out, kconfig::menu *menu)
 {
-	struct symbol *sym = menu->sym;
+	kconfig::symbol *sym = menu->sym;
 
 	if (sym_is_choice(sym))
 		fprintf(out, "\nchoice\n");
@@ -751,7 +757,7 @@ static void print_symbol(FILE *out, struct menu *menu)
 		fputs("  ???\n", out);
 		break;
 	}
-	for (struct property *prop : sym->prop) {
+	for (kconfig::property *prop : sym->prop) {
 		if (prop->menu != menu)
 			continue;
 		switch (prop->type) {
@@ -815,9 +821,9 @@ static void print_symbol(FILE *out, struct menu *menu)
 
 void zconfdump(FILE *out)
 {
-	std::function<void(struct menu *)> walk = [&](struct menu *menu) {
-		struct property *prop;
-		struct symbol *sym;
+	std::function<void(kconfig::menu *)> walk = [&](kconfig::menu *menu) {
+		kconfig::property *prop;
+		kconfig::symbol *sym;
 
 		if ((sym = menu->sym))
 			print_symbol(out, menu);

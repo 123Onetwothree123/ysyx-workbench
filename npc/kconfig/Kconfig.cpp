@@ -399,4 +399,48 @@ menu "编译器与构建选项"
 
   endmenu
 
+
+  menu "Kconfig 工具"
+
+    choice
+      prompt "Kconfig 工具编译器"
+      default KCONFIG_CC_GPP
+      help
+        只影响 menuconfig / c_conf / c_mconf 的构建，
+        不影响 NPC RTL 和仿真器的 CONFIG_CC。
+      config KCONFIG_CC_GPP
+        bool "GCC (g++)"
+      config KCONFIG_CC_CLANG
+        bool "Clang (clang++)"
+    endchoice
+
+    config KCONFIG_CC
+      string
+      default "g++" if KCONFIG_CC_GPP
+      default "clang++" if KCONFIG_CC_CLANG
+      default "g++"
+
+    choice
+      prompt "Kconfig 工具标准库"
+      default KCONFIG_STDLIB_LIBSTDCXX if KCONFIG_CC_GPP
+      default KCONFIG_STDLIB_LIBCXX if KCONFIG_CC_CLANG
+      help
+        GCC 只能配 libstdc++；Clang 只能配 libc++。
+        Kconfig 工具的标准库与 NPC 仿真器的标准库相互独立。
+      config KCONFIG_STDLIB_LIBSTDCXX
+        bool "libstdc++ (GNU)"
+        depends on KCONFIG_CC_GPP
+      config KCONFIG_STDLIB_LIBCXX
+        bool "libc++ (LLVM)"
+        depends on KCONFIG_CC_CLANG
+    endchoice
+
+    config KCONFIG_STDLIB
+      string
+      default "libstdc++" if KCONFIG_STDLIB_LIBSTDCXX
+      default "libc++" if KCONFIG_STDLIB_LIBCXX
+      default "libstdc++"
+
+  endmenu
+
 endmenu
