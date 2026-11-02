@@ -441,6 +441,47 @@ menu "编译器与构建选项"
       default "libc++" if KCONFIG_STDLIB_LIBCXX
       default "libstdc++"
 
+    choice
+      prompt "Kconfig 工具构建类型"
+      default KCONFIG_BUILD_RELEASE
+      help
+        传给 CMake 的 CMAKE_BUILD_TYPE：
+        Debug          不优化，带调试信息
+        Release        CMake 默认优化（通常 -O3 -DNDEBUG）
+        RelWithDebInfo 优化并保留调试信息
+        MinSizeRel     以体积为优先（通常 -Os -DNDEBUG）
+      config KCONFIG_BUILD_DEBUG
+        bool "Debug"
+      config KCONFIG_BUILD_RELEASE
+        bool "Release"
+      config KCONFIG_BUILD_RELWITHDEBINFO
+        bool "RelWithDebInfo"
+      config KCONFIG_BUILD_MINSIZEREL
+        bool "MinSizeRel"
+    endchoice
+
+    config KCONFIG_BUILD_TYPE
+      string
+      default "Debug" if KCONFIG_BUILD_DEBUG
+      default "Release" if KCONFIG_BUILD_RELEASE
+      default "RelWithDebInfo" if KCONFIG_BUILD_RELWITHDEBINFO
+      default "MinSizeRel" if KCONFIG_BUILD_MINSIZEREL
+      default "Release"
+
+    config KCONFIG_CXXFLAGS
+      string "额外 C++ 编译选项"
+      default ""
+      help
+        追加到 Kconfig 工具的 CMAKE_CXX_FLAGS，例如 "-Wall -Wextra"。
+        只影响 menuconfig/c_conf/c_mconf，不影响 NPC 仿真器。
+
+    config KCONFIG_LDFLAGS
+      string "额外链接选项"
+      default ""
+      help
+        追加到 Kconfig 工具的 CMAKE_EXE_LINKER_FLAGS，例如 "-pthread"。
+        只影响 menuconfig/c_conf/c_mconf，不影响 NPC 仿真器。
+
   endmenu
 
 endmenu

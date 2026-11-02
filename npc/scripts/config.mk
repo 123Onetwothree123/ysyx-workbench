@@ -27,6 +27,9 @@ KCONFIG_BUILD := $(KCONFIG_PATH)/build
 # GCC + libstdc++，保证第一次 make menuconfig 可以启动。
 KCONFIG_CXX    ?= $(or $(call remove_quote,$(CONFIG_KCONFIG_CC)),g++)
 KCONFIG_STDLIB ?= $(or $(call remove_quote,$(CONFIG_KCONFIG_STDLIB)),libstdc++)
+KCONFIG_BUILD_TYPE ?= $(or $(call remove_quote,$(CONFIG_KCONFIG_BUILD_TYPE)),Release)
+KCONFIG_CXXFLAGS ?= $(call remove_quote,$(CONFIG_KCONFIG_CXXFLAGS))
+KCONFIG_LDFLAGS  ?= $(call remove_quote,$(CONFIG_KCONFIG_LDFLAGS))
 KCONFIG_TOOL_STAMP := $(KCONFIG_BUILD)/.tool-compiler
 PROFILE       ?=
 MERGE_CONFIG := $(NPC_HOME)/tools/build/merge_config
@@ -48,7 +51,12 @@ $(CONF): $(MCONF)
 # 编译器/标准库选择变化时删除 CMakeCache，强制用新参数重新 configure。
 $(KCONFIG_TOOL_STAMP): $(if $(wildcard .config),.config,)
 	$(Q)mkdir -p $(KCONFIG_BUILD)
-	$(Q)printf '%s\n' "$(KCONFIG_CXX)|$(KCONFIG_STDLIB)" > $@.tmp
+	$(Q)printf '%s\n' \
+		"$(KCONFIG_CXX)" \
+		"$(KCONFIG_STDLIB)" \
+		"$(KCONFIG_BUILD_TYPE)" \
+		"$(KCONFIG_CXXFLAGS)" \
+		"$(KCONFIG_LDFLAGS)" > $@.tmp
 	$(Q)if test -f $@ && cmp -s $@.tmp $@; then \
 		rm -f $@.tmp; \
 	else \
@@ -60,7 +68,10 @@ $(KCONFIG_BUILD)/CMakeCache.txt: $(KCONFIG_TOOL_STAMP)
 	$(Q)mkdir -p $(KCONFIG_BUILD)
 	$(Q)cd $(KCONFIG_BUILD) && cmake -G Ninja \
 		-DCMAKE_CXX_COMPILER="$(KCONFIG_CXX)" \
-		-DKCONFIG_STDLIB="$(KCONFIG_STDLIB)" ..
+		-DKCONFIG_STDLIB="$(KCONFIG_STDLIB)" \
+		-DCMAKE_BUILD_TYPE="$(KCONFIG_BUILD_TYPE)" \
+		-DCMAKE_CXX_FLAGS="$(KCONFIG_CXXFLAGS)" \
+		-DCMAKE_EXE_LINKER_FLAGS="$(KCONFIG_LDFLAGS)" ..
 
 menuconfig: $(MCONF) $(CONF) $(CONFIG_CONTRACT)
 	$(Q)TERM=xterm LC_ALL=C.utf8 $(MCONF) $(Kconfig)
