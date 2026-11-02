@@ -669,6 +669,159 @@ std::vector<std::string> validate_config(const Config& values,
           hex0x(previous_end) + " 重叠或顺序错误");
     }
   }
+  if (as_bool(values, "FPGA_ENABLE", false)) {
+    const std::string vendor =
+        lower_ascii(strip(as_str(values, "FPGA_VENDOR", "amd")));
+    const std::string toolchain =
+        lower_ascii(strip(as_str(values, "FPGA_TOOLCHAIN", "vivado")));
+    const std::string family =
+        lower_ascii(strip(as_str(values, "FPGA_FAMILY", "unknown")));
+    const std::vector<std::string> amd_families = {
+        "7series", "ultrascale", "ultrascale_plus", "versal"};
+    const std::vector<std::string> intel_families = {
+        "cyclone_iv", "cyclone_v", "cyclone_10",
+        "arria_10", "stratix_10", "agilex"};
+    if (vendor != "amd" && vendor != "intel") {
+      err("FPGA_VENDOR='" + vendor + "' 非法：只允许 amd/intel");
+    }
+    if (vendor == "amd" && toolchain != "vivado") {
+      err("FPGA_VENDOR=amd 要求 FPGA_TOOLCHAIN=vivado，收到 '" +
+          toolchain + "'");
+    }
+    if (vendor == "intel" && toolchain != "quartus") {
+      err("FPGA_VENDOR=intel 要求 FPGA_TOOLCHAIN=quartus，收到 '" +
+          toolchain + "'");
+    }
+    if (vendor == "amd" &&
+        std::find(amd_families.begin(), amd_families.end(), family) ==
+            amd_families.end()) {
+      err("FPGA_FAMILY='" + family +
+          "' 不是 AMD 系列：只允许 7series/ultrascale/"
+          "ultrascale_plus/versal");
+    }
+    if (vendor == "intel" &&
+        std::find(intel_families.begin(), intel_families.end(), family) ==
+            intel_families.end()) {
+      err("FPGA_FAMILY='" + family +
+          "' 不是 Intel 系列：只允许 cyclone_iv/cyclone_v/"
+          "cyclone_10/arria_10/stratix_10/agilex");
+    }
+    if (as_str(values, "FPGA_DEVICE", "").empty()) {
+      err("FPGA_ENABLE=y 但 FPGA_DEVICE 为空");
+    }
+    const std::string bitstream = lower_ascii(
+        strip(as_str(values, "FPGA_BITSTREAM_FORMAT", "bit")));
+    const std::vector<std::string> amd_bitstreams = {"bit", "bin", "mcs"};
+    const std::vector<std::string> intel_bitstreams = {"sof", "pof", "rbf"};
+    if (vendor == "amd" &&
+        std::find(amd_bitstreams.begin(), amd_bitstreams.end(), bitstream) ==
+            amd_bitstreams.end()) {
+      err("FPGA_BITSTREAM_FORMAT='" + bitstream +
+          "' 不是 AMD 格式：只允许 bit/bin/mcs");
+    }
+    if (vendor == "intel" &&
+        std::find(intel_bitstreams.begin(), intel_bitstreams.end(),
+                  bitstream) == intel_bitstreams.end()) {
+      err("FPGA_BITSTREAM_FORMAT='" + bitstream +
+          "' 不是 Intel 格式：只允许 sof/pof/rbf");
+    }
+    if (as_bool(values, "FPGA_SIGNALTAP_ENABLE", false) &&
+        vendor != "intel") {
+      err("FPGA_SIGNALTAP_ENABLE=y 只适用于 Intel 器件/工具链");
+    }
+    if (as_bool(values, "FPGA_URAM_ENABLE", false) &&
+        !(vendor == "amd" &&
+          (family == "ultrascale_plus" || family == "versal"))) {
+      err("FPGA_URAM_ENABLE=y 只适用于 AMD UltraScale+/Versal");
+    }
+    const std::string memory_model = lower_ascii(
+        strip(as_str(values, "FPGA_MEMORY_MODEL", "ddr")));
+    if (memory_model != "ddr" && memory_model != "bram_only") {
+      err("FPGA_MEMORY_MODEL='" + memory_model +
+          "' 非法：只允许 ddr/bram_only");
+    }
+    if (memory_model == "ddr") {
+      const long long ddr_width =
+          as_int(values, "FPGA_DDR_DATA_WIDTH", 64);
+      if (ddr_width < 8 || ddr_width > 512 ||
+          !is_power_of_two(ddr_width)) {
+        err("FPGA_DDR_DATA_WIDTH=" + std::to_string(ddr_width) +
+            " 必须是 8..512 的 2 的幂");
+      }
+      const std::string ddr_type = lower_ascii(
+          strip(as_str(values, "FPGA_DDR_TYPE", "ddr4")));
+      const std::vector<std::string> ddr_types = {
+          "ddr3", "ddr4", "lpddr4", "lpddr5"};
+      if (std::find(ddr_types.begin(), ddr_types.end(), ddr_type) ==
+          ddr_types.end()) {
+        err("FPGA_DDR_TYPE='" + ddr_type +
+            "' 非法：只允许 ddr3/ddr4/lpddr4/lpddr5");
+      }
+      const std::string ddr_controller = lower_ascii(
+          strip(as_str(values, "FPGA_DDR_CONTROLLER", "ysyx_soc")));
+      const std::vector<std::string> ddr_controllers = {
+          "ysyx_soc", "vendor", "custom"};
+      if (std::find(ddr_controllers.begin(), ddr_controllers.end(),
+                    ddr_controller) == ddr_controllers.end()) {
+        err("FPGA_DDR_CONTROLLER='" + ddr_controller +
+            "' 非法：只允许 ysyx_soc/vendor/custom");
+      }
+      const std::string ddr_phy = lower_ascii(
+          strip(as_str(values, "FPGA_DDR_PHY", "vendor")));
+      if (ddr_phy != "vendor" && ddr_phy != "custom") {
+        err("FPGA_DDR_PHY='" + ddr_phy +
+            "' 非法：只允许 vendor/custom");
+      }
+      const std::string ddr_voltage = strip(
+          as_str(values, "FPGA_DDR_VOLTAGE", "1.2"));
+      const std::vector<std::string> ddr_voltages = {
+          "1.1", "1.2", "1.35", "1.5"};
+      if (std::find(ddr_voltages.begin(), ddr_voltages.end(),
+                    ddr_voltage) == ddr_voltages.end()) {
+        err("FPGA_DDR_VOLTAGE='" + ddr_voltage +
+            "' 非法：只允许 1.1/1.2/1.35/1.5");
+      }
+    }
+    if (as_bool(values, "FPGA_ILA_ENABLE", false)) {
+      const long long depth = as_int(values, "FPGA_ILA_DEPTH", 1024);
+      if (!is_power_of_two(depth)) {
+        err("FPGA_ILA_DEPTH=" + std::to_string(depth) +
+            " 必须是 2 的幂");
+      }
+      const std::string storage = lower_ascii(
+          strip(as_str(values, "FPGA_ILA_STORAGE", "bram")));
+      if (storage != "bram" && storage != "uram") {
+        err("FPGA_ILA_STORAGE='" + storage +
+            "' 非法：只允许 bram/uram");
+      }
+      if (storage == "uram" &&
+          !(vendor == "amd" &&
+            (family == "ultrascale_plus" || family == "versal"))) {
+        err("FPGA_ILA_STORAGE=uram 只适用于 AMD UltraScale+/Versal");
+      }
+    }
+    if (as_bool(values, "FPGA_SIGNALTAP_ENABLE", false)) {
+      const long long depth =
+          as_int(values, "FPGA_SIGNALTAP_DEPTH", 1024);
+      if (!is_power_of_two(depth)) {
+        err("FPGA_SIGNALTAP_DEPTH=" + std::to_string(depth) +
+            " 必须是 2 的幂");
+      }
+    }
+    const std::string program_mode = lower_ascii(
+        strip(as_str(values, "FPGA_PROGRAM_MODE", "jtag")));
+    const std::vector<std::string> program_modes = {
+        "jtag", "qspi", "sd", "emmc", "net"};
+    if (std::find(program_modes.begin(), program_modes.end(),
+                  program_mode) == program_modes.end()) {
+      err("FPGA_PROGRAM_MODE='" + program_mode +
+          "' 非法：只允许 jtag/qspi/sd/emmc/net");
+    }
+    const long long flash_offset = as_int(values, "FPGA_FLASH_OFFSET", 0);
+    if (flash_offset < 0) {
+      err("FPGA_FLASH_OFFSET 不能为负数");
+    }
+  }
   return errors;
 }
 

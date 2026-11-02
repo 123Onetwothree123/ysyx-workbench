@@ -58,6 +58,38 @@ struct SelfTest {
     values["LINUX_INITRAMFS_ADDR"] = Value::make_int(0x82000000);
     return values;
   }
+  static Config base_fpga_amd() {
+    Config values;
+    values["FPGA_ENABLE"] = Value::make_bool(true);
+    values["FPGA_VENDOR"] = Value::make_string("amd");
+    values["FPGA_FAMILY"] = Value::make_string("ultrascale_plus");
+    values["FPGA_DEVICE"] = Value::make_string("xczu9eg-ffvb1156-2-e");
+    values["FPGA_TOOLCHAIN"] = Value::make_string("vivado");
+    values["FPGA_BITSTREAM_FORMAT"] = Value::make_string("bit");
+    values["FPGA_MEMORY_MODEL"] = Value::make_string("ddr");
+    values["FPGA_DDR_TYPE"] = Value::make_string("ddr4");
+    values["FPGA_DDR_DATA_WIDTH"] = Value::make_int(64);
+    values["FPGA_DDR_CONTROLLER"] = Value::make_string("ysyx_soc");
+    values["FPGA_DDR_PHY"] = Value::make_string("vendor");
+    values["FPGA_DDR_VOLTAGE"] = Value::make_string("1.2");
+    values["FPGA_DDR_BANKS"] = Value::make_int(8);
+    values["FPGA_PROGRAM_MODE"] = Value::make_string("jtag");
+    values["FPGA_FLASH_OFFSET"] = Value::make_int(0);
+    return values;
+  }
+  static Config base_fpga_intel() {
+    Config values;
+    values["FPGA_ENABLE"] = Value::make_bool(true);
+    values["FPGA_VENDOR"] = Value::make_string("intel");
+    values["FPGA_FAMILY"] = Value::make_string("arria_10");
+    values["FPGA_DEVICE"] = Value::make_string("10AX115N2F45E1SG");
+    values["FPGA_TOOLCHAIN"] = Value::make_string("quartus");
+    values["FPGA_BITSTREAM_FORMAT"] = Value::make_string("sof");
+    values["FPGA_MEMORY_MODEL"] = Value::make_string("bram_only");
+    values["FPGA_PROGRAM_MODE"] = Value::make_string("jtag");
+    values["FPGA_FLASH_OFFSET"] = Value::make_int(0);
+    return values;
+  }
   void expect_ok(const std::string& name, const Config& values) {
     try {
       const auto errors = validate_config(values);
@@ -379,6 +411,32 @@ struct SelfTest {
     values = base_linux();
     values["LINUX_IMAGE_PATH"] = Value::make_string("");
     expect_error("linux_empty_image_path_rejected", values, "LINUX_IMAGE_PATH");
+    values = base_fpga_amd();
+    expect_ok("fpga_amd_valid", values);
+    values = base_fpga_intel();
+    expect_ok("fpga_intel_valid", values);
+    values = base_fpga_amd();
+    values["FPGA_TOOLCHAIN"] = Value::make_string("quartus");
+    expect_error("fpga_amd_requires_vivado", values, "FPGA_TOOLCHAIN=vivado");
+    values = base_fpga_amd();
+    values["FPGA_FAMILY"] = Value::make_string("cyclone_10");
+    expect_error("fpga_amd_family_rejected", values, "不是 AMD 系列");
+    values = base_fpga_intel();
+    values["FPGA_BITSTREAM_FORMAT"] = Value::make_string("bit");
+    expect_error("fpga_intel_bitstream_rejected", values, "不是 Intel 格式");
+    values = base_fpga_amd();
+    values["FPGA_DDR_DATA_WIDTH"] = Value::make_int(10);
+    expect_error("fpga_ddr_width_rejected", values, "2 的幂");
+    values = base_fpga_amd();
+    values["FPGA_ILA_ENABLE"] = Value::make_bool(true);
+    values["FPGA_ILA_DEPTH"] = Value::make_int(1000);
+    expect_error("fpga_ila_depth_rejected", values, "2 的幂");
+    values = base_fpga_intel();
+    values["FPGA_URAM_ENABLE"] = Value::make_bool(true);
+    expect_error("fpga_uram_vendor_rejected", values, "URAM");
+    values = base_fpga_amd();
+    values["FPGA_SIGNALTAP_ENABLE"] = Value::make_bool(true);
+    expect_error("fpga_signaltap_vendor_rejected", values, "只适用于 Intel");
     if (failed != 0) {
       std::cerr << "[FAIL] Kconfig 配置契约自检: " << failed << "/"
                 << (passed + failed) << " 项失败\n";

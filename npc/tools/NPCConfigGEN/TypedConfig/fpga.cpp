@@ -65,6 +65,17 @@ void addFpga(TypedFields &root, const Config &values)
     addField(fpga, "bitstream_format",
              TypedJson::string(
                  flatString(values, "FPGA_BITSTREAM_FORMAT", "bit")));
+    addField(fpga, "bitstream_compress",
+             TypedJson::boolean(
+                 flatBool(values, "FPGA_BITSTREAM_COMPRESS")));
+    addField(fpga, "boot_golden",
+             TypedJson::boolean(flatBool(values, "FPGA_BOOT_GOLDEN")));
+    addField(fpga, "boot_watchdog_timeout_ms",
+             TypedJson::integer(
+                 flatInt(values, "FPGA_BOOT_WATCHDOG_TIMEOUT_MS", 0)));
+    addField(fpga, "flash_partition_layout",
+             TypedJson::string(
+                 flatString(values, "FPGA_FLASH_PARTITION_LAYOUT")));
     addField(fpga, "program_mode",
              TypedJson::string(
                  flatString(values, "FPGA_PROGRAM_MODE", "jtag")));
@@ -81,6 +92,9 @@ void addFpga(TypedFields &root, const Config &values)
     addField(clock, "system_mhz",
              TypedJson::integer(
                  flatInt(values, "FPGA_SYSTEM_CLOCK_MHZ", 50)));
+    addField(clock, "periph_mhz",
+             TypedJson::integer(
+                 flatInt(values, "FPGA_PERIPH_CLOCK_MHZ", 50)));
     addField(clock, "source",
              TypedJson::string(flatString(values, "FPGA_CLOCK_SOURCE", "mmcm")));
     addField(clock, "buffer",
@@ -116,6 +130,18 @@ void addFpga(TypedFields &root, const Config &values)
     addField(memory, "ddr_controller",
              TypedJson::string(
                  flatString(values, "FPGA_DDR_CONTROLLER", "ysyx_soc")));
+    addField(memory, "ddr_ecc",
+             TypedJson::boolean(flatBool(values, "FPGA_DDR_ECC")));
+    addField(memory, "ddr_phy",
+             TypedJson::string(
+                 flatString(values, "FPGA_DDR_PHY", "vendor")));
+    addField(memory, "ddr_pin_swap",
+             TypedJson::boolean(flatBool(values, "FPGA_DDR_PIN_SWAP")));
+    addField(memory, "ddr_voltage",
+             TypedJson::string(
+                 flatString(values, "FPGA_DDR_VOLTAGE", "1.2")));
+    addField(memory, "ddr_banks",
+             TypedJson::integer(flatInt(values, "FPGA_DDR_BANKS", 8)));
     addField(memory, "bram_budget_kb",
              TypedJson::integer(
                  flatInt(values, "FPGA_BRAM_BUDGET_KB", 4096)));
@@ -143,6 +169,9 @@ void addFpga(TypedFields &root, const Config &values)
     addField(peripherals, "uart_baud",
              TypedJson::integer(
                  flatInt(values, "FPGA_UART_BAUD", 115200)));
+    addField(peripherals, "uart_clock_source",
+             TypedJson::string(
+                 flatString(values, "FPGA_UART_CLOCK_SOURCE", "system")));
     addField(peripherals, "spi_flash",
              TypedJson::boolean(
                  flatBool(values, "FPGA_SPI_FLASH_ENABLE", true)));
@@ -180,14 +209,25 @@ void addFpga(TypedFields &root, const Config &values)
              TypedJson::boolean(flatBool(values, "FPGA_ILA_ENABLE")));
     addField(debug, "ila_depth",
              TypedJson::integer(flatInt(values, "FPGA_ILA_DEPTH", 1024)));
+    addField(debug, "ila_trigger_width",
+             TypedJson::integer(
+                 flatInt(values, "FPGA_ILA_TRIGGER_WIDTH", 8)));
+    addField(debug, "ila_storage",
+             TypedJson::string(
+                 flatString(values, "FPGA_ILA_STORAGE", "bram")));
     addField(debug, "ila_clock",
              TypedJson::string(
                  flatString(values, "FPGA_ILA_CLOCK", "system")));
     addField(debug, "vio",
              TypedJson::boolean(flatBool(values, "FPGA_VIO_ENABLE")));
+    addField(debug, "vio_width",
+             TypedJson::integer(flatInt(values, "FPGA_VIO_WIDTH", 32)));
     addField(debug, "signaltap",
              TypedJson::boolean(
                  flatBool(values, "FPGA_SIGNALTAP_ENABLE")));
+    addField(debug, "signaltap_depth",
+             TypedJson::integer(
+                 flatInt(values, "FPGA_SIGNALTAP_DEPTH", 1024)));
     addField(debug, "trace",
              TypedJson::boolean(flatBool(values, "FPGA_TRACE_ENABLE")));
     addField(debug, "probe_width",
@@ -195,6 +235,11 @@ void addFpga(TypedFields &root, const Config &values)
     addField(debug, "debug_uart",
              TypedJson::boolean(
                  flatBool(values, "FPGA_DEBUG_UART", true)));
+    addField(debug, "jtag_chain_position",
+             TypedJson::integer(
+                 flatInt(values, "FPGA_JTAG_CHAIN_POSITION", 1)));
+    addField(debug, "debug_hub",
+             TypedJson::boolean(flatBool(values, "FPGA_DEBUG_HUB", false)));
     addField(fpga, "debug", TypedJson::object(std::move(debug)));
 
     TypedFields resources;

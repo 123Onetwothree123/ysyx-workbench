@@ -307,12 +307,20 @@ menu "FPGA 部署"
         range 1 1000
 
       config FPGA_SYSTEM_CLOCK_MHZ
-        int "系统时钟 (MHz)"
+        int "系统/CPU 时钟 (MHz)"
         default 50
         range 1 2000
         help
           FPGA 初步目标频率。最终频率由时序收敛结果决定，
           与 ASIC 综合使用的 SYNTH_FREQ 相互独立。
+
+      config FPGA_PERIPH_CLOCK_MHZ
+        int "外设时钟 (MHz)"
+        default 50
+        range 1 1000
+        help
+          UART/SPI/GPIO 等低速外设使用的时钟。可以与 CPU 时钟异步，
+          具体时钟域和 CDC 由后续 RTL/约束实现。
 
       choice
         prompt "时钟生成方式"
@@ -441,6 +449,58 @@ menu "FPGA 部署"
           default "vendor" if FPGA_DDR_CTRL_VENDOR
           default "custom" if FPGA_DDR_CTRL_CUSTOM
           default "ysyx_soc"
+
+        config FPGA_DDR_ECC
+          bool "启用 DDR ECC"
+          default n
+
+        choice
+          prompt "DDR PHY"
+          default FPGA_DDR_PHY_VENDOR
+          config FPGA_DDR_PHY_VENDOR
+            bool "厂商 PHY (MIG/EMIF)"
+          config FPGA_DDR_PHY_CUSTOM
+            bool "自定义 PHY"
+        endchoice
+
+        config FPGA_DDR_PHY
+          string
+          default "vendor" if FPGA_DDR_PHY_VENDOR
+          default "custom" if FPGA_DDR_PHY_CUSTOM
+          default "vendor"
+
+        config FPGA_DDR_PIN_SWAP
+          bool "允许 DDR 引脚 lane 交换"
+          default n
+          help
+            板级布线允许时，可让 PHY/约束脚本交换 DQ/DQS lane，
+            降低 PCB 走线难度。
+
+        choice
+          prompt "DDR 电压"
+          default FPGA_DDR_VOLTAGE_1V2
+          config FPGA_DDR_VOLTAGE_1V1
+            bool "1.1V (LPDDR4/LPDDR5)"
+          config FPGA_DDR_VOLTAGE_1V2
+            bool "1.2V (DDR4)"
+          config FPGA_DDR_VOLTAGE_1V35
+            bool "1.35V (DDR3L)"
+          config FPGA_DDR_VOLTAGE_1V5
+            bool "1.5V (DDR3)"
+        endchoice
+
+        config FPGA_DDR_VOLTAGE
+          string
+          default "1.1" if FPGA_DDR_VOLTAGE_1V1
+          default "1.2" if FPGA_DDR_VOLTAGE_1V2
+          default "1.35" if FPGA_DDR_VOLTAGE_1V35
+          default "1.5" if FPGA_DDR_VOLTAGE_1V5
+          default "1.2"
+
+        config FPGA_DDR_BANKS
+          int "DDR bank 数"
+          default 8
+          range 1 16
       endif
 
       config FPGA_BRAM_BUDGET_KB
@@ -506,6 +566,22 @@ menu "FPGA 部署"
         depends on FPGA_UART_ENABLE
         default 115200
         range 1200 4000000
+
+      choice
+        prompt "UART 时钟源"
+        depends on FPGA_UART_ENABLE
+        default FPGA_UART_CLOCK_SYSTEM
+        config FPGA_UART_CLOCK_SYSTEM
+          bool "系统/CPU 时钟"
+        config FPGA_UART_CLOCK_PERIPH
+          bool "外设时钟"
+      endchoice
+
+      config FPGA_UART_CLOCK_SOURCE
+        string
+        default "system" if FPGA_UART_CLOCK_SYSTEM
+        default "periph" if FPGA_UART_CLOCK_PERIPH
+        default "system"
 
       config FPGA_SPI_FLASH_ENABLE
         bool "启用 SPI/QSPI Flash"
@@ -604,6 +680,29 @@ menu "FPGA 部署"
         default 1024
         range 1 1048576
 
+      config FPGA_ILA_TRIGGER_WIDTH
+        int "ILA 触发位宽"
+        depends on FPGA_ILA_ENABLE
+        default 8
+        range 1 512
+
+      choice
+        prompt "ILA 存储介质"
+        depends on FPGA_ILA_ENABLE
+        default FPGA_ILA_STORAGE_BRAM
+        config FPGA_ILA_STORAGE_BRAM
+          bool "BRAM"
+        config FPGA_ILA_STORAGE_URAM
+          bool "URAM"
+          depends on FPGA_VENDOR_AMD && (FPGA_AMD_FAMILY_ULTRASCALE_PLUS || FPGA_AMD_FAMILY_VERSAL)
+      endchoice
+
+      config FPGA_ILA_STORAGE
+        string
+        default "bram" if FPGA_ILA_STORAGE_BRAM
+        default "uram" if FPGA_ILA_STORAGE_URAM
+        default "bram"
+
       choice
         prompt "ILA 采样时钟"
         depends on FPGA_ILA_ENABLE
@@ -624,10 +723,22 @@ menu "FPGA 部署"
         bool "启用 VIO 虚拟 IO"
         default n
 
+      config FPGA_VIO_WIDTH
+        int "VIO 位宽"
+        depends on FPGA_VIO_ENABLE
+        default 32
+        range 1 512
+
       config FPGA_SIGNALTAP_ENABLE
         bool "启用 SignalTap"
         depends on FPGA_VENDOR_INTEL
         default n
+
+      config FPGA_SIGNALTAP_DEPTH
+        int "SignalTap 采样深度"
+        depends on FPGA_SIGNALTAP_ENABLE
+        default 1024
+        range 1 1048576
 
       config FPGA_TRACE_ENABLE
         bool "启用指令/访存 Trace"
@@ -640,6 +751,18 @@ menu "FPGA 部署"
 
       config FPGA_DEBUG_UART
         bool "启用调试串口"
+        default y
+
+      config FPGA_JTAG_CHAIN_POSITION
+        int "JTAG 链位置"
+        default 1
+        range 1 16
+        help
+          多器件 JTAG 链中本 FPGA 的位置，1 表示链首。
+
+      config FPGA_DEBUG_HUB
+        bool "启用 Debug Hub"
+        depends on FPGA_VENDOR_AMD
         default y
 
     endmenu
@@ -689,13 +812,26 @@ menu "FPGA 部署"
 
       choice
         prompt "bitstream 格式"
-        default FPGA_BITSTREAM_BIT
+        default FPGA_BITSTREAM_BIT if FPGA_VENDOR_AMD
+        default FPGA_BITSTREAM_SOF if FPGA_VENDOR_INTEL
         config FPGA_BITSTREAM_BIT
-          bool "bit"
+          bool "bit (AMD)"
+          depends on FPGA_VENDOR_AMD
         config FPGA_BITSTREAM_BIN
-          bool "bin"
+          bool "bin (AMD)"
+          depends on FPGA_VENDOR_AMD
         config FPGA_BITSTREAM_MCS
-          bool "mcs"
+          bool "mcs (AMD)"
+          depends on FPGA_VENDOR_AMD
+        config FPGA_BITSTREAM_SOF
+          bool "sof (Intel)"
+          depends on FPGA_VENDOR_INTEL
+        config FPGA_BITSTREAM_POF
+          bool "pof (Intel)"
+          depends on FPGA_VENDOR_INTEL
+        config FPGA_BITSTREAM_RBF
+          bool "rbf (Intel)"
+          depends on FPGA_VENDOR_INTEL
       endchoice
 
       config FPGA_BITSTREAM_FORMAT
@@ -703,7 +839,32 @@ menu "FPGA 部署"
         default "bit" if FPGA_BITSTREAM_BIT
         default "bin" if FPGA_BITSTREAM_BIN
         default "mcs" if FPGA_BITSTREAM_MCS
+        default "sof" if FPGA_BITSTREAM_SOF
+        default "pof" if FPGA_BITSTREAM_POF
+        default "rbf" if FPGA_BITSTREAM_RBF
         default "bit"
+
+      config FPGA_BITSTREAM_COMPRESS
+        bool "压缩 bitstream"
+        default n
+
+      config FPGA_BOOT_GOLDEN
+        bool "生成 golden image"
+        default n
+        help
+          保留一份出厂/恢复镜像，配合 MultiBoot 或 Remote Update 使用。
+
+      config FPGA_BOOT_WATCHDOG_TIMEOUT_MS
+        int "启动看门狗超时 (ms)，0 = 关闭"
+        default 0
+        range 0 600000
+
+      config FPGA_FLASH_PARTITION_LAYOUT
+        string "Flash 分区布局"
+        default ""
+        help
+          可选。记录 bootloader/bitstream/应用区的偏移与大小描述，
+          后续由烧录脚本解析。
 
       choice
         prompt "启动/烧录方式"
