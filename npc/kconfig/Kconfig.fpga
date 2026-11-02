@@ -1,7 +1,10 @@
-menu "FPGA 目标"
+menu "FPGA 部署"
+
+  comment "CPU 体系结构参数（缓存/TLB/BTB/PMU 等）请在“CPU 与平台”中配置；本菜单只负责 FPGA 厂商、板级、工具链、存储与外设"
+  comment "这些 CPU 参数对应 ysyx_26030103 CPU Scala 代码中的可配置项，不在 FPGA 菜单里重复定义"
 
   config FPGA_ENABLE
-    bool "启用 FPGA 目标配置框架"
+    bool "启用 FPGA 部署配置框架"
     default n
     help
       打开后展开 FPGA 厂商、器件、板卡、工具链、时钟、存储、
