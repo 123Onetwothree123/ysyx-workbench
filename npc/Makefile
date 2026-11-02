@@ -88,6 +88,13 @@ remove_quote = $(patsubst "%",%,$(1))
 # 不能用来去掉这类字符串的引号；这里只删除引号并保留原样。
 unquote_config = $(strip $(subst ",,$(1)))
 -include include/config/auto.conf
+# FPGA 互斥模式：关闭 Verilator 仿真构建，但保留 verilog/synth。
+SIM_GUARD :=
+ifeq ($(CONFIG_FPGA_ENABLE),y)
+ifeq ($(CONFIG_FPGA_SIM_EXCLUSIVE),y)
+SIM_GUARD := sim-disabled
+endif
+endif
 NPROC_MAX := $(shell nproc 2>/dev/null || echo 4)
 ifneq ($(CONFIG_BUILD_THREADS),)
 NPROC_REQ := $(call remove_quote,$(CONFIG_BUILD_THREADS))
@@ -630,7 +637,7 @@ $(CACHESIM_BIN):
 	@cmake -B $(CACHESIM_DIR)/build -S $(CACHESIM_DIR) && cmake --build $(CACHESIM_DIR)/build
 
 .PHONY: cachesim
-cachesim: $(CACHESIM_BIN)
+cachesim: $(SIM_GUARD) $(CACHESIM_BIN)
 	@rm -f itrace.txt
 	@$(MAKE) run CONFIG_TRACE=y CONFIG_ITRACE=y CONFIG_ITRACE_WRITE_FILE=y file=$(file)
 	@echo ""
@@ -638,7 +645,7 @@ cachesim: $(CACHESIM_BIN)
 	@$(CACHESIM_BIN) itrace.txt
 
 .PHONY: cachesim_dse
-cachesim_dse: $(CACHESIM_BIN)
+cachesim_dse: $(SIM_GUARD) $(CACHESIM_BIN)
 	@rm -f itrace.txt
 	@$(MAKE) run CONFIG_TRACE=y CONFIG_ITRACE=y CONFIG_ITRACE_WRITE_FILE=y file=$(file)
 	@echo ""
@@ -647,9 +654,15 @@ cachesim_dse: $(CACHESIM_BIN)
 
 .PHONY: test verilog help reformat checkformat clean synth perf
 
-sim:
+sim: $(SIM_GUARD)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "Write this Makefile by yourself."
+
+.PHONY: sim-disabled
+sim-disabled:
+	@echo "错误：当前配置为 FPGA 互斥模式（FPGA_SIM_EXCLUSIVE=y），Verilator 仿真构建已关闭。" >&2
+	@echo "请选择 FPGA_SIM_COEXIST，或关闭 FPGA_ENABLE。" >&2
+	@exit 1
 
 #C++
 CXX?=g++
@@ -941,7 +954,7 @@ $(NVBOARD_AUTOBIND): $(call remove_quote,$(CONFIG_NVBOARD_NXDC))
 	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $< $@
 endif
 
-simtest: $(NPC_CONFIG_MODULE) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
+simtest: $(SIM_GUARD) $(NPC_CONFIG_MODULE) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_WARN_FLAGS) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -974,7 +987,7 @@ $(YSYXSOC_FULL_V): ysyxsoc-verilog-force $(NPC_CONFIG_TYPED_JSON)
 		NPC_CONFIG_JSON='$(NPC_CONFIG_TYPED_JSON)' \
 		verilog
 
-$(BIN): $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V)
+$(BIN): $(SIM_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_WARN_FLAGS) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -994,7 +1007,7 @@ $(BIN): $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WR
 		NPC_SAVABLE='$(VERILATOR_SAVABLE)' \
 		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)' \
 		default
-$(BIN_NPC): $(NVBOARD_DIRECT_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+$(BIN_NPC): $(SIM_GUARD) $(NVBOARD_DIRECT_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(SAVABLE_VERILATOR_FLAG) $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_WARN_FLAGS) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -1035,22 +1048,22 @@ ifeq ($(CONFIG_PGO_AUTO),y)
 # PGO_AUTO（自动一步到位）：make run 等价于 make pgo file=镜像
 # 内部完成 插桩编译→收集profile→优化编译→运行最终程序
 ifeq ($(SIM_TOP),soc)
-run: pgo
+run: $(SIM_GUARD) pgo
 else
-run: $(BIN_NPC)
+run: $(SIM_GUARD) $(BIN_NPC)
 	@echo "警告: PGO_AUTO 目前仅支持 SIM_TOP=soc，本次执行普通运行"
 	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) $(NPC_BATCH_FLAG) 2>&1
 endif
 else ifeq ($(SIM_TOP),soc)
-run: $(BIN)
+run: $(SIM_GUARD) $(BIN)
 	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) $(NPC_BATCH_FLAG) 2>&1
 else
-run: $(BIN_NPC)
+run: $(SIM_GUARD) $(BIN_NPC)
 	$(BIN_NPC) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) $(NPC_BATCH_FLAG) 2>&1
 endif
 
 .PHONY: pgo
-pgo: verilog
+pgo: $(SIM_GUARD) verilog
 	@echo "PGO Pass 1: 编译插桩版本"
 	@rm -f $(BIN)
 	$(MAKE) PGO_CFLAGS=-fprofile-generate $(BIN)
@@ -1237,7 +1250,7 @@ yosys-sta: verilog perf-build-metadata
 # perf-simulator-rebuild still forces Verilator to rebuild the executable from
 # the RTL that synthesis just consumed.
 ifeq ($(SIM_TOP),soc)
-perf: synth
+perf: $(SIM_GUARD) synth
 	@$(MAKE) --no-print-directory PERF_SYNTH_READY=1 $(BIN)
 	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 运行仿真 ..."
@@ -1252,7 +1265,7 @@ perf: synth
 	done; \
 	$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),) --result-dir "$$RESULT_DIR" 2>&1 | tee "$$RESULT_DIR/ysyxsoc.log"
 else
-perf: synth
+perf: $(SIM_GUARD) synth
 	@$(MAKE) --no-print-directory PERF_SYNTH_READY=1 $(BIN_NPC)
 	@mkdir -p $(PERF_DIR)
 	@echo "[perf] 运行仿真 ..."

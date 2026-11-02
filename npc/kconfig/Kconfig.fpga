@@ -15,7 +15,26 @@ menu "FPGA 部署"
       约束文件、引脚绑定和板级脚本消费；具体的综合/实现流程
       尚未接入。
 
+  choice
+    prompt "FPGA 与仿真构建关系"
+    depends on FPGA_ENABLE
+    default FPGA_SIM_COEXIST
+    help
+      互斥：开启 FPGA 时关闭 Verilator 仿真选项与仿真构建目标。
+      共存：FPGA 与 Verilator 仿真可以同时开启。
+    config FPGA_SIM_COEXIST
+      bool "FPGA 与仿真同时开启"
+    config FPGA_SIM_EXCLUSIVE
+      bool "开启 FPGA 时关闭仿真"
+  endchoice
+
   if FPGA_ENABLE
+
+    config FPGA_SIM_MODE
+      string
+      default "coexist" if FPGA_SIM_COEXIST
+      default "exclusive" if FPGA_SIM_EXCLUSIVE
+      default "coexist"
 
     menu "目标厂商与器件"
 

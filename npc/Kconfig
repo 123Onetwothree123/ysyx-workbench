@@ -21,6 +21,11 @@ source "kconfig/Kconfig.fpga"      # FPGA 部署
 
 menu "构建与仿真"
   source "kconfig/Kconfig.cpp"      # 编译器与构建选项
-  source "kconfig/Kconfig.verilator"
+  if !(FPGA_ENABLE && FPGA_SIM_EXCLUSIVE)
+    source "kconfig/Kconfig.verilator"
+  endif
+  if FPGA_ENABLE && FPGA_SIM_EXCLUSIVE
+    comment "FPGA 互斥模式：Verilator 仿真选项已关闭"
+  endif
   source "kconfig/Kconfig.synth"
 endmenu
