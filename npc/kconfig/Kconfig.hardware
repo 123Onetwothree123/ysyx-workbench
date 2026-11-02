@@ -1274,4 +1274,8 @@ menu "CPU 与平台"
 
     endmenu
   endmenu
+
+  # MMU/TLB 是 CPU 内部的地址翻译与权限检查单元，不是 SoC 外设。
+  source "kconfig/Kconfig.mmu"
+
 endmenu

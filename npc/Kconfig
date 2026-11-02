@@ -4,7 +4,6 @@ mainmenu "NPC配置菜单"
 # 重排只移动 menu，不改变 CONFIG_* 符号名、默认值或依赖关系。
 
 source "kconfig/Kconfig.hardware"   # CPU 与平台
-source "kconfig/Kconfig.mmu"        # MMU/TLB
 source "kconfig/Kconfig.soc"        # SoC 与外设
 
 menu "运行时与调试"
