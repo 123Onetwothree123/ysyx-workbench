@@ -1270,4 +1270,10 @@ endif
 
 include scripts/config.mk
 
+# config.mk 定义 CONF/MCONF 较晚，而上面的 NPC_CONFIG_JSON 规则在包含它之前
+# 就已经展开，$(CONF) 会被当成空。这里补一次依赖，保证执行过
+# `make menuconfig-clean` 后，`make npc-config` 会先重建 Kconfig 工具。
+$(NPC_CONFIG_JSON): $(CONF)
+npc-config: $(CONF)
+
 -include ../Makefile

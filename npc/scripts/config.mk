@@ -15,6 +15,7 @@ rm-distclean += include/generated include/config csrc/generated \
 	tools/build/linux_boot_test tools/build/pack_uboot_image \
 	tools/build/audit_rootfs_elf tools/build/build_dtb \
 	tools/build/pack_linux_image tools/build/NPCConfigGEN tools/build/BuildTools tools/build/KconfigContract tools/build/LinuxBootTest \
+	tools/build/c_conf tools/build/c_mconf tools/kconfig/build tools/kconfig/gcm.cache \
 	.config .config.old tools/build/merge_config
 silent := -s
 
@@ -46,6 +47,13 @@ menuconfig: $(MCONF) $(CONF) $(CONFIG_CONTRACT)
 	$(Q)TERM=xterm LC_ALL=C.utf8 $(MCONF) $(Kconfig)
 	$(Q)$(CONF) $(silent) --syncconfig $(Kconfig)
 	$(Q)$(CONFIG_CONTRACT) --config .config
+
+# 只清理 menuconfig 的构建产物（CMake 目录、c_conf/c_mconf、模块缓存），
+# 保留 .config 和 include/generated，避免误删用户当前配置。
+.PHONY: menuconfig-clean
+menuconfig-clean:
+	@echo "清理 menuconfig 构建工具..."
+	-@rm -rf $(KCONFIG_BUILD) $(CONF) $(MCONF) $(KCONFIG_PATH)/gcm.cache
 
 savedefconfig: $(CONF)
 	$(Q)$< $(silent) --$@=configs/defconfig $(Kconfig)
