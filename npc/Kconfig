@@ -17,8 +17,6 @@ menu "固件与启动"
   source "kconfig/Kconfig.rootfs"
 endmenu
 
-source "kconfig/Kconfig.fpga"      # FPGA 部署
-
 menu "构建与仿真"
   source "kconfig/Kconfig.cpp"      # 编译器与构建选项
   source "kconfig/Kconfig.verilator"

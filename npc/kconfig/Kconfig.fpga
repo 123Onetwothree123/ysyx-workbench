@@ -1,7 +1,7 @@
-menu "FPGA 部署"
+menu "FPGA 目标"
 
   config FPGA_ENABLE
-    bool "启用 FPGA 部署配置框架"
+    bool "启用 FPGA 目标配置框架"
     default n
     help
       打开后展开 FPGA 厂商、器件、板卡、工具链、时钟、存储、
