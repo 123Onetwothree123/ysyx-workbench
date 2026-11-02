@@ -714,9 +714,17 @@ menu "CPU 与平台"
 
   menu "缓存"
 
+    config CACHE_ENABLE
+      bool "启用 Cache 子系统"
+      default y
+      help
+        Cache 总开关。关闭时 ICache/DCache 都会在生成配置中强制关闭，
+        数据阵列、标签和回填逻辑不会生成。
+
     config ICACHE
       bool "开启指令缓存(ICache)"
       default y
+      depends on CACHE_ENABLE
       help
         开启: 取指经过ICache(直接映射, 参数见下)。
         关闭: 取指不做任何缓存, 每次取指直接发单拍AXI读(和数据通路一样),
@@ -726,6 +734,7 @@ menu "CPU 与平台"
     config DCACHE
       bool "开启数据缓存(DCache)"
       default n
+      depends on CACHE_ENABLE
       help
         开启: 普通RAM的读操作经过直映射DCache(参数见下)，写操作采用
               写直达且不写分配，并复用LSU写缓冲。
@@ -733,9 +742,28 @@ menu "CPU 与平台"
         关闭: LSU保持当前直连AXI访存路径，不生成DCache存储阵列/回填逻辑。
         修改后需重新 make verilog 以重新生成RTL。
 
+    choice
+      prompt "ICache/DCache 几何配置方式"
+      depends on CACHE_ENABLE && (ICACHE || DCACHE)
+      default CACHE_CONFIG_UNIFIED
+      help
+        统一配置：ICache/DCache 使用同一组块大小和索引位宽。
+        分别配置：可独立设置 ICache/DCache 的几何参数。
+      config CACHE_CONFIG_UNIFIED
+        bool "统一配置 ICache/DCache 大小"
+      config CACHE_CONFIG_SEPARATE
+        bool "分别配置 ICache/DCache 大小"
+    endchoice
+
+    config CACHE_CONFIG_MODE
+      string
+      default "unified" if CACHE_CONFIG_UNIFIED
+      default "separate" if CACHE_CONFIG_SEPARATE
+      default "unified"
+
     config CACHE_BLOCK_SIZE_LOG2
-      int "Cache块大小的log2（2^N字节）"
-      depends on ICACHE || DCACHE
+      int "Cache统一块大小默认值（2^N字节）"
+      depends on CACHE_ENABLE && (ICACHE || DCACHE)
       default 4
       range 2 13
       help
@@ -747,18 +775,19 @@ menu "CPU 与平台"
         修改后需重新 make verilog 以重新生成RTL。
 
     config CACHE_INDEX_BITS
-      int "Cache索引位宽（2^N个块）"
-      depends on ICACHE || DCACHE
+      int "Cache统一索引位宽默认值（2^N个块）"
+      depends on CACHE_ENABLE && (ICACHE || DCACHE)
       default 5
       range 1 10
       help
         1=2块, 5=32块, 10=1024块。
-        未单独设置 ICACHE_INDEX_BITS/DCACHE_INDEX_BITS 时，两者都跟随本值。
+        统一配置模式下 ICache/DCache 都使用本值；分别配置模式下，
+        本值作为 ICACHE_INDEX_BITS/DCACHE_INDEX_BITS 的默认值。
         修改后需重新 make verilog 以重新生成RTL。
 
     config ICACHE_BLOCK_SIZE_LOG2
       int "ICache块大小的log2（2^N字节）"
-      depends on ICACHE
+      depends on CACHE_ENABLE && CACHE_CONFIG_SEPARATE && ICACHE
       default CACHE_BLOCK_SIZE_LOG2
       range 2 13
       help
@@ -768,7 +797,7 @@ menu "CPU 与平台"
 
     config ICACHE_INDEX_BITS
       int "ICache索引位宽（2^N个块）"
-      depends on ICACHE
+      depends on CACHE_ENABLE && CACHE_CONFIG_SEPARATE && ICACHE
       default CACHE_INDEX_BITS
       range 1 10
       help
@@ -777,7 +806,7 @@ menu "CPU 与平台"
 
     config DCACHE_BLOCK_SIZE_LOG2
       int "DCache块大小的log2（2^N字节）"
-      depends on DCACHE
+      depends on CACHE_ENABLE && CACHE_CONFIG_SEPARATE && DCACHE
       default CACHE_BLOCK_SIZE_LOG2
       range 2 13
       help
@@ -787,7 +816,7 @@ menu "CPU 与平台"
 
     config DCACHE_INDEX_BITS
       int "DCache索引位宽（2^N个块）"
-      depends on DCACHE
+      depends on CACHE_ENABLE && CACHE_CONFIG_SEPARATE && DCACHE
       default CACHE_INDEX_BITS
       range 1 10
       help
@@ -796,7 +825,7 @@ menu "CPU 与平台"
 
     choice
       prompt "ICache数据阵列存储介质"
-      depends on ICACHE
+      depends on CACHE_ENABLE && ICACHE
       default ICACHE_STORAGE_REG
       help
         寄存器阵列: 数据阵列用触发器(Reg(Vec)), 组合读, 无额外时序(默认);
@@ -822,7 +851,7 @@ menu "CPU 与平台"
 
     choice
       prompt "DCache数据阵列存储介质"
-      depends on DCACHE
+      depends on CACHE_ENABLE && DCACHE
       default DCACHE_STORAGE_REG
       help
         寄存器阵列: 数据阵列用触发器(Reg(Vec)), 组合读, 无额外时序(默认);
@@ -848,7 +877,7 @@ menu "CPU 与平台"
 
     choice
       prompt "ICache 自修改代码一致性"
-      depends on ICACHE
+      depends on CACHE_ENABLE && ICACHE
       default ICACHE_COHERENCE_FENCE_I
       help
         RISC-V 标准语义要求软件在写指令后执行 fence.i；本选项只决定
@@ -875,6 +904,7 @@ menu "CPU 与平台"
 
     choice
       prompt "DMA 数据一致性"
+      depends on CACHE_ENABLE
       default DMA_COHERENCE_SOFTWARE_FLUSH
       help
         入站 DMA 经 ysyxSoC CPU slave 口直接访问内存，不经过 DCache。

@@ -58,6 +58,25 @@ void deriveEffectiveConfig(std::map<std::string, std::string> &values)
         if (hasConfigValue(values, key))
             values[key] = asBool(values, key) ? "1" : "0";
     }
+    // Cache 总开关与统一/分别配置：Kconfig 的隐藏项会保留旧值，
+    // 因此在 effective 配置里显式归一化，保证 RTL 与 C++ 看到同一组参数。
+    const bool cacheEnabled = asBool(values, "CACHE_ENABLE", true);
+    if (!cacheEnabled) {
+        values["ICACHE"] = "0";
+        values["DCACHE"] = "0";
+    } else if (asBool(values, "CACHE_CONFIG_UNIFIED", true)) {
+        const std::string blockSize =
+            values.contains("CACHE_BLOCK_SIZE_LOG2")
+                ? values["CACHE_BLOCK_SIZE_LOG2"] : "4";
+        const std::string indexBits =
+            values.contains("CACHE_INDEX_BITS")
+                ? values["CACHE_INDEX_BITS"] : "5";
+        values["ICACHE_BLOCK_SIZE_LOG2"] = blockSize;
+        values["DCACHE_BLOCK_SIZE_LOG2"] = blockSize;
+        values["ICACHE_INDEX_BITS"] = indexBits;
+        values["DCACHE_INDEX_BITS"] = indexBits;
+    }
+
     for (const auto &[key, fallback] :
          std::initializer_list<std::pair<const char *, long long>>{
              {"PLIC_BASE", 0x0c000000LL},

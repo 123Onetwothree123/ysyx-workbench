@@ -211,6 +211,11 @@ void addCache(TypedFields &root, const Config &values)
         flatInt(values, "CACHE_BLOCK_SIZE_LOG2", 4);
     const long long indexBits = flatInt(values, "CACHE_INDEX_BITS", 5);
     TypedFields cache;
+    addField(cache, "enabled",
+             TypedJson::boolean(flatBool(values, "CACHE_ENABLE", true)));
+    addField(cache, "config_mode",
+             TypedJson::string(
+                 flatString(values, "CACHE_CONFIG_MODE", "unified")));
     addField(cache, "block_size_log2", TypedJson::integer(blockSizeLog2));
     addField(cache, "index_bits", TypedJson::integer(indexBits));
     addField(cache, "wbuf_depth",
