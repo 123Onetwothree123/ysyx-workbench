@@ -354,8 +354,10 @@ class ysyx_26030103_LSUMMU(
         io.out.bits := io.in.bits
       }.elsewhen(bypass) {
         // Bare/M 模式没有页表翻译，但 PMP 仍然必须检查；故障时消费输入
-        // 并进入 fault，不能把访存指令直通给 LSU。
-        when(io.in.valid && io.pmpFault) {
+        // 并进入 fault，不能把访存指令直通给 LSU。必须用 fire 而不是
+        // valid：LSU 忙时 in.valid 可以保持而请求尚未被受理，此时不能
+        // 提前锁存/提交一笔并未进入本模块的 PMP 故障。
+        when(io.in.fire && io.pmpFault) {
           faultReg := true.B
           faultCauseReg := Mux(io.in.bits.MemoryWrite, 7.U, 5.U)
           faultTvalReg := io.in.bits.ALUResult

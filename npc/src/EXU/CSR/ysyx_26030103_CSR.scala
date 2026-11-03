@@ -238,7 +238,10 @@ class ysyx_26030103_CSR(
       UserCounterAddresses ++
       FpCsrAddresses ++
       PMUMachineAddresses ++
-      (if (profile.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
+      (if (profile.pmpEnabled)
+        (if (XLEN == 64) Seq(0x3a0, 0x3a2) else (0x3a0 to 0x3a3)) ++
+          (0x3b0 to 0x3bf)
+      else Seq.empty)
   ).filter(a => profile.csrSupported(a) || FpCsrAddresses.contains(a) ||
     UserCounterAddresses.contains(a) || PMUMachineAddresses.contains(a))
     .distinct.sorted
@@ -588,15 +591,20 @@ class ysyx_26030103_CSR(
   }
   // MPP 恢复；MIE <- MPIE；MPIE <- 1；MPP 保持最低支持特权级。
   // HAS_U=n 时 legalizeMstatus 已把 MPP 的最低值夹到 S。
-  val MstatusMretData = legalizeMstatus(
+  // 返回低于 M 的目标特权级时必须清 MPRV(bit17)；返回 M 时保留。
+  val MstatusMretBase = legalizeMstatus(
     (Mstatus_rdata & ~"h00001888".U(32.W)) |
       (Mstatus_rdata(7) << 3) | (1.U << 7)
   )
+  val MstatusMretData = Mux(Mstatus_rdata(12, 11) === 3.U,
+    MstatusMretBase,
+    MstatusMretBase & ~"h00020000".U(32.W))
   // SRET：SPP 决定返回 S/U；SIE <- SPIE；SPIE <- 1；SPP 回到最低支持级。
-  // HAS_U=n 时 SPP 固定为 1，SRET 只能返回 S。
+  // HAS_U=n 时 SPP 固定为 1，SRET 只能返回 S。SRET 的目标总是 S/U，
+  // 因此必须无条件清 MPRV(bit17)。
   val MstatusSretDataOpt = if (hasS) Some(legalizeMstatus(
-    (Mstatus_rdata & ~"h00000122".U(32.W)) |
-      (Mstatus_rdata(5) << 1) | (1.U << 5)
+    ((Mstatus_rdata & ~"h00000122".U(32.W)) |
+      (Mstatus_rdata(5) << 1) | (1.U << 5)) & ~"h00020000".U(32.W)
   )) else None
 
   val MstatusWen =
@@ -638,6 +646,14 @@ class ysyx_26030103_CSR(
     (if (hasS && profile.csrViewMode == "bound") SretCommit else false.B) ||
     FpCsrWriteIntent || FsDirtyCommit
   Mstatus.io.wdata := MuxCase(MstatusCSRData, MstatusWdataSel)
+  if (hasS && profile.csrViewMode == "independent") {
+    // 独立 sstatus 视图下 SRET 不写 mstatus 的 S 字段，但 MPRV 属于
+    // mstatus，返回 S/U 时仍必须清零；这里只覆盖 MPRV 位。
+    when(SretCommit) {
+      Mstatus.io.wen := true.B
+      Mstatus.io.wdata := Mstatus_rdata & ~"h00020000".U(32.W)
+    }
+  }
   if (hasS && profile.csrViewMode == "independent") {
     val SstatusReg = SstatusRegOpt.get
     val sWrite = legalizeMstatus((SstatusReg & ~SstatusMask) |
@@ -809,16 +825,22 @@ class ysyx_26030103_CSR(
   }
   val LcofiWriteMask =
     (if (pmuSscofpmf) (0xffffffffL ^ 0x2000L) else 0xffffffffL).U(32.W)
+  // mip 写口只保留已实现的中断位。保留位 0/2/4/6/8/10/12 必须清零，
+  // 否则软件误写后 pendingCause 的默认分支会报出 LCOFI(13) 等伪中断。
+  // 规范中 MSIP/MTIP/SEIP/MEIP(3/7/9/11) 是只读的，这里为单元测试保留
+  // 软件注入能力；LCOFI(13) 仍由 LcofiWriteMask 控制（PMU 实现时只读）。
+  val MipWriteMask =
+    "h00002aaaL".U(32.W) & LcofiWriteMask
   when(CSRWen && IsCSRAddress(CSR_MIE)) { Mie := Write32(Mie) }
   when(CSRWen && IsCSRAddress(CSR_MIP)) {
-    Mip := Write32(Mip) & LcofiWriteMask
+    Mip := Write32(Mip) & MipWriteMask
   }
   if (hasS && profile.csrViewMode == "independent") {
     val Sie = SieOpt.get
     val Sip = SipOpt.get
     when(CSRWen && IsCSRAddress(CSR_SIE)) { Sie := Write32(Sie) }
     when(CSRWen && IsCSRAddress(CSR_SIP)) {
-      Sip := Write32(Sip) & LcofiWriteMask
+      Sip := Write32(Sip) & SInterruptMask & LcofiWriteMask
     }
   } else if (hasS) {
     when(CSRWen && IsCSRAddress(CSR_SIE)) {

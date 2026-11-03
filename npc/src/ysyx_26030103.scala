@@ -332,10 +332,15 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   if (mmuEnabled) {
     // 取指虚拟 PC 与 ICache 的物理取指地址分离；ICache 只有一笔在途，
     // 因此一个虚拟 PC 快照足够把响应恢复成架构 PC。
-    when(immuOpt.get.io.fault) {
+    // 重定向/更老指令异常当拍必须丢弃取指故障脉冲。若等到下一拍的
+    // mmuFlush 再清，故障会被注入到新的重定向目标上，产生伪精确异常。
+    when(pipe_flush) {
+      ifuFaultValid := false.B
+    }.elsewhen(immuOpt.get.io.fault) {
       ifuFaultValid := true.B
       // C 模式下 IFU 的 pcReg 停在故障指令起点；第二个半字跨页/跨行
-      // 故障时 mepc 仍指向这条指令的起点。
+      // 故障时 mepc 仍指向这条指令的起点。顶层重定向会更新实时
+      // FetchPC，因此这里必须锁存故障取指自己的 PC。
       ifuFaultPC := (if (config.UseC) ifu.io.FetchPC
                      else immuOpt.get.io.faultVaddr)
     }.elsewhen(ifuResp.fire) {
@@ -362,8 +367,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   }
 
   // 合成故障响应的公共格式。
+  // 统一使用锁存的故障 PC：C 模式也不能使用实时 FetchPC，否则重定向后
+  // 的取指地址会被错误地当成故障指令地址。
   val fetchFaultPC =
-    if (mmuEnabled) (if (config.UseC) ifu.io.FetchPC else ifuFaultPC)
+    if (mmuEnabled) ifuFaultPC
     else pmpFetchFaultPC
   val fetchFaultCause =
     if (mmuEnabled) immuOpt.map(_.io.faultCause).getOrElse(12.U(4.W))
@@ -415,13 +422,17 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 杀死未完成的 VA 请求。
   // EXU 重定向或异常必须杀死 IDU->EXU 边界中排队的年轻指令，同时让当前 EXU
   // 指令在本周期保持可见，以便它提交并产生重定向。
+  // DMMU 页故障/PMP 故障通过 faultCommit 提交，不会拉高 lsu.FlushIDEX；
+  // 它同样必须杀死 IDU->EXU 边界里的年轻指令，否则故障指令之后的那条
+  // 会在 trap 入口前进入 EXU。faultCommit 是寄存器输出，不引入组合环。
+  val dmmuFaultCommit = dmmuOpt.map(_.io.faultCommit).getOrElse(false.B)
   ysyx_26030103_StageConnect(
     idu.io.out,
     exu.io.in,
-    lsu.io.FlushIDEX || pipe_flush,
+    lsu.io.FlushIDEX || pipe_flush || dmmuFaultCommit,
     // 当前 EXU 项产生重定向或陷阱时必须允许该项握手；更老的 MEM 故障则必须
-    // 杀死它，即使 EXU 正在承受反压也一样。
-    flushCurrent = lsu.io.FlushIDEX
+    // 杀死它，即使 EXU 正在承受反压也一样。DMMU 故障属于更老的 MEM 故障。
+    flushCurrent = lsu.io.FlushIDEX || dmmuFaultCommit
   )
   // 此边界保存的是比 LSU 当前指令更年轻的指令，只有更老的 MEM 故障可以丢弃
   // 它；不要在这里接入 pipe_flush。
@@ -561,6 +572,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       icache.io.axi <> readMux.io.a
       readMux.io.out <> arbiter.io.ifu
     }
+    // 重定向当拍已在故障锁存处清 ifuFaultValid；这里保留下一拍兜底，
+    // 用于清掉 flush 前最后时刻返回的旧取指故障。
     when(mmuFlush) { ifuFaultValid := false.B }
   } else {
     icache.io.axi <> arbiter.io.ifu
@@ -939,8 +952,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // 可能故障的访存，不应被LSU中单拍直通的普通ALU指令拖慢；
   // IRQ/CSR/异常则仍使用全流水级Busy保证精确顺序。
   exu.io.MEMBusy := lsu.io.MemoryBusy
-  exu.io.PipelineBusy := lsu.io.Busy
-  val dmmuFaultCommit = dmmuOpt.map(_.io.faultCommit).getOrElse(false.B)
+  // DMMU 翻译/故障状态也属于更老的 MEM 事务。只等 LSU 会让 IRQ 在
+  // 一笔仍在 DMMU xreq/xwait 的 load/store 之前提交，丢掉更老的精确故障。
+  // dmmu.busy 只由状态寄存器译码，不依赖 EXU 的 ready，不会形成组合环。
+  exu.io.PipelineBusy :=
+    lsu.io.Busy || dmmuOpt.map(_.io.busy).getOrElse(false.B)
   val dmmuFaultCause = dmmuOpt.map(_.io.faultCause).getOrElse(0.U(32.W))
   val dmmuFaultPC = dmmuOpt.map(_.io.faultPC).getOrElse(0.U(32.W))
   val dmmuFaultTval = dmmuOpt.map(_.io.faultTval).getOrElse(0.U(32.W))

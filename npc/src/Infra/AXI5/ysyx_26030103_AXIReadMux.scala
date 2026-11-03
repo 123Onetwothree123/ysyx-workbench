@@ -81,7 +81,8 @@ class ysyx_26030103_AXIReadMux(
   // 任意顺序返回，同 ID 仍由 AXI 保证顺序。
   val aBusy = RegInit(false.B)
   val bBusy = RegInit(VecInit(Seq.fill(16)(false.B)))
-  // 初始优先 A；A 获得授权后让 B 优先一次，避免 PTW 连续请求饿死取指。
+  // 初始优先 A；每次授权后把优先权让给另一侧，A/B 交替，避免 PTW
+  // 连续请求饿死取指。
   val lastGrantB = RegInit(false.B)
 
   val aReq = io.a.AR.ARVALID && !aBusy
@@ -122,7 +123,7 @@ class ysyx_26030103_AXIReadMux(
   when(arFire) {
     when(chooseB) { bBusy(bId) := true.B }
       .otherwise { aBusy := true.B }
-    lastGrantB := chooseB
+    lastGrantB := chooseA
   }
 
   val rid = io.out.R.RID

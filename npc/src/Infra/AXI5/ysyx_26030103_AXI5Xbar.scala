@@ -297,8 +297,9 @@ class ysyx_26030103_AXI5Xbar(
   val AWCollected = AWValidReg || InAWFire
   val WCollected = WValidReg || InWFire
   val FirstWLastAfterW = Mux(InWFire, io.in.W.WLAST, WLASTReg)
+  // CLINT 叶子已支持 AWLEN=1 的 64 位 mtimecmp 写（两拍 W 数据），
+  // 因此这里只保留 PLIC 的单拍限制。
   val WriteCannotForward = WriteTargetAfterAW === TargetInvalid ||
-    (WriteTargetAfterAW === TargetCLINT && WriteLenAfterAW =/= 0.U) ||
     (WriteTargetAfterAW === TargetPLIC && WriteLenAfterAW =/= 0.U)
   when(InAWFire) {
     AWIDReg := io.in.AW.AWID
@@ -521,7 +522,7 @@ class ysyx_26030103_AXI5Xbar(
       )
     }
   }.elsewhen(writeState === StateWriteDrain) {
-    // 地址无效或本地CLINT不支持burst：首beat已在收集级被接受，
+    // 地址无效或本地PLIC不支持burst：首beat已在收集级被接受，
     // 继续吞掉剩余beat，避免上游停在W通道而永远等不到错误响应。
     InWReady := true.B
     when(io.in.W.WVALID && io.in.W.WLAST) {

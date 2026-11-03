@@ -4,7 +4,6 @@ package build
 
 import mill._
 import mill.scalalib.scalafmt.ScalafmtModule
-import mill.scalalib.TestModule.ScalaTest
 import mill.scalalib._
 
 // Berkeley HardFloat 以源码形式接入，避免复制/手工维护生成的 Verilog。
@@ -55,14 +54,4 @@ object `package` extends ScalaModule with ScalafmtModule { m =>
     moduleDir / "src",
     moduleDir / "vendor" / "fudian" / "src" / "main" / "scala"
   )
-
-  object test extends ScalaTests with TestModule.ScalaTest with ScalafmtModule {
-    // 单元测试统一放在 csrc/Test/unit，不再保留 npc/test 目录。
-    override def sources = Task.Sources(
-      m.moduleDir / "csrc" / "Test" / "unit" / "src"
-    )
-    override def mvnDeps = m.mvnDeps() ++ Seq(
-      mvn"org.scalatest::scalatest::3.2.19",
-    )
-  }
 }

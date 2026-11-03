@@ -153,10 +153,16 @@ class ysyx_26030103_UART16550(
         .otherwise { ier := io.wrData(3, 0) }
     }.elsewhen(wrOffset === 2.U) {
       fcr := io.wrData
-      // FCR 的 bit1/bit2 同时置位时清空接收 FIFO。
-      when(io.wrData(1) || io.wrData(2)) {
+      // FCR bit1 只复位接收 FIFO；bit2 只复位发送侧状态，二者不能
+      // 互相误清。
+      when(io.wrData(1)) {
         rxCount := 0.U
         overrun := false.B
+      }
+      when(io.wrData(2)) {
+        thrHold := 0.U
+        txShift := 0.U
+        threPending := false.B
       }
     }.elsewhen(wrOffset === 3.U) {
       lcr := io.wrData

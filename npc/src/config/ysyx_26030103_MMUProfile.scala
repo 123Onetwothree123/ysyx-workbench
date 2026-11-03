@@ -231,8 +231,10 @@ case class ysyx_26030103_MMUProfile(
       ((hasU || !uLevel) && (hasS || (!sLevel && !sControl))) &&
       (csrEnabled.contains(addr) ||
         ysyx_26030103_MMUProfile.IdentityCsrAddresses.contains(addr) ||
-        (pmpEnabled && ((addr >= 0x3a0 && addr <= 0x3a3) ||
-          (addr >= 0x3b0 && addr <= 0x3bf))))
+        (pmpEnabled &&
+          // RV64 只有 pmpcfg0/pmpcfg2，0x3a1/0x3a3 是 RV32 专用编码。
+          ((if (xlen == 64) Seq(0x3a0, 0x3a2) else (0x3a0 to 0x3a3)).contains(addr) ||
+            (addr >= 0x3b0 && addr <= 0x3bf))))
   }
 
   /** 当前配置允许的最低特权级：有 U 为 U；否则有 S 为 S；M-only 为 M。 */

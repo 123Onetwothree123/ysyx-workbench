@@ -32,11 +32,12 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
 
   private def trailingOnes(value: UInt): UInt = {
     // pmpaddr 的低 AddressWidth-2 位有效；统计末尾连续 1 的个数。
-    // 全 1 时 PriorityEncoder 的输入为 0，会错误地返回 0，必须显式
-    // 返回 bits，否则全地址空间 NAPOT 会退化成 8 字节区域。
+    // 有效位全 1 时 PriorityEncoder 的输入为 0，会错误地返回 0，必须
+    // 显式返回 bits；而 pmpaddr=0（反转后全 1）应返回 0，不能误判为
+    // 全 1，否则 8 字节 NAPOT 会退化成只匹配地址 0。
     val bits = AddressWidth - 2
     val inverted = ~value(bits - 1, 0)
-    Mux(inverted.andR, bits.U, PriorityEncoder(inverted))
+    Mux(!inverted.orR, bits.U, PriorityEncoder(inverted))
   }
 
   private def matchEntry(index: Int, address: UInt): Bool = {
@@ -51,14 +52,16 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
       val tor = address >= lower && address < upper
       val na4 = address(AddressWidth - 1, 2) === current(AddressWidth - 3, 0)
       val ones = trailingOnes(current)
-      // pmpaddr 全 1 表示覆盖整个地址空间。非全 1 时 ones <= bits-2，
-      // 因此 ones+3 不会超过 AddressWidth，右移求掩码是安全的。
+      // pmpaddr 全 1 表示覆盖整个地址空间。非全 1 时 ones <= bits-1，
+      // 因此 ones+3 <= AddressWidth；全 1 时直接选全 1 掩码，避免
+      // AddressWidth-(ones+3) 下溢。
       val napotAllOnes = current(AddressWidth - 3, 0).andR
+      val napotShift = Mux(napotAllOnes, 0.U,
+        AddressWidth.U - (ones +& 3.U))
       val napotMask = Mux(napotAllOnes, ~0.U(AddressWidth.W),
-        ((~0.U(AddressWidth.W)) >>
-          (AddressWidth.U - (ones + 3.U)))(AddressWidth - 1, 0))
+        ((~0.U(AddressWidth.W)) >> napotShift)(AddressWidth - 1, 0))
       val napotLowMask =
-        ((1.U(AddressWidth.W) << (ones + 1.U)) - 1.U)(AddressWidth - 1, 0)
+        ((1.U(AddressWidth.W) << (ones +& 1.U)) - 1.U)(AddressWidth - 1, 0)
       val napotBase =
         ((current & ~napotLowMask) << 2)(AddressWidth - 1, 0)
       val napot = napotAllOnes ||

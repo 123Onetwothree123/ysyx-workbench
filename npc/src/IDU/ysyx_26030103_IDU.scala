@@ -460,7 +460,11 @@ class ysyx_26030103_IDU(
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
         .IdentityCsrAddresses.toSeq ++
       userCounterAddresses ++ fpCsrAddresses ++ pmuMachineAddresses ++
-      (if (config.MMU.pmpEnabled) (0x3a0 to 0x3a3) ++ (0x3b0 to 0x3bf) else Seq.empty)
+      // RV64 只有 pmpcfg0/pmpcfg2，0x3a1/0x3a3 是 RV32 专用编码。
+      (if (config.MMU.pmpEnabled)
+        (if (XLEN == 64) Seq(0x3a0, 0x3a2) else (0x3a0 to 0x3a3)) ++
+          (0x3b0 to 0x3bf)
+       else Seq.empty)
   ).filter(a => config.MMU.csrSupported(a) || userCounterAddresses.contains(a) ||
     fpCsrAddresses.contains(a) || pmuMachineAddresses.contains(a))
     .distinct.sorted
@@ -519,11 +523,13 @@ class ysyx_26030103_IDU(
   val TwFault =
     if (hasS) (EffectivePrivilege =/= 3.U) && io.Mstatus(21) && IsWfi
     else false.B
-  // 返回指令的固定特权级约束：MRET 只能在 M，SRET/SFENCE.VMA 只能在 S。
+  // 返回指令的固定特权级约束：MRET 只能在 M；SRET 在 S/M 合法，仅在 U
+  // 非法（mstatus.TSR 的 S 模式陷门由 TsrFault 单独处理）。
   // M+U 没有 S，U 若执行 MRET 必须作为非法指令陷入 M，而不能提权。
+  // HAS_S=n 时不存在 SRET 编码，必须作为非法指令处理。
   val MretFault = IsMret && EffectivePrivilege =/= 3.U
   val SretFault =
-    if (hasS) IsSret && EffectivePrivilege =/= 1.U else false.B
+    if (!hasS) IsSret else IsSret && EffectivePrivilege === 0.U
   // SFENCE.VMA 在 S/M 都可用，只禁止 U。
   val SfenceFault =
     if (hasS) IsSfenceVma && EffectivePrivilege === 0.U else false.B

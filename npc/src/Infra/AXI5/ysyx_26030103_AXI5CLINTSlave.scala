@@ -11,7 +11,7 @@ class ysyx_26030103_CLINTIO(
 }
 
 /** CLINT 从设备。地址寄存器跟随 AddressWidth，读数据仍为 32 位；
-  * RV64 通过两次 32 位访问读写 mtime/mtimecmp。
+  * RV64 的 64 位 mtimecmp 写由 AWLEN=1 的两拍 W 数据落成高低两个字。
   */
 class ysyx_26030103_AXI5CLINTSlave(
     AddressWidth: Int = 32,
@@ -51,7 +51,11 @@ class ysyx_26030103_AXI5CLINTSlave(
   val WLastReg = RegInit(false.B)
   val BValidReg = RegInit(false.B)
   val AWIDReg = RegInit(0.U(IdWidth.W))
-  val AWAddrReg = RegInit(0.U(AddrW.W))
+  val AWLenReg = RegInit(0.U(8.W))
+  val AWSizeReg = RegInit(2.U(3.W))
+  val WRangeErrorReg = RegInit(false.B)
+  val WAddrReg = RegInit(0.U(AddrW.W))
+  val WBeatReg = RegInit(0.U(8.W))
   val WDataReg = RegInit(0.U(DataW.W))
   val WStrbReg = RegInit(0.U((DataW / 8).W))
   val BRESPReg = RegInit(OKAY)
@@ -82,9 +86,24 @@ class ysyx_26030103_AXI5CLINTSlave(
   val BFire = io.B.BVALID && io.B.BREADY
   val ARFire = io.AR.ARVALID && io.AR.ARREADY
   val RFire = io.R.RVALID && io.R.RREADY
+  val AWSingleWord =
+    io.AW.AWADDR === MtimecmpLowAddress ||
+      io.AW.AWADDR === MtimecmpHighAddress
+  // 只接受单拍字写，或从 mtimecmp 低字开始的一拍 64 位写（AWLEN=1、
+  // SIZE=2，对应 RV64 sd 拆成的低/高两拍）。其余多拍范围整体返回 SLVERR，
+  // 避免先写低字、再发现高字非法而留下破坏后的状态。
+  val AWRangeValid =
+    (io.AW.AWLEN === 0.U && AWSingleWord) ||
+      (io.AW.AWLEN === 1.U &&
+        io.AW.AWSIZE === 2.U &&
+        io.AW.AWADDR === MtimecmpLowAddress)
   when(AWFire) {
     AWIDReg := io.AW.AWID
-    AWAddrReg := io.AW.AWADDR
+    AWLenReg := io.AW.AWLEN
+    AWSizeReg := io.AW.AWSIZE
+    WRangeErrorReg := !AWRangeValid
+    WAddrReg := io.AW.AWADDR
+    WBeatReg := 0.U
     AWValidReg := true.B
   }
   when(WFire) {
@@ -93,31 +112,49 @@ class ysyx_26030103_AXI5CLINTSlave(
     WValidReg := true.B
     WLastReg := io.W.WLAST
   }
+  val WStep = MuxLookup(AWSizeReg, 0.U(AddrW.W))(
+    Seq(
+      0.U -> 1.U(AddrW.W),
+      1.U -> 2.U(AddrW.W),
+      2.U -> 4.U(AddrW.W)
+    )
+  )
+  val WBeatAddressValid =
+    WAddrReg === MtimecmpLowAddress || WAddrReg === MtimecmpHighAddress
+  val WBeatExpectedLast = WBeatReg === AWLenReg
+  // 单拍写沿用旧行为：WSTRB=0 视为非法。多拍写按拍做字节合并，空 WSTRB
+  // 只表示该拍不改变目标字，不升级为错误。
+  val WBeatError =
+    WRangeErrorReg || !WBeatAddressValid ||
+      WLastReg =/= WBeatExpectedLast ||
+      (AWLenReg === 0.U && WStrbReg === 0.U)
   when(AWValidReg && WValidReg && !BValidReg) {
-    when(WLastReg) {
-      when(AWAddrReg === MtimecmpLowAddress && WStrbReg =/= 0.U) {
+    when(!WBeatError) {
+      when(WAddrReg === MtimecmpLowAddress) {
         Mtimecmp := Cat(
           Mtimecmp(63, 32),
           merge32(Mtimecmp(31, 0), WDataReg, WStrbReg)
         )
-        BRESPReg := OKAY
-      }.elsewhen(AWAddrReg === MtimecmpHighAddress && WStrbReg =/= 0.U) {
+      }.elsewhen(WAddrReg === MtimecmpHighAddress) {
         Mtimecmp := Cat(
           merge32(Mtimecmp(63, 32), WDataReg, WStrbReg),
           Mtimecmp(31, 0)
         )
-        BRESPReg := OKAY
-      }.otherwise {
-        BRESPReg := SLVERR
       }
+    }
+    when(WLastReg) {
+      BRESPReg := Mux(WBeatError, SLVERR, OKAY)
       BValidReg := true.B
       AWValidReg := false.B
       WValidReg := false.B
       WLastReg := false.B
     }.otherwise {
-      // 多拍写事务逐拍排空。保持AWValid，使后续W数据拍仍属于同一事务。
+      // 保持 AWValid，后续 W 拍仍属于同一事务；逐拍提交并推进字地址。
+      // 非法范围由 WRangeErrorReg 整体丢弃，避免部分写入。
       WValidReg := false.B
       WLastReg := false.B
+      WAddrReg := WAddrReg + WStep
+      WBeatReg := WBeatReg + 1.U
     }
   }
   when(BFire) {

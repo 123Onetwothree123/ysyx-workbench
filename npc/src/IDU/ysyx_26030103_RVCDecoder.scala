@@ -13,8 +13,8 @@ import chisel3.util._
   *     布局，与 RV64 同编码位的 C.LD/C.SD 互斥；
   *   - C.FLD/C.FSD/C.FLDSP/C.FSDSP 由 D 扩展开关使能，RV32/RV64 共用；
   *   - RV32 的 SLLI/SRLI/SRAI 要求 shamt[5]=0；
-  *   - C.ADDI4SPN/C.ADDI16SP/C.LUI 的零立即数、C.ADDIW/C.LWSP/C.LDSP/
-  *     C.FLDSP/C.FLWSP 的 rd=0、C.JR 的 rs1=0 都是保留编码，必须显式报非法。
+  *   - C.ADDI4SPN/C.ADDI16SP/C.LUI 的零立即数、C.ADDIW/C.LWSP/C.LDSP
+  *     的 rd=0、C.JR 的 rs1=0 都是保留编码，必须显式报非法。
   *
   * F/D 关闭时 C.FLD/C.FSD/C.FLW/C.FSW 及其 SP 形式保持非法，绝不把浮点
   * 压缩编码误当成整数指令执行。
@@ -358,8 +358,7 @@ class ysyx_26030103_RVCDecoder(
     is("b10_001".U(5.W)) { // C.FLDSP（需要 D 扩展）
       if (UseD) {
         out := fldsp
-        // C.FLDSP 的 rd=0 是保留编码。
-        illegal := rd === 0.U
+        // rd 是 f 寄存器，f0 是合法寄存器。
       } else { illegal := true.B }
     }
     is("b10_010".U(5.W)) { // C.LWSP
@@ -372,8 +371,7 @@ class ysyx_26030103_RVCDecoder(
         illegal := rd === 0.U
       } else if (UseF) {
         out := flwsp
-        // C.FLWSP 的 rd=0 是保留编码。
-        illegal := rd === 0.U
+        // rd 是 f 寄存器，f0 是合法寄存器。
       } else {
         illegal := true.B
       }
