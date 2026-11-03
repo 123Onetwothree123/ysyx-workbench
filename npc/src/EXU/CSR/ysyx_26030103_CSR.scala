@@ -830,7 +830,7 @@ class ysyx_26030103_CSR(
   // 规范中 MSIP/MTIP/SEIP/MEIP(3/7/9/11) 是只读的，这里为单元测试保留
   // 软件注入能力；LCOFI(13) 仍由 LcofiWriteMask 控制（PMU 实现时只读）。
   val MipWriteMask =
-    "h00002aaaL".U(32.W) & LcofiWriteMask
+    "h00002aaa".U(32.W) & LcofiWriteMask
   when(CSRWen && IsCSRAddress(CSR_MIE)) { Mie := Write32(Mie) }
   when(CSRWen && IsCSRAddress(CSR_MIP)) {
     Mip := Write32(Mip) & MipWriteMask
