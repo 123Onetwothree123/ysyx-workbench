@@ -348,6 +348,9 @@ class ysyx_26030103_CSR(
   val FFlagsReg = RegInit(0.U(5.W))
   val FrmReg = RegInit(0.U(3.W))
   val Minstret = RegInit(0.U(64.W))
+  // mcountinhibit.TM：TM=1 时 time 保持最后值，不再跟随 CLINT mtime。
+  val TimeCounter = RegInit(0.U(64.W))
+  when(!Mcountinhibit(1)) { TimeCounter := io.Mtime }
   // RV64 的 pmpcfg0/pmpcfg2 是 64 位 CSR，分别容纳 8 个 8 位配置项；
   // RV32 的 pmpcfg0..3 才是 4x32 位。此前 RV64 也按 4x32 位实现，
   // 会把 OpenSBI 写入 pmpcfg0 的高 32 位（entry 4..7）丢掉，导致
@@ -410,10 +413,11 @@ class ysyx_26030103_CSR(
   val Minstret_rdata =
     if (XLEN == 64) Minstret else Minstret(31, 0)
   val Minstreth_rdata = Minstret(63, 32)
-  // TIME 来自 CLINT 的 mtime。RV64 直接返回完整 64 位；RV32 的 time
-  // 返回低 32 位，timeh 返回 bit[63:32]。
-  val Time_rdata = if (XLEN == 64) io.Mtime else io.Mtime(31, 0)
-  val Timeh_rdata = io.Mtime(63, 32)
+  // TIME 来自 CLINT 的 mtime；TM=1 时改用保持寄存器，使 time 停止递增。
+  // RV64 直接返回完整 64 位；RV32 的 time 返回低 32 位，timeh 返回高 32 位。
+  val TimeValue = Mux(Mcountinhibit(1), TimeCounter, io.Mtime)
+  val Time_rdata = if (XLEN == 64) TimeValue else TimeValue(31, 0)
+  val Timeh_rdata = TimeValue(63, 32)
   // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A/C/F/D 随配置置位，
   // S/U 分别随 HAS_S/HAS_U 置位。位编号按 RISC-V 规范：
   // bit0=A，bit2=C，bit3=D，bit5=F，bit8=I，bit12=M，bit18=S，bit20=U。
@@ -831,6 +835,9 @@ class ysyx_26030103_CSR(
   // 软件注入能力；LCOFI(13) 仍由 LcofiWriteMask 控制（PMU 实现时只读）。
   val MipWriteMask =
     "h00002aaa".U(32.W) & LcofiWriteMask
+  // sip 中只有 SSIP(bit1) 可由软件写；STIP/SEIP 是硬件置位的只读位。
+  val SipWriteMask =
+    SInterruptMask & "h00000002".U(32.W)
   when(CSRWen && IsCSRAddress(CSR_MIE)) { Mie := Write32(Mie) }
   when(CSRWen && IsCSRAddress(CSR_MIP)) {
     Mip := Write32(Mip) & MipWriteMask
@@ -840,15 +847,14 @@ class ysyx_26030103_CSR(
     val Sip = SipOpt.get
     when(CSRWen && IsCSRAddress(CSR_SIE)) { Sie := Write32(Sie) }
     when(CSRWen && IsCSRAddress(CSR_SIP)) {
-      Sip := Write32(Sip) & SInterruptMask & LcofiWriteMask
+      Sip := (Sip & ~SipWriteMask) | (Write32(Sip) & SipWriteMask)
     }
   } else if (hasS) {
     when(CSRWen && IsCSRAddress(CSR_SIE)) {
       Mie := (Mie & ~SInterruptMask) | (Write32(Mie) & SInterruptMask)
     }
     when(CSRWen && IsCSRAddress(CSR_SIP)) {
-      Mip := (Mip & ~SInterruptMask) |
-        (Write32(Mip) & SInterruptMask & LcofiWriteMask)
+      Mip := (Mip & ~SipWriteMask) | (Write32(Mip) & SipWriteMask)
     }
   }
   ScounterenOpt.foreach { Scounteren =>

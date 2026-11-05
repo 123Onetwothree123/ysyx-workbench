@@ -182,7 +182,7 @@ class ysyx_26030103_PLIC(
   // source 即使优先级不高于 threshold 也必须能被 claim。
   val claimCandidates = VecInit((0 until numSources).map { i =>
     i.U =/= 0.U && pending(i) && !claimed(i) &&
-      enable(i / 32)(i % 32)
+      enable(i / 32)(i % 32) && priority(i) =/= 0.U
   })
   val claimValid = claimCandidates.reduce(_ || _)
   val candidatePriority = VecInit((0 until numSources).map { i =>
