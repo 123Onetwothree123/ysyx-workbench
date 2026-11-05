@@ -301,6 +301,8 @@ class ysyx_26030103_PTW(
     !d(0) || !ppnFits(d) || reservedFault(d) || // 归一化 valid = bit0
       reservedEncoding(d) ||
       (isLeaf(d) && (!leafAllowed(d) || superpageMisaligned(d))) ||
+      // 非叶子 PTE 的 D/A/U 是保留位，非零必须 page fault。
+      (!isLeaf(d) && (d(6) || d(7) || d(4))) ||
       (!isLeaf(d) && levelReg === (levels - 1).U)
   def leafFaultOf(d: UInt): Bool = {
     // d 是归一化 PTE，标志布局固定：V/R/W/X/U/G/A/D = bit0..7。

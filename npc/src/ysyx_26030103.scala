@@ -226,6 +226,14 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
         AddressWidth = config.AddressWidth
       )))
     } else None
+  // 隐式页表访问必须按 S 权限经过 PMP；在 PTW 总线与 AXI 适配器之间加
+  // 过滤层，PMP 关闭时保持原来的直连。
+  val ptwPmpFilterOpt =
+    if (mmuEnabled && config.MMU.pmpEnabled)
+      Some(Module(new ysyx_26030103_PTWPMPFilter(
+        AddressWidth = config.AddressWidth,
+        entries = config.MMU.pmpEntries)))
+    else None
   val axiReadMuxOpt =
     if (mmuEnabled && config.MMU.ptwPath != "reuse_dcache")
       Some(Module(new ysyx_26030103_AXIReadMux(
@@ -550,8 +558,18 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     mmuArb.io.flush := tlbFlush
     mmu.io.flush := tlbFlush
 
-    mmu.io.bus.req <> ptwAxi.io.req
-    mmu.io.bus.resp <> ptwAxi.io.resp
+    ptwPmpFilterOpt match {
+      case Some(filter) =>
+        filter.io.in.req <> mmu.io.bus.req
+        filter.io.in.resp <> mmu.io.bus.resp
+        filter.io.out.req <> ptwAxi.io.req
+        filter.io.out.resp <> ptwAxi.io.resp
+        filter.io.cfg := exu.io.PmpCfg
+        filter.io.addr := exu.io.PmpAddr
+      case None =>
+        mmu.io.bus.req <> ptwAxi.io.req
+        mmu.io.bus.resp <> ptwAxi.io.resp
+    }
     if (config.MMU.ptwPath == "reuse_dcache") {
       val lsuReadMux = axiReadLsuMuxOpt.get
       icache.io.axi <> arbiter.io.ifu

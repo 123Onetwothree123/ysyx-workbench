@@ -255,6 +255,8 @@ class ysyx_26030103_PTWPipeline(
     !d(0) || !ppnFits(d) || reservedFault(d) || // 归一化 valid = bit0
       reservedEncoding(d) ||
       (isLeaf(d) && (!leafAllowed(level) || superpageMisaligned(d, level))) ||
+      // 非叶子 PTE 的 D/A/U 是保留位，非零必须 page fault。
+      (!isLeaf(d) && (d(6) || d(7) || d(4))) ||
       (!isLeaf(d) && level === (levels - 1).U)
   private def leafFaultOf(d: UInt, privilege: UInt, access: UInt,
       sum: Bool, mxr: Bool): Bool = {

@@ -73,12 +73,21 @@ class ysyx_26030103_AXI5Xbar(
   ): UInt = {
     val ExtendedAddress = Cat(0.U(1.W), Address)
     val BeatBytes = 1.U((AddressWidth + 1).W) << Size
-    val LastBeatOffset = Mux(
-      Burst === 1.U,
-      Len * BeatBytes,
-      0.U
+    val ByteMask = BeatBytes - 1.U
+    val AlignedStart = ExtendedAddress & ~ByteMask
+    val TotalBytes = (Len + 1.U) * BeatBytes
+    val WrapMask = TotalBytes - 1.U
+    // INCR：首拍非对齐时后续拍仍从 size 对齐边界递增；FIXED：地址不变；
+    // WRAP：整笔落在 (Len+1)*BeatBytes 容器内。
+    Mux(
+      Burst === 2.U,
+      (ExtendedAddress & ~WrapMask) + TotalBytes - 1.U,
+      Mux(
+        Burst === 1.U,
+        AlignedStart + TotalBytes - 1.U,
+        AlignedStart + BeatBytes - 1.U
+      )
     )
-    ExtendedAddress + LastBeatOffset + BeatBytes - 1.U
   }
   private def InRegion(
       Address: UInt,
@@ -299,7 +308,12 @@ class ysyx_26030103_AXI5Xbar(
   val FirstWLastAfterW = Mux(InWFire, io.in.W.WLAST, WLASTReg)
   // CLINT 叶子已支持 AWLEN=1 的 64 位 mtimecmp 写（两拍 W 数据），
   // 因此这里只保留 PLIC 的单拍限制。
+  val AWBurstAfterAW = Mux(InAWFire, io.in.AW.AWBURST, AWBURSTReg)
   val WriteCannotForward = WriteTargetAfterAW === TargetInvalid ||
+    // CLINT 只支持自然递增的 64 位 mtimecmp 两拍写；FIXED/WRAP 多拍
+    // 地址不递增，不能按 INCR 处理，直接本地 DECERR。
+    (WriteTargetAfterAW === TargetCLINT && WriteLenAfterAW =/= 0.U &&
+      AWBurstAfterAW =/= 1.U) ||
     (WriteTargetAfterAW === TargetPLIC && WriteLenAfterAW =/= 0.U)
   when(InAWFire) {
     AWIDReg := io.in.AW.AWID

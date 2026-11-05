@@ -72,9 +72,30 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
     }
   }
 
-  private def check(address: UInt, privilege: UInt, access: UInt): Bool = {
-    val matches = (0 until activeEntries).map(i => matchEntry(i, address))
-    val anyMatch = matches.reduceOption(_ || _).getOrElse(false.B)
+  private def checkRange(
+      start: UInt,
+      end: UInt,
+      privilege: UInt,
+      access: UInt
+  ): Bool = {
+    val startMatches =
+      (0 until activeEntries).map(i => matchEntry(i, start))
+    val endMatches =
+      (0 until activeEntries).map(i => matchEntry(i, end))
+    val matchesAny = (0 until activeEntries).map { i =>
+      startMatches(i) || endMatches(i)
+    }
+    val anyMatch = matchesAny.reduceOption(_ || _).getOrElse(false.B)
+    // 规范：最低编号的“匹配任意字节”的表项决定结果；该表项必须覆盖
+    // 整个访问范围，否则访问失败。不能对起点和终点分别做优先仲裁再 OR。
+    val firstMatch = (0 until activeEntries).map { i =>
+      matchesAny(i) &&
+        !((0 until i).map(j => matchesAny(j))
+          .reduceOption(_ || _).getOrElse(false.B))
+    }
+    val allCovered = (0 until activeEntries).map { i =>
+      firstMatch(i) && startMatches(i) && endMatches(i)
+    }.reduceOption(_ || _).getOrElse(false.B)
     val permissions = (0 until activeEntries).map { i =>
       val config = io.cfg(i)
       val unlockedM = privilege === 3.U && !config(7)
@@ -82,24 +103,21 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
         Mux(access === 1.U, config(0), config(1)))
       unlockedM || allowed
     }
-    // RISC-V PMP 规定最低编号的匹配项优先，不能对多个匹配项的权限做 OR。
-    // lockedMatch 也必须取同一个（第一个）匹配项，否则低编号 unlocked
-    // allow 会被高编号 locked deny 的 L 位误伤，或反之。
-    val allowed = PriorityMux(matches.zip(permissions))
-    val lockedMatch = PriorityMux(matches.zip(
+    val allowed = PriorityMux(matchesAny.zip(permissions))
+    val lockedMatch = PriorityMux(matchesAny.zip(
       (0 until activeEntries).map(i => io.cfg(i)(7))))
     val noMatchFault = !anyMatch && privilege =/= 3.U
-    val permissionFault = anyMatch && !(allowed || (privilege === 3.U && !lockedMatch))
+    val permissionFault = anyMatch &&
+      (!allCovered || !(allowed || (privilege === 3.U && !lockedMatch)))
     noMatchFault || permissionFault
   }
 
-  io.fetchFault := check(io.fetchAddr, io.fetchPriv, 0.U)
+  io.fetchFault := checkRange(io.fetchAddr, io.fetchAddr, io.fetchPriv, 0.U)
   // 同一次 AMO 的读/写检查必须都通过；普通 load/store 只使能其中一侧。
-  // 数据访问的范围可能跨 4B PMP granule，起始和末字节各自匹配的区域
-  // 都必须允许；取指固定 4B word-aligned，只检查起始地址即可。
-  val readFault = check(io.dataAddr, io.dataPriv, 1.U) ||
-    check(io.dataLastAddr, io.dataPriv, 1.U)
-  val writeFault = check(io.dataAddr, io.dataPriv, 2.U) ||
-    check(io.dataLastAddr, io.dataPriv, 2.U)
+  // 数据访问可能跨 4B PMP granule，按“最低匹配项覆盖整个范围”规则检查。
+  val readFault =
+    checkRange(io.dataAddr, io.dataLastAddr, io.dataPriv, 1.U)
+  val writeFault =
+    checkRange(io.dataAddr, io.dataLastAddr, io.dataPriv, 2.U)
   io.dataFault := (io.dataRead && readFault) || (io.dataWrite && writeFault)
 }

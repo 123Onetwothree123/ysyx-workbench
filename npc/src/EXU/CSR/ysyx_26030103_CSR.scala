@@ -778,11 +778,20 @@ class ysyx_26030103_CSR(
     }
   }
   for (entry <- 0 until 16) {
-    // 锁定表项的 pmpaddr 同样不可写。
+    // 锁定表项的 pmpaddr 同样不可写；另外，若下一项是 locked TOR，
+    // 它的下界 pmpaddr[entry] 也必须保持不可写。
     val EntryLocked = PmpcfgReg(entry / PmpEntriesPerCfg)(
       8 * (entry % PmpEntriesPerCfg) + 7)
+    val NextTorLocked =
+      if (entry < 15) {
+        val Next = entry + 1
+        val NextCfg = PmpcfgReg(Next / PmpEntriesPerCfg)
+        val Base = 8 * (Next % PmpEntriesPerCfg)
+        // PMP A 编码：1=TOR，3=NAPOT；locked TOR 的邻居下界受保护。
+        NextCfg(Base + 7) && NextCfg(Base + 4, Base + 3) === 1.U
+      } else false.B
     when(CSRWen && io.CSRAddress === (0x3b0 + entry).U(12.W) &&
-      !EntryLocked) {
+      !EntryLocked && !NextTorLocked) {
       // RV32 PMP 地址为 30 位；RV64 pmpaddr 为标准 54 位。
       if (XLEN == 64) {
         PmpaddrReg(entry) := CSRWriteData(PmpaddrReg(entry)) &
@@ -875,8 +884,19 @@ class ysyx_26030103_CSR(
     }
   }
   val SatpWen = if (hasS) CSRWen && IsCSRAddress(CSR_SATP) else false.B
+  val SatpWriteRaw =
+    SatpRegOpt.map(r => CSRWriteData(r)).getOrElse(0.U(XLEN.W))
+  // 规范：写入不支持的 satp.MODE 时整笔写入无效，不能只把 MODE 收敛到
+  // Bare 却仍提交 ASID/PPN。RV32 的两种 MODE 都支持。
+  val SatpWriteLegal =
+    if (!hasS) false.B
+    else if (XLEN == 32) true.B
+    else {
+      val requested = SatpWriteRaw(63, 60)
+      requested === 0.U || requested === profile.satpMode.U
+    }
   SatpRegOpt.foreach { SatpReg =>
-    when(SatpWen) {
+    when(SatpWen && SatpWriteLegal) {
       val raw = CSRWriteData(SatpReg)
       val mask = SatpWriteMaskValue.U(XLEN.W)
       val data = (SatpReg & ~mask) | (raw & mask)
@@ -932,7 +952,8 @@ class ysyx_26030103_CSR(
   // CSR 写需要旁路。
   io.CurrentMstatus := Mux(MstatusWen,
     MstatusArchValue(MstatusCSRData), MstatusArchValue(Mstatus_rdata))
-  io.FlushTLB := (if (hasS) SfenceCommit || SatpWen else false.B)
+  io.FlushTLB :=
+    (if (hasS) SfenceCommit || (SatpWen && SatpWriteLegal) else false.B)
 
   val McycleAccess = IsCSRAddress(CSR_MCYCLE) || IsCSRAddress(CSR_MCYCLEH)
   Mcycle.io.wen := CSRWen && McycleAccess
