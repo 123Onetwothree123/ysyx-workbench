@@ -576,15 +576,20 @@ class ysyx_26030103_CSRExceptionAuditTest
     }
 
     // 同时 pending 的 S 级 SSIP/STIP：规范优先级 SSI(1) > STI(5)。
-    // NEMU REF 也按 bit1 先于 bit5 处理。
-    simulate(new ysyx_26030103_CSRExceptionAuditHarness(profile)) { dut =>
-      setup(dut)
-      write(dut, MTVEC, BigInt("0000000080002000", 16))
-      write(dut, STVEC, BigInt("0000000080004000", 16))
-      write(dut, MIDELEG, BigInt(0x22))
-      write(dut, MIE, BigInt(0x22))
-      write(dut, MIP, BigInt(0x22)) // SSIP + STIP
-      enterS(dut, BigInt("0000000080007250", 16), sstatusBits = BigInt(0x2))
+    // NEMU REF 也按 bit1 先于 bit5 处理。mip.STIP 只读，STIP 由
+    // direct_stip 硬件输入驱动；只有 SSIP 通过 mip 写口注入。
+    val directStipProfile =
+      profile.copy(timerPath = "direct_stip", hasSTimerIrq = true)
+    simulate(new ysyx_26030103_CSRExceptionAuditHarness(directStipProfile)) {
+      dut =>
+        setup(dut)
+        write(dut, MTVEC, BigInt("0000000080002000", 16))
+        write(dut, STVEC, BigInt("0000000080004000", 16))
+        write(dut, MIDELEG, BigInt(0x22))
+        write(dut, MIE, BigInt(0x22))
+        write(dut, MIP, BigInt(0x2)) // 只注入可写的 SSIP
+        dut.io.timerInterrupt.poke(true.B)
+        enterS(dut, BigInt("0000000080007250", 16), sstatusBits = BigInt(0x2))
       val pc = BigInt("0000000080007260", 16)
       dut.io.pc.poke(pc.U)
       dut.io.enable.poke(true.B)

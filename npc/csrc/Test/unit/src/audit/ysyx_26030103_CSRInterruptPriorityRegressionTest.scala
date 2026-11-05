@@ -113,23 +113,27 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
   }
 
   "CSR interrupt priority" should
-    "M 级 MSI 与 MTI 同时 pending 时先报 MSI(cause=3)" in {
-      simulate(new ysyx_26030103_CSRExceptionAuditHarness(profile)) { dut =>
+    "M 级 MEI 与 MTI 同时 pending 时先报 MEI(cause=11)" in {
+      // mip 的 MSIP/MTIP/MEIP 是只读的，用硬件中断输入注入。
+      // hasSExternalIrq=false 时 io.Interrupt 驱动 MEIP。
+      val p = profile.copy(hasSExternalIrq = false)
+      simulate(new ysyx_26030103_CSRExceptionAuditHarness(p)) { dut =>
         setup(dut)
         val mtvec = BigInt("0000000080002000", 16)
         write(dut, MTVEC, mtvec)
         write(dut, MSTATUS, BigInt(0x8)) // mstatus.MIE
-        write(dut, MIE, BigInt(0x88))    // MSIE(3) + MTIE(7)
-        write(dut, MIP, BigInt(0x88))    // MSIP(3) + MTIP(7)
+        write(dut, MIE, BigInt(0x880))   // MEIE(11) + MTIE(7)
+        dut.io.interrupt.poke(true.B)
+        dut.io.timerInterrupt.poke(true.B)
 
         val pc = BigInt("0000000080001000", 16)
         dut.io.pc.poke(pc.U(64.W))
         dut.io.enable.poke(true.B)
 
-        // 规范优先级：MEI > MSI > MTI。MSI 必须先于 MTI 上报。
-        withClue("MSI/MTI 同时 pending 时 cause 应为 0x80000003: ") {
+        // 规范优先级：MEI > MSI > MTI。MEI 必须先于 MTI 上报。
+        withClue("MEI/MTI 同时 pending 时 cause 应为 0x8000000b: ") {
           bool(dut.io.trapCommit) should be(true)
-          big(dut.io.committedCause) should be(BigInt("80000003", 16))
+          big(dut.io.committedCause) should be(BigInt("8000000b", 16))
           big(dut.io.exceptionTarget) should be(mtvec)
         }
       }
@@ -153,7 +157,9 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
       // 中断）。这不改变要验证的“M 中断优先于已委托 S 中断”语义。
       write(dut, MSTATUS, BigInt(0x802))
       write(dut, MEPC, mepc)
-      write(dut, MIP, BigInt(0x280)) // MTIP(7) + SEIP(9) 同时 pending
+      // MTIP 由 timerInterrupt 驱动，SEIP 由 interrupt 驱动；mip 只读。
+      dut.io.timerInterrupt.poke(true.B)
+      dut.io.interrupt.poke(true.B)
       mretTo(dut, mepc, BigInt(1))
 
       ((peek(dut, SSTATUS) >> 1) & 1) should be(BigInt(1))
@@ -181,7 +187,7 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
       write(dut, STVEC, stvec)
       write(dut, MIDELEG, BigInt(0x200))
       write(dut, MIE, BigInt(0x200))
-      write(dut, MIP, BigInt(0x200)) // SEIP pending，已委托给 S
+      dut.io.interrupt.poke(true.B) // SEIP 由硬件输入驱动，mip 只读
       write(dut, MSTATUS, BigInt(0)) // MPP=U，sstatus.SIE=0
       write(dut, MEPC, mepc)
       mretTo(dut, mepc, BigInt(0))

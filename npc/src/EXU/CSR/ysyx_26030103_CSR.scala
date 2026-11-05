@@ -477,7 +477,8 @@ class ysyx_26030103_CSR(
     else Mie & SInterruptMask
   val SipState =
     if (!hasS) 0.U(32.W)
-    else if (profile.csrViewMode == "independent") SipOpt.get | LcofiView
+    else if (profile.csrViewMode == "independent")
+      SipOpt.get | (MipState & SInterruptMask)
     else MipState & SInterruptMask
   val MIntPending =
     if (hasS) MipState & Mie & ~Mideleg_rdata
@@ -827,25 +828,32 @@ class ysyx_26030103_CSR(
       Mideleg := Write32(Mideleg) & SInterruptMask
     }
   }
-  val LcofiWriteMask =
-    (if (pmuSscofpmf) (0xffffffffL ^ 0x2000L) else 0xffffffffL).U(32.W)
-  // mip 写口只保留已实现的中断位。保留位 0/2/4/6/8/10/12 必须清零，
-  // 否则软件误写后 pendingCause 的默认分支会报出 LCOFI(13) 等伪中断。
-  // 规范中 MSIP/MTIP/SEIP/MEIP(3/7/9/11) 是只读的，这里为单元测试保留
-  // 软件注入能力；LCOFI(13) 仍由 LcofiWriteMask 控制（PMU 实现时只读）。
+  // 严格按规范：mip 只有 SSIP(bit1) 可由软件写；MSIP/MTIP/SEIP/MEIP 和
+  // LCOFI 都是只读的，由 CLINT/PLIC/PMU 的硬件视图驱动。
   val MipWriteMask =
-    "h00002aaa".U(32.W) & LcofiWriteMask
+    "h00000002".U(32.W)
   // sip 中只有 SSIP(bit1) 可由软件写；STIP/SEIP 是硬件置位的只读位。
   val SipWriteMask =
     SInterruptMask & "h00000002".U(32.W)
-  when(CSRWen && IsCSRAddress(CSR_MIE)) { Mie := Write32(Mie) }
+  // mie/sie 只保留已实现的中断位，未实现位读回 0。
+  val MieWriteMask =
+    ("h00000888".U(32.W) |
+      (if (hasS) "h00000222".U(32.W) else 0.U(32.W)) |
+      (if (pmuSscofpmf) "h00002000".U(32.W) else 0.U(32.W)))
+  val SieWriteMask =
+    SInterruptMask
+  when(CSRWen && IsCSRAddress(CSR_MIE)) {
+    Mie := (Mie & ~MieWriteMask) | (Write32(Mie) & MieWriteMask)
+  }
   when(CSRWen && IsCSRAddress(CSR_MIP)) {
-    Mip := Write32(Mip) & MipWriteMask
+    Mip := (Mip & ~MipWriteMask) | (Write32(Mip) & MipWriteMask)
   }
   if (hasS && profile.csrViewMode == "independent") {
     val Sie = SieOpt.get
     val Sip = SipOpt.get
-    when(CSRWen && IsCSRAddress(CSR_SIE)) { Sie := Write32(Sie) }
+    when(CSRWen && IsCSRAddress(CSR_SIE)) {
+      Sie := (Sie & ~SieWriteMask) | (Write32(Sie) & SieWriteMask)
+    }
     when(CSRWen && IsCSRAddress(CSR_SIP)) {
       Sip := (Sip & ~SipWriteMask) | (Write32(Sip) & SipWriteMask)
     }
