@@ -89,8 +89,22 @@ class ysyx_26030103_AXIReadMux(
   val bId = io.b.AR.ARID
   val bIdValid = bId >= PtwBaseID && bId <= PtwLastID
   val bReq = io.b.AR.ARVALID && bIdValid && !bBusy(bId)
-  val chooseB = bReq && (!aReq || lastGrantB)
-  val chooseA = aReq && !chooseB
+  val chooseBNow = bReq && (!aReq || lastGrantB)
+  val chooseANow = aReq && !chooseBNow
+  // AXI 要求 ARVALID 拉高后到 ARREADY 之前 AR payload 保持不变。下游
+  // 反压时不能因为另一侧新请求到达而改选，否则会丢掉已发出的请求。
+  val arLocked = RegInit(false.B)
+  val arLockB = RegInit(false.B)
+  val chooseB = Mux(arLocked, arLockB, chooseBNow)
+  val chooseA = Mux(arLocked, !arLockB, chooseANow)
+  when(io.out.AR.ARVALID && io.out.AR.ARREADY) {
+    arLocked := false.B
+  }.elsewhen(io.out.AR.ARVALID && !io.out.AR.ARREADY) {
+    arLocked := true.B
+    arLockB := chooseBNow
+  }.elsewhen(!io.out.AR.ARVALID) {
+    arLocked := false.B
+  }
 
   when(chooseA) {
     io.out.AR.ARVALID := io.a.AR.ARVALID

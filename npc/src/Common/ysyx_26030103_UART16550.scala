@@ -211,9 +211,11 @@ class ysyx_26030103_UART16550(
     )
   )
 
-  // THRE pending 更新。读 IIR 仅当 THRE 是当前最高优先级中断源时清除它；
+  // THRE pending 更新。写 THR 当拍必须优先清除，不能被同一拍的
+  // THRE 上升沿重新置位（否则 THR 已忙却报告 THRE 中断）。
   // RX 数据可用同时挂起时读 IIR 看到的是 010，THRE pending 必须保留。
-  when(threRise) {
+  val thrWrite = io.wrEn && wrOffset === 0.U && !lcr(7)
+  when(threRise && !thrWrite) {
     threPending := true.B
   }
   when(!ier(1)) {

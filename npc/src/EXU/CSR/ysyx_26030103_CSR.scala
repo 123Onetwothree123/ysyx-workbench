@@ -800,13 +800,16 @@ class ysyx_26030103_CSR(
   val MinstretWen = CSRWen &&
     (IsCSRAddress(CSR_MINSTRET) || IsCSRAddress(CSR_MINSTRETH))
   when(MinstretWen) {
-    val Written = CSRWriteData(Minstret)
     if (XLEN == 64) {
-      Minstret := Written
+      Minstret := CSRWriteData(Minstret)
     } else {
+      // RV32 的 minstreth 是 64 位计数器的独立高半字；CSRRS/CSRRC 必须
+      // 以高半字作为 old value 计算，不能复用低半字。
+      val WrittenLow = CSRWriteData(Minstret(31, 0))
+      val WrittenHigh = CSRWriteData(Minstret(63, 32))
       Minstret := Cat(
-        Mux(IsCSRAddress(CSR_MINSTRETH), Written(31, 0), Minstret(63, 32)),
-        Mux(IsCSRAddress(CSR_MINSTRET), Written(31, 0), Minstret(31, 0))
+        Mux(IsCSRAddress(CSR_MINSTRETH), WrittenHigh(31, 0), Minstret(63, 32)),
+        Mux(IsCSRAddress(CSR_MINSTRET), WrittenLow(31, 0), Minstret(31, 0))
       )
     }
   }.elsewhen(io.RetireCommit && !Mcountinhibit(2)) {
@@ -828,10 +831,11 @@ class ysyx_26030103_CSR(
       Mideleg := Write32(Mideleg) & SInterruptMask
     }
   }
-  // 严格按规范：mip 只有 SSIP(bit1) 可由软件写；MSIP/MTIP/SEIP/MEIP 和
-  // LCOFI 都是只读的，由 CLINT/PLIC/PMU 的硬件视图驱动。
+  // mip 的软件可写位：SSIP(bit1)、STIP(bit5)、SEIP(bit9)。
+  // 本核没有 stimecmp，STIP 必须允许 M 模式软件写入；SEIP 是软件位与
+  // PLIC 外部信号的逻辑或。MSIP/MTIP/MEIP 只读；LCOFI 由 PMU 驱动。
   val MipWriteMask =
-    "h00000002".U(32.W)
+    "h00000222".U(32.W)
   // sip 中只有 SSIP(bit1) 可由软件写；STIP/SEIP 是硬件置位的只读位。
   val SipWriteMask =
     SInterruptMask & "h00000002".U(32.W)

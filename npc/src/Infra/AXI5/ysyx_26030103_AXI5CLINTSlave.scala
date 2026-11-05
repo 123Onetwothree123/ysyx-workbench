@@ -58,6 +58,8 @@ class ysyx_26030103_AXI5CLINTSlave(
   val WBeatReg = RegInit(0.U(8.W))
   val WDataReg = RegInit(0.U(DataW.W))
   val WStrbReg = RegInit(0.U((DataW / 8).W))
+  val LowBurstData = RegInit(0.U(DataW.W))
+  val LowBurstStrb = RegInit(0.U((DataW / 8).W))
   val BRESPReg = RegInit(OKAY)
   val RValidReg = RegInit(false.B)
   val ARIDReg = RegInit(0.U(IdWidth.W))
@@ -130,7 +132,22 @@ class ysyx_26030103_AXI5CLINTSlave(
       (AWLenReg === 0.U && WStrbReg === 0.U)
   when(AWValidReg && WValidReg && !BValidReg) {
     when(!WBeatError) {
-      when(WAddrReg === MtimecmpLowAddress) {
+      when(
+        AWLenReg === 1.U && WBeatReg === 0.U &&
+          WAddrReg === MtimecmpLowAddress
+      ) {
+        // 64 位 mtimecmp 写：先缓存低字，等第二拍 WLAST 时与高字一起提交。
+        LowBurstData := WDataReg
+        LowBurstStrb := WStrbReg
+      }.elsewhen(
+        AWLenReg === 1.U && WBeatReg === 1.U &&
+          WAddrReg === MtimecmpHighAddress
+      ) {
+        Mtimecmp := Cat(
+          merge32(Mtimecmp(63, 32), WDataReg, WStrbReg),
+          merge32(Mtimecmp(31, 0), LowBurstData, LowBurstStrb)
+        )
+      }.elsewhen(WAddrReg === MtimecmpLowAddress) {
         Mtimecmp := Cat(
           Mtimecmp(63, 32),
           merge32(Mtimecmp(31, 0), WDataReg, WStrbReg)
@@ -149,8 +166,7 @@ class ysyx_26030103_AXI5CLINTSlave(
       WValidReg := false.B
       WLastReg := false.B
     }.otherwise {
-      // 保持 AWValid，后续 W 拍仍属于同一事务；逐拍提交并推进字地址。
-      // 非法范围由 WRangeErrorReg 整体丢弃，避免部分写入。
+      // 保持 AWValid，后续 W 拍仍属于同一事务；推进字地址。
       WValidReg := false.B
       WLastReg := false.B
       WAddrReg := WAddrReg + WStep
