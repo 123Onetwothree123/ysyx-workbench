@@ -193,7 +193,13 @@ case class ysyx_26030103_NPCConfig(
   require(SocXLENFollowCpu || SocXLEN == 32 || SocXLEN == 64,
     "SOC_XLEN 只允许 32 或 64（SOC_XLEN_FOLLOW_CPU=n 时生效），" +
       s"收到 SOC_XLEN=$SocXLEN")
-  /** ysyxSoC CPU 侧接口实际生效的 XLEN/地址/数据宽度。 */
+  /** ysyxSoC CPU 侧接口实际生效的 XLEN/地址/数据宽度。
+    *
+    * direct-NPC 顶层（riscv32e_npc_SimTop/AXIRAM）固定 32 位 AXI，
+    * Makefile 的 direct 目标会在生成 typed JSON 时强制
+    * SOC_XLEN_FOLLOW_CPU=n 且 SOC_XLEN=32，并在构建前检查生效值。
+    * 完整 SoC（SIM_TOP=soc）不受该投影影响。
+    */
   final val EffectiveSocXLEN: Int = if (SocXLENFollowCpu) XLEN else SocXLEN
   // SoC64 的 AXI 端口是 64 位地址/数据，NPC 内部 SoC 总线仍是 32 位
   // 数据 beat，因此必须经过 AXI5 宽度桥；SoC32 时数据通道同宽，但

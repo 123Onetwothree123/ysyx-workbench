@@ -31,6 +31,9 @@ class ysyx_26030103_EXU(
     // WBU 退休事件：minstret 在退休级精确计数，EXU 的提交拍不能再作为
     // 计数依据（普通 load/store 不在 EXU 访问 CSR，且 MEM 故障会取消退休）。
     val RetireCommit = Input(Bool())
+    // 过滤掉“本指令自身写 minstret”的退休事件；只驱动 minstret 自增，
+    // RetireCommit 仍作为完整的退休/PMU Instructions 事件。
+    val MinstretRetireCommit = Input(Bool())
     // 架构 PMU 事件总线；顶层把缓存/TLB/AXI/中断等事件汇总后送入 CSR。
     val PMUEvents = Input(UInt(_root_.ysyx_26030103.common.ysyx_26030103_PMUEventId.BusWidth.W))
     // MEM的反馈分成两类：MEMBusy只表示年长访存事务，用于
@@ -180,6 +183,7 @@ class ysyx_26030103_EXU(
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
   CSRUnit.io.RetireCommit := io.RetireCommit
+  CSRUnit.io.MinstretRetireCommit := io.MinstretRetireCommit
   CSRUnit.io.PMUEvents := io.PMUEvents
   CSRUnit.io.Interrupt := io.Interrupt
   CSRUnit.io.TimerInterrupt := io.TimerInterrupt
@@ -532,13 +536,22 @@ class ysyx_26030103_EXU(
       ActiveInst.IsCompressed
   val ActiveInstructionVisible = io.in.valid || PendingMDU
   // 上游已标记的异常（取指 access fault、非法指令）优先于指令形状：
-  // 取指故障的访存指令仍带 MemoryValid，但 mtval 必须是故障 PC，不能
-  // 取 ALU 计算出的访存地址。压缩非法指令仍是原始 16 位编码，32 位
-  // 非法指令沿用既有 ABI 以 PC 作为 tval。misaligned 的 mtval 是错误
-  // 的目标地址；其余无专门 tval 的异常回退到 ActiveInst.pc。
+  // 取指故障的访存指令仍带 MemoryValid，但 mtval 必须是发生故障的
+  // 取指地址，不能取 ALU 计算出的访存地址。C 模式下 32 位指令跨字时
+  // 故障可能发生在第二个字（...1000），而指令 pc/sepc 仍是 ...ffe；
+  // IFU/顶层用 pred_target 携带这个 fault VAddr（异常指令不使用预测目标）。
+  // 压缩非法指令仍是原始 16 位编码，32 位非法指令沿用既有 ABI 以 PC
+  // 作为 tval。misaligned 的 mtval 是错误的目标地址；其余无专门 tval
+  // 的异常回退到 ActiveInst.pc。
+  val ActiveFetchFault =
+    ActiveInst.ExceptionValid && ActiveInst.ExceptionCause =/= 2.U
   val ActiveTrapTval = Mux(
     ActiveInst.ExceptionValid,
-    Mux(ActiveIllegalCompressed, ActiveInst.Instruction, ActiveInst.pc),
+    Mux(
+      ActiveFetchFault,
+      ActiveInst.pred_target,
+      Mux(ActiveIllegalCompressed, ActiveInst.Instruction, ActiveInst.pc)
+    ),
     Mux(
       ActiveInstructionAddressMisaligned,
       ControlTransferTarget,
@@ -580,9 +593,12 @@ class ysyx_26030103_EXU(
   // 伪 Redirect（目标虽已修正为mepc，但事件语义/计数仍会误导）。
   // SFENCE.VMA 改变地址空间后，年轻指令可能已按旧翻译取指/译码；
   // 提交时必须像 fence.i 一样冲刷年轻取指，并从 snpc 重新取指。
+  // satp 写入同样会切换地址空间：CSRFlushTLB 在合法 satp 写提交拍为高。
+  // 即使软件随后才执行 sfence.vma，也要先丢弃已经带着旧上下文 BTB 快照
+  // 预取的年轻指令，避免它们随后用伪预测冲刷自己的访存/浮点副作用。
   val Redirect =
     (Mispredict || inst.IsFenceI ||
-      (if (hasS) inst.IsSfenceVma else false.B)) &&
+      (if (hasS) inst.IsSfenceVma || CSRUnit.io.FlushTLB else false.B)) &&
       !InstructionTrapValid && !inst.IsMret &&
       (if (hasS) !inst.IsSret else true.B)
   // CSR提交(csr写/ecall/ebreak/mret/异常/中断): 普通访存不访问CSR单元；
@@ -666,6 +682,9 @@ class ysyx_26030103_EXU(
   io.out.bits.Retire := !ActiveInstructionTrapValid && !ActiveInst.IsEcall &&
     !ActiveInst.IsEbreak && !ActiveInst.IsSimHalt && !CSRUnit.io.IrqCommit &&
     !io.MemTrapCommit
+  // 只有真正提交的 CSR 写才打标记；该指令随后仍可正常退休并计入 PMU。
+  io.out.bits.WritesMinstret :=
+    InstructionCommit && CSRUnit.io.MinstretWriteCommit
   io.out.bits.pc := ActiveInst.pc
   io.out.bits.snpc := ActiveInst.snpc
   // Pending MDU 不可能是控制转移；其它指令使用本拍已

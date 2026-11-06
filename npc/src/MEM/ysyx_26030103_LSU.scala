@@ -44,6 +44,10 @@ class ysyx_26030103_LSU(
   // 通道仍是 32 位（与 ysyxSoC 兼容），由两拍窄传输完成；DCache 内部
   // 按两个相邻 32 位 word 处理同一次 8 字节 load/store。
   private val WideMem = XLEN == 64 || UseD
+  // DCache 关闭时数据通路没有 VIPT 语义：请求直接走 LSU 的 AXI 读/写，
+  // ALUResult 已是 DMMU 给出的物理地址，不能再用它当 VA 去等带标签 PA。
+  private val DataVipt = DCacheVipt && DCacheEnable
+  private val DataViptParallel = DataVipt && ViptParallel
   private def AddrOf(value: UInt): UInt = value(AddressWidth - 1, 0)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage(XLEN)))
@@ -173,7 +177,7 @@ class ysyx_26030103_LSU(
     CacheableMask = DCacheableMask,
     PMARegions = DCachePMARegions,
     Storage = DCacheStorage,
-    Vipt = DCacheVipt,
+    Vipt = DataVipt,
     ViptAliasSafe = DCacheViptAliasSafe,
     ViptAliasScanMode = DCacheViptAliasScanMode,
     DmaSnoop = DCacheDmaSnoop,
@@ -271,6 +275,11 @@ class ysyx_26030103_LSU(
     (StageIsIdle || StageCanReplaceDone) && StageInputFire && IsMemOp
   when(startMem) {
     MsgReg := StageInputBits
+    // 每次新的原子事务（包括随后因非对齐/PMP 被拒绝的）都必须清除上一次
+    // AMO 读阶段的故障标记，否则拒绝路径会把它误当成当前访问的 cause=5。
+    when(StageInputBits.IsAtomic) {
+      AtomicReadFaultReg := false.B
+    }
   }
   val ActiveInstruction = Mux(StageIsIdle, StageInputBits, MsgReg)
   // VIPT 并行 load/store 进入 LSU 时 ALUResult 仍是 VA；翻译结果通过独立
@@ -284,7 +293,7 @@ class ysyx_26030103_LSU(
   // “物理地址已就绪”的统一判据；原子事务必须等 PA 有效后才能发总线。
   val PAddrValidReg = RegInit(false.B)
   val PAddrReg = Reg(UInt(AddressWidth.W))
-  if (DCacheVipt && ViptParallel) {
+  if (DataViptParallel) {
     when(startMem) { PAddrValidReg := false.B }
     when(io.ViptPAddrValid && io.ViptPAddrVaddr === ActiveInstruction.VAddr &&
         ViptActiveMem) {
@@ -301,7 +310,7 @@ class ysyx_26030103_LSU(
   // 原子事务使用的物理地址：VIPT 并行时等待带标签的 PA，其余模式直接用
   // LSU 入端的 ALUResult（DMMU 已完成翻译）。
   val AtomicPAddrReady =
-    if (DCacheVipt && ViptParallel) PAddrValidReg else true.B
+    if (DataViptParallel) PAddrValidReg else true.B
   // LD/SD 要求 8 字节对齐；LW/SW 要求 4 字节；LH/SH、LB/SB 依次降低。
   private def AddressIsMisaligned(Address: UInt, Width: UInt): Bool =
     Mux(
@@ -728,7 +737,7 @@ class ysyx_26030103_LSU(
   val wbWide = Reg(Vec(WBufDepth, Bool()))
   val wbMisaligned = Reg(Vec(WBufDepth, Bool()))
   // PIPT/无 MMU 时入队地址就是物理地址，保持原有行为完全不变。
-  private val WbNeedsPAddr = DCacheVipt && ViptParallel
+  private val WbNeedsPAddr = DataViptParallel
   val wbHead = RegInit(0.U(log2Ceil(WBufDepth).max(1).W)) // 队首(最老)
   val wbTail = RegInit(0.U(log2Ceil(WBufDepth).max(1).W)) // 下一个空位
   val wbCount = RegInit(0.U(log2Ceil(WBufDepth + 1).W))
@@ -796,15 +805,15 @@ class ysyx_26030103_LSU(
   // VIPT 并行模式下 addr 来自 DMMU 的物理地址端口（可能尚未有效），
   // vaddr 始终是架构虚拟地址；DCache 用 vaddr 选 index，等 PA 标签匹配。
   val ViptReqAddr =
-    if (DCacheVipt && ViptParallel) io.ViptPAddr
+    if (DataViptParallel) io.ViptPAddr
     else ActiveInstruction.ALUResult
   val ViptReqPaddrValid =
-    if (DCacheVipt && ViptParallel) io.ViptPAddrValid else true.B
+    if (DataViptParallel) io.ViptPAddrValid else true.B
   val ViptReqPaddrVaddr =
-    if (DCacheVipt && ViptParallel) io.ViptPAddrVaddr
+    if (DataViptParallel) io.ViptPAddrVaddr
     else ActiveInstruction.ALUResult
   val ViptReqKill =
-    if (DCacheVipt && ViptParallel) io.ViptKill else false.B
+    if (DataViptParallel) io.ViptKill else false.B
   DCache.io.req.valid := DCacheRequestActive && state === StatesReadRequest // 复用LSU的AR/R通道
   DCache.io.req.bits.addr := ViptReqAddr
   DCache.io.req.bits.vaddr := ActiveInstruction.VAddr
@@ -1558,7 +1567,7 @@ class ysyx_26030103_LSU(
   // VIPT 并行 load 的 MMU 翻译故障：LSU 已经先于 PA 受理该 load，
   // 这里必须撤销流水级和 DCache 等待请求，不能把故障 load 当作正常
   // load 退休；精确 page fault 由顶层 LSUMMU 的 faultCommit 提交。
-  if (DCacheVipt && ViptParallel) {
+  if (DataViptParallel) {
     when(io.ViptKill) {
       // 翻译故障发生在 store 已进入写缓冲、但 PA 尚未确认的阶段。此时
       // 队首绝不可能已经发过 AW/W（由 wbHeadReady 门控），因此可以连同

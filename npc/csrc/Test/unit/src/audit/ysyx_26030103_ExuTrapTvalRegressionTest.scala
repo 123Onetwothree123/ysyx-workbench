@@ -55,6 +55,7 @@ class ysyx_26030103_ExuTrapTvalRegressionTest
     dut.io.TimerInterrupt.poke(false.B)
     dut.io.IdleIrqPC.poke(0.U(64.W))
     dut.io.RetireCommit.poke(false.B)
+    dut.io.MinstretRetireCommit.poke(false.B)
     dut.io.MEMBusy.poke(false.B)
     dut.io.PipelineBusy.poke(false.B)
     dut.io.MemTrapCommit.poke(false.B)
@@ -71,6 +72,9 @@ class ysyx_26030103_ExuTrapTvalRegressionTest
       dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_IDUMessage(64)))
       dut.io.in.bits.pc.poke(BigInt("0000000080000000", 16).U(64.W))
       dut.io.in.bits.snpc.poke(BigInt("0000000080000004", 16).U(64.W))
+      // IFU/顶层用 pred_target 携带实际故障取指地址；这里故障 PC 与取指
+      // 地址相同，因此 mtval 仍应等于 PC。
+      dut.io.in.bits.pred_target.poke(BigInt("0000000080000000", 16).U(64.W))
       // LW x0, 0(x0)：指令形状带 MemoryValid，但上游已标记取指异常。
       dut.io.in.bits.Instruction.poke("h00002003".U(32.W))
       dut.io.in.bits.IsCompressed.poke(false.B)

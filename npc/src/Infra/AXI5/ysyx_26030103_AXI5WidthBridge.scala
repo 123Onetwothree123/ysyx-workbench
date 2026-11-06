@@ -36,7 +36,10 @@ class ysyx_26030103_AXI5WidthBridge(
     DownstreamAddressWidth: Int = 32,
     UpstreamDataWidth: Int = 32,
     DownstreamDataWidth: Int = 64,
-    IdWidth: Int = 4
+    IdWidth: Int = 4,
+    // 只有外部 CPU slave 边界需要 LOCK 旁带。内部/默认实例没有这两个
+    // 端口，避免强迫所有 WidthBridge 使用方连接它们。
+    TrackExclusive: Boolean = false
 ) extends Module {
   require(
     UpstreamAddressWidth == 32 || UpstreamAddressWidth == 64,
@@ -77,7 +80,18 @@ class ysyx_26030103_AXI5WidthBridge(
         DownstreamDataWidth,
         IdWidth
       )
+    // 精简内部 AXI bundle 没有 LOCK 字段。外部边界必须把上游 AWLOCK/
+    // ARLOCK 在地址握手拍锁存，并与桥内部正在处理的事务绑定；下游只能
+    // 看到本桥实际转发的那笔内部事务。锁存值保持到对应 B/最后一个 R
+    // 握手，避免仲裁器在稍后的内部 AW/AR 握手时采样到已经撤销的外部
+    // LOCK（AXI 只要求 LOCK 在 VALID 期间稳定）。
+    val inAWLock = if (TrackExclusive) Some(Input(Bool())) else None
+    val inARLock = if (TrackExclusive) Some(Input(Bool())) else None
+    val outAWLock = if (TrackExclusive) Some(Output(Bool())) else None
+    val outARLock = if (TrackExclusive) Some(Output(Bool())) else None
   })
+  private val InAWLock = io.inAWLock.getOrElse(false.B)
+  private val InARLock = io.inARLock.getOrElse(false.B)
 
   /** 把上游地址映射到下游地址宽度。仅在 `!OutOfRange` 时使用；
     * 越界事务不会走到下游，因此这里的低位切片不构成静默截断。
@@ -296,6 +310,7 @@ class ysyx_26030103_AXI5WidthBridge(
   val wProt = RegInit(0.U(3.W))
   val wCache = RegInit(0.U(4.W))
   val wQos = RegInit(0.U(4.W))
+  val wLock = RegInit(false.B)
   val wError = RegInit(false.B)
   val wBeat = RegInit(0.U(8.W))
   val wChunk = RegInit(0.U(2.W))
@@ -346,6 +361,7 @@ class ysyx_26030103_AXI5WidthBridge(
         wProt := io.in.AW.AWPROT
         wCache := io.in.AW.AWCACHE
         wQos := io.in.AW.AWQOS
+        wLock := InAWLock
         wError := incomingWError
         wBeat := 0.U
         wChunk := 0.U
@@ -596,6 +612,8 @@ class ysyx_26030103_AXI5WidthBridge(
   }
   when(io.in.B.BVALID && io.in.B.BREADY) {
     wUpBSeen := true.B
+    // 上一笔外部写事务已经完成，锁存值不再属于任何在途事务。
+    wLock := false.B
   }
   when(wDnAwFire =/= wDnBFire) {
     wDnOutstanding := Mux(
@@ -671,7 +689,12 @@ class ysyx_26030103_AXI5WidthBridge(
   val rProt = RegInit(0.U(3.W))
   val rCache = RegInit(0.U(4.W))
   val rQos = RegInit(0.U(4.W))
+  val rLock = RegInit(false.B)
   val rError = RegInit(false.B)
+  if (TrackExclusive) {
+    io.outAWLock.get := wLock
+    io.outARLock.get := rLock
+  }
   val rBeat = RegInit(0.U(8.W))
   val rChunk = RegInit(0.U(2.W))
   val rRespCode = RegInit(OKAY)
@@ -712,6 +735,7 @@ class ysyx_26030103_AXI5WidthBridge(
         rProt := io.in.AR.ARPROT
         rCache := io.in.AR.ARCACHE
         rQos := io.in.AR.ARQOS
+        rLock := InARLock
         rError := incomingRError
         rBeat := 0.U
         rChunk := 0.U
@@ -880,6 +904,8 @@ class ysyx_26030103_AXI5WidthBridge(
   when(rDnArFire) { rTxnIssuedAr := true.B }
   when(io.in.R.RVALID && io.in.R.RREADY && io.in.R.RLAST) {
     rUpRLastSeen := true.B
+    // 外部读事务的最后一个 R 已经交付，解除 LOCK 与事务的绑定。
+    rLock := false.B
   }
   when(rDnArFire =/= rDnRLastFire) {
     rDnOutstanding := Mux(

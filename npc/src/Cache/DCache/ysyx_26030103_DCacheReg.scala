@@ -1003,12 +1003,18 @@ class ysyx_26030103_DCacheReg(
                 suppressFill := false.B
                 state := SIdle
               }.otherwise {
-                ResponseFault := true.B
-                ResponseFaultResp := Mux(
-                  io.AXI.R.RRESP =/= 0.U,
-                  io.AXI.R.RRESP,
-                  2.U
-                )
+                // 第二拍缺少 RLAST：这笔非缓存读还没有产生任何响应。
+                // 必须在进入 SDrain 前排空为唯一的 fault，否则迟到的
+                // RLAST 只负责吸拍，demand 会永远等不到响应。
+                when(!DemandResponseDone && !ResponseValid) {
+                  ResponseFault := true.B
+                  ResponseFaultResp := Mux(
+                    io.AXI.R.RRESP =/= 0.U,
+                    io.AXI.R.RRESP,
+                    2.U
+                  )
+                  ResponseValid := true.B
+                }
                 state := SDrain
               }
             }
@@ -1055,11 +1061,11 @@ class ysyx_26030103_DCacheReg(
       }.elsewhen(DrainTimer === 255.U) {
         // 从设备长期不给 RLAST：为尚未交付的 demand 产生 fault，缓存行
         // 保持无效，然后进入吸收态，迟到的 beat 不能再被后续请求使用。
-        when(!DemandResponseDone) {
+        // 已经 valid 的响应可能正被下游反压，Decoupled payload 必须保持
+        // 稳定；超时只允许填充空响应槽，绝不能把成功改写成故障。
+        when(!DemandResponseDone && !ResponseValid) {
           ResponseFault := true.B
-          when(!(ResponseValid && ResponseFault)) {
-            ResponseFaultResp := 2.U
-          }
+          ResponseFaultResp := 2.U
           ResponseValid := true.B
         }
         valid(ReqIndexSafe) := false.B

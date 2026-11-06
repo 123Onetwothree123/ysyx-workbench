@@ -127,6 +127,49 @@ static void one_entry_ras_push_pop_and_overwrite() {
   dut.final();
 }
 
+static void context_flush_clears_all_predictor_state() {
+  DUT dut;
+  defaults(dut);
+  reset(dut);
+
+  constexpr std::uint32_t pc = 0x80000500U >> 2;
+  dut.io_btbUpdateValid = 1;
+  dut.io_btbUpdatePC = pc;
+  dut.io_btbUpdateTarget = 0x80000400U;
+  dut.io_jalBtbUpdateValid = 1;
+  dut.io_jalBtbUpdatePC = pc;
+  dut.io_jalBtbUpdateTarget = 0x80000600U;
+  dut.io_jalBtbUpdateKind = 1;
+  dut.io_rasPushValid = 1;
+  dut.io_rasPushAddr = 0x80000504U;
+  tick(dut);
+  dut.io_btbUpdateValid = 0;
+  dut.io_jalBtbUpdateValid = 0;
+  dut.io_rasPushValid = 0;
+  dut.io_btbLookupPC = pc;
+  dut.io_jalBtbLookupPC = pc;
+  dut.eval();
+  check(dut.io_btbHit && dut.io_jalBtbHit && dut.io_rasNonempty,
+        "predictor state was not populated before the context flush");
+
+  // 顶层在 satp/sfence.vma/trap/mret/sret 时同时拉高这三路 flush。
+  dut.io_btbFlush = 1;
+  dut.io_jalBtbFlush = 1;
+  dut.io_rasFlush = 1;
+  tick(dut);
+  dut.io_btbFlush = 0;
+  dut.io_jalBtbFlush = 0;
+  dut.io_rasFlush = 0;
+  dut.io_btbLookupPC = pc;
+  dut.io_jalBtbLookupPC = pc;
+  dut.eval();
+  check(!dut.io_btbHit,
+        "branch BTB entry survived a context flush and could hit a non-control PC");
+  check(!dut.io_jalBtbHit, "JAL BTB entry survived a context flush");
+  check(!dut.io_rasNonempty, "RAS return address survived a context flush");
+  dut.final();
+}
+
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
   int failures = 0;
@@ -136,5 +179,7 @@ int main(int argc, char **argv) {
                        one_set_jal_btb_preserves_kind_and_replaces_by_tag);
   failures += run_test("RASBits=0 implements a one-entry RAS",
                        one_entry_ras_push_pop_and_overwrite);
+  failures += run_test("context flush clears BTB/JAL-BTB/RAS",
+                       context_flush_clears_all_predictor_state);
   return failures == 0 ? 0 : 1;
 }

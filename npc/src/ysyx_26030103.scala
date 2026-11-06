@@ -61,7 +61,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DCacheableBase = config.CacheableBase,
       DCacheableMask = config.CacheableMask,
       DCachePMARegions = config.CachePMARegions,
-      DCacheVipt = config.MMU.cacheMode == "vipt",
+      // DCache 关闭时没有 VIPT 数据通路：数据访问由 LSU 直接完成，
+      // ALUResult 已经是 DMMU 的物理地址，绝不能再用它当作 VA 等翻译标签。
+      DCacheVipt = config.MMU.cacheMode == "vipt" && config.DCacheEnable,
       DCacheViptAliasSafe = config.DCacheViptAliasHardware,
       DCacheViptAliasScanMode = config.DCacheViptAliasScanMode,
       DCacheDmaSnoop = config.DmaHardwareSnoop && config.DCacheEnable,
@@ -256,6 +258,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage(XLEN)))
   val ifuFaultValid = RegInit(false.B)
   val ifuFaultPC = RegInit(0.U(XLEN.W))
+  // 取指故障写入 stval/mtval 的地址可能不同于指令起点：C 模式下 32 位
+  // 指令跨字/跨页时，故障发生在第二个字（如 ...1000），而 sepc 仍是
+  // 指令起点（...ffe）。这里单独锁存 faultVaddr。
+  val ifuFaultTval = RegInit(0.U(XLEN.W))
   val fetchTranslationValid =
     immuOpt.map(_.io.translationValid).getOrElse(true.B)
   val fetchTranslationFault =
@@ -267,6 +273,8 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val pmpFetchFault = pmpOpt.map(_.io.fetchFault).getOrElse(false.B)
   val pmpFetchFaultValid = RegInit(false.B)
   val pmpFetchFaultPC = RegInit(0.U(XLEN.W))
+  // 与 MMU 路径同理：C 模式下故障取指可能是跨字指令的第二个字。
+  val pmpFetchFaultTval = RegInit(0.U(XLEN.W))
   val pmpFetchBlocked = RegInit(false.B)
   val pmpFetchAllow =
     if (mmuEnabled) true.B
@@ -351,6 +359,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       // FetchPC，因此这里必须锁存故障取指自己的 PC。
       ifuFaultPC := (if (config.UseC) ifu.io.FetchPC
                      else immuOpt.get.io.faultVaddr)
+      ifuFaultTval := immuOpt.get.io.faultVaddr
     }.elsewhen(ifuResp.fire) {
       ifuFaultValid := false.B
     }
@@ -366,6 +375,9 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       pmpFetchFaultValid := true.B
       pmpFetchFaultPC := (if (config.UseC) ifu.io.FetchPC
                           else ifu.io.FetchAddr)
+      // FetchAddr 是实际被 PMP 拒绝的取指地址；C 模式下跨字第二个字
+      // 故障时它比指令起点 FetchPC 更精确。
+      pmpFetchFaultTval := ifu.io.FetchAddr
       pmpFetchBlocked := true.B
     }.elsewhen(pmpFetchInject && ifuResp.fire) {
       // 只注入一次；blocked 保持到真正提交 trap 的冲刷，避免在同一 PC
@@ -380,6 +392,12 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   val fetchFaultPC =
     if (mmuEnabled) ifuFaultPC
     else pmpFetchFaultPC
+  // fault PC 用于 mepc/sepc，fault tval 用于 stval/mtval。两者在 C 模式
+  // 跨字取指故障时可以不同。异常指令不使用预测目标，这里复用 pred_target
+  // 把 fault tval 透传到 EXU（IDU 原样透传该字段）。
+  val fetchFaultTval =
+    if (mmuEnabled) ifuFaultTval
+    else pmpFetchFaultTval
   val fetchFaultCause =
     if (mmuEnabled) immuOpt.map(_.io.faultCause).getOrElse(12.U(4.W))
     else 1.U(4.W)
@@ -393,7 +411,7 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   faultBits.ExceptionCause := fetchFaultCause
   faultBits.AccessFaultResp := 0.U(2.W)
   faultBits.pred_taken := false.B
-  faultBits.pred_target := 0.U(XLEN.W)
+  faultBits.pred_target := fetchFaultTval
 
   if (config.UseC) {
     // IFU 已把 16/32 位编码拼装完整；pc/异常/预测标签都由 IFU 给出。
@@ -409,8 +427,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
     normalBits.ExceptionValid := icache.io.resp_fault
     normalBits.ExceptionCause := 1.U(4.W)
     normalBits.AccessFaultResp := icache.io.access_fault_resp
-    normalBits.pred_taken := responseTag.predTaken
-    normalBits.pred_target := responseTag.predTarget
+    // 取指故障时 tval 必须是发生故障的取指地址，而不是 BTB 预测信息。
+    normalBits.pred_taken := responseTag.predTaken && !icache.io.resp_fault
+    normalBits.pred_target :=
+      Mux(icache.io.resp_fault, responseTag.pc, responseTag.predTarget)
     ifuResp.valid := fetchFaultInject || icache.io.resp_valid
     ifuResp.bits := Mux(fetchFaultInject, faultBits, normalBits)
     ifu.io.Out.ready := false.B
@@ -504,12 +524,12 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       // 翻译故障期间停止受理新取指，等 EXU 精确陷阱冲刷。
       icache.io.fetch_valid := ifu.io.FetchValid && !ifuFaultValid
       icache.io.fetch_vaddr := ifu.io.FetchAddr
-      icache.io.fetch_addr :=
-        Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddr)
-      icache.io.fetch_paddr_valid :=
-        immuBypass || immu.io.translationValid
-      icache.io.fetch_paddr_vaddr :=
-        Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddrVaddr)
+      // Bare/M 模式的 bypass 也必须经过 IFUMMU 的 PMP 检查：translationValid
+      // 已经与 !pmpFault 相与，不能再直接用 immuBypass 放行 PA，否则被 PMP
+      // 拒绝的取指会绕过 IFUMMU 直接被 ICache 受理。
+      icache.io.fetch_addr := immu.io.fetchPaddr
+      icache.io.fetch_paddr_valid := immu.io.translationValid
+      icache.io.fetch_paddr_vaddr := immu.io.fetchPaddrVaddr
       // 翻译故障与重定向都杀死未完成的 VA 请求，错误数据绝不提交。
       icache.io.kill := pipe_flush || immu.io.fault
     } else {
@@ -629,22 +649,28 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   ifu.io.PredHit := predictorSelect.io.predHit
   ifu.io.PredTarget := predictorSelect.io.predTarget
   // BTB更新: EXU提交时按指令类型路由, 分支写分支表, jal/ret写jal表(带kind)
+  // BTB/RAS 表项按虚拟 PC/返回地址索引，不携带地址空间或特权级标签。
+  // satp 写入/sfence.vma(CSRFlushTLB) 或 trap/mret/sret(ExceptionTaken)
+  // 后，同一虚拟 PC 可能已属于另一上下文；若继续命中旧表项，非控制指令
+  // 也会带上 pred_taken，随后 EXU 的伪重定向会冲刷当前访存/浮点请求。
+  // 因此上下文切换时保守清空全部预测状态，绝不跨上下文复用表项。
+  val contextFlush = exu.io.CSRFlushTLB || exu.io.ExceptionTaken
   btb.io.update_valid := exu.io.BTBUpdateValid
   btb.io.update_pc := exu.io.BTBUpdatePC(
     config.AddressWidth - 1, BtbPcShift)
   btb.io.update_target := exu.io.BTBUpdateTarget
-  btb.io.flush := exu.io.FenceIFlush
+  btb.io.flush := exu.io.FenceIFlush || contextFlush
   jal_btb.io.update_valid := exu.io.JalBTBUpdateValid
   jal_btb.io.update_pc := exu.io.JalBTBUpdatePC(
     config.AddressWidth - 1, BtbPcShift)
   jal_btb.io.update_target := exu.io.JalBTBUpdateTarget
   jal_btb.io.update_kind.get := exu.io.JalBTBUpdateKind
-  jal_btb.io.flush := exu.io.FenceIFlush
+  jal_btb.io.flush := exu.io.FenceIFlush || contextFlush
   // RAS更新: call压栈, ret弹栈
   ras.io.push_valid := exu.io.RASPushValid
   ras.io.push_addr := exu.io.RASPushAddr
   ras.io.pop_valid := exu.io.RASPopValid
-  ras.io.flush := exu.io.FenceIFlush
+  ras.io.flush := exu.io.FenceIFlush || contextFlush
   if (mmuEnabled) {
     axiWriteMuxOpt match {
       case Some(writeMux) =>
@@ -776,9 +802,14 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
       DownstreamAddressWidth = config.AddressWidth,
       UpstreamDataWidth = SocXLEN,
       DownstreamDataWidth = 32,
-      IdWidth = 4
+      IdWidth = 4,
+      TrackExclusive = true
     )
   )
+  // LOCK 与桥内部的 AW/AR 事务绑定：在外部地址握手拍锁存，直到对应
+  // B/最后一个 R 返回。仲裁器只消费这个锁存值，不再直接采样外部引脚。
+  socSlaveBridge.io.inAWLock.foreach(_ := io.slave_awlock)
+  socSlaveBridge.io.inARLock.foreach(_ := io.slave_arlock)
   socSlaveBridge.io.in.AW.AWVALID := io.slave_awvalid
   socSlaveBridge.io.in.AW.AWADDR := io.slave_awaddr
   socSlaveBridge.io.in.AW.AWID := io.slave_awid
@@ -820,8 +851,11 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   socSlaveBridge.io.in.R.RREADY := io.slave_rready
 
   if (DMAProxyEnable) {
-    arbiter.io.dmaAWLock := io.slave_awlock
-    arbiter.io.dmaARLock := io.slave_arlock
+    // 使用桥在外部握手拍锁存的 LOCK，而不是可能早已撤销的实时引脚。
+    arbiter.io.dmaAWLock :=
+      socSlaveBridge.io.outAWLock.getOrElse(false.B)
+    arbiter.io.dmaARLock :=
+      socSlaveBridge.io.outARLock.getOrElse(false.B)
     arbiter.io.dma <> socSlaveBridge.io.out
   } else {
     val ErrorSlave = dmaErrorSlave.get
@@ -1072,6 +1106,10 @@ class ysyx_26030103(val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfi
   // minstret 按 WBU 真实退休计数：load/store 只有在 MEM 完成后才退休，
   // 故障/被中断取消的指令 Retire=0，不计入。
   exu.io.RetireCommit := wbu.io.in.fire && wbu.io.in.bits.Retire
+  // minstret 自增过滤掉写 minstret/minstreth 的指令自身；该指令仍然退休，
+  // PMU Instructions 事件继续使用上面的完整 RetireCommit。
+  exu.io.MinstretRetireCommit := wbu.io.in.fire && wbu.io.in.bits.Retire &&
+    !wbu.io.in.bits.WritesMinstret
   // 临时新加的处理中断的
   exu.io.Interrupt := io.interrupt || plic.external_irq
   exu.io.TimerInterrupt := clint.io.timer_irq

@@ -29,6 +29,10 @@ class ysyx_26030103_AXI5Xbar(
     "PLIC 基地址超出地址宽度")
   require(PLICSizeBytes > 0 && PLICBaseValue + PLICSizeBytes <= (BigInt(1) << AddressWidth),
     "PLIC 地址窗口超出地址宽度")
+  require(PLICBaseValue % BigInt(4096) == BigInt(0),
+    "PLIC 基地址必须 4KiB 对齐")
+  require(PLICSizeBytes % BigInt(4096) == BigInt(0),
+    "PLIC 窗口大小必须为 4KiB 的整数倍")
   val PLICBase = PLICBaseValue.U(AddressWidth.W)
   val PLICEnd = (PLICBaseValue + PLICSizeBytes).U(AddressWidth.W)
   val TargetSoCBus = 0.U(2.W)
@@ -131,6 +135,19 @@ class ysyx_26030103_AXI5Xbar(
   private val WritableCLINT = WritableRegions.exists(
     _ == ysyx_26030103_PhysicalMemoryMap.CLINT
   )
+  // PLIC 与 CLINT 一样必须经过 PMA 权限检查。PLIC 基地址/窗口来自配置，
+  // 因此按“某个可读/可写区域完整覆盖整个 PLIC 窗口”判定；只把 PLIC 叶子
+  // 接到 Xbar 端口而不在 PMA 中授予对应权限时，访问必须本地 DECERR，不能
+  // 绕过 PMA 直接落到 PLIC 寄存器。
+  private def CoversRegion(region: ysyx_26030103_PMARegion,
+                           base: BigInt,
+                           size: BigInt): Boolean =
+    BigInt(region.Base) <= base &&
+      BigInt(region.EndExclusive) >= base + size
+  private val ReadablePLIC = ReadableRegions.exists(region =>
+    CoversRegion(region, PLICBaseValue, PLICSizeBytes))
+  private val WritablePLIC = WritableRegions.exists(region =>
+    CoversRegion(region, PLICBaseValue, PLICSizeBytes))
 
   def decode(
       address: UInt,
@@ -142,9 +159,12 @@ class ysyx_26030103_AXI5Xbar(
     val ConfigSupported = size <= 2.U && (burst === 0.U || burst === 1.U)
     val PermittedRegions = if (isWrite) WritableRegions else ReadableRegions
     val CLINTPermitted = if (isWrite) WritableCLINT else ReadableCLINT
+    val PLICPermitted = if (isWrite) WritablePLIC else ReadablePLIC
     // PLIC 叶子只实现单拍寄存器访问：它不处理 AWLEN/WLAST，读响应也
     // 只在首拍置 RLAST。因此地址落在 PLIC 窗口但 burst 非单拍时，必须
-    // 在 Xbar 本地判为非法，不能继续按起始地址转发给 PLIC。
+    // 在 Xbar 本地判为非法，不能继续按起始地址转发给 PLIC。PMA 未授予
+    // 读/写权限时同样判为非法，绝不能让 PLIC 端口绕过 CLINT/SoCBus 共享
+    // 的权限检查。
     val PLICAddress = IsPLIC(address, 0.U, size, burst)
     Mux(
       !ConfigSupported,
@@ -153,16 +173,16 @@ class ysyx_26030103_AXI5Xbar(
         CLINTPermitted.B && IsCLINT(address, len, size, burst),
         TargetCLINT,
         Mux(
-          PLICAddress && len === 0.U,
-          TargetPLIC,
+          PLICAddress,
           Mux(
-            PLICAddress,
-            TargetInvalid,
-            Mux(
-              InAnyRegion(address, len, size, burst, PermittedRegions),
-              TargetSoCBus,
-              TargetInvalid
-            )
+            PLICPermitted.B && len === 0.U,
+            TargetPLIC,
+            TargetInvalid
+          ),
+          Mux(
+            InAnyRegion(address, len, size, burst, PermittedRegions),
+            TargetSoCBus,
+            TargetInvalid
           )
         )
       )

@@ -373,6 +373,64 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  it should "PMP 拒绝新 AMO 时清除上一次读阶段故障并按 cause=7 提交" in {
+    simulate(new ysyx_26030103_LSU(XLEN = 32)) { dut =>
+      val clock = dut.clock
+      resetDut(dut, clock, dut.reset)
+
+      // 第一笔 AMO 的读响应报 SLVERR：锁存 AtomicReadFaultReg，cause=5。
+      val firstAddr = 0x80004600L
+      pokeAtomic(dut, AMOADD, firstAddr, 1, 2, memoryWrite = true)
+      dut.io.in.valid.poke(true.B)
+      waitFire(dut, clock)
+      var cycles = 0
+      while (!bool(dut.io.DataBus.AR.ARVALID) && cycles < 30) {
+        clock.step(); cycles += 1
+      }
+      bool(dut.io.DataBus.AR.ARVALID) should be(true)
+      long(dut.io.DataBus.AR.ARADDR) should be(firstAddr)
+      dut.io.DataBus.AR.ARREADY.poke(true.B)
+      clock.step()
+      dut.io.DataBus.AR.ARREADY.poke(false.B)
+      dut.io.DataBus.R.RVALID.poke(true.B)
+      dut.io.DataBus.R.RRESP.poke(2.U)
+      dut.io.DataBus.R.RDATA.poke(0.U)
+      dut.io.DataBus.R.RLAST.poke(true.B)
+      clock.step()
+      dut.io.DataBus.R.RVALID.poke(false.B)
+      dut.io.DataBus.R.RRESP.poke(0.U)
+      dut.io.DataBus.R.RLAST.poke(false.B)
+
+      var sawReadFault = false
+      for (_ <- 0 until 20) {
+        if (bool(dut.io.MemTrapCommit)) {
+          sawReadFault = true
+          long(dut.io.MemTrapCause) should be(5L)
+        }
+        clock.step()
+      }
+      withClue("第一笔 AMO 读故障未提交: ") { sawReadFault should be(true) }
+      clock.step(2)
+
+      // 第二笔 AMO 在进入原子通路前被 PMP 拒绝：必须使用本次访问的
+      // store/AMO cause=7，不能复用上一笔的 AtomicReadFaultReg 报成 5。
+      pokeAtomic(dut, AMOADD, 0x80004700L, 1, 2, memoryWrite = true)
+      dut.io.PmpFault.poke(true.B)
+      dut.io.in.valid.poke(true.B)
+      var sawPmpFault = false
+      for (_ <- 0 until 20) {
+        expectNoBus(dut)
+        if (bool(dut.io.MemTrapCommit)) {
+          sawPmpFault = true
+          long(dut.io.MemTrapCause) should be(7L)
+        }
+        clock.step()
+      }
+      withClue("PMP 拒绝的 AMO 未提交: ") { sawPmpFault should be(true) }
+      expectNoBus(dut)
+    }
+  }
+
   "RV64 LSU A extension" should "完成 AMO.D 8 字节读改写" in {
     simulate(new ysyx_26030103_LSU(XLEN = 64)) { dut =>
       val clock = dut.clock

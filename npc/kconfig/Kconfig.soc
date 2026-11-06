@@ -85,6 +85,10 @@ menu "SoC 与外设"
         DECERR。64 位 SoC 接口已经由 AXI4Downsizer 接入 32 位
         xbar/外设，配置会写入 typed JSON 的 soc.soc_xlen，由
         ysyxSoC elaboration 直接消费。
+        注意：direct-NPC 顶层（riscv32e_npc_SimTop/AXIRAM）的 AXI
+        固定为 32 位；make build/.../ysyx_26030103_npc 会强制把
+        EffectiveSocXLEN 投影为 32（命令行 SOC_XLEN=64 也会被覆盖）。
+        64 位 SoC 接口只适用于 SIM_TOP=soc 的完整 SoC 构建。
         修改后需重新 make verilog 或 make build/ysyx_26030103。
 
   endmenu

@@ -1073,12 +1073,17 @@ class ysyx_26030103_DCacheSRAM(
                 suppressFill := false.B
                 state := SIdle
               }.otherwise {
-                ResponseFault := true.B
-                ResponseFaultResp := Mux(
-                  io.AXI.R.RRESP =/= 0.U,
-                  io.AXI.R.RRESP,
-                  2.U
-                )
+                // 第二拍缺少 RLAST：这笔非缓存读还没有产生任何响应。
+                // 先形成唯一的 fault，再由 SDrain 只负责吸收迟到的 beat。
+                when(!DemandResponseDone && !ResponseOccupied) {
+                  ResponseFault := true.B
+                  ResponseFaultResp := Mux(
+                    io.AXI.R.RRESP =/= 0.U,
+                    io.AXI.R.RRESP,
+                    2.U
+                  )
+                  ResponseValid := true.B
+                }
                 state := SDrain
               }
             }
@@ -1125,11 +1130,11 @@ class ysyx_26030103_DCacheSRAM(
       }.elsewhen(DrainTimer === 255.U) {
         // 从设备长期不给 RLAST：为尚未交付的 demand 产生 fault，然后
         // 进入吸收态，迟到的 beat 不能再被后续请求使用。
-        when(!DemandResponseDone) {
+        // 已有响应（寄存器响应或本拍的 SRAM 旁路响应）可能正被反压，
+        // 绝不能改写其 payload；超时只填充空的响应槽。
+        when(!DemandResponseDone && !ResponseOccupied) {
           ResponseFault := true.B
-          when(!(ResponseValid && ResponseFault)) {
-            ResponseFaultResp := 2.U
-          }
+          ResponseFaultResp := 2.U
           ResponseValid := true.B
         }
         valid(ReqIndexSafe) := false.B

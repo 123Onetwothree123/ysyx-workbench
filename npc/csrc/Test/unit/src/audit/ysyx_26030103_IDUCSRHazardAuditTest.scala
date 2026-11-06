@@ -127,8 +127,12 @@ class ysyx_26030103_IDUCSRHazardHarness(config: ysyx_26030103_NPCConfig)
   exu.io.Mtime := 0.U
   exu.io.FPStateDirtyCommit := false.B
   // 用一个寄存器模拟顶层 WBU 阶段的退休事件（寄存器隔开 EXU 提交）。
+  // minstret 自增需要额外过滤“写 minstret 的指令自身退休”。
   val retirePipe = RegNext(io.out.fire && io.out.bits.Retire, false.B)
+  val minstretRetirePipe = RegNext(
+    io.out.fire && io.out.bits.Retire && !io.out.bits.WritesMinstret, false.B)
   exu.io.RetireCommit := retirePipe
+  exu.io.MinstretRetireCommit := minstretRetirePipe
 
   io.out <> exu.io.out
   io.exuInValid := exu.io.in.valid
@@ -431,7 +435,7 @@ class ysyx_26030103_IDUCSRHazardAuditTest
       withClue(s"minstret 读回指令没有退休: ${d.retires.mkString(",")}") {
         reads.size should be(1)
       }
-      // 读 CSR 时，8 条 addi + 1 条 csrrwi 自身已退休，共 9。
+      // 读 CSR 时，8 条 addi 已退休，写 minstret 的 csrrwi 自身不计数。
       // （csrr 自己尚未到 WBU 退休沿。）
       val values = dut.io.out.bits.CSRReadData // 组合口在最后一拍可能已变
       // 用显式 CSR 读快照：重新执行一次 csrr 前先排空，再按每拍采样。
@@ -453,9 +457,9 @@ class ysyx_26030103_IDUCSRHazardAuditTest
       withClue("没有观察到 minstret 的 CSR 读回值: ") {
         observed should not be empty
       }
-      // csrrwi(minstret,0) 自身退休 +1，随后 4 条 nop + 8 条 addi
-      // + 第一条 csrr 各退休 +1：第二条 csrr 读到的值为 14。
-      observed.get should be(BigInt(14))
+      // csrrwi(minstret,0) 自身退休但不计数；随后 4 条 nop + 8 条 addi
+      // + 第一条 csrr 各退休 +1：第二条 csrr 读到的值为 13。
+      observed.get should be(BigInt(13))
     }
   }
 }

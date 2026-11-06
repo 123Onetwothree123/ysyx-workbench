@@ -82,6 +82,15 @@ NPC_CONFIG_STAMP  := $(abspath $(BUILD_DIR)/generated/npc_config.stamp)
 # 命令行覆盖；不再提供 SOC_XLEN/CHIPLINK 等裸 Make 变量兼容入口。
 NPC_CONFIG_OVERRIDE_ARGS = $(foreach item,$(filter CONFIG_%,$(MAKEOVERRIDES)),--set '$(item)')
 
+# direct-NPC 顶层 rtl/riscv32e_npc_SimTop.sv 与 riscv32e_npc_AXIRAM
+# 的 AXI 固定为 32 位地址/数据。无论 .config 是 SOC_XLEN=64 还是
+# SOC_XLEN_FOLLOW_CPU=y，构建 direct-NPC 目标时都把生效 SoC 接口
+# 强制投影为 32；完整 SoC（SIM_TOP=soc）不应用这组覆盖。
+NPC_DIRECT_SOC_XLEN := 32
+NPC_DIRECT_SOC_XLEN_OVERRIDE := \
+	--set 'CONFIG_SOC_XLEN_FOLLOW_CPU=n' \
+	--set 'CONFIG_SOC_XLEN=$(NPC_DIRECT_SOC_XLEN)'
+
 VERILATOR=verilator
 remove_quote = $(patsubst "%",%,$(1))
 # Kconfig 字符串可能包含空格/逗号（如 bootargs）。patsubst 会按空格拆词，
@@ -150,6 +159,33 @@ npc-config-tool: $(NPC_CONFIG_GEN_BIN)
 npc-config: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON)
 
 .PHONY: npc-config npc-config-json npc-config-tool
+
+# direct-NPC 的 32 位 AXI 契约。任何生成/复用配置的路径都必须先通过
+# 这个检查；若覆盖逻辑被删掉或 typed JSON 被手工改成 64，就在启动
+# Verilator 之前给出明确错误，而不是靠 WIDTHEXPAND 提示或静默截断。
+.PHONY: npc-direct-soc-xlen-check
+npc-direct-soc-xlen-check: $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_GEN_BIN)
+	@set -eu; \
+	soc_xlen="$$($(NPC_CONFIG_GEN_BIN) --config-json '$(NPC_CONFIG_EFFECTIVE_JSON)' --get SOC_XLEN_EFFECTIVE)"; \
+	if [ "$$soc_xlen" != "$(NPC_DIRECT_SOC_XLEN)" ]; then \
+		echo "错误：direct-NPC 顶层 riscv32e_npc_SimTop/AXIRAM 固定 32 位 AXI，" >&2; \
+		echo "      但当前 EffectiveSocXLEN=$$soc_xlen。" >&2; \
+		echo "      direct-NPC 不支持 64 位 SoC 接口；请使用 SOC_XLEN=32，" >&2; \
+		echo "      或改用 SIM_TOP=soc 构建完整 SoC。" >&2; \
+		exit 2; \
+	fi
+
+# direct-NPC 相关目标继承强制覆盖；命令行的 CONFIG_SOC_XLEN=64 也会被
+# 后追加的 --set 覆盖，避免用户配置与固定 32 位顶层产生宽度不一致。
+$(BIN_NPC): NPC_CONFIG_OVERRIDE_ARGS += $(NPC_DIRECT_SOC_XLEN_OVERRIDE)
+npc-direct-soc-xlen-check: NPC_CONFIG_OVERRIDE_ARGS += $(NPC_DIRECT_SOC_XLEN_OVERRIDE)
+
+# synth/yosys-sta 在 SIM_TOP!=soc 时综合的正是 direct-NPC RTL，同样强制
+# 32 位并复用上面的检查。SIM_TOP=soc 的完整 SoC 保持 Kconfig 的 SOC_XLEN。
+ifneq ($(SIM_TOP),soc)
+synth yosys-sta: NPC_CONFIG_OVERRIDE_ARGS += $(NPC_DIRECT_SOC_XLEN_OVERRIDE)
+synth yosys-sta: npc-direct-soc-xlen-check
+endif
 
 # 配置契约：Kconfig 只能表达连续 range，这里补齐 XLEN/SOC_XLEN、
 # PTE 大小、页大小 2 的幂以及 CUSTOM A/D 高位等离散约束。
@@ -1005,7 +1041,19 @@ $(BIN): $(SIM_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERIL
 		NPC_SAVABLE='$(VERILATOR_SAVABLE)' \
 		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)' \
 		default
-$(BIN_NPC): $(SIM_GUARD) $(NVBOARD_DIRECT_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+$(BIN_NPC): $(SIM_GUARD) $(NVBOARD_DIRECT_GUARD) npc-direct-soc-xlen-check $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+	@set -eu; \
+	npc_rtl="$(BUILD_DIR)/ysyx_26030103_npc.sv"; \
+	if ! grep -Eq 'output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\[31:0\][[:space:]]+io_master_awaddr' "$$npc_rtl" || \
+	   ! grep -Eq 'output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\[31:0\][[:space:]]+io_master_araddr' "$$npc_rtl" || \
+	   ! grep -Eq 'output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\[31:0\][[:space:]]+io_master_wdata' "$$npc_rtl" || \
+	   ! grep -Eq 'input[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\[31:0\][[:space:]]+io_master_rdata' "$$npc_rtl" || \
+	   ! grep -Eq 'output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\[3:0\][[:space:]]+io_master_wstrb' "$$npc_rtl"; then \
+		echo "错误：$$npc_rtl 的 master AXI 不是 32 位地址/数据/4 位 WSTRB。" >&2; \
+		echo "      direct-NPC 的 riscv32e_npc_SimTop/AXIRAM 固定 32 位，" >&2; \
+		echo "      请重新运行 make build/ysyx_26030103_npc，不要复用 64 位 SoC 的 RTL。" >&2; \
+		exit 2; \
+	fi
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(SAVABLE_VERILATOR_FLAG) $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_WARN_FLAGS) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \

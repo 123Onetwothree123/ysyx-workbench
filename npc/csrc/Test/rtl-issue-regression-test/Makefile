@@ -27,9 +27,11 @@ ICACHE_PMA_BIN := $(BIN_DIR)/icache_pma_boundary_test
 ZERO_PREDICTOR_BIN := $(BIN_DIR)/zero_predictor_geometry_test
 IFU_MMU_BIN := $(BIN_DIR)/ifu_mmu_stale_resp_test
 ICACHE_REDIR_BIN := $(BIN_DIR)/icache_redirect_test
-BINS := $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(ICACHE_PMA_BIN) $(ZERO_PREDICTOR_BIN) $(IFU_MMU_BIN) $(ICACHE_REDIR_BIN)
+VIPT_PMP_BIN := $(BIN_DIR)/vipt_fetch_pmp_test
+IFU_FAULT_BIN := $(BIN_DIR)/ifu_fetch_fault_tval_test
+BINS := $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(ICACHE_PMA_BIN) $(ZERO_PREDICTOR_BIN) $(IFU_MMU_BIN) $(ICACHE_REDIR_BIN) $(VIPT_PMP_BIN) $(IFU_FAULT_BIN)
 
-.PHONY: all test run functional-test config-test xbar-test mul-core-test exu-test idu-mdu-test lsu-test stage-connect-test icache-pma-test zero-predictor-test ifu-mmu-test icache-redirect-test clean
+.PHONY: all test run functional-test config-test xbar-test mul-core-test exu-test idu-mdu-test lsu-test stage-connect-test icache-pma-test zero-predictor-test ifu-mmu-test icache-redirect-test vipt-pmp-test ifu-fault-test clean
 
 all: $(BINS)
 
@@ -47,7 +49,7 @@ test run: all
 # Focused gate for the production RTL fixes.  Broader `make test` intentionally
 # retains the independent ICache custom-PMA and configuration-guard findings as
 # future work.
-functional-test: $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(IFU_MMU_BIN) $(ICACHE_REDIR_BIN)
+functional-test: $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN) $(STAGE_CONNECT_BIN) $(IFU_MMU_BIN) $(ICACHE_REDIR_BIN) $(VIPT_PMP_BIN) $(IFU_FAULT_BIN)
 	$(XBAR_BIN)
 	$(MUL_CORE_BIN)
 	$(EXU_BIN)
@@ -56,6 +58,8 @@ functional-test: $(XBAR_BIN) $(MUL_CORE_BIN) $(EXU_BIN) $(IDU_MDU_BIN) $(LSU_BIN
 	$(STAGE_CONNECT_BIN)
 	$(IFU_MMU_BIN)
 	$(ICACHE_REDIR_BIN)
+	$(VIPT_PMP_BIN)
+	$(IFU_FAULT_BIN)
 
 config-test:
 	cd $(TEST_DIR) && $(MILL) --no-server runMain ysyx_26030103.test.ConfigGuardTest
@@ -90,6 +94,12 @@ ifu-mmu-test: $(IFU_MMU_BIN)
 icache-redirect-test: $(ICACHE_REDIR_BIN)
 	$(ICACHE_REDIR_BIN)
 
+vipt-pmp-test: $(VIPT_PMP_BIN)
+	$(VIPT_PMP_BIN)
+
+ifu-fault-test: $(IFU_FAULT_BIN)
+	$(IFU_FAULT_BIN)
+
 # Generate one production snapshot with a genuinely pipelined compression-tree
 # core.  The leaf EXU, LSU and Xbar modules are then selected as independent
 # Verilator tops by the tests below.
@@ -115,6 +125,9 @@ $(HARNESS_STAMP): $(LOCAL_SCALA_SOURCES) build.mill \
                     layers-StageConnectHarness-Verification.sv \
                     layers-ICachePmaBoundaryHarness-Verification.sv \
                     layers-ZeroPredictorGeometryHarness-Verification.sv \
+                    layers-IFUMMUHarness-Verification.sv \
+                    layers-ViptFetchPmpHarness-Verification.sv \
+                    layers-IFUFetchFaultHarness-Verification.sv \
                     $(SCALA_SOURCES)
 	@mkdir -p $(HARNESS_RTL_DIR)
 	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
@@ -129,10 +142,18 @@ $(HARNESS_STAMP): $(LOCAL_SCALA_SOURCES) build.mill \
 	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
 	  ysyx_26030103.test.IFUMMUHarnessElaborate \
 	  --target-dir $(HARNESS_RTL_DIR)
+	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
+	  ysyx_26030103.test.ViptFetchPmpHarnessElaborate \
+	  --target-dir $(HARNESS_RTL_DIR)
+	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
+	  ysyx_26030103.test.IFUFetchFaultHarnessElaborate \
+	  --target-dir $(HARNESS_RTL_DIR)
 	@cp $(TEST_DIR)/layers-StageConnectHarness-Verification.sv $(HARNESS_RTL_DIR)/
 	@cp $(TEST_DIR)/layers-ICachePmaBoundaryHarness-Verification.sv $(HARNESS_RTL_DIR)/
 	@cp $(TEST_DIR)/layers-ZeroPredictorGeometryHarness-Verification.sv $(HARNESS_RTL_DIR)/
 	@cp $(TEST_DIR)/layers-IFUMMUHarness-Verification.sv $(HARNESS_RTL_DIR)/
+	@cp $(TEST_DIR)/layers-ViptFetchPmpHarness-Verification.sv $(HARNESS_RTL_DIR)/
+	@cp $(TEST_DIR)/layers-IFUFetchFaultHarness-Verification.sv $(HARNESS_RTL_DIR)/
 	@touch $@
 
 $(XBAR_BIN): xbar_local_decerr_interleave_test.cpp test_common.hpp $(GEN_STAMP)
@@ -228,6 +249,26 @@ $(ICACHE_REDIR_BIN): icache_redirect_test.cpp test_common.hpp $(GEN_STAMP)
 	  -CFLAGS '$(CXXFLAGS)' \
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv $<
+
+$(VIPT_PMP_BIN): vipt_fetch_pmp_test.cpp test_common.hpp $(HARNESS_STAMP)
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
+	  -I$(HARNESS_RTL_DIR) \
+	  --top-module ViptFetchPmpHarness \
+	  --Mdir $(BUILD_DIR)/obj-vipt-fetch-pmp \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(HARNESS_RTL_DIR)/ViptFetchPmpHarness.sv $<
+
+$(IFU_FAULT_BIN): ifu_fetch_fault_tval_test.cpp test_common.hpp $(HARNESS_STAMP)
+	@mkdir -p $(BIN_DIR)
+	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
+	  -I$(HARNESS_RTL_DIR) \
+	  --top-module IFUFetchFaultHarness \
+	  --Mdir $(BUILD_DIR)/obj-ifu-fetch-fault \
+	  -CFLAGS '$(CXXFLAGS)' \
+	  -o $(abspath $@) \
+	  $(HARNESS_RTL_DIR)/IFUFetchFaultHarness.sv $<
 
 clean:
 	rm -rf $(BUILD_DIR) out

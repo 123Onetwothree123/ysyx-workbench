@@ -58,6 +58,7 @@ class ysyx_26030103_ExuDualPendingAuditTest
     dut.io.TimerInterrupt.poke(false.B)
     dut.io.IdleIrqPC.poke(0.U(64.W))
     dut.io.RetireCommit.poke(false.B)
+    dut.io.MinstretRetireCommit.poke(false.B)
     dut.io.MEMBusy.poke(false.B)
     dut.io.PipelineBusy.poke(false.B)
     dut.io.MemTrapCommit.poke(false.B)

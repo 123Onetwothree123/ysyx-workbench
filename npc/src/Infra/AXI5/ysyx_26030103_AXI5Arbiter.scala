@@ -27,7 +27,8 @@ class ysyx_26030103_AXI5Arbiter(
     val lsu = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth))
     val dma = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth))
     // CPU slave口带有AXI exclusive属性，而内部精简AXI bundle没有LOCK字段。
-    // 显式旁带进来，任何exclusive DMA请求都必须在本地以DECERR终止，
+    // 这两个旁带输入来自 slave-side WidthBridge 在外部地址握手拍锁存的值，
+    // 不是外部实时引脚；任何exclusive DMA请求都必须在本地以DECERR终止，
     // 绝不能静默降级成普通下游访问。
     val dmaARLock = Input(Bool())
     val dmaAWLock = Input(Bool())

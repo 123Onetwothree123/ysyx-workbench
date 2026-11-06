@@ -195,12 +195,23 @@ case class ysyx_26030103_MMUProfile(
   // HAS_S=n 时必须显式关闭 MMU，而不是静默保留完整 S 逻辑。
   require(!enabled || hasS,
     "HAS_MMU=y 需要 HAS_S=y：MMU/Sv32/Sv39/Sv48 依赖 S 模式 satp/页错误入口；请设置 HAS_S=y 或 HAS_MMU=n")
-  require(plicSources >= 2 && plicSources <= 1024, "PLIC source 数必须在 2..1024")
+  // source 0 保留，UART 固定使用 source 10，因此至少需要 11 个 source。
+  require(plicSources > 10 && plicSources <= 1024,
+    s"PLIC_SOURCES=$plicSources 必须大于 10（UART source 10）且不超过 1024")
   require(plicPriorityBits >= 1 && plicPriorityBits <= 8, "PLIC 优先级位宽非法")
   require(plicMaxPriority >= 0 && plicMaxPriority < (1 << plicPriorityBits),
     "PLIC_MAX_PRIORITY 超出优先级位宽")
   require(plicBase >= 0 && plicBase < (1L << 32), "PLIC_BASE 超出 32 位地址空间")
-  require(plicSize > 0, "PLIC_SIZE 必须为正")
+  // S 上下文 claim 寄存器在 0x201004，窗口必须至少覆盖到 0x202000。
+  // 当前实现同时支持 0x200000 的 M 上下文别名和 0x201000 的 S 上下文。
+  require(plicSize >= 0x202000L,
+    s"PLIC_SIZE=0x${plicSize.toHexString} 必须至少为 0x202000 才能覆盖 S 上下文 claim 窗口")
+  // 使用 4KiB 页粒度与 PMA/Xbar/DTB 对齐，避免同一窗口在不同组件里
+  // 出现部分重叠或非页对齐的边界。
+  require(plicBase % 4096 == 0,
+    s"PLIC_BASE=0x${plicBase.toHexString} 必须 4KiB 对齐")
+  require(plicSize % 4096 == 0,
+    s"PLIC_SIZE=0x${plicSize.toHexString} 必须为 4KiB 的整数倍")
   require(plicBase + plicSize <= (1L << 32),
     "PLIC_BASE + PLIC_SIZE 超出 32 位地址空间")
   require(Set("clint_mtip", "direct_stip").contains(timerPath), "TIMER_PATH 必须是 clint_mtip/direct_stip")

@@ -9,7 +9,8 @@ import org.scalatest.matchers.should.Matchers
 
 /** CSR 退休计数、M 级中断全局使能与 PMP 配置位审计。
   *
-  * 这些用例都直接例化 CSR，按架构语义驱动新的 RetireCommit 退休事件。
+  * 这些用例都直接例化 CSR，按架构语义驱动 RetireCommit 与过滤后的
+  * MinstretRetireCommit 退休事件。
   */
 class ysyx_26030103_CSRRetireAuditHarness(
     profile: ysyx_26030103_MMUProfile
@@ -48,6 +49,7 @@ class ysyx_26030103_CSRRetireAuditHarness(
   csr.io.rst := reset
   csr.io.Enable := io.enable
   csr.io.RetireCommit := io.retireCommit
+  csr.io.MinstretRetireCommit := io.retireCommit
   csr.io.IsCsrrw := io.isCsrrw
   csr.io.IsCsrrs := io.isCsrrs
   csr.io.IsCsrrc := io.isCsrrc
@@ -155,7 +157,7 @@ class ysyx_26030103_CSRRetireAuditTest
     dut.io.isCsrrw.poke(false.B)
   }
 
-  "minstret" should "只跟随 RetireCommit，而不是 EXU Enable" in {
+  "minstret" should "只跟随退休事件，而不是 EXU Enable" in {
     simulate(new ysyx_26030103_CSRRetireAuditHarness(profile)) { dut =>
       setup(dut)
       peekCsr(dut, MINSTRET) should be(BigInt(0))

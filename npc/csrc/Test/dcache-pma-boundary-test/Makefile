@@ -12,7 +12,10 @@ SCALA_SOURCES := $(shell find $(TEST_DIR)/scala -type f -name '*.scala' | sort)
 SCALA_SOURCES += $(TEST_DIR)/build.mill
 SCALA_SOURCES += $(wildcard $(TEST_DIR)/../../../src/Common/*.scala)
 SCALA_SOURCES += $(wildcard $(TEST_DIR)/../../../src/Infra/*.scala)
+SCALA_SOURCES += $(wildcard $(TEST_DIR)/../../../src/Infra/AXI5/*.scala)
 SCALA_SOURCES += $(TEST_DIR)/../../../src/Cache/DCache/ysyx_26030103_DCacheReg.scala
+SCALA_SOURCES += $(TEST_DIR)/../../../src/Cache/ysyx_26030103_ViptAliasScan.scala
+SCALA_SOURCES += $(TEST_DIR)/../../../src/Cache/ysyx_26030103_ViptAliasDirectory.scala
 STAMP := $(RTL_DIR)/.generated
 
 .PHONY: all test run clean

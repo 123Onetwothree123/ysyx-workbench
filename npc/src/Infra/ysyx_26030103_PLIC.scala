@@ -17,8 +17,17 @@ class ysyx_26030103_PLIC(
     DataWidth: Int = 32,
     IdWidth: Int = 4
 ) extends Module {
-  require(numSources >= 1 && numSources <= 1024, "PLIC source 数非法")
+  // UART 中断固定使用 source 10（xv6/OpenSBI 都按 1 << UART0_IRQ 编程）。
+  // 少于 11 个 source 时该 bit 不存在，软件写 enable/priority 会被静默丢弃，
+  // 外部中断永远无法到达 hart。配置阶段直接拒绝，而不是生成残缺 PLIC。
+  require(numSources > 10 && numSources <= 1024,
+    s"PLIC 必须支持 source 10（UART），numSources=$numSources 非法")
   require(priorityBits >= 1 && priorityBits <= 8, "PLIC priority 位宽非法")
+  require(base >= 0 && base < (BigInt(1) << AddressWidth),
+    s"PLIC base=$base 超出地址宽度 $AddressWidth")
+  // 寄存器都按 4 字节访问，窗口按 4KiB 页对齐便于 PMA/Xbar 使用同一区间。
+  require(base % BigInt(4096) == BigInt(0),
+    s"PLIC base=0x${base.toString(16)} 必须 4KiB 对齐")
   private val Words = (numSources + 31) / 32
   private val IdBits = log2Ceil(numSources.max(2))
   private val PriorityMax = maxPriority.U(priorityBits.W)
@@ -135,6 +144,12 @@ class ysyx_26030103_PLIC(
   val RFire = io.R.RVALID && io.R.RREADY
   val perfComplete = WireDefault(false.B)
   perf_complete := perfComplete
+  // claim/complete 可能在同一拍同时发生（读 claim 与写 complete 走独立
+  // AXI 通道）。先记录 complete 目标，最后统一更新 claimed，避免两个
+  // when 块按 Chisel last-connect 互相覆盖：complete 清 A 的同时 claim B
+  // 必须既清 A 又置 B。
+  val completeFire = WireDefault(false.B)
+  val completeIndex = WireDefault(0.U(IdBits.W))
   when(AWFire) { AWID := io.AW.AWID; AWAddr := io.AW.AWADDR; AWValid := true.B }
   when(WFire) { WData := io.W.WDATA; WStrb := io.W.WSTRB; WValid := true.B }
 
@@ -165,8 +180,10 @@ class ysyx_26030103_PLIC(
       )
     }.elsewhen(isComplete && WStrb =/= 0.U && WData =/= 0.U) {
       // claim 返回值就是 source ID（bit 下标），complete 必须清同一 bit。
+      // 实际清位在下方与 claim 合并执行；这里只记录目标。
       val doneIdx = WData(IdBits - 1, 0)
-      claimed := claimed & ~UIntToOH(doneIdx, numSources)
+      completeIndex := doneIdx
+      completeFire := doneIdx < numSources.U
       perfComplete := true.B
     }
     BResp := Mux(isPriority || isEnable || isThreshold || isComplete, OKAY, SLVERR)
@@ -206,7 +223,6 @@ class ysyx_26030103_PLIC(
       RData := claimId
       when(claimValid) {
         pending := pending & ~UIntToOH(claimIndex, numSources)
-        claimed := claimed | UIntToOH(claimIndex, numSources)
       }
     }.elsewhen(io.AR.ARADDR === PendingAddr) {
       RData := pending
@@ -222,5 +238,20 @@ class ysyx_26030103_PLIC(
       RResp := SLVERR
     }
   }
+  // claimed 的唯一更新点：complete 先清，claim 再置。两笔事件的目标在
+  // 正常协议下互斥（已 claimed 的 source 不会被再次 claim），但即使发生
+  // 同 ID 冲突，也以本拍新 claim 为准，不会丢掉 complete 对其他 source
+  // 的清除。这个赋值必须在两个事件块之后，才能覆盖所有旧式局部更新。
+  val completeMask = Mux(
+    completeFire,
+    UIntToOH(completeIndex, numSources),
+    0.U(numSources.W)
+  )
+  val claimMask = Mux(
+    ARFire && isClaimAddr(io.AR.ARADDR) && claimValid,
+    UIntToOH(claimIndex, numSources),
+    0.U(numSources.W)
+  )
+  claimed := (claimed & ~completeMask) | claimMask
   when(RFire) { RValid := false.B }
 }

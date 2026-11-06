@@ -297,4 +297,60 @@ class ysyx_26030103_LSUStoreViptTest extends AnyFlatSpec with Matchers {
       long(dut.io.DataBus.W.WDATA) should be(0x00c0ffeeL)
     }
   }
+
+  it should "DCache 关闭时 vipt 配置不等待翻译标签，load/store 都按 PA 完成" in {
+    // 顶层已把 DCacheVipt 与 DCacheEnable 相与；这里同时故意传入
+    // ViptParallel=true，验证 LSU 自身也不会在禁用 DCache 时走 VIPT 等待。
+    simulate(
+      new ysyx_26030103_LSU(
+        DCacheEnable = false,
+        DCacheVipt = true,
+        ViptParallel = true
+      )
+    ) { dut =>
+      val clock = dut.clock
+      resetDut(dut, clock, dut.reset)
+
+      // load 直接走 LSU 的 AR/R，不等待 ViptPAddrValid。
+      pokeLoad(dut, 0x80006000L)
+      acceptInput(dut, clock)
+      waitUntil(clock, bool(dut.io.DataBus.AR.ARVALID), "禁用 DCache 的 load 未发 AR")
+      long(dut.io.DataBus.AR.ARADDR) should be(0x80006000L)
+      dut.io.DataBus.AR.ARREADY.poke(true.B)
+      clock.step()
+      dut.io.DataBus.AR.ARREADY.poke(false.B)
+      dut.io.DataBus.R.RVALID.poke(true.B)
+      dut.io.DataBus.R.RRESP.poke(0.U(2.W))
+      dut.io.DataBus.R.RDATA.poke(0x13572468L.U(32.W))
+      dut.io.DataBus.R.RLAST.poke(true.B)
+      clock.step()
+      dut.io.DataBus.R.RVALID.poke(false.B)
+      dut.io.DataBus.R.RLAST.poke(false.B)
+      waitUntil(clock, bool(dut.io.out.valid), "禁用 DCache 的 load 未返回")
+      long(dut.io.out.bits.LoadData) should be(0x13572468L)
+      consumeOutput(dut, clock)
+      waitUntil(clock, !bool(dut.io.Busy), "load 后 LSU 未排空")
+
+      // store 也不能等带标签 PA；地址直接按物理地址发 AW/W。
+      pokeStore(dut, 0x80006004L, 0x24681357L)
+      acceptInput(dut, clock)
+      waitUntil(clock, bool(dut.io.DataBus.AW.AWVALID), "禁用 DCache 的 store 未发 AW")
+      long(dut.io.DataBus.AW.AWADDR) should be(0x80006004L)
+      bool(dut.io.DataBus.W.WVALID) should be(true)
+      long(dut.io.DataBus.W.WDATA) should be(0x24681357L)
+      dut.io.DataBus.AW.AWREADY.poke(true.B)
+      dut.io.DataBus.W.WREADY.poke(true.B)
+      clock.step()
+      dut.io.DataBus.AW.AWREADY.poke(false.B)
+      dut.io.DataBus.W.WREADY.poke(false.B)
+      waitUntil(clock, bool(dut.io.DataBus.B.BREADY), "store 未等待 B")
+      dut.io.DataBus.B.BVALID.poke(true.B)
+      dut.io.DataBus.B.BRESP.poke(0.U(2.W))
+      clock.step()
+      dut.io.DataBus.B.BVALID.poke(false.B)
+      waitUntil(clock, bool(dut.io.out.valid), "禁用 DCache 的 store 未退休")
+      long(dut.io.out.bits.ALUResult) should be(0x80006004L)
+      consumeOutput(dut, clock)
+    }
+  }
 }

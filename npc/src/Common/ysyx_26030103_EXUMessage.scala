@@ -15,6 +15,9 @@ class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
   val Instruction = UInt(32.W)
   val IsCompressed = Bool()
   val Retire = Bool()
+  // 本指令在 EXU 真正写入了 minstret/minstreth。该标记随 LSU 传到 WBU，
+  // 使写计数器的指令自身退休时不触发 minstret 自增（它仍然退休）。
+  val WritesMinstret = Bool()
   // EXU算好交给MEM/WBU的最终写回相关字段
   val Rd = UInt(5.W)
   val RegisterWrite = Bool()

@@ -33,6 +33,10 @@ class ysyx_26030103_PMU(
     val csrWen = Input(Bool())
     val csrWdata = Input(UInt(XLEN.W))
     val mcountinhibit = Input(UInt(32.W))
+    // S 模式可见的 scountovf 位必须受 mcounteren 门控；M 模式保持完整视图。
+    val counteren = Input(UInt(32.W))
+    // 软件向 mip.LCOFI 写 0 时清除所有 mhpmevent 的 OF 汇总位。
+    val lcofiClear = Input(Bool())
     val readData = Output(UInt(XLEN.W))
     val scountovf = Output(UInt(32.W))
     val lcofiPending = Output(Bool())
@@ -74,6 +78,9 @@ class ysyx_26030103_PMU(
       Events(i) := io.csrWdata
     }.elsewhen(Overflow) {
       Events(i) := Events(i) | OfMask
+    }.elsewhen(io.lcofiClear) {
+      // mip.LCOFI 写 0：清除该计数器的 overflow 汇总位。
+      Events(i) := Events(i) & ~OfMask
     }
 
     when(LowWrite) {
@@ -104,14 +111,19 @@ class ysyx_26030103_PMU(
   }
 
   val Scountovf = Cat(OverflowBits.asUInt, 0.U(3.W))
+  // S/U 模式读 scountovf 时，只有 mcounteren 允许的对应计数器位可见；
+  // M 模式保留全部 overflow 位。低 3 位本来就没有对应计数器。
+  val VisibleScountovf =
+    (if (EnableSscofpmf) Scountovf else 0.U(32.W)) &
+      Mux(io.privilege === 3.U, "hffffffff".U(32.W), io.counteren)
   val ScountovfWide =
-    if (XLEN == 32) Scountovf
-    else Cat(0.U((XLEN - 32).W), Scountovf)
+    if (XLEN == 32) VisibleScountovf
+    else Cat(0.U((XLEN - 32).W), VisibleScountovf)
   when(io.csrAddr === CountOvf.U(12.W)) {
     ReadData := ScountovfWide
   }
   io.readData := ReadData
-  io.scountovf := (if (EnableSscofpmf) Scountovf else 0.U(32.W))
+  io.scountovf := VisibleScountovf
   io.lcofiPending :=
     (if (EnableSscofpmf) OverflowBits.reduce(_ || _) else false.B)
 }

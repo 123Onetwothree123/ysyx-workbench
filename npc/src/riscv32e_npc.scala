@@ -5,12 +5,22 @@ import chisel3.util._
 import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.infra._
 
-class riscv32e_npc_AXIRAM(val ramBytes: Long = 64L * 1024L * 1024L) extends Module {
+class riscv32e_npc_AXIRAM(
+    val ramBytes: Long = 64L * 1024L * 1024L,
+    val socXLEN: Int = 32
+) extends Module {
   require(ramBytes > 0, "direct-NPC RAM 大小必须为正")
   require((ramBytes & (ramBytes - 1)) == 0, "direct-NPC RAM 大小必须是 2 的幂")
   require(ramBytes % 4 == 0, "direct-NPC RAM 大小必须是 4 字节的倍数")
+  // direct-NPC 顶层只实现 32 位 AXI（地址/数据同宽、4 位 WSTRB），
+  // 与 rtl/riscv32e_npc_SimTop.sv 的固定端口一致。Makefile 的 direct
+  // 目标会强制 EffectiveSocXLEN=32；这里再拒绝任何 64 位实例化，避免
+  // 生成无法与 SimTop 连接的 RAM 从设备。
+  require(socXLEN == 32,
+    "direct-NPC AXIRAM 只支持 32 位 SoC AXI；64 位 SoC 请使用完整 " +
+      "ysyxSoC 构建（SIM_TOP=soc），不要实例化 riscv32e_npc_AXIRAM")
   val io = IO(new Bundle {
-    val axi = Flipped(new ysyx_26030103_AXI5IO(32, 32, 4))
+    val axi = Flipped(new ysyx_26030103_AXI5IO(socXLEN, socXLEN, 4))
     // direct-NPC 在构造 DUT 后由 C++ 将命令行镜像写入 RAM。
     // 这使 RTL 和 DiffTest/调试器共用同一份 FlashMemory，
     // 不再依赖当前工作目录下可能过期的 program.hex。

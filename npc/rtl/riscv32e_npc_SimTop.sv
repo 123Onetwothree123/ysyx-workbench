@@ -1,4 +1,8 @@
 /* verilator lint_off PINMISSING */
+// direct-NPC 固定使用 32 位 SoC AXI（32 位地址、32 位数据、4 位 WSTRB）。
+// Makefile 的 direct-NPC 目标会强制 EffectiveSocXLEN=32，并在构建
+// 前检查生成 RTL 的 master AXI 宽度；不要把这个顶层直接接到
+// SOC_XLEN=64 的 CPU wrapper，否则地址/数据会被截断。
 module riscv32e_npc_SimTop(
   input         clock,
   input         reset,
@@ -125,6 +129,8 @@ module riscv32e_npc_SimTop(
   output perf_div_early_out, perf_div_done
 );
 
+  // AXI5 master 的地址/数据/WSTRB 宽度必须与 AXIRAM 的 32 位端口一致；
+  // 生成 CPU wrapper 的 SoC XLEN 由 Makefile 强制为 32。
   wire        cpu_awready, cpu_awvalid, cpu_wready, cpu_wvalid, cpu_wlast;
   wire [31:0] cpu_awaddr, cpu_wdata;
   wire [3:0]  cpu_awid, cpu_arid;

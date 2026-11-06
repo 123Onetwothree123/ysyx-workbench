@@ -19,6 +19,8 @@ constexpr std::uint16_t kMstatus = 0x300;
 constexpr std::uint16_t kMtvec = 0x305;
 constexpr std::uint16_t kMepc = 0x341;
 constexpr std::uint16_t kMcause = 0x342;
+constexpr std::uint16_t kMtval = 0x343;
+constexpr std::uint16_t kSatp = 0x180;
 constexpr std::uint32_t kMachineExternalInterrupt = 0x8000000bU;
 
 std::string hex32(std::uint32_t value) {
@@ -1068,6 +1070,65 @@ void testMtvecVectoredMode() {
   tb.tick();
 }
 
+void testSatpWriteFlushesYoungerFetches() {
+  // satp 写入切换地址空间：即使软件随后才执行 sfence.vma，也必须先冲刷
+  // 已带着旧上下文 BTB 快照预取的年轻指令，防止伪重定向丢失当前副作用。
+  ExuTestbench tb;
+  constexpr std::uint32_t pc = 0x80004000U;
+  tb.beginInstruction(pc);
+  tb.dut().io_in_bits_IsCsrrw = 1;
+  tb.dut().io_in_bits_CSRAddress = kSatp;
+  tb.dut().io_in_bits_Rs1 = 1;
+  tb.dut().io_in_bits_Rs1Data = 0x80000000U;
+  tb.dut().io_in_bits_RegisterWrite = 1;
+  tb.dut().io_in_bits_Rd = 1;
+  tb.dut().io_in_bits_WBSelect = 3;
+  tb.eval();
+
+  CHECK(tb.dut().io_in_ready, "satp write was not accepted");
+  CHECK(tb.dut().io_out_valid, "satp write did not reach the EXU output");
+  CHECK(tb.dut().io_Redirect,
+        "satp write did not redirect/flush younger fetches");
+  CHECK(tb.dut().io_FlushIF, "satp write did not assert the pipeline flush");
+  CHECK_EQ(tb.dut().io_RedirectTarget, pc + 4U,
+           "satp write redirect target");
+  tb.tick();
+  tb.driveIdle();
+  tb.eval();
+}
+
+void testFetchFaultTvalUsesFaultingFetchAddress() {
+  // C 模式下 32 位指令跨字时，故障取指地址可能位于第二个字，而 mepc/sepc
+  // 必须仍指向指令起点。IFU 用 pred_target 携带故障取指 VA；EXU 对取指类
+  // 异常（access fault/page fault）写 mtval/stval 时必须使用它。
+  for (const std::uint32_t cause : {1U, 13U}) {
+    ExuTestbench tb;
+    tb.csrWrite(kMtvec, 0x00000100U);
+
+    constexpr std::uint32_t pc = 0x80002000U;
+    constexpr std::uint32_t fault_va = 0x80002004U;
+    tb.beginInstruction(pc);
+    tb.dut().io_in_bits_ExceptionValid = 1;
+    tb.dut().io_in_bits_ExceptionCause = cause;
+    tb.dut().io_in_bits_pred_taken = 0;
+    tb.dut().io_in_bits_pred_target = fault_va;
+    tb.eval();
+
+    CHECK(tb.dut().io_ExceptionTaken, "fetch fault did not enter the trap handler");
+    CHECK(!tb.dut().io_Redirect, "fetch fault leaked a redirect");
+    CHECK_EQ(tb.dut().io_TrapPC, pc, "fetch fault TrapPC");
+    CHECK_EQ(tb.dut().io_TrapCause, cause, "fetch fault TrapCause");
+    CHECK_EQ(tb.dut().io_CSRStateTval, fault_va,
+             "fetch fault next-state tval");
+
+    tb.tick();
+    tb.driveIdle();
+    tb.eval();
+    CHECK_EQ(tb.csrRead(kMepc), pc, "fetch fault mepc/sepc");
+    CHECK_EQ(tb.csrRead(kMtval), fault_va, "fetch fault stval/mtval");
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -1099,14 +1160,22 @@ int main(int argc, char **argv) {
       {"JAL misalignment", testJalMisalignment},
       {"JALR misalignment", testJalrMisalignment},
       {"mepc alignment", testMepcAlignment},
+      {"satp write flushes younger fetches",
+       testSatpWriteFlushesYoungerFetches},
+      {"fetch fault tval uses faulting fetch address",
+       testFetchFaultTvalUsesFaultingFetchAddress},
       {"CSR read/modify/write operations", testCsrReadModifyWriteOperations},
       {"mstatus WARL and transitions", testMstatusWarlAndTransitions},
       {"mtvec WARL/direct", testMtvecWarlAndDirectMode},
       {"mtvec vectored", testMtvecVectoredMode},
   };
 
+  const std::string filter = argc > 1 ? argv[1] : "";
   std::size_t passed = 0;
   for (const auto &[name, test] : tests) {
+    if (!filter.empty() && name.find(filter) == std::string::npos) {
+      continue;
+    }
     try {
       test();
       ++passed;

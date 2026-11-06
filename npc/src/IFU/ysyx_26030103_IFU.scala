@@ -136,8 +136,9 @@ class ysyx_26030103_IFU(
 
     when(state === sWait && io.RespValid) {
       when(io.RespExceptionValid) {
-        // 取指访问错误优先于半字拼装。pc 仍指向指令起点；mtval 由 EXU
-        // 按 PC 回退，mepc 因此能精确指到这条指令。
+        // 取指访问错误优先于半字拼装。pc 仍指向指令起点用于 sepc/mepc；
+        // 实际故障取指地址（可能是跨字第二个字）由 pred_target 带给 EXU
+        // 写入 stval/mtval。
         emitFault := true.B
         outException := true.B
         outCause := io.RespExceptionCause
@@ -181,7 +182,10 @@ class ysyx_26030103_IFU(
     io.Out.bits.ExceptionCause := Mux(outException, outCause, 0.U(4.W))
     io.Out.bits.AccessFaultResp := outAccessFaultResp
     io.Out.bits.pred_taken := outPredTaken && !outException
-    io.Out.bits.pred_target := Mux(outException, 0.U, outPredTarget)
+    // 异常指令不消费预测目标；这里复用 pred_target 把实际发生故障的取指
+    // 地址送到 EXU 作为 stval/mtval。32 位指令跨字时第二个字（如 ...1000）
+    // 才故障，而 Out.bits.pc/sepc 仍保持指令起点（...ffe）。
+    io.Out.bits.pred_target := Mux(outException, fetchAddr, outPredTarget)
 
     // 第一个半字只是内部中间结果，可以直接消费；产生输出或故障的响应
     // 必须等下游握手，避免在反压时丢指令。
