@@ -31,8 +31,11 @@ class ysyx_26030103_DCacheResponse(val DataWidth: Int = 32) extends Bundle {
   */
 class ysyx_26030103_DCacheInterface(
     val AddressWidth: Int = 32,
-    val DataWidth: Int = 32
+    val DataWidth: Int = 32,
+    val BusDataWidth: Int = 32
 ) extends Bundle {
+  require(BusDataWidth == 32 || BusDataWidth == 64,
+    s"DCacheInterface BusDataWidth 非法: $BusDataWidth")
   val req = Flipped(Decoupled(new ysyx_26030103_DCacheRequest(AddressWidth)))
   // VIPT 并行路径的翻译结果：PA 可能晚于 req 到达，paddr_vaddr 是这笔
   // PA 对应的虚拟地址，用作“迟到 PA”的归属标签。PIPT 模式忽略这两个端口。
@@ -47,7 +50,8 @@ class ysyx_26030103_DCacheInterface(
   val StoreVAddr = Input(UInt(AddressWidth.W))
   val StoreData = Input(UInt(DataWidth.W))
   val StoreStrb = Input(UInt((DataWidth / 8).W))
-  val AXI = new ysyx_26030103_AXI5IO(AddressWidth) // DCache只使用AR/R通道
+  val AXI =
+    new ysyx_26030103_AXI5IO(AddressWidth, BusDataWidth, 4) // DCache只使用AR/R通道
   val flush = Input(Bool())
   // DMA 地址级 snoop（仅 DMA_COHERENCE=hardware_snoop 生成）：
   // [dma_snoop_start, dma_snoop_end] 是 DMA 写实际覆盖的字节范围。

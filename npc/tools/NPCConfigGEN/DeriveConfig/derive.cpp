@@ -12,6 +12,15 @@ void deriveEffectiveConfig(std::map<std::string, std::string> &values)
     if (socXlen != 32 && socXlen != 64)
         throw std::runtime_error("SOC_XLEN 只允许 32/64");
     values["SOC_XLEN_EFFECTIVE"] = std::to_string(socXlen);
+    const bool internalFollow =
+        asBool(values, "INTERNAL_BUS_WIDTH_FOLLOW_CPU", true);
+    const long long internalWidth =
+        internalFollow ? xlen
+                       : asInt(values, "INTERNAL_BUS_WIDTH",
+                               xlen == 64 ? 64 : 32);
+    if (internalWidth != 32 && internalWidth != 64)
+        throw std::runtime_error("INTERNAL_BUS_WIDTH 只允许 32/64");
+    values["INTERNAL_BUS_WIDTH_EFFECTIVE"] = std::to_string(internalWidth);
     setConfigDefault(values, "ADDRESS_WIDTH",
                      xlen == 64 ? "64" : "32");
     values["APB_CPU_FREQ_MHZ"] = values["SYNTH_FREQ"];

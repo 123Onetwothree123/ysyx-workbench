@@ -12,8 +12,12 @@ import _root_.ysyx_26030103.infra.ysyx_26030103_AXI5IO
   *      语义与EXU提交点使用的约定保持一致；
   *   3. kill 丢弃在飞取指请求，flush（fence.i）使全部缓存行失效。
   */
-class ysyx_26030103_ICacheInterface(val AddressWidth: Int = 32)
-    extends Bundle {
+class ysyx_26030103_ICacheInterface(
+    val AddressWidth: Int = 32,
+    val DataWidth: Int = 32
+) extends Bundle {
+  require(DataWidth == 32 || DataWidth == 64,
+    s"ICacheInterface DataWidth 非法: $DataWidth")
   // fetch_addr：物理地址（PIPT 下也是唯一地址）；fetch_vaddr：虚拟地址。
   val fetch_addr = Input(UInt(AddressWidth.W))
   val fetch_vaddr = Input(UInt(AddressWidth.W))
@@ -33,7 +37,7 @@ class ysyx_26030103_ICacheInterface(val AddressWidth: Int = 32)
   val resp_fault = Output(Bool()) // 该响应是否是取指访问错误
   val resp_valid = Output(Bool())
   val resp_ready = Input(Bool())
-  val axi = new ysyx_26030103_AXI5IO(AddressWidth)
+  val axi = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
   val perf_hit = Output(Bool())
   val perf_miss = Output(Bool())
   val perf_refill_req = Output(Bool())

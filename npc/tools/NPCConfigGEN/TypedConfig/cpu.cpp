@@ -11,6 +11,12 @@ void addIsa(TypedFields &root, const Config &values, long long xlen,
     addField(isa, "soc_xlen", TypedJson::integer(socXlen));
     addField(isa, "soc_xlen_follow_cpu",
              TypedJson::boolean(flatBool(values, "SOC_XLEN_FOLLOW_CPU")));
+    addField(isa, "internal_bus_width_follow_cpu",
+             TypedJson::boolean(
+                 flatBool(values, "INTERNAL_BUS_WIDTH_FOLLOW_CPU", true)));
+    addField(isa, "internal_bus_width",
+             TypedJson::integer(
+                 flatInt(values, "INTERNAL_BUS_WIDTH", xlen == 64 ? 64 : 32)));
     addField(isa, "m", TypedJson::boolean(flatBool(values, "RISCV_M")));
     addField(isa, "a", TypedJson::boolean(flatBool(values, "RISCV_A")));
     addField(isa, "c", TypedJson::boolean(flatBool(values, "RISCV_C")));

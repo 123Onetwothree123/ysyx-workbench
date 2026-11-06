@@ -1,0 +1,32 @@
+package ysyx_26030103.io.perf
+import chisel3._
+private[ysyx_26030103] trait ysyx_26030103_PerfFrontendPorts {
+  this: Bundle =>
+  val ifu_fetch = Output(Bool())
+  val ifu_stall_pipeline = Output(Bool())
+  val ifu_stall_axi = Output(Bool())
+  val ifu_stall_ar = Output(Bool())
+  val ifu_stall_r = Output(Bool())
+  val ifu_stall_redirect = Output(Bool())
+  val ifu_stall_idle = Output(Bool())
+  val icache_hit = Output(Bool())
+  val icache_miss = Output(Bool())
+  val icache_refill = Output(Bool())
+  val icache_line_fill = Output(Bool())
+  val btb_hit = Output(Bool())
+  val btb_miss = Output(Bool())
+  val jal_btb_hit = Output(Bool())
+  val ras_hit = Output(Bool())
+  val ras_miss = Output(Bool())
+  val branch_op = Output(Bool())
+  val jal_op = Output(Bool())
+  val jalr_op = Output(Bool())
+  val branch_mispredict = Output(Bool())
+  val branch_taken = Output(Bool())
+  val branch_not_taken = Output(Bool())
+  val redirect_branch = Output(Bool())
+  val redirect_fence_i = Output(Bool())
+  val redirect_trap = Output(Bool())
+  val redirect_mret = Output(Bool())
+  val rvc_inst = Output(Bool())
+}

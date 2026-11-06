@@ -16,12 +16,13 @@ import _root_.ysyx_26030103.mmu._
   */
 class ysyx_26030103_AXIReadMux(
     passWriteA: Boolean = false,
-    val AddressWidth: Int = 32
+    val AddressWidth: Int = 32,
+    val DataWidth: Int = 32
 ) extends Module {
   val io = IO(new Bundle {
-    val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
-    val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
-    val out = new ysyx_26030103_AXI5IO(AddressWidth)
+    val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))
+    val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))
+    val out = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
   })
 
   private val AReadID = ysyx_26030103_AXIReadId.Ifu.U(4.W)
@@ -188,17 +189,34 @@ class ysyx_26030103_AXIReadMux(
 class ysyx_26030103_PTWToAXI(
     busDepth: Int = 16,
     axiReadSlots: Int = ysyx_26030103_AXIReadId.PtwSlots,
-    val AddressWidth: Int = 32
+    val AddressWidth: Int = 32,
+    val DataWidth: Int = 32
 ) extends Module {
+  require(DataWidth == 32 || DataWidth == 64,
+    s"PTWToAXI DataWidth 非法: $DataWidth")
   require(busDepth >= 1, "PTWToAXI 请求队列深度必须 >= 1")
   require(axiReadSlots >= 1 &&
     axiReadSlots <= ysyx_26030103_AXIReadId.PtwSlots,
     "PTWToAXI AXI 读槽位数必须在 1..13（ID 3..15）")
+  private val BusWide = DataWidth == 64
+  private def BusWord(Data: UInt, Address: UInt): UInt =
+    if (BusWide)
+      Mux(Address(2), Cat(Data(31, 0), 0.U(32.W)),
+        Cat(0.U(32.W), Data(31, 0)))
+    else Data(31, 0)
+  private def BusStrb(Strb: UInt, Address: UInt): UInt =
+    if (BusWide)
+      Mux(Address(2), Cat(Strb(3, 0), 0.U(4.W)),
+        Cat(0.U(4.W), Strb(3, 0)))
+    else Strb(3, 0)
+  private def BusSelectWord(Data: UInt, Address: UInt): UInt =
+    if (BusWide) Mux(Address(2), Data(63, 32), Data(31, 0))
+    else Data(31, 0)
   val io = IO(new Bundle {
     val req = Flipped(Decoupled(new ysyx_26030103_PTEBusRequest(AddressWidth)))
     val resp = Decoupled(new ysyx_26030103_PTEBusResponse)
-    val axi = new ysyx_26030103_AXI5IO(AddressWidth)
-    val axiWrite = new ysyx_26030103_AXI5IO(AddressWidth)
+    val axi = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
+    val axiWrite = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
   })
 
   private val ReadBaseID = ysyx_26030103_AXIReadId.PtwBase.U(4.W)
@@ -257,6 +275,7 @@ class ysyx_26030103_PTWToAXI(
     val busy = Bool()
     val done = Bool()
     val origId = UInt(4.W)
+    val addr = UInt(AddressWidth.W)
     val data = UInt(32.W)
     val fault = Bool()
   }
@@ -300,6 +319,7 @@ class ysyx_26030103_PTWToAXI(
     readSlot(freeIdx).busy := true.B
     readSlot(freeIdx).done := false.B
     readSlot(freeIdx).origId := readQ.io.deq.bits.id
+    readSlot(freeIdx).addr := readQ.io.deq.bits.addr
     readSlot(freeIdx).data := 0.U
     readSlot(freeIdx).fault := false.B
   }
@@ -312,6 +332,9 @@ class ysyx_26030103_PTWToAXI(
     (rid - ReadBaseID)(slotIndexBits - 1, 0), 0.U)
   val acceptedSlotMatches =
     readQ.io.deq.fire && freeAxiId === rid
+  val readRespAddr =
+    Mux(acceptedSlotMatches, readQ.io.deq.bits.addr,
+      readSlot(ridSlot).addr)
   val readRespExpected = ridInRange &&
     (readSlot(ridSlot).busy || acceptedSlotMatches)
   io.axi.R.RREADY := readRespExpected
@@ -323,7 +346,8 @@ class ysyx_26030103_PTWToAXI(
     // 普通响应对应 busy 槽；AR/R 同拍返回时 busy/origId 已在上面的
     // readQ 握手块中写入，这里只保存数据与错误状态。
     readSlot(ridSlot).done := true.B
-    readSlot(ridSlot).data := io.axi.R.RDATA
+    readSlot(ridSlot).data :=
+      BusSelectWord(io.axi.R.RDATA, readRespAddr)
     readSlot(ridSlot).fault := io.axi.R.RRESP =/= 0.U
   }
 
@@ -349,8 +373,8 @@ class ysyx_26030103_PTWToAXI(
   io.axiWrite.AW.AWQOS := 0.U
   io.axiWrite.W.WVALID :=
     writeState === writeReq && writeQ.io.deq.valid && !wDone
-  io.axiWrite.W.WDATA := writeHead.data
-  io.axiWrite.W.WSTRB := writeHead.strb
+  io.axiWrite.W.WDATA := BusWord(writeHead.data, writeHead.addr)
+  io.axiWrite.W.WSTRB := BusStrb(writeHead.strb, writeHead.addr)
   io.axiWrite.W.WLAST := true.B
   io.axiWrite.B.BREADY := writeState === writeWait
 
@@ -410,12 +434,13 @@ class ysyx_26030103_PTWToAXI(
   */
 class ysyx_26030103_AXIWriteMux(
     val PassRead: Boolean = true,
-    val AddressWidth: Int = 32
+    val AddressWidth: Int = 32,
+    val DataWidth: Int = 32
 ) extends Module {
   val io = IO(new Bundle {
-    val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
-    val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth))
-    val out = new ysyx_26030103_AXI5IO(AddressWidth)
+    val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))
+    val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))
+    val out = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
   })
   val idle :: aWrite :: bWrite :: aResp :: bResp :: Nil = Enum(5)
   val state = RegInit(idle)

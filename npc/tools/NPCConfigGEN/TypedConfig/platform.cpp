@@ -28,7 +28,15 @@ void addSoc(TypedFields &root, const Config &values, long long xlen,
              TypedJson::boolean(flatBool(values, "CHIPLINK")));
     addField(soc, "sdram_use_axi",
              TypedJson::boolean(flatBool(values, "SDRAM_USE_AXI", true)));
-    addField(soc, "internal_xlen", TypedJson::integer(32));
+    const bool internalFollow =
+        flatBool(values, "INTERNAL_BUS_WIDTH_FOLLOW_CPU", true);
+    const long long internalWidth =
+        internalFollow ? xlen
+                       : flatInt(values, "INTERNAL_BUS_WIDTH",
+                                 xlen == 64 ? 64 : 32);
+    addField(soc, "internal_bus_width_follow_cpu",
+             TypedJson::boolean(internalFollow));
+    addField(soc, "internal_xlen", TypedJson::integer(internalWidth));
     addField(soc, "internal_id_bits", TypedJson::integer(4));
     const long long synthFreq = flatInt(values, "SYNTH_FREQ", 450);
     TypedFields apb;

@@ -166,6 +166,15 @@ struct SelfTest {
     values["SOC_XLEN_FOLLOW_CPU"] = Value::make_bool(true);
     values["SOC_XLEN"] = Value::make_int(48);
     expect_ok("soc_xlen_follow_ignores_value", values);
+    values = base_rv64();
+    values["INTERNAL_BUS_WIDTH_FOLLOW_CPU"] = Value::make_bool(false);
+    values["INTERNAL_BUS_WIDTH"] = Value::make_int(48);
+    expect_error("internal_bus_width_48_rejected", values,
+                 "INTERNAL_BUS_WIDTH=48");
+    values = base_rv64();
+    values["INTERNAL_BUS_WIDTH_FOLLOW_CPU"] = Value::make_bool(true);
+    values["INTERNAL_BUS_WIDTH"] = Value::make_int(48);
+    expect_ok("internal_bus_width_follow_ignores_value", values);
     values = base_custom_rv64();
     values["MMU_LEVELS"] = Value::make_int(5);
     values["MMU_PAGE_SIZE_BYTES"] = Value::make_int(4096);

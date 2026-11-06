@@ -41,9 +41,11 @@ case class ysyx_26030103_NPCConfig(
     //   SocXLENFollowCpu=false（默认）时使用 SocXLEN；
     //   SocXLENFollowCpu=true 时 EffectiveSocXLEN=XLEN。
     // 32 位 SoC 可以搭配 64 位 CPU（访问窗口仍限制在低 4GiB）；
-    // 64 位 SoC 的 AXI 桥接尚未接入 RTL，配置值先保留给后续任务。
     SocXLENFollowCpu: Boolean = false,
     SocXLEN: Int = 32,
+    // 内部 AXI 数据宽度：默认随 XLEN，也可固定 32/64。
+    InternalBusWidthFollowCpu: Boolean = true,
+    InternalBusWidth: Int = 32,
     // 缓存
     ICacheEnable: Boolean = true,
     // ICache数据阵列的存储介质：寄存器阵列或同步读SRAM
@@ -193,6 +195,11 @@ case class ysyx_26030103_NPCConfig(
   require(SocXLENFollowCpu || SocXLEN == 32 || SocXLEN == 64,
     "SOC_XLEN 只允许 32 或 64（SOC_XLEN_FOLLOW_CPU=n 时生效），" +
       s"收到 SOC_XLEN=$SocXLEN")
+  require(InternalBusWidthFollowCpu ||
+    InternalBusWidth == 32 || InternalBusWidth == 64,
+    "INTERNAL_BUS_WIDTH 只允许 32 或 64" +
+      "（INTERNAL_BUS_WIDTH_FOLLOW_CPU=n 时生效），" +
+      s"收到 INTERNAL_BUS_WIDTH=$InternalBusWidth")
   /** ysyxSoC CPU 侧接口实际生效的 XLEN/地址/数据宽度。
     *
     * direct-NPC 顶层（riscv32e_npc_SimTop/AXIRAM）固定 32 位 AXI，
@@ -201,9 +208,11 @@ case class ysyx_26030103_NPCConfig(
     * 完整 SoC（SIM_TOP=soc）不受该投影影响。
     */
   final val EffectiveSocXLEN: Int = if (SocXLENFollowCpu) XLEN else SocXLEN
-  // SoC64 的 AXI 端口是 64 位地址/数据，NPC 内部 SoC 总线仍是 32 位
-  // 数据 beat，因此必须经过 AXI5 宽度桥；SoC32 时数据通道同宽，但
-  // RV64 内部地址仍需要 64->32 边界检查（由同一个桥完成）。
+  final val EffectiveInternalBusWidth: Int =
+    if (InternalBusWidthFollowCpu) XLEN else InternalBusWidth
+  require(EffectiveInternalBusWidth == 32 || EffectiveInternalBusWidth == 64,
+    s"内部总线宽度只允许 32 或 64，收到 $EffectiveInternalBusWidth")
+  // 仅用于配置日志：外部 SoC 不是 32 位时提示启用了边界桥。
   final val SocXLENNeedsAxiBridge: Boolean = EffectiveSocXLEN != 32
   // RV64 MMU 默认接入标准 Sv39/Sv48；显式 CUSTOM 页几何由 MMUProfile
   // 自身完成参数/非标准 satp MODE 校验。这里只检查 profile 与顶层
@@ -686,6 +695,8 @@ case class ysyx_26030103_NPCConfig(
       s"alu_params=${ALUProfile.Describe(ALUImpl)}, " +
       s"idu_decode=${IDUDecodeMinimizer.Name}, " +
       s"addr_w=$AddressWidth, " +
+      s"internal_bus_w=$EffectiveInternalBusWidth" +
+      s"${if (InternalBusWidthFollowCpu) "(follow)" else ""}, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
       s"mdu=${MDUImpl.Name}, " +
       s"mul=${MULImpl.Name}/${MULParams.Encoding.Name}, " +

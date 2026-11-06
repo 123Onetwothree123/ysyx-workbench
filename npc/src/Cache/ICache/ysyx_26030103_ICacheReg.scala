@@ -8,6 +8,7 @@ class ysyx_26030103_ICacheReg(
     BlockSizeLog2: Int = 4,
     IndexBits: Int = 5,
     AddressWidth: Int = 32,
+    DataWidth: Int = 32,
     Vipt: Boolean = false,
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装前按物理 tag 失效其他 set 的副本，维持每个物理行至多一份。
@@ -28,7 +29,9 @@ class ysyx_26030103_ICacheReg(
     DmaSnoop: Boolean = false,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
-) extends ysyx_26030103_ICacheBase(AddressWidth) {
+) extends ysyx_26030103_ICacheBase(AddressWidth, DataWidth) {
+  require(DataWidth == 32 || DataWidth == 64,
+    s"ICacheReg DataWidth 非法: $DataWidth")
   ysyx_26030103_ViptAliasScan.requireMode(ViptAliasScanMode, "ICacheReg")
   // 只在真正需要 alias 维护的几何下生成扫描/目录硬件。
   private val AliasScanActive =
@@ -57,7 +60,22 @@ class ysyx_26030103_ICacheReg(
     else address(AddressWidth - 1, IndexBits + BlockSizeLog2)
   val NumBlocks = 1 << IndexBits
   val WordsPerBlock = 1 << (BlockSizeLog2 - 2) // 块大小 ÷ 4字节
-  val WordCntBits = log2Ceil(WordsPerBlock) // 块内字数计数器位宽
+  val WordsPerBeat = DataWidth / 32 // 每个AXI beat包含的32位字数(32位总线=1, 64位总线=2)
+  val BeatsPerBlock = WordsPerBlock / WordsPerBeat // 填满一条line所需的beat数
+  require(WordsPerBlock % WordsPerBeat == 0,
+    s"块内字数($WordsPerBlock)不能被每拍字数($WordsPerBeat)整除")
+  val BeatCntBits = log2Ceil(BeatsPerBlock).max(1) // refill beat计数器位宽
+  val BusBytes = DataWidth / 8 // 一个AXI beat的字节数
+  val BeatSizeLog2 = log2Ceil(BusBytes) // ARSIZE: 32位总线=2, 64位总线=3
+  private val BeatWordBits = log2Ceil(WordsPerBeat) // beat内word偏移位宽
+  private def BeatWordOffset(Beat: UInt, WordInBeat: Int): UInt =
+    if (WordsPerBeat == 1) Beat
+    else if (BeatsPerBlock == 1) WordInBeat.U(BeatWordBits.W)
+    else Cat(Beat, WordInBeat.U(BeatWordBits.W))
+  private def BeatWordMask(Beat: UInt): UInt =
+    (0 until WordsPerBeat)
+      .map(k => UIntToOH(BeatWordOffset(Beat, k), WordsPerBlock))
+      .reduce(_ | _)
   // 扫描/目录参数只在对应模式生效，但先统一解析，非法配置在 elaboration
   // 期明确报错，不会生成“看起来是 parallel 实际退化成 serial”的硬件。
   private val ScanWidth =
@@ -261,10 +279,19 @@ class ysyx_26030103_ICacheReg(
   val ref_offset =
     if (WordsPerBlock > 1) ref_addr(BlockSizeLog2 - 1, 2)
     else 0.U
+  val ref_keyword_beat =
+    if (WordsPerBeat == 1) ref_offset
+    else if (BeatsPerBlock > 1)
+      ref_offset(BlockSizeLog2 - 3, BeatWordBits)
+    else 0.U
+  val NonCacheableReadWord =
+    if (DataWidth == 64)
+      Mux(ref_addr(2) === 1.U, io.axi.R.RDATA(63, 32), io.axi.R.RDATA(31, 0))
+    else io.axi.R.RDATA
   val ref_cacheable = Reg(Bool())
-  val refill_cnt = RegInit(0.U(WordCntBits.W)) // 当前正在填充第几个word
-  val RefillOffsetSafe = if (WordsPerBlock > 1) refill_cnt else 0.U
-  // 只有RRESP成功且已握手的word才能被early-restart后的新fetch使用。
+  val refill_cnt = RegInit(0.U(BeatCntBits.W)) // 当前正在填充第几个beat
+  val RefillOffsetSafe =
+    if (WordsPerBlock > 1) BeatWordOffset(refill_cnt, 0) else 0.U
   // line valid仍要等所有beat成功后才会置位。
   val refill_word_valid = RegInit(0.U(WordsPerBlock.W))
   val burst_mode = RegInit(false.B) // 突发传输模式标志
@@ -298,7 +325,7 @@ class ysyx_26030103_ICacheReg(
   val refill_r_fire = rfstate === rf_resp && io.axi.R.RVALID
   val malformed_refill_beat_now =
     refill_r_fire && !io.axi.R.RLAST &&
-      (!ref_cacheable || !burst_mode || refill_cnt === (WordsPerBlock - 1).U)
+      (!ref_cacheable || !burst_mode || refill_cnt === (BeatsPerBlock - 1).U)
   val refill_error_now =
     refill_r_fire && (io.axi.R.RRESP =/= 0.U || malformed_refill_beat_now)
   // serial/parallel alias 扫描的启动事件：真正被接受的 cacheable refill AR。
@@ -448,7 +475,7 @@ class ysyx_26030103_ICacheReg(
   io.axi.AR.ARID := 0.U
   io.axi.AR.ARADDR := 0.U
   io.axi.AR.ARLEN := 0.U
-  io.axi.AR.ARSIZE := 2.U
+  io.axi.AR.ARSIZE := BeatSizeLog2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
   io.axi.AR.ARCACHE := 0.U
@@ -623,9 +650,10 @@ class ysyx_26030103_ICacheReg(
       val cancel_unaccepted =
         io.kill && s1_waits && !ar_exposed && !io.flush
       io.axi.AR.ARVALID := !cancel_unaccepted
+      io.axi.AR.ARSIZE := Mux(ref_cacheable, BeatSizeLog2.U, 2.U)
       io.axi.AR.ARLEN := Mux(
         ref_cacheable && burst_mode,
-        (WordsPerBlock - 1).U,
+        (BeatsPerBlock - 1).U,
         0.U
       )
       io.axi.AR.ARADDR := Mux(
@@ -633,7 +661,11 @@ class ysyx_26030103_ICacheReg(
         Mux(
           burst_mode,
           Cat(ref_addr(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W)),
-          Cat(ref_addr(AddressWidth - 1, BlockSizeLog2), refill_cnt, 0.U(2.W))
+          if (BlockSizeLog2 > 2)
+            Cat(ref_addr(AddressWidth - 1, BlockSizeLog2), RefillOffsetSafe,
+              0.U(2.W))
+          else
+            Cat(ref_addr(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W))
         ),
         ref_addr
       )
@@ -667,7 +699,7 @@ class ysyx_26030103_ICacheReg(
         val r_error = io.axi.R.RRESP =/= 0.U
         // 非缓存访问只有一个beat；缓存访问则只有请求所在的关键词beat
         // 能把错误归属给当前s1请求，其他beat的错误仅记录为line错误。
-        val keyword_beat = !ref_cacheable || (refill_cnt === ref_offset)
+        val keyword_beat = !ref_cacheable || (refill_cnt === ref_keyword_beat)
 
         // 错误必须在discard时也记录（事务仍在排空），但不能把被flush的
         // 响应重新写回s1。sticky状态保证后续成功beat不能重新置valid。
@@ -686,20 +718,26 @@ class ysyx_26030103_ICacheReg(
           // resp_data_reg。这也避免“旧响应pop+新partial hit accept+R beat”
           // 同拍时，旧s1_waits把新命中数据覆盖。
           when(s1_waits && !ref_cacheable) {
-            resp_data_reg := io.axi.R.RDATA
+            resp_data_reg := NonCacheableReadWord
           }
           when(ref_cacheable) { // 阵列填充无条件进行, 数据是真实内存内容
             tag(RefIndexSafe) := ref_tag
-            data(RefIndexSafe)(RefillOffsetSafe) := io.axi.R.RDATA
+            for (k <- 0 until WordsPerBeat) {
+              val wordOffset =
+                if (k == 0) RefillOffsetSafe
+                else BeatWordOffset(refill_cnt, k)
+              data(RefIndexSafe)(wordOffset) :=
+                io.axi.R.RDATA(k * 32 + 31, k * 32)
+            }
             when(!refill_error) {
               refill_word_valid := refill_word_valid |
-                UIntToOH(refill_cnt, WordsPerBlock)
+                BeatWordMask(refill_cnt)
             }
             // 只有整条line无任何错误时才允许变为valid；当前beat为成功
             // 响应，refill_error覆盖此前已经发生的错误。serial/parallel
             // 扫描尚未覆盖全部 set 时先挂起，扫描最后一拍再补置 valid。
             when(
-              refill_cnt === (WordsPerBlock - 1).U &&
+              refill_cnt === (BeatsPerBlock - 1).U &&
                 io.axi.R.RLAST && !refill_error
             ) {
               PerfLineFill := true.B
@@ -737,16 +775,16 @@ class ysyx_26030103_ICacheReg(
             when(discard) {
               discard := false.B
               rfstate := rf_idle
-            }.elsewhen(refill_cnt === (WordsPerBlock - 1).U) {
+            }.elsewhen(refill_cnt === (BeatsPerBlock - 1).U) {
               when(s1_waits) {
                 s1_ready := true.B
               }
               rfstate := rf_idle
             }.otherwise {
-              burst_mode := false.B // 提前RLAST: 剩余的词改单拍补取
+              burst_mode := false.B // 提前RLAST: 剩余的beat改单拍补取
               rfstate := rf_req
             }
-          }.elsewhen(refill_cnt === (WordsPerBlock - 1).U) {
+          }.elsewhen(refill_cnt === (BeatsPerBlock - 1).U) {
             // 已收到ARLEN指定的最后一拍却没有RLAST，该line绝不能安装。
             // 继续排空R通道直到迟到的RLAST，避免它被后续refill误收。
             valid(RefIndexSafe) := false.B
@@ -767,7 +805,7 @@ class ysyx_26030103_ICacheReg(
             when(discard) {
               discard := false.B
               rfstate := rf_idle
-            }.elsewhen(refill_cnt === (WordsPerBlock - 1).U) {
+            }.elsewhen(refill_cnt === (BeatsPerBlock - 1).U) {
               when(s1_waits) {
                 s1_ready := true.B
               }
@@ -790,7 +828,6 @@ class ysyx_26030103_ICacheReg(
             drain_timer := 0.U
           }
         }.otherwise {
-          // 非缓存区: 一词一拍, 当前拍即结束
           when(io.axi.R.RLAST) {
             when(discard) {
               discard := false.B

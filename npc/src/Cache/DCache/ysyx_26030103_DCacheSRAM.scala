@@ -12,6 +12,7 @@ class ysyx_26030103_DCacheSRAM(
     IndexBits: Int = 5,
     AddressWidth: Int = 32,
     DataWidth: Int = 32,
+    BusDataWidth: Int = 32,
     Vipt: Boolean = false,
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装和写直达 store 完成时按物理 tag 失效其他 set 的副本。
@@ -33,7 +34,9 @@ class ysyx_26030103_DCacheSRAM(
     Bypass: Boolean = true,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
-) extends ysyx_26030103_DCacheBase(AddressWidth, DataWidth) {
+) extends ysyx_26030103_DCacheBase(AddressWidth, DataWidth, BusDataWidth) {
+  require(BusDataWidth == 32 || BusDataWidth == 64,
+    s"DCacheSRAM BusDataWidth 非法: $BusDataWidth")
   ysyx_26030103_ViptAliasScan.requireMode(ViptAliasScanMode, "DCacheSRAM")
   private val AliasScanActive =
     ViptAliasSafe && Enable &&
@@ -68,6 +71,11 @@ class ysyx_26030103_DCacheSRAM(
     else address(AddressWidth - 1, IndexBits + BlockSizeLog2)
   private val NumBlocks = 1 << IndexBits
   private val WordsPerBlock = 1 << (BlockSizeLog2 - 2)
+  private val WordsPerBeat = BusDataWidth / 32
+  private val BeatsPerBlock = WordsPerBlock / WordsPerBeat
+  private val BusBytesLog2 = log2Ceil(BusDataWidth / 8)
+  require(WordsPerBlock % WordsPerBeat == 0,
+    s"DCache line 的 word 数($WordsPerBlock) 必须能被每拍 word 数($WordsPerBeat) 整除")
   private val IndexWidth = IndexBits.max(1)
   private val OffsetWidth = (BlockSizeLog2 - 2).max(1)
   private val CountWidth = log2Ceil(WordsPerBlock).max(1)
@@ -88,7 +96,10 @@ class ysyx_26030103_DCacheSRAM(
   private def NextOffset(offset: UInt): UInt =
     (offset + 1.U)(CountWidth - 1, 0)
   private val ReadPorts = if (DataWidth == 64) 2 else 1
-  private val WritePorts = if (DataWidth == 64) 3 else 2
+  private val RefillWritePorts = WordsPerBeat
+  private val StoreWriteBase = RefillWritePorts
+  private val StoreWritePorts = if (DataWidth == 64) 2 else 1
+  private val WritePorts = RefillWritePorts + StoreWritePorts
   // 一致性 flush 是 DCache 自身的可验证接口；生产顶层已由 DMA 写 B
   // 握手的失效脉冲驱动（ysyx_26030103.scala），dontTouch 保证该端口在
   // 叶模块 elaboration 中不被裁掉。
@@ -137,11 +148,6 @@ class ysyx_26030103_DCacheSRAM(
     } else {
       None
     }
-  // data改为同步读SRAM：单块NumBlocks×WordsPerBlock的32位SRAM，1读口+2写口
-  // (refill填充、store镜像更新)，写口自带字节掩码。SRAM.masked配合
-  // UseSRAMBlackbox由Chisel直接生成Verilog(内联黑盒)，不经过CIRCT的
-  // memory降低，因此多写口的字节掩码不会被丢弃。
-  // valid/tag留在触发器阵列（小、需要复位、判定命中不占端口）。
   val sram = SRAM.masked(NumBlocks * WordsPerBlock, Vec(4, UInt(8.W)), ReadPorts, WritePorts, 0)
   // SRAM字地址：组索引与块内word偏移拼成线性地址。
   private def WordAddress(BlockIndex: UInt, WordOffset: UInt): UInt =
@@ -216,8 +222,26 @@ class ysyx_26030103_DCacheSRAM(
   // 保持invalid，但这些字可以安全地服务同一行的后续load；未置位的字绝不
   // 能读取data阵列，因为其中可能还是旧行或尚未初始化的内容。
   val RefillWordValid = RegInit(0.U(WordsPerBlock.W))
+  private def RefillBeatWordIndex(lane: Int): UInt =
+    if (WordsPerBlock > 1) (RefillCount + lane.U)(CountWidth - 1, 0)
+    else 0.U(OffsetWidth.W)
+  private def RefillBeatWordMask: UInt =
+    (0 until WordsPerBeat)
+      .map(lane => UIntToOH(RefillBeatWordIndex(lane), WordsPerBlock))
+      .reduce(_ | _)
+  private def WordInRefillBeat(word: UInt): Bool =
+    if (WordsPerBeat == 1) {
+      word === RefillCount
+    } else {
+      word >= RefillCount && word < (RefillCount + WordsPerBeat.U)
+    }
+  private def RefillBeatWord(word: UInt, data: UInt): UInt =
+    if (WordsPerBeat == 1) {
+      data(31, 0)
+    } else {
+      Mux(word(0), data(63, 32), data(31, 0))
+    }
   // 正常回填使用一笔 INCR burst。仅当不符合请求长度的从机提前给出
-  // RLAST 时，才退化成逐字单拍补齐剩余数据，避免需求 load 永久挂起。
   val RefillBurst = RegInit(false.B)
   val RefillError = RegInit(false.B)
   // 本次 refill 第一次错误 beat 的 RRESP，用于最后统一产生 fault。
@@ -247,16 +271,18 @@ class ysyx_26030103_DCacheSRAM(
   // 本次flush的缓存行重新变为有效。
   val suppressFill = RegInit(false.B)
   val ReqIndexSafe = if (Enable) ReqIndexReg else 0.U(IndexWidth.W)
-  // 写口0(refill填充): 使能默认拉低, 在R拍填充路径里置高; 数据/掩码常连。
-  sram.writePorts(0).address := WordAddress(ReqIndexSafe, RefillCount)
-  sram.writePorts(0).data := VecInit(
-    io.AXI.R.RDATA(7, 0),
-    io.AXI.R.RDATA(15, 8),
-    io.AXI.R.RDATA(23, 16),
-    io.AXI.R.RDATA(31, 24)
-  )
-  sram.writePorts(0).mask.get := VecInit(true.B, true.B, true.B, true.B)
-  sram.writePorts(0).enable := false.B
+  for (lane <- 0 until WordsPerBeat) {
+    sram.writePorts(lane).address :=
+      WordAddress(ReqIndexSafe, RefillBeatWordIndex(lane))
+    sram.writePorts(lane).data := VecInit(
+      io.AXI.R.RDATA(32 * lane + 7, 32 * lane),
+      io.AXI.R.RDATA(32 * lane + 15, 32 * lane + 8),
+      io.AXI.R.RDATA(32 * lane + 23, 32 * lane + 16),
+      io.AXI.R.RDATA(32 * lane + 31, 32 * lane + 24)
+    )
+    sram.writePorts(lane).mask.get := VecInit(true.B, true.B, true.B, true.B)
+    sram.writePorts(lane).enable := false.B
+  }
   // 与 Reg 版保持同一套 load 格式化语义：0/1/2 字节/半字/字，
   // 64 位 DCache 下 width=3 直接拼接两个相邻 word。
   def FormatLoad(
@@ -410,40 +436,40 @@ class ysyx_26030103_DCacheSRAM(
     if (WordsPerBlock > 1) storeIndexAddr(BlockSizeLog2 - 1, 2)
     else 0.U(OffsetWidth.W)
   val StoreTag = TagOf(io.StoreAddr)
-  // 写口1(store镜像更新): 使能默认拉低, 在BRESP成功的store路径里置高;
   // 掩码直接接字节使能, 与原先的读改写等价。
-  sram.writePorts(1).address := WordAddress(StoreIndexSafe, StoreOffset)
-  sram.writePorts(1).data := VecInit(
+  sram.writePorts(StoreWriteBase).address :=
+    WordAddress(StoreIndexSafe, StoreOffset)
+  sram.writePorts(StoreWriteBase).data := VecInit(
     io.StoreData(7, 0),
     io.StoreData(15, 8),
     io.StoreData(23, 16),
     io.StoreData(31, 24)
   )
-  sram.writePorts(1).mask.get := VecInit(
+  sram.writePorts(StoreWriteBase).mask.get := VecInit(
     io.StoreStrb(0),
     io.StoreStrb(1),
     io.StoreStrb(2),
     io.StoreStrb(3)
   )
-  sram.writePorts(1).enable := false.B
+  sram.writePorts(StoreWriteBase).enable := false.B
   if (DataWidth == 64) {
     // 8 字节 store 的高 word 使用独立写口，避免与低 word 争用同一
     // SRAM 地址端口。
-    sram.writePorts(2).address :=
+    sram.writePorts(StoreWriteBase + 1).address :=
       WordAddress(StoreIndexSafe, NextOffset(StoreOffset))
-    sram.writePorts(2).data := VecInit(
+    sram.writePorts(StoreWriteBase + 1).data := VecInit(
       io.StoreData(39, 32),
       io.StoreData(47, 40),
       io.StoreData(55, 48),
       io.StoreData(63, 56)
     )
-    sram.writePorts(2).mask.get := VecInit(
+    sram.writePorts(StoreWriteBase + 1).mask.get := VecInit(
       io.StoreStrb(4),
       io.StoreStrb(5),
       io.StoreStrb(6),
       io.StoreStrb(7)
     )
-    sram.writePorts(2).enable := false.B
+    sram.writePorts(StoreWriteBase + 1).enable := false.B
   }
   val StoreCacheable = ysyx_26030103_DCachePolicy.IsCacheable(
     io.StoreAddr,
@@ -468,7 +494,6 @@ class ysyx_26030103_DCacheSRAM(
   val SameRefillLine = cacheable && RefillActive &&
     io.req.bits.addr(AddressWidth - 1, BlockSizeLog2) ===
       RefillBaseReg(AddressWidth - 1, BlockSizeLog2)
-  // 64 位 load 需要关键词和下一个 word 都已返回；32 位路径保持原判定。
   val WideWordReady =
     if (DataWidth == 64) VecInit(RefillWordValid.asBools)(NextOffset(WordOffset))
     else true.B
@@ -476,13 +501,14 @@ class ysyx_26030103_DCacheSRAM(
     (!(io.req.bits.WidthSelect === 3.U) || WideWordReady)
   val PriorDemandLeaves = DemandResponseDone || io.resp.fire
   val RefillInProgress = state === SReadReq || state === SReadResp
-  val LastRefillWord = RefillCount === (WordsPerBlock - 1).U
+  val LastRefillBeat =
+    RefillCount === ((BeatsPerBlock - 1) * WordsPerBeat).U
   // RREADY在SReadResp恒为高，因此RVALID即表示本拍会消费该beat。寄存的
   // RefillError要到下一拍才生效；将本拍RRESP错误和“必须为单拍末尾却缺
   // RLAST”的协议错误直接旁路进ready，避免错误被采样的同拍仍接受partial hit。
   val RefillBeatArrives = state === SReadResp && RefillActive && io.AXI.R.RVALID
   val RequiredLastMissing = RefillBeatArrives && !io.AXI.R.RLAST &&
-    (LastRefillWord || !RefillBurst)
+    (LastRefillBeat || !RefillBurst)
   val RefillFaultNow =
     (RefillBeatArrives && io.AXI.R.RRESP =/= 0.U) || RequiredLastMissing
   // 同拍成功store会在时钟沿才写入cache阵列；若此时接受同一行的load，响应
@@ -713,11 +739,10 @@ class ysyx_26030103_DCacheSRAM(
     when(StoreHit) {
       when(io.StoreResp === 0.U) {
         // 成功的单拍 store 精确知道新字节值，可以直接维护写直达镜像。
-        // 写口1已常连好地址/数据/字节掩码，这里只需放行使能。
-        sram.writePorts(1).enable := true.B
+        sram.writePorts(StoreWriteBase).enable := true.B
         if (DataWidth == 64) {
           when(io.StoreStrb(7, 4) =/= 0.U) {
-            sram.writePorts(2).enable := true.B
+            sram.writePorts(StoreWriteBase + 1).enable := true.B
           }
         }
       }.otherwise {
@@ -867,13 +892,16 @@ class ysyx_26030103_DCacheSRAM(
       )
       io.AXI.AR.ARLEN := Mux(
         RefillActive && RefillBurst,
-        (WordsPerBlock - 1).U,
-        Mux(!RefillActive && ReqWidthReg === 3.U, 1.U, 0.U)
+        (BeatsPerBlock - 1).U,
+        Mux(!RefillActive && ReqWidthReg === 3.U &&
+          (BusDataWidth == 32).B, 1.U, 0.U)
       )
       io.AXI.AR.ARSIZE := Mux(
-        RefillActive || ReqWidthReg === 3.U,
-        2.U,
-        ReqWidthReg
+        RefillActive,
+        BusBytesLog2.U(3.W),
+        Mux(ReqWidthReg === 3.U,
+          (if (BusDataWidth == 64) 3.U else 2.U),
+          ReqWidthReg)
       )
       // AXI要求ARVALID一旦提出就保持到握手。即使flush到来，也继续完成
       // 地址和R通道事务；响应仍交付demand，但不安装该次回填的cache line。
@@ -891,10 +919,11 @@ class ysyx_26030103_DCacheSRAM(
       when(io.AXI.R.RVALID) {
         when(RefillActive) {
           val BeatError = io.AXI.R.RRESP =/= 0.U
-          val KeywordBeat = RefillCount === ReqOffsetReg
+          val KeywordBeat = WordInRefillBeat(ReqOffsetReg)
           val ReqWide = ReqWidthReg === 3.U
-          val WideHighBeat = ReqWide &&
-            RefillCount === NextOffset(ReqOffsetReg)
+          val WideHighInBeat = ReqWide &&
+            WordInRefillBeat(NextOffset(ReqOffsetReg))
+          val WideHighBeat = WideHighInBeat && !KeywordBeat
           when(BeatError) {
             RefillError := true.B
             RefillWordValid := 0.U
@@ -917,19 +946,34 @@ class ysyx_26030103_DCacheSRAM(
                 !StoreConflictsRefill
             ) {
               tag(ReqIndexSafe) := ReqTagReg
-              // 写口0已常连好地址/数据/全1掩码, 这里只需放行使能。
-              sram.writePorts(0).enable := true.B
-              RefillWordValid :=
-                RefillWordValid | UIntToOH(RefillCount, WordsPerBlock)
+              for (lane <- 0 until WordsPerBeat) {
+                sram.writePorts(lane).enable := true.B
+              }
+              RefillWordValid := RefillWordValid | RefillBeatWordMask
             }
             // 早期 beat 已经产生 fault 时，关键词 beat 不得把响应覆盖成
             // 成功数据；RefillError 在本次回填结束前保持锁存。
             when(KeywordBeat && !DemandResponseDone && !RefillError) {
+              val KeywordWord =
+                RefillBeatWord(ReqOffsetReg, io.AXI.R.RDATA)
               when(ReqWide) {
-                WideLowReg := io.AXI.R.RDATA
+                when(WideHighInBeat) {
+                  ResponseData := FormatLoad(
+                    KeywordWord,
+                    RefillBeatWord(NextOffset(ReqOffsetReg), io.AXI.R.RDATA),
+                    ReqAddrReg,
+                    ReqWidthReg,
+                    ReqSignedReg
+                  )
+                  ResponseFault := false.B
+                  ResponseFaultResp := 0.U
+                  ResponseValid := true.B
+                }.otherwise {
+                  WideLowReg := KeywordWord
+                }
               }.otherwise {
                 ResponseData := FormatLoad(
-                  io.AXI.R.RDATA,
+                  KeywordWord,
                   0.U(32.W),
                   ReqAddrReg,
                   ReqWidthReg,
@@ -944,7 +988,7 @@ class ysyx_26030103_DCacheSRAM(
                 !RefillError && !BeatError) {
               ResponseData := FormatLoad(
                 WideLowReg,
-                io.AXI.R.RDATA,
+                RefillBeatWord(NextOffset(ReqOffsetReg), io.AXI.R.RDATA),
                 ReqAddrReg,
                 ReqWidthReg,
                 ReqSignedReg
@@ -954,7 +998,7 @@ class ysyx_26030103_DCacheSRAM(
               ResponseValid := true.B
             }
           }
-          when(LastRefillWord) {
+          when(LastRefillBeat) {
             when(io.AXI.R.RLAST) {
               val RefillInstallOk =
                 !suppressFill && !io.flush && !StoreConflictsRefill &&
@@ -1009,18 +1053,16 @@ class ysyx_26030103_DCacheSRAM(
             }
           }.elsewhen(RefillBurst) {
             when(io.AXI.R.RLAST) {
-              // RLAST提前到达：保留已接收的数据字，并将每个剩余数据字作为
-              // 独立的单拍事务获取。
               RefillBurst := false.B
-              RefillCount := RefillCount + 1.U
+              RefillCount := RefillCount + WordsPerBeat.U
               state := SReadReq
             }.otherwise {
-              RefillCount := RefillCount + 1.U
+              RefillCount := RefillCount + WordsPerBeat.U
             }
           }.otherwise {
             // 退化请求只有一拍，因此必须以RLAST结束。
             when(io.AXI.R.RLAST) {
-              RefillCount := RefillCount + 1.U
+              RefillCount := RefillCount + WordsPerBeat.U
               state := SReadReq
             }.otherwise {
               valid(ReqIndexSafe) := false.B
@@ -1035,47 +1077,69 @@ class ysyx_26030103_DCacheSRAM(
             }
           }
         }.otherwise {
-          when(ReqWidthReg === 3.U) {
-            when(WideBeat === 0.U) {
+          if (BusDataWidth == 64) {
+            when(ReqWidthReg === 3.U) {
+              when(io.AXI.R.RRESP =/= 0.U) {
+                ResponseFault := true.B
+                ResponseFaultResp := io.AXI.R.RRESP
+              }.otherwise {
+                ResponseData := FormatLoad(
+                  io.AXI.R.RDATA(31, 0),
+                  io.AXI.R.RDATA(63, 32),
+                  ReqAddrReg,
+                  ReqWidthReg,
+                  ReqSignedReg
+                )
+              }
+              ResponseValid := true.B
               when(io.AXI.R.RLAST) {
+                suppressFill := false.B
+                state := SIdle
+              }.otherwise {
                 ResponseFault := true.B
                 ResponseFaultResp := Mux(
                   io.AXI.R.RRESP =/= 0.U,
                   io.AXI.R.RRESP,
                   2.U
                 )
-                ResponseValid := true.B
-                state := SIdle
-              }.otherwise {
-                WideLowReg := io.AXI.R.RDATA
-                WideLowFault := io.AXI.R.RRESP =/= 0.U
-                WideBeat := 1.U
+                state := SDrain
               }
             }.otherwise {
+              val UncachedWord = Mux(
+                ReqAddrReg(2),
+                io.AXI.R.RDATA(63, 32),
+                io.AXI.R.RDATA(31, 0)
+              )
+              when(io.AXI.R.RRESP =/= 0.U) {
+                ResponseFault := true.B
+                ResponseFaultResp := io.AXI.R.RRESP
+              }.otherwise {
+                ResponseData := FormatLoad(
+                  UncachedWord,
+                  0.U(32.W),
+                  ReqAddrReg,
+                  ReqWidthReg,
+                  ReqSignedReg
+                )
+              }
+              ResponseValid := true.B
               when(io.AXI.R.RLAST) {
-                when(WideLowFault || io.AXI.R.RRESP =/= 0.U) {
-                  ResponseFault := true.B
-                  ResponseFaultResp := Mux(
-                    io.AXI.R.RRESP =/= 0.U,
-                    io.AXI.R.RRESP,
-                    2.U
-                  )
-                }.otherwise {
-                  ResponseData := FormatLoad(
-                    WideLowReg,
-                    io.AXI.R.RDATA,
-                    ReqAddrReg,
-                    ReqWidthReg,
-                    ReqSignedReg
-                  )
-                }
-                ResponseValid := true.B
                 suppressFill := false.B
                 state := SIdle
               }.otherwise {
-                // 第二拍缺少 RLAST：这笔非缓存读还没有产生任何响应。
-                // 先形成唯一的 fault，再由 SDrain 只负责吸收迟到的 beat。
-                when(!DemandResponseDone && !ResponseOccupied) {
+                ResponseFault := true.B
+                ResponseFaultResp := Mux(
+                  io.AXI.R.RRESP =/= 0.U,
+                  io.AXI.R.RRESP,
+                  2.U
+                )
+                state := SDrain
+              }
+            }
+          } else {
+            when(ReqWidthReg === 3.U) {
+              when(WideBeat === 0.U) {
+                when(io.AXI.R.RLAST) {
                   ResponseFault := true.B
                   ResponseFaultResp := Mux(
                     io.AXI.R.RRESP =/= 0.U,
@@ -1083,37 +1147,72 @@ class ysyx_26030103_DCacheSRAM(
                     2.U
                   )
                   ResponseValid := true.B
+                  state := SIdle
+                }.otherwise {
+                  WideLowReg := io.AXI.R.RDATA
+                  WideLowFault := io.AXI.R.RRESP =/= 0.U
+                  WideBeat := 1.U
                 }
+              }.otherwise {
+                when(io.AXI.R.RLAST) {
+                  when(WideLowFault || io.AXI.R.RRESP =/= 0.U) {
+                    ResponseFault := true.B
+                    ResponseFaultResp := Mux(
+                      io.AXI.R.RRESP =/= 0.U,
+                      io.AXI.R.RRESP,
+                      2.U
+                    )
+                  }.otherwise {
+                    ResponseData := FormatLoad(
+                      WideLowReg,
+                      io.AXI.R.RDATA,
+                      ReqAddrReg,
+                      ReqWidthReg,
+                      ReqSignedReg
+                    )
+                  }
+                  ResponseValid := true.B
+                  suppressFill := false.B
+                  state := SIdle
+                }.otherwise {
+                  when(!DemandResponseDone && !ResponseOccupied) {
+                    ResponseFault := true.B
+                    ResponseFaultResp := Mux(
+                      io.AXI.R.RRESP =/= 0.U,
+                      io.AXI.R.RRESP,
+                      2.U
+                    )
+                    ResponseValid := true.B
+                  }
+                  state := SDrain
+                }
+              }
+            }.otherwise {
+              when(io.AXI.R.RRESP =/= 0.U) {
+                ResponseFault := true.B
+                ResponseFaultResp := io.AXI.R.RRESP
+              }.otherwise {
+                ResponseData := FormatLoad(
+                  io.AXI.R.RDATA,
+                  0.U(32.W),
+                  ReqAddrReg,
+                  ReqWidthReg,
+                  ReqSignedReg
+                )
+              }
+              ResponseValid := true.B
+              when(io.AXI.R.RLAST) {
+                suppressFill := false.B
+                state := SIdle
+              }.otherwise {
+                ResponseFault := true.B
+                ResponseFaultResp := Mux(
+                  io.AXI.R.RRESP =/= 0.U,
+                  io.AXI.R.RRESP,
+                  2.U
+                )
                 state := SDrain
               }
-            }
-          }.otherwise {
-            when(io.AXI.R.RRESP =/= 0.U) {
-              ResponseFault := true.B
-              ResponseFaultResp := io.AXI.R.RRESP
-            }.otherwise {
-              ResponseData := FormatLoad(
-                io.AXI.R.RDATA,
-                0.U(32.W),
-                ReqAddrReg,
-                ReqWidthReg,
-                ReqSignedReg
-              )
-            }
-            ResponseValid := true.B
-            when(io.AXI.R.RLAST) {
-              suppressFill := false.B
-              state := SIdle
-            }.otherwise {
-              // 每个非缓存请求都是单拍AXI事务。缺少RLAST属于协议故障，必须先将其
-              // 排空，另一个LSU读请求才能复用固定的读ID。
-              ResponseFault := true.B
-              ResponseFaultResp := Mux(
-                io.AXI.R.RRESP =/= 0.U,
-                io.AXI.R.RRESP,
-                2.U
-              )
-              state := SDrain
             }
           }
         }

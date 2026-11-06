@@ -11,6 +11,9 @@ class ysyx_26030103_AXI5Xbar(
     DataWidth: Int = 32,
     IdWidth: Int = 4
 ) extends Module {
+  require(DataWidth == 32 || DataWidth == 64,
+    s"AXI5Xbar DataWidth 非法: $DataWidth")
+  private val BusLaneBits = log2Ceil(DataWidth / 8)
   val io = IO(new Bundle {
     // 先做过笔记，因为这个是接裁决器的，裁决器是master，所以这里的对反
     val in = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth))
@@ -156,7 +159,8 @@ class ysyx_26030103_AXI5Xbar(
       burst: UInt,
       isWrite: Boolean
   ): UInt = {
-    val ConfigSupported = size <= 2.U && (burst === 0.U || burst === 1.U)
+    val ConfigSupported =
+      size <= BusLaneBits.U && (burst === 0.U || burst === 1.U)
     val PermittedRegions = if (isWrite) WritableRegions else ReadableRegions
     val CLINTPermitted = if (isWrite) WritableCLINT else ReadableCLINT
     val PLICPermitted = if (isWrite) WritablePLIC else ReadablePLIC
@@ -175,7 +179,7 @@ class ysyx_26030103_AXI5Xbar(
         Mux(
           PLICAddress,
           Mux(
-            PLICPermitted.B && len === 0.U,
+            PLICPermitted.B && len === 0.U && size <= 2.U,
             TargetPLIC,
             TargetInvalid
           ),

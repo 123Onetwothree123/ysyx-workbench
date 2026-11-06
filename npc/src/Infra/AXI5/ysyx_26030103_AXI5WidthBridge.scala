@@ -3,33 +3,10 @@ package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
 
-/** AXI5 地址/数据宽度边界桥。
-  *
-  * 上游 `in` 是请求方一侧（slave 端口），下游 `out` 是响应方一侧
-  * （master 端口）。NPC 内部 SoC 总线固定 32 位数据；ysyxSoC 的 CPU
-  * 边界在 `SOC_XLEN=64` 时使用 64 位地址/数据，因此这里必须显式转换，
-  * 不能把高位地址或宽数据静默截断。
-  *
-  * 支持的能力：
-  *   - 数据宽度 32<->64（比例最多 2），包括 4 字节单拍、窄传输，
-  *     以及 RV64 LD/SD 在 32 位总线上拆出的 8 字节两拍访问；
-  *   - 地址宽度 32<->64；下游更窄时对整笔 burst 做越界检查，
-  *     越界请求在本地返回 DECERR，绝不把高 32 位丢掉后访问低地址；
-  *   - AW/W/B/AR/R 五通道、INCR/FIXED/WRAP burst、WSTRB、RLAST
-  *     和错误响应；
-  *   - 每一侧同一时刻只处理一笔事务，用反压保证通道稳定。这与
-  *     ysyxSoC 的 AXI4Downsizer 串行化策略一致，不要求下游支持
-  *     多笔同 ID 在途事务。
-  *
-  * 64->32 时把每个上游 beat 拆成若干单拍 4 字节事务，逐笔收完所有
-  * 下游 B 后再聚合成一个上游 B；读方向则逐块收齐并拼回上游宽 beat。
-  * 32->64 时一个上游 beat 直接对应一个下游 beat，只把数据搬到正确
-  * 的字节半区，保持 AWSIZE/ARLEN 不变，由下游宽总线继续处理。
-  *
-  * 响应完成语义：只要某笔事务真的向下游发过 AW/AR，上游 B/R 就必须
-  * 来自下游实际返回的响应（64->32 聚合或 32->64 透传）。只有完全没有
-  * 下发下游事务的本地拒绝（地址越界 DECERR）才允许本地生成响应。
-  * `AddressNarrows` 只改变地址位宽，不是本地响应的理由。
+/** AXI5 地址/数据宽度桥。
+  * 支持 32/64 位宽转换、INCR/FIXED/WRAP burst、WSTRB/RLAST；
+  * 下游地址更窄时对整笔 burst 做越界检查并本地返回 DECERR。
+  * 同一方向只处理一笔事务，用反压保证握手稳定。
   */
 class ysyx_26030103_AXI5WidthBridge(
     UpstreamAddressWidth: Int = 64,

@@ -73,6 +73,10 @@ object ysyx_26030103_Elaborate extends App {
   // SOC_XLEN 只在 FOLLOW=n 时生效，NPCConfig 会拒绝 32/64 之外的值。
   val SocXLENFollowCpu = cfg.bool("isa.soc_xlen_follow_cpu", false)
   val SocXLEN = cfg.int("isa.soc_xlen", 32)
+  val InternalBusWidthFollowCpu =
+    cfg.bool("isa.internal_bus_width_follow_cpu", true)
+  val InternalBusWidth =
+    cfg.int("isa.internal_bus_width", if (XLEN == 64) 64 else 32)
   // 扩展名与位宽解耦，统一使用 RISCV_M/A/C。
   val UseM = cfg.bool("isa.m", false)
   val UseA = cfg.bool("isa.a", false)
@@ -231,6 +235,8 @@ object ysyx_26030103_Elaborate extends App {
     AddressWidth = AddressWidth,
     SocXLENFollowCpu = SocXLENFollowCpu,
     SocXLEN = SocXLEN,
+    InternalBusWidthFollowCpu = InternalBusWidthFollowCpu,
+    InternalBusWidth = InternalBusWidth,
     UseM = UseM,
     UseA = UseA,
     UseC = UseC,
@@ -381,8 +387,8 @@ object ysyx_26030103_Elaborate extends App {
   if (config.SocXLENNeedsAxiBridge) {
     println(
       s"[NPC config] EffectiveSocXLEN=${config.EffectiveSocXLEN}: " +
-        "顶层 master/slave AXI 使用 64 位地址/数据，32<->64 边界桥已启用；" +
-        "内部 Xbar/PMA/Cache 仍使用 32 位数据 beat。"
+        "顶层 master/slave AXI 使用 64 位地址/数据，跨 SoC 边界桥已启用；" +
+        s"内部 fabric 使用 ${config.EffectiveInternalBusWidth} 位数据 beat。"
     )
   }
 

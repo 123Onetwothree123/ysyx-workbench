@@ -17,6 +17,8 @@ class ysyx_26030103_PLIC(
     DataWidth: Int = 32,
     IdWidth: Int = 4
 ) extends Module {
+  require(DataWidth == 32 || DataWidth == 64,
+    s"PLIC DataWidth 非法: $DataWidth")
   // UART 中断固定使用 source 10（xv6/OpenSBI 都按 1 << UART0_IRQ 编程）。
   // 少于 11 个 source 时该 bit 不存在，软件写 enable/priority 会被静默丢弃，
   // 外部中断永远无法到达 hart。配置阶段直接拒绝，而不是生成残缺 PLIC。
@@ -124,6 +126,19 @@ class ysyx_26030103_PLIC(
   val RID = RegInit(0.U(IdWidth.W))
   val RData = RegInit(0.U(DataWidth.W))
   val RResp = RegInit(OKAY)
+  private val BusWide = DataWidth == 64
+  private def LaneData(Data: UInt, Address: UInt): UInt =
+    if (BusWide)
+      Mux(Address(2), Cat(Data(31, 0), 0.U(32.W)),
+        Cat(0.U(32.W), Data(31, 0)))
+    else Data(31, 0)
+  val WWord =
+    if (BusWide) Mux(AWAddr(2), WData(63, 32), WData(31, 0))
+    else WData(31, 0)
+  val WByte =
+    if (BusWide) Mux(AWAddr(2), WStrb(7, 4), WStrb(3, 0))
+    else WStrb(3, 0)
+  val RWord = WireDefault(0.U(32.W))
 
   io.AW.AWREADY := !AWValid && !BValid
   io.W.WREADY := !WValid && !BValid
@@ -161,27 +176,27 @@ class ysyx_26030103_PLIC(
     val isEnable = isEnableAddr(AWAddr)
     val isThreshold = isThresholdAddr(AWAddr)
     val isComplete = isClaimAddr(AWAddr)
-    when(isPriority && WStrb =/= 0.U) {
-      val merged = merge32(priority(idx(IdBits - 1, 0)), WData, WStrb)
+    when(isPriority && WByte =/= 0.U) {
+      val merged = merge32(priority(idx(IdBits - 1, 0)), WWord, WByte)
       priority(idx(IdBits - 1, 0)) := Mux(
         merged(priorityBits - 1, 0) > PriorityMax,
         PriorityMax,
         merged(priorityBits - 1, 0)
       )
-    }.elsewhen(isEnable && WStrb =/= 0.U) {
+    }.elsewhen(isEnable && WByte =/= 0.U) {
       enable(enableWordIndex(AWAddr)) :=
-        merge32(enable(enableWordIndex(AWAddr)), WData, WStrb)
-    }.elsewhen(isThreshold && WStrb =/= 0.U) {
-      val merged = merge32(threshold, WData, WStrb)
+        merge32(enable(enableWordIndex(AWAddr)), WWord, WByte)
+    }.elsewhen(isThreshold && WByte =/= 0.U) {
+      val merged = merge32(threshold, WWord, WByte)
       threshold := Mux(
         merged(priorityBits - 1, 0) > PriorityMax,
         PriorityMax,
         merged(priorityBits - 1, 0)
       )
-    }.elsewhen(isComplete && WStrb =/= 0.U && WData =/= 0.U) {
+    }.elsewhen(isComplete && WByte =/= 0.U && WWord =/= 0.U) {
       // claim 返回值就是 source ID（bit 下标），complete 必须清同一 bit。
       // 实际清位在下方与 claim 合并执行；这里只记录目标。
-      val doneIdx = WData(IdBits - 1, 0)
+      val doneIdx = WWord(IdBits - 1, 0)
       completeIndex := doneIdx
       completeFire := doneIdx < numSources.U
       perfComplete := true.B
@@ -220,23 +235,24 @@ class ysyx_26030103_PLIC(
     RResp := OKAY
     val idx = (io.AR.ARADDR - addrOf(0L)) >> 2
     when(isClaimAddr(io.AR.ARADDR)) {
-      RData := claimId
+      RWord := claimId
       when(claimValid) {
         pending := pending & ~UIntToOH(claimIndex, numSources)
       }
     }.elsewhen(io.AR.ARADDR === PendingAddr) {
-      RData := pending
+      RWord := pending
     }.elsewhen(isThresholdAddr(io.AR.ARADDR)) {
-      RData := threshold
+      RWord := threshold
     }.elsewhen(io.AR.ARADDR >= addrOf(0L) && io.AR.ARADDR < addrOf(4L * numSources) &&
       idx > 0.U && idx < numSources.U) {
-      RData := priority(idx(IdBits - 1, 0))
+      RWord := priority(idx(IdBits - 1, 0))
     }.elsewhen(isEnableAddr(io.AR.ARADDR)) {
-      RData := enable(enableWordIndex(io.AR.ARADDR))
+      RWord := enable(enableWordIndex(io.AR.ARADDR))
     }.otherwise {
-      RData := 0.U
+      RWord := 0.U
       RResp := SLVERR
     }
+    RData := LaneData(RWord, io.AR.ARADDR)
   }
   // claimed 的唯一更新点：complete 先清，claim 再置。两笔事件的目标在
   // 正常协议下互斥（已 claimed 的 source 不会被再次 claim），但即使发生

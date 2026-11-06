@@ -24,6 +24,7 @@ object `package` extends ScalaModule {
   override def sources = Task.Sources(
     workspaceRoot / "scala",
     workspaceRoot / "../../../src/Common/ysyx_26030103_EXUMessage.scala",
+    workspaceRoot / "../../../src/Common/ysyx_26030103_AtomicOp.scala",
     workspaceRoot / "../../../src/Common/ysyx_26030103_PMA.scala",
     workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheInterface.scala",
     workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheBase.scala",

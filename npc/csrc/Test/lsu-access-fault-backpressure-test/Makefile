@@ -15,15 +15,24 @@ CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR)
 LOCAL_SCALA_SOURCES := $(shell find $(TEST_DIR)/scala -type f -name '*.scala' | sort)
 NPC_SCALA_SOURCES := \
 	$(NPC_DIR)/src/Common/ysyx_26030103_EXUMessage.scala \
+	$(NPC_DIR)/src/Common/ysyx_26030103_AtomicOp.scala \
 	$(NPC_DIR)/src/Common/ysyx_26030103_PMA.scala \
+	$(NPC_DIR)/src/Cache/DCache/ysyx_26030103_DCacheInterface.scala \
+	$(NPC_DIR)/src/Cache/DCache/ysyx_26030103_DCacheBase.scala \
+	$(NPC_DIR)/src/Cache/DCache/ysyx_26030103_DCachePolicy.scala \
 	$(NPC_DIR)/src/Cache/DCache/ysyx_26030103_DCacheReg.scala \
+	$(NPC_DIR)/src/Cache/DCache/ysyx_26030103_DCacheSRAM.scala \
+	$(NPC_DIR)/src/Cache/DCache/ysyx_26030103_DCacheFactory.scala \
+	$(NPC_DIR)/src/Cache/ysyx_26030103_ViptAliasScan.scala \
+	$(NPC_DIR)/src/Cache/ysyx_26030103_ViptAliasDirectory.scala \
+	$(NPC_DIR)/src/config/ysyx_26030103_CacheStorage.scala \
 	$(NPC_DIR)/src/MEM/ysyx_26030103_LSU.scala \
-	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5IO.scala \
-	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5AW.scala \
-	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5W.scala \
-	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5B.scala \
-	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5AR.scala \
-	$(NPC_DIR)/src/Infra/ysyx_26030103_AXI5R.scala
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5IO.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5AW.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5W.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5B.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5AR.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5R.scala
 RTL_STAMP := $(RTL_DIR)/.generated
 
 .PHONY: all test run clean

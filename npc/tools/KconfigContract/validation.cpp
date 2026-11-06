@@ -102,6 +102,15 @@ std::vector<std::string> validate_config(const Config& values,
           "（SOC_XLEN_FOLLOW_CPU=n 时生效）");
     }
   }
+  if (!as_bool(values, "INTERNAL_BUS_WIDTH_FOLLOW_CPU", true)) {
+    const long long internal_bus_width =
+        as_int(values, "INTERNAL_BUS_WIDTH", xlen == 64 ? 64 : 32);
+    if (internal_bus_width != 32 && internal_bus_width != 64) {
+      err("INTERNAL_BUS_WIDTH=" + std::to_string(internal_bus_width) +
+          " 非法：只允许 32 或 64"
+          "（INTERNAL_BUS_WIDTH_FOLLOW_CPU=n 时生效）");
+    }
+  }
   const bool use_f = as_bool(values, "RISCV_F", false);
   const bool use_d = as_bool(values, "RISCV_D", false);
   const std::string fpu_impl = lower_ascii(strip(derived_choice_string(

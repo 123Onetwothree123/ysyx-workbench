@@ -37,6 +37,28 @@ menu "SoC 与外设"
 
   endmenu
 
+  menu "CPU 内部总线"
+
+    config INTERNAL_BUS_WIDTH_FOLLOW_CPU
+      bool "内部 AXI fabric 数据宽度跟随 CPU XLEN"
+      default y
+      help
+        y: RV32 为 32 位，RV64 为 64 位。
+        n: 使用 INTERNAL_BUS_WIDTH。
+        只影响 CPU 内部 fabric，外部 ysyxSoC 宽度仍由 SOC_XLEN 决定。
+
+    config INTERNAL_BUS_WIDTH
+      int "内部 AXI fabric 数据宽度"
+      depends on !INTERNAL_BUS_WIDTH_FOLLOW_CPU
+      default 64 if XLEN=64
+      default 32
+      range 32 64
+      help
+        仅 FOLLOW=n 时生效，只允许 32 或 64。
+        非法值由配置契约检查阶段拒绝。
+
+  endmenu
+
   menu "ysyxSoC 接口"
 
     config CHIPLINK

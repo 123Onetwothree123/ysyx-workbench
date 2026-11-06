@@ -33,17 +33,34 @@ class ysyx_26030103_LSU(
     // VIPT 并行模式：DCache/LSU 在 PA 到达前就用 VA 选 index 并持有请求，
     // MMU 故障通过 ViptKill 取消该请求。
     val ViptParallel: Boolean = false,
-    val AddressWidth: Int = 32
+    val AddressWidth: Int = 32,
+    val BusDataWidth: Int = 32
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"LSU XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"LSU AddressWidth 非法: $AddressWidth")
   require(AddressWidth <= XLEN,
     s"LSU AddressWidth($AddressWidth) 不能超过 XLEN($XLEN)")
-  // RV64 的 LD/SD 与 RV32D 的 FLD/FSD 都是 8 字节访问。基本 AXI 数据
-  // 通道仍是 32 位（与 ysyxSoC 兼容），由两拍窄传输完成；DCache 内部
-  // 按两个相邻 32 位 word 处理同一次 8 字节 load/store。
+  require(BusDataWidth == 32 || BusDataWidth == 64,
+    s"LSU BusDataWidth 非法: $BusDataWidth")
   private val WideMem = XLEN == 64 || UseD
+  private val BusBytes = BusDataWidth / 8
+  private val BusLaneBits = log2Ceil(BusBytes)
+  private val BusWide = BusDataWidth == 64
+  private val BusWideBit = BusWide.B
+  private def BusWord(Data: UInt, Address: UInt): UInt =
+    if (BusWide)
+      Mux(Address(2), Cat(Data(31, 0), 0.U(32.W)),
+        Cat(0.U(32.W), Data(31, 0)))
+    else Data(31, 0)
+  private def BusStrb(Strb: UInt, Address: UInt): UInt =
+    if (BusWide)
+      Mux(Address(2), Cat(Strb(3, 0), 0.U(4.W)),
+        Cat(0.U(4.W), Strb(3, 0)))
+    else Strb(3, 0)
+  private def BusSelectWord(Data: UInt, Address: UInt): UInt =
+    if (BusWide) Mux(Address(2), Data(63, 32), Data(31, 0))
+    else Data(31, 0)
   // DCache 关闭时数据通路没有 VIPT 语义：请求直接走 LSU 的 AXI 读/写，
   // ALUResult 已是 DMMU 给出的物理地址，不能再用它当 VA 去等带标签 PA。
   private val DataVipt = DCacheVipt && DCacheEnable
@@ -66,7 +83,7 @@ class ysyx_26030103_LSU(
     val FlushIDEX = Output(Bool())
     val FlushEXMEM = Output(Bool())
     // 直接连总线
-    val DataBus = new ysyx_26030103_AXI5IO(AddressWidth)
+    val DataBus = new ysyx_26030103_AXI5IO(AddressWidth, BusDataWidth, 4)
     // 为未来 DMA/其他非 CPU 写入者保留的数据缓存一致性失效口。
     // Fence.I 只同步指令取值，当前写直达 DCache 不因 Fence.I 清空。
     val DCacheFlush = Input(Bool())
@@ -173,6 +190,7 @@ class ysyx_26030103_LSU(
     // RV32D 的 FLD/FSD 和 RV64 的 LD/SD 一样是 8 字节访问：DCache
     // 对外提供 64 位响应/写数据，内部仍按 32 位 word 存放。
     DataWidth = if (XLEN == 64 || UseD) 64 else 32,
+    BusDataWidth = BusDataWidth,
     CacheableBase = DCacheableBase,
     CacheableMask = DCacheableMask,
     PMARegions = DCachePMARegions,
@@ -534,7 +552,6 @@ class ysyx_26030103_LSU(
   io.DebugLoadDATA := LoadDataReg(31, 0)
   io.DebugWidthSelect := ActiveInstruction.WidthSelect
   // 总线事务FSM(原LSU逻辑)
-  // AXI 数据通道固定 32 位：LD/SD 的 8 字节访问拆成两拍 AWSIZE=2。
   private def AXISizeFor(Width: UInt): UInt = MuxLookup(Width, 2.U(3.W))(
     Seq("b00".U -> 0.U(3.W), "b01".U -> 1.U(3.W), "b10".U -> 2.U(3.W),
       "b11".U -> 2.U(3.W))
@@ -675,10 +692,23 @@ class ysyx_26030103_LSU(
   val LoadWord0Reg = RegInit(0.U(32.W))
   val LoadBeat = RegInit(0.U(1.W))
   val ReadIsWide = ActiveInstruction.WidthSelect === "b11".U
-  // 第二拍 RDATA 是高 32 位，LoadWord0Reg 是第一拍的低 32 位。
-  // 窄访问始终使用当前 RDATA 作为低字。
+  val DirectWord =
+    BusSelectWord(io.DataBus.R.RDATA, ActiveInstruction.ALUResult)
   val DirectLoadData =
-    if (WideMem)
+    if (!WideMem)
+      FormatLoad(DirectWord, 0.U(32.W),
+        ActiveInstruction.ALUResult, ActiveInstruction.WidthSelect,
+        ActiveInstruction.LoadSigned)
+    else if (BusWide)
+      Mux(ReadIsWide,
+        FormatLoad(io.DataBus.R.RDATA(31, 0),
+          io.DataBus.R.RDATA(63, 32),
+          ActiveInstruction.ALUResult, ActiveInstruction.WidthSelect,
+          ActiveInstruction.LoadSigned),
+        FormatLoad(DirectWord, 0.U(32.W),
+          ActiveInstruction.ALUResult, ActiveInstruction.WidthSelect,
+          ActiveInstruction.LoadSigned))
+    else
       Mux(ReadIsWide && LoadBeat === 1.U,
         FormatLoad(LoadWord0Reg, io.DataBus.R.RDATA,
           ActiveInstruction.ALUResult, ActiveInstruction.WidthSelect,
@@ -686,10 +716,6 @@ class ysyx_26030103_LSU(
         FormatLoad(io.DataBus.R.RDATA, 0.U(32.W),
           ActiveInstruction.ALUResult, ActiveInstruction.WidthSelect,
           ActiveInstruction.LoadSigned))
-    else
-      FormatLoad(io.DataBus.R.RDATA, 0.U(32.W),
-        ActiveInstruction.ALUResult, ActiveInstruction.WidthSelect,
-        ActiveInstruction.LoadSigned)
   val is_store_transaction = RegInit(false.B)
   // 只在总线故障真正提交的周期产生事件。顶层会再寄存一拍供 C++ 在
   // 上升沿后采样；misaligned 不属于 AXI access fault，必须排除。
@@ -930,31 +956,37 @@ class ysyx_26030103_LSU(
   val wbCanStart = !wbufEmpty && !wbHeadMisaligned && wbHeadReady &&
     !io.PmpFault && !StoreFaultReg && !MemFaultReg
   val wbDrivingIssue = wbState === wbIssue || (wbState === wbIdle && wbCanStart)
-  // 8 字节 store 在 32 位 AXI 上拆成两拍：AWLEN=1，W 通道低字在前、
-  // 高字在后，第二拍拉 WLAST。窄访问仍是一拍。
   val WbHeadWide = wbHeadWide
+  val WbHeadBusWide = WbHeadWide && BusWideBit
+  val WbHeadTwoBeat = WbHeadWide && !BusWideBit
   val wbBeat = RegInit(0.U(1.W))
   when(wbDrivingIssue) {
     io.DataBus.AW.AWVALID := !wbAWDone
     io.DataBus.AW.AWADDR := WbHeadEffectiveAddr
-    io.DataBus.AW.AWLEN := Mux(WbHeadWide, 1.U, 0.U)
-    io.DataBus.AW.AWSIZE := wbHeadSize
+    io.DataBus.AW.AWLEN := Mux(WbHeadTwoBeat, 1.U, 0.U)
+    io.DataBus.AW.AWSIZE := Mux(WbHeadBusWide, 3.U, wbHeadSize)
     io.DataBus.AW.AWBURST := 1.U
     io.DataBus.W.WVALID := !wbWDone
     io.DataBus.W.WDATA :=
-      Mux(WbHeadWide && wbBeat === 1.U, wbHeadDataHi, wbHeadData)
+      Mux(WbHeadBusWide, Cat(wbHeadDataHi, wbHeadData),
+        Mux(WbHeadTwoBeat && wbBeat === 1.U, wbHeadDataHi,
+          BusWord(wbHeadData, WbHeadEffectiveAddr)))
     io.DataBus.W.WSTRB :=
-      Mux(WbHeadWide && wbBeat === 1.U, "hf".U, wbHeadStrb)
-    io.DataBus.W.WLAST := !WbHeadWide || wbBeat === 1.U
+      Mux(WbHeadBusWide, "hff".U,
+        Mux(WbHeadTwoBeat && wbBeat === 1.U, "hf".U,
+          BusStrb(wbHeadStrb, WbHeadEffectiveAddr)))
+    io.DataBus.W.WLAST :=
+      !WbHeadWide || WbHeadBusWide || wbBeat === 1.U
   }
   // 本拍 W 握手是否完成整笔 store 的全部数据拍。
-  val wbWFinishes = wbWfire && (!WbHeadWide || wbBeat === 1.U)
+  val wbWFinishes =
+    wbWfire && (!WbHeadWide || WbHeadBusWide || wbBeat === 1.U)
   switch(wbState) {
     is(wbIdle) {
       when(wbCanStart) {
         when(wbAWfire) { wbAWDone := true.B }
         when(wbWfire) {
-          when(WbHeadWide && wbBeat === 0.U) { wbBeat := 1.U }
+          when(WbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
             .otherwise { wbWDone := true.B }
         }
         when(wbAWfire && wbWFinishes) {
@@ -971,7 +1003,7 @@ class ysyx_26030103_LSU(
     is(wbIssue) {
       when(wbAWfire) { wbAWDone := true.B }
       when(wbWfire) {
-        when(WbHeadWide && wbBeat === 0.U) { wbBeat := 1.U }
+        when(WbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
           .otherwise { wbWDone := true.B }
       }
       when((wbAWDone || wbAWfire) && (wbWDone || wbWFinishes)) {
@@ -1021,6 +1053,32 @@ class ysyx_26030103_LSU(
   io.MemoryBusy :=
     (stageState === StageWait && MsgReg.MemoryValid) ||
       (StageInputValid && StageInputBits.MemoryValid) || !wbufEmpty
+  def finishWideAtomicRead(WideData: UInt, RespBad: Bool): Unit = {
+    val Fault = AccessFaultReg || RespBad
+    when(Fault) {
+      TransactionComplete := true.B
+      TransactionFault := true.B
+      AtomicActive := false.B
+      state := StatesIdle
+    }.elsewhen(AtomicOpReg === ysyx_26030103_AtomicOp.LR) {
+      LoadDataReg := WideData
+      ReservationValid := true.B
+      ReservationAddr := AtomicAddrReg
+      AtomicActive := false.B
+      TransactionComplete := true.B
+      state := StatesIdle
+    }.otherwise {
+      AtomicOldData := WideData
+      AtomicResultData := WideData
+      AtomicNewData := ysyx_26030103_AtomicOp.Compute(
+        AtomicOpReg, WideData, ActiveInstruction.StoreData,
+        word = false)
+      AtomicAWDone := false.B
+      AtomicWDone := false.B
+      AtomicWBeat := false.B
+      state := StatesAtomicWriteRequest
+    }
+  }
   switch(state) {
     is(StatesIdle) {
       when(startMem) {
@@ -1117,8 +1175,8 @@ class ysyx_26030103_LSU(
     is(StatesAtomicReadRequest) {
       io.DataBus.AR.ARVALID := true.B
       io.DataBus.AR.ARADDR := AtomicAddrReg
-      io.DataBus.AR.ARLEN := Mux(AtomicWide, 1.U, 0.U)
-      io.DataBus.AR.ARSIZE := 2.U
+      io.DataBus.AR.ARLEN := Mux(AtomicWide && !BusWideBit, 1.U, 0.U)
+      io.DataBus.AR.ARSIZE := Mux(AtomicWide && BusWideBit, 3.U, 2.U)
       io.DataBus.AR.ARBURST := 1.U
       // 只有 AR 确实由原子事务驱动时，ARREADY 才算自己的握手。
       when(!DCacheBusActive && io.DataBus.AR.ARVALID &&
@@ -1136,7 +1194,16 @@ class ysyx_26030103_LSU(
           AtomicReadFaultReg := true.B
         }
         if (XLEN == 64) {
-          when(AtomicWide) {
+          when(AtomicWide && BusWideBit) {
+            when(io.DataBus.R.RLAST) {
+              finishWideAtomicRead(io.DataBus.R.RDATA, RespBad)
+            }.otherwise {
+              AccessFaultReg := true.B
+              AtomicReadFaultReg := true.B
+              AccessFaultRespReg := Mux(RespBad, io.DataBus.R.RRESP, 2.U)
+              state := StatesReadDrain
+            }
+          }.elsewhen(AtomicWide) {
             when(AtomicReadBeat === 0.U) {
               when(io.DataBus.R.RLAST) {
                 // 两拍读在第一个响应就结束：协议错误，按访问故障提交。
@@ -1154,32 +1221,8 @@ class ysyx_26030103_LSU(
               }
             }.otherwise {
               when(io.DataBus.R.RLAST) {
-                val WideData =
-                  Cat(io.DataBus.R.RDATA, AtomicReadLow)
-                val Fault = AccessFaultReg || RespBad
-                when(Fault) {
-                  TransactionComplete := true.B
-                  TransactionFault := true.B
-                  AtomicActive := false.B
-                  state := StatesIdle
-                }.elsewhen(AtomicOpReg === ysyx_26030103_AtomicOp.LR) {
-                  LoadDataReg := WideData
-                  ReservationValid := true.B
-                  ReservationAddr := AtomicAddrReg
-                  AtomicActive := false.B
-                  TransactionComplete := true.B
-                  state := StatesIdle
-                }.otherwise {
-                  AtomicOldData := WideData
-                  AtomicResultData := WideData
-                  AtomicNewData := ysyx_26030103_AtomicOp.Compute(
-                    AtomicOpReg, WideData, ActiveInstruction.StoreData,
-                    word = false)
-                  AtomicAWDone := false.B
-                  AtomicWDone := false.B
-                  AtomicWBeat := false.B
-                  state := StatesAtomicWriteRequest
-                }
+                finishWideAtomicRead(
+                  Cat(io.DataBus.R.RDATA, AtomicReadLow), RespBad)
               }.otherwise {
                 // 超长 burst：继续排空到 RLAST，最终按访问故障提交。
                 AccessFaultReg := true.B
@@ -1190,9 +1233,9 @@ class ysyx_26030103_LSU(
               }
             }
           }.otherwise {
-            // .W 在 32 位 AXI 上仍是单拍读。
             when(io.DataBus.R.RLAST) {
-              val WordData = AtomicSext32(io.DataBus.R.RDATA)
+              val WordData =
+                AtomicSext32(BusSelectWord(io.DataBus.R.RDATA, AtomicAddrReg))
               val Fault = AccessFaultReg || RespBad
               when(Fault) {
                 TransactionComplete := true.B
@@ -1226,9 +1269,9 @@ class ysyx_26030103_LSU(
             }
           }
         } else {
-          // RV32 只有 .W 单拍读。
           when(io.DataBus.R.RLAST) {
-            val WordData = io.DataBus.R.RDATA
+            val WordData =
+              BusSelectWord(io.DataBus.R.RDATA, AtomicAddrReg)
             val Fault = AccessFaultReg || RespBad
             when(Fault) {
               TransactionComplete := true.B
@@ -1263,28 +1306,35 @@ class ysyx_26030103_LSU(
       }
     }
     is(StatesAtomicWriteRequest) {
+      val AtomicWideBus = AtomicWide && BusWideBit
+      val AtomicTwoBeat = AtomicWide && !BusWideBit
+      val AtomicHigh =
+        if (XLEN == 64) AtomicNewData(63, 32) else 0.U(32.W)
       io.DataBus.AW.AWVALID := !AtomicAWDone
       io.DataBus.AW.AWADDR := AtomicAddrReg
-      io.DataBus.AW.AWLEN := Mux(AtomicWide, 1.U, 0.U)
-      io.DataBus.AW.AWSIZE := 2.U
+      io.DataBus.AW.AWLEN := Mux(AtomicTwoBeat, 1.U, 0.U)
+      io.DataBus.AW.AWSIZE := Mux(AtomicWideBus, 3.U, 2.U)
       io.DataBus.AW.AWBURST := 1.U
       io.DataBus.W.WVALID := !AtomicWDone
       io.DataBus.W.WDATA :=
-        (if (XLEN == 64)
-           Mux(AtomicWide && AtomicWBeat,
-             AtomicNewData(63, 32), AtomicNewData(31, 0))
-         else AtomicNewData(31, 0))
-      io.DataBus.W.WSTRB := "b1111".U
-      io.DataBus.W.WLAST := !AtomicWide || AtomicWBeat
+        Mux(AtomicWideBus, Cat(AtomicHigh, AtomicNewData(31, 0)),
+          Mux(AtomicTwoBeat && AtomicWBeat, AtomicHigh,
+            BusWord(AtomicNewData(31, 0), AtomicAddrReg)))
+      io.DataBus.W.WSTRB :=
+        Mux(AtomicWideBus, "hff".U,
+          Mux(AtomicTwoBeat && AtomicWBeat, "hf".U,
+            BusStrb("hf".U, AtomicAddrReg)))
+      io.DataBus.W.WLAST :=
+        !AtomicWide || AtomicWideBus || AtomicWBeat
       val AtomicAWFire =
         io.DataBus.AW.AWVALID && io.DataBus.AW.AWREADY
       val AtomicWFire =
         io.DataBus.W.WVALID && io.DataBus.W.WREADY
       val AtomicWFinishes =
-        AtomicWFire && (!AtomicWide || AtomicWBeat)
+        AtomicWFire && (!AtomicWide || AtomicWideBus || AtomicWBeat)
       when(AtomicAWFire) { AtomicAWDone := true.B }
       when(AtomicWFire) {
-        when(AtomicWide && !AtomicWBeat) { AtomicWBeat := true.B }
+        when(AtomicTwoBeat && !AtomicWBeat) { AtomicWBeat := true.B }
           .otherwise { AtomicWDone := true.B }
       }
       when((AtomicAWDone || AtomicAWFire) &&
@@ -1321,14 +1371,17 @@ class ysyx_26030103_LSU(
         }.otherwise {
           io.DataBus.AR.ARVALID := true.B
           io.DataBus.AR.ARADDR := AddrOf(ActiveInstruction.ALUResult)
-          io.DataBus.AR.ARLEN := 0.U
+          io.DataBus.AR.ARLEN :=
+            Mux(ReadIsWide && !BusWideBit, 1.U, 0.U)
+          io.DataBus.AR.ARSIZE :=
+            Mux(ReadIsWide && BusWideBit, 3.U, AXISize)
           when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
         }
       } else {
         io.DataBus.AR.ARVALID := true.B
         io.DataBus.AR.ARADDR := AddrOf(ActiveInstruction.ALUResult)
-        // LD 在 32 位 AXI 上使用两拍 INCR 读；其余访问保持单拍。
-        io.DataBus.AR.ARLEN := Mux(ReadIsWide, 1.U, 0.U)
+        io.DataBus.AR.ARLEN := Mux(ReadIsWide && !BusWideBit, 1.U, 0.U)
+        io.DataBus.AR.ARSIZE := Mux(ReadIsWide && BusWideBit, 3.U, AXISize)
         when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
       }
     }
@@ -1386,7 +1439,7 @@ class ysyx_26030103_LSU(
             AccessFaultReg := true.B
             AccessFaultRespReg := io.DataBus.R.RRESP
           }
-          if (WideMem) {
+          if (WideMem && !BusWide) {
             when(ReadIsWide) {
               when(LoadBeat === 0.U) {
                 when(io.DataBus.R.RLAST) {
