@@ -7,7 +7,6 @@ import _root_.ysyx_26030103.config._
 class ysyx_26030103_StandardMDU(
     override val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends ysyx_26030103_MDU(config) {
-  private val XLEN = config.XLEN
   private val MULUnit = Module(new ysyx_26030103_MULUnit(config))
   private val DIVUnit = Module(new ysyx_26030103_DIVUnit(config))
   // MUL与DIV独立执行，而此FIFO在两者延迟不同时仍保持架构请求顺序。

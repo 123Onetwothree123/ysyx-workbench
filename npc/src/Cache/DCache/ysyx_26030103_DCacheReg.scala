@@ -38,9 +38,6 @@ class ysyx_26030103_DCacheReg(
   private val AliasScanActive =
     ViptAliasSafe && Enable &&
       ysyx_26030103_ViptAliasScan.isScan(ViptAliasScanMode)
-  private val AliasScanParallel =
-    ViptAliasSafe && Enable &&
-      ysyx_26030103_ViptAliasScan.isParallel(ViptAliasScanMode)
   private val AliasAllSets =
     ViptAliasSafe && Enable &&
       ysyx_26030103_ViptAliasScan.isAllSets(ViptAliasScanMode)

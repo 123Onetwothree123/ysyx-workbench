@@ -27,8 +27,6 @@ class ysyx_26030103(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends Module {
   private val XLEN = config.XLEN
-  private def Widen32(Value: UInt): UInt =
-    if (XLEN == 32) Value else Cat(0.U((XLEN - 32).W), Value)
   // RV64 调试观测的高 32 位视图。低 32 位端口保持历史 ABI 不变，
   // 高字单独输出，C++ 侧按 XLEN 拼成完整 64 位，避免 RV64 地址/PC 被截断。
   private def DebugHi(Value: UInt): UInt =

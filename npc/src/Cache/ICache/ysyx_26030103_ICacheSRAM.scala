@@ -39,12 +39,6 @@ class ysyx_26030103_ICacheSRAM(
   private val AliasScanActive =
     ViptAliasSafe && Enable &&
       ysyx_26030103_ViptAliasScan.isScan(ViptAliasScanMode)
-  private val AliasScanSerial =
-    ViptAliasSafe && Enable &&
-      ysyx_26030103_ViptAliasScan.isSerial(ViptAliasScanMode)
-  private val AliasScanParallel =
-    ViptAliasSafe && Enable &&
-      ysyx_26030103_ViptAliasScan.isParallel(ViptAliasScanMode)
   private val AliasAllSets =
     ViptAliasSafe && Enable &&
       ysyx_26030103_ViptAliasScan.isAllSets(ViptAliasScanMode)

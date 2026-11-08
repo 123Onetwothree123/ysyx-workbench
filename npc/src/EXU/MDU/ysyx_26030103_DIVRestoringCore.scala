@@ -49,7 +49,7 @@ class ysyx_26030103_DIVRestoringCore(
     val TrialRemainder = Cat(ShiftedRemainder(RemainderWidth - 1, DigitBits), InputChunk) //带入当前被除数数字
     var SelectedDigitRemainder: UInt = TrialRemainder //当前数字试减余数
     var QuotientDigit: UInt = 0.U(DigitBits.W) //当前商数字
-    for (Candidate <- 0 until Radix - 1) {
+    for (_ <- 0 until Radix - 1) {
       val CanSubtract = SelectedDigitRemainder >= DivisorReg //当前候选是否够减
       val Subtracted = SelectedDigitRemainder - DivisorReg //试减结果
       val Incremented = (QuotientDigit +& 1.U)(DigitBits - 1, 0) //商数字加一

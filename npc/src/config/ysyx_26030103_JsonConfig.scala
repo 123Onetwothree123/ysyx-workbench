@@ -285,7 +285,6 @@ object ysyx_26030103_JsonConfig {
       if (parts.isEmpty)
         return None
       val tail = parts.tail
-      val rest = tail.mkString("_")
       parts.head match {
         case "isa" =>
           tail.mkString(".") match {

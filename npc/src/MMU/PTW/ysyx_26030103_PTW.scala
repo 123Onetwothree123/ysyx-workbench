@@ -261,7 +261,7 @@ class ysyx_26030103_PTW(
     Cat(d(2), d(1), d(3)) =/= 0.U // 归一化 W/R/X = bit2/1/3
   /** R=0 且 W=1 是保留编码；无论叶子还是非叶子都必须 page fault。 */
   def reservedEncoding(d: UInt): Bool = !d(1) && d(2)
-  def leafAllowed(d: UInt): Bool = superpage.B || levelReg === (levels - 1).U
+  def leafAllowed: Bool = superpage.B || levelReg === (levels - 1).U
   /** 非叶子 PTE 的保留位（PPN 高位以外）必须为 0。 */
   def reservedFault(d: UInt): Bool =
     if (pteConfig.ppnHigh + 1 >= pteWidth) false.B
@@ -300,7 +300,7 @@ class ysyx_26030103_PTW(
   def walkFault(d: UInt): Bool =
     !d(0) || !ppnFits(d) || reservedFault(d) || // 归一化 valid = bit0
       reservedEncoding(d) ||
-      (isLeaf(d) && (!leafAllowed(d) || superpageMisaligned(d))) ||
+      (isLeaf(d) && (!leafAllowed || superpageMisaligned(d))) ||
       // 非叶子 PTE 的 D/A/U 是保留位，非零必须 page fault。
       (!isLeaf(d) && (d(6) || d(7) || d(4))) ||
       (!isLeaf(d) && levelReg === (levels - 1).U)

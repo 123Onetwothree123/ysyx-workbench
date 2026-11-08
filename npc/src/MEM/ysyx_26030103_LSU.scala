@@ -48,8 +48,6 @@ class ysyx_26030103_LSU(
   require(WBufDepth >= 1 && (WBufDepth & (WBufDepth - 1)) == 0,
     s"LSU WBufDepth($WBufDepth) 必须是 2 的幂")
   private val WideMem = XLEN == 64 || UseD
-  private val BusBytes = BusDataWidth / 8
-  private val BusLaneBits = log2Ceil(BusBytes)
   private val BusWide = BusDataWidth == 64
   private val BusWideBit = BusWide.B
   private def BusWord(Data: UInt, Address: UInt): UInt =

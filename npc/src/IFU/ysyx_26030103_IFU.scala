@@ -121,7 +121,6 @@ class ysyx_26030103_IFU(
     val respIsSecond = secondWord
     val respIsFirstHalf = !secondWord && is32 && pcReg(1)
     val respIsComplete32 = !secondWord && is32 && !pcReg(1)
-    val respIs16 = !secondWord && !is32
 
     val emitInstr = WireDefault(false.B)
     val emitFault = WireDefault(false.B)

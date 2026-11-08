@@ -10,7 +10,6 @@ abstract class ysyx_26030103_HardFloatFPUBase(
     override val Config: ysyx_26030103_NPCConfig)
     extends ysyx_26030103_FPU(Config) {
   protected val FLEN = Config.FPULen
-  private val HasD = Config.UseD && FLEN == 64
   protected val Params = Config.FPUProfile.HardFloat
   protected val UseFMA = Config.FPUProfile.FMA
   require(Params.Recode,

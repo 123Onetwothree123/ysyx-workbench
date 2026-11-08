@@ -18,8 +18,6 @@ class ysyx_26030103_NutShellMDU(
     op === ysyx_26030103_MDUOp.REM ||
     op === ysyx_26030103_MDUOp.REMU
   private val isDivSign = isDiv && !op(0)
-  private val isRem = op === ysyx_26030103_MDUOp.REM ||
-    op === ysyx_26030103_MDUOp.REMU
 
   private def signExtend(value: UInt): UInt = Cat(value(xlen - 1), value)
   private def zeroExtend(value: UInt): UInt = Cat(0.U(1.W), value)

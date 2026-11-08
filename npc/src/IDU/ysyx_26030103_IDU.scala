@@ -13,7 +13,6 @@ class ysyx_26030103_IDU(
   private val hasS = config.MMU.hasS
   private val hasU = config.MMU.hasU
   private val XLEN = config.XLEN
-  private val FLEN = config.FPULen
   private val UseF = config.UseF
   private val UseD = config.UseD
   private val PMUZihpm = config.RiscvArchPMU && config.RiscvArchPMUZihpm

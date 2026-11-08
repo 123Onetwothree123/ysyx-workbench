@@ -544,7 +544,6 @@ class ysyx_26030103_MMU(
   }
   def commitMissEnqueue(q: ysyx_26030103_TLBMissQueue, candidates: Seq[Bool]): Unit = {
     val candVec = VecInit(candidates)
-    val any     = candVec.reduce(_ || _)
     val sel     = PriorityEncoder(candVec)
     when(q.io.enq.fire) {
       ctxState(lookupIndex(sel)) := ctxMissWait
