@@ -1,0 +1,69 @@
+//| mill-version: 1.1.0
+
+package build
+
+import mill._
+import mill.scalalib._
+
+// NPC sources live three directories above this test project.
+val npcRoot = os.Path("/home/abc/ysyx-workbench/npc")
+
+// Berkeley HardFloat is consumed as source, exactly like npc/build.mill.
+object vendorHardFloat extends ScalaModule {
+  override def scalaVersion = "2.13.18"
+  override def sources = Task.Sources(
+    npcRoot / "vendor" / "berkeley-hardfloat" / "hardfloat" /
+      "src" / "main" / "scala")
+  override def scalacOptions = Seq(
+    "-language:reflectiveCalls",
+    "-deprecation",
+    "-feature",
+    "-Xcheckinit"
+  )
+  override def mvnDeps = Seq(mvn"org.chipsalliance::chisel:7.7.0")
+  override def scalacPluginMvnDeps =
+    Seq(mvn"org.chipsalliance:::chisel-plugin:7.7.0")
+}
+
+// The full NPC RTL, used as a library by the tests.
+object npc extends ScalaModule {
+  override def scalaVersion = "2.13.18"
+  override def scalacOptions = Seq(
+    "-language:reflectiveCalls",
+    "-deprecation",
+    "-feature",
+    "-Xcheckinit"
+  )
+  override def moduleDeps = Seq(vendorHardFloat)
+  override def mvnDeps = Seq(mvn"org.chipsalliance::chisel:7.7.0")
+  override def scalacPluginMvnDeps =
+    Seq(mvn"org.chipsalliance:::chisel-plugin:7.7.0")
+  override def sources = Task.Sources(
+    npcRoot / "src",
+    npcRoot / "vendor" / "fudian" / "src" / "main" / "scala"
+  )
+}
+
+// ScalaTest/ChiselSim unit tests.  Run e.g.:
+//   mill --no-server package.test.testOnly ysyx_26030103.audit.SomeTest
+object test extends ScalaModule.ScalaTests0 {
+  override def scalaVersion = "2.13.18"
+  override def scalacOptions = Seq(
+    "-language:reflectiveCalls",
+    "-deprecation",
+    "-feature",
+    "-Xcheckinit"
+  )
+  override def moduleDeps = Seq(npc)
+  override def mvnDeps = Seq(
+    mvn"org.chipsalliance::chisel:7.7.0",
+    mvn"org.scalatest::scalatest:3.2.19"
+  )
+  override def scalacPluginMvnDeps =
+    Seq(mvn"org.chipsalliance:::chisel-plugin:7.7.0")
+  override def sources = Task.Sources(
+    moduleDir / "src",
+    npcRoot / "csrc" / "Test" / "unit" / "src"
+  )
+  override def testFramework = "org.scalatest.tools.Framework"
+}

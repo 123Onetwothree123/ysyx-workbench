@@ -85,15 +85,8 @@ class ysyx_26030103_AXI5Arbiter(
   ): Bool = {
     val ExtendedWidth = AddressWidth + 1
     val ExtendedAddress = Cat(0.U(1.W), Address)
-    val BeatBytes = 1.U(ExtendedWidth.W) << Size
-    val ByteMask = BeatBytes - 1.U
-    val AlignedStart = ExtendedAddress & ~ByteMask
-    val TotalBytes = (Len + 1.U) * BeatBytes
-    val LastByte = Mux(
-      Burst === 1.U,
-      AlignedStart + TotalBytes - 1.U,
-      AlignedStart + BeatBytes - 1.U
-    )
+    val LastByte =
+      ysyx_26030103_AXI5Burst.lastByte(Address, Len, Size, Burst)
     val Supported = Size <= 2.U && (Burst === 0.U || Burst === 1.U)
     Supported && ExtendedAddress >= "hc0000000".U(ExtendedWidth.W) &&
     LastByte < (BigInt(1) << 32).U(ExtendedWidth.W)

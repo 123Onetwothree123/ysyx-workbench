@@ -103,23 +103,9 @@ class ysyx_26030103_AXI5WidthBridge(
     if (!AddressNarrows) {
       false.B
     } else {
-      val Width = UpstreamAddressWidth + 1
       val Start = Cat(0.U(1.W), Address)
-      val SizeBytes = (1.U << Size).pad(Width)
-      val TotalBytes = ((Len.pad(9) + 1.U) << Size).pad(Width)
-      val SizeMask = SizeBytes - 1.U
-      val WrapMask = TotalBytes - 1.U
-      val AlignedStart = (Start & (~SizeMask).asUInt)(Width - 1, 0)
-      val WrapBase = (Start & (~WrapMask).asUInt)(Width - 1, 0)
-      val LastByte = Mux(
-        Burst === 0.U,
-        (AlignedStart + SizeMask)(Width - 1, 0),
-        Mux(
-          Burst === 2.U,
-          (WrapBase + WrapMask)(Width - 1, 0),
-          (AlignedStart + TotalBytes - 1.U)(Width - 1, 0)
-        )
-      )
+      val LastByte =
+        ysyx_26030103_AXI5Burst.lastByte(Address, Len, Size, Burst)
       Start(UpstreamAddressWidth, DownstreamAddressWidth).orR ||
       LastByte(UpstreamAddressWidth, DownstreamAddressWidth).orR
     }
@@ -146,7 +132,11 @@ class ysyx_26030103_AXI5WidthBridge(
     val Step = (Beat.pad(Width) << Size)(Width - 1, 0)
     val Inc = (AlignedBase + Step)(Width - 1, 0)
     val IncAddress = Mux(Beat === 0.U, BaseExt, Inc)
-    val WrapMask = ((((Len.pad(9) + 1.U) << Size) - 1.U)).pad(Width)
+    val WrapMask =
+      (ysyx_26030103_AXI5Burst.totalBytes(
+        Len,
+        ysyx_26030103_AXI5Burst.beatBytes(Size, Width)
+      ) - 1.U).pad(Width)
     val Wrapped =
       ((BaseExt & (~WrapMask).asUInt) | (Inc & WrapMask))(Width - 1, 0)
     Mux(

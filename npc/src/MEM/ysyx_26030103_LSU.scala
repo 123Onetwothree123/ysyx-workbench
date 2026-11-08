@@ -43,6 +43,10 @@ class ysyx_26030103_LSU(
     s"LSU AddressWidth($AddressWidth) 不能超过 XLEN($XLEN)")
   require(BusDataWidth == 32 || BusDataWidth == 64,
     s"LSU BusDataWidth 非法: $BusDataWidth")
+  // 写缓冲是环形队列，head/tail 指针按 log2Ceil(WBufDepth) 位回绕；
+  // 非 2 的幂会让指针回绕与下标范围不一致，必须在 elaboration 期拒绝。
+  require(WBufDepth >= 1 && (WBufDepth & (WBufDepth - 1)) == 0,
+    s"LSU WBufDepth($WBufDepth) 必须是 2 的幂")
   private val WideMem = XLEN == 64 || UseD
   private val BusBytes = BusDataWidth / 8
   private val BusLaneBits = log2Ceil(BusBytes)
@@ -837,7 +841,11 @@ class ysyx_26030103_LSU(
     if (DataViptParallel) io.ViptPAddrValid else true.B
   val ViptReqPaddrVaddr =
     if (DataViptParallel) io.ViptPAddrVaddr
-    else ActiveInstruction.ALUResult
+    // 非并行 VIPT：请求进入 LSU 时 PA 已经由 DMMU 翻译完成并放在
+    // ALUResult 里，DCache 用 vaddr 选 index、用 addr 取 tag。此时 PA 的
+    // 归属标签就是当前指令自己的 VAddr；若这里填 ALUResult(PA)，DCache
+    // 会认为“PA 还没来”并等待一个永不出现的 VA 标签，导致 VA≠PA 时死锁。
+    else ActiveInstruction.VAddr
   val ViptReqKill =
     if (DataViptParallel) io.ViptKill else false.B
   DCache.io.req.valid := DCacheRequestActive && state === StatesReadRequest // 复用LSU的AR/R通道
@@ -1060,7 +1068,7 @@ class ysyx_26030103_LSU(
       TransactionFault := true.B
       AtomicActive := false.B
       state := StatesIdle
-    }.elsewhen(AtomicOpReg === ysyx_26030103_AtomicOp.LR) {
+    }.elsewhen(ysyx_26030103_AtomicOp.IsLr(AtomicOpReg)) {
       LoadDataReg := WideData
       ReservationValid := true.B
       ReservationAddr := AtomicAddrReg
@@ -1147,7 +1155,7 @@ class ysyx_26030103_LSU(
       // 会把 DCache 的 ARREADY/R beat 误当成自己的事务。
       when(AtomicPAddrReady && io.BusQuiet && !DCacheBusActive) {
         AtomicAddrReg := AddrOf(EffectiveALUResult)
-        when(AtomicOpReg === ysyx_26030103_AtomicOp.SC) {
+        when(ysyx_26030103_AtomicOp.IsSc(AtomicOpReg)) {
           // SC 失败路径完全不碰内存：rd=1，清除 reservation。
           when(ReservationValid && ReservationAddr === AddrOf(EffectiveALUResult)) {
             AtomicResultData := 0.U
@@ -1242,7 +1250,7 @@ class ysyx_26030103_LSU(
                 TransactionFault := true.B
                 AtomicActive := false.B
                 state := StatesIdle
-              }.elsewhen(AtomicOpReg === ysyx_26030103_AtomicOp.LR) {
+              }.elsewhen(ysyx_26030103_AtomicOp.IsLr(AtomicOpReg)) {
                 // LR 成功：建立 reservation，写回旧值。
                 LoadDataReg := WordData
                 ReservationValid := true.B
@@ -1278,7 +1286,7 @@ class ysyx_26030103_LSU(
               TransactionFault := true.B
               AtomicActive := false.B
               state := StatesIdle
-            }.elsewhen(AtomicOpReg === ysyx_26030103_AtomicOp.LR) {
+            }.elsewhen(ysyx_26030103_AtomicOp.IsLr(AtomicOpReg)) {
               LoadDataReg := WordData
               ReservationValid := true.B
               ReservationAddr := AtomicAddrReg
@@ -1608,7 +1616,7 @@ class ysyx_26030103_LSU(
     false.B,
     !StageInputBits.MemoryWrite ||
       (StageInputBits.IsAtomic &&
-        StageInputBits.AtomicOp =/= ysyx_26030103_AtomicOp.SC)
+        !ysyx_26030103_AtomicOp.IsSc(StageInputBits.AtomicOp))
   )
   io.IsStore := is_store_transaction
   io.StallReadAR := state === StatesReadRequest

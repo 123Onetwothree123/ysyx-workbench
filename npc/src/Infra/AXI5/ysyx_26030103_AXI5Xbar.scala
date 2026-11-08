@@ -77,25 +77,8 @@ class ysyx_26030103_AXI5Xbar(
       Len: UInt,
       Size: UInt,
       Burst: UInt
-  ): UInt = {
-    val ExtendedAddress = Cat(0.U(1.W), Address)
-    val BeatBytes = 1.U((AddressWidth + 1).W) << Size
-    val ByteMask = BeatBytes - 1.U
-    val AlignedStart = ExtendedAddress & ~ByteMask
-    val TotalBytes = (Len + 1.U) * BeatBytes
-    val WrapMask = TotalBytes - 1.U
-    // INCR：首拍非对齐时后续拍仍从 size 对齐边界递增；FIXED：地址不变；
-    // WRAP：整笔落在 (Len+1)*BeatBytes 容器内。
-    Mux(
-      Burst === 2.U,
-      (ExtendedAddress & ~WrapMask) + TotalBytes - 1.U,
-      Mux(
-        Burst === 1.U,
-        AlignedStart + TotalBytes - 1.U,
-        AlignedStart + BeatBytes - 1.U
-      )
-    )
-  }
+  ): UInt =
+    ysyx_26030103_AXI5Burst.lastByte(Address, Len, Size, Burst)
   private def InRegion(
       Address: UInt,
       Len: UInt,

@@ -106,9 +106,13 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
     val allowed = PriorityMux(matchesAny.zip(permissions))
     val lockedMatch = PriorityMux(matchesAny.zip(
       (0 until activeEntries).map(i => io.cfg(i)(7))))
+    // M 模式只受“锁定表项”约束：最低编号匹配项未锁定（L=0）时整笔访问
+    // 直接放行，不能要求它覆盖全部字节——否则跨该表项末尾的 8 字节访问
+    // 会被误报 fault。锁定表项对 M 模式仍强制权限与范围检查。
+    val mModeBypass = privilege === 3.U && !lockedMatch
     val noMatchFault = !anyMatch && privilege =/= 3.U
-    val permissionFault = anyMatch &&
-      (!allCovered || !(allowed || (privilege === 3.U && !lockedMatch)))
+    val permissionFault = anyMatch && !mModeBypass &&
+      (!allCovered || !allowed)
     noMatchFault || permissionFault
   }
 

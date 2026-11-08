@@ -518,8 +518,12 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   it should "VIPT 并行下原子事务等待带标签 PA，翻译故障不产生总线副作用" in {
+    // 没有 DCache 时 DataVipt/DataViptParallel 恒为 false，LSU 会直接使用
+    // ALUResult 发原子事务，根本不存在“等待带标签 PA”的通路；要覆盖本用例
+    // 必须同时打开 DCacheEnable。
     simulate(new ysyx_26030103_LSU(
-      XLEN = 32, DCacheVipt = true, ViptParallel = true)) { dut =>
+      XLEN = 32, DCacheEnable = true, DCacheVipt = true,
+      ViptParallel = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val addr = 0x80007000L

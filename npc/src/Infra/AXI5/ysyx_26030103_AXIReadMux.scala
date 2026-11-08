@@ -544,9 +544,13 @@ class ysyx_26030103_AXIWriteMux(
     sel.W.WREADY := io.out.W.WREADY && !wDone
     val awFire = io.out.AW.AWVALID && io.out.AW.AWREADY
     val wFire = io.out.W.WVALID && io.out.W.WREADY
+    // 一笔写可能有多拍 W（AWLEN>0）：AWSIZE=2 的 8 字节 store 在 32 位总线
+    // 上就是两拍。W 通道必须以 WLAST 为结束判据，不能在第一拍就置 wDone，
+    // 否则后续拍永远不被转发，下游等 WLAST、上游等 B，总线挂死。
+    val wFinishes = wFire && io.out.W.WLAST
     when(awFire) { awDone := true.B }
-    when(wFire) { wDone := true.B }
-    when((awDone || awFire) && (wDone || wFire)) {
+    when(wFinishes) { wDone := true.B }
+    when((awDone || awFire) && (wDone || wFinishes)) {
       state := (if (isA) aResp else bResp)
     }
   }

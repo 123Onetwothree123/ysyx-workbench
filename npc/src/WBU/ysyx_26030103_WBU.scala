@@ -18,10 +18,14 @@ class ysyx_26030103_WBU(val XLEN: Int = 32) extends Module {
   })
   io.in.ready := true.B
   io.WriteSELECT := io.in.bits.Rd
-  io.WriteEN := io.in.fire && io.in.bits.RegisterWrite
+  // 写使能必须同时要求 Retire：架构状态不能因为一条被冲刷/触发异常的
+  // 指令而改变。上游目前已经门控，这里保持模块自身契约自洽（与下面的
+  // FPCommit 一致）。
+  io.WriteEN := io.in.fire && io.in.bits.Retire && io.in.bits.RegisterWrite
   io.wdata := 0.U(XLEN.W)
   io.FPWriteSELECT := io.in.bits.Rd
-  io.FPWriteEN := io.in.fire && io.in.bits.FPRegisterWrite
+  io.FPWriteEN := io.in.fire && io.in.bits.Retire &&
+    io.in.bits.FPRegisterWrite
   io.FPWriteData := io.in.bits.FPWriteData
   // 只有真正退休且修改了 f 寄存器的 FP 指令才把 FS 置 Dirty；FSW/FSD、
   // FCMP/FCLASS 等只读浮点状态，访问故障的 load/store 或被中断压掉的

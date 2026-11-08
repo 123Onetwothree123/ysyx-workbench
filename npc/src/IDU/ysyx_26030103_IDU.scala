@@ -206,7 +206,7 @@ class ysyx_26030103_IDU(
     else false.B
   // funct5 直接作为原子操作号（00010=LR，00011=SC，其余为 AMO）。
   val AtomicOp = Mux(IsAtomic, AmoFunct5, 0.U(5.W))
-  val IsLr = IsAtomic && AtomicOp === ysyx_26030103_AtomicOp.LR
+  val IsLr = IsAtomic && ysyx_26030103_AtomicOp.IsLr(AtomicOp)
 
   // F/D 译码
   // 所有 F/D 编码在这里集中解析；vendor 内部操作码不会进入上层。
@@ -374,7 +374,8 @@ class ysyx_26030103_IDU(
       FpWritesGPR
   val MemoryValid = IsLoad || IsSType || IsAtomic || IsFPLoad || IsFPStore
   // AMO 同时需要读/写权限，SC 只需要写权限；LR 只读。
-  val MemoryWrite = IsSType || (IsAtomic && !IsLr) || IsFPStore
+  val MemoryWrite = IsSType ||
+    (IsAtomic && ysyx_26030103_AtomicOp.Writes(AtomicOp)) || IsFPStore
   /*
   又忘记了为什么这样做，就是想要减少代码量，主要是代码量多是负担，就是只看末尾的两位，我怀疑可能是RISCV故意这么设计的，也可以简化
   000 LB和SB 1byte

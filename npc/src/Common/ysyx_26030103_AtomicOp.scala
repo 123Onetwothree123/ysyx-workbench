@@ -24,8 +24,6 @@ object ysyx_26030103_AtomicOp {
 
   def IsLr(op: UInt): Bool = op === LR
   def IsSc(op: UInt): Bool = op === SC
-  def IsAmo(op: UInt): Bool =
-    op =/= LR && op =/= SC && op =/= 0.U
   /** 该操作是否会在读之后写回内存（AMO 与成功的 SC）。 */
   def Writes(op: UInt): Bool = op =/= LR
 

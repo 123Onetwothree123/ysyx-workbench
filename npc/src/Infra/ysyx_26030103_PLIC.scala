@@ -82,6 +82,18 @@ class ysyx_26030103_PLIC(
   val StandardThresholdAddr = addrOf(0x201000L)
   val StandardClaimAddr = addrOf(0x201004L)
   val PendingAddr = addrOf(0x1000L)
+  // pending 与 enable 一样按 32 位字分页：numSources>32 时 0x1004/0x1008/…
+  // 分别是高位 pending 字。只解码 0x1000 会把高位 source 截断成 0。
+  private def isPendingAddr(address: UInt): Bool =
+    address >= PendingAddr &&
+      address < addrOf(0x1000L + 4L * Words) &&
+      ((address - PendingAddr) & 3.U) === 0.U
+  private def pendingWordIndex(address: UInt): UInt =
+    if (Words == 1) 0.U
+    else ((address - PendingAddr) >> 2)(log2Ceil(Words) - 1, 0)
+  private val pendingPadded = pending.pad(Words * 32)
+  private val pendingWords =
+    VecInit((0 until Words).map(w => pendingPadded(w * 32 + 31, w * 32)))
   // 早期地址 0x200000/0x200004 实际对应标准 PLIC 的 M 上下文 0，
   // 继续支持以保持既有测试/软件兼容。
   val ThresholdAddr = addrOf(0x200000L)
@@ -196,9 +208,11 @@ class ysyx_26030103_PLIC(
     }.elsewhen(isComplete && WByte =/= 0.U && WWord =/= 0.U) {
       // claim 返回值就是 source ID（bit 下标），complete 必须清同一 bit。
       // 实际清位在下方与 claim 合并执行；这里只记录目标。
-      val doneIdx = WWord(IdBits - 1, 0)
-      completeIndex := doneIdx
-      completeFire := doneIdx < numSources.U
+      // 先在完整 32 位上做范围判断，再截断到 IdBits。若先截断，越界 ID
+      // （例如 numSources=32 时写 32..63）会回绕成合法下标，误清其他
+      // source 的 claimed 位。
+      completeIndex := WWord(IdBits - 1, 0)
+      completeFire := WWord < numSources.U
       perfComplete := true.B
     }
     BResp := Mux(isPriority || isEnable || isThreshold || isComplete, OKAY, SLVERR)
@@ -239,8 +253,8 @@ class ysyx_26030103_PLIC(
       when(claimValid) {
         pending := pending & ~UIntToOH(claimIndex, numSources)
       }
-    }.elsewhen(io.AR.ARADDR === PendingAddr) {
-      RWord := pending
+    }.elsewhen(isPendingAddr(io.AR.ARADDR)) {
+      RWord := pendingWords(pendingWordIndex(io.AR.ARADDR))
     }.elsewhen(isThresholdAddr(io.AR.ARADDR)) {
       RWord := threshold
     }.elsewhen(io.AR.ARADDR >= addrOf(0L) && io.AR.ARADDR < addrOf(4L * numSources) &&
