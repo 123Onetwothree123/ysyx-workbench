@@ -38,6 +38,20 @@ class ysyx_26030103_CSR(
   require(!UseD || UseF, "CSR 的 D 扩展依赖 F 扩展")
   private val hasS = profile.hasS
   private val hasU = profile.hasU
+  // medeleg 是 WARL：只有当前配置真正可能发生、且允许从 S 委托的异常
+  // 对应位可写。cause 0..7 是 S 模式可处理的普通异常；cause 8 只有实现
+  // U 模式时才存在；cause 9 是 ecall from S；12/13/15 是页错误，只在
+  // MMU 打开时可能发生。cause 10/14、ecall from M(11)、double trap(16)
+  // 以及高位保留位必须读回 0，不能被软件保存/恢复或能力探测误读。
+  private val MedelegMaskValue: BigInt = {
+    var mask = (BigInt(1) << 10) - 1
+    if (!hasU) mask &= ~(BigInt(1) << 8)
+    if (profile.enabled) {
+      mask |= (BigInt(1) << 12) | (BigInt(1) << 13) | (BigInt(1) << 15)
+    }
+    mask
+  }
+  private val MedelegMask: UInt = MedelegMaskValue.U(32.W)
   private val FullMask: BigInt =
     if (XLEN == 64) (BigInt(1) << 64) - 1 else 0xffffffffL
   // satp 在 RV64 下使用完整 64 位掩码；RV32 只保留低 32 位。
@@ -455,7 +469,8 @@ class ysyx_26030103_CSR(
     (Mxl | BigInt(0x100) | AExt | CExt | DExt | FExt | MExt |
       SExt | UExt).U(XLEN.W)
   }
-  val Medeleg_rdata = MedelegOpt.getOrElse(0.U(32.W))
+  val Medeleg_rdata =
+    MedelegOpt.map(Reg => Reg & MedelegMask).getOrElse(0.U(32.W))
   val Mideleg_rdata = MidelegOpt.getOrElse(0.U(32.W))
   val Sscratch_rdata = SscratchOpt.getOrElse(0.U(32.W))
   val Stval_rdata = StvalOpt.getOrElse(0.U(32.W))
@@ -892,7 +907,9 @@ class ysyx_26030103_CSR(
   }
   when(CSRWen && IsCSRAddress(CSR_MSCRATCH)) { Mscratch := CSRWriteData(Mscratch) }
   MedelegOpt.foreach { Medeleg =>
-    when(CSRWen && IsCSRAddress(CSR_MEDELEG)) { Medeleg := Write32(Medeleg) }
+    when(CSRWen && IsCSRAddress(CSR_MEDELEG)) {
+      Medeleg := Write32(Medeleg) & MedelegMask
+    }
   }
   MidelegOpt.foreach { Mideleg =>
     // M 级中断（MSIP/MTIP/MEIP，bit3/7/11）不能委托给 S，mideleg 中
