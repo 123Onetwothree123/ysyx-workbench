@@ -527,6 +527,7 @@ case class ysyx_26030103_NPCConfig(
   }
   final val MDUMaxInflight: Int = MULMaxInflight + 1
   final val EnableDynamicGPRDebug: Boolean = SDBEnable || DiffTestEnable
+  final val EnableDynamicFPRDebug: Boolean = DiffTestEnable
   final val EnableRetireTrace: Boolean =
     SDBEnable || DiffTestEnable || MTraceEnable || ITraceEnable ||
       FTraceEnable || IRingBufEnable || DicArchCounterEnable

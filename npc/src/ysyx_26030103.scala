@@ -76,7 +76,8 @@ class ysyx_26030103(
   val gpr = Module(new ysyx_26030103_GPR(XLEN, config.EnableDynamicGPRDebug))
   // 浮点寄存器堆独立于 GPR；FLEN=64 固定 32 个 f 寄存器。
   val fprOpt =
-    if (config.UseF) Some(Module(new ysyx_26030103_FPR(config.FPULen)))
+    if (config.UseF)
+      Some(Module(new ysyx_26030103_FPR(config.FPULen, config.EnableDynamicFPRDebug)))
     else None
   val icache = ysyx_26030103_ICacheFactory.Create(config)
   val arbiter = Module(
