@@ -1,4 +1,5 @@
 package ysyx_26030103.exu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
@@ -18,7 +19,7 @@ import _root_.ysyx_26030103.common._
 class ysyx_26030103_CSR(
     val profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(),
-    val XLEN: Int = 32,
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     // RISCV_A 打开时 misa.A 必须置位；关闭时该位保持 0。
     val UseA: Boolean = false,
     // RISCV_C 打开时 misa.C 置位，mepc/sepc 只清 bit0（IALIGN=16）。

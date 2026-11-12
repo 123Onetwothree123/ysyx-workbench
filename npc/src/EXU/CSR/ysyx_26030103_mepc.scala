@@ -1,8 +1,9 @@
 package ysyx_26030103.exu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 class ysyx_26030103_mepc(
-    val XLEN: Int = 32,
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     // IALIGN=16（C 扩展打开）时 mepc/sepc 只清 bit0；否则低两位都为 0。
     val UseC: Boolean = false
 ) extends Module {

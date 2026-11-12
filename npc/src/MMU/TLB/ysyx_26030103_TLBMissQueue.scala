@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -11,7 +12,7 @@ import chisel3.util._
   * 队列支持与 flush 同拍的清空：flush 优先于本拍的 enq/deq，避免流水线 冲刷后旧 miss 又被重新送给 PTW。
   */
 class ysyx_26030103_TLBMissQueue(
-  entries: Int = 4,
+  entries: Int = ysyx_26030103_KconfigDefaults.MmuItlbMissQueueEntries,
   width:   Int = 4)
     extends Module {
   require(entries >= 1, "TLB miss queue 深度必须 >= 1")

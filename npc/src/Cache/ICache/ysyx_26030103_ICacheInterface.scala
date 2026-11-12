@@ -1,4 +1,5 @@
 package ysyx_26030103.cache
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import _root_.ysyx_26030103.infra.ysyx_26030103_AXI5IO
@@ -13,8 +14,8 @@ import _root_.ysyx_26030103.infra.ysyx_26030103_AXI5IO
   *   3. kill 丢弃在飞取指请求，flush（fence.i）使全部缓存行失效。
   */
 class ysyx_26030103_ICacheInterface(
-    val AddressWidth: Int = 32,
-    val DataWidth: Int = 32
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    val DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth
 ) extends Bundle {
   require(DataWidth == 32 || DataWidth == 64,
     s"ICacheInterface DataWidth 非法: $DataWidth")

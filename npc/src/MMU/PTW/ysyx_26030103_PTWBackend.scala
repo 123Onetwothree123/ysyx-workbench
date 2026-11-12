@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -11,9 +12,9 @@ import chisel3.util._
   */
 class ysyx_26030103_PTWBackendIO(
     respPorts: Int,
-    XLEN: Int = 32,
-    AddressWidth: Int = 32,
-    pteWidth: Int = 32
+    XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    pteWidth: Int = ysyx_26030103_KconfigDefaults.MmuPteWidth
 ) extends Bundle {
   val req = Flipped(Decoupled(new ysyx_26030103_PTWRequest(XLEN, AddressWidth)))
   val resp = Vec(respPorts, Decoupled(
@@ -25,9 +26,9 @@ class ysyx_26030103_PTWBackendIO(
 /** PTW 后端基类，统一 MMU 侧的类型。 */
 abstract class ysyx_26030103_PTWBackend(
     respPorts: Int,
-    XLEN: Int = 32,
-    AddressWidth: Int = 32,
-    pteWidth: Int = 32
+    XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    pteWidth: Int = ysyx_26030103_KconfigDefaults.MmuPteWidth
 ) extends Module {
   val io = IO(new ysyx_26030103_PTWBackendIO(respPorts, XLEN, AddressWidth, pteWidth))
 }

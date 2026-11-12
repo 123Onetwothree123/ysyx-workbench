@@ -1,4 +1,5 @@
 package ysyx_26030103.idu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -22,7 +23,7 @@ import chisel3.util._
   * 移位）展开为写 x0 的等价指令，正常退休但不产生架构副作用。
   */
 class ysyx_26030103_RVCDecoder(
-    val XLEN: Int = 32,
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val UseF: Boolean = false,
     val UseD: Boolean = false
 ) extends Module {

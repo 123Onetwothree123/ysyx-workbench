@@ -1,5 +1,6 @@
 package ysyx_26030103.config
 
+import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 
 /** PTE 字段位置；默认就是标准 RISC-V 32-bit PTE。
@@ -8,17 +9,17 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
   * 64 位 PTE 中扩展到 bit 53（标准 44 位 PPN），自定义编码仍可按位配置。
   */
 case class ysyx_26030103_PteConfig(
-    pteBits: Int = 32,
-    validBit: Int = 0,
-    readBit: Int = 1,
-    writeBit: Int = 2,
-    executeBit: Int = 3,
-    userBit: Int = 4,
-    globalBit: Int = 5,
-    aBit: Int = 6,
-    dBit: Int = 7,
-    ppnLow: Int = 10,
-    ppnHigh: Int = 31
+    pteBits: Int = KconfigDefaults.MmuPteBits,
+    validBit: Int = KconfigDefaults.MmuPteValidBit,
+    readBit: Int = KconfigDefaults.MmuPteReadBit,
+    writeBit: Int = KconfigDefaults.MmuPteWriteBit,
+    executeBit: Int = KconfigDefaults.MmuPteExecBit,
+    userBit: Int = KconfigDefaults.MmuPteUserBit,
+    globalBit: Int = KconfigDefaults.MmuPteGlobalBit,
+    aBit: Int = KconfigDefaults.MmuPteABit,
+    dBit: Int = KconfigDefaults.MmuPteDBit,
+    ppnLow: Int = KconfigDefaults.MmuPtePpnLow,
+    ppnHigh: Int = KconfigDefaults.MmuPtePpnHigh
 ) {
   require(pteBits == 32 || pteBits == 64, s"PTE 位宽只允许 32/64，收到 $pteBits")
   require(ppnLow >= 8 && ppnHigh < pteBits && ppnLow <= ppnHigh,
@@ -50,18 +51,18 @@ case class ysyx_26030103_PteConfig(
 case class ysyx_26030103_MMUProfile(
     enabled: Boolean = false,
     // MMU 所属的架构位宽。RV32 默认 32；RV64/Sv39 由 elaborator 设置为 64。
-    xlen: Int = 32,
+    xlen: Int = KconfigDefaults.MmuXlen,
     // RV64 页几何模式：standard 只接受标准 Sv39/Sv48；custom 显式启用
     // 非标准页大小/级数/PTE 编码，并要求 satp MODE 使用 10..15 的扩展值。
     // RV32 不接受该字段的额外限制，既有的自定义 32 位几何保持不变。
     geometryMode: String = "standard",
     // CUSTOM 模式专用的 satp MODE。8/9 是标准 Sv39/Sv48，1 是 Sv32，
     // 都不能被非标准几何复用，因此 CUSTOM 只允许保留编码 10..15。
-    customSatpMode: Int = 10,
-    pageSizeBytes: Int = 4096,
-    levels: Int = 2,
-    pteSizeBytes: Int = 4,
-    pageTableSizeBytes: Int = 4096,
+    customSatpMode: Int = KconfigDefaults.MmuCustomSatpMode,
+    pageSizeBytes: Int = KconfigDefaults.MmuPageSizeBytes,
+    levels: Int = KconfigDefaults.MmuLevels,
+    pteSizeBytes: Int = KconfigDefaults.MmuPteSizeBytes,
+    pageTableSizeBytes: Int = KconfigDefaults.MmuPageTableSizeBytes,
     pteFormat: String = "riscv32",
     pteConfig: ysyx_26030103_PteConfig = ysyx_26030103_PteConfig(),
     superpage: Boolean = false,
@@ -79,62 +80,62 @@ case class ysyx_26030103_MMUProfile(
     cacheViptAliasScanMode: String = "all_sets",
     // parallel_n 的每周期扫描宽度（2..1024）。超过实际 set 数时在该
     // Cache 内截断为 sets；Kconfig 默认 4，对应 8/16/32 set 的 2/4/8 拍。
-    cacheViptAliasScanWidth: Int = 4,
+    cacheViptAliasScanWidth: Int = KconfigDefaults.MmuCacheViptAliasScanWidth,
     // directory 的目录项数。0 表示跟随实际 set 数（每个 set 独占目录桶，
     // 无冲突）；显式值必须是 2 的幂且不超过 set 数。
-    cacheViptAliasDirectoryEntries: Int = 0,
+    cacheViptAliasDirectoryEntries: Int = KconfigDefaults.MmuCacheViptAliasDirectoryEntries,
     ptwPath: String = "dedicated",
     ptwArch: String = "independent",
-    ptwOutstanding: Int = 2,
+    ptwOutstanding: Int = KconfigDefaults.MmuPtwOutstanding,
     // 页表总线可同时保持的页表读/写数。0 表示跟随 ptwOutstanding；
     // 默认 1 保持原有的单笔总线行为，配置 >1 才启用总线级重叠。
-    ptwBusOutstanding: Int = 1,
+    ptwBusOutstanding: Int = KconfigDefaults.MmuPtwBusOutstanding,
     ptwOrder: String = "in_order",
     ptwCache: Boolean = false,
-    ptwCacheEntries: Int = 16,
-    ptwCacheWays: Int = 2,
+    ptwCacheEntries: Int = KconfigDefaults.MmuPtwCacheEntries,
+    ptwCacheWays: Int = KconfigDefaults.MmuPtwCacheWays,
     tlbEnabled: Boolean = false,
     tlbOrganization: String = "split",
     tlbStorage: String = "reg",
     tlbReplacement: String = "plru",
-    tlbAsidBits: Int = 9,
+    tlbAsidBits: Int = KconfigDefaults.MmuTlbAsidBits,
     tlbGlobal: Boolean = true,
-    itlbEntries: Int = 16,
-    itlbWays: Int = 2,
-    dtlbEntries: Int = 32,
-    dtlbWays: Int = 4,
-    utlbEntries: Int = 32,
-    utlbWays: Int = 4,
-    utlbLookupPorts: Int = 1,
+    itlbEntries: Int = KconfigDefaults.MmuItlbEntries,
+    itlbWays: Int = KconfigDefaults.MmuItlbWays,
+    dtlbEntries: Int = KconfigDefaults.MmuDtlbEntries,
+    dtlbWays: Int = KconfigDefaults.MmuDtlbWays,
+    utlbEntries: Int = KconfigDefaults.MmuUtlbEntries,
+    utlbWays: Int = KconfigDefaults.MmuUtlbWays,
+    utlbLookupPorts: Int = KconfigDefaults.MmuUtlbLookupPorts,
     tlbSuperpage: Boolean = false,
-    tlbSuperpageEntries: Int = 4,
+    tlbSuperpageEntries: Int = KconfigDefaults.MmuTlbSuperpageEntries,
     tlbMissQueueMode: String = "follow_tlb",
-    itlbMissQueueEntries: Int = 4,
-    dtlbMissQueueEntries: Int = 4,
-    utlbMissQueueEntries: Int = 8,
-    globalMissQueueEntries: Int = 8,
-    refillPorts: Int = 1,
-    csrMstatusReadMask: Int = 0x007e19aa,
-    csrMstatusReadSet: Int = 0,
-    csrMstatusWriteMask: Int = 0x007e19aa,
+    itlbMissQueueEntries: Int = KconfigDefaults.MmuItlbMissQueueEntries,
+    dtlbMissQueueEntries: Int = KconfigDefaults.MmuDtlbMissQueueEntries,
+    utlbMissQueueEntries: Int = KconfigDefaults.MmuUtlbMissQueueEntries,
+    globalMissQueueEntries: Int = KconfigDefaults.MmuGlobalMissQueueEntries,
+    refillPorts: Int = KconfigDefaults.MmuRefillPorts,
+    csrMstatusReadMask: Int = KconfigDefaults.MmuMstatusReadMask.toInt,
+    csrMstatusReadSet: Int = KconfigDefaults.MmuMstatusReadSet.toInt,
+    csrMstatusWriteMask: Int = KconfigDefaults.MmuMstatusWriteMask.toInt,
     // satp 在 RV64 下是 64 位 CSR，因此掩码使用 Long；RV32 只用低 32 位。
-    csrSatpReadMask: Long = 0xffffffffffffffffL,
-    csrSatpReadSet: Long = 0,
-    csrSatpWriteMask: Long = 0xffffffffffffffffL,
+    csrSatpReadMask: Long = KconfigDefaults.MmuSatpReadMask,
+    csrSatpReadSet: Long = KconfigDefaults.MmuSatpReadSet,
+    csrSatpWriteMask: Long = KconfigDefaults.MmuSatpWriteMask,
     hasS: Boolean = true,
     hasU: Boolean = true,
     hasSTimerIrq: Boolean = true,
     hasSExternalIrq: Boolean = true,
     timerPath: String = "clint_mtip",
-    plicSources: Int = 32,
-    plicPriorityBits: Int = 3,
-    plicMaxPriority: Int = 7,
+    plicSources: Int = KconfigDefaults.MmuPlicSources,
+    plicPriorityBits: Int = KconfigDefaults.MmuPlicPriorityBits,
+    plicMaxPriority: Int = KconfigDefaults.MmuPlicMaxPriority,
     plicBase: Long = ysyx_26030103_PhysicalMemoryMap.DefaultPlicBase,
     plicSize: Long = ysyx_26030103_PhysicalMemoryMap.DefaultPlicSize,
     csrViewMode: String = "bound",
     csrMissingMode: String = "illegal",
     pmpEnabled: Boolean = false,
-    pmpEntries: Int = 16,
+    pmpEntries: Int = KconfigDefaults.MmuPmpEntries,
     csrEnabled: Set[Int] = ysyx_26030103_MMUProfile.DefaultCsrAddresses
 ) {
   private def isPowerOfTwo(value: Int): Boolean =
@@ -517,7 +518,8 @@ object ysyx_26030103_MMUProfile {
     val (satpReadMask, satpReadSet, satpWriteMask) =
       fieldMasks(if (xlen == 64) SatpFields64 else SatpFields,
         env, "CSR_SATP", fieldDefaultRead, fieldDefaultWrite)
-    val defaultPteBytes = if (xlen == 64) 8 else 4
+    val defaultPteBytes =
+      if (xlen == 64) KconfigDefaults.MmuPteSizeBytes else 4
     val pteBytes = envInt(env, "MMU_PTE_SIZE_BYTES", defaultPteBytes)
     val defaultPpnHigh = if (pteBytes * 8 == 64) 53 else 31
     ysyx_26030103_MMUProfile(
@@ -527,24 +529,25 @@ object ysyx_26030103_MMUProfile {
       xlen = xlen,
       geometryMode = envString(env, "MMU_GEOMETRY_MODE", "standard")
         .stripPrefix("\"").stripSuffix("\"").toLowerCase,
-      customSatpMode = envInt(env, "MMU_CUSTOM_SATP_MODE", 10),
-      pageSizeBytes = envInt(env, "MMU_PAGE_SIZE_BYTES", 4096),
-      levels = envInt(env, "MMU_LEVELS", if (xlen == 64) 3 else 2),
+      customSatpMode = envInt(env, "MMU_CUSTOM_SATP_MODE", KconfigDefaults.MmuCustomSatpMode),
+      pageSizeBytes = envInt(env, "MMU_PAGE_SIZE_BYTES", KconfigDefaults.MmuPageSizeBytes),
+      levels = envInt(env, "MMU_LEVELS",
+        if (xlen == 64) KconfigDefaults.MmuLevels else 2),
       pteSizeBytes = pteBytes,
-      pageTableSizeBytes = envInt(env, "MMU_PAGE_TABLE_SIZE_BYTES", 4096),
+      pageTableSizeBytes = envInt(env, "MMU_PAGE_TABLE_SIZE_BYTES", KconfigDefaults.MmuPageTableSizeBytes),
       pteFormat = envString(env, "MMU_PTE_FORMAT",
         if (xlen == 64) "riscv64" else "riscv32"),
       pteConfig = ysyx_26030103_PteConfig(
         pteBits = pteBytes * 8,
-        validBit = envInt(env, "MMU_PTE_VALID_BIT", 0),
-        readBit = envInt(env, "MMU_PTE_READ_BIT", 1),
-        writeBit = envInt(env, "MMU_PTE_WRITE_BIT", 2),
-        executeBit = envInt(env, "MMU_PTE_EXEC_BIT", 3),
-        userBit = envInt(env, "MMU_PTE_USER_BIT", 4),
-        globalBit = envInt(env, "MMU_PTE_GLOBAL_BIT", 5),
-        aBit = envInt(env, "MMU_PTE_A_BIT", 6),
-        dBit = envInt(env, "MMU_PTE_D_BIT", 7),
-        ppnLow = envInt(env, "MMU_PTE_PPN_LOW", 10),
+        validBit = envInt(env, "MMU_PTE_VALID_BIT", KconfigDefaults.MmuPteValidBit),
+        readBit = envInt(env, "MMU_PTE_READ_BIT", KconfigDefaults.MmuPteReadBit),
+        writeBit = envInt(env, "MMU_PTE_WRITE_BIT", KconfigDefaults.MmuPteWriteBit),
+        executeBit = envInt(env, "MMU_PTE_EXEC_BIT", KconfigDefaults.MmuPteExecBit),
+        userBit = envInt(env, "MMU_PTE_USER_BIT", KconfigDefaults.MmuPteUserBit),
+        globalBit = envInt(env, "MMU_PTE_GLOBAL_BIT", KconfigDefaults.MmuPteGlobalBit),
+        aBit = envInt(env, "MMU_PTE_A_BIT", KconfigDefaults.MmuPteABit),
+        dBit = envInt(env, "MMU_PTE_D_BIT", KconfigDefaults.MmuPteDBit),
+        ppnLow = envInt(env, "MMU_PTE_PPN_LOW", KconfigDefaults.MmuPtePpnLow),
         ppnHigh = envInt(env, "MMU_PTE_PPN_HIGH", defaultPpnHigh)
       ),
       superpage = envBool(env, "MMU_SUPERPAGE", false),
@@ -555,39 +558,47 @@ object ysyx_26030103_MMUProfile {
       cacheViptAliasScanMode =
         envString(env, "MMU_CACHE_VIPT_ALIAS_SCAN_MODE", "all_sets"),
       cacheViptAliasScanWidth =
-        envInt(env, "MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH", 4),
+        envInt(env, "MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH",
+        KconfigDefaults.MmuCacheViptAliasScanWidth),
       cacheViptAliasDirectoryEntries =
-        envInt(env, "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES", 0),
+        envInt(env, "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES",
+        KconfigDefaults.MmuCacheViptAliasDirectoryEntries),
       ptwPath = envString(env, "MMU_PTW_PATH", "dedicated"),
       ptwArch = envString(env, "MMU_PTW_ARCH", "independent"),
-      ptwOutstanding = envInt(env, "MMU_PTW_OUTSTANDING", 2),
-      ptwBusOutstanding = envInt(env, "MMU_PTW_BUS_OUTSTANDING", 1),
+      ptwOutstanding = envInt(env, "MMU_PTW_OUTSTANDING", KconfigDefaults.MmuPtwOutstanding),
+      ptwBusOutstanding = envInt(env, "MMU_PTW_BUS_OUTSTANDING", KconfigDefaults.MmuPtwBusOutstanding),
       ptwOrder = envString(env, "MMU_PTW_ORDER", "in_order"),
       ptwCache = envBool(env, "MMU_PTW_CACHE", false),
-      ptwCacheEntries = envInt(env, "MMU_PTW_CACHE_ENTRIES", 16),
-      ptwCacheWays = envInt(env, "MMU_PTW_CACHE_WAYS", 2),
+      ptwCacheEntries = envInt(env, "MMU_PTW_CACHE_ENTRIES", KconfigDefaults.MmuPtwCacheEntries),
+      ptwCacheWays = envInt(env, "MMU_PTW_CACHE_WAYS", KconfigDefaults.MmuPtwCacheWays),
       tlbEnabled = envBool(env, "MMU_TLB_ENABLED", false),
       tlbOrganization = envString(env, "MMU_TLB_ORGANIZATION", "split"),
       tlbStorage = envString(env, "MMU_TLB_STORAGE", "reg"),
       tlbReplacement = envString(env, "MMU_TLB_REPLACEMENT", "plru"),
       // RV64 satp 的 ASID 为 16 位；未显式配置时 TLB 保留完整 ASID。
-      tlbAsidBits = envInt(env, "MMU_TLB_ASID_BITS", if (xlen == 64) 16 else 9),
+      tlbAsidBits = envInt(env, "MMU_TLB_ASID_BITS",
+        if (xlen == 64) KconfigDefaults.MmuTlbAsidBits else 9),
       tlbGlobal = envBool(env, "MMU_TLB_GLOBAL", true),
-      itlbEntries = envInt(env, "MMU_ITLB_ENTRIES", 16),
-      itlbWays = envInt(env, "MMU_ITLB_WAYS", 2),
-      dtlbEntries = envInt(env, "MMU_DTLB_ENTRIES", 32),
-      dtlbWays = envInt(env, "MMU_DTLB_WAYS", 4),
-      utlbEntries = envInt(env, "MMU_UTLB_ENTRIES", 32),
-      utlbWays = envInt(env, "MMU_UTLB_WAYS", 4),
-      utlbLookupPorts = envInt(env, "UTLB_LOOKUP_PORTS", 1),
+      itlbEntries = envInt(env, "MMU_ITLB_ENTRIES", KconfigDefaults.MmuItlbEntries),
+      itlbWays = envInt(env, "MMU_ITLB_WAYS", KconfigDefaults.MmuItlbWays),
+      dtlbEntries = envInt(env, "MMU_DTLB_ENTRIES", KconfigDefaults.MmuDtlbEntries),
+      dtlbWays = envInt(env, "MMU_DTLB_WAYS", KconfigDefaults.MmuDtlbWays),
+      utlbEntries = envInt(env, "MMU_UTLB_ENTRIES", KconfigDefaults.MmuUtlbEntries),
+      utlbWays = envInt(env, "MMU_UTLB_WAYS", KconfigDefaults.MmuUtlbWays),
+      utlbLookupPorts = envInt(env, "UTLB_LOOKUP_PORTS", KconfigDefaults.MmuUtlbLookupPorts),
       tlbSuperpage = envBool(env, "MMU_TLB_SUPERPAGE", false),
-      tlbSuperpageEntries = envInt(env, "MMU_TLB_SUPERPAGE_ENTRIES", 4),
+      tlbSuperpageEntries = envInt(env, "MMU_TLB_SUPERPAGE_ENTRIES",
+        KconfigDefaults.MmuTlbSuperpageEntries),
       tlbMissQueueMode = envString(env, "MMU_TLB_MISS_QUEUE_MODE", "follow_tlb"),
-      itlbMissQueueEntries = envInt(env, "MMU_ITLB_MISS_QUEUE_ENTRIES", 4),
-      dtlbMissQueueEntries = envInt(env, "MMU_DTLB_MISS_QUEUE_ENTRIES", 4),
-      utlbMissQueueEntries = envInt(env, "MMU_UTLB_MISS_QUEUE_ENTRIES", 8),
-      globalMissQueueEntries = envInt(env, "MMU_GLOBAL_MISS_QUEUE_ENTRIES", 8),
-      refillPorts = envInt(env, "MMU_TLB_REFILL_PORTS", 1),
+      itlbMissQueueEntries = envInt(env, "MMU_ITLB_MISS_QUEUE_ENTRIES",
+        KconfigDefaults.MmuItlbMissQueueEntries),
+      dtlbMissQueueEntries = envInt(env, "MMU_DTLB_MISS_QUEUE_ENTRIES",
+        KconfigDefaults.MmuDtlbMissQueueEntries),
+      utlbMissQueueEntries = envInt(env, "MMU_UTLB_MISS_QUEUE_ENTRIES",
+        KconfigDefaults.MmuUtlbMissQueueEntries),
+      globalMissQueueEntries = envInt(env, "MMU_GLOBAL_MISS_QUEUE_ENTRIES",
+        KconfigDefaults.MmuGlobalMissQueueEntries),
+      refillPorts = envInt(env, "MMU_TLB_REFILL_PORTS", KconfigDefaults.MmuRefillPorts),
       csrMstatusReadMask = envInt(env, "CSR_MSTATUS_READ_MASK", mstatusReadMask.toInt),
       csrMstatusReadSet = envInt(env, "CSR_MSTATUS_READ_SET", mstatusReadSet.toInt),
       csrMstatusWriteMask = envInt(env, "CSR_MSTATUS_WRITE_MASK", mstatusWriteMask.toInt),
@@ -599,9 +610,9 @@ object ysyx_26030103_MMUProfile {
       hasSTimerIrq = envBool(env, "HAS_S_TIMER_IRQ", true),
       hasSExternalIrq = envBool(env, "HAS_S_EXTERNAL_IRQ", true),
       timerPath = envString(env, "TIMER_PATH", "clint_mtip"),
-      plicSources = envInt(env, "PLIC_SOURCES", 32),
-      plicPriorityBits = envInt(env, "PLIC_PRIORITY_BITS", 3),
-      plicMaxPriority = envInt(env, "PLIC_MAX_PRIORITY", 7),
+      plicSources = envInt(env, "PLIC_SOURCES", KconfigDefaults.MmuPlicSources),
+      plicPriorityBits = envInt(env, "PLIC_PRIORITY_BITS", KconfigDefaults.MmuPlicPriorityBits),
+      plicMaxPriority = envInt(env, "PLIC_MAX_PRIORITY", KconfigDefaults.MmuPlicMaxPriority),
       plicBase = envLong(
         env,
         "PLIC_BASE",
@@ -615,7 +626,7 @@ object ysyx_26030103_MMUProfile {
       csrViewMode = envString(env, "CSR_VIEW_MODE", "bound"),
       csrMissingMode = envString(env, "CSR_MISSING_MODE", "illegal"),
       pmpEnabled = envBool(env, "HAS_PMP", false),
-      pmpEntries = envInt(env, "PMP_ENTRIES", 16),
+      pmpEntries = envInt(env, "PMP_ENTRIES", KconfigDefaults.MmuPmpEntries),
       csrEnabled = envAddressSet(env, "CSR_ENABLED", DefaultCsrAddresses) ++
         IdentityCsrAddresses
     )

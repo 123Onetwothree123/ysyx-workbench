@@ -1,10 +1,11 @@
 package ysyx_26030103.infra
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 class ysyx_26030103_CLINTIO(
-    AddressWidth: Int = 32,
-    DataWidth: Int = 32,
-    IdWidth: Int = 4
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
+    IdWidth: Int = ysyx_26030103_KconfigDefaults.AxiIdWidth
 ) extends ysyx_26030103_AXI5Slave(AddressWidth, DataWidth, IdWidth) {
   val timer_irq = Output(Bool())
   val mtime = Output(UInt(64.W))
@@ -14,9 +15,9 @@ class ysyx_26030103_CLINTIO(
   * RV64 的 64 位 mtimecmp 写在 32 位总线上拆成两拍，64 位总线上为单拍。
   */
 class ysyx_26030103_AXI5CLINTSlave(
-    AddressWidth: Int = 32,
-    DataWidth: Int = 32,
-    IdWidth: Int = 4
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
+    IdWidth: Int = ysyx_26030103_KconfigDefaults.AxiIdWidth
 ) extends Module {
   val io = IO(new ysyx_26030103_CLINTIO(AddressWidth, DataWidth, IdWidth))
   private val AddrW = AddressWidth

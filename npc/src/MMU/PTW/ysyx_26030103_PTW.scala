@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -6,8 +7,8 @@ import _root_.ysyx_26030103.config.ysyx_26030103_PteConfig
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
 class ysyx_26030103_PTWRequest(
-    val XLEN: Int = 32,
-    val AddressWidth: Int = 32
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"PTWRequest XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
@@ -22,9 +23,9 @@ class ysyx_26030103_PTWRequest(
 }
 
 class ysyx_26030103_PTWResponse(
-    val XLEN: Int = 32,
-    val AddressWidth: Int = 32,
-    val pteWidth: Int = 32
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    val pteWidth: Int = ysyx_26030103_KconfigDefaults.MmuPteWidth
 ) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"PTWResponse XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
@@ -57,21 +58,21 @@ class ysyx_26030103_PTWResponse(
 class ysyx_26030103_PTW(
     adMode: String = "fault",
     cacheEnable: Boolean = false,
-    cacheEntries: Int = 16,
-    cacheWays: Int = 2,
+    cacheEntries: Int = ysyx_26030103_KconfigDefaults.MmuPtwCacheEntries,
+    cacheWays: Int = ysyx_26030103_KconfigDefaults.MmuPtwCacheWays,
     superpage: Boolean = false,
     pteConfig: ysyx_26030103_PteConfig = ysyx_26030103_PteConfig(),
-    pageBits: Int = 12,
-    levels: Int = 2,
-    tableEntries: Int = 1024,
+    pageBits: Int = ysyx_26030103_KconfigDefaults.MmuPageBits,
+    levels: Int = ysyx_26030103_KconfigDefaults.MmuLevels,
+    tableEntries: Int = ysyx_26030103_KconfigDefaults.MmuTableEntries,
     fillSuperpage: Boolean = false,
-    pteSizeBytes: Int = 4,
+    pteSizeBytes: Int = ysyx_26030103_KconfigDefaults.MmuPteSizeBytes,
     hasU: Boolean = true,
     // 架构宽度与物理地址宽度；默认 32/32 保持既有 Sv32 行为。
-    XLEN: Int = 32,
-    addressWidth: Int = 32,
+    XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    addressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     // 有效虚拟地址位数：Sv32=32，Sv39=39，Sv48=48。
-    vaBits: Int = 32,
+    vaBits: Int = ysyx_26030103_KconfigDefaults.MmuVaBits,
     // 该 walker 在页表总线上的固定事务 ID；多 walker 簇用 walker 编号，
     // 单 walker/直连测试保持 0。
     busId: Int = 0

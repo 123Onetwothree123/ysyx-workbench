@@ -5,8 +5,8 @@ object ysyx_26030103_ElaborateConfig {
   def build(
       cfg: ysyx_26030103_JsonConfig.Config
   ): ysyx_26030103_ElaborateSettings = {
-    val BlockSizeLog2 = cfg.int("cache.block_size_log2", 4)
-    val IndexBits = cfg.int("cache.index_bits", 5)
+    val BlockSizeLog2 = cfg.int("cache.block_size_log2", ysyx_26030103_KconfigDefaults.NpcBlockSizeLog2)
+    val IndexBits = cfg.int("cache.index_bits", ysyx_26030103_KconfigDefaults.NpcIndexBits)
     val ICacheBlockSizeLog2 =
       cfg.int("cache.icache.block_size_log2", BlockSizeLog2)
     val ICacheIndexBits = cfg.int("cache.icache.index_bits", IndexBits)
@@ -21,13 +21,13 @@ object ysyx_26030103_ElaborateConfig {
       cfg.string("cache.icache.coherence", "fence_i")
     val DmaCoherenceName =
       cfg.string("cache.dma_coherence", "software_flush")
-    val WBufDepth = cfg.int("cache.wbuf_depth", 4)
-    val BTBBits = cfg.int("frontend.btb_bits", 4)
-    val BTBWays = cfg.int("frontend.btb_ways", 1)
-    val JalBTBBits = cfg.int("frontend.jal_btb_bits", 4)
-    val JalBTBWays = cfg.int("frontend.jal_btb_ways", 1)
-    val RASBits = cfg.int("frontend.ras_bits", 4)
-    val CachePadding = cfg.int("platform.cache_padding", 0)
+    val WBufDepth = cfg.int("cache.wbuf_depth", ysyx_26030103_KconfigDefaults.NpcWBufDepth)
+    val BTBBits = cfg.int("frontend.btb_bits", ysyx_26030103_KconfigDefaults.NpcBTBBits)
+    val BTBWays = cfg.int("frontend.btb_ways", ysyx_26030103_KconfigDefaults.NpcBTBWays)
+    val JalBTBBits = cfg.int("frontend.jal_btb_bits", ysyx_26030103_KconfigDefaults.NpcJalBTBBits)
+    val JalBTBWays = cfg.int("frontend.jal_btb_ways", ysyx_26030103_KconfigDefaults.NpcJalBTBWays)
+    val RASBits = cfg.int("frontend.ras_bits", ysyx_26030103_KconfigDefaults.NpcRASBits)
+    val CachePadding = cfg.int("platform.cache_padding", ysyx_26030103_KconfigDefaults.NpcCachePadding)
     val NpcRamSize: Long = {
       val parsed = cfg.long(
         "platform.ram_size",
@@ -92,11 +92,11 @@ object ysyx_26030103_ElaborateConfig {
       socResetAddr = cfg.long("pma.soc_reset_addr", PmaDefaults.socResetAddr),
       npcRamBase = NpcRamBase
     )
-    val XLEN = cfg.int("isa.xlen", 32)
+    val XLEN = cfg.int("isa.xlen", ysyx_26030103_KconfigDefaults.NpcXlen)
     val AddressWidth =
       cfg.int("platform.address_width", if (XLEN == 64) 64 else 32)
     val SocXLENFollowCpu = cfg.bool("isa.soc_xlen_follow_cpu", false)
-    val SocXLEN = cfg.int("isa.soc_xlen", 32)
+    val SocXLEN = cfg.int("isa.soc_xlen", ysyx_26030103_KconfigDefaults.NpcSocXlen)
     val InternalBusWidthFollowCpu =
       cfg.bool("isa.internal_bus_width_follow_cpu", true)
     val InternalBusWidth =
@@ -107,7 +107,7 @@ object ysyx_26030103_ElaborateConfig {
     val UseF = cfg.bool("isa.f", false)
     val UseD = cfg.bool("isa.d", false)
     val FPUImplName = cfg.string("fpu.impl", "none")
-    val FPULen = cfg.int("fpu.flen", 64)
+    val FPULen = cfg.int("fpu.flen", ysyx_26030103_KconfigDefaults.NpcFpuLen)
     val ALUImplName = cfg.string("alu.impl", "standard")
     val IDUDecodeMinimizerName =
       cfg.string("idu.decode_minimizer", "qmc")
@@ -179,6 +179,14 @@ object ysyx_26030103_ElaborateConfig {
       CLINTSize = Pma.clintSize,
       ChipLinkMemoryBase = Pma.chipLinkMemBase,
       ChipLinkMemorySize = Pma.chipLinkMemSize,
+      ICacheDrainTimeout =
+        cfg.int("platform.icache_drain_timeout", ysyx_26030103_KconfigDefaults.ICacheDrainTimeout),
+      DCacheDrainTimeout =
+        cfg.int("platform.dcache_drain_timeout", ysyx_26030103_KconfigDefaults.DCacheDrainTimeout),
+      LsuDrainTimeout =
+        cfg.int("platform.lsu_drain_timeout", ysyx_26030103_KconfigDefaults.LsuDrainTimeout),
+      ArbiterGrantTimeout =
+        cfg.int("platform.arbiter_grant_timeout", ysyx_26030103_KconfigDefaults.ArbiterGrantTimeout),
       BlockSizeLog2 = BlockSizeLog2,
       IndexBits = IndexBits,
       ICacheBlockSizeLog2 = ICacheBlockSizeLog2,

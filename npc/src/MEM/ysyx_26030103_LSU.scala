@@ -7,14 +7,14 @@ import _root_.ysyx_26030103.cache._
 import _root_.ysyx_26030103.config._
 // LSU是访存流水级：完成总线事务、提交访存故障并冲刷年轻指令
 class ysyx_26030103_LSU(
-    val XLEN: Int = 32,
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     // D 扩展存在时，即使 XLEN=32 也必须支持 8 字节 FLD/FSD 访存。
     val UseD: Boolean = false,
-    val WBufDepth: Int = 4, // 写缓冲项数(必须是2的幂, 环形队列按位回绕)
+    val WBufDepth: Int = ysyx_26030103_KconfigDefaults.NpcWBufDepth, // 写缓冲项数(必须是2的幂, 环形队列按位回绕)
     val DCacheEnable: Boolean = false,
     val DCacheStorage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
-    val DCacheBlockSizeLog2: Int = 4,
-    val DCacheIndexBits: Int = 5,
+    val DCacheBlockSizeLog2: Int = ysyx_26030103_KconfigDefaults.NpcDCacheBlockSizeLog2,
+    val DCacheIndexBits: Int = ysyx_26030103_KconfigDefaults.NpcDCacheIndexBits,
     val DCacheableBase: Long = 0L,
     val DCacheableMask: Long = 0L,
     val DCachePMARegions: Seq[ysyx_26030103_PMARegion] =
@@ -33,8 +33,11 @@ class ysyx_26030103_LSU(
     // VIPT 并行模式：DCache/LSU 在 PA 到达前就用 VA 选 index 并持有请求，
     // MMU 故障通过 ViptKill 取消该请求。
     val ViptParallel: Boolean = false,
-    val AddressWidth: Int = 32,
-    val BusDataWidth: Int = 32
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    val BusDataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
+    val DCacheDrainTimeout: Int =
+      ysyx_26030103_KconfigDefaults.DCacheDrainTimeout,
+    val DrainTimeout: Int = ysyx_26030103_KconfigDefaults.LsuDrainTimeout
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"LSU XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
@@ -202,7 +205,8 @@ class ysyx_26030103_LSU(
     ViptAliasScanMode = DCacheViptAliasScanMode,
     DmaSnoop = DCacheDmaSnoop,
     ViptAliasScanWidth = DCacheViptAliasScanWidth,
-    ViptAliasDirectoryEntries = DCacheViptAliasDirectoryEntries
+    ViptAliasDirectoryEntries = DCacheViptAliasDirectoryEntries,
+    DrainTimeout = DCacheDrainTimeout
   )
   DCache.io.dma_snoop_valid := io.DCacheDmaSnoopValid
   DCache.io.dma_snoop_start := io.DCacheDmaSnoopStart
@@ -1527,7 +1531,7 @@ class ysyx_26030103_LSU(
         TransactionFault := true.B
         AtomicActive := false.B
         state := StatesIdle
-      }.elsewhen(ReadDrainTimer === 255.U) {
+      }.elsewhen(ReadDrainTimer === DrainTimeout.U) {
         // 从设备缺少 RLAST：继续等待只会让 LSU 永久忙。按访问故障完成
         // 当前指令，让流水线恢复（迟到的 beat 由后续事务承担风险，和
         // DCache 的 drain 超时恢复策略一致）。

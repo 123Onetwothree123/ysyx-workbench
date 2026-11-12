@@ -7,11 +7,11 @@ import _root_.ysyx_26030103.common._
 // 单请求直映射DCache，读通道回填，写通道由LSU写缓冲负责
 class ysyx_26030103_DCacheReg(
     Enable: Boolean = true,
-    BlockSizeLog2: Int = 4,
-    IndexBits: Int = 5,
-    AddressWidth: Int = 32,
-    DataWidth: Int = 32,
-    BusDataWidth: Int = 32,
+    BlockSizeLog2: Int = ysyx_26030103_KconfigDefaults.NpcDCacheBlockSizeLog2,
+    IndexBits: Int = ysyx_26030103_KconfigDefaults.NpcDCacheIndexBits,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
+    BusDataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
     Vipt: Boolean = false,
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装和写直达 store 完成时按物理 tag 失效其他 set 的副本。
@@ -28,6 +28,7 @@ class ysyx_26030103_DCacheReg(
     ViptAliasDirectoryEntries: Int = 0,
     CacheableBase: Long = 0L,
     CacheableMask: Long = 0L,
+    DrainTimeout: Int = ysyx_26030103_KconfigDefaults.DCacheDrainTimeout,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_DCacheBase(AddressWidth, DataWidth, BusDataWidth) {
@@ -1146,7 +1147,7 @@ class ysyx_26030103_DCacheReg(
         RefillWordValid := 0.U
         suppressFill := false.B
         state := SIdle
-      }.elsewhen(DrainTimer === 255.U) {
+      }.elsewhen(DrainTimer === DrainTimeout.U) {
         // 从设备长期不给 RLAST：为尚未交付的 demand 产生 fault，缓存行
         // 保持无效，然后进入吸收态，迟到的 beat 不能再被后续请求使用。
         // 已经 valid 的响应可能正被下游反压，Decoupled payload 必须保持
@@ -1173,7 +1174,7 @@ class ysyx_26030103_DCacheReg(
       io.AXI.R.RREADY := true.B
       when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
         state := SIdle
-      }.elsewhen(DrainRetryTimer === 255.U && !io.AXI.R.RVALID) {
+      }.elsewhen(DrainRetryTimer === DrainTimeout.U && !io.AXI.R.RVALID) {
         // 通道已安静足够久：放弃这笔无法同步的事务，恢复服务。
         state := SIdle
       }.otherwise {

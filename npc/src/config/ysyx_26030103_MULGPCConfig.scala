@@ -1,5 +1,7 @@
 package ysyx_26030103.config
 
+import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
+
 /** 由Kconfig选择的乘法器压缩器（GPC）配置。
   *
   * 输入和到输出编码的映射在elaboration期由动态规划求解：保证每个可能的
@@ -7,12 +9,12 @@ package ysyx_26030103.config
   * `EncodingTable` 供 `ysyx_26030103_MULGPC` 查表使用。
   */
 case class ysyx_26030103_MULGPCConfig(
-    Inputs: Int = 3,
-    Outputs: Int = 2,
-    OutputOffsets: IndexedSeq[Int] = IndexedSeq(0, 1),
+    Inputs: Int = KconfigDefaults.MduGpcInputs,
+    Outputs: Int = KconfigDefaults.MduGpcOutputs,
+    OutputOffsets: IndexedSeq[Int] = KconfigDefaults.MduGpcOutputOffsets,
     HasCin: Boolean = false,
     HasCout: Boolean = false,
-    CoutOffset: Int = 1,
+    CoutOffset: Int = KconfigDefaults.MduGpcCoutOffset,
     AllowRedundant: Boolean = false
 ) {
   require(Inputs >= 3 && Inputs <= 64, "MUL GPC K必须在3到64之间")

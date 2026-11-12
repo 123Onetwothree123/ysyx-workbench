@@ -1,17 +1,18 @@
 package ysyx_26030103.infra
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
 class ysyx_26030103_AXI5Xbar(
-    AddressWidth: Int = 32,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
     PLICBaseValue: BigInt =
       BigInt(ysyx_26030103_PhysicalMemoryMap.DefaultPlicBase),
     PLICSizeBytes: BigInt =
       BigInt(ysyx_26030103_PhysicalMemoryMap.DefaultPlicSize),
-    DataWidth: Int = 32,
-    IdWidth: Int = 4,
+    DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
+    IdWidth: Int = ysyx_26030103_KconfigDefaults.AxiIdWidth,
     CLINTBaseValue: BigInt =
       BigInt(ysyx_26030103_PMAOptions.Default.clintBase),
     CLINTSizeBytes: BigInt =

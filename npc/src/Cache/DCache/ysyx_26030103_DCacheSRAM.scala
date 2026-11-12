@@ -7,11 +7,11 @@ import _root_.ysyx_26030103.common._
 // 单请求直映射DCache，读通道回填，写通道由LSU写缓冲负责
 class ysyx_26030103_DCacheSRAM(
     Enable: Boolean = true,
-    BlockSizeLog2: Int = 4,
-    IndexBits: Int = 5,
-    AddressWidth: Int = 32,
-    DataWidth: Int = 32,
-    BusDataWidth: Int = 32,
+    BlockSizeLog2: Int = ysyx_26030103_KconfigDefaults.NpcDCacheBlockSizeLog2,
+    IndexBits: Int = ysyx_26030103_KconfigDefaults.NpcDCacheIndexBits,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
+    BusDataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
     Vipt: Boolean = false,
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装和写直达 store 完成时按物理 tag 失效其他 set 的副本。
@@ -31,6 +31,7 @@ class ysyx_26030103_DCacheSRAM(
     // true=命中响应第一拍旁路SRAM输出(保持1拍延迟);
     // false=老实打一拍(响应晚一拍), 用于量化"不旁路"的性能代价
     Bypass: Boolean = true,
+    DrainTimeout: Int = ysyx_26030103_KconfigDefaults.DCacheDrainTimeout,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_DCacheBase(AddressWidth, DataWidth, BusDataWidth) {
@@ -1222,7 +1223,7 @@ class ysyx_26030103_DCacheSRAM(
         RefillWordValid := 0.U
         suppressFill := false.B
         state := SIdle
-      }.elsewhen(DrainTimer === 255.U) {
+      }.elsewhen(DrainTimer === DrainTimeout.U) {
         // 从设备长期不给 RLAST：为尚未交付的 demand 产生 fault，然后
         // 进入吸收态，迟到的 beat 不能再被后续请求使用。
         // 已有响应（寄存器响应或本拍的 SRAM 旁路响应）可能正被反压，
@@ -1248,7 +1249,7 @@ class ysyx_26030103_DCacheSRAM(
       io.AXI.R.RREADY := true.B
       when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
         state := SIdle
-      }.elsewhen(DrainRetryTimer === 255.U && !io.AXI.R.RVALID) {
+      }.elsewhen(DrainRetryTimer === DrainTimeout.U && !io.AXI.R.RVALID) {
         state := SIdle
       }.otherwise {
         DrainRetryTimer := DrainRetryTimer + 1.U

@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -21,25 +22,25 @@ import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
   * B 级多个页表总线槽位之间。
   */
 class ysyx_26030103_PTWPipeline(
-    outstanding: Int = 2,
-    busOutstanding: Int = 0,
+    outstanding: Int = ysyx_26030103_KconfigDefaults.MmuPtwOutstanding,
+    busOutstanding: Int = ysyx_26030103_KconfigDefaults.MmuPtwBusOutstanding,
     adMode: String = "fault",
     cacheEnable: Boolean = false,
-    cacheEntries: Int = 16,
-    cacheWays: Int = 2,
+    cacheEntries: Int = ysyx_26030103_KconfigDefaults.MmuPtwCacheEntries,
+    cacheWays: Int = ysyx_26030103_KconfigDefaults.MmuPtwCacheWays,
     superpage: Boolean = false,
     pteConfig: ysyx_26030103_PteConfig = ysyx_26030103_PteConfig(),
-    pageBits: Int = 12,
-    levels: Int = 2,
-    tableEntries: Int = 1024,
+    pageBits: Int = ysyx_26030103_KconfigDefaults.MmuPageBits,
+    levels: Int = ysyx_26030103_KconfigDefaults.MmuLevels,
+    tableEntries: Int = ysyx_26030103_KconfigDefaults.MmuTableEntries,
     fillSuperpage: Boolean = false,
-    pteSizeBytes: Int = 4,
+    pteSizeBytes: Int = ysyx_26030103_KconfigDefaults.MmuPteSizeBytes,
     inOrder: Boolean = true,
     respPorts: Int = 1,
     hasU: Boolean = true,
-    XLEN: Int = 32,
-    addressWidth: Int = 32,
-    vaBits: Int = 32
+    XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    addressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    vaBits: Int = ysyx_26030103_KconfigDefaults.MmuVaBits
 ) extends ysyx_26030103_PTWBackend(respPorts, XLEN, addressWidth, pteSizeBytes * 8) {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
   require(XLEN == 32 || XLEN == 64, s"PTW pipeline XLEN 非法: $XLEN")

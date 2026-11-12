@@ -70,7 +70,9 @@ class ysyx_26030103(
       DCacheViptAliasDirectoryEntries = config.DCacheViptAliasDirectoryEntries,
       ViptParallel = parallelDataVipt,
       AddressWidth = config.AddressWidth,
-      BusDataWidth = BusDataWidth
+      BusDataWidth = BusDataWidth,
+      DCacheDrainTimeout = config.DCacheDrainTimeout,
+      DrainTimeout = config.LsuDrainTimeout
     )
   )
   val gpr = Module(new ysyx_26030103_GPR(XLEN, config.EnableDynamicGPRDebug))
@@ -86,7 +88,8 @@ class ysyx_26030103(
       DataWidth = BusDataWidth,
       HardwareSnoop = config.DmaHardwareSnoop,
       DMAWindowBase = BigInt(config.ChipLinkMemoryBase),
-      DMAWindowSize = BigInt(config.ChipLinkMemorySize)
+      DMAWindowSize = BigInt(config.ChipLinkMemorySize),
+      GrantTimeout = config.ArbiterGrantTimeout
     )
   )
   val xbar = Module(

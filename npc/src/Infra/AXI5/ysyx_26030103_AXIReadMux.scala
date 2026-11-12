@@ -1,4 +1,5 @@
 package ysyx_26030103.infra
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -16,8 +17,8 @@ import _root_.ysyx_26030103.mmu._
   */
 class ysyx_26030103_AXIReadMux(
     passWriteA: Boolean = false,
-    val AddressWidth: Int = 32,
-    val DataWidth: Int = 32
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    val DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth
 ) extends Module {
   val io = IO(new Bundle {
     val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))
@@ -187,10 +188,10 @@ class ysyx_26030103_AXIReadMux(
   * 互相阻塞。写事务仍保持单笔在途，写响应同样按原事务 ID 返回。
   */
 class ysyx_26030103_PTWToAXI(
-    busDepth: Int = 16,
+    busDepth: Int = ysyx_26030103_KconfigDefaults.MmuPtwBusDepth,
     axiReadSlots: Int = ysyx_26030103_AXIReadId.PtwSlots,
-    val AddressWidth: Int = 32,
-    val DataWidth: Int = 32
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    val DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth
 ) extends Module {
   require(DataWidth == 32 || DataWidth == 64,
     s"PTWToAXI DataWidth 非法: $DataWidth")
@@ -434,8 +435,8 @@ class ysyx_26030103_PTWToAXI(
   */
 class ysyx_26030103_AXIWriteMux(
     val PassRead: Boolean = true,
-    val AddressWidth: Int = 32,
-    val DataWidth: Int = 32
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    val DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth
 ) extends Module {
   val io = IO(new Bundle {
     val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))

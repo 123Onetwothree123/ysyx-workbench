@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -11,8 +12,8 @@ import _root_.ysyx_26030103.common.ysyx_26030103_AtomicOp
   * 响应按请求 ID 回到对应客户端，不再要求 IFU 的翻译先完成。
   */
 class ysyx_26030103_MMURequestArbiter(
-    XLEN: Int = 32,
-    AddressWidth: Int = 32
+    XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Module {
   val io = IO(new Bundle {
     val iReq = Flipped(Decoupled(new ysyx_26030103_MMURequest(XLEN, AddressWidth)))
@@ -87,8 +88,8 @@ class ysyx_26030103_MMURequestArbiter(
   */
 class ysyx_26030103_IFUMMU(
     ParallelVipt: Boolean = false,
-    XLEN: Int = 32,
-    AddressWidth: Int = 32
+    XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"IFUMMU XLEN 非法: $XLEN")
   val io = IO(new Bundle {
@@ -243,8 +244,8 @@ class ysyx_26030103_IFUMMU(
   */
 class ysyx_26030103_LSUMMU(
     val ParallelVipt: Boolean = false,
-    val XLEN: Int = 32,
-    val AddressWidth: Int = 32
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"LSUMMU XLEN 非法: $XLEN")
   val io = IO(new Bundle {

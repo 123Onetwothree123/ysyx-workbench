@@ -1,5 +1,7 @@
 package ysyx_26030103.config
 
+import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
+
 /** 由 Kconfig 选择的 FPU 后端。
   *
   * `Implemented` 表示当前仓库是否已经接入该后端的 RTL。HardFloat 已通过
@@ -74,7 +76,7 @@ case class ysyx_26030103_FudianParams(
   * 乘加（on）或基于 vendor 基础模块的单次舍入非融合数据通路（off）。
   */
 case class ysyx_26030103_FPUProfile(
-    Pipeline: Int = 0,
+    Pipeline: Int = KconfigDefaults.FpuPipeline,
     FMA: Boolean = true,
     DivSqrt: Boolean = true,
     Rounding: Boolean = true,

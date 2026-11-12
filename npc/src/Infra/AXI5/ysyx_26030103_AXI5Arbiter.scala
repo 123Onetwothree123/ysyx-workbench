@@ -3,6 +3,7 @@ package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 /** IFU、LSU与入站DMA端口的AXI仲裁器。
   *
@@ -12,9 +13,9 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
   * 统一以下游ID 2发出，返回CPU slave端口时恢复原ID。
   */
 class ysyx_26030103_AXI5Arbiter(
-    AddressWidth: Int = 32,
-    DataWidth: Int = 32,
-    IdWidth: Int = 4,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
+    IdWidth: Int = ysyx_26030103_KconfigDefaults.AxiIdWidth,
     // DMA_COHERENCE=hardware_snoop：DMA 写 B 先不交给 CPU slave，而是把
     // 本次 burst 覆盖的字节范围送给 ICache/DCache 做行失效，等到
     // dmaSnoopDone 后才释放 B。关闭时保持原有“B 到达即释放”的时序。
@@ -22,7 +23,8 @@ class ysyx_26030103_AXI5Arbiter(
     DMAWindowBase: BigInt =
       BigInt(ysyx_26030103_PMAOptions.Default.chipLinkMemBase),
     DMAWindowSize: BigInt =
-      BigInt(ysyx_26030103_PMAOptions.Default.chipLinkMemSize)
+      BigInt(ysyx_26030103_PMAOptions.Default.chipLinkMemSize),
+    GrantTimeout: Int = ysyx_26030103_KconfigDefaults.ArbiterGrantTimeout
 ) extends Module {
   // 固定 ID 分配（ICache=0/LSU=1/DMA=2/PTW=3..15）按 4 位 ID 设计；
   // 地址/数据宽度可参数化，但 ID 宽度暂不支持其它值。
@@ -313,7 +315,7 @@ class ysyx_26030103_AXI5Arbiter(
   }.otherwise {
     grantStallTimer := grantStallTimer + 1.U
   }
-  when(readGrantHeld && grantStallTimer === 1023.U) {
+  when(readGrantHeld && grantStallTimer === GrantTimeout.U) {
     readGrantHeld := false.B
   }
   when(readAddressFire && chooseLSU) {

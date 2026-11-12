@@ -1,4 +1,5 @@
 package ysyx_26030103.ifu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_IFUMessage
@@ -23,7 +24,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 // 供 BTB/PMP/MMU 故障报告使用。未启用 C 时两者相同。
 class ysyx_26030103_IFU(
     resetAddr: Long = ysyx_26030103_PMAOptions.Default.socResetAddr,
-    val XLEN: Int = 32,
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val UseC: Boolean = false
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"IFU XLEN 非法: $XLEN")

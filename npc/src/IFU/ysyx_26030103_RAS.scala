@@ -1,4 +1,5 @@
 package ysyx_26030103.ifu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 
 // 返回地址栈(Return Address Stack)
@@ -7,8 +8,8 @@ import chisel3._
 // 深度=2^RASBits, Kconfig可配
 // 本流水线中EXU提交点之前的错路指令到不了EXU, 提交点更新天然非投机, 无需检查点/恢复
 class ysyx_26030103_RAS(
-    RASBits: Int = 4,
-    AddressWidth: Int = 32
+    RASBits: Int = ysyx_26030103_KconfigDefaults.NpcRASBits,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Module {
   require(RASBits >= 0 && RASBits < 31, "RASBits must be between 0 and 30")
   val Depth = 1 << RASBits

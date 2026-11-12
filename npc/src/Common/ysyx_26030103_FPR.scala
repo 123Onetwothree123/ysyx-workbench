@@ -1,7 +1,7 @@
 package ysyx_26030103.common
 import chisel3._
 class ysyx_26030103_FPR(
-    val FLEN: Int = 64,
+    val FLEN: Int = ysyx_26030103_KconfigDefaults.NpcFpuLen,
     val EnableDynamicDebug: Boolean = true
 ) extends Module {
   require(FLEN == 32 || FLEN == 64, s"FPR FLEN 非法: $FLEN")

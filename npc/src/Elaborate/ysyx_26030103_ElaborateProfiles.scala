@@ -1,4 +1,5 @@
 import _root_.ysyx_26030103.config._
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 object ysyx_26030103_ElaborateProfiles {
   final case class PerfSwitches(
       basic: Boolean,
@@ -74,7 +75,7 @@ object ysyx_26030103_ElaborateProfiles {
       cfg: ysyx_26030103_JsonConfig.Config
   ): ysyx_26030103_FPUProfile =
     ysyx_26030103_FPUProfile(
-      Pipeline = cfg.int("fpu.pipeline", 0),
+      Pipeline = cfg.int("fpu.pipeline", ysyx_26030103_KconfigDefaults.FpuPipeline),
       FMA = cfg.bool("fpu.fma", true),
       DivSqrt = cfg.bool("fpu.divsqrt", true),
       Rounding = cfg.bool("fpu.rounding", true),
@@ -96,7 +97,7 @@ object ysyx_26030103_ElaborateProfiles {
         cfg.string("alu.adder_impl", "native")
       ),
       AdderParams = ysyx_26030103_ALUAdderParams(
-        CarrySelectGroup = cfg.int("alu.carry_select_group", 8)
+        CarrySelectGroup = cfg.int("alu.carry_select_group", ysyx_26030103_KconfigDefaults.AluCarrySelectGroup)
       ),
       Elau = ysyx_26030103_ElauParams(
         Speed = ysyx_26030103_ElauSpeed.FromString(
@@ -111,11 +112,11 @@ object ysyx_26030103_ElaborateProfiles {
     ysyx_26030103_DIVParams(
       Radix = cfg.int(
         s"mdu.div.$name.radix",
-        cfg.int("mdu.div_radix", 2)
+        cfg.int("mdu.div_radix", ysyx_26030103_KconfigDefaults.MduDivRestoringRadix)
       ),
       IterBits = cfg.int(
         s"mdu.div.$name.iter_bits",
-        cfg.int("mdu.div_iter_bits", 1)
+        cfg.int("mdu.div_iter_bits", ysyx_26030103_KconfigDefaults.MduDivRestoringIterBits)
       ),
       EarlyOut = cfg.bool(
         s"mdu.div.$name.early_out",
@@ -126,23 +127,26 @@ object ysyx_26030103_ElaborateProfiles {
       cfg: ysyx_26030103_JsonConfig.Config
   ): ysyx_26030103_MDUProfile = {
     // mdu.mul_* 是旧扁平键，mdu.mul.* 是新分层键，两者都要保留。
-    val MulRadix = cfg.int("mdu.mul_radix", 4)
-    val MulWidth = cfg.int("mdu.mul_width", 32)
+    val MulRadix = cfg.int("mdu.mul_radix", ysyx_26030103_KconfigDefaults.MduMulRadix)
+    val MulWidth = cfg.int("mdu.mul_width", ysyx_26030103_KconfigDefaults.MduMulWidth)
     val MulEncoding = cfg.string("mdu.mul_encoding", "plain")
-    val MulIterBits = cfg.int("mdu.mul_iter_bits", 1)
-    val MulSplit = cfg.int("mdu.mul_split", 1)
+    val MulIterBits = cfg.int("mdu.mul_iter_bits", ysyx_26030103_KconfigDefaults.MduMulShiftIterBits)
+    val MulSplit = cfg.int("mdu.mul_split", ysyx_26030103_KconfigDefaults.MduMulShiftSplit)
     val MulEarlyOut = cfg.bool("mdu.mul_early_out", false)
-    val MulPipeline = cfg.int("mdu.mul_pipeline", 0)
-    val CompressorInputs = cfg.int("mdu.mul_compressor.inputs", 3)
-    val CompressorOutputs = cfg.int("mdu.mul_compressor.outputs", 2)
+    val MulPipeline = cfg.int("mdu.mul_pipeline", ysyx_26030103_KconfigDefaults.MduMulPipeline)
+    val CompressorInputs = cfg.int("mdu.mul_compressor.inputs", ysyx_26030103_KconfigDefaults.MduGpcInputs)
+    val CompressorOutputs = cfg.int("mdu.mul_compressor.outputs", ysyx_26030103_KconfigDefaults.MduGpcOutputs)
     val CompressorOutputOffsets =
-      cfg.ints("mdu.mul_compressor.output_offsets", Seq(0, 1)).toIndexedSeq
+      cfg.ints(
+        "mdu.mul_compressor.output_offsets",
+        ysyx_26030103_KconfigDefaults.MduGpcOutputOffsets
+      ).toIndexedSeq
     val CompressorHasCin =
       cfg.bool("mdu.mul_compressor.has_cin", false)
     val CompressorHasCout =
       cfg.bool("mdu.mul_compressor.has_cout", false)
     val CompressorCoutOffset =
-      cfg.int("mdu.mul_compressor.cout_offset", 1)
+      cfg.int("mdu.mul_compressor.cout_offset", ysyx_26030103_KconfigDefaults.MduGpcCoutOffset)
     val CompressorAllowRedundant =
       cfg.bool("mdu.mul_compressor.allow_redundant", false)
     ysyx_26030103_MDUProfile(
@@ -206,12 +210,12 @@ object ysyx_26030103_ElaborateProfiles {
         SRT = divParams(cfg, "srt")
       ),
       Rocket = ysyx_26030103_RocketMDUParams(
-        MULUnroll = cfg.int("mdu.rocket.mul_unroll", 1),
-        DIVUnroll = cfg.int("mdu.rocket.div_unroll", 1),
+        MULUnroll = cfg.int("mdu.rocket.mul_unroll", ysyx_26030103_KconfigDefaults.MduRocketMulUnroll),
+        DIVUnroll = cfg.int("mdu.rocket.div_unroll", ysyx_26030103_KconfigDefaults.MduRocketDivUnroll),
         MULEarlyOut = cfg.bool("mdu.rocket.mul_early_out", false),
         DIVEarlyOut = cfg.bool("mdu.rocket.div_early_out", false),
         DIVEarlyOutGranularity =
-          cfg.int("mdu.rocket.div_early_out_granularity", 1)
+          cfg.int("mdu.rocket.div_early_out_granularity", ysyx_26030103_KconfigDefaults.MduRocketDivEarlyOutGranularity)
       )
     )
   }

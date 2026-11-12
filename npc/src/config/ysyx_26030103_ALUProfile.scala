@@ -1,5 +1,7 @@
 package ysyx_26030103.config
 
+import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
+
 /** ALU 加法器的公开参数。
   *
   * `CarrySelectGroup` 只在 `ALU_ADDER_IMPL=carry_select` 时生效；必须是
@@ -7,7 +9,7 @@ package ysyx_26030103.config
   * 同一份配置在切换后端时保持可复现。
   */
 case class ysyx_26030103_ALUAdderParams(
-    CarrySelectGroup: Int = 8
+    CarrySelectGroup: Int = KconfigDefaults.AluCarrySelectGroup
 )
 
 /** ELAU 加法器的公开参数。 */

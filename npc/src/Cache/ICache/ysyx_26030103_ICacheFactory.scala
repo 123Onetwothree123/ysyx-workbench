@@ -43,6 +43,7 @@ object ysyx_26030103_ICacheFactory {
               config.ICacheViptAliasDirectoryEntries,
             Snoop = Snoop,
             DmaSnoop = DmaSnoop,
+            DrainTimeout = config.ICacheDrainTimeout,
             PMARegions = config.CachePMARegions
           )
         )
@@ -62,6 +63,7 @@ object ysyx_26030103_ICacheFactory {
               config.ICacheViptAliasDirectoryEntries,
             Snoop = Snoop,
             DmaSnoop = DmaSnoop,
+            DrainTimeout = config.ICacheDrainTimeout,
             PMARegions = config.CachePMARegions
           )
         )
@@ -82,6 +84,7 @@ object ysyx_26030103_ICacheFactory {
             Bypass = false,
             Snoop = Snoop,
             DmaSnoop = DmaSnoop,
+            DrainTimeout = config.ICacheDrainTimeout,
             PMARegions = config.CachePMARegions
           )
         )

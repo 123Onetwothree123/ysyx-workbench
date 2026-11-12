@@ -1,20 +1,22 @@
 package ysyx_26030103.config
 
+import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
+
 case class ysyx_26030103_MULShiftAddParams(
-    IterBits: Int = 1,
-    Split: Int = 1,
+    IterBits: Int = KconfigDefaults.MduMulShiftIterBits,
+    Split: Int = KconfigDefaults.MduMulShiftSplit,
     EarlyOut: Boolean = false
 )
 
 case class ysyx_26030103_MULCompressionParams(
-    Pipeline: Int = 0,
+    Pipeline: Int = KconfigDefaults.MduMulPipeline,
     Compressor: ysyx_26030103_MULGPCConfig = ysyx_26030103_MULGPCConfig()
 )
 
 case class ysyx_26030103_MULProfile(
-    Width: Int = 32,
+    Width: Int = KconfigDefaults.MduMulWidth,
     Encoding: ysyx_26030103_MULEncoding = ysyx_26030103_MULEncoding.Plain,
-    Radix: Int = 4,
+    Radix: Int = KconfigDefaults.MduMulRadix,
     ShiftAdd: ysyx_26030103_MULShiftAddParams =
       ysyx_26030103_MULShiftAddParams(),
     Compression: ysyx_26030103_MULCompressionParams =
@@ -22,15 +24,24 @@ case class ysyx_26030103_MULProfile(
 )
 
 case class ysyx_26030103_DIVParams(
-    Radix: Int = 2,
-    IterBits: Int = 1,
+    Radix: Int = KconfigDefaults.MduDivRestoringRadix,
+    IterBits: Int = KconfigDefaults.MduDivRestoringIterBits,
     EarlyOut: Boolean = false
 )
 
 case class ysyx_26030103_DIVProfile(
-    Restoring: ysyx_26030103_DIVParams = ysyx_26030103_DIVParams(),
-    NonRestoring: ysyx_26030103_DIVParams = ysyx_26030103_DIVParams(),
-    SRT: ysyx_26030103_DIVParams = ysyx_26030103_DIVParams()
+    Restoring: ysyx_26030103_DIVParams = ysyx_26030103_DIVParams(
+      KconfigDefaults.MduDivRestoringRadix,
+      KconfigDefaults.MduDivRestoringIterBits
+    ),
+    NonRestoring: ysyx_26030103_DIVParams = ysyx_26030103_DIVParams(
+      KconfigDefaults.MduDivNonRestoringRadix,
+      KconfigDefaults.MduDivNonRestoringIterBits
+    ),
+    SRT: ysyx_26030103_DIVParams = ysyx_26030103_DIVParams(
+      KconfigDefaults.MduDivSRTRadix,
+      KconfigDefaults.MduDivSRTIterBits
+    )
 ) {
   def For(Impl: ysyx_26030103_DIVImpl): ysyx_26030103_DIVParams = Impl match {
     case ysyx_26030103_DIVImpl.Restoring    => Restoring
@@ -40,11 +51,12 @@ case class ysyx_26030103_DIVProfile(
 }
 
 case class ysyx_26030103_RocketMDUParams(
-    MULUnroll: Int = 1,
-    DIVUnroll: Int = 1,
+    MULUnroll: Int = KconfigDefaults.MduRocketMulUnroll,
+    DIVUnroll: Int = KconfigDefaults.MduRocketDivUnroll,
     MULEarlyOut: Boolean = false,
     DIVEarlyOut: Boolean = false,
-    DIVEarlyOutGranularity: Int = 1
+    DIVEarlyOutGranularity: Int =
+      KconfigDefaults.MduRocketDivEarlyOutGranularity
 )
 
 case class ysyx_26030103_MDUProfile(

@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -11,26 +12,26 @@ import chisel3.util._
   * 先返回；out_of_order 可选任意完成者。
   */
 class ysyx_26030103_PTWCluster(
-    outstanding: Int = 2,
-    busOutstanding: Int = 0,
+    outstanding: Int = ysyx_26030103_KconfigDefaults.MmuPtwOutstanding,
+    busOutstanding: Int = ysyx_26030103_KconfigDefaults.MmuPtwBusOutstanding,
     adMode: String = "fault",
     cacheEnable: Boolean = false,
-    cacheEntries: Int = 16,
-    cacheWays: Int = 2,
+    cacheEntries: Int = ysyx_26030103_KconfigDefaults.MmuPtwCacheEntries,
+    cacheWays: Int = ysyx_26030103_KconfigDefaults.MmuPtwCacheWays,
     superpage: Boolean = false,
     pteConfig: _root_.ysyx_26030103.config.ysyx_26030103_PteConfig =
       _root_.ysyx_26030103.config.ysyx_26030103_PteConfig(),
-    pageBits: Int = 12,
-    levels: Int = 2,
-    tableEntries: Int = 1024,
+    pageBits: Int = ysyx_26030103_KconfigDefaults.MmuPageBits,
+    levels: Int = ysyx_26030103_KconfigDefaults.MmuLevels,
+    tableEntries: Int = ysyx_26030103_KconfigDefaults.MmuTableEntries,
     fillSuperpage: Boolean = false,
-    pteSizeBytes: Int = 4,
+    pteSizeBytes: Int = ysyx_26030103_KconfigDefaults.MmuPteSizeBytes,
     inOrder: Boolean = true,
     respPorts: Int = 1,
     hasU: Boolean = true,
-    XLEN: Int = 32,
-    addressWidth: Int = 32,
-    vaBits: Int = 32
+    XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    addressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    vaBits: Int = ysyx_26030103_KconfigDefaults.MmuVaBits
 ) extends ysyx_26030103_PTWBackend(respPorts, XLEN, addressWidth, pteSizeBytes * 8) {
   require(outstanding >= 1 && outstanding <= 16,
     "PTW outstanding 必须在 1..16（页表总线事务 ID 为 4 位）")

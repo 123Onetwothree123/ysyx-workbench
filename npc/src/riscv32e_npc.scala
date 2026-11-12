@@ -6,7 +6,7 @@ import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.infra._
 
 class riscv32e_npc_AXIRAM(
-    val ramBytes: Long = 64L * 1024L * 1024L,
+    val ramBytes: Long = ysyx_26030103_KconfigDefaults.NpcRamSize,
     val socXLEN: Int = 32,
     val uartBase: Long = ysyx_26030103_PMAOptions.Default.uartBase,
     val ramBase: Long = ysyx_26030103_PMAOptions.Default.npcRamBase

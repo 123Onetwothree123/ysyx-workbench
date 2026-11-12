@@ -4,10 +4,10 @@ import chisel3.util._
 import _root_.ysyx_26030103.common._
 class ysyx_26030103_ICacheReg(
     Enable: Boolean = true, // false=不做缓存, 每次取指直接发单拍AXI读(和数据通路一样)
-    BlockSizeLog2: Int = 4,
-    IndexBits: Int = 5,
-    AddressWidth: Int = 32,
-    DataWidth: Int = 32,
+    BlockSizeLog2: Int = ysyx_26030103_KconfigDefaults.NpcICacheBlockSizeLog2,
+    IndexBits: Int = ysyx_26030103_KconfigDefaults.NpcICacheIndexBits,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
     Vipt: Boolean = false,
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装前按物理 tag 失效其他 set 的副本，维持每个物理行至多一份。
@@ -26,6 +26,7 @@ class ysyx_26030103_ICacheReg(
     // DMA 地址级 snoop：DMA 写 B 到达时按字节范围失效所有重叠行。
     // 只有 DMA_COHERENCE=hardware_snoop 才生成。
     DmaSnoop: Boolean = false,
+    DrainTimeout: Int = ysyx_26030103_KconfigDefaults.ICacheDrainTimeout,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_ICacheBase(AddressWidth, DataWidth) {
@@ -850,7 +851,7 @@ class ysyx_26030103_ICacheReg(
         discard := false.B
         burst_mode := false.B
         rfstate := rf_idle
-      }.elsewhen(drain_timer === 1023.U) {
+      }.elsewhen(drain_timer === DrainTimeout.U) {
         bus_fault := true.B
         drain_timer := 0.U
         drain_retry_timer := 0.U
@@ -867,7 +868,7 @@ class ysyx_26030103_ICacheReg(
       when(io.axi.R.RVALID && io.axi.R.RLAST) {
         bus_fault := false.B
         rfstate := rf_idle
-      }.elsewhen(drain_retry_timer === 1023.U && !io.axi.R.RVALID) {
+      }.elsewhen(drain_retry_timer === DrainTimeout.U && !io.axi.R.RVALID) {
         bus_fault := false.B
         drain_retry_timer := 0.U
         rfstate := rf_idle

@@ -23,13 +23,13 @@ import chisel3.util._
   * 对应 pending 后自动撤销。
   */
 class ysyx_26030103_UART16550(
-    val Depth: Int = 64,
-    val AddressWidth: Int = 5,
+    val Depth: Int = ysyx_26030103_KconfigDefaults.UartFifoDepth,
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.UartAddrWidth,
     // THR 被占用、LSR.THRE=0 的仿真等待周期。没有真实波特率，该值只需
     // 让软件在写 THR 后能观察到 THRE 拉低，再看到 THRE/TEMT 重新置位。
-    val TxHoldCycles: Int = 32,
+    val TxHoldCycles: Int = ysyx_26030103_KconfigDefaults.UartTxHoldCycles,
     // 移位器“发送”一个字节的仿真周期，决定 LSR.TEMT 何时恢复。
-    val TxShiftCycles: Int = 64
+    val TxShiftCycles: Int = ysyx_26030103_KconfigDefaults.UartTxShiftCycles
 ) extends Module {
   require(Depth >= 1 && Depth <= 256, "UART RX FIFO 深度必须在 1..256")
   require(TxHoldCycles >= 1, "UART TxHoldCycles 必须 >= 1")

@@ -1,4 +1,5 @@
 package ysyx_26030103.exu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
@@ -10,7 +11,7 @@ import _root_.ysyx_26030103.common._
   * 四位作为 OF/MINH/SINH/UINH，并在 64 位计数回绕时置 OF。
   */
 class ysyx_26030103_PMU(
-    val XLEN: Int = 64,
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val EnableSscofpmf: Boolean = true
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"PMU XLEN 非法: $XLEN")

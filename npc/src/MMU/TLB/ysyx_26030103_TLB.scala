@@ -1,12 +1,13 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
 class ysyx_26030103_TLBWrite(
-    val XLEN: Int = 32,
-    val pteWidth: Int = 32
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    val pteWidth: Int = ysyx_26030103_KconfigDefaults.MmuPteWidth
 ) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"TLBWrite XLEN 非法: $XLEN")
   require(pteWidth == 32 || pteWidth == 64, s"TLBWrite pteWidth 非法: $pteWidth")
@@ -29,27 +30,27 @@ class ysyx_26030103_TLBWrite(
   * PPN 使用标准 bit 53:10（44 位）。RV32/Sv32 的默认参数保持原行为。
   */
 class ysyx_26030103_TLB(
-    entries: Int = 16,
-    ways: Int = 2,
-    asidBits: Int = 9,
+    entries: Int = ysyx_26030103_KconfigDefaults.MmuItlbEntries,
+    ways: Int = ysyx_26030103_KconfigDefaults.MmuItlbWays,
+    asidBits: Int = ysyx_26030103_KconfigDefaults.MmuTlbAsidBits,
     globalEnable: Boolean = true,
     replacement: String = "rr",
     adMode: String = "fault",
     storage: String = "reg",
     superpage: Boolean = false,
-    pageBits: Int = 12,
-    levels: Int = 2,
-    indexBits: Int = 10,
-    refillPorts: Int = 1,
-    superpageEntries: Int = 4,
+    pageBits: Int = ysyx_26030103_KconfigDefaults.MmuPageBits,
+    levels: Int = ysyx_26030103_KconfigDefaults.MmuLevels,
+    indexBits: Int = ysyx_26030103_KconfigDefaults.MmuIndexBits,
+    refillPorts: Int = ysyx_26030103_KconfigDefaults.MmuRefillPorts,
+    superpageEntries: Int = ysyx_26030103_KconfigDefaults.MmuTlbSuperpageEntries,
     hasU: Boolean = true,
-    lookupPorts: Int = 1,
-    XLEN: Int = 32,
-    addressWidth: Int = 32,
-    vaBits: Int = 32,
-    pteWidth: Int = 32,
-    ptePpnLow: Int = 10,
-    ptePpnHigh: Int = 31
+    lookupPorts: Int = ysyx_26030103_KconfigDefaults.MmuUtlbLookupPorts,
+    XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    addressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    vaBits: Int = ysyx_26030103_KconfigDefaults.MmuVaBits,
+    pteWidth: Int = ysyx_26030103_KconfigDefaults.MmuPteWidth,
+    ptePpnLow: Int = ysyx_26030103_KconfigDefaults.MmuPtePpnLow,
+    ptePpnHigh: Int = ysyx_26030103_KconfigDefaults.MmuPtePpnHigh
 ) extends Module {
   require(entries > 0 && ways > 0 && entries % ways == 0, "TLB entries 必须能被 ways 整除")
   require((entries & (entries - 1)) == 0, "TLB entries 必须是 2 的幂")

@@ -1,4 +1,5 @@
 package ysyx_26030103.infra
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -10,13 +11,13 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
   * 对应 pending 位，complete 写清除同一 source 的 claim 状态。
   */
 class ysyx_26030103_PLIC(
-    numSources: Int = 32,
-    priorityBits: Int = 3,
-    maxPriority: Int = 7,
+    numSources: Int = ysyx_26030103_KconfigDefaults.MmuPlicSources,
+    priorityBits: Int = ysyx_26030103_KconfigDefaults.MmuPlicPriorityBits,
+    maxPriority: Int = ysyx_26030103_KconfigDefaults.MmuPlicMaxPriority,
     base: BigInt = BigInt(ysyx_26030103_PhysicalMemoryMap.DefaultPlicBase),
-    AddressWidth: Int = 32,
-    DataWidth: Int = 32,
-    IdWidth: Int = 4
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
+    IdWidth: Int = ysyx_26030103_KconfigDefaults.AxiIdWidth
 ) extends Module {
   require(DataWidth == 32 || DataWidth == 64,
     s"PLIC DataWidth 非法: $DataWidth")

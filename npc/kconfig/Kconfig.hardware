@@ -1001,7 +1001,64 @@ menu "CPU 与平台"
 
   endmenu
 
+  menu "超时与排空"
+
+    config ICACHE_DRAIN_TIMEOUT
+      int "ICache 排空超时（周期）"
+      default 1023
+      range 1 1023
+
+    config DCACHE_DRAIN_TIMEOUT
+      int "DCache 排空超时（周期）"
+      default 255
+      range 1 1023
+
+    config LSU_DRAIN_TIMEOUT
+      int "LSU 读排空超时（周期）"
+      default 255
+      range 1 1023
+
+    config ARBITER_GRANT_TIMEOUT
+      int "AXI 仲裁器等待授权超时（周期）"
+      default 1023
+      range 1 1023
+
+  endmenu
+
   menu "目标体系结构"
+
+    config AXI_ID_WIDTH
+      int "AXI ID 位宽"
+      default 4
+      range 4 4
+      help
+        当前仲裁器/Crossbar 固定按 4 位 ID 设计，只允许 4。
+        IFU/LSU/DMA/PTW 分别使用固定 ID。
+
+    config PTW_BUS_DEPTH
+      int "PTW AXI 请求队列深度"
+      default 16
+      range 1 64
+
+    config UART_FIFO_DEPTH
+      int "UART 仿真 FIFO 深度"
+      default 64
+      range 1 1024
+
+    config UART_ADDR_WIDTH
+      int "UART 仿真寄存器地址位宽"
+      default 5
+      range 1 16
+
+    config UART_TX_HOLD_CYCLES
+      int "UART TX 每字节保持周期"
+      default 32
+      range 1 65536
+
+    config UART_TX_SHIFT_CYCLES
+      int "UART TX 移位周期"
+      default 64
+      range 1 65536
 
     config NPC_RAM_BASE
       hex "direct-NPC 仿真 RAM 基地址（字节）"

@@ -11,6 +11,32 @@ void addPlatform(TypedFields &root, const Config &values,
     addField(platform, "ram_base",
              TypedJson::integer(
                  flatInt(values, "NPC_RAM_BASE", 0x80000000LL)));
+    addField(platform, "icache_drain_timeout",
+             TypedJson::integer(
+                 flatInt(values, "ICACHE_DRAIN_TIMEOUT", 1023)));
+    addField(platform, "dcache_drain_timeout",
+             TypedJson::integer(
+                 flatInt(values, "DCACHE_DRAIN_TIMEOUT", 255)));
+    addField(platform, "lsu_drain_timeout",
+             TypedJson::integer(
+                 flatInt(values, "LSU_DRAIN_TIMEOUT", 255)));
+    addField(platform, "arbiter_grant_timeout",
+             TypedJson::integer(
+                 flatInt(values, "ARBITER_GRANT_TIMEOUT", 1023)));
+    addField(platform, "axi_id_width",
+             TypedJson::integer(flatInt(values, "AXI_ID_WIDTH", 4)));
+    addField(platform, "ptw_bus_depth",
+             TypedJson::integer(flatInt(values, "PTW_BUS_DEPTH", 16)));
+    addField(platform, "uart_fifo_depth",
+             TypedJson::integer(flatInt(values, "UART_FIFO_DEPTH", 64)));
+    addField(platform, "uart_addr_width",
+             TypedJson::integer(flatInt(values, "UART_ADDR_WIDTH", 5)));
+    addField(platform, "uart_tx_hold_cycles",
+             TypedJson::integer(
+                 flatInt(values, "UART_TX_HOLD_CYCLES", 32)));
+    addField(platform, "uart_tx_shift_cycles",
+             TypedJson::integer(
+                 flatInt(values, "UART_TX_SHIFT_CYCLES", 64)));
     addField(platform, "cache_padding",
              TypedJson::integer(flatInt(values, "CACHE_PADDING", 0)));
     addField(platform, "chip_link",

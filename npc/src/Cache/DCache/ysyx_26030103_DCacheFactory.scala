@@ -3,6 +3,7 @@ package ysyx_26030103.cache
 import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_PMARegion
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import _root_.ysyx_26030103.config._
 
 /** 按配置选择数据缓存实现。
@@ -19,13 +20,14 @@ import _root_.ysyx_26030103.config._
 object ysyx_26030103_DCacheFactory {
   def Create(
       Enable: Boolean = true,
-      BlockSizeLog2: Int = 4,
-      IndexBits: Int = 5,
-      AddressWidth: Int = 32,
-      DataWidth: Int = 32,
-      BusDataWidth: Int = 32,
+      BlockSizeLog2: Int = ysyx_26030103_KconfigDefaults.NpcDCacheBlockSizeLog2,
+      IndexBits: Int = ysyx_26030103_KconfigDefaults.NpcDCacheIndexBits,
+      AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+      DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
+      BusDataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
       CacheableBase: Long = 0L,
       CacheableMask: Long = 0L,
+      DrainTimeout: Int = ysyx_26030103_KconfigDefaults.DCacheDrainTimeout,
       PMARegions: Seq[ysyx_26030103_PMARegion] =
         ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
       Storage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
@@ -54,6 +56,7 @@ object ysyx_26030103_DCacheFactory {
             ViptAliasDirectoryEntries = ViptAliasDirectoryEntries,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
+            DrainTimeout = DrainTimeout,
             PMARegions = PMARegions
           )
         )
@@ -74,6 +77,7 @@ object ysyx_26030103_DCacheFactory {
             ViptAliasDirectoryEntries = ViptAliasDirectoryEntries,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
+            DrainTimeout = DrainTimeout,
             PMARegions = PMARegions
           )
         )
@@ -95,6 +99,7 @@ object ysyx_26030103_DCacheFactory {
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             Bypass = false,
+            DrainTimeout = DrainTimeout,
             PMARegions = PMARegions
           )
         )

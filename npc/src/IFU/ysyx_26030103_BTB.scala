@@ -1,4 +1,5 @@
 package ysyx_26030103.ifu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 
@@ -8,9 +9,9 @@ import chisel3.util._
 // 表项: valid + tag + target (+ 可选kind, KindBits>0时启用); 组满按每组repl_ptr轮转替换(FIFO)
 // 顶层例化两张: 分支BTB(KindBits=0, BTFN方向预测) + jal BTB(KindBits=2, 区分Jal/Call/Ret)
 class ysyx_26030103_BTB(
-    BTBBits: Int = 4,
-    BTBWays: Int = 1,
-    AddressWidth: Int = 32,
+    BTBBits: Int = ysyx_26030103_KconfigDefaults.NpcBTBBits,
+    BTBWays: Int = ysyx_26030103_KconfigDefaults.NpcBTBWays,
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     KindBits: Int = 0,
     // 启用 C 扩展时 IALIGN=16，PC 可能落在 2 字节边界。索引/标签必须
     // 保留 bit1，避免同一条 32 位指令的两个半字或相邻 16 位指令互相

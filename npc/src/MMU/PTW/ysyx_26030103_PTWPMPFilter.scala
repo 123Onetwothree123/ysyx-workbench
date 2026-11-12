@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -11,8 +12,8 @@ import _root_.ysyx_26030103.infra.ysyx_26030103_PMP
   * 被拒绝的请求不进入 AXI，直接返回 fault 响应。
   */
 class ysyx_26030103_PTWPMPFilter(
-    AddressWidth: Int = 32,
-    entries: Int = 16
+    AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    entries: Int = ysyx_26030103_KconfigDefaults.MmuPmpEntries
 ) extends Module {
   require(AddressWidth == 32 || AddressWidth == 64,
     s"PTWPMPFilter AddressWidth 非法: $AddressWidth")

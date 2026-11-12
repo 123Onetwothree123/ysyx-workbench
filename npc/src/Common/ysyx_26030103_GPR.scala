@@ -1,7 +1,7 @@
 package ysyx_26030103.common
 import chisel3._
 class ysyx_26030103_GPR(
-    val XLEN: Int = 32,
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val EnableDynamicDebug: Boolean = true
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"GPR XLEN 非法: $XLEN")

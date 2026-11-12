@@ -1,4 +1,5 @@
 package ysyx_26030103.cache
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -30,9 +31,9 @@ class ysyx_26030103_DCacheResponse(val DataWidth: Int = 32) extends Bundle {
   *   4. flush使全部缓存行失效（DMA等外部一致性事件）。
   */
 class ysyx_26030103_DCacheInterface(
-    val AddressWidth: Int = 32,
-    val DataWidth: Int = 32,
-    val BusDataWidth: Int = 32
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    val DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
+    val BusDataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth
 ) extends Bundle {
   require(BusDataWidth == 32 || BusDataWidth == 64,
     s"DCacheInterface BusDataWidth 非法: $BusDataWidth")

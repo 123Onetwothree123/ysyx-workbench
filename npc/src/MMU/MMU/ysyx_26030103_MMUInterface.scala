@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
@@ -16,8 +17,8 @@ object ysyx_26030103_AccessType {
   * 使用 64/64，satp 的 MODE/ASID/PPN 字段全部保留。
   */
 class ysyx_26030103_MMURequest(
-    val XLEN: Int = 32,
-    val AddressWidth: Int = 32
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"MMURequest XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
@@ -32,8 +33,8 @@ class ysyx_26030103_MMURequest(
 }
 
 class ysyx_26030103_MMUResponse(
-    val XLEN: Int = 32,
-    val AddressWidth: Int = 32
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"MMUResponse XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,

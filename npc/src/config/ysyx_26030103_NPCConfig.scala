@@ -4,6 +4,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_MULBoothConfig
 import _root_.ysyx_26030103.common.ysyx_26030103_PMARegion
 import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
+import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
 
 /** NPC 的全部elaboration期配置。
   *
@@ -11,7 +12,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
   * 做统一合法性校验（require）与派生量计算（使能开关、最大在途数等）。
   */
 case class ysyx_26030103_NPCConfig(
-    XLEN: Int = 32,
+    XLEN: Int = KconfigDefaults.NpcXlen,
     UseM: Boolean = false,
     UseA: Boolean = false,
     UseC: Boolean = false,
@@ -22,7 +23,7 @@ case class ysyx_26030103_NPCConfig(
     UseF: Boolean = false,
     UseD: Boolean = false,
     FPUImpl: ysyx_26030103_FPUImpl = ysyx_26030103_FPUImpl.None,
-    FPULen: Int = 64,
+    FPULen: Int = KconfigDefaults.NpcFpuLen,
     FPUProfile: ysyx_26030103_FPUProfile = ysyx_26030103_FPUProfile(),
     MDUImpl: ysyx_26030103_MDUImpl = ysyx_26030103_MDUImpl.Standard,
     MULImpl: ysyx_26030103_MULImpl = ysyx_26030103_MULImpl.ShiftAdd,
@@ -38,19 +39,23 @@ case class ysyx_26030103_NPCConfig(
     CLINTSize: Long = ysyx_26030103_PMAOptions.Default.clintSize,
     ChipLinkMemoryBase: Long = ysyx_26030103_PMAOptions.Default.chipLinkMemBase,
     ChipLinkMemorySize: Long = ysyx_26030103_PMAOptions.Default.chipLinkMemSize,
+    ICacheDrainTimeout: Int = KconfigDefaults.ICacheDrainTimeout,
+    DCacheDrainTimeout: Int = KconfigDefaults.DCacheDrainTimeout,
+    LsuDrainTimeout: Int = KconfigDefaults.LsuDrainTimeout,
+    ArbiterGrantTimeout: Int = KconfigDefaults.ArbiterGrantTimeout,
     // 架构/总线物理地址宽度。RV32 保持 32；RV64 由 elaborator 设为 64。
     // 该宽度同时用于 PC/分支目标、IFU/LSU、AXI、PMA/Xbar、Cache tag 与
     // BTB/RAS，避免任何一级再截断到 32 位。
-    AddressWidth: Int = 32,
+    AddressWidth: Int = KconfigDefaults.NpcAddressWidth,
     // ysyxSoC CPU 侧接口的 XLEN/数据宽度，与 CPU XLEN 解耦：
     //   SocXLENFollowCpu=false（默认）时使用 SocXLEN；
     //   SocXLENFollowCpu=true 时 EffectiveSocXLEN=XLEN。
     // 32 位 SoC 可以搭配 64 位 CPU（访问窗口仍限制在低 4GiB）；
     SocXLENFollowCpu: Boolean = false,
-    SocXLEN: Int = 32,
+    SocXLEN: Int = KconfigDefaults.NpcSocXlen,
     // 内部 AXI 数据宽度：默认随 XLEN，也可固定 32/64。
     InternalBusWidthFollowCpu: Boolean = true,
-    InternalBusWidth: Int = 32,
+    InternalBusWidth: Int = KconfigDefaults.NpcInternalBusWidth,
     // 缓存
     ICacheEnable: Boolean = true,
     // ICache数据阵列的存储介质：寄存器阵列或同步读SRAM
@@ -58,16 +63,16 @@ case class ysyx_26030103_NPCConfig(
     DCacheEnable: Boolean = false,
     // DCache数据阵列的存储介质：寄存器阵列或同步读SRAM
     DCacheStorage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
-    BlockSizeLog2: Int = 4,
-    IndexBits: Int = 5,
+    BlockSizeLog2: Int = KconfigDefaults.NpcBlockSizeLog2,
+    IndexBits: Int = KconfigDefaults.NpcIndexBits,
     // 每级缓存可单独配置几何。默认值与共享的 BlockSizeLog2/IndexBits 相同；
     // 通过 elaboration 环境变量构建时（ICACHE_*/DCACHE_* 未设置则跟随
     // CACHE_BLOCK_SIZE_LOG2/CACHE_INDEX_BITS），由 Elaborate 统一填充，
     // 既有构建脚本与测试因此完全兼容。
-    ICacheBlockSizeLog2: Int = 4,
-    ICacheIndexBits: Int = 5,
-    DCacheBlockSizeLog2: Int = 4,
-    DCacheIndexBits: Int = 5,
+    ICacheBlockSizeLog2: Int = KconfigDefaults.NpcICacheBlockSizeLog2,
+    ICacheIndexBits: Int = KconfigDefaults.NpcICacheIndexBits,
+    DCacheBlockSizeLog2: Int = KconfigDefaults.NpcDCacheBlockSizeLog2,
+    DCacheIndexBits: Int = KconfigDefaults.NpcDCacheIndexBits,
     // 自修改代码与 DMA 一致性模式。默认都保持既有行为/标准语义；
     // 只有显式选择的模式才会生成额外硬件或在 PMA 上改变可缓存性。
     ICacheCoherence: ysyx_26030103_ICacheCoherence =
@@ -75,17 +80,17 @@ case class ysyx_26030103_NPCConfig(
     DmaCoherence: ysyx_26030103_DmaCoherence =
       ysyx_26030103_DmaCoherence.SoftwareFlush,
     // LSU 写缓冲项数(必须是2的幂, 环形队列按位回绕)
-    WBufDepth: Int = 4,
+    WBufDepth: Int = KconfigDefaults.NpcWBufDepth,
     CacheableBase: Long = 0L,
     CacheableMask: Long = 0L,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
     // 分支预测
-    BTBBits: Int = 4,
-    BTBWays: Int = 1,
-    JalBTBBits: Int = 4,
-    JalBTBWays: Int = 1,
-    RASBits: Int = 4,
+    BTBBits: Int = KconfigDefaults.NpcBTBBits,
+    BTBWays: Int = KconfigDefaults.NpcBTBWays,
+    JalBTBBits: Int = KconfigDefaults.NpcJalBTBBits,
+    JalBTBWays: Int = KconfigDefaults.NpcJalBTBWays,
+    RASBits: Int = KconfigDefaults.NpcRASBits,
     // 仿真观测逻辑也是硬件配置：顶层端口 ABI 始终保持不变，但关闭相应
     // 软件功能后，端口会绑常量，内部动态读 mux/事件快照寄存器可被裁剪。
     // 默认打开是为了保持直接实例化本配置的单元测试兼容；生产 elaborator
