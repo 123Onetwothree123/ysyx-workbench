@@ -1512,29 +1512,29 @@ class ysyx_26030103(
     PMUEventBits(
       ysyx_26030103_PMUEventId.StoreInstruction
     ) := exu.io.PerfStoreOp
-    PMUEventBits(ysyx_26030103_PMUEventId.CsrInstruction) := exu.io.PerfCSROp
+    PMUEventBits(ysyx_26030103_PMUEventId.CSRInstruction) := exu.io.PerfCSROp
     PMUEventBits(ysyx_26030103_PMUEventId.Trap) := exu.io.PerfTrap
-    PMUEventBits(ysyx_26030103_PMUEventId.ITlbMiss) :=
+    PMUEventBits(ysyx_26030103_PMUEventId.ITLBMiss) :=
       mmuUnitOpt.map(_.io.perf_itlb_miss).getOrElse(false.B)
-    PMUEventBits(ysyx_26030103_PMUEventId.DTlbMiss) :=
+    PMUEventBits(ysyx_26030103_PMUEventId.DTLBMiss) :=
       mmuUnitOpt.map(_.io.perf_dtlb_miss).getOrElse(false.B)
-    PMUEventBits(ysyx_26030103_PMUEventId.TlbRefill) :=
+    PMUEventBits(ysyx_26030103_PMUEventId.TLBRefill) :=
       mmuUnitOpt.map(_.io.perf_tlb_refill).getOrElse(false.B)
-    PMUEventBits(ysyx_26030103_PMUEventId.PtwWalk) :=
+    PMUEventBits(ysyx_26030103_PMUEventId.PTWWalk) :=
       mmuUnitOpt.map(_.io.perf_ptw_walk).getOrElse(false.B)
-    PMUEventBits(ysyx_26030103_PMUEventId.AxiRead) :=
+    PMUEventBits(ysyx_26030103_PMUEventId.AXIRead) :=
       io.master.rvalid && io.master.rready
-    PMUEventBits(ysyx_26030103_PMUEventId.AxiWrite) :=
+    PMUEventBits(ysyx_26030103_PMUEventId.AXIWrite) :=
       io.master.bvalid && io.master.bready
-    PMUEventBits(ysyx_26030103_PMUEventId.IfuStall) :=
+    PMUEventBits(ysyx_26030103_PMUEventId.IFUStall) :=
       icache.io.resp_valid && !icache.io.resp_ready
     PMUEventBits(ysyx_26030103_PMUEventId.FlushCycle) := pipe_flush
     PMUEventBits(ysyx_26030103_PMUEventId.InterruptTaken) :=
       exu.io.PerfInterruptTaken
     PMUEventBits(ysyx_26030103_PMUEventId.ExternalIrq) := exu.io.Interrupt
     PMUEventBits(ysyx_26030103_PMUEventId.TimerIrq) := exu.io.TimerInterrupt
-    PMUEventBits(ysyx_26030103_PMUEventId.FpuActive) := exu.io.PerfFpuActive
-    PMUEventBits(ysyx_26030103_PMUEventId.MduActive) := exu.io.PerfMDUActive
+    PMUEventBits(ysyx_26030103_PMUEventId.FPUActive) := exu.io.PerfFpuActive
+    PMUEventBits(ysyx_26030103_PMUEventId.MDUActive) := exu.io.PerfMDUActive
     PMUEventBits(ysyx_26030103_PMUEventId.WbufFull) := lsu.io.StallWriteReq
     PMUEventBits(ysyx_26030103_PMUEventId.UncachedAccess) :=
       lsu.io.Complete && !lsu.io.DCachePerfHit && !lsu.io.DCachePerfMiss
