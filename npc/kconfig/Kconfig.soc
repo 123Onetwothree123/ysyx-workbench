@@ -44,9 +44,9 @@ menu "SoC 与外设"
 
     config PMA_SOC_RESET_ADDR
       hex "SoC 复位入口地址"
-      default 0x30000000
+      default PMA_MROM_BASE
       help
-        必须落在可执行 PMA 区域。默认 MROM 起始地址。
+        必须落在可执行 PMA 区域；默认跟随 MROM 基地址。
 
     config PMA_CLINT_BASE
       hex "CLINT 基地址"

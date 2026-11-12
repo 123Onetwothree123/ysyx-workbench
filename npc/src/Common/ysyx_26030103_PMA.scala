@@ -18,31 +18,31 @@ case class ysyx_26030103_PMARegion(
   final val EndExclusive: Long = Base + Size
 }
 final case class ysyx_26030103_PMAOptions(
-    clintBase: Long = 0x02000000L,
-    clintSize: Long = 0x00010000L,
-    sramBase: Long = 0x0f000000L,
-    sramSize: Long = 0x00008000L,
-    uartBase: Long = 0x10000000L,
-    uartSize: Long = 0x00001000L,
-    spiBase: Long = 0x10001000L,
-    spiSize: Long = 0x00001000L,
-    gpioBase: Long = 0x10002000L,
-    gpioSize: Long = 0x00000010L,
-    keyboardBase: Long = 0x10011000L,
-    keyboardSize: Long = 0x00000008L,
-    vgaBase: Long = 0x21000000L,
-    vgaSize: Long = 0x00200000L,
-    mromBase: Long = 0x30000000L,
-    mromSize: Long = 0x10000000L,
-    psramBase: Long = 0x80000000L,
-    psramSize: Long = 0x00400000L,
-    sdramBase: Long = 0xa0000000L,
-    sdramSize: Long = 0x02000000L,
-    chipLinkMmioBase: Long = 0x40000000L,
-    chipLinkMmioSize: Long = 0x40000000L,
-    chipLinkMemBase: Long = 0xc0000000L,
-    chipLinkMemSize: Long = 0x40000000L,
-    socResetAddr: Long = 0x30000000L
+    clintBase: Long,
+    clintSize: Long,
+    sramBase: Long,
+    sramSize: Long,
+    uartBase: Long,
+    uartSize: Long,
+    spiBase: Long,
+    spiSize: Long,
+    gpioBase: Long,
+    gpioSize: Long,
+    keyboardBase: Long,
+    keyboardSize: Long,
+    vgaBase: Long,
+    vgaSize: Long,
+    mromBase: Long,
+    mromSize: Long,
+    psramBase: Long,
+    psramSize: Long,
+    sdramBase: Long,
+    sdramSize: Long,
+    chipLinkMmioBase: Long,
+    chipLinkMmioSize: Long,
+    chipLinkMemBase: Long,
+    chipLinkMemSize: Long,
+    socResetAddr: Long
 ) {
   def npcRegions(
       ramBytes: Long,
@@ -87,19 +87,52 @@ final case class ysyx_26030103_PMAOptions(
     local ++ chipLink
   }
 }
+object ysyx_26030103_PMAOptions {
+  private val DefaultMromBase = 0x30000000L
+  val Default = ysyx_26030103_PMAOptions(
+    clintBase = 0x02000000L,
+    clintSize = 0x00010000L,
+    sramBase = 0x0f000000L,
+    sramSize = 0x00008000L,
+    uartBase = 0x10000000L,
+    uartSize = 0x00001000L,
+    spiBase = 0x10001000L,
+    spiSize = 0x00001000L,
+    gpioBase = 0x10002000L,
+    gpioSize = 0x00000010L,
+    keyboardBase = 0x10011000L,
+    keyboardSize = 0x00000008L,
+    vgaBase = 0x21000000L,
+    vgaSize = 0x00200000L,
+    mromBase = DefaultMromBase,
+    mromSize = 0x10000000L,
+    psramBase = 0x80000000L,
+    psramSize = 0x00400000L,
+    sdramBase = 0xa0000000L,
+    sdramSize = 0x02000000L,
+    chipLinkMmioBase = 0x40000000L,
+    chipLinkMmioSize = 0x40000000L,
+    chipLinkMemBase = 0xc0000000L,
+    chipLinkMemSize = 0x40000000L,
+    socResetAddr = DefaultMromBase
+  )
+}
 object ysyx_26030103_PhysicalMemoryMap {
-  val CLINT = ysyx_26030103_PMARegion(0x02000000L, 0x00010000L)
+  val CLINT = ysyx_26030103_PMARegion(
+    ysyx_26030103_PMAOptions.Default.clintBase,
+    ysyx_26030103_PMAOptions.Default.clintSize
+  )
   def NPCWithSize(
       ramBytes: Long,
       PlicBase: Long = 0x0c000000L,
       PlicSize: Long = 0x00300000L
   ): Seq[ysyx_26030103_PMARegion] =
-    ysyx_26030103_PMAOptions().npcRegions(ramBytes, PlicBase, PlicSize)
+    ysyx_26030103_PMAOptions.Default.npcRegions(ramBytes, PlicBase, PlicSize)
   val NPC: Seq[ysyx_26030103_PMARegion] = NPCWithSize(0x04000000L)
   def SoC(
       HasChipLink: Boolean,
       PlicBase: Long = 0x0c000000L,
       PlicSize: Long = 0x00300000L
   ): Seq[ysyx_26030103_PMARegion] =
-    ysyx_26030103_PMAOptions().socRegions(HasChipLink, PlicBase, PlicSize)
+    ysyx_26030103_PMAOptions.Default.socRegions(HasChipLink, PlicBase, PlicSize)
 }

@@ -2,6 +2,7 @@ package ysyx_26030103.config
 
 import _root_.ysyx_26030103.common.ysyx_26030103_MULBoothConfig
 import _root_.ysyx_26030103.common.ysyx_26030103_PMARegion
+import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 
 /** NPC 的全部elaboration期配置。
@@ -32,9 +33,9 @@ case class ysyx_26030103_NPCConfig(
     ALUImpl: ysyx_26030103_ALUImpl = ysyx_26030103_ALUImpl.Standard,
     ALUProfile: ysyx_26030103_ALUProfile = ysyx_26030103_ALUProfile(),
     // 目标平台
-    ResetAddr: Long = 0x30000000L,
-    CLINTBase: Long = 0x02000000L,
-    CLINTSize: Long = 0x00010000L,
+    ResetAddr: Long = ysyx_26030103_PMAOptions.Default.socResetAddr,
+    CLINTBase: Long = ysyx_26030103_PMAOptions.Default.clintBase,
+    CLINTSize: Long = ysyx_26030103_PMAOptions.Default.clintSize,
     // 架构/总线物理地址宽度。RV32 保持 32；RV64 由 elaborator 设为 64。
     // 该宽度同时用于 PC/分支目标、IFU/LSU、AXI、PMA/Xbar、Cache tag 与
     // BTB/RAS，避免任何一级再截断到 32 位。

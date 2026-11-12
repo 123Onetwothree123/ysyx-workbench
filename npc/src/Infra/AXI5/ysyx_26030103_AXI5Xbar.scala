@@ -10,8 +10,10 @@ class ysyx_26030103_AXI5Xbar(
     PLICSizeBytes: BigInt = BigInt("00300000", 16),
     DataWidth: Int = 32,
     IdWidth: Int = 4,
-    CLINTBaseValue: BigInt = BigInt("02000000", 16),
-    CLINTSizeBytes: BigInt = BigInt("00010000", 16)
+    CLINTBaseValue: BigInt =
+      BigInt(ysyx_26030103_PMAOptions.Default.clintBase),
+    CLINTSizeBytes: BigInt =
+      BigInt(ysyx_26030103_PMAOptions.Default.clintSize)
 ) extends Module {
   require(DataWidth == 32 || DataWidth == 64,
     s"AXI5Xbar DataWidth 非法: $DataWidth")
