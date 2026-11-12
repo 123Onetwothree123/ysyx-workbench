@@ -1,6 +1,5 @@
 package ysyx_26030103.infra
 import chisel3._
-import chisel3.util._
 class ysyx_26030103_AXI5Slave(
     AddressWidth: Int = 32,
     DataWidth: Int = 32,

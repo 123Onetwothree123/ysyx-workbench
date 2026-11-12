@@ -1,6 +1,5 @@
 package ysyx_26030103.infra
 import chisel3._
-import chisel3.util._
 class ysyx_26030103_AXI5AR(AddressWidth: Int = 32, IdWidth: Int = 4)
     extends Bundle {
   val ARID = Output(UInt(IdWidth.W))

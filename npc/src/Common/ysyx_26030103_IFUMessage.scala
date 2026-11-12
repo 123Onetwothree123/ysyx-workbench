@@ -1,6 +1,5 @@
 package ysyx_26030103.common
 import chisel3._
-import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction.CtrlWidth
 
 /** 取指级交付给译码级的消息。
   *

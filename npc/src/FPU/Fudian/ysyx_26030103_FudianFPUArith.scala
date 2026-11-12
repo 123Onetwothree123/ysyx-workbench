@@ -1,6 +1,5 @@
 package ysyx_26030103.fpu
 import chisel3._
-import chisel3.util._
 import _root_.fudian._
 trait ysyx_26030103_FudianFPUArith {
   this: ysyx_26030103_FudianFPUBase =>

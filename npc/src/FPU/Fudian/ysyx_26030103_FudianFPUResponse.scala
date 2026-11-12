@@ -3,7 +3,6 @@ package ysyx_26030103.fpu
 import chisel3._
 import chisel3.util._
 import _root_.fudian._
-import _root_.ysyx_26030103.config._
 
 // Fudian 的多周期 FDIV/FSQRT、共享引擎回舍与响应握手。
 trait ysyx_26030103_FudianFPUResponse {

@@ -307,9 +307,6 @@ case class ysyx_26030103_MMUProfile(
       pteConfig.executeBit == 3 && pteConfig.userBit == 4 &&
       pteConfig.globalBit == 5 && pteConfig.aBit == 6 &&
       pteConfig.dBit == 7 && pteConfig.ppnLow == 10 && pteConfig.ppnHigh == 53
-  final val standardSv32: Boolean =
-    xlen == 32 && pageSizeBytes == 4096 && levels == 2 && pteSizeBytes == 4 &&
-      pageTableSizeBytes == 4096 && pteFormat == "riscv32"
   final val standardSv39: Boolean =
     xlen == 64 && pageSizeBytes == 4096 && levels == 3 && pteSizeBytes == 8 &&
       pageTableSizeBytes == 4096 && pteFormat == "riscv64" &&

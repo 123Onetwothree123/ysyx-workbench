@@ -1,6 +1,5 @@
 package ysyx_26030103.exu
 import chisel3._
-import chisel3.util._
 class ysyx_26030103_mcause(val XLEN: Int = 32) extends Module {
   require(XLEN == 32 || XLEN == 64, s"mcause XLEN 非法: $XLEN")
   val io = IO(new Bundle {

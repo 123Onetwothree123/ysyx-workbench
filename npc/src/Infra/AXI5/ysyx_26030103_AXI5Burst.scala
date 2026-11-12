@@ -1,7 +1,6 @@
 package ysyx_26030103.infra
 
 import chisel3._
-import chisel3.util._
 
 object ysyx_26030103_AXI5Burst {
 

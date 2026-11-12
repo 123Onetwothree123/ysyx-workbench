@@ -3,7 +3,6 @@ package ysyx_26030103.cache
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
-import _root_.ysyx_26030103.infra._
 
 // 单请求直映射DCache，读通道回填，写通道由LSU写缓冲负责
 class ysyx_26030103_DCacheSRAM(

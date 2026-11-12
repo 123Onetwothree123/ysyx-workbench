@@ -1,6 +1,5 @@
 package ysyx_26030103.ifu
 import chisel3._
-import chisel3.util._
 
 // 返回地址栈(Return Address Stack)
 // 按RISC-V x1/x5 hint表在call时压入pc+4、return时弹出；协程切换同拍pop+push。

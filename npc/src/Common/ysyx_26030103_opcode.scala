@@ -1,6 +1,5 @@
 package ysyx_26030103.common
 import chisel3._
-import chisel3.util._
 object ysyx_26030103_opcode {
   val OPCODE_Register = "b0110011".U(7.W)
   // RV64 的 OP-IMM-32 / OP-32（ADDIW/ADDW/...）

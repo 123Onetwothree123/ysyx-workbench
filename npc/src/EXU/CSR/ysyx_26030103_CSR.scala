@@ -219,11 +219,6 @@ class ysyx_26030103_CSR(
   val CSR_MTVAL = 0x343.U(12.W)
   val CSR_MCOUNTEREN = 0x306.U(12.W)
   val CSR_MCOUNTINHIBIT = 0x320.U(12.W)
-  val CSR_MHPMCOUNTER3 = 0xb03.U(12.W)
-  val CSR_MHPMCOUNTER31 = 0xb1f.U(12.W)
-  val CSR_MHPMCOUNTER3H = 0xb83.U(12.W)
-  val CSR_MHPMEVENT3 = 0x323.U(12.W)
-  val CSR_MHPMEVENT31 = 0x33f.U(12.W)
   val CSR_SCOUNTOVF = 0xda0.U(12.W)
   val CSR_MVENDORID = 0xf11.U(12.W)
   val CSR_MARCHID = 0xf12.U(12.W)
@@ -278,7 +273,6 @@ class ysyx_26030103_CSR(
   val CsrImplemented =
     enabledCsrAddresses.map(a => io.CSRAddress === a.U(12.W))
       .reduceOption(_ || _).getOrElse(false.B)
-  val CsrUseSstatusView = profile.csrViewMode == "bound"
   // mstatus.FS 只有在 RISCV_F 时存在；profile 默认读/写掩码没有包含
   // bit[14:13]，这里按 F 开关补上，避免软件写 mstatus 后 FS 被静默清零。
   private val MstatusFsMask = if (UseF) 0x6000L else 0L

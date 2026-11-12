@@ -1,6 +1,5 @@
 package ysyx_26030103.ifu
 import chisel3._
-import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 class ysyx_26030103_PC(
     resetAddr: Long = ysyx_26030103_PMAOptions.Default.socResetAddr,

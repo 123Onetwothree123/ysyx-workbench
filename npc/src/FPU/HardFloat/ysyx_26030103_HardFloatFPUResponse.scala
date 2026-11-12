@@ -1,7 +1,6 @@
 package ysyx_26030103.fpu
 
 import chisel3._
-import chisel3.util._
 import hardfloat._
 
 // HardFloat 的多周期 DIV/SQRT 和响应握手。

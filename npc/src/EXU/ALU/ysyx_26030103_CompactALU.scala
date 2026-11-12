@@ -1,6 +1,5 @@
 package ysyx_26030103.exu
 import chisel3._
-import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction._
 import _root_.ysyx_26030103.config._
 //之前AI残留的注释

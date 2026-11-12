@@ -1,6 +1,5 @@
 package ysyx_26030103.ifu
 import chisel3._
-import chisel3.util._
 class ysyx_26030103_NextPC(val XLEN: Int = 32) extends Module {
   require(XLEN == 32 || XLEN == 64, s"NextPC XLEN 非法: $XLEN")
   val io = IO(new Bundle {

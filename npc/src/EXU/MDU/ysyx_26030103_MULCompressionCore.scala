@@ -167,26 +167,6 @@ private object ysyx_26030103_MULCompressionUtils {
     ReducedColumns.map(_.toIndexedSeq).toIndexedSeq
   }
 
-  // 兼容旧的完整行接口；新的 Dadda core 不再使用它。
-  // 这里仍按完整 P 位行处理，便于保留已有的单元级回归测试。
-  def DaddaReduceStrict(
-      Rows: IndexedSeq[UInt],
-      Target: Int,
-      ProductWidth: Int = 64,
-      Config: ysyx_26030103_MULGPCConfig = ysyx_26030103_MULGPCConfig()
-  ): IndexedSeq[UInt] = {
-    val FullRanges = Rows.indices.map(_ => (0, ProductWidth - 1)).toIndexedSeq
-    ColumnsToRows(
-      DaddaReduceColumns(
-        InitialDaddaColumns(Rows, FullRanges, ProductWidth),
-        Target,
-        ProductWidth,
-        Config
-      ),
-      ProductWidth
-    )
-  }
-
   // 仅在最后两行已经形成后才重新拼接成 UInt；中间阶段始终保持稀疏列。
   def ColumnsToRows(Columns: IndexedSeq[IndexedSeq[Bool]], ProductWidth: Int = 64): IndexedSeq[UInt] = {
     require(Columns.length == ProductWidth)

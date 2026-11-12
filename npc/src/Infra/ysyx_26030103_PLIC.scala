@@ -71,7 +71,6 @@ class ysyx_26030103_PLIC(
       Mux(Strb(0), Data(7, 0), Old(7, 0))
     )
   }
-  def priorityAddr(i: Int): UInt = addrOf(4L * i)
   // 兼容两套 enable 布局：
   //   - QEMU/RISC-V 标准：hart0 M 上下文 0x2000，S 上下文 0x2080；
   //   - 早期简化 PLIC：0x2000 起的连续 enable word。
@@ -98,7 +97,6 @@ class ysyx_26030103_PLIC(
   // 继续支持以保持既有测试/软件兼容。
   val ThresholdAddr = addrOf(0x200000L)
   val ClaimAddr = addrOf(0x200004L)
-  val CompleteAddr = addrOf(0x200004L)
 
   def enableBaseIsValid(address: UInt, base: BigInt): Bool =
     address >= addrOf(base) &&

@@ -1,7 +1,6 @@
 package ysyx_26030103.cache
 import chisel3._
 import chisel3.util._
-import _root_.ysyx_26030103.infra._
 import _root_.ysyx_26030103.common._
 class ysyx_26030103_ICacheReg(
     Enable: Boolean = true, // false=不做缓存, 每次取指直接发单拍AXI读(和数据通路一样)

@@ -1,6 +1,5 @@
 package ysyx_26030103.exu
 import chisel3._
-import chisel3.util._
 
 object ysyx_26030103_mstatus {
   // 已实现的 mstatus 字段：

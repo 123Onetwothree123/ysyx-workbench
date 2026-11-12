@@ -1,6 +1,5 @@
 package ysyx_26030103.infra
 import chisel3._
-import chisel3.util._
 
 class ysyx_26030103_mtime extends Module {
   val io = IO(new Bundle {

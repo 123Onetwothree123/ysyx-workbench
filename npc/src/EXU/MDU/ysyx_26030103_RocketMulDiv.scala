@@ -72,7 +72,7 @@ class ysyx_26030103_RocketMulDiv(
   private val mulw = ((w + mulUnroll - 1) / mulUnroll) * mulUnroll
   private val fastMulW = w / 2 > mulUnroll && w % (2 * mulUnroll) == 0
 
-  private val s_ready :: s_neg_inputs :: s_mul :: s_div :: s_dummy :: s_neg_output :: s_done_mul :: s_done_div :: Nil = Enum(8)
+  private val s_ready :: s_neg_inputs :: s_mul :: s_div :: _ :: s_neg_output :: s_done_mul :: s_done_div :: Nil = Enum(8)
   private val state = RegInit(s_ready)
   private val req = Reg(chiselTypeOf(io.req.bits))
   private val count = Reg(UInt(log2Ceil(

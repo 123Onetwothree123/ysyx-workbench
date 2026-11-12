@@ -333,7 +333,6 @@ class ysyx_26030103_PTW(
     * 多少级”编码，TLB 用 pageBits + k*indexBits 计算对应 shift。
     */
   def fillLevelOf(level: UInt): UInt = (levels - 1).U - level
-  def adUpdated(d: UInt): UInt = adRaw(d)
 
   /** 当前级在虚拟地址中的索引；第 0 级是根页表，使用最高 VPN。 */
   def vpnIndex(level: UInt): UInt = {

@@ -75,12 +75,8 @@ object ysyx_26030103_JsonConfig {
 
   def load(path: String): Config = load(Paths.get(path))
 
-  def parse(text: String): Config = parseDocument(text)
-
   def parseDocument(text: String): Config =
     new Config(new Parser(text).parse(), Paths.get("<inline>"))
-
-  def parseFlat(text: String): Map[String, String] = parse(text).flat
 
   /** Kconfig 风格 I/O 兼容视图。 */
   final class Config private[config] (
