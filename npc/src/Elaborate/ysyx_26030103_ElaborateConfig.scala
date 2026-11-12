@@ -1,5 +1,6 @@
 import _root_.ysyx_26030103.config._
 import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 object ysyx_26030103_ElaborateConfig {
   def build(
       cfg: ysyx_26030103_JsonConfig.Config
@@ -28,7 +29,10 @@ object ysyx_26030103_ElaborateConfig {
     val RASBits = cfg.int("frontend.ras_bits", 4)
     val CachePadding = cfg.int("platform.cache_padding", 0)
     val NpcRamSize: Long = {
-      val parsed = cfg.long("platform.ram_size", 0x04000000L)
+      val parsed = cfg.long(
+        "platform.ram_size",
+        ysyx_26030103_KconfigDefaults.NpcRamSize
+      )
       require(parsed >= 4096L, s"NPC_RAM_SIZE=$parsed 太小")
       require(
         (parsed & (parsed - 1L)) == 0L,
@@ -41,33 +45,52 @@ object ysyx_26030103_ElaborateConfig {
       s"[NPC config] direct-NPC RAM: 0x${NpcRamSize.toHexString}" +
         s" ($NpcRamSize bytes)"
     )
+    val NpcRamBase: Long = {
+      val parsed = cfg.long(
+        "platform.ram_base",
+        ysyx_26030103_KconfigDefaults.NpcRamBase
+      )
+      require(parsed >= 0 && parsed % 4L == 0L,
+        s"NPC_RAM_BASE=0x${parsed.toHexString} 必须非负且按 4 字节对齐")
+      require(
+        BigInt(parsed) + BigInt(NpcRamSize) <= (BigInt(1) << 32),
+        s"NPC_RAM_BASE + NPC_RAM_SIZE 超出 32 位地址空间"
+      )
+      parsed
+    }
     val HasChipLink = cfg.bool("platform.chip_link", false)
+    val PmaDefaults = ysyx_26030103_KconfigDefaults.Pma
     val Pma = ysyx_26030103_PMAOptions(
-      clintBase = cfg.long("pma.clint_base", 0x02000000L),
-      clintSize = cfg.long("pma.clint_size", 0x00010000L),
-      sramBase = cfg.long("pma.sram_base", 0x0f000000L),
-      sramSize = cfg.long("pma.sram_size", 0x00008000L),
-      uartBase = cfg.long("pma.uart_base", 0x10000000L),
-      uartSize = cfg.long("pma.uart_size", 0x00001000L),
-      spiBase = cfg.long("pma.spi_base", 0x10001000L),
-      spiSize = cfg.long("pma.spi_size", 0x00001000L),
-      gpioBase = cfg.long("pma.gpio_base", 0x10002000L),
-      gpioSize = cfg.long("pma.gpio_size", 0x00000010L),
-      keyboardBase = cfg.long("pma.keyboard_base", 0x10011000L),
-      keyboardSize = cfg.long("pma.keyboard_size", 0x00000008L),
-      vgaBase = cfg.long("pma.vga_base", 0x21000000L),
-      vgaSize = cfg.long("pma.vga_size", 0x00200000L),
-      mromBase = cfg.long("pma.mrom_base", 0x30000000L),
-      mromSize = cfg.long("pma.mrom_size", 0x10000000L),
-      psramBase = cfg.long("pma.psram_base", 0x80000000L),
-      psramSize = cfg.long("pma.psram_size", 0x00400000L),
-      sdramBase = cfg.long("pma.sdram_base", 0xa0000000L),
-      sdramSize = cfg.long("pma.sdram_size", 0x02000000L),
-      chipLinkMmioBase = cfg.long("pma.chiplink_mmio_base", 0x40000000L),
-      chipLinkMmioSize = cfg.long("pma.chiplink_mmio_size", 0x40000000L),
-      chipLinkMemBase = cfg.long("pma.chiplink_mem_base", 0xc0000000L),
-      chipLinkMemSize = cfg.long("pma.chiplink_mem_size", 0x40000000L),
-      socResetAddr = cfg.long("pma.soc_reset_addr", 0x30000000L)
+      clintBase = cfg.long("pma.clint_base", PmaDefaults.clintBase),
+      clintSize = cfg.long("pma.clint_size", PmaDefaults.clintSize),
+      sramBase = cfg.long("pma.sram_base", PmaDefaults.sramBase),
+      sramSize = cfg.long("pma.sram_size", PmaDefaults.sramSize),
+      uartBase = cfg.long("pma.uart_base", PmaDefaults.uartBase),
+      uartSize = cfg.long("pma.uart_size", PmaDefaults.uartSize),
+      spiBase = cfg.long("pma.spi_base", PmaDefaults.spiBase),
+      spiSize = cfg.long("pma.spi_size", PmaDefaults.spiSize),
+      gpioBase = cfg.long("pma.gpio_base", PmaDefaults.gpioBase),
+      gpioSize = cfg.long("pma.gpio_size", PmaDefaults.gpioSize),
+      keyboardBase = cfg.long("pma.keyboard_base", PmaDefaults.keyboardBase),
+      keyboardSize = cfg.long("pma.keyboard_size", PmaDefaults.keyboardSize),
+      vgaBase = cfg.long("pma.vga_base", PmaDefaults.vgaBase),
+      vgaSize = cfg.long("pma.vga_size", PmaDefaults.vgaSize),
+      mromBase = cfg.long("pma.mrom_base", PmaDefaults.mromBase),
+      mromSize = cfg.long("pma.mrom_size", PmaDefaults.mromSize),
+      psramBase = cfg.long("pma.psram_base", PmaDefaults.psramBase),
+      psramSize = cfg.long("pma.psram_size", PmaDefaults.psramSize),
+      sdramBase = cfg.long("pma.sdram_base", PmaDefaults.sdramBase),
+      sdramSize = cfg.long("pma.sdram_size", PmaDefaults.sdramSize),
+      chipLinkMmioBase =
+        cfg.long("pma.chiplink_mmio_base", PmaDefaults.chipLinkMmioBase),
+      chipLinkMmioSize =
+        cfg.long("pma.chiplink_mmio_size", PmaDefaults.chipLinkMmioSize),
+      chipLinkMemBase =
+        cfg.long("pma.chiplink_mem_base", PmaDefaults.chipLinkMemBase),
+      chipLinkMemSize =
+        cfg.long("pma.chiplink_mem_size", PmaDefaults.chipLinkMemSize),
+      socResetAddr = cfg.long("pma.soc_reset_addr", PmaDefaults.socResetAddr),
+      npcRamBase = NpcRamBase
     )
     val XLEN = cfg.int("isa.xlen", 32)
     val AddressWidth =

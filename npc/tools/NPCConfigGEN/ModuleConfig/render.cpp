@@ -58,6 +58,7 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     out << "    return static_cast<Unsigned>(Value) <= static_cast<Unsigned>(std::numeric_limits<XWord>::max());\n";
     out << "}\n\n";
     const long long npcRamSize = asInt(values, "NPC_RAM_SIZE", 0x04000000);
+    const long long npcRamBase = asInt(values, "NPC_RAM_BASE", 0x80000000LL);
     const long long cachePadding = asInt(values, "CACHE_PADDING", 0);
     const long long pmaMromBase = asInt(values, "PMA_MROM_BASE", 0x30000000LL);
     const long long pmaMromSize = asInt(values, "PMA_MROM_SIZE", 0x10000000LL);
@@ -101,7 +102,8 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     pmaConst("PmaChipLinkMemBase", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
     pmaConst("PmaChipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
     pmaConst("PmaSocResetAddr", "PMA_SOC_RESET_ADDR", 0x30000000LL);
-    out << "inline constexpr std::uint64_t NpcMBase{0x80000000ULL};\n";
+    out << "inline constexpr std::uint64_t NpcMBase{0x" << std::hex
+        << npcRamBase << "ULL};\n";
     out << "inline constexpr std::uint64_t NpcMSize{0x" << std::hex << npcRamSize
         << std::dec << "ULL};\n";
     out << "inline constexpr std::uint64_t NpcCachePadding{" << cachePadding << "ULL};\n";
@@ -190,6 +192,60 @@ std::string renderModule(const std::map<std::string, std::string> &values,
         << cppString(digest) << "};\n";
     out << "}\n";
     (void)overrides;
+    return out.str();
+}
+std::string renderScalaDefaults(const std::map<std::string, std::string> &values)
+{
+    std::ostringstream out;
+    out << "package ysyx_26030103.common\n\n";
+    out << "// 由 make npc-config 生成，不要手改。\n";
+    out << "object ysyx_26030103_KconfigDefaults {\n";
+    const auto emitVal = [&](const char *name, const char *key,
+                             long long fallback) {
+        out << "  val " << name << ": Long = 0x" << std::hex
+            << asInt(values, key, fallback) << "L\n";
+        out << std::dec;
+    };
+    emitVal("PlicBase", "PLIC_BASE", 0x0c000000LL);
+    emitVal("PlicSize", "PLIC_SIZE", 0x00300000LL);
+    emitVal("NpcRamBase", "NPC_RAM_BASE", 0x80000000LL);
+    emitVal("NpcRamSize", "NPC_RAM_SIZE", 0x04000000LL);
+    out << "  val Pma: ysyx_26030103_PMAOptions = "
+           "ysyx_26030103_PMAOptions(\n";
+    const auto emitField = [&](const char *name, const char *key,
+                               long long fallback) {
+        out << "    " << name << " = 0x" << std::hex
+            << asInt(values, key, fallback) << "L,\n";
+        out << std::dec;
+    };
+    emitField("clintBase", "PMA_CLINT_BASE", 0x02000000LL);
+    emitField("clintSize", "PMA_CLINT_SIZE", 0x00010000LL);
+    emitField("sramBase", "PMA_SRAM_BASE", 0x0f000000LL);
+    emitField("sramSize", "PMA_SRAM_SIZE", 0x00008000LL);
+    emitField("uartBase", "PMA_UART_BASE", 0x10000000LL);
+    emitField("uartSize", "PMA_UART_SIZE", 0x00001000LL);
+    emitField("spiBase", "PMA_SPI_BASE", 0x10001000LL);
+    emitField("spiSize", "PMA_SPI_SIZE", 0x00001000LL);
+    emitField("gpioBase", "PMA_GPIO_BASE", 0x10002000LL);
+    emitField("gpioSize", "PMA_GPIO_SIZE", 0x00000010LL);
+    emitField("keyboardBase", "PMA_KEYBOARD_BASE", 0x10011000LL);
+    emitField("keyboardSize", "PMA_KEYBOARD_SIZE", 0x00000008LL);
+    emitField("vgaBase", "PMA_VGA_BASE", 0x21000000LL);
+    emitField("vgaSize", "PMA_VGA_SIZE", 0x00200000LL);
+    emitField("mromBase", "PMA_MROM_BASE", 0x30000000LL);
+    emitField("mromSize", "PMA_MROM_SIZE", 0x10000000LL);
+    emitField("psramBase", "PMA_PSRAM_BASE", 0x80000000LL);
+    emitField("psramSize", "PMA_PSRAM_SIZE", 0x00400000LL);
+    emitField("sdramBase", "PMA_SDRAM_BASE", 0xa0000000LL);
+    emitField("sdramSize", "PMA_SDRAM_SIZE", 0x02000000LL);
+    emitField("chipLinkMmioBase", "PMA_CHIPLINK_MMIO_BASE", 0x40000000LL);
+    emitField("chipLinkMmioSize", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
+    emitField("chipLinkMemBase", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
+    emitField("chipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
+    emitField("socResetAddr", "PMA_SOC_RESET_ADDR", 0x30000000LL);
+    out << "    npcRamBase = NpcRamBase\n";
+    out << "  )\n";
+    out << "}\n";
     return out.str();
 }
 }

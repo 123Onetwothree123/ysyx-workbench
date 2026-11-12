@@ -42,7 +42,8 @@ final case class ysyx_26030103_PMAOptions(
     chipLinkMmioSize: Long,
     chipLinkMemBase: Long,
     chipLinkMemSize: Long,
-    socResetAddr: Long
+    socResetAddr: Long,
+    npcRamBase: Long
 ) {
   def npcRegions(
       ramBytes: Long,
@@ -53,7 +54,7 @@ final case class ysyx_26030103_PMAOptions(
     ysyx_26030103_PMARegion(uartBase, uartSize),
     ysyx_26030103_PMARegion(plicBase, plicSize),
     ysyx_26030103_PMARegion(
-      0x80000000L,
+      npcRamBase,
       ramBytes,
       Cacheable = true,
       Executable = true
@@ -88,51 +89,28 @@ final case class ysyx_26030103_PMAOptions(
   }
 }
 object ysyx_26030103_PMAOptions {
-  private val DefaultMromBase = 0x30000000L
-  val Default = ysyx_26030103_PMAOptions(
-    clintBase = 0x02000000L,
-    clintSize = 0x00010000L,
-    sramBase = 0x0f000000L,
-    sramSize = 0x00008000L,
-    uartBase = 0x10000000L,
-    uartSize = 0x00001000L,
-    spiBase = 0x10001000L,
-    spiSize = 0x00001000L,
-    gpioBase = 0x10002000L,
-    gpioSize = 0x00000010L,
-    keyboardBase = 0x10011000L,
-    keyboardSize = 0x00000008L,
-    vgaBase = 0x21000000L,
-    vgaSize = 0x00200000L,
-    mromBase = DefaultMromBase,
-    mromSize = 0x10000000L,
-    psramBase = 0x80000000L,
-    psramSize = 0x00400000L,
-    sdramBase = 0xa0000000L,
-    sdramSize = 0x02000000L,
-    chipLinkMmioBase = 0x40000000L,
-    chipLinkMmioSize = 0x40000000L,
-    chipLinkMemBase = 0xc0000000L,
-    chipLinkMemSize = 0x40000000L,
-    socResetAddr = DefaultMromBase
-  )
+  lazy val Default: ysyx_26030103_PMAOptions =
+    ysyx_26030103_KconfigDefaults.Pma
 }
 object ysyx_26030103_PhysicalMemoryMap {
+  val DefaultPlicBase: Long = ysyx_26030103_KconfigDefaults.PlicBase
+  val DefaultPlicSize: Long = ysyx_26030103_KconfigDefaults.PlicSize
   val CLINT = ysyx_26030103_PMARegion(
     ysyx_26030103_PMAOptions.Default.clintBase,
     ysyx_26030103_PMAOptions.Default.clintSize
   )
   def NPCWithSize(
       ramBytes: Long,
-      PlicBase: Long = 0x0c000000L,
-      PlicSize: Long = 0x00300000L
+      PlicBase: Long = DefaultPlicBase,
+      PlicSize: Long = DefaultPlicSize
   ): Seq[ysyx_26030103_PMARegion] =
     ysyx_26030103_PMAOptions.Default.npcRegions(ramBytes, PlicBase, PlicSize)
-  val NPC: Seq[ysyx_26030103_PMARegion] = NPCWithSize(0x04000000L)
+  val NPC: Seq[ysyx_26030103_PMARegion] =
+    NPCWithSize(ysyx_26030103_KconfigDefaults.NpcRamSize)
   def SoC(
       HasChipLink: Boolean,
-      PlicBase: Long = 0x0c000000L,
-      PlicSize: Long = 0x00300000L
+      PlicBase: Long = DefaultPlicBase,
+      PlicSize: Long = DefaultPlicSize
   ): Seq[ysyx_26030103_PMARegion] =
     ysyx_26030103_PMAOptions.Default.socRegions(HasChipLink, PlicBase, PlicSize)
 }

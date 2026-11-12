@@ -190,6 +190,7 @@ std::string renderModule(const Config &values, long long socXlen,
 std::string renderTypedJson(const Config &values, const std::string &digest,
                              const std::string &pdkOverride,
                              long long socXlen);
+std::string renderScalaDefaults(const std::map<std::string, std::string> &values);
 std::string readFile(const std::string &path);
 void writeIfChanged(const std::string &path, const std::string &content);
 void addIsa(TypedFields &root, const Config &values, long long xlen,

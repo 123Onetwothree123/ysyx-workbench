@@ -1003,11 +1003,19 @@ menu "CPU 与平台"
 
   menu "目标体系结构"
 
+    config NPC_RAM_BASE
+      hex "direct-NPC 仿真 RAM 基地址（字节）"
+      default 0x80000000
+      help
+        direct-NPC 的 RAM 起始地址，必须按 4 字节对齐，且
+        NPC_RAM_BASE + NPC_RAM_SIZE 不超出 32 位地址空间。
+        该值同时决定 AXIRAM、CPU PMA、C++ 加载器和 DTB /memory 节点。
+
     config NPC_RAM_SIZE
       hex "direct-NPC 仿真 RAM 大小（字节）"
       default 0x04000000
       help
-        direct-NPC 从 0x80000000 起的 RAM 窗口大小，必须为 2 的幂且
+        direct-NPC 从 NPC_RAM_BASE 起的 RAM 窗口大小，必须为 2 的幂且
         至少 4 KiB。该值同时决定 AXIRAM 深度、CPU PMA、C++ CONFIG_MSIZE、
         DTB /memory 与 reserved-memory 边界，以及 SBI/U-Boot/Linux
         打包脚本的 RAM 上限，不要在其它位置另写一份。

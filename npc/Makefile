@@ -4,7 +4,7 @@ BUILD_DIR = ./build
 # direct-NPC RAM 窗口。大小来自 Kconfig（默认 64 MiB），DTB、RTL、
 # C++ 加载器、Linux 打包和 SBI 测试共享同一个值，不在各个脚本中
 # 另造 Linux 专用 RAM 常量。需要改值时使用 CONFIG_NPC_RAM_SIZE。
-override NPC_RAM_BASE := 0x80000000
+override NPC_RAM_BASE := $(or $(CONFIG_NPC_RAM_BASE),0x80000000)
 override NPC_RAM_SIZE := $(or $(CONFIG_NPC_RAM_SIZE),0x04000000)
 PERF_BUILD_METADATA := $(abspath $(BUILD_DIR)/perf_build_metadata.txt)
 PERF_SYNTH := $(abspath $(BUILD_DIR)/synth.txt)
@@ -55,6 +55,7 @@ NPC_CONFIG_EFFECTIVE_JSON := $(abspath $(BUILD_DIR)/generated/npc_config.effecti
 # RTL elaboration 使用嵌套 typed JSON；effective flat JSON 保留给 C++ 模块、
 # 脚本和仍按扁平键读取的兼容路径。
 NPC_CONFIG_TYPED_JSON := $(abspath $(BUILD_DIR)/generated/npc_config.typed.json)
+NPC_CONFIG_SCALA_DEFAULTS := $(abspath src/generated/ysyx_26030103_ConfigDefaults.scala)
 NPC_CONFIG_GEN_DIR := $(abspath tools/NPCConfigGEN)
 NPC_CONFIG_GEN_SOURCES := $(wildcard $(NPC_CONFIG_GEN_DIR)/*.cpp) \
 	$(wildcard $(NPC_CONFIG_GEN_DIR)/JsonConfig/*.cpp) \
@@ -139,15 +140,16 @@ $(NPC_CONFIG_STAMP): npc-config-stamp-force
 		"overrides=$(NPC_CONFIG_OVERRIDE_ARGS)" > $@.tmp
 	@if test -f $@ && cmp -s $@.tmp $@; then rm -f $@.tmp; else mv -f $@.tmp $@; fi
 
-# 三个产物必须一起生成：模块给 C++，flat JSON 给脚本/C++ 构建，
-# typed JSON 给 Scala elaboration。grouped target 保证任一缺失时会重跑
-# 同一份配置生成命令。
-$(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON) &: $(NPC_CONFIG_JSON) $(NPC_CONFIG_GEN_BIN) $(NPC_CONFIG_STAMP)
-	@mkdir -p $(dir $(NPC_CONFIG_MODULE))
+# 四个产物必须一起生成：模块给 C++，flat JSON 给脚本/C++ 构建，
+# typed JSON 给 Scala elaboration，Scala 默认值给未加载配置的测试/旧调用。
+# grouped target 保证任一缺失时会重跑同一份配置生成命令。
+$(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON) $(NPC_CONFIG_SCALA_DEFAULTS) &: $(NPC_CONFIG_JSON) $(NPC_CONFIG_GEN_BIN) $(NPC_CONFIG_STAMP)
+	@mkdir -p $(dir $(NPC_CONFIG_MODULE)) $(dir $(NPC_CONFIG_SCALA_DEFAULTS))
 	$(NPC_CONFIG_GEN_BIN) \
 		--config-json $(NPC_CONFIG_JSON) \
 		--effective-json $(NPC_CONFIG_EFFECTIVE_JSON) \
 		--typed-json $(NPC_CONFIG_TYPED_JSON) \
+		--scala-defaults $(NPC_CONFIG_SCALA_DEFAULTS) \
 		--perf-build-metadata $(PERF_BUILD_METADATA) \
 		--perf-synth $(PERF_SYNTH) \
 		--savable $(VERILATOR_SAVABLE) \
@@ -156,7 +158,7 @@ $(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON) &: $(
 
 npc-config-json: $(NPC_CONFIG_JSON)
 npc-config-tool: $(NPC_CONFIG_GEN_BIN)
-npc-config: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON)
+npc-config: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON) $(NPC_CONFIG_SCALA_DEFAULTS)
 
 .PHONY: npc-config npc-config-json npc-config-tool
 

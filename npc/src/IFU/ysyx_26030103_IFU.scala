@@ -2,6 +2,7 @@ package ysyx_26030103.ifu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_IFUMessage
+import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 
 // 取指流水化后的IFU。
 //
@@ -21,7 +22,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_IFUMessage
 // FetchAddr 是实际发给 ICache 的字对齐地址；FetchPC 是架构 PC（指令起点），
 // 供 BTB/PMP/MMU 故障报告使用。未启用 C 时两者相同。
 class ysyx_26030103_IFU(
-    resetAddr: Long = 0x30000000L,
+    resetAddr: Long = ysyx_26030103_PMAOptions.Default.socResetAddr,
     val XLEN: Int = 32,
     val UseC: Boolean = false
 ) extends Module {

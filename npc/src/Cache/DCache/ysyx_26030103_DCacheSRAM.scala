@@ -27,8 +27,8 @@ class ysyx_26030103_DCacheSRAM(
     ViptAliasScanWidth: Int = 0,
     // directory 的目录项数；0=跟随 sets（完整无冲突）。
     ViptAliasDirectoryEntries: Int = 0,
-    CacheableBase: Long = 0x80000000L,
-    CacheableMask: Long = 0x80000000L,
+    CacheableBase: Long = 0L,
+    CacheableMask: Long = 0L,
     // true=命中响应第一拍旁路SRAM输出(保持1拍延迟);
     // false=老实打一拍(响应晚一拍), 用于量化"不旁路"的性能代价
     Bypass: Boolean = true,

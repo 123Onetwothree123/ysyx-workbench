@@ -342,6 +342,7 @@ object ysyx_26030103_JsonConfig {
         case "platform" =>
           tail.mkString(".") match {
             case "ram_size"      => Some("NPC_RAM_SIZE")
+            case "ram_base"      => Some("NPC_RAM_BASE")
             case "cache_padding" => Some("CACHE_PADDING")
             case "chip_link"     => Some("CHIPLINK")
             case "address_width" => Some("ADDRESS_WIDTH")

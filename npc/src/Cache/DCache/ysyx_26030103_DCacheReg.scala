@@ -27,8 +27,8 @@ class ysyx_26030103_DCacheReg(
     ViptAliasScanWidth: Int = 0,
     // directory 的目录项数；0=跟随 sets（完整无冲突）。
     ViptAliasDirectoryEntries: Int = 0,
-    CacheableBase: Long = 0x80000000L,
-    CacheableMask: Long = 0x80000000L,
+    CacheableBase: Long = 0L,
+    CacheableMask: Long = 0L,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_DCacheBase(AddressWidth, DataWidth, BusDataWidth) {

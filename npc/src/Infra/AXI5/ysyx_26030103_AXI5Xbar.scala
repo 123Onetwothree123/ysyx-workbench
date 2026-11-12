@@ -6,8 +6,10 @@ class ysyx_26030103_AXI5Xbar(
     AddressWidth: Int = 32,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
-    PLICBaseValue: BigInt = BigInt("0c000000", 16),
-    PLICSizeBytes: BigInt = BigInt("00300000", 16),
+    PLICBaseValue: BigInt =
+      BigInt(ysyx_26030103_PhysicalMemoryMap.DefaultPlicBase),
+    PLICSizeBytes: BigInt =
+      BigInt(ysyx_26030103_PhysicalMemoryMap.DefaultPlicSize),
     DataWidth: Int = 32,
     IdWidth: Int = 4,
     CLINTBaseValue: BigInt =

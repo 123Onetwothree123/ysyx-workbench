@@ -38,7 +38,7 @@ object ysyx_26030103_ElaborateReport {
       s"[NPC config] DMA 一致性: ${config.DmaCoherence.Name}" +
         (if (config.DmaCoherence == ysyx_26030103_DmaCoherence.Uncached) {
            if (config.DmaWindowPresent)
-             "（0xc0000000--0xffffffff 在 CPU 侧不可缓存，绕过 DCache/ICache）"
+             "（ChipLink DMA 窗口在 CPU 侧不可缓存，绕过 DCache/ICache）"
            else "（未生效：当前 PMA 没有可代理的 DMA 窗口，CHIPLINK=n？）"
          } else if (config.DmaCoherence ==
                       ysyx_26030103_DmaCoherence.HardwareSnoop) {

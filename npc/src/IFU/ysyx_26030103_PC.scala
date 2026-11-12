@@ -1,8 +1,9 @@
 package ysyx_26030103.ifu
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 class ysyx_26030103_PC(
-    resetAddr: Long = 0x30000000L,
+    resetAddr: Long = ysyx_26030103_PMAOptions.Default.socResetAddr,
     val XLEN: Int = 32
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"PC XLEN 非法: $XLEN")

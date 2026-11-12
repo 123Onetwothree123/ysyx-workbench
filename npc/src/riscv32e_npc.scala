@@ -8,12 +8,19 @@ import _root_.ysyx_26030103.infra._
 class riscv32e_npc_AXIRAM(
     val ramBytes: Long = 64L * 1024L * 1024L,
     val socXLEN: Int = 32,
-    val uartBase: Long = ysyx_26030103_PMAOptions.Default.uartBase
+    val uartBase: Long = ysyx_26030103_PMAOptions.Default.uartBase,
+    val ramBase: Long = ysyx_26030103_PMAOptions.Default.npcRamBase
 ) extends Module {
   require(ramBytes > 0, "direct-NPC RAM 大小必须为正")
   require((ramBytes & (ramBytes - 1)) == 0, "direct-NPC RAM 大小必须是 2 的幂")
   require(ramBytes % 4 == 0, "direct-NPC RAM 大小必须是 4 字节的倍数")
   require(uartBase % 8 == 0, "direct-NPC UART 基地址必须按 8 字节对齐")
+  require(ramBase >= 0 && ramBase % 4 == 0,
+    "direct-NPC RAM 基地址必须非负且按 4 字节对齐")
+  require(
+    BigInt(ramBase) + BigInt(ramBytes) <= (BigInt(1) << 32),
+    "direct-NPC RAM 窗口超出 32 位地址空间"
+  )
   // direct-NPC 顶层只实现 32 位 AXI（地址/数据同宽、4 位 WSTRB），
   // 与 rtl/riscv32e_npc_SimTop.sv 的固定端口一致。Makefile 的 direct
   // 目标会强制 EffectiveSocXLEN=32；这里再拒绝任何 64 位实例化，避免
@@ -53,8 +60,8 @@ class riscv32e_npc_AXIRAM(
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
   val DECERR = 3.U(2.W)
-  val RamBase = "h80000000".U(32.W)
-  val RamLast = (0x80000000L + ramBytes - 1L).U(32.W)
+  val RamBase = ramBase.U(32.W)
+  val RamLast = (ramBase + ramBytes - 1L).U(32.W)
   val UartBase = uartBase.U(32.W)
   // 16550 实际寄存器只占偏移 0..7。
   val UartLast = (uartBase + 7L).U(32.W)

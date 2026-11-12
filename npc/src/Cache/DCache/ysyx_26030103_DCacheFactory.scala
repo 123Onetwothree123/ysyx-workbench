@@ -24,8 +24,8 @@ object ysyx_26030103_DCacheFactory {
       AddressWidth: Int = 32,
       DataWidth: Int = 32,
       BusDataWidth: Int = 32,
-      CacheableBase: Long = 0x80000000L,
-      CacheableMask: Long = 0x80000000L,
+      CacheableBase: Long = 0L,
+      CacheableMask: Long = 0L,
       PMARegions: Seq[ysyx_26030103_PMARegion] =
         ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
       Storage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,

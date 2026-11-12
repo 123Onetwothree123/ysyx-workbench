@@ -35,10 +35,10 @@ menu "SBI 固件"
 
   config SBI_FW_BASE
     hex "SBI 固件加载地址"
-    default 0x80000000
+    default NPC_RAM_BASE
     help
-      SBI 固件的 M 模式入口/加载地址。必须与 NPC reset PC 和
-      next-stage 布局一致。
+      SBI 固件的 M 模式入口/加载地址。默认跟随 NPC_RAM_BASE，
+      必须与 NPC reset PC 和 next-stage 布局一致。
 
   config SBI_FW_SIZE
     hex "SBI 固件最大大小"
@@ -58,8 +58,8 @@ menu "SBI 固件"
     string "SBI 平台名"
     default "npc"
     help
-      SBI 固件的平台适配名。当前为 NPC 最小平台：
-      UART 0x10000000、CLINT 0x02000000、PLIC 0x0c000000、RAM 0x80000000。
+      SBI 固件的平台适配名。当前为 NPC 最小平台；
+      UART/CLINT/PLIC/RAM 地址由 Kconfig 的 PMA 和 NPC_RAM_* 决定。
 
   config SBI_BUILD_JOBS
     int "SBI 构建并行度"

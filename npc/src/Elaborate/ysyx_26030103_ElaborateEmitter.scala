@@ -19,9 +19,9 @@ object ysyx_26030103_ElaborateEmitter {
     emitVerilog(
       new ysyx_26030103(
         config.copy(
-          ResetAddr = 0x80000000L + settings.cachePadding,
-          CacheableBase = 0x80000000L,
-          CacheableMask = 0x80000000L,
+          ResetAddr = settings.pma.npcRamBase + settings.cachePadding,
+          CacheableBase = 0x00000000L,
+          CacheableMask = 0x00000000L,
           PMARegions = settings.pma.npcRegions(
             settings.npcRamSize,
             plicBase,
@@ -56,7 +56,8 @@ object ysyx_26030103_ElaborateEmitter {
     emitVerilog(
       new _root_.ysyx_26030103.riscv32e_npc_AXIRAM(
         settings.npcRamSize,
-        uartBase = settings.pma.uartBase
+        uartBase = settings.pma.uartBase,
+        ramBase = settings.pma.npcRamBase
       ),
       Array("--target-dir", targetDir),
       YosysFirtoolOptions

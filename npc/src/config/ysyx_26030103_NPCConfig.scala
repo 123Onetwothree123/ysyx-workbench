@@ -74,8 +74,8 @@ case class ysyx_26030103_NPCConfig(
       ysyx_26030103_DmaCoherence.SoftwareFlush,
     // LSU 写缓冲项数(必须是2的幂, 环形队列按位回绕)
     WBufDepth: Int = 4,
-    CacheableBase: Long = 0x80000000L,
-    CacheableMask: Long = 0x80000000L,
+    CacheableBase: Long = 0L,
+    CacheableMask: Long = 0L,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
     // 分支预测
@@ -417,8 +417,10 @@ case class ysyx_26030103_NPCConfig(
   // 入站 DMA 只代理 ChipLink 内存窗口（与 AXI5Arbiter 的检查一致）。
   // UNCACHED 模式在 Cache 使用的 PMA 视图里把该窗口切成不可缓存段；
   // 原始 PMARegions 仍供 Xbar/PMA 权限检查使用，读写/执行权限不变。
-  private val DmaWindowBase = 0xc0000000L
-  private val DmaWindowEnd = 0x100000000L
+  private val DmaWindowBase =
+    ysyx_26030103_PMAOptions.Default.chipLinkMemBase
+  private val DmaWindowEnd =
+    DmaWindowBase + ysyx_26030103_PMAOptions.Default.chipLinkMemSize
   /** Cache 实际使用的 PMA 视图；只有显式 UNCACHED 模式才与 PMARegions 不同。 */
   final val CachePMARegions: Seq[ysyx_26030103_PMARegion] =
     if (DmaCoherence != ysyx_26030103_DmaCoherence.Uncached) PMARegions

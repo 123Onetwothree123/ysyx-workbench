@@ -8,6 +8,7 @@ int main(int argc, char **argv)
         std::string output;
         std::string effectiveJson;
         std::string typedJson;
+        std::string scalaDefaults;
         std::string getKey;
         std::string perfBuildMetadata;
         std::string perfSynth;
@@ -30,6 +31,8 @@ int main(int argc, char **argv)
                 effectiveJson = next("--effective-json");
             else if (argument == "--typed-json")
                 typedJson = next("--typed-json");
+            else if (argument == "--scala-defaults")
+                scalaDefaults = next("--scala-defaults");
             else if (argument == "--get")
                 getKey = next("--get");
             else if (argument == "--soc-xlen")
@@ -50,10 +53,10 @@ int main(int argc, char **argv)
         if (configJson.empty())
             throw std::runtime_error("必须指定 --config-json");
         if (output.empty() && effectiveJson.empty() && typedJson.empty() &&
-            getKey.empty())
+            getKey.empty() && scalaDefaults.empty())
             throw std::runtime_error(
-                "必须指定 --output、--effective-json、--typed-json 或 --get "
-                "之一");
+                "必须指定 --output、--effective-json、--typed-json、"
+                "--scala-defaults 或 --get 之一");
         auto values = parseFlatJson(readFile(configJson));
         for (const auto &assignment : overrides) {
             const auto separator = assignment.find('=');
@@ -90,6 +93,13 @@ int main(int argc, char **argv)
             if (!getMode) {
                 std::cout << "[npc-config] wrote typed config " << typedJson
                           << "\n";
+            }
+        }
+        if (!scalaDefaults.empty()) {
+            writeIfChanged(scalaDefaults, renderScalaDefaults(values));
+            if (!getMode) {
+                std::cout << "[npc-config] wrote Scala defaults "
+                          << scalaDefaults << "\n";
             }
         }
         if (getMode) {

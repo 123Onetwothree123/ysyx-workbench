@@ -8,6 +8,9 @@ void addPlatform(TypedFields &root, const Config &values,
     addField(platform, "ram_size",
              TypedJson::integer(
                  flatInt(values, "NPC_RAM_SIZE", 0x04000000LL)));
+    addField(platform, "ram_base",
+             TypedJson::integer(
+                 flatInt(values, "NPC_RAM_BASE", 0x80000000LL)));
     addField(platform, "cache_padding",
              TypedJson::integer(flatInt(values, "CACHE_PADDING", 0)));
     addField(platform, "chip_link",

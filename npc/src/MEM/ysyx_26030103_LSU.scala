@@ -15,8 +15,8 @@ class ysyx_26030103_LSU(
     val DCacheStorage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
     val DCacheBlockSizeLog2: Int = 4,
     val DCacheIndexBits: Int = 5,
-    val DCacheableBase: Long = 0x80000000L,
-    val DCacheableMask: Long = 0x80000000L,
+    val DCacheableBase: Long = 0L,
+    val DCacheableMask: Long = 0L,
     val DCachePMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false),
     val DCacheVipt: Boolean = false,

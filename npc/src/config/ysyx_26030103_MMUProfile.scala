@@ -1,5 +1,7 @@
 package ysyx_26030103.config
 
+import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
+
 /** PTE 字段位置；默认就是标准 RISC-V 32-bit PTE。
   *
   * pteBits 表示 PTE 自身的位宽（Sv32=32，Sv39/Sv48=64）。PPN 字段在
@@ -127,8 +129,8 @@ case class ysyx_26030103_MMUProfile(
     plicSources: Int = 32,
     plicPriorityBits: Int = 3,
     plicMaxPriority: Int = 7,
-    plicBase: Long = 0x0c000000L,
-    plicSize: Long = 0x00300000L,
+    plicBase: Long = ysyx_26030103_PhysicalMemoryMap.DefaultPlicBase,
+    plicSize: Long = ysyx_26030103_PhysicalMemoryMap.DefaultPlicSize,
     csrViewMode: String = "bound",
     csrMissingMode: String = "illegal",
     pmpEnabled: Boolean = false,
@@ -603,8 +605,16 @@ object ysyx_26030103_MMUProfile {
       plicSources = envInt(env, "PLIC_SOURCES", 32),
       plicPriorityBits = envInt(env, "PLIC_PRIORITY_BITS", 3),
       plicMaxPriority = envInt(env, "PLIC_MAX_PRIORITY", 7),
-      plicBase = envLong(env, "PLIC_BASE", 0x0c000000L),
-      plicSize = envLong(env, "PLIC_SIZE", 0x00300000L),
+      plicBase = envLong(
+        env,
+        "PLIC_BASE",
+        ysyx_26030103_PhysicalMemoryMap.DefaultPlicBase
+      ),
+      plicSize = envLong(
+        env,
+        "PLIC_SIZE",
+        ysyx_26030103_PhysicalMemoryMap.DefaultPlicSize
+      ),
       csrViewMode = envString(env, "CSR_VIEW_MODE", "bound"),
       csrMissingMode = envString(env, "CSR_MISSING_MODE", "illegal"),
       pmpEnabled = envBool(env, "HAS_PMP", false),

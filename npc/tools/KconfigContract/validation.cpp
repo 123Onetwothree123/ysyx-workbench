@@ -85,7 +85,15 @@ std::vector<std::string> validate_config(const Config& values,
         "无法表达离散集合，33..63 由本校验拒绝");
   }
   const long long ram_size = as_int(values, "NPC_RAM_SIZE", 0x04000000);
-  constexpr long long ram_base = 0x80000000;
+  const long long ram_base = as_int(values, "NPC_RAM_BASE", 0x80000000);
+  if (ram_base < 0 || ram_base % 4 != 0) {
+    err("NPC_RAM_BASE=" + hex0x(ram_base) + " 必须非负且按 4 字节对齐");
+  }
+  if (static_cast<unsigned long long>(ram_base > 0 ? ram_base : 0) +
+          static_cast<unsigned long long>(ram_size > 0 ? ram_size : 0) >
+      (1ULL << 32)) {
+    err("NPC_RAM_BASE + NPC_RAM_SIZE 超出 32 位地址空间");
+  }
   if (ram_size < 0x1000) {
     err("NPC_RAM_SIZE=" + hex0x(ram_size) + " 太小：至少 4 KiB");
   } else if (!is_power_of_two(ram_size)) {
@@ -538,12 +546,12 @@ std::vector<std::string> validate_config(const Config& values,
       constexpr long long fdt_reserve = 0x10000;
       if (fdt_addr < ram_base || fdt_addr + fdt_reserve > ram_end) {
         err("SBI_FDT_ADDR=" + hex0x(fdt_addr) + " 超出 NPC RAM " +
-            "[0x80000000, " + hex0x(ram_end) + ")，或末尾越过 RAM");
+            "[" + hex0x(ram_base) + ", " + hex0x(ram_end) + ")，或末尾越过 RAM");
       }
       const long long fw_end = base + size;
       if (fdt_addr < fw_end && fdt_addr + fdt_reserve > base) {
         err("SBI_FDT_ADDR=" + hex0x(fdt_addr) + " 与 SBI 固件区 "
-            "[0x80000000, " + hex0x(fw_end) + ") 重叠");
+            "[" + hex0x(ram_base) + ", " + hex0x(fw_end) + ") 重叠");
       }
       if (fdt_addr < next_addr) {
         if (fdt_addr + fdt_reserve > next_addr) {
@@ -616,7 +624,7 @@ std::vector<std::string> validate_config(const Config& values,
       }
       if (initrd_addr < ram_base || initrd_addr >= ram_end) {
         err("LINUX_INITRAMFS_ADDR=" + hex0x(initrd_addr) + " 超出 NPC RAM " +
-            "[0x80000000, " + hex0x(ram_end) + ")");
+            "[" + hex0x(ram_base) + ", " + hex0x(ram_end) + ")");
       }
       if (initrd_addr < next_addr + 0x1000) {
         err("LINUX_INITRAMFS_ADDR=" + hex0x(initrd_addr) + " 落在 "
@@ -625,7 +633,7 @@ std::vector<std::string> validate_config(const Config& values,
       }
       if (initrd_addr < fw_end && initrd_addr + 0x1000 > fw_base) {
         err("LINUX_INITRAMFS_ADDR=" + hex0x(initrd_addr) + " 与 SBI 固件区 " +
-            "[0x80000000, " + hex0x(fw_end) + ") 重叠");
+            "[" + hex0x(ram_base) + ", " + hex0x(fw_end) + ") 重叠");
       }
       if (fdt_addr <= initrd_addr && initrd_addr < fdt_addr + fdt_reserve) {
         err("LINUX_INITRAMFS_ADDR=" + hex0x(initrd_addr) + " 落在 DTB "
@@ -671,7 +679,7 @@ std::vector<std::string> validate_config(const Config& values,
     }
     if (fdt_addr < ram_base || fdt_addr + fdt_reserve > ram_end) {
       err("SBI_FDT_ADDR=" + hex0x(fdt_addr) + " 的 64 KiB 保留区超出 "
-          "NPC RAM [0x80000000, " + hex0x(ram_end) + ")");
+          "NPC RAM [" + hex0x(ram_base) + ", " + hex0x(ram_end) + ")");
     }
     if (fdt_addr < previous_end) {
       err("SBI_FDT_ADDR=" + hex0x(fdt_addr) + " 与 EFI 载荷区结束地址 " +
