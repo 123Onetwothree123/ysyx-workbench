@@ -2,6 +2,7 @@ package ysyx_26030103.infra
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 
 /** 简化 PLIC：优先级、pending、enable、threshold、claim/complete。
   *
@@ -12,7 +13,7 @@ class ysyx_26030103_PLIC(
     numSources: Int = 32,
     priorityBits: Int = 3,
     maxPriority: Int = 7,
-    base: BigInt = BigInt("0c000000", 16),
+    base: BigInt = BigInt(ysyx_26030103_PhysicalMemoryMap.DefaultPlicBase),
     AddressWidth: Int = 32,
     DataWidth: Int = 32,
     IdWidth: Int = 4

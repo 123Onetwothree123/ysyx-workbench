@@ -2,6 +2,7 @@ package ysyx_26030103.infra
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 
 /** IFU、LSU与入站DMA端口的AXI仲裁器。
   *
@@ -17,7 +18,11 @@ class ysyx_26030103_AXI5Arbiter(
     // DMA_COHERENCE=hardware_snoop：DMA 写 B 先不交给 CPU slave，而是把
     // 本次 burst 覆盖的字节范围送给 ICache/DCache 做行失效，等到
     // dmaSnoopDone 后才释放 B。关闭时保持原有“B 到达即释放”的时序。
-    HardwareSnoop: Boolean = false
+    HardwareSnoop: Boolean = false,
+    DMAWindowBase: BigInt =
+      BigInt(ysyx_26030103_PMAOptions.Default.chipLinkMemBase),
+    DMAWindowSize: BigInt =
+      BigInt(ysyx_26030103_PMAOptions.Default.chipLinkMemSize)
 ) extends Module {
   // 固定 ID 分配（ICache=0/LSU=1/DMA=2/PTW=3..15）按 4 位 ID 设计；
   // 地址/数据宽度可参数化，但 ID 宽度暂不支持其它值。
@@ -88,8 +93,8 @@ class ysyx_26030103_AXI5Arbiter(
     val LastByte =
       ysyx_26030103_AXI5Burst.lastByte(Address, Len, Size, Burst)
     val Supported = Size <= 2.U && (Burst === 0.U || Burst === 1.U)
-    Supported && ExtendedAddress >= "hc0000000".U(ExtendedWidth.W) &&
-    LastByte < (BigInt(1) << 32).U(ExtendedWidth.W)
+    Supported && ExtendedAddress >= DMAWindowBase.U(ExtendedWidth.W) &&
+    LastByte < (DMAWindowBase + DMAWindowSize).U(ExtendedWidth.W)
   }
 
   io.ifu.AW.AWREADY := false.B

@@ -36,6 +36,8 @@ case class ysyx_26030103_NPCConfig(
     ResetAddr: Long = ysyx_26030103_PMAOptions.Default.socResetAddr,
     CLINTBase: Long = ysyx_26030103_PMAOptions.Default.clintBase,
     CLINTSize: Long = ysyx_26030103_PMAOptions.Default.clintSize,
+    ChipLinkMemoryBase: Long = ysyx_26030103_PMAOptions.Default.chipLinkMemBase,
+    ChipLinkMemorySize: Long = ysyx_26030103_PMAOptions.Default.chipLinkMemSize,
     // 架构/总线物理地址宽度。RV32 保持 32；RV64 由 elaborator 设为 64。
     // 该宽度同时用于 PC/分支目标、IFU/LSU、AXI、PMA/Xbar、Cache tag 与
     // BTB/RAS，避免任何一级再截断到 32 位。

@@ -177,6 +177,8 @@ object ysyx_26030103_ElaborateConfig {
       ResetAddr = Pma.socResetAddr,
       CLINTBase = Pma.clintBase,
       CLINTSize = Pma.clintSize,
+      ChipLinkMemoryBase = Pma.chipLinkMemBase,
+      ChipLinkMemorySize = Pma.chipLinkMemSize,
       BlockSizeLog2 = BlockSizeLog2,
       IndexBits = IndexBits,
       ICacheBlockSizeLog2 = ICacheBlockSizeLog2,

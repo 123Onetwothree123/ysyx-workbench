@@ -84,7 +84,9 @@ class ysyx_26030103(
     new ysyx_26030103_AXI5Arbiter(
       AddressWidth = config.AddressWidth,
       DataWidth = BusDataWidth,
-      HardwareSnoop = config.DmaHardwareSnoop
+      HardwareSnoop = config.DmaHardwareSnoop,
+      DMAWindowBase = BigInt(config.ChipLinkMemoryBase),
+      DMAWindowSize = BigInt(config.ChipLinkMemorySize)
     )
   )
   val xbar = Module(
@@ -121,8 +123,9 @@ class ysyx_26030103(
   // 0xc0000000--0xffffffff可读写区域时，才允许CPU slave端口代理
   // 入站DMA请求。其他配置继续用DECERR安全终止，不会意外暴露
   // CPU本地CLINT或SoC其他地址。
-  private val ChipLinkMemoryBase = BigInt("c0000000", 16)
-  private val ChipLinkMemoryEnd = BigInt(1) << 32
+  private val ChipLinkMemoryBase = BigInt(config.ChipLinkMemoryBase)
+  private val ChipLinkMemoryEnd =
+    ChipLinkMemoryBase + BigInt(config.ChipLinkMemorySize)
   private val DMAProxyEnable = config.PMARegions.exists { Region =>
     Region.Readable && Region.Writable &&
     BigInt(Region.Base) <= ChipLinkMemoryBase &&
