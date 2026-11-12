@@ -16,6 +16,40 @@ void addPlatform(TypedFields &root, const Config &values,
     addField(platform, "soc_xlen", TypedJson::integer(socXlen));
     addField(root, "platform", TypedJson::object(std::move(platform)));
 }
+void addPma(TypedFields &root, const Config &values)
+{
+    TypedFields pma;
+    const auto add = [&](const char *name, const char *key, long long fallback) {
+        addField(pma, name,
+                 TypedJson::integer(flatInt(values, key, fallback)));
+    };
+    add("soc_reset_addr", "PMA_SOC_RESET_ADDR", 0x30000000LL);
+    add("clint_base", "PMA_CLINT_BASE", 0x02000000LL);
+    add("clint_size", "PMA_CLINT_SIZE", 0x00010000LL);
+    add("sram_base", "PMA_SRAM_BASE", 0x0f000000LL);
+    add("sram_size", "PMA_SRAM_SIZE", 0x00008000LL);
+    add("uart_base", "PMA_UART_BASE", 0x10000000LL);
+    add("uart_size", "PMA_UART_SIZE", 0x00001000LL);
+    add("spi_base", "PMA_SPI_BASE", 0x10001000LL);
+    add("spi_size", "PMA_SPI_SIZE", 0x00001000LL);
+    add("gpio_base", "PMA_GPIO_BASE", 0x10002000LL);
+    add("gpio_size", "PMA_GPIO_SIZE", 0x00000010LL);
+    add("keyboard_base", "PMA_KEYBOARD_BASE", 0x10011000LL);
+    add("keyboard_size", "PMA_KEYBOARD_SIZE", 0x00000008LL);
+    add("vga_base", "PMA_VGA_BASE", 0x21000000LL);
+    add("vga_size", "PMA_VGA_SIZE", 0x00200000LL);
+    add("mrom_base", "PMA_MROM_BASE", 0x30000000LL);
+    add("mrom_size", "PMA_MROM_SIZE", 0x10000000LL);
+    add("psram_base", "PMA_PSRAM_BASE", 0x80000000LL);
+    add("psram_size", "PMA_PSRAM_SIZE", 0x00400000LL);
+    add("sdram_base", "PMA_SDRAM_BASE", 0xa0000000LL);
+    add("sdram_size", "PMA_SDRAM_SIZE", 0x02000000LL);
+    add("chiplink_mmio_base", "PMA_CHIPLINK_MMIO_BASE", 0x40000000LL);
+    add("chiplink_mmio_size", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
+    add("chiplink_mem_base", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
+    add("chiplink_mem_size", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
+    addField(root, "pma", TypedJson::object(std::move(pma)));
+}
 void addSoc(TypedFields &root, const Config &values, long long xlen,
             long long socXlen)
 {

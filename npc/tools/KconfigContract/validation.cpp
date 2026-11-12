@@ -834,6 +834,91 @@ std::vector<std::string> validate_config(const Config& values,
       err("FPGA_FLASH_OFFSET 不能为负数");
     }
   }
+  // PMA 区域表：检查范围、重叠和复位入口。
+  struct PmaRange {
+    const char *name;
+    const char *baseKey;
+    const char *sizeKey;
+    long long defaultBase;
+    long long defaultSize;
+    bool executable;
+  };
+  const PmaRange pmaRanges[] = {
+      {"CLINT", "PMA_CLINT_BASE", "PMA_CLINT_SIZE", 0x02000000LL,
+       0x00010000LL, false},
+      {"SRAM", "PMA_SRAM_BASE", "PMA_SRAM_SIZE", 0x0f000000LL, 0x00008000LL,
+       true},
+      {"UART", "PMA_UART_BASE", "PMA_UART_SIZE", 0x10000000LL, 0x00001000LL,
+       false},
+      {"SPI", "PMA_SPI_BASE", "PMA_SPI_SIZE", 0x10001000LL, 0x00001000LL,
+       false},
+      {"GPIO", "PMA_GPIO_BASE", "PMA_GPIO_SIZE", 0x10002000LL, 0x00000010LL,
+       false},
+      {"KEYBOARD", "PMA_KEYBOARD_BASE", "PMA_KEYBOARD_SIZE", 0x10011000LL,
+       0x00000008LL, false},
+      {"VGA", "PMA_VGA_BASE", "PMA_VGA_SIZE", 0x21000000LL, 0x00200000LL,
+       false},
+      {"MROM", "PMA_MROM_BASE", "PMA_MROM_SIZE", 0x30000000LL, 0x10000000LL,
+       true},
+      {"PSRAM", "PMA_PSRAM_BASE", "PMA_PSRAM_SIZE", 0x80000000LL,
+       0x00400000LL, true},
+      {"SDRAM", "PMA_SDRAM_BASE", "PMA_SDRAM_SIZE", 0xa0000000LL,
+       0x02000000LL, true},
+      {"CHIPLINK_MMIO", "PMA_CHIPLINK_MMIO_BASE", "PMA_CHIPLINK_MMIO_SIZE",
+       0x40000000LL, 0x40000000LL, false},
+      {"CHIPLINK_MEM", "PMA_CHIPLINK_MEM_BASE", "PMA_CHIPLINK_MEM_SIZE",
+       0xc0000000LL, 0x40000000LL, true},
+  };
+  struct CheckedPma {
+    const char *name;
+    unsigned long long base;
+    unsigned long long size;
+    bool executable;
+  };
+  std::vector<CheckedPma> checkedPma;
+  const unsigned long long pmaLimit = 1ULL << 32;
+  for (const auto &range : pmaRanges) {
+    const long long base =
+        as_int(values, range.baseKey, range.defaultBase);
+    const long long size =
+        as_int(values, range.sizeKey, range.defaultSize);
+    if (base < 0 || size <= 0 ||
+        static_cast<unsigned long long>(base) +
+                static_cast<unsigned long long>(size) >
+            pmaLimit) {
+      err(std::string("PMA ") + range.name + " 范围非法：base=" +
+          hex0x(base) + ", size=" + hex0x(size));
+      continue;
+    }
+    checkedPma.push_back(
+        {range.name, static_cast<unsigned long long>(base),
+         static_cast<unsigned long long>(size), range.executable});
+  }
+  for (std::size_t i = 0; i < checkedPma.size(); ++i) {
+    for (std::size_t j = i + 1; j < checkedPma.size(); ++j) {
+      const auto &lhs = checkedPma[i];
+      const auto &rhs = checkedPma[j];
+      if (lhs.base < rhs.base + rhs.size &&
+          rhs.base < lhs.base + lhs.size) {
+        err(std::string("PMA 区域重叠：") + lhs.name + " 与 " + rhs.name);
+      }
+    }
+  }
+  const long long resetAddr =
+      as_int(values, "PMA_SOC_RESET_ADDR", 0x30000000LL);
+  bool resetInExecutable = false;
+  for (const auto &range : checkedPma) {
+    if (range.executable &&
+        static_cast<unsigned long long>(resetAddr) >= range.base &&
+        static_cast<unsigned long long>(resetAddr) < range.base + range.size) {
+      resetInExecutable = true;
+      break;
+    }
+  }
+  if (!resetInExecutable) {
+    err("PMA_SOC_RESET_ADDR=" + hex0x(resetAddr) +
+        " 必须落在可执行 PMA 区域");
+  }
   return errors;
 }
 

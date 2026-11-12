@@ -37,6 +37,103 @@ menu "SoC 与外设"
 
   endmenu
 
+  menu "PMA 物理地址映射"
+
+    # 这里只改 CPU PMA、C++ SoC 模型、DTB 和 OpenSBI；ysyxSoC 的实际
+    # 器件地址由 SoC RTL 决定，换板时需要同步修改。
+
+    config PMA_SOC_RESET_ADDR
+      hex "SoC 复位入口地址"
+      default 0x30000000
+      help
+        必须落在可执行 PMA 区域。默认 MROM 起始地址。
+
+    config PMA_CLINT_BASE
+      hex "CLINT 基地址"
+      default 0x02000000
+    config PMA_CLINT_SIZE
+      hex "CLINT 窗口大小"
+      default 0x00010000
+
+    config PMA_SRAM_BASE
+      hex "SRAM 基地址"
+      default 0x0f000000
+    config PMA_SRAM_SIZE
+      hex "SRAM 大小"
+      default 0x00008000
+
+    config PMA_UART_BASE
+      hex "UART 基地址"
+      default 0x10000000
+    config PMA_UART_SIZE
+      hex "UART 窗口大小"
+      default 0x00001000
+
+    config PMA_SPI_BASE
+      hex "SPI 基地址"
+      default 0x10001000
+    config PMA_SPI_SIZE
+      hex "SPI 窗口大小"
+      default 0x00001000
+
+    config PMA_GPIO_BASE
+      hex "GPIO 基地址"
+      default 0x10002000
+    config PMA_GPIO_SIZE
+      hex "GPIO 窗口大小"
+      default 0x00000010
+
+    config PMA_KEYBOARD_BASE
+      hex "键盘基地址"
+      default 0x10011000
+    config PMA_KEYBOARD_SIZE
+      hex "键盘窗口大小"
+      default 0x00000008
+
+    config PMA_VGA_BASE
+      hex "VGA 基地址"
+      default 0x21000000
+    config PMA_VGA_SIZE
+      hex "VGA 窗口大小"
+      default 0x00200000
+
+    config PMA_MROM_BASE
+      hex "MROM 基地址"
+      default 0x30000000
+    config PMA_MROM_SIZE
+      hex "MROM 大小"
+      default 0x10000000
+
+    config PMA_PSRAM_BASE
+      hex "PSRAM 基地址"
+      default 0x80000000
+    config PMA_PSRAM_SIZE
+      hex "PSRAM 大小"
+      default 0x00400000
+
+    config PMA_SDRAM_BASE
+      hex "SDRAM 基地址"
+      default 0xa0000000
+    config PMA_SDRAM_SIZE
+      hex "SDRAM 大小"
+      default 0x02000000
+
+    config PMA_CHIPLINK_MMIO_BASE
+      hex "ChipLink MMIO 基地址"
+      default 0x40000000
+    config PMA_CHIPLINK_MMIO_SIZE
+      hex "ChipLink MMIO 窗口大小"
+      default 0x40000000
+
+    config PMA_CHIPLINK_MEM_BASE
+      hex "ChipLink 内存基地址"
+      default 0xc0000000
+    config PMA_CHIPLINK_MEM_SIZE
+      hex "ChipLink 内存窗口大小"
+      default 0x40000000
+
+  endmenu
+
   menu "CPU 内部总线"
 
     config INTERNAL_BUS_WIDTH_FOLLOW_CPU

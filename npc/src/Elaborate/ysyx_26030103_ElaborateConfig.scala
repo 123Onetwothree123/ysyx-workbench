@@ -1,5 +1,5 @@
 import _root_.ysyx_26030103.config._
-import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
+import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 object ysyx_26030103_ElaborateConfig {
   def build(
       cfg: ysyx_26030103_JsonConfig.Config
@@ -42,6 +42,33 @@ object ysyx_26030103_ElaborateConfig {
         s" ($NpcRamSize bytes)"
     )
     val HasChipLink = cfg.bool("platform.chip_link", false)
+    val Pma = ysyx_26030103_PMAOptions(
+      clintBase = cfg.long("pma.clint_base", 0x02000000L),
+      clintSize = cfg.long("pma.clint_size", 0x00010000L),
+      sramBase = cfg.long("pma.sram_base", 0x0f000000L),
+      sramSize = cfg.long("pma.sram_size", 0x00008000L),
+      uartBase = cfg.long("pma.uart_base", 0x10000000L),
+      uartSize = cfg.long("pma.uart_size", 0x00001000L),
+      spiBase = cfg.long("pma.spi_base", 0x10001000L),
+      spiSize = cfg.long("pma.spi_size", 0x00001000L),
+      gpioBase = cfg.long("pma.gpio_base", 0x10002000L),
+      gpioSize = cfg.long("pma.gpio_size", 0x00000010L),
+      keyboardBase = cfg.long("pma.keyboard_base", 0x10011000L),
+      keyboardSize = cfg.long("pma.keyboard_size", 0x00000008L),
+      vgaBase = cfg.long("pma.vga_base", 0x21000000L),
+      vgaSize = cfg.long("pma.vga_size", 0x00200000L),
+      mromBase = cfg.long("pma.mrom_base", 0x30000000L),
+      mromSize = cfg.long("pma.mrom_size", 0x10000000L),
+      psramBase = cfg.long("pma.psram_base", 0x80000000L),
+      psramSize = cfg.long("pma.psram_size", 0x00400000L),
+      sdramBase = cfg.long("pma.sdram_base", 0xa0000000L),
+      sdramSize = cfg.long("pma.sdram_size", 0x02000000L),
+      chipLinkMmioBase = cfg.long("pma.chiplink_mmio_base", 0x40000000L),
+      chipLinkMmioSize = cfg.long("pma.chiplink_mmio_size", 0x40000000L),
+      chipLinkMemBase = cfg.long("pma.chiplink_mem_base", 0xc0000000L),
+      chipLinkMemSize = cfg.long("pma.chiplink_mem_size", 0x40000000L),
+      socResetAddr = cfg.long("pma.soc_reset_addr", 0x30000000L)
+    )
     val XLEN = cfg.int("isa.xlen", 32)
     val AddressWidth =
       cfg.int("platform.address_width", if (XLEN == 64) 64 else 32)
@@ -119,11 +146,14 @@ object ysyx_26030103_ElaborateConfig {
         ysyx_26030103_ICacheCoherence.FromString(ICacheCoherenceName),
       DmaCoherence =
         ysyx_26030103_DmaCoherence.FromString(DmaCoherenceName),
-      PMARegions = ysyx_26030103_PhysicalMemoryMap.SoC(
+      PMARegions = Pma.socRegions(
         HasChipLink,
         MmuProfile.plicBase,
         MmuProfile.plicSize
       ),
+      ResetAddr = Pma.socResetAddr,
+      CLINTBase = Pma.clintBase,
+      CLINTSize = Pma.clintSize,
       BlockSizeLog2 = BlockSizeLog2,
       IndexBits = IndexBits,
       ICacheBlockSizeLog2 = ICacheBlockSizeLog2,
@@ -174,7 +204,8 @@ object ysyx_26030103_ElaborateConfig {
       config = config,
       cachePadding = CachePadding,
       npcRamSize = NpcRamSize,
-      hasChipLink = HasChipLink
+      hasChipLink = HasChipLink,
+      pma = Pma
     )
   }
 }

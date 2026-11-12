@@ -26,6 +26,7 @@ std::string renderTypedJson(const Config &values, const std::string &digest,
     addInterrupt(root, values);
     addDebug(root, values);
     addPlatform(root, values, addressWidth, socXlen);
+    addPma(root, values);
     addSoc(root, values, xlen, socXlen);
     addBoot(root, values);
     addFpga(root, values);

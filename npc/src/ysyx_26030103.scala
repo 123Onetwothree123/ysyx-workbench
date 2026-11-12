@@ -95,6 +95,8 @@ class ysyx_26030103(
       // 孔径由 Kconfig 的 PLIC_SIZE 决定；默认 3MiB，止于 0x0f000000，
       // 避免覆盖 ysyxSoC 的片上 SRAM。详见 PMA 中 PLIC 区的注释。
       PLICSizeBytes = BigInt(config.MMU.plicSize),
+      CLINTBaseValue = BigInt(config.CLINTBase),
+      CLINTSizeBytes = BigInt(config.CLINTSize),
       DataWidth = BusDataWidth,
       IdWidth = 4
     )

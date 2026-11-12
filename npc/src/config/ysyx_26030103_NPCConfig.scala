@@ -33,6 +33,8 @@ case class ysyx_26030103_NPCConfig(
     ALUProfile: ysyx_26030103_ALUProfile = ysyx_26030103_ALUProfile(),
     // 目标平台
     ResetAddr: Long = 0x30000000L,
+    CLINTBase: Long = 0x02000000L,
+    CLINTSize: Long = 0x00010000L,
     // 架构/总线物理地址宽度。RV32 保持 32；RV64 由 elaborator 设为 64。
     // 该宽度同时用于 PC/分支目标、IFU/LSU、AXI、PMA/Xbar、Cache tag 与
     // BTB/RAS，避免任何一级再截断到 32 位。

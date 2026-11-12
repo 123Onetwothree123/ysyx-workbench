@@ -1,6 +1,5 @@
 import chisel3._
 import _root_.ysyx_26030103.ysyx_26030103
-import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 import java.io.File
 import java.nio.file.{Files, Paths, StandardCopyOption}
 object ysyx_26030103_ElaborateEmitter {
@@ -23,7 +22,7 @@ object ysyx_26030103_ElaborateEmitter {
           ResetAddr = 0x80000000L + settings.cachePadding,
           CacheableBase = 0x80000000L,
           CacheableMask = 0x80000000L,
-          PMARegions = ysyx_26030103_PhysicalMemoryMap.NPCWithSize(
+          PMARegions = settings.pma.npcRegions(
             settings.npcRamSize,
             plicBase,
             plicSize
@@ -41,10 +40,10 @@ object ysyx_26030103_ElaborateEmitter {
     emitVerilog(
       new ysyx_26030103(
         config.copy(
-          ResetAddr = 0x30000000L,
+          ResetAddr = settings.pma.socResetAddr,
           CacheableBase = 0x00000000L,
           CacheableMask = 0x00000000L,
-          PMARegions = ysyx_26030103_PhysicalMemoryMap.SoC(
+          PMARegions = settings.pma.socRegions(
             settings.hasChipLink,
             plicBase,
             plicSize
@@ -55,7 +54,10 @@ object ysyx_26030103_ElaborateEmitter {
       YosysFirtoolOptions
     )
     emitVerilog(
-      new _root_.ysyx_26030103.riscv32e_npc_AXIRAM(settings.npcRamSize),
+      new _root_.ysyx_26030103.riscv32e_npc_AXIRAM(
+        settings.npcRamSize,
+        uartBase = settings.pma.uartBase
+      ),
       Array("--target-dir", targetDir),
       YosysFirtoolOptions
     )

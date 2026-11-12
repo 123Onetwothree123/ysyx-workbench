@@ -204,6 +204,7 @@ void addMmu(TypedFields &root, const Config &values, long long xlen);
 void addCsr(TypedFields &root, const Config &values);
 void addInterrupt(TypedFields &root, const Config &values);
 void addDebug(TypedFields &root, const Config &values);
+void addPma(TypedFields &root, const Config &values);
 void addPlatform(TypedFields &root, const Config &values,
                  long long addressWidth, long long socXlen);
 void addSoc(TypedFields &root, const Config &values, long long xlen,

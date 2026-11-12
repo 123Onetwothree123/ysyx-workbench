@@ -1,12 +1,4 @@
 package ysyx_26030103.common
-
-/** CPU 可见的物理地址区域。
-  *
-  * `Readable` 和 `Writable` 表示总线权限，`Executable` 控制指令取值权限。
-  * 保持这些权限相互独立对 SoC MROM 之类的只读存储器十分重要：store 必须
-  * 由 CPU 侧交叉开关拒绝，而不能发送到没有写通道的从设备。`Cacheable`
-  * 表示 ICache/DCache 是否允许为该物理区域分配缓存行。
-  */
 case class ysyx_26030103_PMARegion(
     Base: Long,
     Size: Long,
@@ -17,54 +9,49 @@ case class ysyx_26030103_PMARegion(
 ) {
   require(Base >= 0L, "PMA区域基地址必须非负")
   require(Size > 0L, "PMA区域大小必须为正")
-  // Long 的 EndExclusive 最高只能到 2^63；实际支持的低 4GiB 镜像与
-  // 高位标签测试都远小于该上限。需要完整 64 位无符号区间时应改为
-  // BigInt 表示，但当前 SoC 边界只使用低 32 位，故显式限制在 2^63。
   require(
     BigInt(Base) + BigInt(Size) <= (BigInt(1) << 63),
     "PMA区域必须位于可表示的64位物理地址空间内"
   )
   require(!Cacheable || Readable, "可缓存PMA区域必须可读")
   require(!Executable || Readable, "可执行PMA区域必须可读")
-
   final val EndExclusive: Long = Base + Size
 }
-
-/** 本核心支持的两种具体物理地址映射。 */
-object ysyx_26030103_PhysicalMemoryMap {
-  val CLINT = ysyx_26030103_PMARegion(0x02000000L, 0x00010000L)
-
-  /** direct-NPC RAM 区间。
-    *
-    * RAM 大小由 Kconfig 的 NPC_RAM_SIZE 决定，并同时传给 AXIRAM 与
-    * C++ CONFIG_MSIZE；默认 64MiB 保持既有行为，128MiB 用于 U-Boot
-    * 加载 Debian EFI 内核。
-    */
-  def NPCWithSize(
+final case class ysyx_26030103_PMAOptions(
+    clintBase: Long = 0x02000000L,
+    clintSize: Long = 0x00010000L,
+    sramBase: Long = 0x0f000000L,
+    sramSize: Long = 0x00008000L,
+    uartBase: Long = 0x10000000L,
+    uartSize: Long = 0x00001000L,
+    spiBase: Long = 0x10001000L,
+    spiSize: Long = 0x00001000L,
+    gpioBase: Long = 0x10002000L,
+    gpioSize: Long = 0x00000010L,
+    keyboardBase: Long = 0x10011000L,
+    keyboardSize: Long = 0x00000008L,
+    vgaBase: Long = 0x21000000L,
+    vgaSize: Long = 0x00200000L,
+    mromBase: Long = 0x30000000L,
+    mromSize: Long = 0x10000000L,
+    psramBase: Long = 0x80000000L,
+    psramSize: Long = 0x00400000L,
+    sdramBase: Long = 0xa0000000L,
+    sdramSize: Long = 0x02000000L,
+    chipLinkMmioBase: Long = 0x40000000L,
+    chipLinkMmioSize: Long = 0x40000000L,
+    chipLinkMemBase: Long = 0xc0000000L,
+    chipLinkMemSize: Long = 0x40000000L,
+    socResetAddr: Long = 0x30000000L
+) {
+  def npcRegions(
       ramBytes: Long,
-      PlicBase: Long = 0x0c000000L,
-      PlicSize: Long = 0x00300000L
+      plicBase: Long,
+      plicSize: Long
   ): Seq[ysyx_26030103_PMARegion] = Seq(
-    CLINT,
-    // 直接 NPC 的 UART 由 AXIRAM 中的 16550 兼容模型提供：TX 输出到仿真
-    // stdout，RX 寄存器/LSR 可读，因此 PMA 必须允许读访问。
-    ysyx_26030103_PMARegion(
-      0x10000000L,
-      0x00001000L
-    ),
-    // PLIC 在 CPU 内部实例化并接到 Xbar 的 PLIC 端口；PMA 必须显式
-    // 覆盖它，否则 S 模式（U-Boot/Linux）访问 PLIC enable/threshold/
-    // claim 会被 PMA 拒绝，表现为 Store/AMO access fault 和外部中断
-    // 无法清除。
-    //
-    // 窗口大小由 Kconfig 的 PLIC_SIZE 决定。ysyxSoC 的片上 SRAM 在
-    // 0x0f000000，若 PLIC 孔径覆盖到这里，SRAM 访问会先被 Xbar 的
-    // PLIC 解码吞掉；默认 3MiB 正好止于 SRAM 之前。DTB/OpenSBI 必须
-    // 使用同一个值。
-    ysyx_26030103_PMARegion(
-      PlicBase,
-      PlicSize
-    ),
+    ysyx_26030103_PMARegion(clintBase, clintSize),
+    ysyx_26030103_PMARegion(uartBase, uartSize),
+    ysyx_26030103_PMARegion(plicBase, plicSize),
     ysyx_26030103_PMARegion(
       0x80000000L,
       ramBytes,
@@ -72,68 +59,47 @@ object ysyx_26030103_PhysicalMemoryMap {
       Executable = true
     )
   )
-
-  /** 默认 direct-NPC 映射（64MiB）。
-    *
-    * 单元测试仍可引用该固定值；elaboration 使用 NPCWithSize 读取实际
-    * Kconfig 配置。
-    */
+  def socRegions(
+      hasChipLink: Boolean,
+      plicBase: Long,
+      plicSize: Long
+  ): Seq[ysyx_26030103_PMARegion] = {
+    val local = Seq(
+      ysyx_26030103_PMARegion(clintBase, clintSize),
+      ysyx_26030103_PMARegion(plicBase, plicSize),
+      ysyx_26030103_PMARegion(sramBase, sramSize, Cacheable = true, Executable = true),
+      ysyx_26030103_PMARegion(uartBase, uartSize),
+      ysyx_26030103_PMARegion(spiBase, spiSize),
+      ysyx_26030103_PMARegion(gpioBase, gpioSize),
+      ysyx_26030103_PMARegion(keyboardBase, keyboardSize),
+      ysyx_26030103_PMARegion(vgaBase, vgaSize),
+      ysyx_26030103_PMARegion(mromBase, mromSize, Writable = false, Cacheable = true, Executable = true),
+      ysyx_26030103_PMARegion(psramBase, psramSize, Cacheable = true, Executable = true),
+      ysyx_26030103_PMARegion(sdramBase, sdramSize, Cacheable = true, Executable = true)
+    )
+    val chipLink =
+      if (hasChipLink)
+        Seq(
+          ysyx_26030103_PMARegion(chipLinkMmioBase, chipLinkMmioSize),
+          ysyx_26030103_PMARegion(chipLinkMemBase, chipLinkMemSize, Cacheable = true, Executable = true)
+        )
+      else Seq.empty
+    local ++ chipLink
+  }
+}
+object ysyx_26030103_PhysicalMemoryMap {
+  val CLINT = ysyx_26030103_PMARegion(0x02000000L, 0x00010000L)
+  def NPCWithSize(
+      ramBytes: Long,
+      PlicBase: Long = 0x0c000000L,
+      PlicSize: Long = 0x00300000L
+  ): Seq[ysyx_26030103_PMARegion] =
+    ysyx_26030103_PMAOptions().npcRegions(ramBytes, PlicBase, PlicSize)
   val NPC: Seq[ysyx_26030103_PMARegion] = NPCWithSize(0x04000000L)
-
   def SoC(
       HasChipLink: Boolean,
       PlicBase: Long = 0x0c000000L,
       PlicSize: Long = 0x00300000L
-  ): Seq[ysyx_26030103_PMARegion] = {
-    val Local = Seq(
-      CLINT,
-      // PLIC 在 Xbar 里有独立端口，但 PMA 仍要显式覆盖它，保证缓存/
-      // 权限判断和地址解码使用同一窗口。Cacheable=false 与 MMIO 语义一致。
-      ysyx_26030103_PMARegion(PlicBase, PlicSize),
-      ysyx_26030103_PMARegion(
-        0x0f000000L,
-        0x00008000L,
-        Cacheable = true,
-        Executable = true
-      ), // SRAM（静态随机存取存储器）
-      ysyx_26030103_PMARegion(0x10000000L, 0x00001000L), // UART（通用异步收发器）
-      ysyx_26030103_PMARegion(0x10001000L, 0x00001000L), // SPI 控制器
-      ysyx_26030103_PMARegion(0x10002000L, 0x00000010L), // GPIO（通用输入输出）
-      ysyx_26030103_PMARegion(0x10011000L, 0x00000008L), // 键盘
-      ysyx_26030103_PMARegion(0x21000000L, 0x00200000L), // VGA 帧缓冲区
-      ysyx_26030103_PMARegion(
-        0x30000000L,
-        0x10000000L,
-        Writable = false,
-        Cacheable = true,
-        Executable = true
-      ), // MROM（掩模只读存储器）
-      ysyx_26030103_PMARegion(
-        0x80000000L,
-        0x00400000L,
-        Cacheable = true,
-        Executable = true
-      ), // PSRAM（伪静态随机存取存储器）
-      ysyx_26030103_PMARegion(
-        0xa0000000L,
-        0x02000000L,
-        Cacheable = true,
-        Executable = true
-      ) // SDRAM（同步动态随机存取存储器）
-    )
-    val ChipLink =
-      if (HasChipLink)
-        Seq(
-          // ChipLink MMIO 被有意设置为不可执行且不可缓存。
-          ysyx_26030103_PMARegion(0x40000000L, 0x40000000L),
-          ysyx_26030103_PMARegion(
-            0xc0000000L,
-            0x40000000L,
-            Cacheable = true,
-            Executable = true
-          )
-        )
-      else Seq.empty
-    Local ++ ChipLink
-  }
+  ): Seq[ysyx_26030103_PMARegion] =
+    ysyx_26030103_PMAOptions().socRegions(HasChipLink, PlicBase, PlicSize)
 }

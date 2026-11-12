@@ -74,6 +74,29 @@
 #define NPC_PLIC_NDEV 31
 #endif
 
+#ifndef NPC_UART_BASE
+#define NPC_UART_BASE 0x10000000
+#endif
+#ifndef NPC_UART_BASE_NAME
+#define NPC_UART_BASE_NAME 10000000
+#endif
+#ifndef NPC_UART_SIZE
+#define NPC_UART_SIZE 0x00001000
+#endif
+#ifndef NPC_UART_PATH
+#define NPC_UART_PATH "/soc/serial@10000000"
+#endif
+
+#ifndef NPC_CLINT_BASE
+#define NPC_CLINT_BASE 0x02000000
+#endif
+#ifndef NPC_CLINT_BASE_NAME
+#define NPC_CLINT_BASE_NAME 2000000
+#endif
+#ifndef NPC_CLINT_SIZE
+#define NPC_CLINT_SIZE 0x00010000
+#endif
+
 /* CPU 描述：build_dtb.sh 从 .config 生成，默认值与 RV64IMA 一致。 */
 #ifndef NPC_RISCV_ISA
 #define NPC_RISCV_ISA "rv64ima_zicsr_zifencei"
@@ -121,7 +144,7 @@
 	chosen {
 		/* 由 CONFIG_LINUX_BOOTARGS 生成；SBI 早期控制台 + 8250 UART。 */
 		bootargs = NPC_BOOTARGS;
-		stdout-path = "/soc/serial@10000000";
+		stdout-path = NPC_UART_PATH;
 		/*
 		 * direct-NPC 没有硬件 RNG，而 Debian 的 jent 熵源在 450 MHz
 		 * timebase 下会按墙钟采样数小时。给内核一个固定的 bootloader
@@ -209,9 +232,9 @@
 		ranges;
 
 		/* SiFive CLINT：mtimecmp=+0x4000，mtime=+0xbff8。 */
-		clint@2000000 {
+		clint@NPC_CLINT_BASE_NAME {
 			compatible = "riscv,clint0";
-			reg = <0x0 0x02000000 0x0 0x00010000>;
+			reg = <0x0 NPC_CLINT_BASE 0x0 NPC_CLINT_SIZE>;
 			interrupts-extended = <&cpu0_intc 3 &cpu0_intc 7>;
 		};
 
@@ -234,9 +257,9 @@
 		 * 到接收 FIFO；LSR.THRE/TEMT 有真实仿真时序，RX 数据可用和
 		 * THRE 都通过 source 10 的电平中断接到 PLIC。
 		 */
-		serial@10000000 {
+		serial@NPC_UART_BASE_NAME {
 			compatible = "ns16550a";
-			reg = <0x0 0x10000000 0x0 0x00000100>;
+			reg = <0x0 NPC_UART_BASE 0x0 NPC_UART_SIZE>;
 			clock-frequency = <10000000>;
 			current-speed = <115200>;
 			reg-shift = <0>;

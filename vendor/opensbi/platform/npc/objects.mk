@@ -23,6 +23,13 @@ platform-genflags-y += -DNPC_PLIC_BASE=$(NPC_PLIC_BASE)
 platform-genflags-y += -DNPC_PLIC_SIZE=$(NPC_PLIC_SIZE)
 platform-genflags-y += -DNPC_PLIC_SOURCES=$(NPC_PLIC_SOURCES)
 
+# UART/CLINT 地址由 npc/scripts/build_opensbi.sh 按 CONFIG_PMA_UART_BASE/
+# CONFIG_PMA_CLINT_BASE 传入。
+NPC_UART_BASE ?= 0x10000000
+NPC_CLINT_BASE ?= 0x02000000
+platform-genflags-y += -DNPC_UART_BASE=$(NPC_UART_BASE)
+platform-genflags-y += -DNPC_CLINT_BASE=$(NPC_CLINT_BASE)
+
 # NPC 目前没有实现 mhartid CSR（0xf14）。OpenSBI 正常冷启动会在
 # _start_warm 读取它，因此本平台改为从上一级传入的 a0 取得 boot hart
 # id，并把 current_hartid() 固定为 0（单 hart）。若以后 RTL 增加

@@ -1451,13 +1451,16 @@ if constexpr (npc::HasDicArchCounter)
                 static_cast<std::uint64_t>(npc::MSize)};
 #else
         const bool trackable{
-            (address >= 0x0f000000U && address < 0x0f008000U) ||
-            (address >= 0x80000000U && address < 0x80400000U) ||
-            (address >= 0xa0000000U && address < 0xa2000000U) ||
+            (address >= npc::PmaSramBase &&
+             address < npc::PmaSramBase + npc::PmaSramSize) ||
+            (address >= npc::PmaPsramBase &&
+             address < npc::PmaPsramBase + npc::PmaPsramSize) ||
+            (address >= npc::PmaSdramBase &&
+             address < npc::PmaSdramBase + npc::PmaSdramSize) ||
             // With ChipLink enabled this window is external RAM.  Keeping it
             // here unconditionally is safe: without ChipLink no store to the
             // window can retire successfully, so no shadow entry is created.
-            address >= 0xc0000000U};
+            address >= npc::PmaChipLinkMemBase};
 #endif
         if (trackable && bytes != 0 &&
             address <= std::numeric_limits<std::uint64_t>::max() - (bytes - 1U))

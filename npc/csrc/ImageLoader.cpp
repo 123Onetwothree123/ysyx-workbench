@@ -13,7 +13,7 @@ constexpr std::size_t kCachePadding{npc::CachePadding};
 constexpr std::uintmax_t kImageCapacity{npc::MSize};
 #else
 constexpr std::size_t kCachePadding{0};
-constexpr std::uintmax_t kImageCapacity{0x10000000U}; // ysyxSoC MROM window
+constexpr std::uintmax_t kImageCapacity{npc::SocMSize}; // ysyxSoC MROM window
 #endif
 
 namespace

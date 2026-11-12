@@ -63,6 +63,10 @@ struct Layout {
     std::uint64_t plicBase = 0;
     std::uint64_t plicSize = 0;
     std::uint64_t plicSources = 0;
+    std::uint64_t uartBase = 0;
+    std::uint64_t uartSize = 0;
+    std::uint64_t clintBase = 0;
+    std::uint64_t clintSize = 0;
     std::uint64_t xlen = 0;
     std::uint64_t mmuLevels = 0;
     std::uint64_t mmuPageSize = 0;
@@ -167,6 +171,18 @@ int main(int argc, char **argv)
         const std::string plicSourcesValue =
             envOrConfig("PLIC_SOURCES", config, "CONFIG_PLIC_SOURCES",
                         "32");
+        const std::string uartBaseValue =
+            envOrConfig("UART_BASE", config, "CONFIG_PMA_UART_BASE",
+                        "0x10000000");
+        const std::string uartSizeValue =
+            envOrConfig("PMA_UART_SIZE", config, "CONFIG_PMA_UART_SIZE",
+                        "0x00001000");
+        const std::string clintBaseValue =
+            envOrConfig("CLINT_BASE", config, "CONFIG_PMA_CLINT_BASE",
+                        "0x02000000");
+        const std::string clintSizeValue =
+            envOrConfig("PMA_CLINT_SIZE", config, "CONFIG_PMA_CLINT_SIZE",
+                        "0x00010000");
 
         const std::string xlenValue =
             envOrConfig("SBI_XLEN", config, "CONFIG_XLEN", "64");
@@ -270,6 +286,10 @@ int main(int argc, char **argv)
         layout.plicBase = parseU64(plicBaseValue, "PLIC_BASE");
         layout.plicSize = parseU64(plicSizeValue, "PLIC_SIZE");
         layout.plicSources = parseU64(plicSourcesValue, "PLIC_SOURCES");
+        layout.uartBase = parseU64(uartBaseValue, "PMA_UART_BASE");
+        layout.uartSize = parseU64(uartSizeValue, "PMA_UART_SIZE");
+        layout.clintBase = parseU64(clintBaseValue, "PMA_CLINT_BASE");
+        layout.clintSize = parseU64(clintSizeValue, "PMA_CLINT_SIZE");
         layout.xlen = parseU64(xlenValue, "XLEN");
         layout.mmuLevels = parseU64(mmuLevelsValue, "MMU_LEVELS");
         layout.mmuPageSize = parseU64(mmuPageSizeValue, "MMU_PAGE_SIZE");
@@ -412,6 +432,14 @@ int main(int argc, char **argv)
         if (layout.plicBase + layout.plicSize > (1ULL << 32))
             throw std::runtime_error(
                 "PLIC_BASE + PLIC_SIZE 超出 32 位地址空间");
+        if (layout.uartSize == 0 ||
+            layout.uartBase + layout.uartSize > (1ULL << 32))
+            throw std::runtime_error(
+                "PMA_UART_BASE + PMA_UART_SIZE 超出 32 位地址空间");
+        if (layout.clintSize == 0 ||
+            layout.clintBase + layout.clintSize > (1ULL << 32))
+            throw std::runtime_error(
+                "PMA_CLINT_BASE + PMA_CLINT_SIZE 超出 32 位地址空间");
 
         layout.ramEnd =
             checkedAdd(layout.ramBase, layout.ramSize, "NPC RAM");
@@ -518,6 +546,14 @@ int main(int argc, char **argv)
                 "-DNPC_PLIC_SIZE=" + hexU64(layout.plicSize),
                 "-DNPC_PLIC_NDEV=" +
                     std::to_string(layout.plicSources - 1),
+                "-DNPC_UART_BASE=" + hexU64(layout.uartBase),
+                "-DNPC_UART_BASE_NAME=" + hexName(layout.uartBase),
+                "-DNPC_UART_SIZE=" + hexU64(layout.uartSize),
+                "-DNPC_UART_PATH=\"/soc/serial@" +
+                    hexName(layout.uartBase) + "\"",
+                "-DNPC_CLINT_BASE=" + hexU64(layout.clintBase),
+                "-DNPC_CLINT_BASE_NAME=" + hexName(layout.clintBase),
+                "-DNPC_CLINT_SIZE=" + hexU64(layout.clintSize),
                 "-DSBI_FW_BASE=" + hexU64(layout.fwBase),
                 "-DSBI_FW_SIZE=" + hexU64(layout.fwSize),
                 "-DSBI_FW_BASE_NAME=" + hexName(layout.fwBase),

@@ -59,9 +59,48 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     out << "}\n\n";
     const long long npcRamSize = asInt(values, "NPC_RAM_SIZE", 0x04000000);
     const long long cachePadding = asInt(values, "CACHE_PADDING", 0);
-    out << "inline constexpr std::uint64_t SocMBase{0x30000000ULL};\n";
-    out << "inline constexpr std::uint64_t SocMSize{0x10000000ULL};\n";
-    out << "inline constexpr std::uint64_t SocResetPC{0x30000000ULL};\n";
+    const long long pmaMromBase = asInt(values, "PMA_MROM_BASE", 0x30000000LL);
+    const long long pmaMromSize = asInt(values, "PMA_MROM_SIZE", 0x10000000LL);
+    const long long pmaSocResetAddr =
+        asInt(values, "PMA_SOC_RESET_ADDR", 0x30000000LL);
+    out << "inline constexpr std::uint64_t SocMBase{0x" << std::hex
+        << pmaMromBase << "ULL};\n";
+    out << "inline constexpr std::uint64_t SocMSize{0x" << std::hex
+        << pmaMromSize << "ULL};\n";
+    out << "inline constexpr std::uint64_t SocResetPC{0x" << std::hex
+        << pmaSocResetAddr << "ULL};\n";
+    out << std::dec;
+    const auto pmaConst = [&](const char *name, const char *key,
+                              long long fallback) {
+        out << "inline constexpr std::uint64_t " << name << "{0x"
+            << std::hex << asInt(values, key, fallback) << "ULL};\n";
+        out << std::dec;
+    };
+    pmaConst("PmaClintBase", "PMA_CLINT_BASE", 0x02000000LL);
+    pmaConst("PmaClintSize", "PMA_CLINT_SIZE", 0x00010000LL);
+    pmaConst("PmaSramBase", "PMA_SRAM_BASE", 0x0f000000LL);
+    pmaConst("PmaSramSize", "PMA_SRAM_SIZE", 0x00008000LL);
+    pmaConst("PmaUartBase", "PMA_UART_BASE", 0x10000000LL);
+    pmaConst("PmaUartSize", "PMA_UART_SIZE", 0x00001000LL);
+    pmaConst("PmaSpiBase", "PMA_SPI_BASE", 0x10001000LL);
+    pmaConst("PmaSpiSize", "PMA_SPI_SIZE", 0x00001000LL);
+    pmaConst("PmaGpioBase", "PMA_GPIO_BASE", 0x10002000LL);
+    pmaConst("PmaGpioSize", "PMA_GPIO_SIZE", 0x00000010LL);
+    pmaConst("PmaKeyboardBase", "PMA_KEYBOARD_BASE", 0x10011000LL);
+    pmaConst("PmaKeyboardSize", "PMA_KEYBOARD_SIZE", 0x00000008LL);
+    pmaConst("PmaVgaBase", "PMA_VGA_BASE", 0x21000000LL);
+    pmaConst("PmaVgaSize", "PMA_VGA_SIZE", 0x00200000LL);
+    pmaConst("PmaMromBase", "PMA_MROM_BASE", 0x30000000LL);
+    pmaConst("PmaMromSize", "PMA_MROM_SIZE", 0x10000000LL);
+    pmaConst("PmaPsramBase", "PMA_PSRAM_BASE", 0x80000000LL);
+    pmaConst("PmaPsramSize", "PMA_PSRAM_SIZE", 0x00400000LL);
+    pmaConst("PmaSdramBase", "PMA_SDRAM_BASE", 0xa0000000LL);
+    pmaConst("PmaSdramSize", "PMA_SDRAM_SIZE", 0x02000000LL);
+    pmaConst("PmaChipLinkMmioBase", "PMA_CHIPLINK_MMIO_BASE", 0x40000000LL);
+    pmaConst("PmaChipLinkMmioSize", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
+    pmaConst("PmaChipLinkMemBase", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
+    pmaConst("PmaChipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
+    pmaConst("PmaSocResetAddr", "PMA_SOC_RESET_ADDR", 0x30000000LL);
     out << "inline constexpr std::uint64_t NpcMBase{0x80000000ULL};\n";
     out << "inline constexpr std::uint64_t NpcMSize{0x" << std::hex << npcRamSize
         << std::dec << "ULL};\n";

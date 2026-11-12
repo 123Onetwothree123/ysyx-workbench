@@ -139,10 +139,10 @@ namespace npc::difftest::detail
                              static_cast<npc::XWord>(npc::MBase),
                              static_cast<npc::XWord>(npc::MSize));
 #else
-        return RangeContains(address, bytes, 0x0f000000U, 0x00008000U) ||
-               RangeContains(address, bytes, 0x30000000U, 0x10000000U) ||
-               RangeContains(address, bytes, 0x80000000U, 0x00400000U) ||
-               RangeContains(address, bytes, 0xa0000000U, 0x02000000U);
+        return RangeContains(address, bytes, npc::PmaSramBase, npc::PmaSramSize) ||
+               RangeContains(address, bytes, npc::PmaMromBase, npc::PmaMromSize) ||
+               RangeContains(address, bytes, npc::PmaPsramBase, npc::PmaPsramSize) ||
+               RangeContains(address, bytes, npc::PmaSdramBase, npc::PmaSdramSize);
 #endif
     }
 

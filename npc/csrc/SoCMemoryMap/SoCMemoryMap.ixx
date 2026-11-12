@@ -9,16 +9,16 @@ export class SoCMemoryMap
 public:
     SoCMemoryMap() = delete;
     ~SoCMemoryMap() = default;
-    static inline const AddressRange CLINT{"clint", 0x02000000u, 0x10000u};
+    static inline const AddressRange CLINT{"clint", npc::PmaClintBase, npc::PmaClintSize};
     static inline const AddressRange FLASH{"flash", npc::SocMBase, npc::SocMSize};
-    static inline const AddressRange UART{"uart", 0x10000000u, 0x1000u};
-    static inline const AddressRange SPI{"spi", 0x10001000u, 0x1000u};
-    static inline const AddressRange GPIO{"gpio", 0x10002000u, 0x10u};
-    static inline const AddressRange KEYBOARD{"keyboard", 0x10011000u, 0x8u};
-    static inline const AddressRange VGA{"vga", 0x21000000u, 0x200000u};
-    static inline const AddressRange SRAM{"sram", 0x0f000000u, 0x8000u};
-    static inline const AddressRange PSRAM{"psram", 0x80000000u, 0x400000u};
-    static inline const AddressRange SDRAM{"sdram", 0xa0000000u, 0x2000000u};
+    static inline const AddressRange UART{"uart", npc::PmaUartBase, npc::PmaUartSize};
+    static inline const AddressRange SPI{"spi", npc::PmaSpiBase, npc::PmaSpiSize};
+    static inline const AddressRange GPIO{"gpio", npc::PmaGpioBase, npc::PmaGpioSize};
+    static inline const AddressRange KEYBOARD{"keyboard", npc::PmaKeyboardBase, npc::PmaKeyboardSize};
+    static inline const AddressRange VGA{"vga", npc::PmaVgaBase, npc::PmaVgaSize};
+    static inline const AddressRange SRAM{"sram", npc::PmaSramBase, npc::PmaSramSize};
+    static inline const AddressRange PSRAM{"psram", npc::PmaPsramBase, npc::PmaPsramSize};
+    static inline const AddressRange SDRAM{"sdram", npc::PmaSdramBase, npc::PmaSdramSize};
     // 看属于 SoC 地址空间的哪一块区域。查询使用完整 XWord，内部再按
     // 有效 SocXLen 拒绝超出 SoC 总线宽度的地址，避免静默截断。
     static std::optional<AddressRange> find(npc::XWord address,

@@ -9,7 +9,9 @@ class ysyx_26030103_AXI5Xbar(
     PLICBaseValue: BigInt = BigInt("0c000000", 16),
     PLICSizeBytes: BigInt = BigInt("00300000", 16),
     DataWidth: Int = 32,
-    IdWidth: Int = 4
+    IdWidth: Int = 4,
+    CLINTBaseValue: BigInt = BigInt("02000000", 16),
+    CLINTSizeBytes: BigInt = BigInt("00010000", 16)
 ) extends Module {
   require(DataWidth == 32 || DataWidth == 64,
     s"AXI5Xbar DataWidth 非法: $DataWidth")
@@ -24,10 +26,13 @@ class ysyx_26030103_AXI5Xbar(
   // 我真的是烦死了ARM的命名规则
   val OKAY = "b00".U(2.W)
   val DECERR = "b11".U(2.W)
-  // RISC-V标准CLINT区间：0x02000000 ~ 0x0200FFFF（64KiB）；与SDRAM窗口
-  // (0xa0000000)本就不相交，解码按区间独立判定。
-  val CLINTBase = "h02000000".U(AddressWidth.W)
-  val CLINTEnd = "h02010000".U(AddressWidth.W)
+  // RISC-V标准CLINT区间：默认 0x02000000 ~ 0x0200FFFF（64KiB）。
+  require(CLINTBaseValue >= 0 && CLINTBaseValue < (BigInt(1) << AddressWidth),
+    "CLINT 基地址超出地址宽度")
+  require(CLINTSizeBytes > 0 && CLINTBaseValue + CLINTSizeBytes <= (BigInt(1) << AddressWidth),
+    "CLINT 地址窗口超出地址宽度")
+  val CLINTBase = CLINTBaseValue.U(AddressWidth.W)
+  val CLINTEnd = (CLINTBaseValue + CLINTSizeBytes).U(AddressWidth.W)
   require(PLICBaseValue >= 0 && PLICBaseValue < (BigInt(1) << AddressWidth),
     "PLIC 基地址超出地址宽度")
   require(PLICSizeBytes > 0 && PLICBaseValue + PLICSizeBytes <= (BigInt(1) << AddressWidth),
@@ -115,21 +120,17 @@ class ysyx_26030103_AXI5Xbar(
   }
   private val ReadableRegions = PMARegions.filter(_.Readable)
   private val WritableRegions = PMARegions.filter(_.Writable)
-  private val ReadableCLINT = ReadableRegions.exists(
-    _ == ysyx_26030103_PhysicalMemoryMap.CLINT
-  )
-  private val WritableCLINT = WritableRegions.exists(
-    _ == ysyx_26030103_PhysicalMemoryMap.CLINT
-  )
-  // PLIC 与 CLINT 一样必须经过 PMA 权限检查。PLIC 基地址/窗口来自配置，
-  // 因此按“某个可读/可写区域完整覆盖整个 PLIC 窗口”判定；只把 PLIC 叶子
-  // 接到 Xbar 端口而不在 PMA 中授予对应权限时，访问必须本地 DECERR，不能
-  // 绕过 PMA 直接落到 PLIC 寄存器。
+  // PLIC 与 CLINT 一样必须经过 PMA 权限检查。基地址/窗口来自配置，
+  // 因此按“某个可读/可写区域完整覆盖整个窗口”判定。
   private def CoversRegion(region: ysyx_26030103_PMARegion,
                            base: BigInt,
                            size: BigInt): Boolean =
     BigInt(region.Base) <= base &&
       BigInt(region.EndExclusive) >= base + size
+  private val ReadableCLINT = ReadableRegions.exists(region =>
+    CoversRegion(region, CLINTBaseValue, CLINTSizeBytes))
+  private val WritableCLINT = WritableRegions.exists(region =>
+    CoversRegion(region, CLINTBaseValue, CLINTSizeBytes))
   private val ReadablePLIC = ReadableRegions.exists(region =>
     CoversRegion(region, PLICBaseValue, PLICSizeBytes))
   private val WritablePLIC = WritableRegions.exists(region =>
