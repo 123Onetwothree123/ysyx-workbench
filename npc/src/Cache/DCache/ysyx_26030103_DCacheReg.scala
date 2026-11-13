@@ -575,8 +575,18 @@ class ysyx_26030103_DCacheReg(
     dir.io.invalidateRange := DmaSnoopActive.B && io.dma_snoop_valid
     dir.io.invalidateRangeStart := DmaStartLine
     dir.io.invalidateRangeEnd := DmaEndLine
-    dir.io.release := false.B
-    dir.io.releaseSet := 0.U
+    // refill/store 自身清掉某个 set 时，目录必须同步释放该 set：
+    // refill 错误、drain 超时、store 与 refill 冲突、失败 store 都
+    // 可能让 Cache 在没有经过目录失效接口的情况下清掉有效行。
+    dir.io.release := RefillFaultNow ||
+      (state === SDrain && DrainTimer === DrainTimeout.U) ||
+      StoreConflictsRefill ||
+      (io.StoreValid && StoreCacheable && StoreHit && io.StoreResp =/= 0.U)
+    dir.io.releaseSet := Mux(
+      RefillFaultNow || (state === SDrain && DrainTimer === DrainTimeout.U),
+      ReqIndexSafe,
+      StoreIndexSafe
+    )
     dir.io.clear := io.flush
   }
   // 同拍命中 store 会在此沿才写入阵列/镜像：SIdle 命中路径也必须反压

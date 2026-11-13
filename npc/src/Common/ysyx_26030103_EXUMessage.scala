@@ -10,10 +10,8 @@ import chisel3._
 class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"EXUMessage XLEN 非法: $XLEN")
   // 与提交记录同行传递，供退休级调试/trace精确对齐。
-  // Instruction 保留原始编码（16 位压缩指令零扩展）；IsCompressed 供
-  // 提交点区分 mepc 对齐和非法指令 mtval 语义。
+  // Instruction 保留原始编码（16 位压缩指令零扩展）。
   val Instruction = UInt(32.W)
-  val IsCompressed = Bool()
   val Retire = Bool()
   // 本指令在 EXU 真正写入了 minstret/minstreth。该标记随 LSU 传到 WBU，
   // 使写计数器的指令自身退休时不触发 minstret 自增（它仍然退休）。
@@ -51,16 +49,11 @@ class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
   val IsAtomic = Bool()
   val AtomicOp = UInt(ysyx_26030103_AtomicOp.Width.W)
 
-  // F/D 扩展：IsFP 表示任意浮点指令（用于 retire 时 mstatus.FS=Dirty），
-  // FPRegisterWrite/FPWriteData 描述独立的 f 寄存器写口。FP64 区分
-  // FLD/FSD 与 FLW/FSW，LSU 用它在 load 完成时做 NaN-boxing。
-  val IsFP = Bool()
+  // F/D 扩展：FPRegisterWrite/FPWriteData 描述独立的 f 寄存器写口；
+  // FP64 区分 FLD/FSD 与 FLW/FSW，LSU 用它在 load 完成时做 NaN-boxing。
   val FPRegisterWrite = Bool()
   val FPWriteData = UInt(64.W)
   val FP64 = Bool()
 
-  // 异常信息(MEM故障提交时写mepc用)
   val pc = UInt(XLEN.W)
-  val ExceptionValid = Bool()
-  val ExceptionCause = UInt(4.W)
 }

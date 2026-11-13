@@ -674,7 +674,6 @@ class ysyx_26030103_EXU(
   io.ExceptionTarget := CSRUnit.io.ExceptionTarget
 
   io.out.bits.Instruction := ActiveInst.Instruction
-  io.out.bits.IsCompressed := ActiveInst.IsCompressed
   // 同步异常指令不退休；IRQ抢占的指令会从mepc重做，也不退休。
   // load/store先携带退休意图进入MEM，若总线故障则由LSU清除。
   io.out.bits.Retire := !ActiveInstructionTrapValid && !ActiveInst.IsEcall &&
@@ -721,7 +720,6 @@ class ysyx_26030103_EXU(
   io.out.bits.StoreData := ActiveInst.StoreData
   // F/D：FPU 结果直接从这里写入 f 寄存器；FLW/FLD 的 FPWriteData 由
   // LSU 在 load 完成时按 FP64 做 NaN-boxing。
-  io.out.bits.IsFP := ActiveInst.IsFP
   io.out.bits.FPRegisterWrite :=
     ActiveInst.FPRegisterWrite && !ActiveInstructionTrapValid &&
       !CSRUnit.io.IrqCommit && !io.MemTrapCommit
@@ -731,8 +729,6 @@ class ysyx_26030103_EXU(
   // A 扩展：把译码得到的原子标记/操作号透传到 LSU。
   io.out.bits.IsAtomic := ActiveInst.IsAtomic
   io.out.bits.AtomicOp := ActiveInst.AtomicOp
-  io.out.bits.ExceptionValid := ActiveInstructionTrapValid
-  io.out.bits.ExceptionCause := ActiveExceptionCause
 
   val PerfAluEligible = ActiveCommit &&
     !ActiveInst.MemoryValid && !ActiveIsMDU && !ActiveInst.IsCsrrw &&

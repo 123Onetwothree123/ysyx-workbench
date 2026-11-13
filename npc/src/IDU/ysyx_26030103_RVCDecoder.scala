@@ -31,15 +31,13 @@ class ysyx_26030103_RVCDecoder(
   require(!UseD || UseF, "RVCDecoder 的 D 扩展依赖 F 扩展")
 
   val io = IO(new Bundle {
-    // 原始取指槽：只有 IsCompressed=1 时才把低 16 位当作压缩指令。
+    // 原始取指槽：低 16 位是待展开的压缩指令。
     val in = Input(UInt(32.W))
     val out = Output(UInt(32.W))
     val illegal = Output(Bool())
-    val isCompressed = Output(Bool())
   })
 
   private val x = io.in(15, 0)
-  io.isCompressed := x(1, 0) =/= "b11".U(2.W)
 
   // 通用寄存器编号
   private val x0 = 0.U(5.W)

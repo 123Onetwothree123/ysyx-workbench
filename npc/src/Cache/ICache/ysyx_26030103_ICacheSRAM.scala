@@ -391,8 +391,10 @@ class ysyx_26030103_ICacheSRAM(
     dir.io.invalidateRange := DmaSnoopActive.B && io.dma_snoop_valid
     dir.io.invalidateRangeStart := DmaStartLine
     dir.io.invalidateRangeEnd := DmaEndLine
-    dir.io.release := false.B
-    dir.io.releaseSet := 0.U
+    // refill 自身出错时，Cache 已经不会安装该行；通知目录同步释放
+    // 本次 refill 对应的 set，避免目录留下指向失败行的陈旧表项。
+    dir.io.release := refill_error_now
+    dir.io.releaseSet := RefIndexSafe
     dir.io.clear := io.flush
   }
   // 扫描结束后补装被推迟的新行；flush/同一行的 store snoop 取消补装。

@@ -487,7 +487,6 @@ class ysyx_26030103_LSU(
   io.out.bits.FPWriteData := Mux(
     ActiveInstruction.MemoryValid && ActiveInstruction.FPRegisterWrite,
     FpLoadWriteData, ActiveInstruction.FPWriteData)
-  io.out.bits.IsFP := ActiveInstruction.IsFP
   io.out.bits.FP64 := ActiveInstruction.FP64
   // Busy的赋值在写缓冲声明之后(见下)
   io.HazardValid := StageInputValid || (stageState =/= StageIdle)
