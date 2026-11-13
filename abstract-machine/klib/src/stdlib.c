@@ -1,58 +1,12 @@
 #include <am.h>
 #include <klib.h>
 #include <klib-macros.h>
-
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdint.h>
-
 #if !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
 static unsigned long int next = 1;
-
-/*
-他妈的代码作废
-// 自己写的
-struct MemoryPool // 总内存
-{
-  struct MemoryPool *next;
-};
-struct Memory64Byte_Block
-{
-  struct Memory64Byte_Block *next;
-};
-struct Memory1KiB_Block
-{
-  struct Memory1KiB_Block *next;
-};
-struct Memory16KiB_Block
-{
-  struct Memory16KiB_Block *next;
-};
-struct Memory128KiB_Block
-{
-  struct Memory128KiB_Block *next;
-};
-struct Memory1MiB_Block
-{
-  struct Memory1MiB_Block *next;
-};
-struct Memory2MiB_Block
-{
-  struct Memory2MiB_Block *next;
-};
-struct Memory4MiB_Block
-{
-};
-struct Memory8MiB_Block
-{
-};
-struct allocator // 拿来控制的
-{
-
-};
-*/
-// 也是自己写的
 enum
 {
   MinimumBlock = 6,
