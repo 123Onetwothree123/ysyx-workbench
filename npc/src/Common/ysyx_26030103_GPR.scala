@@ -13,7 +13,6 @@ class ysyx_26030103_GPR(
     val Read2SELECT = Input(UInt(5.W))
     val ReadDATA1 = Output(UInt(XLEN.W))
     val ReadDATA2 = Output(UInt(XLEN.W))
-    val DebugA0 = Output(UInt(XLEN.W))
     val DebugRaddr = Input(UInt(5.W))
     val DebugRdata = Output(UInt(XLEN.W))
   })
@@ -40,7 +39,6 @@ class ysyx_26030103_GPR(
     0.U(XLEN.W),
     ysyx_26030103_RegisterFile.io.rdata2
   )
-  io.DebugA0 := ysyx_26030103_RegisterFile.io.debug_a0
   ysyx_26030103_RegisterFile.io.debug_raddr := io.DebugRaddr
   io.DebugRdata := ysyx_26030103_RegisterFile.io.debug_rdata
 }

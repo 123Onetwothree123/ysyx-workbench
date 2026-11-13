@@ -450,7 +450,6 @@ class ysyx_26030103_ICacheSRAM(
       resolve_word_arrived && !anySnoopLineHitNow
   val resolve_request_hit =
     executable && cacheable && (resolve_hit || resolve_partial_refill_hit)
-  io.access_fault := access_fault_reg
   io.access_fault_resp := access_fault_resp_reg
   io.axi.AW.AWVALID := false.B
   io.axi.AW.AWID := 0.U

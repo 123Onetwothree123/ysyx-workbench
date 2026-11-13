@@ -166,7 +166,6 @@ class ysyx_26030103_LSU(
     val Hazard2FwdFPData = Output(UInt(64.W))
     val Hazard2FwdFPReady = Output(Bool())
     // 调试/性能
-    val StallWaitLSU = Output(Bool())
     val Complete = Output(Bool())
     val AccessFault = Output(Bool())
     val AccessFaultResp = Output(UInt(2.W))
@@ -177,11 +176,7 @@ class ysyx_26030103_LSU(
     val StallWriteReq = Output(Bool())
     val StallWriteB = Output(Bool())
     val DebugMemoryWrite = Output(Bool())
-    val DebugPC = Output(UInt(32.W))
-    val DebugALUResult = Output(UInt(32.W))
-    val DebugStoreDATA = Output(UInt(32.W))
     val DebugLoadDATA = Output(UInt(32.W))
-    val DebugWidthSelect = Output(UInt(2.W))
   })
   // 一致性失效接口：生产顶层由仲裁器在 DMA 写 B 握手时产生的单拍脉冲
   // 驱动（见 ysyx_26030103.scala 的 DCacheFlush 接线），叶模块端口保留
@@ -549,13 +544,8 @@ class ysyx_26030103_LSU(
   io.Hazard2FwdFPData := io.in.bits.FPWriteData
   io.Hazard2FwdFPReady :=
     WaitValid && io.in.bits.FPRegisterWrite && !io.in.bits.MemoryValid
-  io.StallWaitLSU := stageState === StageWait
   io.DebugMemoryWrite := ActiveInstruction.MemoryWrite
-  io.DebugPC := ActiveInstruction.pc(31, 0)
-  io.DebugALUResult := EffectiveALUResult(31, 0)
-  io.DebugStoreDATA := ActiveInstruction.StoreData(31, 0)
   io.DebugLoadDATA := LoadDataReg(31, 0)
-  io.DebugWidthSelect := ActiveInstruction.WidthSelect
   // 总线事务FSM(原LSU逻辑)
   private def AXISizeFor(Width: UInt): UInt = MuxLookup(Width, 2.U(3.W))(
     Seq("b00".U -> 0.U(3.W), "b01".U -> 1.U(3.W), "b10".U -> 2.U(3.W),

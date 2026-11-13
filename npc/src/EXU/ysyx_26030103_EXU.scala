@@ -156,8 +156,6 @@ class ysyx_26030103_EXU(
     val CSRFrm = Output(UInt(3.W))
     val CSRFcsr = Output(UInt(8.W))
     // 浮点运算提交时累积 fflags（EXU 提交点；FPU 运算不会在 MEM 故障）。
-    val FPCommit = Output(Bool())
-    val FPCommitFlags = Output(UInt(5.W))
     // WBU 退休任意 FP 指令时置 mstatus.FS=Dirty（含 FLW/FSW/FLD/FSD）。
     val FPStateDirtyCommit = Input(Bool())
     // BTB更新: 分支提交时把真实target写回分支BTB
@@ -863,8 +861,6 @@ class ysyx_26030103_EXU(
   // （RequiresPipelineDrain），因此不会出现“更老访存随后才 trap”的情况。
   val FpFlagsCommit =
     FpPending && FpRespFire && !CSRUnit.io.IrqCommit
-  io.FPCommit := FpFlagsCommit
-  io.FPCommitFlags := Mux(FpPending, FpRespBits.fflags, 0.U(5.W))
   CSRUnit.io.FPCommit := FpFlagsCommit
   CSRUnit.io.FPFlags := FpRespBits.fflags
   CSRUnit.io.FPStateDirtyCommit := io.FPStateDirtyCommit
