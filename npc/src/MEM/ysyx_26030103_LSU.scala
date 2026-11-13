@@ -266,7 +266,6 @@ class ysyx_26030103_LSU(
   // 原子宽度：true=.D(8B)，false=.W(4B)。RV32 恒为 .W。
   val AtomicWide = RegInit(false.B)
   val AtomicOpReg = RegInit(0.U(ysyx_26030103_AtomicOp.Width.W))
-  val AtomicOldData = RegInit(0.U(XLEN.W))
   val AtomicNewData = RegInit(0.U(XLEN.W))
   val AtomicResultData = RegInit(0.U(XLEN.W))
   val AtomicReadLow = RegInit(0.U(32.W))
@@ -1078,7 +1077,6 @@ class ysyx_26030103_LSU(
       TransactionComplete := true.B
       state := StatesIdle
     }.otherwise {
-      AtomicOldData := WideData
       AtomicResultData := WideData
       AtomicNewData := ysyx_26030103_AtomicOp.Compute(
         AtomicOpReg, WideData, ActiveInstruction.StoreData,
@@ -1111,7 +1109,6 @@ class ysyx_26030103_LSU(
             AtomicOpReg := StageInputBits.AtomicOp
             AtomicWide := StageInputBits.WidthSelect === "b11".U
             AtomicAddrReg := 0.U
-            AtomicOldData := 0.U
             AtomicNewData := 0.U
             AtomicResultData := 0.U
             AtomicReadLow := 0.U
@@ -1261,7 +1258,6 @@ class ysyx_26030103_LSU(
                 TransactionComplete := true.B
                 state := StatesIdle
               }.otherwise {
-                AtomicOldData := WordData
                 AtomicResultData := WordData
                 AtomicNewData := ysyx_26030103_AtomicOp.Compute(
                   AtomicOpReg, WordData, ActiveInstruction.StoreData,
@@ -1296,7 +1292,6 @@ class ysyx_26030103_LSU(
               TransactionComplete := true.B
               state := StatesIdle
             }.otherwise {
-              AtomicOldData := WordData
               AtomicResultData := WordData
               AtomicNewData := ysyx_26030103_AtomicOp.Compute(
                 AtomicOpReg, WordData, ActiveInstruction.StoreData,

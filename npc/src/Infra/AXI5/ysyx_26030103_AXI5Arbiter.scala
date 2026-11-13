@@ -499,7 +499,6 @@ class ysyx_26030103_AXI5Arbiter(
   val dmaBResp = RegInit(0.U(2.W))
   // hardware_snoop 下下游 B 先进入该槽，等 Cache 失效完成后再搬到
   // dmaBValid（对外 BVALID）。软件看到的 B 因此是“失效后”的完成事件。
-  val dmaBPending = RegInit(false.B)
   val dmaBPendingID = RegInit(0.U(4.W))
   val dmaBPendingResp = RegInit(0.U(2.W))
   io.dma.B.BVALID := dmaBValid
@@ -527,7 +526,6 @@ class ysyx_26030103_AXI5Arbiter(
     when(dmaSnoopPending && io.dmaSnoopDone) {
       assert(!dmaBValid, "DMA B slot occupied while snoop completes")
       dmaSnoopPending := false.B
-      dmaBPending := false.B
       dmaBValid := true.B
       dmaBID := dmaBPendingID
       dmaBResp := dmaBPendingResp
@@ -649,7 +647,6 @@ class ysyx_26030103_AXI5Arbiter(
             dmaSnoopStartReg := DmaRangeStart(AddressWidth - 1, 0)
             dmaSnoopEndReg := DmaRangeEnd(AddressWidth - 1, 0)
             dmaSnoopPending := true.B
-            dmaBPending := true.B
             dmaBPendingID := dmaWriteOriginalID
             dmaBPendingResp := io.memory.B.BRESP
           } else {

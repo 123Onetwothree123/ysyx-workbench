@@ -205,7 +205,6 @@ class ysyx_26030103_IDU(
     else false.B
   // funct5 直接作为原子操作号（00010=LR，00011=SC，其余为 AMO）。
   val AtomicOp = Mux(IsAtomic, AmoFunct5, 0.U(5.W))
-  val IsLr = IsAtomic && ysyx_26030103_AtomicOp.IsLr(AtomicOp)
 
   // F/D 译码
   // 所有 F/D 编码在这里集中解析；vendor 内部操作码不会进入上层。

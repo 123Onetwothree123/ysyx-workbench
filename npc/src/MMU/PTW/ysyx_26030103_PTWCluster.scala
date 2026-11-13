@@ -38,7 +38,6 @@ class ysyx_26030103_PTWCluster(
   require(busOutstanding >= 0 && busOutstanding <= 16,
     "PTW 页表总线 outstanding 必须在 0..16（0 表示跟随 outstanding）")
   require(respPorts >= 1, "PTW 响应端口数必须 >= 1")
-  private val ptrBits = log2Ceil(outstanding.max(2))
   private val busSlots =
     if (busOutstanding <= 0) outstanding else math.min(busOutstanding, outstanding)
 
@@ -137,7 +136,6 @@ class ysyx_26030103_PTWCluster(
   // 因而同一拍最多可以回填 refillPorts 个 TLB 表项。
   var remaining: Seq[Bool] = eligibleBase
   val selValid = Wire(Vec(respPorts, Bool()))
-  val selIndex = Wire(Vec(respPorts, UInt(ptrBits.W)))
   val selOH = Wire(Vec(respPorts, UInt(outstanding.W)))
   for (port <- 0 until respPorts) {
     val remVec = VecInit(remaining)
@@ -145,7 +143,6 @@ class ysyx_26030103_PTWCluster(
     val index = PriorityEncoder(remVec)
     val oh = UIntToOH(index, outstanding)
     selValid(port) := valid
-    selIndex(port) := index
     selOH(port) := oh
     io.resp(port).valid := valid
     io.resp(port).bits := MuxLookup(index, 0.U.asTypeOf(new ysyx_26030103_PTWResponse))(

@@ -82,7 +82,6 @@ class ysyx_26030103_MMU(
   val ctxFree :: ctxLookup :: ctxMissWait :: ctxWalk :: Nil = Enum(4)
   class Context extends Bundle {
     val req = new ysyx_26030103_MMURequest(xlen, addressWidth)
-    val seq = UInt(seqBits.W)
   }
   val ctx = RegInit(VecInit(Seq.fill(contexts)(0.U.asTypeOf(new Context))))
   val ctxValid = RegInit(VecInit(Seq.fill(contexts)(false.B)))

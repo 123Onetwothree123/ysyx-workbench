@@ -473,8 +473,6 @@ class ysyx_26030103_CSR(
   // 写 32 位 CSR 时只取 CSRWriteData 的低 32 位，高半部保持 0。
   private def Write32(Old: UInt): UInt = CSRWriteData(Widen32(Old))(31, 0)
 
-  val IrqLatch = RegInit(false.B)
-  when(io.Interrupt || io.TimerInterrupt) { IrqLatch := true.B }
   val LcofiView =
     if (pmuSscofpmf)
       Mux(PMUOpt.get.io.lcofiPending, "h00002000".U(32.W), 0.U(32.W))
@@ -606,7 +604,6 @@ class ysyx_26030103_CSR(
   }
 
   val HasIrqCommit = io.Enable && HasInterrupt && !io.MemTrap
-  when(HasIrqCommit) { IrqLatch := false.B }
   io.IrqCommit := HasIrqCommit
   val ExceptionCommit = io.MemTrap || (io.Enable && IsException)
   io.TrapCommit := ExceptionCommit

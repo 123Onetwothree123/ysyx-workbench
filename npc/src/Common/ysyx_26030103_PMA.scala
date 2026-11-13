@@ -45,7 +45,7 @@ final case class ysyx_26030103_PMAOptions(
     socResetAddr: Long,
     npcRamBase: Long
 ) {
-  def npcRegions(
+  def npcRegions( // NPC模式的
       ramBytes: Long,
       plicBase: Long,
       plicSize: Long
@@ -60,7 +60,7 @@ final case class ysyx_26030103_PMAOptions(
       Executable = true
     )
   )
-  def socRegions(
+  def socRegions( // SOC模式的
       hasChipLink: Boolean,
       plicBase: Long,
       plicSize: Long
@@ -68,21 +68,47 @@ final case class ysyx_26030103_PMAOptions(
     val local = Seq(
       ysyx_26030103_PMARegion(clintBase, clintSize),
       ysyx_26030103_PMARegion(plicBase, plicSize),
-      ysyx_26030103_PMARegion(sramBase, sramSize, Cacheable = true, Executable = true),
+      ysyx_26030103_PMARegion(
+        sramBase,
+        sramSize,
+        Cacheable = true,
+        Executable = true
+      ),
       ysyx_26030103_PMARegion(uartBase, uartSize),
       ysyx_26030103_PMARegion(spiBase, spiSize),
       ysyx_26030103_PMARegion(gpioBase, gpioSize),
       ysyx_26030103_PMARegion(keyboardBase, keyboardSize),
       ysyx_26030103_PMARegion(vgaBase, vgaSize),
-      ysyx_26030103_PMARegion(mromBase, mromSize, Writable = false, Cacheable = true, Executable = true),
-      ysyx_26030103_PMARegion(psramBase, psramSize, Cacheable = true, Executable = true),
-      ysyx_26030103_PMARegion(sdramBase, sdramSize, Cacheable = true, Executable = true)
+      ysyx_26030103_PMARegion(
+        mromBase,
+        mromSize,
+        Writable = false,
+        Cacheable = true,
+        Executable = true
+      ),
+      ysyx_26030103_PMARegion(
+        psramBase,
+        psramSize,
+        Cacheable = true,
+        Executable = true
+      ),
+      ysyx_26030103_PMARegion(
+        sdramBase,
+        sdramSize,
+        Cacheable = true,
+        Executable = true
+      )
     )
     val chipLink =
       if (hasChipLink)
         Seq(
           ysyx_26030103_PMARegion(chipLinkMmioBase, chipLinkMmioSize),
-          ysyx_26030103_PMARegion(chipLinkMemBase, chipLinkMemSize, Cacheable = true, Executable = true)
+          ysyx_26030103_PMARegion(
+            chipLinkMemBase,
+            chipLinkMemSize,
+            Cacheable = true,
+            Executable = true
+          )
         )
       else Seq.empty
     local ++ chipLink

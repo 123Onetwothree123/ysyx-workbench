@@ -466,7 +466,6 @@ class ysyx_26030103_PTW(
       // 非规范虚拟地址或无法装入物理地址的 satp.PPN 在查页表前就产生
       // page fault，避免高位别名或根表地址截断。
       respReg := 0.U.asTypeOf(new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth))
-      respReg.id := io.req.bits.id
       respReg.paddr := 0.U
       respReg.fault := true.B
       respReg.cause := causeOf(io.req.bits.access)

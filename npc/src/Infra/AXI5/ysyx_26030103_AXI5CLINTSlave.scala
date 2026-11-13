@@ -231,10 +231,6 @@ class ysyx_26030103_AXI5CLINTSlave(
     )
   )
   val NextARAddr = Mux(ARBurstReg === 1.U, ARAddrReg + ARStep, ARAddrReg)
-  // 选择其响应在此时钟沿被寄存的地址。数据本身也必须被捕获，因为主设备
-  // 可以保持RREADY为低，而mtime会在此期间持续变化。
-  val ResponseAddress = Mux(ARFire, io.AR.ARADDR, NextARAddr)
-  Mtime.io.SelectHigh := ResponseAddress === MtimeHighAddress
 
   when(ARFire) {
     ARIDReg := io.AR.ARID

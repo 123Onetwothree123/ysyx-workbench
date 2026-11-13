@@ -657,7 +657,6 @@ class ysyx_26030103_AXI5WidthBridge(
   val rCache = RegInit(0.U(4.W))
   val rQos = RegInit(0.U(4.W))
   val rLock = RegInit(false.B)
-  val rError = RegInit(false.B)
   if (TrackExclusive) {
     io.outAWLock.get := wLock
     io.outARLock.get := rLock
@@ -703,7 +702,6 @@ class ysyx_26030103_AXI5WidthBridge(
         rCache := io.in.AR.ARCACHE
         rQos := io.in.AR.ARQOS
         rLock := InARLock
-        rError := incomingRError
         rBeat := 0.U
         rChunk := 0.U
         rRespCode := OKAY
