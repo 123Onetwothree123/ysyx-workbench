@@ -180,7 +180,6 @@ class ysyx_26030103_EXU(
     config.RiscvArchPMUSscofpmf))
   CSRUnit.io.clk := clock
   CSRUnit.io.rst := reset.asBool
-  CSRUnit.io.RetireCommit := io.RetireCommit
   CSRUnit.io.MinstretRetireCommit := io.MinstretRetireCommit
   CSRUnit.io.PMUEvents := io.PMUEvents
   CSRUnit.io.Interrupt := io.Interrupt

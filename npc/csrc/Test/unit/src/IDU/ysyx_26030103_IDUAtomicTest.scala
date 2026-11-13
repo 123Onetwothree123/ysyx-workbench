@@ -109,7 +109,6 @@ class ysyx_26030103_AtomicMisaHarness(useA: Boolean) extends Module {
   csr.io.clk := clock
   csr.io.rst := reset
   csr.io.Enable := false.B
-  csr.io.RetireCommit := false.B
   csr.io.MinstretRetireCommit := false.B
   csr.io.IsCsrrw := false.B
   csr.io.IsCsrrs := false.B

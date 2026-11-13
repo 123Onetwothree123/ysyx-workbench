@@ -51,7 +51,6 @@ class ysyx_26030103_CSRAuditHarness(
   csr.io.clk := clock
   csr.io.rst := reset
   csr.io.Enable := io.enable
-  csr.io.RetireCommit := io.retireCommit
   csr.io.MinstretRetireCommit := io.retireCommit
   csr.io.IsCsrrw := io.isCsrrw
   csr.io.IsCsrrs := io.isCsrrs

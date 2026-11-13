@@ -119,12 +119,9 @@ class ysyx_26030103_CSR(
     val clk = Input(Clock())
     val rst = Input(Bool())
     val Enable = Input(Bool())
-    // WBU 真正的架构退休事件。EXU 提交拍不等于退休拍（load/store 可能
-    // 随后在 MEM 故障，MDU 后续项也在队列中）。
-    val RetireCommit = Input(Bool())
-    // 用于 minstret 自增的退休事件：与 RetireCommit 同拍，但过滤掉“本
-    // 指令自身写入 minstret/minstreth”的那一条退休。写计数器的指令仍然
-    // 是架构退休指令（PMU 的 Instructions 事件继续使用 RetireCommit）。
+    // 用于 minstret 自增的退休事件：过滤掉本指令自身写入
+    // minstret/minstreth 的那一条退休；该指令仍然退休，PMU 的
+    // Instructions 事件在顶层使用完整的 RetireCommit。
     val MinstretRetireCommit = Input(Bool())
     // EXU 把该提交拍到 WBU 的写 minstret 标记，退休时据此过滤自增。
     val MinstretWriteCommit = Output(Bool())
