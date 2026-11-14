@@ -28,7 +28,8 @@ trait ysyx_26030103_HardFloatFPUResult {
       Mux(aNaN, bS, Mux(bNaN, aS,
         Mux(bothZero, Cat(zeroSign, 0.U(31.W)), chosen)))
     )
-    val flags = Cat(IsSigNaN32(aS) || IsSigNaN32(bS), 0.U(4.W))
+    val flags = Cat(IsSigNaN32(aS) || IsSigNaN32(bS),
+      0.U(ysyx_26030103_FpuFlags.NV.W))
     (result, flags)
   }
   private def MinMaxD(IsMin: Bool): (UInt, UInt) = {
@@ -48,7 +49,8 @@ trait ysyx_26030103_HardFloatFPUResult {
       Mux(aNaN, bD, Mux(bNaN, aD,
         Mux(bothZero, Cat(zeroSign, 0.U(63.W)), chosen)))
     )
-    val flags = Cat(IsSigNaN64(aD) || IsSigNaN64(bD), 0.U(4.W))
+    val flags = Cat(IsSigNaN64(aD) || IsSigNaN64(bD),
+      0.U(ysyx_26030103_FpuFlags.NV.W))
     (result, flags)
   }
 
@@ -113,7 +115,7 @@ trait ysyx_26030103_HardFloatFPUResult {
 
   // 先把组合运算结果汇成 (result, flags, isFPResult)，再由 op 选择。
   val fastResult = WireDefault(0.U(FLEN.W))
-  val fastFlags = WireDefault(0.U(5.W))
+  val fastFlags = WireDefault(0.U(ysyx_26030103_FpuFlags.Width.W))
   val isDivSqrt = op === ysyx_26030103_FpuOp.FDiv ||
     op === ysyx_26030103_FpuOp.FSqrt
 
@@ -149,7 +151,7 @@ trait ysyx_26030103_HardFloatFPUResult {
     is(ysyx_26030103_FpuOp.FSgnj, ysyx_26030103_FpuOp.FSgnjn,
       ysyx_26030103_FpuOp.FSgnjx) {
       fastResult := Mux(fmtS, BoxF32(SgnjS(op)), BoxD(SgnjD(op)))
-      fastFlags := 0.U(5.W)
+      fastFlags := 0.U(ysyx_26030103_FpuFlags.Width.W)
     }
     is(ysyx_26030103_FpuOp.FMin, ysyx_26030103_FpuOp.FMax) {
       fastResult := Mux(fmtS, BoxF32(mmSResult), BoxD(mmDResult))
@@ -176,9 +178,11 @@ trait ysyx_26030103_HardFloatFPUResult {
         Mux(negInvalidS, 0.U(FLEN.W), intFromS),
         Mux(negInvalidD, 0.U(FLEN.W), intFromD))
       // 非法负数转无符号只保留 NV，不额外报 NX。
+      val nvOnly = (1 << ysyx_26030103_FpuFlags.NV).U(
+        ysyx_26030103_FpuFlags.Width.W)
       fastFlags := Mux(fmtS,
-        Mux(negInvalidS, "h10".U(5.W), intFlagsS),
-        Mux(negInvalidD, "h10".U(5.W), intFlagsD))
+        Mux(negInvalidS, nvOnly, intFlagsS),
+        Mux(negInvalidD, nvOnly, intFlagsD))
     }
     is(ysyx_26030103_FpuOp.FCvtIntToFp, ysyx_26030103_FpuOp.FCvtUIntToFp) {
       fastResult := Mux(fmtS, BoxF32(intToS), BoxD(intToD))
@@ -187,16 +191,16 @@ trait ysyx_26030103_HardFloatFPUResult {
     is(ysyx_26030103_FpuOp.FMvFpToInt) {
       fastResult := Mux(intWord,
         Sext32ToFLEN(aRaw(31, 0)), aRaw)
-      fastFlags := 0.U(5.W)
+      fastFlags := 0.U(ysyx_26030103_FpuFlags.Width.W)
     }
     is(ysyx_26030103_FpuOp.FMvIntToFp) {
       fastResult := Mux(fmtS,
         BoxF32(aRaw(31, 0)), BoxD(aRaw))
-      fastFlags := 0.U(5.W)
+      fastFlags := 0.U(ysyx_26030103_FpuFlags.Width.W)
     }
     is(ysyx_26030103_FpuOp.FClass) {
       fastResult := Mux(fmtS, classS, classD)
-      fastFlags := 0.U(5.W)
+      fastFlags := 0.U(ysyx_26030103_FpuFlags.Width.W)
     }
     is(ysyx_26030103_FpuOp.FCvtFpToFp) {
       val toDouble = fmtD && !srcFmtD
@@ -204,7 +208,8 @@ trait ysyx_26030103_HardFloatFPUResult {
       fastResult := Mux(toDouble, BoxD(cvtToD),
         Mux(toSingle, BoxF32(cvtToS), 0.U(FLEN.W)))
       fastFlags := Mux(toDouble, cvtStoD.io.exceptionFlags,
-        Mux(toSingle, cvtDtoS.io.exceptionFlags, 0.U(5.W)))
+        Mux(toSingle, cvtDtoS.io.exceptionFlags,
+          0.U(ysyx_26030103_FpuFlags.Width.W)))
     }
   }
 }

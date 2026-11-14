@@ -28,7 +28,7 @@ trait ysyx_26030103_HardFloatFPUResponse {
 
   val respValid = RegInit(false.B)
   val respResult = RegInit(0.U(FLEN.W))
-  val respFlags = RegInit(0.U(5.W))
+  val respFlags = RegInit(0.U(ysyx_26030103_FpuFlags.Width.W))
   val divActive = RegInit(false.B)
   val divAbandoned = RegInit(false.B)
   val divStartedS = RegInit(false.B)

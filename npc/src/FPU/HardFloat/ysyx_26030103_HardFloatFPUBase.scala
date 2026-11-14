@@ -103,7 +103,13 @@ abstract class ysyx_26030103_HardFloatFPUBase(
     )
   }
 
-  protected def IntFlags(Flags: UInt): UInt =
-    // RecFNToIN: {invalid, overflow, inexact} -> RISC-V {NV, -, -, -, NX}
-    Cat(Flags(2) || Flags(1), 0.U(3.W), Flags(0))
+  protected def IntFlags(Flags: UInt): UInt = {
+    // RecFNToIN 的 {invalid, overflow, inexact} 是 HardFloat 自己的编码；
+    // 输出侧按 RISC-V 只放到 NV 与 NX。
+    val width = ysyx_26030103_FpuFlags.Width
+    val nv = (1 << ysyx_26030103_FpuFlags.NV).U(width.W)
+    val nx = (1 << ysyx_26030103_FpuFlags.NX).U(width.W)
+    Mux(Flags(2) || Flags(1), nv, 0.U(width.W)) |
+      Mux(Flags(0), nx, 0.U(width.W))
+  }
 }

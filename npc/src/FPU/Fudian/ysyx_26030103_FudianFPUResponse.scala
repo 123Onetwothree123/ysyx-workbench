@@ -86,7 +86,7 @@ trait ysyx_26030103_FudianFPUResponse {
   // FDIV 的 out_valid 先拉高、结果下一拍才稳定，故先等一拍再采样。
   private val divSeenValid = RegInit(false.B)
   private val respResult = RegInit(0.U(FLEN.W))
-  private val respFlags = RegInit(0.U(5.W))
+  private val respFlags = RegInit(0.U(ysyx_26030103_FpuFlags.Width.W))
 
   private val respPipe =
     Module(new ysyx_26030103_FPUResponsePipeline(FLEN, Config.FPUProfile.Pipeline))
@@ -132,18 +132,21 @@ trait ysyx_26030103_FudianFPUResponse {
     val engineFlags = dDiv.get.io.fflags
     val sResult = divDToS.get.io.result
     val tiny = sResult(30, 23) === 0.U
-    val nx = cvtFlags(0) || engineFlags(0)
-    val of = cvtFlags(2) || engineFlags(2)
-    val uf = cvtFlags(1) || (tiny && nx)
+    val nx = cvtFlags(ysyx_26030103_FpuFlags.NX) ||
+      engineFlags(ysyx_26030103_FpuFlags.NX)
+    val of = cvtFlags(ysyx_26030103_FpuFlags.OF) ||
+      engineFlags(ysyx_26030103_FpuFlags.OF)
+    val uf = cvtFlags(ysyx_26030103_FpuFlags.UF) || (tiny && nx)
     Cat(
-      engineFlags(4) || cvtFlags(4) || activeFSNaN,
-      engineFlags(3),
+      engineFlags(ysyx_26030103_FpuFlags.NV) ||
+        cvtFlags(ysyx_26030103_FpuFlags.NV) || activeFSNaN,
+      engineFlags(ysyx_26030103_FpuFlags.DZ),
       of,
       uf,
       nx
     )
   } else {
-    0.U(5.W)
+    0.U(ysyx_26030103_FpuFlags.Width.W)
   }
   private val divOutResult: UInt = if (Shared) {
     Mux(activeDivIsD, dDiv.get.io.result, boxS(divDToS.get.io.result))

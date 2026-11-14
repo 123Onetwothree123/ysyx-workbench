@@ -45,7 +45,7 @@ class ysyx_26030103_ExactFMA(
     val c = Input(UInt(Total.W))
     val rm = Input(UInt(3.W))
     val result = Output(UInt(Total.W))
-    val fflags = Output(UInt(5.W))
+    val fflags = Output(UInt(ysyx_26030103_FpuFlags.Width.W))
   })
 
   private def Sign(x: UInt): Bool = x(Total - 1)
@@ -234,7 +234,13 @@ class ysyx_26030103_ExactFMA(
     0.U((Total - 1).W)
   )
   private val exactResult = Mux(dZero, cancelZero, exactBits)
-  private val exactFlags = Cat(exactOf, exactUf, exactNx)
+  private val exactFlags = {
+    val width = ysyx_26030103_FpuFlags.Width
+    val zero = 0.U(width.W)
+    Mux(exactOf, (1 << ysyx_26030103_FpuFlags.OF).U(width.W), zero) |
+      Mux(exactUf, (1 << ysyx_26030103_FpuFlags.UF).U(width.W), zero) |
+      Mux(exactNx, (1 << ysyx_26030103_FpuFlags.NX).U(width.W), zero)
+  }
 
   // 特殊值结果
   private val canonicalNaN = Cat(
@@ -272,11 +278,11 @@ class ysyx_26030103_ExactFMA(
   )
   private val flags = Mux(
     nanResult,
-    Cat(nv, 0.U(1.W), 0.U(3.W)),
+    Cat(nv, 0.U(ysyx_26030103_FpuFlags.NV.W)),
     Mux(
       prodInf || cInf || prodZero,
-      0.U(5.W),
-      Cat(0.U(2.W), exactFlags)
+      0.U(ysyx_26030103_FpuFlags.Width.W),
+      exactFlags
     )
   )
   io.result := result

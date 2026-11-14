@@ -3,6 +3,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
+import _root_.ysyx_26030103.fpu.{ysyx_26030103_FpuFlags, ysyx_26030103_FpuRm}
 
 /** 机器/监管者 CSR 与精确异常入口。
   *
@@ -37,6 +38,8 @@ class ysyx_26030103_CSR(
   import ysyx_26030103_mstatus.legalize
   require(XLEN == 32 || XLEN == 64, s"CSR XLEN 非法: $XLEN")
   require(!UseD || UseF, "CSR 的 D 扩展依赖 F 扩展")
+  private val FFlagsWidth = ysyx_26030103_FpuFlags.Width
+  private val FrmWidth = ysyx_26030103_FpuRm.Width
   private val hasS = profile.hasS
   private val hasU = profile.hasU
   // medeleg 是 WARL：只有当前配置真正可能发生、且允许从 S 委托的异常
@@ -178,7 +181,7 @@ class ysyx_26030103_CSR(
     // fcsr={frm,fflags} 的实时 8 位视图。DiffTest 在顶层退休沿锁存。
     val Fcsr = Output(UInt(8.W))
     val FPCommit = Input(Bool())
-    val FPFlags = Input(UInt(5.W))
+    val FPFlags = Input(UInt(FFlagsWidth.W))
     val FPStateDirtyCommit = Input(Bool())
     // 顶层 PMU 事件总线；只有 PMUEnable 打开时才会被消费者使用。
     val PMUEvents = Input(UInt(ysyx_26030103_PMUEventId.BusWidth.W))
@@ -364,7 +367,7 @@ class ysyx_26030103_CSR(
   val Mtval = RegInit(0.U(XLEN.W))
   // fcsr = {frm[2:0], fflags[4:0]}；复位值 0（RISC-V 允许实现定义，
   // 0 使裸机/回放有确定初值）。
-  val FFlagsReg = RegInit(0.U(5.W))
+  val FFlagsReg = RegInit(0.U(FFlagsWidth.W))
   val FrmReg = RegInit(0.U(3.W))
   val Minstret = RegInit(0.U(64.W))
   // mcountinhibit.TM：TM=1 时 time 保持最后值，不再跟随 CLINT mtime。
@@ -395,7 +398,7 @@ class ysyx_26030103_CSR(
   // （例如 FCMP/FCLASS）时也属于修改浮点状态；这里必须用寄存器隔开
   // EXU 的 FPCommit（它依赖 IrqCommit），否则会形成组合环。
   val FpFlagsDirtyReg =
-    RegNext(io.FPCommit && io.FPFlags =/= 0.U(5.W), false.B)
+    RegNext(io.FPCommit && io.FPFlags =/= 0.U(FFlagsWidth.W), false.B)
   private val FsDirtyValue = (Mstatus.io.rdata & ~"h6000".U(32.W)) |
     (if (UseF) "h6000".U(32.W) else 0.U(32.W))
   val FsDirtyCommit = UseF.B && (io.FPStateDirtyCommit || FpFlagsDirtyReg)
@@ -807,18 +810,21 @@ class ysyx_26030103_CSR(
   // 同一拍即使出现（架构上单发射不会同时发生）也以软件写为准。
   when(io.FPCommit) { FFlagsReg := FFlagsReg | io.FPFlags }
   when(CSRWen && IsCSRAddress(CSR_FFLAGS)) {
-    FFlagsReg := CSRWriteData(Widen32(FFlagsReg))(4, 0)
+    FFlagsReg := CSRWriteData(Widen32(FFlagsReg))(
+      ysyx_26030103_FpuFlags.NV, ysyx_26030103_FpuFlags.NX)
   }
   when(CSRWen && IsCSRAddress(CSR_FRM)) {
     FrmReg := CSRWriteData(Widen32(FrmReg))(2, 0)
   }
   when(CSRWen && IsCSRAddress(CSR_FCSR)) {
     val FcsrWrite = CSRWriteData(Widen32(Cat(FrmReg, FFlagsReg)))
-    FrmReg := FcsrWrite(7, 5)
-    FFlagsReg := FcsrWrite(4, 0)
+    FrmReg := FcsrWrite(FFlagsWidth + FrmWidth - 1, FFlagsWidth)
+    FFlagsReg := FcsrWrite(
+      ysyx_26030103_FpuFlags.NV, ysyx_26030103_FpuFlags.NX)
   }
   val FrmNext = Mux(CSRWen && IsCSRAddress(CSR_FCSR),
-    CSRWriteData(Widen32(Cat(FrmReg, FFlagsReg)))(7, 5),
+    CSRWriteData(Widen32(Cat(FrmReg, FFlagsReg)))(
+      FFlagsWidth + FrmWidth - 1, FFlagsWidth),
     Mux(CSRWen && IsCSRAddress(CSR_FRM),
       CSRWriteData(Widen32(FrmReg))(2, 0), FrmReg))
   io.Frm := FrmNext

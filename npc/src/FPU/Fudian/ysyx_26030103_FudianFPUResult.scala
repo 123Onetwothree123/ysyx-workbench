@@ -68,7 +68,7 @@ trait ysyx_26030103_FudianFPUResult {
 
   // 快速运算结果（组合），FDIV/FSQRT 走多周期状态机
   protected val fastResult = Wire(UInt(FLEN.W))
-  protected val fastFlags = Wire(UInt(5.W))
+  protected val fastFlags = Wire(UInt(ysyx_26030103_FpuFlags.Width.W))
   fastResult := 0.U
   fastFlags := 0.U
 
@@ -101,7 +101,7 @@ trait ysyx_26030103_FudianFPUResult {
     if (HasD) {
       if (UseFMA) dFma.get.io.fflags else dExactFma.get.io.fflags
     } else {
-      0.U(5.W)
+      0.U(ysyx_26030103_FpuFlags.Width.W)
     }
 
   switch(op) {

@@ -109,7 +109,8 @@ abstract class ysyx_26030103_FudianFPUBase(
       FloatPoint.defaultNaNUInt(expWidth, precision),
       Mux(decX.isNaN, y, Mux(decY.isNaN, x, ordered))
     )
-    val fflags = Cat(decX.isSNaN || decY.isSNaN, 0.U(4.W))
+    val fflags = Cat(decX.isSNaN || decY.isSNaN,
+      0.U(ysyx_26030103_FpuFlags.NV.W))
     (result, fflags)
   }
 
