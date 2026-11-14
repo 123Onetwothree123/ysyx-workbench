@@ -45,10 +45,4 @@ object ysyx_26030103_ALU {
         )
     }
   }
-
-  /** 单元测试/直接实例化便利入口；生产路径应使用带完整配置的 apply。 */
-  def apply(xlen: Int): ysyx_26030103_ALU = {
-    require(xlen == 32 || xlen == 64, s"ALU XLEN 非法: $xlen")
-    apply(ysyx_26030103_NPCConfig(XLEN = xlen, AddressWidth = xlen))
-  }
 }
