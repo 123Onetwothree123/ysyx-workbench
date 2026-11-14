@@ -73,8 +73,6 @@ object ysyx_26030103_JsonConfig {
     parseDocument(new String(Files.readAllBytes(path), StandardCharsets.UTF_8))
       .withSource(path)
 
-  def load(path: String): Config = load(Paths.get(path))
-
   def parseDocument(text: String): Config =
     new Config(new Parser(text).parse(), Paths.get("<inline>"))
 
@@ -116,8 +114,6 @@ object ysyx_26030103_JsonConfig {
 
     private[config] def withSource(path: Path): Config =
       new Config(root, path)
-
-    def option(path: String): Option[JsonValue] = lookup(path)
 
     def int(path: String, default: Int): Int =
       lookup(path) match {
