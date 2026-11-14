@@ -310,15 +310,16 @@ menu "MMU/TLB"
       default "all_sets"
 
     config MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH
-      int "PARALLEL_N 每周期扫描的 set 数 N"
+      int "PARALLEL_N 每周期扫描的 set 数 N（0=自动）"
       depends on MMU_CACHE_VIPT_ALIAS_SAFE && MMU_CACHE_VIPT_ALIAS_SCAN_PARALLEL_N
-      range 2 1024
+      range 0 1024
       default 4
       help
-        PARALLEL_N 每周期并行比较/失效的 set 数。实际 RTL 宽度会在
-        每个 Cache 内按 set 数截断（N>sets 等价于单拍全扫描），因此
-        8/16/32 set 的默认值 4 分别对应 2/4/8 拍完成一轮扫描。
-        N 越大，比较器/valid 写译码越多、扫描等待越短。
+        PARALLEL_N 每周期并行比较/失效的 set 数；0 表示自动取
+        min(默认值 4, sets)。实际 RTL 宽度会在每个 Cache 内按 set 数
+        截断（N>sets 等价于单拍全扫描），因此 8/16/32 set 的默认值 4
+        分别对应 2/4/8 拍完成一轮扫描。N 越大，比较器/valid 写译码
+        越多、扫描等待越短。大于 0 时必须是 >=2 的值。
 
     config MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES
       int "DIRECTORY 目录项数（0=跟随 set 数）"
@@ -331,6 +332,16 @@ menu "MMU/TLB"
         目录完整、无冲突）。显式配置更小的值可以观察目录容量对
         命中率的影响：多个 set 共享目录桶时，安装新行会失效被挤出
         的 Cache 行，正确性不受影响，只是可能多一次 refill。
+
+    config MMU_CACHE_VIPT_ALIAS_EVENT_QUEUE_DEPTH
+      int "DCache VIPT alias 事件队列深度"
+      depends on MMU_CACHE_VIPT_ALIAS_SAFE && DCACHE
+      range 2 16
+      default 4
+      help
+        DCache 写直达 store/refill 的 alias 失效事件队列深度，必须是
+        2 的幂（2/4/8/16）。队列满时会清空整个 DCache 以保证正确性；
+        更大的深度减少 overflow 概率，但增加寄存器/面积。仅 DCache 使用。
 
     choice
       prompt "PTW 内存通路"

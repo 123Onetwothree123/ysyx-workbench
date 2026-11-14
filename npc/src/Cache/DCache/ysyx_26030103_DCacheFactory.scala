@@ -36,7 +36,9 @@ object ysyx_26030103_DCacheFactory {
       ViptAliasScanMode: String = "all_sets",
       DmaSnoop: Boolean = false,
       ViptAliasScanWidth: Int = 0,
-      ViptAliasDirectoryEntries: Int = 0
+      ViptAliasDirectoryEntries: Int = 0,
+      ViptAliasEventQueueDepth: Int =
+        ysyx_26030103_KconfigDefaults.MmuCacheViptAliasEventQueueDepth
   ): ysyx_26030103_DCacheBase = {
     Storage match {
       case ysyx_26030103_CacheStorage.Reg =>
@@ -54,6 +56,7 @@ object ysyx_26030103_DCacheFactory {
             DmaSnoop = DmaSnoop,
             ViptAliasScanWidth = ViptAliasScanWidth,
             ViptAliasDirectoryEntries = ViptAliasDirectoryEntries,
+            ViptAliasEventQueueDepth = ViptAliasEventQueueDepth,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             DrainTimeout = DrainTimeout,
@@ -75,6 +78,7 @@ object ysyx_26030103_DCacheFactory {
             DmaSnoop = DmaSnoop,
             ViptAliasScanWidth = ViptAliasScanWidth,
             ViptAliasDirectoryEntries = ViptAliasDirectoryEntries,
+            ViptAliasEventQueueDepth = ViptAliasEventQueueDepth,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             DrainTimeout = DrainTimeout,
@@ -96,6 +100,7 @@ object ysyx_26030103_DCacheFactory {
             DmaSnoop = DmaSnoop,
             ViptAliasScanWidth = ViptAliasScanWidth,
             ViptAliasDirectoryEntries = ViptAliasDirectoryEntries,
+            ViptAliasEventQueueDepth = ViptAliasEventQueueDepth,
             CacheableBase = CacheableBase,
             CacheableMask = CacheableMask,
             Bypass = false,

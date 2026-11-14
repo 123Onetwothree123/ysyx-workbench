@@ -26,6 +26,9 @@ class ysyx_26030103_DCacheReg(
     ViptAliasScanWidth: Int = 0,
     // directory 的目录项数；0=跟随 sets（完整无冲突）。
     ViptAliasDirectoryEntries: Int = 0,
+    // alias 事件队列深度；必须是 2 的幂。
+    ViptAliasEventQueueDepth: Int =
+      ysyx_26030103_KconfigDefaults.MmuCacheViptAliasEventQueueDepth,
     CacheableBase: Long = 0L,
     CacheableMask: Long = 0L,
     DrainTimeout: Int = ysyx_26030103_KconfigDefaults.DCacheDrainTimeout,
@@ -483,7 +486,8 @@ class ysyx_26030103_DCacheReg(
     StoreAliasEvent,
     StoreTag,
     io.flush,
-    ScanWidth
+    ScanWidth,
+    ViptAliasEventQueueDepth
   )
   val AliasScanBusy = AliasScanStatus.busy
   // directory 模式在 AR 握手拍更新目录；同拍不受理新 load，避免组合

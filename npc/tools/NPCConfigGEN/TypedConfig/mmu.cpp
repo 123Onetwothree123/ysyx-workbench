@@ -81,6 +81,9 @@ void addMmu(TypedFields &root, const Config &values, long long xlen)
     addField(mmu, "cache_vipt_alias_directory_entries",
              TypedJson::integer(flatInt(
                  values, "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES", 0)));
+    addField(mmu, "cache_vipt_alias_event_queue_depth",
+             TypedJson::integer(flatInt(
+                 values, "MMU_CACHE_VIPT_ALIAS_EVENT_QUEUE_DEPTH", 4)));
     addField(mmu, "ptw_path",
              TypedJson::string(
                  flatString(values, "MMU_PTW_PATH", "dedicated")));

@@ -2,6 +2,7 @@ package ysyx_26030103.cache
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 /** VIPT alias 失效扫描。 */
 object ysyx_26030103_ViptAliasScan {
@@ -10,9 +11,6 @@ object ysyx_26030103_ViptAliasScan {
   val ParallelN = "parallel_n"
   val Directory = "directory"
   val Modes: Seq[String] = Seq(AllSets, Serial, ParallelN, Directory)
-
-  // store 事件队列；溢出时清空整个 Cache。
-  private val EventQueueDepth = 4
 
   def requireMode(mode: String, where: String): Unit =
     require(
@@ -35,7 +33,7 @@ object ysyx_26030103_ViptAliasScan {
       case Directory => 1
       case ParallelN =>
         if (configured <= 0) {
-          math.min(4, sets)
+          math.min(ysyx_26030103_KconfigDefaults.MmuCacheViptAliasScanWidth, sets)
         } else {
           require(configured >= 2,
             s"PARALLEL_N 扫描宽度必须 >=2，收到 $configured")
@@ -159,8 +157,13 @@ object ysyx_26030103_ViptAliasScan {
       storeTrigger: Bool,
       storeTag: UInt,
       clear: Bool,
-      scanWidth: Int
+      scanWidth: Int,
+      eventQueueDepth: Int =
+        ysyx_26030103_KconfigDefaults.MmuCacheViptAliasEventQueueDepth
   ): DcacheAliasScanStatus = {
+    require(eventQueueDepth >= 2 &&
+      (eventQueueDepth & (eventQueueDepth - 1)) == 0,
+      s"VIPT alias 事件队列深度必须是 >=2 的 2 的幂，收到 $eventQueueDepth")
     val g = new Geometry(valid, tag, scanWidth)
     val numSets = g.numSets
     val width = g.width
@@ -171,7 +174,7 @@ object ysyx_26030103_ViptAliasScan {
     val offWidth = g.offWidth
     val paddedValid = g.paddedValid
     val paddedTag = g.paddedTag
-    val depth = EventQueueDepth
+    val depth = eventQueueDepth
     val ptrWidth = log2Ceil(depth).max(1)
     val countWidth = log2Ceil(depth + 1).max(1)
 
@@ -288,7 +291,9 @@ object ysyx_26030103_ViptAliasScan {
       storeTrigger: Bool,
       storeTag: UInt,
       clear: Bool,
-      scanWidth: Int
+      scanWidth: Int,
+      eventQueueDepth: Int =
+        ysyx_26030103_KconfigDefaults.MmuCacheViptAliasEventQueueDepth
   ): DcacheAliasScanStatus =
     if (active) {
       chunkedEventQueueScan(
@@ -300,7 +305,8 @@ object ysyx_26030103_ViptAliasScan {
         storeTrigger,
         storeTag,
         clear,
-        scanWidth
+        scanWidth,
+        eventQueueDepth
       )
     } else {
       DcacheAliasScanStatus(false.B, false.B, false.B)

@@ -321,7 +321,8 @@ case class ysyx_26030103_NPCConfig(
       case "all_sets" => sets
       case "serial" | "directory" => 1
       case "parallel_n" =>
-        if (configured <= 0) math.min(4, sets) else math.min(configured, sets)
+        if (configured <= 0) math.min(KconfigDefaults.MmuCacheViptAliasScanWidth, sets)
+        else math.min(configured, sets)
       case other =>
         throw new IllegalArgumentException(
           s"未知 MMU_CACHE_VIPT_ALIAS_SCAN_MODE: $other")
@@ -354,6 +355,8 @@ case class ysyx_26030103_NPCConfig(
       MMU.cacheViptAliasDirectoryEntries,
       1 << DCacheIndexBits
     )
+  final val DCacheViptAliasEventQueueDepth: Int =
+    MMU.cacheViptAliasEventQueueDepth
   final val ICacheLineExceedsPage: Boolean =
     ICacheEnable && ICacheBlockSizeLog2 > MMU.pageBits
   final val DCacheLineExceedsPage: Boolean =

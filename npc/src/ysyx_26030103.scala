@@ -68,6 +68,7 @@ class ysyx_26030103(
       DCacheDmaSnoop = config.DmaHardwareSnoop && config.DCacheEnable,
       DCacheViptAliasScanWidth = config.DCacheViptAliasScanWidth,
       DCacheViptAliasDirectoryEntries = config.DCacheViptAliasDirectoryEntries,
+      DCacheViptAliasEventQueueDepth = config.DCacheViptAliasEventQueueDepth,
       ViptParallel = parallelDataVipt,
       AddressWidth = config.AddressWidth,
       BusDataWidth = BusDataWidth,

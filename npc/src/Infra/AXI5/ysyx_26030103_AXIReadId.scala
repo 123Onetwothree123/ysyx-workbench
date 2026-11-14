@@ -1,5 +1,7 @@
 package ysyx_26030103.infra
 
+import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
+
 /** CPU 侧读通道 AXI ID 分配。
   *
   * 4 位 ID 在 IFU/LSU/DMA 之间共享，并与 AXI5Xbar 的 16 个读槽一一对应：
@@ -14,10 +16,13 @@ package ysyx_26030103.infra
   * 的限制。
   */
 object ysyx_26030103_AXIReadId {
+  private val IdWidth = ysyx_26030103_KconfigDefaults.AxiIdWidth
+  require(IdWidth == 4,
+    s"当前 AXI ID 固定为 4 位，收到 AXI_ID_WIDTH=$IdWidth")
   val Ifu = 0
   val Lsu = 1
   val Dma = 2
   val PtwBase = 3
-  val PtwSlots = 13
+  val PtwSlots = (1 << IdWidth) - PtwBase
   val PtwLast = PtwBase + PtwSlots - 1
 }

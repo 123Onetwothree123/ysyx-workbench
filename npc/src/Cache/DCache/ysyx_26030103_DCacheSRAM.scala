@@ -26,6 +26,9 @@ class ysyx_26030103_DCacheSRAM(
     ViptAliasScanWidth: Int = 0,
     // directory 的目录项数；0=跟随 sets（完整无冲突）。
     ViptAliasDirectoryEntries: Int = 0,
+    // alias 事件队列深度；必须是 2 的幂。
+    ViptAliasEventQueueDepth: Int =
+      ysyx_26030103_KconfigDefaults.MmuCacheViptAliasEventQueueDepth,
     CacheableBase: Long = 0L,
     CacheableMask: Long = 0L,
     // true=命中响应第一拍旁路SRAM输出(保持1拍延迟);
@@ -539,7 +542,8 @@ class ysyx_26030103_DCacheSRAM(
     StoreAliasEvent,
     StoreTag,
     io.flush,
-    ScanWidth
+    ScanWidth,
+    ViptAliasEventQueueDepth
   )
   val AliasScanBusy = AliasScanStatus.busy
   val AliasDirectoryInstallBusy =

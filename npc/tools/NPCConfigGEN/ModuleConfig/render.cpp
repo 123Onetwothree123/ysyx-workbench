@@ -294,6 +294,8 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
             "MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH", 4);
     emitInt("MmuCacheViptAliasDirectoryEntries",
             "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES", 0);
+    emitInt("MmuCacheViptAliasEventQueueDepth",
+            "MMU_CACHE_VIPT_ALIAS_EVENT_QUEUE_DEPTH", 4);
     emitInt("MmuPtwOutstanding", "MMU_PTW_OUTSTANDING", 2);
     emitInt("MmuPtwBusOutstanding", "MMU_PTW_BUS_OUTSTANDING", 1);
     emitInt("MmuPtwCacheEntries", "MMU_PTW_CACHE_ENTRIES", 16);

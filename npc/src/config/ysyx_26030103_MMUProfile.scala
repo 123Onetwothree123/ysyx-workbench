@@ -84,6 +84,9 @@ case class ysyx_26030103_MMUProfile(
     // directory 的目录项数。0 表示跟随实际 set 数（每个 set 独占目录桶，
     // 无冲突）；显式值必须是 2 的幂且不超过 set 数。
     cacheViptAliasDirectoryEntries: Int = KconfigDefaults.MmuCacheViptAliasDirectoryEntries,
+    // DCache alias 事件队列深度；队列满时清空整个 DCache。仅 DCache 使用。
+    cacheViptAliasEventQueueDepth: Int =
+      KconfigDefaults.MmuCacheViptAliasEventQueueDepth,
     ptwPath: String = "dedicated",
     ptwArch: String = "independent",
     ptwOutstanding: Int = KconfigDefaults.MmuPtwOutstanding,
@@ -181,14 +184,21 @@ case class ysyx_26030103_MMUProfile(
   )
   // parallel_n 的宽度在真正生成硬件的 Cache 内按 sets 截断；这里只校验
   // 配置值本身可实现，避免 Kconfig 的静态 range 与实际 sets 不一致。
-  require(cacheViptAliasScanWidth >= 2 && cacheViptAliasScanWidth <= 1024,
-    s"MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH=$cacheViptAliasScanWidth 必须在 2..1024")
+  require(cacheViptAliasScanWidth == 0 ||
+    (cacheViptAliasScanWidth >= 2 && cacheViptAliasScanWidth <= 1024),
+    s"MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH=$cacheViptAliasScanWidth 必须是 0 或 2..1024")
   require(cacheViptAliasDirectoryEntries >= 0 &&
     cacheViptAliasDirectoryEntries <= 1024,
     s"MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES=$cacheViptAliasDirectoryEntries 必须在 0..1024")
   require(cacheViptAliasDirectoryEntries == 0 ||
     (cacheViptAliasDirectoryEntries & (cacheViptAliasDirectoryEntries - 1)) == 0,
     s"MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES=$cacheViptAliasDirectoryEntries 必须是 2 的幂或 0")
+  require(cacheViptAliasEventQueueDepth >= 2 &&
+    cacheViptAliasEventQueueDepth <= 16 &&
+    (cacheViptAliasEventQueueDepth &
+      (cacheViptAliasEventQueueDepth - 1)) == 0,
+    s"MMU_CACHE_VIPT_ALIAS_EVENT_QUEUE_DEPTH=$cacheViptAliasEventQueueDepth " +
+      "必须是 2/4/8/16")
   require(tlbAsidBits >= 0 && tlbAsidBits <= 16, "tlbAsidBits 必须在 0..16")
   require(utlbLookupPorts >= 1 && utlbLookupPorts <= 2, "utlbLookupPorts 必须在 1..2")
   require(refillPorts >= 1, "refillPorts 必须 >= 1")
@@ -397,6 +407,7 @@ case class ysyx_26030103_MMUProfile(
       s"pte=$pteSizeBytes table=$pageTableSizeBytes " +
       s"cache=$cacheMode vipt_alias_safe=$cacheViptAliasSafe " +
       s"vipt_alias_scan=$aliasScanDetail " +
+      s"vipt_alias_queue=$cacheViptAliasEventQueueDepth " +
       s"ptw=$ptwPath/$ptwArch/$ptwOutstanding/bus$ptwBusOutstanding) " +
       s"TLB(enabled=$tlbEnabled org=$tlbOrganization storage=$tlbStorage " +
       s"repl=$tlbReplacement asid=$tlbAsidBits)"
@@ -563,6 +574,9 @@ object ysyx_26030103_MMUProfile {
       cacheViptAliasDirectoryEntries =
         envInt(env, "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES",
         KconfigDefaults.MmuCacheViptAliasDirectoryEntries),
+      cacheViptAliasEventQueueDepth =
+        envInt(env, "MMU_CACHE_VIPT_ALIAS_EVENT_QUEUE_DEPTH",
+        KconfigDefaults.MmuCacheViptAliasEventQueueDepth),
       ptwPath = envString(env, "MMU_PTW_PATH", "dedicated"),
       ptwArch = envString(env, "MMU_PTW_ARCH", "independent"),
       ptwOutstanding = envInt(env, "MMU_PTW_OUTSTANDING", KconfigDefaults.MmuPtwOutstanding),

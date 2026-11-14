@@ -71,6 +71,7 @@ object ysyx_26030103_KconfigDefaults {
   val MmuPageTableSizeBytes: Int = 4096
   val MmuCacheViptAliasScanWidth: Int = 4
   val MmuCacheViptAliasDirectoryEntries: Int = 0
+  val MmuCacheViptAliasEventQueueDepth: Int = 4
   val MmuPtwOutstanding: Int = 2
   val MmuPtwBusOutstanding: Int = 1
   val MmuPtwCacheEntries: Int = 16

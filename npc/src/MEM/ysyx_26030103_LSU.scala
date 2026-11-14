@@ -30,6 +30,8 @@ class ysyx_26030103_LSU(
     val DCacheDmaSnoop: Boolean = false,
     val DCacheViptAliasScanWidth: Int = 0,
     val DCacheViptAliasDirectoryEntries: Int = 0,
+    val DCacheViptAliasEventQueueDepth: Int =
+      ysyx_26030103_KconfigDefaults.MmuCacheViptAliasEventQueueDepth,
     // VIPT 并行模式：DCache/LSU 在 PA 到达前就用 VA 选 index 并持有请求，
     // MMU 故障通过 ViptKill 取消该请求。
     val ViptParallel: Boolean = false,
@@ -201,6 +203,7 @@ class ysyx_26030103_LSU(
     DmaSnoop = DCacheDmaSnoop,
     ViptAliasScanWidth = DCacheViptAliasScanWidth,
     ViptAliasDirectoryEntries = DCacheViptAliasDirectoryEntries,
+    ViptAliasEventQueueDepth = DCacheViptAliasEventQueueDepth,
     DrainTimeout = DCacheDrainTimeout
   )
   DCache.io.dma_snoop_valid := io.DCacheDmaSnoopValid
