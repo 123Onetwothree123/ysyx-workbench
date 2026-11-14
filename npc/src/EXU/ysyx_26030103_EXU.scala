@@ -491,15 +491,6 @@ class ysyx_26030103_EXU(
   // 时 ActiveInst 是更老的排队指令，不能误用年轻 inst 的 misaligned 信号。
   val ActiveInstructionAddressMisaligned =
     Mux(PendingMDU || FpPending, false.B, InstructionAddressMisaligned)
-  val ActiveExceptionCause = Mux(
-    PendingMDU,
-    ActiveInst.ExceptionCause,
-    Mux(
-      ActiveInstructionAddressMisaligned,
-      0.U,
-      ActiveInst.ExceptionCause
-    )
-  )
   // Decoupled.bits在valid=0时没有语义。空流水IRQ会独立拉高CSR Enable，
   // 因此所有“当前指令”控制必须显式由valid门控，不能让上一个MRET/CSR
   // 留下的bits与IRQ同时产生副作用。

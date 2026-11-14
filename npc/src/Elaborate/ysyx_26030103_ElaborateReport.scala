@@ -1,9 +1,6 @@
 import _root_.ysyx_26030103.config._
 import java.nio.file.Path
 object ysyx_26030103_ElaborateReport {
-  def print(config: ysyx_26030103_NPCConfig): Unit =
-    print(config, None)
-
   def print(config: ysyx_26030103_NPCConfig, source: Path): Unit =
     print(config, Some(source))
 
