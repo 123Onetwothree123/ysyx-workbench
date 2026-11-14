@@ -543,9 +543,8 @@ class ysyx_26030103_DCacheSRAM(
         ScanWidth
       )
     } else {
-      ysyx_26030103_ViptAliasScan.ScanStatus(
+      ysyx_26030103_ViptAliasScan.DcacheAliasScanStatus(
         false.B,
-        true.B,
         false.B,
         false.B
       )

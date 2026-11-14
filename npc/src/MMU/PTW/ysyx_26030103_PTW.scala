@@ -46,6 +46,27 @@ class ysyx_26030103_PTWResponse(
   val fillLevel = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
 }
 
+/** PTW 内部响应荷载；`id`/`fillLevel` 由独立寄存器在输出级拼接。 */
+private[mmu] class ysyx_26030103_PTWRespPayload(
+    val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
+    val pteWidth: Int = ysyx_26030103_KconfigDefaults.MmuPteWidth
+) extends Bundle {
+  require(XLEN == 32 || XLEN == 64, s"PTWRespPayload XLEN 非法: $XLEN")
+  require(AddressWidth == 32 || AddressWidth == 64,
+    s"PTWRespPayload AddressWidth 非法: $AddressWidth")
+  require(pteWidth == 32 || pteWidth == 64,
+    s"PTWRespPayload pteWidth 非法: $pteWidth")
+  val paddr = UInt(AddressWidth.W)
+  val fault = Bool()
+  val cause = UInt(32.W)
+  val tval = UInt(XLEN.W)
+  val fillValid = Bool()
+  val fillPte = UInt(pteWidth.W)
+  val fillVaddr = UInt(XLEN.W)
+  val fillAsid = UInt(16.W)
+}
+
 /** 可配置页大小/级数/页表项数的 page-table walker。
   *
   * RV32/Sv32 与 RV64/Sv39/Sv48 共用同一套逐级 walk 状态机：
@@ -157,7 +178,11 @@ class ysyx_26030103_PTW(
   val tableReg = RegInit(0.U(addressWidth.W))
   val pteAddrReg = RegInit(0.U(addressWidth.W))
   val pteLowReg = RegInit(0.U(32.W))
-  val respReg = RegInit(0.U.asTypeOf(new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth)))
+  // 只保存响应荷载；id/fillLevel 由独立寄存器在输出级拼接，避免 respReg
+  // 里出现永远被覆盖的影子字段。
+  private val respReg = RegInit(
+    0.U.asTypeOf(new ysyx_26030103_PTWRespPayload(XLEN, addressWidth, pteWidth))
+  )
   val fillLevelReg = RegInit(0.U(ysyx_26030103_MMUProfile.LevelBits.W))
   val writeDataReg = RegInit(0.U(pteWidth.W))
 
@@ -398,7 +423,16 @@ class ysyx_26030103_PTW(
   io.bus.req.bits.strb := Mux(state === writeState, "hf".U(4.W), 0.U)
   io.bus.resp.ready := state === waitState || state === waitHigh || state === waitWrite
   io.resp.valid := state === done && !io.flush && !discard
-  io.resp.bits := respReg
+  io.resp.bits.paddr := respReg.paddr
+  io.resp.bits.fault := respReg.fault
+  io.resp.bits.cause := respReg.cause
+  io.resp.bits.tval := respReg.tval
+  io.resp.bits.fillValid := respReg.fillValid
+  io.resp.bits.fillPte := respReg.fillPte
+  io.resp.bits.fillVaddr := respReg.fillVaddr
+  io.resp.bits.fillAsid := respReg.fillAsid
+  io.resp.bits.fillLevel := fillLevelReg
+  io.resp.bits.id := idReg
 
   def setFault(cause: UInt = pageFaultCause): Unit = {
     respReg.paddr := 0.U
@@ -465,7 +499,9 @@ class ysyx_26030103_PTW(
     when(!canonicalOk(io.req.bits.vaddr) || !satpRootFits(io.req.bits.satp)) {
       // 非规范虚拟地址或无法装入物理地址的 satp.PPN 在查页表前就产生
       // page fault，避免高位别名或根表地址截断。
-      respReg := 0.U.asTypeOf(new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth))
+      respReg := 0.U.asTypeOf(
+        new ysyx_26030103_PTWRespPayload(XLEN, addressWidth, pteWidth)
+      )
       respReg.paddr := 0.U
       respReg.fault := true.B
       respReg.cause := causeOf(io.req.bits.access)
@@ -591,7 +627,4 @@ class ysyx_26030103_PTW(
       discard := false.B
     }
   }
-
-  io.resp.bits.fillLevel := fillLevelReg
-  io.resp.bits.id := idReg
 }

@@ -340,11 +340,9 @@ class ysyx_26030103_ICacheReg(
         ScanWidth
       )
     } else {
-      ysyx_26030103_ViptAliasScan.ScanStatus(
+      ysyx_26030103_ViptAliasScan.IcacheAliasScanStatus(
         false.B,
-        true.B,
-        false.B,
-        false.B
+        true.B
       )
     }
   val AliasScanBusy = AliasScanStatus.busy

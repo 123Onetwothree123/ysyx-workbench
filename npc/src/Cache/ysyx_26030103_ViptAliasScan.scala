@@ -70,17 +70,25 @@ object ysyx_26030103_ViptAliasScan {
     }
   }
 
-  /** 一次扫描/目录事件的握手状态。
+  /** ICache refill 扫描的握手状态。
     *
-    * `busy`               本拍必须反压新的 Cache 请求；
-    * `installAllowed`     本拍可以把 refill 新行置为 valid（扫描已覆盖
-    *                      到最后一组，或目录模式恒为 true）；
-    * `refillCleared`      DCache 事件队列刚完成“refill 事件”的扫描；
-    * `overflow`           事件队列溢出并清空了全部 Cache 行。
+    * `busy`           本拍必须反压新的取指请求；
+    * `installAllowed` 本拍可以把 refill 新行置为 valid（扫描已覆盖到
+    *                  最后一组，或没有扫描在进行）。
     */
-  final case class ScanStatus(
+  final case class IcacheAliasScanStatus(
       busy: Bool,
-      installAllowed: Bool,
+      installAllowed: Bool
+  )
+
+  /** DCache 事件队列扫描的握手状态。
+    *
+    * `busy`          本拍必须反压新的 load 请求；
+    * `refillCleared` 队首的 refill 事件刚完成扫描；
+    * `overflow`      事件队列溢出并清空了全部 Cache 行。
+    */
+  final case class DcacheAliasScanStatus(
+      busy: Bool,
       refillCleared: Bool,
       overflow: Bool
   )
@@ -109,7 +117,7 @@ object ysyx_26030103_ViptAliasScan {
       targetIndex: UInt,
       clear: Bool,
       scanWidth: Int
-  ): ScanStatus = {
+  ): IcacheAliasScanStatus = {
     val numSets = valid.length
     require(numSets >= 2, "VIPT alias 扫描至少需要 2 个 set")
     val width = scanWidth.min(numSets).max(1)
@@ -160,14 +168,12 @@ object ysyx_26030103_ViptAliasScan {
       active := false.B
       scanChunk := 0.U
     }
-    ScanStatus(
+    IcacheAliasScanStatus(
       busy = (active || trigger) && !clear,
       // 扫描最后一组与置 valid 同拍完成：旧副本和写译码在同一时钟沿
       // 生效，时钟沿之后只保留新行。trigger 拍不允许安装，避免新 refill
       // 在扫描尚未开始时就被旧 tag 判定为可安装。
-      installAllowed = !trigger && (!active || lastChunk),
-      refillCleared = false.B,
-      overflow = false.B
+      installAllowed = !trigger && (!active || lastChunk)
     )
   }
 
@@ -188,7 +194,7 @@ object ysyx_26030103_ViptAliasScan {
       storeTag: UInt,
       clear: Bool,
       scanWidth: Int
-  ): ScanStatus = {
+  ): DcacheAliasScanStatus = {
     val numSets = valid.length
     require(numSets >= 2, "VIPT alias 扫描至少需要 2 个 set")
     val width = scanWidth.min(numSets).max(1)
@@ -276,9 +282,8 @@ object ysyx_26030103_ViptAliasScan {
       count := 0.U
       scanChunk := 0.U
     }
-    ScanStatus(
+    DcacheAliasScanStatus(
       busy = (scanning || pushCount =/= 0.U) && !clear,
-      installAllowed = refillCleared,
       refillCleared = refillCleared,
       overflow = overflow && !clear
     )
