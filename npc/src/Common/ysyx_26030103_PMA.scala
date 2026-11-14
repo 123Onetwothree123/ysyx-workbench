@@ -121,10 +121,6 @@ object ysyx_26030103_PMAOptions {
 object ysyx_26030103_PhysicalMemoryMap {
   val DefaultPlicBase: Long = ysyx_26030103_KconfigDefaults.PlicBase
   val DefaultPlicSize: Long = ysyx_26030103_KconfigDefaults.PlicSize
-  val CLINT = ysyx_26030103_PMARegion(
-    ysyx_26030103_PMAOptions.Default.clintBase,
-    ysyx_26030103_PMAOptions.Default.clintSize
-  )
   def NPCWithSize(
       ramBytes: Long,
       PlicBase: Long = DefaultPlicBase,
