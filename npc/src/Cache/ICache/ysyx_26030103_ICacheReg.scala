@@ -328,23 +328,16 @@ class ysyx_26030103_ICacheReg(
     ref_cacheable && !discard && !(io.kill && s1_waits)
   // 扫描/启动拍反压新取指，确保不会在旧 alias 副本尚未清完时受理可能
   // 命中它的请求。all_sets/directory 不需要扫描反压。
-  val AliasScanStatus =
-    if (AliasScanActive) {
-      ysyx_26030103_ViptAliasScan.chunkedRefillScan(
-        valid,
-        tag,
-        RefillAliasEvent,
-        ref_tag,
-        RefIndexSafe,
-        io.flush,
-        ScanWidth
-      )
-    } else {
-      ysyx_26030103_ViptAliasScan.IcacheAliasScanStatus(
-        false.B,
-        true.B
-      )
-    }
+  val AliasScanStatus = ysyx_26030103_ViptAliasScan.icacheScan(
+    AliasScanActive,
+    valid,
+    tag,
+    RefillAliasEvent,
+    ref_tag,
+    RefIndexSafe,
+    io.flush,
+    ScanWidth
+  )
   val AliasScanBusy = AliasScanStatus.busy
   // directory 模式在 AR 握手拍更新目录并失效旧副本；同一拍不允许受理
   // 新取指，避免组合命中尚未失效的旧行。下一拍目录/valid 已同步。

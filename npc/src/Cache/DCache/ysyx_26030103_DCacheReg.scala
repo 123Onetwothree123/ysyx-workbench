@@ -473,26 +473,18 @@ class ysyx_26030103_DCacheReg(
     RefillActive && !suppressFill && !io.flush
   val StoreAliasEvent = io.StoreValid && StoreCacheable && !StoreHit
   // 扫描/事件排队期间反压新 load，保证不会命中尚未清理的 alias 副本。
-  val AliasScanStatus =
-    if (AliasScanActive) {
-      ysyx_26030103_ViptAliasScan.chunkedEventQueueScan(
-        valid,
-        tag,
-        RefillAliasEvent,
-        ReqTagReg,
-        ReqIndexSafe,
-        StoreAliasEvent,
-        StoreTag,
-        io.flush,
-        ScanWidth
-      )
-    } else {
-      ysyx_26030103_ViptAliasScan.DcacheAliasScanStatus(
-        false.B,
-        false.B,
-        false.B
-      )
-    }
+  val AliasScanStatus = ysyx_26030103_ViptAliasScan.dcacheScan(
+    AliasScanActive,
+    valid,
+    tag,
+    RefillAliasEvent,
+    ReqTagReg,
+    ReqIndexSafe,
+    StoreAliasEvent,
+    StoreTag,
+    io.flush,
+    ScanWidth
+  )
   val AliasScanBusy = AliasScanStatus.busy
   // directory 模式在 AR 握手拍更新目录；同拍不受理新 load，避免组合
   // 命中尚未失效的旧 alias 副本。store 拍已有 StoreConflictsRequest 拦

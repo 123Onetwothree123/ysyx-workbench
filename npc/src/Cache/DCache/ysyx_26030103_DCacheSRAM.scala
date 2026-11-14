@@ -529,26 +529,18 @@ class ysyx_26030103_DCacheSRAM(
     RefillActive && !suppressFill && !io.flush
   val StoreAliasEvent = io.StoreValid && StoreCacheable && !StoreHit
   // 扫描/事件排队期间反压新 load；all_sets/directory 不需要扫描反压。
-  val AliasScanStatus =
-    if (AliasScanActive) {
-      ysyx_26030103_ViptAliasScan.chunkedEventQueueScan(
-        valid,
-        tag,
-        RefillAliasEvent,
-        ReqTagReg,
-        ReqIndexSafe,
-        StoreAliasEvent,
-        StoreTag,
-        io.flush,
-        ScanWidth
-      )
-    } else {
-      ysyx_26030103_ViptAliasScan.DcacheAliasScanStatus(
-        false.B,
-        false.B,
-        false.B
-      )
-    }
+  val AliasScanStatus = ysyx_26030103_ViptAliasScan.dcacheScan(
+    AliasScanActive,
+    valid,
+    tag,
+    RefillAliasEvent,
+    ReqTagReg,
+    ReqIndexSafe,
+    StoreAliasEvent,
+    StoreTag,
+    io.flush,
+    ScanWidth
+  )
   val AliasScanBusy = AliasScanStatus.busy
   val AliasDirectoryInstallBusy =
     if (AliasDirectoryMode) RefillAliasEvent else false.B

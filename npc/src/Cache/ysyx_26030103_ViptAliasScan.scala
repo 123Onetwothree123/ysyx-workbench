@@ -3,24 +3,7 @@ package ysyx_26030103.cache
 import chisel3._
 import chisel3.util._
 
-/** VIPT alias 失效扫描的公共实现。
-  *
-  * 四种模式：
-  *   - `all_sets`：单拍并行比较所有 set，refill/store 不增加额外等待，
-  *     面积随 set 数线性增长（默认）。
-  *   - `serial`：每周期扫描一个 set，只有一套 tag 比较/valid 写译码；
-  *     扫描完成前反压新请求。
-  *   - `parallel_n`：每周期扫描 N 个 set，N 可配置；比较器/写译码面积
-  *     约为 all_sets 的 N/sets，而扫描等待只有 ceil(sets/N) 拍。
-  *   - `directory`：不扫描 tag 阵列，维护“物理行 -> set”目录；refill
-  *     安装和 store/snoop 只查目录项。目录项不足时按 set 低位分桶，
-  *     冲突会失效被挤出的 Cache 行，保证不留下无法追踪的有效副本。
-  *
-  * 所有扫描模式都在扫描完成前拒绝可能命中旧 alias 副本的请求；扫描
-  * 模式还会把新行的 valid 推迟到本轮扫描完成，避免扫描窗口内出现两份
-  * 同时有效（但不可同时观测）的副本。`directory` 在 AR 握手拍完成
-  * 目录更新并失效旧副本，新行要到 refill 最后一拍才置 valid。
-  */
+/** VIPT alias 失效扫描。 */
 object ysyx_26030103_ViptAliasScan {
   val AllSets = "all_sets"
   val Serial = "serial"
@@ -28,9 +11,7 @@ object ysyx_26030103_ViptAliasScan {
   val Directory = "directory"
   val Modes: Seq[String] = Seq(AllSets, Serial, ParallelN, Directory)
 
-  // store 失效事件队列深度。DCache 的写直达 store 完成通知不能被反压，
-  // 因此用一个小队列缓存“待扫描的物理行”；队列满时直接清空整个 Cache，
-  // 用一次性能损失换取绝对正确，不生成额外的全扫描比较器阵列。
+  // store 事件队列；溢出时清空整个 Cache。
   private val EventQueueDepth = 4
 
   def requireMode(mode: String, where: String): Unit =
@@ -45,12 +26,7 @@ object ysyx_26030103_ViptAliasScan {
   def isDirectory(mode: String): Boolean = mode == Directory
   def isScan(mode: String): Boolean = isSerial(mode) || isParallel(mode)
 
-  /** 把配置的扫描宽度解析成实际 RTL 宽度。
-    *
-    * `parallel_n` 的配置值允许为 0（自动），自动值取 min(4, sets)；
-    * 显式值必须 >=2，超过 sets 时按 sets 截断（等价于单拍全扫描）。
-    * 其它模式忽略配置值：serial=1、all_sets=sets、directory 不扫描。
-    */
+  // configured<=0 时自动取 min(4, sets)；超过 sets 时截断。
   def resolveScanWidth(mode: String, configured: Int, sets: Int): Int = {
     require(sets >= 2, s"VIPT alias 扫描至少需要 2 个 set，收到 $sets")
     mode match {
@@ -70,23 +46,11 @@ object ysyx_26030103_ViptAliasScan {
     }
   }
 
-  /** ICache refill 扫描的握手状态。
-    *
-    * `busy`           本拍必须反压新的取指请求；
-    * `installAllowed` 本拍可以把 refill 新行置为 valid（扫描已覆盖到
-    *                  最后一组，或没有扫描在进行）。
-    */
   final case class IcacheAliasScanStatus(
       busy: Bool,
       installAllowed: Bool
   )
 
-  /** DCache 事件队列扫描的握手状态。
-    *
-    * `busy`          本拍必须反压新的 load 请求；
-    * `refillCleared` 队首的 refill 事件刚完成扫描；
-    * `overflow`      事件队列溢出并清空了全部 Cache 行。
-    */
   final case class DcacheAliasScanStatus(
       busy: Bool,
       refillCleared: Bool,
@@ -103,12 +67,25 @@ object ysyx_26030103_ViptAliasScan {
       if (i < items.length) items(i) else 0.U(width.W)
     })
 
-  /** ICache/DCache refill 的定宽扫描（单 MSHR，同一时刻只有一个 refill）。
-    *
-    * 在 refill AR 握手时启动：立即清掉目标 set 的旧行，然后每周期扫描
-    * `scanWidth` 个 set。`installAllowed` 只在最后一组扫描拍或扫描结束
-    * 后为真，保证新行不会与尚未清理的旧 alias 副本同时有效。
-    */
+  /** 两种扫描引擎共用的几何与补齐参数。 */
+  private final class Geometry(
+      val valid: Vec[Bool],
+      val tag: Vec[UInt],
+      scanWidth: Int
+  ) {
+    val numSets: Int = valid.length
+    require(numSets >= 2, "VIPT alias 扫描至少需要 2 个 set")
+    val width: Int = scanWidth.min(numSets).max(1)
+    val idxWidth: Int = log2Ceil(numSets).max(1)
+    val chunks: Int = (numSets + width - 1) / width
+    val chunkWidth: Int = log2Ceil(chunks).max(1)
+    val tagWidth: Int = tag.head.getWidth.max(1)
+    val paddedTotal: Int = chunks * width
+    val offWidth: Int = log2Ceil(paddedTotal).max(1)
+    val paddedValid: Vec[Bool] = paddedBool(valid, paddedTotal)
+    val paddedTag: Vec[UInt] = paddedUInt(tag, paddedTotal, tagWidth)
+  }
+
   def chunkedRefillScan(
       valid: Vec[Bool],
       tag: Vec[UInt],
@@ -118,17 +95,16 @@ object ysyx_26030103_ViptAliasScan {
       clear: Bool,
       scanWidth: Int
   ): IcacheAliasScanStatus = {
-    val numSets = valid.length
-    require(numSets >= 2, "VIPT alias 扫描至少需要 2 个 set")
-    val width = scanWidth.min(numSets).max(1)
-    val idxWidth = log2Ceil(numSets).max(1)
-    val chunks = (numSets + width - 1) / width
-    val chunkWidth = log2Ceil(chunks).max(1)
-    val tagWidth = tag.head.getWidth.max(1)
-    val paddedTotal = chunks * width
-    val offWidth = log2Ceil(paddedTotal).max(1)
-    val paddedValid = paddedBool(valid, paddedTotal)
-    val paddedTag = paddedUInt(tag, paddedTotal, tagWidth)
+    val g = new Geometry(valid, tag, scanWidth)
+    val numSets = g.numSets
+    val width = g.width
+    val idxWidth = g.idxWidth
+    val chunks = g.chunks
+    val chunkWidth = g.chunkWidth
+    val tagWidth = g.tagWidth
+    val offWidth = g.offWidth
+    val paddedValid = g.paddedValid
+    val paddedTag = g.paddedTag
 
     val active = RegInit(false.B)
     val scanTag = Reg(UInt(tagWidth.W))
@@ -155,8 +131,7 @@ object ysyx_26030103_ViptAliasScan {
         scanChunk := scanChunk + 1.U
       }
     }
-    // 放在 active 之后：同一拍出现新事件时以新事件为准。ICache 只有
-    // 一个在途 refill，正常时序下两者不会同时发生。
+    // 新事件优先于扫描状态更新；ICache 同时只有一个在途 refill。
     when(trigger) {
       active := true.B
       scanTag := triggerTag
@@ -170,20 +145,11 @@ object ysyx_26030103_ViptAliasScan {
     }
     IcacheAliasScanStatus(
       busy = (active || trigger) && !clear,
-      // 扫描最后一组与置 valid 同拍完成：旧副本和写译码在同一时钟沿
-      // 生效，时钟沿之后只保留新行。trigger 拍不允许安装，避免新 refill
-      // 在扫描尚未开始时就被旧 tag 判定为可安装。
+      // trigger 拍不安装，避免旧 tag 判定新行可安装。
       installAllowed = !trigger && (!active || lastChunk)
     )
   }
 
-  /** DCache 的定宽事件队列扫描。
-    *
-    * refill 安装与写直达 store 完成都可能需要失效其它 set 的同物理行
-    * 副本。事件进入小队列后按 FIFO 扫描，每周期扫描 `scanWidth` 个 set，
-    * 扫描期间反压新的 load。队列溢出时直接清空全部 valid，避免任何
-    * 陈旧 alias 副本残留。
-    */
   def chunkedEventQueueScan(
       valid: Vec[Bool],
       tag: Vec[UInt],
@@ -195,17 +161,16 @@ object ysyx_26030103_ViptAliasScan {
       clear: Bool,
       scanWidth: Int
   ): DcacheAliasScanStatus = {
-    val numSets = valid.length
-    require(numSets >= 2, "VIPT alias 扫描至少需要 2 个 set")
-    val width = scanWidth.min(numSets).max(1)
-    val idxWidth = log2Ceil(numSets).max(1)
-    val chunks = (numSets + width - 1) / width
-    val chunkWidth = log2Ceil(chunks).max(1)
-    val tagWidth = tag.head.getWidth.max(1)
-    val paddedTotal = chunks * width
-    val offWidth = log2Ceil(paddedTotal).max(1)
-    val paddedValid = paddedBool(valid, paddedTotal)
-    val paddedTag = paddedUInt(tag, paddedTotal, tagWidth)
+    val g = new Geometry(valid, tag, scanWidth)
+    val numSets = g.numSets
+    val width = g.width
+    val idxWidth = g.idxWidth
+    val chunks = g.chunks
+    val chunkWidth = g.chunkWidth
+    val tagWidth = g.tagWidth
+    val offWidth = g.offWidth
+    val paddedValid = g.paddedValid
+    val paddedTag = g.paddedTag
     val depth = EventQueueDepth
     val ptrWidth = log2Ceil(depth).max(1)
     val countWidth = log2Ceil(depth + 1).max(1)
@@ -225,11 +190,11 @@ object ysyx_26030103_ViptAliasScan {
     val pop = scanning && lastChunk
     val available = depth.U + pop.asUInt - count
     val overflow = pushCount > available
-    // 只有 refill 事件带目标 set；store 事件需要失效所有匹配副本。
+    // 只有 refill 事件带目标 set；store 事件失效所有匹配副本。
     val refillCleared = pop && qTargetValid(head) && !clear && !overflow
 
     when(!overflow) {
-      // 先释放队首槽位，再写入本拍新事件，避免 ring 满时两者命中同一项。
+      // 先释放队首槽位，再写入本拍新事件。
       when(pop) { qValid(head) := false.B }
       when(refillTrigger) {
         qValid(tail) := true.B
@@ -267,7 +232,7 @@ object ysyx_26030103_ViptAliasScan {
       tail := tail + pushCount
       count := count + pushCount - pop.asUInt
     }.otherwise {
-      // 极端 store 风暴下队列可能溢出；整 Cache 失效仍然正确。
+      // 队列溢出时整 Cache 失效。
       valid.foreach(_ := false.B)
       qValid.foreach(_ := false.B)
       head := 0.U
@@ -288,4 +253,56 @@ object ysyx_26030103_ViptAliasScan {
       overflow = overflow && !clear
     )
   }
+
+  def icacheScan(
+      active: Boolean,
+      valid: Vec[Bool],
+      tag: Vec[UInt],
+      trigger: Bool,
+      triggerTag: UInt,
+      targetIndex: UInt,
+      clear: Bool,
+      scanWidth: Int
+  ): IcacheAliasScanStatus =
+    if (active) {
+      chunkedRefillScan(
+        valid,
+        tag,
+        trigger,
+        triggerTag,
+        targetIndex,
+        clear,
+        scanWidth
+      )
+    } else {
+      IcacheAliasScanStatus(false.B, true.B)
+    }
+
+  def dcacheScan(
+      active: Boolean,
+      valid: Vec[Bool],
+      tag: Vec[UInt],
+      refillTrigger: Bool,
+      refillTag: UInt,
+      refillTarget: UInt,
+      storeTrigger: Bool,
+      storeTag: UInt,
+      clear: Bool,
+      scanWidth: Int
+  ): DcacheAliasScanStatus =
+    if (active) {
+      chunkedEventQueueScan(
+        valid,
+        tag,
+        refillTrigger,
+        refillTag,
+        refillTarget,
+        storeTrigger,
+        storeTag,
+        clear,
+        scanWidth
+      )
+    } else {
+      DcacheAliasScanStatus(false.B, false.B, false.B)
+    }
 }

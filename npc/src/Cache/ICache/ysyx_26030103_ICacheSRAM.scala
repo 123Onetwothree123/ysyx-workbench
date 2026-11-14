@@ -336,23 +336,16 @@ class ysyx_26030103_ICacheSRAM(
   val RefillAliasEvent = rfstate === rf_req && io.axi.AR.ARREADY &&
     ref_cacheable && !discard && !(io.kill && s1_waits)
   // 扫描/启动拍反压新取指；all_sets/directory 模式不需要扫描反压。
-  val AliasScanStatus =
-    if (AliasScanActive) {
-      ysyx_26030103_ViptAliasScan.chunkedRefillScan(
-        valid,
-        tag,
-        RefillAliasEvent,
-        ref_tag,
-        RefIndexSafe,
-        io.flush,
-        ScanWidth
-      )
-    } else {
-      ysyx_26030103_ViptAliasScan.IcacheAliasScanStatus(
-        false.B,
-        true.B
-      )
-    }
+  val AliasScanStatus = ysyx_26030103_ViptAliasScan.icacheScan(
+    AliasScanActive,
+    valid,
+    tag,
+    RefillAliasEvent,
+    ref_tag,
+    RefIndexSafe,
+    io.flush,
+    ScanWidth
+  )
   val AliasScanBusy = AliasScanStatus.busy
   val AliasDirectoryInstallBusy =
     if (AliasDirectoryMode) RefillAliasEvent else false.B
