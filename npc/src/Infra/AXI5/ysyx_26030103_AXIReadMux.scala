@@ -400,7 +400,6 @@ class ysyx_26030103_PTWToAXI(
     }
   }
   when(writeRespFire) {
-    writeQ.io.deq.ready := true.B
     writeDone := true.B
     writeOrigId := writeHead.id
     writeFault := io.axiWrite.B.BRESP =/= 0.U

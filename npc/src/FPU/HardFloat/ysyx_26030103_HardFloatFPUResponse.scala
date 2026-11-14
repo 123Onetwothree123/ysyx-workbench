@@ -13,13 +13,11 @@ trait ysyx_26030103_HardFloatFPUResponse {
   val divS = Module(new DivSqrtRecFN_small(ExpS, SigS, 0))
   val divD = Module(new DivSqrtRecFN_small(ExpD, SigD, 0))
   private def SqrtOp: Bool = op === ysyx_26030103_FpuOp.FSqrt
-  divS.io.inValid := false.B
   divS.io.sqrtOp := SqrtOp
   divS.io.a := aRecS
   divS.io.b := bRecS
   divS.io.roundingMode := rm
   divS.io.detectTininess := DetectTininessUInt
-  divD.io.inValid := false.B
   divD.io.sqrtOp := SqrtOp
   divD.io.a := aRecD
   divD.io.b := bRecD

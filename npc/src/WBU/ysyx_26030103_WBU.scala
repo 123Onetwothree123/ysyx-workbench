@@ -22,7 +22,6 @@ class ysyx_26030103_WBU(val XLEN: Int = 32) extends Module {
   // 指令而改变。上游目前已经门控，这里保持模块自身契约自洽（与下面的
   // FPCommit 一致）。
   io.WriteEN := io.in.fire && io.in.bits.Retire && io.in.bits.RegisterWrite
-  io.wdata := 0.U(XLEN.W)
   io.FPWriteSELECT := io.in.bits.Rd
   io.FPWriteEN := io.in.fire && io.in.bits.Retire &&
     io.in.bits.FPRegisterWrite
@@ -33,18 +32,14 @@ class ysyx_26030103_WBU(val XLEN: Int = 32) extends Module {
   // 时另行置 Dirty。
   io.FPCommit := io.in.fire && io.in.bits.Retire &&
     io.in.bits.FPRegisterWrite
-  switch(io.in.bits.WBSelect) {
-    is("b00".U) {
-      io.wdata := io.in.bits.ALUResult
-    }
-    is("b01".U) {
-      io.wdata := io.in.bits.LoadData
-    }
-    is("b10".U) {
-      io.wdata := io.in.bits.snpc
-    }
-    is("b11".U) {
-      io.wdata := io.in.bits.CSRReadData
-    }
-  }
+  // WBSelect 为 2 位，四个取值互斥且穷尽；用 Mux1H 表达，
+  // 不需要先给 wdata 赋一个随后必被覆盖的默认值。
+  io.wdata := Mux1H(
+    Seq(
+      (io.in.bits.WBSelect === "b00".U) -> io.in.bits.ALUResult,
+      (io.in.bits.WBSelect === "b01".U) -> io.in.bits.LoadData,
+      (io.in.bits.WBSelect === "b10".U) -> io.in.bits.snpc,
+      (io.in.bits.WBSelect === "b11".U) -> io.in.bits.CSRReadData
+    )
+  )
 }

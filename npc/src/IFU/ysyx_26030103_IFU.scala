@@ -145,7 +145,6 @@ class ysyx_26030103_IFU(
         outCause := io.RespExceptionCause
         outAccessFaultResp := io.RespAccessFaultResp
         outInstruction := "h00000013".U(32.W)
-        nextPC := pcReg + Mux(secondWord, 4.U, 2.U)
       }.elsewhen(respIsSecond) {
         // 跨字 32 位指令：低半字来自第一次取指的高 16 位，高半字来自
         // 第二个字的低 16 位。

@@ -61,9 +61,6 @@ trait ysyx_26030103_FudianFPUResponse {
     div.io.b := bS
     div.io.rm := rm
     div.io.specialIO.isSqrt := isSqrtOp
-    div.io.specialIO.kill := false.B
-    div.io.specialIO.in_valid := false.B
-    div.io.specialIO.out_ready := false.B
   }
   dDiv.foreach { div =>
     val divA = if (Shared) Mux(fmtD, aD, sDivAToD.get.io.result) else aD
@@ -72,9 +69,6 @@ trait ysyx_26030103_FudianFPUResponse {
     div.io.b := divB
     div.io.rm := rm
     div.io.specialIO.isSqrt := isSqrtOp
-    div.io.specialIO.kill := false.B
-    div.io.specialIO.in_valid := false.B
-    div.io.specialIO.out_ready := false.B
   }
 
   private val busy = RegInit(false.B)
