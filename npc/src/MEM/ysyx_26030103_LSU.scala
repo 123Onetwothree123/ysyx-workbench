@@ -40,7 +40,11 @@ class ysyx_26030103_LSU(
     val DCacheDrainTimeout: Int =
       ysyx_26030103_KconfigDefaults.DCacheDrainTimeout,
     val DrainTimeout: Int = ysyx_26030103_KconfigDefaults.LsuDrainTimeout
-) extends Module {
+) extends Module
+    with LSUHelpers
+    with LSUAtomic
+    with LSURead
+    with LSUWrite {
   require(XLEN == 32 || XLEN == 64, s"LSU XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"LSU AddressWidth 非法: $AddressWidth")
@@ -52,27 +56,15 @@ class ysyx_26030103_LSU(
   // 非 2 的幂会让指针回绕与下标范围不一致，必须在 elaboration 期拒绝。
   require(WBufDepth >= 1 && (WBufDepth & (WBufDepth - 1)) == 0,
     s"LSU WBufDepth($WBufDepth) 必须是 2 的幂")
-  private val WideMem = XLEN == 64 || UseD
-  private val BusWide = BusDataWidth == 64
-  private val BusWideBit = BusWide.B
-  private def BusWord(Data: UInt, Address: UInt): UInt =
-    if (BusWide)
-      Mux(Address(2), Cat(Data(31, 0), 0.U(32.W)),
-        Cat(0.U(32.W), Data(31, 0)))
-    else Data(31, 0)
-  private def BusStrb(Strb: UInt, Address: UInt): UInt =
-    if (BusWide)
-      Mux(Address(2), Cat(Strb(3, 0), 0.U(4.W)),
-        Cat(0.U(4.W), Strb(3, 0)))
-    else Strb(3, 0)
-  private def BusSelectWord(Data: UInt, Address: UInt): UInt =
-    if (BusWide) Mux(Address(2), Data(63, 32), Data(31, 0))
-    else Data(31, 0)
+  private[mem] val WideMem = XLEN == 64 || UseD
+  private[mem] val BusWide = BusDataWidth == 64
+  private[mem] val BusWideBit = BusWide.B
+
   // DCache 关闭时数据通路没有 VIPT 语义：请求直接走 LSU 的 AXI 读/写，
   // ALUResult 已是 DMMU 给出的物理地址，不能再用它当 VA 去等带标签 PA。
   private val DataVipt = DCacheVipt && DCacheEnable
   private val DataViptParallel = DataVipt && ViptParallel
-  private def AddrOf(value: UInt): UInt = value(AddressWidth - 1, 0)
+
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage(XLEN)))
     val out = Decoupled(new ysyx_26030103_EXUMessage(XLEN))
@@ -280,9 +272,7 @@ class ysyx_26030103_LSU(
   val ReservationAddr = Reg(UInt(AddressWidth.W))
   // 原子写内存完成（无论 BRESP 是否正确）的单拍事件。
   val AtomicWriteComplete = WireDefault(false.B)
-  private def AtomicSext32(Value: UInt): UInt =
-    if (XLEN == 32) Value
-    else Cat(Fill(XLEN - 32, Value(31)), Value)
+
   val StageIsIdle = stageState === StageIdle
   val StageInputBits = Wire(chiselTypeOf(io.in.bits))
   StageInputBits := Mux(PendingStoreValid, PendingStoreHeadBits, io.in.bits)
@@ -332,17 +322,7 @@ class ysyx_26030103_LSU(
   // LSU 入端的 ALUResult（DMMU 已完成翻译）。
   val AtomicPAddrReady =
     if (DataViptParallel) PAddrValidReg else true.B
-  // LD/SD 要求 8 字节对齐；LW/SW 要求 4 字节；LH/SH、LB/SB 依次降低。
-  private def AddressIsMisaligned(Address: UInt, Width: UInt): Bool =
-    Mux(
-      Width === "b11".U,
-      Address(2, 0) =/= 0.U,
-      Mux(
-        Width === "b10".U,
-        Address(1, 0) =/= 0.U,
-        Mux(Width === "b01".U, Address(0), false.B)
-      )
-    )
+
   val StageInputMisaligned = AddressIsMisaligned(
     StageInputBits.ALUResult,
     StageInputBits.WidthSelect
@@ -548,11 +528,7 @@ class ysyx_26030103_LSU(
     WaitValid && io.in.bits.FPRegisterWrite && !io.in.bits.MemoryValid
   io.DebugMemoryWrite := ActiveInstruction.MemoryWrite
   io.DebugLoadDATA := LoadDataReg(31, 0)
-  // 总线事务FSM(原LSU逻辑)
-  private def AXISizeFor(Width: UInt): UInt = MuxLookup(Width, 2.U(3.W))(
-    Seq("b00".U -> 0.U(3.W), "b01".U -> 1.U(3.W), "b10".U -> 2.U(3.W),
-      "b11".U -> 2.U(3.W))
-  )
+
   val AXISize = AXISizeFor(ActiveInstruction.WidthSelect)
   val IncomingAXISize = AXISizeFor(io.in.bits.WidthSelect)
   val StateMachine = Enum(10)
@@ -578,72 +554,7 @@ class ysyx_26030103_LSU(
   // 超时后按访问故障完成，避免 LSU 永久停在 StatesReadDrain。
   val ReadDrainTimer = RegInit(0.U(10.W))
   when(state =/= StatesReadDrain) { ReadDrainTimer := 0.U }
-  private def AlignStore(
-      StoreData: UInt,
-      Address: UInt,
-      Width: UInt
-  ): (UInt, UInt) = {
-    val Data = WireDefault(StoreData(31, 0))
-    val Mask = WireDefault("b1111".U(4.W))
-    switch(Width) {
-      is("b00".U) {
-        switch(Address(1, 0)) {
-          is("b00".U) {
-            Data := Cat(0.U(24.W), StoreData(7, 0))
-            Mask := "b0001".U
-          }
-          is("b01".U) {
-            Data := Cat(
-              0.U(16.W),
-              StoreData(7, 0),
-              0.U(8.W)
-            )
-            Mask := "b0010".U
-          }
-          is("b10".U) {
-            Data := Cat(
-              0.U(8.W),
-              StoreData(7, 0),
-              0.U(16.W)
-            )
-            Mask := "b0100".U
-          }
-          is("b11".U) {
-            Data := Cat(StoreData(7, 0), 0.U(24.W))
-            Mask := "b1000".U
-          }
-        }
-      }
-      is("b01".U) {
-        switch(Address(1, 0)) {
-          is("b00".U) {
-            Data := Cat(
-              0.U(16.W),
-              StoreData(15, 0)
-            )
-            Mask := "b0011".U
-          }
-          is("b10".U) {
-            Data := Cat(
-              StoreData(15, 0),
-              0.U(16.W)
-            )
-            Mask := "b1100".U
-          }
-        }
-      }
-      is("b10".U) {
-        Data := StoreData(31, 0)
-        Mask := "b1111".U
-      }
-      is("b11".U) {
-        // SD 的第一拍是低 32 位；第二拍由写缓冲的 wbDataHi 提供。
-        Data := StoreData(31, 0)
-        Mask := "b1111".U
-      }
-    }
-    (Data, Mask)
-  }
+
   private val IncomingWritePayload = AlignStore(
     io.in.bits.StoreData,
     io.in.bits.ALUResult,
@@ -654,38 +565,7 @@ class ysyx_26030103_LSU(
   // SD 的第二拍数据。RV32 且无 D 扩展时该寄存器不会被执行路径使用。
   val IncomingWriteDataHi =
     if (WideMem) io.in.bits.StoreData(63, 32) else 0.U(32.W)
-  // 将最多 64 位的原始小端数据格式化为 XLEN 架构结果。
-  //   LB/LH/LW 按 Signed 做符号/零扩展；
-  //   LBU/LHU/LWU 零扩展；
-  //   LD 直接返回 64 位，忽略 Signed。
-  private def FormatLoad(
-      WordLow: UInt,
-      WordHigh: UInt,
-      Address: UInt,
-      Width: UInt,
-      Signed: Bool
-  ): UInt = {
-    val Word = WordLow(31, 0)
-    val RawWide = Cat(WordHigh(31, 0), Word)
-    val ByteData = MuxLookup(Address(1, 0), Word(7, 0))(
-      Seq(1.U -> Word(15, 8), 2.U -> Word(23, 16), 3.U -> Word(31, 24))
-    )
-    val HalfData = Mux(Address(1), Word(31, 16), Word(15, 0))
-    def Extend(Value: UInt, Bits: Int): UInt =
-      if (XLEN == Bits) {
-        Value
-      } else {
-        Mux(Signed, Cat(Fill(XLEN - Bits, Value(Bits - 1)), Value),
-          Cat(0.U((XLEN - Bits).W), Value))
-      }
-    val ByteResult = Extend(ByteData, 8)
-    val HalfResult = Extend(HalfData, 16)
-    val WordResult = Extend(Word, 32)
-    MuxLookup(Width, WordResult)(
-      Seq(0.U -> ByteResult, 1.U -> HalfResult, 2.U -> WordResult,
-        3.U -> RawWide)
-    )
-  }
+
   val LoadWord0Reg = RegInit(0.U(32.W))
   val LoadBeat = RegInit(0.U(1.W))
   val ReadIsWide = ActiveInstruction.WidthSelect === "b11".U
@@ -952,587 +832,44 @@ class ysyx_26030103_LSU(
   // 原子写完成后顶层全局失效 DCache；这是最小接口，不引入 alias 行扫描。
   io.AtomicCommit := AtomicWriteComplete
   io.AtomicBusy := AtomicActive
-  // Idle 可直接驱动已经寄存的队首，避免“发现非空→切 Issue→下一拍才
-  // 拉 VALID”的固定空拍。失败/非对齐/等待 PA 的队首会阻断所有年轻副作用。
-  val wbCanStart = !wbufEmpty && !wbHeadMisaligned && wbHeadReady &&
-    !io.PmpFault && !StoreFaultReg && !MemFaultReg
-  val wbDrivingIssue = wbState === wbIssue || (wbState === wbIdle && wbCanStart)
-  val WbHeadWide = wbHeadWide
-  val WbHeadBusWide = WbHeadWide && BusWideBit
-  val WbHeadTwoBeat = WbHeadWide && !BusWideBit
-  val wbBeat = RegInit(0.U(1.W))
-  when(wbDrivingIssue) {
-    io.DataBus.AW.AWVALID := !wbAWDone
-    io.DataBus.AW.AWADDR := WbHeadEffectiveAddr
-    io.DataBus.AW.AWLEN := Mux(WbHeadTwoBeat, 1.U, 0.U)
-    io.DataBus.AW.AWSIZE := Mux(WbHeadBusWide, 3.U, wbHeadSize)
-    io.DataBus.AW.AWBURST := 1.U
-    io.DataBus.W.WVALID := !wbWDone
-    io.DataBus.W.WDATA :=
-      Mux(WbHeadBusWide, Cat(wbHeadDataHi, wbHeadData),
-        Mux(WbHeadTwoBeat && wbBeat === 1.U, wbHeadDataHi,
-          BusWord(wbHeadData, WbHeadEffectiveAddr)))
-    io.DataBus.W.WSTRB :=
-      Mux(WbHeadBusWide, "hff".U,
-        Mux(WbHeadTwoBeat && wbBeat === 1.U, "hf".U,
-          BusStrb(wbHeadStrb, WbHeadEffectiveAddr)))
-    io.DataBus.W.WLAST :=
-      !WbHeadWide || WbHeadBusWide || wbBeat === 1.U
-  }
-  // 本拍 W 握手是否完成整笔 store 的全部数据拍。
-  val wbWFinishes =
-    wbWfire && (!WbHeadWide || WbHeadBusWide || wbBeat === 1.U)
-  switch(wbState) {
-    is(wbIdle) {
-      when(wbCanStart) {
-        when(wbAWfire) { wbAWDone := true.B }
-        when(wbWfire) {
-          when(WbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
-            .otherwise { wbWDone := true.B }
-        }
-        when(wbAWfire && wbWFinishes) {
-          wbState := wbWaitB
-        }.otherwise {
-          wbState := wbIssue
-        }
-      }.otherwise {
-        wbAWDone := false.B
-        wbWDone := false.B
-        wbBeat := 0.U
-      }
-    }
-    is(wbIssue) {
-      when(wbAWfire) { wbAWDone := true.B }
-      when(wbWfire) {
-        when(WbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
-          .otherwise { wbWDone := true.B }
-      }
-      when((wbAWDone || wbAWfire) && (wbWDone || wbWFinishes)) {
-        wbState := wbWaitB
-      }
-    }
-    is(wbWaitB) {
-      io.DataBus.B.BREADY := wbBReady
-      // B 响应既决定写缓冲出队，也是 store 的精确退休点。
-      when(wbBFire) {
-        assert(
-          io.DataBus.B.BID === 0.U,
-          "LSU received a B response with an unexpected BID"
-        )
-        when(wbBMatch) {
-          // Head advances on this edge.  wbIdle can immediately drive the new
-          // registered head in the following cycle, so there is no empty FSM
-          // cycle between a successful B and the next AW/W.
-          wbState := wbIdle
-          wbAWDone := false.B
-          wbWDone := false.B
-        }
-      }
-    }
-  }
-  when(wbPop) {
-    wbBeat := 0.U
-    if (WBufDepth == 1) {
-      wbHead := 0.U
-    } else {
-      wbHead := wbHead + 1.U
-    }
-  }
-  when(MemTrapCommit) {
-    wbCount := 0.U
-    wbHead := 0.U
-    wbTail := 0.U
-    wbState := wbIdle
-    wbAWDone := false.B
-    wbWDone := false.B
-    wbBeat := 0.U
-  }.otherwise {
-    wbCount := wbCount + wbPush.asUInt - wbPop.asUInt
-  }
+  writeBufferBody()
   io.Busy := (stageState =/= StageIdle) || io.in.valid ||
     PendingStoreValid || !wbufEmpty // 当前级、输入或写缓冲任一忙
   io.MemoryBusy :=
     (stageState === StageWait && MsgReg.MemoryValid) ||
       (StageInputValid && StageInputBits.MemoryValid) || !wbufEmpty
-  def finishWideAtomicRead(WideData: UInt, RespBad: Bool): Unit = {
-    val Fault = AccessFaultReg || RespBad
-    when(Fault) {
-      TransactionComplete := true.B
-      TransactionFault := true.B
-      AtomicActive := false.B
-      state := StatesIdle
-    }.elsewhen(ysyx_26030103_AtomicOp.IsLr(AtomicOpReg)) {
-      LoadDataReg := WideData
-      ReservationValid := true.B
-      ReservationAddr := AtomicAddrReg
-      AtomicActive := false.B
-      TransactionComplete := true.B
-      state := StatesIdle
-    }.otherwise {
-      AtomicResultData := WideData
-      AtomicNewData := ysyx_26030103_AtomicOp.Compute(
-        AtomicOpReg, WideData, ActiveInstruction.StoreData,
-        word = false)
-      AtomicAWDone := false.B
-      AtomicWDone := false.B
-      AtomicWBeat := false.B
-      state := StatesAtomicWriteRequest
-    }
-  }
+
   switch(state) {
     is(StatesIdle) {
-      when(startMem) {
-        // 这些寄存器属于已接受的访存指令。总线状态机返回Idle后仍要保持其稳定，
-        // 直到该级能在下游反压下真正提交。
-        AccessFaultReg := false.B
-        AccessFaultRespReg := 0.U
-        StoreFaultReg := false.B
-        LoadBeat := 0.U
-        is_store_transaction := StageInputBits.MemoryWrite
-        when(StageInputMisaligned || StageInputPmpFault) {
-          // 非对齐/PMP 故障项只作为写缓冲屏障，不产生任何 AXI 请求，
-          // 随后按 cause 4/6 或 5/7 精确提交。
-          state := StatesIdle
-        }
-          .elsewhen(StageInputBits.IsAtomic) {
-            // LR/SC/AMO：先拉高 AtomicBusy 并等待总线上的 DMA 排空，
-            // 再以独占读改写事务访问内存，完全绕开 DCache/写缓冲。
-            AtomicActive := true.B
-            AtomicOpReg := StageInputBits.AtomicOp
-            AtomicWide := StageInputBits.WidthSelect === "b11".U
-            AtomicAddrReg := 0.U
-            AtomicNewData := 0.U
-            AtomicResultData := 0.U
-            AtomicReadLow := 0.U
-            AtomicReadBeat := 0.U
-            AtomicReadFaultReg := false.B
-            AtomicAWDone := false.B
-            AtomicWDone := false.B
-            AtomicWBeat := false.B
-            state := StatesAtomicQuiet
-          }
-          .elsewhen(StageInputBits.MemoryWrite) {
-            // 所有 store（包括普通 RAM）都要等属于自己的 B 响应。
-            state := StatesWriteWaitB
-          }
-          .otherwise {
-            if (DCacheEnable) {
-              // 精确 store 队列只在全部老 store 已处理后才让 load 成为
-              // StageInput，因此这里不再经过不可达的 LoadWaitBuf 空状态。
-              DCacheRequestActive := true.B
-              state := StatesReadRequest
-            } else { // 关闭数据缓存时保持原来的单拍直读路径
-              state := StatesReadRequest
-            }
-          }
-      }
+      idleBody()
     }
     is(StatesWriteWaitB) {
-      // 等到自己的写事务拿到B响应: 之前的项都已按序完成, 队首就是本指令的项
-      when(wbPop && wbHead === storeBufIdx) {
-        StoreFaultReg := io.DataBus.B.BRESP =/= 0.U
-        AccessFaultRespReg := io.DataBus.B.BRESP
-        TransactionComplete := true.B
-        TransactionFault := io.DataBus.B.BRESP =/= 0.U
-        state := StatesIdle
-      }
+      storeWaitResponseBody()
     }
     // A 扩展原子事务
     is(StatesAtomicQuiet) {
-      // 等到物理地址（VIPT 并行）与总线都安静后，才允许发第一笔请求。
-      // AtomicBusy 已在本状态之前拉高，仲裁器会挡住新的 DMA 读写。
-      // DCache 可能正在后台完成一次 load miss 的回填；此时 AR/R 仍被它
-      // 占用，必须等 axi_active 与 DCacheRequestActive 都归零，否则原子
-      // 会把 DCache 的 ARREADY/R beat 误当成自己的事务。
-      when(AtomicPAddrReady && io.BusQuiet && !DCacheBusActive) {
-        AtomicAddrReg := AddrOf(EffectiveALUResult)
-        when(ysyx_26030103_AtomicOp.IsSc(AtomicOpReg)) {
-          // SC 失败路径完全不碰内存：rd=1，清除 reservation。
-          when(ReservationValid && ReservationAddr === AddrOf(EffectiveALUResult)) {
-            AtomicResultData := 0.U
-            AtomicNewData := ActiveInstruction.StoreData
-            AtomicAWDone := false.B
-            AtomicWDone := false.B
-            AtomicWBeat := false.B
-            state := StatesAtomicWriteRequest
-          }.otherwise {
-            ReservationValid := false.B
-            LoadDataReg := 1.U
-            AtomicActive := false.B
-            TransactionComplete := true.B
-            state := StatesIdle
-          }
-        }.otherwise {
-          // LR/AMO 先读。
-          AtomicReadBeat := 0.U
-          AtomicReadLow := 0.U
-          AtomicReadFaultReg := false.B
-          state := StatesAtomicReadRequest
-        }
-      }
+      atomicQuietBody()
     }
     is(StatesAtomicReadRequest) {
-      io.DataBus.AR.ARVALID := true.B
-      io.DataBus.AR.ARADDR := AtomicAddrReg
-      io.DataBus.AR.ARLEN := Mux(AtomicWide && !BusWideBit, 1.U, 0.U)
-      io.DataBus.AR.ARSIZE := Mux(AtomicWide && BusWideBit, 3.U, 2.U)
-      io.DataBus.AR.ARBURST := 1.U
-      // 只有 AR 确实由原子事务驱动时，ARREADY 才算自己的握手。
-      when(!DCacheBusActive && io.DataBus.AR.ARVALID &&
-          io.DataBus.AR.ARREADY) {
-        state := StatesAtomicReadResponse
-      }
+      atomicReadRequestBody()
     }
     is(StatesAtomicReadResponse) {
-      io.DataBus.R.RREADY := true.B
-      when(io.DataBus.R.RVALID) {
-        val RespBad = io.DataBus.R.RRESP =/= 0.U
-        when(RespBad) {
-          AccessFaultReg := true.B
-          AccessFaultRespReg := io.DataBus.R.RRESP
-          AtomicReadFaultReg := true.B
-        }
-        if (XLEN == 64) {
-          when(AtomicWide && BusWideBit) {
-            when(io.DataBus.R.RLAST) {
-              finishWideAtomicRead(io.DataBus.R.RDATA, RespBad)
-            }.otherwise {
-              AccessFaultReg := true.B
-              AtomicReadFaultReg := true.B
-              AccessFaultRespReg := Mux(RespBad, io.DataBus.R.RRESP, 2.U)
-              state := StatesReadDrain
-            }
-          }.elsewhen(AtomicWide) {
-            when(AtomicReadBeat === 0.U) {
-              when(io.DataBus.R.RLAST) {
-                // 两拍读在第一个响应就结束：协议错误，按访问故障提交。
-                AccessFaultReg := true.B
-                AccessFaultRespReg := Mux(RespBad,
-                  io.DataBus.R.RRESP, 2.U)
-                AtomicReadFaultReg := true.B
-                TransactionComplete := true.B
-                TransactionFault := true.B
-                AtomicActive := false.B
-                state := StatesIdle
-              }.otherwise {
-                AtomicReadLow := io.DataBus.R.RDATA
-                AtomicReadBeat := 1.U
-              }
-            }.otherwise {
-              when(io.DataBus.R.RLAST) {
-                finishWideAtomicRead(
-                  Cat(io.DataBus.R.RDATA, AtomicReadLow), RespBad)
-              }.otherwise {
-                // 超长 burst：继续排空到 RLAST，最终按访问故障提交。
-                AccessFaultReg := true.B
-                AtomicReadFaultReg := true.B
-                AccessFaultRespReg := Mux(RespBad,
-                  io.DataBus.R.RRESP, 2.U)
-                state := StatesReadDrain
-              }
-            }
-          }.otherwise {
-            when(io.DataBus.R.RLAST) {
-              val WordData =
-                AtomicSext32(BusSelectWord(io.DataBus.R.RDATA, AtomicAddrReg))
-              val Fault = AccessFaultReg || RespBad
-              when(Fault) {
-                TransactionComplete := true.B
-                TransactionFault := true.B
-                AtomicActive := false.B
-                state := StatesIdle
-              }.elsewhen(ysyx_26030103_AtomicOp.IsLr(AtomicOpReg)) {
-                // LR 成功：建立 reservation，写回旧值。
-                LoadDataReg := WordData
-                ReservationValid := true.B
-                ReservationAddr := AtomicAddrReg
-                AtomicActive := false.B
-                TransactionComplete := true.B
-                state := StatesIdle
-              }.otherwise {
-                AtomicResultData := WordData
-                AtomicNewData := ysyx_26030103_AtomicOp.Compute(
-                  AtomicOpReg, WordData, ActiveInstruction.StoreData,
-                  word = true)
-                AtomicAWDone := false.B
-                AtomicWDone := false.B
-                AtomicWBeat := false.B
-                state := StatesAtomicWriteRequest
-              }
-            }.otherwise {
-              AccessFaultReg := true.B
-              AtomicReadFaultReg := true.B
-              AccessFaultRespReg := Mux(RespBad, io.DataBus.R.RRESP, 2.U)
-              state := StatesReadDrain
-            }
-          }
-        } else {
-          when(io.DataBus.R.RLAST) {
-            val WordData =
-              BusSelectWord(io.DataBus.R.RDATA, AtomicAddrReg)
-            val Fault = AccessFaultReg || RespBad
-            when(Fault) {
-              TransactionComplete := true.B
-              TransactionFault := true.B
-              AtomicActive := false.B
-              state := StatesIdle
-            }.elsewhen(ysyx_26030103_AtomicOp.IsLr(AtomicOpReg)) {
-              LoadDataReg := WordData
-              ReservationValid := true.B
-              ReservationAddr := AtomicAddrReg
-              AtomicActive := false.B
-              TransactionComplete := true.B
-              state := StatesIdle
-            }.otherwise {
-              AtomicResultData := WordData
-              AtomicNewData := ysyx_26030103_AtomicOp.Compute(
-                AtomicOpReg, WordData, ActiveInstruction.StoreData,
-                word = true)
-              AtomicAWDone := false.B
-              AtomicWDone := false.B
-              AtomicWBeat := false.B
-              state := StatesAtomicWriteRequest
-            }
-          }.otherwise {
-            AccessFaultReg := true.B
-            AtomicReadFaultReg := true.B
-            AccessFaultRespReg := Mux(RespBad, io.DataBus.R.RRESP, 2.U)
-            state := StatesReadDrain
-          }
-        }
-      }
+      atomicReadResponseBody()
     }
     is(StatesAtomicWriteRequest) {
-      val AtomicWideBus = AtomicWide && BusWideBit
-      val AtomicTwoBeat = AtomicWide && !BusWideBit
-      val AtomicHigh =
-        if (XLEN == 64) AtomicNewData(63, 32) else 0.U(32.W)
-      io.DataBus.AW.AWVALID := !AtomicAWDone
-      io.DataBus.AW.AWADDR := AtomicAddrReg
-      io.DataBus.AW.AWLEN := Mux(AtomicTwoBeat, 1.U, 0.U)
-      io.DataBus.AW.AWSIZE := Mux(AtomicWideBus, 3.U, 2.U)
-      io.DataBus.AW.AWBURST := 1.U
-      io.DataBus.W.WVALID := !AtomicWDone
-      io.DataBus.W.WDATA :=
-        Mux(AtomicWideBus, Cat(AtomicHigh, AtomicNewData(31, 0)),
-          Mux(AtomicTwoBeat && AtomicWBeat, AtomicHigh,
-            BusWord(AtomicNewData(31, 0), AtomicAddrReg)))
-      io.DataBus.W.WSTRB :=
-        Mux(AtomicWideBus, "hff".U,
-          Mux(AtomicTwoBeat && AtomicWBeat, "hf".U,
-            BusStrb("hf".U, AtomicAddrReg)))
-      io.DataBus.W.WLAST :=
-        !AtomicWide || AtomicWideBus || AtomicWBeat
-      val AtomicAWFire =
-        io.DataBus.AW.AWVALID && io.DataBus.AW.AWREADY
-      val AtomicWFire =
-        io.DataBus.W.WVALID && io.DataBus.W.WREADY
-      val AtomicWFinishes =
-        AtomicWFire && (!AtomicWide || AtomicWideBus || AtomicWBeat)
-      when(AtomicAWFire) { AtomicAWDone := true.B }
-      when(AtomicWFire) {
-        when(AtomicTwoBeat && !AtomicWBeat) { AtomicWBeat := true.B }
-          .otherwise { AtomicWDone := true.B }
-      }
-      when((AtomicAWDone || AtomicAWFire) &&
-          (AtomicWDone || AtomicWFinishes)) {
-        state := StatesAtomicWriteWaitB
-      }
+      atomicWriteRequestBody()
     }
     is(StatesAtomicWriteWaitB) {
-      io.DataBus.B.BREADY := true.B
-      when(io.DataBus.B.BVALID) {
-        assert(io.DataBus.B.BID === 0.U,
-          "atomic write received an unexpected BID")
-        val Fault = io.DataBus.B.BRESP =/= 0.U
-        when(Fault) {
-          AccessFaultReg := true.B
-          AccessFaultRespReg := io.DataBus.B.BRESP
-        }
-        // 成功时写回旧值（AMO）或 0（SC）；失败时 MemFaultReg 会屏蔽写回。
-        LoadDataReg := AtomicResultData
-        // AMO 也是同 hart store，写完成后 reservation 必须失效。
-        ReservationValid := false.B
-        // 无论 BRESP 是否正确都失效缓存，覆盖从设备可能的部分写副作用。
-        AtomicWriteComplete := true.B
-        AtomicActive := false.B
-        TransactionComplete := true.B
-        TransactionFault := Fault
-        state := StatesIdle
-      }
+      atomicWriteWaitResponseBody()
     }
     is(StatesReadRequest) {
-      if (DCacheEnable) {
-        when(DCacheRequestActive) {
-          when(DCache.io.req.fire) { state := StatesReadResponse }
-        }.otherwise {
-          io.DataBus.AR.ARVALID := true.B
-          io.DataBus.AR.ARADDR := AddrOf(ActiveInstruction.ALUResult)
-          io.DataBus.AR.ARLEN :=
-            Mux(ReadIsWide && !BusWideBit, 1.U, 0.U)
-          io.DataBus.AR.ARSIZE :=
-            Mux(ReadIsWide && BusWideBit, 3.U, AXISize)
-          when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
-        }
-      } else {
-        io.DataBus.AR.ARVALID := true.B
-        io.DataBus.AR.ARADDR := AddrOf(ActiveInstruction.ALUResult)
-        io.DataBus.AR.ARLEN := Mux(ReadIsWide && !BusWideBit, 1.U, 0.U)
-        io.DataBus.AR.ARSIZE := Mux(ReadIsWide && BusWideBit, 3.U, AXISize)
-        when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
-      }
+      readRequestBody()
     }
     is(StatesReadResponse) {
-      if (DCacheEnable) {
-        when(DCacheRequestActive) {
-          when(DCache.io.resp.fire) {
-            LoadForwardValid := true.B
-            LoadForwardData := DCache.io.resp.bits.data
-            LoadForwardFault := DCache.io.resp.bits.fault
-            when(DCache.io.resp.bits.fault) {
-              AccessFaultReg := true.B
-              AccessFaultRespReg := DCache.io.resp.bits.FaultResp
-            }.otherwise {
-              LoadDataReg := DCache.io.resp.bits.data
-            }
-            DCacheRequestActive := false.B
-            TransactionComplete := true.B
-            TransactionFault := DCache.io.resp.bits.fault
-            state := StatesIdle
-          }
-        }.otherwise {
-          io.DataBus.R.RREADY := true.B
-          when(io.DataBus.R.RVALID) {
-            when(io.DataBus.R.RRESP =/= 0.U) {
-              AccessFaultReg := true.B
-              AccessFaultRespReg := io.DataBus.R.RRESP
-            }.otherwise {
-              LoadDataReg := DirectLoadData
-            }
-            when(io.DataBus.R.RLAST) {
-              LoadForwardValid := true.B
-              LoadForwardData := DirectLoadData
-              LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-              TransactionComplete := true.B
-              TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-              state := StatesIdle
-            }.otherwise {
-              // 该请求是单拍AXI读，因此不带RLAST的响应属于协议错误。应继续消费
-              // 此通道，直到违规突发传输排空，而不是提前退休。
-              AccessFaultReg := true.B
-              AccessFaultRespReg := Mux(
-                io.DataBus.R.RRESP =/= 0.U,
-                io.DataBus.R.RRESP,
-                2.U
-              )
-              state := StatesReadDrain
-            }
-          }
-        }
-      } else {
-        io.DataBus.R.RREADY := true.B
-        when(io.DataBus.R.RVALID) {
-          when(io.DataBus.R.RRESP =/= 0.U) {
-            AccessFaultReg := true.B
-            AccessFaultRespReg := io.DataBus.R.RRESP
-          }
-          if (WideMem && !BusWide) {
-            when(ReadIsWide) {
-              when(LoadBeat === 0.U) {
-                when(io.DataBus.R.RLAST) {
-                  // 两拍读在第一个响应就结束：按协议错误提交访问故障。
-                  AccessFaultReg := true.B
-                  AccessFaultRespReg := Mux(
-                    io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-                  TransactionComplete := true.B
-                  TransactionFault := true.B
-                  state := StatesIdle
-                }.otherwise {
-                  LoadWord0Reg := io.DataBus.R.RDATA
-                  LoadBeat := 1.U
-                }
-              }.otherwise {
-                when(io.DataBus.R.RLAST) {
-                  val FinalData = DirectLoadData
-                  when(!(AccessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
-                    LoadDataReg := FinalData
-                  }
-                  LoadForwardValid := true.B
-                  LoadForwardData := FinalData
-                  LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-                  TransactionComplete := true.B
-                  TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-                  state := StatesIdle
-                }.otherwise {
-                  AccessFaultReg := true.B
-                  AccessFaultRespReg := Mux(
-                    io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-                  state := StatesReadDrain
-                }
-              }
-            }.otherwise {
-              when(io.DataBus.R.RLAST) {
-                val FinalData = DirectLoadData
-                when(!(AccessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
-                  LoadDataReg := FinalData
-                }
-                LoadForwardValid := true.B
-                LoadForwardData := FinalData
-                LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-                TransactionComplete := true.B
-                TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-                state := StatesIdle
-              }.otherwise {
-                AccessFaultReg := true.B
-                AccessFaultRespReg := Mux(
-                  io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-                state := StatesReadDrain
-              }
-            }
-          } else {
-            when(io.DataBus.R.RLAST) {
-              val FinalData = DirectLoadData
-              when(!(AccessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
-                LoadDataReg := FinalData
-              }
-              LoadForwardValid := true.B
-              LoadForwardData := FinalData
-              LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-              TransactionComplete := true.B
-              TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-              state := StatesIdle
-            }.otherwise {
-              AccessFaultReg := true.B
-              AccessFaultRespReg := Mux(
-                io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-              state := StatesReadDrain
-            }
-          }
-        }
-      }
+      readResponseBody()
     }
     is(StatesReadDrain) {
-      io.DataBus.R.RREADY := true.B
-      when(io.DataBus.R.RVALID && io.DataBus.R.RLAST) {
-        TransactionComplete := true.B
-        TransactionFault := true.B
-        AtomicActive := false.B
-        state := StatesIdle
-      }.elsewhen(ReadDrainTimer === DrainTimeout.U) {
-        // 从设备缺少 RLAST：继续等待只会让 LSU 永久忙。按访问故障完成
-        // 当前指令，让流水线恢复（迟到的 beat 由后续事务承担风险，和
-        // DCache 的 drain 超时恢复策略一致）。
-        AccessFaultReg := true.B
-        when(AccessFaultRespReg === 0.U) {
-          AccessFaultRespReg := 2.U
-        }
-        TransactionComplete := true.B
-        TransactionFault := true.B
-        AtomicActive := false.B
-        state := StatesIdle
-      }.otherwise {
-        ReadDrainTimer := ReadDrainTimer + 1.U
-      }
+      readDrainBody()
     }
   }
   if (DCacheEnable) {
