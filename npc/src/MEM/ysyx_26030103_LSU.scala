@@ -44,7 +44,9 @@ class ysyx_26030103_LSU(
     with LSUHelpers
     with LSUAtomic
     with LSURead
-    with LSUWrite {
+    with LSUWrite
+    with LSUStage
+    with LSUPmp {
   require(XLEN == 32 || XLEN == 64, s"LSU XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"LSU AddressWidth 非法: $AddressWidth")
@@ -63,115 +65,9 @@ class ysyx_26030103_LSU(
   // DCache 关闭时数据通路没有 VIPT 语义：请求直接走 LSU 的 AXI 读/写，
   // ALUResult 已是 DMMU 给出的物理地址，不能再用它当 VA 去等带标签 PA。
   private val DataVipt = DCacheVipt && DCacheEnable
-  private val DataViptParallel = DataVipt && ViptParallel
+  private[mem] val DataViptParallel = DataVipt && ViptParallel
 
-  val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage(XLEN)))
-    val out = Decoupled(new ysyx_26030103_EXUMessage(XLEN))
-    // 给EXU: 本级非空(有访存或完成中的指令),EXU的副作用指令要等着
-    val Busy = Output(Bool())
-    // 只表示仍可能失败或尚未完成的访存/写缓冲。普通 ALU 指令在本级
-    // 单拍直通时不会拉高它，供控制转移避免无谓等待。
-    val MemoryBusy = Output(Bool())
-    // 访存故障提交(CSR后门)
-    val MemTrapCommit = Output(Bool())
-    val MemTrapCause = Output(UInt(32.W))
-    val MemTrapPC = Output(UInt(XLEN.W))
-    val MemTrapTval = Output(UInt(XLEN.W))
-    // 访存故障提交时冲刷IDU→EXU和EXU→LSU流水寄存器(里面全是年轻指令)
-    val FlushIDEX = Output(Bool())
-    val FlushEXMEM = Output(Bool())
-    // 直接连总线
-    val DataBus = new ysyx_26030103_AXI5IO(AddressWidth, BusDataWidth, 4)
-    // 为未来 DMA/其他非 CPU 写入者保留的数据缓存一致性失效口。
-    // Fence.I 只同步指令取值，当前写直达 DCache 不因 Fence.I 清空。
-    val DCacheFlush = Input(Bool())
-    // LR/SC/AMO 的串行 uncached 事务。AtomicBusy 在事务开始前拉高，
-    // 通知总线仲裁器暂停新的 DMA 读写；BusQuiet 表示总线上已无 DMA
-    // 在途事务，LSU 必须等到它为高才开始读改写。
-    val AtomicBusy = Output(Bool())
-    val BusQuiet = Input(Bool())
-    // 异常/上下文切换（CSR 提交）时保守地失效 reservation。
-    val ReservationClear = Input(Bool())
-    // 原子事务完成写内存后产生单拍脉冲：顶层用它全局失效 DCache
-    // （最小接口，不做 alias 行扫描），并通过 StoreCommit 让 ICache
-    // 复用现有行失效通路。
-    val AtomicCommit = Output(Bool())
-    // DMA_COHERENCE=hardware_snoop 的地址级失效握手。Ready 为低时 DMA
-    // 的 B 保持等待，直到所有匹配行失效且旧 refill/响应不再可能被使用。
-    val DCacheDmaSnoopValid = Input(Bool())
-    val DCacheDmaSnoopStart = Input(UInt(AddressWidth.W))
-    val DCacheDmaSnoopEnd = Input(UInt(AddressWidth.W))
-    val DCacheDmaSnoopReady = Output(Bool())
-    // store 的 B 响应完成事件：ICache HARDWARE_SNOOP 用它在写落地后
-    // 失效对应行。Addr 是 store 首字节物理地址，LastAddr 覆盖本次访问的
-    // 最后一个字节（RV64 的 8B store 在 4B 行上可能跨两行）。
-    val StoreCommit = Output(Bool())
-    val StoreCommitAddr = Output(UInt(AddressWidth.W))
-    val StoreCommitLastAddr = Output(UInt(AddressWidth.W))
-    // VIPT 并行翻译结果：PAddr 可能晚于 DCache 请求到达；PAddrVaddr 是
-    // 该物理地址对应的虚拟地址标签。非并行模式忽略这些输入。
-    val ViptPAddr = Input(UInt(AddressWidth.W))
-    val ViptPAddrValid = Input(Bool())
-    val ViptPAddrVaddr = Input(UInt(AddressWidth.W))
-    // MMU 翻译故障：取消本 LSU 已受理但尚未取到 PA 的 load。
-    val ViptKill = Input(Bool())
-    // 无 MMU 时由顶层 PMP 检查“下一个可能产生总线副作用的访存地址”：
-    // 写缓冲非空时检查最老 store（队首），否则检查即将进入执行槽的访存
-    // 指令。PmpFault 必须在 AW/W/AR 握手前组合生效，故障指令不得产生
-    // 任何总线副作用，随后按普通访问故障精确提交。
-    val PmpAddr = Output(UInt(AddressWidth.W))
-    // 本次访问最后一个字节的地址。PMP 需要同时检查起始与末字节所在的
-    // 4 字节 granule，防止 8 字节访问跨出 NA4/TOR 区域边界。
-    val PmpLastAddr = Output(UInt(AddressWidth.W))
-    val PmpRead = Output(Bool())
-    val PmpWrite = Output(Bool())
-    val PmpFault = Input(Bool())
-    // DCache性能计数器
-    val DCachePerfHit = Output(Bool())
-    val DCachePerfMiss = Output(Bool())
-    val DCachePerfRefillReq = Output(Bool())
-    val DCachePerfRefillResp = Output(Bool())
-    val DCachePerfLineFill = Output(Bool())
-    val DCachePerfWriteback = Output(Bool())
-    val PerfWBufCount = Output(UInt(5.W))
-    // 给IDU做数据冒险检测和转发用
-    val HazardValid = Output(Bool())
-    val HazardRd = Output(UInt(5.W))
-    val HazardRegWrite = Output(Bool())
-    val HazardMemOp = Output(Bool())
-    val FwdData = Output(UInt(XLEN.W))
-    val FwdReady = Output(Bool())
-    // 浮点寄存器写口/转发。FLW/FLD 的数据在本级完成后才有效。
-    val HazardFPRegWrite = Output(Bool())
-    val HazardFPRd = Output(UInt(5.W))
-    val FwdFPData = Output(UInt(64.W))
-    val FwdFPReady = Output(Bool())
-    // 等待槽冒险检测: 本级被年长访存占用时,EX/MEM流水寄存器里等待的指令
-    // 对IDU也必须可见,否则依赖它的消费者会拿着旧寄存器值溜过去
-    val Hazard2Valid = Output(Bool())
-    val Hazard2Rd = Output(UInt(5.W))
-    val Hazard2RegWrite = Output(Bool())
-    val Hazard2MemOp = Output(Bool())
-    val Hazard2FwdData = Output(UInt(XLEN.W))
-    val Hazard2FwdReady = Output(Bool())
-    val Hazard2FPRegWrite = Output(Bool())
-    val Hazard2FPRd = Output(UInt(5.W))
-    val Hazard2FwdFPData = Output(UInt(64.W))
-    val Hazard2FwdFPReady = Output(Bool())
-    // 调试/性能
-    val Complete = Output(Bool())
-    val AccessFault = Output(Bool())
-    val AccessFaultResp = Output(UInt(2.W))
-    val Active = Output(Bool())
-    val IsStore = Output(Bool())
-    val StallReadAR = Output(Bool())
-    val StallReadR = Output(Bool())
-    val StallWriteReq = Output(Bool())
-    val StallWriteB = Output(Bool())
-    val DebugMemoryWrite = Output(Bool())
-    val DebugLoadDATA = Output(UInt(32.W))
-  })
+  val io = IO(new ysyx_26030103_LSUIO(XLEN, AddressWidth, BusDataWidth))
   // 一致性失效接口：生产顶层由仲裁器在 DMA 写 B 握手时产生的单拍脉冲
   // 驱动（见 ysyx_26030103.scala 的 DCacheFlush 接线），叶模块端口保留
   // 供协议回归直接验证。
@@ -360,52 +256,7 @@ class ysyx_26030103_LSU(
   io.FlushIDEX := MemTrapCommit
   io.FlushEXMEM := MemTrapCommit
   io.out.valid := false.B
-  switch(stageState) {
-    is(StageIdle) {
-      when(StageInputValid && IsMemOp) {
-        StageInputReady := true.B
-        when(StageInputFire) {
-          stageState := Mux(
-            StageInputMisaligned || StageInputPmpFault,
-            StageDone,
-            StageWait
-          )
-        }
-      }.otherwise {
-        // 非访存指令单拍直通
-        StageInputReady := io.out.ready
-        io.out.valid := StageInputValid
-      }
-    }
-    is(StageWait) {
-      when(TransactionComplete) {
-        stageState := StageDone
-      }
-    }
-    is(StageDone) {
-      io.out.valid := true.B
-      // A successful completed instruction may be replaced in the same cycle
-      // that it leaves the stage.  Memory replacements enter StageWait;
-      // non-memory replacements are held as an already completed StageDone item.
-      StageInputReady := io.out.ready && !MemFaultReg
-      when(io.out.fire) {
-        when(StageInputFire) {
-          when(IsMemOp) {
-            stageState := Mux(
-              StageInputMisaligned || StageInputPmpFault,
-              StageDone,
-              StageWait
-            )
-          }.otherwise {
-            MsgReg := StageInputBits
-            stageState := StageDone
-          }
-        }.otherwise {
-          stageState := StageIdle
-        }
-      }
-    }
-  }
+  stageFsmBody()
   val PendingStorePop =
     (StageIsIdle || StageCanReplaceDone) && PendingStoreValid && StageInputFire
   // 原子指令虽然对 DMMU 表现为 store（AMO/SC），但它绝不进入普通
@@ -430,31 +281,7 @@ class ysyx_26030103_LSU(
   )
   val PendingStorePush = io.in.fire &&
     !(ExternalFeedsStage && StageInputFire)
-  when(PendingStorePush) {
-    if (WBufDepth == 1) {
-      PendingStore(0) := io.in.bits
-      PendingStoreTail := 0.U
-    } else {
-      PendingStore(PendingStoreTail) := io.in.bits
-      PendingStoreTail := PendingStoreTail + 1.U
-    }
-  }
-  when(PendingStorePop) {
-    if (WBufDepth == 1) {
-      PendingStoreHead := 0.U
-    } else {
-      PendingStoreHead := PendingStoreHead + 1.U
-    }
-  }
-  when(MemTrapCommit) {
-    // 队首访存失败：年轻 store 尚未发总线，可全部安全撤销。
-    PendingStoreCount := 0.U
-    PendingStoreHead := 0.U
-    PendingStoreTail := 0.U
-  }.otherwise {
-    PendingStoreCount := PendingStoreCount +
-      PendingStorePush.asUInt - PendingStorePop.asUInt
-  }
+  pendingStoreBody()
   io.out.bits := ActiveInstruction
   io.out.bits.ALUResult := EffectiveALUResult
   io.out.bits.LoadData := LoadDataReg
@@ -872,115 +699,6 @@ class ysyx_26030103_LSU(
       readDrainBody()
     }
   }
-  if (DCacheEnable) {
-    when(DCacheBusActive) {
-      io.DataBus.AR.ARVALID := DCache.io.AXI.AR.ARVALID
-      io.DataBus.AR.ARID := DCache.io.AXI.AR.ARID
-      io.DataBus.AR.ARADDR := DCache.io.AXI.AR.ARADDR
-      io.DataBus.AR.ARLEN := DCache.io.AXI.AR.ARLEN
-      io.DataBus.AR.ARSIZE := DCache.io.AXI.AR.ARSIZE
-      io.DataBus.AR.ARBURST := DCache.io.AXI.AR.ARBURST
-      io.DataBus.AR.ARPROT := DCache.io.AXI.AR.ARPROT
-      io.DataBus.AR.ARCACHE := DCache.io.AXI.AR.ARCACHE
-      io.DataBus.AR.ARQOS := DCache.io.AXI.AR.ARQOS
-    }
-    DCache.io.AXI.AR.ARREADY := Mux(
-      DCacheBusActive,
-      io.DataBus.AR.ARREADY,
-      false.B
-    )
-    DCache.io.AXI.R.RID := io.DataBus.R.RID
-    DCache.io.AXI.R.RDATA := io.DataBus.R.RDATA
-    DCache.io.AXI.R.RRESP := io.DataBus.R.RRESP
-    DCache.io.AXI.R.RLAST := io.DataBus.R.RLAST
-    DCache.io.AXI.R.RVALID := io.DataBus.R.RVALID
-    when(DCacheBusActive) {
-      io.DataBus.R.RREADY := DCache.io.AXI.R.RREADY
-    }
-  } else {
-    DCache.io.AXI.AR.ARREADY := false.B
-    DCache.io.AXI.R.RID := 0.U
-    DCache.io.AXI.R.RDATA := 0.U
-    DCache.io.AXI.R.RRESP := 0.U
-    DCache.io.AXI.R.RLAST := false.B
-    DCache.io.AXI.R.RVALID := false.B
-  }
-  // reservation 失效规则：复位、任何同 hart store 提交（含 AMO/SC）、
-  // 精确异常或 CSR 提交（上下文切换）都会清除。放在 FSM 之后，
-  // 保证清除优先于同拍的 LR 建立。
-  when(io.ReservationClear || wbPop || MemTrapCommit) {
-    ReservationValid := false.B
-  }
-  io.Active := state =/= StatesIdle
-  // 无 MMU 的 PMP 检查对象：写缓冲非空时是队首 store（唯一可能在本拍
-  // 产生写副作用的项），否则是本拍即将受理的访存指令。store 在写缓冲
-  // 中始终保持架构顺序，因此队首地址也对应最老未完成 store。
-  val PmpBase =
-    Mux(!wbufEmpty, WbHeadEffectiveAddr, AddrOf(StageInputBits.ALUResult))
-  // 宽度编码与架构 WidthSelect 一致：0/1/2/3 = 1/2/4/8 字节。写缓冲
-  // 队首的 wbHeadSize 是 AXI size（8B 访问仍编码为 2），须用 wbHeadWide
-  // 单独区分 8 字节访问。
-  val PmpWidth = Mux(
-    !wbufEmpty,
-    Mux(wbHeadWide, 3.U, wbHeadSize),
-    StageInputBits.WidthSelect
-  )
-  val PmpLastOffset = MuxLookup(PmpWidth, 0.U(AddressWidth.W))(
-    Seq(
-      0.U -> 0.U(AddressWidth.W),
-      1.U -> 1.U(AddressWidth.W),
-      2.U -> 3.U(AddressWidth.W),
-      3.U -> 7.U(AddressWidth.W)
-    )
-  )
-  io.PmpAddr := PmpBase
-  io.PmpLastAddr := PmpBase + PmpLastOffset
-  io.PmpWrite := Mux(!wbufEmpty, true.B, StageInputBits.MemoryWrite)
-  // AMO 同时检查读/写权限；LR 只读，SC/普通 store 只写。
-  io.PmpRead := Mux(
-    !wbufEmpty,
-    false.B,
-    !StageInputBits.MemoryWrite ||
-      (StageInputBits.IsAtomic &&
-        !ysyx_26030103_AtomicOp.IsSc(StageInputBits.AtomicOp))
-  )
-  io.IsStore := is_store_transaction
-  io.StallReadAR := state === StatesReadRequest
-  io.StallReadR := state === StatesReadResponse || state === StatesReadDrain
-  io.StallWriteReq := wbufFull && io.in.valid &&
-    io.in.bits.MemoryValid && io.in.bits.MemoryWrite && !io.in.ready
-  // 等 B 时仍可继续吸收连续 store；其它指令为保持精确异常顺序而等待。
-  io.StallWriteB := wbState === wbWaitB
-  // VIPT 并行 load 的 MMU 翻译故障：LSU 已经先于 PA 受理该 load，
-  // 这里必须撤销流水级和 DCache 等待请求，不能把故障 load 当作正常
-  // load 退休；精确 page fault 由顶层 LSUMMU 的 faultCommit 提交。
-  if (DataViptParallel) {
-    when(io.ViptKill) {
-      // 翻译故障发生在 store 已进入写缓冲、但 PA 尚未确认的阶段。此时
-      // 队首绝不可能已经发过 AW/W（由 wbHeadReady 门控），因此可以连同
-      // 已经排队的年轻 store 一起整体撤销，保持精确异常。
-      stageState := StageIdle
-      DCacheRequestActive := false.B
-      state := StatesIdle
-      MisalignedReg := false.B
-      MemFaultReg := false.B
-      AccessFaultReg := false.B
-      AccessFaultRespReg := 0.U
-      StoreFaultReg := false.B
-      is_store_transaction := false.B
-      PendingStoreCount := 0.U
-      PendingStoreHead := 0.U
-      PendingStoreTail := 0.U
-      wbCount := 0.U
-      wbHead := 0.U
-      wbTail := 0.U
-      wbState := wbIdle
-      wbAWDone := false.B
-      wbWDone := false.B
-      AtomicActive := false.B
-      AtomicReadFaultReg := false.B
-      ReservationValid := false.B
-      wbPAddrValid.foreach(_ := false.B)
-    }
-  }
+  dCacheBusBody()
+  pmpAndStallBody()
 }
