@@ -23,9 +23,6 @@ class ysyx_26030103_AXI5DMAErrorSlave(
 
   private val DECERR = "b11".U(2.W)
 
-  io.ACLK := clock.asBool
-  io.ARESETn := !reset.asBool
-
   // 写通道：有意分别独立收集AW与W。
   val awHeld = RegInit(false.B)
   val awId = RegInit(0.U(IdWidth.W))

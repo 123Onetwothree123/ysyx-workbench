@@ -22,8 +22,6 @@ class ysyx_26030103_AXI5CLINTSlave(
   val io = IO(new ysyx_26030103_CLINTIO(AddressWidth, DataWidth, IdWidth))
   private val AddrW = AddressWidth
   private val DataW = DataWidth
-  io.ACLK := clock.asBool
-  io.ARESETn := !reset.asBool
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
   val MtimeLowAddress = "h0200bff8".U(AddrW.W) // RISC-V标准CLINT的mtime寄存器

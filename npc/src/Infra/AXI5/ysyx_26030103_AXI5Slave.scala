@@ -6,8 +6,6 @@ class ysyx_26030103_AXI5Slave(
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
     IdWidth: Int = ysyx_26030103_KconfigDefaults.AxiIdWidth
 ) extends Bundle {
-  val ACLK = Bool() // 时钟
-  val ARESETn = Bool() // 复位的
   val AW = Flipped(new ysyx_26030103_AXI5AW(AddressWidth, IdWidth))
   val W = Flipped(new ysyx_26030103_AXI5W(DataWidth))
   val B = Flipped(new ysyx_26030103_AXI5B(IdWidth))

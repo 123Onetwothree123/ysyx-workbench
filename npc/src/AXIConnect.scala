@@ -15,11 +15,7 @@ import _root_.ysyx_26030103.mmu._
 
 private[ysyx_26030103] trait AXIConnect { this: ysyx_26030103 =>
   def connectAXI(): Unit = {
-    arbiter.io.memory.AW <> xbar.io.in.AW
-    arbiter.io.memory.W <> xbar.io.in.W
-    arbiter.io.memory.B <> xbar.io.in.B
-    arbiter.io.memory.AR <> xbar.io.in.AR
-    arbiter.io.memory.R <> xbar.io.in.R
+    arbiter.io.memory <> xbar.io.in
     val socXLEN = config.EffectiveSocXLEN
     val socMasterBridge = Module(
       new ysyx_26030103_AXI5WidthBridge(
@@ -141,45 +137,7 @@ private[ysyx_26030103] trait AXIConnect { this: ysyx_26030103 =>
       arbiter.io.dma <> socSlaveBridge.io.out
     } else {
       val errorSlave = dmaErrorSlave.get
-      errorSlave.io.AW.AWVALID := socSlaveBridge.io.out.AW.AWVALID
-      errorSlave.io.AW.AWADDR := socSlaveBridge.io.out.AW.AWADDR
-      errorSlave.io.AW.AWID := socSlaveBridge.io.out.AW.AWID
-      errorSlave.io.AW.AWLEN := socSlaveBridge.io.out.AW.AWLEN
-      errorSlave.io.AW.AWSIZE := socSlaveBridge.io.out.AW.AWSIZE
-      errorSlave.io.AW.AWBURST := socSlaveBridge.io.out.AW.AWBURST
-      errorSlave.io.AW.AWPROT := socSlaveBridge.io.out.AW.AWPROT
-      errorSlave.io.AW.AWCACHE := socSlaveBridge.io.out.AW.AWCACHE
-      errorSlave.io.AW.AWQOS := socSlaveBridge.io.out.AW.AWQOS
-      socSlaveBridge.io.out.AW.AWREADY := errorSlave.io.AW.AWREADY
-
-      errorSlave.io.W.WVALID := socSlaveBridge.io.out.W.WVALID
-      errorSlave.io.W.WDATA := socSlaveBridge.io.out.W.WDATA
-      errorSlave.io.W.WSTRB := socSlaveBridge.io.out.W.WSTRB
-      errorSlave.io.W.WLAST := socSlaveBridge.io.out.W.WLAST
-      socSlaveBridge.io.out.W.WREADY := errorSlave.io.W.WREADY
-
-      errorSlave.io.B.BREADY := socSlaveBridge.io.out.B.BREADY
-      socSlaveBridge.io.out.B.BVALID := errorSlave.io.B.BVALID
-      socSlaveBridge.io.out.B.BRESP := errorSlave.io.B.BRESP
-      socSlaveBridge.io.out.B.BID := errorSlave.io.B.BID
-
-      errorSlave.io.AR.ARVALID := socSlaveBridge.io.out.AR.ARVALID
-      errorSlave.io.AR.ARADDR := socSlaveBridge.io.out.AR.ARADDR
-      errorSlave.io.AR.ARID := socSlaveBridge.io.out.AR.ARID
-      errorSlave.io.AR.ARLEN := socSlaveBridge.io.out.AR.ARLEN
-      errorSlave.io.AR.ARSIZE := socSlaveBridge.io.out.AR.ARSIZE
-      errorSlave.io.AR.ARBURST := socSlaveBridge.io.out.AR.ARBURST
-      errorSlave.io.AR.ARPROT := socSlaveBridge.io.out.AR.ARPROT
-      errorSlave.io.AR.ARCACHE := socSlaveBridge.io.out.AR.ARCACHE
-      errorSlave.io.AR.ARQOS := socSlaveBridge.io.out.AR.ARQOS
-      socSlaveBridge.io.out.AR.ARREADY := errorSlave.io.AR.ARREADY
-
-      errorSlave.io.R.RREADY := socSlaveBridge.io.out.R.RREADY
-      socSlaveBridge.io.out.R.RVALID := errorSlave.io.R.RVALID
-      socSlaveBridge.io.out.R.RRESP := errorSlave.io.R.RRESP
-      socSlaveBridge.io.out.R.RDATA := errorSlave.io.R.RDATA
-      socSlaveBridge.io.out.R.RLAST := errorSlave.io.R.RLAST
-      socSlaveBridge.io.out.R.RID := errorSlave.io.R.RID
+      errorSlave.io <> socSlaveBridge.io.out
 
       // 未开启ChipLink时仲裁器的DMA输入不可悬空。
       arbiter.io.dmaAWLock := false.B
@@ -209,6 +167,8 @@ private[ysyx_26030103] trait AXIConnect { this: ysyx_26030103 =>
       arbiter.io.dma.AR.ARQOS := 0.U
       arbiter.io.dma.R.RREADY := false.B
     }
+    // CLINT 的 io 是 CLINTIO，比 xbar 的 AXI5IO 多出 timer_irq/mtime，
+    // 整包 <> 会因为多字段失败，只能按通道连。
     xbar.io.CLINT.AW <> clint.io.AW
     xbar.io.CLINT.W <> clint.io.W
     xbar.io.CLINT.B <> clint.io.B
@@ -229,11 +189,7 @@ private[ysyx_26030103] trait AXIConnect { this: ysyx_26030103 =>
       else false.B
     }
     plic.sources := Cat(plicSourceBits.reverse)
-    xbar.io.PLIC.AW <> plic.io.AW
-    xbar.io.PLIC.W <> plic.io.W
-    xbar.io.PLIC.B <> plic.io.B
-    xbar.io.PLIC.AR <> plic.io.AR
-    xbar.io.PLIC.R <> plic.io.R
+    xbar.io.PLIC <> plic.io
 
     // AXI响应协议检查: B响应的错误码不再在这里断言——DECERR/SLVERR会由LSU按
     // store访问故障精确提交(cause=7), 顶层断言会抢先把仿真停掉。

@@ -41,8 +41,6 @@ class ysyx_26030103_PLIC(
   val external_irq = IO(Output(Bool()))
   val perf_claim = IO(Output(Bool()))
   val perf_complete = IO(Output(Bool()))
-  io.ACLK := clock.asBool
-  io.ARESETn := !reset.asBool
 
   val priority = RegInit(VecInit(Seq.fill(numSources)(0.U(priorityBits.W))))
   val enable = RegInit(VecInit(Seq.fill(Words)(0.U(32.W))))
