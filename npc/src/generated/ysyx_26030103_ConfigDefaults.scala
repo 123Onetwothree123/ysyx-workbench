@@ -74,6 +74,7 @@ object ysyx_26030103_KconfigDefaults {
   val MmuCacheViptAliasEventQueueDepth: Int = 4
   val MmuPtwOutstanding: Int = 2
   val MmuPtwBusOutstanding: Int = 1
+  val MmuPtwPmpFaultQueueDepth: Int = 8
   val MmuPtwCacheEntries: Int = 16
   val MmuPtwCacheWays: Int = 2
   val MmuTlbAsidBits: Int = 16
@@ -101,6 +102,9 @@ object ysyx_26030103_KconfigDefaults {
   val MmuVaBits: Int = 39
   val MmuPtwBusDepth: Int = 16
   val AxiIdWidth: Int = 4
+  val AxiArbCpuRespQueueDepth: Int = 16
+  val AxiArbDmaRespQueueDepth: Int = 256
+  val AxiXbarRespQueueDepth: Int = 4
   val UartFifoDepth: Int = 64
   val UartAddrWidth: Int = 5
   val UartTxHoldCycles: Int = 32

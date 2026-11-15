@@ -1035,6 +1035,30 @@ menu "CPU 与平台"
         当前仲裁器/Crossbar 固定按 4 位 ID 设计，只允许 4。
         IFU/LSU/DMA/PTW 分别使用固定 ID。
 
+    config AXI_ARB_CPU_RESP_QUEUE_DEPTH
+      int "AXI 仲裁器 CPU 响应队列深度"
+      default 16
+      range 2 16
+      help
+        IFU/LSU 各自的读响应队列深度。应能覆盖 4 位 ID 对应的全部
+        在途响应，避免 PTW 多 outstanding 时在队列口互相阻塞。
+
+    config AXI_ARB_DMA_RESP_QUEUE_DEPTH
+      int "AXI 仲裁器 DMA 响应队列深度"
+      default 256
+      range 16 256
+      help
+        DMA 读响应队列深度。默认 256 可容纳 AXI4 允许的最大
+        256-beat burst，避免 CPU slave 持续反压时占住共享 R 通道。
+
+    config AXI_XBAR_RESP_QUEUE_DEPTH
+      int "AXI Xbar 响应队列深度"
+      default 4
+      range 2 16
+      help
+        Xbar 对 SoCBus/CLINT 响应进行小缓冲的深度。深度越大，
+        上游反压时越不容易阻塞无关 owner 的响应。
+
     config PTW_BUS_DEPTH
       int "PTW AXI 请求队列深度"
       default 16

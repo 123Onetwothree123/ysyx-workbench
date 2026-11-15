@@ -187,6 +187,15 @@ object ysyx_26030103_ElaborateConfig {
         cfg.int("platform.lsu_drain_timeout", ysyx_26030103_KconfigDefaults.LsuDrainTimeout),
       ArbiterGrantTimeout =
         cfg.int("platform.arbiter_grant_timeout", ysyx_26030103_KconfigDefaults.ArbiterGrantTimeout),
+      AxiArbCpuRespQueueDepth =
+        cfg.int("platform.axi_arb_cpu_resp_queue_depth",
+          ysyx_26030103_KconfigDefaults.AxiArbCpuRespQueueDepth),
+      AxiArbDmaRespQueueDepth =
+        cfg.int("platform.axi_arb_dma_resp_queue_depth",
+          ysyx_26030103_KconfigDefaults.AxiArbDmaRespQueueDepth),
+      AxiXbarRespQueueDepth =
+        cfg.int("platform.axi_xbar_resp_queue_depth",
+          ysyx_26030103_KconfigDefaults.AxiXbarRespQueueDepth),
       BlockSizeLog2 = BlockSizeLog2,
       IndexBits = IndexBits,
       ICacheBlockSizeLog2 = ICacheBlockSizeLog2,

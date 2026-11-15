@@ -90,7 +90,9 @@ class ysyx_26030103(
       HardwareSnoop = config.DmaHardwareSnoop,
       DMAWindowBase = BigInt(config.ChipLinkMemoryBase),
       DMAWindowSize = BigInt(config.ChipLinkMemorySize),
-      GrantTimeout = config.ArbiterGrantTimeout
+      GrantTimeout = config.ArbiterGrantTimeout,
+      CpuRespQueueDepth = config.AxiArbCpuRespQueueDepth,
+      DmaRespQueueDepth = config.AxiArbDmaRespQueueDepth
     )
   )
   val xbar = Module(
@@ -104,7 +106,8 @@ class ysyx_26030103(
       CLINTBaseValue = BigInt(config.CLINTBase),
       CLINTSizeBytes = BigInt(config.CLINTSize),
       DataWidth = BusDataWidth,
-      IdWidth = 4
+      IdWidth = 4,
+      RespQueueDepth = config.AxiXbarRespQueueDepth
     )
   )
   val clint = Module(
@@ -298,7 +301,8 @@ class ysyx_26030103(
         Module(
           new ysyx_26030103_PTWPMPFilter(
             AddressWidth = config.AddressWidth,
-            entries = config.MMU.pmpEntries
+            entries = config.MMU.pmpEntries,
+            faultQueueDepth = config.MMU.ptwPmpFaultQueueDepth
           )
         )
       )
@@ -557,12 +561,16 @@ class ysyx_26030103(
   if (mmuEnabled) {
     // DMMU 对非访存指令是组合直通，因此这里仍然只有 LSU 前的一级流水寄存器。
     // VIPT 并行 load 会在翻译完成前通过这个边界进入 LSU；翻译故障时
-    // memKill 必须同时冲刷该边界，避免故障请求在 kill 之后再次进入 LSU。
+    // memKill 必须清理该边界，避免故障请求在 kill 之后再次进入 LSU。
+    // 但 memKill 直接接 flushCurrent 会经 LSU.in.valid → MemoryBusy →
+    // EXU.FlushIF 形成组合环；kill 打一拍只用于清 StageConnect，ViptKill
+    // 仍在当拍清理 LSU/DCache，不会让故障请求留下副作用。
+    val dmmuMemKillForStage = RegNext(dmmuOpt.get.io.memKill, false.B)
     exu.io.out <> dmmuOpt.get.io.in
     ysyx_26030103_StageConnect(
       dmmuOpt.get.io.out,
       lsu.io.in,
-      lsu.io.FlushEXMEM || dmmuOpt.get.io.memKill
+      lsu.io.FlushEXMEM || dmmuMemKillForStage
     )
     lsu.io.ViptPAddr := dmmuOpt.get.io.memPaddr
     lsu.io.ViptPAddrValid := dmmuOpt.get.io.memPaddrValid

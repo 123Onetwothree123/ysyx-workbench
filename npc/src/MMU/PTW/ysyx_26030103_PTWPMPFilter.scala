@@ -13,11 +13,15 @@ import _root_.ysyx_26030103.infra.ysyx_26030103_PMP
   */
 class ysyx_26030103_PTWPMPFilter(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
-    entries: Int = ysyx_26030103_KconfigDefaults.MmuPmpEntries
+    entries: Int = ysyx_26030103_KconfigDefaults.MmuPmpEntries,
+    faultQueueDepth: Int =
+      ysyx_26030103_KconfigDefaults.MmuPtwPmpFaultQueueDepth
 ) extends Module {
   require(AddressWidth == 32 || AddressWidth == 64,
     s"PTWPMPFilter AddressWidth 非法: $AddressWidth")
   require(entries >= 0 && entries <= 16, "PTWPMPFilter entries 非法")
+  require(faultQueueDepth >= 1 && faultQueueDepth <= 16,
+    s"PTWPMPFilter faultQueueDepth 非法: $faultQueueDepth")
 
   val io = IO(new Bundle {
     val in = Flipped(new ysyx_26030103_PTEBusIO(AddressWidth))
@@ -38,7 +42,9 @@ class ysyx_26030103_PTWPMPFilter(
   pmp.io.dataWrite := io.in.req.bits.write
 
   val fault = pmp.io.dataFault
-  val faultResp = Module(new Queue(new ysyx_26030103_PTEBusResponse, 8))
+  val faultResp = Module(
+    new Queue(new ysyx_26030103_PTEBusResponse, faultQueueDepth)
+  )
   faultResp.io.enq.valid := io.in.req.valid && fault
   faultResp.io.enq.bits.id := io.in.req.bits.id
   faultResp.io.enq.bits.data := 0.U

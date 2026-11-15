@@ -298,6 +298,8 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
             "MMU_CACHE_VIPT_ALIAS_EVENT_QUEUE_DEPTH", 4);
     emitInt("MmuPtwOutstanding", "MMU_PTW_OUTSTANDING", 2);
     emitInt("MmuPtwBusOutstanding", "MMU_PTW_BUS_OUTSTANDING", 1);
+    emitInt("MmuPtwPmpFaultQueueDepth",
+            "MMU_PTW_PMP_FAULT_QUEUE_DEPTH", 8);
     emitInt("MmuPtwCacheEntries", "MMU_PTW_CACHE_ENTRIES", 16);
     emitInt("MmuPtwCacheWays", "MMU_PTW_CACHE_WAYS", 2);
     emitInt("MmuTlbAsidBits", "MMU_TLB_ASID_BITS", xlen == 64 ? 16 : 9);
@@ -334,6 +336,12 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     out << "  val MmuVaBits: Int = " << pageBits + mmuLevels * indexBits << "\n";
     emitInt("MmuPtwBusDepth", "PTW_BUS_DEPTH", 16);
     emitInt("AxiIdWidth", "AXI_ID_WIDTH", 4);
+    emitInt("AxiArbCpuRespQueueDepth",
+            "AXI_ARB_CPU_RESP_QUEUE_DEPTH", 16);
+    emitInt("AxiArbDmaRespQueueDepth",
+            "AXI_ARB_DMA_RESP_QUEUE_DEPTH", 256);
+    emitInt("AxiXbarRespQueueDepth",
+            "AXI_XBAR_RESP_QUEUE_DEPTH", 4);
     emitInt("UartFifoDepth", "UART_FIFO_DEPTH", 64);
     emitInt("UartAddrWidth", "UART_ADDR_WIDTH", 5);
     emitInt("UartTxHoldCycles", "UART_TX_HOLD_CYCLES", 32);

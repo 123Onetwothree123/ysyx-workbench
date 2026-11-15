@@ -395,6 +395,15 @@ menu "MMU/TLB"
         共享 IFU/LSU AXI 读端口按 3..15 分配页表读 ID，最多 13 笔
         AXI 读同时在途；超出的请求在适配器队列中等待，不会丢失。
 
+    config MMU_PTW_PMP_FAULT_QUEUE_DEPTH
+      int "PTW PMP fault 响应队列深度"
+      default 8
+      range 1 16
+      help
+        PTWPMPFilter 对被 PMP 拒绝的页表访问直接返回 fault 响应；
+        该队列缓存这些响应。队列满时通过 in.req.ready 反压 PTW，
+        不进入 AXI。深度越大越不容易反压 PTW。
+
     choice
       prompt "PTW 返回顺序"
       default MMU_PTW_IN_ORDER

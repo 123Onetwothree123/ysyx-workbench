@@ -24,11 +24,19 @@ class ysyx_26030103_AXI5Arbiter(
       BigInt(ysyx_26030103_PMAOptions.Default.chipLinkMemBase),
     DMAWindowSize: BigInt =
       BigInt(ysyx_26030103_PMAOptions.Default.chipLinkMemSize),
-    GrantTimeout: Int = ysyx_26030103_KconfigDefaults.ArbiterGrantTimeout
+    GrantTimeout: Int = ysyx_26030103_KconfigDefaults.ArbiterGrantTimeout,
+    CpuRespQueueDepth: Int =
+      ysyx_26030103_KconfigDefaults.AxiArbCpuRespQueueDepth,
+    DmaRespQueueDepth: Int =
+      ysyx_26030103_KconfigDefaults.AxiArbDmaRespQueueDepth
 ) extends Module {
   // 固定 ID 分配（ICache=0/LSU=1/DMA=2/PTW=3..15）按 4 位 ID 设计；
   // 地址/数据宽度可参数化，但 ID 宽度暂不支持其它值。
   require(IdWidth == 4, s"AXI5Arbiter IdWidth 只支持 4，收到 $IdWidth")
+  require(CpuRespQueueDepth >= 2 && CpuRespQueueDepth <= 16,
+    s"AXI5Arbiter CpuRespQueueDepth 非法: $CpuRespQueueDepth")
+  require(DmaRespQueueDepth >= 16 && DmaRespQueueDepth <= 256,
+    s"AXI5Arbiter DmaRespQueueDepth 非法: $DmaRespQueueDepth")
   val io = IO(new Bundle {
     val ifu = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth))
     val lsu = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IdWidth))
@@ -346,13 +354,16 @@ class ysyx_26030103_AXI5Arbiter(
   // 在途响应，深度覆盖 4-bit ID 的全部槽位，避免 PTW 多 outstanding
   // 时响应在队列口互相阻塞。
   private val ifuRQueue = Module(
-    new Queue(new ReadResponsePayload, 16, pipe = true, flow = false)
+    new Queue(new ReadResponsePayload, CpuRespQueueDepth,
+      pipe = true, flow = false)
   )
   private val lsuRQueue = Module(
-    new Queue(new ReadResponsePayload, 16, pipe = true, flow = false)
+    new Queue(new ReadResponsePayload, CpuRespQueueDepth,
+      pipe = true, flow = false)
   )
   private val dmaRQueue = Module(
-    new Queue(new ReadResponsePayload, 256, pipe = true, flow = false)
+    new Queue(new ReadResponsePayload, DmaRespQueueDepth,
+      pipe = true, flow = false)
   )
   for (queue <- Seq(ifuRQueue, lsuRQueue, dmaRQueue)) {
     queue.io.enq.valid := false.B

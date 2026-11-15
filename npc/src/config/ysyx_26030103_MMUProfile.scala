@@ -93,6 +93,8 @@ case class ysyx_26030103_MMUProfile(
     // 页表总线可同时保持的页表读/写数。0 表示跟随 ptwOutstanding；
     // 默认 1 保持原有的单笔总线行为，配置 >1 才启用总线级重叠。
     ptwBusOutstanding: Int = KconfigDefaults.MmuPtwBusOutstanding,
+    // 被 PMP 拒绝的页表访问返回 fault 响应的队列深度。
+    ptwPmpFaultQueueDepth: Int = KconfigDefaults.MmuPtwPmpFaultQueueDepth,
     ptwOrder: String = "in_order",
     ptwCache: Boolean = false,
     ptwCacheEntries: Int = KconfigDefaults.MmuPtwCacheEntries,
@@ -173,6 +175,8 @@ case class ysyx_26030103_MMUProfile(
     s"ptwOutstanding=$ptwOutstanding 必须在 1..16（PTW 事务 ID 为 4 位）")
   require(ptwBusOutstanding >= 0 && ptwBusOutstanding <= 16,
     s"ptwBusOutstanding=$ptwBusOutstanding 必须在 0..16（0 表示跟随 ptwOutstanding）")
+  require(ptwPmpFaultQueueDepth >= 1 && ptwPmpFaultQueueDepth <= 16,
+    s"ptwPmpFaultQueueDepth=$ptwPmpFaultQueueDepth 必须在 1..16")
   require(Set("independent", "pipelined").contains(ptwArch),
     "MMU_PTW_ARCH 必须是 independent/pipelined")
   require(Set("in_order", "out_of_order").contains(ptwOrder),
@@ -408,7 +412,8 @@ case class ysyx_26030103_MMUProfile(
       s"cache=$cacheMode vipt_alias_safe=$cacheViptAliasSafe " +
       s"vipt_alias_scan=$aliasScanDetail " +
       s"vipt_alias_queue=$cacheViptAliasEventQueueDepth " +
-      s"ptw=$ptwPath/$ptwArch/$ptwOutstanding/bus$ptwBusOutstanding) " +
+      s"ptw=$ptwPath/$ptwArch/$ptwOutstanding/bus$ptwBusOutstanding/" +
+      s"pmpq$ptwPmpFaultQueueDepth) " +
       s"TLB(enabled=$tlbEnabled org=$tlbOrganization storage=$tlbStorage " +
       s"repl=$tlbReplacement asid=$tlbAsidBits)"
   }
@@ -581,6 +586,9 @@ object ysyx_26030103_MMUProfile {
       ptwArch = envString(env, "MMU_PTW_ARCH", "independent"),
       ptwOutstanding = envInt(env, "MMU_PTW_OUTSTANDING", KconfigDefaults.MmuPtwOutstanding),
       ptwBusOutstanding = envInt(env, "MMU_PTW_BUS_OUTSTANDING", KconfigDefaults.MmuPtwBusOutstanding),
+      ptwPmpFaultQueueDepth =
+        envInt(env, "MMU_PTW_PMP_FAULT_QUEUE_DEPTH",
+          KconfigDefaults.MmuPtwPmpFaultQueueDepth),
       ptwOrder = envString(env, "MMU_PTW_ORDER", "in_order"),
       ptwCache = envBool(env, "MMU_PTW_CACHE", false),
       ptwCacheEntries = envInt(env, "MMU_PTW_CACHE_ENTRIES", KconfigDefaults.MmuPtwCacheEntries),

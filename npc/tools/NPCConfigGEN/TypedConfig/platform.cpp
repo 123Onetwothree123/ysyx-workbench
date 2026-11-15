@@ -25,6 +25,15 @@ void addPlatform(TypedFields &root, const Config &values,
                  flatInt(values, "ARBITER_GRANT_TIMEOUT", 1023)));
     addField(platform, "axi_id_width",
              TypedJson::integer(flatInt(values, "AXI_ID_WIDTH", 4)));
+    addField(platform, "axi_arb_cpu_resp_queue_depth",
+             TypedJson::integer(flatInt(
+                 values, "AXI_ARB_CPU_RESP_QUEUE_DEPTH", 16)));
+    addField(platform, "axi_arb_dma_resp_queue_depth",
+             TypedJson::integer(flatInt(
+                 values, "AXI_ARB_DMA_RESP_QUEUE_DEPTH", 256)));
+    addField(platform, "axi_xbar_resp_queue_depth",
+             TypedJson::integer(flatInt(
+                 values, "AXI_XBAR_RESP_QUEUE_DEPTH", 4)));
     addField(platform, "ptw_bus_depth",
              TypedJson::integer(flatInt(values, "PTW_BUS_DEPTH", 16)));
     addField(platform, "uart_fifo_depth",

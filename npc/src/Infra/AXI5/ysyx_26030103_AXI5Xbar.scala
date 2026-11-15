@@ -13,6 +13,7 @@ class ysyx_26030103_AXI5Xbar(
       BigInt(ysyx_26030103_PhysicalMemoryMap.DefaultPlicSize),
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
     IdWidth: Int = ysyx_26030103_KconfigDefaults.AxiIdWidth,
+    RespQueueDepth: Int = ysyx_26030103_KconfigDefaults.AxiXbarRespQueueDepth,
     CLINTBaseValue: BigInt =
       BigInt(ysyx_26030103_PMAOptions.Default.clintBase),
     CLINTSizeBytes: BigInt =
@@ -20,6 +21,8 @@ class ysyx_26030103_AXI5Xbar(
 ) extends Module {
   require(DataWidth == 32 || DataWidth == 64,
     s"AXI5Xbar DataWidth 非法: $DataWidth")
+  require(RespQueueDepth >= 2 && RespQueueDepth <= 16,
+    s"AXI5Xbar RespQueueDepth 非法: $RespQueueDepth")
   private val BusLaneBits = log2Ceil(DataWidth / 8)
   val io = IO(new Bundle {
     // 先做过笔记，因为这个是接裁决器的，裁决器是master，所以这里的对反
@@ -782,7 +785,7 @@ class ysyx_26030103_AXI5Xbar(
     val Last = Bool()
   }
   private val rQueue =
-    Module(new Queue(new RPayload, 4, pipe = true, flow = false))
+    Module(new Queue(new RPayload, RespQueueDepth, pipe = true, flow = false))
   io.in.R.RID := rQueue.io.deq.bits.Id
   io.in.R.RVALID := rQueue.io.deq.valid
   io.in.R.RDATA := rQueue.io.deq.bits.Data

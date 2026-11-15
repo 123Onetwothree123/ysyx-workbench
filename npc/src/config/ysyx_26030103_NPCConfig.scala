@@ -43,6 +43,9 @@ case class ysyx_26030103_NPCConfig(
     DCacheDrainTimeout: Int = KconfigDefaults.DCacheDrainTimeout,
     LsuDrainTimeout: Int = KconfigDefaults.LsuDrainTimeout,
     ArbiterGrantTimeout: Int = KconfigDefaults.ArbiterGrantTimeout,
+    AxiArbCpuRespQueueDepth: Int = KconfigDefaults.AxiArbCpuRespQueueDepth,
+    AxiArbDmaRespQueueDepth: Int = KconfigDefaults.AxiArbDmaRespQueueDepth,
+    AxiXbarRespQueueDepth: Int = KconfigDefaults.AxiXbarRespQueueDepth,
     // 架构/总线物理地址宽度。RV32 保持 32；RV64 由 elaborator 设为 64。
     // 该宽度同时用于 PC/分支目标、IFU/LSU、AXI、PMA/Xbar、Cache tag 与
     // BTB/RAS，避免任何一级再截断到 32 位。
@@ -424,6 +427,12 @@ case class ysyx_26030103_NPCConfig(
     PMARegions.exists(r => ResetAddr >= r.Base && ResetAddr < r.EndExclusive && r.Executable),
     "ResetAddr必须位于可执行PMA区域"
   )
+  require(AxiArbCpuRespQueueDepth >= 2 && AxiArbCpuRespQueueDepth <= 16,
+    s"AXI_ARB_CPU_RESP_QUEUE_DEPTH=$AxiArbCpuRespQueueDepth 必须在 2..16")
+  require(AxiArbDmaRespQueueDepth >= 16 && AxiArbDmaRespQueueDepth <= 256,
+    s"AXI_ARB_DMA_RESP_QUEUE_DEPTH=$AxiArbDmaRespQueueDepth 必须在 16..256")
+  require(AxiXbarRespQueueDepth >= 2 && AxiXbarRespQueueDepth <= 16,
+    s"AXI_XBAR_RESP_QUEUE_DEPTH=$AxiXbarRespQueueDepth 必须在 2..16")
   // 入站 DMA 只代理 ChipLink 内存窗口（与 AXI5Arbiter 的检查一致）。
   // UNCACHED 模式在 Cache 使用的 PMA 视图里把该窗口切成不可缓存段；
   // 原始 PMARegions 仍供 Xbar/PMA 权限检查使用，读写/执行权限不变。

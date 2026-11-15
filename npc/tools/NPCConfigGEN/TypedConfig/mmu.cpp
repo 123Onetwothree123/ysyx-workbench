@@ -96,6 +96,9 @@ void addMmu(TypedFields &root, const Config &values, long long xlen)
     addField(mmu, "ptw_bus_outstanding",
              TypedJson::integer(
                  flatInt(values, "MMU_PTW_BUS_OUTSTANDING", 1)));
+    addField(mmu, "ptw_pmp_fault_queue_depth",
+             TypedJson::integer(flatInt(
+                 values, "MMU_PTW_PMP_FAULT_QUEUE_DEPTH", 8)));
     addField(mmu, "ptw_order",
              TypedJson::string(
                  flatString(values, "MMU_PTW_ORDER", "in_order")));
