@@ -31,9 +31,6 @@ private[mem] trait LSUStage {
       }
       is(stageDone) {
         io.out.valid := true.B
-        // A successful completed instruction may be replaced in the same cycle
-        // that it leaves the stage.  Memory replacements enter StageWait;
-        // non-memory replacements are held as an already completed StageDone item.
         stageInputReady := io.out.ready && !memFaultReg
         when(io.out.fire) {
           when(stageInputFire) {

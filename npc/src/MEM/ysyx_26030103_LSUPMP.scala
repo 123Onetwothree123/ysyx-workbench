@@ -44,21 +44,12 @@ private[mem] trait LSUPMP {
   }
 
   def pmpAndStallBody(): Unit = {
-    // reservation 失效规则：复位、任何同 hart store 提交（含 AMO/SC）、
-    // 精确异常或 CSR 提交（上下文切换）都会清除。放在 FSM 之后，
-    // 保证清除优先于同拍的 LR 建立。
     when(io.ReservationClear || wbPop || memTrapCommit) {
       reservationValid := false.B
     }
     io.Active := state =/= stateIdle
-    // 无 MMU 的 PMP 检查对象：写缓冲非空时是队首 store（唯一可能在本拍
-    // 产生写副作用的项），否则是本拍即将受理的访存指令。store 在写缓冲
-    // 中始终保持架构顺序，因此队首地址也对应最老未完成 store。
     val pmpBase =
       Mux(!wbufEmpty, wbHeadEffectiveAddress, addressOf(stageInputBits.ALUResult))
-    // 宽度编码与架构 WidthSelect 一致：0/1/2/3 = 1/2/4/8 字节。写缓冲
-    // 队首的 wbHeadSize 是 AXI size（8B 访问仍编码为 2），须用 wbHeadWide
-    // 单独区分 8 字节访问。
     val pmpWidth = Mux(
       !wbufEmpty,
       Mux(wbHeadWide, 3.U, wbHeadSize),
@@ -90,14 +81,9 @@ private[mem] trait LSUPMP {
       io.in.bits.MemoryValid && io.in.bits.MemoryWrite && !io.in.ready
     // 等 B 时仍可继续吸收连续 store；其它指令为保持精确异常顺序而等待。
     io.StallWriteB := wbState === wbWaitB
-    // VIPT 并行 load 的 MMU 翻译故障：LSU 已经先于 PA 受理该 load，
-    // 这里必须撤销流水级和 DCache 等待请求，不能把故障 load 当作正常
-    // load 退休；精确 page fault 由顶层 LSUMMU 的 faultCommit 提交。
     if (dataVIPTParallel) {
+      // VIPT 翻译故障整体撤销已排队 store。
       when(io.VIPTKill) {
-        // 翻译故障发生在 store 已进入写缓冲、但 PA 尚未确认的阶段。此时
-        // 队首绝不可能已经发过 AW/W（由 wbHeadReady 门控），因此可以连同
-        // 已经排队的年轻 store 一起整体撤销，保持精确异常。
         stageState := stageIdle
         dataCacheRequestActive := false.B
         state := stateIdle

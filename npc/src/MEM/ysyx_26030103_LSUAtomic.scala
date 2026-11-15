@@ -34,11 +34,6 @@ private[mem] trait LSUAtomic {
   }
 
   def atomicQuietBody(): Unit = {
-    // 等到物理地址（VIPT 并行）与总线都安静后，才允许发第一笔请求。
-    // AtomicBusy 已在本状态之前拉高，仲裁器会挡住新的 DMA 读写。
-    // DCache 可能正在后台完成一次 load miss 的回填；此时 AR/R 仍被它
-    // 占用，必须等 axi_active 与 DCacheRequestActive 都归零，否则原子
-    // 会把 DCache 的 ARREADY/R beat 误当成自己的事务。
     when(atomicPhysicalAddressReady && io.BusQuiet && !dataCacheBusActive) {
       atomicAddressReg := addressOf(effectiveALUResult)
       when(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {

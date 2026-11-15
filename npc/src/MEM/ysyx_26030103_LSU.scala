@@ -5,7 +5,6 @@ import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.infra._
 import _root_.ysyx_26030103.cache._
 import _root_.ysyx_26030103.config._
-// LSU是访存流水级：完成总线事务、提交访存故障并冲刷年轻指令
 class ysyx_26030103_LSU(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     // D 扩展存在时，即使 XLEN=32 也必须支持 8 字节 FLD/FSD 访存。
@@ -68,9 +67,6 @@ class ysyx_26030103_LSU(
   private[mem] val dataVIPTParallel = dataVIPT && VIPTParallel
 
   val io = IO(new ysyx_26030103_LSUIO(XLEN, AddressWidth, BusDataWidth))
-  // 一致性失效接口：生产顶层由仲裁器在 DMA 写 B 握手时产生的单拍脉冲
-  // 驱动（见 ysyx_26030103.scala 的 DCacheFlush 接线），叶模块端口保留
-  // 供协议回归直接验证。
   dontTouch(io.DCacheFlush)
   val DCache = ysyx_26030103_DCacheFactory.Create(
     Enable = DCacheEnable,
@@ -111,10 +107,6 @@ class ysyx_26030103_LSU(
   val stageDone = stageStates(2)
   val stageState = RegInit(stageIdle)
   val messageReg = Reg(chiselTypeOf(io.in.bits))
-  // WBufDepth 表示 LSU 最多能容纳的未退休 store 数。MsgReg/PendingStore
-  // 保存架构退休顺序；后面的 wb* 队列同时保存每项总线载荷。总线只发最老项，
-  // 且必须收到成功 BRESP 才会前移到下一项。因此失败队首之前所有年轻 store
-  // 都只有缓冲状态、没有外部副作用，可以整体撤销并维持精确异常。
   private val storePointerWidth = log2Ceil(WBufDepth).max(1)
   private val storeCountWidth = log2Ceil(WBufDepth + 1)
   val pendingStore = Reg(Vec(WBufDepth, chiselTypeOf(io.in.bits)))
@@ -143,10 +135,6 @@ class ysyx_26030103_LSU(
   val loadForwardValid = WireDefault(false.B)
   val loadForwardData = WireDefault(loadDataReg)
   val loadForwardFault = WireDefault(false.B)
-  // A 扩展原子事务状态
-  // 原子事务绕过 DCache 与写缓冲，直接使用 LSU 的 AR/R + AW/W 通道。
-  // AtomicActive 从受理一直保持到读改写全部完成，期间总线仲裁器不再
-  // 接受新的 DMA 读写，后续 LSU 访存也被本级 Busy 挡住。
   val atomicActive = RegInit(false.B)
   val atomicAddressReg = Reg(UInt(AddressWidth.W))
   // 原子宽度：true=.D(8B)，false=.W(4B)。RV32 恒为 .W。
@@ -189,11 +177,6 @@ class ysyx_26030103_LSU(
     }
   }
   val activeInstruction = Mux(stageIsIdle, stageInputBits, messageReg)
-  // VIPT 并行 load/store 进入 LSU 时 ALUResult 仍是 VA；翻译结果通过独立
-  // 端口晚到。退休/mtrace/调试需要和 PIPT 一样看到物理地址，因此这里按
-  // VA 标签锁存有效的 PA。非访存指令保持原始 ALUResult。
-  // 只接受“当前指令 VAddr 与 PA 标签匹配”的结果，旧 VA 的迟到 PA 会被
-  // 丢弃；LSUMMU 在受理新请求时还会先撤销上一笔 PA。
   val viptActiveMem = activeInstruction.MemoryValid
   val effectiveALUResult = WireDefault(activeInstruction.ALUResult)
   // 即便当前配置不使用并行的 VIPT 数据通路，也保留这两个寄存器作为
@@ -249,9 +232,6 @@ class ysyx_26030103_LSU(
       Mux(messageReg.MemoryWrite, 7.U(32.W), 5.U(32.W))) // 访问故障：写=7，读=5
   )
   io.MemTrapPC := messageReg.pc
-  // RISC-V 要求访存异常的 mtval 是原始有效地址（VA）。DMMU 翻译后
-  // ALUResult/EffectiveALUResult 已是物理地址（PIPT 下二者相同，VIPT
-  // 并行下由 PA 端口更新），因此这里必须取随指令携带的 VAddr。
   io.MemTrapTval := messageReg.VAddress
   io.FlushIDEX := memTrapCommit
   io.FlushEXMEM := memTrapCommit
@@ -371,10 +351,9 @@ class ysyx_26030103_LSU(
   val stateAtomicWriteRequest = stateMachine(8)
   val stateAtomicWriteWaitB = stateMachine(9)
   val state = RegInit(stateIdle)
+  // DCacheRequestActive 必须保持到 resp.fire；flush 不取消 demand。
   val dataCacheRequestActive = RegInit(false.B)
-  // DCache 与原子事务共用 AR/R。只要 DCache 还有在途 refill（含 SDrain）
-  // 或尚未交付的 demand，外部 AR/R 通道就属于 DCache；原子事务必须等
-  // 它完全排空后才能发自己的 AR/R，否则 ARREADY 会被误当成原子握手。
+  // DCache 有在途 AR/R 时原子事务必须等待，否则会误认握手。
   val dataCacheBusActive =
     if (DCacheEnable) dataCacheRequestActive || DCache.io.axi_active else false.B
   // 非 DCache 直读在缺少 RLAST 时的排空超时。AXI 从设备必须给 RLAST，
@@ -529,22 +508,14 @@ class ysyx_26030103_LSU(
     // Store 指令队列和总线队列保持同序；当前活动 store 必然对应总线队首。
     storeBufferIndex := wbHead
   }
-  // DCache 接收 req 后保证最终返回且只返回一个 resp；flush 只抑制
-  // 回填安装，不取消该 demand。因此 DCacheRequestActive 必须一直保持到
-  // resp.fire，不能因 fence.i/DMA 一致性 flush 自行清除。
-  // VIPT 并行模式下 addr 来自 DMMU 的物理地址端口（可能尚未有效），
-  // vaddr 始终是架构虚拟地址；DCache 用 vaddr 选 index，等 PA 标签匹配。
   val viptRequestAddress =
     if (dataVIPTParallel) io.VIPTPAddress
     else activeInstruction.ALUResult
   val viptRequestPhysicalAddressValid =
     if (dataVIPTParallel) io.VIPTPAddressValid else true.B
+  // 非并行 VIPT：PA 标签必须用当前指令 VAddr，否则 VA≠PA 时 DCache 死锁。
   val viptRequestPhysicalAddressVirtualAddress =
     if (dataVIPTParallel) io.VIPTPAddressVirtualAddress
-    // 非并行 VIPT：请求进入 LSU 时 PA 已经由 DMMU 翻译完成并放在
-    // ALUResult 里，DCache 用 vaddr 选 index、用 addr 取 tag。此时 PA 的
-    // 归属标签就是当前指令自己的 VAddr；若这里填 ALUResult(PA)，DCache
-    // 会认为“PA 还没来”并等待一个永不出现的 VA 标签，导致 VA≠PA 时死锁。
     else activeInstruction.VAddress
   val viptRequestKill =
     if (dataVIPTParallel) io.VIPTKill else false.B
@@ -574,9 +545,6 @@ class ysyx_26030103_LSU(
   val wbAWfire = io.DataBus.AW.AWVALID && io.DataBus.AW.AWREADY
   val wbWfire = io.DataBus.W.WVALID && io.DataBus.W.WREADY
   val wbBMatch = io.DataBus.B.BID === 0.U
-  // A following store may already have issued while the preceding successful
-  // store is in StageDone.  Do not consume its B until its matching instruction
-  // has become the active architectural queue head.
   val activeStoreAwaitsB = stageState === stageWait &&
     messageReg.MemoryValid && messageReg.MemoryWrite && !misalignedReg &&
     state === stateWriteWaitB && wbHead === storeBufferIndex
@@ -603,9 +571,7 @@ class ysyx_26030103_LSU(
     !wbNeedsPhysicalAddress.B || wbHeadPhysicalAddressValid
   val wbHeadEffectiveAddress =
     if (wbNeedsPhysicalAddress) wbHeadPhysicalAddress else wbHeadAddress
-  // 同拍 pop+push 且缓冲满时，tail 会复用即将出队的 head 槽位。此时新
-  // store 的 PA 有效位必须由 wbPush 写入，不能被上一笔 store 的迟到 PA
-  // 覆盖；否则新 store 可能带着旧 PA 发出 AW/W。
+  // 同拍 pop+push 时新 store 的 PA 有效位不能被旧 PA 覆盖。
   val wbPushOverwritesHead =
     wbPush && (if (WBufDepth == 1) true.B else wbTail === wbHead)
   val wbPhysicalAddressMatchesHead = io.VIPTPAddressValid &&
@@ -639,10 +605,7 @@ class ysyx_26030103_LSU(
     (if (wideMem)
        Mux(wbHeadWide, "hff".U(8.W), Cat(0.U(4.W), wbHeadStrobe))
      else wbHeadStrobe)
-  // store B 完成事件同时送给 ICache snoop。LastAddr 用本次访问的字节数
-  // （AWSIZE）计算，避免为了覆盖跨行把相邻行也无谓失效。
-  // 普通 store 与原子写共用 store 提交事件：前者驱动写直达 DCache
-  // 更新，后者让 ICache 复用 snoop 失效对应行。
+  // store B 完成同时更新 DCache 并触发 ICache snoop。
   io.StoreCommit := wbPop || atomicWriteComplete
   io.StoreCommitAddress :=
     Mux(atomicWriteComplete, atomicAddressReg, wbHeadEffectiveAddress)

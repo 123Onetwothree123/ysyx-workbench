@@ -166,9 +166,7 @@ private[mem] trait LSURead {
       atomicActive := false.B
       state := stateIdle
     }.elsewhen(readDrainTimer === DrainTimeout.U) {
-      // 从设备缺少 RLAST：继续等待只会让 LSU 永久忙。按访问故障完成
-      // 当前指令，让流水线恢复（迟到的 beat 由后续事务承担风险，和
-      // DCache 的 drain 超时恢复策略一致）。
+      // 缺 RLAST 超时后按访问故障完成，避免 LSU 永久忙。
       accessFaultReg := true.B
       when(accessFaultResponseReg === 0.U) {
         accessFaultResponseReg := 2.U

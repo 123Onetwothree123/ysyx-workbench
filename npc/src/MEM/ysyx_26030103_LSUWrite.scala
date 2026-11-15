@@ -74,10 +74,8 @@ private[mem] trait LSUWrite {
             io.DataBus.B.BID === 0.U,
             "LSU received a B response with an unexpected BID"
           )
+          // 成功 B 后下一拍可直接驱动新队首，不插空拍。
           when(wbBMatch) {
-            // Head advances on this edge.  wbIdle can immediately drive the new
-            // registered head in the following cycle, so there is no empty FSM
-            // cycle between a successful B and the next AW/W.
             wbState := wbIdle
             wbAWDone := false.B
             wbWDone := false.B

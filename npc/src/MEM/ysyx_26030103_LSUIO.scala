@@ -5,7 +5,6 @@ import chisel3.util._
 import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.infra._
 
-// LSU 对外端口。字段顺序即 Verilog 端口顺序，调整前先确认识别/回归脚本。
 private[mem] class ysyx_26030103_LSUIO(
     val XLEN: Int,
     val AddressWidth: Int,
@@ -31,16 +30,10 @@ private[mem] class ysyx_26030103_LSUIO(
   // 为未来 DMA/其他非 CPU 写入者保留的数据缓存一致性失效口。
   // Fence.I 只同步指令取值，当前写直达 DCache 不因 Fence.I 清空。
   val DCacheFlush = Input(Bool())
-  // LR/SC/AMO 的串行 uncached 事务。AtomicBusy 在事务开始前拉高，
-  // 通知总线仲裁器暂停新的 DMA 读写；BusQuiet 表示总线上已无 DMA
-  // 在途事务，LSU 必须等到它为高才开始读改写。
   val AtomicBusy = Output(Bool())
   val BusQuiet = Input(Bool())
   // 异常/上下文切换（CSR 提交）时保守地失效 reservation。
   val ReservationClear = Input(Bool())
-  // 原子事务完成写内存后产生单拍脉冲：顶层用它全局失效 DCache
-  // （最小接口，不做 alias 行扫描），并通过 StoreCommit 让 ICache
-  // 复用现有行失效通路。
   val AtomicCommit = Output(Bool())
   // DMA_COHERENCE=hardware_snoop 的地址级失效握手。Ready 为低时 DMA
   // 的 B 保持等待，直到所有匹配行失效且旧 refill/响应不再可能被使用。
@@ -48,9 +41,6 @@ private[mem] class ysyx_26030103_LSUIO(
   val DCacheDMASnoopStart = Input(UInt(AddressWidth.W))
   val DCacheDMASnoopEnd = Input(UInt(AddressWidth.W))
   val DCacheDMASnoopReady = Output(Bool())
-  // store 的 B 响应完成事件：ICache HARDWARE_SNOOP 用它在写落地后
-  // 失效对应行。Addr 是 store 首字节物理地址，LastAddr 覆盖本次访问的
-  // 最后一个字节（RV64 的 8B store 在 4B 行上可能跨两行）。
   val StoreCommit = Output(Bool())
   val StoreCommitAddress = Output(UInt(AddressWidth.W))
   val StoreCommitLastAddress = Output(UInt(AddressWidth.W))
@@ -61,10 +51,6 @@ private[mem] class ysyx_26030103_LSUIO(
   val VIPTPAddressVirtualAddress = Input(UInt(AddressWidth.W))
   // MMU 翻译故障：取消本 LSU 已受理但尚未取到 PA 的 load。
   val VIPTKill = Input(Bool())
-  // 无 MMU 时由顶层 PMP 检查“下一个可能产生总线副作用的访存地址”：
-  // 写缓冲非空时检查最老 store（队首），否则检查即将进入执行槽的访存
-  // 指令。PmpFault 必须在 AW/W/AR 握手前组合生效，故障指令不得产生
-  // 任何总线副作用，随后按普通访问故障精确提交。
   val PMPAddress = Output(UInt(AddressWidth.W))
   // 本次访问最后一个字节的地址。PMP 需要同时检查起始与末字节所在的
   // 4 字节 granule，防止 8 字节访问跨出 NA4/TOR 区域边界。
