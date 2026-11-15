@@ -15,38 +15,26 @@ import _root_.ysyx_26030103.mem._
 import _root_.ysyx_26030103.wbu._
 import _root_.ysyx_26030103.mmu._
 
-/** IFU 接受请求时保存的虚拟 PC/预测快照，用于响应级恢复架构 PC。 */
-class ysyx_26030103_FetchTag(val XLEN: Int = 32) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"FetchTag XLEN 非法: $XLEN")
-  val pc = UInt(XLEN.W)
-  val predTaken = Bool()
-  val predTarget = UInt(XLEN.W)
-}
-
 class ysyx_26030103(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
-) extends Module {
-  private val XLEN = config.XLEN
-  // RV64 调试观测的高 32 位视图。低 32 位端口保持历史 ABI 不变，
-  // 高字单独输出，C++ 侧按 XLEN 拼成完整 64 位，避免 RV64 地址/PC 被截断。
-  private def DebugHi(Value: UInt): UInt =
-    if (XLEN == 64) Value(63, 32) else 0.U(32.W)
-  // CSR 退休快照在首条指令退休前也必须与 CSR 读口一致：RV64 的
-  // mstatus.SXL/UXL 固定为 2（bit[35:32]=0xA）。
-  private def MstatusDebugReset: UInt =
-    if (XLEN == 32) ysyx_26030103_mstatus.resetValue
-    else Cat("h0000000a".U(32.W), ysyx_26030103_mstatus.resetValue)
+) extends Module
+    with FrontendConnect
+    with MemoryConnect
+    with AXIConnect
+    with PipelineConnect
+    with ObservabilityConnect {
+  protected def XLEN: Int = config.XLEN
   // 顶层 AXI 端口宽度由实际生效的 SoC XLEN 决定；CPU 内部地址/数据
   // 宽度不能直接决定这个 ABI。
   val io = IO(new ysyx_26030103_IO(config.EffectiveSocXLEN))
-  private val BusDataWidth = config.EffectiveInternalBusWidth
+  protected val busDataWidth: Int = config.EffectiveInternalBusWidth
   val ifu = Module(new ysyx_26030103_IFU(config.ResetAddr, XLEN, config.UseC))
   val idu = Module(new ysyx_26030103_IDU(config))
   val exu = Module(new ysyx_26030103_EXU(config))
   val wbu = Module(new ysyx_26030103_WBU(XLEN))
   // 数据侧 VIPT 并行只在 DCache 打开时才有意义；关闭 DCache 的配置
   // 仍走原来的“先翻译后访存”。
-  val parallelDataVipt =
+  val parallelDataVIPT =
     config.MMU.cacheMode == "vipt" && config.DCacheEnable
   val lsu = Module(
     new ysyx_26030103_LSU(
@@ -69,9 +57,9 @@ class ysyx_26030103(
       DCacheViptAliasScanWidth = config.DCacheViptAliasScanWidth,
       DCacheViptAliasDirectoryEntries = config.DCacheViptAliasDirectoryEntries,
       DCacheViptAliasEventQueueDepth = config.DCacheViptAliasEventQueueDepth,
-      ViptParallel = parallelDataVipt,
+      ViptParallel = parallelDataVIPT,
       AddressWidth = config.AddressWidth,
-      BusDataWidth = BusDataWidth,
+      BusDataWidth = busDataWidth,
       DCacheDrainTimeout = config.DCacheDrainTimeout,
       DrainTimeout = config.LsuDrainTimeout
     )
@@ -86,7 +74,7 @@ class ysyx_26030103(
   val arbiter = Module(
     new ysyx_26030103_AXI5Arbiter(
       AddressWidth = config.AddressWidth,
-      DataWidth = BusDataWidth,
+      DataWidth = busDataWidth,
       HardwareSnoop = config.DmaHardwareSnoop,
       DMAWindowBase = BigInt(config.ChipLinkMemoryBase),
       DMAWindowSize = BigInt(config.ChipLinkMemorySize),
@@ -105,7 +93,7 @@ class ysyx_26030103(
       PLICSizeBytes = BigInt(config.MMU.plicSize),
       CLINTBaseValue = BigInt(config.CLINTBase),
       CLINTSizeBytes = BigInt(config.CLINTSize),
-      DataWidth = BusDataWidth,
+      DataWidth = busDataWidth,
       IdWidth = 4,
       RespQueueDepth = config.AxiXbarRespQueueDepth
     )
@@ -113,7 +101,7 @@ class ysyx_26030103(
   val clint = Module(
     new ysyx_26030103_AXI5CLINTSlave(
       AddressWidth = config.AddressWidth,
-      DataWidth = BusDataWidth
+      DataWidth = busDataWidth
     )
   )
   val plic = Module(
@@ -123,36 +111,36 @@ class ysyx_26030103(
       maxPriority = config.MMU.plicMaxPriority,
       base = BigInt(config.MMU.plicBase),
       AddressWidth = config.AddressWidth,
-      DataWidth = BusDataWidth
+      DataWidth = busDataWidth
     )
   )
   // ysyxSoC的ChipLink内存窗口。只有当当前PMA明确覆盖完整
   // 0xc0000000--0xffffffff可读写区域时，才允许CPU slave端口代理
   // 入站DMA请求。其他配置继续用DECERR安全终止，不会意外暴露
   // CPU本地CLINT或SoC其他地址。
-  private val ChipLinkMemoryBase = BigInt(config.ChipLinkMemoryBase)
-  private val ChipLinkMemoryEnd =
-    ChipLinkMemoryBase + BigInt(config.ChipLinkMemorySize)
-  private val DMAProxyEnable = config.PMARegions.exists { Region =>
-    Region.Readable && Region.Writable &&
-    BigInt(Region.Base) <= ChipLinkMemoryBase &&
-    BigInt(Region.EndExclusive) >= ChipLinkMemoryEnd
+  private val chipLinkMemoryBase = BigInt(config.ChipLinkMemoryBase)
+  private val chipLinkMemoryEnd =
+    chipLinkMemoryBase + BigInt(config.ChipLinkMemorySize)
+  protected val dmaProxyEnable = config.PMARegions.exists { region =>
+    region.Readable && region.Writable &&
+    BigInt(region.Base) <= chipLinkMemoryBase &&
+    BigInt(region.EndExclusive) >= chipLinkMemoryEnd
   }
   val dmaErrorSlave =
-    if (DMAProxyEnable) None
+    if (dmaProxyEnable) None
     else
       Some(
         Module(
           new ysyx_26030103_AXI5DMAErrorSlave(
             AddressWidth = config.AddressWidth,
-            DataWidth = BusDataWidth
+            DataWidth = busDataWidth
           )
         )
       )
-  val pipe_flush = exu.io.FlushIF
-  // 分支目标缓冲(BTB): IFU取指级查询决定下一PC,取指被icache接受时快照预测标签随请求保存,
-  // EXU提交时更新分支的真实target; 另设独立jal BTB(方案B: 与分支表零干扰, 表项带kind区分Jal/Call/Ret)
-  // + 返回地址栈RAS(ret的预测目标=栈顶, EXU提交call/ret时压/弹, 非投机无需修复)
+  protected val pipeFlush = exu.io.FlushIF
+
+  // BTB 在 IFU 取指级查询、接受取指时快照预测标签、EXU 提交时更新；jal 另用
+  // 独立 BTB（方案B：与分支表零干扰，表项带 kind 区分 Jal/Call/Ret），Ret 目标取 RAS 栈顶。
   // C 扩展打开时 BTB 索引/标签保留 PC bit1，避免同一条 32 位指令的
   // 两个半字或相邻 16 位指令互相混叠。
   val btb = Module(
@@ -164,7 +152,7 @@ class ysyx_26030103(
       config.UseC
     )
   )
-  val jal_btb =
+  val jalBTB =
     Module(
       new ysyx_26030103_BTB(
         config.JalBTBBits,
@@ -177,10 +165,10 @@ class ysyx_26030103(
   val ras = Module(new ysyx_26030103_RAS(config.RASBits, config.AddressWidth))
   val predictorSelect =
     Module(new ysyx_26030103_PredictorSelect(config.AddressWidth))
-  val mmuEnabled = config.MMU.enabled
+  protected val mmuEnabled = config.MMU.enabled
   // VIPT 取指并行：ICache 先用 VA 选 index，再等待带 VA 标签的 PA。
   // PIPT 走原来的“翻译完成后再取指”路径，行为不变。
-  val parallelFetchVipt = config.MMU.cacheMode == "vipt"
+  protected val parallelFetchVIPT = config.MMU.cacheMode == "vipt"
   val pmpOpt =
     if (config.MMU.pmpEnabled)
       Some(
@@ -189,13 +177,24 @@ class ysyx_26030103(
         )
       )
     else None
+  // 无 MMU 时的取指 PMP 检查：PMP 直接看 IFU 的物理取指地址（VA==PA）。
+  // 故障请求不进入 ICache，而是在响应级注入一条带 cause=1 的精确异常。
+  // pending 只产生一次注入；blocked 一直保持到流水冲刷，防止故障 PC 被
+  // 反复取指而灌入一串年轻故障指令。
+  protected val pmpFetchFault = pmpOpt.map(_.io.fetchFault).getOrElse(false.B)
+  protected val pmpFetchBlocked = RegInit(false.B)
+  protected val pmpFetchAllow =
+    if (mmuEnabled) true.B
+    else pmpOpt.map(_ => !pmpFetchFault && !pmpFetchBlocked).getOrElse(true.B)
+  // IFU 翻译故障锁存：MMU 故障注入与 ICache 取指门控都要读，故提到顶层。
+  protected val ifuFaultValid = RegInit(false.B)
   // HAS_U=n 时 MPP 理论上已被 CSR 夹到 S；顶层再做一次防御性夹取，
   // 避免 MPRV 数据访问把不存在的 U 特权级送进 MMU/PMP。HAS_S=n 但
   // HAS_U=y 时 M+U 仍可保存 U，MPRV 降级必须按 MPP 而不是固定 M；
   // 只有 M-only 才没有 MPRV 降级，数据访问固定按 M 特权级检查。
   val hasS = config.MMU.hasS
   val hasU = config.MMU.hasU
-  val MprvPrivilege =
+  val mprvPrivilege =
     if (hasU) exu.io.CSRCurrentMstatus(12, 11)
     else if (hasS)
       Mux(
@@ -204,36 +203,22 @@ class ysyx_26030103(
         exu.io.CSRCurrentMstatus(12, 11)
       )
     else 3.U(2.W)
-  val dataPrivilege =
+  protected val dataPrivilege =
     if (!hasS && !hasU) 3.U(2.W)
     else
       Mux(
         exu.io.CSRPrivilege === 3.U && exu.io.CSRCurrentMstatus(17),
-        MprvPrivilege,
+        mprvPrivilege,
         exu.io.CSRPrivilege
       )
   // SUM 仅在 U/S 页表权限检查存在时有意义；HAS_U=n 时固定为 0，
   // 让相关逻辑在综合和仿真中被常量传播裁剪。
-  val fetchSum = if (hasU) exu.io.CSRCurrentMstatus(18) else false.B
-  val dataSum = if (hasU) exu.io.CSRCurrentMstatus(18) else false.B
-  // PMP 检查的是物理地址。MMU 关闭时虚拟地址等于物理地址；MMU 打开
-  // 后由 IMMU 给出翻译结果，下面会覆盖这个默认连接。此前一直送虚拟
-  // 地址，导致高虚拟地址（0xffffffff8...）永远不匹配 OpenSBI 的全内存
-  // NAPOT，S 模式取指被误判为 instruction access fault。
-  val pmpFetchAddr = WireDefault(ifu.io.FetchAddr)
-  pmpOpt.foreach { pmp =>
-    pmp.io.cfg := exu.io.PmpCfg
-    pmp.io.addr := exu.io.PmpAddr
-    pmp.io.fetchAddr := pmpFetchAddr
-    pmp.io.fetchPriv := exu.io.CSRPrivilege
-    // 默认按无 MMU 路径接 LSU 的访存检查地址；MMU 分支稍后覆盖成
-    // DMMU 给出的物理地址。这样两种配置共用同一个 PMP 例化。
-    pmp.io.dataAddr := lsu.io.PmpAddr
-    pmp.io.dataLastAddr := lsu.io.PmpLastAddr
-    pmp.io.dataPriv := dataPrivilege
-    pmp.io.dataRead := lsu.io.PmpRead
-    pmp.io.dataWrite := lsu.io.PmpWrite
-  }
+  protected val fetchSum = if (hasU) exu.io.CSRCurrentMstatus(18) else false.B
+  protected val dataSum = if (hasU) exu.io.CSRCurrentMstatus(18) else false.B
+
+  protected val mmuFlush: Bool =
+    if (mmuEnabled) RegNext(pipeFlush, false.B) else false.B
+
   val mmuUnitOpt =
     if (mmuEnabled) Some(Module(new ysyx_26030103_MMU(config.MMU))) else None
   val immuOpt =
@@ -241,7 +226,7 @@ class ysyx_26030103(
       Some(
         Module(
           new ysyx_26030103_IFUMMU(
-            ParallelVipt = parallelFetchVipt,
+            ParallelVipt = parallelFetchVIPT,
             XLEN = XLEN,
             AddressWidth = config.AddressWidth
           )
@@ -253,7 +238,7 @@ class ysyx_26030103(
       Some(
         Module(
           new ysyx_26030103_LSUMMU(
-            ParallelVipt = parallelDataVipt,
+            ParallelVipt = parallelDataVIPT,
             XLEN = XLEN,
             AddressWidth = config.AddressWidth
           )
@@ -271,7 +256,7 @@ class ysyx_26030103(
         )
       )
     else None
-  val ptwToAxiOpt =
+  val ptwToAXIOpt =
     if (mmuEnabled) {
       // PTW 页表总线可多 outstanding；适配器内部给每笔读分配独立 AXI ID
       // （3..15）并保存 PTW 原事务 ID，响应按 ID 回送对应页表槽位。
@@ -288,14 +273,14 @@ class ysyx_26030103(
             busDepth = busDepth.max(1),
             axiReadSlots = axiReadSlots,
             AddressWidth = config.AddressWidth,
-            DataWidth = BusDataWidth
+            DataWidth = busDataWidth
           )
         )
       )
     } else None
   // 隐式页表访问必须按 S 权限经过 PMP；在 PTW 总线与 AXI 适配器之间加
   // 过滤层，PMP 关闭时保持原来的直连。
-  val ptwPmpFilterOpt =
+  val ptwPMPFilterOpt =
     if (mmuEnabled && config.MMU.pmpEnabled)
       Some(
         Module(
@@ -313,19 +298,19 @@ class ysyx_26030103(
         Module(
           new ysyx_26030103_AXIReadMux(
             AddressWidth = config.AddressWidth,
-            DataWidth = BusDataWidth
+            DataWidth = busDataWidth
           )
         )
       )
     else None
-  val axiReadLsuMuxOpt =
+  val axiReadLSUMuxOpt =
     if (mmuEnabled && config.MMU.ptwPath == "reuse_dcache")
       Some(
         Module(
           new ysyx_26030103_AXIReadMux(
             passWriteA = true,
             AddressWidth = config.AddressWidth,
-            DataWidth = BusDataWidth
+            DataWidth = busDataWidth
           )
         )
       )
@@ -339,1511 +324,15 @@ class ysyx_26030103(
           new ysyx_26030103_AXIWriteMux(
             PassRead = false,
             AddressWidth = config.AddressWidth,
-            DataWidth = BusDataWidth
+            DataWidth = busDataWidth
           )
         )
       )
     else None
-  // ICache 响应(携带取指地址和错误标志)经冲刷流水寄存器直接进 IDU。
-  // C 模式下响应先进入 IFU 的半字拼装状态机，由 IFU 输出完整指令；
-  // 非 C 模式保持原有“ICache 响应直连 IDU + PC 快照队列”的数据通路。
-  val ifuResp = Wire(Decoupled(new ysyx_26030103_IFUMessage(XLEN)))
-  val ifuFaultValid = RegInit(false.B)
-  val ifuFaultPC = RegInit(0.U(XLEN.W))
-  // 取指故障写入 stval/mtval 的地址可能不同于指令起点：C 模式下 32 位
-  // 指令跨字/跨页时，故障发生在第二个字（如 ...1000），而 sepc 仍是
-  // 指令起点（...ffe）。这里单独锁存 faultVaddr。
-  val ifuFaultTval = RegInit(0.U(XLEN.W))
-  val fetchTranslationValid =
-    immuOpt.map(_.io.translationValid).getOrElse(true.B)
-  val fetchTranslationFault =
-    immuOpt.map(_.io.fault).getOrElse(false.B)
-  // 无 MMU 时的取指 PMP 检查：PMP 直接看 IFU 的物理取指地址（VA==PA）。
-  // 故障请求不进入 ICache，而是在响应级注入一条带 cause=1 的精确异常。
-  // pending 只产生一次注入；blocked 一直保持到流水冲刷，防止故障 PC 被
-  // 反复取指而灌入一串年轻故障指令。
-  val pmpFetchFault = pmpOpt.map(_.io.fetchFault).getOrElse(false.B)
-  val pmpFetchFaultValid = RegInit(false.B)
-  val pmpFetchFaultPC = RegInit(0.U(XLEN.W))
-  // 与 MMU 路径同理：C 模式下故障取指可能是跨字指令的第二个字。
-  val pmpFetchFaultTval = RegInit(0.U(XLEN.W))
-  val pmpFetchBlocked = RegInit(false.B)
-  val pmpFetchAllow =
-    if (mmuEnabled) true.B
-    else pmpOpt.map(_ => !pmpFetchFault && !pmpFetchBlocked).getOrElse(true.B)
-  // VIPT 在 VA 阶段就受理取指，因此快照队列不能再用 translationValid
-  // 门控；PIPT/无 MMU 保持原条件。
-  val accept_fetch =
-    ifu.io.FetchValid && pmpFetchAllow &&
-      (if (parallelFetchVipt) !ifuFaultValid else fetchTranslationValid) &&
-      icache.io.fetch_ready
-  // 两表项虚拟 PC 队列（仅非 C 路径）：允许响应与下一笔接受同拍发生。
-  // C 路径由 IFU 内部串行状态机保存 arch PC，不依赖 ICache 响应级重新
-  // 对齐 PC，因此不需要这个队列。
-  val fetchTag0 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
-  val fetchTag1 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
-  val fetchTagCount = RegInit(0.U(2.W))
-  // C 模式没有 fetchTagCount：只有 IFU 当前没有待交付指令、ICache 也没有
-  // 更老响应时才注入 PMP 故障，保证故障指令严格排在已取指令之后。
-  val pmpFetchInject =
-    if (config.UseC)
-      pmpFetchFaultValid && !ifu.io.Out.valid && !icache.io.resp_valid
-    else pmpFetchFaultValid && fetchTagCount === 0.U && !icache.io.resp_valid
-  val pushTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
-  // FetchPC 是架构 PC（指令起点）；非 C 时与 FetchAddr 相同。
-  pushTag.pc := ifu.io.FetchPC
-  pushTag.predTaken := ifu.io.PredHit
-  pushTag.predTarget := ifu.io.PredTarget
-  val popFetch = icache.io.resp_valid && icache.io.resp_ready
-  val responseTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
-  if (!config.UseC) {
-    responseTag := Mux(fetchTagCount === 0.U, pushTag, fetchTag0)
-    val pushAndPop = accept_fetch && popFetch
-    when(
-      pipe_flush || (if (parallelFetchVipt) fetchTranslationFault else false.B)
-    ) {
-      // VIPT 下翻译故障对应的请求已经被 ICache 受理并推入过快照；该请求不会
-      // 产生正常响应（故障由 ifuResp 注入），因此连同年轻请求一起清空。
-      fetchTagCount := 0.U
-    }.elsewhen(pushAndPop) {
-      when(fetchTagCount === 0.U) {
-        fetchTagCount := 0.U
-      }.elsewhen(fetchTagCount === 1.U) {
-        fetchTag0 := pushTag
-      }.otherwise {
-        fetchTag0 := fetchTag1
-        fetchTag1 := pushTag
-      }
-    }.elsewhen(accept_fetch) {
-      when(fetchTagCount === 0.U) {
-        fetchTag0 := pushTag
-        fetchTagCount := 1.U
-      }.elsewhen(fetchTagCount === 1.U) {
-        fetchTag1 := pushTag
-        fetchTagCount := 2.U
-      }
-    }.elsewhen(popFetch) {
-      when(fetchTagCount === 2.U) {
-        fetchTag0 := fetchTag1
-        fetchTagCount := 1.U
-      }.otherwise {
-        fetchTagCount := 0.U
-      }
-    }
-  }
 
-  // IFU 的响应端口在两种模式下都连接；非 C 模式内部忽略。
-  ifu.io.RespData := icache.io.resp_data
-  ifu.io.RespValid := icache.io.resp_valid
-  ifu.io.RespExceptionValid := icache.io.resp_fault
-  ifu.io.RespExceptionCause := 1.U(4.W)
-  ifu.io.RespAccessFaultResp := icache.io.access_fault_resp
-
-  if (mmuEnabled) {
-    // 取指虚拟 PC 与 ICache 的物理取指地址分离；ICache 只有一笔在途，
-    // 因此一个虚拟 PC 快照足够把响应恢复成架构 PC。
-    // 重定向/更老指令异常当拍必须丢弃取指故障脉冲。若等到下一拍的
-    // mmuFlush 再清，故障会被注入到新的重定向目标上，产生伪精确异常。
-    when(pipe_flush) {
-      ifuFaultValid := false.B
-    }.elsewhen(immuOpt.get.io.fault) {
-      ifuFaultValid := true.B
-      // C 模式下 IFU 的 pcReg 停在故障指令起点；第二个半字跨页/跨行
-      // 故障时 mepc 仍指向这条指令的起点。顶层重定向会更新实时
-      // FetchPC，因此这里必须锁存故障取指自己的 PC。
-      ifuFaultPC := (if (config.UseC) ifu.io.FetchPC
-                     else immuOpt.get.io.faultVaddr)
-      ifuFaultTval := immuOpt.get.io.faultVaddr
-    }.elsewhen(ifuResp.fire) {
-      ifuFaultValid := false.B
-    }
-  } else {
-    // 无 MMU 的取指 PMP 故障注入：PMP 在 IFU 当前物理取指地址上组合
-    // 判定。故障请求被挡在 ICache 之外，由这里合成一条 NOP 响应，
-    // 携带 faulting PC 和 instruction access fault(cause=1)。
-    when(pipe_flush) {
-      // 分支重定向/更老指令异常会丢弃故障路径，重新从目标取指。
-      pmpFetchFaultValid := false.B
-      pmpFetchBlocked := false.B
-    }.elsewhen(pmpFetchFault && ifu.io.FetchValid && !pmpFetchBlocked) {
-      pmpFetchFaultValid := true.B
-      pmpFetchFaultPC := (if (config.UseC) ifu.io.FetchPC
-                          else ifu.io.FetchAddr)
-      // FetchAddr 是实际被 PMP 拒绝的取指地址；C 模式下跨字第二个字
-      // 故障时它比指令起点 FetchPC 更精确。
-      pmpFetchFaultTval := ifu.io.FetchAddr
-      pmpFetchBlocked := true.B
-    }.elsewhen(pmpFetchInject && ifuResp.fire) {
-      // 只注入一次；blocked 保持到真正提交 trap 的冲刷，避免在同一 PC
-      // 反复制造年轻故障。
-      pmpFetchFaultValid := false.B
-    }
-  }
-
-  // 合成故障响应的公共格式。
-  // 统一使用锁存的故障 PC：C 模式也不能使用实时 FetchPC，否则重定向后
-  // 的取指地址会被错误地当成故障指令地址。
-  val fetchFaultPC =
-    if (mmuEnabled) ifuFaultPC
-    else pmpFetchFaultPC
-  // fault PC 用于 mepc/sepc，fault tval 用于 stval/mtval。两者在 C 模式
-  // 跨字取指故障时可以不同。异常指令不使用预测目标，这里复用 pred_target
-  // 把 fault tval 透传到 EXU（IDU 原样透传该字段）。
-  val fetchFaultTval =
-    if (mmuEnabled) ifuFaultTval
-    else pmpFetchFaultTval
-  val fetchFaultCause =
-    if (mmuEnabled) immuOpt.map(_.io.faultCause).getOrElse(12.U(4.W))
-    else 1.U(4.W)
-  val fetchFaultInject =
-    (if (mmuEnabled) ifuFaultValid else false.B) || pmpFetchInject
-  val faultBits = WireInit(0.U.asTypeOf(new ysyx_26030103_IFUMessage(XLEN)))
-  faultBits.Instruction := "h00000013".U(32.W)
-  faultBits.IsCompressed := false.B
-  faultBits.pc := fetchFaultPC
-  faultBits.ExceptionValid := true.B
-  faultBits.ExceptionCause := fetchFaultCause
-  faultBits.AccessFaultResp := 0.U(2.W)
-  faultBits.pred_taken := false.B
-  faultBits.pred_target := fetchFaultTval
-
-  if (config.UseC) {
-    // IFU 已把 16/32 位编码拼装完整；pc/异常/预测标签都由 IFU 给出。
-    ifuResp.valid := fetchFaultInject || ifu.io.Out.valid
-    ifuResp.bits := Mux(fetchFaultInject, faultBits, ifu.io.Out.bits)
-    ifu.io.Out.ready := ifuResp.ready && !fetchFaultInject
-    icache.io.resp_ready := ifu.io.RespReady && !fetchFaultInject
-  } else {
-    val normalBits = WireInit(0.U.asTypeOf(new ysyx_26030103_IFUMessage(XLEN)))
-    normalBits.Instruction := icache.io.resp_data
-    normalBits.IsCompressed := false.B
-    normalBits.pc := responseTag.pc
-    normalBits.ExceptionValid := icache.io.resp_fault
-    normalBits.ExceptionCause := 1.U(4.W)
-    normalBits.AccessFaultResp := icache.io.access_fault_resp
-    // 取指故障时 tval 必须是发生故障的取指地址，而不是 BTB 预测信息。
-    normalBits.pred_taken := responseTag.predTaken && !icache.io.resp_fault
-    normalBits.pred_target :=
-      Mux(icache.io.resp_fault, responseTag.pc, responseTag.predTarget)
-    ifuResp.valid := fetchFaultInject || icache.io.resp_valid
-    ifuResp.bits := Mux(fetchFaultInject, faultBits, normalBits)
-    ifu.io.Out.ready := false.B
-    icache.io.resp_ready := ifuResp.ready && !fetchFaultInject
-    // 响应级不再重新查表, 预测标签在取指接受时快照保存。不变量：ICache
-    // 的每个响应都必须对应一个已受理取指的快照；若 redirect/flush 后仍
-    // 残留旧响应，fetchTagCount 会先被清零，这里立即报错。
-    when(icache.io.resp_valid && !ifuFaultValid && !pmpFetchInject) {
-      assert(
-        fetchTagCount =/= 0.U,
-        "ICache response arrived without a fetch PC tag snapshot"
-      )
-    }
-  }
-  ysyx_26030103_StageConnect(ifuResp, idu.io.in, pipe_flush)
-  // icache.kill 在下面按 PIPT/VIPT 分支连接：VIPT 还需要在翻译故障时
-  // 杀死未完成的 VA 请求。
-  // EXU 重定向或异常必须杀死 IDU->EXU 边界中排队的年轻指令，同时让当前 EXU
-  // 指令在本周期保持可见，以便它提交并产生重定向。
-  // DMMU 页故障/PMP 故障通过 faultCommit 提交，不会拉高 lsu.FlushIDEX；
-  // 它同样必须杀死 IDU->EXU 边界里的年轻指令，否则故障指令之后的那条
-  // 会在 trap 入口前进入 EXU。faultCommit 是寄存器输出，不引入组合环。
-  val dmmuFaultCommit = dmmuOpt.map(_.io.faultCommit).getOrElse(false.B)
-  ysyx_26030103_StageConnect(
-    idu.io.out,
-    exu.io.in,
-    lsu.io.FlushIDEX || pipe_flush || dmmuFaultCommit,
-    // 当前 EXU 项产生重定向或陷阱时必须允许该项握手；更老的 MEM 故障则必须
-    // 杀死它，即使 EXU 正在承受反压也一样。DMMU 故障属于更老的 MEM 故障。
-    flushCurrent = lsu.io.FlushIDEX || dmmuFaultCommit
-  )
-  // 此边界保存的是比 LSU 当前指令更年轻的指令，只有更老的 MEM 故障可以丢弃
-  // 它；不要在这里接入 pipe_flush。
-  if (mmuEnabled) {
-    // DMMU 对非访存指令是组合直通，因此这里仍然只有 LSU 前的一级流水寄存器。
-    // VIPT 并行 load 会在翻译完成前通过这个边界进入 LSU；翻译故障时
-    // memKill 必须清理该边界，避免故障请求在 kill 之后再次进入 LSU。
-    // 但 memKill 直接接 flushCurrent 会经 LSU.in.valid → MemoryBusy →
-    // EXU.FlushIF 形成组合环；kill 打一拍只用于清 StageConnect，ViptKill
-    // 仍在当拍清理 LSU/DCache，不会让故障请求留下副作用。
-    val dmmuMemKillForStage = RegNext(dmmuOpt.get.io.memKill, false.B)
-    exu.io.out <> dmmuOpt.get.io.in
-    ysyx_26030103_StageConnect(
-      dmmuOpt.get.io.out,
-      lsu.io.in,
-      lsu.io.FlushEXMEM || dmmuMemKillForStage
-    )
-    lsu.io.ViptPAddr := dmmuOpt.get.io.memPaddr
-    lsu.io.ViptPAddrValid := dmmuOpt.get.io.memPaddrValid
-    lsu.io.ViptPAddrVaddr := dmmuOpt.get.io.memPaddrVaddr
-    lsu.io.ViptKill := dmmuOpt.get.io.memKill
-    dmmuOpt.get.io.memActive := lsu.io.Busy
-    // LSU 本地陷阱（misaligned/PMP/总线错误）优先于尚未返回的翻译；
-    // 撤销在途 DMMU 请求，防止同一个 store/load 二次提交 page fault。
-    dmmuOpt.get.io.memTrap := lsu.io.MemTrapCommit
-  } else {
-    ysyx_26030103_StageConnect(exu.io.out, lsu.io.in, lsu.io.FlushEXMEM)
-    // 无 MMU 时 VA==PA；VIPT 并行端口不使用，绑定安全常量。
-    lsu.io.ViptPAddr := 0.U
-    lsu.io.ViptPAddrValid := false.B
-    lsu.io.ViptPAddrVaddr := 0.U
-    lsu.io.ViptKill := false.B
-  }
-  ysyx_26030103_StageConnect(lsu.io.out, wbu.io.in)
-  if (mmuEnabled) {
-    val immu = immuOpt.get
-    val dmmu = dmmuOpt.get
-    val mmu = mmuUnitOpt.get
-    val mmuArb = mmuArbOpt.get
-    val ptwAxi = ptwToAxiOpt.get
-    val mmuFlush = RegNext(pipe_flush, false.B)
-    // satp 写入/sfence.vma 的 TLB 全量刷新会清空 MMU 内的在途翻译；
-    // IFU/LSU 的翻译状态机必须同步回到 idle 并重发请求，否则会永远
-    // 停在 xwait 等一个已被丢弃的响应。
-    val tlbFlush = exu.io.CSRFlushTLB
-
-    // 与 IFUMMU 内部 bypass 判定保持一致：satp.Mode=0 或 M 模式时 VA==PA。
-    // RV64 的 MODE 位于 satp[63:60]（Sv39=8/Sv48=9），不能只检查 bit31。
-    val immuBypass =
-      (if (XLEN == 32) exu.io.CSRSatp(31) === 0.U
-       else exu.io.CSRSatp(63, 60) === 0.U) || exu.io.CSRPrivilege === 3.U
-    immu.io.privilege := exu.io.CSRPrivilege
-    immu.io.satp := exu.io.CSRSatp
-    // 取指没有 SUM 豁免；HAS_U=n 时直接绑 0。
-    immu.io.sum := fetchSum
-    immu.io.mxr := exu.io.CSRCurrentMstatus(19)
-    immu.io.flush := mmuFlush || tlbFlush
-    if (parallelFetchVipt) {
-      // VIPT 并行路径：只翻译 ICache 已受理的 VA；PA 带 VA 标签返回。
-      // IFU 可以在 PA 到达前推进 PC（此时 cache 已用 VA 选好 index）。
-      immu.io.fetchValid := icache.io.fetch_xlate_pending
-      immu.io.fetchVaddr := icache.io.fetch_xlate_vaddr
-      immu.io.cacheReady := icache.io.fetch_ready
-      ifu.io.FetchReady := icache.io.fetch_ready && !ifuFaultValid
-      // 翻译故障期间停止受理新取指，等 EXU 精确陷阱冲刷。
-      icache.io.fetch_valid := ifu.io.FetchValid && !ifuFaultValid
-      icache.io.fetch_vaddr := ifu.io.FetchAddr
-      // Bare/M 模式的 bypass 也必须经过 IFUMMU 的 PMP 检查：translationValid
-      // 已经与 !pmpFault 相与，不能再直接用 immuBypass 放行 PA，否则被 PMP
-      // 拒绝的取指会绕过 IFUMMU 直接被 ICache 受理。
-      icache.io.fetch_addr := immu.io.fetchPaddr
-      icache.io.fetch_paddr_valid := immu.io.translationValid
-      icache.io.fetch_paddr_vaddr := immu.io.fetchPaddrVaddr
-      // 翻译故障与重定向都杀死未完成的 VA 请求，错误数据绝不提交。
-      icache.io.kill := pipe_flush || immu.io.fault
-    } else {
-      immu.io.fetchValid := ifu.io.FetchValid
-      immu.io.fetchVaddr := ifu.io.FetchAddr
-      immu.io.cacheReady := icache.io.fetch_ready
-      ifu.io.FetchReady := immu.io.fetchReady
-      icache.io.fetch_addr := immu.io.fetchPaddr
-      icache.io.fetch_vaddr := ifu.io.FetchAddr
-      icache.io.fetch_valid := ifu.io.FetchValid && immu.io.translationValid
-      // PIPT 实现忽略这两个端口；保持旧路径完全不变。
-      icache.io.fetch_paddr_valid := true.B
-      icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
-      icache.io.kill := pipe_flush
-    }
-    // PMP 必须在物理地址上检查；Bare 模式没有翻译，仍用虚拟地址。
-    pmpFetchAddr :=
-      Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddr)
-
-    // mstatus.MPRV：M 模式数据访问按 MPP 的特权级翻译；取指仍用当前特权级。
-    dmmu.io.privilege := dataPrivilege
-    dmmu.io.satp := exu.io.CSRSatp
-    dmmu.io.sum := dataSum
-    dmmu.io.mxr := exu.io.CSRCurrentMstatus(19)
-    dmmu.io.flush := pipe_flush || tlbFlush
-    immu.io.pmpFault := pmpOpt.map(_.io.fetchFault).getOrElse(false.B)
-    dmmu.io.pmpFault := pmpOpt.map(_.io.dataFault).getOrElse(false.B)
-    pmpOpt.foreach { pmp =>
-      pmp.io.fetchAddr := immu.io.fetchPaddr
-      pmp.io.dataAddr := dmmu.io.pmpAddr
-      pmp.io.dataLastAddr := dmmu.io.pmpLastAddr
-      pmp.io.dataRead := dmmu.io.pmpRead
-      pmp.io.dataWrite := dmmu.io.pmpWrite
-    }
-    // MMU 路径的 PMP 已在 DMMU 翻译完成后检查，LSU 不需要再检查。
-    lsu.io.PmpFault := false.B
-
-    mmuArb.io.iReq <> immu.io.req
-    mmuArb.io.iResp <> immu.io.resp
-    mmuArb.io.dReq <> dmmu.io.req
-    mmuArb.io.dResp <> dmmu.io.resp
-    mmuArb.io.mmuReq <> mmu.io.req
-    mmu.io.resp <> mmuArb.io.mmuResp
-    // satp 写入/sfence.vma 会清空 MMU 内所有在途翻译且不再回响应，
-    // 仲裁器必须同步撤销 outstanding，否则后续取指/访存永远等不到翻译。
-    mmuArb.io.flush := tlbFlush
-    mmu.io.flush := tlbFlush
-
-    ptwPmpFilterOpt match {
-      case Some(filter) =>
-        filter.io.in.req <> mmu.io.bus.req
-        filter.io.in.resp <> mmu.io.bus.resp
-        filter.io.out.req <> ptwAxi.io.req
-        filter.io.out.resp <> ptwAxi.io.resp
-        filter.io.cfg := exu.io.PmpCfg
-        filter.io.addr := exu.io.PmpAddr
-      case None =>
-        mmu.io.bus.req <> ptwAxi.io.req
-        mmu.io.bus.resp <> ptwAxi.io.resp
-    }
-    if (config.MMU.ptwPath == "reuse_dcache") {
-      val lsuReadMux = axiReadLsuMuxOpt.get
-      icache.io.axi <> arbiter.io.ifu
-      lsu.io.DataBus <> lsuReadMux.io.a
-      ptwAxi.io.axi <> lsuReadMux.io.b
-      axiWriteMuxOpt match {
-        case Some(writeMux) =>
-          lsuReadMux.io.out.AW <> writeMux.io.a.AW
-          lsuReadMux.io.out.W <> writeMux.io.a.W
-          writeMux.io.a.B <> lsuReadMux.io.out.B
-          lsuReadMux.io.out.AR <> arbiter.io.lsu.AR
-          arbiter.io.lsu.R <> lsuReadMux.io.out.R
-        case None => lsuReadMux.io.out <> arbiter.io.lsu
-      }
-    } else {
-      val readMux = axiReadMuxOpt.get
-      ptwAxi.io.axi <> readMux.io.b
-      icache.io.axi <> readMux.io.a
-      readMux.io.out <> arbiter.io.ifu
-    }
-    // 重定向当拍已在故障锁存处清 ifuFaultValid；这里保留下一拍兜底，
-    // 用于清掉 flush 前最后时刻返回的旧取指故障。
-    when(mmuFlush) { ifuFaultValid := false.B }
-  } else {
-    icache.io.axi <> arbiter.io.ifu
-    icache.io.fetch_addr := ifu.io.FetchAddr
-    icache.io.fetch_vaddr := ifu.io.FetchAddr
-    // 无 MMU 时 VA==PA，VIPT 等价于恒等映射，不需要等待翻译。
-    icache.io.fetch_paddr_valid := true.B
-    icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
-    // PMP 故障请求不得进入 ICache；故障 PC 在响应级合成 cause=1。
-    icache.io.fetch_valid := ifu.io.FetchValid && pmpFetchAllow
-    icache.io.kill := pipe_flush
-    ifu.io.FetchReady := icache.io.fetch_ready && pmpFetchAllow
-    // 无 MMU 时顶层 PMP 直接检查 LSU 给出的 VA==PA 访存地址；
-    // MMU 路径在 DMMU 翻译后检查，LSU 端口保持关闭。
-    lsu.io.PmpFault := pmpOpt.map(_.io.dataFault).getOrElse(false.B)
-  }
-  // BTB 查询使用架构 PC（C 模式下可能落在字内高半字），并按 IALIGN
-  // 决定去掉 1 位还是 2 位对齐位。预测只在 IFU 的指令起点取指上生效。
-  val FetchPredictPC =
-    if (config.UseC) ifu.io.FetchPC else ifu.io.FetchAddr
-  val BtbPcShift = if (config.UseC) 1 else 2
-  btb.io.lookup_pc := FetchPredictPC(config.AddressWidth - 1, BtbPcShift)
-  jal_btb.io.lookup_pc := FetchPredictPC(config.AddressWidth - 1, BtbPcShift)
-  // Ret只有在RAS非空时才有资格取得优先级；Ret表项的target保存静态
-  // JALR immediate，由选择器与动态栈顶相加。分支仍采用BTFN方向预测。
-  predictorSelect.io.fetchPC := FetchPredictPC
-  predictorSelect.io.branchHit := btb.io.hit
-  predictorSelect.io.branchTarget := btb.io.target
-  predictorSelect.io.jalHit := jal_btb.io.hit
-  predictorSelect.io.jalTarget := jal_btb.io.target
-  predictorSelect.io.jalKind := jal_btb.io.hit_kind.get
-  predictorSelect.io.rasNonempty := ras.io.nonempty
-  predictorSelect.io.rasTop := ras.io.top
-  ifu.io.PredHit := predictorSelect.io.predHit
-  ifu.io.PredTarget := predictorSelect.io.predTarget
-  // BTB更新: EXU提交时按指令类型路由, 分支写分支表, jal/ret写jal表(带kind)
-  // BTB/RAS 表项按虚拟 PC/返回地址索引，不携带地址空间或特权级标签。
-  // satp 写入/sfence.vma(CSRFlushTLB) 或 trap/mret/sret(ExceptionTaken)
-  // 后，同一虚拟 PC 可能已属于另一上下文；若继续命中旧表项，非控制指令
-  // 也会带上 pred_taken，随后 EXU 的伪重定向会冲刷当前访存/浮点请求。
-  // 因此上下文切换时保守清空全部预测状态，绝不跨上下文复用表项。
-  val contextFlush = exu.io.CSRFlushTLB || exu.io.ExceptionTaken
-  btb.io.update_valid := exu.io.BTBUpdateValid
-  btb.io.update_pc := exu.io.BTBUpdatePC(config.AddressWidth - 1, BtbPcShift)
-  btb.io.update_target := exu.io.BTBUpdateTarget
-  btb.io.flush := exu.io.FenceIFlush || contextFlush
-  jal_btb.io.update_valid := exu.io.JalBTBUpdateValid
-  jal_btb.io.update_pc := exu.io.JalBTBUpdatePC(
-    config.AddressWidth - 1,
-    BtbPcShift
-  )
-  jal_btb.io.update_target := exu.io.JalBTBUpdateTarget
-  jal_btb.io.update_kind.get := exu.io.JalBTBUpdateKind
-  jal_btb.io.flush := exu.io.FenceIFlush || contextFlush
-  // RAS更新: call压栈, ret弹栈
-  ras.io.push_valid := exu.io.RASPushValid
-  ras.io.push_addr := exu.io.RASPushAddr
-  ras.io.pop_valid := exu.io.RASPopValid
-  ras.io.flush := exu.io.FenceIFlush || contextFlush
-  if (mmuEnabled) {
-    axiWriteMuxOpt match {
-      case Some(writeMux) =>
-        if (config.MMU.ptwPath != "reuse_dcache") {
-          lsu.io.DataBus.AW <> writeMux.io.a.AW
-          lsu.io.DataBus.W <> writeMux.io.a.W
-          writeMux.io.a.B <> lsu.io.DataBus.B
-          lsu.io.DataBus.AR <> arbiter.io.lsu.AR
-          arbiter.io.lsu.R <> lsu.io.DataBus.R
-        }
-        // 写 mux 只承载写通道；未使用的 AR/R 输入显式绑定。
-        writeMux.io.a.AR.ARVALID := false.B
-        writeMux.io.a.AR.ARID := 0.U
-        writeMux.io.a.AR.ARADDR := 0.U
-        writeMux.io.a.AR.ARLEN := 0.U
-        writeMux.io.a.AR.ARSIZE := 2.U
-        writeMux.io.a.AR.ARBURST := 0.U
-        writeMux.io.a.AR.ARPROT := 0.U
-        writeMux.io.a.AR.ARCACHE := 0.U
-        writeMux.io.a.AR.ARQOS := 0.U
-        writeMux.io.a.R.RREADY := false.B
-        ptwToAxiOpt.get.io.axiWrite <> writeMux.io.b
-        writeMux.io.out.AW <> arbiter.io.lsu.AW
-        writeMux.io.out.W <> arbiter.io.lsu.W
-        writeMux.io.out.B <> arbiter.io.lsu.B
-        writeMux.io.out.AR.ARREADY := false.B
-        writeMux.io.out.R.RID := 0.U
-        writeMux.io.out.R.RDATA := 0.U
-        writeMux.io.out.R.RRESP := 0.U
-        writeMux.io.out.R.RLAST := false.B
-        writeMux.io.out.R.RVALID := false.B
-      case None =>
-        if (config.MMU.ptwPath != "reuse_dcache") {
-          arbiter.io.lsu <> lsu.io.DataBus
-        }
-        // 没有 A/D 写回时 PTW 写端口保持空闲。
-        val ptwWrite = ptwToAxiOpt.get.io.axiWrite
-        ptwWrite.AW.AWREADY := false.B
-        ptwWrite.W.WREADY := false.B
-        ptwWrite.B.BVALID := false.B
-        ptwWrite.B.BID := 0.U
-        ptwWrite.B.BRESP := 0.U
-        ptwWrite.AR.ARREADY := false.B
-        ptwWrite.R.RVALID := false.B
-        ptwWrite.R.RID := 0.U
-        ptwWrite.R.RDATA := 0.U
-        ptwWrite.R.RRESP := 0.U
-        ptwWrite.R.RLAST := false.B
-    }
-  } else {
-    arbiter.io.lsu <> lsu.io.DataBus
-  }
-  arbiter.io.memory.AW <> xbar.io.in.AW
-  arbiter.io.memory.W <> xbar.io.in.W
-  arbiter.io.memory.B <> xbar.io.in.B
-  arbiter.io.memory.AR <> xbar.io.in.AR
-  arbiter.io.memory.R <> xbar.io.in.R
-  private val SocXLEN = config.EffectiveSocXLEN
-  val socMasterBridge = Module(
-    new ysyx_26030103_AXI5WidthBridge(
-      UpstreamAddressWidth = config.AddressWidth,
-      DownstreamAddressWidth = SocXLEN,
-      UpstreamDataWidth = BusDataWidth,
-      DownstreamDataWidth = SocXLEN,
-      IdWidth = 4
-    )
-  )
-  socMasterBridge.io.in <> xbar.io.SoCBus
-  val soc = socMasterBridge.io.out
-
-  io.master.awvalid := soc.AW.AWVALID
-  io.master.awaddr := soc.AW.AWADDR
-  io.master.awid := soc.AW.AWID
-  io.master.awlen := soc.AW.AWLEN
-  io.master.awsize := soc.AW.AWSIZE
-  io.master.awburst := soc.AW.AWBURST
-  io.master.awlock := 0.U
-  io.master.awcache := soc.AW.AWCACHE
-  io.master.awprot := soc.AW.AWPROT
-  io.master.awqos := soc.AW.AWQOS
-  soc.AW.AWREADY := io.master.awready
-
-  io.master.wvalid := soc.W.WVALID
-  io.master.wdata := soc.W.WDATA
-  io.master.wstrb := soc.W.WSTRB
-  io.master.wlast := soc.W.WLAST
-  soc.W.WREADY := io.master.wready
-
-  io.master.bready := soc.B.BREADY
-  soc.B.BID := io.master.bid
-  soc.B.BVALID := io.master.bvalid
-  soc.B.BRESP := io.master.bresp
-
-  io.master.arvalid := soc.AR.ARVALID
-  io.master.araddr := soc.AR.ARADDR
-  io.master.arid := soc.AR.ARID
-  io.master.arlen := soc.AR.ARLEN
-  io.master.arsize := soc.AR.ARSIZE
-  io.master.arburst := soc.AR.ARBURST
-  io.master.arlock := 0.U
-  io.master.arcache := soc.AR.ARCACHE
-  io.master.arprot := soc.AR.ARPROT
-  io.master.arqos := soc.AR.ARQOS
-  soc.AR.ARREADY := io.master.arready
-
-  io.master.rready := soc.R.RREADY
-  soc.R.RID := io.master.rid
-  soc.R.RVALID := io.master.rvalid
-  soc.R.RRESP := io.master.rresp
-  soc.R.RDATA := io.master.rdata
-  soc.R.RLAST := io.master.rlast
-
-  // ChipLink对端的DMA请求从CPU slave入站。该窗口的实体存储位于
-  // FPGA侧：请求经本仲裁器和CPU master送回ChipLink后，在对端
-  // master_mem/SimAXIMem终止。这是受控的hairpin proxy，不是无限环回。
-  //
-  val socSlaveBridge = Module(
-    new ysyx_26030103_AXI5WidthBridge(
-      UpstreamAddressWidth = SocXLEN,
-      DownstreamAddressWidth = config.AddressWidth,
-      UpstreamDataWidth = SocXLEN,
-      DownstreamDataWidth = BusDataWidth,
-      IdWidth = 4,
-      TrackExclusive = true
-    )
-  )
-  // LOCK 与桥内部的 AW/AR 事务绑定：在外部地址握手拍锁存，直到对应
-  // B/最后一个 R 返回。仲裁器只消费这个锁存值，不再直接采样外部引脚。
-  socSlaveBridge.io.inAWLock.foreach(_ := io.slave.awlock)
-  socSlaveBridge.io.inARLock.foreach(_ := io.slave.arlock)
-  socSlaveBridge.io.in.AW.AWVALID := io.slave.awvalid
-  socSlaveBridge.io.in.AW.AWADDR := io.slave.awaddr
-  socSlaveBridge.io.in.AW.AWID := io.slave.awid
-  socSlaveBridge.io.in.AW.AWLEN := io.slave.awlen
-  socSlaveBridge.io.in.AW.AWSIZE := io.slave.awsize
-  socSlaveBridge.io.in.AW.AWBURST := io.slave.awburst
-  socSlaveBridge.io.in.AW.AWPROT := io.slave.awprot
-  socSlaveBridge.io.in.AW.AWCACHE := io.slave.awcache
-  socSlaveBridge.io.in.AW.AWQOS := io.slave.awqos
-  io.slave.awready := socSlaveBridge.io.in.AW.AWREADY
-
-  socSlaveBridge.io.in.W.WVALID := io.slave.wvalid
-  socSlaveBridge.io.in.W.WDATA := io.slave.wdata
-  socSlaveBridge.io.in.W.WSTRB := io.slave.wstrb
-  socSlaveBridge.io.in.W.WLAST := io.slave.wlast
-  io.slave.wready := socSlaveBridge.io.in.W.WREADY
-
-  io.slave.bvalid := socSlaveBridge.io.in.B.BVALID
-  io.slave.bresp := socSlaveBridge.io.in.B.BRESP
-  io.slave.bid := socSlaveBridge.io.in.B.BID
-  socSlaveBridge.io.in.B.BREADY := io.slave.bready
-
-  socSlaveBridge.io.in.AR.ARVALID := io.slave.arvalid
-  socSlaveBridge.io.in.AR.ARADDR := io.slave.araddr
-  socSlaveBridge.io.in.AR.ARID := io.slave.arid
-  socSlaveBridge.io.in.AR.ARLEN := io.slave.arlen
-  socSlaveBridge.io.in.AR.ARSIZE := io.slave.arsize
-  socSlaveBridge.io.in.AR.ARBURST := io.slave.arburst
-  socSlaveBridge.io.in.AR.ARPROT := io.slave.arprot
-  socSlaveBridge.io.in.AR.ARCACHE := io.slave.arcache
-  socSlaveBridge.io.in.AR.ARQOS := io.slave.arqos
-  io.slave.arready := socSlaveBridge.io.in.AR.ARREADY
-
-  io.slave.rvalid := socSlaveBridge.io.in.R.RVALID
-  io.slave.rresp := socSlaveBridge.io.in.R.RRESP
-  io.slave.rdata := socSlaveBridge.io.in.R.RDATA
-  io.slave.rlast := socSlaveBridge.io.in.R.RLAST
-  io.slave.rid := socSlaveBridge.io.in.R.RID
-  socSlaveBridge.io.in.R.RREADY := io.slave.rready
-
-  if (DMAProxyEnable) {
-    // 使用桥在外部握手拍锁存的 LOCK，而不是可能早已撤销的实时引脚。
-    arbiter.io.dmaAWLock :=
-      socSlaveBridge.io.outAWLock.getOrElse(false.B)
-    arbiter.io.dmaARLock :=
-      socSlaveBridge.io.outARLock.getOrElse(false.B)
-    arbiter.io.dma <> socSlaveBridge.io.out
-  } else {
-    val ErrorSlave = dmaErrorSlave.get
-    ErrorSlave.io.AW.AWVALID := socSlaveBridge.io.out.AW.AWVALID
-    ErrorSlave.io.AW.AWADDR := socSlaveBridge.io.out.AW.AWADDR
-    ErrorSlave.io.AW.AWID := socSlaveBridge.io.out.AW.AWID
-    ErrorSlave.io.AW.AWLEN := socSlaveBridge.io.out.AW.AWLEN
-    ErrorSlave.io.AW.AWSIZE := socSlaveBridge.io.out.AW.AWSIZE
-    ErrorSlave.io.AW.AWBURST := socSlaveBridge.io.out.AW.AWBURST
-    ErrorSlave.io.AW.AWPROT := socSlaveBridge.io.out.AW.AWPROT
-    ErrorSlave.io.AW.AWCACHE := socSlaveBridge.io.out.AW.AWCACHE
-    ErrorSlave.io.AW.AWQOS := socSlaveBridge.io.out.AW.AWQOS
-    socSlaveBridge.io.out.AW.AWREADY := ErrorSlave.io.AW.AWREADY
-
-    ErrorSlave.io.W.WVALID := socSlaveBridge.io.out.W.WVALID
-    ErrorSlave.io.W.WDATA := socSlaveBridge.io.out.W.WDATA
-    ErrorSlave.io.W.WSTRB := socSlaveBridge.io.out.W.WSTRB
-    ErrorSlave.io.W.WLAST := socSlaveBridge.io.out.W.WLAST
-    socSlaveBridge.io.out.W.WREADY := ErrorSlave.io.W.WREADY
-
-    ErrorSlave.io.B.BREADY := socSlaveBridge.io.out.B.BREADY
-    socSlaveBridge.io.out.B.BVALID := ErrorSlave.io.B.BVALID
-    socSlaveBridge.io.out.B.BRESP := ErrorSlave.io.B.BRESP
-    socSlaveBridge.io.out.B.BID := ErrorSlave.io.B.BID
-
-    ErrorSlave.io.AR.ARVALID := socSlaveBridge.io.out.AR.ARVALID
-    ErrorSlave.io.AR.ARADDR := socSlaveBridge.io.out.AR.ARADDR
-    ErrorSlave.io.AR.ARID := socSlaveBridge.io.out.AR.ARID
-    ErrorSlave.io.AR.ARLEN := socSlaveBridge.io.out.AR.ARLEN
-    ErrorSlave.io.AR.ARSIZE := socSlaveBridge.io.out.AR.ARSIZE
-    ErrorSlave.io.AR.ARBURST := socSlaveBridge.io.out.AR.ARBURST
-    ErrorSlave.io.AR.ARPROT := socSlaveBridge.io.out.AR.ARPROT
-    ErrorSlave.io.AR.ARCACHE := socSlaveBridge.io.out.AR.ARCACHE
-    ErrorSlave.io.AR.ARQOS := socSlaveBridge.io.out.AR.ARQOS
-    socSlaveBridge.io.out.AR.ARREADY := ErrorSlave.io.AR.ARREADY
-
-    ErrorSlave.io.R.RREADY := socSlaveBridge.io.out.R.RREADY
-    socSlaveBridge.io.out.R.RVALID := ErrorSlave.io.R.RVALID
-    socSlaveBridge.io.out.R.RRESP := ErrorSlave.io.R.RRESP
-    socSlaveBridge.io.out.R.RDATA := ErrorSlave.io.R.RDATA
-    socSlaveBridge.io.out.R.RLAST := ErrorSlave.io.R.RLAST
-    socSlaveBridge.io.out.R.RID := ErrorSlave.io.R.RID
-
-    // 未开启ChipLink时仲裁器的DMA输入不可悬空。
-    arbiter.io.dmaAWLock := false.B
-    arbiter.io.dmaARLock := false.B
-    arbiter.io.dma.AW.AWVALID := false.B
-    arbiter.io.dma.AW.AWADDR := 0.U
-    arbiter.io.dma.AW.AWID := 0.U
-    arbiter.io.dma.AW.AWLEN := 0.U
-    arbiter.io.dma.AW.AWSIZE := 0.U
-    arbiter.io.dma.AW.AWBURST := 0.U
-    arbiter.io.dma.AW.AWPROT := 0.U
-    arbiter.io.dma.AW.AWCACHE := 0.U
-    arbiter.io.dma.AW.AWQOS := 0.U
-    arbiter.io.dma.W.WVALID := false.B
-    arbiter.io.dma.W.WDATA := 0.U
-    arbiter.io.dma.W.WSTRB := 0.U
-    arbiter.io.dma.W.WLAST := false.B
-    arbiter.io.dma.B.BREADY := false.B
-    arbiter.io.dma.AR.ARVALID := false.B
-    arbiter.io.dma.AR.ARADDR := 0.U
-    arbiter.io.dma.AR.ARID := 0.U
-    arbiter.io.dma.AR.ARLEN := 0.U
-    arbiter.io.dma.AR.ARSIZE := 0.U
-    arbiter.io.dma.AR.ARBURST := 0.U
-    arbiter.io.dma.AR.ARPROT := 0.U
-    arbiter.io.dma.AR.ARCACHE := 0.U
-    arbiter.io.dma.AR.ARQOS := 0.U
-    arbiter.io.dma.R.RREADY := false.B
-  }
-  xbar.io.CLINT.AW <> clint.io.AW
-  xbar.io.CLINT.W <> clint.io.W
-  xbar.io.CLINT.B <> clint.io.B
-  xbar.io.CLINT.AR <> clint.io.AR
-  xbar.io.CLINT.R <> clint.io.R
-  // PLIC 的 bit/寄存器下标就是 source ID（source 0 保留）：
-  //   source 1  = CLINT timer
-  //   source 10 = UART（与 xv6 memlayout.h 的 UART0_IRQ 一致）
-  // io.uart_irq 是专供 PLIC 的 UART 中断源：direct-NPC 顶层把 AXIRAM 的
-  // UART 中断接到这里，full-SoC 则接 APBUart16550 的 interrupt。不能把
-  // full-SoC 的 UART 只接到 io.interrupt（M/S 外部中断直连），否则软件
-  // 按 16550/PLIC 语义配置的 source 10 永远看不到中断。
-  // 其余 source 保持未连接。
-  private val UartPlicSource = 10
-  val plicSourceBits = (0 until config.MMU.plicSources).map { i =>
-    if (i == 1) clint.io.timer_irq && config.MMU.hasSTimerIrq.B
-    else if (i == UartPlicSource) io.uart_irq
-    else false.B
-  }
-  plic.sources := Cat(plicSourceBits.reverse)
-  xbar.io.PLIC.AW <> plic.io.AW
-  xbar.io.PLIC.W <> plic.io.W
-  xbar.io.PLIC.B <> plic.io.B
-  xbar.io.PLIC.AR <> plic.io.AR
-  xbar.io.PLIC.R <> plic.io.R
-  idu.io.ex_valid := exu.io.HazardValid
-  idu.io.ex_rd := exu.io.HazardRd
-  idu.io.ex_regWrite := exu.io.HazardRegWrite
-  idu.io.ex_fwd_ready := exu.io.FwdReady
-  idu.io.ex_fwd_data := exu.io.FwdData
-  idu.io.ex_mdu_hidden_writes := exu.io.HazardMDUHiddenWrites
-  idu.io.wb_fwd_data := wbu.io.wdata
-  idu.io.wb_valid := wbu.io.in.valid
-  idu.io.wb_rd := wbu.io.in.bits.Rd
-  idu.io.wb_regWrite := wbu.io.in.bits.RegisterWrite
-  idu.io.pipeline_mode := true.B
-  idu.io.Privilege := exu.io.CSRPrivilege
-  idu.io.Mstatus := exu.io.CSRCurrentMstatus
-  idu.io.Mcounteren := exu.io.Mcounteren
-  idu.io.Scounteren := exu.io.Scounteren
-  idu.io.mmu_stall := dmmuOpt.map(_.io.busy).getOrElse(false.B)
-  // 手动连线了
-  idu.io.ReadDATA1 := gpr.io.ReadDATA1
-  idu.io.ReadDATA2 := gpr.io.ReadDATA2
-  gpr.io.Read1SELECT := idu.io.Read1SELECT
-  gpr.io.Read2SELECT := idu.io.Read2SELECT
-  // 浮点寄存器堆：三个组合读口 + WBU 单写口；另有 DiffTest 专用只读口。
-  fprOpt match {
-    case Some(fpr) =>
-      fpr.io.raddr1 := idu.io.Read1FSELECT
-      fpr.io.raddr2 := idu.io.Read2FSELECT
-      fpr.io.raddr3 := idu.io.Read3FSELECT
-      idu.io.ReadFPR1 := fpr.io.rdata1.pad(64)
-      idu.io.ReadFPR2 := fpr.io.rdata2.pad(64)
-      idu.io.ReadFPR3 := fpr.io.rdata3.pad(64)
-      fpr.io.wen := wbu.io.FPWriteEN
-      fpr.io.waddr := wbu.io.FPWriteSELECT
-      fpr.io.wdata := wbu.io.FPWriteData
-      // 调试口固定按 FLEN 读物理寄存器。FLEN=32 时再零扩展到 64 位，
-      // 与 NEMU ABI 的固定 64 位槽位对齐；高 32 位不会带出 NaN-box。
-      fpr.io.DebugRaddr := io.debug.fpr_raddr
-      val DebugFPR = fpr.io.DebugRdata.pad(64)
-      io.debug.fpr_rdata := DebugFPR(31, 0)
-      io.debug.fpr_rdata_hi := DebugHi(DebugFPR)
-    case None =>
-      idu.io.ReadFPR1 := 0.U
-      idu.io.ReadFPR2 := 0.U
-      idu.io.ReadFPR3 := 0.U
-      io.debug.fpr_rdata := 0.U
-      io.debug.fpr_rdata_hi := 0.U
-  }
-  io.debug.fp_valid := config.UseF.B
-  idu.io.Frm := exu.io.CSRFrm
-  // 年长访存事务与年长普通指令必须分开。控制转移只需等
-  // 可能故障的访存，不应被LSU中单拍直通的普通ALU指令拖慢；
-  // IRQ/CSR/异常则仍使用全流水级Busy保证精确顺序。
-  exu.io.MEMBusy := lsu.io.MemoryBusy
-  // DMMU 翻译/故障状态也属于更老的 MEM 事务。只等 LSU 会让 IRQ 在
-  // 一笔仍在 DMMU xreq/xwait 的 load/store 之前提交，丢掉更老的精确故障。
-  // dmmu.busy 只由状态寄存器译码，不依赖 EXU 的 ready，不会形成组合环。
-  exu.io.PipelineBusy :=
-    lsu.io.Busy || dmmuOpt.map(_.io.busy).getOrElse(false.B)
-  val dmmuFaultCause = dmmuOpt.map(_.io.faultCause).getOrElse(0.U(32.W))
-  val dmmuFaultPC = dmmuOpt.map(_.io.faultPC).getOrElse(0.U(32.W))
-  val dmmuFaultTval = dmmuOpt.map(_.io.faultTval).getOrElse(0.U(32.W))
-  exu.io.MemTrapCommit := lsu.io.MemTrapCommit || dmmuFaultCommit
-  exu.io.MemTrapCause := Mux(
-    dmmuFaultCommit,
-    dmmuFaultCause,
-    lsu.io.MemTrapCause
-  )
-  exu.io.MemTrapPC := Mux(dmmuFaultCommit, dmmuFaultPC, lsu.io.MemTrapPC)
-  exu.io.MemTrapTval := Mux(dmmuFaultCommit, dmmuFaultTval, lsu.io.MemTrapTval)
-  // LSU(MEM级)给IDU做冒险检测和转发
-  idu.io.me_valid := lsu.io.HazardValid
-  idu.io.me_rd := lsu.io.HazardRd
-  idu.io.me_regWrite := lsu.io.HazardRegWrite
-  idu.io.me_memop := lsu.io.HazardMemOp
-  idu.io.me_fwd_ready := lsu.io.FwdReady
-  idu.io.me_fwd_data := lsu.io.FwdData
-  // LSU等待槽(EX/MEM流水寄存器)也给IDU做冒险检测和转发
-  idu.io.me2_valid := lsu.io.Hazard2Valid
-  idu.io.me2_rd := lsu.io.Hazard2Rd
-  idu.io.me2_regWrite := lsu.io.Hazard2RegWrite
-  idu.io.me2_memop := lsu.io.Hazard2MemOp
-  idu.io.me2_fwd_ready := lsu.io.Hazard2FwdReady
-  idu.io.me2_fwd_data := lsu.io.Hazard2FwdData
-  // 浮点转发/冒险端口。
-  idu.io.ex_fp_valid := exu.io.HazardFPValid
-  idu.io.ex_fp_rd := exu.io.HazardFPRd
-  idu.io.ex_fp_regWrite := exu.io.HazardFPRegWrite
-  idu.io.ex_fp_fwd_ready := exu.io.FwdFPReady
-  idu.io.ex_fp_fwd_data := exu.io.FwdFPData
-  idu.io.me_fp_valid := lsu.io.HazardValid
-  idu.io.me_fp_rd := lsu.io.HazardFPRd
-  idu.io.me_fp_regWrite := lsu.io.HazardFPRegWrite
-  idu.io.me_fp_fwd_ready := lsu.io.FwdFPReady
-  idu.io.me_fp_fwd_data := lsu.io.FwdFPData
-  idu.io.me2_fp_valid := lsu.io.Hazard2Valid
-  idu.io.me2_fp_rd := lsu.io.Hazard2FPRd
-  idu.io.me2_fp_regWrite := lsu.io.Hazard2FPRegWrite
-  idu.io.me2_fp_fwd_ready := lsu.io.Hazard2FwdFPReady
-  idu.io.me2_fp_fwd_data := lsu.io.Hazard2FwdFPData
-  idu.io.wb_fp_valid := wbu.io.in.valid
-  idu.io.wb_fp_rd := wbu.io.in.bits.Rd
-  idu.io.wb_fp_regWrite := wbu.io.in.bits.FPRegisterWrite
-  idu.io.wb_fp_fwd_data := wbu.io.FPWriteData
-  ifu.io.Redirect := exu.io.Redirect
-  ifu.io.RedirectTarget := exu.io.RedirectTarget
-  ifu.io.ExceptionTaken := exu.io.ExceptionTaken
-  ifu.io.ExceptionTarget := exu.io.ExceptionTarget
-  icache.io.flush := exu.io.FenceIFlush // 仅 FenceI 冲 ICache，分支不冲
-  // 可选自修改代码 snoop：CPU store 的 B 响应完成后失效对应 ICache 行。
-  // FENCE_I 模式下 snoop_valid 恒为 0，ICache 内不生成地址比较/失效逻辑。
-  // 该模式仍保留 fence.i：流水线里已取入的旧指令只能由 fence.i 冲刷。
-  icache.io.snoop_valid :=
-    (if (
-       config.ICacheCoherence ==
-         ysyx_26030103_ICacheCoherence.HardwareSnoop
-     ) lsu.io.StoreCommit
-     else false.B)
-  icache.io.snoop_addr := lsu.io.StoreCommitAddr
-  icache.io.snoop_addr_hi := lsu.io.StoreCommitLastAddr
-  // DMA 地址级 snoop：仲裁器在 DMA 写 B 到达时给出本次 burst 覆盖的
-  // 字节范围，ICache/DCache 各自展开为重叠行并失效。两个 ready 都为高
-  // 后仲裁器才把 B 交给 CPU slave，因此 DMA 完成事件不会早于失效完成。
-  icache.io.dma_snoop_valid := arbiter.io.dmaSnoopValid
-  icache.io.dma_snoop_start := arbiter.io.dmaSnoopStart
-  icache.io.dma_snoop_end := arbiter.io.dmaSnoopEnd
-  lsu.io.DCacheDmaSnoopValid := arbiter.io.dmaSnoopValid
-  lsu.io.DCacheDmaSnoopStart := arbiter.io.dmaSnoopStart
-  lsu.io.DCacheDmaSnoopEnd := arbiter.io.dmaSnoopEnd
-  arbiter.io.dmaSnoopDone :=
-    icache.io.dma_snoop_ready && lsu.io.DCacheDmaSnoopReady
-  // 当前 DCache 是写直达/不写分配，成功 store 会更新命中行，并且
-  // Fence.I 在提交前已经等待更老的 store 排空。因此指令一致性只需
-  // 失效 ICache/取指流水；清空 DCache 只会制造无意义的数据 miss。
-  // DMA写是CPU缓存之外的副作用。写直达DCache没有脏数据，
-  // 因此在匹配B响应出现时全局失效即可保证后续load不命中旧行。
-  // 每笔DMA写在匹配BVALID首次出现时产生单拍失效；后续B反压不会持续
-  // 阻止CPU load。错误B也同样失效，以覆盖从设备可能的部分写副作用。
-  // 不在这里异步冲ICache：现有ICache flush与流水线重定向成对，
-  // DMA修改可执行内存后由软件执行fence.i完成指令一致性。
-  // DMA_COHERENCE=uncached 时 DMA 窗口本身不进入 Cache，不再需要这个
-  // 全局失效；hardware_snoop 改用上面的地址级行失效，也不清空无关行。
-  // 原子写完成后必须让 DCache 中的旧行失效；这里复用现有全量 flush
-  // 接口（写直达缓存无脏数据），避免为 alias 情形新增行扫描硬件。
-  lsu.io.DCacheFlush :=
-    (if (
-       config.DmaCoherence ==
-         ysyx_26030103_DmaCoherence.SoftwareFlush
-     )
-       arbiter.io.DMAWriteInvalidate || lsu.io.AtomicCommit
-     else lsu.io.AtomicCommit)
-  // 原子事务总线独占：LSU 先等总线安静，再拉 AtomicBusy 阻止 DMA 插入。
-  arbiter.io.atomicBusy := lsu.io.AtomicBusy
-  lsu.io.BusQuiet := arbiter.io.busQuiet
-  // 异常或 CSR 提交（上下文切换）后，旧 reservation 不再有效。
-  lsu.io.ReservationClear := exu.io.ExceptionTaken || exu.io.CSRCommit
-  gpr.io.WriteSELECT := wbu.io.WriteSELECT
-  gpr.io.WriteEN := wbu.io.WriteEN
-  gpr.io.wdata := wbu.io.wdata
-  // FP 指令在 WBU 真正退休时才置 FS=Dirty（故障 load/store 不置）。
-  exu.io.FPStateDirtyCommit := wbu.io.FPCommit
-  // minstret 按 WBU 真实退休计数：load/store 只有在 MEM 完成后才退休，
-  // 故障/被中断取消的指令 Retire=0，不计入。
-  exu.io.RetireCommit := wbu.io.in.fire && wbu.io.in.bits.Retire
-  // minstret 自增过滤掉写 minstret/minstreth 的指令自身；该指令仍然退休，
-  // PMU Instructions 事件继续使用上面的完整 RetireCommit。
-  exu.io.MinstretRetireCommit := wbu.io.in.fire && wbu.io.in.bits.Retire &&
-    !wbu.io.in.bits.WritesMinstret
-  // 临时新加的处理中断的
-  exu.io.Interrupt := io.interrupt || plic.external_irq
-  exu.io.TimerInterrupt := clint.io.timer_irq
-  exu.io.Mtime := clint.io.mtime
-  // 仿真 halt 是 custom-0 指令的提交事件，而不是架构 EBREAK。再寄存
-  // 一拍后暴露给 C++，保证上升沿上的所有更老 GPR 写回已经生效。
-  val SimHaltCommit = exu.io.SimHaltValid
-  io.trap.valid := RegNext(SimHaltCommit, false.B)
-  val SimHaltPC =
-    RegEnable(exu.io.SimHaltPC, config.ResetAddr.U(XLEN.W), SimHaltCommit)
-  io.trap.pc := SimHaltPC(31, 0)
-  io.trap.pc_hi := DebugHi(SimHaltPC)
-  // 固定 ABI：关闭动态调试读口时，GPR 模块忽略地址并将这里直连到 a0，
-  // 供 custom halt 判定 GOOD/BAD；不会为此保留第三个 32 路读 mux。
-  gpr.io.DebugRaddr := io.debug.gpr_raddr
-  io.debug.gpr_rdata := gpr.io.DebugRdata(31, 0)
-  io.debug.gpr_rdata_hi := DebugHi(gpr.io.DebugRdata)
-  // WBUCommit 与最小架构 PC 不属于可选观测逻辑。异常/中断即使在所有
-  // 调试功能关闭时也需要精确的最近架构边界。
-  val WBUCommit = wbu.io.in.fire && wbu.io.in.bits.Retire
-  // fcsr 的 DiffTest 快照必须与 WBU 退休事件对齐。CSR 在 EXU 提交点已
-  // 更新 fflags/frm；这里在退休沿锁存，避免年轻但尚未退休的 FP 指令
-  // 把未提交状态提前暴露给 DiffTest。FLEN=32/RV32F 同样只有低 8 位有效。
-  if (config.UseF) {
-    val RetireFcsr = RegEnable(exu.io.CSRFcsr, 0.U(8.W), WBUCommit)
-    io.debug.fcsr := Cat(0.U(24.W), RetireFcsr)
-  } else {
-    io.debug.fcsr := 0.U
-  }
-  if (config.EnableDynamicGPRDebug) {
-    // DiffTest 在上升沿前采样实际物理写口，沿后只回读被写寄存器。
-    io.debug.gpr_wen := wbu.io.WriteEN && (wbu.io.WriteSELECT =/= 0.U)
-    io.debug.gpr_waddr := wbu.io.WriteSELECT
-    // 浮点写口与 GPR 写口同拍、同一边沿语义。C++ 只需要回读真正被写的
-    // f 寄存器，避免每条退休指令都做 32 次差分读。
-    io.debug.fpr_wen := wbu.io.FPWriteEN
-    io.debug.fpr_waddr := wbu.io.FPWriteSELECT
-  } else {
-    io.debug.gpr_wen := false.B
-    io.debug.gpr_waddr := 0.U
-    io.debug.fpr_wen := false.B
-    io.debug.fpr_waddr := 0.U
-  }
-  if (config.EnableRetireTrace) {
-    // C++ 在上升沿后看到 commit，此时 GPR 已是该指令提交后的状态。
-    io.debug.commit := RegNext(WBUCommit, false.B)
-    val RetirePC = RegEnable(
-      wbu.io.in.bits.pc,
-      config.ResetAddr.U(XLEN.W),
-      WBUCommit
-    )
-    val RetireNextPC = RegEnable(
-      wbu.io.in.bits.NextPC,
-      config.ResetAddr.U(XLEN.W),
-      WBUCommit
-    )
-    io.debug.pc := RetirePC(31, 0)
-    io.debug.pc_hi := DebugHi(RetirePC)
-    io.debug.next_pc := RetireNextPC(31, 0)
-    io.debug.next_pc_hi := DebugHi(RetireNextPC)
-    io.debug.instructions := RegEnable(
-      wbu.io.in.bits.Instruction,
-      "h00000013".U(32.W),
-      WBUCommit
-    )
-  } else {
-    io.debug.commit := false.B
-    io.debug.pc := 0.U
-    io.debug.pc_hi := 0.U
-    io.debug.next_pc := 0.U
-    io.debug.next_pc_hi := 0.U
-    io.debug.instructions := 0.U
-  }
-
-  // 调试器的 $pc 不能复用 retire trace PC。正常退休时前进到
-  // 该指令的实际后继；异常/中断提交时直接记录 trap 目标。
-  // 若同拍既有更老的 WBU 退休又有年轻 trap，trap 必须优先。
-  val ArchitecturalPC = RegInit(config.ResetAddr.U(XLEN.W))
-  // 空流水中断没有随指令携带的 PC；同拍若有更老退休，则以该指令后继
-  // 为边界，否则使用最近架构 PC。此路径是架构状态，不能随调试功能裁剪。
-  exu.io.IdleIrqPC := Mux(WBUCommit, wbu.io.in.bits.NextPC, ArchitecturalPC)
-  when(WBUCommit) {
-    ArchitecturalPC := wbu.io.in.bits.NextPC
-  }
-  when(exu.io.TrapCommit) {
-    ArchitecturalPC := exu.io.TrapTarget
-  }
-  io.debug.arch_pc := ArchitecturalPC(31, 0)
-  io.debug.arch_pc_hi := DebugHi(ArchitecturalPC)
-
-  if (config.EnableTrapTrace) {
-    io.debug.trap_valid := RegNext(exu.io.TrapCommit, false.B)
-    val TrapPC = RegEnable(
-      exu.io.TrapPC,
-      config.ResetAddr.U(XLEN.W),
-      exu.io.TrapCommit
-    )
-    val TrapTarget = RegEnable(
-      exu.io.TrapTarget,
-      config.ResetAddr.U(XLEN.W),
-      exu.io.TrapCommit
-    )
-    io.debug.trap_pc := TrapPC(31, 0)
-    io.debug.trap_pc_hi := DebugHi(TrapPC)
-    io.debug.trap_target := TrapTarget(31, 0)
-    io.debug.trap_target_hi := DebugHi(TrapTarget)
-    io.debug.trap_cause := RegEnable(
-      exu.io.TrapCause,
-      0.U(32.W),
-      exu.io.TrapCommit
-    )
-    // 与 cause 同一拍锁存，保证 DiffTest 看到的是本次 trap 的 tval。
-    val TrapTval = RegEnable(
-      exu.io.CSRStateTval,
-      0.U(XLEN.W),
-      exu.io.TrapCommit
-    )
-    io.debug.trap_tval := TrapTval(31, 0)
-    io.debug.trap_tval_hi := DebugHi(TrapTval)
-  } else {
-    io.debug.trap_valid := false.B
-    io.debug.trap_pc := 0.U
-    io.debug.trap_pc_hi := 0.U
-    io.debug.trap_target := 0.U
-    io.debug.trap_target_hi := 0.U
-    io.debug.trap_cause := 0.U
-    io.debug.trap_tval := 0.U
-    io.debug.trap_tval_hi := 0.U
-  }
-  if (config.EnableCSRTrace) {
-    val RetireMstatus = RegEnable(
-      wbu.io.in.bits.CSRStateMstatus,
-      MstatusDebugReset,
-      WBUCommit
-    )
-    val RetireMtvec = RegEnable(
-      wbu.io.in.bits.CSRStateMtvec,
-      0.U(XLEN.W),
-      WBUCommit
-    )
-    val RetireMepc = RegEnable(
-      wbu.io.in.bits.CSRStateMepc,
-      0.U(XLEN.W),
-      WBUCommit
-    )
-    io.debug.csr_mstatus := RetireMstatus(31, 0)
-    io.debug.csr_mstatus_hi := DebugHi(RetireMstatus)
-    io.debug.csr_mtvec := RetireMtvec(31, 0)
-    io.debug.csr_mtvec_hi := DebugHi(RetireMtvec)
-    io.debug.csr_mepc := RetireMepc(31, 0)
-    io.debug.csr_mepc_hi := DebugHi(RetireMepc)
-    val RetireMcause = RegEnable(
-      wbu.io.in.bits.CSRStateMcause,
-      0.U(XLEN.W),
-      WBUCommit
-    )
-    io.debug.csr_mcause := RetireMcause(31, 0)
-    io.debug.csr_mcause_hi := DebugHi(RetireMcause)
-    val TrapMstatus = RegEnable(
-      exu.io.CSRStateMstatus,
-      MstatusDebugReset,
-      exu.io.TrapCommit
-    )
-    val TrapMtvec = RegEnable(
-      exu.io.CSRStateMtvec,
-      0.U(XLEN.W),
-      exu.io.TrapCommit
-    )
-    val TrapMepc = RegEnable(
-      exu.io.CSRStateMepc,
-      0.U(XLEN.W),
-      exu.io.TrapCommit
-    )
-    io.debug.trap_mstatus := TrapMstatus(31, 0)
-    io.debug.trap_mstatus_hi := DebugHi(TrapMstatus)
-    io.debug.trap_mtvec := TrapMtvec(31, 0)
-    io.debug.trap_mtvec_hi := DebugHi(TrapMtvec)
-    io.debug.trap_mepc := TrapMepc(31, 0)
-    io.debug.trap_mepc_hi := DebugHi(TrapMepc)
-    val TrapMcause = RegEnable(
-      exu.io.CSRStateMcause,
-      0.U(XLEN.W),
-      exu.io.TrapCommit
-    )
-    io.debug.trap_mcause := TrapMcause(31, 0)
-    io.debug.trap_mcause_hi := DebugHi(TrapMcause)
-  } else {
-    io.debug.csr_mstatus := 0.U
-    io.debug.csr_mstatus_hi := 0.U
-    io.debug.csr_mtvec := 0.U
-    io.debug.csr_mtvec_hi := 0.U
-    io.debug.csr_mepc := 0.U
-    io.debug.csr_mepc_hi := 0.U
-    io.debug.csr_mcause := 0.U
-    io.debug.csr_mcause_hi := 0.U
-    io.debug.trap_mstatus := 0.U
-    io.debug.trap_mstatus_hi := 0.U
-    io.debug.trap_mtvec := 0.U
-    io.debug.trap_mtvec_hi := 0.U
-    io.debug.trap_mepc := 0.U
-    io.debug.trap_mepc_hi := 0.U
-    io.debug.trap_mcause := 0.U
-    io.debug.trap_mcause_hi := 0.U
-  }
-
-  // mtrace 必须与 WBU retire 记录对齐，而不是早一拍的 LSU out.fire。
-  // DiffTest 在 debug_commit 拍用它判断 MMIO；错一拍会让 mtime 在 REF 真正
-  // 执行并产生伪差异。错误响应/非对齐访问不 Retire，不会到达这里。
-  if (config.EnableMemoryTrace) {
-    val MtraceCommit = WBUCommit && wbu.io.in.bits.MemoryValid
-    io.debug.mtrace_valid := RegNext(MtraceCommit, false.B)
-    val MtracePC = RegEnable(wbu.io.in.bits.pc, 0.U(XLEN.W), MtraceCommit)
-    val MtraceAddr = RegEnable(
-      wbu.io.in.bits.ALUResult,
-      0.U(XLEN.W),
-      MtraceCommit
-    )
-    val MtraceWdata = RegEnable(
-      wbu.io.in.bits.StoreData,
-      0.U(XLEN.W),
-      MtraceCommit
-    )
-    val MtraceRdata = RegEnable(
-      wbu.io.in.bits.LoadData,
-      0.U(XLEN.W),
-      MtraceCommit
-    )
-    io.debug.mtrace_pc := MtracePC(31, 0)
-    io.debug.mtrace_pc_hi := DebugHi(MtracePC)
-    io.debug.mtrace_wen := RegEnable(
-      wbu.io.in.bits.MemoryWrite,
-      false.B,
-      MtraceCommit
-    )
-    io.debug.mtrace_addr := MtraceAddr(31, 0)
-    io.debug.mtrace_addr_hi := DebugHi(MtraceAddr)
-    io.debug.mtrace_wdata := MtraceWdata(31, 0)
-    io.debug.mtrace_wdata_hi := DebugHi(MtraceWdata)
-    io.debug.mtrace_rdata := MtraceRdata(31, 0)
-    io.debug.mtrace_rdata_hi := DebugHi(MtraceRdata)
-    io.debug.mtrace_width := RegEnable(
-      wbu.io.in.bits.WidthSelect,
-      0.U(2.W),
-      MtraceCommit
-    )
-  } else {
-    io.debug.mtrace_valid := false.B
-    io.debug.mtrace_pc := 0.U
-    io.debug.mtrace_pc_hi := 0.U
-    io.debug.mtrace_wen := false.B
-    io.debug.mtrace_addr := 0.U
-    io.debug.mtrace_addr_hi := 0.U
-    io.debug.mtrace_wdata := 0.U
-    io.debug.mtrace_wdata_hi := 0.U
-    io.debug.mtrace_rdata := 0.U
-    io.debug.mtrace_rdata_hi := 0.U
-    io.debug.mtrace_width := 0.U
-  }
-
-  // 调试 Access Fault 只认精确提交事件。取指错误必须随指令
-  // 通过流水线到 EXU，错路响应在此前被 flush 就不得打印。
-  // LSU 仍以精确 MemTrap 提交为界；cause=4/6 非对齐不是 AXI fault。
-  if (config.EnableAnyObservability) {
-    val LSUAccessFaultCommit = lsu.io.AccessFault
-    val ICacheAccessFaultCommit = exu.io.FetchAccessFaultCommit
-    val AccessFaultCommit = LSUAccessFaultCommit || ICacheAccessFaultCommit
-    io.debug.access_fault := RegNext(AccessFaultCommit, false.B)
-    val AccessFaultPC = RegEnable(
-      Mux(LSUAccessFaultCommit, lsu.io.MemTrapPC, exu.io.FetchAccessFaultPC),
-      0.U(XLEN.W),
-      AccessFaultCommit
-    )
-    io.debug.access_fault_pc := AccessFaultPC(31, 0)
-    io.debug.access_fault_pc_hi := DebugHi(AccessFaultPC)
-    io.debug.access_fault_resp := RegEnable(
-      Mux(
-        LSUAccessFaultCommit,
-        lsu.io.AccessFaultResp,
-        exu.io.FetchAccessFaultResp
-      ),
-      0.U(2.W),
-      AccessFaultCommit
-    )
-  } else {
-    io.debug.access_fault := false.B
-    io.debug.access_fault_pc := 0.U
-    io.debug.access_fault_pc_hi := 0.U
-    io.debug.access_fault_resp := 0.U
-  }
-  // 性能计数器：按Kconfig单计数器开关逐个生成。关闭的计数器在顶层输出
-  // 常量，未被读取的叶模块信号会被综合展平/常量传播与Verilator死代码
-  // 消除一并裁掉；顶层端口ABI保持不变，未启用的计数器对应CSV列恒为0。
-  private def PerfDicArchBool(Key: String)(Signal: => Bool): Bool =
-    if (config.EnablePerfDicArchCounter(Key)) { Signal }
-    else { false.B }
-  private def PerfDicArchUInt(Key: String, Width: Int)(Signal: => UInt): UInt =
-    if (config.EnablePerfDicArchCounter(Key)) { Signal }
-    else { 0.U(Width.W) }
-  // 架构 PMU 事件总线。事件编号与 ysyx_26030103_PMUEventId 一致；
-  // 未打开 PMU 时总线保持 0，综合可以删除全部事件选择逻辑。
-  val PMUEventBits =
-    Wire(Vec(ysyx_26030103_PMUEventId.BusWidth, Bool()))
-  PMUEventBits := VecInit(Seq.fill(ysyx_26030103_PMUEventId.BusWidth)(false.B))
-  if (config.RiscvArchPMU) {
-    PMUEventBits(ysyx_26030103_PMUEventId.Cycles) := true.B
-    PMUEventBits(ysyx_26030103_PMUEventId.Instructions) := exu.io.RetireCommit
-    PMUEventBits(ysyx_26030103_PMUEventId.CacheReference) :=
-      icache.io.perf_hit || icache.io.perf_miss ||
-        lsu.io.DCachePerfHit || lsu.io.DCachePerfMiss
-    PMUEventBits(ysyx_26030103_PMUEventId.CacheMiss) :=
-      icache.io.perf_miss || lsu.io.DCachePerfMiss
-    PMUEventBits(ysyx_26030103_PMUEventId.DCacheAccess) :=
-      lsu.io.DCachePerfHit || lsu.io.DCachePerfMiss
-    PMUEventBits(ysyx_26030103_PMUEventId.DCacheMiss) := lsu.io.DCachePerfMiss
-    PMUEventBits(ysyx_26030103_PMUEventId.BranchInstruction) :=
-      exu.io.PerfBranchOp || exu.io.PerfJalOp || exu.io.PerfJalrOp
-    PMUEventBits(ysyx_26030103_PMUEventId.BranchMispredict) :=
-      exu.io.PerfBranchMispredict
-    PMUEventBits(ysyx_26030103_PMUEventId.LoadInstruction) := exu.io.PerfLoadOp
-    PMUEventBits(
-      ysyx_26030103_PMUEventId.StoreInstruction
-    ) := exu.io.PerfStoreOp
-    PMUEventBits(ysyx_26030103_PMUEventId.CSRInstruction) := exu.io.PerfCSROp
-    PMUEventBits(ysyx_26030103_PMUEventId.Trap) := exu.io.PerfTrap
-    PMUEventBits(ysyx_26030103_PMUEventId.ITLBMiss) :=
-      mmuUnitOpt.map(_.io.perf_itlb_miss).getOrElse(false.B)
-    PMUEventBits(ysyx_26030103_PMUEventId.DTLBMiss) :=
-      mmuUnitOpt.map(_.io.perf_dtlb_miss).getOrElse(false.B)
-    PMUEventBits(ysyx_26030103_PMUEventId.TLBRefill) :=
-      mmuUnitOpt.map(_.io.perf_tlb_refill).getOrElse(false.B)
-    PMUEventBits(ysyx_26030103_PMUEventId.PTWWalk) :=
-      mmuUnitOpt.map(_.io.perf_ptw_walk).getOrElse(false.B)
-    PMUEventBits(ysyx_26030103_PMUEventId.AXIRead) :=
-      io.master.rvalid && io.master.rready
-    PMUEventBits(ysyx_26030103_PMUEventId.AXIWrite) :=
-      io.master.bvalid && io.master.bready
-    PMUEventBits(ysyx_26030103_PMUEventId.IFUStall) :=
-      icache.io.resp_valid && !icache.io.resp_ready
-    PMUEventBits(ysyx_26030103_PMUEventId.FlushCycle) := pipe_flush
-    PMUEventBits(ysyx_26030103_PMUEventId.InterruptTaken) :=
-      exu.io.PerfInterruptTaken
-    PMUEventBits(ysyx_26030103_PMUEventId.ExternalIrq) := exu.io.Interrupt
-    PMUEventBits(ysyx_26030103_PMUEventId.TimerIrq) := exu.io.TimerInterrupt
-    PMUEventBits(ysyx_26030103_PMUEventId.FPUActive) := exu.io.PerfFpuActive
-    PMUEventBits(ysyx_26030103_PMUEventId.MDUActive) := exu.io.PerfMDUActive
-    PMUEventBits(ysyx_26030103_PMUEventId.WbufFull) := lsu.io.StallWriteReq
-    PMUEventBits(ysyx_26030103_PMUEventId.UncachedAccess) :=
-      lsu.io.Complete && !lsu.io.DCachePerfHit && !lsu.io.DCachePerfMiss
-    PMUEventBits(ysyx_26030103_PMUEventId.ICacheLineFill) :=
-      icache.io.perf_line_fill
-    PMUEventBits(ysyx_26030103_PMUEventId.DCacheLineFill) :=
-      lsu.io.DCachePerfLineFill
-    PMUEventBits(ysyx_26030103_PMUEventId.ICacheAccess) :=
-      icache.io.perf_hit || icache.io.perf_miss
-    PMUEventBits(ysyx_26030103_PMUEventId.ICacheMiss) := icache.io.perf_miss
-  }
-  exu.io.PMUEvents := PMUEventBits.asUInt
-  idu.io.ex_memop := exu.io.HazardMemOp
-  // 基础吞吐
-  // 冲刷拍（pipe_flush）的响应被 StageConnect 消费后直接丢弃，不算交付。
-  io.perf.ifu_fetch := PerfDicArchBool("ifu_fetch")(
-    icache.io.resp_valid &&
-      icache.io.resp_ready && !pipe_flush
-  )
-  io.perf.exu_done := PerfDicArchBool("exu_done")(exu.io.out.fire)
-  io.perf.lsu_load := PerfDicArchBool("lsu_load")(
-    lsu.io.Complete &&
-      !lsu.io.DebugMemoryWrite
-  )
-  io.perf.lsu_store := PerfDicArchBool("lsu_store")(
-    lsu.io.Complete &&
-      lsu.io.DebugMemoryWrite
-  )
-  // 指令类型与执行活跃
-  io.perf.alu_op := PerfDicArchBool("alu_op")(exu.io.PerfALUOp)
-  io.perf.mem_op := PerfDicArchBool("mem_op")(exu.io.PerfMemOp)
-  io.perf.csr_op := PerfDicArchBool("csr_op")(exu.io.PerfCSROp)
-  io.perf.branch_op := PerfDicArchBool("branch_op")(exu.io.PerfBranchOp)
-  io.perf.jal_op := PerfDicArchBool("jal_op")(exu.io.PerfJalOp)
-  io.perf.jalr_op := PerfDicArchBool("jalr_op")(exu.io.PerfJalrOp)
-  // 乘除法
-  io.perf.mdu_req := PerfDicArchBool("mdu_req")(exu.io.PerfMDUReq)
-  io.perf.mdu_done := PerfDicArchBool("mdu_done")(exu.io.PerfMDUDone)
-  io.perf.mdu_op := PerfDicArchUInt("mdu_op", 3)(exu.io.PerfMDUOp)
-  io.perf.mdu_active := PerfDicArchBool("mdu_active")(exu.io.PerfMDUActive)
-  io.perf.mdu_wait := PerfDicArchBool("mdu_wait")(exu.io.PerfMDUWait)
-  // 取指停顿
-  io.perf.ifu_stall_pipeline := PerfDicArchBool("ifu_stall_pipeline")(
-    icache.io.resp_valid && !icache.io.resp_ready
-  )
-  // AXI等待只统计真实refill的AR/R占用。FetchReady为低还可能是
-  // 响应槽或下游反压，不能全部归因于AXI。
-  io.perf.ifu_stall_axi := PerfDicArchBool("ifu_stall_axi")(
-    icache.io.perf_refill_req || icache.io.perf_refill_resp
-  )
-  io.perf.ifu_stall_ar := PerfDicArchBool("ifu_stall_ar")(
-    icache.io.perf_refill_req
-  )
-  io.perf.ifu_stall_r := PerfDicArchBool("ifu_stall_r")(
-    icache.io.perf_refill_resp
-  )
-  // 重定向事件含异常/mret（ExceptionTaken）：它们与分支误预测一样让 IFU
-  // 停发一拍；二者同拍时用或避免重复计数。
-  io.perf.ifu_stall_redirect := PerfDicArchBool("ifu_stall_redirect")(
-    exu.io.Redirect || exu.io.ExceptionTaken
-  )
-  io.perf.ifu_stall_idle := PerfDicArchBool("ifu_stall_idle")(ifu.io.StallIdle)
-  // 指令缓存
-  io.perf.icache_hit := PerfDicArchBool("icache_hit")(icache.io.perf_hit)
-  io.perf.icache_miss := PerfDicArchBool("icache_miss")(icache.io.perf_miss)
-  // 数据缓存
-  io.perf.dcache_hit := PerfDicArchBool("dcache_hit")(lsu.io.DCachePerfHit)
-  io.perf.dcache_miss := PerfDicArchBool("dcache_miss")(lsu.io.DCachePerfMiss)
-  io.perf.dcache_refill_req :=
-    PerfDicArchBool("dcache_refill_req")(lsu.io.DCachePerfRefillReq)
-  io.perf.dcache_refill_resp :=
-    PerfDicArchBool("dcache_refill_resp")(lsu.io.DCachePerfRefillResp)
-  // 执行级停顿
-  io.perf.exu_stall_lsu := PerfDicArchBool("exu_stall_lsu")(
-    exu.io.PerfExecutionActive && !exu.io.out.fire && !exu.io.PerfMDUWait
-  )
-  io.perf.exu_idle_noinput := PerfDicArchBool("exu_idle_noinput")(
-    exu.io.PerfIdleNoInput
-  )
-  io.perf.mem_waitslot := PerfDicArchBool("mem_waitslot")(lsu.io.Hazard2Valid)
-  // 访存级
-  io.perf.lsu_active := PerfDicArchBool("lsu_active")(lsu.io.Active)
-  io.perf.lsu_load_active := PerfDicArchBool("lsu_load_active")(
-    lsu.io.Active &&
-      !lsu.io.IsStore
-  )
-  io.perf.lsu_store_active := PerfDicArchBool("lsu_store_active")(
-    lsu.io.Active &&
-      lsu.io.IsStore
-  )
-  io.perf.lsu_stall_read_ar := PerfDicArchBool("lsu_stall_read_ar")(
-    lsu.io.StallReadAR
-  )
-  io.perf.lsu_stall_read_r := PerfDicArchBool("lsu_stall_read_r")(
-    lsu.io.StallReadR
-  )
-  io.perf.lsu_stall_write_req :=
-    PerfDicArchBool("lsu_stall_write_req")(lsu.io.StallWriteReq)
-  io.perf.lsu_stall_write_b := PerfDicArchBool("lsu_stall_write_b")(
-    lsu.io.StallWriteB
-  )
-  // 译码级RAW停顿
-  io.perf.idu_stall_raw := PerfDicArchBool("idu_stall_raw")(
-    idu.io.perf_stall_raw
-  )
-  io.perf.idu_stall_raw_loaduse :=
-    PerfDicArchBool("idu_stall_raw_loaduse")(idu.io.perf_stall_raw_loaduse)
-  io.perf.idu_stall_raw_alu :=
-    PerfDicArchBool("idu_stall_raw_alu")(idu.io.perf_stall_raw_alu)
-  // 异常
-  io.perf.trap := PerfDicArchBool("trap_count")(exu.io.PerfTrap)
-  io.perf.trap_count := io.perf.trap
-  // 执行活跃电平与事件分类码是多个单计数器的公共信号：消费方任一开启
-  // 才生成，否则绑常量。
-  io.perf.execution_active :=
-    (if (config.EnablePerfExecutionActive) exu.io.PerfExecutionActive
-     else false.B)
-  io.perf.exu_event_kind :=
-    (if (config.EnablePerfEventKind) exu.io.PerfEventKind else 0.U(3.W))
-
-  private val FetchPredictFire = ifu.io.FetchValid && ifu.io.FetchReady
-  io.perf.btb_hit := PerfDicArchBool("btb_hit")(FetchPredictFire && btb.io.hit)
-  io.perf.btb_miss := PerfDicArchBool("btb_miss")(
-    FetchPredictFire && !btb.io.hit
-  )
-  io.perf.jal_btb_hit :=
-    PerfDicArchBool("jal_btb_hit")(FetchPredictFire && jal_btb.io.hit)
-  io.perf.ras_hit := PerfDicArchBool("ras_hit")(
-    FetchPredictFire && jal_btb.io.hit &&
-      jal_btb.io.hit_kind.get === ysyx_26030103_BTBKind.Ret &&
-      ras.io.nonempty
-  )
-  io.perf.branch_mispredict :=
-    PerfDicArchBool("branch_mispredict")(exu.io.PerfBranchMispredict)
-  io.perf.itlb_hit :=
-    PerfDicArchBool("itlb_hit")(
-      mmuUnitOpt.map(_.io.perf_itlb_hit).getOrElse(false.B)
-    )
-  io.perf.itlb_miss :=
-    PerfDicArchBool("itlb_miss")(
-      mmuUnitOpt.map(_.io.perf_itlb_miss).getOrElse(false.B)
-    )
-  io.perf.dtlb_hit :=
-    PerfDicArchBool("dtlb_hit")(
-      mmuUnitOpt.map(_.io.perf_dtlb_hit).getOrElse(false.B)
-    )
-  io.perf.dtlb_miss :=
-    PerfDicArchBool("dtlb_miss")(
-      mmuUnitOpt.map(_.io.perf_dtlb_miss).getOrElse(false.B)
-    )
-  io.perf.tlb_refill :=
-    PerfDicArchBool("tlb_refill")(
-      mmuUnitOpt.map(_.io.perf_tlb_refill).getOrElse(false.B)
-    )
-  io.perf.fpu_req := PerfDicArchBool("fpu_req")(exu.io.PerfFpuReq)
-  io.perf.fpu_done := PerfDicArchBool("fpu_done")(exu.io.PerfFpuDone)
-  io.perf.axi_ar :=
-    PerfDicArchBool("axi_ar")(io.master.arvalid && io.master.arready)
-  io.perf.axi_aw :=
-    PerfDicArchBool("axi_aw")(io.master.awvalid && io.master.awready)
-  io.perf.axi_r :=
-    PerfDicArchBool("axi_r")(io.master.rvalid && io.master.rready)
-  io.perf.axi_w :=
-    PerfDicArchBool("axi_w")(io.master.wvalid && io.master.wready)
-  io.perf.axi_b :=
-    PerfDicArchBool("axi_b")(io.master.bvalid && io.master.bready)
-  io.perf.load_op := PerfDicArchBool("load_op")(exu.io.PerfLoadOp)
-  io.perf.store_op := PerfDicArchBool("store_op")(exu.io.PerfStoreOp)
-  io.perf.amo_op := PerfDicArchBool("amo_op")(exu.io.PerfAmoOp)
-  io.perf.branch_taken := PerfDicArchBool("branch_taken")(
-    exu.io.PerfBranchTaken
-  )
-  io.perf.branch_not_taken :=
-    PerfDicArchBool("branch_not_taken")(exu.io.PerfBranchNotTaken)
-  io.perf.tlb_flush := PerfDicArchBool("tlb_flush")(exu.io.CSRFlushTLB)
-  io.perf.fpu_active := PerfDicArchBool("fpu_active")(exu.io.PerfFpuActive)
-  io.perf.fence_op := PerfDicArchBool("fence_op")(exu.io.PerfFenceOp)
-  io.perf.rvc_inst := PerfDicArchBool("rvc_inst")(exu.io.PerfRvcInst)
-  io.perf.system_op := PerfDicArchBool("system_op")(exu.io.PerfSystemOp)
-  private val ICacheRefillPrev =
-    RegNext(icache.io.perf_refill_req, false.B)
-  private val DCacheRefillPrev =
-    RegNext(lsu.io.DCachePerfRefillReq, false.B)
-  io.perf.icache_refill := PerfDicArchBool("icache_refill")(
-    icache.io.perf_refill_req && !ICacheRefillPrev
-  )
-  io.perf.dcache_refill := PerfDicArchBool("dcache_refill")(
-    lsu.io.DCachePerfRefillReq && !DCacheRefillPrev
-  )
-  io.perf.timer_irq := PerfDicArchBool("timer_irq")(exu.io.TimerInterrupt)
-  io.perf.external_irq := PerfDicArchBool("external_irq")(exu.io.Interrupt)
-  io.perf.interrupt_taken := exu.io.PerfInterruptTaken &&
-    (config.EnablePerfDicArchCounter("interrupt_taken") ||
-      config.EnablePerfDicArchCounter("interrupt_latency")).B
-  io.perf.wbuf_full := PerfDicArchBool("wbuf_full")(lsu.io.StallWriteReq)
-  io.perf.wbuf_drain := PerfDicArchBool("wbuf_drain")(lsu.io.StallWriteB)
-  io.perf.csr_read := PerfDicArchBool("csr_read")(exu.io.PerfCsrRead)
-  io.perf.csr_write := PerfDicArchBool("csr_write")(exu.io.PerfCsrWrite)
-  io.perf.mul_active := PerfDicArchBool("mul_active")(exu.io.PerfMulActive)
-  io.perf.div_active := PerfDicArchBool("div_active")(exu.io.PerfDivActive)
-  io.perf.ptw_walk :=
-    PerfDicArchBool("ptw_walk")(
-      mmuUnitOpt.map(_.io.perf_ptw_walk).getOrElse(false.B)
-    )
-  io.perf.ptw_walk_cycle :=
-    PerfDicArchBool("ptw_walk_cycle")(
-      mmuUnitOpt.map(_.io.perf_ptw_walk_cycle).getOrElse(false.B)
-    )
-  io.perf.page_fault :=
-    PerfDicArchBool("page_fault")(
-      mmuUnitOpt.map(_.io.perf_page_fault).getOrElse(false.B)
-    )
-  io.perf.ras_miss := PerfDicArchBool("ras_miss")(
-    FetchPredictFire && jal_btb.io.hit &&
-      jal_btb.io.hit_kind.get === ysyx_26030103_BTBKind.Ret &&
-      !ras.io.nonempty
-  )
-  io.perf.redirect_branch :=
-    PerfDicArchBool("redirect_branch")(exu.io.PerfRedirectBranch)
-  io.perf.redirect_fence_i :=
-    PerfDicArchBool("redirect_fence_i")(exu.io.PerfRedirectFenceI)
-  io.perf.redirect_trap :=
-    PerfDicArchBool("redirect_trap")(exu.io.PerfRedirectTrap)
-  io.perf.redirect_mret :=
-    PerfDicArchBool("redirect_mret")(exu.io.PerfRedirectMret)
-  io.perf.fpu_stall := PerfDicArchBool("fpu_stall")(exu.io.PerfFpuStall)
-  io.perf.illegal_inst :=
-    PerfDicArchBool("illegal_inst")(exu.io.PerfIllegalInst)
-  io.perf.axi_stall := PerfDicArchBool("axi_stall")(
-    (io.master.arvalid && !io.master.arready) ||
-      (io.master.awvalid && !io.master.awready) ||
-      (io.master.rvalid && !io.master.rready) ||
-      (io.master.wvalid && !io.master.wready) ||
-      (io.master.bvalid && !io.master.bready)
-  )
-  io.perf.axi_error := PerfDicArchBool("axi_error")(
-    (io.master.rvalid && io.master.rready && io.master.rresp =/= 0.U) ||
-      (io.master.bvalid && io.master.bready && io.master.bresp =/= 0.U)
-  )
-  io.perf.fpu_divsqrt :=
-    PerfDicArchBool("fpu_divsqrt")(exu.io.PerfFpuDivSqrt)
-  io.perf.fpu_fma := PerfDicArchBool("fpu_fma")(exu.io.PerfFpuFma)
-  io.perf.fpu_exception :=
-    PerfDicArchBool("fpu_exception")(exu.io.PerfFpuException)
-  io.perf.csr_illegal := PerfDicArchBool("csr_illegal")(exu.io.PerfCsrIllegal)
-  io.perf.plic_claim := PerfDicArchBool("plic_claim")(plic.perf_claim)
-  io.perf.plic_complete := PerfDicArchBool("plic_complete")(plic.perf_complete)
-  io.perf.flush_cycle := PerfDicArchBool("flush_cycle")(pipe_flush)
-  io.perf.wbuf_count :=
-    PerfDicArchUInt("wbuf_occupancy", 5)(lsu.io.PerfWBufCount)
-  io.perf.uncached_access := PerfDicArchBool("uncached_access")(
-    lsu.io.Complete && !lsu.io.DCachePerfHit && !lsu.io.DCachePerfMiss
-  )
-  io.perf.irq_pending := exu.io.PerfIrqPending &&
-    (config.EnablePerfDicArchCounter("interrupt_latency") ||
-      config.EnablePerfDicArchCounter("interrupt_pending_cycle")).B
-  io.perf.wfi_inst := PerfDicArchBool("wfi_inst")(idu.io.PerfWfi)
-  io.perf.bubble_cycle := PerfDicArchBool("bubble_cycle")(!exu.io.in.valid)
-  io.perf.issue_occupancy :=
-    PerfDicArchBool("issue_occupancy")(exu.io.in.valid)
-  io.perf.retire_occupancy :=
-    PerfDicArchBool("retire_occupancy")(exu.io.out.valid)
-  io.perf.icache_line_fill :=
-    PerfDicArchBool("icache_line_fill")(icache.io.perf_line_fill)
-  io.perf.dcache_line_fill :=
-    PerfDicArchBool("dcache_line_fill")(lsu.io.DCachePerfLineFill)
-  io.perf.dcache_writeback :=
-    PerfDicArchBool("dcache_writeback")(lsu.io.DCachePerfWriteback)
-  io.perf.div_iterations :=
-    PerfDicArchUInt("div_iterations", 16)(exu.io.PerfDivIterations)
-  io.perf.div_early_out :=
-    PerfDicArchBool("div_early_out")(exu.io.PerfDivEarlyOut)
-  io.perf.div_done := exu.io.PerfDivDone &&
-    (config.EnablePerfDicArchCounter("div_iterations") ||
-      config.EnablePerfDicArchCounter("div_early_out")).B
-  io.perf.tlb_superpage_hit := PerfDicArchBool("tlb_superpage_hit")(
-    mmuUnitOpt.map(_.io.perf_superpage_hit).getOrElse(false.B)
-  )
-  io.perf.tlb_asid_hit := PerfDicArchBool("tlb_asid_hit")(
-    mmuUnitOpt.map(_.io.perf_asid_hit).getOrElse(false.B)
-  )
-
-  // AXI响应协议检查: B响应的错误码不再在这里断言——DECERR/SLVERR会由LSU按
-  // store访问故障精确提交(cause=7), 顶层断言会抢先把仿真停掉。
-  // 这里保留BID/RID协议检查, 并消费这些顶层AXI响应信号。
-  // 读ID：0=ICache，1=LSU，2=DMA，3..15=PTW；4位ID已全部分配。
-  // 读响应归属由仲裁器的逐ID在途表检查，这里只保留写响应BID约束。
-  val b_handshake = io.master.bvalid && io.master.bready
-  assert(
-    !b_handshake || io.master.bid === 0.U || io.master.bid === 2.U,
-    "AXI write: bid=%d",
-    io.master.bid
-  )
-
+  connectFrontend()
+  connectMemory()
+  connectAXI()
+  connectPipeline()
+  connectObservability()
 }
