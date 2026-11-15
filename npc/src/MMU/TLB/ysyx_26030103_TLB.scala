@@ -19,16 +19,10 @@ class ysyx_26030103_TLBWrite(
   val level = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
 }
 
-/** 组相联 TLB，支持 Sv32/Sv39/Sv48 和 1..2 个同拍查找端口。
-  *
-  * split 模式下 I/D TLB 各例化一份且只使用 1 个查找端口；unified 模式下
-  * 可以通过 lookupPorts=2 让两个上下文在同一拍并行查找。寄存器阵列的
-  * 查找是组合逻辑；SRAM 数据阵列每端口有独立的同步读端口和结果有效
-  * 指示（resultValid）。refill 端口仍然独立于查找端口。
-  *
-  * RV64 下虚拟地址为 64 位，VPN 只使用 vaBits-1:pageBits；PTE 为 64 位，
-  * PPN 使用标准 bit 53:10（44 位）。RV32/Sv32 的默认参数保持原行为。
-  */
+// 组相联 TLB，支持 Sv32/Sv39/Sv48 和 1..2 个同拍查找端口。split 模式下
+// I/D TLB 各一份且只用 1 个端口；unified 模式 lookupPorts=2 可同拍并行查找。
+// 寄存器阵列组合查找，SRAM 数据阵列每端口独立同步读并给出 resultValid；
+// refill 端口独立。RV64 下 VPN 只用 vaBits-1:pageBits，PPN 为 bit53:10。
 class ysyx_26030103_TLB(
     entries: Int = ysyx_26030103_KconfigDefaults.MmuItlbEntries,
     ways: Int = ysyx_26030103_KconfigDefaults.MmuItlbWays,
@@ -155,15 +149,15 @@ class ysyx_26030103_TLB(
   }
   private val shiftBits = log2Ceil(XLEN.max(32))
   private val maxShift = pageBits + (levels - 1) * indexBits
-  /** 填充层级对应的地址 shift；level 超出配置范围时返回最大 shift。 */
+  // 填充层级对应的地址 shift；level 超出配置范围时返回最大 shift。
   private def shiftOfLevel(level: UInt): UInt =
     MuxLookup(level, maxShift.U(shiftBits.W))(
       (0 until levels).map(l => l.U -> (pageBits + l * indexBits).U(shiftBits.W))
     )
-  /** 超级页偏移掩码：低 shift 位为 1。 */
+  // 超级页偏移掩码：低 shift 位为 1。
   private def offsetMaskOf(shift: UInt): UInt =
     (~0.U(XLEN.W)) >> (XLEN.U - shift)
-  /** 判断虚拟地址是否落在同一超级页。 */
+  // 判断虚拟地址是否落在同一超级页。
   private def superTagMatch(level: UInt, entryVaddr: UInt, lookupVaddr: UInt): Bool = {
     val mask = ~offsetMaskOf(shiftOfLevel(level))
     (entryVaddr & mask) === (lookupVaddr & mask)

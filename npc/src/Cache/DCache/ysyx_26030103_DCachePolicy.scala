@@ -4,11 +4,8 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
 
-/** DCache共用的分配策略。
-  *
-  * PMA的Readable && Cacheable是分配数据缓存行的必要条件；可选的基址/
-  * 掩码只作为额外过滤器。整条回填缓存行还必须位于同一个可缓存区域内；
-  * 否则需求使用单拍非缓存读，避免在PMA边界上扩展成非法突发传输。
+/** DCache 共用分配策略：PMA Readable && Cacheable，且整条回填行须落在同一可缓存区域内；
+  * 否则该需求退化为单拍非缓存读，避免在 PMA 边界上扩展成非法突发传输。
   */
 object ysyx_26030103_DCachePolicy {
   def LineContainedInCacheableRegion(

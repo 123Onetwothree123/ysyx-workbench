@@ -3,17 +3,10 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 
-/**
-  * 为CPU的入站AXI端口提供协议完整的终止响应。
-  *
-  * 当前PMA没有启用ChipLink MEM窗口时，顶层使用本模块拒绝所有
-  * CPU slave入站事务，避免未连接端口永久挂起或意外访问本地设备。
-  * ChipLink MEM启用时，顶层不使用本模块，而是将请求代理到对端存储。
-  *
-  * AXI写地址与写数据通道相互独立，因此此从设备按任意顺序接收两者，并在返回
-  * DECERR前排空直至WLAST的每个W数据拍。读事务返回ARLEN + 1个DECERR响应拍，
-  * 并在遵守响应反压的同时保持RID/RLAST。
-  */
+// CPU 入站 AXI 端口的终止从设备：PMA 未启用 ChipLink MEM 窗口时由顶层
+// 例化，拒绝所有入站事务，避免未连接端口挂起；启用时顶层改接对端存储。
+// 写通道独立接收 AW/W，排空到 WLAST 才回 DECERR；读返回 ARLEN+1 个
+// DECERR 拍，并保持 RID/RLAST。
 class ysyx_26030103_AXI5DMAErrorSlave(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,

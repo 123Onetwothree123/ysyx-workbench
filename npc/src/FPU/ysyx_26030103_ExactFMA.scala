@@ -8,19 +8,11 @@ import _root_.fudian.utils.{CLZ, Multiplier, ShiftRightJam}
 /** 非融合但单次舍入的 FMA 数据通路。
   *
   * `FPU_FMA=n` 时不能用 Fudian/FCMA 或 HardFloat/MulAddRecFN 这类融合
-  * 乘加单元冒充“关闭”，因此这里只复用 vendor 的基础模块作为硬件来源：
-  *   - `fudian.utils.Multiplier`：精确的 P×P 位无符号尾数乘积；
-  *   - `fudian.utils.ShiftRightJam`：对齐小操作数并收集 sticky；
-  *   - `fudian.RoundingUnit`：最终一次舍入；
-  *   - `fudian.utils.CLZ`：规格化/前导零计数。
-  *
-  * 数据通路的加法部分由本 wrapper 实现：把精确乘积和第三个操作数对齐到
-  * 同一个定点窗口，低位只保留 sticky，再统一规格化并做一次舍入。这样
-  * FMADD/FMSUB/FNMADD/FNMSUB 的舍入与异常标志仍是 RISC-V 单次舍入
-  * 语义，但结构上不是 vendor 的融合 FMA。
-  *
-  * 输入是当前格式的 IEEE-754 位模式，输出同样是 IEEE-754 位模式；
-  * 四类 FMA 的符号组合由调用方翻转 a/c 的符号位后统一按 a*b+c 计算。
+  * 乘加单元冒充“关闭”。这里只复用 fudian 的 `Multiplier`/`ShiftRightJam`/
+  * `RoundingUnit`/`CLZ` 作为基础模块，加法部分由本 wrapper 把精确乘积与
+  * 第三操作数对齐到同一定点窗口，低位只留 sticky 后统一规格化，保持
+  * RISC-V 单次舍入语义与异常标志。四类 FMA 的符号组合由调用方翻转
+  * a/c 符号位后统一按 a*b+c 计算。
   */
 class ysyx_26030103_ExactFMA(
     val expWidth: Int,
@@ -58,7 +50,7 @@ class ysyx_26030103_ExactFMA(
   private def IsZero(x: UInt): Bool = !ExpF(x).orR && !Frac(x).orR
   private def IsSub(x: UInt): Bool = !ExpF(x).orR && Frac(x).orR
 
-  /** 把有限数规格化为 P 位尾数（隐藏位在最高位）和最高位权指数。 */
+  // 把有限数规格化为 P 位尾数（隐藏位在最高位）和最高位权指数。
   private def Normalize(x: UInt): (UInt, SInt) = {
     val zero = IsZero(x)
     val sub = IsSub(x)

@@ -5,19 +5,7 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.mmu._
 
-/** 把 PTW 的简单 32 位页表总线转换成多 outstanding 的单拍 AXI 读/写。
-  *
-  * 读请求进入 readQ 后，适配器为每笔分配一个 AXI ID（3..15）并立即发起
-  * 单拍 AR，不等前一笔响应返回。槽位保存 PTW 原事务 ID，响应按 RID 回填
-  * 到对应槽位，再以原 ID 送回 PTW，因此页表总线可以乱序完成。
-  *
-  * 4 位 AXI ID 还要保留 0/1/2 给 ICache/LSU/DMA，所以最多 13 笔 AXI 读
-  * 同时在途。busDepth 只决定请求队列深度；当 PTW 配置超过 13 笔总线
-  * outstanding 时，多出的请求在队列中等待 ID 槽位，不会丢请求。
-  *
-  * 写请求走独立 writeQ 和写 FSM，避免 A/D 写回与后续页表读在队列头
-  * 互相阻塞。写事务仍保持单笔在途，写响应同样按原事务 ID 返回。
-  */
+// PTW 页表总线到多 outstanding AXI 单拍读/写的适配器；ID 0/1/2 保留，PTW 用 3..15。
 class ysyx_26030103_PTWToAXI(
     busDepth: Int = ysyx_26030103_KconfigDefaults.MmuPtwBusDepth,
     axiReadSlots: Int = ysyx_26030103_AXIReadId.PtwSlots,
@@ -99,10 +87,6 @@ class ysyx_26030103_PTWToAXI(
   tieOffWrite(io.axi)
   tieOffRead(io.axiWrite)
 
-  /** 一个 AXI 读槽：记录 PTW 原事务 ID，并在响应到达后暂存读数据。
-    * 槽位在 PTW 真正接收响应前一直占用，因此无需额外响应队列也能承受
-    * PTW 侧反压。
-    */
   class ReadSlot extends Bundle {
     val busy = Bool()
     val done = Bool()

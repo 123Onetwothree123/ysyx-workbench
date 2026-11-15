@@ -2,11 +2,11 @@ package ysyx_26030103.config
 
 import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
 
-/** 由Kconfig选择的乘法器压缩器（GPC）配置。
+/** 由 Kconfig 选择的乘法器压缩器（GPC）配置。
   *
-  * 输入和到输出编码的映射在elaboration期由动态规划求解：保证每个可能的
-  * 输入和都有精确表示，并在默认关闭冗余表示时拒绝多义编码。求解结果
-  * `EncodingTable` 供 `ysyx_26030103_MULGPC` 查表使用。
+  * 输入和到输出编码的映射在 elaboration 期由动态规划求解，保证每个可能的
+  * 输入和都有精确表示，并在默认关闭冗余表示时拒绝多义编码；结果
+  * `EncodingTable` 供 `ysyx_26030103_MULGPC` 查表。
   */
 case class ysyx_26030103_MULGPCConfig(
     Inputs: Int = KconfigDefaults.MduGpcInputs,

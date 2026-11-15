@@ -3,7 +3,6 @@ package ysyx_26030103.mem
 import chisel3._
 import chisel3.util._
 
-/** LSU 写路径：写缓冲 AW/W/B 状态机、idle 分发与 store B 完成。 */
 private[mem] trait LSUWrite {
   this: ysyx_26030103_LSU =>
 

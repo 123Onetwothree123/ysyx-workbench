@@ -3,7 +3,6 @@ package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
 
-/** WidthBridge 读通道：AR/R 握手、越界 DECERR burst 与 64->32 分块。 */
 private[infra] trait AXI5WidthBridgeRead {
   this: ysyx_26030103_AXI5WidthBridge =>
 
@@ -30,7 +29,6 @@ private[infra] trait AXI5WidthBridgeRead {
     val rData = RegInit(0.U(UpstreamDataWidth.W))
     val rArSent = RegInit(false.B)
 
-    // 读方向的完成语义观测：下游 AR 已发出、RLAST 未返回的数量。
     val rDnArFire = io.out.AR.ARVALID && io.out.AR.ARREADY
     val rDnRLastFire = io.out.R.RVALID && io.out.R.RREADY && io.out.R.RLAST
     val rDnOutstanding = RegInit(0.U(2.W))

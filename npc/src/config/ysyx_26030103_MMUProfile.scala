@@ -5,8 +5,8 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 
 /** PTE 字段位置；默认就是标准 RISC-V 32-bit PTE。
   *
-  * pteBits 表示 PTE 自身的位宽（Sv32=32，Sv39/Sv48=64）。PPN 字段在
-  * 64 位 PTE 中扩展到 bit 53（标准 44 位 PPN），自定义编码仍可按位配置。
+  * pteBits 是 PTE 位宽（Sv32=32，Sv39/Sv48=64）；64 位 PTE 的 PPN 扩展到
+  * bit 53（标准 44 位 PPN），自定义编码仍可按位配置。
   */
 case class ysyx_26030103_PteConfig(
     pteBits: Int = KconfigDefaults.MmuPteBits,
@@ -39,14 +39,11 @@ case class ysyx_26030103_PteConfig(
     s"PTE 标志位必须位于 PPN 高位($ppnHigh)以下，不能占用保留位区域")
 }
 
-/** MMU/TLB 的 elaboration 期参数。
+/** MMU/TLB 的 elaboration 期参数，由 Elaborate 从 Kconfig 环境变量构造。
   *
-  * 这个类由 Elaborate 从 Kconfig 生成的环境变量构造，并驱动 MMU/TLB RTL。
-  * 默认值就是标准 Sv32 balanced profile；RV64 默认使用 xlen=64 的标准
-  * Sv39（3 级/8B PTE）或 Sv48（4 级/8B PTE）。RV64 的非标准页几何只能
-  * 通过显式的 `geometryMode = "custom"` 打开，并使用一个非标准的 satp
-  * MODE 编码（10..15）作为扩展，绝不会伪装成标准 Sv39/Sv48。
-  * RV32 的既有自定义 32 位几何保持兼容。
+  * 默认是标准 Sv32；RV64 默认标准 Sv39（3 级/8B PTE）或 Sv48（4 级/8B PTE）。
+  * RV64 的非标准页几何只能显式 `geometryMode = "custom"`，并用 non-standard
+  * satp MODE 10..15，绝不伪装成标准 Sv39/Sv48；RV32 既有自定义几何保持兼容。
   */
 case class ysyx_26030103_MMUProfile(
     enabled: Boolean = false,
@@ -265,7 +262,7 @@ case class ysyx_26030103_MMUProfile(
             (addr >= 0x3b0 && addr <= 0x3bf))))
   }
 
-  /** 当前配置允许的最低特权级：有 U 为 U；否则有 S 为 S；M-only 为 M。 */
+  // 当前配置允许的最低特权级：有 U 为 U；否则有 S 为 S；M-only 为 M。
   final val lowestPrivilege: Int = if (hasU) 0 else if (hasS) 1 else 3
 
   require(Set("split", "unified").contains(tlbOrganization),
@@ -333,7 +330,7 @@ case class ysyx_26030103_MMUProfile(
   // CUSTOM 只改页大小/级数/索引/PTE 宽度与字段位置；虚拟地址仍必须在
   // XLEN 内可表示，且 PPN+页内偏移不能超过 64 位物理地址。
   final val customGeometry: Boolean = xlen == 64 && geometryMode == "custom"
-  /** 显式标记当前 profile 使用非标准 RV64 页几何。 */
+  // 显式标记当前 profile 使用非标准 RV64 页几何。
   final val nonStandard: Boolean = customGeometry
   final val customSatpModeLegal: Boolean =
     customSatpMode >= 10 && customSatpMode <= 15
@@ -430,13 +427,12 @@ object ysyx_26030103_MMUProfile {
 
   /** 机器 identity CSR：标准只读寄存器，始终随核实现。
     *
-    * mvendorid/marchid/mimpid 可以合法读 0，mhartid 在单 hart 核中固定
-    * 为 0。它们不参与可裁剪的功能配置，避免 CSR_ENABLED 漏列后
-    * mhartid/mimpid 在译码阶段被误判为非法指令。
+    * mvendorid/marchid/mimpid 可以合法读 0，mhartid 在单 hart 核中固定为 0。
+    * 它们不参与可裁剪配置，否则 CSR_ENABLED 漏列后会在译码阶段被判非法指令。
     */
   val IdentityCsrAddresses: Set[Int] = Set(0xf11, 0xf12, 0xf13, 0xf14)
 
-  /** 配置生成器未显式给出 CSR 集合时的标准实现集合。 */
+  // 配置生成器未显式给出 CSR 集合时的标准实现集合。
   val DefaultCsrAddresses: Set[Int] = Set(
     0x300, 0x301, 0x302, 0x303, 0x304, 0x305, 0x306,
     0x320, 0x340, 0x341, 0x342, 0x343, 0x344,
@@ -472,7 +468,7 @@ object ysyx_26030103_MMUProfile {
       }.toSet
     }.getOrElse(fallback)
 
-  /** 根据逐字段 read/write 模式生成 CSR 读掩码、读置位和写掩码。 */
+  // 根据逐字段 read/write 模式生成 CSR 读掩码、读置位和写掩码。
   private def fieldMasks(
       fields: Seq[(String, BigInt)],
       env: String => Option[String],
@@ -520,7 +516,7 @@ object ysyx_26030103_MMUProfile {
     "ppn" -> ((BigInt(1) << 44) - 1)
   )
 
-  /** 从 Kconfig 生成的环境变量构造；RV32 默认标准 Sv32，RV64 默认 Sv39。 */
+  // 从 Kconfig 生成的环境变量构造；RV32 默认标准 Sv32，RV64 默认 Sv39。
   def fromEnv(env: String => Option[String], xlen: Int = 32): ysyx_26030103_MMUProfile = {
     require(xlen == 32 || xlen == 64, s"MMUProfile.fromEnv XLEN 非法: $xlen")
     val fieldDefaultRead = envString(env, "CSR_FIELD_DEFAULT_READ", "normal")

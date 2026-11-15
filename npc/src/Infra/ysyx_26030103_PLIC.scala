@@ -5,11 +5,8 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 
-/** 简化 PLIC：优先级、pending、enable、threshold、claim/complete。
-  *
-  * 当前只实现单拍 AXI 访问；source 由上层以电平输入。claim 读会清除
-  * 对应 pending 位，complete 写清除同一 source 的 claim 状态。
-  */
+// 简化 PLIC：只支持单拍 AXI 访问，source 由上层以电平输入；
+// claim 读清对应 pending，complete 写清同一 source 的 claim 状态。
 class ysyx_26030103_PLIC(
     numSources: Int = ysyx_26030103_KconfigDefaults.MmuPlicSources,
     priorityBits: Int = ysyx_26030103_KconfigDefaults.MmuPlicPriorityBits,

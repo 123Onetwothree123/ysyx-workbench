@@ -2,13 +2,8 @@ package ysyx_26030103.config
 
 import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
 
-/** 由 Kconfig 选择的 FPU 后端。
-  *
-  * `Implemented` 表示当前仓库是否已经接入该后端的 RTL。HardFloat 已通过
-  * vendor/berkeley-hardfloat、Fudian 已通过 vendor/fudian 的 source-level
-  * 编译接入；External 仍只是预留，必须在 elaboration 前拒绝，不能静默
-  * 生成一个没有浮点数据通路的 F/D 核。
-  */
+// 由 Kconfig 选择的 FPU 后端；HardFloat/Fudian 已按源码接入，External 只是
+// 预留，必须在 elaboration 前拒绝，不能静默生成没有浮点数据通路的核。
 sealed trait ysyx_26030103_FPUImpl {
   def Name: String
   def Implemented: Boolean
@@ -47,11 +42,7 @@ object ysyx_26030103_FPUImpl {
   }
 }
 
-/** Berkeley HardFloat 的公开集成参数。
-  *
-  * 只放 vendor 顶层公开的参数，不暴露 recoded 管线内部寄存器、CSA
-  * 结构等实现细节。
-  */
+// Berkeley HardFloat 公开集成参数；只放 vendor 顶层参数，不暴露 recode 管线/CSA 细节。
 case class ysyx_26030103_HardFloatParams(
     Recode: Boolean = true,
     DetectTininessBeforeRounding: Boolean = false
@@ -59,9 +50,8 @@ case class ysyx_26030103_HardFloatParams(
 
 /** Fudian 的公开集成参数。
   *
-  * `SharedDivSqrt=true` 且启用 D 时，F/D 共用一套 D 精度 `FDIV` 迭代
-  * 硬件：F 输入精确提升到 D，结果按请求舍入模式回舍到 S；`false` 时
-  * F 与 D 各保留一套独立 `FDIV`。
+  * `SharedDivSqrt=true` 且启用 D 时，F/D 共用一套 D 精度 `FDIV`：F 输入精确
+  * 提升到 D，结果按请求舍入模式回舍到 S；`false` 时各保留一套独立 `FDIV`。
   */
 case class ysyx_26030103_FudianParams(
     SharedDivSqrt: Boolean = true
@@ -69,11 +59,9 @@ case class ysyx_26030103_FudianParams(
 
 /** FPU 的通用公开参数 profile。
   *
-  * `FPUImpl`/`FPULen` 单独放在 NPCConfig 顶层，便于上层快速判断是否
-  * 启用以及寄存器宽度；本 profile 只承载实现相关的公开调优参数。
-  *
-  * `Pipeline` 是响应边界真实有效的流水级数；`FMA` 选择 vendor 融合
-  * 乘加（on）或基于 vendor 基础模块的单次舍入非融合数据通路（off）。
+  * `Pipeline` 是响应边界真实有效的流水级数；`FMA` 选择 vendor 融合乘加或
+  * 基于 vendor 基础模块的单次舍入非融合数据通路。`FPUImpl`/`FPULen` 放在
+  * NPCConfig 顶层，本 profile 只承载实现相关的公开调优参数。
   */
 case class ysyx_26030103_FPUProfile(
     Pipeline: Int = KconfigDefaults.FpuPipeline,
@@ -88,7 +76,7 @@ case class ysyx_26030103_FPUProfile(
 ) {
   private def OnOff(Flag: Boolean): String = if (Flag) "on" else "off"
 
-  /** 配置摘要只打印选中后端的参数，避免把未选后端的值误认为生效。 */
+  // 配置摘要只打印选中后端的参数，避免把未选后端的值误认为生效。
   def Describe(Impl: ysyx_26030103_FPUImpl): String = Impl match {
     case ysyx_26030103_FPUImpl.None => "none"
     case ysyx_26030103_FPUImpl.HardFloat =>

@@ -30,11 +30,10 @@ class riscv32e_npc_AXIRAM(
       "ysyxSoC 构建（SIM_TOP=soc），不要实例化 riscv32e_npc_AXIRAM")
   val io = IO(new Bundle {
     val axi = Flipped(new ysyx_26030103_AXI5IO(socXLEN, socXLEN, 4))
-    // direct-NPC 在构造 DUT 后由 C++ 将命令行镜像写入 RAM。
-    // 这使 RTL 和 DiffTest/调试器共用同一份 FlashMemory，
-    // 不再依赖当前工作目录下可能过期的 program.hex。
-    // 地址端口固定 32 位，由 wordIndexBits 截取实际深度；这样 64/128 MiB
-    // 共用同一个 SimTop 端口，不需要为每种 RAM 大小重写顶层。
+    // direct-NPC 在构造 DUT 后由 C++ 将命令行镜像写入 RAM，使 RTL 和
+    // DiffTest/调试器共用同一份 FlashMemory，不再依赖当前目录下可能过期的
+    // program.hex。地址端口固定 32 位，由 wordIndexBits 截取实际深度，这样
+    // 64/128 MiB 共用同一个 SimTop 端口，不需要为每种 RAM 大小重写顶层。
     val hostWriteValid = Input(Bool())
     val hostWriteIndex = Input(UInt(32.W))
     val hostWriteData = Input(UInt(32.W))

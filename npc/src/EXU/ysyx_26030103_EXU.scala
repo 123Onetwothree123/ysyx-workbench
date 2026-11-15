@@ -597,8 +597,6 @@ class ysyx_26030103_EXU(
   // EXU里被冲刷的指令(csrrw/mret)不会产生CSR副作用, 异常目标也不会被mret劫持
   // MEM故障是更老指令的精确异常；当它提交时，当前EXU指令即使因
   // FlushEXMEM而被“放行”也不能再提交自己的CSR/MRET副作用。
-  // 普通load/store不经由CSR单元提交，但IRQ pending时必须允许IRQ
-  // 在该访存执行前的指令边界提交；后面会用IrqCommit压掉访存副作用。
   val InstructionCSRCommit = io.in.fire && !PendingMDU &&
     (!IsMemoryForCommit || CSRUnit.io.IrqPending) && !io.MemTrapCommit
   CSRUnit.io.Enable := InstructionCSRCommit || IdleIrqCommit

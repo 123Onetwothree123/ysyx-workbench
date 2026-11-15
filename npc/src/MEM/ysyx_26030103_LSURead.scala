@@ -3,7 +3,6 @@ package ysyx_26030103.mem
 import chisel3._
 import chisel3.util._
 
-/** LSU 普通读事务：AR/R 直读、DCache demand 与 RLAST 排空。 */
 private[mem] trait LSURead {
   this: ysyx_26030103_LSU =>
 

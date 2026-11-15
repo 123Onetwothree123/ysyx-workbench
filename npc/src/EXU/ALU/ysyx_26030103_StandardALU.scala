@@ -2,12 +2,6 @@ package ysyx_26030103.exu
 import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction._
 import _root_.ysyx_26030103.config._
-//之前ai残留的注释
-/** 标准 ALU 后端：加法、减法、移位、位逻辑并行计算，结果浅 mux。
-  *
-  * 加法器与减法器各自实例化一个 ALUAdder；两者都受 ALUProfile.Adder 选择的结构后端控制。SLT/SLTU
-  * 不单独做比较器，直接由减法器的借位 派生。
-  */
 class ysyx_26030103_StandardALU(
     override val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends ysyx_26030103_ALU(config) {

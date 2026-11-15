@@ -13,7 +13,7 @@ object ysyx_26030103_AXI5Burst {
   def totalBytes(len: UInt, beatBytes: UInt): UInt =
     lenPlusOne(len) * beatBytes
 
-  /** 末字节地址。返回值不截断，宽度 = address 宽度 + len 宽度 + 2。 */
+  // 末字节地址。返回值不截断，宽度 = address 宽度 + len 宽度 + 2。
   def lastByte(address: UInt, len: UInt, size: UInt, burst: UInt): UInt = {
     val width = address.getWidth + 1
     val addr = address.pad(width)

@@ -2,9 +2,9 @@ package ysyx_26030103.config
 
 /** 性能计数器目录：分组 → 组内单计数器键。
   *
-  * 键名与Kconfig符号后缀（PERF_DIC_ARCH_COUNTER_<键大写>）、RTL端口后缀以及
-  * C++宏名（CONFIG_PERF_DIC_ARCH_COUNTER_<键大写>）一一对应。
-  * 各组总开关与单计数器开关的相与逻辑在 `ysyx_26030103_NPCConfig` 内完成。
+  * 键名与 Kconfig 符号后缀（PERF_DIC_ARCH_COUNTER_<键大写>）、RTL 端口后缀、
+  * C++ 宏名（CONFIG_PERF_DIC_ARCH_COUNTER_<键大写>）一一对应；各组总开关与
+  * 单计数器开关的相与在 `ysyx_26030103_NPCConfig` 内完成。
   */
 object ysyx_26030103_PerfDicArchCounterCatalog {
   val PerfDicArchCounterGroups: Seq[(String, Seq[String])] = Seq(

@@ -5,10 +5,6 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.mmu._
 
-/** 写通道二选一：LSU 与 PTW A/D 写回共用仲裁器的 LSU 写端口。
-  *
-  * 读通道仍由 LSU 独占；PTW 只做单拍写，因此这里只需要处理 AW/W/B。
-  */
 class ysyx_26030103_AXIWriteMux(
     val PassRead: Boolean = true,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,

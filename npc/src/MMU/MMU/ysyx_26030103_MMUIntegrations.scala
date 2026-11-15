@@ -6,11 +6,8 @@ import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_EXUMessage
 import _root_.ysyx_26030103.common.ysyx_26030103_AtomicOp
 
-/** IFU/LSU 双端口 MMU 仲裁器。
-  *
-  * 每个客户端最多保留一笔在途翻译；两笔可以同时进入 MMU 的独立上下文，
-  * 响应按请求 ID 回到对应客户端，不再要求 IFU 的翻译先完成。
-  */
+// IFU/LSU 双端口 MMU 仲裁器：每客户端最多一笔在途翻译，两笔可同时进入
+// MMU 的独立上下文，响应按请求 ID 回到对应客户端，不要求 IFU 先完成。
 class ysyx_26030103_MMURequestArbiter(
     XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth

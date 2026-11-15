@@ -5,18 +5,12 @@ import chisel3.util._
 import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.fpu.{ysyx_26030103_FpuFlags, ysyx_26030103_FpuRm}
 
-/** 机器/监管者 CSR 与精确异常入口。
-  *
-  * 默认实现支持 M/S/U 三个特权级、S 模式 CSR、异常委托和 SRET。
-  * 页表翻译本身在 MMU 中完成；这里负责 satp、stvec/sepc/scause/stval
-  * 以及异常入口的特权级切换。
-  *
-  * HAS_S=n 时只生成 M 模式 CSR/异常入口，S 模式寄存器和委托逻辑在
-  * elaboration 期直接省略；但 HAS_U=y 时仍保留 U 特权级，U 的所有
-  * 异常/中断直接进入 M（ecall cause=8），不生成任何 S CSR 或委托。
-  * HAS_U=n 时 U 级 CSR、ecall cause=8 和返回 U 的选择路径同样被裁掉。
-  * 默认 HAS_S=y/HAS_U=y 的行为保持不变。
-  */
+// 机器/监管者 CSR 与精确异常入口。页表翻译本身在 MMU 中完成；这里负责
+// satp、stvec/sepc/scause/stval 以及异常入口的特权级切换。
+// HAS_S=n 时只生成 M 模式 CSR/异常入口，S 模式 CSR 和委托逻辑在
+// elaboration 期直接省略；但 HAS_U=y 时仍保留 U 特权级，U 的所有
+// 异常/中断直接进入 M（ecall cause=8）。HAS_U=n 时 U 级 CSR、
+// ecall cause=8 和返回 U 的选择路径同样被裁掉。
 class ysyx_26030103_CSR(
     val profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(),

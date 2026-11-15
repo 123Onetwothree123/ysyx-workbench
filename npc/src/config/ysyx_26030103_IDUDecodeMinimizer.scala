@@ -1,6 +1,6 @@
 package ysyx_26030103.config
 
-/** IDU 译码真值表使用的最小化算法。 */
+// IDU 译码真值表使用的最小化算法。
 sealed trait ysyx_26030103_IDUDecodeMinimizer {
   def Name: String
 }

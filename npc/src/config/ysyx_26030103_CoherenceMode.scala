@@ -1,26 +1,19 @@
 package ysyx_26030103.config
 
-/** ICache 对自修改代码的可见性策略。
-  *
-  * RISC-V 软件必须执行 `fence.i` 才能保证 store 之后的取指看到新指令；
-  * 本开关只描述 `fence.i` 之外是否再提供硬件 store snoop，不能把
-  * `FENCE_I` 模式下“无需 fence.i”当作标准语义。
-  */
+// ICache 对自修改代码的可见性：fence.i 是标准语义，本开关只决定是否额外提供
+// store snoop，不能把 FENCE_I 模式解释为“不需要 fence.i”。
 sealed trait ysyx_26030103_ICacheCoherence {
   def Name: String
 }
 
 object ysyx_26030103_ICacheCoherence {
-  /** 标准语义：只有 `fence.i` 失效 ICache/取指流水，默认模式。 */
+  // 标准语义：只有 `fence.i` 失效 ICache/取指流水，默认模式。
   case object FenceI extends ysyx_26030103_ICacheCoherence {
     val Name = "fence_i"
   }
 
-  /** 可选扩展：CPU store B 完成时按物理地址失效对应 ICache 行。
-    *
-    * `fence.i` 仍然保留并继续冲刷取指流水；该模式只缩短“store 已完成、
-    * 但软件尚未执行 fence.i”时 ICache 持有旧行的窗口，不能替代软件屏障。
-    */
+  // 可选扩展：store B 完成时按物理地址失效对应 ICache 行；fence.i 仍保留，
+  // 该模式只缩短旧行窗口，不能替代软件屏障。
   case object HardwareSnoop extends ysyx_26030103_ICacheCoherence {
     val Name = "hardware_snoop"
   }
@@ -35,11 +28,7 @@ object ysyx_26030103_ICacheCoherence {
   }
 }
 
-/** DMA 与 CPU 数据缓存之间的一致性策略。
-  *
-  * 入站 DMA 经由仲裁器直接访问内存，本身不经过 DCache。这里描述的是
-  * CPU 侧如何避免继续使用 DMA 修改前的旧缓存行。
-  */
+// 入站 DMA 直接访问内存、不经过 DCache；这里描述 CPU 侧如何避免继续用旧行。
 sealed trait ysyx_26030103_DmaCoherence {
   def Name: String
 }
@@ -60,10 +49,9 @@ object ysyx_26030103_DmaCoherence {
     val Name = "uncached"
   }
 
-  /** DMA 地址级硬件 snoop：DMA 写的 B 响应到达后，按本次 burst 覆盖的
-    * 物理字节范围失效 ICache/DCache 中所有匹配行；DMA 写的 B 会一直
-    * 保持到两个 Cache 完成失效，因此软件看到 B 时旧副本必然已经失效。
-    * DMA 读不产生额外动作：写直达 Cache 没有脏数据，内存始终是最新的。
+  /** DMA 地址级硬件 snoop：DMA 写的 B 到达后按本次 burst 覆盖的物理字节范围
+    * 失效 ICache/DCache 匹配行；B 保持到两个 Cache 完成失效，因此软件看到 B
+    * 时旧副本必然已失效。DMA 读不动作：写直达无脏数据，内存始终最新。
     */
   case object HardwareSnoop extends ysyx_26030103_DmaCoherence {
     val Name = "hardware_snoop"

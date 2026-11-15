@@ -46,7 +46,7 @@ class ysyx_26030103_PTWResponse(
   val fillLevel = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
 }
 
-/** PTW 内部响应荷载；`id`/`fillLevel` 由独立寄存器在输出级拼接。 */
+// PTW 内部响应荷载；`id`/`fillLevel` 由独立寄存器在输出级拼接。
 private[mmu] class ysyx_26030103_PTWRespPayload(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
@@ -67,15 +67,11 @@ private[mmu] class ysyx_26030103_PTWRespPayload(
   val fillAsid = UInt(16.W)
 }
 
-/** 可配置页大小/级数/页表项数的 page-table walker。
-  *
-  * RV32/Sv32 与 RV64/Sv39/Sv48 共用同一套逐级 walk 状态机：
-  *   - vaBits = pageBits + levels * indexBits（32/39/48）；
-  *   - PTE 宽度由 pteSizeBytes 决定（Sv32=4B，Sv39/Sv48=8B）；
-  *   - satp 的 MODE/ASID/PPN 位置按 XLEN 选择；
-  *   - Sv39/Sv48 的 64 位 PTE 使用 bit 53:10 的 44 位 PPN，A/D 写回只
-  *     修改包含标志位的低 32 位字。
-  */
+// 可配置页大小/级数/页表项数的 page-table walker，RV32/Sv32 与
+// RV64/Sv39/Sv48 共用同一套逐级 walk 状态机：
+//   - vaBits = pageBits + levels * indexBits，PTE 宽度由 pteSizeBytes 决定；
+//   - satp 的 MODE/ASID/PPN 位置按 XLEN 选择；Sv39/Sv48 的 64 位 PTE 用
+//     bit 53:10 的 44 位 PPN，A/D 写回只改包含标志位的低 32 位字。
 class ysyx_26030103_PTW(
     adMode: String = "fault",
     cacheEnable: Boolean = false,
@@ -255,7 +251,7 @@ class ysyx_26030103_PTW(
     val store = access === ysyx_26030103_AccessType.Store
     Mux(fetch, 12.U, Mux(store, 15.U, 13.U))
   }
-  /** 页表总线错误不是页错误：取指/load/store 分别报告 1/5/7。 */
+  // 页表总线错误不是页错误：取指/load/store 分别报告 1/5/7。
   def accessCauseOf(access: UInt): UInt = {
     val fetch = access === ysyx_26030103_AccessType.Fetch
     val store = access === ysyx_26030103_AccessType.Store
@@ -264,7 +260,7 @@ class ysyx_26030103_PTW(
   val pageFaultCause = causeOf(accessReg)
   val accessFaultCause = accessCauseOf(accessReg)
 
-  /** 把原始 PTE 归一化为内部标准布局：低 8 位标志，PPN 从 ppnLow 开始。 */
+  // 把原始 PTE 归一化为内部标准布局：低 8 位标志，PPN 从 ppnLow 开始。
   private def normalizePte(d: UInt): UInt = {
     val flags = Cat(
       d(pteConfig.dBit), d(pteConfig.aBit), d(pteConfig.globalBit),
@@ -285,10 +281,10 @@ class ysyx_26030103_PTW(
   // 位置去解释归一化结果，否则 CUSTOM 的私有 PTE 布局会被误判。
   def isLeaf(d: UInt): Bool =
     Cat(d(2), d(1), d(3)) =/= 0.U // 归一化 W/R/X = bit2/1/3
-  /** R=0 且 W=1 是保留编码；无论叶子还是非叶子都必须 page fault。 */
+  // R=0 且 W=1 是保留编码；无论叶子还是非叶子都必须 page fault。
   def reservedEncoding(d: UInt): Bool = !d(1) && d(2)
   def leafAllowed: Bool = superpage.B || levelReg === (levels - 1).U
-  /** 非叶子 PTE 的保留位（PPN 高位以外）必须为 0。 */
+  // 非叶子 PTE 的保留位（PPN 高位以外）必须为 0。
   def reservedFault(d: UInt): Bool =
     if (pteConfig.ppnHigh + 1 >= pteWidth) false.B
     else d(pteWidth - 1, pteConfig.ppnHigh + 1) =/= 0.U
@@ -300,7 +296,7 @@ class ysyx_26030103_PTW(
   def rawReservedFault(raw: UInt): Bool =
     if (XLEN <= 32 || pteWidth <= 32 || pteConfig.ppnHigh + 1 >= pteWidth) false.B
     else raw(pteWidth - 1, pteConfig.ppnHigh + 1) =/= 0.U
-  /** 超级页 PPN 的低位必须按层级对齐。 */
+  // 超级页 PPN 的低位必须按层级对齐。
   def superpageMisaligned(d: UInt): Bool = {
     if (levels <= 1) false.B
     else {
@@ -320,7 +316,7 @@ class ysyx_26030103_PTW(
     else d(pteConfig.ppnLow + ptePpnBits - 1,
       pteConfig.ppnLow + paddrPpnBits) === 0.U
   }
-  /** 去掉不可用的 PPN 高位；调用前必须已检查 ppnFits。 */
+  // 去掉不可用的 PPN 高位；调用前必须已检查 ppnFits。
   def ppnValue(d: UInt): UInt =
     d(pteConfig.ppnLow + paddrPpnBits - 1, pteConfig.ppnLow)
   def walkFault(d: UInt): Bool =
@@ -360,7 +356,7 @@ class ysyx_26030103_PTW(
     */
   def fillLevelOf(level: UInt): UInt = (levels - 1).U - level
 
-  /** 当前级在虚拟地址中的索引；第 0 级是根页表，使用最高 VPN。 */
+  // 当前级在虚拟地址中的索引；第 0 级是根页表，使用最高 VPN。
   def vpnIndex(level: UInt): UInt = {
     MuxLookup(level, vaddrReg(vaBits - 1, pageBits))(
       (0 until levels).map { l =>
@@ -382,7 +378,7 @@ class ysyx_26030103_PTW(
       (vaddrReg & offsetMask).pad(addressWidth))
   }
 
-  /** Sv39/Sv48 的高位必须是指示位的符号扩展。 */
+  // Sv39/Sv48 的高位必须是指示位的符号扩展。
   def canonicalOk(vaddr: UInt): Bool = {
     if (vaBits == XLEN) true.B
     else {
@@ -395,7 +391,7 @@ class ysyx_26030103_PTW(
     if (XLEN == 32) satp(21, 0) else satp(43, 0)
   def satpAsid(satp: UInt): UInt =
     if (XLEN == 32) satp(30, 22) else satp(59, 44)
-  /** satp.PPN 的高位必须能装入物理地址宽度。 */
+  // satp.PPN 的高位必须能装入物理地址宽度。
   def satpRootFits(satp: UInt): Bool = {
     val ppn = satpPpn(satp)
     if (satpPpnBits >= (if (XLEN == 32) 22 else 44)) true.B

@@ -351,10 +351,6 @@ class ysyx_26030103_DCacheSRAM(
   io.AXI.AR.ARCACHE := 0.U
   io.AXI.AR.ARQOS := 0.U
   io.AXI.R.RREADY := false.B
-  // ResponseValid is a one-entry elastic response slot.  When the consumer
-  // removes the old response in this cycle, a new request may reuse the slot
-  // immediately; forbidding that pop+push case inserted a bubble between every
-  // pair of cache hits.
   // SRAM命中数据晚一拍：受理命中(含refill中partial hit)时发起读。Bypass模式
   // 下一拍由SramRespPending旁路到响应并同时锁存；非旁路模式下一拍锁存、再下一
   // 拍才作为响应。SramRespPending与ResponseValid互斥(前者是"SRAM数据本拍到"的拍)。

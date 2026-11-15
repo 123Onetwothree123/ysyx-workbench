@@ -6,21 +6,13 @@ import chisel3.util._
 import _root_.ysyx_26030103.config.ysyx_26030103_PteConfig
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
-/** 级间流水化的 page-table walker。
-  *
-  * 三级结构：
-  *   A 级：为一个在途请求计算当前级 PTE 地址并查询 PTE cache；命中时直接
-  *         送入 C 级，缺失时把页表读请求放入总线队列。
-  *   B 级：多槽页表总线引擎，可同时持有多笔在途页表读/写。每个槽位用
-  *         事务 ID 匹配响应，因此总线可以重叠、甚至乱序返回；8B PTE 的
-  *         低/高字仍由同一槽位顺序读取。
-  *   C 级：解析 PTE，完成权限/超级页检查，推进页表级数，或产生最终
-  *         响应并交给响应排序逻辑。
-  *
-  * 同一请求的页表各级天然存在数据依赖，必须等上一级 PTE 返回后才能
-  * 计算下一级地址；流水重叠发生在不同请求之间、A 级与 B 级之间，以及
-  * B 级多个页表总线槽位之间。
-  */
+// 三级流水 page-table walker：
+//   A 级：为在途请求计算当前级 PTE 地址并查 PTE cache，命中直接送 C 级，
+//         缺失时把页表读请求放入总线队列。
+//   B 级：多槽页表总线引擎，槽位按事务 ID 匹配响应，可重叠甚至乱序；
+//         8B PTE 的低/高字仍由同一槽位顺序读取。
+//   C 级：解析 PTE、检查权限/超级页、推进级数或产生最终响应。
+// 同一请求的各级存在数据依赖；重叠发生在不同请求之间及 B 级槽位之间。
 class ysyx_26030103_PTWPipeline(
     outstanding: Int = ysyx_26030103_KconfigDefaults.MmuPtwOutstanding,
     busOutstanding: Int = ysyx_26030103_KconfigDefaults.MmuPtwBusOutstanding,
@@ -123,7 +115,7 @@ class ysyx_26030103_PTWPipeline(
     val resp = new ysyx_26030103_PTWResponse(XLEN, addressWidth, pteWidth)
   }
 
-  /** A 级交给 B 级的页表总线任务。 */
+  // A 级交给 B 级的页表总线任务。
   class BusJob extends Bundle {
     val ctx = UInt(ctxBits.W)
     val addr = UInt(addressWidth.W)
@@ -133,7 +125,7 @@ class ysyx_26030103_PTWPipeline(
     val epoch = UInt(epochBits.W)
   }
 
-  /** B 级交给 C 级的已完成页表项。 */
+  // B 级交给 C 级的已完成页表项。
   class ResolveJob extends Bundle {
     val ctx = UInt(ctxBits.W)
     val pteAddr = UInt(addressWidth.W)
@@ -224,7 +216,7 @@ class ysyx_26030103_PTWPipeline(
   // 归一化结果。
   private def isLeaf(d: UInt): Bool =
     Cat(d(2), d(1), d(3)) =/= 0.U // 归一化 W/R/X = bit2/1/3
-  /** R=0 且 W=1 是保留编码；无论叶子还是非叶子都必须 page fault。 */
+  // R=0 且 W=1 是保留编码；无论叶子还是非叶子都必须 page fault。
   private def reservedEncoding(d: UInt): Bool = !d(1) && d(2)
   private def leafAllowed(level: UInt): Bool =
     superpage.B || level === (levels - 1).U
@@ -286,7 +278,7 @@ class ysyx_26030103_PTWPipeline(
     val isStore = access === ysyx_26030103_AccessType.Store
     Mux(isFetch, 12.U, Mux(isStore, 15.U, 13.U))
   }
-  /** 页表总线错误的 cause：取指=1，load=5，store=7。 */
+  // 页表总线错误的 cause：取指=1，load=5，store=7。
   private def accessFaultCause(access: UInt): UInt = {
     val isFetch = access === ysyx_26030103_AccessType.Fetch
     val isStore = access === ysyx_26030103_AccessType.Store
@@ -329,7 +321,7 @@ class ysyx_26030103_PTWPipeline(
   }
   private def tableBaseOf(satp: UInt): UInt =
     (satpPpn(satp)(satpPpnBits - 1, 0) << pageBits).pad(addressWidth)
-  /** 与 independent PTW 相同：0=基础页，k=第 k 级超级页。 */
+  // 与 independent PTW 相同：0=基础页，k=第 k 级超级页。
   private def fillLevelOf(level: UInt): UInt = (levels - 1).U - level
 
   // B 级：页表总线任务队列。每个槽位独立持有一笔在途读/写，响应按

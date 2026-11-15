@@ -3,11 +3,6 @@ package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
 
-/** AXI5 地址/数据宽度桥。
-  * 支持 32/64 位宽转换、INCR/FIXED/WRAP burst、WSTRB/RLAST；
-  * 下游地址更窄时对整笔 burst 做越界检查并本地返回 DECERR。
-  * 同一方向只处理一笔事务，用反压保证握手稳定。
-  */
 class ysyx_26030103_AXI5WidthBridge(
     private[infra] val UpstreamAddressWidth: Int = 64,
     private[infra] val DownstreamAddressWidth: Int = 32,
@@ -72,9 +67,6 @@ class ysyx_26030103_AXI5WidthBridge(
   private[infra] val InAWLock = io.inAWLock.getOrElse(false.B)
   private[infra] val InARLock = io.inARLock.getOrElse(false.B)
 
-  /** 把上游地址映射到下游地址宽度。仅在 `!OutOfRange` 时使用；
-    * 越界事务不会走到下游，因此这里的低位切片不构成静默截断。
-    */
   private[infra] def DownAddress(Address: UInt): UInt = {
     if (DownstreamAddressWidth >= UpstreamAddressWidth) {
       Address.pad(DownstreamAddressWidth)
@@ -83,19 +75,8 @@ class ysyx_26030103_AXI5WidthBridge(
     }
   }
 
-  /** 检查整笔 burst 访问的最后一个字节是否越过下游地址空间。
-    *
-    * 只看起始地址的高位不够：`0xfffffffc + 4B` 这类跨 4GiB 边界的
-    * burst 起始高位全 0，但最后一拍会回绕。这里按 AXI 地址规则分别
-    * 计算 INCR/WRAP/FIXED 的末字节：
-    *   - INCR：首拍可以非对齐，后续拍从 size 对齐边界开始；
-    *   - WRAP：整笔落在 wrap 容器内；
-    *   - FIXED：每拍地址不变，只占一个 size 窗口。
-    *
-    * `Len + 1` 显式扩到 9 位，避免 AWLEN=255（256 拍）在 8 位加法里
-    * 回绕成 0 后把末字节算错。越界事务不会走到下游，因此
-    * `DownAddress` 的高位切片不构成静默地址丢失。
-    */
+  // 按 INCR/WRAP/FIXED 计算末字节；`Len + 1` 扩到 9 位，避免 AWLEN=255
+  // 在 8 位加法里回绕后把跨 4GiB 边界的 burst 算错。
   private[infra] def OutOfRange(
       Address: UInt,
       Len: UInt,
@@ -113,13 +94,7 @@ class ysyx_26030103_AXI5WidthBridge(
     }
   }
 
-  /** 计算 burst 中第 Beat 拍的起始地址。
-    *
-    * AXI 对非对齐 INCR 首拍的规定是：首拍从原始地址开始，只传输到该
-    * size 自然窗口的末尾；后续拍从 `align_down(Base, size)` 开始按
-    * size 递增。每拍都保留首拍偏移会把非对齐 burst 的后续拍搬到错误
-    * 地址。
-    */
+  // 非对齐 INCR 首拍从原始地址开始，后续拍从 size 对齐边界递增。
   private[infra] def BeatAddress(
       Base: UInt,
       Beat: UInt,
@@ -148,23 +123,17 @@ class ysyx_26030103_AXI5WidthBridge(
     )
   }
 
-  /** 上游数据总线上一个 beat 的字节起始地址（按总线宽度对齐）。 */
+  // 上游数据总线上一个 beat 的字节起始地址（按总线宽度对齐）。
   private[infra] def BeatByteBase(Address: UInt): UInt =
     ((Address >> UpLaneBits) << UpLaneBits)
 
-  /** 64->32 拆分时，第 Chunk 个 4 字节块的下游地址。 */
+  // 64->32 拆分时，第 Chunk 个 4 字节块的下游地址。
   private[infra] def ChunkAddress(BeatAddr: UInt, Chunk: UInt): UInt = {
     val Base = (BeatAddr >> DownLaneBits) << DownLaneBits
     Base + (Chunk << DownLaneBits)
   }
 
-  /** 一个上游 beat 需要拆成多少个下游 beat（下游更窄时）。
-    *
-    * 正常对齐访问只需要 1 个；宽 beat（8 字节）或跨 4 字节边界的
-    * 非对齐 beat 需要 2 个。INCR 首拍和 FIXED 的每一拍只传输到该
-    * size 自然窗口的末尾，所以有效字节数要从 `地址 % size` 算起，
-    * 不能无条件使用 `1 << Size`，否则会多发全零 WSTRB 的空写。
-    */
+  // 宽 beat 或跨 4 字节边界的非对齐 beat 需要拆两拍；有效字节从地址 % size 算。
   private[infra] def BeatChunkCount(
       BeatAddr: UInt,
       Size: UInt,
@@ -180,30 +149,20 @@ class ysyx_26030103_AXI5WidthBridge(
     (LastChunk - FirstChunk + 1.U)(1, 0)
   }
 
-  /** 从宽上游数据中取出下游宽度的字节块。
-    *
-    * Chisel 的动态右移不会自动扩大结果位宽，因此先显式 pad 到上游
-    * 总线宽度，再 pad 到下游总线宽度，保证两种配置下切片都合法。
-    */
   private[infra] def ExtractData(Data: UInt, ByteOffset: UInt): UInt = {
     val Padded = Data.pad(math.max(UpstreamDataWidth, DownstreamDataWidth))
     val Shifted = (Padded >> (ByteOffset << 3)).pad(DownstreamDataWidth)
     Shifted(DownstreamDataWidth - 1, 0)
   }
 
-  /** 从上游 WSTRB 中取出下游字节块对应的掩码。 */
+  // 从上游 WSTRB 中取出下游字节块对应的掩码。
   private[infra] def ExtractStrb(Strb: UInt, ByteOffset: UInt): UInt = {
     val Padded = Strb.pad(math.max(UpBytes, DownBytes))
     val Shifted = (Padded >> ByteOffset).pad(DownBytes)
     Shifted(DownBytes - 1, 0)
   }
 
-  /** 32->64 时上游 32 位字落在下游 64 位总线的哪个字节半区。
-    *
-    * 总线上的字节 lane 由 `地址 % 总线字节数` 决定，因此整个上游字要
-    * 搬到下游字内与地址 bit[2] 对应的半区。若直接按 `地址 % 8` 移位，
-    * 地址 `0x...2` 的窄访问会从 lane 2 漂到 lane 4，写到错误地址。
-    */
+  // 整个上游字搬到地址 bit[2] 对应的半区；直接按地址 % 8 移位会让 lane 2 漂到 lane 4。
   private[infra] def UpsizeLane(BeatAddr: UInt): UInt =
     if (Upsize) {
       Cat(BeatAddr(DownLaneBits - 1, UpLaneBits), 0.U(UpLaneBits.W))

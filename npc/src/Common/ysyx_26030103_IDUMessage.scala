@@ -3,7 +3,7 @@ import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction.CtrlWidth
 import _root_.ysyx_26030103.fpu.{ysyx_26030103_FpuOp, ysyx_26030103_FpuFmt, ysyx_26030103_FpuRm}
 
-/** 译码级交付给执行级的消息；所有架构数据通路均为 XLEN 位。 */
+// 译码级交付给执行级的消息；所有架构数据通路均为 XLEN 位。
 class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"IDUMessage XLEN 非法: $XLEN")
   // 原始指令编码（16 位压缩指令零扩展），用于 trace 和非法指令 mtval。

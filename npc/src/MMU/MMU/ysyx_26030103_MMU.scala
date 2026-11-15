@@ -4,14 +4,12 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
-/** Sv32 MMU：请求接收 + TLB 查找 + 真实 TLB miss queue + 多上下文 PTW。
-  *
-  * 请求先在上下文中做 TLB 查找；命中/旁路直接生成响应，缺失则进入 ITLB/DTLB/UTLB 各自的 miss queue（follow_tlb）或共享的全局 miss queue （global）。只有 miss queue
-  * 队首才会占用 PTW walk 槽，因此 TLB 查找、 miss 排队和页表 walk 是三个解耦的阶段。
-  *
-  * PTW 请求 ID 使用独立的 walk 槽编号（0..ptwOutstanding-1），不再直接 复用上下文编号；上下文数可以大于 16，同时仍满足 PTW 事务 ID 的 4 位 限制。每个请求在进入 MMU
-  * 时分配序号，完成结果按序号写入响应表， 因此多队列/多 walker 的乱序完成不会破坏软件可见的响应顺序。
-  */
+// Sv32 MMU：TLB 查找、miss queue 排队、PTW walk 三级解耦；命中/旁路直接
+// 响应，缺失进入 ITLB/DTLB/UTLB 各自的 miss queue（follow_tlb）或共享的
+// 全局 miss queue（global），只有队首占用 walk 槽。
+// PTW ID 使用独立的 walk 槽编号（0..ptwOutstanding-1）而非上下文编号，
+// 上下文数可大于 16 且仍满足 4 位 ID；完成结果按进入序号写回响应表，
+// 多队列/多 walker 的乱序完成不会破坏软件可见的响应顺序。
 class ysyx_26030103_MMU(
   profile: ysyx_26030103_MMUProfile = ysyx_26030103_MMUProfile())
     extends Module {
@@ -385,7 +383,7 @@ class ysyx_26030103_MMU(
   def satpAsidOf(satp: UInt): UInt =
     if (xlen == 32) satp(30, 22) else satp(59, 44)
   def satpAsid(satp: UInt): UInt = satpAsidOf(satp)
-  /** Sv39/Sv48 非规范虚拟地址必须在 TLB 之前就判定为页错误。 */
+  // Sv39/Sv48 非规范虚拟地址必须在 TLB 之前就判定为页错误。
   def canonicalOk(vaddr: UInt): Bool = {
     if (vaBits == xlen) true.B
     else {

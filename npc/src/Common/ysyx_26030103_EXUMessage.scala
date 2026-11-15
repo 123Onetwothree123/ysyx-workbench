@@ -1,12 +1,6 @@
 package ysyx_26030103.common
 import chisel3._
 
-/** 执行级交付给访存级、再交给写回级的消息。
-  *
-  * 架构寄存器数据、PC、分支目标、CSR 读写数据均为 XLEN 位；
-  * Instruction/异常 cause 仍是 32 位；VAddr 与总线物理地址按 XLEN/
-  * AddressWidth 保持完整宽度，RV64 下不再截断到 32 位。
-  */
 class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"EXUMessage XLEN 非法: $XLEN")
   // 与提交记录同行传递，供退休级调试/trace精确对齐。

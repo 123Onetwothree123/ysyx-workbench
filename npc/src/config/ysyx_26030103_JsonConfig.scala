@@ -6,19 +6,10 @@ import scala.collection.mutable
 
 /** NPC 构建期配置读取器。
   *
-  * `npc_config_gen --typed-json` 生成嵌套的类型化 JSON（布尔/数字/字符串/
-  * 数组/对象）；Kconfig 原始的扁平 JSON 和 effective flat JSON 仍然可以
-  * 直接读取。typed getter 使用点分路径，例如：
-  *
-  *   cfg.int("isa.xlen", 32)
-  *   cfg.bool("debug.sdb", false)
-  *   cfg.string("fpu.impl", "none")
-  *
-  * `flat` 优先使用生成器内嵌的完整扁平兼容视图；若输入是纯嵌套 typed
-  * JSON，则从 typed 树反向投影出 Kconfig 风格键值。它供
-  * `ysyx_26030103_MMUProfile.fromEnv` 等仍按扁平键读取的组件使用。加载
-  * 旧 flat JSON 时 `flat` 就是原始键值，typed getter 会通过同一套别名
-  * 映射访问对应字段，因此旧测试/直接调用不会失效。
+  * `npc_config_gen --typed-json` 生成嵌套 typed JSON，Kconfig 扁平 JSON 仍可
+  * 直接读取；typed getter 用点分路径（如 `cfg.int("isa.xlen", 32)`）。`flat`
+  * 优先用生成器内嵌的扁平视图，否则从 typed 树反向投影，供 `MMUProfile.fromEnv`
+  * 等仍按扁平键读取的组件使用；旧 flat JSON 也能通过别名映射继续访问。
   */
 object ysyx_26030103_JsonConfig {
   val EnvironmentKey = "NPC_CONFIG_JSON"
@@ -39,11 +30,9 @@ object ysyx_26030103_JsonConfig {
     case object Null extends JsonValue
   }
 
-  /** 解析配置来源。优先环境变量，其次仓库内默认生成位置。
+  /** 解析配置来源：优先环境变量，其次仓库内默认生成位置。
     *
-    * 显式环境变量指向的文件不存在时立即报错，不会静默退回另一份配置；
-    * 只有没有设置环境变量时才尝试默认路径，避免测试脚本误用上一次构建
-    * 的陈旧配置。
+    * 显式环境变量指向的文件不存在时立即报错，不静默退回，避免误用上一次构建的陈旧配置。
     */
   def resolvePath(env: String => Option[String] = sys.env.get): Path = {
     val explicit = Seq(EnvironmentKey, FallbackEnvironmentKey)
@@ -76,7 +65,7 @@ object ysyx_26030103_JsonConfig {
   def parseDocument(text: String): Config =
     new Config(new Parser(text).parse(), Paths.get("<inline>"))
 
-  /** Kconfig 风格 I/O 兼容视图。 */
+  // Kconfig 风格 I/O 兼容视图。
   final class Config private[config] (
       val root: JsonValue,
       val source: Path
@@ -266,7 +255,7 @@ object ysyx_26030103_JsonConfig {
     }
   }
 
-  /** typed 路径 -> Kconfig 扁平键。生成器和 Scala 共享这份约定。 */
+  // typed 路径 -> Kconfig 扁平键。生成器和 Scala 共享这份约定。
   private object FlatKeys {
     private def upper(text: String): String = text.toUpperCase
     private def joined(parts: Seq[String]): String =

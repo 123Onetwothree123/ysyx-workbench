@@ -4,13 +4,10 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 
-/** TLB miss queue（FIFO）。
-  *
-  * 只保存等待 PTW 的上下文编号；请求本体、序号和权限信息仍保存在 MMU 的上下文表里，因此队列本身不需要复制完整的 MMURequest。深度由 ITLB/DTLB/UTLB/GLOBAL_MISS_QUEUE_ENTRIES
-  * 分别配置。
-  *
-  * 队列支持与 flush 同拍的清空：flush 优先于本拍的 enq/deq，避免流水线 冲刷后旧 miss 又被重新送给 PTW。
-  */
+// TLB miss queue（FIFO），只保存等待 PTW 的上下文编号；请求本体、序号和
+// 权限信息仍保存在 MMU 上下文表里，队列无需复制完整 MMURequest。深度由
+// ITLB/DTLB/UTLB/GLOBAL_MISS_QUEUE_ENTRIES 分别配置。
+// flush 同拍清空且优先于本拍 enq/deq，避免冲刷后旧 miss 又被送给 PTW。
 class ysyx_26030103_TLBMissQueue(
   entries: Int = ysyx_26030103_KconfigDefaults.MmuItlbMissQueueEntries,
   width:   Int = 4)

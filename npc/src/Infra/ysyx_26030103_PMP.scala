@@ -3,11 +3,8 @@ package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
 
-/** 基础 RISC-V PMP 检查器。
-  *
-  * 支持 OFF/TOR/NA4/NAPOT 四种 A 字段；最低编号匹配项优先。
-  * 未匹配时 M 模式放行，S/U 模式拒绝；带 L 的匹配项对 M 也强制权限。
-  */
+// 基础 RISC-V PMP：OFF/TOR/NA4/NAPOT，最低编号匹配项优先；未匹配时
+// M 放行、S/U 拒绝，带 L 的匹配项对 M 也强制权限。
 class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Module {
   require(entries >= 0 && entries <= 16, "PMP entries 必须在 0..16")
   private val activeEntries = 16

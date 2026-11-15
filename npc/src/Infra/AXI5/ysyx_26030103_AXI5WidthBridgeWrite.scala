@@ -3,7 +3,6 @@ package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
 
-/** WidthBridge 写通道：AW/W/B 握手、越界排空、64->32 分块与写协议断言。 */
 private[infra] trait AXI5WidthBridgeWrite {
   this: ysyx_26030103_AXI5WidthBridge =>
 
@@ -34,8 +33,6 @@ private[infra] trait AXI5WidthBridgeWrite {
     val wChunkAwSent = RegInit(false.B)
     val wChunkWSent = RegInit(false.B)
 
-    // 响应完成语义的观测寄存器：下游 AW 已发出、B 未返回的数量。
-    // 桥串行处理事务，正常情况下该计数最多为 1。
     val wDnAwFire = io.out.AW.AWVALID && io.out.AW.AWREADY
     val wDnBFire = io.out.B.BVALID && io.out.B.BREADY
     val wDnOutstanding = RegInit(0.U(2.W))

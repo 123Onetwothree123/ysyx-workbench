@@ -36,29 +36,29 @@ class ysyx_26030103_ViptAliasDirectory(
     s"目录项数($Entries) 必须是 2 的幂")
 
   val io = IO(new Bundle {
-    /** 新物理行将安装到 installSet（refill AR 被接受）。 */
+    // 新物理行将安装到 installSet（refill AR 被接受）。
     val install = Input(Bool())
     val installLine = Input(UInt(LineBits.W))
     val installSet = Input(UInt(SetBits.W))
-    /** 按物理行失效（DCache store / ICache snoop）。 */
+    // 按物理行失效（DCache store / ICache snoop）。
     val invalidateLine = Input(Bool())
     val invalidateLineAddr = Input(UInt(LineBits.W))
-    /** store 命中时保留目标 set 的那一份。 */
+    // store 命中时保留目标 set 的那一份。
     val keepSet = Input(Bool())
     val keepSetIndex = Input(UInt(SetBits.W))
-    /** 第二路 snoop 地址（8 字节 store 可能跨 cache line）。 */
+    // 第二路 snoop 地址（8 字节 store 可能跨 cache line）。
     val invalidateLine2 = Input(Bool())
     val invalidateLine2Addr = Input(UInt(LineBits.W))
-    /** DMA 地址级 snoop 的物理行范围（闭区间）。 */
+    // DMA 地址级 snoop 的物理行范围（闭区间）。
     val invalidateRange = Input(Bool())
     val invalidateRangeStart = Input(UInt(LineBits.W))
     val invalidateRangeEnd = Input(UInt(LineBits.W))
-    /** 上级 Cache 已自行失效某个 set（refill/store 错误等）。 */
+    // 上级 Cache 已自行失效某个 set（refill/store 错误等）。
     val release = Input(Bool())
     val releaseSet = Input(UInt(SetBits.W))
-    /** flush/fence 清空目录。 */
+    // flush/fence 清空目录。
     val clear = Input(Bool())
-    /** 需要失效的 Cache set 位图，由上级 Cache 清零对应 valid。 */
+    // 需要失效的 Cache set 位图，由上级 Cache 清零对应 valid。
     val invalidate = Output(Vec(NumSets, Bool()))
   })
 

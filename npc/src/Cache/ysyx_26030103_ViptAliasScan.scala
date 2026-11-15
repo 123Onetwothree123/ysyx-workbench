@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
-/** VIPT alias 失效扫描。 */
+// VIPT alias 失效扫描。
 object ysyx_26030103_ViptAliasScan {
   val AllSets = "all_sets"
   val Serial = "serial"
@@ -65,7 +65,7 @@ object ysyx_26030103_ViptAliasScan {
       if (i < items.length) items(i) else 0.U(width.W)
     })
 
-  /** 两种扫描引擎共用的几何与补齐参数。 */
+  // 两种扫描引擎共用的几何与补齐参数。
   private final class Geometry(
       val valid: Vec[Bool],
       val tag: Vec[UInt],

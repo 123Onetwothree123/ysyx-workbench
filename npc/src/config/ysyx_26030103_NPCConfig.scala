@@ -6,11 +6,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
 
-/** NPC 的全部elaboration期配置。
-  *
-  * 字段与Kconfig/环境变量一一对应（见 `ysyx_26030103_Elaborate`），并在此处
-  * 做统一合法性校验（require）与派生量计算（使能开关、最大在途数等）。
-  */
+// NPC 的全部 elaboration 期配置：字段对应 Kconfig/环境变量，构造时统一 require 并派生开关。
 case class ysyx_26030103_NPCConfig(
     XLEN: Int = KconfigDefaults.NpcXlen,
     UseM: Boolean = false,
@@ -195,7 +191,7 @@ case class ysyx_26030103_NPCConfig(
   require(!UseF || FPUImpl.Implemented,
     s"RISCV_F=y 但 FPU_IMPL=${FPUImpl.Name} 尚未接入 RTL；" +
       "当前骨架不会生成假浮点核。请等待后端实现接入，或使用软浮点构建")
-  /** 当前选中的后端是否真的能生成 RTL；日志用它区分配置值与可用性。 */
+  // 当前选中的后端是否真的能生成 RTL；日志用它区分配置值与可用性。
   final val FPUBackendImplemented: Boolean = FPUImpl.Implemented
   // 物理地址宽度不能超过架构 XLEN；RV32 使用 32，RV64 必须使用 64，
   // 保证 PC/分支目标/LSU/IFU/AXI 全链路都不会再次退化为 32 位。
@@ -215,9 +211,8 @@ case class ysyx_26030103_NPCConfig(
       s"收到 INTERNAL_BUS_WIDTH=$InternalBusWidth")
   /** ysyxSoC CPU 侧接口实际生效的 XLEN/地址/数据宽度。
     *
-    * direct-NPC 顶层（riscv32e_npc_SimTop/AXIRAM）固定 32 位 AXI，
-    * Makefile 的 direct 目标会在生成 typed JSON 时强制
-    * SOC_XLEN_FOLLOW_CPU=n 且 SOC_XLEN=32，并在构建前检查生效值。
+    * direct-NPC 顶层（riscv32e_npc_SimTop/AXIRAM）固定 32 位 AXI，Makefile 的
+    * direct 目标会强制 SOC_XLEN_FOLLOW_CPU=n、SOC_XLEN=32 并在构建前检查；
     * 完整 SoC（SIM_TOP=soc）不受该投影影响。
     */
   final val EffectiveSocXLEN: Int = if (SocXLENFollowCpu) XLEN else SocXLEN
@@ -254,12 +249,10 @@ case class ysyx_26030103_NPCConfig(
       "物理地址，Cache 会永远等不到翻译结果；请设置 HAS_MMU=y 或改用 " +
       "MMU_CACHE_MODE=pipt")
   val viptCacheEnabled = MMU.enabled && MMU.cacheMode == "vipt"
-  // VIPT 用虚拟地址选 index，cache line 必须落在同一个虚拟页内：行按块
-  // 大小对齐，只要块不大于页就不会跨页。跨页行的不同字节来自两个可能
-  // 不连续的物理页，无法用单个物理行 refill，因此即使打开 alias 安全
-  // 模式也必须拒绝，并明确提示改用 PIPT。
-  // PIPT 的 index/refill 全部来自物理地址，行跨越虚拟页没有意义，允许
-  // line > page；物理地址不会被截断到页内偏移。
+  // VIPT 用虚拟地址选 index，line 必须落在同一虚拟页内：跨页行的不同字节来自
+  // 两个可能不连续的物理页，无法用单个物理行 refill，因此即使打开 alias 安全
+  // 模式也必须拒绝，并提示改用 PIPT。PIPT 的 index/refill 全来自物理地址，
+  // 允许 line > page；物理地址不会被截断到页内偏移。
   require(
     !viptCacheEnabled || !ICacheEnable ||
       ICacheBlockSizeLog2 <= MMU.pageBits,
@@ -368,10 +361,9 @@ case class ysyx_26030103_NPCConfig(
   final val PiptCacheLineExceedsPage: Boolean =
     MMU.enabled && MMU.cacheMode == "pipt" &&
       (ICacheLineExceedsPage || DCacheLineExceedsPage)
-  // 只有外部 SoC AXI 实际使用 32 位地址时才要求 PMA 完全位于低
-  // 4GiB。SoC64 允许 PMA/Xbar 映射更高物理地址；这些地址会完整送到
-  // 64 位 AXI 边界，由下游（或 Xbar 未命中 DECERR）决定行为，绝不
-  // 在 NPC 顶层被截断。SoC32 时任何高位地址都必须在 Xbar 内变成
+  // 只有外部 SoC AXI 实际使用 32 位地址时才要求 PMA 完全位于低 4GiB。SoC64
+  // 的更高地址会完整送到 64 位 AXI 边界，由下游（或 Xbar 未命中 DECERR）决定
+  // 行为，绝不在 NPC 顶层截断；SoC32 时任何高位地址都必须在 Xbar 内变成
   // DECERR，桥在边界再做一次整笔 burst 越界检查作为兜底。
   require(
     EffectiveSocXLEN != 32 || AddressWidth <= 32 ||
@@ -440,7 +432,7 @@ case class ysyx_26030103_NPCConfig(
     ysyx_26030103_PMAOptions.Default.chipLinkMemBase
   private val DmaWindowEnd =
     DmaWindowBase + ysyx_26030103_PMAOptions.Default.chipLinkMemSize
-  /** Cache 实际使用的 PMA 视图；只有显式 UNCACHED 模式才与 PMARegions 不同。 */
+  // Cache 实际使用的 PMA 视图；只有显式 UNCACHED 模式才与 PMARegions 不同。
   final val CachePMARegions: Seq[ysyx_26030103_PMARegion] =
     if (DmaCoherence != ysyx_26030103_DmaCoherence.Uncached) PMARegions
     else PMARegions.flatMap { region =>
@@ -466,7 +458,7 @@ case class ysyx_26030103_NPCConfig(
     }
   final val DmaWindowUncached: Boolean =
     DmaCoherence == ysyx_26030103_DmaCoherence.Uncached
-  /** 当前 PMA 是否真正暴露了 AXI5Arbiter 可代理的完整 DMA 窗口。 */
+  // 当前 PMA 是否真正暴露了 AXI5Arbiter 可代理的完整 DMA 窗口。
   final val DmaWindowPresent: Boolean =
     PMARegions.exists { region =>
       region.Readable && region.Writable &&

@@ -294,19 +294,15 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
     exu.io.MemTrapPC := Mux(dmmuFaultCommit, dmmuFaultPC, lsu.io.MemTrapPC)
     exu.io.MemTrapTval := Mux(dmmuFaultCommit, dmmuFaultTval, lsu.io.MemTrapTval)
 
-    // 当前 DCache 是写直达/不写分配，成功 store 会更新命中行，并且
-    // Fence.I 在提交前已经等待更老的 store 排空。因此指令一致性只需
-    // 失效 ICache/取指流水；清空 DCache 只会制造无意义的数据 miss。
-    // DMA写是CPU缓存之外的副作用。写直达DCache没有脏数据，
-    // 因此在匹配B响应出现时全局失效即可保证后续load不命中旧行。
-    // 每笔DMA写在匹配BVALID首次出现时产生单拍失效；后续B反压不会持续
-    // 阻止CPU load。错误B也同样失效，以覆盖从设备可能的部分写副作用。
-    // 不在这里异步冲ICache：现有ICache flush与流水线重定向成对，
-    // DMA修改可执行内存后由软件执行fence.i完成指令一致性。
-    // DMA_COHERENCE=uncached 时 DMA 窗口本身不进入 Cache，不再需要这个
-    // 全局失效；hardware_snoop 改用上面的地址级行失效，也不清空无关行。
-    // 原子写完成后必须让 DCache 中的旧行失效；这里复用现有全量 flush
-    // 接口（写直达缓存无脏数据），避免为 alias 情形新增行扫描硬件。
+    // DCache 是写直达/不写分配，Fence.I 在提交前已等更老的 store 排空，所以
+    // 指令一致性只需失效 ICache/取指流水；清 DCache 只会制造无意义的数据 miss。
+    // DMA 写是 CPU 缓存之外的副作用：写直达无脏数据，在匹配 B 响应首次出现时
+    // 全局失效一次即可，后续 B 反压不阻止 load；错误 B 也同样失效，以覆盖从设备
+    // 可能的部分写副作用。不在这里异步冲 ICache，DMA 改可执行内存后由软件
+    // fence.i 完成指令一致性。
+    // DMA_COHERENCE=uncached 时 DMA 窗口本身不进入 Cache，无需全局失效；
+    // hardware_snoop 改用地址级行失效。原子写完成后也必须让 DCache 旧行失效，
+    // 这里复用全量 flush（写直达无脏数据），避免为 alias 情形新增行扫描硬件。
     lsu.io.DCacheFlush :=
       (if (
          config.DmaCoherence ==

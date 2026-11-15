@@ -4,12 +4,7 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.config._
 
-/** FPU 操作码。
-  *
-  * 操作码只描述 RISC-V 浮点指令的语义类别；具体精度由 `FpuRequest.fmt`
-  * 选择（S/D），整数转换的源/目的宽度由操作码本身区分。后端不得把
-  * vendor 私有操作码暴露到该接口。
-  */
+// RISC-V 浮点操作码：精度由 FpuRequest.fmt 选择，不暴露 vendor 私有操作码。
 object ysyx_26030103_FpuOp {
   val Width: Int = 6
 
@@ -47,7 +42,7 @@ object ysyx_26030103_FpuOp {
   val FCvtFpToFp = 24.U(Width.W)
 }
 
-/** 浮点格式编码，对应 RISC-V 指令的 fmt 字段。 */
+// 浮点格式编码，对应 RISC-V 指令的 fmt 字段。
 object ysyx_26030103_FpuFmt {
   val Width: Int = 2
   val S = 0.U(Width.W)
@@ -57,7 +52,7 @@ object ysyx_26030103_FpuFmt {
   val Q = 3.U(Width.W)
 }
 
-/** 舍入模式编码，对应 RISC-V frm/funct3。 */
+// 舍入模式编码，对应 RISC-V frm/funct3。
 object ysyx_26030103_FpuRm {
   val Width: Int = 3
   val RNE = 0.U(Width.W)
@@ -68,7 +63,7 @@ object ysyx_26030103_FpuRm {
   val DYN = 7.U(Width.W)
 }
 
-/** fflags 五位异常标志的位位置。 */
+// fflags 五位异常标志的位位置。
 object ysyx_26030103_FpuFlags {
   val Width: Int = 5
   val NX = 0
@@ -78,12 +73,7 @@ object ysyx_26030103_FpuFlags {
   val NV = 4
 }
 
-/** FPU 请求。
-  *
-  * `rs1/rs2/rs3` 始终使用 FLEN 位 IEEE 754 位模式；浮点寄存器堆的
-  * NaN-boxing 由上层/后端在边界统一处理。valid/ready 由外层
-  * `Decoupled` 握手提供，不重复放进 bits。
-  */
+// rs1/rs2/rs3 为 FLEN 位 IEEE 754 位模式；NaN-boxing 由上层/后端在边界处理。
 class ysyx_26030103_FpuRequest(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FpuRequest FLEN 非法: $FLEN")
   val op = UInt(ysyx_26030103_FpuOp.Width.W)
@@ -100,19 +90,14 @@ class ysyx_26030103_FpuRequest(val FLEN: Int = 64) extends Bundle {
   val rs3 = UInt(FLEN.W)
 }
 
-/** FPU 响应：IEEE 754 位模式结果 + 累积到 fflags 的 5 位异常。 */
+// FPU 响应：IEEE 754 位模式结果 + 累积到 fflags 的 5 位异常。
 class ysyx_26030103_FpuResponse(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FpuResponse FLEN 非法: $FLEN")
   val result = UInt(FLEN.W)
   val fflags = UInt(ysyx_26030103_FpuFlags.Width.W)
 }
 
-/** 所有 FPU 后端共用的顶层接口。
-  *
-  * - `req.valid`/`req.ready`：请求握手；
-  * - `resp.valid`/`resp.ready`：结果握手，允许后端有可变/多拍延迟；
-  * - 后端不得依赖固定 latency，必须遵守 Decoupled 反压。
-  */
+// 所有 FPU 后端共用的顶层接口；允许可变/多拍延迟，但必须遵守 Decoupled 反压。
 class ysyx_26030103_FPUInterface(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FPUInterface FLEN 非法: $FLEN")
   val req = Flipped(Decoupled(new ysyx_26030103_FpuRequest(FLEN)))
@@ -121,12 +106,7 @@ class ysyx_26030103_FPUInterface(val FLEN: Int = 64) extends Bundle {
   val flush = Input(Bool())
 }
 
-/** FPU 顶层抽象骨架。
-  *
-  * 后端实现继承本类，只实现 `io.req`/`io.resp` 的语义；上层（IDU/EXU/
-  * 浮点寄存器堆）只依赖 `ysyx_26030103_FPUInterface`，不直接引用任何
-  * vendor 模块或内部信号。
-  */
+// 后端只实现 io.req/io.resp；上层只依赖 FPUInterface，不引用 vendor 模块。
 abstract class ysyx_26030103_FPU(val Config: ysyx_26030103_NPCConfig)
     extends Module {
   require(Config.UseF,
@@ -136,13 +116,7 @@ abstract class ysyx_26030103_FPU(val Config: ysyx_26030103_NPCConfig)
   val io = IO(new ysyx_26030103_FPUInterface(Config.FPULen))
 }
 
-/** FPU 工厂：按后端选择实现。
-  *
-  * HardFloat 已通过 vendor/berkeley-hardfloat 源码模块接入；Fudian 已通过
-  * vendor/fudian 源码接入。external 仍明确拒绝，避免 F/D 配置在没有任何
-  * 浮点数据通路时被误认为可用。工厂只返回统一的 `ysyx_26030103_FPU`
-  * 抽象类型，上层不依赖任何 vendor 模块。
-  */
+// 工厂只返回统一抽象类型；HardFloat/Fudian 已按源码接入，External 明确拒绝。
 object ysyx_26030103_FPU {
   def apply(Config: ysyx_26030103_NPCConfig): ysyx_26030103_FPU = {
     require(Config.UseF,

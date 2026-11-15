@@ -5,13 +5,9 @@ import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
-/** IFU、LSU与入站DMA端口的AXI仲裁器。
-  *
-  * 读写相互独立：LSU写事务等待B响应时，取指或load仍可处于在途状态。
-  * 三个读主设备使用不同的下游ID，使一项IFU读、一项LSU读和一项
-  * DMA读可以同时在途，并明确响应归属。DMA的上游ID在请求被接受时保存，
-  * 统一以下游ID 2发出，返回CPU slave端口时恢复原ID。
-  */
+// IFU、LSU与入站DMA端口的AXI仲裁器：读写相互独立，LSU写等待B响应时
+// 取指/load仍可在途；三路读各用独立下游ID（DMA统一用ID 2，返回CPU
+// slave端口时恢复上游原ID）。
 class ysyx_26030103_AXI5Arbiter(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,

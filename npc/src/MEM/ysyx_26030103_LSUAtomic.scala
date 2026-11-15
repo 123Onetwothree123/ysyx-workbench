@@ -4,7 +4,6 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
 
-/** LSU A 扩展原子事务：LR/SC/AMO 读改写状态分支与宽读完成逻辑。 */
 private[mem] trait LSUAtomic {
   this: ysyx_26030103_LSU =>
 

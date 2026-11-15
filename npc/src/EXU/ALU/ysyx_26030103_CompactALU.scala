@@ -2,12 +2,6 @@ package ysyx_26030103.exu
 import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction._
 import _root_.ysyx_26030103.config._
-//之前AI残留的注释
-/** 紧凑 ALU 后端：复用一个可配置加法器完成加法和减法。
-  *
-  * 标准后端同时实例化 Adder 和 Subtractor，供普通 ADD/SUB 在同一拍 并行计算；本后端根据 ALUCtrl 选择 B
-  * 是否取反、Cin 是否为 1，因此 省掉一个宽算术单元。结果是组合路径略深，但指令语义不变。
-  */
 class ysyx_26030103_CompactALU(
     override val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends ysyx_26030103_ALU(config) {

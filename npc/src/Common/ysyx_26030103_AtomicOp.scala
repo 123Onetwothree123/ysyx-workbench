@@ -3,11 +3,8 @@ package ysyx_26030103.common
 import chisel3._
 import chisel3.util._
 
-/** RISC-V A 扩展的原子操作编码。
-  *
-  * 数值直接取 AMO 指令 funct5（Instruction[31:27]）的无符号值，
-  * 译码级无需再做一张额外的映射表；LSU 只响应这里列出的合法编码。
-  */
+// 数值直接取 AMO 指令 funct5（Instruction[31:27]）的无符号值，
+// 译码级无需再做一张额外的映射表；LSU 只响应这里列出的合法编码。
 object ysyx_26030103_AtomicOp {
   val Width: Int = 5
   val ADD: UInt = 0x00.U(Width.W) // AMOADD
@@ -24,10 +21,10 @@ object ysyx_26030103_AtomicOp {
 
   def IsLr(op: UInt): Bool = op === LR
   def IsSc(op: UInt): Bool = op === SC
-  /** 该操作是否会在读之后写回内存（AMO 与成功的 SC）。 */
+  // 该操作是否会在读之后写回内存（AMO 与成功的 SC）。
   def Writes(op: UInt): Bool = op =/= LR
 
-  /** 以 XLEN 位宽计算 AMO 的新值；Word=true 时只使用低 32 位。 */
+  // 以 XLEN 位宽计算 AMO 的新值；Word=true 时只使用低 32 位。
   def Compute(
       op: UInt,
       oldValue: UInt,

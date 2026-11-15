@@ -1,14 +1,9 @@
 package ysyx_26030103.common
 import chisel3._
 
-/** 取指级交付给译码级的消息。
-  *
-  * Instruction 保留取指内存中的原始编码：16 位压缩指令零扩展到 32 位，
-  * 32 位指令保持原值。IsCompressed 指示低 16 位是否是完整的 RVC 指令，
-  * 由 IDU 决定是否调用 RVC 展开器并计算 snpc=pc+2/pc+4。
-  * PC/预测目标跟随 XLEN。默认值 32 保证既有单元测试和 RV32 配置的
-  * 端口布局兼容（新增字段由 0.U.asTypeOf 自动置零）。
-  */
+// Instruction 保留取指内存中的原始编码：16 位压缩指令零扩展到 32 位。
+// 是否调用 RVC 展开器并计算 snpc=pc+2/pc+4 由 IDU 决定；默认 XLEN=32
+// 保证既有单元测试和 RV32 配置的端口布局兼容。
 class ysyx_26030103_IFUMessage(val XLEN: Int = 32) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"IFUMessage XLEN 非法: $XLEN")
   val Instruction = UInt(32.W)

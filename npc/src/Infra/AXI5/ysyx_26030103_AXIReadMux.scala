@@ -5,16 +5,7 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.mmu._
 
-/** 只读 AXI 二选一：ICache/DCache 与 PTW 共用读端口。
-  *
-  * A 口只允许一笔在途读（ICache refill 或复用 LSU 路径的 DCache refill），
-  * 使用 ID 0。B 口是 PTW 页表读，使用 3..15 共 13 个 ID 槽，允许同一时刻
-  * 有多笔 AR 在途。响应按 RID 路由，因此 ICache/DCache 的 burst 与多笔
-  * PTW 单拍读可以重叠，互不覆盖对方数据。
-  *
-  * 写通道全部拒绝；复用 LSU 数据通路（passWriteA）时 A 口写通道直通，
-  * 不引入新的写主设备。
-  */
+// ICache/DCache 与 PTW 共用读端口：A 口 ID 0，B 口 ID 3..15，按 RID 路由响应。
 class ysyx_26030103_AXIReadMux(
     passWriteA: Boolean = false,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,

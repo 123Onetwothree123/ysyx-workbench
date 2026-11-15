@@ -3,25 +3,12 @@ package ysyx_26030103.common
 import chisel3._
 import chisel3.util._
 
-/** 最小可交互的 16550 UART 模型。
-  *
-  * 只实现 xv6/AM 实际使用的寄存器子集：
-  *   - 偏移 0：RBR（读，弹出接收字节）/ THR（写，输出到仿真 stdout）
-  *   - 偏移 1：IER（RX 数据可用、THRE 中断使能）
-  *   - 偏移 2：IIR（读，支持 RX/THRE 编码及读清除 THRE pending）/ FCR（写）
-  *   - 偏移 3：LCR（仅 DLAB 位影响偏移 0/1 的解释）
-  *   - 偏移 5：LSR（DataReady / THRE / TEMT）
-  *
-  * 接收侧是一个深度可配置的小 FIFO。`rxValid/rxData` 由仿真顶层注入，
-  * 只要 FIFO 未满就在时钟沿接收，不会反压或阻塞仿真；`rxReady` 供上层
-  * 在注入前做流控。发送侧没有真实波特率：写 THR 时立即把字节打印到
-  * 仿真 stdout，同时用两个短计数器模拟“THR 占用”和“移位器占用”窗口，
-  * 使 LSR.THRE/TEMT 与 THRE 中断具备可观察的 16550 时序。
-  *
-  * `irq` 是电平信号：RX FIFO 非空且 IER.RX 使能，或 THRE pending 且
-  * IER.THRE 使能时保持为高；读走最后一个 RX 字节或读 IIR/写 THR 清除
-  * 对应 pending 后自动撤销。
-  */
+// 最小可交互的 16550 UART 模型，只实现 xv6/AM 实际使用的寄存器子集。
+// 接收侧是小 FIFO，`rxValid/rxData` 由仿真顶层注入，FIFO 未满就接收，
+// 不反压也不阻塞仿真。发送侧没有真实波特率：写 THR 立即打印到 stdout，
+// 另用两个短计数器模拟“THR 占用”和“移位器占用”，让 LSR.THRE/TEMT 和
+// THRE 中断具备可观察的 16550 时序。`irq` 是电平信号，读走最后一个 RX
+// 字节或读 IIR/写 THR 清除 pending 后自动撤销。
 class ysyx_26030103_UART16550(
     val Depth: Int = ysyx_26030103_KconfigDefaults.UartFifoDepth,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.UartAddrWidth,

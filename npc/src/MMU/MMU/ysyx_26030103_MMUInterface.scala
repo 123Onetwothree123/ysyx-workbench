@@ -4,18 +4,15 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 
-/** MMU 的访问类型。 */
+// MMU 的访问类型。
 object ysyx_26030103_AccessType {
   val Fetch = 0.U(2.W)
   val Load  = 1.U(2.W)
   val Store = 2.U(2.W)
 }
 
-/** 架构虚拟地址/SATP 宽度为 XLEN，物理地址宽度为 AddressWidth。
-  *
-  * RV32/Sv32 使用默认值 32/32，端子宽度与既有实现完全一致；RV64/Sv39
-  * 使用 64/64，satp 的 MODE/ASID/PPN 字段全部保留。
-  */
+// 架构虚拟地址/SATP 宽度为 XLEN，物理地址宽度为 AddressWidth：RV32/Sv32
+// 默认 32/32，RV64/Sv39 使用 64/64，satp 的 MODE/ASID/PPN 字段全部保留。
 class ysyx_26030103_MMURequest(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth

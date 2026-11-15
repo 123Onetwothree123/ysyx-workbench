@@ -3,7 +3,6 @@ package ysyx_26030103.mem
 import chisel3._
 import chisel3.util._
 
-/** LSU 组合辅助：总线字节/掩码选择、地址裁剪、对齐与 load 数据格式化。 */
 private[mem] trait LSUHelpers {
   this: ysyx_26030103_LSU =>
 
@@ -39,7 +38,6 @@ private[mem] trait LSUHelpers {
       )
     )
 
-  // 总线事务FSM(原LSU逻辑)
   private[mem] def AXISizeFor(Width: UInt): UInt = MuxLookup(Width, 2.U(3.W))(
     Seq("b00".U -> 0.U(3.W), "b01".U -> 1.U(3.W), "b10".U -> 2.U(3.W),
       "b11".U -> 2.U(3.W))
@@ -112,10 +110,7 @@ private[mem] trait LSUHelpers {
     (Data, Mask)
   }
 
-  // 将最多 64 位的原始小端数据格式化为 XLEN 架构结果。
-  //   LB/LH/LW 按 Signed 做符号/零扩展；
-  //   LBU/LHU/LWU 零扩展；
-  //   LD 直接返回 64 位，忽略 Signed。
+  // LB/LH/LW 按 Signed 扩展，LBU/LHU/LWU 零扩展，LD 直接返回 64 位。
   private[mem] def FormatLoad(
       WordLow: UInt,
       WordHigh: UInt,
