@@ -13,15 +13,15 @@ class ysyx_26030103_RV64CSRHarness(
   val io = IO(new Bundle {
     val enable = Input(Bool())
     val retireCommit = Input(Bool())
-    val isCsrrw = Input(Bool())
-    val isCsrrs = Input(Bool())
-    val isCsrrc = Input(Bool())
+    val isCSRrw = Input(Bool())
+    val isCSRrs = Input(Bool())
+    val isCSRrc = Input(Bool())
     val isEcall = Input(Bool())
     val isEbreak = Input(Bool())
     val isMret = Input(Bool())
     val isSret = Input(Bool())
     val isSfenceVma = Input(Bool())
-    val csrAddr = Input(UInt(12.W))
+    val csrAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
     val rs1Data = Input(UInt(64.W))
     val pc = Input(UInt(64.W))
@@ -44,15 +44,15 @@ class ysyx_26030103_RV64CSRHarness(
   csr.io.rst := reset
   csr.io.Enable := io.enable
   csr.io.MinstretRetireCommit := io.retireCommit
-  csr.io.IsCsrrw := io.isCsrrw
-  csr.io.IsCsrrs := io.isCsrrs
-  csr.io.IsCsrrc := io.isCsrrc
+  csr.io.IsCSRrw := io.isCSRrw
+  csr.io.IsCSRrs := io.isCSRrs
+  csr.io.IsCSRrc := io.isCSRrc
   csr.io.IsEcall := io.isEcall
   csr.io.IsEbreak := io.isEbreak
   csr.io.IsMret := io.isMret
   csr.io.IsSret := io.isSret
   csr.io.IsSfenceVma := io.isSfenceVma
-  csr.io.CSRAddress := io.csrAddr
+  csr.io.CSRAddress := io.csrAddress
   csr.io.rs1 := io.rs1
   csr.io.Rs1Data := io.rs1Data
   csr.io.pc := io.pc
@@ -94,9 +94,9 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       levels = 3,
       pteSizeBytes = 8,
       pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       tlbEnabled = true,
-      tlbAsidBits = 16
+      tlbASIDBits = 16
     )
 
   private def bool(v: Bool): Boolean = v.peek().litValue == 1
@@ -108,15 +108,15 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
     dut.reset.poke(false.B)
     dut.io.enable.poke(false.B)
     dut.io.retireCommit.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
-    dut.io.isCsrrs.poke(false.B)
-    dut.io.isCsrrc.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
+    dut.io.isCSRrs.poke(false.B)
+    dut.io.isCSRrc.poke(false.B)
     dut.io.isEcall.poke(false.B)
     dut.io.isEbreak.poke(false.B)
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddr.poke(0.U)
+    dut.io.csrAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
     dut.io.pc.poke(0.U)
@@ -128,18 +128,18 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
   }
 
   private def write(dut: ysyx_26030103_RV64CSRHarness, addr: Int, data: BigInt): Unit = {
-    dut.io.csrAddr.poke(addr.U)
+    dut.io.csrAddress.poke(addr.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(64.W))
     dut.io.enable.poke(true.B)
-    dut.io.isCsrrw.poke(true.B)
+    dut.io.isCSRrw.poke(true.B)
     dut.clock.step()
     dut.io.enable.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
   }
 
   private def read(dut: ysyx_26030103_RV64CSRHarness, addr: Int): BigInt = {
-    dut.io.csrAddr.poke(addr.U)
+    dut.io.csrAddress.poke(addr.U)
     dut.io.enable.poke(false.B)
     dut.clock.step()
     big(dut.io.rdata)
@@ -211,7 +211,7 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       xlen = 64,
       pteSizeBytes = 8,
       pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       hasS = false,
       hasU = true
     )

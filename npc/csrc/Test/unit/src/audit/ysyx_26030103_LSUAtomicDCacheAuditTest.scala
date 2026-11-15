@@ -20,7 +20,7 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
     extends AnyFlatSpec with Matchers {
   private val AMOADD = BigInt(0x00)
   private val LineBase = 0x80000000L
-  private val AtomicAddr = 0x80000040L
+  private val AtomicAddress = 0x80000040L
 
   private def bool(value: Bool): Boolean = value.peek().litValue == 1
   private def long(value: UInt): Long = value.peek().litValue.toLong
@@ -39,14 +39,14 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
     dut.io.DCacheFlush.poke(false.B)
     dut.io.BusQuiet.poke(true.B)
     dut.io.ReservationClear.poke(false.B)
-    dut.io.DCacheDmaSnoopValid.poke(false.B)
-    dut.io.DCacheDmaSnoopStart.poke(0.U)
-    dut.io.DCacheDmaSnoopEnd.poke(0.U)
-    dut.io.ViptPAddr.poke(0.U)
-    dut.io.ViptPAddrValid.poke(false.B)
-    dut.io.ViptPAddrVaddr.poke(0.U)
-    dut.io.ViptKill.poke(false.B)
-    dut.io.PmpFault.poke(false.B)
+    dut.io.DCacheDMASnoopValid.poke(false.B)
+    dut.io.DCacheDMASnoopStart.poke(0.U)
+    dut.io.DCacheDMASnoopEnd.poke(0.U)
+    dut.io.VIPTPAddress.poke(0.U)
+    dut.io.VIPTPAddressValid.poke(false.B)
+    dut.io.VIPTPAddressVirtualAddress.poke(0.U)
+    dut.io.VIPTKill.poke(false.B)
+    dut.io.PMPFault.poke(false.B)
     dut.io.DataBus.AW.AWREADY.poke(false.B)
     dut.io.DataBus.W.WREADY.poke(false.B)
     dut.io.DataBus.B.BVALID.poke(false.B)
@@ -74,7 +74,7 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
     dut.io.in.bits.MemoryWrite.poke(false.B)
     dut.io.in.bits.IsAtomic.poke(false.B)
     dut.io.in.bits.ALUResult.poke(address.U(addrWidth.W))
-    dut.io.in.bits.VAddr.poke(address.U(addrWidth.W))
+    dut.io.in.bits.VAddress.poke(address.U(addrWidth.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
     dut.io.in.bits.pc.poke(0x80000000L.U(addrWidth.W))
   }
@@ -96,7 +96,7 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
     dut.io.in.bits.IsAtomic.poke(true.B)
     dut.io.in.bits.AtomicOp.poke(op.U(5.W))
     dut.io.in.bits.ALUResult.poke(address.U(addrWidth.W))
-    dut.io.in.bits.VAddr.poke(address.U(addrWidth.W))
+    dut.io.in.bits.VAddress.poke(address.U(addrWidth.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
     dut.io.in.bits.StoreData.poke(rhs.U(dut.io.in.bits.StoreData.getWidth.W))
     dut.io.in.bits.pc.poke(0x80000000L.U(addrWidth.W))
@@ -122,8 +122,8 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
     simulate(new ysyx_26030103_LSU(
       XLEN = 64,
       DCacheEnable = true,
-      DCacheVipt = false,
-      ViptParallel = false,
+      DCacheVIPT = false,
+      VIPTParallel = false,
       DCacheBlockSizeLog2 = 6, // 64B line = 16 beats，保证观察窗口内 refill 不结束
       DCacheIndexBits = 4
     )) { dut =>
@@ -169,7 +169,7 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
       bool(dut.io.in.ready) should be(true)
 
       // 2) DCache refill 在途时发射 AMO。原子必须等 refill 排空。
-      pokeAtomic(dut, AMOADD, AtomicAddr, BigInt(5))
+      pokeAtomic(dut, AMOADD, AtomicAddress, BigInt(5))
       dut.io.in.valid.poke(true.B)
       acceptInput(dut, clock)
 
@@ -236,7 +236,7 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
       var wDone = false
       while ((!awDone || !wDone) && cycles < 40) {
         if (bool(dut.io.DataBus.AW.AWVALID)) {
-          long(dut.io.DataBus.AW.AWADDR) should be(AtomicAddr)
+          long(dut.io.DataBus.AW.AWADDR) should be(AtomicAddress)
           awDone = true
         }
         if (bool(dut.io.DataBus.W.WVALID)) { wDone = true }

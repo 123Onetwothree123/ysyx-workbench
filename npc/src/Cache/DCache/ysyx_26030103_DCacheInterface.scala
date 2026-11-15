@@ -18,7 +18,7 @@ class ysyx_26030103_DCacheResponse(val DataWidth: Int = 32) extends Bundle {
     s"DCacheResponse DataWidth 非法: $DataWidth")
   val data = UInt(DataWidth.W)
   val fault = Bool()
-  val FaultResp = UInt(2.W)
+  val FaultResponse = UInt(2.W)
 }
 
 /** 数据缓存的统一对外接口。
@@ -46,11 +46,11 @@ class ysyx_26030103_DCacheInterface(
   val req_kill = Input(Bool())
   val resp = Decoupled(new ysyx_26030103_DCacheResponse(DataWidth))
   val StoreValid = Input(Bool())
-  val StoreResp = Input(UInt(2.W))
-  val StoreAddr = Input(UInt(AddressWidth.W))
-  val StoreVAddr = Input(UInt(AddressWidth.W))
+  val StoreResponse = Input(UInt(2.W))
+  val StoreAddress = Input(UInt(AddressWidth.W))
+  val StoreVAddress = Input(UInt(AddressWidth.W))
   val StoreData = Input(UInt(DataWidth.W))
-  val StoreStrb = Input(UInt((DataWidth / 8).W))
+  val StoreStrobe = Input(UInt((DataWidth / 8).W))
   val AXI =
     new ysyx_26030103_AXI5IO(AddressWidth, BusDataWidth, 4) // DCache只使用AR/R通道
   val flush = Input(Bool())

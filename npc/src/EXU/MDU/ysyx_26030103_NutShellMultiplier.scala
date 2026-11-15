@@ -39,8 +39,8 @@ class ysyx_26030103_NutShellMultiplier(val len: Int = 64) extends Module {
     busy := false.B
   }.otherwise {
     valid(0) := io.in.fire
-    for (i <- 1 until 4) {
-      valid(i) := valid(i - 1)
+    for (index <- 1 until 4) {
+      valid(index) := valid(index - 1)
     }
     when(io.in.fire) {
       busy := true.B

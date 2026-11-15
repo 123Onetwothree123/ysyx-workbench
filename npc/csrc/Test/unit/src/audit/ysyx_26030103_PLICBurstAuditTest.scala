@@ -12,7 +12,7 @@ import org.scalatest.matchers.should.Matchers
   * 直接给出 RLAST=1，会让 Xbar 提前释放读槽位。Xbar 必须把 PLIC 的
   * 非单拍请求在本地判为 DECERR，并排空写数据。
   */
-class ysyx_26030103_AuditXbarPlicHarness extends Module {
+class ysyx_26030103_AuditXbarPLICHarness extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new ysyx_26030103_AXI5IO(32, 32, 4))
     val sources = Input(UInt(32.W))
@@ -64,7 +64,7 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
       cycles: Int
   )
 
-  private def resetDut(dut: ysyx_26030103_AuditXbarPlicHarness): Unit = {
+  private def resetDut(dut: ysyx_26030103_AuditXbarPLICHarness): Unit = {
     dut.reset.poke(true.B)
     dut.clock.step(2)
     dut.reset.poke(false.B)
@@ -97,7 +97,7 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
   }
 
   private def writeBurst(
-      dut: ysyx_26030103_AuditXbarPlicHarness,
+      dut: ysyx_26030103_AuditXbarPLICHarness,
       addr: BigInt,
       len: Int,
       beats: Seq[BigInt]
@@ -150,7 +150,7 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
   }
 
   private def readBurst(
-      dut: ysyx_26030103_AuditXbarPlicHarness,
+      dut: ysyx_26030103_AuditXbarPLICHarness,
       addr: BigInt,
       len: Int
   ): ReadResult = {
@@ -193,7 +193,7 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
   }
 
   "Xbar/PLIC" should "把 PLIC 多拍写本地判错并排空全部 W beat" in {
-    simulate(new ysyx_26030103_AuditXbarPlicHarness()) { dut =>
+    simulate(new ysyx_26030103_AuditXbarPLICHarness()) { dut =>
       resetDut(dut)
       // PLIC priority 寄存器地址，AWLEN=1 表示两拍写。
       val result = writeBurst(
@@ -209,7 +209,7 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
   }
 
   it should "把 PLIC 多拍读本地展开为 DECERR，而不是交给 PLIC" in {
-    simulate(new ysyx_26030103_AuditXbarPlicHarness()) { dut =>
+    simulate(new ysyx_26030103_AuditXbarPLICHarness()) { dut =>
       resetDut(dut)
       val result = readBurst(dut, BigInt("0c200004", 16), 1)
       result.plicArSeen should be(false)
@@ -220,7 +220,7 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
   }
 
   it should "仍然支持合法的 PLIC 单拍读写" in {
-    simulate(new ysyx_26030103_AuditXbarPlicHarness()) { dut =>
+    simulate(new ysyx_26030103_AuditXbarPLICHarness()) { dut =>
       resetDut(dut)
       val priority = writeBurst(
         dut,

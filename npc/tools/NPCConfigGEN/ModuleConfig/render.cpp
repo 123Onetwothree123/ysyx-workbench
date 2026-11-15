@@ -77,8 +77,8 @@ std::string renderModule(const std::map<std::string, std::string> &values,
             << std::hex << asInt(values, key, fallback) << "ULL};\n";
         out << std::dec;
     };
-    pmaConst("PmaClintBase", "PMA_CLINT_BASE", 0x02000000LL);
-    pmaConst("PmaClintSize", "PMA_CLINT_SIZE", 0x00010000LL);
+    pmaConst("PmaCLINTBase", "PMA_CLINT_BASE", 0x02000000LL);
+    pmaConst("PmaCLINTSize", "PMA_CLINT_SIZE", 0x00010000LL);
     pmaConst("PmaSramBase", "PMA_SRAM_BASE", 0x0f000000LL);
     pmaConst("PmaSramSize", "PMA_SRAM_SIZE", 0x00008000LL);
     pmaConst("PmaUartBase", "PMA_UART_BASE", 0x10000000LL);
@@ -206,8 +206,8 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
             << asInt(values, key, fallback) << "L\n";
         out << std::dec;
     };
-    emitVal("PlicBase", "PLIC_BASE", 0x0c000000LL);
-    emitVal("PlicSize", "PLIC_SIZE", 0x00300000LL);
+    emitVal("PLICBase", "PLIC_BASE", 0x0c000000LL);
+    emitVal("PLICSize", "PLIC_SIZE", 0x00300000LL);
     emitVal("NpcRamBase", "NPC_RAM_BASE", 0x80000000LL);
     emitVal("NpcRamSize", "NPC_RAM_SIZE", 0x04000000LL);
     out << "  val Pma: ysyx_26030103_PMAOptions = "
@@ -251,7 +251,7 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
             << asInt(values, key, fallback) << "\n";
     };
     emitInt("NpcXlen", "XLEN", 32);
-    emitInt("NpcFpuLen", "FPU_FLEN", 64);
+    emitInt("NpcFPULen", "FPU_FLEN", 64);
     emitInt("NpcAddressWidth", "ADDRESS_WIDTH", 32);
     emitInt("NpcSocXlen", "SOC_XLEN_EFFECTIVE", 32);
     emitInt("NpcInternalBusWidth", "INTERNAL_BUS_WIDTH_EFFECTIVE", 32);
@@ -272,54 +272,54 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     const long long xlen = asInt(values, "XLEN", 32);
     const long long pteBytes =
         asInt(values, "MMU_PTE_SIZE_BYTES", xlen == 64 ? 8 : 4);
-    out << "  val MmuPteBits: Int = " << pteBytes * 8 << "\n";
-    emitInt("MmuXlen", "MMU_XLEN", xlen);
-    emitInt("MmuPteValidBit", "MMU_PTE_VALID_BIT", 0);
-    emitInt("MmuPteReadBit", "MMU_PTE_READ_BIT", 1);
-    emitInt("MmuPteWriteBit", "MMU_PTE_WRITE_BIT", 2);
-    emitInt("MmuPteExecBit", "MMU_PTE_EXEC_BIT", 3);
-    emitInt("MmuPteUserBit", "MMU_PTE_USER_BIT", 4);
-    emitInt("MmuPteGlobalBit", "MMU_PTE_GLOBAL_BIT", 5);
-    emitInt("MmuPteABit", "MMU_PTE_A_BIT", 6);
-    emitInt("MmuPteDBit", "MMU_PTE_D_BIT", 7);
-    emitInt("MmuPtePpnLow", "MMU_PTE_PPN_LOW", 10);
-    emitInt("MmuPtePpnHigh", "MMU_PTE_PPN_HIGH",
+    out << "  val MMUPTEBits: Int = " << pteBytes * 8 << "\n";
+    emitInt("MMUXlen", "MMU_XLEN", xlen);
+    emitInt("MMUPTEValidBit", "MMU_PTE_VALID_BIT", 0);
+    emitInt("MMUPTEReadBit", "MMU_PTE_READ_BIT", 1);
+    emitInt("MMUPTEWriteBit", "MMU_PTE_WRITE_BIT", 2);
+    emitInt("MMUPTEExecBit", "MMU_PTE_EXEC_BIT", 3);
+    emitInt("MMUPTEUserBit", "MMU_PTE_USER_BIT", 4);
+    emitInt("MMUPTEGlobalBit", "MMU_PTE_GLOBAL_BIT", 5);
+    emitInt("MMUPTEABit", "MMU_PTE_A_BIT", 6);
+    emitInt("MMUPTEDBit", "MMU_PTE_D_BIT", 7);
+    emitInt("MMUPTEPPNLow", "MMU_PTE_PPN_LOW", 10);
+    emitInt("MMUPTEPPNHigh", "MMU_PTE_PPN_HIGH",
             pteBytes * 8 == 64 ? 53 : 31);
-    emitInt("MmuCustomSatpMode", "MMU_CUSTOM_SATP_MODE", 10);
-    emitInt("MmuPageSizeBytes", "MMU_PAGE_SIZE_BYTES", 4096);
-    emitInt("MmuLevels", "MMU_LEVELS", xlen == 64 ? 3 : 2);
-    emitInt("MmuPteSizeBytes", "MMU_PTE_SIZE_BYTES", pteBytes);
-    emitInt("MmuPageTableSizeBytes", "MMU_PAGE_TABLE_SIZE_BYTES", 4096);
-    emitInt("MmuCacheViptAliasScanWidth",
+    emitInt("MMUCustomSatpMode", "MMU_CUSTOM_SATP_MODE", 10);
+    emitInt("MMUPageSizeBytes", "MMU_PAGE_SIZE_BYTES", 4096);
+    emitInt("MMULevels", "MMU_LEVELS", xlen == 64 ? 3 : 2);
+    emitInt("MMUPTESizeBytes", "MMU_PTE_SIZE_BYTES", pteBytes);
+    emitInt("MMUPageTableSizeBytes", "MMU_PAGE_TABLE_SIZE_BYTES", 4096);
+    emitInt("MMUCacheVIPTAliasScanWidth",
             "MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH", 4);
-    emitInt("MmuCacheViptAliasDirectoryEntries",
+    emitInt("MMUCacheVIPTAliasDirectoryEntries",
             "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES", 0);
-    emitInt("MmuCacheViptAliasEventQueueDepth",
+    emitInt("MMUCacheVIPTAliasEventQueueDepth",
             "MMU_CACHE_VIPT_ALIAS_EVENT_QUEUE_DEPTH", 4);
-    emitInt("MmuPtwOutstanding", "MMU_PTW_OUTSTANDING", 2);
-    emitInt("MmuPtwBusOutstanding", "MMU_PTW_BUS_OUTSTANDING", 1);
-    emitInt("MmuPtwPmpFaultQueueDepth",
+    emitInt("MMUPTWOutstanding", "MMU_PTW_OUTSTANDING", 2);
+    emitInt("MMUPTWBusOutstanding", "MMU_PTW_BUS_OUTSTANDING", 1);
+    emitInt("MMUPTWPMPFaultQueueDepth",
             "MMU_PTW_PMP_FAULT_QUEUE_DEPTH", 8);
-    emitInt("MmuPtwCacheEntries", "MMU_PTW_CACHE_ENTRIES", 16);
-    emitInt("MmuPtwCacheWays", "MMU_PTW_CACHE_WAYS", 2);
-    emitInt("MmuTlbAsidBits", "MMU_TLB_ASID_BITS", xlen == 64 ? 16 : 9);
-    emitInt("MmuItlbEntries", "ITLB_ENTRIES", 16);
-    emitInt("MmuItlbWays", "ITLB_WAYS", 2);
-    emitInt("MmuDtlbEntries", "DTLB_ENTRIES", 32);
-    emitInt("MmuDtlbWays", "DTLB_WAYS", 4);
-    emitInt("MmuUtlbEntries", "UTLB_ENTRIES", 32);
-    emitInt("MmuUtlbWays", "UTLB_WAYS", 4);
-    emitInt("MmuUtlbLookupPorts", "UTLB_LOOKUP_PORTS", 1);
-    emitInt("MmuTlbSuperpageEntries", "TLB_SUPERPAGE_ENTRIES", 4);
-    emitInt("MmuItlbMissQueueEntries", "ITLB_MISS_QUEUE_ENTRIES", 4);
-    emitInt("MmuDtlbMissQueueEntries", "DTLB_MISS_QUEUE_ENTRIES", 4);
-    emitInt("MmuUtlbMissQueueEntries", "UTLB_MISS_QUEUE_ENTRIES", 8);
-    emitInt("MmuGlobalMissQueueEntries", "GLOBAL_MISS_QUEUE_ENTRIES", 8);
-    emitInt("MmuRefillPorts", "TLB_REFILL_PORTS", 1);
-    emitInt("MmuPlicSources", "PLIC_SOURCES", 32);
-    emitInt("MmuPlicPriorityBits", "PLIC_PRIORITY_BITS", 3);
-    emitInt("MmuPlicMaxPriority", "PLIC_MAX_PRIORITY", 7);
-    emitInt("MmuPmpEntries", "PMP_ENTRIES", 16);
+    emitInt("MMUPTWCacheEntries", "MMU_PTW_CACHE_ENTRIES", 16);
+    emitInt("MMUPTWCacheWays", "MMU_PTW_CACHE_WAYS", 2);
+    emitInt("MMUTLBASIDBits", "MMU_TLB_ASID_BITS", xlen == 64 ? 16 : 9);
+    emitInt("MMUItlbEntries", "ITLB_ENTRIES", 16);
+    emitInt("MMUItlbWays", "ITLB_WAYS", 2);
+    emitInt("MMUDtlbEntries", "DTLB_ENTRIES", 32);
+    emitInt("MMUDtlbWays", "DTLB_WAYS", 4);
+    emitInt("MMUUtlbEntries", "UTLB_ENTRIES", 32);
+    emitInt("MMUUtlbWays", "UTLB_WAYS", 4);
+    emitInt("MMUUtlbLookupPorts", "UTLB_LOOKUP_PORTS", 1);
+    emitInt("MMUTLBSuperpageEntries", "TLB_SUPERPAGE_ENTRIES", 4);
+    emitInt("MMUItlbMissQueueEntries", "ITLB_MISS_QUEUE_ENTRIES", 4);
+    emitInt("MMUDtlbMissQueueEntries", "DTLB_MISS_QUEUE_ENTRIES", 4);
+    emitInt("MMUUtlbMissQueueEntries", "UTLB_MISS_QUEUE_ENTRIES", 8);
+    emitInt("MMUGlobalMissQueueEntries", "GLOBAL_MISS_QUEUE_ENTRIES", 8);
+    emitInt("MMURefillPorts", "TLB_REFILL_PORTS", 1);
+    emitInt("MMUPLICSources", "PLIC_SOURCES", 32);
+    emitInt("MMUPLICPriorityBits", "PLIC_PRIORITY_BITS", 3);
+    emitInt("MMUPLICMaxPriority", "PLIC_MAX_PRIORITY", 7);
+    emitInt("MMUPMPEntries", "PMP_ENTRIES", 16);
     const long long pageSize = asInt(values, "MMU_PAGE_SIZE_BYTES", 4096);
     long long pageBits = 0;
     while ((1LL << pageBits) < pageSize) ++pageBits;
@@ -329,45 +329,45 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     long long indexBits = 0;
     while ((1LL << indexBits) < tableEntries) ++indexBits;
     const long long mmuLevels = asInt(values, "MMU_LEVELS", xlen == 64 ? 3 : 2);
-    out << "  val MmuPageBits: Int = " << pageBits << "\n";
-    out << "  val MmuTableEntries: Int = " << tableEntries << "\n";
-    out << "  val MmuPteWidth: Int = " << pteBytes * 8 << "\n";
-    out << "  val MmuIndexBits: Int = " << indexBits << "\n";
-    out << "  val MmuVaBits: Int = " << pageBits + mmuLevels * indexBits << "\n";
-    emitInt("MmuPtwBusDepth", "PTW_BUS_DEPTH", 16);
-    emitInt("AxiIdWidth", "AXI_ID_WIDTH", 4);
-    emitInt("AxiArbCpuRespQueueDepth",
+    out << "  val MMUPageBits: Int = " << pageBits << "\n";
+    out << "  val MMUTableEntries: Int = " << tableEntries << "\n";
+    out << "  val MMUPTEWidth: Int = " << pteBytes * 8 << "\n";
+    out << "  val MMUIndexBits: Int = " << indexBits << "\n";
+    out << "  val MMUVaBits: Int = " << pageBits + mmuLevels * indexBits << "\n";
+    emitInt("MMUPTWBusDepth", "PTW_BUS_DEPTH", 16);
+    emitInt("AXIIDWidth", "AXI_ID_WIDTH", 4);
+    emitInt("AXIArbCpuResponseQueueDepth",
             "AXI_ARB_CPU_RESP_QUEUE_DEPTH", 16);
-    emitInt("AxiArbDmaRespQueueDepth",
+    emitInt("AXIArbDMAResponseQueueDepth",
             "AXI_ARB_DMA_RESP_QUEUE_DEPTH", 256);
-    emitInt("AxiXbarRespQueueDepth",
+    emitInt("AXIXbarResponseQueueDepth",
             "AXI_XBAR_RESP_QUEUE_DEPTH", 4);
     emitInt("UartFifoDepth", "UART_FIFO_DEPTH", 64);
     emitInt("UartAddrWidth", "UART_ADDR_WIDTH", 5);
     emitInt("UartTxHoldCycles", "UART_TX_HOLD_CYCLES", 32);
     emitInt("UartTxShiftCycles", "UART_TX_SHIFT_CYCLES", 64);
 
-    emitInt("MduMulShiftIterBits", "MUL_ITER_BITS", 1);
-    emitInt("MduMulShiftSplit", "MUL_SPLIT", 1);
-    emitInt("MduMulPipeline", "MUL_PIPELINE", 0);
-    emitInt("MduMulWidth", "MUL_WIDTH", 32);
-    emitInt("MduMulRadix", "MUL_RADIX", 4);
-    emitInt("MduDivRestoringRadix", "DIV_RESTORING_RADIX", 2);
-    emitInt("MduDivRestoringIterBits", "DIV_RESTORING_ITER_BITS", 1);
-    emitInt("MduDivNonRestoringRadix", "DIV_NONRESTORING_RADIX", 2);
-    emitInt("MduDivNonRestoringIterBits", "DIV_NONRESTORING_ITER_BITS", 1);
-    emitInt("MduDivSRTRadix", "DIV_SRT_RADIX", 2);
-    emitInt("MduDivSRTIterBits", "DIV_SRT_ITER_BITS", 1);
-    emitInt("MduRocketMulUnroll", "MDU_ROCKET_MUL_UNROLL", 1);
-    emitInt("MduRocketDivUnroll", "MDU_ROCKET_DIV_UNROLL", 1);
-    emitInt("MduRocketDivEarlyOutGranularity",
+    emitInt("MDUMulShiftIterBits", "MUL_ITER_BITS", 1);
+    emitInt("MDUMulShiftSplit", "MUL_SPLIT", 1);
+    emitInt("MDUMulPipeline", "MUL_PIPELINE", 0);
+    emitInt("MDUMulWidth", "MUL_WIDTH", 32);
+    emitInt("MDUMulRadix", "MUL_RADIX", 4);
+    emitInt("MDUDivRestoringRadix", "DIV_RESTORING_RADIX", 2);
+    emitInt("MDUDivRestoringIterBits", "DIV_RESTORING_ITER_BITS", 1);
+    emitInt("MDUDivNonRestoringRadix", "DIV_NONRESTORING_RADIX", 2);
+    emitInt("MDUDivNonRestoringIterBits", "DIV_NONRESTORING_ITER_BITS", 1);
+    emitInt("MDUDivSRTRadix", "DIV_SRT_RADIX", 2);
+    emitInt("MDUDivSRTIterBits", "DIV_SRT_ITER_BITS", 1);
+    emitInt("MDURocketMulUnroll", "MDU_ROCKET_MUL_UNROLL", 1);
+    emitInt("MDURocketDivUnroll", "MDU_ROCKET_DIV_UNROLL", 1);
+    emitInt("MDURocketDivEarlyOutGranularity",
             "MDU_ROCKET_DIV_EARLY_OUT_GRANULARITY", 1);
-    emitInt("MduGpcInputs", "MUL_COMPRESSOR_INPUTS", 3);
-    emitInt("MduGpcOutputs", "MUL_COMPRESSOR_OUTPUTS", 2);
-    emitInt("MduGpcCoutOffset", "MUL_COMPRESSOR_COUT_OFFSET", 1);
+    emitInt("MDUGpcInputs", "MUL_COMPRESSOR_INPUTS", 3);
+    emitInt("MDUGpcOutputs", "MUL_COMPRESSOR_OUTPUTS", 2);
+    emitInt("MDUGpcCoutOffset", "MUL_COMPRESSOR_COUT_OFFSET", 1);
     const std::string offsetsText =
         asString(values, "MUL_COMPRESSOR_OUTPUT_OFFSETS", "0,1");
-    out << "  val MduGpcOutputOffsets: IndexedSeq[Int] = IndexedSeq(";
+    out << "  val MDUGpcOutputOffsets: IndexedSeq[Int] = IndexedSeq(";
     bool firstOffset = true;
     std::size_t offsetStart = 0;
     while (offsetStart <= offsetsText.size()) {
@@ -384,11 +384,11 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
         offsetStart = comma + 1;
     }
     out << ")\n";
-    emitInt("FpuPipeline", "FPU_PIPELINE", 0);
-    emitInt("AluCarrySelectGroup", "ALU_CARRY_SELECT_GROUP", 8);
+    emitInt("FPUPipeline", "FPU_PIPELINE", 0);
+    emitInt("ALUCarrySelectGroup", "ALU_CARRY_SELECT_GROUP", 8);
     emitInt("ICacheDrainTimeout", "ICACHE_DRAIN_TIMEOUT", 1023);
     emitInt("DCacheDrainTimeout", "DCACHE_DRAIN_TIMEOUT", 255);
-    emitInt("LsuDrainTimeout", "LSU_DRAIN_TIMEOUT", 255);
+    emitInt("LSUDrainTimeout", "LSU_DRAIN_TIMEOUT", 255);
     emitInt("ArbiterGrantTimeout", "ARBITER_GRANT_TIMEOUT", 1023);
     const auto fieldMasks = [&](const std::vector<std::pair<std::string,
                                                            unsigned long long>> &fields,
@@ -423,11 +423,11 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
         {"tw", 0x00200000ULL}, {"tsr", 0x00400000ULL}};
     const auto [mstatusRead, mstatusSet, mstatusWrite] =
         fieldMasks(mstatusFields, "CSR_MSTATUS");
-    out << "  val MmuMstatusReadMask: Long = "
+    out << "  val MMUMstatusReadMask: Long = "
         << static_cast<long long>(mstatusRead) << "L\n";
-    out << "  val MmuMstatusReadSet: Long = "
+    out << "  val MMUMstatusReadSet: Long = "
         << static_cast<long long>(mstatusSet) << "L\n";
-    out << "  val MmuMstatusWriteMask: Long = "
+    out << "  val MMUMstatusWriteMask: Long = "
         << static_cast<long long>(mstatusWrite) << "L\n";
     const std::vector<std::pair<std::string, unsigned long long>> satpFields =
         xlen == 64
@@ -439,11 +439,11 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
                   {"ppn", 0x003fffffULL}};
     const auto [satpRead, satpSet, satpWrite] =
         fieldMasks(satpFields, "CSR_SATP");
-    out << "  val MmuSatpReadMask: Long = "
+    out << "  val MMUSatpReadMask: Long = "
         << static_cast<long long>(satpRead) << "L\n";
-    out << "  val MmuSatpReadSet: Long = "
+    out << "  val MMUSatpReadSet: Long = "
         << static_cast<long long>(satpSet) << "L\n";
-    out << "  val MmuSatpWriteMask: Long = "
+    out << "  val MMUSatpWriteMask: Long = "
         << static_cast<long long>(satpWrite) << "L\n";
     out << "}\n";
     return out.str();

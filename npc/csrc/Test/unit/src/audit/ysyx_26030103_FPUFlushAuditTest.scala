@@ -40,10 +40,10 @@ class ysyx_26030103_FPUFlushAuditTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(false.B)
       dut.io.resp.ready.poke(true.B)
       dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.op.poke(ysyx_26030103_FpuOp.FDiv)
-      dut.io.req.bits.fmt.poke(ysyx_26030103_FpuFmt.D)
-      dut.io.req.bits.srcFmt.poke(ysyx_26030103_FpuFmt.D)
-      dut.io.req.bits.rm.poke(ysyx_26030103_FpuRm.RNE)
+      dut.io.req.bits.op.poke(ysyx_26030103_FPUOp.FDiv)
+      dut.io.req.bits.fmt.poke(ysyx_26030103_FPUFmt.D)
+      dut.io.req.bits.srcFmt.poke(ysyx_26030103_FPUFmt.D)
+      dut.io.req.bits.rm.poke(ysyx_26030103_FPURm.RNE)
       dut.io.req.bits.intWord.poke(false.B)
       dut.io.req.bits.rs1.poke(
         f64(BigInt("3ff0000000000000", 16)).U(64.W)) // 1.0

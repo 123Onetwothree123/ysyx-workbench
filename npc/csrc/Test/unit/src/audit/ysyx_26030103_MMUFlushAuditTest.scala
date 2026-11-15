@@ -27,13 +27,13 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
     (BigInt(ppn) << 10) | BigInt(flags)
 
   /** 单 outstanding 的页表总线模型，可指定某地址的响应被挂起。 */
-  private class PteBus(latency: Int = 1) {
+  private class PTEBus(latency: Int = 1) {
     private val mem = scala.collection.mutable.Map.empty[Long, BigInt]
     private var pending: Option[(Int, BigInt)] = None
-    private var pendingAddr = 0L
+    private var pendingAddress = 0L
     private var delay = 0
     /** 命中该地址的读响应保持挂起，直到 release() 被调用。 */
-    var holdAddr: Option[Long] = None
+    var holdAddress: Option[Long] = None
     var reads = 0
     var writes = 0
 
@@ -43,14 +43,14 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
       mem.getOrElse(addr & 0xffffffffL, BigInt(0))
     def hasPending: Boolean = pending.nonEmpty
     def heldPending: Boolean =
-      pending.nonEmpty && holdAddr.contains(pendingAddr)
+      pending.nonEmpty && holdAddress.contains(pendingAddress)
     def release(): Unit = {
-      holdAddr = None
+      holdAddress = None
       delay = 0
     }
 
     def tick(bus: ysyx_26030103_PTEBusIO, clock: Clock): Unit = {
-      val held = holdAddr.contains(pendingAddr)
+      val held = holdAddress.contains(pendingAddress)
       val drive = pending.nonEmpty && delay == 0 && !held
       bus.resp.valid.poke(drive.B)
       bus.resp.bits.id.poke(pending.map(_._1.U(4.W)).getOrElse(0.U(4.W)))
@@ -60,8 +60,8 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
 
       val respFire = drive && bool(bus.resp.ready)
       val reqFire = bool(bus.req.valid) && bool(bus.req.ready)
-      val reqId = if (reqFire) long(bus.req.bits.id).toInt else 0
-      val reqAddr = if (reqFire) long(bus.req.bits.addr) else 0L
+      val reqID = if (reqFire) long(bus.req.bits.id).toInt else 0
+      val reqAddress = if (reqFire) long(bus.req.bits.addr) else 0L
       val reqWrite = reqFire && bool(bus.req.bits.write)
       val reqData =
         if (reqFire) bus.req.bits.data.peek().litValue else BigInt(0)
@@ -74,24 +74,24 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
       if (reqFire) {
         if (reqWrite) {
           writes += 1
-          mem(reqAddr & 0xffffffffL) = reqData & 0xffffffffL
-          pending = Some((reqId, BigInt(0)))
+          mem(reqAddress & 0xffffffffL) = reqData & 0xffffffffL
+          pending = Some((reqID, BigInt(0)))
         } else {
           reads += 1
           pending = Some((
-            reqId,
-            mem.getOrElse(reqAddr & 0xffffffffL, BigInt(0))
+            reqID,
+            mem.getOrElse(reqAddress & 0xffffffffL, BigInt(0))
           ))
         }
-        pendingAddr = reqAddr
+        pendingAddress = reqAddress
         delay = latency - 1
       }
     }
   }
 
-  private def initPtw(
+  private def initPTW(
       dut: ysyx_26030103_PTW,
-      bus: PteBus
+      bus: PTEBus
   ): Unit = {
     dut.reset.poke(true.B)
     dut.clock.step(2)
@@ -114,9 +114,9 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
     bus.tick(dut.io.bus, dut.clock)
   }
 
-  private def issuePtw(
+  private def issuePTW(
       dut: ysyx_26030103_PTW,
-      bus: PteBus,
+      bus: PTEBus,
       vaddr: Long,
       access: UInt = ysyx_26030103_AccessType.Load
   ): Unit = {
@@ -137,9 +137,9 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
     dut.io.req.valid.poke(false.B)
   }
 
-  private def waitPtwResponse(
+  private def waitPTWResponse(
       dut: ysyx_26030103_PTW,
-      bus: PteBus
+      bus: PTEBus
   ): (BigInt, Boolean) = {
     var result: Option[(BigInt, Boolean)] = None
     var guard = 0
@@ -173,12 +173,12 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
     )
 
   "PTW" should "flush 与页表响应同拍时不得把旧 PTE 回填 cache" in {
-    val bus = new PteBus()
+    val bus = new PTEBus()
     bus.write(Root, pte(LeafPPN, 0xdfL))
-    bus.holdAddr = Some(Root)
+    bus.holdAddress = Some(Root)
     simulate(ptwConfig()) { dut =>
-      initPtw(dut, bus)
-      issuePtw(dut, bus, 0x0L)
+      initPTW(dut, bus)
+      issuePTW(dut, bus, 0x0L)
       var busGuard = 0
       while (!bus.hasPending && busGuard < 30) {
         bus.tick(dut.io.bus, dut.clock)
@@ -205,8 +205,8 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
       }
 
       // 同一 PTE 地址再次 walk，必须看到 flush 后的新 PTE。
-      issuePtw(dut, bus, 0x0L)
-      val (paddr, fault) = waitPtwResponse(dut, bus)
+      issuePTW(dut, bus, 0x0L)
+      val (paddr, fault) = waitPTWResponse(dut, bus)
       fault should be(false)
       withClue("flush 后仍命中被回填的旧 PTE: ") {
         paddr should be(BigInt(NewLeaf))
@@ -215,12 +215,12 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
   }
 
   it should "flush 发生在 walk 中途时不得把随后返回的旧 PTE 回填 cache" in {
-    val bus = new PteBus()
+    val bus = new PTEBus()
     bus.write(Root, pte(LeafPPN, 0xdfL))
-    bus.holdAddr = Some(Root)
+    bus.holdAddress = Some(Root)
     simulate(ptwConfig()) { dut =>
-      initPtw(dut, bus)
-      issuePtw(dut, bus, 0x0L)
+      initPTW(dut, bus)
+      issuePTW(dut, bus, 0x0L)
       var busGuard = 0
       while (!bus.hasPending && busGuard < 30) {
         bus.tick(dut.io.bus, dut.clock)
@@ -246,8 +246,8 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
         guard += 1
       }
 
-      issuePtw(dut, bus, 0x0L)
-      val (paddr, fault) = waitPtwResponse(dut, bus)
+      issuePTW(dut, bus, 0x0L)
+      val (paddr, fault) = waitPTWResponse(dut, bus)
       fault should be(false)
       withClue("flush 后仍命中 flush 前 walk 回填的旧 PTE: ") {
         paddr should be(BigInt(NewLeaf))
@@ -256,11 +256,11 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
   }
 
   it should "MMU flush 后在途 walk 的旧 PTE 不得污染 PTW cache" in {
-    val bus = new PteBus()
+    val bus = new PTEBus()
     // 两级页表：根 PTE 指向第二级表，叶子 PTE 位于 0x80002004。
     bus.write(Root, pte(0x80002L, 0x1L))
     bus.write(0x80002004L, pte(LeafPPN, 0xdfL))
-    bus.holdAddr = Some(0x80002004L)
+    bus.holdAddress = Some(0x80002004L)
     val profile = ysyx_26030103_MMUProfile(
       enabled = true,
       tlbEnabled = false,
@@ -355,7 +355,7 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
   }
 
   "MMU" should "TLB hardware A/D 在 store 命中时更新 D 位" in {
-    val bus = new PteBus()
+    val bus = new PTEBus()
     bus.write(Root, pte(0x80002L, 0x1L))
     // V|R|W|X|A，D=0。
     bus.write(0x80002004L, pte(LeafPPN, 0x4fL))

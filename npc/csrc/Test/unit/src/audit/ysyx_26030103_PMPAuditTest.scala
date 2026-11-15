@@ -25,10 +25,10 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
       dut.io.cfg(i).poke(0.U)
       dut.io.addr(i).poke(0.U)
     }
-    dut.io.fetchAddr.poke(0.U)
+    dut.io.fetchAddress.poke(0.U)
     dut.io.fetchPriv.poke(3.U)
-    dut.io.dataAddr.poke(0.U)
-    dut.io.dataLastAddr.poke(0.U)
+    dut.io.dataAddress.poke(0.U)
+    dut.io.dataLastAddress.poke(0.U)
     dut.io.dataPriv.poke(1.U) // S 模式
     dut.io.dataRead.poke(false.B)
     dut.io.dataWrite.poke(false.B)
@@ -51,8 +51,8 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
       dut.io.addr(0).poke(addr0.U)
       dut.io.cfg(1).poke(cfg1.U)
       dut.io.addr(1).poke(addr1.U)
-      dut.io.dataAddr.poke("h80000000".U)
-      dut.io.dataLastAddr.poke("h80000000".U)
+      dut.io.dataAddress.poke("h80000000".U)
+      dut.io.dataLastAddress.poke("h80000000".U)
       dut.io.dataPriv.poke(1.U)
       dut.io.dataRead.poke(true.B)
       // 最低编号 entry0 拒绝读，因此应 fault；Mux1H 会 OR 成 allow。
@@ -66,8 +66,8 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
       // 常见的 OpenSBI 全内存 PMP：NAPOT + R/W/X，pmpaddr 全 1。
       dut.io.cfg(0).poke("h1f".U)
       dut.io.addr(0).poke("h3fffffff".U)
-      dut.io.dataAddr.poke("h80000000".U)
-      dut.io.dataLastAddr.poke("h80000000".U)
+      dut.io.dataAddress.poke("h80000000".U)
+      dut.io.dataLastAddress.poke("h80000000".U)
       dut.io.dataPriv.poke(1.U)
       dut.io.dataRead.poke(true.B)
       bool(dut.io.dataFault) should be(false)
@@ -80,8 +80,8 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
       // 4KiB NAPOT：0x80000000..0x80000fff，R/W/X。
       dut.io.cfg(0).poke("h1f".U)
       dut.io.addr(0).poke("h200001ff".U)
-      dut.io.dataAddr.poke("h80000000".U)
-      dut.io.dataLastAddr.poke("h80000000".U)
+      dut.io.dataAddress.poke("h80000000".U)
+      dut.io.dataLastAddress.poke("h80000000".U)
       dut.io.dataPriv.poke(1.U)
       dut.io.dataRead.poke(true.B)
       bool(dut.io.dataFault) should be(false)

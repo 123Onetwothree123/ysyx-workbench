@@ -16,7 +16,7 @@ class ysyx_26030103_MMUStreamTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       dut.io.fetchValid.poke(false.B)
-      dut.io.fetchVaddr.poke(0.U)
+      dut.io.fetchVirtualAddress.poke(0.U)
       dut.io.cacheReady.poke(false.B)
       dut.io.privilege.poke(1.U)
       dut.io.satp.poke(0x80000000L.U(32.W))
@@ -31,7 +31,7 @@ class ysyx_26030103_MMUStreamTest extends AnyFlatSpec with Matchers {
       dut.io.resp.bits.tval.poke(0x80000100L.U)
 
       dut.io.fetchValid.poke(true.B)
-      dut.io.fetchVaddr.poke(0x80000100L.U)
+      dut.io.fetchVirtualAddress.poke(0x80000100L.U)
       dut.clock.step()
       // 请求已经被 MMU 接收，回一个物理地址。
       dut.io.resp.valid.poke(true.B)
@@ -40,10 +40,10 @@ class ysyx_26030103_MMUStreamTest extends AnyFlatSpec with Matchers {
       dut.io.resp.valid.poke(false.B)
       dut.clock.step()
       bool(dut.io.translationValid) should be(true)
-      long(dut.io.fetchPaddr) should be(0x80000100L)
+      long(dut.io.fetchPhysicalAddress) should be(0x80000100L)
 
       // 模拟 EXU 重定向：虚拟 PC 改变但 flush 还没到。
-      dut.io.fetchVaddr.poke(0x80000200L.U)
+      dut.io.fetchVirtualAddress.poke(0x80000200L.U)
       bool(dut.io.translationValid) should be(false)
       dut.io.flush.poke(true.B)
       dut.clock.step()

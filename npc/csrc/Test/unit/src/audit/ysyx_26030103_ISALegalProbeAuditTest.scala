@@ -22,7 +22,7 @@ class ysyx_26030103_ISALegalProbeAuditTest
       pteSizeBytes = 8,
       pageTableSizeBytes = 4096,
       pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -33,15 +33,15 @@ class ysyx_26030103_ISALegalProbeAuditTest
     dut.reset.poke(false.B)
     dut.io.enable.poke(false.B)
     dut.io.retireCommit.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
-    dut.io.isCsrrs.poke(false.B)
-    dut.io.isCsrrc.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
+    dut.io.isCSRrs.poke(false.B)
+    dut.io.isCSRrc.poke(false.B)
     dut.io.isEcall.poke(false.B)
     dut.io.isEbreak.poke(false.B)
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddr.poke(0.U)
+    dut.io.csrAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
     dut.io.pc.poke(0.U)
@@ -55,11 +55,11 @@ class ysyx_26030103_ISALegalProbeAuditTest
     dut.io.mtime.poke(0.U)
   }
 
-  private def peekCsr(
+  private def peekCSR(
       dut: ysyx_26030103_CSRAuditHarness,
       addr: Int
   ): BigInt = {
-    dut.io.csrAddr.poke(addr.U)
+    dut.io.csrAddress.poke(addr.U)
     dut.io.enable.poke(false.B)
     dut.io.rdata.peek().litValue
   }
@@ -84,7 +84,7 @@ class ysyx_26030103_ISALegalProbeAuditTest
         pteSizeBytes = 8,
         pageTableSizeBytes = 4096,
         pteFormat = "riscv64",
-        pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+        pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
         hasS = hasS,
         hasU = hasU,
         csrEnabled = Set(
@@ -110,7 +110,7 @@ class ysyx_26030103_ISALegalProbeAuditTest
     // RISCV_M=y 的核在 CSR 构造时传入 UseM=true，misa 必须置 M(bit12)。
     simulate(new ysyx_26030103_CSRAuditHarness(csrProfile, useM = true)) { dut =>
       csrSetup(dut)
-      val misa = peekCsr(dut, 0x301)
+      val misa = peekCSR(dut, 0x301)
       ((misa >> 12) & 1) should be(BigInt(1))
     }
   }
@@ -140,7 +140,7 @@ class ysyx_26030103_ISALegalProbeAuditTest
   "sstatus" should "在 RV64 只暴露 UXL=2，不额外暴露 SXL" in {
     simulate(new ysyx_26030103_CSRAuditHarness(csrProfile)) { dut =>
       csrSetup(dut)
-      val sstatus = peekCsr(dut, 0x100)
+      val sstatus = peekCSR(dut, 0x100)
       ((sstatus >> 32) & 0xf) should be(BigInt(2))
     }
   }

@@ -12,7 +12,7 @@ import _root_.ysyx_26030103.common._
   * 高地址请求应在 Xbar 内产生 DECERR，而不是截断后访问低地址设备。
   */
 class ysyx_26030103_RV64XbarTest extends AnyFlatSpec with Matchers {
-  private val AddrW = 64
+  private val AddressW = 64
   private def bool(value: Bool): Boolean = value.peek().litValue == 1
   private def big(value: UInt): BigInt = value.peek().litValue
   private val HighBase = 0x180000000L
@@ -29,7 +29,7 @@ class ysyx_26030103_RV64XbarTest extends AnyFlatSpec with Matchers {
     clock.step(2)
     reset.poke(false.B)
     dut.io.in.AW.AWVALID.poke(false.B)
-    dut.io.in.AW.AWADDR.poke(0.U(AddrW.W))
+    dut.io.in.AW.AWADDR.poke(0.U(AddressW.W))
     dut.io.in.AW.AWID.poke(0.U(4.W))
     dut.io.in.AW.AWLEN.poke(0.U(8.W))
     dut.io.in.AW.AWSIZE.poke(2.U(3.W))
@@ -43,7 +43,7 @@ class ysyx_26030103_RV64XbarTest extends AnyFlatSpec with Matchers {
     dut.io.in.W.WLAST.poke(false.B)
     dut.io.in.B.BREADY.poke(false.B)
     dut.io.in.AR.ARVALID.poke(false.B)
-    dut.io.in.AR.ARADDR.poke(0.U(AddrW.W))
+    dut.io.in.AR.ARADDR.poke(0.U(AddressW.W))
     dut.io.in.AR.ARID.poke(0.U(4.W))
     dut.io.in.AR.ARLEN.poke(0.U(8.W))
     dut.io.in.AR.ARSIZE.poke(2.U(3.W))
@@ -77,7 +77,7 @@ class ysyx_26030103_RV64XbarTest extends AnyFlatSpec with Matchers {
       address: BigInt
   ): Unit = {
     dut.io.in.AR.ARVALID.poke(true.B)
-    dut.io.in.AR.ARADDR.poke(address.U(AddrW.W))
+    dut.io.in.AR.ARADDR.poke(address.U(AddressW.W))
     dut.io.in.AR.ARID.poke(0.U(4.W))
     dut.io.in.AR.ARLEN.poke(0.U(8.W))
     dut.io.in.AR.ARSIZE.poke(2.U(3.W))
@@ -90,7 +90,7 @@ class ysyx_26030103_RV64XbarTest extends AnyFlatSpec with Matchers {
   "RV64 Xbar" should "把高于 4GiB 的 PMA 读地址完整转发到 SoCBus" in {
     simulate(
       new ysyx_26030103_AXI5Xbar(
-        AddressWidth = AddrW,
+        AddressWidth = AddressW,
         PMARegions = Regions,
         PLICBaseValue = BigInt("0c000000", 16),
         PLICSizeBytes = BigInt("00100000", 16)
@@ -116,7 +116,7 @@ class ysyx_26030103_RV64XbarTest extends AnyFlatSpec with Matchers {
   it should "对未映射的高地址返回本地 DECERR 且不发往 SoCBus" in {
     simulate(
       new ysyx_26030103_AXI5Xbar(
-        AddressWidth = AddrW,
+        AddressWidth = AddressW,
         PMARegions = Regions,
         PLICBaseValue = BigInt("0c000000", 16),
         PLICSizeBytes = BigInt("00100000", 16)

@@ -1,7 +1,7 @@
 package ysyx_26030103.common
 import chisel3._
 class ysyx_26030103_FPR(
-    val FLEN: Int = ysyx_26030103_KconfigDefaults.NpcFpuLen,
+    val FLEN: Int = ysyx_26030103_KconfigDefaults.NpcFPULen,
     val EnableDynamicDebug: Boolean = true
 ) extends Module {
   require(FLEN == 32 || FLEN == 64, s"FPR FLEN 非法: $FLEN")
@@ -20,18 +20,18 @@ class ysyx_26030103_FPR(
     // 临时改地址回读会让 IDU 当拍的组合读数据跟着变化。独立读口只增加
     // 一个 32 选 1 mux，不引入任何调试专用寄存器。
     val DebugRaddr = Input(UInt(5.W))
-    val DebugRdata = Output(UInt(FLEN.W))
+    val DebugReadData = Output(UInt(FLEN.W))
   })
-  val Regs = RegInit(VecInit(Seq.fill(32)(0.U(FLEN.W))))
+  val regs = RegInit(VecInit(Seq.fill(32)(0.U(FLEN.W))))
   when(io.wen) {
-    Regs(io.waddr) := io.wdata
+    regs(io.waddr) := io.wdata
   }
-  io.rdata1 := Regs(io.raddr1)
-  io.rdata2 := Regs(io.raddr2)
-  io.rdata3 := Regs(io.raddr3)
+  io.rdata1 := regs(io.raddr1)
+  io.rdata2 := regs(io.raddr2)
+  io.rdata3 := regs(io.raddr3)
   if (EnableDynamicDebug) {
-    io.DebugRdata := Regs(io.DebugRaddr)
+    io.DebugReadData := regs(io.DebugRaddr)
   } else {
-    io.DebugRdata := 0.U(FLEN.W)
+    io.DebugReadData := 0.U(FLEN.W)
   }
 }

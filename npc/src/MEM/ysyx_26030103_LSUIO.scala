@@ -44,39 +44,39 @@ private[mem] class ysyx_26030103_LSUIO(
   val AtomicCommit = Output(Bool())
   // DMA_COHERENCE=hardware_snoop 的地址级失效握手。Ready 为低时 DMA
   // 的 B 保持等待，直到所有匹配行失效且旧 refill/响应不再可能被使用。
-  val DCacheDmaSnoopValid = Input(Bool())
-  val DCacheDmaSnoopStart = Input(UInt(AddressWidth.W))
-  val DCacheDmaSnoopEnd = Input(UInt(AddressWidth.W))
-  val DCacheDmaSnoopReady = Output(Bool())
+  val DCacheDMASnoopValid = Input(Bool())
+  val DCacheDMASnoopStart = Input(UInt(AddressWidth.W))
+  val DCacheDMASnoopEnd = Input(UInt(AddressWidth.W))
+  val DCacheDMASnoopReady = Output(Bool())
   // store 的 B 响应完成事件：ICache HARDWARE_SNOOP 用它在写落地后
   // 失效对应行。Addr 是 store 首字节物理地址，LastAddr 覆盖本次访问的
   // 最后一个字节（RV64 的 8B store 在 4B 行上可能跨两行）。
   val StoreCommit = Output(Bool())
-  val StoreCommitAddr = Output(UInt(AddressWidth.W))
-  val StoreCommitLastAddr = Output(UInt(AddressWidth.W))
+  val StoreCommitAddress = Output(UInt(AddressWidth.W))
+  val StoreCommitLastAddress = Output(UInt(AddressWidth.W))
   // VIPT 并行翻译结果：PAddr 可能晚于 DCache 请求到达；PAddrVaddr 是
   // 该物理地址对应的虚拟地址标签。非并行模式忽略这些输入。
-  val ViptPAddr = Input(UInt(AddressWidth.W))
-  val ViptPAddrValid = Input(Bool())
-  val ViptPAddrVaddr = Input(UInt(AddressWidth.W))
+  val VIPTPAddress = Input(UInt(AddressWidth.W))
+  val VIPTPAddressValid = Input(Bool())
+  val VIPTPAddressVirtualAddress = Input(UInt(AddressWidth.W))
   // MMU 翻译故障：取消本 LSU 已受理但尚未取到 PA 的 load。
-  val ViptKill = Input(Bool())
+  val VIPTKill = Input(Bool())
   // 无 MMU 时由顶层 PMP 检查“下一个可能产生总线副作用的访存地址”：
   // 写缓冲非空时检查最老 store（队首），否则检查即将进入执行槽的访存
   // 指令。PmpFault 必须在 AW/W/AR 握手前组合生效，故障指令不得产生
   // 任何总线副作用，随后按普通访问故障精确提交。
-  val PmpAddr = Output(UInt(AddressWidth.W))
+  val PMPAddress = Output(UInt(AddressWidth.W))
   // 本次访问最后一个字节的地址。PMP 需要同时检查起始与末字节所在的
   // 4 字节 granule，防止 8 字节访问跨出 NA4/TOR 区域边界。
-  val PmpLastAddr = Output(UInt(AddressWidth.W))
-  val PmpRead = Output(Bool())
-  val PmpWrite = Output(Bool())
-  val PmpFault = Input(Bool())
+  val PMPLastAddress = Output(UInt(AddressWidth.W))
+  val PMPRead = Output(Bool())
+  val PMPWrite = Output(Bool())
+  val PMPFault = Input(Bool())
   // DCache性能计数器
   val DCachePerfHit = Output(Bool())
   val DCachePerfMiss = Output(Bool())
-  val DCachePerfRefillReq = Output(Bool())
-  val DCachePerfRefillResp = Output(Bool())
+  val DCachePerfRefillRequest = Output(Bool())
+  val DCachePerfRefillResponse = Output(Bool())
   val DCachePerfLineFill = Output(Bool())
   val DCachePerfWriteback = Output(Bool())
   val PerfWBufCount = Output(UInt(5.W))
@@ -85,34 +85,34 @@ private[mem] class ysyx_26030103_LSUIO(
   val HazardRd = Output(UInt(5.W))
   val HazardRegWrite = Output(Bool())
   val HazardMemOp = Output(Bool())
-  val FwdData = Output(UInt(XLEN.W))
-  val FwdReady = Output(Bool())
+  val ForwardData = Output(UInt(XLEN.W))
+  val ForwardReady = Output(Bool())
   // 浮点寄存器写口/转发。FLW/FLD 的数据在本级完成后才有效。
   val HazardFPRegWrite = Output(Bool())
   val HazardFPRd = Output(UInt(5.W))
-  val FwdFPData = Output(UInt(64.W))
-  val FwdFPReady = Output(Bool())
+  val ForwardFPData = Output(UInt(64.W))
+  val ForwardFPReady = Output(Bool())
   // 等待槽冒险检测: 本级被年长访存占用时,EX/MEM流水寄存器里等待的指令
   // 对IDU也必须可见,否则依赖它的消费者会拿着旧寄存器值溜过去
   val Hazard2Valid = Output(Bool())
   val Hazard2Rd = Output(UInt(5.W))
   val Hazard2RegWrite = Output(Bool())
   val Hazard2MemOp = Output(Bool())
-  val Hazard2FwdData = Output(UInt(XLEN.W))
-  val Hazard2FwdReady = Output(Bool())
+  val Hazard2ForwardData = Output(UInt(XLEN.W))
+  val Hazard2ForwardReady = Output(Bool())
   val Hazard2FPRegWrite = Output(Bool())
   val Hazard2FPRd = Output(UInt(5.W))
-  val Hazard2FwdFPData = Output(UInt(64.W))
-  val Hazard2FwdFPReady = Output(Bool())
+  val Hazard2ForwardFPData = Output(UInt(64.W))
+  val Hazard2ForwardFPReady = Output(Bool())
   // 调试/性能
   val Complete = Output(Bool())
   val AccessFault = Output(Bool())
-  val AccessFaultResp = Output(UInt(2.W))
+  val AccessFaultResponse = Output(UInt(2.W))
   val Active = Output(Bool())
   val IsStore = Output(Bool())
   val StallReadAR = Output(Bool())
   val StallReadR = Output(Bool())
-  val StallWriteReq = Output(Bool())
+  val StallWriteRequest = Output(Bool())
   val StallWriteB = Output(Bool())
   val DebugMemoryWrite = Output(Bool())
   val DebugLoadDATA = Output(UInt(32.W))

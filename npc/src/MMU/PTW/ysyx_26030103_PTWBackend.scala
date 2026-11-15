@@ -10,7 +10,7 @@ class ysyx_26030103_PTWBackendIO(
     respPorts: Int,
     XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
-    pteWidth: Int = ysyx_26030103_KconfigDefaults.MmuPteWidth
+    pteWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth
 ) extends Bundle {
   val req = Flipped(Decoupled(new ysyx_26030103_PTWRequest(XLEN, AddressWidth)))
   val resp = Vec(respPorts, Decoupled(
@@ -24,7 +24,7 @@ abstract class ysyx_26030103_PTWBackend(
     respPorts: Int,
     XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
-    pteWidth: Int = ysyx_26030103_KconfigDefaults.MmuPteWidth
+    pteWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth
 ) extends Module {
   val io = IO(new ysyx_26030103_PTWBackendIO(respPorts, XLEN, AddressWidth, pteWidth))
 }

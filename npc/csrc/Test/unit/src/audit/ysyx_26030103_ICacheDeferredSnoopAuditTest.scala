@@ -20,7 +20,7 @@ import scala.collection.mutable
 class ysyx_26030103_ICacheDeferredSnoopAuditTest
     extends AnyFlatSpec
     with Matchers {
-  private val AddrW     = 32
+  private val AddressW     = 32
   private val BlockLog2 = 4 // 16B/line，4 拍 refill
   private val IndexBits = 4 // 16 组，serial 扫描跨越多拍
 
@@ -85,11 +85,11 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
           Enable = true,
           BlockSizeLog2 = BlockLog2,
           IndexBits = IndexBits,
-          AddressWidth = AddrW,
-          Vipt = true,
-          ViptAliasSafe = true,
-          ViptAliasScanMode = mode,
-          ViptAliasScanWidth = width,
+          AddressWidth = AddressW,
+          VIPT = true,
+          VIPTAliasSafe = true,
+          VIPTAliasScanMode = mode,
+          VIPTAliasScanWidth = width,
           Snoop = true,
           PMARegions = Pma
         )
@@ -98,11 +98,11 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
           Enable = true,
           BlockSizeLog2 = BlockLog2,
           IndexBits = IndexBits,
-          AddressWidth = AddrW,
-          Vipt = true,
-          ViptAliasSafe = true,
-          ViptAliasScanMode = mode,
-          ViptAliasScanWidth = width,
+          AddressWidth = AddressW,
+          VIPT = true,
+          VIPTAliasSafe = true,
+          VIPTAliasScanMode = mode,
+          VIPTAliasScanWidth = width,
           Snoop = true,
           PMARegions = Pma
         )
@@ -117,10 +117,10 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
     reset.poke(true.B)
     d.clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddrW.W))
-    io.fetch_vaddr.poke(0.U(AddrW.W))
+    io.fetch_addr.poke(0.U(AddressW.W))
+    io.fetch_vaddr.poke(0.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
     io.fetch_valid.poke(false.B)
     io.resp_ready.poke(false.B)
     io.axi.AR.ARREADY.poke(false.B)
@@ -131,8 +131,8 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
     io.flush.poke(false.B)
     io.kill.poke(false.B)
     io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U(AddrW.W))
-    io.snoop_addr_hi.poke(0.U(AddrW.W))
+    io.snoop_addr.poke(0.U(AddressW.W))
+    io.snoop_addr_hi.poke(0.U(AddressW.W))
   }
 
   private def issueFetch(
@@ -140,10 +140,10 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
       d:    Driver,
       addr: Long
   ): Unit = {
-    io.fetch_addr.poke(addr.U(AddrW.W))
-    io.fetch_vaddr.poke(addr.U(AddrW.W))
+    io.fetch_addr.poke(addr.U(AddressW.W))
+    io.fetch_vaddr.poke(addr.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(addr.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(addr.U(AddressW.W))
     io.fetch_valid.poke(true.B)
     waitUntil(d, bool(io.fetch_ready), s"ICache 未受理取指 0x${addr.toHexString}")
     d.step()
@@ -227,8 +227,8 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
 
       // store 数据已落盘并发出同一物理行的 snoop，正好与补装同拍。
       mem.write(Line, NewData)
-      io.snoop_addr.poke(Line.U(AddrW.W))
-      io.snoop_addr_hi.poke((Line + 3L).U(AddrW.W))
+      io.snoop_addr.poke(Line.U(AddressW.W))
+      io.snoop_addr_hi.poke((Line + 3L).U(AddressW.W))
       io.snoop_valid.poke(true.B)
       d.step()
       io.snoop_valid.poke(false.B)
@@ -284,8 +284,8 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
       expectResponse(io, d, OldData, s"$kind/$mode RLAST snoop 前响应")
 
       mem.write(Line, NewData)
-      io.snoop_addr.poke(Line.U(AddrW.W))
-      io.snoop_addr_hi.poke((Line + 3L).U(AddrW.W))
+      io.snoop_addr.poke(Line.U(AddressW.W))
+      io.snoop_addr_hi.poke((Line + 3L).U(AddressW.W))
       io.snoop_valid.poke(true.B)
       io.axi.R.RDATA.poke(mem.read(Line + (beats - 1).toLong * 4L).U(32.W))
       io.axi.R.RRESP.poke(0.U(2.W))

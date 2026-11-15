@@ -15,7 +15,7 @@ class ysyx_26030103_AXIWriteMux(
     val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))
     val out = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
   })
-  val idle :: aWrite :: bWrite :: aResp :: bResp :: Nil = Enum(5)
+  val idle :: aWrite :: bWrite :: aResponse :: bResponse :: Nil = Enum(5)
   val state = RegInit(idle)
   val awDone = RegInit(false.B)
   val wDone = RegInit(false.B)
@@ -86,35 +86,35 @@ class ysyx_26030103_AXIWriteMux(
   io.b.B.BRESP := 0.U
 
   when(state === idle) {
-    val aReq = io.a.AW.AWVALID || io.a.W.WVALID
-    val bReq = io.b.AW.AWVALID || io.b.W.WVALID
-    when(aReq) {
+    val aRequest = io.a.AW.AWVALID || io.a.W.WVALID
+    val bRequest = io.b.AW.AWVALID || io.b.W.WVALID
+    when(aRequest) {
       state := aWrite
       awDone := false.B
       wDone := false.B
-    }.elsewhen(bReq) {
+    }.elsewhen(bRequest) {
       state := bWrite
       awDone := false.B
       wDone := false.B
     }
   }
 
-  def drive(sel: ysyx_26030103_AXI5IO, isA: Boolean): Unit = {
-    io.out.AW.AWVALID := sel.AW.AWVALID && !awDone
-    io.out.AW.AWID := sel.AW.AWID
-    io.out.AW.AWADDR := sel.AW.AWADDR
-    io.out.AW.AWLEN := sel.AW.AWLEN
-    io.out.AW.AWSIZE := sel.AW.AWSIZE
-    io.out.AW.AWBURST := sel.AW.AWBURST
-    io.out.AW.AWPROT := sel.AW.AWPROT
-    io.out.AW.AWCACHE := sel.AW.AWCACHE
-    io.out.AW.AWQOS := sel.AW.AWQOS
-    sel.AW.AWREADY := io.out.AW.AWREADY && !awDone
-    io.out.W.WVALID := sel.W.WVALID && !wDone
-    io.out.W.WDATA := sel.W.WDATA
-    io.out.W.WSTRB := sel.W.WSTRB
-    io.out.W.WLAST := sel.W.WLAST
-    sel.W.WREADY := io.out.W.WREADY && !wDone
+  def drive(selected: ysyx_26030103_AXI5IO, isA: Boolean): Unit = {
+    io.out.AW.AWVALID := selected.AW.AWVALID && !awDone
+    io.out.AW.AWID := selected.AW.AWID
+    io.out.AW.AWADDR := selected.AW.AWADDR
+    io.out.AW.AWLEN := selected.AW.AWLEN
+    io.out.AW.AWSIZE := selected.AW.AWSIZE
+    io.out.AW.AWBURST := selected.AW.AWBURST
+    io.out.AW.AWPROT := selected.AW.AWPROT
+    io.out.AW.AWCACHE := selected.AW.AWCACHE
+    io.out.AW.AWQOS := selected.AW.AWQOS
+    selected.AW.AWREADY := io.out.AW.AWREADY && !awDone
+    io.out.W.WVALID := selected.W.WVALID && !wDone
+    io.out.W.WDATA := selected.W.WDATA
+    io.out.W.WSTRB := selected.W.WSTRB
+    io.out.W.WLAST := selected.W.WLAST
+    selected.W.WREADY := io.out.W.WREADY && !wDone
     val awFire = io.out.AW.AWVALID && io.out.AW.AWREADY
     val wFire = io.out.W.WVALID && io.out.W.WREADY
     // 一笔写可能有多拍 W（AWLEN>0）：AWSIZE=2 的 8 字节 store 在 32 位总线
@@ -124,20 +124,20 @@ class ysyx_26030103_AXIWriteMux(
     when(awFire) { awDone := true.B }
     when(wFinishes) { wDone := true.B }
     when((awDone || awFire) && (wDone || wFinishes)) {
-      state := (if (isA) aResp else bResp)
+      state := (if (isA) aResponse else bResponse)
     }
   }
 
   when(state === aWrite) { drive(io.a, true) }
   when(state === bWrite) { drive(io.b, false) }
-  when(state === aResp) {
+  when(state === aResponse) {
     io.a.B.BVALID := io.out.B.BVALID
     io.a.B.BID := io.out.B.BID
     io.a.B.BRESP := io.out.B.BRESP
     io.out.B.BREADY := io.a.B.BREADY
     when(io.out.B.BVALID && io.out.B.BREADY) { state := idle }
   }
-  when(state === bResp) {
+  when(state === bResponse) {
     io.b.B.BVALID := io.out.B.BVALID
     io.b.B.BID := io.out.B.BID
     io.b.B.BRESP := io.out.B.BRESP

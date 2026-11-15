@@ -33,9 +33,9 @@ class ysyx_26030103_ALUAdder(
     require(width >= 1, s"ripple width 非法: $width")
     val sums = Wire(Vec(width, Bool()))
     var carry = cin
-    for (i <- 0 until width) {
-      val (sumBit, carryBit) = fullAdder(a(i), b(i), carry)
-      sums(i) := sumBit
+    for (index <- 0 until width) {
+      val (sumBit, carryBit) = fullAdder(a(index), b(index), carry)
+      sums(index) := sumBit
       carry = carryBit
     }
     (Cat(sums.reverse), carry)

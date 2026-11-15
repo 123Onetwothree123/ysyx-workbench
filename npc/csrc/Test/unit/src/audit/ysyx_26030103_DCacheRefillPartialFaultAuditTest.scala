@@ -20,7 +20,7 @@ import org.scalatest.matchers.should.Matchers
 class ysyx_26030103_DCacheRefillPartialFaultAuditTest
     extends AnyFlatSpec with Matchers {
   private val LineBase = 0x80000000L
-  private val LoadAddr = LineBase + 8
+  private val LoadAddress = LineBase + 8
 
   private def bool(value: Bool): Boolean = value.peek().litValue == 1
   private def long(value: UInt): Long = value.peek().litValue.toLong
@@ -72,11 +72,11 @@ class ysyx_26030103_DCacheRefillPartialFaultAuditTest
     io.req_kill.poke(false.B)
     io.resp.ready.poke(false.B)
     io.StoreValid.poke(false.B)
-    io.StoreResp.poke(0.U)
-    io.StoreAddr.poke(0.U)
-    io.StoreVAddr.poke(0.U)
+    io.StoreResponse.poke(0.U)
+    io.StoreAddress.poke(0.U)
+    io.StoreVAddress.poke(0.U)
     io.StoreData.poke(0.U)
-    io.StoreStrb.poke(0.U)
+    io.StoreStrobe.poke(0.U)
     io.flush.poke(false.B)
     io.dma_snoop_valid.poke(false.B)
     io.dma_snoop_start.poke(0.U)
@@ -94,8 +94,8 @@ class ysyx_26030103_DCacheRefillPartialFaultAuditTest
       val clock = dut.clock
       resetDut(dut.io, clock, dut.reset)
 
-      dut.io.req.bits.addr.poke(LoadAddr.U)
-      dut.io.req.bits.vaddr.poke(LoadAddr.U)
+      dut.io.req.bits.addr.poke(LoadAddress.U)
+      dut.io.req.bits.vaddr.poke(LoadAddress.U)
       dut.io.req.bits.WidthSelect.poke(2.U)
       dut.io.req.valid.poke(true.B)
       var cycles = 0
@@ -141,11 +141,11 @@ class ysyx_26030103_DCacheRefillPartialFaultAuditTest
       withClue(
         s"$kind DCache 把早期错误 beat 的 fault 覆盖成成功数据: " +
           s"fault=${bool(dut.io.resp.bits.fault)} " +
-          s"resp=${long(dut.io.resp.bits.FaultResp)} " +
+          s"resp=${long(dut.io.resp.bits.FaultResponse)} " +
           s"data=0x${dut.io.resp.bits.data.peek().litValue.toString(16)}: ") {
         bool(dut.io.resp.bits.fault) should be(true)
       }
-      long(dut.io.resp.bits.FaultResp) should be(2L)
+      long(dut.io.resp.bits.FaultResponse) should be(2L)
     }
   }
 

@@ -248,14 +248,14 @@ class ysyx_26030103_FPUFeatureTest extends AnyFlatSpec with Matchers {
     (BigInt(0xffffffffL) << 32) | bits32(x)
 
   private def opVal(op: UInt): BigInt = op.litValue
-  private val FAdd = opVal(ysyx_26030103_FpuOp.FAdd)
-  private val FMul = opVal(ysyx_26030103_FpuOp.FMul)
-  private val FDiv = opVal(ysyx_26030103_FpuOp.FDiv)
-  private val FSqrt = opVal(ysyx_26030103_FpuOp.FSqrt)
-  private val FFma = opVal(ysyx_26030103_FpuOp.FFma)
-  private val FFms = opVal(ysyx_26030103_FpuOp.FFms)
-  private val FFnma = opVal(ysyx_26030103_FpuOp.FFnma)
-  private val FFnms = opVal(ysyx_26030103_FpuOp.FFnms)
+  private val FAdd = opVal(ysyx_26030103_FPUOp.FAdd)
+  private val FMul = opVal(ysyx_26030103_FPUOp.FMul)
+  private val FDiv = opVal(ysyx_26030103_FPUOp.FDiv)
+  private val FSqrt = opVal(ysyx_26030103_FPUOp.FSqrt)
+  private val FFma = opVal(ysyx_26030103_FPUOp.FFma)
+  private val FFms = opVal(ysyx_26030103_FPUOp.FFms)
+  private val FFnma = opVal(ysyx_26030103_FPUOp.FFnma)
+  private val FFnms = opVal(ysyx_26030103_FPUOp.FFnms)
   private val RNE = 0
   private val RTZ = 1
   private val RDN = 2
@@ -311,10 +311,10 @@ class ysyx_26030103_FPUFeatureTest extends AnyFlatSpec with Matchers {
       c: BigInt = 0
   ): (BigInt, Int) = {
     waitUntil(dut, dut.io.req.ready.peek().litToBoolean)
-    dut.io.req.bits.op.poke(op.U(ysyx_26030103_FpuOp.Width.W))
-    dut.io.req.bits.fmt.poke(fmt.U(ysyx_26030103_FpuFmt.Width.W))
-    dut.io.req.bits.srcFmt.poke(fmt.U(ysyx_26030103_FpuFmt.Width.W))
-    dut.io.req.bits.rm.poke(rm.U(ysyx_26030103_FpuRm.Width.W))
+    dut.io.req.bits.op.poke(op.U(ysyx_26030103_FPUOp.Width.W))
+    dut.io.req.bits.fmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
+    dut.io.req.bits.srcFmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
+    dut.io.req.bits.rm.poke(rm.U(ysyx_26030103_FPURm.Width.W))
     dut.io.req.bits.intWord.poke(true.B)
     dut.io.req.bits.rs1.poke(a.U(flen.W))
     dut.io.req.bits.rs2.poke(b.U(flen.W))

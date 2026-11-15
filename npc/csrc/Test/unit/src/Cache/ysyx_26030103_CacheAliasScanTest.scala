@@ -17,7 +17,7 @@ import scala.collection.mutable
   *      必须失效。
   */
 class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
-  private val AddrW     = 32
+  private val AddressW     = 32
   private val BlockLog2 = 4 // 16B/line，refill 只有 4 拍，测试更短
   // 两个 VA 的低 4 位相同、组索引不同；PA 是同一物理行。
   // 对 8/16/32 set（index=[6:4]/[7:4]/[8:4]）都落在不同 set。
@@ -61,8 +61,8 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
   /** 一轮 alias 维护需要的扫描拍数；0 表示单拍/目录模式无扫描等待。 */
   private def scanChunks(sets: Int, mode: String, width: Int): Int =
     mode match {
-      case m if m == ysyx_26030103_ViptAliasScan.Serial => sets
-      case m if m == ysyx_26030103_ViptAliasScan.ParallelN =>
+      case m if m == ysyx_26030103_VIPTAliasScan.Serial => sets
+      case m if m == ysyx_26030103_VIPTAliasScan.ParallelN =>
         (sets + width - 1) / width
       case _ => 0
     }
@@ -115,10 +115,10 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddrW.W))
-    io.fetch_vaddr.poke(0.U(AddrW.W))
+    io.fetch_addr.poke(0.U(AddressW.W))
+    io.fetch_vaddr.poke(0.U(AddressW.W))
     io.fetch_paddr_valid.poke(false.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
     io.fetch_valid.poke(false.B)
     io.resp_ready.poke(false.B)
     io.axi.AR.ARREADY.poke(false.B)
@@ -136,9 +136,9 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       va:    Long,
       pa:    Long
   ): Unit = {
-    io.fetch_vaddr.poke(va.U(AddrW.W))
-    io.fetch_addr.poke(pa.U(AddrW.W))
-    io.fetch_paddr_vaddr.poke(va.U(AddrW.W))
+    io.fetch_vaddr.poke(va.U(AddressW.W))
+    io.fetch_addr.poke(pa.U(AddressW.W))
+    io.fetch_paddr_vaddr.poke(va.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
     io.fetch_valid.poke(true.B)
     waitUntil(clock, bool(io.fetch_ready), s"ICache 未受理 VA=0x${va.toHexString}")
@@ -186,7 +186,7 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
     beats
   }
 
-  private def runIcache(
+  private def runICache(
       io:        ysyx_26030103_ICacheInterface,
       clock:     Clock,
       reset:     Reset,
@@ -239,20 +239,20 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
     clock.step(2)
     reset.poke(false.B)
     io.req.valid.poke(false.B)
-    io.req.bits.addr.poke(0.U(AddrW.W))
-    io.req.bits.vaddr.poke(0.U(AddrW.W))
+    io.req.bits.addr.poke(0.U(AddressW.W))
+    io.req.bits.vaddr.poke(0.U(AddressW.W))
     io.req.bits.WidthSelect.poke(2.U(2.W))
     io.req.bits.signed.poke(false.B)
     io.req_paddr_valid.poke(false.B)
-    io.req_paddr_vaddr.poke(0.U(AddrW.W))
+    io.req_paddr_vaddr.poke(0.U(AddressW.W))
     io.req_kill.poke(false.B)
     io.resp.ready.poke(false.B)
     io.StoreValid.poke(false.B)
-    io.StoreResp.poke(0.U(2.W))
-    io.StoreAddr.poke(0.U(AddrW.W))
-    io.StoreVAddr.poke(0.U(AddrW.W))
+    io.StoreResponse.poke(0.U(2.W))
+    io.StoreAddress.poke(0.U(AddressW.W))
+    io.StoreVAddress.poke(0.U(AddressW.W))
     io.StoreData.poke(0.U(32.W))
-    io.StoreStrb.poke(0.U(4.W))
+    io.StoreStrobe.poke(0.U(4.W))
     io.AXI.AR.ARREADY.poke(false.B)
     io.AXI.R.RDATA.poke(0.U(32.W))
     io.AXI.R.RRESP.poke(0.U(2.W))
@@ -267,11 +267,11 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       va:    Long,
       pa:    Long
   ): Unit = {
-    io.req.bits.vaddr.poke(va.U(AddrW.W))
-    io.req.bits.addr.poke(pa.U(AddrW.W))
+    io.req.bits.vaddr.poke(va.U(AddressW.W))
+    io.req.bits.addr.poke(pa.U(AddressW.W))
     io.req.bits.WidthSelect.poke(2.U(2.W))
     io.req.bits.signed.poke(false.B)
-    io.req_paddr_vaddr.poke(va.U(AddrW.W))
+    io.req_paddr_vaddr.poke(va.U(AddressW.W))
     io.req_paddr_valid.poke(true.B)
     io.req.valid.poke(true.B)
     waitUntil(clock, bool(io.req.ready), s"DCache 未受理 VA=0x${va.toHexString}")
@@ -288,15 +288,15 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       mem:   Memory
   ): Unit = {
     mem.write(pa, data)
-    io.StoreVAddr.poke(va.U(AddrW.W))
-    io.StoreAddr.poke(pa.U(AddrW.W))
+    io.StoreVAddress.poke(va.U(AddressW.W))
+    io.StoreAddress.poke(pa.U(AddressW.W))
     io.StoreData.poke(data.U(32.W))
-    io.StoreStrb.poke("hf".U(4.W))
-    io.StoreResp.poke(0.U(2.W))
+    io.StoreStrobe.poke("hf".U(4.W))
+    io.StoreResponse.poke(0.U(2.W))
     io.StoreValid.poke(true.B)
     clock.step()
     io.StoreValid.poke(false.B)
-    io.StoreStrb.poke(0.U(4.W))
+    io.StoreStrobe.poke(0.U(4.W))
   }
 
   private def dcacheRefill(
@@ -336,7 +336,7 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
     io.resp.ready.poke(false.B)
   }
 
-  private def runDcache(
+  private def runDCache(
       io:        ysyx_26030103_DCacheInterface,
       clock:     Clock,
       reset:     Reset,
@@ -390,18 +390,18 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
 
   private case class AliasCase(mode: String, width: Int) {
     def label: String =
-      if (mode == ysyx_26030103_ViptAliasScan.ParallelN)
+      if (mode == ysyx_26030103_VIPTAliasScan.ParallelN)
         s"$mode/$width"
       else mode
   }
 
   private val AliasCases = Seq(
-    AliasCase(ysyx_26030103_ViptAliasScan.AllSets, 0),
-    AliasCase(ysyx_26030103_ViptAliasScan.Serial, 0),
-    AliasCase(ysyx_26030103_ViptAliasScan.ParallelN, 2),
-    AliasCase(ysyx_26030103_ViptAliasScan.ParallelN, 4),
-    AliasCase(ysyx_26030103_ViptAliasScan.ParallelN, 8),
-    AliasCase(ysyx_26030103_ViptAliasScan.Directory, 0)
+    AliasCase(ysyx_26030103_VIPTAliasScan.AllSets, 0),
+    AliasCase(ysyx_26030103_VIPTAliasScan.Serial, 0),
+    AliasCase(ysyx_26030103_VIPTAliasScan.ParallelN, 2),
+    AliasCase(ysyx_26030103_VIPTAliasScan.ParallelN, 4),
+    AliasCase(ysyx_26030103_VIPTAliasScan.ParallelN, 8),
+    AliasCase(ysyx_26030103_VIPTAliasScan.Directory, 0)
   )
 
   private def icacheReg(
@@ -413,12 +413,12 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = setsLog2,
-      AddressWidth = AddrW,
-      Vipt = true,
-      ViptAliasSafe = true,
-      ViptAliasScanMode = c.mode,
-      ViptAliasScanWidth = c.width,
-      ViptAliasDirectoryEntries = dirEntries
+      AddressWidth = AddressW,
+      VIPT = true,
+      VIPTAliasSafe = true,
+      VIPTAliasScanMode = c.mode,
+      VIPTAliasScanWidth = c.width,
+      VIPTAliasDirectoryEntries = dirEntries
     )
 
   private def icacheSram(
@@ -430,12 +430,12 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = setsLog2,
-      AddressWidth = AddrW,
-      Vipt = true,
-      ViptAliasSafe = true,
-      ViptAliasScanMode = c.mode,
-      ViptAliasScanWidth = c.width,
-      ViptAliasDirectoryEntries = dirEntries
+      AddressWidth = AddressW,
+      VIPT = true,
+      VIPTAliasSafe = true,
+      VIPTAliasScanMode = c.mode,
+      VIPTAliasScanWidth = c.width,
+      VIPTAliasDirectoryEntries = dirEntries
     )
 
   private def dcacheReg(
@@ -447,12 +447,12 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = setsLog2,
-      AddressWidth = AddrW,
-      Vipt = true,
-      ViptAliasSafe = true,
-      ViptAliasScanMode = c.mode,
-      ViptAliasScanWidth = c.width,
-      ViptAliasDirectoryEntries = dirEntries
+      AddressWidth = AddressW,
+      VIPT = true,
+      VIPTAliasSafe = true,
+      VIPTAliasScanMode = c.mode,
+      VIPTAliasScanWidth = c.width,
+      VIPTAliasDirectoryEntries = dirEntries
     )
 
   private def dcacheSram(
@@ -464,12 +464,12 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = setsLog2,
-      AddressWidth = AddrW,
-      Vipt = true,
-      ViptAliasSafe = true,
-      ViptAliasScanMode = c.mode,
-      ViptAliasScanWidth = c.width,
-      ViptAliasDirectoryEntries = dirEntries
+      AddressWidth = AddressW,
+      VIPT = true,
+      VIPTAliasSafe = true,
+      VIPTAliasScanMode = c.mode,
+      VIPTAliasScanWidth = c.width,
+      VIPTAliasDirectoryEntries = dirEntries
     )
 
   private def forEachGeometry(body: (Int, AliasCase) => Unit): Unit = {
@@ -486,7 +486,7 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
     * 又会挤出 line4。若目录冲突没有真正失效 Cache 行，后续访问会命中
     * 旧副本而不发 AR，测试中的 refill 等待会超时。
     */
-  private def runIcacheDirectoryCapacity(
+  private def runICacheDirectoryCapacity(
       io:    ysyx_26030103_ICacheInterface,
       clock: Clock,
       reset: Reset
@@ -512,7 +512,7 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
     icacheExpect(io, clock, va(4), mem.read(line(4)))
   }
 
-  private def runDcacheDirectoryCapacity(
+  private def runDCacheDirectoryCapacity(
       io:    ysyx_26030103_DCacheInterface,
       clock: Clock,
       reset: Reset
@@ -541,7 +541,7 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       val label = s"ICacheReg sets=${1 << setsLog2} mode=${c.label}"
       withClue(label) {
         simulate(icacheReg(setsLog2, c)) { dut =>
-          runIcache(
+          runICache(
             dut.io,
             dut.clock,
             dut.reset,
@@ -559,7 +559,7 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
       val label = s"DCacheReg sets=${1 << setsLog2} mode=${c.label}"
       withClue(label) {
         simulate(dcacheReg(setsLog2, c)) { dut =>
-          runDcache(
+          runDCache(
             dut.io,
             dut.clock,
             dut.reset,
@@ -576,49 +576,49 @@ class ysyx_26030103_CacheAliasScanTest extends AnyFlatSpec with Matchers {
     for (c <- AliasCases) {
       withClue(s"ICacheSRAM mode=${c.label}") {
         simulate(icacheSram(3, c)) { dut =>
-          runIcache(dut.io, dut.clock, dut.reset, 8, c.mode, c.width)
+          runICache(dut.io, dut.clock, dut.reset, 8, c.mode, c.width)
         }
       }
       withClue(s"DCacheSRAM mode=${c.label}") {
         simulate(dcacheSram(3, c)) { dut =>
-          runDcache(dut.io, dut.clock, dut.reset, 8, c.mode, c.width)
+          runDCache(dut.io, dut.clock, dut.reset, 8, c.mode, c.width)
         }
       }
     }
   }
 
   "DIRECTORY 容量冲突" should "显式失效被挤出目录的 Cache 行" in {
-    val dirCase = AliasCase(ysyx_26030103_ViptAliasScan.Directory, 0)
+    val dirCase = AliasCase(ysyx_26030103_VIPTAliasScan.Directory, 0)
     withClue("ICacheReg directory entries=4") {
       simulate(icacheReg(3, dirCase, dirEntries = 4)) { dut =>
-        runIcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+        runICacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
       }
     }
     withClue("ICacheSRAM directory entries=4") {
       simulate(icacheSram(3, dirCase, dirEntries = 4)) { dut =>
-        runIcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+        runICacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
       }
     }
     withClue("DCacheReg directory entries=4") {
       simulate(dcacheReg(3, dirCase, dirEntries = 4)) { dut =>
-        runDcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+        runDCacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
       }
     }
     withClue("DCacheSRAM directory entries=4") {
       simulate(dcacheSram(3, dirCase, dirEntries = 4)) { dut =>
-        runDcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+        runDCacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
       }
     }
     // 最小目录（1 项）也必须保证“目录命中缺失 = 没有有效副本”：所有
     // set 共用一个桶，每次安装都失效前一行，仍不能出现陈旧 alias。
     withClue("ICacheReg directory entries=1") {
       simulate(icacheReg(3, dirCase, dirEntries = 1)) { dut =>
-        runIcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+        runICacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
       }
     }
     withClue("DCacheReg directory entries=1") {
       simulate(dcacheReg(3, dirCase, dirEntries = 1)) { dut =>
-        runDcacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
+        runDCacheDirectoryCapacity(dut.io, dut.clock, dut.reset)
       }
     }
   }

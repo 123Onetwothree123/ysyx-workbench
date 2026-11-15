@@ -12,7 +12,7 @@ class ysyx_26030103_NutShellMDU(
   private val xlen = config.XLEN
   private val mul = Module(new ysyx_26030103_NutShellMultiplier(xlen + 1))
   private val div = Module(new ysyx_26030103_NutShellDivider(xlen))
-  private val op = io.Req.bits.MDUOp
+  private val op = io.Request.bits.MDUOp
   private val isDiv = op === ysyx_26030103_MDUOp.DIV ||
     op === ysyx_26030103_MDUOp.DIVU ||
     op === ysyx_26030103_MDUOp.REM ||
@@ -21,11 +21,11 @@ class ysyx_26030103_NutShellMDU(
 
   private def signExtend(value: UInt): UInt = Cat(value(xlen - 1), value)
   private def zeroExtend(value: UInt): UInt = Cat(0.U(1.W), value)
-  private val lhs = io.Req.bits.LHS
-  private val rhs = io.Req.bits.RHS
-  private val mulLhs = Mux(op === ysyx_26030103_MDUOp.MULH ||
+  private val lhs = io.Request.bits.LHS
+  private val rhs = io.Request.bits.RHS
+  private val mulLeftHandSide = Mux(op === ysyx_26030103_MDUOp.MULH ||
     op === ysyx_26030103_MDUOp.MULHSU, signExtend(lhs), zeroExtend(lhs))
-  private val mulRhs = Mux(op === ysyx_26030103_MDUOp.MULH,
+  private val mulRightHandSide = Mux(op === ysyx_26030103_MDUOp.MULH,
     signExtend(rhs), zeroExtend(rhs))
 
   // 单笔在途 + 结果保持：NutShell 的 DIV 只在 s_finish 一拍拉高 valid，
@@ -46,22 +46,22 @@ class ysyx_26030103_NutShellMDU(
   private val selectedOutValid = Mux(divSelected, div.io.out.valid, mul.io.out.valid)
   private val selectedResult = Mux(divSelected, divResult, mulResult)
 
-  io.Req.ready := !io.Flush && !busy && !pending &&
+  io.Request.ready := !io.Flush && !busy && !pending &&
     Mux(isDiv, div.io.in.ready, mul.io.in.ready)
-  mul.io.in.valid := io.Req.fire && !isDiv && !io.Flush
-  mul.io.in.bits(0) := mulLhs
-  mul.io.in.bits(1) := mulRhs
+  mul.io.in.valid := io.Request.fire && !isDiv && !io.Flush
+  mul.io.in.bits(0) := mulLeftHandSide
+  mul.io.in.bits(1) := mulRightHandSide
   mul.io.flush := io.Flush
   mul.io.out.ready := !io.Flush && !pending
 
-  div.io.in.valid := io.Req.fire && isDiv && !io.Flush
+  div.io.in.valid := io.Request.fire && isDiv && !io.Flush
   div.io.in.bits(0) := lhs
   div.io.in.bits(1) := rhs
   div.io.sign := isDivSign
   div.io.flush := io.Flush
   div.io.out.ready := !io.Flush && !pending
 
-  when(io.Req.fire) {
+  when(io.Request.fire) {
     divSelected := isDiv
     opReg := op
     busy := true.B
@@ -76,9 +76,9 @@ class ysyx_26030103_NutShellMDU(
   }
   io.PerfDivIterations := divIterationsReg
   io.PerfDivEarlyOut := divEarlyOutReg
-  io.Resp.valid := pending && !io.Flush
-  io.Resp.bits.Result := resultReg
-  when(io.Resp.fire) {
+  io.Response.valid := pending && !io.Flush
+  io.Response.bits.Result := resultReg
+  when(io.Response.fire) {
     pending := false.B
     busy := false.B
   }

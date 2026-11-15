@@ -94,11 +94,11 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
     }
 
     // IFU 的响应端口在两种模式下都连接；非 C 模式内部忽略。
-    ifu.io.RespData := icache.io.resp_data
-    ifu.io.RespValid := icache.io.resp_valid
-    ifu.io.RespExceptionValid := icache.io.resp_fault
-    ifu.io.RespExceptionCause := 1.U(4.W)
-    ifu.io.RespAccessFaultResp := icache.io.access_fault_resp
+    ifu.io.ResponseData := icache.io.resp_data
+    ifu.io.ResponseValid := icache.io.resp_valid
+    ifu.io.ResponseExceptionValid := icache.io.resp_fault
+    ifu.io.ResponseExceptionCause := 1.U(4.W)
+    ifu.io.ResponseAccessFaultResponse := icache.io.access_fault_resp
 
     if (mmuEnabled) {
       // 取指虚拟 PC 与 ICache 的物理取指地址分离；ICache 只有一笔在途，
@@ -113,8 +113,8 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
         // 故障时 mepc 仍指向这条指令的起点。顶层重定向会更新实时
         // FetchPC，因此这里必须锁存故障取指自己的 PC。
         ifuFaultPC := (if (config.UseC) ifu.io.FetchPC
-                       else immuOpt.get.io.faultVaddr)
-        ifuFaultTval := immuOpt.get.io.faultVaddr
+                       else immuOpt.get.io.faultVirtualAddress)
+        ifuFaultTval := immuOpt.get.io.faultVirtualAddress
       }.elsewhen(ifuResponse.fire) {
         ifuFaultValid := false.B
       }
@@ -129,10 +129,10 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
       }.elsewhen(pmpFetchFault && ifu.io.FetchValid && !pmpFetchBlocked) {
         pmpFetchFaultValid := true.B
         pmpFetchFaultPC := (if (config.UseC) ifu.io.FetchPC
-                            else ifu.io.FetchAddr)
+                            else ifu.io.FetchAddress)
         // FetchAddr 是实际被 PMP 拒绝的取指地址；C 模式下跨字第二个字
         // 故障时它比指令起点 FetchPC 更精确。
-        pmpFetchFaultTval := ifu.io.FetchAddr
+        pmpFetchFaultTval := ifu.io.FetchAddress
         pmpFetchBlocked := true.B
       }.elsewhen(pmpFetchInject && ifuResponse.fire) {
         // 只注入一次；blocked 保持到真正提交 trap 的冲刷，避免在同一 PC
@@ -164,7 +164,7 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
     faultBits.pc := fetchFaultPC
     faultBits.ExceptionValid := true.B
     faultBits.ExceptionCause := fetchFaultCause
-    faultBits.AccessFaultResp := 0.U(2.W)
+    faultBits.AccessFaultResponse := 0.U(2.W)
     faultBits.pred_taken := false.B
     faultBits.pred_target := fetchFaultTval
 
@@ -173,7 +173,7 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
       ifuResponse.valid := fetchFaultInject || ifu.io.Out.valid
       ifuResponse.bits := Mux(fetchFaultInject, faultBits, ifu.io.Out.bits)
       ifu.io.Out.ready := ifuResponse.ready && !fetchFaultInject
-      icache.io.resp_ready := ifu.io.RespReady && !fetchFaultInject
+      icache.io.resp_ready := ifu.io.ResponseReady && !fetchFaultInject
     } else {
       val normalBits = WireInit(0.U.asTypeOf(new ysyx_26030103_IFUMessage(XLEN)))
       normalBits.Instruction := icache.io.resp_data
@@ -181,7 +181,7 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
       normalBits.pc := responseTag.pc
       normalBits.ExceptionValid := icache.io.resp_fault
       normalBits.ExceptionCause := 1.U(4.W)
-      normalBits.AccessFaultResp := icache.io.access_fault_resp
+      normalBits.AccessFaultResponse := icache.io.access_fault_resp
       // 取指故障时 tval 必须是发生故障的取指地址，而不是 BTB 预测信息。
       normalBits.pred_taken := responseTag.predTaken && !icache.io.resp_fault
       normalBits.pred_target :=
@@ -205,7 +205,7 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
     // BTB 查询使用架构 PC（C 模式下可能落在字内高半字），并按 IALIGN
     // 决定去掉 1 位还是 2 位对齐位。预测只在 IFU 的指令起点取指上生效。
     val fetchPredictPC =
-      if (config.UseC) ifu.io.FetchPC else ifu.io.FetchAddr
+      if (config.UseC) ifu.io.FetchPC else ifu.io.FetchAddress
     val btbPCShift = if (config.UseC) 1 else 2
     btb.io.lookup_pc := fetchPredictPC(config.AddressWidth - 1, btbPCShift)
     jalBTB.io.lookup_pc := fetchPredictPC(config.AddressWidth - 1, btbPCShift)
@@ -242,7 +242,7 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
     jalBTB.io.flush := exu.io.FenceIFlush || contextFlush
     // RAS更新: call压栈, ret弹栈
     ras.io.push_valid := exu.io.RASPushValid
-    ras.io.push_addr := exu.io.RASPushAddr
+    ras.io.push_addr := exu.io.RASPushAddress
     ras.io.pop_valid := exu.io.RASPopValid
     ras.io.flush := exu.io.FenceIFlush || contextFlush
 
@@ -264,18 +264,18 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
            ysyx_26030103_ICacheCoherence.HardwareSnoop
        ) lsu.io.StoreCommit
        else false.B)
-    icache.io.snoop_addr := lsu.io.StoreCommitAddr
-    icache.io.snoop_addr_hi := lsu.io.StoreCommitLastAddr
+    icache.io.snoop_addr := lsu.io.StoreCommitAddress
+    icache.io.snoop_addr_hi := lsu.io.StoreCommitLastAddress
     // DMA 地址级 snoop：仲裁器在 DMA 写 B 到达时给出本次 burst 覆盖的
     // 字节范围，ICache/DCache 各自展开为重叠行并失效。两个 ready 都为高
     // 后仲裁器才把 B 交给 CPU slave，因此 DMA 完成事件不会早于失效完成。
     icache.io.dma_snoop_valid := arbiter.io.dmaSnoopValid
     icache.io.dma_snoop_start := arbiter.io.dmaSnoopStart
     icache.io.dma_snoop_end := arbiter.io.dmaSnoopEnd
-    lsu.io.DCacheDmaSnoopValid := arbiter.io.dmaSnoopValid
-    lsu.io.DCacheDmaSnoopStart := arbiter.io.dmaSnoopStart
-    lsu.io.DCacheDmaSnoopEnd := arbiter.io.dmaSnoopEnd
+    lsu.io.DCacheDMASnoopValid := arbiter.io.dmaSnoopValid
+    lsu.io.DCacheDMASnoopStart := arbiter.io.dmaSnoopStart
+    lsu.io.DCacheDMASnoopEnd := arbiter.io.dmaSnoopEnd
     arbiter.io.dmaSnoopDone :=
-      icache.io.dma_snoop_ready && lsu.io.DCacheDmaSnoopReady
+      icache.io.dma_snoop_ready && lsu.io.DCacheDMASnoopReady
   }
 }

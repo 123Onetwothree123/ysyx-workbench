@@ -18,7 +18,7 @@ import scala.collection.mutable
 class ysyx_26030103_ICacheBlockSizeAuditTest
     extends AnyFlatSpec
     with Matchers {
-  private val AddrW = 32
+  private val AddressW = 32
   private val Pma = Seq(
     ysyx_26030103_PMARegion(
       0x80000000L,
@@ -62,11 +62,11 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
           Enable = true,
           BlockSizeLog2 = 2,
           IndexBits = indexBits,
-          AddressWidth = AddrW,
-          Vipt = vipt,
-          ViptAliasSafe = vipt,
-          ViptAliasScanMode = aliasMode,
-          ViptAliasScanWidth = 2,
+          AddressWidth = AddressW,
+          VIPT = vipt,
+          VIPTAliasSafe = vipt,
+          VIPTAliasScanMode = aliasMode,
+          VIPTAliasScanWidth = 2,
           PMARegions = Pma
         )
       case "sram" =>
@@ -74,11 +74,11 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
           Enable = true,
           BlockSizeLog2 = 2,
           IndexBits = indexBits,
-          AddressWidth = AddrW,
-          Vipt = vipt,
-          ViptAliasSafe = vipt,
-          ViptAliasScanMode = aliasMode,
-          ViptAliasScanWidth = 2,
+          AddressWidth = AddressW,
+          VIPT = vipt,
+          VIPTAliasSafe = vipt,
+          VIPTAliasScanMode = aliasMode,
+          VIPTAliasScanWidth = 2,
           PMARegions = Pma
         )
       case other => throw new IllegalArgumentException(other)
@@ -92,10 +92,10 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddrW.W))
-    io.fetch_vaddr.poke(0.U(AddrW.W))
+    io.fetch_addr.poke(0.U(AddressW.W))
+    io.fetch_vaddr.poke(0.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
     io.fetch_valid.poke(false.B)
     io.resp_ready.poke(false.B)
     io.axi.AR.ARREADY.poke(false.B)
@@ -106,8 +106,8 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
     io.flush.poke(false.B)
     io.kill.poke(false.B)
     io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U(AddrW.W))
-    io.snoop_addr_hi.poke(0.U(AddrW.W))
+    io.snoop_addr.poke(0.U(AddressW.W))
+    io.snoop_addr_hi.poke(0.U(AddressW.W))
   }
 
   private def issueFetch(
@@ -115,10 +115,10 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
       clock: Clock,
       addr:  Long
   ): Unit = {
-    io.fetch_addr.poke(addr.U(AddrW.W))
-    io.fetch_vaddr.poke(addr.U(AddrW.W))
+    io.fetch_addr.poke(addr.U(AddressW.W))
+    io.fetch_vaddr.poke(addr.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(addr.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(addr.U(AddressW.W))
     io.fetch_valid.poke(true.B)
     waitUntil(clock, bool(io.fetch_ready), s"ICache 未受理取指 0x${addr.toHexString}")
     clock.step()
@@ -186,8 +186,8 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
         kind,
         indexBits,
         vipt,
-        if (vipt) ysyx_26030103_ViptAliasScan.Serial
-        else ysyx_26030103_ViptAliasScan.AllSets
+        if (vipt) ysyx_26030103_VIPTAliasScan.Serial
+        else ysyx_26030103_VIPTAliasScan.AllSets
       )
     ) { dut =>
       val io    = dut.io

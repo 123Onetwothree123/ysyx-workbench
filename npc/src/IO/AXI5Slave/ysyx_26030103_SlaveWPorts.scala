@@ -6,6 +6,6 @@ private[ysyx_26030103] trait ysyx_26030103_SlaveWPorts {
   val wready = Output(Bool())
   val wvalid = Input(Bool())
   val wdata = Input(UInt(SocDataWidth.W))
-  val wstrb = Input(UInt(SocStrbWidth.W))
+  val wstrb = Input(UInt(SocStrobeWidth.W))
   val wlast = Input(Bool())
 }

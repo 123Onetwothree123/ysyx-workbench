@@ -8,70 +8,70 @@ private[mem] trait LSURead {
 
   def readRequestBody(): Unit = {
     if (DCacheEnable) {
-      when(DCacheRequestActive) {
-        when(DCache.io.req.fire) { state := StatesReadResponse }
+      when(dataCacheRequestActive) {
+        when(DCache.io.req.fire) { state := stateReadResponse }
       }.otherwise {
         io.DataBus.AR.ARVALID := true.B
-        io.DataBus.AR.ARADDR := AddrOf(ActiveInstruction.ALUResult)
+        io.DataBus.AR.ARADDR := addressOf(activeInstruction.ALUResult)
         io.DataBus.AR.ARLEN :=
-          Mux(ReadIsWide && !BusWideBit, 1.U, 0.U)
+          Mux(readIsWide && !busWideBit, 1.U, 0.U)
         io.DataBus.AR.ARSIZE :=
-          Mux(ReadIsWide && BusWideBit, 3.U, AXISize)
-        when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
+          Mux(readIsWide && busWideBit, 3.U, axiSize)
+        when(io.DataBus.AR.ARREADY) { state := stateReadResponse }
       }
     } else {
       io.DataBus.AR.ARVALID := true.B
-      io.DataBus.AR.ARADDR := AddrOf(ActiveInstruction.ALUResult)
-      io.DataBus.AR.ARLEN := Mux(ReadIsWide && !BusWideBit, 1.U, 0.U)
-      io.DataBus.AR.ARSIZE := Mux(ReadIsWide && BusWideBit, 3.U, AXISize)
-      when(io.DataBus.AR.ARREADY) { state := StatesReadResponse }
+      io.DataBus.AR.ARADDR := addressOf(activeInstruction.ALUResult)
+      io.DataBus.AR.ARLEN := Mux(readIsWide && !busWideBit, 1.U, 0.U)
+      io.DataBus.AR.ARSIZE := Mux(readIsWide && busWideBit, 3.U, axiSize)
+      when(io.DataBus.AR.ARREADY) { state := stateReadResponse }
     }
   }
 
   def readResponseBody(): Unit = {
     if (DCacheEnable) {
-      when(DCacheRequestActive) {
+      when(dataCacheRequestActive) {
         when(DCache.io.resp.fire) {
-          LoadForwardValid := true.B
-          LoadForwardData := DCache.io.resp.bits.data
-          LoadForwardFault := DCache.io.resp.bits.fault
+          loadForwardValid := true.B
+          loadForwardData := DCache.io.resp.bits.data
+          loadForwardFault := DCache.io.resp.bits.fault
           when(DCache.io.resp.bits.fault) {
-            AccessFaultReg := true.B
-            AccessFaultRespReg := DCache.io.resp.bits.FaultResp
+            accessFaultReg := true.B
+            accessFaultResponseReg := DCache.io.resp.bits.FaultResponse
           }.otherwise {
-            LoadDataReg := DCache.io.resp.bits.data
+            loadDataReg := DCache.io.resp.bits.data
           }
-          DCacheRequestActive := false.B
-          TransactionComplete := true.B
-          TransactionFault := DCache.io.resp.bits.fault
-          state := StatesIdle
+          dataCacheRequestActive := false.B
+          transactionComplete := true.B
+          transactionFault := DCache.io.resp.bits.fault
+          state := stateIdle
         }
       }.otherwise {
         io.DataBus.R.RREADY := true.B
         when(io.DataBus.R.RVALID) {
           when(io.DataBus.R.RRESP =/= 0.U) {
-            AccessFaultReg := true.B
-            AccessFaultRespReg := io.DataBus.R.RRESP
+            accessFaultReg := true.B
+            accessFaultResponseReg := io.DataBus.R.RRESP
           }.otherwise {
-            LoadDataReg := DirectLoadData
+            loadDataReg := directLoadData
           }
           when(io.DataBus.R.RLAST) {
-            LoadForwardValid := true.B
-            LoadForwardData := DirectLoadData
-            LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-            TransactionComplete := true.B
-            TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-            state := StatesIdle
+            loadForwardValid := true.B
+            loadForwardData := directLoadData
+            loadForwardFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
+            transactionComplete := true.B
+            transactionFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
+            state := stateIdle
           }.otherwise {
             // 该请求是单拍AXI读，因此不带RLAST的响应属于协议错误。应继续消费
             // 此通道，直到违规突发传输排空，而不是提前退休。
-            AccessFaultReg := true.B
-            AccessFaultRespReg := Mux(
+            accessFaultReg := true.B
+            accessFaultResponseReg := Mux(
               io.DataBus.R.RRESP =/= 0.U,
               io.DataBus.R.RRESP,
               2.U
             )
-            state := StatesReadDrain
+            state := stateReadDrain
           }
         }
       }
@@ -79,79 +79,79 @@ private[mem] trait LSURead {
       io.DataBus.R.RREADY := true.B
       when(io.DataBus.R.RVALID) {
         when(io.DataBus.R.RRESP =/= 0.U) {
-          AccessFaultReg := true.B
-          AccessFaultRespReg := io.DataBus.R.RRESP
+          accessFaultReg := true.B
+          accessFaultResponseReg := io.DataBus.R.RRESP
         }
-        if (WideMem && !BusWide) {
-          when(ReadIsWide) {
-            when(LoadBeat === 0.U) {
+        if (wideMem && !busWide) {
+          when(readIsWide) {
+            when(loadBeat === 0.U) {
               when(io.DataBus.R.RLAST) {
                 // 两拍读在第一个响应就结束：按协议错误提交访问故障。
-                AccessFaultReg := true.B
-                AccessFaultRespReg := Mux(
+                accessFaultReg := true.B
+                accessFaultResponseReg := Mux(
                   io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-                TransactionComplete := true.B
-                TransactionFault := true.B
-                state := StatesIdle
+                transactionComplete := true.B
+                transactionFault := true.B
+                state := stateIdle
               }.otherwise {
-                LoadWord0Reg := io.DataBus.R.RDATA
-                LoadBeat := 1.U
+                loadWord0Reg := io.DataBus.R.RDATA
+                loadBeat := 1.U
               }
             }.otherwise {
               when(io.DataBus.R.RLAST) {
-                val FinalData = DirectLoadData
-                when(!(AccessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
-                  LoadDataReg := FinalData
+                val finalData = directLoadData
+                when(!(accessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
+                  loadDataReg := finalData
                 }
-                LoadForwardValid := true.B
-                LoadForwardData := FinalData
-                LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-                TransactionComplete := true.B
-                TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-                state := StatesIdle
+                loadForwardValid := true.B
+                loadForwardData := finalData
+                loadForwardFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
+                transactionComplete := true.B
+                transactionFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
+                state := stateIdle
               }.otherwise {
-                AccessFaultReg := true.B
-                AccessFaultRespReg := Mux(
+                accessFaultReg := true.B
+                accessFaultResponseReg := Mux(
                   io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-                state := StatesReadDrain
+                state := stateReadDrain
               }
             }
           }.otherwise {
             when(io.DataBus.R.RLAST) {
-              val FinalData = DirectLoadData
-              when(!(AccessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
-                LoadDataReg := FinalData
+              val finalData = directLoadData
+              when(!(accessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
+                loadDataReg := finalData
               }
-              LoadForwardValid := true.B
-              LoadForwardData := FinalData
-              LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-              TransactionComplete := true.B
-              TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-              state := StatesIdle
+              loadForwardValid := true.B
+              loadForwardData := finalData
+              loadForwardFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
+              transactionComplete := true.B
+              transactionFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
+              state := stateIdle
             }.otherwise {
-              AccessFaultReg := true.B
-              AccessFaultRespReg := Mux(
+              accessFaultReg := true.B
+              accessFaultResponseReg := Mux(
                 io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-              state := StatesReadDrain
+              state := stateReadDrain
             }
           }
         } else {
           when(io.DataBus.R.RLAST) {
-            val FinalData = DirectLoadData
-            when(!(AccessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
-              LoadDataReg := FinalData
+            val finalData = directLoadData
+            when(!(accessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
+              loadDataReg := finalData
             }
-            LoadForwardValid := true.B
-            LoadForwardData := FinalData
-            LoadForwardFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-            TransactionComplete := true.B
-            TransactionFault := AccessFaultReg || io.DataBus.R.RRESP =/= 0.U
-            state := StatesIdle
+            loadForwardValid := true.B
+            loadForwardData := finalData
+            loadForwardFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
+            transactionComplete := true.B
+            transactionFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
+            state := stateIdle
           }.otherwise {
-            AccessFaultReg := true.B
-            AccessFaultRespReg := Mux(
+            accessFaultReg := true.B
+            accessFaultResponseReg := Mux(
               io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-            state := StatesReadDrain
+            state := stateReadDrain
           }
         }
       }
@@ -161,24 +161,24 @@ private[mem] trait LSURead {
   def readDrainBody(): Unit = {
     io.DataBus.R.RREADY := true.B
     when(io.DataBus.R.RVALID && io.DataBus.R.RLAST) {
-      TransactionComplete := true.B
-      TransactionFault := true.B
-      AtomicActive := false.B
-      state := StatesIdle
-    }.elsewhen(ReadDrainTimer === DrainTimeout.U) {
+      transactionComplete := true.B
+      transactionFault := true.B
+      atomicActive := false.B
+      state := stateIdle
+    }.elsewhen(readDrainTimer === DrainTimeout.U) {
       // 从设备缺少 RLAST：继续等待只会让 LSU 永久忙。按访问故障完成
       // 当前指令，让流水线恢复（迟到的 beat 由后续事务承担风险，和
       // DCache 的 drain 超时恢复策略一致）。
-      AccessFaultReg := true.B
-      when(AccessFaultRespReg === 0.U) {
-        AccessFaultRespReg := 2.U
+      accessFaultReg := true.B
+      when(accessFaultResponseReg === 0.U) {
+        accessFaultResponseReg := 2.U
       }
-      TransactionComplete := true.B
-      TransactionFault := true.B
-      AtomicActive := false.B
-      state := StatesIdle
+      transactionComplete := true.B
+      transactionFault := true.B
+      atomicActive := false.B
+      state := stateIdle
     }.otherwise {
-      ReadDrainTimer := ReadDrainTimer + 1.U
+      readDrainTimer := readDrainTimer + 1.U
     }
   }
 }

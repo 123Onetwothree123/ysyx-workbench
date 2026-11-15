@@ -24,33 +24,33 @@ class ysyx_26030103_HardFloatFPUTest extends AnyFlatSpec with Matchers {
     )
 
   private def opOf(op: UInt): BigInt = op.litValue
-  private def fadd = opOf(ysyx_26030103_FpuOp.FAdd)
-  private def fsub = opOf(ysyx_26030103_FpuOp.FSub)
-  private def fmul = opOf(ysyx_26030103_FpuOp.FMul)
-  private def fdiv = opOf(ysyx_26030103_FpuOp.FDiv)
-  private def fsqrt = opOf(ysyx_26030103_FpuOp.FSqrt)
-  private def ffma = opOf(ysyx_26030103_FpuOp.FFma)
-  private def ffms = opOf(ysyx_26030103_FpuOp.FFms)
-  private def ffnma = opOf(ysyx_26030103_FpuOp.FFnma)
-  private def ffnms = opOf(ysyx_26030103_FpuOp.FFnms)
-  private def fsgnj = opOf(ysyx_26030103_FpuOp.FSgnj)
-  private def fsgnjn = opOf(ysyx_26030103_FpuOp.FSgnjn)
-  private def fsgnjx = opOf(ysyx_26030103_FpuOp.FSgnjx)
-  private def fmin = opOf(ysyx_26030103_FpuOp.FMin)
-  private def fmax = opOf(ysyx_26030103_FpuOp.FMax)
-  private def fclass = opOf(ysyx_26030103_FpuOp.FClass)
-  private def feq = opOf(ysyx_26030103_FpuOp.FEq)
-  private def flt = opOf(ysyx_26030103_FpuOp.FLt)
-  private def fle = opOf(ysyx_26030103_FpuOp.FLe)
-  private def cvtI = opOf(ysyx_26030103_FpuOp.FCvtFpToInt)
-  private def cvtU = opOf(ysyx_26030103_FpuOp.FCvtFpToUInt)
-  private def cvtF = opOf(ysyx_26030103_FpuOp.FCvtIntToFp)
-  private def cvtFU = opOf(ysyx_26030103_FpuOp.FCvtUIntToFp)
-  private def cvtFF = opOf(ysyx_26030103_FpuOp.FCvtFpToFp)
-  private def mvFpInt = opOf(ysyx_26030103_FpuOp.FMvFpToInt)
-  private def mvIntFp = opOf(ysyx_26030103_FpuOp.FMvIntToFp)
-  private val S = ysyx_26030103_FpuFmt.S.litValue
-  private val D = ysyx_26030103_FpuFmt.D.litValue
+  private def fadd = opOf(ysyx_26030103_FPUOp.FAdd)
+  private def fsub = opOf(ysyx_26030103_FPUOp.FSub)
+  private def fmul = opOf(ysyx_26030103_FPUOp.FMul)
+  private def fdiv = opOf(ysyx_26030103_FPUOp.FDiv)
+  private def fsqrt = opOf(ysyx_26030103_FPUOp.FSqrt)
+  private def ffma = opOf(ysyx_26030103_FPUOp.FFma)
+  private def ffms = opOf(ysyx_26030103_FPUOp.FFms)
+  private def ffnma = opOf(ysyx_26030103_FPUOp.FFnma)
+  private def ffnms = opOf(ysyx_26030103_FPUOp.FFnms)
+  private def fsgnj = opOf(ysyx_26030103_FPUOp.FSgnj)
+  private def fsgnjn = opOf(ysyx_26030103_FPUOp.FSgnjn)
+  private def fsgnjx = opOf(ysyx_26030103_FPUOp.FSgnjx)
+  private def fmin = opOf(ysyx_26030103_FPUOp.FMin)
+  private def fmax = opOf(ysyx_26030103_FPUOp.FMax)
+  private def fclass = opOf(ysyx_26030103_FPUOp.FClass)
+  private def feq = opOf(ysyx_26030103_FPUOp.FEq)
+  private def flt = opOf(ysyx_26030103_FPUOp.FLt)
+  private def fle = opOf(ysyx_26030103_FPUOp.FLe)
+  private def cvtI = opOf(ysyx_26030103_FPUOp.FCvtFPToInt)
+  private def cvtU = opOf(ysyx_26030103_FPUOp.FCvtFPToUInt)
+  private def cvtF = opOf(ysyx_26030103_FPUOp.FCvtIntToFP)
+  private def cvtFU = opOf(ysyx_26030103_FPUOp.FCvtUIntToFP)
+  private def cvtFF = opOf(ysyx_26030103_FPUOp.FCvtFPToFP)
+  private def mvFPInt = opOf(ysyx_26030103_FPUOp.FMvFPToInt)
+  private def mvIntFP = opOf(ysyx_26030103_FPUOp.FMvIntToFP)
+  private val S = ysyx_26030103_FPUFmt.S.litValue
+  private val D = ysyx_26030103_FPUFmt.D.litValue
   private val RNE = 0
   private val RTZ = 1
   private val RDN = 2
@@ -242,11 +242,11 @@ class ysyx_26030103_HardFloatFPUTest extends AnyFlatSpec with Matchers {
   it should "实现 FMV 的 NaN-boxing 与整数宽度" in {
     // FMV.X.W 把低 32 位按 bit31 符号扩展；FMV.X.D 保留完整 64 位。
     val raw = BigInt("ffffffff80000001", 16)
-    exec(mvFpInt, S, S, RNE, raw, intWord = true)._1 should be(
+    exec(mvFPInt, S, S, RNE, raw, intWord = true)._1 should be(
       BigInt("ffffffff80000001", 16))
-    exec(mvIntFp, S, S, RNE, BigInt("7fc00001", 16), intWord = true)._1 should be(
+    exec(mvIntFP, S, S, RNE, BigInt("7fc00001", 16), intWord = true)._1 should be(
       boxS(BigInt("7fc00001", 16)))
-    exec(mvIntFp, D, D, RNE, BigInt("7ff8000000000001", 16),
+    exec(mvIntFP, D, D, RNE, BigInt("7ff8000000000001", 16),
       intWord = false)._1 should be(BigInt("7ff8000000000001", 16))
   }
 

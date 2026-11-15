@@ -23,7 +23,7 @@ private[ysyx_26030103] trait AXIConnect { this: ysyx_26030103 =>
         DownstreamAddressWidth = socXLEN,
         UpstreamDataWidth = busDataWidth,
         DownstreamDataWidth = socXLEN,
-        IdWidth = 4
+        IDWidth = 4
       )
     )
     socMasterBridge.io.in <> xbar.io.SoCBus
@@ -80,7 +80,7 @@ private[ysyx_26030103] trait AXIConnect { this: ysyx_26030103 =>
         DownstreamAddressWidth = config.AddressWidth,
         UpstreamDataWidth = socXLEN,
         DownstreamDataWidth = busDataWidth,
-        IdWidth = 4,
+        IDWidth = 4,
         TrackExclusive = true
       )
     )
@@ -182,10 +182,10 @@ private[ysyx_26030103] trait AXIConnect { this: ysyx_26030103 =>
     // full-SoC 的 UART 只接到 io.interrupt（M/S 外部中断直连），否则软件
     // 按 16550/PLIC 语义配置的 source 10 永远看不到中断。
     // 其余 source 保持未连接。
-    val uartPlicSource = 10
+    val uartPLICSource = 10
     val plicSourceBits = (0 until config.MMU.plicSources).map { sourceIndex =>
-      if (sourceIndex == 1) clint.io.timer_irq && config.MMU.hasSTimerIrq.B
-      else if (sourceIndex == uartPlicSource) io.uart_irq
+      if (sourceIndex == 1) clint.io.timer_irq && config.MMU.hasSTimerIRQ.B
+      else if (sourceIndex == uartPLICSource) io.uart_irq
       else false.B
     }
     plic.sources := Cat(plicSourceBits.reverse)

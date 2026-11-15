@@ -8,110 +8,110 @@ class ysyx_26030103_ICacheReg(
     IndexBits: Int = ysyx_26030103_KconfigDefaults.NpcICacheIndexBits,
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
-    Vipt: Boolean = false,
+    VIPT: Boolean = false,
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装前按物理 tag 失效其他 set 的副本，维持每个物理行至多一份。
-    ViptAliasSafe: Boolean = false,
+    VIPTAliasSafe: Boolean = false,
     // alias 失效扫描方式：all_sets 单拍全扫描；serial 每周期扫描一个 set；
     // parallel_n 每周期扫描 N 个 set；directory 维护物理行目录。
-    ViptAliasScanMode: String = "all_sets",
+    VIPTAliasScanMode: String = "all_sets",
     // parallel_n 的每周期扫描宽度；0=自动(min(4, sets))，超过 sets 时截断。
-    ViptAliasScanWidth: Int = 0,
+    VIPTAliasScanWidth: Int = 0,
     // directory 的目录项数；0=跟随 sets（完整无冲突），小于 sets 时按
     // set 低位分桶，桶冲突会失效被挤出的 Cache 行。
-    ViptAliasDirectoryEntries: Int = 0,
+    VIPTAliasDirectoryEntries: Int = 0,
     // 自修改代码 store snoop：store B 完成时按物理地址失效对应 ICache 行。
     // 默认关闭（仅标准 fence.i），显式选择 HARDWARE_SNOOP 才生成比较逻辑。
     Snoop: Boolean = false,
     // DMA 地址级 snoop：DMA 写 B 到达时按字节范围失效所有重叠行。
     // 只有 DMA_COHERENCE=hardware_snoop 才生成。
-    DmaSnoop: Boolean = false,
+    DMASnoop: Boolean = false,
     DrainTimeout: Int = ysyx_26030103_KconfigDefaults.ICacheDrainTimeout,
     PMARegions: Seq[ysyx_26030103_PMARegion] =
       ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = false)
 ) extends ysyx_26030103_ICacheBase(AddressWidth, DataWidth) {
   require(DataWidth == 32 || DataWidth == 64,
     s"ICacheReg DataWidth 非法: $DataWidth")
-  ysyx_26030103_ViptAliasScan.requireMode(ViptAliasScanMode, "ICacheReg")
+  ysyx_26030103_VIPTAliasScan.requireMode(VIPTAliasScanMode, "ICacheReg")
   // 只在真正需要 alias 维护的几何下生成扫描/目录硬件。
-  private val AliasScanActive =
-    ViptAliasSafe && Enable &&
-      ysyx_26030103_ViptAliasScan.isScan(ViptAliasScanMode)
-  private val AliasAllSets =
-    ViptAliasSafe && Enable &&
-      ysyx_26030103_ViptAliasScan.isAllSets(ViptAliasScanMode)
-  private val AliasDirectoryMode =
-    ViptAliasSafe && Enable &&
-      ysyx_26030103_ViptAliasScan.isDirectory(ViptAliasScanMode)
+  private val aliasScanActive =
+    VIPTAliasSafe && Enable &&
+      ysyx_26030103_VIPTAliasScan.isScan(VIPTAliasScanMode)
+  private val aliasAllSets =
+    VIPTAliasSafe && Enable &&
+      ysyx_26030103_VIPTAliasScan.isAllSets(VIPTAliasScanMode)
+  private val aliasDirectoryMode =
+    VIPTAliasSafe && Enable &&
+      ysyx_26030103_VIPTAliasScan.isDirectory(VIPTAliasScanMode)
   // alias 模式必须比较完整物理行号：index 含 VPN 位时，PA 中与 index
   // 对应的位并不由 VA index 决定，若仍省略这些位，两个只有该位不同的
   // 物理行会在同一 set 中 false hit。页内安全 VIPT 可继续使用窄 tag。
-  val TagBits =
-    if (ViptAliasSafe) AddressWidth - BlockSizeLog2
+  val tagBits =
+    if (VIPTAliasSafe) AddressWidth - BlockSizeLog2
     else AddressWidth - IndexBits - BlockSizeLog2
-  private def TagOf(address: UInt): UInt =
-    if (ViptAliasSafe) address(AddressWidth - 1, BlockSizeLog2)
+  private def tagOf(address: UInt): UInt =
+    if (VIPTAliasSafe) address(AddressWidth - 1, BlockSizeLog2)
     else address(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  val NumBlocks = 1 << IndexBits
-  val WordsPerBlock = 1 << (BlockSizeLog2 - 2) // 块大小 ÷ 4字节
-  val WordsPerBeat = DataWidth / 32 // 每个AXI beat包含的32位字数(32位总线=1, 64位总线=2)
-  val BeatsPerBlock = WordsPerBlock / WordsPerBeat // 填满一条line所需的beat数
-  require(WordsPerBlock % WordsPerBeat == 0,
-    s"块内字数($WordsPerBlock)不能被每拍字数($WordsPerBeat)整除")
-  val BeatCntBits = log2Ceil(BeatsPerBlock).max(1) // refill beat计数器位宽
-  val BusBytes = DataWidth / 8 // 一个AXI beat的字节数
-  val BeatSizeLog2 = log2Ceil(BusBytes) // ARSIZE: 32位总线=2, 64位总线=3
-  private val BeatWordBits = log2Ceil(WordsPerBeat) // beat内word偏移位宽
-  private def BeatWordOffset(Beat: UInt, WordInBeat: Int): UInt =
-    if (WordsPerBeat == 1) Beat
-    else if (BeatsPerBlock == 1) WordInBeat.U(BeatWordBits.W)
-    else Cat(Beat, WordInBeat.U(BeatWordBits.W))
-  private def BeatWordMask(Beat: UInt): UInt =
-    (0 until WordsPerBeat)
-      .map(k => UIntToOH(BeatWordOffset(Beat, k), WordsPerBlock))
+  val numBlocks = 1 << IndexBits
+  val wordsPerBlock = 1 << (BlockSizeLog2 - 2) // 块大小 ÷ 4字节
+  val wordsPerBeat = DataWidth / 32 // 每个AXI beat包含的32位字数(32位总线=1, 64位总线=2)
+  val beatsPerBlock = wordsPerBlock / wordsPerBeat // 填满一条line所需的beat数
+  require(wordsPerBlock % wordsPerBeat == 0,
+    s"块内字数($wordsPerBlock)不能被每拍字数($wordsPerBeat)整除")
+  val beatCountBits = log2Ceil(beatsPerBlock).max(1) // refill beat计数器位宽
+  val busBytes = DataWidth / 8 // 一个AXI beat的字节数
+  val beatSizeLog2 = log2Ceil(busBytes) // ARSIZE: 32位总线=2, 64位总线=3
+  private val beatWordBits = log2Ceil(wordsPerBeat) // beat内word偏移位宽
+  private def beatWordOffset(beat: UInt, wordInBeat: Int): UInt =
+    if (wordsPerBeat == 1) beat
+    else if (beatsPerBlock == 1) wordInBeat.U(beatWordBits.W)
+    else Cat(beat, wordInBeat.U(beatWordBits.W))
+  private def beatWordMask(beat: UInt): UInt =
+    (0 until wordsPerBeat)
+      .map(k => UIntToOH(beatWordOffset(beat, k), wordsPerBlock))
       .reduce(_ | _)
   // 扫描/目录参数只在对应模式生效，但先统一解析，非法配置在 elaboration
   // 期明确报错，不会生成“看起来是 parallel 实际退化成 serial”的硬件。
-  private val ScanWidth =
-    ysyx_26030103_ViptAliasScan.resolveScanWidth(
-      ViptAliasScanMode,
-      ViptAliasScanWidth,
-      NumBlocks
+  private val scanWidth =
+    ysyx_26030103_VIPTAliasScan.resolveScanWidth(
+      VIPTAliasScanMode,
+      VIPTAliasScanWidth,
+      numBlocks
     )
-  private val DirectoryEntries =
-    if (ViptAliasDirectoryEntries <= 0) NumBlocks
+  private val directoryEntries =
+    if (VIPTAliasDirectoryEntries <= 0) numBlocks
     else {
-      require(ViptAliasDirectoryEntries <= NumBlocks,
-        s"VIPT alias 目录项数($ViptAliasDirectoryEntries) 不能超过 set 数($NumBlocks)")
-      ViptAliasDirectoryEntries
+      require(VIPTAliasDirectoryEntries <= numBlocks,
+        s"VIPT alias 目录项数($VIPTAliasDirectoryEntries) 不能超过 set 数($numBlocks)")
+      VIPTAliasDirectoryEntries
     }
   // 直接映射cache存储阵列：valid+tag+data
   // 关闭缓存时阵列只留1项占位(其余逻辑不可达), 综合会把这些触发器/组合逻辑全部剪掉
-  private val ArrayBlocks = if (Enable) NumBlocks else 1
-  val valid = RegInit(VecInit(Seq.fill(ArrayBlocks)(false.B)))
-  val tag = Reg(Vec(ArrayBlocks, UInt(TagBits.W)))
-  val data = Reg(Vec(ArrayBlocks, Vec(WordsPerBlock, UInt(32.W))))
+  private val arrayBlocks = if (Enable) numBlocks else 1
+  val valid = RegInit(VecInit(Seq.fill(arrayBlocks)(false.B)))
+  val tag = Reg(Vec(arrayBlocks, UInt(tagBits.W)))
+  val data = Reg(Vec(arrayBlocks, Vec(wordsPerBlock, UInt(32.W))))
   // 仅 all_sets 在 refill 安装时展开全组 tag 比较；serial/parallel 由
   // 扫描引擎完成，directory 由目录完成，避免同时生成两套专用阵列。
-  private def InvalidateAliasCopies(AliasTag: UInt, TargetIndex: UInt): Unit = {
-    if (AliasAllSets) {
+  private def invalidateAliasCopies(aliasTag: UInt, targetIndex: UInt): Unit = {
+    if (aliasAllSets) {
       for (i <- valid.indices) {
-        when(valid(i) && tag(i) === AliasTag && i.U =/= TargetIndex) {
+        when(valid(i) && tag(i) === aliasTag && i.U =/= targetIndex) {
           valid(i) := false.B
         }
       }
     }
   }
   // directory 模式的事件目录：只在 refill/snoop 事件拍做 CAM 比较。
-  private val AliasDirectory =
-    if (AliasDirectoryMode) {
+  private val aliasDirectory =
+    if (aliasDirectoryMode) {
       Some(
         Module(
-          new ysyx_26030103_ViptAliasDirectory(
+          new ysyx_26030103_VIPTAliasDirectory(
             LineBits = AddressWidth - BlockSizeLog2,
             SetBits = IndexBits,
-            NumSets = NumBlocks,
-            Entries = DirectoryEntries
+            NumSets = numBlocks,
+            Entries = directoryEntries
           )
         )
       )
@@ -121,74 +121,74 @@ class ysyx_26030103_ICacheReg(
   // 自修改代码 store snoop 的行匹配。默认几何下 tag 不含 index 位，
   // 必须同时比较 set；alias-safe 几何下 tag 是完整物理行号，可扫描所有 set。
   // directory 模式改由目录失效，不再生成 tag 扫描阵列。
-  private def SnoopHitVec(address: UInt): UInt =
-    if (!Snoop || !Enable || AliasDirectoryMode) 0.U(ArrayBlocks.W)
+  private def snoopHitVec(address: UInt): UInt =
+    if (!Snoop || !Enable || aliasDirectoryMode) 0.U(arrayBlocks.W)
     else
       VecInit(valid.indices.map { set =>
         val indexMatch =
-          if (ViptAliasSafe) true.B
+          if (VIPTAliasSafe) true.B
           else set.U === address(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
-        valid(set) && tag(set) === TagOf(address) && indexMatch
+        valid(set) && tag(set) === tagOf(address) && indexMatch
       }).asUInt
-  private def LineOf(address: UInt): UInt =
+  private def lineOf(address: UInt): UInt =
     address(AddressWidth - 1, BlockSizeLog2)
-  private def SnoopLineMatch(address: UInt): Bool =
-    LineOf(address) === LineOf(io.snoop_addr) ||
-      LineOf(address) === LineOf(io.snoop_addr_hi)
-  private val DmaSnoopActive = DmaSnoop && Enable
+  private def snoopLineMatch(address: UInt): Bool =
+    lineOf(address) === lineOf(io.snoop_addr) ||
+      lineOf(address) === lineOf(io.snoop_addr_hi)
+  private val dmaSnoopActive = DMASnoop && Enable
   // DMA 范围失效同样是“所有重叠物理行”：普通几何拼回完整行号，
   // alias-safe 几何 tag 本身就是完整行号。
-  private def DmaLineOfSet(set: Int): UInt =
-    if (ViptAliasSafe) tag(set)
+  private def dmaLineOfSet(set: Int): UInt =
+    if (VIPTAliasSafe) tag(set)
     else Cat(tag(set), set.U(IndexBits.W))
-  private val DmaStartLine = io.dma_snoop_start(AddressWidth - 1, BlockSizeLog2)
-  private val DmaEndLine = io.dma_snoop_end(AddressWidth - 1, BlockSizeLog2)
-  private def DmaLineInRange(line: UInt): Bool =
-    line >= DmaStartLine && line <= DmaEndLine
-  private def DmaLineMatch(address: UInt): Bool =
-    DmaLineInRange(LineOf(address))
-  private def DmaSnoopHitVec: UInt =
-    if (!DmaSnoopActive) 0.U(ArrayBlocks.W)
+  private val dmaStartLine = io.dma_snoop_start(AddressWidth - 1, BlockSizeLog2)
+  private val dmaEndLine = io.dma_snoop_end(AddressWidth - 1, BlockSizeLog2)
+  private def dmaLineInRange(line: UInt): Bool =
+    line >= dmaStartLine && line <= dmaEndLine
+  private def dmaLineMatch(address: UInt): Bool =
+    dmaLineInRange(lineOf(address))
+  private def dmaSnoopHitVec: UInt =
+    if (!dmaSnoopActive) 0.U(arrayBlocks.W)
     else
       VecInit(valid.indices.map { set =>
-        valid(set) && DmaLineInRange(DmaLineOfSet(set))
+        valid(set) && dmaLineInRange(dmaLineOfSet(set))
       }).asUInt
-  val indexAddr = if (Vipt) io.fetch_vaddr else io.fetch_addr
-  val index = indexAddr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+  val indexAddress = if (VIPT) io.fetch_vaddr else io.fetch_addr
+  val index = indexAddress(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   // Enable=false时阵列只有一个综合占位项。用Scala期的常量索引访问它，
   // 避免把完整的组索引接到单项Vec上产生W004；Enable=true时仍是原始索引，
   // 不在命中路径增加任何截断或选择逻辑。
-  val IndexSafe = if (Enable) index else 0.U(IndexBits.W)
+  val indexSafe = if (Enable) index else 0.U(IndexBits.W)
   val blockOffset =
-    if (WordsPerBlock > 1) indexAddr(BlockSizeLog2 - 1, 2)
+    if (wordsPerBlock > 1) indexAddress(BlockSizeLog2 - 1, 2)
     else 0.U
-  val reqTag = TagOf(io.fetch_addr)
-  private def AddressInRegion(
-      Address: UInt,
-      Region: ysyx_26030103_PMARegion
+  val reqTag = tagOf(io.fetch_addr)
+  private def addressInRegion(
+      address: UInt,
+      region: ysyx_26030103_PMARegion
   ): Bool = {
-    val Extended = Cat(0.U(1.W), Address)
+    val extended = Cat(0.U(1.W), address)
     // 未启用 C 扩展的 RV32 每次都取一条完整的 4 字节指令。如果只检查
     // 首字节，位于非规则大小可执行区域末尾的请求就可能在 Xbar 拒绝前
     // 越过 EndExclusive。
-    val LastByte = Extended + 3.U((AddressWidth + 1).W)
-    Extended >= BigInt(Region.Base).U((AddressWidth + 1).W) &&
-    LastByte < BigInt(Region.EndExclusive).U((AddressWidth + 1).W)
+    val lastByte = extended + 3.U((AddressWidth + 1).W)
+    extended >= BigInt(region.Base).U((AddressWidth + 1).W) &&
+    lastByte < BigInt(region.EndExclusive).U((AddressWidth + 1).W)
   }
-  private def AddressInRegions(
-      Address: UInt,
-      Regions: Seq[ysyx_26030103_PMARegion]
+  private def addressInRegions(
+      address: UInt,
+      regions: Seq[ysyx_26030103_PMARegion]
   ): Bool =
-    Regions
-      .map(AddressInRegion(Address, _))
+    regions
+      .map(addressInRegion(address, _))
       .reduceOption(_ || _)
       .getOrElse(false.B)
 
-  private val ExecutableRegions = PMARegions.filter(_.Executable)
-  private val CacheableRegions = PMARegions.filter(r => r.Executable && r.Cacheable)
-  require(ExecutableRegions.nonEmpty, "ICache至少需要一个可执行PMA区域")
+  private val executableRegions = PMARegions.filter(_.Executable)
+  private val cacheableRegions = PMARegions.filter(r => r.Executable && r.Cacheable)
+  require(executableRegions.nonEmpty, "ICache至少需要一个可执行PMA区域")
   require(
-    CacheableRegions.forall(r =>
+    cacheableRegions.forall(r =>
       r.Size >= (1L << BlockSizeLog2) &&
         (r.Base & ((1L << BlockSizeLog2) - 1L)) == 0L &&
         (r.Size & ((1L << BlockSizeLog2) - 1L)) == 0L
@@ -198,36 +198,36 @@ class ysyx_26030103_ICacheReg(
 
   // VIPT 下 PA 可能晚于 VA 到达。只接受“PA 有效且其携带的 VA 正是当前
   // 请求 VA”的翻译结果，避免把上一笔请求的旧 PA 用到新 PC 上。
-  val incoming_paddr_match =
-    !Vipt.B || (io.fetch_paddr_valid && io.fetch_paddr_vaddr === io.fetch_vaddr)
+  val incomingPhysicalAddressMatch =
+    !VIPT.B || (io.fetch_paddr_valid && io.fetch_paddr_vaddr === io.fetch_vaddr)
   // 可执行权限和可缓存属性是两个独立的PMA属性。非法取指在本模块
   // 直接形成instruction access fault，不允许向MMIO/CLINT/地址空洞发AR。
-  val executable = AddressInRegions(io.fetch_addr, ExecutableRegions)
+  val executable = addressInRegions(io.fetch_addr, executableRegions)
   val cacheable =
-    if (Enable) AddressInRegions(io.fetch_addr, CacheableRegions) else false.B
+    if (Enable) addressInRegions(io.fetch_addr, cacheableRegions) else false.B
   // 两级流水: s1受理级(寄存请求,命中数据当拍锁存) -> 响应级(命中直接响应,缺失走refill)
-  val s1_valid = RegInit(false.B)
-  val s1_hit = Reg(Bool()) // 受理时判定: 可缓存且命中
-  val s1_ready = RegInit(false.B) // 缺失的关键词已返回(early restart)或refill已完成
-  val fetch_addr_reg = Reg(UInt(AddressWidth.W))
-  val fetch_vaddr_reg = Reg(UInt(AddressWidth.W))
-  val fetch_index_reg = Reg(UInt(IndexBits.W))
-  val fetch_offset_reg = Reg(UInt((BlockSizeLog2 - 2).W)) // 请求时块内word偏移
+  val stage1Valid = RegInit(false.B)
+  val stage1Hit = Reg(Bool()) // 受理时判定: 可缓存且命中
+  val stage1Ready = RegInit(false.B) // 缺失的关键词已返回(early restart)或refill已完成
+  val fetchAddressReg = Reg(UInt(AddressWidth.W))
+  val fetchVirtualAddressReg = Reg(UInt(AddressWidth.W))
+  val fetchIndexReg = Reg(UInt(IndexBits.W))
+  val fetchOffsetReg = Reg(UInt((BlockSizeLog2 - 2).W)) // 请求时块内word偏移
   // VIPT: s1 受理 VA 时可能还没有 PA。该位表示 fetch_addr_reg 已装入
   // 与本请求虚拟地址匹配的物理地址，此后才能做 tag/PMA/refill 判定。
-  val s1_paddr_valid = RegInit(false.B)
-  val FetchIndexSafe =
-    if (Enable) fetch_index_reg else 0.U(IndexBits.W)
-  val FetchOffsetSafe =
-    if (WordsPerBlock > 1) fetch_offset_reg else 0.U
-  val resp_data_reg = Reg(UInt(32.W))
-  val cacheable_reg = RegInit(false.B)
-  val access_fault_reg = RegInit(false.B)
-  val access_fault_resp_reg = RegInit(0.U(2.W))
+  val stage1PhysicalAddressValid = RegInit(false.B)
+  val fetchIndexSafe =
+    if (Enable) fetchIndexReg else 0.U(IndexBits.W)
+  val fetchOffsetSafe =
+    if (wordsPerBlock > 1) fetchOffsetReg else 0.U
+  val responseDataReg = Reg(UInt(32.W))
+  val cacheableReg = RegInit(false.B)
+  val accessFaultReg = RegInit(false.B)
+  val accessFaultResponseReg = RegInit(0.U(2.W))
   // 本拍 store snoop 是否命中“当前取指/迟到的 PA”；命中时不能凭 store
   // 之前的 tag 或半填 refill 数据判定 hit，否则同一拍会把旧指令交付。
   val snoopLineHitNow =
-    if (Snoop && Enable) io.snoop_valid && SnoopLineMatch(io.fetch_addr)
+    if (Snoop && Enable) io.snoop_valid && snoopLineMatch(io.fetch_addr)
     else false.B
   // 已被 s1 锁存、且 PA 已知的请求命中 store 行：撤回本拍响应，让它
   // 在 store 完成后的新一次 refill 中重新取指。异常响应不能撤回，否则
@@ -235,124 +235,124 @@ class ysyx_26030103_ICacheReg(
   // DMA 写的行失效与 CPU store snoop 使用同一套“同拍命中必须让路”的
   // 规则，但地址范围独立，两个事件可以同拍发生。
   val dmaSnoopLineHitNow =
-    if (DmaSnoopActive) io.dma_snoop_valid && DmaLineMatch(io.fetch_addr)
+    if (dmaSnoopActive) io.dma_snoop_valid && dmaLineMatch(io.fetch_addr)
     else false.B
   val anySnoopLineHitNow = snoopLineHitNow || dmaSnoopLineHitNow
-  val snoopS1LineHit =
+  val snoopStage1LineHit =
     if (Snoop && Enable)
-      io.snoop_valid && s1_valid && s1_paddr_valid && !access_fault_reg &&
-        SnoopLineMatch(fetch_addr_reg)
+      io.snoop_valid && stage1Valid && stage1PhysicalAddressValid && !accessFaultReg &&
+        snoopLineMatch(fetchAddressReg)
     else false.B
-  val dmaSnoopS1LineHit =
-    if (DmaSnoopActive)
-      io.dma_snoop_valid && s1_valid && s1_paddr_valid && !access_fault_reg &&
-        DmaLineMatch(fetch_addr_reg)
+  val dmaSnoopStage1LineHit =
+    if (dmaSnoopActive)
+      io.dma_snoop_valid && stage1Valid && stage1PhysicalAddressValid && !accessFaultReg &&
+        dmaLineMatch(fetchAddressReg)
     else false.B
-  val anySnoopS1LineHit = snoopS1LineHit || dmaSnoopS1LineHit
+  val anySnoopStage1LineHit = snoopStage1LineHit || dmaSnoopStage1LineHit
   // refill状态机(单MSHR: 同一时刻只处理一个缺失)
-  val rfstates = Enum(5)
-  val rf_idle = rfstates(0)
-  val rf_req = rfstates(1)
-  val rf_resp = rfstates(2)
-  val rf_drain = rfstates(3)
-  val rf_drain_fault = rfstates(4)
-  val rfstate = RegInit(rf_idle)
+  val refillStates = Enum(5)
+  val refillIdle = refillStates(0)
+  val refillRequest = refillStates(1)
+  val refillResponse = refillStates(2)
+  val refillDrain = refillStates(3)
+  val refillDrainFault = refillStates(4)
+  val refillState = RegInit(refillIdle)
   // 排空超时（AXI要求从设备给RLAST；违规时不能永久停在排空态）。
   // 超时后转入 rf_drain_fault：继续吸收迟到拍防串扰，同时让取指以
   // 故障响应继续推进，而不是整核挂死。
-  val drain_timer = RegInit(0.U(10.W))
-  val drain_retry_timer = RegInit(0.U(10.W))
-  val bus_fault = RegInit(false.B)
+  val drainTimer = RegInit(0.U(10.W))
+  val drainRetryTimer = RegInit(0.U(10.W))
+  val busFault = RegInit(false.B)
   // refill专属寄存器。refill期间只能受理同一line中已返回的word，
   // 未返回word和其他line在单MSHR结构下继续反压。
-  val ref_addr = Reg(UInt(AddressWidth.W))
-  val ref_vindex = Reg(UInt(IndexBits.W))
-  val ref_index = if (Vipt) ref_vindex else ref_addr(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
-  val RefIndexSafe = if (Enable) ref_index else 0.U(IndexBits.W)
-  val ref_tag = TagOf(ref_addr)
-  val ref_offset =
-    if (WordsPerBlock > 1) ref_addr(BlockSizeLog2 - 1, 2)
+  val refillAddress = Reg(UInt(AddressWidth.W))
+  val refillVirtualIndex = Reg(UInt(IndexBits.W))
+  val refillIndex = if (VIPT) refillVirtualIndex else refillAddress(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
+  val refillIndexSafe = if (Enable) refillIndex else 0.U(IndexBits.W)
+  val refillTag = tagOf(refillAddress)
+  val refillOffset =
+    if (wordsPerBlock > 1) refillAddress(BlockSizeLog2 - 1, 2)
     else 0.U
-  val ref_keyword_beat =
-    if (WordsPerBeat == 1) ref_offset
-    else if (BeatsPerBlock > 1)
-      ref_offset(BlockSizeLog2 - 3, BeatWordBits)
+  val refillKeywordBeat =
+    if (wordsPerBeat == 1) refillOffset
+    else if (beatsPerBlock > 1)
+      refillOffset(BlockSizeLog2 - 3, beatWordBits)
     else 0.U
-  val NonCacheableReadWord =
+  val nonCacheableReadWord =
     if (DataWidth == 64)
-      Mux(ref_addr(2) === 1.U, io.axi.R.RDATA(63, 32), io.axi.R.RDATA(31, 0))
+      Mux(refillAddress(2) === 1.U, io.axi.R.RDATA(63, 32), io.axi.R.RDATA(31, 0))
     else io.axi.R.RDATA
-  val ref_cacheable = Reg(Bool())
-  val refill_cnt = RegInit(0.U(BeatCntBits.W)) // 当前正在填充第几个beat
-  val RefillOffsetSafe =
-    if (WordsPerBlock > 1) BeatWordOffset(refill_cnt, 0) else 0.U
+  val refillCacheable = Reg(Bool())
+  val refillCount = RegInit(0.U(beatCountBits.W)) // 当前正在填充第几个beat
+  val refillOffsetSafe =
+    if (wordsPerBlock > 1) beatWordOffset(refillCount, 0) else 0.U
   // line valid仍要等所有beat成功后才会置位。
-  val refill_word_valid = RegInit(0.U(WordsPerBlock.W))
-  val burst_mode = RegInit(false.B) // 突发传输模式标志
+  val refillWordValid = RegInit(0.U(wordsPerBlock.W))
+  val burstMode = RegInit(false.B) // 突发传输模式标志
   // AXI规定VALID一旦对外呈现，在READY前不能撤回。该位区分
   // “刚进rf_req且本拍kill”与“ARVALID已经反压了一拍”。
-  val ar_exposed = RegInit(false.B)
+  val arExposed = RegInit(false.B)
   // 在飞refill是否仍属于当前s1里的请求: 原请求被消费/冲刷/替换后,
   // 后续R拍只写阵列, 绝不再写s1的响应寄存器(那会污染新请求)
   // s1_ready为true时响应已经对外可见，即使尚未握手也不能在反压下修改
   // payload。因此迟到的协议错误只能替换尚未可见的demand响应。
-  val s1_waits = RegInit(false.B)
+  val stage1Waits = RegInit(false.B)
   // flush(fence.i)/kill不能丢弃已被从机接受的AXI事务: 置位后继续把剩余拍排空,
   // 否则残留的R拍会被后续突发误收, 造成块内数据错位
   val discard = RegInit(false.B)
   // 一条cache line的refill错误状态。RRESP错误可能出现在关键词之后，
   // 因而不能只看最后一个beat决定valid；任意一个错误都使整条line失效。
-  val refill_error = RegInit(false.B)
+  val refillError = RegInit(false.B)
   // 正在refill的索引不能走普通valid/tag命中；半填行只能通过
   // refill_word_valid的逐word许可通路访问。
-  val refill_busy = rfstate =/= rf_idle
-  val under_refill = refill_busy && ref_cacheable && (index === ref_index)
+  val refillBusy = refillState =/= refillIdle
+  val underRefill = refillBusy && refillCacheable && (index === refillIndex)
   val hit =
-    valid(IndexSafe) && tag(IndexSafe) === reqTag && !under_refill &&
+    valid(indexSafe) && tag(indexSafe) === reqTag && !underRefill &&
       !anySnoopLineHitNow
-  val refill_line_match =
+  val refillLineMatch =
     io.fetch_addr(AddressWidth - 1, BlockSizeLog2) ===
-      ref_addr(AddressWidth - 1, BlockSizeLog2)
-  val requested_word_arrived =
-    if (WordsPerBlock > 1) refill_word_valid(blockOffset)
-    else refill_word_valid(0)
-  val refill_r_fire = rfstate === rf_resp && io.axi.R.RVALID
-  val malformed_refill_beat_now =
-    refill_r_fire && !io.axi.R.RLAST &&
-      (!ref_cacheable || !burst_mode || refill_cnt === (BeatsPerBlock - 1).U)
-  val refill_error_now =
-    refill_r_fire && (io.axi.R.RRESP =/= 0.U || malformed_refill_beat_now)
+      refillAddress(AddressWidth - 1, BlockSizeLog2)
+  val requestedWordArrived =
+    if (wordsPerBlock > 1) refillWordValid(blockOffset)
+    else refillWordValid(0)
+  val refillReadFire = refillState === refillResponse && io.axi.R.RVALID
+  val malformedRefillBeatNow =
+    refillReadFire && !io.axi.R.RLAST &&
+      (!refillCacheable || !burstMode || refillCount === (beatsPerBlock - 1).U)
+  val refillErrorNow =
+    refillReadFire && (io.axi.R.RRESP =/= 0.U || malformedRefillBeatNow)
   // serial/parallel alias 扫描的启动事件：真正被接受的 cacheable refill AR。
   // 被 kill/flush 取消的错路 refill 不驱逐其它 set 的有效行。
-  val RefillAliasEvent = rfstate === rf_req && io.axi.AR.ARREADY &&
-    ref_cacheable && !discard && !(io.kill && s1_waits)
+  val refillAliasEvent = refillState === refillRequest && io.axi.AR.ARREADY &&
+    refillCacheable && !discard && !(io.kill && stage1Waits)
   // 扫描/启动拍反压新取指，确保不会在旧 alias 副本尚未清完时受理可能
   // 命中它的请求。all_sets/directory 不需要扫描反压。
-  val AliasScanStatus = ysyx_26030103_ViptAliasScan.icacheScan(
-    AliasScanActive,
+  val aliasScanStatus = ysyx_26030103_VIPTAliasScan.icacheScan(
+    aliasScanActive,
     valid,
     tag,
-    RefillAliasEvent,
-    ref_tag,
-    RefIndexSafe,
+    refillAliasEvent,
+    refillTag,
+    refillIndexSafe,
     io.flush,
-    ScanWidth
+    scanWidth
   )
-  val AliasScanBusy = AliasScanStatus.busy
+  val aliasScanBusy = aliasScanStatus.busy
   // directory 模式在 AR 握手拍更新目录并失效旧副本；同一拍不允许受理
   // 新取指，避免组合命中尚未失效的旧行。下一拍目录/valid 已同步。
-  val AliasDirectoryInstallBusy =
-    if (AliasDirectoryMode) RefillAliasEvent else false.B
+  val aliasDirectoryInstallBusy =
+    if (aliasDirectoryMode) refillAliasEvent else false.B
   // 扫描模式把新行 valid 推迟到本轮扫描完成：扫描窗口内不出现两份同时
   // 有效的副本。directory/all_sets 不生成这些状态寄存器，避免默认配置
   // 多出 valid 写口/read mux。
-  private val DeferredAliasInstall = AliasScanActive
-  private val AliasDeferred =
-    if (AliasScanActive) {
+  private val deferredAliasInstall = aliasScanActive
+  private val aliasDeferred =
+    if (aliasScanActive) {
       Some(
         (
           Reg(UInt(IndexBits.W)),
-          Reg(UInt(TagBits.W)),
+          Reg(UInt(tagBits.W)),
           RegInit(false.B)
         )
       )
@@ -361,35 +361,35 @@ class ysyx_26030103_ICacheReg(
     }
   // 目录模式：refill 安装事件插入目录；store snoop 按物理行查目录；
   // flush 清空目录。
-  AliasDirectory.foreach { dir =>
-    dir.io.install := RefillAliasEvent
-    dir.io.installLine := ref_tag
-    dir.io.installSet := RefIndexSafe
+  aliasDirectory.foreach { dir =>
+    dir.io.install := refillAliasEvent
+    dir.io.installLine := refillTag
+    dir.io.installSet := refillIndexSafe
     dir.io.invalidateLine :=
       (if (Snoop && Enable) io.snoop_valid else false.B)
-    dir.io.invalidateLineAddr := io.snoop_addr(AddressWidth - 1, BlockSizeLog2)
+    dir.io.invalidateLineAddress := io.snoop_addr(AddressWidth - 1, BlockSizeLog2)
     dir.io.keepSet := false.B
     dir.io.keepSetIndex := 0.U
     dir.io.invalidateLine2 :=
       (if (Snoop && Enable) io.snoop_valid else false.B)
-    dir.io.invalidateLine2Addr :=
+    dir.io.invalidateLine2Address :=
       io.snoop_addr_hi(AddressWidth - 1, BlockSizeLog2)
     // DMA 地址级 snoop 按物理行范围清目录项；Cache valid 由
     // DmaSnoopHitVec/refill 丢弃路径同步清除。
-    dir.io.invalidateRange := DmaSnoopActive.B && io.dma_snoop_valid
-    dir.io.invalidateRangeStart := DmaStartLine
-    dir.io.invalidateRangeEnd := DmaEndLine
+    dir.io.invalidateRange := dmaSnoopActive.B && io.dma_snoop_valid
+    dir.io.invalidateRangeStart := dmaStartLine
+    dir.io.invalidateRangeEnd := dmaEndLine
     // refill 自身出错时，Cache 已经不会安装该行；通知目录同步释放
     // 本次 refill 对应的 set，避免目录留下指向失败行的陈旧表项。
-    dir.io.release := refill_error_now
-    dir.io.releaseSet := RefIndexSafe
+    dir.io.release := refillErrorNow
+    dir.io.releaseSet := refillIndexSafe
     dir.io.clear := io.flush
   }
   // 扫描结束后补装被推迟的新行。中途 flush/同一行的 store snoop 必须
   // 取消补装，否则会把 store 之前取到的旧指令重新置为 valid。
-  if (AliasScanActive) {
-    val (deferredIndex, deferredTag, deferredValid) = AliasDeferred.get
-    when(deferredValid && AliasScanStatus.installAllowed && !io.flush) {
+  if (aliasScanActive) {
+    val (deferredIndex, deferredTag, deferredValid) = aliasDeferred.get
+    when(deferredValid && aliasScanStatus.installAllowed && !io.flush) {
       valid(deferredIndex) := true.B
       deferredValid := false.B
     }
@@ -410,39 +410,39 @@ class ysyx_26030103_ICacheReg(
   // 半填行只在“同一 set”内可见：alias 几何下另一个 VA 可能用同一 PA
   // 命中不同 index，而 refill 只把数据写进 RefIndexSafe。若不比较 index，
   // 会把目标 set 的未完成数据当成另一个 set 的内容返回。
-  val partial_refill_hit =
-    (rfstate === rf_req || rfstate === rf_resp) &&
-      ref_cacheable && !discard && !refill_error && !refill_error_now &&
-      refill_line_match && (index === ref_index) && requested_word_arrived &&
+  val partialRefillHit =
+    (refillState === refillRequest || refillState === refillResponse) &&
+      refillCacheable && !discard && !refillError && !refillErrorNow &&
+      refillLineMatch && (index === refillIndex) && requestedWordArrived &&
       !anySnoopLineHitNow
-  val request_hit =
-    incoming_paddr_match && executable && cacheable && (hit || partial_refill_hit)
+  val requestHit =
+    incomingPhysicalAddressMatch && executable && cacheable && (hit || partialRefillHit)
   // VIPT 的“迟到的 PA”解析：s1 里保存的是受理时的 VA/index/offset，
   // 只有 PA 携带的 VA 与之一致时才允许把 PA 装入请求。注意这里不能使用
   // 当前 io.fetch_vaddr（IFU 可能已经推进到下一 PC）。
-  val s1_wait_xlate = Vipt.B && s1_valid && !s1_paddr_valid
-  val resolve_xlate = s1_wait_xlate && io.fetch_paddr_valid &&
-    io.fetch_paddr_vaddr === fetch_vaddr_reg
-  val resolve_tag = TagOf(io.fetch_addr)
-  val resolve_under_refill =
-    refill_busy && ref_cacheable && (fetch_index_reg === ref_index)
-  val resolve_hit =
-    valid(FetchIndexSafe) && tag(FetchIndexSafe) === resolve_tag &&
-      !resolve_under_refill && !anySnoopLineHitNow
-  val resolve_line_match =
+  val stage1WaitTranslate = VIPT.B && stage1Valid && !stage1PhysicalAddressValid
+  val resolveTranslate = stage1WaitTranslate && io.fetch_paddr_valid &&
+    io.fetch_paddr_vaddr === fetchVirtualAddressReg
+  val resolveTag = tagOf(io.fetch_addr)
+  val resolveUnderRefill =
+    refillBusy && refillCacheable && (fetchIndexReg === refillIndex)
+  val resolveHit =
+    valid(fetchIndexSafe) && tag(fetchIndexSafe) === resolveTag &&
+      !resolveUnderRefill && !anySnoopLineHitNow
+  val resolveLineMatch =
     io.fetch_addr(AddressWidth - 1, BlockSizeLog2) ===
-      ref_addr(AddressWidth - 1, BlockSizeLog2)
-  val resolve_word_arrived =
-    if (WordsPerBlock > 1) refill_word_valid(FetchOffsetSafe)
-    else refill_word_valid(0)
-  val resolve_partial_refill_hit =
-    (rfstate === rf_req || rfstate === rf_resp) &&
-      ref_cacheable && !discard && !refill_error && !refill_error_now &&
-      resolve_line_match && (fetch_index_reg === ref_index) &&
-      resolve_word_arrived && !anySnoopLineHitNow
-  val resolve_request_hit =
-    executable && cacheable && (resolve_hit || resolve_partial_refill_hit)
-  io.access_fault_resp := access_fault_resp_reg
+      refillAddress(AddressWidth - 1, BlockSizeLog2)
+  val resolveWordArrived =
+    if (wordsPerBlock > 1) refillWordValid(fetchOffsetSafe)
+    else refillWordValid(0)
+  val resolvePartialRefillHit =
+    (refillState === refillRequest || refillState === refillResponse) &&
+      refillCacheable && !discard && !refillError && !refillErrorNow &&
+      resolveLineMatch && (fetchIndexReg === refillIndex) &&
+      resolveWordArrived && !anySnoopLineHitNow
+  val resolveRequestHit =
+    executable && cacheable && (resolveHit || resolvePartialRefillHit)
+  io.access_fault_resp := accessFaultResponseReg
   io.axi.AW.AWVALID := false.B
   io.axi.AW.AWID := 0.U
   io.axi.AW.AWADDR := 0.U
@@ -461,7 +461,7 @@ class ysyx_26030103_ICacheReg(
   io.axi.AR.ARID := 0.U
   io.axi.AR.ARADDR := 0.U
   io.axi.AR.ARLEN := 0.U
-  io.axi.AR.ARSIZE := BeatSizeLog2.U
+  io.axi.AR.ARSIZE := beatSizeLog2.U
   io.axi.AR.ARBURST := 1.U
   io.axi.AR.ARPROT := 0.U
   io.axi.AR.ARCACHE := 0.U
@@ -469,126 +469,126 @@ class ysyx_26030103_ICacheReg(
   io.axi.R.RREADY := true.B // 始终接收并排空 AXI 响应
   // 响应级: 命中(s1_hit)用受理时锁存的数据; 关键词返回/refill完成(s1_ready)后,
   // 可缓存的从阵列读(关键词所在拍已写入), 不可缓存的用R拍锁存的数据; 错误一律给NOP
-  val responding = s1_valid && (s1_hit || s1_ready) && !anySnoopS1LineHit
+  val responding = stage1Valid && (stage1Hit || stage1Ready) && !anySnoopStage1LineHit
   io.resp_valid := responding
   // 响应携带架构 PC：VIPT 用受理时锁存的 VA；PIPT 的 VA==PA，保持原行为。
-  io.resp_addr := Mux(Vipt.B, fetch_vaddr_reg, fetch_addr_reg)
-  io.resp_fault := access_fault_reg
+  io.resp_addr := Mux(VIPT.B, fetchVirtualAddressReg, fetchAddressReg)
+  io.resp_fault := accessFaultReg
   io.resp_data := Mux(
-    access_fault_reg,
+    accessFaultReg,
     "h00000013".U,
     Mux(
-      s1_hit,
-      resp_data_reg,
-      Mux(cacheable_reg, data(FetchIndexSafe)(FetchOffsetSafe), resp_data_reg)
+      stage1Hit,
+      responseDataReg,
+      Mux(cacheableReg, data(fetchIndexSafe)(fetchOffsetSafe), responseDataReg)
     )
   )
   // 受理级: 响应槽为空,或本拍响应正被接收。refill中可放行
   // 其他index的完整命中，以及同line已返回word的partial hit；两者的
   // 数据都在受理拍锁存到resp_data_reg，不会被后续R beat覆盖。
-  val response_slot_available =
-    !s1_valid || (responding && io.resp_ready)
+  val responseSlotAvailable =
+    !stage1Valid || (responding && io.resp_ready)
   io.fetch_ready :=
     !io.flush &&
       !io.kill &&
-      !AliasScanBusy &&
-      !AliasDirectoryInstallBusy &&
-      response_slot_available &&
-      (rfstate === rf_idle || rfstate === rf_drain_fault || request_hit)
+      !aliasScanBusy &&
+      !aliasDirectoryInstallBusy &&
+      responseSlotAvailable &&
+      (refillState === refillIdle || refillState === refillDrainFault || requestHit)
   val accept = io.fetch_valid && io.fetch_ready
   // VIPT 翻译请求：除了已受理但仍缺 PA 的 s1，还把“本拍正在受理且 PA
   // 尚未匹配”的请求组合地送给 MMU。这样 TLB 查询与 VA 选 index 在同一拍
   // 启动，而不是等受理后下一拍。该信号不参与 fetch_ready 判定，无组合环。
-  val s1_pending_xlate = Vipt.B && s1_valid && !s1_paddr_valid
-  val accept_needs_xlate = Vipt.B && accept && !incoming_paddr_match
-  io.fetch_xlate_pending := s1_pending_xlate || accept_needs_xlate
+  val stage1PendingTranslate = VIPT.B && stage1Valid && !stage1PhysicalAddressValid
+  val acceptNeedsTranslate = VIPT.B && accept && !incomingPhysicalAddressMatch
+  io.fetch_xlate_pending := stage1PendingTranslate || acceptNeedsTranslate
   io.fetch_xlate_vaddr :=
-    Mux(s1_pending_xlate, fetch_vaddr_reg, io.fetch_vaddr)
+    Mux(stage1PendingTranslate, fetchVirtualAddressReg, io.fetch_vaddr)
   // VIPT 的 PA 晚到时，命中/缺失要等 resolve 拍再计数，避免把“尚未翻译”
   // 误报成 miss。
-  io.perf_hit := (accept && request_hit) || (resolve_xlate && resolve_request_hit)
+  io.perf_hit := (accept && requestHit) || (resolveTranslate && resolveRequestHit)
   // 非缓存取指（ICACHE=n 或未来的可执行不可缓存区）不是 miss。
   io.perf_miss :=
-    (accept && incoming_paddr_match && executable && cacheable && !request_hit) ||
-      (resolve_xlate && executable && cacheable && !resolve_request_hit)
-  io.perf_refill_req := rfstate === rf_req
-  io.perf_refill_resp := rfstate === rf_resp
-  val PerfLineFill = WireDefault(false.B)
-  io.perf_line_fill := PerfLineFill
+    (accept && incomingPhysicalAddressMatch && executable && cacheable && !requestHit) ||
+      (resolveTranslate && executable && cacheable && !resolveRequestHit)
+  io.perf_refill_req := refillState === refillRequest
+  io.perf_refill_resp := refillState === refillResponse
+  val perfLineFill = WireDefault(false.B)
+  io.perf_line_fill := perfLineFill
   when(responding && io.resp_ready) {
-    s1_valid := false.B
-    s1_waits := false.B
+    stage1Valid := false.B
+    stage1Waits := false.B
   }
   when(accept) {
     // 虚拟地址在受理拍就锁存并用于选 index；这是 VIPT 并行的关键：
     // 即使 PA 还没到，SRAM/寄存器阵列的组选择也已经发生。
-    fetch_index_reg := index
-    fetch_offset_reg := blockOffset
-    fetch_vaddr_reg := io.fetch_vaddr
-    s1_paddr_valid := incoming_paddr_match
-    s1_valid := true.B
-    s1_waits := false.B
-    when(incoming_paddr_match) {
+    fetchIndexReg := index
+    fetchOffsetReg := blockOffset
+    fetchVirtualAddressReg := io.fetch_vaddr
+    stage1PhysicalAddressValid := incomingPhysicalAddressMatch
+    stage1Valid := true.B
+    stage1Waits := false.B
+    when(incomingPhysicalAddressMatch) {
       // TLB 命中/旁路：PA 同拍可用，走原来的完整命中/缺失路径。
-      fetch_addr_reg := io.fetch_addr
-      resp_data_reg := data(IndexSafe)(blockOffset) // 命中时这就是响应数据
-      cacheable_reg := cacheable
-      s1_hit := request_hit
+      fetchAddressReg := io.fetch_addr
+      responseDataReg := data(indexSafe)(blockOffset) // 命中时这就是响应数据
+      cacheableReg := cacheable
+      stage1Hit := requestHit
       // PMA拒绝不需要总线往返；用DECERR作为调试响应码，并让带故障的
       // NOP响应沿正常流水线到达EXU，在提交点精确写入mepc/mcause。
-      s1_ready := !executable
-      access_fault_reg := !executable
-      access_fault_resp_reg := Mux(executable, 0.U, 3.U)
+      stage1Ready := !executable
+      accessFaultReg := !executable
+      accessFaultResponseReg := Mux(executable, 0.U, 3.U)
       // 总线已超时：不再发AR，直接以故障响应结束本次取指（命中仍可正常
       // 服务，数据在阵列里不需要总线）。
-      when(bus_fault && executable && !request_hit) {
-        s1_ready := true.B
-        access_fault_reg := true.B
-        access_fault_resp_reg := 2.U
+      when(busFault && executable && !requestHit) {
+        stage1Ready := true.B
+        accessFaultReg := true.B
+        accessFaultResponseReg := 2.U
       }
     }.otherwise {
       // VIPT：先占住 s1 等物理地址。此时绝不能判定命中、发 AR 或提交
       // 故障；错误数据也不会在响应通道上出现。
-      cacheable_reg := false.B
-      s1_hit := false.B
-      s1_ready := false.B
-      access_fault_reg := false.B
-      access_fault_resp_reg := 0.U
+      cacheableReg := false.B
+      stage1Hit := false.B
+      stage1Ready := false.B
+      accessFaultReg := false.B
+      accessFaultResponseReg := 0.U
     }
   }
   // PA 到达：用受理时锁存的 VA index + 当前 PA 完成 tag/PMA 判定。
   // 只有携带同一 VA 的 PA 才被接受，旧翻译结果会被忽略。
-  when(resolve_xlate) {
-    fetch_addr_reg := io.fetch_addr
-    s1_paddr_valid := true.B
-    cacheable_reg := cacheable
-    s1_hit := resolve_request_hit
-    s1_ready := !executable
-    access_fault_reg := !executable
-    access_fault_resp_reg := Mux(executable, 0.U, 3.U)
-    when(resolve_request_hit) {
-      resp_data_reg := data(FetchIndexSafe)(FetchOffsetSafe)
+  when(resolveTranslate) {
+    fetchAddressReg := io.fetch_addr
+    stage1PhysicalAddressValid := true.B
+    cacheableReg := cacheable
+    stage1Hit := resolveRequestHit
+    stage1Ready := !executable
+    accessFaultReg := !executable
+    accessFaultResponseReg := Mux(executable, 0.U, 3.U)
+    when(resolveRequestHit) {
+      responseDataReg := data(fetchIndexSafe)(fetchOffsetSafe)
     }
-    when(bus_fault && executable && !resolve_request_hit) {
-      s1_ready := true.B
-      access_fault_reg := true.B
-      access_fault_resp_reg := 2.U
+    when(busFault && executable && !resolveRequestHit) {
+      stage1Ready := true.B
+      accessFaultReg := true.B
+      accessFaultResponseReg := 2.U
     }
   }
   // 排队缺失: refill空闲时启动; 启动前重查命中(在飞refill可能刚把这行填好)
   // VIPT 必须等 PA 解析完成，否则会把 0 地址或旧 PA 当成缺失发上总线。
-  val queued_miss =
-    s1_valid && (!Vipt.B || s1_paddr_valid) && !s1_hit && !s1_ready
-  val recheck_hit = cacheable_reg &&
-    valid(FetchIndexSafe) &&
-    tag(FetchIndexSafe) === TagOf(fetch_addr_reg)
+  val queuedMiss =
+    stage1Valid && (!VIPT.B || stage1PhysicalAddressValid) && !stage1Hit && !stage1Ready
+  val recheckHit = cacheableReg &&
+    valid(fetchIndexSafe) &&
+    tag(fetchIndexSafe) === tagOf(fetchAddressReg)
   // DMA snoop 握手：如果事件到来时已有属于被改写行的 refill，必须等它
   // 把旧事务排空（discard 已置位）后再放行 DMA B。s1 的旧命中在本拍已经
   // 被 anySnoopS1LineHit 压掉，可以在同一沿清掉，不必额外等待。
   // handled 保证同一个 snoop 事件只毒化一次：排空后自动重取的新 refill
   // 读的是 DMA 完成后的内存，不能再被同一个事件打断。
-  val dmaSnoopActiveRefill = DmaSnoopActive.B && (rfstate =/= rf_idle) &&
-    DmaLineMatch(ref_addr)
+  val dmaSnoopActiveRefill = dmaSnoopActive.B && (refillState =/= refillIdle) &&
+    dmaLineMatch(refillAddress)
   val dmaSnoopStaleRefill = RegInit(false.B)
   val dmaSnoopHandled = RegInit(false.B)
   when(!io.dma_snoop_valid) { dmaSnoopHandled := false.B }
@@ -596,154 +596,154 @@ class ysyx_26030103_ICacheReg(
     dmaSnoopHandled := true.B
     when(dmaSnoopActiveRefill) { dmaSnoopStaleRefill := true.B }
   }
-  when(dmaSnoopStaleRefill && rfstate === rf_idle) {
+  when(dmaSnoopStaleRefill && refillState === refillIdle) {
     dmaSnoopStaleRefill := false.B
   }
   val dmaSnoopFirstPoison =
     io.dma_snoop_valid && !dmaSnoopHandled && dmaSnoopActiveRefill
-  io.dma_snoop_ready := (!DmaSnoopActive).B ||
+  io.dma_snoop_ready := (!dmaSnoopActive).B ||
     (!dmaSnoopStaleRefill && !dmaSnoopFirstPoison)
-  when(queued_miss && rfstate === rf_idle && !io.kill && !io.flush &&
-      !bus_fault) {
-    when(recheck_hit) {
-      s1_hit := true.B
-      resp_data_reg := data(FetchIndexSafe)(FetchOffsetSafe)
+  when(queuedMiss && refillState === refillIdle && !io.kill && !io.flush &&
+      !busFault) {
+    when(recheckHit) {
+      stage1Hit := true.B
+      responseDataReg := data(fetchIndexSafe)(fetchOffsetSafe)
     }.otherwise {
-      rfstate := rf_req
-      ref_addr := fetch_addr_reg
-      ref_vindex := fetch_index_reg
-      ref_cacheable := cacheable_reg
-      refill_cnt := 0.U
-      refill_word_valid := 0.U
-      ar_exposed := false.B
-      burst_mode := cacheable_reg
+      refillState := refillRequest
+      refillAddress := fetchAddressReg
+      refillVirtualIndex := fetchIndexReg
+      refillCacheable := cacheableReg
+      refillCount := 0.U
+      refillWordValid := 0.U
+      arExposed := false.B
+      burstMode := cacheableReg
       // 每次新refill都从干净的事务状态开始，不能继承上一次flush/discard
       // 或RRESP错误；旧目标行在AR握手时才失效，避免取消的
       // 错路请求白白驱逐原有行。
       discard := false.B
-      refill_error := false.B
-      s1_waits := true.B
+      refillError := false.B
+      stage1Waits := true.B
     }
   }
   // 注意: refill启动刻意不早于s1_valid寄存后一拍——启动条件里的!io.kill
   // 能抑制错误路径取指的refill(误预测时kill比受理晚一拍到)。曾经试过受理即启动,
   // 结果误预测窗口内的错误路径取指把无用refill发上总线并驱逐有用行, microbench
   // 缺失+70%, 总周期+10.6%, 已回退。
-  switch(rfstate) {
-    is(rf_req) {
+  switch(refillState) {
+    is(refillRequest) {
       // redirect/exception在AR尚未被时钟采样为pending时可以取消错路
       // refill。ARVALID若已被反压过，即使还没握手也必须保持到READY。
-      val cancel_unaccepted =
-        io.kill && s1_waits && !ar_exposed && !io.flush
-      io.axi.AR.ARVALID := !cancel_unaccepted
-      io.axi.AR.ARSIZE := Mux(ref_cacheable, BeatSizeLog2.U, 2.U)
+      val cancelUnaccepted =
+        io.kill && stage1Waits && !arExposed && !io.flush
+      io.axi.AR.ARVALID := !cancelUnaccepted
+      io.axi.AR.ARSIZE := Mux(refillCacheable, beatSizeLog2.U, 2.U)
       io.axi.AR.ARLEN := Mux(
-        ref_cacheable && burst_mode,
-        (BeatsPerBlock - 1).U,
+        refillCacheable && burstMode,
+        (beatsPerBlock - 1).U,
         0.U
       )
       io.axi.AR.ARADDR := Mux(
-        ref_cacheable,
+        refillCacheable,
         Mux(
-          burst_mode,
-          Cat(ref_addr(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W)),
+          burstMode,
+          Cat(refillAddress(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W)),
           if (BlockSizeLog2 > 2)
-            Cat(ref_addr(AddressWidth - 1, BlockSizeLog2), RefillOffsetSafe,
+            Cat(refillAddress(AddressWidth - 1, BlockSizeLog2), refillOffsetSafe,
               0.U(2.W))
           else
-            Cat(ref_addr(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W))
+            Cat(refillAddress(AddressWidth - 1, BlockSizeLog2), 0.U(BlockSizeLog2.W))
         ),
-        ref_addr
+        refillAddress
       )
-      when(cancel_unaccepted) {
-        burst_mode := false.B
+      when(cancelUnaccepted) {
+        burstMode := false.B
         discard := false.B
-        refill_word_valid := 0.U
-        ar_exposed := false.B
-        rfstate := rf_idle
+        refillWordValid := 0.U
+        arExposed := false.B
+        refillState := refillIdle
       }.elsewhen(io.axi.AR.ARREADY) {
         // 延迟到AR真正接受后才失效被替换行；因此未握手的
         // 错路refill被取消时，不会白白驱逐原有有效行。
         // 已展示但在握手前被kill的owner AR必须完成协议，但其
         // discard事务既不写新line，也不应驱逐原victim。
-        val killed_owner_now = io.kill && s1_waits
-        when(ref_cacheable && !discard && !killed_owner_now) {
-          valid(RefIndexSafe) := false.B
-          InvalidateAliasCopies(ref_tag, RefIndexSafe)
+        val killedOwnerNow = io.kill && stage1Waits
+        when(refillCacheable && !discard && !killedOwnerNow) {
+          valid(refillIndexSafe) := false.B
+          invalidateAliasCopies(refillTag, refillIndexSafe)
         }
-        ar_exposed := false.B
-        rfstate := rf_resp
+        arExposed := false.B
+        refillState := refillResponse
       }.otherwise {
         // 本拍ARVALID已对外呈现但被反压；之后即使kill到来也必须
         // 保持地址和VALID，等握手后再排空响应。
-        ar_exposed := true.B
+        arExposed := true.B
       }
     }
-    is(rf_resp) {
+    is(refillResponse) {
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RREADY) {
-        val r_error = io.axi.R.RRESP =/= 0.U
+        val readError = io.axi.R.RRESP =/= 0.U
         // 非缓存访问只有一个beat；缓存访问则只有请求所在的关键词beat
         // 能把错误归属给当前s1请求，其他beat的错误仅记录为line错误。
-        val keyword_beat = !ref_cacheable || (refill_cnt === ref_keyword_beat)
+        val keywordBeat = !refillCacheable || (refillCount === refillKeywordBeat)
 
         // 错误必须在discard时也记录（事务仍在排空），但不能把被flush的
         // 响应重新写回s1。sticky状态保证后续成功beat不能重新置valid。
-        when(r_error) {
-          refill_error := true.B
+        when(readError) {
+          refillError := true.B
           // burst中任一beat失败后，整条line的partial-hit许可立即
           // 撤销；不能再利用早先成功beat的半填数据。
-          refill_word_valid := 0.U
-          when(!discard && s1_waits && keyword_beat) {
-            access_fault_reg := true.B
-            access_fault_resp_reg := io.axi.R.RRESP
-            resp_data_reg := "h00000013".U // NOP, 不让下游拿到非法指令
+          refillWordValid := 0.U
+          when(!discard && stage1Waits && keywordBeat) {
+            accessFaultReg := true.B
+            accessFaultResponseReg := io.axi.R.RRESP
+            responseDataReg := "h00000013".U // NOP, 不让下游拿到非法指令
           }
         }.elsewhen(!discard) {
           // 可缓存demand直接从数据阵列取关键词，不需要写
           // resp_data_reg。这也避免“旧响应pop+新partial hit accept+R beat”
           // 同拍时，旧s1_waits把新命中数据覆盖。
-          when(s1_waits && !ref_cacheable) {
-            resp_data_reg := NonCacheableReadWord
+          when(stage1Waits && !refillCacheable) {
+            responseDataReg := nonCacheableReadWord
           }
-          when(ref_cacheable) { // 阵列填充无条件进行, 数据是真实内存内容
-            tag(RefIndexSafe) := ref_tag
-            for (k <- 0 until WordsPerBeat) {
+          when(refillCacheable) { // 阵列填充无条件进行, 数据是真实内存内容
+            tag(refillIndexSafe) := refillTag
+            for (k <- 0 until wordsPerBeat) {
               val wordOffset =
-                if (k == 0) RefillOffsetSafe
-                else BeatWordOffset(refill_cnt, k)
-              data(RefIndexSafe)(wordOffset) :=
+                if (k == 0) refillOffsetSafe
+                else beatWordOffset(refillCount, k)
+              data(refillIndexSafe)(wordOffset) :=
                 io.axi.R.RDATA(k * 32 + 31, k * 32)
             }
-            when(!refill_error) {
-              refill_word_valid := refill_word_valid |
-                BeatWordMask(refill_cnt)
+            when(!refillError) {
+              refillWordValid := refillWordValid |
+                beatWordMask(refillCount)
             }
             // 只有整条line无任何错误时才允许变为valid；当前beat为成功
             // 响应，refill_error覆盖此前已经发生的错误。serial/parallel
             // 扫描尚未覆盖全部 set 时先挂起，扫描最后一拍再补置 valid。
             when(
-              refill_cnt === (BeatsPerBlock - 1).U &&
-                io.axi.R.RLAST && !refill_error
+              refillCount === (beatsPerBlock - 1).U &&
+                io.axi.R.RLAST && !refillError
             ) {
-              PerfLineFill := true.B
-              when(AliasScanStatus.installAllowed) {
-                valid(RefIndexSafe) := true.B
+              perfLineFill := true.B
+              when(aliasScanStatus.installAllowed) {
+                valid(refillIndexSafe) := true.B
               }.otherwise {
-                if (DeferredAliasInstall) {
+                if (deferredAliasInstall) {
                   val (deferredIndex, deferredTag, deferredValid) =
-                    AliasDeferred.get
+                    aliasDeferred.get
                   // store snoop 与 RLAST 同拍时，这次 refill 的数据早于
                   // store；不能挂成 deferred，否则扫描结束后又会把旧行
                   // 置 valid（上面的 snoop 取消逻辑只看已寄存的 deferred）。
                   val deferredSnooped =
                     if (Snoop && Enable)
-                      io.snoop_valid && SnoopLineMatch(ref_addr)
+                      io.snoop_valid && snoopLineMatch(refillAddress)
                     else false.B
                   when(!deferredSnooped) {
                     deferredValid := true.B
-                    deferredIndex := RefIndexSafe
-                    deferredTag := ref_tag
+                    deferredIndex := refillIndexSafe
+                    deferredTag := refillTag
                   }
                 }
               }
@@ -751,121 +751,121 @@ class ysyx_26030103_ICacheReg(
           }
         }
         // early restart: 关键词所在拍到手即可响应, 无需等整行填完
-        when(!discard && s1_waits && keyword_beat) {
-          s1_ready := true.B
+        when(!discard && stage1Waits && keywordBeat) {
+          stage1Ready := true.B
         }
-        when(ref_cacheable && burst_mode) {
-          refill_cnt := refill_cnt + 1.U
+        when(refillCacheable && burstMode) {
+          refillCount := refillCount + 1.U
           when(io.axi.R.RLAST) {
             // 突发结束(正常结束或被从机提前截断)
             when(discard) {
               discard := false.B
-              rfstate := rf_idle
-            }.elsewhen(refill_cnt === (BeatsPerBlock - 1).U) {
-              when(s1_waits) {
-                s1_ready := true.B
+              refillState := refillIdle
+            }.elsewhen(refillCount === (beatsPerBlock - 1).U) {
+              when(stage1Waits) {
+                stage1Ready := true.B
               }
-              rfstate := rf_idle
+              refillState := refillIdle
             }.otherwise {
-              burst_mode := false.B // 提前RLAST: 剩余的beat改单拍补取
-              rfstate := rf_req
+              burstMode := false.B // 提前RLAST: 剩余的beat改单拍补取
+              refillState := refillRequest
             }
-          }.elsewhen(refill_cnt === (BeatsPerBlock - 1).U) {
+          }.elsewhen(refillCount === (beatsPerBlock - 1).U) {
             // 已收到ARLEN指定的最后一拍却没有RLAST，该line绝不能安装。
             // 继续排空R通道直到迟到的RLAST，避免它被后续refill误收。
-            valid(RefIndexSafe) := false.B
-            refill_error := true.B
-            refill_word_valid := 0.U
-            when(!discard && s1_waits && !s1_ready) {
-              access_fault_reg := true.B
-              access_fault_resp_reg := Mux(r_error, io.axi.R.RRESP, 2.U)
-              resp_data_reg := "h00000013".U
-              s1_ready := true.B
+            valid(refillIndexSafe) := false.B
+            refillError := true.B
+            refillWordValid := 0.U
+            when(!discard && stage1Waits && !stage1Ready) {
+              accessFaultReg := true.B
+              accessFaultResponseReg := Mux(readError, io.axi.R.RRESP, 2.U)
+              responseDataReg := "h00000013".U
+              stage1Ready := true.B
             }
-            rfstate := rf_drain
-            drain_timer := 0.U
+            refillState := refillDrain
+            drainTimer := 0.U
           }
-        }.elsewhen(ref_cacheable) {
+        }.elsewhen(refillCacheable) {
           // 提前RLAST后的补取是独立单拍事务，每一拍也必须以RLAST结束。
           when(io.axi.R.RLAST) {
             when(discard) {
               discard := false.B
-              rfstate := rf_idle
-            }.elsewhen(refill_cnt === (BeatsPerBlock - 1).U) {
-              when(s1_waits) {
-                s1_ready := true.B
+              refillState := refillIdle
+            }.elsewhen(refillCount === (beatsPerBlock - 1).U) {
+              when(stage1Waits) {
+                stage1Ready := true.B
               }
-              rfstate := rf_idle
+              refillState := refillIdle
             }.otherwise {
-              refill_cnt := refill_cnt + 1.U
-              rfstate := rf_req
+              refillCount := refillCount + 1.U
+              refillState := refillRequest
             }
           }.otherwise {
-            valid(RefIndexSafe) := false.B
-            refill_error := true.B
-            refill_word_valid := 0.U
-            when(!discard && s1_waits && !s1_ready) {
-              access_fault_reg := true.B
-              access_fault_resp_reg := Mux(r_error, io.axi.R.RRESP, 2.U)
-              resp_data_reg := "h00000013".U
-              s1_ready := true.B
+            valid(refillIndexSafe) := false.B
+            refillError := true.B
+            refillWordValid := 0.U
+            when(!discard && stage1Waits && !stage1Ready) {
+              accessFaultReg := true.B
+              accessFaultResponseReg := Mux(readError, io.axi.R.RRESP, 2.U)
+              responseDataReg := "h00000013".U
+              stage1Ready := true.B
             }
-            rfstate := rf_drain
-            drain_timer := 0.U
+            refillState := refillDrain
+            drainTimer := 0.U
           }
         }.otherwise {
           when(io.axi.R.RLAST) {
             when(discard) {
               discard := false.B
-              rfstate := rf_idle
+              refillState := refillIdle
             }.otherwise {
-              when(s1_waits) {
-                s1_ready := true.B
+              when(stage1Waits) {
+                stage1Ready := true.B
               }
-              rfstate := rf_idle
+              refillState := refillIdle
             }
           }.otherwise {
-            when(!discard && s1_waits && !s1_ready) {
-              access_fault_reg := true.B
-              access_fault_resp_reg := Mux(r_error, io.axi.R.RRESP, 2.U)
-              resp_data_reg := "h00000013".U
-              s1_ready := true.B
+            when(!discard && stage1Waits && !stage1Ready) {
+              accessFaultReg := true.B
+              accessFaultResponseReg := Mux(readError, io.axi.R.RRESP, 2.U)
+              responseDataReg := "h00000013".U
+              stage1Ready := true.B
             }
-            rfstate := rf_drain
-            drain_timer := 0.U
+            refillState := refillDrain
+            drainTimer := 0.U
           }
         }
       }
     }
-    is(rf_drain) {
+    is(refillDrain) {
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RLAST) {
         discard := false.B
-        burst_mode := false.B
-        rfstate := rf_idle
-      }.elsewhen(drain_timer === DrainTimeout.U) {
-        bus_fault := true.B
-        drain_timer := 0.U
-        drain_retry_timer := 0.U
-        rfstate := rf_drain_fault
+        burstMode := false.B
+        refillState := refillIdle
+      }.elsewhen(drainTimer === DrainTimeout.U) {
+        busFault := true.B
+        drainTimer := 0.U
+        drainRetryTimer := 0.U
+        refillState := refillDrainFault
       }.otherwise {
-        drain_timer := drain_timer + 1.U
+        drainTimer := drainTimer + 1.U
       }
     }
-    is(rf_drain_fault) {
+    is(refillDrainFault) {
       // 继续以 RREADY 吸收违规从设备的迟到拍，直到 RLAST 使总线重新同步；
       // 期间新取指由受理路径直接以故障响应结束。通道安静时周期性重试
       // refill（清故障标记回空闲）：从设备恢复后系统自动复原，不必等复位。
       io.axi.R.RREADY := true.B
       when(io.axi.R.RVALID && io.axi.R.RLAST) {
-        bus_fault := false.B
-        rfstate := rf_idle
-      }.elsewhen(drain_retry_timer === DrainTimeout.U && !io.axi.R.RVALID) {
-        bus_fault := false.B
-        drain_retry_timer := 0.U
-        rfstate := rf_idle
+        busFault := false.B
+        refillState := refillIdle
+      }.elsewhen(drainRetryTimer === DrainTimeout.U && !io.axi.R.RVALID) {
+        busFault := false.B
+        drainRetryTimer := 0.U
+        refillState := refillIdle
       }.otherwise {
-        drain_retry_timer := drain_retry_timer + 1.U
+        drainRetryTimer := drainRetryTimer + 1.U
       }
     }
   }
@@ -877,29 +877,29 @@ class ysyx_26030103_ICacheReg(
     // refill。early response已消费后，s1_waits=false，之后无关分支的kill
     // 不能丢弃后台fill。只有已展示但未握手的AR需要sticky discard；
     // 已握手的rf_resp继续完成有效line，避免留下必然miss的空index。
-    val kill_owned_exposed_ar =
-      s1_waits && rfstate === rf_req && ar_exposed
-    s1_valid := false.B
-    s1_waits := false.B
-    s1_paddr_valid := false.B
-    when(kill_owned_exposed_ar) {
+    val killOwnedExposedAr =
+      stage1Waits && refillState === refillRequest && arExposed
+    stage1Valid := false.B
+    stage1Waits := false.B
+    stage1PhysicalAddressValid := false.B
+    when(killOwnedExposedAr) {
       discard := true.B
-      refill_word_valid := 0.U
+      refillWordValid := 0.U
     }
   }
   // flush(fence.i): 代码可能已被改写,清cache行,在飞事务排空丢弃
   // 注意: 已发出的ARVALID绝不能在握手前撤回(否则仲裁器授权后等不到fire会死锁),
   // 必须保持请求直到AR完成,再转入排空丢弃数据
   when(io.flush) {
-    s1_valid := false.B
-    s1_waits := false.B
-    s1_paddr_valid := false.B
-    refill_word_valid := 0.U
-    if (AliasScanActive) { AliasDeferred.get._3 := false.B }
+    stage1Valid := false.B
+    stage1Waits := false.B
+    stage1PhysicalAddressValid := false.B
+    refillWordValid := 0.U
+    if (aliasScanActive) { aliasDeferred.get._3 := false.B }
     valid.foreach(_ := false.B)
-    when(rfstate === rf_req) {
+    when(refillState === refillRequest) {
       discard := true.B
-    }.elsewhen(rfstate === rf_resp && !discard) {
+    }.elsewhen(refillState === refillResponse && !discard) {
       discard := true.B
     }
   }
@@ -908,34 +908,34 @@ class ysyx_26030103_ICacheReg(
   // 当前 s1 保持未就绪；状态机回 idle 后由 queued_miss 自动重新取指。
   // 这条重取路径不需要 fence.i 的流水线重定向，因此不能直接复用 flush。
   if (Snoop && Enable) {
-    val snoopHit = SnoopHitVec(io.snoop_addr) | SnoopHitVec(io.snoop_addr_hi)
+    val snoopHit = snoopHitVec(io.snoop_addr) | snoopHitVec(io.snoop_addr_hi)
     for (set <- valid.indices) {
       when(io.snoop_valid && snoopHit(set)) {
         valid(set) := false.B
       }
     }
     val snoopActiveRefill =
-      (rfstate =/= rf_idle) && SnoopLineMatch(ref_addr)
+      (refillState =/= refillIdle) && snoopLineMatch(refillAddress)
     val snoopLaunchRefill =
-      queued_miss && rfstate === rf_idle && SnoopLineMatch(fetch_addr_reg)
+      queuedMiss && refillState === refillIdle && snoopLineMatch(fetchAddressReg)
     val snoopRefillMatch = snoopActiveRefill || snoopLaunchRefill
     when(io.snoop_valid && snoopRefillMatch) {
       discard := true.B
-      refill_word_valid := 0.U
+      refillWordValid := 0.U
       // 同拍 RLAST 可能刚把旧 refill 安装成 valid；最后写回必须压掉它。
       // 启动拍 ref_addr 尚未更新，目标 index 取当前 s1 的 index。
-      valid(Mux(snoopActiveRefill, RefIndexSafe, FetchIndexSafe)) := false.B
+      valid(Mux(snoopActiveRefill, refillIndexSafe, fetchIndexSafe)) := false.B
     }
-    when(io.snoop_valid && snoopS1LineHit) {
-      s1_hit := false.B
-      s1_ready := false.B
+    when(io.snoop_valid && snoopStage1LineHit) {
+      stage1Hit := false.B
+      stage1Ready := false.B
     }
   }
   // DMA 地址级 snoop：失效所有重叠行；匹配的 refill 丢弃并在排空后由
   // queued_miss 自动重取（此时内存已含 DMA 新数据）。s1 的旧命中同样
   // 撤回，不能把 DMA 之前的指令继续交付。
-  if (DmaSnoopActive) {
-    val dmaSnoopHit = DmaSnoopHitVec
+  if (dmaSnoopActive) {
+    val dmaSnoopHit = dmaSnoopHitVec
     for (set <- valid.indices) {
       when(io.dma_snoop_valid && dmaSnoopHit(set)) {
         valid(set) := false.B
@@ -944,15 +944,15 @@ class ysyx_26030103_ICacheReg(
     when(io.dma_snoop_valid && !dmaSnoopHandled &&
         dmaSnoopActiveRefill) {
       discard := true.B
-      refill_word_valid := 0.U
-      valid(RefIndexSafe) := false.B
+      refillWordValid := 0.U
+      valid(refillIndexSafe) := false.B
     }
     // 放在 refill RLAST 之后：同拍 RLAST 可能刚把新行挂到 deferred，
     // 或被本拍 DMA snoop 丢弃，必须立刻取消，扫描结束后不得补装。
-    if (AliasScanActive) {
-      val (deferredIndex, deferredTag, deferredValid) = AliasDeferred.get
+    if (aliasScanActive) {
+      val (deferredIndex, deferredTag, deferredValid) = aliasDeferred.get
       when(io.dma_snoop_valid && deferredValid &&
-          DmaLineInRange(deferredTag)) {
+          dmaLineInRange(deferredTag)) {
         valid(deferredIndex) := false.B
         deferredValid := false.B
       }
@@ -960,14 +960,14 @@ class ysyx_26030103_ICacheReg(
         deferredValid := false.B
       }
     }
-    when(io.dma_snoop_valid && dmaSnoopS1LineHit) {
-      s1_hit := false.B
-      s1_ready := false.B
+    when(io.dma_snoop_valid && dmaSnoopStage1LineHit) {
+      stage1Hit := false.B
+      stage1Ready := false.B
     }
   }
   // 目录失效放在所有 valid 置位路径之后：store snoop / DMA 范围失效 /
   // 目录冲突挤出的旧行必须压掉同拍 refill 最后一拍的 valid 写回。
-  AliasDirectory.foreach { dir =>
+  aliasDirectory.foreach { dir =>
     for (set <- valid.indices) {
       when(dir.io.invalidate(set)) {
         valid(set) := false.B

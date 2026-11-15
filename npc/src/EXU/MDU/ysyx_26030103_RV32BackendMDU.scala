@@ -9,8 +9,8 @@ abstract class ysyx_26030103_RV32BackendMDU(
   require(config.XLEN == 32, "RV32 专用 MDU 后端不能在 XLEN=64 下生成")
   protected def backendConfig: ysyx_26030103_NPCConfig
   private val core = Module(new ysyx_26030103_StandardMDU(backendConfig))
-  core.io.Req <> io.Req
-  core.io.Resp <> io.Resp
+  core.io.Request <> io.Request
+  core.io.Response <> io.Response
   core.io.Flush := io.Flush
   io.PerfDivIterations := core.io.PerfDivIterations
   io.PerfDivEarlyOut := core.io.PerfDivEarlyOut

@@ -36,7 +36,7 @@ class ysyx_26030103_IDUDecodeAuditHarness(config: ysyx_26030103_NPCConfig)
   idu.io.in.bits.pc := 0.U
   idu.io.in.bits.ExceptionValid := false.B
   idu.io.in.bits.ExceptionCause := 0.U
-  idu.io.in.bits.AccessFaultResp := 0.U
+  idu.io.in.bits.AccessFaultResponse := 0.U
   idu.io.in.bits.pred_taken := false.B
   idu.io.in.bits.pred_target := 0.U
   idu.io.out.ready := true.B
@@ -98,7 +98,7 @@ class ysyx_26030103_IDUDecodeAuditHarness(config: ysyx_26030103_NPCConfig)
   io.exceptionValid := idu.io.out.bits.ExceptionValid
   io.exceptionCause := idu.io.out.bits.ExceptionCause
   io.isFP := idu.io.out.bits.IsFP
-  io.fpRm := idu.io.out.bits.FpRm
+  io.fpRm := idu.io.out.bits.FPRm
   io.isAtomic := idu.io.out.bits.IsAtomic
   io.isSret := idu.io.out.bits.IsSret
   io.isSfenceVma := idu.io.out.bits.IsSfenceVma
@@ -136,7 +136,7 @@ class ysyx_26030103_IDUDecodeAuditTest
         hasU = hasU,
         pteSizeBytes = if (xlen == 64) 8 else 4,
         pteFormat = if (xlen == 64) "riscv64" else "riscv32",
-        pteConfig = ysyx_26030103_PteConfig(
+        pteConfig = ysyx_26030103_PTEConfig(
           pteBits = if (xlen == 64) 64 else 32,
           ppnHigh = if (xlen == 64) 53 else 21
         )

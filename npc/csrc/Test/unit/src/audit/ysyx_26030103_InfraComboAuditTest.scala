@@ -13,7 +13,7 @@ class ysyx_26030103_InfraComboAuditTest
   private def bool(value: Bool): Boolean = value.peek().litValue == 1
   private def long(value: UInt): Long = value.peek().litValue.toLong
 
-  private def setupPlic(dut: ysyx_26030103_PLIC): Unit = {
+  private def setupPLIC(dut: ysyx_26030103_PLIC): Unit = {
     dut.reset.poke(true.B)
     dut.clock.step(2)
     dut.reset.poke(false.B)
@@ -78,7 +78,7 @@ class ysyx_26030103_InfraComboAuditTest
 
   "PLIC" should "支持多 source 并发 claim/complete 与 source 31" in {
     simulate(new ysyx_26030103_PLIC()) { dut =>
-      setupPlic(dut)
+      setupPLIC(dut)
       plicWrite(dut, 0x0c000008L, 5) // source 2
       plicWrite(dut, 0x0c000028L, 7) // source 10
       plicWrite(dut, 0x0c00007cL, 6) // source 31
@@ -108,7 +108,7 @@ class ysyx_26030103_InfraComboAuditTest
     }
   }
 
-  private def setupClint(dut: ysyx_26030103_AXI5CLINTSlave): Unit = {
+  private def setupCLINT(dut: ysyx_26030103_AXI5CLINTSlave): Unit = {
     dut.reset.poke(true.B)
     dut.clock.step(2)
     dut.reset.poke(false.B)
@@ -175,7 +175,7 @@ class ysyx_26030103_InfraComboAuditTest
 
   "CLINT" should "按完整 64 位写入 mtimecmp 的一半后正确触发/撤销 timer_irq" in {
     simulate(new ysyx_26030103_AXI5CLINTSlave()) { dut =>
-      setupClint(dut)
+      setupCLINT(dut)
       // 高半写 0，低半写 0 => mtimecmp=0，timer_irq 必须拉高。
       clintWrite(dut, 0x02004004L, 0) should be(0)
       clintWrite(dut, 0x02004000L, 0) should be(0)
@@ -277,8 +277,8 @@ class ysyx_26030103_InfraComboAuditTest
     simulate(new riscv32e_npc_AXIRAM(4096)) { dut =>
       setupRam(dut)
       injectUart(dut, Seq(0x11, 0x22, 0x33, 0x44))
-      val (lsr, lsrResp) = uartRead(dut, 0x10000005L, 0)
-      lsrResp should be(0)
+      val (lsr, lsrResponse) = uartRead(dut, 0x10000005L, 0)
+      lsrResponse should be(0)
       (lsr & 1) should be(BigInt(1))
       for (expected <- Seq(0x11, 0x22, 0x33, 0x44)) {
         val (data, resp) = uartRead(dut, 0x10000000L, 0)

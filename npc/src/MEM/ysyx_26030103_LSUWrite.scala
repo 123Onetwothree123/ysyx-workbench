@@ -10,39 +10,39 @@ private[mem] trait LSUWrite {
     // Idle 可直接驱动已经寄存的队首，避免“发现非空→切 Issue→下一拍才
     // 拉 VALID”的固定空拍。失败/非对齐/等待 PA 的队首会阻断所有年轻副作用。
     val wbCanStart = !wbufEmpty && !wbHeadMisaligned && wbHeadReady &&
-      !io.PmpFault && !StoreFaultReg && !MemFaultReg
+      !io.PMPFault && !storeFaultReg && !memFaultReg
     val wbDrivingIssue = wbState === wbIssue || (wbState === wbIdle && wbCanStart)
-    val WbHeadWide = wbHeadWide
-    val WbHeadBusWide = WbHeadWide && BusWideBit
-    val WbHeadTwoBeat = WbHeadWide && !BusWideBit
+    val wbHeadIsWide = wbHeadWide
+    val wbHeadBusWide = wbHeadIsWide && busWideBit
+    val wbHeadTwoBeat = wbHeadIsWide && !busWideBit
     val wbBeat = RegInit(0.U(1.W))
     when(wbDrivingIssue) {
       io.DataBus.AW.AWVALID := !wbAWDone
-      io.DataBus.AW.AWADDR := WbHeadEffectiveAddr
-      io.DataBus.AW.AWLEN := Mux(WbHeadTwoBeat, 1.U, 0.U)
-      io.DataBus.AW.AWSIZE := Mux(WbHeadBusWide, 3.U, wbHeadSize)
+      io.DataBus.AW.AWADDR := wbHeadEffectiveAddress
+      io.DataBus.AW.AWLEN := Mux(wbHeadTwoBeat, 1.U, 0.U)
+      io.DataBus.AW.AWSIZE := Mux(wbHeadBusWide, 3.U, wbHeadSize)
       io.DataBus.AW.AWBURST := 1.U
       io.DataBus.W.WVALID := !wbWDone
       io.DataBus.W.WDATA :=
-        Mux(WbHeadBusWide, Cat(wbHeadDataHi, wbHeadData),
-          Mux(WbHeadTwoBeat && wbBeat === 1.U, wbHeadDataHi,
-            BusWord(wbHeadData, WbHeadEffectiveAddr)))
+        Mux(wbHeadBusWide, Cat(wbHeadDataHi, wbHeadData),
+          Mux(wbHeadTwoBeat && wbBeat === 1.U, wbHeadDataHi,
+            busWord(wbHeadData, wbHeadEffectiveAddress)))
       io.DataBus.W.WSTRB :=
-        Mux(WbHeadBusWide, "hff".U,
-          Mux(WbHeadTwoBeat && wbBeat === 1.U, "hf".U,
-            BusStrb(wbHeadStrb, WbHeadEffectiveAddr)))
+        Mux(wbHeadBusWide, "hff".U,
+          Mux(wbHeadTwoBeat && wbBeat === 1.U, "hf".U,
+            busStrobe(wbHeadStrobe, wbHeadEffectiveAddress)))
       io.DataBus.W.WLAST :=
-        !WbHeadWide || WbHeadBusWide || wbBeat === 1.U
+        !wbHeadIsWide || wbHeadBusWide || wbBeat === 1.U
     }
     // 本拍 W 握手是否完成整笔 store 的全部数据拍。
     val wbWFinishes =
-      wbWfire && (!WbHeadWide || WbHeadBusWide || wbBeat === 1.U)
+      wbWfire && (!wbHeadIsWide || wbHeadBusWide || wbBeat === 1.U)
     switch(wbState) {
       is(wbIdle) {
         when(wbCanStart) {
           when(wbAWfire) { wbAWDone := true.B }
           when(wbWfire) {
-            when(WbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
+            when(wbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
               .otherwise { wbWDone := true.B }
           }
           when(wbAWfire && wbWFinishes) {
@@ -59,7 +59,7 @@ private[mem] trait LSUWrite {
       is(wbIssue) {
         when(wbAWfire) { wbAWDone := true.B }
         when(wbWfire) {
-          when(WbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
+          when(wbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
             .otherwise { wbWDone := true.B }
         }
         when((wbAWDone || wbAWfire) && (wbWDone || wbWFinishes)) {
@@ -93,7 +93,7 @@ private[mem] trait LSUWrite {
         wbHead := wbHead + 1.U
       }
     }
-    when(MemTrapCommit) {
+    when(memTrapCommit) {
       wbCount := 0.U
       wbHead := 0.U
       wbTail := 0.U
@@ -110,45 +110,45 @@ private[mem] trait LSUWrite {
     when(startMem) {
       // 这些寄存器属于已接受的访存指令。总线状态机返回Idle后仍要保持其稳定，
       // 直到该级能在下游反压下真正提交。
-      AccessFaultReg := false.B
-      AccessFaultRespReg := 0.U
-      StoreFaultReg := false.B
-      LoadBeat := 0.U
-      is_store_transaction := StageInputBits.MemoryWrite
-      when(StageInputMisaligned || StageInputPmpFault) {
+      accessFaultReg := false.B
+      accessFaultResponseReg := 0.U
+      storeFaultReg := false.B
+      loadBeat := 0.U
+      isStoreTransaction := stageInputBits.MemoryWrite
+      when(stageInputMisaligned || stageInputPMPFault) {
         // 非对齐/PMP 故障项只作为写缓冲屏障，不产生任何 AXI 请求，
         // 随后按 cause 4/6 或 5/7 精确提交。
-        state := StatesIdle
+        state := stateIdle
       }
-        .elsewhen(StageInputBits.IsAtomic) {
+        .elsewhen(stageInputBits.IsAtomic) {
           // LR/SC/AMO：先拉高 AtomicBusy 并等待总线上的 DMA 排空，
           // 再以独占读改写事务访问内存，完全绕开 DCache/写缓冲。
-          AtomicActive := true.B
-          AtomicOpReg := StageInputBits.AtomicOp
-          AtomicWide := StageInputBits.WidthSelect === "b11".U
-          AtomicAddrReg := 0.U
-          AtomicNewData := 0.U
-          AtomicResultData := 0.U
-          AtomicReadLow := 0.U
-          AtomicReadBeat := 0.U
-          AtomicReadFaultReg := false.B
-          AtomicAWDone := false.B
-          AtomicWDone := false.B
-          AtomicWBeat := false.B
-          state := StatesAtomicQuiet
+          atomicActive := true.B
+          atomicOpReg := stageInputBits.AtomicOp
+          atomicWide := stageInputBits.WidthSelect === "b11".U
+          atomicAddressReg := 0.U
+          atomicNewData := 0.U
+          atomicResultData := 0.U
+          atomicReadLow := 0.U
+          atomicReadBeat := 0.U
+          atomicReadFaultReg := false.B
+          atomicAWDone := false.B
+          atomicWDone := false.B
+          atomicWBeat := false.B
+          state := stateAtomicQuiet
         }
-        .elsewhen(StageInputBits.MemoryWrite) {
+        .elsewhen(stageInputBits.MemoryWrite) {
           // 所有 store（包括普通 RAM）都要等属于自己的 B 响应。
-          state := StatesWriteWaitB
+          state := stateWriteWaitB
         }
         .otherwise {
           if (DCacheEnable) {
             // 精确 store 队列只在全部老 store 已处理后才让 load 成为
             // StageInput，因此这里不再经过不可达的 LoadWaitBuf 空状态。
-            DCacheRequestActive := true.B
-            state := StatesReadRequest
+            dataCacheRequestActive := true.B
+            state := stateReadRequest
           } else { // 关闭数据缓存时保持原来的单拍直读路径
-            state := StatesReadRequest
+            state := stateReadRequest
           }
         }
     }
@@ -156,12 +156,12 @@ private[mem] trait LSUWrite {
 
   def storeWaitResponseBody(): Unit = {
     // 等到自己的写事务拿到B响应: 之前的项都已按序完成, 队首就是本指令的项
-    when(wbPop && wbHead === storeBufIdx) {
-      StoreFaultReg := io.DataBus.B.BRESP =/= 0.U
-      AccessFaultRespReg := io.DataBus.B.BRESP
-      TransactionComplete := true.B
-      TransactionFault := io.DataBus.B.BRESP =/= 0.U
-      state := StatesIdle
+    when(wbPop && wbHead === storeBufferIndex) {
+      storeFaultReg := io.DataBus.B.BRESP =/= 0.U
+      accessFaultResponseReg := io.DataBus.B.BRESP
+      transactionComplete := true.B
+      transactionFault := io.DataBus.B.BRESP =/= 0.U
+      state := stateIdle
     }
   }
 }

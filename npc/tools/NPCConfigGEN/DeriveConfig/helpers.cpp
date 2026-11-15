@@ -22,13 +22,13 @@ void copyConfigDefault(std::map<std::string, std::string> &values,
     if (found != values.end() && !found->second.empty())
         values[target] = found->second;
 }
-std::string deriveCsrEnabled(const std::map<std::string, std::string> &values)
+std::string deriveCSREnabled(const std::map<std::string, std::string> &values)
 {
-    struct CsrName {
+    struct CSRName {
         const char *name;
         int address;
     };
-    static const std::vector<CsrName> names{
+    static const std::vector<CSRName> names{
         {"mstatus", 0x300},       {"misa", 0x301},
         {"mtvec", 0x305},         {"mepc", 0x341},
         {"mcause", 0x342},        {"mtval", 0x343},
@@ -43,7 +43,7 @@ std::string deriveCsrEnabled(const std::map<std::string, std::string> &values)
         {"stval", 0x143},         {"satp", 0x180},
         {"scounteren", 0x106},
     };
-    static const std::vector<std::string> forcedCsrs{
+    static const std::vector<std::string> forcedCSRs{
         "mstatus", "mtvec", "mepc", "mcause", "mie", "mip",
         "medeleg", "mideleg", "sstatus", "sie", "sip", "stvec",
         "sscratch", "sepc", "scause", "stval", "satp", "scounteren",
@@ -58,8 +58,8 @@ std::string deriveCsrEnabled(const std::map<std::string, std::string> &values)
                        });
         const bool isForced =
             forceS &&
-            std::find(forcedCsrs.begin(), forcedCsrs.end(), entry.name) !=
-                forcedCsrs.end();
+            std::find(forcedCSRs.begin(), forcedCSRs.end(), entry.name) !=
+                forcedCSRs.end();
         if (asBool(values, "HAS_CSR_" + upper) || isForced)
             enabled.push_back(entry.address);
     }

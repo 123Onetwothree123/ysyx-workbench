@@ -31,10 +31,10 @@ void deriveEffectiveConfig(std::map<std::string, std::string> &values)
     values["AXI_DELAY_SCALE_FACTOR"] = values["AXI_DELAY_SCALE"];
     if (asBool(values, "ITRACE") || asBool(values, "ITRACE_WRITE_FILE"))
         values["ITRACE"] = "y";
-    const bool hasMmu = asBool(values, "HAS_MMU");
-    const bool hasTlb = asBool(values, "HAS_TLB");
-    values["MMU_ENABLED"] = hasMmu ? "1" : "0";
-    values["MMU_TLB_ENABLED"] = (hasMmu && hasTlb) ? "1" : "0";
+    const bool hasMMU = asBool(values, "HAS_MMU");
+    const bool hasTLB = asBool(values, "HAS_TLB");
+    values["MMU_ENABLED"] = hasMMU ? "1" : "0";
+    values["MMU_TLB_ENABLED"] = (hasMMU && hasTLB) ? "1" : "0";
     values["MMU_XLEN"] = std::to_string(xlen);
     copyConfigDefault(values, "MMU_TLB_ORGANIZATION", "TLB_ORGANIZATION");
     copyConfigDefault(values, "MMU_TLB_STORAGE", "TLB_STORAGE");
@@ -61,7 +61,7 @@ void deriveEffectiveConfig(std::map<std::string, std::string> &values)
     copyConfigDefault(values, "MMU_GLOBAL_MISS_QUEUE_ENTRIES",
                       "GLOBAL_MISS_QUEUE_ENTRIES");
     copyConfigDefault(values, "MMU_TLB_REFILL_PORTS", "TLB_REFILL_PORTS");
-    setConfigDefault(values, "CSR_ENABLED", deriveCsrEnabled(values));
+    setConfigDefault(values, "CSR_ENABLED", deriveCSREnabled(values));
     for (const char *key : {"HAS_S", "HAS_U", "HAS_S_TIMER_IRQ",
                             "HAS_S_EXTERNAL_IRQ", "HAS_PMP"}) {
         if (hasConfigValue(values, key))

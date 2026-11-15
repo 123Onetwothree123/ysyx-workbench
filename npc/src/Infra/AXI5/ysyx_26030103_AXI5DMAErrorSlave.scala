@@ -10,21 +10,21 @@ import chisel3._
 class ysyx_26030103_AXI5DMAErrorSlave(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
-    IdWidth: Int = ysyx_26030103_KconfigDefaults.AxiIdWidth
+    IDWidth: Int = ysyx_26030103_KconfigDefaults.AXIIDWidth
 ) extends Module {
-  val io = IO(new ysyx_26030103_AXI5Slave(AddressWidth, DataWidth, IdWidth))
+  val io = IO(new ysyx_26030103_AXI5Slave(AddressWidth, DataWidth, IDWidth))
 
   private val DECERR = "b11".U(2.W)
 
   // 写通道：有意分别独立收集AW与W。
   val awHeld = RegInit(false.B)
-  val awId = RegInit(0.U(IdWidth.W))
+  val awID = RegInit(0.U(IDWidth.W))
   val wLastSeen = RegInit(false.B)
   val bValid = RegInit(false.B)
 
   io.AW.AWREADY := !awHeld && !bValid
   io.W.WREADY := !wLastSeen && !bValid
-  io.B.BID := awId
+  io.B.BID := awID
   io.B.BRESP := DECERR
   io.B.BVALID := bValid
   // 在独立Verilator回归中保持响应叶节点可见；否则CIRCT可以将这些常量
@@ -39,7 +39,7 @@ class ysyx_26030103_AXI5DMAErrorSlave(
 
   when(awFire) {
     awHeld := true.B
-    awId := io.AW.AWID
+    awID := io.AW.AWID
   }
   when(wLastFire) {
     wLastSeen := true.B
@@ -56,12 +56,12 @@ class ysyx_26030103_AXI5DMAErrorSlave(
   // 读通道：允许一项突发传输在途，在反压下保持响应稳定，并严格返回
   // ARLEN + 1个数据拍。
   val readActive = RegInit(false.B)
-  val readId = RegInit(0.U(IdWidth.W))
+  val readID = RegInit(0.U(IDWidth.W))
   val readLen = RegInit(0.U(8.W))
   val readBeat = RegInit(0.U(8.W))
 
   io.AR.ARREADY := !readActive
-  io.R.RID := readId
+  io.R.RID := readID
   io.R.RDATA := 0.U
   io.R.RRESP := DECERR
   // RLAST 属于数据拍的一部分，必须与 RVALID 同步：复位后与突发结束
@@ -72,7 +72,7 @@ class ysyx_26030103_AXI5DMAErrorSlave(
 
   when(io.AR.ARVALID && io.AR.ARREADY) {
     readActive := true.B
-    readId := io.AR.ARID
+    readID := io.AR.ARID
     readLen := io.AR.ARLEN
     readBeat := 0.U
   }

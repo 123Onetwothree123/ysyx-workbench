@@ -3,7 +3,7 @@ import _root_.ysyx_26030103.ysyx_26030103
 import java.io.File
 import java.nio.file.{Files, Paths, StandardCopyOption}
 object ysyx_26030103_ElaborateEmitter {
-  private val YosysFirtoolOptions: firrtl.AnnotationSeq = Seq(
+  private val yosysFirtoolOptions: firrtl.AnnotationSeq = Seq(
     circt.stage.FirtoolOption(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays"
     ),
@@ -19,7 +19,7 @@ object ysyx_26030103_ElaborateEmitter {
     emitVerilog(
       new ysyx_26030103(
         config.copy(
-          ResetAddr = settings.pma.npcRamBase + settings.cachePadding,
+          ResetAddress = settings.pma.npcRamBase + settings.cachePadding,
           CacheableBase = 0x00000000L,
           CacheableMask = 0x00000000L,
           PMARegions = settings.pma.npcRegions(
@@ -30,7 +30,7 @@ object ysyx_26030103_ElaborateEmitter {
         )
       ),
       Array("--target-dir", targetDir),
-      YosysFirtoolOptions
+      yosysFirtoolOptions
     )
     Files.move(
       Paths.get(targetDir, "ysyx_26030103.sv"),
@@ -40,7 +40,7 @@ object ysyx_26030103_ElaborateEmitter {
     emitVerilog(
       new ysyx_26030103(
         config.copy(
-          ResetAddr = settings.pma.socResetAddr,
+          ResetAddress = settings.pma.socResetAddress,
           CacheableBase = 0x00000000L,
           CacheableMask = 0x00000000L,
           PMARegions = settings.pma.socRegions(
@@ -51,7 +51,7 @@ object ysyx_26030103_ElaborateEmitter {
         )
       ),
       Array("--target-dir", targetDir),
-      YosysFirtoolOptions
+      yosysFirtoolOptions
     )
     emitVerilog(
       new _root_.ysyx_26030103.riscv32e_npc_AXIRAM(
@@ -60,7 +60,7 @@ object ysyx_26030103_ElaborateEmitter {
         ramBase = settings.pma.npcRamBase
       ),
       Array("--target-dir", targetDir),
-      YosysFirtoolOptions
+      yosysFirtoolOptions
     )
     writeLayerStubs(targetDir)
   }

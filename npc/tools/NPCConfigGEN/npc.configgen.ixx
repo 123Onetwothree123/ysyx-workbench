@@ -178,7 +178,7 @@ bool hasConfigValue(const Config &values, const std::string &key);
 void setConfigDefault(Config &values, std::string key, std::string value);
 void copyConfigDefault(Config &values, const std::string &target,
                        const std::string &source);
-std::string deriveCsrEnabled(const Config &values);
+std::string deriveCSREnabled(const Config &values);
 void deriveEffectiveConfig(Config &values);
 std::string configDigest(const Config &values);
 std::string renderModule(const Config &values, long long socXlen,
@@ -195,14 +195,14 @@ std::string readFile(const std::string &path);
 void writeIfChanged(const std::string &path, const std::string &content);
 void addIsa(TypedFields &root, const Config &values, long long xlen,
             long long socXlen);
-void addFpu(TypedFields &root, const Config &values);
-void addAlu(TypedFields &root, const Config &values);
-void addIdu(TypedFields &root, const Config &values);
-void addMdu(TypedFields &root, const Config &values);
+void addFPU(TypedFields &root, const Config &values);
+void addALU(TypedFields &root, const Config &values);
+void addIDU(TypedFields &root, const Config &values);
+void addMDU(TypedFields &root, const Config &values);
 void addCache(TypedFields &root, const Config &values);
 void addFrontend(TypedFields &root, const Config &values);
-void addMmu(TypedFields &root, const Config &values, long long xlen);
-void addCsr(TypedFields &root, const Config &values);
+void addMMU(TypedFields &root, const Config &values, long long xlen);
+void addCSR(TypedFields &root, const Config &values);
 void addInterrupt(TypedFields &root, const Config &values);
 void addDebug(TypedFields &root, const Config &values);
 void addPma(TypedFields &root, const Config &values);

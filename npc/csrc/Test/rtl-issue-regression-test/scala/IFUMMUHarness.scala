@@ -9,14 +9,14 @@ class IFUMMUHarness extends Module {
   val io = IO(new Bundle {
     val fetchValid = Input(Bool())
     val fetchReady = Output(Bool())
-    val fetchVaddr = Input(UInt(64.W))
-    val fetchPaddr = Output(UInt(64.W))
-    val fetchPaddrVaddr = Output(UInt(64.W))
+    val fetchVirtualAddress = Input(UInt(64.W))
+    val fetchPhysicalAddress = Output(UInt(64.W))
+    val fetchPhysicalAddressVirtualAddress = Output(UInt(64.W))
     val translationValid = Output(Bool())
     val cacheReady = Input(Bool())
     val fault = Output(Bool())
     val faultCause = Output(UInt(4.W))
-    val faultVaddr = Output(UInt(64.W))
+    val faultVirtualAddress = Output(UInt(64.W))
     val pmpFault = Input(Bool())
     val privilege = Input(UInt(2.W))
     val satp = Input(UInt(64.W))
@@ -28,13 +28,13 @@ class IFUMMUHarness extends Module {
   })
 
   val dut = Module(new ysyx_26030103_IFUMMU(
-    ParallelVipt = false,
+    ParallelVIPT = false,
     XLEN = 64,
     AddressWidth = 64
   ))
 
   dut.io.fetchValid := io.fetchValid
-  dut.io.fetchVaddr := io.fetchVaddr
+  dut.io.fetchVirtualAddress := io.fetchVirtualAddress
   dut.io.cacheReady := io.cacheReady
   dut.io.pmpFault := io.pmpFault
   dut.io.privilege := io.privilege
@@ -44,12 +44,12 @@ class IFUMMUHarness extends Module {
   dut.io.flush := io.flush
 
   io.fetchReady := dut.io.fetchReady
-  io.fetchPaddr := dut.io.fetchPaddr
-  io.fetchPaddrVaddr := dut.io.fetchPaddrVaddr
+  io.fetchPhysicalAddress := dut.io.fetchPhysicalAddress
+  io.fetchPhysicalAddressVirtualAddress := dut.io.fetchPhysicalAddressVirtualAddress
   io.translationValid := dut.io.translationValid
   io.fault := dut.io.fault
   io.faultCause := dut.io.faultCause
-  io.faultVaddr := dut.io.faultVaddr
+  io.faultVirtualAddress := dut.io.faultVirtualAddress
 
   // 两个都是 producer：手工连到 C++ 驱动的 ready。
   io.req.valid := dut.io.req.valid

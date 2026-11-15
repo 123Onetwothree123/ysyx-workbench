@@ -21,8 +21,8 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       tlb: Boolean = false,
       superPage: Boolean = false,
       adMode: String = "fault",
-      pteConfig: ysyx_26030103_PteConfig =
-        ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig: ysyx_26030103_PTEConfig =
+        ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       pteFormat: String = "custom"
   ): ysyx_26030103_MMUProfile =
     ysyx_26030103_MMUProfile(
@@ -39,7 +39,7 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       superpage = superPage,
       adMode = adMode,
       tlbEnabled = tlb,
-      tlbAsidBits = 16,
+      tlbASIDBits = 16,
       tlbSuperpage = tlb && superPage,
       ptwArch = "independent",
       ptwOutstanding = 2
@@ -56,10 +56,10 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       pteSizeBytes = 8,
       pageTableSizeBytes = 4096,
       pteFormat = "custom",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       superpage = true,
       tlbEnabled = tlb,
-      tlbAsidBits = 16,
+      tlbASIDBits = 16,
       tlbSuperpage = tlb,
       ptwArch = "independent",
       ptwOutstanding = 2
@@ -76,10 +76,10 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
   private val Leaf = (LeafPPN << 10).toLong
   private val CustomVa = BigInt("0000000080001234", 16)
 
-  private def satpCustom(rootPpn: BigInt, mode: Int = CustomMode,
+  private def satpCustom(rootPPN: BigInt, mode: Int = CustomMode,
       asid: Int = 0): BigInt =
     (BigInt(mode) << 60) | (BigInt(asid & 0xffff) << 44) |
-      (rootPpn & ((BigInt(1) << 44) - 1))
+      (rootPPN & ((BigInt(1) << 44) - 1))
 
   private def pte64(ppn: BigInt, flags: BigInt): BigInt =
     ((ppn & ((BigInt(1) << 44) - 1)) << 10) | flags
@@ -88,7 +88,7 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
     ((ppn & ((BigInt(1) << 22) - 1)) << 10) | flags
 
   /** 私有 PTE：标志位 1..6/8/9，PPN 位于 bit55:12。 */
-  private val CustomPteConfig = ysyx_26030103_PteConfig(
+  private val CustomPTEConfig = ysyx_26030103_PTEConfig(
     pteBits = 64,
     validBit = 1,
     readBit = 2,
@@ -115,30 +115,30 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
   private def asBig(value: UInt): BigInt = value.peek().litValue
 
   /** 以 32 位字为单位的稀疏页表内存；PTE 宽度由测试显式选择。 */
-  private class PteMemory(val pteSize: Int = 8) {
+  private class PTEMemory(val pteSize: Int = 8) {
     val words = scala.collection.mutable.Map.empty[Long, BigInt]
     def writeWord(addr: Long, value: BigInt): Unit =
       words(addr & 0xffffffffffffL) = value & 0xffffffffL
     def readWord(addr: Long): BigInt =
       words.getOrElse(addr & 0xffffffffffffL, BigInt(0))
-    def writePte(addr: Long, value: BigInt): Unit = {
+    def writePTE(addr: Long, value: BigInt): Unit = {
       writeWord(addr, value & 0xffffffffL)
       if (pteSize == 8) writeWord(addr + 4, (value >> 32) & 0xffffffffL)
     }
-    def readPte(addr: Long): BigInt =
+    def readPTE(addr: Long): BigInt =
       if (pteSize == 8) readWord(addr) | (readWord(addr + 4) << 32)
       else readWord(addr)
   }
 
-  private class PteBus(val memory: PteMemory) {
+  private class PTEBus(val memory: PTEMemory) {
     private var pending: Option[(Int, BigInt)] = None
     var reads = 0
     var writes = 0
 
     def tick(bus: ysyx_26030103_PTEBusIO, clock: Clock): Unit = {
       val reqFire = asBool(bus.req.valid) && asBool(bus.req.ready)
-      val reqId = bus.req.bits.id.peek().litValue.toInt
-      val reqAddr = asBig(bus.req.bits.addr).toLong
+      val reqID = bus.req.bits.id.peek().litValue.toInt
+      val reqAddress = asBig(bus.req.bits.addr).toLong
       val reqWrite = asBool(bus.req.bits.write)
       val reqData = asBig(bus.req.bits.data)
 
@@ -153,29 +153,29 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       if (reqFire) {
         if (reqWrite) {
           writes += 1
-          memory.writeWord(reqAddr, reqData)
-          pending = Some((reqId, BigInt(0)))
+          memory.writeWord(reqAddress, reqData)
+          pending = Some((reqID, BigInt(0)))
         } else {
           reads += 1
-          pending = Some((reqId, memory.readWord(reqAddr)))
+          pending = Some((reqID, memory.readWord(reqAddress)))
         }
       }
     }
   }
 
   private case class WalkResult(paddr: BigInt, fault: Boolean, cause: BigInt,
-      fillValid: Boolean, fillPte: BigInt, fillLevel: Int)
+      fillValid: Boolean, fillPTE: BigInt, fillLevel: Int)
 
-  private def runPtw(
+  private def runPTW(
       dut: ysyx_26030103_PTW,
-      memory: PteMemory,
+      memory: PTEMemory,
       vaddr: BigInt,
       satp: BigInt,
       access: UInt = ysyx_26030103_AccessType.Load,
       privilege: Int = 1,
       sum: Boolean = true
   ): (WalkResult, Int, Int) = {
-    val bus = new PteBus(memory)
+    val bus = new PTEBus(memory)
     dut.reset.poke(true.B)
     dut.clock.step(2)
     dut.reset.poke(false.B)
@@ -219,7 +219,7 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
           asBool(dut.io.resp.bits.fault),
           asBig(dut.io.resp.bits.cause),
           asBool(dut.io.resp.bits.fillValid),
-          asBig(dut.io.resp.bits.fillPte),
+          asBig(dut.io.resp.bits.fillPTE),
           dut.io.resp.bits.fillLevel.peek().litValue.toInt
         ))
       } else {
@@ -232,14 +232,14 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
 
   private def runPipeline(
       dut: ysyx_26030103_PTWPipeline,
-      memory: PteMemory,
+      memory: PTEMemory,
       vaddr: BigInt,
       satp: BigInt,
       access: UInt = ysyx_26030103_AccessType.Load,
       privilege: Int = 1,
       sum: Boolean = true
   ): (WalkResult, Int, Int) = {
-    val bus = new PteBus(memory)
+    val bus = new PTEBus(memory)
     dut.reset.poke(true.B)
     dut.clock.step(2)
     dut.reset.poke(false.B)
@@ -283,7 +283,7 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
           asBool(dut.io.resp(0).bits.fault),
           asBig(dut.io.resp(0).bits.cause),
           asBool(dut.io.resp(0).bits.fillValid),
-          asBig(dut.io.resp(0).bits.fillPte),
+          asBig(dut.io.resp(0).bits.fillPTE),
           dut.io.resp(0).bits.fillLevel.peek().litValue.toInt
         ))
       } else {
@@ -295,18 +295,18 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
   }
 
   /** 1KiB/3 级基础页：VPN[0]=0，VPN[1]=0x400，VPN[2]=4。 */
-  private def build1KTables(memory: PteMemory,
+  private def build1KTables(memory: PTEMemory,
       leafFlags: BigInt = BigInt(0xcf)): Unit = {
-    memory.writePte(Root, pte64(L1PPN, BigInt(1)))
-    memory.writePte(L1 + 0x400L * 8L, pte64(L2PPN, BigInt(1)))
-    memory.writePte(L2 + 4L * 8L, pte64(LeafPPN, leafFlags))
+    memory.writePTE(Root, pte64(L1PPN, BigInt(1)))
+    memory.writePTE(L1 + 0x400L * 8L, pte64(L2PPN, BigInt(1)))
+    memory.writePTE(L2 + 4L * 8L, pte64(LeafPPN, leafFlags))
   }
 
-  private def buildCustomTables(memory: PteMemory,
+  private def buildCustomTables(memory: PTEMemory,
       leafFlags: BigInt = customLeafFlags()): Unit = {
-    memory.writePte(Root, pteCustom(L1PPN, BigInt(1) << 1))
-    memory.writePte(L1 + 0x400L * 8L, pteCustom(L2PPN, BigInt(1) << 1))
-    memory.writePte(L2 + 4L * 8L, pteCustom(LeafPPN, leafFlags))
+    memory.writePTE(Root, pteCustom(L1PPN, BigInt(1) << 1))
+    memory.writePTE(L1 + 0x400L * 8L, pteCustom(L2PPN, BigInt(1) << 1))
+    memory.writePTE(L2 + 4L * 8L, pteCustom(LeafPPN, leafFlags))
   }
 
   "MMUProfile" should "接受 RV64 CUSTOM 1KiB/3 级/2048 项几何" in {
@@ -338,7 +338,7 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
         pteSizeBytes = 8,
         pageTableSizeBytes = 16384,
         pteFormat = "custom",
-        pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53)
+        pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
       )
     }
     error.getMessage should include("Sv39")
@@ -371,7 +371,7 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
 
   it should "拒绝把私有 PTE 字段位置标成 riscv64" in {
     val error = intercept[IllegalArgumentException] {
-      custom1KProfile(pteConfig = CustomPteConfig, pteFormat = "riscv64")
+      custom1KProfile(pteConfig = CustomPTEConfig, pteFormat = "riscv64")
     }
     error.getMessage should include("PTE")
   }
@@ -397,7 +397,7 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       levels = 3,
       pteSizeBytes = 8,
       pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53)
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
     )
     sv39.standardSv39 should be(true)
     sv39.satpMode should be(8)
@@ -441,15 +441,15 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       dut.io.enable.poke(false.B)
-      dut.io.isCsrrw.poke(false.B)
-      dut.io.isCsrrs.poke(false.B)
-      dut.io.isCsrrc.poke(false.B)
+      dut.io.isCSRrw.poke(false.B)
+      dut.io.isCSRrs.poke(false.B)
+      dut.io.isCSRrc.poke(false.B)
       dut.io.isEcall.poke(false.B)
       dut.io.isEbreak.poke(false.B)
       dut.io.isMret.poke(false.B)
       dut.io.isSret.poke(false.B)
       dut.io.isSfenceVma.poke(false.B)
-      dut.io.csrAddr.poke(0.U)
+      dut.io.csrAddress.poke(0.U)
       dut.io.rs1.poke(0.U)
       dut.io.rs1Data.poke(0.U)
       dut.io.pc.poke(0.U)
@@ -459,14 +459,14 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       dut.io.memTrap.poke(false.B)
 
       def writeSatp(value: BigInt): BigInt = {
-        dut.io.csrAddr.poke(0x180.U)
+        dut.io.csrAddress.poke(0x180.U)
         dut.io.rs1.poke(1.U)
         dut.io.rs1Data.poke(value.U(64.W))
         dut.io.enable.poke(true.B)
-        dut.io.isCsrrw.poke(true.B)
+        dut.io.isCSRrw.poke(true.B)
         dut.clock.step()
         dut.io.enable.poke(false.B)
-        dut.io.isCsrrw.poke(false.B)
+        dut.io.isCSRrw.poke(false.B)
         dut.io.satp.peek().litValue
       }
 
@@ -481,14 +481,14 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
   }
 
   "PTW" should "完成 1KiB/3 级 CUSTOM walk" in {
-    val memory = new PteMemory()
+    val memory = new PTEMemory()
     build1KTables(memory)
     simulate(new ysyx_26030103_PTW(
       "fault", pageBits = 10, levels = 3, tableEntries = 2048,
       pteSizeBytes = 8, XLEN = 64, addressWidth = 64, vaBits = 43,
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53)
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
     )) { dut =>
-      val (r, reads, _) = runPtw(dut, memory, CustomVa,
+      val (r, reads, _) = runPTW(dut, memory, CustomVa,
         satpCustom(RootPPN, asid = 0x1234))
       r.fault should be(false)
       r.paddr should be(Leaf + 0x234)
@@ -499,29 +499,29 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
   }
 
   it should "在 CUSTOM 几何下检查权限并给出正确 cause" in {
-    val memory = new PteMemory()
+    val memory = new PTEMemory()
     build1KTables(memory, leafFlags = BigInt(0x53)) // V R U A
     simulate(new ysyx_26030103_PTW(
       "fault", pageBits = 10, levels = 3, tableEntries = 2048,
       pteSizeBytes = 8, XLEN = 64, addressWidth = 64, vaBits = 43,
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53)
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
     )) { dut =>
       val satp = satpCustom(RootPPN)
-      val loadNoSum = runPtw(dut, memory, CustomVa, satp,
+      val loadNoSum = runPTW(dut, memory, CustomVa, satp,
         ysyx_26030103_AccessType.Load, privilege = 1, sum = false)._1
       loadNoSum.fault should be(true)
       loadNoSum.cause should be(13)
 
-      val loadSum = runPtw(dut, memory, CustomVa, satp,
+      val loadSum = runPTW(dut, memory, CustomVa, satp,
         ysyx_26030103_AccessType.Load, privilege = 1, sum = true)._1
       loadSum.fault should be(false)
 
-      val store = runPtw(dut, memory, CustomVa, satp,
+      val store = runPTW(dut, memory, CustomVa, satp,
         ysyx_26030103_AccessType.Store, privilege = 1, sum = true)._1
       store.fault should be(true)
       store.cause should be(15)
 
-      val fetch = runPtw(dut, memory, CustomVa, satp,
+      val fetch = runPTW(dut, memory, CustomVa, satp,
         ysyx_26030103_AccessType.Fetch, privilege = 1, sum = true)._1
       fetch.fault should be(true)
       fetch.cause should be(12)
@@ -529,21 +529,21 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
   }
 
   it should "按私有 PTE 字段位置完成 A/D 硬件写回" in {
-    val memory = new PteMemory()
+    val memory = new PTEMemory()
     // 叶子初始无 A/D，由 PTW 按私有字段位置写回。
     buildCustomTables(memory, customLeafFlags(a = false, d = false))
     simulate(new ysyx_26030103_PTW(
       "hardware", pageBits = 10, levels = 3, tableEntries = 2048,
       pteSizeBytes = 8, XLEN = 64, addressWidth = 64, vaBits = 43,
-      pteConfig = CustomPteConfig
+      pteConfig = CustomPTEConfig
     )) { dut =>
-      val (r, _, writes) = runPtw(dut, memory, CustomVa,
+      val (r, _, writes) = runPTW(dut, memory, CustomVa,
         satpCustom(RootPPN), ysyx_26030103_AccessType.Store,
         privilege = 1, sum = true)
       r.fault should be(false)
       r.paddr should be(Leaf + 0x234)
       writes should be(1)
-      val updated = memory.readPte(L2 + 4L * 8L)
+      val updated = memory.readPTE(L2 + 4L * 8L)
       (updated & (BigInt(1) << 8)) should be(BigInt(1) << 8)
       (updated & (BigInt(1) << 9)) should be(BigInt(1) << 9)
       // 其余 PPN 字段必须保持不变。
@@ -552,13 +552,13 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
   }
 
   it should "在 pipelined PTW 下支持 CUSTOM 私有 PTE 与 A/D 写回" in {
-    val memory = new PteMemory()
+    val memory = new PTEMemory()
     buildCustomTables(memory, customLeafFlags(a = false, d = false))
     simulate(new ysyx_26030103_PTWPipeline(
       outstanding = 2, adMode = "hardware",
       pageBits = 10, levels = 3, tableEntries = 2048,
       pteSizeBytes = 8, XLEN = 64, addressWidth = 64, vaBits = 43,
-      pteConfig = CustomPteConfig
+      pteConfig = CustomPTEConfig
     )) { dut =>
       val (r, _, writes) = runPipeline(dut, memory, CustomVa,
         satpCustom(RootPPN), ysyx_26030103_AccessType.Store,
@@ -566,49 +566,49 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       r.fault should be(false)
       r.paddr should be(Leaf + 0x234)
       writes should be(1)
-      val updated = memory.readPte(L2 + 4L * 8L)
+      val updated = memory.readPTE(L2 + 4L * 8L)
       (updated & BigInt(0x300)) should be(BigInt(0x300))
     }
   }
 
   it should "支持 CUSTOM 1KiB 页的 2MiB 超级页并对齐检查" in {
-    val memory = new PteMemory()
-    val superPpn = BigInt("80000", 16) // 低 11 位为 0
+    val memory = new PTEMemory()
+    val superPPN = BigInt("80000", 16) // 低 11 位为 0
     val superVa = (BigInt(1) << 32) | BigInt("1234567", 16)
-    memory.writePte(Root + 8L, pte64(L1PPN, BigInt(1)))
-    memory.writePte(L1 + 9L * 8L, pte64(superPpn, BigInt(0xcf)))
+    memory.writePTE(Root + 8L, pte64(L1PPN, BigInt(1)))
+    memory.writePTE(L1 + 9L * 8L, pte64(superPPN, BigInt(0xcf)))
     simulate(new ysyx_26030103_PTW(
       "fault", pageBits = 10, levels = 3, tableEntries = 2048,
       pteSizeBytes = 8, superpage = true, fillSuperpage = true,
       XLEN = 64, addressWidth = 64, vaBits = 43,
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53)
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
     )) { dut =>
-      val (r, _, _) = runPtw(dut, memory, superVa, satpCustom(RootPPN))
+      val (r, _, _) = runPTW(dut, memory, superVa, satpCustom(RootPPN))
       r.fault should be(false)
       // 2MiB 超级页偏移是 VA[20:0]，因此 0x1_1234567 -> 0x20034567。
       r.paddr should be(BigInt("20034567", 16))
       r.fillLevel should be(1)
       r.fillValid should be(true)
 
-      val bad = new PteMemory()
-      bad.writePte(Root + 8L, pte64(L1PPN, BigInt(1)))
-      bad.writePte(L1 + 9L * 8L, pte64(BigInt("80010", 16), BigInt(0xcf)))
-      val (f, _, _) = runPtw(dut, bad, superVa, satpCustom(RootPPN))
+      val bad = new PTEMemory()
+      bad.writePTE(Root + 8L, pte64(L1PPN, BigInt(1)))
+      bad.writePTE(L1 + 9L * 8L, pte64(BigInt("80010", 16), BigInt(0xcf)))
+      val (f, _, _) = runPTW(dut, bad, superVa, satpCustom(RootPPN))
       f.fault should be(true)
       f.cause should be(13)
     }
   }
 
   it should "拒绝 CUSTOM 非规范虚拟地址且不访问页表" in {
-    val memory = new PteMemory()
+    val memory = new PTEMemory()
     build1KTables(memory)
     simulate(new ysyx_26030103_PTW(
       "fault", pageBits = 10, levels = 3, tableEntries = 2048,
       pteSizeBytes = 8, XLEN = 64, addressWidth = 64, vaBits = 43,
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53)
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
     )) { dut =>
       val badVa = BigInt(1) << 43 // 有效位为 42，bit43 未符号扩展
-      val (r, reads, _) = runPtw(dut, memory, badVa, satpCustom(RootPPN))
+      val (r, reads, _) = runPTW(dut, memory, badVa, satpCustom(RootPPN))
       r.fault should be(true)
       r.cause should be(13)
       reads should be(0)
@@ -616,37 +616,37 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
   }
 
   it should "支持 CUSTOM 4B PTE walk" in {
-    val memory = new PteMemory(pteSize = 4)
-    val rootPpn = BigInt("20001", 16)
-    val l1Ppn = BigInt("20002", 16)
-    val l2Ppn = BigInt("20003", 16)
-    val leafPpn = BigInt("20004", 16)
-    val root = (rootPpn << 10).toLong
-    val l1 = (l1Ppn << 10).toLong
-    val l2 = (l2Ppn << 10).toLong
-    memory.writePte(root, pte32(l1Ppn, BigInt(1)))
-    memory.writePte(l1 + 0x400L * 4L, pte32(l2Ppn, BigInt(1)))
-    memory.writePte(l2 + 4L * 4L, pte32(leafPpn, BigInt(0xcf)))
+    val memory = new PTEMemory(pteSize = 4)
+    val rootPPN = BigInt("20001", 16)
+    val l1PPN = BigInt("20002", 16)
+    val l2PPN = BigInt("20003", 16)
+    val leafPPN = BigInt("20004", 16)
+    val root = (rootPPN << 10).toLong
+    val l1 = (l1PPN << 10).toLong
+    val l2 = (l2PPN << 10).toLong
+    memory.writePTE(root, pte32(l1PPN, BigInt(1)))
+    memory.writePTE(l1 + 0x400L * 4L, pte32(l2PPN, BigInt(1)))
+    memory.writePTE(l2 + 4L * 4L, pte32(leafPPN, BigInt(0xcf)))
     simulate(new ysyx_26030103_PTW(
       "fault", pageBits = 10, levels = 3, tableEntries = 2048,
       pteSizeBytes = 4, XLEN = 64, addressWidth = 64, vaBits = 43,
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 32, ppnHigh = 31)
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31)
     )) { dut =>
-      val (r, reads, _) = runPtw(dut, memory, CustomVa,
-        satpCustom(rootPpn))
+      val (r, reads, _) = runPTW(dut, memory, CustomVa,
+        satpCustom(rootPPN))
       r.fault should be(false)
-      r.paddr should be((leafPpn << 10) + 0x234)
+      r.paddr should be((leafPPN << 10) + 0x234)
       reads should be(3)
       r.fillValid should be(true)
     }
   }
 
   "MMU" should "在 CUSTOM 1KiB 私有 PTE 下完成 TLB miss refill 并拒绝标准 MODE" in {
-    val memory = new PteMemory()
+    val memory = new PTEMemory()
     buildCustomTables(memory)
-    val profile = custom1KProfile(tlb = true, pteConfig = CustomPteConfig)
+    val profile = custom1KProfile(tlb = true, pteConfig = CustomPTEConfig)
     simulate(new ysyx_26030103_MMU(profile)) { dut =>
-      val bus = new PteBus(memory)
+      val bus = new PTEBus(memory)
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
@@ -706,14 +706,14 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
   }
 
   "MMU" should "在 CUSTOM 超级页上完成 TLB fill 并命中" in {
-    val memory = new PteMemory()
-    val superPpn = BigInt("80000", 16)
+    val memory = new PTEMemory()
+    val superPPN = BigInt("80000", 16)
     val superVa = (BigInt(1) << 32) | BigInt("1234567", 16)
-    memory.writePte(Root + 8L, pte64(L1PPN, BigInt(1)))
-    memory.writePte(L1 + 9L * 8L, pte64(superPpn, BigInt(0xcf)))
+    memory.writePTE(Root + 8L, pte64(L1PPN, BigInt(1)))
+    memory.writePTE(L1 + 9L * 8L, pte64(superPPN, BigInt(0xcf)))
     val profile = custom1KProfile(tlb = true, superPage = true)
     simulate(new ysyx_26030103_MMU(profile)) { dut =>
-      val bus = new PteBus(memory)
+      val bus = new PTEBus(memory)
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
@@ -774,16 +774,16 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       adMode = "ignore", superpage = true,
       pageBits = 10, levels = 3, indexBits = 18,
       XLEN = 64, addressWidth = 64, vaBits = 64, pteWidth = 64,
-      ptePpnHigh = 53
+      ptePPNHigh = 53
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
-      dut.io.fillVaddr.poke(0.U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(0.U(64.W))
+      dut.io.fillVirtualAddress.poke(0.U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(0.U(64.W))
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
       dut.io.lookup(0).asid.poke(0.U)
@@ -796,9 +796,9 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
 
       val vaddr = BigInt("8000000012345678", 16)
       dut.io.fillValid.poke(true.B)
-      dut.io.fillVaddr.poke(vaddr.U(64.W))
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(pte64(BigInt(0), BigInt(0xcf)).U(64.W))
+      dut.io.fillVirtualAddress.poke(vaddr.U(64.W))
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(pte64(BigInt(0), BigInt(0xcf)).U(64.W))
       dut.io.fillLevel.poke(2.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -815,17 +815,17 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
     ChiselStage.emitSystemVerilog(new ysyx_26030103_PTW(
       "fault", pageBits = 10, levels = 3, tableEntries = 2048,
       pteSizeBytes = 8, XLEN = 64, addressWidth = 64, vaBits = 43,
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53)
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
     ))
     ChiselStage.emitSystemVerilog(new ysyx_26030103_PTW(
       "fault", pageBits = 11, levels = 4, tableEntries = 512,
       pteSizeBytes = 8, XLEN = 64, addressWidth = 64, vaBits = 47,
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53)
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
     ))
     ChiselStage.emitSystemVerilog(new ysyx_26030103_PTWPipeline(
       outstanding = 2, pageBits = 10, levels = 3, tableEntries = 2048,
       pteSizeBytes = 8, XLEN = 64, addressWidth = 64, vaBits = 43,
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53)
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
     ))
     ChiselStage.emitSystemVerilog(new ysyx_26030103_MMU(custom1KProfile(tlb = true)))
     ChiselStage.emitSystemVerilog(new ysyx_26030103_MMU(custom2KProfile(tlb = true)))

@@ -19,15 +19,15 @@ class ysyx_26030103_CSRExceptionAuditHarness(
   val io = IO(new Bundle {
     val enable = Input(Bool())
     val retireCommit = Input(Bool())
-    val isCsrrw = Input(Bool())
-    val isCsrrs = Input(Bool())
-    val isCsrrc = Input(Bool())
+    val isCSRrw = Input(Bool())
+    val isCSRrs = Input(Bool())
+    val isCSRrc = Input(Bool())
     val isEcall = Input(Bool())
     val isEbreak = Input(Bool())
     val isMret = Input(Bool())
     val isSret = Input(Bool())
     val isSfenceVma = Input(Bool())
-    val csrAddr = Input(UInt(12.W))
+    val csrAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
     val rs1Data = Input(UInt(64.W))
     val pc = Input(UInt(64.W))
@@ -56,15 +56,15 @@ class ysyx_26030103_CSRExceptionAuditHarness(
   csr.io.rst := reset
   csr.io.Enable := io.enable
   csr.io.MinstretRetireCommit := io.retireCommit
-  csr.io.IsCsrrw := io.isCsrrw
-  csr.io.IsCsrrs := io.isCsrrs
-  csr.io.IsCsrrc := io.isCsrrc
+  csr.io.IsCSRrw := io.isCSRrw
+  csr.io.IsCSRrs := io.isCSRrs
+  csr.io.IsCSRrc := io.isCSRrc
   csr.io.IsEcall := io.isEcall
   csr.io.IsEbreak := io.isEbreak
   csr.io.IsMret := io.isMret
   csr.io.IsSret := io.isSret
   csr.io.IsSfenceVma := io.isSfenceVma
-  csr.io.CSRAddress := io.csrAddr
+  csr.io.CSRAddress := io.csrAddress
   csr.io.rs1 := io.rs1
   csr.io.Rs1Data := io.rs1Data
   csr.io.pc := io.pc
@@ -122,7 +122,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       pteSizeBytes = 8,
       pageTableSizeBytes = 4096,
       pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -136,15 +136,15 @@ class ysyx_26030103_CSRExceptionAuditTest
     dut.reset.poke(false.B)
     dut.io.enable.poke(false.B)
     dut.io.retireCommit.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
-    dut.io.isCsrrs.poke(false.B)
-    dut.io.isCsrrc.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
+    dut.io.isCSRrs.poke(false.B)
+    dut.io.isCSRrc.poke(false.B)
     dut.io.isEcall.poke(false.B)
     dut.io.isEbreak.poke(false.B)
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddr.poke(0.U)
+    dut.io.csrAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
     dut.io.pc.poke(0.U)
@@ -162,7 +162,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       dut: ysyx_26030103_CSRExceptionAuditHarness,
       addr: Int
   ): BigInt = {
-    dut.io.csrAddr.poke(addr.U)
+    dut.io.csrAddress.poke(addr.U)
     dut.io.enable.poke(false.B)
     dut.io.rdata.peek().litValue
   }
@@ -172,14 +172,14 @@ class ysyx_26030103_CSRExceptionAuditTest
       addr: Int,
       data: BigInt
   ): Unit = {
-    dut.io.csrAddr.poke(addr.U)
+    dut.io.csrAddress.poke(addr.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(64.W))
     dut.io.enable.poke(true.B)
-    dut.io.isCsrrw.poke(true.B)
+    dut.io.isCSRrw.poke(true.B)
     dut.clock.step()
     dut.io.enable.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
   }
 
   private def retirePulses(
@@ -295,33 +295,33 @@ class ysyx_26030103_CSRExceptionAuditTest
       write(dut, MTVEC, BigInt("0000000080002000", 16))
 
       // ECALL from M: cause=11, mtval=0。
-      val ecallPc = BigInt("0000000080001234", 16)
-      dut.io.pc.poke(ecallPc.U)
+      val ecallPC = BigInt("0000000080001234", 16)
+      dut.io.pc.poke(ecallPC.U)
       dut.io.enable.poke(true.B)
       dut.io.isEcall.poke(true.B)
-      checkTrap(dut, 11, ecallPc, 0, BigInt("0000000080002000", 16), "M ecall")
+      checkTrap(dut, 11, ecallPC, 0, BigInt("0000000080002000", 16), "M ecall")
       dut.clock.step()
       dut.io.isEcall.poke(false.B)
       dut.io.enable.poke(false.B)
       peek(dut, MCAUSE) should be(BigInt(11))
-      peek(dut, MEPC) should be(ecallPc)
+      peek(dut, MEPC) should be(ecallPC)
       peek(dut, MTVAL) should be(BigInt(0))
 
       // EBREAK: cause=3，mtval 记录故障 PC。
       setup(dut)
       write(dut, MTVEC, BigInt("0000000080002000", 16))
-      val ebreakPc = BigInt("0000000080001240", 16)
-      dut.io.pc.poke(ebreakPc.U)
+      val ebreakPC = BigInt("0000000080001240", 16)
+      dut.io.pc.poke(ebreakPC.U)
       dut.io.enable.poke(true.B)
       dut.io.isEbreak.poke(true.B)
-      checkTrap(dut, 3, ebreakPc, ebreakPc,
+      checkTrap(dut, 3, ebreakPC, ebreakPC,
         BigInt("0000000080002000", 16), "M ebreak")
       dut.clock.step()
       dut.io.isEbreak.poke(false.B)
       dut.io.enable.poke(false.B)
       peek(dut, MCAUSE) should be(BigInt(3))
-      peek(dut, MEPC) should be(ebreakPc)
-      peek(dut, MTVAL) should be(ebreakPc)
+      peek(dut, MEPC) should be(ebreakPC)
+      peek(dut, MTVAL) should be(ebreakPC)
     }
   }
 
@@ -329,20 +329,20 @@ class ysyx_26030103_CSRExceptionAuditTest
     simulate(new ysyx_26030103_CSRExceptionAuditHarness(profile)) { dut =>
       setup(dut)
       write(dut, MTVEC, BigInt("0000000080002000", 16))
-      val illegalPc = BigInt("0000000080001300", 16)
+      val illegalPC = BigInt("0000000080001300", 16)
       val illegalInsn = BigInt("0000000000000000", 16)
-      injectTrap(dut, 2, illegalPc, illegalInsn,
+      injectTrap(dut, 2, illegalPC, illegalInsn,
         BigInt("0000000080002000", 16), "illegal")
       peek(dut, MCAUSE) should be(BigInt(2))
-      peek(dut, MEPC) should be(illegalPc)
+      peek(dut, MEPC) should be(illegalPC)
       peek(dut, MTVAL) should be(illegalInsn)
 
-      val faultPc = BigInt("0000000080001400", 16)
-      injectTrap(dut, 1, faultPc, faultPc,
+      val faultPC = BigInt("0000000080001400", 16)
+      injectTrap(dut, 1, faultPC, faultPC,
         BigInt("0000000080002000", 16), "fetch access fault")
       peek(dut, MCAUSE) should be(BigInt(1))
-      peek(dut, MEPC) should be(faultPc)
-      peek(dut, MTVAL) should be(faultPc)
+      peek(dut, MEPC) should be(faultPC)
+      peek(dut, MTVAL) should be(faultPC)
     }
   }
 
@@ -374,9 +374,9 @@ class ysyx_26030103_CSRExceptionAuditTest
       // 进入 S 时 sstatus.SIE=1，便于检查 trap 的 SPP/SPIE/SIE。
       enterS(dut, BigInt("0000000080005000", 16), sstatusBits = BigInt(0x2))
       // 委托异常：写 sepc/scause/stval，mepc/mcause/mtval 不变。
-      val faultPc = BigInt("0000000080005010", 16)
+      val faultPC = BigInt("0000000080005010", 16)
       val faultTval = BigInt("00000000dead0000", 16)
-      dut.io.pc.poke(faultPc.U)
+      dut.io.pc.poke(faultPC.U)
       dut.io.trapTval.poke(faultTval.U)
       dut.io.trapTvalValid.poke(true.B)
       dut.io.trapCause.poke(5.U)
@@ -389,7 +389,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       dut.io.trapValid.poke(false.B)
       dut.io.enable.poke(false.B)
       peek(dut, SCAUSE) should be(BigInt(5))
-      peek(dut, SEPC) should be(faultPc)
+      peek(dut, SEPC) should be(faultPC)
       peek(dut, STVAL) should be(faultTval)
       // MRET 设置的 mepc 仍在；M 入口未被这次委托异常改写。
       peek(dut, MEPC) should be(BigInt("0000000080005000", 16))
@@ -402,7 +402,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       dut.io.enable.poke(true.B)
       dut.io.isSret.poke(true.B)
       bool(dut.io.exceptionTaken) should be(true)
-      big(dut.io.exceptionTarget) should be(faultPc)
+      big(dut.io.exceptionTarget) should be(faultPC)
       dut.clock.step()
       dut.io.isSret.poke(false.B)
       dut.io.enable.poke(false.B)
@@ -411,11 +411,11 @@ class ysyx_26030103_CSRExceptionAuditTest
       ((peek(dut, MSTATUS) >> 1) & 1) should be(BigInt(1)) // SIE=SPIE
 
       // 未委托的 instruction-address-misaligned(4) 必须回到 M。
-      val misPc = BigInt("0000000080005020", 16)
-      injectTrap(dut, 4, misPc, misPc,
+      val misPC = BigInt("0000000080005020", 16)
+      injectTrap(dut, 4, misPC, misPC,
         BigInt("0000000080002000", 16), "non-delegated misaligned")
       peek(dut, MCAUSE) should be(BigInt(4))
-      peek(dut, MEPC) should be(misPc)
+      peek(dut, MEPC) should be(misPC)
       peek(dut, SCAUSE) should be(BigInt(5))
       ((peek(dut, MSTATUS) >> 11) & 3) should be(BigInt(1)) // MPP=S
     }
@@ -426,20 +426,20 @@ class ysyx_26030103_CSRExceptionAuditTest
       setup(dut)
       write(dut, MTVEC, BigInt("0000000080002000", 16))
       enterU(dut, BigInt("0000000080006000", 16))
-      val ecallPc = BigInt("0000000080006010", 16)
-      ecall(dut, ecallPc)
+      val ecallPC = BigInt("0000000080006010", 16)
+      ecall(dut, ecallPC)
       peek(dut, MCAUSE) should be(BigInt(8))
-      peek(dut, MEPC) should be(ecallPc)
+      peek(dut, MEPC) should be(ecallPC)
       peek(dut, MTVAL) should be(BigInt(0))
       ((peek(dut, MSTATUS) >> 11) & 3) should be(BigInt(0)) // MPP=U
       big(dut.io.privilege) should be(BigInt(3))
       // 仍在 M 模式时配置 S 委托，再 MRET 返回 U。
       write(dut, STVEC, BigInt("0000000080004000", 16))
       write(dut, MEDELEG, BigInt(1) << 8)
-      dut.io.pc.poke(ecallPc.U)
+      dut.io.pc.poke(ecallPC.U)
       dut.io.enable.poke(true.B)
       dut.io.isMret.poke(true.B)
-      big(dut.io.exceptionTarget) should be(ecallPc)
+      big(dut.io.exceptionTarget) should be(ecallPC)
       dut.clock.step()
       dut.io.isMret.poke(false.B)
       dut.io.enable.poke(false.B)
@@ -494,7 +494,7 @@ class ysyx_26030103_CSRExceptionAuditTest
     // M external: 使用 hasSExternalIrq=false 的 profile，io.Interrupt 挂到
     // MEIP(bit11)，cause=0x8000000b。
     simulate(new ysyx_26030103_CSRExceptionAuditHarness(
-      profile.copy(hasSExternalIrq = false))) { dut =>
+      profile.copy(hasSExternalIRQ = false))) { dut =>
       setup(dut)
       write(dut, MTVEC, BigInt("0000000080002000", 16))
       write(dut, MSTATUS, BigInt(0x8))
@@ -579,7 +579,7 @@ class ysyx_26030103_CSRExceptionAuditTest
     // NEMU REF 也按 bit1 先于 bit5 处理。mip.STIP 只读，STIP 由
     // direct_stip 硬件输入驱动；只有 SSIP 通过 mip 写口注入。
     val directStipProfile =
-      profile.copy(timerPath = "direct_stip", hasSTimerIrq = true)
+      profile.copy(timerPath = "direct_stip", hasSTimerIRQ = true)
     simulate(new ysyx_26030103_CSRExceptionAuditHarness(directStipProfile)) {
       dut =>
         setup(dut)

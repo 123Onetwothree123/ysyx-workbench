@@ -32,7 +32,7 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
     private case class Pending(id: Int, var remain: Int, data: BigInt)
     val data = scala.collection.mutable.Map.empty[Long, BigInt]
     private val pending = scala.collection.mutable.ArrayBuffer.empty[Pending]
-    private val latencyByAddr = scala.collection.mutable.Map.empty[Long, Int]
+    private val latencyByAddress = scala.collection.mutable.Map.empty[Long, Int]
     var reads = 0
     var writes = 0
     var peakPending = 0
@@ -41,44 +41,44 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
     def write(addr: Long, value: BigInt): Unit = data(addr & 0xffffffffL) = value
     def read(addr: Long): BigInt = data.getOrElse(addr & 0xffffffffL, BigInt(0))
     def setLatency(addr: Long, value: Int): Unit =
-      latencyByAddr(addr & 0xffffffffL) = value
+      latencyByAddress(addr & 0xffffffffL) = value
     def pendingCount: Int = pending.size
     def hasPending: Boolean = pending.nonEmpty
     private def latencyOf(addr: Long): Int =
-      latencyByAddr.getOrElse(addr & 0xffffffffL, latency)
+      latencyByAddress.getOrElse(addr & 0xffffffffL, latency)
 
     def tick(bus: ysyx_26030103_PTEBusIO, clock: Clock): Unit = {
       val reqFire = asBool(bus.req.valid) && asBool(bus.req.ready)
-      val reqId = asLong(bus.req.bits.id).toInt
-      val reqAddr = asLong(bus.req.bits.addr)
+      val reqID = asLong(bus.req.bits.id).toInt
+      val reqAddress = asLong(bus.req.bits.addr)
       val reqWrite = asBool(bus.req.bits.write)
       val reqData = asLong(bus.req.bits.data)
 
-      val readyIdx =
+      val readyIndex =
         if (reverseResponses) pending.lastIndexWhere(_.remain == 0)
         else pending.indexWhere(_.remain == 0)
-      val respValid = readyIdx >= 0
+      val respValid = readyIndex >= 0
       bus.resp.valid.poke(respValid.B)
-      bus.resp.bits.id.poke((if (respValid) pending(readyIdx).id else 0).U(4.W))
+      bus.resp.bits.id.poke((if (respValid) pending(readyIndex).id else 0).U(4.W))
       bus.resp.bits.data.poke(
-        (if (respValid) pending(readyIdx).data else BigInt(0)).U(32.W))
+        (if (respValid) pending(readyIndex).data else BigInt(0)).U(32.W))
       bus.resp.bits.fault.poke(false.B)
       val respReady = asBool(bus.resp.ready)
-      if (respValid && respReady) responseIds += pending(readyIdx).id
+      if (respValid && respReady) responseIds += pending(readyIndex).id
 
       clock.step()
 
-      if (respValid && respReady) pending.remove(readyIdx)
+      if (respValid && respReady) pending.remove(readyIndex)
       pending.foreach(p => p.remain = math.max(p.remain - 1, 0))
 
       if (reqFire) {
         if (reqWrite) {
           writes += 1
-          data(reqAddr & 0xffffffffL) = reqData.U(32.W).litValue
-          pending += Pending(reqId, latencyOf(reqAddr), BigInt(0))
+          data(reqAddress & 0xffffffffL) = reqData.U(32.W).litValue
+          pending += Pending(reqID, latencyOf(reqAddress), BigInt(0))
         } else {
           reads += 1
-          pending += Pending(reqId, latencyOf(reqAddr), read(reqAddr))
+          pending += Pending(reqID, latencyOf(reqAddress), read(reqAddress))
         }
       }
       peakPending = math.max(peakPending, pending.size)

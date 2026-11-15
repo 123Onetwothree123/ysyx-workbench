@@ -17,22 +17,22 @@ class ysyx_26030103_AXIReadMux(
     val out = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
   })
 
-  private val AReadID = ysyx_26030103_AXIReadId.Ifu.U(4.W)
-  private val PtwBaseID = ysyx_26030103_AXIReadId.PtwBase.U(4.W)
-  private val PtwLastID = ysyx_26030103_AXIReadId.PtwLast.U(4.W)
+  private val aReadID = ysyx_26030103_AXIReadID.IFU.U(4.W)
+  private val ptwBaseID = ysyx_26030103_AXIReadID.PTWBase.U(4.W)
+  private val ptwLastID = ysyx_26030103_AXIReadID.PTWLast.U(4.W)
 
-  def quiet(m: ysyx_26030103_AXI5IO): Unit = {
-    m.AW.AWREADY := false.B
-    m.AR.ARREADY := false.B
-    m.W.WREADY := false.B
-    m.B.BVALID := false.B
-    m.B.BID := 0.U
-    m.B.BRESP := 0.U
-    m.R.RVALID := false.B
-    m.R.RID := 0.U
-    m.R.RDATA := 0.U
-    m.R.RRESP := 0.U
-    m.R.RLAST := false.B
+  def quiet(axiPort: ysyx_26030103_AXI5IO): Unit = {
+    axiPort.AW.AWREADY := false.B
+    axiPort.AR.ARREADY := false.B
+    axiPort.W.WREADY := false.B
+    axiPort.B.BVALID := false.B
+    axiPort.B.BID := 0.U
+    axiPort.B.BRESP := 0.U
+    axiPort.R.RVALID := false.B
+    axiPort.R.RID := 0.U
+    axiPort.R.RDATA := 0.U
+    axiPort.R.RRESP := 0.U
+    axiPort.R.RLAST := false.B
   }
   quiet(io.a)
   quiet(io.b)
@@ -78,12 +78,12 @@ class ysyx_26030103_AXIReadMux(
   // 连续请求饿死取指。
   val lastGrantB = RegInit(false.B)
 
-  val aReq = io.a.AR.ARVALID && !aBusy
-  val bId = io.b.AR.ARID
-  val bIdValid = bId >= PtwBaseID && bId <= PtwLastID
-  val bReq = io.b.AR.ARVALID && bIdValid && !bBusy(bId)
-  val chooseBNow = bReq && (!aReq || lastGrantB)
-  val chooseANow = aReq && !chooseBNow
+  val aRequest = io.a.AR.ARVALID && !aBusy
+  val bID = io.b.AR.ARID
+  val bIDValid = bID >= ptwBaseID && bID <= ptwLastID
+  val bRequest = io.b.AR.ARVALID && bIDValid && !bBusy(bID)
+  val chooseBNow = bRequest && (!aRequest || lastGrantB)
+  val chooseANow = aRequest && !chooseBNow
   // AXI 要求 ARVALID 拉高后到 ARREADY 之前 AR payload 保持不变。下游
   // 反压时不能因为另一侧新请求到达而改选，否则会丢掉已发出的请求。
   val arLocked = RegInit(false.B)
@@ -101,7 +101,7 @@ class ysyx_26030103_AXIReadMux(
 
   when(chooseA) {
     io.out.AR.ARVALID := io.a.AR.ARVALID
-    io.out.AR.ARID := AReadID
+    io.out.AR.ARID := aReadID
     io.out.AR.ARADDR := io.a.AR.ARADDR
     io.out.AR.ARLEN := io.a.AR.ARLEN
     io.out.AR.ARSIZE := io.a.AR.ARSIZE
@@ -112,7 +112,7 @@ class ysyx_26030103_AXIReadMux(
     io.a.AR.ARREADY := io.out.AR.ARREADY
   }.elsewhen(chooseB) {
     io.out.AR.ARVALID := io.b.AR.ARVALID
-    io.out.AR.ARID := bId
+    io.out.AR.ARID := bID
     io.out.AR.ARADDR := io.b.AR.ARADDR
     io.out.AR.ARLEN := io.b.AR.ARLEN
     io.out.AR.ARSIZE := io.b.AR.ARSIZE
@@ -123,12 +123,12 @@ class ysyx_26030103_AXIReadMux(
     io.b.AR.ARREADY := io.out.AR.ARREADY
   }
   when(io.b.AR.ARVALID) {
-    assert(bIdValid, "PTW AXI read uses an ID outside the reserved 3..15 range")
+    assert(bIDValid, "PTW AXI read uses an ID outside the reserved 3..15 range")
   }
 
   val arFire = io.out.AR.ARVALID && io.out.AR.ARREADY
   when(arFire) {
-    when(chooseB) { bBusy(bId) := true.B }
+    when(chooseB) { bBusy(bID) := true.B }
       .otherwise { aBusy := true.B }
     lastGrantB := chooseA
   }
@@ -138,12 +138,12 @@ class ysyx_26030103_AXIReadMux(
   val bAcceptedNow = arFire && chooseB
   // 零延迟从设备可能在 AR 握手同拍返回 R；把本拍刚接受的 ID 也算作
   // 预期响应，避免丢掉第一拍。
-  val aSelected = rid === AReadID && (aBusy || aAcceptedNow)
-  val bSelected = rid >= PtwBaseID && rid <= PtwLastID &&
-    (bBusy(rid) || (bAcceptedNow && bId === rid))
+  val aSelected = rid === aReadID && (aBusy || aAcceptedNow)
+  val bSelected = rid >= ptwBaseID && rid <= ptwLastID &&
+    (bBusy(rid) || (bAcceptedNow && bID === rid))
   when(aSelected) {
     io.a.R.RVALID := io.out.R.RVALID
-    io.a.R.RID := AReadID
+    io.a.R.RID := aReadID
     io.a.R.RDATA := io.out.R.RDATA
     io.a.R.RRESP := io.out.R.RRESP
     io.a.R.RLAST := io.out.R.RLAST

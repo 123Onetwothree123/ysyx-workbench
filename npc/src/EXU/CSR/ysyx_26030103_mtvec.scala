@@ -10,14 +10,14 @@ class ysyx_26030103_mtvec(val XLEN: Int = 32) extends Module {
     val wdata = Input(UInt(XLEN.W))
     val rdata = Output(UInt(XLEN.W))
   })
-  val RegMtvec = withClockAndReset(io.clk, io.rst) { RegInit(0.U(XLEN.W)) }
+  val regMtvec = withClockAndReset(io.clk, io.rst) { RegInit(0.U(XLEN.W)) }
   when(io.rst) {
-    RegMtvec := 0.U(XLEN.W)
+    regMtvec := 0.U(XLEN.W)
   }.elsewhen(io.wen) {
     // WARL: BASE按4字节对齐，MODE仅支持Direct(0)/Vectored(1)。
     // 对于保留编码2/3，选择确定性地收敛到Direct。
-    val LegalMode = Mux(io.wdata(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
-    RegMtvec := Cat(io.wdata(XLEN - 1, 2), LegalMode)
+    val legalMode = Mux(io.wdata(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
+    regMtvec := Cat(io.wdata(XLEN - 1, 2), legalMode)
   }
-  io.rdata := RegMtvec
+  io.rdata := regMtvec
 }

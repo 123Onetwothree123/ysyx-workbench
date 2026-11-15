@@ -1,7 +1,7 @@
 module npc.configgen;
 import std;
 namespace npc::configgen {
-void addCsr(TypedFields &root, const Config &values)
+void addCSR(TypedFields &root, const Config &values)
 {
     TypedFields csr;
     for (const auto &[key, value] : values) {

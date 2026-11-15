@@ -20,7 +20,7 @@ import org.scalatest.matchers.should.Matchers
   */
 class ysyx_26030103_DCacheWideDrainResponseAuditTest
     extends AnyFlatSpec with Matchers {
-  private val AddrW = 32
+  private val AddressW = 32
   private val Region = ysyx_26030103_PMARegion(
     Base = 0x80000000L,
     Size = 0x10000000L,
@@ -38,7 +38,7 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
           Enable = true,
           BlockSizeLog2 = 4,
           IndexBits = 4,
-          AddressWidth = AddrW,
+          AddressWidth = AddressW,
           DataWidth = 64,
           PMARegions = Seq(Region)
         )
@@ -47,7 +47,7 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
           Enable = true,
           BlockSizeLog2 = 4,
           IndexBits = 4,
-          AddressWidth = AddrW,
+          AddressWidth = AddressW,
           DataWidth = 64,
           PMARegions = Seq(Region)
         )
@@ -76,24 +76,24 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
     clock.step(2)
     reset.poke(false.B)
     io.req.valid.poke(false.B)
-    io.req.bits.addr.poke(0.U(AddrW.W))
-    io.req.bits.vaddr.poke(0.U(AddrW.W))
+    io.req.bits.addr.poke(0.U(AddressW.W))
+    io.req.bits.vaddr.poke(0.U(AddressW.W))
     io.req.bits.WidthSelect.poke(2.U(2.W))
     io.req.bits.signed.poke(false.B)
     io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(0.U(AddrW.W))
+    io.req_paddr_vaddr.poke(0.U(AddressW.W))
     io.req_kill.poke(false.B)
     io.resp.ready.poke(false.B)
     io.StoreValid.poke(false.B)
-    io.StoreResp.poke(0.U(2.W))
-    io.StoreAddr.poke(0.U(AddrW.W))
-    io.StoreVAddr.poke(0.U(AddrW.W))
+    io.StoreResponse.poke(0.U(2.W))
+    io.StoreAddress.poke(0.U(AddressW.W))
+    io.StoreVAddress.poke(0.U(AddressW.W))
     io.StoreData.poke(0.U(64.W))
-    io.StoreStrb.poke(0.U(8.W))
+    io.StoreStrobe.poke(0.U(8.W))
     io.flush.poke(false.B)
     io.dma_snoop_valid.poke(false.B)
-    io.dma_snoop_start.poke(0.U(AddrW.W))
-    io.dma_snoop_end.poke(0.U(AddrW.W))
+    io.dma_snoop_start.poke(0.U(AddressW.W))
+    io.dma_snoop_end.poke(0.U(AddressW.W))
     io.AXI.AR.ARREADY.poke(false.B)
     io.AXI.R.RVALID.poke(false.B)
     io.AXI.R.RID.poke(0.U(4.W))
@@ -108,12 +108,12 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
       address: Long,
       width: Int
   ): Unit = {
-    io.req.bits.addr.poke(address.U(AddrW.W))
-    io.req.bits.vaddr.poke(address.U(AddrW.W))
+    io.req.bits.addr.poke(address.U(AddressW.W))
+    io.req.bits.vaddr.poke(address.U(AddressW.W))
     io.req.bits.WidthSelect.poke(width.U(2.W))
     io.req.bits.signed.poke(false.B)
     io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(address.U(AddrW.W))
+    io.req_paddr_vaddr.poke(address.U(AddressW.W))
     io.req.valid.poke(true.B)
     waitUntil(clock, bool(io.req.ready), "DCache 未受理 load")
     clock.step()
@@ -177,7 +177,7 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
     // 必须已经形成唯一的 fault 响应，而不是等迟到的 RLAST。
     waitUntil(clock, bool(io.resp.valid), "第二拍缺少 RLAST 时没有 fault 响应")
     bool(io.resp.bits.fault) should be(true)
-    long(io.resp.bits.FaultResp) should be(2L)
+    long(io.resp.bits.FaultResponse) should be(2L)
     consumeResponse(io, clock)
 
     // 迟到的 RLAST 只用于同步总线；不得再产生第二个响应。
@@ -208,7 +208,7 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
 
     waitUntil(clock, bool(io.resp.valid), "关键词响应没有出现")
     bool(io.resp.bits.fault) should be(false)
-    long(io.resp.bits.FaultResp) should be(0L)
+    long(io.resp.bits.FaultResponse) should be(0L)
     long(io.resp.bits.data) should be(keyword)
 
     // 下游一直不 ready，跨过 SDrain 超时窗口。响应 payload 必须保持不变，
@@ -216,7 +216,7 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
     for (_ <- 0 until 300) {
       bool(io.resp.valid) should be(true)
       bool(io.resp.bits.fault) should be(false)
-      long(io.resp.bits.FaultResp) should be(0L)
+      long(io.resp.bits.FaultResponse) should be(0L)
       long(io.resp.bits.data) should be(keyword)
       clock.step()
     }

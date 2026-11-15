@@ -14,7 +14,7 @@ import org.scalatest.matchers.should.Matchers
   */
 class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   "NPCConfig" should "拒绝 index+block 超出页内偏移的 VIPT ICache" in {
-    val badMmu = ysyx_26030103_MMUProfile(
+    val badMMU = ysyx_26030103_MMUProfile(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
@@ -24,7 +24,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
         ICacheEnable = true,
         ICacheBlockSizeLog2 = 6,
         ICacheIndexBits = 10,
-        MMU = badMmu
+        MMU = badMMU
       )
     }
     error.getMessage should include("VIPT ICache 非法")
@@ -36,7 +36,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "拒绝 index+block 超出页内偏移的 VIPT DCache" in {
-    val badMmu = ysyx_26030103_MMUProfile(
+    val badMMU = ysyx_26030103_MMUProfile(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
@@ -47,7 +47,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
         DCacheEnable = true,
         DCacheBlockSizeLog2 = 5,
         DCacheIndexBits = 10,
-        MMU = badMmu
+        MMU = badMMU
       )
     }
     error.getMessage should include("VIPT DCache 非法")
@@ -56,7 +56,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "接受 index+block 落在页内的 VIPT 组合" in {
-    val goodMmu = ysyx_26030103_MMUProfile(
+    val goodMMU = ysyx_26030103_MMUProfile(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
@@ -68,7 +68,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       DCacheEnable = true,
       DCacheBlockSizeLog2 = 4,
       DCacheIndexBits = 8,
-      MMU = goodMmu
+      MMU = goodMMU
     )
     config.MMU.pageBits should be(12)
     (config.ICacheIndexBits + config.ICacheBlockSizeLog2) should be <= 12
@@ -80,7 +80,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     val mmu = ysyx_26030103_MMUProfile(
       enabled = true,
       cacheMode = "vipt",
-      cacheViptAliasSafe = true,
+      cacheVIPTAliasSafe = true,
       pageSizeBytes = 1024,
       levels = 2,
       pageTableSizeBytes = 8192
@@ -96,8 +96,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       DCacheIndexBits = 8,
       MMU = mmu
     )
-    config.ICacheViptAliasHardware should be(true)
-    config.DCacheViptAliasHardware should be(true)
+    config.ICacheVIPTAliasHardware should be(true)
+    config.DCacheVIPTAliasHardware should be(true)
   }
 
   it should "RV64 标准页 + 大 index 的 VIPT alias 配置也可显式启用" in {
@@ -107,9 +107,9 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       levels = 3,
       pteSizeBytes = 8,
       pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       cacheMode = "vipt",
-      cacheViptAliasSafe = true
+      cacheVIPTAliasSafe = true
     )
     val config = ysyx_26030103_NPCConfig(
       XLEN = 64,
@@ -122,15 +122,15 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       DCacheIndexBits = 10,
       MMU = mmu
     )
-    config.ICacheViptAliasHardware should be(true)
-    config.DCacheViptAliasHardware should be(true)
+    config.ICacheVIPTAliasHardware should be(true)
+    config.DCacheVIPTAliasHardware should be(true)
   }
 
   it should "alias 安全模式仍拒绝大于页的 cache line" in {
     val mmu = ysyx_26030103_MMUProfile(
       enabled = true,
       cacheMode = "vipt",
-      cacheViptAliasSafe = true,
+      cacheVIPTAliasSafe = true,
       pageSizeBytes = 4096
     )
     val error = intercept[IllegalArgumentException] {
@@ -177,8 +177,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     config.ICacheLineExceedsPage should be(true)
     config.DCacheLineExceedsPage should be(true)
     config.PiptCacheLineExceedsPage should be(true)
-    config.ICacheViptAliasHardware should be(false)
-    config.DCacheViptAliasHardware should be(false)
+    config.ICacheVIPTAliasHardware should be(false)
+    config.DCacheVIPTAliasHardware should be(false)
 
     // 自定义小页 64B 配 128B line 也应按 PIPT 接受。
     val smallPage = mmu.copy(
@@ -204,7 +204,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     val mmu = ysyx_26030103_MMUProfile(
       enabled = true,
       cacheMode = "vipt",
-      cacheViptAliasSafe = true,
+      cacheVIPTAliasSafe = true,
       pageSizeBytes = 64,
       levels = 2,
       pageTableSizeBytes = 32768
@@ -246,8 +246,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     )
     val profile = ysyx_26030103_MMUProfile.fromEnv(env.get, xlen = 32)
     profile.cacheMode should be("vipt")
-    profile.cacheViptAliasSafe should be(true)
-    profile.cacheViptAliasScanMode should be("all_sets")
+    profile.cacheVIPTAliasSafe should be(true)
+    profile.cacheVIPTAliasScanMode should be("all_sets")
   }
 
   it should "读取并校验 VIPT alias 扫描方式" in {
@@ -258,9 +258,9 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       "MMU_CACHE_VIPT_ALIAS_SCAN_MODE" -> "serial"
     )
     val profile = ysyx_26030103_MMUProfile.fromEnv(env.get, xlen = 32)
-    profile.cacheViptAliasScanMode should be("serial")
-    profile.cacheViptAliasScanWidth should be(4)
-    profile.cacheViptAliasDirectoryEntries should be(0)
+    profile.cacheVIPTAliasScanMode should be("serial")
+    profile.cacheVIPTAliasScanWidth should be(4)
+    profile.cacheVIPTAliasDirectoryEntries should be(0)
     profile.describe should include("vipt_alias_scan=serial")
 
     val badEnv = env + ("MMU_CACHE_VIPT_ALIAS_SCAN_MODE" -> "burst")
@@ -280,8 +280,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       "MMU_CACHE_VIPT_ALIAS_DIRECTORY_ENTRIES" -> "16"
     )
     val profile = ysyx_26030103_MMUProfile.fromEnv(base.get, xlen = 32)
-    profile.cacheViptAliasScanWidth should be(8)
-    profile.cacheViptAliasDirectoryEntries should be(16)
+    profile.cacheVIPTAliasScanWidth should be(8)
+    profile.cacheVIPTAliasDirectoryEntries should be(16)
     profile.describe should include("parallel_n(width=8)")
 
     val badWidth = base + ("MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH" -> "1")
@@ -300,8 +300,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     val mmu = ysyx_26030103_MMUProfile(
       enabled = true,
       cacheMode = "vipt",
-      cacheViptAliasSafe = true,
-      cacheViptAliasScanMode = "serial",
+      cacheVIPTAliasSafe = true,
+      cacheVIPTAliasScanMode = "serial",
       pageSizeBytes = 1024,
       levels = 2,
       pageTableSizeBytes = 8192
@@ -315,14 +315,14 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       DCacheIndexBits = 8,
       MMU = mmu
     )
-    config.ICacheViptAliasScanMode should be("serial")
-    config.DCacheViptAliasScanMode should be("serial")
-    config.ICacheViptAliasScanWidth should be(1)
-    config.DCacheViptAliasScanWidth should be(1)
-    config.ICacheViptAliasDirectoryEntries should be(256)
-    config.DCacheViptAliasDirectoryEntries should be(256)
-    config.ICacheViptAliasHardware should be(true)
-    config.DCacheViptAliasHardware should be(true)
+    config.ICacheVIPTAliasScanMode should be("serial")
+    config.DCacheVIPTAliasScanMode should be("serial")
+    config.ICacheVIPTAliasScanWidth should be(1)
+    config.DCacheVIPTAliasScanWidth should be(1)
+    config.ICacheVIPTAliasDirectoryEntries should be(256)
+    config.DCacheVIPTAliasDirectoryEntries should be(256)
+    config.ICacheVIPTAliasHardware should be(true)
+    config.DCacheVIPTAliasHardware should be(true)
     // 工厂必须把模式传进叶模块；elaboration 成功即说明参数路径完整。
     _root_.circt.stage.ChiselStage.emitCHIRRTL(new Module {
       val cache = ysyx_26030103.cache.ysyx_26030103_ICacheFactory.Create(config)
@@ -333,9 +333,9 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
         BlockSizeLog2 = config.DCacheBlockSizeLog2,
         IndexBits = config.DCacheIndexBits,
         AddressWidth = config.AddressWidth,
-        Vipt = config.MMU.cacheMode == "vipt",
-        ViptAliasSafe = config.DCacheViptAliasHardware,
-        ViptAliasScanMode = config.DCacheViptAliasScanMode,
+        VIPT = config.MMU.cacheMode == "vipt",
+        VIPTAliasSafe = config.DCacheVIPTAliasHardware,
+        VIPTAliasScanMode = config.DCacheVIPTAliasScanMode,
         PMARegions = config.PMARegions
       )
     }) should include("module")
@@ -346,10 +346,10 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     def profile(mode: String) = ysyx_26030103_MMUProfile(
       enabled = true,
       cacheMode = "vipt",
-      cacheViptAliasSafe = true,
-      cacheViptAliasScanMode = mode,
-      cacheViptAliasScanWidth = 8,
-      cacheViptAliasDirectoryEntries = 32,
+      cacheVIPTAliasSafe = true,
+      cacheVIPTAliasScanMode = mode,
+      cacheVIPTAliasScanWidth = 8,
+      cacheVIPTAliasDirectoryEntries = 32,
       pageSizeBytes = 1024,
       levels = 2,
       pageTableSizeBytes = 8192
@@ -363,10 +363,10 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       DCacheIndexBits = 8,
       MMU = profile("parallel_n")
     )
-    parallel.ICacheViptAliasScanWidth should be(8)
-    parallel.DCacheViptAliasScanWidth should be(8)
-    parallel.ICacheViptAliasDirectoryEntries should be(32)
-    parallel.DCacheViptAliasDirectoryEntries should be(32)
+    parallel.ICacheVIPTAliasScanWidth should be(8)
+    parallel.DCacheVIPTAliasScanWidth should be(8)
+    parallel.ICacheVIPTAliasDirectoryEntries should be(32)
+    parallel.DCacheVIPTAliasDirectoryEntries should be(32)
     _root_.circt.stage.ChiselStage.emitCHIRRTL(new Module {
       val cache = ysyx_26030103.cache.ysyx_26030103_ICacheFactory.Create(
         parallel)
@@ -377,12 +377,12 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
         BlockSizeLog2 = parallel.DCacheBlockSizeLog2,
         IndexBits = parallel.DCacheIndexBits,
         AddressWidth = parallel.AddressWidth,
-        Vipt = parallel.MMU.cacheMode == "vipt",
-        ViptAliasSafe = parallel.DCacheViptAliasHardware,
-        ViptAliasScanMode = parallel.DCacheViptAliasScanMode,
-        ViptAliasScanWidth = parallel.DCacheViptAliasScanWidth,
-        ViptAliasDirectoryEntries =
-          parallel.DCacheViptAliasDirectoryEntries,
+        VIPT = parallel.MMU.cacheMode == "vipt",
+        VIPTAliasSafe = parallel.DCacheVIPTAliasHardware,
+        VIPTAliasScanMode = parallel.DCacheVIPTAliasScanMode,
+        VIPTAliasScanWidth = parallel.DCacheVIPTAliasScanWidth,
+        VIPTAliasDirectoryEntries =
+          parallel.DCacheVIPTAliasDirectoryEntries,
         PMARegions = parallel.PMARegions
       )
     }) should include("module")
@@ -396,8 +396,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       DCacheIndexBits = 8,
       MMU = profile("directory")
     )
-    directory.ICacheViptAliasScanMode should be("directory")
-    directory.ICacheViptAliasDirectoryEntries should be(32)
+    directory.ICacheVIPTAliasScanMode should be("directory")
+    directory.ICacheVIPTAliasDirectoryEntries should be(32)
     _root_.circt.stage.ChiselStage.emitCHIRRTL(new Module {
       val cache = ysyx_26030103.cache.ysyx_26030103_ICacheFactory.Create(
         directory)
@@ -406,9 +406,9 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
 
   it should "按实际 set 数截断 PARALLEL_N 宽度与目录项" in {
     val mmu = ysyx_26030103_MMUProfile(
-      cacheViptAliasScanMode = "parallel_n",
-      cacheViptAliasScanWidth = 8,
-      cacheViptAliasDirectoryEntries = 64
+      cacheVIPTAliasScanMode = "parallel_n",
+      cacheVIPTAliasScanWidth = 8,
+      cacheVIPTAliasDirectoryEntries = 64
     )
     val config = ysyx_26030103_NPCConfig(
       ICacheEnable = true,
@@ -419,10 +419,10 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       DCacheIndexBits = 1,
       MMU = mmu
     )
-    config.ICacheViptAliasScanWidth should be(2)
-    config.DCacheViptAliasScanWidth should be(2)
-    config.ICacheViptAliasDirectoryEntries should be(2)
-    config.DCacheViptAliasDirectoryEntries should be(2)
+    config.ICacheVIPTAliasScanWidth should be(2)
+    config.DCacheVIPTAliasScanWidth should be(2)
+    config.ICacheVIPTAliasDirectoryEntries should be(2)
+    config.DCacheVIPTAliasDirectoryEntries should be(2)
   }
 
   it should "拒绝深度为 0 的 TLB miss queue" in {

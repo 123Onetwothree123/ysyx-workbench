@@ -14,7 +14,7 @@ object ysyx_26030103_DIVImpl {
   case object SRT extends ysyx_26030103_DIVImpl {
     val Name = "srt"
   }
-  def FromString(Value: String): ysyx_26030103_DIVImpl = Value match {
+  def FromString(value: String): ysyx_26030103_DIVImpl = value match {
     case "restoring" => Restoring
     case "nonrestoring" => NonRestoring
     case "srt" => SRT

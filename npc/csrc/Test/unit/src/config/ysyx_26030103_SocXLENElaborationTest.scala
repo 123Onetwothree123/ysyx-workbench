@@ -51,7 +51,7 @@ class ysyx_26030103_SocXLENElaborationTest extends AnyFlatSpec with Matchers {
   }
 
   private def checkPorts(chirrtl: String, socXlen: Int): Unit = {
-    val StrbWidth = socXlen / 8
+    val StrobeWidth = socXlen / 8
     Seq(
       "master_awaddr" -> socXlen,
       "master_araddr" -> socXlen,
@@ -61,8 +61,8 @@ class ysyx_26030103_SocXLENElaborationTest extends AnyFlatSpec with Matchers {
       "slave_araddr" -> socXlen,
       "slave_wdata" -> socXlen,
       "slave_rdata" -> socXlen,
-      "master_wstrb" -> StrbWidth,
-      "slave_wstrb" -> StrbWidth
+      "master_wstrb" -> StrobeWidth,
+      "slave_wstrb" -> StrobeWidth
     ).foreach { case (name, expected) =>
       withClue(s"SOC_XLEN=$socXlen 端口 $name: ") {
         portWidth(chirrtl, name) should be(expected)

@@ -17,7 +17,7 @@ class ysyx_26030103_IFUMessage(val XLEN: Int = 32) extends Bundle {
   val ExceptionCause = UInt(4.W)
   // 仅用于精确调试报告：保留产生 instruction access fault
   // 的 AXI RRESP，并跟随同一条指令直到 EXU 提交点。
-  val AccessFaultResp = UInt(2.W)
+  val AccessFaultResponse = UInt(2.W)
   // 分支预测信息: IFU取指时由BTB+BTFN给出,随指令传到EXU做"预测错误才重定向"
   val pred_taken = Bool()
   val pred_target = UInt(XLEN.W)

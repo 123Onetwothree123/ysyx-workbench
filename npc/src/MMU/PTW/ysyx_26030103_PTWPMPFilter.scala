@@ -13,9 +13,9 @@ import _root_.ysyx_26030103.infra.ysyx_26030103_PMP
   */
 class ysyx_26030103_PTWPMPFilter(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
-    entries: Int = ysyx_26030103_KconfigDefaults.MmuPmpEntries,
+    entries: Int = ysyx_26030103_KconfigDefaults.MMUPMPEntries,
     faultQueueDepth: Int =
-      ysyx_26030103_KconfigDefaults.MmuPtwPmpFaultQueueDepth
+      ysyx_26030103_KconfigDefaults.MMUPTWPMPFaultQueueDepth
 ) extends Module {
   require(AddressWidth == 32 || AddressWidth == 64,
     s"PTWPMPFilter AddressWidth 非法: $AddressWidth")
@@ -33,33 +33,33 @@ class ysyx_26030103_PTWPMPFilter(
   val pmp = Module(new ysyx_26030103_PMP(entries, AddressWidth))
   pmp.io.cfg := io.cfg
   pmp.io.addr := io.addr
-  pmp.io.fetchAddr := 0.U
+  pmp.io.fetchAddress := 0.U
   pmp.io.fetchPriv := 3.U
-  pmp.io.dataAddr := io.in.req.bits.addr
-  pmp.io.dataLastAddr := io.in.req.bits.addr + 3.U
+  pmp.io.dataAddress := io.in.req.bits.addr
+  pmp.io.dataLastAddress := io.in.req.bits.addr + 3.U
   pmp.io.dataPriv := 1.U // 隐式页表访问使用 S 权限
   pmp.io.dataRead := !io.in.req.bits.write
   pmp.io.dataWrite := io.in.req.bits.write
 
   val fault = pmp.io.dataFault
-  val faultResp = Module(
+  val faultResponse = Module(
     new Queue(new ysyx_26030103_PTEBusResponse, faultQueueDepth)
   )
-  faultResp.io.enq.valid := io.in.req.valid && fault
-  faultResp.io.enq.bits.id := io.in.req.bits.id
-  faultResp.io.enq.bits.data := 0.U
-  faultResp.io.enq.bits.fault := true.B
+  faultResponse.io.enq.valid := io.in.req.valid && fault
+  faultResponse.io.enq.bits.id := io.in.req.bits.id
+  faultResponse.io.enq.bits.data := 0.U
+  faultResponse.io.enq.bits.fault := true.B
 
-  io.in.req.ready := Mux(fault, faultResp.io.enq.ready, io.out.req.ready)
+  io.in.req.ready := Mux(fault, faultResponse.io.enq.ready, io.out.req.ready)
   io.out.req.valid := io.in.req.valid && !fault
   io.out.req.bits := io.in.req.bits
 
-  io.in.resp.valid := faultResp.io.deq.valid || io.out.resp.valid
+  io.in.resp.valid := faultResponse.io.deq.valid || io.out.resp.valid
   io.in.resp.bits := Mux(
-    faultResp.io.deq.valid,
-    faultResp.io.deq.bits,
+    faultResponse.io.deq.valid,
+    faultResponse.io.deq.bits,
     io.out.resp.bits
   )
-  faultResp.io.deq.ready := io.in.resp.ready && faultResp.io.deq.valid
-  io.out.resp.ready := io.in.resp.ready && !faultResp.io.deq.valid
+  faultResponse.io.deq.ready := io.in.resp.ready && faultResponse.io.deq.valid
+  io.out.resp.ready := io.in.resp.ready && !faultResponse.io.deq.valid
 }

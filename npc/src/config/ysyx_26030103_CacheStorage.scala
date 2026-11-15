@@ -15,7 +15,7 @@ object ysyx_26030103_CacheStorage {
   case object SRAMNoBypass extends ysyx_26030103_CacheStorage {
     val Name = "sram_nobypass"
   }
-  def FromString(s: String): ysyx_26030103_CacheStorage = s match {
+  def FromString(value: String): ysyx_26030103_CacheStorage = value match {
     case "reg" => Reg
     case "sram" => SRAM
     case "sram_nobypass" => SRAMNoBypass

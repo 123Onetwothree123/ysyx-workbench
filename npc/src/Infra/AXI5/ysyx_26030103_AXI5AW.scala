@@ -1,8 +1,8 @@
 package ysyx_26030103.infra
 import chisel3._
-class ysyx_26030103_AXI5AW(AddressWidth: Int = 32, IdWidth: Int = 4)
+class ysyx_26030103_AXI5AW(AddressWidth: Int = 32, IDWidth: Int = 4)
     extends Bundle {
-  val AWID = Output(UInt(IdWidth.W))
+  val AWID = Output(UInt(IDWidth.W))
   val AWADDR = Output(UInt(AddressWidth.W)) // 写地址
   val AWLEN = Output(UInt(8.W))
   val AWSIZE = Output(UInt(3.W))

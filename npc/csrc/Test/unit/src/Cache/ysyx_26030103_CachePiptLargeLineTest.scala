@@ -15,7 +15,7 @@ import scala.collection.mutable
   * 对齐，不按 64B 页截断，也不使用虚拟地址。
   */
 class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
-  private val AddrW     = 32
+  private val AddressW     = 32
   private val BlockLog2 = 7 // 128B/line
   private val IndexBits = 2 // 4 组，行内偏移跨过 64B “页”
   private val PaLine    = 0x80004000L
@@ -53,10 +53,10 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddrW.W))
-    io.fetch_vaddr.poke(0.U(AddrW.W))
+    io.fetch_addr.poke(0.U(AddressW.W))
+    io.fetch_vaddr.poke(0.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
     io.fetch_valid.poke(false.B)
     io.resp_ready.poke(false.B)
     io.axi.AR.ARREADY.poke(false.B)
@@ -74,9 +74,9 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       pa:    Long
   ): Unit = {
     // PIPT 下 VA 端口不再参与索引；故意给一个不相关的 VA，确认被忽略。
-    io.fetch_vaddr.poke(0x00000040L.U(AddrW.W))
-    io.fetch_addr.poke(pa.U(AddrW.W))
-    io.fetch_paddr_vaddr.poke(0x00000040L.U(AddrW.W))
+    io.fetch_vaddr.poke(0x00000040L.U(AddressW.W))
+    io.fetch_addr.poke(pa.U(AddressW.W))
+    io.fetch_paddr_vaddr.poke(0x00000040L.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
     io.fetch_valid.poke(true.B)
     waitUntil(clock, bool(io.fetch_ready), s"ICache 未受理 PA=0x${pa.toHexString}")
@@ -121,7 +121,7 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
     io.resp_ready.poke(false.B)
   }
 
-  private def runIcache(
+  private def runICache(
       io:    ysyx_26030103_ICacheInterface,
       clock: Clock,
       reset: Reset
@@ -171,20 +171,20 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
     clock.step(2)
     reset.poke(false.B)
     io.req.valid.poke(false.B)
-    io.req.bits.addr.poke(0.U(AddrW.W))
-    io.req.bits.vaddr.poke(0.U(AddrW.W))
+    io.req.bits.addr.poke(0.U(AddressW.W))
+    io.req.bits.vaddr.poke(0.U(AddressW.W))
     io.req.bits.WidthSelect.poke(2.U(2.W))
     io.req.bits.signed.poke(false.B)
     io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(0.U(AddrW.W))
+    io.req_paddr_vaddr.poke(0.U(AddressW.W))
     io.req_kill.poke(false.B)
     io.resp.ready.poke(false.B)
     io.StoreValid.poke(false.B)
-    io.StoreResp.poke(0.U(2.W))
-    io.StoreAddr.poke(0.U(AddrW.W))
-    io.StoreVAddr.poke(0.U(AddrW.W))
+    io.StoreResponse.poke(0.U(2.W))
+    io.StoreAddress.poke(0.U(AddressW.W))
+    io.StoreVAddress.poke(0.U(AddressW.W))
     io.StoreData.poke(0.U(32.W))
-    io.StoreStrb.poke(0.U(4.W))
+    io.StoreStrobe.poke(0.U(4.W))
     io.AXI.AR.ARREADY.poke(false.B)
     io.AXI.R.RDATA.poke(0.U(32.W))
     io.AXI.R.RRESP.poke(0.U(2.W))
@@ -199,11 +199,11 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       pa:    Long
   ): Unit = {
     // PIPT 忽略 vaddr；这里故意给常量 VA。
-    io.req.bits.vaddr.poke(0x00000040L.U(AddrW.W))
-    io.req.bits.addr.poke(pa.U(AddrW.W))
+    io.req.bits.vaddr.poke(0x00000040L.U(AddressW.W))
+    io.req.bits.addr.poke(pa.U(AddressW.W))
     io.req.bits.WidthSelect.poke(2.U(2.W))
     io.req.bits.signed.poke(false.B)
-    io.req_paddr_vaddr.poke(0x00000040L.U(AddrW.W))
+    io.req_paddr_vaddr.poke(0x00000040L.U(AddressW.W))
     io.req_paddr_valid.poke(true.B)
     io.req.valid.poke(true.B)
     waitUntil(clock, bool(io.req.ready), s"DCache 未受理 PA=0x${pa.toHexString}")
@@ -219,15 +219,15 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       mem:   Memory
   ): Unit = {
     mem.write(pa, data)
-    io.StoreVAddr.poke(0x00000040L.U(AddrW.W))
-    io.StoreAddr.poke(pa.U(AddrW.W))
+    io.StoreVAddress.poke(0x00000040L.U(AddressW.W))
+    io.StoreAddress.poke(pa.U(AddressW.W))
     io.StoreData.poke(data.U(32.W))
-    io.StoreStrb.poke("hf".U(4.W))
-    io.StoreResp.poke(0.U(2.W))
+    io.StoreStrobe.poke("hf".U(4.W))
+    io.StoreResponse.poke(0.U(2.W))
     io.StoreValid.poke(true.B)
     clock.step()
     io.StoreValid.poke(false.B)
-    io.StoreStrb.poke(0.U(4.W))
+    io.StoreStrobe.poke(0.U(4.W))
   }
 
   private def dcacheExpect(
@@ -266,7 +266,7 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
     io.AXI.R.RLAST.poke(false.B)
   }
 
-  private def runDcache(
+  private def runDCache(
       io:    ysyx_26030103_DCacheInterface,
       clock: Clock,
       reset: Reset
@@ -316,8 +316,8 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
-      AddressWidth = AddrW,
-      Vipt = false
+      AddressWidth = AddressW,
+      VIPT = false
     )
 
   private def icacheSram(): ysyx_26030103_ICacheBase =
@@ -325,8 +325,8 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
-      AddressWidth = AddrW,
-      Vipt = false
+      AddressWidth = AddressW,
+      VIPT = false
     )
 
   private def dcacheReg(): ysyx_26030103_DCacheBase =
@@ -334,8 +334,8 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
-      AddressWidth = AddrW,
-      Vipt = false
+      AddressWidth = AddressW,
+      VIPT = false
     )
 
   private def dcacheSram(): ysyx_26030103_DCacheBase =
@@ -343,25 +343,25 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       Enable = true,
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
-      AddressWidth = AddrW,
-      Vipt = false
+      AddressWidth = AddressW,
+      VIPT = false
     )
 
   "PIPT ICache" should "用物理地址回填大于页的 cache line" in {
     simulate(icacheReg()) { dut =>
-      runIcache(dut.io, dut.clock, dut.reset)
+      runICache(dut.io, dut.clock, dut.reset)
     }
     simulate(icacheSram()) { dut =>
-      runIcache(dut.io, dut.clock, dut.reset)
+      runICache(dut.io, dut.clock, dut.reset)
     }
   }
 
   "PIPT DCache" should "用物理地址索引大于页的 cache line" in {
     simulate(dcacheReg()) { dut =>
-      runDcache(dut.io, dut.clock, dut.reset)
+      runDCache(dut.io, dut.clock, dut.reset)
     }
     simulate(dcacheSram()) { dut =>
-      runDcache(dut.io, dut.clock, dut.reset)
+      runDCache(dut.io, dut.clock, dut.reset)
     }
   }
 }

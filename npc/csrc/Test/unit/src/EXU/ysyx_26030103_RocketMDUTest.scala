@@ -35,25 +35,25 @@ class ysyx_26030103_RocketMDUTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       dut.io.Flush.poke(false.B)
-      dut.io.Resp.ready.poke(true.B)
-      dut.io.Req.valid.poke(true.B)
-      dut.io.Req.bits.LHS.poke(lhs.U(xlen.W))
-      dut.io.Req.bits.RHS.poke(rhs.U(xlen.W))
-      dut.io.Req.bits.MDUOp.poke(op)
+      dut.io.Response.ready.poke(true.B)
+      dut.io.Request.valid.poke(true.B)
+      dut.io.Request.bits.LHS.poke(lhs.U(xlen.W))
+      dut.io.Request.bits.RHS.poke(rhs.U(xlen.W))
+      dut.io.Request.bits.MDUOp.poke(op)
       var cycles = 0
-      while (dut.io.Req.ready.peek().litValue == 0 && cycles < 20) {
+      while (dut.io.Request.ready.peek().litValue == 0 && cycles < 20) {
         dut.clock.step()
         cycles += 1
       }
       dut.clock.step()
-      dut.io.Req.valid.poke(false.B)
+      dut.io.Request.valid.poke(false.B)
       cycles = 0
-      while (dut.io.Resp.valid.peek().litValue == 0 && cycles < 200) {
+      while (dut.io.Response.valid.peek().litValue == 0 && cycles < 200) {
         dut.clock.step()
         cycles += 1
       }
-      require(dut.io.Resp.valid.peek().litValue == 1, "Rocket MDU response timeout")
-      result = dut.io.Resp.bits.Result.peek().litValue
+      require(dut.io.Response.valid.peek().litValue == 1, "Rocket MDU response timeout")
+      result = dut.io.Response.bits.Result.peek().litValue
       dut.clock.step()
     }
     result

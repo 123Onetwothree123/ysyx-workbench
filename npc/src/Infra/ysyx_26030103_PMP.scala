@@ -13,13 +13,13 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
     val cfg = Input(Vec(activeEntries, UInt(8.W)))
     // pmpaddr 保存 address[AddressWidth-1:2]，与 RISC-V PMP 语义一致。
     val addr = Input(Vec(activeEntries, UInt(AddressWidth.W)))
-    val fetchAddr = Input(UInt(AddressWidth.W))
+    val fetchAddress = Input(UInt(AddressWidth.W))
     val fetchPriv = Input(UInt(2.W))
     val fetchFault = Output(Bool())
-    val dataAddr = Input(UInt(AddressWidth.W))
+    val dataAddress = Input(UInt(AddressWidth.W))
     // 一次访问可能跨越 4 字节 PMP granule（例如 8 字节 load/store），
     // 必须同时检查末字节所在区域，不能只看起始地址。
-    val dataLastAddr = Input(UInt(AddressWidth.W))
+    val dataLastAddress = Input(UInt(AddressWidth.W))
     val dataPriv = Input(UInt(2.W))
     // 读/写权限分别检查：AMO 需要两者同时通过，LR 只读，SC 只写。
     val dataRead = Input(Bool())
@@ -113,12 +113,12 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
     noMatchFault || permissionFault
   }
 
-  io.fetchFault := checkRange(io.fetchAddr, io.fetchAddr, io.fetchPriv, 0.U)
+  io.fetchFault := checkRange(io.fetchAddress, io.fetchAddress, io.fetchPriv, 0.U)
   // 同一次 AMO 的读/写检查必须都通过；普通 load/store 只使能其中一侧。
   // 数据访问可能跨 4B PMP granule，按“最低匹配项覆盖整个范围”规则检查。
   val readFault =
-    checkRange(io.dataAddr, io.dataLastAddr, io.dataPriv, 1.U)
+    checkRange(io.dataAddress, io.dataLastAddress, io.dataPriv, 1.U)
   val writeFault =
-    checkRange(io.dataAddr, io.dataLastAddr, io.dataPriv, 2.U)
+    checkRange(io.dataAddress, io.dataLastAddress, io.dataPriv, 2.U)
   io.dataFault := (io.dataRead && readFault) || (io.dataWrite && writeFault)
 }

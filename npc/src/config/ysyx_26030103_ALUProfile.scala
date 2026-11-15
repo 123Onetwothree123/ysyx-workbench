@@ -8,7 +8,7 @@ import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefa
   * XLEN 的 2 的幂；其它后端保留该字段只是为了让切换后端时配置可复现。
   */
 case class ysyx_26030103_ALUAdderParams(
-    CarrySelectGroup: Int = KconfigDefaults.AluCarrySelectGroup
+    CarrySelectGroup: Int = KconfigDefaults.ALUCarrySelectGroup
 )
 
 // ELAU 加法器的公开参数。
@@ -23,8 +23,8 @@ case class ysyx_26030103_ALUProfile(
       ysyx_26030103_ALUAdderParams(),
     Elau: ysyx_26030103_ElauParams = ysyx_26030103_ElauParams()
 ) {
-  def Describe(Impl: ysyx_26030103_ALUImpl): String = {
-    val backend = Impl match {
+  def Describe(impl: ysyx_26030103_ALUImpl): String = {
+    val backend = impl match {
       case ysyx_26030103_ALUImpl.Standard => "parallel"
       case ysyx_26030103_ALUImpl.Compact  => "shared_arithmetic"
       case ysyx_26030103_ALUImpl.External => "external(reserved)"

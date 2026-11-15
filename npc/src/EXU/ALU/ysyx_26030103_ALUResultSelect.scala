@@ -27,44 +27,44 @@ class ysyx_26030103_ALUResultSelect(val XLEN: Int = 32) extends Module {
     val sraw = Input(UInt(32.W))
     val result = Output(UInt(XLEN.W))
   })
-  private def SextWord(Value: UInt): UInt =
+  private def sextWord(value: UInt): UInt =
     if (XLEN == 32) {
-      Value
+      value
     } else {
-      Cat(Fill(XLEN - 32, Value(31)), Value)
+      Cat(Fill(XLEN - 32, value(31)), value)
     }
   // deepseek真是个蠢材啊，复查代码，居然还是用muxlookup
   // 我现在复查加重写，先把控制码译成之前Verilog时候的one-hot的结构，
   // 再用Mux1H做成AND和OR选择，避免MuxLookup的优先级版本的一大堆mux，
   // 同时让未映射的编码自然落到0
-  private val Decoded = UIntToOH(io.ALUCtrl, 1 << CtrlWidth)
-  private def Select(code: UInt): Bool = Decoded(code.litValue.toInt)
+  private val decoded = UIntToOH(io.ALUCtrl, 1 << CtrlWidth)
+  private def select(code: UInt): Bool = decoded(code.litValue.toInt)
   // 连隔离也没做，现在也隔离起来，到时候RV32的时候剩面积
-  private val WordMappings =
+  private val wordMappings =
     if (XLEN == 64) {
       Seq(
-        Select(ADDW) -> SextWord(io.addw),
-        Select(SUBW) -> SextWord(io.subw),
-        Select(SLLW) -> SextWord(io.sllw),
-        Select(SRLW) -> SextWord(io.srlw),
-        Select(SRAW) -> SextWord(io.sraw)
+        select(ADDW) -> sextWord(io.addw),
+        select(SUBW) -> sextWord(io.subw),
+        select(SLLW) -> sextWord(io.sllw),
+        select(SRLW) -> sextWord(io.srlw),
+        select(SRAW) -> sextWord(io.sraw)
       )
     } else {
       Nil
     }
   io.result := Mux1H(
     Seq(
-      Select(ADD) -> io.adderSum,
-      Select(SUB) -> io.subResult,
-      Select(SLL) -> io.sll,
-      Select(SLT) -> Mux(io.slt, 1.U(XLEN.W), 0.U(XLEN.W)),
-      Select(SLTU) -> Mux(io.sltu, 1.U(XLEN.W), 0.U(XLEN.W)),
-      Select(XOR) -> io.xorResult,
-      Select(SRL) -> io.srl,
-      Select(SRA) -> io.sra,
-      Select(OR) -> io.orResult,
-      Select(AND) -> io.andResult,
-      Select(NOP) -> 0.U(XLEN.W)
-    ) ++ WordMappings
+      select(ADD) -> io.adderSum,
+      select(SUB) -> io.subResult,
+      select(SLL) -> io.sll,
+      select(SLT) -> Mux(io.slt, 1.U(XLEN.W), 0.U(XLEN.W)),
+      select(SLTU) -> Mux(io.sltu, 1.U(XLEN.W), 0.U(XLEN.W)),
+      select(XOR) -> io.xorResult,
+      select(SRL) -> io.srl,
+      select(SRA) -> io.sra,
+      select(OR) -> io.orResult,
+      select(AND) -> io.andResult,
+      select(NOP) -> 0.U(XLEN.W)
+    ) ++ wordMappings
   )
 }

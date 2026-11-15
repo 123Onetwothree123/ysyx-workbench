@@ -5,8 +5,8 @@ import chisel3.util._
 class ysyx_26030103_CLINTIO(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
-    IdWidth: Int = ysyx_26030103_KconfigDefaults.AxiIdWidth
-) extends ysyx_26030103_AXI5Slave(AddressWidth, DataWidth, IdWidth) {
+    IDWidth: Int = ysyx_26030103_KconfigDefaults.AXIIDWidth
+) extends ysyx_26030103_AXI5Slave(AddressWidth, DataWidth, IDWidth) {
   val timer_irq = Output(Bool())
   val mtime = Output(UInt(64.W))
 }
@@ -17,258 +17,258 @@ class ysyx_26030103_CLINTIO(
 class ysyx_26030103_AXI5CLINTSlave(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
-    IdWidth: Int = ysyx_26030103_KconfigDefaults.AxiIdWidth
+    IDWidth: Int = ysyx_26030103_KconfigDefaults.AXIIDWidth
 ) extends Module {
-  val io = IO(new ysyx_26030103_CLINTIO(AddressWidth, DataWidth, IdWidth))
-  private val AddrW = AddressWidth
-  private val DataW = DataWidth
+  val io = IO(new ysyx_26030103_CLINTIO(AddressWidth, DataWidth, IDWidth))
+  private val addressWidth = AddressWidth
+  private val dataWidth = DataWidth
   val OKAY = 0.U(2.W)
   val SLVERR = 2.U(2.W)
-  val MtimeLowAddress = "h0200bff8".U(AddrW.W) // RISC-V标准CLINT的mtime寄存器
-  val MtimeHighAddress = "h0200bffc".U(AddrW.W)
-  val MtimecmpLowAddress = "h02004000".U(AddrW.W)
-  val MtimecmpHighAddress = "h02004004".U(AddrW.W)
+  val mtimeLowAddress = "h0200bff8".U(addressWidth.W) // RISC-V标准CLINT的mtime寄存器
+  val mtimeHighAddress = "h0200bffc".U(addressWidth.W)
+  val mtimecmpLowAddress = "h02004000".U(addressWidth.W)
+  val mtimecmpHighAddress = "h02004004".U(addressWidth.W)
   // AXI 字节写：只覆盖 WSTRB 选中的字节，其余字节保留寄存器原值。
   def merge32(old: UInt, data: UInt, strb: UInt): UInt = {
-    val Old = old.pad(32)
-    val Data = data.pad(32)
-    val Strb = strb.pad(4)
+    val oldWord = old.pad(32)
+    val dataWord = data.pad(32)
+    val strbBits = strb.pad(4)
     Cat(
-      Mux(Strb(3), Data(31, 24), Old(31, 24)),
-      Mux(Strb(2), Data(23, 16), Old(23, 16)),
-      Mux(Strb(1), Data(15, 8), Old(15, 8)),
-      Mux(Strb(0), Data(7, 0), Old(7, 0))
+      Mux(strbBits(3), dataWord(31, 24), oldWord(31, 24)),
+      Mux(strbBits(2), dataWord(23, 16), oldWord(23, 16)),
+      Mux(strbBits(1), dataWord(15, 8), oldWord(15, 8)),
+      Mux(strbBits(0), dataWord(7, 0), oldWord(7, 0))
     )
   }
-  private val BusWide = DataWidth == 64
-  private val BusWideBit = BusWide.B
-  private val BusNarrowBit = (!BusWide).B
-  private val BusLaneBits = if (BusWide) 3 else 2
-  private def LaneWord(Data: UInt, Address: UInt): UInt =
-    if (BusWide)
-      Mux(Address(2), Cat(Data(31, 0), 0.U(32.W)),
-        Cat(0.U(32.W), Data(31, 0)))
-    else Data(31, 0)
-  val Mtime = Module(new ysyx_26030103_mtime)
-  val Mtimecmp = RegInit("hffffffffffffffff".U(64.W))
-  io.timer_irq := Mtime.io.value >= Mtimecmp
-  io.mtime := Mtime.io.value
+  private val busWide = DataWidth == 64
+  private val busWideBit = busWide.B
+  private val busNarrowBit = (!busWide).B
+  private val busLaneBits = if (busWide) 3 else 2
+  private def laneWord(data: UInt, address: UInt): UInt =
+    if (busWide)
+      Mux(address(2), Cat(data(31, 0), 0.U(32.W)),
+        Cat(0.U(32.W), data(31, 0)))
+    else data(31, 0)
+  val mtime = Module(new ysyx_26030103_mtime)
+  val mtimecmp = RegInit("hffffffffffffffff".U(64.W))
+  io.timer_irq := mtime.io.value >= mtimecmp
+  io.mtime := mtime.io.value
   // 日常默认值，都复制粘贴了
-  val AWValidReg = RegInit(false.B)
-  val WValidReg = RegInit(false.B)
-  val WLastReg = RegInit(false.B)
-  val BValidReg = RegInit(false.B)
-  val AWIDReg = RegInit(0.U(IdWidth.W))
-  val AWLenReg = RegInit(0.U(8.W))
-  val AWSizeReg = RegInit(2.U(3.W))
-  val WRangeErrorReg = RegInit(false.B)
-  val WAddrReg = RegInit(0.U(AddrW.W))
-  val WBeatReg = RegInit(0.U(8.W))
-  val WDataReg = RegInit(0.U(DataW.W))
-  val WStrbReg = RegInit(0.U((DataW / 8).W))
-  val LowBurstData = RegInit(0.U(DataW.W))
-  val LowBurstStrb = RegInit(0.U((DataW / 8).W))
-  val BRESPReg = RegInit(OKAY)
-  val RValidReg = RegInit(false.B)
-  val ARIDReg = RegInit(0.U(IdWidth.W))
-  val ARAddrReg = RegInit(0.U(AddrW.W))
-  val ARLenReg = RegInit(0.U(8.W))
-  val ARSizeReg = RegInit(2.U(3.W))
-  val ARBurstReg = RegInit(0.U(2.W))
-  val ARBeatReg = RegInit(0.U(8.W))
-  val ARConfigErrorReg = RegInit(false.B)
-  val RDataReg = RegInit(0.U(DataW.W))
-  val RRESPReg = RegInit(OKAY)
-  val RLastReg = RegInit(false.B)
-  io.AW.AWREADY := !AWValidReg && !BValidReg
-  io.W.WREADY := !WValidReg && !BValidReg
-  io.B.BID := AWIDReg
-  io.B.BVALID := BValidReg
-  io.B.BRESP := BRESPReg
-  io.AR.ARREADY := !RValidReg
-  io.R.RID := ARIDReg
-  io.R.RVALID := RValidReg
-  io.R.RDATA := RDataReg
-  io.R.RRESP := RRESPReg
-  io.R.RLAST := RValidReg && RLastReg
-  val AWFire = io.AW.AWVALID && io.AW.AWREADY
-  val WFire = io.W.WVALID && io.W.WREADY
-  val BFire = io.B.BVALID && io.B.BREADY
-  val ARFire = io.AR.ARVALID && io.AR.ARREADY
-  val RFire = io.R.RVALID && io.R.RREADY
-  val AWSingleWord =
-    io.AW.AWADDR === MtimecmpLowAddress ||
-      io.AW.AWADDR === MtimecmpHighAddress
-  val AW64Write =
-    BusWideBit && io.AW.AWLEN === 0.U && io.AW.AWSIZE === 3.U &&
-      io.AW.AWADDR === MtimecmpLowAddress
-  val AWRangeValid =
-    AW64Write ||
-      (io.AW.AWLEN === 0.U && AWSingleWord &&
-        (BusNarrowBit || io.AW.AWSIZE <= 2.U)) ||
+  val awValidReg = RegInit(false.B)
+  val wValidReg = RegInit(false.B)
+  val wLastReg = RegInit(false.B)
+  val bValidReg = RegInit(false.B)
+  val awIDReg = RegInit(0.U(IDWidth.W))
+  val awLenReg = RegInit(0.U(8.W))
+  val awSizeReg = RegInit(2.U(3.W))
+  val wRangeErrorReg = RegInit(false.B)
+  val wAddressReg = RegInit(0.U(addressWidth.W))
+  val wBeatReg = RegInit(0.U(8.W))
+  val wDataReg = RegInit(0.U(dataWidth.W))
+  val wStrobeReg = RegInit(0.U((dataWidth / 8).W))
+  val lowBurstData = RegInit(0.U(dataWidth.W))
+  val lowBurstStrobe = RegInit(0.U((dataWidth / 8).W))
+  val bResponseReg = RegInit(OKAY)
+  val rValidReg = RegInit(false.B)
+  val arIDReg = RegInit(0.U(IDWidth.W))
+  val arAddressReg = RegInit(0.U(addressWidth.W))
+  val arLenReg = RegInit(0.U(8.W))
+  val arSizeReg = RegInit(2.U(3.W))
+  val arBurstReg = RegInit(0.U(2.W))
+  val arBeatReg = RegInit(0.U(8.W))
+  val arConfigErrorReg = RegInit(false.B)
+  val rDataReg = RegInit(0.U(dataWidth.W))
+  val rResponseReg = RegInit(OKAY)
+  val rLastReg = RegInit(false.B)
+  io.AW.AWREADY := !awValidReg && !bValidReg
+  io.W.WREADY := !wValidReg && !bValidReg
+  io.B.BID := awIDReg
+  io.B.BVALID := bValidReg
+  io.B.BRESP := bResponseReg
+  io.AR.ARREADY := !rValidReg
+  io.R.RID := arIDReg
+  io.R.RVALID := rValidReg
+  io.R.RDATA := rDataReg
+  io.R.RRESP := rResponseReg
+  io.R.RLAST := rValidReg && rLastReg
+  val awFire = io.AW.AWVALID && io.AW.AWREADY
+  val wFire = io.W.WVALID && io.W.WREADY
+  val bFire = io.B.BVALID && io.B.BREADY
+  val arFire = io.AR.ARVALID && io.AR.ARREADY
+  val rFire = io.R.RVALID && io.R.RREADY
+  val awSingleWord =
+    io.AW.AWADDR === mtimecmpLowAddress ||
+      io.AW.AWADDR === mtimecmpHighAddress
+  val aw64Write =
+    busWideBit && io.AW.AWLEN === 0.U && io.AW.AWSIZE === 3.U &&
+      io.AW.AWADDR === mtimecmpLowAddress
+  val awRangeValid =
+    aw64Write ||
+      (io.AW.AWLEN === 0.U && awSingleWord &&
+        (busNarrowBit || io.AW.AWSIZE <= 2.U)) ||
       (io.AW.AWLEN === 1.U &&
         io.AW.AWSIZE === 2.U &&
-        io.AW.AWADDR === MtimecmpLowAddress)
-  when(AWFire) {
-    AWIDReg := io.AW.AWID
-    AWLenReg := io.AW.AWLEN
-    AWSizeReg := io.AW.AWSIZE
-    WRangeErrorReg := !AWRangeValid
-    WAddrReg := io.AW.AWADDR
-    WBeatReg := 0.U
-    AWValidReg := true.B
+        io.AW.AWADDR === mtimecmpLowAddress)
+  when(awFire) {
+    awIDReg := io.AW.AWID
+    awLenReg := io.AW.AWLEN
+    awSizeReg := io.AW.AWSIZE
+    wRangeErrorReg := !awRangeValid
+    wAddressReg := io.AW.AWADDR
+    wBeatReg := 0.U
+    awValidReg := true.B
   }
-  when(WFire) {
-    WDataReg := io.W.WDATA
-    WStrbReg := io.W.WSTRB
-    WValidReg := true.B
-    WLastReg := io.W.WLAST
+  when(wFire) {
+    wDataReg := io.W.WDATA
+    wStrobeReg := io.W.WSTRB
+    wValidReg := true.B
+    wLastReg := io.W.WLAST
   }
-  val WStep = MuxLookup(AWSizeReg, 0.U(AddrW.W))(
+  val wStep = MuxLookup(awSizeReg, 0.U(addressWidth.W))(
     Seq(
-      0.U -> 1.U(AddrW.W),
-      1.U -> 2.U(AddrW.W),
-      2.U -> 4.U(AddrW.W),
-      3.U -> 8.U(AddrW.W)
+      0.U -> 1.U(addressWidth.W),
+      1.U -> 2.U(addressWidth.W),
+      2.U -> 4.U(addressWidth.W),
+      3.U -> 8.U(addressWidth.W)
     )
   )
-  val WDataWide = WDataReg.pad(64)
-  val WStrbWide = WStrbReg.pad(8)
-  val WDataWord =
-    if (BusWide) Mux(WAddrReg(2), WDataWide(63, 32), WDataWide(31, 0))
-    else WDataReg(31, 0)
-  val WStrbWord =
-    if (BusWide) Mux(WAddrReg(2), WStrbWide(7, 4), WStrbWide(3, 0))
-    else WStrbReg(3, 0)
-  val WBeatAddressValid =
-    WAddrReg === MtimecmpLowAddress || WAddrReg === MtimecmpHighAddress
-  val WBeatExpectedLast = WBeatReg === AWLenReg
+  val wDataWide = wDataReg.pad(64)
+  val wStrobeWide = wStrobeReg.pad(8)
+  val wDataWord =
+    if (busWide) Mux(wAddressReg(2), wDataWide(63, 32), wDataWide(31, 0))
+    else wDataReg(31, 0)
+  val wStrobeWord =
+    if (busWide) Mux(wAddressReg(2), wStrobeWide(7, 4), wStrobeWide(3, 0))
+    else wStrobeReg(3, 0)
+  val wBeatAddressValid =
+    wAddressReg === mtimecmpLowAddress || wAddressReg === mtimecmpHighAddress
+  val wBeatExpectedLast = wBeatReg === awLenReg
   // 单拍写沿用旧行为：WSTRB=0 视为非法。多拍写按拍做字节合并，空 WSTRB
   // 只表示该拍不改变目标字，不升级为错误。
-  val WBeatError =
-    WRangeErrorReg || !WBeatAddressValid ||
-      WLastReg =/= WBeatExpectedLast ||
-      (AWLenReg === 0.U && WStrbReg === 0.U)
-  when(AWValidReg && WValidReg && !BValidReg) {
-    when(!WBeatError) {
-      when(AWLenReg === 0.U && AWSizeReg === 3.U &&
-          WAddrReg === MtimecmpLowAddress) {
-        Mtimecmp := Cat(
-          merge32(Mtimecmp(63, 32), WDataWide(63, 32), WStrbWide(7, 4)),
-          merge32(Mtimecmp(31, 0), WDataWide(31, 0), WStrbWide(3, 0))
+  val wBeatError =
+    wRangeErrorReg || !wBeatAddressValid ||
+      wLastReg =/= wBeatExpectedLast ||
+      (awLenReg === 0.U && wStrobeReg === 0.U)
+  when(awValidReg && wValidReg && !bValidReg) {
+    when(!wBeatError) {
+      when(awLenReg === 0.U && awSizeReg === 3.U &&
+          wAddressReg === mtimecmpLowAddress) {
+        mtimecmp := Cat(
+          merge32(mtimecmp(63, 32), wDataWide(63, 32), wStrobeWide(7, 4)),
+          merge32(mtimecmp(31, 0), wDataWide(31, 0), wStrobeWide(3, 0))
         )
       }.elsewhen(
-        AWLenReg === 1.U && WBeatReg === 0.U &&
-          WAddrReg === MtimecmpLowAddress
+        awLenReg === 1.U && wBeatReg === 0.U &&
+          wAddressReg === mtimecmpLowAddress
       ) {
-        LowBurstData := WDataReg
-        LowBurstStrb := WStrbReg
+        lowBurstData := wDataReg
+        lowBurstStrobe := wStrobeReg
       }.elsewhen(
-        AWLenReg === 1.U && WBeatReg === 1.U &&
-          WAddrReg === MtimecmpHighAddress
+        awLenReg === 1.U && wBeatReg === 1.U &&
+          wAddressReg === mtimecmpHighAddress
       ) {
-        Mtimecmp := Cat(
-          merge32(Mtimecmp(63, 32), WDataWord, WStrbWord),
-          merge32(Mtimecmp(31, 0), LowBurstData, LowBurstStrb)
+        mtimecmp := Cat(
+          merge32(mtimecmp(63, 32), wDataWord, wStrobeWord),
+          merge32(mtimecmp(31, 0), lowBurstData, lowBurstStrobe)
         )
-      }.elsewhen(WAddrReg === MtimecmpLowAddress) {
-        Mtimecmp := Cat(
-          Mtimecmp(63, 32),
-          merge32(Mtimecmp(31, 0), WDataWord, WStrbWord)
+      }.elsewhen(wAddressReg === mtimecmpLowAddress) {
+        mtimecmp := Cat(
+          mtimecmp(63, 32),
+          merge32(mtimecmp(31, 0), wDataWord, wStrobeWord)
         )
-      }.elsewhen(WAddrReg === MtimecmpHighAddress) {
-        Mtimecmp := Cat(
-          merge32(Mtimecmp(63, 32), WDataWord, WStrbWord),
-          Mtimecmp(31, 0)
+      }.elsewhen(wAddressReg === mtimecmpHighAddress) {
+        mtimecmp := Cat(
+          merge32(mtimecmp(63, 32), wDataWord, wStrobeWord),
+          mtimecmp(31, 0)
         )
       }
     }
-    when(WLastReg) {
-      BRESPReg := Mux(WBeatError, SLVERR, OKAY)
-      BValidReg := true.B
-      AWValidReg := false.B
-      WValidReg := false.B
-      WLastReg := false.B
+    when(wLastReg) {
+      bResponseReg := Mux(wBeatError, SLVERR, OKAY)
+      bValidReg := true.B
+      awValidReg := false.B
+      wValidReg := false.B
+      wLastReg := false.B
     }.otherwise {
       // 保持 AWValid，后续 W 拍仍属于同一事务；推进字地址。
-      WValidReg := false.B
-      WLastReg := false.B
-      WAddrReg := WAddrReg + WStep
-      WBeatReg := WBeatReg + 1.U
+      wValidReg := false.B
+      wLastReg := false.B
+      wAddressReg := wAddressReg + wStep
+      wBeatReg := wBeatReg + 1.U
     }
   }
-  when(BFire) {
-    BValidReg := false.B
-    WLastReg := false.B
+  when(bFire) {
+    bValidReg := false.B
+    wLastReg := false.B
   }
-  def IsMtime(address: UInt): Bool =
-    address === MtimeLowAddress || address === MtimeHighAddress
-  def IsMtimecmp(address: UInt): Bool =
-    address === MtimecmpLowAddress || address === MtimecmpHighAddress
-  def ReadData(address: UInt): UInt =
-    Mux(address === MtimeLowAddress, Mtime.io.value(31, 0),
-      Mux(address === MtimeHighAddress, Mtime.io.value(63, 32),
-        Mux(address === MtimecmpLowAddress, Mtimecmp(31, 0),
-          Mux(address === MtimecmpHighAddress, Mtimecmp(63, 32), 0.U))))
-  def ReadBeatData(address: UInt, size: UInt): UInt = {
-    val Word = ReadData(address)
-    val Lane = LaneWord(Word, address)
-    if (BusWide)
+  def isMtime(address: UInt): Bool =
+    address === mtimeLowAddress || address === mtimeHighAddress
+  def isMtimecmp(address: UInt): Bool =
+    address === mtimecmpLowAddress || address === mtimecmpHighAddress
+  def readData(address: UInt): UInt =
+    Mux(address === mtimeLowAddress, mtime.io.value(31, 0),
+      Mux(address === mtimeHighAddress, mtime.io.value(63, 32),
+        Mux(address === mtimecmpLowAddress, mtimecmp(31, 0),
+          Mux(address === mtimecmpHighAddress, mtimecmp(63, 32), 0.U))))
+  def readBeatData(address: UInt, size: UInt): UInt = {
+    val word = readData(address)
+    val lane = laneWord(word, address)
+    if (busWide)
       Mux(size === 3.U,
-        Cat(ReadData(address + 4.U), Word),
-        Lane)
-    else Lane
+        Cat(readData(address + 4.U), word),
+        lane)
+    else lane
   }
 
-  val ARStep = MuxLookup(ARSizeReg, 0.U(AddrW.W))(
+  val arStep = MuxLookup(arSizeReg, 0.U(addressWidth.W))(
     Seq(
-      0.U -> 1.U(AddrW.W),
-      1.U -> 2.U(AddrW.W),
-      2.U -> 4.U(AddrW.W),
-      3.U -> 8.U(AddrW.W)
+      0.U -> 1.U(addressWidth.W),
+      1.U -> 2.U(addressWidth.W),
+      2.U -> 4.U(addressWidth.W),
+      3.U -> 8.U(addressWidth.W)
     )
   )
-  val NextARAddr = Mux(ARBurstReg === 1.U, ARAddrReg + ARStep, ARAddrReg)
+  val nextARAddress = Mux(arBurstReg === 1.U, arAddressReg + arStep, arAddressReg)
 
-  when(ARFire) {
-    ARIDReg := io.AR.ARID
-    ARAddrReg := io.AR.ARADDR
-    ARLenReg := io.AR.ARLEN
-    ARSizeReg := io.AR.ARSIZE
-    ARBurstReg := io.AR.ARBURST
-    ARBeatReg := 0.U
-    ARConfigErrorReg := io.AR.ARSIZE > BusLaneBits.U || io.AR.ARBURST > 1.U
-    val ConfigError = io.AR.ARSIZE > BusLaneBits.U || io.AR.ARBURST > 1.U
-    val AddressValid = IsMtime(io.AR.ARADDR) || IsMtimecmp(io.AR.ARADDR)
-    RDataReg := Mux(!ConfigError && AddressValid,
-      ReadBeatData(io.AR.ARADDR, io.AR.ARSIZE), 0.U)
-    RRESPReg := Mux(!ConfigError && AddressValid, OKAY, SLVERR)
-    RLastReg := io.AR.ARLEN === 0.U
-    RValidReg := true.B
+  when(arFire) {
+    arIDReg := io.AR.ARID
+    arAddressReg := io.AR.ARADDR
+    arLenReg := io.AR.ARLEN
+    arSizeReg := io.AR.ARSIZE
+    arBurstReg := io.AR.ARBURST
+    arBeatReg := 0.U
+    arConfigErrorReg := io.AR.ARSIZE > busLaneBits.U || io.AR.ARBURST > 1.U
+    val configError = io.AR.ARSIZE > busLaneBits.U || io.AR.ARBURST > 1.U
+    val addressValid = isMtime(io.AR.ARADDR) || isMtimecmp(io.AR.ARADDR)
+    rDataReg := Mux(!configError && addressValid,
+      readBeatData(io.AR.ARADDR, io.AR.ARSIZE), 0.U)
+    rResponseReg := Mux(!configError && addressValid, OKAY, SLVERR)
+    rLastReg := io.AR.ARLEN === 0.U
+    rValidReg := true.B
   }
   // 读拍计数不得越过 ARLEN：越界意味着响应拍数计算错误（会多发拍）。
-  assert(ARBeatReg <= ARLenReg, "CLINT read beat counter exceeded ARLEN")
-  when(RFire) {
-    when(ARBeatReg === ARLenReg) {
-      RValidReg := false.B
-      RLastReg := false.B
+  assert(arBeatReg <= arLenReg, "CLINT read beat counter exceeded ARLEN")
+  when(rFire) {
+    when(arBeatReg === arLenReg) {
+      rValidReg := false.B
+      rLastReg := false.B
     }.otherwise {
-      val NextBeat = ARBeatReg + 1.U
-      val AddressValid = IsMtime(NextARAddr) || IsMtimecmp(NextARAddr)
-      ARAddrReg := NextARAddr
-      ARBeatReg := NextBeat
-      RDataReg := Mux(
-        !ARConfigErrorReg && AddressValid,
-        ReadBeatData(NextARAddr, ARSizeReg),
+      val nextBeat = arBeatReg + 1.U
+      val addressValid = isMtime(nextARAddress) || isMtimecmp(nextARAddress)
+      arAddressReg := nextARAddress
+      arBeatReg := nextBeat
+      rDataReg := Mux(
+        !arConfigErrorReg && addressValid,
+        readBeatData(nextARAddress, arSizeReg),
         0.U
       )
-      RRESPReg := Mux(
-        !ARConfigErrorReg && AddressValid,
+      rResponseReg := Mux(
+        !arConfigErrorReg && addressValid,
         OKAY,
         SLVERR
       )
-      RLastReg := NextBeat === ARLenReg
-      RValidReg := true.B
+      rLastReg := nextBeat === arLenReg
+      rValidReg := true.B
     }
   }
 }

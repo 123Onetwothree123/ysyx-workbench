@@ -37,7 +37,7 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
       pteSizeBytes = 8,
       pageTableSizeBytes = 4096,
       pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -51,15 +51,15 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
     dut.reset.poke(false.B)
     dut.io.enable.poke(false.B)
     dut.io.retireCommit.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
-    dut.io.isCsrrs.poke(false.B)
-    dut.io.isCsrrc.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
+    dut.io.isCSRrs.poke(false.B)
+    dut.io.isCSRrc.poke(false.B)
     dut.io.isEcall.poke(false.B)
     dut.io.isEbreak.poke(false.B)
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddr.poke(0.U)
+    dut.io.csrAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
     dut.io.pc.poke(0.U)
@@ -78,21 +78,21 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
       addr: Int,
       data: BigInt
   ): Unit = {
-    dut.io.csrAddr.poke(addr.U)
+    dut.io.csrAddress.poke(addr.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(64.W))
     dut.io.enable.poke(true.B)
-    dut.io.isCsrrw.poke(true.B)
+    dut.io.isCSRrw.poke(true.B)
     dut.clock.step()
     dut.io.enable.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
   }
 
   private def peek(
       dut: ysyx_26030103_CSRExceptionAuditHarness,
       addr: Int
   ): BigInt = {
-    dut.io.csrAddr.poke(addr.U)
+    dut.io.csrAddress.poke(addr.U)
     dut.io.enable.poke(false.B)
     dut.io.rdata.peek().litValue
   }
@@ -116,7 +116,7 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
     "M 级 MEI 与 MTI 同时 pending 时先报 MEI(cause=11)" in {
       // mip 的 MSIP/MTIP/MEIP 是只读的，用硬件中断输入注入。
       // hasSExternalIrq=false 时 io.Interrupt 驱动 MEIP。
-      val p = profile.copy(hasSExternalIrq = false)
+      val p = profile.copy(hasSExternalIRQ = false)
       simulate(new ysyx_26030103_CSRExceptionAuditHarness(p)) { dut =>
         setup(dut)
         val mtvec = BigInt("0000000080002000", 16)

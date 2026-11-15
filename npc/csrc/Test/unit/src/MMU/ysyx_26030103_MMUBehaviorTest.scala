@@ -49,9 +49,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.reset.poke(false.B)
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
-      dut.io.fillVaddr.poke(0.U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(0.U)
+      dut.io.fillVirtualAddress.poke(0.U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
       dut.io.lookup(0).asid.poke(0.U)
@@ -63,9 +63,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
       dut.io.flush.poke(false.B)
       dut.io.fillValid.poke(true.B)
-      dut.io.fillVaddr.poke(0x1234.U)
-      dut.io.fillAsid.poke(7.U)
-      dut.io.fillPte.poke(LeafPTE.U(32.W))
+      dut.io.fillVirtualAddress.poke(0x1234.U)
+      dut.io.fillASID.poke(7.U)
+      dut.io.fillPTE.poke(LeafPTE.U(32.W))
       dut.io.fillLevel.poke(0.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -108,9 +108,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.reset.poke(false.B)
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
-      dut.io.fillVaddr.poke(0.U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(0.U)
+      dut.io.fillVirtualAddress.poke(0.U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       val extra = dut.io.fillExtra.get(0)
       extra.valid.poke(false.B)
@@ -127,8 +127,8 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step()
       dut.io.flush.poke(false.B)
       dut.io.fillValid.poke(true.B)
-      dut.io.fillVaddr.poke(0x1000.U)
-      dut.io.fillPte.poke(LeafPTE.U(32.W))
+      dut.io.fillVirtualAddress.poke(0x1000.U)
+      dut.io.fillPTE.poke(LeafPTE.U(32.W))
       extra.valid.poke(true.B)
       extra.vaddr.poke(0x2000.U)
       extra.pte.poke(LeafPTE.U(32.W))
@@ -143,7 +143,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   }
 
   "TLB" should "同一拍用两个查找端口命中不同表项" in {
-    val otherLeafPte = pte(0x80004L, 0xdfL)
+    val otherLeafPTE = pte(0x80004L, 0xdfL)
     simulate(new ysyx_26030103_TLB(
       entries = 8, ways = 1, asidBits = 9, globalEnable = true,
       adMode = "ignore", refillPorts = 2, lookupPorts = 2
@@ -153,9 +153,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.reset.poke(false.B)
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
-      dut.io.fillVaddr.poke(0.U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(0.U)
+      dut.io.fillVirtualAddress.poke(0.U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       val extra = dut.io.fillExtra.get(0)
       extra.valid.poke(false.B)
@@ -176,13 +176,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
       // 同一拍通过两个 refill 端口填入两个不同集合的表项。
       dut.io.fillValid.poke(true.B)
-      dut.io.fillVaddr.poke(0x1234.U)
-      dut.io.fillAsid.poke(7.U)
-      dut.io.fillPte.poke(LeafPTE.U(32.W))
+      dut.io.fillVirtualAddress.poke(0x1234.U)
+      dut.io.fillASID.poke(7.U)
+      dut.io.fillPTE.poke(LeafPTE.U(32.W))
       extra.valid.poke(true.B)
       extra.vaddr.poke(0x5678.U)
       extra.asid.poke(8.U)
-      extra.pte.poke(otherLeafPte.U(32.W))
+      extra.pte.poke(otherLeafPTE.U(32.W))
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
       extra.valid.poke(false.B)
@@ -217,9 +217,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.reset.poke(false.B)
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
-      dut.io.fillVaddr.poke(0.U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(0.U)
+      dut.io.fillVirtualAddress.poke(0.U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
       dut.io.lookup(0).asid.poke(0.U)
@@ -231,9 +231,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(false.B)
       // PPN[1]=0x201 -> 4MiB 基址 0x80400000。
       dut.io.fillValid.poke(true.B)
-      dut.io.fillVaddr.poke("h80501234".U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke((BigInt("201", 16) << 20 | 0xdf).U(32.W))
+      dut.io.fillVirtualAddress.poke("h80501234".U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke((BigInt("201", 16) << 20 | 0xdf).U(32.W))
       dut.io.fillLevel.poke(1.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -256,9 +256,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.reset.poke(false.B)
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
-      dut.io.fillVaddr.poke(0.U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(0.U)
+      dut.io.fillVirtualAddress.poke(0.U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
       dut.io.lookup(0).asid.poke(0.U)
@@ -270,9 +270,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(false.B)
       // PPN=0x8200（以 64KiB 为基础页）=> 物理基址 0x82000000。
       dut.io.fillValid.poke(true.B)
-      dut.io.fillVaddr.poke("h81001234".U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(((BigInt("8200", 16) << 10) | 0xdf).U(32.W))
+      dut.io.fillVirtualAddress.poke("h81001234".U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(((BigInt("8200", 16) << 10) | 0xdf).U(32.W))
       dut.io.fillLevel.poke(1.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -289,8 +289,8 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step()
       dut.io.flush.poke(false.B)
       dut.io.fillValid.poke(true.B)
-      dut.io.fillVaddr.poke("h81234567".U)
-      dut.io.fillPte.poke(((BigInt("8200", 16) << 10) | 0xdf).U(32.W))
+      dut.io.fillVirtualAddress.poke("h81234567".U)
+      dut.io.fillPTE.poke(((BigInt("8200", 16) << 10) | 0xdf).U(32.W))
       dut.io.fillLevel.poke(0.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -313,9 +313,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.reset.poke(false.B)
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
-      dut.io.fillVaddr.poke(0.U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(0.U)
+      dut.io.fillVirtualAddress.poke(0.U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
       dut.io.lookup(0).asid.poke(0.U)
@@ -327,9 +327,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(false.B)
 
       dut.io.fillValid.poke(true.B)
-      dut.io.fillVaddr.poke(0x1234.U)
-      dut.io.fillAsid.poke(7.U)
-      dut.io.fillPte.poke(LeafPTE.U(32.W))
+      dut.io.fillVirtualAddress.poke(0x1234.U)
+      dut.io.fillASID.poke(7.U)
+      dut.io.fillPTE.poke(LeafPTE.U(32.W))
       dut.io.fillLevel.poke(0.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -351,7 +351,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var response: Option[(BigInt, Boolean, BigInt)] = None
 
@@ -365,7 +365,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(true.B)
 
@@ -378,12 +378,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 20 if response.isEmpty) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         dut.io.bus.resp.bits.fault.poke(false.B)
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
@@ -414,7 +414,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
       var responses = 0
@@ -429,7 +429,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(true.B)
       dut.io.flush.poke(false.B)
@@ -442,13 +442,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
         for (_ <- 0 until 30 if !fired) {
           if (!pending && asBool(dut.io.bus.req.valid)) {
             pending = true
-            pendingId = asLong(dut.io.bus.req.bits.id).toInt
+            pendingID = asLong(dut.io.bus.req.bits.id).toInt
             busReads += 1
             pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
           }
           dut.io.bus.resp.valid.poke(pending.B)
           dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-          dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+          dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
           val ready = asBool(dut.io.bus.resp.ready)
           dut.clock.step()
           if (pending && ready) pending = false
@@ -469,15 +469,15 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "支持 Sv32 4MiB 超级页" in {
     val memory = new Memory
-    val superPte = pte(0x80000L, 0xdfL)
-    memory.write(Root + 0x0L, superPte)
+    val superPTE = pte(0x80000L, 0xdfL)
+    memory.write(Root + 0x0L, superPTE)
     simulate(new ysyx_26030103_PTW("fault", superpage = true,
       fillSuperpage = true)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
       var result: Option[(BigInt, Boolean, Int)] = None
@@ -492,7 +492,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(false.B)
       dut.io.flush.poke(false.B)
@@ -506,13 +506,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 15 if result.isEmpty) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           busReads += 1
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -534,7 +534,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     // 64KiB 页、2 级、每级 256 项：16 + 2*8 = 32。
     // 根级叶子是 16MiB 超级页，fillLevel 必须是 1（shift=16+8=24）。
     val root = 0x30000000L
-    val rootPpn = 0x3000L
+    val rootPPN = 0x3000L
     val memory = scala.collection.mutable.Map[Long, BigInt](
       (root + 0x81L * 4L) -> ((BigInt("8200", 16) << 10) | 0xdfL)
     )
@@ -546,7 +546,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var result: Option[(BigInt, Boolean, Int)] = None
 
@@ -560,28 +560,28 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(false.B)
       dut.io.flush.poke(false.B)
 
       dut.io.req.valid.poke(true.B)
       dut.io.req.bits.vaddr.poke("h81001234".U)
-      dut.io.req.bits.satp.poke((0x80000000L | rootPpn).U(32.W))
+      dut.io.req.bits.satp.poke((0x80000000L | rootPPN).U(32.W))
       dut.clock.step()
       dut.io.req.valid.poke(false.B)
 
       for (_ <- 0 until 15 if result.isEmpty) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           pendingData = memory.getOrElse(
             asLong(dut.io.bus.req.bits.addr), BigInt(0)
           )
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -613,7 +613,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var result: Option[BigInt] = None
       dut.io.req.valid.poke(false.B)
@@ -626,7 +626,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(false.B)
       dut.io.req.valid.poke(true.B)
@@ -637,12 +637,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 20 if result.isEmpty) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           pendingData = data.getOrElse(asLong(dut.io.bus.req.bits.addr), BigInt(0))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -666,7 +666,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var result: Option[BigInt] = None
       dut.io.req.valid.poke(false.B)
@@ -679,7 +679,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(false.B)
       dut.io.req.valid.poke(true.B)
@@ -690,12 +690,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 40 if result.isEmpty) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -714,7 +714,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingWrite = false
       var pendingData = BigInt(0)
       var writeSeen = false
@@ -730,7 +730,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(false.B)
       dut.io.flush.poke(false.B)
@@ -744,7 +744,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 20 if response.isEmpty) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           pendingWrite = asBool(dut.io.bus.req.bits.write)
           val addr = asLong(dut.io.bus.req.bits.addr)
           if (pendingWrite) {
@@ -757,7 +757,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -773,7 +773,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "支持自定义 PTE 字段位置" in {
     val memory = new Memory
-    val cfg = _root_.ysyx_26030103.config.ysyx_26030103_PteConfig(
+    val cfg = _root_.ysyx_26030103.config.ysyx_26030103_PTEConfig(
       ppnLow = 12,
       ppnHigh = 31
     )
@@ -784,7 +784,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var result: Option[BigInt] = None
       dut.io.req.valid.poke(false.B)
@@ -797,7 +797,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(false.B)
       dut.io.flush.poke(false.B)
@@ -809,12 +809,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 20 if result.isEmpty) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -834,7 +834,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var result: Option[BigInt] = None
       dut.io.req.valid.poke(false.B)
@@ -847,7 +847,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(false.B)
       dut.io.flush.poke(false.B)
@@ -859,7 +859,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 20 if result.isEmpty) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           val addr = asLong(dut.io.bus.req.bits.addr)
           if (asBool(dut.io.bus.req.bits.write)) {
             memory.write(addr, dut.io.bus.req.bits.data.peek().litValue)
@@ -870,7 +870,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -895,7 +895,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var result: Option[BigInt] = None
       dut.io.req.valid.poke(false.B)
@@ -908,7 +908,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(true.B)
       dut.io.flush.poke(false.B)
@@ -920,12 +920,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 40 if result.isEmpty) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -945,7 +945,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       val responses = scala.collection.mutable.ArrayBuffer.empty[BigInt]
       dut.io.req.valid.poke(false.B)
@@ -958,7 +958,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(true.B)
       dut.io.flush.poke(false.B)
@@ -976,12 +976,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 80 if responses.size < 2) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -998,13 +998,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
       enabled = true,
       tlbEnabled = true,
-      tlbAsidBits = 9
+      tlbASIDBits = 9
     ))) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
 
@@ -1018,7 +1018,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(false.B)
       dut.io.flush.poke(false.B)
@@ -1026,13 +1026,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       def stepBus(): Unit = {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           busReads += 1
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -1095,7 +1095,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
       dut.io.req.valid.poke(false.B)
@@ -1108,7 +1108,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(false.B)
       dut.io.flush.poke(false.B)
@@ -1116,13 +1116,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       def stepBus(): Unit = {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           busReads += 1
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -1178,7 +1178,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       dut.io.req.valid.poke(false.B)
       dut.io.req.bits.vaddr.poke(0.U)
@@ -1190,7 +1190,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(false.B)
       dut.io.flush.poke(false.B)
@@ -1198,12 +1198,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       def stepBus(): Unit = {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -1286,9 +1286,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.reset.poke(false.B)
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
-      dut.io.fillVaddr.poke(0.U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(0.U)
+      dut.io.fillVirtualAddress.poke(0.U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
       dut.io.lookup(0).asid.poke(0.U)
@@ -1301,9 +1301,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       // 填入 U=1 的可执行叶子页。
       dut.io.flush.poke(false.B)
       dut.io.fillValid.poke(true.B)
-      dut.io.fillVaddr.poke(0x1234.U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(LeafPTE.U(32.W))
+      dut.io.fillVirtualAddress.poke(0x1234.U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(LeafPTE.U(32.W))
       dut.io.fillLevel.poke(0.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -1327,7 +1327,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var response: Option[(BigInt, Boolean)] = None
 
@@ -1341,7 +1341,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(true.B)
       dut.io.flush.poke(false.B)
@@ -1355,12 +1355,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 20 if response.isEmpty) {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -1391,7 +1391,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
 
@@ -1405,7 +1405,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(true.B)
       dut.io.flush.poke(false.B)
@@ -1413,13 +1413,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       def stepBus(): Unit = {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           busReads += 1
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -1466,7 +1466,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
       var busWrites = 0
@@ -1481,7 +1481,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.bus.req.ready.poke(true.B)
       dut.io.bus.resp.valid.poke(false.B)
       dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
       dut.io.bus.resp.bits.fault.poke(false.B)
       dut.io.resp.ready.poke(true.B)
       dut.io.flush.poke(false.B)
@@ -1489,7 +1489,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       def stepBus(): Unit = {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           val addr = asLong(dut.io.bus.req.bits.addr)
           if (asBool(dut.io.bus.req.bits.write)) {
             busWrites += 1
@@ -1502,7 +1502,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -1538,7 +1538,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "自定义 PTE 打开 cache 后仍按配置字段归一化" in {
     val memory = new Memory
-    val cfg = _root_.ysyx_26030103.config.ysyx_26030103_PteConfig(
+    val cfg = _root_.ysyx_26030103.config.ysyx_26030103_PTEConfig(
       ppnLow = 12,
       ppnHigh = 31
     )
@@ -1552,7 +1552,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
 
@@ -1574,13 +1574,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       def stepBus(): Unit = {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           busReads += 1
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -1623,7 +1623,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingId = 0
+      var pendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
 
@@ -1645,13 +1645,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       def stepBus(): Unit = {
         if (!pending && asBool(dut.io.bus.req.valid)) {
           pending = true
-          pendingId = asLong(dut.io.bus.req.bits.id).toInt
+          pendingID = asLong(dut.io.bus.req.bits.id).toInt
           busReads += 1
           pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
         }
         dut.io.bus.resp.valid.poke(pending.B)
         dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
         val ready = asBool(dut.io.bus.resp.ready)
         dut.clock.step()
         if (pending && ready) pending = false
@@ -1709,7 +1709,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
         dut.clock.step(2)
         dut.reset.poke(false.B)
         var pending = false
-        var pendingId = 0
+        var pendingID = 0
         var pendingData = BigInt(0)
         val responses = scala.collection.mutable.ArrayBuffer.empty[(BigInt, BigInt)]
 
@@ -1727,17 +1727,17 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
         dut.io.bus.resp.bits.fault.poke(false.B)
         dut.io.resp.ready.poke(true.B)
         dut.io.flush.poke(false.B)
-        pendingId = 0
+        pendingID = 0
 
         def stepBus(): Unit = {
           if (!pending && asBool(dut.io.bus.req.valid)) {
             pending = true
-            pendingId = asLong(dut.io.bus.req.bits.id).toInt
+            pendingID = asLong(dut.io.bus.req.bits.id).toInt
             pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
           }
           dut.io.bus.resp.valid.poke(pending.B)
           dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-          dut.io.bus.resp.bits.id.poke(pendingId.U(4.W))
+          dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
           val ready = asBool(dut.io.bus.resp.ready)
           if (asBool(dut.io.resp.valid)) {
             responses += ((
@@ -1842,8 +1842,8 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
       // 新请求使用 Bare 模式，只需旁路即可返回；若旧请求仍在队列中，
       // 它会挡在 FIFO 前面并等待页表总线，导致这里等不到新响应。
-      val freshId = 9
-      offer(freshId, 0x2000L, 0L) should be(true)
+      val freshID = 9
+      offer(freshID, 0x2000L, 0L) should be(true)
       dut.io.req.valid.poke(false.B)
 
       var response: Option[(Long, Long, Boolean)] = None
@@ -1860,7 +1860,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
         guard += 1
       }
       withClue(s"flush 后新请求未返回（$guard 拍）") {
-        response should be(Some((freshId.toLong, 0x2000L, false)))
+        response should be(Some((freshID.toLong, 0x2000L, false)))
       }
     }
   }

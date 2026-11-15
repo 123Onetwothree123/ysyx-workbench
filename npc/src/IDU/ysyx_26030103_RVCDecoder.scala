@@ -50,41 +50,41 @@ class ysyx_26030103_RVCDecoder(
   private val rs2 = x(6, 2)
 
   // 立即数位拼接（与 RVC 规范的字段重排一一对应）
-  private val immAddi4spn =
+  private val immediateAddi4spn =
     Cat(x(10, 7), x(12, 11), x(5), x(6), "b00".U(2.W)) // 10 位
-  private val immLw = Cat(x(5), x(12, 10), x(6), "b00".U(2.W)) // 7 位
-  private val immLd =
+  private val immediateLw = Cat(x(5), x(12, 10), x(6), "b00".U(2.W)) // 7 位
+  private val immediateLd =
     Cat(x(6, 5), x(12, 10), "b000".U(3.W)) // 8 位
   // C.FLD/C.FSD 的 8 字节对齐偏移：uimm[7:6|5|4:3] = x[6:5|12|11:10]。
-  private val immFld =
+  private val immediateFld =
     Cat(x(6, 5), x(12), x(11, 10), "b000".U(3.W)) // 8 位
   // C.FLW/C.FSW 共用 C.LW/C.SW 的偏移布局：uimm[5:3|2|6]。
   // （C.FLW/C.FSW 只在 RV32 存在；RV64 同编码位是 C.LD/C.SD。）
-  private val immFlw =
+  private val immediateFlw =
     Cat(x(5), x(12, 10), x(6), "b00".U(2.W)) // 7 位
-  private val immLwsp =
+  private val immediateLwsp =
     Cat(x(3, 2), x(12), x(6, 4), "b00".U(2.W)) // 8 位
-  private val immLdsp =
+  private val immediateLdsp =
     Cat(x(4, 2), x(12), x(6, 5), "b000".U(3.W)) // 9 位
   // C.FLDSP/C.FSDSP 分别复用 C.LDSP/C.SDSP 的偏移布局。
-  private val immFldsp = immLdsp
-  private val immSwsp =
+  private val immediateFldsp = immediateLdsp
+  private val immediateSwsp =
     Cat(x(8, 7), x(12, 9), "b00".U(2.W)) // 8 位
-  private val immSdsp =
+  private val immediateSdsp =
     Cat(x(9, 7), x(12, 10), "b000".U(3.W)) // 9 位
-  private val immFsdsp = immSdsp
+  private val immediateFsdsp = immediateSdsp
   // C.ADDI/C.LI/C.ANDI 的 6 位有符号立即数，符号扩展到 12 位。
-  private val immAddi = Cat(Fill(7, x(12)), x(6, 2))
+  private val immediateAddi = Cat(Fill(7, x(12)), x(6, 2))
   // C.ADDI16SP 的 10 位有符号立即数，再扩展到 12 位。
-  private val immAddi16sp10 =
+  private val immediateAddi16sp10 =
     Cat(Fill(3, x(12)), x(4, 3), x(5), x(2), x(6), "b0000".U(4.W))
-  private val immAddi16sp =
-    Cat(Fill(2, immAddi16sp10(9)), immAddi16sp10)
+  private val immediateAddi16sp =
+    Cat(Fill(2, immediateAddi16sp10(9)), immediateAddi16sp10)
   // C.LUI 的 6 位有符号立即数放到 imm[17:12]。
-  private val immLui =
+  private val immediateLui =
     Cat(Fill(15, x(12)), x(6, 2), "b000000000000".U(12.W))
   // C.J/C.JAL 的 21 位偏移。
-  private val immJ = Cat(
+  private val immediateJ = Cat(
     Fill(10, x(12)),
     x(8),
     x(10, 9),
@@ -96,7 +96,7 @@ class ysyx_26030103_RVCDecoder(
     "b0".U(1.W)
   )
   // C.BEQZ/C.BNEZ 的 13 位偏移。
-  private val immB = Cat(
+  private val immediateB = Cat(
     Fill(5, x(12)),
     x(6, 5),
     x(2),
@@ -105,7 +105,7 @@ class ysyx_26030103_RVCDecoder(
     "b0".U(1.W)
   )
   // RV64 的 6 位移位量；RV32 已通过 illegal 条件拒绝 shamt[5]。
-  private val shamt = Cat(x(12), x(6, 2))
+  private val shiftAmount = Cat(x(12), x(6, 2))
 
   // 32 位指令编码辅助函数
   private def encR(
@@ -123,46 +123,46 @@ class ysyx_26030103_RVCDecoder(
       rd: UInt,
       funct3: Int,
       rs1: UInt,
-      imm: UInt
+      immediate: UInt
   ): UInt =
-    Cat(imm(11, 0), rs1, funct3.U(3.W), rd, opcode.U(7.W))
+    Cat(immediate(11, 0), rs1, funct3.U(3.W), rd, opcode.U(7.W))
 
   private def encS(
       opcode: Int,
       funct3: Int,
       rs1: UInt,
       rs2: UInt,
-      imm: UInt
+      immediate: UInt
   ): UInt =
-    Cat(imm(11, 5), rs2, rs1, funct3.U(3.W), imm(4, 0), opcode.U(7.W))
+    Cat(immediate(11, 5), rs2, rs1, funct3.U(3.W), immediate(4, 0), opcode.U(7.W))
 
   private def encB(
       opcode: Int,
       funct3: Int,
       rs1: UInt,
       rs2: UInt,
-      imm: UInt
+      immediate: UInt
   ): UInt =
     Cat(
-      imm(12),
-      imm(10, 5),
+      immediate(12),
+      immediate(10, 5),
       rs2,
       rs1,
       funct3.U(3.W),
-      imm(4, 1),
-      imm(11),
+      immediate(4, 1),
+      immediate(11),
       opcode.U(7.W)
     )
 
-  private def encU(opcode: Int, rd: UInt, imm: UInt): UInt =
-    Cat(imm(31, 12), rd, opcode.U(7.W))
+  private def encU(opcode: Int, rd: UInt, immediate: UInt): UInt =
+    Cat(immediate(31, 12), rd, opcode.U(7.W))
 
-  private def encJ(opcode: Int, rd: UInt, imm: UInt): UInt =
+  private def encJ(opcode: Int, rd: UInt, immediate: UInt): UInt =
     Cat(
-      imm(20),
-      imm(10, 1),
-      imm(11),
-      imm(19, 12),
+      immediate(20),
+      immediate(10, 1),
+      immediate(11),
+      immediate(19, 12),
       rd,
       opcode.U(7.W)
     )
@@ -170,41 +170,41 @@ class ysyx_26030103_RVCDecoder(
   // 各压缩指令展开候选
   // 象限 0：栈指针相对寻址与压缩寄存器访存。
   private val addi4spn =
-    encI(0x13, rs2p, 0, sp, Cat("b00".U(2.W), immAddi4spn))
+    encI(0x13, rs2p, 0, sp, Cat("b00".U(2.W), immediateAddi4spn))
   private val lw =
-    encI(0x03, rs2p, 2, rs1p, Cat("b00000".U(5.W), immLw))
+    encI(0x03, rs2p, 2, rs1p, Cat("b00000".U(5.W), immediateLw))
   private val ld =
-    encI(0x03, rs2p, 3, rs1p, Cat("b0000".U(4.W), immLd))
+    encI(0x03, rs2p, 3, rs1p, Cat("b0000".U(4.W), immediateLd))
   // C.FLD/C.FSD：rd'/rs2' 是 f8..f15，rs1' 仍是 x8..x15。
   private val fld =
-    encI(0x07, rs2p, 3, rs1p, Cat("b0000".U(4.W), immFld))
+    encI(0x07, rs2p, 3, rs1p, Cat("b0000".U(4.W), immediateFld))
   // C.FLW/C.FSW：RV32 专用，偏移布局与 C.LW/C.SW 完全一致。
   private val flw =
-    encI(0x07, rs2p, 2, rs1p, Cat("b00000".U(5.W), immFlw))
+    encI(0x07, rs2p, 2, rs1p, Cat("b00000".U(5.W), immediateFlw))
   private val sw =
-    encS(0x23, 2, rs1p, rs2p, Cat("b00000".U(5.W), immLw))
+    encS(0x23, 2, rs1p, rs2p, Cat("b00000".U(5.W), immediateLw))
   private val sd =
-    encS(0x23, 3, rs1p, rs2p, Cat("b0000".U(4.W), immLd))
+    encS(0x23, 3, rs1p, rs2p, Cat("b0000".U(4.W), immediateLd))
   private val fsd =
-    encS(0x27, 3, rs1p, rs2p, Cat("b0000".U(4.W), immFld))
+    encS(0x27, 3, rs1p, rs2p, Cat("b0000".U(4.W), immediateFld))
   private val fsw =
-    encS(0x27, 2, rs1p, rs2p, Cat("b00000".U(5.W), immFlw))
+    encS(0x27, 2, rs1p, rs2p, Cat("b00000".U(5.W), immediateFlw))
 
   // 象限 1：算术、跳转、条件分支与 MISC-ALU。
-  private val addi = encI(0x13, rd, 0, rd, immAddi)
-  private val addiw = encI(0x1B, rd, 0, rd, immAddi)
-  private val jal = encJ(0x6F, ra, immJ) // RV32 C.JAL
-  private val li = encI(0x13, rd, 0, x0, immAddi)
-  private val addi16sp = encI(0x13, sp, 0, sp, immAddi16sp)
-  private val lui = encU(0x37, rd, immLui)
-  private val j = encJ(0x6F, x0, immJ)
-  private val beqz = encB(0x63, 0, rs1p, x0, immB)
-  private val bnez = encB(0x63, 1, rs1p, x0, immB)
+  private val addi = encI(0x13, rd, 0, rd, immediateAddi)
+  private val addiw = encI(0x1B, rd, 0, rd, immediateAddi)
+  private val jal = encJ(0x6F, ra, immediateJ) // RV32 C.JAL
+  private val li = encI(0x13, rd, 0, x0, immediateAddi)
+  private val addi16sp = encI(0x13, sp, 0, sp, immediateAddi16sp)
+  private val lui = encU(0x37, rd, immediateLui)
+  private val j = encJ(0x6F, x0, immediateJ)
+  private val beqz = encB(0x63, 0, rs1p, x0, immediateB)
+  private val bnez = encB(0x63, 1, rs1p, x0, immediateB)
   private val srli =
-    encI(0x13, rs1p, 5, rs1p, Cat("b000000".U(6.W), shamt))
+    encI(0x13, rs1p, 5, rs1p, Cat("b000000".U(6.W), shiftAmount))
   private val srai =
-    encI(0x13, rs1p, 5, rs1p, Cat("b010000".U(6.W), shamt))
-  private val andi = encI(0x13, rs1p, 7, rs1p, immAddi)
+    encI(0x13, rs1p, 5, rs1p, Cat("b010000".U(6.W), shiftAmount))
+  private val andi = encI(0x13, rs1p, 7, rs1p, immediateAddi)
   // 压缩寄存器-寄存器运算：bit12=0 是基础字操作；bit12=1 在 RV64
   // 只允许 SUBW(bit6:5=00) 与 ADDW(bit6:5=01)。
   private val sub = encR(0x33, rs1p, 0, rs1p, rs2p, 0x20)
@@ -216,28 +216,28 @@ class ysyx_26030103_RVCDecoder(
 
   // 象限 2：栈指针相对访存、移位与跳转/寄存器搬移。
   private val slli =
-    encI(0x13, rd, 1, rd, Cat("b000000".U(6.W), shamt))
+    encI(0x13, rd, 1, rd, Cat("b000000".U(6.W), shiftAmount))
   private val lwsp =
-    encI(0x03, rd, 2, sp, Cat("b0000".U(4.W), immLwsp))
+    encI(0x03, rd, 2, sp, Cat("b0000".U(4.W), immediateLwsp))
   private val ldsp =
-    encI(0x03, rd, 3, sp, Cat("b000".U(3.W), immLdsp))
+    encI(0x03, rd, 3, sp, Cat("b000".U(3.W), immediateLdsp))
   private val fldsp =
-    encI(0x07, rd, 3, sp, Cat("b000".U(3.W), immFldsp))
+    encI(0x07, rd, 3, sp, Cat("b000".U(3.W), immediateFldsp))
   private val flwsp =
-    encI(0x07, rd, 2, sp, Cat("b0000".U(4.W), immLwsp))
+    encI(0x07, rd, 2, sp, Cat("b0000".U(4.W), immediateLwsp))
   private val jr = encI(0x67, x0, 0, rd, 0.U(12.W))
   private val mv = encR(0x33, rd, 0, x0, rs2, 0x00)
   private val ebreak = "h00100073".U(32.W)
   private val jalr = encI(0x67, ra, 0, rd, 0.U(12.W))
   private val add = encR(0x33, rd, 0, rd, rs2, 0x00)
   private val swsp =
-    encS(0x23, 2, sp, rs2, Cat("b0000".U(4.W), immSwsp))
+    encS(0x23, 2, sp, rs2, Cat("b0000".U(4.W), immediateSwsp))
   private val sdsp =
-    encS(0x23, 3, sp, rs2, Cat("b000".U(3.W), immSdsp))
+    encS(0x23, 3, sp, rs2, Cat("b000".U(3.W), immediateSdsp))
   private val fsdsp =
-    encS(0x27, 3, sp, rs2, Cat("b000".U(3.W), immFsdsp))
+    encS(0x27, 3, sp, rs2, Cat("b000".U(3.W), immediateFsdsp))
   private val fswsp =
-    encS(0x27, 2, sp, rs2, Cat("b0000".U(4.W), immSwsp))
+    encS(0x27, 2, sp, rs2, Cat("b0000".U(4.W), immediateSwsp))
 
   private val out = WireDefault(0.U(32.W))
   private val illegal = WireDefault(false.B)
@@ -247,7 +247,7 @@ class ysyx_26030103_RVCDecoder(
     // 象限 0
     is("b00_000".U(5.W)) { // C.ADDI4SPN
       out := addi4spn
-      illegal := immAddi4spn.orR === 0.U
+      illegal := immediateAddi4spn.orR === 0.U
     }
     is("b00_001".U(5.W)) { // C.FLD（需要 D 扩展）
       if (UseD) { out := fld }
@@ -296,11 +296,11 @@ class ysyx_26030103_RVCDecoder(
     is("b01_011".U(5.W)) { // C.ADDI16SP / C.LUI
       when(rd === sp) {
         out := addi16sp
-        illegal := immAddi16sp10.orR === 0.U
+        illegal := immediateAddi16sp10.orR === 0.U
       }.otherwise {
         out := lui
         // C.LUI 的 nzimm=0 是保留编码；rd=0 且非零立即数是 HINT。
-        illegal := immAddi.orR === 0.U
+        illegal := immediateAddi.orR === 0.U
       }
     }
     is("b01_100".U(5.W)) { // MISC-ALU

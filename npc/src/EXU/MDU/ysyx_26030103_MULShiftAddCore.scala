@@ -7,122 +7,122 @@ import _root_.ysyx_26030103.config._
 class ysyx_26030103_MULShiftAddCore(
     config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
 ) extends ysyx_26030103_MULCore(config.MULEffectiveWidth) {
-  private val OperandWidth = config.MULEffectiveWidth
-  private val ProductWidth = 2 * OperandWidth
-  private val UseBooth = config.MDUProfile.MUL.Encoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth
-  private val BoothRadix = if (UseBooth) config.MDUProfile.MUL.Radix else 2 //单个Booth基数
-  private val BoothBits = if (UseBooth) ysyx_26030103_MULBoothConfig.BoothBits(BoothRadix) else 1 //单个Booth组宽度
-  private val BaseGroupsPerCycle = if (UseBooth) (config.MDUProfile.MUL.ShiftAdd.IterBits + BoothBits - 1) / BoothBits else 1 //未分块时每拍处理的组数
-  private val GroupsPerCycle = if (UseBooth) ((BaseGroupsPerCycle + config.MDUProfile.MUL.ShiftAdd.Split - 1) / config.MDUProfile.MUL.ShiftAdd.Split).max(1) else 1 //分块后每拍Booth组数
-  private val CycleBits = if (UseBooth) GroupsPerCycle * BoothBits else ((config.MDUProfile.MUL.ShiftAdd.IterBits + config.MDUProfile.MUL.ShiftAdd.Split - 1) / config.MDUProfile.MUL.ShiftAdd.Split).max(1) //每拍实际处理位数
-  private val TotalGroups = if (UseBooth) (OperandWidth + 1 + BoothBits - 1) / BoothBits else OperandWidth //总组数
-  private val CycleCount = if (UseBooth) (TotalGroups + GroupsPerCycle - 1) / GroupsPerCycle else (OperandWidth + CycleBits - 1) / CycleBits //总轮数
-  private val PaddedGroups = if (UseBooth) CycleCount * GroupsPerCycle else 0 //补齐后的Booth组数
-  private val InternalWidth = if (UseBooth) 2 * (OperandWidth + BoothBits) else ProductWidth //内部累加宽度
-  private val EncoderWidth = OperandWidth + BoothBits //编码器被乘数宽度
-  private val EncoderProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(BoothRadix, OperandWidth) //编码器部分积宽度
-  private val MultiplierWidth = if (UseBooth) PaddedGroups * BoothBits + 1 else CycleCount * CycleBits //乘数寄存器宽度
-  private val CounterWidth = log2Ceil(CycleCount + 1).max(1) //轮计数器宽度
-  private val ShiftWidth = log2Ceil(InternalWidth + 1).max(1) //部分积移位量宽度
-  private val Busy = RegInit(false.B) //正在迭代
-  private val ResultValid = RegInit(false.B) //结果有效
-  private val Accumulator = RegInit(0.U(InternalWidth.W)) //累加器
-  private val Multiplicand = RegInit(0.U(InternalWidth.W)) //被乘数寄存器
-  private val Multiplier = RegInit(0.U(MultiplierWidth.W)) //乘数寄存器
-  private val Iteration = RegInit(0.U(CounterWidth.W)) //轮计数
-  private val BoothShift = RegInit(0.U(ShiftWidth.W)) //Booth部分积移位量
-  private val Result = RegInit(0.U(ProductWidth.W)) //最终结果
-  IO.Req.ready := !IO.Flush && !Busy && (!ResultValid || IO.Resp.ready) //可接收请求
-  IO.Resp.valid := ResultValid && !IO.Flush //结果有效
-  IO.Resp.bits.Product := Result //输出低2N位乘积
-  val ReqFire = IO.Req.valid && IO.Req.ready //请求握手
-  val RespFire = IO.Resp.valid && IO.Resp.ready //响应握手
-  val CurrentAddend = Wire(UInt(InternalWidth.W)) //本轮待累加部分积
-  CurrentAddend := 0.U //默认不累加
-  if (UseBooth) {
-    var BoothSum: UInt = 0.U(InternalWidth.W) //本轮Booth部分积和
-    for (Group <- 0 until GroupsPerCycle) {
-      val Encoder = Module(new ysyx_26030103_MULBoothEncoder(BoothRadix, OperandWidth)) //Booth编码器
-      val WindowLow = Group * BoothBits //窗口起始位
-      Encoder.IO.Multiplicand := Multiplicand(EncoderWidth - 1, 0) //输入未移位被乘数
-      Encoder.IO.Window := Multiplier(WindowLow + BoothBits, WindowLow) //取当前窗口
-      val ShiftAmount = BoothShift + (Group * BoothBits).U(ShiftWidth.W) //当前部分积位置
-      val SignedPartialProduct = if (EncoderProductWidth >= InternalWidth) {
-        Encoder.IO.PartialProduct(InternalWidth - 1, 0)
+  private val operandWidth = config.MULEffectiveWidth
+  private val productWidth = 2 * operandWidth
+  private val useBooth = config.MDUProfile.MUL.Encoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth
+  private val boothRadix = if (useBooth) config.MDUProfile.MUL.Radix else 2 //单个Booth基数
+  private val boothBits = if (useBooth) ysyx_26030103_MULBoothConfig.BoothBits(boothRadix) else 1 //单个Booth组宽度
+  private val baseGroupsPerCycle = if (useBooth) (config.MDUProfile.MUL.ShiftAdd.IterBits + boothBits - 1) / boothBits else 1 //未分块时每拍处理的组数
+  private val groupsPerCycle = if (useBooth) ((baseGroupsPerCycle + config.MDUProfile.MUL.ShiftAdd.Split - 1) / config.MDUProfile.MUL.ShiftAdd.Split).max(1) else 1 //分块后每拍Booth组数
+  private val cycleBits = if (useBooth) groupsPerCycle * boothBits else ((config.MDUProfile.MUL.ShiftAdd.IterBits + config.MDUProfile.MUL.ShiftAdd.Split - 1) / config.MDUProfile.MUL.ShiftAdd.Split).max(1) //每拍实际处理位数
+  private val totalGroups = if (useBooth) (operandWidth + 1 + boothBits - 1) / boothBits else operandWidth //总组数
+  private val cycleCount = if (useBooth) (totalGroups + groupsPerCycle - 1) / groupsPerCycle else (operandWidth + cycleBits - 1) / cycleBits //总轮数
+  private val paddedGroups = if (useBooth) cycleCount * groupsPerCycle else 0 //补齐后的Booth组数
+  private val internalWidth = if (useBooth) 2 * (operandWidth + boothBits) else productWidth //内部累加宽度
+  private val encoderWidth = operandWidth + boothBits //编码器被乘数宽度
+  private val encoderProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(boothRadix, operandWidth) //编码器部分积宽度
+  private val multiplierWidth = if (useBooth) paddedGroups * boothBits + 1 else cycleCount * cycleBits //乘数寄存器宽度
+  private val counterWidth = log2Ceil(cycleCount + 1).max(1) //轮计数器宽度
+  private val shiftWidth = log2Ceil(internalWidth + 1).max(1) //部分积移位量宽度
+  private val busy = RegInit(false.B) //正在迭代
+  private val resultValid = RegInit(false.B) //结果有效
+  private val accumulator = RegInit(0.U(internalWidth.W)) //累加器
+  private val multiplicand = RegInit(0.U(internalWidth.W)) //被乘数寄存器
+  private val multiplier = RegInit(0.U(multiplierWidth.W)) //乘数寄存器
+  private val iteration = RegInit(0.U(counterWidth.W)) //轮计数
+  private val boothShift = RegInit(0.U(shiftWidth.W)) //Booth部分积移位量
+  private val result = RegInit(0.U(productWidth.W)) //最终结果
+  IO.Request.ready := !IO.Flush && !busy && (!resultValid || IO.Response.ready) //可接收请求
+  IO.Response.valid := resultValid && !IO.Flush //结果有效
+  IO.Response.bits.Product := result //输出低2N位乘积
+  val requestFire = IO.Request.valid && IO.Request.ready //请求握手
+  val responseFire = IO.Response.valid && IO.Response.ready //响应握手
+  val currentAddend = Wire(UInt(internalWidth.W)) //本轮待累加部分积
+  currentAddend := 0.U //默认不累加
+  if (useBooth) {
+    var boothSum: UInt = 0.U(internalWidth.W) //本轮Booth部分积和
+    for (group <- 0 until groupsPerCycle) {
+      val encoder = Module(new ysyx_26030103_MULBoothEncoder(boothRadix, operandWidth)) //Booth编码器
+      val windowLow = group * boothBits //窗口起始位
+      encoder.IO.Multiplicand := multiplicand(encoderWidth - 1, 0) //输入未移位被乘数
+      encoder.IO.Window := multiplier(windowLow + boothBits, windowLow) //取当前窗口
+      val shiftAmount = boothShift + (group * boothBits).U(shiftWidth.W) //当前部分积位置
+      val signedPartialProduct = if (encoderProductWidth >= internalWidth) {
+        encoder.IO.PartialProduct(internalWidth - 1, 0)
       } else {
         Cat(
-          Fill(InternalWidth - EncoderProductWidth, Encoder.IO.PartialProduct(EncoderProductWidth - 1)),
-          Encoder.IO.PartialProduct
+          Fill(internalWidth - encoderProductWidth, encoder.IO.PartialProduct(encoderProductWidth - 1)),
+          encoder.IO.PartialProduct
         )
       }
-      val ShiftedPartialProduct = SignedPartialProduct << ShiftAmount //部分积左移
-      val PartialProduct = ShiftedPartialProduct(InternalWidth - 1, 0) //截取内部宽度
-      BoothSum = (BoothSum +& PartialProduct)(InternalWidth - 1, 0) //累加本拍部分积
+      val shiftedPartialProduct = signedPartialProduct << shiftAmount //部分积左移
+      val partialProduct = shiftedPartialProduct(internalWidth - 1, 0) //截取内部宽度
+      boothSum = (boothSum +& partialProduct)(internalWidth - 1, 0) //累加本拍部分积
     }
-    CurrentAddend := BoothSum
+    currentAddend := boothSum
   } else {
-    var PlainSum: UInt = 0.U(InternalWidth.W) //本轮普通部分积和
-    for (Bit <- 0 until CycleBits) {
-      val Shifted = (Multiplicand << Bit)(InternalWidth - 1, 0) //生成移位部分积
-      val Addend = Mux(Multiplier(Bit), Shifted, 0.U(InternalWidth.W)) //按乘数位选择
-      PlainSum = (PlainSum +& Addend)(InternalWidth - 1, 0) //累加本拍部分积
+    var plainSum: UInt = 0.U(internalWidth.W) //本轮普通部分积和
+    for (bit <- 0 until cycleBits) {
+      val shifted = (multiplicand << bit)(internalWidth - 1, 0) //生成移位部分积
+      val addend = Mux(multiplier(bit), shifted, 0.U(internalWidth.W)) //按乘数位选择
+      plainSum = (plainSum +& addend)(internalWidth - 1, 0) //累加本拍部分积
     }
-    CurrentAddend := PlainSum
+    currentAddend := plainSum
   }
-  val NextAccumulator = (Accumulator +& CurrentAddend)(InternalWidth - 1, 0) //计算下一累加值
-  val NextMultiplier = Multiplier >> CycleBits //计算下一乘数
-  val LastIteration = Iteration === (CycleCount - 1).U(CounterWidth.W) //判断最后一轮
-  val EarlyFinish = if (config.MDUProfile.MUL.ShiftAdd.EarlyOut) NextMultiplier === 0.U else false.B //提前结束
+  val nextAccumulator = (accumulator +& currentAddend)(internalWidth - 1, 0) //计算下一累加值
+  val nextMultiplier = multiplier >> cycleBits //计算下一乘数
+  val lastIteration = iteration === (cycleCount - 1).U(counterWidth.W) //判断最后一轮
+  val earlyFinish = if (config.MDUProfile.MUL.ShiftAdd.EarlyOut) nextMultiplier === 0.U else false.B //提前结束
   when (IO.Flush) {
-    Busy := false.B
-    ResultValid := false.B
-    Accumulator := 0.U
-    Multiplicand := 0.U
-    Multiplier := 0.U
-    Iteration := 0.U
-    BoothShift := 0.U
-    Result := 0.U
-  }.elsewhen (ReqFire) {
-    Busy := true.B
-    ResultValid := false.B
-    Accumulator := 0.U
-    Multiplicand := Cat(0.U((InternalWidth - OperandWidth).W), IO.Req.bits.LHSMagnitude) //锁存被乘数
-    if (UseBooth) {
-      val PaddingWidth = PaddedGroups * BoothBits - OperandWidth
-      val MultiplierValue = if (PaddingWidth == 0) {
-        Cat(IO.Req.bits.RHSMagnitude, 0.U(1.W))
+    busy := false.B
+    resultValid := false.B
+    accumulator := 0.U
+    multiplicand := 0.U
+    multiplier := 0.U
+    iteration := 0.U
+    boothShift := 0.U
+    result := 0.U
+  }.elsewhen (requestFire) {
+    busy := true.B
+    resultValid := false.B
+    accumulator := 0.U
+    multiplicand := Cat(0.U((internalWidth - operandWidth).W), IO.Request.bits.LHSMagnitude) //锁存被乘数
+    if (useBooth) {
+      val paddingWidth = paddedGroups * boothBits - operandWidth
+      val multiplierValue = if (paddingWidth == 0) {
+        Cat(IO.Request.bits.RHSMagnitude, 0.U(1.W))
       } else {
-        Cat(0.U(PaddingWidth.W), IO.Req.bits.RHSMagnitude, 0.U(1.W))
+        Cat(0.U(paddingWidth.W), IO.Request.bits.RHSMagnitude, 0.U(1.W))
       }
-      Multiplier := MultiplierValue //补高位和最低位
+      multiplier := multiplierValue //补高位和最低位
     } else {
-      val PaddingWidth = CycleCount * CycleBits - OperandWidth
-      val MultiplierValue = if (PaddingWidth == 0) {
-        IO.Req.bits.RHSMagnitude
+      val paddingWidth = cycleCount * cycleBits - operandWidth
+      val multiplierValue = if (paddingWidth == 0) {
+        IO.Request.bits.RHSMagnitude
       } else {
-        Cat(0.U(PaddingWidth.W), IO.Req.bits.RHSMagnitude)
+        Cat(0.U(paddingWidth.W), IO.Request.bits.RHSMagnitude)
       }
-      Multiplier := MultiplierValue //普通乘数高位补零
+      multiplier := multiplierValue //普通乘数高位补零
     }
-    Iteration := 0.U
-    BoothShift := 0.U
-  }.elsewhen (Busy) {
-    if (!UseBooth) {
-      Multiplicand := (Multiplicand << CycleBits)(InternalWidth - 1, 0) //被乘数左移本拍位数
+    iteration := 0.U
+    boothShift := 0.U
+  }.elsewhen (busy) {
+    if (!useBooth) {
+      multiplicand := (multiplicand << cycleBits)(internalWidth - 1, 0) //被乘数左移本拍位数
     } else {
-      BoothShift := BoothShift + CycleBits.U(ShiftWidth.W) //部分积位置前进
+      boothShift := boothShift + cycleBits.U(shiftWidth.W) //部分积位置前进
     }
-    Multiplier := NextMultiplier //乘数右移本拍位数
-    when (LastIteration || EarlyFinish) {
-      Busy := false.B
-      ResultValid := true.B
-      Result := NextAccumulator(ProductWidth - 1, 0) //保存2N位结果
-      Accumulator := NextAccumulator
+    multiplier := nextMultiplier //乘数右移本拍位数
+    when (lastIteration || earlyFinish) {
+      busy := false.B
+      resultValid := true.B
+      result := nextAccumulator(productWidth - 1, 0) //保存2N位结果
+      accumulator := nextAccumulator
     }.otherwise {
-      Accumulator := NextAccumulator
-      Iteration := Iteration + 1.U
+      accumulator := nextAccumulator
+      iteration := iteration + 1.U
     }
-  }.elsewhen (RespFire) {
-    ResultValid := false.B
+  }.elsewhen (responseFire) {
+    resultValid := false.B
   }
 }

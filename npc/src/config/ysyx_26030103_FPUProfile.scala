@@ -64,7 +64,7 @@ case class ysyx_26030103_FudianParams(
   * NPCConfig 顶层，本 profile 只承载实现相关的公开调优参数。
   */
 case class ysyx_26030103_FPUProfile(
-    Pipeline: Int = KconfigDefaults.FpuPipeline,
+    Pipeline: Int = KconfigDefaults.FPUPipeline,
     FMA: Boolean = true,
     DivSqrt: Boolean = true,
     Rounding: Boolean = true,
@@ -74,22 +74,22 @@ case class ysyx_26030103_FPUProfile(
     Fudian: ysyx_26030103_FudianParams =
       ysyx_26030103_FudianParams()
 ) {
-  private def OnOff(Flag: Boolean): String = if (Flag) "on" else "off"
+  private def onOff(flag: Boolean): String = if (flag) "on" else "off"
 
   // 配置摘要只打印选中后端的参数，避免把未选后端的值误认为生效。
-  def Describe(Impl: ysyx_26030103_FPUImpl): String = Impl match {
+  def Describe(impl: ysyx_26030103_FPUImpl): String = impl match {
     case ysyx_26030103_FPUImpl.None => "none"
     case ysyx_26030103_FPUImpl.HardFloat =>
       s"pipeline=$Pipeline,fma=${if (FMA) "fused" else "exact"}," +
-        s"divsqrt=${OnOff(DivSqrt)}," +
-        s"rounding=${OnOff(Rounding)},flags=${OnOff(Flags)}," +
-        s"recode=${OnOff(HardFloat.Recode)}," +
+        s"divsqrt=${onOff(DivSqrt)}," +
+        s"rounding=${onOff(Rounding)},flags=${onOff(Flags)}," +
+        s"recode=${onOff(HardFloat.Recode)}," +
         s"tininess=${if (HardFloat.DetectTininessBeforeRounding) "before" else "after"}"
     case ysyx_26030103_FPUImpl.Fudian =>
       s"pipeline=$Pipeline,fma=${if (FMA) "fused" else "exact"}," +
-        s"divsqrt=${OnOff(DivSqrt)}," +
-        s"rounding=${OnOff(Rounding)},flags=${OnOff(Flags)}," +
-        s"shared_divsqrt=${OnOff(Fudian.SharedDivSqrt)}"
+        s"divsqrt=${onOff(DivSqrt)}," +
+        s"rounding=${onOff(Rounding)},flags=${onOff(Flags)}," +
+        s"shared_divsqrt=${onOff(Fudian.SharedDivSqrt)}"
     case ysyx_26030103_FPUImpl.External => "external(reserved)"
   }
 }

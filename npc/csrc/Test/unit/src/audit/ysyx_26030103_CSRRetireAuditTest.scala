@@ -18,15 +18,15 @@ class ysyx_26030103_CSRRetireAuditHarness(
   val io = IO(new Bundle {
     val enable = Input(Bool())
     val retireCommit = Input(Bool())
-    val isCsrrw = Input(Bool())
-    val isCsrrs = Input(Bool())
-    val isCsrrc = Input(Bool())
+    val isCSRrw = Input(Bool())
+    val isCSRrs = Input(Bool())
+    val isCSRrc = Input(Bool())
     val isEcall = Input(Bool())
     val isEbreak = Input(Bool())
     val isMret = Input(Bool())
     val isSret = Input(Bool())
     val isSfenceVma = Input(Bool())
-    val csrAddr = Input(UInt(12.W))
+    val csrAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
     val rs1Data = Input(UInt(64.W))
     val pc = Input(UInt(64.W))
@@ -49,15 +49,15 @@ class ysyx_26030103_CSRRetireAuditHarness(
   csr.io.rst := reset
   csr.io.Enable := io.enable
   csr.io.MinstretRetireCommit := io.retireCommit
-  csr.io.IsCsrrw := io.isCsrrw
-  csr.io.IsCsrrs := io.isCsrrs
-  csr.io.IsCsrrc := io.isCsrrc
+  csr.io.IsCSRrw := io.isCSRrw
+  csr.io.IsCSRrs := io.isCSRrs
+  csr.io.IsCSRrc := io.isCSRrc
   csr.io.IsEcall := io.isEcall
   csr.io.IsEbreak := io.isEbreak
   csr.io.IsMret := io.isMret
   csr.io.IsSret := io.isSret
   csr.io.IsSfenceVma := io.isSfenceVma
-  csr.io.CSRAddress := io.csrAddr
+  csr.io.CSRAddress := io.csrAddress
   csr.io.rs1 := io.rs1
   csr.io.Rs1Data := io.rs1Data
   csr.io.pc := io.pc
@@ -97,7 +97,7 @@ class ysyx_26030103_CSRRetireAuditTest
       pteSizeBytes = 8,
       pageTableSizeBytes = 4096,
       pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -111,15 +111,15 @@ class ysyx_26030103_CSRRetireAuditTest
     dut.reset.poke(false.B)
     dut.io.enable.poke(false.B)
     dut.io.retireCommit.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
-    dut.io.isCsrrs.poke(false.B)
-    dut.io.isCsrrc.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
+    dut.io.isCSRrs.poke(false.B)
+    dut.io.isCSRrc.poke(false.B)
     dut.io.isEcall.poke(false.B)
     dut.io.isEbreak.poke(false.B)
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddr.poke(0.U)
+    dut.io.csrAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
     dut.io.pc.poke(0.U)
@@ -133,59 +133,59 @@ class ysyx_26030103_CSRRetireAuditTest
     dut.io.mtime.poke(0.U)
   }
 
-  private def peekCsr(
+  private def peekCSR(
       dut: ysyx_26030103_CSRRetireAuditHarness,
       addr: Int
   ): BigInt = {
-    dut.io.csrAddr.poke(addr.U)
+    dut.io.csrAddress.poke(addr.U)
     dut.io.rdata.peek().litValue
   }
 
-  private def writeCsr(
+  private def writeCSR(
       dut: ysyx_26030103_CSRRetireAuditHarness,
       addr: Int,
       data: BigInt
   ): Unit = {
-    dut.io.csrAddr.poke(addr.U)
+    dut.io.csrAddress.poke(addr.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(64.W))
     dut.io.enable.poke(true.B)
-    dut.io.isCsrrw.poke(true.B)
+    dut.io.isCSRrw.poke(true.B)
     dut.clock.step()
     dut.io.enable.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
   }
 
   "minstret" should "只跟随退休事件，而不是 EXU Enable" in {
     simulate(new ysyx_26030103_CSRRetireAuditHarness(profile)) { dut =>
       setup(dut)
-      peekCsr(dut, MINSTRET) should be(BigInt(0))
+      peekCSR(dut, MINSTRET) should be(BigInt(0))
 
       // EXU 提交拍（enable）没有指令退休时不得计数。
       dut.io.enable.poke(true.B)
       dut.io.retireCommit.poke(false.B)
       for (_ <- 0 until 4) { dut.clock.step() }
       dut.io.enable.poke(false.B)
-      peekCsr(dut, MINSTRET) should be(BigInt(0))
+      peekCSR(dut, MINSTRET) should be(BigInt(0))
 
       // 只有 WBU 退休事件才计数。
       dut.io.retireCommit.poke(true.B)
       for (_ <- 0 until 3) { dut.clock.step() }
       dut.io.retireCommit.poke(false.B)
-      peekCsr(dut, MINSTRET) should be(BigInt(3))
+      peekCSR(dut, MINSTRET) should be(BigInt(3))
     }
   }
 
   it should "保留 csrw minstret 写口，且之后退休继续自增" in {
     simulate(new ysyx_26030103_CSRRetireAuditHarness(profile)) { dut =>
       setup(dut)
-      writeCsr(dut, MINSTRET, BigInt(0x1234))
-      peekCsr(dut, MINSTRET) should be(BigInt(0x1234))
+      writeCSR(dut, MINSTRET, BigInt(0x1234))
+      peekCSR(dut, MINSTRET) should be(BigInt(0x1234))
 
       dut.io.retireCommit.poke(true.B)
       dut.clock.step()
       dut.io.retireCommit.poke(false.B)
-      peekCsr(dut, MINSTRET) should be(BigInt(0x1235))
+      peekCSR(dut, MINSTRET) should be(BigInt(0x1235))
     }
   }
 
@@ -193,19 +193,19 @@ class ysyx_26030103_CSRRetireAuditTest
     simulate(new ysyx_26030103_CSRRetireAuditHarness(profile)) { dut =>
       setup(dut)
       // 从 M 模式 MRET 到 S：mstatus.MPP=S，MIE/MPIE 均为 0。
-      writeCsr(dut, MSTATUS, BigInt(0x800))
-      writeCsr(dut, MEPC, BigInt("0000000080001000", 16))
+      writeCSR(dut, MSTATUS, BigInt(0x800))
+      writeCSR(dut, MEPC, BigInt("0000000080001000", 16))
       dut.io.enable.poke(true.B)
       dut.io.isMret.poke(true.B)
       dut.clock.step()
       dut.io.enable.poke(false.B)
       dut.io.isMret.poke(false.B)
       big(dut.io.privilege) should be(BigInt(1))
-      ((peekCsr(dut, MSTATUS) >> 3) & 1) should be(BigInt(0))
+      ((peekCSR(dut, MSTATUS) >> 3) & 1) should be(BigInt(0))
 
       // 使能 M 级 timer 中断（mie.MTIE）。S 模式下即使 MIE=0，
       // M 级中断也必须能够抢占。
-      writeCsr(dut, MIE, BigInt(0x80))
+      writeCSR(dut, MIE, BigInt(0x80))
       dut.io.timerInterrupt.poke(true.B)
       dut.io.pc.poke(BigInt("0000000080002000", 16).U(64.W))
       dut.io.enable.poke(true.B)
@@ -221,12 +221,12 @@ class ysyx_26030103_CSRRetireAuditTest
     val pmpProfile = profile.copy(pmpEnabled = true)
     simulate(new ysyx_26030103_CSRRetireAuditHarness(pmpProfile)) { dut =>
       setup(dut)
-      writeCsr(dut, PMPCFG0, BigInt(0x1f))
-      peekCsr(dut, PMPCFG0) should be(BigInt(0x1f))
+      writeCSR(dut, PMPCFG0, BigInt(0x1f))
+      peekCSR(dut, PMPCFG0) should be(BigInt(0x1f))
 
       // bit[6:5] 是保留位，必须写 0；L/A[1:0]/X/W/R 保留。
-      writeCsr(dut, PMPCFG0, BigInt(0x7f))
-      peekCsr(dut, PMPCFG0) should be(BigInt(0x1f))
+      writeCSR(dut, PMPCFG0, BigInt(0x7f))
+      peekCSR(dut, PMPCFG0) should be(BigInt(0x1f))
     }
   }
 
@@ -235,15 +235,15 @@ class ysyx_26030103_CSRRetireAuditTest
     simulate(new ysyx_26030103_CSRRetireAuditHarness(pmpProfile)) { dut =>
       setup(dut)
       // 先写入 pmpaddr0，再锁定 entry0（L=1, A=NAPOT, RWX）。
-      writeCsr(dut, PMPADDR0, BigInt("200001ff", 16))
-      peekCsr(dut, PMPADDR0) should be(BigInt("200001ff", 16))
-      writeCsr(dut, PMPCFG0, BigInt(0x9f))
-      peekCsr(dut, PMPCFG0) should be(BigInt(0x9f))
-      writeCsr(dut, PMPCFG0, BigInt(0x0f))
-      peekCsr(dut, PMPCFG0) should be(BigInt(0x9f))
+      writeCSR(dut, PMPADDR0, BigInt("200001ff", 16))
+      peekCSR(dut, PMPADDR0) should be(BigInt("200001ff", 16))
+      writeCSR(dut, PMPCFG0, BigInt(0x9f))
+      peekCSR(dut, PMPCFG0) should be(BigInt(0x9f))
+      writeCSR(dut, PMPCFG0, BigInt(0x0f))
+      peekCSR(dut, PMPCFG0) should be(BigInt(0x9f))
 
-      writeCsr(dut, PMPADDR0, BigInt("300001ff", 16))
-      peekCsr(dut, PMPADDR0) should be(BigInt("200001ff", 16))
+      writeCSR(dut, PMPADDR0, BigInt("300001ff", 16))
+      peekCSR(dut, PMPADDR0) should be(BigInt("200001ff", 16))
     }
   }
 }

@@ -14,7 +14,7 @@ object ysyx_26030103_MULImpl {
   case object Dadda extends ysyx_26030103_MULImpl {
     val Name = "dadda"
   }
-  def FromString(s: String): ysyx_26030103_MULImpl = s match {
+  def FromString(value: String): ysyx_26030103_MULImpl = value match {
     case "shift_add" => ShiftAdd
     case "wallace" => Wallace
     case "dadda" => Dadda

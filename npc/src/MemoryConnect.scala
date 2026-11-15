@@ -19,19 +19,19 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
     // 后由 IMMU 给出翻译结果，下面会覆盖这个默认连接。此前一直送虚拟
     // 地址，导致高虚拟地址（0xffffffff8...）永远不匹配 OpenSBI 的全内存
     // NAPOT，S 模式取指被误判为 instruction access fault。
-    val pmpFetchAddress = WireDefault(ifu.io.FetchAddr)
+    val pmpFetchAddress = WireDefault(ifu.io.FetchAddress)
     pmpOpt.foreach { pmp =>
-      pmp.io.cfg := exu.io.PmpCfg
-      pmp.io.addr := exu.io.PmpAddr
-      pmp.io.fetchAddr := pmpFetchAddress
+      pmp.io.cfg := exu.io.PMPConfig
+      pmp.io.addr := exu.io.PMPAddress
+      pmp.io.fetchAddress := pmpFetchAddress
       pmp.io.fetchPriv := exu.io.CSRPrivilege
       // 默认按无 MMU 路径接 LSU 的访存检查地址；MMU 分支稍后覆盖成
       // DMMU 给出的物理地址。这样两种配置共用同一个 PMP 例化。
-      pmp.io.dataAddr := lsu.io.PmpAddr
-      pmp.io.dataLastAddr := lsu.io.PmpLastAddr
+      pmp.io.dataAddress := lsu.io.PMPAddress
+      pmp.io.dataLastAddress := lsu.io.PMPLastAddress
       pmp.io.dataPriv := dataPrivilege
-      pmp.io.dataRead := lsu.io.PmpRead
-      pmp.io.dataWrite := lsu.io.PmpWrite
+      pmp.io.dataRead := lsu.io.PMPRead
+      pmp.io.dataWrite := lsu.io.PMPWrite
     }
 
     // icache.kill 在下面按 PIPT/VIPT 分支连接：VIPT 还需要在翻译故障时
@@ -66,10 +66,10 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
         lsu.io.in,
         lsu.io.FlushEXMEM || dmmuMemKillForStage
       )
-      lsu.io.ViptPAddr := dmmuOpt.get.io.memPaddr
-      lsu.io.ViptPAddrValid := dmmuOpt.get.io.memPaddrValid
-      lsu.io.ViptPAddrVaddr := dmmuOpt.get.io.memPaddrVaddr
-      lsu.io.ViptKill := dmmuOpt.get.io.memKill
+      lsu.io.VIPTPAddress := dmmuOpt.get.io.memPhysicalAddress
+      lsu.io.VIPTPAddressValid := dmmuOpt.get.io.memPhysicalAddressValid
+      lsu.io.VIPTPAddressVirtualAddress := dmmuOpt.get.io.memPhysicalAddressVirtualAddress
+      lsu.io.VIPTKill := dmmuOpt.get.io.memKill
       dmmuOpt.get.io.memActive := lsu.io.Busy
       // LSU 本地陷阱（misaligned/PMP/总线错误）优先于尚未返回的翻译；
       // 撤销在途 DMMU 请求，防止同一个 store/load 二次提交 page fault。
@@ -77,10 +77,10 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
     } else {
       ysyx_26030103_StageConnect(exu.io.out, lsu.io.in, lsu.io.FlushEXMEM)
       // 无 MMU 时 VA==PA；VIPT 并行端口不使用，绑定安全常量。
-      lsu.io.ViptPAddr := 0.U
-      lsu.io.ViptPAddrValid := false.B
-      lsu.io.ViptPAddrVaddr := 0.U
-      lsu.io.ViptKill := false.B
+      lsu.io.VIPTPAddress := 0.U
+      lsu.io.VIPTPAddressValid := false.B
+      lsu.io.VIPTPAddressVirtualAddress := 0.U
+      lsu.io.VIPTKill := false.B
     }
     ysyx_26030103_StageConnect(lsu.io.out, wbu.io.in)
 
@@ -110,36 +110,36 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
         // VIPT 并行路径：只翻译 ICache 已受理的 VA；PA 带 VA 标签返回。
         // IFU 可以在 PA 到达前推进 PC（此时 cache 已用 VA 选好 index）。
         immu.io.fetchValid := icache.io.fetch_xlate_pending
-        immu.io.fetchVaddr := icache.io.fetch_xlate_vaddr
+        immu.io.fetchVirtualAddress := icache.io.fetch_xlate_vaddr
         immu.io.cacheReady := icache.io.fetch_ready
         ifu.io.FetchReady := icache.io.fetch_ready && !ifuFaultValid
         // 翻译故障期间停止受理新取指，等 EXU 精确陷阱冲刷。
         icache.io.fetch_valid := ifu.io.FetchValid && !ifuFaultValid
-        icache.io.fetch_vaddr := ifu.io.FetchAddr
+        icache.io.fetch_vaddr := ifu.io.FetchAddress
         // Bare/M 模式的 bypass 也必须经过 IFUMMU 的 PMP 检查：translationValid
         // 已经与 !pmpFault 相与，不能再直接用 immuBypass 放行 PA，否则被 PMP
         // 拒绝的取指会绕过 IFUMMU 直接被 ICache 受理。
-        icache.io.fetch_addr := immu.io.fetchPaddr
+        icache.io.fetch_addr := immu.io.fetchPhysicalAddress
         icache.io.fetch_paddr_valid := immu.io.translationValid
-        icache.io.fetch_paddr_vaddr := immu.io.fetchPaddrVaddr
+        icache.io.fetch_paddr_vaddr := immu.io.fetchPhysicalAddressVirtualAddress
         // 翻译故障与重定向都杀死未完成的 VA 请求，错误数据绝不提交。
         icache.io.kill := pipeFlush || immu.io.fault
       } else {
         immu.io.fetchValid := ifu.io.FetchValid
-        immu.io.fetchVaddr := ifu.io.FetchAddr
+        immu.io.fetchVirtualAddress := ifu.io.FetchAddress
         immu.io.cacheReady := icache.io.fetch_ready
         ifu.io.FetchReady := immu.io.fetchReady
-        icache.io.fetch_addr := immu.io.fetchPaddr
-        icache.io.fetch_vaddr := ifu.io.FetchAddr
+        icache.io.fetch_addr := immu.io.fetchPhysicalAddress
+        icache.io.fetch_vaddr := ifu.io.FetchAddress
         icache.io.fetch_valid := ifu.io.FetchValid && immu.io.translationValid
         // PIPT 实现忽略这两个端口；保持旧路径完全不变。
         icache.io.fetch_paddr_valid := true.B
-        icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
+        icache.io.fetch_paddr_vaddr := ifu.io.FetchAddress
         icache.io.kill := pipeFlush
       }
       // PMP 必须在物理地址上检查；Bare 模式没有翻译，仍用虚拟地址。
       pmpFetchAddress :=
-        Mux(immuBypass, ifu.io.FetchAddr, immu.io.fetchPaddr)
+        Mux(immuBypass, ifu.io.FetchAddress, immu.io.fetchPhysicalAddress)
 
       // mstatus.MPRV：M 模式数据访问按 MPP 的特权级翻译；取指仍用当前特权级。
       dmmu.io.privilege := dataPrivilege
@@ -150,21 +150,21 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
       immu.io.pmpFault := pmpOpt.map(_.io.fetchFault).getOrElse(false.B)
       dmmu.io.pmpFault := pmpOpt.map(_.io.dataFault).getOrElse(false.B)
       pmpOpt.foreach { pmp =>
-        pmp.io.fetchAddr := immu.io.fetchPaddr
-        pmp.io.dataAddr := dmmu.io.pmpAddr
-        pmp.io.dataLastAddr := dmmu.io.pmpLastAddr
+        pmp.io.fetchAddress := immu.io.fetchPhysicalAddress
+        pmp.io.dataAddress := dmmu.io.pmpAddress
+        pmp.io.dataLastAddress := dmmu.io.pmpLastAddress
         pmp.io.dataRead := dmmu.io.pmpRead
         pmp.io.dataWrite := dmmu.io.pmpWrite
       }
       // MMU 路径的 PMP 已在 DMMU 翻译完成后检查，LSU 不需要再检查。
-      lsu.io.PmpFault := false.B
+      lsu.io.PMPFault := false.B
 
-      mmuArb.io.iReq <> immu.io.req
-      mmuArb.io.iResp <> immu.io.resp
-      mmuArb.io.dReq <> dmmu.io.req
-      mmuArb.io.dResp <> dmmu.io.resp
-      mmuArb.io.mmuReq <> mmu.io.req
-      mmu.io.resp <> mmuArb.io.mmuResp
+      mmuArb.io.iRequest <> immu.io.req
+      mmuArb.io.iResponse <> immu.io.resp
+      mmuArb.io.dRequest <> dmmu.io.req
+      mmuArb.io.dResponse <> dmmu.io.resp
+      mmuArb.io.mmuRequest <> mmu.io.req
+      mmu.io.resp <> mmuArb.io.mmuResponse
       // satp 写入/sfence.vma 会清空 MMU 内所有在途翻译且不再回响应，
       // 仲裁器必须同步撤销 outstanding，否则后续取指/访存永远等不到翻译。
       mmuArb.io.flush := tlbFlush
@@ -176,8 +176,8 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
           filter.io.in.resp <> mmu.io.bus.resp
           filter.io.out.req <> ptwAXI.io.req
           filter.io.out.resp <> ptwAXI.io.resp
-          filter.io.cfg := exu.io.PmpCfg
-          filter.io.addr := exu.io.PmpAddr
+          filter.io.cfg := exu.io.PMPConfig
+          filter.io.addr := exu.io.PMPAddress
         case None =>
           mmu.io.bus.req <> ptwAXI.io.req
           mmu.io.bus.resp <> ptwAXI.io.resp
@@ -204,18 +204,18 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
       }
     } else {
       icache.io.axi <> arbiter.io.ifu
-      icache.io.fetch_addr := ifu.io.FetchAddr
-      icache.io.fetch_vaddr := ifu.io.FetchAddr
+      icache.io.fetch_addr := ifu.io.FetchAddress
+      icache.io.fetch_vaddr := ifu.io.FetchAddress
       // 无 MMU 时 VA==PA，VIPT 等价于恒等映射，不需要等待翻译。
       icache.io.fetch_paddr_valid := true.B
-      icache.io.fetch_paddr_vaddr := ifu.io.FetchAddr
+      icache.io.fetch_paddr_vaddr := ifu.io.FetchAddress
       // PMP 故障请求不得进入 ICache；故障 PC 在响应级合成 cause=1。
       icache.io.fetch_valid := ifu.io.FetchValid && pmpFetchAllow
       icache.io.kill := pipeFlush
       ifu.io.FetchReady := icache.io.fetch_ready && pmpFetchAllow
       // 无 MMU 时顶层 PMP 直接检查 LSU 给出的 VA==PA 访存地址；
       // MMU 路径在 DMMU 翻译后检查，LSU 端口保持关闭。
-      lsu.io.PmpFault := pmpOpt.map(_.io.dataFault).getOrElse(false.B)
+      lsu.io.PMPFault := pmpOpt.map(_.io.dataFault).getOrElse(false.B)
     }
 
     if (mmuEnabled) {
@@ -305,8 +305,8 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
     // 这里复用全量 flush（写直达无脏数据），避免为 alias 情形新增行扫描硬件。
     lsu.io.DCacheFlush :=
       (if (
-         config.DmaCoherence ==
-           ysyx_26030103_DmaCoherence.SoftwareFlush
+         config.DMACoherence ==
+           ysyx_26030103_DMACoherence.SoftwareFlush
        )
          arbiter.io.DMAWriteInvalidate || lsu.io.AtomicCommit
        else lsu.io.AtomicCommit)

@@ -28,8 +28,8 @@ object ysyx_26030103_IDUDecodeMinimizer {
   val All: Seq[ysyx_26030103_IDUDecodeMinimizer] =
     Seq(QMC, Espresso, Auto, None, Bdd, Sat)
 
-  def FromString(s: String): ysyx_26030103_IDUDecodeMinimizer =
-    s.trim.toLowerCase match {
+  def FromString(value: String): ysyx_26030103_IDUDecodeMinimizer =
+    value.trim.toLowerCase match {
       case "qmc"      => QMC
       case "espresso" => Espresso
       case "auto"     => Auto

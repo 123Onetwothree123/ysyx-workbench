@@ -5,8 +5,8 @@ import _root_.ysyx_26030103.config.ysyx_26030103_MULGPCConfig
 
 // 参数化K:R通用并行计数器；具体输出编码在elaboration期由权重配置求解。
 class ysyx_26030103_MULGPC(val Config: ysyx_26030103_MULGPCConfig) extends Module {
-  private val EncodingWidth = Config.OutputCountWithCout
-  private val CountWidth = log2Ceil(Config.InputCountWithCin + 1).max(1)
+  private val encodingWidth = Config.OutputCountWithCout
+  private val countWidth = log2Ceil(Config.InputCountWithCin + 1).max(1)
 
   final val IO = _root_.chisel3.IO(new Bundle {
     val In = Input(Vec(Config.Inputs, Bool()))
@@ -15,13 +15,13 @@ class ysyx_26030103_MULGPC(val Config: ysyx_26030103_MULGPCConfig) extends Modul
     val Cout = Output(Bool())
   })
 
-  val BaseCount = PopCount(IO.In)
-  val Count = Wire(UInt(CountWidth.W))
-  Count := (if (Config.HasCin) (BaseCount +& IO.Cin.asUInt)(CountWidth - 1, 0) else BaseCount)
-  val EncodingTable = VecInit(Config.EncodingTable.map(_.U(EncodingWidth.W)))
-  val Selected = EncodingTable(Count)
-  for (Index <- 0 until Config.Outputs) {
-    IO.Out(Index) := Selected(Index)
+  val baseCount = PopCount(IO.In)
+  val count = Wire(UInt(countWidth.W))
+  count := (if (Config.HasCin) (baseCount +& IO.Cin.asUInt)(countWidth - 1, 0) else baseCount)
+  val encodingTable = VecInit(Config.EncodingTable.map(_.U(encodingWidth.W)))
+  val selected = encodingTable(count)
+  for (index <- 0 until Config.Outputs) {
+    IO.Out(index) := selected(index)
   }
-  IO.Cout := (if (Config.HasCout) Selected(Config.Outputs) else false.B)
+  IO.Cout := (if (Config.HasCout) selected(Config.Outputs) else false.B)
 }

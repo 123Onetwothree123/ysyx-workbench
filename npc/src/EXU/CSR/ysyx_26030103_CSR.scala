@@ -3,7 +3,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
-import _root_.ysyx_26030103.fpu.{ysyx_26030103_FpuFlags, ysyx_26030103_FpuRm}
+import _root_.ysyx_26030103.fpu.{ysyx_26030103_FPUFlags, ysyx_26030103_FPURm}
 
 // 机器/监管者 CSR 与精确异常入口。页表翻译本身在 MMU 中完成；这里负责
 // satp、stvec/sepc/scause/stval 以及异常入口的特权级切换。
@@ -32,8 +32,8 @@ class ysyx_26030103_CSR(
   import ysyx_26030103_mstatus.legalize
   require(XLEN == 32 || XLEN == 64, s"CSR XLEN 非法: $XLEN")
   require(!UseD || UseF, "CSR 的 D 扩展依赖 F 扩展")
-  private val FFlagsWidth = ysyx_26030103_FpuFlags.Width
-  private val FrmWidth = ysyx_26030103_FpuRm.Width
+  private val fflagsWidth = ysyx_26030103_FPUFlags.Width
+  private val frmWidth = ysyx_26030103_FPURm.Width
   private val hasS = profile.hasS
   private val hasU = profile.hasU
   // medeleg 是 WARL：只有当前配置真正可能发生、且允许从 S 委托的异常
@@ -41,7 +41,7 @@ class ysyx_26030103_CSR(
   // U 模式时才存在；cause 9 是 ecall from S；12/13/15 是页错误，只在
   // MMU 打开时可能发生。cause 10/14、ecall from M(11)、double trap(16)
   // 以及高位保留位必须读回 0，不能被软件保存/恢复或能力探测误读。
-  private val MedelegMaskValue: BigInt = {
+  private val medelegMaskValue: BigInt = {
     var mask = (BigInt(1) << 10) - 1
     if (!hasU) mask &= ~(BigInt(1) << 8)
     if (profile.enabled) {
@@ -49,64 +49,64 @@ class ysyx_26030103_CSR(
     }
     mask
   }
-  private val MedelegMask: UInt = MedelegMaskValue.U(32.W)
-  private val FullMask: BigInt =
+  private val medelegMask: UInt = medelegMaskValue.U(32.W)
+  private val fullMask: BigInt =
     if (XLEN == 64) (BigInt(1) << 64) - 1 else 0xffffffffL
   // satp 在 RV64 下使用完整 64 位掩码；RV32 只保留低 32 位。
-  private val SatpReadMaskValue: BigInt =
-    BigInt(profile.csrSatpReadMask) & FullMask
-  private val SatpReadSetValue: BigInt =
-    BigInt(profile.csrSatpReadSet) & FullMask
-  private val SatpWriteMaskValue: BigInt =
-    BigInt(profile.csrSatpWriteMask) & FullMask
+  private val satpReadMaskValue: BigInt =
+    BigInt(profile.csrSatpReadMask) & fullMask
+  private val satpReadSetValue: BigInt =
+    BigInt(profile.csrSatpReadSet) & fullMask
+  private val satpWriteMaskValue: BigInt =
+    BigInt(profile.csrSatpWriteMask) & fullMask
   // 32 位 CSR（mstatus/mie/mip 等）在 RV64 下零扩展到 XLEN；
   // mepc/mtvec/mtval/mscratch 等则天然使用完整 XLEN。
-  private def Widen32(Value: UInt): UInt =
-    if (XLEN == 32) Value else Cat(0.U((XLEN - 32).W), Value)
+  private def widen32(value: UInt): UInt =
+    if (XLEN == 32) value else Cat(0.U((XLEN - 32).W), value)
   // mcause/scause 的中断位在 XLEN-1，而本实现的 ExceptionCause 是 32 位
   // 编码。RV64 下必须把 bit31 搬到 bit63，而不是零扩展或普通符号扩展：
   //   0x80000009 -> 0x8000000000000009
   //   0x0000000b -> 0x000000000000000b
   // 零扩展会让 xv6 的 `scause == 0x8000000000000009` 判断失败。
-  private def WidenCause32(Value: UInt): UInt =
-    if (XLEN == 32) Value
-    else Cat(Value(31), 0.U((XLEN - 32).W), Value(30, 0))
+  private def widenCause32(value: UInt): UInt =
+    if (XLEN == 32) value
+    else Cat(value(31), 0.U((XLEN - 32).W), value(30, 0))
   // RV64 的 mstatus.SXL/UXL 是 WARL，本实现只支持 64 位，因此对应特权级
   // 存在时固定读回 2。两个字段位于 bit[35:32]；未实现的 S/U 特权级必须
   // 读回 0，不能向软件暴露不存在的 XLEN 状态。
   // SD 是 FS==3 的只读汇总位：RV32 在 bit31，RV64 在 bit63；软件不能
   // 直接写它，但读回/NEMU DiffTest 必须一致。
-  private def MstatusSdBit(Fs: UInt): UInt =
+  private def mstatusSdBit(fs: UInt): UInt =
     if (!UseF) 0.U(XLEN.W)
-    else Mux(Fs === 3.U,
+    else Mux(fs === 3.U,
       (BigInt(1) << (XLEN - 1)).U(XLEN.W), 0.U(XLEN.W))
-  private def MstatusArchValue(Value: UInt): UInt = {
-    val WithXlen =
-      if (XLEN == 32) Value
+  private def mstatusArchValue(value: UInt): UInt = {
+    val withXlen =
+      if (XLEN == 32) value
       else {
-        val XlenFields =
+        val xlenFields =
           (if (hasS) BigInt(2) << 34 else BigInt(0)) |
             (if (hasU) BigInt(2) << 32 else BigInt(0))
-        Widen32(Value) | XlenFields.U(XLEN.W)
+        widen32(value) | xlenFields.U(XLEN.W)
       }
-    WithXlen | MstatusSdBit(Value(14, 13))
+    withXlen | mstatusSdBit(value(14, 13))
   }
-  private def csrOn(addr: Int): Boolean = profile.csrSupported(addr)
+  private def csrOn(address: Int): Boolean = profile.csrSupported(address)
   private val pmuZihpm = PMUEnable && PMUZihpm
   private val pmuSscofpmf = pmuZihpm && PMUSscofpmf
-  private val PMUCounterCount = ysyx_26030103_PMUEventId.CounterCount
-  private val PMUMachineAddresses: Seq[Int] =
+  private val pmuCounterCount = ysyx_26030103_PMUEventID.CounterCount
+  private val pmuMachineAddresses: Seq[Int] =
     if (pmuZihpm)
-      (0 until PMUCounterCount).flatMap { i =>
-        Seq(0xb03 + i, 0x323 + i) ++
-          (if (XLEN == 32) Seq(0xb83 + i) else Seq.empty)
+      (0 until pmuCounterCount).flatMap { index =>
+        Seq(0xb03 + index, 0x323 + index) ++
+          (if (XLEN == 32) Seq(0xb83 + index) else Seq.empty)
       } ++ (if (pmuSscofpmf) Seq(0xda0) else Seq.empty)
     else Seq.empty
-  private val PMUUserAddresses: Seq[Int] =
+  private val pmuUserAddresses: Seq[Int] =
     if (pmuZihpm)
-      (0 until PMUCounterCount).flatMap { i =>
-        Seq(0xc03 + i) ++
-          (if (XLEN == 32) Seq(0xc83 + i) else Seq.empty)
+      (0 until pmuCounterCount).flatMap { index =>
+        Seq(0xc03 + index) ++
+          (if (XLEN == 32) Seq(0xc83 + index) else Seq.empty)
       }
     else Seq.empty
   // HAS_U=n 时 mstatus 的 MPP/SPP 最低值被夹到 S；HAS_S=n 时固定为 M。
@@ -122,9 +122,9 @@ class ysyx_26030103_CSR(
     val MinstretRetireCommit = Input(Bool())
     // EXU 把该提交拍到 WBU 的写 minstret 标记，退休时据此过滤自增。
     val MinstretWriteCommit = Output(Bool())
-    val IsCsrrw = Input(Bool())
-    val IsCsrrs = Input(Bool())
-    val IsCsrrc = Input(Bool())
+    val IsCSRrw = Input(Bool())
+    val IsCSRrs = Input(Bool())
+    val IsCSRrc = Input(Bool())
     val IsEcall = Input(Bool())
     val IsEbreak = Input(Bool())
     val IsMret = Input(Bool())
@@ -150,8 +150,8 @@ class ysyx_26030103_CSR(
     val TrapValid = Input(Bool())
     val TrapCause = Input(UInt(32.W))
     val MemTrap = Input(Bool())
-    val IrqCommit = Output(Bool())
-    val IrqPending = Output(Bool())
+    val IRQCommit = Output(Bool())
+    val IRQPending = Output(Bool())
     val TrapCommit = Output(Bool())
     val CommittedCause = Output(UInt(32.W))
 
@@ -164,8 +164,8 @@ class ysyx_26030103_CSR(
     // 使用明确 tval，ecall/中断固定为 0，其余回退到 PC。
     // DiffTest 用它把 DUT 的真实 tval 注入 REF，不参与 CSR 快照 ABI。
     val StateTval = Output(UInt(XLEN.W))
-    val PmpCfg = Output(Vec(16, UInt(8.W)))
-    val PmpAddr = Output(Vec(16, UInt(XLEN.W)))
+    val PMPConfig = Output(Vec(16, UInt(8.W)))
+    val PMPAddress = Output(Vec(16, UInt(XLEN.W)))
     val Mtime = Input(UInt(64.W))
     val McounterenOut = Output(UInt(32.W))
     val ScounterenOut = Output(UInt(32.W))
@@ -175,215 +175,215 @@ class ysyx_26030103_CSR(
     // fcsr={frm,fflags} 的实时 8 位视图。DiffTest 在顶层退休沿锁存。
     val Fcsr = Output(UInt(8.W))
     val FPCommit = Input(Bool())
-    val FPFlags = Input(UInt(FFlagsWidth.W))
+    val FPFlags = Input(UInt(fflagsWidth.W))
     val FPStateDirtyCommit = Input(Bool())
     // 顶层 PMU 事件总线；只有 PMUEnable 打开时才会被消费者使用。
-    val PMUEvents = Input(UInt(ysyx_26030103_PMUEventId.BusWidth.W))
+    val PMUEvents = Input(UInt(ysyx_26030103_PMUEventID.BusWidth.W))
   })
 
-  val CSR_MSTATUS = 0x300.U(12.W)
-  val CSR_MTVEC = 0x305.U(12.W)
-  val CSR_MEPC = 0x341.U(12.W)
-  val CSR_MCAUSE = 0x342.U(12.W)
-  val CSR_MSCRATCH = 0x340.U(12.W)
-  val CSR_MEDELEG = 0x302.U(12.W)
-  val CSR_MIDELEG = 0x303.U(12.W)
-  val CSR_MIE = 0x304.U(12.W)
-  val CSR_MIP = 0x344.U(12.W)
-  val CSR_SSTATUS = 0x100.U(12.W)
-  val CSR_SIE = 0x104.U(12.W)
-  val CSR_STVEC = 0x105.U(12.W)
-  val CSR_SCOUNTEREN = 0x106.U(12.W)
-  val CSR_SSCRATCH = 0x140.U(12.W)
-  val CSR_SEPC = 0x141.U(12.W)
-  val CSR_SCAUSE = 0x142.U(12.W)
-  val CSR_STVAL = 0x143.U(12.W)
-  val CSR_SIP = 0x144.U(12.W)
-  val CSR_SATP = 0x180.U(12.W)
-  val CSR_CYCLE = 0xc00.U(12.W)
-  val CSR_TIME = 0xc01.U(12.W)
-  val CSR_INSTRET = 0xc02.U(12.W)
-  val CSR_CYCLEH = 0xc80.U(12.W)
-  val CSR_TIMEH = 0xc81.U(12.W)
-  val CSR_INSTRETH = 0xc82.U(12.W)
-  val CSR_MCYCLE = 0xb00.U(12.W)
-  val CSR_MCYCLEH = 0xb80.U(12.W)
-  val CSR_MINSTRET = 0xb02.U(12.W)
-  val CSR_MINSTRETH = 0xb82.U(12.W)
-  val CSR_MISA = 0x301.U(12.W)
-  val CSR_MTVAL = 0x343.U(12.W)
-  val CSR_MCOUNTEREN = 0x306.U(12.W)
-  val CSR_MCOUNTINHIBIT = 0x320.U(12.W)
-  val CSR_SCOUNTOVF = 0xda0.U(12.W)
-  val CSR_MVENDORID = 0xf11.U(12.W)
-  val CSR_MARCHID = 0xf12.U(12.W)
-  val CSR_MIMPID = 0xf13.U(12.W)
-  val CSR_MHARTID = 0xf14.U(12.W)
-  val CSR_FFLAGS = 0x001.U(12.W)
-  val CSR_FRM = 0x002.U(12.W)
-  val CSR_FCSR = 0x003.U(12.W)
+  val csrMstatus = 0x300.U(12.W)
+  val csrMtvec = 0x305.U(12.W)
+  val csrMepc = 0x341.U(12.W)
+  val csrMcause = 0x342.U(12.W)
+  val csrMscratch = 0x340.U(12.W)
+  val csrMedeleg = 0x302.U(12.W)
+  val csrMideleg = 0x303.U(12.W)
+  val csrMie = 0x304.U(12.W)
+  val csrMip = 0x344.U(12.W)
+  val csrSstatus = 0x100.U(12.W)
+  val csrSie = 0x104.U(12.W)
+  val csrStvec = 0x105.U(12.W)
+  val csrScounteren = 0x106.U(12.W)
+  val csrSscratch = 0x140.U(12.W)
+  val csrSepc = 0x141.U(12.W)
+  val csrScause = 0x142.U(12.W)
+  val csrStval = 0x143.U(12.W)
+  val csrSip = 0x144.U(12.W)
+  val csrSatp = 0x180.U(12.W)
+  val csrCycle = 0xc00.U(12.W)
+  val csrTime = 0xc01.U(12.W)
+  val csrInstret = 0xc02.U(12.W)
+  val csrCycleh = 0xc80.U(12.W)
+  val csrTimeh = 0xc81.U(12.W)
+  val csrInstreth = 0xc82.U(12.W)
+  val csrMcycle = 0xb00.U(12.W)
+  val csrMcycleh = 0xb80.U(12.W)
+  val csrMinstret = 0xb02.U(12.W)
+  val csrMinstreth = 0xb82.U(12.W)
+  val csrMisa = 0x301.U(12.W)
+  val csrMtval = 0x343.U(12.W)
+  val csrMcounteren = 0x306.U(12.W)
+  val csrMcountinhibit = 0x320.U(12.W)
+  val csrScountovf = 0xda0.U(12.W)
+  val csrMvendorid = 0xf11.U(12.W)
+  val csrMarchid = 0xf12.U(12.W)
+  val csrMimpid = 0xf13.U(12.W)
+  val csrMhartid = 0xf14.U(12.W)
+  val csrFflags = 0x001.U(12.W)
+  val csrFrm = 0x002.U(12.W)
+  val csrFcsr = 0x003.U(12.W)
 
-  val Mvendorid_rdata = 0x79737978.U(32.W)
-  val Marchid_rdata = "h018d3017".U(32.W)
+  val mvendoridReadData = 0x79737978.U(32.W)
+  val marchidReadData = "h018d3017".U(32.W)
   // 单 hart 实现：mhartid 固定为 0。mimpid 遵循与 NEMU REF 一致的
   // 约定，固定返回 0（表示不提供额外的实现版本号）。
-  val Mimpid_rdata = 0.U(32.W)
-  val Mhartid_rdata = 0.U(32.W)
+  val mimpidReadData = 0.U(32.W)
+  val mhartidReadData = 0.U(32.W)
   // SIE SPIE SPP SUM MXR；RISCV_F 时 sstatus 也包含 FS[14:13]。
-  val SstatusMask = "h000c0122".U(32.W) |
+  val sstatusMask = "h000c0122".U(32.W) |
     (if (UseF) "h00006000".U(32.W) else 0.U(32.W))
   // FS 是 mstatus/sstatus 的同一份架构状态；independent 视图只把 S 模式
   // 其余字段做成独立寄存器，FS/SD 仍必须跟随 mstatus 和 FP dirty。
-  private val SstatusFsMaskValue = if (UseF) 0x6000L else 0L
-  private val SstatusOwnMaskValue =
-    (0x000c0122L | SstatusFsMaskValue) & ~SstatusFsMaskValue
-  def IsCSRAddress(addr: UInt): Bool = io.CSRAddress === addr
-  private val FpCsrAddresses =
+  private val sstatusFsMaskValue = if (UseF) 0x6000L else 0L
+  private val sstatusOwnMaskValue =
+    (0x000c0122L | sstatusFsMaskValue) & ~sstatusFsMaskValue
+  def isCSRAddress(address: UInt): Bool = io.CSRAddress === address
+  private val fpCSRAddresses =
     if (UseF) Seq(0x001, 0x002, 0x003) else Seq.empty
   // 用户只读计数器始终随核实现：M 模式在任何配置下都可读；U 模式是否
   // 可读由 mcounteren/scounteren 在 IDU 检查。它们不能因为 CSR_ENABLED
   // 未列出而被裁剪，否则 rdcycle/rdtime/rdinstret 会读回 0。
   // RV32 才有高半字别名；RV64 的 mcycle/minstret 已是完整 64 位，
   // mcycleh/minstreth/cycleh/timeh/instreth 在 RV64 属于未实现 CSR。
-  private val BaseUserCounterAddresses =
+  private val baseUserCounterAddresses =
     if (XLEN == 32) Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
     else Seq(0xc00, 0xc01, 0xc02)
-  private val UserCounterAddresses =
-    BaseUserCounterAddresses ++ PMUUserAddresses
-  private val enabledCsrAddresses = (
+  private val userCounterAddresses =
+    baseUserCounterAddresses ++ pmuUserAddresses
+  private val enabledCSRAddresses = (
     profile.csrEnabled.toSeq ++
       // identity CSR 始终存在，不依赖 CSR_ENABLED 是否列出。
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
-        .IdentityCsrAddresses.toSeq ++
-      UserCounterAddresses ++
-      FpCsrAddresses ++
-      PMUMachineAddresses ++
+        .IdentityCSRAddresses.toSeq ++
+      userCounterAddresses ++
+      fpCSRAddresses ++
+      pmuMachineAddresses ++
       (if (profile.pmpEnabled)
         (if (XLEN == 64) Seq(0x3a0, 0x3a2) else (0x3a0 to 0x3a3)) ++
           (0x3b0 to 0x3bf)
       else Seq.empty)
-  ).filter(a => profile.csrSupported(a) || FpCsrAddresses.contains(a) ||
-    UserCounterAddresses.contains(a) || PMUMachineAddresses.contains(a))
+  ).filter(a => profile.csrSupported(a) || fpCSRAddresses.contains(a) ||
+    userCounterAddresses.contains(a) || pmuMachineAddresses.contains(a))
     .distinct.sorted
-  val CsrImplemented =
-    enabledCsrAddresses.map(a => io.CSRAddress === a.U(12.W))
+  val csrImplemented =
+    enabledCSRAddresses.map(a => io.CSRAddress === a.U(12.W))
       .reduceOption(_ || _).getOrElse(false.B)
   // mstatus.FS 只有在 RISCV_F 时存在；profile 默认读/写掩码没有包含
   // bit[14:13]，这里按 F 开关补上，避免软件写 mstatus 后 FS 被静默清零。
-  private val MstatusFsMask = if (UseF) 0x6000L else 0L
-  private val MstatusProfileReadMask =
+  private val mstatusFsMask = if (UseF) 0x6000L else 0L
+  private val mstatusProfileReadMask =
     profile.csrMstatusReadMask.toLong & 0xffffffffL
-  private val MstatusProfileWriteMask =
+  private val mstatusProfileWriteMask =
     profile.csrMstatusWriteMask.toLong & 0xffffffffL
-  private val MstatusReadMaskValue = MstatusProfileReadMask | MstatusFsMask
-  private val MstatusWriteMaskValue = MstatusProfileWriteMask | MstatusFsMask
-  def CsrReadMask: UInt = {
-    val full = FullMask.U(XLEN.W)
+  private val mstatusReadMaskValue = mstatusProfileReadMask | mstatusFsMask
+  private val mstatusWriteMaskValue = mstatusProfileWriteMask | mstatusFsMask
+  def csrReadMask: UInt = {
+    val full = fullMask.U(XLEN.W)
     // mstatus 的字段掩码已经在 MstatusReadData 里应用；这里不能再按
     // 32 位读写掩码截断，否则 SD(bit31/63) 和 RV64 的 UXL/SXL(35:32)
     // 会在 CSR 读口被清掉（NEMU REF 与架构读回都包含这些只读位）。
     val mstatusMask = full
-    if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
-      SatpReadMaskValue.U(XLEN.W), mstatusMask) else mstatusMask
+    if (csrOn(0x180)) Mux(io.CSRAddress === csrSatp,
+      satpReadMaskValue.U(XLEN.W), mstatusMask) else mstatusMask
   }
-  def CsrReadSet: UInt = {
+  def csrReadSet: UInt = {
     val mstatusSet =
-      if (csrOn(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
+      if (csrOn(0x300)) Mux(io.CSRAddress === csrMstatus,
         (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(XLEN.W), 0.U(XLEN.W)) else 0.U(XLEN.W)
-    if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
-      SatpReadSetValue.U(XLEN.W), mstatusSet) else mstatusSet
+    if (csrOn(0x180)) Mux(io.CSRAddress === csrSatp,
+      satpReadSetValue.U(XLEN.W), mstatusSet) else mstatusSet
   }
-  def CsrWriteMask: UInt = {
-    val full = FullMask.U(XLEN.W)
+  def csrWriteMask: UInt = {
+    val full = fullMask.U(XLEN.W)
     val mstatusMask =
-      if (csrOn(0x300)) Mux(io.CSRAddress === CSR_MSTATUS,
-        MstatusWriteMaskValue.U(XLEN.W), full) else full
-    if (csrOn(0x180)) Mux(io.CSRAddress === CSR_SATP,
-      SatpWriteMaskValue.U(XLEN.W), mstatusMask) else mstatusMask
+      if (csrOn(0x300)) Mux(io.CSRAddress === csrMstatus,
+        mstatusWriteMaskValue.U(XLEN.W), full) else full
+    if (csrOn(0x180)) Mux(io.CSRAddress === csrSatp,
+      satpWriteMaskValue.U(XLEN.W), mstatusMask) else mstatusMask
   }
 
-  val csrrwWen = io.Enable && io.IsCsrrw
-  val csrrsWen = io.Enable && io.IsCsrrs && io.rs1 =/= 0.U
-  val csrrcWen = io.Enable && io.IsCsrrc && io.rs1 =/= 0.U
-  def CSRWriteData(old: UInt): UInt = {
-    val raw = Mux(io.IsCsrrw, io.Rs1Data,
-      Mux(io.IsCsrrs, old | io.Rs1Data, old & ~io.Rs1Data))
-    val mask = CsrWriteMask
+  val csrrwWriteEnable = io.Enable && io.IsCSRrw
+  val csrrsWriteEnable = io.Enable && io.IsCSRrs && io.rs1 =/= 0.U
+  val csrrcWriteEnable = io.Enable && io.IsCSRrc && io.rs1 =/= 0.U
+  def csrWriteData(old: UInt): UInt = {
+    val raw = Mux(io.IsCSRrw, io.Rs1Data,
+      Mux(io.IsCSRrs, old | io.Rs1Data, old & ~io.Rs1Data))
+    val mask = csrWriteMask
     (old & ~mask) | (raw & mask)
   }
 
-  val MretCommit = io.Enable && io.IsMret
+  val mretCommit = io.Enable && io.IsMret
   // HAS_S=n 时 SRET/SFENCE.VMA 在译码阶段已是非法指令；这里连 CSR 侧
   // 的提交/刷新路径也一并裁掉，不保留只可能为 0 的控制逻辑。
-  val SretCommit = if (hasS) io.Enable && io.IsSret else false.B
-  val SfenceCommit = if (hasS) io.Enable && io.IsSfenceVma else false.B
+  val sretCommit = if (hasS) io.Enable && io.IsSret else false.B
+  val sfenceCommit = if (hasS) io.Enable && io.IsSfenceVma else false.B
 
-  val Mstatus = Module(new ysyx_26030103_mstatus(hasS, hasU, UseF))
-  val Mtvec = Module(new ysyx_26030103_mtvec(XLEN))
-  val Mepc = Module(new ysyx_26030103_mepc(XLEN, UseC))
-  val Mcause = Module(new ysyx_26030103_mcause(XLEN))
+  val mstatus = Module(new ysyx_26030103_mstatus(hasS, hasU, UseF))
+  val mtvec = Module(new ysyx_26030103_mtvec(XLEN))
+  val mepc = Module(new ysyx_26030103_mepc(XLEN, UseC))
+  val mcause = Module(new ysyx_26030103_mcause(XLEN))
   // S 模式入口寄存器只在 HAS_S=y 时例化。HAS_S=n 时顶层不生成 MMU，
   // 也不会有可返回的 S 状态，因此这些寄存器没有保留价值。
-  val StvecOpt = if (hasS) Some(Module(new ysyx_26030103_mtvec(XLEN))) else None
-  val SepcOpt = if (hasS) Some(Module(new ysyx_26030103_mepc(XLEN, UseC))) else None
-  val ScauseOpt = if (hasS) Some(Module(new ysyx_26030103_mcause(XLEN))) else None
-  val Mcycle = Module(new ysyx_26030103_mcycle(XLEN))
-  val PMUOpt =
+  val stvecOpt = if (hasS) Some(Module(new ysyx_26030103_mtvec(XLEN))) else None
+  val sepcOpt = if (hasS) Some(Module(new ysyx_26030103_mepc(XLEN, UseC))) else None
+  val scauseOpt = if (hasS) Some(Module(new ysyx_26030103_mcause(XLEN))) else None
+  val mcycle = Module(new ysyx_26030103_mcycle(XLEN))
+  val pmuOpt =
     if (pmuZihpm) Some(Module(new ysyx_26030103_PMU(XLEN, pmuSscofpmf)))
     else None
 
-  Mstatus.io.clk := io.clk; Mstatus.io.rst := io.rst
-  Mtvec.io.clk := io.clk; Mtvec.io.rst := io.rst
-  Mepc.io.clk := io.clk; Mepc.io.rst := io.rst
-  Mcause.io.clk := io.clk; Mcause.io.rst := io.rst
-  StvecOpt.foreach { m => m.io.clk := io.clk; m.io.rst := io.rst }
-  SepcOpt.foreach { m => m.io.clk := io.clk; m.io.rst := io.rst }
-  ScauseOpt.foreach { m => m.io.clk := io.clk; m.io.rst := io.rst }
-  Mcycle.io.clk := io.clk; Mcycle.io.rst := io.rst
+  mstatus.io.clk := io.clk; mstatus.io.rst := io.rst
+  mtvec.io.clk := io.clk; mtvec.io.rst := io.rst
+  mepc.io.clk := io.clk; mepc.io.rst := io.rst
+  mcause.io.clk := io.clk; mcause.io.rst := io.rst
+  stvecOpt.foreach { m => m.io.clk := io.clk; m.io.rst := io.rst }
+  sepcOpt.foreach { m => m.io.clk := io.clk; m.io.rst := io.rst }
+  scauseOpt.foreach { m => m.io.clk := io.clk; m.io.rst := io.rst }
+  mcycle.io.clk := io.clk; mcycle.io.rst := io.rst
 
-  val Mscratch = RegInit(0.U(XLEN.W))
-  val SscratchOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
+  val mscratch = RegInit(0.U(XLEN.W))
+  val sscratchOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
   // independent 视图需要独立 sstatus；bound 视图直接使用 mstatus 的字段。
-  val SstatusRegOpt =
+  val sstatusRegOpt =
     if (hasS && profile.csrViewMode == "independent") Some(RegInit(0.U(32.W)))
     else None
-  val MedelegOpt = if (hasS) Some(RegInit(0.U(32.W))) else None
-  val MidelegOpt = if (hasS) Some(RegInit(0.U(32.W))) else None
-  val Mie = RegInit(0.U(32.W))
-  val Mip = RegInit(0.U(32.W))
-  val SieOpt =
+  val medelegOpt = if (hasS) Some(RegInit(0.U(32.W))) else None
+  val midelegOpt = if (hasS) Some(RegInit(0.U(32.W))) else None
+  val mie = RegInit(0.U(32.W))
+  val mip = RegInit(0.U(32.W))
+  val sieOpt =
     if (hasS && profile.csrViewMode == "independent") Some(RegInit(0.U(32.W)))
     else None
-  val ScounterenOpt = if (hasS) Some(RegInit(0.U(32.W))) else None
-  val Mcounteren = RegInit(0.U(32.W))
-  val Mcountinhibit = RegInit(0.U(32.W))
-  Mcycle.io.Enable := !Mcountinhibit(0)
-  val Mtval = RegInit(0.U(XLEN.W))
+  val scounterenOpt = if (hasS) Some(RegInit(0.U(32.W))) else None
+  val mcounteren = RegInit(0.U(32.W))
+  val mcountinhibit = RegInit(0.U(32.W))
+  mcycle.io.Enable := !mcountinhibit(0)
+  val mtval = RegInit(0.U(XLEN.W))
   // fcsr = {frm[2:0], fflags[4:0]}；复位值 0（RISC-V 允许实现定义，
   // 0 使裸机/回放有确定初值）。
-  val FFlagsReg = RegInit(0.U(FFlagsWidth.W))
-  val FrmReg = RegInit(0.U(3.W))
-  val Minstret = RegInit(0.U(64.W))
+  val fflagsReg = RegInit(0.U(fflagsWidth.W))
+  val frmReg = RegInit(0.U(3.W))
+  val minstret = RegInit(0.U(64.W))
   // mcountinhibit.TM：TM=1 时 time 保持最后值，不再跟随 CLINT mtime。
-  val TimeCounter = RegInit(0.U(64.W))
-  when(!Mcountinhibit(1)) { TimeCounter := io.Mtime }
+  val timeCounter = RegInit(0.U(64.W))
+  when(!mcountinhibit(1)) { timeCounter := io.Mtime }
   // RV64 的 pmpcfg0/pmpcfg2 是 64 位 CSR，分别容纳 8 个 8 位配置项；
   // RV32 的 pmpcfg0..3 才是 4x32 位。此前 RV64 也按 4x32 位实现，
   // 会把 OpenSBI 写入 pmpcfg0 的高 32 位（entry 4..7）丢掉，导致
   // 全内存 NAPOT entry 丢失、S 模式取指被 PMP 拒绝。
-  private val PmpEntriesPerCfg = if (XLEN == 64) 8 else 4
-  private val PmpCfgWords = 16 / PmpEntriesPerCfg
-  private val PmpCfgWordBits = PmpEntriesPerCfg * 8
-  private val PmpCfgByteMask = 0x9fL
-  val PmpcfgReg = RegInit(
-    VecInit(Seq.fill(PmpCfgWords)(0.U(PmpCfgWordBits.W))))
-  val PmpaddrReg = RegInit(VecInit(Seq.fill(16)(0.U(XLEN.W))))
-  val StvalOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
-  val SatpRegOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
-  val SatpReadData =
+  private val pmpEntriesPerConfig = if (XLEN == 64) 8 else 4
+  private val pmpConfigWords = 16 / pmpEntriesPerConfig
+  private val pmpConfigWordBits = pmpEntriesPerConfig * 8
+  private val pmpConfigByteMask = 0x9fL
+  val pmpcfgReg = RegInit(
+    VecInit(Seq.fill(pmpConfigWords)(0.U(pmpConfigWordBits.W))))
+  val pmpaddrReg = RegInit(VecInit(Seq.fill(16)(0.U(XLEN.W))))
+  val stvalOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
+  val satpRegOpt = if (hasS) Some(RegInit(0.U(XLEN.W))) else None
+  val satpReadData =
     if (hasS) {
-      val SatpReg = SatpRegOpt.get
-      (SatpReg & SatpReadMaskValue.U(XLEN.W)) | SatpReadSetValue.U(XLEN.W)
+      val satpReg = satpRegOpt.get
+      (satpReg & satpReadMaskValue.U(XLEN.W)) | satpReadSetValue.U(XLEN.W)
     } else 0.U(XLEN.W)
 
   // 年长的 FP 指令可能在 WBU 退休的同一拍把 FS 置 Dirty；EXU 里的
@@ -391,156 +391,156 @@ class ysyx_26030103_CSR(
   // 并在寄存器写回时持久化。仅产生非零 fflags、未写 f 寄存器
   // （例如 FCMP/FCLASS）时也属于修改浮点状态；这里必须用寄存器隔开
   // EXU 的 FPCommit（它依赖 IrqCommit），否则会形成组合环。
-  val FpFlagsDirtyReg =
-    RegNext(io.FPCommit && io.FPFlags =/= 0.U(FFlagsWidth.W), false.B)
-  private val FsDirtyValue = (Mstatus.io.rdata & ~"h6000".U(32.W)) |
+  val fpFlagsDirtyReg =
+    RegNext(io.FPCommit && io.FPFlags =/= 0.U(fflagsWidth.W), false.B)
+  private val fsDirtyValue = (mstatus.io.rdata & ~"h6000".U(32.W)) |
     (if (UseF) "h6000".U(32.W) else 0.U(32.W))
-  val FsDirtyCommit = UseF.B && (io.FPStateDirtyCommit || FpFlagsDirtyReg)
-  val Mstatus_rdata = Mux(FsDirtyCommit, FsDirtyValue, Mstatus.io.rdata)
+  val fsDirtyCommit = UseF.B && (io.FPStateDirtyCommit || fpFlagsDirtyReg)
+  val mstatusRawReadData = Mux(fsDirtyCommit, fsDirtyValue, mstatus.io.rdata)
   // M-only 时特权级恒为 M，不生成寄存器；有 S 或 U 时需要保存可达的
   // 特权级。M+U 没有 S 级，但 MRET/异常仍会在 M 与 U 之间切换。
-  val Privilege: UInt =
+  val privilege: UInt =
     if (hasS || hasU) RegInit(3.U(2.W)) else 3.U(2.W)
-  val MstatusReadData =
-    (Mstatus_rdata & MstatusReadMaskValue.U(32.W)) |
+  val mstatusReadData =
+    (mstatusRawReadData & mstatusReadMaskValue.U(32.W)) |
       (profile.csrMstatusReadSet.toLong & 0xffffffffL).U(32.W)
   // 32 位 CSR 在 RV64 下读回高 32 位为 0；mstatus 例外：已实现特权级
   // 对应的 SXL/UXL 读回 2，未实现特权级对应的字段读回 0。
-  val MstatusReadDataWide = MstatusArchValue(MstatusReadData)
-  val Sstatus_rdata =
+  val mstatusReadDataWide = mstatusArchValue(mstatusReadData)
+  val sstatusReadData =
     if (!hasS) 0.U(32.W)
     else if (profile.csrViewMode == "independent") {
-      val IndependentSstatus = SstatusRegOpt.get
+      val independentSstatus = sstatusRegOpt.get
       if (UseF) {
         // independent 只隔离 S 模式控制字段；FS 与 mstatus 共用同一状态。
-        (IndependentSstatus & ~SstatusFsMaskValue.U(32.W)) |
-          (Mstatus_rdata & SstatusFsMaskValue.U(32.W))
-      } else IndependentSstatus
-    } else MstatusReadData & SstatusMask
+        (independentSstatus & ~sstatusFsMaskValue.U(32.W)) |
+          (mstatusReadData & sstatusFsMaskValue.U(32.W))
+      } else independentSstatus
+    } else mstatusReadData & sstatusMask
   // sstatus 是 mstatus 的受限视图，但 SD 仍是 FS==3 的只读汇总位
   // （RV32 bit31 / RV64 bit63）。RV64 的 sstatus 只包含 UXL[33:32]，
   // SXL 仅存在于 mstatus；未实现 U 级时 UXL 必须读回 0。
-  val SstatusArchValue =
-    Widen32(Sstatus_rdata) |
+  val sstatusArchValue =
+    widen32(sstatusReadData) |
       (if (XLEN == 64 && hasU) "h0000000200000000".U(XLEN.W)
        else 0.U(XLEN.W)) |
-      MstatusSdBit(Sstatus_rdata(14, 13))
-  val Mtvec_rdata = Mtvec.io.rdata
-  val Mepc_rdata = Mepc.io.rdata
-  val Mcause_rdata = Mcause.io.rdata
-  val Stvec_rdata = StvecOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
-  val Sepc_rdata = SepcOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
-  val Scause_rdata = ScauseOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
+      mstatusSdBit(sstatusReadData(14, 13))
+  val mtvecReadData = mtvec.io.rdata
+  val mepcReadData = mepc.io.rdata
+  val mcauseReadData = mcause.io.rdata
+  val stvecReadData = stvecOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
+  val sepcReadData = sepcOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
+  val scauseReadData = scauseOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
   // RV64 的 mcycle 直接返回完整 64 位；RV32 继续按 mcycle/mcycleh 选择。
-  val Mcycle_rdata = if (XLEN == 64) Mcycle.io.rdataFull else Mcycle.io.rdata
-  val Mcycleh_rdata = Mcycle.io.rdataFull(63, 32)
-  val Minstret_rdata =
-    if (XLEN == 64) Minstret else Minstret(31, 0)
-  val Minstreth_rdata = Minstret(63, 32)
+  val mcycleReadData = if (XLEN == 64) mcycle.io.rdataFull else mcycle.io.rdata
+  val mcyclehReadData = mcycle.io.rdataFull(63, 32)
+  val minstretReadData =
+    if (XLEN == 64) minstret else minstret(31, 0)
+  val minstrethReadData = minstret(63, 32)
   // TIME 来自 CLINT 的 mtime；TM=1 时改用保持寄存器，使 time 停止递增。
   // RV64 直接返回完整 64 位；RV32 的 time 返回低 32 位，timeh 返回高 32 位。
-  val TimeValue = Mux(Mcountinhibit(1), TimeCounter, io.Mtime)
-  val Time_rdata = if (XLEN == 64) TimeValue else TimeValue(31, 0)
-  val Timeh_rdata = TimeValue(63, 32)
+  val timeValue = Mux(mcountinhibit(1), timeCounter, io.Mtime)
+  val timeReadData = if (XLEN == 64) timeValue else timeValue(31, 0)
+  val timehReadData = timeValue(63, 32)
   // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A/C/F/D 随配置置位，
   // S/U 分别随 HAS_S/HAS_U 置位。位编号按 RISC-V 规范：
   // bit0=A，bit2=C，bit3=D，bit5=F，bit8=I，bit12=M，bit18=S，bit20=U。
   // misa 整体只读（IDU 拒绝任何写意图），因此这里只生成常量读口。
-  val Misa_rdata = {
-    val Mxl = if (XLEN == 64) BigInt(2) << 62 else BigInt(1) << 30
-    val AExt = if (UseA) BigInt(1) << 0 else BigInt(0)
-    val CExt = if (UseC) BigInt(1) << 2 else BigInt(0)
-    val DExt = if (UseD) BigInt(1) << 3 else BigInt(0)
-    val FExt = if (UseF) BigInt(1) << 5 else BigInt(0)
-    val MExt = if (UseM) BigInt(1) << 12 else BigInt(0)
-    val SExt = if (hasS) BigInt(1) << 18 else BigInt(0)
-    val UExt = if (hasU) BigInt(1) << 20 else BigInt(0)
-    (Mxl | BigInt(0x100) | AExt | CExt | DExt | FExt | MExt |
-      SExt | UExt).U(XLEN.W)
+  val misaReadData = {
+    val mxl = if (XLEN == 64) BigInt(2) << 62 else BigInt(1) << 30
+    val aExt = if (UseA) BigInt(1) << 0 else BigInt(0)
+    val cExt = if (UseC) BigInt(1) << 2 else BigInt(0)
+    val dExt = if (UseD) BigInt(1) << 3 else BigInt(0)
+    val fExt = if (UseF) BigInt(1) << 5 else BigInt(0)
+    val mExt = if (UseM) BigInt(1) << 12 else BigInt(0)
+    val sExt = if (hasS) BigInt(1) << 18 else BigInt(0)
+    val uExt = if (hasU) BigInt(1) << 20 else BigInt(0)
+    (mxl | BigInt(0x100) | aExt | cExt | dExt | fExt | mExt |
+      sExt | uExt).U(XLEN.W)
   }
-  val Medeleg_rdata =
-    MedelegOpt.map(Reg => Reg & MedelegMask).getOrElse(0.U(32.W))
-  val Mideleg_rdata = MidelegOpt.getOrElse(0.U(32.W))
-  val Sscratch_rdata = SscratchOpt.getOrElse(0.U(32.W))
-  val Stval_rdata = StvalOpt.getOrElse(0.U(32.W))
-  val Scounteren_rdata = ScounterenOpt.getOrElse(0.U(32.W))
+  val medelegReadData =
+    medelegOpt.map(Reg => Reg & medelegMask).getOrElse(0.U(32.W))
+  val midelegReadData = midelegOpt.getOrElse(0.U(32.W))
+  val sscratchReadData = sscratchOpt.getOrElse(0.U(32.W))
+  val stvalReadData = stvalOpt.getOrElse(0.U(32.W))
+  val scounterenReadData = scounterenOpt.getOrElse(0.U(32.W))
   // 写 32 位 CSR 时只取 CSRWriteData 的低 32 位，高半部保持 0。
-  private def Write32(Old: UInt): UInt = CSRWriteData(Widen32(Old))(31, 0)
+  private def write32(oldValue: UInt): UInt = csrWriteData(widen32(oldValue))(31, 0)
 
-  val LcofiView =
+  val lcofiView =
     if (pmuSscofpmf)
-      Mux(PMUOpt.get.io.lcofiPending, "h00002000".U(32.W), 0.U(32.W))
+      Mux(pmuOpt.get.io.lcofiPending, "h00002000".U(32.W), 0.U(32.W))
     else 0.U(32.W)
   // SSIP/STIP/SEIP；Sscofpmf 打开时 LCOFI 也可以委托给 S。
-  val SInterruptMask =
+  val sInterruptMask =
     (0x222 | (if (pmuSscofpmf) 0x2000 else 0)).U(32.W)
   // HAS_S=n 时不存在 S 级中断视图：timer/external 全部按 M 级中断处理。
-  val TimerView =
+  val timerView =
     if (!hasS) 0.U(32.W)
     else if (profile.timerPath == "direct_stip")
-      (if (profile.hasSTimerIrq)
+      (if (profile.hasSTimerIRQ)
         Mux(io.TimerInterrupt, "h00000020".U(32.W), 0.U(32.W))
       else 0.U(32.W))
     else
       Mux(io.TimerInterrupt, "h00000080".U(32.W), 0.U(32.W))
-  val MTimerView =
+  val mTimerView =
     if (hasS) 0.U(32.W)
     else Mux(io.TimerInterrupt, "h00000080".U(32.W), 0.U(32.W))
-  val ExternalSView = if (hasS && profile.hasSExternalIrq)
+  val externalSView = if (hasS && profile.hasSExternalIRQ)
     Mux(io.Interrupt, "h00000200".U(32.W), 0.U(32.W))
   else 0.U(32.W)
-  val ExternalMView = if (!hasS || !profile.hasSExternalIrq)
+  val externalMView = if (!hasS || !profile.hasSExternalIRQ)
     Mux(io.Interrupt, "h00000800".U(32.W), 0.U(32.W))
   else 0.U(32.W)
-  val MipState =
-    Mip | TimerView | MTimerView | ExternalSView | ExternalMView | LcofiView
-  val SieState =
+  val mipState =
+    mip | timerView | mTimerView | externalSView | externalMView | lcofiView
+  val sieState =
     if (!hasS) 0.U(32.W)
-    else if (profile.csrViewMode == "independent") SieOpt.get
-    else Mie & SInterruptMask
+    else if (profile.csrViewMode == "independent") sieOpt.get
+    else mie & sInterruptMask
   // sip 是 mip 中 S 级中断位视图。SSIP 与 mip.SSIP 必须是同一个 pending
   // 位：independent 视图不能再用独立 Sip 寄存器叠加，否则 sip 写 0 无法
   // 清除 mip.SSIP，sip 写 1 也不会出现在 mip 中。
-  val SipState =
+  val sipState =
     if (!hasS) 0.U(32.W)
-    else MipState & SInterruptMask
-  val MIntPending =
-    if (hasS) MipState & Mie & ~Mideleg_rdata
-    else MipState & Mie
-  val SIntPending = if (hasS) SipState & SieState & Mideleg_rdata else false.B
-  val MIntTaken = MIntPending.orR &&
-    (Privilege =/= 3.U || Mstatus_rdata(3))
-  val SStatusIE =
+    else mipState & sInterruptMask
+  val mIntPending =
+    if (hasS) mipState & mie & ~midelegReadData
+    else mipState & mie
+  val sIntPending = if (hasS) sipState & sieState & midelegReadData else false.B
+  val mIntTaken = mIntPending.orR &&
+    (privilege =/= 3.U || mstatusReadData(3))
+  val sStatusIE =
     if (!hasS) false.B
-    else if (profile.csrViewMode == "independent") SstatusRegOpt.get(1)
-    else Mstatus_rdata(1)
+    else if (profile.csrViewMode == "independent") sstatusRegOpt.get(1)
+    else mstatusReadData(1)
   // sstatus.SIE 只屏蔽 S 模式自身的 S 级中断；U 模式下 S 级中断始终
   // 使能（此时 sstatus.SIE 只是保存的 S 模式使能位，不参与判断）。
-  val SIntTaken =
-    if (hasS) SIntPending.orR && Privilege =/= 3.U &&
-      (Privilege === 0.U || SStatusIE)
+  val sIntTaken =
+    if (hasS) sIntPending.orR && privilege =/= 3.U &&
+      (privilege === 0.U || sStatusIE)
     else false.B
-  val HasInterrupt = MIntTaken || SIntTaken
-  io.IrqPending := HasInterrupt
+  val hasInterrupt = mIntTaken || sIntTaken
+  io.IRQPending := hasInterrupt
   // CSR 写只在真正接受中断时被压掉；原始中断线为高但 MIE=0 时软件仍可写 CSR。
-  val CSRWen = (csrrwWen || csrrsWen || csrrcWen) && !HasInterrupt && CsrImplemented
+  val csrWriteEnable = (csrrwWriteEnable || csrrsWriteEnable || csrrcWriteEnable) && !hasInterrupt && csrImplemented
   // 软件写 mip 且目标 LCOFI=0 时清除 PMU 的 overflow 汇总位。
-  val MipLcofiClear =
+  val mipLcofiClear =
     if (pmuSscofpmf)
-      CSRWen && IsCSRAddress(CSR_MIP) &&
-        !CSRWriteData(Widen32(MipState))(13)
+      csrWriteEnable && isCSRAddress(csrMip) &&
+        !csrWriteData(widen32(mipState))(13)
     else false.B
-  PMUOpt.foreach { pmu =>
+  pmuOpt.foreach { pmu =>
     pmu.io.events := io.PMUEvents
-    pmu.io.privilege := Privilege
-    pmu.io.csrAddr := io.CSRAddress
-    pmu.io.csrWen := CSRWen
-    pmu.io.csrWdata := CSRWriteData(pmu.io.readData)
-    pmu.io.mcountinhibit := Mcountinhibit
-    pmu.io.counteren := Mcounteren
-    pmu.io.lcofiClear := MipLcofiClear
+    pmu.io.privilege := privilege
+    pmu.io.csrAddress := io.CSRAddress
+    pmu.io.csrWriteEnable := csrWriteEnable
+    pmu.io.csrWriteData := csrWriteData(pmu.io.readData)
+    pmu.io.mcountinhibit := mcountinhibit
+    pmu.io.counteren := mcounteren
+    pmu.io.lcofiClear := mipLcofiClear
   }
-  val IsException = io.IsEcall || io.IsEbreak || HasInterrupt || io.TrapValid
+  val isException = io.IsEcall || io.IsEbreak || hasInterrupt || io.TrapValid
 
   def pendingCause(pending: UInt, sMode: Boolean): UInt = {
     val base = BigInt(0x80000000L)
@@ -563,207 +563,207 @@ class ysyx_26030103_CSR(
                 Mux(pending(5), (base | 5).U(32.W), (base | 13).U(32.W)))))))
     }
   }
-  val MIrqCause = pendingCause(MIntPending, sMode = false)
-  val SIrqCause = if (hasS) pendingCause(SIntPending, sMode = true) else 0.U(32.W)
+  val mIRQCause = pendingCause(mIntPending, sMode = false)
+  val sIRQCause = if (hasS) pendingCause(sIntPending, sMode = true) else 0.U(32.W)
   // M 级中断优先于已委托的 S 级中断：只要 MIntTaken 成立就走 M 入口，
   // 不能因为 SIntTaken 同时有效而改报 S cause。
-  val IrqCause =
-    if (hasS) Mux(MIntTaken, MIrqCause, SIrqCause) else MIrqCause
+  val irqCause =
+    if (hasS) Mux(mIntTaken, mIRQCause, sIRQCause) else mIRQCause
 
-  val ExceptionCause = WireDefault(0.U(32.W))
+  val exceptionCause = WireDefault(0.U(32.W))
   when(io.MemTrap) {
-    ExceptionCause := io.TrapCause
-  }.elsewhen(HasInterrupt) {
-    ExceptionCause := IrqCause
+    exceptionCause := io.TrapCause
+  }.elsewhen(hasInterrupt) {
+    exceptionCause := irqCause
   }.elsewhen(io.TrapValid) {
-    ExceptionCause := io.TrapCause
+    exceptionCause := io.TrapCause
   }.elsewhen(io.IsEbreak) {
-    ExceptionCause := 3.U(32.W)
+    exceptionCause := 3.U(32.W)
   }.otherwise {
     // ecall 的 cause 由当前特权级决定：U=8，S=9，M=11。
     // HAS_U=n 时 U 级不可达，直接裁掉 cause=8 的选择路径；HAS_S=n
     // 但 HAS_U=y（M+U）时 U 的 ecall 仍是 8，S 级路径不存在。
-    ExceptionCause := (if (!hasS) {
+    exceptionCause := (if (!hasS) {
       if (hasU) {
-        Mux(Privilege === 0.U, 8.U(32.W), 11.U(32.W))
+        Mux(privilege === 0.U, 8.U(32.W), 11.U(32.W))
       } else {
         11.U(32.W)
       }
     } else if (hasU) {
-      Mux(Privilege === 0.U, 8.U(32.W),
-        Mux(Privilege === 1.U, 9.U(32.W), 11.U(32.W)))
+      Mux(privilege === 0.U, 8.U(32.W),
+        Mux(privilege === 1.U, 9.U(32.W), 11.U(32.W)))
     } else {
-      Mux(Privilege === 1.U, 9.U(32.W), 11.U(32.W))
+      Mux(privilege === 1.U, 9.U(32.W), 11.U(32.W))
     })
   }
 
-  val HasIrqCommit = io.Enable && HasInterrupt && !io.MemTrap
-  io.IrqCommit := HasIrqCommit
-  val ExceptionCommit = io.MemTrap || (io.Enable && IsException)
-  io.TrapCommit := ExceptionCommit
-  io.CommittedCause := ExceptionCause
+  val hasIRQCommit = io.Enable && hasInterrupt && !io.MemTrap
+  io.IRQCommit := hasIRQCommit
+  val exceptionCommit = io.MemTrap || (io.Enable && isException)
+  io.TrapCommit := exceptionCommit
+  io.CommittedCause := exceptionCause
 
   // 异常委托：只有低于 M 的异常/中断才能被委托给 S。HAS_S=n 时委托
   // 寄存器和选择逻辑都不生成，TrapToS 恒为 0。
-  val TrapToS = if (hasS) {
-    val CauseIndex = ExceptionCause(4, 0)
-    val Delegation = Mux(ExceptionCause(31), Mideleg_rdata, Medeleg_rdata)
-    val Delegated = Delegation(CauseIndex)
-    Privilege =/= 3.U && Delegated
+  val trapToS = if (hasS) {
+    val causeIndex = exceptionCause(4, 0)
+    val delegation = Mux(exceptionCause(31), midelegReadData, medelegReadData)
+    val delegated = delegation(causeIndex)
+    privilege =/= 3.U && delegated
   } else false.B
 
-  val MstatusExceptionData = {
+  val mstatusExceptionData = {
     val mTrap = legalizeMstatus(
-      (Mstatus_rdata & ~"h00001888".U(32.W)) |
-        (Privilege << 11) | (Mstatus_rdata(3) << 7)
+      (mstatusReadData & ~"h00001888".U(32.W)) |
+        (privilege << 11) | (mstatusReadData(3) << 7)
     )
     if (hasS) {
       val sTrap = legalizeMstatus(
-        (Mstatus_rdata & ~"h00000122".U(32.W)) |
-          (Privilege(0) << 8) | (Mstatus_rdata(1) << 5)
+        (mstatusReadData & ~"h00000122".U(32.W)) |
+          (privilege(0) << 8) | (mstatusReadData(1) << 5)
       )
-      Mux(TrapToS, sTrap, mTrap)
+      Mux(trapToS, sTrap, mTrap)
     } else mTrap
   }
   // MPP 恢复；MIE <- MPIE；MPIE <- 1；MPP 保持最低支持特权级。
   // HAS_U=n 时 legalizeMstatus 已把 MPP 的最低值夹到 S。
   // 返回低于 M 的目标特权级时必须清 MPRV(bit17)；返回 M 时保留。
-  val MstatusMretBase = legalizeMstatus(
-    (Mstatus_rdata & ~"h00001888".U(32.W)) |
-      (Mstatus_rdata(7) << 3) | (1.U << 7)
+  val mstatusMretBase = legalizeMstatus(
+    (mstatusReadData & ~"h00001888".U(32.W)) |
+      (mstatusReadData(7) << 3) | (1.U << 7)
   )
-  val MstatusMretData = Mux(Mstatus_rdata(12, 11) === 3.U,
-    MstatusMretBase,
-    MstatusMretBase & ~"h00020000".U(32.W))
+  val mstatusMretData = Mux(mstatusReadData(12, 11) === 3.U,
+    mstatusMretBase,
+    mstatusMretBase & ~"h00020000".U(32.W))
   // SRET：SPP 决定返回 S/U；SIE <- SPIE；SPIE <- 1；SPP 回到最低支持级。
   // HAS_U=n 时 SPP 固定为 1，SRET 只能返回 S。SRET 的目标总是 S/U，
   // 因此必须无条件清 MPRV(bit17)。
-  val MstatusSretDataOpt = if (hasS) Some(legalizeMstatus(
-    ((Mstatus_rdata & ~"h00000122".U(32.W)) |
-      (Mstatus_rdata(5) << 1) | (1.U << 5)) & ~"h00020000".U(32.W)
+  val mstatusSretDataOpt = if (hasS) Some(legalizeMstatus(
+    ((mstatusReadData & ~"h00000122".U(32.W)) |
+      (mstatusReadData(5) << 1) | (1.U << 5)) & ~"h00020000".U(32.W)
   )) else None
   // independent 视图下 SRET 只清 mstatus.MPRV，不写 mstatus 的 S 字段；
   // 退休快照也必须反映这一实际写入。
-  val MstatusSretStateData =
+  val mstatusSretStateData =
     if (!hasS) 0.U(32.W)
     else if (profile.csrViewMode == "independent")
-      Mstatus_rdata & ~"h00020000".U(32.W)
-    else MstatusSretDataOpt.get
+      mstatusReadData & ~"h00020000".U(32.W)
+    else mstatusSretDataOpt.get
 
-  val MstatusWen =
+  val mstatusWriteEnable =
     if (hasS && profile.csrViewMode == "bound" && csrOn(0x100))
-      CSRWen && (IsCSRAddress(CSR_MSTATUS) || IsCSRAddress(CSR_SSTATUS))
-    else CSRWen && IsCSRAddress(CSR_MSTATUS)
-  val SstatusWen =
+      csrWriteEnable && (isCSRAddress(csrMstatus) || isCSRAddress(csrSstatus))
+    else csrWriteEnable && isCSRAddress(csrMstatus)
+  val sstatusWriteEnable =
     if (hasS && profile.csrViewMode == "independent" && csrOn(0x100))
-      CSRWen && IsCSRAddress(CSR_SSTATUS)
+      csrWriteEnable && isCSRAddress(csrSstatus)
     else false.B
   // independent 视图只隔离 S 模式控制字段；sstatus.FS 与 mstatus.FS 是同一
   // 份状态，sstatus 写入 FS 时必须同步写入 mstatus，否则 FP dirty/读回分叉。
-  val SstatusFsWen =
-    if (hasS && profile.csrViewMode == "independent" && UseF) SstatusWen
+  val sstatusFsWriteEnable =
+    if (hasS && profile.csrViewMode == "independent" && UseF) sstatusWriteEnable
     else false.B
-  val SstatusFsWriteData =
+  val sstatusFsWriteData =
     if (hasS && profile.csrViewMode == "independent" && UseF) {
-      val SstatusReg = SstatusRegOpt.get
-      val oldFsView = (SstatusReg & ~SstatusFsMaskValue.U(32.W)) |
-        (Mstatus_rdata & SstatusFsMaskValue.U(32.W))
-      val written = Write32(oldFsView)
-      (Mstatus_rdata & ~SstatusFsMaskValue.U(32.W)) |
-        (written & SstatusFsMaskValue.U(32.W))
+      val sstatusReg = sstatusRegOpt.get
+      val oldFsView = (sstatusReg & ~sstatusFsMaskValue.U(32.W)) |
+        (mstatusReadData & sstatusFsMaskValue.U(32.W))
+      val written = write32(oldFsView)
+      (mstatusReadData & ~sstatusFsMaskValue.U(32.W)) |
+        (written & sstatusFsMaskValue.U(32.W))
     } else 0.U(32.W)
-  val MstatusWriteMask = MstatusWriteMaskValue.U(32.W)
-  val MstatusCSRData = {
-    val rawWrite = CSRWriteData(MstatusReadDataWide)(31, 0)
-    val masked = (Mstatus_rdata & ~MstatusWriteMask) |
-      (rawWrite & MstatusWriteMask)
+  val mstatusWriteMask = mstatusWriteMaskValue.U(32.W)
+  val mstatusCSRData = {
+    val rawWrite = csrWriteData(mstatusReadDataWide)(31, 0)
+    val masked = (mstatusReadData & ~mstatusWriteMask) |
+      (rawWrite & mstatusWriteMask)
     if (hasS && csrOn(0x100)) {
       Mux(
-        IsCSRAddress(CSR_SSTATUS),
-        legalizeMstatus((Mstatus_rdata & ~SstatusMask) |
-          ((masked | (Mstatus_rdata & ~MstatusWriteMask)) & SstatusMask)),
+        isCSRAddress(csrSstatus),
+        legalizeMstatus((mstatusReadData & ~sstatusMask) |
+          ((masked | (mstatusReadData & ~mstatusWriteMask)) & sstatusMask)),
         legalizeMstatus(masked)
       )
     } else legalizeMstatus(masked)
   }
   // 写 fflags/frm/fcsr 也属于修改浮点状态：mstatus.FS 应变 Dirty。
-  val FpCsrWriteIntent =
-    CSRWen && (IsCSRAddress(CSR_FFLAGS) || IsCSRAddress(CSR_FRM) ||
-      IsCSRAddress(CSR_FCSR))
-  val FsDirtyData = FsDirtyValue
-  val MstatusWdataSel = Seq(
-    ExceptionCommit -> MstatusExceptionData,
-    MretCommit -> MstatusMretData
-  ) ++ (if (hasS) Seq(SretCommit -> MstatusSretStateData) else Seq.empty) ++ Seq(
-    MstatusWen -> MstatusCSRData,
-    SstatusFsWen -> SstatusFsWriteData,
-    FpCsrWriteIntent -> FsDirtyData,
-    FsDirtyCommit -> FsDirtyData
+  val fpCSRWriteIntent =
+    csrWriteEnable && (isCSRAddress(csrFflags) || isCSRAddress(csrFrm) ||
+      isCSRAddress(csrFcsr))
+  val fsDirtyData = fsDirtyValue
+  val mstatusWriteDataSelect = Seq(
+    exceptionCommit -> mstatusExceptionData,
+    mretCommit -> mstatusMretData
+  ) ++ (if (hasS) Seq(sretCommit -> mstatusSretStateData) else Seq.empty) ++ Seq(
+    mstatusWriteEnable -> mstatusCSRData,
+    sstatusFsWriteEnable -> sstatusFsWriteData,
+    fpCSRWriteIntent -> fsDirtyData,
+    fsDirtyCommit -> fsDirtyData
   )
-  Mstatus.io.wen := MstatusWen || ExceptionCommit || MretCommit ||
-    (if (hasS && profile.csrViewMode == "bound") SretCommit else false.B) ||
-    SstatusFsWen || FpCsrWriteIntent || FsDirtyCommit
-  Mstatus.io.wdata := MuxCase(MstatusCSRData, MstatusWdataSel)
+  mstatus.io.wen := mstatusWriteEnable || exceptionCommit || mretCommit ||
+    (if (hasS && profile.csrViewMode == "bound") sretCommit else false.B) ||
+    sstatusFsWriteEnable || fpCSRWriteIntent || fsDirtyCommit
+  mstatus.io.wdata := MuxCase(mstatusCSRData, mstatusWriteDataSelect)
   if (hasS && profile.csrViewMode == "independent") {
     // 独立 sstatus 视图下 SRET 不写 mstatus 的 S 字段，但 MPRV 属于
     // mstatus，返回 S/U 时仍必须清零；这里只覆盖 MPRV 位。SRET 被中断
     // 抢占时 ExceptionCommit 必须优先，trap-entry 的 mstatus 状态不能被
     // 这条仅清 MPRV 的路径覆盖。
-    when(SretCommit && !ExceptionCommit) {
-      Mstatus.io.wen := true.B
-      Mstatus.io.wdata := Mstatus_rdata & ~"h00020000".U(32.W)
+    when(sretCommit && !exceptionCommit) {
+      mstatus.io.wen := true.B
+      mstatus.io.wdata := mstatusReadData & ~"h00020000".U(32.W)
     }
   }
   if (hasS && profile.csrViewMode == "independent") {
-    val SstatusReg = SstatusRegOpt.get
+    val sstatusReg = sstatusRegOpt.get
     // 读 CSRRS/CSRRC 的 old value 时，FS 必须取共享的 mstatus.FS。
     val sReadOld =
-      if (UseF) (SstatusReg & ~SstatusFsMaskValue.U(32.W)) |
-        (Mstatus_rdata & SstatusFsMaskValue.U(32.W))
-      else SstatusReg
+      if (UseF) (sstatusReg & ~sstatusFsMaskValue.U(32.W)) |
+        (mstatusReadData & sstatusFsMaskValue.U(32.W))
+      else sstatusReg
     val sWrite = legalizeMstatus(
-      (SstatusReg & ~SstatusOwnMaskValue.U(32.W)) |
-        (Write32(sReadOld) & SstatusOwnMaskValue.U(32.W)))
-    val sTrap = legalizeMstatus((SstatusReg & ~"h00000122".U(32.W)) |
-      (SstatusReg(1) << 5) | (Privilege(0) << 8))
-    val sRet = legalizeMstatus((SstatusReg & ~"h00000122".U(32.W)) |
-      (SstatusReg(5) << 1) | (1.U << 5))
-    when(SstatusWen) { SstatusReg := sWrite }
+      (sstatusReg & ~sstatusOwnMaskValue.U(32.W)) |
+        (write32(sReadOld) & sstatusOwnMaskValue.U(32.W)))
+    val sTrap = legalizeMstatus((sstatusReg & ~"h00000122".U(32.W)) |
+      (sstatusReg(1) << 5) | (privilege(0) << 8))
+    val sRet = legalizeMstatus((sstatusReg & ~"h00000122".U(32.W)) |
+      (sstatusReg(5) << 1) | (1.U << 5))
+    when(sstatusWriteEnable) { sstatusReg := sWrite }
     // trap entry 必须优先于同拍的 SRET（SRET 已被中断抢占）。
-    when(SretCommit && !ExceptionCommit) { SstatusReg := sRet }
-    when(ExceptionCommit && TrapToS) { SstatusReg := sTrap }
+    when(sretCommit && !exceptionCommit) { sstatusReg := sRet }
+    when(exceptionCommit && trapToS) { sstatusReg := sTrap }
   }
 
-  Mtvec.io.wen := CSRWen && IsCSRAddress(CSR_MTVEC)
-  Mtvec.io.wdata := CSRWriteData(Mtvec_rdata)
-  StvecOpt.foreach { Stvec =>
-    Stvec.io.wen := CSRWen && IsCSRAddress(CSR_STVEC)
-    Stvec.io.wdata := CSRWriteData(Stvec_rdata)
+  mtvec.io.wen := csrWriteEnable && isCSRAddress(csrMtvec)
+  mtvec.io.wdata := csrWriteData(mtvecReadData)
+  stvecOpt.foreach { stvec =>
+    stvec.io.wen := csrWriteEnable && isCSRAddress(csrStvec)
+    stvec.io.wdata := csrWriteData(stvecReadData)
   }
 
   // 只有 M 入口写 mepc/mcause；委托到 S 时写 sepc/scause/stval。
-  val MepcWen = CSRWen && IsCSRAddress(CSR_MEPC) && !TrapToS
-  Mepc.io.wen := MepcWen || (ExceptionCommit && !TrapToS)
-  Mepc.io.ExceptionWE := ExceptionCommit && !TrapToS
-  Mepc.io.ExceptionData := io.pc
-  Mepc.io.wdata := Mux(ExceptionCommit && !TrapToS, io.pc, CSRWriteData(Mepc_rdata))
-  val McauseWen = CSRWen && IsCSRAddress(CSR_MCAUSE) && !TrapToS
-  Mcause.io.wen := McauseWen || (ExceptionCommit && !TrapToS)
-  Mcause.io.wdata := Mux(ExceptionCommit && !TrapToS, WidenCause32(ExceptionCause),
-    CSRWriteData(Mcause_rdata))
+  val mepcWriteEnable = csrWriteEnable && isCSRAddress(csrMepc) && !trapToS
+  mepc.io.wen := mepcWriteEnable || (exceptionCommit && !trapToS)
+  mepc.io.ExceptionWE := exceptionCommit && !trapToS
+  mepc.io.ExceptionData := io.pc
+  mepc.io.wdata := Mux(exceptionCommit && !trapToS, io.pc, csrWriteData(mepcReadData))
+  val mcauseWriteEnable = csrWriteEnable && isCSRAddress(csrMcause) && !trapToS
+  mcause.io.wen := mcauseWriteEnable || (exceptionCommit && !trapToS)
+  mcause.io.wdata := Mux(exceptionCommit && !trapToS, widenCause32(exceptionCause),
+    csrWriteData(mcauseReadData))
 
-  SepcOpt.foreach { Sepc =>
-    val SepcWen = CSRWen && IsCSRAddress(CSR_SEPC)
-    Sepc.io.wen := SepcWen || (ExceptionCommit && TrapToS)
-    Sepc.io.ExceptionWE := ExceptionCommit && TrapToS
-    Sepc.io.ExceptionData := io.pc
-    Sepc.io.wdata := Mux(ExceptionCommit && TrapToS, io.pc, CSRWriteData(Sepc_rdata))
+  sepcOpt.foreach { sepc =>
+    val sepcWriteEnable = csrWriteEnable && isCSRAddress(csrSepc)
+    sepc.io.wen := sepcWriteEnable || (exceptionCommit && trapToS)
+    sepc.io.ExceptionWE := exceptionCommit && trapToS
+    sepc.io.ExceptionData := io.pc
+    sepc.io.wdata := Mux(exceptionCommit && trapToS, io.pc, csrWriteData(sepcReadData))
   }
-  ScauseOpt.foreach { Scause =>
-    val ScauseWen = CSRWen && IsCSRAddress(CSR_SCAUSE)
-    Scause.io.wen := ScauseWen || (ExceptionCommit && TrapToS)
-    Scause.io.wdata := Mux(ExceptionCommit && TrapToS, WidenCause32(ExceptionCause),
-      CSRWriteData(Scause_rdata))
+  scauseOpt.foreach { scause =>
+    val scauseWriteEnable = csrWriteEnable && isCSRAddress(csrScause)
+    scause.io.wen := scauseWriteEnable || (exceptionCommit && trapToS)
+    scause.io.wdata := Mux(exceptionCommit && trapToS, widenCause32(exceptionCause),
+      csrWriteData(scauseReadData))
   }
 
   // trap 写 tval 的统一取值：有明确 tval 的异常（访存地址、压缩非法
@@ -773,96 +773,96 @@ class ysyx_26030103_CSR(
   // MemTrap/其他异常优先级更高，仍走原来的 tval 路径。
   // 中断没有 tval，mtval 同样固定为 0。
   // breakpoint(cause=3) 没有专门 tval，继续回退到故障 PC。
-  val EcallTvalCommit = io.Enable && io.IsEcall && !io.MemTrap &&
-    !HasInterrupt && !io.TrapValid && !io.IsEbreak
-  val InterruptTvalCommit = io.Enable && HasInterrupt && !io.MemTrap
-  val TrapTvalValue =
-    Mux(InterruptTvalCommit || EcallTvalCommit, 0.U(XLEN.W),
+  val ecallTvalCommit = io.Enable && io.IsEcall && !io.MemTrap &&
+    !hasInterrupt && !io.TrapValid && !io.IsEbreak
+  val interruptTvalCommit = io.Enable && hasInterrupt && !io.MemTrap
+  val trapTvalValue =
+    Mux(interruptTvalCommit || ecallTvalCommit, 0.U(XLEN.W),
       Mux(io.TrapTvalValid, io.TrapTval, io.pc))
   // IALIGN=16 时 mepc/sepc 只清 bit0；IALIGN=32 清低两位。
-  private def AlignEPC(Value: UInt): UInt =
-    if (UseC) Cat(Value(XLEN - 1, 1), 0.U(1.W))
-    else Cat(Value(XLEN - 1, 2), 0.U(2.W))
+  private def alignEPC(value: UInt): UInt =
+    if (UseC) Cat(value(XLEN - 1, 1), 0.U(1.W))
+    else Cat(value(XLEN - 1, 2), 0.U(2.W))
   if (hasS) {
-    val Stval = StvalOpt.get
-    when(ExceptionCommit && TrapToS) {
-      Stval := TrapTvalValue
-    }.elsewhen(ExceptionCommit) {
-      Mtval := TrapTvalValue
-    }.elsewhen(CSRWen && IsCSRAddress(CSR_STVAL)) {
-      Stval := CSRWriteData(Stval)
+    val stval = stvalOpt.get
+    when(exceptionCommit && trapToS) {
+      stval := trapTvalValue
+    }.elsewhen(exceptionCommit) {
+      mtval := trapTvalValue
+    }.elsewhen(csrWriteEnable && isCSRAddress(csrStval)) {
+      stval := csrWriteData(stval)
     }
   } else {
-    when(ExceptionCommit) {
-      Mtval := TrapTvalValue
+    when(exceptionCommit) {
+      mtval := trapTvalValue
     }
   }
-  when(CSRWen && IsCSRAddress(CSR_MTVAL)) { Mtval := CSRWriteData(Mtval) }
-  when(CSRWen && IsCSRAddress(CSR_MCOUNTEREN)) { Mcounteren := Write32(Mcounteren) }
-  when(CSRWen && IsCSRAddress(CSR_MCOUNTINHIBIT)) { Mcountinhibit := Write32(Mcountinhibit) }
+  when(csrWriteEnable && isCSRAddress(csrMtval)) { mtval := csrWriteData(mtval) }
+  when(csrWriteEnable && isCSRAddress(csrMcounteren)) { mcounteren := write32(mcounteren) }
+  when(csrWriteEnable && isCSRAddress(csrMcountinhibit)) { mcountinhibit := write32(mcountinhibit) }
   // 浮点运算在 EXU 提交时累积 fflags；CSR 写覆盖顺序放在后面，保证
   // 同一拍即使出现（架构上单发射不会同时发生）也以软件写为准。
-  when(io.FPCommit) { FFlagsReg := FFlagsReg | io.FPFlags }
-  when(CSRWen && IsCSRAddress(CSR_FFLAGS)) {
-    FFlagsReg := CSRWriteData(Widen32(FFlagsReg))(
-      ysyx_26030103_FpuFlags.NV, ysyx_26030103_FpuFlags.NX)
+  when(io.FPCommit) { fflagsReg := fflagsReg | io.FPFlags }
+  when(csrWriteEnable && isCSRAddress(csrFflags)) {
+    fflagsReg := csrWriteData(widen32(fflagsReg))(
+      ysyx_26030103_FPUFlags.NV, ysyx_26030103_FPUFlags.NX)
   }
-  when(CSRWen && IsCSRAddress(CSR_FRM)) {
-    FrmReg := CSRWriteData(Widen32(FrmReg))(2, 0)
+  when(csrWriteEnable && isCSRAddress(csrFrm)) {
+    frmReg := csrWriteData(widen32(frmReg))(2, 0)
   }
-  when(CSRWen && IsCSRAddress(CSR_FCSR)) {
-    val FcsrWrite = CSRWriteData(Widen32(Cat(FrmReg, FFlagsReg)))
-    FrmReg := FcsrWrite(FFlagsWidth + FrmWidth - 1, FFlagsWidth)
-    FFlagsReg := FcsrWrite(
-      ysyx_26030103_FpuFlags.NV, ysyx_26030103_FpuFlags.NX)
+  when(csrWriteEnable && isCSRAddress(csrFcsr)) {
+    val fcsrWrite = csrWriteData(widen32(Cat(frmReg, fflagsReg)))
+    frmReg := fcsrWrite(fflagsWidth + frmWidth - 1, fflagsWidth)
+    fflagsReg := fcsrWrite(
+      ysyx_26030103_FPUFlags.NV, ysyx_26030103_FPUFlags.NX)
   }
-  val FrmNext = Mux(CSRWen && IsCSRAddress(CSR_FCSR),
-    CSRWriteData(Widen32(Cat(FrmReg, FFlagsReg)))(
-      FFlagsWidth + FrmWidth - 1, FFlagsWidth),
-    Mux(CSRWen && IsCSRAddress(CSR_FRM),
-      CSRWriteData(Widen32(FrmReg))(2, 0), FrmReg))
-  io.Frm := FrmNext
-  io.Fcsr := Cat(FrmReg, FFlagsReg)
-  for (word <- 0 until PmpCfgWords) {
+  val frmNext = Mux(csrWriteEnable && isCSRAddress(csrFcsr),
+    csrWriteData(widen32(Cat(frmReg, fflagsReg)))(
+      fflagsWidth + frmWidth - 1, fflagsWidth),
+    Mux(csrWriteEnable && isCSRAddress(csrFrm),
+      csrWriteData(widen32(frmReg))(2, 0), frmReg))
+  io.Frm := frmNext
+  io.Fcsr := Cat(frmReg, fflagsReg)
+  for (word <- 0 until pmpConfigWords) {
     // RV64：pmpcfg0=0x3a0（entry 0..7），pmpcfg2=0x3a2（entry 8..15）。
     // RV32：pmpcfg0..3=0x3a0..0x3a3（每个 4 项）。
-    val cfgAddress =
+    val configAddress =
       if (XLEN == 64) 0x3a0 + word * 2 else 0x3a0 + word
     // 每个 8 位表项保留 L/A[1:0]/X/W/R，清掉保留位 [6:5]；已经被 L
     // 锁定的表项忽略本次写入（包括试图把 L 清 0 的写）。
-    val WritableBytes = VecInit(
-      (0 until PmpEntriesPerCfg).map { entry =>
-        Mux(PmpcfgReg(word)(8 * entry + 7),
-          0.U(8.W), PmpCfgByteMask.U(8.W))
+    val writableBytes = VecInit(
+      (0 until pmpEntriesPerConfig).map { entry =>
+        Mux(pmpcfgReg(word)(8 * entry + 7),
+          0.U(8.W), pmpConfigByteMask.U(8.W))
       }
     ).asUInt
-    when(CSRWen && io.CSRAddress === cfgAddress.U(12.W)) {
-      val WriteData = CSRWriteData(PmpcfgReg(word))
-      PmpcfgReg(word) :=
-        (PmpcfgReg(word) & ~WritableBytes) | (WriteData & WritableBytes)
+    when(csrWriteEnable && io.CSRAddress === configAddress.U(12.W)) {
+      val writeData = csrWriteData(pmpcfgReg(word))
+      pmpcfgReg(word) :=
+        (pmpcfgReg(word) & ~writableBytes) | (writeData & writableBytes)
     }
   }
   for (entry <- 0 until 16) {
     // 锁定表项的 pmpaddr 同样不可写；另外，若下一项是 locked TOR，
     // 它的下界 pmpaddr[entry] 也必须保持不可写。
-    val EntryLocked = PmpcfgReg(entry / PmpEntriesPerCfg)(
-      8 * (entry % PmpEntriesPerCfg) + 7)
-    val NextTorLocked =
+    val entryLocked = pmpcfgReg(entry / pmpEntriesPerConfig)(
+      8 * (entry % pmpEntriesPerConfig) + 7)
+    val nextTorLocked =
       if (entry < 15) {
-        val Next = entry + 1
-        val NextCfg = PmpcfgReg(Next / PmpEntriesPerCfg)
-        val Base = 8 * (Next % PmpEntriesPerCfg)
+        val next = entry + 1
+        val nextConfig = pmpcfgReg(next / pmpEntriesPerConfig)
+        val base = 8 * (next % pmpEntriesPerConfig)
         // PMP A 编码：1=TOR，3=NAPOT；locked TOR 的邻居下界受保护。
-        NextCfg(Base + 7) && NextCfg(Base + 4, Base + 3) === 1.U
+        nextConfig(base + 7) && nextConfig(base + 4, base + 3) === 1.U
       } else false.B
-    when(CSRWen && io.CSRAddress === (0x3b0 + entry).U(12.W) &&
-      !EntryLocked && !NextTorLocked) {
+    when(csrWriteEnable && io.CSRAddress === (0x3b0 + entry).U(12.W) &&
+      !entryLocked && !nextTorLocked) {
       // RV32 PMP 地址为 30 位；RV64 pmpaddr 为标准 54 位。
       if (XLEN == 64) {
-        PmpaddrReg(entry) := CSRWriteData(PmpaddrReg(entry)) &
+        pmpaddrReg(entry) := csrWriteData(pmpaddrReg(entry)) &
           "h003fffffffffffff".U(64.W)
       } else {
-        PmpaddrReg(entry) := Write32(PmpaddrReg(entry)) & "h3fffffff".U(32.W)
+        pmpaddrReg(entry) := write32(pmpaddrReg(entry)) & "h3fffffff".U(32.W)
       }
     }
   }
@@ -872,108 +872,108 @@ class ysyx_26030103_CSR(
   // 同步异常/中断和被 MEM 故障取消的指令 Retire=0，因此不会计数。
   // minstret/minstreth 是可写计数器；写口优先于本拍退休自增。
   // MinstretWriteCommit 随指令带到 WBU：该指令自身退休时不得再自增。
-  val MinstretWen = CSRWen &&
-    (IsCSRAddress(CSR_MINSTRET) || IsCSRAddress(CSR_MINSTRETH))
-  io.MinstretWriteCommit := MinstretWen
-  when(MinstretWen) {
+  val minstretWriteEnable = csrWriteEnable &&
+    (isCSRAddress(csrMinstret) || isCSRAddress(csrMinstreth))
+  io.MinstretWriteCommit := minstretWriteEnable
+  when(minstretWriteEnable) {
     if (XLEN == 64) {
-      Minstret := CSRWriteData(Minstret)
+      minstret := csrWriteData(minstret)
     } else {
       // RV32 的 minstreth 是 64 位计数器的独立高半字；CSRRS/CSRRC 必须
       // 以高半字作为 old value 计算，不能复用低半字。
-      val WrittenLow = CSRWriteData(Minstret(31, 0))
-      val WrittenHigh = CSRWriteData(Minstret(63, 32))
-      Minstret := Cat(
-        Mux(IsCSRAddress(CSR_MINSTRETH), WrittenHigh(31, 0), Minstret(63, 32)),
-        Mux(IsCSRAddress(CSR_MINSTRET), WrittenLow(31, 0), Minstret(31, 0))
+      val writtenLow = csrWriteData(minstret(31, 0))
+      val writtenHigh = csrWriteData(minstret(63, 32))
+      minstret := Cat(
+        Mux(isCSRAddress(csrMinstreth), writtenHigh(31, 0), minstret(63, 32)),
+        Mux(isCSRAddress(csrMinstret), writtenLow(31, 0), minstret(31, 0))
       )
     }
-  }.elsewhen(io.MinstretRetireCommit && !Mcountinhibit(2)) {
-    Minstret := Minstret + 1.U
+  }.elsewhen(io.MinstretRetireCommit && !mcountinhibit(2)) {
+    minstret := minstret + 1.U
   }
-  SscratchOpt.foreach { Sscratch =>
-    when(CSRWen && IsCSRAddress(CSR_SSCRATCH)) { Sscratch := CSRWriteData(Sscratch) }
+  sscratchOpt.foreach { sscratch =>
+    when(csrWriteEnable && isCSRAddress(csrSscratch)) { sscratch := csrWriteData(sscratch) }
   }
-  when(CSRWen && IsCSRAddress(CSR_MSCRATCH)) { Mscratch := CSRWriteData(Mscratch) }
-  MedelegOpt.foreach { Medeleg =>
-    when(CSRWen && IsCSRAddress(CSR_MEDELEG)) {
-      Medeleg := Write32(Medeleg) & MedelegMask
+  when(csrWriteEnable && isCSRAddress(csrMscratch)) { mscratch := csrWriteData(mscratch) }
+  medelegOpt.foreach { medeleg =>
+    when(csrWriteEnable && isCSRAddress(csrMedeleg)) {
+      medeleg := write32(medeleg) & medelegMask
     }
   }
-  MidelegOpt.foreach { Mideleg =>
+  midelegOpt.foreach { mideleg =>
     // M 级中断（MSIP/MTIP/MEIP，bit3/7/11）不能委托给 S，mideleg 中
     // 对应位是只读零。若把软件误写值原样保存，MIntPending 里的
     // `~Mideleg` 会把 M 中断从 M 入口排除，而 SipState 又只看 S 位，
     // 最终把中断整个吞掉。
-    when(CSRWen && IsCSRAddress(CSR_MIDELEG)) {
-      Mideleg := Write32(Mideleg) & SInterruptMask
+    when(csrWriteEnable && isCSRAddress(csrMideleg)) {
+      mideleg := write32(mideleg) & sInterruptMask
     }
   }
   // mip 的软件可写位：SSIP(bit1)、STIP(bit5)、SEIP(bit9)。
   // 本核没有 stimecmp，STIP 必须允许 M 模式软件写入；SEIP 是软件位与
   // PLIC 外部信号的逻辑或。MSIP/MTIP/MEIP 只读；LCOFI 不存进 Mip 寄存器，
   // 写 0 时通过 PMU 清 OF 位（事件状态本身才是 pending 源）。
-  val MipWriteMask =
+  val mipWriteMask =
     "h00000222".U(32.W)
   // sip 中只有 SSIP(bit1) 可由软件写；STIP/SEIP 是硬件置位的只读位。
   // independent 视图下 sip.SSIP 直接读写 mip 的同一个 SSIP 位。
-  val SipWriteMask =
-    SInterruptMask & "h00000002".U(32.W)
+  val sipWriteMask =
+    sInterruptMask & "h00000002".U(32.W)
   // mie/sie 只保留已实现的中断位，未实现位读回 0。
-  val MieWriteMask =
+  val mieWriteMask =
     ("h00000888".U(32.W) |
       (if (hasS) "h00000222".U(32.W) else 0.U(32.W)) |
       (if (pmuSscofpmf) "h00002000".U(32.W) else 0.U(32.W)))
-  val SieWriteMask =
-    SInterruptMask
-  when(CSRWen && IsCSRAddress(CSR_MIE)) {
-    Mie := (Mie & ~MieWriteMask) | (Write32(Mie) & MieWriteMask)
+  val sieWriteMask =
+    sInterruptMask
+  when(csrWriteEnable && isCSRAddress(csrMie)) {
+    mie := (mie & ~mieWriteMask) | (write32(mie) & mieWriteMask)
   }
-  when(CSRWen && IsCSRAddress(CSR_MIP)) {
-    Mip := (Mip & ~MipWriteMask) | (Write32(Mip) & MipWriteMask)
+  when(csrWriteEnable && isCSRAddress(csrMip)) {
+    mip := (mip & ~mipWriteMask) | (write32(mip) & mipWriteMask)
   }
   if (hasS && profile.csrViewMode == "independent") {
-    val Sie = SieOpt.get
-    when(CSRWen && IsCSRAddress(CSR_SIE)) {
-      Sie := (Sie & ~SieWriteMask) | (Write32(Sie) & SieWriteMask)
+    val sie = sieOpt.get
+    when(csrWriteEnable && isCSRAddress(csrSie)) {
+      sie := (sie & ~sieWriteMask) | (write32(sie) & sieWriteMask)
     }
     // SSIP 是 mip/sip 共享的 pending 位；写 sip 必须更新 Mip 寄存器。
-    when(CSRWen && IsCSRAddress(CSR_SIP)) {
-      Mip := (Mip & ~SipWriteMask) | (Write32(Mip) & SipWriteMask)
+    when(csrWriteEnable && isCSRAddress(csrSip)) {
+      mip := (mip & ~sipWriteMask) | (write32(mip) & sipWriteMask)
     }
   } else if (hasS) {
-    when(CSRWen && IsCSRAddress(CSR_SIE)) {
-      Mie := (Mie & ~SInterruptMask) | (Write32(Mie) & SInterruptMask)
+    when(csrWriteEnable && isCSRAddress(csrSie)) {
+      mie := (mie & ~sInterruptMask) | (write32(mie) & sInterruptMask)
     }
-    when(CSRWen && IsCSRAddress(CSR_SIP)) {
-      Mip := (Mip & ~SipWriteMask) | (Write32(Mip) & SipWriteMask)
-    }
-  }
-  ScounterenOpt.foreach { Scounteren =>
-    when(CSRWen && IsCSRAddress(CSR_SCOUNTEREN)) {
-      Scounteren := Write32(Scounteren)
+    when(csrWriteEnable && isCSRAddress(csrSip)) {
+      mip := (mip & ~sipWriteMask) | (write32(mip) & sipWriteMask)
     }
   }
-  val SatpWen = if (hasS) CSRWen && IsCSRAddress(CSR_SATP) else false.B
-  val SatpWriteRaw =
-    SatpRegOpt.map(r => CSRWriteData(r)).getOrElse(0.U(XLEN.W))
+  scounterenOpt.foreach { scounteren =>
+    when(csrWriteEnable && isCSRAddress(csrScounteren)) {
+      scounteren := write32(scounteren)
+    }
+  }
+  val satpWriteEnable = if (hasS) csrWriteEnable && isCSRAddress(csrSatp) else false.B
+  val satpWriteRaw =
+    satpRegOpt.map(r => csrWriteData(r)).getOrElse(0.U(XLEN.W))
   // 规范：写入不支持的 satp.MODE 时整笔写入无效，不能只把 MODE 收敛到
   // Bare 却仍提交 ASID/PPN。RV32 的两种 MODE 都支持。
-  val SatpWriteLegal =
+  val satpWriteLegal =
     if (!hasS) false.B
     else if (XLEN == 32) true.B
     else {
-      val requested = SatpWriteRaw(63, 60)
+      val requested = satpWriteRaw(63, 60)
       requested === 0.U || requested === profile.satpMode.U
     }
-  SatpRegOpt.foreach { SatpReg =>
-    when(SatpWen && SatpWriteLegal) {
-      val raw = CSRWriteData(SatpReg)
-      val mask = SatpWriteMaskValue.U(XLEN.W)
-      val data = (SatpReg & ~mask) | (raw & mask)
+  satpRegOpt.foreach { satpReg =>
+    when(satpWriteEnable && satpWriteLegal) {
+      val raw = csrWriteData(satpReg)
+      val mask = satpWriteMaskValue.U(XLEN.W)
+      val data = (satpReg & ~mask) | (raw & mask)
       if (XLEN == 32) {
         // Sv32 satp.MODE 只支持 0/1。
-        SatpReg := Cat(Mux(data(31), 1.U(1.W), 0.U(1.W)), data(30, 0))
+        satpReg := Cat(Mux(data(31), 1.U(1.W), 0.U(1.W)), data(30, 0))
       } else {
         // RV64 satp：MODE[63:60]。标准模式只有 0/8(Sv39)/9(Sv48)；
         // 显式 CUSTOM 几何使用独立的保留编码 10..15（非标准扩展）。
@@ -984,195 +984,195 @@ class ysyx_26030103_CSR(
           requested === 0.U, 0.U(4.W),
           Mux(requested === profile.satpMode.U, profile.satpMode.U(4.W),
             0.U(4.W)))
-        SatpReg := Cat(legalMode, data(59, 0))
+        satpReg := Cat(legalMode, data(59, 0))
       }
     }
   }
-  io.Satp := SatpRegOpt.getOrElse(0.U(XLEN.W))
+  io.Satp := satpRegOpt.getOrElse(0.U(XLEN.W))
   if (hasS || hasU) {
-    val MretPrivilege: UInt =
-      if (hasU) Mstatus_rdata(12, 11)
-      else if (hasS) Mux(Mstatus_rdata(12), 3.U(2.W), 1.U(2.W))
+    val mretPrivilege: UInt =
+      if (hasU) mstatusReadData(12, 11)
+      else if (hasS) Mux(mstatusReadData(12), 3.U(2.W), 1.U(2.W))
       else 3.U(2.W)
     if (hasS) {
-      val SretPrivilege =
-        if (hasU) Mux(Mstatus_rdata(8), 1.U(2.W), 0.U(2.W))
+      val sretPrivilege =
+        if (hasU) Mux(mstatusReadData(8), 1.U(2.W), 0.U(2.W))
         else 1.U(2.W)
-      when(ExceptionCommit) {
-        Privilege := Mux(TrapToS, 1.U, 3.U)
-      }.elsewhen(MretCommit) {
-        Privilege := MretPrivilege
-      }.elsewhen(SretCommit) {
-        Privilege := SretPrivilege
+      when(exceptionCommit) {
+        privilege := Mux(trapToS, 1.U, 3.U)
+      }.elsewhen(mretCommit) {
+        privilege := mretPrivilege
+      }.elsewhen(sretCommit) {
+        privilege := sretPrivilege
       }
     } else {
       // M+U：没有 S 入口，所有异常/中断都进入 M；MRET 按 MPP 返回 M/U。
-      when(ExceptionCommit) {
-        Privilege := 3.U
-      }.elsewhen(MretCommit) {
-        Privilege := MretPrivilege
+      when(exceptionCommit) {
+        privilege := 3.U
+      }.elsewhen(mretCommit) {
+        privilege := mretPrivilege
       }
     }
   }
-  io.Privilege := Privilege
+  io.Privilege := privilege
   // CSR 写提交与紧随其后的指令译码发生在同一拍：IDU 在译码级用
   // mstatus/frm 判断 F 指令、DYN 舍入以及 TVM/TSR/TW 陷门。
   // CSR 寄存器在时钟沿才更新，若这里不旁路本拍的写数据，紧邻 CSR 写的
   // 第一条指令会看到旧值（例如清 FS 后的 fadd.s 不陷入、写 frm 后的
   // DYN 指令仍用旧舍入模式）。异常/MRET/SRET 会冲刷年轻指令，只有软件
   // CSR 写需要旁路。
-  io.CurrentMstatus := Mux(SstatusFsWen,
-    MstatusArchValue(SstatusFsWriteData),
-    Mux(MstatusWen,
-      MstatusArchValue(MstatusCSRData), MstatusArchValue(Mstatus_rdata)))
+  io.CurrentMstatus := Mux(sstatusFsWriteEnable,
+    mstatusArchValue(sstatusFsWriteData),
+    Mux(mstatusWriteEnable,
+      mstatusArchValue(mstatusCSRData), mstatusArchValue(mstatusReadData)))
   io.FlushTLB :=
-    (if (hasS) SfenceCommit || (SatpWen && SatpWriteLegal) else false.B)
+    (if (hasS) sfenceCommit || (satpWriteEnable && satpWriteLegal) else false.B)
 
-  val McycleAccess = IsCSRAddress(CSR_MCYCLE) || IsCSRAddress(CSR_MCYCLEH)
-  Mcycle.io.wen := CSRWen && McycleAccess
-  Mcycle.io.SelectHigh := IsCSRAddress(CSR_MCYCLEH)
-  Mcycle.io.wdata := CSRWriteData(Mcycle_rdata)
+  val mcycleAccess = isCSRAddress(csrMcycle) || isCSRAddress(csrMcycleh)
+  mcycle.io.wen := csrWriteEnable && mcycleAccess
+  mcycle.io.SelectHigh := isCSRAddress(csrMcycleh)
+  mcycle.io.wdata := csrWriteData(mcycleReadData)
 
   // CSR 读多路选择只包含当前配置真正实现的地址。HAS_S=n/HAS_U=n 时
   // 对应的 S/U CSR 不会留下读 mux 和只读常量。
-  val CSRMap = scala.collection.mutable.ArrayBuffer[(UInt, UInt)]()
-  def addCsr(addr: UInt, data: => UInt, enabled: Boolean): Unit = {
-    if (enabled) { CSRMap += (addr -> data) }
+  val csrMap = scala.collection.mutable.ArrayBuffer[(UInt, UInt)]()
+  def addCSR(address: UInt, data: => UInt, enabled: Boolean): Unit = {
+    if (enabled) { csrMap += (address -> data) }
   }
-  addCsr(CSR_MSTATUS, MstatusReadDataWide, csrOn(0x300))
-  addCsr(CSR_SSTATUS, SstatusArchValue, csrOn(0x100))
-  addCsr(CSR_FFLAGS, Widen32(FFlagsReg), UseF)
-  addCsr(CSR_FRM, Widen32(FrmReg), UseF)
-  addCsr(CSR_FCSR, Widen32(Cat(FrmReg, FFlagsReg)), UseF)
-  addCsr(CSR_MTVEC, Mtvec_rdata, csrOn(0x305))
-  addCsr(CSR_STVEC, Stvec_rdata, csrOn(0x105))
-  addCsr(CSR_MEPC, Mepc_rdata, csrOn(0x341))
-  addCsr(CSR_SEPC, Sepc_rdata, csrOn(0x141))
-  addCsr(CSR_MCAUSE, Mcause_rdata, csrOn(0x342))
-  addCsr(CSR_SCAUSE, Scause_rdata, csrOn(0x142))
-  addCsr(CSR_MSCRATCH, Mscratch, csrOn(0x340))
-  addCsr(CSR_SSCRATCH, Sscratch_rdata, csrOn(0x140))
-  addCsr(CSR_MEDELEG, Widen32(Medeleg_rdata), csrOn(0x302))
-  addCsr(CSR_MIDELEG, Widen32(Mideleg_rdata), csrOn(0x303))
-  addCsr(CSR_MIE, Widen32(Mie), csrOn(0x304))
+  addCSR(csrMstatus, mstatusReadDataWide, csrOn(0x300))
+  addCSR(csrSstatus, sstatusArchValue, csrOn(0x100))
+  addCSR(csrFflags, widen32(fflagsReg), UseF)
+  addCSR(csrFrm, widen32(frmReg), UseF)
+  addCSR(csrFcsr, widen32(Cat(frmReg, fflagsReg)), UseF)
+  addCSR(csrMtvec, mtvecReadData, csrOn(0x305))
+  addCSR(csrStvec, stvecReadData, csrOn(0x105))
+  addCSR(csrMepc, mepcReadData, csrOn(0x341))
+  addCSR(csrSepc, sepcReadData, csrOn(0x141))
+  addCSR(csrMcause, mcauseReadData, csrOn(0x342))
+  addCSR(csrScause, scauseReadData, csrOn(0x142))
+  addCSR(csrMscratch, mscratch, csrOn(0x340))
+  addCSR(csrSscratch, sscratchReadData, csrOn(0x140))
+  addCSR(csrMedeleg, widen32(medelegReadData), csrOn(0x302))
+  addCSR(csrMideleg, widen32(midelegReadData), csrOn(0x303))
+  addCSR(csrMie, widen32(mie), csrOn(0x304))
   // mip 读口必须包含 CLINT/PLIC 实时拉起的 pending 位，不能只返回
   // 软件可写寄存器 Mip。否则 M 模式读取 mip 时看不到 MTIP，S 模式
   // 通过 mip 观察 STIP 的路径也会与 sip 不一致。
-  addCsr(CSR_MIP, Widen32(MipState), csrOn(0x344))
-  addCsr(CSR_SIE, Widen32(SieState), csrOn(0x104))
-  addCsr(CSR_SIP, Widen32(SipState), csrOn(0x144))
-  addCsr(CSR_SCOUNTEREN, Widen32(Scounteren_rdata), csrOn(0x106))
-  addCsr(CSR_STVAL, Stval_rdata, csrOn(0x143))
-  addCsr(CSR_SATP, SatpReadData, csrOn(0x180))
-  addCsr(CSR_MCYCLE, Mcycle_rdata, csrOn(0xb00))
-  addCsr(CSR_MCYCLEH, Widen32(Mcycleh_rdata), csrOn(0xb80))
-  addCsr(CSR_MINSTRET, Minstret_rdata, csrOn(0xb02))
-  addCsr(CSR_MINSTRETH, Widen32(Minstreth_rdata), csrOn(0xb82))
+  addCSR(csrMip, widen32(mipState), csrOn(0x344))
+  addCSR(csrSie, widen32(sieState), csrOn(0x104))
+  addCSR(csrSip, widen32(sipState), csrOn(0x144))
+  addCSR(csrScounteren, widen32(scounterenReadData), csrOn(0x106))
+  addCSR(csrStval, stvalReadData, csrOn(0x143))
+  addCSR(csrSatp, satpReadData, csrOn(0x180))
+  addCSR(csrMcycle, mcycleReadData, csrOn(0xb00))
+  addCSR(csrMcycleh, widen32(mcyclehReadData), csrOn(0xb80))
+  addCSR(csrMinstret, minstretReadData, csrOn(0xb02))
+  addCSR(csrMinstreth, widen32(minstrethReadData), csrOn(0xb82))
   // 用户计数器别名：rdcycle/rdtime/rdinstret 及其 RV32 高半字。
   // CYCLE/CYCLEH 跟随 mcycle，INSTRET/INSTRETH 跟随 minstret；
   // TIME/TIMEH 直接来自 CLINT mtime，不需要对应的机器计数器。
-  addCsr(CSR_CYCLE, Mcycle_rdata, enabled = true)
-  addCsr(CSR_CYCLEH, Widen32(Mcycleh_rdata), enabled = XLEN == 32)
-  addCsr(CSR_TIME, Time_rdata, enabled = true)
-  addCsr(CSR_TIMEH, Widen32(Timeh_rdata), enabled = XLEN == 32)
-  addCsr(CSR_INSTRET, Minstret_rdata, enabled = true)
-  addCsr(CSR_INSTRETH, Widen32(Minstreth_rdata), enabled = XLEN == 32)
-  addCsr(CSR_MISA, Misa_rdata, csrOn(0x301))
-  addCsr(CSR_MTVAL, Mtval, csrOn(0x343))
-  addCsr(CSR_MCOUNTEREN, Widen32(Mcounteren), csrOn(0x306))
-  addCsr(CSR_MCOUNTINHIBIT, Widen32(Mcountinhibit), csrOn(0x320))
-  PMUOpt.foreach { pmu =>
-    for (i <- 0 until PMUCounterCount) {
-      addCsr((0xb03 + i).U(12.W), pmu.io.readData, enabled = true)
-      addCsr((0x323 + i).U(12.W), pmu.io.readData, enabled = true)
-      addCsr((0xc03 + i).U(12.W), pmu.io.readData, enabled = true)
+  addCSR(csrCycle, mcycleReadData, enabled = true)
+  addCSR(csrCycleh, widen32(mcyclehReadData), enabled = XLEN == 32)
+  addCSR(csrTime, timeReadData, enabled = true)
+  addCSR(csrTimeh, widen32(timehReadData), enabled = XLEN == 32)
+  addCSR(csrInstret, minstretReadData, enabled = true)
+  addCSR(csrInstreth, widen32(minstrethReadData), enabled = XLEN == 32)
+  addCSR(csrMisa, misaReadData, csrOn(0x301))
+  addCSR(csrMtval, mtval, csrOn(0x343))
+  addCSR(csrMcounteren, widen32(mcounteren), csrOn(0x306))
+  addCSR(csrMcountinhibit, widen32(mcountinhibit), csrOn(0x320))
+  pmuOpt.foreach { pmu =>
+    for (index <- 0 until pmuCounterCount) {
+      addCSR((0xb03 + index).U(12.W), pmu.io.readData, enabled = true)
+      addCSR((0x323 + index).U(12.W), pmu.io.readData, enabled = true)
+      addCSR((0xc03 + index).U(12.W), pmu.io.readData, enabled = true)
       if (XLEN == 32) {
-        addCsr((0xb83 + i).U(12.W), pmu.io.readData, enabled = true)
-        addCsr((0xc83 + i).U(12.W), pmu.io.readData, enabled = true)
+        addCSR((0xb83 + index).U(12.W), pmu.io.readData, enabled = true)
+        addCSR((0xc83 + index).U(12.W), pmu.io.readData, enabled = true)
       }
     }
     if (pmuSscofpmf) {
-      addCsr(CSR_SCOUNTOVF, Widen32(pmu.io.scountovf), enabled = true)
+      addCSR(csrScountovf, widen32(pmu.io.scountovf), enabled = true)
     }
   }
-  addCsr(CSR_MVENDORID, Widen32(Mvendorid_rdata), csrOn(0xf11))
-  addCsr(CSR_MARCHID, Widen32(Marchid_rdata), csrOn(0xf12))
-  addCsr(CSR_MIMPID, Widen32(Mimpid_rdata), csrOn(0xf13))
-  addCsr(CSR_MHARTID, Widen32(Mhartid_rdata), csrOn(0xf14))
-  for (i <- 0 until 4) {
-    val cfgAddress = if (XLEN == 64) 0x3a0 + i * 2 else 0x3a0 + i
-    addCsr(
-      cfgAddress.U(12.W),
-      PmpcfgReg(i),
-      csrOn(cfgAddress)
+  addCSR(csrMvendorid, widen32(mvendoridReadData), csrOn(0xf11))
+  addCSR(csrMarchid, widen32(marchidReadData), csrOn(0xf12))
+  addCSR(csrMimpid, widen32(mimpidReadData), csrOn(0xf13))
+  addCSR(csrMhartid, widen32(mhartidReadData), csrOn(0xf14))
+  for (index <- 0 until 4) {
+    val configAddress = if (XLEN == 64) 0x3a0 + index * 2 else 0x3a0 + index
+    addCSR(
+      configAddress.U(12.W),
+      pmpcfgReg(index),
+      csrOn(configAddress)
     )
   }
-  for (i <- 0 until 16) {
-    addCsr((0x3b0 + i).U(12.W), PmpaddrReg(i), csrOn(0x3b0 + i))
+  for (index <- 0 until 16) {
+    addCSR((0x3b0 + index).U(12.W), pmpaddrReg(index), csrOn(0x3b0 + index))
   }
-  val CsrRawRdata =
-    if (CSRMap.isEmpty) 0.U(XLEN.W)
-    else MuxLookup(io.CSRAddress, 0.U(XLEN.W))(CSRMap.toSeq)
-  io.CSR_rdata := Mux(CsrImplemented,
-    (CsrRawRdata & CsrReadMask) | CsrReadSet, 0.U(XLEN.W))
+  val csrRawReadData =
+    if (csrMap.isEmpty) 0.U(XLEN.W)
+    else MuxLookup(io.CSRAddress, 0.U(XLEN.W))(csrMap.toSeq)
+  io.CSR_rdata := Mux(csrImplemented,
+    (csrRawReadData & csrReadMask) | csrReadSet, 0.U(XLEN.W))
 
-  val MtvecBase = Cat(Mtvec_rdata(XLEN - 1, 2), 0.U(2.W))
-  val CauseOffsetWide = ExceptionCause(29, 0) << 2
-  val CauseOffset = Widen32(CauseOffsetWide(31, 0))
-  val MtvecTrapTarget = Mux(
-    Mtvec_rdata(1, 0) === 1.U && ExceptionCause(31),
-    MtvecBase + CauseOffset, MtvecBase)
-  val StvecTrapTarget =
+  val mtvecBase = Cat(mtvecReadData(XLEN - 1, 2), 0.U(2.W))
+  val causeOffsetWide = exceptionCause(29, 0) << 2
+  val causeOffset = widen32(causeOffsetWide(31, 0))
+  val mtvecTrapTarget = Mux(
+    mtvecReadData(1, 0) === 1.U && exceptionCause(31),
+    mtvecBase + causeOffset, mtvecBase)
+  val stvecTrapTarget =
     if (hasS) {
-      val StvecBase = Cat(Stvec_rdata(XLEN - 1, 2), 0.U(2.W))
-      Mux(Stvec_rdata(1, 0) === 1.U && ExceptionCause(31),
-        StvecBase + CauseOffset, StvecBase)
+      val stvecBase = Cat(stvecReadData(XLEN - 1, 2), 0.U(2.W))
+      Mux(stvecReadData(1, 0) === 1.U && exceptionCause(31),
+        stvecBase + causeOffset, stvecBase)
     } else 0.U(XLEN.W)
 
-  io.ExceptionTaken := ExceptionCommit || MretCommit ||
-    (if (hasS) SretCommit else false.B)
+  io.ExceptionTaken := exceptionCommit || mretCommit ||
+    (if (hasS) sretCommit else false.B)
   io.ExceptionTarget := (
     if (hasS) {
       Mux(
-        ExceptionCommit,
-        Mux(TrapToS, StvecTrapTarget, MtvecTrapTarget),
-        Mux(MretCommit, Mepc_rdata, Sepc_rdata)
+        exceptionCommit,
+        Mux(trapToS, stvecTrapTarget, mtvecTrapTarget),
+        Mux(mretCommit, mepcReadData, sepcReadData)
       )
     } else {
       // HAS_S=n：不存在 S 入口；异常/中断进入 M，MRET 返回 mepc。
-      Mux(ExceptionCommit, MtvecTrapTarget, Mepc_rdata)
+      Mux(exceptionCommit, mtvecTrapTarget, mepcReadData)
     }
   )
 
   // 退休级快照表示本指令执行后的 CSR 状态。高半区也要带上 RV64
   // mstatus.SXL/UXL，保证 DiffTest 的 CSR 视图与 CSR 读口一致。
-  io.StateMstatus := MstatusArchValue(MuxCase(Mstatus_rdata,
+  io.StateMstatus := mstatusArchValue(MuxCase(mstatusReadData,
     Seq(
-      ExceptionCommit -> MstatusExceptionData,
-      MretCommit -> MstatusMretData
-    ) ++ (if (hasS) Seq(SretCommit -> MstatusSretStateData) else Seq.empty) ++
-      Seq(MstatusWen -> MstatusCSRData, SstatusFsWen -> SstatusFsWriteData,
-        FpCsrWriteIntent -> FsDirtyValue,
-        FsDirtyCommit -> FsDirtyValue)))
-  val MtvecCSRData = CSRWriteData(Mtvec_rdata)
-  val MtvecLegalMode = Mux(MtvecCSRData(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
-  io.StateMtvec := Mux(CSRWen && IsCSRAddress(CSR_MTVEC),
-    Cat(MtvecCSRData(XLEN - 1, 2), MtvecLegalMode), Mtvec_rdata)
-  io.StateMepc := Mux(ExceptionCommit && !TrapToS,
-    AlignEPC(io.pc),
-    Mux(MepcWen, AlignEPC(CSRWriteData(Mepc_rdata)), Mepc_rdata))
-  io.StateMcause := Mux(ExceptionCommit && !TrapToS, WidenCause32(ExceptionCause),
-    Mux(McauseWen, CSRWriteData(Mcause_rdata), Mcause_rdata))
+      exceptionCommit -> mstatusExceptionData,
+      mretCommit -> mstatusMretData
+    ) ++ (if (hasS) Seq(sretCommit -> mstatusSretStateData) else Seq.empty) ++
+      Seq(mstatusWriteEnable -> mstatusCSRData, sstatusFsWriteEnable -> sstatusFsWriteData,
+        fpCSRWriteIntent -> fsDirtyValue,
+        fsDirtyCommit -> fsDirtyValue)))
+  val mtvecCSRData = csrWriteData(mtvecReadData)
+  val mtvecLegalMode = Mux(mtvecCSRData(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
+  io.StateMtvec := Mux(csrWriteEnable && isCSRAddress(csrMtvec),
+    Cat(mtvecCSRData(XLEN - 1, 2), mtvecLegalMode), mtvecReadData)
+  io.StateMepc := Mux(exceptionCommit && !trapToS,
+    alignEPC(io.pc),
+    Mux(mepcWriteEnable, alignEPC(csrWriteData(mepcReadData)), mepcReadData))
+  io.StateMcause := Mux(exceptionCommit && !trapToS, widenCause32(exceptionCause),
+    Mux(mcauseWriteEnable, csrWriteData(mcauseReadData), mcauseReadData))
   // 只在 trap 提交拍给出本次写入的 tval；普通指令/软件写 CSR 不参与
   // DiffTest 的 trap 注入。
-  io.StateTval := Mux(ExceptionCommit, TrapTvalValue, 0.U(XLEN.W))
-  io.McounterenOut := Mcounteren
-  io.ScounterenOut := Scounteren_rdata
+  io.StateTval := Mux(exceptionCommit, trapTvalValue, 0.U(XLEN.W))
+  io.McounterenOut := mcounteren
+  io.ScounterenOut := scounterenReadData
   for (entry <- 0 until 16) {
-    io.PmpCfg(entry) := PmpcfgReg(entry / PmpEntriesPerCfg)(
-      8 * (entry % PmpEntriesPerCfg) + 7,
-      8 * (entry % PmpEntriesPerCfg)
+    io.PMPConfig(entry) := pmpcfgReg(entry / pmpEntriesPerConfig)(
+      8 * (entry % pmpEntriesPerConfig) + 7,
+      8 * (entry % pmpEntriesPerConfig)
     )
-    io.PmpAddr(entry) := PmpaddrReg(entry)
+    io.PMPAddress(entry) := pmpaddrReg(entry)
   }
 }

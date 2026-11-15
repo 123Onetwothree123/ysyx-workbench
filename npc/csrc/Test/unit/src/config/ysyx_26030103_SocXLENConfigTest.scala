@@ -29,7 +29,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
       )
       withClue(s"CPU XLEN=$cpuXlen, SoC XLEN=$socXlen: ") {
         config.EffectiveSocXLEN should be(expectedSocXlen)
-        config.SocXLENNeedsAxiBridge should be(expectedSocXlen == 64)
+        config.SocXLENNeedsAXIBridge should be(expectedSocXlen == 64)
       }
     }
   }
@@ -44,7 +44,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
         SocXLEN = if (cpuXlen == 32) 64 else 32
       )
       config.EffectiveSocXLEN should be(cpuXlen)
-      config.SocXLENNeedsAxiBridge should be(cpuXlen == 64)
+      config.SocXLENNeedsAXIBridge should be(cpuXlen == 64)
     }
   }
 
@@ -53,7 +53,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
     config.SocXLENFollowCpu should be(false)
     config.SocXLEN should be(32)
     config.EffectiveSocXLEN should be(32)
-    config.SocXLENNeedsAxiBridge should be(false)
+    config.SocXLENNeedsAXIBridge should be(false)
   }
 
   it should "拒绝 FOLLOW_CPU=n 时 32/64 之外的 SOC_XLEN" in {
@@ -76,19 +76,19 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
     val Soc64 = ysyx_26030103_NPCConfig(
       XLEN = 64,
       AddressWidth = 64,
-      ResetAddr = HighBase,
+      ResetAddress = HighBase,
       PMARegions = HighRegions,
       SocXLENFollowCpu = false,
       SocXLEN = 64
     )
     Soc64.EffectiveSocXLEN should be(64)
-    Soc64.SocXLENNeedsAxiBridge should be(true)
+    Soc64.SocXLENNeedsAXIBridge should be(true)
 
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
         XLEN = 64,
         AddressWidth = 64,
-        ResetAddr = HighBase,
+        ResetAddress = HighBase,
         PMARegions = HighRegions,
         SocXLENFollowCpu = false,
         SocXLEN = 32

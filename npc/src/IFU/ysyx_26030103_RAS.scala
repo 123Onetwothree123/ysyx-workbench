@@ -12,8 +12,8 @@ class ysyx_26030103_RAS(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Module {
   require(RASBits >= 0 && RASBits < 31, "RASBits must be between 0 and 30")
-  val Depth = 1 << RASBits
-  val PointerWidth = RASBits.max(1)
+  val depth = 1 << RASBits
+  val pointerWidth = RASBits.max(1)
   val io = IO(new Bundle {
     // 查询(组合逻辑, IFU取指级和响应级共用当前栈顶)
     val top = Output(UInt(AddressWidth.W))
@@ -27,17 +27,17 @@ class ysyx_26030103_RAS(
     val flush = Input(Bool())
   })
 
-  val buf = Reg(Vec(Depth, UInt(AddressWidth.W)))
-  val top = RegInit(0.U(PointerWidth.W)) // 下一个写入位置
+  val buf = Reg(Vec(depth, UInt(AddressWidth.W)))
+  val top = RegInit(0.U(pointerWidth.W)) // 下一个写入位置
   val count = RegInit(0.U((RASBits + 1).W))
-  val TopEntry =
-    if (Depth == 1) 0.U(PointerWidth.W)
+  val topEntry =
+    if (depth == 1) 0.U(pointerWidth.W)
     else (top - 1.U)(RASBits - 1, 0)
-  val WriteEntry = if (Depth == 1) 0.U(PointerWidth.W) else top
-  val IncrementedTop = if (Depth == 1) 0.U(PointerWidth.W) else top + 1.U
-  val DecrementedTop = if (Depth == 1) 0.U(PointerWidth.W) else top - 1.U
+  val writeEntry = if (depth == 1) 0.U(pointerWidth.W) else top
+  val incrementedTop = if (depth == 1) 0.U(pointerWidth.W) else top + 1.U
+  val decrementedTop = if (depth == 1) 0.U(pointerWidth.W) else top - 1.U
 
-  io.top := buf(TopEntry)
+  io.top := buf(topEntry)
   io.nonempty := count =/= 0.U
 
   // JALR协程hint可以要求同拍pop-then-push。非空时用新返回地址
@@ -47,21 +47,21 @@ class ysyx_26030103_RAS(
     count := 0.U
   }.elsewhen(io.push_valid && io.pop_valid) {
     when(count =/= 0.U) {
-      buf(TopEntry) := io.push_addr
+      buf(topEntry) := io.push_addr
     }.otherwise {
-      buf(WriteEntry) := io.push_addr
-      top := IncrementedTop
+      buf(writeEntry) := io.push_addr
+      top := incrementedTop
       count := 1.U
     }
   }.elsewhen(io.push_valid) {
-    buf(WriteEntry) := io.push_addr
-    top := IncrementedTop
-    when(count < Depth.U) {
+    buf(writeEntry) := io.push_addr
+    top := incrementedTop
+    when(count < depth.U) {
       count := count + 1.U
     } // 已满则覆盖最旧, count不变
   }.elsewhen(io.pop_valid) {
     when(count =/= 0.U) {
-      top := DecrementedTop
+      top := decrementedTop
       count := count - 1.U
     }
   }

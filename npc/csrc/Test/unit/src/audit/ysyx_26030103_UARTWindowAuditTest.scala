@@ -89,15 +89,15 @@ class ysyx_26030103_UARTWindowAuditTest extends AnyFlatSpec with Matchers {
       dut.clock.step()
 
       // 0x08 在 16550 寄存器窗口之外，不能别名成 RBR 并触发 FIFO 弹出。
-      val (_, badResp) = read(dut, 0x10000008L, 2)
-      badResp should be(3) // DECERR
+      val (_, badResponse) = read(dut, 0x10000008L, 2)
+      badResponse should be(3) // DECERR
 
-      val (lsr, lsrResp) = read(dut, 0x10000005L, 0)
-      lsrResp should be(0)
+      val (lsr, lsrResponse) = read(dut, 0x10000005L, 0)
+      lsrResponse should be(0)
       (lsr & 1) should be(BigInt(1))
 
-      val (rbr, rbrResp) = read(dut, 0x10000000L, 0)
-      rbrResp should be(0)
+      val (rbr, rbrResponse) = read(dut, 0x10000000L, 0)
+      rbrResponse should be(0)
       // UART 读数据会复制到四个字节通道，这里检查 LSU 实际选中的低字节。
       (rbr & 0xff) should be(BigInt("5a", 16))
 

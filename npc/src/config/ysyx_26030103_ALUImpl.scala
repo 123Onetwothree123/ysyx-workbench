@@ -23,7 +23,7 @@ object ysyx_26030103_ALUImpl {
 
   val All: Seq[ysyx_26030103_ALUImpl] = Seq(Standard, Compact, External)
 
-  def FromString(s: String): ysyx_26030103_ALUImpl = s.trim.toLowerCase match {
+  def FromString(value: String): ysyx_26030103_ALUImpl = value.trim.toLowerCase match {
     case "standard" => Standard
     case "compact"  => Compact
     case "external" => External
@@ -59,8 +59,8 @@ object ysyx_26030103_ALUAdderImpl {
   val All: Seq[ysyx_26030103_ALUAdderImpl] =
     Seq(Native, Ripple, CarrySelect, CarryLookahead, Elau)
 
-  def FromString(s: String): ysyx_26030103_ALUAdderImpl =
-    s.trim.toLowerCase match {
+  def FromString(value: String): ysyx_26030103_ALUAdderImpl =
+    value.trim.toLowerCase match {
       case "native"          => Native
       case "ripple"          => Ripple
       case "carry_select"    => CarrySelect
@@ -97,8 +97,8 @@ object ysyx_26030103_ElauSpeed {
 
   val All: Seq[ysyx_26030103_ElauSpeed] = Seq(Slow, Medium, Fast)
 
-  def FromString(s: String): ysyx_26030103_ElauSpeed =
-    s.trim.toLowerCase match {
+  def FromString(value: String): ysyx_26030103_ElauSpeed =
+    value.trim.toLowerCase match {
       case "slow"   => Slow
       case "medium" => Medium
       case "fast"   => Fast

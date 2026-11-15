@@ -90,9 +90,9 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
       intWord: Boolean = false
   ): (BigInt, BigInt) = {
     waitUntil(dut, dut.io.req.ready.peek().litToBoolean)
-    dut.io.req.bits.op.poke(op.U(ysyx_26030103_FpuOp.Width.W))
-    dut.io.req.bits.fmt.poke(fmt.U(ysyx_26030103_FpuFmt.Width.W))
-    dut.io.req.bits.rm.poke(rm.U(ysyx_26030103_FpuRm.Width.W))
+    dut.io.req.bits.op.poke(op.U(ysyx_26030103_FPUOp.Width.W))
+    dut.io.req.bits.fmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
+    dut.io.req.bits.rm.poke(rm.U(ysyx_26030103_FPURm.Width.W))
     dut.io.req.bits.intWord.poke(intWord.B)
     dut.io.req.bits.rs1.poke(rs1.U(flen.W))
     dut.io.req.bits.rs2.poke(rs2.U(flen.W))
@@ -179,15 +179,15 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
       val four = box(f32(4.0f))
 
       withClue("FADD/FSUB/FMUL: ") {
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 0, 0,
           box(f32(1.5f)), box(f32(2.25f))) should be((box(f32(3.75f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 1, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 1, 0,
           f64(1.5), f64(2.25)) should be((f64(3.75), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FSub.Int, 1, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FSub.Int, 1, 0,
           f64(1.0), f64(2.0)) should be((f64(-1.0), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FMul.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMul.Int, 0, 0,
           box(f32(1.5f)), two) should be((box(f32(3.0f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FMul.Int, 1, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMul.Int, 1, 0,
           f64(-1.5), f64(4.0)) should be((f64(-6.0), 0))
       }
 
@@ -195,71 +195,71 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
         // 1.0 + 2^-24 恰好落在两个 S 数中间。
         val half = f32(math.pow(2.0, -24.0).toFloat)
         val up = f32(1.0f + math.pow(2.0, -23.0).toFloat)
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 0,
-          ysyx_26030103_FpuRm.RNE.Int, one, box(half)) should be(
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 0,
+          ysyx_26030103_FPURm.RNE.Int, one, box(half)) should be(
           (one, NX))
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 0,
-          ysyx_26030103_FpuRm.RMM.Int, one, box(half)) should be(
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 0,
+          ysyx_26030103_FPURm.RMM.Int, one, box(half)) should be(
           (box(up), NX))
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 0,
-          ysyx_26030103_FpuRm.RUP.Int, one, box(half)) should be(
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 0,
+          ysyx_26030103_FPURm.RUP.Int, one, box(half)) should be(
           (box(up), NX))
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 0,
-          ysyx_26030103_FpuRm.RDN.Int, one, box(half)) should be((one, NX))
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 0,
-          ysyx_26030103_FpuRm.RTZ.Int, one, box(half)) should be((one, NX))
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 0,
+          ysyx_26030103_FPURm.RDN.Int, one, box(half)) should be((one, NX))
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 0,
+          ysyx_26030103_FPURm.RTZ.Int, one, box(half)) should be((one, NX))
         // D 格式 tie-to-even。
         val oneD = f64(1.0)
         val halfD = BigInt("3ca0000000000000", 16)
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 1,
-          ysyx_26030103_FpuRm.RNE.Int, oneD, halfD) should be((oneD, NX))
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 1,
-          ysyx_26030103_FpuRm.RMM.Int, oneD, halfD) should be(
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 1,
+          ysyx_26030103_FPURm.RNE.Int, oneD, halfD) should be((oneD, NX))
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 1,
+          ysyx_26030103_FPURm.RMM.Int, oneD, halfD) should be(
           (BigInt("3ff0000000000001", 16), NX))
         // DYN 在 wrapper 内按 RNE 处理（CPU 集成前必须先解析 frm）。
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 0,
-          ysyx_26030103_FpuRm.DYN.Int, one, box(half)) should be((one, NX))
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 0,
+          ysyx_26030103_FPURm.DYN.Int, one, box(half)) should be((one, NX))
       }
 
       withClue("FMA 符号: ") {
-        send(dut, 64, ysyx_26030103_FpuOp.FFma.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FFma.Int, 0, 0,
           two, three, four) should be((box(f32(10.0f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FFms.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FFms.Int, 0, 0,
           two, three, four) should be((box(f32(2.0f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FFnma.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FFnma.Int, 0, 0,
           two, three, four) should be((box(f32(-10.0f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FFnms.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FFnms.Int, 0, 0,
           two, three, four) should be((box(f32(-2.0f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FFma.Int, 1, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FFma.Int, 1, 0,
           f64(2.0), f64(3.0), f64(-4.0)) should be((f64(2.0), 0))
       }
 
       withClue("FMIN/FMAX: ") {
         val negZero = box(f32(-0.0f))
         val posZero = box(f32(0.0f))
-        send(dut, 64, ysyx_26030103_FpuOp.FMin.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMin.Int, 0, 0,
           negZero, posZero) should be((negZero, 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FMax.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMax.Int, 0, 0,
           negZero, posZero) should be((posZero, 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FMin.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMin.Int, 0, 0,
           box(QNaN32), two) should be((two, 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FMin.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMin.Int, 0, 0,
           box(SNaN32), two) should be((two, NV))
-        send(dut, 64, ysyx_26030103_FpuOp.FMin.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMin.Int, 0, 0,
           box(QNaN32), box(SNaN32)) should be((BoxedNaN32, NV))
       }
 
       withClue("FSGNJ/FCLASS: ") {
         val negB = box(f32(-2.0f))
-        send(dut, 64, ysyx_26030103_FpuOp.FSgnj.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FSgnj.Int, 0, 0,
           one, negB) should be((box(f32(-1.0f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FSgnjn.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FSgnjn.Int, 0, 0,
           one, two) should be((box(f32(-1.0f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FSgnjx.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FSgnjx.Int, 0, 0,
           box(f32(-1.0f)), negB) should be((box(f32(1.0f)), 0))
 
         def cls(bits: BigInt): BigInt =
-          send(dut, 64, ysyx_26030103_FpuOp.FClass.Int, 0, 0, box(bits))._1
+          send(dut, 64, ysyx_26030103_FPUOp.FClass.Int, 0, 0, box(bits))._1
 
         cls(BigInt(0xff800000L)) should be(BigInt(1))
         cls(box(f32(-1.0f))) should be(BigInt(2))
@@ -274,88 +274,88 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
       }
 
       withClue("FEQ/FLT/FLE: ") {
-        send(dut, 64, ysyx_26030103_FpuOp.FEq.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FEq.Int, 0, 0,
           one, two) should be((BigInt(0), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FLt.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FLt.Int, 0, 0,
           one, two) should be((BigInt(1), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FLe.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FLe.Int, 0, 0,
           one, two) should be((BigInt(1), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FLe.Int, 1, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FLe.Int, 1, 0,
           f64(2.0), f64(2.0)) should be((BigInt(1), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FEq.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FEq.Int, 0, 0,
           box(QNaN32), one) should be((BigInt(0), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FEq.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FEq.Int, 0, 0,
           box(SNaN32), one) should be((BigInt(0), NV))
         // RISC-V 的 FLT/FLE 是 signaling 比较：qNaN 也必须置 NV。
-        send(dut, 64, ysyx_26030103_FpuOp.FLt.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FLt.Int, 0, 0,
           box(QNaN32), one) should be((BigInt(0), NV))
-        send(dut, 64, ysyx_26030103_FpuOp.FLe.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FLe.Int, 0, 0,
           one, box(QNaN32)) should be((BigInt(0), NV))
         // D 格式走同一套比较语义，不能只在 S 格式修复。
-        send(dut, 64, ysyx_26030103_FpuOp.FLt.Int, 1, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FLt.Int, 1, 0,
           f64(Double.NaN), f64(1.0)) should be((BigInt(0), NV))
       }
 
       withClue("NaN 与标志: ") {
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 0, 0,
           one, box(SNaN32)) should be((BoxedNaN32, NV))
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 0, 0,
           one, box(QNaN32)) should be((BoxedNaN32, 0))
         // 未 NaN-box 的 S 输入按规范视为规范 NaN。
-        send(dut, 64, ysyx_26030103_FpuOp.FAdd.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FAdd.Int, 0, 0,
           one, BigInt(0x3f800000L)) should be((BoxedNaN32, 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FMul.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMul.Int, 0, 0,
           box(f32(0.0f)), box(Inf32)) should be((BoxedNaN32, NV))
-        send(dut, 64, ysyx_26030103_FpuOp.FMul.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMul.Int, 0, 0,
           box(f32(java.lang.Float.MAX_VALUE)), two) should be(
           (box(Inf32), OF | NX))
       }
 
       withClue("FCVT: ") {
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtIntToFp.Int, 0,
-          ysyx_26030103_FpuRm.RNE.Int, 42) should be((box(f32(42.0f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToInt.Int, 0,
-          ysyx_26030103_FpuRm.RTZ.Int, box(f32(42.5f))) should be((
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtIntToFP.Int, 0,
+          ysyx_26030103_FPURm.RNE.Int, 42) should be((box(f32(42.0f)), 0))
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtFPToInt.Int, 0,
+          ysyx_26030103_FPURm.RTZ.Int, box(f32(42.5f))) should be((
           BigInt(42), NX))
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToInt.Int, 0,
-          ysyx_26030103_FpuRm.RTZ.Int, box(f32(-42.5f))) should be((
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtFPToInt.Int, 0,
+          ysyx_26030103_FPURm.RTZ.Int, box(f32(-42.5f))) should be((
           BigInt(-42) & BigInt("ffffffffffffffff", 16), NX))
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtUIntToFp.Int, 1,
-          ysyx_26030103_FpuRm.RNE.Int, 42) should be((f64(42.0), 0))
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtUIntToFP.Int, 1,
+          ysyx_26030103_FPURm.RNE.Int, 42) should be((f64(42.0), 0))
         // W/WU 只使用低 32 位：RV64 下 -1 的 FCVT.D.WU 是 0xffffffff。
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtUIntToFp.Int, 1,
-          ysyx_26030103_FpuRm.RNE.Int, BigInt("ffffffffffffffff", 16),
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtUIntToFP.Int, 1,
+          ysyx_26030103_FPURm.RNE.Int, BigInt("ffffffffffffffff", 16),
           intWord = true) should be((f64(4294967295.0), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtIntToFp.Int, 1,
-          ysyx_26030103_FpuRm.RNE.Int, BigInt("fffffffffffffff9", 16),
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtIntToFP.Int, 1,
+          ysyx_26030103_FPURm.RNE.Int, BigInt("fffffffffffffff9", 16),
           intWord = true) should be((f64(-7.0), 0))
         // FCVT.W.D/WU 的 32 位结果都要按 W 型规则符号扩展到 XLEN；
         // 负的 WU 结果只报 NV 并返回 0。
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToInt.Int, 1,
-          ysyx_26030103_FpuRm.RTZ.Int, f64(-1.5),
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtFPToInt.Int, 1,
+          ysyx_26030103_FPURm.RTZ.Int, f64(-1.5),
           intWord = true) should be((
           BigInt("ffffffffffffffff", 16), NX))
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToUInt.Int, 1,
-          ysyx_26030103_FpuRm.RTZ.Int, f64(-1.0),
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtFPToUInt.Int, 1,
+          ysyx_26030103_FPURm.RTZ.Int, f64(-1.0),
           intWord = true) should be((BigInt(0), NV))
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToUInt.Int, 1,
-          ysyx_26030103_FpuRm.RTZ.Int, f64(-1.0)) should be((
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtFPToUInt.Int, 1,
+          ysyx_26030103_FPURm.RTZ.Int, f64(-1.0)) should be((
           BigInt(0), NV))
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToFp.Int, 0,
-          ysyx_26030103_FpuRm.RNE.Int, f64(1.5)) should be((
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtFPToFP.Int, 0,
+          ysyx_26030103_FPURm.RNE.Int, f64(1.5)) should be((
           box(f32(1.5f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FCvtFpToFp.Int, 1,
-          ysyx_26030103_FpuRm.RNE.Int, box(f32(1.5f))) should be((
+        send(dut, 64, ysyx_26030103_FPUOp.FCvtFPToFP.Int, 1,
+          ysyx_26030103_FPURm.RNE.Int, box(f32(1.5f))) should be((
           f64(1.5), 0))
       }
 
       withClue("FMV: ") {
         // FMV.X.W：低 32 位符号扩展到 64 位。
-        send(dut, 64, ysyx_26030103_FpuOp.FMvFpToInt.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMvFPToInt.Int, 0, 0,
           box(BigInt(0xdeadbeefL))) should be((
           BigInt("ffffffffdeadbeef", 16), 0))
         // FMV.W.X：写入低 32 位并 NaN-box。
-        send(dut, 64, ysyx_26030103_FpuOp.FMvIntToFp.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FMvIntToFP.Int, 0, 0,
           BigInt(0xdeadbeefL)) should be((box(BigInt(0xdeadbeefL)), 0))
       }
     }
@@ -368,7 +368,7 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
 
       withClue("FDIV 握手: ") {
         waitUntil(dut, dut.io.req.ready.peek().litToBoolean)
-        dut.io.req.bits.op.poke(ysyx_26030103_FpuOp.FDiv)
+        dut.io.req.bits.op.poke(ysyx_26030103_FPUOp.FDiv)
         dut.io.req.bits.fmt.poke(0.U(2.W))
         dut.io.req.bits.rm.poke(0.U(3.W))
         dut.io.req.bits.rs1.poke(ten.U(64.W))
@@ -401,26 +401,26 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
       }
 
       withClue("S/D 除法与开方: ") {
-        send(dut, 64, ysyx_26030103_FpuOp.FSqrt.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FSqrt.Int, 0, 0,
           box(f32(9.0f))) should be((box(f32(3.0f)), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FDiv.Int, 1, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FDiv.Int, 1, 0,
           f64(1.0), f64(8.0)) should be((f64(0.125), 0))
-        send(dut, 64, ysyx_26030103_FpuOp.FSqrt.Int, 1, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FSqrt.Int, 1, 0,
           f64(2.25)) should be((f64(1.5), 0))
       }
 
       withClue("FDIV/FSQRT 特殊值与 underflow: ") {
-        send(dut, 64, ysyx_26030103_FpuOp.FDiv.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FDiv.Int, 0, 0,
           box(f32(1.0f)), box(f32(0.0f))) should be((box(Inf32), DZ))
-        send(dut, 64, ysyx_26030103_FpuOp.FSqrt.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FSqrt.Int, 0, 0,
           box(f32(-1.0f))) should be((BoxedNaN32, NV))
-        send(dut, 64, ysyx_26030103_FpuOp.FDiv.Int, 0, 0,
+        send(dut, 64, ysyx_26030103_FPUOp.FDiv.Int, 0, 0,
           box(f32(0.0f)), box(f32(0.0f))) should be((BoxedNaN32, NV))
 
         val minNormal = java.lang.Float.intBitsToFloat(0x00800000)
         val (ufResult, ufFlags) = send(
-          dut, 64, ysyx_26030103_FpuOp.FDiv.Int, 0,
-          ysyx_26030103_FpuRm.RNE.Int,
+          dut, 64, ysyx_26030103_FPUOp.FDiv.Int, 0,
+          ysyx_26030103_FPURm.RNE.Int,
           box(f32(minNormal)), box(f32(3.0f)))
         ufResult should be(box(f32(minNormal / 3.0f)))
         (ufFlags & (UF | NX)) should be(UF | NX)
@@ -430,15 +430,15 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
 
   it should "FLEN=32 配置只生成并运行 S 格式" in {
     sim32 { dut =>
-      send(dut, 32, ysyx_26030103_FpuOp.FAdd.Int, 0, 0,
+      send(dut, 32, ysyx_26030103_FPUOp.FAdd.Int, 0, 0,
         f32(1.5f), f32(2.25f)) should be((f32(3.75f), 0))
-      send(dut, 32, ysyx_26030103_FpuOp.FMul.Int, 0, 0,
+      send(dut, 32, ysyx_26030103_FPUOp.FMul.Int, 0, 0,
         f32(1.5f), f32(2.0f)) should be((f32(3.0f), 0))
-      send(dut, 32, ysyx_26030103_FpuOp.FCvtIntToFp.Int, 0,
-        ysyx_26030103_FpuRm.RNE.Int, 7) should be((f32(7.0f), 0))
-      send(dut, 32, ysyx_26030103_FpuOp.FDiv.Int, 0, 0,
+      send(dut, 32, ysyx_26030103_FPUOp.FCvtIntToFP.Int, 0,
+        ysyx_26030103_FPURm.RNE.Int, 7) should be((f32(7.0f), 0))
+      send(dut, 32, ysyx_26030103_FPUOp.FDiv.Int, 0, 0,
         f32(10.0f), f32(4.0f)) should be((f32(2.5f), 0))
-      send(dut, 32, ysyx_26030103_FpuOp.FSqrt.Int, 0, 0,
+      send(dut, 32, ysyx_26030103_FPUOp.FSqrt.Int, 0, 0,
         f32(9.0f)) should be((f32(3.0f), 0))
     }
   }

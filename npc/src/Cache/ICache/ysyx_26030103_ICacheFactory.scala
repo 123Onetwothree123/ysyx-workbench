@@ -20,12 +20,12 @@ object ysyx_26030103_ICacheFactory {
   ): ysyx_26030103_ICacheBase = {
     // HARDWARE_SNOOP 只在显式选择时生成 store 地址比较/失效逻辑；
     // ICACHE=n 时没有可失效的阵列，模式在日志中标注为未生效。
-    val Snoop = config.ICacheEnable &&
+    val snoop = config.ICacheEnable &&
       config.ICacheCoherence == ysyx_26030103_ICacheCoherence.HardwareSnoop
     // DMA 行失效只由 DMA_COHERENCE=hardware_snoop 生成；ICACHE=n 时没有
     // 可失效的阵列，端口在叶模块内恒 ready。
-    val DmaSnoop = config.ICacheEnable &&
-      config.DmaCoherence == ysyx_26030103_DmaCoherence.HardwareSnoop
+    val dmaSnoop = config.ICacheEnable &&
+      config.DMACoherence == ysyx_26030103_DMACoherence.HardwareSnoop
     config.ICacheStorage match {
       case ysyx_26030103_CacheStorage.Reg =>
         Module(
@@ -35,14 +35,14 @@ object ysyx_26030103_ICacheFactory {
             IndexBits = config.ICacheIndexBits,
             AddressWidth = config.AddressWidth,
             DataWidth = config.EffectiveInternalBusWidth,
-            Vipt = config.MMU.cacheMode == "vipt",
-            ViptAliasSafe = config.ICacheViptAliasHardware,
-            ViptAliasScanMode = config.ICacheViptAliasScanMode,
-            ViptAliasScanWidth = config.ICacheViptAliasScanWidth,
-            ViptAliasDirectoryEntries =
-              config.ICacheViptAliasDirectoryEntries,
-            Snoop = Snoop,
-            DmaSnoop = DmaSnoop,
+            VIPT = config.MMU.cacheMode == "vipt",
+            VIPTAliasSafe = config.ICacheVIPTAliasHardware,
+            VIPTAliasScanMode = config.ICacheVIPTAliasScanMode,
+            VIPTAliasScanWidth = config.ICacheVIPTAliasScanWidth,
+            VIPTAliasDirectoryEntries =
+              config.ICacheVIPTAliasDirectoryEntries,
+            Snoop = snoop,
+            DMASnoop = dmaSnoop,
             DrainTimeout = config.ICacheDrainTimeout,
             PMARegions = config.CachePMARegions
           )
@@ -55,14 +55,14 @@ object ysyx_26030103_ICacheFactory {
             IndexBits = config.ICacheIndexBits,
             AddressWidth = config.AddressWidth,
             DataWidth = config.EffectiveInternalBusWidth,
-            Vipt = config.MMU.cacheMode == "vipt",
-            ViptAliasSafe = config.ICacheViptAliasHardware,
-            ViptAliasScanMode = config.ICacheViptAliasScanMode,
-            ViptAliasScanWidth = config.ICacheViptAliasScanWidth,
-            ViptAliasDirectoryEntries =
-              config.ICacheViptAliasDirectoryEntries,
-            Snoop = Snoop,
-            DmaSnoop = DmaSnoop,
+            VIPT = config.MMU.cacheMode == "vipt",
+            VIPTAliasSafe = config.ICacheVIPTAliasHardware,
+            VIPTAliasScanMode = config.ICacheVIPTAliasScanMode,
+            VIPTAliasScanWidth = config.ICacheVIPTAliasScanWidth,
+            VIPTAliasDirectoryEntries =
+              config.ICacheVIPTAliasDirectoryEntries,
+            Snoop = snoop,
+            DMASnoop = dmaSnoop,
             DrainTimeout = config.ICacheDrainTimeout,
             PMARegions = config.CachePMARegions
           )
@@ -75,15 +75,15 @@ object ysyx_26030103_ICacheFactory {
             IndexBits = config.ICacheIndexBits,
             AddressWidth = config.AddressWidth,
             DataWidth = config.EffectiveInternalBusWidth,
-            Vipt = config.MMU.cacheMode == "vipt",
-            ViptAliasSafe = config.ICacheViptAliasHardware,
-            ViptAliasScanMode = config.ICacheViptAliasScanMode,
-            ViptAliasScanWidth = config.ICacheViptAliasScanWidth,
-            ViptAliasDirectoryEntries =
-              config.ICacheViptAliasDirectoryEntries,
+            VIPT = config.MMU.cacheMode == "vipt",
+            VIPTAliasSafe = config.ICacheVIPTAliasHardware,
+            VIPTAliasScanMode = config.ICacheVIPTAliasScanMode,
+            VIPTAliasScanWidth = config.ICacheVIPTAliasScanWidth,
+            VIPTAliasDirectoryEntries =
+              config.ICacheVIPTAliasDirectoryEntries,
             Bypass = false,
-            Snoop = Snoop,
-            DmaSnoop = DmaSnoop,
+            Snoop = snoop,
+            DMASnoop = dmaSnoop,
             DrainTimeout = config.ICacheDrainTimeout,
             PMARegions = config.CachePMARegions
           )

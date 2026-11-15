@@ -8,47 +8,47 @@ private[mem] trait LSUStage {
 
   def stageFsmBody(): Unit = {
     switch(stageState) {
-      is(StageIdle) {
-        when(StageInputValid && IsMemOp) {
-          StageInputReady := true.B
-          when(StageInputFire) {
+      is(stageIdle) {
+        when(stageInputValid && isMemOp) {
+          stageInputReady := true.B
+          when(stageInputFire) {
             stageState := Mux(
-              StageInputMisaligned || StageInputPmpFault,
-              StageDone,
-              StageWait
+              stageInputMisaligned || stageInputPMPFault,
+              stageDone,
+              stageWait
             )
           }
         }.otherwise {
           // 非访存指令单拍直通
-          StageInputReady := io.out.ready
-          io.out.valid := StageInputValid
+          stageInputReady := io.out.ready
+          io.out.valid := stageInputValid
         }
       }
-      is(StageWait) {
-        when(TransactionComplete) {
-          stageState := StageDone
+      is(stageWait) {
+        when(transactionComplete) {
+          stageState := stageDone
         }
       }
-      is(StageDone) {
+      is(stageDone) {
         io.out.valid := true.B
         // A successful completed instruction may be replaced in the same cycle
         // that it leaves the stage.  Memory replacements enter StageWait;
         // non-memory replacements are held as an already completed StageDone item.
-        StageInputReady := io.out.ready && !MemFaultReg
+        stageInputReady := io.out.ready && !memFaultReg
         when(io.out.fire) {
-          when(StageInputFire) {
-            when(IsMemOp) {
+          when(stageInputFire) {
+            when(isMemOp) {
               stageState := Mux(
-                StageInputMisaligned || StageInputPmpFault,
-                StageDone,
-                StageWait
+                stageInputMisaligned || stageInputPMPFault,
+                stageDone,
+                stageWait
               )
             }.otherwise {
-              MsgReg := StageInputBits
-              stageState := StageDone
+              messageReg := stageInputBits
+              stageState := stageDone
             }
           }.otherwise {
-            stageState := StageIdle
+            stageState := stageIdle
           }
         }
       }
@@ -56,30 +56,30 @@ private[mem] trait LSUStage {
   }
 
   def pendingStoreBody(): Unit = {
-    when(PendingStorePush) {
+    when(pendingStorePush) {
       if (WBufDepth == 1) {
-        PendingStore(0) := io.in.bits
-        PendingStoreTail := 0.U
+        pendingStore(0) := io.in.bits
+        pendingStoreTail := 0.U
       } else {
-        PendingStore(PendingStoreTail) := io.in.bits
-        PendingStoreTail := PendingStoreTail + 1.U
+        pendingStore(pendingStoreTail) := io.in.bits
+        pendingStoreTail := pendingStoreTail + 1.U
       }
     }
-    when(PendingStorePop) {
+    when(pendingStorePop) {
       if (WBufDepth == 1) {
-        PendingStoreHead := 0.U
+        pendingStoreHead := 0.U
       } else {
-        PendingStoreHead := PendingStoreHead + 1.U
+        pendingStoreHead := pendingStoreHead + 1.U
       }
     }
-    when(MemTrapCommit) {
+    when(memTrapCommit) {
       // 队首访存失败：年轻 store 尚未发总线，可全部安全撤销。
-      PendingStoreCount := 0.U
-      PendingStoreHead := 0.U
-      PendingStoreTail := 0.U
+      pendingStoreCount := 0.U
+      pendingStoreHead := 0.U
+      pendingStoreTail := 0.U
     }.otherwise {
-      PendingStoreCount := PendingStoreCount +
-        PendingStorePush.asUInt - PendingStorePop.asUInt
+      pendingStoreCount := pendingStoreCount +
+        pendingStorePush.asUInt - pendingStorePop.asUInt
     }
   }
 }

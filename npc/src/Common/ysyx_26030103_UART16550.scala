@@ -11,7 +11,7 @@ import chisel3.util._
 // 字节或读 IIR/写 THR 清除 pending 后自动撤销。
 class ysyx_26030103_UART16550(
     val Depth: Int = ysyx_26030103_KconfigDefaults.UartFifoDepth,
-    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.UartAddrWidth,
+    val AddressWidth: Int = ysyx_26030103_KconfigDefaults.UartAddressWidth,
     // THR 被占用、LSR.THRE=0 的仿真等待周期。没有真实波特率，该值只需
     // 让软件在写 THR 后能观察到 THRE 拉低，再看到 THRE/TEMT 重新置位。
     val TxHoldCycles: Int = ysyx_26030103_KconfigDefaults.UartTxHoldCycles,
@@ -23,7 +23,7 @@ class ysyx_26030103_UART16550(
   require(TxShiftCycles >= TxHoldCycles,
     "UART TxShiftCycles 必须不小于 TxHoldCycles")
 
-  private val OffsetBits = 3
+  private val offsetBits = 3
 
   val io = IO(new Bundle {
     // 仿真注入的串行接收字节。
@@ -31,10 +31,10 @@ class ysyx_26030103_UART16550(
     val rxData = Input(UInt(8.W))
     val rxReady = Output(Bool())
     // 寄存器读写端口：地址使用 UART 窗口内的字节偏移。
-    val rdAddr = Input(UInt(AddressWidth.W))
+    val rdAddress = Input(UInt(AddressWidth.W))
     val rdEn = Input(Bool())
     val rdData = Output(UInt(8.W))
-    val wrAddr = Input(UInt(AddressWidth.W))
+    val wrAddress = Input(UInt(AddressWidth.W))
     val wrEn = Input(Bool())
     val wrData = Input(UInt(8.W))
     // THR 写入的 host 可见副本。仅用于仿真器 marker/检查点触发，
@@ -45,8 +45,8 @@ class ysyx_26030103_UART16550(
     val irq = Output(Bool())
   })
 
-  val rdOffset = io.rdAddr(OffsetBits - 1, 0)
-  val wrOffset = io.wrAddr(OffsetBits - 1, 0)
+  val rdOffset = io.rdAddress(offsetBits - 1, 0)
+  val wrOffset = io.wrAddress(offsetBits - 1, 0)
 
   // 16550 的寄存器状态。复位值按常见实现：IER/FCR/LCR 等为 0；
   // 发送侧空闲，因此 LSR 的 THRE/TEMT 复位为 1。
@@ -63,10 +63,10 @@ class ysyx_26030103_UART16550(
   // 发送侧时序：thrHold 非零表示 THR 刚被写入、尚不能接收下一字节；
   // txShift 非零表示“移位器”仍在发送。两者都为 0 时 LSR 的
   // THRE/TEMT 同时为 1。计数器在晶振周期上递减，代表固定仿真延迟。
-  private val TxHoldBits = log2Ceil(TxHoldCycles + 1)
-  private val TxShiftBits = log2Ceil(TxShiftCycles + 1)
-  val thrHold = RegInit(0.U(TxHoldBits.W))
-  val txShift = RegInit(0.U(TxShiftBits.W))
+  private val txHoldBits = log2Ceil(TxHoldCycles + 1)
+  private val txShiftBits = log2Ceil(TxShiftCycles + 1)
+  val thrHold = RegInit(0.U(txHoldBits.W))
+  val txShift = RegInit(0.U(txShiftBits.W))
   when(thrHold =/= 0.U) { thrHold := thrHold - 1.U }
   when(txShift =/= 0.U) { txShift := txShift - 1.U }
 
@@ -106,8 +106,8 @@ class ysyx_26030103_UART16550(
 
   when(doPop) {
     // 队首被读走，其余元素前移。若同拍还有注入，新字节放到新的队尾。
-    for (i <- 0 until Depth - 1) {
-      rxQueue(i) := Mux((i + 1).U < rxCount, rxQueue(i + 1), 0.U)
+    for (index <- 0 until Depth - 1) {
+      rxQueue(index) := Mux((index + 1).U < rxCount, rxQueue(index + 1), 0.U)
     }
     when(doPush) {
       rxQueue(queueIndex(rxCount - 1.U)) := io.rxData

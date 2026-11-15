@@ -12,16 +12,16 @@ import _root_.ysyx_26030103.mmu._
   * translationValid 相连（translationValid 在 Bare/M bypass 时也会与
   * !pmpFault 相与），因此 PMP 拒绝的取指不能直接进入 ICache。
   */
-class ViptFetchPmpHarness extends Module {
+class VIPTFetchPMPHarness extends Module {
   val io = IO(new Bundle {
     val fetchValid = Input(Bool())
-    val fetchAddr = Input(UInt(32.W))
+    val fetchAddress = Input(UInt(32.W))
     val fetchReady = Output(Bool())
     val bypass = Input(Bool())
     val pmpFault = Input(Bool())
     val fault = Output(Bool())
     val faultCause = Output(UInt(4.W))
-    val faultVaddr = Output(UInt(32.W))
+    val faultVirtualAddress = Output(UInt(32.W))
     val kill = Input(Bool())
     val respValid = Output(Bool())
     val respFault = Output(Bool())
@@ -29,7 +29,7 @@ class ViptFetchPmpHarness extends Module {
     val respReady = Input(Bool())
     val axiARValid = Output(Bool())
     val axiARReady = Input(Bool())
-    val axiARAddr = Output(UInt(32.W))
+    val axiARAddress = Output(UInt(32.W))
   })
 
   val icache = Module(
@@ -38,12 +38,12 @@ class ViptFetchPmpHarness extends Module {
       BlockSizeLog2 = 4,
       IndexBits = 2,
       AddressWidth = 32,
-      Vipt = true
+      VIPT = true
     )
   )
   val immu = Module(
     new ysyx_26030103_IFUMMU(
-      ParallelVipt = true,
+      ParallelVIPT = true,
       XLEN = 32,
       AddressWidth = 32
     )
@@ -56,7 +56,7 @@ class ViptFetchPmpHarness extends Module {
   immu.io.flush := false.B
   immu.io.pmpFault := io.pmpFault
   immu.io.fetchValid := icache.io.fetch_xlate_pending
-  immu.io.fetchVaddr := icache.io.fetch_xlate_vaddr
+  immu.io.fetchVirtualAddress := icache.io.fetch_xlate_vaddr
   immu.io.cacheReady := icache.io.fetch_ready
   // bypass 场景不会发起页表请求；固定 ready 并保持无响应。
   immu.io.req.ready := true.B
@@ -65,10 +65,10 @@ class ViptFetchPmpHarness extends Module {
 
   // 与顶层 VIPT 分支完全一致的连接。
   icache.io.fetch_valid := io.fetchValid
-  icache.io.fetch_vaddr := io.fetchAddr
-  icache.io.fetch_addr := immu.io.fetchPaddr
+  icache.io.fetch_vaddr := io.fetchAddress
+  icache.io.fetch_addr := immu.io.fetchPhysicalAddress
   icache.io.fetch_paddr_valid := immu.io.translationValid
-  icache.io.fetch_paddr_vaddr := immu.io.fetchPaddrVaddr
+  icache.io.fetch_paddr_vaddr := immu.io.fetchPhysicalAddressVirtualAddress
   icache.io.kill := io.kill || immu.io.fault
   icache.io.flush := false.B
   icache.io.resp_ready := io.respReady
@@ -93,36 +93,36 @@ class ViptFetchPmpHarness extends Module {
   io.fetchReady := icache.io.fetch_ready
   io.fault := immu.io.fault
   io.faultCause := immu.io.faultCause
-  io.faultVaddr := immu.io.faultVaddr
+  io.faultVirtualAddress := immu.io.faultVirtualAddress
   io.respValid := icache.io.resp_valid
   io.respFault := icache.io.resp_fault
   io.respData := icache.io.resp_data
   io.axiARValid := icache.io.axi.AR.ARVALID
-  io.axiARAddr := icache.io.axi.AR.ARADDR
+  io.axiARAddress := icache.io.axi.AR.ARADDR
 }
 
-object ViptFetchPmpHarnessElaborate extends App {
+object VIPTFetchPMPHarnessElaborate extends App {
   val targetDir = args
     .sliding(2)
     .collectFirst { case Array("--target-dir", value) => value }
     .getOrElse("build/vipt-fetch-pmp-rtl")
-  emitVerilog(new ViptFetchPmpHarness, Array("--target-dir", targetDir))
+  emitVerilog(new VIPTFetchPMPHarness, Array("--target-dir", targetDir))
 }
 
 /** C 模式 IFU 定向测试外壳：只暴露取指/响应/装配输出端口。 */
 class IFUFetchFaultHarness extends Module {
   val io = IO(new Bundle {
-    val FetchAddr = Output(UInt(32.W))
+    val FetchAddress = Output(UInt(32.W))
     val FetchPC = Output(UInt(32.W))
     val FetchValid = Output(Bool())
     val FetchReady = Input(Bool())
 
-    val RespData = Input(UInt(32.W))
-    val RespValid = Input(Bool())
-    val RespReady = Output(Bool())
-    val RespExceptionValid = Input(Bool())
-    val RespExceptionCause = Input(UInt(4.W))
-    val RespAccessFaultResp = Input(UInt(2.W))
+    val ResponseData = Input(UInt(32.W))
+    val ResponseValid = Input(Bool())
+    val ResponseReady = Output(Bool())
+    val ResponseExceptionValid = Input(Bool())
+    val ResponseExceptionCause = Input(UInt(4.W))
+    val ResponseAccessFaultResponse = Input(UInt(2.W))
 
     val RedirectTarget = Input(UInt(32.W))
     val Redirect = Input(Bool())
@@ -146,23 +146,23 @@ class IFUFetchFaultHarness extends Module {
   // 起点故意落在字内高半字，构造跨字 32 位指令 ...ffe -> ...1000。
   val dut = Module(
     new ysyx_26030103_IFU(
-      resetAddr = 0x80000ffeL,
+      resetAddress = 0x80000ffeL,
       XLEN = 32,
       UseC = true
     )
   )
 
-  io.FetchAddr := dut.io.FetchAddr
+  io.FetchAddress := dut.io.FetchAddress
   io.FetchPC := dut.io.FetchPC
   io.FetchValid := dut.io.FetchValid
   dut.io.FetchReady := io.FetchReady
 
-  dut.io.RespData := io.RespData
-  dut.io.RespValid := io.RespValid
-  io.RespReady := dut.io.RespReady
-  dut.io.RespExceptionValid := io.RespExceptionValid
-  dut.io.RespExceptionCause := io.RespExceptionCause
-  dut.io.RespAccessFaultResp := io.RespAccessFaultResp
+  dut.io.ResponseData := io.ResponseData
+  dut.io.ResponseValid := io.ResponseValid
+  io.ResponseReady := dut.io.ResponseReady
+  dut.io.ResponseExceptionValid := io.ResponseExceptionValid
+  dut.io.ResponseExceptionCause := io.ResponseExceptionCause
+  dut.io.ResponseAccessFaultResponse := io.ResponseAccessFaultResponse
 
   dut.io.RedirectTarget := io.RedirectTarget
   dut.io.Redirect := io.Redirect

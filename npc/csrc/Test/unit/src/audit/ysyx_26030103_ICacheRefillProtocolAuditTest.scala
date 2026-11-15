@@ -21,7 +21,7 @@ import scala.collection.mutable
 class ysyx_26030103_ICacheRefillProtocolAuditTest
     extends AnyFlatSpec
     with Matchers {
-  private val AddrW     = 32
+  private val AddressW     = 32
   private val BlockLog2 = 4 // 16B/line，4 拍
   private val IndexBits = 4 // 16 组，serial 扫描足够长
   private val Line      = 0x80001000L
@@ -82,15 +82,15 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
           Enable = true,
           BlockSizeLog2 = BlockLog2,
           IndexBits = IndexBits,
-          AddressWidth = AddrW,
-          Vipt = viptScan,
-          ViptAliasSafe = viptScan,
-          ViptAliasScanMode =
-            if (viptScan) ysyx_26030103_ViptAliasScan.Serial
-            else ysyx_26030103_ViptAliasScan.AllSets,
-          ViptAliasScanWidth = 1,
+          AddressWidth = AddressW,
+          VIPT = viptScan,
+          VIPTAliasSafe = viptScan,
+          VIPTAliasScanMode =
+            if (viptScan) ysyx_26030103_VIPTAliasScan.Serial
+            else ysyx_26030103_VIPTAliasScan.AllSets,
+          VIPTAliasScanWidth = 1,
           Snoop = snoop,
-          DmaSnoop = dma,
+          DMASnoop = dma,
           PMARegions = Pma
         )
       case "sram" =>
@@ -98,15 +98,15 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
           Enable = true,
           BlockSizeLog2 = BlockLog2,
           IndexBits = IndexBits,
-          AddressWidth = AddrW,
-          Vipt = viptScan,
-          ViptAliasSafe = viptScan,
-          ViptAliasScanMode =
-            if (viptScan) ysyx_26030103_ViptAliasScan.Serial
-            else ysyx_26030103_ViptAliasScan.AllSets,
-          ViptAliasScanWidth = 1,
+          AddressWidth = AddressW,
+          VIPT = viptScan,
+          VIPTAliasSafe = viptScan,
+          VIPTAliasScanMode =
+            if (viptScan) ysyx_26030103_VIPTAliasScan.Serial
+            else ysyx_26030103_VIPTAliasScan.AllSets,
+          VIPTAliasScanWidth = 1,
           Snoop = snoop,
-          DmaSnoop = dma,
+          DMASnoop = dma,
           PMARegions = Pma
         )
       case other => throw new IllegalArgumentException(other)
@@ -120,10 +120,10 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddrW.W))
-    io.fetch_vaddr.poke(0.U(AddrW.W))
+    io.fetch_addr.poke(0.U(AddressW.W))
+    io.fetch_vaddr.poke(0.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
     io.fetch_valid.poke(false.B)
     io.resp_ready.poke(false.B)
     io.axi.AR.ARREADY.poke(false.B)
@@ -134,11 +134,11 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
     io.flush.poke(false.B)
     io.kill.poke(false.B)
     io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U(AddrW.W))
-    io.snoop_addr_hi.poke(0.U(AddrW.W))
+    io.snoop_addr.poke(0.U(AddressW.W))
+    io.snoop_addr_hi.poke(0.U(AddressW.W))
     io.dma_snoop_valid.poke(false.B)
-    io.dma_snoop_start.poke(0.U(AddrW.W))
-    io.dma_snoop_end.poke(0.U(AddrW.W))
+    io.dma_snoop_start.poke(0.U(AddressW.W))
+    io.dma_snoop_end.poke(0.U(AddressW.W))
   }
 
   private def issueFetch(
@@ -146,10 +146,10 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
       clock: Clock,
       addr:  Long
   ): Unit = {
-    io.fetch_addr.poke(addr.U(AddrW.W))
-    io.fetch_vaddr.poke(addr.U(AddrW.W))
+    io.fetch_addr.poke(addr.U(AddressW.W))
+    io.fetch_vaddr.poke(addr.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(addr.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(addr.U(AddressW.W))
     io.fetch_valid.poke(true.B)
     waitUntil(clock, bool(io.fetch_ready), s"ICache 未受理取指 0x${addr.toHexString}")
     clock.step()
@@ -330,7 +330,7 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
   }
 
   /** DMA 范围 snoop 恰好落在 serial 扫描最后一拍（deferred 补装同拍）。 */
-  private def runDmaDeferredInstall(kind: String): Unit = {
+  private def runDMADeferredInstall(kind: String): Unit = {
     simulate(create(kind, viptScan = true, snoop = true, dma = true)) { dut =>
       val io    = dut.io
       val clock = dut.clock
@@ -339,10 +339,10 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
       val mem   = new Memory
       val chunks = (1 << IndexBits) / 1
 
-      io.fetch_addr.poke(Line.U(AddrW.W))
-      io.fetch_vaddr.poke(Line.U(AddrW.W))
+      io.fetch_addr.poke(Line.U(AddressW.W))
+      io.fetch_vaddr.poke(Line.U(AddressW.W))
       io.fetch_paddr_valid.poke(true.B)
-      io.fetch_paddr_vaddr.poke(Line.U(AddrW.W))
+      io.fetch_paddr_vaddr.poke(Line.U(AddressW.W))
       io.fetch_valid.poke(true.B)
       var cycles = 0
       while (!bool(io.fetch_ready) && cycles < 100) {
@@ -396,18 +396,18 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
       d.elapsed should be(triggerElapsed + chunks - 1)
 
       mem.write(Line, NewData)
-      io.dma_snoop_start.poke(Line.U(AddrW.W))
-      io.dma_snoop_end.poke((Line + 15L).U(AddrW.W))
+      io.dma_snoop_start.poke(Line.U(AddressW.W))
+      io.dma_snoop_end.poke((Line + 15L).U(AddressW.W))
       io.dma_snoop_valid.poke(true.B)
       bool(io.dma_snoop_ready) should be(true)
       d.step()
       io.dma_snoop_valid.poke(false.B)
 
       // 补装若未被同拍 DMA 压掉，这里会直接命中旧行而不发 AR。
-      io.fetch_addr.poke(Line.U(AddrW.W))
-      io.fetch_vaddr.poke(Line.U(AddrW.W))
+      io.fetch_addr.poke(Line.U(AddressW.W))
+      io.fetch_vaddr.poke(Line.U(AddressW.W))
       io.fetch_paddr_valid.poke(true.B)
-      io.fetch_paddr_vaddr.poke(Line.U(AddrW.W))
+      io.fetch_paddr_vaddr.poke(Line.U(AddressW.W))
       io.fetch_valid.poke(true.B)
       cycles = 0
       while (!bool(io.fetch_ready) && cycles < 100) {
@@ -451,8 +451,8 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
       waitUntil(clock, bool(io.resp_valid), s"$kind 命中响应未出现")
       long(io.resp_data) should be(OldData)
       mem.write(Line, NewData)
-      io.snoop_addr.poke(Line.U(AddrW.W))
-      io.snoop_addr_hi.poke((Line + 3L).U(AddrW.W))
+      io.snoop_addr.poke(Line.U(AddressW.W))
+      io.snoop_addr_hi.poke((Line + 3L).U(AddressW.W))
       io.snoop_valid.poke(true.B)
       clock.step()
       io.snoop_valid.poke(false.B)
@@ -487,7 +487,7 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
       runSnoopPendingResponse(kind)
     }
     it should "DMA snoop 落在 deferred 补装同拍时不得安装旧行" in {
-      runDmaDeferredInstall(kind)
+      runDMADeferredInstall(kind)
     }
   }
 }

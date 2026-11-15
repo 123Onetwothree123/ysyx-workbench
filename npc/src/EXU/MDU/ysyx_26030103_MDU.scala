@@ -18,8 +18,8 @@ class ysyx_26030103_MDUResponse(val XLEN: Int = 32) extends Bundle {
 }
 //MDU路由握手接口。
 class ysyx_26030103_MDUInterface(val XLEN: Int = 32) extends Bundle {
-  val Req = Flipped(Decoupled(new ysyx_26030103_MDURequest(XLEN))) //输入请求
-  val Resp = Decoupled(new ysyx_26030103_MDUResponse(XLEN)) //输出结果
+  val Request = Flipped(Decoupled(new ysyx_26030103_MDURequest(XLEN))) //输入请求
+  val Response = Decoupled(new ysyx_26030103_MDUResponse(XLEN)) //输出结果
   val Flush = Input(Bool()) //取消事务
   val PerfDivIterations = Output(UInt(16.W)) //最近一次除法的实际迭代位数
   val PerfDivEarlyOut = Output(Bool()) //最近一次除法是否提前结束

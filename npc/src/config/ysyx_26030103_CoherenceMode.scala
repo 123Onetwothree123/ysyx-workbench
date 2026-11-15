@@ -29,15 +29,15 @@ object ysyx_26030103_ICacheCoherence {
 }
 
 // 入站 DMA 直接访问内存、不经过 DCache；这里描述 CPU 侧如何避免继续用旧行。
-sealed trait ysyx_26030103_DmaCoherence {
+sealed trait ysyx_26030103_DMACoherence {
   def Name: String
 }
 
-object ysyx_26030103_DmaCoherence {
+object ysyx_26030103_DMACoherence {
   /** 现有默认行为：写直达 DCache 无脏数据；DMA 写 B 完成时全局失效
     * DCache。软件仍需在 DMA 完成后才访问目标区域，改代码后执行 fence.i。
     */
-  case object SoftwareFlush extends ysyx_26030103_DmaCoherence {
+  case object SoftwareFlush extends ysyx_26030103_DMACoherence {
     val Name = "software_flush"
   }
 
@@ -45,7 +45,7 @@ object ysyx_26030103_DmaCoherence {
     * 访问内存。DMA 传输在途时软件仍不得消费目标区域，但不再依赖
     * DCache 失效来观察已完成的 DMA 写。
     */
-  case object Uncached extends ysyx_26030103_DmaCoherence {
+  case object Uncached extends ysyx_26030103_DMACoherence {
     val Name = "uncached"
   }
 
@@ -53,11 +53,11 @@ object ysyx_26030103_DmaCoherence {
     * 失效 ICache/DCache 匹配行；B 保持到两个 Cache 完成失效，因此软件看到 B
     * 时旧副本必然已失效。DMA 读不动作：写直达无脏数据，内存始终最新。
     */
-  case object HardwareSnoop extends ysyx_26030103_DmaCoherence {
+  case object HardwareSnoop extends ysyx_26030103_DMACoherence {
     val Name = "hardware_snoop"
   }
 
-  def FromString(value: String): ysyx_26030103_DmaCoherence = value match {
+  def FromString(value: String): ysyx_26030103_DMACoherence = value match {
     case "software_flush" => SoftwareFlush
     case "uncached"       => Uncached
     case "hardware_snoop" => HardwareSnoop

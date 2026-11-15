@@ -1,12 +1,12 @@
 module npc.configgen;
 import std;
 namespace npc::configgen {
-void addMmu(TypedFields &root, const Config &values, long long xlen)
+void addMMU(TypedFields &root, const Config &values, long long xlen)
 {
-    const long long defaultPteBytes = xlen == 64 ? 8 : 4;
-    const long long mmuPteBytes =
-        flatInt(values, "MMU_PTE_SIZE_BYTES", defaultPteBytes);
-    const long long defaultPpnHigh = mmuPteBytes * 8 == 64 ? 53 : 31;
+    const long long defaultPTEBytes = xlen == 64 ? 8 : 4;
+    const long long mmuPTEBytes =
+        flatInt(values, "MMU_PTE_SIZE_BYTES", defaultPTEBytes);
+    const long long defaultPPNHigh = mmuPTEBytes * 8 == 64 ? 53 : 31;
     TypedFields mmu;
     addField(mmu, "enabled",
              TypedJson::boolean(flatBool(values, "MMU_ENABLED",
@@ -27,7 +27,7 @@ void addMmu(TypedFields &root, const Config &values, long long xlen)
     addField(mmu, "levels",
              TypedJson::integer(flatInt(values, "MMU_LEVELS",
                                         xlen == 64 ? 3 : 2)));
-    addField(mmu, "pte_size_bytes", TypedJson::integer(mmuPteBytes));
+    addField(mmu, "pte_size_bytes", TypedJson::integer(mmuPTEBytes));
     addField(mmu, "page_table_size_bytes",
              TypedJson::integer(
                  flatInt(values, "MMU_PAGE_TABLE_SIZE_BYTES", 4096)));
@@ -62,7 +62,7 @@ void addMmu(TypedFields &root, const Config &values, long long xlen)
                  flatInt(values, "MMU_PTE_PPN_LOW", 10)));
     addField(mmu, "pte_ppn_high",
              TypedJson::integer(flatInt(values, "MMU_PTE_PPN_HIGH",
-                                        defaultPpnHigh)));
+                                        defaultPPNHigh)));
     addField(mmu, "superpage",
              TypedJson::boolean(flatBool(values, "MMU_SUPERPAGE")));
     addField(mmu, "ad_mode",
@@ -172,11 +172,11 @@ void addMmu(TypedFields &root, const Config &values, long long xlen)
              TypedJson::integer(flatInt(values, "PMP_ENTRIES", 16)));
     TypedFields tlbKconfig;
     for (const auto &[key, value] : values) {
-        const bool rawTlb =
+        const bool rawTLB =
             (key.starts_with("TLB_") || key.starts_with("ITLB_") ||
              key.starts_with("DTLB_") || key.starts_with("UTLB_")) &&
             !key.starts_with("MMU_");
-        if (!rawTlb)
+        if (!rawTLB)
             continue;
         std::string name = key;
         std::transform(name.begin(), name.end(), name.begin(),

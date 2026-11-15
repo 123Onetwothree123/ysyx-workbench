@@ -14,31 +14,31 @@ class ysyx_26030103_GPR(
     val ReadDATA1 = Output(UInt(XLEN.W))
     val ReadDATA2 = Output(UInt(XLEN.W))
     val DebugRaddr = Input(UInt(5.W))
-    val DebugRdata = Output(UInt(XLEN.W))
+    val DebugReadData = Output(UInt(XLEN.W))
   })
-  val ysyx_26030103_RegisterFile = Module(
+  val registerFile = Module(
     new ysyx_26030103_RegisterFile(
       ADDR_WIDTH = 5,
       DATA_WIDTH = XLEN,
       EnableDynamicDebug = EnableDynamicDebug
     )
   )
-  val RegisterFileWen = Mux(io.WriteSELECT === 0.U, false.B, io.WriteEN)
-  ysyx_26030103_RegisterFile.io.wdata := io.wdata
-  ysyx_26030103_RegisterFile.io.waddr := io.WriteSELECT
-  ysyx_26030103_RegisterFile.io.wen := RegisterFileWen
-  ysyx_26030103_RegisterFile.io.raddr1 := io.Read1SELECT
-  ysyx_26030103_RegisterFile.io.raddr2 := io.Read2SELECT
+  val registerFileWriteEnable = Mux(io.WriteSELECT === 0.U, false.B, io.WriteEN)
+  registerFile.io.wdata := io.wdata
+  registerFile.io.waddr := io.WriteSELECT
+  registerFile.io.wen := registerFileWriteEnable
+  registerFile.io.raddr1 := io.Read1SELECT
+  registerFile.io.raddr2 := io.Read2SELECT
   io.ReadDATA1 := Mux(
     io.Read1SELECT === 0.U,
     0.U(XLEN.W),
-    ysyx_26030103_RegisterFile.io.rdata1
+    registerFile.io.rdata1
   )
   io.ReadDATA2 := Mux(
     io.Read2SELECT === 0.U,
     0.U(XLEN.W),
-    ysyx_26030103_RegisterFile.io.rdata2
+    registerFile.io.rdata2
   )
-  ysyx_26030103_RegisterFile.io.debug_raddr := io.DebugRaddr
-  io.DebugRdata := ysyx_26030103_RegisterFile.io.debug_rdata
+  registerFile.io.debug_raddr := io.DebugRaddr
+  io.DebugReadData := registerFile.io.debug_rdata
 }

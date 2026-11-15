@@ -10,85 +10,85 @@ abstract class ysyx_26030103_HardFloatFPUBase(
     override val Config: ysyx_26030103_NPCConfig)
     extends ysyx_26030103_FPU(Config) {
   protected val FLEN = Config.FPULen
-  protected val Params = Config.FPUProfile.HardFloat
-  protected val UseFMA = Config.FPUProfile.FMA
-  require(Params.Recode,
+  protected val params = Config.FPUProfile.HardFloat
+  protected val useFMA = Config.FPUProfile.FMA
+  require(params.Recode,
     "Berkeley HardFloat 只能使用 recoded 内部格式；FPU_HARDFLOAT_RECODE=n 不受支持")
 
-  protected val ExpS = 8
-  protected val SigS = 24
-  protected val ExpD = 11
-  protected val SigD = 53
-  protected val CanonicalNaN32 = "h7fc00000".U(32.W)
-  protected val CanonicalNaN64 = "h7ff8000000000000".U(64.W)
+  protected val expS = 8
+  protected val sigS = 24
+  protected val expD = 11
+  protected val sigD = 53
+  protected val canonicalNaN32 = "h7fc00000".U(32.W)
+  protected val canonicalNaN64 = "h7ff8000000000000".U(64.W)
   // HardFloat 的 detectTininess：0=before rounding，1=after rounding。
-  protected val DetectTininessUInt: UInt =
-    (if (Params.DetectTininessBeforeRounding) 0.U(1.W) else 1.U(1.W))
-  protected val DetectTininessBool: Bool =
-    (if (Params.DetectTininessBeforeRounding) false.B else true.B)
+  protected val detectTininessUInt: UInt =
+    (if (params.DetectTininessBeforeRounding) 0.U(1.W) else 1.U(1.W))
+  protected val detectTininessBool: Bool =
+    (if (params.DetectTininessBeforeRounding) false.B else true.B)
 
   // 输入边界：FLEN=64 时未 NaN-box 的单精度输入视为 canonical NaN
-  private def IsBoxedS(Value: UInt): Bool =
-    if (FLEN == 64) Value(63, 32) === "hffffffff".U(32.W) else true.B
-  private def SInput(Value: UInt): UInt =
-    if (FLEN == 64) Mux(IsBoxedS(Value), Value(31, 0), CanonicalNaN32)
-    else Value(31, 0)
-  private def DInput(Value: UInt): UInt =
-    if (FLEN == 64) Value else 0.U(64.W)
+  private def isBoxedS(value: UInt): Bool =
+    if (FLEN == 64) value(63, 32) === "hffffffff".U(32.W) else true.B
+  private def sInput(value: UInt): UInt =
+    if (FLEN == 64) Mux(isBoxedS(value), value(31, 0), canonicalNaN32)
+    else value(31, 0)
+  private def dInput(value: UInt): UInt =
+    if (FLEN == 64) value else 0.U(64.W)
 
-  protected def BoxF32(Value: UInt): UInt =
-    if (FLEN == 64) Cat(Fill(FLEN - 32, 1.U(1.W)), Value(31, 0))
-    else Value(31, 0)
-  protected def BoxD(Value: UInt): UInt =
-    if (FLEN == 64) Value(63, 0) else 0.U(FLEN.W)
-  protected def Sext32ToFLEN(Value: UInt): UInt =
-    if (FLEN == 64) Cat(Fill(FLEN - 32, Value(31)), Value(31, 0))
-    else Value(31, 0)
+  protected def boxF32(value: UInt): UInt =
+    if (FLEN == 64) Cat(Fill(FLEN - 32, 1.U(1.W)), value(31, 0))
+    else value(31, 0)
+  protected def boxD(value: UInt): UInt =
+    if (FLEN == 64) value(63, 0) else 0.U(FLEN.W)
+  protected def sext32ToFLEN(value: UInt): UInt =
+    if (FLEN == 64) Cat(Fill(FLEN - 32, value(31)), value(31, 0))
+    else value(31, 0)
 
-  protected val req = io.req.bits
-  protected val aRaw = req.rs1
-  protected val bRaw = req.rs2
-  protected val cRaw = req.rs3
-  protected val aS = SInput(aRaw)
-  protected val bS = SInput(bRaw)
-  protected val cS = SInput(cRaw)
-  protected val aD = DInput(aRaw)
-  protected val bD = DInput(bRaw)
-  protected val cD = DInput(cRaw)
-  protected val fmtS = req.fmt === ysyx_26030103_FpuFmt.S
-  protected val fmtD = req.fmt === ysyx_26030103_FpuFmt.D
-  protected val srcFmtD = req.srcFmt === ysyx_26030103_FpuFmt.D
-  protected val intWord = req.intWord
-  protected val rm = req.rm
-  protected val op = req.op
+  protected val request = io.req.bits
+  protected val aRaw = request.rs1
+  protected val bRaw = request.rs2
+  protected val cRaw = request.rs3
+  protected val aS = sInput(aRaw)
+  protected val bS = sInput(bRaw)
+  protected val cS = sInput(cRaw)
+  protected val aD = dInput(aRaw)
+  protected val bD = dInput(bRaw)
+  protected val cD = dInput(cRaw)
+  protected val fmtS = request.fmt === ysyx_26030103_FPUFmt.S
+  protected val fmtD = request.fmt === ysyx_26030103_FPUFmt.D
+  protected val srcFmtD = request.srcFmt === ysyx_26030103_FPUFmt.D
+  protected val intWord = request.intWord
+  protected val rm = request.rm
+  protected val op = request.op
 
-  protected val aRecS = recFNFromFN(ExpS, SigS, aS)
-  protected val bRecS = recFNFromFN(ExpS, SigS, bS)
-  protected val cRecS = recFNFromFN(ExpS, SigS, cS)
-  protected val aRecD = recFNFromFN(ExpD, SigD, aD)
-  protected val bRecD = recFNFromFN(ExpD, SigD, bD)
-  protected val cRecD = recFNFromFN(ExpD, SigD, cD)
+  protected val aRecS = recFNFromFN(expS, sigS, aS)
+  protected val bRecS = recFNFromFN(expS, sigS, bS)
+  protected val cRecS = recFNFromFN(expS, sigS, cS)
+  protected val aRecD = recFNFromFN(expD, sigD, aD)
+  protected val bRecD = recFNFromFN(expD, sigD, bD)
+  protected val cRecD = recFNFromFN(expD, sigD, cD)
 
   // 辅助位操作
-  protected def IsNaN32(Value: UInt): Bool =
-    Value(30, 23) === "hff".U(8.W) && Value(22, 0) =/= 0.U
-  protected def IsSigNaN32(Value: UInt): Bool =
-    IsNaN32(Value) && !Value(22)
-  protected def IsNaN64(Value: UInt): Bool =
-    Value(62, 52) === "h7ff".U(11.W) && Value(51, 0) =/= 0.U
-  protected def IsSigNaN64(Value: UInt): Bool =
-    IsNaN64(Value) && !Value(51)
-  protected def IsZero32(Value: UInt): Bool = Value(30, 0) === 0.U
-  protected def IsZero64(Value: UInt): Bool = Value(62, 0) === 0.U
+  protected def isNaN32(value: UInt): Bool =
+    value(30, 23) === "hff".U(8.W) && value(22, 0) =/= 0.U
+  protected def isSigNaN32(value: UInt): Bool =
+    isNaN32(value) && !value(22)
+  protected def isNaN64(value: UInt): Bool =
+    value(62, 52) === "h7ff".U(11.W) && value(51, 0) =/= 0.U
+  protected def isSigNaN64(value: UInt): Bool =
+    isNaN64(value) && !value(51)
+  protected def isZero32(value: UInt): Bool = value(30, 0) === 0.U
+  protected def isZero64(value: UInt): Bool = value(62, 0) === 0.U
 
   // 负数转无符号整数：按舍入模式判断舍入后是否为非零负值，是则裁到 0 并置 NV。
-  protected def UnsignedNegInvalid(
-      Value: UInt, ExpWidth: Int, SigWidth: Int): Bool = {
-    val sign = Value(ExpWidth + SigWidth - 1)
-    val exp = Value(ExpWidth + SigWidth - 2, SigWidth - 1)
-    val frac = Value(SigWidth - 2, 0)
-    val nonzero = Value(ExpWidth + SigWidth - 2, 0) =/= 0.U
-    val bias = (1 << (ExpWidth - 1)) - 1
+  protected def unsignedNegInvalid(
+      value: UInt, expWidth: Int, sigWidth: Int): Bool = {
+    val sign = value(expWidth + sigWidth - 1)
+    val exp = value(expWidth + sigWidth - 2, sigWidth - 1)
+    val frac = value(sigWidth - 2, 0)
+    val nonzero = value(expWidth + sigWidth - 2, 0) =/= 0.U
+    val bias = (1 << (expWidth - 1)) - 1
     val geHalf = exp >= (bias - 1).U
     val aboveHalf = exp > (bias - 1).U ||
       (exp === (bias - 1).U && frac =/= 0.U)
@@ -96,20 +96,20 @@ abstract class ysyx_26030103_HardFloatFPUBase(
     // NaN/Inf 的裁剪值和 NV 由 RecFNToIN 负责，这里只补有限负数的 NV。
     sign && nonzero && !exp.andR && MuxLookup(rm, geOne)(
       Seq(
-        ysyx_26030103_FpuRm.RDN -> true.B,
-        ysyx_26030103_FpuRm.RMM -> geHalf,
-        ysyx_26030103_FpuRm.RNE -> aboveHalf
+        ysyx_26030103_FPURm.RDN -> true.B,
+        ysyx_26030103_FPURm.RMM -> geHalf,
+        ysyx_26030103_FPURm.RNE -> aboveHalf
       )
     )
   }
 
-  protected def IntFlags(Flags: UInt): UInt = {
+  protected def intFlags(flags: UInt): UInt = {
     // RecFNToIN 的 {invalid, overflow, inexact} 是 HardFloat 自己的编码；
     // 输出侧按 RISC-V 只放到 NV 与 NX。
-    val width = ysyx_26030103_FpuFlags.Width
-    val nv = (1 << ysyx_26030103_FpuFlags.NV).U(width.W)
-    val nx = (1 << ysyx_26030103_FpuFlags.NX).U(width.W)
-    Mux(Flags(2) || Flags(1), nv, 0.U(width.W)) |
-      Mux(Flags(0), nx, 0.U(width.W))
+    val width = ysyx_26030103_FPUFlags.Width
+    val nv = (1 << ysyx_26030103_FPUFlags.NV).U(width.W)
+    val nx = (1 << ysyx_26030103_FPUFlags.NX).U(width.W)
+    Mux(flags(2) || flags(1), nv, 0.U(width.W)) |
+      Mux(flags(0), nx, 0.U(width.W))
   }
 }

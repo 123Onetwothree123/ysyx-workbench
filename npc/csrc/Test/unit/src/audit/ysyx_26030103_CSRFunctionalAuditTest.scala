@@ -19,15 +19,15 @@ class ysyx_26030103_CSRAuditHarness(
   val io = IO(new Bundle {
     val enable = Input(Bool())
     val retireCommit = Input(Bool())
-    val isCsrrw = Input(Bool())
-    val isCsrrs = Input(Bool())
-    val isCsrrc = Input(Bool())
+    val isCSRrw = Input(Bool())
+    val isCSRrs = Input(Bool())
+    val isCSRrc = Input(Bool())
     val isEcall = Input(Bool())
     val isEbreak = Input(Bool())
     val isMret = Input(Bool())
     val isSret = Input(Bool())
     val isSfenceVma = Input(Bool())
-    val csrAddr = Input(UInt(12.W))
+    val csrAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
     val rs1Data = Input(UInt(64.W))
     val pc = Input(UInt(64.W))
@@ -52,15 +52,15 @@ class ysyx_26030103_CSRAuditHarness(
   csr.io.rst := reset
   csr.io.Enable := io.enable
   csr.io.MinstretRetireCommit := io.retireCommit
-  csr.io.IsCsrrw := io.isCsrrw
-  csr.io.IsCsrrs := io.isCsrrs
-  csr.io.IsCsrrc := io.isCsrrc
+  csr.io.IsCSRrw := io.isCSRrw
+  csr.io.IsCSRrs := io.isCSRrs
+  csr.io.IsCSRrc := io.isCSRrc
   csr.io.IsEcall := io.isEcall
   csr.io.IsEbreak := io.isEbreak
   csr.io.IsMret := io.isMret
   csr.io.IsSret := io.isSret
   csr.io.IsSfenceVma := io.isSfenceVma
-  csr.io.CSRAddress := io.csrAddr
+  csr.io.CSRAddress := io.csrAddress
   csr.io.rs1 := io.rs1
   csr.io.Rs1Data := io.rs1Data
   csr.io.pc := io.pc
@@ -108,7 +108,7 @@ class ysyx_26030103_CSRFunctionalAuditTest
       pteSizeBytes = 8,
       pageTableSizeBytes = 4096,
       pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -119,15 +119,15 @@ class ysyx_26030103_CSRFunctionalAuditTest
     dut.reset.poke(false.B)
     dut.io.enable.poke(false.B)
     dut.io.retireCommit.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
-    dut.io.isCsrrs.poke(false.B)
-    dut.io.isCsrrc.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
+    dut.io.isCSRrs.poke(false.B)
+    dut.io.isCSRrc.poke(false.B)
     dut.io.isEcall.poke(false.B)
     dut.io.isEbreak.poke(false.B)
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddr.poke(0.U)
+    dut.io.csrAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
     dut.io.pc.poke(0.U)
@@ -142,11 +142,11 @@ class ysyx_26030103_CSRFunctionalAuditTest
   }
 
   /** 组合读 CSR，不推进时钟，保证多次读取看到同一拍的寄存器值。 */
-  private def peekCsr(
+  private def peekCSR(
       dut: ysyx_26030103_CSRAuditHarness,
       address: Int
   ): BigInt = {
-    dut.io.csrAddr.poke(address.U)
+    dut.io.csrAddress.poke(address.U)
     dut.io.enable.poke(false.B)
     dut.io.rdata.peek().litValue
   }
@@ -164,27 +164,27 @@ class ysyx_26030103_CSRFunctionalAuditTest
     dut.io.retireCommit.poke(false.B)
   }
 
-  private def writeCsr(
+  private def writeCSR(
       dut: ysyx_26030103_CSRAuditHarness,
       address: Int,
       data: BigInt
   ): Unit = {
-    dut.io.csrAddr.poke(address.U)
+    dut.io.csrAddress.poke(address.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(64.W))
     dut.io.enable.poke(true.B)
-    dut.io.isCsrrw.poke(true.B)
+    dut.io.isCSRrw.poke(true.B)
     dut.clock.step()
     dut.io.enable.poke(false.B)
-    dut.io.isCsrrw.poke(false.B)
+    dut.io.isCSRrw.poke(false.B)
   }
 
   it should "把 rdcycle 映射到 mcycle" in {
     simulate(new ysyx_26030103_CSRAuditHarness(profile)) { dut =>
       setup(dut)
       dut.clock.step(8)
-      val mcycle = peekCsr(dut, MCYCLE)
-      val cycle = peekCsr(dut, CYCLE)
+      val mcycle = peekCSR(dut, MCYCLE)
+      val cycle = peekCSR(dut, CYCLE)
       cycle should be(mcycle)
       cycle should not be BigInt(0)
     }
@@ -194,7 +194,7 @@ class ysyx_26030103_CSRFunctionalAuditTest
     simulate(new ysyx_26030103_CSRAuditHarness(profile)) { dut =>
       setup(dut)
       dut.io.mtime.poke(BigInt("123456789abcdef0", 16).U(64.W))
-      peekCsr(dut, TIME) should be(BigInt("123456789abcdef0", 16))
+      peekCSR(dut, TIME) should be(BigInt("123456789abcdef0", 16))
     }
   }
 
@@ -202,8 +202,8 @@ class ysyx_26030103_CSRFunctionalAuditTest
     simulate(new ysyx_26030103_CSRAuditHarness(profile)) { dut =>
       setup(dut)
       stepEnable(dut, 4)
-      val minstret = peekCsr(dut, MINSTRET)
-      val instret = peekCsr(dut, INSTRET)
+      val minstret = peekCSR(dut, MINSTRET)
+      val instret = peekCSR(dut, INSTRET)
       instret should be(minstret)
       instret should not be BigInt(0)
     }
@@ -212,8 +212,8 @@ class ysyx_26030103_CSRFunctionalAuditTest
   it should "在 RV64 的 sstatus 中只保留 UXL=2" in {
     simulate(new ysyx_26030103_CSRAuditHarness(profile)) { dut =>
       setup(dut)
-      val mstatus = peekCsr(dut, MSTATUS)
-      val sstatus = peekCsr(dut, SSTATUS)
+      val mstatus = peekCSR(dut, MSTATUS)
+      val sstatus = peekCSR(dut, SSTATUS)
       // mstatus 是参照：CSR.scala 的 MstatusArchValue 会补 SXL/UXL。
       ((mstatus >> 32) & 0xf) should be(BigInt(0xa))
       // sstatus 只包含 UXL[33:32]；SXL 仅存在于 mstatus。
@@ -235,20 +235,20 @@ class ysyx_26030103_CSRFunctionalAuditTest
       dut.io.enable.poke(false.B)
       dut.io.isEcall.poke(false.B)
       // RISC-V 对 ecall 要求 mtval=0；当前实现会回退到 io.pc。
-      peekCsr(dut, MTVAL) should be(BigInt(0))
+      peekCSR(dut, MTVAL) should be(BigInt(0))
       // 对照：mepc 仍应精确记录 ecall 指令的 PC。
-      peekCsr(dut, MEPC) should be(pc)
+      peekCSR(dut, MEPC) should be(pc)
     }
   }
 
   it should "不因纯中断提交自增 minstret" in {
-    val irqProfile = profile.copy(hasSExternalIrq = false)
+    val irqProfile = profile.copy(hasSExternalIRQ = false)
     simulate(new ysyx_26030103_CSRAuditHarness(irqProfile)) { dut =>
       setup(dut)
-      writeCsr(dut, MSTATUS, BigInt(0x8))
-      writeCsr(dut, 0x304, BigInt(0x800))
-      writeCsr(dut, MTVEC, BigInt("0000000080002000", 16))
-      val before = peekCsr(dut, MINSTRET)
+      writeCSR(dut, MSTATUS, BigInt(0x8))
+      writeCSR(dut, 0x304, BigInt(0x800))
+      writeCSR(dut, MTVEC, BigInt("0000000080002000", 16))
+      val before = peekCSR(dut, MINSTRET)
       dut.io.pc.poke(BigInt("0000000080001000", 16).U(64.W))
       dut.io.enable.poke(true.B)
       dut.io.interrupt.poke(true.B)
@@ -257,31 +257,31 @@ class ysyx_26030103_CSRFunctionalAuditTest
       dut.io.enable.poke(false.B)
       dut.io.interrupt.poke(false.B)
       // 中断没有退休指令，minstret 不能增加。
-      peekCsr(dut, MINSTRET) should be(before)
+      peekCSR(dut, MINSTRET) should be(before)
     }
   }
 
   it should "支持 RV64 minstret 写入且写入拍不再自增" in {
     simulate(new ysyx_26030103_CSRAuditHarness(profile)) { dut =>
       setup(dut)
-      writeCsr(dut, MINSTRET, BigInt(0x1234))
-      peekCsr(dut, MINSTRET) should be(BigInt(0x1234))
+      writeCSR(dut, MINSTRET, BigInt(0x1234))
+      peekCSR(dut, MINSTRET) should be(BigInt(0x1234))
       stepEnable(dut, 1)
-      peekCsr(dut, MINSTRET) should be(BigInt(0x1235))
+      peekCSR(dut, MINSTRET) should be(BigInt(0x1235))
     }
   }
 
   it should "在中断提交时把 mtval 写成 0" in {
     // 默认 profile 的外部中断走 S 级；这里裁剪 hasSExternalIrq，让
     // io.interrupt 直接作为 M 级外部中断，在 M 模式验证中断 tval。
-    val irqProfile = profile.copy(hasSExternalIrq = false)
+    val irqProfile = profile.copy(hasSExternalIRQ = false)
     simulate(new ysyx_26030103_CSRAuditHarness(irqProfile)) { dut =>
       setup(dut)
-      writeCsr(dut, MSTATUS, BigInt(0x8)) // mstatus.MIE
-      writeCsr(dut, 0x304, BigInt(0x800)) // mie.MEIE
-      writeCsr(dut, MTVEC, BigInt("0000000080002000", 16))
+      writeCSR(dut, MSTATUS, BigInt(0x8)) // mstatus.MIE
+      writeCSR(dut, 0x304, BigInt(0x800)) // mie.MEIE
+      writeCSR(dut, MTVEC, BigInt("0000000080002000", 16))
       // 预置非零 mtval，确保下面的 0 来自 trap 写入而不是复位值。
-      writeCsr(dut, MTVAL, BigInt("deadbeef", 16))
+      writeCSR(dut, MTVAL, BigInt("deadbeef", 16))
       val pc = BigInt("0000000080001000", 16)
       dut.io.pc.poke(pc.U(64.W))
       dut.io.enable.poke(true.B)
@@ -294,8 +294,8 @@ class ysyx_26030103_CSRFunctionalAuditTest
       dut.io.enable.poke(false.B)
       dut.io.interrupt.poke(false.B)
       // 中断没有 tval，mtval 必须为 0；mepc 仍记录被打断的 PC。
-      peekCsr(dut, MTVAL) should be(BigInt(0))
-      peekCsr(dut, MEPC) should be(pc)
+      peekCSR(dut, MTVAL) should be(BigInt(0))
+      peekCSR(dut, MEPC) should be(pc)
     }
   }
 }

@@ -30,12 +30,12 @@ class ysyx_26030103_MMUFlushRaceAuditTest
   private val Satp = (0x80000000L | RootPPN).U(32.W)
 
   /** 单事务页表总线，可分别挂起指定地址的读响应或任意写响应。 */
-  private class PteBus(var latency: Int = 1) {
+  private class PTEBus(var latency: Int = 1) {
     private case class Pending(id: Int, addr: Long, data: BigInt, write: Boolean)
     private val mem = scala.collection.mutable.Map.empty[Long, BigInt]
     private var pending: Option[Pending] = None
     private var delay = 0
-    var holdReadAddr: Option[Long] = None
+    var holdReadAddress: Option[Long] = None
     var holdWrite: Boolean = false
     var reads = 0
     var writes = 0
@@ -47,9 +47,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     def hasPending: Boolean = pending.nonEmpty
     private def held(p: Pending): Boolean =
       if (p.write) holdWrite
-      else holdReadAddr.contains(p.addr)
+      else holdReadAddress.contains(p.addr)
     def heldPending: Boolean = pending.exists(held)
-    def releaseRead(): Unit = { holdReadAddr = None; delay = 0 }
+    def releaseRead(): Unit = { holdReadAddress = None; delay = 0 }
     def releaseWrite(): Unit = { holdWrite = false; delay = 0 }
 
     def tick(bus: ysyx_26030103_PTEBusIO, clock: Clock): Unit = {
@@ -62,8 +62,8 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
       val respFire = drive && bool(bus.resp.ready)
       val reqFire = bool(bus.req.valid) && bool(bus.req.ready)
-      val reqId = if (reqFire) long(bus.req.bits.id).toInt else 0
-      val reqAddr = if (reqFire) long(bus.req.bits.addr) else 0L
+      val reqID = if (reqFire) long(bus.req.bits.id).toInt else 0
+      val reqAddress = if (reqFire) long(bus.req.bits.addr) else 0L
       val reqWrite = reqFire && bool(bus.req.bits.write)
       val reqData =
         if (reqFire) bus.req.bits.data.peek().litValue else BigInt(0)
@@ -76,12 +76,12 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       if (reqFire) {
         if (reqWrite) {
           writes += 1
-          mem(reqAddr & 0xffffffffL) = reqData & 0xffffffffL
-          pending = Some(Pending(reqId, reqAddr, BigInt(0), write = true))
+          mem(reqAddress & 0xffffffffL) = reqData & 0xffffffffL
+          pending = Some(Pending(reqID, reqAddress, BigInt(0), write = true))
         } else {
           reads += 1
           pending = Some(Pending(
-            reqId, reqAddr, mem.getOrElse(reqAddr & 0xffffffffL, BigInt(0)),
+            reqID, reqAddress, mem.getOrElse(reqAddress & 0xffffffffL, BigInt(0)),
             write = false))
         }
         delay = latency - 1
@@ -104,7 +104,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
         var held: Boolean)
     private val mem = scala.collection.mutable.Map.empty[Long, BigInt]
     private val pending = scala.collection.mutable.ArrayBuffer.empty[Pending]
-    var holdOnceAddr: Option[Long] = None
+    var holdOnceAddress: Option[Long] = None
     private var holdUsed = false
     var reads = 0
     var writes = 0
@@ -117,48 +117,48 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     def release(): Unit = pending.foreach(_.held = false)
 
     def tick(bus: ysyx_26030103_PTEBusIO, clock: Clock): Unit = {
-      val readyIdx = pending.indexWhere(p => p.remain == 0 && !p.held)
-      val respValid = readyIdx >= 0
+      val readyIndex = pending.indexWhere(p => p.remain == 0 && !p.held)
+      val respValid = readyIndex >= 0
       bus.resp.valid.poke(respValid.B)
       bus.resp.bits.id.poke(
-        (if (respValid) pending(readyIdx).id else 0).U(4.W))
+        (if (respValid) pending(readyIndex).id else 0).U(4.W))
       bus.resp.bits.data.poke(
-        (if (respValid) pending(readyIdx).data else BigInt(0)).U(32.W))
+        (if (respValid) pending(readyIndex).data else BigInt(0)).U(32.W))
       bus.resp.bits.fault.poke(false.B)
 
       val respFire = respValid && bool(bus.resp.ready)
       val reqFire = bool(bus.req.valid) && bool(bus.req.ready)
-      val reqId = if (reqFire) long(bus.req.bits.id).toInt else 0
-      val reqAddr = if (reqFire) long(bus.req.bits.addr) else 0L
+      val reqID = if (reqFire) long(bus.req.bits.id).toInt else 0
+      val reqAddress = if (reqFire) long(bus.req.bits.addr) else 0L
       val reqWrite = reqFire && bool(bus.req.bits.write)
       val reqData =
         if (reqFire) bus.req.bits.data.peek().litValue else BigInt(0)
 
       clock.step()
 
-      if (respFire) pending.remove(readyIdx)
+      if (respFire) pending.remove(readyIndex)
       else pending.foreach(p => if (p.remain > 0) p.remain -= 1)
 
       if (reqFire) {
         val isHeld = !reqWrite && !holdUsed &&
-          holdOnceAddr.contains(reqAddr & 0xffffffffL)
+          holdOnceAddress.contains(reqAddress & 0xffffffffL)
         if (isHeld) holdUsed = true
         if (reqWrite) {
           writes += 1
-          mem(reqAddr & 0xffffffffL) = reqData & 0xffffffffL
-          pending += new Pending(reqId, reqAddr, BigInt(0), true,
+          mem(reqAddress & 0xffffffffL) = reqData & 0xffffffffL
+          pending += new Pending(reqID, reqAddress, BigInt(0), true,
             latency - 1, false)
         } else {
           reads += 1
           pending += new Pending(
-            reqId, reqAddr, mem.getOrElse(reqAddr & 0xffffffffL, BigInt(0)),
+            reqID, reqAddress, mem.getOrElse(reqAddress & 0xffffffffL, BigInt(0)),
             false, latency - 1, isHeld)
         }
       }
     }
   }
 
-  private def initPtw(dut: ysyx_26030103_PTW, bus: PteBus): Unit = {
+  private def initPTW(dut: ysyx_26030103_PTW, bus: PTEBus): Unit = {
     dut.reset.poke(true.B)
     dut.clock.step(2)
     dut.reset.poke(false.B)
@@ -180,9 +180,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     bus.tick(dut.io.bus, dut.clock)
   }
 
-  private def issuePtw(
+  private def issuePTW(
       dut: ysyx_26030103_PTW,
-      bus: PteBus,
+      bus: PTEBus,
       vaddr: Long,
       access: UInt = ysyx_26030103_AccessType.Load
   ): Unit = {
@@ -203,9 +203,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     dut.io.req.valid.poke(false.B)
   }
 
-  private def waitPtwResponse(
+  private def waitPTWResponse(
       dut: ysyx_26030103_PTW,
-      bus: PteBus
+      bus: PTEBus
   ): (BigInt, Boolean) = {
     var result: Option[(BigInt, Boolean)] = None
     var guard = 0
@@ -223,7 +223,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     result.get
   }
 
-  private def waitPtwIdle(dut: ysyx_26030103_PTW, bus: PteBus): Unit = {
+  private def waitPTWIdle(dut: ysyx_26030103_PTW, bus: PTEBus): Unit = {
     var guard = 0
     while (!bool(dut.io.req.ready) && guard < 20) {
       bus.tick(dut.io.bus, dut.clock)
@@ -266,15 +266,15 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   "PTW waitHigh" should
     "flush 与 8B PTE 高字响应同拍时不得把旧 PTE 回填 cache" in {
-    val bus = new PteBus(latency = 1)
+    val bus = new PTEBus(latency = 1)
     // vaddr=0x1234 的索引为 1；8B PTE 的地址是 Root+8，占 Root+8/12。
-    val pteAddr = Root + 0x8L
-    bus.write(pteAddr, pte(LeafPPN, 0xdfL))
-    bus.write(pteAddr + 4L, 0L)
-    bus.holdReadAddr = Some(pteAddr + 4L)
+    val pteAddress = Root + 0x8L
+    bus.write(pteAddress, pte(LeafPPN, 0xdfL))
+    bus.write(pteAddress + 4L, 0L)
+    bus.holdReadAddress = Some(pteAddress + 4L)
     simulate(ptw8()) { dut =>
-      initPtw(dut, bus)
-      issuePtw(dut, bus, 0x1234L)
+      initPTW(dut, bus)
+      issuePTW(dut, bus, 0x1234L)
       var guard = 0
       while (!bus.heldPending && guard < 40) {
         bus.tick(dut.io.bus, dut.clock)
@@ -285,8 +285,8 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       }
 
       // sfence 后软件把同一 PTE 改到另一物理页。
-      bus.write(pteAddr, pte(NewLeafPPN, 0xdfL))
-      bus.write(pteAddr + 4L, 0L)
+      bus.write(pteAddress, pte(NewLeafPPN, 0xdfL))
+      bus.write(pteAddress + 4L, 0L)
 
       // 高字响应与 flush 同拍返回。
       bus.releaseRead()
@@ -295,10 +295,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       dut.io.flush.poke(false.B)
       withClue("flush 当拍高字响应未被接收: ") { bus.hasPending should be(false) }
 
-      waitPtwIdle(dut, bus)
+      waitPTWIdle(dut, bus)
 
-      issuePtw(dut, bus, 0x1234L)
-      val (paddr, fault) = waitPtwResponse(dut, bus)
+      issuePTW(dut, bus, 0x1234L)
+      val (paddr, fault) = waitPTWResponse(dut, bus)
       fault should be(false)
       withClue("flush 后仍命中 8B PTE 高字路径回填的旧 PTE: ") {
         paddr should be(BigInt(NewLeaf + 0x234L))
@@ -308,14 +308,14 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   "PTW waitWrite" should
     "flush 与 hardware A/D 写响应同拍时不得把旧 PTE 回填 cache" in {
-    val bus = new PteBus(latency = 1)
-    val pteAddr = Root + 0x4L
+    val bus = new PTEBus(latency = 1)
+    val pteAddress = Root + 0x4L
     // V|R|W|X，A=0：硬件 A/D 模式先写回 A 位。
-    bus.write(pteAddr, pte(LeafPPN, 0x0fL))
+    bus.write(pteAddress, pte(LeafPPN, 0x0fL))
     bus.holdWrite = true
     simulate(ptw4(adMode = "hardware")) { dut =>
-      initPtw(dut, bus)
-      issuePtw(dut, bus, 0x1234L)
+      initPTW(dut, bus)
+      issuePTW(dut, bus, 0x1234L)
       var guard = 0
       while (!bus.heldPending && guard < 50) {
         bus.tick(dut.io.bus, dut.clock)
@@ -327,7 +327,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       withClue("A/D 写回应已产生一笔页表写: ") { bus.writes should be(1) }
 
       // sfence 后软件把同一 PTE 改到另一物理页（A/D 已置位）。
-      bus.write(pteAddr, pte(NewLeafPPN, 0xdfL))
+      bus.write(pteAddress, pte(NewLeafPPN, 0xdfL))
 
       // 写响应与 flush 同拍返回。
       bus.releaseWrite()
@@ -336,10 +336,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       dut.io.flush.poke(false.B)
       withClue("flush 当拍写响应未被接收: ") { bus.hasPending should be(false) }
 
-      waitPtwIdle(dut, bus)
+      waitPTWIdle(dut, bus)
 
-      issuePtw(dut, bus, 0x1234L)
-      val (paddr, fault) = waitPtwResponse(dut, bus)
+      issuePTW(dut, bus, 0x1234L)
+      val (paddr, fault) = waitPTWResponse(dut, bus)
       fault should be(false)
       withClue("flush 后仍命中 A/D 写回路径缓存的旧 PTE: ") {
         paddr should be(BigInt(NewLeaf + 0x234L))
@@ -349,32 +349,32 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   "PTW hardware A/D cache" should
     "store 命中 PTW cache 时仍必须写回 D 位" in {
-    val bus = new PteBus(latency = 1)
-    val pteAddr = Root + 0x4L
+    val bus = new PTEBus(latency = 1)
+    val pteAddress = Root + 0x4L
     // V|R|W|X，A=0,D=0；第一次 load 只写回 A。
-    bus.write(pteAddr, pte(LeafPPN, 0x0fL))
+    bus.write(pteAddress, pte(LeafPPN, 0x0fL))
     simulate(ptw4(adMode = "hardware")) { dut =>
-      initPtw(dut, bus)
-      issuePtw(dut, bus, 0x1234L, ysyx_26030103_AccessType.Load)
-      val (loadPaddr, loadFault) = waitPtwResponse(dut, bus)
+      initPTW(dut, bus)
+      issuePTW(dut, bus, 0x1234L, ysyx_26030103_AccessType.Load)
+      val (loadPhysicalAddress, loadFault) = waitPTWResponse(dut, bus)
       loadFault should be(false)
-      loadPaddr should be(BigInt(Leaf + 0x234L))
+      loadPhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("load 应写回 A 位: ") {
-        (bus.read(pteAddr) & BigInt(0x40)) should be(BigInt(0x40))
+        (bus.read(pteAddress) & BigInt(0x40)) should be(BigInt(0x40))
       }
       withClue("load 不应写回 D 位: ") {
-        (bus.read(pteAddr) & BigInt(0x80)) should be(BigInt(0))
+        (bus.read(pteAddress) & BigInt(0x80)) should be(BigInt(0))
       }
       withClue("load 应产生一次 A/D 写: ") { bus.writes should be(1) }
-      waitPtwIdle(dut, bus)
+      waitPTWIdle(dut, bus)
 
       // 同页 store 命中 PTW cache：硬件 A/D 仍必须把 D 写回页表。
-      issuePtw(dut, bus, 0x1234L, ysyx_26030103_AccessType.Store)
-      val (storePaddr, storeFault) = waitPtwResponse(dut, bus)
+      issuePTW(dut, bus, 0x1234L, ysyx_26030103_AccessType.Store)
+      val (storePhysicalAddress, storeFault) = waitPTWResponse(dut, bus)
       storeFault should be(false)
-      storePaddr should be(BigInt(Leaf + 0x234L))
+      storePhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("store 命中 PTW cache 后页表 D 仍为 0: ") {
-        (bus.read(pteAddr) & BigInt(0x80)) should be(BigInt(0x80))
+        (bus.read(pteAddress) & BigInt(0x80)) should be(BigInt(0x80))
       }
       withClue("store 命中 PTW cache 应再产生一次 D 写回: ") {
         bus.writes should be(2)
@@ -384,9 +384,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   "PTWPipeline hardware A/D cache" should
     "store 命中 PTW cache 时仍必须写回 D 位" in {
-    val bus = new PteBus(latency = 1)
-    val pteAddr = Root + 0x4L
-    bus.write(pteAddr, pte(LeafPPN, 0x0fL))
+    val bus = new PTEBus(latency = 1)
+    val pteAddress = Root + 0x4L
+    bus.write(pteAddress, pte(LeafPPN, 0x0fL))
     simulate(new ysyx_26030103_PTWPipeline(
       outstanding = 1,
       adMode = "hardware",
@@ -455,20 +455,20 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       }
 
       issue(ysyx_26030103_AccessType.Load)
-      val (loadPaddr, loadFault) = waitResponse()
+      val (loadPhysicalAddress, loadFault) = waitResponse()
       loadFault should be(false)
-      loadPaddr should be(BigInt(Leaf + 0x234L))
+      loadPhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("load 应写回 A 位: ") {
-        (bus.read(pteAddr) & BigInt(0x40)) should be(BigInt(0x40))
+        (bus.read(pteAddress) & BigInt(0x40)) should be(BigInt(0x40))
       }
       withClue("load 应产生一次 A 写: ") { bus.writes should be(1) }
 
       issue(ysyx_26030103_AccessType.Store)
-      val (storePaddr, storeFault) = waitResponse()
+      val (storePhysicalAddress, storeFault) = waitResponse()
       storeFault should be(false)
-      storePaddr should be(BigInt(Leaf + 0x234L))
+      storePhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("store 命中 PTW cache 后页表 D 仍为 0: ") {
-        (bus.read(pteAddr) & BigInt(0x80)) should be(BigInt(0x80))
+        (bus.read(pteAddress) & BigInt(0x80)) should be(BigInt(0x80))
       }
       withClue("store 命中 PTW cache 应再产生一次 D 写回: ") {
         bus.writes should be(2)
@@ -478,10 +478,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   "PTWPipeline" should
     "flush 与 cache fill 同拍时不得留下旧 PTE" in {
-    val bus = new PteBus(latency = 1)
-    val pteAddr = Root + 0x4L
-    bus.write(pteAddr, pte(LeafPPN, 0xdfL))
-    bus.holdReadAddr = Some(pteAddr)
+    val bus = new PTEBus(latency = 1)
+    val pteAddress = Root + 0x4L
+    bus.write(pteAddress, pte(LeafPPN, 0xdfL))
+    bus.holdReadAddress = Some(pteAddress)
     simulate(new ysyx_26030103_PTWPipeline(
       outstanding = 1,
       adMode = "fault",
@@ -557,7 +557,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       }
       withClue("PTWPipeline 页表读未被挂起: ") { bus.heldPending should be(true) }
 
-      bus.write(pteAddr, pte(NewLeafPPN, 0xdfL))
+      bus.write(pteAddress, pte(NewLeafPPN, 0xdfL))
       bus.releaseRead()
       dut.io.flush.poke(true.B)
       bus.tick(dut.io.bus, dut.clock)
@@ -589,7 +589,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       ptwCacheWays = 2
     )
 
-  private def initMmu(dut: ysyx_26030103_MMU, bus: PteBus): Unit = {
+  private def initMMU(dut: ysyx_26030103_MMU, bus: PTEBus): Unit = {
     dut.reset.poke(true.B)
     dut.clock.step(2)
     dut.reset.poke(false.B)
@@ -604,9 +604,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     dut.io.flush.poke(false.B)
   }
 
-  private def issueMmu(
+  private def issueMMU(
       dut: ysyx_26030103_MMU,
-      bus: PteBus,
+      bus: PTEBus,
       vaddr: Long,
       satp: UInt = Satp,
       access: UInt = ysyx_26030103_AccessType.Load
@@ -631,9 +631,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     dut.io.req.valid.poke(false.B)
   }
 
-  private def waitMmuResponse(
+  private def waitMMUResponse(
       dut: ysyx_26030103_MMU,
-      bus: PteBus
+      bus: PTEBus
   ): (BigInt, Boolean) = {
     var result: Option[(BigInt, Boolean)] = None
     var guard = 0
@@ -651,7 +651,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     result.get
   }
 
-  private def waitMmuIdle(dut: ysyx_26030103_MMU, bus: PteBus): Unit = {
+  private def waitMMUIdle(dut: ysyx_26030103_MMU, bus: PTEBus): Unit = {
     var guard = 0
     while (!bool(dut.io.req.ready) && guard < 30) {
       bus.tick(dut.io.bus, dut.clock)
@@ -662,7 +662,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     }
   }
 
-  private def seedTwoLevel(bus: PteBus, leaf: BigInt): Unit = {
+  private def seedTwoLevel(bus: PTEBus, leaf: BigInt): Unit = {
     bus.write(Root, pte(0x80002L, 0x1L))
     bus.write(0x80002004L, leaf)
   }
@@ -674,12 +674,12 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   "MMU flush" should
     "与 PTW 叶子响应同拍时不得让旧 PTE 留在 PTW cache" in {
-    val bus = new PteBus(latency = 1)
+    val bus = new PTEBus(latency = 1)
     seedTwoLevel(bus, pte(LeafPPN, 0xdfL))
-    bus.holdReadAddr = Some(0x80002004L)
+    bus.holdReadAddress = Some(0x80002004L)
     simulate(new ysyx_26030103_MMU(mmuProfile())) { dut =>
-      initMmu(dut, bus)
-      issueMmu(dut, bus, 0x1234L)
+      initMMU(dut, bus)
+      issueMMU(dut, bus, 0x1234L)
       var guard = 0
       while (!bus.heldPending && guard < 50) {
         bus.tick(dut.io.bus, dut.clock)
@@ -696,7 +696,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
         bus.hasPending should be(false)
       }
 
-      waitMmuIdle(dut, bus)
+      waitMMUIdle(dut, bus)
       // flush 必须丢弃旧请求的响应；不能把 flush 前的翻译结果返回。
       var stray = 0
       for (_ <- 0 until 6) {
@@ -705,8 +705,8 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       }
       withClue("MMU flush 后仍返回了旧请求的响应: ") { stray should be(0) }
 
-      issueMmu(dut, bus, 0x1234L)
-      val (paddr, fault) = waitMmuResponse(dut, bus)
+      issueMMU(dut, bus, 0x1234L)
+      val (paddr, fault) = waitMMUResponse(dut, bus)
       fault should be(false)
       withClue("MMU flush 同拍响应后仍命中旧 PTW cache 表项: ") {
         paddr should be(BigInt(NewLeaf + 0x234L))
@@ -715,13 +715,13 @@ class ysyx_26030103_MMUFlushRaceAuditTest
   }
 
   it should "排空 reqQueue 中尚未分配上下文的旧 satp 请求" in {
-    val bus = new PteBus(latency = 1)
+    val bus = new PTEBus(latency = 1)
     seedTwoLevel(bus, pte(LeafPPN, 0xdfL))
     // 第二个请求使用旧 satp，但会在 flush 前留在 reqQueue。
-    bus.holdReadAddr = Some(0x80002004L)
+    bus.holdReadAddress = Some(0x80002004L)
     simulate(new ysyx_26030103_MMU(mmuProfile())) { dut =>
-      initMmu(dut, bus)
-      issueMmu(dut, bus, 0x1234L)
+      initMMU(dut, bus)
+      issueMMU(dut, bus, 0x1234L)
       var guard = 0
       while (!bus.heldPending && guard < 50) {
         bus.tick(dut.io.bus, dut.clock)
@@ -731,7 +731,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
       // 第二笔请求进入 reqQueue 后 flush。它属于旧 satp，绝不能在新
       // 地址空间下继续翻译。
-      issueMmu(dut, bus, 0x2345L)
+      issueMMU(dut, bus, 0x2345L)
 
       dut.io.flush.poke(true.B)
       bus.tick(dut.io.bus, dut.clock)
@@ -740,7 +740,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       // 旧 walk 的响应在 flush 后返回，MMU 只用于排空 PTW。
       bus.releaseRead()
       bus.tick(dut.io.bus, dut.clock)
-      waitMmuIdle(dut, bus)
+      waitMMUIdle(dut, bus)
 
       // 排空期间不得返回任何响应；新页表使用不同根表。
       var stray = 0
@@ -756,8 +756,8 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       bus.write(NewRoot, pte(0x80006L, 0x1L))
       bus.write(0x80006004L, pte(0x80007L, 0xdfL))
       val newSatp = (0x80000000L | NewRootPPN).U(32.W)
-      issueMmu(dut, bus, 0x1234L, newSatp)
-      val (paddr, fault) = waitMmuResponse(dut, bus)
+      issueMMU(dut, bus, 0x1234L, newSatp)
+      val (paddr, fault) = waitMMUResponse(dut, bus)
       fault should be(false)
       withClue("flush 后的新请求未按新 satp 翻译: ") {
         paddr should be(BigInt((0x80007L << 12) + 0x234L))
@@ -779,9 +779,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       dut.reset.poke(false.B)
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
-      dut.io.fillVaddr.poke(0.U)
-      dut.io.fillAsid.poke(0.U)
-      dut.io.fillPte.poke(0.U)
+      dut.io.fillVirtualAddress.poke(0.U)
+      dut.io.fillASID.poke(0.U)
+      dut.io.fillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
       dut.io.lookup(0).asid.poke(0.U)
@@ -794,9 +794,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
       def fill(flags: Long): Unit = {
         dut.io.fillValid.poke(true.B)
-        dut.io.fillVaddr.poke(0x1234.U)
-        dut.io.fillAsid.poke(0.U)
-        dut.io.fillPte.poke(pte(LeafPPN, flags).U(32.W))
+        dut.io.fillVirtualAddress.poke(0x1234.U)
+        dut.io.fillASID.poke(0.U)
+        dut.io.fillPTE.poke(pte(LeafPPN, flags).U(32.W))
         dut.io.fillLevel.poke(0.U)
         dut.clock.step()
         dut.io.fillValid.poke(false.B)
@@ -836,7 +836,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   "MMU TLB hardware A/D" should
     "store 命中 D=0 表项时重填并写回 D，之后命中不再写" in {
-    val bus = new PteBus(latency = 1)
+    val bus = new PTEBus(latency = 1)
     // 根 PTE + 叶子 PTE：V|R|W|X|U|A，D=0。
     seedTwoLevel(bus, pte(LeafPPN, 0x5fL))
     val profile = ysyx_26030103_MMUProfile(
@@ -850,44 +850,44 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       ptwCacheWays = 2
     )
     simulate(new ysyx_26030103_MMU(profile)) { dut =>
-      initMmu(dut, bus)
+      initMMU(dut, bus)
 
       // load 填 DTLB：A=1 无需写回，D=0 原样进入 TLB。
-      issueMmu(dut, bus, 0x1234L)
-      val (loadPaddr, loadFault) = waitMmuResponse(dut, bus)
+      issueMMU(dut, bus, 0x1234L)
+      val (loadPhysicalAddress, loadFault) = waitMMUResponse(dut, bus)
       loadFault should be(false)
-      loadPaddr should be(BigInt(Leaf + 0x234L))
+      loadPhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("A=1 的 load 不应产生页表写: ") { bus.writes should be(0) }
 
       // 同页 store 命中 A=1,D=0 的 DTLB 表项：必须重新 walk 写回 D。
-      issueMmu(dut, bus, 0x1234L, access = ysyx_26030103_AccessType.Store)
-      val (storePaddr, storeFault) = waitMmuResponse(dut, bus)
+      issueMMU(dut, bus, 0x1234L, access = ysyx_26030103_AccessType.Store)
+      val (storePhysicalAddress, storeFault) = waitMMUResponse(dut, bus)
       storeFault should be(false)
-      storePaddr should be(BigInt(Leaf + 0x234L))
+      storePhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("store 命中 D=0 表项后页表 D 仍未写回: ") {
         (bus.read(0x80002004L) & BigInt(0x80)) should be(BigInt(0x80))
       }
       withClue("store 命中 D=0 表项应产生一次 D 写回: ") {
         bus.writes should be(1)
       }
-      waitMmuIdle(dut, bus)
+      waitMMUIdle(dut, bus)
 
       // D=1 已回填 DTLB；再次 store/load 必须直接命中，不再访问页表。
       val readsAfterWrite = bus.reads
       val writesAfterWrite = bus.writes
-      issueMmu(dut, bus, 0x1234L, access = ysyx_26030103_AccessType.Store)
-      val (store2Paddr, store2Fault) = waitMmuResponse(dut, bus)
+      issueMMU(dut, bus, 0x1234L, access = ysyx_26030103_AccessType.Store)
+      val (store2PhysicalAddress, store2Fault) = waitMMUResponse(dut, bus)
       store2Fault should be(false)
-      store2Paddr should be(BigInt(Leaf + 0x234L))
+      store2PhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("D 写回后再次 store 不应重新访问页表: ") {
         bus.reads should be(readsAfterWrite)
         bus.writes should be(writesAfterWrite)
       }
 
-      issueMmu(dut, bus, 0x1234L)
-      val (load2Paddr, load2Fault) = waitMmuResponse(dut, bus)
+      issueMMU(dut, bus, 0x1234L)
+      val (load2PhysicalAddress, load2Fault) = waitMMUResponse(dut, bus)
       load2Fault should be(false)
-      load2Paddr should be(BigInt(Leaf + 0x234L))
+      load2PhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("D 写回后同页 load 不应重新访问页表: ") {
         bus.reads should be(readsAfterWrite)
         bus.writes should be(writesAfterWrite)
@@ -898,9 +898,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
   "MMU pipelined PTW" should
     "flush 后同一 PTE 地址的迟到旧响应不得满足或污染新 walk" in {
     val bus = new MultiBus(latency = 1)
-    val leafAddr = 0x80002004L
+    val leafAddress = 0x80002004L
     seedTwoLevel(bus, pte(LeafPPN, 0xdfL))
-    bus.holdOnceAddr = Some(leafAddr)
+    bus.holdOnceAddress = Some(leafAddress)
     val profile = ysyx_26030103_MMUProfile(
       enabled = true,
       tlbEnabled = false,
@@ -978,7 +978,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       dut.io.flush.poke(true.B)
       bus.tick(dut.io.bus, dut.clock)
       dut.io.flush.poke(false.B)
-      bus.write(leafAddr, pte(NewLeafPPN, 0xdfL))
+      bus.write(leafAddress, pte(NewLeafPPN, 0xdfL))
 
       // 新 walk 必须能拿到同一地址的新 PTE，并在旧响应尚未返回时就完成。
       issue(0x1234L)
@@ -1015,12 +1015,12 @@ class ysyx_26030103_MMUFlushRaceAuditTest
   }
 
   "MMU flush" should "与 TLB 回填同拍时不得把旧 PTE 装入 TLB" in {
-    val bus = new PteBus(latency = 1)
+    val bus = new PTEBus(latency = 1)
     seedTwoLevel(bus, pte(LeafPPN, 0xdfL))
-    bus.holdReadAddr = Some(0x80002004L)
+    bus.holdReadAddress = Some(0x80002004L)
     simulate(new ysyx_26030103_MMU(mmuProfile(tlbEnabled = true))) { dut =>
-      initMmu(dut, bus)
-      issueMmu(dut, bus, 0x1234L)
+      initMMU(dut, bus)
+      issueMMU(dut, bus, 0x1234L)
       var guard = 0
       while (!bus.heldPending && guard < 50) {
         bus.tick(dut.io.bus, dut.clock)
@@ -1033,10 +1033,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       dut.io.flush.poke(true.B)
       bus.tick(dut.io.bus, dut.clock)
       dut.io.flush.poke(false.B)
-      waitMmuIdle(dut, bus)
+      waitMMUIdle(dut, bus)
 
-      issueMmu(dut, bus, 0x1234L)
-      val (paddr, fault) = waitMmuResponse(dut, bus)
+      issueMMU(dut, bus, 0x1234L)
+      val (paddr, fault) = waitMMUResponse(dut, bus)
       fault should be(false)
       withClue("flush 后 TLB 仍命中 flush 前回填的旧表项: ") {
         paddr should be(BigInt(NewLeaf + 0x234L))

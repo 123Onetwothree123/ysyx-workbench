@@ -29,7 +29,7 @@ class ysyx_26030103_IDUAtomicHarness(config: ysyx_26030103_NPCConfig)
   idu.io.in.bits.pc := 0.U
   idu.io.in.bits.ExceptionValid := false.B
   idu.io.in.bits.ExceptionCause := 0.U
-  idu.io.in.bits.AccessFaultResp := 0.U
+  idu.io.in.bits.AccessFaultResponse := 0.U
   idu.io.in.bits.pred_taken := false.B
   idu.io.in.bits.pred_target := 0.U
   idu.io.out.ready := true.B
@@ -110,9 +110,9 @@ class ysyx_26030103_AtomicMisaHarness(useA: Boolean) extends Module {
   csr.io.rst := reset
   csr.io.Enable := false.B
   csr.io.MinstretRetireCommit := false.B
-  csr.io.IsCsrrw := false.B
-  csr.io.IsCsrrs := false.B
-  csr.io.IsCsrrc := false.B
+  csr.io.IsCSRrw := false.B
+  csr.io.IsCSRrs := false.B
+  csr.io.IsCSRrc := false.B
   csr.io.IsEcall := false.B
   csr.io.IsEbreak := false.B
   csr.io.IsMret := false.B

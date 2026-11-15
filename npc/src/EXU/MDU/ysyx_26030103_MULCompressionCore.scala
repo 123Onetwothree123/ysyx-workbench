@@ -5,220 +5,220 @@ import _root_.ysyx_26030103.common._
 import _root_.ysyx_26030103.config._
 //无符号部分积压缩树公共结构。
 private object ysyx_26030103_MULCompressionUtils {
-  def PlainPartialProducts(LHS: UInt, RHS: UInt, OperandWidth: Int = 32, ProductWidth: Int = 64): IndexedSeq[UInt] = {
-    (0 until OperandWidth).map { Bit =>
-      val Shifted = (Cat(0.U(OperandWidth.W), LHS) << Bit)(ProductWidth - 1, 0)
-      Mux(RHS(Bit), Shifted, 0.U(ProductWidth.W))
+  def plainPartialProducts(lhs: UInt, rhs: UInt, operandWidth: Int = 32, productWidth: Int = 64): IndexedSeq[UInt] = {
+    (0 until operandWidth).map { bit =>
+      val shifted = (Cat(0.U(operandWidth.W), lhs) << bit)(productWidth - 1, 0)
+      Mux(rhs(bit), shifted, 0.U(productWidth.W))
     }
   }
   final case class WeightedDot(Value: Bool, Offset: Int)
-  def CompressDots(
+  def compressDots(
       Dots: IndexedSeq[Bool],
       Config: ysyx_26030103_MULGPCConfig
   ): IndexedSeq[WeightedDot] = {
     require(Dots.length >= 2)
     require(Dots.length <= Config.InputCountWithCin)
-    val UseCin = Config.HasCin && Dots.length > Config.Inputs
-    val DataInputs = math.min(Dots.length, Config.Inputs)
-    val Compressor = Module(new ysyx_26030103_MULGPC(Config))
-    for (Index <- 0 until Config.Inputs) {
-      Compressor.IO.In(Index) := (if (Index < DataInputs) Dots(Index) else false.B)
+    val useCin = Config.HasCin && Dots.length > Config.Inputs
+    val dataInputs = math.min(Dots.length, Config.Inputs)
+    val compressor = Module(new ysyx_26030103_MULGPC(Config))
+    for (index <- 0 until Config.Inputs) {
+      compressor.IO.In(index) := (if (index < dataInputs) Dots(index) else false.B)
     }
-    Compressor.IO.Cin := (if (UseCin) Dots(DataInputs) else false.B)
-    Config.ActiveOutputBits(DataInputs, UseCin).map { Bit =>
-      if (Bit < Config.Outputs) {
-        WeightedDot(Compressor.IO.Out(Bit), Config.OutputOffsets(Bit))
+    compressor.IO.Cin := (if (useCin) Dots(dataInputs) else false.B)
+    Config.ActiveOutputBits(dataInputs, useCin).map { bit =>
+      if (bit < Config.Outputs) {
+        WeightedDot(compressor.IO.Out(bit), Config.OutputOffsets(bit))
       } else {
-        WeightedDot(Compressor.IO.Cout, Config.CoutOffset)
+        WeightedDot(compressor.IO.Cout, Config.CoutOffset)
       }
     }
   }
   // 广义Wallace stage：每组按配置K:R GPC压缩，各加权输出写入
   // 下一层对应列，不在本级继续消费。
-  def WallaceReduceColumns(
+  def wallaceReduceColumns(
       InputColumns: IndexedSeq[IndexedSeq[Bool]],
-      ProductWidth: Int,
+      productWidth: Int,
       Config: ysyx_26030103_MULGPCConfig
   ): IndexedSeq[IndexedSeq[Bool]] = {
-    require(InputColumns.length == ProductWidth)
-    val NextColumns = Array.fill(ProductWidth)(scala.collection.mutable.ArrayBuffer[Bool]())
-    for (Bit <- 0 until ProductWidth) {
-      val Work = scala.collection.mutable.ArrayBuffer[Bool]()
-      Work ++= InputColumns(Bit)
-      while (Work.length >= 3) {
-        val GroupSize = math.min(Config.InputCountWithCin, Work.length)
-        val Group = Work.take(GroupSize).toIndexedSeq
-        Work.remove(0, GroupSize)
-        val Outputs = CompressDots(Group, Config)
-        for (Output <- Outputs if Bit + Output.Offset < ProductWidth) {
-          NextColumns(Bit + Output.Offset) += Output.Value
+    require(InputColumns.length == productWidth)
+    val nextColumns = Array.fill(productWidth)(scala.collection.mutable.ArrayBuffer[Bool]())
+    for (bit <- 0 until productWidth) {
+      val work = scala.collection.mutable.ArrayBuffer[Bool]()
+      work ++= InputColumns(bit)
+      while (work.length >= 3) {
+        val groupSize = math.min(Config.InputCountWithCin, work.length)
+        val group = work.take(groupSize).toIndexedSeq
+        work.remove(0, groupSize)
+        val outputs = compressDots(group, Config)
+        for (output <- outputs if bit + output.Offset < productWidth) {
+          nextColumns(bit + output.Offset) += output.Value
         }
       }
-      NextColumns(Bit) ++= Work
+      nextColumns(bit) ++= work
     }
-    NextColumns.map(_.toIndexedSeq).toIndexedSeq
+    nextColumns.map(_.toIndexedSeq).toIndexedSeq
   }
 
   // 只用静态列高计算 Wallace 的层数，供流水边界均匀分布使用。
-  def WallaceColumnSchedule(
+  def wallaceColumnSchedule(
       InitialHeights: IndexedSeq[Int],
-      ProductWidth: Int,
+      productWidth: Int,
       Config: ysyx_26030103_MULGPCConfig
   ): IndexedSeq[Int] = {
-    require(InitialHeights.length == ProductWidth)
-    val Schedule = scala.collection.mutable.ArrayBuffer[Int]()
-    var Heights = InitialHeights
-    while (Heights.max > 2) {
-      val NextHeights = Array.fill(ProductWidth)(0)
-      for (Bit <- 0 until ProductWidth) {
-        var Remaining = Heights(Bit)
-        while (Remaining >= 3) {
-          val GroupSize = math.min(Config.InputCountWithCin, Remaining)
-          Remaining -= GroupSize
-          val UseCin = Config.HasCin && GroupSize > Config.Inputs
-          val DataInputs = math.min(GroupSize, Config.Inputs)
-          for (OutputBit <- Config.ActiveOutputBits(DataInputs, UseCin)) {
-            val Offset = Config.AllOutputOffsets(OutputBit)
-            if (Bit + Offset < ProductWidth) {
-              NextHeights(Bit + Offset) += 1
+    require(InitialHeights.length == productWidth)
+    val schedule = scala.collection.mutable.ArrayBuffer[Int]()
+    var heights = InitialHeights
+    while (heights.max > 2) {
+      val nextHeights = Array.fill(productWidth)(0)
+      for (bit <- 0 until productWidth) {
+        var remaining = heights(bit)
+        while (remaining >= 3) {
+          val groupSize = math.min(Config.InputCountWithCin, remaining)
+          remaining -= groupSize
+          val useCin = Config.HasCin && groupSize > Config.Inputs
+          val dataInputs = math.min(groupSize, Config.Inputs)
+          for (outputBit <- Config.ActiveOutputBits(dataInputs, useCin)) {
+            val offset = Config.AllOutputOffsets(outputBit)
+            if (bit + offset < productWidth) {
+              nextHeights(bit + offset) += 1
             }
           }
         }
-        NextHeights(Bit) += Remaining
+        nextHeights(bit) += remaining
       }
-      require(NextHeights.sum < Heights.sum, "GPC配置无法继续压缩Wallace点阵")
-      Heights = NextHeights.toIndexedSeq
-      Schedule += Heights.max
+      require(nextHeights.sum < heights.sum, "GPC配置无法继续压缩Wallace点阵")
+      heights = nextHeights.toIndexedSeq
+      schedule += heights.max
     }
-    Schedule.toIndexedSeq
+    schedule.toIndexedSeq
   }
   // 将带有静态有效范围的部分积行放入列点阵。
   // 范围外的位不是“值为零的点”，而是不存在的点；这是标准
   // Dadda 与把所有行补齐到完整字长再压缩的实现之间的关键区别。
-  def InitialDaddaColumns(
-      Rows: IndexedSeq[UInt],
+  def initialDaddaColumns(
+      rows: IndexedSeq[UInt],
       ValidRanges: IndexedSeq[(Int, Int)],
-      ProductWidth: Int = 64
+      productWidth: Int = 64
   ): IndexedSeq[IndexedSeq[Bool]] = {
-    require(Rows.length == ValidRanges.length)
-    val Columns = Array.fill(ProductWidth)(scala.collection.mutable.ArrayBuffer[Bool]())
-    for ((row, bounds) <- Rows.zip(ValidRanges)) {
+    require(rows.length == ValidRanges.length)
+    val columns = Array.fill(productWidth)(scala.collection.mutable.ArrayBuffer[Bool]())
+    for ((row, bounds) <- rows.zip(ValidRanges)) {
       val (low, high) = bounds
-      require(low >= 0 && high < ProductWidth && low <= high)
-      for (Bit <- low to high) {
-        Columns(Bit) += row(Bit)
+      require(low >= 0 && high < productWidth && low <= high)
+      for (bit <- low to high) {
+        columns(bit) += row(bit)
       }
     }
-    Columns.map(_.toIndexedSeq).toIndexedSeq
+    columns.map(_.toIndexedSeq).toIndexedSeq
   }
 
   // 对稀疏列点阵执行一个由配置K:R GPC驱动的广义Dadda stage。
-  def DaddaReduceColumns(
+  def daddaReduceColumns(
       InputColumns: IndexedSeq[IndexedSeq[Bool]],
       Target: Int,
-      ProductWidth: Int = 64,
+      productWidth: Int = 64,
       Config: ysyx_26030103_MULGPCConfig = ysyx_26030103_MULGPCConfig()
   ): IndexedSeq[IndexedSeq[Bool]] = {
-    require(InputColumns.length == ProductWidth)
+    require(InputColumns.length == productWidth)
     require(Target >= 2)
     // 当前 stage 在低位列产生的 carry 会作为下一列的输入点参与同一轮
     // 的列高计算。这正是标准 Dadda 列扫描的做法；若把它只计数而不
     // 放回 Work，会得到一个功能等价但压缩器布局不标准的网络。
-    val IncomingCarries = Array.fill(ProductWidth)(scala.collection.mutable.ArrayBuffer[Bool]())
-    val ReducedColumns = Array.fill(ProductWidth)(scala.collection.mutable.ArrayBuffer[Bool]())
-    for (Bit <- 0 until ProductWidth) {
-      val Work = scala.collection.mutable.ArrayBuffer[Bool]()
-      Work ++= InputColumns(Bit)
-      Work ++= IncomingCarries(Bit)
-      while (Work.length + ReducedColumns(Bit).length > Target) {
-        val Excess = Work.length + ReducedColumns(Bit).length - Target
-        val CandidateGroups = (2 to math.min(Config.InputCountWithCin, Work.length)).map { GroupSize =>
-          val UseCin = Config.HasCin && GroupSize > Config.Inputs
-          val DataInputs = math.min(GroupSize, Config.Inputs)
-          val SameColumnOutputs = Config
-            .ActiveOutputBits(DataInputs, UseCin)
-            .count(OutputBit => Config.AllOutputOffsets(OutputBit) == 0)
-          (GroupSize, GroupSize - SameColumnOutputs)
+    val incomingCarries = Array.fill(productWidth)(scala.collection.mutable.ArrayBuffer[Bool]())
+    val reducedColumns = Array.fill(productWidth)(scala.collection.mutable.ArrayBuffer[Bool]())
+    for (bit <- 0 until productWidth) {
+      val work = scala.collection.mutable.ArrayBuffer[Bool]()
+      work ++= InputColumns(bit)
+      work ++= incomingCarries(bit)
+      while (work.length + reducedColumns(bit).length > Target) {
+        val excess = work.length + reducedColumns(bit).length - Target
+        val candidateGroups = (2 to math.min(Config.InputCountWithCin, work.length)).map { groupSize =>
+          val useCin = Config.HasCin && groupSize > Config.Inputs
+          val dataInputs = math.min(groupSize, Config.Inputs)
+          val sameColumnOutputs = Config
+            .ActiveOutputBits(dataInputs, useCin)
+            .count(outputBit => Config.AllOutputOffsets(outputBit) == 0)
+          (groupSize, groupSize - sameColumnOutputs)
         }.filter(_._2 > 0)
-        require(CandidateGroups.nonEmpty, "GPC配置无法降低当前Dadda列高")
-        val WithinExcess = CandidateGroups.filter(_._2 <= Excess)
-        val GroupSize = if (WithinExcess.nonEmpty) {
-          WithinExcess.maxBy { case (inputs, reduction) => (reduction, inputs) }._1
+        require(candidateGroups.nonEmpty, "GPC配置无法降低当前Dadda列高")
+        val withinExcess = candidateGroups.filter(_._2 <= excess)
+        val groupSize = if (withinExcess.nonEmpty) {
+          withinExcess.maxBy { case (inputs, reduction) => (reduction, inputs) }._1
         } else {
-          CandidateGroups.minBy { case (inputs, reduction) => (reduction, -inputs) }._1
+          candidateGroups.minBy { case (inputs, reduction) => (reduction, -inputs) }._1
         }
-        val Group = Work.take(GroupSize).toIndexedSeq
-        Work.remove(0, GroupSize)
-        val Outputs = CompressDots(Group, Config)
-        for (Output <- Outputs) {
-          if (Output.Offset == 0) {
-            ReducedColumns(Bit) += Output.Value
-          } else if (Bit + Output.Offset < ProductWidth) {
-            IncomingCarries(Bit + Output.Offset) += Output.Value
+        val group = work.take(groupSize).toIndexedSeq
+        work.remove(0, groupSize)
+        val outputs = compressDots(group, Config)
+        for (output <- outputs) {
+          if (output.Offset == 0) {
+            reducedColumns(bit) += output.Value
+          } else if (bit + output.Offset < productWidth) {
+            incomingCarries(bit + output.Offset) += output.Value
           }
         }
       }
-      ReducedColumns(Bit) ++= Work
+      reducedColumns(bit) ++= work
     }
     require(
-      ReducedColumns.forall(_.length <= Target),
+      reducedColumns.forall(_.length <= Target),
       s"Dadda reduction exceeded target height $Target"
     )
-    ReducedColumns.map(_.toIndexedSeq).toIndexedSeq
+    reducedColumns.map(_.toIndexedSeq).toIndexedSeq
   }
 
   // 仅在最后两行已经形成后才重新拼接成 UInt；中间阶段始终保持稀疏列。
-  def ColumnsToRows(Columns: IndexedSeq[IndexedSeq[Bool]], ProductWidth: Int = 64): IndexedSeq[UInt] = {
-    require(Columns.length == ProductWidth)
-    val RowCount = Columns.map(_.length).max
-    (0 until RowCount).map { RowIndex =>
-      val RowBits = (0 until ProductWidth).map { Bit =>
-        if (RowIndex < Columns(Bit).length) Columns(Bit)(RowIndex) else false.B
+  def columnsToRows(columns: IndexedSeq[IndexedSeq[Bool]], productWidth: Int = 64): IndexedSeq[UInt] = {
+    require(columns.length == productWidth)
+    val rowCount = columns.map(_.length).max
+    (0 until rowCount).map { rowIndex =>
+      val rowBits = (0 until productWidth).map { bit =>
+        if (rowIndex < columns(bit).length) columns(bit)(rowIndex) else false.B
       }
-      RowBits.reverse.map(_.asUInt).reduce((High, Low) => Cat(High, Low))
+      rowBits.reverse.map(_.asUInt).reduce((High, Low) => Cat(High, Low))
     }
   }
 
   // 在 Dadda stage 之间插入按列保存的寄存器，不把稀疏列重新补成完整行。
-  def RegisterColumns(
-      Columns: IndexedSeq[IndexedSeq[Bool]],
-      Advance: Bool,
+  def registerColumns(
+      columns: IndexedSeq[IndexedSeq[Bool]],
+      advance: Bool,
       Clear: Bool = false.B
   ): IndexedSeq[IndexedSeq[Bool]] = {
-    Columns.map { Column =>
-      if (Column.isEmpty) {
-        Column
+    columns.map { column =>
+      if (column.isEmpty) {
+        column
       } else {
-        val Boundary = RegInit(VecInit(Seq.fill(Column.length)(false.B)))
+        val boundary = RegInit(VecInit(Seq.fill(column.length)(false.B)))
         when (Clear) {
-          for (Index <- Column.indices) {
-            Boundary(Index) := false.B
+          for (index <- column.indices) {
+            boundary(index) := false.B
           }
-        }.elsewhen (Advance) {
-          for (Index <- Column.indices) {
-            Boundary(Index) := Column(Index)
+        }.elsewhen (advance) {
+          for (index <- column.indices) {
+            boundary(index) := column(index)
           }
         }
-        Boundary.toIndexedSeq
+        boundary.toIndexedSeq
       }
     }
   }
   // 按配置GPC的有效输入/输出dot数量生成广义Dadda目标高度。
-  def DaddaSchedule(
+  def daddaSchedule(
       MaxHeight: Int,
       Config: ysyx_26030103_MULGPCConfig = ysyx_26030103_MULGPCConfig()
   ): IndexedSeq[Int] = {
-    val InputDots = Config.InputCountWithCin
-    val OutputDots = Config.FullActiveOutputBits.length
-    val Targets = scala.collection.mutable.ArrayBuffer(2)
-    while (Targets.last < MaxHeight) {
-      val Scaled = Targets.last * InputDots / OutputDots
-      Targets += math.max(Targets.last + 1, Scaled)
+    val inputDots = Config.InputCountWithCin
+    val outputDots = Config.FullActiveOutputBits.length
+    val targets = scala.collection.mutable.ArrayBuffer(2)
+    while (targets.last < MaxHeight) {
+      val scaled = targets.last * inputDots / outputDots
+      targets += math.max(targets.last + 1, scaled)
     }
-    Targets.dropRight(1).reverse.toIndexedSeq
+    targets.dropRight(1).reverse.toIndexedSeq
   }
-  def FinalSum(Rows: IndexedSeq[UInt], ProductWidth: Int = 64): UInt = {
-    if (Rows.length == 1) Rows.head else (Rows(0) +& Rows(1))(ProductWidth - 1, 0)
+  def finalSum(rows: IndexedSeq[UInt], productWidth: Int = 64): UInt = {
+    if (rows.length == 1) rows.head else (rows(0) +& rows(1))(productWidth - 1, 0)
   }
 }
 //压缩树乘法器的握手、背压和内部流水寄存器。
@@ -226,169 +226,169 @@ abstract class ysyx_26030103_MULCompressionCore(
     config: ysyx_26030103_NPCConfig,
     UseDadda: Boolean
 ) extends ysyx_26030103_MULCore(config.MULEffectiveWidth) {
-  private val OperandWidth = config.MULEffectiveWidth
-  private val ProductWidth = 2 * OperandWidth
-  private val CompressorConfig = config.MDUProfile.MUL.Compression.Compressor
-  private val UseBooth = config.MDUProfile.MUL.Encoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth编码
-  private val BoothRadix = if (UseBooth) config.MDUProfile.MUL.Radix else 2 //Booth基数
-  private val BoothBits = if (UseBooth) ysyx_26030103_MULBoothConfig.BoothBits(BoothRadix) else 1 //每组处理位数
-  private val BoothGroups = if (UseBooth) (OperandWidth + 1 + BoothBits - 1) / BoothBits else 0 //Booth部分积行数
-  private val BoothPaddedBits = BoothGroups * BoothBits //补齐后的乘数宽度
-  private val BoothProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(BoothRadix, OperandWidth) //编码器部分积宽度
+  private val operandWidth = config.MULEffectiveWidth
+  private val productWidth = 2 * operandWidth
+  private val compressorConfig = config.MDUProfile.MUL.Compression.Compressor
+  private val useBooth = config.MDUProfile.MUL.Encoding == ysyx_26030103_MULEncoding.Booth //是否使用Booth编码
+  private val boothRadix = if (useBooth) config.MDUProfile.MUL.Radix else 2 //Booth基数
+  private val boothBits = if (useBooth) ysyx_26030103_MULBoothConfig.BoothBits(boothRadix) else 1 //每组处理位数
+  private val boothGroups = if (useBooth) (operandWidth + 1 + boothBits - 1) / boothBits else 0 //Booth部分积行数
+  private val boothPaddedBits = boothGroups * boothBits //补齐后的乘数宽度
+  private val boothProductWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(boothRadix, operandWidth) //编码器部分积宽度
   // Booth 负部分积只保留局部的 K 位表示。对 K 位补码 p：
   // 符号扩展关系：sign_extend(p) = zero_extend(p) - sign(p) * 2^K；
   // InitialBoothCorrectionMagnitude 汇总这些减法补偿项。
-  private val InitialRowsAndCorrections = if (!UseBooth) {
+  private val initialRowsAndCorrections = if (!useBooth) {
     (
-      ysyx_26030103_MULCompressionUtils.PlainPartialProducts(
-        IO.Req.bits.LHSMagnitude,
-        IO.Req.bits.RHSMagnitude,
-        OperandWidth,
-        ProductWidth
+      ysyx_26030103_MULCompressionUtils.plainPartialProducts(
+        IO.Request.bits.LHSMagnitude,
+        IO.Request.bits.RHSMagnitude,
+        operandWidth,
+        productWidth
       ),
-      0.U(ProductWidth.W)
+      0.U(productWidth.W)
     )
   } else {
-    val MultiplierPadding = BoothPaddedBits - OperandWidth
-    val Multiplier = if (MultiplierPadding == 0) {
-      Cat(IO.Req.bits.RHSMagnitude, 0.U(1.W))
+    val multiplierPadding = boothPaddedBits - operandWidth
+    val multiplier = if (multiplierPadding == 0) {
+      Cat(IO.Request.bits.RHSMagnitude, 0.U(1.W))
     } else {
-      Cat(0.U(MultiplierPadding.W), IO.Req.bits.RHSMagnitude, 0.U(1.W))
+      Cat(0.U(multiplierPadding.W), IO.Request.bits.RHSMagnitude, 0.U(1.W))
     }
-    val Multiplicand = Cat(0.U(BoothBits.W), IO.Req.bits.LHSMagnitude)
-    val Rows = scala.collection.mutable.ArrayBuffer[UInt]()
-    val CorrectionBits = scala.collection.mutable.ArrayBuffer[(Int, Bool)]()
-    for (Group <- 0 until BoothGroups) {
-      val Encoder = Module(new ysyx_26030103_MULBoothEncoder(BoothRadix, OperandWidth))
-      val WindowLow = Group * BoothBits
-      Encoder.IO.Multiplicand := Multiplicand
-      Encoder.IO.Window := Multiplier(WindowLow + BoothBits, WindowLow)
-      val PartialProduct = Encoder.IO.PartialProduct
-      val FiniteProduct = if (BoothProductWidth >= ProductWidth) {
-        PartialProduct(ProductWidth - 1, 0)
+    val multiplicand = Cat(0.U(boothBits.W), IO.Request.bits.LHSMagnitude)
+    val rows = scala.collection.mutable.ArrayBuffer[UInt]()
+    val correctionBits = scala.collection.mutable.ArrayBuffer[(Int, Bool)]()
+    for (group <- 0 until boothGroups) {
+      val encoder = Module(new ysyx_26030103_MULBoothEncoder(boothRadix, operandWidth))
+      val windowLow = group * boothBits
+      encoder.IO.Multiplicand := multiplicand
+      encoder.IO.Window := multiplier(windowLow + boothBits, windowLow)
+      val partialProduct = encoder.IO.PartialProduct
+      val finiteProduct = if (boothProductWidth >= productWidth) {
+        partialProduct(productWidth - 1, 0)
       } else {
-        Cat(0.U((ProductWidth - BoothProductWidth).W), PartialProduct)
+        Cat(0.U((productWidth - boothProductWidth).W), partialProduct)
       }
-      Rows += (FiniteProduct << (Group * BoothBits))(ProductWidth - 1, 0)
+      rows += (finiteProduct << (group * boothBits))(productWidth - 1, 0)
 
-      val CorrectionExponent = BoothProductWidth + Group * BoothBits
-      if (CorrectionExponent < ProductWidth) {
-        CorrectionBits += ((CorrectionExponent, PartialProduct(BoothProductWidth - 1)))
+      val correctionExponent = boothProductWidth + group * boothBits
+      if (correctionExponent < productWidth) {
+        correctionBits += ((correctionExponent, partialProduct(boothProductWidth - 1)))
       }
     }
-    val CorrectionMagnitudeBits = (0 until ProductWidth).map { Bit =>
-      CorrectionBits.find(_._1 == Bit).map(_._2).getOrElse(false.B)
+    val correctionMagnitudeBits = (0 until productWidth).map { bit =>
+      correctionBits.find(_._1 == bit).map(_._2).getOrElse(false.B)
     }
-    val CorrectionMagnitude = CorrectionMagnitudeBits.reverse.map(_.asUInt).reduce((High, Low) => Cat(High, Low))
-    (Rows.toIndexedSeq, CorrectionMagnitude)
+    val correctionMagnitude = correctionMagnitudeBits.reverse.map(_.asUInt).reduce((High, Low) => Cat(High, Low))
+    (rows.toIndexedSeq, correctionMagnitude)
   }
-  private val InitialRows = InitialRowsAndCorrections._1
-  private val InitialBoothCorrectionMagnitude = InitialRowsAndCorrections._2
+  private val initialRows = initialRowsAndCorrections._1
+  private val initialBoothCorrectionMagnitude = initialRowsAndCorrections._2
   // Wallace 与 Dadda 共用真实的稀疏部分积列。
   // 普通部分积第 r 行只占据 [r, r+N-1]；Booth 行只保留其 K 位
   // 有效段，符号扩展由单独的补偿点处理。
-  private val InitialColumnRanges = if (!UseBooth) {
-    (0 until InitialRows.length).map { Row =>
-      (Row, (Row + OperandWidth - 1).min(ProductWidth - 1))
+  private val initialColumnRanges = if (!useBooth) {
+    (0 until initialRows.length).map { row =>
+      (row, (row + operandWidth - 1).min(productWidth - 1))
     }.toIndexedSeq
   } else {
-    (0 until InitialRows.length).map { Group =>
-      (Group * BoothBits, (Group * BoothBits + BoothProductWidth - 1).min(ProductWidth - 1))
+    (0 until initialRows.length).map { group =>
+      (group * boothBits, (group * boothBits + boothProductWidth - 1).min(productWidth - 1))
     }.toIndexedSeq
   }
-  private val InitialCompressionColumnsBase =
-    ysyx_26030103_MULCompressionUtils.InitialDaddaColumns(InitialRows, InitialColumnRanges, ProductWidth)
+  private val initialCompressionColumnsBase =
+    ysyx_26030103_MULCompressionUtils.initialDaddaColumns(initialRows, initialColumnRanges, productWidth)
   // 将 -CorrectionMagnitude 改写成 ~CorrectionMagnitude + 1，作为
   // 普通点注入 Dadda 初始列，避免在树外再串接一个 P 位减法器。
-  private val InitialCompressionColumns = if (UseBooth) {
-    val Columns = InitialCompressionColumnsBase.map(_.toBuffer).toArray
-    val Complement = (~InitialBoothCorrectionMagnitude)(ProductWidth - 1, 0)
-    for (Bit <- 0 until ProductWidth) {
-      Columns(Bit) += Complement(Bit)
+  private val initialCompressionColumns = if (useBooth) {
+    val columns = initialCompressionColumnsBase.map(_.toBuffer).toArray
+    val complement = (~initialBoothCorrectionMagnitude)(productWidth - 1, 0)
+    for (bit <- 0 until productWidth) {
+      columns(bit) += complement(bit)
     }
-    Columns(0) += true.B
-    Columns.map(_.toIndexedSeq).toIndexedSeq
+    columns(0) += true.B
+    columns.map(_.toIndexedSeq).toIndexedSeq
   } else {
-    InitialCompressionColumnsBase
+    initialCompressionColumnsBase
   }
-  private val InitialColumnHeight = InitialCompressionColumns.map(_.length).max
-  private val BaseSchedule = if (UseDadda) {
-    ysyx_26030103_MULCompressionUtils.DaddaSchedule(InitialColumnHeight, CompressorConfig)
+  private val initialColumnHeight = initialCompressionColumns.map(_.length).max
+  private val baseSchedule = if (UseDadda) {
+    ysyx_26030103_MULCompressionUtils.daddaSchedule(initialColumnHeight, compressorConfig)
   } else {
-    ysyx_26030103_MULCompressionUtils.WallaceColumnSchedule(
-      InitialCompressionColumns.map(_.length),
-      ProductWidth,
-      CompressorConfig
+    ysyx_26030103_MULCompressionUtils.wallaceColumnSchedule(
+      initialCompressionColumns.map(_.length),
+      productWidth,
+      compressorConfig
     )
   }
-  private val Schedule = if (BaseSchedule.length < config.MDUProfile.MUL.Compression.Pipeline) BaseSchedule ++ Seq.fill(config.MDUProfile.MUL.Compression.Pipeline - BaseSchedule.length)(2) else BaseSchedule
-  private val BoundarySteps = (1 to config.MDUProfile.MUL.Compression.Pipeline).map { Boundary =>
-    math.ceil(Schedule.length.toDouble * Boundary / (config.MDUProfile.MUL.Compression.Pipeline + 1)).toInt - 1
+  private val schedule = if (baseSchedule.length < config.MDUProfile.MUL.Compression.Pipeline) baseSchedule ++ Seq.fill(config.MDUProfile.MUL.Compression.Pipeline - baseSchedule.length)(2) else baseSchedule
+  private val boundarySteps = (1 to config.MDUProfile.MUL.Compression.Pipeline).map { boundary =>
+    math.ceil(schedule.length.toDouble * boundary / (config.MDUProfile.MUL.Compression.Pipeline + 1)).toInt - 1
   }.toSet
-  private val Valid = RegInit(VecInit(Seq.fill(config.MDUProfile.MUL.Compression.Pipeline + 1)(false.B)))
-  private val Product = RegInit(0.U(ProductWidth.W))
-  private val Advance = !Valid.last || IO.Resp.ready
-  private val PipelineEnable = !IO.Flush && Advance
-  IO.Req.ready := PipelineEnable
-  IO.Resp.valid := Valid.last && !IO.Flush
-  IO.Resp.bits.Product := Product
-  private val NextProduct = if (UseDadda) {
+  private val valid = RegInit(VecInit(Seq.fill(config.MDUProfile.MUL.Compression.Pipeline + 1)(false.B)))
+  private val product = RegInit(0.U(productWidth.W))
+  private val advance = !valid.last || IO.Response.ready
+  private val pipelineEnable = !IO.Flush && advance
+  IO.Request.ready := pipelineEnable
+  IO.Response.valid := valid.last && !IO.Flush
+  IO.Response.bits.Product := product
+  private val nextProduct = if (UseDadda) {
     // 中间阶段始终保留稀疏列；只在最终两行形成后重组成 UInt。
-    var Columns = InitialCompressionColumns
-    for ((target, step) <- Schedule.zipWithIndex) {
-      if (Columns.map(_.length).max > 2) {
-        Columns = ysyx_26030103_MULCompressionUtils.DaddaReduceColumns(
-          Columns,
+    var columns = initialCompressionColumns
+    for ((target, step) <- schedule.zipWithIndex) {
+      if (columns.map(_.length).max > 2) {
+        columns = ysyx_26030103_MULCompressionUtils.daddaReduceColumns(
+          columns,
           target,
-          ProductWidth,
-          CompressorConfig
+          productWidth,
+          compressorConfig
         )
       }
-      if (BoundarySteps.contains(step)) {
-        Columns = ysyx_26030103_MULCompressionUtils.RegisterColumns(
-          Columns,
-          PipelineEnable,
+      if (boundarySteps.contains(step)) {
+        columns = ysyx_26030103_MULCompressionUtils.registerColumns(
+          columns,
+          pipelineEnable,
           IO.Flush
         )
       }
     }
-    ysyx_26030103_MULCompressionUtils.FinalSum(
-      ysyx_26030103_MULCompressionUtils.ColumnsToRows(Columns, ProductWidth),
-      ProductWidth
+    ysyx_26030103_MULCompressionUtils.finalSum(
+      ysyx_26030103_MULCompressionUtils.columnsToRows(columns, productWidth),
+      productWidth
     )
   } else {
     // Wallace 每一级只消费当前层的 dots，carry 留给下一层。
-    var Columns = InitialCompressionColumns
-    for ((_, step) <- Schedule.zipWithIndex) {
-      if (Columns.map(_.length).max > 2) {
-        Columns = ysyx_26030103_MULCompressionUtils.WallaceReduceColumns(
-          Columns,
-          ProductWidth,
-          CompressorConfig
+    var columns = initialCompressionColumns
+    for ((_, step) <- schedule.zipWithIndex) {
+      if (columns.map(_.length).max > 2) {
+        columns = ysyx_26030103_MULCompressionUtils.wallaceReduceColumns(
+          columns,
+          productWidth,
+          compressorConfig
         )
       }
-      if (BoundarySteps.contains(step)) {
-        Columns = ysyx_26030103_MULCompressionUtils.RegisterColumns(
-          Columns,
-          PipelineEnable,
+      if (boundarySteps.contains(step)) {
+        columns = ysyx_26030103_MULCompressionUtils.registerColumns(
+          columns,
+          pipelineEnable,
           IO.Flush
         )
       }
     }
-    ysyx_26030103_MULCompressionUtils.FinalSum(
-      ysyx_26030103_MULCompressionUtils.ColumnsToRows(Columns, ProductWidth),
-      ProductWidth
+    ysyx_26030103_MULCompressionUtils.finalSum(
+      ysyx_26030103_MULCompressionUtils.columnsToRows(columns, productWidth),
+      productWidth
     )
   }
   when (IO.Flush) {
-    for (Index <- Valid.indices) {
-      Valid(Index) := false.B
+    for (index <- valid.indices) {
+      valid(index) := false.B
     }
-    Product := 0.U
-  }.elsewhen (PipelineEnable) {
-    for (Index <- Valid.indices) {
-      Valid(Index) := (if (Index == 0) IO.Req.valid else Valid(Index - 1))
+    product := 0.U
+  }.elsewhen (pipelineEnable) {
+    for (index <- valid.indices) {
+      valid(index) := (if (index == 0) IO.Request.valid else valid(index - 1))
     }
-    Product := NextProduct
+    product := nextProduct
   }
 }

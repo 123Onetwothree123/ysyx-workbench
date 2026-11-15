@@ -15,7 +15,7 @@ import _root_.ysyx_26030103.config._
   * LSU 的 LD/SD 仍以两拍 32 位 AXI 窄传输覆盖 8 字节。
   */
 class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
-  private val AddrW = 64
+  private val AddressW = 64
   private def bool(value: Bool): Boolean = value.peek().litValue == 1
   private def big(value: UInt): BigInt = value.peek().litValue
 
@@ -56,41 +56,41 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
   }
 
   "RV64 BTB" should "用完整 64 位 PC 做 tag 并保存高地址目标" in {
-    simulate(new ysyx_26030103_BTB(2, 1, AddrW)) { dut =>
+    simulate(new ysyx_26030103_BTB(2, 1, AddressW)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
-      val Pc = BigInt("100000100", 16)
+      val PC = BigInt("100000100", 16)
       val Target = BigInt("123456780", 16)
       dut.io.flush.poke(false.B)
       dut.io.update_valid.poke(true.B)
-      dut.io.update_pc.poke((Pc >> 2).U((AddrW - 2).W))
-      dut.io.update_target.poke(Target.U(AddrW.W))
+      dut.io.update_pc.poke((PC >> 2).U((AddressW - 2).W))
+      dut.io.update_target.poke(Target.U(AddressW.W))
       dut.clock.step()
       dut.io.update_valid.poke(false.B)
 
-      dut.io.lookup_pc.poke((Pc >> 2).U((AddrW - 2).W))
+      dut.io.lookup_pc.poke((PC >> 2).U((AddressW - 2).W))
       dut.clock.step(1)
       bool(dut.io.hit) should be(true)
       big(dut.io.target) should be(Target)
 
       // 仅高 32 位 tag 不同、低位 index 相同的 PC 不能命中。
-      val AliasPc = BigInt("200000100", 16)
-      dut.io.lookup_pc.poke((AliasPc >> 2).U((AddrW - 2).W))
+      val AliasPC = BigInt("200000100", 16)
+      dut.io.lookup_pc.poke((AliasPC >> 2).U((AddressW - 2).W))
       dut.clock.step(1)
       bool(dut.io.hit) should be(false)
     }
   }
 
   "RV64 RAS" should "完整保存并返回高地址返回地址" in {
-    simulate(new ysyx_26030103_RAS(2, AddrW)) { dut =>
+    simulate(new ysyx_26030103_RAS(2, AddressW)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       val Ret = BigInt("123456780", 16)
       dut.io.flush.poke(false.B)
       dut.io.push_valid.poke(true.B)
-      dut.io.push_addr.poke(Ret.U(AddrW.W))
+      dut.io.push_addr.poke(Ret.U(AddressW.W))
       dut.io.pop_valid.poke(false.B)
       dut.clock.step()
       dut.io.push_valid.poke(false.B)
@@ -100,7 +100,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  private def resetLsu(dut: ysyx_26030103_LSU, clock: Clock, reset: Reset): Unit = {
+  private def resetLSU(dut: ysyx_26030103_LSU, clock: Clock, reset: Reset): Unit = {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
@@ -110,11 +110,11 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
     dut.io.DCacheFlush.poke(false.B)
     dut.io.BusQuiet.poke(true.B)
     dut.io.ReservationClear.poke(false.B)
-    dut.io.ViptPAddr.poke(0.U(AddrW.W))
-    dut.io.ViptPAddrValid.poke(false.B)
-    dut.io.ViptPAddrVaddr.poke(0.U(AddrW.W))
-    dut.io.ViptKill.poke(false.B)
-    dut.io.PmpFault.poke(false.B)
+    dut.io.VIPTPAddress.poke(0.U(AddressW.W))
+    dut.io.VIPTPAddressValid.poke(false.B)
+    dut.io.VIPTPAddressVirtualAddress.poke(0.U(AddressW.W))
+    dut.io.VIPTKill.poke(false.B)
+    dut.io.PMPFault.poke(false.B)
     dut.io.DataBus.AW.AWREADY.poke(false.B)
     dut.io.DataBus.W.WREADY.poke(false.B)
     dut.io.DataBus.B.BVALID.poke(false.B)
@@ -139,7 +139,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.MemoryValid.poke(true.B)
     dut.io.in.bits.MemoryWrite.poke(write.B)
     dut.io.in.bits.ALUResult.poke(address.U(64.W))
-    dut.io.in.bits.VAddr.poke(address.U(64.W))
+    dut.io.in.bits.VAddress.poke(address.U(64.W))
     dut.io.in.bits.WidthSelect.poke(3.U(2.W))
     dut.io.in.bits.LoadSigned.poke(true.B)
     dut.io.in.bits.pc.poke(BigInt("80000000", 16).U(64.W))
@@ -149,7 +149,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_LSU(XLEN = 64, AddressWidth = 64)) { dut =>
       val clock = dut.clock
       val Address = BigInt("123456780", 16)
-      resetLsu(dut, clock, dut.reset)
+      resetLSU(dut, clock, dut.reset)
       pokeWideMem(dut, Address, write = false)
       dut.io.DataBus.AR.ARREADY.poke(true.B)
       dut.io.in.valid.poke(true.B)
@@ -194,7 +194,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_LSU(XLEN = 64, AddressWidth = 64)) { dut =>
       val clock = dut.clock
       val Address = BigInt("234567890", 16)
-      resetLsu(dut, clock, dut.reset)
+      resetLSU(dut, clock, dut.reset)
       pokeWideMem(dut, Address, write = true)
       dut.io.in.bits.StoreData.poke(BigInt("0123456789abcdef", 16).U(64.W))
       dut.io.DataBus.AW.AWREADY.poke(true.B)
@@ -253,7 +253,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
     ) { dut =>
       val clock = dut.clock
       val Address = BigInt("180003018", 16)
-      resetLsu(dut, clock, dut.reset)
+      resetLSU(dut, clock, dut.reset)
 
       pokeWideMem(dut, Address, write = false)
       dut.io.in.valid.poke(true.B)

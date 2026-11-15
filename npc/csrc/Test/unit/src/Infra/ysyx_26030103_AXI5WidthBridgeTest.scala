@@ -93,12 +93,12 @@ class ysyx_26030103_AXI5WidthBridgeTest extends AnyFlatSpec with Matchers {
   private def offerW(
       Dut: ysyx_26030103_AXI5WidthBridge,
       Data: BigInt,
-      Strb: BigInt,
+      Strobe: BigInt,
       Last: Boolean
   ): Unit = {
     Dut.io.in.W.WVALID.poke(true.B)
     Dut.io.in.W.WDATA.poke(Data.U(Dut.io.in.W.WDATA.getWidth.W))
-    Dut.io.in.W.WSTRB.poke(Strb.U(Dut.io.in.W.WSTRB.getWidth.W))
+    Dut.io.in.W.WSTRB.poke(Strobe.U(Dut.io.in.W.WSTRB.getWidth.W))
     Dut.io.in.W.WLAST.poke(Last.B)
     stepUntil(Dut.clock, bool(Dut.io.in.W.WREADY))
     Dut.clock.step()
@@ -124,14 +124,14 @@ class ysyx_26030103_AXI5WidthBridgeTest extends AnyFlatSpec with Matchers {
   }
 
   private def newBridge(
-      UpAddr: Int,
-      DownAddr: Int,
+      UpAddress: Int,
+      DownAddress: Int,
       UpData: Int,
       DownData: Int
   ): ysyx_26030103_AXI5WidthBridge =
     new ysyx_26030103_AXI5WidthBridge(
-      UpstreamAddressWidth = UpAddr,
-      DownstreamAddressWidth = DownAddr,
+      UpstreamAddressWidth = UpAddress,
+      DownstreamAddressWidth = DownAddress,
       UpstreamDataWidth = UpData,
       DownstreamDataWidth = DownData
     )

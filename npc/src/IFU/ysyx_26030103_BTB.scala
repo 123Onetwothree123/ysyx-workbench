@@ -21,112 +21,112 @@ class ysyx_26030103_BTB(
   require(BTBBits >= 0, "BTBBits must be non-negative")
   require(BTBWays >= 1, "BTB must contain at least one way")
   require(AddressWidth >= 3, "BTB address width must include PC alignment and tag bits")
-  private val PcShift = if (UseC) 1 else 2
+  private val pcShift = if (UseC) 1 else 2
   require(
-    BTBBits < AddressWidth - PcShift,
+    BTBBits < AddressWidth - pcShift,
     "BTB geometry must leave at least one tag bit after removing PC alignment bits"
   )
   require(KindBits >= 0, "BTB kind width must be non-negative")
-  val NumSets = 1 << BTBBits
-  val TagBits = AddressWidth - BTBBits - PcShift // PC>>PcShift 后去掉 index 位
-  val AddrShiftedWidth = AddressWidth - PcShift // PC[31:1] 或 PC[31:2]
-  val HasKind = KindBits > 0
+  val numSets = 1 << BTBBits
+  val tagBits = AddressWidth - BTBBits - pcShift // PC>>PcShift 后去掉 index 位
+  val addressShiftedWidth = AddressWidth - pcShift // PC[31:1] 或 PC[31:2]
+  val hasKind = KindBits > 0
   val io = IO(new Bundle {
     // 查询端口(组合逻辑,IFU每拍用当前PC[31:2]查,决定下一PC)
-    val lookup_pc = Input(UInt(AddrShiftedWidth.W))
+    val lookup_pc = Input(UInt(addressShiftedWidth.W))
     val hit = Output(Bool())
     val target = Output(UInt(AddressWidth.W))
     // 更新端口(EXU提交分支/jal时写,写PC对应的真实target)
     val update_valid = Input(Bool())
-    val update_pc = Input(UInt(AddrShiftedWidth.W))
+    val update_pc = Input(UInt(addressShiftedWidth.W))
     val update_target = Input(UInt(AddressWidth.W))
     // fence.i 后代码含义可能改变，旧控制流表项必须失效。
     val flush = Input(Bool())
     // 可选kind端口(仅KindBits>0时存在)
-    val hit_kind = if (HasKind) Some(Output(UInt(KindBits.W))) else None
-    val update_kind = if (HasKind) Some(Input(UInt(KindBits.W))) else None
+    val hit_kind = if (hasKind) Some(Output(UInt(KindBits.W))) else None
+    val update_kind = if (hasKind) Some(Input(UInt(KindBits.W))) else None
   })
 
   // 阵列: 每组ways项
   val valid = RegInit(
-    VecInit(Seq.fill(NumSets)(VecInit(Seq.fill(BTBWays)(false.B))))
+    VecInit(Seq.fill(numSets)(VecInit(Seq.fill(BTBWays)(false.B))))
   )
-  val tag = Reg(Vec(NumSets, Vec(BTBWays, UInt(TagBits.W))))
-  val target = Reg(Vec(NumSets, Vec(BTBWays, UInt(AddressWidth.W))))
+  val tag = Reg(Vec(numSets, Vec(BTBWays, UInt(tagBits.W))))
+  val target = Reg(Vec(numSets, Vec(BTBWays, UInt(AddressWidth.W))))
   val kind =
-    if (HasKind) Some(Reg(Vec(NumSets, Vec(BTBWays, UInt(KindBits.W)))))
+    if (hasKind) Some(Reg(Vec(numSets, Vec(BTBWays, UInt(KindBits.W)))))
     else None
 
   // 查询: input已是PC[31:2], 低BTBBits位做index, 高位做tag
-  val lookup_idx =
+  val lookupIndex =
     if (BTBBits == 0) 0.U(1.W) else io.lookup_pc(BTBBits - 1, 0)
-  val lookup_tag = io.lookup_pc(AddrShiftedWidth - 1, BTBBits)
-  val hit_vec = Wire(Vec(BTBWays, Bool()))
+  val lookupTag = io.lookup_pc(addressShiftedWidth - 1, BTBBits)
+  val hitVec = Wire(Vec(BTBWays, Bool()))
   for (w <- 0 until BTBWays) {
-    hit_vec(w) := valid(lookup_idx)(w) && tag(lookup_idx)(w) === lookup_tag
+    hitVec(w) := valid(lookupIndex)(w) && tag(lookupIndex)(w) === lookupTag
   }
-  val hit_way = hit_vec.indexWhere((h: Bool) => h)
-  io.hit := hit_vec.reduceTree(_ || _)
-  io.target := target(lookup_idx)(hit_way)
-  if (HasKind) {
-    io.hit_kind.get := kind.get(lookup_idx)(hit_way)
+  val hitWay = hitVec.indexWhere((h: Bool) => h)
+  io.hit := hitVec.reduceTree(_ || _)
+  io.target := target(lookupIndex)(hitWay)
+  if (hasKind) {
+    io.hit_kind.get := kind.get(lookupIndex)(hitWay)
   }
 
   // 更新: 写入对应组,命中同tag则更新target,否则找第一个空槽,组满按轮转指针替换(FIFO)
-  val upd_idx =
+  val updIndex =
     if (BTBBits == 0) 0.U(1.W) else io.update_pc(BTBBits - 1, 0)
-  val upd_tag = io.update_pc(AddrShiftedWidth - 1, BTBBits)
+  val updTag = io.update_pc(addressShiftedWidth - 1, BTBBits)
   // 每组一个轮转指针, 组满替换时指向受害者way, 替换后自增回绕
   // (ways=1时恒为0, 退化为直接映射的正常覆盖行为)
-  val ReplPtrWidth = log2Ceil(BTBWays).max(1)
-  val repl_ptr = RegInit(VecInit(Seq.fill(NumSets)(0.U(ReplPtrWidth.W))))
+  val replPointerWidth = log2Ceil(BTBWays).max(1)
+  val replPointer = RegInit(VecInit(Seq.fill(numSets)(0.U(replPointerWidth.W))))
   when(io.flush) {
-    for (set <- 0 until NumSets; way <- 0 until BTBWays) {
+    for (set <- 0 until numSets; way <- 0 until BTBWays) {
       valid(set)(way) := false.B
     }
-    for (set <- 0 until NumSets) {
-      repl_ptr(set) := 0.U
+    for (set <- 0 until numSets) {
+      replPointer(set) := 0.U
     }
   }.elsewhen(io.update_valid) {
     // 先组合判断: 是否有同tag命中, 各way之前(不含自己)是否全占用
-    val tag_match = Wire(Vec(BTBWays, Bool()))
+    val tagMatch = Wire(Vec(BTBWays, Bool()))
     for (w <- 0 until BTBWays) {
-      tag_match(w) := valid(upd_idx)(w) && tag(upd_idx)(w) === upd_tag
+      tagMatch(w) := valid(updIndex)(w) && tag(updIndex)(w) === updTag
     }
-    val any_match = tag_match.reduceTree(_ || _)
+    val anyMatch = tagMatch.reduceTree(_ || _)
     // prefix_full(w) = way 0..w-1 全部占用(AND语义, way0的前置恒为"已满")
-    val prefix_full = Wire(Vec(BTBWays, Bool()))
-    prefix_full(0) := true.B
+    val prefixFull = Wire(Vec(BTBWays, Bool()))
+    prefixFull(0) := true.B
     for (w <- 1 until BTBWays) {
-      prefix_full(w) := prefix_full(w - 1) && valid(upd_idx)(w - 1)
+      prefixFull(w) := prefixFull(w - 1) && valid(updIndex)(w - 1)
     }
-    val all_full = prefix_full(BTBWays - 1) && valid(upd_idx)(BTBWays - 1)
+    val allFull = prefixFull(BTBWays - 1) && valid(updIndex)(BTBWays - 1)
     // 每个way的写入: 命中则刷target; 否则当无命中且(该way是第一个空槽 或 组满且轮到该way)时建新项
     for (w <- 0 until BTBWays) {
-      when(tag_match(w)) {
-        target(upd_idx)(w) := io.update_target
-        if (HasKind) {
-          kind.get(upd_idx)(w) := io.update_kind.get
+      when(tagMatch(w)) {
+        target(updIndex)(w) := io.update_target
+        if (hasKind) {
+          kind.get(updIndex)(w) := io.update_kind.get
         }
       }.elsewhen(
-        !any_match && (!valid(upd_idx)(w) && prefix_full(
+        !anyMatch && (!valid(updIndex)(w) && prefixFull(
           w
-        ) || (all_full && w.U === repl_ptr(upd_idx)))
+        ) || (allFull && w.U === replPointer(updIndex)))
       ) {
-        valid(upd_idx)(w) := true.B
-        tag(upd_idx)(w) := upd_tag
-        target(upd_idx)(w) := io.update_target
-        if (HasKind) {
-          kind.get(upd_idx)(w) := io.update_kind.get
+        valid(updIndex)(w) := true.B
+        tag(updIndex)(w) := updTag
+        target(updIndex)(w) := io.update_target
+        if (hasKind) {
+          kind.get(updIndex)(w) := io.update_kind.get
         }
       }
     }
     // 组满发生替换后轮转指针自增(回绕到0)
-    when(!any_match && all_full) {
-      repl_ptr(upd_idx) := Mux(
-        repl_ptr(upd_idx) === (BTBWays - 1).U,
+    when(!anyMatch && allFull) {
+      replPointer(updIndex) := Mux(
+        replPointer(updIndex) === (BTBWays - 1).U,
         0.U,
-        repl_ptr(upd_idx) + 1.U
+        replPointer(updIndex) + 1.U
       )
     }
   }

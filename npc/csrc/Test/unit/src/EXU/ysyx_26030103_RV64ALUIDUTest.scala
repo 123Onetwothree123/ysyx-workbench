@@ -75,11 +75,11 @@ class ysyx_26030103_RV64ALUIDUTest extends AnyFlatSpec with Matchers {
       dut.io.Read1SELECT.poke(5.U)
       dut.io.DebugRaddr.poke(5.U)
       dut.io.ReadDATA1.peek().litValue should be(BigInt("0123456789abcdef", 16))
-      dut.io.DebugRdata.peek().litValue should be(BigInt("0123456789abcdef", 16))
+      dut.io.DebugReadData.peek().litValue should be(BigInt("0123456789abcdef", 16))
     }
   }
 
-  private class IduHarness(xlen: Int) extends Module {
+  private class IDUHarness(xlen: Int) extends Module {
     val io = IO(new Bundle {
       val instruction = Input(UInt(32.W))
       val pc = Input(UInt(xlen.W))
@@ -89,7 +89,7 @@ class ysyx_26030103_RV64ALUIDUTest extends AnyFlatSpec with Matchers {
       val memoryWrite = Output(Bool())
       val widthSelect = Output(UInt(2.W))
       val loadSigned = Output(Bool())
-      val isMdu = Output(Bool())
+      val isMDU = Output(Bool())
       val mduOp = Output(UInt(_root_.ysyx_26030103.common.ysyx_26030103_MDUOp.Width.W))
       val aluA = Output(UInt(xlen.W))
       val aluB = Output(UInt(xlen.W))
@@ -110,7 +110,7 @@ class ysyx_26030103_RV64ALUIDUTest extends AnyFlatSpec with Matchers {
     idu.io.in.bits.pc := io.pc
     idu.io.in.bits.ExceptionValid := false.B
     idu.io.in.bits.ExceptionCause := 0.U
-    idu.io.in.bits.AccessFaultResp := 0.U
+    idu.io.in.bits.AccessFaultResponse := 0.U
     idu.io.in.bits.pred_taken := false.B
     idu.io.in.bits.pred_target := 0.U
     idu.io.out.ready := true.B
@@ -174,7 +174,7 @@ class ysyx_26030103_RV64ALUIDUTest extends AnyFlatSpec with Matchers {
     io.memoryWrite := idu.io.out.bits.MemoryWrite
     io.widthSelect := idu.io.out.bits.WidthSelect
     io.loadSigned := idu.io.out.bits.LoadSigned
-    io.isMdu := idu.io.out.bits.IsMDU
+    io.isMDU := idu.io.out.bits.IsMDU
     io.mduOp := idu.io.out.bits.MDUOp
     io.aluA := idu.io.out.bits.ALU_A
     io.aluB := idu.io.out.bits.ALU_B
@@ -190,14 +190,14 @@ class ysyx_26030103_RV64ALUIDUTest extends AnyFlatSpec with Matchers {
     ((BigInt(imm) & 0xfff) << 20) | (BigInt(rs1) << 15) |
       (BigInt(funct3) << 12) | (BigInt(rd) << 7) | BigInt(opcode)
 
-  private def decode(xlen: Int, insn: BigInt, pc: BigInt = BigInt("80000000", 16)): IduHarness = {
-    val harness = Module(new IduHarness(xlen))
+  private def decode(xlen: Int, insn: BigInt, pc: BigInt = BigInt("80000000", 16)): IDUHarness = {
+    val harness = Module(new IDUHarness(xlen))
     harness
   }
 
   private def runDecode(xlen: Int, insn: BigInt)(
-      check: IduHarness => Unit): Unit = {
-    simulate(new IduHarness(xlen)) { dut =>
+      check: IDUHarness => Unit): Unit = {
+    simulate(new IDUHarness(xlen)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)

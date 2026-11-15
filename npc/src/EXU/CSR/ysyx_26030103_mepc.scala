@@ -18,15 +18,15 @@ class ysyx_26030103_mepc(
     val wdata = Input(UInt(XLEN.W))
     val rdata = Output(UInt(XLEN.W))
   })
-  val RegMepc = withClockAndReset(io.clk, io.rst) { RegInit(0.U(XLEN.W)) }
+  val regMepc = withClockAndReset(io.clk, io.rst) { RegInit(0.U(XLEN.W)) }
   // IALIGN=16 时只固定 bit0；IALIGN=32 时 mepc[1:0]都为 0。
-  private def Align(Value: UInt): UInt =
-    if (UseC) Cat(Value(XLEN - 1, 1), 0.U(1.W))
-    else Cat(Value(XLEN - 1, 2), 0.U(2.W))
+  private def align(value: UInt): UInt =
+    if (UseC) Cat(value(XLEN - 1, 1), 0.U(1.W))
+    else Cat(value(XLEN - 1, 2), 0.U(2.W))
   when(io.ExceptionWE) { // 异常优先跑
-    RegMepc := Align(io.ExceptionData)
+    regMepc := align(io.ExceptionData)
   }.elsewhen(io.wen) {
-    RegMepc := Align(io.wdata)
+    regMepc := align(io.wdata)
   }
-  io.rdata := Align(RegMepc)
+  io.rdata := align(regMepc)
 }

@@ -12,26 +12,26 @@ import chisel3.util._
   * 先返回；out_of_order 可选任意完成者。
   */
 class ysyx_26030103_PTWCluster(
-    outstanding: Int = ysyx_26030103_KconfigDefaults.MmuPtwOutstanding,
-    busOutstanding: Int = ysyx_26030103_KconfigDefaults.MmuPtwBusOutstanding,
+    outstanding: Int = ysyx_26030103_KconfigDefaults.MMUPTWOutstanding,
+    busOutstanding: Int = ysyx_26030103_KconfigDefaults.MMUPTWBusOutstanding,
     adMode: String = "fault",
     cacheEnable: Boolean = false,
-    cacheEntries: Int = ysyx_26030103_KconfigDefaults.MmuPtwCacheEntries,
-    cacheWays: Int = ysyx_26030103_KconfigDefaults.MmuPtwCacheWays,
+    cacheEntries: Int = ysyx_26030103_KconfigDefaults.MMUPTWCacheEntries,
+    cacheWays: Int = ysyx_26030103_KconfigDefaults.MMUPTWCacheWays,
     superpage: Boolean = false,
-    pteConfig: _root_.ysyx_26030103.config.ysyx_26030103_PteConfig =
-      _root_.ysyx_26030103.config.ysyx_26030103_PteConfig(),
-    pageBits: Int = ysyx_26030103_KconfigDefaults.MmuPageBits,
-    levels: Int = ysyx_26030103_KconfigDefaults.MmuLevels,
-    tableEntries: Int = ysyx_26030103_KconfigDefaults.MmuTableEntries,
+    pteConfig: _root_.ysyx_26030103.config.ysyx_26030103_PTEConfig =
+      _root_.ysyx_26030103.config.ysyx_26030103_PTEConfig(),
+    pageBits: Int = ysyx_26030103_KconfigDefaults.MMUPageBits,
+    levels: Int = ysyx_26030103_KconfigDefaults.MMULevels,
+    tableEntries: Int = ysyx_26030103_KconfigDefaults.MMUTableEntries,
     fillSuperpage: Boolean = false,
-    pteSizeBytes: Int = ysyx_26030103_KconfigDefaults.MmuPteSizeBytes,
+    pteSizeBytes: Int = ysyx_26030103_KconfigDefaults.MMUPTESizeBytes,
     inOrder: Boolean = true,
     respPorts: Int = 1,
     hasU: Boolean = true,
     XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     addressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
-    vaBits: Int = ysyx_26030103_KconfigDefaults.MmuVaBits
+    vaBits: Int = ysyx_26030103_KconfigDefaults.MMUVaBits
 ) extends ysyx_26030103_PTWBackend(respPorts, XLEN, addressWidth, pteSizeBytes * 8) {
   require(outstanding >= 1 && outstanding <= 16,
     "PTW outstanding 必须在 1..16（页表总线事务 ID 为 4 位）")
@@ -57,7 +57,7 @@ class ysyx_26030103_PTWCluster(
     XLEN = XLEN,
     addressWidth = addressWidth,
     vaBits = vaBits,
-    busId = i
+    busID = i
   )))
   val busy = RegInit(VecInit(Seq.fill(outstanding)(false.B)))
   // 每个 walker 最多一笔页表总线事务；busIssued 用于限制总在途数并在
@@ -87,41 +87,41 @@ class ysyx_26030103_PTWCluster(
 
   // 页表总线请求仲裁：每拍最多选一个 walker。响应按事务 ID 路由，
   // 因此不同 walker 的请求可以重叠；busSlots 限制同时在途的事务数。
-  val reqValidVec = VecInit((0 until outstanding).map(i =>
+  val requestValidVec = VecInit((0 until outstanding).map(i =>
     walkers(i).io.bus.req.valid && !busIssued(i)))
-  val anyReq = reqValidVec.reduce(_ || _)
-  val reqIndex = PriorityEncoder(reqValidVec)
-  val reqOH = UIntToOH(reqIndex, outstanding)
-  val selectedReq = Mux1H(reqOH, (0 until outstanding).map(i => walkers(i).io.bus.req))
+  val anyRequest = requestValidVec.reduce(_ || _)
+  val reqIndex = PriorityEncoder(requestValidVec)
+  val requestOneHot = UIntToOH(reqIndex, outstanding)
+  val selectedRequest = Mux1H(requestOneHot, (0 until outstanding).map(i => walkers(i).io.bus.req))
 
-  val respId = io.bus.resp.bits.id
-  val respReadyVec = VecInit((0 until outstanding).map(i =>
+  val responseID = io.bus.resp.bits.id
+  val responseReadyVec = VecInit((0 until outstanding).map(i =>
     walkers(i).io.bus.resp.ready))
-  val respReady = MuxLookup(respId, false.B)(
-    (0 until outstanding).map(i => i.U -> respReadyVec(i)))
-  val respFire = io.bus.resp.valid && respReady
+  val responseReady = MuxLookup(responseID, false.B)(
+    (0 until outstanding).map(i => i.U -> responseReadyVec(i)))
+  val responseFire = io.bus.resp.valid && responseReady
   // 信用在响应真正被接收后的下一拍才释放。这样同一拍不会既回收旧响应
   // 又发新请求，单槽总线模型/从设备无需处理同拍双向握手。
   val creditAvailable = PopCount(busIssued) < busSlots.U
 
-  io.bus.req.valid := anyReq && creditAvailable
-  io.bus.req.bits := selectedReq.bits
+  io.bus.req.valid := anyRequest && creditAvailable
+  io.bus.req.bits := selectedRequest.bits
   for (i <- 0 until outstanding) {
     walkers(i).io.bus.req.ready :=
-      anyReq && creditAvailable && reqOH(i) && io.bus.req.ready
-    walkers(i).io.bus.resp.valid := io.bus.resp.valid && respId === i.U
+      anyRequest && creditAvailable && requestOneHot(i) && io.bus.req.ready
+    walkers(i).io.bus.resp.valid := io.bus.resp.valid && responseID === i.U
     walkers(i).io.bus.resp.bits := io.bus.resp.bits
   }
-  io.bus.resp.ready := respReady
+  io.bus.resp.ready := responseReady
   when(io.bus.resp.valid) {
-    assert(respId < outstanding.U,
+    assert(responseID < outstanding.U,
       "PTW bus response ID exceeds walker count")
   }
   when(io.bus.req.valid && io.bus.req.ready) {
     busIssued(reqIndex) := true.B
   }
   for (i <- 0 until outstanding) {
-    when(respFire && respId === i.U) { busIssued(i) := false.B }
+    when(responseFire && responseID === i.U) { busIssued(i) := false.B }
   }
 
   // 响应顺序：in_order 下高编号完成者必须等待低编号尚未完成的请求。
@@ -135,15 +135,15 @@ class ysyx_26030103_PTWCluster(
   // 每个响应端口独立选择一个完成者；端口之间按优先级消去，
   // 因而同一拍最多可以回填 refillPorts 个 TLB 表项。
   var remaining: Seq[Bool] = eligibleBase
-  val selValid = Wire(Vec(respPorts, Bool()))
-  val selOH = Wire(Vec(respPorts, UInt(outstanding.W)))
+  val selectedValid = Wire(Vec(respPorts, Bool()))
+  val selectedOneHot = Wire(Vec(respPorts, UInt(outstanding.W)))
   for (port <- 0 until respPorts) {
     val remVec = VecInit(remaining)
     val valid = remVec.reduce(_ || _)
     val index = PriorityEncoder(remVec)
     val oh = UIntToOH(index, outstanding)
-    selValid(port) := valid
-    selOH(port) := oh
+    selectedValid(port) := valid
+    selectedOneHot(port) := oh
     io.resp(port).valid := valid
     io.resp(port).bits := MuxLookup(index, 0.U.asTypeOf(new ysyx_26030103_PTWResponse))(
       (0 until outstanding).map(i => i.U -> walkers(i).io.resp.bits)
@@ -157,8 +157,8 @@ class ysyx_26030103_PTWCluster(
   }
 
   for (i <- 0 until outstanding) {
-    val selected = (0 until respPorts).map { p =>
-      selValid(p) && selOH(p)(i) && io.resp(p).ready
+    val selected = (0 until respPorts).map { port =>
+      selectedValid(port) && selectedOneHot(port)(i) && io.resp(port).ready
     }.reduceOption(_ || _).getOrElse(false.B)
     // flush 后 busy 已清零的 walker 仍可能在收尾旧 walk，完成时自动弹掉
     // 结果，避免卡在 done 状态而永久占住空闲列表。

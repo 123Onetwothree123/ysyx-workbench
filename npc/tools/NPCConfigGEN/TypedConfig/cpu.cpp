@@ -26,7 +26,7 @@ void addIsa(TypedFields &root, const Config &values, long long xlen,
     addField(isa, "u", TypedJson::boolean(hasU));
     addField(root, "isa", TypedJson::object(std::move(isa)));
 }
-void addFpu(TypedFields &root, const Config &values)
+void addFPU(TypedFields &root, const Config &values)
 {
     TypedFields fpu;
     addField(fpu, "impl",
@@ -56,7 +56,7 @@ void addFpu(TypedFields &root, const Config &values)
     addField(fpu, "fudian", TypedJson::object(std::move(fudian)));
     addField(root, "fpu", TypedJson::object(std::move(fpu)));
 }
-void addAlu(TypedFields &root, const Config &values)
+void addALU(TypedFields &root, const Config &values)
 {
     TypedFields alu;
     addField(alu, "impl",
@@ -74,7 +74,7 @@ void addAlu(TypedFields &root, const Config &values)
     addField(root, "alu", TypedJson::object(std::move(alu)));
 }
 
-void addIdu(TypedFields &root, const Config &values)
+void addIDU(TypedFields &root, const Config &values)
 {
     TypedFields idu;
     addField(idu, "decode_minimizer",
@@ -83,7 +83,7 @@ void addIdu(TypedFields &root, const Config &values)
     addField(root, "idu", TypedJson::object(std::move(idu)));
 }
 
-void addMdu(TypedFields &root, const Config &values)
+void addMDU(TypedFields &root, const Config &values)
 {
     TypedFields mdu;
     addField(mdu, "impl",

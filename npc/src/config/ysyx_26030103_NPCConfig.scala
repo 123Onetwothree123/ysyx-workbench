@@ -19,7 +19,7 @@ case class ysyx_26030103_NPCConfig(
     UseF: Boolean = false,
     UseD: Boolean = false,
     FPUImpl: ysyx_26030103_FPUImpl = ysyx_26030103_FPUImpl.None,
-    FPULen: Int = KconfigDefaults.NpcFpuLen,
+    FPULen: Int = KconfigDefaults.NpcFPULen,
     FPUProfile: ysyx_26030103_FPUProfile = ysyx_26030103_FPUProfile(),
     MDUImpl: ysyx_26030103_MDUImpl = ysyx_26030103_MDUImpl.Standard,
     MULImpl: ysyx_26030103_MULImpl = ysyx_26030103_MULImpl.ShiftAdd,
@@ -30,18 +30,18 @@ case class ysyx_26030103_NPCConfig(
     ALUImpl: ysyx_26030103_ALUImpl = ysyx_26030103_ALUImpl.Standard,
     ALUProfile: ysyx_26030103_ALUProfile = ysyx_26030103_ALUProfile(),
     // 目标平台
-    ResetAddr: Long = ysyx_26030103_PMAOptions.Default.socResetAddr,
+    ResetAddress: Long = ysyx_26030103_PMAOptions.Default.socResetAddress,
     CLINTBase: Long = ysyx_26030103_PMAOptions.Default.clintBase,
     CLINTSize: Long = ysyx_26030103_PMAOptions.Default.clintSize,
     ChipLinkMemoryBase: Long = ysyx_26030103_PMAOptions.Default.chipLinkMemBase,
     ChipLinkMemorySize: Long = ysyx_26030103_PMAOptions.Default.chipLinkMemSize,
     ICacheDrainTimeout: Int = KconfigDefaults.ICacheDrainTimeout,
     DCacheDrainTimeout: Int = KconfigDefaults.DCacheDrainTimeout,
-    LsuDrainTimeout: Int = KconfigDefaults.LsuDrainTimeout,
+    LSUDrainTimeout: Int = KconfigDefaults.LSUDrainTimeout,
     ArbiterGrantTimeout: Int = KconfigDefaults.ArbiterGrantTimeout,
-    AxiArbCpuRespQueueDepth: Int = KconfigDefaults.AxiArbCpuRespQueueDepth,
-    AxiArbDmaRespQueueDepth: Int = KconfigDefaults.AxiArbDmaRespQueueDepth,
-    AxiXbarRespQueueDepth: Int = KconfigDefaults.AxiXbarRespQueueDepth,
+    AXIArbCpuResponseQueueDepth: Int = KconfigDefaults.AXIArbCpuResponseQueueDepth,
+    AXIArbDMAResponseQueueDepth: Int = KconfigDefaults.AXIArbDMAResponseQueueDepth,
+    AXIXbarResponseQueueDepth: Int = KconfigDefaults.AXIXbarResponseQueueDepth,
     // 架构/总线物理地址宽度。RV32 保持 32；RV64 由 elaborator 设为 64。
     // 该宽度同时用于 PC/分支目标、IFU/LSU、AXI、PMA/Xbar、Cache tag 与
     // BTB/RAS，避免任何一级再截断到 32 位。
@@ -76,8 +76,8 @@ case class ysyx_26030103_NPCConfig(
     // 只有显式选择的模式才会生成额外硬件或在 PMA 上改变可缓存性。
     ICacheCoherence: ysyx_26030103_ICacheCoherence =
       ysyx_26030103_ICacheCoherence.FenceI,
-    DmaCoherence: ysyx_26030103_DmaCoherence =
-      ysyx_26030103_DmaCoherence.SoftwareFlush,
+    DMACoherence: ysyx_26030103_DMACoherence =
+      ysyx_26030103_DMACoherence.SoftwareFlush,
     // LSU 写缓冲项数(必须是2的幂, 环形队列按位回绕)
     WBufDepth: Int = KconfigDefaults.NpcWBufDepth,
     CacheableBase: Long = 0L,
@@ -107,12 +107,12 @@ case class ysyx_26030103_NPCConfig(
     PerfDicArchCounterBasic: Boolean = true,
     PerfDicArchCounterOpClass: Boolean = true,
     PerfDicArchCounterMDU: Boolean = true,
-    PerfDicArchCounterIfuStall: Boolean = true,
+    PerfDicArchCounterIFUStall: Boolean = true,
     PerfDicArchCounterICache: Boolean = true,
     PerfDicArchCounterDCache: Boolean = true,
-    PerfDicArchCounterExuStall: Boolean = true,
+    PerfDicArchCounterEXUStall: Boolean = true,
     PerfDicArchCounterLSU: Boolean = true,
-    PerfDicArchCounterIduStall: Boolean = true,
+    PerfDicArchCounterIDUStall: Boolean = true,
     PerfDicArchCounterTrap: Boolean = true,
     PerfDicArchCounterBranchPred: Boolean = true,
     PerfDicArchCounterMMU: Boolean = true,
@@ -221,7 +221,7 @@ case class ysyx_26030103_NPCConfig(
   require(EffectiveInternalBusWidth == 32 || EffectiveInternalBusWidth == 64,
     s"内部总线宽度只允许 32 或 64，收到 $EffectiveInternalBusWidth")
   // 仅用于配置日志：外部 SoC 不是 32 位时提示启用了边界桥。
-  final val SocXLENNeedsAxiBridge: Boolean = EffectiveSocXLEN != 32
+  final val SocXLENNeedsAXIBridge: Boolean = EffectiveSocXLEN != 32
   // RV64 MMU 默认接入标准 Sv39/Sv48；显式 CUSTOM 页几何由 MMUProfile
   // 自身完成参数/非标准 satp MODE 校验。这里只检查 profile 与顶层
   // XLEN/AddressWidth 一致，避免 RV64 核例化出 RV32 satp 语义，或
@@ -274,13 +274,13 @@ case class ysyx_26030103_NPCConfig(
   // index 含 VPN 位时，不同 VA 可把同一物理行映射到不同 set。默认仍按
   // 原策略拒绝；显式打开 MMU_CACHE_VIPT_ALIAS_SAFE 后由 Cache 在 refill
   // 安装和 store 完成时扫描 tag 阵列，失效同物理行的其他 set 副本。
-  private val ICacheAliasGeometry =
+  private val iCacheAliasGeometry =
     ICacheIndexBits + ICacheBlockSizeLog2 > MMU.pageBits
-  private val DCacheAliasGeometry =
+  private val dCacheAliasGeometry =
     DCacheIndexBits + DCacheBlockSizeLog2 > MMU.pageBits
   require(
-    !viptCacheEnabled || !ICacheEnable || !ICacheAliasGeometry ||
-      MMU.cacheViptAliasSafe,
+    !viptCacheEnabled || !ICacheEnable || !iCacheAliasGeometry ||
+      MMU.cacheVIPTAliasSafe,
     s"VIPT ICache 非法：ICacheIndexBits($ICacheIndexBits)+" +
       s"ICacheBlockSizeLog2($ICacheBlockSizeLog2) 超过页内偏移位数" +
       s"(${MMU.pageBits})，同一物理行可能出现在不同 set。请显式设置 " +
@@ -288,8 +288,8 @@ case class ysyx_26030103_NPCConfig(
       "MMU_PAGE_SIZE_BYTES / 减小 Cache 索引/块大小，或改用 MMU_CACHE_MODE=pipt"
   )
   require(
-    !viptCacheEnabled || !DCacheEnable || !DCacheAliasGeometry ||
-      MMU.cacheViptAliasSafe,
+    !viptCacheEnabled || !DCacheEnable || !dCacheAliasGeometry ||
+      MMU.cacheVIPTAliasSafe,
     s"VIPT DCache 非法：DCacheIndexBits($DCacheIndexBits)+" +
       s"DCacheBlockSizeLog2($DCacheBlockSizeLog2) 超过页内偏移位数" +
       s"(${MMU.pageBits})，同一物理行可能出现在不同 set。请显式设置 " +
@@ -298,17 +298,17 @@ case class ysyx_26030103_NPCConfig(
   )
   // 只有几何真的会 alias 时才生成扫描/失效硬件；页内安全几何即使打开
   // 选项也不需要额外逻辑（同物理行必然同 index）。
-  final val ICacheViptAliasHardware: Boolean =
-    viptCacheEnabled && ICacheEnable && MMU.cacheViptAliasSafe &&
-      ICacheAliasGeometry
-  final val DCacheViptAliasHardware: Boolean =
-    viptCacheEnabled && DCacheEnable && MMU.cacheViptAliasSafe &&
-      DCacheAliasGeometry
+  final val ICacheVIPTAliasHardware: Boolean =
+    viptCacheEnabled && ICacheEnable && MMU.cacheVIPTAliasSafe &&
+      iCacheAliasGeometry
+  final val DCacheVIPTAliasHardware: Boolean =
+    viptCacheEnabled && DCacheEnable && MMU.cacheVIPTAliasSafe &&
+      dCacheAliasGeometry
   // alias 扫描/目录参数只对真正生成 alias 维护硬件的 Cache 生效。
   // parallel_n 的配置宽度在每个 Cache 内按实际 set 数截断：Kconfig 的
   // 静态 range 无法知道 ICache/DCache 各自的 set 数，因此这里给出实际
   // 传入 RTL 的有效值并记录到 elaboration 日志。
-  private def AliasScanWidthFor(
+  private def aliasScanWidthFor(
       mode: String,
       configured: Int,
       sets: Int
@@ -317,42 +317,42 @@ case class ysyx_26030103_NPCConfig(
       case "all_sets" => sets
       case "serial" | "directory" => 1
       case "parallel_n" =>
-        if (configured <= 0) math.min(KconfigDefaults.MmuCacheViptAliasScanWidth, sets)
+        if (configured <= 0) math.min(KconfigDefaults.MMUCacheVIPTAliasScanWidth, sets)
         else math.min(configured, sets)
       case other =>
         throw new IllegalArgumentException(
           s"未知 MMU_CACHE_VIPT_ALIAS_SCAN_MODE: $other")
     }
-  private def AliasDirectoryEntriesFor(configured: Int, sets: Int): Int = {
+  private def aliasDirectoryEntriesFor(configured: Int, sets: Int): Int = {
     val entries = if (configured <= 0) sets else math.min(configured, sets)
     require(entries >= 1 && (entries & (entries - 1)) == 0,
       s"VIPT alias 目录项数($entries) 必须是 2 的幂")
     entries
   }
-  final val ICacheViptAliasScanMode: String = MMU.cacheViptAliasScanMode
-  final val DCacheViptAliasScanMode: String = MMU.cacheViptAliasScanMode
-  final val ICacheViptAliasScanWidth: Int = AliasScanWidthFor(
-    ICacheViptAliasScanMode,
-    MMU.cacheViptAliasScanWidth,
+  final val ICacheVIPTAliasScanMode: String = MMU.cacheVIPTAliasScanMode
+  final val DCacheVIPTAliasScanMode: String = MMU.cacheVIPTAliasScanMode
+  final val ICacheVIPTAliasScanWidth: Int = aliasScanWidthFor(
+    ICacheVIPTAliasScanMode,
+    MMU.cacheVIPTAliasScanWidth,
     1 << ICacheIndexBits
   )
-  final val DCacheViptAliasScanWidth: Int = AliasScanWidthFor(
-    DCacheViptAliasScanMode,
-    MMU.cacheViptAliasScanWidth,
+  final val DCacheVIPTAliasScanWidth: Int = aliasScanWidthFor(
+    DCacheVIPTAliasScanMode,
+    MMU.cacheVIPTAliasScanWidth,
     1 << DCacheIndexBits
   )
-  final val ICacheViptAliasDirectoryEntries: Int =
-    AliasDirectoryEntriesFor(
-      MMU.cacheViptAliasDirectoryEntries,
+  final val ICacheVIPTAliasDirectoryEntries: Int =
+    aliasDirectoryEntriesFor(
+      MMU.cacheVIPTAliasDirectoryEntries,
       1 << ICacheIndexBits
     )
-  final val DCacheViptAliasDirectoryEntries: Int =
-    AliasDirectoryEntriesFor(
-      MMU.cacheViptAliasDirectoryEntries,
+  final val DCacheVIPTAliasDirectoryEntries: Int =
+    aliasDirectoryEntriesFor(
+      MMU.cacheVIPTAliasDirectoryEntries,
       1 << DCacheIndexBits
     )
-  final val DCacheViptAliasEventQueueDepth: Int =
-    MMU.cacheViptAliasEventQueueDepth
+  final val DCacheVIPTAliasEventQueueDepth: Int =
+    MMU.cacheVIPTAliasEventQueueDepth
   final val ICacheLineExceedsPage: Boolean =
     ICacheEnable && ICacheBlockSizeLog2 > MMU.pageBits
   final val DCacheLineExceedsPage: Boolean =
@@ -391,16 +391,16 @@ case class ysyx_26030103_NPCConfig(
   )
   // C 扩展打开时 IALIGN=16，BTB 索引/标签必须保留 PC bit1，因此只去掉
   // 1 个对齐位；关闭时仍按 4 字节对齐去掉 2 位。
-  private val BtbPcShift = if (UseC) 1 else 2
+  private val btbPCShift = if (UseC) 1 else 2
   require(BTBBits >= 0, "BTBBits不能为负数；0表示单组BTB")
   require(
-    BTBBits < AddressWidth - BtbPcShift,
+    BTBBits < AddressWidth - btbPCShift,
     "BTB地址几何必须在去除PC对齐位后留出至少1位tag"
   )
   require(BTBWays >= 1, "BTB必须至少包含1路")
   require(JalBTBBits >= 0, "JalBTBBits不能为负数；0表示单组JAL BTB")
   require(
-    JalBTBBits < AddressWidth - BtbPcShift,
+    JalBTBBits < AddressWidth - btbPCShift,
     "JAL BTB地址几何必须在去除PC对齐位后留出至少1位tag"
   )
   require(JalBTBWays >= 1, "JAL BTB必须至少包含1路")
@@ -410,34 +410,34 @@ case class ysyx_26030103_NPCConfig(
   )
   // IALIGN=16 时复位地址只要求 2 字节对齐；关闭 C 时仍要求 4 字节。
   require(
-    (ResetAddr & (if (UseC) 0x1L else 0x3L)) == 0L,
+    (ResetAddress & (if (UseC) 0x1L else 0x3L)) == 0L,
     if (UseC) "启用RISCV_C时ResetAddr只需按2字节对齐"
     else "未启用RISCV_C时ResetAddr必须按4字节对齐"
   )
   require(PMARegions.nonEmpty, "物理地址图不能为空")
   require(
-    PMARegions.exists(r => ResetAddr >= r.Base && ResetAddr < r.EndExclusive && r.Executable),
+    PMARegions.exists(r => ResetAddress >= r.Base && ResetAddress < r.EndExclusive && r.Executable),
     "ResetAddr必须位于可执行PMA区域"
   )
-  require(AxiArbCpuRespQueueDepth >= 2 && AxiArbCpuRespQueueDepth <= 16,
-    s"AXI_ARB_CPU_RESP_QUEUE_DEPTH=$AxiArbCpuRespQueueDepth 必须在 2..16")
-  require(AxiArbDmaRespQueueDepth >= 16 && AxiArbDmaRespQueueDepth <= 256,
-    s"AXI_ARB_DMA_RESP_QUEUE_DEPTH=$AxiArbDmaRespQueueDepth 必须在 16..256")
-  require(AxiXbarRespQueueDepth >= 2 && AxiXbarRespQueueDepth <= 16,
-    s"AXI_XBAR_RESP_QUEUE_DEPTH=$AxiXbarRespQueueDepth 必须在 2..16")
+  require(AXIArbCpuResponseQueueDepth >= 2 && AXIArbCpuResponseQueueDepth <= 16,
+    s"AXI_ARB_CPU_RESP_QUEUE_DEPTH=$AXIArbCpuResponseQueueDepth 必须在 2..16")
+  require(AXIArbDMAResponseQueueDepth >= 16 && AXIArbDMAResponseQueueDepth <= 256,
+    s"AXI_ARB_DMA_RESP_QUEUE_DEPTH=$AXIArbDMAResponseQueueDepth 必须在 16..256")
+  require(AXIXbarResponseQueueDepth >= 2 && AXIXbarResponseQueueDepth <= 16,
+    s"AXI_XBAR_RESP_QUEUE_DEPTH=$AXIXbarResponseQueueDepth 必须在 2..16")
   // 入站 DMA 只代理 ChipLink 内存窗口（与 AXI5Arbiter 的检查一致）。
   // UNCACHED 模式在 Cache 使用的 PMA 视图里把该窗口切成不可缓存段；
   // 原始 PMARegions 仍供 Xbar/PMA 权限检查使用，读写/执行权限不变。
-  private val DmaWindowBase =
+  private val dmaWindowBase =
     ysyx_26030103_PMAOptions.Default.chipLinkMemBase
-  private val DmaWindowEnd =
-    DmaWindowBase + ysyx_26030103_PMAOptions.Default.chipLinkMemSize
+  private val dmaWindowEnd =
+    dmaWindowBase + ysyx_26030103_PMAOptions.Default.chipLinkMemSize
   // Cache 实际使用的 PMA 视图；只有显式 UNCACHED 模式才与 PMARegions 不同。
   final val CachePMARegions: Seq[ysyx_26030103_PMARegion] =
-    if (DmaCoherence != ysyx_26030103_DmaCoherence.Uncached) PMARegions
+    if (DMACoherence != ysyx_26030103_DMACoherence.Uncached) PMARegions
     else PMARegions.flatMap { region =>
-      val start = math.max(region.Base, DmaWindowBase)
-      val end = math.min(region.EndExclusive, DmaWindowEnd)
+      val start = math.max(region.Base, dmaWindowBase)
+      val end = math.min(region.EndExclusive, dmaWindowEnd)
       if (start >= end) Seq(region)
       else {
         val before =
@@ -456,21 +456,21 @@ case class ysyx_26030103_NPCConfig(
         before ++ Seq(uncached) ++ after
       }
     }
-  final val DmaWindowUncached: Boolean =
-    DmaCoherence == ysyx_26030103_DmaCoherence.Uncached
+  final val DMAWindowUncached: Boolean =
+    DMACoherence == ysyx_26030103_DMACoherence.Uncached
   // 当前 PMA 是否真正暴露了 AXI5Arbiter 可代理的完整 DMA 窗口。
-  final val DmaWindowPresent: Boolean =
+  final val DMAWindowPresent: Boolean =
     PMARegions.exists { region =>
       region.Readable && region.Writable &&
-      BigInt(region.Base) <= BigInt(DmaWindowBase) &&
-      BigInt(region.EndExclusive) >= BigInt(DmaWindowEnd)
+      BigInt(region.Base) <= BigInt(dmaWindowBase) &&
+      BigInt(region.EndExclusive) >= BigInt(dmaWindowEnd)
     }
   /** DMA 地址级 snoop 需要 ICache/DCache 生成行失效硬件；没有 DMA 窗口
     * 时仲裁器根本不会收到入站写，直接不生成额外比较/握手逻辑。
     */
-  final val DmaHardwareSnoop: Boolean =
-    DmaCoherence == ysyx_26030103_DmaCoherence.HardwareSnoop &&
-      DmaWindowPresent
+  final val DMAHardwareSnoop: Boolean =
+    DMACoherence == ysyx_26030103_DMACoherence.HardwareSnoop &&
+      DMAWindowPresent
   require(
     Integer.bitCount(WBufDepth) == 1,
     "WBufDepth必须是2的幂(1/2/4/8/16)"
@@ -495,30 +495,30 @@ case class ysyx_26030103_NPCConfig(
     "ALU_CARRY_SELECT_GROUP 必须是能整除 XLEN 的 2 的幂" +
       s"（收到 ${ALUProfile.AdderParams.CarrySelectGroup}，XLEN=$XLEN）"
   )
-  private val MULParams = MDUProfile.MUL
-  private val DIVBackendParams = Seq(
+  private val mulParams = MDUProfile.MUL
+  private val divBackendParams = Seq(
     MDUProfile.DIV.Restoring,
     MDUProfile.DIV.NonRestoring,
     MDUProfile.DIV.SRT
   )
   require(
-    ysyx_26030103_MULBoothConfig.IsValidRadix(MULParams.Radix),
+    ysyx_26030103_MULBoothConfig.IsValidRadix(mulParams.Radix),
     "MULRadix必须是大于等于2的2的幂"
   )
   require(
-    MULParams.Width >= 32 && Integer.bitCount(MULParams.Width) == 1,
+    mulParams.Width >= 32 && Integer.bitCount(mulParams.Width) == 1,
     "MULWidth必须是不小于32的2的幂(32/64/128/... )"
   )
   // 乘法器内部操作数宽度至少覆盖架构 XLEN。RV32 时与 MULWidth 完全一致；
   // RV64 默认 MULWidth=32 会自动提升到 64，保证 MUL/MULH* 的 2*XLEN 乘积。
-  final val MULEffectiveWidth: Int = math.max(XLEN, MULParams.Width)
-  require(MULParams.ShiftAdd.IterBits >= 1 && MULParams.ShiftAdd.IterBits <= 8,
+  final val MULEffectiveWidth: Int = math.max(XLEN, mulParams.Width)
+  require(mulParams.ShiftAdd.IterBits >= 1 && mulParams.ShiftAdd.IterBits <= 8,
     "MULIterBits必须在1到8之间")
-  require(MULParams.ShiftAdd.Split >= 1 && MULParams.ShiftAdd.Split <= 4,
+  require(mulParams.ShiftAdd.Split >= 1 && mulParams.ShiftAdd.Split <= 4,
     "MULSplit必须在1到4之间")
-  require(MULParams.Compression.Pipeline >= 0 && MULParams.Compression.Pipeline <= 4,
+  require(mulParams.Compression.Pipeline >= 0 && mulParams.Compression.Pipeline <= 4,
     "MULPipeline必须在0到4之间")
-  DIVBackendParams.foreach { params =>
+  divBackendParams.foreach { params =>
     require(
       ysyx_26030103_MULBoothConfig.IsValidRadix(params.Radix) && params.Radix <= 16,
       "DIVRadix必须是2/4/8/16之一，避免恢复余数除法器发生不可综合的静态展开"
@@ -539,7 +539,7 @@ case class ysyx_26030103_NPCConfig(
   // DIV 槽位。
   final val MULMaxInflight: Int = MULImpl match {
     case ysyx_26030103_MULImpl.ShiftAdd => 1
-    case _                              => MULParams.Compression.Pipeline + 1
+    case _                              => mulParams.Compression.Pipeline + 1
   }
   final val MDUMaxInflight: Int = MULMaxInflight + 1
   final val EnableDynamicGPRDebug: Boolean = SDBEnable || DiffTestEnable
@@ -555,16 +555,16 @@ case class ysyx_26030103_NPCConfig(
     SDBEnable || DiffTestEnable || MTraceEnable
 
   // 性能计数器分组总开关。
-  private val PerfDicArchCounterGroupFlags: Map[String, Boolean] = Map(
+  private val perfDicArchCounterGroupFlags: Map[String, Boolean] = Map(
     "basic" -> PerfDicArchCounterBasic,
     "opclass" -> PerfDicArchCounterOpClass,
     "mdu" -> PerfDicArchCounterMDU,
-    "ifu_stall" -> PerfDicArchCounterIfuStall,
+    "ifu_stall" -> PerfDicArchCounterIFUStall,
     "icache" -> PerfDicArchCounterICache,
     "dcache" -> PerfDicArchCounterDCache,
-    "exu_stall" -> PerfDicArchCounterExuStall,
+    "exu_stall" -> PerfDicArchCounterEXUStall,
     "lsu" -> PerfDicArchCounterLSU,
-    "idu_stall" -> PerfDicArchCounterIduStall,
+    "idu_stall" -> PerfDicArchCounterIDUStall,
     "trap" -> PerfDicArchCounterTrap,
     "branch_pred" -> PerfDicArchCounterBranchPred,
     "mmu" -> PerfDicArchCounterMMU,
@@ -584,14 +584,14 @@ case class ysyx_26030103_NPCConfig(
     else {
       ysyx_26030103_PerfDicArchCounterCatalog.PerfDicArchCounterGroups.flatMap {
         case (group, counters) =>
-          if (PerfDicArchCounterGroupFlags(group)) {
+          if (perfDicArchCounterGroupFlags(group)) {
             counters.filter(PerfDicArchCounters.contains(_))
           } else { Seq.empty }
       }.toSet
     }
   }
-  final def EnablePerfDicArchCounter(Key: String): Boolean =
-    EnabledPerfDicArchCounters.contains(Key)
+  final def EnablePerfDicArchCounter(key: String): Boolean =
+    EnabledPerfDicArchCounters.contains(key)
   // 事件分类码与执行活跃电平是多个单计数器的公共信号：消费方任一开启
   // 就生成，否则绑常量以便综合裁剪。
   final val EnablePerfEventKind: Boolean = Seq(
@@ -606,106 +606,106 @@ case class ysyx_26030103_NPCConfig(
     EnablePerfDicArchCounter("execution_active") ||
       Seq("alu_op", "mem_op", "csr_op", "branch_op").exists(EnablePerfDicArchCounter)
   final val EnableAnyObservability: Boolean = EnableRetireTrace
-  private def OnOff(Flag: Boolean): String = {
-    if (Flag) { "on" }
+  private def onOff(flag: Boolean): String = {
+    if (flag) { "on" }
     else { "off" }
   }
   def ISAString: String = {
-    val MExt = if (UseM) { "M" }
+    val mExt = if (UseM) { "M" }
     else { "" }
-    val AExt = if (UseA) { "A" }
+    val aExt = if (UseA) { "A" }
     else { "" }
-    val CExt = if (UseC) { "C" }
+    val cExt = if (UseC) { "C" }
     else { "" }
-    val FExt = if (UseF) { "F" }
+    val fExt = if (UseF) { "F" }
     else { "" }
-    val DExt = if (UseD) { "D" }
+    val dExt = if (UseD) { "D" }
     else { "" }
-    "RV" + XLEN.toString + "I" + MExt + AExt + CExt + FExt + DExt
+    "RV" + XLEN.toString + "I" + mExt + aExt + cExt + fExt + dExt
   }
   private def PerfDicArchCounterList: String = {
     if (!DicArchCounterEnable) { "off" }
     else {
-      val EnabledGroups =
+      val enabledGroups =
         ysyx_26030103_PerfDicArchCounterCatalog.PerfDicArchCounterGroups.collect {
-          case (group, _) if PerfDicArchCounterGroupFlags(group) => group
+          case (group, _) if perfDicArchCounterGroupFlags(group) => group
         }
-      val GroupText =
-        if (EnabledGroups.isEmpty) { "none" }
-        else { EnabledGroups.mkString("+") }
-      s"$GroupText(${EnabledPerfDicArchCounters.size}/${ysyx_26030103_PerfDicArchCounterCatalog.AllPerfDicArchCounters.size})"
+      val groupText =
+        if (enabledGroups.isEmpty) { "none" }
+        else { enabledGroups.mkString("+") }
+      s"$groupText(${EnabledPerfDicArchCounters.size}/${ysyx_26030103_PerfDicArchCounterCatalog.AllPerfDicArchCounters.size})"
     }
   }
   def Describe: String = {
-    val ISA = ISAString
-    val MOff = OnOff(UseM)
-    val AOff = OnOff(UseA)
-    val COff = OnOff(UseC)
-    val FOff = OnOff(UseF)
-    val DOff = OnOff(UseD)
-    val ICacheDesc =
+    val isa = ISAString
+    val mOff = onOff(UseM)
+    val aOff = onOff(UseA)
+    val cOff = onOff(UseC)
+    val fOff = onOff(UseF)
+    val dOff = onOff(UseD)
+    val iCacheDesc =
       if (ICacheEnable) {
         s"${1 << ICacheBlockSizeLog2}B/${1 << ICacheIndexBits}sets"
       } else { "off" }
-    val DCacheDesc =
+    val dCacheDesc =
       if (DCacheEnable) {
         s"${1 << DCacheBlockSizeLog2}B/${1 << DCacheIndexBits}sets"
       } else { "off" }
     // VIPT alias 模式必须显式出现在 elaboration 日志中，避免出现
     // “配置看起来是 VIPT、实际却静默退化”的情况。
-    val ViptAliasDesc =
+    val viptAliasDesc =
       if (!viptCacheEnabled) { "" }
       else {
-        val Active =
-          if (ICacheViptAliasHardware || DCacheViptAliasHardware) { "(hw)" }
+        val active =
+          if (ICacheVIPTAliasHardware || DCacheVIPTAliasHardware) { "(hw)" }
           else { "" }
-        val ScanDetail =
-          if (MMU.cacheViptAliasScanMode == "parallel_n") {
-            s"(${ICacheViptAliasScanWidth}/${DCacheViptAliasScanWidth})"
+        val scanDetail =
+          if (MMU.cacheVIPTAliasScanMode == "parallel_n") {
+            s"(${ICacheVIPTAliasScanWidth}/${DCacheVIPTAliasScanWidth})"
           } else { "" }
-        val DirDetail =
-          if (MMU.cacheViptAliasScanMode == "directory") {
-            s"(entries=${ICacheViptAliasDirectoryEntries}/" +
-              s"${DCacheViptAliasDirectoryEntries})"
+        val dirDetail =
+          if (MMU.cacheVIPTAliasScanMode == "directory") {
+            s"(entries=${ICacheVIPTAliasDirectoryEntries}/" +
+              s"${DCacheVIPTAliasDirectoryEntries})"
           } else { "" }
-        s",vipt_alias_safe=${OnOff(MMU.cacheViptAliasSafe)}$Active" +
-          s",vipt_alias_scan=${MMU.cacheViptAliasScanMode}$ScanDetail$DirDetail"
+        s",vipt_alias_safe=${onOff(MMU.cacheVIPTAliasSafe)}$active" +
+          s",vipt_alias_scan=${MMU.cacheVIPTAliasScanMode}$scanDetail$dirDetail"
       }
     // PIPT 是唯一允许 line > page 的模式；把它显式打印出来，避免出现
     // “配置成大头行却按页内截断索引”的误解。
-    val LargeLineDesc =
+    val largeLineDesc =
       if (!PiptCacheLineExceedsPage) { "" }
       else {
-        val Which =
+        val which =
           Seq(
             if (ICacheLineExceedsPage) Some("ICache") else None,
             if (DCacheLineExceedsPage) Some("DCache") else None
           ).flatten.mkString("+")
-        s",pipt_line_gt_page=$Which(${1 << MMU.pageBits}B-page)"
+        s",pipt_line_gt_page=$which(${1 << MMU.pageBits}B-page)"
       }
     // 一致性模式必须显式出现在 elaboration 日志里。ICache snoop 关闭
     // ICache 时不生成硬件；DMA uncached 在没有 DMA 窗口的配置里也不会
     // 改变任何 Cache 行为，因此把“配置值”和“实际生效”分开标注。
-    val ICacheCoherenceDesc =
+    val iCacheCoherenceDesc =
       if (ICacheCoherence == ysyx_26030103_ICacheCoherence.HardwareSnoop) {
         if (ICacheEnable) "hardware_snoop(hw)"
         else "hardware_snoop(inactive:ICache=off)"
       } else ICacheCoherence.Name
-    val DmaCoherenceDesc =
-      if (DmaCoherence == ysyx_26030103_DmaCoherence.Uncached) {
-        if (DmaWindowPresent) "uncached(dma_window)"
+    val dmaCoherenceDesc =
+      if (DMACoherence == ysyx_26030103_DMACoherence.Uncached) {
+        if (DMAWindowPresent) "uncached(dma_window)"
         else "uncached(inactive:no-dma-window)"
-      } else if (DmaCoherence == ysyx_26030103_DmaCoherence.HardwareSnoop) {
-        val Which =
+      } else if (DMACoherence == ysyx_26030103_DMACoherence.HardwareSnoop) {
+        val which =
           Seq(
             if (ICacheEnable) Some("ICache") else None,
             if (DCacheEnable) Some("DCache") else None
           ).flatten.mkString("+")
-        if (!DmaWindowPresent) "hardware_snoop(inactive:no-dma-window)"
-        else if (Which.isEmpty) "hardware_snoop(inactive:no-cache)"
-        else s"hardware_snoop(line-invalidate:$Which)"
+        if (!DMAWindowPresent) "hardware_snoop(inactive:no-dma-window)"
+        else if (which.isEmpty) "hardware_snoop(inactive:no-cache)"
+        else s"hardware_snoop(line-invalidate:$which)"
       } else "software_flush(legacy-b-invalidate)"
-    s"ISA=$ISA, M=$MOff, A=$AOff, C=$COff, F=$FOff, D=$DOff, " +
+    s"ISA=$isa, M=$mOff, A=$aOff, C=$cOff, F=$fOff, D=$dOff, " +
       s"fpu=${FPUImpl.Name}/flen=$FPULen, " +
       s"fpu_params=${FPUProfile.Describe(FPUImpl)}, " +
       s"alu=${ALUImpl.Name}, " +
@@ -716,29 +716,29 @@ case class ysyx_26030103_NPCConfig(
       s"${if (InternalBusWidthFollowCpu) "(follow)" else ""}, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
       s"mdu=${MDUImpl.Name}, " +
-      s"mul=${MULImpl.Name}/${MULParams.Encoding.Name}, " +
-      s"mul_width=${MULParams.Width}, " +
-      s"mul_gpc=${MULParams.Compression.Compressor.Describe}, " +
-      s"mul_radix=${MULParams.Radix}, " +
+      s"mul=${MULImpl.Name}/${mulParams.Encoding.Name}, " +
+      s"mul_width=${mulParams.Width}, " +
+      s"mul_gpc=${mulParams.Compression.Compressor.Describe}, " +
+      s"mul_radix=${mulParams.Radix}, " +
       s"div=${DIVImpl.Name}, " +
       s"div_radix=${MDUProfile.DIV.For(DIVImpl).Radix}, " +
       s"div_iter=${MDUProfile.DIV.For(DIVImpl).IterBits}, " +
-      s"iter=${MULParams.ShiftAdd.IterBits}, " +
-      s"pipeline=${MULParams.Compression.Pipeline}, " +
-      s"split=${MULParams.ShiftAdd.Split}, " +
-      s"mul_early_out=${OnOff(MULParams.ShiftAdd.EarlyOut)}, " +
-      s"div_early_out=${OnOff(MDUProfile.DIV.For(DIVImpl).EarlyOut)}, " +
-      s"ICache=$ICacheDesc, DCache=$DCacheDesc$ViptAliasDesc$LargeLineDesc, " +
-      s"icache_coherence=$ICacheCoherenceDesc, dma_coherence=$DmaCoherenceDesc, " +
+      s"iter=${mulParams.ShiftAdd.IterBits}, " +
+      s"pipeline=${mulParams.Compression.Pipeline}, " +
+      s"split=${mulParams.ShiftAdd.Split}, " +
+      s"mul_early_out=${onOff(mulParams.ShiftAdd.EarlyOut)}, " +
+      s"div_early_out=${onOff(MDUProfile.DIV.For(DIVImpl).EarlyOut)}, " +
+      s"ICache=$iCacheDesc, DCache=$dCacheDesc$viptAliasDesc$largeLineDesc, " +
+      s"icache_coherence=$iCacheCoherenceDesc, dma_coherence=$dmaCoherenceDesc, " +
       s"icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
-      s"RAS=${1 << RASBits}, observe=${OnOff(EnableAnyObservability)}, " +
-      s"gpr_debug=${OnOff(EnableDynamicGPRDebug)}, dic_arch_counter=${OnOff(DicArchCounterEnable)}, " +
-      s"riscv_arch_pmu=${OnOff(RiscvArchPMU)}, " +
-      s"riscv_arch_pmu_zihpm=${OnOff(RiscvArchPMUZihpm)}, " +
-      s"riscv_arch_pmu_sscofpmf=${OnOff(RiscvArchPMUSscofpmf)}, " +
+      s"RAS=${1 << RASBits}, observe=${onOff(EnableAnyObservability)}, " +
+      s"gpr_debug=${onOff(EnableDynamicGPRDebug)}, dic_arch_counter=${onOff(DicArchCounterEnable)}, " +
+      s"riscv_arch_pmu=${onOff(RiscvArchPMU)}, " +
+      s"riscv_arch_pmu_zihpm=${onOff(RiscvArchPMUZihpm)}, " +
+      s"riscv_arch_pmu_sscofpmf=${onOff(RiscvArchPMUSscofpmf)}, " +
       s"dic_arch_counter_events=${PerfDicArchCounterList}, " +
       s"mmu=${MMU.describe}, " +
-      s"reset=0x${ResetAddr.toHexString}"
+      s"reset=0x${ResetAddress.toHexString}"
   }
 }

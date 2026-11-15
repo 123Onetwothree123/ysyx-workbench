@@ -5,7 +5,7 @@ import chisel3.util._
 import _root_.ysyx_26030103.config._
 
 // RISC-V 浮点操作码：精度由 FpuRequest.fmt 选择，不暴露 vendor 私有操作码。
-object ysyx_26030103_FpuOp {
+object ysyx_26030103_FPUOp {
   val Width: Int = 6
 
   val FAdd = 0.U(Width.W)
@@ -26,12 +26,12 @@ object ysyx_26030103_FpuOp {
 
   // 浮点 <-> 整数转换；W/WU 与 L/LU 共用同一操作码，由 fmt 无法
   // 表达的整数宽度在这里固定为 XLEN 对应语义，后续可由上层拆分。
-  val FCvtFpToInt = 14.U(Width.W)
-  val FCvtFpToUInt = 15.U(Width.W)
-  val FCvtIntToFp = 16.U(Width.W)
-  val FCvtUIntToFp = 17.U(Width.W)
-  val FMvFpToInt = 18.U(Width.W)
-  val FMvIntToFp = 19.U(Width.W)
+  val FCvtFPToInt = 14.U(Width.W)
+  val FCvtFPToUInt = 15.U(Width.W)
+  val FCvtIntToFP = 16.U(Width.W)
+  val FCvtUIntToFP = 17.U(Width.W)
+  val FMvFPToInt = 18.U(Width.W)
+  val FMvIntToFP = 19.U(Width.W)
 
   val FEq = 20.U(Width.W)
   val FLt = 21.U(Width.W)
@@ -39,11 +39,11 @@ object ysyx_26030103_FpuOp {
   val FClass = 23.U(Width.W)
 
   // S <-> D 精度转换（FCVT.S.D / FCVT.D.S）。
-  val FCvtFpToFp = 24.U(Width.W)
+  val FCvtFPToFP = 24.U(Width.W)
 }
 
 // 浮点格式编码，对应 RISC-V 指令的 fmt 字段。
-object ysyx_26030103_FpuFmt {
+object ysyx_26030103_FPUFmt {
   val Width: Int = 2
   val S = 0.U(Width.W)
   val D = 1.U(Width.W)
@@ -53,7 +53,7 @@ object ysyx_26030103_FpuFmt {
 }
 
 // 舍入模式编码，对应 RISC-V frm/funct3。
-object ysyx_26030103_FpuRm {
+object ysyx_26030103_FPURm {
   val Width: Int = 3
   val RNE = 0.U(Width.W)
   val RTZ = 1.U(Width.W)
@@ -64,7 +64,7 @@ object ysyx_26030103_FpuRm {
 }
 
 // fflags 五位异常标志的位位置。
-object ysyx_26030103_FpuFlags {
+object ysyx_26030103_FPUFlags {
   val Width: Int = 5
   val NX = 0
   val UF = 1
@@ -74,14 +74,14 @@ object ysyx_26030103_FpuFlags {
 }
 
 // rs1/rs2/rs3 为 FLEN 位 IEEE 754 位模式；NaN-boxing 由上层/后端在边界处理。
-class ysyx_26030103_FpuRequest(val FLEN: Int = 64) extends Bundle {
+class ysyx_26030103_FPURequest(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FpuRequest FLEN 非法: $FLEN")
-  val op = UInt(ysyx_26030103_FpuOp.Width.W)
+  val op = UInt(ysyx_26030103_FPUOp.Width.W)
   // 目的/运算格式。FCVT.S.D / FCVT.D.S 的源格式由 srcFmt 给出。
-  val fmt = UInt(ysyx_26030103_FpuFmt.Width.W)
-  val srcFmt = UInt(ysyx_26030103_FpuFmt.Width.W)
+  val fmt = UInt(ysyx_26030103_FPUFmt.Width.W)
+  val srcFmt = UInt(ysyx_26030103_FPUFmt.Width.W)
   // 已解析的动态舍入；后端不再看到 DYN，也不读取 frm。
-  val rm = UInt(ysyx_26030103_FpuRm.Width.W)
+  val rm = UInt(ysyx_26030103_FPURm.Width.W)
   // FCVT.W/WU/L/LU 与 FMV.X.W/D、FMV.W.X/D.X 的整数宽度选择：
   // true=32 位（W/WU），false=XLEN（RV64 的 L/LU/D）。
   val intWord = Bool()
@@ -91,17 +91,17 @@ class ysyx_26030103_FpuRequest(val FLEN: Int = 64) extends Bundle {
 }
 
 // FPU 响应：IEEE 754 位模式结果 + 累积到 fflags 的 5 位异常。
-class ysyx_26030103_FpuResponse(val FLEN: Int = 64) extends Bundle {
+class ysyx_26030103_FPUResponse(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FpuResponse FLEN 非法: $FLEN")
   val result = UInt(FLEN.W)
-  val fflags = UInt(ysyx_26030103_FpuFlags.Width.W)
+  val fflags = UInt(ysyx_26030103_FPUFlags.Width.W)
 }
 
 // 所有 FPU 后端共用的顶层接口；允许可变/多拍延迟，但必须遵守 Decoupled 反压。
 class ysyx_26030103_FPUInterface(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FPUInterface FLEN 非法: $FLEN")
-  val req = Flipped(Decoupled(new ysyx_26030103_FpuRequest(FLEN)))
-  val resp = Decoupled(new ysyx_26030103_FpuResponse(FLEN))
+  val req = Flipped(Decoupled(new ysyx_26030103_FPURequest(FLEN)))
+  val resp = Decoupled(new ysyx_26030103_FPUResponse(FLEN))
   // 冲刷在途请求/结果（更老指令的精确 trap 或流水线重定向）。
   val flush = Input(Bool())
 }

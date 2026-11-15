@@ -24,7 +24,7 @@ class ysyx_26030103_IDUPrivilegeHarness(config: ysyx_26030103_NPCConfig)
   idu.io.in.bits.pc := 0.U
   idu.io.in.bits.ExceptionValid := false.B
   idu.io.in.bits.ExceptionCause := 0.U
-  idu.io.in.bits.AccessFaultResp := 0.U
+  idu.io.in.bits.AccessFaultResponse := 0.U
   idu.io.in.bits.pred_taken := false.B
   idu.io.in.bits.pred_target := 0.U
   idu.io.out.ready := true.B
@@ -90,13 +90,13 @@ class ysyx_26030103_IDUPrivilegeHarness(config: ysyx_26030103_NPCConfig)
 /** HAS_U 对 IDU 特权检查的裁剪测试。 */
 class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
   // csrrs x1, 0xc00, x0：读用户级 cycle CSR。
-  private val CsrrsCycle = 0xc00020f3L
+  private val CSRrsCycle = 0xc00020f3L
   // csrrs x1, 0x000, x0：读未实现的 U 级 ustatus CSR。
-  private val CsrrsUstatus = 0x000020f3L
+  private val CSRrsUstatus = 0x000020f3L
   // csrrs x1, 0x100, x0：读 S 级 sstatus。
-  private val CsrrsSstatus = 0x100020f3L
+  private val CSRrsSstatus = 0x100020f3L
   // csrrs x1, 0x300, x0：读 M 级 mstatus。
-  private val CsrrsMstatus = 0x300020f3L
+  private val CSRrsMstatus = 0x300020f3L
   private val Sret = 0x10200073L
   private val SfenceVma = 0x12000073L
   private val Wfi = 0x10500073L
@@ -127,7 +127,7 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
   "IDU" should "HAS_U=y 时 M 模式可访问 U 级 CSR" in {
     simulate(new ysyx_26030103_IDUPrivilegeHarness(config(hasU = true))) { dut =>
       setup(dut)
-      dut.io.instruction.poke(CsrrsCycle.U)
+      dut.io.instruction.poke(CSRrsCycle.U)
       dut.io.privilege.poke(3.U)
       bool(dut.io.exceptionValid) should be(false)
     }
@@ -138,7 +138,7 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
       setup(dut)
       // 用户计数器由 M 模式访问是合法的；这里用一个未实现的 U 级 CSR
       // 检查 HAS_U=n 的 U 级地址裁剪。
-      dut.io.instruction.poke(CsrrsUstatus.U)
+      dut.io.instruction.poke(CSRrsUstatus.U)
       dut.io.privilege.poke(3.U)
       bool(dut.io.exceptionValid) should be(true)
       dut.io.exceptionCause.peek().litValue should be(2)
@@ -149,14 +149,14 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
     // HAS_U=y 时 U 级不能读 S 级 CSR。
     simulate(new ysyx_26030103_IDUPrivilegeHarness(config(hasU = true))) { dut =>
       setup(dut)
-      dut.io.instruction.poke(CsrrsSstatus.U)
+      dut.io.instruction.poke(CSRrsSstatus.U)
       dut.io.privilege.poke(0.U)
       bool(dut.io.exceptionValid) should be(true)
     }
     // HAS_U=n 时 0 级不存在，防御性地按 S 检查，因此该访问合法。
     simulate(new ysyx_26030103_IDUPrivilegeHarness(config(hasU = false))) { dut =>
       setup(dut)
-      dut.io.instruction.poke(CsrrsSstatus.U)
+      dut.io.instruction.poke(CSRrsSstatus.U)
       dut.io.privilege.poke(0.U)
       bool(dut.io.exceptionValid) should be(false)
     }
@@ -169,7 +169,7 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
       setup(dut)
 
       // M 模式仍可访问 M 级 CSR。
-      dut.io.instruction.poke(CsrrsMstatus.U)
+      dut.io.instruction.poke(CSRrsMstatus.U)
       dut.io.privilege.poke(3.U)
       bool(dut.io.exceptionValid) should be(false)
 
@@ -179,11 +179,11 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
       dut.io.exceptionCause.peek().litValue should be(2)
 
       // mcounteren 全开时 U 可以读用户计数器。
-      dut.io.instruction.poke(CsrrsCycle.U)
+      dut.io.instruction.poke(CSRrsCycle.U)
       bool(dut.io.exceptionValid) should be(false)
 
       // S CSR 已从实现集合裁剪，U/M 访问都非法。
-      dut.io.instruction.poke(CsrrsSstatus.U)
+      dut.io.instruction.poke(CSRrsSstatus.U)
       bool(dut.io.exceptionValid) should be(true)
       dut.io.privilege.poke(3.U)
       bool(dut.io.exceptionValid) should be(true)
@@ -250,14 +250,14 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
       setup(dut)
       dut.io.privilege.poke(3.U)
 
-      for (insn <- Seq(Sret, SfenceVma, CsrrsSstatus)) {
+      for (insn <- Seq(Sret, SfenceVma, CSRrsSstatus)) {
         dut.io.instruction.poke(insn.U)
         bool(dut.io.exceptionValid) should be(true)
         dut.io.exceptionCause.peek().litValue should be(2)
       }
 
       // M 级 CSR 和 WFI 仍合法。
-      dut.io.instruction.poke(CsrrsMstatus.U)
+      dut.io.instruction.poke(CSRrsMstatus.U)
       bool(dut.io.exceptionValid) should be(false)
       dut.io.instruction.poke(Wfi.U)
       bool(dut.io.exceptionValid) should be(false)

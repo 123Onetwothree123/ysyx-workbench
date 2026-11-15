@@ -28,7 +28,7 @@ class ysyx_26030103(
   // 宽度不能直接决定这个 ABI。
   val io = IO(new ysyx_26030103_IO(config.EffectiveSocXLEN))
   protected val busDataWidth: Int = config.EffectiveInternalBusWidth
-  val ifu = Module(new ysyx_26030103_IFU(config.ResetAddr, XLEN, config.UseC))
+  val ifu = Module(new ysyx_26030103_IFU(config.ResetAddress, XLEN, config.UseC))
   val idu = Module(new ysyx_26030103_IDU(config))
   val exu = Module(new ysyx_26030103_EXU(config))
   val wbu = Module(new ysyx_26030103_WBU(XLEN))
@@ -50,18 +50,18 @@ class ysyx_26030103(
       DCachePMARegions = config.CachePMARegions,
       // DCache 关闭时没有 VIPT 数据通路：数据访问由 LSU 直接完成，
       // ALUResult 已经是 DMMU 的物理地址，绝不能再用它当作 VA 等翻译标签。
-      DCacheVipt = config.MMU.cacheMode == "vipt" && config.DCacheEnable,
-      DCacheViptAliasSafe = config.DCacheViptAliasHardware,
-      DCacheViptAliasScanMode = config.DCacheViptAliasScanMode,
-      DCacheDmaSnoop = config.DmaHardwareSnoop && config.DCacheEnable,
-      DCacheViptAliasScanWidth = config.DCacheViptAliasScanWidth,
-      DCacheViptAliasDirectoryEntries = config.DCacheViptAliasDirectoryEntries,
-      DCacheViptAliasEventQueueDepth = config.DCacheViptAliasEventQueueDepth,
-      ViptParallel = parallelDataVIPT,
+      DCacheVIPT = config.MMU.cacheMode == "vipt" && config.DCacheEnable,
+      DCacheVIPTAliasSafe = config.DCacheVIPTAliasHardware,
+      DCacheVIPTAliasScanMode = config.DCacheVIPTAliasScanMode,
+      DCacheDMASnoop = config.DMAHardwareSnoop && config.DCacheEnable,
+      DCacheVIPTAliasScanWidth = config.DCacheVIPTAliasScanWidth,
+      DCacheVIPTAliasDirectoryEntries = config.DCacheVIPTAliasDirectoryEntries,
+      DCacheVIPTAliasEventQueueDepth = config.DCacheVIPTAliasEventQueueDepth,
+      VIPTParallel = parallelDataVIPT,
       AddressWidth = config.AddressWidth,
       BusDataWidth = busDataWidth,
       DCacheDrainTimeout = config.DCacheDrainTimeout,
-      DrainTimeout = config.LsuDrainTimeout
+      DrainTimeout = config.LSUDrainTimeout
     )
   )
   val gpr = Module(new ysyx_26030103_GPR(XLEN, config.EnableDynamicGPRDebug))
@@ -75,12 +75,12 @@ class ysyx_26030103(
     new ysyx_26030103_AXI5Arbiter(
       AddressWidth = config.AddressWidth,
       DataWidth = busDataWidth,
-      HardwareSnoop = config.DmaHardwareSnoop,
+      HardwareSnoop = config.DMAHardwareSnoop,
       DMAWindowBase = BigInt(config.ChipLinkMemoryBase),
       DMAWindowSize = BigInt(config.ChipLinkMemorySize),
       GrantTimeout = config.ArbiterGrantTimeout,
-      CpuRespQueueDepth = config.AxiArbCpuRespQueueDepth,
-      DmaRespQueueDepth = config.AxiArbDmaRespQueueDepth
+      CpuResponseQueueDepth = config.AXIArbCpuResponseQueueDepth,
+      DMAResponseQueueDepth = config.AXIArbDMAResponseQueueDepth
     )
   )
   val xbar = Module(
@@ -94,8 +94,8 @@ class ysyx_26030103(
       CLINTBaseValue = BigInt(config.CLINTBase),
       CLINTSizeBytes = BigInt(config.CLINTSize),
       DataWidth = busDataWidth,
-      IdWidth = 4,
-      RespQueueDepth = config.AxiXbarRespQueueDepth
+      IDWidth = 4,
+      ResponseQueueDepth = config.AXIXbarResponseQueueDepth
     )
   )
   val clint = Module(
@@ -226,7 +226,7 @@ class ysyx_26030103(
       Some(
         Module(
           new ysyx_26030103_IFUMMU(
-            ParallelVipt = parallelFetchVIPT,
+            ParallelVIPT = parallelFetchVIPT,
             XLEN = XLEN,
             AddressWidth = config.AddressWidth
           )
@@ -238,7 +238,7 @@ class ysyx_26030103(
       Some(
         Module(
           new ysyx_26030103_LSUMMU(
-            ParallelVipt = parallelDataVIPT,
+            ParallelVIPT = parallelDataVIPT,
             XLEN = XLEN,
             AddressWidth = config.AddressWidth
           )
@@ -266,7 +266,7 @@ class ysyx_26030103(
         if (config.MMU.ptwBusOutstanding > 0) config.MMU.ptwBusOutstanding
         else config.MMU.ptwOutstanding
       val axiReadSlots =
-        math.min(busDepth.max(1), ysyx_26030103_AXIReadId.PtwSlots)
+        math.min(busDepth.max(1), ysyx_26030103_AXIReadID.PTWSlots)
       Some(
         Module(
           new ysyx_26030103_PTWToAXI(
@@ -287,7 +287,7 @@ class ysyx_26030103(
           new ysyx_26030103_PTWPMPFilter(
             AddressWidth = config.AddressWidth,
             entries = config.MMU.pmpEntries,
-            faultQueueDepth = config.MMU.ptwPmpFaultQueueDepth
+            faultQueueDepth = config.MMU.ptwPMPFaultQueueDepth
           )
         )
       )

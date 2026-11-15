@@ -9,7 +9,7 @@ import _root_.ysyx_26030103.common._
   */
 object ysyx_26030103_DCachePolicy {
   def LineContainedInCacheableRegion(
-      Address: UInt,
+      address: UInt,
       AddressWidth: Int,
       BlockSizeLog2: Int,
       PMARegions: Seq[ysyx_26030103_PMARegion]
@@ -22,25 +22,25 @@ object ysyx_26030103_DCachePolicy {
       BlockSizeLog2 < AddressWidth,
       "DCache cache line must fit in the address space"
     )
-    val LineBase = Cat(
+    val lineBase = Cat(
       0.U(1.W),
-      Address(AddressWidth - 1, BlockSizeLog2),
+      address(AddressWidth - 1, BlockSizeLog2),
       0.U(BlockSizeLog2.W)
     )
-    val LineLast = LineBase +
+    val lineLast = lineBase +
       ((BigInt(1) << BlockSizeLog2) - 1).U((AddressWidth + 1).W)
     PMARegions
-      .filter(Region => Region.Readable && Region.Cacheable)
-      .map { Region =>
-        LineBase >= BigInt(Region.Base).U((AddressWidth + 1).W) &&
-        LineLast < BigInt(Region.EndExclusive).U((AddressWidth + 1).W)
+      .filter(region => region.Readable && region.Cacheable)
+      .map { region =>
+        lineBase >= BigInt(region.Base).U((AddressWidth + 1).W) &&
+        lineLast < BigInt(region.EndExclusive).U((AddressWidth + 1).W)
       }
       .reduceOption(_ || _)
       .getOrElse(false.B)
   }
 
   def IsCacheable(
-      Address: UInt,
+      address: UInt,
       Enable: Boolean,
       AddressWidth: Int,
       BlockSizeLog2: Int,
@@ -49,11 +49,11 @@ object ysyx_26030103_DCachePolicy {
       PMARegions: Seq[ysyx_26030103_PMARegion]
   ): Bool = {
     if (Enable) {
-      val Configured =
-        (Address & CacheableMask.U(AddressWidth.W)) ===
+      val configured =
+        (address & CacheableMask.U(AddressWidth.W)) ===
           CacheableBase.U(AddressWidth.W)
-      Configured && LineContainedInCacheableRegion(
-        Address,
+      configured && LineContainedInCacheableRegion(
+        address,
         AddressWidth,
         BlockSizeLog2,
         PMARegions

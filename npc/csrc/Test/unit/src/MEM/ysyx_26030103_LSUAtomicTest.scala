@@ -41,11 +41,11 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
     dut.io.DCacheFlush.poke(false.B)
     dut.io.BusQuiet.poke(true.B)
     dut.io.ReservationClear.poke(false.B)
-    dut.io.ViptPAddr.poke(0.U)
-    dut.io.ViptPAddrValid.poke(false.B)
-    dut.io.ViptPAddrVaddr.poke(0.U)
-    dut.io.ViptKill.poke(false.B)
-    dut.io.PmpFault.poke(false.B)
+    dut.io.VIPTPAddress.poke(0.U)
+    dut.io.VIPTPAddressValid.poke(false.B)
+    dut.io.VIPTPAddressVirtualAddress.poke(0.U)
+    dut.io.VIPTKill.poke(false.B)
+    dut.io.PMPFault.poke(false.B)
     dut.io.DataBus.AW.AWREADY.poke(false.B)
     dut.io.DataBus.W.WREADY.poke(false.B)
     dut.io.DataBus.B.BVALID.poke(false.B)
@@ -78,7 +78,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.IsAtomic.poke(true.B)
     dut.io.in.bits.AtomicOp.poke(op.U(5.W))
     dut.io.in.bits.ALUResult.poke(address.U(addrWidth.W))
-    dut.io.in.bits.VAddr.poke(address.U(addrWidth.W))
+    dut.io.in.bits.VAddress.poke(address.U(addrWidth.W))
     dut.io.in.bits.WidthSelect.poke(widthSelect.U(2.W))
     dut.io.in.bits.StoreData.poke(rhs.U(dut.io.in.bits.StoreData.getWidth.W))
     dut.io.in.bits.pc.poke(0x80000000L.U(addrWidth.W))
@@ -357,7 +357,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       pokeAtomic(dut, AMOADD, 0x80004500L, 1, 2, memoryWrite = true)
-      dut.io.PmpFault.poke(true.B)
+      dut.io.PMPFault.poke(true.B)
       dut.io.in.valid.poke(true.B)
       var trapped = false
       for (_ <- 0 until 12) {
@@ -379,8 +379,8 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
       resetDut(dut, clock, dut.reset)
 
       // 第一笔 AMO 的读响应报 SLVERR：锁存 AtomicReadFaultReg，cause=5。
-      val firstAddr = 0x80004600L
-      pokeAtomic(dut, AMOADD, firstAddr, 1, 2, memoryWrite = true)
+      val firstAddress = 0x80004600L
+      pokeAtomic(dut, AMOADD, firstAddress, 1, 2, memoryWrite = true)
       dut.io.in.valid.poke(true.B)
       waitFire(dut, clock)
       var cycles = 0
@@ -388,7 +388,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
         clock.step(); cycles += 1
       }
       bool(dut.io.DataBus.AR.ARVALID) should be(true)
-      long(dut.io.DataBus.AR.ARADDR) should be(firstAddr)
+      long(dut.io.DataBus.AR.ARADDR) should be(firstAddress)
       dut.io.DataBus.AR.ARREADY.poke(true.B)
       clock.step()
       dut.io.DataBus.AR.ARREADY.poke(false.B)
@@ -415,18 +415,18 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
       // 第二笔 AMO 在进入原子通路前被 PMP 拒绝：必须使用本次访问的
       // store/AMO cause=7，不能复用上一笔的 AtomicReadFaultReg 报成 5。
       pokeAtomic(dut, AMOADD, 0x80004700L, 1, 2, memoryWrite = true)
-      dut.io.PmpFault.poke(true.B)
+      dut.io.PMPFault.poke(true.B)
       dut.io.in.valid.poke(true.B)
-      var sawPmpFault = false
+      var sawPMPFault = false
       for (_ <- 0 until 20) {
         expectNoBus(dut)
         if (bool(dut.io.MemTrapCommit)) {
-          sawPmpFault = true
+          sawPMPFault = true
           long(dut.io.MemTrapCause) should be(7L)
         }
         clock.step()
       }
-      withClue("PMP 拒绝的 AMO 未提交: ") { sawPmpFault should be(true) }
+      withClue("PMP 拒绝的 AMO 未提交: ") { sawPMPFault should be(true) }
       expectNoBus(dut)
     }
   }
@@ -522,8 +522,8 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
     // ALUResult 发原子事务，根本不存在“等待带标签 PA”的通路；要覆盖本用例
     // 必须同时打开 DCacheEnable。
     simulate(new ysyx_26030103_LSU(
-      XLEN = 32, DCacheEnable = true, DCacheVipt = true,
-      ViptParallel = true)) { dut =>
+      XLEN = 32, DCacheEnable = true, DCacheVIPT = true,
+      VIPTParallel = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val addr = 0x80007000L
@@ -537,9 +537,9 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
         clock.step()
       }
       // 翻译故障：撤销整笔原子事务。
-      dut.io.ViptKill.poke(true.B)
+      dut.io.VIPTKill.poke(true.B)
       clock.step()
-      dut.io.ViptKill.poke(false.B)
+      dut.io.VIPTKill.poke(false.B)
       for (_ <- 0 until 6) {
         expectNoBus(dut)
         bool(dut.io.out.valid) should be(false)

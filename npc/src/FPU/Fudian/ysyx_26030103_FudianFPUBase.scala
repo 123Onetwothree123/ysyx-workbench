@@ -11,51 +11,51 @@ abstract class ysyx_26030103_FudianFPUBase(
     extends ysyx_26030103_FPU(Config) {
   protected val FLEN = Config.FPULen
   protected val XLEN = Config.XLEN
-  protected val HasD = Config.UseD && FLEN == 64
+  protected val hasD = Config.UseD && FLEN == 64
 
   // FPU_FUDIAN_SHARED_DIVSQRT=y 且存在 D 时 F/D 共用一套 D 精度 FDIV。
-  protected val SharedDivSqrt = Config.FPUProfile.Fudian.SharedDivSqrt
+  protected val sharedDivSqrt = Config.FPUProfile.Fudian.SharedDivSqrt
 
-  protected val SExpWidth = 8
-  protected val SPrecision = 24
-  protected val DExpWidth = 11
-  protected val DPrecision = 53
+  protected val sExpWidth = 8
+  protected val sPrecision = 24
+  protected val dExpWidth = 11
+  protected val dPrecision = 53
 
   private val canonicalNaN32 = "h7fc00000".U(32.W)
   private val allOnes32 = "hffffffff".U(32.W)
-  protected val UseFMA = Config.FPUProfile.FMA
+  protected val useFMA = Config.FPUProfile.FMA
 
-  protected def flipSign(x: UInt, width: Int): UInt =
-    x ^ (BigInt(1) << (width - 1)).U(width.W)
+  protected def flipSign(value: UInt, width: Int): UInt =
+    value ^ (BigInt(1) << (width - 1)).U(width.W)
 
   // F 格式输入的 NaN-boxing 检查：未 box 的输入按规范视为规范 NaN。
-  private def unboxS(x: UInt): UInt =
+  private def unboxS(value: UInt): UInt =
     if (FLEN == 32) {
-      x
+      value
     } else {
-      Mux(x(63, 32) === allOnes32, x(31, 0), canonicalNaN32)
+      Mux(value(63, 32) === allOnes32, value(31, 0), canonicalNaN32)
     }
 
   // F 格式结果写回时统一 NaN-box。
-  protected def boxS(x: UInt): UInt =
-    if (FLEN == 32) x else Cat(allOnes32, x)
+  protected def boxS(value: UInt): UInt =
+    if (FLEN == 32) value else Cat(allOnes32, value)
 
   // 把任意宽度结果截断/扩展成响应位宽。
-  protected def asResp(x: UInt): UInt =
-    if (x.getWidth == FLEN) x
-    else if (x.getWidth > FLEN) x(FLEN - 1, 0)
-    else x.pad(FLEN)
+  protected def asResponse(value: UInt): UInt =
+    if (value.getWidth == FLEN) value
+    else if (value.getWidth > FLEN) value(FLEN - 1, 0)
+    else value.pad(FLEN)
 
   // DYN 与保留值按 RNE 处理；上层负责在进入后端前解析 frm。
   private def resolveRm(rm: UInt): UInt =
-    Mux(rm <= ysyx_26030103_FpuRm.RMM, rm, ysyx_26030103_FpuRm.RNE)
+    Mux(rm <= ysyx_26030103_FPURm.RMM, rm, ysyx_26030103_FPURm.RNE)
 
   // F 格式输入的 signaling NaN 检测（共享 DIV/SQRT 回舍时需要保留 NV）。
-  protected def isSNaN32(x: UInt): Bool =
-    FloatPoint.fromUInt(x, SExpWidth, SPrecision).decode.isSNaN
+  protected def isSNaN32(value: UInt): Bool =
+    FloatPoint.fromUInt(value, sExpWidth, sPrecision).decode.isSNaN
 
-  protected def classifyBits(x: UInt, expWidth: Int, precision: Int): UInt = {
-    val fp = FloatPoint.fromUInt(x, expWidth, precision)
+  protected def classifyBits(value: UInt, expWidth: Int, precision: Int): UInt = {
+    val fp = FloatPoint.fromUInt(value, expWidth, precision)
     val decode = fp.decode
     val cls = Wire(UInt(10.W))
     cls := 0.U
@@ -79,14 +79,14 @@ abstract class ysyx_26030103_FudianFPUBase(
 
   // RISC-V FMIN/FMAX：NaN 传播规则、-0/+0 顺序与 NV 标志。
   protected def minMaxBits(
-      x: UInt,
-      y: UInt,
+      lhs: UInt,
+      rhs: UInt,
       expWidth: Int,
       precision: Int,
-      IsMax: Boolean
+      isMax: Boolean
   ): (UInt, UInt) = {
-    val fpX = FloatPoint.fromUInt(x, expWidth, precision)
-    val fpY = FloatPoint.fromUInt(y, expWidth, precision)
+    val fpX = FloatPoint.fromUInt(lhs, expWidth, precision)
+    val fpY = FloatPoint.fromUInt(rhs, expWidth, precision)
     val decX = fpX.decode
     val decY = fpY.decode
 
@@ -100,23 +100,23 @@ abstract class ysyx_26030103_FudianFPUBase(
 
     val bothNaN = decX.isNaN && decY.isNaN
     val ordered = Mux(
-      IsMax.B,
-      Mux(xLtY, y, x),
-      Mux(xLtY, x, y)
+      isMax.B,
+      Mux(xLtY, rhs, lhs),
+      Mux(xLtY, lhs, rhs)
     )
     val result = Mux(
       bothNaN,
       FloatPoint.defaultNaNUInt(expWidth, precision),
-      Mux(decX.isNaN, y, Mux(decY.isNaN, x, ordered))
+      Mux(decX.isNaN, rhs, Mux(decY.isNaN, lhs, ordered))
     )
     val fflags = Cat(decX.isSNaN || decY.isSNaN,
-      0.U(ysyx_26030103_FpuFlags.NV.W))
+      0.U(ysyx_26030103_FPUFlags.NV.W))
     (result, fflags)
   }
 
   // 操作数与舍入模式
   protected val op = io.req.bits.op
-  protected val fmtD = HasD.B && io.req.bits.fmt === ysyx_26030103_FpuFmt.D
+  protected val fmtD = hasD.B && io.req.bits.fmt === ysyx_26030103_FPUFmt.D
   protected val rm = resolveRm(io.req.bits.rm)
 
   protected val aS = unboxS(io.req.bits.rs1)
@@ -126,20 +126,20 @@ abstract class ysyx_26030103_FudianFPUBase(
   protected val bD = io.req.bits.rs2
   protected val cD = io.req.bits.rs3
 
-  protected val isSub = op === ysyx_26030103_FpuOp.FSub
+  protected val isSub = op === ysyx_26030103_FPUOp.FSub
   protected val isNegA =
-    op === ysyx_26030103_FpuOp.FFnma || op === ysyx_26030103_FpuOp.FFnms
+    op === ysyx_26030103_FPUOp.FFnma || op === ysyx_26030103_FPUOp.FFnms
   protected val isNegC =
-    op === ysyx_26030103_FpuOp.FFms || op === ysyx_26030103_FpuOp.FFnma
+    op === ysyx_26030103_FPUOp.FFms || op === ysyx_26030103_FPUOp.FFnma
 
   // intWord=true 只用低 32 位，false 用完整 XLEN；RV32 只允许 W/WU。
-  private val cvtSigned = op === ysyx_26030103_FpuOp.FCvtFpToInt ||
-    op === ysyx_26030103_FpuOp.FCvtIntToFp
+  private val cvtSigned = op === ysyx_26030103_FPUOp.FCvtFPToInt ||
+    op === ysyx_26030103_FPUOp.FCvtIntToFP
   private val cvtLong = (XLEN == 64).B && !io.req.bits.intWord
   protected val cvtToIntOp = Cat(cvtLong, cvtSigned)
 
-  protected val intToFpSigned = op === ysyx_26030103_FpuOp.FCvtIntToFp
-  protected val intToFpLong: Bool =
+  protected val intToFPSigned = op === ysyx_26030103_FPUOp.FCvtIntToFP
+  protected val intToFPLong: Bool =
     if (XLEN == 64) !io.req.bits.intWord else false.B
   private val intSrcWord: UInt =
     Cat(0.U(32.W), io.req.bits.rs1(31, 0))
@@ -148,6 +148,6 @@ abstract class ysyx_26030103_FudianFPUBase(
     else intSrcWord
 
   // 按运行时 fmt 在两个精度的结果之间选择。
-  protected def byFmt(s: UInt, d: => UInt): UInt =
-    if (HasD) Mux(fmtD, d, s) else s
+  protected def byFmt(singleValue: UInt, doubleValue: => UInt): UInt =
+    if (hasD) Mux(fmtD, doubleValue, singleValue) else singleValue
 }

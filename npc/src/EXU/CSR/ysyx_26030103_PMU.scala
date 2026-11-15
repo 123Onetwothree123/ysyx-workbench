@@ -15,24 +15,24 @@ class ysyx_26030103_PMU(
     val EnableSscofpmf: Boolean = true
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"PMU XLEN 非法: $XLEN")
-  private val CounterCount = ysyx_26030103_PMUEventId.CounterCount
-  private val EventBusWidth = ysyx_26030103_PMUEventId.BusWidth
-  private val CounterBase = 0xb03
-  private val CounterHighBase = 0xb83
-  private val EventBase = 0x323
-  private val CountOvf = 0xda0
-  private val OfBit = XLEN - 1
-  private val MinhBit = XLEN - 2
-  private val SinhBit = XLEN - 3
-  private val UinhBit = XLEN - 4
-  private val OfMask = (BigInt(1) << OfBit).U(XLEN.W)
+  private val counterCount = ysyx_26030103_PMUEventID.CounterCount
+  private val eventBusWidth = ysyx_26030103_PMUEventID.BusWidth
+  private val counterBase = 0xb03
+  private val counterHighBase = 0xb83
+  private val eventBase = 0x323
+  private val countOvf = 0xda0
+  private val ofBit = XLEN - 1
+  private val minhBit = XLEN - 2
+  private val sinhBit = XLEN - 3
+  private val uinhBit = XLEN - 4
+  private val ofMask = (BigInt(1) << ofBit).U(XLEN.W)
 
   val io = IO(new Bundle {
-    val events = Input(UInt(EventBusWidth.W))
+    val events = Input(UInt(eventBusWidth.W))
     val privilege = Input(UInt(2.W))
-    val csrAddr = Input(UInt(12.W))
-    val csrWen = Input(Bool())
-    val csrWdata = Input(UInt(XLEN.W))
+    val csrAddress = Input(UInt(12.W))
+    val csrWriteEnable = Input(Bool())
+    val csrWriteData = Input(UInt(XLEN.W))
     val mcountinhibit = Input(UInt(32.W))
     // S 模式可见的 scountovf 位必须受 mcounteren 门控；M 模式保持完整视图。
     val counteren = Input(UInt(32.W))
@@ -43,88 +43,88 @@ class ysyx_26030103_PMU(
     val lcofiPending = Output(Bool())
   })
 
-  val Counters = RegInit(VecInit(Seq.fill(CounterCount)(0.U(64.W))))
-  val Events = RegInit(VecInit(Seq.fill(CounterCount)(0.U(XLEN.W))))
+  val counters = RegInit(VecInit(Seq.fill(counterCount)(0.U(64.W))))
+  val events = RegInit(VecInit(Seq.fill(counterCount)(0.U(XLEN.W))))
 
-  val ReadData = WireDefault(0.U(XLEN.W))
-  val OverflowBits = WireDefault(VecInit(Seq.fill(CounterCount)(false.B)))
-  for (i <- 0 until CounterCount) {
-    val LowAddr = (CounterBase + i).U(12.W)
-    val HighAddr = (CounterHighBase + i).U(12.W)
-    val UserLowAddr = (0xc03 + i).U(12.W)
-    val UserHighAddr = (0xc83 + i).U(12.W)
-    val EventAddr = (EventBase + i).U(12.W)
-    val EventWrite = io.csrWen && io.csrAddr === EventAddr
-    val LowWrite = io.csrWen && io.csrAddr === LowAddr
-    val HighWrite =
-      if (XLEN == 32) io.csrWen && io.csrAddr === HighAddr else false.B
+  val readData = WireDefault(0.U(XLEN.W))
+  val overflowBits = WireDefault(VecInit(Seq.fill(counterCount)(false.B)))
+  for (index <- 0 until counterCount) {
+    val lowAddress = (counterBase + index).U(12.W)
+    val highAddress = (counterHighBase + index).U(12.W)
+    val userLowAddress = (0xc03 + index).U(12.W)
+    val userHighAddress = (0xc83 + index).U(12.W)
+    val eventAddress = (eventBase + index).U(12.W)
+    val eventWrite = io.csrWriteEnable && io.csrAddress === eventAddress
+    val lowWrite = io.csrWriteEnable && io.csrAddress === lowAddress
+    val highWrite =
+      if (XLEN == 32) io.csrWriteEnable && io.csrAddress === highAddress else false.B
 
-    val EventId = Events(i)(7, 0)
-    val EventHighZero =
-      Events(i)(7, 5) === 0.U && Events(i)(15, 8) === 0.U
-    val EventIndex = Events(i)(4, 0)
-    val EventFire = EventId =/= 0.U && EventHighZero && io.events(EventIndex)
-    val ModeInhibit =
+    val eventID = events(index)(7, 0)
+    val eventHighZero =
+      events(index)(7, 5) === 0.U && events(index)(15, 8) === 0.U
+    val eventIndex = events(index)(4, 0)
+    val eventFire = eventID =/= 0.U && eventHighZero && io.events(eventIndex)
+    val modeInhibit =
       if (EnableSscofpmf)
-        Mux(io.privilege === 3.U, Events(i)(MinhBit),
-          Mux(io.privilege === 1.U, Events(i)(SinhBit),
-            Mux(io.privilege === 0.U, Events(i)(UinhBit), false.B)))
+        Mux(io.privilege === 3.U, events(index)(minhBit),
+          Mux(io.privilege === 1.U, events(index)(sinhBit),
+            Mux(io.privilege === 0.U, events(index)(uinhBit), false.B)))
       else false.B
-    val Increment = !LowWrite && !HighWrite &&
-      !io.mcountinhibit(3 + i) && !ModeInhibit && EventFire
-    val Overflow = EnableSscofpmf.B && Increment &&
-      Counters(i) === "hffffffffffffffff".U(64.W)
+    val increment = !lowWrite && !highWrite &&
+      !io.mcountinhibit(3 + index) && !modeInhibit && eventFire
+    val overflow = EnableSscofpmf.B && increment &&
+      counters(index) === "hffffffffffffffff".U(64.W)
 
-    when(EventWrite) {
-      Events(i) := io.csrWdata
-    }.elsewhen(Overflow) {
-      Events(i) := Events(i) | OfMask
+    when(eventWrite) {
+      events(index) := io.csrWriteData
+    }.elsewhen(overflow) {
+      events(index) := events(index) | ofMask
     }.elsewhen(io.lcofiClear) {
       // mip.LCOFI 写 0：清除该计数器的 overflow 汇总位。
-      Events(i) := Events(i) & ~OfMask
+      events(index) := events(index) & ~ofMask
     }
 
-    when(LowWrite) {
+    when(lowWrite) {
       if (XLEN == 64) {
-        Counters(i) := io.csrWdata
+        counters(index) := io.csrWriteData
       } else {
-        Counters(i) := Cat(Counters(i)(63, 32), io.csrWdata(31, 0))
+        counters(index) := Cat(counters(index)(63, 32), io.csrWriteData(31, 0))
       }
-    }.elsewhen(HighWrite) {
-      Counters(i) := Cat(io.csrWdata(31, 0), Counters(i)(31, 0))
-    }.elsewhen(Increment) {
-      Counters(i) := Counters(i) + 1.U
+    }.elsewhen(highWrite) {
+      counters(index) := Cat(io.csrWriteData(31, 0), counters(index)(31, 0))
+    }.elsewhen(increment) {
+      counters(index) := counters(index) + 1.U
     }
 
-    when(io.csrAddr === LowAddr || io.csrAddr === UserLowAddr) {
-      ReadData := (if (XLEN == 64) Counters(i)
-                   else Counters(i)(31, 0))
+    when(io.csrAddress === lowAddress || io.csrAddress === userLowAddress) {
+      readData := (if (XLEN == 64) counters(index)
+                   else counters(index)(31, 0))
     }
     if (XLEN == 32) {
-      when(io.csrAddr === HighAddr || io.csrAddr === UserHighAddr) {
-        ReadData := Counters(i)(63, 32)
+      when(io.csrAddress === highAddress || io.csrAddress === userHighAddress) {
+        readData := counters(index)(63, 32)
       }
     }
-    when(io.csrAddr === EventAddr) {
-      ReadData := Events(i)
+    when(io.csrAddress === eventAddress) {
+      readData := events(index)
     }
-    OverflowBits(i) := Events(i)(OfBit)
+    overflowBits(index) := events(index)(ofBit)
   }
 
-  val Scountovf = Cat(OverflowBits.asUInt, 0.U(3.W))
+  val scountovf = Cat(overflowBits.asUInt, 0.U(3.W))
   // S/U 模式读 scountovf 时，只有 mcounteren 允许的对应计数器位可见；
   // M 模式保留全部 overflow 位。低 3 位本来就没有对应计数器。
-  val VisibleScountovf =
-    (if (EnableSscofpmf) Scountovf else 0.U(32.W)) &
+  val visibleScountovf =
+    (if (EnableSscofpmf) scountovf else 0.U(32.W)) &
       Mux(io.privilege === 3.U, "hffffffff".U(32.W), io.counteren)
-  val ScountovfWide =
-    if (XLEN == 32) VisibleScountovf
-    else Cat(0.U((XLEN - 32).W), VisibleScountovf)
-  when(io.csrAddr === CountOvf.U(12.W)) {
-    ReadData := ScountovfWide
+  val scountovfWide =
+    if (XLEN == 32) visibleScountovf
+    else Cat(0.U((XLEN - 32).W), visibleScountovf)
+  when(io.csrAddress === countOvf.U(12.W)) {
+    readData := scountovfWide
   }
-  io.readData := ReadData
-  io.scountovf := VisibleScountovf
+  io.readData := readData
+  io.scountovf := visibleScountovf
   io.lcofiPending :=
-    (if (EnableSscofpmf) OverflowBits.reduce(_ || _) else false.B)
+    (if (EnableSscofpmf) overflowBits.reduce(_ || _) else false.B)
 }

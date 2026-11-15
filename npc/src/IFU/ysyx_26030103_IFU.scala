@@ -19,26 +19,26 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 // FetchAddr 是实际发给 ICache 的字对齐地址；FetchPC 是架构 PC（指令起点），
 // 供 BTB/PMP/MMU 故障报告使用。未启用 C 时两者相同。
 class ysyx_26030103_IFU(
-    resetAddr: Long = ysyx_26030103_PMAOptions.Default.socResetAddr,
+    resetAddress: Long = ysyx_26030103_PMAOptions.Default.socResetAddress,
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val UseC: Boolean = false
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"IFU XLEN 非法: $XLEN")
   val io = IO(new Bundle {
     // 发给 ICache 的取指请求地址（C 模式下按 4 字节对齐）。
-    val FetchAddr = Output(UInt(XLEN.W))
+    val FetchAddress = Output(UInt(XLEN.W))
     // 当前指令的架构 PC（C 模式下可能位于字内高半字）。
     val FetchPC = Output(UInt(XLEN.W))
     val FetchValid = Output(Bool())
     val FetchReady = Input(Bool())
 
     // ICache 响应：C 模式下由 IFU 消费并组装成完整指令。
-    val RespData = Input(UInt(32.W))
-    val RespValid = Input(Bool())
-    val RespReady = Output(Bool())
-    val RespExceptionValid = Input(Bool())
-    val RespExceptionCause = Input(UInt(4.W))
-    val RespAccessFaultResp = Input(UInt(2.W))
+    val ResponseData = Input(UInt(32.W))
+    val ResponseValid = Input(Bool())
+    val ResponseReady = Output(Bool())
+    val ResponseExceptionValid = Input(Bool())
+    val ResponseExceptionCause = Input(UInt(4.W))
+    val ResponseAccessFaultResponse = Input(UInt(2.W))
 
     val RedirectTarget = Input(UInt(XLEN.W))
     val Redirect = Input(Bool())
@@ -57,27 +57,27 @@ class ysyx_26030103_IFU(
   })
 
   if (!UseC) {
-    val PCModule = Module(new ysyx_26030103_PC(resetAddr, XLEN))
-    val NextPCModule = Module(new ysyx_26030103_NextPC(XLEN))
-    val snpc = PCModule.io.ysyx_26030103_PC + 4.U(XLEN.W)
+    val pcModule = Module(new ysyx_26030103_PC(resetAddress, XLEN))
+    val nextPCModule = Module(new ysyx_26030103_NextPC(XLEN))
+    val snpc = pcModule.io.ysyx_26030103_PC + 4.U(XLEN.W)
 
     val redirect = io.Redirect || io.ExceptionTaken
     io.FetchValid := !redirect
-    io.FetchAddr := PCModule.io.ysyx_26030103_PC
-    io.FetchPC := PCModule.io.ysyx_26030103_PC
+    io.FetchAddress := pcModule.io.ysyx_26030103_PC
+    io.FetchPC := pcModule.io.ysyx_26030103_PC
 
-    NextPCModule.io.SNPC := snpc
-    NextPCModule.io.Redirect := io.Redirect
-    NextPCModule.io.RedirectTarget := io.RedirectTarget
-    NextPCModule.io.ExceptionTaken := io.ExceptionTaken
-    NextPCModule.io.ExceptionTarget := io.ExceptionTarget
-    NextPCModule.io.PredHit := io.PredHit && !redirect
-    NextPCModule.io.PredTarget := io.PredTarget
-    PCModule.io.ysyx_26030103_NextPC := NextPCModule.io.ysyx_26030103_NextPC
-    PCModule.io.PCEnable := redirect || (io.FetchValid && io.FetchReady)
+    nextPCModule.io.SNPC := snpc
+    nextPCModule.io.Redirect := io.Redirect
+    nextPCModule.io.RedirectTarget := io.RedirectTarget
+    nextPCModule.io.ExceptionTaken := io.ExceptionTaken
+    nextPCModule.io.ExceptionTarget := io.ExceptionTarget
+    nextPCModule.io.PredHit := io.PredHit && !redirect
+    nextPCModule.io.PredTarget := io.PredTarget
+    pcModule.io.ysyx_26030103_NextPC := nextPCModule.io.ysyx_26030103_NextPC
+    pcModule.io.PCEnable := redirect || (io.FetchValid && io.FetchReady)
 
     io.StallIdle := !io.FetchValid
-    io.RespReady := false.B
+    io.ResponseReady := false.B
     io.Out.valid := false.B
     io.Out.bits := 0.U.asTypeOf(new ysyx_26030103_IFUMessage(XLEN))
   } else {
@@ -85,7 +85,7 @@ class ysyx_26030103_IFU(
     val sIdle :: sWait :: Nil = Enum(2)
     val state = RegInit(sIdle)
     // 架构 PC：始终指向当前指令的起点，按 2 字节对齐。
-    val pcReg = RegInit(resetAddr.U(XLEN.W))
+    val pcReg = RegInit(resetAddress.U(XLEN.W))
     // 当前取指是否是跨字 32 位指令的第二个字。
     val secondWord = RegInit(false.B)
     // 跨字指令已经取到的低 16 位。
@@ -103,22 +103,22 @@ class ysyx_26030103_IFU(
       Mux(io.ExceptionTaken, io.ExceptionTarget, io.RedirectTarget)
     val wordAlignedPC = Cat(pcReg(XLEN - 1, 2), "b00".U(2.W))
     // 跨字指令的第二个字固定是当前字的下一个 4 字节字。
-    val fetchAddr = Mux(secondWord, wordAlignedPC + 4.U, wordAlignedPC)
+    val fetchAddress = Mux(secondWord, wordAlignedPC + 4.U, wordAlignedPC)
 
-    io.FetchAddr := fetchAddr
+    io.FetchAddress := fetchAddress
     io.FetchPC := pcReg
     io.FetchValid := state === sIdle && !redirect && !faultHeld
     io.StallIdle := !io.FetchValid
 
     // 当前响应中属于本指令的半字：正常情况下 PC[1]=1 时取高半字；
     // 第二个字按字对齐取低半字。
-    val halfSel = Mux(secondWord, 0.U(1.W), pcReg(1))
-    val halfword = Mux(halfSel === 0.U, io.RespData(15, 0), io.RespData(31, 16))
+    val halfSelected = Mux(secondWord, 0.U(1.W), pcReg(1))
+    val halfword = Mux(halfSelected === 0.U, io.ResponseData(15, 0), io.ResponseData(31, 16))
     val is32 = halfword(1, 0) === "b11".U(2.W)
 
-    val respIsSecond = secondWord
-    val respIsFirstHalf = !secondWord && is32 && pcReg(1)
-    val respIsComplete32 = !secondWord && is32 && !pcReg(1)
+    val responseIsSecond = secondWord
+    val responseIsFirstHalf = !secondWord && is32 && pcReg(1)
+    val responseIsComplete32 = !secondWord && is32 && !pcReg(1)
 
     val emitInstr = WireDefault(false.B)
     val emitFault = WireDefault(false.B)
@@ -127,34 +127,34 @@ class ysyx_26030103_IFU(
     val outIsCompressed = WireDefault(false.B)
     val outException = WireDefault(false.B)
     val outCause = WireDefault(0.U(4.W))
-    val outAccessFaultResp = WireDefault(0.U(2.W))
+    val outAccessFaultResponse = WireDefault(0.U(2.W))
     val outPredTaken = WireDefault(false.B)
     val outPredTarget = WireDefault(0.U(XLEN.W))
 
-    when(state === sWait && io.RespValid) {
-      when(io.RespExceptionValid) {
+    when(state === sWait && io.ResponseValid) {
+      when(io.ResponseExceptionValid) {
         // 取指访问错误优先于半字拼装。pc 仍指向指令起点用于 sepc/mepc；
         // 实际故障取指地址（可能是跨字第二个字）由 pred_target 带给 EXU
         // 写入 stval/mtval。
         emitFault := true.B
         outException := true.B
-        outCause := io.RespExceptionCause
-        outAccessFaultResp := io.RespAccessFaultResp
+        outCause := io.ResponseExceptionCause
+        outAccessFaultResponse := io.ResponseAccessFaultResponse
         outInstruction := "h00000013".U(32.W)
-      }.elsewhen(respIsSecond) {
+      }.elsewhen(responseIsSecond) {
         // 跨字 32 位指令：低半字来自第一次取指的高 16 位，高半字来自
         // 第二个字的低 16 位。
         emitInstr := true.B
-        outInstruction := Cat(io.RespData(15, 0), firstHalf)
+        outInstruction := Cat(io.ResponseData(15, 0), firstHalf)
         outIsCompressed := false.B
         nextPC := Mux(savedPredTaken, savedPredTarget, pcReg + 4.U)
         outPredTaken := savedPredTaken
         outPredTarget := savedPredTarget
-      }.elsewhen(respIsFirstHalf) {
+      }.elsewhen(responseIsFirstHalf) {
         // 只消费第一个字，不产生指令；下一拍取同一个 32 位指令的后半。
-      }.elsewhen(respIsComplete32) {
+      }.elsewhen(responseIsComplete32) {
         emitInstr := true.B
-        outInstruction := io.RespData
+        outInstruction := io.ResponseData
         outIsCompressed := false.B
         nextPC := Mux(savedPredTaken, savedPredTarget, pcReg + 4.U)
         outPredTaken := savedPredTaken
@@ -176,18 +176,18 @@ class ysyx_26030103_IFU(
     io.Out.bits.pc := pcReg
     io.Out.bits.ExceptionValid := outException
     io.Out.bits.ExceptionCause := Mux(outException, outCause, 0.U(4.W))
-    io.Out.bits.AccessFaultResp := outAccessFaultResp
+    io.Out.bits.AccessFaultResponse := outAccessFaultResponse
     io.Out.bits.pred_taken := outPredTaken && !outException
     // 异常指令不消费预测目标；这里复用 pred_target 把实际发生故障的取指
     // 地址送到 EXU 作为 stval/mtval。32 位指令跨字时第二个字（如 ...1000）
     // 才故障，而 Out.bits.pc/sepc 仍保持指令起点（...ffe）。
-    io.Out.bits.pred_target := Mux(outException, fetchAddr, outPredTarget)
+    io.Out.bits.pred_target := Mux(outException, fetchAddress, outPredTarget)
 
     // 第一个半字只是内部中间结果，可以直接消费；产生输出或故障的响应
     // 必须等下游握手，避免在反压时丢指令。
-    io.RespReady := state === sWait && io.RespValid &&
-      Mux(io.RespExceptionValid, io.Out.ready,
-        Mux(respIsFirstHalf, true.B, io.Out.ready))
+    io.ResponseReady := state === sWait && io.ResponseValid &&
+      Mux(io.ResponseExceptionValid, io.Out.ready,
+        Mux(responseIsFirstHalf, true.B, io.Out.ready))
 
     when(redirect) {
       // 重定向/异常优先：清掉未完成的半字和预测快照，从新目标重新开始。
@@ -204,8 +204,8 @@ class ysyx_26030103_IFU(
       state := sIdle
       secondWord := false.B
       faultHeld := true.B
-    }.elsewhen(state === sWait && io.RespValid && respIsFirstHalf) {
-      firstHalf := io.RespData(31, 16)
+    }.elsewhen(state === sWait && io.ResponseValid && responseIsFirstHalf) {
+      firstHalf := io.ResponseData(31, 16)
       secondWord := true.B
       state := sIdle
     }.elsewhen(io.FetchValid && io.FetchReady) {

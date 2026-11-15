@@ -31,9 +31,9 @@ class ysyx_26030103_RV64AddressConfigTest extends AnyFlatSpec with Matchers {
       levels = 3,
       pteSizeBytes = 8,
       pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PteConfig(pteBits = 64, ppnHigh = 53),
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
       tlbEnabled = true,
-      tlbAsidBits = 16
+      tlbASIDBits = 16
     )
     def sv48 = sv39.copy(levels = 4)
     ysyx_26030103_NPCConfig(XLEN = 64, AddressWidth = 64, MMU = sv39)

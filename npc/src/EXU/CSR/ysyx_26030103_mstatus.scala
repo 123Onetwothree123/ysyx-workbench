@@ -55,9 +55,9 @@ class ysyx_26030103_mstatus(
     val rdata = Output(UInt(32.W))
   })
   import ysyx_26030103_mstatus._
-  val RegMstatus = withClockAndReset(io.clk, io.rst) { RegInit(resetValue) }
+  val regMstatus = withClockAndReset(io.clk, io.rst) { RegInit(resetValue) }
   when(io.wen) {
-    RegMstatus := legalize(io.wdata, hasU, hasS, hasF)
+    regMstatus := legalize(io.wdata, hasU, hasS, hasF)
   }
-  io.rdata := RegMstatus
+  io.rdata := regMstatus
 }

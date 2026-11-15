@@ -7,26 +7,26 @@ import _root_.ysyx_26030103.config._
 class ysyx_26030103_StandardMDU(
     override val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
 ) extends ysyx_26030103_MDU(config) {
-  private val MULUnit = Module(new ysyx_26030103_MULUnit(config))
-  private val DIVUnit = Module(new ysyx_26030103_DIVUnit(config))
+  private val mulUnit = Module(new ysyx_26030103_MULUnit(config))
+  private val divUnit = Module(new ysyx_26030103_DIVUnit(config))
   // MUL与DIV独立执行，而此FIFO在两者延迟不同时仍保持架构请求顺序。
   // 其容量覆盖MUL的所有流水槽位，以及DIV单元的一项在途请求。
-  private val OwnerDepth = config.MDUMaxInflight
-  private val OwnerPtrWidth = log2Ceil(OwnerDepth).max(1)
-  private val OwnerCountWidth = log2Ceil(OwnerDepth + 1)
-  private val OwnerIsMULQueue =
-    RegInit(VecInit(Seq.fill(OwnerDepth)(false.B)))
-  private val OwnerHead = RegInit(0.U(OwnerPtrWidth.W))
-  private val OwnerTail = RegInit(0.U(OwnerPtrWidth.W))
-  private val OwnerCount = RegInit(0.U(OwnerCountWidth.W))
-  private val OwnerValid = OwnerCount =/= 0.U
-  private val HeadIsMUL =
-    if (OwnerDepth == 1) OwnerIsMULQueue(0) else OwnerIsMULQueue(OwnerHead)
-  val Request = io.Req.bits
-  val IsMULRequest = Request.MDUOp <= ysyx_26030103_MDUOp.MULHU
-  val IsDIVRequest = !IsMULRequest
-  val MULSignedMode = MuxLookup(
-    Request.MDUOp,
+  private val ownerDepth = config.MDUMaxInflight
+  private val ownerPointerWidth = log2Ceil(ownerDepth).max(1)
+  private val ownerCountWidth = log2Ceil(ownerDepth + 1)
+  private val ownerIsMULQueue =
+    RegInit(VecInit(Seq.fill(ownerDepth)(false.B)))
+  private val ownerHead = RegInit(0.U(ownerPointerWidth.W))
+  private val ownerTail = RegInit(0.U(ownerPointerWidth.W))
+  private val ownerCount = RegInit(0.U(ownerCountWidth.W))
+  private val ownerValid = ownerCount =/= 0.U
+  private val headIsMUL =
+    if (ownerDepth == 1) ownerIsMULQueue(0) else ownerIsMULQueue(ownerHead)
+  val request = io.Request.bits
+  val isMULRequest = request.MDUOp <= ysyx_26030103_MDUOp.MULHU
+  val isDIVRequest = !isMULRequest
+  val mulSignedMode = MuxLookup(
+    request.MDUOp,
     ysyx_26030103_MULSignedMode.UU
   )(
     Seq(
@@ -35,98 +35,98 @@ class ysyx_26030103_StandardMDU(
       ysyx_26030103_MDUOp.MULHU -> ysyx_26030103_MULSignedMode.UU
     )
   )
-  val MULTakeHigh = Request.MDUOp =/= ysyx_26030103_MDUOp.MUL
-  MULUnit.IO.Flush := io.Flush
-  MULUnit.IO.Req.bits.LHS := Request.LHS
-  MULUnit.IO.Req.bits.RHS := Request.RHS
-  MULUnit.IO.Req.bits.SignedMode := MULSignedMode
-  MULUnit.IO.Req.bits.TakeHigh := MULTakeHigh
-  DIVUnit.IO.Flush := io.Flush
-  DIVUnit.IO.Req.bits.LHS := Request.LHS
-  DIVUnit.IO.Req.bits.RHS := Request.RHS
-  DIVUnit.IO.Req.bits.Signed :=
-    Request.MDUOp === ysyx_26030103_MDUOp.DIV ||
-      Request.MDUOp === ysyx_26030103_MDUOp.REM
-  DIVUnit.IO.Req.bits.TakeRemainder :=
-    Request.MDUOp === ysyx_26030103_MDUOp.REM ||
-      Request.MDUOp === ysyx_26030103_MDUOp.REMU
-  val SelectedRespValid = Mux(
-    HeadIsMUL,
-    MULUnit.IO.Resp.valid,
-    DIVUnit.IO.Resp.valid
+  val mulTakeHigh = request.MDUOp =/= ysyx_26030103_MDUOp.MUL
+  mulUnit.IO.Flush := io.Flush
+  mulUnit.IO.Request.bits.LHS := request.LHS
+  mulUnit.IO.Request.bits.RHS := request.RHS
+  mulUnit.IO.Request.bits.SignedMode := mulSignedMode
+  mulUnit.IO.Request.bits.TakeHigh := mulTakeHigh
+  divUnit.IO.Flush := io.Flush
+  divUnit.IO.Request.bits.LHS := request.LHS
+  divUnit.IO.Request.bits.RHS := request.RHS
+  divUnit.IO.Request.bits.Signed :=
+    request.MDUOp === ysyx_26030103_MDUOp.DIV ||
+      request.MDUOp === ysyx_26030103_MDUOp.REM
+  divUnit.IO.Request.bits.TakeRemainder :=
+    request.MDUOp === ysyx_26030103_MDUOp.REM ||
+      request.MDUOp === ysyx_26030103_MDUOp.REMU
+  val selectedResponseValid = Mux(
+    headIsMUL,
+    mulUnit.IO.Response.valid,
+    divUnit.IO.Response.valid
   )
-  MULUnit.IO.Resp.ready :=
-    !io.Flush && OwnerValid && HeadIsMUL && io.Resp.ready
-  DIVUnit.IO.Resp.ready :=
-    !io.Flush && OwnerValid && !HeadIsMUL && io.Resp.ready
-  io.Resp.valid := !io.Flush && OwnerValid && SelectedRespValid
-  io.Resp.bits.Result := Mux(
-    HeadIsMUL,
-    MULUnit.IO.Resp.bits.Result,
-    DIVUnit.IO.Resp.bits.Result
+  mulUnit.IO.Response.ready :=
+    !io.Flush && ownerValid && headIsMUL && io.Response.ready
+  divUnit.IO.Response.ready :=
+    !io.Flush && ownerValid && !headIsMUL && io.Response.ready
+  io.Response.valid := !io.Flush && ownerValid && selectedResponseValid
+  io.Response.bits.Result := Mux(
+    headIsMUL,
+    mulUnit.IO.Response.bits.Result,
+    divUnit.IO.Response.bits.Result
   )
-  val RespFire = io.Resp.valid && io.Resp.ready
-  io.PerfDivIterations := DIVUnit.IO.PerfIterations
-  io.PerfDivEarlyOut := DIVUnit.IO.PerfEarlyOut
-  val OwnerHasSpace = OwnerCount < OwnerDepth.U || RespFire
-  val SelectedReqReady = Mux(
-    IsMULRequest,
-    MULUnit.IO.Req.ready,
-    DIVUnit.IO.Req.ready
+  val responseFire = io.Response.valid && io.Response.ready
+  io.PerfDivIterations := divUnit.IO.PerfIterations
+  io.PerfDivEarlyOut := divUnit.IO.PerfEarlyOut
+  val ownerHasSpace = ownerCount < ownerDepth.U || responseFire
+  val selectedRequestReady = Mux(
+    isMULRequest,
+    mulUnit.IO.Request.ready,
+    divUnit.IO.Request.ready
   )
-  io.Req.ready := !io.Flush && OwnerHasSpace && SelectedReqReady
-  MULUnit.IO.Req.valid :=
-    !io.Flush && io.Req.valid && OwnerHasSpace && IsMULRequest
-  DIVUnit.IO.Req.valid :=
-    !io.Flush && io.Req.valid && OwnerHasSpace && IsDIVRequest
-  val ReqFire = io.Req.valid && io.Req.ready
-  val NextOwnerHead = Mux(
-    OwnerHead === (OwnerDepth - 1).U,
+  io.Request.ready := !io.Flush && ownerHasSpace && selectedRequestReady
+  mulUnit.IO.Request.valid :=
+    !io.Flush && io.Request.valid && ownerHasSpace && isMULRequest
+  divUnit.IO.Request.valid :=
+    !io.Flush && io.Request.valid && ownerHasSpace && isDIVRequest
+  val requestFire = io.Request.valid && io.Request.ready
+  val nextOwnerHead = Mux(
+    ownerHead === (ownerDepth - 1).U,
     0.U,
-    OwnerHead + 1.U
+    ownerHead + 1.U
   )
-  val NextOwnerTail = Mux(
-    OwnerTail === (OwnerDepth - 1).U,
+  val nextOwnerTail = Mux(
+    ownerTail === (ownerDepth - 1).U,
     0.U,
-    OwnerTail + 1.U
+    ownerTail + 1.U
   )
   assert(
-    MULUnit.IO.Req.fire === (ReqFire && IsMULRequest),
+    mulUnit.IO.Request.fire === (requestFire && isMULRequest),
     "MDU MUL request and owner metadata became misaligned"
   )
   assert(
-    DIVUnit.IO.Req.fire === (ReqFire && IsDIVRequest),
+    divUnit.IO.Request.fire === (requestFire && isDIVRequest),
     "MDU DIV request and owner metadata became misaligned"
   )
   assert(
-    !MULUnit.IO.Resp.fire || (OwnerValid && HeadIsMUL && RespFire),
+    !mulUnit.IO.Response.fire || (ownerValid && headIsMUL && responseFire),
     "MDU consumed a MUL response out of owner order"
   )
   assert(
-    !DIVUnit.IO.Resp.fire || (OwnerValid && !HeadIsMUL && RespFire),
+    !divUnit.IO.Response.fire || (ownerValid && !headIsMUL && responseFire),
     "MDU consumed a DIV response out of owner order"
   )
-  assert(OwnerCount <= OwnerDepth.U, "MDU owner FIFO overflow")
+  assert(ownerCount <= ownerDepth.U, "MDU owner FIFO overflow")
   when(io.Flush) {
-    OwnerHead := 0.U
-    OwnerTail := 0.U
-    OwnerCount := 0.U
-  }.elsewhen(ReqFire || RespFire) {
-    when(ReqFire) {
-      if (OwnerDepth == 1) {
-        OwnerIsMULQueue(0) := IsMULRequest
+    ownerHead := 0.U
+    ownerTail := 0.U
+    ownerCount := 0.U
+  }.elsewhen(requestFire || responseFire) {
+    when(requestFire) {
+      if (ownerDepth == 1) {
+        ownerIsMULQueue(0) := isMULRequest
       } else {
-        OwnerIsMULQueue(OwnerTail) := IsMULRequest
+        ownerIsMULQueue(ownerTail) := isMULRequest
       }
-      OwnerTail := NextOwnerTail
+      ownerTail := nextOwnerTail
     }
-    when(RespFire) {
-      OwnerHead := NextOwnerHead
+    when(responseFire) {
+      ownerHead := nextOwnerHead
     }
-    when(ReqFire && !RespFire) {
-      OwnerCount := OwnerCount + 1.U
-    }.elsewhen(!ReqFire && RespFire) {
-      OwnerCount := OwnerCount - 1.U
+    when(requestFire && !responseFire) {
+      ownerCount := ownerCount + 1.U
+    }.elsewhen(!requestFire && responseFire) {
+      ownerCount := ownerCount - 1.U
     }
   }
 }

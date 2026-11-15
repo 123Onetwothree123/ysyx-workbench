@@ -22,7 +22,7 @@ import scala.collection.mutable
   * Reg 与 SRAM 两种阵列都跑同一套激励；SRAM 的响应晚一拍由实现自行处理。
   */
 class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
-  private val AddrW     = 32
+  private val AddressW     = 32
   private val BlockLog2 = 4 // 16B/line
   private val IndexBits = 2 // 4 组
 
@@ -63,19 +63,19 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
   private def create(
       kind: String,
       snoop: Boolean,
-      aliasMode: String = ysyx_26030103_ViptAliasScan.AllSets
+      aliasMode: String = ysyx_26030103_VIPTAliasScan.AllSets
   ): ysyx_26030103_ICacheBase = {
-    val directory = aliasMode == ysyx_26030103_ViptAliasScan.Directory
+    val directory = aliasMode == ysyx_26030103_VIPTAliasScan.Directory
     kind match {
       case "reg" =>
         new ysyx_26030103_ICacheReg(
           Enable = true,
           BlockSizeLog2 = BlockLog2,
           IndexBits = IndexBits,
-          AddressWidth = AddrW,
-          Vipt = directory,
-          ViptAliasSafe = directory,
-          ViptAliasScanMode = aliasMode,
+          AddressWidth = AddressW,
+          VIPT = directory,
+          VIPTAliasSafe = directory,
+          VIPTAliasScanMode = aliasMode,
           Snoop = snoop,
           PMARegions = Pma
         )
@@ -84,10 +84,10 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
           Enable = true,
           BlockSizeLog2 = BlockLog2,
           IndexBits = IndexBits,
-          AddressWidth = AddrW,
-          Vipt = directory,
-          ViptAliasSafe = directory,
-          ViptAliasScanMode = aliasMode,
+          AddressWidth = AddressW,
+          VIPT = directory,
+          VIPTAliasSafe = directory,
+          VIPTAliasScanMode = aliasMode,
           Snoop = snoop,
           PMARegions = Pma
         )
@@ -103,10 +103,10 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddrW.W))
-    io.fetch_vaddr.poke(0.U(AddrW.W))
+    io.fetch_addr.poke(0.U(AddressW.W))
+    io.fetch_vaddr.poke(0.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
     io.fetch_valid.poke(false.B)
     io.resp_ready.poke(false.B)
     io.axi.AR.ARREADY.poke(false.B)
@@ -117,8 +117,8 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
     io.flush.poke(false.B)
     io.kill.poke(false.B)
     io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U(AddrW.W))
-    io.snoop_addr_hi.poke(0.U(AddrW.W))
+    io.snoop_addr.poke(0.U(AddressW.W))
+    io.snoop_addr_hi.poke(0.U(AddressW.W))
   }
 
   private def issueFetch(
@@ -126,10 +126,10 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
       clock: Clock,
       addr:  Long
   ): Unit = {
-    io.fetch_addr.poke(addr.U(AddrW.W))
-    io.fetch_vaddr.poke(addr.U(AddrW.W))
+    io.fetch_addr.poke(addr.U(AddressW.W))
+    io.fetch_vaddr.poke(addr.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(addr.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(addr.U(AddressW.W))
     io.fetch_valid.poke(true.B)
     waitUntil(clock, bool(io.fetch_ready), s"ICache 未受理取指 0x${addr.toHexString}")
     clock.step()
@@ -208,8 +208,8 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
       lo:    Long,
       hi:    Long
   ): Unit = {
-    io.snoop_addr.poke(lo.U(AddrW.W))
-    io.snoop_addr_hi.poke(hi.U(AddrW.W))
+    io.snoop_addr.poke(lo.U(AddressW.W))
+    io.snoop_addr_hi.poke(hi.U(AddressW.W))
     io.snoop_valid.poke(true.B)
     clock.step()
     io.snoop_valid.poke(false.B)
@@ -246,7 +246,7 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
 
   private def runSnoopPath(
       kind: String,
-      aliasMode: String = ysyx_26030103_ViptAliasScan.AllSets
+      aliasMode: String = ysyx_26030103_VIPTAliasScan.AllSets
   ): Unit = {
     simulate(create(kind, snoop = true, aliasMode)) { dut =>
       val io = dut.io
@@ -269,7 +269,7 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
 
   private def runCrossLineSnoopPath(
       kind: String,
-      aliasMode: String = ysyx_26030103_ViptAliasScan.AllSets
+      aliasMode: String = ysyx_26030103_VIPTAliasScan.AllSets
   ): Unit = {
     simulate(create(kind, snoop = true, aliasMode)) { dut =>
       val io = dut.io
@@ -290,7 +290,7 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
 
   private def runInflightSnoopPath(
       kind: String,
-      aliasMode: String = ysyx_26030103_ViptAliasScan.AllSets
+      aliasMode: String = ysyx_26030103_VIPTAliasScan.AllSets
   ): Unit = {
     simulate(create(kind, snoop = true, aliasMode)) { dut =>
       val io = dut.io
@@ -355,13 +355,13 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
       runInflightSnoopPath(kind)
     }
     it should "DIRECTORY 模式下 snoop 同步失效 alias 行" in {
-      runSnoopPath(kind, ysyx_26030103_ViptAliasScan.Directory)
+      runSnoopPath(kind, ysyx_26030103_VIPTAliasScan.Directory)
     }
     it should "DIRECTORY 模式下跨行 snoop 同步失效" in {
-      runCrossLineSnoopPath(kind, ysyx_26030103_ViptAliasScan.Directory)
+      runCrossLineSnoopPath(kind, ysyx_26030103_VIPTAliasScan.Directory)
     }
     it should "DIRECTORY 模式下在途 refill 被 snoop 丢弃并重取" in {
-      runInflightSnoopPath(kind, ysyx_26030103_ViptAliasScan.Directory)
+      runInflightSnoopPath(kind, ysyx_26030103_VIPTAliasScan.Directory)
     }
   }
 }

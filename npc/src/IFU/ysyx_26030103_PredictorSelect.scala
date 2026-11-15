@@ -27,17 +27,17 @@ class ysyx_26030103_PredictorSelect(AddressWidth: Int = 32) extends Module {
     val predTarget = Output(UInt(AddressWidth.W))
   })
 
-  val JalRet = io.jalHit && io.jalKind === ysyx_26030103_BTBKind.Ret
-  val JalRetUsable = JalRet && io.rasNonempty
-  val JalStatic = io.jalHit && io.jalKind =/= ysyx_26030103_BTBKind.Ret
-  val BranchTaken = io.branchHit && io.branchTarget < io.fetchPC
-  val RetSum = io.rasTop + io.jalTarget
-  val RetTarget = Cat(RetSum(AddressWidth - 1, 1), 0.U(1.W))
+  val jalRet = io.jalHit && io.jalKind === ysyx_26030103_BTBKind.Ret
+  val jalRetUsable = jalRet && io.rasNonempty
+  val jalStatic = io.jalHit && io.jalKind =/= ysyx_26030103_BTBKind.Ret
+  val branchTaken = io.branchHit && io.branchTarget < io.fetchPC
+  val retSum = io.rasTop + io.jalTarget
+  val retTarget = Cat(retSum(AddressWidth - 1, 1), 0.U(1.W))
 
-  io.predHit := JalRetUsable || JalStatic || BranchTaken
+  io.predHit := jalRetUsable || jalStatic || branchTaken
   io.predTarget := Mux(
-    JalRetUsable,
-    RetTarget,
-    Mux(JalStatic, io.jalTarget, io.branchTarget)
+    jalRetUsable,
+    retTarget,
+    Mux(jalStatic, io.jalTarget, io.branchTarget)
   )
 }

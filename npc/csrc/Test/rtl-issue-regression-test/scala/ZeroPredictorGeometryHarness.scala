@@ -14,20 +14,20 @@ class ZeroPredictorGeometryHarness extends Module {
     val btbUpdateTarget = Input(UInt(32.W))
     val btbFlush = Input(Bool())
 
-    val jalBtbLookupPC = Input(UInt(30.W))
-    val jalBtbHit = Output(Bool())
-    val jalBtbTarget = Output(UInt(32.W))
-    val jalBtbKind = Output(UInt(2.W))
-    val jalBtbUpdateValid = Input(Bool())
-    val jalBtbUpdatePC = Input(UInt(30.W))
-    val jalBtbUpdateTarget = Input(UInt(32.W))
-    val jalBtbUpdateKind = Input(UInt(2.W))
-    val jalBtbFlush = Input(Bool())
+    val jalBTBLookupPC = Input(UInt(30.W))
+    val jalBTBHit = Output(Bool())
+    val jalBTBTarget = Output(UInt(32.W))
+    val jalBTBKind = Output(UInt(2.W))
+    val jalBTBUpdateValid = Input(Bool())
+    val jalBTBUpdatePC = Input(UInt(30.W))
+    val jalBTBUpdateTarget = Input(UInt(32.W))
+    val jalBTBUpdateKind = Input(UInt(2.W))
+    val jalBTBFlush = Input(Bool())
 
     val rasTop = Output(UInt(32.W))
     val rasNonempty = Output(Bool())
     val rasPushValid = Input(Bool())
-    val rasPushAddr = Input(UInt(32.W))
+    val rasPushAddress = Input(UInt(32.W))
     val rasPopValid = Input(Bool())
     val rasFlush = Input(Bool())
   })
@@ -44,24 +44,24 @@ class ZeroPredictorGeometryHarness extends Module {
   // The production JAL BTB is the same table with a two-bit kind payload.
   // Instantiate it separately so JalBTBBits=0 is tested as behavior rather
   // than merely accepted by the config guard.
-  val jalBtb = Module(
+  val jalBTB = Module(
     new ysyx_26030103_BTB(BTBBits = 0, BTBWays = 1, KindBits = 2)
   )
-  jalBtb.io.lookup_pc := io.jalBtbLookupPC
-  io.jalBtbHit := jalBtb.io.hit
-  io.jalBtbTarget := jalBtb.io.target
-  io.jalBtbKind := jalBtb.io.hit_kind.get
-  jalBtb.io.update_valid := io.jalBtbUpdateValid
-  jalBtb.io.update_pc := io.jalBtbUpdatePC
-  jalBtb.io.update_target := io.jalBtbUpdateTarget
-  jalBtb.io.update_kind.get := io.jalBtbUpdateKind
-  jalBtb.io.flush := io.jalBtbFlush
+  jalBTB.io.lookup_pc := io.jalBTBLookupPC
+  io.jalBTBHit := jalBTB.io.hit
+  io.jalBTBTarget := jalBTB.io.target
+  io.jalBTBKind := jalBTB.io.hit_kind.get
+  jalBTB.io.update_valid := io.jalBTBUpdateValid
+  jalBTB.io.update_pc := io.jalBTBUpdatePC
+  jalBTB.io.update_target := io.jalBTBUpdateTarget
+  jalBTB.io.update_kind.get := io.jalBTBUpdateKind
+  jalBTB.io.flush := io.jalBTBFlush
 
   val ras = Module(new ysyx_26030103_RAS(RASBits = 0))
   io.rasTop := ras.io.top
   io.rasNonempty := ras.io.nonempty
   ras.io.push_valid := io.rasPushValid
-  ras.io.push_addr := io.rasPushAddr
+  ras.io.push_addr := io.rasPushAddress
   ras.io.pop_valid := io.rasPopValid
   ras.io.flush := io.rasFlush
 }

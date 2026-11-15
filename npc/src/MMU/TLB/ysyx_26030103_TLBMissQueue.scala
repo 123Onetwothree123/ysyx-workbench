@@ -9,17 +9,17 @@ import chisel3.util._
 // ITLB/DTLB/UTLB/GLOBAL_MISS_QUEUE_ENTRIES 分别配置。
 // flush 同拍清空且优先于本拍 enq/deq，避免冲刷后旧 miss 又被送给 PTW。
 class ysyx_26030103_TLBMissQueue(
-  entries: Int = ysyx_26030103_KconfigDefaults.MmuItlbMissQueueEntries,
+  entries: Int = ysyx_26030103_KconfigDefaults.MMUItlbMissQueueEntries,
   width:   Int = 4)
     extends Module {
   require(entries >= 1, "TLB miss queue 深度必须 >= 1")
   require(width >= 1, "TLB miss queue 数据宽度必须 >= 1")
 
-  private val ptrBits   = log2Ceil(entries.max(2))
+  private val pointerBits   = log2Ceil(entries.max(2))
   private val countBits = log2Ceil(entries + 1)
   // entries=1 时 Vec 动态索引位宽必须为 0，避免无效的 1 位索引告警。
-  private def ptrIndex(ptr: UInt): UInt =
-    if (entries == 1) 0.U(0.W) else ptr
+  private def pointerIndex(pointer: UInt): UInt =
+    if (entries == 1) 0.U(0.W) else pointer
 
   val io = IO(new Bundle {
     val enq       = Flipped(Decoupled(UInt(width.W)))
@@ -30,15 +30,15 @@ class ysyx_26030103_TLBMissQueue(
   })
 
   val mem           = RegInit(VecInit(Seq.fill(entries)(0.U(width.W))))
-  val head          = RegInit(0.U(ptrBits.W))
-  val tail          = RegInit(0.U(ptrBits.W))
+  val head          = RegInit(0.U(pointerBits.W))
+  val tail          = RegInit(0.U(pointerBits.W))
   val count         = RegInit(0.U(countBits.W))
   private val full  = count === entries.U
   private val empty = count === 0.U
 
   io.enq.ready := !full
   io.deq.valid := !empty
-  io.deq.bits  := mem(ptrIndex(head))
+  io.deq.bits  := mem(pointerIndex(head))
   io.occupancy := count
 
   // enq 与 deq 同拍时 tail/head 各自前进，count 保持不变。由于 deq.bits
@@ -49,11 +49,11 @@ class ysyx_26030103_TLBMissQueue(
     tail  := 0.U
     count := 0.U
   }.elsewhen(io.enq.fire && io.deq.fire) {
-    mem(ptrIndex(tail)) := io.enq.bits
+    mem(pointerIndex(tail)) := io.enq.bits
     head                := Mux(head === (entries - 1).U, 0.U, head + 1.U)
     tail                := Mux(tail === (entries - 1).U, 0.U, tail + 1.U)
   }.elsewhen(io.enq.fire) {
-    mem(ptrIndex(tail)) := io.enq.bits
+    mem(pointerIndex(tail)) := io.enq.bits
     tail                := Mux(tail === (entries - 1).U, 0.U, tail + 1.U)
     count               := count + 1.U
   }.elsewhen(io.deq.fire) {

@@ -33,7 +33,7 @@ import org.scalatest.matchers.should.Matchers
   *      合法的下游 AR，失败只与 8 位溢出有关。
   */
 class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
-  private val AddrW = 32
+  private val AddressW = 32
 
   private def bool(value: Bool): Boolean = value.peek().litValue == 1
   private def big(value: UInt): BigInt = value.peek().litValue
@@ -49,23 +49,23 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
 
   private def newDut(): ysyx_26030103_AXI5Xbar =
     new ysyx_26030103_AXI5Xbar(
-      AddressWidth = AddrW,
+      AddressWidth = AddressW,
       PMARegions = Seq(Ram),
       PLICBaseValue = BigInt("0c000000", 16),
       PLICSizeBytes = BigInt("00300000", 16),
       DataWidth = 32,
-      IdWidth = 4
+      IDWidth = 4
     )
 
   private case class Observed(
       socArSeen: Boolean,
-      socAddr: BigInt,
+      socAddress: BigInt,
       socLen: BigInt,
       resp: Int,
       beats: Int
   ) {
     def clue: String =
-      s"socArSeen=$socArSeen, socAddr=0x${socAddr.toString(16)}, " +
+      s"socArSeen=$socArSeen, socAddr=0x${socAddress.toString(16)}, " +
         s"socLen=$socLen, resp=$resp, beats=$beats"
   }
 
@@ -81,7 +81,7 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
 
     val in = dut.io.in
     in.AW.AWVALID.poke(false.B)
-    in.AW.AWADDR.poke(0.U(AddrW.W))
+    in.AW.AWADDR.poke(0.U(AddressW.W))
     in.AW.AWID.poke(0.U(4.W))
     in.AW.AWLEN.poke(0.U(8.W))
     in.AW.AWSIZE.poke(2.U(3.W))
@@ -97,7 +97,7 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
     in.B.BREADY.poke(false.B)
 
     in.AR.ARVALID.poke(false.B)
-    in.AR.ARADDR.poke(0.U(AddrW.W))
+    in.AR.ARADDR.poke(0.U(AddressW.W))
     in.AR.ARID.poke(0.U(4.W))
     in.AR.ARLEN.poke(0.U(8.W))
     in.AR.ARSIZE.poke(2.U(3.W))
@@ -155,7 +155,7 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
       size: Int
   ): Boolean = {
     val in = dut.io.in
-    in.AR.ARADDR.poke(addr.U(AddrW.W))
+    in.AR.ARADDR.poke(addr.U(AddressW.W))
     in.AR.ARID.poke(1.U(4.W))
     in.AR.ARLEN.poke(len.U(8.W))
     in.AR.ARSIZE.poke(size.U(3.W))
@@ -179,7 +179,7 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
       cycles: Int
   ): Observed = {
     var socArSeen = false
-    var socAddr = BigInt(0)
+    var socAddress = BigInt(0)
     var socLen = BigInt(0)
     var resp = -1
     var beats = 0
@@ -187,7 +187,7 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
     while (i < cycles) {
       if (bool(dut.io.SoCBus.AR.ARVALID)) {
         socArSeen = true
-        socAddr = big(dut.io.SoCBus.AR.ARADDR)
+        socAddress = big(dut.io.SoCBus.AR.ARADDR)
         socLen = big(dut.io.SoCBus.AR.ARLEN)
       }
       if (bool(dut.io.in.R.RVALID) && bool(dut.io.in.R.RREADY)) {
@@ -197,7 +197,7 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
       dut.clock.step()
       i += 1
     }
-    Observed(socArSeen, socAddr, socLen, resp, beats)
+    Observed(socArSeen, socAddress, socLen, resp, beats)
   }
 
   "AXI5Xbar LastByte with ARLEN=255" should
@@ -247,7 +247,7 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
         val observed = observe(dut, 30)
         withClue(s"合法 burst 控制组: ${observed.clue}; ") {
           observed.socArSeen should be(true)
-          observed.socAddr should be(BigInt(0x83fffff8L))
+          observed.socAddress should be(BigInt(0x83fffff8L))
           observed.socLen should be(BigInt(1))
         }
         // 合法请求走 SoCBus，不应被本地判为 DECERR。

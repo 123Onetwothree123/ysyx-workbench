@@ -20,14 +20,14 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     val simHaltCommit = exu.io.SimHaltValid
     io.trap.valid := RegNext(simHaltCommit, false.B)
     val simHaltPC =
-      RegEnable(exu.io.SimHaltPC, config.ResetAddr.U(XLEN.W), simHaltCommit)
+      RegEnable(exu.io.SimHaltPC, config.ResetAddress.U(XLEN.W), simHaltCommit)
     io.trap.pc := simHaltPC(31, 0)
     io.trap.pc_hi := DebugView.highWord(simHaltPC, XLEN)
     // 固定 ABI：关闭动态调试读口时，GPR 模块忽略地址并将这里直连到 a0，
     // 供 custom halt 判定 GOOD/BAD；不会为此保留第三个 32 路读 mux。
     gpr.io.DebugRaddr := io.debug.gpr_raddr
-    io.debug.gpr_rdata := gpr.io.DebugRdata(31, 0)
-    io.debug.gpr_rdata_hi := DebugView.highWord(gpr.io.DebugRdata, XLEN)
+    io.debug.gpr_rdata := gpr.io.DebugReadData(31, 0)
+    io.debug.gpr_rdata_hi := DebugView.highWord(gpr.io.DebugReadData, XLEN)
     // wbuCommit 与最小架构 PC 不属于可选观测逻辑。异常/中断即使在所有
     // 调试功能关闭时也需要精确的最近架构边界。
     val wbuCommit = wbu.io.in.fire && wbu.io.in.bits.Retire
@@ -59,12 +59,12 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       io.debug.commit := RegNext(wbuCommit, false.B)
       val retirePC = RegEnable(
         wbu.io.in.bits.pc,
-        config.ResetAddr.U(XLEN.W),
+        config.ResetAddress.U(XLEN.W),
         wbuCommit
       )
       val retireNextPC = RegEnable(
         wbu.io.in.bits.NextPC,
-        config.ResetAddr.U(XLEN.W),
+        config.ResetAddress.U(XLEN.W),
         wbuCommit
       )
       io.debug.pc := retirePC(31, 0)
@@ -88,10 +88,10 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     // 调试器的 $pc 不能复用 retire trace PC。正常退休时前进到
     // 该指令的实际后继；异常/中断提交时直接记录 trap 目标。
     // 若同拍既有更老的 WBU 退休又有年轻 trap，trap 必须优先。
-    val architecturalPC = RegInit(config.ResetAddr.U(XLEN.W))
+    val architecturalPC = RegInit(config.ResetAddress.U(XLEN.W))
     // 空流水中断没有随指令携带的 PC；同拍若有更老退休，则以该指令后继
     // 为边界，否则使用最近架构 PC。此路径是架构状态，不能随调试功能裁剪。
-    exu.io.IdleIrqPC := Mux(wbuCommit, wbu.io.in.bits.NextPC, architecturalPC)
+    exu.io.IdleIRQPC := Mux(wbuCommit, wbu.io.in.bits.NextPC, architecturalPC)
     when(wbuCommit) {
       architecturalPC := wbu.io.in.bits.NextPC
     }
@@ -105,12 +105,12 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       io.debug.trap_valid := RegNext(exu.io.TrapCommit, false.B)
       val trapPC = RegEnable(
         exu.io.TrapPC,
-        config.ResetAddr.U(XLEN.W),
+        config.ResetAddress.U(XLEN.W),
         exu.io.TrapCommit
       )
       val trapTarget = RegEnable(
         exu.io.TrapTarget,
-        config.ResetAddr.U(XLEN.W),
+        config.ResetAddress.U(XLEN.W),
         exu.io.TrapCommit
       )
       io.debug.trap_pc := trapPC(31, 0)
@@ -288,8 +288,8 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       io.debug.access_fault_resp := RegEnable(
         Mux(
           lsuAccessFaultCommit,
-          lsu.io.AccessFaultResp,
-          exu.io.FetchAccessFaultResp
+          lsu.io.AccessFaultResponse,
+          exu.io.FetchAccessFaultResponse
         ),
         0.U(2.W),
         accessFaultCommit
@@ -312,60 +312,60 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     // 架构 PMU 事件总线。事件编号与 ysyx_26030103_PMUEventId 一致；
     // 未打开 PMU 时总线保持 0，综合可以删除全部事件选择逻辑。
     val pmuEventBits =
-      Wire(Vec(ysyx_26030103_PMUEventId.BusWidth, Bool()))
-    pmuEventBits := VecInit(Seq.fill(ysyx_26030103_PMUEventId.BusWidth)(false.B))
+      Wire(Vec(ysyx_26030103_PMUEventID.BusWidth, Bool()))
+    pmuEventBits := VecInit(Seq.fill(ysyx_26030103_PMUEventID.BusWidth)(false.B))
     if (config.RiscvArchPMU) {
-      pmuEventBits(ysyx_26030103_PMUEventId.Cycles) := true.B
-      pmuEventBits(ysyx_26030103_PMUEventId.Instructions) := exu.io.RetireCommit
-      pmuEventBits(ysyx_26030103_PMUEventId.CacheReference) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.Cycles) := true.B
+      pmuEventBits(ysyx_26030103_PMUEventID.Instructions) := exu.io.RetireCommit
+      pmuEventBits(ysyx_26030103_PMUEventID.CacheReference) :=
         icache.io.perf_hit || icache.io.perf_miss ||
           lsu.io.DCachePerfHit || lsu.io.DCachePerfMiss
-      pmuEventBits(ysyx_26030103_PMUEventId.CacheMiss) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.CacheMiss) :=
         icache.io.perf_miss || lsu.io.DCachePerfMiss
-      pmuEventBits(ysyx_26030103_PMUEventId.DCacheAccess) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.DCacheAccess) :=
         lsu.io.DCachePerfHit || lsu.io.DCachePerfMiss
-      pmuEventBits(ysyx_26030103_PMUEventId.DCacheMiss) := lsu.io.DCachePerfMiss
-      pmuEventBits(ysyx_26030103_PMUEventId.BranchInstruction) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.DCacheMiss) := lsu.io.DCachePerfMiss
+      pmuEventBits(ysyx_26030103_PMUEventID.BranchInstruction) :=
         exu.io.PerfBranchOp || exu.io.PerfJalOp || exu.io.PerfJalrOp
-      pmuEventBits(ysyx_26030103_PMUEventId.BranchMispredict) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.BranchMispredict) :=
         exu.io.PerfBranchMispredict
-      pmuEventBits(ysyx_26030103_PMUEventId.LoadInstruction) := exu.io.PerfLoadOp
+      pmuEventBits(ysyx_26030103_PMUEventID.LoadInstruction) := exu.io.PerfLoadOp
       pmuEventBits(
-        ysyx_26030103_PMUEventId.StoreInstruction
+        ysyx_26030103_PMUEventID.StoreInstruction
       ) := exu.io.PerfStoreOp
-      pmuEventBits(ysyx_26030103_PMUEventId.CSRInstruction) := exu.io.PerfCSROp
-      pmuEventBits(ysyx_26030103_PMUEventId.Trap) := exu.io.PerfTrap
-      pmuEventBits(ysyx_26030103_PMUEventId.ITLBMiss) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.CSRInstruction) := exu.io.PerfCSROp
+      pmuEventBits(ysyx_26030103_PMUEventID.Trap) := exu.io.PerfTrap
+      pmuEventBits(ysyx_26030103_PMUEventID.ITLBMiss) :=
         mmuUnitOpt.map(_.io.perf_itlb_miss).getOrElse(false.B)
-      pmuEventBits(ysyx_26030103_PMUEventId.DTLBMiss) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.DTLBMiss) :=
         mmuUnitOpt.map(_.io.perf_dtlb_miss).getOrElse(false.B)
-      pmuEventBits(ysyx_26030103_PMUEventId.TLBRefill) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.TLBRefill) :=
         mmuUnitOpt.map(_.io.perf_tlb_refill).getOrElse(false.B)
-      pmuEventBits(ysyx_26030103_PMUEventId.PTWWalk) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.PTWWalk) :=
         mmuUnitOpt.map(_.io.perf_ptw_walk).getOrElse(false.B)
-      pmuEventBits(ysyx_26030103_PMUEventId.AXIRead) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.AXIRead) :=
         io.master.rvalid && io.master.rready
-      pmuEventBits(ysyx_26030103_PMUEventId.AXIWrite) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.AXIWrite) :=
         io.master.bvalid && io.master.bready
-      pmuEventBits(ysyx_26030103_PMUEventId.IFUStall) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.IFUStall) :=
         icache.io.resp_valid && !icache.io.resp_ready
-      pmuEventBits(ysyx_26030103_PMUEventId.FlushCycle) := pipeFlush
-      pmuEventBits(ysyx_26030103_PMUEventId.InterruptTaken) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.FlushCycle) := pipeFlush
+      pmuEventBits(ysyx_26030103_PMUEventID.InterruptTaken) :=
         exu.io.PerfInterruptTaken
-      pmuEventBits(ysyx_26030103_PMUEventId.ExternalIrq) := exu.io.Interrupt
-      pmuEventBits(ysyx_26030103_PMUEventId.TimerIrq) := exu.io.TimerInterrupt
-      pmuEventBits(ysyx_26030103_PMUEventId.FPUActive) := exu.io.PerfFpuActive
-      pmuEventBits(ysyx_26030103_PMUEventId.MDUActive) := exu.io.PerfMDUActive
-      pmuEventBits(ysyx_26030103_PMUEventId.WbufFull) := lsu.io.StallWriteReq
-      pmuEventBits(ysyx_26030103_PMUEventId.UncachedAccess) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.ExternalIRQ) := exu.io.Interrupt
+      pmuEventBits(ysyx_26030103_PMUEventID.TimerIRQ) := exu.io.TimerInterrupt
+      pmuEventBits(ysyx_26030103_PMUEventID.FPUActive) := exu.io.PerfFPUActive
+      pmuEventBits(ysyx_26030103_PMUEventID.MDUActive) := exu.io.PerfMDUActive
+      pmuEventBits(ysyx_26030103_PMUEventID.WBUfFull) := lsu.io.StallWriteRequest
+      pmuEventBits(ysyx_26030103_PMUEventID.UncachedAccess) :=
         lsu.io.Complete && !lsu.io.DCachePerfHit && !lsu.io.DCachePerfMiss
-      pmuEventBits(ysyx_26030103_PMUEventId.ICacheLineFill) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.ICacheLineFill) :=
         icache.io.perf_line_fill
-      pmuEventBits(ysyx_26030103_PMUEventId.DCacheLineFill) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.DCacheLineFill) :=
         lsu.io.DCachePerfLineFill
-      pmuEventBits(ysyx_26030103_PMUEventId.ICacheAccess) :=
+      pmuEventBits(ysyx_26030103_PMUEventID.ICacheAccess) :=
         icache.io.perf_hit || icache.io.perf_miss
-      pmuEventBits(ysyx_26030103_PMUEventId.ICacheMiss) := icache.io.perf_miss
+      pmuEventBits(ysyx_26030103_PMUEventID.ICacheMiss) := icache.io.perf_miss
     }
     exu.io.PMUEvents := pmuEventBits.asUInt
     // 基础吞吐
@@ -391,7 +391,7 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     io.perf.jal_op := perfDicArchBool("jal_op")(exu.io.PerfJalOp)
     io.perf.jalr_op := perfDicArchBool("jalr_op")(exu.io.PerfJalrOp)
     // 乘除法
-    io.perf.mdu_req := perfDicArchBool("mdu_req")(exu.io.PerfMDUReq)
+    io.perf.mdu_req := perfDicArchBool("mdu_req")(exu.io.PerfMDURequest)
     io.perf.mdu_done := perfDicArchBool("mdu_done")(exu.io.PerfMDUDone)
     io.perf.mdu_op := perfDicArchUInt("mdu_op", 3)(exu.io.PerfMDUOp)
     io.perf.mdu_active := perfDicArchBool("mdu_active")(exu.io.PerfMDUActive)
@@ -424,9 +424,9 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     io.perf.dcache_hit := perfDicArchBool("dcache_hit")(lsu.io.DCachePerfHit)
     io.perf.dcache_miss := perfDicArchBool("dcache_miss")(lsu.io.DCachePerfMiss)
     io.perf.dcache_refill_req :=
-      perfDicArchBool("dcache_refill_req")(lsu.io.DCachePerfRefillReq)
+      perfDicArchBool("dcache_refill_req")(lsu.io.DCachePerfRefillRequest)
     io.perf.dcache_refill_resp :=
-      perfDicArchBool("dcache_refill_resp")(lsu.io.DCachePerfRefillResp)
+      perfDicArchBool("dcache_refill_resp")(lsu.io.DCachePerfRefillResponse)
     // 执行级停顿
     io.perf.exu_stall_lsu := perfDicArchBool("exu_stall_lsu")(
       exu.io.PerfExecutionActive && !exu.io.out.fire && !exu.io.PerfMDUWait
@@ -452,7 +452,7 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       lsu.io.StallReadR
     )
     io.perf.lsu_stall_write_req :=
-      perfDicArchBool("lsu_stall_write_req")(lsu.io.StallWriteReq)
+      perfDicArchBool("lsu_stall_write_req")(lsu.io.StallWriteRequest)
     io.perf.lsu_stall_write_b := perfDicArchBool("lsu_stall_write_b")(
       lsu.io.StallWriteB
     )
@@ -509,8 +509,8 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       perfDicArchBool("tlb_refill")(
         mmuUnitOpt.map(_.io.perf_tlb_refill).getOrElse(false.B)
       )
-    io.perf.fpu_req := perfDicArchBool("fpu_req")(exu.io.PerfFpuReq)
-    io.perf.fpu_done := perfDicArchBool("fpu_done")(exu.io.PerfFpuDone)
+    io.perf.fpu_req := perfDicArchBool("fpu_req")(exu.io.PerfFPURequest)
+    io.perf.fpu_done := perfDicArchBool("fpu_done")(exu.io.PerfFPUDone)
     io.perf.axi_ar :=
       perfDicArchBool("axi_ar")(io.master.arvalid && io.master.arready)
     io.perf.axi_aw :=
@@ -530,29 +530,29 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     io.perf.branch_not_taken :=
       perfDicArchBool("branch_not_taken")(exu.io.PerfBranchNotTaken)
     io.perf.tlb_flush := perfDicArchBool("tlb_flush")(exu.io.CSRFlushTLB)
-    io.perf.fpu_active := perfDicArchBool("fpu_active")(exu.io.PerfFpuActive)
+    io.perf.fpu_active := perfDicArchBool("fpu_active")(exu.io.PerfFPUActive)
     io.perf.fence_op := perfDicArchBool("fence_op")(exu.io.PerfFenceOp)
     io.perf.rvc_inst := perfDicArchBool("rvc_inst")(exu.io.PerfRvcInst)
     io.perf.system_op := perfDicArchBool("system_op")(exu.io.PerfSystemOp)
     val iCacheRefillPrevious =
       RegNext(icache.io.perf_refill_req, false.B)
     val dCacheRefillPrevious =
-      RegNext(lsu.io.DCachePerfRefillReq, false.B)
+      RegNext(lsu.io.DCachePerfRefillRequest, false.B)
     io.perf.icache_refill := perfDicArchBool("icache_refill")(
       icache.io.perf_refill_req && !iCacheRefillPrevious
     )
     io.perf.dcache_refill := perfDicArchBool("dcache_refill")(
-      lsu.io.DCachePerfRefillReq && !dCacheRefillPrevious
+      lsu.io.DCachePerfRefillRequest && !dCacheRefillPrevious
     )
     io.perf.timer_irq := perfDicArchBool("timer_irq")(exu.io.TimerInterrupt)
     io.perf.external_irq := perfDicArchBool("external_irq")(exu.io.Interrupt)
     io.perf.interrupt_taken := exu.io.PerfInterruptTaken &&
       (config.EnablePerfDicArchCounter("interrupt_taken") ||
         config.EnablePerfDicArchCounter("interrupt_latency")).B
-    io.perf.wbuf_full := perfDicArchBool("wbuf_full")(lsu.io.StallWriteReq)
+    io.perf.wbuf_full := perfDicArchBool("wbuf_full")(lsu.io.StallWriteRequest)
     io.perf.wbuf_drain := perfDicArchBool("wbuf_drain")(lsu.io.StallWriteB)
-    io.perf.csr_read := perfDicArchBool("csr_read")(exu.io.PerfCsrRead)
-    io.perf.csr_write := perfDicArchBool("csr_write")(exu.io.PerfCsrWrite)
+    io.perf.csr_read := perfDicArchBool("csr_read")(exu.io.PerfCSRRead)
+    io.perf.csr_write := perfDicArchBool("csr_write")(exu.io.PerfCSRWrite)
     io.perf.mul_active := perfDicArchBool("mul_active")(exu.io.PerfMulActive)
     io.perf.div_active := perfDicArchBool("div_active")(exu.io.PerfDivActive)
     io.perf.ptw_walk :=
@@ -580,7 +580,7 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       perfDicArchBool("redirect_trap")(exu.io.PerfRedirectTrap)
     io.perf.redirect_mret :=
       perfDicArchBool("redirect_mret")(exu.io.PerfRedirectMret)
-    io.perf.fpu_stall := perfDicArchBool("fpu_stall")(exu.io.PerfFpuStall)
+    io.perf.fpu_stall := perfDicArchBool("fpu_stall")(exu.io.PerfFPUStall)
     io.perf.illegal_inst :=
       perfDicArchBool("illegal_inst")(exu.io.PerfIllegalInst)
     io.perf.axi_stall := perfDicArchBool("axi_stall")(
@@ -595,11 +595,11 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
         (io.master.bvalid && io.master.bready && io.master.bresp =/= 0.U)
     )
     io.perf.fpu_divsqrt :=
-      perfDicArchBool("fpu_divsqrt")(exu.io.PerfFpuDivSqrt)
-    io.perf.fpu_fma := perfDicArchBool("fpu_fma")(exu.io.PerfFpuFma)
+      perfDicArchBool("fpu_divsqrt")(exu.io.PerfFPUDivSqrt)
+    io.perf.fpu_fma := perfDicArchBool("fpu_fma")(exu.io.PerfFPUFma)
     io.perf.fpu_exception :=
-      perfDicArchBool("fpu_exception")(exu.io.PerfFpuException)
-    io.perf.csr_illegal := perfDicArchBool("csr_illegal")(exu.io.PerfCsrIllegal)
+      perfDicArchBool("fpu_exception")(exu.io.PerfFPUException)
+    io.perf.csr_illegal := perfDicArchBool("csr_illegal")(exu.io.PerfCSRIllegal)
     io.perf.plic_claim := perfDicArchBool("plic_claim")(plic.perf_claim)
     io.perf.plic_complete := perfDicArchBool("plic_complete")(plic.perf_complete)
     io.perf.flush_cycle := perfDicArchBool("flush_cycle")(pipeFlush)
@@ -608,7 +608,7 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     io.perf.uncached_access := perfDicArchBool("uncached_access")(
       lsu.io.Complete && !lsu.io.DCachePerfHit && !lsu.io.DCachePerfMiss
     )
-    io.perf.irq_pending := exu.io.PerfIrqPending &&
+    io.perf.irq_pending := exu.io.PerfIRQPending &&
       (config.EnablePerfDicArchCounter("interrupt_latency") ||
         config.EnablePerfDicArchCounter("interrupt_pending_cycle")).B
     io.perf.wfi_inst := perfDicArchBool("wfi_inst")(idu.io.PerfWfi)

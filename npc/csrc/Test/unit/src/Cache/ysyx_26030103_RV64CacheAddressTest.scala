@@ -12,7 +12,7 @@ import _root_.ysyx_26030103.common._
   * 地址和 DCache 8 字节访问都不会退化为 32 位。
   */
 class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
-  private val AddrW = 64
+  private val AddressW = 64
   private val BlockLog2 = 4
   private val IndexBits = 2
   private val HighBase = 0x180000000L
@@ -45,10 +45,10 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddrW.W))
-    io.fetch_vaddr.poke(0.U(AddrW.W))
+    io.fetch_addr.poke(0.U(AddressW.W))
+    io.fetch_vaddr.poke(0.U(AddressW.W))
     io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddrW.W))
+    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
     io.fetch_valid.poke(false.B)
     io.resp_ready.poke(false.B)
     io.axi.AR.ARREADY.poke(false.B)
@@ -59,8 +59,8 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
     io.flush.poke(false.B)
     io.kill.poke(false.B)
     io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U(AddrW.W))
-    io.snoop_addr_hi.poke(0.U(AddrW.W))
+    io.snoop_addr.poke(0.U(AddressW.W))
+    io.snoop_addr_hi.poke(0.U(AddressW.W))
   }
 
   private def runICache(dut: => ysyx_26030103_ICacheReg): Unit = {
@@ -70,9 +70,9 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
       resetICache(io, clock, dut.reset)
 
       val Address = BigInt("180003010", 16)
-      io.fetch_addr.poke(Address.U(AddrW.W))
-      io.fetch_vaddr.poke(Address.U(AddrW.W))
-      io.fetch_paddr_vaddr.poke(Address.U(AddrW.W))
+      io.fetch_addr.poke(Address.U(AddressW.W))
+      io.fetch_vaddr.poke(Address.U(AddressW.W))
+      io.fetch_paddr_vaddr.poke(Address.U(AddressW.W))
       io.fetch_valid.poke(true.B)
       waitUntil(clock, bool(io.fetch_ready), "ICache 未受理高地址取指")
       clock.step()
@@ -106,9 +106,9 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
 
       // 同一行命中不能再次发 AR；高 32 位 tag 不同的行必须 miss。
       val HitAddress = BigInt("180003014", 16)
-      io.fetch_addr.poke(HitAddress.U(AddrW.W))
-      io.fetch_vaddr.poke(HitAddress.U(AddrW.W))
-      io.fetch_paddr_vaddr.poke(HitAddress.U(AddrW.W))
+      io.fetch_addr.poke(HitAddress.U(AddressW.W))
+      io.fetch_vaddr.poke(HitAddress.U(AddressW.W))
+      io.fetch_paddr_vaddr.poke(HitAddress.U(AddressW.W))
       io.fetch_valid.poke(true.B)
       waitUntil(clock, bool(io.fetch_ready), "ICache 同行取指未被受理")
       clock.step()
@@ -122,9 +122,9 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
       io.resp_ready.poke(false.B)
 
       val AliasAddress = BigInt("180004010", 16)
-      io.fetch_addr.poke(AliasAddress.U(AddrW.W))
-      io.fetch_vaddr.poke(AliasAddress.U(AddrW.W))
-      io.fetch_paddr_vaddr.poke(AliasAddress.U(AddrW.W))
+      io.fetch_addr.poke(AliasAddress.U(AddressW.W))
+      io.fetch_vaddr.poke(AliasAddress.U(AddressW.W))
+      io.fetch_paddr_vaddr.poke(AliasAddress.U(AddressW.W))
       io.fetch_valid.poke(true.B)
       waitUntil(clock, bool(io.fetch_ready), "ICache 高 tag 别名取指未被受理")
       clock.step()
@@ -140,7 +140,7 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
         Enable = true,
         BlockSizeLog2 = BlockLog2,
         IndexBits = IndexBits,
-        AddressWidth = AddrW,
+        AddressWidth = AddressW,
         PMARegions = Regions
       )
     )
@@ -152,7 +152,7 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
         Enable = true,
         BlockSizeLog2 = BlockLog2,
         IndexBits = IndexBits,
-        AddressWidth = AddrW,
+        AddressWidth = AddressW,
         PMARegions = Regions
       )
     ) { dut =>
@@ -160,9 +160,9 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
       val clock = dut.clock
       resetICache(io, clock, dut.reset)
       val Address = BigInt("180003020", 16)
-      io.fetch_addr.poke(Address.U(AddrW.W))
-      io.fetch_vaddr.poke(Address.U(AddrW.W))
-      io.fetch_paddr_vaddr.poke(Address.U(AddrW.W))
+      io.fetch_addr.poke(Address.U(AddressW.W))
+      io.fetch_vaddr.poke(Address.U(AddressW.W))
+      io.fetch_paddr_vaddr.poke(Address.U(AddressW.W))
       io.fetch_valid.poke(true.B)
       waitUntil(clock, bool(io.fetch_ready), "SRAM ICache 未受理高地址取指")
       clock.step()
@@ -195,17 +195,17 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
     clock.step(2)
     reset.poke(false.B)
     io.req.valid.poke(false.B)
-    io.req.bits.poke(0.U.asTypeOf(new ysyx_26030103_DCacheRequest(AddrW)))
+    io.req.bits.poke(0.U.asTypeOf(new ysyx_26030103_DCacheRequest(AddressW)))
     io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(0.U(AddrW.W))
+    io.req_paddr_vaddr.poke(0.U(AddressW.W))
     io.req_kill.poke(false.B)
     io.resp.ready.poke(false.B)
     io.StoreValid.poke(false.B)
-    io.StoreResp.poke(0.U(2.W))
-    io.StoreAddr.poke(0.U(AddrW.W))
-    io.StoreVAddr.poke(0.U(AddrW.W))
+    io.StoreResponse.poke(0.U(2.W))
+    io.StoreAddress.poke(0.U(AddressW.W))
+    io.StoreVAddress.poke(0.U(AddressW.W))
     io.StoreData.poke(0.U(64.W))
-    io.StoreStrb.poke(0.U(8.W))
+    io.StoreStrobe.poke(0.U(8.W))
     io.AXI.AR.ARREADY.poke(false.B)
     io.AXI.R.RDATA.poke(0.U(32.W))
     io.AXI.R.RRESP.poke(0.U(2.W))
@@ -219,8 +219,8 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
       clock: Clock,
       address: BigInt
   ): Unit = {
-    io.req.bits.addr.poke(address.U(AddrW.W))
-    io.req.bits.vaddr.poke(address.U(AddrW.W))
+    io.req.bits.addr.poke(address.U(AddressW.W))
+    io.req.bits.vaddr.poke(address.U(AddressW.W))
     io.req.bits.WidthSelect.poke(3.U(2.W))
     io.req.bits.signed.poke(true.B)
     io.req.valid.poke(true.B)
@@ -273,11 +273,11 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
 
       // 8 字节 store 通过 B 响应后更新低/高两个 word，后续 load 直接命中。
       io.StoreValid.poke(true.B)
-      io.StoreResp.poke(0.U(2.W))
-      io.StoreAddr.poke(Address.U(AddrW.W))
-      io.StoreVAddr.poke(Address.U(AddrW.W))
+      io.StoreResponse.poke(0.U(2.W))
+      io.StoreAddress.poke(Address.U(AddressW.W))
+      io.StoreVAddress.poke(Address.U(AddressW.W))
       io.StoreData.poke(BigInt("aaaabbbbccccdddd", 16).U(64.W))
-      io.StoreStrb.poke("hff".U(8.W))
+      io.StoreStrobe.poke("hff".U(8.W))
       clock.step()
       io.StoreValid.poke(false.B)
 
@@ -294,7 +294,7 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
         Enable = true,
         BlockSizeLog2 = BlockLog2,
         IndexBits = IndexBits,
-        AddressWidth = AddrW,
+        AddressWidth = AddressW,
         DataWidth = 64,
         PMARegions = Regions
       ),
@@ -308,7 +308,7 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
         Enable = true,
         BlockSizeLog2 = BlockLog2,
         IndexBits = IndexBits,
-        AddressWidth = AddrW,
+        AddressWidth = AddressW,
         DataWidth = 64,
         PMARegions = Regions
       ),

@@ -7,126 +7,126 @@ import _root_.ysyx_26030103.config._
 class ysyx_26030103_MULUnit(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig() //配置
 ) extends ysyx_26030103_MULAdapter(config.XLEN) {
-  private val Core = ysyx_26030103_MULCoreFactory.Create(config)
-  private val CoreWidth = config.MULEffectiveWidth
-  private val CoreProductWidth = 2 * CoreWidth
+  private val core = ysyx_26030103_MULCoreFactory.Create(config)
+  private val coreWidth = config.MULEffectiveWidth
+  private val coreProductWidth = 2 * coreWidth
   // 流水压缩核能够保留的每项在途请求都必须有一项符号/高半部元数据。
   // 仅使用一个Pending位会使原本II=1的Wallace/Dadda核串行化。
-  private val MetadataDepth = config.MULMaxInflight
-  private val MetadataPtrWidth = log2Ceil(MetadataDepth).max(1)
-  private val MetadataCountWidth = log2Ceil(MetadataDepth + 1)
-  private val NegativeQueue =
-    RegInit(VecInit(Seq.fill(MetadataDepth)(false.B)))
-  private val TakeHighQueue =
-    RegInit(VecInit(Seq.fill(MetadataDepth)(false.B)))
-  private val MetadataHead = RegInit(0.U(MetadataPtrWidth.W))
-  private val MetadataTail = RegInit(0.U(MetadataPtrWidth.W))
-  private val MetadataCount = RegInit(0.U(MetadataCountWidth.W))
-  private val MetadataValid = MetadataCount =/= 0.U
-  private val HeadNegative =
-    if (MetadataDepth == 1) NegativeQueue(0) else NegativeQueue(MetadataHead)
-  private val HeadTakeHigh =
-    if (MetadataDepth == 1) TakeHighQueue(0) else TakeHighQueue(MetadataHead)
-  val RequestNegative = ysyx_26030103_MULAdapterUtils.ResultNegative(
-    IO.Req.bits.LHS,
-    IO.Req.bits.RHS,
-    IO.Req.bits.SignedMode
+  private val metadataDepth = config.MULMaxInflight
+  private val metadataPointerWidth = log2Ceil(metadataDepth).max(1)
+  private val metadataCountWidth = log2Ceil(metadataDepth + 1)
+  private val negativeQueue =
+    RegInit(VecInit(Seq.fill(metadataDepth)(false.B)))
+  private val takeHighQueue =
+    RegInit(VecInit(Seq.fill(metadataDepth)(false.B)))
+  private val metadataHead = RegInit(0.U(metadataPointerWidth.W))
+  private val metadataTail = RegInit(0.U(metadataPointerWidth.W))
+  private val metadataCount = RegInit(0.U(metadataCountWidth.W))
+  private val metadataValid = metadataCount =/= 0.U
+  private val headNegative =
+    if (metadataDepth == 1) negativeQueue(0) else negativeQueue(metadataHead)
+  private val headTakeHigh =
+    if (metadataDepth == 1) takeHighQueue(0) else takeHighQueue(metadataHead)
+  val requestNegative = ysyx_26030103_MULAdapterUtils.ResultNegative(
+    IO.Request.bits.LHS,
+    IO.Request.bits.RHS,
+    IO.Request.bits.SignedMode
   )
-  val LHSMagnitude = ysyx_26030103_MULAdapterUtils.Magnitude(
-    IO.Req.bits.LHS,
-    ysyx_26030103_MULSignedMode.LHSSigned(IO.Req.bits.SignedMode)
+  val lhsMagnitude = ysyx_26030103_MULAdapterUtils.Magnitude(
+    IO.Request.bits.LHS,
+    ysyx_26030103_MULSignedMode.LHSSigned(IO.Request.bits.SignedMode)
   )
-  val RHSMagnitude = ysyx_26030103_MULAdapterUtils.Magnitude(
-    IO.Req.bits.RHS,
-    ysyx_26030103_MULSignedMode.RHSSigned(IO.Req.bits.SignedMode)
+  val rhsMagnitude = ysyx_26030103_MULAdapterUtils.Magnitude(
+    IO.Request.bits.RHS,
+    ysyx_26030103_MULSignedMode.RHSSigned(IO.Request.bits.SignedMode)
   )
-  Core.IO.Flush := IO.Flush
-  private val CoreLHSMagnitude = if (CoreWidth == 32) {
-    LHSMagnitude
-  } else if (CoreWidth > 32) {
-    Cat(0.U((CoreWidth - 32).W), LHSMagnitude)
+  core.IO.Flush := IO.Flush
+  private val coreLHSMagnitude = if (coreWidth == 32) {
+    lhsMagnitude
+  } else if (coreWidth > 32) {
+    Cat(0.U((coreWidth - 32).W), lhsMagnitude)
   } else {
-    LHSMagnitude(CoreWidth - 1, 0)
+    lhsMagnitude(coreWidth - 1, 0)
   }
-  private val CoreRHSMagnitude = if (CoreWidth == 32) {
-    RHSMagnitude
-  } else if (CoreWidth > 32) {
-    Cat(0.U((CoreWidth - 32).W), RHSMagnitude)
+  private val coreRHSMagnitude = if (coreWidth == 32) {
+    rhsMagnitude
+  } else if (coreWidth > 32) {
+    Cat(0.U((coreWidth - 32).W), rhsMagnitude)
   } else {
-    RHSMagnitude(CoreWidth - 1, 0)
+    rhsMagnitude(coreWidth - 1, 0)
   }
-  Core.IO.Req.bits.LHSMagnitude := CoreLHSMagnitude
-  Core.IO.Req.bits.RHSMagnitude := CoreRHSMagnitude
-  Core.IO.Resp.ready := !IO.Flush && MetadataValid && IO.Resp.ready
-  val CoreRespFire = Core.IO.Resp.valid && Core.IO.Resp.ready
-  val MetadataHasSpace = MetadataCount < MetadataDepth.U || CoreRespFire
-  IO.Req.ready := !IO.Flush && MetadataHasSpace && Core.IO.Req.ready
-  Core.IO.Req.valid := !IO.Flush && IO.Req.valid && MetadataHasSpace
-  val CoreReqFire = Core.IO.Req.valid && Core.IO.Req.ready
+  core.IO.Request.bits.LHSMagnitude := coreLHSMagnitude
+  core.IO.Request.bits.RHSMagnitude := coreRHSMagnitude
+  core.IO.Response.ready := !IO.Flush && metadataValid && IO.Response.ready
+  val coreResponseFire = core.IO.Response.valid && core.IO.Response.ready
+  val metadataHasSpace = metadataCount < metadataDepth.U || coreResponseFire
+  IO.Request.ready := !IO.Flush && metadataHasSpace && core.IO.Request.ready
+  core.IO.Request.valid := !IO.Flush && IO.Request.valid && metadataHasSpace
+  val coreRequestFire = core.IO.Request.valid && core.IO.Request.ready
   // 适配层只需要 2*XLEN 位乘积。MULWidth 可能大于 XLEN（例如为
   // 时序/复用预留的 128 位乘法器），高位不参与架构结果。
-  private val ArchProductWidth = 2 * config.XLEN
-  val CoreProductWidthAdjusted = if (CoreProductWidth == ArchProductWidth) {
-    Core.IO.Resp.bits.Product
-  } else if (CoreProductWidth > ArchProductWidth) {
-    Core.IO.Resp.bits.Product(ArchProductWidth - 1, 0)
+  private val archProductWidth = 2 * config.XLEN
+  val coreProductWidthAdjusted = if (coreProductWidth == archProductWidth) {
+    core.IO.Response.bits.Product
+  } else if (coreProductWidth > archProductWidth) {
+    core.IO.Response.bits.Product(archProductWidth - 1, 0)
   } else {
-    Cat(0.U((ArchProductWidth - CoreProductWidth).W), Core.IO.Resp.bits.Product)
+    Cat(0.U((archProductWidth - coreProductWidth).W), core.IO.Response.bits.Product)
   }
-  val CoreProduct = ysyx_26030103_MULAdapterUtils.RestoreSign(
-    CoreProductWidthAdjusted,
-    HeadNegative
+  val coreProduct = ysyx_26030103_MULAdapterUtils.RestoreSign(
+    coreProductWidthAdjusted,
+    headNegative
   )
-  IO.Resp.valid := !IO.Flush && MetadataValid && Core.IO.Resp.valid
-  IO.Resp.bits.Result := ysyx_26030103_MULAdapterUtils.SelectResult(
-    CoreProduct,
-    HeadTakeHigh,
+  IO.Response.valid := !IO.Flush && metadataValid && core.IO.Response.valid
+  IO.Response.bits.Result := ysyx_26030103_MULAdapterUtils.SelectResult(
+    coreProduct,
+    headTakeHigh,
     config.XLEN
   )
-  val NextMetadataHead = Mux(
-    MetadataHead === (MetadataDepth - 1).U,
+  val nextMetadataHead = Mux(
+    metadataHead === (metadataDepth - 1).U,
     0.U,
-    MetadataHead + 1.U
+    metadataHead + 1.U
   )
-  val NextMetadataTail = Mux(
-    MetadataTail === (MetadataDepth - 1).U,
+  val nextMetadataTail = Mux(
+    metadataTail === (metadataDepth - 1).U,
     0.U,
-    MetadataTail + 1.U
+    metadataTail + 1.U
   )
-  when(Core.IO.Resp.valid && !IO.Flush) {
-    assert(MetadataValid, "MUL core produced a response without metadata")
+  when(core.IO.Response.valid && !IO.Flush) {
+    assert(metadataValid, "MUL core produced a response without metadata")
   }
   assert(
-    IO.Req.fire === CoreReqFire,
+    IO.Request.fire === coreRequestFire,
     "MUL request and sign metadata became misaligned"
   )
   assert(
-    IO.Resp.fire === CoreRespFire,
+    IO.Response.fire === coreResponseFire,
     "MUL response and sign metadata became misaligned"
   )
-  assert(MetadataCount <= MetadataDepth.U, "MUL metadata FIFO overflow")
+  assert(metadataCount <= metadataDepth.U, "MUL metadata FIFO overflow")
   when(IO.Flush) {
-    MetadataHead := 0.U
-    MetadataTail := 0.U
-    MetadataCount := 0.U
-  }.elsewhen(CoreReqFire || CoreRespFire) {
-    when(CoreReqFire) {
-      if (MetadataDepth == 1) {
-        NegativeQueue(0) := RequestNegative
-        TakeHighQueue(0) := IO.Req.bits.TakeHigh
+    metadataHead := 0.U
+    metadataTail := 0.U
+    metadataCount := 0.U
+  }.elsewhen(coreRequestFire || coreResponseFire) {
+    when(coreRequestFire) {
+      if (metadataDepth == 1) {
+        negativeQueue(0) := requestNegative
+        takeHighQueue(0) := IO.Request.bits.TakeHigh
       } else {
-        NegativeQueue(MetadataTail) := RequestNegative
-        TakeHighQueue(MetadataTail) := IO.Req.bits.TakeHigh
+        negativeQueue(metadataTail) := requestNegative
+        takeHighQueue(metadataTail) := IO.Request.bits.TakeHigh
       }
-      MetadataTail := NextMetadataTail
+      metadataTail := nextMetadataTail
     }
-    when(CoreRespFire) {
-      MetadataHead := NextMetadataHead
+    when(coreResponseFire) {
+      metadataHead := nextMetadataHead
     }
-    when(CoreReqFire && !CoreRespFire) {
-      MetadataCount := MetadataCount + 1.U
-    }.elsewhen(!CoreReqFire && CoreRespFire) {
-      MetadataCount := MetadataCount - 1.U
+    when(coreRequestFire && !coreResponseFire) {
+      metadataCount := metadataCount + 1.U
+    }.elsewhen(!coreRequestFire && coreResponseFire) {
+      metadataCount := metadataCount - 1.U
     }
   }
 }

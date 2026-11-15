@@ -3,7 +3,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
 import chisel3.util._
-import _root_.ysyx_26030103.config.ysyx_26030103_PteConfig
+import _root_.ysyx_26030103.config.ysyx_26030103_PTEConfig
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
 class ysyx_26030103_PTWRequest(
@@ -25,7 +25,7 @@ class ysyx_26030103_PTWRequest(
 class ysyx_26030103_PTWResponse(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
-    val pteWidth: Int = ysyx_26030103_KconfigDefaults.MmuPteWidth
+    val pteWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth
 ) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"PTWResponse XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
@@ -38,19 +38,19 @@ class ysyx_26030103_PTWResponse(
   val cause = UInt(32.W)
   val tval = UInt(XLEN.W)
   val fillValid = Bool()
-  val fillPte = UInt(pteWidth.W)
-  val fillVaddr = UInt(XLEN.W)
-  val fillAsid = UInt(16.W)
+  val fillPTE = UInt(pteWidth.W)
+  val fillVirtualAddress = UInt(XLEN.W)
+  val fillASID = UInt(16.W)
   // 0=基础页，k=第 k 级超级页；TLB 用 pageBits + k*indexBits 推导 shift。
   // 3 位统一编码支持最多 8 级页表，不再把 CUSTOM 限制在 4 级。
   val fillLevel = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
 }
 
 // PTW 内部响应荷载；`id`/`fillLevel` 由独立寄存器在输出级拼接。
-private[mmu] class ysyx_26030103_PTWRespPayload(
+private[mmu] class ysyx_26030103_PTWResponsePayload(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
-    val pteWidth: Int = ysyx_26030103_KconfigDefaults.MmuPteWidth
+    val pteWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth
 ) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"PTWRespPayload XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
@@ -62,9 +62,9 @@ private[mmu] class ysyx_26030103_PTWRespPayload(
   val cause = UInt(32.W)
   val tval = UInt(XLEN.W)
   val fillValid = Bool()
-  val fillPte = UInt(pteWidth.W)
-  val fillVaddr = UInt(XLEN.W)
-  val fillAsid = UInt(16.W)
+  val fillPTE = UInt(pteWidth.W)
+  val fillVirtualAddress = UInt(XLEN.W)
+  val fillASID = UInt(16.W)
 }
 
 // 可配置页大小/级数/页表项数的 page-table walker，RV32/Sv32 与
@@ -75,27 +75,27 @@ private[mmu] class ysyx_26030103_PTWRespPayload(
 class ysyx_26030103_PTW(
     adMode: String = "fault",
     cacheEnable: Boolean = false,
-    cacheEntries: Int = ysyx_26030103_KconfigDefaults.MmuPtwCacheEntries,
-    cacheWays: Int = ysyx_26030103_KconfigDefaults.MmuPtwCacheWays,
+    cacheEntries: Int = ysyx_26030103_KconfigDefaults.MMUPTWCacheEntries,
+    cacheWays: Int = ysyx_26030103_KconfigDefaults.MMUPTWCacheWays,
     superpage: Boolean = false,
-    pteConfig: ysyx_26030103_PteConfig = ysyx_26030103_PteConfig(),
-    pageBits: Int = ysyx_26030103_KconfigDefaults.MmuPageBits,
-    levels: Int = ysyx_26030103_KconfigDefaults.MmuLevels,
-    tableEntries: Int = ysyx_26030103_KconfigDefaults.MmuTableEntries,
+    pteConfig: ysyx_26030103_PTEConfig = ysyx_26030103_PTEConfig(),
+    pageBits: Int = ysyx_26030103_KconfigDefaults.MMUPageBits,
+    levels: Int = ysyx_26030103_KconfigDefaults.MMULevels,
+    tableEntries: Int = ysyx_26030103_KconfigDefaults.MMUTableEntries,
     fillSuperpage: Boolean = false,
-    pteSizeBytes: Int = ysyx_26030103_KconfigDefaults.MmuPteSizeBytes,
+    pteSizeBytes: Int = ysyx_26030103_KconfigDefaults.MMUPTESizeBytes,
     hasU: Boolean = true,
     // 架构宽度与物理地址宽度；默认 32/32 保持既有 Sv32 行为。
     XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     addressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     // 有效虚拟地址位数：Sv32=32，Sv39=39，Sv48=48。
-    vaBits: Int = ysyx_26030103_KconfigDefaults.MmuVaBits,
+    vaBits: Int = ysyx_26030103_KconfigDefaults.MMUVaBits,
     // 该 walker 在页表总线上的固定事务 ID；多 walker 簇用 walker 编号，
     // 单 walker/直连测试保持 0。
-    busId: Int = 0
+    busID: Int = 0
 ) extends Module {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
-  require(busId >= 0 && busId <= 15, "PTW busId 必须在 0..15")
+  require(busID >= 0 && busID <= 15, "PTW busId 必须在 0..15")
   require(XLEN == 32 || XLEN == 64, s"PTW XLEN 非法: $XLEN")
   require(addressWidth == 32 || addressWidth == 64,
     s"PTW addressWidth 非法: $addressWidth")
@@ -120,14 +120,14 @@ class ysyx_26030103_PTW(
   private val pteBytes = pteSizeBytes
   private val pteWidth = pteBytes * 8
   // 标准 PTE 的 PPN 位数：Sv32=22（bit31:10），Sv39/48=44（bit53:10）。
-  private val ptePpnBits = pteConfig.ppnHigh - pteConfig.ppnLow + 1
+  private val ptePPNBits = pteConfig.ppnHigh - pteConfig.ppnLow + 1
   // 物理地址宽度可能小于 pageBits+PPN 字段宽度（例如 2MiB 页 + 44 位
   // PPN = 65 位）。只能使用能装入 addressWidth 的低位 PPN，高位必须
   // 为 0；walk 时显式检查并报 page fault，不能依赖赋值截断。
-  private val paddrPpnBits = math.min(ptePpnBits, addressWidth - pageBits)
-  require(paddrPpnBits >= 1, "PPN 字段无法装入物理地址宽度")
-  private val satpPpnBits = math.min(44, addressWidth - pageBits)
-  require(satpPpnBits >= 1, "satp.PPN 无法装入物理地址宽度")
+  private val paddrPPNBits = math.min(ptePPNBits, addressWidth - pageBits)
+  require(paddrPPNBits >= 1, "PPN 字段无法装入物理地址宽度")
+  private val satpPPNBits = math.min(44, addressWidth - pageBits)
+  require(satpPPNBits >= 1, "satp.PPN 无法装入物理地址宽度")
   // 4B/8B PTE 都可以进入 cache：8B 表项保存低/高两个 32 位字，命中时
   // 不再产生两次页表读。
   private val cacheEffective = cacheEnable
@@ -137,8 +137,8 @@ class ysyx_26030103_PTW(
   // 超级页 PPN 的低 (levels-1)*indexBits 位必须可检查；PPN 字段更窄时
   // 对齐掩码会溢出，必须拒绝而不是静默截断。
   require(!(superpage || fillSuperpage) ||
-    ptePpnBits >= (levels - 1) * indexBits,
-    s"超级页对齐位(${(levels - 1) * indexBits})超过 PTE PPN 位宽($ptePpnBits)")
+    ptePPNBits >= (levels - 1) * indexBits,
+    s"超级页对齐位(${(levels - 1) * indexBits})超过 PTE PPN 位宽($ptePPNBits)")
   if (cacheEnable) {
     require(cacheEntries > 0 && (cacheEntries & (cacheEntries - 1)) == 0,
       "PTW cache entries 必须是 2 的幂")
@@ -154,7 +154,7 @@ class ysyx_26030103_PTW(
     val flush = Input(Bool())
   })
 
-  val idle :: reqState :: waitState :: reqHigh :: waitHigh :: writeState :: waitWrite :: done :: Nil = Enum(8)
+  val idle :: requestState :: waitState :: reqHigh :: waitHigh :: writeState :: waitWrite :: done :: Nil = Enum(8)
   val state = RegInit(idle)
   // flush 时如果已有页表事务在途，必须继续把它收完（否则总线上会留下
   // 无人接收的响应，且后续 walk 可能误认领旧响应），但绝不能再让旧 walk
@@ -162,7 +162,7 @@ class ysyx_26030103_PTW(
   val discard = RegInit(false.B)
 
   val idReg = RegInit(0.U(4.W))
-  val vaddrReg = RegInit(0.U(XLEN.W))
+  val virtualAddressReg = RegInit(0.U(XLEN.W))
   val satpReg = RegInit(0.U(XLEN.W))
   // HAS_U=n 时 PTW 不需要保存/检查 U 特权级和 SUM；U/S 权限检查固定
   // 不适用，只保留 R/W/X/A/D 检查。
@@ -172,12 +172,12 @@ class ysyx_26030103_PTW(
   val mxrReg = RegInit(false.B)
   val levelReg = RegInit(0.U(ysyx_26030103_MMUProfile.LevelBits.W))
   val tableReg = RegInit(0.U(addressWidth.W))
-  val pteAddrReg = RegInit(0.U(addressWidth.W))
+  val pteAddressReg = RegInit(0.U(addressWidth.W))
   val pteLowReg = RegInit(0.U(32.W))
-  // 只保存响应荷载；id/fillLevel 由独立寄存器在输出级拼接，避免 respReg
+  // 只保存响应荷载；id/fillLevel 由独立寄存器在输出级拼接，避免 responseReg
   // 里出现永远被覆盖的影子字段。
-  private val respReg = RegInit(
-    0.U.asTypeOf(new ysyx_26030103_PTWRespPayload(XLEN, addressWidth, pteWidth))
+  private val responseReg = RegInit(
+    0.U.asTypeOf(new ysyx_26030103_PTWResponsePayload(XLEN, addressWidth, pteWidth))
   )
   val fillLevelReg = RegInit(0.U(ysyx_26030103_MMUProfile.LevelBits.W))
   val writeDataReg = RegInit(0.U(pteWidth.W))
@@ -199,20 +199,20 @@ class ysyx_26030103_PTW(
   val cache = if (cacheEffective)
     Some(RegInit(VecInit(Seq.fill(cacheEntries)(0.U.asTypeOf(new CacheEntry)))))
   else None
-  val cacheRR = if (cacheEffective)
+  val cacheRoundRobin = if (cacheEffective)
     Some(RegInit(VecInit(Seq.fill(cacheSets)(0.U(cacheWayBits.W)))))
   else None
 
-  private def cacheSetOf(addr: UInt): UInt =
-    if (cacheSetBits == 0) 0.U else addr(cacheSetBits + pteShift - 1, pteShift)
+  private def cacheSetOf(address: UInt): UInt =
+    if (cacheSetBits == 0) 0.U else address(cacheSetBits + pteShift - 1, pteShift)
 
-  def cacheLookup(addr: UInt): (Bool, UInt) = {
+  def cacheLookup(address: UInt): (Bool, UInt) = {
     if (!cacheEffective) (false.B, 0.U(pteWidth.W))
     else {
-      val set = cacheSetOf(addr)
+      val set = cacheSetOf(address)
       val hits = (0 until cacheWays).map { w =>
-        val e = cache.get(cacheIndex(set, w.U))
-        e.valid && e.tag === addr
+        val entry = cache.get(cacheIndex(set, w.U))
+        entry.valid && entry.tag === address
       }
       val data = Mux1H(hits, (0 until cacheWays).map { w =>
         cache.get(cacheIndex(set, w.U)).data
@@ -221,20 +221,20 @@ class ysyx_26030103_PTW(
     }
   }
 
-  def cacheFill(addr: UInt, data: UInt): Unit = {
+  def cacheFill(address: UInt, data: UInt): Unit = {
     if (cacheEffective) {
-      val set = cacheSetOf(addr)
-      val idx = cacheIndex(set, cacheRR.get(set))
-      val e = Wire(new CacheEntry)
-      e := 0.U.asTypeOf(new CacheEntry)
-      e.valid := true.B
-      e.tag := addr
-      e.data := data
-      cache.get(idx) := e
-      cacheRR.get(set) := Mux(
-        cacheRR.get(set) === (cacheWays - 1).U,
+      val set = cacheSetOf(address)
+      val index = cacheIndex(set, cacheRoundRobin.get(set))
+      val entry = Wire(new CacheEntry)
+      entry := 0.U.asTypeOf(new CacheEntry)
+      entry.valid := true.B
+      entry.tag := address
+      entry.data := data
+      cache.get(index) := entry
+      cacheRoundRobin.get(set) := Mux(
+        cacheRoundRobin.get(set) === (cacheWays - 1).U,
         0.U,
-        cacheRR.get(set) + 1.U
+        cacheRoundRobin.get(set) + 1.U
       )
     }
   }
@@ -261,33 +261,33 @@ class ysyx_26030103_PTW(
   val accessFaultCause = accessCauseOf(accessReg)
 
   // 把原始 PTE 归一化为内部标准布局：低 8 位标志，PPN 从 ppnLow 开始。
-  private def normalizePte(d: UInt): UInt = {
+  private def normalizePTE(pte: UInt): UInt = {
     val flags = Cat(
-      d(pteConfig.dBit), d(pteConfig.aBit), d(pteConfig.globalBit),
-      d(pteConfig.userBit), d(pteConfig.executeBit), d(pteConfig.writeBit),
-      d(pteConfig.readBit), d(pteConfig.validBit)
+      pte(pteConfig.dBit), pte(pteConfig.aBit), pte(pteConfig.globalBit),
+      pte(pteConfig.userBit), pte(pteConfig.executeBit), pte(pteConfig.writeBit),
+      pte(pteConfig.readBit), pte(pteConfig.validBit)
     )
-    val ppn = d(pteConfig.ppnHigh, pteConfig.ppnLow)
+    val ppn = pte(pteConfig.ppnHigh, pteConfig.ppnLow)
     Cat(ppn.pad(pteWidth - pteConfig.ppnLow),
       if (pteConfig.ppnLow > 8) 0.U((pteConfig.ppnLow - 8).W) else 0.U,
       flags)
   }
-  private def adRaw(d: UInt): UInt =
-    d | (1.U << pteConfig.aBit) |
+  private def adRaw(pte: UInt): UInt =
+    pte | (1.U << pteConfig.aBit) |
       Mux(isStore, 1.U << pteConfig.dBit, 0.U(pteWidth.W))
 
   // 以下函数接收的是 normalizePte 之后的内部 PTE：标志位固定在低 8 位，
   // 只有 PPN 位置仍由 pteConfig 决定。绝不能再用 pteConfig 的原始标志
   // 位置去解释归一化结果，否则 CUSTOM 的私有 PTE 布局会被误判。
-  def isLeaf(d: UInt): Bool =
-    Cat(d(2), d(1), d(3)) =/= 0.U // 归一化 W/R/X = bit2/1/3
+  def isLeaf(pte: UInt): Bool =
+    Cat(pte(2), pte(1), pte(3)) =/= 0.U // 归一化 W/R/X = bit2/1/3
   // R=0 且 W=1 是保留编码；无论叶子还是非叶子都必须 page fault。
-  def reservedEncoding(d: UInt): Bool = !d(1) && d(2)
+  def reservedEncoding(pte: UInt): Bool = !pte(1) && pte(2)
   def leafAllowed: Bool = superpage.B || levelReg === (levels - 1).U
   // 非叶子 PTE 的保留位（PPN 高位以外）必须为 0。
-  def reservedFault(d: UInt): Bool =
+  def reservedFault(pte: UInt): Bool =
     if (pteConfig.ppnHigh + 1 >= pteWidth) false.B
-    else d(pteWidth - 1, pteConfig.ppnHigh + 1) =/= 0.U
+    else pte(pteWidth - 1, pteConfig.ppnHigh + 1) =/= 0.U
   /** PPN 字段以上的 PTE 位为保留位，非零必须 page fault。
     *
     * 标准 Sv39/Sv48 的 PPN 到 bit53，因此对应 PTE[63:54]；CUSTOM 允许
@@ -297,13 +297,13 @@ class ysyx_26030103_PTW(
     if (XLEN <= 32 || pteWidth <= 32 || pteConfig.ppnHigh + 1 >= pteWidth) false.B
     else raw(pteWidth - 1, pteConfig.ppnHigh + 1) =/= 0.U
   // 超级页 PPN 的低位必须按层级对齐。
-  def superpageMisaligned(d: UInt): Bool = {
+  def superpageMisaligned(pte: UInt): Bool = {
     if (levels <= 1) false.B
     else {
       val allLowerBits = (levels - 1) * indexBits
       val shift = levelReg * indexBits.U
-      val mask = ((BigInt(1) << allLowerBits) - 1).U(ptePpnBits.W) >> shift
-      (d(pteConfig.ppnHigh, pteConfig.ppnLow) & mask) =/= 0.U
+      val mask = ((BigInt(1) << allLowerBits) - 1).U(ptePPNBits.W) >> shift
+      (pte(pteConfig.ppnHigh, pteConfig.ppnLow) & mask) =/= 0.U
     }
   }
   /** PTE PPN 是否落在物理地址宽度内。
@@ -311,42 +311,42 @@ class ysyx_26030103_PTW(
     * pageBits+PPN 超过物理地址宽度时，PPN 字段的高位无法表达；这些位
     * 必须为 0，否则叶子和非叶子 PTE 都会产生 page fault。
     */
-  def ppnFits(d: UInt): Bool = {
-    if (paddrPpnBits >= ptePpnBits) true.B
-    else d(pteConfig.ppnLow + ptePpnBits - 1,
-      pteConfig.ppnLow + paddrPpnBits) === 0.U
+  def ppnFits(pte: UInt): Bool = {
+    if (paddrPPNBits >= ptePPNBits) true.B
+    else pte(pteConfig.ppnLow + ptePPNBits - 1,
+      pteConfig.ppnLow + paddrPPNBits) === 0.U
   }
   // 去掉不可用的 PPN 高位；调用前必须已检查 ppnFits。
-  def ppnValue(d: UInt): UInt =
-    d(pteConfig.ppnLow + paddrPpnBits - 1, pteConfig.ppnLow)
-  def walkFault(d: UInt): Bool =
-    !d(0) || !ppnFits(d) || reservedFault(d) || // 归一化 valid = bit0
-      reservedEncoding(d) ||
-      (isLeaf(d) && (!leafAllowed || superpageMisaligned(d))) ||
+  def ppnValue(pte: UInt): UInt =
+    pte(pteConfig.ppnLow + paddrPPNBits - 1, pteConfig.ppnLow)
+  def walkFault(pte: UInt): Bool =
+    !pte(0) || !ppnFits(pte) || reservedFault(pte) || // 归一化 valid = bit0
+      reservedEncoding(pte) ||
+      (isLeaf(pte) && (!leafAllowed || superpageMisaligned(pte))) ||
       // 非叶子 PTE 的 D/A/U 是保留位，非零必须 page fault。
-      (!isLeaf(d) && (d(6) || d(7) || d(4))) ||
-      (!isLeaf(d) && levelReg === (levels - 1).U)
-  def leafFaultOf(d: UInt): Bool = {
-    // d 是归一化 PTE，标志布局固定：V/R/W/X/U/G/A/D = bit0..7。
+      (!isLeaf(pte) && (pte(6) || pte(7) || pte(4))) ||
+      (!isLeaf(pte) && levelReg === (levels - 1).U)
+  def leafFaultOf(pte: UInt): Bool = {
+    // pte 是归一化 PTE，标志布局固定：V/R/W/X/U/G/A/D = bit0..7。
     // HAS_U=n 时 U 级不存在，U 位与 SUM 检查固定为不适用；
     // R/W/X、A/D 等其余页表权限仍然正常检查。
     val userFault =
-      if (hasU) privRegOpt.get === 0.U && !d(4) else false.B
+      if (hasU) privRegOpt.get === 0.U && !pte(4) else false.B
     val sumFault =
-      if (hasU) privRegOpt.get === 1.U && d(4) && (!sumRegOpt.get || isFetch)
+      if (hasU) privRegOpt.get === 1.U && pte(4) && (!sumRegOpt.get || isFetch)
       else false.B
-    val fetchFault = isFetch && !d(3)
-    val readFault = !isFetch && !isStore && !d(1) && !(mxrReg && d(3))
-    val writeFault = isStore && !d(2)
+    val fetchFault = isFetch && !pte(3)
+    val readFault = !isFetch && !isStore && !pte(1) && !(mxrReg && pte(3))
+    val writeFault = isStore && !pte(2)
     val adFault = adMode match {
-      case "fault" => !d(6) || (isStore && !d(7))
+      case "fault" => !pte(6) || (isStore && !pte(7))
       case _       => false.B
     }
-    reservedEncoding(d) ||
+    reservedEncoding(pte) ||
       userFault || sumFault || fetchFault || readFault || writeFault || adFault
   }
-  def needsAdUpdate(d: UInt): Bool = adMode match {
-    case "hardware" => d(0) && (!d(6) || (isStore && !d(7)))
+  def needsAdUpdate(pte: UInt): Bool = adMode match {
+    case "hardware" => pte(0) && (!pte(6) || (isStore && !pte(7)))
     case _          => false.B
   }
   /** 给 TLB 的填充层级：0=基础页，k=第 k 级超级页。
@@ -358,10 +358,10 @@ class ysyx_26030103_PTW(
 
   // 当前级在虚拟地址中的索引；第 0 级是根页表，使用最高 VPN。
   def vpnIndex(level: UInt): UInt = {
-    MuxLookup(level, vaddrReg(vaBits - 1, pageBits))(
-      (0 until levels).map { l =>
-        val lo = pageBits + (levels - 1 - l) * indexBits
-        l.U -> vaddrReg(lo + indexBits - 1, lo)
+    MuxLookup(level, virtualAddressReg(vaBits - 1, pageBits))(
+      (0 until levels).map { levelIndex =>
+        val lo = pageBits + (levels - 1 - levelIndex) * indexBits
+        levelIndex.U -> virtualAddressReg(lo + indexBits - 1, lo)
       }
     )
   }
@@ -370,120 +370,120 @@ class ysyx_26030103_PTW(
 
   def superOffsetBits(level: UInt): UInt =
     pageBits.U + ((levels - 1).U - level) * indexBits.U
-  def paddrOf(d: UInt, level: UInt): UInt = {
-    val ppn = ppnValue(d)
+  def paddrOf(pte: UInt, level: UInt): UInt = {
+    val ppn = ppnValue(pte)
     val shift = superOffsetBits(level)
     val offsetMask = ((BigInt(1) << vaBits) - 1).U(vaBits.W) >> (vaBits.U - shift)
     ((ppn << pageBits).pad(addressWidth) |
-      (vaddrReg & offsetMask).pad(addressWidth))
+      (virtualAddressReg & offsetMask).pad(addressWidth))
   }
 
   // Sv39/Sv48 的高位必须是指示位的符号扩展。
-  def canonicalOk(vaddr: UInt): Bool = {
+  def canonicalOk(virtualAddress: UInt): Bool = {
     if (vaBits == XLEN) true.B
     else {
-      val upper = vaddr(XLEN - 1, vaBits)
-      val sign = Fill(XLEN - vaBits, vaddr(vaBits - 1))
+      val upper = virtualAddress(XLEN - 1, vaBits)
+      val sign = Fill(XLEN - vaBits, virtualAddress(vaBits - 1))
       upper === sign
     }
   }
-  def satpPpn(satp: UInt): UInt =
+  def satpPPN(satp: UInt): UInt =
     if (XLEN == 32) satp(21, 0) else satp(43, 0)
-  def satpAsid(satp: UInt): UInt =
+  def satpASID(satp: UInt): UInt =
     if (XLEN == 32) satp(30, 22) else satp(59, 44)
   // satp.PPN 的高位必须能装入物理地址宽度。
   def satpRootFits(satp: UInt): Bool = {
-    val ppn = satpPpn(satp)
-    if (satpPpnBits >= (if (XLEN == 32) 22 else 44)) true.B
-    else ppn((if (XLEN == 32) 21 else 43), satpPpnBits) === 0.U
+    val ppn = satpPPN(satp)
+    if (satpPPNBits >= (if (XLEN == 32) 22 else 44)) true.B
+    else ppn((if (XLEN == 32) 21 else 43), satpPPNBits) === 0.U
   }
   def tableBaseOf(satp: UInt): UInt =
-    (satpPpn(satp)(satpPpnBits - 1, 0) << pageBits).pad(addressWidth)
+    (satpPPN(satp)(satpPPNBits - 1, 0) << pageBits).pad(addressWidth)
 
-  val nextPteAddr = tableAddress(tableReg, vpnIndex(levelReg))
-  val (cacheHit, cacheData) = cacheLookup(nextPteAddr)
-  val useBus = state === reqState && !cacheHit
+  val nextPTEAddress = tableAddress(tableReg, vpnIndex(levelReg))
+  val (cacheHit, cacheData) = cacheLookup(nextPTEAddress)
+  val useBus = state === requestState && !cacheHit
   io.req.ready := state === idle && !io.flush && !discard
-  // flush/收尾期间不再发起新的页表事务；reqState/reqHigh/writeState 的
+  // flush/收尾期间不再发起新的页表事务；requestState/reqHigh/writeState 的
   // 推进也必须改用 fire，否则 valid 被 flush 门控掉时仍会误判为已发请求。
   io.bus.req.valid :=
     (useBus || state === reqHigh || state === writeState) &&
       !io.flush && !discard
   // 单 walker 同时只有一笔页表事务；ID 在簇内唯一，用于响应回收。
-  io.bus.req.bits.id := busId.U(4.W)
-  io.bus.req.bits.addr := Mux(state === writeState, pteAddrReg,
-    Mux(state === reqState, nextPteAddr,
-      Mux(state === reqHigh, pteAddrReg + 4.U, pteAddrReg)))
+  io.bus.req.bits.id := busID.U(4.W)
+  io.bus.req.bits.addr := Mux(state === writeState, pteAddressReg,
+    Mux(state === requestState, nextPTEAddress,
+      Mux(state === reqHigh, pteAddressReg + 4.U, pteAddressReg)))
   io.bus.req.bits.write := state === writeState
   io.bus.req.bits.data := Mux(state === writeState, writeDataReg(31, 0), 0.U)
   io.bus.req.bits.strb := Mux(state === writeState, "hf".U(4.W), 0.U)
   io.bus.resp.ready := state === waitState || state === waitHigh || state === waitWrite
   io.resp.valid := state === done && !io.flush && !discard
-  io.resp.bits.paddr := respReg.paddr
-  io.resp.bits.fault := respReg.fault
-  io.resp.bits.cause := respReg.cause
-  io.resp.bits.tval := respReg.tval
-  io.resp.bits.fillValid := respReg.fillValid
-  io.resp.bits.fillPte := respReg.fillPte
-  io.resp.bits.fillVaddr := respReg.fillVaddr
-  io.resp.bits.fillAsid := respReg.fillAsid
+  io.resp.bits.paddr := responseReg.paddr
+  io.resp.bits.fault := responseReg.fault
+  io.resp.bits.cause := responseReg.cause
+  io.resp.bits.tval := responseReg.tval
+  io.resp.bits.fillValid := responseReg.fillValid
+  io.resp.bits.fillPTE := responseReg.fillPTE
+  io.resp.bits.fillVirtualAddress := responseReg.fillVirtualAddress
+  io.resp.bits.fillASID := responseReg.fillASID
   io.resp.bits.fillLevel := fillLevelReg
   io.resp.bits.id := idReg
 
   def setFault(cause: UInt = pageFaultCause): Unit = {
-    respReg.paddr := 0.U
-    respReg.fault := true.B
-    respReg.cause := cause
-    respReg.tval := vaddrReg
-    respReg.fillValid := false.B
-    respReg.fillPte := 0.U
-    respReg.fillVaddr := 0.U
-    respReg.fillAsid := 0.U
+    responseReg.paddr := 0.U
+    responseReg.fault := true.B
+    responseReg.cause := cause
+    responseReg.tval := virtualAddressReg
+    responseReg.fillValid := false.B
+    responseReg.fillPTE := 0.U
+    responseReg.fillVirtualAddress := 0.U
+    responseReg.fillASID := 0.U
     fillLevelReg := 0.U
     state := done
   }
 
-  def finishLeaf(d: UInt, fault: Bool): Unit = {
-    respReg.paddr := paddrOf(d, levelReg)
-    respReg.fault := fault
-    respReg.cause := pageFaultCause
-    respReg.tval := vaddrReg
-    respReg.fillPte := d
-    respReg.fillVaddr := vaddrReg
-    respReg.fillAsid := satpAsid(satpReg)
+  def finishLeaf(pte: UInt, fault: Bool): Unit = {
+    responseReg.paddr := paddrOf(pte, levelReg)
+    responseReg.fault := fault
+    responseReg.cause := pageFaultCause
+    responseReg.tval := virtualAddressReg
+    responseReg.fillPTE := pte
+    responseReg.fillVirtualAddress := virtualAddressReg
+    responseReg.fillASID := satpASID(satpReg)
     fillLevelReg := fillLevelOf(levelReg)
-    respReg.fillValid := !fault &&
+    responseReg.fillValid := !fault &&
       (fillSuperpage.B || levelReg === (levels - 1).U)
     state := done
   }
 
-  def processPte(d: UInt, raw: UInt, busFault: Bool): Unit = {
+  def processPTE(pte: UInt, raw: UInt, busFault: Bool): Unit = {
     // cache 保存原始 PTE；4B 时 raw 就是 32 位字，8B 时是低/高字拼接。
     // 总线错误的读数据不是有效 PTE，不能写入 cache。flush 当拍或该 walk
     // 已被 flush 丢弃时也不能回填，否则旧 PTE 会跨 sfence 残留。
     when(cacheEffective.B && !busFault && !io.flush && !discard) {
-      cacheFill(pteAddrReg, raw)
+      cacheFill(pteAddressReg, raw)
     }
-    when(busFault || rawReservedFault(raw) || walkFault(d)) {
+    when(busFault || rawReservedFault(raw) || walkFault(pte)) {
       // 总线故障是 access fault；保留位/权限/几何错误仍是 page fault。
       setFault(Mux(busFault, accessFaultCause, pageFaultCause))
-    }.elsewhen(isLeaf(d)) {
-      when(needsAdUpdate(d)) {
+    }.elsewhen(isLeaf(pte)) {
+      when(needsAdUpdate(pte)) {
         writeDataReg := adRaw(raw)
         state := writeState
       }.otherwise {
-        finishLeaf(d, leafFaultOf(d))
+        finishLeaf(pte, leafFaultOf(pte))
       }
     }.otherwise {
-      tableReg := (ppnValue(d) << pageBits).pad(addressWidth)
+      tableReg := (ppnValue(pte) << pageBits).pad(addressWidth)
       levelReg := levelReg + 1.U
-      state := reqState
+      state := requestState
     }
   }
 
   when(state === idle && io.req.fire) {
     idReg := io.req.bits.id
-    vaddrReg := io.req.bits.vaddr
+    virtualAddressReg := io.req.bits.vaddr
     satpReg := io.req.bits.satp
     privRegOpt.foreach { r => r := io.req.bits.privilege }
     accessReg := io.req.bits.access
@@ -491,48 +491,48 @@ class ysyx_26030103_PTW(
     mxrReg := io.req.bits.mxr
     levelReg := 0.U
     tableReg := tableBaseOf(io.req.bits.satp)
-    pteAddrReg := 0.U
+    pteAddressReg := 0.U
     when(!canonicalOk(io.req.bits.vaddr) || !satpRootFits(io.req.bits.satp)) {
       // 非规范虚拟地址或无法装入物理地址的 satp.PPN 在查页表前就产生
       // page fault，避免高位别名或根表地址截断。
-      respReg := 0.U.asTypeOf(
-        new ysyx_26030103_PTWRespPayload(XLEN, addressWidth, pteWidth)
+      responseReg := 0.U.asTypeOf(
+        new ysyx_26030103_PTWResponsePayload(XLEN, addressWidth, pteWidth)
       )
-      respReg.paddr := 0.U
-      respReg.fault := true.B
-      respReg.cause := causeOf(io.req.bits.access)
-      respReg.tval := io.req.bits.vaddr
+      responseReg.paddr := 0.U
+      responseReg.fault := true.B
+      responseReg.cause := causeOf(io.req.bits.access)
+      responseReg.tval := io.req.bits.vaddr
         state := done
     }.otherwise {
-      state := reqState
+      state := requestState
     }
   }
 
   switch(state) {
-    is(reqState) {
+    is(requestState) {
       // 计算当前级页表项地址。
-      pteAddrReg := nextPteAddr
+      pteAddressReg := nextPTEAddress
       when(discard) {
         state := idle
         discard := false.B
       }.elsewhen(cacheHit) {
         // cache 中保存的是原始 PTE，命中路径与总线读路径一样先归一化。
-        val cachePte = normalizePte(cacheData)
-        when(rawReservedFault(cacheData) || walkFault(cachePte)) {
+        val cachePTE = normalizePTE(cacheData)
+        when(rawReservedFault(cacheData) || walkFault(cachePTE)) {
           setFault()
-        }.elsewhen(isLeaf(cachePte)) {
+        }.elsewhen(isLeaf(cachePTE)) {
           // cache 命中与总线读路径必须执行同一套 A/D 处理：命中项可能
           // 是之前 load 留下的 A=1,D=0，同页 store 仍要把 D 写回页表。
-          when(needsAdUpdate(cachePte)) {
+          when(needsAdUpdate(cachePTE)) {
             writeDataReg := adRaw(cacheData)
             state := writeState
           }.otherwise {
-            finishLeaf(cachePte, leafFaultOf(cachePte))
+            finishLeaf(cachePTE, leafFaultOf(cachePTE))
           }
         }.otherwise {
-          tableReg := (ppnValue(cachePte) << pageBits).pad(addressWidth)
+          tableReg := (ppnValue(cachePTE) << pageBits).pad(addressWidth)
           levelReg := levelReg + 1.U
-          state := reqState
+          state := requestState
         }
       }.elsewhen(io.bus.req.fire) {
         state := waitState
@@ -551,7 +551,7 @@ class ysyx_26030103_PTW(
             pteLowReg := io.bus.resp.bits.data
             state := reqHigh
           } else {
-            processPte(normalizePte(io.bus.resp.bits.data),
+            processPTE(normalizePTE(io.bus.resp.bits.data),
               io.bus.resp.bits.data, false.B)
           }
         }
@@ -572,7 +572,7 @@ class ysyx_26030103_PTW(
           discard := false.B
         }.otherwise {
           val raw = Cat(io.bus.resp.bits.data, pteLowReg)
-          processPte(normalizePte(raw), raw, io.bus.resp.bits.fault)
+          processPTE(normalizePTE(raw), raw, io.bus.resp.bits.fault)
         }
       }
     }
@@ -590,23 +590,23 @@ class ysyx_26030103_PTW(
           state := idle
           discard := false.B
         }.otherwise {
-          val written = normalizePte(writeDataReg)
+          val written = normalizePTE(writeDataReg)
           // A/D 写回只更新低 32 位；cache 保存完整 PTE，8B 时高字保留原值。
           // 写总线出错时不更新 cache，避免缓存未成功写回的表项。
           when(cacheEffective.B && !io.bus.resp.bits.fault && !io.flush &&
               !discard) {
-            cacheFill(pteAddrReg, writeDataReg)
+            cacheFill(pteAddressReg, writeDataReg)
           }
-          respReg.paddr := paddrOf(written, levelReg)
-          respReg.fault := io.bus.resp.bits.fault || leafFaultOf(written)
-          respReg.cause := Mux(io.bus.resp.bits.fault,
+          responseReg.paddr := paddrOf(written, levelReg)
+          responseReg.fault := io.bus.resp.bits.fault || leafFaultOf(written)
+          responseReg.cause := Mux(io.bus.resp.bits.fault,
             accessFaultCause, pageFaultCause)
-          respReg.tval := vaddrReg
-          respReg.fillPte := written
-          respReg.fillVaddr := vaddrReg
-          respReg.fillAsid := satpAsid(satpReg)
+          responseReg.tval := virtualAddressReg
+          responseReg.fillPTE := written
+          responseReg.fillVirtualAddress := virtualAddressReg
+          responseReg.fillASID := satpASID(satpReg)
           fillLevelReg := fillLevelOf(levelReg)
-          respReg.fillValid := !leafFaultOf(written) &&
+          responseReg.fillValid := !leafFaultOf(written) &&
             !io.bus.resp.bits.fault &&
             (fillSuperpage.B || levelReg === (levels - 1).U)
           state := done

@@ -9,12 +9,12 @@ import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefa
   * `EncodingTable` 供 `ysyx_26030103_MULGPC` 查表。
   */
 case class ysyx_26030103_MULGPCConfig(
-    Inputs: Int = KconfigDefaults.MduGpcInputs,
-    Outputs: Int = KconfigDefaults.MduGpcOutputs,
-    OutputOffsets: IndexedSeq[Int] = KconfigDefaults.MduGpcOutputOffsets,
+    Inputs: Int = KconfigDefaults.MDUGpcInputs,
+    Outputs: Int = KconfigDefaults.MDUGpcOutputs,
+    OutputOffsets: IndexedSeq[Int] = KconfigDefaults.MDUGpcOutputOffsets,
     HasCin: Boolean = false,
     HasCout: Boolean = false,
-    CoutOffset: Int = KconfigDefaults.MduGpcCoutOffset,
+    CoutOffset: Int = KconfigDefaults.MDUGpcCoutOffset,
     AllowRedundant: Boolean = false
 ) {
   require(Inputs >= 3 && Inputs <= 64, "MUL GPC K必须在3到64之间")
@@ -26,42 +26,42 @@ case class ysyx_26030103_MULGPCConfig(
   final val OutputCountWithCout: Int = Outputs + (if (HasCout) 1 else 0)
   final val AllOutputOffsets: IndexedSeq[Int] =
     OutputOffsets ++ (if (HasCout) IndexedSeq(CoutOffset) else IndexedSeq.empty)
-  private val OutputWeights: IndexedSeq[BigInt] =
-    AllOutputOffsets.map(Offset => BigInt(1) << Offset)
-  private def BetterEncoding(Left: BigInt, Right: BigInt): BigInt = {
-    val LeftBits = Left.bitCount
-    val RightBits = Right.bitCount
-    if (LeftBits < RightBits || (LeftBits == RightBits && Left < Right)) Left else Right
+  private val outputWeights: IndexedSeq[BigInt] =
+    AllOutputOffsets.map(offset => BigInt(1) << offset)
+  private def betterEncoding(left: BigInt, right: BigInt): BigInt = {
+    val leftBits = left.bitCount
+    val rightBits = right.bitCount
+    if (leftBits < rightBits || (leftBits == rightBits && left < right)) left else right
   }
-  private def BuildEncodings(MaxInputSum: Int): IndexedSeq[BigInt] = {
-    val Counts = Array.fill(MaxInputSum + 1)(0)
-    val Best = Array.fill[Option[BigInt]](MaxInputSum + 1)(None)
-    Counts(0) = 1
-    Best(0) = Some(BigInt(0))
-    for ((weight, bit) <- OutputWeights.zipWithIndex if weight <= MaxInputSum) {
-      val W = weight.toInt
-      for (sum <- MaxInputSum to W by -1) {
-        if (Counts(sum - W) > 0) {
-          Counts(sum) = math.min(2, Counts(sum) + Counts(sum - W))
-          val Candidate = Best(sum - W).get | (BigInt(1) << bit)
-          Best(sum) = Best(sum).map(BetterEncoding(_, Candidate)).orElse(Some(Candidate))
+  private def buildEncodings(maxInputSum: Int): IndexedSeq[BigInt] = {
+    val counts = Array.fill(maxInputSum + 1)(0)
+    val best = Array.fill[Option[BigInt]](maxInputSum + 1)(None)
+    counts(0) = 1
+    best(0) = Some(BigInt(0))
+    for ((weight, bit) <- outputWeights.zipWithIndex if weight <= maxInputSum) {
+      val weightValue = weight.toInt
+      for (sum <- maxInputSum to weightValue by -1) {
+        if (counts(sum - weightValue) > 0) {
+          counts(sum) = math.min(2, counts(sum) + counts(sum - weightValue))
+          val candidate = best(sum - weightValue).get | (BigInt(1) << bit)
+          best(sum) = best(sum).map(betterEncoding(_, candidate)).orElse(Some(candidate))
         }
       }
     }
-    (0 to MaxInputSum).map { sum =>
-      require(Best(sum).nonEmpty, s"MUL GPC配置无法精确表示输入和$sum")
+    (0 to maxInputSum).map { sum =>
+      require(best(sum).nonEmpty, s"MUL GPC配置无法精确表示输入和$sum")
       require(
-        AllowRedundant || Counts(sum) == 1,
+        AllowRedundant || counts(sum) == 1,
         s"MUL GPC配置在输入和$sum 上存在多种输出编码；若这是有意的，请打开冗余表示"
       )
-      Best(sum).get
+      best(sum).get
     }.toIndexedSeq
   }
-  final val EncodingTable: IndexedSeq[BigInt] = BuildEncodings(InputCountWithCin)
-  def ActiveOutputBits(MaxDataInputs: Int, CinPossible: Boolean = false): IndexedSeq[Int] = {
-    val MaxSum = MaxDataInputs + (if (HasCin && CinPossible) 1 else 0)
-    val UsedMask = EncodingTable.take(MaxSum + 1).foldLeft(BigInt(0))(_ | _)
-    (0 until OutputCountWithCout).filter(Bit => ((UsedMask >> Bit) & 1) == 1).toIndexedSeq
+  final val EncodingTable: IndexedSeq[BigInt] = buildEncodings(InputCountWithCin)
+  def ActiveOutputBits(maxDataInputs: Int, cinPossible: Boolean = false): IndexedSeq[Int] = {
+    val maxSum = maxDataInputs + (if (HasCin && cinPossible) 1 else 0)
+    val usedMask = EncodingTable.take(maxSum + 1).foldLeft(BigInt(0))(_ | _)
+    (0 until OutputCountWithCout).filter(bit => ((usedMask >> bit) & 1) == 1).toIndexedSeq
   }
   final val FullActiveOutputBits: IndexedSeq[Int] = ActiveOutputBits(Inputs, HasCin)
   require(
@@ -69,9 +69,9 @@ case class ysyx_26030103_MULGPCConfig(
     "MUL GPC完整输入时必须减少dot数量"
   )
   def Describe: String = {
-    val CinDesc = if (HasCin) "+cin" else ""
-    val CoutDesc = if (HasCout) s"+cout@$CoutOffset" else ""
-    val RedundantDesc = if (AllowRedundant) ",redundant" else ""
-    s"$Inputs:$Outputs$CinDesc$CoutDesc@${OutputOffsets.mkString("[", ",", "]")}$RedundantDesc"
+    val cinDesc = if (HasCin) "+cin" else ""
+    val coutDesc = if (HasCout) s"+cout@$CoutOffset" else ""
+    val redundantDesc = if (AllowRedundant) ",redundant" else ""
+    s"$Inputs:$Outputs$cinDesc$coutDesc@${OutputOffsets.mkString("[", ",", "]")}$redundantDesc"
   }
 }

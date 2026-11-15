@@ -1,7 +1,7 @@
 package ysyx_26030103.common
 import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction.CtrlWidth
-import _root_.ysyx_26030103.fpu.{ysyx_26030103_FpuOp, ysyx_26030103_FpuFmt, ysyx_26030103_FpuRm}
+import _root_.ysyx_26030103.fpu.{ysyx_26030103_FPUOp, ysyx_26030103_FPUFmt, ysyx_26030103_FPURm}
 
 // 译码级交付给执行级的消息；所有架构数据通路均为 XLEN 位。
 class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
@@ -44,9 +44,9 @@ class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   val IsAtomic = Bool()
   val AtomicOp = UInt(ysyx_26030103_AtomicOp.Width.W)
 
-  val IsCsrrw = Bool()
-  val IsCsrrs = Bool()
-  val IsCsrrc = Bool()
+  val IsCSRrw = Bool()
+  val IsCSRrs = Bool()
+  val IsCSRrc = Bool()
   val IsEcall = Bool()
   val IsEbreak = Bool()
   // 仿真环境专用的终止请求。它使用 custom-0 空间中的保留编码，和会
@@ -72,16 +72,16 @@ class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   // （算术/比较/转换/分类/符号注入），不含 FLW/FSW/FLD/FSD。
   val IsFP = Bool()
   val IsFPU = Bool()
-  val FpOp = UInt(ysyx_26030103_FpuOp.Width.W)
-  val FpFmt = UInt(ysyx_26030103_FpuFmt.Width.W)
-  val FpSrcFmt = UInt(ysyx_26030103_FpuFmt.Width.W)
+  val FPOp = UInt(ysyx_26030103_FPUOp.Width.W)
+  val FPFmt = UInt(ysyx_26030103_FPUFmt.Width.W)
+  val FPSrcFmt = UInt(ysyx_26030103_FPUFmt.Width.W)
   // 已按 frm 解析的舍入模式；DYN 不会进入 EXU/FPU。
-  val FpRm = UInt(ysyx_26030103_FpuRm.Width.W)
-  val FpIntWord = Bool()
+  val FPRm = UInt(ysyx_26030103_FPURm.Width.W)
+  val FPIntWord = Bool()
   // 经 FPR 读口与转发后的三个浮点源操作数，统一保留 64 位。
-  val FpRs1 = UInt(64.W)
-  val FpRs2 = UInt(64.W)
-  val FpRs3 = UInt(64.W)
+  val FPRs1 = UInt(64.W)
+  val FPRs2 = UInt(64.W)
+  val FPRs3 = UInt(64.W)
   // 由于 EXUMessage 的 FLEN 固定为 64 的位模式视图，FPU 结果和
   // load 结果都用这组字段传给 WBU；FP64 用于 FLW 的 NaN-boxing。
   val FPRegisterWrite = Bool()
@@ -92,7 +92,7 @@ class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   // 统一在EXU提交点处理,带异常标记的指令不得产生任何副作用
   val ExceptionValid = Bool()
   val ExceptionCause = UInt(4.W)
-  val AccessFaultResp = UInt(2.W)
+  val AccessFaultResponse = UInt(2.W)
   // 分支预测信息透传到EXU
   val pred_taken = Bool()
   val pred_target = UInt(XLEN.W)

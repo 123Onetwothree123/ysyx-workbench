@@ -12,24 +12,24 @@ trait ysyx_26030103_FudianFPUResponse {
 
   // FDIV/FSQRT：多周期 valid/ready
   private val isSlowOp =
-    op === ysyx_26030103_FpuOp.FDiv || op === ysyx_26030103_FpuOp.FSqrt
-  private val isSqrtOp = op === ysyx_26030103_FpuOp.FSqrt
+    op === ysyx_26030103_FPUOp.FDiv || op === ysyx_26030103_FPUOp.FSqrt
+  private val isSqrtOp = op === ysyx_26030103_FPUOp.FSqrt
 
   // 除法/开方共享：F/D 共用 D 精度 FDIV，回舍时重算标志
-  private val Shared = SharedDivSqrt && HasD
+  private val shared = sharedDivSqrt && hasD
 
   private val sDiv: Option[FDIV] =
-    if (!Shared) {
-      Some(Module(new FDIV(SExpWidth, SPrecision)).suggestName(
-        if (HasD) "sDivDedicatedDivSqrt" else "sDivOnlyDivSqrt"
+    if (!shared) {
+      Some(Module(new FDIV(sExpWidth, sPrecision)).suggestName(
+        if (hasD) "sDivDedicatedDivSqrt" else "sDivOnlyDivSqrt"
       ))
     } else {
       None
     }
-  private val dDiv: Option[FDIV] = if (HasD) {
+  private val dDiv: Option[FDIV] = if (hasD) {
     Some(
-      Module(new FDIV(DExpWidth, DPrecision)).suggestName(
-        if (Shared) "dDivSharedDivSqrt" else "dDivDedicatedDivSqrt"
+      Module(new FDIV(dExpWidth, dPrecision)).suggestName(
+        if (shared) "dDivSharedDivSqrt" else "dDivDedicatedDivSqrt"
       )
     )
   } else {
@@ -38,22 +38,22 @@ trait ysyx_26030103_FudianFPUResponse {
 
   // 共享模式下 F->D / D->F 的精确提升与回舍。
   private val sDivAToD =
-    if (Shared)
-      Some(Module(new FPToFP(SExpWidth, SPrecision, DExpWidth, DPrecision)))
+    if (shared)
+      Some(Module(new FPToFP(sExpWidth, sPrecision, dExpWidth, dPrecision)))
     else None
   private val sDivBToD =
-    if (Shared)
-      Some(Module(new FPToFP(SExpWidth, SPrecision, DExpWidth, DPrecision)))
+    if (shared)
+      Some(Module(new FPToFP(sExpWidth, sPrecision, dExpWidth, dPrecision)))
     else None
   private val divDToS =
-    if (Shared)
-      Some(Module(new FPToFP(DExpWidth, DPrecision, SExpWidth, SPrecision)))
+    if (shared)
+      Some(Module(new FPToFP(dExpWidth, dPrecision, sExpWidth, sPrecision)))
     else None
-  if (Shared) {
+  if (shared) {
     sDivAToD.get.io.in := aS
-    sDivAToD.get.io.rm := ysyx_26030103_FpuRm.RNE
+    sDivAToD.get.io.rm := ysyx_26030103_FPURm.RNE
     sDivBToD.get.io.in := bS
-    sDivBToD.get.io.rm := ysyx_26030103_FpuRm.RNE
+    sDivBToD.get.io.rm := ysyx_26030103_FPURm.RNE
   }
 
   sDiv.foreach { div =>
@@ -63,8 +63,8 @@ trait ysyx_26030103_FudianFPUResponse {
     div.io.specialIO.isSqrt := isSqrtOp
   }
   dDiv.foreach { div =>
-    val divA = if (Shared) Mux(fmtD, aD, sDivAToD.get.io.result) else aD
-    val divB = if (Shared) Mux(fmtD, bD, sDivBToD.get.io.result) else bD
+    val divA = if (shared) Mux(fmtD, aD, sDivAToD.get.io.result) else aD
+    val divB = if (shared) Mux(fmtD, bD, sDivBToD.get.io.result) else bD
     div.io.a := divA
     div.io.b := divB
     div.io.rm := rm
@@ -72,48 +72,48 @@ trait ysyx_26030103_FudianFPUResponse {
   }
 
   private val busy = RegInit(false.B)
-  private val respValid = RegInit(false.B)
+  private val responseValid = RegInit(false.B)
   private val activeDivIsD = RegInit(false.B)
-  private val activeRm = RegInit(ysyx_26030103_FpuRm.RNE)
+  private val activeRm = RegInit(ysyx_26030103_FPURm.RNE)
   // 共享模式提升 F->D 会丢 sNaN，需锁存 signaling 信息，回舍时补 NV。
   private val activeFSNaN = RegInit(false.B)
   // FDIV 的 out_valid 先拉高、结果下一拍才稳定，故先等一拍再采样。
   private val divSeenValid = RegInit(false.B)
-  private val respResult = RegInit(0.U(FLEN.W))
-  private val respFlags = RegInit(0.U(ysyx_26030103_FpuFlags.Width.W))
+  private val responseResult = RegInit(0.U(FLEN.W))
+  private val responseFlags = RegInit(0.U(ysyx_26030103_FPUFlags.Width.W))
 
-  private val respPipe =
+  private val responsePipe =
     Module(new ysyx_26030103_FPUResponsePipeline(FLEN, Config.FPUProfile.Pipeline))
-  respPipe.io.flush := io.flush
-  respPipe.io.in.valid := respValid
-  respPipe.io.in.bits.result := respResult
-  respPipe.io.in.bits.fflags := respFlags
-  io.resp <> respPipe.io.out
+  responsePipe.io.flush := io.flush
+  responsePipe.io.in.valid := responseValid
+  responsePipe.io.in.bits.result := responseResult
+  responsePipe.io.in.bits.fflags := responseFlags
+  io.resp <> responsePipe.io.out
 
-  private val slowReady: Bool = if (Shared) {
+  private val slowReady: Bool = if (shared) {
     dDiv.get.io.specialIO.in_ready
-  } else if (HasD) {
+  } else if (hasD) {
     Mux(fmtD, dDiv.get.io.specialIO.in_ready, sDiv.get.io.specialIO.in_ready)
   } else {
     sDiv.get.io.specialIO.in_ready
   }
 
-  io.req.ready := !busy && !respValid && (!isSlowOp || slowReady)
-  private val reqFire = io.req.valid && io.req.ready
+  io.req.ready := !busy && !responseValid && (!isSlowOp || slowReady)
+  private val requestFire = io.req.valid && io.req.ready
 
-  if (Shared) {
-    dDiv.get.io.specialIO.in_valid := reqFire && isSlowOp && !io.flush
+  if (shared) {
+    dDiv.get.io.specialIO.in_valid := requestFire && isSlowOp && !io.flush
   } else {
-    sDiv.get.io.specialIO.in_valid := reqFire && isSlowOp && !fmtD && !io.flush
-    if (HasD) {
+    sDiv.get.io.specialIO.in_valid := requestFire && isSlowOp && !fmtD && !io.flush
+    if (hasD) {
       dDiv.get.io.specialIO.in_valid :=
-        reqFire && isSlowOp && fmtD && !io.flush
+        requestFire && isSlowOp && fmtD && !io.flush
     }
   }
 
-  private val divOutValid: Bool = if (Shared) {
+  private val divOutValid: Bool = if (shared) {
     dDiv.get.io.specialIO.out_valid
-  } else if (HasD) {
+  } else if (hasD) {
     Mux(activeDivIsD, dDiv.get.io.specialIO.out_valid,
       sDiv.get.io.specialIO.out_valid)
   } else {
@@ -121,43 +121,43 @@ trait ysyx_26030103_FudianFPUResponse {
   }
 
   // 共享模式 F 结果：D 引擎结果回舍到 S，并按 S 精度重算 UF/NX/OF。
-  private val sharedFFlags: UInt = if (Shared) {
+  private val sharedFFlags: UInt = if (shared) {
     val cvtFlags = divDToS.get.io.fflags
     val engineFlags = dDiv.get.io.fflags
     val sResult = divDToS.get.io.result
     val tiny = sResult(30, 23) === 0.U
-    val nx = cvtFlags(ysyx_26030103_FpuFlags.NX) ||
-      engineFlags(ysyx_26030103_FpuFlags.NX)
-    val of = cvtFlags(ysyx_26030103_FpuFlags.OF) ||
-      engineFlags(ysyx_26030103_FpuFlags.OF)
-    val uf = cvtFlags(ysyx_26030103_FpuFlags.UF) || (tiny && nx)
+    val nx = cvtFlags(ysyx_26030103_FPUFlags.NX) ||
+      engineFlags(ysyx_26030103_FPUFlags.NX)
+    val of = cvtFlags(ysyx_26030103_FPUFlags.OF) ||
+      engineFlags(ysyx_26030103_FPUFlags.OF)
+    val uf = cvtFlags(ysyx_26030103_FPUFlags.UF) || (tiny && nx)
     Cat(
-      engineFlags(ysyx_26030103_FpuFlags.NV) ||
-        cvtFlags(ysyx_26030103_FpuFlags.NV) || activeFSNaN,
-      engineFlags(ysyx_26030103_FpuFlags.DZ),
+      engineFlags(ysyx_26030103_FPUFlags.NV) ||
+        cvtFlags(ysyx_26030103_FPUFlags.NV) || activeFSNaN,
+      engineFlags(ysyx_26030103_FPUFlags.DZ),
       of,
       uf,
       nx
     )
   } else {
-    0.U(ysyx_26030103_FpuFlags.Width.W)
+    0.U(ysyx_26030103_FPUFlags.Width.W)
   }
-  private val divOutResult: UInt = if (Shared) {
+  private val divOutResult: UInt = if (shared) {
     Mux(activeDivIsD, dDiv.get.io.result, boxS(divDToS.get.io.result))
-  } else if (HasD) {
+  } else if (hasD) {
     Mux(activeDivIsD, dDiv.get.io.result, boxS(sDiv.get.io.result))
   } else {
     boxS(sDiv.get.io.result)
   }
-  private val divOutFlags: UInt = if (Shared) {
+  private val divOutFlags: UInt = if (shared) {
     Mux(activeDivIsD, dDiv.get.io.fflags, sharedFFlags)
-  } else if (HasD) {
+  } else if (hasD) {
     Mux(activeDivIsD, dDiv.get.io.fflags, sDiv.get.io.fflags)
   } else {
     sDiv.get.io.fflags
   }
 
-  if (Shared) {
+  if (shared) {
     divDToS.get.io.in := dDiv.get.io.result
     divDToS.get.io.rm := activeRm
     dDiv.get.io.specialIO.out_ready :=
@@ -167,14 +167,14 @@ trait ysyx_26030103_FudianFPUResponse {
     sDiv.get.io.specialIO.out_ready :=
       busy && !activeDivIsD && divSeenValid && divOutValid
     sDiv.get.io.specialIO.kill := io.flush && busy && !activeDivIsD
-    if (HasD) {
+    if (hasD) {
       dDiv.get.io.specialIO.out_ready :=
         busy && activeDivIsD && divSeenValid && divOutValid
       dDiv.get.io.specialIO.kill := io.flush && busy && activeDivIsD
     }
   }
 
-  when(reqFire) {
+  when(requestFire) {
     activeRm := rm
     activeFSNaN := !fmtD && Mux(
       isSqrtOp,
@@ -186,9 +186,9 @@ trait ysyx_26030103_FudianFPUResponse {
       divSeenValid := false.B
       activeDivIsD := fmtD
     }.otherwise {
-      respValid := true.B
-      respResult := fastResult
-      respFlags := fastFlags
+      responseValid := true.B
+      responseResult := fastResult
+      responseFlags := fastFlags
     }
   }
 
@@ -197,18 +197,18 @@ trait ysyx_26030103_FudianFPUResponse {
       divSeenValid := true.B
     }.otherwise {
       busy := false.B
-      respValid := true.B
-      respResult := asResp(divOutResult)
-      respFlags := divOutFlags
+      responseValid := true.B
+      responseResult := asResponse(divOutResult)
+      responseFlags := divOutFlags
     }
   }
 
-  when(respValid && respPipe.io.in.ready) {
-    respValid := false.B
+  when(responseValid && responsePipe.io.in.ready) {
+    responseValid := false.B
   }
   when(io.flush) {
     busy := false.B
     divSeenValid := false.B
-    respValid := false.B
+    responseValid := false.B
   }
 }

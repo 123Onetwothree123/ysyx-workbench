@@ -77,7 +77,7 @@ class ysyx_26030103_AXIWriteMuxIDAuditTest extends AnyFlatSpec with Matchers {
     dut.io.out.R.RLAST.poke(false.B)
   }
 
-  private def checkAwId(useA: Boolean, id: Int): Unit = {
+  private def checkAwID(useA: Boolean, id: Int): Unit = {
     simulate(new ysyx_26030103_AXIWriteMux()) { dut =>
       setup(dut)
       if (useA) {
@@ -111,10 +111,10 @@ class ysyx_26030103_AXIWriteMuxIDAuditTest extends AnyFlatSpec with Matchers {
   }
 
   "AXIWriteMux" should "透传 A 源的 AWID" in {
-    checkAwId(useA = true, id = 5)
+    checkAwID(useA = true, id = 5)
   }
 
   it should "透传 B 源的 AWID" in {
-    checkAwId(useA = false, id = 9)
+    checkAwID(useA = false, id = 9)
   }
 }

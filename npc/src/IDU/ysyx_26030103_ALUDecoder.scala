@@ -25,7 +25,7 @@ class ysyx_26030103_ALUDecoder(
     REMW,
     REMUW
   }
-  private val XLen64 = config.XLEN == 64
+  private val xlen64 = config.XLEN == 64
   val io = IO(new Bundle {
     val opcode = Input(UInt(7.W))
     val funct3 = Input(UInt(3.W))
@@ -47,11 +47,11 @@ class ysyx_26030103_ALUDecoder(
   private def key(opcode: UInt, f3f7: String): BitPat =
     BitPat(opcode) ## BitPat(f3f7)
 
-  private val SlliKey = if (XLen64) "b001_000000?" else "b001_0000000"
-  private val SrliKey = if (XLen64) "b101_000000?" else "b101_0000000"
-  private val SraiKey = if (XLen64) "b101_010000?" else "b101_0100000"
+  private val slliKey = if (xlen64) "b001_000000?" else "b001_0000000"
+  private val srliKey = if (xlen64) "b101_000000?" else "b101_0000000"
+  private val sraiKey = if (xlen64) "b101_010000?" else "b101_0100000"
 
-  private val BaseRows: Seq[(BitPat, BitPat)] = Seq(
+  private val baseRows: Seq[(BitPat, BitPat)] = Seq(
     key(OPCODE_Immediate_Lxxx, "b000_???????") -> encode(ADD), // LB
     key(OPCODE_Immediate_Lxxx, "b001_???????") -> encode(ADD), // LH
     key(OPCODE_Immediate_Lxxx, "b010_???????") -> encode(ADD), // LW
@@ -71,12 +71,12 @@ class ysyx_26030103_ALUDecoder(
     key(OPCODE_Branch, "b110_???????") -> encode(SUB), // BLTU
     key(OPCODE_Branch, "b111_???????") -> encode(SUB), // BGEU
     key(OPCODE_Immediate, "b000_???????") -> encode(ADD), // ADDI
-    key(OPCODE_Immediate, SlliKey) -> encode(SLL), // SLLI
+    key(OPCODE_Immediate, slliKey) -> encode(SLL), // SLLI
     key(OPCODE_Immediate, "b010_???????") -> encode(SLT), // SLTI
     key(OPCODE_Immediate, "b011_???????") -> encode(SLTU), // SLTIU
     key(OPCODE_Immediate, "b100_???????") -> encode(XOR), // XORI
-    key(OPCODE_Immediate, SrliKey) -> encode(SRL), // SRLI
-    key(OPCODE_Immediate, SraiKey) -> encode(SRA), // SRAI
+    key(OPCODE_Immediate, srliKey) -> encode(SRL), // SRLI
+    key(OPCODE_Immediate, sraiKey) -> encode(SRA), // SRAI
     key(OPCODE_Immediate, "b110_???????") -> encode(OR), // ORI
     key(OPCODE_Immediate, "b111_???????") -> encode(AND), // ANDI
     key(OPCODE_Register, "b000_0000000") -> encode(ADD), // ADD
@@ -93,7 +93,7 @@ class ysyx_26030103_ALUDecoder(
     key(OPCODE_MiscMem, "b???_???????") -> encode(NOP) // FENCE
   )
 
-  private val RV64Rows: Seq[(BitPat, BitPat)] = if (XLen64) {
+  private val rv64Rows: Seq[(BitPat, BitPat)] = if (xlen64) {
     Seq(
       key(OPCODE_Immediate_Lxxx, "b011_???????") -> encode(ADD), // LD
       key(OPCODE_Immediate_Lxxx, "b110_???????") -> encode(ADD), // LWU
@@ -110,7 +110,7 @@ class ysyx_26030103_ALUDecoder(
     )
   } else Nil
 
-  private val MDURows: Seq[(BitPat, BitPat)] = if (config.UseM) {
+  private val mduRows: Seq[(BitPat, BitPat)] = if (config.UseM) {
     Seq(
       key(OPCODE_Register, "b000_0000001") -> encode(NOP, isMDU = true, mduOp = MUL), // MUL
       key(OPCODE_Register, "b001_0000001") -> encode(NOP, isMDU = true, mduOp = MULH), // MULH
@@ -120,7 +120,7 @@ class ysyx_26030103_ALUDecoder(
       key(OPCODE_Register, "b101_0000001") -> encode(NOP, isMDU = true, mduOp = DIVU), // DIVU
       key(OPCODE_Register, "b110_0000001") -> encode(NOP, isMDU = true, mduOp = REM), // REM
       key(OPCODE_Register, "b111_0000001") -> encode(NOP, isMDU = true, mduOp = REMU) // REMU
-    ) ++ (if (XLen64) Seq(
+    ) ++ (if (xlen64) Seq(
       key(OPCODE_RegisterWord, "b000_0000001") -> encode(NOP, isMDU = true, mduOp = MULW), // MULW
       key(OPCODE_RegisterWord, "b100_0000001") -> encode(NOP, isMDU = true, mduOp = DIVW), // DIVW
       key(OPCODE_RegisterWord, "b101_0000001") -> encode(NOP, isMDU = true, mduOp = DIVUW), // DIVUW
@@ -129,15 +129,15 @@ class ysyx_26030103_ALUDecoder(
     ) else Nil)
   } else Nil
 
-  private val AtomicRows: Seq[(BitPat, BitPat)] = if (config.UseA) {
+  private val atomicRows: Seq[(BitPat, BitPat)] = if (config.UseA) {
     Seq(
       key(OPCODE_Amo, "b010_???????") -> encode(ADD) // AMO/LR/SC.W
-    ) ++ (if (XLen64) Seq(
+    ) ++ (if (xlen64) Seq(
       key(OPCODE_Amo, "b011_???????") -> encode(ADD) // AMO/LR/SC.D
     ) else Nil)
   } else Nil
 
-  private val FpRows: Seq[(BitPat, BitPat)] = if (config.UseF) {
+  private val fpRows: Seq[(BitPat, BitPat)] = if (config.UseF) {
     Seq(
       key(OPCODE_LoadFP, "b???_???????") -> encode(ADD), // FLW/FLD
       key(OPCODE_StoreFP, "b???_???????") -> encode(ADD), // FSW/FSD
@@ -150,7 +150,7 @@ class ysyx_26030103_ALUDecoder(
   } else Nil
 
   private val table: TruthTable = TruthTable(
-    BaseRows ++ RV64Rows ++ MDURows ++ AtomicRows ++ FpRows,
+    baseRows ++ rv64Rows ++ mduRows ++ atomicRows ++ fpRows,
     encode(NOP, illegal = true)
   )
   private val decodeInput = Cat(io.opcode, io.funct3, io.funct7)

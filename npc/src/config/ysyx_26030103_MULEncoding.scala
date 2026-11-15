@@ -11,7 +11,7 @@ object ysyx_26030103_MULEncoding {
   case object Booth extends ysyx_26030103_MULEncoding {
     val Name = "booth"
   }
-  def FromString(s: String): ysyx_26030103_MULEncoding = s match {
+  def FromString(value: String): ysyx_26030103_MULEncoding = value match {
     case "plain" => Plain
     case "booth" => Booth
     case other => throw new IllegalArgumentException(s"这个乘法编码没有实现: $other")

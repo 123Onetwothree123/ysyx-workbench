@@ -9,9 +9,9 @@ class ysyx_26030103_mcause(val XLEN: Int = 32) extends Module {
     val wdata = Input(UInt(XLEN.W))
     val rdata = Output(UInt(XLEN.W))
   })
-  val RegMcause = withClockAndReset(io.clk, io.rst) { RegInit(0.U(XLEN.W)) }
+  val regMcause = withClockAndReset(io.clk, io.rst) { RegInit(0.U(XLEN.W)) }
   when(io.wen) {
-    RegMcause := io.wdata
+    regMcause := io.wdata
   }
-  io.rdata := RegMcause
+  io.rdata := regMcause
 }
