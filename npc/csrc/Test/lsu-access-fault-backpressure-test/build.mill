@@ -29,6 +29,7 @@ object `package` extends ScalaModule {
     workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheInterface.scala",
     workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheBase.scala",
     workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCachePolicy.scala",
+    workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheCore.scala",
     workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheReg.scala",
     workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheSRAM.scala",
     workspaceRoot / "../../../src/Cache/DCache/ysyx_26030103_DCacheFactory.scala",

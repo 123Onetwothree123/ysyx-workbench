@@ -52,6 +52,7 @@ object `package` extends ScalaModule {
     workspaceRoot / "../../../src/IFU/ysyx_26030103_IFU.scala",
     workspaceRoot / "../../../src/Cache/ICache/ysyx_26030103_ICacheInterface.scala",
     workspaceRoot / "../../../src/Cache/ICache/ysyx_26030103_ICacheBase.scala",
+    workspaceRoot / "../../../src/Cache/ICache/ysyx_26030103_ICacheCore.scala",
     workspaceRoot / "../../../src/Cache/ICache/ysyx_26030103_ICacheReg.scala",
     workspaceRoot / "../../../src/Cache/ysyx_26030103_ViptAliasScan.scala",
     workspaceRoot / "../../../src/Cache/ysyx_26030103_ViptAliasDirectory.scala",
