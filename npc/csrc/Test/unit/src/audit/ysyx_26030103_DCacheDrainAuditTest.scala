@@ -32,6 +32,7 @@ class ysyx_26030103_DCacheDrainAuditTest
       IndexBits = 4,
       AddressWidth = 32,
       DataWidth = 32,
+      BusDataWidth = 32,
       PMARegions = Seq(region)
     )) { dut =>
       dut.reset.poke(true.B)

@@ -141,6 +141,7 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
         BlockSizeLog2 = BlockLog2,
         IndexBits = IndexBits,
         AddressWidth = AddressW,
+        DataWidth = 32,
         PMARegions = Regions
       )
     )
@@ -153,6 +154,7 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
         BlockSizeLog2 = BlockLog2,
         IndexBits = IndexBits,
         AddressWidth = AddressW,
+        DataWidth = 32,
         PMARegions = Regions
       )
     ) { dut =>
@@ -296,6 +298,7 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
         IndexBits = IndexBits,
         AddressWidth = AddressW,
         DataWidth = 64,
+        BusDataWidth = 32,
         PMARegions = Regions
       ),
       "Reg"
@@ -310,6 +313,7 @@ class ysyx_26030103_RV64CacheAddressTest extends AnyFlatSpec with Matchers {
         IndexBits = IndexBits,
         AddressWidth = AddressW,
         DataWidth = 64,
+        BusDataWidth = 32,
         PMARegions = Regions
       ),
       "SRAM"

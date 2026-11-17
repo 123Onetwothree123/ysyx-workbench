@@ -11,9 +11,8 @@ class ysyx_26030103_DCacheSRAM(
     protected val IndexBits: Int = ysyx_26030103_KconfigDefaults.NpcDCacheIndexBits,
     protected val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     protected val DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
-    // 直接例化默认 32 位 AXI 数据通路（与叶测试/回归的 32 位 beat 约定一致）；
-    // SoC/Factory 会显式传入配置的 BusDataWidth。
-    protected val BusDataWidth: Int = 32,
+    // SoC/Factory 会显式传入配置的 BusDataWidth；直接例化的测试请自行指定。
+    protected val BusDataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
     protected val VIPT: Boolean = false,
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装和写直达 store 完成时按物理 tag 失效其他 set 的副本。

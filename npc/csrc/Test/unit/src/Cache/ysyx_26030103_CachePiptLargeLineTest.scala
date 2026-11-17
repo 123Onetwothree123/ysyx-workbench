@@ -317,6 +317,7 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddressW,
+      DataWidth = 32,
       VIPT = false
     )
 
@@ -326,6 +327,7 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddressW,
+      DataWidth = 32,
       VIPT = false
     )
 
@@ -335,6 +337,7 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddressW,
+      BusDataWidth = 32,
       VIPT = false
     )
 
@@ -344,6 +347,7 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddressW,
+      BusDataWidth = 32,
       VIPT = false
     )
 

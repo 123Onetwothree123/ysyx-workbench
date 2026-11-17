@@ -260,6 +260,7 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddressW,
+      BusDataWidth = 32,
       VIPT = true
     )
 
@@ -269,6 +270,7 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddressW,
+      BusDataWidth = 32,
       VIPT = true
     )
 
@@ -278,6 +280,7 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddressW,
+      BusDataWidth = 32,
       VIPT = true,
       Bypass = false
     )

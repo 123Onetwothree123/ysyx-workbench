@@ -137,6 +137,7 @@ class ysyx_26030103_DMACoherenceCacheTest
       BlockSizeLog2 = BlockLog2,
       IndexBits = IndexBits,
       AddressWidth = AddressW,
+      BusDataWidth = 32,
       CacheableBase = 0L,
       CacheableMask = 0L,
       PMARegions = config.CachePMARegions

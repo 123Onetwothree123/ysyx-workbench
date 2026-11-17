@@ -7,9 +7,8 @@ class ysyx_26030103_ICacheReg(
     private[cache] val BlockSizeLog2: Int = ysyx_26030103_KconfigDefaults.NpcICacheBlockSizeLog2,
     private[cache] val IndexBits: Int = ysyx_26030103_KconfigDefaults.NpcICacheIndexBits,
     private[cache] val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
-    // 直接例化默认 32 位 AXI 数据通路（与叶测试/回归的 32 位 beat 约定一致）；
-    // Factory/LSU 会显式传入配置的 BusDataWidth。
-    private[cache] val DataWidth: Int = 32,
+    // Factory/LSU 会显式传入配置的 BusDataWidth；直接例化的测试请自行指定。
+    private[cache] val DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
     private[cache] val VIPT: Boolean = false,
     // index 含 VPN 位时，同一物理行可被不同 VA 映射到不同 set；refill
     // 安装前按物理 tag 失效其他 set 的副本，维持每个物理行至多一份。

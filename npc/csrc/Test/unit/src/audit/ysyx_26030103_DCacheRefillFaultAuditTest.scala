@@ -37,6 +37,7 @@ class ysyx_26030103_DCacheRefillFaultAuditTest
         IndexBits = 4,
         AddressWidth = 32,
         DataWidth = 64,
+        BusDataWidth = 32,
         PMARegions = Seq(region)
       )
     } else {
@@ -46,6 +47,7 @@ class ysyx_26030103_DCacheRefillFaultAuditTest
         IndexBits = 4,
         AddressWidth = 32,
         DataWidth = 64,
+        BusDataWidth = 32,
         PMARegions = Seq(region)
       )
     }
