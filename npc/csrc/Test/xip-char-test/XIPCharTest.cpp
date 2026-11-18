@@ -1,5 +1,6 @@
 #include "XIPCharTest.hpp"
 #include <cstdint>
+#include <am.h>
 #include <klib-macros.h>
 #include <klib.h>
 int main(const char *args)

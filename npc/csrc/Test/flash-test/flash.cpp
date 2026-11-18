@@ -1,3 +1,5 @@
+#include <am.h>
+#include <cstdint>
 #include <klib-macros.h>
 #include <klib.h>
 #include "flash.hpp"

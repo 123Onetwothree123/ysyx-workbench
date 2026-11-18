@@ -1,4 +1,5 @@
 #include "flash_char_test.hpp"
+#include <am.h>
 #include <klib-macros.h>
 #include <klib.h>
 
