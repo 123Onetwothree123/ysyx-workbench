@@ -14,7 +14,7 @@ import org.scalatest.matchers.should.Matchers
   *   1. 第二拍缺少 RLAST 时，demand 必须在进入 SDrain 前得到唯一的
   *      fault 响应；迟到的 RLAST 只负责吸拍，不能留下零响应或第二个响应；
   *   2. SDrain 超时时若已经存在可见响应（尤其是成功数据），下游反压期间
-  *      data/fault/FaultResp 必须保持不变，超时只能填充空响应槽。
+  *      data/fault/FaultResponse 必须保持不变，超时只能填充空响应槽。
   *
   * Reg 与 SRAM 两种实现共享同一套接口和激励。
   */

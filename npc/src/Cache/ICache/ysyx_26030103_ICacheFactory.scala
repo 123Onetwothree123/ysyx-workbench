@@ -12,7 +12,7 @@ import _root_.ysyx_26030103.config._
   *   - SRAM 版：同步读，是可用于综合/生产配置的实现。
   * 两者在读通路与响应级存在固有的时序差异（SRAM 多一拍），时序代码不合并；
   * 行为对齐由审计套件的参数化用例与 icache_sram_test（生产几何）保证——
-  * 修改 core 或任一存储适配后必须跑 csrc/Test/issue-audit-test 全套。
+  * 修改 core 或任一存储适配后必须跑 csrc/Test/rtl/issue-audit-test 全套。
   */
 object ysyx_26030103_ICacheFactory {
   def Create(

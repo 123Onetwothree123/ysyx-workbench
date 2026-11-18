@@ -4,8 +4,8 @@
 # .config / include/config/auto.conf 读取 CONFIG_XLEN，而不是自己定义
 # 独立的 ISA/ELF class 开关。
 #
-# 用法（测试目录位于 npc/csrc/Test/<name>/）：
-#   include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../xlen.mk)
+# 用法（测试目录位于 npc/csrc/Test/<category>/<name>/）：
+#   include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../xlen.mk)
 #
 # 约定：
 #   NPC_XLEN          32 或 64，来自 Kconfig

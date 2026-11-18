@@ -1,5 +1,5 @@
 # RV32C 裸机回归：RV32IMAC，无 MMU，ICache/DCache 打开。
-# 用于 csrc/Test/rvc-test 的 RV32 16/32 位混合取指与 RVC 译码验证。
+# 用于 csrc/Test/pipeline/rvc-test 的 RV32 16/32 位混合取指与 RVC 译码验证。
 CONFIG_XLEN=32
 CONFIG_RISCV_M=y
 CONFIG_RISCV_C=y

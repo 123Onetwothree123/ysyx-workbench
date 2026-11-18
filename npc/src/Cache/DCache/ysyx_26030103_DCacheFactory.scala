@@ -10,7 +10,7 @@ import _root_.ysyx_26030103.config._
   *
   * 存储介质由 Storage 选择：寄存器阵列(Reg)或同步读SRAM(SRAM/SRAMNoBypass)。
   * 公共 core + 两个存储适配：Reg 组合读，SRAM 同步读（响应多一拍）。
-  * 修改任一实现后必须跑 csrc/Test/issue-audit-test 全套。
+  * 修改任一实现后必须跑 csrc/Test/rtl/issue-audit-test 全套。
   */
 object ysyx_26030103_DCacheFactory {
   def Create(

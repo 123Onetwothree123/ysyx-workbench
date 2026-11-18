@@ -1,5 +1,5 @@
 # RV64D + Berkeley HardFloat 短回归：RV64IMACFD，无 MMU。
-# 用于 csrc/Test/fpu-test 的 D/F 指令、fcsr/fflags、mstatus.FS 与 trap 上下文。
+# 用于 csrc/Test/fpu/fpu-test 的 D/F 指令、fcsr/fflags、mstatus.FS 与 trap 上下文。
 CONFIG_XLEN=64
 CONFIG_RISCV_M=y
 CONFIG_RISCV_C=y

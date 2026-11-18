@@ -115,7 +115,7 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
   }
 
   /** 模拟 LSU 在 store 收到成功 BRESP 后发出的写回镜像事件。
-    * StoreVAddr 负责选 index，StoreAddr 是翻译后的 PA，只参与 tag/PMA。
+    * StoreVAddress 负责选 index，StoreAddress 是翻译后的 PA，只参与 tag/PMA。
     */
   private def issueStore(
     io:    ysyx_26030103_DCacheInterface,
@@ -232,7 +232,7 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
     bool(io.AXI.AR.ARVALID) should be(false)
     expectResponse(io, clock, 0x12345678L, "store mirror by VA index")
 
-    // 旧/错误 PA 标签不能更新当前 VA 对应的缓存行：StoreVAddr 仍选组 1，
+    // 旧/错误 PA 标签不能更新当前 VA 对应的缓存行：StoreVAddress 仍选组 1，
     // 但 PA_A 的 tag 与组内 PA_B 行不匹配，应保持旧数据。
     issueStore(io, clock, VaB, PaA, 0xdeadbeefL)
     issueLoad(io, clock, VaB, PaB, paddrValid = true, paddrVirtualAddress = VaB)

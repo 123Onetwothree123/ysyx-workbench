@@ -1,3 +1,0 @@
-`ifndef layers_ICachePmaBoundaryHarness_Verification
-  `define layers_ICachePmaBoundaryHarness_Verification
-`endif

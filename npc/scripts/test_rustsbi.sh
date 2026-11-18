@@ -41,7 +41,7 @@ fi
 
 info "构建最小 S-mode payload（ADDR=$SBI_NEXT_ADDR）"
 rm -f "$PAYLOAD_OUT/payload.elf" "$PAYLOAD_OUT/payload.bin"
-make -C "$NPC_HOME/csrc/Test/sbi/opensbi_payload" \
+make -C "$NPC_HOME/csrc/Test/guest/sbi/opensbi_payload" \
 	OUT="$PAYLOAD_OUT" \
 	ADDR="$SBI_NEXT_ADDR" \
 	ISA="$SBI_ISA" \

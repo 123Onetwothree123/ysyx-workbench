@@ -18,6 +18,7 @@ set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 NPC_HOME=$(cd "$HERE/../.." && pwd)
+TESTS_DIR=bench
 OUT=${1:-$(mktemp -d /tmp/opencode/cache-tests-XXXXXX)}
 TESTS=(
   cache-scan-test
@@ -34,7 +35,7 @@ SIM="$NPC_HOME/build/ysyx_26030103_npc"
 
 echo "[1/3] 并行构建测试镜像 ..."
 for t in "${TESTS[@]}"; do
-  ( cd "$HERE/$t" && make ARCH=riscv32e-npc insert-arg ) >"$OUT/$t.build.log" 2>&1 &
+  ( cd "$HERE/$TESTS_DIR/$t" && make ARCH=riscv32e-npc insert-arg ) >"$OUT/$t.build.log" 2>&1 &
 done
 wait
 
@@ -46,7 +47,7 @@ echo "[3/3] 并行运行 ..."
 : >"$OUT/summary.txt"
 for t in "${TESTS[@]}"; do
   (
-    cd "$HERE/$t"
+    cd "$HERE/$TESTS_DIR/$t"
     "$SIM" "build/$t-riscv32e-npc.bin" --elf "build/$t-riscv32e-npc.elf" \
       >"$OUT/$t.log" 2>&1
     echo "$t exit=$?" >>"$OUT/summary.txt"

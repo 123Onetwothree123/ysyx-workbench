@@ -3,7 +3,7 @@
 # 为 NEMU 构建 OpenSBI FW_PAYLOAD + NEMU 专用 DTB + S 模式测试 payload。
 #
 # 该脚本不下载/编译/运行 Linux。默认 payload 是仓库内现有的
-# npc/csrc/Test/sbi/opensbi_payload，用来验证：
+# npc/csrc/Test/guest/sbi/opensbi_payload，用来验证：
 #   OpenSBI 初始化 -> mret 到 S 模式 -> DTB 传递 -> FDT PASS。
 #
 # 真实 Linux Image 的打包请使用 nemu/scripts/pack_linux_image.sh，
@@ -135,7 +135,7 @@ if [[ "$NEMU_FW_MODE" == "payload" ]]; then
 		PAYLOAD_BIN="$NEMU_PAYLOAD_PATH"
 		info "使用外部 payload：$PAYLOAD_BIN（不启用 FDT 断言）"
 	else
-		PAYLOAD_SRC="$WORKBENCH_HOME/npc/csrc/Test/sbi/opensbi_payload"
+		PAYLOAD_SRC="$WORKBENCH_HOME/npc/csrc/Test/guest/sbi/opensbi_payload"
 		[[ -d "$PAYLOAD_SRC" ]] || die "找不到测试 payload 源码：$PAYLOAD_SRC"
 		# FDT_EXPECTED 是命令行宏，make 不会因宏变化重建；显式清旧产物。
 		rm -f "$NEMU_PAYLOAD_OUT/payload.elf" "$NEMU_PAYLOAD_OUT/payload.bin"
