@@ -46,6 +46,7 @@ object `package` extends ScalaModule {
     workspaceRoot / "../../../../src/config/ysyx_26030103_MULImpl.scala",
     workspaceRoot / "../../../../src/config/ysyx_26030103_NPCConfig.scala",
     workspaceRoot / "../../../../src/config/ysyx_26030103_PerfDicArchCounterCatalog.scala",
+    workspaceRoot / "../../../../src/generated/ysyx_26030103_ConfigDefaults.scala",
     workspaceRoot / "../../../../src/IFU/ysyx_26030103_BTB.scala",
     workspaceRoot / "../../../../src/IFU/ysyx_26030103_PC.scala",
     workspaceRoot / "../../../../src/IFU/ysyx_26030103_NextPC.scala",

@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 
 TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+COMMON_DIR := $(TEST_DIR)/../../common
 BUILD_DIR := $(TEST_DIR)/build
 RTL_DIR := $(BUILD_DIR)/rtl
 OBJ_DIR := $(BUILD_DIR)/obj
@@ -37,12 +38,12 @@ $(STAMP): $(SCALA_SOURCES) Makefile \
 		$(RTL_DIR)/
 	touch $(STAMP)
 
-$(BIN): main.cpp test_common.hpp $(STAMP)
+$(BIN): main.cpp $(COMMON_DIR)/test_common.hpp $(STAMP)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 		-I$(RTL_DIR) \
 		--top-module DCachePmaLineBoundaryHarness \
 		--Mdir $(OBJ_DIR) \
-		-CFLAGS '-std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR)' \
+		-CFLAGS '-std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR) -I$(COMMON_DIR)' \
 		-o $(abspath $@) \
 		$(RTL_DIR)/DCachePmaLineBoundaryHarness.sv main.cpp
 

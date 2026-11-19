@@ -11,7 +11,8 @@ class ysyx_26030103_MMUStreamTest extends AnyFlatSpec with Matchers {
   private def long(v: UInt): Long = v.peek().litValue.toLong
 
   "IFUMMU" should "重定向后不再把旧物理地址送给 ICache" in {
-    simulate(new ysyx_26030103_IFUMMU) { dut =>
+    // 本测试的 satp/虚拟地址均按 Sv32（32 位）编写。
+    simulate(new ysyx_26030103_IFUMMU(XLEN = 32, AddressWidth = 32)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)

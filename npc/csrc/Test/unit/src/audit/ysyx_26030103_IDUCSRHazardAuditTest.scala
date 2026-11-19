@@ -48,6 +48,8 @@ class ysyx_26030103_IDUCSRHazardHarness(config: ysyx_26030103_NPCConfig)
   val idu = Module(new ysyx_26030103_IDU(config))
   val exu = Module(new ysyx_26030103_EXU(config))
   val flush = exu.io.FlushIF
+  // 顶层由 ObservabilityConnect 驱动；单模块 harness 用 0 表示无 PMU 事件。
+  exu.io.PMUEvents := 0.U
 
   // 与顶层一致：IFU->IDU 被任何重定向/异常冲刷；IDU->EXU 只保留
   // 当前 EXU 项（flushCurrent=false，和顶层的 lsu.FlushIDEX 缺省一致）。

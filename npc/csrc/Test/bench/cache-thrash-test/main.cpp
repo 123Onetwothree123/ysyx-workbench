@@ -4,18 +4,12 @@
 #include <klib.h>
 #include <stdint.h>
 
+#include "cache_bench.hpp"
+
 #define ARENA_WORDS (8 * 1024)      // 32KB
 #define SET_STRIDE_WORDS (512 / 4)  // 组间距=512B=32组×16B
 
 static volatile uint32_t arena[ARENA_WORDS];
-static volatile uint32_t sink;
-
-static inline uint32_t rdcycle(void)
-{
-  uint32_t value;
-  asm volatile("csrr %0, mcycle" : "=r"(value));
-  return value;
-}
 
 // 每轮写两个地址，读回后累加；同块命中/同组冲突的差异直接反映在周期上。
 static uint32_t pingpong(uint32_t first, uint32_t second, uint32_t rounds)

@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 
 TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+COMMON_DIR := $(TEST_DIR)/../../common
 NPC_DIR := $(abspath $(TEST_DIR)/../../../..)
 BUILD_DIR := $(TEST_DIR)/build
 RTL_DIR := $(BUILD_DIR)/rtl
@@ -9,7 +10,7 @@ BIN_DIR := $(BUILD_DIR)/bin
 
 VERILATOR ?= verilator
 MILL ?= mill
-CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR)
+CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR) -I$(COMMON_DIR)
 VERILATOR_FLAGS := --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS -I$(RTL_DIR)
 
 SCALA_SOURCES := $(shell find $(NPC_DIR)/src -type f -name '*.scala' | sort)
@@ -147,7 +148,7 @@ $(HARNESS_STAMP): $(LOCAL_SCALA_SOURCES) build.mill \
 	@cp $(TEST_DIR)/layers-IFUFetchFaultHarness-Verification.sv $(HARNESS_RTL_DIR)/
 	@touch $@
 
-$(XBAR_BIN): xbar_local_decerr_interleave_test.cpp test_common.hpp $(GEN_STAMP)
+$(XBAR_BIN): xbar_local_decerr_interleave_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_AXI5Xbar \
@@ -156,7 +157,7 @@ $(XBAR_BIN): xbar_local_decerr_interleave_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv $<
 
-$(EXU_BIN): exu_mdu_ordering_test.cpp test_common.hpp $(GEN_STAMP)
+$(EXU_BIN): exu_mdu_ordering_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_EXU \
@@ -165,7 +166,7 @@ $(EXU_BIN): exu_mdu_ordering_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv $<
 
-$(IDU_MDU_BIN): idu_mdu_enabled_test.cpp test_common.hpp $(GEN_STAMP)
+$(IDU_MDU_BIN): idu_mdu_enabled_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_IDU \
@@ -174,7 +175,7 @@ $(IDU_MDU_BIN): idu_mdu_enabled_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv $<
 
-$(MUL_CORE_BIN): mul_core_pipeline_test.cpp test_common.hpp $(GEN_STAMP)
+$(MUL_CORE_BIN): mul_core_pipeline_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_MULWallaceCore \
@@ -183,7 +184,7 @@ $(MUL_CORE_BIN): mul_core_pipeline_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv $<
 
-$(LSU_BIN): lsu_bad_bid_test.cpp test_common.hpp $(GEN_STAMP)
+$(LSU_BIN): lsu_bad_bid_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_LSU \
@@ -192,7 +193,7 @@ $(LSU_BIN): lsu_bad_bid_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv $<
 
-$(STAGE_CONNECT_BIN): stage_connect_flush_test.cpp test_common.hpp $(HARNESS_STAMP)
+$(STAGE_CONNECT_BIN): stage_connect_flush_test.cpp $(COMMON_DIR)/test_common.hpp $(HARNESS_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(HARNESS_RTL_DIR) \
@@ -202,7 +203,7 @@ $(STAGE_CONNECT_BIN): stage_connect_flush_test.cpp test_common.hpp $(HARNESS_STA
 	  -o $(abspath $@) \
 	  $(HARNESS_RTL_DIR)/StageConnectHarness.sv $<
 
-$(ZERO_PREDICTOR_BIN): zero_predictor_geometry_test.cpp test_common.hpp $(HARNESS_STAMP)
+$(ZERO_PREDICTOR_BIN): zero_predictor_geometry_test.cpp $(COMMON_DIR)/test_common.hpp $(HARNESS_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(HARNESS_RTL_DIR) \
@@ -212,7 +213,7 @@ $(ZERO_PREDICTOR_BIN): zero_predictor_geometry_test.cpp test_common.hpp $(HARNES
 	  -o $(abspath $@) \
 	  $(HARNESS_RTL_DIR)/ZeroPredictorGeometryHarness.sv $<
 
-$(IFU_MMU_BIN): ifu_mmu_stale_resp_test.cpp test_common.hpp $(HARNESS_STAMP)
+$(IFU_MMU_BIN): ifu_mmu_stale_resp_test.cpp $(COMMON_DIR)/test_common.hpp $(HARNESS_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(HARNESS_RTL_DIR) \
@@ -222,7 +223,7 @@ $(IFU_MMU_BIN): ifu_mmu_stale_resp_test.cpp test_common.hpp $(HARNESS_STAMP)
 	  -o $(abspath $@) \
 	  $(HARNESS_RTL_DIR)/IFUMMUHarness.sv $<
 
-$(ICACHE_REDIR_BIN): icache_redirect_test.cpp test_common.hpp $(GEN_STAMP)
+$(ICACHE_REDIR_BIN): icache_redirect_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_ICacheReg \
@@ -231,7 +232,7 @@ $(ICACHE_REDIR_BIN): icache_redirect_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv $<
 
-$(VIPT_PMP_BIN): vipt_fetch_pmp_test.cpp test_common.hpp $(HARNESS_STAMP)
+$(VIPT_PMP_BIN): vipt_fetch_pmp_test.cpp $(COMMON_DIR)/test_common.hpp $(HARNESS_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(HARNESS_RTL_DIR) \
@@ -241,7 +242,7 @@ $(VIPT_PMP_BIN): vipt_fetch_pmp_test.cpp test_common.hpp $(HARNESS_STAMP)
 	  -o $(abspath $@) \
 	  $(HARNESS_RTL_DIR)/ViptFetchPmpHarness.sv $<
 
-$(IFU_FAULT_BIN): ifu_fetch_fault_tval_test.cpp test_common.hpp $(HARNESS_STAMP)
+$(IFU_FAULT_BIN): ifu_fetch_fault_tval_test.cpp $(COMMON_DIR)/test_common.hpp $(HARNESS_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(HARNESS_RTL_DIR) \

@@ -55,7 +55,7 @@ class ysyx_26030103_LSU64Test extends AnyFlatSpec with Matchers {
   }
 
   "RV64 LSU" should "用两拍 AXI 读完成 LD 并组合为 64 位结果" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 64)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 64, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       pokeMem(dut, 0x80004000L, write = false, 0x80000000L)
@@ -98,7 +98,7 @@ class ysyx_26030103_LSU64Test extends AnyFlatSpec with Matchers {
   }
 
   it should "用两拍 AXI 写完成 SD 并保持低字/高字顺序" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 64)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 64, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       pokeMem(dut, 0x80005000L, write = true, 0x80000010L)

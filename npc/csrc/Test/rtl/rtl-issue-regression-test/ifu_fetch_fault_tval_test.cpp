@@ -12,11 +12,11 @@ using DUT = VIFUFetchFaultHarness;
 
 static void defaults(DUT &dut) {
   dut.io_FetchReady = 0;
-  dut.io_RespData = 0;
-  dut.io_RespValid = 0;
-  dut.io_RespExceptionValid = 0;
-  dut.io_RespExceptionCause = 0;
-  dut.io_RespAccessFaultResponse = 0;
+  dut.io_ResponseData = 0;
+  dut.io_ResponseValid = 0;
+  dut.io_ResponseExceptionValid = 0;
+  dut.io_ResponseExceptionCause = 0;
+  dut.io_ResponseAccessFaultResponse = 0;
   dut.io_RedirectTarget = 0;
   dut.io_Redirect = 0;
   dut.io_ExceptionTaken = 0;
@@ -37,7 +37,7 @@ static void cross_word_second_half_fault_keeps_pc_and_fault_va() {
 
   dut.eval();
   check(dut.io_FetchValid, "IFU did not start fetching");
-  check(dut.io_FetchAddr == first_word,
+  check(dut.io_FetchAddress == first_word,
         "IFU did not fetch the word containing the instruction start");
   check(dut.io_FetchPC == instruction_pc, "IFU lost the instruction PC");
 
@@ -45,19 +45,19 @@ static void cross_word_second_half_fault_keeps_pc_and_fault_va() {
   dut.io_FetchReady = 1;
   tick(dut);
   dut.io_FetchReady = 0;
-  dut.io_RespData = 0x0013U << 16;
-  dut.io_RespValid = 1;
+  dut.io_ResponseData = 0x0013U << 16;
+  dut.io_ResponseValid = 1;
   dut.io_OutReady = 1;
   dut.eval();
-  check(dut.io_RespReady, "IFU did not consume the first half-word");
+  check(dut.io_ResponseReady, "IFU did not consume the first half-word");
   check(!dut.io_OutValid, "IFU emitted an incomplete 32-bit instruction");
   tick(dut);
-  dut.io_RespValid = 0;
+  dut.io_ResponseValid = 0;
   dut.eval();
 
   // 第二个字位于下一页/下一个 cache line。
   check(dut.io_FetchValid, "IFU did not fetch the second word");
-  check(dut.io_FetchAddr == second_word,
+  check(dut.io_FetchAddress == second_word,
         "IFU fetched the wrong second word address");
   check(dut.io_FetchPC == instruction_pc,
         "IFU advanced the architectural PC before the instruction completed");
@@ -65,10 +65,10 @@ static void cross_word_second_half_fault_keeps_pc_and_fault_va() {
   dut.io_FetchReady = 1;
   tick(dut);
   dut.io_FetchReady = 0;
-  dut.io_RespValid = 1;
-  dut.io_RespExceptionValid = 1;
-  dut.io_RespExceptionCause = 1;
-  dut.io_RespData = 0;
+  dut.io_ResponseValid = 1;
+  dut.io_ResponseExceptionValid = 1;
+  dut.io_ResponseExceptionCause = 1;
+  dut.io_ResponseData = 0;
   dut.io_OutReady = 1;
   dut.eval();
 
@@ -83,10 +83,10 @@ static void cross_word_second_half_fault_keeps_pc_and_fault_va() {
         "fetch fault reused pred_taken for the fault VAddr carrier");
   check(dut.io_OutInstruction == 0x00000013U,
         "fetch fault instruction was not replaced by a NOP");
-  check(dut.io_RespReady, "IFU did not accept the fault response");
+  check(dut.io_ResponseReady, "IFU did not accept the fault response");
   tick(dut);
-  dut.io_RespValid = 0;
-  dut.io_RespExceptionValid = 0;
+  dut.io_ResponseValid = 0;
+  dut.io_ResponseExceptionValid = 0;
   dut.io_OutReady = 0;
   dut.final();
 }

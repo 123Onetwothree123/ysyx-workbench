@@ -3,6 +3,7 @@ package ysyx_26030103.mmu
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
+import _root_.ysyx_26030103.config.ysyx_26030103_PTEConfig
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -12,6 +13,13 @@ import org.scalatest.matchers.should.Matchers
   * 用于确认流水化实现不会把请求阻塞成单笔串行 walk。
   */
 class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
+  // 本套件按 Sv32（2 级、4B PTE、32 位 VA/PA）编写；64 位 Kconfig 默认下
+  // 必须显式构造 RV32 profile/PTE。
+  private def rv32Profile: ysyx_26030103_MMUProfile =
+    ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32)
+  private val rv32PTE: ysyx_26030103_PTEConfig =
+    ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31)
+
   private val PageShift = 12
   private val RootPPN = 0x80001L
   private val Root = RootPPN << PageShift
@@ -94,7 +102,10 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_PTWPipeline(
       outstanding = 2,
       adMode = "fault",
-      inOrder = true
+      inOrder = true,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -170,7 +181,10 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
       outstanding = 4,
       busOutstanding = 4,
       adMode = "fault",
-      inOrder = false
+      inOrder = false,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -248,7 +262,10 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
       outstanding = 4,
       busOutstanding = 4,
       adMode = "fault",
-      inOrder = true
+      inOrder = true,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -320,7 +337,8 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
       levels = 4,
       tableEntries = 32,
       pteSizeBytes = 8,
-      inOrder = false
+      inOrder = false,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -394,7 +412,10 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_PTWCluster(
       outstanding = 4,
       busOutstanding = 4,
-      inOrder = false
+      inOrder = false,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -462,7 +483,10 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
       outstanding = 2,
       cacheEnable = true,
       cacheEntries = 16,
-      cacheWays = 2
+      cacheWays = 2,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -518,7 +542,10 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
       cacheEnable = true,
       cacheEntries = 16,
       cacheWays = 2,
-      inOrder = false
+      inOrder = false,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -593,7 +620,10 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
 
     simulate(new ysyx_26030103_PTWPipeline(
       outstanding = 2,
-      adMode = "hardware"
+      adMode = "hardware",
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -648,7 +678,8 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
       outstanding = 2,
       levels = 4,
       tableEntries = 32,
-      pteSizeBytes = 8
+      pteSizeBytes = 8,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -696,7 +727,10 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
 
     simulate(new ysyx_26030103_PTWPipeline(
       outstanding = 2,
-      superpage = true
+      superpage = true,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -745,7 +779,7 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
     bus.write(0x80002004L, pte(LeafPPN, 0xdfL))
     bus.write(0x80002014L, pte(0x80004L, 0xdfL))
 
-    simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
       tlbEnabled = false,
       ptwArch = "pipelined",
@@ -813,7 +847,8 @@ class ysyx_26030103_PTWPipelineTest extends AnyFlatSpec with Matchers {
       pteSizeBytes = 8,
       cacheEnable = true,
       cacheEntries = 8,
-      cacheWays = 8
+      cacheWays = 8,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)

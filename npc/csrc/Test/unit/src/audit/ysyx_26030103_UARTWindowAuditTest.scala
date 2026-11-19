@@ -1,4 +1,6 @@
-package ysyx_26030103
+package ysyx_26030103.audit
+
+import _root_.ysyx_26030103.riscv32e_npc_AXIRAM
 
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._

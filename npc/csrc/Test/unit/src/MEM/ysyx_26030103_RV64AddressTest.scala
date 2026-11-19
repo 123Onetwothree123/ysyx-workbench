@@ -146,7 +146,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
   }
 
   "RV64 LSU" should "把高于 4GiB 的 LD 地址完整送到 AXI AR" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 64, AddressWidth = 64)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 64, AddressWidth = 64, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       val Address = BigInt("123456780", 16)
       resetLSU(dut, clock, dut.reset)
@@ -191,7 +191,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
   }
 
   it should "把高于 4GiB 的 SD 地址完整送到 AXI AW 并保持 8 字节两拍" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 64, AddressWidth = 64)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 64, AddressWidth = 64, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       val Address = BigInt("234567890", 16)
       resetLSU(dut, clock, dut.reset)
@@ -243,6 +243,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
       new ysyx_26030103_LSU(
         XLEN = 64,
         AddressWidth = 64,
+        BusDataWidth = 32,
         DCacheEnable = true,
         DCacheBlockSizeLog2 = 4,
         DCacheIndexBits = 2,

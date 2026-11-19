@@ -89,7 +89,7 @@ class ysyx_26030103_PLICClaimThresholdRegressionTest
 
   "PLIC claim" should
     "return an enabled pending source even when its priority is below threshold" in {
-      simulate(new ysyx_26030103_PLIC()) { dut =>
+      simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
         setup(dut)
         write(dut, 0x0c000004L, 3) // source 1 priority=3
         write(dut, 0x0c002000L, 1 << 1) // enable source 1

@@ -1,4 +1,4 @@
-#include <dlfcn.h>
+#include "../common/ref_loader.hpp"
 
 #include <array>
 #include <cstddef>
@@ -28,17 +28,6 @@ void check(bool condition, const std::string &message) {
   }
 }
 
-template <typename Function>
-Function load(void *handle, const char *name) {
-  dlerror();
-  auto *symbol = dlsym(handle, name);
-  if (const char *error = dlerror(); error != nullptr) {
-    throw std::runtime_error(std::string{"missing symbol "} + name + ": " +
-                             error);
-  }
-  return reinterpret_cast<Function>(symbol);
-}
-
 } // namespace
 
 int main(int argc, char **argv) {
@@ -54,17 +43,12 @@ int main(int argc, char **argv) {
   }
 
   try {
-    void *handle = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
-    if (handle == nullptr) {
-      const char *error = dlerror();
-      throw std::runtime_error(std::string{"dlopen failed: "} +
-                               (error ? error : "unknown"));
-    }
+    npc_test::RefLibrary ref{argv[1]};
 
     using StateSize = std::size_t (*)();
     using RegCopy = void (*)(void *, bool);
-    const auto state_size = load<StateSize>(handle, "difftest_state_size");
-    const auto regcpy = load<RegCopy>(handle, "difftest_regcpy");
+    const auto state_size = ref.symbol<StateSize>("difftest_state_size");
+    const auto regcpy = ref.symbol<RegCopy>("difftest_regcpy");
 
     check(state_size() == sizeof(RV32DifftestState),
           "reference reports a non-fixed DiffTest state size");
@@ -103,7 +87,6 @@ int main(int argc, char **argv) {
     check(guarded.state.pc == 0x81234560U,
           "PC changed across the fixed ABI round trip");
 
-    dlclose(handle);
     std::cout << "[PASS] fixed 32-GPR + PC DiffTest ABI has no overrun ("
               << (rve ? "RVE" : "RV32I") << ")\n";
     return 0;

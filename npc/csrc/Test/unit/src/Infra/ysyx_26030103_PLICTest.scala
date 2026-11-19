@@ -59,7 +59,7 @@ class ysyx_26030103_PLICTest extends AnyFlatSpec with Matchers {
   }
 
   "PLIC" should "支持优先级、pending、claim 和清 pending" in {
-    simulate(new ysyx_26030103_PLIC()) { dut =>
+    simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
       setup(dut)
       // source 1 优先级 7，enable 第 1 位，threshold 0。
       write(dut, 0x0c000004L, 7)
@@ -77,7 +77,7 @@ class ysyx_26030103_PLICTest extends AnyFlatSpec with Matchers {
   }
 
   it should "threshold 能屏蔽低优先级中断" in {
-    simulate(new ysyx_26030103_PLIC()) { dut =>
+    simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
       setup(dut)
       write(dut, 0x0c000004L, 3)
       write(dut, 0x0c002000L, 2)
@@ -89,7 +89,7 @@ class ysyx_26030103_PLICTest extends AnyFlatSpec with Matchers {
   }
 
   it should "支持 xv6 的 S-mode 上下文地址与 source 10" in {
-    simulate(new ysyx_26030103_PLIC()) { dut =>
+    simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
       setup(dut)
       // xv6: PLIC + UART0_IRQ*4、SENABLE=0x2080、
       // SPRIORITY=0x201000、SCLAIM=0x201004。

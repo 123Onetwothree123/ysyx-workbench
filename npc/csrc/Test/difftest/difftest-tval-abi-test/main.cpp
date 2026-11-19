@@ -6,7 +6,7 @@
 //   3. 旧接口 difftest_raise_intr(no) 必须清零暂存 tval，不能污染下一次异常。
 // RV32/RV64 均可运行，按 difftest_state_size() 自动识别 XLEN。
 
-#include <dlfcn.h>
+#include "../common/ref_loader.hpp"
 
 #include <array>
 #include <cstddef>
@@ -26,16 +26,6 @@ void check(bool condition, const std::string &message) {
   }
 }
 
-template <typename Function> Function load(void *handle, const char *name) {
-  dlerror();
-  auto *symbol = dlsym(handle, name);
-  if (const char *error = dlerror(); error != nullptr) {
-    throw std::runtime_error(std::string{"missing symbol "} + name + ": " +
-                             error);
-  }
-  return reinterpret_cast<Function>(symbol);
-}
-
 struct Ref {
   using StateSize = std::size_t (*)();
   using Memcpy = void (*)(std::uint64_t, void *, std::size_t, bool);
@@ -47,7 +37,7 @@ struct Ref {
   using Init = void (*)(int);
   using SetPlatform = void (*)(int);
 
-  void *handle{};
+  npc_test::RefLibrary library;
   StateSize stateSize{};
   Memcpy memcpy{};
   Regcpy regcpy{};
@@ -59,32 +49,22 @@ struct Ref {
   SetPlatform setPlatform{};
   bool rv64{};
 
-  explicit Ref(const char *path) {
-    handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-    if (handle == nullptr) {
-      throw std::runtime_error(std::string{"dlopen failed: "} + dlerror());
-    }
-    stateSize = load<StateSize>(handle, "difftest_state_size");
-    memcpy = load<Memcpy>(handle, "difftest_memcpy");
-    regcpy = load<Regcpy>(handle, "difftest_regcpy");
-    csrcpy = load<Csrcpy>(handle, "difftest_csrcpy");
-    exec = load<Exec>(handle, "difftest_exec");
-    trap = load<Trap>(handle, "difftest_trap");
-    raiseIntr = load<RaiseIntr>(handle, "difftest_raise_intr");
-    init = load<Init>(handle, "difftest_init");
-    setPlatform = load<SetPlatform>(handle, "difftest_set_platform");
+  explicit Ref(const char *path) : library(path) {
+    stateSize = library.symbol<StateSize>("difftest_state_size");
+    memcpy = library.symbol<Memcpy>("difftest_memcpy");
+    regcpy = library.symbol<Regcpy>("difftest_regcpy");
+    csrcpy = library.symbol<Csrcpy>("difftest_csrcpy");
+    exec = library.symbol<Exec>("difftest_exec");
+    trap = library.symbol<Trap>("difftest_trap");
+    raiseIntr = library.symbol<RaiseIntr>("difftest_raise_intr");
+    init = library.symbol<Init>("difftest_init");
+    setPlatform = library.symbol<SetPlatform>("difftest_set_platform");
     rv64 = stateSize() == 33 * sizeof(std::uint64_t);
     const auto expected = 33 * (rv64 ? sizeof(std::uint64_t)
                                      : sizeof(std::uint32_t));
     check(stateSize() == expected, "unexpected difftest_state_size");
     setPlatform(0);
     init(0);
-  }
-
-  ~Ref() {
-    if (handle != nullptr) {
-      dlclose(handle);
-    }
   }
 };
 

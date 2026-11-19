@@ -1,4 +1,6 @@
-package ysyx_26030103.infra
+package ysyx_26030103.audit
+
+import _root_.ysyx_26030103.infra._
 
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
@@ -22,7 +24,7 @@ class ysyx_26030103_AuditXbarPLICHarness extends Module {
   })
 
   val xbar = Module(new ysyx_26030103_AXI5Xbar())
-  val plic = Module(new ysyx_26030103_PLIC())
+  val plic = Module(new ysyx_26030103_PLIC(DataWidth = 32))
 
   xbar.io.in <> io.in
   plic.sources := io.sources

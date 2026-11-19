@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
 
     wait_until(dut, [&] {
       return dut.io_out_AW_AWVALID && dut.io_out_W_WVALID;
-    }, "bridge did not issue the first internal chunk");
+    }, "bridge did not issue the first internal chunk", 200);
     check(dut.io_outAWLock,
           "AWLOCK disappeared before the first internal chunk");
     check(dut.io_out_AW_AWLEN == 0 && dut.io_out_AW_AWSIZE == 2,
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
     // pin has been low for several cycles.
     wait_until(dut, [&] {
       return dut.io_out_AW_AWVALID && dut.io_out_W_WVALID;
-    }, "bridge did not issue the second internal chunk");
+    }, "bridge did not issue the second internal chunk", 200);
     check(dut.io_outAWLock,
           "AWLOCK disappeared before the second internal chunk");
     tick(dut);
@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
     dut.io_out_B_BVALID = 0;
 
     wait_until(dut, [&] { return dut.io_in_B_BVALID; },
-               "bridge did not aggregate the upstream B");
+               "bridge did not aggregate the upstream B", 200);
     check(dut.io_outAWLock,
           "AWLOCK cleared before the upstream B completed");
     dut.io_in_B_BREADY = 1;
@@ -158,7 +158,7 @@ int main(int argc, char **argv) {
 
     // First chunk.
     wait_until(dut, [&] { return dut.io_out_AR_ARVALID; },
-               "bridge did not issue the first internal read chunk");
+               "bridge did not issue the first internal read chunk", 200);
     check(dut.io_outARLock,
           "ARLOCK disappeared before the first internal read chunk");
     tick(dut);
@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
 
     // Second chunk.
     wait_until(dut, [&] { return dut.io_out_AR_ARVALID; },
-               "bridge did not issue the second internal read chunk");
+               "bridge did not issue the second internal read chunk", 200);
     check(dut.io_outARLock,
           "ARLOCK disappeared before the second internal read chunk");
     tick(dut);
@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
     dut.io_out_R_RVALID = 0;
 
     wait_until(dut, [&] { return dut.io_in_R_RVALID; },
-               "bridge did not assemble the upstream R");
+               "bridge did not assemble the upstream R", 200);
     check(dut.io_outARLock,
           "ARLOCK cleared before the final upstream R completed");
     check(dut.io_in_R_RDATA == 0x1122334455667788ULL,

@@ -1,4 +1,6 @@
-package ysyx_26030103.infra
+package ysyx_26030103.audit
+
+import _root_.ysyx_26030103.infra._
 
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
@@ -79,7 +81,7 @@ class ysyx_26030103_PLICPriorityAuditTest extends AnyFlatSpec with Matchers {
   }
 
   "PLIC claim" should "选择最高优先级 source，而不是最低编号" in {
-    simulate(new ysyx_26030103_PLIC()) { dut =>
+    simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
       setup(dut)
       write(dut, 0x0c000004L, 1) // source 1 priority=1
       write(dut, 0x0c000028L, 7) // source 10 priority=7
@@ -93,7 +95,7 @@ class ysyx_26030103_PLICPriorityAuditTest extends AnyFlatSpec with Matchers {
   }
 
   it should "同优先级时选择最低 source ID" in {
-    simulate(new ysyx_26030103_PLIC()) { dut =>
+    simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
       setup(dut)
       write(dut, 0x0c000004L, 5)
       write(dut, 0x0c000008L, 5)
@@ -106,7 +108,7 @@ class ysyx_26030103_PLICPriorityAuditTest extends AnyFlatSpec with Matchers {
   }
 
   it should "claim 后屏蔽仍为高电平的 source，complete 后重新 pending" in {
-    simulate(new ysyx_26030103_PLIC()) { dut =>
+    simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
       setup(dut)
       write(dut, 0x0c000004L, 7) // source 1 priority=7
       write(dut, 0x0c002000L, 2)
@@ -128,7 +130,7 @@ class ysyx_26030103_PLICPriorityAuditTest extends AnyFlatSpec with Matchers {
   }
 
   "PLIC WSTRB" should "按字节合并 enable/priority/threshold 部分写" in {
-    simulate(new ysyx_26030103_PLIC()) { dut =>
+    simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
       setup(dut)
 
       write(dut, 0x0c002000L, BigInt("12345678", 16), 15)

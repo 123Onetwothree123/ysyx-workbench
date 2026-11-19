@@ -120,6 +120,7 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
   "LSU with DCache" should
     "等 refill 排空后才为 AMO 发自己的 AR，不能误用 refill 的 ARREADY" in {
     simulate(new ysyx_26030103_LSU(
+        BusDataWidth = 32,
       XLEN = 64,
       DCacheEnable = true,
       DCacheVIPT = false,

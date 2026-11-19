@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
       tick(dut);
     }
     wait_until(dut, [&] { return dut.io_in_R_RVALID; },
-               "denied PLIC read did not return a local response");
+               "denied PLIC read did not return a local response", 200);
     check(dut.io_in_R_RRESP == 3, "denied PLIC read did not return DECERR");
     check(dut.io_in_R_RLAST, "denied PLIC read did not terminate with RLAST");
     dut.io_in_R_RREADY = 1;
@@ -140,7 +140,7 @@ int main(int argc, char **argv) {
       tick(dut);
     }
     wait_until(dut, [&] { return dut.io_in_B_BVALID; },
-               "denied PLIC write did not return a local response");
+               "denied PLIC write did not return a local response", 200);
     check(dut.io_in_B_BRESP == 3, "denied PLIC write did not return DECERR");
     dut.io_in_B_BREADY = 1;
     tick(dut);

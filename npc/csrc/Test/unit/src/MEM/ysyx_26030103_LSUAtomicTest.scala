@@ -226,7 +226,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   "RV32 LSU A extension" should "LR 后同地址 SC 成功并写回内存" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val addr = 0x80004000L
@@ -248,7 +248,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   it should "SC 地址不匹配时失败且不访问内存" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val addr = 0x80004100L
@@ -269,7 +269,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   it should "CSR/异常提交后 reservation 失效" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val addr = 0x80004200L
@@ -314,7 +314,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
         BigInt(0x80000000L), BigInt(0x80000000L))
     )
     for ((op, oldValue, rhs, newValue, result) <- cases) {
-      simulate(new ysyx_26030103_LSU(XLEN = 32)) { dut =>
+      simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
         val clock = dut.clock
         resetDut(dut, clock, dut.reset)
         val addr = 0x80004300L
@@ -332,7 +332,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
 
   it should "非对齐 LR/AMO 在发总线前产生 cause=4/6" in {
     for ((op, write, cause) <- Seq((LR, false, 4L), (AMOADD, true, 6L))) {
-      simulate(new ysyx_26030103_LSU(XLEN = 32)) { dut =>
+      simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
         val clock = dut.clock
         resetDut(dut, clock, dut.reset)
         pokeAtomic(dut, op, 0x80004402L, 1, 2, memoryWrite = write)
@@ -353,7 +353,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   it should "PMP 拒绝 AMO 时 cause=7 且不发出总线请求" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       pokeAtomic(dut, AMOADD, 0x80004500L, 1, 2, memoryWrite = true)
@@ -374,7 +374,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   it should "PMP 拒绝新 AMO 时清除上一次读阶段故障并按 cause=7 提交" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
 
@@ -432,7 +432,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   "RV64 LSU A extension" should "完成 AMO.D 8 字节读改写" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 64)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 64, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val addr = 0x80005000L
@@ -450,7 +450,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   it should "对 AMO.W 结果按 bit31 符号扩展到 RV64" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 64)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 64, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val addr = 0x80005008L
@@ -467,7 +467,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   it should "AMO.D MIN/MAX 有符号与无符号边界" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 64)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 64, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val addr = 0x80005800L
@@ -494,7 +494,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   it should "LR.D/SC.D 使用 8 字节预约地址" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 64)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 64, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val addr = 0x80006000L
@@ -522,7 +522,8 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
     // ALUResult 发原子事务，根本不存在“等待带标签 PA”的通路；要覆盖本用例
     // 必须同时打开 DCacheEnable。
     simulate(new ysyx_26030103_LSU(
-      XLEN = 32, DCacheEnable = true, DCacheVIPT = true,
+      XLEN = 32, AddressWidth = 32, BusDataWidth = 32,
+      DCacheEnable = true, DCacheVIPT = true,
       VIPTParallel = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
@@ -550,7 +551,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   it should "总线不安静时原子事务不发 AR，避免 DMA 插入读改写" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       dut.io.BusQuiet.poke(false.B)
@@ -573,7 +574,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   }
 
   it should "非对齐 AMO.D 产生 cause=6 且不访问内存" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 64)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 64, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       pokeAtomic(dut, AMOADD, 0x80006004L, 1, 3, memoryWrite = true)

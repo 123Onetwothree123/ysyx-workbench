@@ -411,7 +411,11 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       xlen = 32,
       pageSizeBytes = 1024,
       levels = 2,
-      pageTableSizeBytes = 8192
+      pageTableSizeBytes = 8192,
+      // RV32 自定义几何必须使用 32 位 PTE 字段布局。
+      pteSizeBytes = 4,
+      pteFormat = "riscv32",
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31)
     )
     rv32.computedAddressBits should be(32)
     rv32.satpMode should be(1)
@@ -473,10 +477,11 @@ class ysyx_26030103_RV64CustomGeometryTest extends AnyFlatSpec with Matchers {
       val customSatp = (BigInt(10) << 60) | (BigInt(0x1234) << 44) |
         BigInt("80001", 16)
       writeSatp(customSatp) should be(customSatp)
-      // CUSTOM 几何下标准 Sv39 MODE=8 必须收敛到 Bare(0)。
+      // CUSTOM 几何下标准 Sv39 MODE=8 不受支持：按规范整笔写入被拒绝，
+      // satp 保持上一次的 CUSTOM 值。
       val sv39 = (BigInt(8) << 60) | (BigInt(0x1234) << 44) |
         BigInt("80001", 16)
-      writeSatp(sv39) should be(sv39 & ~(BigInt(0xf) << 60))
+      writeSatp(sv39) should be(customSatp)
     }
   }
 

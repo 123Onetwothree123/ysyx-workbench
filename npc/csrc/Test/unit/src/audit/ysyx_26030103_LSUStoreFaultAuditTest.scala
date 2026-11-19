@@ -74,7 +74,9 @@ class ysyx_26030103_LSUStoreFaultAuditTest
 
   private def run(useDCache: Boolean): Unit = {
     simulate(new ysyx_26030103_LSU(
+        BusDataWidth = 32,
       XLEN = 32,
+        AddressWidth = 32,
       DCacheEnable = useDCache,
       WBufDepth = 4,
       DCacheBlockSizeLog2 = 4,

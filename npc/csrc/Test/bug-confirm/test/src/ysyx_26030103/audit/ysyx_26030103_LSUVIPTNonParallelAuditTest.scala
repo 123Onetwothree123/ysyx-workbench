@@ -68,6 +68,8 @@ class ysyx_26030103_LSUVIPTNonParallelAuditTest extends AnyFlatSpec with Matcher
   private def newDut(viptParallel: Boolean): ysyx_26030103_LSU =
     new ysyx_26030103_LSU(
       XLEN = 32,
+      AddressWidth = 32,
+      BusDataWidth = 32,
       DCacheEnable = true,
       DCacheBlockSizeLog2 = 4,
       DCacheIndexBits = 2,

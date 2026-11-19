@@ -52,7 +52,7 @@ class ysyx_26030103_RV64AddressConfigTest extends AnyFlatSpec with Matchers {
         pteFormat = "riscv32"
       )
     }
-    error.getMessage should include("Sv39")
+    error.getMessage should include("RV64 PTE 字段配置位宽")
   }
 
   it should "fromEnv(XLEN=64) 默认生成标准 Sv39 profile" in {
@@ -92,6 +92,9 @@ class ysyx_26030103_RV64AddressConfigTest extends AnyFlatSpec with Matchers {
       ysyx_26030103_NPCConfig(
         XLEN = 64,
         AddressWidth = 64,
+        // SoC32 才会把顶层 PMA 限制在低 4GiB；默认 SoC_XLEN 已随 XLEN=64。
+        SocXLENFollowCpu = false,
+        SocXLEN = 32,
         PMARegions = Seq(
           ysyx_26030103_PMARegion(
             0x180000000L,

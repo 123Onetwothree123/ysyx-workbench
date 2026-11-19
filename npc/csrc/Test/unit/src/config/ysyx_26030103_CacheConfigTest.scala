@@ -13,14 +13,21 @@ import org.scalatest.matchers.should.Matchers
   * line > page，elaboration 不得截断索引。
   */
 class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
+  // 本套件的页大小/index 几何按 RV32（Sv32）编写；默认 Kconfig 已是 RV64，
+  // 必须显式构造一致的 RV32 profile，而不是依赖默认值。
+  private val rv32Base: ysyx_26030103_MMUProfile =
+    ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32)
+
   "NPCConfig" should "拒绝 index+block 超出页内偏移的 VIPT ICache" in {
-    val badMMU = ysyx_26030103_MMUProfile(
+    val badMMU = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
     )
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
+        XLEN = 32,
+        AddressWidth = 32,
         ICacheEnable = true,
         ICacheBlockSizeLog2 = 6,
         ICacheIndexBits = 10,
@@ -36,13 +43,15 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "拒绝 index+block 超出页内偏移的 VIPT DCache" in {
-    val badMMU = ysyx_26030103_MMUProfile(
+    val badMMU = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
     )
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
+        XLEN = 32,
+        AddressWidth = 32,
         ICacheEnable = false,
         DCacheEnable = true,
         DCacheBlockSizeLog2 = 5,
@@ -56,12 +65,14 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "接受 index+block 落在页内的 VIPT 组合" in {
-    val goodMMU = ysyx_26030103_MMUProfile(
+    val goodMMU = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
     )
     val config = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
       ICacheEnable = true,
       ICacheBlockSizeLog2 = 4,
       ICacheIndexBits = 8,
@@ -77,7 +88,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
 
   it should "显式 alias 安全模式接受非标准页大小和 index 越过页内偏移" in {
     // pageBits=10, levels=2, 每级 11 位 -> 10+22=32，满足 RV32 自定义几何。
-    val mmu = ysyx_26030103_MMUProfile(
+    val mmu = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       cacheVIPTAliasSafe = true,
@@ -88,6 +99,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     mmu.pageBits should be(10)
     mmu.computedAddressBits should be(32)
     val config = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
       ICacheEnable = true,
       ICacheBlockSizeLog2 = 4,
       ICacheIndexBits = 8, // 8+4=12 > 10，index 已包含 VPN 位
@@ -127,7 +140,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "alias 安全模式仍拒绝大于页的 cache line" in {
-    val mmu = ysyx_26030103_MMUProfile(
+    val mmu = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       cacheVIPTAliasSafe = true,
@@ -135,6 +148,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     )
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
+        XLEN = 32,
+        AddressWidth = 32,
         ICacheEnable = true,
         ICacheBlockSizeLog2 = 13,
         ICacheIndexBits = 1,
@@ -146,6 +161,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
 
     val dcacheError = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
+        XLEN = 32,
+        AddressWidth = 32,
         ICacheEnable = false,
         DCacheEnable = true,
         DCacheBlockSizeLog2 = 13,
@@ -160,12 +177,14 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
 
   it should "PIPT 允许 cache line 大于页且不截断物理索引" in {
     // 标准 4KiB 页配 8KiB line：PIPT 的 index/refill 用物理地址，合法。
-    val mmu = ysyx_26030103_MMUProfile(
+    val mmu = rv32Base.copy(
       enabled = true,
       cacheMode = "pipt",
       pageSizeBytes = 4096
     )
     val config = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
       ICacheEnable = true,
       ICacheBlockSizeLog2 = 13,
       ICacheIndexBits = 2,
@@ -189,6 +208,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     smallPage.pageBits should be(6)
     smallPage.computedAddressBits should be(32)
     val smallPageConfig = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
       ICacheEnable = true,
       ICacheBlockSizeLog2 = 7,
       ICacheIndexBits = 2,
@@ -201,7 +222,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "从小页 + 大 line 切换到 VIPT 时明确提示改用 PIPT" in {
-    val mmu = ysyx_26030103_MMUProfile(
+    val mmu = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       cacheVIPTAliasSafe = true,
@@ -211,6 +232,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     )
     val error = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
+        XLEN = 32,
+        AddressWidth = 32,
         ICacheEnable = true,
         ICacheBlockSizeLog2 = 7,
         ICacheIndexBits = 2,
@@ -222,13 +245,15 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "Cache 关闭时不受 VIPT 页内几何限制" in {
-    val mmu = ysyx_26030103_MMUProfile(
+    val mmu = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
     )
     // Cache 不接在翻译路径上时不会产生 alias，允许保留较大的几何参数。
     val config = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
       ICacheEnable = false,
       ICacheBlockSizeLog2 = 6,
       ICacheIndexBits = 10,
@@ -297,7 +322,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
 
   it should "把 serial alias 扫描方式传给 Cache 工厂" in {
     // pageBits=10，index 8 + block 4 = 12 > 10，确实生成 alias 维护硬件。
-    val mmu = ysyx_26030103_MMUProfile(
+    val mmu = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       cacheVIPTAliasSafe = true,
@@ -307,6 +332,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       pageTableSizeBytes = 8192
     )
     val config = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
       ICacheEnable = true,
       ICacheBlockSizeLog2 = 4,
       ICacheIndexBits = 8,
@@ -343,7 +370,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
 
   it should "把 PARALLEL_N/DIRECTORY 参数传给 Cache 工厂" in {
     // pageBits=10，index 8 + block 4 = 12 > 10，确实生成 alias 维护硬件。
-    def profile(mode: String) = ysyx_26030103_MMUProfile(
+    def profile(mode: String) = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       cacheVIPTAliasSafe = true,
@@ -355,6 +382,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       pageTableSizeBytes = 8192
     )
     val parallel = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
       ICacheEnable = true,
       ICacheBlockSizeLog2 = 4,
       ICacheIndexBits = 8,
@@ -388,6 +417,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     }) should include("module")
 
     val directory = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
       ICacheEnable = true,
       ICacheBlockSizeLog2 = 4,
       ICacheIndexBits = 8,
@@ -405,12 +436,15 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "按实际 set 数截断 PARALLEL_N 宽度与目录项" in {
-    val mmu = ysyx_26030103_MMUProfile(
+    val mmu = rv32Base.copy(
+      enabled = true,
       cacheVIPTAliasScanMode = "parallel_n",
       cacheVIPTAliasScanWidth = 8,
       cacheVIPTAliasDirectoryEntries = 64
     )
     val config = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
       ICacheEnable = true,
       ICacheBlockSizeLog2 = 2,
       ICacheIndexBits = 1,

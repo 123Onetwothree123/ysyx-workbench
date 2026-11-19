@@ -73,10 +73,10 @@ difftest-soc-run: insert-arg $(REF_SO)
 	@grep -Fq 'DiffTest: final state PASS' $(DIFFTEST_SOC_LOG)
 	@grep -Fq 'HIT GOOD TRAP' $(DIFFTEST_SOC_LOG)
 
-$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile
-	$(MAKE) -C $(NEMU_DIR) GUEST_ISA=riscv32 ENGINE=interpreter \
-		CONFIG_TARGET_SHARE=y CONFIG_TARGET_NATIVE_ELF= \
-		BINARY=$(REF_SO) OBJ_DIR=$(REF_OBJ_DIR)
+REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
+
+$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
+	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_DIR) share
 
 $(LEGACY_REF_SO): legacy_ref.cpp
 	mkdir -p $(@D)

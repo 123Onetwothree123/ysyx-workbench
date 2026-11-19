@@ -145,10 +145,10 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
         FPUImpl = ysyx_26030103_FPUImpl.Fudian,
         FPULen = 64
       ),
-      // RV64 但只启用 F、浮点寄存器宽度 32。
+      // RV32F 的窄浮点寄存器组合（RV64F 的 FLEN 固定为 64）。
       ysyx_26030103_NPCConfig(
-        XLEN = 64,
-        AddressWidth = 64,
+        XLEN = 32,
+        AddressWidth = 32,
         UseF = true,
         FPUImpl = ysyx_26030103_FPUImpl.Fudian,
         FPULen = 32

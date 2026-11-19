@@ -64,7 +64,7 @@ static void begin_write(DUT &dut, uint32_t address, uint32_t data) {
 
 static void finish_write(DUT &dut) {
   wait_until(dut, [&] { return dut.io_B_BVALID; },
-             "PLIC never returned a write response");
+             "PLIC never returned a write response", 200);
   dut.io_B_BREADY = 1;
   tick(dut);
   dut.io_B_BREADY = 0;
@@ -93,7 +93,7 @@ static void begin_read(DUT &dut, uint32_t address) {
 
 static uint32_t finish_read(DUT &dut) {
   wait_until(dut, [&] { return dut.io_R_RVALID; },
-             "PLIC never returned read data");
+             "PLIC never returned read data", 200);
   const uint32_t data = dut.io_R_RDATA;
   check(dut.io_R_RLAST, "PLIC single-beat read did not assert RLAST");
   dut.io_R_RREADY = 1;

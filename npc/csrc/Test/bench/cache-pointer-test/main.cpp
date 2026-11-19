@@ -4,6 +4,8 @@
 #include <klib.h>
 #include <stdint.h>
 
+#include "cache_bench.hpp"
+
 #define NODES 4096
 #define SMALL_NODES 32
 #define PASSES 8
@@ -12,14 +14,6 @@ static uint32_t next[NODES];
 static uint32_t payload[NODES];
 static uint32_t small_next[SMALL_NODES];
 static uint32_t small_payload[SMALL_NODES];
-static volatile uint32_t sink;
-
-static inline uint32_t rdcycle(void)
-{
-  uint32_t value;
-  asm volatile("csrr %0, mcycle" : "=r"(value));
-  return value;
-}
 
 static uint32_t next_random(uint32_t *state)
 {

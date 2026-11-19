@@ -4,6 +4,8 @@
 #include <klib.h>
 #include <stdint.h>
 
+#include "cache_bench.hpp"
+
 typedef uint32_t (*function_t)(uint32_t);
 
 #define MAKE_FUNCTION(id) \
@@ -40,14 +42,6 @@ static const function_t spread[] = {
     func48, func49, func50, func51, func52, func53, func54, func55,
     func56, func57, func58, func59, func60, func61, func62, func63};
 
-static volatile uint32_t sink;
-
-static inline uint32_t rdcycle(void)
-{
-  uint32_t value;
-  asm volatile("csrr %0, mcycle" : "=r"(value));
-  return value;
-}
 
 // 小循环体，代码完全装得进I$。
 __attribute__((noinline)) static uint32_t hot(uint32_t value)

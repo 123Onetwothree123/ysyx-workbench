@@ -4,7 +4,7 @@
 //   - 非法 CSR 编号必须明确返回 false，不能伪造 0。
 //
 // 直接 dlopen REF .so，不依赖 NPC RTL。RV32/RV64 由状态 ABI 大小识别。
-#include <dlfcn.h>
+#include "../common/ref_loader.hpp"
 
 #include <array>
 #include <cstddef>
@@ -22,15 +22,6 @@ constexpr std::uint64_t kBase = 0x80000000ULL;
 void check(bool condition, const std::string &message) {
   if (!condition)
     throw std::runtime_error(message);
-}
-
-template <typename Function> Function load(void *handle, const char *name) {
-  dlerror();
-  auto *symbol = dlsym(handle, name);
-  if (const char *error = dlerror(); error != nullptr)
-    throw std::runtime_error(std::string{"missing symbol "} + name + ": " +
-                             error);
-  return reinterpret_cast<Function>(symbol);
 }
 
 struct State64 {
@@ -64,7 +55,7 @@ struct Ref {
       void (*)(std::uint64_t *, std::uint64_t *);
   using GetCSR = bool (*)(std::uint32_t, std::uint64_t *);
 
-  void *handle{};
+  npc_test::RefLibrary library;
   StateSize stateSize{};
   Memcpy memcpy{};
   Regcpy regcpy{};
@@ -77,33 +68,25 @@ struct Ref {
   GetCSR getCSR{};
   bool rv64{};
 
-  explicit Ref(const char *path) {
-    handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-    if (handle == nullptr)
-      throw std::runtime_error(std::string{"dlopen failed: "} + dlerror());
-    stateSize = load<StateSize>(handle, "difftest_state_size");
-    memcpy = load<Memcpy>(handle, "difftest_memcpy");
-    regcpy = load<Regcpy>(handle, "difftest_regcpy");
-    csrcpy = load<Csrcpy>(handle, "difftest_csrcpy");
-    exec = load<Exec>(handle, "difftest_exec");
-    trap = load<Trap>(handle, "difftest_trap");
-    init = load<Init>(handle, "difftest_init");
-    setPlatform = load<SetPlatform>(handle, "difftest_set_platform");
+  explicit Ref(const char *path) : library(path) {
+    stateSize = library.symbol<StateSize>("difftest_state_size");
+    memcpy = library.symbol<Memcpy>("difftest_memcpy");
+    regcpy = library.symbol<Regcpy>("difftest_regcpy");
+    csrcpy = library.symbol<Csrcpy>("difftest_csrcpy");
+    exec = library.symbol<Exec>("difftest_exec");
+    trap = library.symbol<Trap>("difftest_trap");
+    init = library.symbol<Init>("difftest_init");
+    setPlatform = library.symbol<SetPlatform>("difftest_set_platform");
     // 本测试专门验证新 ABI，因此这两个符号必须存在。
     lastInstruction =
-        load<LastInstruction>(handle, "difftest_get_last_instruction");
-    getCSR = load<GetCSR>(handle, "difftest_get_csr");
+        library.symbol<LastInstruction>("difftest_get_last_instruction");
+    getCSR = library.symbol<GetCSR>("difftest_get_csr");
     rv64 = stateSize() == 33 * sizeof(std::uint64_t);
     const auto expected =
         33 * (rv64 ? sizeof(std::uint64_t) : sizeof(std::uint32_t));
     check(stateSize() == expected, "unexpected difftest_state_size");
     setPlatform(0);
     init(0);
-  }
-
-  ~Ref() {
-    if (handle != nullptr)
-      dlclose(handle);
   }
 
   std::pair<std::uint64_t, std::uint64_t> last() {

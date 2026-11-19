@@ -71,6 +71,9 @@ class ysyx_26030103_LSUVIPTTest extends AnyFlatSpec with Matchers {
   "LSU VIPT parallel" should "PA 未到时持有 load，ViptKill 撤销请求且不发 AR" in {
     simulate(
       new ysyx_26030103_LSU(
+        XLEN = 32,
+        AddressWidth = 32,
+        BusDataWidth = 32,
         DCacheEnable = true,
         DCacheBlockSizeLog2 = 4,
         DCacheIndexBits = 2,

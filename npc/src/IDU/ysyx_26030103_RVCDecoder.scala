@@ -357,7 +357,8 @@ class ysyx_26030103_RVCDecoder(
     is("b10_001".U(5.W)) { // C.FLDSP（需要 D 扩展）
       if (UseD) {
         out := fldsp
-        // rd 是 f 寄存器，f0 是合法寄存器。
+        // RVC 规范：SP 相对浮点 load 的 rd=0 是保留编码。
+        illegal := rd === 0.U
       } else { illegal := true.B }
     }
     is("b10_010".U(5.W)) { // C.LWSP
@@ -370,7 +371,8 @@ class ysyx_26030103_RVCDecoder(
         illegal := rd === 0.U
       } else if (UseF) {
         out := flwsp
-        // rd 是 f 寄存器，f0 是合法寄存器。
+        // RVC 规范：C.FLWSP 的 rd=0 是保留编码。
+        illegal := rd === 0.U
       } else {
         illegal := true.B
       }
@@ -396,16 +398,21 @@ class ysyx_26030103_RVCDecoder(
       }
     }
     is("b10_101".U(5.W)) { // C.FSDSP（需要 D 扩展）
-      if (UseD) { out := fsdsp }
-      else { illegal := true.B }
+      if (UseD) {
+        out := fsdsp
+        // C.FSDSP 的 rs2=0 同样是保留编码。
+        illegal := rs2 === 0.U
+      } else { illegal := true.B }
     }
     is("b10_110".U(5.W)) { // C.SWSP
       out := swsp
     }
     is("b10_111".U(5.W)) { // RV64 C.SDSP / RV32 C.FSWSP
       if (XLEN == 64) { out := sdsp }
-      else if (UseF) { out := fswsp }
-      else { illegal := true.B }
+      else if (UseF) {
+        out := fswsp
+        illegal := rs2 === 0.U
+      } else { illegal := true.B }
     }
 
     // 象限 3

@@ -110,6 +110,9 @@ class ysyx_26030103_LSUStoreVIPTTest extends AnyFlatSpec with Matchers {
 
   private def newDut(): ysyx_26030103_LSU =
     new ysyx_26030103_LSU(
+        XLEN = 32,
+        AddressWidth = 32,
+        BusDataWidth = 32,
       DCacheEnable = true,
       DCacheBlockSizeLog2 = 4,
       DCacheIndexBits = 2,
@@ -303,6 +306,9 @@ class ysyx_26030103_LSUStoreVIPTTest extends AnyFlatSpec with Matchers {
     // ViptParallel=true，验证 LSU 自身也不会在禁用 DCache 时走 VIPT 等待。
     simulate(
       new ysyx_26030103_LSU(
+        XLEN = 32,
+        AddressWidth = 32,
+        BusDataWidth = 32,
         DCacheEnable = false,
         DCacheVIPT = true,
         VIPTParallel = true

@@ -2,13 +2,23 @@ SHELL := /bin/bash
 
 NPC_DIR := $(abspath ../../../..)
 BUILD_DIR := $(CURDIR)/build
+COMMON_DIR := $(CURDIR)/../../common
+ELABORATE_CFG := $(COMMON_DIR)/elaborate_config.sh
 RTL_DIR := $(BUILD_DIR)/rtl
 CHIPLINK_RTL_DIR := $(BUILD_DIR)/rtl-chiplink
 ICACHE_DISABLED_RTL_DIR := $(BUILD_DIR)/rtl-icache-disabled
 BIN_DIR := $(BUILD_DIR)/bin
 
+# 协议回归快照固定为 RV32（无 MMU），与仓库本地 .config 的 RV64 无关。
+RV32_CONFIG := CONFIG_XLEN=32 CONFIG_SOC_XLEN_FOLLOW_CPU=n CONFIG_SOC_XLEN=32 \
+	CONFIG_ADDRESS_WIDTH=32 CONFIG_HAS_MMU=n CONFIG_HAS_TLB=n \
+	CONFIG_MMU_PTE_FORMAT=riscv32 CONFIG_MMU_PTE_RISCV32=y \
+	CONFIG_MMU_PTE_RISCV64=n CONFIG_MMU_PTE_SIZE_BYTES=4 \
+	CONFIG_MMU_PTE_PPN_HIGH=31 CONFIG_MMU_LEVELS=2 \
+	CONFIG_RISCV_F=n CONFIG_RISCV_D=n CONFIG_FPU_IMPL=none
+
 VERILATOR ?= verilator
-CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(CURDIR)
+CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(CURDIR) -I$(COMMON_DIR)
 VERILATOR_FLAGS := --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS -I$(RTL_DIR)
 
 SCALA_SOURCES := $(shell find $(NPC_DIR)/src -type f -name '*.scala' | sort)
@@ -78,16 +88,16 @@ test run: all
 
 # Call the production elaborator directly.  Do not use `make verilog`: that
 # repository target contains an unrelated git-commit hook.
-$(GEN_STAMP): $(SCALA_SOURCES) Makefile
+$(GEN_STAMP): $(SCALA_SOURCES) Makefile $(ELABORATE_CFG)
 	@mkdir -p $(RTL_DIR)
-	@cd $(NPC_DIR) && env \
-	  CACHE_BLOCK_SIZE_LOG2=4 CACHE_INDEX_BITS=5 \
-	  ICACHE=y DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 \
-	  CHIPLINK=n \
-	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RISCV_M=n RISCV_A=n RISCV_C=n \
-	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_DIC_ARCH_COUNTER=y \
-	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(RTL_DIR)
+	@$(ELABORATE_CFG) $(CURDIR) $(RTL_DIR) $(RV32_CONFIG) \
+	  CONFIG_CACHE_BLOCK_SIZE_LOG2=4 CONFIG_CACHE_INDEX_BITS=5 \
+	  CONFIG_ICACHE=y CONFIG_DCACHE=y CONFIG_WBUF_DEPTH=4 CONFIG_CACHE_PADDING=0 \
+	  CONFIG_CHIPLINK=n \
+	  CONFIG_BTB_BITS=4 CONFIG_BTB_WAYS=1 CONFIG_JAL_BTB_BITS=4 CONFIG_JAL_BTB_WAYS=1 CONFIG_RAS_BITS=4 \
+	  CONFIG_RISCV_M=n CONFIG_RISCV_A=n CONFIG_RISCV_C=n \
+	  CONFIG_SDB=y CONFIG_DIFFTEST=y CONFIG_MTRACE=y CONFIG_ITRACE=y CONFIG_FTRACE=y \
+	  CONFIG_IRINGBUF=y CONFIG_PERF_DIC_ARCH_COUNTER=y
 	@ln -sf layers-ysyx_26030103-Verification.sv \
 	  $(RTL_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
 	@if ! grep -F 'ysyx_26030103_AXI5DMAErrorSlave dmaErrorSlave' \
@@ -107,16 +117,16 @@ $(GEN_STAMP): $(SCALA_SOURCES) Makefile
 	fi
 	@touch $@
 
-$(CHIPLINK_GEN_STAMP): $(SCALA_SOURCES) Makefile
+$(CHIPLINK_GEN_STAMP): $(SCALA_SOURCES) Makefile $(ELABORATE_CFG)
 	@mkdir -p $(CHIPLINK_RTL_DIR)
-	@cd $(NPC_DIR) && env \
-	  CACHE_BLOCK_SIZE_LOG2=4 CACHE_INDEX_BITS=5 \
-	  ICACHE=y DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 \
-	  CHIPLINK=y \
-	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RISCV_M=n RISCV_A=n RISCV_C=n \
-	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_DIC_ARCH_COUNTER=y \
-	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(CHIPLINK_RTL_DIR)
+	@$(ELABORATE_CFG) $(CURDIR) $(CHIPLINK_RTL_DIR) $(RV32_CONFIG) \
+	  CONFIG_CACHE_BLOCK_SIZE_LOG2=4 CONFIG_CACHE_INDEX_BITS=5 \
+	  CONFIG_ICACHE=y CONFIG_DCACHE=y CONFIG_WBUF_DEPTH=4 CONFIG_CACHE_PADDING=0 \
+	  CONFIG_CHIPLINK=y \
+	  CONFIG_BTB_BITS=4 CONFIG_BTB_WAYS=1 CONFIG_JAL_BTB_BITS=4 CONFIG_JAL_BTB_WAYS=1 CONFIG_RAS_BITS=4 \
+	  CONFIG_RISCV_M=n CONFIG_RISCV_A=n CONFIG_RISCV_C=n \
+	  CONFIG_SDB=y CONFIG_DIFFTEST=y CONFIG_MTRACE=y CONFIG_ITRACE=y CONFIG_FTRACE=y \
+	  CONFIG_IRINGBUF=y CONFIG_PERF_DIC_ARCH_COUNTER=y
 	@ln -sf layers-ysyx_26030103-Verification.sv \
 	  $(CHIPLINK_RTL_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
 	@if ! grep -F "io_master_bid == 4'h2" \
@@ -143,17 +153,16 @@ $(CHIPLINK_GEN_STAMP): $(SCALA_SOURCES) Makefile
 
 # ICache关闭时生产elaborator仍同时生成direct-NPC和SoC。保留完整日志，
 # 防止单项占位Vec再次被宽动态索引访问而恢复W004告警。
-$(ICACHE_DISABLED_GEN_STAMP): $(SCALA_SOURCES) Makefile
+$(ICACHE_DISABLED_GEN_STAMP): $(SCALA_SOURCES) Makefile $(ELABORATE_CFG)
 	@mkdir -p $(ICACHE_DISABLED_RTL_DIR)
-	@set -o pipefail; cd $(NPC_DIR) && env \
-	  CACHE_BLOCK_SIZE_LOG2=4 CACHE_INDEX_BITS=5 \
-	  ICACHE=n DCACHE=n WBUF_DEPTH=4 CACHE_PADDING=0 \
-	  CHIPLINK=n \
-	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RISCV_M=n RISCV_A=n RISCV_C=n \
-	  SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_DIC_ARCH_COUNTER=y \
-	  mill --no-server runMain ysyx_26030103_Elaborate \
-	    --target-dir $(ICACHE_DISABLED_RTL_DIR) 2>&1 | tee $(ICACHE_DISABLED_LOG)
+	@set -o pipefail; $(ELABORATE_CFG) $(CURDIR) $(ICACHE_DISABLED_RTL_DIR) $(RV32_CONFIG) \
+	  CONFIG_CACHE_BLOCK_SIZE_LOG2=4 CONFIG_CACHE_INDEX_BITS=5 \
+	  CONFIG_ICACHE=n CONFIG_DCACHE=n CONFIG_WBUF_DEPTH=4 CONFIG_CACHE_PADDING=0 \
+	  CONFIG_CHIPLINK=n \
+	  CONFIG_BTB_BITS=4 CONFIG_BTB_WAYS=1 CONFIG_JAL_BTB_BITS=4 CONFIG_JAL_BTB_WAYS=1 CONFIG_RAS_BITS=4 \
+	  CONFIG_RISCV_M=n CONFIG_RISCV_A=n CONFIG_RISCV_C=n \
+	  CONFIG_SDB=y CONFIG_DIFFTEST=y CONFIG_MTRACE=y CONFIG_ITRACE=y CONFIG_FTRACE=y \
+	  CONFIG_IRINGBUF=y CONFIG_PERF_DIC_ARCH_COUNTER=y 2>&1 | tee $(ICACHE_DISABLED_LOG)
 	@if grep -E '\[W004\]|Dynamic index.*Vec of size 1' \
 	    $(ICACHE_DISABLED_LOG); then \
 	  echo "ICACHE=n still emits a wide Vec index warning" >&2; \
@@ -163,7 +172,7 @@ $(ICACHE_DISABLED_GEN_STAMP): $(SCALA_SOURCES) Makefile
 	@test -s $(ICACHE_DISABLED_RTL_DIR)/ysyx_26030103_npc.sv
 	@touch $@
 
-$(ARBITER_BIN): arbiter_test.cpp test_common.hpp $(CHIPLINK_GEN_STAMP)
+$(ARBITER_BIN): arbiter_test.cpp $(COMMON_DIR)/test_common.hpp $(CHIPLINK_GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(CHIPLINK_RTL_DIR) \
@@ -173,7 +182,7 @@ $(ARBITER_BIN): arbiter_test.cpp test_common.hpp $(CHIPLINK_GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(CHIPLINK_RTL_DIR)/ysyx_26030103.sv arbiter_test.cpp
 
-$(XBAR_BIN): xbar_test.cpp test_common.hpp $(GEN_STAMP)
+$(XBAR_BIN): xbar_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(XBAR_TOP) \
@@ -182,7 +191,7 @@ $(XBAR_BIN): xbar_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv xbar_test.cpp
 
-$(XBAR_CHIPLINK_BIN): xbar_test.cpp test_common.hpp $(CHIPLINK_GEN_STAMP)
+$(XBAR_CHIPLINK_BIN): xbar_test.cpp $(COMMON_DIR)/test_common.hpp $(CHIPLINK_GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(CHIPLINK_RTL_DIR) \
@@ -192,7 +201,7 @@ $(XBAR_CHIPLINK_BIN): xbar_test.cpp test_common.hpp $(CHIPLINK_GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(CHIPLINK_RTL_DIR)/ysyx_26030103.sv xbar_test.cpp
 
-$(ICACHE_BIN): icache_pma_test.cpp test_common.hpp $(GEN_STAMP)
+$(ICACHE_BIN): icache_pma_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(ICACHE_TOP) \
@@ -201,7 +210,7 @@ $(ICACHE_BIN): icache_pma_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv icache_pma_test.cpp
 
-$(ICACHE_NPC_BIN): icache_pma_test.cpp test_common.hpp $(GEN_STAMP)
+$(ICACHE_NPC_BIN): icache_pma_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(ICACHE_TOP) \
@@ -210,7 +219,7 @@ $(ICACHE_NPC_BIN): icache_pma_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103_npc.sv icache_pma_test.cpp
 
-$(ICACHE_CHIPLINK_BIN): icache_pma_test.cpp test_common.hpp $(CHIPLINK_GEN_STAMP)
+$(ICACHE_CHIPLINK_BIN): icache_pma_test.cpp $(COMMON_DIR)/test_common.hpp $(CHIPLINK_GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(CHIPLINK_RTL_DIR) \
@@ -220,7 +229,7 @@ $(ICACHE_CHIPLINK_BIN): icache_pma_test.cpp test_common.hpp $(CHIPLINK_GEN_STAMP
 	  -o $(abspath $@) \
 	  $(CHIPLINK_RTL_DIR)/ysyx_26030103.sv icache_pma_test.cpp
 
-$(ICACHE_DISABLED_SOC_BIN): icache_pma_test.cpp test_common.hpp $(ICACHE_DISABLED_GEN_STAMP)
+$(ICACHE_DISABLED_SOC_BIN): icache_pma_test.cpp $(COMMON_DIR)/test_common.hpp $(ICACHE_DISABLED_GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(ICACHE_DISABLED_RTL_DIR) \
@@ -230,7 +239,7 @@ $(ICACHE_DISABLED_SOC_BIN): icache_pma_test.cpp test_common.hpp $(ICACHE_DISABLE
 	  -o $(abspath $@) \
 	  $(ICACHE_DISABLED_RTL_DIR)/ysyx_26030103.sv icache_pma_test.cpp
 
-$(ICACHE_DISABLED_NPC_BIN): icache_pma_test.cpp test_common.hpp $(ICACHE_DISABLED_GEN_STAMP)
+$(ICACHE_DISABLED_NPC_BIN): icache_pma_test.cpp $(COMMON_DIR)/test_common.hpp $(ICACHE_DISABLED_GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(ICACHE_DISABLED_RTL_DIR) \
@@ -240,7 +249,7 @@ $(ICACHE_DISABLED_NPC_BIN): icache_pma_test.cpp test_common.hpp $(ICACHE_DISABLE
 	  -o $(abspath $@) \
 	  $(ICACHE_DISABLED_RTL_DIR)/ysyx_26030103_npc.sv icache_pma_test.cpp
 
-$(DCACHE_BIN): dcache_test.cpp test_common.hpp $(GEN_STAMP)
+$(DCACHE_BIN): dcache_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(DCACHE_TOP) \
@@ -249,7 +258,7 @@ $(DCACHE_BIN): dcache_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv dcache_test.cpp
 
-$(DMA_ERROR_SLAVE_BIN): dma_error_slave_test.cpp test_common.hpp $(GEN_STAMP)
+$(DMA_ERROR_SLAVE_BIN): dma_error_slave_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(DMA_ERROR_SLAVE_TOP) \
@@ -258,7 +267,7 @@ $(DMA_ERROR_SLAVE_BIN): dma_error_slave_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv dma_error_slave_test.cpp
 
-$(DMA_TOP_CHIPLINK_BIN): dma_top_test.cpp test_common.hpp $(CHIPLINK_GEN_STAMP)
+$(DMA_TOP_CHIPLINK_BIN): dma_top_test.cpp $(COMMON_DIR)/test_common.hpp $(CHIPLINK_GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(CHIPLINK_RTL_DIR) \
@@ -268,7 +277,7 @@ $(DMA_TOP_CHIPLINK_BIN): dma_top_test.cpp test_common.hpp $(CHIPLINK_GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(CHIPLINK_RTL_DIR)/ysyx_26030103.sv dma_top_test.cpp
 
-$(DMA_TOP_NO_CHIPLINK_BIN): dma_top_test.cpp test_common.hpp $(GEN_STAMP)
+$(DMA_TOP_NO_CHIPLINK_BIN): dma_top_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 	  -I$(RTL_DIR) \
@@ -278,7 +287,7 @@ $(DMA_TOP_NO_CHIPLINK_BIN): dma_top_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv dma_top_test.cpp
 
-$(IDU_BIN): idu_fence_test.cpp test_common.hpp $(GEN_STAMP)
+$(IDU_BIN): idu_fence_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(IDU_TOP) \
@@ -287,7 +296,7 @@ $(IDU_BIN): idu_fence_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv idu_fence_test.cpp
 
-$(PREDICTOR_BIN): predictor_test.cpp test_common.hpp $(GEN_STAMP)
+$(PREDICTOR_BIN): predictor_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(PREDICTOR_TOP) \
@@ -296,7 +305,7 @@ $(PREDICTOR_BIN): predictor_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv predictor_test.cpp
 
-$(BTB_BIN): btb_flush_test.cpp test_common.hpp $(GEN_STAMP)
+$(BTB_BIN): btb_flush_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(BTB_TOP) \
@@ -305,7 +314,7 @@ $(BTB_BIN): btb_flush_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv btb_flush_test.cpp
 
-$(RAS_BIN): ras_flush_test.cpp test_common.hpp $(GEN_STAMP)
+$(RAS_BIN): ras_flush_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(RAS_TOP) \
@@ -314,7 +323,7 @@ $(RAS_BIN): ras_flush_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv ras_flush_test.cpp
 
-$(LSU_BIN): lsu_store_test.cpp test_common.hpp $(GEN_STAMP)
+$(LSU_BIN): lsu_store_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(LSU_TOP) \
@@ -323,7 +332,7 @@ $(LSU_BIN): lsu_store_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv lsu_store_test.cpp
 
-$(CLINT_BIN): clint_test.cpp test_common.hpp $(GEN_STAMP)
+$(CLINT_BIN): clint_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(CLINT_TOP) \
@@ -332,7 +341,7 @@ $(CLINT_BIN): clint_test.cpp test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv clint_test.cpp
 
-$(AXIRAM_BIN): axiram_test.cpp test_common.hpp $(GEN_STAMP)
+$(AXIRAM_BIN): axiram_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(AXIRAM_TOP) \

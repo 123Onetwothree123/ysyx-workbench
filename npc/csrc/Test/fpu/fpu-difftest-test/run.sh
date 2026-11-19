@@ -462,15 +462,28 @@ run_config_errors() {
     }
 
     run_one_config_case() {
-        local name="$1" envspec="$2" needle_desc="$3"
+        local name="$1" needle_desc="$2"
+        shift 2
+        local -a config_args=("$@")
+        local build_dir="$root/build-$name"
+        local typed_json="$build_dir/generated/npc_config.typed.json"
         local log="$logdir/config-${name}.log"
         local status=0
         : >"$log"
-        # shellcheck disable=SC2086
-        if timeout 300 env $envspec make -C "$copy" verilog \
-            BUILD_DIR="$root/build-$name" git_commit= \
-            >>"$log" 2>&1; then
-            status=0
+        # CONFIG_* 必须作为 make 命令行变量传入：NPC Makefile 只把
+        # MAKEOVERRIDES 转发给 NPCConfigGEN，环境变量不会进入配置。
+        # 先生成带覆盖的 typed JSON，再让 elaboration 通过
+        # NPC_CONFIG_JSON 消费同一份配置。
+        if timeout 180 make -C "$copy" BUILD_DIR="$build_dir" \
+            "${config_args[@]}" npc-config git_commit= >>"$log" 2>&1; then
+            if timeout 300 env NPC_CONFIG_JSON="$typed_json" \
+                make -C "$copy" BUILD_DIR="$build_dir" \
+                "${config_args[@]}" verilog git_commit= \
+                >>"$log" 2>&1; then
+                status=0
+            else
+                status=$?
+            fi
         else
             status=$?
         fi
@@ -498,15 +511,18 @@ run_config_errors() {
         return 0
     }
 
-    # D 依赖 F：RISCV_D=y 且 RISCV_F=n 必须拒绝。
+    # D 依赖 F：CONFIG_RISCV_D=y 且 CONFIG_RISCV_F=n 必须拒绝。
     run_one_config_case "d-without-f" \
-        "RISCV_F=n RISCV_D=y FPU_IMPL=none" \
-        'RISCV_D.*(RISCV_F|依赖|requires)|(RISCV_F|F 扩展).*RISCV_D'
+        "CONFIG_RISCV_F=n CONFIG_RISCV_D=y CONFIG_FPU_IMPL=none" \
+        'RISCV_D.*(RISCV_F|依赖|requires)|(RISCV_F|F 扩展).*RISCV_D' \
+        CONFIG_RISCV_F=n CONFIG_RISCV_D=y CONFIG_FPU_IMPL=none
 
-    # D 需要 FLEN>=64：F+D 且 FLEN=32 必须拒绝。
+    # D 需要 FLEN>=64：F+D 且 CONFIG_FPU_FLEN=32 必须拒绝。
     run_one_config_case "flen32-with-d" \
-        "RISCV_F=y RISCV_D=y FPU_IMPL=hardfloat FPU_FLEN=32 CONFIG_FPU_FLEN=32 FLEN=32" \
-        '(FPU_)?FLEN.*(32|64)|64.*(FPU_)?FLEN'
+        "CONFIG_RISCV_F=y CONFIG_RISCV_D=y CONFIG_FPU_IMPL=hardfloat CONFIG_FPU_FLEN=32" \
+        '(FPU_)?FLEN.*(32|64)|64.*(FPU_)?FLEN' \
+        CONFIG_RISCV_F=y CONFIG_RISCV_D=y CONFIG_FPU_IMPL=hardfloat \
+        CONFIG_FPU_FLEN=32
 
     if [[ "$config_skipped" == 1 ]]; then
         echo "[SKIP] 配置错误检查只完成了占位拒绝，未验证真实 F/D 配置规则"

@@ -25,7 +25,7 @@ static constexpr uint64_t kNewPa = 0x0000000080003704ULL;
 
 static void defaults(DUT &dut) {
   dut.io_fetchValid = 0;
-  dut.io_fetchVaddr = 0;
+  dut.io_fetchVirtualAddress = 0;
   dut.io_cacheReady = 1;
   dut.io_pmpFault = 0;
   dut.io_privilege = 1; // S 模式，satp.MODE=Sv39 时必须走翻译
@@ -45,7 +45,7 @@ static void defaults(DUT &dut) {
 // 发起一笔翻译并接受 MMU 请求；返回时 IFUMMU 处于 xwait。
 static void issue_request(DUT &dut, uint64_t vaddr) {
   dut.io_fetchValid = 1;
-  dut.io_fetchVaddr = vaddr;
+  dut.io_fetchVirtualAddress = vaddr;
   wait_until(dut, [&] { return dut.io_req_valid; },
              "IFUMMU did not issue the translation request");
   check(dut.io_req_bits_vaddr == vaddr,
@@ -80,7 +80,7 @@ static void redirect(DUT &dut, uint64_t next_vaddr) {
   dut.io_flush = 1;
   tick(dut);
   dut.io_flush = 0;
-  dut.io_fetchVaddr = next_vaddr;
+  dut.io_fetchVirtualAddress = next_vaddr;
   dut.io_fetchValid = 1;
   dut.eval();
 }
@@ -105,7 +105,7 @@ static void stale_response_is_dropped_while_waiting_for_new_pc() {
   send_response(dut, kOldVa, kOldPa);
   check(!dut.io_translationValid,
         "stale translation response was accepted as valid");
-  check(dut.io_fetchPaddr != kOldPa,
+  check(dut.io_fetchPhysicalAddress != kOldPa,
         "stale translation PA leaked to the ICache fetch port");
   check(!dut.io_fault, "stale success response raised a fault");
 
@@ -113,9 +113,9 @@ static void stale_response_is_dropped_while_waiting_for_new_pc() {
   send_response(dut, kNewVa, kNewPa);
   check(dut.io_translationValid,
         "fresh translation response was not accepted after dropping stale one");
-  check(dut.io_fetchPaddr == kNewPa,
+  check(dut.io_fetchPhysicalAddress == kNewPa,
         "fresh translation produced the wrong physical address");
-  check(dut.io_fetchPaddrVaddr == kNewVa,
+  check(dut.io_fetchPhysicalAddressVirtualAddress == kNewVa,
         "fresh translation PA is tagged with the wrong virtual address");
   check(dut.io_fetchReady, "translationValid did not propagate to fetchReady");
 }
@@ -143,7 +143,8 @@ static void stale_fault_response_must_not_raise_page_fault() {
   send_response(dut, kNewVa, 0, true, 13);
   check(dut.io_fault, "fresh fault response was not accepted");
   check(dut.io_faultCause == 13, "fresh fault response lost its cause");
-  check(dut.io_faultVaddr == kNewVa, "fresh fault reported the wrong tval");
+  check(dut.io_faultVirtualAddress == kNewVa,
+        "fresh fault reported the wrong tval");
   check(!dut.io_translationValid, "fault response was reported as valid");
 }
 
@@ -165,16 +166,16 @@ static void late_response_after_done_cannot_overwrite_translation() {
   // 消费；此时旧响应不能改写 paddrReg/paddrVaddrReg。
   dut.io_cacheReady = 0;
   send_response(dut, kNewVa, kNewPa);
-  check(dut.io_translationValid && dut.io_fetchPaddr == kNewPa,
+  check(dut.io_translationValid && dut.io_fetchPhysicalAddress == kNewPa,
         "fresh translation did not become visible");
 
   // done 状态下仍可能收到旧响应；它只能被排空，不能改写已完成的翻译。
   send_response(dut, kOldVa, kOldPa);
   check(dut.io_translationValid,
         "late stale response cancelled a completed translation");
-  check(dut.io_fetchPaddr == kNewPa,
+  check(dut.io_fetchPhysicalAddress == kNewPa,
         "late stale response overwrote the completed PA");
-  check(dut.io_fetchPaddrVaddr == kNewVa,
+  check(dut.io_fetchPhysicalAddressVirtualAddress == kNewVa,
         "late stale response overwrote the translation VA tag");
 }
 

@@ -42,7 +42,7 @@ run-legacy: main.bin $(LEGACY_SHIM)
 	  status=$$?; set -e; cat build/legacy.log; \
 	  grep -Fq 'REF 缺少 difftest_trap' build/legacy.log || \
 	    { echo '缺少旧 REF 降级告警'; exit 1; }; \
-	  grep -Fq '无法注入' build/legacy.log || \
+	  grep -Fq 'trap 注入被拒绝，这是上一条 REF 指令' build/legacy.log || \
 	    { echo '缺少非零 tval 的明确拒绝信息'; exit 1; }; \
 	  test $$status -ne 0 || { echo '旧 REF 错误地继续运行'; exit 1; }; \
 	  ! grep -Fq 'HIT GOOD TRAP' build/legacy.log || \

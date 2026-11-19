@@ -4,18 +4,12 @@
 #include <klib.h>
 #include <stdint.h>
 
+#include "cache_bench.hpp"
+
 #define WORDS (16 * 1024) // 64KB工作集
 #define BYTES (WORDS * 4)
 
 static uint32_t buf[WORDS];
-static volatile uint32_t sink;
-
-static inline uint32_t rdcycle(void)
-{
-  uint32_t value;
-  asm volatile("csrr %0, mcycle" : "=r"(value));
-  return value;
-}
 
 static uint32_t scan_words(uint32_t step)
 {

@@ -201,7 +201,7 @@ class ysyx_26030103_PLICSourceIndexAuditTest
 
   "PLIC complete" should
     "ignore an out-of-range complete ID instead of truncating it" in {
-      simulate(new ysyx_26030103_PLIC()) { dut =>
+      simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
         setup(dut)
 
         // source 1：priority=7、enable bit1、threshold=0。

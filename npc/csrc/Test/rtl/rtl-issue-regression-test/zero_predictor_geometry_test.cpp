@@ -12,14 +12,14 @@ static void defaults(DUT &dut) {
   dut.io_btbUpdatePC = 0;
   dut.io_btbUpdateTarget = 0;
   dut.io_btbFlush = 0;
-  dut.io_jalBtbLookupPC = 0;
-  dut.io_jalBtbUpdateValid = 0;
-  dut.io_jalBtbUpdatePC = 0;
-  dut.io_jalBtbUpdateTarget = 0;
-  dut.io_jalBtbUpdateKind = 0;
-  dut.io_jalBtbFlush = 0;
+  dut.io_jalBTBLookupPC = 0;
+  dut.io_jalBTBUpdateValid = 0;
+  dut.io_jalBTBUpdatePC = 0;
+  dut.io_jalBTBUpdateTarget = 0;
+  dut.io_jalBTBUpdateKind = 0;
+  dut.io_jalBTBFlush = 0;
   dut.io_rasPushValid = 0;
-  dut.io_rasPushAddr = 0;
+  dut.io_rasPushAddress = 0;
   dut.io_rasPopValid = 0;
   dut.io_rasFlush = 0;
 }
@@ -31,32 +31,32 @@ static void one_set_jal_btb_preserves_kind_and_replaces_by_tag() {
 
   constexpr std::uint32_t first_pc = 0x80000300U >> 2;
   constexpr std::uint32_t second_pc = 0x80000400U >> 2;
-  dut.io_jalBtbUpdateValid = 1;
-  dut.io_jalBtbUpdatePC = first_pc;
-  dut.io_jalBtbUpdateTarget = 0x80003000U;
-  dut.io_jalBtbUpdateKind = 2;
+  dut.io_jalBTBUpdateValid = 1;
+  dut.io_jalBTBUpdatePC = first_pc;
+  dut.io_jalBTBUpdateTarget = 0x80003000U;
+  dut.io_jalBTBUpdateKind = 2;
   tick(dut);
-  dut.io_jalBtbUpdateValid = 0;
-  dut.io_jalBtbLookupPC = first_pc;
+  dut.io_jalBTBUpdateValid = 0;
+  dut.io_jalBTBLookupPC = first_pc;
   dut.eval();
-  check(dut.io_jalBtbHit && dut.io_jalBtbTarget == 0x80003000U &&
-            dut.io_jalBtbKind == 2,
+  check(dut.io_jalBTBHit && dut.io_jalBTBTarget == 0x80003000U &&
+            dut.io_jalBTBKind == 2,
         "one-set JAL BTB did not retain target and kind");
 
-  dut.io_jalBtbUpdateValid = 1;
-  dut.io_jalBtbUpdatePC = second_pc;
-  dut.io_jalBtbUpdateTarget = 0x80004000U;
-  dut.io_jalBtbUpdateKind = 3;
+  dut.io_jalBTBUpdateValid = 1;
+  dut.io_jalBTBUpdatePC = second_pc;
+  dut.io_jalBTBUpdateTarget = 0x80004000U;
+  dut.io_jalBTBUpdateKind = 3;
   tick(dut);
-  dut.io_jalBtbUpdateValid = 0;
-  dut.io_jalBtbLookupPC = second_pc;
+  dut.io_jalBTBUpdateValid = 0;
+  dut.io_jalBTBLookupPC = second_pc;
   dut.eval();
-  check(dut.io_jalBtbHit && dut.io_jalBtbTarget == 0x80004000U &&
-            dut.io_jalBtbKind == 3,
+  check(dut.io_jalBTBHit && dut.io_jalBTBTarget == 0x80004000U &&
+            dut.io_jalBTBKind == 3,
         "one-set JAL BTB did not replace target and kind");
-  dut.io_jalBtbLookupPC = first_pc;
+  dut.io_jalBTBLookupPC = first_pc;
   dut.eval();
-  check(!dut.io_jalBtbHit,
+  check(!dut.io_jalBTBHit,
         "one-set JAL BTB reported the replaced tag as a hit");
   dut.final();
 }
@@ -100,9 +100,9 @@ static void one_entry_ras_push_pop_and_overwrite() {
   reset(dut);
 
   dut.io_rasPushValid = 1;
-  dut.io_rasPushAddr = 0x80000104U;
+  dut.io_rasPushAddress = 0x80000104U;
   tick(dut);
-  dut.io_rasPushAddr = 0x80000204U;
+  dut.io_rasPushAddress = 0x80000204U;
   tick(dut);
   dut.io_rasPushValid = 0;
   dut.eval();
@@ -117,7 +117,7 @@ static void one_entry_ras_push_pop_and_overwrite() {
 
   dut.io_rasPushValid = 1;
   dut.io_rasPopValid = 1;
-  dut.io_rasPushAddr = 0x80000304U;
+  dut.io_rasPushAddress = 0x80000304U;
   tick(dut);
   dut.io_rasPushValid = 0;
   dut.io_rasPopValid = 0;
@@ -136,36 +136,36 @@ static void context_flush_clears_all_predictor_state() {
   dut.io_btbUpdateValid = 1;
   dut.io_btbUpdatePC = pc;
   dut.io_btbUpdateTarget = 0x80000400U;
-  dut.io_jalBtbUpdateValid = 1;
-  dut.io_jalBtbUpdatePC = pc;
-  dut.io_jalBtbUpdateTarget = 0x80000600U;
-  dut.io_jalBtbUpdateKind = 1;
+  dut.io_jalBTBUpdateValid = 1;
+  dut.io_jalBTBUpdatePC = pc;
+  dut.io_jalBTBUpdateTarget = 0x80000600U;
+  dut.io_jalBTBUpdateKind = 1;
   dut.io_rasPushValid = 1;
-  dut.io_rasPushAddr = 0x80000504U;
+  dut.io_rasPushAddress = 0x80000504U;
   tick(dut);
   dut.io_btbUpdateValid = 0;
-  dut.io_jalBtbUpdateValid = 0;
+  dut.io_jalBTBUpdateValid = 0;
   dut.io_rasPushValid = 0;
   dut.io_btbLookupPC = pc;
-  dut.io_jalBtbLookupPC = pc;
+  dut.io_jalBTBLookupPC = pc;
   dut.eval();
-  check(dut.io_btbHit && dut.io_jalBtbHit && dut.io_rasNonempty,
+  check(dut.io_btbHit && dut.io_jalBTBHit && dut.io_rasNonempty,
         "predictor state was not populated before the context flush");
 
   // 顶层在 satp/sfence.vma/trap/mret/sret 时同时拉高这三路 flush。
   dut.io_btbFlush = 1;
-  dut.io_jalBtbFlush = 1;
+  dut.io_jalBTBFlush = 1;
   dut.io_rasFlush = 1;
   tick(dut);
   dut.io_btbFlush = 0;
-  dut.io_jalBtbFlush = 0;
+  dut.io_jalBTBFlush = 0;
   dut.io_rasFlush = 0;
   dut.io_btbLookupPC = pc;
-  dut.io_jalBtbLookupPC = pc;
+  dut.io_jalBTBLookupPC = pc;
   dut.eval();
   check(!dut.io_btbHit,
         "branch BTB entry survived a context flush and could hit a non-control PC");
-  check(!dut.io_jalBtbHit, "JAL BTB entry survived a context flush");
+  check(!dut.io_jalBTBHit, "JAL BTB entry survived a context flush");
   check(!dut.io_rasNonempty, "RAS return address survived a context flush");
   dut.final();
 }

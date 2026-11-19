@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 
 TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+COMMON_DIR := $(TEST_DIR)/../../common
 NPC_DIR := $(abspath $(TEST_DIR)/../../../..)
 BUILD_DIR := $(TEST_DIR)/build
 RTL_DIR := $(BUILD_DIR)/rtl
@@ -10,7 +11,7 @@ BIN := $(BUILD_DIR)/lsu_access_fault_backpressure_test
 
 VERILATOR ?= verilator
 MILL ?= mill
-CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR)
+CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR) -I$(COMMON_DIR)
 
 LOCAL_SCALA_SOURCES := $(shell find $(TEST_DIR)/scala -type f -name '*.scala' | sort)
 NPC_SCALA_SOURCES := \
@@ -61,7 +62,7 @@ $(RTL_STAMP): build.mill $(LOCAL_SCALA_SOURCES) $(NPC_SCALA_SOURCES) \
 		$(RTL_DIR)/
 	@touch $@
 
-$(BIN): main.cpp test_common.hpp $(RTL_STAMP)
+$(BIN): main.cpp $(COMMON_DIR)/test_common.hpp $(RTL_STAMP)
 	@mkdir -p $(BUILD_DIR)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 		-I$(RTL_DIR) \

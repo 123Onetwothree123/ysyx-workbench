@@ -41,8 +41,23 @@ class ysyx_26030103_SocXLENElaborationTest extends AnyFlatSpec with Matchers {
       new ysyx_26030103(config(cpuXlen, socXlen))
     )
 
+  /** 从 CHIRRTL 的嵌套 Bundle 端口名中取位宽。
+    *
+    * 顶层 IO 输出形如 `io : { ... master : { awaddr : UInt<32>, ... } ... }`，
+    * 因此 `master_awaddr` 要按“块名 + 字段名”匹配，而不是扁平端口名。
+    */
   private def portWidth(chirrtl: String, Name: String): Int = {
-    val Pattern = ("""\b""" + Name + """\s*:\s*UInt<(\d+)>""").r
+    val split = Name.indexOf('_')
+    val Pattern =
+      if (split < 0) {
+        ("""\b""" + Name + """\s*:\s*UInt<(\d+)>""").r
+      } else {
+        val Block = Name.take(split)
+        val Field = Name.drop(split + 1)
+        ("""\b""" + Block +
+          """\s*:\s*\{[^}]*?\b""" + Field +
+          """\s*:\s*UInt<(\d+)>""").r
+      }
     Pattern.findFirstMatchIn(chirrtl) match {
       case Some(matched) => matched.group(1).toInt
       case None =>

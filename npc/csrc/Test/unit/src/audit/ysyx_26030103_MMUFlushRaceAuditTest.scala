@@ -256,6 +256,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       cacheEntries = 16,
       cacheWays = 2,
       pteSizeBytes = 4,
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31),
       levels = 1,
       tableEntries = 1024,
       pageBits = 12,
@@ -393,6 +394,8 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       cacheEnable = true,
       cacheEntries = 16,
       cacheWays = 2,
+      pteSizeBytes = 4,
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31),
       levels = 1,
       tableEntries = 1024,
       pageBits = 12,
@@ -488,6 +491,8 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       cacheEnable = true,
       cacheEntries = 16,
       cacheWays = 2,
+      pteSizeBytes = 4,
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31),
       levels = 1,
       tableEntries = 1024,
       pageBits = 12,
@@ -579,7 +584,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       ptwArch: String = "independent",
       tlbEnabled: Boolean = false
   ): ysyx_26030103_MMUProfile =
-    ysyx_26030103_MMUProfile(
+    ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32).copy(
       enabled = true,
       tlbEnabled = tlbEnabled,
       ptwArch = ptwArch,
@@ -839,7 +844,8 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     val bus = new PTEBus(latency = 1)
     // 根 PTE + 叶子 PTE：V|R|W|X|U|A，D=0。
     seedTwoLevel(bus, pte(LeafPPN, 0x5fL))
-    val profile = ysyx_26030103_MMUProfile(
+    val profile = ysyx_26030103_MMUProfile.fromEnv(
+      _ => None, xlen = 32).copy(
       enabled = true,
       tlbEnabled = true,
       tlbOrganization = "split",
@@ -901,7 +907,8 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     val leafAddress = 0x80002004L
     seedTwoLevel(bus, pte(LeafPPN, 0xdfL))
     bus.holdOnceAddress = Some(leafAddress)
-    val profile = ysyx_26030103_MMUProfile(
+    val profile = ysyx_26030103_MMUProfile.fromEnv(
+      _ => None, xlen = 32).copy(
       enabled = true,
       tlbEnabled = false,
       ptwArch = "pipelined",

@@ -25,6 +25,7 @@ object `package` extends ScalaModule {
     workspaceRoot / "scala",
     workspaceRoot / "../../../../src/Common/ysyx_26030103_PMA.scala",
     workspaceRoot / "../../../../src/config/ysyx_26030103_MMUProfile.scala",
+    workspaceRoot / "../../../../src/generated/ysyx_26030103_ConfigDefaults.scala",
     workspaceRoot / "../../../../src/Infra/ysyx_26030103_PLIC.scala",
     workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXIReadId.scala",
     workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5IO.scala",
@@ -34,8 +35,15 @@ object `package` extends ScalaModule {
     workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5AR.scala",
     workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5R.scala",
     workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5Slave.scala",
+    workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5Burst.scala",
     workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5Arbiter.scala",
     workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5WidthBridge.scala",
-    workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5Xbar.scala"
+    workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5WidthBridgeRead.scala",
+    workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5WidthBridgeWrite.scala",
+    workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5Xbar.scala",
+    workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5XbarDecode.scala",
+    workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5XbarRead.scala",
+    workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5XbarWrite.scala",
+    workspaceRoot / "../../../../src/Infra/AXI5/ysyx_26030103_AXI5XbarResponse.scala"
   )
 }

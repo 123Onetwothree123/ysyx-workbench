@@ -8,8 +8,11 @@ import org.scalatest.matchers.should.Matchers
 
 /** 测试用的 CSR 顶层，把显式 clk/rst 连接到仿真器的隐式时钟复位。 */
 class ysyx_26030103_CSRHarness(
+    // 本 harness 的 pc/satp/rdata 都是 32 位 RV32 接口；默认必须用 RV32
+    // profile，否则 64 位默认会让 misa/satp 语义与断言语义错位。
     profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
-      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(),
+      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile.fromEnv(
+        _ => None, xlen = 32),
     useA: Boolean = false,
     useC: Boolean = false,
     useF: Boolean = false,
@@ -49,7 +52,7 @@ class ysyx_26030103_CSRHarness(
     val stateMcause = Output(UInt(32.W))
   })
   val csr = Module(new ysyx_26030103_CSR(
-    profile, UseA = useA, UseC = useC, UseF = useF, UseD = useD))
+    profile, XLEN = 32, UseA = useA, UseC = useC, UseF = useF, UseD = useD))
   csr.io.clk := clock
   csr.io.rst := reset
   csr.io.Enable := io.enable
@@ -94,6 +97,10 @@ class ysyx_26030103_CSRHarness(
 }
 
 class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
+  // 本套件按 RV32 语义编写（misa.MXL=1、32 位 CSR 接口）。
+  private def rv32Profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
+    _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile.fromEnv(
+      _ => None, xlen = 32)
   private val MSTATUS = 0x300
   private val MIE = 0x304
   private val MEPC = 0x341
@@ -170,7 +177,9 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   it should "从 M 模式 MRET 到 S，并支持 S 模式异常委托" in {
-    simulate(new ysyx_26030103_CSRHarness) { dut =>
+    // medeleg 只在 MMU 打开时才允许委托页错误（cause 12/13/15），
+    // 因此本用例的 profile 必须显式启用 MMU，否则委托位会被 WARL 清零。
+    simulate(new ysyx_26030103_CSRHarness(rv32Profile.copy(enabled = true))) { dut =>
       setup(dut)
       // mstatus.MPP=S，mepc=0x80001000，然后执行 MRET。
       write(dut, MSTATUS, BigInt("00000800", 16))
@@ -206,7 +215,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   it should "支持 mstatus/satp 字段 mask 配置" in {
-    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+    val profile = rv32Profile.copy(
       csrMstatusReadMask = 0,
       csrMstatusReadSet = 0x8,
       csrMstatusWriteMask = 0,
@@ -277,7 +286,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   it should "identity CSR 不受 CSR_ENABLED 裁剪" in {
-    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+    val profile = rv32Profile.copy(
       csrEnabled = Set(0x300)
     )
     simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
@@ -299,7 +308,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       (false, false, BigInt("40000100", 16))
     )
     for ((hasS, hasU, expected) <- cases) {
-      val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+      val profile = rv32Profile.copy(
         hasS = hasS,
         hasU = hasU
       )
@@ -316,7 +325,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
 
   it should "misa 保留 A/C/F/D 扩展位" in {
     simulate(new ysyx_26030103_CSRHarness(
-      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(),
+      rv32Profile,
       useA = true,
       useC = true,
       useF = true,
@@ -330,7 +339,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
 
   it should "关闭的 CSR 读 0 且写忽略" in {
     simulate(new ysyx_26030103_CSRHarness(
-      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(csrEnabled = Set(0x300))
+      rv32Profile.copy(csrEnabled = Set(0x300))
     )) { dut =>
       setup(dut)
       write(dut, 0x180, BigInt("80080001", 16))
@@ -361,7 +370,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
 
   it should "direct_stip 直接产生 S 模式 timer 中断" in {
     simulate(new ysyx_26030103_CSRHarness(
-      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(timerPath = "direct_stip")
+      rv32Profile.copy(timerPath = "direct_stip")
     )) { dut =>
       setup(dut)
       write(dut, MSTATUS, BigInt("00000802", 16))
@@ -383,7 +392,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
 
   it should "CSR independent 视图使用独立 sstatus" in {
     simulate(new ysyx_26030103_CSRHarness(
-      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(csrViewMode = "independent")
+      rv32Profile.copy(csrViewMode = "independent")
     )) { dut =>
       setup(dut)
       write(dut, 0x100, BigInt(2))
@@ -420,7 +429,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   it should "HAS_U=n 时 MRET/SRET 降级到 S 且 ecall 不产生 cause 8" in {
-    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(hasU = false)
+    val profile = rv32Profile.copy(hasU = false)
     simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
       setup(dut)
       // 软件尝试把 MPP 写成 U(0)，硬件必须夹到 S(1)。
@@ -460,7 +469,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   it should "HAS_U=n 时裁剪 U 级 CSR 地址" in {
-    val withU = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+    val withU = rv32Profile.copy(
       csrEnabled = Set(0x100, 0x300, 0xc00)
     )
     val noU = withU.copy(hasU = false)
@@ -472,7 +481,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   it should "HAS_S=n 时只保留 M 模式 CSR、ecall 和 MRET 入口" in {
-    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+    val profile = rv32Profile.copy(
       hasS = false,
       hasU = false
     )
@@ -520,7 +529,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   it should "M+U：MRET 返回 U，U ecall 以 cause=8 进入 M 且 MPP=U" in {
-    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+    val profile = rv32Profile.copy(
       hasS = false,
       hasU = true
     )
@@ -579,7 +588,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   it should "M+U：U 的非法指令和地址异常都进入 M" in {
-    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+    val profile = rv32Profile.copy(
       hasS = false,
       hasU = true
     )
@@ -633,13 +642,21 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   it should "M+U 不生成 S CSR，SRET/SFENCE.VMA 不产生副作用" in {
-    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+    val profile = rv32Profile.copy(
       hasS = false,
       hasU = true
     )
-    val chirrtl = ChiselStage.emitCHIRRTL(new ysyx_26030103_CSR(profile))
-    Seq("SatpReg", "Sscratch", "Stval", "Medeleg", "Mideleg",
-      "SstatusReg").foreach { name =>
+    val chirrtl = ChiselStage.emitCHIRRTL(new ysyx_26030103_CSR(profile, XLEN = 32))
+    // 使用当前 CSR 实现里的真实寄存器名；同时用 hasS=y 的 profile 做正向
+    // 对照，确保这些名字确实会出现在硬件里，避免断言恒真。
+    val sEnabled = ChiselStage.emitCHIRRTL(
+      new ysyx_26030103_CSR(rv32Profile.copy(
+        hasS = true, hasU = true
+      ), XLEN = 32)
+    )
+    Seq("satpRegOpt", "sscratchOpt", "stvalOpt", "medelegOpt",
+      "midelegOpt").foreach { name =>
+      sEnabled should include(name)
       chirrtl should not include name
     }
     simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
@@ -662,13 +679,21 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   it should "HAS_S=n 的结构中不出现 S 模式状态寄存器" in {
-    val profile = _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile(
+    val profile = rv32Profile.copy(
       hasS = false,
       hasU = false
     )
-    val chirrtl = ChiselStage.emitCHIRRTL(new ysyx_26030103_CSR(profile))
-    Seq("SatpReg", "Sscratch", "Stval", "Medeleg", "Mideleg",
-      "SstatusReg").foreach { name =>
+    val chirrtl = ChiselStage.emitCHIRRTL(new ysyx_26030103_CSR(profile, XLEN = 32))
+    // 使用当前 CSR 实现里的真实寄存器名；同时用 hasS=y 的 profile 做正向
+    // 对照，确保这些名字确实会出现在硬件里，避免断言恒真。
+    val sEnabled = ChiselStage.emitCHIRRTL(
+      new ysyx_26030103_CSR(rv32Profile.copy(
+        hasS = true, hasU = true
+      ), XLEN = 32)
+    )
+    Seq("satpRegOpt", "sscratchOpt", "stvalOpt", "medelegOpt",
+      "midelegOpt").foreach { name =>
+      sEnabled should include(name)
       chirrtl should not include name
     }
   }

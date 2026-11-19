@@ -9,15 +9,6 @@ using DUT = Vriscv32e_npc_SimTop;
 
 namespace {
 
-void tick(DUT &dut) {
-  dut.clock = 0;
-  dut.eval();
-  dut.clock = 1;
-  dut.eval();
-  dut.clock = 0;
-  dut.eval();
-}
-
 void direct_npc_reset_pc_must_match_ram_image_base() {
   DUT dut;
   dut.clock = 0;

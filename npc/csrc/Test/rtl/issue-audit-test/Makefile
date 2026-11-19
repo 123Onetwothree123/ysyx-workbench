@@ -1,8 +1,18 @@
 SHELL := /bin/bash
 
 TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+COMMON_DIR := $(TEST_DIR)/../../common
 NPC_DIR := $(abspath $(TEST_DIR)/../../../..)
+ELABORATE_CFG := $(COMMON_DIR)/elaborate_config.sh
 BUILD_DIR := $(TEST_DIR)/build
+
+# 审计快照固定为 RV32（无 MMU），与仓库本地 .config 的 RV64 无关。
+RV32_CONFIG := CONFIG_XLEN=32 CONFIG_SOC_XLEN_FOLLOW_CPU=n CONFIG_SOC_XLEN=32 \
+	CONFIG_ADDRESS_WIDTH=32 CONFIG_HAS_MMU=n CONFIG_HAS_TLB=n \
+	CONFIG_MMU_PTE_FORMAT=riscv32 CONFIG_MMU_PTE_RISCV32=y \
+	CONFIG_MMU_PTE_RISCV64=n CONFIG_MMU_PTE_SIZE_BYTES=4 \
+	CONFIG_MMU_PTE_PPN_HIGH=31 CONFIG_MMU_LEVELS=2 \
+	CONFIG_RISCV_F=n CONFIG_RISCV_D=n CONFIG_FPU_IMPL=none
 BASE_RTL := $(BUILD_DIR)/rtl-base
 SRAM_RTL := $(BUILD_DIR)/rtl-sram
 NOBYPASS_RTL := $(BUILD_DIR)/rtl-nobypass
@@ -14,7 +24,7 @@ MDUCFG_RTL := $(BUILD_DIR)/rtl-mdu-cfg
 BIN_DIR := $(BUILD_DIR)/bin
 
 VERILATOR ?= verilator
-CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR)
+CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR) -I$(COMMON_DIR)
 VFLAGS := --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS
 
 IDU_BIN := $(BIN_DIR)/idu_perf_counter_test
@@ -76,7 +86,7 @@ test run: all
 	done; \
 	exit $$status
 
-$(IDU_BIN): idu_perf_counter_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
+$(IDU_BIN): idu_perf_counter_test.cpp $(COMMON_DIR)/test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) \
 	  --top-module ysyx_26030103_IDU \
@@ -86,7 +96,7 @@ $(IDU_BIN): idu_perf_counter_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.
 	  -o $(abspath $@) \
 	  $(BASE_RTL)/ysyx_26030103.sv idu_perf_counter_test.cpp
 
-$(IRQ_BIN): interrupt_pulse_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
+$(IRQ_BIN): interrupt_pulse_test.cpp $(COMMON_DIR)/test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_EXU \
@@ -96,7 +106,7 @@ $(IRQ_BIN): interrupt_pulse_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.s
 	  -o $(abspath $@) \
 	  $(BASE_RTL)/ysyx_26030103.sv interrupt_pulse_test.cpp
 
-$(DCACHE_REG_BIN): dcache_response_slot_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
+$(DCACHE_REG_BIN): dcache_response_slot_test.cpp $(COMMON_DIR)/test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_DCacheReg \
@@ -106,7 +116,7 @@ $(DCACHE_REG_BIN): dcache_response_slot_test.cpp test_common.hpp $(BASE_RTL)/ysy
 	  -o $(abspath $@) \
 	  $(BASE_RTL)/ysyx_26030103.sv dcache_response_slot_test.cpp
 
-$(DCACHE_SRAM_BIN): dcache_response_slot_test.cpp test_common.hpp $(SRAM_RTL)/ysyx_26030103.sv rtl-check
+$(DCACHE_SRAM_BIN): dcache_response_slot_test.cpp $(COMMON_DIR)/test_common.hpp $(SRAM_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_DCacheSRAM \
@@ -116,7 +126,7 @@ $(DCACHE_SRAM_BIN): dcache_response_slot_test.cpp test_common.hpp $(SRAM_RTL)/ys
 	  -o $(abspath $@) \
 	  $(SRAM_RTL)/ysyx_26030103.sv dcache_response_slot_test.cpp
 
-$(DCACHE_NOBYPASS_BIN): dcache_response_slot_test.cpp test_common.hpp $(NOBYPASS_RTL)/ysyx_26030103.sv rtl-check
+$(DCACHE_NOBYPASS_BIN): dcache_response_slot_test.cpp $(COMMON_DIR)/test_common.hpp $(NOBYPASS_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_DCacheSRAM \
@@ -126,7 +136,7 @@ $(DCACHE_NOBYPASS_BIN): dcache_response_slot_test.cpp test_common.hpp $(NOBYPASS
 	  -o $(abspath $@) \
 	  $(NOBYPASS_RTL)/ysyx_26030103.sv dcache_response_slot_test.cpp
 
-$(ICACHE_BIN): icache_outstanding_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
+$(ICACHE_BIN): icache_outstanding_test.cpp $(COMMON_DIR)/test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) \
 	  --top-module ysyx_26030103_ICacheReg \
@@ -136,7 +146,7 @@ $(ICACHE_BIN): icache_outstanding_test.cpp test_common.hpp $(BASE_RTL)/ysyx_2603
 	  -o $(abspath $@) \
 	  $(BASE_RTL)/ysyx_26030103.sv icache_outstanding_test.cpp
 
-$(ICACHE_SMALL_BIN): icache_outstanding_test.cpp test_common.hpp $(SMALLLINE_RTL)/ysyx_26030103.sv rtl-check
+$(ICACHE_SMALL_BIN): icache_outstanding_test.cpp $(COMMON_DIR)/test_common.hpp $(SMALLLINE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) \
 	  --top-module ysyx_26030103_ICacheReg \
@@ -149,7 +159,7 @@ $(ICACHE_SMALL_BIN): icache_outstanding_test.cpp test_common.hpp $(SMALLLINE_RTL
 clean:
 	rm -rf $(BUILD_DIR)/bin $(BUILD_DIR)/obj-*-audit
 
-$(MUL_DEFAULT_BIN): mul_gpc_config_test.cpp test_common.hpp $(GPC32_RTL)/ysyx_26030103.sv rtl-check
+$(MUL_DEFAULT_BIN): mul_gpc_config_test.cpp $(COMMON_DIR)/test_common.hpp $(GPC32_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) \
 	  --top-module ysyx_26030103_MULWallaceCore \
@@ -159,7 +169,7 @@ $(MUL_DEFAULT_BIN): mul_gpc_config_test.cpp test_common.hpp $(GPC32_RTL)/ysyx_26
 	  -o $(abspath $@) \
 	  $(GPC32_RTL)/ysyx_26030103.sv mul_gpc_config_test.cpp
 
-$(MUL_ALT_BIN): mul_gpc_config_test.cpp test_common.hpp $(GPC43_RTL)/ysyx_26030103.sv rtl-check
+$(MUL_ALT_BIN): mul_gpc_config_test.cpp $(COMMON_DIR)/test_common.hpp $(GPC43_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) \
 	  --top-module ysyx_26030103_MULWallaceCore \
@@ -169,7 +179,7 @@ $(MUL_ALT_BIN): mul_gpc_config_test.cpp test_common.hpp $(GPC43_RTL)/ysyx_260301
 	  -o $(abspath $@) \
 	  $(GPC43_RTL)/ysyx_26030103.sv mul_gpc_config_test.cpp
 
-$(MCYCLE_BIN): mcycle_semantics_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
+$(MCYCLE_BIN): mcycle_semantics_test.cpp $(COMMON_DIR)/test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) \
 	  --top-module ysyx_26030103_mcycle \
@@ -179,7 +189,7 @@ $(MCYCLE_BIN): mcycle_semantics_test.cpp test_common.hpp $(BASE_RTL)/ysyx_260301
 	  -o $(abspath $@) \
 	  $(BASE_RTL)/ysyx_26030103.sv mcycle_semantics_test.cpp
 
-$(AXIRAM_BIN): axiram_window_test.cpp test_common.hpp $(BASE_RTL)/riscv32e_npc_AXIRAM.sv rtl-check
+$(AXIRAM_BIN): axiram_window_test.cpp $(COMMON_DIR)/test_common.hpp $(BASE_RTL)/riscv32e_npc_AXIRAM.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) \
 	  --top-module riscv32e_npc_AXIRAM \
@@ -189,7 +199,7 @@ $(AXIRAM_BIN): axiram_window_test.cpp test_common.hpp $(BASE_RTL)/riscv32e_npc_A
 	  -o $(abspath $@) \
 	  $(BASE_RTL)/riscv32e_npc_AXIRAM.sv axiram_window_test.cpp
 
-$(BTB2_BIN): btb_twoway_test.cpp test_common.hpp $(BTB2_RTL)/ysyx_26030103.sv rtl-check
+$(BTB2_BIN): btb_twoway_test.cpp $(COMMON_DIR)/test_common.hpp $(BTB2_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) \
 	  --top-module ysyx_26030103_BTB \
@@ -199,7 +209,7 @@ $(BTB2_BIN): btb_twoway_test.cpp test_common.hpp $(BTB2_RTL)/ysyx_26030103.sv rt
 	  -o $(abspath $@) \
 	  $(BTB2_RTL)/ysyx_26030103.sv btb_twoway_test.cpp
 
-$(DCACHE_REFILL_REG_BIN): dcache_refill_interaction_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
+$(DCACHE_REFILL_REG_BIN): dcache_refill_interaction_test.cpp $(COMMON_DIR)/test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_DCacheReg \
@@ -209,7 +219,7 @@ $(DCACHE_REFILL_REG_BIN): dcache_refill_interaction_test.cpp test_common.hpp $(B
 	  -o $(abspath $@) \
 	  $(BASE_RTL)/ysyx_26030103.sv dcache_refill_interaction_test.cpp
 
-$(DCACHE_REFILL_SRAM_BIN): dcache_refill_interaction_test.cpp test_common.hpp $(SRAM_RTL)/ysyx_26030103.sv rtl-check
+$(DCACHE_REFILL_SRAM_BIN): dcache_refill_interaction_test.cpp $(COMMON_DIR)/test_common.hpp $(SRAM_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_DCacheSRAM \
@@ -219,7 +229,7 @@ $(DCACHE_REFILL_SRAM_BIN): dcache_refill_interaction_test.cpp test_common.hpp $(
 	  -o $(abspath $@) \
 	  $(SRAM_RTL)/ysyx_26030103.sv dcache_refill_interaction_test.cpp
 
-$(DCACHE_REFILL_NOBYPASS_BIN): dcache_refill_interaction_test.cpp test_common.hpp $(NOBYPASS_RTL)/ysyx_26030103.sv rtl-check
+$(DCACHE_REFILL_NOBYPASS_BIN): dcache_refill_interaction_test.cpp $(COMMON_DIR)/test_common.hpp $(NOBYPASS_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_DCacheSRAM \
@@ -229,7 +239,7 @@ $(DCACHE_REFILL_NOBYPASS_BIN): dcache_refill_interaction_test.cpp test_common.hp
 	  -o $(abspath $@) \
 	  $(NOBYPASS_RTL)/ysyx_26030103.sv dcache_refill_interaction_test.cpp
 
-$(MULCFG_BIN): mdu_config_core_test.cpp test_common.hpp $(MDUCFG_RTL)/ysyx_26030103.sv rtl-check
+$(MULCFG_BIN): mdu_config_core_test.cpp $(COMMON_DIR)/test_common.hpp $(MDUCFG_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) \
 	  --top-module ysyx_26030103_MULShiftAddCore \
@@ -239,7 +249,7 @@ $(MULCFG_BIN): mdu_config_core_test.cpp test_common.hpp $(MDUCFG_RTL)/ysyx_26030
 	  -o $(abspath $@) \
 	  $(MDUCFG_RTL)/ysyx_26030103.sv mdu_config_core_test.cpp
 
-$(DIVCFG_BIN): mdu_config_core_test.cpp test_common.hpp $(MDUCFG_RTL)/ysyx_26030103.sv rtl-check
+$(DIVCFG_BIN): mdu_config_core_test.cpp $(COMMON_DIR)/test_common.hpp $(MDUCFG_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) \
 	  --top-module ysyx_26030103_DIVNonRestoringCore \
@@ -249,7 +259,7 @@ $(DIVCFG_BIN): mdu_config_core_test.cpp test_common.hpp $(MDUCFG_RTL)/ysyx_26030
 	  -o $(abspath $@) \
 	  $(MDUCFG_RTL)/ysyx_26030103.sv mdu_config_core_test.cpp
 
-$(MDU_BLOCK_BIN): mdu_pipeline_block_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
+$(MDU_BLOCK_BIN): mdu_pipeline_block_test.cpp $(COMMON_DIR)/test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_EXU \
@@ -260,7 +270,7 @@ $(MDU_BLOCK_BIN): mdu_pipeline_block_test.cpp test_common.hpp $(BASE_RTL)/ysyx_2
 	  $(BASE_RTL)/ysyx_26030103.sv mdu_pipeline_block_test.cpp
 
 # 全系统测量：用生产 wrapper（仓库内 rtl/riscv32e_npc_SimTop.sv）+ 当前 RTL 快照
-$(FULLCORE_BIN): fullcore_stall_test.cpp test_common.hpp \
+$(FULLCORE_BIN): fullcore_stall_test.cpp $(COMMON_DIR)/test_common.hpp \
                  $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
                  $(BASE_RTL)/ysyx_26030103_npc.sv $(BASE_RTL)/riscv32e_npc_AXIRAM.sv rtl-check
 	@mkdir -p $(BIN_DIR)
@@ -275,7 +285,7 @@ $(FULLCORE_BIN): fullcore_stall_test.cpp test_common.hpp \
 	  fullcore_stall_test.cpp
 
 # perf 口径回归：同样使用生产 wrapper + NPC 快照
-$(PERFSEM_BIN): perf_counter_semantics_test.cpp test_common.hpp \
+$(PERFSEM_BIN): perf_counter_semantics_test.cpp $(COMMON_DIR)/test_common.hpp \
                 $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
                 $(BASE_RTL)/ysyx_26030103_npc.sv $(BASE_RTL)/riscv32e_npc_AXIRAM.sv rtl-check
 	@mkdir -p $(BIN_DIR)
@@ -289,7 +299,7 @@ $(PERFSEM_BIN): perf_counter_semantics_test.cpp test_common.hpp \
 	  $(BASE_RTL)/ysyx_26030103_npc.sv $(BASE_RTL)/riscv32e_npc_AXIRAM.sv \
 	  perf_counter_semantics_test.cpp
 
-$(XBAR_HOL_BIN): xbar_r_hol_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
+$(XBAR_HOL_BIN): xbar_r_hol_test.cpp $(COMMON_DIR)/test_common.hpp $(BASE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_AXI5Xbar \
@@ -300,20 +310,21 @@ $(XBAR_HOL_BIN): xbar_r_hol_test.cpp test_common.hpp $(BASE_RTL)/ysyx_26030103.s
 	  $(BASE_RTL)/ysyx_26030103.sv xbar_r_hol_test.cpp
 
 # CHIPLINK=y 的 SoC 顶层（DMA 代理启用），用于 DMA/缓存一致性窗口测试
-$(CHIPLINK_RTL)/ysyx_26030103.sv:
+$(CHIPLINK_RTL)/ysyx_26030103.sv: $(ELABORATE_CFG)
 	@mkdir -p $(CHIPLINK_RTL)
-	cd $(NPC_DIR) && env \
-	  CACHE_BLOCK_SIZE_LOG2=2 CACHE_INDEX_BITS=5 \
-	  ICACHE=n DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=y \
-	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y DIFFTEST=y PERF_DIC_ARCH_COUNTER=y \
-	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(CHIPLINK_RTL)
+	@$(ELABORATE_CFG) $(TEST_DIR) $(CHIPLINK_RTL) $(RV32_CONFIG) \
+	  CONFIG_CACHE_BLOCK_SIZE_LOG2=2 CONFIG_CACHE_INDEX_BITS=5 \
+	  CONFIG_ICACHE=n CONFIG_DCACHE=y CONFIG_WBUF_DEPTH=4 CONFIG_CACHE_PADDING=0 \
+	  CONFIG_CHIPLINK=y \
+	  CONFIG_BTB_BITS=4 CONFIG_BTB_WAYS=1 CONFIG_JAL_BTB_BITS=4 CONFIG_JAL_BTB_WAYS=1 CONFIG_RAS_BITS=4 \
+	  CONFIG_RISCV_M=y CONFIG_RISCV_A=n CONFIG_RISCV_C=n \
+	  CONFIG_SDB=y CONFIG_DIFFTEST=y CONFIG_PERF_DIC_ARCH_COUNTER=y
 	ln -sf layers-ysyx_26030103-Verification.sv $(CHIPLINK_RTL)/layers-riscv32e_npc_AXIRAM-Verification.sv
 
 DMA_WINDOW_DIAG_BIN := $(BIN_DIR)/dma_coherence_diag_test
 DCACHE_SMALL_BIN := $(BIN_DIR)/dcache_smallline_test
 
-$(DMA_WINDOW_BIN): dma_coherence_window_test.cpp test_common.hpp \
+$(DMA_WINDOW_BIN): dma_coherence_window_test.cpp $(COMMON_DIR)/test_common.hpp \
                    $(CHIPLINK_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
@@ -326,18 +337,18 @@ $(DMA_WINDOW_BIN): dma_coherence_window_test.cpp test_common.hpp \
 
 # DMA_COHERENCE=uncached 的 SoC 快照：DMA 窗口在 CPU Cache PMA 中不可缓存。
 # 单独作为显式目标，避免每次全量审计都多编译一份 RTL。
-$(DMA_UNCACHED_RTL)/ysyx_26030103.sv:
+$(DMA_UNCACHED_RTL)/ysyx_26030103.sv: $(ELABORATE_CFG)
 	@mkdir -p $(DMA_UNCACHED_RTL)
-	cd $(NPC_DIR) && env \
-	  CACHE_BLOCK_SIZE_LOG2=2 CACHE_INDEX_BITS=5 \
-	  ICACHE=n DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=y \
-	  DMA_COHERENCE=uncached \
-	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y DIFFTEST=y PERF_DIC_ARCH_COUNTER=y \
-	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(DMA_UNCACHED_RTL)
+	@$(ELABORATE_CFG) $(TEST_DIR) $(DMA_UNCACHED_RTL) $(RV32_CONFIG) \
+	  CONFIG_CACHE_BLOCK_SIZE_LOG2=2 CONFIG_CACHE_INDEX_BITS=5 \
+	  CONFIG_ICACHE=n CONFIG_DCACHE=y CONFIG_WBUF_DEPTH=4 CONFIG_CACHE_PADDING=0 \
+	  CONFIG_CHIPLINK=y CONFIG_DMA_COHERENCE_UNCACHED=y \
+	  CONFIG_BTB_BITS=4 CONFIG_BTB_WAYS=1 CONFIG_JAL_BTB_BITS=4 CONFIG_JAL_BTB_WAYS=1 CONFIG_RAS_BITS=4 \
+	  CONFIG_RISCV_M=y CONFIG_RISCV_A=n CONFIG_RISCV_C=n \
+	  CONFIG_SDB=y CONFIG_DIFFTEST=y CONFIG_PERF_DIC_ARCH_COUNTER=y
 	ln -sf layers-ysyx_26030103-Verification.sv $(DMA_UNCACHED_RTL)/layers-riscv32e_npc_AXIRAM-Verification.sv
 
-$(DMA_UNCACHED_BIN): dma_coherence_window_test.cpp test_common.hpp \
+$(DMA_UNCACHED_BIN): dma_coherence_window_test.cpp $(COMMON_DIR)/test_common.hpp \
                      $(DMA_UNCACHED_RTL)/ysyx_26030103.sv
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
@@ -354,18 +365,18 @@ dma-uncached-test: $(DMA_UNCACHED_BIN)
 # DMA_COHERENCE=hardware_snoop 的 SoC 快照：DMA 写 B 要等 ICache/DCache
 # 完成地址级行失效后才交给 CPU slave。复用同一个窗口测试程序验证端到端
 # B 顺序与失效后可见性；地址级行选择/跨行/在途 refill 由 Scala 叶测试覆盖。
-$(DMA_SNOOP_RTL)/ysyx_26030103.sv:
+$(DMA_SNOOP_RTL)/ysyx_26030103.sv: $(ELABORATE_CFG)
 	@mkdir -p $(DMA_SNOOP_RTL)
-	cd $(NPC_DIR) && env \
-	  CACHE_BLOCK_SIZE_LOG2=2 CACHE_INDEX_BITS=5 \
-	  ICACHE=y DCACHE=y WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=y \
-	  DMA_COHERENCE=hardware_snoop \
-	  BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-	  RISCV_M=y RISCV_A=n RISCV_C=n SDB=y MTRACE=y DIFFTEST=y PERF_DIC_ARCH_COUNTER=y \
-	  mill --no-server runMain ysyx_26030103_Elaborate --target-dir $(DMA_SNOOP_RTL)
+	@$(ELABORATE_CFG) $(TEST_DIR) $(DMA_SNOOP_RTL) $(RV32_CONFIG) \
+	  CONFIG_CACHE_BLOCK_SIZE_LOG2=2 CONFIG_CACHE_INDEX_BITS=5 \
+	  CONFIG_ICACHE=y CONFIG_DCACHE=y CONFIG_WBUF_DEPTH=4 CONFIG_CACHE_PADDING=0 \
+	  CONFIG_CHIPLINK=y CONFIG_DMA_COHERENCE_HARDWARE_SNOOP=y \
+	  CONFIG_BTB_BITS=4 CONFIG_BTB_WAYS=1 CONFIG_JAL_BTB_BITS=4 CONFIG_JAL_BTB_WAYS=1 CONFIG_RAS_BITS=4 \
+	  CONFIG_RISCV_M=y CONFIG_RISCV_A=n CONFIG_RISCV_C=n \
+	  CONFIG_SDB=y CONFIG_MTRACE=y CONFIG_DIFFTEST=y CONFIG_PERF_DIC_ARCH_COUNTER=y
 	ln -sf layers-ysyx_26030103-Verification.sv $(DMA_SNOOP_RTL)/layers-riscv32e_npc_AXIRAM-Verification.sv
 
-$(DMA_SNOOP_BIN): dma_coherence_window_test.cpp test_common.hpp \
+$(DMA_SNOOP_BIN): dma_coherence_window_test.cpp $(COMMON_DIR)/test_common.hpp \
                   $(DMA_SNOOP_RTL)/ysyx_26030103.sv
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
@@ -379,7 +390,7 @@ $(DMA_SNOOP_BIN): dma_coherence_window_test.cpp test_common.hpp \
 dma-snoop-test: $(DMA_SNOOP_BIN)
 	$(DMA_SNOOP_BIN)
 
-$(DMA_WINDOW_DIAG_BIN): dma_coherence_window_test.cpp test_common.hpp \
+$(DMA_WINDOW_DIAG_BIN): dma_coherence_window_test.cpp $(COMMON_DIR)/test_common.hpp \
                         $(CHIPLINK_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
@@ -390,7 +401,7 @@ $(DMA_WINDOW_DIAG_BIN): dma_coherence_window_test.cpp test_common.hpp \
 	  -o $(abspath $@) \
 	  $(CHIPLINK_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
 
-$(DCACHE_SMALL_BIN): dcache_smallline_test.cpp test_common.hpp $(SMALLLINE_RTL)/ysyx_26030103.sv rtl-check
+$(DCACHE_SMALL_BIN): dcache_smallline_test.cpp $(COMMON_DIR)/test_common.hpp $(SMALLLINE_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_DCacheReg \
@@ -402,7 +413,7 @@ $(DCACHE_SMALL_BIN): dcache_smallline_test.cpp test_common.hpp $(SMALLLINE_RTL)/
 
 
 DMA_WINDOW_NOLOAD_BIN := $(BIN_DIR)/dma_coherence_noload_diag
-$(DMA_WINDOW_NOLOAD_BIN): dma_coherence_window_test.cpp test_common.hpp \
+$(DMA_WINDOW_NOLOAD_BIN): dma_coherence_window_test.cpp $(COMMON_DIR)/test_common.hpp \
                           $(CHIPLINK_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
@@ -414,7 +425,7 @@ $(DMA_WINDOW_NOLOAD_BIN): dma_coherence_window_test.cpp test_common.hpp \
 	  $(CHIPLINK_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
 
 DMA_WINDOW_TRACE_BIN := $(BIN_DIR)/dma_coherence_trace_test
-$(DMA_WINDOW_TRACE_BIN): dma_coherence_window_test.cpp test_common.hpp \
+$(DMA_WINDOW_TRACE_BIN): dma_coherence_window_test.cpp $(COMMON_DIR)/test_common.hpp \
                          $(CHIPLINK_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert --trace \
@@ -426,7 +437,7 @@ $(DMA_WINDOW_TRACE_BIN): dma_coherence_window_test.cpp test_common.hpp \
 	  $(CHIPLINK_RTL)/ysyx_26030103.sv dma_coherence_window_test.cpp
 
 # 生产配置（sram+sram, 32B/64sets）下的 ICacheSRAM 覆盖：先跑 ./elaborate-prod.sh
-$(ICACHE_SRAM_BIN): icache_sram_test.cpp test_common.hpp $(PROD_RTL)/ysyx_26030103.sv
+$(ICACHE_SRAM_BIN): icache_sram_test.cpp $(COMMON_DIR)/test_common.hpp $(PROD_RTL)/ysyx_26030103.sv
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_ICacheSRAM \
@@ -437,7 +448,7 @@ $(ICACHE_SRAM_BIN): icache_sram_test.cpp test_common.hpp $(PROD_RTL)/ysyx_260301
 	  $(PROD_RTL)/ysyx_26030103.sv icache_sram_test.cpp
 
 # 同一 EXU 叶子在"快 MDU 配置"（booth/iter=4/split=2/early-out）下的阻塞量化
-$(MDU_BLOCK_FAST_BIN): mdu_pipeline_block_test.cpp test_common.hpp $(MDUCFG_RTL)/ysyx_26030103.sv rtl-check
+$(MDU_BLOCK_FAST_BIN): mdu_pipeline_block_test.cpp $(COMMON_DIR)/test_common.hpp $(MDUCFG_RTL)/ysyx_26030103.sv rtl-check
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VFLAGS) --assert \
 	  --top-module ysyx_26030103_EXU \
@@ -449,7 +460,7 @@ $(MDU_BLOCK_FAST_BIN): mdu_pipeline_block_test.cpp test_common.hpp $(MDUCFG_RTL)
 
 # 混合几何/混合存储配置（ICache 16B/32sets/sram + DCache 32B/64sets/reg）
 # 的端到端烟测：先跑 ./elaborate-mixed.sh
-$(PERFSEM_MIXED_BIN): perf_counter_semantics_test.cpp test_common.hpp \
+$(PERFSEM_MIXED_BIN): perf_counter_semantics_test.cpp $(COMMON_DIR)/test_common.hpp \
                       $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
                       $(MIXED_RTL)/ysyx_26030103_npc.sv $(MIXED_RTL)/riscv32e_npc_AXIRAM.sv
 	@mkdir -p $(BIN_DIR)

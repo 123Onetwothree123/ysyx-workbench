@@ -1,5 +1,7 @@
 include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../xlen.mk)
-ifeq ($(XLEN_IS_64),1)
+ARCH ?= $(XLEN_AM_ARCH)
+export ARCH
+ifeq ($(XLEN_IS_64),64)
 $(error smc 是 RV32 专用裸机测试；请在 XLEN=32 配置下运行)
 endif
 NAME = smc

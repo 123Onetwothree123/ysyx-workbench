@@ -140,6 +140,7 @@ class ysyx_26030103_PTWReservedPTEAuditTest
     simulate(new ysyx_26030103_PTW(
       adMode = "ignore",
       pteSizeBytes = 4,
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31),
       levels = 1,
       tableEntries = 1024,
       pageBits = 12,

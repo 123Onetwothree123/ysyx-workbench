@@ -147,7 +147,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
   }
 
   "LSUMMU VIPT parallel" should "翻译故障杀死已转发 load 并提交精确 page fault" in {
-    simulate(new ysyx_26030103_LSUMMU(ParallelVIPT = true)) { dut =>
+    simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       startLoad(dut, clock, pc = 0x1000L)
@@ -182,7 +182,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
   }
 
   it should "翻译成功时保持 PA 到 LSU 排空，且不复用旧 PA" in {
-    simulate(new ysyx_26030103_LSUMMU(ParallelVIPT = true)) { dut =>
+    simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       startLoad(dut, clock, pc = 0x2000L)
@@ -205,7 +205,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
   }
 
   it should "LSU 已提交访存陷阱时撤销在途翻译，迟到故障不再提交" in {
-    simulate(new ysyx_26030103_LSUMMU(ParallelVIPT = true)) { dut =>
+    simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       startLoad(dut, clock, pc = 0x3000L)
@@ -229,7 +229,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
   }
 
   "LSUMMU PIPT" should "把翻译成功但 PMP 拒绝的 load 报告为 access fault" in {
-    simulate(new ysyx_26030103_LSUMMU(ParallelVIPT = false)) { dut =>
+    simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = false)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       startLoad(dut, clock, pc = 0x5000L)
@@ -291,7 +291,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
   }
 
   "LSUMMU VIPT parallel" should "PMP 拒绝翻译成功的 store 时 kill 已转发请求并提交 store access fault" in {
-    simulate(new ysyx_26030103_LSUMMU(ParallelVIPT = true)) { dut =>
+    simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       startStore(dut, clock, pc = 0x6000L)
@@ -328,7 +328,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
   }
 
   "LSUMMU PIPT bypass" should "在 Bare 模式检查 PMP 并提交 load access fault" in {
-    simulate(new ysyx_26030103_LSUMMU(ParallelVIPT = false)) { dut =>
+    simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = false)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       // satp.MODE=0：bypass 翻译，但 PMP 仍必须生效。

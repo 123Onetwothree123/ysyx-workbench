@@ -44,7 +44,7 @@ class ysyx_26030103_IFUMMUPMPAuditTest
   }
 
   "IFUMMU" should "在 Bare/M 模式对 PMP 拒绝的取指产生 cause=1 故障" in {
-    simulate(new ysyx_26030103_IFUMMU) { dut =>
+    simulate(new ysyx_26030103_IFUMMU(XLEN = 32, AddressWidth = 32)) { dut =>
       reset(dut)
       val pc = 0x80000100L
       dut.io.fetchValid.poke(true.B)
@@ -83,7 +83,7 @@ class ysyx_26030103_IFUMMUPMPAuditTest
   }
 
   it should "在 PIPT done 状态 pmpFault 时立即撤销 translationValid" in {
-    simulate(new ysyx_26030103_IFUMMU) { dut =>
+    simulate(new ysyx_26030103_IFUMMU(XLEN = 32, AddressWidth = 32)) { dut =>
       reset(dut)
       val pc = 0x80000100L
       dut.io.fetchValid.poke(true.B)

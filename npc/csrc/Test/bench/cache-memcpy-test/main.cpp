@@ -3,20 +3,14 @@
 #include <am.h>
 #include <klib.h>
 #include <stdint.h>
+
+#include "cache_bench.hpp"
 #include <string.h>
 
 #define CAPACITY (32 * 1024)
 
 static uint8_t source[CAPACITY];
 static uint8_t target[CAPACITY];
-static volatile uint32_t sink;
-
-static inline uint32_t rdcycle(void)
-{
-  uint32_t value;
-  asm volatile("csrr %0, mcycle" : "=r"(value));
-  return value;
-}
 
 static uint32_t checksum(const uint8_t *data, uint32_t bytes)
 {

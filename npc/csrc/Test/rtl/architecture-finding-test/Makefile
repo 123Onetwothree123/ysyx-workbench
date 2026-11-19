@@ -1,7 +1,9 @@
 SHELL := /bin/bash
 
 TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+COMMON_DIR := $(TEST_DIR)/../../common
 NPC_DIR := $(abspath $(TEST_DIR)/../../../..)
+ELABORATE_CFG := $(COMMON_DIR)/elaborate_config.sh
 BUILD_DIR := $(TEST_DIR)/build
 NPC_RTL_DIR := $(BUILD_DIR)/npc-rtl
 HARNESS_RTL_DIR := $(BUILD_DIR)/trap-flush-rtl
@@ -9,7 +11,7 @@ BIN_DIR := $(BUILD_DIR)/bin
 
 VERILATOR ?= verilator
 MILL ?= mill
-CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR)
+CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR) -I$(COMMON_DIR)
 VERILATOR_FLAGS := --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS
 
 NPC_SCALA_SOURCES := $(shell find $(NPC_DIR)/src -type f -name '*.scala' | sort)
@@ -53,7 +55,7 @@ $(HARNESS_RTL_STAMP): build.mill $(LOCAL_SCALA_SOURCES) $(NPC_SCALA_SOURCES) \
 	@cp $(TEST_DIR)/layers-ysyx_26030103_LSU-Verification-Assert.sv $(HARNESS_RTL_DIR)/
 	@touch $@
 
-$(TRAP_FLUSH_BIN): precise_trap_flush_test.cpp test_common.hpp $(HARNESS_RTL_STAMP)
+$(TRAP_FLUSH_BIN): precise_trap_flush_test.cpp $(COMMON_DIR)/test_common.hpp $(HARNESS_RTL_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) -I$(HARNESS_RTL_DIR) \
 		--top-module PreciseTrapFlushHarness \
@@ -61,21 +63,26 @@ $(TRAP_FLUSH_BIN): precise_trap_flush_test.cpp test_common.hpp $(HARNESS_RTL_STA
 		-CFLAGS '$(CXXFLAGS)' -o $(abspath $@) \
 		$(HARNESS_RTL_DIR)/PreciseTrapFlushHarness.sv $<
 
-$(NPC_RTL_STAMP): $(NPC_SCALA_SOURCES) $(NPC_DIR)/build.mill Makefile
+$(NPC_RTL_STAMP): $(NPC_SCALA_SOURCES) $(NPC_DIR)/build.mill Makefile $(ELABORATE_CFG)
 	@mkdir -p $(NPC_RTL_DIR)
-	@cd $(NPC_DIR) && env \
-		CACHE_BLOCK_SIZE_LOG2=4 CACHE_INDEX_BITS=5 \
-		ICACHE=y DCACHE=n WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=n \
-		BTB_BITS=4 BTB_WAYS=1 JAL_BTB_BITS=4 JAL_BTB_WAYS=1 RAS_BITS=4 \
-		RISCV_M=n RISCV_A=n RISCV_C=n \
-		SDB=y DIFFTEST=y MTRACE=y ITRACE=y FTRACE=y IRINGBUF=y PERF_DIC_ARCH_COUNTER=y \
-		$(MILL) --no-server runMain ysyx_26030103_Elaborate \
-			--target-dir $(NPC_RTL_DIR)
+	@$(ELABORATE_CFG) $(TEST_DIR) $(NPC_RTL_DIR) \
+		CONFIG_XLEN=32 CONFIG_SOC_XLEN_FOLLOW_CPU=n CONFIG_SOC_XLEN=32 \
+		CONFIG_ADDRESS_WIDTH=32 CONFIG_HAS_MMU=n CONFIG_HAS_TLB=n \
+		CONFIG_MMU_PTE_FORMAT=riscv32 CONFIG_MMU_PTE_RISCV32=y \
+		CONFIG_MMU_PTE_RISCV64=n CONFIG_MMU_PTE_SIZE_BYTES=4 \
+		CONFIG_MMU_PTE_PPN_HIGH=31 CONFIG_MMU_LEVELS=2 \
+		CONFIG_CACHE_BLOCK_SIZE_LOG2=4 CONFIG_CACHE_INDEX_BITS=5 \
+		CONFIG_ICACHE=y CONFIG_DCACHE=n CONFIG_WBUF_DEPTH=4 CONFIG_CACHE_PADDING=0 CONFIG_CHIPLINK=n \
+		CONFIG_BTB_BITS=4 CONFIG_BTB_WAYS=1 CONFIG_JAL_BTB_BITS=4 CONFIG_JAL_BTB_WAYS=1 CONFIG_RAS_BITS=4 \
+		CONFIG_RISCV_M=n CONFIG_RISCV_A=n CONFIG_RISCV_C=n \
+		CONFIG_RISCV_F=n CONFIG_RISCV_D=n CONFIG_FPU_IMPL=none \
+		CONFIG_SDB=y CONFIG_DIFFTEST=y CONFIG_MTRACE=y CONFIG_ITRACE=y CONFIG_FTRACE=y \
+		CONFIG_IRINGBUF=y CONFIG_PERF_DIC_ARCH_COUNTER=y
 	@cp $(NPC_RTL_DIR)/layers-ysyx_26030103-Verification.sv \
 		$(NPC_RTL_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
 	@touch $@
 
-$(NPC_RESET_BIN): npc_reset_map_test.cpp test_common.hpp \
+$(NPC_RESET_BIN): npc_reset_map_test.cpp $(COMMON_DIR)/test_common.hpp \
 		$(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv $(NPC_RTL_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) -I$(NPC_RTL_DIR) \

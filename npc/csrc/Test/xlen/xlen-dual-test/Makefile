@@ -36,6 +36,9 @@ GUEST_CFLAGS := -march=$(XLEN_GUEST_MARCH) -mabi=$(XLEN_GUEST_MABI) \
 .PHONY: all guest test sdb mtrace difftest difftest-reject check-mmu \
 	check-sdb check-mtrace check-difftest clean xlen-show
 
+# xlen.mk 的 xlen-show 会成为第一个目标；显式恢复默认入口。
+.DEFAULT_GOAL := all
+
 all: test
 
 $(BUILD_DIR):

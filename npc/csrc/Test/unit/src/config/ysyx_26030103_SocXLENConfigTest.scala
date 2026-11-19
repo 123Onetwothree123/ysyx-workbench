@@ -48,12 +48,24 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  it should "默认不跟随 CPU，SoC 保持 32 位" in {
+  it should "默认不跟随 CPU，SoC_XLEN 使用 Kconfig 默认值" in {
+    // XLEN=64 时 Kconfig 的 SOC_XLEN 默认 64；FOLLOW_CPU 仍为 n。
     val config = ysyx_26030103_NPCConfig()
     config.SocXLENFollowCpu should be(false)
-    config.SocXLEN should be(32)
-    config.EffectiveSocXLEN should be(32)
-    config.SocXLENNeedsAXIBridge should be(false)
+    config.SocXLEN should be(
+      _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults.NpcSocXlen)
+    config.EffectiveSocXLEN should be(config.SocXLEN)
+    config.SocXLENNeedsAXIBridge should be(config.SocXLEN == 64)
+
+    // 显式 32 位 SoC 仍是合法组合，且不要求 AXI 桥。
+    val config32 = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
+      SocXLENFollowCpu = false,
+      SocXLEN = 32
+    )
+    config32.EffectiveSocXLEN should be(32)
+    config32.SocXLENNeedsAXIBridge should be(false)
   }
 
   it should "拒绝 FOLLOW_CPU=n 时 32/64 之外的 SOC_XLEN" in {

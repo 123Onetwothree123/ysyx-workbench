@@ -15,6 +15,11 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   private def emit(module: => chisel3.Module): String =
     ChiselStage.emitSystemVerilog(module)
 
+  // 本套件的历史语义是 RV32（Sv32：2 级、4B PTE、32 位 VA）。
+  // 64 位 Kconfig 默认下必须显式构造等价的 RV32 profile，而不是依赖默认值。
+  private def rv32Profile: ysyx_26030103_MMUProfile =
+    ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32)
+
   "TLB" should "支持 1 项 1 路" in {
     emit(new ysyx_26030103_TLB(entries = 1, ways = 1, asidBits = 0, globalEnable = false))
   }
@@ -43,17 +48,23 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     // 64KiB 页 + 2 级 + 256 项/级。
     emit(new ysyx_26030103_TLB(
       entries = 4, ways = 1, superpage = true,
-      pageBits = 16, levels = 2, indexBits = 8
+      pageBits = 16, levels = 2, indexBits = 8,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      pteWidth = 32, ptePPNHigh = 31
     ))
     // 1KiB 页 + 2 级 + 2048 项/级。
     emit(new ysyx_26030103_TLB(
       entries = 4, ways = 1, superpage = true,
-      pageBits = 10, levels = 2, indexBits = 11
+      pageBits = 10, levels = 2, indexBits = 11,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      pteWidth = 32, ptePPNHigh = 31
     ))
     // 4 级 + 32 项/级，覆盖多个超级页层级。
     emit(new ysyx_26030103_TLB(
       entries = 4, ways = 1, superpage = true,
-      pageBits = 12, levels = 4, indexBits = 5
+      pageBits = 12, levels = 4, indexBits = 5,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      pteWidth = 32, ptePPNHigh = 31
     ))
   }
 
@@ -69,19 +80,19 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   }
 
   "MMU" should "在 TLB 开关和 MMU 开关下都能 elaboration" in {
-    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile()))
-    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    emit(new ysyx_26030103_MMU(rv32Profile))
+    emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
       tlbEnabled = true
     )))
-    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
       tlbEnabled = false
     )))
   }
 
   it should "支持 unified TLB 几何" in {
-    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
       tlbEnabled = true,
       tlbOrganization = "unified",
@@ -92,7 +103,10 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
   it should "HAS_U=n 且 MMU 打开时顶层可 elaboration" in {
     emit(new _root_.ysyx_26030103.ysyx_26030103(ysyx_26030103_NPCConfig(
-      MMU = ysyx_26030103_MMUProfile(
+      XLEN = 32,
+      AddressWidth = 32,
+
+      MMU = rv32Profile.copy(
         enabled = true,
         tlbEnabled = true,
         hasU = false
@@ -105,8 +119,11 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     // 缓冲，等带 VA 标签的 PA 到达后才提交。这里保证该配置的顶层接线
     // 与所有端口都能完整 elaboration。
     emit(new _root_.ysyx_26030103.ysyx_26030103(ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
+
       DCacheEnable = true,
-      MMU = ysyx_26030103_MMUProfile(
+      MMU = rv32Profile.copy(
         enabled = true,
         tlbEnabled = true,
         cacheMode = "vipt"
@@ -116,7 +133,10 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
   it should "HAS_PMP=y 且 HAS_MMU=n 时顶层可 elaboration" in {
     emit(new _root_.ysyx_26030103.ysyx_26030103(ysyx_26030103_NPCConfig(
-      MMU = ysyx_26030103_MMUProfile(
+      XLEN = 32,
+      AddressWidth = 32,
+
+      MMU = rv32Profile.copy(
         enabled = false,
         pmpEnabled = true,
         pmpEntries = 16
@@ -126,7 +146,10 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
   it should "HAS_S=n 的 M-only 顶层可 elaboration 且不生成 MMU/TLB/PTW" in {
     def config = ysyx_26030103_NPCConfig(
-      MMU = ysyx_26030103_MMUProfile(
+      XLEN = 32,
+      AddressWidth = 32,
+
+      MMU = rv32Profile.copy(
         enabled = false,
         tlbEnabled = false,
         hasS = false,
@@ -148,7 +171,10 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
   it should "HAS_S=n/HAS_U=y 的 M+U 顶层可 elaboration 且不生成 MMU/TLB/PTW" in {
     def config = ysyx_26030103_NPCConfig(
-      MMU = ysyx_26030103_MMUProfile(
+      XLEN = 32,
+      AddressWidth = 32,
+
+      MMU = rv32Profile.copy(
         enabled = false,
         tlbEnabled = false,
         hasS = false,
@@ -170,13 +196,13 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
   it should "HAS_MMU=y 且 HAS_S=n 时在 elaboration 前明确报错" in {
     val error = intercept[IllegalArgumentException] {
-      ysyx_26030103_MMUProfile(enabled = true, hasS = false, hasU = false)
+      rv32Profile.copy(enabled = true, hasS = false, hasU = false)
     }
     error.getMessage should include("HAS_MMU=y 需要 HAS_S=y")
   }
 
   it should "非标准 page/levels 的 TLB 超级页可 elaboration" in {
-    val profile = ysyx_26030103_MMUProfile(
+    val profile = rv32Profile.copy(
       enabled = true,
       tlbEnabled = true,
       pageSizeBytes = 65536,
@@ -187,10 +213,13 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     )
     emit(new ysyx_26030103_MMU(profile))
     emit(new _root_.ysyx_26030103.ysyx_26030103(
-      ysyx_26030103_NPCConfig(MMU = profile)
+      ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
+      MMU = profile)
     ))
 
-    val fourLevel = ysyx_26030103_MMUProfile(
+    val fourLevel = rv32Profile.copy(
       enabled = true,
       tlbEnabled = true,
       pageSizeBytes = 4096,
@@ -203,7 +232,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   }
 
   it should "支持 unified 双查找端口" in {
-    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
       tlbEnabled = true,
       tlbOrganization = "unified",
@@ -216,10 +245,10 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   }
 
   it should "支持 independent 与 pipelined 两种 PTW 结构" in {
-    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true, tlbEnabled = true, ptwArch = "independent", ptwOutstanding = 2
     )))
-    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true, tlbEnabled = true, ptwArch = "pipelined", ptwOutstanding = 2
     )))
   }
@@ -228,10 +257,12 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     emit(new ysyx_26030103_PTWPipeline(outstanding = 2))
     emit(new ysyx_26030103_PTWPipeline(
       outstanding = 4, pageBits = 10, levels = 2, tableEntries = 2048,
-      cacheEnable = true, superpage = true
+      cacheEnable = true, superpage = true,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     ))
     emit(new ysyx_26030103_PTWPipeline(
-      outstanding = 2, levels = 4, tableEntries = 32, pteSizeBytes = 8
+      outstanding = 2, levels = 4, tableEntries = 32, pteSizeBytes = 8,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     ))
   }
 
@@ -242,14 +273,15 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     ))
     emit(new ysyx_26030103_PTWPipeline(
       outstanding = 4, busOutstanding = 1, pteSizeBytes = 8,
-      levels = 4, tableEntries = 32
+      levels = 4, tableEntries = 32,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     ))
     emit(new ysyx_26030103_PTWCluster(
       outstanding = 4, busOutstanding = 4, adMode = "hardware",
       cacheEnable = true, superpage = true
     ))
 
-    val pipelineProfile = ysyx_26030103_MMUProfile(
+    val pipelineProfile = rv32Profile.copy(
       enabled = true,
       tlbEnabled = true,
       ptwArch = "pipelined",
@@ -259,7 +291,10 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     )
     emit(new ysyx_26030103_MMU(pipelineProfile))
     emit(new _root_.ysyx_26030103.ysyx_26030103(
-      ysyx_26030103_NPCConfig(MMU = pipelineProfile)
+      ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
+      MMU = pipelineProfile)
     ))
 
     val independentProfile = pipelineProfile.copy(
@@ -268,22 +303,25 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     )
     emit(new ysyx_26030103_MMU(independentProfile))
     emit(new _root_.ysyx_26030103.ysyx_26030103(
-      ysyx_26030103_NPCConfig(MMU = independentProfile)
+      ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
+      MMU = independentProfile)
     ))
   }
 
   it should "支持 follow_tlb/global miss queue 的不同队列组织" in {
-    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true, tlbEnabled = true, tlbOrganization = "split",
       tlbMissQueueMode = "follow_tlb", itlbMissQueueEntries = 2,
       dtlbMissQueueEntries = 3, ptwOutstanding = 2
     )))
-    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true, tlbEnabled = true, tlbOrganization = "unified",
       tlbMissQueueMode = "follow_tlb", utlbMissQueueEntries = 4,
       utlbLookupPorts = 2, ptwOutstanding = 2
     )))
-    emit(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true, tlbEnabled = true, tlbMissQueueMode = "global",
       globalMissQueueEntries = 4, ptwOutstanding = 2
     )))
@@ -292,13 +330,15 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   it should "8B PTE 打开 PTW cache 时可 elaboration" in {
     emit(new ysyx_26030103_PTW(
       adMode = "fault", levels = 4, tableEntries = 32, pteSizeBytes = 8,
-      cacheEnable = true, cacheEntries = 8, cacheWays = 2
+      cacheEnable = true, cacheEntries = 8, cacheWays = 2,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     ))
     emit(new ysyx_26030103_PTWPipeline(
       outstanding = 2, levels = 4, tableEntries = 32, pteSizeBytes = 8,
-      cacheEnable = true, cacheEntries = 8, cacheWays = 2
+      cacheEnable = true, cacheEntries = 8, cacheWays = 2,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     ))
-    val eightByteProfile = ysyx_26030103_MMUProfile(
+    val eightByteProfile = rv32Profile.copy(
       enabled = true, tlbEnabled = true, levels = 4,
       pageTableSizeBytes = 256, pteSizeBytes = 8,
       ptwCache = true, ptwCacheEntries = 8, ptwCacheWays = 2
@@ -306,7 +346,10 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     emit(new ysyx_26030103_MMU(eightByteProfile))
     // 顶层同样要验证 8B PTE + PTW cache 的完整接线。
     emit(new _root_.ysyx_26030103.ysyx_26030103(
-      ysyx_26030103_NPCConfig(MMU = eightByteProfile)
+      ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
+      MMU = eightByteProfile)
     ))
   }
 }

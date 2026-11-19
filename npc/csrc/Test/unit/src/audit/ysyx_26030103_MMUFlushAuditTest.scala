@@ -164,6 +164,8 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
       cacheEntries = 16,
       cacheWays = 2,
       pteSizeBytes = 4,
+      // 4B PTE 必须使用 Sv32 字段布局；默认 pteConfig 来自 Kconfig（RV64）。
+      pteConfig = ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31),
       levels = 1,
       tableEntries = 1024,
       pageBits = 12,
@@ -261,7 +263,8 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
     bus.write(Root, pte(0x80002L, 0x1L))
     bus.write(0x80002004L, pte(LeafPPN, 0xdfL))
     bus.holdAddress = Some(0x80002004L)
-    val profile = ysyx_26030103_MMUProfile(
+    val profile = ysyx_26030103_MMUProfile.fromEnv(
+      _ => None, xlen = 32).copy(
       enabled = true,
       tlbEnabled = false,
       ptwCache = true,
@@ -359,7 +362,8 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
     bus.write(Root, pte(0x80002L, 0x1L))
     // V|R|W|X|A，D=0。
     bus.write(0x80002004L, pte(LeafPPN, 0x4fL))
-    val profile = ysyx_26030103_MMUProfile(
+    val profile = ysyx_26030103_MMUProfile.fromEnv(
+      _ => None, xlen = 32).copy(
       enabled = true,
       tlbEnabled = true,
       tlbOrganization = "split",

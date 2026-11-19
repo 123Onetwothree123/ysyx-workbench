@@ -22,6 +22,9 @@ include $(TEST_DIR)/../../xlen.mk
 NEMU_DIR ?= $(abspath $(NPC_DIR)/../nemu)
 BUILD_DIR := $(TEST_DIR)/build
 LOG_DIR ?= /tmp/opencode/rvc-difftest
+NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \
+	\( -name '*.c' -o -name '*.h' \) -print 2>/dev/null)
+REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
 
 CROSS_RV32 ?= riscv32-unknown-elf-
 CROSS_RV64 ?= riscv64-unknown-elf-
@@ -53,8 +56,12 @@ GUESTS := $(PROBE_RV32) $(PROBE_RV64) $(GUEST_RV32) $(GUEST_RV64)
 # 分别指向对应 XLEN 的 binary，不能拿 RV32 guest 去跑 RV64 DUT。
 BIN_RV32 ?= $(NPC_DIR)/build/ysyx_26030103_npc
 BIN_RV64 ?= $(NPC_DIR)/build/ysyx_26030103_npc
-REF_RV32 ?= $(NEMU_DIR)/build/riscv32-nemu-interpreter-so
-REF_RV64 ?= $(NEMU_DIR)/build/riscv64-nemu-interpreter-so
+# REF 默认由本目录的 rvc 规则构建到 build/，不再依赖 NEMU 工作树里
+# 可能不存在的共享库。显式传入 REF_RV*=/path 可覆写。
+REF_RV32 ?= $(BUILD_DIR)/riscv32-nemu-interpreter-so
+REF_RV64 ?= $(BUILD_DIR)/riscv64-nemu-interpreter-so
+REF_OBJ_RV32 := $(BUILD_DIR)/nemu-rvc-rv32-obj
+REF_OBJ_RV64 := $(BUILD_DIR)/nemu-rvc-rv64-obj
 
 NEG_XLEN ?= $(NPC_XLEN)
 BIN_NOC ?= $(BIN_RV$(NEG_XLEN))
@@ -66,8 +73,8 @@ GUEST_MISMATCH ?= $(PROBE_RV$(MISMATCH_XLEN))
 
 STRICT ?= 0
 
-.PHONY: all guests rv32 rv64 negative mismatch test test-all strict-test \
-	clean clean-logs
+.PHONY: all guests refs ref-rv32 ref-rv64 rv32 rv64 negative mismatch \
+	test test-all strict-test clean clean-logs
 
 all: guests
 
@@ -96,16 +103,29 @@ $(GUEST_RV64): guest_rv64c.S guest_cross.ld | $(BUILD_DIR)
 		-o $(@:.bin=.elf) $<
 	$(OBJCOPY64) -O binary $(@:.bin=.elf) $@
 
-$(MISMATCH_SHIM): corrupt_ref.cpp | $(BUILD_DIR)
+# 与 fpu-difftest-test 共用同一个 corrupt-ref 源文件；默认只接受固定
+# 33*XLEN 状态布局（RVC 用例不需要 PC 之后的 F/D 扩展字段）。
+$(MISMATCH_SHIM): $(TEST_DIR)/../common/corrupt_ref.cpp | $(BUILD_DIR)
 	$(HOST_CXX) -std=c++17 -O2 -Wall -Wextra -Werror -fPIC -shared \
 		-o $@ $< -ldl
 
+# 用 rvc-ref 配置构建隔离的 NEMU REF（RV32IMAC / RV64IMAC）。
+$(REF_RV32): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER) | $(BUILD_DIR)
+	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_RV32) share 0 0 rvc
+
+$(REF_RV64): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER) | $(BUILD_DIR)
+	$(REF_BUILDER) riscv64 $@ $(REF_OBJ_RV64) share 0 0 rvc
+
+ref-rv32: $(REF_RV32)
+ref-rv64: $(REF_RV64)
+refs: ref-rv32 ref-rv64
+
 # 正向：先跑探针判断 DUT 是否启用 RVC，再跑真实 NEMU REF --diff。
-rv32: $(PROBE_RV32) $(GUEST_RV32)
+rv32: $(PROBE_RV32) $(GUEST_RV32) $(REF_RV32)
 	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh forward 32 \
 		"$(BIN_RV32)" "$(PROBE_RV32)" "$(GUEST_RV32)" "$(REF_RV32)" "$(LOG_DIR)"
 
-rv64: $(PROBE_RV64) $(GUEST_RV64)
+rv64: $(PROBE_RV64) $(GUEST_RV64) $(REF_RV64)
 	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh forward 64 \
 		"$(BIN_RV64)" "$(PROBE_RV64)" "$(GUEST_RV64)" "$(REF_RV64)" "$(LOG_DIR)"
 

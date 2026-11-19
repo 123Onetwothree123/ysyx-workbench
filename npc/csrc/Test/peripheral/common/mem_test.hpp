@@ -1,6 +1,12 @@
-#include "SDRAMMemTest.hpp"
-#include <am.h>
+#ifndef PERIPHERAL_COMMON_MEM_TEST_HPP
+#define PERIPHERAL_COMMON_MEM_TEST_HPP
+#include <cstddef>
 #include <cstdint>
+#include <expected>
+
+namespace npc_test {
+
+namespace detail {
 
 template <typename T>
 std::expected<void, std::uintptr_t> test_width(std::uintptr_t begin, std::size_t length)
@@ -25,19 +31,25 @@ std::expected<void, std::uintptr_t> test_width(std::uintptr_t begin, std::size_t
     return {};
 }
 
-extern "C" std::expected<void, std::uintptr_t> sdram_mem_test(std::uintptr_t begin, std::size_t length)
+} // namespace detail
+
+inline std::expected<void, std::uintptr_t> mem_test(std::uintptr_t begin, std::size_t length)
 {
-    if (auto result{test_width<std::uint8_t>(begin, length)}; !result)
+    if (auto result{detail::test_width<std::uint8_t>(begin, length)}; !result)
     {
         return result;
     }
-    if (auto result{test_width<std::uint16_t>(begin, length)}; !result)
+    if (auto result{detail::test_width<std::uint16_t>(begin, length)}; !result)
     {
         return result;
     }
-    if (auto result{test_width<std::uint32_t>(begin, length)}; !result)
+    if (auto result{detail::test_width<std::uint32_t>(begin, length)}; !result)
     {
         return result;
     }
-    return test_width<std::uint64_t>(begin, length);
+    return detail::test_width<std::uint64_t>(begin, length);
 }
+
+} // namespace npc_test
+
+#endif

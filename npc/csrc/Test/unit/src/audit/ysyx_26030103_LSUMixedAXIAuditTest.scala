@@ -355,7 +355,9 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
   ): Unit = {
     simulate(
       new ysyx_26030103_LSU(
+        BusDataWidth = 32,
         XLEN = xlen,
+        AddressWidth = xlen,
         DCacheEnable = dcacheEnable,
         DCacheStorage = storage,
         DCacheBlockSizeLog2 = blockLog2,
@@ -483,7 +485,9 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
   it should "连续 store 在 B 延迟下保持顺序，随后 load 读到最新值" in {
     simulate(
       new ysyx_26030103_LSU(
+        BusDataWidth = 32,
         XLEN = 32,
+        AddressWidth = 32,
         DCacheEnable = true,
         WBufDepth = 4,
         DCacheBlockSizeLog2 = 4,
@@ -529,6 +533,7 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
     "LR/SC/AMO 与普通 store 的 reservation 规则、返回值及 DCache 失效一致" in {
     simulate(
       new ysyx_26030103_LSU(
+        BusDataWidth = 32,
         XLEN = 64,
         DCacheEnable = true,
         DCacheBlockSizeLog2 = 4,
@@ -603,7 +608,9 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
   it should "store 命中行后同地址 load 读到新值，且非缓存 alias 不干扰" in {
     simulate(
       new ysyx_26030103_LSU(
+        BusDataWidth = 32,
         XLEN = 32,
+        AddressWidth = 32,
         DCacheEnable = true,
         DCacheBlockSizeLog2 = 4,
         DCacheIndexBits = 3

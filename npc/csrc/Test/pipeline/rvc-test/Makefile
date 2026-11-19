@@ -25,6 +25,13 @@ NPC_BIN ?= $(NPC_DIR)/build/ysyx_26030103_npc
 REF_SO ?= $(NPC_DIR)/../nemu/build/$(if $(XLEN_IS_64),riscv64,riscv32)-nemu-interpreter-so
 RUNNER := $(TEST_DIR)/run.sh
 
+# CONFIG_SDB=y 的 DUT 在非 tty stdin 上会因 SDB 无输入提前退出，必须带
+# -b/--batch 才会直接跑到 trap；未启用 SDB 的构建不认识该参数，因此按
+# 当前 .config 决定是否传入（与 xlen/xlen-dual-test 保持一致）。
+NPC_BATCH_FLAG := $(if $(filter y,$(CONFIG_SDB)),-b,)
+# 由 run.sh 通过环境读取，避免每条规则重复写前缀。
+export NPC_BATCH_FLAG
+
 RV32_MARCH := rv32imac_zicsr_zifencei
 RV32_MABI := ilp32
 RV64_MARCH := rv64imac_zicsr_zifencei
@@ -35,6 +42,9 @@ GUEST_LDFLAGS := -mno-relax -nostdlib -nostartfiles -Wl,-Ttext=0x80000000 \
 	-Wl,--no-relax -Wl,--build-id=none
 
 .PHONY: all guests test test32 test64 test-noc difftest clean xlen-show
+
+# xlen.mk 的 xlen-show 会成为第一个目标；显式恢复默认入口。
+.DEFAULT_GOAL := all
 
 all: test
 

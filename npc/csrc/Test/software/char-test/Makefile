@@ -1,25 +1,11 @@
-# 字符输出裸机测试。工具链/ISA 位宽从 Kconfig 的 CONFIG_XLEN 派生，
-# 不再写死 riscv32-unknown-elf-*。ARCH 仅用于产物命名和 AM 平台选择。
+NAME = char-test
+SRCS = main.cpp
+
+# 标准 AM 裸机目标：链接地址、入口和运行方式都由 AM 的 npc 平台提供，
+# 不再在本目录写死 0x30000000。ARCH 跟随 Kconfig 的 CONFIG_XLEN，
+# run 走 direct-NPC（SIM_TOP 默认 npc）。
 include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../xlen.mk)
-
 ARCH ?= $(XLEN_AM_ARCH)
-CROSS ?= $(XLEN_CROSS_COMPILE)
-MARCH ?= $(XLEN_GUEST_MARCH)
-MABI ?= $(XLEN_GUEST_MABI)
-CXXSRCS := $(wildcard *.cpp)
+export ARCH
 
-run:
-	mkdir -p build
-	$(CROSS)g++ -march=$(MARCH) -mabi=$(MABI) \
-		-O2 -ffreestanding -nostdlib -nostartfiles \
-		-fno-exceptions -fno-rtti \
-		-Wl,-Ttext=0x30000000 -Wl,-e,_start \
-		-o build/char-test-$(ARCH).elf $(CXXSRCS)
-	$(CROSS)objcopy -j .text -O binary \
-		build/char-test-$(ARCH).elf build/char-test-$(ARCH).bin
-	make -C ../../../.. run \
-		file=$(abspath build/char-test-$(ARCH).bin) \
-		elf=$(abspath build/char-test-$(ARCH).elf)
-
-clean:
-	rm -rf build
+include $(AM_HOME)/Makefile

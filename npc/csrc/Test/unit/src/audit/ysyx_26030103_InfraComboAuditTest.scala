@@ -77,7 +77,7 @@ class ysyx_26030103_InfraComboAuditTest
   }
 
   "PLIC" should "支持多 source 并发 claim/complete 与 source 31" in {
-    simulate(new ysyx_26030103_PLIC()) { dut =>
+    simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
       setupPLIC(dut)
       plicWrite(dut, 0x0c000008L, 5) // source 2
       plicWrite(dut, 0x0c000028L, 7) // source 10
@@ -174,7 +174,7 @@ class ysyx_26030103_InfraComboAuditTest
   }
 
   "CLINT" should "按完整 64 位写入 mtimecmp 的一半后正确触发/撤销 timer_irq" in {
-    simulate(new ysyx_26030103_AXI5CLINTSlave()) { dut =>
+    simulate(new ysyx_26030103_AXI5CLINTSlave(DataWidth = 32)) { dut =>
       setupCLINT(dut)
       // 高半写 0，低半写 0 => mtimecmp=0，timer_irq 必须拉高。
       clintWrite(dut, 0x02004004L, 0) should be(0)

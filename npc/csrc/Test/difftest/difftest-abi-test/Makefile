@@ -22,16 +22,13 @@ run: all
 	$(BIN) $(REF_SO)
 	$(BIN) $(REF_RVE_SO) --rve
 
-$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile
-	$(MAKE) -C $(NEMU_DIR) GUEST_ISA=riscv32 ENGINE=interpreter \
-		CONFIG_TARGET_SHARE=y CONFIG_TARGET_NATIVE_ELF= \
-		BINARY=$(REF_SO) OBJ_DIR=$(REF_OBJ_DIR)
+REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
 
-$(REF_RVE_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile
-	$(MAKE) -C $(NEMU_DIR) GUEST_ISA=riscv32 ENGINE=interpreter \
-		CONFIG_TARGET_SHARE=y CONFIG_TARGET_NATIVE_ELF= CONFIG_RVE=y \
-		CFLAGS_BUILD=-DCONFIG_RVE \
-		BINARY=$(REF_RVE_SO) OBJ_DIR=$(REF_RVE_OBJ_DIR)
+$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
+	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_DIR) share
+
+$(REF_RVE_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
+	$(REF_BUILDER) riscv32e $@ $(REF_RVE_OBJ_DIR) share 0 1
 
 $(BIN): main.cpp
 	mkdir -p $(BUILD_DIR)

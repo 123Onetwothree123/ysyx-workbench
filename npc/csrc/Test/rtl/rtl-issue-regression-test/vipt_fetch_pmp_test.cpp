@@ -17,7 +17,7 @@ using DUT = VViptFetchPmpHarness;
 
 static void defaults(DUT &dut) {
   dut.io_fetchValid = 0;
-  dut.io_fetchAddr = 0;
+  dut.io_fetchAddress = 0;
   dut.io_bypass = 1;
   dut.io_pmpFault = 0;
   dut.io_kill = 0;
@@ -32,7 +32,7 @@ static void bypass_pmp_denied_fetch_faults() {
 
   constexpr std::uint32_t fetch_va = 0x80001000U;
   dut.io_fetchValid = 1;
-  dut.io_fetchAddr = fetch_va;
+  dut.io_fetchAddress = fetch_va;
   dut.io_pmpFault = 1;
   dut.eval();
   check(dut.io_fetchReady, "VIPT ICache rejected the VA request before PMP");
@@ -44,7 +44,7 @@ static void bypass_pmp_denied_fetch_faults() {
         "PMP-denied VIPT bypass fetch did not raise an instruction fault");
   check(dut.io_faultCause == 1,
         "PMP-denied VIPT bypass fetch used the wrong fault cause");
-  check(dut.io_faultVaddr == fetch_va,
+  check(dut.io_faultVirtualAddress == fetch_va,
         "PMP-denied VIPT bypass fetch reported the wrong fault VAddr");
   check(!dut.io_respValid,
         "PMP-denied VIPT bypass fetch produced a cache response");
@@ -60,7 +60,7 @@ static void bypass_pmp_allowed_fetch_proceeds() {
 
   constexpr std::uint32_t fetch_va = 0x80002000U;
   dut.io_fetchValid = 1;
-  dut.io_fetchAddr = fetch_va;
+  dut.io_fetchAddress = fetch_va;
   dut.io_pmpFault = 0;
   for (int cycle = 0; cycle < 4; ++cycle) {
     dut.eval();

@@ -68,7 +68,7 @@ class ysyx_26030103_LSU32DTest extends AnyFlatSpec with Matchers {
   }
 
   "RV32D LSU" should "用两拍 AXI 读完成 FLD 并返回完整 64 位 FP 数据" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32, UseD = true)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32, UseD = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       pokeMem(dut, 0x80004000L, write = false, width = 3, 0x80000000L)
@@ -116,7 +116,7 @@ class ysyx_26030103_LSU32DTest extends AnyFlatSpec with Matchers {
   }
 
   it should "用两拍 AXI 写完成 FSD 并保持低字/高字顺序" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32, UseD = true)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32, UseD = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       pokeMem(dut, 0x80005000L, write = true, width = 3, 0x80000010L)
@@ -166,7 +166,7 @@ class ysyx_26030103_LSU32DTest extends AnyFlatSpec with Matchers {
   }
 
   it should "FLW 在 RV32D 下仍按 RISC-V 规则 NaN-box 到 64 位" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32, UseD = true)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32, UseD = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       pokeMem(dut, 0x80006000L, write = false, width = 2, 0x80000020L)
@@ -205,7 +205,7 @@ class ysyx_26030103_LSU32DTest extends AnyFlatSpec with Matchers {
   }
 
   it should "第二拍访问错误按 load access fault 提交且不写回" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32, UseD = true)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32, UseD = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       pokeMem(dut, 0x80007000L, write = false, width = 3, 0x80000030L)

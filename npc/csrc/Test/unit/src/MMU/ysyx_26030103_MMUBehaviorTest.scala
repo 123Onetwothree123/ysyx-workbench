@@ -3,6 +3,7 @@ package ysyx_26030103.mmu
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
+import _root_.ysyx_26030103.config.ysyx_26030103_PTEConfig
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -12,6 +13,13 @@ import org.scalatest.matchers.should.Matchers
   * 这些测试不依赖 SoC，便于单独定位 MMU 的握手、权限和页错误问题。
   */
 class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
+  // 本套件按 Sv32（2 级、4B PTE、32 位 VA/PA）编写。64 位 Kconfig 默认下
+  // 必须显式构造 RV32 profile/PTE，否则默认 Sv39 会让 satp 与页表布局错位。
+  private def rv32Profile: ysyx_26030103_MMUProfile =
+    ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32)
+  private val rv32PTE: ysyx_26030103_PTEConfig =
+    ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31)
+
   private val PageShift = 12
   private val RootPPN = 0x80001L
   private val Root = RootPPN << PageShift
@@ -24,11 +32,16 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   private val PointerPTE = pte(0x80002L, 0x1L) // V，非叶子
   private val LeafPTE = pte(LeafPPN, 0xdfL) // V R W X U A D
 
-  private class Memory {
-    private val data = scala.collection.mutable.Map[Long, BigInt](
-      (Root + 0x0L) -> PointerPTE,
-      (0x80002000L + 0x4L) -> LeafPTE
-    )
+  /** 稀疏页表内存。默认预置一份 4B PTE 的两级 Sv32 页表；8B PTE 用例
+    * 必须使用 withDefaults=false，否则默认的两级表项会落进 8B 表项的
+    * 高半字，被组装成非法 PTE。
+    */
+  private class Memory(withDefaults: Boolean = true) {
+    private val data = scala.collection.mutable.Map.empty[Long, BigInt]
+    if (withDefaults) {
+      data(Root + 0x0L) = PointerPTE
+      data(0x80002000L + 0x4L) = LeafPTE
+    }
     def read(addr: Long): BigInt = data.getOrElse(addr & 0xffffffffL, BigInt(0))
     def write(addr: Long, value: BigInt): Unit = data(addr & 0xffffffffL) = value
   }
@@ -249,7 +262,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_TLB(
       entries = 4, ways = 1, asidBits = 9, globalEnable = true,
       adMode = "fault", superpage = true,
-      pageBits = 16, levels = 2, indexBits = 8
+      pageBits = 16, levels = 2, indexBits = 8,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      pteWidth = 32, ptePPNHigh = 31
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -346,7 +361,11 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "完成两级 Sv32 walk 并返回物理地址" in {
     val memory = new Memory
-    simulate(new ysyx_26030103_PTW("fault")) { dut =>
+    simulate(new ysyx_26030103_PTW(
+      "fault", XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
+    )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
@@ -408,7 +427,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       adMode = "fault",
       cacheEnable = true,
       cacheEntries = 16,
-      cacheWays = 2
+      cacheWays = 2,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE, pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -471,8 +492,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     val memory = new Memory
     val superPTE = pte(0x80000L, 0xdfL)
     memory.write(Root + 0x0L, superPTE)
-    simulate(new ysyx_26030103_PTW("fault", superpage = true,
-      fillSuperpage = true)) { dut =>
+    simulate(new ysyx_26030103_PTW(
+      "fault", superpage = true, fillSuperpage = true,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
+    )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
@@ -540,7 +565,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     )
     simulate(new ysyx_26030103_PTW(
       adMode = "fault", superpage = true, fillSuperpage = true,
-      pageBits = 16, levels = 2, tableEntries = 256
+      pageBits = 16, levels = 2, tableEntries = 256,
+      XLEN = 32, addressWidth = 32, vaBits = 32, pteConfig = rv32PTE,
+      pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -607,7 +634,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       (localLeafTable + 4L * 4L) -> pte(0x80003L, 0xdfL)
     )
     simulate(new ysyx_26030103_PTW(
-      adMode = "fault", pageBits = 10, levels = 2, tableEntries = 2048
+      adMode = "fault", pageBits = 10, levels = 2, tableEntries = 2048,
+      XLEN = 32, addressWidth = 32, vaBits = 32, pteConfig = rv32PTE,
+      pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -653,14 +682,15 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   }
 
   "PTW" should "支持 8 字节 PTE 的两拍读取" in {
-    val memory = new Memory
+    val memory = new Memory(withDefaults = false)
     // 4 级、每级 32 项、8B PTE：12 + 4*5 = 32。
     memory.write(0x80001000L, pte(0x80002L, 0x1L))
     memory.write(0x80002000L, pte(0x80003L, 0x1L))
     memory.write(0x80003000L, pte(0x80004L, 0x1L))
     memory.write(0x80004008L, pte(0x80005L, 0xdfL))
     simulate(new ysyx_26030103_PTW(
-      adMode = "fault", levels = 4, tableEntries = 32, pteSizeBytes = 8
+      adMode = "fault", levels = 4, tableEntries = 32, pteSizeBytes = 8,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -709,7 +739,11 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     val memory = new Memory
     // 有效叶子，但 A/D 清零。
     memory.write(0x80002004L, pte(LeafPPN, 0x1fL))
-    simulate(new ysyx_26030103_PTW("hardware")) { dut =>
+    simulate(new ysyx_26030103_PTW(
+      "hardware", XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
+    )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
@@ -779,7 +813,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     )
     memory.write(Root + 0x0L, (BigInt(0x80002) << 12) | 1)
     memory.write(0x80002004L, (BigInt(0x80003) << 12) | 0xdf)
-    simulate(new ysyx_26030103_PTW("fault", pteConfig = cfg)) { dut =>
+    simulate(new ysyx_26030103_PTW("fault", pteConfig = cfg,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteSizeBytes = 4)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
@@ -829,7 +865,11 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   "PTW" should "hardware A/D 模式为 store 写回 A 和 D" in {
     val memory = new Memory
     memory.write(0x80002004L, pte(LeafPPN, 0x1fL))
-    simulate(new ysyx_26030103_PTW("hardware")) { dut =>
+    simulate(new ysyx_26030103_PTW(
+      "hardware", XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
+      pteSizeBytes = 4
+    )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
@@ -887,7 +927,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     val memory = new Memory
     memory.write(0x20000400L, pte(0x80002L, 0x1L))
     memory.write(0x20000810L, pte(0x80003L, 0xdfL))
-    simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true, tlbEnabled = true, pageSizeBytes = 1024,
       pageTableSizeBytes = 8192, ptwOutstanding = 1
     ))) { dut =>
@@ -938,7 +978,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   "MMU" should "同时调度两个上下文并按请求顺序返回" in {
     val memory = new Memory
     memory.write(0x80002014L, pte(LeafPPN, 0xdfL))
-    simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true, tlbEnabled = false, ptwOutstanding = 2
     ))) { dut =>
       dut.reset.poke(true.B)
@@ -995,7 +1035,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "MMU" should "miss 后 refill TLB，第二次访问命中且不再走 PTW" in {
     val memory = new Memory
-    simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
       tlbEnabled = true,
       tlbASIDBits = 9
@@ -1082,7 +1122,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     val memory = new Memory
     // vaddr=0 的叶子项位于页表偏移 0；默认 Memory 只填了偏移 4 的项。
     memory.write(0x80002000L, LeafPTE)
-    simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
       tlbEnabled = true,
       tlbOrganization = "unified",
@@ -1170,7 +1210,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   it should "在没有 A 位时产生 load page fault" in {
     val memory = new Memory
     memory.write(0x80002004L, pte(LeafPPN, 0x1L | 0x2L | 0x4L | 0x8L | 0x10L))
-    simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
       tlbEnabled = false
     ))) { dut =>
@@ -1233,7 +1273,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   }
 
   it should "satp.MODE=0 时旁路翻译" in {
-    simulate(new ysyx_26030103_MMU(ysyx_26030103_MMUProfile(
+    simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
       tlbEnabled = true
     ))) { dut =>
@@ -1322,7 +1362,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "HAS_U=n 时 U=1 叶子页对 S 模式不产生页错误" in {
     val memory = new Memory
-    simulate(new ysyx_26030103_PTW("fault", hasU = false)) { dut =>
+    simulate(new ysyx_26030103_PTW("fault", hasU = false, XLEN = 32, addressWidth = 32, vaBits = 32, levels = 2, tableEntries = 1024, pteConfig = rv32PTE, pteSizeBytes = 4)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
@@ -1377,7 +1417,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   }
 
   "PTW" should "8B PTE cache 复用低/高字并避免重复页表读" in {
-    val memory = new Memory
+    val memory = new Memory(withDefaults = false)
     // 4 级、每级 32 项、8B PTE：12 + 4*5 = 32。
     memory.write(0x80001000L, pte(0x80002L, 0x1L))
     memory.write(0x80002000L, pte(0x80003L, 0x1L))
@@ -1385,7 +1425,8 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     memory.write(0x80004008L, pte(0x80005L, 0xdfL))
     simulate(new ysyx_26030103_PTW(
       adMode = "fault", levels = 4, tableEntries = 32, pteSizeBytes = 8,
-      cacheEnable = true, cacheEntries = 8, cacheWays = 8
+      cacheEnable = true, cacheEntries = 8, cacheWays = 8,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -1452,7 +1493,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   }
 
   "PTW" should "8B PTE hardware A/D 写回后可命中 cache" in {
-    val memory = new Memory
+    val memory = new Memory(withDefaults = false)
     memory.write(0x80001000L, pte(0x80002L, 0x1L))
     memory.write(0x80002000L, pte(0x80003L, 0x1L))
     memory.write(0x80003000L, pte(0x80004L, 0x1L))
@@ -1460,7 +1501,8 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     memory.write(0x80004008L, pte(0x80005L, 0x1fL))
     simulate(new ysyx_26030103_PTW(
       adMode = "hardware", levels = 4, tableEntries = 32, pteSizeBytes = 8,
-      cacheEnable = true, cacheEntries = 8, cacheWays = 8
+      cacheEnable = true, cacheEntries = 8, cacheWays = 8,
+      XLEN = 32, addressWidth = 32, vaBits = 32
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -1546,7 +1588,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     memory.write(0x80002004L, (BigInt(0x80003) << 12) | 0xdf)
     simulate(new ysyx_26030103_PTW(
       adMode = "fault", pteConfig = cfg,
-      cacheEnable = true, cacheEntries = 16, cacheWays = 2
+      cacheEnable = true, cacheEntries = 16, cacheWays = 2,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -1617,7 +1661,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     memory.write(Root + 0x0L, pte(0x80000L, 0xdfL))
     simulate(new ysyx_26030103_PTW(
       adMode = "fault", superpage = true, fillSuperpage = true,
-      cacheEnable = true, cacheEntries = 16, cacheWays = 2
+      cacheEnable = true, cacheEntries = 16, cacheWays = 2,
+      XLEN = 32, addressWidth = 32, vaBits = 32,
+      levels = 2, tableEntries = 1024, pteConfig = rv32PTE, pteSizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -1689,7 +1735,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     memory.write(0x80002004L, pte(0x80003L, 0xdfL))
     memory.write(0x80002008L, pte(0x80004L, 0xdfL))
     memory.write(0x8000200cL, pte(0x80005L, 0xdfL))
-    val base = ysyx_26030103_MMUProfile(
+    val base = rv32Profile.copy(
       enabled = true, tlbEnabled = true, ptwOutstanding = 1
     )
     val profiles = Seq(
@@ -1779,7 +1825,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   }
 
   "MMU" should "flush 后排空 reqQueue 且不让旧请求在新 satp 下继续翻译" in {
-    val profile = ysyx_26030103_MMUProfile(
+    val profile = rv32Profile.copy(
       enabled = true,
       tlbEnabled = false,
       ptwOutstanding = 1

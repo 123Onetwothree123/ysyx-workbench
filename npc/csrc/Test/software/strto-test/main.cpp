@@ -4,6 +4,14 @@
 #include <limits.h>
 #include <stdint.h>
 
+/* newlib 的 <limits.h> 在 C++ 模式下不定义 LLONG_*；保持测试表达式不变，
+ * 用编译器内建的 long long 宽度补齐。 */
+#ifndef LLONG_MIN
+#define LLONG_MIN (-__LONG_LONG_MAX__ - 1LL)
+#define LLONG_MAX __LONG_LONG_MAX__
+#define ULLONG_MAX (__LONG_LONG_MAX__ * 2ULL + 1ULL)
+#endif
+
 #if !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
 static int failures;
 

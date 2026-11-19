@@ -152,10 +152,10 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       write(dut, SATP, satp)
       big(dut.io.satp) should be(satp)
       read(dut, SATP) should be(satp)
-      // 写入未实现的 Sv48 MODE=9：WARL 收敛到 Bare(0)，其余字段保留。
+      // 写入未实现的 Sv48 MODE=9：规范要求整笔写入被拒绝，satp 保持旧值。
       val unsupported = (BigInt(9) << 60) | (BigInt(0xabcd) << 44) | BigInt("80001", 16)
       write(dut, SATP, unsupported)
-      big(dut.io.satp) should be(unsupported & ~(BigInt(0xf) << 60))
+      big(dut.io.satp) should be(satp)
       write(dut, SATP, (BigInt(8) << 60) | BigInt("80001", 16))
       dut.io.isSfenceVma.poke(true.B)
       dut.io.enable.poke(true.B)

@@ -8,6 +8,13 @@ guest="${3:?guest image}"
 xlen="${4:?xlen}"
 log="${5:?log path}"
 ref_so="${6:-}"
+# CONFIG_SDB=y 的 DUT 在非 tty stdin 上会提前退出，需要 -b/--batch；
+# Makefile 按 .config 决定是否通过环境传入（未启用 SDB 的 DUT 不认识该参数）。
+batch_flag="${NPC_BATCH_FLAG:-}"
+batch_args=()
+if [[ -n "$batch_flag" ]]; then
+    batch_args=("$batch_flag")
+fi
 
 mkdir -p "$(dirname -- "$log")"
 
@@ -26,7 +33,7 @@ fail() {
 
 case "$mode" in
     run)
-        timeout 60 "$npc_bin" "$guest" >"$log" 2>&1 || \
+        timeout 60 "$npc_bin" "$guest" "${batch_args[@]}" >"$log" 2>&1 || \
             fail "RV${xlen}C guest 运行失败"
         grep -Fq 'HIT GOOD TRAP' "$log" ||
             fail "RV${xlen}C guest 未触发 HIT GOOD TRAP"
@@ -34,7 +41,7 @@ case "$mode" in
     difftest)
         [[ -n "$ref_so" ]] || fail "DiffTest 缺少 REF .so"
         [[ -f "$ref_so" ]] || fail "DiffTest REF 不存在: $ref_so"
-        timeout 120 "$npc_bin" "$guest" --diff "$ref_so" >"$log" 2>&1 || \
+        timeout 120 "$npc_bin" "$guest" --diff "$ref_so" "${batch_args[@]}" >"$log" 2>&1 || \
             fail "RV${xlen}C DiffTest 运行失败"
         grep -Fq 'DiffTest: ON' "$log" || fail "DiffTest 未启用"
         grep -Fq 'DiffTest: final state PASS' "$log" ||

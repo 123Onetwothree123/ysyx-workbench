@@ -1,4 +1,6 @@
-package ysyx_26030103.cache
+package ysyx_26030103.audit
+
+import _root_.ysyx_26030103.cache._
 
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
@@ -83,6 +85,7 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
           BlockSizeLog2 = BlockLog2,
           IndexBits = IndexBits,
           AddressWidth = AddressW,
+          DataWidth = 32,
           VIPT = viptScan,
           VIPTAliasSafe = viptScan,
           VIPTAliasScanMode =
@@ -99,6 +102,7 @@ class ysyx_26030103_ICacheRefillProtocolAuditTest
           BlockSizeLog2 = BlockLog2,
           IndexBits = IndexBits,
           AddressWidth = AddressW,
+          DataWidth = 32,
           VIPT = viptScan,
           VIPTAliasSafe = viptScan,
           VIPTAliasScanMode =

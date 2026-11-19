@@ -1,4 +1,4 @@
-#include "SDRAMMemTest.hpp"
+#include "../common/mem_test.hpp"
 #include <stdio.h>
 #include <am.h>
 // 链接脚本里的符号：静态数据末尾、栈顶
@@ -39,15 +39,15 @@ int main(const char *)
         length = LengthLimit;
     }
 
-    printf("SDRAM测试区间: [0x%08x, 0x%08x) 长度=0x%x\n",
-           static_cast<unsigned>(begin),
-           static_cast<unsigned>(begin + length),
-           static_cast<unsigned>(length));
+    printf("SDRAM测试区间: [0x%08zx, 0x%08zx) 长度=0x%zx\n",
+           static_cast<std::size_t>(begin),
+           static_cast<std::size_t>(begin + length),
+           static_cast<std::size_t>(length));
 
-    const auto result{sdram_mem_test(begin, length)};
+    const auto result{npc_test::mem_test(begin, length)};
     if (!result)
     {
-        printf("SDRAM测试失败了 0x%08x\n", static_cast<unsigned>(result.error()));
+        printf("SDRAM测试失败了 0x%08zx\n", static_cast<std::size_t>(result.error()));
         halt(1);
     }
     printf("SDRAM测试通过了\n");

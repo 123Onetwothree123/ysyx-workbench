@@ -21,6 +21,9 @@ include $(TEST_DIR)/../../xlen.mk
 NEMU_DIR ?= $(abspath $(NPC_DIR)/../nemu)
 BUILD_DIR ?= $(TEST_DIR)/build
 LOG_DIR ?= /tmp/opencode/fpu-difftest
+NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \
+	\( -name '*.c' -o -name '*.h' \) -print 2>/dev/null)
+REF_BUILDER := $(TEST_DIR)/../../difftest/common/build_nemu_ref.sh
 
 CROSS_RV32 ?= riscv32-unknown-elf-
 CROSS_RV64 ?= riscv64-unknown-elf-
@@ -66,8 +69,12 @@ LEGACY_FP_SHIM := $(BUILD_DIR)/legacy-fp-ref.so
 # DUT/REF 默认来自当前工作树；RV32/RV64 必须分别指向对应 XLEN 的资产。
 BIN_RV32 ?= $(NPC_DIR)/build/ysyx_26030103_npc
 BIN_RV64 ?= $(NPC_DIR)/build/ysyx_26030103_npc
-REF_RV32 ?= $(NEMU_DIR)/build/riscv32-nemu-interpreter-so
-REF_RV64 ?= $(NEMU_DIR)/build/riscv64-nemu-interpreter-so
+# REF 默认由本目录的 fd 规则构建到 build/，不再依赖 NEMU 工作树里
+# 可能不存在的共享库。显式传入 REF_RV*=/path 可覆写。
+REF_RV32 ?= $(BUILD_DIR)/riscv32-nemu-interpreter-so
+REF_RV64 ?= $(BUILD_DIR)/riscv64-nemu-interpreter-so
+REF_OBJ_RV32 := $(BUILD_DIR)/nemu-fd-rv32-obj
+REF_OBJ_RV64 := $(BUILD_DIR)/nemu-fd-rv64-obj
 
 NEG_XLEN ?= $(NPC_XLEN)
 BIN_NEG ?= $(BIN_RV$(NEG_XLEN))
@@ -82,8 +89,8 @@ GUEST_MISMATCH ?= $(PROBE_RV$(if $(filter 64,$(MISMATCH_XLEN)),64,32))
 CONFIG_CHECK ?= auto
 STRICT ?= 0
 
-.PHONY: all guests audit rv32 rv64 negative mismatch config-errors \
-	fdiv-shared test test-all strict-test clean clean-logs
+.PHONY: all guests audit refs ref-rv32 ref-rv64 rv32 rv64 negative mismatch \
+	config-errors fdiv-shared test test-all strict-test clean clean-logs
 
 all: guests audit
 
@@ -156,30 +163,49 @@ $(FDIV_SHARED): $(FDIV_SHARED:.bin=.elf)
 $(REF_PROBE): ref_probe.cpp | $(BUILD_DIR)
 	$(HOST_CXX) -std=c++17 -O2 -Wall -Wextra -Werror -o $@ $< -ldl
 
-$(MISMATCH_SHIM): corrupt_ref.cpp | $(BUILD_DIR)
+# 与 rvc-difftest-test 共用同一个 corrupt-ref 源文件；FPU 用例允许 REF 在
+# PC 之后追加 F/D 状态，因此打开状态大小检查的宽松模式。
+DIFFTEST_COMMON := $(TEST_DIR)/../../difftest/common
+SHIM_INCLUDES := -I$(DIFFTEST_COMMON)
+
+$(MISMATCH_SHIM): $(DIFFTEST_COMMON)/corrupt_ref.cpp | $(BUILD_DIR)
 	$(HOST_CXX) -std=c++17 -O2 -Wall -Wextra -Werror -fPIC -shared \
-		-o $@ $< -ldl
+		$(SHIM_INCLUDES) \
+		-DDIFFTEST_CORRUPT_REF_ALLOW_FP_STATE=1 -o $@ $< -ldl
 
 # 同一个 shim 源文件按宏编译成“注入 f2 差异”和“隐藏浮点 ABI”两个变体。
 $(FP_MISMATCH_SHIM): fp_ref_shim.cpp | $(BUILD_DIR)
 	$(HOST_CXX) -std=c++17 -O2 -Wall -Wextra -Werror -fPIC -shared \
-		-DDIFFTEST_SHIM_CORRUPT_FP -o $@ $< -ldl
+		$(SHIM_INCLUDES) -DDIFFTEST_SHIM_CORRUPT_FP -o $@ $< -ldl
 
 $(LEGACY_FP_SHIM): fp_ref_shim.cpp | $(BUILD_DIR)
 	$(HOST_CXX) -std=c++17 -O2 -Wall -Wextra -Werror -fPIC -shared \
-		-DDIFFTEST_SHIM_LEGACY_FP -o $@ $< -ldl
+		$(SHIM_INCLUDES) -DDIFFTEST_SHIM_LEGACY_FP -o $@ $< -ldl
 
 # ELF 审计：确保 C 源程序真的是 lp64d 硬浮点，且没有退回 libgcc 软浮点。
-audit: $(C_ELF) $(GUEST_RV64D:.bin=.elf) $(GUEST_RV32F:.bin=.elf)
+audit: $(C_ELF) $(GUEST_RV64D) $(GUEST_RV32F)
 	@$(TEST_DIR)/audit.sh c $(READELF64) $(OBJDUMP64) $(NM64) $(C_ELF)
 	@$(TEST_DIR)/audit.sh rv64d $(READELF64) $(OBJDUMP64) $(NM64) $(GUEST_RV64D:.bin=.elf)
 	@$(TEST_DIR)/audit.sh rv32f $(READELF32) $(OBJDUMP32) $(NM32) $(GUEST_RV32F:.bin=.elf)
 
 # ---------------------------------------------------------------------------
+# 隔离的 NEMU REF：RV32F / RV64D 使用 *-fd-ref 配置构建到 build/。
+# ---------------------------------------------------------------------------
+$(REF_RV32): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER) | $(BUILD_DIR)
+	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_RV32) share 0 0 fd
+
+$(REF_RV64): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER) | $(BUILD_DIR)
+	$(REF_BUILDER) riscv64 $@ $(REF_OBJ_RV64) share 0 0 fd
+
+ref-rv32: $(REF_RV32)
+ref-rv64: $(REF_RV64)
+refs: ref-rv32 ref-rv64
+
+# ---------------------------------------------------------------------------
 # 运行
 # ---------------------------------------------------------------------------
 rv32: $(PROBE_RV32) $(GUEST_RV32F) $(TRAP_RV32F) $(REF_PROBE) \
-	$(FP_MISMATCH_SHIM) $(LEGACY_FP_SHIM)
+	$(FP_MISMATCH_SHIM) $(LEGACY_FP_SHIM) $(REF_RV32)
 	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh forward 32 \
 		"$(BIN_RV32)" "$(PROBE_RV32)" "$(GUEST_RV32F)" "$(TRAP_RV32F)" \
 		"$(REF_RV32)" "$(REF_PROBE)" "$(LOG_DIR)"
@@ -191,7 +217,7 @@ rv32: $(PROBE_RV32) $(GUEST_RV32F) $(TRAP_RV32F) $(REF_PROBE) \
 		"$(REF_RV32)" "$(LOG_DIR)"
 
 rv64: $(PROBE_RV64) $(GUEST_RV64D) $(TRAP_RV64D) $(GUEST_C) $(REF_PROBE) \
-	$(FP_MISMATCH_SHIM) $(LEGACY_FP_SHIM)
+	$(FP_MISMATCH_SHIM) $(LEGACY_FP_SHIM) $(REF_RV64)
 	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh forward 64 \
 		"$(BIN_RV64)" "$(PROBE_RV64)" "$(GUEST_RV64D)" "$(TRAP_RV64D)" \
 		"$(REF_RV64)" "$(REF_PROBE)" "$(LOG_DIR)" "$(GUEST_C)"
@@ -204,7 +230,7 @@ rv64: $(PROBE_RV64) $(GUEST_RV64D) $(TRAP_RV64D) $(GUEST_C) $(REF_PROBE) \
 
 # 大量边界/随机 F/D 除法与开方，结果与 fcsr 逐笔进入 GPR，由 NEMU
 # 逐退休 DiffTest 比对；用于 FPU_FUDIAN_SHARED_DIVSQRT 的双舍入/标志回归。
-fdiv-shared: $(FDIV_SHARED)
+fdiv-shared: $(FDIV_SHARED) $(REF_RV64)
 	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh fdiv-shared 64 \
 		"$(BIN_RV64)" "$(FDIV_SHARED)" "$(REF_RV64)" "$(LOG_DIR)"
 

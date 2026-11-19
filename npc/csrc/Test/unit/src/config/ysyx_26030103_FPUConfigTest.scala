@@ -42,7 +42,7 @@ class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
         FPULen = 32
       )
     }
-    error.getMessage should include("FPU_FLEN=64")
+    error.getMessage should include("FPU_FLEN 必须为 64")
   }
 
   it should "拒绝 F 但后端为 none" in {
@@ -53,7 +53,10 @@ class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "接受 HardFloat F/D 配置" in {
+    // RV32F 才允许 FLEN=32；RV64 默认配置必须显式指定 32 位。
     val f32 = ysyx_26030103_NPCConfig(
+      XLEN = 32,
+      AddressWidth = 32,
       UseF = true,
       FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
       FPULen = 32

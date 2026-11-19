@@ -4,6 +4,8 @@ TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ROOT_DIR := $(abspath $(TEST_DIR)/../../../../..)
 NPC_DIR := $(ROOT_DIR)/npc
 SOC_DIR := $(ROOT_DIR)/ysyxSoC
+COMMON_DIR := $(TEST_DIR)/../../common
+ELABORATE_CFG := $(COMMON_DIR)/elaborate_config.sh
 BUILD_DIR := $(TEST_DIR)/build
 RTL_DIR := $(BUILD_DIR)/rtl
 BIN_DIR := $(BUILD_DIR)/bin
@@ -25,27 +27,33 @@ SOC_SCALA := $(shell find $(SOC_DIR)/src -type f -name '*.scala' | sort)
 PERIP_VSRCS := $(shell find $(SOC_DIR)/perip -type f -name '*.v' | sort)
 NPC_RTL := $(RTL_DIR)/ysyx_26030103.sv
 SOC_RTL := $(SOC_DIR)/build/ysyxSoCFull.v
-SOC_CONFIG_JSON := $(NPC_DIR)/build/generated/npc_config.typed.json
+# 用本次 RV32 elaboration 的 typed JSON 生成 SoC，避免误用仓库本地
+# npc/.config（可能是 RV64）留下的旧配置。
+SOC_CONFIG_JSON := $(BUILD_DIR)/npc-config/generated/npc_config.typed.json
 TEST_BIN := $(BIN_DIR)/fullsoc_fp_debug_test
 IMAGE := $(BUILD_DIR)/main.bin
 
 # 与 full-SoC DiffTest 构建一致：RV32 + HardFloat F + DIFFTEST 调试口。
 # 端口探针不需要缓存/MMU，保持生成和 Verilator 编译尽量小；DIFFTEST=y
 # 只用于打开 NPC 的退休/trap 调试寄存器，不链接 C++ DiffTest。
-$(NPC_RTL): $(SCALA_SOURCES) Makefile
+$(NPC_RTL): $(SCALA_SOURCES) Makefile $(ELABORATE_CFG)
 	@mkdir -p $(RTL_DIR)
-	@cd $(NPC_DIR) && env \
-	  CACHE_BLOCK_SIZE_LOG2=4 CACHE_INDEX_BITS=4 \
-	  ICACHE=n DCACHE=n WBUF_DEPTH=4 CACHE_PADDING=0 CHIPLINK=n \
-	  XLEN=32 SOC_XLEN_FOLLOW_CPU=n SOC_XLEN=32 ADDRESS_WIDTH=32 \
-	  MMU_ENABLED=0 MMU_TLB_ENABLED=0 \
-	  RISCV_M=n RISCV_A=n RISCV_C=n RISCV_F=y RISCV_D=n \
-	  FPU_IMPL=hardfloat FPU_FLEN=32 \
-	  SDB=n DIFFTEST=y MTRACE=n ITRACE=n FTRACE=n IRINGBUF=n PERF_DIC_ARCH_COUNTER=n \
-	  $(MILL) --no-server runMain ysyx_26030103_Elaborate --target-dir $(RTL_DIR)
+	@$(ELABORATE_CFG) $(TEST_DIR) $(RTL_DIR) \
+	  CONFIG_XLEN=32 CONFIG_SOC_XLEN_FOLLOW_CPU=n CONFIG_SOC_XLEN=32 \
+	  CONFIG_ADDRESS_WIDTH=32 CONFIG_HAS_MMU=n CONFIG_HAS_TLB=n \
+	  CONFIG_MMU_PTE_FORMAT=riscv32 CONFIG_MMU_PTE_RISCV32=y \
+	  CONFIG_MMU_PTE_RISCV64=n CONFIG_MMU_PTE_SIZE_BYTES=4 \
+	  CONFIG_MMU_PTE_PPN_HIGH=31 CONFIG_MMU_LEVELS=2 \
+	  CONFIG_CACHE_BLOCK_SIZE_LOG2=4 CONFIG_CACHE_INDEX_BITS=4 \
+	  CONFIG_ICACHE=n CONFIG_DCACHE=n CONFIG_WBUF_DEPTH=4 CONFIG_CACHE_PADDING=0 CONFIG_CHIPLINK=n \
+	  CONFIG_RISCV_M=n CONFIG_RISCV_A=n CONFIG_RISCV_C=n \
+	  CONFIG_RISCV_F=y CONFIG_RISCV_D=n \
+	  CONFIG_FPU_IMPL_HARDFLOAT=y CONFIG_FPU_FLEN=32 \
+	  CONFIG_SDB=n CONFIG_DIFFTEST=y CONFIG_MTRACE=n CONFIG_ITRACE=n CONFIG_FTRACE=n \
+	  CONFIG_IRINGBUF=n CONFIG_PERF_DIC_ARCH_COUNTER=n
 
-$(SOC_CONFIG_JSON):
-	$(MAKE) -C $(NPC_DIR) npc-config
+$(SOC_CONFIG_JSON): $(NPC_RTL)
+	@test -f $@ || { echo "缺少 SoC 配置 $@；先重新生成 $(NPC_RTL)" >&2; exit 1; }
 
 $(SOC_RTL): $(SOC_SCALA) $(PERIP_VSRCS) $(SOC_CONFIG_JSON)
 	$(MAKE) -C $(SOC_DIR) NPC_CONFIG_JSON=$(SOC_CONFIG_JSON) verilog

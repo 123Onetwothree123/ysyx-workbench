@@ -9,64 +9,10 @@
 #include <am.h>
 #include <klib.h>
 
+#include "../common/trap_test.hpp"
+
 // ysyxSoC的SRAM窗口之外, xbar回DECERR
 static constexpr uint32_t BAD_ADDR = 0x0f008000u;
-
-extern "C" {
-volatile uint32_t trap_count = 0;
-volatile uint32_t last_mcause = 0;
-volatile uint32_t last_mepc = 0;
-volatile uint32_t young_leak = 0;
-volatile uint32_t resume_addr = 0; // 非0时handler把mepc改成它(用于跳过被冲刷的指令)
-}
-
-extern "C" __attribute__((naked, aligned(4))) void trap_handler() {
-  asm volatile(
-    "csrr t2, mcause\n\t"
-    "la t3, last_mcause\n\t"
-    "sw t2, 0(t3)\n\t"
-    "csrr t2, mepc\n\t"
-    "la t3, last_mepc\n\t"
-    "sw t2, 0(t3)\n\t"
-    // 年轻指令泄漏检查: 异常指令后紧跟"li t0,1", 若冲刷正确handler里t0应仍为0
-    "bnez t0, 0f\n\t"
-    "j 1f\n\t"
-    "0:\n\t"
-    "la t3, young_leak\n\t"
-    "li t2, 1\n\t"
-    "sw t2, 0(t3)\n\t"
-    "1:\n\t"
-    "la t3, trap_count\n\t"
-    "lw t2, 0(t3)\n\t"
-    "addi t2, t2, 1\n\t"
-    "sw t2, 0(t3)\n\t"
-    // resume_addr非0则跳到它, 否则mepc+=4跳过异常指令
-    "la t3, resume_addr\n\t"
-    "lw t2, 0(t3)\n\t"
-    "bnez t2, 2f\n\t"
-    "csrr t2, mepc\n\t"
-    "addi t2, t2, 4\n\t"
-    "2:\n\t"
-    "csrw mepc, t2\n\t"
-    "mret\n\t");
-}
-
-static int failures = 0;
-
-static void check(const char *name, uint32_t want_cause, uint32_t want_mepc) {
-  bool ok = last_mcause == want_cause && last_mepc == want_mepc && young_leak == 0;
-  printf("[%s] mcause=%u(want %u) mepc=0x%08x(want 0x%08x) leak=%u => %s\n",
-         name, (unsigned)last_mcause, (unsigned)want_cause,
-         (unsigned)last_mepc, (unsigned)want_mepc, (unsigned)young_leak,
-         ok ? "PASS" : "FAIL");
-  if (!ok) failures++;
-}
-
-static void reset_obs() {
-  last_mcause = 0xffffffffu;
-  last_mepc = 0xffffffffu;
-  young_leak = 0;
-}
 
 int main() {
   uint32_t exp_pc = 0;
@@ -76,7 +22,7 @@ int main() {
   static volatile uint32_t probe = 0x12345678u;
   uint32_t val = 0;
 
-  asm volatile("csrw mtvec, %0" :: "r"((uint32_t)(void *)trap_handler & ~3u));
+  asm volatile("csrw mtvec, %0" :: "r"(reinterpret_cast<std::uintptr_t>(trap_handler) & ~std::uintptr_t{3}));
 
   // ---- 1. 非法 load 编码: opcode=0x03, funct3=011 (lw x0, 0(x0)) ----
   reset_obs();
@@ -167,7 +113,7 @@ int main() {
     "sw t2, 0(t3)\n\t"
     "4:\n\t"
     : "=m"(exp_pc)
-    : "r"((uint32_t)&mret_bad), "r"(BAD_ADDR)
+    : "r"((uint32_t)(uintptr_t)&mret_bad), "r"(BAD_ADDR)
     : "t0", "t1", "t2", "t3", "memory");
   resume_addr = 0;
   bool mret_ok = (mret_bad == 0);
@@ -187,7 +133,7 @@ int main() {
     "sw a5, %1\n\t"
     "li t0, 1\n\t"
     : "=m"(exp_pc), "=m"(rd_after)
-    : "r"((uint32_t)&probe + 1)
+    : "r"((uint32_t)(uintptr_t)&probe + 1)
     : "t0", "t1", "a5", "memory");
   check("misaligned-load", 4, exp_pc);
   bool mis_rd_ok = (rd_after == 0x12345678u);
@@ -203,12 +149,12 @@ int main() {
     "sw t1, %0\n\t"
     "1: sw zero, 0(%1)\n\t"
     "li t0, 1\n\t"
-    : "=m"(exp_pc) : "r"((uint32_t)&probe + 1) : "t0", "t1", "memory");
+    : "=m"(exp_pc) : "r"((uint32_t)(uintptr_t)&probe + 1) : "t0", "t1", "memory");
   check("misaligned-store", 6, exp_pc);
 
   // ---- 9. 回归: 对齐半字访问仍然正常 ----
   uint32_t hw = 0;
-  asm volatile("lh %0, 0(%1)" : "=r"(hw) : "r"((uint32_t)&probe) : "memory");
+  asm volatile("lh %0, 0(%1)" : "=r"(hw) : "r"((uint32_t)(uintptr_t)&probe) : "memory");
   bool lh_ok = (hw == 0x5678u);
   printf("[aligned-lh] val=0x%04x(want 0x5678) => %s\n",
          (unsigned)hw, lh_ok ? "PASS" : "FAIL");

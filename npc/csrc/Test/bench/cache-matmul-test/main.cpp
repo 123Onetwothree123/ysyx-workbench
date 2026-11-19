@@ -4,20 +4,14 @@
 #include <klib.h>
 #include <stdint.h>
 
+#include "cache_bench.hpp"
+
 #define N 48
 #define ELEMENTS (N * N)
 
 static uint32_t lhs[N][N];
 static uint32_t rhs[N][N];
 static uint32_t out[N][N];
-static volatile uint32_t sink;
-
-static inline uint32_t rdcycle(void)
-{
-  uint32_t value;
-  asm volatile("csrr %0, mcycle" : "=r"(value));
-  return value;
-}
 
 static uint32_t checksum(void)
 {

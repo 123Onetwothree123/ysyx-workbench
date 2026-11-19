@@ -31,6 +31,7 @@ class ysyx_26030103_CacheMMUProbeAuditTest
       IndexBits = 4,
       AddressWidth = 32,
       DataWidth = 32,
+      BusDataWidth = 32,
       DMASnoop = true,
       PMARegions = Seq(region)
     )

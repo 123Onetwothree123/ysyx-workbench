@@ -28,12 +28,14 @@ class ysyx_26030103_MMUVIPTConfigAuditTest
   }
 
   it should "接受有 MMU 的 vipt 配置" in {
-    val mmu = ysyx_26030103_MMUProfile(
+    val mmu = ysyx_26030103_MMUProfile.fromEnv(
+      _ => None, xlen = 32).copy(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
     )
-    val config = ysyx_26030103_NPCConfig(MMU = mmu)
+    val config = ysyx_26030103_NPCConfig(
+      XLEN = 32, AddressWidth = 32, MMU = mmu)
     config.MMU.cacheMode should be("vipt")
   }
 

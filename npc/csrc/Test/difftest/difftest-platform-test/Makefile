@@ -21,10 +21,10 @@ $(BIN): main.cpp
 	mkdir -p $(@D)
 	$(CXX) -std=c++20 -O2 -Wall -Wextra -Werror -D_GLIBCXX_ASSERTIONS -o $@ $< -ldl
 
-$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile
-	$(MAKE) -C $(NEMU_DIR) GUEST_ISA=riscv32 ENGINE=interpreter \
-		CONFIG_TARGET_SHARE=y CONFIG_TARGET_NATIVE_ELF= \
-		BINARY=$(REF_SO) OBJ_DIR=$(REF_OBJ_DIR)
+REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
+
+$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
+	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_DIR) share
 
 clean:
 	rm -rf $(BUILD_DIR)

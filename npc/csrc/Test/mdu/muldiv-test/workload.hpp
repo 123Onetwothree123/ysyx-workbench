@@ -7,11 +7,7 @@
 
 #include <cstdint>
 
-struct WorkResult
-{
-    uint32_t checksum;
-    int failures;
-};
+#include "../common/bench.hpp"
 
 WorkResult run_phase_fib(int scale);
 WorkResult run_phase_gcd(int scale);

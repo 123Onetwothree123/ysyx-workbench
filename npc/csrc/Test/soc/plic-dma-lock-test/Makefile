@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 
 TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+COMMON_DIR := $(TEST_DIR)/../../common
 NPC_DIR := $(abspath $(TEST_DIR)/../../../..)
 BUILD_DIR := $(TEST_DIR)/build
 RTL_DIR := $(BUILD_DIR)/rtl
@@ -8,7 +9,7 @@ BIN_DIR := $(BUILD_DIR)/bin
 
 VERILATOR ?= verilator
 MILL ?= mill
-CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR)
+CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR) -I$(COMMON_DIR)
 VERILATOR_FLAGS := --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS -I$(TEST_DIR)
 
 STAMP := $(RTL_DIR)/.generated
@@ -24,12 +25,13 @@ ARBITER_BIN := $(BIN_DIR)/arbiter_lock_reject_test
 BINS := $(PLIC_BIN) $(BRIDGE_BIN) $(XBAR_BIN) $(ARBITER_BIN)
 
 SCALA_SRCS := \
-	$(TEST_DIR)/scala/PlicDmaLockHarness.scala \
-	$(TEST_DIR)/scala/PlicConfigContractTest.scala \
+	$(TEST_DIR)/scala/PLICDMALockHarness.scala \
+	$(TEST_DIR)/scala/PLICConfigContractTest.scala \
 	$(TEST_DIR)/build.mill \
 	$(TEST_DIR)/Makefile \
 	$(NPC_DIR)/src/Common/ysyx_26030103_PMA.scala \
 	$(NPC_DIR)/src/config/ysyx_26030103_MMUProfile.scala \
+	$(NPC_DIR)/src/generated/ysyx_26030103_ConfigDefaults.scala \
 	$(NPC_DIR)/src/Infra/ysyx_26030103_PLIC.scala \
 	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXIReadId.scala \
 	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5IO.scala \
@@ -39,9 +41,16 @@ SCALA_SRCS := \
 	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5AR.scala \
 	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5R.scala \
 	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5Slave.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5Burst.scala \
 	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5Arbiter.scala \
 	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5WidthBridge.scala \
-	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5Xbar.scala
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5WidthBridgeRead.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5WidthBridgeWrite.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5Xbar.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5XbarDecode.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5XbarRead.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5XbarWrite.scala \
+	$(NPC_DIR)/src/Infra/AXI5/ysyx_26030103_AXI5XbarResponse.scala
 
 .PHONY: all test run clean
 
@@ -72,7 +81,7 @@ $(STAMP): $(SCALA_SRCS)
 	  --target-dir $(RTL_DIR)
 	@touch $@
 
-$(PLIC_BIN): plic_claim_complete_race_test.cpp test_common.hpp $(STAMP)
+$(PLIC_BIN): plic_claim_complete_race_test.cpp $(COMMON_DIR)/test_common.hpp $(STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_PLIC \
@@ -81,7 +90,7 @@ $(PLIC_BIN): plic_claim_complete_race_test.cpp test_common.hpp $(STAMP)
 	  -o $(abspath $@) \
 	  $(PLIC_RTL) $<
 
-$(BRIDGE_BIN): width_bridge_lock_test.cpp test_common.hpp $(STAMP)
+$(BRIDGE_BIN): width_bridge_lock_test.cpp $(COMMON_DIR)/test_common.hpp $(STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_AXI5WidthBridge \
@@ -90,7 +99,7 @@ $(BRIDGE_BIN): width_bridge_lock_test.cpp test_common.hpp $(STAMP)
 	  -o $(abspath $@) \
 	  $(BRIDGE_RTL) $<
 
-$(XBAR_BIN): xbar_plic_pma_test.cpp test_common.hpp $(STAMP)
+$(XBAR_BIN): xbar_plic_pma_test.cpp $(COMMON_DIR)/test_common.hpp $(STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_AXI5Xbar \
@@ -99,7 +108,7 @@ $(XBAR_BIN): xbar_plic_pma_test.cpp test_common.hpp $(STAMP)
 	  -o $(abspath $@) \
 	  $(XBAR_RTL) $<
 
-$(ARBITER_BIN): arbiter_lock_reject_test.cpp test_common.hpp $(STAMP)
+$(ARBITER_BIN): arbiter_lock_reject_test.cpp $(COMMON_DIR)/test_common.hpp $(STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module ysyx_26030103_AXI5Arbiter \

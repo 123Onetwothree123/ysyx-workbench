@@ -229,10 +229,9 @@ class ysyx_26030103_IDUDecodeAuditTest
       bool(dut.io.exceptionValid) should be(false)
       dut.io.instruction.poke(Wfi.U)
       bool(dut.io.exceptionValid) should be(false)
-      // SRET 在 M 模式是非法的（只能在 S 执行），但原因不是 TSR。
+      // SRET 只在 U 模式非法；M 模式执行合法，也不受 TSR/S 陷门影响。
       dut.io.instruction.poke(Sret.U)
-      bool(dut.io.exceptionValid) should be(true)
-      big(dut.io.exceptionCause) should be(BigInt(2))
+      bool(dut.io.exceptionValid) should be(false)
     }
   }
 

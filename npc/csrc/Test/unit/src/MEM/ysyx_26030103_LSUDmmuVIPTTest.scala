@@ -316,9 +316,12 @@ class ysyx_26030103_LSUDmmuHarness extends Module {
     val bvalid = Input(Bool())
     val bresp = Input(UInt(2.W))
   })
-  val dmmu = Module(new ysyx_26030103_LSUMMU(ParallelVIPT = true))
+  val dmmu = Module(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true))
   val lsu = Module(
     new ysyx_26030103_LSU(
+        XLEN = 32,
+        AddressWidth = 32,
+        BusDataWidth = 32,
       DCacheEnable = true,
       DCacheBlockSizeLog2 = 4,
       DCacheIndexBits = 2,

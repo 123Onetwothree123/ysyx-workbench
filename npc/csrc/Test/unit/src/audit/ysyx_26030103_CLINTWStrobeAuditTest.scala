@@ -1,4 +1,6 @@
-package ysyx_26030103.infra
+package ysyx_26030103.audit
+
+import _root_.ysyx_26030103.infra._
 
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
@@ -84,7 +86,7 @@ class ysyx_26030103_CLINTWStrobeAuditTest extends AnyFlatSpec with Matchers {
   }
 
   "CLINT mtimecmp" should "分别按 WSTRB 合并低字和高字" in {
-    simulate(new ysyx_26030103_AXI5CLINTSlave()) { dut =>
+    simulate(new ysyx_26030103_AXI5CLINTSlave(DataWidth = 32)) { dut =>
       setup(dut)
 
       write(dut, 0x02004000L, BigInt("12345678", 16), 15) should be(0)
@@ -99,7 +101,7 @@ class ysyx_26030103_CLINTWStrobeAuditTest extends AnyFlatSpec with Matchers {
   }
 
   it should "拒绝非精确 mtimecmp 地址且不破坏原值" in {
-    simulate(new ysyx_26030103_AXI5CLINTSlave()) { dut =>
+    simulate(new ysyx_26030103_AXI5CLINTSlave(DataWidth = 32)) { dut =>
       setup(dut)
 
       write(dut, 0x02004000L, BigInt("12345678", 16), 15) should be(0)

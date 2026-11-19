@@ -145,7 +145,13 @@ class ysyx_26030103_PTWCluster(
     selectedValid(port) := valid
     selectedOneHot(port) := oh
     io.resp(port).valid := valid
-    io.resp(port).bits := MuxLookup(index, 0.U.asTypeOf(new ysyx_26030103_PTWResponse))(
+    // 默认项必须使用本实例的 XLEN/地址宽度/PTE 宽度；直接 new 默认类型会
+    // 回落到 Kconfig 默认的 64 位，与 RV32 walker 的响应位宽不一致。
+    io.resp(port).bits := MuxLookup(
+      index,
+      0.U.asTypeOf(new ysyx_26030103_PTWResponse(
+        XLEN, addressWidth, pteSizeBytes * 8))
+    )(
       (0 until outstanding).map(i => i.U -> walkers(i).io.resp.bits)
     )
     when(valid && io.resp(port).ready) {

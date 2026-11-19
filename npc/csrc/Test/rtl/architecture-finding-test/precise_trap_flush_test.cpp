@@ -30,8 +30,6 @@ void defaults(DUT &dut) {
   dut.io_in_bits_LoadSigned = 0;
   dut.io_in_bits_StoreData = 0;
   dut.io_in_bits_pc = 0x80000000U;
-  dut.io_in_bits_ExceptionValid = 0;
-  dut.io_in_bits_ExceptionCause = 0;
 
   dut.io_out_ready = 1;
   dut.io_arready = 0;

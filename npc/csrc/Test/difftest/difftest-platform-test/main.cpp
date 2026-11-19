@@ -1,8 +1,9 @@
+#include "../common/ref_loader.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <dlfcn.h>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -37,14 +38,6 @@ void check(bool condition, const std::string &message) {
   }
 }
 
-template <typename T> T load(void *handle, const char *name) {
-  dlerror();
-  void *symbol = dlsym(handle, name);
-  if (const char *error = dlerror(); error != nullptr)
-    throw std::runtime_error(std::string{name} + ": " + error);
-  return reinterpret_cast<T>(symbol);
-}
-
 constexpr std::uint32_t csrw(std::uint32_t csr, std::uint32_t rs1) {
   return (csr << 20) | (rs1 << 15) | (1u << 12) | 0x73u;
 }
@@ -54,9 +47,7 @@ constexpr std::uint32_t csrw(std::uint32_t csr, std::uint32_t rs1) {
 int main(int argc, char **argv) try {
   if (argc != 2)
     throw std::runtime_error("usage: difftest_platform_test REF_SO");
-  void *handle = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
-  if (handle == nullptr)
-    throw std::runtime_error(dlerror());
+  npc_test::RefLibrary ref{argv[1]};
 
   using Init = void (*)(int);
   using SetPlatform = void (*)(int);
@@ -67,16 +58,15 @@ int main(int argc, char **argv) try {
   using Exec = void (*)(std::uint64_t);
   using Raise = void (*)(std::uint64_t);
 
-  const auto init = load<Init>(handle, "difftest_init");
-  const auto set_platform =
-      load<SetPlatform>(handle, "difftest_set_platform");
-  const auto supported = load<RangeSupported>(
-      handle, "difftest_memory_range_supported");
-  const auto memcopy = load<Memcpy>(handle, "difftest_memcpy");
-  const auto regcopy = load<Regcpy>(handle, "difftest_regcpy");
-  const auto csrcopy = load<CSRcpy>(handle, "difftest_csrcpy");
-  const auto exec = load<Exec>(handle, "difftest_exec");
-  const auto raise = load<Raise>(handle, "difftest_raise_intr");
+  const auto init = ref.symbol<Init>("difftest_init");
+  const auto set_platform = ref.symbol<SetPlatform>("difftest_set_platform");
+  const auto supported =
+      ref.symbol<RangeSupported>("difftest_memory_range_supported");
+  const auto memcopy = ref.symbol<Memcpy>("difftest_memcpy");
+  const auto regcopy = ref.symbol<Regcpy>("difftest_regcpy");
+  const auto csrcopy = ref.symbol<CSRcpy>("difftest_csrcpy");
+  const auto exec = ref.symbol<Exec>("difftest_exec");
+  const auto raise = ref.symbol<Raise>("difftest_raise_intr");
 
   set_platform(0);
   init(0);
@@ -163,7 +153,6 @@ int main(int argc, char **argv) try {
   check(csr.mepc == kFlash + 0x20u && csr.mcause == 0x8000000bu,
         "injected interrupt CSR state is incorrect");
 
-  dlclose(handle);
   if (failures != 0) {
     std::cerr << failures << " DiffTest platform/CSR check(s) failed\n";
     return 1;

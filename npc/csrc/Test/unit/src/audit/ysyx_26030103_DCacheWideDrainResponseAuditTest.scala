@@ -40,6 +40,7 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
           IndexBits = 4,
           AddressWidth = AddressW,
           DataWidth = 64,
+          BusDataWidth = 32,
           PMARegions = Seq(Region)
         )
       case "SRAM" =>
@@ -49,6 +50,7 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
           IndexBits = 4,
           AddressWidth = AddressW,
           DataWidth = 64,
+          BusDataWidth = 32,
           PMARegions = Seq(Region)
         )
     }

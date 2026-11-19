@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 
 TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+COMMON_DIR := $(TEST_DIR)/../../common
 NPC_DIR := $(abspath $(TEST_DIR)/../../../..)
 BUILD_DIR := $(TEST_DIR)/build
 RTL_DIR := $(BUILD_DIR)/rtl
@@ -12,7 +13,7 @@ STAMP := $(RTL_DIR)/.generated
 
 VERILATOR ?= verilator
 MILL ?= mill
-CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR)
+CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I$(TEST_DIR) -I$(COMMON_DIR)
 VERILATOR_FLAGS := --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS
 
 SCALA_SRCS := \
@@ -50,7 +51,7 @@ $(STAMP): $(SCALA_SRCS)
 	@cp $(TEST_DIR)/layers-ICachePmaBoundaryHarness-Verification.sv $(RTL_DIR)/
 	@touch $@
 
-$(BIN): main.cpp test_common.hpp $(STAMP)
+$(BIN): main.cpp $(COMMON_DIR)/test_common.hpp $(STAMP)
 	@mkdir -p $(OBJ_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 		-I$(RTL_DIR) \

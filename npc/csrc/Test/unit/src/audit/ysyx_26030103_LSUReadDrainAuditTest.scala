@@ -17,7 +17,8 @@ class ysyx_26030103_LSUReadDrainAuditTest
 
   "LSU without DCache" should
     "直读缺少 RLAST 时在有限时间内以 fault 恢复" in {
-    simulate(new ysyx_26030103_LSU(XLEN = 32, DCacheEnable = false)) { dut =>
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32,
+      DCacheEnable = false, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       dut.reset.poke(true.B)
       clock.step(2)
