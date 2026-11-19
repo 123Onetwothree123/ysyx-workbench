@@ -1,0 +1,14 @@
+{
+  "name": "cpp.runtime.sdb-finish-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "runtime",
+    "sdb-finish-test"
+  ],
+  "enabled": true
+}

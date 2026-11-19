@@ -1,0 +1,13 @@
+{
+  "name": "cpp.soc.ChipLinkMemTest",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "soc",
+    "ChipLinkMemTest"
+  ],
+  "enabled": true
+}

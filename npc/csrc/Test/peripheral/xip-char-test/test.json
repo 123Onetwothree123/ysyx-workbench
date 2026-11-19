@@ -1,0 +1,13 @@
+{
+  "name": "cpp.peripheral.xip-char-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "peripheral",
+    "xip-char-test"
+  ],
+  "enabled": true
+}

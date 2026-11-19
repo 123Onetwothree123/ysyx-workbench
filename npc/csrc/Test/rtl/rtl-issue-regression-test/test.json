@@ -1,0 +1,13 @@
+{
+  "name": "cpp.rtl.rtl-issue-regression-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "rtl",
+    "rtl-issue-regression-test"
+  ],
+  "enabled": true
+}

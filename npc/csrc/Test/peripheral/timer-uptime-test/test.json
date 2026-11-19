@@ -1,0 +1,13 @@
+{
+  "name": "cpp.peripheral.timer-uptime-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "peripheral",
+    "timer-uptime-test"
+  ],
+  "enabled": true
+}

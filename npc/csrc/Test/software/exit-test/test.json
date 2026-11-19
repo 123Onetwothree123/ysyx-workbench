@@ -1,0 +1,14 @@
+{
+  "name": "cpp.software.exit-test",
+  "tier": "functional",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 900,
+  "tags": [
+    "software",
+    "exit-test"
+  ],
+  "enabled": true
+}

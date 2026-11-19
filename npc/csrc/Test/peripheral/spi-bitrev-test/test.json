@@ -1,0 +1,13 @@
+{
+  "name": "cpp.peripheral.spi-bitrev-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "peripheral",
+    "spi-bitrev-test"
+  ],
+  "enabled": true
+}

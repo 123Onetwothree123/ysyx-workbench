@@ -1,0 +1,14 @@
+{
+  "name": "cpp.software.strlen-test",
+  "tier": "functional",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 900,
+  "tags": [
+    "software",
+    "strlen-test"
+  ],
+  "enabled": true
+}

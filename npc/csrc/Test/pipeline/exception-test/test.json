@@ -1,0 +1,14 @@
+{
+  "name": "cpp.pipeline.exception-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "pipeline",
+    "exception-test"
+  ],
+  "enabled": true
+}

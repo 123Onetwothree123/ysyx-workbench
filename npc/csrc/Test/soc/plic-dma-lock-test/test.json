@@ -1,0 +1,13 @@
+{
+  "name": "cpp.soc.plic-dma-lock-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "soc",
+    "plic-dma-lock-test"
+  ],
+  "enabled": true
+}

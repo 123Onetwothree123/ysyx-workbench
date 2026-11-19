@@ -1,0 +1,14 @@
+{
+  "name": "cpp.runtime.ftrace-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "runtime",
+    "ftrace-test"
+  ],
+  "enabled": true
+}

@@ -1,0 +1,14 @@
+{
+  "name": "cpp.software.printf-test",
+  "tier": "functional",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 900,
+  "tags": [
+    "software",
+    "printf-test"
+  ],
+  "enabled": true
+}

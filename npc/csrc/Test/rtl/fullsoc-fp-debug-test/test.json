@@ -1,0 +1,13 @@
+{
+  "name": "cpp.rtl.fullsoc-fp-debug-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "rtl",
+    "fullsoc-fp-debug-test"
+  ],
+  "enabled": true
+}

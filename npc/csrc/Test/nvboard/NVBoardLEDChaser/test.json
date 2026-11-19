@@ -1,0 +1,13 @@
+{
+  "name": "cpp.nvboard.NVBoardLEDChaser",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "nvboard",
+    "NVBoardLEDChaser"
+  ],
+  "enabled": true
+}

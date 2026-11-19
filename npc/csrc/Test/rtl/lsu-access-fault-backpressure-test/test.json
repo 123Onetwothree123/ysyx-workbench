@@ -1,0 +1,13 @@
+{
+  "name": "cpp.rtl.lsu-access-fault-backpressure-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "rtl",
+    "lsu-access-fault-backpressure-test"
+  ],
+  "enabled": true
+}

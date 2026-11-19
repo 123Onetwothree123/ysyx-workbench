@@ -1,0 +1,14 @@
+{
+  "name": "cpp.fpu.rv32d-cfp-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "fpu",
+    "rv32d-cfp-test"
+  ],
+  "enabled": true
+}

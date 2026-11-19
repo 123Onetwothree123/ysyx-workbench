@@ -1,0 +1,13 @@
+{
+  "name": "cpp.rtl.icache-pma-boundary-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "rtl",
+    "icache-pma-boundary-test"
+  ],
+  "enabled": true
+}

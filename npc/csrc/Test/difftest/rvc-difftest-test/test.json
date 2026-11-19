@@ -1,0 +1,14 @@
+{
+  "name": "cpp.difftest.rvc-difftest-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "difftest",
+    "rvc-difftest-test"
+  ],
+  "enabled": true
+}

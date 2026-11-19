@@ -1,0 +1,13 @@
+{
+  "name": "cpp.nvboard.NVBoardVGA",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "nvboard",
+    "NVBoardVGA"
+  ],
+  "enabled": true
+}

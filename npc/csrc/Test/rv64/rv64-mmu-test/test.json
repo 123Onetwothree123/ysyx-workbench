@@ -1,0 +1,13 @@
+{
+  "name": "cpp.rv64.rv64-mmu-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "rv64",
+    "rv64-mmu-test"
+  ],
+  "enabled": true
+}

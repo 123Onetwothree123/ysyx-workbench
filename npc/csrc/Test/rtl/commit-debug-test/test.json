@@ -1,0 +1,14 @@
+{
+  "name": "cpp.rtl.commit-debug-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "run"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "rtl",
+    "commit-debug-test"
+  ],
+  "enabled": true
+}

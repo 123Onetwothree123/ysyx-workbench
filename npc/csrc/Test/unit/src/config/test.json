@@ -1,0 +1,232 @@
+{
+  "tests": [
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_AXIQueueConfigTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_AXIQueueConfigTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_CacheConfigTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_CacheConfigTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_CoherenceConfigTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_CoherenceConfigTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_DirectNpcSocWidthTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_DirectNpcSocWidthTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_FPUConfigRegressionTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_FPUConfigRegressionTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_FPUConfigTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_FPUConfigTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_MDUConfigTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_MDUConfigTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_PrivilegeConfigTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_PrivilegeConfigTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_RV64AddressConfigTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_RV64AddressConfigTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_SocXLENConfigTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_SocXLENConfigTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_SocXLENElaborationTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_SocXLENElaborationTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.config.ysyx_26030103_VIPTDCacheElaborationTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.config.ysyx_26030103_VIPTDCacheElaborationTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "config"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    }
+  ]
+}

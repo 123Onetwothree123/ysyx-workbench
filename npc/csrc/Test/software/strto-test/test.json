@@ -1,0 +1,14 @@
+{
+  "name": "cpp.software.strto-test",
+  "tier": "functional",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 900,
+  "tags": [
+    "software",
+    "strto-test"
+  ],
+  "enabled": true
+}

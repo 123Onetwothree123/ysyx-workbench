@@ -1,0 +1,15 @@
+{
+  "name": "cpp.xlen.xlen-dual-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "ARCH=${ARCH}",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "xlen",
+    "xlen-dual-test"
+  ],
+  "enabled": true
+}

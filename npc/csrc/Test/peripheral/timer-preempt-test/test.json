@@ -1,0 +1,14 @@
+{
+  "name": "cpp.peripheral.timer-preempt-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "peripheral",
+    "timer-preempt-test"
+  ],
+  "enabled": true
+}

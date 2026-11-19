@@ -1,0 +1,14 @@
+{
+  "name": "cpp.peripheral.uart-soc-irq-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "peripheral",
+    "uart-soc-irq-test"
+  ],
+  "enabled": true
+}

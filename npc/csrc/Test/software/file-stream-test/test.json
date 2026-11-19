@@ -1,0 +1,14 @@
+{
+  "name": "cpp.software.file-stream-test",
+  "tier": "functional",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 900,
+  "tags": [
+    "software",
+    "file-stream-test"
+  ],
+  "enabled": true
+}

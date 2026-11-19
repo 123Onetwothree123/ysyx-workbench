@@ -1,0 +1,13 @@
+{
+  "name": "cpp.nvboard.NVBoardDIPSwitch",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "nvboard",
+    "NVBoardDIPSwitch"
+  ],
+  "enabled": true
+}

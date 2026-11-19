@@ -1,0 +1,14 @@
+{
+  "name": "cpp.difftest.difftest-abi-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "run"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "difftest",
+    "difftest-abi-test"
+  ],
+  "enabled": true
+}

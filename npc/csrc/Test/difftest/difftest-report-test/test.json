@@ -1,0 +1,14 @@
+{
+  "name": "cpp.difftest.difftest-report-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "run"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "difftest",
+    "difftest-report-test"
+  ],
+  "enabled": true
+}

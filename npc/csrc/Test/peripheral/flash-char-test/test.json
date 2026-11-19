@@ -1,0 +1,13 @@
+{
+  "name": "cpp.peripheral.flash-char-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "peripheral",
+    "flash-char-test"
+  ],
+  "enabled": true
+}

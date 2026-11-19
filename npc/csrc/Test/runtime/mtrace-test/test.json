@@ -1,0 +1,14 @@
+{
+  "name": "cpp.runtime.mtrace-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "runtime",
+    "mtrace-test"
+  ],
+  "enabled": true
+}

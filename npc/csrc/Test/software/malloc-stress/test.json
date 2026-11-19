@@ -1,0 +1,14 @@
+{
+  "name": "cpp.software.malloc-stress",
+  "tier": "functional",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 900,
+  "tags": [
+    "software",
+    "malloc-stress"
+  ],
+  "enabled": true
+}

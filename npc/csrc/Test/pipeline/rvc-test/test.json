@@ -1,0 +1,15 @@
+{
+  "name": "cpp.pipeline.rvc-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "ARCH=${ARCH}",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "pipeline",
+    "rvc-test"
+  ],
+  "enabled": true
+}

@@ -1,0 +1,14 @@
+{
+  "name": "cpp.bench.cache-memcpy-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "bench",
+    "cache-memcpy-test"
+  ],
+  "enabled": true
+}

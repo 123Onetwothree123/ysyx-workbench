@@ -1,0 +1,14 @@
+{
+  "name": "cpp.rtl.exu-trap-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "run"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "rtl",
+    "exu-trap-test"
+  ],
+  "enabled": true
+}

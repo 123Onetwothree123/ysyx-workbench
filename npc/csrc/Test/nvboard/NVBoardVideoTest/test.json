@@ -1,0 +1,13 @@
+{
+  "name": "cpp.nvboard.NVBoardVideoTest",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "nvboard",
+    "NVBoardVideoTest"
+  ],
+  "enabled": true
+}

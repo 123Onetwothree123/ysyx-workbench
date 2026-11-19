@@ -1,0 +1,13 @@
+{
+  "name": "cpp.difftest.nemu-difftest-isolation-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "difftest",
+    "nemu-difftest-isolation-test"
+  ],
+  "enabled": true
+}

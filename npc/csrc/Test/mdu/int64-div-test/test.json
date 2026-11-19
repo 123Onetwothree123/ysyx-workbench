@@ -1,0 +1,14 @@
+{
+  "name": "cpp.mdu.int64-div-test",
+  "tier": "functional",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 900,
+  "tags": [
+    "mdu",
+    "int64-div-test"
+  ],
+  "enabled": true
+}

@@ -1,0 +1,14 @@
+{
+  "name": "cpp.software.scanf-test",
+  "tier": "functional",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 900,
+  "tags": [
+    "software",
+    "scanf-test"
+  ],
+  "enabled": true
+}

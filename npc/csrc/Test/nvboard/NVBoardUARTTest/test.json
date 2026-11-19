@@ -1,0 +1,13 @@
+{
+  "name": "cpp.nvboard.NVBoardUARTTest",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "nvboard",
+    "NVBoardUARTTest"
+  ],
+  "enabled": true
+}

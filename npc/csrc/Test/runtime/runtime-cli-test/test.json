@@ -1,0 +1,14 @@
+{
+  "name": "cpp.runtime.runtime-cli-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "runtime",
+    "runtime-cli-test"
+  ],
+  "enabled": true
+}

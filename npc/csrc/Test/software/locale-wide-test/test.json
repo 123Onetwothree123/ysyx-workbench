@@ -1,0 +1,14 @@
+{
+  "name": "cpp.software.locale-wide-test",
+  "tier": "functional",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 900,
+  "tags": [
+    "software",
+    "locale-wide-test"
+  ],
+  "enabled": true
+}

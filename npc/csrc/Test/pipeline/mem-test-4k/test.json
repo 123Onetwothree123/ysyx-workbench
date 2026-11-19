@@ -1,0 +1,14 @@
+{
+  "name": "cpp.pipeline.mem-test-4k",
+  "tier": "performance",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "pipeline",
+    "mem-test-4k"
+  ],
+  "enabled": true
+}

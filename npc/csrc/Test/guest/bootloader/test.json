@@ -1,0 +1,14 @@
+{
+  "name": "cpp.guest.bootloader",
+  "tier": "performance",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "guest",
+    "bootloader"
+  ],
+  "enabled": true
+}

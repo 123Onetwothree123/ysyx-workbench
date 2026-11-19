@@ -1,0 +1,13 @@
+{
+  "name": "cpp.soc.soc-axi-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "soc",
+    "soc-axi-test"
+  ],
+  "enabled": true
+}

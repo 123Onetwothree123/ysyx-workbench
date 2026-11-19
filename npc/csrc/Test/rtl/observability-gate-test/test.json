@@ -1,0 +1,14 @@
+{
+  "name": "cpp.rtl.observability-gate-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "rtl",
+    "observability-gate-test"
+  ],
+  "enabled": true
+}

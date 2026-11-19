@@ -1,0 +1,137 @@
+{
+  "tests": [
+    {
+      "name": "scala.ysyx_26030103.exu.ysyx_26030103_ALUConfigTest",
+      "tier": "performance",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.exu.ysyx_26030103_ALUConfigTest"
+      ],
+      "timeout": 420,
+      "tags": [
+        "scala",
+        "exu"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.exu.ysyx_26030103_CSRPrivilegeTest",
+      "tier": "performance",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.exu.ysyx_26030103_CSRPrivilegeTest"
+      ],
+      "timeout": 420,
+      "tags": [
+        "scala",
+        "exu"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.exu.ysyx_26030103_NutShellMDUTest",
+      "tier": "performance",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.exu.ysyx_26030103_NutShellMDUTest"
+      ],
+      "timeout": 420,
+      "tags": [
+        "scala",
+        "exu"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.exu.ysyx_26030103_RV32BackendMDUTest",
+      "tier": "performance",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.exu.ysyx_26030103_RV32BackendMDUTest"
+      ],
+      "timeout": 420,
+      "tags": [
+        "scala",
+        "exu"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.exu.ysyx_26030103_RV64ALUIDUTest",
+      "tier": "performance",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.exu.ysyx_26030103_RV64ALUIDUTest"
+      ],
+      "timeout": 420,
+      "tags": [
+        "scala",
+        "exu"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.exu.ysyx_26030103_RV64CSRTest",
+      "tier": "performance",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.exu.ysyx_26030103_RV64CSRTest"
+      ],
+      "timeout": 420,
+      "tags": [
+        "scala",
+        "exu"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.exu.ysyx_26030103_RocketMDUTest",
+      "tier": "performance",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.exu.ysyx_26030103_RocketMDUTest"
+      ],
+      "timeout": 420,
+      "tags": [
+        "scala",
+        "exu"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    }
+  ]
+}

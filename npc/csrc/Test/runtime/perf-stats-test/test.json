@@ -1,0 +1,14 @@
+{
+  "name": "cpp.runtime.perf-stats-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "runtime",
+    "perf-stats-test"
+  ],
+  "enabled": true
+}

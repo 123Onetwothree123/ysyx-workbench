@@ -1,0 +1,14 @@
+{
+  "name": "cpp.software.errno-test",
+  "tier": "functional",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 900,
+  "tags": [
+    "software",
+    "errno-test"
+  ],
+  "enabled": true
+}

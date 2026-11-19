@@ -1,0 +1,14 @@
+{
+  "name": "cpp.pipeline.branch-nest",
+  "tier": "performance",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "pipeline",
+    "branch-nest"
+  ],
+  "enabled": true
+}

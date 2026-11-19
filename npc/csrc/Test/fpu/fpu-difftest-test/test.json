@@ -1,0 +1,14 @@
+{
+  "name": "cpp.fpu.fpu-difftest-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "fpu",
+    "fpu-difftest-test"
+  ],
+  "enabled": true
+}

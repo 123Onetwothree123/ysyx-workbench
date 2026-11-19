@@ -1,0 +1,13 @@
+{
+  "name": "cpp.rtl.issue-audit-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "rtl",
+    "issue-audit-test"
+  ],
+  "enabled": true
+}

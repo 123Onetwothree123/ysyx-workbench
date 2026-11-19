@@ -1,0 +1,15 @@
+{
+  "name": "cpp.xlen.direct-npc-soc-xlen-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "ARCH=${ARCH}",
+    "test"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "xlen",
+    "direct-npc-soc-xlen-test"
+  ],
+  "enabled": true
+}

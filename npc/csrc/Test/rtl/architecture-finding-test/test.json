@@ -1,0 +1,13 @@
+{
+  "name": "cpp.rtl.architecture-finding-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "rtl",
+    "architecture-finding-test"
+  ],
+  "enabled": true
+}

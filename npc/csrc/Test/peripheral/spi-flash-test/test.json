@@ -1,0 +1,13 @@
+{
+  "name": "cpp.peripheral.spi-flash-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "peripheral",
+    "spi-flash-test"
+  ],
+  "enabled": true
+}

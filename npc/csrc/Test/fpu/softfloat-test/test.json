@@ -1,0 +1,13 @@
+{
+  "name": "cpp.fpu.softfloat-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "fpu",
+    "softfloat-test"
+  ],
+  "enabled": true
+}

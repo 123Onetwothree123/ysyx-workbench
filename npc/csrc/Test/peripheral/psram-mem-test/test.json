@@ -1,0 +1,13 @@
+{
+  "name": "cpp.peripheral.psram-mem-test",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "peripheral",
+    "psram-mem-test"
+  ],
+  "enabled": true
+}

@@ -1,0 +1,14 @@
+{
+  "name": "cpp.pipeline.fencei-prefetch",
+  "tier": "performance",
+  "command": [
+    "make",
+    "ARCH=${ARCH}"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "pipeline",
+    "fencei-prefetch"
+  ],
+  "enabled": true
+}

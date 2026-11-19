@@ -1,0 +1,13 @@
+{
+  "name": "cpp.nvboard.NVBoardSegmentStudentID",
+  "tier": "performance",
+  "command": [
+    "make"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "nvboard",
+    "NVBoardSegmentStudentID"
+  ],
+  "enabled": true
+}

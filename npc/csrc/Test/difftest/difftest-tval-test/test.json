@@ -1,0 +1,14 @@
+{
+  "name": "cpp.difftest.difftest-tval-test",
+  "tier": "performance",
+  "command": [
+    "make",
+    "run"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "difftest",
+    "difftest-tval-test"
+  ],
+  "enabled": true
+}
