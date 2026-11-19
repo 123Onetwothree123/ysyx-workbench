@@ -26,7 +26,7 @@ private[mem] trait LSUAtomic {
       atomicNewData := ysyx_26030103_AtomicOp.Compute(
         atomicOpReg, wideData, activeInstruction.StoreData,
         word = false)
-      atomicAWDone := false.B
+      AtomicAWDone := false.B
       atomicWDone := false.B
       atomicWBeat := false.B
       state := stateAtomicWriteRequest
@@ -35,13 +35,13 @@ private[mem] trait LSUAtomic {
 
   def atomicQuietBody(): Unit = {
     when(atomicPhysicalAddressReady && io.BusQuiet && !dataCacheBusActive) {
-      atomicAddressReg := addressOf(effectiveALUResult)
+      atomicAddressReg := addressOf(EffectiveALUResult)
       when(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {
         // SC 失败路径完全不碰内存：rd=1，清除 reservation。
-        when(reservationValid && reservationAddress === addressOf(effectiveALUResult)) {
+        when(reservationValid && reservationAddress === addressOf(EffectiveALUResult)) {
           atomicResultData := 0.U
           atomicNewData := activeInstruction.StoreData
-          atomicAWDone := false.B
+          AtomicAWDone := false.B
           atomicWDone := false.B
           atomicWBeat := false.B
           state := stateAtomicWriteRequest
@@ -146,7 +146,7 @@ private[mem] trait LSUAtomic {
               atomicNewData := ysyx_26030103_AtomicOp.Compute(
                 atomicOpReg, wordData, activeInstruction.StoreData,
                 word = true)
-              atomicAWDone := false.B
+              AtomicAWDone := false.B
               atomicWDone := false.B
               atomicWBeat := false.B
               state := stateAtomicWriteRequest
@@ -180,7 +180,7 @@ private[mem] trait LSUAtomic {
             atomicNewData := ysyx_26030103_AtomicOp.Compute(
               atomicOpReg, wordData, activeInstruction.StoreData,
               word = true)
-            atomicAWDone := false.B
+            AtomicAWDone := false.B
             atomicWDone := false.B
             atomicWBeat := false.B
             state := stateAtomicWriteRequest
@@ -200,7 +200,7 @@ private[mem] trait LSUAtomic {
     val atomicTwoBeat = atomicWide && !busWideBit
     val atomicHigh =
       if (XLEN == 64) atomicNewData(63, 32) else 0.U(32.W)
-    io.DataBus.AW.AWVALID := !atomicAWDone
+    io.DataBus.AW.AWVALID := !AtomicAWDone
     io.DataBus.AW.AWADDR := atomicAddressReg
     io.DataBus.AW.AWLEN := Mux(atomicTwoBeat, 1.U, 0.U)
     io.DataBus.AW.AWSIZE := Mux(atomicWideBus, 3.U, 2.U)
@@ -216,18 +216,18 @@ private[mem] trait LSUAtomic {
           busStrobe("hf".U, atomicAddressReg)))
     io.DataBus.W.WLAST :=
       !atomicWide || atomicWideBus || atomicWBeat
-    val atomicAWFire =
+    val AtomicAWFire =
       io.DataBus.AW.AWVALID && io.DataBus.AW.AWREADY
     val atomicWFire =
       io.DataBus.W.WVALID && io.DataBus.W.WREADY
     val atomicWFinishes =
       atomicWFire && (!atomicWide || atomicWideBus || atomicWBeat)
-    when(atomicAWFire) { atomicAWDone := true.B }
+    when(AtomicAWFire) { AtomicAWDone := true.B }
     when(atomicWFire) {
       when(atomicTwoBeat && !atomicWBeat) { atomicWBeat := true.B }
         .otherwise { atomicWDone := true.B }
     }
-    when((atomicAWDone || atomicAWFire) &&
+    when((AtomicAWDone || AtomicAWFire) &&
         (atomicWDone || atomicWFinishes)) {
       state := stateAtomicWriteWaitB
     }

@@ -57,11 +57,11 @@ class ysyx_26030103_CLINTWStrobeAuditTest extends AnyFlatSpec with Matchers {
     dut.io.AW.AWVALID.poke(false.B)
     dut.io.W.WVALID.poke(false.B)
     while (!bool(dut.io.B.BVALID)) { dut.clock.step() }
-    val resp = dut.io.B.BRESP.peek().litValue.toInt
+    val response = dut.io.B.BRESP.peek().litValue.toInt
     dut.io.B.BREADY.poke(true.B)
     dut.clock.step()
     dut.io.B.BREADY.poke(false.B)
-    resp
+    response
   }
 
   private def read(
@@ -78,11 +78,11 @@ class ysyx_26030103_CLINTWStrobeAuditTest extends AnyFlatSpec with Matchers {
     dut.io.AR.ARVALID.poke(false.B)
     while (!bool(dut.io.R.RVALID)) { dut.clock.step() }
     val data = dut.io.R.RDATA.peek().litValue
-    val resp = dut.io.R.RRESP.peek().litValue.toInt
+    val response = dut.io.R.RRESP.peek().litValue.toInt
     dut.io.R.RREADY.poke(true.B)
     dut.clock.step()
     dut.io.R.RREADY.poke(false.B)
-    (data, resp)
+    (data, response)
   }
 
   "CLINT mtimecmp" should "分别按 WSTRB 合并低字和高字" in {

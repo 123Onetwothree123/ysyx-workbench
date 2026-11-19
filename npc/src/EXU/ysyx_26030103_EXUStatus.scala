@@ -9,35 +9,35 @@ import _root_.ysyx_26030103.fpu._
 private[exu] trait EXUStatus { this: ysyx_26030103_EXU =>
   def statusBody(): Unit = {
     io.SimHaltValid := instructionCommit && inst.IsSimHalt
-    io.SimHaltPC := inst.pc
-    io.TrapCommit := csrUnit.io.TrapCommit
-    io.TrapPC := trapBoundaryPC
-    io.TrapTarget := csrUnit.io.ExceptionTarget
-    io.TrapCause := csrUnit.io.CommittedCause
-    io.CSRPrivilege := csrUnit.io.Privilege
-    io.CSRSatp := csrUnit.io.Satp
-    io.CSRCurrentMstatus := csrUnit.io.CurrentMstatus
-    io.CSRFlushTLB := csrUnit.io.FlushTLB
-    io.CSRStateMstatus := csrUnit.io.StateMstatus
-    io.CSRStateMtvec := csrUnit.io.StateMtvec
-    io.CSRStateMepc := csrUnit.io.StateMepc
-    io.CSRStateMcause := csrUnit.io.StateMcause
-    io.CSRStateTval := csrUnit.io.StateTval
-    io.PMPConfig := csrUnit.io.PMPConfig
-    io.PMPAddress := csrUnit.io.PMPAddress
-    csrUnit.io.Mtime := io.Mtime
-    io.Mcounteren := csrUnit.io.McounterenOut
-    io.Scounteren := csrUnit.io.ScounterenOut
-    io.FetchAccessFaultCommit := csrUnit.io.TrapCommit && !io.MemTrapCommit &&
-      !csrUnit.io.IRQCommit && upstreamException && inst.ExceptionCause === 1.U
-    io.FetchAccessFaultPC := inst.pc
+    io.SimHaltPC := inst.PC
+    io.TrapCommit := CSRUnit.io.TrapCommit
+    io.TrapPC := TrapBoundaryPC
+    io.TrapTarget := CSRUnit.io.ExceptionTarget
+    io.TrapCause := CSRUnit.io.CommittedCause
+    io.CSRPrivilege := CSRUnit.io.Privilege
+    io.CSRSatp := CSRUnit.io.Satp
+    io.CSRCurrentMstatus := CSRUnit.io.CurrentMstatus
+    io.CSRFlushTLB := CSRUnit.io.FlushTLB
+    io.CSRStateMstatus := CSRUnit.io.StateMstatus
+    io.CSRStateMtvec := CSRUnit.io.StateMtvec
+    io.CSRStateMepc := CSRUnit.io.StateMepc
+    io.CSRStateMcause := CSRUnit.io.StateMcause
+    io.CSRStateTval := CSRUnit.io.StateTval
+    io.PMPConfig := CSRUnit.io.PMPConfig
+    io.PMPAddress := CSRUnit.io.PMPAddress
+    CSRUnit.io.Mtime := io.Mtime
+    io.Mcounteren := CSRUnit.io.McounterenOut
+    io.Scounteren := CSRUnit.io.ScounterenOut
+    io.FetchAccessFaultCommit := CSRUnit.io.TrapCommit && !io.MemTrapCommit &&
+      !CSRUnit.io.IRQCommit && upstreamException && inst.ExceptionCause === 1.U
+    io.FetchAccessFaultPC := inst.PC
     io.FetchAccessFaultResponse := inst.AccessFaultResponse
     io.Redirect := instructionCommit && redirect
-    // 重定向目标必须与实际提交的下一 PC 一致：MRET 实际目标是 mepc（commitNextPC 分支），
-    // 用 actualNextPC 会给顺序 snpc；功能上由 ExceptionTaken 覆盖，此处只修正波形/perf 语义。
-    io.RedirectTarget := commitNextPC
+    // 重定向目标必须与实际提交的下一 PC 一致：MRET 实际目标是 mepc（CommitNextPC 分支），
+    // 用 ActualNextPC 会给顺序 snpc；功能上由 ExceptionTaken 覆盖，此处只修正波形/perf 语义。
+    io.RedirectTarget := CommitNextPC
     // ecall/mret/上游异常提交,或MEM经CSR后门提交的访存故障
-    io.ExceptionTaken := csrUnit.io.ExceptionTaken
-    io.ExceptionTarget := csrUnit.io.ExceptionTarget
+    io.ExceptionTaken := CSRUnit.io.ExceptionTaken
+    io.ExceptionTarget := CSRUnit.io.ExceptionTarget
   }
 }

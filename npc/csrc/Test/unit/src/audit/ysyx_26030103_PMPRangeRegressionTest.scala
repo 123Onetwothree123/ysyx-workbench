@@ -26,81 +26,81 @@ class ysyx_26030103_PMPRangeRegressionTest extends AnyFlatSpec with Matchers {
   /** 把 LSU 的 PMP 请求口与 PMP 叶子模块直接相连的小 harness。 */
   private class PMPRangeHarness extends Module {
     val io = IO(new Bundle {
-      val cfg = Input(Vec(16, UInt(8.W)))
-      val addr = Input(Vec(16, UInt(32.W)))
+      val config = Input(Vec(16, UInt(8.W)))
+      val address = Input(Vec(16, UInt(32.W)))
       val inValid = Input(Bool())
       val inBits = Input(new ysyx_26030103_EXUMessage(32))
       val outReady = Input(Bool())
-      val pmpAddress = Output(UInt(32.W))
-      val pmpFault = Output(Bool())
+      val PMPAddress = Output(UInt(32.W))
+      val PMPFault = Output(Bool())
       val arValid = Output(Bool())
-      val arAddress = Output(UInt(32.W))
+      val ARAddress = Output(UInt(32.W))
       val memTrapCommit = Output(Bool())
       val memTrapCause = Output(UInt(32.W))
       val memTrapTval = Output(UInt(32.W))
     })
 
-    val lsu = Module(
+    val LSU = Module(
       new ysyx_26030103_LSU(
         XLEN = 32,
         AddressWidth = 32,
         DCacheEnable = false
       )
     )
-    val pmp = Module(
+    val PMP = Module(
       new ysyx_26030103_PMP(entries = 16, AddressWidth = 32)
     )
 
     // LSU 输入 / 输出。
-    lsu.io.in.valid := io.inValid
-    lsu.io.in.bits := io.inBits
-    lsu.io.out.ready := io.outReady
+    LSU.io.in.valid := io.inValid
+    LSU.io.in.bits := io.inBits
+    LSU.io.out.ready := io.outReady
 
     // 固定输入。
-    lsu.io.DCacheFlush := false.B
-    lsu.io.BusQuiet := true.B
-    lsu.io.ReservationClear := false.B
-    lsu.io.VIPTPAddress := 0.U(32.W)
-    lsu.io.VIPTPAddressValid := false.B
-    lsu.io.VIPTPAddressVirtualAddress := 0.U(32.W)
-    lsu.io.VIPTKill := false.B
-    lsu.io.DCacheDMASnoopValid := false.B
-    lsu.io.DCacheDMASnoopStart := 0.U(32.W)
-    lsu.io.DCacheDMASnoopEnd := 0.U(32.W)
+    LSU.io.DCacheFlush := false.B
+    LSU.io.BusQuiet := true.B
+    LSU.io.ReservationClear := false.B
+    LSU.io.VIPTPAddress := 0.U(32.W)
+    LSU.io.VIPTPAddressValid := false.B
+    LSU.io.VIPTPAddressVirtualAddress := 0.U(32.W)
+    LSU.io.VIPTKill := false.B
+    LSU.io.DCacheDMASnoopValid := false.B
+    LSU.io.DCacheDMASnoopStart := 0.U(32.W)
+    LSU.io.DCacheDMASnoopEnd := 0.U(32.W)
 
     // data 侧 PMP 检查：起始/末字节地址来自 LSU 当前需要检查的访存。
-    pmp.io.cfg := io.cfg
-    pmp.io.addr := io.addr
-    pmp.io.dataAddress := lsu.io.PMPAddress
-    pmp.io.dataLastAddress := lsu.io.PMPLastAddress
-    pmp.io.dataPriv := 1.U // S 模式
-    pmp.io.dataRead := lsu.io.PMPRead
-    pmp.io.dataWrite := lsu.io.PMPWrite
+    PMP.io.config := io.config
+    PMP.io.address := io.address
+    PMP.io.dataAddress := LSU.io.PMPAddress
+    PMP.io.dataLastAddress := LSU.io.PMPLastAddress
+    PMP.io.dataPriv := 1.U // S 模式
+    PMP.io.dataRead := LSU.io.PMPRead
+    PMP.io.dataWrite := LSU.io.PMPWrite
     // fetch 侧不使用；给足 M 模式权限避免干扰。
-    pmp.io.fetchAddress := 0.U
-    pmp.io.fetchPriv := 3.U
-    lsu.io.PMPFault := pmp.io.dataFault
+    PMP.io.fetchAddress := 0.U
+    PMP.io.fetchPriv := 3.U
+    LSU.io.PMPFault := PMP.io.dataFault
 
     // AXI 从设备默认不响应，只观察 LSU 是否发起读请求。
-    lsu.io.DataBus.AW.AWREADY := false.B
-    lsu.io.DataBus.W.WREADY := false.B
-    lsu.io.DataBus.B.BVALID := false.B
-    lsu.io.DataBus.B.BID := 0.U(4.W)
-    lsu.io.DataBus.B.BRESP := 0.U(2.W)
-    lsu.io.DataBus.AR.ARREADY := false.B
-    lsu.io.DataBus.R.RVALID := false.B
-    lsu.io.DataBus.R.RID := 0.U(4.W)
-    lsu.io.DataBus.R.RDATA := 0.U(32.W)
-    lsu.io.DataBus.R.RRESP := 0.U(2.W)
-    lsu.io.DataBus.R.RLAST := false.B
+    LSU.io.DataBus.AW.AWREADY := false.B
+    LSU.io.DataBus.W.WREADY := false.B
+    LSU.io.DataBus.B.BVALID := false.B
+    LSU.io.DataBus.B.BID := 0.U(4.W)
+    LSU.io.DataBus.B.BRESP := 0.U(2.W)
+    LSU.io.DataBus.AR.ARREADY := false.B
+    LSU.io.DataBus.R.RVALID := false.B
+    LSU.io.DataBus.R.RID := 0.U(4.W)
+    LSU.io.DataBus.R.RDATA := 0.U(32.W)
+    LSU.io.DataBus.R.RRESP := 0.U(2.W)
+    LSU.io.DataBus.R.RLAST := false.B
 
-    io.pmpAddress := lsu.io.PMPAddress
-    io.pmpFault := pmp.io.dataFault
-    io.arValid := lsu.io.DataBus.AR.ARVALID
-    io.arAddress := lsu.io.DataBus.AR.ARADDR
-    io.memTrapCommit := lsu.io.MemTrapCommit
-    io.memTrapCause := lsu.io.MemTrapCause
-    io.memTrapTval := lsu.io.MemTrapTval
+    io.PMPAddress := LSU.io.PMPAddress
+    io.PMPFault := PMP.io.dataFault
+    io.arValid := LSU.io.DataBus.AR.ARVALID
+    io.ARAddress := LSU.io.DataBus.AR.ARADDR
+    io.memTrapCommit := LSU.io.MemTrapCommit
+    io.memTrapCause := LSU.io.MemTrapCause
+    io.memTrapTval := LSU.io.MemTrapTval
   }
 
   private def resetDut(
@@ -112,8 +112,8 @@ class ysyx_26030103_PMPRangeRegressionTest extends AnyFlatSpec with Matchers {
     clock.step(2)
     reset.poke(false.B)
     for (i <- 0 until 16) {
-      dut.io.cfg(i).poke(0.U)
-      dut.io.addr(i).poke(0.U)
+      dut.io.config(i).poke(0.U)
+      dut.io.address(i).poke(0.U)
     }
     dut.io.inValid.poke(false.B)
     dut.io.inBits.poke(0.U.asTypeOf(chiselTypeOf(dut.io.inBits)))
@@ -124,7 +124,7 @@ class ysyx_26030103_PMPRangeRegressionTest extends AnyFlatSpec with Matchers {
   private def pokeLoad8(
       dut: PMPRangeHarness,
       address: Long,
-      pc: Long
+      PC: Long
   ): Unit = {
     dut.io.inBits.poke(0.U.asTypeOf(chiselTypeOf(dut.io.inBits)))
     dut.io.inBits.Retire.poke(true.B)
@@ -137,7 +137,7 @@ class ysyx_26030103_PMPRangeRegressionTest extends AnyFlatSpec with Matchers {
     dut.io.inBits.ALUResult.poke(address.U(32.W))
     dut.io.inBits.VAddress.poke(address.U(32.W))
     dut.io.inBits.WidthSelect.poke(3.U(2.W)) // 8 字节访问
-    dut.io.inBits.pc.poke(pc.U(32.W))
+    dut.io.inBits.PC.poke(PC.U(32.W))
     dut.io.inValid.poke(true.B)
   }
 
@@ -147,25 +147,25 @@ class ysyx_26030103_PMPRangeRegressionTest extends AnyFlatSpec with Matchers {
         resetDut(dut, dut.clock, dut.reset)
 
         // entry0：A=NA4（4 字节区域），R/W/X，L=0，覆盖 0x80000000..0x80000003。
-        dut.io.cfg(0).poke("h17".U)
-        dut.io.addr(0).poke("h20000000".U) // 0x80000000 >> 2
+        dut.io.config(0).poke("h17".U)
+        dut.io.address(0).poke("h20000000".U) // 0x80000000 >> 2
         for (i <- 1 until 16) {
-          dut.io.cfg(i).poke(0.U)
-          dut.io.addr(i).poke(0.U)
+          dut.io.config(i).poke(0.U)
+          dut.io.address(i).poke(0.U)
         }
 
         // 0x80000000 是 8 字节对齐，不会因非对齐提前 trap；但本次访问覆盖
         // 0x80000000..0x80000007，超出 4 字节 NA4 区域。
         pokeLoad8(dut, 0x80000000L, 0x80000000L)
 
-        var sawAr = false
+        var SawAR = false
         var sawFault = false
         var sawTrap = false
         var trapCause = -1L
         var trapTval = -1L
         for (_ <- 0 until 12) {
-          if (bool(dut.io.arValid)) sawAr = true
-          if (bool(dut.io.pmpFault)) sawFault = true
+          if (bool(dut.io.arValid)) SawAR = true
+          if (bool(dut.io.PMPFault)) sawFault = true
           if (bool(dut.io.memTrapCommit)) {
             sawTrap = true
             trapCause = long(dut.io.memTrapCause)
@@ -176,10 +176,10 @@ class ysyx_26030103_PMPRangeRegressionTest extends AnyFlatSpec with Matchers {
 
         withClue(
           s"8 字节 load@0x80000000 越出 4 字节 NA4 区域，" +
-            s"pmpFault 曾为 $sawFault，但 LSU 仍发出了 AR" +
-            (if (sawAr) s"（ARADDR=0x${long(dut.io.arAddress).toHexString}）" else "")
+            s"PMPFault 曾为 $sawFault，但 LSU 仍发出了 AR" +
+            (if (SawAR) s"（ARADDR=0x${long(dut.io.ARAddress).toHexString}）" else "")
         ) {
-          sawAr should be(false)
+          SawAR should be(false)
         }
         withClue(s"越界访问必须按 load access fault 提交，实际 trap=$sawTrap") {
           sawTrap should be(true)

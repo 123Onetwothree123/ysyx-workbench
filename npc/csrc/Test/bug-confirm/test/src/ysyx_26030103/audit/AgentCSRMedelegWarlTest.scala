@@ -24,10 +24,10 @@ class AgentCSRMedelegWarlTest extends AnyFlatSpec with Matchers {
       xlen = 64,
       pageSizeBytes = 4096,
       levels = 3,
-      pteSizeBytes = 8,
+      PTESizeBytes = 8,
       pageTableSizeBytes = 4096,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -47,10 +47,10 @@ class AgentCSRMedelegWarlTest extends AnyFlatSpec with Matchers {
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddress.poke(0.U)
+    dut.io.CSRAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
-    dut.io.pc.poke(0.U)
+    dut.io.PC.poke(0.U)
     dut.io.trapTval.poke(0.U)
     dut.io.trapTvalValid.poke(false.B)
     dut.io.trapValid.poke(false.B)
@@ -68,7 +68,7 @@ class AgentCSRMedelegWarlTest extends AnyFlatSpec with Matchers {
   ): Unit = {
     dut.io.enable.poke(true.B)
     dut.io.isCSRrw.poke(true.B)
-    dut.io.csrAddress.poke(addr.U(12.W))
+    dut.io.CSRAddress.poke(addr.U(12.W))
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(value.U(64.W))
     dut.clock.step()
@@ -83,7 +83,7 @@ class AgentCSRMedelegWarlTest extends AnyFlatSpec with Matchers {
       dut: ysyx_26030103_CSRAuditHarness,
       addr: Int
   ): BigInt = {
-    dut.io.csrAddress.poke(addr.U(12.W))
+    dut.io.CSRAddress.poke(addr.U(12.W))
     dut.io.enable.poke(false.B)
     dut.io.rdata.peek().litValue
   }

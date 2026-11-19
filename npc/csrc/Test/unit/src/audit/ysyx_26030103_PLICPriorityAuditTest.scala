@@ -89,7 +89,7 @@ class ysyx_26030103_PLICPriorityAuditTest extends AnyFlatSpec with Matchers {
       write(dut, 0x0c200000L, 0) // threshold=0
       dut.sources.poke(((1 << 1) | (1 << 10)).U)
       dut.clock.step()
-      bool(dut.external_irq) should be(true)
+      bool(dut.ExternalIRQ) should be(true)
       read(dut, 0x0c200004L) should be(BigInt(10))
     }
   }
@@ -115,16 +115,16 @@ class ysyx_26030103_PLICPriorityAuditTest extends AnyFlatSpec with Matchers {
       write(dut, 0x0c200000L, 0)
       dut.sources.poke(2.U)
       dut.clock.step()
-      bool(dut.external_irq) should be(true)
+      bool(dut.ExternalIRQ) should be(true)
 
       read(dut, 0x0c200004L) should be(BigInt(1))
       // source 电平仍为高，但 claimed 必须屏蔽 gateway。
-      bool(dut.external_irq) should be(false)
+      bool(dut.ExternalIRQ) should be(false)
       read(dut, 0x0c200004L) should be(BigInt(0))
 
       write(dut, 0x0c200004L, 1) // complete source 1
       dut.clock.step(2)
-      bool(dut.external_irq) should be(true)
+      bool(dut.ExternalIRQ) should be(true)
       read(dut, 0x0c200004L) should be(BigInt(1))
     }
   }

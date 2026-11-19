@@ -9,7 +9,7 @@ import org.scalatest.matchers.should.Matchers
 
 /** AXI5Xbar `LastByte` 的 ARLEN=255 溢出审计。
   *
-  * 嫌疑缺陷（npc/src/Infra/AXI5/ysyx_26030103_AXI5Xbar.scala）：
+  * 嫌疑缺陷（npc/source/Infra/AXI5/ysyx_26030103_AXI5Xbar.scala）：
   * {{{
   *   val TotalBytes = (Len + 1.U) * BeatBytes
   * }}}
@@ -27,7 +27,7 @@ import org.scalatest.matchers.should.Matchers
   *      真实访问范围 0x83fffffc..0x840003fb，越过 PMA 末尾 0x84000000。
   *      正确行为是本地 DECERR，绝不向 SoCBus 发出 AR。
   *      当前 RTL 会把末字节算成 0x83fffffb（RAM 内）并发出 SoCBus AR，
-  *      所以 `socArSeen should be(false)` 应当失败 —— 即确认缺陷。
+  *      所以 `SOCARSeen should be(false)` 应当失败 —— 即确认缺陷。
   *   2. 控制用例：ARADDR=0x83fffff8, ARLEN=1, ARSIZE=2，末字节
   *      0x83ffffff 仍在 RAM 内，必须转发到 SoCBus，证明 harness 能看到
   *      合法的下游 AR，失败只与 8 位溢出有关。
@@ -58,15 +58,15 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
     )
 
   private case class Observed(
-      socArSeen: Boolean,
-      socAddress: BigInt,
-      socLen: BigInt,
-      resp: Int,
+      SOCARSeen: Boolean,
+      SOCAddress: BigInt,
+      SOCLength: BigInt,
+      response: Int,
       beats: Int
   ) {
     def clue: String =
-      s"socArSeen=$socArSeen, socAddr=0x${socAddress.toString(16)}, " +
-        s"socLen=$socLen, resp=$resp, beats=$beats"
+      s"SOCARSeen=$SOCARSeen, socAddr=0x${SOCAddress.toString(16)}, " +
+        s"SOCLength=$SOCLength, response=$response, beats=$beats"
   }
 
   /** 复位并把所有输入/下游响应模型置为静默。下游 ARREADY 保持低，
@@ -107,57 +107,57 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
     in.AR.ARQOS.poke(0.U(4.W))
     in.R.RREADY.poke(true.B)
 
-    val soc = dut.io.SoCBus
-    soc.AW.AWREADY.poke(false.B)
-    soc.W.WREADY.poke(false.B)
-    soc.B.BVALID.poke(false.B)
-    soc.B.BID.poke(0.U(4.W))
-    soc.B.BRESP.poke(0.U(2.W))
-    soc.AR.ARREADY.poke(false.B)
-    soc.R.RVALID.poke(false.B)
-    soc.R.RID.poke(0.U(4.W))
-    soc.R.RDATA.poke(0.U(32.W))
-    soc.R.RRESP.poke(0.U(2.W))
-    soc.R.RLAST.poke(false.B)
+    val SOC = dut.io.SoCBus
+    SOC.AW.AWREADY.poke(false.B)
+    SOC.W.WREADY.poke(false.B)
+    SOC.B.BVALID.poke(false.B)
+    SOC.B.BID.poke(0.U(4.W))
+    SOC.B.BRESP.poke(0.U(2.W))
+    SOC.AR.ARREADY.poke(false.B)
+    SOC.R.RVALID.poke(false.B)
+    SOC.R.RID.poke(0.U(4.W))
+    SOC.R.RDATA.poke(0.U(32.W))
+    SOC.R.RRESP.poke(0.U(2.W))
+    SOC.R.RLAST.poke(false.B)
 
-    val clint = dut.io.CLINT
-    clint.AW.AWREADY.poke(false.B)
-    clint.W.WREADY.poke(false.B)
-    clint.B.BVALID.poke(false.B)
-    clint.B.BID.poke(0.U(4.W))
-    clint.B.BRESP.poke(0.U(2.W))
-    clint.AR.ARREADY.poke(false.B)
-    clint.R.RVALID.poke(false.B)
-    clint.R.RID.poke(0.U(4.W))
-    clint.R.RDATA.poke(0.U(32.W))
-    clint.R.RRESP.poke(0.U(2.W))
-    clint.R.RLAST.poke(false.B)
+    val CLINT = dut.io.CLINT
+    CLINT.AW.AWREADY.poke(false.B)
+    CLINT.W.WREADY.poke(false.B)
+    CLINT.B.BVALID.poke(false.B)
+    CLINT.B.BID.poke(0.U(4.W))
+    CLINT.B.BRESP.poke(0.U(2.W))
+    CLINT.AR.ARREADY.poke(false.B)
+    CLINT.R.RVALID.poke(false.B)
+    CLINT.R.RID.poke(0.U(4.W))
+    CLINT.R.RDATA.poke(0.U(32.W))
+    CLINT.R.RRESP.poke(0.U(2.W))
+    CLINT.R.RLAST.poke(false.B)
 
-    val plic = dut.io.PLIC
-    plic.AW.AWREADY.poke(false.B)
-    plic.W.WREADY.poke(false.B)
-    plic.B.BVALID.poke(false.B)
-    plic.B.BID.poke(0.U(4.W))
-    plic.B.BRESP.poke(0.U(2.W))
-    plic.AR.ARREADY.poke(false.B)
-    plic.R.RVALID.poke(false.B)
-    plic.R.RID.poke(0.U(4.W))
-    plic.R.RDATA.poke(0.U(32.W))
-    plic.R.RRESP.poke(0.U(2.W))
-    plic.R.RLAST.poke(false.B)
+    val PLIC = dut.io.PLIC
+    PLIC.AW.AWREADY.poke(false.B)
+    PLIC.W.WREADY.poke(false.B)
+    PLIC.B.BVALID.poke(false.B)
+    PLIC.B.BID.poke(0.U(4.W))
+    PLIC.B.BRESP.poke(0.U(2.W))
+    PLIC.AR.ARREADY.poke(false.B)
+    PLIC.R.RVALID.poke(false.B)
+    PLIC.R.RID.poke(0.U(4.W))
+    PLIC.R.RDATA.poke(0.U(32.W))
+    PLIC.R.RRESP.poke(0.U(2.W))
+    PLIC.R.RLAST.poke(false.B)
   }
 
   /** 注入恰好一笔 INCR 读 AR（ID=1），等待 1 拍握手后撤销 ARVALID。 */
   private def issueOneRead(
       dut: ysyx_26030103_AXI5Xbar,
       addr: Long,
-      len: Int,
+      length: Int,
       size: Int
   ): Boolean = {
     val in = dut.io.in
     in.AR.ARADDR.poke(addr.U(AddressW.W))
     in.AR.ARID.poke(1.U(4.W))
-    in.AR.ARLEN.poke(len.U(8.W))
+    in.AR.ARLEN.poke(length.U(8.W))
     in.AR.ARSIZE.poke(size.U(3.W))
     in.AR.ARBURST.poke(1.U(2.W)) // INCR
     in.AR.ARPROT.poke(0.U(3.W))
@@ -178,26 +178,26 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
       dut: ysyx_26030103_AXI5Xbar,
       cycles: Int
   ): Observed = {
-    var socArSeen = false
-    var socAddress = BigInt(0)
-    var socLen = BigInt(0)
-    var resp = -1
+    var SOCARSeen = false
+    var SOCAddress = BigInt(0)
+    var SOCLength = BigInt(0)
+    var response = -1
     var beats = 0
     var i = 0
     while (i < cycles) {
       if (bool(dut.io.SoCBus.AR.ARVALID)) {
-        socArSeen = true
-        socAddress = big(dut.io.SoCBus.AR.ARADDR)
-        socLen = big(dut.io.SoCBus.AR.ARLEN)
+        SOCARSeen = true
+        SOCAddress = big(dut.io.SoCBus.AR.ARADDR)
+        SOCLength = big(dut.io.SoCBus.AR.ARLEN)
       }
       if (bool(dut.io.in.R.RVALID) && bool(dut.io.in.R.RREADY)) {
         beats += 1
-        if (resp < 0) resp = dut.io.in.R.RRESP.peek().litValue.toInt
+        if (response < 0) response = dut.io.in.R.RRESP.peek().litValue.toInt
       }
       dut.clock.step()
       i += 1
     }
-    Observed(socArSeen, socAddress, socLen, resp, beats)
+    Observed(SOCARSeen, SOCAddress, SOCLength, response, beats)
   }
 
   "AXI5Xbar LastByte with ARLEN=255" should
@@ -218,7 +218,7 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
         ) {
           // 当前 `(Len + 1.U)` 在 8 位回绕，LastByte 算成 0x83fffffb，
           // 落在 RAM 内，因此这条断言应当失败，即确认缺陷。
-          observed.socArSeen should be(false)
+          observed.SOCARSeen should be(false)
         }
         withClue(
           s"ARLEN=255 溢出审计: ${observed.clue}; " +
@@ -226,7 +226,7 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
         ) {
           // 正确实现下本地 DECERR 首拍应在数十拍内出现（RRESP=3）。
           // 若 RTL 把请求转发到静默的 SoCBus，则永远不会返回该响应。
-          observed.resp should be(3)
+          observed.response should be(3)
         }
       }
     }
@@ -246,13 +246,13 @@ class ysyx_26030103_XbarBurst255AuditTest extends AnyFlatSpec with Matchers {
 
         val observed = observe(dut, 30)
         withClue(s"合法 burst 控制组: ${observed.clue}; ") {
-          observed.socArSeen should be(true)
-          observed.socAddress should be(BigInt(0x83fffff8L))
-          observed.socLen should be(BigInt(1))
+          observed.SOCARSeen should be(true)
+          observed.SOCAddress should be(BigInt(0x83fffff8L))
+          observed.SOCLength should be(BigInt(1))
         }
         // 合法请求走 SoCBus，不应被本地判为 DECERR。
         withClue(s"合法 burst 不应本地 DECERR: ${observed.clue}; ") {
-          observed.resp should be(-1)
+          observed.response should be(-1)
         }
       }
     }

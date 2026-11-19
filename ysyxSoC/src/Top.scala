@@ -7,13 +7,13 @@ import freechips.rocketchip.diplomacy.LazyModule
 
 object Config {
   def hasChipLink: Boolean =
-    SoCConfig.boolean("soc.chiplink", false)
+    SoCConfig.boolean("SOC.chiplink", false)
 
   def sdramUseAXI: Boolean =
-    SoCConfig.boolean("soc.sdram_use_axi", true)
+    SoCConfig.boolean("SOC.sdram_use_axi", true)
 
   lazy val socXlen: Int = {
-    val value = SoCConfig.int("soc.soc_xlen", 32)
+    val value = SoCConfig.int("SOC.soc_xlen", 32)
     require(value == 32 || value == 64,
       s"SOC_XLEN 必须是 32 或 64，当前值 $value")
     value
@@ -22,12 +22,12 @@ object Config {
   def cpuAXI4AddrBits: Int = socXlen
   def cpuAXI4DataBits: Int = socXlen
 
-  def apbCpuFreqMhz: Int = SoCConfig.int("soc.apb.cpu_freq_mhz", 450)
-  def apbDeviceFreqMhz: Int = SoCConfig.int("soc.apb.device_freq_mhz", 100)
-  def apbDelayScale: Int = SoCConfig.int("soc.apb.delay_scale", 64)
-  def axiCpuFreqMhz: Int = SoCConfig.int("soc.axi.cpu_freq_mhz", 450)
-  def axiDeviceFreqMhz: Int = SoCConfig.int("soc.axi.device_freq_mhz", 100)
-  def axiDelayScale: Int = SoCConfig.int("soc.axi.delay_scale", 64)
+  def apbCpuFreqMhz: Int = SoCConfig.int("SOC.apb.cpu_freq_mhz", 450)
+  def apbDeviceFreqMhz: Int = SoCConfig.int("SOC.apb.device_freq_mhz", 100)
+  def apbDelayScale: Int = SoCConfig.int("SOC.apb.delay_scale", 64)
+  def axiCpuFreqMhz: Int = SoCConfig.int("SOC.AXI.cpu_freq_mhz", 450)
+  def axiDeviceFreqMhz: Int = SoCConfig.int("SOC.AXI.device_freq_mhz", 100)
+  def axiDelayScale: Int = SoCConfig.int("SOC.AXI.delay_scale", 64)
 
   def source: String = SoCConfig.source
 }

@@ -128,14 +128,13 @@ static void external_read_burst(DUT &dut, std::uint32_t address) {
 }
 
 #ifdef TEST_CHIPLINK
-// 自然激励：CLINT 窗口内的多拍写。Xbar 必须整笔吞掉（W 排空到 WLAST）、
-// 不泄漏到 CLINT 从设备，最后回 DECERR。此前该用例靠 rootp 直接改内部
-// 寄存器状态；现在 AWLEN 由输入驱动，路径自然可达（也覆盖 StateWriteDrain）。
+// CLINT 仅支持 INCR 两拍写；FIXED 多拍写必须整笔吞掉（W 排空到 WLAST）、
+// 不泄漏到 CLINT 从设备，最后回 DECERR。
 static void clint_burst_decerr(DUT &dut) {
   dut.io_in_AW_AWADDR = 0x02000000U; // CLINT 窗口起点
   dut.io_in_AW_AWLEN = 1;            // 2 拍
   dut.io_in_AW_AWSIZE = 2;
-  dut.io_in_AW_AWBURST = 1;
+  dut.io_in_AW_AWBURST = 0;          // FIXED：地址不递增，不可转发
   dut.io_in_AW_AWVALID = 1;
   dut.eval();
   check(dut.io_in_AW_AWREADY, "xbar did not accept a CLINT burst AW");

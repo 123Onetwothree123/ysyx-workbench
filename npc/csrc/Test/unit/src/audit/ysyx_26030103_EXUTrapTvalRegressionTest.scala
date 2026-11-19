@@ -14,7 +14,7 @@ import org.scalatest.matchers.should.Matchers
   * 该指令可能恰好是 load/store 形状（MemoryValid=true）。此时 mtval 的
   * 语义仍是故障 PC，而不是 ALU 计算出的访存地址。
   *
-  * 当前 ActiveTrapTval 先看 MemoryValid 再回退 pc，会把 ALU 结果写进
+  * 当前 ActiveTrapTval 先看 MemoryValid 再回退 PC，会把 ALU 结果写进
   * CSRStateTval；本测试用 LW 形状 + ExceptionCause=1 复现该错误。
   */
 class ysyx_26030103_EXUTrapTvalRegressionTest
@@ -35,9 +35,9 @@ class ysyx_26030103_EXUTrapTvalRegressionTest
         xlen = 64,
         hasS = true,
         hasU = true,
-        pteSizeBytes = 8,
-        pteFormat = "riscv64",
-        pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
+        PTESizeBytes = 8,
+        PTEFormat = "riscv64",
+        PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53)
       )
     )
 
@@ -70,11 +70,11 @@ class ysyx_26030103_EXUTrapTvalRegressionTest
     simulate(new ysyx_26030103_EXU(config)) { dut =>
       setup(dut)
       dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_IDUMessage(64)))
-      dut.io.in.bits.pc.poke(BigInt("0000000080000000", 16).U(64.W))
+      dut.io.in.bits.PC.poke(BigInt("0000000080000000", 16).U(64.W))
       dut.io.in.bits.snpc.poke(BigInt("0000000080000004", 16).U(64.W))
-      // IFU/顶层用 pred_target 携带实际故障取指地址；这里故障 PC 与取指
+      // IFU/顶层用 PredTarget 携带实际故障取指地址；这里故障 PC 与取指
       // 地址相同，因此 mtval 仍应等于 PC。
-      dut.io.in.bits.pred_target.poke(BigInt("0000000080000000", 16).U(64.W))
+      dut.io.in.bits.PredTarget.poke(BigInt("0000000080000000", 16).U(64.W))
       // LW x0, 0(x0)：指令形状带 MemoryValid，但上游已标记取指异常。
       dut.io.in.bits.Instruction.poke("h00002003".U(32.W))
       dut.io.in.bits.IsCompressed.poke(false.B)

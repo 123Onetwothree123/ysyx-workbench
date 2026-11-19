@@ -60,7 +60,7 @@ class ysyx_26030103_HardFloatFPUTest extends AnyFlatSpec with Matchers {
   private def exec(
       op: BigInt,
       fmt: BigInt,
-      srcFmt: BigInt,
+      SourceFmt: BigInt,
       rm: Int,
       a: BigInt,
       b: BigInt = 0,
@@ -75,27 +75,27 @@ class ysyx_26030103_HardFloatFPUTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       dut.io.flush.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.op.poke(op.U)
-      dut.io.req.bits.fmt.poke(fmt.U)
-      dut.io.req.bits.srcFmt.poke(srcFmt.U)
-      dut.io.req.bits.rm.poke(rm.U)
-      dut.io.req.bits.intWord.poke(intWord.B)
-      dut.io.req.bits.rs1.poke(a.U(64.W))
-      dut.io.req.bits.rs2.poke(b.U(64.W))
-      dut.io.req.bits.rs3.poke(c.U(64.W))
+      dut.io.response.ready.poke(true.B)
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.op.poke(op.U)
+      dut.io.request.bits.fmt.poke(fmt.U)
+      dut.io.request.bits.SourceFmt.poke(SourceFmt.U)
+      dut.io.request.bits.rm.poke(rm.U)
+      dut.io.request.bits.intWord.poke(intWord.B)
+      dut.io.request.bits.rs1.poke(a.U(64.W))
+      dut.io.request.bits.rs2.poke(b.U(64.W))
+      dut.io.request.bits.rs3.poke(c.U(64.W))
       var cycles = 0
-      while (!dut.io.resp.valid.peek().litToBoolean && cycles < 2000) {
+      while (!dut.io.response.valid.peek().litToBoolean && cycles < 2000) {
         dut.clock.step()
         cycles += 1
       }
       withClue(s"op=$op fmt=$fmt 未在 2000 拍内返回") {
-        dut.io.resp.valid.peek().litToBoolean should be(true)
+        dut.io.response.valid.peek().litToBoolean should be(true)
       }
-      result = dut.io.resp.bits.result.peek().litValue
-      flags = dut.io.resp.bits.fflags.peek().litValue.toInt
-      dut.io.req.valid.poke(false.B)
+      result = dut.io.response.bits.result.peek().litValue
+      flags = dut.io.response.bits.fflags.peek().litValue.toInt
+      dut.io.request.valid.poke(false.B)
       dut.clock.step()
     }
     (result, flags)

@@ -43,15 +43,15 @@ class ysyx_26030103_DCacheDMAReplayFaultAuditTest
       dut.reset.poke(true.B)
       clock.step(2)
       dut.reset.poke(false.B)
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.addr.poke(0.U)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.WidthSelect.poke(2.U)
-      dut.io.req.bits.signed.poke(false.B)
-      dut.io.req_paddr_valid.poke(true.B)
-      dut.io.req_paddr_vaddr.poke(0.U)
-      dut.io.req_kill.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.address.poke(0.U)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.WidthSelect.poke(2.U)
+      dut.io.request.bits.signed.poke(false.B)
+      dut.io.RequestPaddrValid.poke(true.B)
+      dut.io.RequestPaddrVaddr.poke(0.U)
+      dut.io.RequestKill.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       dut.io.StoreValid.poke(false.B)
       dut.io.StoreResponse.poke(0.U)
       dut.io.StoreAddress.poke(0.U)
@@ -59,9 +59,9 @@ class ysyx_26030103_DCacheDMAReplayFaultAuditTest
       dut.io.StoreData.poke(0.U)
       dut.io.StoreStrobe.poke(0.U)
       dut.io.flush.poke(false.B)
-      dut.io.dma_snoop_valid.poke(false.B)
-      dut.io.dma_snoop_start.poke(0.U)
-      dut.io.dma_snoop_end.poke(0.U)
+      dut.io.DMASnoopValid.poke(false.B)
+      dut.io.DMASnoopStart.poke(0.U)
+      dut.io.DMASnoopEnd.poke(0.U)
       dut.io.AXI.AR.ARREADY.poke(false.B)
       dut.io.AXI.R.RVALID.poke(false.B)
       dut.io.AXI.R.RDATA.poke(0.U)
@@ -70,17 +70,17 @@ class ysyx_26030103_DCacheDMAReplayFaultAuditTest
       dut.io.AXI.R.RID.poke(0.U)
 
       // load miss：refill beat0 出错，其余 beat 正常，refill 完整结束。
-      dut.io.req.bits.addr.poke(LineBase.U)
-      dut.io.req.bits.vaddr.poke(LineBase.U)
-      dut.io.req.bits.WidthSelect.poke(2.U)
-      dut.io.req.valid.poke(true.B)
+      dut.io.request.bits.address.poke(LineBase.U)
+      dut.io.request.bits.vaddr.poke(LineBase.U)
+      dut.io.request.bits.WidthSelect.poke(2.U)
+      dut.io.request.valid.poke(true.B)
       var cycles = 0
-      while (!bool(dut.io.req.ready) && cycles < 20) {
+      while (!bool(dut.io.request.ready) && cycles < 20) {
         clock.step(); cycles += 1
       }
-      bool(dut.io.req.ready) should be(true)
+      bool(dut.io.request.ready) should be(true)
       clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       cycles = 0
       while (!bool(dut.io.AXI.AR.ARVALID) && cycles < 20) {
@@ -104,26 +104,26 @@ class ysyx_26030103_DCacheDMAReplayFaultAuditTest
 
       // refill 结束后 fault 响应已在槽中但尚未交付。
       cycles = 0
-      while (!bool(dut.io.resp.valid) && cycles < 30) {
+      while (!bool(dut.io.response.valid) && cycles < 30) {
         clock.step(); cycles += 1
       }
-      bool(dut.io.resp.valid) should be(true)
-      bool(dut.io.resp.bits.fault) should be(true)
+      bool(dut.io.response.valid) should be(true)
+      bool(dut.io.response.bits.fault) should be(true)
 
       // DMA 命中同一行，触发 snoop。旧实现会在这里丢弃 fault 并重放。
-      dut.io.dma_snoop_start.poke(LineBase.U)
-      dut.io.dma_snoop_end.poke((LineBase + 3).U)
-      dut.io.dma_snoop_valid.poke(true.B)
+      dut.io.DMASnoopStart.poke(LineBase.U)
+      dut.io.DMASnoopEnd.poke((LineBase + 3).U)
+      dut.io.DMASnoopValid.poke(true.B)
       clock.step()
-      dut.io.dma_snoop_valid.poke(false.B)
+      dut.io.DMASnoopValid.poke(false.B)
 
       // 解冻响应槽；旧实现已经丢掉 fault，只能等 replay 的成功数据。
-      dut.io.resp.ready.poke(true.B)
+      dut.io.response.ready.poke(true.B)
       var observed: Option[Boolean] = None
       cycles = 0
       while (observed.isEmpty && cycles < 200) {
-        if (bool(dut.io.resp.valid)) {
-          observed = Some(bool(dut.io.resp.bits.fault))
+        if (bool(dut.io.response.valid)) {
+          observed = Some(bool(dut.io.response.bits.fault))
         } else if (bool(dut.io.AXI.AR.ARVALID)) {
           // 只有错误实现才会走到 replay：给它一笔成功的行读取，让旧行为
           // 暴露为 fault=false，而不是单纯超时。

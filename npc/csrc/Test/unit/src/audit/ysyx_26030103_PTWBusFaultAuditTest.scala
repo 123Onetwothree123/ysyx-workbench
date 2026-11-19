@@ -27,15 +27,15 @@ class ysyx_26030103_PTWBusFaultAuditTest
     var reads = 0
 
     def tick(dut: ysyx_26030103_PTW, clock: Clock): Unit = {
-      dut.io.bus.resp.valid.poke(pending.B)
-      dut.io.bus.resp.bits.id.poke(0.U(4.W))
-      dut.io.bus.resp.bits.data.poke(0.U(32.W))
-      dut.io.bus.resp.bits.fault.poke(true.B)
-      val respFire = pending && bool(dut.io.bus.resp.ready)
-      val reqFire = bool(dut.io.bus.req.valid) && bool(dut.io.bus.req.ready)
+      dut.io.bus.response.valid.poke(pending.B)
+      dut.io.bus.response.bits.ID.poke(0.U(4.W))
+      dut.io.bus.response.bits.data.poke(0.U(32.W))
+      dut.io.bus.response.bits.fault.poke(true.B)
+      val ResponseFire = pending && bool(dut.io.bus.response.ready)
+      val RequestFire = bool(dut.io.bus.request.valid) && bool(dut.io.bus.request.ready)
       clock.step()
-      if (respFire) pending = false
-      if (reqFire) {
+      if (ResponseFire) pending = false
+      if (RequestFire) {
         reads += 1
         pending = true
       }
@@ -55,37 +55,37 @@ class ysyx_26030103_PTWBusFaultAuditTest
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.id.poke(0.U)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.fault.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.ID.poke(0.U)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.fault.poke(false.B)
       dut.io.flush.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.id.poke(0.U)
-      dut.io.req.bits.vaddr.poke(0.U(32.W))
-      dut.io.req.bits.satp.poke(SatpSv32.U(32.W))
-      dut.io.req.bits.privilege.poke(3.U)
-      dut.io.req.bits.access.poke(access)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
+      dut.io.response.ready.poke(true.B)
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.ID.poke(0.U)
+      dut.io.request.bits.vaddr.poke(0.U(32.W))
+      dut.io.request.bits.satp.poke(SatpSv32.U(32.W))
+      dut.io.request.bits.privilege.poke(3.U)
+      dut.io.request.bits.access.poke(access)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
 
       val bus = new FaultBus
       var done = false
       var cycles = 0
       while (!done && cycles < 100) {
         bus.tick(dut, dut.clock)
-        if (bool(dut.io.resp.valid)) done = true
+        if (bool(dut.io.response.valid)) done = true
         cycles += 1
       }
       withClue("PTW did not respond: ") { done should be(true) }
       withClue("页表总线故障必须报告 fault: ") {
-        bool(dut.io.resp.bits.fault) should be(true)
+        bool(dut.io.response.bits.fault) should be(true)
       }
       withClue(
         s"access=${access.litValue} 的页表总线故障 cause 应为 $expectedCause: ") {
-        long(dut.io.resp.bits.cause) should be(expectedCause)
+        long(dut.io.response.bits.cause) should be(expectedCause)
       }
     }
   }
@@ -111,36 +111,36 @@ class ysyx_26030103_PTWBusFaultAuditTest
       dut.clock.step(2)
       dut.reset.poke(false.B)
       dut.io.flush.poke(false.B)
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.id.poke(0.U)
-      dut.io.req.bits.vaddr.poke(0.U(32.W))
-      dut.io.req.bits.satp.poke(SatpSv32.U(32.W))
-      dut.io.req.bits.privilege.poke(3.U)
-      dut.io.req.bits.access.poke(access)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.ID.poke(0.U)
+      dut.io.request.bits.vaddr.poke(0.U(32.W))
+      dut.io.request.bits.satp.poke(SatpSv32.U(32.W))
+      dut.io.request.bits.privilege.poke(3.U)
+      dut.io.request.bits.access.poke(access)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
       // 页表总线永远返回错误响应；PTW 只在等待槽位时接收。
-      dut.io.bus.resp.valid.poke(true.B)
-      dut.io.bus.resp.bits.id.poke(0.U)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.fault.poke(true.B)
-      dut.io.resp(0).ready.poke(true.B)
+      dut.io.bus.response.valid.poke(true.B)
+      dut.io.bus.response.bits.ID.poke(0.U)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.fault.poke(true.B)
+      dut.io.response(0).ready.poke(true.B)
 
       var done = false
       var cycles = 0
       while (!done && cycles < 100) {
         dut.clock.step()
-        if (bool(dut.io.resp(0).valid)) done = true
+        if (bool(dut.io.response(0).valid)) done = true
         cycles += 1
       }
       withClue("PTWPipeline did not respond: ") { done should be(true) }
       withClue("流水 PTW 页表总线故障必须报告 fault: ") {
-        bool(dut.io.resp(0).bits.fault) should be(true)
+        bool(dut.io.response(0).bits.fault) should be(true)
       }
       withClue(
         s"access=${access.litValue} 的流水 PTW 总线故障 cause 应为 $expectedCause: ") {
-        long(dut.io.resp(0).bits.cause) should be(expectedCause)
+        long(dut.io.response(0).bits.cause) should be(expectedCause)
       }
     }
   }

@@ -6,8 +6,8 @@ import chisel3.util._
 class ysyx_26030103_mcycle(val XLEN: Int = 32) extends Module {
   require(XLEN == 32 || XLEN == 64, s"mcycle XLEN 非法: $XLEN")
   val io = IO(new Bundle {
-    val clk = Input(Clock())
-    val rst = Input(Bool())
+    val clock = Input(Clock())
+    val reset = Input(Bool())
     val Enable = Input(Bool())
     val wen = Input(Bool())
     val SelectHigh = Input(Bool())
@@ -15,7 +15,7 @@ class ysyx_26030103_mcycle(val XLEN: Int = 32) extends Module {
     val rdata = Output(UInt(32.W))
     val rdataFull = Output(UInt(64.W))
   })
-  val counter = withClockAndReset(io.clk, io.rst) { RegInit(0.U(64.W)) }
+  val counter = withClockAndReset(io.clock, io.reset) { RegInit(0.U(64.W)) }
   when(io.Enable) {
     counter := counter + 1.U
   }

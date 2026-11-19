@@ -17,7 +17,7 @@ class ysyx_26030103_AXIWriteMux(
   })
   val idle :: aWrite :: bWrite :: aResponse :: bResponse :: Nil = Enum(5)
   val state = RegInit(idle)
-  val awDone = RegInit(false.B)
+  val AWDone = RegInit(false.B)
   val wDone = RegInit(false.B)
 
   if (PassRead) {
@@ -90,17 +90,17 @@ class ysyx_26030103_AXIWriteMux(
     val bRequest = io.b.AW.AWVALID || io.b.W.WVALID
     when(aRequest) {
       state := aWrite
-      awDone := false.B
+      AWDone := false.B
       wDone := false.B
     }.elsewhen(bRequest) {
       state := bWrite
-      awDone := false.B
+      AWDone := false.B
       wDone := false.B
     }
   }
 
   def drive(selected: ysyx_26030103_AXI5IO, isA: Boolean): Unit = {
-    io.out.AW.AWVALID := selected.AW.AWVALID && !awDone
+    io.out.AW.AWVALID := selected.AW.AWVALID && !AWDone
     io.out.AW.AWID := selected.AW.AWID
     io.out.AW.AWADDR := selected.AW.AWADDR
     io.out.AW.AWLEN := selected.AW.AWLEN
@@ -109,21 +109,21 @@ class ysyx_26030103_AXIWriteMux(
     io.out.AW.AWPROT := selected.AW.AWPROT
     io.out.AW.AWCACHE := selected.AW.AWCACHE
     io.out.AW.AWQOS := selected.AW.AWQOS
-    selected.AW.AWREADY := io.out.AW.AWREADY && !awDone
+    selected.AW.AWREADY := io.out.AW.AWREADY && !AWDone
     io.out.W.WVALID := selected.W.WVALID && !wDone
     io.out.W.WDATA := selected.W.WDATA
     io.out.W.WSTRB := selected.W.WSTRB
     io.out.W.WLAST := selected.W.WLAST
     selected.W.WREADY := io.out.W.WREADY && !wDone
-    val awFire = io.out.AW.AWVALID && io.out.AW.AWREADY
+    val AWFire = io.out.AW.AWVALID && io.out.AW.AWREADY
     val wFire = io.out.W.WVALID && io.out.W.WREADY
     // 一笔写可能有多拍 W（AWLEN>0）：AWSIZE=2 的 8 字节 store 在 32 位总线
     // 上就是两拍。W 通道必须以 WLAST 为结束判据，不能在第一拍就置 wDone，
     // 否则后续拍永远不被转发，下游等 WLAST、上游等 B，总线挂死。
     val wFinishes = wFire && io.out.W.WLAST
-    when(awFire) { awDone := true.B }
+    when(AWFire) { AWDone := true.B }
     when(wFinishes) { wDone := true.B }
-    when((awDone || awFire) && (wDone || wFinishes)) {
+    when((AWDone || AWFire) && (wDone || wFinishes)) {
       state := (if (isA) aResponse else bResponse)
     }
   }

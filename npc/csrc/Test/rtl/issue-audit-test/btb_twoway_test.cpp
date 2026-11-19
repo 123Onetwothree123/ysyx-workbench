@@ -25,10 +25,10 @@ using DUT = Vysyx_26030103_BTB;
 #endif
 
 static void defaults(DUT &dut) {
-  dut.io_lookup_pc = 0;
-  dut.io_update_valid = 0;
-  dut.io_update_pc = 0;
-  dut.io_update_target = 0;
+  dut.io_LookupPC = 0;
+  dut.io_UpdateValid = 0;
+  dut.io_UpdatePC = 0;
+  dut.io_UpdateTarget = 0;
   dut.io_flush = 0;
 }
 
@@ -36,22 +36,22 @@ static void defaults(DUT &dut) {
 static uint32_t pc_field(uint32_t pc) { return pc >> 2; }
 
 static void update(DUT &dut, uint32_t pc, uint32_t target) {
-  dut.io_update_pc = pc_field(pc);
-  dut.io_update_target = target;
-  dut.io_update_valid = 1;
+  dut.io_UpdatePC = pc_field(pc);
+  dut.io_UpdateTarget = target;
+  dut.io_UpdateValid = 1;
   tick(dut);
-  dut.io_update_valid = 0;
+  dut.io_UpdateValid = 0;
   dut.eval();
 }
 
 static bool hit(DUT &dut, uint32_t pc) {
-  dut.io_lookup_pc = pc_field(pc);
+  dut.io_LookupPC = pc_field(pc);
   dut.eval();
   return dut.io_hit;
 }
 
 static uint32_t target_of(DUT &dut, uint32_t pc) {
-  dut.io_lookup_pc = pc_field(pc);
+  dut.io_LookupPC = pc_field(pc);
   dut.eval();
   return dut.io_target;
 }

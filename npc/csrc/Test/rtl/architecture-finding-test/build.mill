@@ -23,6 +23,8 @@ object `package` extends ScalaModule {
 
   override def sources = Task.Sources(
     workspaceRoot / "scala",
-    workspaceRoot / "../../../../src"
+    workspaceRoot / "../../../../src",
+    workspaceRoot / "../../../../vendor/fudian/src/main/scala",
+    workspaceRoot / "../../../../vendor/berkeley-hardfloat/hardfloat/src/main/scala"
   )
 }

@@ -1,9 +1,11 @@
 module npc.sdb.command.wCommand;
+import npc.Output;
 import npc.sdb.SDBCommandUtils;
 import npc.expressions.expressions;
 import npc.sdb.NPCEvaluationContext;
 import npc.DUT;
 import npc.sdb.command.WatchpointPool;
+import npc.SimulationContext;
 
 std::string_view wCommand::name() const noexcept
 {
@@ -18,15 +20,16 @@ SDBCommandUsageList wCommand::usage() const noexcept
 }
 SDBCommandResult wCommand::execute(SDBCommandContext &context, std::string_view args)
 {
-args = SDBTrimLeft(args);
+    auto &out{context.GetSimulation().Out()};
+    args = SDBTrimLeft(args);
     if (args.empty())
     {
-        std::println("没写参数");
+        out.Error("没写参数");
         return SDBCommandResult::Continue;
     }
     if (!SDBValidateExpressionSyntax(args))
     {
-        std::println("括号不匹配");
+        out.Error("括号不匹配");
         return SDBCommandResult::Continue;
     }
     expressions expression;
@@ -34,19 +37,19 @@ args = SDBTrimLeft(args);
     auto result{expression.evaluate(args, EvaluationContetx)};
     if (result)
     {
-        auto *wp{GetGlobalWatchpointPool().CreateWatchpoint(std::string(args), *result)};
+        auto *wp{context.GetSimulation().Watchpoints().CreateWatchpoint(std::string(args), *result)};
         if (wp)
         {
-            std::println("监视点 {}: {}", wp->GetNO(), args);
+            out.Info("监视点 {}: {}", wp->GetNO(), args);
         }
         else
         {
-            std::println("监视点数量满了");
+            out.Error("监视点数量满了");
         }
     }
     else
     {
-        std::println("表达式错误：{}", result.error());
+        out.Error("表达式错误：{}", result.error());
     }
     return SDBCommandResult::Continue;
 }

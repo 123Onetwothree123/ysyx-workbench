@@ -10,7 +10,7 @@ private:
     std::size_t ras_bits{RAS_BITS};         // RAS深度=2^N
 public:
     BPConfig() = default;
-    // DSE用, 手动指定参数
+    // DSE 用，手动指定参数。
     BPConfig(std::size_t bits, std::size_t ways, std::size_t jal_bits, std::size_t jal_ways,
              std::size_t ras_bits);
     ~BPConfig() = default;

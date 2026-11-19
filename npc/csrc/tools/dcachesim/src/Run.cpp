@@ -1,3 +1,5 @@
+module;
+#include "common/ThreadPool.hpp"
 module Run;
 import std;
 import DCachesType;
@@ -48,16 +50,10 @@ auto Run(const DCachesType& caches,
     const auto N{caches.size()};
     std::vector<stats> results{N};
 
+    common::ParallelFor(N, [&](std::size_t i)
     {
-        std::vector<std::jthread> threads{};
-        for (std::size_t i{0}; i < N; ++i)
-        {
-            threads.emplace_back([&, i]
-            {
-                results[i] = RunOne(caches[i], trace);
-            });
-        }
-    }   // jthread 析构自动 join, 确保所有线程执行完毕
+        results[i] = RunOne(caches[i], trace);
+    });
 
     std::vector<std::pair<std::string_view, stats>> table{};
     for (std::size_t i{0}; i < N; ++i)

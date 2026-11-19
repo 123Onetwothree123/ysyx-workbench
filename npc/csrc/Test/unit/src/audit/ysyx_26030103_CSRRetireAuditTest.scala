@@ -26,10 +26,10 @@ class ysyx_26030103_CSRRetireAuditHarness(
     val isMret = Input(Bool())
     val isSret = Input(Bool())
     val isSfenceVma = Input(Bool())
-    val csrAddress = Input(UInt(12.W))
+    val CSRAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
     val rs1Data = Input(UInt(64.W))
-    val pc = Input(UInt(64.W))
+    val PC = Input(UInt(64.W))
     val trapTval = Input(UInt(64.W))
     val trapTvalValid = Input(Bool())
     val trapValid = Input(Bool())
@@ -43,40 +43,40 @@ class ysyx_26030103_CSRRetireAuditHarness(
     val committedCause = Output(UInt(32.W))
     val privilege = Output(UInt(2.W))
   })
-  val csr = Module(new ysyx_26030103_CSR(
+  val CSR = Module(new ysyx_26030103_CSR(
     profile, XLEN = 64, UseF = true, UseD = true))
-  csr.io.clk := clock
-  csr.io.rst := reset
-  csr.io.Enable := io.enable
-  csr.io.MinstretRetireCommit := io.retireCommit
-  csr.io.IsCSRrw := io.isCSRrw
-  csr.io.IsCSRrs := io.isCSRrs
-  csr.io.IsCSRrc := io.isCSRrc
-  csr.io.IsEcall := io.isEcall
-  csr.io.IsEbreak := io.isEbreak
-  csr.io.IsMret := io.isMret
-  csr.io.IsSret := io.isSret
-  csr.io.IsSfenceVma := io.isSfenceVma
-  csr.io.CSRAddress := io.csrAddress
-  csr.io.rs1 := io.rs1
-  csr.io.Rs1Data := io.rs1Data
-  csr.io.pc := io.pc
-  csr.io.TrapTval := io.trapTval
-  csr.io.TrapTvalValid := io.trapTvalValid
-  csr.io.TrapValid := io.trapValid
-  csr.io.TrapCause := io.trapCause
-  csr.io.MemTrap := io.memTrap
-  csr.io.Interrupt := io.interrupt
-  csr.io.TimerInterrupt := io.timerInterrupt
-  csr.io.Mtime := io.mtime
-  csr.io.FPCommit := false.B
-  csr.io.FPFlags := 0.U
-  csr.io.FPStateDirtyCommit := false.B
-  csr.io.PMUEvents := 0.U
-  io.rdata := csr.io.CSR_rdata
-  io.trapCommit := csr.io.TrapCommit
-  io.committedCause := csr.io.CommittedCause
-  io.privilege := csr.io.Privilege
+  CSR.io.clock := clock
+  CSR.io.reset := reset
+  CSR.io.Enable := io.enable
+  CSR.io.MinstretRetireCommit := io.retireCommit
+  CSR.io.IsCSRrw := io.isCSRrw
+  CSR.io.IsCSRrs := io.isCSRrs
+  CSR.io.IsCSRrc := io.isCSRrc
+  CSR.io.IsEcall := io.isEcall
+  CSR.io.IsEbreak := io.isEbreak
+  CSR.io.IsMret := io.isMret
+  CSR.io.IsSret := io.isSret
+  CSR.io.IsSfenceVma := io.isSfenceVma
+  CSR.io.CSRAddress := io.CSRAddress
+  CSR.io.rs1 := io.rs1
+  CSR.io.Rs1Data := io.rs1Data
+  CSR.io.PC := io.PC
+  CSR.io.TrapTval := io.trapTval
+  CSR.io.TrapTvalValid := io.trapTvalValid
+  CSR.io.TrapValid := io.trapValid
+  CSR.io.TrapCause := io.trapCause
+  CSR.io.MemTrap := io.memTrap
+  CSR.io.Interrupt := io.interrupt
+  CSR.io.TimerInterrupt := io.timerInterrupt
+  CSR.io.Mtime := io.mtime
+  CSR.io.FPCommit := false.B
+  CSR.io.FPFlags := 0.U
+  CSR.io.FPStateDirtyCommit := false.B
+  CSR.io.PMUEvents := 0.U
+  io.rdata := CSR.io.CSR_rdata
+  io.trapCommit := CSR.io.TrapCommit
+  io.committedCause := CSR.io.CommittedCause
+  io.privilege := CSR.io.Privilege
 }
 
 class ysyx_26030103_CSRRetireAuditTest
@@ -94,10 +94,10 @@ class ysyx_26030103_CSRRetireAuditTest
       xlen = 64,
       pageSizeBytes = 4096,
       levels = 3,
-      pteSizeBytes = 8,
+      PTESizeBytes = 8,
       pageTableSizeBytes = 4096,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -119,10 +119,10 @@ class ysyx_26030103_CSRRetireAuditTest
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddress.poke(0.U)
+    dut.io.CSRAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
-    dut.io.pc.poke(0.U)
+    dut.io.PC.poke(0.U)
     dut.io.trapTval.poke(0.U)
     dut.io.trapTvalValid.poke(false.B)
     dut.io.trapValid.poke(false.B)
@@ -137,7 +137,7 @@ class ysyx_26030103_CSRRetireAuditTest
       dut: ysyx_26030103_CSRRetireAuditHarness,
       addr: Int
   ): BigInt = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.rdata.peek().litValue
   }
 
@@ -146,7 +146,7 @@ class ysyx_26030103_CSRRetireAuditTest
       addr: Int,
       data: BigInt
   ): Unit = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(64.W))
     dut.io.enable.poke(true.B)
@@ -207,7 +207,7 @@ class ysyx_26030103_CSRRetireAuditTest
       // M 级中断也必须能够抢占。
       writeCSR(dut, MIE, BigInt(0x80))
       dut.io.timerInterrupt.poke(true.B)
-      dut.io.pc.poke(BigInt("0000000080002000", 16).U(64.W))
+      dut.io.PC.poke(BigInt("0000000080002000", 16).U(64.W))
       dut.io.enable.poke(true.B)
       bool(dut.io.trapCommit) should be(true)
       big(dut.io.committedCause) should be(BigInt("80000007", 16))
@@ -218,8 +218,8 @@ class ysyx_26030103_CSRRetireAuditTest
   }
 
   "PMP config" should "保留 L 和 A[1] 位并清除保留位" in {
-    val pmpProfile = profile.copy(pmpEnabled = true)
-    simulate(new ysyx_26030103_CSRRetireAuditHarness(pmpProfile)) { dut =>
+    val PMPProfile = profile.copy(PMPEnabled = true)
+    simulate(new ysyx_26030103_CSRRetireAuditHarness(PMPProfile)) { dut =>
       setup(dut)
       writeCSR(dut, PMPCFG0, BigInt(0x1f))
       peekCSR(dut, PMPCFG0) should be(BigInt(0x1f))
@@ -231,8 +231,8 @@ class ysyx_26030103_CSRRetireAuditTest
   }
 
   it should "锁定表项忽略后续 cfg/addr 写入" in {
-    val pmpProfile = profile.copy(pmpEnabled = true)
-    simulate(new ysyx_26030103_CSRRetireAuditHarness(pmpProfile)) { dut =>
+    val PMPProfile = profile.copy(PMPEnabled = true)
+    simulate(new ysyx_26030103_CSRRetireAuditHarness(PMPProfile)) { dut =>
       setup(dut)
       // 先写入 pmpaddr0，再锁定 entry0（L=1, A=NAPOT, RWX）。
       writeCSR(dut, PMPADDR0, BigInt("200001ff", 16))

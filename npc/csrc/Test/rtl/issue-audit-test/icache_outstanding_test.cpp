@@ -29,14 +29,14 @@
 using DUT = Vysyx_26030103_ICacheReg;
 
 static void defaults(DUT &dut) {
-  dut.io_fetch_addr = 0;
-  dut.io_fetch_valid = 0;
-  dut.io_resp_ready = 0;
-  dut.io_axi_AR_ARREADY = 0;
-  dut.io_axi_R_RDATA = 0;
-  dut.io_axi_R_RRESP = 0;
-  dut.io_axi_R_RLAST = 0;
-  dut.io_axi_R_RVALID = 0;
+  dut.io_FetchAddress = 0;
+  dut.io_FetchValid = 0;
+  dut.io_ResponseReady = 0;
+  dut.io_AXI_AR_ARREADY = 0;
+  dut.io_AXI_R_RDATA = 0;
+  dut.io_AXI_R_RRESP = 0;
+  dut.io_AXI_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
   dut.io_flush = 0;
   dut.io_kill = 0;
 }
@@ -44,32 +44,32 @@ static void defaults(DUT &dut) {
 // 等待 refill AR，接受它，并回填整行；返回行长（字数）。
 static unsigned refill_line(DUT &dut, uint32_t line_base,
                             std::vector<uint32_t> &words_out) {
-  wait_until(dut, [&] { return dut.io_axi_AR_ARVALID; },
+  wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
              "ICache never issued the refill AR");
-  check(dut.io_axi_AR_ARADDR == line_base,
+  check(dut.io_AXI_AR_ARADDR == line_base,
         "refill AR did not start at the line base");
 #if TEST_WORDS_PER_LINE > 0
   // 小行几何下 ARLEN 是编译期常量，Verilator 会把端口优化掉。
   const unsigned beats = TEST_WORDS_PER_LINE;
 #else
-  const unsigned beats = static_cast<unsigned>(dut.io_axi_AR_ARLEN) + 1U;
+  const unsigned beats = static_cast<unsigned>(dut.io_AXI_AR_ARLEN) + 1U;
 #endif
   (void)beats;
-  dut.io_axi_AR_ARREADY = 1;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut);
-  dut.io_axi_AR_ARREADY = 0;
+  dut.io_AXI_AR_ARREADY = 0;
 
   words_out.clear();
   for (unsigned beat = 0; beat < beats; ++beat) {
     const uint32_t word = 0xa0b00000U + beat;
     words_out.push_back(word);
-    dut.io_axi_R_RDATA = word;
-    dut.io_axi_R_RRESP = 0;
-    dut.io_axi_R_RLAST = (beat + 1 == beats);
-    dut.io_axi_R_RVALID = 1;
+    dut.io_AXI_R_RDATA = word;
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_AXI_R_RLAST = (beat + 1 == beats);
+    dut.io_AXI_R_RVALID = 1;
     tick(dut);
-    dut.io_axi_R_RVALID = 0;
-    dut.io_axi_R_RLAST = 0;
+    dut.io_AXI_R_RVALID = 0;
+    dut.io_AXI_R_RLAST = 0;
   }
   return beats;
 }
@@ -93,14 +93,14 @@ int main(int argc, char **argv) {
                         kDemand & ~static_cast<uint32_t>(words_per_line * 4U - 1U);
 
                     // --- 1) miss + 回填 ---
-                    dut.io_fetch_addr = kDemand;
-                    dut.io_fetch_valid = 1;
-                    dut.io_resp_ready = 0;
+                    dut.io_FetchAddress = kDemand;
+                    dut.io_FetchValid = 1;
+                    dut.io_ResponseReady = 0;
                     dut.eval();
-                    check(dut.io_fetch_ready,
+                    check(dut.io_FetchReady,
                           "ICache did not accept the initial fetch");
                     tick(dut);
-                    dut.io_fetch_valid = 0;
+                    dut.io_FetchValid = 0;
                     dut.eval();
 
                     std::vector<uint32_t> line_words;
@@ -111,71 +111,71 @@ int main(int argc, char **argv) {
                           "size");
 
                     // demand 响应可见但未消费。
-                    wait_until(dut, [&] { return dut.io_resp_valid; },
+                    wait_until(dut, [&] { return dut.io_ResponseValid; },
                                "demand response never appeared");
-                    check(dut.io_resp_addr == kDemand,
+                    check(dut.io_ResponseAddress == kDemand,
                           "demand response lost its PC");
-                    check(dut.io_resp_data ==
+                    check(dut.io_ResponseData ==
                               line_words[(kDemand - kLineBase) / 4U],
                           "demand response carries the wrong word");
 
                     // --- 2) 响应未消费时，同行的下一个取指必须被拒绝 ---
-                    dut.io_fetch_addr = kLineBase; // 同行命中
-                    dut.io_fetch_valid = 1;
+                    dut.io_FetchAddress = kLineBase; // 同行命中
+                    dut.io_FetchValid = 1;
                     dut.eval();
-                    check(!dut.io_fetch_ready,
+                    check(!dut.io_FetchReady,
                           "ICache accepted a second fetch while the previous "
                           "response was still pending (single-outstanding "
                           "contract broken; top-level prediction snapshot "
                           "would become unsafe)");
 
                     // --- 3) 消费响应的同拍受理下一个取指（弹性槽）---
-                    dut.io_resp_ready = 1;
+                    dut.io_ResponseReady = 1;
                     dut.eval();
-                    check(dut.io_resp_valid && dut.io_fetch_ready,
+                    check(dut.io_ResponseValid && dut.io_FetchReady,
                           "ICache did not pop the old response and accept the "
                           "next fetch in the same cycle");
                     tick(dut);
-                    dut.io_fetch_valid = 0;
+                    dut.io_FetchValid = 0;
                     dut.eval();
                     // 排空阶段 3 那次取指的响应，避免混入下面的计数。
-                    wait_until(dut, [&] { return dut.io_resp_valid; },
+                    wait_until(dut, [&] { return dut.io_ResponseValid; },
                                "phase-3 fetch response never appeared");
-                    check(dut.io_resp_addr == kLineBase,
+                    check(dut.io_ResponseAddress == kLineBase,
                           "phase-3 response PC mismatch");
                     tick(dut);
-                    dut.io_resp_ready = 0;
+                    dut.io_ResponseReady = 0;
                     dut.eval();
-                    check(!dut.io_resp_valid,
+                    check(!dut.io_ResponseValid,
                           "phase-3 response did not retire");
 
                     // --- 4) 背靠背命中：每个被受理的取指恰好一个响应 ---
                     std::vector<uint32_t> fetch_addrs;
                     std::vector<uint32_t> resp_addrs;
                     std::vector<uint32_t> resp_data;
-                    dut.io_resp_ready = 1;
+                    dut.io_ResponseReady = 1;
                     constexpr int kCycles = 12;
                     for (int cycle = 0; cycle < kCycles; ++cycle) {
-                      dut.io_fetch_addr =
+                      dut.io_FetchAddress =
                           kLineBase +
                           (static_cast<unsigned>(cycle) % words_per_line) * 4U;
-                      dut.io_fetch_valid = 1;
+                      dut.io_FetchValid = 1;
                       dut.eval();
-                      if (dut.io_fetch_ready) {
-                        fetch_addrs.push_back(dut.io_fetch_addr);
+                      if (dut.io_FetchReady) {
+                        fetch_addrs.push_back(dut.io_FetchAddress);
                       }
-                      if (dut.io_resp_valid) {
-                        resp_addrs.push_back(dut.io_resp_addr);
-                        resp_data.push_back(dut.io_resp_data);
+                      if (dut.io_ResponseValid) {
+                        resp_addrs.push_back(dut.io_ResponseAddress);
+                        resp_data.push_back(dut.io_ResponseData);
                       }
                       tick(dut);
                     }
-                    dut.io_fetch_valid = 0;
+                    dut.io_FetchValid = 0;
                     for (int cycle = 0; cycle < 4; ++cycle) {
                       dut.eval();
-                      if (dut.io_resp_valid) {
-                        resp_addrs.push_back(dut.io_resp_addr);
-                        resp_data.push_back(dut.io_resp_data);
+                      if (dut.io_ResponseValid) {
+                        resp_addrs.push_back(dut.io_ResponseAddress);
+                        resp_data.push_back(dut.io_ResponseData);
                       }
                       tick(dut);
                     }
@@ -207,31 +207,31 @@ int main(int argc, char **argv) {
                       DUT stuck;
                       defaults(stuck);
                       reset(stuck);
-                      stuck.io_fetch_addr = 0x80000000U;
-                      stuck.io_fetch_valid = 1;
-                      stuck.io_resp_ready = 1;
+                      stuck.io_FetchAddress = 0x80000000U;
+                      stuck.io_FetchValid = 1;
+                      stuck.io_ResponseReady = 1;
                       stuck.eval();
-                      check(stuck.io_fetch_ready,
+                      check(stuck.io_FetchReady,
                             "stuck test: initial fetch was not accepted");
                       tick(stuck);
-                      stuck.io_fetch_valid = 0;
+                      stuck.io_FetchValid = 0;
                       stuck.eval();
 
                       wait_until(stuck,
-                                 [&] { return stuck.io_axi_AR_ARVALID; },
+                                 [&] { return stuck.io_AXI_AR_ARVALID; },
                                  "stuck test: no refill AR");
-                      stuck.io_axi_AR_ARREADY = 1;
+                      stuck.io_AXI_AR_ARREADY = 1;
                       tick(stuck);
-                      stuck.io_axi_AR_ARREADY = 0;
+                      stuck.io_AXI_AR_ARREADY = 0;
 
                       // 预期拍数用完但从不给 RLAST。
                       for (int beat = 0; beat < 8; ++beat) {
-                        stuck.io_axi_R_RDATA = 0x12340000U + beat;
-                        stuck.io_axi_R_RRESP = 0;
-                        stuck.io_axi_R_RLAST = 0;
-                        stuck.io_axi_R_RVALID = 1;
+                        stuck.io_AXI_R_RDATA = 0x12340000U + beat;
+                        stuck.io_AXI_R_RRESP = 0;
+                        stuck.io_AXI_R_RLAST = 0;
+                        stuck.io_AXI_R_RVALID = 1;
                         tick(stuck);
-                        stuck.io_axi_R_RVALID = 0;
+                        stuck.io_AXI_R_RVALID = 0;
                       }
                       stuck.eval();
 
@@ -242,10 +242,10 @@ int main(int argc, char **argv) {
                       stuck.io_kill = 1;
                       tick(stuck);
                       stuck.io_kill = 0;
-                      stuck.io_fetch_valid = 1;
+                      stuck.io_FetchValid = 1;
                       stuck.eval();
                       for (int cycle = 0; cycle < 8; ++cycle) {
-                        check(!stuck.io_fetch_ready,
+                        check(!stuck.io_FetchReady,
                               "stuck test: fetch recovered before the drain "
                               "timeout");
                         tick(stuck);
@@ -254,37 +254,37 @@ int main(int argc, char **argv) {
 
                       // 等 drain 超时后：新取指被受理，且不再发 AR，直接以
                       // 故障响应结束。
-                      wait_until(stuck, [&] { return stuck.io_fetch_ready; },
+                      wait_until(stuck, [&] { return stuck.io_FetchReady; },
                                  "stuck test: drain timeout did not release "
                                  "the front-end",
                                  1200);
-                      check(!stuck.io_axi_AR_ARVALID,
+                      check(!stuck.io_AXI_AR_ARVALID,
                             "stuck test: issued a new AR while the bus is "
                             "faulted");
-                      wait_until(stuck, [&] { return stuck.io_resp_valid; },
+                      wait_until(stuck, [&] { return stuck.io_ResponseValid; },
                                  "stuck test: faulted fetch produced no "
                                  "response");
-                      check(stuck.io_resp_fault,
+                      check(stuck.io_ResponseFault,
                             "stuck test: faulted fetch was not marked as a "
                             "fault");
-                      stuck.io_resp_ready = 1;
+                      stuck.io_ResponseReady = 1;
                       tick(stuck);
                       stuck.eval();
 
                       // 迟到的 RLAST 让总线重新同步，前端恢复可用。
-                      stuck.io_axi_R_RDATA = 0;
-                      stuck.io_axi_R_RLAST = 1;
-                      stuck.io_axi_R_RVALID = 1;
+                      stuck.io_AXI_R_RDATA = 0;
+                      stuck.io_AXI_R_RLAST = 1;
+                      stuck.io_AXI_R_RVALID = 1;
                       tick(stuck);
-                      stuck.io_axi_R_RVALID = 0;
-                      stuck.io_axi_R_RLAST = 0;
+                      stuck.io_AXI_R_RVALID = 0;
+                      stuck.io_AXI_R_RLAST = 0;
                       stuck.eval();
                       wait_until(stuck,
-                                 [&] { return stuck.io_fetch_ready; },
+                                 [&] { return stuck.io_FetchReady; },
                                  "stuck test: late RLAST did not "
                                  "resynchronize",
                                  64);
-                      stuck.io_fetch_valid = 0;
+                      stuck.io_FetchValid = 0;
                       stuck.eval();
                       stuck.final();
                     }

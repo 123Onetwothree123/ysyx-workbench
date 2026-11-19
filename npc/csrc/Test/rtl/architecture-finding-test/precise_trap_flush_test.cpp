@@ -29,7 +29,7 @@ void defaults(DUT &dut) {
   dut.io_in_bits_WidthSelect = 2;
   dut.io_in_bits_LoadSigned = 0;
   dut.io_in_bits_StoreData = 0;
-  dut.io_in_bits_pc = 0x80000000U;
+  dut.io_in_bits_PC = 0x80000000U;
 
   dut.io_out_ready = 1;
   dut.io_arready = 0;
@@ -51,7 +51,7 @@ void drive_load(DUT &dut, std::uint32_t pc, std::uint32_t address) {
   dut.io_in_bits_MemoryValid = 1;
   dut.io_in_bits_MemoryWrite = 0;
   dut.io_in_bits_WidthSelect = 2;
-  dut.io_in_bits_pc = pc;
+  dut.io_in_bits_PC = pc;
   dut.io_in_valid = 1;
 }
 
@@ -66,7 +66,7 @@ void drive_alu(DUT &dut, std::uint32_t pc) {
   dut.io_in_bits_NextPC = pc + 4U;
   dut.io_in_bits_MemoryValid = 0;
   dut.io_in_bits_MemoryWrite = 0;
-  dut.io_in_bits_pc = pc;
+  dut.io_in_bits_PC = pc;
   dut.io_in_valid = 1;
 }
 
@@ -118,9 +118,9 @@ void younger_instruction_must_be_killed_by_lsu_trap() {
   dut.io_rlast = 0;
 
   dut.eval();
-  check(dut.io_mem_trap_commit && dut.io_flush_exmem,
+  check(dut.io_MemTrapCommit && dut.io_FlushExMem,
         "LSU did not assert the precise trap/EXMEM flush");
-  check(dut.io_out_valid && dut.io_out_bits_pc == fault_pc &&
+  check(dut.io_out_valid && dut.io_out_bits_PC == fault_pc &&
             !dut.io_out_bits_Retire,
         "faulting load did not reach the trap boundary");
 
@@ -128,7 +128,7 @@ void younger_instruction_must_be_killed_by_lsu_trap() {
   // architectural output after this edge.
   tick(dut);
   dut.eval();
-  check(!(dut.io_out_valid && dut.io_out_bits_pc == younger_pc &&
+  check(!(dut.io_out_valid && dut.io_out_bits_PC == younger_pc &&
           dut.io_out_bits_Retire),
         "younger ALU instruction escaped after the older load trap");
 }

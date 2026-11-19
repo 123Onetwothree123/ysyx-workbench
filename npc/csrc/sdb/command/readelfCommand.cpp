@@ -1,5 +1,7 @@
 module npc.sdb.command.readelfCommand;
+import npc.Output;
 import npc.trace.ftrace;
+import npc.SimulationContext;
 import npc.trace.readelf;
 
 std::string_view readelfCommand::name() const noexcept
@@ -18,11 +20,11 @@ SDBCommandUsageList readelfCommand::usage() const noexcept
 }
 SDBCommandResult readelfCommand::execute(SDBCommandContext &context, std::string_view args)
 {
-    static_cast<void>(context);
-    const Readelf *Reader{GlobalFtrace.ElfReader()};
+    auto &out{context.GetSimulation().Out()};
+    const Readelf *Reader{context.GetSimulation().Trace().ELFReader()};
     if (Reader == nullptr)
     {
-        std::println("readelf: 还没有加载ELF文件，启动NPC时传 --elf FILE");
+        out.Error("readelf: 还没有加载ELF文件，启动NPC时传 --elf FILE");
         return SDBCommandResult::Continue;
     }
     if (args == "-h")
@@ -47,6 +49,6 @@ SDBCommandResult readelfCommand::execute(SDBCommandContext &context, std::string
         Reader->print_symbols(std::cout);
         return SDBCommandResult::Continue;
     }
-    std::println("用法：readelf -h | -S | -s | -a");
+    out.Info("用法：readelf -h | -S | -s | -a");
     return SDBCommandResult::Continue;
 }

@@ -1,8 +1,7 @@
 # bench/common/bench.mk
 #
-# bench/cache-*-test 的公共 AM 样板：镜像名取自目录名（cache-tests-parallel.sh
-# 依赖“目录名 = 镜像名”），主源文件固定为 main.cpp，并允许引用 common/ 下的
-# 共享头（如 cache_bench.hpp）。
+# bench/cache-*-test 的公共 AM 样板：镜像名取自目录名，主源文件固定为 main.cpp，
+# 并允许引用 common/ 下的共享头（如 cache_bench.hpp）。
 #
 # 用法（目录位于 npc/csrc/Test/bench/<name>/）：
 #   include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../common/bench.mk)

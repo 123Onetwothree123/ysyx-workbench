@@ -15,15 +15,8 @@ module;
 #else
 void nvboard_update(void);
 #endif
-#ifdef VRISCV32E_NPC
-#include <cerrno>
-#include <chrono>
-#include <csignal>
-#include <fstream>
-#include <poll.h>
-#include <unistd.h>
-#endif
 module npc.DUT;
+import npc.Output;
 import npc.config;
 import npc.trace.itrace;
 import npc.trace.disasm;
@@ -32,40 +25,40 @@ import npc.trace.ftrace;
 import npc.difftest.difftest;
 import npc.ysyxSoC;
 import npc.NPCTrap;
-// 注意: 这里故意泄漏堆上的 trace 对象。此前用静态对象，退出时其析构
-// 函数调用 Verilated::removeFlushCb，在 Verilator 5.050 下会访问已损毁
-// 的回调链表而段错误。
-static VerilatedVcdC *vcdTracer{nullptr};
-static VerilatedFstC *fstTracer{nullptr};
-
-static void TraceDump(std::uint64_t time)
+import npc.VgaChecker;
+import npc.SimulationContext;
+struct DUT::Tracer
 {
-    if constexpr (npc::HasTraceVCD)
+#if defined(VM_TRACE_VCD) && VM_TRACE_VCD
+    std::unique_ptr<VerilatedVcdC> vcd;
+#elif defined(VM_TRACE_FST) && VM_TRACE_FST
+    std::unique_ptr<VerilatedFstC> fst;
+#endif
+    ~Tracer() { Close(); }
+    void Dump(std::uint64_t time)
     {
-        vcdTracer->dump(time);
+#if defined(VM_TRACE_VCD) && VM_TRACE_VCD
+        vcd->dump(time);
+#elif defined(VM_TRACE_FST) && VM_TRACE_FST
+        fst->dump(time);
+#else
+        static_cast<void>(time);
+#endif
     }
-    else if constexpr (npc::HasTraceFST)
+    void Close()
     {
-        fstTracer->dump(time);
+#if defined(VM_TRACE_VCD) && VM_TRACE_VCD
+        if (vcd && vcd->isOpen())
+            vcd->close();
+#elif defined(VM_TRACE_FST) && VM_TRACE_FST
+        if (fst && fst->isOpen())
+            fst->close();
+#endif
     }
-}
-
-static void TraceClose()
-{
-    if constexpr (npc::HasTraceVCD)
-    {
-        vcdTracer->close();
-    }
-    else if constexpr (npc::HasTraceFST)
-    {
-        fstTracer->close();
-    }
-}
+};
 namespace
 {
-// RV64 的调试端口拆成低/高两个 32 位字。direct-NPC 与 full-SoC
-// （ysyxSoCFull）现在导出同一组 `_hi` 端口，因此两条路径共用这一套
-// 拼接逻辑；RV32 构建不读取不存在的高位端口。
+// RV64 调试端口拆为低/高 32 位字，RV32 不读高位。
 template <typename Top>
 npc::XWord DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
 {
@@ -80,9 +73,7 @@ npc::XWord DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
         return static_cast<npc::XWord>(Low);
     }
 }
-// 顶层端口能力在编译期探测：新 direct-NPC 与 full-SoC 都导出浮点/
-// tval 调试口；旧 RTL 没有这些成员时，下面的 if constexpr 分支不会被
-// 实例化，因此仍可编译并明确降级，而不是让整份仿真器构建失败。
+// 旧 RTL 缺浮点/tval 端口时降级而不阻断构建。
 template <typename Top>
 inline constexpr bool HasFPDebugPorts = requires(const Top &top) {
     top.debug_fpr_raddr;
@@ -100,9 +91,7 @@ inline constexpr bool HasTrapTvalDebugPorts = requires(const Top &top) {
     top.debug_trap_tval_hi;
 };
 
-// 浮点槽位固定为 64 位，与 npc::XLen 解耦：RV32F 的低端口有效、
-// 高端口恒为 0；RV64D 两半拼成完整 FLEN=64 值。调用点必须先经过
-// HasFPDebugPorts 判定。
+// 浮点槽位固定 64 位：RV32F 高半区为 0。
 template <typename Top>
 std::uint64_t DebugFPR(const Top &top)
 {
@@ -144,11 +133,12 @@ npc::XWord DebugTrapMepc(const Top &top) { return DebugWord(top, top.debug_trap_
 }
 static_assert(npc::NvBoardUpdateInterval > 0,
               "NVBoard刷新周期必须是正整数");
-DUT::DUT()
+DUT::DUT(SimulationContext &Context) : context{Context}
 {
     if constexpr (npc::HasTraceVCD || npc::HasTraceFST)
     {
         Verilated::traceEverOn(true);
+        tracer = std::make_unique<Tracer>();
     }
     dut = std::make_unique<TOP_MODULE>();
     heartbeat = std::getenv("NPC_HEARTBEAT") != nullptr;
@@ -166,67 +156,45 @@ DUT::DUT()
     {
         init_disasm();
     }
-    if constexpr (npc::HasTraceVCD)
+#if defined(VM_TRACE_VCD) && VM_TRACE_VCD
+    tracer->vcd = std::make_unique<VerilatedVcdC>();
+    dut->trace(tracer->vcd.get(),
+               npc::TraceDepth == 0 ? 99 : static_cast<int>(npc::TraceDepth));
     {
-        vcdTracer = new VerilatedVcdC;
-        dut->trace(vcdTracer,
-                   npc::TraceDepth == 0 ? 99 : static_cast<int>(npc::TraceDepth));
         auto parent{std::filesystem::path{npc::TraceFile}.parent_path()};
         if (!parent.empty())
             std::filesystem::create_directories(parent);
-        vcdTracer->open(std::string{npc::TraceFile}.c_str());
     }
-    else if constexpr (npc::HasTraceFST)
+    tracer->vcd->open(std::string{npc::TraceFile}.c_str());
+#elif defined(VM_TRACE_FST) && VM_TRACE_FST
+    tracer->fst = std::make_unique<VerilatedFstC>();
+    dut->trace(tracer->fst.get(),
+               npc::TraceDepth == 0 ? 99 : static_cast<int>(npc::TraceDepth));
     {
-        fstTracer = new VerilatedFstC;
-        dut->trace(fstTracer,
-                   npc::TraceDepth == 0 ? 99 : static_cast<int>(npc::TraceDepth));
         auto parent{std::filesystem::path{npc::TraceFile}.parent_path()};
         if (!parent.empty())
             std::filesystem::create_directories(parent);
-        fstTracer->open(std::string{npc::TraceFile}.c_str());
     }
-    if (const char *value{std::getenv("NPC_CHECKPOINT_CYCLE")};
-        value != nullptr && *value != '\0')
-    {
-        checkpoint_cycle = static_cast<std::size_t>(std::stoull(value));
-    }
-    if (const char *value{std::getenv("NPC_CHECKPOINT_FILE")};
-        value != nullptr && *value != '\0')
-    {
-        checkpoint_file = value;
-    }
-    if (const char *value{std::getenv("NPC_CHECKPOINT_MARKER")};
-        value != nullptr && *value != '\0')
-    {
-        checkpoint_marker = value;
-    }
-    if (const char *value{std::getenv("NPC_CHECKPOINT_CONTINUE")};
-        value != nullptr)
-    {
-        checkpoint_continue = std::string{value} == "1";
-    }
-#ifdef VRISCV32E_NPC
-    if (const char *value{std::getenv("NPC_FORK_AT")};
-        value != nullptr && *value != '\0')
-    {
-        fork_cycle = static_cast<std::size_t>(std::stoull(value));
-    }
-    if (const char *value{std::getenv("NPC_FORK_PIDFILE")};
-        value != nullptr && *value != '\0')
-    {
-        fork_pidfile = value;
-    }
+    tracer->fst->open(std::string{npc::TraceFile}.c_str());
 #endif
+    checkpoint.LoadEnvironment();
+    checkpoint.SetCallbacks(
+        [this](const std::filesystem::path &path) {
+            return SaveCheckpoint(path);
+        },
+        [this](int code) {
+            if (shutdown_hook) { shutdown_hook(); } else { final(); }
+            std::_Exit(code);
+        });
 }
+DUT::~DUT() = default;
+
 void DUT::InitializeMemory(std::span<const std::uint8_t> image)
 {
 #ifdef VRISCV32E_NPC
-    // 与 RTL AXIRAM/PMA 使用同一个 Kconfig 值（默认 64MiB，U-Boot
-    // 128MiB 配置时此处也会同步扩大）。
+    // 与 RTL AXIRAM/PMA 共用 Kconfig 的 MSize。
     constexpr std::size_t RamBytes{npc::MSize};
-    // 只清零镜像及其后的一段 BSS/堆边距，避免整个 RAM 逐字初始化把
-    // 仿真启动时间拖到几分钟；Verilator RAM 其余部分保持工具链的初始值。
+    // 只清零镜像加 64KiB 边距，避免初始化整个 RAM。
     constexpr std::size_t ZeroMarginBytes{64U * 1024U};
     constexpr std::size_t WordBytes{sizeof(std::uint32_t)};
     if (image.size() > RamBytes)
@@ -235,8 +203,7 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
             std::format("direct-NPC 镜像 {} 字节超出 RAM {} 字节", image.size(), RamBytes)};
     }
 
-    // 写满整个 RAM，而不是只写镜像覆盖的部分。这保证空镜像
-    // 或较短镜像之后的内存为零，不会保留上次运行的内容。
+    // 镜像后的余量清零，避免残留上次运行内容。
     dut->reset = 1;
     dut->ram_init_valid = 1;
     const std::size_t initBytes{
@@ -267,40 +234,6 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
     static_cast<void>(image);
 #endif
 }
-bool DUT::SaveCheckpointNow()
-{
-    if (checkpoint_file.empty())
-    {
-        std::println(std::cerr, "检查点触发但 NPC_CHECKPOINT_FILE 为空");
-        final();
-        std::_Exit(1);
-    }
-    const auto begin{std::chrono::steady_clock::now()};
-    auto result{SaveCheckpoint(checkpoint_file)};
-    const auto end{std::chrono::steady_clock::now()};
-    if (!result)
-    {
-        std::println(std::cerr, "检查点保存失败：{}", result.error());
-    }
-    else
-    {
-        std::error_code error;
-        const auto bytes{std::filesystem::file_size(checkpoint_file, error)};
-        std::println(std::cerr,
-                     "检查点已保存: {} cycle={} bytes={} elapsed_ms={}",
-                     checkpoint_file.string(), cycle, error ? 0 : bytes,
-                     std::chrono::duration_cast<std::chrono::milliseconds>(
-                         end - begin)
-                         .count());
-    }
-    if (!checkpoint_continue)
-    {
-        final();
-        std::_Exit(result ? 0 : 1);
-    }
-    return result.has_value();
-}
-
 template <typename Top>
 std::expected<void, std::string>
 SaveCheckpointImpl(Top &top, const std::filesystem::path &path)
@@ -366,6 +299,10 @@ DUT::RestoreCheckpoint(const std::filesystem::path &path)
 {
     return RestoreCheckpointImpl(*dut, path);
 }
+SimulationContext &DUT::Context() noexcept
+{
+    return context;
+}
 TOP_MODULE &DUT::operator*()
 {
     return *dut;
@@ -378,84 +315,24 @@ void DUT::eval()
 {
     dut->eval();
 }
+void DUT::SetShutdownHook(std::function<void()> hook)
+{
+    shutdown_hook = std::move(hook);
+}
+
 void DUT::final()
 {
     if (finalized)
         return;
     finalized = true;
-    TraceClose();
+    if (tracer)
+        tracer->Close();
     dut->final();
 }
 void DUT::EnableUARTStdin(bool enable)
 {
-#ifdef VRISCV32E_NPC
-    uart_stdin_enabled = enable;
-    uart_stdin_eof = false;
-#else
-    static_cast<void>(enable);
-#endif
+    uart.EnableStdin(enable);
 }
-
-#ifdef VRISCV32E_NPC
-void DUT::PumpUARTStdin()
-{
-    dut->uart_rx_valid = 0;
-    dut->uart_rx_data = 0;
-    if (!uart_stdin_enabled || uart_stdin_eof)
-    {
-        return;
-    }
-    // FIFO 满时不读 stdin，把字节留在管道里；这样既不会丢字符，也不会
-    // 因为提前吞掉整行输入而绕过 UART 流控。
-    if (!dut->uart_rx_ready)
-    {
-        return;
-    }
-    if (!uart_input_pending)
-    {
-        // 每 256 拍才做一次 poll()，避免在逐拍仿真热路径上增加系统调用。
-        if (uart_poll_countdown != 0)
-        {
-            --uart_poll_countdown;
-            return;
-        }
-        uart_poll_countdown = 255;
-        pollfd descriptor{.fd = STDIN_FILENO, .events = POLLIN, .revents = 0};
-        const int ready = ::poll(&descriptor, 1, 0);
-        if (ready <= 0)
-        {
-            return;
-        }
-        if ((descriptor.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0 &&
-            (descriptor.revents & POLLIN) == 0)
-        {
-            uart_stdin_eof = true;
-            return;
-        }
-        char byte{};
-        const ssize_t count = ::read(STDIN_FILENO, &byte, 1);
-        if (count == 0)
-        {
-            uart_stdin_eof = true;
-            return;
-        }
-        if (count < 0)
-        {
-            if (errno == EAGAIN || errno == EINTR)
-            {
-                return;
-            }
-            uart_stdin_eof = true;
-            return;
-        }
-        uart_input_byte = static_cast<std::uint8_t>(byte);
-        uart_input_pending = true;
-    }
-    dut->uart_rx_valid = 1;
-    dut->uart_rx_data = uart_input_byte;
-    uart_input_pending = false;
-}
-#endif
 
 void DUT::reset()
 {
@@ -467,13 +344,9 @@ void DUT::reset()
 #ifdef VRISCV32E_NPC
     dut->uart_rx_valid = 0;
     dut->uart_rx_data = 0;
-    uart_input_pending = false;
-    uart_poll_countdown = 0;
+    uart.Reset();
 #endif
-    // 同步复位必须有时钟边沿才能生效，先拉高 reset 跑几个周期。
-    // 注意: SoC 的 cpu_reset_chain 有 10 级移位寄存器(Verilator 随机初始化),
-    // 复位保持时间必须明显超过 10 拍, 否则链中的随机初始值会形成滞后的
-    // 伪复位脉冲, 在取指进行中复位 CPU, 并导致 AXI 突发拍序错乱
+    // 同步复位需时钟沿；cpu_reset_chain 10 级，保持须明显超过 10 拍。
     for (int i = 0; i < 20; ++i)
     {
         dut->clock = 0;
@@ -484,6 +357,10 @@ void DUT::reset()
     dut->reset = 0;
     cycle = 0;
     fault_count = 0;
+    if constexpr (HasFPDebugPorts<TOP_MODULE>)
+    {
+        mirror.SetFCSR(static_cast<std::uint64_t>(dut->debug_fcsr));
+    }
     if constexpr (npc::HasSDB)
     {
         debug_memory_writes.clear();
@@ -491,26 +368,24 @@ void DUT::reset()
     if constexpr (npc::HasDicArchCounter)
     {
         instructions = 0;
-        perf = {};
+        perf.Reset();
     }
 }
 void DUT::step()
 {
 #ifdef VRISCV32E_NPC
-    PumpUARTStdin();
+    const auto uart_input{uart.PumpInput(static_cast<bool>(dut->uart_rx_ready))};
+    dut->uart_rx_valid = uart_input.valid ? 1 : 0;
+    dut->uart_rx_data = uart_input.data;
 #endif
     dut->clock = 0;
     dut->eval();
-    // Sample the exact writeback that will occur at the upcoming edge.  The
-    // RTL exports these combinationally to avoid adding debug-only registers
-    // to every synthesized core.
-    // A binary compiled with DiffTest support may run without --diff.  Keep
-    // that common case at zero extra evals just like a non-DiffTest build.
+    // 写回在下一沿发生；无 --diff 时不增加 eval。
     const bool debug_gpr_write{
         DifftestIsEnabled() && static_cast<bool>(dut->debug_gpr_wen)};
     const auto debug_gpr_write_address{
         static_cast<std::size_t>(dut->debug_gpr_waddr)};
-    // 浮点写口与 GPR 写口同沿；旧 RTL 没有端口时整段不实例化。
+    // 浮点写口与 GPR 同沿；旧 RTL 无端口时不实例化。
     constexpr bool HasFP{HasFPDebugPorts<TOP_MODULE>};
     bool debug_fpr_write{false};
     std::size_t debug_fpr_write_address{0};
@@ -521,340 +396,90 @@ void DUT::step()
         debug_fpr_write_address =
             static_cast<std::size_t>(dut->debug_fpr_waddr);
     }
-    TraceDump(cycle * 2);
-    // These are combinational/pre-edge events.  Sample them before the rising
-    // edge; several are intentionally cleared or replaced by that edge.
-    // 端口始终存在，关闭的计数器在 RTL 侧绑 0；这里的 constexpr 开关让
-    // 编译器裁掉未启用的逻辑。
-    const bool perf_event_ifu_fetch{
-        npc::PerfDicArchCounterIfuFetch && static_cast<bool>(dut->perf_ifu_fetch)};
-    const bool perf_event_exu_done{
-        npc::PerfDicArchCounterExuDone && static_cast<bool>(dut->perf_exu_done)};
-    const bool perf_event_lsu_load{
-        npc::PerfDicArchCounterLsuLoad && static_cast<bool>(dut->perf_lsu_load)};
-    const bool perf_event_lsu_store{
-        npc::PerfDicArchCounterLsuStore && static_cast<bool>(dut->perf_lsu_store)};
-    const bool perf_event_mdu_req{
-        npc::PerfDicArchCounterMduReq && static_cast<bool>(dut->perf_mdu_req)};
-    const bool perf_event_mdu_done{
-        npc::PerfDicArchCounterMduDone && static_cast<bool>(dut->perf_mdu_done)};
-    const auto perf_event_mdu_op{
-        npc::PerfDicArchCounterMduOp ? static_cast<unsigned>(dut->perf_mdu_op) : 0U};
-    const auto perf_event_kind{
+    if (tracer)
+        tracer->Dump(cycle * 2);
+    // pre-edge 事件沿前采样；关闭的计数器 RTL 绑 0。
+    npc::PerfSignals perf_signals{};
+    perf_signals.ifu_fetch = static_cast<bool>(dut->perf_ifu_fetch);
+    perf_signals.exu_done = static_cast<bool>(dut->perf_exu_done);
+    perf_signals.lsu_load = static_cast<bool>(dut->perf_lsu_load);
+    perf_signals.lsu_store = static_cast<bool>(dut->perf_lsu_store);
+    perf_signals.mdu_req = static_cast<bool>(dut->perf_mdu_req);
+    perf_signals.mdu_done = static_cast<bool>(dut->perf_mdu_done);
+    perf_signals.mdu_op = static_cast<unsigned>(dut->perf_mdu_op);
+    perf_signals.exu_event_kind =
         npc::HasDicArchCounter ? static_cast<unsigned>(dut->perf_exu_event_kind)
-                          : 0U};
-    const bool perf_event_redirect{
-        npc::PerfDicArchCounterIfuStallRedirect &&
-        static_cast<bool>(dut->perf_ifu_stall_redirect)};
+                               : 0U;
+    perf_signals.ifu_stall_redirect =
+        static_cast<bool>(dut->perf_ifu_stall_redirect);
     dut->clock = 1;
     dut->eval();
-    TraceDump(cycle * 2 + 1);
+    if (tracer)
+        tracer->Dump(cycle * 2 + 1);
     ++cycle;
     if (heartbeat && cycle % 10000000U == 0U)
     {
-        std::println(std::cerr,
+        context.Out().Warn(
                      "[heartbeat] cycle={} pc=0x{:016x} arch_pc=0x{:016x}",
                      cycle, DebugPC(*dut), DebugArchPC(*dut));
     }
     if constexpr (npc::HasVerilatorSavable)
     {
-    if (checkpoint_cycle && cycle == *checkpoint_cycle &&
-        !checkpoint_file.empty())
-    {
-        checkpoint_cycle.reset();
-        SaveCheckpointNow();
-    }
+        checkpoint.OnCycle(cycle);
 #ifdef VRISCV32E_NPC
-    // UART TX 的 host 可见副本用于按 console marker 精确定位检查点。
-    // 只保留 marker 长度 + 1 个字符，避免长期运行累积字符串。
-    if (!checkpoint_marker.empty() && static_cast<bool>(dut->uart_tx_valid))
-    {
-        uart_marker_buffer.push_back(
-            static_cast<char>(static_cast<unsigned>(dut->uart_tx_data)));
-        if (uart_marker_buffer.size() > checkpoint_marker.size())
+        // UART TX host 副本用于 marker 定位。
+        if (static_cast<bool>(dut->uart_tx_valid) &&
+            uart.FeedTx(static_cast<std::uint8_t>(
+                            static_cast<unsigned>(dut->uart_tx_data)),
+                        checkpoint.Marker()))
         {
-            uart_marker_buffer.erase(0, 1);
+            checkpoint.OnMarker();
         }
-        if (uart_marker_buffer == checkpoint_marker)
-        {
-            std::println(std::cerr, "UART marker 命中: {}", checkpoint_marker);
-            checkpoint_marker.clear();
-            SaveCheckpointNow();
-        }
-    }
 #endif
     }
-#ifdef VRISCV32E_NPC
-    if (fork_cycle && cycle == *fork_cycle)
-    {
-        const auto begin{std::chrono::steady_clock::now()};
-        const pid_t child{::fork()};
-        if (child < 0)
-        {
-            std::println(std::cerr, "fork 检查点失败: errno={}", errno);
-        }
-        else if (child == 0)
-        {
-            // 子进程保留 fork 时刻的完整 RTL/内存状态，阻塞到调试器
-            // 发送 SIGCONT；父进程退出后它就是唯一的仿真实例。
-            ::raise(SIGSTOP);
-        }
-        else
-        {
-            if (!fork_pidfile.empty())
-            {
-                std::ofstream out{fork_pidfile};
-                out << child << "\n";
-                out.flush();
-            }
-            const auto end{std::chrono::steady_clock::now()};
-            std::println(std::cerr,
-                         "fork 检查点: pid={} cycle={} fork_us={}",
-                         child, cycle,
-                         std::chrono::duration_cast<std::chrono::microseconds>(
-                             end - begin)
-                             .count());
-            std::_Exit(0);
-        }
-        fork_cycle.reset();
-    }
-#endif
-    // Apply the pre-edge sample only after that edge has taken effect.
+    checkpoint.OnFork(cycle);
     if (debug_gpr_write)
     {
         if (debug_gpr_write_address > 0 &&
-            debug_gpr_write_address < architectural_gpr.size())
+            debug_gpr_write_address < 32)
         {
-            // Read the physical register file after the edge.  Caching the
-            // advertised WBU data would hide a broken/misdirected GPR write
-            // from DiffTest; this costs at most one extra eval on instructions
-            // that actually write a GPR, rather than 32 evals every retire.
+            // 沿后回读物理 GPR，避免写数据错误被镜像掩盖。
             dut->debug_gpr_raddr =
                 static_cast<CData>(debug_gpr_write_address);
             dut->eval();
-            architectural_gpr[debug_gpr_write_address] = DebugGPR(*dut);
+            mirror.SetGPR(static_cast<std::uint32_t>(debug_gpr_write_address),
+                          DebugGPR(*dut));
         }
     }
-    architectural_gpr[0] = 0;
+    mirror.SetGPR(0, 0);
     if constexpr (HasFP)
     {
         if (debug_fpr_write)
         {
-            if (debug_fpr_write_address < architectural_fpr.size())
+            if (debug_fpr_write_address < 32)
             {
-                // 与 GPR 一样回读物理 FPR，防止“写使能/写地址正确但数据错误”
-                // 被 C++ 镜像掩盖。FLEN=32 时顶层高半区固定为 0。
+                // 同样回读物理 FPR；FLEN=32 时高半区为 0。
                 dut->debug_fpr_raddr =
                     static_cast<CData>(debug_fpr_write_address);
                 dut->eval();
-                architectural_fpr[debug_fpr_write_address] = DebugFPR(*dut);
+                mirror.SetFPR(
+                    static_cast<std::uint32_t>(debug_fpr_write_address),
+                    DebugFPR(*dut));
             }
         }
+        mirror.SetFCSR(static_cast<std::uint64_t>(dut->debug_fcsr));
     }
-    architectural_pc = DebugArchPC(*dut);
+    mirror.SetPC(DebugArchPC(*dut));
 #ifndef VRISCV32E_NPC
-    if (vga_check)
+    if (vga.Sample({.hsync = dut->externalPins_vga_hsync != 0,
+                    .vsync = dut->externalPins_vga_vsync != 0,
+                    .valid = dut->externalPins_vga_valid != 0,
+                    .rgb = (static_cast<std::uint32_t>(dut->externalPins_vga_r) << 16) |
+                           (static_cast<std::uint32_t>(dut->externalPins_vga_g) << 8) |
+                           static_cast<std::uint32_t>(dut->externalPins_vga_b),
+                    .cycle = cycle},
+                   context.Out()))
     {
-        constexpr int HSync{96};
-        constexpr int HBackPorch{48};
-        constexpr int HVisible{640};
-        constexpr int HFrontPorch{16};
-        constexpr int HTotal{HSync + HBackPorch + HVisible + HFrontPorch};
-        constexpr int VSync{2};
-        constexpr int VBackPorch{33};
-        constexpr int VVisible{480};
-        constexpr int VFrontPorch{10};
-        constexpr int VTotal{VSync + VBackPorch + VVisible + VFrontPorch};
-        constexpr std::size_t VisiblePixels{
-            static_cast<std::size_t>(HVisible) * VVisible};
-
-        bool hs{dut->externalPins_vga_hsync != 0};
-        const bool vs{dut->externalPins_vga_vsync != 0};
-        bool vv{dut->externalPins_vga_valid != 0};
-#ifdef NPC_VGA_CHECK_TEST_INJECT_CYCLE
-        // Test-only observation fault: compile a dedicated regression binary
-        // with one selected sample inverted.  Production builds never define
-        // this macro, so neither the DUT signals nor the checker are changed.
-        static_assert(NPC_VGA_CHECK_TEST_INJECT_CYCLE > 0);
-        if (cycle ==
-            static_cast<std::size_t>(NPC_VGA_CHECK_TEST_INJECT_CYCLE))
-        {
-            hs = !hs;
-            vv = !vv;
-        }
-#endif
-        const bool hsync_rise{hs && !vga_prev_hsync};
-        const bool vsync_rise{vs && !vga_prev_vsync};
-
-        // Both synchronization signals are active-low.  Checking the run
-        // length on every transition catches a correct total period with a
-        // wrong pulse width, which the old rising-edge-only check missed.
-        if (hs == vga_prev_hsync)
-        {
-            ++vga_hsync_run_length;
-        }
-        else
-        {
-            const std::size_t expected_width{
-                vga_prev_hsync ? static_cast<std::size_t>(HTotal - HSync)
-                                : static_cast<std::size_t>(HSync)};
-            if (vga_hsync_run_length != expected_width)
-                ++vga_hsync_width_bad;
-            vga_hsync_run_length = 1;
-        }
-        if (vs == vga_prev_vsync)
-        {
-            ++vga_vsync_run_length;
-        }
-        else
-        {
-            const std::size_t expected_width{
-                vga_prev_vsync
-                    ? static_cast<std::size_t>(VTotal - VSync) * HTotal
-                    : static_cast<std::size_t>(VSync) * HTotal};
-            if (vga_vsync_run_length != expected_width)
-                ++vga_vsync_width_bad;
-            vga_vsync_run_length = 1;
-        }
-
-        // The first real rising HSYNC edge gives an unambiguous X=97 anchor.
-        // Thereafter the expected raster position free-runs; malformed sync
-        // pulses are observed as errors instead of silently re-aligning and
-        // hiding the fault.
-        bool line_start{false};
-        if (!vga_horizontal_aligned)
-        {
-            if (hsync_rise)
-            {
-                vga_horizontal_aligned = true;
-                vga_x = HSync + 1;
-            }
-        }
-        else
-        {
-            vga_x = vga_x == HTotal ? 1 : vga_x + 1;
-            line_start = vga_x == 1;
-        }
-
-        if (hsync_rise)
-        {
-            const auto period{cycle - vga_last_hsync_cycle};
-            if (vga_line_period_count > 0)
-            {
-                vga_line_period_sum += period;
-                if (period != HTotal) ++vga_line_period_bad;
-            }
-            ++vga_line_period_count;
-            vga_last_hsync_cycle = cycle;
-        }
-
-        if (vga_vertical_aligned && line_start)
-        {
-            vga_y = vga_y == VTotal ? 1 : vga_y + 1;
-        }
-
-        if (vsync_rise)
-        {
-            const auto period{cycle - vga_last_vsync_cycle};
-            if (vga_vertical_aligned)
-            {
-                if (period != static_cast<std::size_t>(HTotal) * VTotal)
-                    ++vga_frame_period_bad;
-
-                // This boundary closes a full VSYNC-to-VSYNC frame.  Count
-                // every coordinate separately: a duplicate and a missing
-                // pixel can no longer cancel out to the expected total.
-                std::size_t missing{0};
-                std::size_t duplicate{0};
-                for (const auto coverage : vga_pixel_coverage)
-                {
-                    if (coverage == 0)
-                        ++missing;
-                    else if (coverage > 1)
-                        duplicate += static_cast<std::size_t>(coverage - 1);
-                }
-                ++vga_frames;
-                vga_last_frame_valid_pixels = vga_valid_pixels;
-                vga_last_frame_missing_pixels = missing;
-                vga_last_frame_duplicate_pixels = duplicate;
-                vga_missing_pixels += missing;
-                vga_duplicate_pixels += duplicate;
-                if (vga_valid_pixels != VisiblePixels || missing != 0 ||
-                    duplicate != 0)
-                    ++vga_frame_pixel_bad;
-
-                // Export only an immutable snapshot taken at a completed
-                // frame boundary.  The next partial frame writes a separate
-                // working buffer and therefore cannot contaminate the PPM.
-                vga_frame = vga_working_frame;
-                vga_completed_frame_available = true;
-            }
-
-            vga_last_vsync_cycle = cycle;
-            vga_vertical_aligned = true;
-            vga_y = VSync + 1;
-            vga_valid_pixels = 0;
-            std::ranges::fill(vga_working_frame, std::uint8_t{0});
-            std::ranges::fill(vga_pixel_coverage, std::uint8_t{0});
-            if (vga_horizontal_aligned && vga_x != 1)
-                ++vga_pos_errors;
-        }
-
-        if (vga_horizontal_aligned)
-        {
-            const bool expected_hsync{vga_x > HSync};
-            if (hs != expected_hsync) ++vga_hsync_level_errors;
-        }
-        if (vga_vertical_aligned)
-        {
-            const bool expected_vsync{vga_y > VSync};
-            if (vs != expected_vsync) ++vga_vsync_level_errors;
-        }
-
-        const bool raster_aligned{
-            vga_horizontal_aligned && vga_vertical_aligned};
-        const bool expected_valid{raster_aligned &&
-            vga_x > HSync + HBackPorch &&
-            vga_x <= HSync + HBackPorch + HVisible &&
-            vga_y > VSync + VBackPorch &&
-            vga_y <= VSync + VBackPorch + VVisible};
-        if (raster_aligned && vv != expected_valid)
-            ++vga_valid_timing_errors;
-
-        if (vv)
-        {
-            ++vga_valid_pixels;
-            const int px{vga_x - (HSync + HBackPorch + 1)};
-            const int py{vga_y - (VSync + VBackPorch + 1)};
-            if (!raster_aligned || px < 0 || px >= HVisible || py < 0 ||
-                py >= VVisible)
-            {
-                ++vga_pos_errors;
-            }
-            else
-            {
-                const auto pixel_index{static_cast<std::size_t>(py) * HVisible +
-                    static_cast<std::size_t>(px)};
-                auto &coverage{vga_pixel_coverage[pixel_index]};
-                if (coverage != std::numeric_limits<std::uint8_t>::max())
-                    ++coverage;
-                const auto byte_index{pixel_index * 3};
-                vga_working_frame[byte_index + 0] =
-                    dut->externalPins_vga_r;
-                vga_working_frame[byte_index + 1] =
-                    dut->externalPins_vga_g;
-                vga_working_frame[byte_index + 2] =
-                    dut->externalPins_vga_b;
-            }
-        }
-        vga_prev_hsync = hs;
-        vga_prev_vsync = vs;
-    }
-    if (vga_check && !vga_timed_out && cycle >= 50000000)
-    {
-        vga_timed_out = true;
-        std::println(std::cerr,
-                     "VGA时序检查超过50000000周期，强制终止");
         NPCTrap::Stop(DebugArchPC(*dut));
     }
 #endif
@@ -864,512 +489,138 @@ if constexpr (npc::HasDicArchCounter)
     {
         ++instructions;
     }
-    if (npc::PerfDicArchCounterIfuFetch && perf_event_ifu_fetch)
-    {
-        ++perf.instruction_fetch;
-    }
-    if (npc::PerfDicArchCounterExuDone && perf_event_exu_done)
-    {
-        ++perf.execution_complete;
-    }
-    // M扩展关闭时译码不出M指令, 这些信号恒为0, 不再逐拍采集
-    if (npc::PerfDicArchCounterMduReq && perf_event_mdu_req)
-    {
-        ++perf.mdu_request;
-    }
-    if (npc::PerfDicArchCounterMduDone && perf_event_mdu_done)
-    {
-        ++perf.mdu_complete;
-        if (npc::PerfDicArchCounterMduOp) switch (static_cast<unsigned>(perf_event_mdu_op))
-        {
-        case 0: ++perf.mdu_mul; break;
-        case 1: ++perf.mdu_mulh; break;
-        case 2: ++perf.mdu_mulhsu; break;
-        case 3: ++perf.mdu_mulhu; break;
-        case 4: ++perf.mdu_div; break;
-        case 5: ++perf.mdu_divu; break;
-        case 6: ++perf.mdu_rem; break;
-        case 7: ++perf.mdu_remu; break;
-        default: break;
-        }
-    }
-    if (npc::PerfDicArchCounterMduActive && dut->perf_mdu_active)
-    {
-        ++perf.mdu_active_cycle;
-    }
-    if (npc::PerfDicArchCounterMduWait && dut->perf_mdu_wait)
-    {
-        ++perf.mdu_wait_cycle;
-    }
-    if (npc::PerfDicArchCounterLsuLoad && perf_event_lsu_load)
-    {
-        ++perf.load_data;
-    }
-    if (npc::PerfDicArchCounterLsuStore && perf_event_lsu_store)
-    {
-        ++perf.store_data;
-    }
-    // 事件分类按单计数器开关合取，只统计本构建实际启用的类型。
-    unsigned perf_event_mask = 0;
-    if (npc::PerfDicArchCounterAluOp) perf_event_mask |= PerfEventALU;
-    if (npc::PerfDicArchCounterMemOp) perf_event_mask |= PerfEventMEM;
-    if (npc::PerfDicArchCounterCsrOp) perf_event_mask |= PerfEventCSR;
-    if (npc::PerfDicArchCounterBranchOp) perf_event_mask |= PerfEventBRANCH;
-    if (npc::PerfDicArchCounterJalOp) perf_event_mask |= PerfEventJAL;
-    if (npc::PerfDicArchCounterJalrOp) perf_event_mask |= PerfEventJALR;
-    RecordExecutionEvent(
-        perf, static_cast<unsigned>(perf_event_kind), perf_event_mask);
-    if (npc::PerfDicArchCounterIfuStallPipeline && dut->perf_ifu_stall_pipeline)
-    {
-        ++perf.instruction_fetch_stall_pipeline;
-    }
-    if (npc::PerfDicArchCounterIfuStallAxi && dut->perf_ifu_stall_axi)
-    {
-        ++perf.instruction_fetch_stall_axi;
-    }
-    if (npc::PerfDicArchCounterIfuStallAr && dut->perf_ifu_stall_ar)
-    {
-        ++perf.instruction_fetch_stall_ar;
-    }
-    if (npc::PerfDicArchCounterIfuStallR && dut->perf_ifu_stall_r)
-    {
-        ++perf.instruction_fetch_stall_r;
-    }
-    if (npc::PerfDicArchCounterIfuStallRedirect && perf_event_redirect)
-    {
-        ++perf.instruction_fetch_stall_redirect;
-    }
-    if (npc::PerfDicArchCounterIfuStallIdle && dut->perf_ifu_stall_idle)
-    {
-        ++perf.instruction_fetch_stall_idle;
-    }
-    if (npc::PerfDicArchCounterExecutionActive && dut->perf_execution_active)
-    {
-        ++perf.execution_active_cycle;
-    }
-    if (npc::PerfDicArchCounterExuStallLsu && dut->perf_exu_stall_lsu)
-    {
-        ++perf.exu_stall_lsu;
-    }
-    if (npc::PerfDicArchCounterMemWaitslot && dut->perf_mem_waitslot)
-    {
-        ++perf.mem_waitslot;
-    }
-    // 类型活跃周期：Scala 侧已用 ActiveInst 生成类型电平。这里再排除 MDU
-    // 在途周期作为防御；MDU相关计数器关闭时该端口为常量0，防御自动退化。
-    const bool classify_exu_level = dut->perf_execution_active &&
-        (!npc::PerfDicArchCounterMduActive || !dut->perf_mdu_active);
-    if (npc::PerfDicArchCounterAluOp && classify_exu_level && dut->perf_alu_op)
-    {
-        ++perf.arithmetic_operation_active_cycle;
-    }
-    if (npc::PerfDicArchCounterMemOp && classify_exu_level && dut->perf_mem_op)
-    {
-        ++perf.memory_access_operation_active_cycle;
-    }
-    if (npc::PerfDicArchCounterCsrOp && classify_exu_level && dut->perf_csr_op)
-    {
-        ++perf.control_status_register_operation_active_cycle;
-    }
-    if (npc::PerfDicArchCounterBranchOp && classify_exu_level && dut->perf_branch_op)
-    {
-        ++perf.branch_operation_active_cycle;
-    }
-    if (npc::PerfDicArchCounterLsuActive && dut->perf_lsu_active)
-    {
-        ++perf.load_store_unit_active_cycle;
-    }
-    if (npc::PerfDicArchCounterLsuLoadActive && dut->perf_lsu_load_active)
-    {
-        ++perf.load_store_unit_load_active_cycle;
-    }
-    if (npc::PerfDicArchCounterLsuStoreActive && dut->perf_lsu_store_active)
-    {
-        ++perf.load_store_unit_store_active_cycle;
-    }
-    if (npc::PerfDicArchCounterLsuStallReadAr && dut->perf_lsu_stall_read_ar)
-    {
-        ++perf.lsu_stall_read_ar;
-    }
-    if (npc::PerfDicArchCounterLsuStallReadR && dut->perf_lsu_stall_read_r)
-    {
-        ++perf.lsu_stall_read_r;
-    }
-    if (npc::PerfDicArchCounterLsuStallWriteReq && dut->perf_lsu_stall_write_req)
-    {
-        ++perf.lsu_stall_write_req;
-    }
-    if (npc::PerfDicArchCounterLsuStallWriteB && dut->perf_lsu_stall_write_b)
-    {
-        ++perf.lsu_stall_write_b;
-    }
-    // ICache关闭时取指直连AXI, 这些信号恒为0, 不再逐拍采集
-    if (npc::PerfDicArchCounterIcacheHit && dut->perf_icache_hit)
-    {
-        ++perf.icache_hit;
-    }
-    if (npc::PerfDicArchCounterIcacheMiss && dut->perf_icache_miss)
-    {
-        ++perf.icache_miss;
-    }
-    // DCache关闭时这些信号恒为0, 不再逐拍采集
-    if (npc::PerfDicArchCounterDcacheHit && dut->perf_dcache_hit)
-    {
-        ++perf.dcache_hit;
-    }
-    if (npc::PerfDicArchCounterDcacheMiss && dut->perf_dcache_miss)
-    {
-        ++perf.dcache_miss;
-    }
-    if (npc::PerfDicArchCounterDcacheRefillReq && dut->perf_dcache_refill_req)
-    {
-        ++perf.dcache_refill_req_cycle;
-    }
-    if (npc::PerfDicArchCounterDcacheRefillResp && dut->perf_dcache_refill_resp)
-    {
-        ++perf.dcache_refill_resp_cycle;
-    }
-    if (npc::PerfDicArchCounterIduStallRaw && dut->perf_idu_stall_raw)
-    {
-        ++perf.idu_stall_raw;
-    }
-    if (npc::PerfDicArchCounterIduStallRawLoaduse && dut->perf_idu_stall_raw_loaduse)
-    {
-        ++perf.idu_stall_raw_loaduse;
-    }
-    if (npc::PerfDicArchCounterIduStallRawAlu && dut->perf_idu_stall_raw_alu)
-    {
-        ++perf.idu_stall_raw_alu;
-    }
-    if (npc::PerfDicArchCounterExuIdleNoinput && dut->perf_exu_idle_noinput)
-    {
-        ++perf.exu_idle_noinput;
-    }
-    // TrapCommit is a pre-edge combinational pulse and can disappear when the
-    // pipeline flushes on that same edge.  debug_trap_valid is its registered,
-    // architecturally precise counterpart and is safe to sample here.
-    if (npc::PerfDicArchCounterTrapCount && dut->debug_trap_valid)
-    {
-        ++perf.trap_count;
-    }
-    if (npc::PerfDicArchCounterBtbHit && dut->perf_btb_hit)
-    {
-        ++perf.btb_hit;
-    }
-    if (npc::PerfDicArchCounterBtbMiss && dut->perf_btb_miss)
-    {
-        ++perf.btb_miss;
-    }
-    if (npc::PerfDicArchCounterJalBtbHit && dut->perf_jal_btb_hit)
-    {
-        ++perf.jal_btb_hit;
-    }
-    if (npc::PerfDicArchCounterRasHit && dut->perf_ras_hit)
-    {
-        ++perf.ras_hit;
-    }
-    if (npc::PerfDicArchCounterBranchMispredict && dut->perf_branch_mispredict)
-    {
-        ++perf.branch_mispredict;
-    }
-    if (npc::PerfDicArchCounterItlbHit && dut->perf_itlb_hit)
-    {
-        ++perf.itlb_hit;
-    }
-    if (npc::PerfDicArchCounterItlbMiss && dut->perf_itlb_miss)
-    {
-        ++perf.itlb_miss;
-    }
-    if (npc::PerfDicArchCounterDtlbHit && dut->perf_dtlb_hit)
-    {
-        ++perf.dtlb_hit;
-    }
-    if (npc::PerfDicArchCounterDtlbMiss && dut->perf_dtlb_miss)
-    {
-        ++perf.dtlb_miss;
-    }
-    if (npc::PerfDicArchCounterTlbRefill && dut->perf_tlb_refill)
-    {
-        ++perf.tlb_refill;
-    }
-    if (npc::PerfDicArchCounterFpuReq && dut->perf_fpu_req)
-    {
-        ++perf.fpu_req;
-    }
-    if (npc::PerfDicArchCounterFpuDone && dut->perf_fpu_done)
-    {
-        ++perf.fpu_done;
-    }
-    if (npc::PerfDicArchCounterAxiAr && dut->perf_axi_ar)
-    {
-        ++perf.axi_ar;
-    }
-    if (npc::PerfDicArchCounterAxiAw && dut->perf_axi_aw)
-    {
-        ++perf.axi_aw;
-    }
-    if (npc::PerfDicArchCounterAxiR && dut->perf_axi_r)
-    {
-        ++perf.axi_r;
-    }
-    if (npc::PerfDicArchCounterAxiW && dut->perf_axi_w)
-    {
-        ++perf.axi_w;
-    }
-    if (npc::PerfDicArchCounterAxiB && dut->perf_axi_b)
-    {
-        ++perf.axi_b;
-    }
-    if (npc::PerfDicArchCounterLoadOp && dut->perf_load_op)
-    {
-        ++perf.load_op;
-    }
-    if (npc::PerfDicArchCounterStoreOp && dut->perf_store_op)
-    {
-        ++perf.store_op;
-    }
-    if (npc::PerfDicArchCounterAmoOp && dut->perf_amo_op)
-    {
-        ++perf.amo_op;
-    }
-    if (npc::PerfDicArchCounterBranchTaken && dut->perf_branch_taken)
-    {
-        ++perf.branch_taken;
-    }
-    if (npc::PerfDicArchCounterBranchNotTaken && dut->perf_branch_not_taken)
-    {
-        ++perf.branch_not_taken;
-    }
-    if (npc::PerfDicArchCounterTlbFlush && dut->perf_tlb_flush)
-    {
-        ++perf.tlb_flush;
-    }
-    if (npc::PerfDicArchCounterFpuActive && dut->perf_fpu_active)
-    {
-        ++perf.fpu_active_cycle;
-    }
-    if (npc::PerfDicArchCounterFenceOp && dut->perf_fence_op)
-    {
-        ++perf.fence_op;
-    }
-    if (npc::PerfDicArchCounterRvcInst && dut->perf_rvc_inst)
-    {
-        ++perf.rvc_inst;
-    }
-    if (npc::PerfDicArchCounterSystemOp && dut->perf_system_op)
-    {
-        ++perf.system_op;
-    }
-    if (npc::PerfDicArchCounterIcacheRefill && dut->perf_icache_refill)
-    {
-        ++perf.icache_refill;
-    }
-    if (npc::PerfDicArchCounterDcacheRefill && dut->perf_dcache_refill)
-    {
-        ++perf.dcache_refill;
-    }
-    if (npc::PerfDicArchCounterTimerIrq && dut->perf_timer_irq)
-    {
-        ++perf.timer_irq;
-    }
-    if (npc::PerfDicArchCounterExternalIrq && dut->perf_external_irq)
-    {
-        ++perf.external_irq;
-    }
-    if (npc::PerfDicArchCounterInterruptTaken && dut->perf_interrupt_taken)
-    {
-        ++perf.interrupt_taken;
-    }
-    if (npc::PerfDicArchCounterWbufFull && dut->perf_wbuf_full)
-    {
-        ++perf.wbuf_full;
-    }
-    if (npc::PerfDicArchCounterWbufDrain && dut->perf_wbuf_drain)
-    {
-        ++perf.wbuf_drain;
-    }
-    if (npc::PerfDicArchCounterCsrRead && dut->perf_csr_read)
-    {
-        ++perf.csr_read;
-    }
-    if (npc::PerfDicArchCounterCsrWrite && dut->perf_csr_write)
-    {
-        ++perf.csr_write;
-    }
-    if (npc::PerfDicArchCounterMulActive && dut->perf_mul_active)
-    {
-        ++perf.mul_active_cycle;
-    }
-    if (npc::PerfDicArchCounterDivActive && dut->perf_div_active)
-    {
-        ++perf.div_active_cycle;
-    }
-    if (npc::PerfDicArchCounterPtwWalk && dut->perf_ptw_walk)
-    {
-        ++perf.ptw_walk;
-    }
-    if (npc::PerfDicArchCounterPtwWalkCycle && dut->perf_ptw_walk_cycle)
-    {
-        ++perf.ptw_walk_cycle;
-    }
-    if (npc::PerfDicArchCounterPageFault && dut->perf_page_fault)
-    {
-        ++perf.page_fault;
-    }
-    if (npc::PerfDicArchCounterRasMiss && dut->perf_ras_miss)
-    {
-        ++perf.ras_miss;
-    }
-    if (npc::PerfDicArchCounterRedirectBranch && dut->perf_redirect_branch)
-    {
-        ++perf.redirect_branch;
-    }
-    if (npc::PerfDicArchCounterRedirectFenceI && dut->perf_redirect_fence_i)
-    {
-        ++perf.redirect_fence_i;
-    }
-    if (npc::PerfDicArchCounterRedirectTrap && dut->perf_redirect_trap)
-    {
-        ++perf.redirect_trap;
-    }
-    if (npc::PerfDicArchCounterRedirectMret && dut->perf_redirect_mret)
-    {
-        ++perf.redirect_mret;
-    }
-    if (npc::PerfDicArchCounterFpuStall && dut->perf_fpu_stall)
-    {
-        ++perf.fpu_stall_cycle;
-    }
-    if (npc::PerfDicArchCounterIllegalInst && dut->perf_illegal_inst)
-    {
-        ++perf.illegal_inst;
-    }
-    if (npc::PerfDicArchCounterAxiStall && dut->perf_axi_stall)
-    {
-        ++perf.axi_stall_cycle;
-    }
-    if (npc::PerfDicArchCounterAxiError && dut->perf_axi_error)
-    {
-        ++perf.axi_error;
-    }
-    if (npc::PerfDicArchCounterFpuDivsqrt && dut->perf_fpu_divsqrt)
-    {
-        ++perf.fpu_divsqrt;
-    }
-    if (npc::PerfDicArchCounterFpuFma && dut->perf_fpu_fma)
-    {
-        ++perf.fpu_fma;
-    }
-    if (npc::PerfDicArchCounterFpuException && dut->perf_fpu_exception)
-    {
-        ++perf.fpu_exception;
-    }
-    if (npc::PerfDicArchCounterCsrIllegal && dut->perf_csr_illegal)
-    {
-        ++perf.csr_illegal;
-    }
-    if (npc::PerfDicArchCounterPlicClaim && dut->perf_plic_claim)
-    {
-        ++perf.plic_claim;
-    }
-    if (npc::PerfDicArchCounterPlicComplete && dut->perf_plic_complete)
-    {
-        ++perf.plic_complete;
-    }
-    if (npc::PerfDicArchCounterFlushCycle && dut->perf_flush_cycle)
-    {
-        ++perf.flush_cycle;
-    }
-    if (npc::PerfDicArchCounterUncachedAccess && dut->perf_uncached_access)
-    {
-        ++perf.uncached_access;
-    }
-    if (npc::PerfDicArchCounterWbufOccupancy)
-    {
-        perf.wbuf_occupancy_cycle += dut->perf_wbuf_count;
-    }
-    if (npc::PerfDicArchCounterTlbSuperpageHit && dut->perf_tlb_superpage_hit)
-    {
-        ++perf.tlb_superpage_hit;
-    }
-    if (npc::PerfDicArchCounterTlbAsidHit && dut->perf_tlb_asid_hit)
-    {
-        ++perf.tlb_asid_hit;
-    }
-    if (npc::PerfDicArchCounterIcacheLineFill && dut->perf_icache_line_fill)
-    {
-        ++perf.icache_line_fill;
-    }
-    if (npc::PerfDicArchCounterDcacheLineFill && dut->perf_dcache_line_fill)
-    {
-        ++perf.dcache_line_fill;
-    }
-    if (npc::PerfDicArchCounterDcacheWriteback && dut->perf_dcache_writeback)
-    {
-        ++perf.dcache_writeback;
-    }
-    if (npc::PerfDicArchCounterInterruptPendingCycle && dut->perf_irq_pending)
-    {
-        ++perf.interrupt_pending_cycle;
-    }
-    if (npc::PerfDicArchCounterInterruptLatency)
-    {
-        const bool pending = dut->perf_irq_pending;
-        const bool taken = dut->perf_interrupt_taken;
-        if (taken)
-        {
-            if (irq_latency_active)
-            {
-                perf.interrupt_latency_cycle += irq_latency_current;
-                perf.interrupt_latency_max =
-                    std::max(perf.interrupt_latency_max, irq_latency_current);
-                ++perf.interrupt_latency_count;
-            }
-            irq_latency_active = false;
-            irq_latency_current = 0;
-        }
-        else if (pending)
-        {
-            if (!irq_latency_active)
-            {
-                irq_latency_active = true;
-                irq_latency_current = 0;
-            }
-            else
-            {
-                ++irq_latency_current;
-            }
-        }
-        else
-        {
-            irq_latency_active = false;
-        }
-    }
-    if (npc::PerfDicArchCounterWfiInst && dut->perf_wfi_inst)
-    {
-        ++perf.wfi_inst;
-    }
-    if (npc::PerfDicArchCounterIssueOccupancy && dut->perf_issue_occupancy)
-    {
-        ++perf.issue_occupancy_cycle;
-    }
-    if (npc::PerfDicArchCounterRetireOccupancy && dut->perf_retire_occupancy)
-    {
-        ++perf.retire_occupancy_cycle;
-    }
-    if (npc::PerfDicArchCounterBubbleCycle && dut->perf_bubble_cycle)
-    {
-        ++perf.bubble_cycle;
-    }
-    if (npc::PerfDicArchCounterDivIterations && dut->perf_div_done)
-    {
-        perf.div_iterations += dut->perf_div_iterations;
-    }
-    if (npc::PerfDicArchCounterDivEarlyOut && dut->perf_div_done &&
-        dut->perf_div_early_out)
-    {
-        ++perf.div_early_out;
-    }
+    perf_signals.mdu_active = static_cast<bool>(dut->perf_mdu_active);
+    perf_signals.mdu_wait = static_cast<bool>(dut->perf_mdu_wait);
+    perf_signals.ifu_stall_pipeline =
+        static_cast<bool>(dut->perf_ifu_stall_pipeline);
+    perf_signals.ifu_stall_axi = static_cast<bool>(dut->perf_ifu_stall_axi);
+    perf_signals.ifu_stall_ar = static_cast<bool>(dut->perf_ifu_stall_ar);
+    perf_signals.ifu_stall_r = static_cast<bool>(dut->perf_ifu_stall_r);
+    perf_signals.ifu_stall_idle = static_cast<bool>(dut->perf_ifu_stall_idle);
+    perf_signals.execution_active =
+        static_cast<bool>(dut->perf_execution_active);
+    perf_signals.exu_stall_lsu = static_cast<bool>(dut->perf_exu_stall_lsu);
+    perf_signals.mem_waitslot = static_cast<bool>(dut->perf_mem_waitslot);
+    perf_signals.alu_op = static_cast<bool>(dut->perf_alu_op);
+    perf_signals.mem_op = static_cast<bool>(dut->perf_mem_op);
+    perf_signals.csr_op = static_cast<bool>(dut->perf_csr_op);
+    perf_signals.branch_op = static_cast<bool>(dut->perf_branch_op);
+    perf_signals.lsu_active = static_cast<bool>(dut->perf_lsu_active);
+    perf_signals.lsu_load_active =
+        static_cast<bool>(dut->perf_lsu_load_active);
+    perf_signals.lsu_store_active =
+        static_cast<bool>(dut->perf_lsu_store_active);
+    perf_signals.lsu_stall_read_ar =
+        static_cast<bool>(dut->perf_lsu_stall_read_ar);
+    perf_signals.lsu_stall_read_r =
+        static_cast<bool>(dut->perf_lsu_stall_read_r);
+    perf_signals.lsu_stall_write_req =
+        static_cast<bool>(dut->perf_lsu_stall_write_req);
+    perf_signals.lsu_stall_write_b =
+        static_cast<bool>(dut->perf_lsu_stall_write_b);
+    perf_signals.icache_hit = static_cast<bool>(dut->perf_icache_hit);
+    perf_signals.icache_miss = static_cast<bool>(dut->perf_icache_miss);
+    perf_signals.dcache_hit = static_cast<bool>(dut->perf_dcache_hit);
+    perf_signals.dcache_miss = static_cast<bool>(dut->perf_dcache_miss);
+    perf_signals.dcache_refill_req =
+        static_cast<bool>(dut->perf_dcache_refill_req);
+    perf_signals.dcache_refill_resp =
+        static_cast<bool>(dut->perf_dcache_refill_resp);
+    perf_signals.idu_stall_raw = static_cast<bool>(dut->perf_idu_stall_raw);
+    perf_signals.idu_stall_raw_loaduse =
+        static_cast<bool>(dut->perf_idu_stall_raw_loaduse);
+    perf_signals.idu_stall_raw_alu =
+        static_cast<bool>(dut->perf_idu_stall_raw_alu);
+    perf_signals.exu_idle_noinput =
+        static_cast<bool>(dut->perf_exu_idle_noinput);
+    perf_signals.trap_valid = static_cast<bool>(dut->debug_trap_valid);
+    perf_signals.btb_hit = static_cast<bool>(dut->perf_btb_hit);
+    perf_signals.btb_miss = static_cast<bool>(dut->perf_btb_miss);
+    perf_signals.jal_btb_hit = static_cast<bool>(dut->perf_jal_btb_hit);
+    perf_signals.ras_hit = static_cast<bool>(dut->perf_ras_hit);
+    perf_signals.branch_mispredict =
+        static_cast<bool>(dut->perf_branch_mispredict);
+    perf_signals.itlb_hit = static_cast<bool>(dut->perf_itlb_hit);
+    perf_signals.itlb_miss = static_cast<bool>(dut->perf_itlb_miss);
+    perf_signals.dtlb_hit = static_cast<bool>(dut->perf_dtlb_hit);
+    perf_signals.dtlb_miss = static_cast<bool>(dut->perf_dtlb_miss);
+    perf_signals.tlb_refill = static_cast<bool>(dut->perf_tlb_refill);
+    perf_signals.fpu_req = static_cast<bool>(dut->perf_fpu_req);
+    perf_signals.fpu_done = static_cast<bool>(dut->perf_fpu_done);
+    perf_signals.axi_ar = static_cast<bool>(dut->perf_axi_ar);
+    perf_signals.axi_aw = static_cast<bool>(dut->perf_axi_aw);
+    perf_signals.axi_r = static_cast<bool>(dut->perf_axi_r);
+    perf_signals.axi_w = static_cast<bool>(dut->perf_axi_w);
+    perf_signals.axi_b = static_cast<bool>(dut->perf_axi_b);
+    perf_signals.load_op = static_cast<bool>(dut->perf_load_op);
+    perf_signals.store_op = static_cast<bool>(dut->perf_store_op);
+    perf_signals.amo_op = static_cast<bool>(dut->perf_amo_op);
+    perf_signals.branch_taken = static_cast<bool>(dut->perf_branch_taken);
+    perf_signals.branch_not_taken =
+        static_cast<bool>(dut->perf_branch_not_taken);
+    perf_signals.tlb_flush = static_cast<bool>(dut->perf_tlb_flush);
+    perf_signals.fpu_active = static_cast<bool>(dut->perf_fpu_active);
+    perf_signals.fence_op = static_cast<bool>(dut->perf_fence_op);
+    perf_signals.rvc_inst = static_cast<bool>(dut->perf_rvc_inst);
+    perf_signals.system_op = static_cast<bool>(dut->perf_system_op);
+    perf_signals.icache_refill = static_cast<bool>(dut->perf_icache_refill);
+    perf_signals.dcache_refill = static_cast<bool>(dut->perf_dcache_refill);
+    perf_signals.timer_irq = static_cast<bool>(dut->perf_timer_irq);
+    perf_signals.external_irq = static_cast<bool>(dut->perf_external_irq);
+    perf_signals.interrupt_taken =
+        static_cast<bool>(dut->perf_interrupt_taken);
+    perf_signals.wbuf_full = static_cast<bool>(dut->perf_wbuf_full);
+    perf_signals.wbuf_drain = static_cast<bool>(dut->perf_wbuf_drain);
+    perf_signals.csr_read = static_cast<bool>(dut->perf_csr_read);
+    perf_signals.csr_write = static_cast<bool>(dut->perf_csr_write);
+    perf_signals.mul_active = static_cast<bool>(dut->perf_mul_active);
+    perf_signals.div_active = static_cast<bool>(dut->perf_div_active);
+    perf_signals.ptw_walk = static_cast<bool>(dut->perf_ptw_walk);
+    perf_signals.ptw_walk_cycle =
+        static_cast<bool>(dut->perf_ptw_walk_cycle);
+    perf_signals.page_fault = static_cast<bool>(dut->perf_page_fault);
+    perf_signals.ras_miss = static_cast<bool>(dut->perf_ras_miss);
+    perf_signals.redirect_branch =
+        static_cast<bool>(dut->perf_redirect_branch);
+    perf_signals.redirect_fence_i =
+        static_cast<bool>(dut->perf_redirect_fence_i);
+    perf_signals.redirect_trap = static_cast<bool>(dut->perf_redirect_trap);
+    perf_signals.redirect_mret = static_cast<bool>(dut->perf_redirect_mret);
+    perf_signals.fpu_stall = static_cast<bool>(dut->perf_fpu_stall);
+    perf_signals.illegal_inst = static_cast<bool>(dut->perf_illegal_inst);
+    perf_signals.axi_stall = static_cast<bool>(dut->perf_axi_stall);
+    perf_signals.axi_error = static_cast<bool>(dut->perf_axi_error);
+    perf_signals.fpu_divsqrt = static_cast<bool>(dut->perf_fpu_divsqrt);
+    perf_signals.fpu_fma = static_cast<bool>(dut->perf_fpu_fma);
+    perf_signals.fpu_exception = static_cast<bool>(dut->perf_fpu_exception);
+    perf_signals.csr_illegal = static_cast<bool>(dut->perf_csr_illegal);
+    perf_signals.plic_claim = static_cast<bool>(dut->perf_plic_claim);
+    perf_signals.plic_complete = static_cast<bool>(dut->perf_plic_complete);
+    perf_signals.flush_cycle = static_cast<bool>(dut->perf_flush_cycle);
+    perf_signals.uncached_access =
+        static_cast<bool>(dut->perf_uncached_access);
+    perf_signals.wbuf_count = static_cast<unsigned>(dut->perf_wbuf_count);
+    perf_signals.tlb_superpage_hit =
+        static_cast<bool>(dut->perf_tlb_superpage_hit);
+    perf_signals.tlb_asid_hit = static_cast<bool>(dut->perf_tlb_asid_hit);
+    perf_signals.icache_line_fill =
+        static_cast<bool>(dut->perf_icache_line_fill);
+    perf_signals.dcache_line_fill =
+        static_cast<bool>(dut->perf_dcache_line_fill);
+    perf_signals.dcache_writeback =
+        static_cast<bool>(dut->perf_dcache_writeback);
+    perf_signals.irq_pending = static_cast<bool>(dut->perf_irq_pending);
+    perf_signals.wfi_inst = static_cast<bool>(dut->perf_wfi_inst);
+    perf_signals.issue_occupancy =
+        static_cast<bool>(dut->perf_issue_occupancy);
+    perf_signals.retire_occupancy =
+        static_cast<bool>(dut->perf_retire_occupancy);
+    perf_signals.bubble_cycle = static_cast<bool>(dut->perf_bubble_cycle);
+    perf_signals.div_done = static_cast<bool>(dut->perf_div_done);
+    perf_signals.div_iterations =
+        static_cast<unsigned>(dut->perf_div_iterations);
+    perf_signals.div_early_out = static_cast<bool>(dut->perf_div_early_out);
+    perf.Sample(perf_signals);
 }
     if constexpr (npc::HasITrace && !npc::HasITraceWriteFile)
     {
@@ -1402,8 +653,7 @@ if constexpr (npc::HasDicArchCounter)
     }
     if constexpr (npc::HasITraceWriteFile)
     {
-    // 文件 itrace 只依赖退休信号，不应被 PERF_DIC_ARCH_COUNTER
-    // 意外控制。
+    // itrace 只依赖退休信号，不受性能计数开关控制。
     if (dut->debug_commit)
     {
         static auto fp = std::ofstream("itrace.txt", std::ios::app);
@@ -1422,11 +672,8 @@ if constexpr (npc::HasDicArchCounter)
     {
     if (dut->debug_commit)
     {
-        // debug_next_pc 与 debug_pc/debug_instructions 属于同一条
-        // 退休记录。当拍处理可避免把 trap handler PC 误当作
-        // call target，也不会在程序最后一条 call/ret 时丢事件。
-        // RV64 的 PC/NextPC 必须完整保留 64 位。
-        GlobalFtrace.OnInstruction(
+        // next_pc 与 pc 同属一条退休记录；RV64 保留完整 64 位。
+        context.Trace().OnInstruction(
             DebugPC(*dut),
             static_cast<std::uint32_t>(dut->debug_instructions),
             DebugNextPC(*dut));
@@ -1434,9 +681,7 @@ if constexpr (npc::HasDicArchCounter)
     }
     if constexpr (npc::HasSDB)
     {
-    // 维护调试器的安全 live-memory shadow。只有成功退休的 store
-    // 才会产生 mtrace；总线错误和非对齐访问不会污染它。非 SDB
-    // 构建连容器成员和这段逐字节维护代码都不编译，避免影响性能测量。
+    // 仅成功退休的 store 进入 live-memory shadow。
     if (dut->debug_mtrace_valid && dut->debug_mtrace_wen)
     {
         const auto address{DebugMtraceAddr(*dut)};
@@ -1457,9 +702,7 @@ if constexpr (npc::HasDicArchCounter)
              address < npc::PmaPsramBase + npc::PmaPsramSize) ||
             (address >= npc::PmaSdramBase &&
              address < npc::PmaSdramBase + npc::PmaSdramSize) ||
-            // With ChipLink enabled this window is external RAM.  Keeping it
-            // here unconditionally is safe: without ChipLink no store to the
-            // window can retire successfully, so no shadow entry is created.
+            // ChipLink 下该窗口是外部 RAM；无 store 成功退休则不建影子。
             address >= npc::PmaChipLinkMemBase};
 #endif
         if (trackable && bytes != 0 &&
@@ -1488,8 +731,7 @@ if constexpr (npc::HasDicArchCounter)
     }
     if constexpr (npc::HasDiffTest)
     {
-    // 同拍可能同时有更老的 WBU 退休和年轻的 EXU trap。
-    // 按程序顺序先比对退休，再同步 trap。
+    // 同拍先比对退休，再同步 trap。
     if (dut->debug_commit)
     {
         DifftestStep(*this);
@@ -1501,35 +743,34 @@ if constexpr (npc::HasDicArchCounter)
     }
     if (dut->debug_access_fault)
     {
-        // 限流: 连续fault时只打前几条, 防止日志撑爆磁盘(/tmp只有12G)
+        // 连续 fault 只打前几条，防止日志撑爆磁盘。
         if (fault_count++ < 20)
         {
         auto resp{static_cast<unsigned>(dut->debug_access_fault_resp)};
         auto pc{DebugFaultPC(*dut)};
         if (resp == 2)
         {
-            std::println(std::cerr, "Access Fault [SLVERR] at PC=0x{:0{}x}, cycle={}",
-                         pc, npc::XHexDigits, cycle);
-            std::println(std::cerr, "  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了");
+            context.Out().Error("Access Fault [SLVERR] at PC=0x{:0{}x}, cycle={}",
+                                pc, npc::XHexDigits, cycle);
+            context.Out().Error("  从设备报错了，可能是访问了不该访问的偏移或者往只读的地方写东西了");
         }
         else if (resp == 3)
         {
-            std::println(std::cerr, "Access Fault [DECERR] at PC=0x{:0{}x}, cycle={}",
-                         pc, npc::XHexDigits, cycle);
-            std::println(std::cerr, "  地址译码错误，鬼知道你访问了什么地址，AXI总线根本找不到对应的从设备");
+            context.Out().Error("Access Fault [DECERR] at PC=0x{:0{}x}, cycle={}",
+                                pc, npc::XHexDigits, cycle);
+            context.Out().Error("  地址译码错误，鬼知道你访问了什么地址，AXI总线根本找不到对应的从设备");
         }
         else
         {
-            std::println(std::cerr, "Access Fault [RESP={}] at PC=0x{:0{}x}, cycle={}",
-                         resp, pc, npc::XHexDigits, cycle);
-            std::println(std::cerr, "  这什么AXI响应码，我也不认识");
+            context.Out().Error("Access Fault [RESP={}] at PC=0x{:0{}x}, cycle={}",
+                                resp, pc, npc::XHexDigits, cycle);
+            context.Out().Error("  这什么AXI响应码，我也不认识");
         }
         }
     }
     if constexpr (npc::HasNvBoard)
     {
-        // DUT::step 是非SDB主循环、SDB c 和 SDB si 共用的唯一时钟步进
-        // 入口。把GUI服务放在这里，确保所有运行模式遵循同一个刷新周期。
+        // 所有运行模式共用 step，GUI 服务在此统一刷新。
         if (cycle % npc::NvBoardUpdateInterval == 0)
         {
             nvboard_update();
@@ -1538,12 +779,10 @@ if constexpr (npc::HasDicArchCounter)
 }
 bool DUT::PollSimulationHalt()
 {
-    // 已由 DiffTest/其它检查器记录的失败优先，不能再被同拍的 custom halt
-    // 覆盖；没有已记录停机时，trap_valid 是 RTL 寄存后的单拍脉冲，必须
-    // 在推进下一拍或响应 $finish 之前结算。
+    // 失败优先；trap_valid 是单拍脉冲，须在推进前结算。
     if (!dut->trap_valid || NPCTrap::HasHalted())
         return false;
-    std::println("收到仿真 halt 请求");
+    context.Out().Info("收到仿真 halt 请求");
     const auto halt_code{ReadGPR(10)}; // x10 = a0
     // custom halt 返回码是 32 位 ABI；地址部分保持完整 XWord。
     NPCTrap::Halt(ReadHaltPC(),
@@ -1560,7 +799,7 @@ std::size_t DUT::GetInstructions() const
 }
 const DicArchCounterStats &DUT::GetDicArchCounterStats() const noexcept
 {
-    return perf;
+    return perf.Stats();
 }
 std::expected<npc::XWord, std::string> DUT::ReadGPR(std::uint32_t index)
 {
@@ -1580,15 +819,11 @@ std::expected<npc::XWord, std::string> DUT::ReadPC()
 std::expected<npc::XWord, std::string>
 DUT::ReadCachedGPR(std::uint32_t index) const
 {
-    if (index >= architectural_gpr.size())
-    {
-        return std::unexpected{std::format("GPR编号都超31号了: {0}", index)};
-    }
-    return architectural_gpr[index];
+    return mirror.ReadCachedGPR(index);
 }
 npc::XWord DUT::ReadCachedPC() const noexcept
 {
-    return architectural_pc;
+    return mirror.ReadCachedPC();
 }
 bool DUT::HasFPDebugState() const
 {
@@ -1598,13 +833,11 @@ bool DUT::HasFPDebugState() const
     }
     else
     {
-        // 旧 RTL 的 CPU 黑盒没有浮点调试口。明确告警一次后让 DiffTest
-        // 降级为整数/CSR 比对，不能拿全零伪造浮点状态。
+        // 旧 RTL 无浮点调试口，告警后降级为整数/CSR 比对。
         static bool warned{false};
         if (!warned)
         {
-            std::println(
-                std::cerr,
+            context.Out().Warn(
                 "DUT: 警告：当前 RTL 未导出 debug_fpr/fcsr/fp_valid 端口，"
                 "f0-f31/fcsr 不参与 DiffTest；请重新生成 ysyxSoCFull");
             warned = true;
@@ -1617,11 +850,7 @@ DUT::ReadCachedFPR(std::uint32_t index) const
 {
     if constexpr (HasFPDebugPorts<TOP_MODULE>)
     {
-        if (index >= architectural_fpr.size())
-        {
-            return std::unexpected{std::format("FPR 编号超出 31: {0}", index)};
-        }
-        return architectural_fpr[index];
+        return mirror.ReadCachedFPR(index);
     }
     else
     {
@@ -1634,8 +863,7 @@ std::uint64_t DUT::ReadCachedFCSR() const noexcept
 {
     if constexpr (HasFPDebugPorts<TOP_MODULE>)
     {
-        // fcsr 只有 fflags[4:0]+frm[7:5] 共 8 位；顶层已按退休沿锁存。
-        return static_cast<std::uint64_t>(dut->debug_fcsr) & 0xffU;
+        return mirror.ReadCachedFCSR();
     }
     else
     {
@@ -1676,29 +904,30 @@ std::uint32_t DUT::ReadTrapCause() const
 }
 void DUT::RefreshCachedArchitecturalState()
 {
-    for (std::size_t index{0}; index < architectural_gpr.size(); ++index)
-    {
+    mirror.RefreshGPR([this](std::uint32_t index) {
         dut->debug_gpr_raddr = static_cast<CData>(index);
         dut->eval();
-        architectural_gpr[index] = DebugGPR(*dut);
-    }
-    architectural_gpr[0] = 0;
+        return DebugGPR(*dut);
+    });
     dut->debug_gpr_raddr = 0;
     if constexpr (HasFPDebugPorts<TOP_MODULE>)
     {
         if (static_cast<bool>(dut->debug_fp_valid))
         {
-            for (std::size_t index{0}; index < architectural_fpr.size(); ++index)
-            {
+            mirror.RefreshFPR([this](std::uint32_t index) {
                 dut->debug_fpr_raddr = static_cast<CData>(index);
                 dut->eval();
-                architectural_fpr[index] = DebugFPR(*dut);
-            }
+                return DebugFPR(*dut);
+            });
             dut->debug_fpr_raddr = 0;
         }
     }
     dut->eval();
-    architectural_pc = DebugArchPC(*dut);
+    if constexpr (HasFPDebugPorts<TOP_MODULE>)
+    {
+        mirror.SetFCSR(static_cast<std::uint64_t>(dut->debug_fcsr));
+    }
+    mirror.SetPC(DebugArchPC(*dut));
 }
 std::expected<std::uint64_t, std::string> DUT::ReadMemory(std::uint64_t addr, std::size_t size)
 {
@@ -1729,20 +958,16 @@ std::expected<std::uint64_t, std::string> DUT::ReadMemory(std::uint64_t addr, st
         if (!byte && current >= IMAGE_BASE)
         {
             const auto offset{static_cast<std::size_t>(current - IMAGE_BASE)};
-            // direct-NPC 的 InitializeMemory 会把整个 RAM 尾部清零；SoC
-            // MROM 的 DPI LoadU32 也对镜像之后的窗口返回零。调试视图
-            // 必须与硬件的完整 npc::MSize 窗口一致，但不能把窗口
-            // 之外的 SoC RAM/MMIO 猜成已知零。
+            // 调试视图覆盖完整 MSize 窗口，但不猜测 MMIO/外部 RAM。
             if (offset < static_cast<std::size_t>(IMAGE_WINDOW_SIZE))
-                byte = offset < FlashMemory.size() ? FlashMemory[offset] : std::uint8_t{0};
+            {
+                const auto &flash{context.Flash()};
+                byte = offset < flash.size() ? flash[offset] : std::uint8_t{0};
+            }
         }
-
         if (!byte)
         {
-            return std::unexpected{std::format(
-                "地址 0x{:x} 没有可验证的实时 RAM 数据；"
-                "调试器只能读取初始镜像或已退休 store 的 shadow",
-                current)};
+            return std::unexpected{std::format("地址 0x{:x} 没有可验证的实时 RAM 数据；" "调试器只能读取初始镜像或已退休 store 的 shadow", current)};
         }
         value |= static_cast<std::uint64_t>(*byte) << (index * 8U);
     }
@@ -1754,109 +979,11 @@ void DUT::EnableVGACheck()
 #ifdef VRISCV32E_NPC
     throw std::logic_error{"direct-NPC 顶层没有 VGA 引脚"};
 #else
-    vga_check = true;
-    // reset() leaves the VGA generator at X=1/Y=1.  Treat the currently
-    // driven levels as the first sampled cycle so the first low sync widths
-    // can be checked without manufacturing a fake edge.
-    vga_prev_hsync = dut->externalPins_vga_hsync != 0;
-    vga_prev_vsync = dut->externalPins_vga_vsync != 0;
-    vga_hsync_run_length = 1;
-    vga_vsync_run_length = 1;
-    vga_last_hsync_cycle = 0;
-    vga_last_vsync_cycle = 0;
-    vga_line_period_sum = 0;
-    vga_line_period_count = 0;
-    vga_line_period_bad = 0;
-    vga_frame_period_bad = 0;
-    vga_hsync_width_bad = 0;
-    vga_vsync_width_bad = 0;
-    vga_hsync_level_errors = 0;
-    vga_vsync_level_errors = 0;
-    vga_valid_timing_errors = 0;
-    vga_frame_pixel_bad = 0;
-    vga_x = -1;
-    vga_y = -1;
-    vga_horizontal_aligned = false;
-    vga_vertical_aligned = false;
-    vga_valid_pixels = 0;
-    vga_last_frame_valid_pixels = 0;
-    vga_last_frame_missing_pixels = 0;
-    vga_last_frame_duplicate_pixels = 0;
-    vga_missing_pixels = 0;
-    vga_duplicate_pixels = 0;
-    vga_pos_errors = 0;
-    vga_frames = 0;
-    vga_completed_frame_available = false;
-    vga_timed_out = false;
-    vga_working_frame.assign(640 * 480 * 3, 0);
-    vga_frame.assign(640 * 480 * 3, 0);
-    vga_pixel_coverage.assign(640 * 480, 0);
+    vga.Enable(dut->externalPins_vga_hsync != 0,
+               dut->externalPins_vga_vsync != 0);
 #endif
 }
 bool DUT::VGACheckReport()
 {
-    if (!vga_check) return true;
-    std::println("VGA监视器结果:");
-    std::println("  完整帧数: {}", vga_frames);
-    if (vga_line_period_count > 1)
-    {
-        std::println("  行周期(期望800拍): 平均 {:.1f}, 异常行数 {}",
-            static_cast<double>(vga_line_period_sum) / static_cast<double>(vga_line_period_count - 1), vga_line_period_bad);
-    }
-    std::println("  帧周期异常次数(期望420000拍): {}", vga_frame_period_bad);
-    std::println("  HSYNC脉宽异常(期望低96/高704拍): {}", vga_hsync_width_bad);
-    std::println("  VSYNC脉宽异常(期望低1600/高418400拍): {}", vga_vsync_width_bad);
-    std::println("  HSYNC光栅电平错误拍数: {}", vga_hsync_level_errors);
-    std::println("  VSYNC光栅电平错误拍数: {}", vga_vsync_level_errors);
-    std::println("  有效区/porch时序错误拍数: {}", vga_valid_timing_errors);
-    std::println("  最近一帧有效像素(期望307200): {}", vga_last_frame_valid_pixels);
-    std::println("  最近一帧缺失/重复像素: {}/{}",
-        vga_last_frame_missing_pixels, vga_last_frame_duplicate_pixels);
-    std::println("  累计缺失/重复像素: {}/{}",
-        vga_missing_pixels, vga_duplicate_pixels);
-    std::println("  有效像素异常帧数: {}", vga_frame_pixel_bad);
-    std::println("  像素位置错误: {}", vga_pos_errors);
-    bool ppm_ok{vga_completed_frame_available};
-    if (!vga_completed_frame_available)
-    {
-        std::println(std::cerr, "  VGA帧导出失败: 尚未采集到完整帧");
-    }
-    else
-    {
-        std::ofstream f{"vga_frame.ppm", std::ios::binary | std::ios::trunc};
-        if (!f.is_open())
-        {
-            std::println(std::cerr, "  VGA帧导出失败: 无法打开 vga_frame.ppm");
-            ppm_ok = false;
-        }
-        else
-        {
-            f << "P6\n640 480\n255\n";
-            f.write(reinterpret_cast<const char *>(vga_frame.data()),
-                    static_cast<std::streamsize>(vga_frame.size()));
-            if (!f)
-            {
-                std::println(std::cerr, "  VGA帧导出失败: 写入 vga_frame.ppm 失败");
-                ppm_ok = false;
-            }
-            f.close();
-            if (f.fail())
-            {
-                std::println(std::cerr, "  VGA帧导出失败: 关闭 vga_frame.ppm 失败");
-                ppm_ok = false;
-            }
-        }
-    }
-    if (ppm_ok)
-        std::println("  已完成帧的稳定快照已导出: vga_frame.ppm");
-    const bool ok{vga_frames > 0 && vga_line_period_bad == 0 && vga_frame_period_bad == 0 &&
-        vga_hsync_width_bad == 0 && vga_vsync_width_bad == 0 &&
-        vga_hsync_level_errors == 0 && vga_vsync_level_errors == 0 &&
-        vga_valid_timing_errors == 0 &&
-        vga_frame_pixel_bad == 0 && vga_last_frame_valid_pixels == 307200 &&
-        vga_last_frame_missing_pixels == 0 &&
-        vga_last_frame_duplicate_pixels == 0 && vga_pos_errors == 0 &&
-        !vga_timed_out && ppm_ok};
-    std::println("  VGA时序检查: {}", ok ? "PASS" : "FAIL");
-    return ok;
+    return vga.Report(context.Out());
 }

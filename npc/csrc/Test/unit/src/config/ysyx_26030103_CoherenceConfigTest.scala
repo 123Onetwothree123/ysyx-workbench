@@ -30,11 +30,11 @@ class ysyx_26030103_CoherenceConfigTest extends AnyFlatSpec with Matchers {
 
   it should "UNCACHED 只在 Cache 视图中把 DMA 窗口切成不可缓存" in {
     for (xlen <- Seq(32, 64)) {
-      val pma = ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = true)
+      val PMA = ysyx_26030103_PhysicalMemoryMap.SoC(HasChipLink = true)
       val config = ysyx_26030103_NPCConfig(
         XLEN = xlen,
         AddressWidth = if (xlen == 64) 64 else 32,
-        PMARegions = pma,
+        PMARegions = PMA,
         DMACoherence = ysyx_26030103_DMACoherence.Uncached
       )
       withClue(s"XLEN=$xlen: ") {
@@ -42,12 +42,12 @@ class ysyx_26030103_CoherenceConfigTest extends AnyFlatSpec with Matchers {
         config.DMAWindowPresent should be(true)
         config.Describe should include("dma_coherence=uncached(dma_window)")
         // 原始 PMA 不变，Xbar/PMA 权限仍是原值。
-        config.PMARegions should be(pma)
-        val dmaParts = config.CachePMARegions.filter(r =>
+        config.PMARegions should be(PMA)
+        val DMAParts = config.CachePMARegions.filter(r =>
           r.Base < DMAEnd && r.EndExclusive > DMABase
         )
-        dmaParts should not be empty
-        dmaParts.foreach { region =>
+        DMAParts should not be empty
+        DMAParts.foreach { region =>
           region.Cacheable should be(false)
           // 权限不能因为“不可缓存”而丢掉。
           region.Readable should be(true)
@@ -55,7 +55,7 @@ class ysyx_26030103_CoherenceConfigTest extends AnyFlatSpec with Matchers {
           region.Executable should be(true)
         }
         // 完整覆盖 DMA 窗口，不能留下可缓存的缝隙。
-        dmaParts.exists(r => covers(r, DMABase, DMAEnd)) should be(true)
+        DMAParts.exists(r => covers(r, DMABase, DMAEnd)) should be(true)
         // 其他可缓存区域保持原样。
         val psram = config.CachePMARegions.find(r =>
           r.Base == 0x80000000L && r.EndExclusive == 0x80400000L
@@ -70,16 +70,16 @@ class ysyx_26030103_CoherenceConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "UNCACHED 对不含 DMA 窗口的本地 PMA 不产生额外区域" in {
-    val pma = ysyx_26030103_PhysicalMemoryMap.NPC
+    val PMA = ysyx_26030103_PhysicalMemoryMap.NPC
     val config = ysyx_26030103_NPCConfig(
       ResetAddress = 0x80000000L,
-      PMARegions = pma,
+      PMARegions = PMA,
       DMACoherence = ysyx_26030103_DMACoherence.Uncached
     )
-    config.CachePMARegions should be(pma)
+    config.CachePMARegions should be(PMA)
     config.DMAWindowPresent should be(false)
     config.Describe should include(
-      "dma_coherence=uncached(inactive:no-dma-window)"
+      "dma_coherence=uncached(inactive:no-DMA-window)"
     )
   }
 
@@ -123,7 +123,7 @@ class ysyx_26030103_CoherenceConfigTest extends AnyFlatSpec with Matchers {
       DMACoherence = ysyx_26030103_DMACoherence.HardwareSnoop
     )
     noWindow.Describe should include(
-      "dma_coherence=hardware_snoop(inactive:no-dma-window)"
+      "dma_coherence=hardware_snoop(inactive:no-DMA-window)"
     )
 
     val noCache = ysyx_26030103_NPCConfig(
@@ -138,14 +138,14 @@ class ysyx_26030103_CoherenceConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "拒绝未知字符串而不是静默回退" in {
-    val dmaError = intercept[IllegalArgumentException] {
+    val DMAError = intercept[IllegalArgumentException] {
       ysyx_26030103_DMACoherence.FromString("flush_everything")
     }
-    dmaError.getMessage should include("DMA_COHERENCE 只支持")
+    DMAError.getMessage should include("DMA_COHERENCE 只支持")
 
-    val icacheError = intercept[IllegalArgumentException] {
+    val ICacheError = intercept[IllegalArgumentException] {
       ysyx_26030103_ICacheCoherence.FromString("auto")
     }
-    icacheError.getMessage should include("ICACHE_COHERENCE 只支持")
+    ICacheError.getMessage should include("ICACHE_COHERENCE 只支持")
   }
 }

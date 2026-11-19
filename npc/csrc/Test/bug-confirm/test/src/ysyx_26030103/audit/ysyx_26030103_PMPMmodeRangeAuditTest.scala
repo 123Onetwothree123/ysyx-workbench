@@ -30,13 +30,13 @@ class ysyx_26030103_PMPMmodeRangeAuditTest extends AnyFlatSpec with Matchers {
     dut.clock.step(2)
     dut.reset.poke(false.B)
     for (i <- 0 until 16) {
-      dut.io.cfg(i).poke(0.U)
-      dut.io.addr(i).poke(0.U)
+      dut.io.config(i).poke(0.U)
+      dut.io.address(i).poke(0.U)
     }
     // entry0：A=NA4（4 字节，0x80000000..0x80000003），R/W/X，L=0。
     // cfg=0x17；pmpaddr = 0x80000000 >> 2 = 0x20000000。
-    dut.io.cfg(0).poke("h17".U)
-    dut.io.addr(0).poke("h20000000".U)
+    dut.io.config(0).poke("h17".U)
+    dut.io.address(0).poke("h20000000".U)
 
     // fetch 侧固定为 M 模式地址 0，避免干扰。
     dut.io.fetchAddress.poke(0.U)

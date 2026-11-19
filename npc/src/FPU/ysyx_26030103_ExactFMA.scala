@@ -98,8 +98,8 @@ class ysyx_26030103_ExactFMA(
   private val (cSig, cExp) = normalize(io.c)
 
   // 精确乘积：两个 P 位尾数的乘积最多 2P 位，这里不进行任何舍入。
-  // vendor Multiplier 的 len 包含符号位语义，FMUL 也使用 P+1 并在高位补 0；
-  // 直接用 len=P 会把最高位为 1 的正常尾数当成负数。
+  // vendor Multiplier 的 length 包含符号位语义，FMUL 也使用 P+1 并在高位补 0；
+  // 直接用 length=P 会把最高位为 1 的正常尾数当成负数。
   private val multiplier = Module(new Multiplier(precisionBits + 1, Seq()))
   multiplier.io.a := aSig.pad(precisionBits + 1)
   multiplier.io.b := bSig.pad(precisionBits + 1)

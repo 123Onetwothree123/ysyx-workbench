@@ -7,11 +7,11 @@
 using DUT = Vysyx_26030103_DCacheReg;
 
 static void defaults(DUT &dut) {
-  dut.io_req_valid = 0;
-  dut.io_req_bits_addr = 0;
-  dut.io_req_bits_WidthSelect = 2;
-  dut.io_req_bits_signed = 0;
-  dut.io_resp_ready = 1;
+  dut.io_request_valid = 0;
+  dut.io_request_bits_address = 0;
+  dut.io_request_bits_WidthSelect = 2;
+  dut.io_request_bits_signed = 0;
+  dut.io_response_ready = 1;
   dut.io_StoreValid = 0;
   dut.io_StoreResponse = 0;
   dut.io_StoreAddress = 0;
@@ -81,12 +81,12 @@ static void send_refill(DUT &dut, const std::array<uint32_t, 4> &words,
     tick(dut);
     dut.eval();
     if (static_cast<int>(beat) == observe_beat) {
-      check(dut.io_resp_valid,
+      check(dut.io_response_valid,
             "DCache did not early-restart on the critical refill word");
-      check(static_cast<bool>(dut.io_resp_bits_fault) == observed_fault,
+      check(static_cast<bool>(dut.io_response_bits_fault) == observed_fault,
             "DCache early response reported the wrong fault state");
       if (!observed_fault) {
-        check(dut.io_resp_bits_data == words[beat],
+        check(dut.io_response_bits_data == words[beat],
               "DCache early response returned the wrong critical word");
       }
     }
@@ -124,12 +124,12 @@ int main(int argc, char **argv) {
     defaults(dut);
     reset(dut);
 
-    dut.io_req_bits_addr = 0x80000004U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000004U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready, "DCache did not accept the initial miss");
+    check(dut.io_request_ready, "DCache did not accept the initial miss");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
     check(dut.io_AXI_AR_ARVALID,
           "DCache did not present ARVALID for the miss");
@@ -160,45 +160,45 @@ int main(int argc, char **argv) {
     // The response was already consumed before the tail of the line arrived;
     // the flushed refill must nevertheless drain and return to idle.
     dut.eval();
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "DCache did not return to idle after the preserved response");
 
     // The data may satisfy the original load, but the line crossed a flush and
     // therefore must not have been installed as a valid cache line.
-    dut.io_req_valid = 1;
+    dut.io_request_valid = 1;
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x80000000U, 1);
 
     // An error on the demand word remains a precise load fault even though
     // the other beats of the burst complete successfully.  It also prevents
     // the partially received line from becoming valid.
-    dut.io_resp_ready = 0;
+    dut.io_response_ready = 0;
     send_refill(dut, words, 1, 2, 1, true);
     dut.eval();
-    check(dut.io_resp_valid && dut.io_resp_bits_fault,
+    check(dut.io_response_valid && dut.io_response_bits_fault,
           "keyword RRESP error was not preserved until response handshake");
-    check(dut.io_resp_bits_FaultResponse == 2,
+    check(dut.io_response_bits_FaultResponse == 2,
           "DCache lost the keyword RRESP code");
     for (int cycle = 0; cycle < 3; ++cycle) {
       tick(dut);
       dut.eval();
-      check(dut.io_resp_valid && dut.io_resp_bits_fault &&
-                dut.io_resp_bits_FaultResponse == 2,
+      check(dut.io_response_valid && dut.io_response_bits_fault &&
+                dut.io_response_bits_FaultResponse == 2,
             "DCache fault response was unstable under backpressure");
     }
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut); // consume the precise fault
 
     // The failed refill must not leave a valid partial line.  Re-accessing it
     // therefore issues a fresh burst rather than returning a cache hit.
-    dut.io_req_bits_addr = 0x80000004U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000004U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "DCache did not accept a retry after a failed refill");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x80000000U, 0);
 
     // Model a malformed response that terminates its burst too early.  The cache
@@ -206,7 +206,7 @@ int main(int argc, char **argv) {
     // A stale StoreAddress without StoreValid must not suppress installation.
     dut.io_StoreAddress = 0x80000004U;
     dut.io_StoreValid = 0;
-    dut.io_resp_ready = 0;
+    dut.io_response_ready = 0;
     dut.io_AXI_R_RDATA = words[0];
     dut.io_AXI_R_RRESP = 0;
     dut.io_AXI_R_RLAST = 1;
@@ -220,44 +220,44 @@ int main(int argc, char **argv) {
     }
 
     dut.eval();
-    check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
-              dut.io_resp_bits_data == words[1],
+    check(dut.io_response_valid && !dut.io_response_bits_fault &&
+              dut.io_response_bits_data == words[1],
           "DCache early-RLAST recovery returned the wrong demand response");
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut);
 
     // A completed fallback refill is installable: the same access must hit
     // without issuing another AR.
-    dut.io_req_valid = 1;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "DCache did not accept a hit after early-RLAST recovery");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
-    check(dut.io_resp_valid && !dut.io_AXI_AR_ARVALID &&
-              dut.io_resp_bits_data == words[1],
+    check(dut.io_response_valid && !dut.io_AXI_AR_ARVALID &&
+              dut.io_response_bits_data == words[1],
           "DCache did not install the fully recovered cache line");
     tick(dut);
 
     // A hit response slot is elastic: consuming response N and accepting hit
     // N+1 must happen in the same cycle, without an artificial empty slot.
-    dut.io_req_bits_addr = 0x80000004U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000004U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+    check(dut.io_request_ready && dut.io_perf_hit && !dut.io_perf_miss,
           "DCache did not accept/count the first pipelined hit");
     tick(dut);
-    dut.io_req_bits_addr = 0x80000008U;
+    dut.io_request_bits_address = 0x80000008U;
     dut.eval();
-    check(dut.io_resp_valid && dut.io_resp_bits_data == words[1],
+    check(dut.io_response_valid && dut.io_response_bits_data == words[1],
           "DCache first pipelined hit returned the wrong word");
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "DCache could not pop a hit response and push the next hit together");
     tick(dut); // old response fire and next request fire
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
-    check(dut.io_resp_valid && dut.io_resp_bits_data == words[2] &&
+    check(dut.io_response_valid && dut.io_response_bits_data == words[2] &&
               !dut.io_AXI_AR_ARVALID,
           "DCache lost the replacement response during same-cycle pop/push");
     tick(dut);
@@ -272,15 +272,15 @@ int main(int argc, char **argv) {
     dut.io_StoreValid = 1;
     tick(dut);
     dut.io_StoreValid = 0;
-    dut.io_req_bits_addr = 0x80000004U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000004U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+    check(dut.io_request_ready && dut.io_perf_hit && !dut.io_perf_miss,
           "write-no-allocate store miss evicted an unrelated same-set line");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
-    check(dut.io_resp_valid && dut.io_resp_bits_data == words[1] &&
+    check(dut.io_response_valid && dut.io_response_bits_data == words[1] &&
               !dut.io_AXI_AR_ARVALID,
           "unrelated store miss forced a refill of the resident line");
     tick(dut);
@@ -290,10 +290,10 @@ int main(int argc, char **argv) {
     // returned may hit under this single outstanding miss: accepting a later
     // word would expose uninitialized/old array contents, while treating the
     // returned word as a second miss would need another MSHR and AXI ID.
-    dut.io_req_bits_addr = 0x80000080U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000080U;
+    dut.io_request_valid = 1;
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x80000080U, 0);
     dut.io_AXI_R_RDATA = 0x81020304U;
     dut.io_AXI_R_RRESP = 0;
@@ -302,50 +302,50 @@ int main(int argc, char **argv) {
     tick(dut); // word 0 returns and produces the original demand response
     dut.io_AXI_R_RVALID = 0;
     dut.eval();
-    check(dut.io_resp_valid && dut.io_resp_bits_data == 0x81020304U,
+    check(dut.io_response_valid && dut.io_response_bits_data == 0x81020304U,
           "DCache did not expose the first critical word");
     tick(dut); // consume the original response; refill beats 1..3 remain
 
     // A resident line in another set is an ordinary full hit and is equally
     // safe while the refill tail owns the sole AXI ID.  It must not be
     // serialized behind an unrelated miss.
-    dut.io_req_bits_addr = 0x80000004U;
-    dut.io_req_valid = 1;
-    dut.io_resp_ready = 0;
+    dut.io_request_bits_address = 0x80000004U;
+    dut.io_request_valid = 1;
+    dut.io_response_ready = 0;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+    check(dut.io_request_ready && dut.io_perf_hit && !dut.io_perf_miss,
           "DCache blocked an independent full hit behind a refill tail");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
-    check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
-              dut.io_resp_bits_data == words[1],
+    check(dut.io_response_valid && !dut.io_response_bits_fault &&
+              dut.io_response_bits_data == words[1],
           "full hit-under-refill returned the wrong resident word");
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut);
 
-    dut.io_req_bits_addr = 0x80000088U; // word 2 has not returned yet
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000088U; // word 2 has not returned yet
+    dut.io_request_valid = 1;
     dut.eval();
-    check(!dut.io_req_ready,
+    check(!dut.io_request_ready,
           "DCache accepted an unreturned word from a partial refill");
-    dut.io_req_bits_addr = 0x80000280U; // same set, different line/tag
+    dut.io_request_bits_address = 0x80000280U; // same set, different line/tag
     dut.eval();
-    check(!dut.io_req_ready,
+    check(!dut.io_request_ready,
           "single-MSHR DCache accepted a second line during refill");
 
-    dut.io_req_bits_addr = 0x80000080U; // word 0 is safe to reuse
-    dut.io_resp_ready = 0;
+    dut.io_request_bits_address = 0x80000080U; // word 0 is safe to reuse
+    dut.io_response_ready = 0;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+    check(dut.io_request_ready && dut.io_perf_hit && !dut.io_perf_miss,
           "DCache blocked a returned word behind the refill tail");
     check(!dut.io_AXI_AR_ARVALID,
           "hit-under-refill incorrectly issued a second AXI request");
     tick(dut); // accept the hit while keeping its response backpressured
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
-    check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
-              dut.io_resp_bits_data == 0x81020304U,
+    check(dut.io_response_valid && !dut.io_response_bits_fault &&
+              dut.io_response_bits_data == 0x81020304U,
           "hit-under-refill returned the wrong already-received word");
 
     constexpr std::array<uint32_t, 3> restart_tail = {
@@ -357,18 +357,18 @@ int main(int argc, char **argv) {
     dut.io_AXI_R_RVALID = 1;
     tick(dut);
     dut.io_AXI_R_RVALID = 0;
-    dut.io_req_bits_addr = 0x80000084U;
-    dut.io_req_valid = 1;
-    dut.io_resp_ready = 1;
+    dut.io_request_bits_address = 0x80000084U;
+    dut.io_request_valid = 1;
+    dut.io_response_ready = 1;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+    check(dut.io_request_ready && dut.io_perf_hit && !dut.io_perf_miss,
           "hit-under-refill response slot could not pop and push together");
     tick(dut);
-    dut.io_req_valid = 0;
-    dut.io_resp_ready = 0;
+    dut.io_request_valid = 0;
+    dut.io_response_ready = 0;
     dut.eval();
-    check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
-              dut.io_resp_bits_data == restart_tail[0],
+    check(dut.io_response_valid && !dut.io_response_bits_fault &&
+              dut.io_response_bits_data == restart_tail[0],
           "elastic hit-under-refill slot lost its replacement response");
 
     for (unsigned beat = 1; beat < restart_tail.size(); ++beat) {
@@ -379,24 +379,24 @@ int main(int argc, char **argv) {
       dut.io_AXI_R_RVALID = 0;
       dut.io_AXI_R_RLAST = 0;
       dut.eval();
-      check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
-                dut.io_resp_bits_data == restart_tail[0],
+      check(dut.io_response_valid && !dut.io_response_bits_fault &&
+                dut.io_response_bits_data == restart_tail[0],
             "refill tail mutated a stalled hit-under-refill response");
     }
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut);
     dut.eval();
-    check(dut.io_req_ready && !dut.io_axi_active,
+    check(dut.io_request_ready && !dut.io_AXIActive,
           "DCache did not finish the refill after hit-under-refill");
 
     // An error on any refill beat makes the partial line unusable even when a
     // different word had already returned successfully.  The original load
     // may keep its precise successful response, but no younger request may
     // reuse data from the failed refill.
-    dut.io_req_bits_addr = 0x800000c0U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x800000c0U;
+    dut.io_request_valid = 1;
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x800000c0U, 0);
     dut.io_AXI_R_RDATA = 0xc0010203U;
     dut.io_AXI_R_RRESP = 0;
@@ -408,17 +408,17 @@ int main(int argc, char **argv) {
     dut.io_AXI_R_RDATA = 0xc1111111U;
     dut.io_AXI_R_RRESP = 2;
     dut.io_AXI_R_RVALID = 1;
-    dut.io_req_bits_addr = 0x800000c0U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x800000c0U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(!dut.io_req_ready,
+    check(!dut.io_request_ready,
           "DCache accepted a partial hit alongside a failing refill beat");
     tick(dut); // a non-critical refill beat fails
     dut.io_AXI_R_RVALID = 0;
     dut.io_AXI_R_RRESP = 0;
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
-    check(!dut.io_req_ready,
+    check(!dut.io_request_ready,
           "DCache reused a partial word after another refill beat failed");
     for (unsigned beat = 2; beat < words.size(); ++beat) {
       dut.io_AXI_R_RDATA = 0xc0000000U + beat;
@@ -429,14 +429,14 @@ int main(int argc, char **argv) {
       dut.io_AXI_R_RLAST = 0;
     }
     dut.eval();
-    check(dut.io_req_ready && !dut.io_axi_active,
+    check(dut.io_request_ready && !dut.io_AXIActive,
           "failed refill did not drain after a non-critical RRESP error");
-    dut.io_req_valid = 1;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_miss && !dut.io_perf_hit,
+    check(dut.io_request_ready && dut.io_perf_miss && !dut.io_perf_hit,
           "non-critical RRESP error installed a partial cache line");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x800000c0U, 0);
     constexpr std::array<uint32_t, 4> recovered_words = {
         0xc0010203U, 0xc1111111U, 0xc2222222U, 0xc3333333U};
@@ -445,10 +445,10 @@ int main(int argc, char **argv) {
     // A coherence flush after early restart must revoke even already-returned
     // partial words.  The AXI burst still drains, but no request can reuse the
     // pre-flush snapshot and the completed line remains invalid.
-    dut.io_req_bits_addr = 0x80000100U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000100U;
+    dut.io_request_valid = 1;
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x80000100U, 0);
     dut.io_AXI_R_RDATA = 0xf0010203U;
     dut.io_AXI_R_RRESP = 0;
@@ -460,12 +460,12 @@ int main(int argc, char **argv) {
     dut.io_flush = 1;
     tick(dut);
     dut.io_flush = 0;
-    dut.io_req_bits_addr = 0x80000100U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000100U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(!dut.io_req_ready,
+    check(!dut.io_request_ready,
           "flush left an already-returned partial word reusable");
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     for (unsigned beat = 1; beat < words.size(); ++beat) {
       dut.io_AXI_R_RDATA = 0xf0000000U + beat;
       dut.io_AXI_R_RLAST = beat + 1 == words.size();
@@ -474,12 +474,12 @@ int main(int argc, char **argv) {
       dut.io_AXI_R_RVALID = 0;
       dut.io_AXI_R_RLAST = 0;
     }
-    dut.io_req_valid = 1;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_miss && !dut.io_perf_hit,
+    check(dut.io_request_ready && dut.io_perf_miss && !dut.io_perf_hit,
           "flush-crossing refill installed a cache line");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x80000100U, 0);
     constexpr std::array<uint32_t, 4> post_flush_words = {
         0xf0010203U, 0xf1111111U, 0xf2222222U, 0xf3333333U};
@@ -489,10 +489,10 @@ int main(int argc, char **argv) {
     // before the old read burst finishes.  Even an error response may follow
     // a partial external side effect, so the remaining beats can be stale and
     // the refill must drain without becoming a valid cache line.
-    dut.io_req_bits_addr = 0x80000040U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000040U;
+    dut.io_request_valid = 1;
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x80000040U, 0);
     dut.io_AXI_R_RDATA = 0x01020304U;
     dut.io_AXI_R_RRESP = 0;
@@ -508,12 +508,12 @@ int main(int argc, char **argv) {
     tick(dut); // consume demand response and invalidate in-flight refill
     dut.io_StoreValid = 0;
     dut.io_StoreResponse = 0;
-    dut.io_req_bits_addr = 0x80000040U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000040U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(!dut.io_req_ready,
+    check(!dut.io_request_ready,
           "store/refill conflict left stale partial words reusable");
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     for (unsigned beat = 1; beat < words.size(); ++beat) {
       dut.io_AXI_R_RDATA = words[beat];
       dut.io_AXI_R_RLAST = beat + 1 == words.size();
@@ -522,10 +522,10 @@ int main(int argc, char **argv) {
       dut.io_AXI_R_RVALID = 0;
       dut.io_AXI_R_RLAST = 0;
     }
-    dut.io_req_bits_addr = 0x80000040U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000040U;
+    dut.io_request_valid = 1;
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
     check(dut.io_AXI_AR_ARVALID,
           "store/refill race installed a stale cache line");
@@ -539,15 +539,15 @@ int main(int argc, char **argv) {
     // local SLVERR and drain through a late RLAST to resynchronize both FSMs.
     // Request the final word so the missing RLAST is known before the single
     // architectural response becomes visible.
-    dut.io_req_bits_addr = 0x8000001cU;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x8000001cU;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "DCache did not accept the missing-RLAST robustness request");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x80000010U, 0);
-    dut.io_resp_ready = 0;
+    dut.io_response_ready = 0;
     for (unsigned beat = 0; beat < words.size(); ++beat) {
       dut.io_AXI_R_RDATA = words[beat];
       dut.io_AXI_R_RRESP = 0;
@@ -557,8 +557,8 @@ int main(int argc, char **argv) {
       dut.io_AXI_R_RVALID = 0;
     }
     dut.eval();
-    check(dut.io_axi_active && dut.io_resp_valid &&
-              dut.io_resp_bits_fault && dut.io_resp_bits_FaultResponse == 2,
+    check(dut.io_AXIActive && dut.io_response_valid &&
+              dut.io_response_bits_fault && dut.io_response_bits_FaultResponse == 2,
           "missing final RLAST was not held as a protocol fault");
     dut.io_AXI_R_RDATA = 0;
     dut.io_AXI_R_RLAST = 1;
@@ -567,23 +567,23 @@ int main(int argc, char **argv) {
     dut.io_AXI_R_RVALID = 0;
     dut.io_AXI_R_RLAST = 0;
     dut.eval();
-    check(!dut.io_axi_active && dut.io_resp_valid,
+    check(!dut.io_AXIActive && dut.io_response_valid,
           "late RLAST did not resynchronize the DCache refill state");
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut);
     dut.eval();
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "DCache did not recover after draining a late RLAST");
 
     // If an earlier critical word is already visible under response
     // backpressure, a later missing RLAST may invalidate the line but must not
     // mutate that stable Decoupled payload or manufacture a second response.
-    dut.io_req_bits_addr = 0x80000034U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80000034U;
+    dut.io_request_valid = 1;
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x80000030U, 0);
-    dut.io_resp_ready = 0;
+    dut.io_response_ready = 0;
     for (unsigned beat = 0; beat < words.size(); ++beat) {
       dut.io_AXI_R_RDATA = words[beat];
       dut.io_AXI_R_RRESP = 0;
@@ -593,8 +593,8 @@ int main(int argc, char **argv) {
       dut.io_AXI_R_RVALID = 0;
       if (beat >= 1) {
         dut.eval();
-        check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
-                  dut.io_resp_bits_data == words[1],
+        check(dut.io_response_valid && !dut.io_response_bits_fault &&
+                  dut.io_response_bits_data == words[1],
               "late protocol error mutated a stalled early response");
       }
     }
@@ -604,40 +604,40 @@ int main(int argc, char **argv) {
     dut.io_AXI_R_RVALID = 0;
     dut.io_AXI_R_RLAST = 0;
     dut.eval();
-    check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
-              dut.io_resp_bits_data == words[1],
+    check(dut.io_response_valid && !dut.io_response_bits_fault &&
+              dut.io_response_bits_data == words[1],
           "late RLAST changed the previously exposed demand response");
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut);
 
     // The default SoC PSRAM PMA region is [0x80000000, 0x80400000).
     // Its final complete line remains cacheable and must still use a refill.
-    dut.io_req_bits_addr = 0x803ffffcU;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x803ffffcU;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "DCache did not accept the final in-range PSRAM word");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     accept_refill_ar(dut, 0x803ffff0U, 0);
     constexpr std::array<uint32_t, 4> boundary_words = {
         0x51000000U, 0x51000001U, 0x51000002U, 0x51000003U};
     send_refill(dut, boundary_words, -1, 0, 3, false);
     tick(dut); // consume the response for the final word
     dut.eval();
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "DCache did not finish the final in-range PSRAM refill");
 
     // The immediately following address is outside every default SoC PMA
     // region.  It may be checked by the downstream xbar, but DCache must not
     // amplify that one demand into a four-beat cache-line transaction.
-    dut.io_req_bits_addr = 0x80400000U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x80400000U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "DCache did not accept the first address beyond PSRAM");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
                "out-of-PMA boundary request never issued AR");
     check(dut.io_AXI_AR_ARADDR == 0x80400000U,
@@ -651,7 +651,7 @@ int main(int argc, char **argv) {
     // Model the xbar's local DECERR for the PMA hole.  One R beat must be
     // sufficient to complete the demand and its fault payload must remain
     // stable while the LSU applies response backpressure.
-    dut.io_resp_ready = 0;
+    dut.io_response_ready = 0;
     dut.io_AXI_R_RDATA = 0;
     dut.io_AXI_R_RRESP = 3;
     dut.io_AXI_R_RLAST = 1;
@@ -660,32 +660,32 @@ int main(int argc, char **argv) {
     dut.io_AXI_R_RVALID = 0;
     dut.io_AXI_R_RLAST = 0;
     dut.eval();
-    check(!dut.io_axi_active && dut.io_resp_valid &&
-              dut.io_resp_bits_fault && dut.io_resp_bits_FaultResponse == 3,
+    check(!dut.io_AXIActive && dut.io_response_valid &&
+              dut.io_response_bits_fault && dut.io_response_bits_FaultResponse == 3,
           "out-of-PMA single-beat DECERR was not preserved as a load fault");
     for (int cycle = 0; cycle < 2; ++cycle) {
       tick(dut);
       dut.eval();
-      check(dut.io_resp_valid && dut.io_resp_bits_fault &&
-                dut.io_resp_bits_FaultResponse == 3,
+      check(dut.io_response_valid && dut.io_response_bits_fault &&
+                dut.io_response_bits_FaultResponse == 3,
             "out-of-PMA fault response changed under backpressure");
     }
     dut.io_AXI_R_RRESP = 0;
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut);
     dut.eval();
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "DCache did not recover after the out-of-PMA boundary fault");
 
     // Uncached accesses are also single-beat AXI transactions and need the
     // same late-RLAST resynchronization instead of orphaning the arbiter ID.
-    dut.io_req_bits_addr = 0x10000000U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = 0x10000000U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready && !dut.io_perf_hit && !dut.io_perf_miss,
+    check(dut.io_request_ready && !dut.io_perf_hit && !dut.io_perf_miss,
           "uncached load polluted DCache hit/miss accounting");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
                "uncached robustness request never issued AR");
     check(dut.io_AXI_AR_ARLEN == 0,
@@ -693,7 +693,7 @@ int main(int argc, char **argv) {
     dut.io_AXI_AR_ARREADY = 1;
     tick(dut);
     dut.io_AXI_AR_ARREADY = 0;
-    dut.io_resp_ready = 0;
+    dut.io_response_ready = 0;
     dut.io_AXI_R_RDATA = 0xabcdef01U;
     dut.io_AXI_R_RRESP = 0;
     dut.io_AXI_R_RLAST = 0;
@@ -701,18 +701,18 @@ int main(int argc, char **argv) {
     tick(dut);
     dut.io_AXI_R_RVALID = 0;
     dut.eval();
-    check(dut.io_axi_active && dut.io_resp_valid &&
-              dut.io_resp_bits_fault && dut.io_resp_bits_FaultResponse == 2,
+    check(dut.io_AXIActive && dut.io_response_valid &&
+              dut.io_response_bits_fault && dut.io_response_bits_FaultResponse == 2,
           "uncached missing RLAST did not become a stable protocol fault");
     dut.io_AXI_R_RLAST = 1;
     dut.io_AXI_R_RVALID = 1;
     tick(dut);
     dut.io_AXI_R_RVALID = 0;
     dut.io_AXI_R_RLAST = 0;
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut);
     dut.eval();
-    check(dut.io_req_ready,
+    check(dut.io_request_ready,
           "uncached late RLAST did not release the DCache request path");
     dut.final();
   });

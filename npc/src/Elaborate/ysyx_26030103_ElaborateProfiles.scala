@@ -4,24 +4,24 @@ object ysyx_26030103_ElaborateProfiles {
   final case class PerfSwitches(
       basic: Boolean,
       opClass: Boolean,
-      mdu: Boolean,
-      ifuStall: Boolean,
-      icache: Boolean,
-      dcache: Boolean,
-      exuStall: Boolean,
-      lsu: Boolean,
-      iduStall: Boolean,
+      MDU: Boolean,
+      IFUStall: Boolean,
+      ICache: Boolean,
+      DCache: Boolean,
+      EXUStall: Boolean,
+      LSU: Boolean,
+      IDUStall: Boolean,
       trap: Boolean,
       branchPred: Boolean,
       mmu: Boolean,
       fpu: Boolean,
-      axi: Boolean,
+      AXI: Boolean,
       instMix: Boolean,
       cacheDetail: Boolean,
       interrupt: Boolean,
-      wbuf: Boolean,
-      csr: Boolean,
-      mduDetail: Boolean,
+      WBuf: Boolean,
+      CSR: Boolean,
+      MDUDetail: Boolean,
       queue: Boolean
   )
   private def groupEnabled(
@@ -39,25 +39,25 @@ object ysyx_26030103_ElaborateProfiles {
     PerfSwitches(
       basic = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_BASIC"),
       opClass = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_OPCLASS"),
-      mdu = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_MDU"),
-      ifuStall = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_IFU_STALL"),
-      icache = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_ICACHE"),
-      dcache = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_DCACHE"),
-      exuStall = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_EXU_STALL"),
-      lsu = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_LSU"),
-      iduStall = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_IDU_STALL"),
+      MDU = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_MDU"),
+      IFUStall = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_IFU_STALL"),
+      ICache = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_ICACHE"),
+      DCache = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_DCACHE"),
+      EXUStall = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_EXU_STALL"),
+      LSU = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_LSU"),
+      IDUStall = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_IDU_STALL"),
       trap = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_TRAP"),
       branchPred = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_BRANCH_PRED"),
       mmu = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_MMU"),
       fpu = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_FPU"),
-      axi = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_AXI"),
+      AXI = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_AXI"),
       instMix = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_INST_MIX"),
       cacheDetail =
         groupEnabled(config, "PERF_DIC_ARCH_COUNTER_CACHE_DETAIL"),
       interrupt = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_INTERRUPT"),
-      wbuf = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_WBUF"),
-      csr = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_CSR"),
-      mduDetail = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_MDU_DETAIL"),
+      WBuf = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_WBUF"),
+      CSR = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_CSR"),
+      MDUDetail = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_MDU_DETAIL"),
       queue = groupEnabled(config, "PERF_DIC_ARCH_COUNTER_QUEUE")
     )
   def perfCounters(
@@ -111,94 +111,94 @@ object ysyx_26030103_ElaborateProfiles {
   ): ysyx_26030103_DIVParams =
     ysyx_26030103_DIVParams(
       Radix = config.int(
-        s"mdu.div.$name.radix",
-        config.int("mdu.div_radix", ysyx_26030103_KconfigDefaults.MDUDivRestoringRadix)
+        s"MDU.div.$name.radix",
+        config.int("MDU.div_radix", ysyx_26030103_KconfigDefaults.MDUDivRestoringRadix)
       ),
       IterBits = config.int(
-        s"mdu.div.$name.iter_bits",
-        config.int("mdu.div_iter_bits", ysyx_26030103_KconfigDefaults.MDUDivRestoringIterBits)
+        s"MDU.div.$name.iter_bits",
+        config.int("MDU.div_iter_bits", ysyx_26030103_KconfigDefaults.MDUDivRestoringIterBits)
       ),
       EarlyOut = config.bool(
-        s"mdu.div.$name.early_out",
-        config.bool("mdu.div_early_out", false)
+        s"MDU.div.$name.early_out",
+        config.bool("MDU.div_early_out", false)
       )
     )
-  def mduProfile(
+  def MDUProfile(
       config: ysyx_26030103_JsonConfig.Config
   ): ysyx_26030103_MDUProfile = {
-    // mdu.mul_* 是旧扁平键，mdu.mul.* 是新分层键，两者都要保留。
-    val mulRadix = config.int("mdu.mul_radix", ysyx_26030103_KconfigDefaults.MDUMulRadix)
-    val mulWidth = config.int("mdu.mul_width", ysyx_26030103_KconfigDefaults.MDUMulWidth)
-    val mulEncoding = config.string("mdu.mul_encoding", "plain")
-    val mulIterBits = config.int("mdu.mul_iter_bits", ysyx_26030103_KconfigDefaults.MDUMulShiftIterBits)
-    val mulSplit = config.int("mdu.mul_split", ysyx_26030103_KconfigDefaults.MDUMulShiftSplit)
-    val mulEarlyOut = config.bool("mdu.mul_early_out", false)
-    val mulPipeline = config.int("mdu.mul_pipeline", ysyx_26030103_KconfigDefaults.MDUMulPipeline)
-    val compressorInputs = config.int("mdu.mul_compressor.inputs", ysyx_26030103_KconfigDefaults.MDUGpcInputs)
-    val compressorOutputs = config.int("mdu.mul_compressor.outputs", ysyx_26030103_KconfigDefaults.MDUGpcOutputs)
+    // MDU.mul_* 是旧扁平键，MDU.mul.* 是新分层键，两者都要保留。
+    val mulRadix = config.int("MDU.mul_radix", ysyx_26030103_KconfigDefaults.MDUMulRadix)
+    val mulWidth = config.int("MDU.mul_width", ysyx_26030103_KconfigDefaults.MDUMulWidth)
+    val mulEncoding = config.string("MDU.mul_encoding", "plain")
+    val mulIterBits = config.int("MDU.mul_iter_bits", ysyx_26030103_KconfigDefaults.MDUMulShiftIterBits)
+    val mulSplit = config.int("MDU.mul_split", ysyx_26030103_KconfigDefaults.MDUMulShiftSplit)
+    val mulEarlyOut = config.bool("MDU.mul_early_out", false)
+    val mulPipeline = config.int("MDU.mul_pipeline", ysyx_26030103_KconfigDefaults.MDUMulPipeline)
+    val compressorInputs = config.int("MDU.mul_compressor.inputs", ysyx_26030103_KconfigDefaults.MDUGpcInputs)
+    val compressorOutputs = config.int("MDU.mul_compressor.outputs", ysyx_26030103_KconfigDefaults.MDUGpcOutputs)
     val compressorOutputOffsets =
       config.ints(
-        "mdu.mul_compressor.output_offsets",
+        "MDU.mul_compressor.output_offsets",
         ysyx_26030103_KconfigDefaults.MDUGpcOutputOffsets
       ).toIndexedSeq
     val compressorHasCin =
-      config.bool("mdu.mul_compressor.has_cin", false)
+      config.bool("MDU.mul_compressor.has_cin", false)
     val compressorHasCout =
-      config.bool("mdu.mul_compressor.has_cout", false)
+      config.bool("MDU.mul_compressor.has_cout", false)
     val compressorCoutOffset =
-      config.int("mdu.mul_compressor.cout_offset", ysyx_26030103_KconfigDefaults.MDUGpcCoutOffset)
+      config.int("MDU.mul_compressor.cout_offset", ysyx_26030103_KconfigDefaults.MDUGpcCoutOffset)
     val compressorAllowRedundant =
-      config.bool("mdu.mul_compressor.allow_redundant", false)
+      config.bool("MDU.mul_compressor.allow_redundant", false)
     ysyx_26030103_MDUProfile(
       MUL = ysyx_26030103_MULProfile(
-        Width = config.int("mdu.mul.width", mulWidth),
+        Width = config.int("MDU.mul.width", mulWidth),
         Encoding = ysyx_26030103_MULEncoding.FromString(
-          config.string("mdu.mul.encoding", mulEncoding)
+          config.string("MDU.mul.encoding", mulEncoding)
         ),
-        Radix = config.int("mdu.mul.radix", mulRadix),
+        Radix = config.int("MDU.mul.radix", mulRadix),
         ShiftAdd = ysyx_26030103_MULShiftAddParams(
           IterBits = config.int(
-            "mdu.mul.shift_add.iter_bits",
+            "MDU.mul.shift_add.iter_bits",
             mulIterBits
           ),
-          Split = config.int("mdu.mul.shift_add.split", mulSplit),
+          Split = config.int("MDU.mul.shift_add.split", mulSplit),
           EarlyOut = config.bool(
-            "mdu.mul.shift_add.early_out",
+            "MDU.mul.shift_add.early_out",
             mulEarlyOut
           )
         ),
         Compression = ysyx_26030103_MULCompressionParams(
           Pipeline = config.int(
-            "mdu.mul.compression.pipeline",
+            "MDU.mul.compression.pipeline",
             mulPipeline
           ),
           Compressor = ysyx_26030103_MULGPCConfig(
             Inputs = config.int(
-              "mdu.mul.compression.compressor.inputs",
+              "MDU.mul.compression.compressor.inputs",
               compressorInputs
             ),
             Outputs = config.int(
-              "mdu.mul.compression.compressor.outputs",
+              "MDU.mul.compression.compressor.outputs",
               compressorOutputs
             ),
             OutputOffsets = config.ints(
-              "mdu.mul.compression.compressor.output_offsets",
+              "MDU.mul.compression.compressor.output_offsets",
               compressorOutputOffsets
             ).toIndexedSeq,
             HasCin = config.bool(
-              "mdu.mul.compression.compressor.has_cin",
+              "MDU.mul.compression.compressor.has_cin",
               compressorHasCin
             ),
             HasCout = config.bool(
-              "mdu.mul.compression.compressor.has_cout",
+              "MDU.mul.compression.compressor.has_cout",
               compressorHasCout
             ),
             CoutOffset = config.int(
-              "mdu.mul.compression.compressor.cout_offset",
+              "MDU.mul.compression.compressor.cout_offset",
               compressorCoutOffset
             ),
             AllowRedundant = config.bool(
-              "mdu.mul.compression.compressor.allow_redundant",
+              "MDU.mul.compression.compressor.allow_redundant",
               compressorAllowRedundant
             )
           )
@@ -210,16 +210,16 @@ object ysyx_26030103_ElaborateProfiles {
         SRT = divParams(config, "srt")
       ),
       Rocket = ysyx_26030103_RocketMDUParams(
-        MULUnroll = config.int("mdu.rocket.mul_unroll", ysyx_26030103_KconfigDefaults.MDURocketMulUnroll),
-        DIVUnroll = config.int("mdu.rocket.div_unroll", ysyx_26030103_KconfigDefaults.MDURocketDivUnroll),
-        MULEarlyOut = config.bool("mdu.rocket.mul_early_out", false),
-        DIVEarlyOut = config.bool("mdu.rocket.div_early_out", false),
+        MULUnroll = config.int("MDU.rocket.mul_unroll", ysyx_26030103_KconfigDefaults.MDURocketMulUnroll),
+        DIVUnroll = config.int("MDU.rocket.div_unroll", ysyx_26030103_KconfigDefaults.MDURocketDivUnroll),
+        MULEarlyOut = config.bool("MDU.rocket.mul_early_out", false),
+        DIVEarlyOut = config.bool("MDU.rocket.div_early_out", false),
         DIVEarlyOutGranularity =
-          config.int("mdu.rocket.div_early_out_granularity", ysyx_26030103_KconfigDefaults.MDURocketDivEarlyOutGranularity)
+          config.int("MDU.rocket.div_early_out_granularity", ysyx_26030103_KconfigDefaults.MDURocketDivEarlyOutGranularity)
       )
     )
   }
-  def mmuProfile(
+  def MMUProfile(
       config: ysyx_26030103_JsonConfig.Config,
       xlen: Int
   ): ysyx_26030103_MMUProfile =

@@ -38,15 +38,15 @@ trait ysyx_26030103_FudianFPUArith {
   sCmp.io.b := bS
   // FEQ 是 quiet 比较（仅 sNaN 置 NV），FLT/FLE 对 qNaN 也置 NV。
   sCmp.io.signaling := op =/= ysyx_26030103_FPUOp.FEq
-  protected val sFPToInt = Module(new FPToInt(sExpWidth, sPrecision)) // 单转整的
-  sFPToInt.io.a := aS
-  sFPToInt.io.rm := rm
-  sFPToInt.io.op := cvtToIntOp
-  protected val sIntToFP = Module(new IntToFP(sExpWidth, sPrecision)) // 整转单
-  sIntToFP.io.int := intSrc64
-  sIntToFP.io.sign := intToFPSigned
-  sIntToFP.io.long := intToFPLong
-  sIntToFP.io.rm := rm
+  protected val SFPToInt = Module(new FPToInt(sExpWidth, sPrecision)) // 单转整的
+  SFPToInt.io.a := aS
+  SFPToInt.io.rm := rm
+  SFPToInt.io.op := cvtToIntOp
+  protected val SIntToFP = Module(new IntToFP(sExpWidth, sPrecision)) // 整转单
+  SIntToFP.io.int := intSrc64
+  SIntToFP.io.sign := IntToFPSigned
+  SIntToFP.io.long := IntToFPLong
+  SIntToFP.io.rm := rm
   // D
   protected val dAdd =
     if (hasD) Some(Module(new FADD(dExpWidth, dPrecision))) else None
@@ -60,9 +60,9 @@ trait ysyx_26030103_FudianFPUArith {
     else None
   protected val dCmp =
     if (hasD) Some(Module(new FCMP(dExpWidth, dPrecision))) else None
-  protected val dFPToInt =
+  protected val DFPToInt =
     if (hasD) Some(Module(new FPToInt(dExpWidth, dPrecision))) else None
-  protected val dIntToFP =
+  protected val DIntToFP =
     if (hasD) Some(Module(new IntToFP(dExpWidth, dPrecision))) else None
   if (hasD) {
     dAdd.get.io.a := aD
@@ -88,13 +88,13 @@ trait ysyx_26030103_FudianFPUArith {
     // 下面这段是AI补写的，包括64转32
     // 与 F 格式一致：FLT/FLE 对 qNaN 也要置 NV，FEQ 只在 sNaN 时置 NV。
     dCmp.get.io.signaling := op =/= ysyx_26030103_FPUOp.FEq
-    dFPToInt.get.io.a := aD
-    dFPToInt.get.io.rm := rm
-    dFPToInt.get.io.op := cvtToIntOp
-    dIntToFP.get.io.int := intSrc64
-    dIntToFP.get.io.sign := intToFPSigned
-    dIntToFP.get.io.long := intToFPLong
-    dIntToFP.get.io.rm := rm
+    DFPToInt.get.io.a := aD
+    DFPToInt.get.io.rm := rm
+    DFPToInt.get.io.op := cvtToIntOp
+    DIntToFP.get.io.int := intSrc64
+    DIntToFP.get.io.sign := IntToFPSigned
+    DIntToFP.get.io.long := IntToFPLong
+    DIntToFP.get.io.rm := rm
   }
   // FCVT.S.D / FCVT.D.S
   protected val f64To32 =
@@ -106,7 +106,7 @@ trait ysyx_26030103_FudianFPUArith {
       Some(Module(new FPToFP(sExpWidth, sPrecision, dExpWidth, dPrecision)))
     else None
   if (hasD) {
-    f64To32.get.io.in := io.req.bits.rs1
+    f64To32.get.io.in := io.request.bits.rs1
     f64To32.get.io.rm := rm
     f32To64.get.io.in := aS
     f32To64.get.io.rm := rm

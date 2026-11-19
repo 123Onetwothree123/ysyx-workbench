@@ -36,10 +36,10 @@ class ysyx_26030103_CSRPrivilegePmuHarness(
     val isMret = Input(Bool())
     val isSret = Input(Bool())
     val isSfenceVma = Input(Bool())
-    val csrAddress = Input(UInt(12.W))
+    val CSRAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
     val rs1Data = Input(UInt(xlen.W))
-    val pc = Input(UInt(xlen.W))
+    val PC = Input(UInt(xlen.W))
     val trapTval = Input(UInt(xlen.W))
     val trapTvalValid = Input(Bool())
     val trapValid = Input(Bool())
@@ -48,7 +48,7 @@ class ysyx_26030103_CSRPrivilegePmuHarness(
     val interrupt = Input(Bool())
     val timerInterrupt = Input(Bool())
     val mtime = Input(UInt(64.W))
-    val fpStateDirtyCommit = Input(Bool())
+    val FPStateDirtyCommit = Input(Bool())
     val pmuEvents = Input(UInt(ysyx_26030103_PMUEventID.BusWidth.W))
     val rdata = Output(UInt(xlen.W))
     val privilege = Output(UInt(2.W))
@@ -57,7 +57,7 @@ class ysyx_26030103_CSRPrivilegePmuHarness(
     val minstretWriteCommit = Output(Bool())
   })
 
-  val csr = Module(new ysyx_26030103_CSR(
+  val CSR = Module(new ysyx_26030103_CSR(
     profile,
     XLEN = xlen,
     UseF = useF,
@@ -66,40 +66,40 @@ class ysyx_26030103_CSRPrivilegePmuHarness(
     PMUZihpm = true,
     PMUSscofpmf = pmuSscofpmf
   ))
-  csr.io.clk := clock
-  csr.io.rst := reset
-  csr.io.Enable := io.enable
-  csr.io.MinstretRetireCommit := io.minstretRetireCommit
-  csr.io.IsCSRrw := io.isCSRrw
-  csr.io.IsCSRrs := io.isCSRrs
-  csr.io.IsCSRrc := io.isCSRrc
-  csr.io.IsEcall := io.isEcall
-  csr.io.IsEbreak := io.isEbreak
-  csr.io.IsMret := io.isMret
-  csr.io.IsSret := io.isSret
-  csr.io.IsSfenceVma := io.isSfenceVma
-  csr.io.CSRAddress := io.csrAddress
-  csr.io.rs1 := io.rs1
-  csr.io.Rs1Data := io.rs1Data
-  csr.io.pc := io.pc
-  csr.io.TrapTval := io.trapTval
-  csr.io.TrapTvalValid := io.trapTvalValid
-  csr.io.TrapValid := io.trapValid
-  csr.io.TrapCause := io.trapCause
-  csr.io.MemTrap := io.memTrap
-  csr.io.Interrupt := io.interrupt
-  csr.io.TimerInterrupt := io.timerInterrupt
-  csr.io.Mtime := io.mtime
-  csr.io.FPCommit := false.B
-  csr.io.FPFlags := 0.U
-  csr.io.FPStateDirtyCommit := io.fpStateDirtyCommit
-  csr.io.PMUEvents := io.pmuEvents
+  CSR.io.clock := clock
+  CSR.io.reset := reset
+  CSR.io.Enable := io.enable
+  CSR.io.MinstretRetireCommit := io.minstretRetireCommit
+  CSR.io.IsCSRrw := io.isCSRrw
+  CSR.io.IsCSRrs := io.isCSRrs
+  CSR.io.IsCSRrc := io.isCSRrc
+  CSR.io.IsEcall := io.isEcall
+  CSR.io.IsEbreak := io.isEbreak
+  CSR.io.IsMret := io.isMret
+  CSR.io.IsSret := io.isSret
+  CSR.io.IsSfenceVma := io.isSfenceVma
+  CSR.io.CSRAddress := io.CSRAddress
+  CSR.io.rs1 := io.rs1
+  CSR.io.Rs1Data := io.rs1Data
+  CSR.io.PC := io.PC
+  CSR.io.TrapTval := io.trapTval
+  CSR.io.TrapTvalValid := io.trapTvalValid
+  CSR.io.TrapValid := io.trapValid
+  CSR.io.TrapCause := io.trapCause
+  CSR.io.MemTrap := io.memTrap
+  CSR.io.Interrupt := io.interrupt
+  CSR.io.TimerInterrupt := io.timerInterrupt
+  CSR.io.Mtime := io.mtime
+  CSR.io.FPCommit := false.B
+  CSR.io.FPFlags := 0.U
+  CSR.io.FPStateDirtyCommit := io.FPStateDirtyCommit
+  CSR.io.PMUEvents := io.pmuEvents
 
-  io.rdata := csr.io.CSR_rdata
-  io.privilege := csr.io.Privilege
-  io.trapCommit := csr.io.TrapCommit
-  io.committedCause := csr.io.CommittedCause
-  io.minstretWriteCommit := csr.io.MinstretWriteCommit
+  io.rdata := CSR.io.CSR_rdata
+  io.privilege := CSR.io.Privilege
+  io.trapCommit := CSR.io.TrapCommit
+  io.committedCause := CSR.io.CommittedCause
+  io.minstretWriteCommit := CSR.io.MinstretWriteCommit
 }
 
 class ysyx_26030103_CSRPrivilegePmuRegressionTest
@@ -128,13 +128,13 @@ class ysyx_26030103_CSRPrivilegePmuRegressionTest
       xlen = 64,
       pageSizeBytes = 4096,
       levels = 3,
-      pteSizeBytes = 8,
+      PTESizeBytes = 8,
       pageTableSizeBytes = 4096,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
       hasS = hasS,
       hasU = hasU,
-      csrViewMode = viewMode
+      CSRViewMode = viewMode
     )
 
   private def profile32(
@@ -145,7 +145,7 @@ class ysyx_26030103_CSRPrivilegePmuRegressionTest
       xlen = 32,
       hasS = true,
       hasU = true,
-      csrViewMode = viewMode
+      CSRViewMode = viewMode
     )
 
   private def bool(v: Bool): Boolean = v.peek().litValue == 1
@@ -166,10 +166,10 @@ class ysyx_26030103_CSRPrivilegePmuRegressionTest
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddress.poke(0.U(12.W))
+    dut.io.CSRAddress.poke(0.U(12.W))
     dut.io.rs1.poke(0.U(5.W))
     dut.io.rs1Data.poke(0.U(dut.xlen.W))
-    dut.io.pc.poke(0.U(dut.xlen.W))
+    dut.io.PC.poke(0.U(dut.xlen.W))
     dut.io.trapTval.poke(0.U(dut.xlen.W))
     dut.io.trapTvalValid.poke(false.B)
     dut.io.trapValid.poke(false.B)
@@ -178,7 +178,7 @@ class ysyx_26030103_CSRPrivilegePmuRegressionTest
     dut.io.interrupt.poke(false.B)
     dut.io.timerInterrupt.poke(false.B)
     dut.io.mtime.poke(0.U(64.W))
-    dut.io.fpStateDirtyCommit.poke(false.B)
+    dut.io.FPStateDirtyCommit.poke(false.B)
     dut.io.pmuEvents.poke(0.U)
   }
 
@@ -186,7 +186,7 @@ class ysyx_26030103_CSRPrivilegePmuRegressionTest
       dut: ysyx_26030103_CSRPrivilegePmuHarness,
       addr: Int
   ): BigInt = {
-    dut.io.csrAddress.poke(addr.U(12.W))
+    dut.io.CSRAddress.poke(addr.U(12.W))
     dut.io.rdata.peek().litValue
   }
 
@@ -195,7 +195,7 @@ class ysyx_26030103_CSRPrivilegePmuRegressionTest
       addr: Int,
       data: BigInt
   ): Unit = {
-    dut.io.csrAddress.poke(addr.U(12.W))
+    dut.io.CSRAddress.poke(addr.U(12.W))
     dut.io.rs1.poke(1.U(5.W))
     dut.io.rs1Data.poke(data.U(dut.xlen.W))
     dut.io.enable.poke(true.B)
@@ -267,7 +267,7 @@ class ysyx_26030103_CSRPrivilegePmuRegressionTest
     simulate(new ysyx_26030103_CSRPrivilegePmuHarness(
       64, profile64(), useF = false)) { dut =>
       setup(dut)
-      dut.io.csrAddress.poke(MINSTRET.U(12.W))
+      dut.io.CSRAddress.poke(MINSTRET.U(12.W))
       dut.io.rs1.poke(1.U(5.W))
       dut.io.rs1Data.poke(0x100.U(64.W))
       dut.io.enable.poke(true.B)
@@ -279,7 +279,7 @@ class ysyx_26030103_CSRPrivilegePmuRegressionTest
       read(dut, MINSTRET) should be(BigInt(0x100))
 
       // 普通 CSR 写不产生 minstret 标记。
-      dut.io.csrAddress.poke(MSTATUS.U(12.W))
+      dut.io.CSRAddress.poke(MSTATUS.U(12.W))
       dut.io.rs1Data.poke(0.U(64.W))
       dut.io.enable.poke(true.B)
       dut.io.isCSRrw.poke(true.B)
@@ -307,9 +307,9 @@ class ysyx_26030103_CSRPrivilegePmuRegressionTest
       ((read(dut, SSTATUS) >> 13) & 3) should be(BigInt(0))
 
       // FP 指令在 WBU 退休置 Dirty 后，sstatus.FS/SD 同步可见。
-      dut.io.fpStateDirtyCommit.poke(true.B)
+      dut.io.FPStateDirtyCommit.poke(true.B)
       dut.clock.step()
-      dut.io.fpStateDirtyCommit.poke(false.B)
+      dut.io.FPStateDirtyCommit.poke(false.B)
       val dirtySstatus = read(dut, SSTATUS)
       ((dirtySstatus >> 13) & 3) should be(BigInt(3))
       ((dirtySstatus >> 63) & 1) should be(BigInt(1))

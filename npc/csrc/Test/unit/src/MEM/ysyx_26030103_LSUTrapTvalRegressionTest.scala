@@ -58,7 +58,7 @@ class ysyx_26030103_LSUTrapTvalRegressionTest
       paddr: Long,
       vaddr: Long,
       write: Boolean,
-      pc:    Long
+      PC:    Long
   ): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
     dut.io.in.bits.Retire.poke(true.B)
@@ -68,7 +68,7 @@ class ysyx_26030103_LSUTrapTvalRegressionTest
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
     dut.io.in.bits.ALUResult.poke(paddr.U(32.W))
     dut.io.in.bits.VAddress.poke(vaddr.U(32.W))
-    dut.io.in.bits.pc.poke(pc.U(32.W))
+    dut.io.in.bits.PC.poke(PC.U(32.W))
   }
 
   /** 等待并检查一次访存故障提交；MemTrapTval 必须是虚拟地址。 */
@@ -77,7 +77,7 @@ class ysyx_26030103_LSUTrapTvalRegressionTest
       clock: Clock,
       cause: Long,
       tval:  Long,
-      pc:    Long
+      PC:    Long
   ): Unit = {
     var trapped = false
     var cycles  = 0
@@ -85,7 +85,7 @@ class ysyx_26030103_LSUTrapTvalRegressionTest
       if (bool(dut.io.MemTrapCommit)) {
         trapped = true
         long(dut.io.MemTrapCause) should be(cause)
-        long(dut.io.MemTrapPC) should be(pc)
+        long(dut.io.MemTrapPC) should be(PC)
         // 关键断言：PA=0x80001002 不能出现在 mtval 中，必须是 VA。
         long(dut.io.MemTrapTval) should be(tval)
         bool(dut.io.out.bits.Retire) should be(false)
@@ -109,7 +109,7 @@ class ysyx_26030103_LSUTrapTvalRegressionTest
         paddr = 0x80001002L,
         vaddr = 0x80000002L,
         write = false,
-        pc = 0x80000000L
+        PC = 0x80000000L
       )
       dut.io.in.valid.poke(true.B)
 
@@ -118,7 +118,7 @@ class ysyx_26030103_LSUTrapTvalRegressionTest
         clock,
         cause = 4L, // load address misaligned
         tval = 0x80000002L,
-        pc = 0x80000000L
+        PC = 0x80000000L
       )
     }
   }
@@ -132,7 +132,7 @@ class ysyx_26030103_LSUTrapTvalRegressionTest
         paddr = 0x80001006L,
         vaddr = 0x80000006L,
         write = true,
-        pc = 0x80000004L
+        PC = 0x80000004L
       )
       dut.io.in.valid.poke(true.B)
 
@@ -141,7 +141,7 @@ class ysyx_26030103_LSUTrapTvalRegressionTest
         clock,
         cause = 6L, // store/AMO address misaligned
         tval = 0x80000006L,
-        pc = 0x80000004L
+        PC = 0x80000004L
       )
     }
   }

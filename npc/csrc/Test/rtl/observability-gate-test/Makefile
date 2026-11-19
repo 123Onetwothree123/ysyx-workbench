@@ -106,26 +106,26 @@ test: $(OFF_RTL) $(ON_RTL) $(PERF_RTL) $(FILE_RTL) $(OFF_BIN)
 	@awk '/^module ysyx_26030103\(/,/^endmodule/' $(OFF_RTL) \
 		> $(BUILD_DIR)/off-core.sv
 	@! grep -Eq '^  reg .*io_debug_' $(BUILD_DIR)/off-core.sv
-	@grep -Fq 'reg  [31:0] architecturalPC' $(OFF_RTL)
+	@grep -Fq 'reg  [31:0] ArchitecturalPC' $(OFF_RTL)
 	@awk '/^module ysyx_26030103_RegisterFile\(/,/^endmodule/' $(OFF_RTL) \
 		> $(BUILD_DIR)/off-register-file.sv
-	@! grep -q 'io_debug_raddr' $(BUILD_DIR)/off-register-file.sv
-	@grep -Eq 'assign io_debug_rdata = registers_[0-9]+' \
+	@! grep -q 'io_DebugRaddr' $(BUILD_DIR)/off-register-file.sv
+	@grep -Eq 'assign io_DebugRdata = registers_[0-9]+' \
 		$(BUILD_DIR)/off-register-file.sv
 	@# The enabled image proves the negative greps are not vacuous.
 	@grep -q 'io_debug_commit_REG' $(ON_RTL)
-	@grep -q 'assign io_debug_csr_mstatus = retireMstatus' $(ON_RTL)
-	@grep -q 'assign io_debug_mtrace_addr = mtraceAddress' $(ON_RTL)
+	@grep -q 'assign io_debug_CSRMstatus = retireMstatus' $(ON_RTL)
+	@grep -q 'assign io_debug_MTraceAddress = MTraceAddress' $(ON_RTL)
 	@awk '/^module ysyx_26030103_RegisterFile\(/,/^endmodule/' $(ON_RTL) | \
-		grep -q 'io_debug_raddr'
+		grep -q 'io_DebugRaddr'
 	@# PERF-only must retain registered trap accounting while still omitting
 	@# DiffTest-only CSR state and the third dynamic GPR read port.
 	@grep -q 'io_debug_commit_REG' $(PERF_RTL)
-	@grep -q 'io_debug_trap_valid_REG' $(PERF_RTL)
-	@grep -q "assign io_debug_csr_mstatus = 32'h0" $(PERF_RTL)
-	@grep -q "assign io_debug_mtrace_addr = 32'h0" $(PERF_RTL)
+	@grep -q 'io_debug_TrapValid_REG' $(PERF_RTL)
+	@grep -q "assign io_debug_CSRMstatus = 32'h0" $(PERF_RTL)
+	@grep -q "assign io_debug_MTraceAddress = 32'h0" $(PERF_RTL)
 	@! awk '/^module ysyx_26030103_RegisterFile\(/,/^endmodule/' $(PERF_RTL) | \
-		grep -q 'io_debug_raddr'
+		grep -q 'io_DebugRaddr'
 	@# File-only itrace is still a retire-trace consumer.
 	@grep -q 'io_debug_commit_REG' $(FILE_RTL)
 	@# Quantify the post-flattening hardware reduction, not just source names.

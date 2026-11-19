@@ -77,15 +77,15 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.req.valid.poke(false.B)
-    io.req.bits.addr.poke(0.U(AddressW.W))
-    io.req.bits.vaddr.poke(0.U(AddressW.W))
-    io.req.bits.WidthSelect.poke(2.U(2.W))
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(0.U(AddressW.W))
-    io.req_kill.poke(false.B)
-    io.resp.ready.poke(false.B)
+    io.request.valid.poke(false.B)
+    io.request.bits.address.poke(0.U(AddressW.W))
+    io.request.bits.vaddr.poke(0.U(AddressW.W))
+    io.request.bits.WidthSelect.poke(2.U(2.W))
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrValid.poke(true.B)
+    io.RequestPaddrVaddr.poke(0.U(AddressW.W))
+    io.RequestKill.poke(false.B)
+    io.response.ready.poke(false.B)
     io.StoreValid.poke(false.B)
     io.StoreResponse.poke(0.U(2.W))
     io.StoreAddress.poke(0.U(AddressW.W))
@@ -93,9 +93,9 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
     io.StoreData.poke(0.U(64.W))
     io.StoreStrobe.poke(0.U(8.W))
     io.flush.poke(false.B)
-    io.dma_snoop_valid.poke(false.B)
-    io.dma_snoop_start.poke(0.U(AddressW.W))
-    io.dma_snoop_end.poke(0.U(AddressW.W))
+    io.DMASnoopValid.poke(false.B)
+    io.DMASnoopStart.poke(0.U(AddressW.W))
+    io.DMASnoopEnd.poke(0.U(AddressW.W))
     io.AXI.AR.ARREADY.poke(false.B)
     io.AXI.R.RVALID.poke(false.B)
     io.AXI.R.RID.poke(0.U(4.W))
@@ -110,16 +110,16 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
       address: Long,
       width: Int
   ): Unit = {
-    io.req.bits.addr.poke(address.U(AddressW.W))
-    io.req.bits.vaddr.poke(address.U(AddressW.W))
-    io.req.bits.WidthSelect.poke(width.U(2.W))
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(address.U(AddressW.W))
-    io.req.valid.poke(true.B)
-    waitUntil(clock, bool(io.req.ready), "DCache 未受理 load")
+    io.request.bits.address.poke(address.U(AddressW.W))
+    io.request.bits.vaddr.poke(address.U(AddressW.W))
+    io.request.bits.WidthSelect.poke(width.U(2.W))
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrValid.poke(true.B)
+    io.RequestPaddrVaddr.poke(address.U(AddressW.W))
+    io.request.valid.poke(true.B)
+    waitUntil(clock, bool(io.request.ready), "DCache 未受理 load")
     clock.step()
-    io.req.valid.poke(false.B)
+    io.request.valid.poke(false.B)
   }
 
   private def acceptAr(
@@ -141,11 +141,11 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
       clock: Clock,
       data: Long,
       last: Boolean,
-      resp: Long = 0L
+      response: Long = 0L
   ): Unit = {
     io.AXI.R.RVALID.poke(true.B)
     io.AXI.R.RDATA.poke(data.U(32.W))
-    io.AXI.R.RRESP.poke(resp.U(2.W))
+    io.AXI.R.RRESP.poke(response.U(2.W))
     io.AXI.R.RLAST.poke(last.B)
     clock.step()
     io.AXI.R.RVALID.poke(false.B)
@@ -157,10 +157,10 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
       io: ysyx_26030103_DCacheInterface,
       clock: Clock
   ): Unit = {
-    withClue("响应在消费前不应消失: ") { bool(io.resp.valid) should be(true) }
-    io.resp.ready.poke(true.B)
+    withClue("响应在消费前不应消失: ") { bool(io.response.valid) should be(true) }
+    io.response.ready.poke(true.B)
     clock.step()
-    io.resp.ready.poke(false.B)
+    io.response.ready.poke(false.B)
   }
 
   private def runWideMissingLast(dut: ysyx_26030103_DCacheBase): Unit = {
@@ -177,16 +177,16 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
     sendBeat(io, clock, 0x55667788L, last = false)
 
     // 必须已经形成唯一的 fault 响应，而不是等迟到的 RLAST。
-    waitUntil(clock, bool(io.resp.valid), "第二拍缺少 RLAST 时没有 fault 响应")
-    bool(io.resp.bits.fault) should be(true)
-    long(io.resp.bits.FaultResponse) should be(2L)
+    waitUntil(clock, bool(io.response.valid), "第二拍缺少 RLAST 时没有 fault 响应")
+    bool(io.response.bits.fault) should be(true)
+    long(io.response.bits.FaultResponse) should be(2L)
     consumeResponse(io, clock)
 
     // 迟到的 RLAST 只用于同步总线；不得再产生第二个响应。
     sendBeat(io, clock, 0x99aabbccL, last = true)
-    waitUntil(clock, bool(io.req.ready), "迟到 RLAST 后 SDrain 未恢复")
+    waitUntil(clock, bool(io.request.ready), "迟到 RLAST 后 SDrain 未恢复")
     for (_ <- 0 until 8) {
-      bool(io.resp.valid) should be(false)
+      bool(io.response.valid) should be(false)
       clock.step()
     }
   }
@@ -208,25 +208,25 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
     sendBeat(io, clock, 0x22222222L, last = false)
     sendBeat(io, clock, 0x33333333L, last = false)
 
-    waitUntil(clock, bool(io.resp.valid), "关键词响应没有出现")
-    bool(io.resp.bits.fault) should be(false)
-    long(io.resp.bits.FaultResponse) should be(0L)
-    long(io.resp.bits.data) should be(keyword)
+    waitUntil(clock, bool(io.response.valid), "关键词响应没有出现")
+    bool(io.response.bits.fault) should be(false)
+    long(io.response.bits.FaultResponse) should be(0L)
+    long(io.response.bits.data) should be(keyword)
 
     // 下游一直不 ready，跨过 SDrain 超时窗口。响应 payload 必须保持不变，
     // 超时只能影响状态机/缓存行，不能把成功响应改写成 fault。
     for (_ <- 0 until 300) {
-      bool(io.resp.valid) should be(true)
-      bool(io.resp.bits.fault) should be(false)
-      long(io.resp.bits.FaultResponse) should be(0L)
-      long(io.resp.bits.data) should be(keyword)
+      bool(io.response.valid) should be(true)
+      bool(io.response.bits.fault) should be(false)
+      long(io.response.bits.FaultResponse) should be(0L)
+      long(io.response.bits.data) should be(keyword)
       clock.step()
     }
 
     // 超时恢复后消费这个成功响应，且只能消费到一次。
     consumeResponse(io, clock)
     clock.step()
-    bool(io.resp.valid) should be(false)
+    bool(io.response.valid) should be(false)
   }
 
   "DCache" should "在非缓存 8 字节读第二拍缺少 RLAST 时返回唯一 fault" in {

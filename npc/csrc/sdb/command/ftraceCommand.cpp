@@ -1,6 +1,8 @@
 module npc.sdb.command.ftraceCommand;
+import npc.Output;
 import npc.config;
 import npc.trace.ftrace;
+import npc.SimulationContext;
 
 std::string_view ftraceCommand::name() const noexcept
 {
@@ -22,60 +24,60 @@ SDBCommandUsageList ftraceCommand::usage() const noexcept
 }
 SDBCommandResult ftraceCommand::execute(SDBCommandContext &context, std::string_view args)
 {
-    static_cast<void>(context);
+    auto &out{context.GetSimulation().Out()};
     if constexpr (npc::HasFTrace)
     {
     if (args.empty() || args == "status")
     {
-        GlobalFtrace.PrintStatus();
+        context.GetSimulation().Trace().PrintStatus();
         return SDBCommandResult::Continue;
     }
     if (args == "on")
     {
-        GlobalFtrace.Enable();
-        std::println("ftrace: 已开启");
+        context.GetSimulation().Trace().Enable();
+        out.Info("ftrace: 已开启");
         return SDBCommandResult::Continue;
     }
     if (args == "off")
     {
-        GlobalFtrace.Disable();
-        std::println("ftrace: 已关闭");
+        context.GetSimulation().Trace().Disable();
+        out.Info("ftrace: 已关闭");
         return SDBCommandResult::Continue;
     }
     if (args == "now" || args == "stack")
     {
-        GlobalFtrace.PrintCurrentStack();
+        context.GetSimulation().Trace().PrintCurrentStack();
         return SDBCommandResult::Continue;
     }
     if (args == "history")
     {
-        GlobalFtrace.PrintHistory();
+        context.GetSimulation().Trace().PrintHistory();
         return SDBCommandResult::Continue;
     }
     if (args == "history on")
     {
-        GlobalFtrace.SetRecordHistory(true);
-        std::println("ftrace: history 已开启");
+        context.GetSimulation().Trace().SetRecordHistory(true);
+        out.Info("ftrace: history 已开启");
         return SDBCommandResult::Continue;
     }
     if (args == "history off")
     {
-        GlobalFtrace.SetRecordHistory(false);
-        std::println("ftrace: history 已关闭");
+        context.GetSimulation().Trace().SetRecordHistory(false);
+        out.Info("ftrace: history 已关闭");
         return SDBCommandResult::Continue;
     }
     if (args == "reset")
     {
-        GlobalFtrace.Reset();
-        std::println("ftrace: 已清空调用栈和历史记录");
+        context.GetSimulation().Trace().Reset();
+        out.Info("ftrace: 已清空调用栈和历史记录");
         return SDBCommandResult::Continue;
     }
-    std::println("用法：ftrace on | off | status | now | history | history on | history off | reset");
+    out.Info("用法：ftrace on | off | status | now | history | history on | history off | reset");
     }
     else
     {
         static_cast<void>(args);
-        std::println("FTRACE没有开启，请使用 make CONFIG_FTRACE=y");
+        out.Warn("FTRACE没有开启，请使用 make CONFIG_FTRACE=y");
     }
     return SDBCommandResult::Continue;
 }

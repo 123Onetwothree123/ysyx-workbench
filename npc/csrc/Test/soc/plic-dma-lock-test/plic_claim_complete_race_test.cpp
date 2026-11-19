@@ -44,13 +44,20 @@ static void defaults(DUT &dut) {
   dut.io_R_RREADY = 0;
 }
 
+// The PLIC leaf uses the SoC 64-bit AXI data bus.  A 32-bit register access
+// must occupy the lane selected by address bit 2.
+static unsigned lane_shift(uint32_t address) {
+  return (address & 4U) ? 32U : 0U;
+}
+
 static void begin_write(DUT &dut, uint32_t address, uint32_t data) {
+  const unsigned shift = lane_shift(address);
   dut.io_AW_AWVALID = 1;
   dut.io_AW_AWADDR = address;
   dut.io_AW_AWID = 0;
   dut.io_W_WVALID = 1;
-  dut.io_W_WDATA = data;
-  dut.io_W_WSTRB = 0xf;
+  dut.io_W_WDATA = static_cast<uint64_t>(data) << shift;
+  dut.io_W_WSTRB = 0xfU << (shift / 8);
   dut.io_W_WLAST = 1;
   dut.eval();
   check(dut.io_AW_AWREADY && dut.io_W_WREADY,
@@ -91,10 +98,11 @@ static void begin_read(DUT &dut, uint32_t address) {
   dut.io_AR_ARVALID = 0;
 }
 
-static uint32_t finish_read(DUT &dut) {
+static uint32_t finish_read(DUT &dut, uint32_t address) {
   wait_until(dut, [&] { return dut.io_R_RVALID; },
              "PLIC never returned read data", 200);
-  const uint32_t data = dut.io_R_RDATA;
+  const uint32_t data =
+      static_cast<uint32_t>(dut.io_R_RDATA >> lane_shift(address));
   check(dut.io_R_RLAST, "PLIC single-beat read did not assert RLAST");
   dut.io_R_RREADY = 1;
   tick(dut);
@@ -104,7 +112,7 @@ static uint32_t finish_read(DUT &dut) {
 
 static uint32_t read_reg(DUT &dut, uint32_t address) {
   begin_read(dut, address);
-  return finish_read(dut);
+  return finish_read(dut, address);
 }
 
 static void configure_two_sources(DUT &dut) {
@@ -143,7 +151,7 @@ int main(int argc, char **argv) {
     dut.eval();
     check(dut.io_B_BVALID, "complete response missing in race cycle");
     check(dut.io_R_RVALID, "claim response missing in race cycle");
-    check(dut.io_R_RDATA == 2,
+    check(static_cast<uint32_t>(dut.io_R_RDATA >> lane_shift(CLAIM)) == 2,
           "simultaneous claim selected the wrong source");
     dut.io_R_RREADY = 1;
     tick(dut);
@@ -177,7 +185,7 @@ int main(int argc, char **argv) {
     dut.sources = 1U << 10;
     tick(dut);
     tick(dut);
-    check(dut.external_irq, "source 10 did not raise external_irq");
+    check(dut.ExternalIRQ, "source 10 did not raise ExternalIRQ");
 
     // Model software clearing the UART level before claiming.
     dut.sources = 0;

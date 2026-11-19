@@ -70,8 +70,8 @@ class ysyx_26030103_NutShellMDU(
     pending := true.B
     resultReg := selectedResult
     when(divSelected) {
-      divIterationsReg := div.io.iteration_count
-      divEarlyOutReg := div.io.early_out
+      divIterationsReg := div.io.IterationCount
+      divEarlyOutReg := div.io.EarlyOut
     }
   }
   io.PerfDivIterations := divIterationsReg

@@ -38,14 +38,14 @@ trait ysyx_26030103_HardFloatFPUResponse {
   responsePipe.io.in.valid := responseValid
   responsePipe.io.in.bits.result := responseResult
   responsePipe.io.in.bits.fflags := responseFlags
-  io.resp <> responsePipe.io.out
+  io.response <> responsePipe.io.out
   val responsePipeReady = responsePipe.io.in.ready
 
   val selectedDivReady = Mux(fmtS, divS.io.inReady, divD.io.inReady)
-  // io.req.ready 不能组合依赖 io.flush，否则经 CSRUnit.ExceptionTaken 成环。
-  io.req.ready := !responseValid && !divActive &&
+  // io.request.ready 不能组合依赖 io.flush，否则经 CSRUnit.ExceptionTaken 成环。
+  io.request.ready := !responseValid && !divActive &&
     Mux(isDivSqrt, selectedDivReady, true.B)
-  val divRequestFire = io.req.valid && io.req.ready && isDivSqrt && !io.flush
+  val divRequestFire = io.request.valid && io.request.ready && isDivSqrt && !io.flush
   divS.io.inValid := divRequestFire && fmtS && !io.flush
   divD.io.inValid := divRequestFire && fmtD && !io.flush
 
@@ -74,7 +74,7 @@ trait ysyx_26030103_HardFloatFPUResponse {
   }
 
   // 非 DIV/SQRT 在接收请求的下一拍给出寄存结果。
-  when(io.req.valid && io.req.ready && !isDivSqrt && !io.flush) {
+  when(io.request.valid && io.request.ready && !isDivSqrt && !io.flush) {
     responseValid := true.B
     responseResult := fastResult
     responseFlags := fastFlags
@@ -87,5 +87,5 @@ trait ysyx_26030103_HardFloatFPUResponse {
     when(divActive) { divAbandoned := true.B }
   }
 
-  // io.resp 已由响应流水级驱动，不再直接暴露 respValid。
+  // io.response 已由响应流水级驱动，不再直接暴露 ResponseValid。
 }

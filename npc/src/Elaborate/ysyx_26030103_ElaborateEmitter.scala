@@ -14,18 +14,18 @@ object ysyx_26030103_ElaborateEmitter {
       targetDir: String
   ): Unit = {
     val config = settings.config
-    val plicBase = config.MMU.plicBase
-    val plicSize = config.MMU.plicSize
+    val PLICBase = config.MMU.PLICBase
+    val PLICSize = config.MMU.PLICSize
     emitVerilog(
       new ysyx_26030103(
         config.copy(
-          ResetAddress = settings.pma.npcRamBase + settings.cachePadding,
+          ResetAddress = settings.PMA.NpcRAMBase + settings.cachePadding,
           CacheableBase = 0x00000000L,
           CacheableMask = 0x00000000L,
-          PMARegions = settings.pma.npcRegions(
-            settings.npcRamSize,
-            plicBase,
-            plicSize
+          PMARegions = settings.PMA.npcRegions(
+            settings.NpcRAMSize,
+            PLICBase,
+            PLICSize
           )
         )
       ),
@@ -40,13 +40,13 @@ object ysyx_26030103_ElaborateEmitter {
     emitVerilog(
       new ysyx_26030103(
         config.copy(
-          ResetAddress = settings.pma.socResetAddress,
+          ResetAddress = settings.PMA.SOCResetAddress,
           CacheableBase = 0x00000000L,
           CacheableMask = 0x00000000L,
-          PMARegions = settings.pma.socRegions(
+          PMARegions = settings.PMA.socRegions(
             settings.hasChipLink,
-            plicBase,
-            plicSize
+            PLICBase,
+            PLICSize
           )
         )
       ),
@@ -55,9 +55,9 @@ object ysyx_26030103_ElaborateEmitter {
     )
     emitVerilog(
       new _root_.ysyx_26030103.riscv32e_npc_AXIRAM(
-        settings.npcRamSize,
-        uartBase = settings.pma.uartBase,
-        ramBase = settings.pma.npcRamBase
+        settings.NpcRAMSize,
+        UARTBase = settings.PMA.UARTBase,
+        RAMBase = settings.PMA.NpcRAMBase
       ),
       Array("--target-dir", targetDir),
       yosysFirtoolOptions

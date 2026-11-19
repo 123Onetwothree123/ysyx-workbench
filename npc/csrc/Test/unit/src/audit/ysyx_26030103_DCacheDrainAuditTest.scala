@@ -11,7 +11,7 @@ import org.scalatest.matchers.should.Matchers
   *
   * 疑点：DCacheReg 的 SDrain 只等 RLAST；ICache 有 drain_timer，DCache
   * 没有。若从设备在最后一次 R beat 不给 RLAST，DCache 会永久停在
-  * SDrain，后续 req 永远不 ready。本测试发送完整一行但不带 RLAST，
+  * SDrain，后续 request 永远不 ready。本测试发送完整一行但不带 RLAST，
   * 然后在合理的超时窗口内检查 DCache 是否恢复（返回 fault 或重新 ready）。
   */
 class ysyx_26030103_DCacheDrainAuditTest
@@ -38,15 +38,15 @@ class ysyx_26030103_DCacheDrainAuditTest
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.addr.poke(0.U)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.WidthSelect.poke(2.U)
-      dut.io.req.bits.signed.poke(false.B)
-      dut.io.req_paddr_valid.poke(true.B)
-      dut.io.req_paddr_vaddr.poke(0.U)
-      dut.io.req_kill.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.address.poke(0.U)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.WidthSelect.poke(2.U)
+      dut.io.request.bits.signed.poke(false.B)
+      dut.io.RequestPaddrValid.poke(true.B)
+      dut.io.RequestPaddrVaddr.poke(0.U)
+      dut.io.RequestKill.poke(false.B)
+      dut.io.response.ready.poke(true.B)
       dut.io.StoreValid.poke(false.B)
       dut.io.StoreResponse.poke(0.U)
       dut.io.StoreAddress.poke(0.U)
@@ -54,9 +54,9 @@ class ysyx_26030103_DCacheDrainAuditTest
       dut.io.StoreData.poke(0.U)
       dut.io.StoreStrobe.poke(0.U)
       dut.io.flush.poke(false.B)
-      dut.io.dma_snoop_valid.poke(false.B)
-      dut.io.dma_snoop_start.poke(0.U)
-      dut.io.dma_snoop_end.poke(0.U)
+      dut.io.DMASnoopValid.poke(false.B)
+      dut.io.DMASnoopStart.poke(0.U)
+      dut.io.DMASnoopEnd.poke(0.U)
       dut.io.AXI.AR.ARREADY.poke(false.B)
       dut.io.AXI.R.RVALID.poke(false.B)
       dut.io.AXI.R.RDATA.poke(0.U)
@@ -65,15 +65,15 @@ class ysyx_26030103_DCacheDrainAuditTest
       dut.io.AXI.R.RID.poke(0.U)
 
       // 发一笔可缓存的 miss。
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.addr.poke("h80000000".U)
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.address.poke("h80000000".U)
       var cycles = 0
-      while (!bool(dut.io.req.ready) && cycles < 20) {
+      while (!bool(dut.io.request.ready) && cycles < 20) {
         dut.clock.step(); cycles += 1
       }
-      bool(dut.io.req.ready) should be(true)
+      bool(dut.io.request.ready) should be(true)
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       // 接受 refill AR。
       cycles = 0
@@ -101,7 +101,7 @@ class ysyx_26030103_DCacheDrainAuditTest
       var recovered = false
       for (_ <- 0 until 1000) {
         dut.clock.step()
-        if (bool(dut.io.req.ready) || bool(dut.io.resp.valid)) {
+        if (bool(dut.io.request.ready) || bool(dut.io.response.valid)) {
           recovered = true
         }
       }

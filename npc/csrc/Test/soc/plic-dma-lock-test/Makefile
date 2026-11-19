@@ -62,19 +62,19 @@ test run: all
 	  "$$binary" || status=1; \
 	done; \
 	cd $(TEST_DIR) && $(MILL) --no-server runMain \
-	  ysyx_26030103.test.PlicConfigContractTest || status=1; \
+	  ysyx_26030103.test.PLICConfigContractTest || status=1; \
 	exit $$status
 
 $(STAMP): $(SCALA_SRCS)
 	@mkdir -p $(RTL_DIR)
 	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
-	  ysyx_26030103.test.PlicClaimCompleteHarnessElaborate \
+	  ysyx_26030103.test.PLICClaimCompleteHarnessElaborate \
 	  --target-dir $(RTL_DIR)
 	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
 	  ysyx_26030103.test.WidthBridgeLockHarnessElaborate \
 	  --target-dir $(RTL_DIR)
 	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
-	  ysyx_26030103.test.XbarPlicPmaHarnessElaborate \
+	  ysyx_26030103.test.XbarPLICPmaHarnessElaborate \
 	  --target-dir $(RTL_DIR)
 	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
 	  ysyx_26030103.test.ArbiterLockHarnessElaborate \

@@ -2,13 +2,13 @@ module npc.configgen;
 import std;
 namespace npc::configgen {
 void addIsa(TypedFields &root, const Config &values, long long xlen,
-            long long socXlen)
+            long long SOCXlen)
 {
     const bool hasS = flatBool(values, "HAS_S", true);
     const bool hasU = flatBool(values, "HAS_U", hasS);
     TypedFields isa;
     addField(isa, "xlen", TypedJson::integer(xlen));
-    addField(isa, "soc_xlen", TypedJson::integer(socXlen));
+    addField(isa, "soc_xlen", TypedJson::integer(SOCXlen));
     addField(isa, "soc_xlen_follow_cpu",
              TypedJson::boolean(flatBool(values, "SOC_XLEN_FOLLOW_CPU")));
     addField(isa, "internal_bus_width_follow_cpu",
@@ -85,19 +85,19 @@ void addIDU(TypedFields &root, const Config &values)
 
 void addMDU(TypedFields &root, const Config &values)
 {
-    TypedFields mdu;
-    addField(mdu, "impl",
+    TypedFields MDU;
+    addField(MDU, "impl",
              TypedJson::string(flatString(values, "MDU_IMPL", "standard")));
-    addField(mdu, "mul_impl",
+    addField(MDU, "mul_impl",
              TypedJson::string(
                  flatString(values, "MUL_IMPL", "shift_add")));
-    addField(mdu, "mul_encoding",
+    addField(MDU, "mul_encoding",
              TypedJson::string(flatString(values, "MUL_ENCODING", "plain")));
-    addField(mdu, "div_impl",
+    addField(MDU, "div_impl",
              TypedJson::string(flatString(values, "DIV_IMPL", "restoring")));
-    addField(mdu, "mul_radix",
+    addField(MDU, "mul_radix",
              TypedJson::integer(flatInt(values, "MUL_RADIX", 4)));
-    addField(mdu, "mul_width",
+    addField(MDU, "mul_width",
              TypedJson::integer(flatInt(values, "MUL_WIDTH", 32)));
 
     TypedFields compressor;
@@ -150,21 +150,21 @@ void addMDU(TypedFields &root, const Config &values)
              TypedJson::integer(flatInt(values, "MUL_RADIX", 4)));
     addField(mul, "shift_add", TypedJson::object(std::move(shiftAdd)));
     addField(mul, "compression", TypedJson::object(std::move(compression)));
-    addField(mdu, "mul", TypedJson::object(std::move(mul)));
+    addField(MDU, "mul", TypedJson::object(std::move(mul)));
 
-    addField(mdu, "div_radix",
+    addField(MDU, "div_radix",
              TypedJson::integer(flatInt(values, "DIV_RADIX", 2)));
-    addField(mdu, "div_iter_bits",
+    addField(MDU, "div_iter_bits",
              TypedJson::integer(flatInt(values, "DIV_ITER_BITS", 1)));
-    addField(mdu, "div_early_out",
+    addField(MDU, "div_early_out",
              TypedJson::boolean(flatBool(values, "DIV_EARLY_OUT")));
-    addField(mdu, "mul_iter_bits",
+    addField(MDU, "mul_iter_bits",
              TypedJson::integer(flatInt(values, "MUL_ITER_BITS", 1)));
-    addField(mdu, "mul_pipeline",
+    addField(MDU, "mul_pipeline",
              TypedJson::integer(flatInt(values, "MUL_PIPELINE", 0)));
-    addField(mdu, "mul_split",
+    addField(MDU, "mul_split",
              TypedJson::integer(flatInt(values, "MUL_SPLIT", 1)));
-    addField(mdu, "mul_early_out",
+    addField(MDU, "mul_early_out",
              TypedJson::boolean(flatBool(values, "MUL_EARLY_OUT")));
 
     TypedFields div;
@@ -192,7 +192,7 @@ void addMDU(TypedFields &root, const Config &values)
     addField(div, "restoring", TypedJson::object(std::move(restoring)));
     addField(div, "nonrestoring", TypedJson::object(std::move(nonrestoring)));
     addField(div, "srt", TypedJson::object(std::move(srt)));
-    addField(mdu, "div", TypedJson::object(std::move(div)));
+    addField(MDU, "div", TypedJson::object(std::move(div)));
 
     TypedFields rocket;
     addField(rocket, "mul_unroll",
@@ -206,9 +206,9 @@ void addMDU(TypedFields &root, const Config &values)
     addField(rocket, "div_early_out_granularity",
              TypedJson::integer(
                  flatInt(values, "ROCKET_DIV_EARLY_OUT_GRANULARITY", 1)));
-    addField(mdu, "rocket", TypedJson::object(std::move(rocket)));
+    addField(MDU, "rocket", TypedJson::object(std::move(rocket)));
 
-    addField(root, "mdu", TypedJson::object(std::move(mdu)));
+    addField(root, "MDU", TypedJson::object(std::move(MDU)));
 }
 
 void addCache(TypedFields &root, const Config &values)
@@ -226,33 +226,33 @@ void addCache(TypedFields &root, const Config &values)
     addField(cache, "index_bits", TypedJson::integer(indexBits));
     addField(cache, "wbuf_depth",
              TypedJson::integer(flatInt(values, "WBUF_DEPTH", 4)));
-    TypedFields icache;
-    addField(icache, "enabled",
+    TypedFields ICache;
+    addField(ICache, "enabled",
              TypedJson::boolean(flatBool(values, "ICACHE", true)));
-    addField(icache, "block_size_log2",
+    addField(ICache, "block_size_log2",
              TypedJson::integer(flatInt(values, "ICACHE_BLOCK_SIZE_LOG2",
                                         blockSizeLog2)));
-    addField(icache, "index_bits",
+    addField(ICache, "index_bits",
              TypedJson::integer(
                  flatInt(values, "ICACHE_INDEX_BITS", indexBits)));
-    addField(icache, "storage",
+    addField(ICache, "storage",
              TypedJson::string(flatString(values, "ICACHE_STORAGE", "reg")));
-    addField(icache, "coherence",
+    addField(ICache, "coherence",
              TypedJson::string(
                  flatString(values, "ICACHE_COHERENCE", "fence_i")));
-    addField(cache, "icache", TypedJson::object(std::move(icache)));
-    TypedFields dcache;
-    addField(dcache, "enabled",
+    addField(cache, "ICache", TypedJson::object(std::move(ICache)));
+    TypedFields DCache;
+    addField(DCache, "enabled",
              TypedJson::boolean(flatBool(values, "DCACHE", false)));
-    addField(dcache, "block_size_log2",
+    addField(DCache, "block_size_log2",
              TypedJson::integer(flatInt(values, "DCACHE_BLOCK_SIZE_LOG2",
                                         blockSizeLog2)));
-    addField(dcache, "index_bits",
+    addField(DCache, "index_bits",
              TypedJson::integer(
                  flatInt(values, "DCACHE_INDEX_BITS", indexBits)));
-    addField(dcache, "storage",
+    addField(DCache, "storage",
              TypedJson::string(flatString(values, "DCACHE_STORAGE", "reg")));
-    addField(cache, "dcache", TypedJson::object(std::move(dcache)));
+    addField(cache, "DCache", TypedJson::object(std::move(DCache)));
     addField(cache, "dma_coherence",
              TypedJson::string(
                  flatString(values, "DMA_COHERENCE", "software_flush")));

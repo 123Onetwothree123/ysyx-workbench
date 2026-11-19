@@ -27,51 +27,51 @@ static void defaults(DUT &dut) {
   dut.io_fetchValid = 0;
   dut.io_fetchVirtualAddress = 0;
   dut.io_cacheReady = 1;
-  dut.io_pmpFault = 0;
+  dut.io_PMPFault = 0;
   dut.io_privilege = 1; // S 模式，satp.MODE=Sv39 时必须走翻译
   dut.io_satp = kSv39Satp;
   dut.io_sum = 0;
   dut.io_mxr = 0;
   dut.io_flush = 0;
-  dut.io_req_ready = 0;
-  dut.io_resp_valid = 0;
-  dut.io_resp_bits_id = 0;
-  dut.io_resp_bits_paddr = 0;
-  dut.io_resp_bits_fault = 0;
-  dut.io_resp_bits_cause = 0;
-  dut.io_resp_bits_tval = 0;
+  dut.io_request_ready = 0;
+  dut.io_response_valid = 0;
+  dut.io_response_bits_ID = 0;
+  dut.io_response_bits_paddr = 0;
+  dut.io_response_bits_fault = 0;
+  dut.io_response_bits_cause = 0;
+  dut.io_response_bits_tval = 0;
 }
 
 // 发起一笔翻译并接受 MMU 请求；返回时 IFUMMU 处于 xwait。
 static void issue_request(DUT &dut, uint64_t vaddr) {
   dut.io_fetchValid = 1;
   dut.io_fetchVirtualAddress = vaddr;
-  wait_until(dut, [&] { return dut.io_req_valid; },
+  wait_until(dut, [&] { return dut.io_request_valid; },
              "IFUMMU did not issue the translation request");
-  check(dut.io_req_bits_vaddr == vaddr,
+  check(dut.io_request_bits_vaddr == vaddr,
         "translation request lost its virtual address");
-  check(dut.io_req_bits_id == 0, "fetch translation used a non-IFU id");
-  dut.io_req_ready = 1;
+  check(dut.io_request_bits_ID == 0, "fetch translation used a non-IFU id");
+  dut.io_request_ready = 1;
   tick(dut);
-  dut.io_req_ready = 0;
+  dut.io_request_ready = 0;
   dut.eval();
-  check(!dut.io_req_valid, "IFUMMU issued more than one request per fetch");
+  check(!dut.io_request_valid, "IFUMMU issued more than one request per fetch");
 }
 
 static void send_response(DUT &dut, uint64_t vaddr, uint64_t paddr,
                           bool fault = false, unsigned cause = 0) {
-  dut.io_resp_valid = 1;
-  dut.io_resp_bits_id = 0;
-  dut.io_resp_bits_paddr = paddr;
-  dut.io_resp_bits_fault = fault;
-  dut.io_resp_bits_cause = cause;
-  dut.io_resp_bits_tval = vaddr;
+  dut.io_response_valid = 1;
+  dut.io_response_bits_ID = 0;
+  dut.io_response_bits_paddr = paddr;
+  dut.io_response_bits_fault = fault;
+  dut.io_response_bits_cause = cause;
+  dut.io_response_bits_tval = vaddr;
   tick(dut);
-  dut.io_resp_valid = 0;
-  dut.io_resp_bits_tval = 0;
-  dut.io_resp_bits_paddr = 0;
-  dut.io_resp_bits_fault = 0;
-  dut.io_resp_bits_cause = 0;
+  dut.io_response_valid = 0;
+  dut.io_response_bits_tval = 0;
+  dut.io_response_bits_paddr = 0;
+  dut.io_response_bits_fault = 0;
+  dut.io_response_bits_cause = 0;
   dut.eval();
 }
 
@@ -92,13 +92,13 @@ static void stale_response_is_dropped_while_waiting_for_new_pc() {
 
   issue_request(dut, kOldVa);
   redirect(dut, kNewVa);
-  wait_until(dut, [&] { return dut.io_req_valid; },
+  wait_until(dut, [&] { return dut.io_request_valid; },
              "new PC translation request never appeared");
-  check(dut.io_req_bits_vaddr == kNewVa,
+  check(dut.io_request_bits_vaddr == kNewVa,
         "new PC translation request carried the stale virtual address");
-  dut.io_req_ready = 1;
+  dut.io_request_ready = 1;
   tick(dut);
-  dut.io_req_ready = 0;
+  dut.io_request_ready = 0;
   dut.eval();
 
   // 旧请求的迟到响应：VA/PA 都是旧 PC。绝不能把 kOldPa 当成 kNewVa 的翻译。
@@ -127,11 +127,11 @@ static void stale_fault_response_must_not_raise_page_fault() {
 
   issue_request(dut, kOldVa);
   redirect(dut, kNewVa);
-  wait_until(dut, [&] { return dut.io_req_valid; },
+  wait_until(dut, [&] { return dut.io_request_valid; },
              "new PC translation request never appeared");
-  dut.io_req_ready = 1;
+  dut.io_request_ready = 1;
   tick(dut);
-  dut.io_req_ready = 0;
+  dut.io_request_ready = 0;
   dut.eval();
 
   // 旧请求的 page fault 不能以新 PC 的身份提交。
@@ -155,11 +155,11 @@ static void late_response_after_done_cannot_overwrite_translation() {
 
   issue_request(dut, kOldVa);
   redirect(dut, kNewVa);
-  wait_until(dut, [&] { return dut.io_req_valid; },
+  wait_until(dut, [&] { return dut.io_request_valid; },
              "new PC translation request never appeared");
-  dut.io_req_ready = 1;
+  dut.io_request_ready = 1;
   tick(dut);
-  dut.io_req_ready = 0;
+  dut.io_request_ready = 0;
   dut.eval();
 
   // 保持 cacheReady=0，让已完成的翻译停留在 done 状态，模拟 ICache 尚未

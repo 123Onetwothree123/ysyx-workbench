@@ -24,17 +24,17 @@ class ysyx_26030103_RocketMDU(
     ysyx_26030103_MDUOp.REM -> FN_REM,
     ysyx_26030103_MDUOp.REMU -> FN_REMU
   ))
-  core.io.req.valid := io.Request.valid && !io.Flush
-  core.io.req.bits.fn := fn
-  core.io.req.bits.dw := (if (config.XLEN == 64) DW_64 else DW_32)
-  core.io.req.bits.in1 := io.Request.bits.LHS
-  core.io.req.bits.in2 := io.Request.bits.RHS
-  core.io.req.bits.tag := 0.U
+  core.io.request.valid := io.Request.valid && !io.Flush
+  core.io.request.bits.fn := fn
+  core.io.request.bits.dw := (if (config.XLEN == 64) DW_64 else DW_32)
+  core.io.request.bits.in1 := io.Request.bits.LHS
+  core.io.request.bits.in2 := io.Request.bits.RHS
+  core.io.request.bits.tag := 0.U
   core.io.kill := io.Flush
-  io.Request.ready := core.io.req.ready && !io.Flush
-  core.io.resp.ready := io.Response.ready && !io.Flush
-  io.Response.valid := core.io.resp.valid && !io.Flush
-  io.Response.bits.Result := core.io.resp.bits.data
-  io.PerfDivIterations := core.io.div_iterations
-  io.PerfDivEarlyOut := core.io.div_early_out
+  io.Request.ready := core.io.request.ready && !io.Flush
+  core.io.response.ready := io.Response.ready && !io.Flush
+  io.Response.valid := core.io.response.valid && !io.Flush
+  io.Response.bits.Result := core.io.response.bits.data
+  io.PerfDivIterations := core.io.DivIterations
+  io.PerfDivEarlyOut := core.io.DivEarlyOut
 }

@@ -37,11 +37,11 @@ class ysyx_26030103_FPDecodeRegressionTest
         xlen = xlen,
         hasS = true,
         hasU = true,
-        pteSizeBytes = if (xlen == 64) 8 else 4,
-        pteFormat = if (xlen == 64) "riscv64" else "riscv32",
-        pteConfig = ysyx_26030103_PTEConfig(
-          pteBits = if (xlen == 64) 64 else 32,
-          ppnHigh = if (xlen == 64) 53 else 21
+        PTESizeBytes = if (xlen == 64) 8 else 4,
+        PTEFormat = if (xlen == 64) "riscv64" else "riscv32",
+        PTEConfig = ysyx_26030103_PTEConfig(
+          PTEBits = if (xlen == 64) 64 else 32,
+          PPNHigh = if (xlen == 64) 53 else 21
         )
       )
     )

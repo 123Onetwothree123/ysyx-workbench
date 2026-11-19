@@ -62,69 +62,69 @@ class ysyx_26030103_AXIMultiOutstandingTest
   }
 
   "PTWToAXI" should "同时发出多笔页表读并按原事务 ID 回收响应" in {
-    simulate(new ysyx_26030103_PTWToAXI(busDepth = 8, axiReadSlots = 4)) {
+    simulate(new ysyx_26030103_PTWToAXI(busDepth = 8, AXIReadSlots = 4)) {
       dut =>
         dut.reset.poke(true.B)
         dut.clock.step(2)
         dut.reset.poke(false.B)
-        // req/resp 不是 AXI5IO，单独初始化。
-        dut.io.req.valid.poke(false.B)
-        dut.io.req.bits.id.poke(0.U)
-        dut.io.req.bits.addr.poke(0.U)
-        dut.io.req.bits.write.poke(false.B)
-        dut.io.req.bits.data.poke(0.U)
-        dut.io.req.bits.strb.poke(0.U)
-        dut.io.resp.ready.poke(true.B)
-        idleMasterInputs(dut.io.axi)
-        idleMasterInputs(dut.io.axiWrite)
+        // request/response 不是 AXI5IO，单独初始化。
+        dut.io.request.valid.poke(false.B)
+        dut.io.request.bits.ID.poke(0.U)
+        dut.io.request.bits.address.poke(0.U)
+        dut.io.request.bits.write.poke(false.B)
+        dut.io.request.bits.data.poke(0.U)
+        dut.io.request.bits.strb.poke(0.U)
+        dut.io.response.ready.poke(true.B)
+        idleMasterInputs(dut.io.AXI)
+        idleMasterInputs(dut.io.AXIWrite)
 
         val issued = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
         val responses = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
 
         def step(): Unit = {
-          if (asBool(dut.io.axi.AR.ARVALID) &&
-              asBool(dut.io.axi.AR.ARREADY)) {
-            issued += ((asLong(dut.io.axi.AR.ARID).toInt,
-              asLong(dut.io.axi.AR.ARADDR)))
+          if (asBool(dut.io.AXI.AR.ARVALID) &&
+              asBool(dut.io.AXI.AR.ARREADY)) {
+            issued += ((asLong(dut.io.AXI.AR.ARID).toInt,
+              asLong(dut.io.AXI.AR.ARADDR)))
           }
-          if (asBool(dut.io.resp.valid) && asBool(dut.io.resp.ready)) {
-            responses += ((asLong(dut.io.resp.bits.id).toInt,
-              asLong(dut.io.resp.bits.data)))
+          if (asBool(dut.io.response.valid) && asBool(dut.io.response.ready)) {
+            responses += ((asLong(dut.io.response.bits.ID).toInt,
+              asLong(dut.io.response.bits.data)))
           }
           dut.clock.step()
         }
 
-        def sendRead(origID: Int, addr: Long): Unit = {
-          dut.io.req.valid.poke(true.B)
-          dut.io.req.bits.id.poke(origID.U)
-          dut.io.req.bits.addr.poke(addr.U)
-          dut.io.req.bits.write.poke(false.B)
-          dut.io.req.bits.data.poke(0.U)
-          dut.io.req.bits.strb.poke(0.U)
+        def sendRead(OrigID: Int, addr: Long): Unit = {
+          dut.io.request.valid.poke(true.B)
+          dut.io.request.bits.ID.poke(OrigID.U)
+          dut.io.request.bits.address.poke(addr.U)
+          dut.io.request.bits.write.poke(false.B)
+          dut.io.request.bits.data.poke(0.U)
+          dut.io.request.bits.strb.poke(0.U)
           var guard = 0
-          while (!asBool(dut.io.req.ready) && guard < 50) {
+          while (!asBool(dut.io.request.ready) && guard < 50) {
             step()
             guard += 1
           }
-          asBool(dut.io.req.ready) should be(true)
+          asBool(dut.io.request.ready) should be(true)
           step()
-          dut.io.req.valid.poke(false.B)
+          dut.io.request.valid.poke(false.B)
         }
 
-        def sendResponse(axiID: Int, data: Long): Unit = {
-          dut.io.axi.R.RVALID.poke(true.B)
-          dut.io.axi.R.RID.poke(axiID.U)
-          dut.io.axi.R.RDATA.poke(data.U)
-          dut.io.axi.R.RRESP.poke(0.U)
-          dut.io.axi.R.RLAST.poke(true.B)
+        def sendResponse(AXIID: Int, data: Long): Unit = {
+          dut.io.AXI.R.RVALID.poke(true.B)
+          dut.io.AXI.R.RID.poke(AXIID.U)
+          dut.io.AXI.R.RDATA.poke(data.U)
+          dut.io.AXI.R.RRESP.poke(0.U)
+          dut.io.AXI.R.RLAST.poke(true.B)
           var guard = 0
-          while (!asBool(dut.io.axi.R.RREADY) && guard < 20) {
+          while (!asBool(dut.io.AXI.R.RREADY) && guard < 20) {
             step()
             guard += 1
           }
-          asBool(dut.io.axi.R.RREADY) should be(true)
+          asBool(dut.io.AXI.R.RREADY) should be(true)
           step()
-          dut.io.axi.R.RVALID.poke(false.B)
+          dut.io.AXI.R.RVALID.poke(false.B)
         }
 
         def collectUntil(count: Int): Unit = {
@@ -150,95 +150,95 @@ class ysyx_26030103_AXIMultiOutstandingTest
           id should (be >= ysyx_26030103_AXIReadID.PTWBase and
             be <= ysyx_26030103_AXIReadID.PTWLast)
         }
-        val idByAddress = issued.map { case (id, addr) => addr -> id }.toMap
-        idByAddress.keySet should be(Set(0x1000L, 0x2000L, 0x3000L))
+        val IDByAddress = issued.map { case (id, addr) => addr -> id }.toMap
+        IDByAddress.keySet should be(Set(0x1000L, 0x2000L, 0x3000L))
 
         // 乱序返回：每笔响应必须按 AXI ID 送回对应的 PTW 原 ID。
-        sendResponse(idByAddress(0x2000L), 0x777L)
+        sendResponse(IDByAddress(0x2000L), 0x777L)
         collectUntil(1)
         responses should be(Seq(7 -> 0x777L))
-        sendResponse(idByAddress(0x1000L), 0x222L)
+        sendResponse(IDByAddress(0x1000L), 0x222L)
         collectUntil(2)
         responses(1) should be(2 -> 0x222L)
-        sendResponse(idByAddress(0x3000L), 0x555L)
+        sendResponse(IDByAddress(0x3000L), 0x555L)
         collectUntil(3)
         responses(2) should be(5 -> 0x555L)
     }
   }
 
   "PTWToAXI" should "在 ARREADY 反压期间保持页表读 ID/地址稳定" in {
-    simulate(new ysyx_26030103_PTWToAXI(busDepth = 4, axiReadSlots = 4)) {
+    simulate(new ysyx_26030103_PTWToAXI(busDepth = 4, AXIReadSlots = 4)) {
       dut =>
         dut.reset.poke(true.B)
         dut.clock.step(2)
         dut.reset.poke(false.B)
-        dut.io.req.valid.poke(false.B)
-        dut.io.req.bits.id.poke(0.U)
-        dut.io.req.bits.addr.poke(0.U)
-        dut.io.req.bits.write.poke(false.B)
-        dut.io.req.bits.data.poke(0.U)
-        dut.io.req.bits.strb.poke(0.U)
-        dut.io.resp.ready.poke(true.B)
-        idleMasterInputs(dut.io.axi)
-        idleMasterInputs(dut.io.axiWrite)
+        dut.io.request.valid.poke(false.B)
+        dut.io.request.bits.ID.poke(0.U)
+        dut.io.request.bits.address.poke(0.U)
+        dut.io.request.bits.write.poke(false.B)
+        dut.io.request.bits.data.poke(0.U)
+        dut.io.request.bits.strb.poke(0.U)
+        dut.io.response.ready.poke(true.B)
+        idleMasterInputs(dut.io.AXI)
+        idleMasterInputs(dut.io.AXIWrite)
 
         val issued = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
         val responses = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
         def step(): Unit = {
-          if (asBool(dut.io.axi.AR.ARVALID) &&
-              asBool(dut.io.axi.AR.ARREADY)) {
-            issued += ((asLong(dut.io.axi.AR.ARID).toInt,
-              asLong(dut.io.axi.AR.ARADDR)))
+          if (asBool(dut.io.AXI.AR.ARVALID) &&
+              asBool(dut.io.AXI.AR.ARREADY)) {
+            issued += ((asLong(dut.io.AXI.AR.ARID).toInt,
+              asLong(dut.io.AXI.AR.ARADDR)))
           }
-          if (asBool(dut.io.resp.valid) && asBool(dut.io.resp.ready)) {
-            responses += ((asLong(dut.io.resp.bits.id).toInt,
-              asLong(dut.io.resp.bits.data)))
+          if (asBool(dut.io.response.valid) && asBool(dut.io.response.ready)) {
+            responses += ((asLong(dut.io.response.bits.ID).toInt,
+              asLong(dut.io.response.bits.data)))
           }
           dut.clock.step()
         }
-        def sendRead(origID: Int, addr: Long): Unit = {
-          dut.io.req.valid.poke(true.B)
-          dut.io.req.bits.id.poke(origID.U)
-          dut.io.req.bits.addr.poke(addr.U)
-          dut.io.req.bits.write.poke(false.B)
+        def sendRead(OrigID: Int, addr: Long): Unit = {
+          dut.io.request.valid.poke(true.B)
+          dut.io.request.bits.ID.poke(OrigID.U)
+          dut.io.request.bits.address.poke(addr.U)
+          dut.io.request.bits.write.poke(false.B)
           var guard = 0
-          while (!asBool(dut.io.req.ready) && guard < 20) {
+          while (!asBool(dut.io.request.ready) && guard < 20) {
             step(); guard += 1
           }
           step()
-          dut.io.req.valid.poke(false.B)
+          dut.io.request.valid.poke(false.B)
         }
-        def sendResponse(axiID: Int, data: Long): Unit = {
-          dut.io.axi.R.RVALID.poke(true.B)
-          dut.io.axi.R.RID.poke(axiID.U)
-          dut.io.axi.R.RDATA.poke(data.U)
-          dut.io.axi.R.RRESP.poke(0.U)
-          dut.io.axi.R.RLAST.poke(true.B)
+        def sendResponse(AXIID: Int, data: Long): Unit = {
+          dut.io.AXI.R.RVALID.poke(true.B)
+          dut.io.AXI.R.RID.poke(AXIID.U)
+          dut.io.AXI.R.RDATA.poke(data.U)
+          dut.io.AXI.R.RRESP.poke(0.U)
+          dut.io.AXI.R.RLAST.poke(true.B)
           var guard = 0
-          while (!asBool(dut.io.axi.R.RREADY) && guard < 20) {
+          while (!asBool(dut.io.AXI.R.RREADY) && guard < 20) {
             step(); guard += 1
           }
-          asBool(dut.io.axi.R.RREADY) should be(true)
+          asBool(dut.io.AXI.R.RREADY) should be(true)
           step()
-          dut.io.axi.R.RVALID.poke(false.B)
+          dut.io.AXI.R.RVALID.poke(false.B)
         }
 
         // 先在 slot0 发起一笔读。
-        dut.io.axi.AR.ARREADY.poke(true.B)
+        dut.io.AXI.AR.ARREADY.poke(true.B)
         sendRead(1, 0x1000L)
         var guard = 0
         while (issued.size < 1 && guard < 20) { step(); guard += 1 }
         issued should be(Seq(3 -> 0x1000L))
 
         // 关闭 ARREADY，让第二笔读停在 slot1 的 AR 上。
-        dut.io.axi.AR.ARREADY.poke(false.B)
+        dut.io.AXI.AR.ARREADY.poke(false.B)
         sendRead(2, 0x2000L)
         guard = 0
-        while (!asBool(dut.io.axi.AR.ARVALID) && guard < 20) {
+        while (!asBool(dut.io.AXI.AR.ARVALID) && guard < 20) {
           step(); guard += 1
         }
-        asLong(dut.io.axi.AR.ARID) should be(4L)
-        asLong(dut.io.axi.AR.ARADDR) should be(0x2000L)
+        asLong(dut.io.AXI.AR.ARID) should be(4L)
+        asLong(dut.io.AXI.AR.ARADDR) should be(0x2000L)
 
         // slot0 的响应返回并被 PTW 接收后，slot0 变空。此时被反压的
         // slot1 AR 不能把 ID 从 4 改成 3，否则违反 AXI 稳定性。
@@ -248,12 +248,12 @@ class ysyx_26030103_AXIMultiOutstandingTest
         responses should be(Seq(1 -> 0xaaa1L))
         for (_ <- 0 until 3) {
           step()
-          asBool(dut.io.axi.AR.ARVALID) should be(true)
-          asLong(dut.io.axi.AR.ARID) should be(4L)
-          asLong(dut.io.axi.AR.ARADDR) should be(0x2000L)
+          asBool(dut.io.AXI.AR.ARVALID) should be(true)
+          asLong(dut.io.AXI.AR.ARID) should be(4L)
+          asLong(dut.io.AXI.AR.ARADDR) should be(0x2000L)
         }
 
-        dut.io.axi.AR.ARREADY.poke(true.B)
+        dut.io.AXI.AR.ARREADY.poke(true.B)
         step()
         issued should be(Seq(3 -> 0x1000L, 4 -> 0x2000L))
         sendResponse(4, 0xbbb2L)
@@ -294,11 +294,11 @@ class ysyx_26030103_AXIMultiOutstandingTest
         dut.clock.step()
       }
 
-      def issueA(addr: Long, len: Int): Unit = {
+      def issueA(addr: Long, length: Int): Unit = {
         dut.io.a.AR.ARVALID.poke(true.B)
         dut.io.a.AR.ARID.poke(0.U)
         dut.io.a.AR.ARADDR.poke(addr.U)
-        dut.io.a.AR.ARLEN.poke(len.U)
+        dut.io.a.AR.ARLEN.poke(length.U)
         var guard = 0
         while (!asBool(dut.io.a.AR.ARREADY) && guard < 20) {
           step()
@@ -309,9 +309,9 @@ class ysyx_26030103_AXIMultiOutstandingTest
         dut.io.a.AR.ARVALID.poke(false.B)
       }
 
-      def issueB(id: Int, addr: Long): Unit = {
+      def issueB(ID: Int, addr: Long): Unit = {
         dut.io.b.AR.ARVALID.poke(true.B)
-        dut.io.b.AR.ARID.poke(id.U)
+        dut.io.b.AR.ARID.poke(ID.U)
         dut.io.b.AR.ARADDR.poke(addr.U)
         dut.io.b.AR.ARLEN.poke(0.U)
         var guard = 0
@@ -379,81 +379,81 @@ class ysyx_26030103_AXIMultiOutstandingTest
       dut.clock.step(2)
       dut.reset.poke(false.B)
       idleSlaveInputs(dut.io.ifu)
-      idleSlaveInputs(dut.io.lsu)
-      idleSlaveInputs(dut.io.dma)
+      idleSlaveInputs(dut.io.LSU)
+      idleSlaveInputs(dut.io.DMA)
       idleMasterInputs(dut.io.memory)
-      dut.io.dmaARLock.poke(false.B)
+      dut.io.DMAARLock.poke(false.B)
       dut.io.atomicBusy.poke(false.B)
-      dut.io.dmaAWLock.poke(false.B)
+      dut.io.DMAAWLock.poke(false.B)
 
-      case class Request(addr: Long, id: Int, len: Int)
-      val ifuQ = scala.collection.mutable.Queue(
+      case class Request(addr: Long, ID: Int, length: Int)
+      val IFUQ = scala.collection.mutable.Queue(
         Request(0x1000L, 0, 3),
         Request(0x1300L, 3, 0),
         Request(0x1400L, 4, 0)
       )
-      val lsuQ = scala.collection.mutable.Queue(Request(0x2000L, 0, 0))
-      val dmaQ = scala.collection.mutable.Queue(Request(0xc0001000L, 7, 0))
+      val LSUQ = scala.collection.mutable.Queue(Request(0x2000L, 0, 0))
+      val DMAQ = scala.collection.mutable.Queue(Request(0xc0001000L, 7, 0))
 
-      val arLog = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
-      val ifuResponse = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
-      val lsuResponse = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
-      val dmaResponse = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
+      val ARLog = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
+      val IFUResponse = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
+      val LSUResponse = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
+      val DMAResponse = scala.collection.mutable.ArrayBuffer.empty[(Int, Long)]
 
       def step(): Unit = {
-        ifuQ.headOption match {
+        IFUQ.headOption match {
           case Some(r) =>
             dut.io.ifu.AR.ARVALID.poke(true.B)
-            dut.io.ifu.AR.ARID.poke(r.id.U)
+            dut.io.ifu.AR.ARID.poke(r.ID.U)
             dut.io.ifu.AR.ARADDR.poke(r.addr.U)
-            dut.io.ifu.AR.ARLEN.poke(r.len.U)
+            dut.io.ifu.AR.ARLEN.poke(r.length.U)
           case None => dut.io.ifu.AR.ARVALID.poke(false.B)
         }
-        lsuQ.headOption match {
+        LSUQ.headOption match {
           case Some(r) =>
-            dut.io.lsu.AR.ARVALID.poke(true.B)
-            dut.io.lsu.AR.ARID.poke(r.id.U)
-            dut.io.lsu.AR.ARADDR.poke(r.addr.U)
-            dut.io.lsu.AR.ARLEN.poke(r.len.U)
-          case None => dut.io.lsu.AR.ARVALID.poke(false.B)
+            dut.io.LSU.AR.ARVALID.poke(true.B)
+            dut.io.LSU.AR.ARID.poke(r.ID.U)
+            dut.io.LSU.AR.ARADDR.poke(r.addr.U)
+            dut.io.LSU.AR.ARLEN.poke(r.length.U)
+          case None => dut.io.LSU.AR.ARVALID.poke(false.B)
         }
-        dmaQ.headOption match {
+        DMAQ.headOption match {
           case Some(r) =>
-            dut.io.dma.AR.ARVALID.poke(true.B)
-            dut.io.dma.AR.ARID.poke(r.id.U)
-            dut.io.dma.AR.ARADDR.poke(r.addr.U)
-            dut.io.dma.AR.ARLEN.poke(r.len.U)
-          case None => dut.io.dma.AR.ARVALID.poke(false.B)
+            dut.io.DMA.AR.ARVALID.poke(true.B)
+            dut.io.DMA.AR.ARID.poke(r.ID.U)
+            dut.io.DMA.AR.ARADDR.poke(r.addr.U)
+            dut.io.DMA.AR.ARLEN.poke(r.length.U)
+          case None => dut.io.DMA.AR.ARVALID.poke(false.B)
         }
 
-        val ifuFire = ifuQ.nonEmpty && asBool(dut.io.ifu.AR.ARREADY)
-        val lsuFire = lsuQ.nonEmpty && asBool(dut.io.lsu.AR.ARREADY)
-        val dmaFire = dmaQ.nonEmpty && asBool(dut.io.dma.AR.ARREADY)
+        val IFUFire = IFUQ.nonEmpty && asBool(dut.io.ifu.AR.ARREADY)
+        val LSUFire = LSUQ.nonEmpty && asBool(dut.io.LSU.AR.ARREADY)
+        val DMAFire = DMAQ.nonEmpty && asBool(dut.io.DMA.AR.ARREADY)
         if (asBool(dut.io.memory.AR.ARVALID) &&
             asBool(dut.io.memory.AR.ARREADY)) {
-          arLog += ((asLong(dut.io.memory.AR.ARID).toInt,
+          ARLog += ((asLong(dut.io.memory.AR.ARID).toInt,
             asLong(dut.io.memory.AR.ARADDR)))
         }
         if (asBool(dut.io.ifu.R.RVALID) &&
             asBool(dut.io.ifu.R.RREADY)) {
-          ifuResponse += ((asLong(dut.io.ifu.R.RID).toInt,
+          IFUResponse += ((asLong(dut.io.ifu.R.RID).toInt,
             asLong(dut.io.ifu.R.RDATA)))
         }
-        if (asBool(dut.io.lsu.R.RVALID) &&
-            asBool(dut.io.lsu.R.RREADY)) {
-          lsuResponse += ((asLong(dut.io.lsu.R.RID).toInt,
-            asLong(dut.io.lsu.R.RDATA)))
+        if (asBool(dut.io.LSU.R.RVALID) &&
+            asBool(dut.io.LSU.R.RREADY)) {
+          LSUResponse += ((asLong(dut.io.LSU.R.RID).toInt,
+            asLong(dut.io.LSU.R.RDATA)))
         }
-        if (asBool(dut.io.dma.R.RVALID) &&
-            asBool(dut.io.dma.R.RREADY)) {
-          dmaResponse += ((asLong(dut.io.dma.R.RID).toInt,
-            asLong(dut.io.dma.R.RDATA)))
+        if (asBool(dut.io.DMA.R.RVALID) &&
+            asBool(dut.io.DMA.R.RREADY)) {
+          DMAResponse += ((asLong(dut.io.DMA.R.RID).toInt,
+            asLong(dut.io.DMA.R.RDATA)))
         }
 
         dut.clock.step()
-        if (ifuFire) { ifuQ.dequeue(); () }
-        if (lsuFire) { lsuQ.dequeue(); () }
-        if (dmaFire) { dmaQ.dequeue(); () }
+        if (IFUFire) { IFUQ.dequeue(); () }
+        if (LSUFire) { LSUQ.dequeue(); () }
+        if (DMAFire) { DMAQ.dequeue(); () }
       }
 
       def sendResponse(rid: Int, data: Long, last: Boolean): Unit = {
@@ -474,7 +474,7 @@ class ysyx_26030103_AXIMultiOutstandingTest
 
       def collectIFU(count: Int): Unit = {
         var guard = 0
-        while (ifuResponse.size < count && guard < 30) {
+        while (IFUResponse.size < count && guard < 30) {
           step()
           guard += 1
         }
@@ -482,31 +482,31 @@ class ysyx_26030103_AXIMultiOutstandingTest
 
       // 三笔 IFU 读（ICache burst + 两笔 PTW）与 LSU、DMA 同时请求。
       var guard = 0
-      while ((ifuQ.nonEmpty || lsuQ.nonEmpty || dmaQ.nonEmpty) && guard < 40) {
+      while ((IFUQ.nonEmpty || LSUQ.nonEmpty || DMAQ.nonEmpty) && guard < 40) {
         step()
         guard += 1
       }
-      ifuQ shouldBe empty
-      lsuQ shouldBe empty
-      dmaQ shouldBe empty
-      arLog.size should be(5)
+      IFUQ shouldBe empty
+      LSUQ shouldBe empty
+      DMAQ shouldBe empty
+      ARLog.size should be(5)
       // 下游 ID：IFU 0/3/4 原样，LSU 局部 0 映射到 1，DMA 固定 2。
-      val idByAddress = arLog.map { case (id, addr) => addr -> id }.toMap
-      idByAddress(0x1000L) should be(0)
-      idByAddress(0x1300L) should be(3)
-      idByAddress(0x1400L) should be(4)
-      idByAddress(0x2000L) should be(1)
-      idByAddress(0xc0001000L) should be(2)
+      val IDByAddress = ARLog.map { case (id, addr) => addr -> id }.toMap
+      IDByAddress(0x1000L) should be(0)
+      IDByAddress(0x1300L) should be(3)
+      IDByAddress(0x1400L) should be(4)
+      IDByAddress(0x2000L) should be(1)
+      IDByAddress(0xc0001000L) should be(2)
 
       // 响应乱序返回，IFU 的多个 ID、LSU 和 DMA 必须各自路由。
       sendResponse(4, 0x44L, last = true)
       collectIFU(1)
-      ifuResponse should be(Seq(4 -> 0x44L))
+      IFUResponse should be(Seq(4 -> 0x44L))
 
       sendResponse(1, 0x91L, last = true)
       guard = 0
-      while (lsuResponse.isEmpty && guard < 20) { step(); guard += 1 }
-      lsuResponse should be(Seq(0 -> 0x91L))
+      while (LSUResponse.isEmpty && guard < 20) { step(); guard += 1 }
+      LSUResponse should be(Seq(0 -> 0x91L))
 
       sendResponse(0, 0x10L, last = false)
       collectIFU(2)
@@ -516,15 +516,15 @@ class ysyx_26030103_AXIMultiOutstandingTest
       collectIFU(4)
       sendResponse(2, 0xd2L, last = true)
       guard = 0
-      while (dmaResponse.isEmpty && guard < 20) { step(); guard += 1 }
-      dmaResponse should be(Seq(7 -> 0xd2L))
+      while (DMAResponse.isEmpty && guard < 20) { step(); guard += 1 }
+      DMAResponse should be(Seq(7 -> 0xd2L))
 
       sendResponse(0, 0x12L, last = false)
       collectIFU(5)
       sendResponse(0, 0x13L, last = true)
       collectIFU(6)
 
-      ifuResponse should be(Seq(
+      IFUResponse should be(Seq(
         4 -> 0x44L,
         0 -> 0x10L,
         3 -> 0x33L,

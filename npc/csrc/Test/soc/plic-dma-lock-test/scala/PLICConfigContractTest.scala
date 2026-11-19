@@ -19,23 +19,23 @@ object PLICConfigContractTest extends App {
   }
 
   val defaults = ysyx_26030103_MMUProfile()
-  assert(defaults.plicSources > 10, "default PLIC must include source 10")
-  assert(defaults.plicSize >= 0x202000L,
+  assert(defaults.PLICSources > 10, "default PLIC must include source 10")
+  assert(defaults.PLICSize >= 0x202000L,
     "default PLIC must cover the S-context claim window")
-  assert(defaults.plicBase % 4096 == 0 && defaults.plicSize % 4096 == 0,
+  assert(defaults.PLICBase % 4096 == 0 && defaults.PLICSize % 4096 == 0,
     "default PLIC must be page aligned")
 
   expectRejected("PLIC_SOURCES=10") {
-    ysyx_26030103_MMUProfile(plicSources = 10)
+    ysyx_26030103_MMUProfile(PLICSources = 10)
   }
   expectRejected("PLIC_SIZE below S claim window") {
-    ysyx_26030103_MMUProfile(plicSize = 0x201000L)
+    ysyx_26030103_MMUProfile(PLICSize = 0x201000L)
   }
   expectRejected("unaligned PLIC_BASE") {
-    ysyx_26030103_MMUProfile(plicBase = 0x0c000001L)
+    ysyx_26030103_MMUProfile(PLICBase = 0x0c000001L)
   }
   expectRejected("unaligned PLIC_SIZE") {
-    ysyx_26030103_MMUProfile(plicSize = 0x202001L)
+    ysyx_26030103_MMUProfile(PLICSize = 0x202001L)
   }
 
   println("[PASS] PLIC configuration contract")

@@ -3,8 +3,7 @@ module;
 export module AccessRecord;
 import std;
 
-// 目标 XLEN 由 Kconfig CONFIG_XLEN 在编译期确定，地址/块号使用 Addr；
-// cache 数据字仍为真实 32 位（本工具只建模 tag，不建模数据通路）。
+// XLEN 编译期由 CONFIG_XLEN 决定，地址/块号使用 Addr。
 export inline constexpr unsigned kXlen = CONFIG_XLEN;
 static_assert(kXlen == 32 || kXlen == 64,
               "CONFIG_XLEN 必须是 32 或 64");
@@ -15,7 +14,7 @@ export class AccessRecord
 {
 private:
     Addr addr; // 访存地址
-    bool is_write;      // 0=读(load), 1=写(store)
+    bool is_write; // 0=load，1=store
 public:
     AccessRecord() = default;
     AccessRecord(Addr a, bool w);

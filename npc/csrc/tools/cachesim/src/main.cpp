@@ -1,3 +1,8 @@
+module;
+#include "common/CliOptions.hpp"
+#include "common/CsvResult.hpp"
+#include <cstdio>
+
 import std;
 import types;
 import cache;
@@ -6,21 +11,6 @@ import stats;
 import dse;
 
 namespace {
-
-void print_usage(const char* prog)
-{
-    std::println("用法: {} [选项] <trace文件>", prog);
-    std::println();
-    std::println("选项:");
-    std::println("  -b, --block-size <N>     块大小 (字节, 2的幂, 默认 {})", CACHE_BLOCK_SIZE);
-    std::println("  -n, --num-blocks <N>     cache 块总数 (默认 {})", CACHE_NUM_BLOCKS);
-    std::println("  -w, --ways <N>           相联度 (默认 {})", CACHE_WAYS);
-    std::println("  -r, --replacement <策略>  替换策略: fifo / lru / random (默认 fifo)");
-    std::println("  --bus-width <N>         总线位宽 (字节, 默认 4, 用于估算缺失代价)");
-    std::println("  --dse                    设计空间探索模式");
-    std::println("  -h, --help               显示帮助信息");
-}
-
 auto parse_repl(std::string_view s) -> unsigned
 {
     if (s == "fifo" || s == "FIFO") return 0;
@@ -47,148 +37,89 @@ void dse_run(const char* trace_path, unsigned bus_width)
     const unsigned ways_list[] = {1, 2, 4, 8};
     const unsigned repl_list[] = {0, 1, 2}; // fifo, lru, random
     const char* repl_names[] = {"fifo", "lru", "random"};
-
     auto results = run_dse(trace_path, block_sizes, num_blocks_list, ways_list, repl_list);
-
-    // 生成结果目录 cachesim/TestResult/时间戳/
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    auto tm = *std::localtime(&time_t);
-    auto dir = std::format("{}/TestResult/{:04}{:02}{:02}-{:02}{:02}{:02}",
-        CACHESIM_DIR,
-        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-    std::filesystem::create_directories(dir);
-
-    auto result_path = std::format("{}/result.csv", dir);
-    auto fp = std::ofstream(result_path, std::ios::binary);
-    // UTF-8 BOM
-    fp << "\xEF\xBB\xBF";
-    fp << "块大小,块总数,容量(B),相联度,替换策略,总访问,命中,缺失,强制缺失,容量缺失,冲突缺失,命中率,缺失代价(事务数)\n";
-
-    for (const auto& r : results) {
-        auto& s = r.stats;
-        auto misses = s.misses();
-        auto rate = s.total > 0 ? 100.0 * s.hits / s.total : 0.0;
-        auto transactions_per_miss = (r.config.block_size + bus_width - 1) / bus_width;
-        auto total_transactions = misses * transactions_per_miss;
-        fp << r.config.block_size << ","
-           << r.config.num_blocks << ","
-           << r.config.block_size * r.config.num_blocks << ","
-           << r.config.ways << ","
-           << repl_names[r.config.repl_policy] << ","
-           << s.total << ","
-           << s.hits << ","
-           << misses << ","
-           << s.miss_compulsory << ","
-           << s.miss_capacity << ","
-           << s.miss_conflict << ","
-           << std::fixed << std::setprecision(2) << rate << "%,"
-           << total_transactions << "\n";
-    }
-
-    fp.close();
-    std::println("DSE 完成，{} 组参数组合，结果保存在 {}", results.size(), result_path);
+    constexpr std::string_view Header{
+        "块大小,块总数,容量(B),相联度,替换策略,总访问,命中,缺失,强制缺失,容量缺失,冲突缺失,命中率,缺失代价(事务数)"};
+    const auto result_path{common::WriteDseCsv(
+        std::span<const DseEntry>{results},
+        std::filesystem::path{CACHESIM_DIR} / "TestResult", "", Header,
+        [&](const DseEntry& e)
+        {
+            const auto& s{e.stats};
+            const auto misses{s.misses()};
+            const auto rate{s.total > 0 ? 100.0 * s.hits / s.total : 0.0};
+            const auto transactions_per_miss{(e.config.block_size + bus_width - 1) / bus_width};
+            const auto total_transactions{misses * transactions_per_miss};
+            return std::vector<std::string>{
+                std::format("{}", e.config.block_size),
+                std::format("{}", e.config.num_blocks),
+                std::format("{}", e.config.block_size * e.config.num_blocks),
+                std::format("{}", e.config.ways),
+                std::format("{}", repl_names[e.config.repl_policy]),
+                std::format("{}", s.total),
+                std::format("{}", s.hits),
+                std::format("{}", misses),
+                std::format("{}", s.miss_compulsory),
+                std::format("{}", s.miss_capacity),
+                std::format("{}", s.miss_conflict),
+                std::format("{:.2f}%", rate),
+                std::format("{}", total_transactions)};
+        })};
+    std::println("DSE 完成，{} 组参数组合，结果保存在 {}", results.size(), result_path.string());
 }
-
 } // anonymous namespace
-
-auto parse_uint(const char *text) -> std::optional<unsigned>
-{
-    std::uint32_t value{};
-    const auto end{text + std::char_traits<char>::length(text)};
-    const auto [ptr, ec]{std::from_chars(text, end, value, 10)};
-    if (ec == std::errc{} && ptr == end && ptr != text)
-    {
-        return value;
-    }
-    return std::nullopt;
-}
 
 auto main(int argc, char* argv[]) -> int
 {
+    common::CliOptions cli{argv[0], "[选项] <trace文件>"};
+    cli.Add(common::OptionSpec{std::format("-b, --block-size <N>     块大小 (字节, 2的幂, 默认 {})", CACHE_BLOCK_SIZE), "-b", "--block-size", true});
+    cli.Add(common::OptionSpec{std::format("-n, --num-blocks <N>     cache 块总数 (默认 {})", CACHE_NUM_BLOCKS), "-n", "--num-blocks", true});
+    cli.Add(common::OptionSpec{std::format("-w, --ways <N>           相联度 (默认 {})", CACHE_WAYS), "-w", "--ways", true});
+    cli.Add(common::OptionSpec{"-r, --replacement <策略>  替换策略: fifo / lru / random (默认 fifo)", "-r", "--replacement", true});
+    cli.Add(common::OptionSpec{"--bus-width <N>         总线位宽 (字节, 默认 4, 用于估算缺失代价)", "", "--bus-width", true});
+    cli.Add(common::OptionSpec{"--dse                    设计空间探索模式", "", "--dse", false});
+    cli.Add(common::OptionSpec{"-h, --help               显示帮助信息", "-h", "--help", false});
+
+    int exit_code{};
+    if (!cli.Parse(argc, argv, exit_code))
+        return exit_code;
+
     CacheConfig config;
-    const char* trace_path = nullptr;
-    bool dse_mode = false;
     unsigned bus_width = 4;
 
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i][0] != '-') {
-            trace_path = argv[i];
-            continue;
-        }
-
-        std::string_view arg = argv[i];
-        auto is_long = arg.starts_with("--");
-
-        if (arg == "-h" || arg == "--help") {
-            print_usage(argv[0]);
-            return 0;
-        }
-
-        if (arg == "--dse") {
-            dse_mode = true;
-        } else if (is_long ? arg == "--bus-width" : false) {
-            if (i + 1 >= argc) {
-                std::println(std::cerr, "错误: --bus-width 缺少参数");
-                return 1;
-            }
-            if (auto v{parse_uint(argv[++i])})
-                bus_width = *v;
-            else {
-                std::println(std::cerr, "错误: 无效的 --bus-width 参数: {}", argv[i]);
-                return 1;
-            }
-        } else if (is_long ? arg == "--block-size" : arg == "-b") {
-            if (i + 1 >= argc) {
-                std::println(std::cerr, "错误: {} 缺少参数", arg);
-                return 1;
-            }
-            if (auto v{parse_uint(argv[++i])})
-                config.block_size = *v;
-            else {
-                std::println(std::cerr, "错误: 无效的 --block-size 参数: {}", argv[i]);
-                return 1;
-            }
-        } else if (is_long ? arg == "--num-blocks" : arg == "-n") {
-            if (i + 1 >= argc) {
-                std::println(std::cerr, "错误: {} 缺少参数", arg);
-                return 1;
-            }
-            if (auto v{parse_uint(argv[++i])})
-                config.num_blocks = *v;
-            else {
-                std::println(std::cerr, "错误: 无效的 --num-blocks 参数: {}", argv[i]);
-                return 1;
-            }
-        } else if (is_long ? arg == "--ways" : arg == "-w") {
-            if (i + 1 >= argc) {
-                std::println(std::cerr, "错误: {} 缺少参数", arg);
-                return 1;
-            }
-            if (auto v{parse_uint(argv[++i])})
-                config.ways = *v;
-            else {
-                std::println(std::cerr, "错误: 无效的 --ways 参数: {}", argv[i]);
-                return 1;
-            }
-        } else if (is_long ? arg == "--replacement" : arg == "-r") {
-            if (i + 1 >= argc) {
-                std::println(std::cerr, "错误: {} 缺少参数", arg);
-                return 1;
-            }
-            config.repl_policy = parse_repl(argv[++i]);
-        } else {
-            std::println(std::cerr, "未知选项: {}", argv[i]);
-            print_usage(argv[0]);
+    if (const auto value{cli.Value("--bus-width")}) {
+        if (!common::ParseUint(*value, bus_width)) {
+            std::println(std::cerr, "错误: 无效的 --bus-width 参数: {}", *value);
             return 1;
         }
     }
+    if (const auto value{cli.Value("--block-size")}) {
+        if (!common::ParseUint(*value, config.block_size)) {
+            std::println(std::cerr, "错误: 无效的 --block-size 参数: {}", *value);
+            return 1;
+        }
+    }
+    if (const auto value{cli.Value("--num-blocks")}) {
+        if (!common::ParseUint(*value, config.num_blocks)) {
+            std::println(std::cerr, "错误: 无效的 --num-blocks 参数: {}", *value);
+            return 1;
+        }
+    }
+    if (const auto value{cli.Value("--ways")}) {
+        if (!common::ParseUint(*value, config.ways)) {
+            std::println(std::cerr, "错误: 无效的 --ways 参数: {}", *value);
+            return 1;
+        }
+    }
+    if (const auto value{cli.Value("--replacement")})
+        config.repl_policy = parse_repl(*value);
 
-    if (!trace_path) {
+    if (cli.Positional().empty()) {
         std::println(std::cerr, "错误: 未指定 trace 文件");
-        print_usage(argv[0]);
+        cli.PrintUsage(stderr);
         return 1;
     }
+    const std::string trace_path{cli.Positional().back()};
 
     if (bus_width == 0) {
         std::println(std::cerr, "错误: bus_width 必须大于 0");
@@ -213,13 +144,13 @@ auto main(int argc, char* argv[]) -> int
 
     try {
 #if RUN_MODE == 1
-        // Kconfig 选择了 DSE 模式: 直接做设计空间探索 (多线程)
-        dse_run(trace_path, bus_width);
+        // Kconfig 选择 DSE 模式。
+        dse_run(trace_path.c_str(), bus_width);
 #else
-        if (dse_mode)
-            dse_run(trace_path, bus_width);
+        if (cli.Has("--dse"))
+            dse_run(trace_path.c_str(), bus_width);
         else
-            single_run(config, trace_path);
+            single_run(config, trace_path.c_str());
 #endif
     } catch (const std::exception& e) {
         std::println(std::cerr, "错误: {}", e.what());

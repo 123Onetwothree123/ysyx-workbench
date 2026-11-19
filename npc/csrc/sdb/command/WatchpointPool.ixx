@@ -1,5 +1,6 @@
 export module npc.sdb.command.WatchpointPool;
 import std;
+import npc.Output;
 import npc.config;
 import npc.sdb.command.Watchpoint;
 import npc.sdb.EvaluationContext;
@@ -13,6 +14,7 @@ private:
     std::vector<Watchpoint> watchpoints;
     std::inplace_vector<std::size_t, MaxWatchpoints> FreeWatchpointIndices; // 存储空闲监视点编号的栈
     std::inplace_vector<std::size_t, MaxWatchpoints> UsedWatchpointIndices; // 存储已使用监视点编号的列表
+    Output *output{nullptr};                                                // 诊断输出，独立测试时为 nullptr
 public:
     WatchpointPool();
     ~WatchpointPool() = default;
@@ -23,6 +25,5 @@ public:
     std::size_t GetMaxWatchpoints() const noexcept;
     bool CheckAll(const EvaluationContext &context); // 遍历所有活跃监视点，重新求值表达式，对比旧数值，如果触发了就更新然后返回真
     void PrintAllWatchpoints(const EvaluationContext &context) const;
+    void SetOutput(Output &Out) noexcept; // 由 SimulationContext 注入，避免循环导入
 };
-
-export WatchpointPool &GetGlobalWatchpointPool();

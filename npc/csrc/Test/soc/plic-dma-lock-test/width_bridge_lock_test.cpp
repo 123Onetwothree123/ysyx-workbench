@@ -47,8 +47,8 @@ static void defaults(DUT &dut) {
   dut.io_out_R_RDATA = 0;
   dut.io_out_R_RRESP = 0;
   dut.io_out_R_RLAST = 0;
-  dut.io_inAWLock = 0;
-  dut.io_inARLock = 0;
+  dut.io_InAWLock = 0;
+  dut.io_InARLock = 0;
 }
 
 int main(int argc, char **argv) {
@@ -68,14 +68,14 @@ int main(int argc, char **argv) {
     dut.io_in_AW_AWLEN = 0;
     dut.io_in_AW_AWSIZE = 3; // one 8-byte beat, split into two 4-byte chunks
     dut.io_in_AW_AWBURST = 1;
-    dut.io_inAWLock = 1;
+    dut.io_InAWLock = 1;
     dut.eval();
     check(dut.io_in_AW_AWREADY, "bridge did not accept the exclusive AW");
     tick(dut);
     dut.io_in_AW_AWVALID = 0;
-    dut.io_inAWLock = 0;
+    dut.io_InAWLock = 0;
     dut.eval();
-    check(dut.io_outAWLock,
+    check(dut.io_OutAWLock,
           "AWLOCK was not latched at the external AW handshake");
 
     // Supply the single upstream W beat.  Both downstream chunks must still
@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
     wait_until(dut, [&] {
       return dut.io_out_AW_AWVALID && dut.io_out_W_WVALID;
     }, "bridge did not issue the first internal chunk", 200);
-    check(dut.io_outAWLock,
+    check(dut.io_OutAWLock,
           "AWLOCK disappeared before the first internal chunk");
     check(dut.io_out_AW_AWLEN == 0 && dut.io_out_AW_AWSIZE == 2,
           "internal chunk shape is not single-beat 32-bit");
@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
     wait_until(dut, [&] {
       return dut.io_out_AW_AWVALID && dut.io_out_W_WVALID;
     }, "bridge did not issue the second internal chunk", 200);
-    check(dut.io_outAWLock,
+    check(dut.io_OutAWLock,
           "AWLOCK disappeared before the second internal chunk");
     tick(dut);
 
@@ -123,13 +123,13 @@ int main(int argc, char **argv) {
 
     wait_until(dut, [&] { return dut.io_in_B_BVALID; },
                "bridge did not aggregate the upstream B", 200);
-    check(dut.io_outAWLock,
+    check(dut.io_OutAWLock,
           "AWLOCK cleared before the upstream B completed");
     dut.io_in_B_BREADY = 1;
     tick(dut);
     dut.io_in_B_BREADY = 0;
     dut.eval();
-    check(!dut.io_outAWLock,
+    check(!dut.io_OutAWLock,
           "AWLOCK stayed asserted after the upstream write completed");
     dut.final();
   });
@@ -146,20 +146,20 @@ int main(int argc, char **argv) {
     dut.io_in_AR_ARLEN = 0;
     dut.io_in_AR_ARSIZE = 3; // one 8-byte beat, split into two 4-byte chunks
     dut.io_in_AR_ARBURST = 1;
-    dut.io_inARLock = 1;
+    dut.io_InARLock = 1;
     dut.eval();
     check(dut.io_in_AR_ARREADY, "bridge did not accept the exclusive AR");
     tick(dut);
     dut.io_in_AR_ARVALID = 0;
-    dut.io_inARLock = 0;
+    dut.io_InARLock = 0;
     dut.eval();
-    check(dut.io_outARLock,
+    check(dut.io_OutARLock,
           "ARLOCK was not latched at the external AR handshake");
 
     // First chunk.
     wait_until(dut, [&] { return dut.io_out_AR_ARVALID; },
                "bridge did not issue the first internal read chunk", 200);
-    check(dut.io_outARLock,
+    check(dut.io_OutARLock,
           "ARLOCK disappeared before the first internal read chunk");
     tick(dut);
     dut.io_out_R_RVALID = 1;
@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
     // Second chunk.
     wait_until(dut, [&] { return dut.io_out_AR_ARVALID; },
                "bridge did not issue the second internal read chunk", 200);
-    check(dut.io_outARLock,
+    check(dut.io_OutARLock,
           "ARLOCK disappeared before the second internal read chunk");
     tick(dut);
     dut.io_out_R_RVALID = 1;
@@ -190,7 +190,7 @@ int main(int argc, char **argv) {
 
     wait_until(dut, [&] { return dut.io_in_R_RVALID; },
                "bridge did not assemble the upstream R", 200);
-    check(dut.io_outARLock,
+    check(dut.io_OutARLock,
           "ARLOCK cleared before the final upstream R completed");
     check(dut.io_in_R_RDATA == 0x1122334455667788ULL,
           "assembled read data was corrupted");
@@ -199,7 +199,7 @@ int main(int argc, char **argv) {
     tick(dut);
     dut.io_in_R_RREADY = 0;
     dut.eval();
-    check(!dut.io_outARLock,
+    check(!dut.io_OutARLock,
           "ARLOCK stayed asserted after the final upstream R");
     dut.final();
   });

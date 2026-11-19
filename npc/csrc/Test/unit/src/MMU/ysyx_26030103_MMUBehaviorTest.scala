@@ -17,8 +17,8 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   // 必须显式构造 RV32 profile/PTE，否则默认 Sv39 会让 satp 与页表布局错位。
   private def rv32Profile: ysyx_26030103_MMUProfile =
     ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32)
-  private val rv32PTE: ysyx_26030103_PTEConfig =
-    ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31)
+  private val Rv32PTE: ysyx_26030103_PTEConfig =
+    ysyx_26030103_PTEConfig(PTEBits = 32, PPNHigh = 31)
 
   private val PageShift = 12
   private val RootPPN = 0x80001L
@@ -26,11 +26,11 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   private val LeafPPN = 0x80003L
   private val Leaf = LeafPPN << PageShift
 
-  private def pte(ppn: Long, flags: Long): BigInt =
-    ((ppn & 0x3fffffL) << 10) | flags
+  private def PTE(PPN: Long, flags: Long): BigInt =
+    ((PPN & 0x3fffffL) << 10) | flags
 
-  private val PointerPTE = pte(0x80002L, 0x1L) // V，非叶子
-  private val LeafPTE = pte(LeafPPN, 0xdfL) // V R W X U A D
+  private val PointerPTE = PTE(0x80002L, 0x1L) // V，非叶子
+  private val LeafPTE = PTE(LeafPPN, 0xdfL) // V R W X U A D
 
   /** 稀疏页表内存。默认预置一份 4B PTE 的两级 Sv32 页表；8B PTE 用例
     * 必须使用 withDefaults=false，否则默认的两级表项会落进 8B 表项的
@@ -53,7 +53,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_TLB(
       entries = 4,
       ways = 1,
-      asidBits = 9,
+      ASIDBits = 9,
       globalEnable = true,
       adMode = "fault"
     )) { dut =>
@@ -63,11 +63,11 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
       dut.io.fillVirtualAddress.poke(0.U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke(0.U)
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
-      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).ASID.poke(0.U)
       dut.io.lookup(0).privilege.poke(0.U)
       dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
       dut.io.lookup(0).sum.poke(false.B)
@@ -77,14 +77,14 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(false.B)
       dut.io.fillValid.poke(true.B)
       dut.io.fillVirtualAddress.poke(0x1234.U)
-      dut.io.fillASID.poke(7.U)
-      dut.io.fillPTE.poke(LeafPTE.U(32.W))
+      dut.io.FillASID.poke(7.U)
+      dut.io.FillPTE.poke(LeafPTE.U(32.W))
       dut.io.fillLevel.poke(0.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
 
       dut.io.lookup(0).vaddr.poke(0x1234.U)
-      dut.io.lookup(0).asid.poke(7.U)
+      dut.io.lookup(0).ASID.poke(7.U)
       dut.io.lookup(0).privilege.poke(0.U)
       dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
       asBool(dut.io.result(0).hit) should be(true)
@@ -92,12 +92,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       asLong(dut.io.result(0).paddr) should be(Leaf + 0x234L)
 
       // ASID 不同，不应命中（Global=0）。
-      dut.io.lookup(0).asid.poke(8.U)
+      dut.io.lookup(0).ASID.poke(8.U)
       dut.io.lookup(0).vaddr.poke(0x1234.U)
       asBool(dut.io.result(0).hit) should be(false)
 
       // U 页的取指在 S 模式必须失败；S 模式数据访问需要 SUM。
-      dut.io.lookup(0).asid.poke(7.U)
+      dut.io.lookup(0).ASID.poke(7.U)
       dut.io.lookup(0).privilege.poke(1.U)
       dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Fetch)
       asBool(dut.io.result(0).hit) should be(true)
@@ -113,7 +113,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "TLB" should "同拍接受两个 refill 端口" in {
     simulate(new ysyx_26030103_TLB(
-      entries = 4, ways = 1, asidBits = 9, globalEnable = false,
+      entries = 4, ways = 1, ASIDBits = 9, globalEnable = false,
       adMode = "ignore", refillPorts = 2
     )) { dut =>
       dut.reset.poke(true.B)
@@ -122,17 +122,17 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
       dut.io.fillVirtualAddress.poke(0.U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke(0.U)
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       val extra = dut.io.fillExtra.get(0)
       extra.valid.poke(false.B)
       extra.vaddr.poke(0.U)
-      extra.asid.poke(0.U)
-      extra.pte.poke(0.U)
+      extra.ASID.poke(0.U)
+      extra.PTE.poke(0.U)
       extra.level.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
-      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).ASID.poke(0.U)
       dut.io.lookup(0).privilege.poke(0.U)
       dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
       dut.io.lookup(0).sum.poke(false.B)
@@ -141,10 +141,10 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(false.B)
       dut.io.fillValid.poke(true.B)
       dut.io.fillVirtualAddress.poke(0x1000.U)
-      dut.io.fillPTE.poke(LeafPTE.U(32.W))
+      dut.io.FillPTE.poke(LeafPTE.U(32.W))
       extra.valid.poke(true.B)
       extra.vaddr.poke(0x2000.U)
-      extra.pte.poke(LeafPTE.U(32.W))
+      extra.PTE.poke(LeafPTE.U(32.W))
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
       extra.valid.poke(false.B)
@@ -156,9 +156,9 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   }
 
   "TLB" should "同一拍用两个查找端口命中不同表项" in {
-    val otherLeafPTE = pte(0x80004L, 0xdfL)
+    val OtherLeafPTE = PTE(0x80004L, 0xdfL)
     simulate(new ysyx_26030103_TLB(
-      entries = 8, ways = 1, asidBits = 9, globalEnable = true,
+      entries = 8, ways = 1, ASIDBits = 9, globalEnable = true,
       adMode = "ignore", refillPorts = 2, lookupPorts = 2
     )) { dut =>
       dut.reset.poke(true.B)
@@ -167,18 +167,18 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
       dut.io.fillVirtualAddress.poke(0.U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke(0.U)
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       val extra = dut.io.fillExtra.get(0)
       extra.valid.poke(false.B)
       extra.vaddr.poke(0.U)
-      extra.asid.poke(0.U)
-      extra.pte.poke(0.U)
+      extra.ASID.poke(0.U)
+      extra.PTE.poke(0.U)
       extra.level.poke(0.U)
       for (p <- 0 until 2) {
         dut.io.lookup(p).vaddr.poke(0.U)
-        dut.io.lookup(p).asid.poke(0.U)
+        dut.io.lookup(p).ASID.poke(0.U)
         dut.io.lookup(p).privilege.poke(0.U)
         dut.io.lookup(p).access.poke(ysyx_26030103_AccessType.Load)
         dut.io.lookup(p).sum.poke(false.B)
@@ -190,21 +190,21 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       // 同一拍通过两个 refill 端口填入两个不同集合的表项。
       dut.io.fillValid.poke(true.B)
       dut.io.fillVirtualAddress.poke(0x1234.U)
-      dut.io.fillASID.poke(7.U)
-      dut.io.fillPTE.poke(LeafPTE.U(32.W))
+      dut.io.FillASID.poke(7.U)
+      dut.io.FillPTE.poke(LeafPTE.U(32.W))
       extra.valid.poke(true.B)
       extra.vaddr.poke(0x5678.U)
-      extra.asid.poke(8.U)
-      extra.pte.poke(otherLeafPTE.U(32.W))
+      extra.ASID.poke(8.U)
+      extra.PTE.poke(OtherLeafPTE.U(32.W))
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
       extra.valid.poke(false.B)
 
       // 两个查找端口在同一拍分别查询不同 ASID/地址，结果互不干扰。
       dut.io.lookup(0).vaddr.poke(0x1234.U)
-      dut.io.lookup(0).asid.poke(7.U)
+      dut.io.lookup(0).ASID.poke(7.U)
       dut.io.lookup(1).vaddr.poke(0x5678.U)
-      dut.io.lookup(1).asid.poke(8.U)
+      dut.io.lookup(1).ASID.poke(8.U)
       asBool(dut.io.result(0).hit) should be(true)
       asBool(dut.io.result(1).hit) should be(true)
       asBool(dut.io.result(0).fault) should be(false)
@@ -213,7 +213,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       asLong(dut.io.result(1).paddr) should be(BigInt("80004678", 16).toLong)
 
       // 端口 1 的 ASID 不匹配时只让端口 1 失效，端口 0 仍保持命中。
-      dut.io.lookup(1).asid.poke(9.U)
+      dut.io.lookup(1).ASID.poke(9.U)
       asBool(dut.io.result(0).hit) should be(true)
       asBool(dut.io.result(1).hit) should be(false)
       asLong(dut.io.result(0).paddr) should be(Leaf + 0x234L)
@@ -222,7 +222,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "TLB" should "缓存 4MiB 超级页并可跨 4KiB 地址命中" in {
     simulate(new ysyx_26030103_TLB(
-      entries = 4, ways = 1, asidBits = 9, globalEnable = true,
+      entries = 4, ways = 1, ASIDBits = 9, globalEnable = true,
       adMode = "fault", superpage = true
     )) { dut =>
       dut.reset.poke(true.B)
@@ -231,11 +231,11 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
       dut.io.fillVirtualAddress.poke(0.U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke(0.U)
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
-      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).ASID.poke(0.U)
       dut.io.lookup(0).privilege.poke(0.U)
       dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
       dut.io.lookup(0).sum.poke(false.B)
@@ -245,8 +245,8 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       // PPN[1]=0x201 -> 4MiB 基址 0x80400000。
       dut.io.fillValid.poke(true.B)
       dut.io.fillVirtualAddress.poke("h80501234".U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke((BigInt("201", 16) << 20 | 0xdf).U(32.W))
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke((BigInt("201", 16) << 20 | 0xdf).U(32.W))
       dut.io.fillLevel.poke(1.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -260,11 +260,11 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     // 64KiB 基础页、2 级、每级 256 项 => 16 + 2*8 = 32。
     // fillLevel=1 表示 2^(16+8)=16MiB 超级页，tag 为 vaddr[31:24]。
     simulate(new ysyx_26030103_TLB(
-      entries = 4, ways = 1, asidBits = 9, globalEnable = true,
+      entries = 4, ways = 1, ASIDBits = 9, globalEnable = true,
       adMode = "fault", superpage = true,
       pageBits = 16, levels = 2, indexBits = 8,
       XLEN = 32, addressWidth = 32, vaBits = 32,
-      pteWidth = 32, ptePPNHigh = 31
+      PTEWidth = 32, PTEPPNHigh = 31
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
@@ -272,11 +272,11 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
       dut.io.fillVirtualAddress.poke(0.U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke(0.U)
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
-      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).ASID.poke(0.U)
       dut.io.lookup(0).privilege.poke(0.U)
       dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
       dut.io.lookup(0).sum.poke(false.B)
@@ -286,8 +286,8 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       // PPN=0x8200（以 64KiB 为基础页）=> 物理基址 0x82000000。
       dut.io.fillValid.poke(true.B)
       dut.io.fillVirtualAddress.poke("h81001234".U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke(((BigInt("8200", 16) << 10) | 0xdf).U(32.W))
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(((BigInt("8200", 16) << 10) | 0xdf).U(32.W))
       dut.io.fillLevel.poke(1.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -305,7 +305,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(false.B)
       dut.io.fillValid.poke(true.B)
       dut.io.fillVirtualAddress.poke("h81234567".U)
-      dut.io.fillPTE.poke(((BigInt("8200", 16) << 10) | 0xdf).U(32.W))
+      dut.io.FillPTE.poke(((BigInt("8200", 16) << 10) | 0xdf).U(32.W))
       dut.io.fillLevel.poke(0.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -319,7 +319,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_TLB(
       entries = 4,
       ways = 1,
-      asidBits = 9,
+      ASIDBits = 9,
       globalEnable = true,
       storage = "sram"
     )) { dut =>
@@ -329,11 +329,11 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
       dut.io.fillVirtualAddress.poke(0.U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke(0.U)
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
-      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).ASID.poke(0.U)
       dut.io.lookup(0).privilege.poke(0.U)
       dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
       dut.io.lookup(0).sum.poke(false.B)
@@ -343,14 +343,14 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
       dut.io.fillValid.poke(true.B)
       dut.io.fillVirtualAddress.poke(0x1234.U)
-      dut.io.fillASID.poke(7.U)
-      dut.io.fillPTE.poke(LeafPTE.U(32.W))
+      dut.io.FillASID.poke(7.U)
+      dut.io.FillPTE.poke(LeafPTE.U(32.W))
       dut.io.fillLevel.poke(0.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
 
       dut.io.lookup(0).vaddr.poke(0x1234.U)
-      dut.io.lookup(0).asid.poke(7.U)
+      dut.io.lookup(0).ASID.poke(7.U)
       dut.clock.step()
       dut.io.result(0).resultValid.peek().litValue == 1 should be(true)
       asBool(dut.io.result(0).hit) should be(true)
@@ -363,55 +363,55 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     val memory = new Memory
     simulate(new ysyx_26030103_PTW(
       "fault", XLEN = 32, addressWidth = 32, vaBits = 32,
-      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
-      pteSizeBytes = 4
+      levels = 2, tableEntries = 1024, PTEConfig = Rv32PTE,
+      PTESizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var response: Option[(BigInt, Boolean, BigInt)] = None
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(true.B)
 
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       for (_ <- 0 until 20 if response.isEmpty) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        dut.io.bus.resp.bits.fault.poke(false.B)
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        dut.io.bus.response.bits.fault.poke(false.B)
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) {
+        if (asBool(dut.io.response.valid)) {
           response = Some((
-            dut.io.resp.bits.paddr.peek().litValue,
-            asBool(dut.io.resp.bits.fault),
-            dut.io.resp.bits.cause.peek().litValue
+            dut.io.response.bits.paddr.peek().litValue,
+            asBool(dut.io.response.bits.fault),
+            dut.io.response.bits.cause.peek().litValue
           ))
         }
       }
@@ -429,56 +429,56 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       cacheEntries = 16,
       cacheWays = 2,
       XLEN = 32, addressWidth = 32, vaBits = 32,
-      levels = 2, tableEntries = 1024, pteConfig = rv32PTE, pteSizeBytes = 4
+      levels = 2, tableEntries = 1024, PTEConfig = Rv32PTE, PTESizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
       var responses = 0
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
       def access(): Unit = {
-        dut.io.req.valid.poke(true.B)
-        dut.io.req.bits.vaddr.poke(0x1234.U)
-        dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+        dut.io.request.valid.poke(true.B)
+        dut.io.request.bits.vaddr.poke(0x1234.U)
+        dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
         var fired = false
         for (_ <- 0 until 30 if !fired) {
-          if (!pending && asBool(dut.io.bus.req.valid)) {
+          if (!pending && asBool(dut.io.bus.request.valid)) {
             pending = true
-            pendingID = asLong(dut.io.bus.req.bits.id).toInt
+            PendingID = asLong(dut.io.bus.request.bits.ID).toInt
             busReads += 1
-            pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+            pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
           }
-          dut.io.bus.resp.valid.poke(pending.B)
-          dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-          dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-          val ready = asBool(dut.io.bus.resp.ready)
+          dut.io.bus.response.valid.poke(pending.B)
+          dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+          dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+          val ready = asBool(dut.io.bus.response.ready)
           dut.clock.step()
           if (pending && ready) pending = false
-          if (asBool(dut.io.resp.valid)) {
+          if (asBool(dut.io.response.valid)) {
             responses += 1
             fired = true
           }
         }
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
       }
 
       access()
@@ -490,62 +490,62 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "支持 Sv32 4MiB 超级页" in {
     val memory = new Memory
-    val superPTE = pte(0x80000L, 0xdfL)
-    memory.write(Root + 0x0L, superPTE)
+    val SuperPTE = PTE(0x80000L, 0xdfL)
+    memory.write(Root + 0x0L, SuperPTE)
     simulate(new ysyx_26030103_PTW(
       "fault", superpage = true, fillSuperpage = true,
       XLEN = 32, addressWidth = 32, vaBits = 32,
-      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
-      pteSizeBytes = 4
+      levels = 2, tableEntries = 1024, PTEConfig = Rv32PTE,
+      PTESizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
       var result: Option[(BigInt, Boolean, Int)] = None
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       dut.io.flush.poke(false.B)
 
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       for (_ <- 0 until 15 if result.isEmpty) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
           busReads += 1
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) {
+        if (asBool(dut.io.response.valid)) {
           result = Some((
-            dut.io.resp.bits.paddr.peek().litValue,
-            asBool(dut.io.resp.bits.fillValid),
-            dut.io.resp.bits.fillLevel.peek().litValue.toInt
+            dut.io.response.bits.paddr.peek().litValue,
+            asBool(dut.io.response.bits.fillValid),
+            dut.io.response.bits.fillLevel.peek().litValue.toInt
           ))
         }
       }
@@ -559,64 +559,64 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     // 64KiB 页、2 级、每级 256 项：16 + 2*8 = 32。
     // 根级叶子是 16MiB 超级页，fillLevel 必须是 1（shift=16+8=24）。
     val root = 0x30000000L
-    val rootPPN = 0x3000L
+    val RootPPN = 0x3000L
     val memory = scala.collection.mutable.Map[Long, BigInt](
       (root + 0x81L * 4L) -> ((BigInt("8200", 16) << 10) | 0xdfL)
     )
     simulate(new ysyx_26030103_PTW(
       adMode = "fault", superpage = true, fillSuperpage = true,
       pageBits = 16, levels = 2, tableEntries = 256,
-      XLEN = 32, addressWidth = 32, vaBits = 32, pteConfig = rv32PTE,
-      pteSizeBytes = 4
+      XLEN = 32, addressWidth = 32, vaBits = 32, PTEConfig = Rv32PTE,
+      PTESizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var result: Option[(BigInt, Boolean, Int)] = None
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       dut.io.flush.poke(false.B)
 
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke("h81001234".U)
-      dut.io.req.bits.satp.poke((0x80000000L | rootPPN).U(32.W))
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke("h81001234".U)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       for (_ <- 0 until 15 if result.isEmpty) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
           pendingData = memory.getOrElse(
-            asLong(dut.io.bus.req.bits.addr), BigInt(0)
+            asLong(dut.io.bus.request.bits.address), BigInt(0)
           )
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) {
+        if (asBool(dut.io.response.valid)) {
           result = Some((
-            dut.io.resp.bits.paddr.peek().litValue,
-            asBool(dut.io.resp.bits.fillValid),
-            dut.io.resp.bits.fillLevel.peek().litValue.toInt
+            dut.io.response.bits.paddr.peek().litValue,
+            asBool(dut.io.response.bits.fillValid),
+            dut.io.response.bits.fillLevel.peek().litValue.toInt
           ))
         }
       }
@@ -630,52 +630,52 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     val localLeafTable = 0x20000800L
     val localLeaf = 0x20000c00L
     val data = scala.collection.mutable.Map[Long, BigInt](
-      localRoot -> pte(0x80002L, 0x1L),
-      (localLeafTable + 4L * 4L) -> pte(0x80003L, 0xdfL)
+      localRoot -> PTE(0x80002L, 0x1L),
+      (localLeafTable + 4L * 4L) -> PTE(0x80003L, 0xdfL)
     )
     simulate(new ysyx_26030103_PTW(
       adMode = "fault", pageBits = 10, levels = 2, tableEntries = 2048,
-      XLEN = 32, addressWidth = 32, vaBits = 32, pteConfig = rv32PTE,
-      pteSizeBytes = 4
+      XLEN = 32, addressWidth = 32, vaBits = 32, PTEConfig = Rv32PTE,
+      PTESizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var result: Option[BigInt] = None
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | 0x80001L).U(32.W))
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | 0x80001L).U(32.W))
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
       for (_ <- 0 until 20 if result.isEmpty) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          pendingData = data.getOrElse(asLong(dut.io.bus.req.bits.addr), BigInt(0))
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          pendingData = data.getOrElse(asLong(dut.io.bus.request.bits.address), BigInt(0))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) result = Some(dut.io.resp.bits.paddr.peek().litValue)
+        if (asBool(dut.io.response.valid)) result = Some(dut.io.response.bits.paddr.peek().litValue)
       }
       result should be(Some(BigInt("20000e34", 16)))
     }
@@ -684,52 +684,52 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   "PTW" should "支持 8 字节 PTE 的两拍读取" in {
     val memory = new Memory(withDefaults = false)
     // 4 级、每级 32 项、8B PTE：12 + 4*5 = 32。
-    memory.write(0x80001000L, pte(0x80002L, 0x1L))
-    memory.write(0x80002000L, pte(0x80003L, 0x1L))
-    memory.write(0x80003000L, pte(0x80004L, 0x1L))
-    memory.write(0x80004008L, pte(0x80005L, 0xdfL))
+    memory.write(0x80001000L, PTE(0x80002L, 0x1L))
+    memory.write(0x80002000L, PTE(0x80003L, 0x1L))
+    memory.write(0x80003000L, PTE(0x80004L, 0x1L))
+    memory.write(0x80004008L, PTE(0x80005L, 0xdfL))
     simulate(new ysyx_26030103_PTW(
-      adMode = "fault", levels = 4, tableEntries = 32, pteSizeBytes = 8,
+      adMode = "fault", levels = 4, tableEntries = 32, PTESizeBytes = 8,
       XLEN = 32, addressWidth = 32, vaBits = 32
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var result: Option[BigInt] = None
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
       for (_ <- 0 until 40 if result.isEmpty) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) result = Some(dut.io.resp.bits.paddr.peek().litValue)
+        if (asBool(dut.io.response.valid)) result = Some(dut.io.response.bits.paddr.peek().litValue)
       }
       result should be(Some(BigInt("80005234", 16)))
     }
@@ -738,65 +738,65 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   "PTW" should "hardware A/D 模式写回页表项" in {
     val memory = new Memory
     // 有效叶子，但 A/D 清零。
-    memory.write(0x80002004L, pte(LeafPPN, 0x1fL))
+    memory.write(0x80002004L, PTE(LeafPPN, 0x1fL))
     simulate(new ysyx_26030103_PTW(
       "hardware", XLEN = 32, addressWidth = 32, vaBits = 32,
-      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
-      pteSizeBytes = 4
+      levels = 2, tableEntries = 1024, PTEConfig = Rv32PTE,
+      PTESizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingWrite = false
       var pendingData = BigInt(0)
       var writeSeen = false
       var response: Option[BigInt] = None
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       dut.io.flush.poke(false.B)
 
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       for (_ <- 0 until 20 if response.isEmpty) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          pendingWrite = asBool(dut.io.bus.req.bits.write)
-          val addr = asLong(dut.io.bus.req.bits.addr)
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          pendingWrite = asBool(dut.io.bus.request.bits.write)
+          val addr = asLong(dut.io.bus.request.bits.address)
           if (pendingWrite) {
-            memory.write(addr, dut.io.bus.req.bits.data.peek().litValue)
+            memory.write(addr, dut.io.bus.request.bits.data.peek().litValue)
             pendingData = BigInt(0)
             writeSeen = true
           } else {
             pendingData = memory.read(addr)
           }
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) {
-          response = Some(dut.io.resp.bits.paddr.peek().litValue)
+        if (asBool(dut.io.response.valid)) {
+          response = Some(dut.io.response.bits.paddr.peek().litValue)
         }
       }
       writeSeen should be(true)
@@ -808,54 +808,54 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   "PTW" should "支持自定义 PTE 字段位置" in {
     val memory = new Memory
     val cfg = _root_.ysyx_26030103.config.ysyx_26030103_PTEConfig(
-      ppnLow = 12,
-      ppnHigh = 31
+      PPNLow = 12,
+      PPNHigh = 31
     )
     memory.write(Root + 0x0L, (BigInt(0x80002) << 12) | 1)
     memory.write(0x80002004L, (BigInt(0x80003) << 12) | 0xdf)
-    simulate(new ysyx_26030103_PTW("fault", pteConfig = cfg,
+    simulate(new ysyx_26030103_PTW("fault", PTEConfig = cfg,
       XLEN = 32, addressWidth = 32, vaBits = 32,
-      levels = 2, tableEntries = 1024, pteSizeBytes = 4)) { dut =>
+      levels = 2, tableEntries = 1024, PTESizeBytes = 4)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var result: Option[BigInt] = None
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       dut.io.flush.poke(false.B)
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
       for (_ <- 0 until 20 if result.isEmpty) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) {
-          result = Some(dut.io.resp.bits.paddr.peek().litValue)
+        if (asBool(dut.io.response.valid)) {
+          result = Some(dut.io.response.bits.paddr.peek().litValue)
         }
       }
       result should be(Some(BigInt("80003234", 16)))
@@ -864,58 +864,58 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "hardware A/D 模式为 store 写回 A 和 D" in {
     val memory = new Memory
-    memory.write(0x80002004L, pte(LeafPPN, 0x1fL))
+    memory.write(0x80002004L, PTE(LeafPPN, 0x1fL))
     simulate(new ysyx_26030103_PTW(
       "hardware", XLEN = 32, addressWidth = 32, vaBits = 32,
-      levels = 2, tableEntries = 1024, pteConfig = rv32PTE,
-      pteSizeBytes = 4
+      levels = 2, tableEntries = 1024, PTEConfig = Rv32PTE,
+      PTESizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var result: Option[BigInt] = None
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Store)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Store)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       dut.io.flush.poke(false.B)
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
       for (_ <- 0 until 20 if result.isEmpty) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          val addr = asLong(dut.io.bus.req.bits.addr)
-          if (asBool(dut.io.bus.req.bits.write)) {
-            memory.write(addr, dut.io.bus.req.bits.data.peek().litValue)
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          val addr = asLong(dut.io.bus.request.bits.address)
+          if (asBool(dut.io.bus.request.bits.write)) {
+            memory.write(addr, dut.io.bus.request.bits.data.peek().litValue)
             pendingData = BigInt(0)
           } else {
             pendingData = memory.read(addr)
           }
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) {
-          result = Some(dut.io.resp.bits.paddr.peek().litValue)
+        if (asBool(dut.io.response.valid)) {
+          result = Some(dut.io.response.bits.paddr.peek().litValue)
         }
       }
       result should be(Some(BigInt(Leaf + 0x234L)))
@@ -925,51 +925,51 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "MMU" should "在非标准页大小下完成 PTW 与 TLB 翻译" in {
     val memory = new Memory
-    memory.write(0x20000400L, pte(0x80002L, 0x1L))
-    memory.write(0x20000810L, pte(0x80003L, 0xdfL))
+    memory.write(0x20000400L, PTE(0x80002L, 0x1L))
+    memory.write(0x20000810L, PTE(0x80003L, 0xdfL))
     simulate(new ysyx_26030103_MMU(rv32Profile.copy(
-      enabled = true, tlbEnabled = true, pageSizeBytes = 1024,
-      pageTableSizeBytes = 8192, ptwOutstanding = 1
+      enabled = true, TLBEnabled = true, pageSizeBytes = 1024,
+      pageTableSizeBytes = 8192, PTWOutstanding = 1
     ))) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var result: Option[BigInt] = None
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(true.B)
       dut.io.flush.poke(false.B)
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | 0x80001L).U(32.W))
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | 0x80001L).U(32.W))
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
       for (_ <- 0 until 40 if result.isEmpty) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) result = Some(dut.io.resp.bits.paddr.peek().litValue)
+        if (asBool(dut.io.response.valid)) result = Some(dut.io.response.bits.paddr.peek().litValue)
       }
       result should be(Some(BigInt("20000e34", 16)))
     }
@@ -977,56 +977,56 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "MMU" should "同时调度两个上下文并按请求顺序返回" in {
     val memory = new Memory
-    memory.write(0x80002014L, pte(LeafPPN, 0xdfL))
+    memory.write(0x80002014L, PTE(LeafPPN, 0xdfL))
     simulate(new ysyx_26030103_MMU(rv32Profile.copy(
-      enabled = true, tlbEnabled = false, ptwOutstanding = 2
+      enabled = true, TLBEnabled = false, PTWOutstanding = 2
     ))) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       val responses = scala.collection.mutable.ArrayBuffer.empty[BigInt]
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.id.poke(0.U)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.ID.poke(0.U)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
       dut.clock.step()
-      dut.io.req.bits.id.poke(1.U)
-      dut.io.req.bits.vaddr.poke(0x5678.U)
+      dut.io.request.bits.ID.poke(1.U)
+      dut.io.request.bits.vaddr.poke(0x5678.U)
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       for (_ <- 0 until 80 if responses.size < 2) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) {
-          responses += dut.io.resp.bits.paddr.peek().litValue
+        if (asBool(dut.io.response.valid)) {
+          responses += dut.io.response.bits.paddr.peek().litValue
         }
       }
       responses.toSeq should be(Seq(BigInt("80003234", 16), BigInt("80003678", 16)))
@@ -1037,72 +1037,72 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     val memory = new Memory
     simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
-      tlbEnabled = true,
-      tlbASIDBits = 9
+      TLBEnabled = true,
+      TLBASIDBits = 9
     ))) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       dut.io.flush.poke(false.B)
 
       def stepBus(): Unit = {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
           busReads += 1
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
       }
 
       def access(vaddr: Long): (BigInt, Boolean, BigInt) = {
-        dut.io.req.valid.poke(true.B)
-        dut.io.req.bits.vaddr.poke(vaddr.U)
-        dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-        dut.io.req.bits.privilege.poke(0.U)
-        dut.io.req.bits.sum.poke(false.B)
-        dut.io.req.bits.mxr.poke(false.B)
-        dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
-        while (!asBool(dut.io.req.ready)) { stepBus() }
+        dut.io.request.valid.poke(true.B)
+        dut.io.request.bits.vaddr.poke(vaddr.U)
+        dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+        dut.io.request.bits.privilege.poke(0.U)
+        dut.io.request.bits.sum.poke(false.B)
+        dut.io.request.bits.mxr.poke(false.B)
+        dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+        while (!asBool(dut.io.request.ready)) { stepBus() }
         dut.clock.step()
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
         var result: Option[(BigInt, Boolean, BigInt)] = None
         for (_ <- 0 until 20 if result.isEmpty) {
           stepBus()
-          if (asBool(dut.io.resp.valid)) {
+          if (asBool(dut.io.response.valid)) {
             result = Some((
-              dut.io.resp.bits.paddr.peek().litValue,
-              asBool(dut.io.resp.bits.fault),
-              dut.io.resp.bits.cause.peek().litValue
+              dut.io.response.bits.paddr.peek().litValue,
+              asBool(dut.io.response.bits.fault),
+              dut.io.response.bits.cause.peek().litValue
             ))
           }
         }
-        dut.io.resp.ready.poke(true.B)
+        dut.io.response.ready.poke(true.B)
         dut.clock.step()
-        dut.io.resp.ready.poke(false.B)
+        dut.io.response.ready.poke(false.B)
         result.get
       }
 
@@ -1124,68 +1124,68 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     memory.write(0x80002000L, LeafPTE)
     simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
-      tlbEnabled = true,
-      tlbOrganization = "unified",
-      tlbStorage = "sram",
+      TLBEnabled = true,
+      TLBOrganization = "unified",
+      TLBStorage = "sram",
       utlbLookupPorts = 2,
       refillPorts = 2,
-      ptwOutstanding = 2
+      PTWOutstanding = 2
     ))) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       dut.io.flush.poke(false.B)
 
       def stepBus(): Unit = {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
           busReads += 1
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
       }
 
       def issue(vaddr: Long): Unit = {
-        dut.io.req.valid.poke(true.B)
-        dut.io.req.bits.vaddr.poke(vaddr.U)
-        while (!asBool(dut.io.req.ready)) { stepBus() }
+        dut.io.request.valid.poke(true.B)
+        dut.io.request.bits.vaddr.poke(vaddr.U)
+        while (!asBool(dut.io.request.ready)) { stepBus() }
         dut.clock.step()
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
       }
 
       def waitResponse(): BigInt = {
         var result: Option[BigInt] = None
         for (_ <- 0 until 20 if result.isEmpty) {
           stepBus()
-          if (asBool(dut.io.resp.valid)) result = Some(dut.io.resp.bits.paddr.peek().litValue)
+          if (asBool(dut.io.response.valid)) result = Some(dut.io.response.bits.paddr.peek().litValue)
         }
         val value = result.get
-        dut.io.resp.ready.poke(true.B)
+        dut.io.response.ready.poke(true.B)
         dut.clock.step()
-        dut.io.resp.ready.poke(false.B)
+        dut.io.response.ready.poke(false.B)
         value
       }
 
@@ -1209,65 +1209,65 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   it should "在没有 A 位时产生 load page fault" in {
     val memory = new Memory
-    memory.write(0x80002004L, pte(LeafPPN, 0x1L | 0x2L | 0x4L | 0x8L | 0x10L))
+    memory.write(0x80002004L, PTE(LeafPPN, 0x1L | 0x2L | 0x4L | 0x8L | 0x10L))
     simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
-      tlbEnabled = false
+      TLBEnabled = false
     ))) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       dut.io.flush.poke(false.B)
 
       def stepBus(): Unit = {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
       }
 
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
-      while (!asBool(dut.io.req.ready)) { stepBus() }
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      while (!asBool(dut.io.request.ready)) { stepBus() }
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       var fault = false
       var cause = BigInt(0)
       for (_ <- 0 until 20 if !fault) {
         stepBus()
-        if (asBool(dut.io.resp.valid)) {
-          fault = asBool(dut.io.resp.bits.fault)
-          cause = dut.io.resp.bits.cause.peek().litValue
+        if (asBool(dut.io.response.valid)) {
+          fault = asBool(dut.io.response.bits.fault)
+          cause = dut.io.response.bits.cause.peek().litValue
         }
       }
       fault should be(true)
       cause should be(BigInt(13))
-      dut.io.resp.ready.poke(true.B)
+      dut.io.response.ready.poke(true.B)
       dut.clock.step()
     }
   }
@@ -1275,39 +1275,39 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   it should "satp.MODE=0 时旁路翻译" in {
     simulate(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
-      tlbEnabled = true
+      TLBEnabled = true
     ))) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(0.U)
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(0.U)
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       dut.io.flush.poke(false.B)
 
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x12345678.U)
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x12345678.U)
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
       var done = false
       for (_ <- 0 until 4 if !done) {
         dut.clock.step()
-        done = asBool(dut.io.resp.valid)
+        done = asBool(dut.io.response.valid)
       }
       done should be(true)
-      asBool(dut.io.resp.bits.fault) should be(false)
-      asLong(dut.io.resp.bits.paddr) should be(0x12345678L)
-      dut.io.resp.ready.poke(true.B)
+      asBool(dut.io.response.bits.fault) should be(false)
+      asLong(dut.io.response.bits.paddr) should be(0x12345678L)
+      dut.io.response.ready.poke(true.B)
       dut.clock.step()
     }
   }
@@ -1316,7 +1316,7 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_TLB(
       entries = 4,
       ways = 1,
-      asidBits = 9,
+      ASIDBits = 9,
       globalEnable = true,
       adMode = "fault",
       hasU = false
@@ -1327,11 +1327,11 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
       dut.io.fillVirtualAddress.poke(0.U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke(0.U)
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
-      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).ASID.poke(0.U)
       dut.io.lookup(0).privilege.poke(1.U)
       dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
       dut.io.lookup(0).sum.poke(false.B)
@@ -1342,8 +1342,8 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.flush.poke(false.B)
       dut.io.fillValid.poke(true.B)
       dut.io.fillVirtualAddress.poke(0x1234.U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke(LeafPTE.U(32.W))
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(LeafPTE.U(32.W))
       dut.io.fillLevel.poke(0.U)
       dut.clock.step()
       dut.io.fillValid.poke(false.B)
@@ -1362,52 +1362,52 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "HAS_U=n 时 U=1 叶子页对 S 模式不产生页错误" in {
     val memory = new Memory
-    simulate(new ysyx_26030103_PTW("fault", hasU = false, XLEN = 32, addressWidth = 32, vaBits = 32, levels = 2, tableEntries = 1024, pteConfig = rv32PTE, pteSizeBytes = 4)) { dut =>
+    simulate(new ysyx_26030103_PTW("fault", hasU = false, XLEN = 32, addressWidth = 32, vaBits = 32, levels = 2, tableEntries = 1024, PTEConfig = Rv32PTE, PTESizeBytes = 4)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var response: Option[(BigInt, Boolean)] = None
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(1.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(1.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
-      dut.io.req.valid.poke(true.B)
-      dut.io.req.bits.vaddr.poke(0x1234.U)
-      dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.vaddr.poke(0x1234.U)
+      dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       for (_ <- 0 until 20 if response.isEmpty) {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
-        if (asBool(dut.io.resp.valid)) {
+        if (asBool(dut.io.response.valid)) {
           response = Some((
-            dut.io.resp.bits.paddr.peek().litValue,
-            asBool(dut.io.resp.bits.fault)
+            dut.io.response.bits.paddr.peek().litValue,
+            asBool(dut.io.response.bits.fault)
           ))
         }
       }
@@ -1419,12 +1419,12 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   "PTW" should "8B PTE cache 复用低/高字并避免重复页表读" in {
     val memory = new Memory(withDefaults = false)
     // 4 级、每级 32 项、8B PTE：12 + 4*5 = 32。
-    memory.write(0x80001000L, pte(0x80002L, 0x1L))
-    memory.write(0x80002000L, pte(0x80003L, 0x1L))
-    memory.write(0x80003000L, pte(0x80004L, 0x1L))
-    memory.write(0x80004008L, pte(0x80005L, 0xdfL))
+    memory.write(0x80001000L, PTE(0x80002L, 0x1L))
+    memory.write(0x80002000L, PTE(0x80003L, 0x1L))
+    memory.write(0x80003000L, PTE(0x80004L, 0x1L))
+    memory.write(0x80004008L, PTE(0x80005L, 0xdfL))
     simulate(new ysyx_26030103_PTW(
-      adMode = "fault", levels = 4, tableEntries = 32, pteSizeBytes = 8,
+      adMode = "fault", levels = 4, tableEntries = 32, PTESizeBytes = 8,
       cacheEnable = true, cacheEntries = 8, cacheWays = 8,
       XLEN = 32, addressWidth = 32, vaBits = 32
     )) { dut =>
@@ -1432,52 +1432,52 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
       def stepBus(): Unit = {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
           busReads += 1
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
       }
 
       def access(): BigInt = {
-        dut.io.req.valid.poke(true.B)
-        dut.io.req.bits.vaddr.poke(0x1234.U)
-        dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
-        while (!asBool(dut.io.req.ready)) { stepBus() }
+        dut.io.request.valid.poke(true.B)
+        dut.io.request.bits.vaddr.poke(0x1234.U)
+        dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+        while (!asBool(dut.io.request.ready)) { stepBus() }
         dut.clock.step()
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
         var result: Option[BigInt] = None
         for (_ <- 0 until 40 if result.isEmpty) {
           stepBus()
-          if (asBool(dut.io.resp.valid)) {
-            result = Some(dut.io.resp.bits.paddr.peek().litValue)
+          if (asBool(dut.io.response.valid)) {
+            result = Some(dut.io.response.bits.paddr.peek().litValue)
           }
         }
         result.get
@@ -1494,13 +1494,13 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "8B PTE hardware A/D 写回后可命中 cache" in {
     val memory = new Memory(withDefaults = false)
-    memory.write(0x80001000L, pte(0x80002L, 0x1L))
-    memory.write(0x80002000L, pte(0x80003L, 0x1L))
-    memory.write(0x80003000L, pte(0x80004L, 0x1L))
+    memory.write(0x80001000L, PTE(0x80002L, 0x1L))
+    memory.write(0x80002000L, PTE(0x80003L, 0x1L))
+    memory.write(0x80003000L, PTE(0x80004L, 0x1L))
     // A/D 清零，hardware 模式应在低字写回 0xc0。
-    memory.write(0x80004008L, pte(0x80005L, 0x1fL))
+    memory.write(0x80004008L, PTE(0x80005L, 0x1fL))
     simulate(new ysyx_26030103_PTW(
-      adMode = "hardware", levels = 4, tableEntries = 32, pteSizeBytes = 8,
+      adMode = "hardware", levels = 4, tableEntries = 32, PTESizeBytes = 8,
       cacheEnable = true, cacheEntries = 8, cacheWays = 8,
       XLEN = 32, addressWidth = 32, vaBits = 32
     )) { dut =>
@@ -1508,60 +1508,60 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
       var busWrites = 0
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Store)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Store)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
       def stepBus(): Unit = {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
-          val addr = asLong(dut.io.bus.req.bits.addr)
-          if (asBool(dut.io.bus.req.bits.write)) {
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+          val addr = asLong(dut.io.bus.request.bits.address)
+          if (asBool(dut.io.bus.request.bits.write)) {
             busWrites += 1
-            memory.write(addr, dut.io.bus.req.bits.data.peek().litValue)
+            memory.write(addr, dut.io.bus.request.bits.data.peek().litValue)
             pendingData = BigInt(0)
           } else {
             busReads += 1
             pendingData = memory.read(addr)
           }
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
       }
 
       def access(): BigInt = {
-        dut.io.req.valid.poke(true.B)
-        dut.io.req.bits.vaddr.poke(0x1234.U)
-        dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
-        while (!asBool(dut.io.req.ready)) { stepBus() }
+        dut.io.request.valid.poke(true.B)
+        dut.io.request.bits.vaddr.poke(0x1234.U)
+        dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+        while (!asBool(dut.io.request.ready)) { stepBus() }
         dut.clock.step()
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
         var result: Option[BigInt] = None
         for (_ <- 0 until 40 if result.isEmpty) {
           stepBus()
-          if (asBool(dut.io.resp.valid)) {
-            result = Some(dut.io.resp.bits.paddr.peek().litValue)
+          if (asBool(dut.io.response.valid)) {
+            result = Some(dut.io.response.bits.paddr.peek().litValue)
           }
         }
         result.get
@@ -1581,67 +1581,67 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   "PTW" should "自定义 PTE 打开 cache 后仍按配置字段归一化" in {
     val memory = new Memory
     val cfg = _root_.ysyx_26030103.config.ysyx_26030103_PTEConfig(
-      ppnLow = 12,
-      ppnHigh = 31
+      PPNLow = 12,
+      PPNHigh = 31
     )
     memory.write(Root + 0x0L, (BigInt(0x80002) << 12) | 1)
     memory.write(0x80002004L, (BigInt(0x80003) << 12) | 0xdf)
     simulate(new ysyx_26030103_PTW(
-      adMode = "fault", pteConfig = cfg,
+      adMode = "fault", PTEConfig = cfg,
       cacheEnable = true, cacheEntries = 16, cacheWays = 2,
       XLEN = 32, addressWidth = 32, vaBits = 32,
-      levels = 2, tableEntries = 1024, pteSizeBytes = 4
+      levels = 2, tableEntries = 1024, PTESizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(0.U)
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(0.U)
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
       def stepBus(): Unit = {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
           busReads += 1
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
       }
 
       def access(): BigInt = {
-        dut.io.req.valid.poke(true.B)
-        dut.io.req.bits.vaddr.poke(0x1234.U)
-        dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
-        while (!asBool(dut.io.req.ready)) { stepBus() }
+        dut.io.request.valid.poke(true.B)
+        dut.io.request.bits.vaddr.poke(0x1234.U)
+        dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+        while (!asBool(dut.io.request.ready)) { stepBus() }
         dut.clock.step()
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
         var result: Option[BigInt] = None
         for (_ <- 0 until 20 if result.isEmpty) {
           stepBus()
-          if (asBool(dut.io.resp.valid)) {
-            result = Some(dut.io.resp.bits.paddr.peek().litValue)
+          if (asBool(dut.io.response.valid)) {
+            result = Some(dut.io.response.bits.paddr.peek().litValue)
           }
         }
         result.get
@@ -1658,65 +1658,65 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "PTW" should "超级页打开 cache 后仍返回正确 fillLevel" in {
     val memory = new Memory
-    memory.write(Root + 0x0L, pte(0x80000L, 0xdfL))
+    memory.write(Root + 0x0L, PTE(0x80000L, 0xdfL))
     simulate(new ysyx_26030103_PTW(
       adMode = "fault", superpage = true, fillSuperpage = true,
       cacheEnable = true, cacheEntries = 16, cacheWays = 2,
       XLEN = 32, addressWidth = 32, vaBits = 32,
-      levels = 2, tableEntries = 1024, pteConfig = rv32PTE, pteSizeBytes = 4
+      levels = 2, tableEntries = 1024, PTEConfig = Rv32PTE, PTESizeBytes = 4
     )) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
       var pending = false
-      var pendingID = 0
+      var PendingID = 0
       var pendingData = BigInt(0)
       var busReads = 0
 
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.vaddr.poke(0.U)
-      dut.io.req.bits.satp.poke(0.U)
-      dut.io.req.bits.privilege.poke(0.U)
-      dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-      dut.io.req.bits.sum.poke(false.B)
-      dut.io.req.bits.mxr.poke(false.B)
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.data.poke(0.U)
-      dut.io.bus.resp.bits.id.poke(0.U)
-      dut.io.bus.resp.bits.fault.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.vaddr.poke(0.U)
+      dut.io.request.bits.satp.poke(0.U)
+      dut.io.request.bits.privilege.poke(0.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.ID.poke(0.U)
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.response.ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
       def stepBus(): Unit = {
-        if (!pending && asBool(dut.io.bus.req.valid)) {
+        if (!pending && asBool(dut.io.bus.request.valid)) {
           pending = true
-          pendingID = asLong(dut.io.bus.req.bits.id).toInt
+          PendingID = asLong(dut.io.bus.request.bits.ID).toInt
           busReads += 1
-          pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+          pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
         }
-        dut.io.bus.resp.valid.poke(pending.B)
-        dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-        dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-        val ready = asBool(dut.io.bus.resp.ready)
+        dut.io.bus.response.valid.poke(pending.B)
+        dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+        dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+        val ready = asBool(dut.io.bus.response.ready)
         dut.clock.step()
         if (pending && ready) pending = false
       }
 
       def access(): (BigInt, Int) = {
-        dut.io.req.valid.poke(true.B)
-        dut.io.req.bits.vaddr.poke(0x1234.U)
-        dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
-        while (!asBool(dut.io.req.ready)) { stepBus() }
+        dut.io.request.valid.poke(true.B)
+        dut.io.request.bits.vaddr.poke(0x1234.U)
+        dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+        while (!asBool(dut.io.request.ready)) { stepBus() }
         dut.clock.step()
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
         var result: Option[(BigInt, Int)] = None
         for (_ <- 0 until 20 if result.isEmpty) {
           stepBus()
-          if (asBool(dut.io.resp.valid)) {
+          if (asBool(dut.io.response.valid)) {
             result = Some((
-              dut.io.resp.bits.paddr.peek().litValue,
-              dut.io.resp.bits.fillLevel.peek().litValue.toInt
+              dut.io.response.bits.paddr.peek().litValue,
+              dut.io.response.bits.fillLevel.peek().litValue.toInt
             ))
           }
         }
@@ -1732,21 +1732,21 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
 
   "MMU" should "follow_tlb/global miss queue 均按请求顺序返回" in {
     val memory = new Memory
-    memory.write(0x80002004L, pte(0x80003L, 0xdfL))
-    memory.write(0x80002008L, pte(0x80004L, 0xdfL))
-    memory.write(0x8000200cL, pte(0x80005L, 0xdfL))
+    memory.write(0x80002004L, PTE(0x80003L, 0xdfL))
+    memory.write(0x80002008L, PTE(0x80004L, 0xdfL))
+    memory.write(0x8000200cL, PTE(0x80005L, 0xdfL))
     val base = rv32Profile.copy(
-      enabled = true, tlbEnabled = true, ptwOutstanding = 1
+      enabled = true, TLBEnabled = true, PTWOutstanding = 1
     )
     val profiles = Seq(
       // split follow_tlb：I/D 各自一条深度 1 的队列。
-      base.copy(tlbOrganization = "split", tlbMissQueueMode = "follow_tlb",
+      base.copy(TLBOrganization = "split", TLBMissQueueMode = "follow_tlb",
         itlbMissQueueEntries = 1, dtlbMissQueueEntries = 1),
       // unified follow_tlb：只有 UTLB 队列。
-      base.copy(tlbOrganization = "unified", tlbMissQueueMode = "follow_tlb",
+      base.copy(TLBOrganization = "unified", TLBMissQueueMode = "follow_tlb",
         utlbMissQueueEntries = 1, utlbLookupPorts = 1),
       // global：fetch/load 共享同一条深度 1 的队列。
-      base.copy(tlbMissQueueMode = "global", globalMissQueueEntries = 1)
+      base.copy(TLBMissQueueMode = "global", globalMissQueueEntries = 1)
     )
 
     profiles.foreach { profile =>
@@ -1755,57 +1755,57 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
         dut.clock.step(2)
         dut.reset.poke(false.B)
         var pending = false
-        var pendingID = 0
+        var PendingID = 0
         var pendingData = BigInt(0)
         val responses = scala.collection.mutable.ArrayBuffer.empty[(BigInt, BigInt)]
 
-        dut.io.req.valid.poke(false.B)
-        dut.io.req.bits.vaddr.poke(0.U)
-        dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-        dut.io.req.bits.privilege.poke(0.U)
-        dut.io.req.bits.sum.poke(false.B)
-        dut.io.req.bits.mxr.poke(false.B)
-        dut.io.req.bits.satp.poke(0.U)
-        dut.io.bus.req.ready.poke(true.B)
-        dut.io.bus.resp.valid.poke(false.B)
-        dut.io.bus.resp.bits.data.poke(0.U)
-        dut.io.bus.resp.bits.id.poke(0.U)
-        dut.io.bus.resp.bits.fault.poke(false.B)
-        dut.io.resp.ready.poke(true.B)
+        dut.io.request.valid.poke(false.B)
+        dut.io.request.bits.vaddr.poke(0.U)
+        dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+        dut.io.request.bits.privilege.poke(0.U)
+        dut.io.request.bits.sum.poke(false.B)
+        dut.io.request.bits.mxr.poke(false.B)
+        dut.io.request.bits.satp.poke(0.U)
+        dut.io.bus.request.ready.poke(true.B)
+        dut.io.bus.response.valid.poke(false.B)
+        dut.io.bus.response.bits.data.poke(0.U)
+        dut.io.bus.response.bits.ID.poke(0.U)
+        dut.io.bus.response.bits.fault.poke(false.B)
+        dut.io.response.ready.poke(true.B)
         dut.io.flush.poke(false.B)
-        pendingID = 0
+        PendingID = 0
 
         def stepBus(): Unit = {
-          if (!pending && asBool(dut.io.bus.req.valid)) {
+          if (!pending && asBool(dut.io.bus.request.valid)) {
             pending = true
-            pendingID = asLong(dut.io.bus.req.bits.id).toInt
-            pendingData = memory.read(asLong(dut.io.bus.req.bits.addr))
+            PendingID = asLong(dut.io.bus.request.bits.ID).toInt
+            pendingData = memory.read(asLong(dut.io.bus.request.bits.address))
           }
-          dut.io.bus.resp.valid.poke(pending.B)
-          dut.io.bus.resp.bits.data.poke(pendingData.U(32.W))
-          dut.io.bus.resp.bits.id.poke(pendingID.U(4.W))
-          val ready = asBool(dut.io.bus.resp.ready)
-          if (asBool(dut.io.resp.valid)) {
+          dut.io.bus.response.valid.poke(pending.B)
+          dut.io.bus.response.bits.data.poke(pendingData.U(32.W))
+          dut.io.bus.response.bits.ID.poke(PendingID.U(4.W))
+          val ready = asBool(dut.io.bus.response.ready)
+          if (asBool(dut.io.response.valid)) {
             responses += ((
-              dut.io.resp.bits.id.peek().litValue,
-              dut.io.resp.bits.paddr.peek().litValue
+              dut.io.response.bits.ID.peek().litValue,
+              dut.io.response.bits.paddr.peek().litValue
             ))
           }
           dut.clock.step()
           if (pending && ready) pending = false
         }
 
-        def issue(id: Int, vaddr: Long, fetch: Boolean): Unit = {
-          dut.io.req.valid.poke(true.B)
-          dut.io.req.bits.id.poke(id.U)
-          dut.io.req.bits.vaddr.poke(vaddr.U)
-          dut.io.req.bits.access.poke(
+        def issue(ID: Int, vaddr: Long, fetch: Boolean): Unit = {
+          dut.io.request.valid.poke(true.B)
+          dut.io.request.bits.ID.poke(ID.U)
+          dut.io.request.bits.vaddr.poke(vaddr.U)
+          dut.io.request.bits.access.poke(
             if (fetch) ysyx_26030103_AccessType.Fetch
             else ysyx_26030103_AccessType.Load)
-          dut.io.req.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
-          while (!asBool(dut.io.req.ready)) { stepBus() }
+          dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
+          while (!asBool(dut.io.request.ready)) { stepBus() }
           dut.clock.step()
-          dut.io.req.valid.poke(false.B)
+          dut.io.request.valid.poke(false.B)
         }
 
         issue(0, 0x1234L, fetch = true)
@@ -1827,33 +1827,33 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
   "MMU" should "flush 后排空 reqQueue 且不让旧请求在新 satp 下继续翻译" in {
     val profile = rv32Profile.copy(
       enabled = true,
-      tlbEnabled = false,
-      ptwOutstanding = 1
+      TLBEnabled = false,
+      PTWOutstanding = 1
     )
     simulate(new ysyx_26030103_MMU(profile)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMURequest))
-      dut.io.bus.req.ready.poke(false.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.poke(0.U.asTypeOf(new ysyx_26030103_PTEBusResponse))
-      dut.io.resp.ready.poke(true.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMURequest))
+      dut.io.bus.request.ready.poke(false.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.poke(0.U.asTypeOf(new ysyx_26030103_PTEBusResponse))
+      dut.io.response.ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
       val pagingSatp = 0x80000000L | RootPPN
 
-      def offer(id: Int, vaddr: Long, satp: Long): Boolean = {
-        dut.io.req.bits.id.poke(id.U(4.W))
-        dut.io.req.bits.vaddr.poke(vaddr.U(32.W))
-        dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-        dut.io.req.bits.privilege.poke(0.U(2.W))
-        dut.io.req.bits.sum.poke(false.B)
-        dut.io.req.bits.mxr.poke(false.B)
-        dut.io.req.bits.satp.poke(satp.U(32.W))
-        dut.io.req.valid.poke(true.B)
-        val ready = asBool(dut.io.req.ready)
+      def offer(ID: Int, vaddr: Long, satp: Long): Boolean = {
+        dut.io.request.bits.ID.poke(ID.U(4.W))
+        dut.io.request.bits.vaddr.poke(vaddr.U(32.W))
+        dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+        dut.io.request.bits.privilege.poke(0.U(2.W))
+        dut.io.request.bits.sum.poke(false.B)
+        dut.io.request.bits.mxr.poke(false.B)
+        dut.io.request.bits.satp.poke(satp.U(32.W))
+        dut.io.request.valid.poke(true.B)
+        val ready = asBool(dut.io.request.ready)
         if (ready) { dut.clock.step() }
         ready
       }
@@ -1865,48 +1865,48 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
           0x1000L + issued.toLong * 0x100L, pagingSatp)) {
         issued += 1
       }
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
       issued should be(3)
-      asBool(dut.io.req.ready) should be(false)
+      asBool(dut.io.request.ready) should be(false)
 
       dut.io.flush.poke(true.B)
       // flush 当拍也必须拒绝新请求。
-      asBool(dut.io.req.ready) should be(false)
+      asBool(dut.io.request.ready) should be(false)
       dut.clock.step()
       dut.io.flush.poke(false.B)
       // 队列里仍有旧请求，flushDrain 期间必须拒绝新请求。
-      asBool(dut.io.req.ready) should be(false)
+      asBool(dut.io.request.ready) should be(false)
 
       var drainCycles = 0
-      while (!asBool(dut.io.req.ready) && drainCycles < 20) {
+      while (!asBool(dut.io.request.ready) && drainCycles < 20) {
         dut.clock.step()
         drainCycles += 1
       }
       withClue(s"reqQueue 未在 flush 后排空（$drainCycles 拍）") {
-        asBool(dut.io.req.ready) should be(true)
+        asBool(dut.io.request.ready) should be(true)
       }
 
       // 新请求使用 Bare 模式，只需旁路即可返回；若旧请求仍在队列中，
       // 它会挡在 FIFO 前面并等待页表总线，导致这里等不到新响应。
-      val freshID = 9
-      offer(freshID, 0x2000L, 0L) should be(true)
-      dut.io.req.valid.poke(false.B)
+      val FreshID = 9
+      offer(FreshID, 0x2000L, 0L) should be(true)
+      dut.io.request.valid.poke(false.B)
 
       var response: Option[(Long, Long, Boolean)] = None
       var guard = 0
       while (response.isEmpty && guard < 40) {
-        if (asBool(dut.io.resp.valid)) {
+        if (asBool(dut.io.response.valid)) {
           response = Some((
-            asLong(dut.io.resp.bits.id),
-            asLong(dut.io.resp.bits.paddr),
-            asBool(dut.io.resp.bits.fault)
+            asLong(dut.io.response.bits.ID),
+            asLong(dut.io.response.bits.paddr),
+            asBool(dut.io.response.bits.fault)
           ))
         }
         dut.clock.step()
         guard += 1
       }
       withClue(s"flush 后新请求未返回（$guard 拍）") {
-        response should be(Some((freshID.toLong, 0x2000L, false)))
+        response should be(Some((FreshID.toLong, 0x2000L, false)))
       }
     }
   }

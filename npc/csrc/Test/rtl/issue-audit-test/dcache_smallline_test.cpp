@@ -14,11 +14,11 @@
 using DUT = Vysyx_26030103_DCacheReg;
 
 static void defaults(DUT &dut) {
-  dut.io_req_valid = 0;
-  dut.io_req_bits_addr = 0;
-  dut.io_req_bits_WidthSelect = 2;
-  dut.io_req_bits_signed = 0;
-  dut.io_resp_ready = 1;
+  dut.io_request_valid = 0;
+  dut.io_request_bits_address = 0;
+  dut.io_request_bits_WidthSelect = 2;
+  dut.io_request_bits_signed = 0;
+  dut.io_response_ready = 1;
   dut.io_StoreValid = 0;
   dut.io_StoreResponse = 0;
   dut.io_StoreAddress = 0;
@@ -44,13 +44,13 @@ int main(int argc, char **argv) {
     constexpr uint32_t kWord = 0xAAAA0000U;
 
     // 首次访问：miss → 单拍回填。
-    dut.io_resp_ready = 0;
-    dut.io_req_valid = 1;
-    dut.io_req_bits_addr = kAddr;
+    dut.io_response_ready = 0;
+    dut.io_request_valid = 1;
+    dut.io_request_bits_address = kAddr;
     dut.eval();
-    check(dut.io_req_ready, "DCache did not accept the demand miss");
+    check(dut.io_request_ready, "DCache did not accept the demand miss");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
 
     wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
                "DCache never issued the refill AR");
@@ -70,30 +70,30 @@ int main(int argc, char **argv) {
     dut.io_AXI_R_RLAST = 0;
     dut.eval();
 
-    wait_until(dut, [&] { return dut.io_resp_valid; },
+    wait_until(dut, [&] { return dut.io_response_valid; },
                "miss response never appeared");
-    check(!dut.io_resp_bits_fault, "unexpected fault on the demand miss");
-    check(dut.io_resp_bits_data == kWord,
-          "first load returned 0x" + std::to_string(dut.io_resp_bits_data) +
+    check(!dut.io_response_bits_fault, "unexpected fault on the demand miss");
+    check(dut.io_response_bits_data == kWord,
+          "first load returned 0x" + std::to_string(dut.io_response_bits_data) +
               " instead of 0x" + std::to_string(kWord));
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut);
     dut.eval();
 
     // 第二次访问：命中，数据必须一致且不发起 AR。
-    dut.io_req_valid = 1;
-    dut.io_req_bits_addr = kAddr;
+    dut.io_request_valid = 1;
+    dut.io_request_bits_address = kAddr;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_hit && !dut.io_perf_miss,
+    check(dut.io_request_ready && dut.io_perf_hit && !dut.io_perf_miss,
           "second access to the same word was not a hit");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
     check(!dut.io_AXI_AR_ARVALID, "hit issued an unexpected AR");
-    wait_until(dut, [&] { return dut.io_resp_valid; },
+    wait_until(dut, [&] { return dut.io_response_valid; },
                "hit response never appeared");
-    check(dut.io_resp_bits_data == kWord,
-          "hit returned 0x" + std::to_string(dut.io_resp_bits_data) +
+    check(dut.io_response_bits_data == kWord,
+          "hit returned 0x" + std::to_string(dut.io_response_bits_data) +
               " instead of 0x" + std::to_string(kWord));
     dut.final();
   });

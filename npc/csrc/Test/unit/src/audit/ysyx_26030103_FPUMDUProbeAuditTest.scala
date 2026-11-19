@@ -49,44 +49,44 @@ class ysyx_26030103_FPUMDUProbeAuditTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       dut.io.flush.poke(false.B)
-      dut.io.req.valid.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.response.ready.poke(false.B)
 
       var cycles = 0
-      while (!bool(dut.io.req.ready) && cycles < 20) {
+      while (!bool(dut.io.request.ready) && cycles < 20) {
         dut.clock.step()
         cycles += 1
       }
-      withClue("FudianFPU req.ready timeout: ") {
-        bool(dut.io.req.ready) should be(true)
+      withClue("FudianFPU request.ready timeout: ") {
+        bool(dut.io.request.ready) should be(true)
       }
 
       // Float 字面量 4294967295.0f 舍入为 2^32，其位模式正是 0x4f800000。
       val inputBits = BigInt(0x4f800000L)
-      dut.io.req.bits.op.poke(ysyx_26030103_FPUOp.FCvtFPToUInt)
-      dut.io.req.bits.fmt.poke(ysyx_26030103_FPUFmt.S)
-      dut.io.req.bits.rm.poke(ysyx_26030103_FPURm.RNE)
-      dut.io.req.bits.intWord.poke(true.B)
-      dut.io.req.bits.rs1.poke(boxedS(inputBits).U(64.W))
-      dut.io.req.bits.rs2.poke(0.U(64.W))
-      dut.io.req.bits.rs3.poke(0.U(64.W))
-      dut.io.req.valid.poke(true.B)
+      dut.io.request.bits.op.poke(ysyx_26030103_FPUOp.FCvtFPToUInt)
+      dut.io.request.bits.fmt.poke(ysyx_26030103_FPUFmt.S)
+      dut.io.request.bits.rm.poke(ysyx_26030103_FPURm.RNE)
+      dut.io.request.bits.intWord.poke(true.B)
+      dut.io.request.bits.rs1.poke(boxedS(inputBits).U(64.W))
+      dut.io.request.bits.rs2.poke(0.U(64.W))
+      dut.io.request.bits.rs3.poke(0.U(64.W))
+      dut.io.request.valid.poke(true.B)
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       cycles = 0
-      while (!bool(dut.io.resp.valid) && cycles < 100) {
+      while (!bool(dut.io.response.valid) && cycles < 100) {
         dut.clock.step()
         cycles += 1
       }
-      withClue("FudianFPU resp.valid timeout: ") {
-        bool(dut.io.resp.valid) should be(true)
+      withClue("FudianFPU response.valid timeout: ") {
+        bool(dut.io.response.valid) should be(true)
       }
-      val result = dut.io.resp.bits.result.peek().litValue
-      val fflags = dut.io.resp.bits.fflags.peek().litValue
-      dut.io.resp.ready.poke(true.B)
+      val result = dut.io.response.bits.result.peek().litValue
+      val fflags = dut.io.response.bits.fflags.peek().litValue
+      dut.io.response.ready.poke(true.B)
       dut.clock.step()
-      dut.io.resp.ready.poke(false.B)
+      dut.io.response.ready.poke(false.B)
 
       withClue(
         s"FCVT.WU.S(${hex(inputBits)}) returned ${hex(result)}, " +

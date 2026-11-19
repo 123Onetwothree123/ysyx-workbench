@@ -29,11 +29,11 @@ class ysyx_26030103_RV64AddressConfigTest extends AnyFlatSpec with Matchers {
       enabled = true,
       xlen = 64,
       levels = 3,
-      pteSizeBytes = 8,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
-      tlbEnabled = true,
-      tlbASIDBits = 16
+      PTESizeBytes = 8,
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
+      TLBEnabled = true,
+      TLBASIDBits = 16
     )
     def sv48 = sv39.copy(levels = 4)
     ysyx_26030103_NPCConfig(XLEN = 64, AddressWidth = 64, MMU = sv39)
@@ -48,8 +48,8 @@ class ysyx_26030103_RV64AddressConfigTest extends AnyFlatSpec with Matchers {
         enabled = true,
         xlen = 64,
         levels = 2,
-        pteSizeBytes = 4,
-        pteFormat = "riscv32"
+        PTESizeBytes = 4,
+        PTEFormat = "riscv32"
       )
     }
     error.getMessage should include("RV64 PTE 字段配置位宽")
@@ -60,7 +60,7 @@ class ysyx_26030103_RV64AddressConfigTest extends AnyFlatSpec with Matchers {
     p.standardSv39 should be(true)
     p.xlen should be(64)
     p.satpMode should be(8)
-    p.pteConfig.ppnHigh should be(53)
+    p.PTEConfig.PPNHigh should be(53)
   }
 
   it should "拒绝 XLEN=64 使用 RV32 的 MMU profile" in {

@@ -5,11 +5,11 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 
 /** PTE 字段位置；默认就是标准 RISC-V 32-bit PTE。
   *
-  * pteBits 是 PTE 位宽（Sv32=32，Sv39/Sv48=64）；64 位 PTE 的 PPN 扩展到
+  * PTEBits 是 PTE 位宽（Sv32=32，Sv39/Sv48=64）；64 位 PTE 的 PPN 扩展到
   * bit 53（标准 44 位 PPN），自定义编码仍可按位配置。
   */
 case class ysyx_26030103_PTEConfig(
-    pteBits: Int = KconfigDefaults.MMUPTEBits,
+    PTEBits: Int = KconfigDefaults.MMUPTEBits,
     validBit: Int = KconfigDefaults.MMUPTEValidBit,
     readBit: Int = KconfigDefaults.MMUPTEReadBit,
     writeBit: Int = KconfigDefaults.MMUPTEWriteBit,
@@ -18,25 +18,25 @@ case class ysyx_26030103_PTEConfig(
     globalBit: Int = KconfigDefaults.MMUPTEGlobalBit,
     aBit: Int = KconfigDefaults.MMUPTEABit,
     dBit: Int = KconfigDefaults.MMUPTEDBit,
-    ppnLow: Int = KconfigDefaults.MMUPTEPPNLow,
-    ppnHigh: Int = KconfigDefaults.MMUPTEPPNHigh
+    PPNLow: Int = KconfigDefaults.MMUPTEPPNLow,
+    PPNHigh: Int = KconfigDefaults.MMUPTEPPNHigh
 ) {
-  require(pteBits == 32 || pteBits == 64, s"PTE 位宽只允许 32/64，收到 $pteBits")
-  require(ppnLow >= 8 && ppnHigh < pteBits && ppnLow <= ppnHigh,
+  require(PTEBits == 32 || PTEBits == 64, s"PTE 位宽只允许 32/64，收到 $PTEBits")
+  require(PPNLow >= 8 && PPNHigh < PTEBits && PPNLow <= PPNHigh,
     "PTE PPN 位范围非法（至少为 8，且必须低于 PTE 位宽）")
   private val flagBits = Seq(validBit, readBit, writeBit, executeBit,
     userBit, globalBit, aBit, dBit)
-  require(flagBits.forall(x => x >= 0 && x < pteBits), "PTE 标志位非法")
+  require(flagBits.forall(x => x >= 0 && x < PTEBits), "PTE 标志位非法")
   // 归一化后的内部 PTE 固定把 8 个标志放在低 8 位。字段位置可以任意，
   // 但标志之间不能重叠，也不能落进 PPN 字段，否则同一个 PTE 位会被
   // 同时解释成两种语义。无法正确表达的编码必须在 elaboration 期拒绝。
   require(flagBits.distinct.size == flagBits.size, "PTE 标志位不能重复")
-  require(flagBits.forall(b => b < ppnLow || b > ppnHigh),
-    s"PTE 标志位不能与 PPN 字段 [$ppnHigh:$ppnLow] 重叠")
+  require(flagBits.forall(b => b < PPNLow || b > PPNHigh),
+    s"PTE 标志位不能与 PPN 字段 [$PPNHigh:$PPNLow] 重叠")
   // PPN 高位以上的位统一按保留位检查；标志位若放在该区域会和保留位
   // 语义冲突，无法用当前归一化/保留位规则正确表达。
-  require(flagBits.forall(_ <= ppnHigh),
-    s"PTE 标志位必须位于 PPN 高位($ppnHigh)以下，不能占用保留位区域")
+  require(flagBits.forall(_ <= PPNHigh),
+    s"PTE 标志位必须位于 PPN 高位($PPNHigh)以下，不能占用保留位区域")
 }
 
 /** MMU/TLB 的 elaboration 期参数，由 Elaborate 从 Kconfig 环境变量构造。
@@ -58,10 +58,10 @@ case class ysyx_26030103_MMUProfile(
     customSatpMode: Int = KconfigDefaults.MMUCustomSatpMode,
     pageSizeBytes: Int = KconfigDefaults.MMUPageSizeBytes,
     levels: Int = KconfigDefaults.MMULevels,
-    pteSizeBytes: Int = KconfigDefaults.MMUPTESizeBytes,
+    PTESizeBytes: Int = KconfigDefaults.MMUPTESizeBytes,
     pageTableSizeBytes: Int = KconfigDefaults.MMUPageTableSizeBytes,
-    pteFormat: String = "riscv32",
-    pteConfig: ysyx_26030103_PTEConfig = ysyx_26030103_PTEConfig(),
+    PTEFormat: String = "riscv32",
+    PTEConfig: ysyx_26030103_PTEConfig = ysyx_26030103_PTEConfig(),
     superpage: Boolean = false,
     adMode: String = "fault",
     cacheMode: String = "pipt",
@@ -84,24 +84,24 @@ case class ysyx_26030103_MMUProfile(
     // DCache alias 事件队列深度；队列满时清空整个 DCache。仅 DCache 使用。
     cacheVIPTAliasEventQueueDepth: Int =
       KconfigDefaults.MMUCacheVIPTAliasEventQueueDepth,
-    ptwPath: String = "dedicated",
-    ptwArch: String = "independent",
-    ptwOutstanding: Int = KconfigDefaults.MMUPTWOutstanding,
-    // 页表总线可同时保持的页表读/写数。0 表示跟随 ptwOutstanding；
+    PTWPath: String = "dedicated",
+    PTWArch: String = "independent",
+    PTWOutstanding: Int = KconfigDefaults.MMUPTWOutstanding,
+    // 页表总线可同时保持的页表读/写数。0 表示跟随 PTWOutstanding；
     // 默认 1 保持原有的单笔总线行为，配置 >1 才启用总线级重叠。
-    ptwBusOutstanding: Int = KconfigDefaults.MMUPTWBusOutstanding,
+    PTWBusOutstanding: Int = KconfigDefaults.MMUPTWBusOutstanding,
     // 被 PMP 拒绝的页表访问返回 fault 响应的队列深度。
-    ptwPMPFaultQueueDepth: Int = KconfigDefaults.MMUPTWPMPFaultQueueDepth,
-    ptwOrder: String = "in_order",
-    ptwCache: Boolean = false,
-    ptwCacheEntries: Int = KconfigDefaults.MMUPTWCacheEntries,
-    ptwCacheWays: Int = KconfigDefaults.MMUPTWCacheWays,
-    tlbEnabled: Boolean = false,
-    tlbOrganization: String = "split",
-    tlbStorage: String = "reg",
-    tlbReplacement: String = "plru",
-    tlbASIDBits: Int = KconfigDefaults.MMUTLBASIDBits,
-    tlbGlobal: Boolean = true,
+    PTWPMPFaultQueueDepth: Int = KconfigDefaults.MMUPTWPMPFaultQueueDepth,
+    PTWOrder: String = "in_order",
+    PTWCache: Boolean = false,
+    PTWCacheEntries: Int = KconfigDefaults.MMUPTWCacheEntries,
+    PTWCacheWays: Int = KconfigDefaults.MMUPTWCacheWays,
+    TLBEnabled: Boolean = false,
+    TLBOrganization: String = "split",
+    TLBStorage: String = "reg",
+    TLBReplacement: String = "plru",
+    TLBASIDBits: Int = KconfigDefaults.MMUTLBASIDBits,
+    TLBGlobal: Boolean = true,
     itlbEntries: Int = KconfigDefaults.MMUItlbEntries,
     itlbWays: Int = KconfigDefaults.MMUItlbWays,
     dtlbEntries: Int = KconfigDefaults.MMUDtlbEntries,
@@ -109,36 +109,36 @@ case class ysyx_26030103_MMUProfile(
     utlbEntries: Int = KconfigDefaults.MMUUtlbEntries,
     utlbWays: Int = KconfigDefaults.MMUUtlbWays,
     utlbLookupPorts: Int = KconfigDefaults.MMUUtlbLookupPorts,
-    tlbSuperpage: Boolean = false,
-    tlbSuperpageEntries: Int = KconfigDefaults.MMUTLBSuperpageEntries,
-    tlbMissQueueMode: String = "follow_tlb",
+    TLBSuperpage: Boolean = false,
+    TLBSuperpageEntries: Int = KconfigDefaults.MMUTLBSuperpageEntries,
+    TLBMissQueueMode: String = "follow_tlb",
     itlbMissQueueEntries: Int = KconfigDefaults.MMUItlbMissQueueEntries,
     dtlbMissQueueEntries: Int = KconfigDefaults.MMUDtlbMissQueueEntries,
     utlbMissQueueEntries: Int = KconfigDefaults.MMUUtlbMissQueueEntries,
     globalMissQueueEntries: Int = KconfigDefaults.MMUGlobalMissQueueEntries,
     refillPorts: Int = KconfigDefaults.MMURefillPorts,
-    csrMstatusReadMask: Int = KconfigDefaults.MMUMstatusReadMask.toInt,
-    csrMstatusReadSet: Int = KconfigDefaults.MMUMstatusReadSet.toInt,
-    csrMstatusWriteMask: Int = KconfigDefaults.MMUMstatusWriteMask.toInt,
+    CSRMstatusReadMask: Int = KconfigDefaults.MMUMstatusReadMask.toInt,
+    CSRMstatusReadSet: Int = KconfigDefaults.MMUMstatusReadSet.toInt,
+    CSRMstatusWriteMask: Int = KconfigDefaults.MMUMstatusWriteMask.toInt,
     // satp 在 RV64 下是 64 位 CSR，因此掩码使用 Long；RV32 只用低 32 位。
-    csrSatpReadMask: Long = KconfigDefaults.MMUSatpReadMask,
-    csrSatpReadSet: Long = KconfigDefaults.MMUSatpReadSet,
-    csrSatpWriteMask: Long = KconfigDefaults.MMUSatpWriteMask,
+    CSRSatpReadMask: Long = KconfigDefaults.MMUSatpReadMask,
+    CSRSatpReadSet: Long = KconfigDefaults.MMUSatpReadSet,
+    CSRSatpWriteMask: Long = KconfigDefaults.MMUSatpWriteMask,
     hasS: Boolean = true,
     hasU: Boolean = true,
-    hasSTimerIRQ: Boolean = true,
-    hasSExternalIRQ: Boolean = true,
+    HasSTimerIRQ: Boolean = true,
+    HasSExternalIRQ: Boolean = true,
     timerPath: String = "clint_mtip",
-    plicSources: Int = KconfigDefaults.MMUPLICSources,
-    plicPriorityBits: Int = KconfigDefaults.MMUPLICPriorityBits,
-    plicMaxPriority: Int = KconfigDefaults.MMUPLICMaxPriority,
-    plicBase: Long = ysyx_26030103_PhysicalMemoryMap.DefaultPLICBase,
-    plicSize: Long = ysyx_26030103_PhysicalMemoryMap.DefaultPLICSize,
-    csrViewMode: String = "bound",
-    csrMissingMode: String = "illegal",
-    pmpEnabled: Boolean = false,
-    pmpEntries: Int = KconfigDefaults.MMUPMPEntries,
-    csrEnabled: Set[Int] = ysyx_26030103_MMUProfile.DefaultCSRAddresses
+    PLICSources: Int = KconfigDefaults.MMUPLICSources,
+    PLICPriorityBits: Int = KconfigDefaults.MMUPLICPriorityBits,
+    PLICMaxPriority: Int = KconfigDefaults.MMUPLICMaxPriority,
+    PLICBase: Long = ysyx_26030103_PhysicalMemoryMap.DefaultPLICBase,
+    PLICSize: Long = ysyx_26030103_PhysicalMemoryMap.DefaultPLICSize,
+    CSRViewMode: String = "bound",
+    CSRMissingMode: String = "illegal",
+    PMPEnabled: Boolean = false,
+    PMPEntries: Int = KconfigDefaults.MMUPMPEntries,
+    CSREnabled: Set[Int] = ysyx_26030103_MMUProfile.DefaultCSRAddresses
 ) {
   private def isPowerOfTwo(value: Int): Boolean =
     value > 0 && (value & (value - 1)) == 0
@@ -148,13 +148,13 @@ case class ysyx_26030103_MMUProfile(
 
   require(xlen == 32 || xlen == 64, s"MMU XLEN 只允许 32/64，收到 $xlen")
   requirePowerOfTwo("pageSizeBytes", pageSizeBytes)
-  requirePowerOfTwo("pteSizeBytes", pteSizeBytes)
+  requirePowerOfTwo("PTESizeBytes", PTESizeBytes)
   requirePowerOfTwo("pageTableSizeBytes", pageTableSizeBytes)
-  require(pteSizeBytes == 4 || pteSizeBytes == 8, "PTE 大小只支持 4/8 字节")
-  require(xlen == 32 || pteConfig.pteBits == pteSizeBytes * 8,
-    s"RV64 PTE 字段配置位宽(${pteConfig.pteBits})必须等于 pteSizeBytes*8(${pteSizeBytes * 8})")
-  require(adMode != "hardware" || pteSizeBytes <= 4 ||
-    (pteConfig.aBit < 32 && pteConfig.dBit < 32),
+  require(PTESizeBytes == 4 || PTESizeBytes == 8, "PTE 大小只支持 4/8 字节")
+  require(xlen == 32 || PTEConfig.PTEBits == PTESizeBytes * 8,
+    s"RV64 PTE 字段配置位宽(${PTEConfig.PTEBits})必须等于 PTESizeBytes*8(${PTESizeBytes * 8})")
+  require(adMode != "hardware" || PTESizeBytes <= 4 ||
+    (PTEConfig.aBit < 32 && PTEConfig.dBit < 32),
     "64 位 PTE 的 A/D 硬件写回要求 A/D 位位于低 32 位字内（32 位页表写端口只更新低字）")
   // fillLevel/页表层级字段统一为 3 位，因此 RTL 最多能表达 8 级；
   // 更深的几何必须在 elaboration 期明确拒绝，不能截断层级编号。
@@ -162,21 +162,21 @@ case class ysyx_26030103_MMUProfile(
     s"levels=$levels 必须在 1..${ysyx_26030103_MMUProfile.MaxLevels}" +
       s"（fillLevel/层级字段为 ${ysyx_26030103_MMUProfile.LevelBits} 位）")
   require(
-    pageTableSizeBytes % pteSizeBytes == 0,
-    s"pageTableSizeBytes=$pageTableSizeBytes 必须能被 pteSizeBytes=$pteSizeBytes 整除"
+    pageTableSizeBytes % PTESizeBytes == 0,
+    s"pageTableSizeBytes=$pageTableSizeBytes 必须能被 PTESizeBytes=$PTESizeBytes 整除"
   )
-  requirePowerOfTwo("每级页表项数", pageTableSizeBytes / pteSizeBytes)
-  require(pageTableSizeBytes / pteSizeBytes >= 2,
-    s"每级页表项数(${pageTableSizeBytes / pteSizeBytes})必须至少为 2，否则索引位宽为 0")
-  require(ptwOutstanding >= 1 && ptwOutstanding <= 16,
-    s"ptwOutstanding=$ptwOutstanding 必须在 1..16（PTW 事务 ID 为 4 位）")
-  require(ptwBusOutstanding >= 0 && ptwBusOutstanding <= 16,
-    s"ptwBusOutstanding=$ptwBusOutstanding 必须在 0..16（0 表示跟随 ptwOutstanding）")
-  require(ptwPMPFaultQueueDepth >= 1 && ptwPMPFaultQueueDepth <= 16,
-    s"ptwPmpFaultQueueDepth=$ptwPMPFaultQueueDepth 必须在 1..16")
-  require(Set("independent", "pipelined").contains(ptwArch),
+  requirePowerOfTwo("每级页表项数", pageTableSizeBytes / PTESizeBytes)
+  require(pageTableSizeBytes / PTESizeBytes >= 2,
+    s"每级页表项数(${pageTableSizeBytes / PTESizeBytes})必须至少为 2，否则索引位宽为 0")
+  require(PTWOutstanding >= 1 && PTWOutstanding <= 16,
+    s"PTWOutstanding=$PTWOutstanding 必须在 1..16（PTW 事务 ID 为 4 位）")
+  require(PTWBusOutstanding >= 0 && PTWBusOutstanding <= 16,
+    s"PTWBusOutstanding=$PTWBusOutstanding 必须在 0..16（0 表示跟随 PTWOutstanding）")
+  require(PTWPMPFaultQueueDepth >= 1 && PTWPMPFaultQueueDepth <= 16,
+    s"ptwPmpFaultQueueDepth=$PTWPMPFaultQueueDepth 必须在 1..16")
+  require(Set("independent", "pipelined").contains(PTWArch),
     "MMU_PTW_ARCH 必须是 independent/pipelined")
-  require(Set("in_order", "out_of_order").contains(ptwOrder),
+  require(Set("in_order", "out_of_order").contains(PTWOrder),
     "MMU_PTW_ORDER 必须是 in_order/out_of_order")
   require(
     Set("all_sets", "serial", "parallel_n", "directory")
@@ -200,7 +200,7 @@ case class ysyx_26030103_MMUProfile(
       (cacheVIPTAliasEventQueueDepth - 1)) == 0,
     s"MMU_CACHE_VIPT_ALIAS_EVENT_QUEUE_DEPTH=$cacheVIPTAliasEventQueueDepth " +
       "必须是 2/4/8/16")
-  require(tlbASIDBits >= 0 && tlbASIDBits <= 16, "tlbAsidBits 必须在 0..16")
+  require(TLBASIDBits >= 0 && TLBASIDBits <= 16, "tlbAsidBits 必须在 0..16")
   require(utlbLookupPorts >= 1 && utlbLookupPorts <= 2, "utlbLookupPorts 必须在 1..2")
   require(refillPorts >= 1, "refillPorts 必须 >= 1")
   // RISC-V 允许 M+U：没有 S 时 U 的陷阱直接进入 M，用 mepc/mcause/
@@ -210,38 +210,38 @@ case class ysyx_26030103_MMUProfile(
   require(!enabled || hasS,
     "HAS_MMU=y 需要 HAS_S=y：MMU/Sv32/Sv39/Sv48 依赖 S 模式 satp/页错误入口；请设置 HAS_S=y 或 HAS_MMU=n")
   // source 0 保留，UART 固定使用 source 10，因此至少需要 11 个 source。
-  require(plicSources > 10 && plicSources <= 1024,
-    s"PLIC_SOURCES=$plicSources 必须大于 10（UART source 10）且不超过 1024")
-  require(plicPriorityBits >= 1 && plicPriorityBits <= 8, "PLIC 优先级位宽非法")
-  require(plicMaxPriority >= 0 && plicMaxPriority < (1 << plicPriorityBits),
+  require(PLICSources > 10 && PLICSources <= 1024,
+    s"PLIC_SOURCES=$PLICSources 必须大于 10（UART source 10）且不超过 1024")
+  require(PLICPriorityBits >= 1 && PLICPriorityBits <= 8, "PLIC 优先级位宽非法")
+  require(PLICMaxPriority >= 0 && PLICMaxPriority < (1 << PLICPriorityBits),
     "PLIC_MAX_PRIORITY 超出优先级位宽")
-  require(plicBase >= 0 && plicBase < (1L << 32), "PLIC_BASE 超出 32 位地址空间")
+  require(PLICBase >= 0 && PLICBase < (1L << 32), "PLIC_BASE 超出 32 位地址空间")
   // S 上下文 claim 寄存器在 0x201004，窗口必须至少覆盖到 0x202000。
   // 当前实现同时支持 0x200000 的 M 上下文别名和 0x201000 的 S 上下文。
-  require(plicSize >= 0x202000L,
-    s"PLIC_SIZE=0x${plicSize.toHexString} 必须至少为 0x202000 才能覆盖 S 上下文 claim 窗口")
+  require(PLICSize >= 0x202000L,
+    s"PLIC_SIZE=0x${PLICSize.toHexString} 必须至少为 0x202000 才能覆盖 S 上下文 claim 窗口")
   // 使用 4KiB 页粒度与 PMA/Xbar/DTB 对齐，避免同一窗口在不同组件里
   // 出现部分重叠或非页对齐的边界。
-  require(plicBase % 4096 == 0,
-    s"PLIC_BASE=0x${plicBase.toHexString} 必须 4KiB 对齐")
-  require(plicSize % 4096 == 0,
-    s"PLIC_SIZE=0x${plicSize.toHexString} 必须为 4KiB 的整数倍")
-  require(plicBase + plicSize <= (1L << 32),
+  require(PLICBase % 4096 == 0,
+    s"PLIC_BASE=0x${PLICBase.toHexString} 必须 4KiB 对齐")
+  require(PLICSize % 4096 == 0,
+    s"PLIC_SIZE=0x${PLICSize.toHexString} 必须为 4KiB 的整数倍")
+  require(PLICBase + PLICSize <= (1L << 32),
     "PLIC_BASE + PLIC_SIZE 超出 32 位地址空间")
   require(Set("clint_mtip", "direct_stip").contains(timerPath), "TIMER_PATH 必须是 clint_mtip/direct_stip")
-  require(Set("bound", "independent").contains(csrViewMode), "CSR_VIEW_MODE 必须是 bound/independent")
-  require(Set("illegal", "zero").contains(csrMissingMode), "CSR_MISSING_MODE 必须是 illegal/zero")
-  require(pmpEntries >= 0 && pmpEntries <= 16, "PMP_ENTRIES 必须在 0..16")
-  require(!pmpEnabled || pmpEntries > 0, "HAS_PMP=y 时 PMP_ENTRIES 必须 > 0")
+  require(Set("bound", "independent").contains(CSRViewMode), "CSR_VIEW_MODE 必须是 bound/independent")
+  require(Set("illegal", "zero").contains(CSRMissingMode), "CSR_MISSING_MODE 必须是 illegal/zero")
+  require(PMPEntries >= 0 && PMPEntries <= 16, "PMP_ENTRIES 必须在 0..16")
+  require(!PMPEnabled || PMPEntries > 0, "HAS_PMP=y 时 PMP_ENTRIES 必须 > 0")
   // PMP 不再依赖 MMU：无 MMU 时直接检查 IFU 物理取指地址和 LSU 的 VA==PA
   // 访存地址；有 MMU 时仍检查翻译后的物理地址。
 
   def csrSupported(address: Int): Boolean = {
     // CSR 地址位 [9:8] 编码最低特权级：00=U，01=S，11=M。
     // U 级不只是 0x000--0x0ff，还包括 0xc00 这类用户只读计数器。
-    val csrPrivilege = (address >> 8) & 0x3
-    val uLevel = csrPrivilege == 0
-    val sLevel = csrPrivilege == 1
+    val CSRPrivilege = (address >> 8) & 0x3
+    val uLevel = CSRPrivilege == 0
+    val sLevel = CSRPrivilege == 1
     // medeleg/mideleg 是 M 级地址，但只控制不存在的 S 状态，HAS_S=n
     // 时从实现集合裁剪。mcounteren 仍是 M 级寄存器：M+U 下它门控 U
     // 访问用户计数器，因此只有连 U 都不存在时才裁剪。
@@ -254,9 +254,9 @@ case class ysyx_26030103_MMUProfile(
     // HAS_U=n 时 U 级 CSR 一并从实现集合裁剪；HAS_S=n 时裁剪 S 级 CSR。
     !highHalfCounter &&
       ((hasU || !uLevel) && (hasS || (!sLevel && !sControl))) &&
-      (csrEnabled.contains(address) ||
+      (CSREnabled.contains(address) ||
         ysyx_26030103_MMUProfile.IdentityCSRAddresses.contains(address) ||
-        (pmpEnabled &&
+        (PMPEnabled &&
           // RV64 只有 pmpcfg0/pmpcfg2，0x3a1/0x3a3 是 RV32 专用编码。
           ((if (xlen == 64) Seq(0x3a0, 0x3a2) else (0x3a0 to 0x3a3)).contains(address) ||
             (address >= 0x3b0 && address <= 0x3bf))))
@@ -265,11 +265,11 @@ case class ysyx_26030103_MMUProfile(
   // 当前配置允许的最低特权级：有 U 为 U；否则有 S 为 S；M-only 为 M。
   final val lowestPrivilege: Int = if (hasU) 0 else if (hasS) 1 else 3
 
-  require(Set("split", "unified").contains(tlbOrganization),
+  require(Set("split", "unified").contains(TLBOrganization),
     "MMU_TLB_ORGANIZATION 必须是 split/unified")
-  require(Set("follow_tlb", "global").contains(tlbMissQueueMode),
+  require(Set("follow_tlb", "global").contains(TLBMissQueueMode),
     "MMU_TLB_MISS_QUEUE_MODE 必须是 follow_tlb/global")
-  if (tlbEnabled) {
+  if (TLBEnabled) {
     requirePowerOfTwo("itlbEntries", itlbEntries)
     requirePowerOfTwo("dtlbEntries", dtlbEntries)
     requirePowerOfTwo("utlbEntries", utlbEntries)
@@ -278,10 +278,10 @@ case class ysyx_26030103_MMUProfile(
     require(utlbEntries % utlbWays == 0, "utlbEntries 必须能被 utlbWays 整除")
     // miss queue 是 TLB 缺失请求进入 PTW 前的真实缓冲；深度为 0 会让
     // 对应 TLB 的 miss 永远无法入队，必须在 elaboration 期拒绝。
-    if (tlbMissQueueMode == "global") {
+    if (TLBMissQueueMode == "global") {
       require(globalMissQueueEntries >= 1,
         "MMU_GLOBAL_MISS_QUEUE_ENTRIES 必须 >= 1")
-    } else if (tlbOrganization == "split") {
+    } else if (TLBOrganization == "split") {
       require(itlbMissQueueEntries >= 1,
         "MMU_ITLB_MISS_QUEUE_ENTRIES 必须 >= 1")
       require(dtlbMissQueueEntries >= 1,
@@ -301,32 +301,32 @@ case class ysyx_26030103_MMUProfile(
     "MMU_GEOMETRY_MODE=custom 只用于 RV64；RV32 既有自定义几何保持 Sv32 模式")
 
   final val pageBits: Int = Integer.numberOfTrailingZeros(pageSizeBytes)
-  final val tableEntries: Int = pageTableSizeBytes / pteSizeBytes
+  final val tableEntries: Int = pageTableSizeBytes / PTESizeBytes
   final val indexBitsPerLevel: Int = Integer.numberOfTrailingZeros(tableEntries)
   final val computedAddressBits: Int = pageBits + levels * indexBitsPerLevel
   // 标准 PTE 字段布局：低 8 位标志，PPN 从 bit10 开始。显式 CUSTOM
-  // 模式也允许该布局，但若把 `pteFormat` 写成 riscv32/riscv64，字段位置
+  // 模式也允许该布局，但若把 `PTEFormat` 写成 riscv32/riscv64，字段位置
   // 必须与对应标准完全一致，避免“名字是标准、编码却是私有”的伪装。
-  final val standardPTELayout32: Boolean =
-    pteConfig.pteBits == 32 && pteConfig.validBit == 0 &&
-      pteConfig.readBit == 1 && pteConfig.writeBit == 2 &&
-      pteConfig.executeBit == 3 && pteConfig.userBit == 4 &&
-      pteConfig.globalBit == 5 && pteConfig.aBit == 6 &&
-      pteConfig.dBit == 7 && pteConfig.ppnLow == 10 && pteConfig.ppnHigh == 31
-  final val standardPTELayout64: Boolean =
-    pteConfig.pteBits == 64 && pteConfig.validBit == 0 &&
-      pteConfig.readBit == 1 && pteConfig.writeBit == 2 &&
-      pteConfig.executeBit == 3 && pteConfig.userBit == 4 &&
-      pteConfig.globalBit == 5 && pteConfig.aBit == 6 &&
-      pteConfig.dBit == 7 && pteConfig.ppnLow == 10 && pteConfig.ppnHigh == 53
+  final val StandardPTELayout32: Boolean =
+    PTEConfig.PTEBits == 32 && PTEConfig.validBit == 0 &&
+      PTEConfig.readBit == 1 && PTEConfig.writeBit == 2 &&
+      PTEConfig.executeBit == 3 && PTEConfig.userBit == 4 &&
+      PTEConfig.globalBit == 5 && PTEConfig.aBit == 6 &&
+      PTEConfig.dBit == 7 && PTEConfig.PPNLow == 10 && PTEConfig.PPNHigh == 31
+  final val StandardPTELayout64: Boolean =
+    PTEConfig.PTEBits == 64 && PTEConfig.validBit == 0 &&
+      PTEConfig.readBit == 1 && PTEConfig.writeBit == 2 &&
+      PTEConfig.executeBit == 3 && PTEConfig.userBit == 4 &&
+      PTEConfig.globalBit == 5 && PTEConfig.aBit == 6 &&
+      PTEConfig.dBit == 7 && PTEConfig.PPNLow == 10 && PTEConfig.PPNHigh == 53
   final val standardSv39: Boolean =
-    xlen == 64 && pageSizeBytes == 4096 && levels == 3 && pteSizeBytes == 8 &&
-      pageTableSizeBytes == 4096 && pteFormat == "riscv64" &&
-      standardPTELayout64 && computedAddressBits == 39
+    xlen == 64 && pageSizeBytes == 4096 && levels == 3 && PTESizeBytes == 8 &&
+      pageTableSizeBytes == 4096 && PTEFormat == "riscv64" &&
+      StandardPTELayout64 && computedAddressBits == 39
   final val standardSv48: Boolean =
-    xlen == 64 && pageSizeBytes == 4096 && levels == 4 && pteSizeBytes == 8 &&
-      pageTableSizeBytes == 4096 && pteFormat == "riscv64" &&
-      standardPTELayout64 && computedAddressBits == 48
+    xlen == 64 && pageSizeBytes == 4096 && levels == 4 && PTESizeBytes == 8 &&
+      pageTableSizeBytes == 4096 && PTEFormat == "riscv64" &&
+      StandardPTELayout64 && computedAddressBits == 48
   // CUSTOM 只改页大小/级数/索引/PTE 宽度与字段位置；虚拟地址仍必须在
   // XLEN 内可表示，且 PPN+页内偏移不能超过 64 位物理地址。
   final val customGeometry: Boolean = xlen == 64 && geometryMode == "custom"
@@ -336,16 +336,16 @@ case class ysyx_26030103_MMUProfile(
     customSatpMode >= 10 && customSatpMode <= 15
   final val addressBitsWithinXlen: Boolean =
     computedAddressBits >= 2 && computedAddressBits <= xlen
-  final val ptePPNBits: Int = pteConfig.ppnHigh - pteConfig.ppnLow + 1
+  final val PTEPPNBits: Int = PTEConfig.PPNHigh - PTEConfig.PPNLow + 1
   // PTE PPN 字段可以比物理地址空间更宽。例如 2MiB 页(pageBits=21) 配
   // 标准 44 位 PPN 时，PPN<<21 需要 65 位；64 位物理地址只能容纳低
   // 43 位 PPN，其余高位必须为 0，由 PTW 在 walk 时按保留位检查并报
   // page fault，绝不能静默截断。satp.PPN 同理：根表基址 =
   // satp.PPN << pageBits，超出物理地址宽度的高位不可用。
-  final val paddrPPNBits: Int = math.min(ptePPNBits, xlen - pageBits)
-  final val satpPPNBits: Int = math.min(44, xlen - pageBits)
+  final val PaddrPPNBits: Int = math.min(PTEPPNBits, xlen - pageBits)
+  final val SatpPPNBits: Int = math.min(44, xlen - pageBits)
   final val customPageFits: Boolean =
-    pageBits < computedAddressBits && paddrPPNBits >= 1 && satpPPNBits >= 1
+    pageBits < computedAddressBits && PaddrPPNBits >= 1 && SatpPPNBits >= 1
   // Sv32 的虚拟地址是 32 位；Sv39/Sv48 分别使用 39/48 位有效虚拟地址，
   // 其余高位必须是指示位的符号扩展（由 PTW/MMU 检查）。CUSTOM 模式
   // 允许任意 2..XLEN 位的有效 VA，只要高位仍按符号扩展检查。
@@ -358,30 +358,30 @@ case class ysyx_26030103_MMUProfile(
   require(xlen == 32 || !enabled || geometryMode == "custom" ||
     standardSv39 || standardSv48,
     "RV64 HAS_MMU=y 只支持标准 Sv39/Sv48，或显式设置 MMU_GEOMETRY_MODE=custom：" +
-      s"page=$pageSizeBytes levels=$levels pte=$pteSizeBytes " +
-      s"table=$pageTableSizeBytes fmt=$pteFormat va=$computedAddressBits")
+      s"page=$pageSizeBytes levels=$levels PTE=$PTESizeBytes " +
+      s"table=$pageTableSizeBytes fmt=$PTEFormat va=$computedAddressBits")
   require(!customGeometry || (addressBitsWithinXlen && customPageFits),
     s"RV64 CUSTOM 几何无法表达：pageBits($pageBits)+levels($levels)*" +
       s"indexBits($indexBitsPerLevel)=$computedAddressBits 位 VA 必须在 2..$xlen；" +
-      s"PTE PPN 字段($ptePPNBits 位)只有低 $paddrPPNBits 位能装入 " +
+      s"PTE PPN 字段($PTEPPNBits 位)只有低 $PaddrPPNBits 位能装入 " +
       s"$xlen 位物理地址，其余高位在 walk 时按保留位必须为 0；" +
-      s"satp.PPN 只有低 $satpPPNBits 位可用（根表基址 = PPN << pageBits）")
+      s"satp.PPN 只有低 $SatpPPNBits 位可用（根表基址 = PPN << pageBits）")
   require(!customGeometry || customSatpModeLegal,
     s"RV64 CUSTOM 必须使用非标准 satp MODE 10..15（8/9 是标准 Sv39/Sv48），" +
       s"收到 $customSatpMode")
   // 超级页要求 PPN 的低 (levels-1)*indexBits 位为 0。PPN 字段比这个
   // 对齐宽度还窄时，对齐检查本身无法表达，必须在 elaboration 期拒绝。
-  require(!superpage || ptePPNBits >= (levels - 1) * indexBitsPerLevel,
+  require(!superpage || PTEPPNBits >= (levels - 1) * indexBitsPerLevel,
     s"超级页对齐位(${(levels - 1) * indexBitsPerLevel})超过 PTE PPN 位宽" +
-      s"($ptePPNBits)，无法正确检查")
+      s"($PTEPPNBits)，无法正确检查")
   require(!customGeometry ||
-    (pteSizeBytes == 8 && (pteFormat == "custom" ||
-      (pteFormat == "riscv64" && standardPTELayout64))) ||
-    (pteSizeBytes == 4 && (pteFormat == "custom" ||
-      (pteFormat == "riscv32" && standardPTELayout32))),
-    s"RV64 CUSTOM 的 PTE 宽度/编码不一致：pte=$pteSizeBytes fmt=$pteFormat；" +
+    (PTESizeBytes == 8 && (PTEFormat == "custom" ||
+      (PTEFormat == "riscv64" && StandardPTELayout64))) ||
+    (PTESizeBytes == 4 && (PTEFormat == "custom" ||
+      (PTEFormat == "riscv32" && StandardPTELayout32))),
+    s"RV64 CUSTOM 的 PTE 宽度/编码不一致：PTE=$PTESizeBytes fmt=$PTEFormat；" +
       "私有字段位置必须使用 MMU_PTE_FORMAT=custom")
-  require(xlen == 64 || pteFormat != "riscv64",
+  require(xlen == 64 || PTEFormat != "riscv64",
     "RV32 配置不能使用 riscv64 PTE 编码")
   // satp.MODE 编码：Sv32=1, Sv39=8, Sv48=9。0 始终表示关闭翻译。
   // CUSTOM 使用显式保留编码 10..15；标准 8/9 的语义绝不改变。
@@ -404,15 +404,15 @@ case class ysyx_26030103_MMUProfile(
       }
     s"MMU(enabled=$enabled xlen=$xlen geometry=$geometryMode va=$computedAddressBits " +
       s"satpMode=$satpMode${if (customGeometry) "(non-standard)" else ""} " +
-      s"profile=$pteFormat page=$pageSizeBytes levels=$levels " +
-      s"pte=$pteSizeBytes table=$pageTableSizeBytes " +
+      s"profile=$PTEFormat page=$pageSizeBytes levels=$levels " +
+      s"PTE=$PTESizeBytes table=$pageTableSizeBytes " +
       s"cache=$cacheMode vipt_alias_safe=$cacheVIPTAliasSafe " +
       s"vipt_alias_scan=$aliasScanDetail " +
       s"vipt_alias_queue=$cacheVIPTAliasEventQueueDepth " +
-      s"ptw=$ptwPath/$ptwArch/$ptwOutstanding/bus$ptwBusOutstanding/" +
-      s"pmpq$ptwPMPFaultQueueDepth) " +
-      s"TLB(enabled=$tlbEnabled org=$tlbOrganization storage=$tlbStorage " +
-      s"repl=$tlbReplacement asid=$tlbASIDBits)"
+      s"PTW=$PTWPath/$PTWArch/$PTWOutstanding/bus$PTWBusOutstanding/" +
+      s"pmpq$PTWPMPFaultQueueDepth) " +
+      s"TLB(enabled=$TLBEnabled org=$TLBOrganization storage=$TLBStorage " +
+      s"repl=$TLBReplacement ASID=$TLBASIDBits)"
   }
 }
 
@@ -507,13 +507,13 @@ object ysyx_26030103_MMUProfile {
     "tw" -> BigInt("00200000", 16), "tsr" -> BigInt("00400000", 16)
   )
   private val satpFields = Seq(
-    "mode" -> BigInt("80000000", 16), "asid" -> BigInt("7fc00000", 16),
-    "ppn" -> BigInt("003fffff", 16)
+    "mode" -> BigInt("80000000", 16), "ASID" -> BigInt("7fc00000", 16),
+    "PPN" -> BigInt("003fffff", 16)
   )
   // RV64 satp：MODE[63:60]，ASID[59:44]，PPN[43:0]。
   private val satpFields64 = Seq(
-    "mode" -> (BigInt(0xf) << 60), "asid" -> (BigInt(0xffff) << 44),
-    "ppn" -> ((BigInt(1) << 44) - 1)
+    "mode" -> (BigInt(0xf) << 60), "ASID" -> (BigInt(0xffff) << 44),
+    "PPN" -> ((BigInt(1) << 44) - 1)
   )
 
   // 从 Kconfig 生成的环境变量构造；RV32 默认标准 Sv32，RV64 默认 Sv39。
@@ -530,10 +530,10 @@ object ysyx_26030103_MMUProfile {
     val (satpReadMask, satpReadSet, satpWriteMask) =
       fieldMasks(if (xlen == 64) satpFields64 else satpFields,
         env, "CSR_SATP", fieldDefaultRead, fieldDefaultWrite)
-    val defaultPTEBytes =
+    val DefaultPTEBytes =
       if (xlen == 64) KconfigDefaults.MMUPTESizeBytes else 4
-    val pteBytes = envInt(env, "MMU_PTE_SIZE_BYTES", defaultPTEBytes)
-    val defaultPPNHigh = if (pteBytes * 8 == 64) 53 else 31
+    val PTEBytes = envInt(env, "MMU_PTE_SIZE_BYTES", DefaultPTEBytes)
+    val DefaultPPNHigh = if (PTEBytes * 8 == 64) 53 else 31
     ysyx_26030103_MMUProfile(
       // 生成器输出 MMU_ENABLED；直接使用 Kconfig 风格环境时也接受 HAS_MMU。
       enabled = envBool(env, "MMU_ENABLED",
@@ -545,12 +545,12 @@ object ysyx_26030103_MMUProfile {
       pageSizeBytes = envInt(env, "MMU_PAGE_SIZE_BYTES", KconfigDefaults.MMUPageSizeBytes),
       levels = envInt(env, "MMU_LEVELS",
         if (xlen == 64) KconfigDefaults.MMULevels else 2),
-      pteSizeBytes = pteBytes,
+      PTESizeBytes = PTEBytes,
       pageTableSizeBytes = envInt(env, "MMU_PAGE_TABLE_SIZE_BYTES", KconfigDefaults.MMUPageTableSizeBytes),
-      pteFormat = envString(env, "MMU_PTE_FORMAT",
+      PTEFormat = envString(env, "MMU_PTE_FORMAT",
         if (xlen == 64) "riscv64" else "riscv32"),
-      pteConfig = ysyx_26030103_PTEConfig(
-        pteBits = pteBytes * 8,
+      PTEConfig = ysyx_26030103_PTEConfig(
+        PTEBits = PTEBytes * 8,
         validBit = envInt(env, "MMU_PTE_VALID_BIT", KconfigDefaults.MMUPTEValidBit),
         readBit = envInt(env, "MMU_PTE_READ_BIT", KconfigDefaults.MMUPTEReadBit),
         writeBit = envInt(env, "MMU_PTE_WRITE_BIT", KconfigDefaults.MMUPTEWriteBit),
@@ -559,8 +559,8 @@ object ysyx_26030103_MMUProfile {
         globalBit = envInt(env, "MMU_PTE_GLOBAL_BIT", KconfigDefaults.MMUPTEGlobalBit),
         aBit = envInt(env, "MMU_PTE_A_BIT", KconfigDefaults.MMUPTEABit),
         dBit = envInt(env, "MMU_PTE_D_BIT", KconfigDefaults.MMUPTEDBit),
-        ppnLow = envInt(env, "MMU_PTE_PPN_LOW", KconfigDefaults.MMUPTEPPNLow),
-        ppnHigh = envInt(env, "MMU_PTE_PPN_HIGH", defaultPPNHigh)
+        PPNLow = envInt(env, "MMU_PTE_PPN_LOW", KconfigDefaults.MMUPTEPPNLow),
+        PPNHigh = envInt(env, "MMU_PTE_PPN_HIGH", DefaultPPNHigh)
       ),
       superpage = envBool(env, "MMU_SUPERPAGE", false),
       adMode = envString(env, "MMU_AD_MODE", "fault"),
@@ -578,25 +578,25 @@ object ysyx_26030103_MMUProfile {
       cacheVIPTAliasEventQueueDepth =
         envInt(env, "MMU_CACHE_VIPT_ALIAS_EVENT_QUEUE_DEPTH",
         KconfigDefaults.MMUCacheVIPTAliasEventQueueDepth),
-      ptwPath = envString(env, "MMU_PTW_PATH", "dedicated"),
-      ptwArch = envString(env, "MMU_PTW_ARCH", "independent"),
-      ptwOutstanding = envInt(env, "MMU_PTW_OUTSTANDING", KconfigDefaults.MMUPTWOutstanding),
-      ptwBusOutstanding = envInt(env, "MMU_PTW_BUS_OUTSTANDING", KconfigDefaults.MMUPTWBusOutstanding),
-      ptwPMPFaultQueueDepth =
+      PTWPath = envString(env, "MMU_PTW_PATH", "dedicated"),
+      PTWArch = envString(env, "MMU_PTW_ARCH", "independent"),
+      PTWOutstanding = envInt(env, "MMU_PTW_OUTSTANDING", KconfigDefaults.MMUPTWOutstanding),
+      PTWBusOutstanding = envInt(env, "MMU_PTW_BUS_OUTSTANDING", KconfigDefaults.MMUPTWBusOutstanding),
+      PTWPMPFaultQueueDepth =
         envInt(env, "MMU_PTW_PMP_FAULT_QUEUE_DEPTH",
           KconfigDefaults.MMUPTWPMPFaultQueueDepth),
-      ptwOrder = envString(env, "MMU_PTW_ORDER", "in_order"),
-      ptwCache = envBool(env, "MMU_PTW_CACHE", false),
-      ptwCacheEntries = envInt(env, "MMU_PTW_CACHE_ENTRIES", KconfigDefaults.MMUPTWCacheEntries),
-      ptwCacheWays = envInt(env, "MMU_PTW_CACHE_WAYS", KconfigDefaults.MMUPTWCacheWays),
-      tlbEnabled = envBool(env, "MMU_TLB_ENABLED", false),
-      tlbOrganization = envString(env, "MMU_TLB_ORGANIZATION", "split"),
-      tlbStorage = envString(env, "MMU_TLB_STORAGE", "reg"),
-      tlbReplacement = envString(env, "MMU_TLB_REPLACEMENT", "plru"),
+      PTWOrder = envString(env, "MMU_PTW_ORDER", "in_order"),
+      PTWCache = envBool(env, "MMU_PTW_CACHE", false),
+      PTWCacheEntries = envInt(env, "MMU_PTW_CACHE_ENTRIES", KconfigDefaults.MMUPTWCacheEntries),
+      PTWCacheWays = envInt(env, "MMU_PTW_CACHE_WAYS", KconfigDefaults.MMUPTWCacheWays),
+      TLBEnabled = envBool(env, "MMU_TLB_ENABLED", false),
+      TLBOrganization = envString(env, "MMU_TLB_ORGANIZATION", "split"),
+      TLBStorage = envString(env, "MMU_TLB_STORAGE", "reg"),
+      TLBReplacement = envString(env, "MMU_TLB_REPLACEMENT", "plru"),
       // RV64 satp 的 ASID 为 16 位；未显式配置时 TLB 保留完整 ASID。
-      tlbASIDBits = envInt(env, "MMU_TLB_ASID_BITS",
+      TLBASIDBits = envInt(env, "MMU_TLB_ASID_BITS",
         if (xlen == 64) KconfigDefaults.MMUTLBASIDBits else 9),
-      tlbGlobal = envBool(env, "MMU_TLB_GLOBAL", true),
+      TLBGlobal = envBool(env, "MMU_TLB_GLOBAL", true),
       itlbEntries = envInt(env, "MMU_ITLB_ENTRIES", KconfigDefaults.MMUItlbEntries),
       itlbWays = envInt(env, "MMU_ITLB_WAYS", KconfigDefaults.MMUItlbWays),
       dtlbEntries = envInt(env, "MMU_DTLB_ENTRIES", KconfigDefaults.MMUDtlbEntries),
@@ -604,10 +604,10 @@ object ysyx_26030103_MMUProfile {
       utlbEntries = envInt(env, "MMU_UTLB_ENTRIES", KconfigDefaults.MMUUtlbEntries),
       utlbWays = envInt(env, "MMU_UTLB_WAYS", KconfigDefaults.MMUUtlbWays),
       utlbLookupPorts = envInt(env, "UTLB_LOOKUP_PORTS", KconfigDefaults.MMUUtlbLookupPorts),
-      tlbSuperpage = envBool(env, "MMU_TLB_SUPERPAGE", false),
-      tlbSuperpageEntries = envInt(env, "MMU_TLB_SUPERPAGE_ENTRIES",
+      TLBSuperpage = envBool(env, "MMU_TLB_SUPERPAGE", false),
+      TLBSuperpageEntries = envInt(env, "MMU_TLB_SUPERPAGE_ENTRIES",
         KconfigDefaults.MMUTLBSuperpageEntries),
-      tlbMissQueueMode = envString(env, "MMU_TLB_MISS_QUEUE_MODE", "follow_tlb"),
+      TLBMissQueueMode = envString(env, "MMU_TLB_MISS_QUEUE_MODE", "follow_tlb"),
       itlbMissQueueEntries = envInt(env, "MMU_ITLB_MISS_QUEUE_ENTRIES",
         KconfigDefaults.MMUItlbMissQueueEntries),
       dtlbMissQueueEntries = envInt(env, "MMU_DTLB_MISS_QUEUE_ENTRIES",
@@ -617,35 +617,35 @@ object ysyx_26030103_MMUProfile {
       globalMissQueueEntries = envInt(env, "MMU_GLOBAL_MISS_QUEUE_ENTRIES",
         KconfigDefaults.MMUGlobalMissQueueEntries),
       refillPorts = envInt(env, "MMU_TLB_REFILL_PORTS", KconfigDefaults.MMURefillPorts),
-      csrMstatusReadMask = envInt(env, "CSR_MSTATUS_READ_MASK", mstatusReadMask.toInt),
-      csrMstatusReadSet = envInt(env, "CSR_MSTATUS_READ_SET", mstatusReadSet.toInt),
-      csrMstatusWriteMask = envInt(env, "CSR_MSTATUS_WRITE_MASK", mstatusWriteMask.toInt),
-      csrSatpReadMask = envLong(env, "CSR_SATP_READ_MASK", satpReadMask.toLong),
-      csrSatpReadSet = envLong(env, "CSR_SATP_READ_SET", satpReadSet.toLong),
-      csrSatpWriteMask = envLong(env, "CSR_SATP_WRITE_MASK", satpWriteMask.toLong),
+      CSRMstatusReadMask = envInt(env, "CSR_MSTATUS_READ_MASK", mstatusReadMask.toInt),
+      CSRMstatusReadSet = envInt(env, "CSR_MSTATUS_READ_SET", mstatusReadSet.toInt),
+      CSRMstatusWriteMask = envInt(env, "CSR_MSTATUS_WRITE_MASK", mstatusWriteMask.toInt),
+      CSRSatpReadMask = envLong(env, "CSR_SATP_READ_MASK", satpReadMask.toLong),
+      CSRSatpReadSet = envLong(env, "CSR_SATP_READ_SET", satpReadSet.toLong),
+      CSRSatpWriteMask = envLong(env, "CSR_SATP_WRITE_MASK", satpWriteMask.toLong),
       hasS = hasS,
       hasU = hasU,
-      hasSTimerIRQ = envBool(env, "HAS_S_TIMER_IRQ", true),
-      hasSExternalIRQ = envBool(env, "HAS_S_EXTERNAL_IRQ", true),
+      HasSTimerIRQ = envBool(env, "HAS_S_TIMER_IRQ", true),
+      HasSExternalIRQ = envBool(env, "HAS_S_EXTERNAL_IRQ", true),
       timerPath = envString(env, "TIMER_PATH", "clint_mtip"),
-      plicSources = envInt(env, "PLIC_SOURCES", KconfigDefaults.MMUPLICSources),
-      plicPriorityBits = envInt(env, "PLIC_PRIORITY_BITS", KconfigDefaults.MMUPLICPriorityBits),
-      plicMaxPriority = envInt(env, "PLIC_MAX_PRIORITY", KconfigDefaults.MMUPLICMaxPriority),
-      plicBase = envLong(
+      PLICSources = envInt(env, "PLIC_SOURCES", KconfigDefaults.MMUPLICSources),
+      PLICPriorityBits = envInt(env, "PLIC_PRIORITY_BITS", KconfigDefaults.MMUPLICPriorityBits),
+      PLICMaxPriority = envInt(env, "PLIC_MAX_PRIORITY", KconfigDefaults.MMUPLICMaxPriority),
+      PLICBase = envLong(
         env,
         "PLIC_BASE",
         ysyx_26030103_PhysicalMemoryMap.DefaultPLICBase
       ),
-      plicSize = envLong(
+      PLICSize = envLong(
         env,
         "PLIC_SIZE",
         ysyx_26030103_PhysicalMemoryMap.DefaultPLICSize
       ),
-      csrViewMode = envString(env, "CSR_VIEW_MODE", "bound"),
-      csrMissingMode = envString(env, "CSR_MISSING_MODE", "illegal"),
-      pmpEnabled = envBool(env, "HAS_PMP", false),
-      pmpEntries = envInt(env, "PMP_ENTRIES", KconfigDefaults.MMUPMPEntries),
-      csrEnabled = envAddressSet(env, "CSR_ENABLED", DefaultCSRAddresses) ++
+      CSRViewMode = envString(env, "CSR_VIEW_MODE", "bound"),
+      CSRMissingMode = envString(env, "CSR_MISSING_MODE", "illegal"),
+      PMPEnabled = envBool(env, "HAS_PMP", false),
+      PMPEntries = envInt(env, "PMP_ENTRIES", KconfigDefaults.MMUPMPEntries),
+      CSREnabled = envAddressSet(env, "CSR_ENABLED", DefaultCSRAddresses) ++
         IdentityCSRAddresses
     )
   }

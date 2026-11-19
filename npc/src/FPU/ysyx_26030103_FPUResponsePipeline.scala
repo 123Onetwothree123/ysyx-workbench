@@ -24,7 +24,7 @@ class ysyx_26030103_FPUResponsePipeline(val FLEN: Int, val Depth: Int)
     for (index <- (Depth - 1) to 0 by -1) {
       readies(index) := !valids(index) || readies(index + 1)
     }
-    // 如果FPU后端自己已经有了结果缓存，就可以不用把in.ready连上req.ready，让后端缓存吸收来实现这个短暂的反压操作
+    // 如果FPU后端自己已经有了结果缓存，就可以不用把in.ready连上request.ready，让后端缓存吸收来实现这个短暂的反压操作
     // 如果后端没有缓存，就把in.ready接到请求的那边，避免覆盖掉这些还没取走的结果
     io.in.ready := readies(0)
     io.out.valid := valids(Depth - 1)

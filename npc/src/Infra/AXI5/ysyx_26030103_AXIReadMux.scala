@@ -17,9 +17,9 @@ class ysyx_26030103_AXIReadMux(
     val out = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
   })
 
-  private val aReadID = ysyx_26030103_AXIReadID.IFU.U(4.W)
-  private val ptwBaseID = ysyx_26030103_AXIReadID.PTWBase.U(4.W)
-  private val ptwLastID = ysyx_26030103_AXIReadID.PTWLast.U(4.W)
+  private val AReadID = ysyx_26030103_AXIReadID.IFU.U(4.W)
+  private val PTWBaseID = ysyx_26030103_AXIReadID.PTWBase.U(4.W)
+  private val PTWLastID = ysyx_26030103_AXIReadID.PTWLast.U(4.W)
 
   def quiet(axiPort: ysyx_26030103_AXI5IO): Unit = {
     axiPort.AW.AWREADY := false.B
@@ -80,28 +80,28 @@ class ysyx_26030103_AXIReadMux(
 
   val aRequest = io.a.AR.ARVALID && !aBusy
   val bID = io.b.AR.ARID
-  val bIDValid = bID >= ptwBaseID && bID <= ptwLastID
-  val bRequest = io.b.AR.ARVALID && bIDValid && !bBusy(bID)
+  val BIDValid = bID >= PTWBaseID && bID <= PTWLastID
+  val bRequest = io.b.AR.ARVALID && BIDValid && !bBusy(bID)
   val chooseBNow = bRequest && (!aRequest || lastGrantB)
   val chooseANow = aRequest && !chooseBNow
   // AXI 要求 ARVALID 拉高后到 ARREADY 之前 AR payload 保持不变。下游
   // 反压时不能因为另一侧新请求到达而改选，否则会丢掉已发出的请求。
-  val arLocked = RegInit(false.B)
-  val arLockB = RegInit(false.B)
-  val chooseB = Mux(arLocked, arLockB, chooseBNow)
-  val chooseA = Mux(arLocked, !arLockB, chooseANow)
+  val ARLocked = RegInit(false.B)
+  val ARLockB = RegInit(false.B)
+  val chooseB = Mux(ARLocked, ARLockB, chooseBNow)
+  val chooseA = Mux(ARLocked, !ARLockB, chooseANow)
   when(io.out.AR.ARVALID && io.out.AR.ARREADY) {
-    arLocked := false.B
+    ARLocked := false.B
   }.elsewhen(io.out.AR.ARVALID && !io.out.AR.ARREADY) {
-    arLocked := true.B
-    arLockB := chooseBNow
+    ARLocked := true.B
+    ARLockB := chooseBNow
   }.elsewhen(!io.out.AR.ARVALID) {
-    arLocked := false.B
+    ARLocked := false.B
   }
 
   when(chooseA) {
     io.out.AR.ARVALID := io.a.AR.ARVALID
-    io.out.AR.ARID := aReadID
+    io.out.AR.ARID := AReadID
     io.out.AR.ARADDR := io.a.AR.ARADDR
     io.out.AR.ARLEN := io.a.AR.ARLEN
     io.out.AR.ARSIZE := io.a.AR.ARSIZE
@@ -123,27 +123,27 @@ class ysyx_26030103_AXIReadMux(
     io.b.AR.ARREADY := io.out.AR.ARREADY
   }
   when(io.b.AR.ARVALID) {
-    assert(bIDValid, "PTW AXI read uses an ID outside the reserved 3..15 range")
+    assert(BIDValid, "PTW AXI read uses an ID outside the reserved 3..15 range")
   }
 
-  val arFire = io.out.AR.ARVALID && io.out.AR.ARREADY
-  when(arFire) {
+  val ARFire = io.out.AR.ARVALID && io.out.AR.ARREADY
+  when(ARFire) {
     when(chooseB) { bBusy(bID) := true.B }
       .otherwise { aBusy := true.B }
     lastGrantB := chooseA
   }
 
   val rid = io.out.R.RID
-  val aAcceptedNow = arFire && !chooseB
-  val bAcceptedNow = arFire && chooseB
+  val aAcceptedNow = ARFire && !chooseB
+  val bAcceptedNow = ARFire && chooseB
   // 零延迟从设备可能在 AR 握手同拍返回 R；把本拍刚接受的 ID 也算作
   // 预期响应，避免丢掉第一拍。
-  val aSelected = rid === aReadID && (aBusy || aAcceptedNow)
-  val bSelected = rid >= ptwBaseID && rid <= ptwLastID &&
+  val aSelected = rid === AReadID && (aBusy || aAcceptedNow)
+  val bSelected = rid >= PTWBaseID && rid <= PTWLastID &&
     (bBusy(rid) || (bAcceptedNow && bID === rid))
   when(aSelected) {
     io.a.R.RVALID := io.out.R.RVALID
-    io.a.R.RID := aReadID
+    io.a.R.RID := AReadID
     io.a.R.RDATA := io.out.R.RDATA
     io.a.R.RRESP := io.out.R.RRESP
     io.a.R.RLAST := io.out.R.RLAST

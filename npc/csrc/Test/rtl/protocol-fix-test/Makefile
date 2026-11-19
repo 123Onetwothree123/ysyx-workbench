@@ -100,7 +100,7 @@ $(GEN_STAMP): $(SCALA_SOURCES) Makefile $(ELABORATE_CFG)
 	  CONFIG_IRINGBUF=y CONFIG_PERF_DIC_ARCH_COUNTER=y
 	@ln -sf layers-ysyx_26030103-Verification.sv \
 	  $(RTL_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
-	@if ! grep -F 'ysyx_26030103_AXI5DMAErrorSlave dmaErrorSlave' \
+	@if ! grep -E 'ysyx_26030103_AXI5DMAErrorSlave[[:space:]]+DMAErrorSlave' \
 	    $(RTL_DIR)/ysyx_26030103.sv >/dev/null; then \
 	  echo "CHIPLINK=n top no longer terminates io_slave with DMAErrorSlave" >&2; \
 	  exit 1; \
@@ -134,17 +134,17 @@ $(CHIPLINK_GEN_STAMP): $(SCALA_SOURCES) Makefile $(ELABORATE_CFG)
 	  echo "ChipLink RTL top-level BID assertion does not permit DMA ID 2" >&2; \
 	  exit 1; \
 	fi
-	@if ! grep -F "io_master_rid == 4'h2" \
+	@if ! grep -F "assign io_DMA_R_RID = DMAReadOriginalID" \
 	    $(CHIPLINK_RTL_DIR)/ysyx_26030103.sv >/dev/null; then \
-	  echo "ChipLink RTL top-level RID assertion does not permit DMA ID 2" >&2; \
+	  echo "ChipLink arbiter does not route DMA read responses by original ID" >&2; \
 	  exit 1; \
 	fi
-	@if ! grep -E '\.io_dma_AR_ARID[[:space:]]+\(io_slave_arid\)' \
+	@if ! grep -E '\.io_DMA_AR_ARID[[:space:]]+\(_SOCSlaveBridge_io_out_AR_ARID\)' \
 	    $(CHIPLINK_RTL_DIR)/ysyx_26030103.sv >/dev/null; then \
 	  echo "CHIPLINK=y top does not connect io_slave AR to the DMA arbiter" >&2; \
 	  exit 1; \
 	fi
-	@if ! grep -E '\.io_DCacheFlush[[:space:]]+\(_arbiter_io_DMAWriteInvalidate\)' \
+	@if ! grep -E '\.io_DCacheFlush[[:space:]]+\(_arbiter_io_DMAWriteInvalidate' \
 	    $(CHIPLINK_RTL_DIR)/ysyx_26030103.sv >/dev/null; then \
 	  echo "CHIPLINK=y top does not connect DMA writes to DCache invalidation" >&2; \
 	  exit 1; \

@@ -12,11 +12,11 @@ static constexpr std::uint32_t kNonLegacyCacheableAddress = 0x30000008U;
 static constexpr std::uint32_t kReadData = 0x89abcdefU;
 
 static void defaults(DUT &dut, std::uint32_t address) {
-  dut.io_req_valid = 0;
-  dut.io_req_bits_addr = address;
-  dut.io_req_bits_WidthSelect = 2;
-  dut.io_req_bits_signed = 0;
-  dut.io_resp_ready = 0;
+  dut.io_request_valid = 0;
+  dut.io_request_bits_address = address;
+  dut.io_request_bits_WidthSelect = 2;
+  dut.io_request_bits_signed = 0;
+  dut.io_response_ready = 0;
   dut.io_StoreValid = 0;
   dut.io_StoreResponse = 0;
   dut.io_StoreAddress = 0;
@@ -41,13 +41,13 @@ static void legal_word_crossing_line_boundary_stays_single_beat() {
   defaults(dut, kBoundaryAddress);
   reset(dut);
 
-  dut.io_req_valid = 1;
+  dut.io_request_valid = 1;
   dut.eval();
-  check(dut.io_req_ready, "DCache did not accept the legal boundary word");
-  check(!dut.io_req_cacheable,
+  check(dut.io_request_ready, "DCache did not accept the legal boundary word");
+  check(!dut.io_RequestCacheable,
         "DCache classified a PMA-crossing line as cacheable");
   tick(dut);
-  dut.io_req_valid = 0;
+  dut.io_request_valid = 0;
 
   wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
              "DCache did not issue AXI for the legal boundary word");
@@ -69,27 +69,27 @@ static void legal_word_crossing_line_boundary_stays_single_beat() {
   dut.io_AXI_R_RVALID = 0;
   dut.io_AXI_R_RLAST = 0;
 
-  wait_until(dut, [&] { return dut.io_resp_valid; },
+  wait_until(dut, [&] { return dut.io_response_valid; },
              "DCache did not return the legal boundary word");
-  check(!dut.io_resp_bits_fault && dut.io_resp_bits_FaultResponse == 0,
+  check(!dut.io_response_bits_fault && dut.io_response_bits_FaultResponse == 0,
         "legal boundary word incorrectly became an access fault");
-  check(dut.io_resp_bits_data == kReadData,
+  check(dut.io_response_bits_data == kReadData,
         "DCache corrupted the uncached response");
-  check(!dut.io_axi_active,
+  check(!dut.io_AXIActive,
         "DCache waited for nonexistent refill beats after RLAST");
 
   for (int cycle = 0; cycle < 2; ++cycle) {
     tick(dut);
     dut.eval();
-    check(dut.io_resp_valid && !dut.io_resp_bits_fault &&
-              dut.io_resp_bits_data == kReadData,
+    check(dut.io_response_valid && !dut.io_response_bits_fault &&
+              dut.io_response_bits_data == kReadData,
           "DCache response changed under backpressure");
   }
 
-  dut.io_resp_ready = 1;
+  dut.io_response_ready = 1;
   tick(dut);
   dut.eval();
-  check(!dut.io_resp_valid && dut.io_req_ready,
+  check(!dut.io_response_valid && dut.io_request_ready,
         "DCache did not return to idle after the response");
   dut.final();
 }
@@ -99,15 +99,15 @@ static void uncacheable_pma_region_never_refills() {
   defaults(dut, kUncacheableAddress);
   reset(dut);
 
-  dut.io_req_valid = 1;
+  dut.io_request_valid = 1;
   dut.eval();
-  check(dut.io_req_ready, "DCache did not accept the uncacheable PMA read");
-  check(!dut.io_req_cacheable,
+  check(dut.io_request_ready, "DCache did not accept the uncacheable PMA read");
+  check(!dut.io_RequestCacheable,
         "DCache ignored PMA Cacheable=false in a 0x8 address region");
   check(!dut.io_perf_miss,
         "uncacheable PMA read was incorrectly counted as a cache miss");
   tick(dut);
-  dut.io_req_valid = 0;
+  dut.io_request_valid = 0;
 
   wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
              "DCache did not issue the uncacheable AXI read");
@@ -129,11 +129,11 @@ static void uncacheable_pma_region_never_refills() {
   dut.io_AXI_R_RVALID = 0;
   dut.io_AXI_R_RLAST = 0;
 
-  wait_until(dut, [&] { return dut.io_resp_valid; },
+  wait_until(dut, [&] { return dut.io_response_valid; },
              "DCache did not return the uncacheable read response");
-  check(!dut.io_resp_bits_fault && dut.io_resp_bits_data == kReadData,
+  check(!dut.io_response_bits_fault && dut.io_response_bits_data == kReadData,
         "DCache corrupted the uncacheable PMA response");
-  dut.io_resp_ready = 1;
+  dut.io_response_ready = 1;
   tick(dut);
   dut.final();
 }
@@ -143,14 +143,14 @@ static void non_legacy_cacheable_region_refills_and_hits() {
   defaults(dut, kNonLegacyCacheableAddress);
   reset(dut);
 
-  dut.io_req_valid = 1;
+  dut.io_request_valid = 1;
   dut.eval();
-  check(dut.io_req_ready, "DCache did not accept the 0x3 cacheable read");
-  check(dut.io_req_cacheable,
+  check(dut.io_request_ready, "DCache did not accept the 0x3 cacheable read");
+  check(dut.io_RequestCacheable,
         "DCache retained the historical 0x8/0xa cacheability restriction");
   check(dut.io_perf_miss, "cold cacheable request was not counted as a miss");
   tick(dut);
-  dut.io_req_valid = 0;
+  dut.io_request_valid = 0;
 
   wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
              "DCache did not issue the cache-line refill");
@@ -176,30 +176,30 @@ static void non_legacy_cacheable_region_refills_and_hits() {
     dut.io_AXI_R_RLAST = 0;
   }
 
-  wait_until(dut, [&] { return dut.io_resp_valid; },
+  wait_until(dut, [&] { return dut.io_response_valid; },
              "DCache did not return the critical refill word");
-  check(!dut.io_resp_bits_fault && dut.io_resp_bits_data == kReadData,
+  check(!dut.io_response_bits_fault && dut.io_response_bits_data == kReadData,
         "DCache returned the wrong critical refill word");
-  dut.io_resp_ready = 1;
+  dut.io_response_ready = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
-  wait_until(dut, [&] { return !dut.io_axi_active && dut.io_req_ready; },
+  dut.io_response_ready = 0;
+  wait_until(dut, [&] { return !dut.io_AXIActive && dut.io_request_ready; },
              "DCache did not finish the cacheable refill");
 
-  dut.io_req_valid = 1;
+  dut.io_request_valid = 1;
   dut.eval();
-  check(dut.io_req_ready && dut.io_req_cacheable && dut.io_perf_hit,
+  check(dut.io_request_ready && dut.io_RequestCacheable && dut.io_perf_hit,
         "second 0x3 request did not hit the installed cache line");
   tick(dut);
-  dut.io_req_valid = 0;
+  dut.io_request_valid = 0;
   dut.eval();
   check(!dut.io_AXI_AR_ARVALID,
         "cache hit unexpectedly issued another AXI request");
-  wait_until(dut, [&] { return dut.io_resp_valid; },
+  wait_until(dut, [&] { return dut.io_response_valid; },
              "DCache did not return the cached 0x3 word");
-  check(!dut.io_resp_bits_fault && dut.io_resp_bits_data == kReadData,
+  check(!dut.io_response_bits_fault && dut.io_response_bits_data == kReadData,
         "DCache cache hit returned wrong data");
-  dut.io_resp_ready = 1;
+  dut.io_response_ready = 1;
   tick(dut);
   dut.final();
 }

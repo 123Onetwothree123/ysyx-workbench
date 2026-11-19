@@ -15,8 +15,8 @@ class ysyx_26030103_MMURequestArbiter(
     val iResponse = Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth))
     val dRequest = Flipped(Decoupled(new ysyx_26030103_MMURequest(XLEN, AddressWidth)))
     val dResponse = Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth))
-    val mmuRequest = Decoupled(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
-    val mmuResponse = Flipped(Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth)))
+    val MMURequest = Decoupled(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
+    val MMUResponse = Flipped(Decoupled(new ysyx_26030103_MMUResponse(XLEN, AddressWidth)))
     // TLB 全量刷新会清空 MMU 内所有在途翻译且不再回响应；仲裁器必须同步
     // 清掉 outstanding，否则客户端永远等不到翻译结果。
     val flush = Input(Bool())
@@ -26,13 +26,13 @@ class ysyx_26030103_MMURequestArbiter(
   val dOutstanding = RegInit(false.B)
   io.iRequest.ready := false.B
   io.dRequest.ready := false.B
-  io.mmuRequest.valid := false.B
-  io.mmuRequest.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
+  io.MMURequest.valid := false.B
+  io.MMURequest.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest(XLEN, AddressWidth))
   io.iResponse.valid := false.B
   io.iResponse.bits := 0.U.asTypeOf(new ysyx_26030103_MMUResponse(XLEN, AddressWidth))
   io.dResponse.valid := false.B
   io.dResponse.bits := 0.U.asTypeOf(new ysyx_26030103_MMUResponse(XLEN, AddressWidth))
-  io.mmuResponse.ready := false.B
+  io.MMUResponse.ready := false.B
 
   // 选择一笔尚未在途的客户端请求送入 MMU。flush 当拍不接收新请求，
   // 避免请求刚发出就被清空却没有任何响应。
@@ -40,28 +40,28 @@ class ysyx_26030103_MMURequestArbiter(
     (iOutstanding || !io.iRequest.valid)
   val chooseInstruction = !io.flush && !iOutstanding && io.iRequest.valid && !chooseData
   when(chooseData) {
-    io.dRequest.ready := io.mmuRequest.ready
-    io.mmuRequest.valid := io.dRequest.valid
-    io.mmuRequest.bits := io.dRequest.bits
+    io.dRequest.ready := io.MMURequest.ready
+    io.MMURequest.valid := io.dRequest.valid
+    io.MMURequest.bits := io.dRequest.bits
     when(io.dRequest.fire) { dOutstanding := true.B }
   }.elsewhen(chooseInstruction) {
-    io.iRequest.ready := io.mmuRequest.ready
-    io.mmuRequest.valid := io.iRequest.valid
-    io.mmuRequest.bits := io.iRequest.bits
+    io.iRequest.ready := io.MMURequest.ready
+    io.MMURequest.valid := io.iRequest.valid
+    io.MMURequest.bits := io.iRequest.bits
     when(io.iRequest.fire) { iOutstanding := true.B }
   }
 
   // MMU 响应携带客户端 ID：0=IFU，1=LSU。
-  when(io.mmuResponse.valid) {
-    when(io.mmuResponse.bits.id === 0.U) {
+  when(io.MMUResponse.valid) {
+    when(io.MMUResponse.bits.ID === 0.U) {
       io.iResponse.valid := true.B
-      io.iResponse.bits := io.mmuResponse.bits
-      io.mmuResponse.ready := io.iResponse.ready
+      io.iResponse.bits := io.MMUResponse.bits
+      io.MMUResponse.ready := io.iResponse.ready
       when(io.iResponse.fire) { iOutstanding := false.B }
     }.otherwise {
       io.dResponse.valid := true.B
-      io.dResponse.bits := io.mmuResponse.bits
-      io.mmuResponse.ready := io.dResponse.ready
+      io.dResponse.bits := io.MMUResponse.bits
+      io.MMUResponse.ready := io.dResponse.ready
       when(io.dResponse.fire) { dOutstanding := false.B }
     }
   }

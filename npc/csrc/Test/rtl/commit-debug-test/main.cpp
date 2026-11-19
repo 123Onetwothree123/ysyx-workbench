@@ -75,19 +75,19 @@ public:
       cycle(true);
 
       if (dut_.io_debug_commit) {
-        const auto pc = static_cast<std::uint32_t>(dut_.io_debug_pc);
+        const auto pc = static_cast<std::uint32_t>(dut_.io_debug_PC);
         const auto instruction =
             static_cast<std::uint32_t>(dut_.io_debug_instructions);
         if (pc == kReset + 0x0c) {
           check(instruction == 0x00700513U,
                 "debug instruction was not aligned with the a0=7 commit");
-          check(dut_.io_debug_gpr_rdata == 7,
+          check(dut_.io_debug_GPRRdata == 7,
                 "debug_commit became visible before the a0=7 GPR write");
           check(!saw_a0_seven_commit,
                 "the a0=7 instruction emitted duplicate commit events");
-          check(dut_.io_debug_next_pc == kReset + 0x10,
+          check(dut_.io_debug_NextPC == kReset + 0x10,
                 "sequential retire next-PC was not PC+4");
-          check(dut_.io_debug_arch_pc == kReset + 0x10,
+          check(dut_.io_debug_ArchPC == kReset + 0x10,
                 "architectural PC exposed the retire trace PC");
           saw_a0_seven_commit = true;
         }
@@ -97,25 +97,25 @@ public:
         if (pc == kReset + 0x24) {
           check(instruction == 0x00150513U,
                 "debug instruction was not aligned with the a0=8 commit");
-          check(dut_.io_debug_gpr_rdata == 8,
+          check(dut_.io_debug_GPRRdata == 8,
                 "debug_commit became visible before the a0=8 GPR write");
           check(!saw_a0_eight_commit,
                 "the a0=8 instruction emitted duplicate commit events");
-          check(dut_.io_debug_next_pc == kReset + 0x28,
+          check(dut_.io_debug_NextPC == kReset + 0x28,
                 "final sequential retire carried the wrong next-PC");
           saw_a0_eight_commit = true;
         }
         if (pc == kReset + 0x28) {
-          check(dut_.io_debug_next_pc == kReset + 0x30,
+          check(dut_.io_debug_NextPC == kReset + 0x30,
                 "taken JAL retire record carried the sequential PC");
         }
         if (pc == kReset + 0x30) {
-          check(dut_.io_debug_next_pc == kReset + 0x40,
+          check(dut_.io_debug_NextPC == kReset + 0x40,
                 "JAL to the real fetch-fault address carried the wrong PC");
         }
         if (pc == kReset + 0x6c) {
           const auto next =
-              static_cast<std::uint32_t>(dut_.io_debug_next_pc);
+              static_cast<std::uint32_t>(dut_.io_debug_NextPC);
           check(next == kReset + 0x14 || next == kReset + 0x18 ||
                     next == kReset + 0x20 || next == kReset + 0x44,
                 "MRET retire record used snpc instead of mepc");
@@ -123,14 +123,14 @@ public:
         }
       }
 
-      if (dut_.io_debug_trap_valid) {
+      if (dut_.io_debug_TrapValid) {
         ++trap_count;
-        const auto pc = static_cast<std::uint32_t>(dut_.io_debug_trap_pc);
+        const auto pc = static_cast<std::uint32_t>(dut_.io_debug_TrapPC);
         const auto cause =
-            static_cast<std::uint32_t>(dut_.io_debug_trap_cause);
-        check(dut_.io_debug_trap_target == kReset + 0x60,
+            static_cast<std::uint32_t>(dut_.io_debug_TrapMcause);
+        check(dut_.io_debug_TrapTarget == kReset + 0x60,
               "trap event carried the wrong mtvec target");
-        check(dut_.io_debug_arch_pc == kReset + 0x60,
+        check(dut_.io_debug_ArchPC == kReset + 0x60,
               "architectural PC did not move to mtvec at trap commit");
         if (pc == kReset + 0x10) {
           check(cause == 3, "EBREAK trap carried the wrong cause");
@@ -146,11 +146,11 @@ public:
         }
       }
 
-      if (dut_.io_debug_access_fault) {
-        check(dut_.io_debug_access_fault_resp == 3,
+      if (dut_.io_debug_AccessFault) {
+        check(dut_.io_debug_AccessFaultResponse == 3,
               "DECERR response code was not preserved by debug fault trace");
         const auto pc =
-            static_cast<std::uint32_t>(dut_.io_debug_access_fault_pc);
+            static_cast<std::uint32_t>(dut_.io_debug_AccessFaultPC);
         if (pc == kReset + 0x1c) {
           ++data_access_fault_count;
         } else if (pc == kReset + 0x40) {
@@ -161,26 +161,26 @@ public:
         }
       }
 
-      if (dut_.io_debug_mtrace_valid) {
+      if (dut_.io_debug_MTraceValid) {
         ++mtrace_count;
-        check(dut_.io_debug_mtrace_pc == kReset + 0x20,
+        check(dut_.io_debug_MTracePC == kReset + 0x20,
               "failed or misaligned load generated an mtrace record");
-        check(!dut_.io_debug_mtrace_wen,
+        check(!dut_.io_debug_MTraceWen,
               "successful load mtrace was marked as a store");
-        check(dut_.io_debug_mtrace_addr == kReset + 0x60,
+        check(dut_.io_debug_MTraceAddress == kReset + 0x60,
               "successful load mtrace carried the wrong address");
-        check(dut_.io_debug_mtrace_rdata == 0x34102373U,
+        check(dut_.io_debug_MTraceRdata == 0x34102373U,
               "successful load mtrace carried stale read data");
-        check(dut_.io_debug_mtrace_width == 2,
+        check(dut_.io_debug_MTraceWidth == 2,
               "successful word load mtrace carried the wrong width");
       }
 
       if (dut_.io_trap_valid) {
-        check(dut_.io_trap_pc == kReset + 0x44,
+        check(dut_.io_trap_PC == kReset + 0x44,
               "architectural EBREAK leaked into the simulation halt output");
-        check(dut_.io_debug_gpr_rdata == 8,
+        check(dut_.io_debug_GPRRdata == 8,
               "simulation halt was visible before older GPR writes committed");
-        check(dut_.io_debug_arch_pc == kReset + 0x44,
+        check(dut_.io_debug_ArchPC == kReset + 0x44,
               "debugger PC did not point at the simulation halt instruction");
         saw_halt = true;
       }
@@ -211,7 +211,7 @@ private:
     dut_.clock = 0;
     dut_.reset = 0;
     dut_.io_interrupt = 0;
-    dut_.io_debug_gpr_raddr = 10; // a0
+    dut_.io_debug_GPRRaddr = 10; // a0
 
     dut_.io_master_awready = 1;
     dut_.io_master_wready = 1;

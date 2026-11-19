@@ -103,22 +103,22 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddressW.W))
-    io.fetch_vaddr.poke(0.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
-    io.fetch_valid.poke(false.B)
-    io.resp_ready.poke(false.B)
-    io.axi.AR.ARREADY.poke(false.B)
-    io.axi.R.RDATA.poke(0.U(32.W))
-    io.axi.R.RRESP.poke(0.U(2.W))
-    io.axi.R.RLAST.poke(false.B)
-    io.axi.R.RVALID.poke(false.B)
+    io.FetchAddress.poke(0.U(AddressW.W))
+    io.FetchVaddr.poke(0.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchPaddrVaddr.poke(0.U(AddressW.W))
+    io.FetchValid.poke(false.B)
+    io.ResponseReady.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
+    io.AXI.R.RDATA.poke(0.U(32.W))
+    io.AXI.R.RRESP.poke(0.U(2.W))
+    io.AXI.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
     io.flush.poke(false.B)
     io.kill.poke(false.B)
-    io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U(AddressW.W))
-    io.snoop_addr_hi.poke(0.U(AddressW.W))
+    io.SnoopValid.poke(false.B)
+    io.SnoopAddress.poke(0.U(AddressW.W))
+    io.SnoopAddressHi.poke(0.U(AddressW.W))
   }
 
   private def issueFetch(
@@ -126,14 +126,14 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
       clock: Clock,
       addr:  Long
   ): Unit = {
-    io.fetch_addr.poke(addr.U(AddressW.W))
-    io.fetch_vaddr.poke(addr.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(addr.U(AddressW.W))
-    io.fetch_valid.poke(true.B)
-    waitUntil(clock, bool(io.fetch_ready), s"ICache 未受理取指 0x${addr.toHexString}")
+    io.FetchAddress.poke(addr.U(AddressW.W))
+    io.FetchVaddr.poke(addr.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchPaddrVaddr.poke(addr.U(AddressW.W))
+    io.FetchValid.poke(true.B)
+    waitUntil(clock, bool(io.FetchReady), s"ICache 未受理取指 0x${addr.toHexString}")
     clock.step()
-    io.fetch_valid.poke(false.B)
+    io.FetchValid.poke(false.B)
   }
 
   private def refill(
@@ -143,21 +143,21 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
       mem:   Memory,
       label: String
   ): Unit = {
-    waitUntil(clock, bool(io.axi.AR.ARVALID), s"$label 没有 refill AR")
-    withClue(s"$label refill 地址错误") { long(io.axi.AR.ARADDR) should be(line) }
-    val beats = long(io.axi.AR.ARLEN).toInt + 1
-    io.axi.AR.ARREADY.poke(true.B)
+    waitUntil(clock, bool(io.AXI.AR.ARVALID), s"$label 没有 refill AR")
+    withClue(s"$label refill 地址错误") { long(io.AXI.AR.ARADDR) should be(line) }
+    val beats = long(io.AXI.AR.ARLEN).toInt + 1
+    io.AXI.AR.ARREADY.poke(true.B)
     clock.step()
-    io.axi.AR.ARREADY.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
     for (beat <- 0 until beats) {
-      io.axi.R.RDATA.poke(mem.read(line + beat.toLong * 4L).U(32.W))
-      io.axi.R.RRESP.poke(0.U(2.W))
-      io.axi.R.RLAST.poke((beat + 1 == beats).B)
-      io.axi.R.RVALID.poke(true.B)
+      io.AXI.R.RDATA.poke(mem.read(line + beat.toLong * 4L).U(32.W))
+      io.AXI.R.RRESP.poke(0.U(2.W))
+      io.AXI.R.RLAST.poke((beat + 1 == beats).B)
+      io.AXI.R.RVALID.poke(true.B)
       clock.step()
     }
-    io.axi.R.RVALID.poke(false.B)
-    io.axi.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
+    io.AXI.R.RLAST.poke(false.B)
   }
 
   private def expectResponse(
@@ -166,12 +166,12 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
       data:  Long,
       label: String
   ): Unit = {
-    waitUntil(clock, bool(io.resp_valid), s"$label 没有取指响应")
-    withClue(s"$label 取指数据错误") { long(io.resp_data) should be(data) }
-    bool(io.resp_fault) should be(false)
-    io.resp_ready.poke(true.B)
+    waitUntil(clock, bool(io.ResponseValid), s"$label 没有取指响应")
+    withClue(s"$label 取指数据错误") { long(io.ResponseData) should be(data) }
+    bool(io.ResponseFault) should be(false)
+    io.ResponseReady.poke(true.B)
     clock.step()
-    io.resp_ready.poke(false.B)
+    io.ResponseReady.poke(false.B)
   }
 
   private def fetchExpectHit(
@@ -184,7 +184,7 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
     issueFetch(io, clock, addr)
     // 命中路径不应产生 refill AR；多等几拍同时覆盖 SRAM 晚一拍响应。
     for (_ <- 0 until 3) {
-      bool(io.axi.AR.ARVALID) should be(false)
+      bool(io.AXI.AR.ARVALID) should be(false)
       clock.step()
     }
     expectResponse(io, clock, data, label)
@@ -208,11 +208,11 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
       lo:    Long,
       hi:    Long
   ): Unit = {
-    io.snoop_addr.poke(lo.U(AddressW.W))
-    io.snoop_addr_hi.poke(hi.U(AddressW.W))
-    io.snoop_valid.poke(true.B)
+    io.SnoopAddress.poke(lo.U(AddressW.W))
+    io.SnoopAddressHi.poke(hi.U(AddressW.W))
+    io.SnoopValid.poke(true.B)
     clock.step()
-    io.snoop_valid.poke(false.B)
+    io.SnoopValid.poke(false.B)
   }
 
   private def pulseSnoop(
@@ -305,20 +305,20 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
       pulseSnoop(io, clock, LineA)
 
       issueFetch(io, clock, LineA)
-      waitUntil(clock, bool(io.axi.AR.ARVALID), s"$kind in-flight 没有 AR")
-      val beats = long(io.axi.AR.ARLEN).toInt + 1
-      io.axi.AR.ARREADY.poke(true.B)
+      waitUntil(clock, bool(io.AXI.AR.ARVALID), s"$kind in-flight 没有 AR")
+      val beats = long(io.AXI.AR.ARLEN).toInt + 1
+      io.AXI.AR.ARREADY.poke(true.B)
       clock.step()
-      io.axi.AR.ARREADY.poke(false.B)
+      io.AXI.AR.ARREADY.poke(false.B)
 
       // 先回一个旧 word，让 early restart 可能已经产生旧响应；此时 snoop
       // 必须在消费前撤回它，并丢弃整笔 refill。
-      io.axi.R.RDATA.poke(oldWord.U(32.W))
-      io.axi.R.RRESP.poke(0.U(2.W))
-      io.axi.R.RLAST.poke((beats == 1).B)
-      io.axi.R.RVALID.poke(true.B)
+      io.AXI.R.RDATA.poke(oldWord.U(32.W))
+      io.AXI.R.RRESP.poke(0.U(2.W))
+      io.AXI.R.RLAST.poke((beats == 1).B)
+      io.AXI.R.RVALID.poke(true.B)
       clock.step()
-      io.axi.R.RVALID.poke(false.B)
+      io.AXI.R.RVALID.poke(false.B)
       // store 数据已落盘、B 响应完成；此时 refill 已读到第一个旧 word。
       mem.write(LineA, 0x44444413L)
       // 保证 snoop 拍没有残留 R beat，否则 RREADY 恒高会被误收成下一拍。
@@ -326,14 +326,14 @@ class ysyx_26030103_ICacheSnoopTest extends AnyFlatSpec with Matchers {
 
       // 排空旧 burst 的剩余拍；这些数据必须被 discard。
       for (beat <- 1 until beats) {
-        io.axi.R.RDATA.poke(0xdeadbeefL.U(32.W))
-        io.axi.R.RRESP.poke(0.U(2.W))
-        io.axi.R.RLAST.poke((beat + 1 == beats).B)
-        io.axi.R.RVALID.poke(true.B)
+        io.AXI.R.RDATA.poke(0xdeadbeefL.U(32.W))
+        io.AXI.R.RRESP.poke(0.U(2.W))
+        io.AXI.R.RLAST.poke((beat + 1 == beats).B)
+        io.AXI.R.RVALID.poke(true.B)
         clock.step()
       }
-      io.axi.R.RVALID.poke(false.B)
-      io.axi.R.RLAST.poke(false.B)
+      io.AXI.R.RVALID.poke(false.B)
+      io.AXI.R.RLAST.poke(false.B)
 
       // 自动重取必须再次发出同一行 AR，并返回 store 后的新指令。
       refill(io, clock, LineA, mem, s"$kind in-flight replay")

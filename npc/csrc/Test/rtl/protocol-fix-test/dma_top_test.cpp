@@ -20,7 +20,7 @@ void defaults(DUT &dut) {
   dut.clock = 0;
   dut.reset = 0;
   dut.io_interrupt = 0;
-  dut.io_debug_gpr_raddr = 0;
+  dut.io_debug_GPRRaddr = 0;
 
   dut.io_master_awready = 0;
   dut.io_master_wready = 0;
@@ -351,7 +351,8 @@ void test_chiplink_window_guard(DUT &dut) {
 
   dut.io_slave_rready = 0;
   for (unsigned beat = 0; beat < 2; ++beat) {
-    dut.eval();
+    wait_until(dut, [&] { return bool(dut.io_slave_rvalid); },
+               "out-of-window DMA read never returned R", 50);
     check(dut.io_slave_rvalid && dut.io_slave_rid == 7 &&
               dut.io_slave_rresp == 3 &&
               static_cast<bool>(dut.io_slave_rlast) == (beat == 1),
@@ -411,7 +412,8 @@ void test_chiplink_window_guard(DUT &dut) {
   }
 
   dut.io_slave_bready = 0;
-  dut.eval();
+  wait_until(dut, [&] { return bool(dut.io_slave_bvalid); },
+             "out-of-window DMA write never returned B", 50);
   check(dut.io_slave_bvalid && dut.io_slave_bid == 8 &&
             dut.io_slave_bresp == 3,
         "out-of-window DMA write did not return BID-preserving DECERR");
@@ -442,7 +444,8 @@ void test_chiplink_exclusive_guard(DUT &dut) {
 
   dut.io_slave_rready = 0;
   for (unsigned beat = 0; beat < 2; ++beat) {
-    dut.eval();
+    wait_until(dut, [&] { return bool(dut.io_slave_rvalid); },
+               "exclusive DMA read never returned R", 50);
     check(dut.io_slave_rvalid && dut.io_slave_rid == 0xd &&
               dut.io_slave_rresp == 3 &&
               static_cast<bool>(dut.io_slave_rlast) == (beat == 1),
@@ -500,7 +503,8 @@ void test_chiplink_exclusive_guard(DUT &dut) {
   }
 
   dut.io_slave_bready = 0;
-  dut.eval();
+  wait_until(dut, [&] { return bool(dut.io_slave_bvalid); },
+             "exclusive DMA write never returned B", 50);
   check(dut.io_slave_bvalid && dut.io_slave_bid == 0xe &&
             dut.io_slave_bresp == 3,
         "exclusive DMA write did not return an ID-preserving DECERR");
@@ -743,7 +747,8 @@ void test_disabled_read_decerr(DUT &dut) {
 
   dut.io_slave_rready = 0;
   for (unsigned beat = 0; beat < 3; ++beat) {
-    dut.eval();
+    wait_until(dut, [&] { return bool(dut.io_slave_rvalid); },
+               "disabled DMA read never returned R", 50);
     check(dut.io_slave_rvalid && dut.io_slave_rid == 5 &&
               dut.io_slave_rresp == 3 &&
               static_cast<bool>(dut.io_slave_rlast) == (beat == 2),
@@ -797,7 +802,8 @@ void test_disabled_write_decerr(DUT &dut) {
         "disabled DMA error slave never accepted AW");
 
   dut.io_slave_bready = 0;
-  dut.eval();
+  wait_until(dut, [&] { return bool(dut.io_slave_bvalid); },
+             "disabled DMA write never returned B", 50);
   check(dut.io_slave_bvalid && dut.io_slave_bid == 0xa &&
             dut.io_slave_bresp == 3,
         "disabled ChipLink write did not return BID-preserving DECERR");

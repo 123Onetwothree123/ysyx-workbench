@@ -23,7 +23,7 @@ static void defaults(DUT &dut) {
   dut.io_in_valid = 0;
   dut.io_out_ready = 1;
   dut.io_in_bits_Instruction = 0x00000013U;
-  dut.io_in_bits_pc = 0x80000000U;
+  dut.io_in_bits_PC = 0x80000000U;
   dut.io_in_bits_snpc = 0x80000004U;
   dut.io_in_bits_ALUCtrl = 15;
   dut.io_in_bits_IsMDU = 0;
@@ -45,9 +45,9 @@ static void defaults(DUT &dut) {
   dut.io_in_bits_WidthSelect = 0;
   dut.io_in_bits_LoadSigned = 0;
   dut.io_in_bits_StoreData = 0;
-  dut.io_in_bits_IsCsrrw = 0;
-  dut.io_in_bits_IsCsrrs = 0;
-  dut.io_in_bits_IsCsrrc = 0;
+  dut.io_in_bits_IsCSRrw = 0;
+  dut.io_in_bits_IsCSRrs = 0;
+  dut.io_in_bits_IsCSRrc = 0;
   dut.io_in_bits_IsEcall = 0;
   dut.io_in_bits_IsEbreak = 0;
   dut.io_in_bits_IsSimHalt = 0;
@@ -59,10 +59,10 @@ static void defaults(DUT &dut) {
   dut.io_in_bits_Rs1Data = 0;
   dut.io_in_bits_ExceptionValid = 0;
   dut.io_in_bits_ExceptionCause = 0;
-  dut.io_in_bits_pred_taken = 0;
-  dut.io_in_bits_pred_target = 0x80000004U;
+  dut.io_in_bits_PredTaken = 0;
+  dut.io_in_bits_PredTarget = 0x80000004U;
   dut.io_Interrupt = 0;
-  dut.io_IdleIrqPC = 0x80000000U;
+  dut.io_IdleIRQPC = 0x80000000U;
   dut.io_MEMBusy = 0;
   dut.io_PipelineBusy = 0;
   dut.io_MemTrapCommit = 0;
@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
     dut.eval();
     check(dut.io_in_ready, "EXU did not accept the MUL");
     tick(dut);
-    check(dut.io_PerfMDUActive, "MUL was not marked as in flight");
+    check(dut.io_PerfMulActive, "MUL was not marked as in flight");
     dut.eval();
 
     // 2) 立即给一条与 MUL 结果无关的 ADD（x1+x2 -> x6）。

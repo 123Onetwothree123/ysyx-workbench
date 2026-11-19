@@ -8,35 +8,35 @@ using DUT = Vysyx_26030103_IDU;
 static void defaults(DUT &dut) {
   dut.io_in_valid = 1;
   dut.io_in_bits_Instruction = 0;
-  dut.io_in_bits_pc = 0x80000000U;
+  dut.io_in_bits_PC = 0x80000000U;
   dut.io_in_bits_ExceptionValid = 0;
-  dut.io_in_bits_pred_taken = 0;
-  dut.io_in_bits_pred_target = 0;
+  dut.io_in_bits_PredTaken = 0;
+  dut.io_in_bits_PredTarget = 0;
   dut.io_out_ready = 1;
   dut.io_ReadDATA1 = 0;
   dut.io_ReadDATA2 = 0;
-  dut.io_ex_valid = 0;
-  dut.io_ex_rd = 0;
-  dut.io_ex_regWrite = 0;
-  dut.io_wb_valid = 0;
-  dut.io_wb_rd = 0;
-  dut.io_wb_regWrite = 0;
-  dut.io_ex_memop = 0;
-  dut.io_ex_fwd_ready = 0;
-  dut.io_ex_fwd_data = 0;
-  dut.io_wb_fwd_data = 0;
-  dut.io_me_valid = 0;
-  dut.io_me_rd = 0;
-  dut.io_me_regWrite = 0;
-  dut.io_me_memop = 0;
-  dut.io_me_fwd_ready = 0;
-  dut.io_me_fwd_data = 0;
-  dut.io_me2_valid = 0;
-  dut.io_me2_rd = 0;
-  dut.io_me2_regWrite = 0;
-  dut.io_me2_memop = 0;
-  dut.io_me2_fwd_ready = 0;
-  dut.io_me2_fwd_data = 0;
+  dut.io_ExValid = 0;
+  dut.io_ExRd = 0;
+  dut.io_ExRegWrite = 0;
+  dut.io_WbValid = 0;
+  dut.io_WbRd = 0;
+  dut.io_WbRegWrite = 0;
+  dut.io_ExMemop = 0;
+  dut.io_ExForwardReady = 0;
+  dut.io_ExForwardData = 0;
+  dut.io_WbForwardData = 0;
+  dut.io_MeValid = 0;
+  dut.io_MeRd = 0;
+  dut.io_MeRegWrite = 0;
+  dut.io_MeMemop = 0;
+  dut.io_MeForwardReady = 0;
+  dut.io_MeForwardData = 0;
+  dut.io_Me2Valid = 0;
+  dut.io_Me2Rd = 0;
+  dut.io_Me2RegWrite = 0;
+  dut.io_Me2Memop = 0;
+  dut.io_Me2ForwardReady = 0;
+  dut.io_Me2ForwardData = 0;
 }
 
 static uint32_t fence_encoding(uint8_t fm, uint8_t predecessor,
@@ -81,7 +81,7 @@ static void expect_wfi_nop(DUT &dut) {
   constexpr uint32_t kWfi = 0x10500073U;
   constexpr uint32_t kPc = 0x80000120U;
   dut.io_in_bits_Instruction = kWfi;
-  dut.io_in_bits_pc = kPc;
+  dut.io_in_bits_PC = kPc;
   dut.eval();
 
   check(dut.io_in_ready && dut.io_out_valid,
@@ -94,8 +94,8 @@ static void expect_wfi_nop(DUT &dut) {
         "WFI unexpectedly enabled a GPR write");
   check(!dut.io_out_bits_MemoryValid && !dut.io_out_bits_MemoryWrite,
         "WFI unexpectedly enabled a memory access");
-  check(!dut.io_out_bits_IsCsrrw && !dut.io_out_bits_IsCsrrs &&
-            !dut.io_out_bits_IsCsrrc,
+  check(!dut.io_out_bits_IsCSRrw && !dut.io_out_bits_IsCSRrs &&
+            !dut.io_out_bits_IsCSRrc,
         "WFI unexpectedly decoded as a CSR operation");
   check(!dut.io_out_bits_IsEcall && !dut.io_out_bits_IsEbreak &&
             !dut.io_out_bits_IsMret,
@@ -124,17 +124,17 @@ int main(int argc, char **argv) {
 
     // Base implementations ignore rd and rs1.  Also present matching pending
     // register writes: these fields must not accidentally create RAW hazards.
-    dut.io_ex_valid = 1;
-    dut.io_ex_rd = 6;
-    dut.io_ex_regWrite = 1;
-    dut.io_me_valid = 1;
-    dut.io_me_rd = 7;
-    dut.io_me_regWrite = 1;
+    dut.io_ExValid = 1;
+    dut.io_ExRd = 6;
+    dut.io_ExRegWrite = 1;
+    dut.io_MeValid = 1;
+    dut.io_MeRd = 7;
+    dut.io_MeRegWrite = 1;
     expect_fence(dut, fence_encoding(0, 0xa, 0x5, 6, 7),
                  "FENCE with nonzero reserved fields");
 
-    dut.io_ex_valid = 0;
-    dut.io_me_valid = 0;
+    dut.io_ExValid = 0;
+    dut.io_MeValid = 0;
     expect_fence(dut, fence_encoding(1, 0, 0, 0, 0),
                  "FENCE with reserved fm encoding");
     expect_fence(dut, fence_encoding(8, 0x3, 0x3, 0, 0),

@@ -1,12 +1,14 @@
 module;
 #include <verilated.h>
 module npc.sdb.command.siCommand;
+import npc.Output;
 import npc.config;
 import npc.NPCTrap;
 import npc.DUT;
 import npc.sdb.SDBCommandUtils;
 import npc.sdb.NPCEvaluationContext;
 import npc.sdb.command.WatchpointPool;
+import npc.SimulationContext;
 
 [[nodiscard]] std::string_view siCommand::name() const noexcept
 {
@@ -21,6 +23,7 @@ import npc.sdb.command.WatchpointPool;
 }
 SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view args)
 {
+    auto &out{context.GetSimulation().Out()};
     auto count{std::size_t{1}};
     args = SDBTrimLeft(args);
     if (!args.empty())
@@ -31,26 +34,26 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
         const auto result{std::from_chars(args.data(), args.data() + args.size(), parsed, 10)};
         if (result.ec != std::errc())
         {
-            std::println("参数{0}用from_chars解析失败了", args);
+            out.Error("参数{0}用from_chars解析失败了", args);
             return SDBCommandResult::Continue;
         }
         if (parsed <= 0)
         {
-            std::println("步数必须得是正整数，结果现在得到的是 {}", parsed);
+            out.Error("步数必须得是正整数，结果现在得到的是 {}", parsed);
             return SDBCommandResult::Continue;
         }
         auto remainder{std::string_view{result.ptr, static_cast<std::size_t>(args.data() + args.size() - result.ptr)}};
         remainder = SDBTrimLeft(remainder);
         if (!remainder.empty())
         {
-            std::println("参数尾部有多余的内容'{}'", remainder);
+            out.Error("参数尾部有多余的内容'{}'", remainder);
             return SDBCommandResult::Continue;
         }
         count = static_cast<std::size_t>(parsed);
     }
     if (NPCTrap::HasHalted())
     {
-        std::println("NPC已经停止运行了");
+        out.Info("NPC已经停止运行了");
         return SDBCommandResult::Continue;
     }
     auto &dut{context.GetDUT()};
@@ -79,9 +82,9 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
         if constexpr (npc::HasWatchpoint)
         {
             if ((dut->debug_commit || trapBoundary) &&
-                GetGlobalWatchpointPool().CheckAll(EvaluationContext))
+                context.GetSimulation().Watchpoints().CheckAll(EvaluationContext))
             {
-                std::println("因为监视点变化，程序停止");
+                out.Info("因为监视点变化，程序停止");
                 break;
             }
         }
@@ -89,7 +92,7 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
         // si N (N > 1)，也不能在未通知用户的情况下继续执行 handler。
         if (trapBoundary)
         {
-            std::println(
+            out.Info(
                 "遇到异常，停止单步（pc=0x{:x}, cause=0x{:08x}, target=0x{:x}）",
                 dut.ReadTrapPC(),
                 dut.ReadTrapCause(),
@@ -103,7 +106,7 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
         // custom halt 时才报告“请求结束但未触发陷阱”。
         if (!dut.PollSimulationHalt())
         {
-            std::println(
+            out.Info(
                 "Verilator已请求结束，停止单步（本次完成 {} / {} 个架构边界）",
                 completedBoundaries,
                 count);

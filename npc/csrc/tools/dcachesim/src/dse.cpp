@@ -1,3 +1,5 @@
+module;
+#include "common/DseRunner.hpp"
 module dse;
 import std;
 import DCacheConfig;
@@ -12,80 +14,60 @@ auto RunDse(std::span<const AccessRecord> trace,
             std::span<const std::size_t> num_blocks_list,
             std::span<const std::size_t> ways_list) -> std::vector<DseEntry>
 {
-    // 生成所有合法参数组合
-    std::vector<DCacheConfig> configs{};
-    for (auto bs : block_sizes)
-    {
-        for (auto nb : num_blocks_list)
+    auto configs{common::EnumerateCombos<DCacheConfig>(
+        {block_sizes, num_blocks_list, ways_list},
+        [](std::span<const std::size_t> value)
         {
-            for (auto w : ways_list | std::views::filter([nb](auto ways) { return ways <= nb && nb % ways == 0; }))
-            {
-                configs.emplace_back(bs, nb, w);
-            }
-        }
-    }
+            return DCacheConfig{value[0], value[1], value[2]};
+        },
+        [](const DCacheConfig& config)
+        {
+            return common::ValidWays(config.get_ways(), config.get_num_blocks());
+        })};
 
-    // 每组配置一个线程, 线程内顺序跑三种替换策略
     constexpr std::size_t Policies{3};
-    std::vector<std::array<DseEntry, Policies>> results{configs.size()};
-    {
-        std::vector<std::jthread> threads{};
-        for (std::size_t i{0}; i < configs.size(); ++i)
+    auto table{common::EvalCombos<DCacheConfig, DseEntry>(configs, Policies,
+        [&](const DCacheConfig& config, std::span<DseEntry> rows)
         {
-            threads.emplace_back([&, i]
+            DCachesType caches{config};
+            for (std::size_t k{0}; k < caches.size(); ++k)
             {
-                DCachesType caches{configs[i]};
-                for (std::size_t k{0}; k < caches.size(); ++k)
-                {
-                    auto& e{results[i][k]};
-                    e.block_size = configs[i].get_block_size();
-                    e.num_blocks = configs[i].get_num_blocks();
-                    e.ways = configs[i].get_ways();
-                    e.policy = caches[k].GetName();
-                    e.st = RunOne(caches[k], trace);
-                }
-            });
-        }
-    }   // jthread 析构自动 join, 确保所有线程执行完毕
+                auto& e{rows[k]};
+                e.block_size = config.get_block_size();
+                e.num_blocks = config.get_num_blocks();
+                e.ways = config.get_ways();
+                e.policy = caches[k].GetName();
+                e.st = RunOne(caches[k], trace);
+            }
+        })};
 
-    // 展平并按命中率降序排列
-    std::vector<DseEntry> table{};
-    table.reserve(configs.size() * Policies);
-    for (auto& row : results)
-    {
-        for (auto& e : row)
-        {
-            table.push_back(std::move(e));
-        }
-    }
-    std::ranges::sort(table, [](const DseEntry& a, const DseEntry& b)
-    {
-        return a.st.HitRate() > b.st.HitRate();
-    });
+    common::SortByDescending(table, [](const DseEntry& e) { return e.st.HitRate(); });
     return table;
 }
 
 void WriteDseCSV(std::span<const DseEntry> results, const std::filesystem::path& base)
 {
-    // 生成结果目录 dcachesim/TestResult/时间戳/
-    const auto now{std::chrono::system_clock::now()};
-    const auto time_t{std::chrono::system_clock::to_time_t(now)};
-    const auto tm{*std::localtime(&time_t)};
-    const auto dir{base / std::format("{:04}{:02}{:02}-{:02}{:02}{:02}",
-        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec)};
-    std::filesystem::create_directories(dir);
+    constexpr std::string_view Header{
+        "块大小,块总数,容量(B),相联度,策略,总访问,命中,缺失,读,读命中,写,写命中,写回,命中率(%)"};
 
-    const auto result_path{dir / "result.csv"};
-    std::ofstream file{result_path, std::ios::binary};
-    file << "\xEF\xBB\xBF"; // UTF-8 BOM, Excel打开不乱码
-    file << "块大小,块总数,容量(B),相联度,策略,总访问,命中,缺失,读,读命中,写,写命中,写回,命中率(%)\n";
-    for (const auto& e : results)
-    {
-        file << std::format("{},{},{},{},{},{},{},{},{},{},{},{},{},{:.2f}\n",
-                            e.block_size, e.num_blocks, e.block_size * e.num_blocks, e.ways,
-                            e.policy, e.st.total, e.st.hits, e.st.Misses(), e.st.reads,
-                            e.st.read_hits, e.st.writes, e.st.write_hits, e.st.writebacks,
-                            e.st.HitRate());
-    }
-    std::println("DSE 完成，{} 组结果，结果保存在 {}", results.size(), result_path.string());
+    const auto path{common::WriteDseCsv(results, base, "", Header,
+        [](const DseEntry& e)
+        {
+            return std::vector<std::string>{
+                std::format("{}", e.block_size),
+                std::format("{}", e.num_blocks),
+                std::format("{}", e.block_size * e.num_blocks),
+                std::format("{}", e.ways),
+                std::format("{}", e.policy),
+                std::format("{}", e.st.total),
+                std::format("{}", e.st.hits),
+                std::format("{}", e.st.Misses()),
+                std::format("{}", e.st.reads),
+                std::format("{}", e.st.read_hits),
+                std::format("{}", e.st.writes),
+                std::format("{}", e.st.write_hits),
+                std::format("{}", e.st.writebacks),
+                std::format("{:.2f}", e.st.HitRate())};
+        })};
+    std::println("DSE 完成，{} 组结果，结果保存在 {}", results.size(), path.string());
 }

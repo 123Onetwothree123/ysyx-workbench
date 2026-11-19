@@ -36,7 +36,7 @@ class ysyx_26030103_ICacheReg(
   ysyx_26030103_VIPTAliasScan.requireMode(VIPTAliasScanMode, "ICacheReg")
   // Reg 存储：data 留在触发器阵列，命中拍组合读并锁存到 resp_data_reg。
   private lazy val data =
-    Reg(Vec(if (Enable) numBlocks else 1, Vec(wordsPerBlock, UInt(32.W))))
+    Reg(Vec(if (Enable) NumberBlocks else 1, Vec(wordsPerBlock, UInt(32.W))))
 
   override protected def storageInit(): Unit = { val _ = data }
   override protected def readDataWords(blockIndex: UInt, wordOffset: UInt): UInt =
@@ -49,7 +49,7 @@ class ysyx_26030103_ICacheReg(
   protected def storageHitResponding: Bool = stage1Hit
   override protected def storageResponseData(): Unit = {
     // 命中用受理拍锁存的数据；refill 完成的可缓存行直接组合读阵列。
-    io.resp_data := Mux(
+    io.ResponseData := Mux(
       accessFaultReg,
       "h00000013".U,
       Mux(

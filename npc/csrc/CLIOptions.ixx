@@ -6,7 +6,7 @@ export class CLIOptions final
 public:
     [[nodiscard]] static std::expected<CLIOptions, std::string> Parse(int argc, char const *argv[]);
     [[nodiscard]] const std::optional<std::filesystem::path> &GetImageFile() const noexcept;
-    [[nodiscard]] const std::optional<std::filesystem::path> &GetElfFile() const noexcept;
+    [[nodiscard]] const std::optional<std::filesystem::path> &GetELFFile() const noexcept;
     [[nodiscard]] const std::optional<std::filesystem::path> &GetDiffFile() const noexcept;
     [[nodiscard]] const std::optional<std::filesystem::path> &GetResultDir() const noexcept;
     // Verilator --savable 状态检查点恢复文件。
@@ -17,7 +17,7 @@ public:
     [[nodiscard]] bool GetBatchMode() const noexcept;
 private:
     std::optional<std::filesystem::path> ImageFile{};
-    std::optional<std::filesystem::path> ElfFile{};
+    std::optional<std::filesystem::path> ELFFile{};
     std::optional<std::filesystem::path> DiffFile{};
     std::optional<std::filesystem::path> ResultDir{};
     std::optional<std::filesystem::path> RestoreFile{};

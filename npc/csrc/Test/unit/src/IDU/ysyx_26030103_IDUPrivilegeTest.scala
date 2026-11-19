@@ -21,12 +21,12 @@ class ysyx_26030103_IDUPrivilegeHarness(config: ysyx_26030103_NPCConfig)
   idu.io.in.valid := true.B
   idu.io.in.bits.Instruction := io.instruction
   idu.io.in.bits.IsCompressed := false.B
-  idu.io.in.bits.pc := 0.U
+  idu.io.in.bits.PC := 0.U
   idu.io.in.bits.ExceptionValid := false.B
   idu.io.in.bits.ExceptionCause := 0.U
   idu.io.in.bits.AccessFaultResponse := 0.U
-  idu.io.in.bits.pred_taken := false.B
-  idu.io.in.bits.pred_target := 0.U
+  idu.io.in.bits.PredTaken := false.B
+  idu.io.in.bits.PredTarget := 0.U
   idu.io.out.ready := true.B
   idu.io.ReadDATA1 := 0.U
   idu.io.ReadDATA2 := 0.U
@@ -35,50 +35,50 @@ class ysyx_26030103_IDUPrivilegeHarness(config: ysyx_26030103_NPCConfig)
   idu.io.ReadFPR2 := 0.U
   idu.io.ReadFPR3 := 0.U
   idu.io.Frm := 0.U
-  idu.io.ex_fp_valid := false.B
-  idu.io.ex_fp_rd := 0.U
-  idu.io.ex_fp_regWrite := false.B
-  idu.io.ex_fp_fwd_ready := false.B
-  idu.io.ex_fp_fwd_data := 0.U
-  idu.io.me_fp_valid := false.B
-  idu.io.me_fp_rd := 0.U
-  idu.io.me_fp_regWrite := false.B
-  idu.io.me_fp_fwd_ready := false.B
-  idu.io.me_fp_fwd_data := 0.U
-  idu.io.me2_fp_valid := false.B
-  idu.io.me2_fp_rd := 0.U
-  idu.io.me2_fp_regWrite := false.B
-  idu.io.me2_fp_fwd_ready := false.B
-  idu.io.me2_fp_fwd_data := 0.U
-  idu.io.wb_fp_valid := false.B
-  idu.io.wb_fp_rd := 0.U
-  idu.io.wb_fp_regWrite := false.B
-  idu.io.wb_fp_fwd_data := 0.U
-  idu.io.ex_valid := false.B
-  idu.io.ex_rd := 0.U
-  idu.io.ex_regWrite := false.B
-  idu.io.wb_valid := false.B
-  idu.io.wb_rd := 0.U
-  idu.io.wb_regWrite := false.B
-  idu.io.ex_memop := false.B
-  idu.io.ex_fwd_ready := false.B
-  idu.io.ex_fwd_data := 0.U
-  idu.io.ex_mdu_hidden_writes := 0.U
-  idu.io.wb_fwd_data := 0.U
-  idu.io.me_valid := false.B
-  idu.io.me_rd := 0.U
-  idu.io.me_regWrite := false.B
-  idu.io.me_memop := false.B
-  idu.io.me_fwd_ready := false.B
-  idu.io.me_fwd_data := 0.U
-  idu.io.me2_valid := false.B
-  idu.io.me2_rd := 0.U
-  idu.io.me2_regWrite := false.B
-  idu.io.me2_memop := false.B
-  idu.io.me2_fwd_ready := false.B
-  idu.io.me2_fwd_data := 0.U
-  idu.io.pipeline_mode := true.B
-  idu.io.mmu_stall := false.B
+  idu.io.ExFPValid := false.B
+  idu.io.ExFPRd := 0.U
+  idu.io.ExFPRegWrite := false.B
+  idu.io.ExFPForwardReady := false.B
+  idu.io.ExFPForwardData := 0.U
+  idu.io.MeFPValid := false.B
+  idu.io.MeFPRd := 0.U
+  idu.io.MeFPRegWrite := false.B
+  idu.io.MeFPForwardReady := false.B
+  idu.io.MeFPForwardData := 0.U
+  idu.io.Me2FPValid := false.B
+  idu.io.Me2FPRd := 0.U
+  idu.io.Me2FPRegWrite := false.B
+  idu.io.Me2FPForwardReady := false.B
+  idu.io.Me2FPForwardData := 0.U
+  idu.io.WbFPValid := false.B
+  idu.io.WbFPRd := 0.U
+  idu.io.WbFPRegWrite := false.B
+  idu.io.WbFPForwardData := 0.U
+  idu.io.ExValid := false.B
+  idu.io.ExRd := 0.U
+  idu.io.ExRegWrite := false.B
+  idu.io.WbValid := false.B
+  idu.io.WbRd := 0.U
+  idu.io.WbRegWrite := false.B
+  idu.io.ExMemop := false.B
+  idu.io.ExForwardReady := false.B
+  idu.io.ExForwardData := 0.U
+  idu.io.ExMDUHiddenWrites := 0.U
+  idu.io.WbForwardData := 0.U
+  idu.io.MeValid := false.B
+  idu.io.MeRd := 0.U
+  idu.io.MeRegWrite := false.B
+  idu.io.MeMemop := false.B
+  idu.io.MeForwardReady := false.B
+  idu.io.MeForwardData := 0.U
+  idu.io.Me2Valid := false.B
+  idu.io.Me2Rd := 0.U
+  idu.io.Me2RegWrite := false.B
+  idu.io.Me2Memop := false.B
+  idu.io.Me2ForwardReady := false.B
+  idu.io.Me2ForwardData := 0.U
+  idu.io.PipelineMode := true.B
+  idu.io.MMUStall := false.B
   idu.io.Privilege := io.privilege
   idu.io.Mstatus := io.mstatus
   idu.io.Mcounteren := "hffffffff".U
@@ -111,7 +111,7 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
     ysyx_26030103_NPCConfig(MMU = ysyx_26030103_MMUProfile(
       hasS = hasS,
       hasU = hasU,
-      csrEnabled = Set(0x100, 0x300, 0x301, 0xc00,
+      CSREnabled = Set(0x100, 0x300, 0x301, 0xc00,
         0xf11, 0xf12, 0xf13, 0xf14)
     ))
 
@@ -232,7 +232,7 @@ class ysyx_26030103_IDUPrivilegeTest extends AnyFlatSpec with Matchers {
 
   it should "identity CSR 即使未列入 CSR_ENABLED 也保持可访问" in {
     val base = config(hasU = true)
-    val trimmed = base.copy(MMU = base.MMU.copy(csrEnabled = Set(0x300)))
+    val trimmed = base.copy(MMU = base.MMU.copy(CSREnabled = Set(0x300)))
     simulate(new ysyx_26030103_IDUPrivilegeHarness(trimmed)) { dut =>
       setup(dut)
       dut.io.privilege.poke(3.U)

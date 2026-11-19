@@ -1,22 +1,30 @@
+module;
+#include "common/TraceLineReader.hpp"
 module BTraceReader;
 import std;
 import BranchRecord;
-static bool IsComment(std::string_view line)
+
+struct BTraceReader::Impl
 {
-    return line.empty() || line[0] == '#' || line[0] == '/';
-}
+    common::LineReader reader;
+    explicit Impl(const std::string &path) : reader{path} {}
+};
+
 BTraceReader::BTraceReader(const std::string &path)
+    : impl{std::make_unique<Impl>(path)}
 {
-    file.open(path);
-    if (!file)
-    {
-        throw std::runtime_error(std::format("这个文件无法打开：{}\n", path));
-    }
 }
+
+BTraceReader::~BTraceReader() = default;
+
 std::optional<BranchRecord> BTraceReader::next()
 {
+    if (!impl)
+    {
+        return std::nullopt;
+    }
     std::string line{};
-    while (std::getline(file, line))
+    while (impl->reader.Next(line))
     {
         if (auto record{TryParse(line)})
         {
@@ -26,51 +34,36 @@ std::optional<BranchRecord> BTraceReader::next()
     }
     return std::nullopt;
 }
+
 std::optional<BranchRecord> BTraceReader::TryParse(std::string_view line)
 {
-    if (IsComment(line))
+    if (common::IsCommentLine(line))
     {
         return std::nullopt;
     }
-    Addr pc{}, target{};
-    int taken{}; // 这是AI特意改的，说：from_chars 对 int 默认十进制
-    const auto end{line.data() + line.size()};
-    auto [pointer1, errorcode1] = std::from_chars(line.data(), end, pc, 16);
-    if (errorcode1 != std::errc{})
+    // pc target taken [类型 [immediate]]，空白分隔
+    const auto fields{common::SplitFields(line)};
+    if (!common::FieldCountIn(fields, 3, 5))
     {
         return std::nullopt;
     }
-    while (pointer1 < end && (*pointer1 == ' ' || *pointer1 == '\t'))
-    {
-        ++pointer1;
-    }
-    auto [pointer2, errorcode2] = std::from_chars(pointer1, end, target, 16);
-    if (errorcode2 != std::errc{})
+    const auto pc{common::ParseFull<Addr>(fields[0], 16)};
+    const auto target{common::ParseFull<Addr>(fields[1], 16)};
+    const auto taken{common::ParseFull<int>(fields[2])};
+    if (!pc || !target || !taken)
     {
         return std::nullopt;
     }
-    while (pointer2 < end && (*pointer2 == ' ' || *pointer2 == '\t'))
-    {
-        ++pointer2;
-    }
-    auto [pointer3, errorcode3] = std::from_chars(pointer2, end, taken);
-    if (errorcode3 != std::errc{})
-    {
-        return std::nullopt;
-    }
-    // 第4列(可选): 记录类型, b=条件分支(默认), j=jal非调用, c=jal ra调用,
-    // r=jalr只弹RAS, i=jalr只压RAS, o=x1/x5协程切换(同拍弹后压),
-    // x=无RAS hint的其他jalr; 缺失=条件分支(兼容旧格式trace)。
-    // 第5列可选：JALR的符号扩展immediate，按32位十六进制位模式记录。
+    // b 条件分支, j/c jal, r/i/o/x jalr 变体。
     auto kind{BranchKind::Branch};
     std::uint32_t jalr_immediate{};
-    while (pointer3 < end && (*pointer3 == ' ' || *pointer3 == '\t'))
+    if (fields.size() >= 4)
     {
-        ++pointer3;
-    }
-    if (pointer3 < end)
-    {
-        switch (*pointer3)
+        if (fields[3].size() != 1)
+        {
+            return std::nullopt;
+        }
+        switch (fields[3][0])
         {
         case 'j': case 'J': kind = BranchKind::Jal; break;
         case 'c': case 'C': kind = BranchKind::Call; break;
@@ -80,23 +73,19 @@ std::optional<BranchRecord> BTraceReader::TryParse(std::string_view line)
         case 'x': case 'X': kind = BranchKind::JalrOther; break;
         default: break;
         }
-        ++pointer3;
-        while (pointer3 < end && (*pointer3 == ' ' || *pointer3 == '\t'))
+        if (fields.size() == 5)
         {
-            ++pointer3;
-        }
-        if (pointer3 < end)
-        {
-            const auto [pointer4, errorcode4] =
-                std::from_chars(pointer3, end, jalr_immediate, 16);
-            if (errorcode4 != std::errc{} || pointer4 != end)
+            const auto immediate{common::ParseFull<std::uint32_t>(fields[4], 16)};
+            if (!immediate)
             {
                 return std::nullopt;
             }
+            jalr_immediate = *immediate;
         }
     }
-    return BranchRecord{pc, target, taken != 0, kind, jalr_immediate};
+    return BranchRecord{*pc, *target, *taken != 0, kind, jalr_immediate};
 }
+
 std::size_t BTraceReader::GetCount() const
 {
     return count;

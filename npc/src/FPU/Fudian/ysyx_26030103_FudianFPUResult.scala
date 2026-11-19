@@ -55,15 +55,15 @@ trait ysyx_26030103_FudianFPUResult {
     if (XLEN == 64) {
       Mux(
         fmtD,
-        io.req.bits.rs1,
-        Cat(Fill(32, io.req.bits.rs1(31)), io.req.bits.rs1(31, 0))
+        io.request.bits.rs1,
+        Cat(Fill(32, io.request.bits.rs1(31)), io.request.bits.rs1(31, 0))
       )
     } else {
-      Mux(fmtD, io.req.bits.rs1, io.req.bits.rs1(31, 0))
+      Mux(fmtD, io.request.bits.rs1, io.request.bits.rs1(31, 0))
     }
 
-  private val mvToFPS = boxS(io.req.bits.rs1(31, 0))
-  private val mvToFPD = io.req.bits.rs1
+  private val mvToFPS = boxS(io.request.bits.rs1(31, 0))
+  private val mvToFPD = io.request.bits.rs1
 
 
   // 快速运算结果（组合），FDIV/FSQRT 走多周期状态机
@@ -175,31 +175,31 @@ trait ysyx_26030103_FudianFPUResult {
       fastFlags := 0.U
     }
     is(ysyx_26030103_FPUOp.FCvtFPToInt) {
-      val raw = asResponse(byFmt(sFPToInt.io.result, dFPToInt.get.io.result))
+      val raw = asResponse(byFmt(SFPToInt.io.result, DFPToInt.get.io.result))
       // RV64 的 FCVT.W[U]：有符号 W 符号扩展，WU 零扩展；FPToInt 只产低 32 位。
       fastResult := (if (XLEN == 64)
-        Mux(io.req.bits.intWord,
+        Mux(io.request.bits.intWord,
           Cat(Fill(32, raw(31)), raw(31, 0)), raw)
       else raw)
-      fastFlags := byFmt(sFPToInt.io.fflags, dFPToInt.get.io.fflags)
+      fastFlags := byFmt(SFPToInt.io.fflags, DFPToInt.get.io.fflags)
     }
     is(ysyx_26030103_FPUOp.FCvtFPToUInt) {
-      val raw = asResponse(byFmt(sFPToInt.io.result, dFPToInt.get.io.result))
+      val raw = asResponse(byFmt(SFPToInt.io.result, DFPToInt.get.io.result))
       // RV64 的 FCVT.WU 也按 W 型规则把 32 位结果符号扩展到 XLEN；
       // FPToInt 对 WU 只产生低 32 位（高半清零），必须在这里补齐。
       fastResult := (if (XLEN == 64)
-        Mux(io.req.bits.intWord,
+        Mux(io.request.bits.intWord,
           Cat(Fill(32, raw(31)), raw(31, 0)), raw)
       else raw)
-      fastFlags := byFmt(sFPToInt.io.fflags, dFPToInt.get.io.fflags)
+      fastFlags := byFmt(SFPToInt.io.fflags, DFPToInt.get.io.fflags)
     }
     is(ysyx_26030103_FPUOp.FCvtIntToFP) {
-      fastResult := byFmt(boxS(sIntToFP.io.result), dIntToFP.get.io.result)
-      fastFlags := byFmt(sIntToFP.io.fflags, dIntToFP.get.io.fflags)
+      fastResult := byFmt(boxS(SIntToFP.io.result), DIntToFP.get.io.result)
+      fastFlags := byFmt(SIntToFP.io.fflags, DIntToFP.get.io.fflags)
     }
     is(ysyx_26030103_FPUOp.FCvtUIntToFP) {
-      fastResult := byFmt(boxS(sIntToFP.io.result), dIntToFP.get.io.result)
-      fastFlags := byFmt(sIntToFP.io.fflags, dIntToFP.get.io.fflags)
+      fastResult := byFmt(boxS(SIntToFP.io.result), DIntToFP.get.io.result)
+      fastFlags := byFmt(SIntToFP.io.fflags, DIntToFP.get.io.fflags)
     }
     is(ysyx_26030103_FPUOp.FCvtFPToFP) {
       if (hasD) {

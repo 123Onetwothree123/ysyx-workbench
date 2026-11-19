@@ -86,7 +86,7 @@ class ysyx_26030103_InfraComboAuditTest
       plicWrite(dut, 0x0c200000L, 0)
       dut.sources.poke(((1 << 2) | (1 << 10) | (1L << 31)).U)
       dut.clock.step()
-      bool(dut.external_irq) should be(true)
+      bool(dut.ExternalIRQ) should be(true)
 
       plicRead(dut, 0x0c200004L) should be(BigInt(10))
       plicRead(dut, 0x0c200004L) should be(BigInt(31))
@@ -96,7 +96,7 @@ class ysyx_26030103_InfraComboAuditTest
       // source 10 仍为高，complete 后应重新 pending 并可再次 claim。
       plicWrite(dut, 0x0c200004L, 10)
       dut.clock.step(2)
-      bool(dut.external_irq) should be(true)
+      bool(dut.ExternalIRQ) should be(true)
       plicRead(dut, 0x0c200004L) should be(BigInt(10))
 
       // 拉低 source 后 complete 不应再挂起。
@@ -148,11 +148,11 @@ class ysyx_26030103_InfraComboAuditTest
     dut.io.AW.AWVALID.poke(false.B)
     dut.io.W.WVALID.poke(false.B)
     while (!bool(dut.io.B.BVALID)) { dut.clock.step() }
-    val resp = dut.io.B.BRESP.peek().litValue.toInt
+    val response = dut.io.B.BRESP.peek().litValue.toInt
     dut.io.B.BREADY.poke(true.B)
     dut.clock.step()
     dut.io.B.BREADY.poke(false.B)
-    resp
+    response
   }
 
   private def clintRead(
@@ -166,28 +166,28 @@ class ysyx_26030103_InfraComboAuditTest
     dut.io.AR.ARVALID.poke(false.B)
     while (!bool(dut.io.R.RVALID)) { dut.clock.step() }
     val data = dut.io.R.RDATA.peek().litValue
-    val resp = dut.io.R.RRESP.peek().litValue.toInt
+    val response = dut.io.R.RRESP.peek().litValue.toInt
     dut.io.R.RREADY.poke(true.B)
     dut.clock.step()
     dut.io.R.RREADY.poke(false.B)
-    (data, resp)
+    (data, response)
   }
 
-  "CLINT" should "按完整 64 位写入 mtimecmp 的一半后正确触发/撤销 timer_irq" in {
+  "CLINT" should "按完整 64 位写入 mtimecmp 的一半后正确触发/撤销 TimerIRQ" in {
     simulate(new ysyx_26030103_AXI5CLINTSlave(DataWidth = 32)) { dut =>
       setupCLINT(dut)
-      // 高半写 0，低半写 0 => mtimecmp=0，timer_irq 必须拉高。
+      // 高半写 0，低半写 0 => mtimecmp=0，TimerIRQ 必须拉高。
       clintWrite(dut, 0x02004004L, 0) should be(0)
       clintWrite(dut, 0x02004000L, 0) should be(0)
       dut.clock.step(2)
-      bool(dut.io.timer_irq) should be(true)
+      bool(dut.io.TimerIRQ) should be(true)
       clintRead(dut, 0x02004000L)._1 should be(BigInt(0))
       clintRead(dut, 0x02004004L)._1 should be(BigInt(0))
 
-      // 只把高半改成 0xffffffff、低半仍 0 => 未来时刻，irq 撤销。
+      // 只把高半改成 0xffffffff、低半仍 0 => 未来时刻，IRQ 撤销。
       clintWrite(dut, 0x02004004L, BigInt("ffffffff", 16)) should be(0)
       dut.clock.step(2)
-      bool(dut.io.timer_irq) should be(false)
+      bool(dut.io.TimerIRQ) should be(false)
       clintRead(dut, 0x02004000L)._1 should be(BigInt(0))
       clintRead(dut, 0x02004004L)._1 should be(BigInt("ffffffff", 16))
 
@@ -207,32 +207,32 @@ class ysyx_26030103_InfraComboAuditTest
     dut.io.hostWriteValid.poke(false.B)
     dut.io.hostWriteIndex.poke(0.U)
     dut.io.hostWriteData.poke(0.U)
-    dut.io.uartRxValid.poke(false.B)
-    dut.io.uartRxData.poke(0.U)
-    dut.io.axi.AW.AWVALID.poke(false.B)
-    dut.io.axi.AW.AWADDR.poke(0.U)
-    dut.io.axi.AW.AWID.poke(0.U)
-    dut.io.axi.AW.AWLEN.poke(0.U)
-    dut.io.axi.AW.AWSIZE.poke(2.U)
-    dut.io.axi.AW.AWBURST.poke(0.U)
-    dut.io.axi.AW.AWPROT.poke(0.U)
-    dut.io.axi.AW.AWCACHE.poke(0.U)
-    dut.io.axi.AW.AWQOS.poke(0.U)
-    dut.io.axi.W.WVALID.poke(false.B)
-    dut.io.axi.W.WDATA.poke(0.U)
-    dut.io.axi.W.WSTRB.poke(0.U)
-    dut.io.axi.W.WLAST.poke(false.B)
-    dut.io.axi.B.BREADY.poke(false.B)
-    dut.io.axi.AR.ARVALID.poke(false.B)
-    dut.io.axi.AR.ARADDR.poke(0.U)
-    dut.io.axi.AR.ARID.poke(0.U)
-    dut.io.axi.AR.ARLEN.poke(0.U)
-    dut.io.axi.AR.ARSIZE.poke(2.U)
-    dut.io.axi.AR.ARBURST.poke(0.U)
-    dut.io.axi.AR.ARPROT.poke(0.U)
-    dut.io.axi.AR.ARCACHE.poke(0.U)
-    dut.io.axi.AR.ARQOS.poke(0.U)
-    dut.io.axi.R.RREADY.poke(false.B)
+    dut.io.UARTRxValid.poke(false.B)
+    dut.io.UARTRxData.poke(0.U)
+    dut.io.AXI.AW.AWVALID.poke(false.B)
+    dut.io.AXI.AW.AWADDR.poke(0.U)
+    dut.io.AXI.AW.AWID.poke(0.U)
+    dut.io.AXI.AW.AWLEN.poke(0.U)
+    dut.io.AXI.AW.AWSIZE.poke(2.U)
+    dut.io.AXI.AW.AWBURST.poke(0.U)
+    dut.io.AXI.AW.AWPROT.poke(0.U)
+    dut.io.AXI.AW.AWCACHE.poke(0.U)
+    dut.io.AXI.AW.AWQOS.poke(0.U)
+    dut.io.AXI.W.WVALID.poke(false.B)
+    dut.io.AXI.W.WDATA.poke(0.U)
+    dut.io.AXI.W.WSTRB.poke(0.U)
+    dut.io.AXI.W.WLAST.poke(false.B)
+    dut.io.AXI.B.BREADY.poke(false.B)
+    dut.io.AXI.AR.ARVALID.poke(false.B)
+    dut.io.AXI.AR.ARADDR.poke(0.U)
+    dut.io.AXI.AR.ARID.poke(0.U)
+    dut.io.AXI.AR.ARLEN.poke(0.U)
+    dut.io.AXI.AR.ARSIZE.poke(2.U)
+    dut.io.AXI.AR.ARBURST.poke(0.U)
+    dut.io.AXI.AR.ARPROT.poke(0.U)
+    dut.io.AXI.AR.ARCACHE.poke(0.U)
+    dut.io.AXI.AR.ARQOS.poke(0.U)
+    dut.io.AXI.R.RREADY.poke(false.B)
   }
 
   private def uartRead(
@@ -240,20 +240,20 @@ class ysyx_26030103_InfraComboAuditTest
       addr: Long,
       size: Int
   ): (BigInt, Int) = {
-    dut.io.axi.AR.ARVALID.poke(true.B)
-    dut.io.axi.AR.ARADDR.poke(addr.U)
-    dut.io.axi.AR.ARLEN.poke(0.U)
-    dut.io.axi.AR.ARSIZE.poke(size.U)
-    dut.io.axi.AR.ARBURST.poke(0.U)
-    dut.io.axi.R.RREADY.poke(true.B)
+    dut.io.AXI.AR.ARVALID.poke(true.B)
+    dut.io.AXI.AR.ARADDR.poke(addr.U)
+    dut.io.AXI.AR.ARLEN.poke(0.U)
+    dut.io.AXI.AR.ARSIZE.poke(size.U)
+    dut.io.AXI.AR.ARBURST.poke(0.U)
+    dut.io.AXI.R.RREADY.poke(true.B)
     dut.clock.step()
-    dut.io.axi.AR.ARVALID.poke(false.B)
-    while (!bool(dut.io.axi.R.RVALID)) { dut.clock.step() }
-    val data = dut.io.axi.R.RDATA.peek().litValue
-    val resp = dut.io.axi.R.RRESP.peek().litValue.toInt
+    dut.io.AXI.AR.ARVALID.poke(false.B)
+    while (!bool(dut.io.AXI.R.RVALID)) { dut.clock.step() }
+    val data = dut.io.AXI.R.RDATA.peek().litValue
+    val response = dut.io.AXI.R.RRESP.peek().litValue.toInt
     dut.clock.step()
-    dut.io.axi.R.RREADY.poke(false.B)
-    (data, resp)
+    dut.io.AXI.R.RREADY.poke(false.B)
+    (data, response)
   }
 
   private def injectUart(
@@ -262,13 +262,13 @@ class ysyx_26030103_InfraComboAuditTest
   ): Unit = {
     for (b <- bytes) {
       var guard = 0
-      while (!bool(dut.io.uartRxReady) && guard < 100) {
+      while (!bool(dut.io.UARTRxReady) && guard < 100) {
         dut.clock.step(); guard += 1
       }
-      dut.io.uartRxValid.poke(true.B)
-      dut.io.uartRxData.poke(b.U)
+      dut.io.UARTRxValid.poke(true.B)
+      dut.io.UARTRxData.poke(b.U)
       dut.clock.step()
-      dut.io.uartRxValid.poke(false.B)
+      dut.io.UARTRxValid.poke(false.B)
     }
     dut.clock.step()
   }
@@ -281,8 +281,8 @@ class ysyx_26030103_InfraComboAuditTest
       lsrResponse should be(0)
       (lsr & 1) should be(BigInt(1))
       for (expected <- Seq(0x11, 0x22, 0x33, 0x44)) {
-        val (data, resp) = uartRead(dut, 0x10000000L, 0)
-        resp should be(0)
+        val (data, response) = uartRead(dut, 0x10000000L, 0)
+        response should be(0)
         (data & 0xff) should be(BigInt(expected))
       }
       val (lsrEmpty, _) = uartRead(dut, 0x10000005L, 0)
@@ -295,10 +295,10 @@ class ysyx_26030103_InfraComboAuditTest
       setupRam(dut)
       injectUart(dut, (0 until 64).map(i => (i + 1) & 0xff))
       // FIFO 已满，仍注入一字节：rxReady 为低，但 overrun 必须置位。
-      dut.io.uartRxValid.poke(true.B)
-      dut.io.uartRxData.poke(0xee.U)
+      dut.io.UARTRxValid.poke(true.B)
+      dut.io.UARTRxData.poke(0xee.U)
       dut.clock.step()
-      dut.io.uartRxValid.poke(false.B)
+      dut.io.UARTRxValid.poke(false.B)
       dut.clock.step()
       val (lsr, _) = uartRead(dut, 0x10000005L, 0)
       ((lsr >> 1) & 1) should be(BigInt(1))

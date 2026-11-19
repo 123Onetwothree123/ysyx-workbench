@@ -64,7 +64,7 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
       dut: ysyx_26030103_LSU,
       address: Long
   ): Unit = {
-    val addrWidth = dut.io.in.bits.ALUResult.getWidth
+    val AddressWidth = dut.io.in.bits.ALUResult.getWidth
     dut.io.in.bits.poke(0.U.asTypeOf(chiselTypeOf(dut.io.in.bits)))
     dut.io.in.bits.Retire.poke(true.B)
     dut.io.in.bits.RegisterWrite.poke(true.B)
@@ -73,10 +73,10 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
     dut.io.in.bits.MemoryValid.poke(true.B)
     dut.io.in.bits.MemoryWrite.poke(false.B)
     dut.io.in.bits.IsAtomic.poke(false.B)
-    dut.io.in.bits.ALUResult.poke(address.U(addrWidth.W))
-    dut.io.in.bits.VAddress.poke(address.U(addrWidth.W))
+    dut.io.in.bits.ALUResult.poke(address.U(AddressWidth.W))
+    dut.io.in.bits.VAddress.poke(address.U(AddressWidth.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
-    dut.io.in.bits.pc.poke(0x80000000L.U(addrWidth.W))
+    dut.io.in.bits.PC.poke(0x80000000L.U(AddressWidth.W))
   }
 
   private def pokeAtomic(
@@ -85,7 +85,7 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
       address: Long,
       rhs: BigInt
   ): Unit = {
-    val addrWidth = dut.io.in.bits.ALUResult.getWidth
+    val AddressWidth = dut.io.in.bits.ALUResult.getWidth
     dut.io.in.bits.poke(0.U.asTypeOf(chiselTypeOf(dut.io.in.bits)))
     dut.io.in.bits.Retire.poke(true.B)
     dut.io.in.bits.RegisterWrite.poke(true.B)
@@ -95,11 +95,11 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
     dut.io.in.bits.MemoryWrite.poke(true.B)
     dut.io.in.bits.IsAtomic.poke(true.B)
     dut.io.in.bits.AtomicOp.poke(op.U(5.W))
-    dut.io.in.bits.ALUResult.poke(address.U(addrWidth.W))
-    dut.io.in.bits.VAddress.poke(address.U(addrWidth.W))
+    dut.io.in.bits.ALUResult.poke(address.U(AddressWidth.W))
+    dut.io.in.bits.VAddress.poke(address.U(AddressWidth.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
     dut.io.in.bits.StoreData.poke(rhs.U(dut.io.in.bits.StoreData.getWidth.W))
-    dut.io.in.bits.pc.poke(0x80000000L.U(addrWidth.W))
+    dut.io.in.bits.PC.poke(0x80000000L.U(AddressWidth.W))
   }
 
   private def acceptInput(
@@ -233,17 +233,17 @@ class ysyx_26030103_LSUAtomicDCacheAuditTest
       dut.io.DataBus.AW.AWREADY.poke(true.B)
       dut.io.DataBus.W.WREADY.poke(true.B)
       cycles = 0
-      var awDone = false
+      var AWDone = false
       var wDone = false
-      while ((!awDone || !wDone) && cycles < 40) {
+      while ((!AWDone || !wDone) && cycles < 40) {
         if (bool(dut.io.DataBus.AW.AWVALID)) {
           long(dut.io.DataBus.AW.AWADDR) should be(AtomicAddress)
-          awDone = true
+          AWDone = true
         }
         if (bool(dut.io.DataBus.W.WVALID)) { wDone = true }
         clock.step(); cycles += 1
       }
-      withClue("AMO AW/W 未握手") { (awDone && wDone) should be(true) }
+      withClue("AMO AW/W 未握手") { (AWDone && wDone) should be(true) }
       dut.io.DataBus.AW.AWREADY.poke(false.B)
       dut.io.DataBus.W.WREADY.poke(false.B)
       dut.io.DataBus.B.BVALID.poke(true.B)

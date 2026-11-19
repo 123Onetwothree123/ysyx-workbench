@@ -21,33 +21,33 @@ class ysyx_26030103_UARTWindowAuditTest extends AnyFlatSpec with Matchers {
     dut.io.hostWriteValid.poke(false.B)
     dut.io.hostWriteIndex.poke(0.U)
     dut.io.hostWriteData.poke(0.U)
-    dut.io.uartRxValid.poke(false.B)
-    dut.io.uartRxData.poke(0.U)
+    dut.io.UARTRxValid.poke(false.B)
+    dut.io.UARTRxData.poke(0.U)
 
-    dut.io.axi.AW.AWVALID.poke(false.B)
-    dut.io.axi.AW.AWADDR.poke(0.U)
-    dut.io.axi.AW.AWID.poke(0.U)
-    dut.io.axi.AW.AWLEN.poke(0.U)
-    dut.io.axi.AW.AWSIZE.poke(2.U)
-    dut.io.axi.AW.AWBURST.poke(0.U)
-    dut.io.axi.AW.AWPROT.poke(0.U)
-    dut.io.axi.AW.AWCACHE.poke(0.U)
-    dut.io.axi.AW.AWQOS.poke(0.U)
-    dut.io.axi.W.WVALID.poke(false.B)
-    dut.io.axi.W.WDATA.poke(0.U)
-    dut.io.axi.W.WSTRB.poke(0.U)
-    dut.io.axi.W.WLAST.poke(false.B)
-    dut.io.axi.B.BREADY.poke(false.B)
-    dut.io.axi.AR.ARVALID.poke(false.B)
-    dut.io.axi.AR.ARADDR.poke(0.U)
-    dut.io.axi.AR.ARID.poke(0.U)
-    dut.io.axi.AR.ARLEN.poke(0.U)
-    dut.io.axi.AR.ARSIZE.poke(2.U)
-    dut.io.axi.AR.ARBURST.poke(0.U)
-    dut.io.axi.AR.ARPROT.poke(0.U)
-    dut.io.axi.AR.ARCACHE.poke(0.U)
-    dut.io.axi.AR.ARQOS.poke(0.U)
-    dut.io.axi.R.RREADY.poke(false.B)
+    dut.io.AXI.AW.AWVALID.poke(false.B)
+    dut.io.AXI.AW.AWADDR.poke(0.U)
+    dut.io.AXI.AW.AWID.poke(0.U)
+    dut.io.AXI.AW.AWLEN.poke(0.U)
+    dut.io.AXI.AW.AWSIZE.poke(2.U)
+    dut.io.AXI.AW.AWBURST.poke(0.U)
+    dut.io.AXI.AW.AWPROT.poke(0.U)
+    dut.io.AXI.AW.AWCACHE.poke(0.U)
+    dut.io.AXI.AW.AWQOS.poke(0.U)
+    dut.io.AXI.W.WVALID.poke(false.B)
+    dut.io.AXI.W.WDATA.poke(0.U)
+    dut.io.AXI.W.WSTRB.poke(0.U)
+    dut.io.AXI.W.WLAST.poke(false.B)
+    dut.io.AXI.B.BREADY.poke(false.B)
+    dut.io.AXI.AR.ARVALID.poke(false.B)
+    dut.io.AXI.AR.ARADDR.poke(0.U)
+    dut.io.AXI.AR.ARID.poke(0.U)
+    dut.io.AXI.AR.ARLEN.poke(0.U)
+    dut.io.AXI.AR.ARSIZE.poke(2.U)
+    dut.io.AXI.AR.ARBURST.poke(0.U)
+    dut.io.AXI.AR.ARPROT.poke(0.U)
+    dut.io.AXI.AR.ARCACHE.poke(0.U)
+    dut.io.AXI.AR.ARQOS.poke(0.U)
+    dut.io.AXI.R.RREADY.poke(false.B)
   }
 
   private def read(
@@ -55,39 +55,39 @@ class ysyx_26030103_UARTWindowAuditTest extends AnyFlatSpec with Matchers {
       addr: Long,
       size: Int
   ): (BigInt, Int) = {
-    dut.io.axi.AR.ARVALID.poke(true.B)
-    dut.io.axi.AR.ARADDR.poke(addr.U)
-    dut.io.axi.AR.ARID.poke(0.U)
-    dut.io.axi.AR.ARLEN.poke(0.U)
-    dut.io.axi.AR.ARSIZE.poke(size.U)
-    dut.io.axi.AR.ARBURST.poke(0.U)
-    dut.io.axi.AR.ARPROT.poke(0.U)
-    dut.io.axi.AR.ARCACHE.poke(0.U)
-    dut.io.axi.AR.ARQOS.poke(0.U)
-    dut.io.axi.R.RREADY.poke(true.B)
+    dut.io.AXI.AR.ARVALID.poke(true.B)
+    dut.io.AXI.AR.ARADDR.poke(addr.U)
+    dut.io.AXI.AR.ARID.poke(0.U)
+    dut.io.AXI.AR.ARLEN.poke(0.U)
+    dut.io.AXI.AR.ARSIZE.poke(size.U)
+    dut.io.AXI.AR.ARBURST.poke(0.U)
+    dut.io.AXI.AR.ARPROT.poke(0.U)
+    dut.io.AXI.AR.ARCACHE.poke(0.U)
+    dut.io.AXI.AR.ARQOS.poke(0.U)
+    dut.io.AXI.R.RREADY.poke(true.B)
 
     var cycles = 0
-    while (!bool(dut.io.axi.R.RVALID) && cycles < 100) {
+    while (!bool(dut.io.AXI.R.RVALID) && cycles < 100) {
       dut.clock.step()
       cycles += 1
     }
-    bool(dut.io.axi.R.RVALID) should be(true)
-    val data = dut.io.axi.R.RDATA.peek().litValue
-    val resp = dut.io.axi.R.RRESP.peek().litValue.toInt
-    dut.io.axi.AR.ARVALID.poke(false.B)
+    bool(dut.io.AXI.R.RVALID) should be(true)
+    val data = dut.io.AXI.R.RDATA.peek().litValue
+    val response = dut.io.AXI.R.RRESP.peek().litValue.toInt
+    dut.io.AXI.AR.ARVALID.poke(false.B)
     dut.clock.step()
-    dut.io.axi.R.RREADY.poke(false.B)
-    (data, resp)
+    dut.io.AXI.R.RREADY.poke(false.B)
+    (data, response)
   }
 
   "UART window" should "拒绝 0x10000008 别名读且不弹出 RX FIFO" in {
     simulate(new riscv32e_npc_AXIRAM(4096)) { dut =>
       setup(dut)
 
-      dut.io.uartRxValid.poke(true.B)
-      dut.io.uartRxData.poke("h5a".U)
+      dut.io.UARTRxValid.poke(true.B)
+      dut.io.UARTRxData.poke("h5a".U)
       dut.clock.step()
-      dut.io.uartRxValid.poke(false.B)
+      dut.io.UARTRxValid.poke(false.B)
       dut.clock.step()
 
       // 0x08 在 16550 寄存器窗口之外，不能别名成 RBR 并触发 FIFO 弹出。

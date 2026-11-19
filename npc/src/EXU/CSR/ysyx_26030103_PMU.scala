@@ -30,9 +30,9 @@ class ysyx_26030103_PMU(
   val io = IO(new Bundle {
     val events = Input(UInt(eventBusWidth.W))
     val privilege = Input(UInt(2.W))
-    val csrAddress = Input(UInt(12.W))
-    val csrWriteEnable = Input(Bool())
-    val csrWriteData = Input(UInt(XLEN.W))
+    val CSRAddress = Input(UInt(12.W))
+    val CSRWriteEnable = Input(Bool())
+    val CSRWriteData = Input(UInt(XLEN.W))
     val mcountinhibit = Input(UInt(32.W))
     // S 模式可见的 scountovf 位必须受 mcounteren 门控；M 模式保持完整视图。
     val counteren = Input(UInt(32.W))
@@ -54,16 +54,16 @@ class ysyx_26030103_PMU(
     val userLowAddress = (0xc03 + index).U(12.W)
     val userHighAddress = (0xc83 + index).U(12.W)
     val eventAddress = (eventBase + index).U(12.W)
-    val eventWrite = io.csrWriteEnable && io.csrAddress === eventAddress
-    val lowWrite = io.csrWriteEnable && io.csrAddress === lowAddress
+    val eventWrite = io.CSRWriteEnable && io.CSRAddress === eventAddress
+    val lowWrite = io.CSRWriteEnable && io.CSRAddress === lowAddress
     val highWrite =
-      if (XLEN == 32) io.csrWriteEnable && io.csrAddress === highAddress else false.B
+      if (XLEN == 32) io.CSRWriteEnable && io.CSRAddress === highAddress else false.B
 
-    val eventID = events(index)(7, 0)
+    val EventID = events(index)(7, 0)
     val eventHighZero =
       events(index)(7, 5) === 0.U && events(index)(15, 8) === 0.U
     val eventIndex = events(index)(4, 0)
-    val eventFire = eventID =/= 0.U && eventHighZero && io.events(eventIndex)
+    val eventFire = EventID =/= 0.U && eventHighZero && io.events(eventIndex)
     val modeInhibit =
       if (EnableSscofpmf)
         Mux(io.privilege === 3.U, events(index)(minhBit),
@@ -76,7 +76,7 @@ class ysyx_26030103_PMU(
       counters(index) === "hffffffffffffffff".U(64.W)
 
     when(eventWrite) {
-      events(index) := io.csrWriteData
+      events(index) := io.CSRWriteData
     }.elsewhen(overflow) {
       events(index) := events(index) | ofMask
     }.elsewhen(io.lcofiClear) {
@@ -86,26 +86,26 @@ class ysyx_26030103_PMU(
 
     when(lowWrite) {
       if (XLEN == 64) {
-        counters(index) := io.csrWriteData
+        counters(index) := io.CSRWriteData
       } else {
-        counters(index) := Cat(counters(index)(63, 32), io.csrWriteData(31, 0))
+        counters(index) := Cat(counters(index)(63, 32), io.CSRWriteData(31, 0))
       }
     }.elsewhen(highWrite) {
-      counters(index) := Cat(io.csrWriteData(31, 0), counters(index)(31, 0))
+      counters(index) := Cat(io.CSRWriteData(31, 0), counters(index)(31, 0))
     }.elsewhen(increment) {
       counters(index) := counters(index) + 1.U
     }
 
-    when(io.csrAddress === lowAddress || io.csrAddress === userLowAddress) {
+    when(io.CSRAddress === lowAddress || io.CSRAddress === userLowAddress) {
       readData := (if (XLEN == 64) counters(index)
                    else counters(index)(31, 0))
     }
     if (XLEN == 32) {
-      when(io.csrAddress === highAddress || io.csrAddress === userHighAddress) {
+      when(io.CSRAddress === highAddress || io.CSRAddress === userHighAddress) {
         readData := counters(index)(63, 32)
       }
     }
-    when(io.csrAddress === eventAddress) {
+    when(io.CSRAddress === eventAddress) {
       readData := events(index)
     }
     overflowBits(index) := events(index)(ofBit)
@@ -120,7 +120,7 @@ class ysyx_26030103_PMU(
   val scountovfWide =
     if (XLEN == 32) visibleScountovf
     else Cat(0.U((XLEN - 32).W), visibleScountovf)
-  when(io.csrAddress === countOvf.U(12.W)) {
+  when(io.CSRAddress === countOvf.U(12.W)) {
     readData := scountovfWide
   }
   io.readData := readData

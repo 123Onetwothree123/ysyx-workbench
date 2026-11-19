@@ -4,8 +4,7 @@ module;
 module BTFNSplitJal;
 Prediction BTFNSplitJal::predict(Addr pc) const
 {
-    // 与硬件一致: 取指时不知道指令类型, 两张表同时按PC查
-    // jal表Jal/Call表项: 目标静态必正确; Ret表项: 目标是上次返回地址(接受校验, 通常不准)
+    // 两张表同时查；jal 表命中即 taken。
     if (auto h{jal_btb.lookup(pc)})
         return {true, true, h->target};
     auto hit{btb.lookup(pc)};
@@ -16,8 +15,7 @@ Prediction BTFNSplitJal::predict(Addr pc) const
 void BTFNSplitJal::update(Addr pc, bool taken, Addr target, BranchKind kind,
                           std::uint32_t)
 {
-    // 与当前RTL一致：普通间接call也用本次解析出的实际目标
-    // 训练独立JAL BTB，使稳定函数指针的后续调用可命中。
+    // 间接 call 用实际目标训练 jal BTB。
     if (kind == BranchKind::Jal || kind == BranchKind::Call || kind == BranchKind::Ret)
         jal_btb.update(pc, target, kind);
     else if (kind == BranchKind::JalrCall)

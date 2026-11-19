@@ -23,7 +23,7 @@ public:
     void SetPC(std::size_t InputPC) noexcept;
     void SetHasPC(bool InputHasPC) noexcept;
     const std::string &GetExpression() const noexcept;
-    void SetExpression(const std::string &InputExpression) noexcept;
+    void SetExpression(const std::string &InputExpression);
     std::size_t GetOldValue() const noexcept;
     void SetOldValue(std::size_t InputOldValue) noexcept;
 };

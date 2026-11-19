@@ -8,7 +8,7 @@ export struct stats
     std::size_t read_hits{};
     std::size_t writes{};
     std::size_t write_hits{};
-    // 为保持旧CSV schema保留；write-through RTL不产生脏块，因此始终为0。
+    // write-through 无脏块，保留字段恒为 0。
     std::size_t writebacks{};
 
     [[nodiscard]] auto Misses() const -> std::size_t;

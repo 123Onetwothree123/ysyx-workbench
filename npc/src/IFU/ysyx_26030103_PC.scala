@@ -3,7 +3,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 class ysyx_26030103_PC(
-    resetAddress: Long = ysyx_26030103_PMAOptions.Default.socResetAddress,
+    resetAddress: Long = ysyx_26030103_PMAOptions.Default.SOCResetAddress,
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"PC XLEN 非法: $XLEN")
@@ -12,9 +12,9 @@ class ysyx_26030103_PC(
     val PCEnable = Input(Bool())
     val ysyx_26030103_PC = Output(UInt(XLEN.W))
   })
-  val pcReg = RegInit(resetAddress.U(XLEN.W))
+  val PCReg = RegInit(resetAddress.U(XLEN.W))
   when(io.PCEnable) {
-    pcReg := io.ysyx_26030103_NextPC
+    PCReg := io.ysyx_26030103_NextPC
   }
-  io.ysyx_26030103_PC := pcReg
+  io.ysyx_26030103_PC := PCReg
 }

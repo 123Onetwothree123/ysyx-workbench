@@ -102,25 +102,25 @@ class ysyx_26030103_ICacheDMASnoopTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U)
-    io.fetch_vaddr.poke(0.U)
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U)
-    io.fetch_valid.poke(false.B)
-    io.resp_ready.poke(false.B)
-    io.axi.AR.ARREADY.poke(false.B)
-    io.axi.R.RDATA.poke(0.U)
-    io.axi.R.RRESP.poke(0.U)
-    io.axi.R.RLAST.poke(false.B)
-    io.axi.R.RVALID.poke(false.B)
+    io.FetchAddress.poke(0.U)
+    io.FetchVaddr.poke(0.U)
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchPaddrVaddr.poke(0.U)
+    io.FetchValid.poke(false.B)
+    io.ResponseReady.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
+    io.AXI.R.RDATA.poke(0.U)
+    io.AXI.R.RRESP.poke(0.U)
+    io.AXI.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
     io.flush.poke(false.B)
     io.kill.poke(false.B)
-    io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U)
-    io.snoop_addr_hi.poke(0.U)
-    io.dma_snoop_valid.poke(false.B)
-    io.dma_snoop_start.poke(0.U)
-    io.dma_snoop_end.poke(0.U)
+    io.SnoopValid.poke(false.B)
+    io.SnoopAddress.poke(0.U)
+    io.SnoopAddressHi.poke(0.U)
+    io.DMASnoopValid.poke(false.B)
+    io.DMASnoopStart.poke(0.U)
+    io.DMASnoopEnd.poke(0.U)
   }
 
   private def issueFetch(
@@ -128,14 +128,14 @@ class ysyx_26030103_ICacheDMASnoopTest extends AnyFlatSpec with Matchers {
     clock: Clock,
     addr:  Long
   ): Unit = {
-    io.fetch_addr.poke(addr.U)
-    io.fetch_vaddr.poke(addr.U)
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(addr.U)
-    io.fetch_valid.poke(true.B)
-    waitUntil(clock, bool(io.fetch_ready), s"ICache 未受理 0x${addr.toHexString}")
+    io.FetchAddress.poke(addr.U)
+    io.FetchVaddr.poke(addr.U)
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchPaddrVaddr.poke(addr.U)
+    io.FetchValid.poke(true.B)
+    waitUntil(clock, bool(io.FetchReady), s"ICache 未受理 0x${addr.toHexString}")
     clock.step()
-    io.fetch_valid.poke(false.B)
+    io.FetchValid.poke(false.B)
   }
 
   private def refill(
@@ -146,22 +146,22 @@ class ysyx_26030103_ICacheDMASnoopTest extends AnyFlatSpec with Matchers {
     label:  String,
     oldMem: Option[Memory] = None
   ): Unit = {
-    waitUntil(clock, bool(io.axi.AR.ARVALID), s"$label 没有 refill AR")
-    long(io.axi.AR.ARADDR) should be(line)
-    val beats = long(io.axi.AR.ARLEN).toInt + 1
-    io.axi.AR.ARREADY.poke(true.B)
+    waitUntil(clock, bool(io.AXI.AR.ARVALID), s"$label 没有 refill AR")
+    long(io.AXI.AR.ARADDR) should be(line)
+    val beats = long(io.AXI.AR.ARLEN).toInt + 1
+    io.AXI.AR.ARREADY.poke(true.B)
     clock.step()
-    io.axi.AR.ARREADY.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
     for (beat <- 0 until beats) {
       val source = oldMem.getOrElse(mem)
-      io.axi.R.RDATA.poke(source.read(line + beat.toLong * 4L).U)
-      io.axi.R.RRESP.poke(0.U)
-      io.axi.R.RLAST.poke((beat + 1 == beats).B)
-      io.axi.R.RVALID.poke(true.B)
+      io.AXI.R.RDATA.poke(source.read(line + beat.toLong * 4L).U)
+      io.AXI.R.RRESP.poke(0.U)
+      io.AXI.R.RLAST.poke((beat + 1 == beats).B)
+      io.AXI.R.RVALID.poke(true.B)
       clock.step()
     }
-    io.axi.R.RVALID.poke(false.B)
-    io.axi.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
+    io.AXI.R.RLAST.poke(false.B)
   }
 
   private def expectResponse(
@@ -170,12 +170,12 @@ class ysyx_26030103_ICacheDMASnoopTest extends AnyFlatSpec with Matchers {
     data:  Long,
     label: String
   ): Unit = {
-    waitUntil(clock, bool(io.resp_valid), s"$label 没有取指响应")
-    withClue(s"$label 取指数据错误") { long(io.resp_data) should be(data) }
-    bool(io.resp_fault) should be(false)
-    io.resp_ready.poke(true.B)
+    waitUntil(clock, bool(io.ResponseValid), s"$label 没有取指响应")
+    withClue(s"$label 取指数据错误") { long(io.ResponseData) should be(data) }
+    bool(io.ResponseFault) should be(false)
+    io.ResponseReady.poke(true.B)
     clock.step()
-    io.resp_ready.poke(false.B)
+    io.ResponseReady.poke(false.B)
   }
 
   private def fetchExpectHit(
@@ -187,7 +187,7 @@ class ysyx_26030103_ICacheDMASnoopTest extends AnyFlatSpec with Matchers {
   ): Unit = {
     issueFetch(io, clock, addr)
     for (_ <- 0 until 3) {
-      bool(io.axi.AR.ARVALID) should be(false)
+      bool(io.AXI.AR.ARVALID) should be(false)
       clock.step()
     }
     expectResponse(io, clock, data, label)
@@ -212,12 +212,12 @@ class ysyx_26030103_ICacheDMASnoopTest extends AnyFlatSpec with Matchers {
     lo:    Long,
     hi:    Long
   ): Unit = {
-    io.dma_snoop_start.poke(lo.U)
-    io.dma_snoop_end.poke(hi.U)
-    io.dma_snoop_valid.poke(true.B)
-    waitUntil(clock, bool(io.dma_snoop_ready), "ICache DMA snoop 未 ready")
+    io.DMASnoopStart.poke(lo.U)
+    io.DMASnoopEnd.poke(hi.U)
+    io.DMASnoopValid.poke(true.B)
+    waitUntil(clock, bool(io.DMASnoopReady), "ICache DMA snoop 未 ready")
     clock.step()
-    io.dma_snoop_valid.poke(false.B)
+    io.DMASnoopValid.poke(false.B)
   }
 
   private def runHitInvalidate(
@@ -296,38 +296,38 @@ class ysyx_26030103_ICacheDMASnoopTest extends AnyFlatSpec with Matchers {
       // 先失效，让下一次取指启动一笔会读到旧数据的 refill。
       pulseSnoop(io, clock, line, line + lineSize - 1L)
       issueFetch(io, clock, line)
-      waitUntil(clock, bool(io.axi.AR.ARVALID), "in-flight 没有 AR")
-      val beats  = long(io.axi.AR.ARLEN).toInt + 1
-      io.axi.AR.ARREADY.poke(true.B)
+      waitUntil(clock, bool(io.AXI.AR.ARVALID), "in-flight 没有 AR")
+      val beats  = long(io.AXI.AR.ARLEN).toInt + 1
+      io.AXI.AR.ARREADY.poke(true.B)
       clock.step()
-      io.axi.AR.ARREADY.poke(false.B)
+      io.AXI.AR.ARREADY.poke(false.B)
 
       // 回一个旧 word，可能已经 early-restart 出旧响应。
-      io.axi.R.RDATA.poke(oldMem.read(line).U)
-      io.axi.R.RRESP.poke(0.U)
-      io.axi.R.RLAST.poke((beats == 1).B)
-      io.axi.R.RVALID.poke(true.B)
+      io.AXI.R.RDATA.poke(oldMem.read(line).U)
+      io.AXI.R.RRESP.poke(0.U)
+      io.AXI.R.RLAST.poke((beats == 1).B)
+      io.AXI.R.RVALID.poke(true.B)
       clock.step()
-      io.axi.R.RVALID.poke(false.B)
+      io.AXI.R.RVALID.poke(false.B)
 
       mem.write(line, 0x44444413L)
-      io.dma_snoop_start.poke(line.U)
-      io.dma_snoop_end.poke((line + lineSize - 1L).U)
-      io.dma_snoop_valid.poke(true.B)
+      io.DMASnoopStart.poke(line.U)
+      io.DMASnoopEnd.poke((line + lineSize - 1L).U)
+      io.DMASnoopValid.poke(true.B)
       // 旧 refill 未排空前 DMA B 必须等待。
-      bool(io.dma_snoop_ready) should be(false)
+      bool(io.DMASnoopReady) should be(false)
       for (beat <- 1 until beats) {
-        io.axi.R.RDATA.poke(0xdeadbeefL.U)
-        io.axi.R.RRESP.poke(0.U)
-        io.axi.R.RLAST.poke((beat + 1 == beats).B)
-        io.axi.R.RVALID.poke(true.B)
+        io.AXI.R.RDATA.poke(0xdeadbeefL.U)
+        io.AXI.R.RRESP.poke(0.U)
+        io.AXI.R.RLAST.poke((beat + 1 == beats).B)
+        io.AXI.R.RVALID.poke(true.B)
         clock.step()
       }
-      io.axi.R.RVALID.poke(false.B)
-      io.axi.R.RLAST.poke(false.B)
-      waitUntil(clock, bool(io.dma_snoop_ready), "in-flight snoop 未完成")
+      io.AXI.R.RVALID.poke(false.B)
+      io.AXI.R.RLAST.poke(false.B)
+      waitUntil(clock, bool(io.DMASnoopReady), "in-flight snoop 未完成")
       clock.step()
-      io.dma_snoop_valid.poke(false.B)
+      io.DMASnoopValid.poke(false.B)
 
       // 自动重取必须读到新指令。
       refill(io, clock, line, mem, s"$kind/${lineSize}B replay")

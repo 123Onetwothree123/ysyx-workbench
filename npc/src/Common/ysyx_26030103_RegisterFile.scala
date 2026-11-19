@@ -15,8 +15,8 @@ class ysyx_26030103_RegisterFile(
     val rdata1 = Output(UInt(DATA_WIDTH.W))
     val raddr2 = Input(UInt(ADDR_WIDTH.W))
     val rdata2 = Output(UInt(DATA_WIDTH.W))
-    val debug_raddr = Input(UInt(ADDR_WIDTH.W))
-    val debug_rdata = Output(UInt(DATA_WIDTH.W))
+    val DebugRaddr = Input(UInt(ADDR_WIDTH.W))
+    val DebugRdata = Output(UInt(DATA_WIDTH.W))
   })
   val registers = Reg(Vec(1 << ADDR_WIDTH, UInt(DATA_WIDTH.W)))
   when(io.wen) {
@@ -25,15 +25,15 @@ class ysyx_26030103_RegisterFile(
   io.rdata1 := registers(io.raddr1)
   io.rdata2 := registers(io.raddr2)
   if (EnableDynamicDebug) {
-    io.debug_rdata := Mux(
-      io.debug_raddr === 0.U,
+    io.DebugRdata := Mux(
+      io.DebugRaddr === 0.U,
       0.U(DATA_WIDTH.W),
-      registers(io.debug_raddr)
+      registers(io.DebugRaddr)
     )
   } else {
     // custom halt 始终只需 a0。关闭 SDB/DiffTest 时让既有 ABI 的读数据
     // 固定直连 a0，既保留 GOOD/BAD trap，又不会综合出第三个动态读 mux。
-    io.debug_rdata := (if ((1 << ADDR_WIDTH) > 10) {
+    io.DebugRdata := (if ((1 << ADDR_WIDTH) > 10) {
       registers(10.U)
     } else {
       0.U(DATA_WIDTH.W)

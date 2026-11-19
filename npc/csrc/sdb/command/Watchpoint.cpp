@@ -43,7 +43,7 @@ const std::string &Watchpoint::GetExpression() const noexcept
 {
     return expression;
 }
-void Watchpoint::SetExpression(const std::string &InputExpression) noexcept
+void Watchpoint::SetExpression(const std::string &InputExpression)
 {
     this->expression = InputExpression;
 }

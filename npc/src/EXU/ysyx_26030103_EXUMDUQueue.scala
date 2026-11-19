@@ -9,100 +9,100 @@ import _root_.ysyx_26030103.fpu._
 private[exu] trait EXUMDUQueue { this: ysyx_26030103_EXU =>
   def mduQueueBody(): Unit = {
     if (config.UseM) {
-      val mduUnit = Module(ysyx_26030103_MDU(config))
+      val MDUUnit = Module(ysyx_26030103_MDU(config))
       // MDU请求保存在顺序指令队列中。这样，即使最老结果仍在
       // 等待LSU/WBU级，流水乘法器也能接收连续的M扩展指令。
-      val mduQueueDepth = config.MDUMaxInflight
-      val mduQueuePointerWidth = log2Ceil(mduQueueDepth).max(1)
-      val mduQueueCountWidth = log2Ceil(mduQueueDepth + 1)
-      val mduInstQueue = RegInit(
-        VecInit(Seq.fill(mduQueueDepth)(0.U.asTypeOf(chiselTypeOf(io.in.bits))))
+      val MDUQueueDepth = config.MDUMaxInflight
+      val MDUQueuePointerWidth = log2Ceil(MDUQueueDepth).max(1)
+      val MDUQueueCountWidth = log2Ceil(MDUQueueDepth + 1)
+      val MDUInstQueue = RegInit(
+        VecInit(Seq.fill(MDUQueueDepth)(0.U.asTypeOf(chiselTypeOf(io.in.bits))))
       )
-      val mduQueueHead = RegInit(0.U(mduQueuePointerWidth.W))
-      val mduQueueTail = RegInit(0.U(mduQueuePointerWidth.W))
-      val mduQueueCount = RegInit(0.U(mduQueueCountWidth.W))
-      pendingMDU := mduQueueCount =/= 0.U
-      pendingMDUInst := mduInstQueue(mduQueueHead)
+      val MDUQueueHead = RegInit(0.U(MDUQueuePointerWidth.W))
+      val MDUQueueTail = RegInit(0.U(MDUQueuePointerWidth.W))
+      val MDUQueueCount = RegInit(0.U(MDUQueueCountWidth.W))
+      PendingMDU := MDUQueueCount =/= 0.U
+      PendingMDUInst := MDUInstQueue(MDUQueueHead)
 
       // MDU的Flush必须同时屏蔽旧Resp；访存故障提交时，所有已经
       // 接收的年轻M指令都属于待取消事务。
-      mduUnit.io.Flush := io.MemTrapCommit
-      mduUnit.io.Request.bits.LHS := mduRequestLHS
-      mduUnit.io.Request.bits.RHS := mduRequestRHS
-      mduUnit.io.Request.bits.MDUOp := mduRequestOp
+      MDUUnit.io.Flush := io.MemTrapCommit
+      MDUUnit.io.Request.bits.LHS := MDURequestLHS
+      MDUUnit.io.Request.bits.RHS := MDURequestRHS
+      MDUUnit.io.Request.bits.MDUOp := MDURequestOp
 
-      val mduResponseReady = pendingMDU && io.out.ready &&
-        !io.MemTrapCommit && !blockPendingMDUForMEM
-      mduUnit.io.Response.ready := mduResponseReady
-      mduResponseValid := mduUnit.io.Response.valid
-      mduResponseResult := mduUnit.io.Response.bits.Result
-      mduPerfDivIterations := mduUnit.io.PerfDivIterations
-      mduPerfDivEarlyOut := mduUnit.io.PerfDivEarlyOut
-      mduResponseFire := mduUnit.io.Response.valid && mduResponseReady
-      val mduQueueHasSpace = mduQueueCount < mduQueueDepth.U || mduResponseFire
-      mduRequestReady := isMDUInstruction && !mduInputBlockedByIRQ &&
-        mduQueueHasSpace && mduUnit.io.Request.ready
-      mduUnit.io.Request.valid := io.in.valid && isMDUInstruction &&
-        !mduInputBlockedByIRQ && mduQueueHasSpace && !fpPending
-      mduRequestFire := mduUnit.io.Request.valid && mduUnit.io.Request.ready
-      assert(!mduRequestFire || mduQueueHasSpace, "EXU MDU instruction queue overflow")
+      val MDUResponseReady = PendingMDU && io.out.ready &&
+        !io.MemTrapCommit && !BlockPendingMDUForMEM
+      MDUUnit.io.Response.ready := MDUResponseReady
+      MDUResponseValid := MDUUnit.io.Response.valid
+      MDUResponseResult := MDUUnit.io.Response.bits.Result
+      MDUPerfDivIterations := MDUUnit.io.PerfDivIterations
+      MDUPerfDivEarlyOut := MDUUnit.io.PerfDivEarlyOut
+      MDUResponseFire := MDUUnit.io.Response.valid && MDUResponseReady
+      val MDUQueueHasSpace = MDUQueueCount < MDUQueueDepth.U || MDUResponseFire
+      MDURequestReady := IsMDUInstruction && !MDUInputBlockedByIRQ &&
+        MDUQueueHasSpace && MDUUnit.io.Request.ready
+      MDUUnit.io.Request.valid := io.in.valid && IsMDUInstruction &&
+        !MDUInputBlockedByIRQ && MDUQueueHasSpace && !FPPending
+      MDURequestFire := MDUUnit.io.Request.valid && MDUUnit.io.Request.ready
+      assert(!MDURequestFire || MDUQueueHasSpace, "EXU MDU instruction queue overflow")
       assert(
-        !mduResponseFire || pendingMDU,
+        !MDUResponseFire || PendingMDU,
         "EXU received an MDU response without an instruction"
       )
-      assert(mduQueueCount <= mduQueueDepth.U, "EXU MDU instruction queue overflowed")
+      assert(MDUQueueCount <= MDUQueueDepth.U, "EXU MDU instruction queue overflowed")
 
-      val nextMDUQueueTail = Mux(
-        mduQueueTail === (mduQueueDepth - 1).U,
+      val NextMDUQueueTail = Mux(
+        MDUQueueTail === (MDUQueueDepth - 1).U,
         0.U,
-        mduQueueTail + 1.U
+        MDUQueueTail + 1.U
       )
-      val nextMDUQueueHead = Mux(
-        mduQueueHead === (mduQueueDepth - 1).U,
+      val NextMDUQueueHead = Mux(
+        MDUQueueHead === (MDUQueueDepth - 1).U,
         0.U,
-        mduQueueHead + 1.U
+        MDUQueueHead + 1.U
       )
       when(io.MemTrapCommit) {
-        mduQueueCount := 0.U
-        mduQueueHead := 0.U
-        mduQueueTail := 0.U
-      }.elsewhen(mduRequestFire || mduResponseFire) {
-        when(mduRequestFire) {
-          mduInstQueue(mduQueueTail) := inst
-          mduQueueTail := nextMDUQueueTail
+        MDUQueueCount := 0.U
+        MDUQueueHead := 0.U
+        MDUQueueTail := 0.U
+      }.elsewhen(MDURequestFire || MDUResponseFire) {
+        when(MDURequestFire) {
+          MDUInstQueue(MDUQueueTail) := inst
+          MDUQueueTail := NextMDUQueueTail
         }
-        when(mduResponseFire) {
-          mduQueueHead := nextMDUQueueHead
+        when(MDUResponseFire) {
+          MDUQueueHead := NextMDUQueueHead
         }
-        when(mduRequestFire && !mduResponseFire) {
-          mduQueueCount := mduQueueCount + 1.U
-        }.elsewhen(!mduRequestFire && mduResponseFire) {
-          mduQueueCount := mduQueueCount - 1.U
+        when(MDURequestFire && !MDUResponseFire) {
+          MDUQueueCount := MDUQueueCount + 1.U
+        }.elsewhen(!MDURequestFire && MDUResponseFire) {
+          MDUQueueCount := MDUQueueCount - 1.U
         }
       }
 
       // 现有的单一冒险/转发端口描述MDU队首。为每个更年轻的已排队写入者，
       // 以及当前正在等待入队的MDU输入构建掩码。
-      var hiddenMDUWriteMask: UInt = 0.U(32.W)
-      for (offset <- 1 until mduQueueDepth) {
-        val extendedHead = Cat(0.U(1.W), mduQueueHead)
-        val rawIndex = extendedHead + offset.U((mduQueuePointerWidth + 1).W)
+      var HiddenMDUWriteMask: UInt = 0.U(32.W)
+      for (offset <- 1 until MDUQueueDepth) {
+        val extendedHead = Cat(0.U(1.W), MDUQueueHead)
+        val rawIndex = extendedHead + offset.U((MDUQueuePointerWidth + 1).W)
         val wrappedIndex = Mux(
-          rawIndex >= mduQueueDepth.U,
-          rawIndex - mduQueueDepth.U,
+          rawIndex >= MDUQueueDepth.U,
+          rawIndex - MDUQueueDepth.U,
           rawIndex
         )
-        val entry = mduInstQueue(wrappedIndex(mduQueuePointerWidth - 1, 0))
-        val entryWrites = offset.U < mduQueueCount && entry.RegisterWrite &&
+        val entry = MDUInstQueue(wrappedIndex(MDUQueuePointerWidth - 1, 0))
+        val entryWrites = offset.U < MDUQueueCount && entry.RegisterWrite &&
           entry.Rd =/= 0.U
-        hiddenMDUWriteMask = hiddenMDUWriteMask |
+        HiddenMDUWriteMask = HiddenMDUWriteMask |
           Mux(entryWrites, UIntToOH(entry.Rd, 32), 0.U(32.W))
       }
-      val currentMDUWrite = pendingMDU && io.in.valid && isMDUInstruction &&
+      val CurrentMDUWrite = PendingMDU && io.in.valid && IsMDUInstruction &&
         inst.RegisterWrite && inst.Rd =/= 0.U
-      val currentMDUWriteMask =
-        Mux(currentMDUWrite, UIntToOH(inst.Rd, 32), 0.U(32.W))
-      mduHiddenWriteMask := hiddenMDUWriteMask | currentMDUWriteMask
+      val CurrentMDUWriteMask =
+        Mux(CurrentMDUWrite, UIntToOH(inst.Rd, 32), 0.U(32.W))
+      MDUHiddenWriteMask := HiddenMDUWriteMask | CurrentMDUWriteMask
     }
   }
 }

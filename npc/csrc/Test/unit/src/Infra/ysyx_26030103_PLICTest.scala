@@ -67,7 +67,7 @@ class ysyx_26030103_PLICTest extends AnyFlatSpec with Matchers {
       write(dut, 0x0c200000L, 0)
       dut.sources.poke(2.U)
       dut.clock.step()
-      bool(dut.external_irq) should be(true)
+      bool(dut.ExternalIRQ) should be(true)
       (read(dut, 0x0c001000L) & 3) should be(BigInt(2))
       dut.sources.poke(0.U)
       dut.clock.step()
@@ -84,7 +84,7 @@ class ysyx_26030103_PLICTest extends AnyFlatSpec with Matchers {
       write(dut, 0x0c200000L, 4)
       dut.sources.poke(2.U)
       dut.clock.step()
-      bool(dut.external_irq) should be(false)
+      bool(dut.ExternalIRQ) should be(false)
     }
   }
 
@@ -98,7 +98,7 @@ class ysyx_26030103_PLICTest extends AnyFlatSpec with Matchers {
       write(dut, 0x0c201000L, 0)
       dut.sources.poke(1 << 10) // PLIC source 10
       dut.clock.step()
-      bool(dut.external_irq) should be(true)
+      bool(dut.ExternalIRQ) should be(true)
       // 模拟软件在 claim 前读走 RBR，UART 电平中断撤销。
       dut.sources.poke(0.U)
       read(dut, 0x0c201004L) should be(BigInt(10))

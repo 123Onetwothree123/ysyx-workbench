@@ -1,24 +1,22 @@
 module;
 #include <elf.h>
 module npc.ImageLoader;
+import npc.Output;
 import npc.config;
-import npc.ysyxSoC;
+import npc.SimulationContext;
 
-// CACHE_PADDING 只影响 npc 独立仿真路径（VRISCV32E_NPC）：
-// 镜像内容在内存中整体后移 N 字节，复位 PC 由 Makefile 同步加 N（NPC_RESET_PC）。
-// SoC 路径的启动地址由 RTL 固定，不能在 csrc 侧移动镜像，否则启动会执行到填充字节。
+// CACHE_PADDING 仅 direct-NPC 生效，ResetPC 同步加 padding。
 #ifdef VRISCV32E_NPC
 constexpr std::size_t kCachePadding{npc::CachePadding};
-// 镜像容量必须与 direct-NPC 的 AXI RAM/加载器窗口一致。
+// 镜像容量须与 direct-NPC 的 AXI RAM 窗口一致。
 constexpr std::uintmax_t kImageCapacity{npc::MSize};
 #else
 constexpr std::size_t kCachePadding{0};
 constexpr std::uintmax_t kImageCapacity{npc::SocMSize}; // ysyxSoC MROM window
 #endif
-
 namespace
 {
-// 镜像地址按构建 XLEN 保存：RV32 不允许把 64 位 ELF 地址截成低 32 位。
+// RV32 不允许把 64 位地址截断。
 constexpr npc::XWord kImageBase{npc::MBase};
 
 std::expected<std::vector<std::uint8_t>, std::string> ReadWholeFile(
@@ -47,13 +45,13 @@ std::expected<std::vector<std::uint8_t>, std::string> ReadWholeFile(
     return bytes;
 }
 
-// 将 ELF32/ELF64 的 PT_LOAD 段展开成从 npc::MBase 开始的连续仿真镜像。
-// 物理地址使用 p_paddr；裸机 RISC-V ELF 通常 p_vaddr == p_paddr。
+// PT_LOAD 段展开为从 MBase 开始的连续镜像，使用 p_paddr。
 template <typename Ehdr, typename Phdr>
-std::expected<std::size_t, std::string> LoadElfImage(
+std::expected<std::size_t, std::string> LoadELFImage(
     const std::filesystem::path &Path,
     std::span<const std::uint8_t> File,
-    std::uintmax_t FileSize)
+    std::uintmax_t FileSize,
+    SimulationContext &Context)
 {
     if (File.size() < sizeof(Ehdr))
     {
@@ -74,9 +72,7 @@ std::expected<std::size_t, std::string> LoadElfImage(
     }
     if (header.e_machine != EM_RISCV)
     {
-        return std::unexpected{std::format(
-            "ELF 目标架构不是 RISC-V：e_machine={}",
-            static_cast<unsigned>(header.e_machine))};
+        return std::unexpected{std::format("ELF 目标架构不是 RISC-V：e_machine={}", static_cast<unsigned>(header.e_machine))};
     }
     if (header.e_type != ET_EXEC)
     {
@@ -84,17 +80,13 @@ std::expected<std::size_t, std::string> LoadElfImage(
     }
     if (header.e_phentsize != sizeof(Phdr) || header.e_phnum == 0)
     {
-        return std::unexpected{std::format(
-            "ELF 程序头格式不匹配：e_phentsize={}，期望 {}",
-            static_cast<unsigned>(header.e_phentsize),
-            sizeof(Phdr))};
+        return std::unexpected{std::format("ELF 程序头格式不匹配：e_phentsize={}，期望 {}", static_cast<unsigned>(header.e_phentsize), sizeof(Phdr))};
     }
     if (header.e_phoff > FileSize ||
         header.e_phnum > (FileSize - header.e_phoff) / sizeof(Phdr))
     {
         return std::unexpected{"ELF 程序头表超出文件范围"};
     }
-
     npc::XWord imageEnd{kImageBase};
     const auto hasLoadSegment{[&](const Phdr &Segment) {
         if (Segment.p_type != PT_LOAD || Segment.p_memsz == 0)
@@ -105,7 +97,7 @@ std::expected<std::size_t, std::string> LoadElfImage(
         {
             return false;
         }
-        // RV32 构建收到高位地址的 ELF64 段时必须报错，不能截断后加载。
+        // RV32 收到高位 ELF64 段必须报错，不能截断。
         if (!npc::FitsXWord(Segment.p_paddr) ||
             !npc::FitsXWord(Segment.p_memsz))
         {
@@ -129,22 +121,18 @@ std::expected<std::size_t, std::string> LoadElfImage(
                     sizeof(segment));
         if (!hasLoadSegment(segment))
         {
-            return std::unexpected{std::format(
-                "ELF 程序头 {} 非法（p_filesz/p_memsz/p_paddr 越界）", Index)};
+            return std::unexpected{std::format("ELF 程序头 {} 非法（p_filesz/p_memsz/p_paddr 越界）", Index)};
         }
     }
-
-    if (imageEnd - kImageBase > kImageCapacity)
+    if (imageEnd - kImageBase + kCachePadding > kImageCapacity)
     {
-        return std::unexpected{std::format(
-            "ELF 镜像末端 0x{:x} 超出仿真内存窗口 [{:#x}, {:#x})",
+        return std::unexpected{std::format("ELF 镜像末端 0x{:x} 超出仿真内存窗口 [{:#x}, {:#x})",
             imageEnd,
             kImageBase,
             kImageBase + kImageCapacity)};
     }
-
     std::vector<std::uint8_t> image(
-        static_cast<std::size_t>(imageEnd - kImageBase), 0);
+        static_cast<std::size_t>(imageEnd - kImageBase + kCachePadding), 0);
     for (std::size_t Index{0}; Index < header.e_phnum; ++Index)
     {
         Phdr segment{};
@@ -158,44 +146,43 @@ std::expected<std::size_t, std::string> LoadElfImage(
         if (segment.p_offset > FileSize ||
             segment.p_filesz > FileSize - segment.p_offset)
         {
-            return std::unexpected{std::format(
-                "ELF 段 {} 的文件范围超出镜像大小", Index)};
+            return std::unexpected{std::format("ELF 段 {} 的文件范围超出镜像大小", Index)};
         }
+        // 镜像从 padding 之后开始，ResetPC 也含 padding。
         const auto destination{static_cast<std::size_t>(
-            static_cast<npc::XWord>(segment.p_paddr) - kImageBase)};
+            static_cast<npc::XWord>(segment.p_paddr) - kImageBase +
+            kCachePadding)};
         std::memcpy(image.data() + destination,
                     File.data() + segment.p_offset,
                     static_cast<std::size_t>(segment.p_filesz));
     }
-
-    // 复位 PC 是 RTL 固定值。显式检查入口，避免把入口地址不同的
-    // ELF 当成裸二进制加载后从错误位置开始执行。
+    // 入口须等于 RTL 的 ResetPC。
     if (!npc::FitsXWord(header.e_entry) ||
         static_cast<npc::XWord>(header.e_entry) !=
             static_cast<npc::XWord>(npc::ResetPC))
     {
-        return std::unexpected{std::format(
-            "ELF 入口 0x{:x} 与仿真复位 PC 0x{:x} 不一致",
-            static_cast<std::uint64_t>(header.e_entry),
-            static_cast<std::uint64_t>(npc::ResetPC))};
+        return std::unexpected{std::format("ELF 入口 0x{:x} 与仿真复位 PC 0x{:x} 不一致", static_cast<std::uint64_t>(header.e_entry), static_cast<std::uint64_t>(npc::ResetPC))};
     }
-
-    std::println("ELF 镜像加载完成: {}，{} 个程序头，镜像 {} 字节",
-                 Path.string(),
-                 static_cast<unsigned>(header.e_phnum),
-                 image.size());
-    FlashMemory = std::move(image);
-    mrom = FlashMemory;
-    return static_cast<std::size_t>(imageEnd - kImageBase);
+    Context.Out().Info("ELF 镜像加载完成: {}，{} 个程序头，镜像 {} 字节",
+                       Path.string(),
+                       static_cast<unsigned>(header.e_phnum),
+                       image.size());
+    Context.Flash() = std::move(image);
+    Context.Mrom() = Context.Flash();
+    return Context.Flash().size();
 }
-} // namespace
+}
 
-std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOptions &Options)
+std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(
+    const CLIOptions &Options, SimulationContext &Context)
 {
+    auto &flash{Context.Flash()};
+    auto &mrom{Context.Mrom()};
+    auto &out{Context.Out()};
     const auto &ImageFile{Options.GetImageFile()};
     if (ImageFile)
     {
-        std::println("现在指定了镜像文件");
+        out.Info("现在指定了镜像文件");
         const auto &path{*ImageFile};
         std::error_code error;
         const auto fileStatus{std::filesystem::status(path, error)};
@@ -219,15 +206,9 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOption
         const auto padding{static_cast<std::uintmax_t>(kCachePadding)};
         if (padding > kImageCapacity || FileSize > kImageCapacity - padding)
         {
-            return std::unexpected(std::format(
-                "镜像过大：{} 字节 + {} 字节填充，但当前仿真内存只有 {} 字节",
-                FileSize,
-                kCachePadding,
-                kImageCapacity));
+            return std::unexpected(std::format("镜像过大：{} 字节 + {} 字节填充，但当前仿真内存只有 {} 字节", FileSize, kCachePadding, kImageCapacity));
         }
-
-        // 先探测 ELF 魔数：显式传入 .elf 时按程序头加载，保留原有
-        // 裸 .bin 路径。ELF32 与 ELF64 都支持，由 e_ident[EI_CLASS] 选择。
+        // 按 ELF 魔数选择加载路径，保留裸 .bin。
         {
             std::ifstream probe(path, std::ios::binary);
             std::array<unsigned char, EI_NIDENT> ident{};
@@ -243,35 +224,32 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(const CLIOption
                 }
                 if (ident[EI_CLASS] == ELFCLASS64)
                 {
-                    return LoadElfImage<Elf64_Ehdr, Elf64_Phdr>(
-                        path, *file, FileSize);
+                    return LoadELFImage<Elf64_Ehdr, Elf64_Phdr>(
+                        path, *file, FileSize, Context);
                 }
                 if (ident[EI_CLASS] == ELFCLASS32)
                 {
-                    return LoadElfImage<Elf32_Ehdr, Elf32_Phdr>(
-                        path, *file, FileSize);
+                    return LoadELFImage<Elf32_Ehdr, Elf32_Phdr>(
+                        path, *file, FileSize, Context);
                 }
-                return std::unexpected{std::format(
-                    "不支持的 ELF class：{}",
-                    static_cast<unsigned>(ident[EI_CLASS]))};
+                return std::unexpected{std::format("不支持的 ELF class：{}", static_cast<unsigned>(ident[EI_CLASS]))};
             }
         }
-
         const auto allocationSize{static_cast<std::size_t>(FileSize + padding)};
-        std::ifstream ifs(path, std::ios::binary); // 二进制模式打开文件，避免 Windows 的 \r\n 自动转换
+        std::ifstream ifs(path, std::ios::binary);
         if (!ifs)
         {
             return std::unexpected{std::format("文件打不开{0}", path.string())};
         }
-        FlashMemory.resize(allocationSize); // resize 零初始化，前 kCachePadding 字节即填充
-        ifs.read(reinterpret_cast<char *>(FlashMemory.data() + kCachePadding),
+        flash.resize(allocationSize); // 前 kCachePadding 字节为零填充
+        ifs.read(reinterpret_cast<char *>(flash.data() + kCachePadding),
                  static_cast<std::streamsize>(FileSize));
         if (!ifs)
         {
             return std::unexpected{std::format("读取文件失败{0}", path.string())};
         }
-        mrom = FlashMemory;
-        std::println("文件加载了: {0}, size = {1} bytes, padding = {2} bytes", path.string(), FileSize, kCachePadding);
+        mrom = flash;
+        out.Info("文件加载了: {0}, size = {1} bytes, padding = {2} bytes", path.string(), FileSize, kCachePadding);
         return static_cast<std::size_t>(FileSize);
     }
     return std::unexpected("没有指定镜像文件");

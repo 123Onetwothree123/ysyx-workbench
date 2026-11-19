@@ -1,5 +1,6 @@
 module npc.difftest.difftest;
 import std;
+import npc.Output;
 import npc.config;
 import npc.difftest.DifftestCPUState;
 import npc.difftest.report;
@@ -8,15 +9,49 @@ import npc.NPCTrap;
 import npc.trace.disasm;
 import npc.ysyxSoC;
 import npc.DUT;
+import npc.SimulationContext;
 using namespace npc::difftest::detail;
-void DifftestStep(DUT &dut)
+namespace
+{
+struct Snapshot
+{
+    DifftestCPUState regs;
+    DifftestCSRState csr;
+    std::optional<DifftestFPState> fp;
+};
+struct SnapshotDiff
+{
+    bool regsOk{true};
+    bool csrOk{true};
+    bool fpOk{true};
+    [[nodiscard]] bool Ok() const { return regsOk && csrOk && fpOk; }
+};
+SnapshotDiff CompareSnapshots(const Snapshot &ref, const Snapshot &dut)
+{
+    SnapshotDiff diff;
+    diff.regsOk = ref.regs.CheckRegs(dut.regs);
+    diff.csrOk = CheckCSR(ref.csr, dut.csr);
+    if (ref.fp && dut.fp)
+    {
+        diff.fpOk = ref.fp->Check(*dut.fp);
+    }
+    return diff;
+}
+std::string EventWithSuffix(std::string event, const SnapshotDiff &diff)
+{
+    if (!diff.csrOk) event += "-csr";
+    if (!diff.fpOk) event += "-fp";
+    return event;
+}
+}
+static void DifftestStepImpl(DUT &dut)
 {
     if constexpr (!npc::HasDiffTest)
     {
         static_cast<void>(dut);
         return;
     }
-    if (!Enabled || Failed)
+    if (!State().Enabled || State().Failed)
         return;
     const auto retirePC{ReadRetirePC(dut)};
     const auto before{ReadReferenceState()};
@@ -36,26 +71,22 @@ void DifftestStep(DUT &dut)
                             IsNondeterministicCSR(dut)};
     if (injectResult)
     {
-
-
         auto injectedState{DUTState};
         auto injectedCSR{DUTCSR};
-        REFRegcpy(&injectedState, DifftestCPUState::GetDirectionToRef());
-        REFCSRcpy(&injectedCSR, DifftestCPUState::GetDirectionToRef());
-        if (FPCompareEnabled)
+        State().ref.REFRegcpy(&injectedState, DifftestCPUState::GetDirectionToRef());
+        State().ref.REFCSRcpy(&injectedCSR, DifftestCPUState::GetDirectionToRef());
+        if (State().FPCompareEnabled)
         {
-
-
             auto injectedFP{DifftestFPState::ReadDUTState(dut)};
             injectedFP.PrepareForREF();
-            REFFPRegcpy(&injectedFP, DifftestCPUState::GetDirectionToRef());
+            State().ref.REFFPRegcpy(&injectedFP, DifftestCPUState::GetDirectionToRef());
         }
-        LastDUTCSR = DUTCSR;
-        ++SkipCount;
+        State().LastDUTCSR = DUTCSR;
+        ++State().SkipCount;
         return;
     }
 
-    REFExec(1);
+    State().ref.REFExec(1);
     const auto REFState{ReadReferenceState()};
     const auto REFCSR{ReadReferenceCSR()};
     const bool regsOk{REFState.CheckRegs(DUTState)};
@@ -63,7 +94,7 @@ void DifftestStep(DUT &dut)
     std::optional<DifftestFPState> REFFP;
     std::optional<DifftestFPState> DUTFP;
     bool fpOk{true};
-    if (FPCompareEnabled)
+    if (State().FPCompareEnabled)
     {
         REFFP = ReadReferenceFPState();
         DUTFP = DifftestFPState::ReadDUTState(dut);
@@ -88,7 +119,7 @@ void DifftestStep(DUT &dut)
         ReportMismatch(dut, event, nextPC, std::move(report));
         return;
     }
-    LastDUTCSR = DUTCSR;
+    State().LastDUTCSR = DUTCSR;
 }
 
 void DifftestTrapStep(DUT &dut)
@@ -98,11 +129,21 @@ void DifftestTrapStep(DUT &dut)
         static_cast<void>(dut);
         return;
     }
-    if (!Enabled || Failed)
+    if (!State().Enabled || State().Failed)
         return;
 
     const auto trapPC{ReadTrapPC(dut)};
-    const auto cause{static_cast<std::uint32_t>(dut->debug_trap_cause)};
+    const auto rawCause{static_cast<std::uint32_t>(dut->debug_trap_cause)};
+    // 中断位需从 NPC 的 bit31 转到 NEMU RV64 的 bit63。
+    std::uint64_t cause{rawCause};
+    if constexpr (npc::XLen == 64)
+    {
+        if ((rawCause & 0x80000000U) != 0)
+        {
+            cause = (static_cast<std::uint64_t>(rawCause) & 0x7fffffffULL) |
+                    (1ULL << 63);
+        }
+    }
     const auto before{ReadReferenceState()};
     if (before.GetPC() != trapPC)
     {
@@ -113,24 +154,15 @@ void DifftestTrapStep(DUT &dut)
         return;
     }
 
-
-
-
-
-
     const auto tval{dut.ReadTrapTval()};
     if (dut.HasTrapTvalDebugState())
     {
-        if (REFTrap != nullptr)
+        if (State().ref.REFTrap != nullptr)
         {
-
-
-            REFTrap(cause, trapPC, tval);
+            State().ref.REFTrap(cause, trapPC, tval);
         }
         else if (tval != 0)
         {
-
-
             auto report{MakeBaseReport(dut, "trap-tval-unsupported", true)};
             report.RefPC = before.GetPC();
             FillRefInstruction(report, false,
@@ -141,54 +173,39 @@ void DifftestTrapStep(DUT &dut)
         }
         else
         {
-            REFRaiseIntr(cause);
+            State().ref.REFRaiseIntr(cause);
         }
     }
     else
     {
-
-
-        REFRaiseIntr(cause);
+        State().ref.REFRaiseIntr(cause);
     }
 
-    const auto REFState{ReadReferenceState()};
     const auto target{ReadTrapTarget(dut)};
-    const auto DUTState{ReadDUTStateAtPC(dut, target)};
-    const auto DUTCSR{ReadDUTTrapCSR(dut)};
-    const auto REFCSR{ReadReferenceCSR()};
-    const bool regsOk{REFState.CheckRegs(DUTState)};
-    const bool csrOk{CheckCSR(REFCSR, DUTCSR)};
-    std::optional<DifftestFPState> REFFP;
-    std::optional<DifftestFPState> DUTFP;
-    bool fpOk{true};
-    if (FPCompareEnabled)
+    Snapshot refSnap{ReadReferenceState(), ReadReferenceCSR(), std::nullopt};
+    Snapshot dutSnap{ReadDUTStateAtPC(dut, target), ReadDUTTrapCSR(dut), std::nullopt};
+    if (State().FPCompareEnabled)
     {
-
-
-        REFFP = ReadReferenceFPState();
-        DUTFP = DifftestFPState::ReadDUTState(dut);
-        fpOk = REFFP->Check(*DUTFP);
+        refSnap.fp = ReadReferenceFPState();
+        dutSnap.fp = DifftestFPState::ReadDUTState(dut);
     }
-    if (!regsOk || !csrOk || !fpOk)
+    const auto diff{CompareSnapshots(refSnap, dutSnap)};
+    if (!diff.Ok())
     {
-        std::string event{"trap-post"};
-        if (!csrOk)
-            event += "-csr";
-        if (!fpOk)
-            event += "-fp";
+        const auto event{EventWithSuffix("trap-post", diff)};
         auto report{MakeBaseReport(dut, event, true)};
-        report.RefPC = REFState.GetPC();
-        report.RefState = MakeReportGPRState(REFState);
-        report.DUTState = MakeReportGPRState(DUTState);
-        auto refCSR{MakeReportCSRState(REFCSR)};
-        auto dutCSR{MakeReportCSRState(DUTCSR)};
+        report.RefPC = refSnap.regs.GetPC();
+        report.RefState = MakeReportGPRState(refSnap.regs);
+        report.DUTState = MakeReportGPRState(dutSnap.regs);
+        auto refCSR{MakeReportCSRState(refSnap.csr)};
+        auto dutCSR{MakeReportCSRState(dutSnap.csr)};
         FillTrapTvalCSR(report, refCSR, dutCSR);
         report.RefCSR = std::move(refCSR);
         report.DUTCSR = std::move(dutCSR);
-        if (REFFP && DUTFP)
+        if (refSnap.fp && dutSnap.fp)
         {
-            report.RefFP = MakeReportFPState(*REFFP);
-            report.DUTFP = MakeReportFPState(*DUTFP);
+            report.RefFP = MakeReportFPState(*refSnap.fp);
+            report.DUTFP = MakeReportFPState(*dutSnap.fp);
         }
         FillRefInstruction(
             report, false,
@@ -196,74 +213,88 @@ void DifftestTrapStep(DUT &dut)
         ReportMismatch(dut, event, target, std::move(report));
         return;
     }
-    LastDUTCSR = DUTCSR;
+    State().LastDUTCSR = dutSnap.csr;
 }
 
+void DifftestStep(DUT &dut)
+{
+    try
+    {
+        DifftestStepImpl(dut);
+    }
+    catch (const std::exception &error)
+    {
+        State().Failed = true;
+        dut.Context().Out().Error("DiffTest step 异常：{}", error.what());
+        NPCTrap::Halt(0, 1);
+    }
+}
 
 bool DifftestIsEnabled()
 {
-    return npc::HasDiffTest && Enabled;
+    return npc::HasDiffTest && State().Enabled;
 }
 
-
-bool DifftestFinalCheck(DUT &dut)
+static bool DifftestFinalCheckImpl(DUT &dut)
 {
     if constexpr (!npc::HasDiffTest)
     {
         static_cast<void>(dut);
         return true;
     }
-    if (!Enabled)
+    if (!State().Enabled)
         return true;
-    if (Failed)
+    if (State().Failed)
         return false;
 
-
-
     dut.RefreshCachedArchitecturalState();
-    const auto REFState{ReadReferenceState()};
-    const auto REFCSR{ReadReferenceCSR()};
-    const auto DUTState{DifftestCPUState::ReadDUTState(dut)};
-    const bool regsOk{REFState.CheckRegs(DUTState)};
-    const bool csrOk{CheckCSR(REFCSR, LastDUTCSR)};
-    std::optional<DifftestFPState> REFFP;
-    std::optional<DifftestFPState> DUTFP;
-    bool fpOk{true};
-    if (FPCompareEnabled)
+    Snapshot refSnap{ReadReferenceState(), ReadReferenceCSR(), std::nullopt};
+    Snapshot dutSnap{DifftestCPUState::ReadDUTState(dut), State().LastDUTCSR, std::nullopt};
+    if (State().FPCompareEnabled)
     {
-        REFFP = ReadReferenceFPState();
-        DUTFP = DifftestFPState::ReadDUTState(dut);
-        fpOk = REFFP->Check(*DUTFP);
+        refSnap.fp = ReadReferenceFPState();
+        dutSnap.fp = DifftestFPState::ReadDUTState(dut);
     }
-    if (!regsOk || !csrOk || !fpOk)
+    const auto diff{CompareSnapshots(refSnap, dutSnap)};
+    if (!diff.Ok())
     {
-        std::string event{"final"};
-        if (!csrOk)
-            event += "-csr";
-        if (!fpOk)
-            event += "-fp";
+        const auto event{EventWithSuffix("final", diff)};
         auto report{MakeBaseReport(dut, event, false)};
-        report.RefPC = REFState.GetPC();
-        report.RefState = MakeReportGPRState(REFState);
-        report.DUTState = MakeReportGPRState(DUTState);
+        report.RefPC = refSnap.regs.GetPC();
+        report.RefState = MakeReportGPRState(refSnap.regs);
+        report.DUTState = MakeReportGPRState(dutSnap.regs);
         report.DUTNextPC = report.DUTState->PC;
-        report.RefCSR = MakeReportCSRState(REFCSR);
-        report.DUTCSR = MakeReportCSRState(LastDUTCSR);
-        if (REFFP && DUTFP)
+        report.RefCSR = MakeReportCSRState(refSnap.csr);
+        report.DUTCSR = MakeReportCSRState(dutSnap.csr);
+        if (refSnap.fp && dutSnap.fp)
         {
-            report.RefFP = MakeReportFPState(*REFFP);
-            report.DUTFP = MakeReportFPState(*DUTFP);
+            report.RefFP = MakeReportFPState(*refSnap.fp);
+            report.DUTFP = MakeReportFPState(*dutSnap.fp);
         }
         FillRefInstruction(
             report, false,
             "REF 最后执行的指令（最终检查未再执行）");
-        ReportMismatch(dut, event, DUTState.GetPC(), std::move(report));
+        ReportMismatch(dut, event, dutSnap.regs.GetPC(), std::move(report));
         return false;
     }
-    if (SkipCount != 0)
-        std::println("DiffTest: injected {} MMIO/nondeterministic result(s)", SkipCount);
-    std::println("DiffTest: final state PASS (pc=0x{:0{}x})",
-                 DUTState.GetPC(),
-                 npc::XHexDigits);
-    return !Failed;
+    if (State().SkipCount != 0)
+        dut.Context().Out().Info("DiffTest: injected {} MMIO/nondeterministic result(s)", State().SkipCount);
+    dut.Context().Out().Info("DiffTest: final state PASS (pc=0x{:0{}x})",
+                             dutSnap.regs.GetPC(),
+                             npc::XHexDigits);
+    return !State().Failed;
+}
+
+bool DifftestFinalCheck(DUT &dut)
+{
+    try
+    {
+        return DifftestFinalCheckImpl(dut);
+    }
+    catch (const std::exception &error)
+    {
+        State().Failed = true;
+        dut.Context().Out().Error("DiffTest final check 异常：{}", error.what());
+        return false;
+    }
 }

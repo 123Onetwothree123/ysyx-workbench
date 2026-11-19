@@ -10,9 +10,9 @@ import org.scalatest.matchers.should.Matchers
   *
   * 关注点：
   *   - faultQueueDepth 参数（1..16）的合法性与 elaboration；
-  *   - PMP 拒绝的页表请求只进入 fault 队列、不进入 out.req，并带回原 id；
-  *   - 队列满时 in.req 被反压（in.req.ready=0），队列有空间时继续接收；
-  *   - 未被拒绝的请求走正常 out.req 通路，in.req.ready 跟随 out.req.ready。
+  *   - PMP 拒绝的页表请求只进入 fault 队列、不进入 out.request，并带回原 ID；
+  *   - 队列满时 in.request 被反压（in.request.ready=0），队列有空间时继续接收；
+  *   - 未被拒绝的请求走正常 out.request 通路，in.request.ready 跟随 out.request.ready。
   *
   * PMP 配置约定（与 ysyx_26030103_PMP 一致）：
   *   - cfg = {L, 0, 0, A[1:0], X, W, R}；
@@ -32,15 +32,15 @@ class ysyx_26030103_PTWPMPFilterQueueTest
 
   private def clearPMP(dut: ysyx_26030103_PTWPMPFilter): Unit = {
     for (i <- 0 until 16) {
-      dut.io.cfg(i).poke(0.U(8.W))
-      dut.io.addr(i).poke(0.U(32.W))
+      dut.io.config(i).poke(0.U(8.W))
+      dut.io.address(i).poke(0.U(32.W))
     }
   }
 
   /** entry0 = 4KiB NAPOT @0x80000000，R/W/X，L=0。 */
   private def allowFirst4KiB(dut: ysyx_26030103_PTWPMPFilter): Unit = {
-    dut.io.cfg(0).poke(0x1f.U(8.W))
-    dut.io.addr(0).poke(AllowedNapot.U(32.W))
+    dut.io.config(0).poke(0x1f.U(8.W))
+    dut.io.address(0).poke(AllowedNapot.U(32.W))
   }
 
   private def resetDut(dut: ysyx_26030103_PTWPMPFilter): Unit = {
@@ -48,39 +48,39 @@ class ysyx_26030103_PTWPMPFilterQueueTest
     dut.clock.step(2)
     dut.reset.poke(false.B)
 
-    dut.io.in.req.valid.poke(false.B)
-    dut.io.in.req.bits.id.poke(0.U(4.W))
-    dut.io.in.req.bits.addr.poke(0.U(32.W))
-    dut.io.in.req.bits.write.poke(false.B)
-    dut.io.in.req.bits.data.poke(0.U(32.W))
-    dut.io.in.req.bits.strb.poke(0.U(4.W))
-    dut.io.in.resp.ready.poke(false.B)
+    dut.io.in.request.valid.poke(false.B)
+    dut.io.in.request.bits.ID.poke(0.U(4.W))
+    dut.io.in.request.bits.address.poke(0.U(32.W))
+    dut.io.in.request.bits.write.poke(false.B)
+    dut.io.in.request.bits.data.poke(0.U(32.W))
+    dut.io.in.request.bits.strb.poke(0.U(4.W))
+    dut.io.in.response.ready.poke(false.B)
 
-    dut.io.out.req.ready.poke(true.B)
-    dut.io.out.resp.valid.poke(false.B)
-    dut.io.out.resp.bits.id.poke(0.U(4.W))
-    dut.io.out.resp.bits.data.poke(0.U(32.W))
-    dut.io.out.resp.bits.fault.poke(false.B)
+    dut.io.out.request.ready.poke(true.B)
+    dut.io.out.response.valid.poke(false.B)
+    dut.io.out.response.bits.ID.poke(0.U(4.W))
+    dut.io.out.response.bits.data.poke(0.U(32.W))
+    dut.io.out.response.bits.fault.poke(false.B)
 
     clearPMP(dut)
   }
 
   private def setRequest(
       dut: ysyx_26030103_PTWPMPFilter,
-      id: Int,
+      ID: Int,
       addr: Long,
       write: Boolean = false
   ): Unit = {
-    dut.io.in.req.valid.poke(true.B)
-    dut.io.in.req.bits.id.poke(id.U(4.W))
-    dut.io.in.req.bits.addr.poke(addr.U(32.W))
-    dut.io.in.req.bits.write.poke(write.B)
-    dut.io.in.req.bits.data.poke(0.U(32.W))
-    dut.io.in.req.bits.strb.poke(0xf.U(4.W))
+    dut.io.in.request.valid.poke(true.B)
+    dut.io.in.request.bits.ID.poke(ID.U(4.W))
+    dut.io.in.request.bits.address.poke(addr.U(32.W))
+    dut.io.in.request.bits.write.poke(write.B)
+    dut.io.in.request.bits.data.poke(0.U(32.W))
+    dut.io.in.request.bits.strb.poke(0xf.U(4.W))
   }
 
   private def clearRequest(dut: ysyx_26030103_PTWPMPFilter): Unit =
-    dut.io.in.req.valid.poke(false.B)
+    dut.io.in.request.valid.poke(false.B)
 
   "PTWPMPFilter" should "在 faultQueueDepth=1/8/16 下可 elaboration" in {
     for (depth <- Seq(1, 8, 16)) {
@@ -110,40 +110,40 @@ class ysyx_26030103_PTWPMPFilterQueueTest
         dut =>
           resetDut(dut)
           // 空队列、无请求时不应产生任何响应。
-          bool(dut.io.in.resp.valid) should be(false)
-          bool(dut.io.out.req.valid) should be(false)
+          bool(dut.io.in.response.valid) should be(false)
+          bool(dut.io.out.request.valid) should be(false)
       }
     }
   }
 
-  it should "对 PMP 拒绝的请求返回 fault 响应并原样带回 id" in {
+  it should "对 PMP 拒绝的请求返回 fault 响应并原样带回 ID" in {
     simulate(new ysyx_26030103_PTWPMPFilter(faultQueueDepth = 8)) { dut =>
       resetDut(dut)
       // 只放行 0x80000000..0x80000fff，其余地址对 S 模式默认拒绝。
       allowFirst4KiB(dut)
 
-      for (id <- Seq(3, 9, 0)) {
-        // out.req.ready 拉低不应影响 fault 请求被接收：它走 fault 队列。
-        dut.io.out.req.ready.poke(false.B)
-        setRequest(dut, id, FaultAddress)
-        bool(dut.io.in.req.ready) should be(true)
-        bool(dut.io.out.req.valid) should be(false)
+      for (ID <- Seq(3, 9, 0)) {
+        // out.request.ready 拉低不应影响 fault 请求被接收：它走 fault 队列。
+        dut.io.out.request.ready.poke(false.B)
+        setRequest(dut, ID, FaultAddress)
+        bool(dut.io.in.request.ready) should be(true)
+        bool(dut.io.out.request.valid) should be(false)
 
         dut.clock.step()
         clearRequest(dut)
 
-        // fault 响应在 in.resp 上给出，队列未满时不依赖外部 ready。
-        bool(dut.io.in.resp.valid) should be(true)
-        bool(dut.io.in.resp.bits.fault) should be(true)
-        long(dut.io.in.resp.bits.id) should be(id.toLong)
-        long(dut.io.in.resp.bits.data) should be(0L)
-        bool(dut.io.out.req.valid) should be(false)
+        // fault 响应在 in.response 上给出，队列未满时不依赖外部 ready。
+        bool(dut.io.in.response.valid) should be(true)
+        bool(dut.io.in.response.bits.fault) should be(true)
+        long(dut.io.in.response.bits.ID) should be(ID.toLong)
+        long(dut.io.in.response.bits.data) should be(0L)
+        bool(dut.io.out.request.valid) should be(false)
 
         // 消费该响应后队列应回到空。
-        dut.io.in.resp.ready.poke(true.B)
+        dut.io.in.response.ready.poke(true.B)
         dut.clock.step()
-        dut.io.in.resp.ready.poke(false.B)
-        bool(dut.io.in.resp.valid) should be(false)
+        dut.io.in.response.ready.poke(false.B)
+        bool(dut.io.in.response.valid) should be(false)
       }
     }
   }
@@ -153,25 +153,25 @@ class ysyx_26030103_PTWPMPFilterQueueTest
       resetDut(dut)
 
       // X only（R=0）：页表读被拒绝。
-      dut.io.cfg(0).poke(0x1c.U(8.W))
-      dut.io.addr(0).poke(AllowedNapot.U(32.W))
+      dut.io.config(0).poke(0x1c.U(8.W))
+      dut.io.address(0).poke(AllowedNapot.U(32.W))
       setRequest(dut, 1, AllowedAddress)
-      bool(dut.io.in.req.ready) should be(true)
+      bool(dut.io.in.request.ready) should be(true)
       dut.clock.step()
       clearRequest(dut)
-      bool(dut.io.in.resp.valid) should be(true)
-      bool(dut.io.in.resp.bits.fault) should be(true)
-      long(dut.io.in.resp.bits.id) should be(1L)
-      dut.io.in.resp.ready.poke(true.B)
+      bool(dut.io.in.response.valid) should be(true)
+      bool(dut.io.in.response.bits.fault) should be(true)
+      long(dut.io.in.response.bits.ID) should be(1L)
+      dut.io.in.response.ready.poke(true.B)
       dut.clock.step()
-      dut.io.in.resp.ready.poke(false.B)
+      dut.io.in.response.ready.poke(false.B)
 
       // R/W/X：同一地址不再 fault。
-      dut.io.cfg(0).poke(0x1f.U(8.W))
+      dut.io.config(0).poke(0x1f.U(8.W))
       setRequest(dut, 2, AllowedAddress)
-      bool(dut.io.in.req.ready) should be(true)
-      bool(dut.io.out.req.valid) should be(true)
-      bool(dut.io.in.resp.valid) should be(false)
+      bool(dut.io.in.request.ready) should be(true)
+      bool(dut.io.out.request.valid) should be(true)
+      bool(dut.io.in.response.valid) should be(false)
     }
   }
 
@@ -182,41 +182,41 @@ class ysyx_26030103_PTWPMPFilterQueueTest
 
       // 第一笔 fault 请求入队，队列随即满。
       setRequest(dut, 1, FaultAddress)
-      bool(dut.io.in.req.ready) should be(true)
+      bool(dut.io.in.request.ready) should be(true)
       dut.clock.step()
 
       // 不消费响应，队列保持满。
-      bool(dut.io.in.resp.valid) should be(true)
-      long(dut.io.in.resp.bits.id) should be(1L)
+      bool(dut.io.in.response.valid) should be(true)
+      long(dut.io.in.response.bits.ID) should be(1L)
 
       // 第二笔 fault 请求在队列满时必须被反压。
       setRequest(dut, 2, FaultAddress)
-      bool(dut.io.in.req.ready) should be(false)
-      bool(dut.io.out.req.valid) should be(false)
+      bool(dut.io.in.request.ready) should be(false)
+      bool(dut.io.out.request.valid) should be(false)
       // 反压期间队首响应保持不变。
       dut.clock.step(2)
-      bool(dut.io.in.req.ready) should be(false)
-      bool(dut.io.in.resp.valid) should be(true)
-      long(dut.io.in.resp.bits.id) should be(1L)
+      bool(dut.io.in.request.ready) should be(false)
+      bool(dut.io.in.response.valid) should be(true)
+      long(dut.io.in.response.bits.ID) should be(1L)
 
       // 排空第一笔后，仍挂着的第二笔应被接收。
-      dut.io.in.resp.ready.poke(true.B)
+      dut.io.in.response.ready.poke(true.B)
       dut.clock.step()
-      bool(dut.io.in.resp.valid) should be(false)
-      bool(dut.io.in.req.ready) should be(true)
+      bool(dut.io.in.response.valid) should be(false)
+      bool(dut.io.in.request.ready) should be(true)
       dut.clock.step()
       clearRequest(dut)
-      dut.io.in.resp.ready.poke(false.B)
+      dut.io.in.response.ready.poke(false.B)
 
-      bool(dut.io.in.resp.valid) should be(true)
-      bool(dut.io.in.resp.bits.fault) should be(true)
-      long(dut.io.in.resp.bits.id) should be(2L)
+      bool(dut.io.in.response.valid) should be(true)
+      bool(dut.io.in.response.bits.fault) should be(true)
+      long(dut.io.in.response.bits.ID) should be(2L)
 
       // 全部排空后队列重新可用。
-      dut.io.in.resp.ready.poke(true.B)
+      dut.io.in.response.ready.poke(true.B)
       dut.clock.step()
-      dut.io.in.resp.ready.poke(false.B)
-      bool(dut.io.in.resp.valid) should be(false)
+      dut.io.in.response.ready.poke(false.B)
+      bool(dut.io.in.response.valid) should be(false)
     }
   }
 
@@ -226,68 +226,68 @@ class ysyx_26030103_PTWPMPFilterQueueTest
       allowFirst4KiB(dut)
 
       setRequest(dut, 1, FaultAddress)
-      bool(dut.io.in.req.ready) should be(true)
+      bool(dut.io.in.request.ready) should be(true)
       dut.clock.step()
 
       setRequest(dut, 2, FaultAddress)
-      bool(dut.io.in.req.ready) should be(true)
+      bool(dut.io.in.request.ready) should be(true)
       dut.clock.step()
 
       // 队列已满，第三笔被反压。
       setRequest(dut, 3, FaultAddress)
-      bool(dut.io.in.req.ready) should be(false)
+      bool(dut.io.in.request.ready) should be(false)
       dut.clock.step(2)
-      bool(dut.io.in.req.ready) should be(false)
+      bool(dut.io.in.request.ready) should be(false)
       clearRequest(dut)
 
       // 按 FIFO 顺序返回两笔 fault 响应。
-      bool(dut.io.in.resp.valid) should be(true)
-      long(dut.io.in.resp.bits.id) should be(1L)
-      dut.io.in.resp.ready.poke(true.B)
+      bool(dut.io.in.response.valid) should be(true)
+      long(dut.io.in.response.bits.ID) should be(1L)
+      dut.io.in.response.ready.poke(true.B)
       dut.clock.step()
-      bool(dut.io.in.resp.valid) should be(true)
-      long(dut.io.in.resp.bits.id) should be(2L)
+      bool(dut.io.in.response.valid) should be(true)
+      long(dut.io.in.response.bits.ID) should be(2L)
       dut.clock.step()
-      dut.io.in.resp.ready.poke(false.B)
-      bool(dut.io.in.resp.valid) should be(false)
+      dut.io.in.response.ready.poke(false.B)
+      bool(dut.io.in.response.valid) should be(false)
 
       // 排空后队列可再次接收。
       setRequest(dut, 4, FaultAddress)
-      bool(dut.io.in.req.ready) should be(true)
+      bool(dut.io.in.request.ready) should be(true)
     }
   }
 
-  it should "未被拒绝的请求走 out.req 通路且 ready 跟随 out.req.ready" in {
+  it should "未被拒绝的请求走 out.request 通路且 ready 跟随 out.request.ready" in {
     simulate(new ysyx_26030103_PTWPMPFilter(faultQueueDepth = 8)) { dut =>
       resetDut(dut)
       allowFirst4KiB(dut)
       setRequest(dut, 7, AllowedAddress)
 
-      bool(dut.io.in.resp.valid) should be(false)
+      bool(dut.io.in.response.valid) should be(false)
 
-      // 正常路径：in.req.ready 直接由 out.req.ready 决定。
-      dut.io.out.req.ready.poke(false.B)
-      bool(dut.io.in.req.ready) should be(false)
-      bool(dut.io.out.req.valid) should be(true)
-      long(dut.io.out.req.bits.id) should be(7L)
-      long(dut.io.out.req.bits.addr) should be(AllowedAddress)
+      // 正常路径：in.request.ready 直接由 out.request.ready 决定。
+      dut.io.out.request.ready.poke(false.B)
+      bool(dut.io.in.request.ready) should be(false)
+      bool(dut.io.out.request.valid) should be(true)
+      long(dut.io.out.request.bits.ID) should be(7L)
+      long(dut.io.out.request.bits.address) should be(AllowedAddress)
 
-      dut.io.out.req.ready.poke(true.B)
-      bool(dut.io.in.req.ready) should be(true)
+      dut.io.out.request.ready.poke(true.B)
+      bool(dut.io.in.request.ready) should be(true)
       dut.clock.step()
       clearRequest(dut)
 
-      // 下游响应原样透传到 in.resp。
-      dut.io.in.resp.ready.poke(true.B)
-      dut.io.out.resp.valid.poke(true.B)
-      dut.io.out.resp.bits.id.poke(7.U(4.W))
-      dut.io.out.resp.bits.data.poke(0xdeadbeefL.U(32.W))
-      dut.io.out.resp.bits.fault.poke(false.B)
-      bool(dut.io.in.resp.valid) should be(true)
-      bool(dut.io.out.resp.ready) should be(true)
-      long(dut.io.in.resp.bits.id) should be(7L)
-      long(dut.io.in.resp.bits.data) should be(0xdeadbeefL)
-      bool(dut.io.in.resp.bits.fault) should be(false)
+      // 下游响应原样透传到 in.response。
+      dut.io.in.response.ready.poke(true.B)
+      dut.io.out.response.valid.poke(true.B)
+      dut.io.out.response.bits.ID.poke(7.U(4.W))
+      dut.io.out.response.bits.data.poke(0xdeadbeefL.U(32.W))
+      dut.io.out.response.bits.fault.poke(false.B)
+      bool(dut.io.in.response.valid) should be(true)
+      bool(dut.io.out.response.ready) should be(true)
+      long(dut.io.in.response.bits.ID) should be(7L)
+      long(dut.io.in.response.bits.data) should be(0xdeadbeefL)
+      bool(dut.io.in.response.bits.fault) should be(false)
     }
   }
 }

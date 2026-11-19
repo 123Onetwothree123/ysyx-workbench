@@ -1,3 +1,5 @@
+module;
+#include "common/DseRunner.hpp"
 module dse;
 import std;
 import BPConfig;
@@ -14,62 +16,39 @@ auto RunDse(std::span<const BranchRecord> trace,
             std::span<const std::size_t> jal_ways_list,
             std::span<const std::size_t> ras_bits_list) -> std::vector<DseEntry>
 {
-    // 生成所有参数组合(ways超过组数无意义, 跳过)
-    struct Combo { std::size_t bb, bw, jb, jw, rb; };
-    std::vector<Combo> configs{};
-    for (auto bb : btb_bits_list)
-        for (auto bw : btb_ways_list | std::views::filter([bb](auto ways) { return ways <= (std::size_t{1} << bb); }))
-            for (auto jb : jal_bits_list)
-                for (auto jw : jal_ways_list | std::views::filter([jb](auto ways) { return ways <= (std::size_t{1} << jb); }))
-                    for (auto rb : ras_bits_list)
-                        configs.push_back({bb, bw, jb, jw, rb});
-
-    // 结果槽: 每combo固定5个算法(BPAlgorithmsType构造顺序固定)
-    constexpr std::size_t AlgosPerCombo{5};
-    std::vector<std::array<DseEntry, AlgosPerCombo>> results{configs.size()};
-
-    // 线程池: hardware_concurrency个worker从原子计数器抢任务, 全力跑满
-    std::atomic<std::size_t> next{0};
-    const auto worker_count{std::min<std::size_t>(
-        std::max(1u, std::thread::hardware_concurrency()), configs.size())};
-    {
-        std::vector<std::jthread> threads{};
-        for (std::size_t t{0}; t < worker_count; ++t)
+    // ways 超过组数无意义，跳过。
+    auto configs{common::EnumerateCombos<BPConfig>(
+        {btb_bits_list, btb_ways_list, jal_bits_list, jal_ways_list, ras_bits_list},
+        [](std::span<const std::size_t> value)
         {
-            threads.emplace_back([&]
-            {
-                for (;;)
-                {
-                    auto i{next.fetch_add(1, std::memory_order_relaxed)};
-                    if (i >= configs.size()) break;
-                    BPConfig config{configs[i].bb, configs[i].bw, configs[i].jb, configs[i].jw, configs[i].rb};
-                    BPAlgorithmsType algos{config};
-                    for (std::size_t k{0}; k < algos.size(); ++k)
-                    {
-                        auto& e{results[i][k]};
-                        e.btb_bits = configs[i].bb;
-                        e.btb_ways = configs[i].bw;
-                        e.jal_btb_bits = configs[i].jb;
-                        e.jal_btb_ways = configs[i].jw;
-                        e.ras_bits = configs[i].rb;
-                        e.algo = algos[k].GetName();
-                        e.st = RunOne(algos[k], trace);
-                    }
-                }
-            });
-        }
-    }   // jthread 析构自动 join, 确保所有线程执行完毕
+            return BPConfig{value[0], value[1], value[2], value[3], value[4]};
+        },
+        [](const BPConfig& config)
+        {
+            return config.get_btb_ways() <= (std::size_t{1} << config.get_btb_bits())
+                && config.get_jal_btb_ways() <= (std::size_t{1} << config.get_jal_btb_bits());
+        })};
 
-    // 展平并按总准确率降序排列
-    std::vector<DseEntry> table{};
-    table.reserve(configs.size() * AlgosPerCombo);
-    for (auto& row : results)
-        for (auto& e : row)
-            table.push_back(std::move(e));
-    std::ranges::sort(table, [](const DseEntry& a, const DseEntry& b)
-    {
-        return a.st.Accuracy() > b.st.Accuracy();
-    });
+    // BPAlgorithmsType 固定 5 个算法。
+    constexpr std::size_t AlgosPerCombo{5};
+    auto table{common::EvalCombos<BPConfig, DseEntry>(configs, AlgosPerCombo,
+        [&](const BPConfig& config, std::span<DseEntry> rows)
+        {
+            BPAlgorithmsType algos{config};
+            for (std::size_t k{0}; k < algos.size(); ++k)
+            {
+                auto& e{rows[k]};
+                e.btb_bits = config.get_btb_bits();
+                e.btb_ways = config.get_btb_ways();
+                e.jal_btb_bits = config.get_jal_btb_bits();
+                e.jal_btb_ways = config.get_jal_btb_ways();
+                e.ras_bits = config.get_ras_bits();
+                e.algo = algos[k].GetName();
+                e.st = RunOne(algos[k], trace);
+            }
+        })};
+
+    common::SortByDescending(table, [](const DseEntry& e) { return e.st.Accuracy(); });
     return table;
 }
 
@@ -77,37 +56,42 @@ void WriteDseCSV(std::span<const DseEntry> results,
                  const std::filesystem::path& base,
                  std::string_view tag)
 {
-    // 生成结果目录 branchsim/TestResult/时间戳(-trace名)/
-    const auto now{std::chrono::system_clock::now()};
-    const auto time_t{std::chrono::system_clock::to_time_t(now)};
-    const auto tm{*std::localtime(&time_t)};
-    auto dirname{std::format("{:04}{:02}{:02}-{:02}{:02}{:02}",
-        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec)};
-    if (!tag.empty())
-        dirname += std::format("-{}", tag);
-    const auto dir{base / dirname};
-    std::filesystem::create_directories(dir);
+    constexpr std::string_view Header{
+        "分支BTB组数,分支BTB相联度,jalBTB组数,jalBTB相联度,RAS深度,算法,"
+        "总分支,正确,误预测,准确率(%),"
+        "分支总数,分支正确,分支准确率(%),jal总数,jal正确,jal准确率(%),"
+        "call总数,call正确,call准确率(%),ret总数,ret正确,ret准确率(%),"
+        "jalr总数,jalr正确,jalr准确率(%)"};
 
-    const auto result_path{dir / "result.csv"};
-    std::ofstream file{result_path, std::ios::binary};
-    file << "\xEF\xBB\xBF"; // UTF-8 BOM, Excel打开不乱码
-    file << "分支BTB组数,分支BTB相联度,jalBTB组数,jalBTB相联度,RAS深度,算法,"
-            "总分支,正确,误预测,准确率(%),"
-            "分支总数,分支正确,分支准确率(%),jal总数,jal正确,jal准确率(%),"
-            "call总数,call正确,call准确率(%),ret总数,ret正确,ret准确率(%),"
-            "jalr总数,jalr正确,jalr准确率(%)\n";
-    for (const auto& e : results)
-    {
-        file << std::format("{},{},{},{},{},{},{},{},{},{:.2f},{},{},{:.2f},{},{},{:.2f},{},{},{:.2f},{},{},{:.2f},{},{},{:.2f}\n",
-                            std::size_t{1} << e.btb_bits, e.btb_ways,
-                            std::size_t{1} << e.jal_btb_bits, e.jal_btb_ways,
-                            std::size_t{1} << e.ras_bits,
-                            e.algo, e.st.total, e.st.correct, e.st.Mispred(), e.st.Accuracy(),
-                            e.st.branch_total, e.st.branch_correct, e.st.BranchAccuracy(),
-                            e.st.jal_total, e.st.jal_correct, e.st.JalAccuracy(),
-                            e.st.call_total, e.st.call_correct, e.st.CallAccuracy(),
-                            e.st.ret_total, e.st.ret_correct, e.st.RetAccuracy(),
-                            e.st.jalr_total, e.st.jalr_correct, e.st.JalrAccuracy());
-    }
-    std::println("DSE 完成，{} 组结果，结果保存在 {}", results.size(), result_path.string());
+    const auto path{common::WriteDseCsv(results, base, tag, Header,
+        [](const DseEntry& e)
+        {
+            return std::vector<std::string>{
+                std::format("{}", std::size_t{1} << e.btb_bits),
+                std::format("{}", e.btb_ways),
+                std::format("{}", std::size_t{1} << e.jal_btb_bits),
+                std::format("{}", e.jal_btb_ways),
+                std::format("{}", std::size_t{1} << e.ras_bits),
+                std::format("{}", e.algo),
+                std::format("{}", e.st.total),
+                std::format("{}", e.st.correct),
+                std::format("{}", e.st.Mispred()),
+                std::format("{:.2f}", e.st.Accuracy()),
+                std::format("{}", e.st.branch_total),
+                std::format("{}", e.st.branch_correct),
+                std::format("{:.2f}", e.st.BranchAccuracy()),
+                std::format("{}", e.st.jal_total),
+                std::format("{}", e.st.jal_correct),
+                std::format("{:.2f}", e.st.JalAccuracy()),
+                std::format("{}", e.st.call_total),
+                std::format("{}", e.st.call_correct),
+                std::format("{:.2f}", e.st.CallAccuracy()),
+                std::format("{}", e.st.ret_total),
+                std::format("{}", e.st.ret_correct),
+                std::format("{:.2f}", e.st.RetAccuracy()),
+                std::format("{}", e.st.jalr_total),
+                std::format("{}", e.st.jalr_correct),
+                std::format("{:.2f}", e.st.JalrAccuracy())};
+        })};
+    std::println("DSE 完成，{} 组结果，结果保存在 {}", results.size(), path.string());
 }

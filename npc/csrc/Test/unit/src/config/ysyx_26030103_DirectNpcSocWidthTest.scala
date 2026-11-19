@@ -16,8 +16,8 @@ class ysyx_26030103_DirectNpcSocWidthTest extends AnyFlatSpec with Matchers {
     // Module 必须在 Builder 上下文内构造，用外层 Module 包住 DUT。
     var seen = -1
     ChiselStage.emitCHIRRTL(new chisel3.Module {
-      val axiRam = chisel3.Module(new riscv32e_npc_AXIRAM(4096L))
-      seen = axiRam.socXLEN
+      val AXIRAM = chisel3.Module(new riscv32e_npc_AXIRAM(4096L))
+      seen = AXIRAM.SOCXLEN
     })
     seen should be(32)
   }
@@ -29,6 +29,6 @@ class ysyx_26030103_DirectNpcSocWidthTest extends AnyFlatSpec with Matchers {
       })
     }
     error.getMessage should include("32 位 SoC AXI")
-    error.getMessage should include("SIM_TOP=soc")
+    error.getMessage should include("SIM_TOP=SOC")
   }
 }

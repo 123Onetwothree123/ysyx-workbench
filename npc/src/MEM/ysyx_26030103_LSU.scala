@@ -68,6 +68,7 @@ class ysyx_26030103_LSU(
 
   val io = IO(new ysyx_26030103_LSUIO(XLEN, AddressWidth, BusDataWidth))
   dontTouch(io.DCacheFlush)
+  dontTouch(io.in.bits.CSRStateMepc)
   val DCache = ysyx_26030103_DCacheFactory.Create(
     Enable = DCacheEnable,
     BlockSizeLog2 = DCacheBlockSizeLog2,
@@ -90,10 +91,10 @@ class ysyx_26030103_LSU(
     VIPTAliasEventQueueDepth = DCacheVIPTAliasEventQueueDepth,
     DrainTimeout = DCacheDrainTimeout
   )
-  DCache.io.dma_snoop_valid := io.DCacheDMASnoopValid
-  DCache.io.dma_snoop_start := io.DCacheDMASnoopStart
-  DCache.io.dma_snoop_end := io.DCacheDMASnoopEnd
-  io.DCacheDMASnoopReady := DCache.io.dma_snoop_ready
+  DCache.io.DMASnoopValid := io.DCacheDMASnoopValid
+  DCache.io.DMASnoopStart := io.DCacheDMASnoopStart
+  DCache.io.DMASnoopEnd := io.DCacheDMASnoopEnd
+  io.DCacheDMASnoopReady := DCache.io.DMASnoopReady
   io.DCachePerfHit := DCache.io.perf_hit
   io.DCachePerfMiss := DCache.io.perf_miss
   io.DCachePerfRefillRequest := DCache.io.perf_refill_req
@@ -147,7 +148,7 @@ class ysyx_26030103_LSU(
   // AMO 的读阶段故障应按 load access fault(cause=5) 提交，
   // 写阶段故障才是 store/AMO access fault(cause=7)。
   val atomicReadFaultReg = RegInit(false.B)
-  val atomicAWDone = RegInit(false.B)
+  val AtomicAWDone = RegInit(false.B)
   val atomicWDone = RegInit(false.B)
   val atomicWBeat = RegInit(false.B)
   // SC 的 reservation：地址使用物理地址，任何同 hart store 或显式
@@ -178,7 +179,7 @@ class ysyx_26030103_LSU(
   }
   val activeInstruction = Mux(stageIsIdle, stageInputBits, messageReg)
   val viptActiveMem = activeInstruction.MemoryValid
-  val effectiveALUResult = WireDefault(activeInstruction.ALUResult)
+  val EffectiveALUResult = WireDefault(activeInstruction.ALUResult)
   // 即便当前配置不使用并行的 VIPT 数据通路，也保留这两个寄存器作为
   // “物理地址已就绪”的统一判据；原子事务必须等 PA 有效后才能发总线。
   val physicalAddressValidReg = RegInit(false.B)
@@ -190,7 +191,7 @@ class ysyx_26030103_LSU(
       physicalAddressValidReg := true.B
       physicalAddressReg := io.VIPTPAddress
     }
-    effectiveALUResult :=
+    EffectiveALUResult :=
       Mux(physicalAddressValidReg && viptActiveMem, physicalAddressReg, activeInstruction.ALUResult)
   } else {
     // PIPT/无 MMU 时 ALUResult 已经是物理地址，恒为就绪。
@@ -207,14 +208,14 @@ class ysyx_26030103_LSU(
     stageInputBits.WidthSelect
   )
   // PMP 故障只针对访存指令；非访存直通指令不消费 PmpFault。
-  val stageInputPMPFault = io.PMPFault && stageInputBits.MemoryValid
+  val StageInputPMPFault = io.PMPFault && stageInputBits.MemoryValid
   when(startMem) {
     misalignedReg := stageInputMisaligned
   }
   when(stageState === stageWait && transactionComplete) {
     memFaultReg := transactionFault
   }.elsewhen(startMem) {
-    memFaultReg := stageInputMisaligned || stageInputPMPFault
+    memFaultReg := stageInputMisaligned || StageInputPMPFault
   }
   when(
     stageState === stageDone && io.out.ready &&
@@ -231,7 +232,7 @@ class ysyx_26030103_LSU(
       5.U(32.W), // AMO 读阶段失败按 load access fault 处理
       Mux(messageReg.MemoryWrite, 7.U(32.W), 5.U(32.W))) // 访问故障：写=7，读=5
   )
-  io.MemTrapPC := messageReg.pc
+  io.MemTrapPC := messageReg.PC
   io.MemTrapTval := messageReg.VAddress
   io.FlushIDEX := memTrapCommit
   io.FlushEXMEM := memTrapCommit
@@ -263,20 +264,20 @@ class ysyx_26030103_LSU(
     !(externalFeedsStage && stageInputFire)
   pendingStoreBody()
   io.out.bits := activeInstruction
-  io.out.bits.ALUResult := effectiveALUResult
+  io.out.bits.ALUResult := EffectiveALUResult
   io.out.bits.LoadData := loadDataReg
   io.out.bits.RegisterWrite := activeInstruction.RegisterWrite && !memFaultReg // 读错误时禁止写回
   io.out.bits.Retire := activeInstruction.Retire && !memFaultReg
   // F/D load：FLW 必须把低 32 位结果 NaN-box 到 64 位 f 寄存器；FLD
   // 直接使用完整 64 位 LoadData。非 load 的 FPU 结果沿用 EXU 字段。
-  val fpLoadWriteData = Mux(activeInstruction.FP64,
+  val FPLoadWriteData = Mux(activeInstruction.FP64,
     loadDataReg,
     Cat(Fill(32, 1.U(1.W)), loadDataReg(31, 0)))
   io.out.bits.FPRegisterWrite :=
     activeInstruction.FPRegisterWrite && !memFaultReg
   io.out.bits.FPWriteData := Mux(
     activeInstruction.MemoryValid && activeInstruction.FPRegisterWrite,
-    fpLoadWriteData, activeInstruction.FPWriteData)
+    FPLoadWriteData, activeInstruction.FPWriteData)
   io.out.bits.FP64 := activeInstruction.FP64
   // Busy的赋值在写缓冲声明之后(见下)
   io.HazardValid := stageInputValid || (stageState =/= stageIdle)
@@ -302,13 +303,13 @@ class ysyx_26030103_LSU(
       (loadForwardValid && !loadForwardFault))
   io.HazardFPRegWrite := activeInstruction.FPRegisterWrite && !memFaultReg
   io.HazardFPRd := activeInstruction.Rd
-  val fpForwardLoadData = Mux(activeInstruction.FP64,
+  val FPForwardLoadData = Mux(activeInstruction.FP64,
     Mux(loadForwardValid, loadForwardData, loadDataReg),
     Cat(Fill(32, 1.U(1.W)),
       Mux(loadForwardValid, loadForwardData, loadDataReg)(31, 0)))
   io.ForwardFPData := Mux(
     activeInstruction.MemoryValid && activeInstruction.FPRegisterWrite,
-    fpForwardLoadData, activeInstruction.FPWriteData)
+    FPForwardLoadData, activeInstruction.FPWriteData)
   io.ForwardFPReady := io.HazardValid && io.HazardFPRegWrite &&
     (!activeInstruction.MemoryValid || stageState === stageDone ||
       (loadForwardValid && !loadForwardFault))
@@ -336,8 +337,8 @@ class ysyx_26030103_LSU(
   io.DebugMemoryWrite := activeInstruction.MemoryWrite
   io.DebugLoadDATA := loadDataReg(31, 0)
 
-  val axiSize = axiSizeFor(activeInstruction.WidthSelect)
-  val incomingAXISize = axiSizeFor(io.in.bits.WidthSelect)
+  val AXISize = axiSizeFor(activeInstruction.WidthSelect)
+  val IncomingAXISize = axiSizeFor(io.in.bits.WidthSelect)
   val stateMachine = Enum(10)
   val stateIdle = stateMachine(0)
   val stateReadRequest = stateMachine(1)
@@ -351,11 +352,11 @@ class ysyx_26030103_LSU(
   val stateAtomicWriteRequest = stateMachine(8)
   val stateAtomicWriteWaitB = stateMachine(9)
   val state = RegInit(stateIdle)
-  // DCacheRequestActive 必须保持到 resp.fire；flush 不取消 demand。
+  // DCacheRequestActive 必须保持到 response.fire；flush 不取消 demand。
   val dataCacheRequestActive = RegInit(false.B)
   // DCache 有在途 AR/R 时原子事务必须等待，否则会误认握手。
   val dataCacheBusActive =
-    if (DCacheEnable) dataCacheRequestActive || DCache.io.axi_active else false.B
+    if (DCacheEnable) dataCacheRequestActive || DCache.io.AXIActive else false.B
   // 非 DCache 直读在缺少 RLAST 时的排空超时。AXI 从设备必须给 RLAST，
   // 超时后按访问故障完成，避免 LSU 永久停在 StatesReadDrain。
   val readDrainTimer = RegInit(0.U(10.W))
@@ -408,7 +409,7 @@ class ysyx_26030103_LSU(
   io.DataBus.AW.AWID := 0.U
   io.DataBus.AW.AWADDR := 0.U
   io.DataBus.AW.AWLEN := 0.U
-  io.DataBus.AW.AWSIZE := axiSize // 接soc改的
+  io.DataBus.AW.AWSIZE := AXISize // 接SOC改的
   io.DataBus.AW.AWBURST := 1.U
   io.DataBus.AW.AWPROT := 0.U
   io.DataBus.AW.AWCACHE := 0.U
@@ -422,7 +423,7 @@ class ysyx_26030103_LSU(
   io.DataBus.AR.ARID := 0.U
   io.DataBus.AR.ARADDR := 0.U
   io.DataBus.AR.ARLEN := 0.U
-  io.DataBus.AR.ARSIZE := axiSize
+  io.DataBus.AR.ARSIZE := AXISize
   io.DataBus.AR.ARBURST := 1.U
   io.DataBus.AR.ARPROT := 0.U
   io.DataBus.AR.ARCACHE := 0.U
@@ -450,15 +451,15 @@ class ysyx_26030103_LSU(
   val wbHead = RegInit(0.U(log2Ceil(WBufDepth).max(1).W)) // 队首(最老)
   val wbTail = RegInit(0.U(log2Ceil(WBufDepth).max(1).W)) // 下一个空位
   val wbCount = RegInit(0.U(log2Ceil(WBufDepth + 1).W))
-  val wbufEmpty = wbCount === 0.U
-  val wbufFull = wbCount === WBufDepth.U
+  val WBufEmpty = wbCount === 0.U
+  val WBufFull = wbCount === WBufDepth.U
   io.PerfWBufCount := wbCount
   val storeBufferIndex = Reg(UInt(log2Ceil(WBufDepth).max(1).W)) // 当前写操作的缓冲槽位
   // 每条外部 store 在第一次被 LSU 接收时就占据一个真实写缓冲项。
   // 后续从 PendingStore 提升为活动队首时绝不重复入队。
   val wbPush = io.in.fire && io.in.bits.MemoryValid && io.in.bits.MemoryWrite &&
     !io.in.bits.IsAtomic
-  assert(!wbPush || !wbufFull, "LSU accepted a store while its write buffer was full")
+  assert(!wbPush || !WBufFull, "LSU accepted a store while its write buffer was full")
   // bypass store 的 PA 在 LSU 受理拍已经带正确 VA 标签到达，可以同拍登记；
   // 需要页表翻译的 store 则先保持无效，等独立 PA 端口。
   val incomingVIPTPhysicalAddressMatch =
@@ -476,7 +477,7 @@ class ysyx_26030103_LSU(
       wbData(0) := incomingWriteData
       wbDataHi(0) := incomingWriteDataHi
       wbStrobe(0) := incomingWriteMask
-      wbSize(0) := incomingAXISize
+      wbSize(0) := IncomingAXISize
       wbWide(0) := io.in.bits.WidthSelect === "b11".U
       wbMisaligned(0) := addressIsMisaligned(
         io.in.bits.ALUResult,
@@ -495,7 +496,7 @@ class ysyx_26030103_LSU(
       wbData(wbTail) := incomingWriteData
       wbDataHi(wbTail) := incomingWriteDataHi
       wbStrobe(wbTail) := incomingWriteMask
-      wbSize(wbTail) := incomingAXISize
+      wbSize(wbTail) := IncomingAXISize
       wbWide(wbTail) := io.in.bits.WidthSelect === "b11".U
       wbMisaligned(wbTail) := addressIsMisaligned(
         io.in.bits.ALUResult,
@@ -519,15 +520,15 @@ class ysyx_26030103_LSU(
     else activeInstruction.VAddress
   val viptRequestKill =
     if (dataVIPTParallel) io.VIPTKill else false.B
-  DCache.io.req.valid := dataCacheRequestActive && state === stateReadRequest // 复用LSU的AR/R通道
-  DCache.io.req.bits.addr := viptRequestAddress
-  DCache.io.req.bits.vaddr := activeInstruction.VAddress
-  DCache.io.req.bits.WidthSelect := activeInstruction.WidthSelect
-  DCache.io.req.bits.signed := activeInstruction.LoadSigned
-  DCache.io.req_paddr_valid := viptRequestPhysicalAddressValid
-  DCache.io.req_paddr_vaddr := viptRequestPhysicalAddressVirtualAddress
-  DCache.io.req_kill := viptRequestKill
-  DCache.io.resp.ready := dataCacheRequestActive && state === stateReadResponse
+  DCache.io.request.valid := dataCacheRequestActive && state === stateReadRequest // 复用LSU的AR/R通道
+  DCache.io.request.bits.address := viptRequestAddress
+  DCache.io.request.bits.vaddr := activeInstruction.VAddress
+  DCache.io.request.bits.WidthSelect := activeInstruction.WidthSelect
+  DCache.io.request.bits.signed := activeInstruction.LoadSigned
+  DCache.io.RequestPaddrValid := viptRequestPhysicalAddressValid
+  DCache.io.RequestPaddrVaddr := viptRequestPhysicalAddressVirtualAddress
+  DCache.io.RequestKill := viptRequestKill
+  DCache.io.response.ready := dataCacheRequestActive && state === stateReadResponse
   DCache.io.flush := io.DCacheFlush
   DCache.io.AXI.AW.AWREADY := false.B // DCache不使用AXI写通道
   DCache.io.AXI.W.WREADY := false.B
@@ -540,7 +541,7 @@ class ysyx_26030103_LSU(
   val wbIssue = wbStates(1)
   val wbWaitB = wbStates(2)
   val wbState = RegInit(wbIdle)
-  val wbAWDone = RegInit(false.B)
+  val WbAWDone = RegInit(false.B)
   val wbWDone = RegInit(false.B)
   val wbAWfire = io.DataBus.AW.AWVALID && io.DataBus.AW.AWREADY
   val wbWfire = io.DataBus.W.WVALID && io.DataBus.W.WREADY
@@ -577,7 +578,7 @@ class ysyx_26030103_LSU(
   val wbPhysicalAddressMatchesHead = io.VIPTPAddressValid &&
     io.VIPTPAddressVirtualAddress === wbHeadVirtualAddress && !wbHeadPhysicalAddressValid &&
     !wbPushOverwritesHead
-  when(!wbufEmpty && wbNeedsPhysicalAddress.B && wbPhysicalAddressMatchesHead) {
+  when(!WBufEmpty && wbNeedsPhysicalAddress.B && wbPhysicalAddressMatchesHead) {
     if (WBufDepth == 1) {
       wbPhysicalAddress(0) := io.VIPTPAddress
       wbPhysicalAddressValid(0) := true.B
@@ -624,10 +625,10 @@ class ysyx_26030103_LSU(
   io.AtomicBusy := atomicActive
   writeBufferBody()
   io.Busy := (stageState =/= stageIdle) || io.in.valid ||
-    pendingStoreValid || !wbufEmpty // 当前级、输入或写缓冲任一忙
+    pendingStoreValid || !WBufEmpty // 当前级、输入或写缓冲任一忙
   io.MemoryBusy :=
     (stageState === stageWait && messageReg.MemoryValid) ||
-      (stageInputValid && stageInputBits.MemoryValid) || !wbufEmpty
+      (stageInputValid && stageInputBits.MemoryValid) || !WBufEmpty
 
   switch(state) {
     is(stateIdle) {

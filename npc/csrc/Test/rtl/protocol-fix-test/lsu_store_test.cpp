@@ -20,7 +20,7 @@ static void defaults(DUT &dut) {
   dut.io_in_bits_WidthSelect = 2;
   dut.io_in_bits_LoadSigned = 0;
   dut.io_in_bits_StoreData = 0;
-  dut.io_in_bits_pc = 0;
+  dut.io_in_bits_PC = 0;
   dut.io_DataBus_AW_AWREADY = 0;
   dut.io_DataBus_W_WREADY = 0;
   dut.io_DataBus_B_BRESP = 0;
@@ -48,7 +48,7 @@ static void set_store(DUT &dut, uint32_t address, uint32_t data,
   dut.io_in_bits_WidthSelect = 2;
   dut.io_in_bits_LoadSigned = 0;
   dut.io_in_bits_StoreData = data;
-  dut.io_in_bits_pc = pc;
+  dut.io_in_bits_PC = pc;
 }
 
 static void enqueue_store(DUT &dut, uint32_t address, uint32_t data,
@@ -146,7 +146,7 @@ static void complete_buffered_store(DUT &dut, uint32_t expected_address,
 
   wait_until(dut, [&] { return dut.io_out_valid; },
              "store did not reach ordered retirement after BRESP");
-  check(dut.io_out_bits_pc == expected_pc,
+  check(dut.io_out_bits_PC == expected_pc,
         "write-buffer retirement order did not match enqueue order");
   check(static_cast<bool>(dut.io_out_bits_Retire) == (bresp == 0),
         "store retirement marker did not match BRESP");
@@ -214,7 +214,7 @@ static void check_write_buffer_depth_and_precision() {
   fault_dut.io_in_bits_MemoryValid = 0;
   fault_dut.io_in_bits_MemoryWrite = 0;
   fault_dut.io_in_bits_ALUResult = 0x12345678U;
-  fault_dut.io_in_bits_pc = pc + 12U;
+  fault_dut.io_in_bits_PC = pc + 12U;
   fault_dut.io_in_valid = 1;
   fault_dut.eval();
   check(!fault_dut.io_in_ready && !fault_dut.io_out_valid,
@@ -277,7 +277,7 @@ static void begin_memory_op(DUT &dut, uint32_t address, bool write,
   dut.io_in_bits_WidthSelect = 2;
   dut.io_in_bits_LoadSigned = 0;
   dut.io_in_bits_StoreData = data;
-  dut.io_in_bits_pc = pc;
+  dut.io_in_bits_PC = pc;
   dut.io_in_valid = 1;
   wait_until(dut, [&] { return dut.io_in_ready; },
              "LSU never accepted memory operation");
@@ -373,7 +373,7 @@ static void check_hit_latency_and_busy_split(DUT &dut, uint32_t address,
     dut.io_in_bits_ALUResult = address;
     dut.io_in_bits_WidthSelect = 2;
     dut.io_in_bits_LoadSigned = 0;
-    dut.io_in_bits_pc = pc;
+    dut.io_in_bits_PC = pc;
     dut.io_in_valid = 1;
   };
 
@@ -390,9 +390,9 @@ static void check_hit_latency_and_busy_split(DUT &dut, uint32_t address,
     dut.eval();
     check(!dut.io_DataBus_AR_ARVALID,
           "performance hit unexpectedly generated an AXI refill");
-    if (dut.io_FwdReady && !dut.io_out_valid) {
+    if (dut.io_ForwardReady && !dut.io_out_valid) {
       saw_early_forward = true;
-      check(dut.io_FwdData == expected_word,
+      check(dut.io_ForwardData == expected_word,
             "early load forwarding carried the wrong hit data");
     }
     if (!dut.io_out_valid) {

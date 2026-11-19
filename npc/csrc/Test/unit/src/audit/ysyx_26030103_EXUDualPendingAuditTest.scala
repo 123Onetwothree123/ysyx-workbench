@@ -34,9 +34,9 @@ class ysyx_26030103_EXUDualPendingAuditTest
         xlen = 64,
         hasS = true,
         hasU = true,
-        pteSizeBytes = 8,
-        pteFormat = "riscv64",
-        pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
+        PTESizeBytes = 8,
+        PTEFormat = "riscv64",
+        PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53)
       )
     )
 
@@ -71,14 +71,14 @@ class ysyx_26030103_EXUDualPendingAuditTest
 
   private def setMul(
       dut: ysyx_26030103_EXU,
-      pc: BigInt,
+      PC: BigInt,
       lhs: BigInt = 6,
       rhs: BigInt = 7,
       rd: Int = 5
   ): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_IDUMessage(64)))
-    dut.io.in.bits.pc.poke(pc.U(64.W))
-    dut.io.in.bits.snpc.poke((pc + 4).U(64.W))
+    dut.io.in.bits.PC.poke(PC.U(64.W))
+    dut.io.in.bits.snpc.poke((PC + 4).U(64.W))
     dut.io.in.bits.Instruction.poke(0x02f302b3L.U(32.W)) // mul x5,x6,x7
     dut.io.in.bits.IsMDU.poke(true.B)
     dut.io.in.bits.MDUOp.poke(ysyx_26030103_MDUOp.MUL)
@@ -91,12 +91,12 @@ class ysyx_26030103_EXUDualPendingAuditTest
 
   private def setFadd(
       dut: ysyx_26030103_EXU,
-      pc: BigInt,
+      PC: BigInt,
       rd: Int = 1
   ): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_IDUMessage(64)))
-    dut.io.in.bits.pc.poke(pc.U(64.W))
-    dut.io.in.bits.snpc.poke((pc + 4).U(64.W))
+    dut.io.in.bits.PC.poke(PC.U(64.W))
+    dut.io.in.bits.snpc.poke((PC + 4).U(64.W))
     dut.io.in.bits.Instruction.poke(0x0020f0d3L.U(32.W)) // fadd.d f1,f1,f2
     dut.io.in.bits.IsFP.poke(true.B)
     dut.io.in.bits.IsFPU.poke(true.B)
@@ -197,12 +197,12 @@ class ysyx_26030103_EXUDualPendingAuditTest
       // 放开输出后，FADD 先退休；MUL 只能入队/退休一次。MUL 握手后
       // 必须撤销 valid，否则按 Decoupled 语义会被当作下一条新指令。
       dut.io.out.ready.poke(true.B)
-      var mduRetires = 0
+      var MDURetires = 0
       var faddRetires = 0
       for (_ <- 0 until 300) {
         if (bool(dut.io.out.valid) && bool(dut.io.out.ready)) {
           if (big(dut.io.out.bits.ALUResult) == BigInt(42)) {
-            mduRetires += 1
+            MDURetires += 1
           }
           if (bool(dut.io.out.bits.FPRegisterWrite) &&
               big(dut.io.out.bits.Rd) == 1 &&
@@ -214,8 +214,8 @@ class ysyx_26030103_EXUDualPendingAuditTest
         dut.clock.step()
         if (inputFire) { dut.io.in.valid.poke(false.B) }
       }
-      withClue(s"MUL retired $mduRetires times: ") {
-        mduRetires should be(1)
+      withClue(s"MUL retired $MDURetires times: ") {
+        MDURetires should be(1)
       }
       withClue(s"FADD retired $faddRetires times: ") {
         faddRetires should be(1)

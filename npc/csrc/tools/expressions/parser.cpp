@@ -5,9 +5,30 @@ import npc.expressions.NumberNode;
 import npc.expressions.ParenthesizedNode;
 import npc.expressions.RegisterNode;
 import npc.expressions.UnaryMinusNode;
+namespace
+{
+struct DepthGuard
+{
+    std::size_t &depth;
+    explicit DepthGuard(std::size_t &value) : depth(value)
+    {
+        ++depth;
+    }
+    ~DepthGuard()
+    {
+        --depth;
+    }
+};
+} // namespace
+
 parser::parser(std::vector<token> InputTokens)
 {
     tokens = std::move(InputTokens);
+    // Current()/Peek() 取 back()，须保证有 End token。
+    if (tokens.empty())
+    {
+        tokens.push_back(token::MakeEnd(0));
+    }
 }
 bool parser::IsAtEnd() const noexcept
 {
@@ -15,7 +36,6 @@ bool parser::IsAtEnd() const noexcept
 }
 const token &parser::Current() const
 {
-    // 如果position已经到了tokens的末尾，就返回最后一个token
     if (position < tokens.size())
     {
         return tokens[position];
@@ -54,7 +74,6 @@ std::expected<std::unique_ptr<ASTNode>, std::string> parser::parse()
     {
         return expression;
     }
-    // 解析完了之后应该没有多余的token了，如果还有，那就是错的
     if (!Current().IsEndOfInput())
     {
         return std::unexpected(std::format("位置{0}处意外的'{1}'", Current().GetPosition(), Current().GetText()));
@@ -63,58 +82,65 @@ std::expected<std::unique_ptr<ASTNode>, std::string> parser::parse()
 }
 std::expected<std::unique_ptr<ASTNode>, std::string> parser::ParseExpression(int MinPrecedence)
 {
-    // 先解析左侧（一元或基本项）
+    if (depth >= MaxDepth)
+    {
+        return std::unexpected{"表达式嵌套过深"};
+    }
+    DepthGuard guard{depth};
     auto LeftResult{ParseUnary()};
     if (!LeftResult)
     {
         return LeftResult;
     }
     auto left{std::move(*LeftResult)};
-    // 当遇到优先级>=MinPrecedence的二元运算符时，构建右子树
+    // 优先级 >= MinPrecedence 时构建右子树。
     while (true)
     {
-        auto precedence{GetCurrentPrecedence()}; // 当前token的优先级
+        auto precedence{GetCurrentPrecedence()};
         if (precedence == 0 || precedence < MinPrecedence)
         {
             break;
         }
-        token OperatorToken{Current()}; // 保存运算符Token（传给BinaryOpNode）
-        Advance();                      // 用运算符
-        // 二元运算符是左结合；一元运算已经在ParseUnary() 中处理。
+        token OperatorToken{Current()};
+        Advance();
+        // 二元运算符左结合；一元已在 ParseUnary 处理。
         auto NextMinimum{precedence + 1};
         auto RightResult{ParseExpression(NextMinimum)};
         if (!RightResult)
         {
             return RightResult;
         }
-        // 构建新的左子树
         left = std::make_unique<BinaryOpNode>(OperatorToken, std::move(left), std::move(*RightResult));
     }
     return left;
 }
 std::expected<std::unique_ptr<ASTNode>, std::string> parser::ParseUnary()
 {
+    if (depth >= MaxDepth)
+    {
+        return std::unexpected{"表达式嵌套过深"};
+    }
+    DepthGuard guard{depth};
     auto &Token{Current()};
-    if (Token.IsMinus()) // 一元负号
+    if (Token.IsMinus())
     {
         Advance();
-        auto operand{ParseUnary()}; // 就是因为负号的优先级很高，所以继续解析一元表达式
+        auto operand{ParseUnary()};
         if (!operand)
         {
             return operand;
         }
-        // 构建一元负号节点
         return std::make_unique<UnaryMinusNode>(std::move(*operand));
     }
-    if (Token.IsStar()) // 一元星号，表示解引用
+    if (Token.IsStar())
     {
         Advance();
-        auto address{ParseUnary()}; // 地址
+        auto address{ParseUnary()};
         if (!address)
         {
             return address;
         }
-        // 构建解引用节点，默认4字节
+        // 默认按 4 字节解引用。
         return std::make_unique<DereferenceNode>(std::move(*address), 4);
     }
     if (Token.IsReadMemory8() || Token.IsReadMemory16() ||
@@ -129,7 +155,7 @@ std::expected<std::unique_ptr<ASTNode>, std::string> parser::ParseUnary()
         {
             return std::unexpected(std::format("位置{0}处read{1}后缺少左括号", Current().GetPosition(), size * 8));
         }
-        Advance(); // 跳过左括号
+        Advance();
         auto address{ParseExpression(0)};
         if (!address)
         {
@@ -139,15 +165,13 @@ std::expected<std::unique_ptr<ASTNode>, std::string> parser::ParseUnary()
         {
             return std::unexpected(std::format("位置{0}处read{1}缺少右括号", Current().GetPosition(), size * 8));
         }
-        Advance(); // 跳过右括号
-        // 构建解引用节点
+        Advance();
         return std::make_unique<DereferenceNode>(std::move(*address), size);
     }
     return ParsePrimary();
 }
 std::expected<std::unique_ptr<ASTNode>, std::string> parser::ParsePrimary()
 {
-    // 处理数字、寄存器和括号表达式
     auto &Token{Current()};
     if (Token.IsNumber())
     {
@@ -162,7 +186,7 @@ std::expected<std::unique_ptr<ASTNode>, std::string> parser::ParsePrimary()
     if (Token.IsLeftParen())
     {
         Advance();
-        auto inner{ParseExpression(0)}; // inner是括号内的表达式
+        auto inner{ParseExpression(0)};
         if (!inner)
         {
             return inner;
@@ -172,9 +196,7 @@ std::expected<std::unique_ptr<ASTNode>, std::string> parser::ParsePrimary()
             return std::unexpected(std::format("位置{0}处缺少右括号", Current().GetPosition()));
         }
         Advance();
-        // 构建括号表达式节点
         return std::make_unique<ParenthesizedNode>(std::move(*inner));
     }
-    // 其他情况都是错
     return std::unexpected(std::format("位置{0}处意外的'{1}'", Token.GetPosition(), Token.GetText()));
 }

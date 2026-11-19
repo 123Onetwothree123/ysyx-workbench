@@ -64,15 +64,15 @@ class ysyx_26030103_DCacheRefillPartialFaultAuditTest
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.req.valid.poke(false.B)
-    io.req.bits.addr.poke(0.U)
-    io.req.bits.vaddr.poke(0.U)
-    io.req.bits.WidthSelect.poke(2.U)
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(0.U)
-    io.req_kill.poke(false.B)
-    io.resp.ready.poke(false.B)
+    io.request.valid.poke(false.B)
+    io.request.bits.address.poke(0.U)
+    io.request.bits.vaddr.poke(0.U)
+    io.request.bits.WidthSelect.poke(2.U)
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrValid.poke(true.B)
+    io.RequestPaddrVaddr.poke(0.U)
+    io.RequestKill.poke(false.B)
+    io.response.ready.poke(false.B)
     io.StoreValid.poke(false.B)
     io.StoreResponse.poke(0.U)
     io.StoreAddress.poke(0.U)
@@ -80,9 +80,9 @@ class ysyx_26030103_DCacheRefillPartialFaultAuditTest
     io.StoreData.poke(0.U)
     io.StoreStrobe.poke(0.U)
     io.flush.poke(false.B)
-    io.dma_snoop_valid.poke(false.B)
-    io.dma_snoop_start.poke(0.U)
-    io.dma_snoop_end.poke(0.U)
+    io.DMASnoopValid.poke(false.B)
+    io.DMASnoopStart.poke(0.U)
+    io.DMASnoopEnd.poke(0.U)
     io.AXI.AR.ARREADY.poke(false.B)
     io.AXI.R.RVALID.poke(false.B)
     io.AXI.R.RDATA.poke(0.U)
@@ -96,19 +96,19 @@ class ysyx_26030103_DCacheRefillPartialFaultAuditTest
       val clock = dut.clock
       resetDut(dut.io, clock, dut.reset)
 
-      dut.io.req.bits.addr.poke(LoadAddress.U)
-      dut.io.req.bits.vaddr.poke(LoadAddress.U)
-      dut.io.req.bits.WidthSelect.poke(2.U)
-      dut.io.req.valid.poke(true.B)
+      dut.io.request.bits.address.poke(LoadAddress.U)
+      dut.io.request.bits.vaddr.poke(LoadAddress.U)
+      dut.io.request.bits.WidthSelect.poke(2.U)
+      dut.io.request.valid.poke(true.B)
       var cycles = 0
-      while (!bool(dut.io.req.ready) && cycles < 20) {
+      while (!bool(dut.io.request.ready) && cycles < 20) {
         clock.step(); cycles += 1
       }
       withClue(s"$kind DCache 未受理 load: ") {
-        bool(dut.io.req.ready) should be(true)
+        bool(dut.io.request.ready) should be(true)
       }
       clock.step()
-      dut.io.req.valid.poke(false.B)
+      dut.io.request.valid.poke(false.B)
 
       cycles = 0
       while (!bool(dut.io.AXI.AR.ARVALID) && cycles < 20) {
@@ -134,20 +134,20 @@ class ysyx_26030103_DCacheRefillPartialFaultAuditTest
       dut.io.AXI.R.RRESP.poke(0.U)
 
       cycles = 0
-      while (!bool(dut.io.resp.valid) && cycles < 50) {
+      while (!bool(dut.io.response.valid) && cycles < 50) {
         clock.step(); cycles += 1
       }
       withClue(s"$kind DCache 未产生响应: ") {
-        bool(dut.io.resp.valid) should be(true)
+        bool(dut.io.response.valid) should be(true)
       }
       withClue(
         s"$kind DCache 把早期错误 beat 的 fault 覆盖成成功数据: " +
-          s"fault=${bool(dut.io.resp.bits.fault)} " +
-          s"resp=${long(dut.io.resp.bits.FaultResponse)} " +
-          s"data=0x${dut.io.resp.bits.data.peek().litValue.toString(16)}: ") {
-        bool(dut.io.resp.bits.fault) should be(true)
+          s"fault=${bool(dut.io.response.bits.fault)} " +
+          s"response=${long(dut.io.response.bits.FaultResponse)} " +
+          s"data=0x${dut.io.response.bits.data.peek().litValue.toString(16)}: ") {
+        bool(dut.io.response.bits.fault) should be(true)
       }
-      long(dut.io.resp.bits.FaultResponse) should be(2L)
+      long(dut.io.response.bits.FaultResponse) should be(2L)
     }
   }
 

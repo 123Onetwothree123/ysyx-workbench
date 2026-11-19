@@ -26,31 +26,31 @@ static constexpr uint32_t kRamBase = 0x80000000U;
 static constexpr uint32_t kRamLastWord = 0x8003FFFCU;
 
 static void defaults(DUT &dut) {
-  dut.io_axi_AW_AWVALID = 0;
-  dut.io_axi_AW_AWADDR = 0;
-  dut.io_axi_AW_AWID = 0;
-  dut.io_axi_AW_AWLEN = 0;
-  dut.io_axi_AW_AWSIZE = 2;
-  dut.io_axi_AW_AWBURST = 1;
-  dut.io_axi_AW_AWPROT = 0;
-  dut.io_axi_W_WVALID = 0;
-  dut.io_axi_W_WDATA = 0;
-  dut.io_axi_W_WSTRB = 0xF;
-  dut.io_axi_W_WLAST = 0;
-  dut.io_axi_B_BREADY = 1;
-  dut.io_axi_AR_ARVALID = 0;
-  dut.io_axi_AR_ARADDR = 0;
-  dut.io_axi_AR_ARID = 0;
-  dut.io_axi_AR_ARLEN = 0;
-  dut.io_axi_AR_ARSIZE = 2;
-  dut.io_axi_AR_ARBURST = 1;
-  dut.io_axi_AR_ARPROT = 0;
-  dut.io_axi_R_RREADY = 1;
+  dut.io_AXI_AW_AWVALID = 0;
+  dut.io_AXI_AW_AWADDR = 0;
+  dut.io_AXI_AW_AWID = 0;
+  dut.io_AXI_AW_AWLEN = 0;
+  dut.io_AXI_AW_AWSIZE = 2;
+  dut.io_AXI_AW_AWBURST = 1;
+  dut.io_AXI_AW_AWPROT = 0;
+  dut.io_AXI_W_WVALID = 0;
+  dut.io_AXI_W_WDATA = 0;
+  dut.io_AXI_W_WSTRB = 0xF;
+  dut.io_AXI_W_WLAST = 0;
+  dut.io_AXI_B_BREADY = 1;
+  dut.io_AXI_AR_ARVALID = 0;
+  dut.io_AXI_AR_ARADDR = 0;
+  dut.io_AXI_AR_ARID = 0;
+  dut.io_AXI_AR_ARLEN = 0;
+  dut.io_AXI_AR_ARSIZE = 2;
+  dut.io_AXI_AR_ARBURST = 1;
+  dut.io_AXI_AR_ARPROT = 0;
+  dut.io_AXI_R_RREADY = 1;
   dut.io_hostWriteValid = 0;
   dut.io_hostWriteIndex = 0;
   dut.io_hostWriteData = 0;
-  dut.io_uartRxValid = 0;
-  dut.io_uartRxData = 0;
+  dut.io_UARTRxValid = 0;
+  dut.io_UARTRxData = 0;
 }
 
 static void host_write(DUT &dut, uint16_t word_index, uint32_t data) {
@@ -69,24 +69,24 @@ struct Beat {
 };
 
 static std::vector<Beat> read_burst(DUT &dut, uint32_t address, uint8_t len) {
-  dut.io_axi_AR_ARADDR = address;
-  dut.io_axi_AR_ARLEN = len;
-  dut.io_axi_AR_ARSIZE = 2;
-  dut.io_axi_AR_ARBURST = 1; // INCR
-  dut.io_axi_AR_ARVALID = 1;
+  dut.io_AXI_AR_ARADDR = address;
+  dut.io_AXI_AR_ARLEN = len;
+  dut.io_AXI_AR_ARSIZE = 2;
+  dut.io_AXI_AR_ARBURST = 1; // INCR
+  dut.io_AXI_AR_ARVALID = 1;
   dut.eval();
-  check(dut.io_axi_AR_ARREADY, "AXIRAM did not accept AR");
+  check(dut.io_AXI_AR_ARREADY, "AXIRAM did not accept AR");
   tick(dut);
-  dut.io_axi_AR_ARVALID = 0;
+  dut.io_AXI_AR_ARVALID = 0;
 
   std::vector<Beat> beats;
   for (int cycle = 0; cycle < 64 && beats.size() < len + 1U; ++cycle) {
     dut.eval();
-    if (dut.io_axi_R_RVALID) {
+    if (dut.io_AXI_R_RVALID) {
       Beat beat;
-      beat.data = dut.io_axi_R_RDATA;
-      beat.resp = dut.io_axi_R_RRESP;
-      beat.last = dut.io_axi_R_RLAST;
+      beat.data = dut.io_AXI_R_RDATA;
+      beat.resp = dut.io_AXI_R_RRESP;
+      beat.last = dut.io_AXI_R_RLAST;
       beats.push_back(beat);
     }
     tick(dut);
@@ -97,36 +97,36 @@ static std::vector<Beat> read_burst(DUT &dut, uint32_t address, uint8_t len) {
 
 static uint8_t write_burst(DUT &dut, uint32_t address, uint8_t len,
                            const std::vector<uint32_t> &words) {
-  dut.io_axi_AW_AWADDR = address;
-  dut.io_axi_AW_AWLEN = len;
-  dut.io_axi_AW_AWSIZE = 2;
-  dut.io_axi_AW_AWBURST = 1;
-  dut.io_axi_AW_AWVALID = 1;
+  dut.io_AXI_AW_AWADDR = address;
+  dut.io_AXI_AW_AWLEN = len;
+  dut.io_AXI_AW_AWSIZE = 2;
+  dut.io_AXI_AW_AWBURST = 1;
+  dut.io_AXI_AW_AWVALID = 1;
   dut.eval();
-  wait_until(dut, [&] { return dut.io_axi_AW_AWREADY; },
+  wait_until(dut, [&] { return dut.io_AXI_AW_AWREADY; },
              "AXIRAM did not accept AW");
   tick(dut);
-  dut.io_axi_AW_AWVALID = 0;
+  dut.io_AXI_AW_AWVALID = 0;
 
   // AXIRAM 每次经过 sIdle 只收一拍 W；每拍都必须等 WREADY。
   for (size_t beat = 0; beat < words.size(); ++beat) {
-    dut.io_axi_W_WDATA = words[beat];
-    dut.io_axi_W_WSTRB = 0xF;
-    dut.io_axi_W_WLAST = (beat + 1 == words.size());
-    dut.io_axi_W_WVALID = 1;
+    dut.io_AXI_W_WDATA = words[beat];
+    dut.io_AXI_W_WSTRB = 0xF;
+    dut.io_AXI_W_WLAST = (beat + 1 == words.size());
+    dut.io_AXI_W_WVALID = 1;
     dut.eval();
-    wait_until(dut, [&] { return dut.io_axi_W_WREADY; },
+    wait_until(dut, [&] { return dut.io_AXI_W_WREADY; },
                "AXIRAM did not accept W beat " + std::to_string(beat));
     tick(dut);
   }
-  dut.io_axi_W_WVALID = 0;
-  dut.io_axi_W_WLAST = 0;
+  dut.io_AXI_W_WVALID = 0;
+  dut.io_AXI_W_WLAST = 0;
 
   uint8_t resp = 0;
   for (int cycle = 0; cycle < 32; ++cycle) {
     dut.eval();
-    if (dut.io_axi_B_BVALID) {
-      resp = dut.io_axi_B_BRESP;
+    if (dut.io_AXI_B_BVALID) {
+      resp = dut.io_AXI_B_BRESP;
       break;
     }
     tick(dut);

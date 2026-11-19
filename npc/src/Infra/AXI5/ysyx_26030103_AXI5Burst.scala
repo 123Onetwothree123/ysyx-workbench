@@ -7,19 +7,19 @@ object ysyx_26030103_AXI5Burst {
   def beatBytes(size: UInt, width: Int): UInt =
     (1.U << size).pad(width)
 
-  def lenPlusOne(len: UInt): UInt =
-    len.pad(len.getWidth + 1) + 1.U
+  def lenPlusOne(length: UInt): UInt =
+    length.pad(length.getWidth + 1) + 1.U
 
-  def totalBytes(len: UInt, bytesPerBeat: UInt): UInt =
-    lenPlusOne(len) * bytesPerBeat
+  def totalBytes(length: UInt, bytesPerBeat: UInt): UInt =
+    lenPlusOne(length) * bytesPerBeat
 
-  // 末字节地址。返回值不截断，宽度 = address 宽度 + len 宽度 + 2。
-  def lastByte(address: UInt, len: UInt, size: UInt, burst: UInt): UInt = {
+  // 末字节地址。返回值不截断，宽度 = address 宽度 + length 宽度 + 2。
+  def lastByte(address: UInt, length: UInt, size: UInt, burst: UInt): UInt = {
     val width = address.getWidth + 1
     val extendedAddress = address.pad(width)
     val beat = beatBytes(size, width)
     val alignedStart = extendedAddress & ~(beat - 1.U)
-    val total = totalBytes(len, beat)
+    val total = totalBytes(length, beat)
     val wrapMask = total - 1.U
     val wide = total.getWidth
     val addressWide = extendedAddress.pad(wide)

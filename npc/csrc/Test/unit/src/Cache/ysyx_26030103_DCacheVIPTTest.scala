@@ -9,7 +9,7 @@ import org.scalatest.matchers.should.Matchers
   *
   * 验证：
   *   1. PA 未到达时请求已被受理，VA 先选 index，但绝不发 AR/返回响应； 2. PA 带正确 VA 标签到达后才做 tag/PMA/refill，非恒等映射仍按 VA 组命中； 3. 旧 VA 标签的 PA
-  *      不能用于新请求； 4. MMU 翻译故障（req_kill）取消等待请求，且不留下响应/总线事务。
+  *      不能用于新请求； 4. MMU 翻译故障（RequestKill）取消等待请求，且不留下响应/总线事务。
   */
 class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
   private val AddressW     = 32
@@ -76,9 +76,9 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
     io:    ysyx_26030103_DCacheInterface,
     clock: Clock
   ): Unit = {
-    io.resp.ready.poke(true.B)
+    io.response.ready.poke(true.B)
     clock.step()
-    io.resp.ready.poke(false.B)
+    io.response.ready.poke(false.B)
   }
 
   private def expectResponse(
@@ -87,13 +87,13 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
     data:  Long,
     label: String = ""
   ): Unit = {
-    waitUntil(clock, bool(io.resp.valid), s"$label 没有 DCache 响应")
-    withClue(s"$label 响应数据错误") { long(io.resp.bits.data) should be(data) }
-    bool(io.resp.bits.fault) should be(false)
+    waitUntil(clock, bool(io.response.valid), s"$label 没有 DCache 响应")
+    withClue(s"$label 响应数据错误") { long(io.response.bits.data) should be(data) }
+    bool(io.response.bits.fault) should be(false)
     consumeResponse(io, clock)
   }
 
-  /** 发出一次 load 请求。paddrValid 为 true 时 PA 与 req 同拍有效。 */
+  /** 发出一次 load 请求。paddrValid 为 true 时 PA 与 request 同拍有效。 */
   private def issueLoad(
     io:         ysyx_26030103_DCacheInterface,
     clock:      Clock,
@@ -102,16 +102,16 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
     paddrValid: Boolean,
     paddrVirtualAddress: Long
   ): Unit = {
-    io.req.bits.vaddr.poke(vaddr.U(AddressW.W))
-    io.req.bits.addr.poke(paddr.U(AddressW.W))
-    io.req.bits.WidthSelect.poke(2.U(2.W))
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_vaddr.poke(paddrVirtualAddress.U(AddressW.W))
-    io.req_paddr_valid.poke(paddrValid.B)
-    io.req.valid.poke(true.B)
-    waitUntil(clock, bool(io.req.ready), "DCache 未受理 load")
+    io.request.bits.vaddr.poke(vaddr.U(AddressW.W))
+    io.request.bits.address.poke(paddr.U(AddressW.W))
+    io.request.bits.WidthSelect.poke(2.U(2.W))
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrVaddr.poke(paddrVirtualAddress.U(AddressW.W))
+    io.RequestPaddrValid.poke(paddrValid.B)
+    io.request.valid.poke(true.B)
+    waitUntil(clock, bool(io.request.ready), "DCache 未受理 load")
     clock.step()
-    io.req.valid.poke(false.B)
+    io.request.valid.poke(false.B)
   }
 
   /** 模拟 LSU 在 store 收到成功 BRESP 后发出的写回镜像事件。
@@ -143,15 +143,15 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.req.valid.poke(false.B)
-    io.req.bits.addr.poke(0.U(AddressW.W))
-    io.req.bits.vaddr.poke(0.U(AddressW.W))
-    io.req.bits.WidthSelect.poke(2.U(2.W))
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_valid.poke(false.B)
-    io.req_paddr_vaddr.poke(0.U(AddressW.W))
-    io.req_kill.poke(false.B)
-    io.resp.ready.poke(false.B)
+    io.request.valid.poke(false.B)
+    io.request.bits.address.poke(0.U(AddressW.W))
+    io.request.bits.vaddr.poke(0.U(AddressW.W))
+    io.request.bits.WidthSelect.poke(2.U(2.W))
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrValid.poke(false.B)
+    io.RequestPaddrVaddr.poke(0.U(AddressW.W))
+    io.RequestKill.poke(false.B)
+    io.response.ready.poke(false.B)
     io.StoreValid.poke(false.B)
     io.StoreResponse.poke(0.U(2.W))
     io.StoreAddress.poke(0.U(AddressW.W))
@@ -176,25 +176,25 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
     // --- 1) PA 未到：先受理，VA 选 index；不能发 AR/响应 ---
     issueLoad(io, clock, VaA, 0L, paddrValid = false, paddrVirtualAddress = VaA)
     // 模拟 LSU 已经推进到下一笔请求，端口上出现新的 VA/旧 PA。
-    io.req.bits.vaddr.poke(VaC.U(AddressW.W))
-    io.req.bits.addr.poke(PaA.U(AddressW.W))
-    io.req_paddr_vaddr.poke(VaC.U(AddressW.W))
-    io.req_paddr_valid.poke(true.B)
+    io.request.bits.vaddr.poke(VaC.U(AddressW.W))
+    io.request.bits.address.poke(PaA.U(AddressW.W))
+    io.RequestPaddrVaddr.poke(VaC.U(AddressW.W))
+    io.RequestPaddrValid.poke(true.B)
     clock.step(5)
-    bool(io.resp.valid) should be(false)
+    bool(io.response.valid) should be(false)
     bool(io.AXI.AR.ARVALID) should be(false)
 
     // 旧标签的 PA（属于 VA_A 以外）不能解析当前的 VA_A 等待请求。
-    io.req.bits.addr.poke(PaB.U(AddressW.W))
-    io.req_paddr_vaddr.poke(VaB.U(AddressW.W))
-    io.req_paddr_valid.poke(true.B)
+    io.request.bits.address.poke(PaB.U(AddressW.W))
+    io.RequestPaddrVaddr.poke(VaB.U(AddressW.W))
+    io.RequestPaddrValid.poke(true.B)
     clock.step(5)
-    bool(io.resp.valid) should be(false)
+    bool(io.response.valid) should be(false)
     bool(io.AXI.AR.ARVALID) should be(false)
 
     // 正确的 PA_A + VA_A 标签到达，按 VA index=1、PA tag 回填。
-    io.req.bits.addr.poke(PaA.U(AddressW.W))
-    io.req_paddr_vaddr.poke(VaA.U(AddressW.W))
+    io.request.bits.address.poke(PaA.U(AddressW.W))
+    io.RequestPaddrVaddr.poke(VaA.U(AddressW.W))
     val lineA = refillLine(io, clock, PaA, "lineA")
     expectResponse(io, clock, lineA(0), "lineA")
 
@@ -203,9 +203,9 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
     issueLoad(io, clock, VaA, 0L, paddrValid = false, paddrVirtualAddress = VaA)
     clock.step(3)
     bool(io.AXI.AR.ARVALID) should be(false)
-    io.req.bits.addr.poke(PaA.U(AddressW.W))
-    io.req_paddr_vaddr.poke(VaA.U(AddressW.W))
-    io.req_paddr_valid.poke(true.B)
+    io.request.bits.address.poke(PaA.U(AddressW.W))
+    io.RequestPaddrVaddr.poke(VaA.U(AddressW.W))
+    io.RequestPaddrValid.poke(true.B)
     expectResponse(io, clock, lineA(0), "delayed PA hit")
     bool(io.AXI.AR.ARVALID) should be(false)
 
@@ -242,11 +242,11 @@ class ysyx_26030103_DCacheVIPTTest extends AnyFlatSpec with Matchers {
     // --- 4) kill 取消等待 PA 的请求，不能留下响应/AR ---
     issueLoad(io, clock, VaC, 0L, paddrValid = false, paddrVirtualAddress = VaC)
     clock.step(2)
-    io.req_kill.poke(true.B)
+    io.RequestKill.poke(true.B)
     clock.step()
-    io.req_kill.poke(false.B)
+    io.RequestKill.poke(false.B)
     clock.step(5)
-    bool(io.resp.valid) should be(false)
+    bool(io.response.valid) should be(false)
     bool(io.AXI.AR.ARVALID) should be(false)
     // kill 后新请求仍能正常完成。
     issueLoad(io, clock, VaC, PaC, paddrValid = true, paddrVirtualAddress = VaC)

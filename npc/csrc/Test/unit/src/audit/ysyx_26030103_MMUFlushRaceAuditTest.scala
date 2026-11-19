@@ -25,13 +25,13 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   private def bool(v: Bool): Boolean = v.peek().litValue == 1
   private def long(v: UInt): Long = v.peek().litValue.toLong
-  private def pte(ppn: Long, flags: Long): BigInt =
-    (BigInt(ppn) << 10) | BigInt(flags)
+  private def PTE(PPN: Long, flags: Long): BigInt =
+    (BigInt(PPN) << 10) | BigInt(flags)
   private val Satp = (0x80000000L | RootPPN).U(32.W)
 
   /** 单事务页表总线，可分别挂起指定地址的读响应或任意写响应。 */
   private class PTEBus(var latency: Int = 1) {
-    private case class Pending(id: Int, addr: Long, data: BigInt, write: Boolean)
+    private case class Pending(ID: Int, addr: Long, data: BigInt, write: Boolean)
     private val mem = scala.collection.mutable.Map.empty[Long, BigInt]
     private var pending: Option[Pending] = None
     private var delay = 0
@@ -54,34 +54,34 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
     def tick(bus: ysyx_26030103_PTEBusIO, clock: Clock): Unit = {
       val drive = pending.nonEmpty && delay == 0 && !pending.exists(held)
-      bus.resp.valid.poke(drive.B)
-      bus.resp.bits.id.poke(pending.map(_.id.U(4.W)).getOrElse(0.U(4.W)))
-      bus.resp.bits.data.poke(
+      bus.response.valid.poke(drive.B)
+      bus.response.bits.ID.poke(pending.map(_.ID.U(4.W)).getOrElse(0.U(4.W)))
+      bus.response.bits.data.poke(
         pending.map(_.data.U(32.W)).getOrElse(0.U(32.W)))
-      bus.resp.bits.fault.poke(false.B)
+      bus.response.bits.fault.poke(false.B)
 
-      val respFire = drive && bool(bus.resp.ready)
-      val reqFire = bool(bus.req.valid) && bool(bus.req.ready)
-      val reqID = if (reqFire) long(bus.req.bits.id).toInt else 0
-      val reqAddress = if (reqFire) long(bus.req.bits.addr) else 0L
-      val reqWrite = reqFire && bool(bus.req.bits.write)
-      val reqData =
-        if (reqFire) bus.req.bits.data.peek().litValue else BigInt(0)
+      val ResponseFire = drive && bool(bus.response.ready)
+      val RequestFire = bool(bus.request.valid) && bool(bus.request.ready)
+      val RequestID = if (RequestFire) long(bus.request.bits.ID).toInt else 0
+      val RequestAddress = if (RequestFire) long(bus.request.bits.address) else 0L
+      val RequestWrite = RequestFire && bool(bus.request.bits.write)
+      val RequestData =
+        if (RequestFire) bus.request.bits.data.peek().litValue else BigInt(0)
 
       clock.step()
 
-      if (respFire) pending = None
+      if (ResponseFire) pending = None
       else if (pending.nonEmpty && delay > 0) delay -= 1
 
-      if (reqFire) {
-        if (reqWrite) {
+      if (RequestFire) {
+        if (RequestWrite) {
           writes += 1
-          mem(reqAddress & 0xffffffffL) = reqData & 0xffffffffL
-          pending = Some(Pending(reqID, reqAddress, BigInt(0), write = true))
+          mem(RequestAddress & 0xffffffffL) = RequestData & 0xffffffffL
+          pending = Some(Pending(RequestID, RequestAddress, BigInt(0), write = true))
         } else {
           reads += 1
           pending = Some(Pending(
-            reqID, reqAddress, mem.getOrElse(reqAddress & 0xffffffffL, BigInt(0)),
+            RequestID, RequestAddress, mem.getOrElse(RequestAddress & 0xffffffffL, BigInt(0)),
             write = false))
         }
         delay = latency - 1
@@ -96,7 +96,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     */
   private class MultiBus(var latency: Int = 1) {
     private class Pending(
-        val id: Int,
+        val ID: Int,
         val addr: Long,
         val data: BigInt,
         val write: Boolean,
@@ -118,40 +118,40 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
     def tick(bus: ysyx_26030103_PTEBusIO, clock: Clock): Unit = {
       val readyIndex = pending.indexWhere(p => p.remain == 0 && !p.held)
-      val respValid = readyIndex >= 0
-      bus.resp.valid.poke(respValid.B)
-      bus.resp.bits.id.poke(
-        (if (respValid) pending(readyIndex).id else 0).U(4.W))
-      bus.resp.bits.data.poke(
-        (if (respValid) pending(readyIndex).data else BigInt(0)).U(32.W))
-      bus.resp.bits.fault.poke(false.B)
+      val ResponseValid = readyIndex >= 0
+      bus.response.valid.poke(ResponseValid.B)
+      bus.response.bits.ID.poke(
+        (if (ResponseValid) pending(readyIndex).ID else 0).U(4.W))
+      bus.response.bits.data.poke(
+        (if (ResponseValid) pending(readyIndex).data else BigInt(0)).U(32.W))
+      bus.response.bits.fault.poke(false.B)
 
-      val respFire = respValid && bool(bus.resp.ready)
-      val reqFire = bool(bus.req.valid) && bool(bus.req.ready)
-      val reqID = if (reqFire) long(bus.req.bits.id).toInt else 0
-      val reqAddress = if (reqFire) long(bus.req.bits.addr) else 0L
-      val reqWrite = reqFire && bool(bus.req.bits.write)
-      val reqData =
-        if (reqFire) bus.req.bits.data.peek().litValue else BigInt(0)
+      val ResponseFire = ResponseValid && bool(bus.response.ready)
+      val RequestFire = bool(bus.request.valid) && bool(bus.request.ready)
+      val RequestID = if (RequestFire) long(bus.request.bits.ID).toInt else 0
+      val RequestAddress = if (RequestFire) long(bus.request.bits.address) else 0L
+      val RequestWrite = RequestFire && bool(bus.request.bits.write)
+      val RequestData =
+        if (RequestFire) bus.request.bits.data.peek().litValue else BigInt(0)
 
       clock.step()
 
-      if (respFire) pending.remove(readyIndex)
+      if (ResponseFire) pending.remove(readyIndex)
       else pending.foreach(p => if (p.remain > 0) p.remain -= 1)
 
-      if (reqFire) {
-        val isHeld = !reqWrite && !holdUsed &&
-          holdOnceAddress.contains(reqAddress & 0xffffffffL)
+      if (RequestFire) {
+        val isHeld = !RequestWrite && !holdUsed &&
+          holdOnceAddress.contains(RequestAddress & 0xffffffffL)
         if (isHeld) holdUsed = true
-        if (reqWrite) {
+        if (RequestWrite) {
           writes += 1
-          mem(reqAddress & 0xffffffffL) = reqData & 0xffffffffL
-          pending += new Pending(reqID, reqAddress, BigInt(0), true,
+          mem(RequestAddress & 0xffffffffL) = RequestData & 0xffffffffL
+          pending += new Pending(RequestID, RequestAddress, BigInt(0), true,
             latency - 1, false)
         } else {
           reads += 1
           pending += new Pending(
-            reqID, reqAddress, mem.getOrElse(reqAddress & 0xffffffffL, BigInt(0)),
+            RequestID, RequestAddress, mem.getOrElse(RequestAddress & 0xffffffffL, BigInt(0)),
             false, latency - 1, isHeld)
         }
       }
@@ -162,21 +162,21 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     dut.reset.poke(true.B)
     dut.clock.step(2)
     dut.reset.poke(false.B)
-    dut.io.bus.req.ready.poke(true.B)
-    dut.io.bus.resp.valid.poke(false.B)
-    dut.io.bus.resp.bits.id.poke(0.U(4.W))
-    dut.io.bus.resp.bits.data.poke(0.U(32.W))
-    dut.io.bus.resp.bits.fault.poke(false.B)
+    dut.io.bus.request.ready.poke(true.B)
+    dut.io.bus.response.valid.poke(false.B)
+    dut.io.bus.response.bits.ID.poke(0.U(4.W))
+    dut.io.bus.response.bits.data.poke(0.U(32.W))
+    dut.io.bus.response.bits.fault.poke(false.B)
     dut.io.flush.poke(false.B)
-    dut.io.resp.ready.poke(true.B)
-    dut.io.req.valid.poke(false.B)
-    dut.io.req.bits.id.poke(0.U(4.W))
-    dut.io.req.bits.vaddr.poke(0.U(32.W))
-    dut.io.req.bits.satp.poke(Satp)
-    dut.io.req.bits.privilege.poke(3.U(2.W))
-    dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-    dut.io.req.bits.sum.poke(false.B)
-    dut.io.req.bits.mxr.poke(false.B)
+    dut.io.response.ready.poke(true.B)
+    dut.io.request.valid.poke(false.B)
+    dut.io.request.bits.ID.poke(0.U(4.W))
+    dut.io.request.bits.vaddr.poke(0.U(32.W))
+    dut.io.request.bits.satp.poke(Satp)
+    dut.io.request.bits.privilege.poke(3.U(2.W))
+    dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+    dut.io.request.bits.sum.poke(false.B)
+    dut.io.request.bits.mxr.poke(false.B)
     bus.tick(dut.io.bus, dut.clock)
   }
 
@@ -186,21 +186,21 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       vaddr: Long,
       access: UInt = ysyx_26030103_AccessType.Load
   ): Unit = {
-    dut.io.req.bits.vaddr.poke(vaddr.U(32.W))
-    dut.io.req.bits.satp.poke(Satp)
-    dut.io.req.bits.privilege.poke(3.U(2.W))
-    dut.io.req.bits.access.poke(access)
-    dut.io.req.valid.poke(true.B)
+    dut.io.request.bits.vaddr.poke(vaddr.U(32.W))
+    dut.io.request.bits.satp.poke(Satp)
+    dut.io.request.bits.privilege.poke(3.U(2.W))
+    dut.io.request.bits.access.poke(access)
+    dut.io.request.valid.poke(true.B)
     var guard = 0
-    while (!bool(dut.io.req.ready) && guard < 40) {
+    while (!bool(dut.io.request.ready) && guard < 40) {
       bus.tick(dut.io.bus, dut.clock)
       guard += 1
     }
     withClue(s"PTW 未在 $guard 拍内接收请求: ") {
-      bool(dut.io.req.ready) should be(true)
+      bool(dut.io.request.ready) should be(true)
     }
     bus.tick(dut.io.bus, dut.clock)
-    dut.io.req.valid.poke(false.B)
+    dut.io.request.valid.poke(false.B)
   }
 
   private def waitPTWResponse(
@@ -211,10 +211,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     var guard = 0
     while (result.isEmpty && guard < 80) {
       bus.tick(dut.io.bus, dut.clock)
-      if (bool(dut.io.resp.valid)) {
+      if (bool(dut.io.response.valid)) {
         result = Some((
-          dut.io.resp.bits.paddr.peek().litValue,
-          bool(dut.io.resp.bits.fault)
+          dut.io.response.bits.paddr.peek().litValue,
+          bool(dut.io.response.bits.fault)
         ))
       }
       guard += 1
@@ -225,12 +225,12 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   private def waitPTWIdle(dut: ysyx_26030103_PTW, bus: PTEBus): Unit = {
     var guard = 0
-    while (!bool(dut.io.req.ready) && guard < 20) {
+    while (!bool(dut.io.request.ready) && guard < 20) {
       bus.tick(dut.io.bus, dut.clock)
       guard += 1
     }
     withClue(s"PTW 未在 $guard 拍内回到 idle: ") {
-      bool(dut.io.req.ready) should be(true)
+      bool(dut.io.request.ready) should be(true)
     }
   }
 
@@ -240,7 +240,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       cacheEnable = cache,
       cacheEntries = 16,
       cacheWays = 2,
-      pteSizeBytes = 8,
+      PTESizeBytes = 8,
       levels = 1,
       tableEntries = 1024,
       pageBits = 12,
@@ -255,8 +255,8 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       cacheEnable = cache,
       cacheEntries = 16,
       cacheWays = 2,
-      pteSizeBytes = 4,
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31),
+      PTESizeBytes = 4,
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 32, PPNHigh = 31),
       levels = 1,
       tableEntries = 1024,
       pageBits = 12,
@@ -269,10 +269,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     "flush 与 8B PTE 高字响应同拍时不得把旧 PTE 回填 cache" in {
     val bus = new PTEBus(latency = 1)
     // vaddr=0x1234 的索引为 1；8B PTE 的地址是 Root+8，占 Root+8/12。
-    val pteAddress = Root + 0x8L
-    bus.write(pteAddress, pte(LeafPPN, 0xdfL))
-    bus.write(pteAddress + 4L, 0L)
-    bus.holdReadAddress = Some(pteAddress + 4L)
+    val PTEAddress = Root + 0x8L
+    bus.write(PTEAddress, PTE(LeafPPN, 0xdfL))
+    bus.write(PTEAddress + 4L, 0L)
+    bus.holdReadAddress = Some(PTEAddress + 4L)
     simulate(ptw8()) { dut =>
       initPTW(dut, bus)
       issuePTW(dut, bus, 0x1234L)
@@ -286,8 +286,8 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       }
 
       // sfence 后软件把同一 PTE 改到另一物理页。
-      bus.write(pteAddress, pte(NewLeafPPN, 0xdfL))
-      bus.write(pteAddress + 4L, 0L)
+      bus.write(PTEAddress, PTE(NewLeafPPN, 0xdfL))
+      bus.write(PTEAddress + 4L, 0L)
 
       // 高字响应与 flush 同拍返回。
       bus.releaseRead()
@@ -310,9 +310,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
   "PTW waitWrite" should
     "flush 与 hardware A/D 写响应同拍时不得把旧 PTE 回填 cache" in {
     val bus = new PTEBus(latency = 1)
-    val pteAddress = Root + 0x4L
+    val PTEAddress = Root + 0x4L
     // V|R|W|X，A=0：硬件 A/D 模式先写回 A 位。
-    bus.write(pteAddress, pte(LeafPPN, 0x0fL))
+    bus.write(PTEAddress, PTE(LeafPPN, 0x0fL))
     bus.holdWrite = true
     simulate(ptw4(adMode = "hardware")) { dut =>
       initPTW(dut, bus)
@@ -328,7 +328,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       withClue("A/D 写回应已产生一笔页表写: ") { bus.writes should be(1) }
 
       // sfence 后软件把同一 PTE 改到另一物理页（A/D 已置位）。
-      bus.write(pteAddress, pte(NewLeafPPN, 0xdfL))
+      bus.write(PTEAddress, PTE(NewLeafPPN, 0xdfL))
 
       // 写响应与 flush 同拍返回。
       bus.releaseWrite()
@@ -351,9 +351,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
   "PTW hardware A/D cache" should
     "store 命中 PTW cache 时仍必须写回 D 位" in {
     val bus = new PTEBus(latency = 1)
-    val pteAddress = Root + 0x4L
+    val PTEAddress = Root + 0x4L
     // V|R|W|X，A=0,D=0；第一次 load 只写回 A。
-    bus.write(pteAddress, pte(LeafPPN, 0x0fL))
+    bus.write(PTEAddress, PTE(LeafPPN, 0x0fL))
     simulate(ptw4(adMode = "hardware")) { dut =>
       initPTW(dut, bus)
       issuePTW(dut, bus, 0x1234L, ysyx_26030103_AccessType.Load)
@@ -361,10 +361,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       loadFault should be(false)
       loadPhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("load 应写回 A 位: ") {
-        (bus.read(pteAddress) & BigInt(0x40)) should be(BigInt(0x40))
+        (bus.read(PTEAddress) & BigInt(0x40)) should be(BigInt(0x40))
       }
       withClue("load 不应写回 D 位: ") {
-        (bus.read(pteAddress) & BigInt(0x80)) should be(BigInt(0))
+        (bus.read(PTEAddress) & BigInt(0x80)) should be(BigInt(0))
       }
       withClue("load 应产生一次 A/D 写: ") { bus.writes should be(1) }
       waitPTWIdle(dut, bus)
@@ -375,7 +375,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       storeFault should be(false)
       storePhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("store 命中 PTW cache 后页表 D 仍为 0: ") {
-        (bus.read(pteAddress) & BigInt(0x80)) should be(BigInt(0x80))
+        (bus.read(PTEAddress) & BigInt(0x80)) should be(BigInt(0x80))
       }
       withClue("store 命中 PTW cache 应再产生一次 D 写回: ") {
         bus.writes should be(2)
@@ -386,16 +386,16 @@ class ysyx_26030103_MMUFlushRaceAuditTest
   "PTWPipeline hardware A/D cache" should
     "store 命中 PTW cache 时仍必须写回 D 位" in {
     val bus = new PTEBus(latency = 1)
-    val pteAddress = Root + 0x4L
-    bus.write(pteAddress, pte(LeafPPN, 0x0fL))
+    val PTEAddress = Root + 0x4L
+    bus.write(PTEAddress, PTE(LeafPPN, 0x0fL))
     simulate(new ysyx_26030103_PTWPipeline(
       outstanding = 1,
       adMode = "hardware",
       cacheEnable = true,
       cacheEntries = 16,
       cacheWays = 2,
-      pteSizeBytes = 4,
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31),
+      PTESizeBytes = 4,
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 32, PPNHigh = 31),
       levels = 1,
       tableEntries = 1024,
       pageBits = 12,
@@ -407,35 +407,35 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.poke(
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.poke(
         0.U.asTypeOf(new ysyx_26030103_PTWRequest(32, 32)))
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.poke(
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.poke(
         0.U.asTypeOf(new ysyx_26030103_PTEBusResponse))
-      dut.io.resp(0).ready.poke(true.B)
+      dut.io.response(0).ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
       def issue(access: UInt): Unit = {
-        dut.io.req.bits.id.poke(0.U(4.W))
-        dut.io.req.bits.vaddr.poke(0x1234.U(32.W))
-        dut.io.req.bits.satp.poke(Satp)
-        dut.io.req.bits.privilege.poke(3.U(2.W))
-        dut.io.req.bits.access.poke(access)
-        dut.io.req.bits.sum.poke(false.B)
-        dut.io.req.bits.mxr.poke(false.B)
-        dut.io.req.valid.poke(true.B)
+        dut.io.request.bits.ID.poke(0.U(4.W))
+        dut.io.request.bits.vaddr.poke(0x1234.U(32.W))
+        dut.io.request.bits.satp.poke(Satp)
+        dut.io.request.bits.privilege.poke(3.U(2.W))
+        dut.io.request.bits.access.poke(access)
+        dut.io.request.bits.sum.poke(false.B)
+        dut.io.request.bits.mxr.poke(false.B)
+        dut.io.request.valid.poke(true.B)
         var guard = 0
-        while (!bool(dut.io.req.ready) && guard < 40) {
+        while (!bool(dut.io.request.ready) && guard < 40) {
           bus.tick(dut.io.bus, dut.clock)
           guard += 1
         }
         withClue(s"PTWPipeline 未在 $guard 拍内接收请求: ") {
-          bool(dut.io.req.ready) should be(true)
+          bool(dut.io.request.ready) should be(true)
         }
         bus.tick(dut.io.bus, dut.clock)
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
       }
 
       def waitResponse(): (BigInt, Boolean) = {
@@ -443,10 +443,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
         var guard = 0
         while (result.isEmpty && guard < 80) {
           bus.tick(dut.io.bus, dut.clock)
-          if (bool(dut.io.resp(0).valid)) {
+          if (bool(dut.io.response(0).valid)) {
             result = Some((
-              dut.io.resp(0).bits.paddr.peek().litValue,
-              bool(dut.io.resp(0).bits.fault)
+              dut.io.response(0).bits.paddr.peek().litValue,
+              bool(dut.io.response(0).bits.fault)
             ))
           }
           guard += 1
@@ -462,7 +462,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       loadFault should be(false)
       loadPhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("load 应写回 A 位: ") {
-        (bus.read(pteAddress) & BigInt(0x40)) should be(BigInt(0x40))
+        (bus.read(PTEAddress) & BigInt(0x40)) should be(BigInt(0x40))
       }
       withClue("load 应产生一次 A 写: ") { bus.writes should be(1) }
 
@@ -471,7 +471,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       storeFault should be(false)
       storePhysicalAddress should be(BigInt(Leaf + 0x234L))
       withClue("store 命中 PTW cache 后页表 D 仍为 0: ") {
-        (bus.read(pteAddress) & BigInt(0x80)) should be(BigInt(0x80))
+        (bus.read(PTEAddress) & BigInt(0x80)) should be(BigInt(0x80))
       }
       withClue("store 命中 PTW cache 应再产生一次 D 写回: ") {
         bus.writes should be(2)
@@ -482,17 +482,17 @@ class ysyx_26030103_MMUFlushRaceAuditTest
   "PTWPipeline" should
     "flush 与 cache fill 同拍时不得留下旧 PTE" in {
     val bus = new PTEBus(latency = 1)
-    val pteAddress = Root + 0x4L
-    bus.write(pteAddress, pte(LeafPPN, 0xdfL))
-    bus.holdReadAddress = Some(pteAddress)
+    val PTEAddress = Root + 0x4L
+    bus.write(PTEAddress, PTE(LeafPPN, 0xdfL))
+    bus.holdReadAddress = Some(PTEAddress)
     simulate(new ysyx_26030103_PTWPipeline(
       outstanding = 1,
       adMode = "fault",
       cacheEnable = true,
       cacheEntries = 16,
       cacheWays = 2,
-      pteSizeBytes = 4,
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 32, ppnHigh = 31),
+      PTESizeBytes = 4,
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 32, PPNHigh = 31),
       levels = 1,
       tableEntries = 1024,
       pageBits = 12,
@@ -504,35 +504,35 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.poke(
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.poke(
         0.U.asTypeOf(new ysyx_26030103_PTWRequest(32, 32)))
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.poke(
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.poke(
         0.U.asTypeOf(new ysyx_26030103_PTEBusResponse))
-      dut.io.resp(0).ready.poke(true.B)
+      dut.io.response(0).ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
       def issue(vaddr: Long): Unit = {
-        dut.io.req.bits.id.poke(0.U(4.W))
-        dut.io.req.bits.vaddr.poke(vaddr.U(32.W))
-        dut.io.req.bits.satp.poke(Satp)
-        dut.io.req.bits.privilege.poke(3.U(2.W))
-        dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-        dut.io.req.bits.sum.poke(false.B)
-        dut.io.req.bits.mxr.poke(false.B)
-        dut.io.req.valid.poke(true.B)
+        dut.io.request.bits.ID.poke(0.U(4.W))
+        dut.io.request.bits.vaddr.poke(vaddr.U(32.W))
+        dut.io.request.bits.satp.poke(Satp)
+        dut.io.request.bits.privilege.poke(3.U(2.W))
+        dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+        dut.io.request.bits.sum.poke(false.B)
+        dut.io.request.bits.mxr.poke(false.B)
+        dut.io.request.valid.poke(true.B)
         var guard = 0
-        while (!bool(dut.io.req.ready) && guard < 40) {
+        while (!bool(dut.io.request.ready) && guard < 40) {
           bus.tick(dut.io.bus, dut.clock)
           guard += 1
         }
         withClue(s"PTWPipeline 未在 $guard 拍内接收请求: ") {
-          bool(dut.io.req.ready) should be(true)
+          bool(dut.io.request.ready) should be(true)
         }
         bus.tick(dut.io.bus, dut.clock)
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
       }
 
       def waitResponse(): (BigInt, Boolean) = {
@@ -540,10 +540,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
         var guard = 0
         while (result.isEmpty && guard < 80) {
           bus.tick(dut.io.bus, dut.clock)
-          if (bool(dut.io.resp(0).valid)) {
+          if (bool(dut.io.response(0).valid)) {
             result = Some((
-              dut.io.resp(0).bits.paddr.peek().litValue,
-              bool(dut.io.resp(0).bits.fault)
+              dut.io.response(0).bits.paddr.peek().litValue,
+              bool(dut.io.response(0).bits.fault)
             ))
           }
           guard += 1
@@ -562,7 +562,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       }
       withClue("PTWPipeline 页表读未被挂起: ") { bus.heldPending should be(true) }
 
-      bus.write(pteAddress, pte(NewLeafPPN, 0xdfL))
+      bus.write(PTEAddress, PTE(NewLeafPPN, 0xdfL))
       bus.releaseRead()
       dut.io.flush.poke(true.B)
       bus.tick(dut.io.bus, dut.clock)
@@ -580,32 +580,32 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     }
   }
 
-  private def mmuProfile(
-      ptwArch: String = "independent",
-      tlbEnabled: Boolean = false
+  private def MMUProfile(
+      PTWArch: String = "independent",
+      TLBEnabled: Boolean = false
   ): ysyx_26030103_MMUProfile =
     ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32).copy(
       enabled = true,
-      tlbEnabled = tlbEnabled,
-      ptwArch = ptwArch,
-      ptwOutstanding = 1,
-      ptwCache = true,
-      ptwCacheEntries = 16,
-      ptwCacheWays = 2
+      TLBEnabled = TLBEnabled,
+      PTWArch = PTWArch,
+      PTWOutstanding = 1,
+      PTWCache = true,
+      PTWCacheEntries = 16,
+      PTWCacheWays = 2
     )
 
   private def initMMU(dut: ysyx_26030103_MMU, bus: PTEBus): Unit = {
     dut.reset.poke(true.B)
     dut.clock.step(2)
     dut.reset.poke(false.B)
-    dut.io.req.valid.poke(false.B)
-    dut.io.req.bits.poke(
+    dut.io.request.valid.poke(false.B)
+    dut.io.request.bits.poke(
       0.U.asTypeOf(new ysyx_26030103_MMURequest(32, 32)))
-    dut.io.bus.req.ready.poke(true.B)
-    dut.io.bus.resp.valid.poke(false.B)
-    dut.io.bus.resp.bits.poke(
+    dut.io.bus.request.ready.poke(true.B)
+    dut.io.bus.response.valid.poke(false.B)
+    dut.io.bus.response.bits.poke(
       0.U.asTypeOf(new ysyx_26030103_PTEBusResponse))
-    dut.io.resp.ready.poke(true.B)
+    dut.io.response.ready.poke(true.B)
     dut.io.flush.poke(false.B)
   }
 
@@ -616,24 +616,24 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       satp: UInt = Satp,
       access: UInt = ysyx_26030103_AccessType.Load
   ): Unit = {
-    dut.io.req.bits.id.poke(0.U(4.W))
-    dut.io.req.bits.vaddr.poke(vaddr.U(32.W))
-    dut.io.req.bits.access.poke(access)
-    dut.io.req.bits.privilege.poke(0.U(2.W))
-    dut.io.req.bits.sum.poke(false.B)
-    dut.io.req.bits.mxr.poke(false.B)
-    dut.io.req.bits.satp.poke(satp)
-    dut.io.req.valid.poke(true.B)
+    dut.io.request.bits.ID.poke(0.U(4.W))
+    dut.io.request.bits.vaddr.poke(vaddr.U(32.W))
+    dut.io.request.bits.access.poke(access)
+    dut.io.request.bits.privilege.poke(0.U(2.W))
+    dut.io.request.bits.sum.poke(false.B)
+    dut.io.request.bits.mxr.poke(false.B)
+    dut.io.request.bits.satp.poke(satp)
+    dut.io.request.valid.poke(true.B)
     var guard = 0
-    while (!bool(dut.io.req.ready) && guard < 60) {
+    while (!bool(dut.io.request.ready) && guard < 60) {
       bus.tick(dut.io.bus, dut.clock)
       guard += 1
     }
     withClue(s"MMU 未在 $guard 拍内接收请求: ") {
-      bool(dut.io.req.ready) should be(true)
+      bool(dut.io.request.ready) should be(true)
     }
     bus.tick(dut.io.bus, dut.clock)
-    dut.io.req.valid.poke(false.B)
+    dut.io.request.valid.poke(false.B)
   }
 
   private def waitMMUResponse(
@@ -644,10 +644,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     var guard = 0
     while (result.isEmpty && guard < 100) {
       bus.tick(dut.io.bus, dut.clock)
-      if (bool(dut.io.resp.valid)) {
+      if (bool(dut.io.response.valid)) {
         result = Some((
-          dut.io.resp.bits.paddr.peek().litValue,
-          bool(dut.io.resp.bits.fault)
+          dut.io.response.bits.paddr.peek().litValue,
+          bool(dut.io.response.bits.fault)
         ))
       }
       guard += 1
@@ -658,31 +658,31 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   private def waitMMUIdle(dut: ysyx_26030103_MMU, bus: PTEBus): Unit = {
     var guard = 0
-    while (!bool(dut.io.req.ready) && guard < 30) {
+    while (!bool(dut.io.request.ready) && guard < 30) {
       bus.tick(dut.io.bus, dut.clock)
       guard += 1
     }
     withClue(s"MMU 未在 $guard 拍内恢复接收请求: ") {
-      bool(dut.io.req.ready) should be(true)
+      bool(dut.io.request.ready) should be(true)
     }
   }
 
   private def seedTwoLevel(bus: PTEBus, leaf: BigInt): Unit = {
-    bus.write(Root, pte(0x80002L, 0x1L))
+    bus.write(Root, PTE(0x80002L, 0x1L))
     bus.write(0x80002004L, leaf)
   }
 
   private def seedTwoLevel(bus: MultiBus, leaf: BigInt): Unit = {
-    bus.write(Root, pte(0x80002L, 0x1L))
+    bus.write(Root, PTE(0x80002L, 0x1L))
     bus.write(0x80002004L, leaf)
   }
 
   "MMU flush" should
     "与 PTW 叶子响应同拍时不得让旧 PTE 留在 PTW cache" in {
     val bus = new PTEBus(latency = 1)
-    seedTwoLevel(bus, pte(LeafPPN, 0xdfL))
+    seedTwoLevel(bus, PTE(LeafPPN, 0xdfL))
     bus.holdReadAddress = Some(0x80002004L)
-    simulate(new ysyx_26030103_MMU(mmuProfile())) { dut =>
+    simulate(new ysyx_26030103_MMU(MMUProfile())) { dut =>
       initMMU(dut, bus)
       issueMMU(dut, bus, 0x1234L)
       var guard = 0
@@ -692,7 +692,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       }
       withClue("MMU 叶子 PTE 读未被挂起: ") { bus.heldPending should be(true) }
 
-      bus.write(0x80002004L, pte(NewLeafPPN, 0xdfL))
+      bus.write(0x80002004L, PTE(NewLeafPPN, 0xdfL))
       bus.releaseRead()
       dut.io.flush.poke(true.B)
       bus.tick(dut.io.bus, dut.clock)
@@ -706,7 +706,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       var stray = 0
       for (_ <- 0 until 6) {
         bus.tick(dut.io.bus, dut.clock)
-        if (bool(dut.io.resp.valid)) stray += 1
+        if (bool(dut.io.response.valid)) stray += 1
       }
       withClue("MMU flush 后仍返回了旧请求的响应: ") { stray should be(0) }
 
@@ -721,10 +721,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   it should "排空 reqQueue 中尚未分配上下文的旧 satp 请求" in {
     val bus = new PTEBus(latency = 1)
-    seedTwoLevel(bus, pte(LeafPPN, 0xdfL))
+    seedTwoLevel(bus, PTE(LeafPPN, 0xdfL))
     // 第二个请求使用旧 satp，但会在 flush 前留在 reqQueue。
     bus.holdReadAddress = Some(0x80002004L)
-    simulate(new ysyx_26030103_MMU(mmuProfile())) { dut =>
+    simulate(new ysyx_26030103_MMU(MMUProfile())) { dut =>
       initMMU(dut, bus)
       issueMMU(dut, bus, 0x1234L)
       var guard = 0
@@ -751,15 +751,15 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       var stray = 0
       for (_ <- 0 until 10) {
         bus.tick(dut.io.bus, dut.clock)
-        if (bool(dut.io.resp.valid)) stray += 1
+        if (bool(dut.io.response.valid)) stray += 1
       }
       withClue("被 flush 的 reqQueue 请求仍产生了翻译响应: ") { stray should be(0) }
 
       // 新地址空间：新根表和新叶子。
       val NewRootPPN = 0x80005L
       val NewRoot = NewRootPPN << 12
-      bus.write(NewRoot, pte(0x80006L, 0x1L))
-      bus.write(0x80006004L, pte(0x80007L, 0xdfL))
+      bus.write(NewRoot, PTE(0x80006L, 0x1L))
+      bus.write(0x80006004L, PTE(0x80007L, 0xdfL))
       val newSatp = (0x80000000L | NewRootPPN).U(32.W)
       issueMMU(dut, bus, 0x1234L, newSatp)
       val (paddr, fault) = waitMMUResponse(dut, bus)
@@ -775,7 +775,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     simulate(new ysyx_26030103_TLB(
       entries = 4,
       ways = 1,
-      asidBits = 9,
+      ASIDBits = 9,
       globalEnable = false,
       adMode = "hardware"
     )) { dut =>
@@ -785,11 +785,11 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       dut.io.flush.poke(true.B)
       dut.io.fillValid.poke(false.B)
       dut.io.fillVirtualAddress.poke(0.U)
-      dut.io.fillASID.poke(0.U)
-      dut.io.fillPTE.poke(0.U)
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
       dut.io.lookup(0).vaddr.poke(0.U)
-      dut.io.lookup(0).asid.poke(0.U)
+      dut.io.lookup(0).ASID.poke(0.U)
       dut.io.lookup(0).privilege.poke(0.U)
       dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
       dut.io.lookup(0).sum.poke(false.B)
@@ -800,13 +800,13 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       def fill(flags: Long): Unit = {
         dut.io.fillValid.poke(true.B)
         dut.io.fillVirtualAddress.poke(0x1234.U)
-        dut.io.fillASID.poke(0.U)
-        dut.io.fillPTE.poke(pte(LeafPPN, flags).U(32.W))
+        dut.io.FillASID.poke(0.U)
+        dut.io.FillPTE.poke(PTE(LeafPPN, flags).U(32.W))
         dut.io.fillLevel.poke(0.U)
         dut.clock.step()
         dut.io.fillValid.poke(false.B)
         dut.io.lookup(0).vaddr.poke(0x1234.U)
-        dut.io.lookup(0).asid.poke(0.U)
+        dut.io.lookup(0).ASID.poke(0.U)
         dut.io.lookup(0).privilege.poke(0.U)
       }
 
@@ -843,17 +843,17 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     "store 命中 D=0 表项时重填并写回 D，之后命中不再写" in {
     val bus = new PTEBus(latency = 1)
     // 根 PTE + 叶子 PTE：V|R|W|X|U|A，D=0。
-    seedTwoLevel(bus, pte(LeafPPN, 0x5fL))
+    seedTwoLevel(bus, PTE(LeafPPN, 0x5fL))
     val profile = ysyx_26030103_MMUProfile.fromEnv(
       _ => None, xlen = 32).copy(
       enabled = true,
-      tlbEnabled = true,
-      tlbOrganization = "split",
+      TLBEnabled = true,
+      TLBOrganization = "split",
       adMode = "hardware",
-      ptwOutstanding = 1,
-      ptwCache = true,
-      ptwCacheEntries = 16,
-      ptwCacheWays = 2
+      PTWOutstanding = 1,
+      PTWCache = true,
+      PTWCacheEntries = 16,
+      PTWCacheWays = 2
     )
     simulate(new ysyx_26030103_MMU(profile)) { dut =>
       initMMU(dut, bus)
@@ -905,52 +905,52 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     "flush 后同一 PTE 地址的迟到旧响应不得满足或污染新 walk" in {
     val bus = new MultiBus(latency = 1)
     val leafAddress = 0x80002004L
-    seedTwoLevel(bus, pte(LeafPPN, 0xdfL))
+    seedTwoLevel(bus, PTE(LeafPPN, 0xdfL))
     bus.holdOnceAddress = Some(leafAddress)
     val profile = ysyx_26030103_MMUProfile.fromEnv(
       _ => None, xlen = 32).copy(
       enabled = true,
-      tlbEnabled = false,
-      ptwArch = "pipelined",
-      ptwOutstanding = 2,
-      ptwBusOutstanding = 2,
-      ptwCache = true,
-      ptwCacheEntries = 16,
-      ptwCacheWays = 2
+      TLBEnabled = false,
+      PTWArch = "pipelined",
+      PTWOutstanding = 2,
+      PTWBusOutstanding = 2,
+      PTWCache = true,
+      PTWCacheEntries = 16,
+      PTWCacheWays = 2
     )
     simulate(new ysyx_26030103_MMU(profile)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.bits.poke(
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.poke(
         0.U.asTypeOf(new ysyx_26030103_MMURequest(32, 32)))
-      dut.io.bus.req.ready.poke(true.B)
-      dut.io.bus.resp.valid.poke(false.B)
-      dut.io.bus.resp.bits.poke(
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.poke(
         0.U.asTypeOf(new ysyx_26030103_PTEBusResponse))
-      dut.io.resp.ready.poke(true.B)
+      dut.io.response.ready.poke(true.B)
       dut.io.flush.poke(false.B)
 
       def issue(vaddr: Long): Unit = {
-        dut.io.req.bits.id.poke(0.U(4.W))
-        dut.io.req.bits.vaddr.poke(vaddr.U(32.W))
-        dut.io.req.bits.access.poke(ysyx_26030103_AccessType.Load)
-        dut.io.req.bits.privilege.poke(0.U(2.W))
-        dut.io.req.bits.sum.poke(false.B)
-        dut.io.req.bits.mxr.poke(false.B)
-        dut.io.req.bits.satp.poke(Satp)
-        dut.io.req.valid.poke(true.B)
+        dut.io.request.bits.ID.poke(0.U(4.W))
+        dut.io.request.bits.vaddr.poke(vaddr.U(32.W))
+        dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+        dut.io.request.bits.privilege.poke(0.U(2.W))
+        dut.io.request.bits.sum.poke(false.B)
+        dut.io.request.bits.mxr.poke(false.B)
+        dut.io.request.bits.satp.poke(Satp)
+        dut.io.request.valid.poke(true.B)
         var guard = 0
-        while (!bool(dut.io.req.ready) && guard < 80) {
+        while (!bool(dut.io.request.ready) && guard < 80) {
           bus.tick(dut.io.bus, dut.clock)
           guard += 1
         }
         withClue(s"pipelined MMU 未在 $guard 拍内接收请求: ") {
-          bool(dut.io.req.ready) should be(true)
+          bool(dut.io.request.ready) should be(true)
         }
         bus.tick(dut.io.bus, dut.clock)
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
       }
 
       def waitResponse(): (BigInt, Boolean) = {
@@ -958,10 +958,10 @@ class ysyx_26030103_MMUFlushRaceAuditTest
         var guard = 0
         while (result.isEmpty && guard < 120) {
           bus.tick(dut.io.bus, dut.clock)
-          if (bool(dut.io.resp.valid)) {
+          if (bool(dut.io.response.valid)) {
             result = Some((
-              dut.io.resp.bits.paddr.peek().litValue,
-              bool(dut.io.resp.bits.fault)
+              dut.io.response.bits.paddr.peek().litValue,
+              bool(dut.io.response.bits.fault)
             ))
           }
           guard += 1
@@ -985,7 +985,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       dut.io.flush.poke(true.B)
       bus.tick(dut.io.bus, dut.clock)
       dut.io.flush.poke(false.B)
-      bus.write(leafAddress, pte(NewLeafPPN, 0xdfL))
+      bus.write(leafAddress, PTE(NewLeafPPN, 0xdfL))
 
       // 新 walk 必须能拿到同一地址的新 PTE，并在旧响应尚未返回时就完成。
       issue(0x1234L)
@@ -1003,7 +1003,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       for (_ <- 0 until 8) {
         bus.tick(dut.io.bus, dut.clock)
         withClue("释放迟到旧响应后又返回了一次旧翻译: ") {
-          bool(dut.io.resp.valid) should be(false)
+          bool(dut.io.response.valid) should be(false)
         }
       }
 
@@ -1023,9 +1023,9 @@ class ysyx_26030103_MMUFlushRaceAuditTest
 
   "MMU flush" should "与 TLB 回填同拍时不得把旧 PTE 装入 TLB" in {
     val bus = new PTEBus(latency = 1)
-    seedTwoLevel(bus, pte(LeafPPN, 0xdfL))
+    seedTwoLevel(bus, PTE(LeafPPN, 0xdfL))
     bus.holdReadAddress = Some(0x80002004L)
-    simulate(new ysyx_26030103_MMU(mmuProfile(tlbEnabled = true))) { dut =>
+    simulate(new ysyx_26030103_MMU(MMUProfile(TLBEnabled = true))) { dut =>
       initMMU(dut, bus)
       issueMMU(dut, bus, 0x1234L)
       var guard = 0
@@ -1035,7 +1035,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       }
       withClue("DTLB miss 的叶子读未被挂起: ") { bus.heldPending should be(true) }
 
-      bus.write(0x80002004L, pte(NewLeafPPN, 0xdfL))
+      bus.write(0x80002004L, PTE(NewLeafPPN, 0xdfL))
       bus.releaseRead()
       dut.io.flush.poke(true.B)
       bus.tick(dut.io.bus, dut.clock)

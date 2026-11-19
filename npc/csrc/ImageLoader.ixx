@@ -1,10 +1,12 @@
 export module npc.ImageLoader;
 import std;
 import npc.CLIOptions;
+import npc.SimulationContext;
 
 export class ImageLoader final
 {
 public:
     ImageLoader() = delete;
-    [[nodiscard]] static std::expected<std::size_t, std::string> LoadFromCLI(const CLIOptions &Options);
+    [[nodiscard]] static std::expected<std::size_t, std::string>
+        LoadFromCLI(const CLIOptions &Options, SimulationContext &Context);
 };

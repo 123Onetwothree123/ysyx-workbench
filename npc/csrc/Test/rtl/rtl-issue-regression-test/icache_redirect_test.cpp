@@ -25,63 +25,72 @@ static constexpr uint32_t kDataB = 0xB0000000U;
 static constexpr uint32_t kDataC = 0xC0000000U;
 
 static void defaults(DUT &dut) {
-  dut.io_fetch_addr = 0;
-  dut.io_fetch_valid = 0;
-  dut.io_resp_ready = 0;
-  dut.io_axi_AR_ARREADY = 0;
-  dut.io_axi_R_RDATA = 0;
-  dut.io_axi_R_RRESP = 0;
-  dut.io_axi_R_RLAST = 0;
-  dut.io_axi_R_RVALID = 0;
+  dut.io_FetchAddress = 0;
+  dut.io_FetchValid = 0;
+  dut.io_ResponseReady = 0;
+  dut.io_AXI_AR_ARREADY = 0;
+  dut.io_AXI_R_RDATA = 0;
+  dut.io_AXI_R_RRESP = 0;
+  dut.io_AXI_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
   dut.io_flush = 0;
   dut.io_kill = 0;
 }
 
 // 受理一笔取指。调用前 fetch_valid 可为 0。
 static void accept_fetch(DUT &dut, uint32_t addr) {
-  dut.io_fetch_addr = addr;
-  dut.io_fetch_valid = 1;
+  dut.io_FetchAddress = addr;
+  dut.io_FetchValid = 1;
   dut.eval();
-  check(dut.io_fetch_ready, "ICache rejected a fetch that should be accepted");
+  check(dut.io_FetchReady, "ICache rejected a fetch that should be accepted");
   tick(dut);
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
   dut.eval();
 }
 
 // 等待下一笔 refill 的 AR，校验行地址，并接受握手。
 static unsigned begin_refill(DUT &dut, uint32_t line_base) {
-  wait_until(dut, [&] { return dut.io_axi_AR_ARVALID; },
+  wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
              "ICache never issued the expected refill AR");
-  check(dut.io_axi_AR_ARADDR == line_base,
+  check(dut.io_AXI_AR_ARADDR == line_base,
         "refill AR address does not match the requested cache line");
-  const unsigned beats = static_cast<unsigned>(dut.io_axi_AR_ARLEN) + 1U;
-  dut.io_axi_AR_ARREADY = 1;
+  const unsigned beats = static_cast<unsigned>(dut.io_AXI_AR_ARLEN) + 1U;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut);
-  dut.io_axi_AR_ARREADY = 0;
+  dut.io_AXI_AR_ARREADY = 0;
   dut.eval();
   return beats;
 }
 
-static void send_beat(DUT &dut, uint32_t data, bool last) {
-  dut.io_axi_R_RDATA = data;
-  dut.io_axi_R_RRESP = 0;
-  dut.io_axi_R_RLAST = last;
-  dut.io_axi_R_RVALID = 1;
+static void send_beat(DUT &dut, uint64_t data, bool last) {
+  dut.io_AXI_R_RDATA = data;
+  dut.io_AXI_R_RRESP = 0;
+  dut.io_AXI_R_RLAST = last;
+  dut.io_AXI_R_RVALID = 1;
   tick(dut);
-  dut.io_axi_R_RVALID = 0;
-  dut.io_axi_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
+  dut.io_AXI_R_RLAST = 0;
   dut.eval();
 }
 
-// 完成一整行 refill，返回该行写入的数据字。
+// 完成一整行 refill，返回该行的架构 word 序列。总线可能是 32 或 64 位，
+// 每个 beat 按实际 RDATA 宽度打包连续 word，避免测试把窄总线的假设
+// 强加给生产快照。
 static std::vector<uint32_t> refill_line(DUT &dut, uint32_t line_base,
                                          uint32_t data_base) {
   const unsigned beats = begin_refill(dut, line_base);
+  const unsigned words_per_beat =
+      sizeof(dut.io_AXI_R_RDATA) / sizeof(uint32_t);
   std::vector<uint32_t> words;
+  uint32_t next_word = 0;
   for (unsigned beat = 0; beat < beats; ++beat) {
-    const uint32_t word = data_base + beat;
-    words.push_back(word);
-    send_beat(dut, word, beat + 1U == beats);
+    uint64_t beat_data = 0;
+    for (unsigned lane = 0; lane < words_per_beat; ++lane) {
+      const uint32_t word = data_base + next_word++;
+      words.push_back(word);
+      beat_data |= static_cast<uint64_t>(word) << (32U * lane);
+    }
+    send_beat(dut, beat_data, beat + 1U == beats);
   }
   return words;
 }
@@ -91,24 +100,24 @@ static std::vector<uint32_t> refill_line(DUT &dut, uint32_t line_base,
 static void consume_response(DUT &dut, uint32_t expected_addr,
                              uint32_t expected_data) {
   (void)expected_addr;
-  wait_until(dut, [&] { return dut.io_resp_valid; },
+  wait_until(dut, [&] { return dut.io_ResponseValid; },
              "ICache never produced the expected response");
-  check(dut.io_resp_data == expected_data,
+  check(dut.io_ResponseData == expected_data,
         "ICache response carried the wrong instruction word");
-  check(!dut.io_resp_fault, "ICache reported a fault for a valid fetch");
-  dut.io_resp_ready = 1;
+  check(!dut.io_ResponseFault, "ICache reported a fault for a valid fetch");
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
   dut.eval();
 }
 
 static void kill_cycle(DUT &dut) {
   // 顶层 redirect 时 StageConnect 会同时接收并丢弃当前响应。
   dut.io_kill = 1;
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
   dut.io_kill = 0;
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
   dut.eval();
 }
 
@@ -123,11 +132,11 @@ static void hit_response_dropped_by_kill() {
 
   // 命中响应已就绪但下游尚未消费，此时 redirect。
   accept_fetch(dut, kLineA + 4U);
-  wait_until(dut, [&] { return dut.io_resp_valid; },
+  wait_until(dut, [&] { return dut.io_ResponseValid; },
              "hit response did not appear");
-  check(dut.io_resp_data == line[1], "hit response lost its data");
+  check(dut.io_ResponseData == line[1], "hit response lost its data");
   kill_cycle(dut);
-  check(!dut.io_resp_valid, "kill did not cancel the pending hit response");
+  check(!dut.io_ResponseValid, "kill did not cancel the pending hit response");
 
   // 同一行仍然有效；新 PC 必须拿到自己的字。
   accept_fetch(dut, kLineA + 8U);
@@ -141,21 +150,21 @@ static void miss_redirect_to_other_line() {
 
   // 旧 PC C：miss 的 AR 已对外展示但尚未握手时 redirect。
   accept_fetch(dut, kLineC + 0U);
-  wait_until(dut, [&] { return dut.io_axi_AR_ARVALID; },
+  wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
              "miss did not issue AR");
-  check(dut.io_axi_AR_ARADDR == kLineC, "miss AR used the wrong line");
+  check(dut.io_AXI_AR_ARADDR == kLineC, "miss AR used the wrong line");
   tick(dut); // ARVALID 被反压一拍，ar_exposed=1
   kill_cycle(dut);
 
   // 旧事务仍必须完成协议；发送与目标行不同的垃圾数据，discard 不得安装。
-  const unsigned beats = static_cast<unsigned>(dut.io_axi_AR_ARLEN) + 1U;
-  dut.io_axi_AR_ARREADY = 1;
+  const unsigned beats = static_cast<unsigned>(dut.io_AXI_AR_ARLEN) + 1U;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut);
-  dut.io_axi_AR_ARREADY = 0;
+  dut.io_AXI_AR_ARREADY = 0;
   for (unsigned beat = 0; beat < beats; ++beat) {
     send_beat(dut, 0xDEAD0000U + beat, beat + 1U == beats);
   }
-  check(!dut.io_resp_valid, "discarded refill produced a response");
+  check(!dut.io_ResponseValid, "discarded refill produced a response");
 
   // 新 PC 在另一行：必须重新 miss/refill，并返回 B 行自己的数据。
   accept_fetch(dut, kLineB + 0U);
@@ -170,21 +179,21 @@ static void miss_redirect_within_same_line() {
 
   // 旧 PC 在行 C 偏移 4；AR 展示后背压，redirect 到同一行的偏移 8。
   accept_fetch(dut, kLineC + 4U);
-  wait_until(dut, [&] { return dut.io_axi_AR_ARVALID; },
+  wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
              "same-line miss did not issue AR");
-  check(dut.io_axi_AR_ARADDR == kLineC, "same-line AR used the wrong line");
+  check(dut.io_AXI_AR_ARADDR == kLineC, "same-line AR used the wrong line");
   tick(dut);
   kill_cycle(dut);
 
-  const unsigned beats = static_cast<unsigned>(dut.io_axi_AR_ARLEN) + 1U;
-  dut.io_axi_AR_ARREADY = 1;
+  const unsigned beats = static_cast<unsigned>(dut.io_AXI_AR_ARLEN) + 1U;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut);
-  dut.io_axi_AR_ARREADY = 0;
+  dut.io_AXI_AR_ARREADY = 0;
   // 旧的同线数据必须被丢弃，不能因为新 PC 也在同一行而被 partial-hit 使用。
   for (unsigned beat = 0; beat < beats; ++beat) {
     send_beat(dut, 0xBAD00000U + beat, beat + 1U == beats);
   }
-  check(!dut.io_resp_valid, "discarded same-line refill produced a response");
+  check(!dut.io_ResponseValid, "discarded same-line refill produced a response");
 
   accept_fetch(dut, kLineC + 8U);
   const std::vector<uint32_t> lineC = refill_line(dut, kLineC, kDataC);

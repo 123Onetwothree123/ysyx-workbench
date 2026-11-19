@@ -45,15 +45,15 @@ class ysyx_26030103_DMACoherenceCacheTest
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.req.valid.poke(false.B)
-    io.req.bits.addr.poke(0.U(AddressW.W))
-    io.req.bits.vaddr.poke(0.U(AddressW.W))
-    io.req.bits.WidthSelect.poke(2.U(2.W))
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(0.U(AddressW.W))
-    io.req_kill.poke(false.B)
-    io.resp.ready.poke(false.B)
+    io.request.valid.poke(false.B)
+    io.request.bits.address.poke(0.U(AddressW.W))
+    io.request.bits.vaddr.poke(0.U(AddressW.W))
+    io.request.bits.WidthSelect.poke(2.U(2.W))
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrValid.poke(true.B)
+    io.RequestPaddrVaddr.poke(0.U(AddressW.W))
+    io.RequestKill.poke(false.B)
+    io.response.ready.poke(false.B)
     io.StoreValid.poke(false.B)
     io.StoreResponse.poke(0.U(2.W))
     io.StoreAddress.poke(0.U(AddressW.W))
@@ -73,15 +73,15 @@ class ysyx_26030103_DMACoherenceCacheTest
       clock: Clock,
       addr:  Long
   ): Unit = {
-    io.req.bits.addr.poke(addr.U(AddressW.W))
-    io.req.bits.vaddr.poke(addr.U(AddressW.W))
-    io.req.bits.WidthSelect.poke(2.U(2.W))
-    io.req_paddr_vaddr.poke(addr.U(AddressW.W))
-    io.req_paddr_valid.poke(true.B)
-    io.req.valid.poke(true.B)
-    waitUntil(clock, bool(io.req.ready), s"DCache 未受理 0x${addr.toHexString}")
+    io.request.bits.address.poke(addr.U(AddressW.W))
+    io.request.bits.vaddr.poke(addr.U(AddressW.W))
+    io.request.bits.WidthSelect.poke(2.U(2.W))
+    io.RequestPaddrVaddr.poke(addr.U(AddressW.W))
+    io.RequestPaddrValid.poke(true.B)
+    io.request.valid.poke(true.B)
+    waitUntil(clock, bool(io.request.ready), s"DCache 未受理 0x${addr.toHexString}")
     clock.step()
-    io.req.valid.poke(false.B)
+    io.request.valid.poke(false.B)
   }
 
   /** 完成当前 AR；返回实际 beats 数，供断言缓存/非缓存路径差异。 */
@@ -112,12 +112,12 @@ class ysyx_26030103_DMACoherenceCacheTest
       clock: Clock,
       data:  Long
   ): Unit = {
-    waitUntil(clock, bool(io.resp.valid), "DCache 没有响应")
-    long(io.resp.bits.data) should be(data)
-    bool(io.resp.bits.fault) should be(false)
-    io.resp.ready.poke(true.B)
+    waitUntil(clock, bool(io.response.valid), "DCache 没有响应")
+    long(io.response.bits.data) should be(data)
+    bool(io.response.bits.fault) should be(false)
+    io.response.ready.poke(true.B)
     clock.step()
-    io.resp.ready.poke(false.B)
+    io.response.ready.poke(false.B)
   }
 
   private def expectNoAr(
@@ -160,7 +160,7 @@ class ysyx_26030103_DMACoherenceCacheTest
 
       // 未收到新的 DMA 写 B 失效事件前，第二次 load 必须命中旧行。
       issueLoad(io, clock, DMAAddress)
-      bool(io.req_cacheable) should be(true)
+      bool(io.RequestCacheable) should be(true)
       expectNoAr(io, clock, "software_flush 下 DMA 窗口应命中 DCache")
       expectResponse(io, clock, 0x11110000L)
     }
@@ -178,13 +178,13 @@ class ysyx_26030103_DMACoherenceCacheTest
       resetDut(io, clock, dut.reset)
 
       issueLoad(io, clock, DMAAddress)
-      bool(io.req_cacheable) should be(false)
+      bool(io.RequestCacheable) should be(false)
       completeRead(io, clock, 0x22220000L) should be(1)
       expectResponse(io, clock, 0x22220000L)
 
       // 模拟 DMA 更新同一地址；UNCACHED 下 CPU 再读必须重新上总线。
       issueLoad(io, clock, DMAAddress)
-      bool(io.req_cacheable) should be(false)
+      bool(io.RequestCacheable) should be(false)
       completeRead(io, clock, 0x33330000L) should be(1)
       expectResponse(io, clock, 0x33330000L)
     }
@@ -206,7 +206,7 @@ class ysyx_26030103_DMACoherenceCacheTest
       expectResponse(io, clock, 0x44440000L)
 
       issueLoad(io, clock, SdramAddress)
-      bool(io.req_cacheable) should be(true)
+      bool(io.RequestCacheable) should be(true)
       expectNoAr(io, clock, "SDRAM 不应被 DMA uncached 模式影响")
       expectResponse(io, clock, 0x44440000L)
     }

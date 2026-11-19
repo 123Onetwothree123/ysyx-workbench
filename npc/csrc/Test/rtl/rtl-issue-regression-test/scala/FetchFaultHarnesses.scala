@@ -10,7 +10,7 @@ import _root_.ysyx_26030103.mmu._
   *
   * 按顶层修复后的连接方式把 ICacheReg 与 IFUMMU 接在一起：PA 有效位与
   * translationValid 相连（translationValid 在 Bare/M bypass 时也会与
-  * !pmpFault 相与），因此 PMP 拒绝的取指不能直接进入 ICache。
+  * !PMPFault 相与），因此 PMP 拒绝的取指不能直接进入 ICache。
   */
 class VIPTFetchPMPHarness extends Module {
   val io = IO(new Bundle {
@@ -18,21 +18,21 @@ class VIPTFetchPMPHarness extends Module {
     val fetchAddress = Input(UInt(32.W))
     val fetchReady = Output(Bool())
     val bypass = Input(Bool())
-    val pmpFault = Input(Bool())
+    val PMPFault = Input(Bool())
     val fault = Output(Bool())
     val faultCause = Output(UInt(4.W))
     val faultVirtualAddress = Output(UInt(32.W))
     val kill = Input(Bool())
-    val respValid = Output(Bool())
-    val respFault = Output(Bool())
-    val respData = Output(UInt(32.W))
-    val respReady = Input(Bool())
-    val axiARValid = Output(Bool())
-    val axiARReady = Input(Bool())
-    val axiARAddress = Output(UInt(32.W))
+    val ResponseValid = Output(Bool())
+    val ResponseFault = Output(Bool())
+    val ResponseData = Output(UInt(32.W))
+    val ResponseReady = Input(Bool())
+    val AXIARValid = Output(Bool())
+    val AXIARReady = Input(Bool())
+    val AXIARAddress = Output(UInt(32.W))
   })
 
-  val icache = Module(
+  val ICache = Module(
     new ysyx_26030103_ICacheReg(
       Enable = true,
       BlockSizeLog2 = 4,
@@ -41,7 +41,7 @@ class VIPTFetchPMPHarness extends Module {
       VIPT = true
     )
   )
-  val immu = Module(
+  val IMMU = Module(
     new ysyx_26030103_IFUMMU(
       ParallelVIPT = true,
       XLEN = 32,
@@ -49,63 +49,63 @@ class VIPTFetchPMPHarness extends Module {
     )
   )
 
-  immu.io.privilege := Mux(io.bypass, 3.U(2.W), 1.U(2.W))
-  immu.io.satp := Mux(io.bypass, 0.U(32.W), "h80000000".U(32.W))
-  immu.io.sum := false.B
-  immu.io.mxr := false.B
-  immu.io.flush := false.B
-  immu.io.pmpFault := io.pmpFault
-  immu.io.fetchValid := icache.io.fetch_xlate_pending
-  immu.io.fetchVirtualAddress := icache.io.fetch_xlate_vaddr
-  immu.io.cacheReady := icache.io.fetch_ready
+  IMMU.io.privilege := Mux(io.bypass, 3.U(2.W), 1.U(2.W))
+  IMMU.io.satp := Mux(io.bypass, 0.U(32.W), "h80000000".U(32.W))
+  IMMU.io.sum := false.B
+  IMMU.io.mxr := false.B
+  IMMU.io.flush := false.B
+  IMMU.io.PMPFault := io.PMPFault
+  IMMU.io.fetchValid := ICache.io.FetchXlatePending
+  IMMU.io.fetchVirtualAddress := ICache.io.FetchXlateVaddr
+  IMMU.io.cacheReady := ICache.io.FetchReady
   // bypass 场景不会发起页表请求；固定 ready 并保持无响应。
-  immu.io.req.ready := true.B
-  immu.io.resp.valid := false.B
-  immu.io.resp.bits := 0.U.asTypeOf(new ysyx_26030103_MMUResponse(32, 32))
+  IMMU.io.request.ready := true.B
+  IMMU.io.response.valid := false.B
+  IMMU.io.response.bits := 0.U.asTypeOf(new ysyx_26030103_MMUResponse(32, 32))
 
   // 与顶层 VIPT 分支完全一致的连接。
-  icache.io.fetch_valid := io.fetchValid
-  icache.io.fetch_vaddr := io.fetchAddress
-  icache.io.fetch_addr := immu.io.fetchPhysicalAddress
-  icache.io.fetch_paddr_valid := immu.io.translationValid
-  icache.io.fetch_paddr_vaddr := immu.io.fetchPhysicalAddressVirtualAddress
-  icache.io.kill := io.kill || immu.io.fault
-  icache.io.flush := false.B
-  icache.io.resp_ready := io.respReady
-  icache.io.snoop_valid := false.B
-  icache.io.snoop_addr := 0.U
-  icache.io.snoop_addr_hi := 0.U
-  icache.io.dma_snoop_valid := false.B
-  icache.io.dma_snoop_start := 0.U
-  icache.io.dma_snoop_end := 0.U
-  icache.io.axi.AR.ARREADY := io.axiARReady
-  icache.io.axi.R.RVALID := false.B
-  icache.io.axi.R.RDATA := 0.U
-  icache.io.axi.R.RRESP := 0.U
-  icache.io.axi.R.RLAST := false.B
-  icache.io.axi.R.RID := 0.U
-  icache.io.axi.B.BVALID := false.B
-  icache.io.axi.B.BID := 0.U
-  icache.io.axi.B.BRESP := 0.U
-  icache.io.axi.AW.AWREADY := false.B
-  icache.io.axi.W.WREADY := false.B
+  ICache.io.FetchValid := io.fetchValid
+  ICache.io.FetchVaddr := io.fetchAddress
+  ICache.io.FetchAddress := IMMU.io.fetchPhysicalAddress
+  ICache.io.FetchPaddrValid := IMMU.io.translationValid
+  ICache.io.FetchPaddrVaddr := IMMU.io.fetchPhysicalAddressVirtualAddress
+  ICache.io.kill := io.kill || IMMU.io.fault
+  ICache.io.flush := false.B
+  ICache.io.ResponseReady := io.ResponseReady
+  ICache.io.SnoopValid := false.B
+  ICache.io.SnoopAddress := 0.U
+  ICache.io.SnoopAddressHi := 0.U
+  ICache.io.DMASnoopValid := false.B
+  ICache.io.DMASnoopStart := 0.U
+  ICache.io.DMASnoopEnd := 0.U
+  ICache.io.AXI.AR.ARREADY := io.AXIARReady
+  ICache.io.AXI.R.RVALID := false.B
+  ICache.io.AXI.R.RDATA := 0.U
+  ICache.io.AXI.R.RRESP := 0.U
+  ICache.io.AXI.R.RLAST := false.B
+  ICache.io.AXI.R.RID := 0.U
+  ICache.io.AXI.B.BVALID := false.B
+  ICache.io.AXI.B.BID := 0.U
+  ICache.io.AXI.B.BRESP := 0.U
+  ICache.io.AXI.AW.AWREADY := false.B
+  ICache.io.AXI.W.WREADY := false.B
 
-  io.fetchReady := icache.io.fetch_ready
-  io.fault := immu.io.fault
-  io.faultCause := immu.io.faultCause
-  io.faultVirtualAddress := immu.io.faultVirtualAddress
-  io.respValid := icache.io.resp_valid
-  io.respFault := icache.io.resp_fault
-  io.respData := icache.io.resp_data
-  io.axiARValid := icache.io.axi.AR.ARVALID
-  io.axiARAddress := icache.io.axi.AR.ARADDR
+  io.fetchReady := ICache.io.FetchReady
+  io.fault := IMMU.io.fault
+  io.faultCause := IMMU.io.faultCause
+  io.faultVirtualAddress := IMMU.io.faultVirtualAddress
+  io.ResponseValid := ICache.io.ResponseValid
+  io.ResponseFault := ICache.io.ResponseFault
+  io.ResponseData := ICache.io.ResponseData
+  io.AXIARValid := ICache.io.AXI.AR.ARVALID
+  io.AXIARAddress := ICache.io.AXI.AR.ARADDR
 }
 
 object VIPTFetchPMPHarnessElaborate extends App {
   val targetDir = args
     .sliding(2)
     .collectFirst { case Array("--target-dir", value) => value }
-    .getOrElse("build/vipt-fetch-pmp-rtl")
+    .getOrElse("build/vipt-fetch-PMP-rtl")
   emitVerilog(new VIPTFetchPMPHarness, Array("--target-dir", targetDir))
 }
 
@@ -176,11 +176,11 @@ class IFUFetchFaultHarness extends Module {
   dut.io.Out.ready := io.OutReady
   io.OutInstruction := dut.io.Out.bits.Instruction
   io.OutIsCompressed := dut.io.Out.bits.IsCompressed
-  io.OutPC := dut.io.Out.bits.pc
+  io.OutPC := dut.io.Out.bits.PC
   io.OutExceptionValid := dut.io.Out.bits.ExceptionValid
   io.OutExceptionCause := dut.io.Out.bits.ExceptionCause
-  io.OutPredTaken := dut.io.Out.bits.pred_taken
-  io.OutPredTarget := dut.io.Out.bits.pred_target
+  io.OutPredTaken := dut.io.Out.bits.PredTaken
+  io.OutPredTarget := dut.io.Out.bits.PredTarget
 }
 
 object IFUFetchFaultHarnessElaborate extends App {

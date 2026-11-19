@@ -65,7 +65,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   private def tagOf(address: UInt): UInt =
     if (VIPTAliasSafe) address(AddressWidth - 1, BlockSizeLog2)
     else address(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  val numBlocks = 1 << IndexBits
+  val NumberBlocks = 1 << IndexBits
   val wordsPerBlock = 1 << (BlockSizeLog2 - 2) // 块大小 ÷ 4字节
   val wordsPerBeat = DataWidth / 32 // 每个AXI beat包含的32位字数(32位总线=1, 64位总线=2)
   val beatsPerBlock = wordsPerBlock / wordsPerBeat // 填满一条line所需的beat数
@@ -89,18 +89,18 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
     ysyx_26030103_VIPTAliasScan.resolveScanWidth(
       VIPTAliasScanMode,
       VIPTAliasScanWidth,
-      numBlocks
+      NumberBlocks
     )
   private val directoryEntries =
-    if (VIPTAliasDirectoryEntries <= 0) numBlocks
+    if (VIPTAliasDirectoryEntries <= 0) NumberBlocks
     else {
-      require(VIPTAliasDirectoryEntries <= numBlocks,
-        s"VIPT alias 目录项数($VIPTAliasDirectoryEntries) 不能超过 set 数($numBlocks)")
+      require(VIPTAliasDirectoryEntries <= NumberBlocks,
+        s"VIPT alias 目录项数($VIPTAliasDirectoryEntries) 不能超过 set 数($NumberBlocks)")
       VIPTAliasDirectoryEntries
     }
   // 直接映射cache：valid/tag留在公共core，data由存储适配实现。
   // 关闭缓存时阵列只留1项占位(其余逻辑不可达), 综合会把这些触发器/组合逻辑全部剪掉
-  private val arrayBlocks = if (Enable) numBlocks else 1
+  private val arrayBlocks = if (Enable) NumberBlocks else 1
   val valid = RegInit(VecInit(Seq.fill(arrayBlocks)(false.B)))
   val tag = Reg(Vec(arrayBlocks, UInt(tagBits.W)))
   storageInit()
@@ -123,7 +123,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
           new ysyx_26030103_VIPTAliasDirectory(
             LineBits = AddressWidth - BlockSizeLog2,
             SetBits = IndexBits,
-            NumSets = numBlocks,
+            NumSets = NumberBlocks,
             Entries = directoryEntries
           )
         )
@@ -146,27 +146,27 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   private def lineOf(address: UInt): UInt =
     address(AddressWidth - 1, BlockSizeLog2)
   private def snoopLineMatch(address: UInt): Bool =
-    lineOf(address) === lineOf(io.snoop_addr) ||
-      lineOf(address) === lineOf(io.snoop_addr_hi)
-  private val dmaSnoopActive = DMASnoop && Enable
+    lineOf(address) === lineOf(io.SnoopAddress) ||
+      lineOf(address) === lineOf(io.SnoopAddressHi)
+  private val DMASnoopActive = DMASnoop && Enable
   // DMA 范围失效同样是“所有重叠物理行”：普通几何拼回完整行号，
   // alias-safe 几何 tag 本身就是完整行号。
   private def dmaLineOfSet(set: Int): UInt =
     if (VIPTAliasSafe) tag(set)
     else Cat(tag(set), set.U(IndexBits.W))
-  private val dmaStartLine = io.dma_snoop_start(AddressWidth - 1, BlockSizeLog2)
-  private val dmaEndLine = io.dma_snoop_end(AddressWidth - 1, BlockSizeLog2)
+  private val DMAStartLine = io.DMASnoopStart(AddressWidth - 1, BlockSizeLog2)
+  private val DMAEndLine = io.DMASnoopEnd(AddressWidth - 1, BlockSizeLog2)
   private def dmaLineInRange(line: UInt): Bool =
-    line >= dmaStartLine && line <= dmaEndLine
+    line >= DMAStartLine && line <= DMAEndLine
   private def dmaLineMatch(address: UInt): Bool =
     dmaLineInRange(lineOf(address))
-  private def dmaSnoopHitVec: UInt =
-    if (!dmaSnoopActive) 0.U(arrayBlocks.W)
+  private def DMASnoopHitVec: UInt =
+    if (!DMASnoopActive) 0.U(arrayBlocks.W)
     else
       VecInit(valid.indices.map { set =>
         valid(set) && dmaLineInRange(dmaLineOfSet(set))
       }).asUInt
-  val indexAddress = if (VIPT) io.fetch_vaddr else io.fetch_addr
+  val indexAddress = if (VIPT) io.FetchVaddr else io.FetchAddress
   val index = indexAddress(IndexBits + BlockSizeLog2 - 1, BlockSizeLog2)
   // Enable=false时阵列只有一个综合占位项。用Scala期的常量索引访问它，
   // 避免把完整的组索引接到单项Vec上产生W004；Enable=true时仍是原始索引，
@@ -175,7 +175,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   val blockOffset =
     if (wordsPerBlock > 1) indexAddress(BlockSizeLog2 - 1, 2)
     else 0.U
-  val reqTag = tagOf(io.fetch_addr)
+  val RequestTag = tagOf(io.FetchAddress)
   private def addressInRegion(
       address: UInt,
       region: ysyx_26030103_PMARegion
@@ -212,12 +212,12 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   // VIPT 下 PA 可能晚于 VA 到达。只接受“PA 有效且其携带的 VA 正是当前
   // 请求 VA”的翻译结果，避免把上一笔请求的旧 PA 用到新 PC 上。
   val incomingPhysicalAddressMatch =
-    !VIPT.B || (io.fetch_paddr_valid && io.fetch_paddr_vaddr === io.fetch_vaddr)
+    !VIPT.B || (io.FetchPaddrValid && io.FetchPaddrVaddr === io.FetchVaddr)
   // 可执行权限和可缓存属性是两个独立的PMA属性。非法取指在本模块
   // 直接形成instruction access fault，不允许向MMIO/CLINT/地址空洞发AR。
-  val executable = addressInRegions(io.fetch_addr, executableRegions)
+  val executable = addressInRegions(io.FetchAddress, executableRegions)
   val cacheable =
-    if (Enable) addressInRegions(io.fetch_addr, cacheableRegions) else false.B
+    if (Enable) addressInRegions(io.FetchAddress, cacheableRegions) else false.B
   // 两级流水: s1受理级(寄存请求) -> 响应级(命中按存储时序交付,缺失走refill)
   val stage1Valid = RegInit(false.B)
   val stage1Hit = Reg(Bool()) // 受理时判定: 可缓存且命中
@@ -240,28 +240,28 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   // 本拍 store snoop 是否命中“当前取指/迟到的 PA”；命中时不能凭 store
   // 之前的 tag 或半填 refill 数据判定 hit，否则同一拍会把旧指令交付。
   val snoopLineHitNow =
-    if (Snoop && Enable) io.snoop_valid && snoopLineMatch(io.fetch_addr)
+    if (Snoop && Enable) io.SnoopValid && snoopLineMatch(io.FetchAddress)
     else false.B
   // 已被 s1 锁存、且 PA 已知的请求命中 store 行：撤回本拍响应，让它
   // 在 store 完成后的新一次 refill 中重新取指。异常响应不能撤回，否则
   // 会把不可执行区域的故障取指错误地变成一次总线读。
   // DMA 写的行失效与 CPU store snoop 使用同一套“同拍命中必须让路”的
   // 规则，但地址范围独立，两个事件可以同拍发生。
-  val dmaSnoopLineHitNow =
-    if (dmaSnoopActive) io.dma_snoop_valid && dmaLineMatch(io.fetch_addr)
+  val DMASnoopLineHitNow =
+    if (DMASnoopActive) io.DMASnoopValid && dmaLineMatch(io.FetchAddress)
     else false.B
-  val anySnoopLineHitNow = snoopLineHitNow || dmaSnoopLineHitNow
+  val anySnoopLineHitNow = snoopLineHitNow || DMASnoopLineHitNow
   val snoopStage1LineHit =
     if (Snoop && Enable)
-      io.snoop_valid && stage1Valid && stage1PhysicalAddressValid && !accessFaultReg &&
+      io.SnoopValid && stage1Valid && stage1PhysicalAddressValid && !accessFaultReg &&
         snoopLineMatch(fetchAddressReg)
     else false.B
-  val dmaSnoopStage1LineHit =
-    if (dmaSnoopActive)
-      io.dma_snoop_valid && stage1Valid && stage1PhysicalAddressValid && !accessFaultReg &&
+  val DMASnoopStage1LineHit =
+    if (DMASnoopActive)
+      io.DMASnoopValid && stage1Valid && stage1PhysicalAddressValid && !accessFaultReg &&
         dmaLineMatch(fetchAddressReg)
     else false.B
-  val anySnoopStage1LineHit = snoopStage1LineHit || dmaSnoopStage1LineHit
+  val anySnoopStage1LineHit = snoopStage1LineHit || DMASnoopStage1LineHit
   // refill状态机(单MSHR: 同一时刻只处理一个缺失)
   val refillStates = Enum(5)
   val refillIdle = refillStates(0)
@@ -293,8 +293,8 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
     else 0.U
   val nonCacheableReadWord =
     if (DataWidth == 64)
-      Mux(refillAddress(2) === 1.U, io.axi.R.RDATA(63, 32), io.axi.R.RDATA(31, 0))
-    else io.axi.R.RDATA
+      Mux(refillAddress(2) === 1.U, io.AXI.R.RDATA(63, 32), io.AXI.R.RDATA(31, 0))
+    else io.AXI.R.RDATA
   val refillCacheable = Reg(Bool())
   val refillCount = RegInit(0.U(beatCountBits.W)) // 当前正在填充第几个beat
   val refillOffsetSafe =
@@ -304,7 +304,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   val burstMode = RegInit(false.B) // 突发传输模式标志
   // AXI规定VALID一旦对外呈现，在READY前不能撤回。该位区分
   // “刚进rf_req且本拍kill”与“ARVALID已经反压了一拍”。
-  val arExposed = RegInit(false.B)
+  val ARExposed = RegInit(false.B)
   // 在飞refill是否仍属于当前s1里的请求: 原请求被消费/冲刷/替换后,
   // 后续R拍只写阵列, 绝不再写s1的响应寄存器(那会污染新请求)
   // s1_ready为true时响应已经对外可见，即使尚未握手也不能在反压下修改
@@ -321,23 +321,23 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   val refillBusy = refillState =/= refillIdle
   val underRefill = refillBusy && refillCacheable && (index === refillIndex)
   val hit =
-    valid(indexSafe) && tag(indexSafe) === reqTag && !underRefill &&
+    valid(indexSafe) && tag(indexSafe) === RequestTag && !underRefill &&
       !anySnoopLineHitNow
   val refillLineMatch =
-    io.fetch_addr(AddressWidth - 1, BlockSizeLog2) ===
+    io.FetchAddress(AddressWidth - 1, BlockSizeLog2) ===
       refillAddress(AddressWidth - 1, BlockSizeLog2)
   val requestedWordArrived =
     if (wordsPerBlock > 1) refillWordValid(blockOffset)
     else refillWordValid(0)
-  val refillReadFire = refillState === refillResponse && io.axi.R.RVALID
+  val refillReadFire = refillState === refillResponse && io.AXI.R.RVALID
   val malformedRefillBeatNow =
-    refillReadFire && !io.axi.R.RLAST &&
+    refillReadFire && !io.AXI.R.RLAST &&
       (!refillCacheable || !burstMode || refillCount === (beatsPerBlock - 1).U)
   val refillErrorNow =
-    refillReadFire && (io.axi.R.RRESP =/= 0.U || malformedRefillBeatNow)
+    refillReadFire && (io.AXI.R.RRESP =/= 0.U || malformedRefillBeatNow)
   // serial/parallel alias 扫描的启动事件：真正被接受的 cacheable refill AR。
   // 被 kill/flush 取消的错路 refill 不驱逐其它 set 的有效行。
-  val refillAliasEvent = refillState === refillRequest && io.axi.AR.ARREADY &&
+  val refillAliasEvent = refillState === refillRequest && io.AXI.AR.ARREADY &&
     refillCacheable && !discard && !(io.kill && stage1Waits)
   // 扫描/启动拍反压新取指，确保不会在旧 alias 副本尚未清完时受理可能
   // 命中它的请求。all_sets/directory 不需要扫描反压。
@@ -379,19 +379,19 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
     dir.io.installLine := refillTag
     dir.io.installSet := refillIndexSafe
     dir.io.invalidateLine :=
-      (if (Snoop && Enable) io.snoop_valid else false.B)
-    dir.io.invalidateLineAddress := io.snoop_addr(AddressWidth - 1, BlockSizeLog2)
+      (if (Snoop && Enable) io.SnoopValid else false.B)
+    dir.io.invalidateLineAddress := io.SnoopAddress(AddressWidth - 1, BlockSizeLog2)
     dir.io.keepSet := false.B
     dir.io.keepSetIndex := 0.U
     dir.io.invalidateLine2 :=
-      (if (Snoop && Enable) io.snoop_valid else false.B)
+      (if (Snoop && Enable) io.SnoopValid else false.B)
     dir.io.invalidateLine2Address :=
-      io.snoop_addr_hi(AddressWidth - 1, BlockSizeLog2)
+      io.SnoopAddressHi(AddressWidth - 1, BlockSizeLog2)
     // DMA 地址级 snoop 按物理行范围清目录项；Cache valid 由
     // DmaSnoopHitVec/refill 丢弃路径同步清除。
-    dir.io.invalidateRange := dmaSnoopActive.B && io.dma_snoop_valid
-    dir.io.invalidateRangeStart := dmaStartLine
-    dir.io.invalidateRangeEnd := dmaEndLine
+    dir.io.invalidateRange := DMASnoopActive.B && io.DMASnoopValid
+    dir.io.invalidateRangeStart := DMAStartLine
+    dir.io.invalidateRangeEnd := DMAEndLine
     // refill 自身出错时，Cache 已经不会安装该行；通知目录同步释放
     // 本次 refill 对应的 set，避免目录留下指向失败行的陈旧表项。
     dir.io.release := refillErrorNow
@@ -408,10 +408,10 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
     }
     if (Snoop && Enable) {
       when(
-        io.snoop_valid && deferredValid &&
-          (deferredTag === io.snoop_addr(AddressWidth - 1, BlockSizeLog2) ||
+        io.SnoopValid && deferredValid &&
+          (deferredTag === io.SnoopAddress(AddressWidth - 1, BlockSizeLog2) ||
             deferredTag ===
-              io.snoop_addr_hi(AddressWidth - 1, BlockSizeLog2))
+              io.SnoopAddressHi(AddressWidth - 1, BlockSizeLog2))
       ) {
         // 若 snoop 恰好落在扫描最后一拍，上面刚把 deferred 行置为
         // valid；必须在同一沿压掉这次补装，store 之前的指令不能留下。
@@ -432,18 +432,18 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
     incomingPhysicalAddressMatch && executable && cacheable && (hit || partialRefillHit)
   // VIPT 的“迟到的 PA”解析：s1 里保存的是受理时的 VA/index/offset，
   // 只有 PA 携带的 VA 与之一致时才允许把 PA 装入请求。注意这里不能使用
-  // 当前 io.fetch_vaddr（IFU 可能已经推进到下一 PC）。
+  // 当前 io.FetchVaddr（IFU 可能已经推进到下一 PC）。
   val stage1WaitTranslate = VIPT.B && stage1Valid && !stage1PhysicalAddressValid
-  val resolveTranslate = stage1WaitTranslate && io.fetch_paddr_valid &&
-    io.fetch_paddr_vaddr === fetchVirtualAddressReg
-  val resolveTag = tagOf(io.fetch_addr)
+  val resolveTranslate = stage1WaitTranslate && io.FetchPaddrValid &&
+    io.FetchPaddrVaddr === fetchVirtualAddressReg
+  val resolveTag = tagOf(io.FetchAddress)
   val resolveUnderRefill =
     refillBusy && refillCacheable && (fetchIndexReg === refillIndex)
   val resolveHit =
     valid(fetchIndexSafe) && tag(fetchIndexSafe) === resolveTag &&
       !resolveUnderRefill && !anySnoopLineHitNow
   val resolveLineMatch =
-    io.fetch_addr(AddressWidth - 1, BlockSizeLog2) ===
+    io.FetchAddress(AddressWidth - 1, BlockSizeLog2) ===
       refillAddress(AddressWidth - 1, BlockSizeLog2)
   val resolveWordArrived =
     if (wordsPerBlock > 1) refillWordValid(fetchOffsetSafe)
@@ -455,61 +455,62 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
       resolveWordArrived && !anySnoopLineHitNow
   val resolveRequestHit =
     executable && cacheable && (resolveHit || resolvePartialRefillHit)
-  io.access_fault_resp := accessFaultResponseReg
-  io.axi.AW.AWVALID := false.B
-  io.axi.AW.AWID := 0.U
-  io.axi.AW.AWADDR := 0.U
-  io.axi.AW.AWLEN := 0.U
-  io.axi.AW.AWSIZE := 2.U
-  io.axi.AW.AWBURST := 1.U
-  io.axi.AW.AWCACHE := 0.U
-  io.axi.AW.AWQOS := 0.U
-  io.axi.AW.AWPROT := 0.U
-  io.axi.W.WVALID := false.B
-  io.axi.W.WDATA := 0.U
-  io.axi.W.WSTRB := 0.U
-  io.axi.W.WLAST := false.B
-  io.axi.B.BREADY := false.B
-  io.axi.AR.ARVALID := false.B
-  io.axi.AR.ARID := 0.U
-  io.axi.AR.ARADDR := 0.U
-  io.axi.AR.ARLEN := 0.U
-  io.axi.AR.ARSIZE := beatSizeLog2.U
-  io.axi.AR.ARBURST := 1.U
-  io.axi.AR.ARPROT := 0.U
-  io.axi.AR.ARCACHE := 0.U
-  io.axi.AR.ARQOS := 0.U
-  io.axi.R.RREADY := true.B // 始终接收并排空 AXI 响应
+  io.AccessFaultResponse := accessFaultResponseReg
+  io.AXI.AW.AWVALID := false.B
+  io.AXI.AW.AWID := 0.U
+  io.AXI.AW.AWADDR := 0.U
+  io.AXI.AW.AWLEN := 0.U
+  io.AXI.AW.AWSIZE := 2.U
+  io.AXI.AW.AWBURST := 1.U
+  io.AXI.AW.AWCACHE := 0.U
+  io.AXI.AW.AWQOS := 0.U
+  io.AXI.AW.AWPROT := 0.U
+  io.AXI.W.WVALID := false.B
+  io.AXI.W.WDATA := 0.U
+  io.AXI.W.WSTRB := 0.U
+  io.AXI.W.WLAST := false.B
+  io.AXI.B.BREADY := false.B
+  io.AXI.AR.ARVALID := false.B
+  io.AXI.AR.ARID := 0.U
+  io.AXI.AR.ARADDR := 0.U
+  io.AXI.AR.ARLEN := 0.U
+  io.AXI.AR.ARSIZE := beatSizeLog2.U
+  io.AXI.AR.ARBURST := 1.U
+  io.AXI.AR.ARPROT := 0.U
+  io.AXI.AR.ARCACHE := 0.U
+  io.AXI.AR.ARQOS := 0.U
+  io.AXI.R.RREADY := true.B // 始终接收并排空 AXI 响应
   // 响应级: 命中按存储时序交付; 关键词返回/refill完成(s1_ready)后,
   // 可缓存的从阵列取/用锁存值, 不可缓存的用R拍锁存的数据; 错误一律给NOP
   val responding =
     stage1Valid && (storageHitResponding || stage1Ready) && !anySnoopStage1LineHit
-  io.resp_valid := responding
+  io.ResponseValid := responding
   // 响应携带架构 PC：VIPT 用受理时锁存的 VA；PIPT 的 VA==PA，保持原行为。
-  io.resp_addr := Mux(VIPT.B, fetchVirtualAddressReg, fetchAddressReg)
-  io.resp_fault := accessFaultReg
+  dontTouch(io.ResponseAddress)
+  io.ResponseAddress := Mux(VIPT.B, fetchVirtualAddressReg, fetchAddressReg)
+  io.ResponseFault := accessFaultReg
   storageResponseData()
   // 受理级: 响应槽为空,或本拍响应正被接收。refill中可放行
   // 其他index的完整命中，以及同line已返回word的partial hit；两者的
   // 数据都在受理拍锁存/发起存储读，不会被后续R beat覆盖。
   val responseSlotAvailable =
-    !stage1Valid || (responding && io.resp_ready)
-  io.fetch_ready :=
+    !stage1Valid || (responding && io.ResponseReady)
+  io.FetchReady :=
     !io.flush &&
       !io.kill &&
       !aliasScanBusy &&
       !aliasDirectoryInstallBusy &&
       responseSlotAvailable &&
       (refillState === refillIdle || refillState === refillDrainFault || requestHit)
-  val accept = io.fetch_valid && io.fetch_ready
+  val accept = io.FetchValid && io.FetchReady
   // VIPT 翻译请求：除了已受理但仍缺 PA 的 s1，还把“本拍正在受理且 PA
   // 尚未匹配”的请求组合地送给 MMU。这样 TLB 查询与 VA 选 index 在同一拍
-  // 启动，而不是等受理后下一拍。该信号不参与 fetch_ready 判定，无组合环。
+  // 启动，而不是等受理后下一拍。该信号不参与 FetchReady 判定，无组合环。
   val stage1PendingTranslate = VIPT.B && stage1Valid && !stage1PhysicalAddressValid
   val acceptNeedsTranslate = VIPT.B && accept && !incomingPhysicalAddressMatch
-  io.fetch_xlate_pending := stage1PendingTranslate || acceptNeedsTranslate
-  io.fetch_xlate_vaddr :=
-    Mux(stage1PendingTranslate, fetchVirtualAddressReg, io.fetch_vaddr)
+  io.FetchXlatePending := stage1PendingTranslate || acceptNeedsTranslate
+  io.FetchXlateVaddr :=
+    Mux(stage1PendingTranslate, fetchVirtualAddressReg, io.FetchVaddr)
   // VIPT 的 PA 晚到时，命中/缺失要等 resolve 拍再计数，避免把“尚未翻译”
   // 误报成 miss。
   io.perf_hit := (accept && requestHit) || (resolveTranslate && resolveRequestHit)
@@ -521,7 +522,12 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   io.perf_refill_resp := refillState === refillResponse
   val perfLineFill = WireDefault(false.B)
   io.perf_line_fill := perfLineFill
-  when(responding && io.resp_ready) {
+  dontTouch(io.perf_hit)
+  dontTouch(io.perf_miss)
+  dontTouch(io.perf_refill_req)
+  dontTouch(io.perf_refill_resp)
+  dontTouch(io.perf_line_fill)
+  when(responding && io.ResponseReady) {
     stage1Valid := false.B
     stage1Waits := false.B
   }
@@ -530,14 +536,14 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
     // 即使 PA 还没到，存储阵列的组选择也已经发生。
     fetchIndexReg := index
     fetchOffsetReg := blockOffset
-    fetchVirtualAddressReg := io.fetch_vaddr
+    fetchVirtualAddressReg := io.FetchVaddr
     stage1PhysicalAddressValid := incomingPhysicalAddressMatch
     storageOnAccept()
     stage1Valid := true.B
     stage1Waits := false.B
     when(incomingPhysicalAddressMatch) {
       // TLB 命中/旁路：PA 同拍可用，走原来的完整命中/缺失路径。
-      fetchAddressReg := io.fetch_addr
+      fetchAddressReg := io.FetchAddress
       storageOnAcceptPa()
       cacheableReg := cacheable
       stage1Hit := requestHit
@@ -566,7 +572,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   // PA 到达：用受理时锁存的 VA index + 当前 PA 完成 tag/PMA 判定。
   // 只有携带同一 VA 的 PA 才被接受，旧翻译结果会被忽略。
   when(resolveTranslate) {
-    fetchAddressReg := io.fetch_addr
+    fetchAddressReg := io.FetchAddress
     stage1PhysicalAddressValid := true.B
     cacheableReg := cacheable
     stage1Hit := resolveRequestHit
@@ -590,22 +596,22 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   // DMA snoop 握手：如果事件到来时已有属于被改写行的 refill，必须等它
   // 把旧事务排空（discard 已置位）后再放行 DMA B。handled 保证同一个
   // snoop 事件只毒化一次：排空后自动重取的新 refill 读的是 DMA 完成后的内存。
-  val dmaSnoopActiveRefill = dmaSnoopActive.B && (refillState =/= refillIdle) &&
+  val DMASnoopActiveRefill = DMASnoopActive.B && (refillState =/= refillIdle) &&
     dmaLineMatch(refillAddress)
-  val dmaSnoopStaleRefill = RegInit(false.B)
-  val dmaSnoopHandled = RegInit(false.B)
-  when(!io.dma_snoop_valid) { dmaSnoopHandled := false.B }
-  when(io.dma_snoop_valid && !dmaSnoopHandled) {
-    dmaSnoopHandled := true.B
-    when(dmaSnoopActiveRefill) { dmaSnoopStaleRefill := true.B }
+  val DMASnoopStaleRefill = RegInit(false.B)
+  val DMASnoopHandled = RegInit(false.B)
+  when(!io.DMASnoopValid) { DMASnoopHandled := false.B }
+  when(io.DMASnoopValid && !DMASnoopHandled) {
+    DMASnoopHandled := true.B
+    when(DMASnoopActiveRefill) { DMASnoopStaleRefill := true.B }
   }
-  when(dmaSnoopStaleRefill && refillState === refillIdle) {
-    dmaSnoopStaleRefill := false.B
+  when(DMASnoopStaleRefill && refillState === refillIdle) {
+    DMASnoopStaleRefill := false.B
   }
-  val dmaSnoopFirstPoison =
-    io.dma_snoop_valid && !dmaSnoopHandled && dmaSnoopActiveRefill
-  io.dma_snoop_ready := (!dmaSnoopActive).B ||
-    (!dmaSnoopStaleRefill && !dmaSnoopFirstPoison)
+  val DMASnoopFirstPoison =
+    io.DMASnoopValid && !DMASnoopHandled && DMASnoopActiveRefill
+  io.DMASnoopReady := (!DMASnoopActive).B ||
+    (!DMASnoopStaleRefill && !DMASnoopFirstPoison)
   when(queuedMiss && refillState === refillIdle && !io.kill && !io.flush &&
       !busFault) {
     when(recheckHit) {
@@ -618,7 +624,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
       refillCacheable := cacheableReg
       refillCount := 0.U
       refillWordValid := 0.U
-      arExposed := false.B
+      ARExposed := false.B
       burstMode := cacheableReg
       // 每次新refill都从干净的事务状态开始，不能继承上一次flush/discard
       // 或RRESP错误；旧目标行在AR握手时才失效，避免取消的
@@ -640,15 +646,15 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
       // redirect/exception在AR尚未被时钟采样为pending时可以取消错路
       // refill。ARVALID若已被反压过，即使还没握手也必须保持到READY。
       val cancelUnaccepted =
-        io.kill && stage1Waits && !arExposed && !io.flush
-      io.axi.AR.ARVALID := !cancelUnaccepted
-      io.axi.AR.ARSIZE := Mux(refillCacheable, beatSizeLog2.U, 2.U)
-      io.axi.AR.ARLEN := Mux(
+        io.kill && stage1Waits && !ARExposed && !io.flush
+      io.AXI.AR.ARVALID := !cancelUnaccepted
+      io.AXI.AR.ARSIZE := Mux(refillCacheable, beatSizeLog2.U, 2.U)
+      io.AXI.AR.ARLEN := Mux(
         refillCacheable && burstMode,
         (beatsPerBlock - 1).U,
         0.U
       )
-      io.axi.AR.ARADDR := Mux(
+      io.AXI.AR.ARADDR := Mux(
         refillCacheable,
         Mux(
           burstMode,
@@ -665,9 +671,9 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
         burstMode := false.B
         discard := false.B
         refillWordValid := 0.U
-        arExposed := false.B
+        ARExposed := false.B
         refillState := refillIdle
-      }.elsewhen(io.axi.AR.ARREADY) {
+      }.elsewhen(io.AXI.AR.ARREADY) {
         // 延迟到AR真正接受后才失效被替换行；因此未握手的
         // 错路refill被取消时，不会白白驱逐原有有效行。
         // 已展示但在握手前被kill的owner AR必须完成协议，但其
@@ -677,18 +683,18 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
           valid(refillIndexSafe) := false.B
           invalidateAliasCopies(refillTag, refillIndexSafe)
         }
-        arExposed := false.B
+        ARExposed := false.B
         refillState := refillResponse
       }.otherwise {
         // 本拍ARVALID已对外呈现但被反压；之后即使kill到来也必须
         // 保持地址和VALID，等握手后再排空响应。
-        arExposed := true.B
+        ARExposed := true.B
       }
     }
     is(refillResponse) {
-      io.axi.R.RREADY := true.B
-      when(io.axi.R.RVALID && io.axi.R.RREADY) {
-        val readError = io.axi.R.RRESP =/= 0.U
+      io.AXI.R.RREADY := true.B
+      when(io.AXI.R.RVALID && io.AXI.R.RREADY) {
+        val readError = io.AXI.R.RRESP =/= 0.U
         // 非缓存访问只有一个beat；缓存访问则只有请求所在的关键词beat
         // 能把错误归属给当前s1请求，其他beat的错误仅记录为line错误。
         val keywordBeat = !refillCacheable || (refillCount === refillKeywordBeat)
@@ -702,7 +708,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
           refillWordValid := 0.U
           when(!discard && stage1Waits && keywordBeat) {
             accessFaultReg := true.B
-            accessFaultResponseReg := io.axi.R.RRESP
+            accessFaultResponseReg := io.AXI.R.RRESP
             responseDataReg := "h00000013".U // NOP, 不让下游拿到非法指令
           }
         }.elsewhen(!discard) {
@@ -721,7 +727,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
               writeDataWord(
                 refillIndexSafe,
                 wordOffset,
-                io.axi.R.RDATA(k * 32 + 31, k * 32)
+                io.AXI.R.RDATA(k * 32 + 31, k * 32)
               )
             }
             when(!refillError) {
@@ -733,7 +739,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
             // 扫描尚未覆盖全部 set 时先挂起，扫描最后一拍再补置 valid。
             when(
               refillCount === (beatsPerBlock - 1).U &&
-                io.axi.R.RLAST && !refillError
+                io.AXI.R.RLAST && !refillError
             ) {
               perfLineFill := true.B
               when(aliasScanStatus.installAllowed) {
@@ -747,7 +753,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
                   // 置 valid（上面的 snoop 取消逻辑只看已寄存的 deferred）。
                   val deferredSnooped =
                     if (Snoop && Enable)
-                      io.snoop_valid && snoopLineMatch(refillAddress)
+                      io.SnoopValid && snoopLineMatch(refillAddress)
                     else false.B
                   when(!deferredSnooped) {
                     deferredValid := true.B
@@ -765,7 +771,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
         }
         when(refillCacheable && burstMode) {
           refillCount := refillCount + 1.U
-          when(io.axi.R.RLAST) {
+          when(io.AXI.R.RLAST) {
             // 突发结束(正常结束或被从机提前截断)
             when(discard) {
               discard := false.B
@@ -787,7 +793,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
             refillWordValid := 0.U
             when(!discard && stage1Waits && !stage1Ready) {
               accessFaultReg := true.B
-              accessFaultResponseReg := Mux(readError, io.axi.R.RRESP, 2.U)
+              accessFaultResponseReg := Mux(readError, io.AXI.R.RRESP, 2.U)
               responseDataReg := "h00000013".U
               stage1Ready := true.B
             }
@@ -796,7 +802,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
           }
         }.elsewhen(refillCacheable) {
           // 提前RLAST后的补取是独立单拍事务，每一拍也必须以RLAST结束。
-          when(io.axi.R.RLAST) {
+          when(io.AXI.R.RLAST) {
             when(discard) {
               discard := false.B
               refillState := refillIdle
@@ -815,7 +821,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
             refillWordValid := 0.U
             when(!discard && stage1Waits && !stage1Ready) {
               accessFaultReg := true.B
-              accessFaultResponseReg := Mux(readError, io.axi.R.RRESP, 2.U)
+              accessFaultResponseReg := Mux(readError, io.AXI.R.RRESP, 2.U)
               responseDataReg := "h00000013".U
               stage1Ready := true.B
             }
@@ -823,7 +829,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
             drainTimer := 0.U
           }
         }.otherwise {
-          when(io.axi.R.RLAST) {
+          when(io.AXI.R.RLAST) {
             when(discard) {
               discard := false.B
               refillState := refillIdle
@@ -836,7 +842,7 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
           }.otherwise {
             when(!discard && stage1Waits && !stage1Ready) {
               accessFaultReg := true.B
-              accessFaultResponseReg := Mux(readError, io.axi.R.RRESP, 2.U)
+              accessFaultResponseReg := Mux(readError, io.AXI.R.RRESP, 2.U)
               responseDataReg := "h00000013".U
               stage1Ready := true.B
             }
@@ -847,8 +853,8 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
       }
     }
     is(refillDrain) {
-      io.axi.R.RREADY := true.B
-      when(io.axi.R.RVALID && io.axi.R.RLAST) {
+      io.AXI.R.RREADY := true.B
+      when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
         discard := false.B
         burstMode := false.B
         refillState := refillIdle
@@ -865,11 +871,11 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
       // 继续以 RREADY 吸收违规从设备的迟到拍，直到 RLAST 使总线重新同步；
       // 期间新取指由受理路径直接以故障响应结束。通道安静时周期性重试
       // refill（清故障标记回空闲）：从设备恢复后系统自动复原，不必等复位。
-      io.axi.R.RREADY := true.B
-      when(io.axi.R.RVALID && io.axi.R.RLAST) {
+      io.AXI.R.RREADY := true.B
+      when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
         busFault := false.B
         refillState := refillIdle
-      }.elsewhen(drainRetryTimer === DrainTimeout.U && !io.axi.R.RVALID) {
+      }.elsewhen(drainRetryTimer === DrainTimeout.U && !io.AXI.R.RVALID) {
         busFault := false.B
         drainRetryTimer := 0.U
         refillState := refillIdle
@@ -886,13 +892,13 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
     // refill。early response已消费后，s1_waits=false，之后无关分支的kill
     // 不能丢弃后台fill。只有已展示但未握手的AR需要sticky discard；
     // 已握手的rf_resp继续完成有效line，避免留下必然miss的空index。
-    val killOwnedExposedAr =
-      stage1Waits && refillState === refillRequest && arExposed
+    val KillOwnedExposedAR =
+      stage1Waits && refillState === refillRequest && ARExposed
     stage1Valid := false.B
     stage1Waits := false.B
     stage1PhysicalAddressValid := false.B
     storageOnKill()
-    when(killOwnedExposedAr) {
+    when(KillOwnedExposedAR) {
       discard := true.B
       refillWordValid := 0.U
     }
@@ -919,9 +925,9 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   // 当前 s1 保持未就绪；状态机回 idle 后由 queued_miss 自动重新取指。
   // 这条重取路径不需要 fence.i 的流水线重定向，因此不能直接复用 flush。
   if (Snoop && Enable) {
-    val snoopHit = snoopHitVec(io.snoop_addr) | snoopHitVec(io.snoop_addr_hi)
+    val snoopHit = snoopHitVec(io.SnoopAddress) | snoopHitVec(io.SnoopAddressHi)
     for (set <- valid.indices) {
-      when(io.snoop_valid && snoopHit(set)) {
+      when(io.SnoopValid && snoopHit(set)) {
         valid(set) := false.B
       }
     }
@@ -930,14 +936,14 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
     val snoopLaunchRefill =
       queuedMiss && refillState === refillIdle && snoopLineMatch(fetchAddressReg)
     val snoopRefillMatch = snoopActiveRefill || snoopLaunchRefill
-    when(io.snoop_valid && snoopRefillMatch) {
+    when(io.SnoopValid && snoopRefillMatch) {
       discard := true.B
       refillWordValid := 0.U
       // 同拍 RLAST 可能刚把旧 refill 安装成 valid；最后写回必须压掉它。
       // 启动拍 ref_addr 尚未更新，目标 index 取当前 s1 的 index。
       valid(Mux(snoopActiveRefill, refillIndexSafe, fetchIndexSafe)) := false.B
     }
-    when(io.snoop_valid && snoopStage1LineHit) {
+    when(io.SnoopValid && snoopStage1LineHit) {
       stage1Hit := false.B
       stage1Ready := false.B
       storageDropStage1Hit()
@@ -946,15 +952,15 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
   // DMA 地址级 snoop：失效所有重叠行；匹配的 refill 丢弃并在排空后由
   // queued_miss 自动重取（此时内存已含 DMA 新数据）。s1 的旧命中同样
   // 撤回，不能把 DMA 之前的指令继续交付。
-  if (dmaSnoopActive) {
-    val dmaSnoopHit = dmaSnoopHitVec
+  if (DMASnoopActive) {
+    val DMASnoopHit = DMASnoopHitVec
     for (set <- valid.indices) {
-      when(io.dma_snoop_valid && dmaSnoopHit(set)) {
+      when(io.DMASnoopValid && DMASnoopHit(set)) {
         valid(set) := false.B
       }
     }
-    when(io.dma_snoop_valid && !dmaSnoopHandled &&
-        dmaSnoopActiveRefill) {
+    when(io.DMASnoopValid && !DMASnoopHandled &&
+        DMASnoopActiveRefill) {
       discard := true.B
       refillWordValid := 0.U
       valid(refillIndexSafe) := false.B
@@ -963,16 +969,16 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
     // 或被本拍 DMA snoop 丢弃，必须立刻取消，扫描结束后不得补装。
     if (aliasScanActive) {
       val (deferredIndex, deferredTag, deferredValid) = aliasDeferred.get
-      when(io.dma_snoop_valid && deferredValid &&
+      when(io.DMASnoopValid && deferredValid &&
           dmaLineInRange(deferredTag)) {
         valid(deferredIndex) := false.B
         deferredValid := false.B
       }
-      when(dmaSnoopFirstPoison) {
+      when(DMASnoopFirstPoison) {
         deferredValid := false.B
       }
     }
-    when(io.dma_snoop_valid && dmaSnoopStage1LineHit) {
+    when(io.DMASnoopValid && DMASnoopStage1LineHit) {
       stage1Hit := false.B
       stage1Ready := false.B
       storageDropStage1Hit()

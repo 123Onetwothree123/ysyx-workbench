@@ -1,11 +1,13 @@
 module;
 #include <verilated.h>
 module npc.sdb.command.cCommand;
+import npc.Output;
 import npc.config;
 import npc.NPCTrap;
 import npc.DUT;
 import npc.sdb.NPCEvaluationContext;
 import npc.sdb.command.WatchpointPool;
+import npc.SimulationContext;
 
 [[nodiscard]] std::string_view cCommand::name() const noexcept
 {
@@ -20,9 +22,10 @@ import npc.sdb.command.WatchpointPool;
 }
 SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view args)
 {
+    auto &out{context.GetSimulation().Out()};
     if (!args.empty())
     {
-        std::println("用法：c");
+        out.Info("用法：c");
         return SDBCommandResult::Continue;
     }
     auto &dut{context.GetDUT()};
@@ -50,9 +53,9 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
         if constexpr (npc::HasWatchpoint)
         {
             if ((dut->debug_commit || dut->debug_trap_valid) &&
-                GetGlobalWatchpointPool().CheckAll(EvaluationContext))
+                context.GetSimulation().Watchpoints().CheckAll(EvaluationContext))
             {
-                std::println("因为要检查监视点，所以程序现在先停止");
+                out.Info("因为要检查监视点，所以程序现在先停止");
                 break;
             }
         }

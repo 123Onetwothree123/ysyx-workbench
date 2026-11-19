@@ -42,11 +42,11 @@ static const char *kStorageName = "sram_nobypass";
 #endif
 
 static void defaults(DUT &dut) {
-  dut.io_req_valid = 0;
-  dut.io_req_bits_addr = 0;
-  dut.io_req_bits_WidthSelect = 2;
-  dut.io_req_bits_signed = 0;
-  dut.io_resp_ready = 1;
+  dut.io_request_valid = 0;
+  dut.io_request_bits_address = 0;
+  dut.io_request_bits_WidthSelect = 2;
+  dut.io_request_bits_signed = 0;
+  dut.io_response_ready = 1;
   dut.io_StoreValid = 0;
   dut.io_StoreResponse = 0;
   dut.io_StoreAddress = 0;
@@ -63,13 +63,13 @@ static void defaults(DUT &dut) {
 // 触发一次 miss 并完成整行回填。
 static void miss_and_refill(DUT &dut, uint32_t addr,
                             const std::vector<uint32_t> &words) {
-  dut.io_resp_ready = 0;
-  dut.io_req_valid = 1;
-  dut.io_req_bits_addr = addr;
+  dut.io_response_ready = 0;
+  dut.io_request_valid = 1;
+  dut.io_request_bits_address = addr;
   dut.eval();
-  check(dut.io_req_ready, "DCache did not accept the demand miss");
+  check(dut.io_request_ready, "DCache did not accept the demand miss");
   tick(dut);
-  dut.io_req_valid = 0;
+  dut.io_request_valid = 0;
 
   wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
              "DCache never issued the refill AR");
@@ -89,12 +89,12 @@ static void miss_and_refill(DUT &dut, uint32_t addr,
     dut.io_AXI_R_RLAST = 0;
   }
   // 消费 demand 响应，回到空闲。
-  wait_until(dut, [&] { return dut.io_resp_valid; },
+  wait_until(dut, [&] { return dut.io_response_valid; },
              "refill never produced the demand response");
-  dut.io_resp_ready = 1;
+  dut.io_response_ready = 1;
   tick(dut);
   dut.eval();
-  check(dut.io_req_ready, "DCache did not return to idle after the refill");
+  check(dut.io_request_ready, "DCache did not return to idle after the refill");
 }
 
 // 同拍"命中 store 写镜像 + 同线 load 请求"的契约检查。
@@ -110,47 +110,47 @@ static void test_store_conflict_same_cycle(DUT &dut, uint32_t line_base,
 
   // 冲突拍：同线 store 命中（写镜像）+ load 请求。响应先不消费，
   // 保证随后出现的响应必然属于冲突拍受理的这个请求。
-  dut.io_resp_ready = 0;
-  dut.io_req_valid = 1;
-  dut.io_req_bits_addr = kStoreAddress;
-  dut.io_req_bits_WidthSelect = 2;
-  dut.io_req_bits_signed = 0;
+  dut.io_response_ready = 0;
+  dut.io_request_valid = 1;
+  dut.io_request_bits_address = kStoreAddress;
+  dut.io_request_bits_WidthSelect = 2;
+  dut.io_request_bits_signed = 0;
   dut.io_StoreValid = 1;
   dut.io_StoreResponse = 0;
   dut.io_StoreAddress = kStoreAddress;
   dut.io_StoreData = kStoreData;
   dut.io_StoreStrobe = 0xF;
   dut.eval();
-  const bool accepted_in_conflict = dut.io_req_ready;
+  const bool accepted_in_conflict = dut.io_request_ready;
   tick(dut);
   dut.io_StoreValid = 0;
   dut.io_StoreStrobe = 0;
   dut.eval();
-  dut.io_req_valid = 0;
+  dut.io_request_valid = 0;
 
   uint32_t first_resp = 0;
   bool got_first = false;
   if (accepted_in_conflict) {
-    wait_until(dut, [&] { return dut.io_resp_valid; },
+    wait_until(dut, [&] { return dut.io_response_valid; },
                "冲突拍受理的 load 没有响应");
-    first_resp = dut.io_resp_bits_data;
+    first_resp = dut.io_response_bits_data;
     got_first = true;
   }
-  dut.io_resp_ready = 1;
+  dut.io_response_ready = 1;
   tick(dut);
   dut.eval();
 
   // 冲突解除后的新请求：必须返回 store 之后的新值。
-  dut.io_req_valid = 1;
-  dut.io_req_bits_addr = kStoreAddress;
+  dut.io_request_valid = 1;
+  dut.io_request_bits_address = kStoreAddress;
   dut.eval();
-  check(dut.io_req_ready, "冲突解除后 load 未被接受");
+  check(dut.io_request_ready, "冲突解除后 load 未被接受");
   tick(dut);
-  dut.io_req_valid = 0;
-  wait_until(dut, [&] { return dut.io_resp_valid; },
+  dut.io_request_valid = 0;
+  wait_until(dut, [&] { return dut.io_response_valid; },
              "冲突解除后的 load 没有响应");
-  const uint32_t after_resp = dut.io_resp_bits_data;
-  dut.io_resp_ready = 1;
+  const uint32_t after_resp = dut.io_response_bits_data;
+  dut.io_response_ready = 1;
   tick(dut);
   dut.eval();
 
@@ -179,7 +179,7 @@ static void test_store_mirror_then_load(DUT &dut, uint32_t line_base,
   constexpr uint32_t kStored = 0x5A5AA5A5U;
 
   // 命中 store（StoreValid=1、StoreResponse=0）：时钟沿写入阵列/镜像。
-  dut.io_resp_ready = 0;
+  dut.io_response_ready = 0;
   dut.io_StoreValid = 1;
   dut.io_StoreResponse = 0;
   dut.io_StoreAddress = kAddr;
@@ -191,21 +191,21 @@ static void test_store_mirror_then_load(DUT &dut, uint32_t line_base,
   dut.eval();
 
   // 同线 load 必须看到新值。
-  dut.io_req_valid = 1;
-  dut.io_req_bits_addr = kAddr;
-  dut.io_req_bits_WidthSelect = 2;
-  dut.io_req_bits_signed = 0;
+  dut.io_request_valid = 1;
+  dut.io_request_bits_address = kAddr;
+  dut.io_request_bits_WidthSelect = 2;
+  dut.io_request_bits_signed = 0;
   dut.eval();
-  check(dut.io_req_ready, "store 之后的同线 load 未被受理");
+  check(dut.io_request_ready, "store 之后的同线 load 未被受理");
   tick(dut);
-  dut.io_req_valid = 0;
-  wait_until(dut, [&] { return dut.io_resp_valid; },
+  dut.io_request_valid = 0;
+  wait_until(dut, [&] { return dut.io_response_valid; },
              "store 之后 load 没有响应");
-  check(!dut.io_resp_bits_fault, "store 之后 load 不应报故障");
-  check(dut.io_resp_bits_data == kStored,
+  check(!dut.io_response_bits_fault, "store 之后 load 不应报故障");
+  check(dut.io_response_bits_data == kStored,
         "命中 store 写镜像后 load 未读到新值，得到 0x" +
-            std::to_string(dut.io_resp_bits_data));
-  dut.io_resp_ready = 1;
+            std::to_string(dut.io_response_bits_data));
+  dut.io_response_ready = 1;
   tick(dut);
   dut.eval();
 }
@@ -229,7 +229,7 @@ static void test_randomized_drift_guard(DUT &dut, uint32_t line_base,
     const uint32_t addr = line_base + word * 4U;
     if ((next() & 3U) == 0U) {
       const uint32_t data = next();
-      dut.io_resp_ready = 0;
+      dut.io_response_ready = 0;
       dut.io_StoreValid = 1;
       dut.io_StoreResponse = 0;
       dut.io_StoreAddress = addr;
@@ -241,23 +241,23 @@ static void test_randomized_drift_guard(DUT &dut, uint32_t line_base,
       dut.eval();
       model[word] = data;
     } else {
-      dut.io_req_valid = 1;
-      dut.io_req_bits_addr = addr;
-      dut.io_req_bits_WidthSelect = 2;
-      dut.io_req_bits_signed = 0;
+      dut.io_request_valid = 1;
+      dut.io_request_bits_address = addr;
+      dut.io_request_bits_WidthSelect = 2;
+      dut.io_request_bits_signed = 0;
       dut.eval();
-      check(dut.io_req_ready, "drift guard: hit load was not accepted");
+      check(dut.io_request_ready, "drift guard: hit load was not accepted");
       tick(dut);
-      dut.io_req_valid = 0;
-      wait_until(dut, [&] { return dut.io_resp_valid; },
+      dut.io_request_valid = 0;
+      wait_until(dut, [&] { return dut.io_response_valid; },
                  "drift guard: hit load produced no response");
-      check(!dut.io_resp_bits_fault && dut.io_resp_bits_data == model[word],
+      check(!dut.io_response_bits_fault && dut.io_response_bits_data == model[word],
             "drift guard: response 0x" +
-                std::to_string(dut.io_resp_bits_data) +
+                std::to_string(dut.io_response_bits_data) +
                 " != model 0x" + std::to_string(model[word]));
-      dut.io_resp_ready = 1;
+      dut.io_response_ready = 1;
       tick(dut);
-      dut.io_resp_ready = 0;
+      dut.io_response_ready = 0;
       dut.eval();
     }
   }
@@ -285,25 +285,25 @@ int main(int argc, char **argv) {
     std::vector<uint32_t> requests;
     std::vector<uint32_t> responses;
     for (int cycle = 0; cycle < kRequestCycles; ++cycle) {
-      dut.io_req_bits_addr = kLineBase + (static_cast<unsigned>(cycle) % 4U) * 4U;
-      dut.io_req_valid = 1;
-      dut.io_resp_ready = 1;
+      dut.io_request_bits_address = kLineBase + (static_cast<unsigned>(cycle) % 4U) * 4U;
+      dut.io_request_valid = 1;
+      dut.io_response_ready = 1;
       dut.eval();
-      if (dut.io_req_ready) {
-        requests.push_back(dut.io_req_bits_addr);
+      if (dut.io_request_ready) {
+        requests.push_back(dut.io_request_bits_address);
       }
-      if (dut.io_resp_valid) {
-        check(!dut.io_resp_bits_fault, "unexpected fault response");
-        responses.push_back(dut.io_resp_bits_data);
+      if (dut.io_response_valid) {
+        check(!dut.io_response_bits_fault, "unexpected fault response");
+        responses.push_back(dut.io_response_bits_data);
       }
       tick(dut);
     }
     // 排空剩余响应。
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     for (int cycle = 0; cycle < 8; ++cycle) {
       dut.eval();
-      if (dut.io_resp_valid) {
-        responses.push_back(dut.io_resp_bits_data);
+      if (dut.io_response_valid) {
+        responses.push_back(dut.io_response_bits_data);
       }
       tick(dut);
     }

@@ -7,11 +7,11 @@ void deriveEffectiveConfig(std::map<std::string, std::string> &values)
     if (xlen != 32 && xlen != 64)
         throw std::runtime_error("XLEN 只允许 32/64");
     const bool followCpu = asBool(values, "SOC_XLEN_FOLLOW_CPU");
-    const long long socXlen =
+    const long long SOCXlen =
         followCpu ? xlen : asInt(values, "SOC_XLEN", 32);
-    if (socXlen != 32 && socXlen != 64)
+    if (SOCXlen != 32 && SOCXlen != 64)
         throw std::runtime_error("SOC_XLEN 只允许 32/64");
-    values["SOC_XLEN_EFFECTIVE"] = std::to_string(socXlen);
+    values["SOC_XLEN_EFFECTIVE"] = std::to_string(SOCXlen);
     const bool internalFollow =
         asBool(values, "INTERNAL_BUS_WIDTH_FOLLOW_CPU", true);
     const long long internalWidth =

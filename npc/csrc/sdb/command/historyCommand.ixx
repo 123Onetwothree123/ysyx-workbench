@@ -5,6 +5,7 @@ import npc.sdb.SDBCommandResult;
 import npc.sdb.SDBCommandUsage;
 import npc.sdb.SDBCommandContext;
 import npc.sdb.SDBCommandRegistry;
+import npc.Output;
 
 export class historyCommand final : public SDBCommand
 {
@@ -15,6 +16,6 @@ public:
     [[nodiscard]] SDBCommandUsageList usage() const noexcept override;
     SDBCommandResult execute(SDBCommandContext &context, std::string_view args) override;
 private:
-    static void PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Registry);
+    static void PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Registry, Output &out);
     const SDBCommandRegistry &Registry;
 };

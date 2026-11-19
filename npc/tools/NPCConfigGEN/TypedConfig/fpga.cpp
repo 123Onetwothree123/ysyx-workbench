@@ -169,7 +169,7 @@ void addFpga(TypedFields &root, const Config &values)
     addField(fpga, "memory", TypedJson::object(std::move(memory)));
 
     TypedFields peripherals;
-    addField(peripherals, "uart",
+    addField(peripherals, "UART",
              TypedJson::boolean(flatBool(values, "FPGA_UART_ENABLE", true)));
     addField(peripherals, "uart_count",
              TypedJson::integer(flatInt(values, "FPGA_UART_COUNT", 1)));
@@ -205,7 +205,7 @@ void addFpga(TypedFields &root, const Config &values)
              TypedJson::boolean(flatBool(values, "FPGA_HDMI_ENABLE")));
     addField(peripherals, "ps2",
              TypedJson::boolean(flatBool(values, "FPGA_PS2_ENABLE")));
-    addField(peripherals, "dma",
+    addField(peripherals, "DMA",
              TypedJson::boolean(flatBool(values, "FPGA_DMA_ENABLE", true)));
     addField(peripherals, "jtag",
              TypedJson::boolean(flatBool(values, "FPGA_JTAG_ENABLE", true)));

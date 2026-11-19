@@ -3,10 +3,10 @@ import std;
 namespace npc::configgen {
 void addMMU(TypedFields &root, const Config &values, long long xlen)
 {
-    const long long defaultPTEBytes = xlen == 64 ? 8 : 4;
+    const long long DefaultPTEBytes = xlen == 64 ? 8 : 4;
     const long long mmuPTEBytes =
-        flatInt(values, "MMU_PTE_SIZE_BYTES", defaultPTEBytes);
-    const long long defaultPPNHigh = mmuPTEBytes * 8 == 64 ? 53 : 31;
+        flatInt(values, "MMU_PTE_SIZE_BYTES", DefaultPTEBytes);
+    const long long DefaultPPNHigh = mmuPTEBytes * 8 == 64 ? 53 : 31;
     TypedFields mmu;
     addField(mmu, "enabled",
              TypedJson::boolean(flatBool(values, "MMU_ENABLED",
@@ -62,7 +62,7 @@ void addMMU(TypedFields &root, const Config &values, long long xlen)
                  flatInt(values, "MMU_PTE_PPN_LOW", 10)));
     addField(mmu, "pte_ppn_high",
              TypedJson::integer(flatInt(values, "MMU_PTE_PPN_HIGH",
-                                        defaultPPNHigh)));
+                                        DefaultPPNHigh)));
     addField(mmu, "superpage",
              TypedJson::boolean(flatBool(values, "MMU_SUPERPAGE")));
     addField(mmu, "ad_mode",

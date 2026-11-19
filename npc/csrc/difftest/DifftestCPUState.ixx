@@ -50,7 +50,6 @@ public:
     static constexpr std::size_t RegCount{32};
     static constexpr std::uint64_t FRegMask{
         npc::XLen == 32 ? 0xffff'ffffULL : ~0ULL};
-
     [[nodiscard]] std::uint64_t GetFReg(std::size_t Index) const;
     void SetFReg(std::size_t Index, std::uint64_t Value);
     [[nodiscard]] std::uint64_t GetFCSR() const;

@@ -6,8 +6,8 @@ import chisel3.util._
 import _root_.ysyx_26030103.infra.ysyx_26030103_AXI5IO
 
 class ysyx_26030103_DCacheRequest(val AddressWidth: Int = 32) extends Bundle {
-  val addr = UInt(AddressWidth.W)
-  // VIPT 模式下用于选 index 的虚拟地址；addr 始终是物理地址。
+  val address = UInt(AddressWidth.W)
+  // VIPT 模式下用于选 index 的虚拟地址；address 始终是物理地址。
   val vaddr = UInt(AddressWidth.W)
   val WidthSelect = UInt(2.W) // 0=字节，1=半字，2=字
   val signed = Bool()
@@ -24,7 +24,7 @@ class ysyx_26030103_DCacheResponse(val DataWidth: Int = 32) extends Bundle {
 /** 数据缓存的统一对外接口。
   *
   * 行为约定：
-  *   1. req/resp为valid-ready握手，一次可有一条在途请求，响应保序，
+  *   1. request/response为valid-ready握手，一次可有一条在途请求，响应保序，
   *      命中延迟由实现自行决定；
   *   2. AXI端口只使用AR/R通道，写通道由LSU写缓冲负责；
   *   3. Store*为写缓冲匹配B响应后的事件通知，实现允许忽略，但必须接线；
@@ -37,14 +37,14 @@ class ysyx_26030103_DCacheInterface(
 ) extends Bundle {
   require(BusDataWidth == 32 || BusDataWidth == 64,
     s"DCacheInterface BusDataWidth 非法: $BusDataWidth")
-  val req = Flipped(Decoupled(new ysyx_26030103_DCacheRequest(AddressWidth)))
-  // VIPT 并行路径的翻译结果：PA 可能晚于 req 到达，paddr_vaddr 是这笔
+  val request = Flipped(Decoupled(new ysyx_26030103_DCacheRequest(AddressWidth)))
+  // VIPT 并行路径的翻译结果：PA 可能晚于 request 到达，paddr_vaddr 是这笔
   // PA 对应的虚拟地址，用作“迟到 PA”的归属标签。PIPT 模式忽略这两个端口。
-  val req_paddr_valid = Input(Bool())
-  val req_paddr_vaddr = Input(UInt(AddressWidth.W))
+  val RequestPaddrValid = Input(Bool())
+  val RequestPaddrVaddr = Input(UInt(AddressWidth.W))
   // MMU 翻译故障：放弃已经受理但尚未完成 PA 判定的请求，不产生响应。
-  val req_kill = Input(Bool())
-  val resp = Decoupled(new ysyx_26030103_DCacheResponse(DataWidth))
+  val RequestKill = Input(Bool())
+  val response = Decoupled(new ysyx_26030103_DCacheResponse(DataWidth))
   val StoreValid = Input(Bool())
   val StoreResponse = Input(UInt(2.W))
   val StoreAddress = Input(UInt(AddressWidth.W))
@@ -55,20 +55,20 @@ class ysyx_26030103_DCacheInterface(
     new ysyx_26030103_AXI5IO(AddressWidth, BusDataWidth, 4) // DCache只使用AR/R通道
   val flush = Input(Bool())
   // DMA 地址级 snoop（仅 DMA_COHERENCE=hardware_snoop 生成）：
-  // [dma_snoop_start, dma_snoop_end] 是 DMA 写实际覆盖的字节范围。
+  // [DMASnoopStart, DMASnoopEnd] 是 DMA 写实际覆盖的字节范围。
   // 每个重叠的物理行都必须失效；alias-safe 几何下扫描全部 set。
   // ready 为低表示还有匹配的在途 refill 或尚未交付的旧响应，DMA 的 B
   // 必须继续等待，不能在失效完成前对软件可见。
-  val dma_snoop_valid = Input(Bool())
-  val dma_snoop_start = Input(UInt(AddressWidth.W))
-  val dma_snoop_end = Input(UInt(AddressWidth.W))
-  val dma_snoop_ready = Output(Bool())
+  val DMASnoopValid = Input(Bool())
+  val DMASnoopStart = Input(UInt(AddressWidth.W))
+  val DMASnoopEnd = Input(UInt(AddressWidth.W))
+  val DMASnoopReady = Output(Bool())
   val perf_hit = Output(Bool())
   val perf_miss = Output(Bool())
   val perf_refill_req = Output(Bool())
   val perf_refill_resp = Output(Bool())
   val perf_line_fill = Output(Bool())
   val perf_writeback = Output(Bool())
-  val req_cacheable = Output(Bool())
-  val axi_active = Output(Bool())
+  val RequestCacheable = Output(Bool())
+  val AXIActive = Output(Bool())
 }

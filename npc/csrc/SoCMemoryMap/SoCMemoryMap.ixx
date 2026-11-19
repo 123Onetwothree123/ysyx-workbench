@@ -9,7 +9,7 @@ export class SoCMemoryMap
 public:
     SoCMemoryMap() = delete;
     ~SoCMemoryMap() = default;
-    static inline const AddressRange CLINT{"clint", npc::PmaClintBase, npc::PmaClintSize};
+    static inline const AddressRange CLINT{"clint", npc::PmaCLINTBase, npc::PmaCLINTSize};
     static inline const AddressRange FLASH{"flash", npc::SocMBase, npc::SocMSize};
     static inline const AddressRange UART{"uart", npc::PmaUartBase, npc::PmaUartSize};
     static inline const AddressRange SPI{"spi", npc::PmaSpiBase, npc::PmaSpiSize};

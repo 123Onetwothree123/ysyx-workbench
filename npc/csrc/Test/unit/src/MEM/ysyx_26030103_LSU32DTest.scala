@@ -54,7 +54,7 @@ class ysyx_26030103_LSU32DTest extends AnyFlatSpec with Matchers {
       address: Long,
       write: Boolean,
       width: Int,
-      pc: Long
+      PC: Long
   ): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage(32)))
     dut.io.in.bits.Retire.poke(true.B)
@@ -64,7 +64,7 @@ class ysyx_26030103_LSU32DTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.VAddress.poke(address.U(32.W))
     dut.io.in.bits.WidthSelect.poke(width.U(2.W))
     dut.io.in.bits.LoadSigned.poke(false.B)
-    dut.io.in.bits.pc.poke(pc.U(32.W))
+    dut.io.in.bits.PC.poke(PC.U(32.W))
   }
 
   "RV32D LSU" should "用两拍 AXI 读完成 FLD 并返回完整 64 位 FP 数据" in {
@@ -100,18 +100,18 @@ class ysyx_26030103_LSU32DTest extends AnyFlatSpec with Matchers {
       dut.io.DataBus.R.RLAST.poke(false.B)
 
       var done = false
-      var fpWrite = BigInt(0)
+      var FPWrite = BigInt(0)
       cycles = 0
       while (!done && cycles < 12) {
         if (bool(dut.io.out.valid)) {
           done = true
           bool(dut.io.out.bits.FPRegisterWrite) should be(true)
-          fpWrite = big(dut.io.out.bits.FPWriteData)
+          FPWrite = big(dut.io.out.bits.FPWriteData)
         }
         clock.step(); cycles += 1
       }
       done should be(true)
-      fpWrite should be(BigInt("0123456789abcdef", 16))
+      FPWrite should be(BigInt("0123456789abcdef", 16))
     }
   }
 
@@ -128,11 +128,11 @@ class ysyx_26030103_LSU32DTest extends AnyFlatSpec with Matchers {
       dut.io.in.valid.poke(true.B)
 
       val beats = scala.collection.mutable.ArrayBuffer[BigInt]()
-      var sawAw = false
+      var SawAW = false
       var cycles = 0
       while (beats.size < 2 && cycles < 20) {
         if (bool(dut.io.DataBus.AW.AWVALID)) {
-          sawAw = true
+          SawAW = true
           long(dut.io.DataBus.AW.AWLEN) should be(1L)
           long(dut.io.DataBus.AW.AWADDR) should be(0x80005000L)
           long(dut.io.DataBus.AW.AWSIZE) should be(2L)
@@ -144,7 +144,7 @@ class ysyx_26030103_LSU32DTest extends AnyFlatSpec with Matchers {
         }
         clock.step(); cycles += 1
       }
-      sawAw should be(true)
+      SawAW should be(true)
       beats.size should be(2)
       beats(0) should be(BigInt("89abcdef", 16))
       beats(1) should be(BigInt("01234567", 16))
@@ -190,17 +190,17 @@ class ysyx_26030103_LSU32DTest extends AnyFlatSpec with Matchers {
       dut.io.DataBus.R.RLAST.poke(false.B)
 
       var done = false
-      var fpWrite = BigInt(0)
+      var FPWrite = BigInt(0)
       cycles = 0
       while (!done && cycles < 12) {
         if (bool(dut.io.out.valid)) {
           done = true
-          fpWrite = big(dut.io.out.bits.FPWriteData)
+          FPWrite = big(dut.io.out.bits.FPWriteData)
         }
         clock.step(); cycles += 1
       }
       done should be(true)
-      fpWrite should be(BigInt("ffffffff3fc00000", 16))
+      FPWrite should be(BigInt("ffffffff3fc00000", 16))
     }
   }
 

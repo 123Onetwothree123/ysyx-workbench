@@ -5,28 +5,27 @@ import BranchRecord;
 export class BTB
 {
 public:
-    // 表项: valid + tag + target + 类型位
-    // (jal BTB里: Jal/Call表项命中即taken且目标静态; Ret表项标记"该PC是ret", 目标交给RAS)
+    // jal BTB 中 Jal/Call 命中即 taken；Ret 表项目标交给 RAS。
     struct entry
     {
-        bool valid;           // 1代表有数据
-        Addr tag;    // 分支指令的 PC>>2 索引 + 完整 PC 比较，宽度随 XLEN
-        Addr target; // 跳转目标地址
-        BranchKind kind;      // 表项类型(Branch/Jal/Call/Ret)
+        bool valid;
+        Addr tag;    // 分支 PC（完整比较），宽度随 XLEN
+        Addr target;
+        BranchKind kind;
     };
 private:
-    // 行=sets_数量=2^index_bits，每行ways项，举个例子：btb_bits=4，ways=2就是16行×2项=32个entry
+    // 行=组数=2^index_bits，每行 ways 项。
     std::vector<entry> sets_flat;
-    std::mdspan<entry, std::dextents<std::size_t, 2>> sets; // (组数 × 相联度) 二维视图
-    std::vector<std::size_t> repl_ptr; // 每组一个轮转指针, 组满时指向受害者way(与硬件BTB行为一致)
-    std::size_t index_bits; // 索引位数，2底数，也就是log2(sets)
-    std::size_t ways;       // 相联度
+    std::mdspan<entry, std::dextents<std::size_t, 2>> sets;
+    std::vector<std::size_t> repl_ptr; // 每组轮转指针，与硬件 BTB 一致
+    std::size_t index_bits;
+    std::size_t ways;
 public:
     BTB() = default;
     ~BTB() = default;
     explicit BTB(const BPConfig &config);
-    // 直接指定容量/相联度, 供独立jal BTB使用(Kconfig的JAL_BTB_*参数)
+    // 用于独立 jal BTB（JAL_BTB_* 参数）。
     BTB(std::size_t bits, std::size_t ways);
-    std::optional<entry> lookup(Addr pc) const; // 命中失败就直接返回空
+    std::optional<entry> lookup(Addr pc) const;
     void update(Addr pc, Addr target, BranchKind kind);
 };

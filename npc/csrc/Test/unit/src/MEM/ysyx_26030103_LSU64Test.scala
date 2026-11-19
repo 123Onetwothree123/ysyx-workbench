@@ -41,7 +41,7 @@ class ysyx_26030103_LSU64Test extends AnyFlatSpec with Matchers {
   }
 
   private def pokeMem(dut: ysyx_26030103_LSU, address: Long, write: Boolean,
-      pc: Long): Unit = {
+      PC: Long): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage(64)))
     dut.io.in.bits.Retire.poke(true.B)
     dut.io.in.bits.RegisterWrite.poke((if (write) false.B else true.B))
@@ -51,7 +51,7 @@ class ysyx_26030103_LSU64Test extends AnyFlatSpec with Matchers {
     dut.io.in.bits.VAddress.poke(address.U(64.W))
     dut.io.in.bits.WidthSelect.poke(3.U(2.W))
     dut.io.in.bits.LoadSigned.poke(true.B)
-    dut.io.in.bits.pc.poke(pc.U(64.W))
+    dut.io.in.bits.PC.poke(PC.U(64.W))
   }
 
   "RV64 LSU" should "用两拍 AXI 读完成 LD 并组合为 64 位结果" in {
@@ -108,11 +108,11 @@ class ysyx_26030103_LSU64Test extends AnyFlatSpec with Matchers {
       dut.io.in.valid.poke(true.B)
 
       val beats = scala.collection.mutable.ArrayBuffer[BigInt]()
-      var sawAw = false
+      var SawAW = false
       var cycles = 0
       while (beats.size < 2 && cycles < 20) {
         if (bool(dut.io.DataBus.AW.AWVALID)) {
-          sawAw = true
+          SawAW = true
           long(dut.io.DataBus.AW.AWLEN) should be(1L)
           long(dut.io.DataBus.AW.AWADDR) should be(0x80005000L)
         }
@@ -123,7 +123,7 @@ class ysyx_26030103_LSU64Test extends AnyFlatSpec with Matchers {
         }
         clock.step(); cycles += 1
       }
-      sawAw should be(true)
+      SawAW should be(true)
       beats.size should be(2)
       beats(0) should be(BigInt("89abcdef", 16))
       beats(1) should be(BigInt("01234567", 16))

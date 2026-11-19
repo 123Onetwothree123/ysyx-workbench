@@ -9,6 +9,9 @@ class ysyx_26030103_AXI5WidthBridge(
     private[infra] val UpstreamDataWidth: Int = 32,
     private[infra] val DownstreamDataWidth: Int = 64,
     private[infra] val IDWidth: Int = 4,
+    // 指定 ID 的读请求可使用独立的第二读槽，避免 CPU 已挂起的读（如
+    // 停在上游的取指）把 DMA 读串行堵在共享桥内。None 保持单 outstanding。
+    private[infra] val BypassReadID: Option[Int] = None,
     // 只有外部 CPU slave 边界需要 LOCK 旁带。内部/默认实例没有这两个
     // 端口，避免强迫所有 WidthBridge 使用方连接它们。
     private[infra] val TrackExclusive: Boolean = false
@@ -59,13 +62,13 @@ class ysyx_26030103_AXI5WidthBridge(
     // 看到本桥实际转发的那笔内部事务。锁存值保持到对应 B/最后一个 R
     // 握手，避免仲裁器在稍后的内部 AW/AR 握手时采样到已经撤销的外部
     // LOCK（AXI 只要求 LOCK 在 VALID 期间稳定）。
-    val inAWLock = if (TrackExclusive) Some(Input(Bool())) else None
-    val inARLock = if (TrackExclusive) Some(Input(Bool())) else None
-    val outAWLock = if (TrackExclusive) Some(Output(Bool())) else None
-    val outARLock = if (TrackExclusive) Some(Output(Bool())) else None
+    val InAWLock = if (TrackExclusive) Some(Input(Bool())) else None
+    val InARLock = if (TrackExclusive) Some(Input(Bool())) else None
+    val OutAWLock = if (TrackExclusive) Some(Output(Bool())) else None
+    val OutARLock = if (TrackExclusive) Some(Output(Bool())) else None
   })
-  private[infra] val inAWLock = io.inAWLock.getOrElse(false.B)
-  private[infra] val inARLock = io.inARLock.getOrElse(false.B)
+  private[infra] val InAWLock = io.InAWLock.getOrElse(false.B)
+  private[infra] val InARLock = io.InARLock.getOrElse(false.B)
 
   private[infra] def downAddress(address: UInt): UInt = {
     if (DownstreamAddressWidth >= UpstreamAddressWidth) {
@@ -75,11 +78,11 @@ class ysyx_26030103_AXI5WidthBridge(
     }
   }
 
-  // 按 INCR/WRAP/FIXED 计算末字节；`len + 1` 扩到 9 位，避免 AWLEN=255
+  // 按 INCR/WRAP/FIXED 计算末字节；`length + 1` 扩到 9 位，避免 AWLEN=255
   // 在 8 位加法里回绕后把跨 4GiB 边界的 burst 算错。
   private[infra] def outOfRange(
       address: UInt,
-      len: UInt,
+      length: UInt,
       size: UInt,
       burst: UInt
   ): Bool = {
@@ -88,7 +91,7 @@ class ysyx_26030103_AXI5WidthBridge(
     } else {
       val start = Cat(0.U(1.W), address)
       val lastByte =
-        ysyx_26030103_AXI5Burst.lastByte(address, len, size, burst)
+        ysyx_26030103_AXI5Burst.lastByte(address, length, size, burst)
       start(UpstreamAddressWidth, DownstreamAddressWidth).orR ||
       lastByte(UpstreamAddressWidth, DownstreamAddressWidth).orR
     }
@@ -100,7 +103,7 @@ class ysyx_26030103_AXI5WidthBridge(
       beat: UInt,
       size: UInt,
       burst: UInt,
-      len: UInt
+      length: UInt
   ): UInt = {
     val width = math.max(UpstreamAddressWidth, DownstreamAddressWidth) + 1
     val baseExt = base.pad(width)
@@ -111,7 +114,7 @@ class ysyx_26030103_AXI5WidthBridge(
     val incAddress = Mux(beat === 0.U, baseExt, inc)
     val wrapMask =
       (ysyx_26030103_AXI5Burst.totalBytes(
-        len,
+        length,
         ysyx_26030103_AXI5Burst.beatBytes(size, width)
       ) - 1.U).pad(width)
     val wrapped =

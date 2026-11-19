@@ -63,20 +63,20 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
       val PC = BigInt("100000100", 16)
       val Target = BigInt("123456780", 16)
       dut.io.flush.poke(false.B)
-      dut.io.update_valid.poke(true.B)
-      dut.io.update_pc.poke((PC >> 2).U((AddressW - 2).W))
-      dut.io.update_target.poke(Target.U(AddressW.W))
+      dut.io.UpdateValid.poke(true.B)
+      dut.io.UpdatePC.poke((PC >> 2).U((AddressW - 2).W))
+      dut.io.UpdateTarget.poke(Target.U(AddressW.W))
       dut.clock.step()
-      dut.io.update_valid.poke(false.B)
+      dut.io.UpdateValid.poke(false.B)
 
-      dut.io.lookup_pc.poke((PC >> 2).U((AddressW - 2).W))
+      dut.io.LookupPC.poke((PC >> 2).U((AddressW - 2).W))
       dut.clock.step(1)
       bool(dut.io.hit) should be(true)
       big(dut.io.target) should be(Target)
 
       // 仅高 32 位 tag 不同、低位 index 相同的 PC 不能命中。
       val AliasPC = BigInt("200000100", 16)
-      dut.io.lookup_pc.poke((AliasPC >> 2).U((AddressW - 2).W))
+      dut.io.LookupPC.poke((AliasPC >> 2).U((AddressW - 2).W))
       dut.clock.step(1)
       bool(dut.io.hit) should be(false)
     }
@@ -89,11 +89,11 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
       dut.reset.poke(false.B)
       val Ret = BigInt("123456780", 16)
       dut.io.flush.poke(false.B)
-      dut.io.push_valid.poke(true.B)
-      dut.io.push_addr.poke(Ret.U(AddressW.W))
-      dut.io.pop_valid.poke(false.B)
+      dut.io.PushValid.poke(true.B)
+      dut.io.PushAddress.poke(Ret.U(AddressW.W))
+      dut.io.PopValid.poke(false.B)
       dut.clock.step()
-      dut.io.push_valid.poke(false.B)
+      dut.io.PushValid.poke(false.B)
       dut.clock.step(1)
       bool(dut.io.nonempty) should be(true)
       big(dut.io.top) should be(Ret)
@@ -142,7 +142,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.VAddress.poke(address.U(64.W))
     dut.io.in.bits.WidthSelect.poke(3.U(2.W))
     dut.io.in.bits.LoadSigned.poke(true.B)
-    dut.io.in.bits.pc.poke(BigInt("80000000", 16).U(64.W))
+    dut.io.in.bits.PC.poke(BigInt("80000000", 16).U(64.W))
   }
 
   "RV64 LSU" should "把高于 4GiB 的 LD 地址完整送到 AXI AR" in {
@@ -202,7 +202,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
       dut.io.in.valid.poke(true.B)
 
       val beats = scala.collection.mutable.ArrayBuffer[BigInt]()
-      var sawAw = false
+      var SawAW = false
       var storeAccepted = false
       var cycles = 0
       while (beats.size < 2 && cycles < 20) {
@@ -210,7 +210,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
         // 避免把同一条测试激励重复排队。
         val fireNow = bool(dut.io.in.valid) && bool(dut.io.in.ready)
         if (bool(dut.io.DataBus.AW.AWVALID)) {
-          sawAw = true
+          SawAW = true
           big(dut.io.DataBus.AW.AWADDR) should be(Address)
           big(dut.io.DataBus.AW.AWLEN) should be(1)
         }
@@ -223,7 +223,7 @@ class ysyx_26030103_RV64AddressTest extends AnyFlatSpec with Matchers {
           dut.io.in.valid.poke(false.B)
         }
       }
-      sawAw should be(true)
+      SawAW should be(true)
       beats should be(
         Seq(BigInt("89abcdef", 16), BigInt("01234567", 16))
       )

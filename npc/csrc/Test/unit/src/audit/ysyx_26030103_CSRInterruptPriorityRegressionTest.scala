@@ -34,10 +34,10 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
       xlen = 64,
       pageSizeBytes = 4096,
       levels = 3,
-      pteSizeBytes = 8,
+      PTESizeBytes = 8,
       pageTableSizeBytes = 4096,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -59,10 +59,10 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddress.poke(0.U)
+    dut.io.CSRAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
-    dut.io.pc.poke(0.U)
+    dut.io.PC.poke(0.U)
     dut.io.trapTval.poke(0.U)
     dut.io.trapTvalValid.poke(false.B)
     dut.io.trapValid.poke(false.B)
@@ -78,7 +78,7 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
       addr: Int,
       data: BigInt
   ): Unit = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(64.W))
     dut.io.enable.poke(true.B)
@@ -92,7 +92,7 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
       dut: ysyx_26030103_CSRExceptionAuditHarness,
       addr: Int
   ): BigInt = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.enable.poke(false.B)
     dut.io.rdata.peek().litValue
   }
@@ -116,7 +116,7 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
     "M 级 MEI 与 MTI 同时 pending 时先报 MEI(cause=11)" in {
       // mip 的 MSIP/MTIP/MEIP 是只读的，用硬件中断输入注入。
       // hasSExternalIrq=false 时 io.Interrupt 驱动 MEIP。
-      val p = profile.copy(hasSExternalIRQ = false)
+      val p = profile.copy(HasSExternalIRQ = false)
       simulate(new ysyx_26030103_CSRExceptionAuditHarness(p)) { dut =>
         setup(dut)
         val mtvec = BigInt("0000000080002000", 16)
@@ -126,8 +126,8 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
         dut.io.interrupt.poke(true.B)
         dut.io.timerInterrupt.poke(true.B)
 
-        val pc = BigInt("0000000080001000", 16)
-        dut.io.pc.poke(pc.U(64.W))
+        val PC = BigInt("0000000080001000", 16)
+        dut.io.PC.poke(PC.U(64.W))
         dut.io.enable.poke(true.B)
 
         // 规范优先级：MEI > MSI > MTI。MEI 必须先于 MTI 上报。
@@ -164,8 +164,8 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
 
       ((peek(dut, SSTATUS) >> 1) & 1) should be(BigInt(1))
 
-      val pc = BigInt("0000000080001010", 16)
-      dut.io.pc.poke(pc.U(64.W))
+      val PC = BigInt("0000000080001010", 16)
+      dut.io.PC.poke(PC.U(64.W))
       dut.io.enable.poke(true.B)
 
       // M timer 未被委托，且 S 模式必须接受 M 级中断；不能因为
@@ -195,8 +195,8 @@ class ysyx_26030103_CSRInterruptPriorityRegressionTest
       big(dut.io.privilege) should be(BigInt(0))
       ((peek(dut, SSTATUS) >> 1) & 1) should be(BigInt(0))
 
-      val pc = BigInt("0000000080004010", 16)
-      dut.io.pc.poke(pc.U(64.W))
+      val PC = BigInt("0000000080004010", 16)
+      dut.io.PC.poke(PC.U(64.W))
       dut.io.enable.poke(true.B)
 
       // sstatus.SIE 只限制 S 模式；U 模式下 S 级中断始终使能。

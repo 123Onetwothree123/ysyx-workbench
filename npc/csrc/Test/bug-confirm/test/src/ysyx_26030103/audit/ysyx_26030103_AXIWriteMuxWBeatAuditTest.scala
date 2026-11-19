@@ -107,8 +107,8 @@ class ysyx_26030103_AXIWriteMuxWBeatAuditTest
       // 8 字节 store 在 32 位总线上的典型形状：AWLEN=1，两拍。
       val beats = Seq(BigInt("11223344", 16), BigInt("aabbccdd", 16))
 
-      var awAccepted = false
-      var awForwarded = false
+      var AWAccepted = false
+      var AWForwarded = false
       var beatIndex = 0 // 上游已被 A 侧 WREADY 接受的拍数
       var wBeatsSeen = 0 // out.W 上观察到的 WVALID&&WREADY 次数
       var lastSeen = false // out.W 上是否见到 WLAST=1
@@ -122,7 +122,7 @@ class ysyx_26030103_AXIWriteMuxWBeatAuditTest
       while (cycles < 40 && !(wBeatsSeen >= beats.length &&
           responseReachedAfterAllBeats)) {
         // A 侧 AW：AWLEN=1（两拍），AWSIZE=2（4 字节），AWBURST=INCR。
-        dut.io.a.AW.AWVALID.poke((!awAccepted).B)
+        dut.io.a.AW.AWVALID.poke((!AWAccepted).B)
         dut.io.a.AW.AWID.poke(7.U(4.W))
         dut.io.a.AW.AWADDR.poke(0x1000.U(32.W))
         dut.io.a.AW.AWLEN.poke(1.U(8.W))
@@ -145,7 +145,7 @@ class ysyx_26030103_AXIWriteMuxWBeatAuditTest
 
         // 在时钟沿之前采样本拍的握手与状态观测点。
         if (bool(dut.io.out.AW.AWVALID) && bool(dut.io.out.AW.AWREADY)) {
-          awForwarded = true
+          AWForwarded = true
           big(dut.io.out.AW.AWLEN) should be(1)
         }
         if (bool(dut.io.out.W.WVALID) && bool(dut.io.out.W.WREADY)) {
@@ -154,7 +154,7 @@ class ysyx_26030103_AXIWriteMuxWBeatAuditTest
           if (bool(dut.io.out.W.WLAST)) { lastSeen = true }
         }
         if (bool(dut.io.a.AW.AWVALID) && bool(dut.io.a.AW.AWREADY)) {
-          awAccepted = true
+          AWAccepted = true
         }
 
         // aResp 是唯一驱动 out.B.BREADY 的状态（a.B.BREADY 恒为 1）。
@@ -178,7 +178,7 @@ class ysyx_26030103_AXIWriteMuxWBeatAuditTest
       val observed =
         s"wBeatsSeen=$wBeatsSeen (expected ${beats.length}), " +
           s"lastSeen=$lastSeen, forwardedData=${forwardedData.map(d => "0x" + d.toString(16)).mkString("[", ", ", "]")}, " +
-          s"awAccepted=$awAccepted, awForwarded=$awForwarded, " +
+          s"AWAccepted=$AWAccepted, AWForwarded=$AWForwarded, " +
           s"upstreamBeatsAccepted=$beatIndex, " +
           s"out.AW(AWVALID=${bool(dut.io.out.AW.AWVALID)}, AWREADY=${bool(dut.io.out.AW.AWREADY)}, " +
           s"AWLEN=${big(dut.io.out.AW.AWLEN)}, AWSIZE=${big(dut.io.out.AW.AWSIZE)}), " +

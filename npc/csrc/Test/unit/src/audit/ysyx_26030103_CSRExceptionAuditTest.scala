@@ -27,10 +27,10 @@ class ysyx_26030103_CSRExceptionAuditHarness(
     val isMret = Input(Bool())
     val isSret = Input(Bool())
     val isSfenceVma = Input(Bool())
-    val csrAddress = Input(UInt(12.W))
+    val CSRAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
     val rs1Data = Input(UInt(64.W))
-    val pc = Input(UInt(64.W))
+    val PC = Input(UInt(64.W))
     val trapTval = Input(UInt(64.W))
     val trapTvalValid = Input(Bool())
     val trapValid = Input(Bool())
@@ -50,46 +50,46 @@ class ysyx_26030103_CSRExceptionAuditHarness(
     val stateMcause = Output(UInt(64.W))
     val stateTval = Output(UInt(64.W))
   })
-  val csr = Module(new ysyx_26030103_CSR(
+  val CSR = Module(new ysyx_26030103_CSR(
     profile, XLEN = 64, UseF = true, UseD = true))
-  csr.io.clk := clock
-  csr.io.rst := reset
-  csr.io.Enable := io.enable
-  csr.io.MinstretRetireCommit := io.retireCommit
-  csr.io.IsCSRrw := io.isCSRrw
-  csr.io.IsCSRrs := io.isCSRrs
-  csr.io.IsCSRrc := io.isCSRrc
-  csr.io.IsEcall := io.isEcall
-  csr.io.IsEbreak := io.isEbreak
-  csr.io.IsMret := io.isMret
-  csr.io.IsSret := io.isSret
-  csr.io.IsSfenceVma := io.isSfenceVma
-  csr.io.CSRAddress := io.csrAddress
-  csr.io.rs1 := io.rs1
-  csr.io.Rs1Data := io.rs1Data
-  csr.io.pc := io.pc
-  csr.io.TrapTval := io.trapTval
-  csr.io.TrapTvalValid := io.trapTvalValid
-  csr.io.TrapValid := io.trapValid
-  csr.io.TrapCause := io.trapCause
-  csr.io.MemTrap := io.memTrap
-  csr.io.Interrupt := io.interrupt
-  csr.io.TimerInterrupt := io.timerInterrupt
-  csr.io.Mtime := io.mtime
-  csr.io.FPCommit := false.B
-  csr.io.FPFlags := 0.U
-  csr.io.FPStateDirtyCommit := false.B
-  csr.io.PMUEvents := 0.U
-  io.rdata := csr.io.CSR_rdata
-  io.exceptionTaken := csr.io.ExceptionTaken
-  io.exceptionTarget := csr.io.ExceptionTarget
-  io.trapCommit := csr.io.TrapCommit
-  io.committedCause := csr.io.CommittedCause
-  io.privilege := csr.io.Privilege
-  io.stateMstatus := csr.io.StateMstatus
-  io.stateMepc := csr.io.StateMepc
-  io.stateMcause := csr.io.StateMcause
-  io.stateTval := csr.io.StateTval
+  CSR.io.clock := clock
+  CSR.io.reset := reset
+  CSR.io.Enable := io.enable
+  CSR.io.MinstretRetireCommit := io.retireCommit
+  CSR.io.IsCSRrw := io.isCSRrw
+  CSR.io.IsCSRrs := io.isCSRrs
+  CSR.io.IsCSRrc := io.isCSRrc
+  CSR.io.IsEcall := io.isEcall
+  CSR.io.IsEbreak := io.isEbreak
+  CSR.io.IsMret := io.isMret
+  CSR.io.IsSret := io.isSret
+  CSR.io.IsSfenceVma := io.isSfenceVma
+  CSR.io.CSRAddress := io.CSRAddress
+  CSR.io.rs1 := io.rs1
+  CSR.io.Rs1Data := io.rs1Data
+  CSR.io.PC := io.PC
+  CSR.io.TrapTval := io.trapTval
+  CSR.io.TrapTvalValid := io.trapTvalValid
+  CSR.io.TrapValid := io.trapValid
+  CSR.io.TrapCause := io.trapCause
+  CSR.io.MemTrap := io.memTrap
+  CSR.io.Interrupt := io.interrupt
+  CSR.io.TimerInterrupt := io.timerInterrupt
+  CSR.io.Mtime := io.mtime
+  CSR.io.FPCommit := false.B
+  CSR.io.FPFlags := 0.U
+  CSR.io.FPStateDirtyCommit := false.B
+  CSR.io.PMUEvents := 0.U
+  io.rdata := CSR.io.CSR_rdata
+  io.exceptionTaken := CSR.io.ExceptionTaken
+  io.exceptionTarget := CSR.io.ExceptionTarget
+  io.trapCommit := CSR.io.TrapCommit
+  io.committedCause := CSR.io.CommittedCause
+  io.privilege := CSR.io.Privilege
+  io.stateMstatus := CSR.io.StateMstatus
+  io.stateMepc := CSR.io.StateMepc
+  io.stateMcause := CSR.io.StateMcause
+  io.stateTval := CSR.io.StateTval
 }
 
 class ysyx_26030103_CSRExceptionAuditTest
@@ -119,10 +119,10 @@ class ysyx_26030103_CSRExceptionAuditTest
       xlen = 64,
       pageSizeBytes = 4096,
       levels = 3,
-      pteSizeBytes = 8,
+      PTESizeBytes = 8,
       pageTableSizeBytes = 4096,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -144,10 +144,10 @@ class ysyx_26030103_CSRExceptionAuditTest
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddress.poke(0.U)
+    dut.io.CSRAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
-    dut.io.pc.poke(0.U)
+    dut.io.PC.poke(0.U)
     dut.io.trapTval.poke(0.U)
     dut.io.trapTvalValid.poke(false.B)
     dut.io.trapValid.poke(false.B)
@@ -162,7 +162,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       dut: ysyx_26030103_CSRExceptionAuditHarness,
       addr: Int
   ): BigInt = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.enable.poke(false.B)
     dut.io.rdata.peek().litValue
   }
@@ -172,7 +172,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       addr: Int,
       data: BigInt
   ): Unit = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(64.W))
     dut.io.enable.poke(true.B)
@@ -194,7 +194,7 @@ class ysyx_26030103_CSRExceptionAuditTest
   private def checkTrap(
       dut: ysyx_26030103_CSRExceptionAuditHarness,
       cause: Int,
-      pc: BigInt,
+      PC: BigInt,
       tval: BigInt,
       target: BigInt,
       label: String
@@ -207,7 +207,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       big(dut.io.exceptionTarget) should be(target)
     }
     withClue(label + " mepc next-state: ") {
-      big(dut.io.stateMepc) should be(pc & ~BigInt(3))
+      big(dut.io.stateMepc) should be(PC & ~BigInt(3))
     }
     withClue(label + " mtval next-state: ") {
       big(dut.io.stateTval) should be(tval)
@@ -217,10 +217,10 @@ class ysyx_26030103_CSRExceptionAuditTest
   private def takeTrap(
       dut: ysyx_26030103_CSRExceptionAuditHarness,
       cause: Int,
-      pc: BigInt,
+      PC: BigInt,
       tval: BigInt
   ): Unit = {
-    dut.io.pc.poke(pc.U(64.W))
+    dut.io.PC.poke(PC.U(64.W))
     dut.io.trapTval.poke(tval.U(64.W))
     dut.io.trapTvalValid.poke(true.B)
     dut.io.trapCause.poke(cause.U(32.W))
@@ -234,31 +234,31 @@ class ysyx_26030103_CSRExceptionAuditTest
   private def injectTrap(
       dut: ysyx_26030103_CSRExceptionAuditHarness,
       cause: Int,
-      pc: BigInt,
+      PC: BigInt,
       tval: BigInt,
       target: BigInt,
       label: String
   ): Unit = {
-    dut.io.pc.poke(pc.U(64.W))
+    dut.io.PC.poke(PC.U(64.W))
     dut.io.trapTval.poke(tval.U(64.W))
     dut.io.trapTvalValid.poke(true.B)
     dut.io.trapCause.poke(cause.U(32.W))
     dut.io.trapValid.poke(true.B)
     dut.io.enable.poke(true.B)
-    checkTrap(dut, cause, pc, tval, target, label)
+    checkTrap(dut, cause, PC, tval, target, label)
     dut.clock.step()
     dut.io.enable.poke(false.B)
     dut.io.trapValid.poke(false.B)
   }
 
   private def enterS(dut: ysyx_26030103_CSRExceptionAuditHarness,
-      pc: BigInt, sstatusBits: BigInt = 0): Unit = {
+      PC: BigInt, sstatusBits: BigInt = 0): Unit = {
     write(dut, MSTATUS, BigInt(0x800) | sstatusBits) // MPP=S
-    write(dut, MEPC, pc)
+    write(dut, MEPC, PC)
     dut.io.enable.poke(true.B)
     dut.io.isMret.poke(true.B)
     bool(dut.io.exceptionTaken) should be(true)
-    big(dut.io.exceptionTarget) should be(pc)
+    big(dut.io.exceptionTarget) should be(PC)
     dut.clock.step()
     dut.io.isMret.poke(false.B)
     dut.io.enable.poke(false.B)
@@ -266,13 +266,13 @@ class ysyx_26030103_CSRExceptionAuditTest
   }
 
   private def enterU(dut: ysyx_26030103_CSRExceptionAuditHarness,
-      pc: BigInt): Unit = {
+      PC: BigInt): Unit = {
     write(dut, MSTATUS, 0) // MPP=U
-    write(dut, MEPC, pc)
+    write(dut, MEPC, PC)
     dut.io.enable.poke(true.B)
     dut.io.isMret.poke(true.B)
     bool(dut.io.exceptionTaken) should be(true)
-    big(dut.io.exceptionTarget) should be(pc)
+    big(dut.io.exceptionTarget) should be(PC)
     dut.clock.step()
     dut.io.isMret.poke(false.B)
     dut.io.enable.poke(false.B)
@@ -280,8 +280,8 @@ class ysyx_26030103_CSRExceptionAuditTest
   }
 
   private def ecall(dut: ysyx_26030103_CSRExceptionAuditHarness,
-      pc: BigInt): Unit = {
-    dut.io.pc.poke(pc.U(64.W))
+      PC: BigInt): Unit = {
+    dut.io.PC.poke(PC.U(64.W))
     dut.io.enable.poke(true.B)
     dut.io.isEcall.poke(true.B)
     dut.clock.step()
@@ -295,33 +295,33 @@ class ysyx_26030103_CSRExceptionAuditTest
       write(dut, MTVEC, BigInt("0000000080002000", 16))
 
       // ECALL from M: cause=11, mtval=0。
-      val ecallPC = BigInt("0000000080001234", 16)
-      dut.io.pc.poke(ecallPC.U)
+      val EcallPC = BigInt("0000000080001234", 16)
+      dut.io.PC.poke(EcallPC.U)
       dut.io.enable.poke(true.B)
       dut.io.isEcall.poke(true.B)
-      checkTrap(dut, 11, ecallPC, 0, BigInt("0000000080002000", 16), "M ecall")
+      checkTrap(dut, 11, EcallPC, 0, BigInt("0000000080002000", 16), "M ecall")
       dut.clock.step()
       dut.io.isEcall.poke(false.B)
       dut.io.enable.poke(false.B)
       peek(dut, MCAUSE) should be(BigInt(11))
-      peek(dut, MEPC) should be(ecallPC)
+      peek(dut, MEPC) should be(EcallPC)
       peek(dut, MTVAL) should be(BigInt(0))
 
       // EBREAK: cause=3，mtval 记录故障 PC。
       setup(dut)
       write(dut, MTVEC, BigInt("0000000080002000", 16))
-      val ebreakPC = BigInt("0000000080001240", 16)
-      dut.io.pc.poke(ebreakPC.U)
+      val EbreakPC = BigInt("0000000080001240", 16)
+      dut.io.PC.poke(EbreakPC.U)
       dut.io.enable.poke(true.B)
       dut.io.isEbreak.poke(true.B)
-      checkTrap(dut, 3, ebreakPC, ebreakPC,
+      checkTrap(dut, 3, EbreakPC, EbreakPC,
         BigInt("0000000080002000", 16), "M ebreak")
       dut.clock.step()
       dut.io.isEbreak.poke(false.B)
       dut.io.enable.poke(false.B)
       peek(dut, MCAUSE) should be(BigInt(3))
-      peek(dut, MEPC) should be(ebreakPC)
-      peek(dut, MTVAL) should be(ebreakPC)
+      peek(dut, MEPC) should be(EbreakPC)
+      peek(dut, MTVAL) should be(EbreakPC)
     }
   }
 
@@ -329,20 +329,20 @@ class ysyx_26030103_CSRExceptionAuditTest
     simulate(new ysyx_26030103_CSRExceptionAuditHarness(profile)) { dut =>
       setup(dut)
       write(dut, MTVEC, BigInt("0000000080002000", 16))
-      val illegalPC = BigInt("0000000080001300", 16)
+      val IllegalPC = BigInt("0000000080001300", 16)
       val illegalInsn = BigInt("0000000000000000", 16)
-      injectTrap(dut, 2, illegalPC, illegalInsn,
+      injectTrap(dut, 2, IllegalPC, illegalInsn,
         BigInt("0000000080002000", 16), "illegal")
       peek(dut, MCAUSE) should be(BigInt(2))
-      peek(dut, MEPC) should be(illegalPC)
+      peek(dut, MEPC) should be(IllegalPC)
       peek(dut, MTVAL) should be(illegalInsn)
 
-      val faultPC = BigInt("0000000080001400", 16)
-      injectTrap(dut, 1, faultPC, faultPC,
+      val FaultPC = BigInt("0000000080001400", 16)
+      injectTrap(dut, 1, FaultPC, FaultPC,
         BigInt("0000000080002000", 16), "fetch access fault")
       peek(dut, MCAUSE) should be(BigInt(1))
-      peek(dut, MEPC) should be(faultPC)
-      peek(dut, MTVAL) should be(faultPC)
+      peek(dut, MEPC) should be(FaultPC)
+      peek(dut, MTVAL) should be(FaultPC)
     }
   }
 
@@ -353,12 +353,12 @@ class ysyx_26030103_CSRExceptionAuditTest
       // 4=load address misaligned, 5=load access fault,
       // 6=store/AMO address misaligned, 7=store/AMO access fault。
       for (cause <- Seq(4, 5, 6, 7)) {
-        val pc = BigInt("0000000080003000", 16) + cause * 16
+        val PC = BigInt("0000000080003000", 16) + cause * 16
         val tval = BigInt("0000000080004000", 16) + cause * 16
-        injectTrap(dut, cause, pc, tval,
+        injectTrap(dut, cause, PC, tval,
           BigInt("0000000080002000", 16), s"cause $cause")
         peek(dut, MCAUSE) should be(BigInt(cause))
-        peek(dut, MEPC) should be(pc)
+        peek(dut, MEPC) should be(PC)
         peek(dut, MTVAL) should be(tval)
       }
     }
@@ -374,9 +374,9 @@ class ysyx_26030103_CSRExceptionAuditTest
       // 进入 S 时 sstatus.SIE=1，便于检查 trap 的 SPP/SPIE/SIE。
       enterS(dut, BigInt("0000000080005000", 16), sstatusBits = BigInt(0x2))
       // 委托异常：写 sepc/scause/stval，mepc/mcause/mtval 不变。
-      val faultPC = BigInt("0000000080005010", 16)
+      val FaultPC = BigInt("0000000080005010", 16)
       val faultTval = BigInt("00000000dead0000", 16)
-      dut.io.pc.poke(faultPC.U)
+      dut.io.PC.poke(FaultPC.U)
       dut.io.trapTval.poke(faultTval.U)
       dut.io.trapTvalValid.poke(true.B)
       dut.io.trapCause.poke(5.U)
@@ -389,7 +389,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       dut.io.trapValid.poke(false.B)
       dut.io.enable.poke(false.B)
       peek(dut, SCAUSE) should be(BigInt(5))
-      peek(dut, SEPC) should be(faultPC)
+      peek(dut, SEPC) should be(FaultPC)
       peek(dut, STVAL) should be(faultTval)
       // MRET 设置的 mepc 仍在；M 入口未被这次委托异常改写。
       peek(dut, MEPC) should be(BigInt("0000000080005000", 16))
@@ -402,7 +402,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       dut.io.enable.poke(true.B)
       dut.io.isSret.poke(true.B)
       bool(dut.io.exceptionTaken) should be(true)
-      big(dut.io.exceptionTarget) should be(faultPC)
+      big(dut.io.exceptionTarget) should be(FaultPC)
       dut.clock.step()
       dut.io.isSret.poke(false.B)
       dut.io.enable.poke(false.B)
@@ -411,11 +411,11 @@ class ysyx_26030103_CSRExceptionAuditTest
       ((peek(dut, MSTATUS) >> 1) & 1) should be(BigInt(1)) // SIE=SPIE
 
       // 未委托的 instruction-address-misaligned(4) 必须回到 M。
-      val misPC = BigInt("0000000080005020", 16)
-      injectTrap(dut, 4, misPC, misPC,
+      val MisPC = BigInt("0000000080005020", 16)
+      injectTrap(dut, 4, MisPC, MisPC,
         BigInt("0000000080002000", 16), "non-delegated misaligned")
       peek(dut, MCAUSE) should be(BigInt(4))
-      peek(dut, MEPC) should be(misPC)
+      peek(dut, MEPC) should be(MisPC)
       peek(dut, SCAUSE) should be(BigInt(5))
       ((peek(dut, MSTATUS) >> 11) & 3) should be(BigInt(1)) // MPP=S
     }
@@ -426,20 +426,20 @@ class ysyx_26030103_CSRExceptionAuditTest
       setup(dut)
       write(dut, MTVEC, BigInt("0000000080002000", 16))
       enterU(dut, BigInt("0000000080006000", 16))
-      val ecallPC = BigInt("0000000080006010", 16)
-      ecall(dut, ecallPC)
+      val EcallPC = BigInt("0000000080006010", 16)
+      ecall(dut, EcallPC)
       peek(dut, MCAUSE) should be(BigInt(8))
-      peek(dut, MEPC) should be(ecallPC)
+      peek(dut, MEPC) should be(EcallPC)
       peek(dut, MTVAL) should be(BigInt(0))
       ((peek(dut, MSTATUS) >> 11) & 3) should be(BigInt(0)) // MPP=U
       big(dut.io.privilege) should be(BigInt(3))
       // 仍在 M 模式时配置 S 委托，再 MRET 返回 U。
       write(dut, STVEC, BigInt("0000000080004000", 16))
       write(dut, MEDELEG, BigInt(1) << 8)
-      dut.io.pc.poke(ecallPC.U)
+      dut.io.PC.poke(EcallPC.U)
       dut.io.enable.poke(true.B)
       dut.io.isMret.poke(true.B)
-      big(dut.io.exceptionTarget) should be(ecallPC)
+      big(dut.io.exceptionTarget) should be(EcallPC)
       dut.clock.step()
       dut.io.isMret.poke(false.B)
       dut.io.enable.poke(false.B)
@@ -447,7 +447,7 @@ class ysyx_26030103_CSRExceptionAuditTest
 
       // 委托 U ecall(cause=8) 到 S，SRET 后返回 U。
       val ecallPc2 = BigInt("0000000080006020", 16)
-      dut.io.pc.poke(ecallPc2.U)
+      dut.io.PC.poke(ecallPc2.U)
       dut.io.enable.poke(true.B)
       dut.io.isEcall.poke(true.B)
       bool(dut.io.trapCommit) should be(true)
@@ -477,33 +477,33 @@ class ysyx_26030103_CSRExceptionAuditTest
       write(dut, MTVEC, BigInt("0000000080002000", 16))
       write(dut, MSTATUS, BigInt(0x8)) // MIE
       write(dut, MIE, BigInt(0x80)) // MTIE
-      val pc = BigInt("0000000080007000", 16)
-      dut.io.pc.poke(pc.U)
+      val PC = BigInt("0000000080007000", 16)
+      dut.io.PC.poke(PC.U)
       dut.io.timerInterrupt.poke(true.B)
       dut.io.enable.poke(true.B)
-      checkTrap(dut, 0x80000007, pc, 0,
+      checkTrap(dut, 0x80000007, PC, 0,
         BigInt("0000000080002000", 16), "M timer")
       dut.clock.step()
       dut.io.timerInterrupt.poke(false.B)
       dut.io.enable.poke(false.B)
       peek(dut, MCAUSE) should be(BigInt("8000000000000007", 16))
-      peek(dut, MEPC) should be(pc)
+      peek(dut, MEPC) should be(PC)
       peek(dut, MTVAL) should be(BigInt(0))
     }
 
     // M external: 使用 hasSExternalIrq=false 的 profile，io.Interrupt 挂到
     // MEIP(bit11)，cause=0x8000000b。
     simulate(new ysyx_26030103_CSRExceptionAuditHarness(
-      profile.copy(hasSExternalIRQ = false))) { dut =>
+      profile.copy(HasSExternalIRQ = false))) { dut =>
       setup(dut)
       write(dut, MTVEC, BigInt("0000000080002000", 16))
       write(dut, MSTATUS, BigInt(0x8))
       write(dut, MIE, BigInt(0x800)) // MEIE
-      val pc = BigInt("0000000080007100", 16)
-      dut.io.pc.poke(pc.U)
+      val PC = BigInt("0000000080007100", 16)
+      dut.io.PC.poke(PC.U)
       dut.io.interrupt.poke(true.B)
       dut.io.enable.poke(true.B)
-      checkTrap(dut, 0x8000000b, pc, 0,
+      checkTrap(dut, 0x8000000b, PC, 0,
         BigInt("0000000080002000", 16), "M external")
       dut.clock.step()
       dut.io.interrupt.poke(false.B)
@@ -519,11 +519,11 @@ class ysyx_26030103_CSRExceptionAuditTest
       write(dut, MSTATUS, BigInt(0x8))
       write(dut, MIE, BigInt(0x200)) // SEIE
       write(dut, MIDELEG, 0)
-      val pc = BigInt("0000000080007150", 16)
-      dut.io.pc.poke(pc.U)
+      val PC = BigInt("0000000080007150", 16)
+      dut.io.PC.poke(PC.U)
       dut.io.interrupt.poke(true.B)
       dut.io.enable.poke(true.B)
-      checkTrap(dut, 0x80000009, pc, 0,
+      checkTrap(dut, 0x80000009, PC, 0,
         BigInt("0000000080002000", 16), "M-mode non-delegated SEI")
       dut.clock.step()
       dut.io.interrupt.poke(false.B)
@@ -539,8 +539,8 @@ class ysyx_26030103_CSRExceptionAuditTest
       write(dut, MIDELEG, BigInt(0x200))
       write(dut, MIE, BigInt(0x200))
       enterS(dut, BigInt("0000000080007200", 16), sstatusBits = BigInt(0x2))
-      val pc = BigInt("0000000080007210", 16)
-      dut.io.pc.poke(pc.U)
+      val PC = BigInt("0000000080007210", 16)
+      dut.io.PC.poke(PC.U)
       dut.io.interrupt.poke(true.B)
       dut.io.enable.poke(true.B)
       bool(dut.io.trapCommit) should be(true)
@@ -550,7 +550,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       dut.io.interrupt.poke(false.B)
       dut.io.enable.poke(false.B)
       peek(dut, SCAUSE) should be(BigInt("8000000000000009", 16))
-      peek(dut, SEPC) should be(pc)
+      peek(dut, SEPC) should be(PC)
       peek(dut, STVAL) should be(BigInt(0))
     }
 
@@ -563,11 +563,11 @@ class ysyx_26030103_CSRExceptionAuditTest
       write(dut, MSTATUS, BigInt(0x8))
       write(dut, MIE, BigInt(0x80))
       write(dut, MIDELEG, BigInt(0x80)) // 误写 MTIE 委托位
-      val pc = BigInt("0000000080007400", 16)
-      dut.io.pc.poke(pc.U)
+      val PC = BigInt("0000000080007400", 16)
+      dut.io.PC.poke(PC.U)
       dut.io.timerInterrupt.poke(true.B)
       dut.io.enable.poke(true.B)
-      checkTrap(dut, 0x80000007, pc, 0,
+      checkTrap(dut, 0x80000007, PC, 0,
         BigInt("0000000080002000", 16), "mideleg M bit")
       dut.clock.step()
       dut.io.timerInterrupt.poke(false.B)
@@ -579,7 +579,7 @@ class ysyx_26030103_CSRExceptionAuditTest
     // NEMU REF 也按 bit1 先于 bit5 处理。mip.STIP 只读，STIP 由
     // direct_stip 硬件输入驱动；只有 SSIP 通过 mip 写口注入。
     val directStipProfile =
-      profile.copy(timerPath = "direct_stip", hasSTimerIRQ = true)
+      profile.copy(timerPath = "direct_stip", HasSTimerIRQ = true)
     simulate(new ysyx_26030103_CSRExceptionAuditHarness(directStipProfile)) {
       dut =>
         setup(dut)
@@ -590,8 +590,8 @@ class ysyx_26030103_CSRExceptionAuditTest
         write(dut, MIP, BigInt(0x2)) // 只注入可写的 SSIP
         dut.io.timerInterrupt.poke(true.B)
         enterS(dut, BigInt("0000000080007250", 16), sstatusBits = BigInt(0x2))
-      val pc = BigInt("0000000080007260", 16)
-      dut.io.pc.poke(pc.U)
+      val PC = BigInt("0000000080007260", 16)
+      dut.io.PC.poke(PC.U)
       dut.io.enable.poke(true.B)
       bool(dut.io.trapCommit) should be(true)
       big(dut.io.committedCause) should be(BigInt("80000001", 16))
@@ -599,7 +599,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       dut.clock.step()
       dut.io.enable.poke(false.B)
       peek(dut, SCAUSE) should be(BigInt("8000000000000001", 16))
-      peek(dut, SEPC) should be(pc)
+      peek(dut, SEPC) should be(PC)
     }
 
     // S 模式下未委托的 M timer 必须直接进入 M，且不受 MIE=0 影响。
@@ -608,17 +608,17 @@ class ysyx_26030103_CSRExceptionAuditTest
       write(dut, MTVEC, BigInt("0000000080002000", 16))
       write(dut, MIE, BigInt(0x80))
       enterS(dut, BigInt("0000000080007300", 16))
-      val pc = BigInt("0000000080007310", 16)
-      dut.io.pc.poke(pc.U)
+      val PC = BigInt("0000000080007310", 16)
+      dut.io.PC.poke(PC.U)
       dut.io.timerInterrupt.poke(true.B)
       dut.io.enable.poke(true.B)
-      checkTrap(dut, 0x80000007, pc, 0,
+      checkTrap(dut, 0x80000007, PC, 0,
         BigInt("0000000080002000", 16), "S-mode M timer")
       dut.clock.step()
       dut.io.timerInterrupt.poke(false.B)
       dut.io.enable.poke(false.B)
       peek(dut, MCAUSE) should be(BigInt("8000000000000007", 16))
-      peek(dut, MEPC) should be(pc)
+      peek(dut, MEPC) should be(PC)
     }
   }
 
@@ -634,7 +634,7 @@ class ysyx_26030103_CSRExceptionAuditTest
       peek(dut, MINSTRET) should be(BigInt(5))
 
       // 同步异常/中断只提交 trap，不退休指令。
-      dut.io.pc.poke(BigInt("0000000080008000", 16).U)
+      dut.io.PC.poke(BigInt("0000000080008000", 16).U)
       dut.io.enable.poke(true.B)
       dut.io.isEcall.poke(true.B)
       dut.clock.step()
@@ -644,7 +644,7 @@ class ysyx_26030103_CSRExceptionAuditTest
 
       write(dut, MSTATUS, BigInt(0x8))
       write(dut, MIE, BigInt(0x80))
-      dut.io.pc.poke(BigInt("0000000080008010", 16).U)
+      dut.io.PC.poke(BigInt("0000000080008010", 16).U)
       dut.io.timerInterrupt.poke(true.B)
       dut.io.enable.poke(true.B)
       dut.clock.step()

@@ -31,9 +31,9 @@ class ysyx_26030103_EXUTrapAuditTest extends AnyFlatSpec with Matchers {
         xlen = 64,
         hasS = true,
         hasU = true,
-        pteSizeBytes = 8,
-        pteFormat = "riscv64",
-        pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
+        PTESizeBytes = 8,
+        PTEFormat = "riscv64",
+        PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53)
       )
     )
 
@@ -65,7 +65,7 @@ class ysyx_26030103_EXUTrapAuditTest extends AnyFlatSpec with Matchers {
   "EXU trap" should "JALR 目标 bit1=1 时 CSRStateTval 记录目标地址" in {
     simulate(new ysyx_26030103_EXU(config)) { dut =>
       setup(dut)
-      dut.io.in.bits.pc.poke(BigInt("0000000080000000", 16).U(64.W))
+      dut.io.in.bits.PC.poke(BigInt("0000000080000000", 16).U(64.W))
       dut.io.in.bits.snpc.poke(BigInt("0000000080000004", 16).U(64.W))
       dut.io.in.bits.ALUCtrl.poke(ysyx_26030103_ALUFunction.ADD)
       dut.io.in.bits.ALU_A.poke(BigInt("0000000000001000", 16).U(64.W))
@@ -100,7 +100,7 @@ class ysyx_26030103_EXUTrapAuditTest extends AnyFlatSpec with Matchers {
   it should "SFENCE.VMA 提交时 FlushIF/Redirect 到 snpc" in {
     simulate(new ysyx_26030103_EXU(config)) { dut =>
       setup(dut)
-      dut.io.in.bits.pc.poke(BigInt("0000000080000040", 16).U(64.W))
+      dut.io.in.bits.PC.poke(BigInt("0000000080000040", 16).U(64.W))
       dut.io.in.bits.snpc.poke(BigInt("0000000080000044", 16).U(64.W))
       dut.io.in.bits.Instruction.poke("h12000073".U(32.W))
       dut.io.in.bits.IsSfenceVma.poke(true.B)

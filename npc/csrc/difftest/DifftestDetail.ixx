@@ -24,24 +24,6 @@ using REFDifftestSetPlatform = void (*)(int ysyxsoc);
 using REFDifftestLastInstruction = void (*)(std::uint64_t *pc, std::uint64_t *inst);
 using REFDifftestGetCSR = bool (*)(std::uint32_t csr, std::uint64_t *value);
 
-extern void *REFHandle;
-extern REFDifftestMemcpy REFMemcpy;
-extern REFDifftestRegcpy REFRegcpy;
-extern REFDifftestExec REFExec;
-extern REFDifftestRaiseIntr REFRaiseIntr;
-extern REFDifftestTrap REFTrap;
-extern REFDifftestStateSize REFStateSize;
-extern REFDifftestCSRStateSize REFCSRStateSize;
-extern REFDifftestCSRcpy REFCSRcpy;
-extern REFDifftestFPRegcpy REFFPRegcpy;
-extern REFDifftestSetPlatform REFSetPlatform;
-extern REFDifftestLastInstruction REFLastInstruction;
-extern REFDifftestGetCSR REFGetCSR;
-extern bool Enabled;
-extern bool Failed;
-extern bool FPCompareEnabled;
-extern std::size_t SkipCount;
-
 struct DifftestCSRState
 {
     npc::XWord mstatus{};
@@ -50,13 +32,41 @@ struct DifftestCSRState
     npc::XWord mcause{};
 };
 static_assert(sizeof(DifftestCSRState) == 4 * sizeof(npc::XWord));
-extern DifftestCSRState LastDUTCSR;
+
+struct REFTable
+{
+    void *REFHandle{nullptr};
+    REFDifftestMemcpy REFMemcpy{nullptr};
+    REFDifftestRegcpy REFRegcpy{nullptr};
+    REFDifftestExec REFExec{nullptr};
+    REFDifftestRaiseIntr REFRaiseIntr{nullptr};
+    REFDifftestTrap REFTrap{nullptr};
+    REFDifftestStateSize REFStateSize{nullptr};
+    REFDifftestCSRStateSize REFCSRStateSize{nullptr};
+    REFDifftestCSRcpy REFCSRcpy{nullptr};
+    REFDifftestFPRegcpy REFFPRegcpy{nullptr};
+    REFDifftestSetPlatform REFSetPlatform{nullptr};
+    REFDifftestLastInstruction REFLastInstruction{nullptr};
+    REFDifftestGetCSR REFGetCSR{nullptr};
+};
+
+struct DiffTestState
+{
+    REFTable ref;
+    bool Enabled{false};
+    bool Failed{false};
+    bool FPCompareEnabled{false};
+    std::size_t SkipCount{0};
+    DifftestCSRState LastDUTCSR{};
+};
+
+DiffTestState &State();
 
 template <typename Fn>
 std::expected<Fn, std::string> LoadSymbol(const char *Name)
 {
     dlerror();
-    auto *Symbol{dlsym(REFHandle, Name)};
+    auto *Symbol{dlsym(State().ref.REFHandle, Name)};
     if (const char *Error{dlerror()}; Error != nullptr)
     {
         return std::unexpected{std::format("加载 DiffTest 符号 {0} 失败: {1}", Name, Error)};
@@ -67,7 +77,7 @@ template <typename Fn>
 Fn TryLoadSymbol(const char *Name)
 {
     dlerror();
-    auto *Symbol{dlsym(REFHandle, Name)};
+    auto *Symbol{dlsym(State().ref.REFHandle, Name)};
     if (dlerror() != nullptr)
         return nullptr;
     return reinterpret_cast<Fn>(Symbol);

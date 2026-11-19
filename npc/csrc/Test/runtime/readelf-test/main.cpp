@@ -39,14 +39,14 @@ constexpr std::size_t align_up(std::size_t value, std::size_t alignment)
 
 // 按目标 ELF class 生成最小的 RISC-V 可执行文件。
 // 64 位模式的入口地址故意放在 4GiB 以上，用来验证高地址符号查询。
-template <bool IsElf64>
+template <bool IsELF64>
 bool write_riscv_fixture(const std::filesystem::path &path,
                          Elf64_Half machine,
                          std::uint64_t entry)
 {
-    using Header = std::conditional_t<IsElf64, Elf64_Ehdr, Elf32_Ehdr>;
-    using SectionHeader = std::conditional_t<IsElf64, Elf64_Shdr, Elf32_Shdr>;
-    using Symbol = std::conditional_t<IsElf64, Elf64_Sym, Elf32_Sym>;
+    using Header = std::conditional_t<IsELF64, Elf64_Ehdr, Elf32_Ehdr>;
+    using SectionHeader = std::conditional_t<IsELF64, Elf64_Shdr, Elf32_Shdr>;
+    using Symbol = std::conditional_t<IsELF64, Elf64_Sym, Elf32_Sym>;
 
     constexpr std::string_view symbol_strings{"\0entry\0", 7};
     constexpr std::string_view section_strings{
@@ -71,7 +71,7 @@ bool write_riscv_fixture(const std::filesystem::path &path,
     header.e_ident[EI_MAG1] = ELFMAG1;
     header.e_ident[EI_MAG2] = ELFMAG2;
     header.e_ident[EI_MAG3] = ELFMAG3;
-    header.e_ident[EI_CLASS] = IsElf64 ? ELFCLASS64 : ELFCLASS32;
+    header.e_ident[EI_CLASS] = IsELF64 ? ELFCLASS64 : ELFCLASS32;
     header.e_ident[EI_DATA] = ELFDATA2LSB;
     header.e_ident[EI_VERSION] = EV_CURRENT;
     header.e_type = ET_EXEC;
@@ -96,7 +96,7 @@ bool write_riscv_fixture(const std::filesystem::path &path,
     symbols[1].st_name = 1;
     symbols[1].st_value = static_cast<decltype(symbols[1].st_value)>(entry);
     symbols[1].st_size = sizeof(text);
-    symbols[1].st_info = IsElf64
+    symbols[1].st_info = IsELF64
                              ? ELF64_ST_INFO(STB_GLOBAL, STT_FUNC)
                              : ELF32_ST_INFO(STB_GLOBAL, STT_FUNC);
     symbols[1].st_shndx = 1;
@@ -172,30 +172,30 @@ public:
 
 int main()
 {
-    constexpr bool kElf64{Readelf::is_elf64};
-    constexpr std::uint64_t kNativeEntry{kElf64 ? 0x1'0000'0000ULL
+    constexpr bool kELF64{Readelf::is_elf64};
+    constexpr std::uint64_t kNativeEntry{kELF64 ? 0x1'0000'0000ULL
                                                 : 0x80000000ULL};
     // 反 class 的样本地址只需要能放进对应位宽。
-    constexpr std::uint64_t kWrongClassEntry{kElf64 ? 0x80000000ULL
+    constexpr std::uint64_t kWrongClassEntry{kELF64 ? 0x80000000ULL
                                                      : 0x1'0000'0000ULL};
 
     FixtureFiles fixtures;
-    check(write_riscv_fixture<kElf64>(fixtures.riscv, EM_RISCV, kNativeEntry),
+    check(write_riscv_fixture<kELF64>(fixtures.riscv, EM_RISCV, kNativeEntry),
           std::format("failed to create the RISC-V {} fixture",
-                      kElf64 ? "ELF64" : "ELF32"));
-    check(write_riscv_fixture<kElf64>(fixtures.non_riscv, EM_386,
+                      kELF64 ? "ELF64" : "ELF32"));
+    check(write_riscv_fixture<kELF64>(fixtures.non_riscv, EM_386,
                                       kNativeEntry),
           std::format("failed to create the non-RISC-V {} fixture",
-                      kElf64 ? "ELF64" : "ELF32"));
-    check(write_riscv_fixture<!kElf64>(fixtures.wrong_class, EM_RISCV,
+                      kELF64 ? "ELF64" : "ELF32"));
+    check(write_riscv_fixture<!kELF64>(fixtures.wrong_class, EM_RISCV,
                                        kWrongClassEntry),
           std::format("failed to create the wrong-class {} fixture",
-                      kElf64 ? "ELF32" : "ELF64"));
+                      kELF64 ? "ELF32" : "ELF64"));
 
     auto riscv{Readelf::load(fixtures.riscv)};
     check(riscv.has_value(),
           std::format("a valid RISC-V {} file must load",
-                      kElf64 ? "ELF64" : "ELF32"));
+                      kELF64 ? "ELF64" : "ELF32"));
     if (riscv)
     {
         check(riscv->loaded(), "the accepted RISC-V ELF must be marked loaded");
@@ -217,7 +217,7 @@ int main()
     const auto non_riscv{Readelf::load(fixtures.non_riscv)};
     check(!non_riscv,
           std::format("an {} file for a non-RISC-V machine must be rejected",
-                      kElf64 ? "ELF64" : "ELF32"));
+                      kELF64 ? "ELF64" : "ELF32"));
     if (!non_riscv)
     {
         check(non_riscv.error().contains("RISC-V"),
@@ -229,8 +229,8 @@ int main()
     const auto wrong_class{Readelf::load(fixtures.wrong_class)};
     check(!wrong_class,
           std::format("an {} file must be rejected by an {} build",
-                      kElf64 ? "ELF32" : "ELF64",
-                      kElf64 ? "ELF64" : "ELF32"));
+                      kELF64 ? "ELF32" : "ELF64",
+                      kELF64 ? "ELF64" : "ELF32"));
     if (!wrong_class)
         check(wrong_class.error().contains("ELF类别"),
               "the class mismatch error must explain the expected ELF class");
@@ -239,6 +239,6 @@ int main()
         return 1;
     std::println("[PASS] Readelf accepts RISC-V {}, rejects non-RISC-V and "
                  "opposite-class ELF",
-                 kElf64 ? "ELF64 high-address symbols" : "ELF32");
+                 kELF64 ? "ELF64 high-address symbols" : "ELF32");
     return 0;
 }

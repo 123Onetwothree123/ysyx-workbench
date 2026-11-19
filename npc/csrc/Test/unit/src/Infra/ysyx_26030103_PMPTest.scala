@@ -13,10 +13,10 @@ class ysyx_26030103_PMPTest extends AnyFlatSpec with Matchers {
   "MMUProfile" should "允许 HAS_PMP=y 且 HAS_MMU=n" in {
     val profile = ysyx_26030103_MMUProfile(
       enabled = false,
-      pmpEnabled = true,
-      pmpEntries = 16
+      PMPEnabled = true,
+      PMPEntries = 16
     )
-    profile.pmpEnabled should be(true)
+    profile.PMPEnabled should be(true)
     profile.enabled should be(false)
   }
 
@@ -26,12 +26,12 @@ class ysyx_26030103_PMPTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       for (i <- 0 until 16) {
-        dut.io.cfg(i).poke(0.U)
-        dut.io.addr(i).poke(0.U)
+        dut.io.config(i).poke(0.U)
+        dut.io.address(i).poke(0.U)
       }
       // 4KiB NAPOT：0x80000000..0x80000fff，R/W/X，无 L。
-      dut.io.cfg(0).poke("h1f".U)
-      dut.io.addr(0).poke("h200001ff".U)
+      dut.io.config(0).poke("h1f".U)
+      dut.io.address(0).poke("h200001ff".U)
       dut.io.fetchAddress.poke("h80000000".U)
       dut.io.fetchPriv.poke(1.U)
       dut.io.dataAddress.poke("h80000004".U)
@@ -58,12 +58,12 @@ class ysyx_26030103_PMPTest extends AnyFlatSpec with Matchers {
       dut.clock.step(2)
       dut.reset.poke(false.B)
       for (i <- 0 until 16) {
-        dut.io.cfg(i).poke(0.U)
-        dut.io.addr(i).poke(0.U)
+        dut.io.config(i).poke(0.U)
+        dut.io.address(i).poke(0.U)
       }
       // 4KiB NAPOT，R/X + L，A=NAPOT。
-      dut.io.cfg(0).poke("h9d".U)
-      dut.io.addr(0).poke("h200001ff".U)
+      dut.io.config(0).poke("h9d".U)
+      dut.io.address(0).poke("h200001ff".U)
       dut.io.dataAddress.poke("h80000000".U)
       dut.io.dataLastAddress.poke("h80000000".U)
       dut.io.dataPriv.poke(3.U)

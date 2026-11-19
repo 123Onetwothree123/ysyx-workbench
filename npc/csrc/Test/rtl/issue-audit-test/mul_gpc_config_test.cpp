@@ -46,10 +46,10 @@ int main(int argc, char **argv) {
       kGpcName + "]";
   return run_test(name.c_str(), [] {
     DUT dut;
-    dut.IO_Req_valid = 0;
-    dut.IO_Req_bits_LHSMagnitude = 0;
-    dut.IO_Req_bits_RHSMagnitude = 0;
-    dut.IO_Resp_ready = 1;
+    dut.IO_Request_valid = 0;
+    dut.IO_Request_bits_LHSMagnitude = 0;
+    dut.IO_Request_bits_RHSMagnitude = 0;
+    dut.IO_Response_ready = 1;
     dut.IO_Flush = 0;
     reset(dut);
 
@@ -69,20 +69,20 @@ int main(int argc, char **argv) {
     // 流水核：可以背靠背送入，但这里逐条发送并等待结果，
     // 便于定位不一致的向量。
     for (const auto &[lhs, rhs] : vectors) {
-      dut.IO_Req_valid = 1;
-      dut.IO_Req_bits_LHSMagnitude = lhs;
-      dut.IO_Req_bits_RHSMagnitude = rhs;
+      dut.IO_Request_valid = 1;
+      dut.IO_Request_bits_LHSMagnitude = lhs;
+      dut.IO_Request_bits_RHSMagnitude = rhs;
       dut.eval();
-      check(dut.IO_Req_ready, "MUL core refused a request");
+      check(dut.IO_Request_ready, "MUL core refused a request");
       tick(dut);
-      dut.IO_Req_valid = 0;
+      dut.IO_Request_valid = 0;
 
       bool got = false;
       uint64_t product = 0;
       for (int cycle = 0; cycle < 64 && !got; ++cycle) {
         dut.eval();
-        if (dut.IO_Resp_valid) {
-          product = dut.IO_Resp_bits_Product;
+        if (dut.IO_Response_valid) {
+          product = dut.IO_Response_bits_Product;
           got = true;
         } else {
           tick(dut);

@@ -13,7 +13,6 @@ export class BPAlgorithmsType
 private:
     std::vector<std::unique_ptr<BPAlgorithmBase>> algos;
 
-
 public:
     explicit BPAlgorithmsType(const BPConfig& config);
     ~BPAlgorithmsType() = default;

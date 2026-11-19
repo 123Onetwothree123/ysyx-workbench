@@ -9,8 +9,8 @@ class ysyx_26030103_mepc(
 ) extends Module {
   require(XLEN == 32 || XLEN == 64, s"mepc XLEN 非法: $XLEN")
   val io = IO(new Bundle {
-    val clk = Input(Clock())
-    val rst = Input(Bool())
+    val clock = Input(Clock())
+    val reset = Input(Bool())
     val wen = Input(Bool())
     // ecall异常触发时自动写入
     val ExceptionWE = Input(Bool())
@@ -18,7 +18,7 @@ class ysyx_26030103_mepc(
     val wdata = Input(UInt(XLEN.W))
     val rdata = Output(UInt(XLEN.W))
   })
-  val regMepc = withClockAndReset(io.clk, io.rst) { RegInit(0.U(XLEN.W)) }
+  val regMepc = withClockAndReset(io.clock, io.reset) { RegInit(0.U(XLEN.W)) }
   // IALIGN=16 时只固定 bit0；IALIGN=32 时 mepc[1:0]都为 0。
   private def align(value: UInt): UInt =
     if (UseC) Cat(value(XLEN - 1, 1), 0.U(1.W))

@@ -11,44 +11,44 @@ private[infra] trait AXI5XbarDecode {
 
   private def lastByte(
       address: UInt,
-      len: UInt,
+      length: UInt,
       size: UInt,
       burst: UInt
   ): UInt =
-    ysyx_26030103_AXI5Burst.lastByte(address, len, size, burst)
+    ysyx_26030103_AXI5Burst.lastByte(address, length, size, burst)
   private def inRegion(
       address: UInt,
-      len: UInt,
+      length: UInt,
       size: UInt,
       burst: UInt,
       region: ysyx_26030103_PMARegion
   ): Bool = {
     val extendedAddress = Cat(0.U(1.W), address)
-    val lastAddress = lastByte(address, len, size, burst)
+    val lastAddress = lastByte(address, length, size, burst)
     extendedAddress >= BigInt(region.Base).U &&
     lastAddress < BigInt(region.EndExclusive).U
   }
   private def inAnyRegion(
       address: UInt,
-      len: UInt,
+      length: UInt,
       size: UInt,
       burst: UInt,
       regions: Seq[ysyx_26030103_PMARegion]
   ): Bool =
     regions
-      .map(inRegion(address, len, size, burst, _))
+      .map(inRegion(address, length, size, burst, _))
       .reduceOption(_ || _)
       .getOrElse(false.B)
 
-  def isCLINT(address: UInt, len: UInt, size: UInt, burst: UInt): Bool = {
-    val lastAddress = lastByte(address, len, size, burst)
-    Cat(0.U(1.W), address) >= Cat(0.U(1.W), clintBase) &&
-    lastAddress < Cat(0.U(1.W), clintEnd)
+  def isCLINT(address: UInt, length: UInt, size: UInt, burst: UInt): Bool = {
+    val lastAddress = lastByte(address, length, size, burst)
+    Cat(0.U(1.W), address) >= Cat(0.U(1.W), CLINTBase) &&
+    lastAddress < Cat(0.U(1.W), CLINTEnd)
   }
-  def isPLIC(address: UInt, len: UInt, size: UInt, burst: UInt): Bool = {
-    val lastAddress = lastByte(address, len, size, burst)
-    Cat(0.U(1.W), address) >= Cat(0.U(1.W), plicBase) &&
-    lastAddress < Cat(0.U(1.W), plicEnd)
+  def isPLIC(address: UInt, length: UInt, size: UInt, burst: UInt): Bool = {
+    val lastAddress = lastByte(address, length, size, burst)
+    Cat(0.U(1.W), address) >= Cat(0.U(1.W), PLICBase) &&
+    lastAddress < Cat(0.U(1.W), PLICEnd)
   }
   private val readableRegions = PMARegions.filter(_.Readable)
   private val writableRegions = PMARegions.filter(_.Writable)
@@ -58,18 +58,18 @@ private[infra] trait AXI5XbarDecode {
                            size: BigInt): Boolean =
     BigInt(region.Base) <= base &&
       BigInt(region.EndExclusive) >= base + size
-  private val readableCLINT = readableRegions.exists(region =>
+  private val ReadableCLINT = readableRegions.exists(region =>
     coversRegion(region, CLINTBaseValue, CLINTSizeBytes))
-  private val writableCLINT = writableRegions.exists(region =>
+  private val WritableCLINT = writableRegions.exists(region =>
     coversRegion(region, CLINTBaseValue, CLINTSizeBytes))
-  private val readablePLIC = readableRegions.exists(region =>
+  private val ReadablePLIC = readableRegions.exists(region =>
     coversRegion(region, PLICBaseValue, PLICSizeBytes))
-  private val writablePLIC = writableRegions.exists(region =>
+  private val WritablePLIC = writableRegions.exists(region =>
     coversRegion(region, PLICBaseValue, PLICSizeBytes))
 
   def decode(
       address: UInt,
-      len: UInt,
+      length: UInt,
       size: UInt,
       burst: UInt,
       isWrite: Boolean
@@ -77,26 +77,26 @@ private[infra] trait AXI5XbarDecode {
     val configSupported =
       size <= busLaneBits.U && (burst === 0.U || burst === 1.U)
     val permittedRegions = if (isWrite) writableRegions else readableRegions
-    val clintPermitted = if (isWrite) writableCLINT else readableCLINT
-    val plicPermitted = if (isWrite) writablePLIC else readablePLIC
+    val CLINTPermitted = if (isWrite) WritableCLINT else ReadableCLINT
+    val PLICPermitted = if (isWrite) WritablePLIC else ReadablePLIC
     // PLIC 叶子只做单拍：不处理 AWLEN/WLAST，读响应只在首拍置 RLAST；
     // burst 非单拍或 PMA 未授权时必须本地判非法，不能按起始地址转发。
-    val plicAddress = isPLIC(address, 0.U, size, burst)
+    val PLICAddress = isPLIC(address, 0.U, size, burst)
     Mux(
       !configSupported,
       targetInvalid,
       Mux(
-        clintPermitted.B && isCLINT(address, len, size, burst),
-        targetCLINT,
+        CLINTPermitted.B && isCLINT(address, length, size, burst),
+        TargetCLINT,
         Mux(
-          plicAddress,
+          PLICAddress,
           Mux(
-            plicPermitted.B && len === 0.U && size <= 2.U,
-            targetPLIC,
+            PLICPermitted.B && length === 0.U && size <= 2.U,
+            TargetPLIC,
             targetInvalid
           ),
           Mux(
-            inAnyRegion(address, len, size, burst, permittedRegions),
+            inAnyRegion(address, length, size, burst, permittedRegions),
             targetSoCBus,
             targetInvalid
           )

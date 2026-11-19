@@ -7,22 +7,22 @@
 //   * pmpFault=1 时不得返回指令，必须 fault，cause=1，faultVaddr 为取指 VA；
 //   * pmpFault=0 时正常受理且不产生 fault。
 
-#include "VViptFetchPmpHarness.h"
+#include "VVIPTFetchPMPHarness.h"
 #include "test_common.hpp"
 
 #include <cstdint>
 #include <verilated.h>
 
-using DUT = VViptFetchPmpHarness;
+using DUT = VVIPTFetchPMPHarness;
 
 static void defaults(DUT &dut) {
   dut.io_fetchValid = 0;
   dut.io_fetchAddress = 0;
   dut.io_bypass = 1;
-  dut.io_pmpFault = 0;
+  dut.io_PMPFault = 0;
   dut.io_kill = 0;
-  dut.io_respReady = 0;
-  dut.io_axiARReady = 0;
+  dut.io_ResponseReady = 0;
+  dut.io_AXIARReady = 0;
 }
 
 static void bypass_pmp_denied_fetch_faults() {
@@ -33,7 +33,7 @@ static void bypass_pmp_denied_fetch_faults() {
   constexpr std::uint32_t fetch_va = 0x80001000U;
   dut.io_fetchValid = 1;
   dut.io_fetchAddress = fetch_va;
-  dut.io_pmpFault = 1;
+  dut.io_PMPFault = 1;
   dut.eval();
   check(dut.io_fetchReady, "VIPT ICache rejected the VA request before PMP");
   tick(dut);
@@ -46,9 +46,9 @@ static void bypass_pmp_denied_fetch_faults() {
         "PMP-denied VIPT bypass fetch used the wrong fault cause");
   check(dut.io_faultVirtualAddress == fetch_va,
         "PMP-denied VIPT bypass fetch reported the wrong fault VAddr");
-  check(!dut.io_respValid,
+  check(!dut.io_ResponseValid,
         "PMP-denied VIPT bypass fetch produced a cache response");
-  check(!dut.io_axiARValid,
+  check(!dut.io_AXIARValid,
         "PMP-denied VIPT bypass fetch issued an AXI refill");
   dut.final();
 }
@@ -61,12 +61,12 @@ static void bypass_pmp_allowed_fetch_proceeds() {
   constexpr std::uint32_t fetch_va = 0x80002000U;
   dut.io_fetchValid = 1;
   dut.io_fetchAddress = fetch_va;
-  dut.io_pmpFault = 0;
+  dut.io_PMPFault = 0;
   for (int cycle = 0; cycle < 4; ++cycle) {
     dut.eval();
     check(!dut.io_fault,
           "allowed VIPT bypass fetch unexpectedly raised a fault");
-    check(!dut.io_respFault,
+    check(!dut.io_ResponseFault,
           "allowed VIPT bypass fetch reported a cache access fault");
     tick(dut);
   }

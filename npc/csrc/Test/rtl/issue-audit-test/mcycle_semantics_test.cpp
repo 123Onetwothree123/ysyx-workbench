@@ -17,11 +17,11 @@
 using DUT = Vysyx_26030103_mcycle;
 
 static void clk_tick(DUT &dut) {
-  dut.io_clk = 0;
+  dut.io_clock = 0;
   dut.eval();
-  dut.io_clk = 1;
+  dut.io_clock = 1;
   dut.eval();
-  dut.io_clk = 0;
+  dut.io_clock = 0;
   dut.eval();
 }
 
@@ -29,15 +29,16 @@ int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
   return run_test("mcycle write/read semantics", [] {
     DUT dut;
-    dut.io_clk = 0;
-    dut.io_rst = 1;
+    dut.io_clock = 0;
+    dut.io_reset = 1;
     dut.io_wen = 0;
+    dut.io_Enable = 1;
     dut.io_SelectHigh = 0;
     dut.io_wdata = 0;
     dut.eval();
     clk_tick(dut);
     clk_tick(dut);
-    dut.io_rst = 0;
+    dut.io_reset = 0;
     dut.eval();
 
     // 复位后 10 拍，无写入：低半字应为 10。
@@ -54,6 +55,7 @@ int main(int argc, char **argv) {
     dut.io_wdata = 0x100U;
     clk_tick(dut);
     dut.io_wen = 0;
+    dut.io_Enable = 1;
     dut.eval();
     check(dut.io_rdata == 0x100U,
           "mcycle did not take the written value at the write edge: got 0x" +
@@ -71,6 +73,7 @@ int main(int argc, char **argv) {
     dut.io_wdata = 0x2U;
     clk_tick(dut);
     dut.io_wen = 0;
+    dut.io_Enable = 1;
     dut.eval();
     check(dut.io_rdata == 0x2U,
           "mcycle high half write did not take effect: got 0x" +

@@ -30,9 +30,9 @@ case class ysyx_26030103_NPCConfig(
     ALUImpl: ysyx_26030103_ALUImpl = ysyx_26030103_ALUImpl.Standard,
     ALUProfile: ysyx_26030103_ALUProfile = ysyx_26030103_ALUProfile(),
     // 目标平台
-    ResetAddress: Long = ysyx_26030103_PMAOptions.Default.socResetAddress,
-    CLINTBase: Long = ysyx_26030103_PMAOptions.Default.clintBase,
-    CLINTSize: Long = ysyx_26030103_PMAOptions.Default.clintSize,
+    ResetAddress: Long = ysyx_26030103_PMAOptions.Default.SOCResetAddress,
+    CLINTBase: Long = ysyx_26030103_PMAOptions.Default.CLINTBase,
+    CLINTSize: Long = ysyx_26030103_PMAOptions.Default.CLINTSize,
     ChipLinkMemoryBase: Long = ysyx_26030103_PMAOptions.Default.chipLinkMemBase,
     ChipLinkMemorySize: Long = ysyx_26030103_PMAOptions.Default.chipLinkMemSize,
     ICacheDrainTimeout: Int = KconfigDefaults.ICacheDrainTimeout,
@@ -129,8 +129,8 @@ case class ysyx_26030103_NPCConfig(
     RiscvArchPMU: Boolean = false,
     RiscvArchPMUZihpm: Boolean = true,
     RiscvArchPMUSscofpmf: Boolean = true,
-    // 单计数器选择：键名如"ifu_fetch"/"mdu_req"。实际生效集合还要与
-    // 主开关及所属组总开关相与（见EnabledPerfDicArchCounters）。
+    // 单计数器选择：键名如"ifu_fetch"/"mdu_req"（与 typed JSON 一致）。实际
+    // 生效集合还要与主开关及所属组总开关相与（见EnabledPerfDicArchCounters）。
     PerfDicArchCounters: Set[String] =
       ysyx_26030103_PerfDicArchCounterCatalog.AllPerfDicArchCounters,
     // MMU/TLB 配置；RV32 为 Sv32，RV64 为标准 Sv39/Sv48 的 IFU/LSU 翻译路径。
@@ -213,7 +213,7 @@ case class ysyx_26030103_NPCConfig(
     *
     * direct-NPC 顶层（riscv32e_npc_SimTop/AXIRAM）固定 32 位 AXI，Makefile 的
     * direct 目标会强制 SOC_XLEN_FOLLOW_CPU=n、SOC_XLEN=32 并在构建前检查；
-    * 完整 SoC（SIM_TOP=soc）不受该投影影响。
+    * 完整 SoC（SIM_TOP=SOC）不受该投影影响。
     */
   final val EffectiveSocXLEN: Int = if (SocXLENFollowCpu) XLEN else SocXLEN
   final val EffectiveInternalBusWidth: Int =
@@ -391,16 +391,16 @@ case class ysyx_26030103_NPCConfig(
   )
   // C 扩展打开时 IALIGN=16，BTB 索引/标签必须保留 PC bit1，因此只去掉
   // 1 个对齐位；关闭时仍按 4 字节对齐去掉 2 位。
-  private val btbPCShift = if (UseC) 1 else 2
+  private val BTBPCShift = if (UseC) 1 else 2
   require(BTBBits >= 0, "BTBBits不能为负数；0表示单组BTB")
   require(
-    BTBBits < AddressWidth - btbPCShift,
+    BTBBits < AddressWidth - BTBPCShift,
     "BTB地址几何必须在去除PC对齐位后留出至少1位tag"
   )
   require(BTBWays >= 1, "BTB必须至少包含1路")
   require(JalBTBBits >= 0, "JalBTBBits不能为负数；0表示单组JAL BTB")
   require(
-    JalBTBBits < AddressWidth - btbPCShift,
+    JalBTBBits < AddressWidth - BTBPCShift,
     "JAL BTB地址几何必须在去除PC对齐位后留出至少1位tag"
   )
   require(JalBTBWays >= 1, "JAL BTB必须至少包含1路")
@@ -428,16 +428,16 @@ case class ysyx_26030103_NPCConfig(
   // 入站 DMA 只代理 ChipLink 内存窗口（与 AXI5Arbiter 的检查一致）。
   // UNCACHED 模式在 Cache 使用的 PMA 视图里把该窗口切成不可缓存段；
   // 原始 PMARegions 仍供 Xbar/PMA 权限检查使用，读写/执行权限不变。
-  private val dmaWindowBase =
+  private val DMAWindowBase =
     ysyx_26030103_PMAOptions.Default.chipLinkMemBase
-  private val dmaWindowEnd =
-    dmaWindowBase + ysyx_26030103_PMAOptions.Default.chipLinkMemSize
+  private val DMAWindowEnd =
+    DMAWindowBase + ysyx_26030103_PMAOptions.Default.chipLinkMemSize
   // Cache 实际使用的 PMA 视图；只有显式 UNCACHED 模式才与 PMARegions 不同。
   final val CachePMARegions: Seq[ysyx_26030103_PMARegion] =
     if (DMACoherence != ysyx_26030103_DMACoherence.Uncached) PMARegions
     else PMARegions.flatMap { region =>
-      val start = math.max(region.Base, dmaWindowBase)
-      val end = math.min(region.EndExclusive, dmaWindowEnd)
+      val start = math.max(region.Base, DMAWindowBase)
+      val end = math.min(region.EndExclusive, DMAWindowEnd)
       if (start >= end) Seq(region)
       else {
         val before =
@@ -462,8 +462,8 @@ case class ysyx_26030103_NPCConfig(
   final val DMAWindowPresent: Boolean =
     PMARegions.exists { region =>
       region.Readable && region.Writable &&
-      BigInt(region.Base) <= BigInt(dmaWindowBase) &&
-      BigInt(region.EndExclusive) >= BigInt(dmaWindowEnd)
+      BigInt(region.Base) <= BigInt(DMAWindowBase) &&
+      BigInt(region.EndExclusive) >= BigInt(DMAWindowEnd)
     }
   /** DMA 地址级 snoop 需要 ICache/DCache 生成行失效硬件；没有 DMA 窗口
     * 时仲裁器根本不会收到入站写，直接不生成额外比较/握手逻辑。
@@ -691,17 +691,17 @@ case class ysyx_26030103_NPCConfig(
         if (ICacheEnable) "hardware_snoop(hw)"
         else "hardware_snoop(inactive:ICache=off)"
       } else ICacheCoherence.Name
-    val dmaCoherenceDesc =
+    val DMACoherenceDesc =
       if (DMACoherence == ysyx_26030103_DMACoherence.Uncached) {
         if (DMAWindowPresent) "uncached(dma_window)"
-        else "uncached(inactive:no-dma-window)"
+        else "uncached(inactive:no-DMA-window)"
       } else if (DMACoherence == ysyx_26030103_DMACoherence.HardwareSnoop) {
         val which =
           Seq(
             if (ICacheEnable) Some("ICache") else None,
             if (DCacheEnable) Some("DCache") else None
           ).flatten.mkString("+")
-        if (!DMAWindowPresent) "hardware_snoop(inactive:no-dma-window)"
+        if (!DMAWindowPresent) "hardware_snoop(inactive:no-DMA-window)"
         else if (which.isEmpty) "hardware_snoop(inactive:no-cache)"
         else s"hardware_snoop(line-invalidate:$which)"
       } else "software_flush(legacy-b-invalidate)"
@@ -715,7 +715,7 @@ case class ysyx_26030103_NPCConfig(
       s"internal_bus_w=$EffectiveInternalBusWidth" +
       s"${if (InternalBusWidthFollowCpu) "(follow)" else ""}, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
-      s"mdu=${MDUImpl.Name}, " +
+      s"MDU=${MDUImpl.Name}, " +
       s"mul=${MULImpl.Name}/${mulParams.Encoding.Name}, " +
       s"mul_width=${mulParams.Width}, " +
       s"mul_gpc=${mulParams.Compression.Compressor.Describe}, " +
@@ -729,7 +729,7 @@ case class ysyx_26030103_NPCConfig(
       s"mul_early_out=${onOff(mulParams.ShiftAdd.EarlyOut)}, " +
       s"div_early_out=${onOff(MDUProfile.DIV.For(DIVImpl).EarlyOut)}, " +
       s"ICache=$iCacheDesc, DCache=$dCacheDesc$viptAliasDesc$largeLineDesc, " +
-      s"icache_coherence=$iCacheCoherenceDesc, dma_coherence=$dmaCoherenceDesc, " +
+      s"icache_coherence=$iCacheCoherenceDesc, dma_coherence=$DMACoherenceDesc, " +
       s"icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, observe=${onOff(EnableAnyObservability)}, " +

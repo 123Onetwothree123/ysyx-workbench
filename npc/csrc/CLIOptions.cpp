@@ -12,11 +12,11 @@ std::expected<CLIOptions, std::string> CLIOptions::Parse(int argc, char const *a
             {
                 return std::unexpected("--elf 需要跟一个ELF文件路径");
             }
-            options.ElfFile = std::filesystem::path{argv[++i]};
+            options.ELFFile = std::filesystem::path{argv[++i]};
         }
         else if (arg.starts_with("--elf="))
         {
-            options.ElfFile = std::filesystem::path{std::string{arg.substr(6)}};
+            options.ELFFile = std::filesystem::path{std::string{arg.substr(6)}};
         }
         else if (arg == "--diff" || arg == "-d")
         {
@@ -93,9 +93,9 @@ const std::optional<std::filesystem::path> &CLIOptions::GetImageFile() const noe
 {
     return ImageFile;
 }
-const std::optional<std::filesystem::path> &CLIOptions::GetElfFile() const noexcept
+const std::optional<std::filesystem::path> &CLIOptions::GetELFFile() const noexcept
 {
-    return ElfFile;
+    return ELFFile;
 }
 const std::optional<std::filesystem::path> &CLIOptions::GetDiffFile() const noexcept
 {

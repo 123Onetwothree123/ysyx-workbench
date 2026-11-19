@@ -39,6 +39,6 @@ class ysyx_26030103_GPR(
     0.U(XLEN.W),
     registerFile.io.rdata2
   )
-  registerFile.io.debug_raddr := io.DebugRaddr
-  io.DebugReadData := registerFile.io.debug_rdata
+  registerFile.io.DebugRaddr := io.DebugRaddr
+  io.DebugReadData := registerFile.io.DebugRdata
 }

@@ -121,22 +121,22 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
     reset.poke(true.B)
     d.clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddressW.W))
-    io.fetch_vaddr.poke(0.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
-    io.fetch_valid.poke(false.B)
-    io.resp_ready.poke(false.B)
-    io.axi.AR.ARREADY.poke(false.B)
-    io.axi.R.RDATA.poke(0.U(32.W))
-    io.axi.R.RRESP.poke(0.U(2.W))
-    io.axi.R.RLAST.poke(false.B)
-    io.axi.R.RVALID.poke(false.B)
+    io.FetchAddress.poke(0.U(AddressW.W))
+    io.FetchVaddr.poke(0.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchPaddrVaddr.poke(0.U(AddressW.W))
+    io.FetchValid.poke(false.B)
+    io.ResponseReady.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
+    io.AXI.R.RDATA.poke(0.U(32.W))
+    io.AXI.R.RRESP.poke(0.U(2.W))
+    io.AXI.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
     io.flush.poke(false.B)
     io.kill.poke(false.B)
-    io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U(AddressW.W))
-    io.snoop_addr_hi.poke(0.U(AddressW.W))
+    io.SnoopValid.poke(false.B)
+    io.SnoopAddress.poke(0.U(AddressW.W))
+    io.SnoopAddressHi.poke(0.U(AddressW.W))
   }
 
   private def issueFetch(
@@ -144,14 +144,14 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
       d:    Driver,
       addr: Long
   ): Unit = {
-    io.fetch_addr.poke(addr.U(AddressW.W))
-    io.fetch_vaddr.poke(addr.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(addr.U(AddressW.W))
-    io.fetch_valid.poke(true.B)
-    waitUntil(d, bool(io.fetch_ready), s"ICache 未受理取指 0x${addr.toHexString}")
+    io.FetchAddress.poke(addr.U(AddressW.W))
+    io.FetchVaddr.poke(addr.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchPaddrVaddr.poke(addr.U(AddressW.W))
+    io.FetchValid.poke(true.B)
+    waitUntil(d, bool(io.FetchReady), s"ICache 未受理取指 0x${addr.toHexString}")
     d.step()
-    io.fetch_valid.poke(false.B)
+    io.FetchValid.poke(false.B)
   }
 
   /** 接受 AR，返回 burst 拍数；返回时 elapsed 已计入握手沿。 */
@@ -160,12 +160,12 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
       d:    Driver,
       line: Long
   ): Int = {
-    waitUntil(d, bool(io.axi.AR.ARVALID), "ICache 没有 refill AR")
-    withClue("refill AR 地址错误") { long(io.axi.AR.ARADDR) should be(line) }
-    val beats = long(io.axi.AR.ARLEN).toInt + 1
-    io.axi.AR.ARREADY.poke(true.B)
+    waitUntil(d, bool(io.AXI.AR.ARVALID), "ICache 没有 refill AR")
+    withClue("refill AR 地址错误") { long(io.AXI.AR.ARADDR) should be(line) }
+    val beats = long(io.AXI.AR.ARLEN).toInt + 1
+    io.AXI.AR.ARREADY.poke(true.B)
     d.step()
-    io.axi.AR.ARREADY.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
     beats
   }
 
@@ -177,14 +177,14 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
       beats: Int
   ): Unit = {
     for (beat <- 0 until beats) {
-      io.axi.R.RDATA.poke(mem.read(line + beat.toLong * 4L).U(32.W))
-      io.axi.R.RRESP.poke(0.U(2.W))
-      io.axi.R.RLAST.poke((beat + 1 == beats).B)
-      io.axi.R.RVALID.poke(true.B)
+      io.AXI.R.RDATA.poke(mem.read(line + beat.toLong * 4L).U(32.W))
+      io.AXI.R.RRESP.poke(0.U(2.W))
+      io.AXI.R.RLAST.poke((beat + 1 == beats).B)
+      io.AXI.R.RVALID.poke(true.B)
       d.step()
     }
-    io.axi.R.RVALID.poke(false.B)
-    io.axi.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
+    io.AXI.R.RLAST.poke(false.B)
   }
 
   private def expectResponse(
@@ -193,12 +193,12 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
       data:  Long,
       label: String
   ): Unit = {
-    waitUntil(d, bool(io.resp_valid), s"$label 没有取指响应")
-    withClue(s"$label 取指数据错误") { long(io.resp_data) should be(data) }
-    bool(io.resp_fault) should be(false)
-    io.resp_ready.poke(true.B)
+    waitUntil(d, bool(io.ResponseValid), s"$label 没有取指响应")
+    withClue(s"$label 取指数据错误") { long(io.ResponseData) should be(data) }
+    bool(io.ResponseFault) should be(false)
+    io.ResponseReady.poke(true.B)
     d.step()
-    io.resp_ready.poke(false.B)
+    io.ResponseReady.poke(false.B)
   }
 
   private def runDeferredInstallSnoop(
@@ -231,25 +231,25 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
 
       // store 数据已落盘并发出同一物理行的 snoop，正好与补装同拍。
       mem.write(Line, NewData)
-      io.snoop_addr.poke(Line.U(AddressW.W))
-      io.snoop_addr_hi.poke((Line + 3L).U(AddressW.W))
-      io.snoop_valid.poke(true.B)
+      io.SnoopAddress.poke(Line.U(AddressW.W))
+      io.SnoopAddressHi.poke((Line + 3L).U(AddressW.W))
+      io.SnoopValid.poke(true.B)
       d.step()
-      io.snoop_valid.poke(false.B)
+      io.SnoopValid.poke(false.B)
 
       // snoop 之后不能再命中旧行。若坏，会立刻从阵列返回 OldData 且不发 AR。
       issueFetch(io, d, Line)
       var cycles = 0
-      while (!bool(io.resp_valid) && !bool(io.axi.AR.ARVALID) && cycles < 100) {
+      while (!bool(io.ResponseValid) && !bool(io.AXI.AR.ARVALID) && cycles < 100) {
         d.step()
         cycles += 1
       }
       withClue(
-        s"$kind/$mode store snoop 与 deferred install 同拍后仍命中旧行（resp=${bool(io.resp_valid)}, ar=${bool(io.axi.AR.ARVALID)}）"
+        s"$kind/$mode store snoop 与 deferred install 同拍后仍命中旧行（response=${bool(io.ResponseValid)}, ar=${bool(io.AXI.AR.ARVALID)}）"
       ) {
-        bool(io.resp_valid) should be(false)
+        bool(io.ResponseValid) should be(false)
       }
-      bool(io.axi.AR.ARVALID) should be(true)
+      bool(io.AXI.AR.ARVALID) should be(true)
 
       // 正常 miss 路径必须读到 store 后的新指令。
       acceptAr(io, d, Line)
@@ -278,27 +278,27 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
       // 先收完关键词响应（early restart），再在最后一个 beat 上发 snoop，
       // 模拟 store B 与 refill RLAST 同拍完成。
       for (beat <- 0 until beats - 1) {
-        io.axi.R.RDATA.poke(mem.read(Line + beat.toLong * 4L).U(32.W))
-        io.axi.R.RRESP.poke(0.U(2.W))
-        io.axi.R.RLAST.poke(false.B)
-        io.axi.R.RVALID.poke(true.B)
+        io.AXI.R.RDATA.poke(mem.read(Line + beat.toLong * 4L).U(32.W))
+        io.AXI.R.RRESP.poke(0.U(2.W))
+        io.AXI.R.RLAST.poke(false.B)
+        io.AXI.R.RVALID.poke(true.B)
         d.step()
       }
-      io.axi.R.RVALID.poke(false.B)
+      io.AXI.R.RVALID.poke(false.B)
       expectResponse(io, d, OldData, s"$kind/$mode RLAST snoop 前响应")
 
       mem.write(Line, NewData)
-      io.snoop_addr.poke(Line.U(AddressW.W))
-      io.snoop_addr_hi.poke((Line + 3L).U(AddressW.W))
-      io.snoop_valid.poke(true.B)
-      io.axi.R.RDATA.poke(mem.read(Line + (beats - 1).toLong * 4L).U(32.W))
-      io.axi.R.RRESP.poke(0.U(2.W))
-      io.axi.R.RLAST.poke(true.B)
-      io.axi.R.RVALID.poke(true.B)
+      io.SnoopAddress.poke(Line.U(AddressW.W))
+      io.SnoopAddressHi.poke((Line + 3L).U(AddressW.W))
+      io.SnoopValid.poke(true.B)
+      io.AXI.R.RDATA.poke(mem.read(Line + (beats - 1).toLong * 4L).U(32.W))
+      io.AXI.R.RRESP.poke(0.U(2.W))
+      io.AXI.R.RLAST.poke(true.B)
+      io.AXI.R.RVALID.poke(true.B)
       d.step()
-      io.axi.R.RVALID.poke(false.B)
-      io.axi.R.RLAST.poke(false.B)
-      io.snoop_valid.poke(false.B)
+      io.AXI.R.RVALID.poke(false.B)
+      io.AXI.R.RLAST.poke(false.B)
+      io.SnoopValid.poke(false.B)
 
       // 等扫描彻底结束（含 deferred 补装窗口）。
       val chunks = (1 << IndexBits) / width
@@ -308,16 +308,16 @@ class ysyx_26030103_ICacheDeferredSnoopAuditTest
 
       issueFetch(io, d, Line)
       var cycles = 0
-      while (!bool(io.resp_valid) && !bool(io.axi.AR.ARVALID) && cycles < 100) {
+      while (!bool(io.ResponseValid) && !bool(io.AXI.AR.ARVALID) && cycles < 100) {
         d.step()
         cycles += 1
       }
       withClue(
-        s"$kind/$mode store snoop 落在 RLAST 拍后仍命中旧行（resp=${bool(io.resp_valid)}, ar=${bool(io.axi.AR.ARVALID)}）"
+        s"$kind/$mode store snoop 落在 RLAST 拍后仍命中旧行（response=${bool(io.ResponseValid)}, ar=${bool(io.AXI.AR.ARVALID)}）"
       ) {
-        bool(io.resp_valid) should be(false)
+        bool(io.ResponseValid) should be(false)
       }
-      bool(io.axi.AR.ARVALID) should be(true)
+      bool(io.AXI.AR.ARVALID) should be(true)
 
       acceptAr(io, d, Line)
       sendBeats(io, d, mem, Line, beats)

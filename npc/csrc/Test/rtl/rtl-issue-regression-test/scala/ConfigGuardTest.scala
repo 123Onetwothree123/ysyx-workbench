@@ -57,8 +57,11 @@ object ConfigGuardTest extends App {
   expectRejected("IndexBits=0") {
     ysyx_26030103_NPCConfig(IndexBits = 0)
   }
+  // 这些几何只在 32 位地址路径上越界；默认配置是 RV64/64 位地址，
+  // 必须显式指定 AddressWidth=32 才能覆盖被测的 tag 位宽约束。
   expectRejected("IndexBits+BlockSizeLog2>=AddressWidth") {
-    ysyx_26030103_NPCConfig(IndexBits = 28, BlockSizeLog2 = 4)
+    ysyx_26030103_NPCConfig(XLEN = 32, AddressWidth = 32,
+      IndexBits = 28, BlockSizeLog2 = 4)
   }
   expectRejected("ICacheBlockSizeLog2=1") {
     ysyx_26030103_NPCConfig(ICacheBlockSizeLog2 = 1)
@@ -67,10 +70,12 @@ object ConfigGuardTest extends App {
     ysyx_26030103_NPCConfig(DCacheIndexBits = 0)
   }
   expectRejected("ICacheIndexBits+ICacheBlockSizeLog2>=AddressWidth") {
-    ysyx_26030103_NPCConfig(ICacheIndexBits = 28, ICacheBlockSizeLog2 = 4)
+    ysyx_26030103_NPCConfig(XLEN = 32, AddressWidth = 32,
+      ICacheIndexBits = 28, ICacheBlockSizeLog2 = 4)
   }
   expectRejected("DCacheIndexBits+DCacheBlockSizeLog2>=AddressWidth") {
-    ysyx_26030103_NPCConfig(DCacheIndexBits = 28, DCacheBlockSizeLog2 = 4)
+    ysyx_26030103_NPCConfig(XLEN = 32, AddressWidth = 32,
+      DCacheIndexBits = 28, DCacheBlockSizeLog2 = 4)
   }
   expectAccepted("混合几何：ICache 4B/2sets + DCache 32B/64sets") {
     ysyx_26030103_NPCConfig(

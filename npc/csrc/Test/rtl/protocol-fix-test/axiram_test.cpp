@@ -9,63 +9,63 @@ static void defaults(DUT &dut) {
   dut.io_hostWriteValid = 0;
   dut.io_hostWriteIndex = 0;
   dut.io_hostWriteData = 0;
-  dut.io_uartRxValid = 0;
-  dut.io_uartRxData = 0;
-  dut.io_axi_AW_AWID = 0;
-  dut.io_axi_AW_AWADDR = 0;
-  dut.io_axi_AW_AWLEN = 0;
-  dut.io_axi_AW_AWSIZE = 2;
-  dut.io_axi_AW_AWBURST = 1;
-  dut.io_axi_AW_AWPROT = 0;
-  dut.io_axi_AW_AWVALID = 0;
-  dut.io_axi_W_WDATA = 0;
-  dut.io_axi_W_WSTRB = 0xf;
-  dut.io_axi_W_WLAST = 1;
-  dut.io_axi_W_WVALID = 0;
-  dut.io_axi_B_BREADY = 0;
-  dut.io_axi_AR_ARID = 0;
-  dut.io_axi_AR_ARADDR = 0;
-  dut.io_axi_AR_ARLEN = 0;
-  dut.io_axi_AR_ARSIZE = 2;
-  dut.io_axi_AR_ARBURST = 1;
-  dut.io_axi_AR_ARPROT = 0;
-  dut.io_axi_AR_ARVALID = 0;
-  dut.io_axi_R_RREADY = 0;
+  dut.io_UARTRxValid = 0;
+  dut.io_UARTRxData = 0;
+  dut.io_AXI_AW_AWID = 0;
+  dut.io_AXI_AW_AWADDR = 0;
+  dut.io_AXI_AW_AWLEN = 0;
+  dut.io_AXI_AW_AWSIZE = 2;
+  dut.io_AXI_AW_AWBURST = 1;
+  dut.io_AXI_AW_AWPROT = 0;
+  dut.io_AXI_AW_AWVALID = 0;
+  dut.io_AXI_W_WDATA = 0;
+  dut.io_AXI_W_WSTRB = 0xf;
+  dut.io_AXI_W_WLAST = 1;
+  dut.io_AXI_W_WVALID = 0;
+  dut.io_AXI_B_BREADY = 0;
+  dut.io_AXI_AR_ARID = 0;
+  dut.io_AXI_AR_ARADDR = 0;
+  dut.io_AXI_AR_ARLEN = 0;
+  dut.io_AXI_AR_ARSIZE = 2;
+  dut.io_AXI_AR_ARBURST = 1;
+  dut.io_AXI_AR_ARPROT = 0;
+  dut.io_AXI_AR_ARVALID = 0;
+  dut.io_AXI_R_RREADY = 0;
 }
 
 static void send_aw(DUT &dut, uint32_t address, uint8_t id, uint8_t len,
                     uint8_t size, uint8_t burst) {
-  dut.io_axi_AW_AWADDR = address;
-  dut.io_axi_AW_AWID = id;
-  dut.io_axi_AW_AWLEN = len;
-  dut.io_axi_AW_AWSIZE = size;
-  dut.io_axi_AW_AWBURST = burst;
-  dut.io_axi_AW_AWVALID = 1;
-  wait_until(dut, [&] { return dut.io_axi_AW_AWREADY; },
+  dut.io_AXI_AW_AWADDR = address;
+  dut.io_AXI_AW_AWID = id;
+  dut.io_AXI_AW_AWLEN = len;
+  dut.io_AXI_AW_AWSIZE = size;
+  dut.io_AXI_AW_AWBURST = burst;
+  dut.io_AXI_AW_AWVALID = 1;
+  wait_until(dut, [&] { return dut.io_AXI_AW_AWREADY; },
              "AXIRAM never accepted AW");
   tick(dut);
-  dut.io_axi_AW_AWVALID = 0;
+  dut.io_AXI_AW_AWVALID = 0;
 }
 
 static void send_w(DUT &dut, uint32_t data, uint8_t strb, bool last) {
-  dut.io_axi_W_WDATA = data;
-  dut.io_axi_W_WSTRB = strb;
-  dut.io_axi_W_WLAST = last;
-  dut.io_axi_W_WVALID = 1;
-  wait_until(dut, [&] { return dut.io_axi_W_WREADY; },
+  dut.io_AXI_W_WDATA = data;
+  dut.io_AXI_W_WSTRB = strb;
+  dut.io_AXI_W_WLAST = last;
+  dut.io_AXI_W_WVALID = 1;
+  wait_until(dut, [&] { return dut.io_AXI_W_WREADY; },
              "AXIRAM never accepted W");
   tick(dut);
-  dut.io_axi_W_WVALID = 0;
+  dut.io_AXI_W_WVALID = 0;
 }
 
 static void expect_b(DUT &dut, uint8_t id, uint8_t resp = 0) {
-  wait_until(dut, [&] { return dut.io_axi_B_BVALID; },
+  wait_until(dut, [&] { return dut.io_AXI_B_BVALID; },
              "AXIRAM never produced B");
-  check(dut.io_axi_B_BID == id, "AXIRAM returned the wrong BID");
-  check(dut.io_axi_B_BRESP == resp, "AXIRAM returned the wrong BRESP");
-  dut.io_axi_B_BREADY = 1;
+  check(dut.io_AXI_B_BID == id, "AXIRAM returned the wrong BID");
+  check(dut.io_AXI_B_BRESP == resp, "AXIRAM returned the wrong BRESP");
+  dut.io_AXI_B_BREADY = 1;
   tick(dut);
-  dut.io_axi_B_BREADY = 0;
+  dut.io_AXI_B_BREADY = 0;
 }
 
 static void write_single(DUT &dut, uint32_t address, uint32_t data,
@@ -74,13 +74,13 @@ static void write_single(DUT &dut, uint32_t address, uint32_t data,
   if (w_first) {
     send_w(dut, data, strb, true);
     dut.eval();
-    check(dut.io_axi_AW_AWREADY,
+    check(dut.io_AXI_AW_AWREADY,
           "AXIRAM did not retain W while waiting for AW");
     send_aw(dut, address, id, 0, size, 1);
   } else {
     send_aw(dut, address, id, 0, size, 1);
     dut.eval();
-    check(dut.io_axi_W_WREADY,
+    check(dut.io_AXI_W_WREADY,
           "AXIRAM did not retain AW while waiting for W");
     send_w(dut, data, strb, true);
   }
@@ -89,16 +89,16 @@ static void write_single(DUT &dut, uint32_t address, uint32_t data,
 
 static void send_ar(DUT &dut, uint32_t address, uint8_t id, uint8_t len,
                     uint8_t size, uint8_t burst) {
-  dut.io_axi_AR_ARADDR = address;
-  dut.io_axi_AR_ARID = id;
-  dut.io_axi_AR_ARLEN = len;
-  dut.io_axi_AR_ARSIZE = size;
-  dut.io_axi_AR_ARBURST = burst;
-  dut.io_axi_AR_ARVALID = 1;
-  wait_until(dut, [&] { return dut.io_axi_AR_ARREADY; },
+  dut.io_AXI_AR_ARADDR = address;
+  dut.io_AXI_AR_ARID = id;
+  dut.io_AXI_AR_ARLEN = len;
+  dut.io_AXI_AR_ARSIZE = size;
+  dut.io_AXI_AR_ARBURST = burst;
+  dut.io_AXI_AR_ARVALID = 1;
+  wait_until(dut, [&] { return dut.io_AXI_AR_ARREADY; },
              "AXIRAM never accepted AR");
   tick(dut);
-  dut.io_axi_AR_ARVALID = 0;
+  dut.io_AXI_AR_ARVALID = 0;
 }
 
 struct ReadBeat {
@@ -109,15 +109,15 @@ struct ReadBeat {
 };
 
 static ReadBeat receive_r(DUT &dut) {
-  wait_until(dut, [&] { return dut.io_axi_R_RVALID; },
+  wait_until(dut, [&] { return dut.io_AXI_R_RVALID; },
              "AXIRAM never produced R");
-  const ReadBeat result{static_cast<uint32_t>(dut.io_axi_R_RDATA),
-                        static_cast<uint8_t>(dut.io_axi_R_RID),
-                        static_cast<uint8_t>(dut.io_axi_R_RRESP),
-                        static_cast<bool>(dut.io_axi_R_RLAST)};
-  dut.io_axi_R_RREADY = 1;
+  const ReadBeat result{static_cast<uint32_t>(dut.io_AXI_R_RDATA),
+                        static_cast<uint8_t>(dut.io_AXI_R_RID),
+                        static_cast<uint8_t>(dut.io_AXI_R_RRESP),
+                        static_cast<bool>(dut.io_AXI_R_RLAST)};
+  dut.io_AXI_R_RREADY = 1;
   tick(dut);
-  dut.io_axi_R_RREADY = 0;
+  dut.io_AXI_R_RREADY = 0;
   return result;
 }
 
@@ -211,24 +211,24 @@ int main(int argc, char **argv) {
     write_single(dut, 0x80000048U, 0x21222324U, 0xf, 2, 3);
 
     send_ar(dut, 0x80000040U, 5, 2, 2, 1);
-    wait_until(dut, [&] { return dut.io_axi_R_RVALID; },
+    wait_until(dut, [&] { return dut.io_AXI_R_RVALID; },
                "AXIRAM never produced the first INCR read beat");
-    const ReadBeat held{static_cast<uint32_t>(dut.io_axi_R_RDATA),
-                        static_cast<uint8_t>(dut.io_axi_R_RID),
-                        static_cast<uint8_t>(dut.io_axi_R_RRESP),
-                        static_cast<bool>(dut.io_axi_R_RLAST)};
+    const ReadBeat held{static_cast<uint32_t>(dut.io_AXI_R_RDATA),
+                        static_cast<uint8_t>(dut.io_AXI_R_RID),
+                        static_cast<uint8_t>(dut.io_AXI_R_RRESP),
+                        static_cast<bool>(dut.io_AXI_R_RLAST)};
     tick(dut);
     tick(dut);
-    check(dut.io_axi_R_RVALID && dut.io_axi_R_RDATA == held.data &&
-              dut.io_axi_R_RID == held.id && dut.io_axi_R_RRESP == held.resp &&
-              dut.io_axi_R_RLAST == held.last,
+    check(dut.io_AXI_R_RVALID && dut.io_AXI_R_RDATA == held.data &&
+              dut.io_AXI_R_RID == held.id && dut.io_AXI_R_RRESP == held.resp &&
+              dut.io_AXI_R_RLAST == held.last,
           "AXIRAM changed an R beat while backpressured");
     check(held.data == 0x01020304U && held.id == 5 && held.resp == 0 &&
               !held.last,
           "AXIRAM first INCR read beat was incorrect");
-    dut.io_axi_R_RREADY = 1;
+    dut.io_AXI_R_RREADY = 1;
     tick(dut);
-    dut.io_axi_R_RREADY = 0;
+    dut.io_AXI_R_RREADY = 0;
     const ReadBeat incr_read_1 = receive_r(dut);
     const ReadBeat incr_read_2 = receive_r(dut);
     check(incr_read_1.data == 0x11121314U && incr_read_1.id == 5 &&
@@ -265,11 +265,11 @@ int main(int argc, char **argv) {
               0x60U,
           "empty UART LSR did not report THRE/TEMT without DataReady");
     write_single(dut, 0x80000000U, 0x13572468U, 0xf, 2, 20);
-    dut.io_uartRxData = static_cast<uint8_t>('A');
-    dut.io_uartRxValid = 1;
-    check(dut.io_uartRxReady, "UART RX FIFO was unexpectedly full");
+    dut.io_UARTRxData = static_cast<uint8_t>('A');
+    dut.io_UARTRxValid = 1;
+    check(dut.io_UARTRxReady, "UART RX FIFO was unexpectedly full");
     tick(dut);
-    dut.io_uartRxValid = 0;
+    dut.io_UARTRxValid = 0;
     check((read_byte(dut, 0x10000005U, 22) & 0x61U) == 0x61U,
           "UART LSR did not report DataReady after RX injection");
     check(read_byte(dut, 0x10000000U, 23) == static_cast<uint8_t>('A'),
@@ -279,14 +279,14 @@ int main(int argc, char **argv) {
 
     // IER 是地址 +1 的字节寄存器：WSTRB[1] 有效，数据在 WDATA[15:8]。
     write_single(dut, 0x10000001U, 0x00000100U, 0x2, 0, 25);
-    dut.io_uartRxData = static_cast<uint8_t>('B');
-    dut.io_uartRxValid = 1;
+    dut.io_UARTRxData = static_cast<uint8_t>('B');
+    dut.io_UARTRxValid = 1;
     tick(dut);
-    dut.io_uartRxValid = 0;
-    check(dut.io_uartIrq, "UART IRQ did not assert with IER.RX and DataReady");
+    dut.io_UARTRxValid = 0;
+    check(dut.io_UARTIRQ, "UART IRQ did not assert with IER.RX and DataReady");
     check(read_byte(dut, 0x10000000U, 26) == static_cast<uint8_t>('B'),
           "UART RBR missed the second injected byte");
-    check(!dut.io_uartIrq, "UART IRQ did not deassert after FIFO drained");
+    check(!dut.io_UARTIRQ, "UART IRQ did not deassert after FIFO drained");
     check(read_byte(dut, 0x10000000U, 28) == 0,
           "empty UART RBR did not return 0 without DECERR");
     check(read_word(dut, 0x80000000U, 27) == 0x13572468U,

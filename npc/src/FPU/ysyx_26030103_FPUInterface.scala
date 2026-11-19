@@ -77,9 +77,9 @@ object ysyx_26030103_FPUFlags {
 class ysyx_26030103_FPURequest(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FpuRequest FLEN 非法: $FLEN")
   val op = UInt(ysyx_26030103_FPUOp.Width.W)
-  // 目的/运算格式。FCVT.S.D / FCVT.D.S 的源格式由 srcFmt 给出。
+  // 目的/运算格式。FCVT.S.D / FCVT.D.S 的源格式由 SourceFmt 给出。
   val fmt = UInt(ysyx_26030103_FPUFmt.Width.W)
-  val srcFmt = UInt(ysyx_26030103_FPUFmt.Width.W)
+  val SourceFmt = UInt(ysyx_26030103_FPUFmt.Width.W)
   // 已解析的动态舍入；后端不再看到 DYN，也不读取 frm。
   val rm = UInt(ysyx_26030103_FPURm.Width.W)
   // FCVT.W/WU/L/LU 与 FMV.X.W/D、FMV.W.X/D.X 的整数宽度选择：
@@ -100,13 +100,13 @@ class ysyx_26030103_FPUResponse(val FLEN: Int = 64) extends Bundle {
 // 所有 FPU 后端共用的顶层接口；允许可变/多拍延迟，但必须遵守 Decoupled 反压。
 class ysyx_26030103_FPUInterface(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FPUInterface FLEN 非法: $FLEN")
-  val req = Flipped(Decoupled(new ysyx_26030103_FPURequest(FLEN)))
-  val resp = Decoupled(new ysyx_26030103_FPUResponse(FLEN))
+  val request = Flipped(Decoupled(new ysyx_26030103_FPURequest(FLEN)))
+  val response = Decoupled(new ysyx_26030103_FPUResponse(FLEN))
   // 冲刷在途请求/结果（更老指令的精确 trap 或流水线重定向）。
   val flush = Input(Bool())
 }
 
-// 后端只实现 io.req/io.resp；上层只依赖 FPUInterface，不引用 vendor 模块。
+// 后端只实现 io.request/io.response；上层只依赖 FPUInterface，不引用 vendor 模块。
 abstract class ysyx_26030103_FPU(val Config: ysyx_26030103_NPCConfig)
     extends Module {
   require(Config.UseF,

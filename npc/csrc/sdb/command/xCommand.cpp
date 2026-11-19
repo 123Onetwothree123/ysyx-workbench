@@ -1,5 +1,7 @@
 module;
 module npc.sdb.command.xCommand;
+import npc.SimulationContext;
+import npc.Output;
 import npc.config;
 import npc.sdb.SDBCommandUtils;
 import npc.expressions.expressions;
@@ -23,18 +25,19 @@ SDBCommandUsageList xCommand::usage() const noexcept
 }
 SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view args)
 {
+    auto &out{context.GetSimulation().Out()};
     args = SDBTrimLeft(args);
     if (args.empty())
     {
-        std::println("用法：x N[b|h|w|g] EXPR");
+        out.Info("用法：x N[b|h|w|g] EXPR");
         return SDBCommandResult::Continue;
     }
     auto Count{std::size_t{0}};
     const auto CountResult{std::from_chars(args.data(), args.data() + args.size(), Count, 10)};
     if (CountResult.ec != std::errc() || Count == 0)
     {
-        std::println("错误：缺少有效的扫描数量 N");
-        std::println("用法：x N[b|h|w|g] EXPR");
+        out.Error("错误：缺少有效的扫描数量 N");
+        out.Info("用法：x N[b|h|w|g] EXPR");
         return SDBCommandResult::Continue;
     }
     args.remove_prefix(static_cast<std::size_t>(CountResult.ptr - args.data()));
@@ -77,8 +80,8 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
     args = SDBTrimLeft(args);
     if (args.empty())
     {
-        std::println("错误：缺少地址表达式");
-        std::println("用法：x N[b|h|w|g] EXPR");
+        out.Error("错误：缺少地址表达式");
+        out.Info("用法：x N[b|h|w|g] EXPR");
         return SDBCommandResult::Continue;
     }
     expressions ExpressionsEngine;
@@ -86,22 +89,22 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
     const auto AddressResult{ExpressionsEngine.evaluate(args, EvalContext)};
     if (!AddressResult)
     {
-        std::println("表达式错误：{}", AddressResult.error());
+        out.Error("表达式错误：{}", AddressResult.error());
         return SDBCommandResult::Continue;
     }
     const auto StartAddress{AddressResult.value()};
     if (Count > std::numeric_limits<std::uint64_t>::max() / UnitSize)
     {
-        std::println("错误：请求范围过大");
+        out.Error("错误：请求范围过大");
         return SDBCommandResult::Continue;
     }
     const auto TotalBytes{static_cast<std::uint64_t>(Count * UnitSize)};
     if (StartAddress > std::numeric_limits<std::uint64_t>::max() - (TotalBytes - 1))
     {
-        std::println("错误：地址范围溢出");
+        out.Error("错误：地址范围溢出");
         return SDBCommandResult::Continue;
     }
-    std::println("正在扫描 {} 个项目（每个 {} 字节），从 0x{:x} 到 0x{:x}：",
+    out.Info("正在扫描 {} 个项目（每个 {} 字节），从 0x{:x} 到 0x{:x}：",
                  Count, UnitSize, StartAddress, StartAddress + TotalBytes - 1);
     for (std::size_t Index{0}; Index < Count; ++Index)
     {
@@ -109,7 +112,7 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
         auto ValueResult{context.GetDUT().ReadMemory(CurrentAddress, UnitSize)};
         if (!ValueResult)
         {
-            std::println(std::cerr, "错误：在 0x{:x} 处读取内存失败，扫描停止", CurrentAddress);
+            out.Error("错误：在 0x{:x} 处读取内存失败，扫描停止", CurrentAddress);
             break;
         }
         const auto Value{*ValueResult};
@@ -117,25 +120,25 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
         {
         case 1:
         {
-            std::println("0x{:0{}x}: 0x{:02x}", CurrentAddress,
+            out.Info("0x{:0{}x}: 0x{:02x}", CurrentAddress,
                          npc::XHexDigits, Value & 0xffu);
             break;
         }
         case 2:
         {
-            std::println("0x{:0{}x}: 0x{:04x}", CurrentAddress,
+            out.Info("0x{:0{}x}: 0x{:04x}", CurrentAddress,
                          npc::XHexDigits, Value & 0xffffu);
             break;
         }
         case 4:
         {
-            std::println("0x{:0{}x}: 0x{:08x}", CurrentAddress,
+            out.Info("0x{:0{}x}: 0x{:08x}", CurrentAddress,
                          npc::XHexDigits, Value);
             break;
         }
         case 8:
         {
-            std::println("0x{:0{}x}: 0x{:016x}", CurrentAddress,
+            out.Info("0x{:0{}x}: 0x{:016x}", CurrentAddress,
                          npc::XHexDigits, Value);
             break;
         }

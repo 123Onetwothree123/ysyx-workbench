@@ -295,6 +295,11 @@ endforeach()
 add_executable(cachesim ${CPP_SRCS} ${MODULE_OBJS} ${STD_MODULE_OBJ})
 
 target_compile_options(cachesim PRIVATE ${CXX_FLAGS})
+target_include_directories(cachesim PRIVATE ${PRJ_DIR}/..)
+# main.cpp 在全局模块片段里 include 公共头，GCC 会告警
+if(NOT IS_CLANG)
+    target_compile_options(cachesim PRIVATE -Wno-global-module)
+endif()
 
 foreach(CPP_FILE ${CPP_SRCS})
     set_source_files_properties(${CPP_FILE} PROPERTIES

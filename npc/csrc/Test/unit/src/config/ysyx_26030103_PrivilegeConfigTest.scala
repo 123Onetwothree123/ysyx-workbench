@@ -73,7 +73,7 @@ class ysyx_26030103_PrivilegeConfigTest extends AnyFlatSpec with Matchers {
     p.csrSupported(0x141) should be(false)
     p.csrSupported(0x142) should be(false)
     // 用户计数器仍按 U 级 CSR 保留（是否可访问还受 mcounteren 门控）。
-    p.copy(csrEnabled = p.csrEnabled + 0xc00).csrSupported(0xc00) should be(true)
+    p.copy(CSREnabled = p.CSREnabled + 0xc00).csrSupported(0xc00) should be(true)
   }
 
   it should "明确拒绝 HAS_MMU=y 且 HAS_S=n（即使 HAS_U=y）" in {

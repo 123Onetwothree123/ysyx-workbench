@@ -17,12 +17,12 @@ class ysyx_26030103_AXI5DMAErrorSlave(
   private val DECERR = "b11".U(2.W)
 
   // 写通道：有意分别独立收集AW与W。
-  val awHeld = RegInit(false.B)
+  val AWHeld = RegInit(false.B)
   val awID = RegInit(0.U(IDWidth.W))
   val wLastSeen = RegInit(false.B)
   val bValid = RegInit(false.B)
 
-  io.AW.AWREADY := !awHeld && !bValid
+  io.AW.AWREADY := !AWHeld && !bValid
   io.W.WREADY := !wLastSeen && !bValid
   io.B.BID := awID
   io.B.BRESP := DECERR
@@ -31,24 +31,24 @@ class ysyx_26030103_AXI5DMAErrorSlave(
   // 传播到父模块中。
   dontTouch(io.B.BRESP)
 
-  val awFire = io.AW.AWVALID && io.AW.AWREADY
+  val AWFire = io.AW.AWVALID && io.AW.AWREADY
   val wFire = io.W.WVALID && io.W.WREADY
   val wLastFire = wFire && io.W.WLAST
-  val haveAWAfterThisCycle = awHeld || awFire
+  val HaveAWAfterThisCycle = AWHeld || AWFire
   val haveLastWAfterThisCycle = wLastSeen || wLastFire
 
-  when(awFire) {
-    awHeld := true.B
+  when(AWFire) {
+    AWHeld := true.B
     awID := io.AW.AWID
   }
   when(wLastFire) {
     wLastSeen := true.B
   }
-  when(!bValid && haveAWAfterThisCycle && haveLastWAfterThisCycle) {
+  when(!bValid && HaveAWAfterThisCycle && haveLastWAfterThisCycle) {
     bValid := true.B
   }
   when(io.B.BVALID && io.B.BREADY) {
-    awHeld := false.B
+    AWHeld := false.B
     wLastSeen := false.B
     bValid := false.B
   }
@@ -56,28 +56,28 @@ class ysyx_26030103_AXI5DMAErrorSlave(
   // 读通道：允许一项突发传输在途，在反压下保持响应稳定，并严格返回
   // ARLEN + 1个数据拍。
   val readActive = RegInit(false.B)
-  val readID = RegInit(0.U(IDWidth.W))
-  val readLen = RegInit(0.U(8.W))
+  val ReadID = RegInit(0.U(IDWidth.W))
+  val ReadLength = RegInit(0.U(8.W))
   val readBeat = RegInit(0.U(8.W))
 
   io.AR.ARREADY := !readActive
-  io.R.RID := readID
+  io.R.RID := ReadID
   io.R.RDATA := 0.U
   io.R.RRESP := DECERR
   // RLAST 属于数据拍的一部分，必须与 RVALID 同步：复位后与突发结束
   // 之后不得脱离 RVALID 断言（与 CLINT 从设备的门控方式保持一致）。
-  io.R.RLAST := readActive && readBeat === readLen
+  io.R.RLAST := readActive && readBeat === ReadLength
   io.R.RVALID := readActive
   dontTouch(io.R.RRESP)
 
   when(io.AR.ARVALID && io.AR.ARREADY) {
     readActive := true.B
-    readID := io.AR.ARID
-    readLen := io.AR.ARLEN
+    ReadID := io.AR.ARID
+    ReadLength := io.AR.ARLEN
     readBeat := 0.U
   }
   // 读拍计数不得越过 ARLEN：越界意味着会多发响应拍。
-  assert(!readActive || readBeat <= readLen,
+  assert(!readActive || readBeat <= ReadLength,
          "DMA error slave read beat counter exceeded ARLEN")
   when(io.R.RVALID && io.R.RREADY) {
     when(io.R.RLAST) {

@@ -8,35 +8,35 @@ import _root_.ysyx_26030103.fpu._
 // EXU 内 FPU 唯一在途请求的发射与响应握手。
 private[exu] trait EXUFPUControl { this: ysyx_26030103_EXU =>
   def fpuControlBody(): Unit = {
-    fpuRequest.valid := io.in.valid && isFPUInstruction && !fpPending &&
-      !pendingMDU && !io.MemTrapCommit && !blockForOlder
-    fpuRequest.bits.op := inst.FPOp
-    fpuRequest.bits.fmt := inst.FPFmt
-    fpuRequest.bits.srcFmt := inst.FPSrcFmt
-    fpuRequest.bits.rm := inst.FPRm
-    fpuRequest.bits.intWord := inst.FPIntWord
-    fpuRequest.bits.rs1 := inst.FPRs1
-    fpuRequest.bits.rs2 := inst.FPRs2
-    fpuRequest.bits.rs3 := inst.FPRs3
-    fpuUnitOpt match {
+    FPURequest.valid := io.in.valid && IsFPUInstruction && !FPPending &&
+      !PendingMDU && !io.MemTrapCommit && !blockForOlder
+    FPURequest.bits.op := inst.FPOp
+    FPURequest.bits.fmt := inst.FPFmt
+    FPURequest.bits.SourceFmt := inst.FPSrcFmt
+    FPURequest.bits.rm := inst.FPRm
+    FPURequest.bits.intWord := inst.FPIntWord
+    FPURequest.bits.rs1 := inst.FPRs1
+    FPURequest.bits.rs2 := inst.FPRs2
+    FPURequest.bits.rs3 := inst.FPRs3
+    FPUUnitOpt match {
       case Some(fpu) =>
-        fpu.io.req.valid := fpuRequest.valid
-        fpu.io.req.bits := fpuRequest.bits
-        fpuRequest.ready := fpu.io.req.ready
-        fpu.io.resp.ready := fpResponseFire
-        fpu.io.flush := fpuFlush
+        fpu.io.request.valid := FPURequest.valid
+        fpu.io.request.bits := FPURequest.bits
+        FPURequest.ready := fpu.io.request.ready
+        fpu.io.response.ready := FPResponseFire
+        fpu.io.flush := FPUFlush
       case None =>
-        fpuRequest.ready := false.B
+        FPURequest.ready := false.B
     }
-    when(fpuRequestFire) {
-      fpPending := true.B
-      fpInstReg := inst
+    when(FPURequestFire) {
+      FPPending := true.B
+      FPInstReg := inst
     }
-    when(fpResponseFire) {
-      fpPending := false.B
+    when(FPResponseFire) {
+      FPPending := false.B
     }
-    when(fpuFlush) {
-      fpPending := false.B
+    when(FPUFlush) {
+      FPPending := false.B
     }
   }
 }

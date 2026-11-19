@@ -9,21 +9,21 @@ private[mem] trait LSURead {
   def readRequestBody(): Unit = {
     if (DCacheEnable) {
       when(dataCacheRequestActive) {
-        when(DCache.io.req.fire) { state := stateReadResponse }
+        when(DCache.io.request.fire) { state := stateReadResponse }
       }.otherwise {
         io.DataBus.AR.ARVALID := true.B
         io.DataBus.AR.ARADDR := addressOf(activeInstruction.ALUResult)
         io.DataBus.AR.ARLEN :=
           Mux(readIsWide && !busWideBit, 1.U, 0.U)
         io.DataBus.AR.ARSIZE :=
-          Mux(readIsWide && busWideBit, 3.U, axiSize)
+          Mux(readIsWide && busWideBit, 3.U, AXISize)
         when(io.DataBus.AR.ARREADY) { state := stateReadResponse }
       }
     } else {
       io.DataBus.AR.ARVALID := true.B
       io.DataBus.AR.ARADDR := addressOf(activeInstruction.ALUResult)
       io.DataBus.AR.ARLEN := Mux(readIsWide && !busWideBit, 1.U, 0.U)
-      io.DataBus.AR.ARSIZE := Mux(readIsWide && busWideBit, 3.U, axiSize)
+      io.DataBus.AR.ARSIZE := Mux(readIsWide && busWideBit, 3.U, AXISize)
       when(io.DataBus.AR.ARREADY) { state := stateReadResponse }
     }
   }
@@ -31,19 +31,19 @@ private[mem] trait LSURead {
   def readResponseBody(): Unit = {
     if (DCacheEnable) {
       when(dataCacheRequestActive) {
-        when(DCache.io.resp.fire) {
+        when(DCache.io.response.fire) {
           loadForwardValid := true.B
-          loadForwardData := DCache.io.resp.bits.data
-          loadForwardFault := DCache.io.resp.bits.fault
-          when(DCache.io.resp.bits.fault) {
+          loadForwardData := DCache.io.response.bits.data
+          loadForwardFault := DCache.io.response.bits.fault
+          when(DCache.io.response.bits.fault) {
             accessFaultReg := true.B
-            accessFaultResponseReg := DCache.io.resp.bits.FaultResponse
+            accessFaultResponseReg := DCache.io.response.bits.FaultResponse
           }.otherwise {
-            loadDataReg := DCache.io.resp.bits.data
+            loadDataReg := DCache.io.response.bits.data
           }
           dataCacheRequestActive := false.B
           transactionComplete := true.B
-          transactionFault := DCache.io.resp.bits.fault
+          transactionFault := DCache.io.response.bits.fault
           state := stateIdle
         }
       }.otherwise {

@@ -21,11 +21,11 @@ class PreciseTrapFlushHarness extends Module {
     val rlast = Input(Bool())
     val rready = Output(Bool())
 
-    val mem_trap_commit = Output(Bool())
-    val flush_exmem = Output(Bool())
+    val MemTrapCommit = Output(Bool())
+    val FlushExMem = Output(Bool())
   })
 
-  val lsu = Module(
+  val LSU = Module(
     new ysyx_26030103_LSU(
       WBufDepth = 1,
       DCacheEnable = false,
@@ -37,32 +37,41 @@ class PreciseTrapFlushHarness extends Module {
   // Mirrors production's three-argument overload, which sets
   // flushCurrent=flush.  The test verifies that an older LSU trap kills this
   // younger item even while LSU is not ready.
-  ysyx_26030103_StageConnect(io.in, lsu.io.in, lsu.io.FlushEXMEM)
+  ysyx_26030103_StageConnect(io.in, LSU.io.in, LSU.io.FlushEXMEM)
 
-  lsu.io.out.ready := io.out.ready
-  io.out.valid := lsu.io.out.valid
-  io.out.bits := lsu.io.out.bits
+  LSU.io.out.ready := io.out.ready
+  io.out.valid := LSU.io.out.valid
+  io.out.bits := LSU.io.out.bits
 
-  lsu.io.DataBus.AW.AWREADY := false.B
-  lsu.io.DataBus.W.WREADY := false.B
-  lsu.io.DataBus.B.BID := 0.U
-  lsu.io.DataBus.B.BRESP := 0.U
-  lsu.io.DataBus.B.BVALID := false.B
+  LSU.io.DataBus.AW.AWREADY := false.B
+  LSU.io.DataBus.W.WREADY := false.B
+  LSU.io.DataBus.B.BID := 0.U
+  LSU.io.DataBus.B.BRESP := 0.U
+  LSU.io.DataBus.B.BVALID := false.B
 
-  io.arvalid := lsu.io.DataBus.AR.ARVALID
-  io.araddr := lsu.io.DataBus.AR.ARADDR
-  lsu.io.DataBus.AR.ARREADY := io.arready
-  lsu.io.DataBus.R.RID := 0.U
-  lsu.io.DataBus.R.RDATA := io.rdata
-  lsu.io.DataBus.R.RRESP := io.rresp
-  lsu.io.DataBus.R.RLAST := io.rlast
-  lsu.io.DataBus.R.RVALID := io.rvalid
-  io.rready := lsu.io.DataBus.R.RREADY
-  lsu.io.DCacheFlush := false.B
-  lsu.io.PMPFault := false.B
+  io.arvalid := LSU.io.DataBus.AR.ARVALID
+  io.araddr := LSU.io.DataBus.AR.ARADDR
+  LSU.io.DataBus.AR.ARREADY := io.arready
+  LSU.io.DataBus.R.RID := 0.U
+  LSU.io.DataBus.R.RDATA := io.rdata
+  LSU.io.DataBus.R.RRESP := io.rresp
+  LSU.io.DataBus.R.RLAST := io.rlast
+  LSU.io.DataBus.R.RVALID := io.rvalid
+  io.rready := LSU.io.DataBus.R.RREADY
+  LSU.io.DCacheFlush := false.B
+  LSU.io.BusQuiet := false.B
+  LSU.io.ReservationClear := false.B
+  LSU.io.DCacheDMASnoopValid := false.B
+  LSU.io.DCacheDMASnoopStart := 0.U
+  LSU.io.DCacheDMASnoopEnd := 0.U
+  LSU.io.VIPTPAddress := 0.U
+  LSU.io.VIPTPAddressValid := false.B
+  LSU.io.VIPTPAddressVirtualAddress := 0.U
+  LSU.io.VIPTKill := false.B
+  LSU.io.PMPFault := false.B
 
-  io.mem_trap_commit := lsu.io.MemTrapCommit
-  io.flush_exmem := lsu.io.FlushEXMEM
+  io.MemTrapCommit := LSU.io.MemTrapCommit
+  io.FlushExMem := LSU.io.FlushEXMEM
 }
 
 object PreciseTrapFlushHarnessElaborate extends App {

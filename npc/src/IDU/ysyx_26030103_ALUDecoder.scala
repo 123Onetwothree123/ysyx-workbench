@@ -38,10 +38,10 @@ class ysyx_26030103_ALUDecoder(
   private def encode(
       ctrl: UInt,
       illegal: Boolean = false,
-      isMDU: Boolean = false,
-      mduOp: UInt = 0.U(ysyx_26030103_MDUOp.Width.W)
+      IsMDU: Boolean = false,
+      MDUOp: UInt = 0.U(ysyx_26030103_MDUOp.Width.W)
   ): BitPat =
-    BitPat(mduOp) ## BitPat(if (isMDU) 1.U else 0.U) ## BitPat(ctrl) ## BitPat(
+    BitPat(MDUOp) ## BitPat(if (IsMDU) 1.U else 0.U) ## BitPat(ctrl) ## BitPat(
       if (illegal) 1.U else 0.U
     )
   private def key(opcode: UInt, f3f7: String): BitPat =
@@ -110,22 +110,22 @@ class ysyx_26030103_ALUDecoder(
     )
   } else Nil
 
-  private val mduRows: Seq[(BitPat, BitPat)] = if (config.UseM) {
+  private val MDURows: Seq[(BitPat, BitPat)] = if (config.UseM) {
     Seq(
-      key(OPCODE_Register, "b000_0000001") -> encode(NOP, isMDU = true, mduOp = MUL), // MUL
-      key(OPCODE_Register, "b001_0000001") -> encode(NOP, isMDU = true, mduOp = MULH), // MULH
-      key(OPCODE_Register, "b010_0000001") -> encode(NOP, isMDU = true, mduOp = MULHSU), // MULHSU
-      key(OPCODE_Register, "b011_0000001") -> encode(NOP, isMDU = true, mduOp = MULHU), // MULHU
-      key(OPCODE_Register, "b100_0000001") -> encode(NOP, isMDU = true, mduOp = DIV), // DIV
-      key(OPCODE_Register, "b101_0000001") -> encode(NOP, isMDU = true, mduOp = DIVU), // DIVU
-      key(OPCODE_Register, "b110_0000001") -> encode(NOP, isMDU = true, mduOp = REM), // REM
-      key(OPCODE_Register, "b111_0000001") -> encode(NOP, isMDU = true, mduOp = REMU) // REMU
+      key(OPCODE_Register, "b000_0000001") -> encode(NOP, IsMDU = true, MDUOp = MUL), // MUL
+      key(OPCODE_Register, "b001_0000001") -> encode(NOP, IsMDU = true, MDUOp = MULH), // MULH
+      key(OPCODE_Register, "b010_0000001") -> encode(NOP, IsMDU = true, MDUOp = MULHSU), // MULHSU
+      key(OPCODE_Register, "b011_0000001") -> encode(NOP, IsMDU = true, MDUOp = MULHU), // MULHU
+      key(OPCODE_Register, "b100_0000001") -> encode(NOP, IsMDU = true, MDUOp = DIV), // DIV
+      key(OPCODE_Register, "b101_0000001") -> encode(NOP, IsMDU = true, MDUOp = DIVU), // DIVU
+      key(OPCODE_Register, "b110_0000001") -> encode(NOP, IsMDU = true, MDUOp = REM), // REM
+      key(OPCODE_Register, "b111_0000001") -> encode(NOP, IsMDU = true, MDUOp = REMU) // REMU
     ) ++ (if (xlen64) Seq(
-      key(OPCODE_RegisterWord, "b000_0000001") -> encode(NOP, isMDU = true, mduOp = MULW), // MULW
-      key(OPCODE_RegisterWord, "b100_0000001") -> encode(NOP, isMDU = true, mduOp = DIVW), // DIVW
-      key(OPCODE_RegisterWord, "b101_0000001") -> encode(NOP, isMDU = true, mduOp = DIVUW), // DIVUW
-      key(OPCODE_RegisterWord, "b110_0000001") -> encode(NOP, isMDU = true, mduOp = REMW), // REMW
-      key(OPCODE_RegisterWord, "b111_0000001") -> encode(NOP, isMDU = true, mduOp = REMUW) // REMUW
+      key(OPCODE_RegisterWord, "b000_0000001") -> encode(NOP, IsMDU = true, MDUOp = MULW), // MULW
+      key(OPCODE_RegisterWord, "b100_0000001") -> encode(NOP, IsMDU = true, MDUOp = DIVW), // DIVW
+      key(OPCODE_RegisterWord, "b101_0000001") -> encode(NOP, IsMDU = true, MDUOp = DIVUW), // DIVUW
+      key(OPCODE_RegisterWord, "b110_0000001") -> encode(NOP, IsMDU = true, MDUOp = REMW), // REMW
+      key(OPCODE_RegisterWord, "b111_0000001") -> encode(NOP, IsMDU = true, MDUOp = REMUW) // REMUW
     ) else Nil)
   } else Nil
 
@@ -137,7 +137,7 @@ class ysyx_26030103_ALUDecoder(
     ) else Nil)
   } else Nil
 
-  private val fpRows: Seq[(BitPat, BitPat)] = if (config.UseF) {
+  private val FPRows: Seq[(BitPat, BitPat)] = if (config.UseF) {
     Seq(
       key(OPCODE_LoadFP, "b???_???????") -> encode(ADD), // FLW/FLD
       key(OPCODE_StoreFP, "b???_???????") -> encode(ADD), // FSW/FSD
@@ -150,7 +150,7 @@ class ysyx_26030103_ALUDecoder(
   } else Nil
 
   private val table: TruthTable = TruthTable(
-    baseRows ++ rv64Rows ++ mduRows ++ atomicRows ++ fpRows,
+    baseRows ++ rv64Rows ++ MDURows ++ atomicRows ++ FPRows,
     encode(NOP, illegal = true)
   )
   private val decodeInput = Cat(io.opcode, io.funct3, io.funct7)

@@ -15,39 +15,60 @@ void nvboard_quit();
 #endif
 extern void nvboard_bind_all_pins(TOP_MODULE* top);
 import std;
+import npc.Output;
 import npc;
 
 int main(int argc, char const *argv[])
 {
     setvbuf(stdout, NULL, _IONBF, 0);
+    SimulationContext simulation;
+    SimulationContext::SetActive(simulation);
+    auto &out{simulation.Out()};
     if constexpr (npc::LogLevel > 0)
     {
-        if (auto logResult{log_init()}; !logResult)
+        if (auto logResult{log_init(out)}; !logResult)
         {
-            std::println(std::cerr, "日志初始化失败：{}", logResult.error());
-            log_close();
+            out.Error("日志初始化失败：{}", logResult.error());
+            log_close(out);
             return 1;
         }
     }
     if constexpr (npc::LogLevel > 0)
     {
-        // 与 checkpoint/DTS 使用的 .config 摘要保持一致，便于确认本次仿真
-        // 实际加载的是哪一份配置。
-        std::println(std::cerr, "[NPC config] hash={}", npc::ConfigHash);
+        out.Warn("[NPC config] hash={}", npc::ConfigHash);
     }
 
-    const auto failBeforeDUT = [](std::string_view error) {
-        std::println(std::cerr, "{}", error);
+    const auto failBeforeDUT = [&out](std::string_view error) {
+        out.Error("{}", error);
         if constexpr (npc::LogLevel > 0)
         {
-            log_close();
+            log_close(out);
         }
         return 1;
     };
 
-    // CLI、镜像和 ELF 都必须在 DUT 构造前完成。direct-NPC 的 RAM
-    // 会在构造后立即由 FlashMemory 初始化，因此不再有
-    // "$readmemh 读旧 program.hex，C++ 却读新 CLI 镜像" 的窗口。
+    for (int i{1}; i < argc; ++i)
+    {
+        const std::string_view arg{argv[i]};
+        if (arg == "--help" || arg == "-h")
+        {
+            out.Info("用法: {} [选项] [镜像文件]", argv[0]);
+            out.Info("  -e, --elf FILE          加载 ELF 符号");
+            out.Info("  -d, --diff FILE         指定 DiffTest REF .so");
+            out.Info("  -r, --result-dir DIR    性能结果目录");
+            out.Info("      --restore FILE      恢复 Verilator 检查点");
+            out.Info("      --vga-check         开启 VGA 时序检查");
+            out.Info("  -b, --batch             批处理模式");
+            out.Info("  -h, --help              显示帮助");
+            if constexpr (npc::LogLevel > 0)
+            {
+                log_close(out);
+            }
+            return 0;
+        }
+    }
+
+    // CLI、镜像和 ELF 须在 DUT 构造前完成。
     auto options{CLIOptions::Parse(argc, argv)};
     if (!options)
     {
@@ -75,20 +96,19 @@ int main(int argc, char const *argv[])
             return failBeforeDUT("--batch 需要在构建时启用 CONFIG_SDB");
         }
     }
-    auto load{ImageLoader::LoadFromCLI(*options)};
+    auto load{ImageLoader::LoadFromCLI(*options, simulation)};
     if (!load)
     {
         if constexpr (npc::HasSDB)
         {
-            // 没传镜像才是合法的空 SDB；显式给出了坏路径或
-            // 过大/损坏镜像时必须失败，不能静默运行旧内存。
+            // 未传镜像可进入空 SDB；显式坏路径必须失败。
             if (options->GetImageFile())
             {
                 return failBeforeDUT(load.error());
             }
-            FlashMemory.clear();
-            mrom.clear();
-            std::println("未指定镜像文件，进入空 SDB");
+            simulation.Flash().clear();
+            simulation.Mrom().clear();
+            out.Info("未指定镜像文件，进入空 SDB");
         }
         else
         {
@@ -96,9 +116,9 @@ int main(int argc, char const *argv[])
         }
     }
 
-    if (const auto &elfFile{options->GetElfFile()}; elfFile)
+    if (const auto &elfFile{options->GetELFFile()}; elfFile)
     {
-        auto result{InitializeFtrace(*elfFile, npc::HasFTrace)};
+        auto result{InitializeFtrace(simulation.Trace(), *elfFile, npc::HasFTrace)};
         if (!result)
         {
             return failBeforeDUT(std::format("ELF 初始化失败：{}", result.error()));
@@ -106,13 +126,29 @@ int main(int argc, char const *argv[])
     }
     else if constexpr (npc::HasFTrace)
     {
-        // FTRACE 是编译期功能开关：开启后不需要再进 SDB
-        // 手工执行 `ftrace on`。没有 ELF 时仍跟踪，函数名显示 ???。
-        GlobalFtrace.Enable();
+        // FTRACE 开启后无需在 SDB 手工执行 `ftrace on`。
+        simulation.Trace().Enable();
     }
 
     Verilated::commandArgs(argc, argv);
-    DUT dut;
+    DUT dut{simulation};
+    // DUT/NVBoard 创建后的退出路径都必须经过这里。
+    bool nvboardReady{false};
+    const auto finalize = [&dut, &nvboardReady, &out]() {
+        if constexpr (npc::LogLevel > 0)
+        {
+            log_close(out);
+        }
+        dut.final();
+        if constexpr (npc::HasNvBoard)
+        {
+            if (nvboardReady)
+            {
+                nvboard_quit();
+            }
+        }
+    };
+    dut.SetShutdownHook(finalize);
     bool restored{false};
     if (const auto &restoreFile{options->GetRestoreFile()}; restoreFile)
     {
@@ -120,64 +156,49 @@ int main(int argc, char const *argv[])
         {
             if (auto result{dut.RestoreCheckpoint(*restoreFile)}; !result)
             {
-                std::println(std::cerr, "{}", result.error());
+                out.Error("{}", result.error());
+                finalize();
                 return 1;
             }
-            std::println("已恢复 Verilator 状态：{}", restoreFile->string());
+            out.Info("已恢复 Verilator 状态：{}", restoreFile->string());
             restored = true;
         }
         else
         {
-            std::println(std::cerr,
-                         "--restore 需要在构建时启用 Verilator --savable "
-                         "（make VERILATOR_SAVABLE=y）");
+            out.Error("--restore 需要在构建时启用 Verilator --savable "
+                      "（make VERILATOR_SAVABLE=y）");
+            finalize();
             return 1;
         }
     }
     if (!restored)
     {
-        dut.InitializeMemory(FlashMemory);
+        dut.InitializeMemory(simulation.Flash());
     }
     if constexpr (npc::HasNvBoard)
     {
         nvboard_bind_all_pins(&*dut);
         nvboard_init();
+        nvboardReady = true;
     }
-    // All exits after the DUT/NVBoard have been created use the same one-shot
-    // cleanup path.  This also keeps DiffTest initialization failures from
-    // bypassing Verilator/NVBoard finalization.
-    const auto finalize = [&dut]() {
-        if constexpr (npc::LogLevel > 0)
-        {
-            log_close();
-        }
-        dut.final();
-        if constexpr (npc::HasNvBoard)
-        {
-            nvboard_quit();
-        }
-    };
-    // Establish the DUT's architectural reset state before synchronizing a
-    // reference model.  GPRs other than x0 have no ISA-defined reset value,
-    // so DiffTest must copy the values actually seen by this RTL instance.
+    // 先复位 DUT，再同步 REF；非 x0 无 ISA 复位值。
     if (!restored)
     {
         dut.reset();
     }
-    // DifftestInitialize 在 CONFIG_DIFFTEST=n 时也会显式拒绝
-    // --diff。不能用预处理把用户参数和错误一起删掉。
+    // CONFIG_DIFFTEST=n 时也显式拒绝 --diff。
     if (options->GetDiffFile())
     {
         if (!load)
         {
-            std::println(std::cerr, "DiffTest 需要同时指定程序镜像");
+            out.Error("DiffTest 需要同时指定程序镜像");
             finalize();
             return 1;
         }
         auto diffResult{DifftestInitialize(dut, options->GetDiffFile(), *load)};
         if (!diffResult)
         {
-            std::println(std::cerr, "DiffTest 初始化失败：{}", diffResult.error());
+            out.Error("DiffTest 初始化失败：{}", diffResult.error());
             finalize();
             return 1;
         }
@@ -193,29 +214,24 @@ int main(int argc, char const *argv[])
     }
     else
     {
-        // 无 SDB 时 stdin 专供客户机串口使用。
         dut.EnableUARTStdin(true);
         while (!NPCTrap::HasHalted())
         {
-            // $finish 可能与本拍已寄存的 halt 脉冲同时可见。先结算 halt，
-            // 再退出，否则正常的 GOOD/BAD trap 会被误报成未触发陷阱。
+            // $finish 与 halt 同拍时先结算 halt。
             if (Verilated::gotFinish())
             {
                 dut.PollSimulationHalt();
                 break;
             }
             dut.step();
-            // DiffTest can mark the run BAD while processing this edge.  Do
-            // not let a same-cycle custom halt overwrite that failure with
-            // a0 == 0.
+            // DiffTest 可能在本沿标记 BAD，勿让 custom halt 覆盖。
             if (NPCTrap::HasHalted())
                 break;
             if (dut.PollSimulationHalt())
                 break;
         }
     }
-    // 逐退休比对已经把 REF 推进到 DUT 的当前架构边界。
-    // GOOD/BAD trap 都在 final() 之前校验，不再让 REF 盲跑固定条数。
+    // 逐退休已推进 REF 到当前边界，final 前再校验 trap。
     if (!DifftestFinalCheck(dut))
     {
         const auto pc{dut.ReadPC()};
@@ -232,7 +248,7 @@ int main(int argc, char const *argv[])
         if (sdbExitReason == SDBExitReason::UserQuit &&
             !Verilated::gotFinish() && !NPCTrap::HasHalted())
         {
-            std::println("SDB用户主动退出（程序未结束）");
+            out.Info("SDB用户主动退出（程序未结束）");
             result = 0;
         }
         else
@@ -269,7 +285,7 @@ int main(int argc, char const *argv[])
         }
         catch (const std::exception &error)
         {
-            std::println(std::cerr, "性能结果保存失败：{}", error.what());
+            out.Error("性能结果保存失败：{}", error.what());
             if (default_result_dir)
             {
                 std::error_code ignored;
@@ -278,8 +294,7 @@ int main(int argc, char const *argv[])
             result = 1;
         }
     }
-    // Verilator/NVBoard 的收尾每个只执行一次，且必须在所有
-    // 读取 DUT 状态的检查之后。
+    // 收尾只执行一次，且须在所有 DUT 读取之后。
     finalize();
     return result;
 }

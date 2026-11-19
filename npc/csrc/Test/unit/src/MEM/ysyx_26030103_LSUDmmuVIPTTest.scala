@@ -37,7 +37,7 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
   private def pokeLoad(
       dut: ysyx_26030103_LSUDmmuHarness,
       vaddr: Long,
-      pc: Long
+      PC: Long
   ): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
     dut.io.in.bits.MemoryValid.poke(true.B)
@@ -45,14 +45,14 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.ALUResult.poke(vaddr.U(AddressW.W))
     dut.io.in.bits.VAddress.poke(vaddr.U(AddressW.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
-    dut.io.in.bits.pc.poke(pc.U(AddressW.W))
+    dut.io.in.bits.PC.poke(PC.U(AddressW.W))
   }
 
   private def pokeStore(
       dut: ysyx_26030103_LSUDmmuHarness,
       vaddr: Long,
       data:  Long,
-      pc:    Long
+      PC:    Long
   ): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
     dut.io.in.bits.MemoryValid.poke(true.B)
@@ -61,7 +61,7 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.VAddress.poke(vaddr.U(AddressW.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
     dut.io.in.bits.StoreData.poke(data.U(32.W))
-    dut.io.in.bits.pc.poke(pc.U(AddressW.W))
+    dut.io.in.bits.PC.poke(PC.U(AddressW.W))
   }
 
   private def pokeResponse(
@@ -70,12 +70,12 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
       paddr: Long,
       vaddr: Long
   ): Unit = {
-    dut.io.resp.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
-    dut.io.resp.bits.id.poke(1.U)
-    dut.io.resp.bits.paddr.poke(paddr.U(32.W))
-    dut.io.resp.bits.fault.poke(fault.B)
-    dut.io.resp.bits.cause.poke((if (fault) 13 else 0).U(32.W))
-    dut.io.resp.bits.tval.poke(vaddr.U(32.W))
+    dut.io.response.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
+    dut.io.response.bits.ID.poke(1.U)
+    dut.io.response.bits.paddr.poke(paddr.U(32.W))
+    dut.io.response.bits.fault.poke(fault.B)
+    dut.io.response.bits.cause.poke((if (fault) 13 else 0).U(32.W))
+    dut.io.response.bits.tval.poke(vaddr.U(32.W))
   }
 
   private def resetDut(
@@ -92,9 +92,9 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
     dut.io.privilege.poke(1.U(2.W))
     dut.io.satp.poke("h80000000".U(32.W))
     dut.io.flush.poke(false.B)
-    dut.io.resp.valid.poke(false.B)
-    dut.io.resp.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
-    dut.io.req.ready.poke(false.B)
+    dut.io.response.valid.poke(false.B)
+    dut.io.response.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
+    dut.io.request.ready.poke(false.B)
     dut.io.arready.poke(false.B)
     dut.io.rvalid.poke(false.B)
     dut.io.rdata.poke(0.U(32.W))
@@ -105,28 +105,28 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
     dut.io.bvalid.poke(false.B)
     dut.io.bresp.poke(0.U(2.W))
     clock.step()
-    dut.io.req.ready.poke(true.B)
+    dut.io.request.ready.poke(true.B)
   }
 
   "LSUMMU+LSU VIPT" should "VA 先进入 DCache，PA 返回后按非恒等映射回填" in {
     simulate(new ysyx_26030103_LSUDmmuHarness) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
-      pokeLoad(dut, Va, pc = 0x1000L)
+      pokeLoad(dut, Va, PC = 0x1000L)
       dut.io.in.valid.poke(true.B)
       waitUntil(clock, bool(dut.io.in.ready), "DMMU 未受理 load")
       clock.step()
       dut.io.in.valid.poke(false.B)
 
       // MMU 翻译请求先出现；此时 DCache 已经持有 VA 请求。
-      waitUntil(clock, bool(dut.io.req.valid), "MMU 翻译请求未发出")
-      long(dut.io.req.bits.vaddr) should be(Va)
+      waitUntil(clock, bool(dut.io.request.valid), "MMU 翻译请求未发出")
+      long(dut.io.request.bits.vaddr) should be(Va)
       bool(dut.io.arvalid) should be(false)
       clock.step() // 请求握手后进入 xwait 才接收翻译响应
       pokeResponse(dut, fault = false, paddr = Pa, vaddr = Va)
-      dut.io.resp.valid.poke(true.B)
+      dut.io.response.valid.poke(true.B)
       clock.step()
-      dut.io.resp.valid.poke(false.B)
+      dut.io.response.valid.poke(false.B)
 
       // PA 到达后才允许对非恒等 PA 发 refill。
       waitUntil(clock, bool(dut.io.arvalid), "DCache 未在 PA 到达后发 AR")
@@ -160,18 +160,18 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_LSUDmmuHarness) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
-      pokeLoad(dut, VaFault, pc = 0x2000L)
+      pokeLoad(dut, VaFault, PC = 0x2000L)
       dut.io.in.valid.poke(true.B)
       waitUntil(clock, bool(dut.io.in.ready), "DMMU 未受理 load")
       clock.step()
       dut.io.in.valid.poke(false.B)
 
-      waitUntil(clock, bool(dut.io.req.valid), "MMU 翻译请求未发出")
+      waitUntil(clock, bool(dut.io.request.valid), "MMU 翻译请求未发出")
       clock.step() // 进入 xwait
       pokeResponse(dut, fault = true, paddr = 0L, vaddr = VaFault)
-      dut.io.resp.valid.poke(true.B)
+      dut.io.response.valid.poke(true.B)
       clock.step()
-      dut.io.resp.valid.poke(false.B)
+      dut.io.response.valid.poke(false.B)
 
       // 故障请求不得产生 AR/load 响应；下一拍提交精确 fault。
       clock.step(3)
@@ -179,7 +179,7 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
       bool(dut.io.out.valid) should be(false)
       bool(dut.io.faultCommit) should be(true)
       long(dut.io.faultCause) should be(13)
-      long(dut.io.faultPC) should be(0x2000L)
+      long(dut.io.FaultPC) should be(0x2000L)
       bool(dut.io.busy) should be(true)
       dut.io.flush.poke(true.B)
       clock.step()
@@ -195,24 +195,24 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val data = 0x11223344L
-      pokeStore(dut, Va, data, pc = 0x3000L)
+      pokeStore(dut, Va, data, PC = 0x3000L)
       dut.io.in.valid.poke(true.B)
       waitUntil(clock, bool(dut.io.in.ready), "DMMU 未受理 store")
       clock.step()
       dut.io.in.valid.poke(false.B)
 
       // store 已进入 LSU 写缓冲，但 PA 未确认：不允许任何写通道动作。
-      // req.ready 为高时翻译请求只持续一拍，因此先等 req.valid 再观察，
+      // request.ready 为高时翻译请求只持续一拍，因此先等 request.valid 再观察，
       // 不能先走固定拍数，否则会错过握手。
-      waitUntil(clock, bool(dut.io.req.valid), "store 翻译请求未发出")
-      long(dut.io.req.bits.vaddr) should be(Va)
+      waitUntil(clock, bool(dut.io.request.valid), "store 翻译请求未发出")
+      long(dut.io.request.bits.vaddr) should be(Va)
       bool(dut.io.awvalid) should be(false)
       bool(dut.io.wvalid) should be(false)
       clock.step() // 翻译请求握手
       pokeResponse(dut, fault = false, paddr = Pa, vaddr = Va)
-      dut.io.resp.valid.poke(true.B)
+      dut.io.response.valid.poke(true.B)
       clock.step()
-      dut.io.resp.valid.poke(false.B)
+      dut.io.response.valid.poke(false.B)
 
       // PA 到达后才提交，且 AWADDR 必须是物理地址。
       waitUntil(clock, bool(dut.io.awvalid), "PA 到达后 store 未发 AW")
@@ -246,20 +246,20 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_LSUDmmuHarness) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
-      pokeStore(dut, VaFault, 0x55667788L, pc = 0x4000L)
+      pokeStore(dut, VaFault, 0x55667788L, PC = 0x4000L)
       dut.io.in.valid.poke(true.B)
       waitUntil(clock, bool(dut.io.in.ready), "DMMU 未受理 store")
       clock.step()
       dut.io.in.valid.poke(false.B)
 
-      waitUntil(clock, bool(dut.io.req.valid), "store 翻译请求未发出")
+      waitUntil(clock, bool(dut.io.request.valid), "store 翻译请求未发出")
       bool(dut.io.awvalid) should be(false)
       bool(dut.io.wvalid) should be(false)
       clock.step() // 进入 xwait
       pokeResponse(dut, fault = true, paddr = 0L, vaddr = VaFault)
-      dut.io.resp.valid.poke(true.B)
+      dut.io.response.valid.poke(true.B)
       clock.step()
-      dut.io.resp.valid.poke(false.B)
+      dut.io.response.valid.poke(false.B)
 
       // 精确 page fault：无写事务、无 store 退休，faultCommit 一次。
       clock.step(3)
@@ -268,7 +268,7 @@ class ysyx_26030103_LSUDmmuVIPTTest extends AnyFlatSpec with Matchers {
       bool(dut.io.out.valid) should be(false)
       bool(dut.io.faultCommit) should be(true)
       long(dut.io.faultCause) should be(13)
-      long(dut.io.faultPC) should be(0x4000L)
+      long(dut.io.FaultPC) should be(0x4000L)
       dut.io.flush.poke(true.B)
       clock.step()
       dut.io.flush.poke(false.B)
@@ -291,10 +291,10 @@ class ysyx_26030103_LSUDmmuHarness extends Module {
     val flush = Input(Bool())
     val faultCommit = Output(Bool())
     val faultCause = Output(UInt(32.W))
-    val faultPC = Output(UInt(32.W))
+    val FaultPC = Output(UInt(32.W))
     val busy = Output(Bool())
-    val req = Decoupled(new ysyx_26030103_MMURequest)
-    val resp = Flipped(Decoupled(new ysyx_26030103_MMUResponse))
+    val request = Decoupled(new ysyx_26030103_MMURequest)
+    val response = Flipped(Decoupled(new ysyx_26030103_MMUResponse))
     val arvalid = Output(Bool())
     val arADDR = Output(UInt(32.W))
     val arLEN = Output(UInt(8.W))
@@ -316,8 +316,8 @@ class ysyx_26030103_LSUDmmuHarness extends Module {
     val bvalid = Input(Bool())
     val bresp = Input(UInt(2.W))
   })
-  val dmmu = Module(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true))
-  val lsu = Module(
+  val DMMU = Module(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true))
+  val LSU = Module(
     new ysyx_26030103_LSU(
         XLEN = 32,
         AddressWidth = 32,
@@ -329,70 +329,70 @@ class ysyx_26030103_LSUDmmuHarness extends Module {
       VIPTParallel = true
     )
   )
-  dmmu.io.in.valid := io.in.valid
-  dmmu.io.in.bits := io.in.bits
-  io.in.ready := dmmu.io.in.ready
+  DMMU.io.in.valid := io.in.valid
+  DMMU.io.in.bits := io.in.bits
+  io.in.ready := DMMU.io.in.ready
   _root_.ysyx_26030103.common.ysyx_26030103_StageConnect(
-    dmmu.io.out,
-    lsu.io.in,
-    lsu.io.FlushEXMEM || dmmu.io.memKill
+    DMMU.io.out,
+    LSU.io.in,
+    LSU.io.FlushEXMEM || DMMU.io.memKill
   )
-  dmmu.io.privilege := io.privilege
-  dmmu.io.satp := io.satp
-  dmmu.io.sum := false.B
-  dmmu.io.mxr := false.B
-  dmmu.io.flush := io.flush
-  dmmu.io.pmpFault := false.B
-  io.req.valid := dmmu.io.req.valid
-  io.req.bits := dmmu.io.req.bits
-  dmmu.io.req.ready := io.req.ready
-  dmmu.io.resp.valid := io.resp.valid
-  dmmu.io.resp.bits := io.resp.bits
-  io.resp.ready := dmmu.io.resp.ready
-  io.faultCommit := dmmu.io.faultCommit
-  io.faultCause := dmmu.io.faultCause
-  io.faultPC := dmmu.io.faultPC
-  io.busy := dmmu.io.busy
+  DMMU.io.privilege := io.privilege
+  DMMU.io.satp := io.satp
+  DMMU.io.sum := false.B
+  DMMU.io.mxr := false.B
+  DMMU.io.flush := io.flush
+  DMMU.io.PMPFault := false.B
+  io.request.valid := DMMU.io.request.valid
+  io.request.bits := DMMU.io.request.bits
+  DMMU.io.request.ready := io.request.ready
+  DMMU.io.response.valid := io.response.valid
+  DMMU.io.response.bits := io.response.bits
+  io.response.ready := DMMU.io.response.ready
+  io.faultCommit := DMMU.io.faultCommit
+  io.faultCause := DMMU.io.faultCause
+  io.FaultPC := DMMU.io.FaultPC
+  io.busy := DMMU.io.busy
 
-  lsu.io.VIPTPAddress := dmmu.io.memPhysicalAddress
-  lsu.io.VIPTPAddressValid := dmmu.io.memPhysicalAddressValid
-  lsu.io.VIPTPAddressVirtualAddress := dmmu.io.memPhysicalAddressVirtualAddress
-  lsu.io.VIPTKill := dmmu.io.memKill
-  dmmu.io.memActive := lsu.io.Busy
-  dmmu.io.memTrap := lsu.io.MemTrapCommit
-  lsu.io.DCacheFlush := false.B
+  LSU.io.VIPTPAddress := DMMU.io.memPhysicalAddress
+  LSU.io.VIPTPAddressValid := DMMU.io.memPhysicalAddressValid
+  LSU.io.VIPTPAddressVirtualAddress := DMMU.io.memPhysicalAddressVirtualAddress
+  LSU.io.VIPTKill := DMMU.io.memKill
+  DMMU.io.memActive := LSU.io.Busy
+  DMMU.io.memTrap := LSU.io.MemTrapCommit
+  LSU.io.DCacheFlush := false.B
   // 普通访存不受原子总线独占影响；该 harness 不覆盖 A 扩展。
-  lsu.io.BusQuiet := true.B
-  lsu.io.ReservationClear := false.B
+  LSU.io.BusQuiet := true.B
+  LSU.io.ReservationClear := false.B
   // 该 harness 不启用 DMA snoop，显式绑零避免内部 sink 悬空。
-  lsu.io.DCacheDMASnoopValid := false.B
-  lsu.io.DCacheDMASnoopStart := 0.U
-  lsu.io.DCacheDMASnoopEnd := 0.U
+  LSU.io.DCacheDMASnoopValid := false.B
+  LSU.io.DCacheDMASnoopStart := 0.U
+  LSU.io.DCacheDMASnoopEnd := 0.U
   // 该 harness 走 MMU 路径，PMP 由 DMMU 翻译后检查。
-  lsu.io.PMPFault := false.B
-  io.out.valid := lsu.io.out.valid
-  io.out.bits := lsu.io.out.bits
-  lsu.io.out.ready := io.out.ready
+  LSU.io.PMPFault := false.B
+  io.out.valid := LSU.io.out.valid
+  io.out.bits := LSU.io.out.bits
+  LSU.io.out.ready := io.out.ready
 
-  lsu.io.DataBus.AW.AWREADY := io.awready
-  lsu.io.DataBus.W.WREADY := io.wready
-  lsu.io.DataBus.B.BVALID := io.bvalid
-  lsu.io.DataBus.B.BID := 0.U
-  lsu.io.DataBus.B.BRESP := io.bresp
-  lsu.io.DataBus.AR.ARREADY := io.arready
-  lsu.io.DataBus.R.RVALID := io.rvalid
-  lsu.io.DataBus.R.RID := 0.U
-  lsu.io.DataBus.R.RDATA := io.rdata
-  lsu.io.DataBus.R.RRESP := io.rresp
-  lsu.io.DataBus.R.RLAST := io.rlast
-  io.arvalid := lsu.io.DataBus.AR.ARVALID
-  io.arADDR := lsu.io.DataBus.AR.ARADDR
-  io.arLEN := lsu.io.DataBus.AR.ARLEN
-  io.rready := lsu.io.DataBus.R.RREADY
-  io.awvalid := lsu.io.DataBus.AW.AWVALID
-  io.awADDR := lsu.io.DataBus.AW.AWADDR
-  io.wvalid := lsu.io.DataBus.W.WVALID
-  io.wdata := lsu.io.DataBus.W.WDATA
-  io.wstrb := lsu.io.DataBus.W.WSTRB
-  io.bready := lsu.io.DataBus.B.BREADY
+  LSU.io.DataBus.AW.AWREADY := io.awready
+  LSU.io.DataBus.W.WREADY := io.wready
+  LSU.io.DataBus.B.BVALID := io.bvalid
+  LSU.io.DataBus.B.BID := 0.U
+  LSU.io.DataBus.B.BRESP := io.bresp
+  LSU.io.DataBus.AR.ARREADY := io.arready
+  LSU.io.DataBus.R.RVALID := io.rvalid
+  LSU.io.DataBus.R.RID := 0.U
+  LSU.io.DataBus.R.RDATA := io.rdata
+  LSU.io.DataBus.R.RRESP := io.rresp
+  LSU.io.DataBus.R.RLAST := io.rlast
+  io.arvalid := LSU.io.DataBus.AR.ARVALID
+  io.arADDR := LSU.io.DataBus.AR.ARADDR
+  io.arLEN := LSU.io.DataBus.AR.ARLEN
+  io.rready := LSU.io.DataBus.R.RREADY
+  io.awvalid := LSU.io.DataBus.AW.AWVALID
+  io.awADDR := LSU.io.DataBus.AW.AWADDR
+  io.wvalid := LSU.io.DataBus.W.WVALID
+  io.wdata := LSU.io.DataBus.W.WDATA
+  io.wstrb := LSU.io.DataBus.W.WSTRB
+  io.bready := LSU.io.DataBus.B.BREADY
 }

@@ -67,7 +67,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
       widthSelect: Int,
       memoryWrite: Boolean
   ): Unit = {
-    val addrWidth = dut.io.in.bits.ALUResult.getWidth
+    val AddressWidth = dut.io.in.bits.ALUResult.getWidth
     dut.io.in.bits.poke(0.U.asTypeOf(chiselTypeOf(dut.io.in.bits)))
     dut.io.in.bits.Retire.poke(true.B)
     dut.io.in.bits.RegisterWrite.poke(true.B)
@@ -77,11 +77,11 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.MemoryWrite.poke(if (memoryWrite) true.B else false.B)
     dut.io.in.bits.IsAtomic.poke(true.B)
     dut.io.in.bits.AtomicOp.poke(op.U(5.W))
-    dut.io.in.bits.ALUResult.poke(address.U(addrWidth.W))
-    dut.io.in.bits.VAddress.poke(address.U(addrWidth.W))
+    dut.io.in.bits.ALUResult.poke(address.U(AddressWidth.W))
+    dut.io.in.bits.VAddress.poke(address.U(AddressWidth.W))
     dut.io.in.bits.WidthSelect.poke(widthSelect.U(2.W))
     dut.io.in.bits.StoreData.poke(rhs.U(dut.io.in.bits.StoreData.getWidth.W))
-    dut.io.in.bits.pc.poke(0x80000000L.U(addrWidth.W))
+    dut.io.in.bits.PC.poke(0x80000000L.U(AddressWidth.W))
   }
 
   private def waitFire(
@@ -144,14 +144,14 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
   ): BigInt = {
     dut.io.DataBus.AW.AWREADY.poke(true.B)
     dut.io.DataBus.W.WREADY.poke(true.B)
-    var awSeen = false
+    var AWSeen = false
     var first = BigInt(0)
     var second = BigInt(0)
     var beats = 0
     var cycles = 0
     while (beats < (if (wide) 2 else 1) && cycles < 40) {
       if (bool(dut.io.DataBus.AW.AWVALID)) {
-        awSeen = true
+        AWSeen = true
         long(dut.io.DataBus.AW.AWADDR) should be(address)
         long(dut.io.DataBus.AW.AWLEN) should be(if (wide) 1L else 0L)
       }
@@ -167,7 +167,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
       }
       clock.step(); cycles += 1
     }
-    awSeen should be(true)
+    AWSeen should be(true)
     beats should be(if (wide) 2 else 1)
     dut.io.DataBus.AW.AWREADY.poke(false.B)
     dut.io.DataBus.W.WREADY.poke(false.B)
@@ -417,16 +417,16 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
       pokeAtomic(dut, AMOADD, 0x80004700L, 1, 2, memoryWrite = true)
       dut.io.PMPFault.poke(true.B)
       dut.io.in.valid.poke(true.B)
-      var sawPMPFault = false
+      var SawPMPFault = false
       for (_ <- 0 until 20) {
         expectNoBus(dut)
         if (bool(dut.io.MemTrapCommit)) {
-          sawPMPFault = true
+          SawPMPFault = true
           long(dut.io.MemTrapCause) should be(7L)
         }
         clock.step()
       }
-      withClue("PMP 拒绝的 AMO 未提交: ") { sawPMPFault should be(true) }
+      withClue("PMP 拒绝的 AMO 未提交: ") { SawPMPFault should be(true) }
       expectNoBus(dut)
     }
   }

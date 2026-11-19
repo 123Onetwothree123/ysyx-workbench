@@ -1,13 +1,21 @@
 module npc.sdb.command.WatchpointPool;
 import npc.unicode;
+import npc.Output;
 import npc.sdb.TablePrinter;
 
-WatchpointPool &GetGlobalWatchpointPool()
+namespace
 {
-    static WatchpointPool GlobalWatchpointPool;
-    return GlobalWatchpointPool;
+Output &OutOf(Output *Target)
+{
+    static Output fallback;
+    return Target != nullptr ? *Target : fallback;
+}
 }
 
+void WatchpointPool::SetOutput(Output &Out) noexcept
+{
+    output = &Out;
+}
 WatchpointPool::WatchpointPool()
 {
     watchpoints.resize(MaxWatchpoints);
@@ -22,7 +30,7 @@ Watchpoint *WatchpointPool::GetWatchpoint(std::size_t NO)
 {
     if (NO >= watchpoints.size())
     {
-        std::println("GetWatchpoint的参数的监视点编号{0}都直接超出范围了", NO);
+        OutOf(output).Error("GetWatchpoint的参数的监视点编号{0}都直接超出范围了", NO);
         return nullptr;
     }
     return &watchpoints[NO];
@@ -39,7 +47,7 @@ Watchpoint *WatchpointPool::CreateWatchpoint(const std::string &expression, std:
 {
     if (FreeWatchpointIndices.empty())
     {
-        std::println("CreateWatchpoint失败了，因为vector里面没有空闲的监视点槽位了");
+        OutOf(output).Error("CreateWatchpoint失败了，因为vector里面没有空闲的监视点槽位了");
         return nullptr;
     }
     auto NO{FreeWatchpointIndices.back()};
@@ -58,12 +66,12 @@ bool WatchpointPool::DeleteWatchpoint(std::size_t NO)
 {
     if (NO >= watchpoints.size())
     {
-        std::println("DeleteWatchpoint监视点编号{0}超出范围", NO);
+        OutOf(output).Error("DeleteWatchpoint监视点编号{0}超出范围", NO);
         return false;
     }
     if (!watchpoints[NO].IsEnabled())
     {
-        std::println("DeleteWatchpoint: 监视点{0}不在使用中", NO);
+        OutOf(output).Error("DeleteWatchpoint: 监视点{0}不在使用中", NO);
         return false;
     }
     // 保险起见，手动复位
@@ -102,13 +110,13 @@ bool WatchpointPool::CheckAll(const EvaluationContext &context)
         auto result{expression.evaluate(wp.GetExpression(), context)};
         if (!result)
         {
-            std::println("监视点{}表达式求值失败：{}", NO, result.error());
+            OutOf(output).Error("监视点{}表达式求值失败：{}", NO, result.error());
             continue;
         }
         auto newValue{*result};
         if (newValue != static_cast<std::uint64_t>(wp.GetOldValue()))
         {
-            std::println("监视点{}触发：{} = 0x{:x}（旧值 0x{:x}）", NO, wp.GetExpression(), newValue, static_cast<std::uint64_t>(wp.GetOldValue()));
+            OutOf(output).Info("监视点{}触发：{} = 0x{:x}（旧值 0x{:x}）", NO, wp.GetExpression(), newValue, static_cast<std::uint64_t>(wp.GetOldValue()));
             wp.SetOldValue(newValue);
             wp.SetPC(CurrentPC);
             wp.SetHasPC(true);
@@ -171,7 +179,7 @@ void WatchpointPool::PrintAllWatchpoints(const EvaluationContext &context) const
 {
     if (UsedWatchpointIndices.empty())
     {
-        std::println("没有监视点。");
+        OutOf(output).Info("没有监视点。");
         return;
     }
     std::vector<const Watchpoint *> wps;

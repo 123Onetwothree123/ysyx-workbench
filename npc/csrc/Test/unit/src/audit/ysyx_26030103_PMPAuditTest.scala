@@ -22,8 +22,8 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
     dut.clock.step(2)
     dut.reset.poke(false.B)
     for (i <- 0 until 16) {
-      dut.io.cfg(i).poke(0.U)
-      dut.io.addr(i).poke(0.U)
+      dut.io.config(i).poke(0.U)
+      dut.io.address(i).poke(0.U)
     }
     dut.io.fetchAddress.poke(0.U)
     dut.io.fetchPriv.poke(3.U)
@@ -47,10 +47,10 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
       // entry0 只设置 A=NAPOT，R/W/X 全 0（拒绝）；entry1 允许 R/W/X。
       val (cfg0, addr0) = napot(0x18, 0x80000000L, 0x1000L)
       val (cfg1, addr1) = napot(0x1f, 0x80000000L, 0x1000L)
-      dut.io.cfg(0).poke(cfg0.U)
-      dut.io.addr(0).poke(addr0.U)
-      dut.io.cfg(1).poke(cfg1.U)
-      dut.io.addr(1).poke(addr1.U)
+      dut.io.config(0).poke(cfg0.U)
+      dut.io.address(0).poke(addr0.U)
+      dut.io.config(1).poke(cfg1.U)
+      dut.io.address(1).poke(addr1.U)
       dut.io.dataAddress.poke("h80000000".U)
       dut.io.dataLastAddress.poke("h80000000".U)
       dut.io.dataPriv.poke(1.U)
@@ -64,8 +64,8 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_PMP(16)) { dut =>
       setup(dut)
       // 常见的 OpenSBI 全内存 PMP：NAPOT + R/W/X，pmpaddr 全 1。
-      dut.io.cfg(0).poke("h1f".U)
-      dut.io.addr(0).poke("h3fffffff".U)
+      dut.io.config(0).poke("h1f".U)
+      dut.io.address(0).poke("h3fffffff".U)
       dut.io.dataAddress.poke("h80000000".U)
       dut.io.dataLastAddress.poke("h80000000".U)
       dut.io.dataPriv.poke(1.U)
@@ -78,8 +78,8 @@ class ysyx_26030103_PMPAuditTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_PMP(16)) { dut =>
       setup(dut)
       // 4KiB NAPOT：0x80000000..0x80000fff，R/W/X。
-      dut.io.cfg(0).poke("h1f".U)
-      dut.io.addr(0).poke("h200001ff".U)
+      dut.io.config(0).poke("h1f".U)
+      dut.io.address(0).poke("h200001ff".U)
       dut.io.dataAddress.poke("h80000000".U)
       dut.io.dataLastAddress.poke("h80000000".U)
       dut.io.dataPriv.poke(1.U)

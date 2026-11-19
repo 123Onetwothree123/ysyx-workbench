@@ -70,36 +70,36 @@ int main(int argc, char **argv) {
       "non-restoring DIV core (radix4/iter2/early-out) matches reference", [] {
 #endif
     DUT dut;
-    dut.IO_Req_valid = 0;
+    dut.IO_Request_valid = 0;
 #if defined(TEST_MUL_CORE)
-    dut.IO_Req_bits_LHSMagnitude = 0;
-    dut.IO_Req_bits_RHSMagnitude = 0;
+    dut.IO_Request_bits_LHSMagnitude = 0;
+    dut.IO_Request_bits_RHSMagnitude = 0;
 #else
-    dut.IO_Req_bits_DividendMagnitude = 0;
-    dut.IO_Req_bits_DivisorMagnitude = 0;
+    dut.IO_Request_bits_DividendMagnitude = 0;
+    dut.IO_Request_bits_DivisorMagnitude = 0;
 #endif
-    dut.IO_Resp_ready = 1;
+    dut.IO_Response_ready = 1;
     dut.IO_Flush = 0;
     reset(dut);
 
     for (const auto &[a, b] : make_vectors()) {
-      dut.IO_Req_valid = 1;
+      dut.IO_Request_valid = 1;
 #if defined(TEST_MUL_CORE)
-      dut.IO_Req_bits_LHSMagnitude = a;
-      dut.IO_Req_bits_RHSMagnitude = b;
+      dut.IO_Request_bits_LHSMagnitude = a;
+      dut.IO_Request_bits_RHSMagnitude = b;
 #else
-      dut.IO_Req_bits_DividendMagnitude = a;
-      dut.IO_Req_bits_DivisorMagnitude = b;
+      dut.IO_Request_bits_DividendMagnitude = a;
+      dut.IO_Request_bits_DivisorMagnitude = b;
 #endif
       dut.eval();
-      check(dut.IO_Req_ready, "MDU core refused a request");
+      check(dut.IO_Request_ready, "MDU core refused a request");
       tick(dut);
-      dut.IO_Req_valid = 0;
+      dut.IO_Request_valid = 0;
 
       bool got = false;
       for (int cycle = 0; cycle < 200 && !got; ++cycle) {
         dut.eval();
-        if (dut.IO_Resp_valid) {
+        if (dut.IO_Response_valid) {
           got = true;
         } else {
           tick(dut);
@@ -107,10 +107,10 @@ int main(int argc, char **argv) {
       }
       check(got, "MDU core never returned a result");
 #if defined(TEST_MUL_CORE)
-      const uint64_t product = dut.IO_Resp_bits_Product;
+      const uint64_t product = dut.IO_Response_bits_Product;
 #else
-      const uint32_t quotient = dut.IO_Resp_bits_Quotient;
-      const uint32_t remainder = dut.IO_Resp_bits_Remainder;
+      const uint32_t quotient = dut.IO_Response_bits_Quotient;
+      const uint32_t remainder = dut.IO_Response_bits_Remainder;
 #endif
       tick(dut); // 消费响应
       dut.eval();

@@ -10,6 +10,10 @@ module npc.trace.ftrace;
  */
 namespace
 {
+    void WriteStdout(std::string_view Line)
+    {
+        std::println("{}", Line);
+    }
     constexpr auto OpcodeMask{std::uint32_t{0x7fu}};
     constexpr auto OpcodeJal{std::uint32_t{0x6fu}};
     constexpr auto OpcodeJalr{std::uint32_t{0x67u}};
@@ -129,23 +133,26 @@ namespace
         return Name.empty() ? UnknownFunction : Name;
     }
 } // namespace
-/**
- * @brief 全局ftrace状态。
- */
-Ftrace GlobalFtrace;
-Ftrace::Ftrace() = default;
+Ftrace::Ftrace()
+    : output_sink{&WriteStdout}
+{
+}
 Ftrace::~Ftrace() = default;
+void Ftrace::SetOutput(OutputSink Sink) noexcept
+{
+    output_sink = Sink != nullptr ? Sink : &WriteStdout;
+}
 /**
  * @brief 加载ELF文件并准备函数符号表。
- * @param ElfFile std::filesystem::path，ELF文件路径。
+ * @param ELFFile std::filesystem::path，ELF文件路径。
  * @param RequireExecutable bool，运行时Ftrace为true；纯ELF检查为false。
  * @return std::expected<void, std::string>，成功返回空结果，失败返回错误字符串。
  */
-std::expected<void, std::string> Ftrace::LoadElf(
-    std::filesystem::path ElfFile,
+std::expected<void, std::string> Ftrace::LoadELF(
+    std::filesystem::path ELFFile,
     bool RequireExecutable)
 {
-    auto Reader{Readelf::load(std::move(ElfFile))};
+    auto Reader{Readelf::load(std::move(ELFFile))};
     if (!Reader)
     {
         return std::unexpected{Reader.error()};
@@ -163,16 +170,16 @@ std::expected<void, std::string> Ftrace::LoadElf(
             static_cast<unsigned>(Reader->header().e_type))};
     }
     Reset();
-    Elf.emplace(std::move(*Reader));
+    ELF.emplace(std::move(*Reader));
     return {};
 }
 /**
  * @brief 清空ELF符号和已有ftrace状态。
  */
-void Ftrace::ClearElf()
+void Ftrace::ClearELF()
 {
     Reset();
-    Elf.reset();
+    ELF.reset();
 }
 /**
  * @brief 清空调用栈和历史事件。
@@ -316,7 +323,7 @@ std::size_t Ftrace::HistorySize() const noexcept
  */
 std::size_t Ftrace::FunctionCount() const noexcept
 {
-    return Elf ? Elf->functions().size() : 0u;
+    return ELF ? ELF->functions().size() : 0u;
 }
 /**
  * @brief 获取当前调用栈顶帧。
@@ -342,9 +349,9 @@ std::span<const FtraceEvent> Ftrace::History() const noexcept
  * @brief 获取当前ELF读取器。
  * @return const Readelf*，若已经加载ELF则返回读取器指针，否则返回nullptr。
  */
-const Readelf *Ftrace::ElfReader() const noexcept
+const Readelf *Ftrace::ELFReader() const noexcept
 {
-    return Elf ? &*Elf : nullptr;
+    return ELF ? &*ELF : nullptr;
 }
 /**
  * @brief 打印当前调用栈。
@@ -353,16 +360,17 @@ const Readelf *Ftrace::ElfReader() const noexcept
  */
 void Ftrace::PrintCurrentStack() const
 {
-    std::println("ftrace: call stack depth = {0}", CallStack.size());
+    output_sink(std::format("ftrace: call stack depth = {0}", CallStack.size()));
     for (std::size_t Index{0}; Index < CallStack.size(); ++Index)
     {
         const auto &Frame{CallStack[Index]};
-        std::println("  #{0} {1} @ 0x{2:08x} (call 0x{3:08x}, ret 0x{4:08x})",
-                     Index,
-                     PrintableName(Frame.GetFunctionName()),
-                     Frame.GetFunctionAddress(),
-                     Frame.GetCallPC(),
-                     Frame.GetReturnPC());
+        output_sink(std::format(
+            "  #{0} {1} @ 0x{2:08x} (call 0x{3:08x}, ret 0x{4:08x})",
+            Index,
+            PrintableName(Frame.GetFunctionName()),
+            Frame.GetFunctionAddress(),
+            Frame.GetCallPC(),
+            Frame.GetReturnPC()));
     }
 }
 /**
@@ -370,7 +378,7 @@ void Ftrace::PrintCurrentStack() const
  */
 void Ftrace::PrintHistory() const
 {
-    std::println("ftrace: history size = {0}", EventHistory.size());
+    output_sink(std::format("ftrace: history size = {0}", EventHistory.size()));
     for (const auto &Event : EventHistory)
     {
         PrintEventLine(Event);
@@ -381,14 +389,15 @@ void Ftrace::PrintHistory() const
  */
 void Ftrace::PrintStatus() const
 {
-    const auto ElfName{Elf ? Elf->path().string() : std::string{"<none>"}};
-    std::println("ftrace: enabled={0}, record_history={1}, depth={2}, history={3}, elf={4}, functions={5}",
-                 Enabled,
-                 ShouldRecordHistory,
-                 CallStack.size(),
-                 EventHistory.size(),
-                 ElfName,
-                 FunctionCount());
+    const auto ELFName{ELF ? ELF->path().string() : std::string{"<none>"}};
+    output_sink(std::format(
+        "ftrace: enabled={0}, record_history={1}, depth={2}, history={3}, elf={4}, functions={5}",
+        Enabled,
+        ShouldRecordHistory,
+        CallStack.size(),
+        EventHistory.size(),
+        ELFName,
+        FunctionCount()));
 }
 /**
  * @brief 根据地址解析函数名。
@@ -397,11 +406,11 @@ void Ftrace::PrintStatus() const
  */
 std::string_view Ftrace::ResolveFunctionName(std::uint64_t Address) const noexcept
 {
-    if (!Elf)
+    if (!ELF)
     {
         return {};
     }
-    const auto Name{Elf->find_function_name(static_cast<std::size_t>(Address))};
+    const auto Name{ELF->find_function_name(static_cast<std::size_t>(Address))};
     return Name.value_or(std::string_view{});
 }
 /**
@@ -425,34 +434,37 @@ void Ftrace::PrintEventLine(const FtraceEvent &Event) const
     const auto Indent{std::string(IndentFor(Event) * 2u, ' ')};
     if (Event.GetType() == FtraceEventType::Call)
     {
-        std::println("0x{0:08x}: {1}call [{2}@0x{3:08x}]",
-                     Event.GetCurrentPC(),
-                     Indent,
-                     PrintableName(Event.GetFunctionName()),
-                     Event.GetTargetPC());
+        output_sink(std::format(
+            "0x{0:08x}: {1}call [{2}@0x{3:08x}]",
+            Event.GetCurrentPC(),
+            Indent,
+            PrintableName(Event.GetFunctionName()),
+            Event.GetTargetPC()));
         return;
     }
-    std::println("0x{0:08x}: {1}ret  [{2}]",
-                 Event.GetCurrentPC(),
-                 Indent,
-                 PrintableName(Event.GetFunctionName()));
+    output_sink(std::format(
+        "0x{0:08x}: {1}ret  [{2}]",
+        Event.GetCurrentPC(),
+        Indent,
+        PrintableName(Event.GetFunctionName())));
 }
 /**
- * @brief 初始化全局ftrace。
- * @param ElfFile const std::filesystem::path&，ELF文件路径。
+ * @brief 初始化ftrace。
+ * @param ELFFile const std::filesystem::path&，ELF文件路径。
  * @param ShouldEnable bool，初始化完成后是否开启ftrace。
  * @return std::expected<void, std::string>，成功返回空结果，失败返回错误字符串。
  */
-std::expected<void, std::string> InitializeFtrace(const std::filesystem::path &ElfFile, bool ShouldEnable)
+std::expected<void, std::string> InitializeFtrace(
+    Ftrace &Trace, const std::filesystem::path &ELFFile, bool ShouldEnable)
 {
     // Without CONFIG_FTRACE the same --elf input is still useful to SDB's
     // generic readelf command, which legitimately accepts ET_REL/ET_DYN.
     // Only runtime function tracing requires absolute ET_EXEC symbol values.
-    auto Result{GlobalFtrace.LoadElf(ElfFile, ShouldEnable)};
+    auto Result{Trace.LoadELF(ELFFile, ShouldEnable)};
     if (!Result)
     {
         return Result;
     }
-    GlobalFtrace.Enable(ShouldEnable);
+    Trace.Enable(ShouldEnable);
     return {};
 }

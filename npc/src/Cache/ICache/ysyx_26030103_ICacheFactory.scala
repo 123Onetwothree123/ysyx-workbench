@@ -24,7 +24,7 @@ object ysyx_26030103_ICacheFactory {
       config.ICacheCoherence == ysyx_26030103_ICacheCoherence.HardwareSnoop
     // DMA 行失效只由 DMA_COHERENCE=hardware_snoop 生成；ICACHE=n 时没有
     // 可失效的阵列，端口在叶模块内恒 ready。
-    val dmaSnoop = config.ICacheEnable &&
+    val DMASnoop = config.ICacheEnable &&
       config.DMACoherence == ysyx_26030103_DMACoherence.HardwareSnoop
     config.ICacheStorage match {
       case ysyx_26030103_CacheStorage.Reg =>
@@ -42,7 +42,7 @@ object ysyx_26030103_ICacheFactory {
             VIPTAliasDirectoryEntries =
               config.ICacheVIPTAliasDirectoryEntries,
             Snoop = snoop,
-            DMASnoop = dmaSnoop,
+            DMASnoop = DMASnoop,
             DrainTimeout = config.ICacheDrainTimeout,
             PMARegions = config.CachePMARegions
           )
@@ -62,7 +62,7 @@ object ysyx_26030103_ICacheFactory {
             VIPTAliasDirectoryEntries =
               config.ICacheVIPTAliasDirectoryEntries,
             Snoop = snoop,
-            DMASnoop = dmaSnoop,
+            DMASnoop = DMASnoop,
             DrainTimeout = config.ICacheDrainTimeout,
             PMARegions = config.CachePMARegions
           )
@@ -83,7 +83,7 @@ object ysyx_26030103_ICacheFactory {
               config.ICacheVIPTAliasDirectoryEntries,
             Bypass = false,
             Snoop = snoop,
-            DMASnoop = dmaSnoop,
+            DMASnoop = DMASnoop,
             DrainTimeout = config.ICacheDrainTimeout,
             PMARegions = config.CachePMARegions
           )

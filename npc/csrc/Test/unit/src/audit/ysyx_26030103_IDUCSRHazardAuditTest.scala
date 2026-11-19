@@ -25,22 +25,22 @@ class ysyx_26030103_IDUCSRHazardHarness(config: ysyx_26030103_NPCConfig)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_IFUMessage(XLEN)))
     val out = Decoupled(new ysyx_26030103_EXUMessage(XLEN))
-    val gprRead = Input(UInt(XLEN.W))
+    val GPRRead = Input(UInt(XLEN.W))
     val fpr1 = Input(UInt(64.W))
     val fpr2 = Input(UInt(64.W))
     val fpr3 = Input(UInt(64.W))
     val interrupt = Input(Bool())
     val timerInterrupt = Input(Bool())
-    val exuInValid = Output(Bool())
-    val exuInBits = Output(new ysyx_26030103_IDUMessage(XLEN))
+    val EXUInValid = Output(Bool())
+    val EXUInBits = Output(new ysyx_26030103_IDUMessage(XLEN))
     val trapCommit = Output(Bool())
-    val trapPC = Output(UInt(XLEN.W))
+    val TrapPC = Output(UInt(XLEN.W))
     val trapCause = Output(UInt(32.W))
     val trapTarget = Output(UInt(XLEN.W))
     val exceptionTaken = Output(Bool())
     val privilege = Output(UInt(2.W))
-    val csrFrm = Output(UInt(3.W))
-    val csrFcsr = Output(UInt(8.W))
+    val CSRFrm = Output(UInt(3.W))
+    val CSRFcsr = Output(UInt(8.W))
     val currentMstatus = Output(UInt(XLEN.W))
     val retireCommit = Output(Bool())
   })
@@ -52,62 +52,62 @@ class ysyx_26030103_IDUCSRHazardHarness(config: ysyx_26030103_NPCConfig)
   exu.io.PMUEvents := 0.U
 
   // 与顶层一致：IFU->IDU 被任何重定向/异常冲刷；IDU->EXU 只保留
-  // 当前 EXU 项（flushCurrent=false，和顶层的 lsu.FlushIDEX 缺省一致）。
+  // 当前 EXU 项（flushCurrent=false，和顶层的 LSU.FlushIDEX 缺省一致）。
   ysyx_26030103_StageConnect(io.in, idu.io.in, flush)
   ysyx_26030103_StageConnect(idu.io.out, exu.io.in, flush, false.B)
 
   // IDU 的整数寄存器读口在本测试中返回同一常量，足以覆盖 CSR 指令。
-  idu.io.ReadDATA1 := io.gprRead
-  idu.io.ReadDATA2 := io.gprRead
+  idu.io.ReadDATA1 := io.GPRRead
+  idu.io.ReadDATA2 := io.GPRRead
   idu.io.ReadFPR1 := io.fpr1
   idu.io.ReadFPR2 := io.fpr2
   idu.io.ReadFPR3 := io.fpr3
 
   // 关闭未使用的转发/冒险端口。
-  idu.io.ex_valid := exu.io.HazardValid
-  idu.io.ex_rd := exu.io.HazardRd
-  idu.io.ex_regWrite := exu.io.HazardRegWrite
-  idu.io.ex_fwd_ready := exu.io.ForwardReady
-  idu.io.ex_fwd_data := exu.io.ForwardData
-  idu.io.ex_mdu_hidden_writes := exu.io.HazardMDUHiddenWrites
-  idu.io.ex_memop := false.B
-  idu.io.me_valid := false.B
-  idu.io.me_rd := 0.U
-  idu.io.me_regWrite := false.B
-  idu.io.me_memop := false.B
-  idu.io.me_fwd_ready := false.B
-  idu.io.me_fwd_data := 0.U
-  idu.io.me2_valid := false.B
-  idu.io.me2_rd := 0.U
-  idu.io.me2_regWrite := false.B
-  idu.io.me2_memop := false.B
-  idu.io.me2_fwd_ready := false.B
-  idu.io.me2_fwd_data := 0.U
-  idu.io.wb_valid := false.B
-  idu.io.wb_rd := 0.U
-  idu.io.wb_regWrite := false.B
-  idu.io.wb_fwd_data := 0.U
-  idu.io.ex_fp_valid := exu.io.HazardFPValid
-  idu.io.ex_fp_rd := exu.io.HazardFPRd
-  idu.io.ex_fp_regWrite := exu.io.HazardFPRegWrite
-  idu.io.ex_fp_fwd_ready := exu.io.ForwardFPReady
-  idu.io.ex_fp_fwd_data := exu.io.ForwardFPData
-  idu.io.me_fp_valid := false.B
-  idu.io.me_fp_rd := 0.U
-  idu.io.me_fp_regWrite := false.B
-  idu.io.me_fp_fwd_ready := false.B
-  idu.io.me_fp_fwd_data := 0.U
-  idu.io.me2_fp_valid := false.B
-  idu.io.me2_fp_rd := 0.U
-  idu.io.me2_fp_regWrite := false.B
-  idu.io.me2_fp_fwd_ready := false.B
-  idu.io.me2_fp_fwd_data := 0.U
-  idu.io.wb_fp_valid := false.B
-  idu.io.wb_fp_rd := 0.U
-  idu.io.wb_fp_regWrite := false.B
-  idu.io.wb_fp_fwd_data := 0.U
-  idu.io.pipeline_mode := true.B
-  idu.io.mmu_stall := false.B
+  idu.io.ExValid := exu.io.HazardValid
+  idu.io.ExRd := exu.io.HazardRd
+  idu.io.ExRegWrite := exu.io.HazardRegWrite
+  idu.io.ExForwardReady := exu.io.ForwardReady
+  idu.io.ExForwardData := exu.io.ForwardData
+  idu.io.ExMDUHiddenWrites := exu.io.HazardMDUHiddenWrites
+  idu.io.ExMemop := false.B
+  idu.io.MeValid := false.B
+  idu.io.MeRd := 0.U
+  idu.io.MeRegWrite := false.B
+  idu.io.MeMemop := false.B
+  idu.io.MeForwardReady := false.B
+  idu.io.MeForwardData := 0.U
+  idu.io.Me2Valid := false.B
+  idu.io.Me2Rd := 0.U
+  idu.io.Me2RegWrite := false.B
+  idu.io.Me2Memop := false.B
+  idu.io.Me2ForwardReady := false.B
+  idu.io.Me2ForwardData := 0.U
+  idu.io.WbValid := false.B
+  idu.io.WbRd := 0.U
+  idu.io.WbRegWrite := false.B
+  idu.io.WbForwardData := 0.U
+  idu.io.ExFPValid := exu.io.HazardFPValid
+  idu.io.ExFPRd := exu.io.HazardFPRd
+  idu.io.ExFPRegWrite := exu.io.HazardFPRegWrite
+  idu.io.ExFPForwardReady := exu.io.ForwardFPReady
+  idu.io.ExFPForwardData := exu.io.ForwardFPData
+  idu.io.MeFPValid := false.B
+  idu.io.MeFPRd := 0.U
+  idu.io.MeFPRegWrite := false.B
+  idu.io.MeFPForwardReady := false.B
+  idu.io.MeFPForwardData := 0.U
+  idu.io.Me2FPValid := false.B
+  idu.io.Me2FPRd := 0.U
+  idu.io.Me2FPRegWrite := false.B
+  idu.io.Me2FPForwardReady := false.B
+  idu.io.Me2FPForwardData := 0.U
+  idu.io.WbFPValid := false.B
+  idu.io.WbFPRd := 0.U
+  idu.io.WbFPRegWrite := false.B
+  idu.io.WbFPForwardData := 0.U
+  idu.io.PipelineMode := true.B
+  idu.io.MMUStall := false.B
 
   // CSR 状态回送译码级（与顶层连线一致）。
   idu.io.Privilege := exu.io.CSRPrivilege
@@ -137,27 +137,27 @@ class ysyx_26030103_IDUCSRHazardHarness(config: ysyx_26030103_NPCConfig)
   exu.io.MinstretRetireCommit := minstretRetirePipe
 
   io.out <> exu.io.out
-  io.exuInValid := exu.io.in.valid
-  io.exuInBits := exu.io.in.bits
+  io.EXUInValid := exu.io.in.valid
+  io.EXUInBits := exu.io.in.bits
   io.trapCommit := exu.io.TrapCommit
-  io.trapPC := exu.io.TrapPC
+  io.TrapPC := exu.io.TrapPC
   io.trapCause := exu.io.TrapCause
   io.trapTarget := exu.io.TrapTarget
   io.exceptionTaken := exu.io.ExceptionTaken
   io.privilege := exu.io.CSRPrivilege
-  io.csrFrm := exu.io.CSRFrm
-  io.csrFcsr := exu.io.CSRFcsr
+  io.CSRFrm := exu.io.CSRFrm
+  io.CSRFcsr := exu.io.CSRFcsr
   io.currentMstatus := exu.io.CSRCurrentMstatus
   io.retireCommit := retirePipe
 }
 
 object ysyx_26030103_IDUCSRHazardInsn {
-  def csrrwi(csr: Int, imm: Int): BigInt =
-    (BigInt(csr) << 20) | (BigInt(imm) << 15) | (BigInt(5) << 12) | 0x73
-  def csrrwX0(csr: Int, rs1: Int): BigInt =
-    (BigInt(csr) << 20) | (BigInt(rs1) << 19) | (1 << 12) | 0x73
-  def csrrs(rd: Int, csr: Int): BigInt =
-    (BigInt(csr) << 20) | (2 << 12) | (BigInt(rd) << 7) | 0x73
+  def csrrwi(CSR: Int, imm: Int): BigInt =
+    (BigInt(CSR) << 20) | (BigInt(imm) << 15) | (BigInt(5) << 12) | 0x73
+  def csrrwX0(CSR: Int, rs1: Int): BigInt =
+    (BigInt(CSR) << 20) | (BigInt(rs1) << 19) | (1 << 12) | 0x73
+  def csrrs(rd: Int, CSR: Int): BigInt =
+    (BigInt(CSR) << 20) | (2 << 12) | (BigInt(rd) << 7) | 0x73
   val Nop: BigInt = 0x00000013L
   val Ecall: BigInt = 0x00000073L
   val Ebreak: BigInt = 0x00100073L
@@ -201,9 +201,9 @@ class ysyx_26030103_IDUCSRHazardAuditTest
         xlen = 64,
         hasS = true,
         hasU = true,
-        pteSizeBytes = 8,
-        pteFormat = "riscv64",
-        pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53)
+        PTESizeBytes = 8,
+        PTEFormat = "riscv64",
+        PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53)
       )
     )
 
@@ -211,11 +211,11 @@ class ysyx_26030103_IDUCSRHazardAuditTest
   private def big(value: UInt): BigInt = value.peek().litValue
 
   private final case class RetireEvent(
-      pc: BigInt,
+      PC: BigInt,
       instruction: BigInt,
       retire: Boolean
   )
-  private final case class TrapEvent(pc: BigInt, cause: BigInt, target: BigInt)
+  private final case class TrapEvent(PC: BigInt, cause: BigInt, target: BigInt)
 
   /** 小驱动：按真实 Decoupled 语义逐条送入指令，并在每个时钟沿前采样
     * EXU 输出/陷阱事件（避免漏拍）。
@@ -223,7 +223,7 @@ class ysyx_26030103_IDUCSRHazardAuditTest
   private final class Driver(dut: ysyx_26030103_IDUCSRHazardHarness) {
     val retires = ArrayBuffer.empty[RetireEvent]
     val traps = ArrayBuffer.empty[TrapEvent]
-    private var exuFPRmSnapshots = ArrayBuffer.empty[(BigInt, Int)]
+    private var EXUFPRmSnapshots = ArrayBuffer.empty[(BigInt, Int)]
 
     def setup(): Unit = {
       dut.reset.poke(true.B)
@@ -232,7 +232,7 @@ class ysyx_26030103_IDUCSRHazardAuditTest
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_IFUMessage(64)))
       dut.io.out.ready.poke(true.B)
-      dut.io.gprRead.poke(0.U)
+      dut.io.GPRRead.poke(0.U)
       dut.io.fpr1.poke(OneF.U(64.W))
       dut.io.fpr2.poke(TwoF.U(64.W))
       dut.io.fpr3.poke(TwoF.U(64.W))
@@ -243,21 +243,21 @@ class ysyx_26030103_IDUCSRHazardAuditTest
     def sample(): Unit = {
       if (bool(dut.io.out.valid) && bool(dut.io.out.ready)) {
         retires += RetireEvent(
-          big(dut.io.out.bits.pc),
+          big(dut.io.out.bits.PC),
           big(dut.io.out.bits.Instruction),
           bool(dut.io.out.bits.Retire)
         )
       }
       if (bool(dut.io.trapCommit)) {
         traps += TrapEvent(
-          big(dut.io.trapPC),
+          big(dut.io.TrapPC),
           big(dut.io.trapCause),
           big(dut.io.trapTarget)
         )
       }
-      if (bool(dut.io.exuInValid) && bool(dut.io.exuInBits.IsFPU)) {
-        exuFPRmSnapshots +=
-          ((big(dut.io.exuInBits.Instruction), big(dut.io.exuInBits.FPRm).toInt))
+      if (bool(dut.io.EXUInValid) && bool(dut.io.EXUInBits.IsFPU)) {
+        EXUFPRmSnapshots +=
+          ((big(dut.io.EXUInBits.Instruction), big(dut.io.EXUInBits.FPRm).toInt))
       }
     }
 
@@ -284,8 +284,8 @@ class ysyx_26030103_IDUCSRHazardAuditTest
       dut.io.in.valid.poke(false.B)
     }
 
-    def feedAt(pc: BigInt, instruction: BigInt): Unit = {
-      dut.io.in.bits.pc.poke(pc.U(64.W))
+    def feedAt(PC: BigInt, instruction: BigInt): Unit = {
+      dut.io.in.bits.PC.poke(PC.U(64.W))
       feed(instruction)
     }
 
@@ -296,7 +296,7 @@ class ysyx_26030103_IDUCSRHazardAuditTest
     def waitCycles(n: Int): Unit = step(n)
 
     def fpRmsFor(instruction: BigInt): Seq[Int] =
-      exuFPRmSnapshots.filter(_._1 == instruction).map(_._2).toSeq
+      EXUFPRmSnapshots.filter(_._1 == instruction).map(_._2).toSeq
   }
 
   "CSR -> 紧随浮点指令" should "csrw mstatus 清 FS 后 fadd.s 必须是非法指令" in {
@@ -306,32 +306,32 @@ class ysyx_26030103_IDUCSRHazardAuditTest
       // 先打开 mstatus.FS（FS=3），并等待写值真正落到 CSR。
       // CSRRWI 的 5 位立即数只能写 CSR 低 5 位，无法到达 FS[14:13]，
       // 因此这里用 csrrw 写 GPR x1（测试 harness 的读口常量）。
-      dut.io.gprRead.poke(BigInt(0x6000).U)
+      dut.io.GPRRead.poke(BigInt(0x6000).U)
       d.feedAt(0x80000000L, csrrwX0(MSTATUS, 1))
       d.step(2)
-      dut.io.gprRead.poke(0.U)
+      dut.io.GPRRead.poke(0.U)
       d.feedNops(4)
       big(dut.io.currentMstatus) & BigInt(0x6000) should be(BigInt(0x6000))
       // 此前的 fadd 应该合法（确认 FS 打开有效且测试环境正确）。
-      val legalPC = BigInt("0000000080000100", 16)
-      d.feedAt(legalPC, faddS(0))
+      val LegalPC = BigInt("0000000080000100", 16)
+      d.feedAt(LegalPC, faddS(0))
       d.feedNops(3)
-      d.traps.filter(_.pc == legalPC) should be(empty)
+      d.traps.filter(_.PC == LegalPC) should be(empty)
 
       // 清 FS 后紧接 fadd.s：第二条必须 cause=2 illegal instruction。
-      val csrPC = BigInt("0000000080000200", 16)
-      val faddPC = BigInt("0000000080000204", 16)
-      d.feedAt(csrPC, csrrwi(MSTATUS, 0))
-      d.feedAt(faddPC, faddS(0))
+      val CSRPC = BigInt("0000000080000200", 16)
+      val FaddPC = BigInt("0000000080000204", 16)
+      d.feedAt(CSRPC, csrrwi(MSTATUS, 0))
+      d.feedAt(FaddPC, faddS(0))
       d.feedNops(6)
 
       withClue(
         s"FS=0 后的 fadd.s 未触发非法指令；traps=${d.traps.mkString(",")} "
       ) {
-        d.traps.exists(t => t.pc == faddPC && t.cause == BigInt(2)) should be(true)
+        d.traps.exists(t => t.PC == FaddPC && t.cause == BigInt(2)) should be(true)
       }
       // 该 fadd 不得退休/产生浮点写回。
-      d.retires.exists(r => r.pc == faddPC && r.retire) should be(false)
+      d.retires.exists(r => r.PC == FaddPC && r.retire) should be(false)
     }
   }
 
@@ -340,27 +340,27 @@ class ysyx_26030103_IDUCSRHazardAuditTest
       val d = new Driver(dut)
       d.setup()
       // 复位后 FS=0，任何 F 指令非法。
-      val beforePC = BigInt("0000000080000300", 16)
-      d.feedAt(beforePC, faddS(0))
+      val BeforePC = BigInt("0000000080000300", 16)
+      d.feedAt(BeforePC, faddS(0))
       d.feedNops(3)
-      d.traps.exists(t => t.pc == beforePC && t.cause == BigInt(2)) should be(true)
+      d.traps.exists(t => t.PC == BeforePC && t.cause == BigInt(2)) should be(true)
 
       // 写 FS=3 后紧接 fadd.s：必须合法。
-      val csrPC = BigInt("0000000080000310", 16)
-      val faddPC = BigInt("0000000080000314", 16)
-      // 保持 gprRead 覆盖 csrw 与紧邻 fadd 两拍，确保 csrw 的源操作数
+      val CSRPC = BigInt("0000000080000310", 16)
+      val FaddPC = BigInt("0000000080000314", 16)
+      // 保持 GPRRead 覆盖 csrw 与紧邻 fadd 两拍，确保 csrw 的源操作数
       // 在 IDU 译码当拍仍然有效，同时不插入额外空拍破坏相邻关系。
-      dut.io.gprRead.poke(BigInt(0x6000).U)
-      d.feedAt(csrPC, csrrwX0(MSTATUS, 1))
-      d.feedAt(faddPC, faddS(0))
+      dut.io.GPRRead.poke(BigInt(0x6000).U)
+      d.feedAt(CSRPC, csrrwX0(MSTATUS, 1))
+      d.feedAt(FaddPC, faddS(0))
       d.feedNops(8)
-      dut.io.gprRead.poke(0.U)
+      dut.io.GPRRead.poke(0.U)
       withClue(
         s"FS=3 后的 fadd.s 被误报非法；traps=${d.traps.mkString(",")} "
       ) {
-        d.traps.exists(t => t.pc == faddPC) should be(false)
+        d.traps.exists(t => t.PC == FaddPC) should be(false)
       }
-      d.retires.exists(r => r.pc == faddPC && r.retire) should be(true)
+      d.retires.exists(r => r.PC == FaddPC && r.retire) should be(true)
     }
   }
 
@@ -369,21 +369,21 @@ class ysyx_26030103_IDUCSRHazardAuditTest
       val d = new Driver(dut)
       d.setup()
       // 打开 FS 并确认复位 frm=0。
-      dut.io.gprRead.poke(BigInt(0x6000).U)
+      dut.io.GPRRead.poke(BigInt(0x6000).U)
       d.feedAt(0x80000000L, csrrwX0(MSTATUS, 1))
       d.step(2)
-      dut.io.gprRead.poke(0.U)
+      dut.io.GPRRead.poke(0.U)
       d.feedNops(4)
-      big(dut.io.csrFrm) should be(BigInt(0))
+      big(dut.io.CSRFrm) should be(BigInt(0))
 
       // 写 frm=1(RTZ)，紧接 rm=DYN 的 fadd.s。
-      val csrPC = BigInt("0000000080000400", 16)
-      d.feedAt(csrPC, csrrwi(FRM, 1))
-      val dynPC = BigInt("0000000080000404", 16)
-      d.feedAt(dynPC, faddS(7))
+      val CSRPC = BigInt("0000000080000400", 16)
+      d.feedAt(CSRPC, csrrwi(FRM, 1))
+      val DynPC = BigInt("0000000080000404", 16)
+      d.feedAt(DynPC, faddS(7))
       d.feedNops(6)
 
-      big(dut.io.csrFrm) should be(BigInt(1))
+      big(dut.io.CSRFrm) should be(BigInt(1))
       val rms = d.fpRmsFor(faddS(7))
       withClue(s"fadd 进入 EXU 的 FpRm 快照=$rms（期望 1，即新 frm）： ") {
         rms should contain(1)
@@ -396,22 +396,22 @@ class ysyx_26030103_IDUCSRHazardAuditTest
     simulate(new ysyx_26030103_IDUCSRHazardHarness(config)) { dut =>
       val d = new Driver(dut)
       d.setup()
-      dut.io.gprRead.poke(BigInt(0x6000).U)
+      dut.io.GPRRead.poke(BigInt(0x6000).U)
       d.feedAt(0x80000000L, csrrwX0(MSTATUS, 1))
       d.step(2)
-      dut.io.gprRead.poke(0.U)
+      dut.io.GPRRead.poke(0.U)
       d.feedNops(4)
-      big(dut.io.csrFrm) should be(BigInt(0))
+      big(dut.io.CSRFrm) should be(BigInt(0))
       // fcsr = {frm=2, fflags=0} = 0x40；CSRRWI 立即数只有 5 位，
-      // 0x40 必须通过 csrrw 从 GPR 写入。保持 gprRead 覆盖紧邻的
+      // 0x40 必须通过 csrrw 从 GPR 写入。保持 GPRRead 覆盖紧邻的
       // DYN fadd 译码拍，避免测试驱动本身破坏相邻关系。
-      dut.io.gprRead.poke(BigInt(0x40).U)
+      dut.io.GPRRead.poke(BigInt(0x40).U)
       d.feedAt(0x80000010L, csrrwX0(FCSR, 1))
-      val dynPC = BigInt("0000000080000014", 16)
-      d.feedAt(dynPC, faddS(7))
+      val DynPC = BigInt("0000000080000014", 16)
+      d.feedAt(DynPC, faddS(7))
       d.feedNops(6)
-      dut.io.gprRead.poke(0.U)
-      big(dut.io.csrFrm) should be(BigInt(2))
+      dut.io.GPRRead.poke(0.U)
+      big(dut.io.CSRFrm) should be(BigInt(2))
       val rms = d.fpRmsFor(faddS(7))
       // 复位 frm=0，csrw fcsr 写入 frm=2 后紧邻的 DYN 必须用 2。
       withClue(s"FCSR 写后 fadd 的 FpRm 快照=$rms： ") {
@@ -430,10 +430,10 @@ class ysyx_26030103_IDUCSRHazardAuditTest
       d.feedNops(4)
       val addi = 0x00128293L // addi x5,x5,1
       for (i <- 0 until 8) { d.feedAt((0x80000110L + i * 4), addi) }
-      val readPC = BigInt("0000000080000140", 16)
-      d.feedAt(readPC, csrrs(5, MINSTRET))
+      val ReadPC = BigInt("0000000080000140", 16)
+      d.feedAt(ReadPC, csrrs(5, MINSTRET))
       d.step(6)
-      val reads = d.retires.filter(_.pc == readPC)
+      val reads = d.retires.filter(_.PC == ReadPC)
       withClue(s"minstret 读回指令没有退休: ${d.retires.mkString(",")}") {
         reads.size should be(1)
       }
@@ -450,7 +450,7 @@ class ysyx_26030103_IDUCSRHazardAuditTest
       var guard = 0
       while (observed.isEmpty && guard < 40) {
         if (bool(dut.io.out.valid) && bool(dut.io.out.ready) &&
-            big(dut.io.out.bits.pc) == readPc2) {
+            big(dut.io.out.bits.PC) == readPc2) {
           observed = Some(big(dut.io.out.bits.CSRReadData))
         }
         d.step()

@@ -20,7 +20,7 @@ std::string dicArchCounterName(const std::string &key)
 }
 }
 std::string renderModule(const std::map<std::string, std::string> &values,
-                         long long socXlen, const std::string &digest,
+                         long long SOCXlen, const std::string &digest,
                          const std::string &perfBuildMetadata,
                          const std::string &perfSynth,
                          bool savable,
@@ -30,7 +30,7 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     const long long xlen = asInt(values, "XLEN", 32);
     if (xlen != 32 && xlen != 64)
         throw std::runtime_error("XLEN 只允许 32/64");
-    if (socXlen != 32 && socXlen != 64)
+    if (SOCXlen != 32 && SOCXlen != 64)
         throw std::runtime_error("SOC_XLEN 只允许 32/64");
     const bool hasM = asBool(values, "RISCV_M");
     const bool hasICache = asBool(values, "ICACHE");
@@ -44,7 +44,7 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     out << "import std;\n\n";
     out << "export namespace npc\n{\n";
     out << "inline constexpr unsigned XLen{" << xlen << "};\n";
-    out << "inline constexpr unsigned SocXLen{" << socXlen << "};\n";
+    out << "inline constexpr unsigned SocXLen{" << SOCXlen << "};\n";
     out << "static_assert(XLen == 32 || XLen == 64, \"XLen 只允许 32/64\");\n";
     out << "static_assert(SocXLen == 32 || SocXLen == 64, \"SocXLen 只允许 32/64\");\n\n";
     out << "using XWord = std::conditional_t<XLen == 64, std::uint64_t, std::uint32_t>;\n";
@@ -57,8 +57,8 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     out << "    using Unsigned = std::make_unsigned_t<T>;\n";
     out << "    return static_cast<Unsigned>(Value) <= static_cast<Unsigned>(std::numeric_limits<XWord>::max());\n";
     out << "}\n\n";
-    const long long npcRamSize = asInt(values, "NPC_RAM_SIZE", 0x04000000);
-    const long long npcRamBase = asInt(values, "NPC_RAM_BASE", 0x80000000LL);
+    const long long NpcRAMSize = asInt(values, "NPC_RAM_SIZE", 0x04000000);
+    const long long NpcRAMBase = asInt(values, "NPC_RAM_BASE", 0x80000000LL);
     const long long cachePadding = asInt(values, "CACHE_PADDING", 0);
     const long long pmaMromBase = asInt(values, "PMA_MROM_BASE", 0x30000000LL);
     const long long pmaMromSize = asInt(values, "PMA_MROM_SIZE", 0x10000000LL);
@@ -103,8 +103,8 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     pmaConst("PmaChipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
     pmaConst("PmaSocResetAddr", "PMA_SOC_RESET_ADDR", 0x30000000LL);
     out << "inline constexpr std::uint64_t NpcMBase{0x" << std::hex
-        << npcRamBase << "ULL};\n";
-    out << "inline constexpr std::uint64_t NpcMSize{0x" << std::hex << npcRamSize
+        << NpcRAMBase << "ULL};\n";
+    out << "inline constexpr std::uint64_t NpcMSize{0x" << std::hex << NpcRAMSize
         << std::dec << "ULL};\n";
     out << "inline constexpr std::uint64_t NpcCachePadding{" << cachePadding << "ULL};\n";
     out << "inline constexpr std::uint64_t NpcResetPC{NpcMBase + NpcCachePadding};\n\n";
@@ -218,32 +218,32 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
             << asInt(values, key, fallback) << "L,\n";
         out << std::dec;
     };
-    emitField("clintBase", "PMA_CLINT_BASE", 0x02000000LL);
-    emitField("clintSize", "PMA_CLINT_SIZE", 0x00010000LL);
+    emitField("CLINTBase", "PMA_CLINT_BASE", 0x02000000LL);
+    emitField("CLINTSize", "PMA_CLINT_SIZE", 0x00010000LL);
     emitField("sramBase", "PMA_SRAM_BASE", 0x0f000000LL);
     emitField("sramSize", "PMA_SRAM_SIZE", 0x00008000LL);
-    emitField("uartBase", "PMA_UART_BASE", 0x10000000LL);
-    emitField("uartSize", "PMA_UART_SIZE", 0x00001000LL);
-    emitField("spiBase", "PMA_SPI_BASE", 0x10001000LL);
-    emitField("spiSize", "PMA_SPI_SIZE", 0x00001000LL);
-    emitField("gpioBase", "PMA_GPIO_BASE", 0x10002000LL);
-    emitField("gpioSize", "PMA_GPIO_SIZE", 0x00000010LL);
+    emitField("UARTBase", "PMA_UART_BASE", 0x10000000LL);
+    emitField("UARTSize", "PMA_UART_SIZE", 0x00001000LL);
+    emitField("SPIBase", "PMA_SPI_BASE", 0x10001000LL);
+    emitField("SPISize", "PMA_SPI_SIZE", 0x00001000LL);
+    emitField("GPIOBase", "PMA_GPIO_BASE", 0x10002000LL);
+    emitField("GPIOSize", "PMA_GPIO_SIZE", 0x00000010LL);
     emitField("keyboardBase", "PMA_KEYBOARD_BASE", 0x10011000LL);
     emitField("keyboardSize", "PMA_KEYBOARD_SIZE", 0x00000008LL);
-    emitField("vgaBase", "PMA_VGA_BASE", 0x21000000LL);
-    emitField("vgaSize", "PMA_VGA_SIZE", 0x00200000LL);
+    emitField("VGABase", "PMA_VGA_BASE", 0x21000000LL);
+    emitField("VGASize", "PMA_VGA_SIZE", 0x00200000LL);
     emitField("mromBase", "PMA_MROM_BASE", 0x30000000LL);
     emitField("mromSize", "PMA_MROM_SIZE", 0x10000000LL);
     emitField("psramBase", "PMA_PSRAM_BASE", 0x80000000LL);
     emitField("psramSize", "PMA_PSRAM_SIZE", 0x00400000LL);
     emitField("sdramBase", "PMA_SDRAM_BASE", 0xa0000000LL);
     emitField("sdramSize", "PMA_SDRAM_SIZE", 0x02000000LL);
-    emitField("chipLinkMmioBase", "PMA_CHIPLINK_MMIO_BASE", 0x40000000LL);
-    emitField("chipLinkMmioSize", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
+    emitField("ChipLinkMMIOBase", "PMA_CHIPLINK_MMIO_BASE", 0x40000000LL);
+    emitField("ChipLinkMMIOSize", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
     emitField("chipLinkMemBase", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
     emitField("chipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
-    emitField("socResetAddr", "PMA_SOC_RESET_ADDR", 0x30000000LL);
-    out << "    npcRamBase = NpcRamBase\n";
+    emitField("SOCResetAddress", "PMA_SOC_RESET_ADDR", 0x30000000LL);
+    out << "    NpcRAMBase = NpcRamBase\n";
     out << "  )\n";
     const auto emitInt = [&](const char *name, const char *key,
                              long long fallback) {
@@ -270,9 +270,9 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitInt("NpcCachePadding", "CACHE_PADDING", 0);
 
     const long long xlen = asInt(values, "XLEN", 32);
-    const long long pteBytes =
+    const long long PTEBytes =
         asInt(values, "MMU_PTE_SIZE_BYTES", xlen == 64 ? 8 : 4);
-    out << "  val MMUPTEBits: Int = " << pteBytes * 8 << "\n";
+    out << "  val MMUPTEBits: Int = " << PTEBytes * 8 << "\n";
     emitInt("MMUXlen", "MMU_XLEN", xlen);
     emitInt("MMUPTEValidBit", "MMU_PTE_VALID_BIT", 0);
     emitInt("MMUPTEReadBit", "MMU_PTE_READ_BIT", 1);
@@ -284,11 +284,11 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitInt("MMUPTEDBit", "MMU_PTE_D_BIT", 7);
     emitInt("MMUPTEPPNLow", "MMU_PTE_PPN_LOW", 10);
     emitInt("MMUPTEPPNHigh", "MMU_PTE_PPN_HIGH",
-            pteBytes * 8 == 64 ? 53 : 31);
+            PTEBytes * 8 == 64 ? 53 : 31);
     emitInt("MMUCustomSatpMode", "MMU_CUSTOM_SATP_MODE", 10);
     emitInt("MMUPageSizeBytes", "MMU_PAGE_SIZE_BYTES", 4096);
     emitInt("MMULevels", "MMU_LEVELS", xlen == 64 ? 3 : 2);
-    emitInt("MMUPTESizeBytes", "MMU_PTE_SIZE_BYTES", pteBytes);
+    emitInt("MMUPTESizeBytes", "MMU_PTE_SIZE_BYTES", PTEBytes);
     emitInt("MMUPageTableSizeBytes", "MMU_PAGE_TABLE_SIZE_BYTES", 4096);
     emitInt("MMUCacheVIPTAliasScanWidth",
             "MMU_CACHE_VIPT_ALIAS_SCAN_WIDTH", 4);
@@ -325,13 +325,13 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     while ((1LL << pageBits) < pageSize) ++pageBits;
     const long long pageTableBytes =
         asInt(values, "MMU_PAGE_TABLE_SIZE_BYTES", 4096);
-    const long long tableEntries = pageTableBytes / pteBytes;
+    const long long tableEntries = pageTableBytes / PTEBytes;
     long long indexBits = 0;
     while ((1LL << indexBits) < tableEntries) ++indexBits;
     const long long mmuLevels = asInt(values, "MMU_LEVELS", xlen == 64 ? 3 : 2);
     out << "  val MMUPageBits: Int = " << pageBits << "\n";
     out << "  val MMUTableEntries: Int = " << tableEntries << "\n";
-    out << "  val MMUPTEWidth: Int = " << pteBytes * 8 << "\n";
+    out << "  val MMUPTEWidth: Int = " << PTEBytes * 8 << "\n";
     out << "  val MMUIndexBits: Int = " << indexBits << "\n";
     out << "  val MMUVaBits: Int = " << pageBits + mmuLevels * indexBits << "\n";
     emitInt("MMUPTWBusDepth", "PTW_BUS_DEPTH", 16);
@@ -343,7 +343,7 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitInt("AXIXbarResponseQueueDepth",
             "AXI_XBAR_RESP_QUEUE_DEPTH", 4);
     emitInt("UartFifoDepth", "UART_FIFO_DEPTH", 64);
-    emitInt("UartAddrWidth", "UART_ADDR_WIDTH", 5);
+    emitInt("UartAddressWidth", "UART_ADDR_WIDTH", 5);
     emitInt("UartTxHoldCycles", "UART_TX_HOLD_CYCLES", 32);
     emitInt("UartTxShiftCycles", "UART_TX_SHIFT_CYCLES", 64);
 
@@ -432,11 +432,11 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     const std::vector<std::pair<std::string, unsigned long long>> satpFields =
         xlen == 64
             ? std::vector<std::pair<std::string, unsigned long long>>{
-                  {"mode", 0xfULL << 60}, {"asid", 0xffffULL << 44},
-                  {"ppn", (1ULL << 44) - 1}}
+                  {"mode", 0xfULL << 60}, {"ASID", 0xffffULL << 44},
+                  {"PPN", (1ULL << 44) - 1}}
             : std::vector<std::pair<std::string, unsigned long long>>{
-                  {"mode", 0x80000000ULL}, {"asid", 0x7fc00000ULL},
-                  {"ppn", 0x003fffffULL}};
+                  {"mode", 0x80000000ULL}, {"ASID", 0x7fc00000ULL},
+                  {"PPN", 0x003fffffULL}};
     const auto [satpRead, satpSet, satpWrite] =
         fieldMasks(satpFields, "CSR_SATP");
     out << "  val MMUSatpReadMask: Long = "

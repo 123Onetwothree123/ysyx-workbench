@@ -55,12 +55,12 @@ abstract class ysyx_26030103_FudianFPUBase(
     FloatPoint.fromUInt(value, sExpWidth, sPrecision).decode.isSNaN
 
   protected def classifyBits(value: UInt, expWidth: Int, precision: Int): UInt = {
-    val fp = FloatPoint.fromUInt(value, expWidth, precision)
-    val decode = fp.decode
+    val FP = FloatPoint.fromUInt(value, expWidth, precision)
+    val decode = FP.decode
     val cls = Wire(UInt(10.W))
     cls := 0.U
     when(decode.isInf) {
-      cls := Mux(fp.sign, 1.U(10.W), (BigInt(1) << 7).U(10.W))
+      cls := Mux(FP.sign, 1.U(10.W), (BigInt(1) << 7).U(10.W))
     }.elsewhen(decode.isNaN) {
       cls := Mux(
         decode.isSNaN,
@@ -68,11 +68,11 @@ abstract class ysyx_26030103_FudianFPUBase(
         (BigInt(1) << 9).U(10.W)
       )
     }.elsewhen(decode.isZero) {
-      cls := Mux(fp.sign, 8.U(10.W), 16.U(10.W))
+      cls := Mux(FP.sign, 8.U(10.W), 16.U(10.W))
     }.elsewhen(decode.expIsZero) {
-      cls := Mux(fp.sign, 4.U(10.W), 32.U(10.W))
+      cls := Mux(FP.sign, 4.U(10.W), 32.U(10.W))
     }.otherwise {
-      cls := Mux(fp.sign, 2.U(10.W), 64.U(10.W))
+      cls := Mux(FP.sign, 2.U(10.W), 64.U(10.W))
     }
     cls
   }
@@ -85,20 +85,20 @@ abstract class ysyx_26030103_FudianFPUBase(
       precision: Int,
       isMax: Boolean
   ): (UInt, UInt) = {
-    val fpX = FloatPoint.fromUInt(lhs, expWidth, precision)
-    val fpY = FloatPoint.fromUInt(rhs, expWidth, precision)
-    val decX = fpX.decode
-    val decY = fpY.decode
+    val FPX = FloatPoint.fromUInt(lhs, expWidth, precision)
+    val FPY = FloatPoint.fromUInt(rhs, expWidth, precision)
+    val DecodeX = FPX.decode
+    val DecodeY = FPY.decode
 
-    val xAbs = Cat(fpX.exp, fpX.sig)
-    val yAbs = Cat(fpY.exp, fpY.sig)
+    val xAbs = Cat(FPX.exp, FPX.sig)
+    val yAbs = Cat(FPY.exp, FPY.sig)
     val xLtY = Mux(
-      fpX.sign === fpY.sign,
-      Mux(fpX.sign, xAbs > yAbs, xAbs < yAbs),
-      fpX.sign
+      FPX.sign === FPY.sign,
+      Mux(FPX.sign, xAbs > yAbs, xAbs < yAbs),
+      FPX.sign
     )
 
-    val bothNaN = decX.isNaN && decY.isNaN
+    val bothNaN = DecodeX.isNaN && DecodeY.isNaN
     val ordered = Mux(
       isMax.B,
       Mux(xLtY, rhs, lhs),
@@ -107,24 +107,24 @@ abstract class ysyx_26030103_FudianFPUBase(
     val result = Mux(
       bothNaN,
       FloatPoint.defaultNaNUInt(expWidth, precision),
-      Mux(decX.isNaN, rhs, Mux(decY.isNaN, lhs, ordered))
+      Mux(DecodeX.isNaN, rhs, Mux(DecodeY.isNaN, lhs, ordered))
     )
-    val fflags = Cat(decX.isSNaN || decY.isSNaN,
+    val fflags = Cat(DecodeX.isSNaN || DecodeY.isSNaN,
       0.U(ysyx_26030103_FPUFlags.NV.W))
     (result, fflags)
   }
 
   // 操作数与舍入模式
-  protected val op = io.req.bits.op
-  protected val fmtD = hasD.B && io.req.bits.fmt === ysyx_26030103_FPUFmt.D
-  protected val rm = resolveRm(io.req.bits.rm)
+  protected val op = io.request.bits.op
+  protected val fmtD = hasD.B && io.request.bits.fmt === ysyx_26030103_FPUFmt.D
+  protected val rm = resolveRm(io.request.bits.rm)
 
-  protected val aS = unboxS(io.req.bits.rs1)
-  protected val bS = unboxS(io.req.bits.rs2)
-  protected val cS = unboxS(io.req.bits.rs3)
-  protected val aD = io.req.bits.rs1
-  protected val bD = io.req.bits.rs2
-  protected val cD = io.req.bits.rs3
+  protected val aS = unboxS(io.request.bits.rs1)
+  protected val bS = unboxS(io.request.bits.rs2)
+  protected val cS = unboxS(io.request.bits.rs3)
+  protected val aD = io.request.bits.rs1
+  protected val bD = io.request.bits.rs2
+  protected val cD = io.request.bits.rs3
 
   protected val isSub = op === ysyx_26030103_FPUOp.FSub
   protected val isNegA =
@@ -135,17 +135,17 @@ abstract class ysyx_26030103_FudianFPUBase(
   // intWord=true 只用低 32 位，false 用完整 XLEN；RV32 只允许 W/WU。
   private val cvtSigned = op === ysyx_26030103_FPUOp.FCvtFPToInt ||
     op === ysyx_26030103_FPUOp.FCvtIntToFP
-  private val cvtLong = (XLEN == 64).B && !io.req.bits.intWord
+  private val cvtLong = (XLEN == 64).B && !io.request.bits.intWord
   protected val cvtToIntOp = Cat(cvtLong, cvtSigned)
 
-  protected val intToFPSigned = op === ysyx_26030103_FPUOp.FCvtIntToFP
-  protected val intToFPLong: Bool =
-    if (XLEN == 64) !io.req.bits.intWord else false.B
-  private val intSrcWord: UInt =
-    Cat(0.U(32.W), io.req.bits.rs1(31, 0))
+  protected val IntToFPSigned = op === ysyx_26030103_FPUOp.FCvtIntToFP
+  protected val IntToFPLong: Bool =
+    if (XLEN == 64) !io.request.bits.intWord else false.B
+  private val IntSourceWord: UInt =
+    Cat(0.U(32.W), io.request.bits.rs1(31, 0))
   protected val intSrc64: UInt =
-    if (XLEN == 64) Mux(io.req.bits.intWord, intSrcWord, io.req.bits.rs1)
-    else intSrcWord
+    if (XLEN == 64) Mux(io.request.bits.intWord, IntSourceWord, io.request.bits.rs1)
+    else IntSourceWord
 
   // 按运行时 fmt 在两个精度的结果之间选择。
   protected def byFmt(singleValue: UInt, doubleValue: => UInt): UInt =

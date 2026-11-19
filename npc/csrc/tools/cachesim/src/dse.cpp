@@ -1,3 +1,5 @@
+module;
+#include "common/DseRunner.hpp"
 module dse;
 import std;
 import types;
@@ -10,7 +12,6 @@ auto run_dse(const std::string& trace_path,
              std::span<const unsigned> ways_list,
              std::span<const unsigned> repl_list) -> std::vector<DseEntry>
 {
-    // 收集 trace 数据（只读一次）
     std::vector<Addr> trace_data;
     {
         TraceReader reader(trace_path);
@@ -18,40 +19,30 @@ auto run_dse(const std::string& trace_path,
             trace_data.push_back(*addr);
     }
 
-    // 生成所有参数组合
-    std::vector<CacheConfig> configs;
-    for (auto bs : block_sizes) {
-        for (auto nb : num_blocks_list) {
-            for (auto w : ways_list | std::views::filter([nb](auto ways) { return ways <= nb && nb % ways == 0; })) {
-                for (auto r : repl_list) {
-                    configs.push_back({bs, nb, w, r});
-                }
-            }
-        }
-    }
+    auto configs{common::EnumerateCombos<CacheConfig>(
+        {block_sizes, num_blocks_list, ways_list, repl_list},
+        [](std::span<const unsigned> value)
+        {
+            return CacheConfig{value[0], value[1], value[2], value[3]};
+        },
+        [](const CacheConfig& config)
+        {
+            return common::ValidWays(config.ways, config.num_blocks);
+        })};
 
-    // 并行评估
-    std::vector<DseEntry> results(configs.size());
-    std::vector<std::future<void>> futures;
-    futures.reserve(configs.size());
-
-    for (std::size_t i = 0; i < configs.size(); ++i) {
-        futures.push_back(std::async(std::launch::async, [&, i] {
-            CacheSim sim(configs[i]);
+    auto results{common::EvalCombos<CacheConfig, DseEntry>(configs, 1,
+        [&](const CacheConfig& config, std::span<DseEntry> rows)
+        {
+            CacheSim sim(config);
             for (auto addr : trace_data)
                 sim.access(addr);
-            results[i] = {configs[i], sim.stats()};
-        }));
-    }
+            rows[0] = {config, sim.stats()};
+        })};
 
-    for (auto& f : futures)
-        f.get();
-
-    // 按命中率降序排列
-    std::ranges::sort(results, [](const DseEntry& a, const DseEntry& b) {
-        auto ra = a.stats.total > 0 ? static_cast<double>(a.stats.hits) / a.stats.total : 0.0;
-        auto rb = b.stats.total > 0 ? static_cast<double>(b.stats.hits) / b.stats.total : 0.0;
-        return ra > rb;
+    common::SortByDescending(results, [](const DseEntry& entry)
+    {
+        const auto& s{entry.stats};
+        return s.total > 0 ? static_cast<double>(s.hits) / s.total : 0.0;
     });
 
     return results;

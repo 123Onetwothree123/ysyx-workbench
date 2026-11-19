@@ -12,8 +12,7 @@ Prediction BTFN::predict(Addr pc) const
 void BTFN::update(Addr pc, bool taken, Addr target, BranchKind kind,
                   std::uint32_t)
 {
-    // 当前RTL只为BTFN可能预测taken的后向条件分支分配BTB；
-    // 前向分支始终预测不跳，不应占容量或驱逐有用的后向表项。
+    // 仅后向条件分支入表，前向始终不跳。
     if (kind == BranchKind::Branch && target < pc)
         btb.update(pc, target, kind);
 }

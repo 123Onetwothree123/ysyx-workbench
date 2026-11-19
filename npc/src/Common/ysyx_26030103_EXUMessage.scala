@@ -49,5 +49,5 @@ class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
   val FPWriteData = UInt(64.W)
   val FP64 = Bool()
 
-  val pc = UInt(XLEN.W)
+  val PC = UInt(XLEN.W)
 }

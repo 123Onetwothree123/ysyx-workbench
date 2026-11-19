@@ -36,7 +36,7 @@ class ysyx_26030103_CacheMMUProbeAuditTest
       PMARegions = Seq(region)
     )
 
-  /** 初始化为空闲，并完成一笔成功 4 拍 refill；resp.ready 保持 0。 */
+  /** 初始化为空闲，并完成一笔成功 4 拍 refill；response.ready 保持 0。 */
   private def setupDCacheWithPendingResponse(
     dut:   ysyx_26030103_DCacheReg,
     clock: Clock
@@ -44,15 +44,15 @@ class ysyx_26030103_CacheMMUProbeAuditTest
     dut.reset.poke(true.B)
     clock.step(2)
     dut.reset.poke(false.B)
-    dut.io.req.valid.poke(false.B)
-    dut.io.req.bits.addr.poke(0.U)
-    dut.io.req.bits.vaddr.poke(0.U)
-    dut.io.req.bits.WidthSelect.poke(2.U)
-    dut.io.req.bits.signed.poke(false.B)
-    dut.io.req_paddr_valid.poke(true.B)
-    dut.io.req_paddr_vaddr.poke(0.U)
-    dut.io.req_kill.poke(false.B)
-    dut.io.resp.ready.poke(false.B)
+    dut.io.request.valid.poke(false.B)
+    dut.io.request.bits.address.poke(0.U)
+    dut.io.request.bits.vaddr.poke(0.U)
+    dut.io.request.bits.WidthSelect.poke(2.U)
+    dut.io.request.bits.signed.poke(false.B)
+    dut.io.RequestPaddrValid.poke(true.B)
+    dut.io.RequestPaddrVaddr.poke(0.U)
+    dut.io.RequestKill.poke(false.B)
+    dut.io.response.ready.poke(false.B)
     dut.io.StoreValid.poke(false.B)
     dut.io.StoreResponse.poke(0.U)
     dut.io.StoreAddress.poke(0.U)
@@ -60,9 +60,9 @@ class ysyx_26030103_CacheMMUProbeAuditTest
     dut.io.StoreData.poke(0.U)
     dut.io.StoreStrobe.poke(0.U)
     dut.io.flush.poke(false.B)
-    dut.io.dma_snoop_valid.poke(false.B)
-    dut.io.dma_snoop_start.poke(0.U)
-    dut.io.dma_snoop_end.poke(0.U)
+    dut.io.DMASnoopValid.poke(false.B)
+    dut.io.DMASnoopStart.poke(0.U)
+    dut.io.DMASnoopEnd.poke(0.U)
     dut.io.AXI.AR.ARREADY.poke(false.B)
     dut.io.AXI.R.RVALID.poke(false.B)
     dut.io.AXI.R.RDATA.poke(0.U)
@@ -71,16 +71,16 @@ class ysyx_26030103_CacheMMUProbeAuditTest
     dut.io.AXI.R.RID.poke(0.U)
 
     // 失效 load，触发 4 拍 refill。
-    dut.io.req.bits.addr.poke(LineBase.U)
-    dut.io.req.bits.vaddr.poke(LineBase.U)
-    dut.io.req.valid.poke(true.B)
+    dut.io.request.bits.address.poke(LineBase.U)
+    dut.io.request.bits.vaddr.poke(LineBase.U)
+    dut.io.request.valid.poke(true.B)
     var cycles = 0
-    while (!bool(dut.io.req.ready) && cycles < 20) {
+    while (!bool(dut.io.request.ready) && cycles < 20) {
       clock.step(); cycles += 1
     }
-    bool(dut.io.req.ready) should be(true)
+    bool(dut.io.request.ready) should be(true)
     clock.step()
-    dut.io.req.valid.poke(false.B)
+    dut.io.request.valid.poke(false.B)
 
     cycles = 0
     while (!bool(dut.io.AXI.AR.ARVALID) && cycles < 20) {
@@ -103,19 +103,19 @@ class ysyx_26030103_CacheMMUProbeAuditTest
     }
 
     cycles = 0
-    while (!bool(dut.io.resp.valid) && cycles < 30) {
+    while (!bool(dut.io.response.valid) && cycles < 30) {
       clock.step(); cycles += 1
     }
     withClue("refill 后未产生待接收响应: ") {
-      bool(dut.io.resp.valid) should be(true)
+      bool(dut.io.response.valid) should be(true)
     }
-    bool(dut.io.resp.ready) should be(false)
+    bool(dut.io.response.ready) should be(false)
   }
 
   private def startSnoop(dut: ysyx_26030103_DCacheReg): Unit = {
-    dut.io.dma_snoop_start.poke(LineBase.U)
-    dut.io.dma_snoop_end.poke((LineBase + 3L).U)
-    dut.io.dma_snoop_valid.poke(true.B)
+    dut.io.DMASnoopStart.poke(LineBase.U)
+    dut.io.DMASnoopEnd.poke((LineBase + 3L).U)
+    dut.io.DMASnoopValid.poke(true.B)
   }
 
   /** 接受一笔 replay AR 并喂 4 拍成功数据，同时采样响应/ready。 */
@@ -126,12 +126,12 @@ class ysyx_26030103_CacheMMUProbeAuditTest
     gotResponse:    () => Unit,
     sawReady:   () => Unit
   ): Unit = {
-    if (bool(dut.io.dma_snoop_ready)) sawReady()
-    if (bool(dut.io.resp.valid)) gotResponse()
+    if (bool(dut.io.DMASnoopReady)) sawReady()
+    if (bool(dut.io.response.valid)) gotResponse()
     if (bool(dut.io.AXI.AR.ARVALID)) {
       dut.io.AXI.AR.ARREADY.poke(true.B)
-      if (bool(dut.io.dma_snoop_ready)) sawReady()
-      if (bool(dut.io.resp.valid)) gotResponse()
+      if (bool(dut.io.DMASnoopReady)) sawReady()
+      if (bool(dut.io.response.valid)) gotResponse()
       clock.step()
       dut.io.AXI.AR.ARREADY.poke(false.B)
       val beats = long(dut.io.AXI.AR.ARLEN).toInt + 1
@@ -140,8 +140,8 @@ class ysyx_26030103_CacheMMUProbeAuditTest
         dut.io.AXI.R.RDATA.poke((tag + beat).U)
         dut.io.AXI.R.RRESP.poke(0.U)
         dut.io.AXI.R.RLAST.poke((beat + 1 == beats).B)
-        if (bool(dut.io.dma_snoop_ready)) sawReady()
-        if (bool(dut.io.resp.valid)) gotResponse()
+        if (bool(dut.io.DMASnoopReady)) sawReady()
+        if (bool(dut.io.response.valid)) gotResponse()
         clock.step()
         dut.io.AXI.R.RVALID.poke(false.B)
         dut.io.AXI.R.RLAST.poke(false.B)
@@ -152,23 +152,23 @@ class ysyx_26030103_CacheMMUProbeAuditTest
   }
 
   "DCacheReg" should
-    "在 dma_snoop_ready 握手后释放 valid 时仍能完成 replay" in {
+    "在 DMASnoopReady 握手后释放 valid 时仍能完成 replay" in {
     simulate(newDCache) { dut =>
       val clock = dut.clock
       setupDCacheWithPendingResponse(dut, clock)
 
       startSnoop(dut)
       var cycles = 0
-      while (!bool(dut.io.dma_snoop_ready) && cycles < 100) {
+      while (!bool(dut.io.DMASnoopReady) && cycles < 100) {
         clock.step(); cycles += 1
       }
       withClue(s"DMA snoop 在 $cycles 拍内未 ready: ") {
-        bool(dut.io.dma_snoop_ready) should be(true)
+        bool(dut.io.DMASnoopReady) should be(true)
       }
       // AXI 握手完成，arbiter 释放 valid。
       clock.step()
-      dut.io.dma_snoop_valid.poke(false.B)
-      dut.io.resp.ready.poke(true.B)
+      dut.io.DMASnoopValid.poke(false.B)
+      dut.io.response.ready.poke(true.B)
 
       var gotResponse = false
       var readyHigh = false
@@ -187,7 +187,7 @@ class ysyx_26030103_CacheMMUProbeAuditTest
         gotResponse should be(true)
       }
       withClue("交付的不是 replay 读回的新数据: ") {
-        long(dut.io.resp.bits.data) should be(0x72000000L)
+        long(dut.io.response.bits.data) should be(0x72000000L)
       }
     }
   }
@@ -216,12 +216,12 @@ class ysyx_26030103_CacheMMUProbeAuditTest
       dut.io.sum.poke(false.B)
       dut.io.mxr.poke(false.B)
       dut.io.flush.poke(false.B)
-      dut.io.pmpFault.poke(false.B)
+      dut.io.PMPFault.poke(false.B)
       dut.io.memActive.poke(false.B)
       dut.io.memTrap.poke(false.B)
-      dut.io.req.ready.poke(false.B)
-      dut.io.resp.valid.poke(false.B)
-      dut.io.resp.bits.poke(
+      dut.io.request.ready.poke(false.B)
+      dut.io.response.valid.poke(false.B)
+      dut.io.response.bits.poke(
         0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, xlen))
       )
 
@@ -232,7 +232,7 @@ class ysyx_26030103_CacheMMUProbeAuditTest
       dut.io.in.bits.ALUResult.poke(Va.U(xlen.W))
       dut.io.in.bits.VAddress.poke(Va.U(xlen.W))
       dut.io.in.bits.WidthSelect.poke(2.U)
-      dut.io.in.bits.pc.poke(0x1000L.U(xlen.W))
+      dut.io.in.bits.PC.poke(0x1000L.U(xlen.W))
       dut.io.in.valid.poke(true.B)
 
       var cycles = 0
@@ -251,19 +251,19 @@ class ysyx_26030103_CacheMMUProbeAuditTest
       clock.step() // out.ready=true，LSU 接收
 
       cycles = 0
-      while (!bool(dut.io.req.valid) && cycles < 20) {
+      while (!bool(dut.io.request.valid) && cycles < 20) {
         clock.step(); cycles += 1
       }
       withClue("MMU 翻译请求未发出: ") {
-        bool(dut.io.req.valid) should be(true)
+        bool(dut.io.request.valid) should be(true)
       }
-      dut.io.req.ready.poke(true.B)
+      dut.io.request.ready.poke(true.B)
       clock.step()
-      dut.io.req.ready.poke(false.B)
+      dut.io.request.ready.poke(false.B)
 
-      // 已进入 xwait：req 握手完成，resp.valid 保持 0。
+      // 已进入 xwait：request 握手完成，response.valid 保持 0。
       bool(dut.io.busy) should be(true)
-      bool(dut.io.resp.valid) should be(false)
+      bool(dut.io.response.valid) should be(false)
 
       // 冲刷一拍；MMU 会丢弃在途翻译且不再返回响应。
       dut.io.flush.poke(true.B)

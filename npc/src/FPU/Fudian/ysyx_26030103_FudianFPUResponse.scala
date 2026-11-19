@@ -88,7 +88,7 @@ trait ysyx_26030103_FudianFPUResponse {
   responsePipe.io.in.valid := responseValid
   responsePipe.io.in.bits.result := responseResult
   responsePipe.io.in.bits.fflags := responseFlags
-  io.resp <> responsePipe.io.out
+  io.response <> responsePipe.io.out
 
   private val slowReady: Bool = if (shared) {
     dDiv.get.io.specialIO.in_ready
@@ -98,8 +98,8 @@ trait ysyx_26030103_FudianFPUResponse {
     sDiv.get.io.specialIO.in_ready
   }
 
-  io.req.ready := !busy && !responseValid && (!isSlowOp || slowReady)
-  private val requestFire = io.req.valid && io.req.ready
+  io.request.ready := !busy && !responseValid && (!isSlowOp || slowReady)
+  private val requestFire = io.request.valid && io.request.ready
 
   if (shared) {
     dDiv.get.io.specialIO.in_valid := requestFire && isSlowOp && !io.flush

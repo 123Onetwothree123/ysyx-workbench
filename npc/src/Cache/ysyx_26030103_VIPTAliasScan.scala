@@ -71,11 +71,11 @@ object ysyx_26030103_VIPTAliasScan {
       val tag: Vec[UInt],
       scanWidth: Int
   ) {
-    val numSets: Int = valid.length
-    require(numSets >= 2, "VIPT alias 扫描至少需要 2 个 set")
-    val width: Int = scanWidth.min(numSets).max(1)
-    val indexWidth: Int = log2Ceil(numSets).max(1)
-    val chunks: Int = (numSets + width - 1) / width
+    val NumberSets: Int = valid.length
+    require(NumberSets >= 2, "VIPT alias 扫描至少需要 2 个 set")
+    val width: Int = scanWidth.min(NumberSets).max(1)
+    val indexWidth: Int = log2Ceil(NumberSets).max(1)
+    val chunks: Int = (NumberSets + width - 1) / width
     val chunkWidth: Int = log2Ceil(chunks).max(1)
     val tagWidth: Int = tag.head.getWidth.max(1)
     val paddedTotal: Int = chunks * width
@@ -94,7 +94,7 @@ object ysyx_26030103_VIPTAliasScan {
       scanWidth: Int
   ): ICacheAliasScanStatus = {
     val geometry = new Geometry(valid, tag, scanWidth)
-    val numSets = geometry.numSets
+    val NumberSets = geometry.NumberSets
     val width = geometry.width
     val indexWidth = geometry.indexWidth
     val chunks = geometry.chunks
@@ -113,7 +113,7 @@ object ysyx_26030103_VIPTAliasScan {
     when(active) {
       for (k <- 0 until width) {
         val offset = (scanChunk * width.U + k.U)(offWidth - 1, 0)
-        val inRange = offset < numSets.U
+        val inRange = offset < NumberSets.U
         val index = offset(indexWidth - 1, 0)
         when(
           inRange && paddedValid(offset) && paddedTag(offset) === scanTag &&
@@ -165,7 +165,7 @@ object ysyx_26030103_VIPTAliasScan {
       (eventQueueDepth & (eventQueueDepth - 1)) == 0,
       s"VIPT alias 事件队列深度必须是 >=2 的 2 的幂，收到 $eventQueueDepth")
     val geometry = new Geometry(valid, tag, scanWidth)
-    val numSets = geometry.numSets
+    val NumberSets = geometry.NumberSets
     val width = geometry.width
     val indexWidth = geometry.indexWidth
     val chunks = geometry.chunks
@@ -215,7 +215,7 @@ object ysyx_26030103_VIPTAliasScan {
       when(scanning) {
         for (k <- 0 until width) {
           val offset = (scanChunk * width.U + k.U)(offWidth - 1, 0)
-          val inRange = offset < numSets.U
+          val inRange = offset < NumberSets.U
           val index = offset(indexWidth - 1, 0)
           when(
             inRange && paddedValid(offset) &&

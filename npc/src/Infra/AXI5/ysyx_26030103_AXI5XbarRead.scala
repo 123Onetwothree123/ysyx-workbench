@@ -7,7 +7,7 @@ private[infra] trait AXI5XbarRead {
   this: ysyx_26030103_AXI5Xbar =>
 
   def readBody(): Unit = {
-    when(inARFire) {
+    when(InARFire) {
       val target = decode(
         io.in.AR.ARADDR,
         io.in.AR.ARLEN,
@@ -15,81 +15,81 @@ private[infra] trait AXI5XbarRead {
         io.in.AR.ARBURST,
         isWrite = false
       )
-      readTargetReg(incomingReadID) := target
-      arAddressReg(incomingReadID) := io.in.AR.ARADDR
-      arLenReg(incomingReadID) := io.in.AR.ARLEN
-      arSizeReg(incomingReadID) := io.in.AR.ARSIZE
-      arBurstReg(incomingReadID) := io.in.AR.ARBURST
-      arProtReg(incomingReadID) := io.in.AR.ARPROT
-      arCacheReg(incomingReadID) := io.in.AR.ARCACHE
-      arQosReg(incomingReadID) := io.in.AR.ARQOS
-      readDECERRBeatReg(incomingReadID) := 0.U
-      readSlotState(incomingReadID) := Mux(
+      readTargetReg(IncomingReadID) := target
+      ARAddressReg(IncomingReadID) := io.in.AR.ARADDR
+      ARLengthReg(IncomingReadID) := io.in.AR.ARLEN
+      ARSizeReg(IncomingReadID) := io.in.AR.ARSIZE
+      ARBurstReg(IncomingReadID) := io.in.AR.ARBURST
+      ARProtReg(IncomingReadID) := io.in.AR.ARPROT
+      ARCacheReg(IncomingReadID) := io.in.AR.ARCACHE
+      ARQosReg(IncomingReadID) := io.in.AR.ARQOS
+      readDECERRBeatReg(IncomingReadID) := 0.U
+      readSlotState(IncomingReadID) := Mux(
         target === targetInvalid,
         readSlotDECERR,
         readSlotRequest
       )
     }
 
-    when(socRequestValid) {
+    when(SOCRequestValid) {
       io.SoCBus.AR.ARVALID := true.B
-      io.SoCBus.AR.ARID := socRequestID
-      io.SoCBus.AR.ARADDR := arAddressReg(socRequestID)
-      io.SoCBus.AR.ARLEN := arLenReg(socRequestID)
-      io.SoCBus.AR.ARSIZE := arSizeReg(socRequestID)
-      io.SoCBus.AR.ARBURST := arBurstReg(socRequestID)
-      io.SoCBus.AR.ARPROT := arProtReg(socRequestID)
-      io.SoCBus.AR.ARCACHE := arCacheReg(socRequestID)
-      io.SoCBus.AR.ARQOS := arQosReg(socRequestID)
-      when(socRequestFire) {
-        readSlotState(socRequestID) := readSlotResponse
+      io.SoCBus.AR.ARID := SOCRequestID
+      io.SoCBus.AR.ARADDR := ARAddressReg(SOCRequestID)
+      io.SoCBus.AR.ARLEN := ARLengthReg(SOCRequestID)
+      io.SoCBus.AR.ARSIZE := ARSizeReg(SOCRequestID)
+      io.SoCBus.AR.ARBURST := ARBurstReg(SOCRequestID)
+      io.SoCBus.AR.ARPROT := ARProtReg(SOCRequestID)
+      io.SoCBus.AR.ARCACHE := ARCacheReg(SOCRequestID)
+      io.SoCBus.AR.ARQOS := ARQosReg(SOCRequestID)
+      when(SOCRequestFire) {
+        readSlotState(SOCRequestID) := readSlotResponse
       }
     }
-    when(clintRequestValid) {
+    when(CLINTRequestValid) {
       io.CLINT.AR.ARVALID := true.B
-      io.CLINT.AR.ARID := clintRequestID
-      io.CLINT.AR.ARADDR := arAddressReg(clintRequestID)
-      io.CLINT.AR.ARLEN := arLenReg(clintRequestID)
-      io.CLINT.AR.ARSIZE := arSizeReg(clintRequestID)
-      io.CLINT.AR.ARBURST := arBurstReg(clintRequestID)
-      io.CLINT.AR.ARPROT := arProtReg(clintRequestID)
-      io.CLINT.AR.ARCACHE := arCacheReg(clintRequestID)
-      io.CLINT.AR.ARQOS := arQosReg(clintRequestID)
-      when(clintRequestFire) {
-        readSlotState(clintRequestID) := readSlotResponse
+      io.CLINT.AR.ARID := CLINTRequestID
+      io.CLINT.AR.ARADDR := ARAddressReg(CLINTRequestID)
+      io.CLINT.AR.ARLEN := ARLengthReg(CLINTRequestID)
+      io.CLINT.AR.ARSIZE := ARSizeReg(CLINTRequestID)
+      io.CLINT.AR.ARBURST := ARBurstReg(CLINTRequestID)
+      io.CLINT.AR.ARPROT := ARProtReg(CLINTRequestID)
+      io.CLINT.AR.ARCACHE := ARCacheReg(CLINTRequestID)
+      io.CLINT.AR.ARQOS := ARQosReg(CLINTRequestID)
+      when(CLINTRequestFire) {
+        readSlotState(CLINTRequestID) := readSlotResponse
       }
     }
-    when(plicRequestValid) {
+    when(PLICRequestValid) {
       io.PLIC.AR.ARVALID := true.B
-      io.PLIC.AR.ARID := plicRequestID
-      io.PLIC.AR.ARADDR := arAddressReg(plicRequestID)
-      io.PLIC.AR.ARLEN := arLenReg(plicRequestID)
-      io.PLIC.AR.ARSIZE := arSizeReg(plicRequestID)
-      io.PLIC.AR.ARBURST := arBurstReg(plicRequestID)
-      io.PLIC.AR.ARPROT := arProtReg(plicRequestID)
-      io.PLIC.AR.ARCACHE := arCacheReg(plicRequestID)
-      io.PLIC.AR.ARQOS := arQosReg(plicRequestID)
-      when(plicRequestFire) {
-        readSlotState(plicRequestID) := readSlotResponse
+      io.PLIC.AR.ARID := PLICRequestID
+      io.PLIC.AR.ARADDR := ARAddressReg(PLICRequestID)
+      io.PLIC.AR.ARLEN := ARLengthReg(PLICRequestID)
+      io.PLIC.AR.ARSIZE := ARSizeReg(PLICRequestID)
+      io.PLIC.AR.ARBURST := ARBurstReg(PLICRequestID)
+      io.PLIC.AR.ARPROT := ARProtReg(PLICRequestID)
+      io.PLIC.AR.ARCACHE := ARCacheReg(PLICRequestID)
+      io.PLIC.AR.ARQOS := ARQosReg(PLICRequestID)
+      when(PLICRequestFire) {
+        readSlotState(PLICRequestID) := readSlotResponse
       }
     }
-    when(!socARHeld && socRequestValid && !io.SoCBus.AR.ARREADY) {
-      socARHeld := true.B
-      socARHeldID := socRequestID
-    }.elsewhen(socRequestFire) {
-      socARHeld := false.B
+    when(!SOCARHeld && SOCRequestValid && !io.SoCBus.AR.ARREADY) {
+      SOCARHeld := true.B
+      SOCARHeldID := SOCRequestID
+    }.elsewhen(SOCRequestFire) {
+      SOCARHeld := false.B
     }
-    when(!clintARHeld && clintRequestValid && !io.CLINT.AR.ARREADY) {
-      clintARHeld := true.B
-      clintARHeldID := clintRequestID
-    }.elsewhen(clintRequestFire) {
-      clintARHeld := false.B
+    when(!CLINTARHeld && CLINTRequestValid && !io.CLINT.AR.ARREADY) {
+      CLINTARHeld := true.B
+      CLINTARHeldID := CLINTRequestID
+    }.elsewhen(CLINTRequestFire) {
+      CLINTARHeld := false.B
     }
-    when(!plicARHeld && plicRequestValid && !io.PLIC.AR.ARREADY) {
-      plicARHeld := true.B
-      plicARHeldID := plicRequestID
-    }.elsewhen(plicRequestFire) {
-      plicARHeld := false.B
+    when(!PLICARHeld && PLICRequestValid && !io.PLIC.AR.ARREADY) {
+      PLICARHeld := true.B
+      PLICARHeldID := PLICRequestID
+    }.elsewhen(PLICRequestFire) {
+      PLICARHeld := false.B
     }
   }
 }

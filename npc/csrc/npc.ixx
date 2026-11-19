@@ -1,5 +1,7 @@
 export module npc;
 export import npc.config;
+export import npc.Output;
+export import npc.SimulationContext;
 export import npc.log;
 export import npc.unicode;
 export import npc.DicArchCounterStats;
@@ -30,7 +32,7 @@ export import npc.trace.disasm;
 export import npc.trace.readelf;
 export import npc.trace.iringbuf;
 export import npc.trace.RecordInstruction;
-export import npc.trace.ElfFunctionSymbol;
+export import npc.trace.ELFFunctionSymbol;
 export import npc.trace.FtraceEvent;
 export import npc.trace.FtraceFrame;
 export import npc.trace.ReadelfFunction;

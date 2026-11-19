@@ -3,7 +3,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 
 // 返回地址栈(Return Address Stack)
-// 按RISC-V x1/x5 hint表在call时压入pc+4、return时弹出；协程切换同拍pop+push。
+// 按RISC-V x1/x5 hint表在call时压入PC+4、return时弹出；协程切换同拍pop+push。
 // 循环缓冲: 满则覆盖最旧(只影响超深嵌套), 空栈不预测(nonempty=false)
 // 深度=2^RASBits, Kconfig可配
 // 本流水线中EXU提交点之前的错路指令到不了EXU, 提交点更新天然非投机, 无需检查点/恢复
@@ -18,16 +18,16 @@ class ysyx_26030103_RAS(
     // 查询(组合逻辑, IFU取指级和响应级共用当前栈顶)
     val top = Output(UInt(AddressWidth.W))
     val nonempty = Output(Bool())
-    // EXU提交push hint时压栈(返回地址=pc+4=snpc)
-    val push_valid = Input(Bool())
-    val push_addr = Input(UInt(AddressWidth.W))
+    // EXU提交push hint时压栈(返回地址=PC+4=snpc)
+    val PushValid = Input(Bool())
+    val PushAddress = Input(UInt(AddressWidth.W))
     // EXU提交pop hint时弹栈
-    val pop_valid = Input(Bool())
+    val PopValid = Input(Bool())
     // fence.i 可能替换 call/return 指令；清空旧预测历史。
     val flush = Input(Bool())
   })
 
-  val buf = Reg(Vec(depth, UInt(AddressWidth.W)))
+  val buffer = Reg(Vec(depth, UInt(AddressWidth.W)))
   val top = RegInit(0.U(pointerWidth.W)) // 下一个写入位置
   val count = RegInit(0.U((RASBits + 1).W))
   val topEntry =
@@ -37,7 +37,7 @@ class ysyx_26030103_RAS(
   val incrementedTop = if (depth == 1) 0.U(pointerWidth.W) else top + 1.U
   val decrementedTop = if (depth == 1) 0.U(pointerWidth.W) else top - 1.U
 
-  io.top := buf(topEntry)
+  io.top := buffer(topEntry)
   io.nonempty := count =/= 0.U
 
   // JALR协程hint可以要求同拍pop-then-push。非空时用新返回地址
@@ -45,21 +45,21 @@ class ysyx_26030103_RAS(
   when(io.flush) {
     top := 0.U
     count := 0.U
-  }.elsewhen(io.push_valid && io.pop_valid) {
+  }.elsewhen(io.PushValid && io.PopValid) {
     when(count =/= 0.U) {
-      buf(topEntry) := io.push_addr
+      buffer(topEntry) := io.PushAddress
     }.otherwise {
-      buf(writeEntry) := io.push_addr
+      buffer(writeEntry) := io.PushAddress
       top := incrementedTop
       count := 1.U
     }
-  }.elsewhen(io.push_valid) {
-    buf(writeEntry) := io.push_addr
+  }.elsewhen(io.PushValid) {
+    buffer(writeEntry) := io.PushAddress
     top := incrementedTop
     when(count < depth.U) {
       count := count + 1.U
     } // 已满则覆盖最旧, count不变
-  }.elsewhen(io.pop_valid) {
+  }.elsewhen(io.PopValid) {
     when(count =/= 0.U) {
       top := decrementedTop
       count := count - 1.U

@@ -9,7 +9,7 @@ import _root_.ysyx_26030103.ysyx_26030103
   *
   * 修复点：`ysyx_26030103.scala` 中 DMMU 的 `memKill` 不再直接接到
   * DMMU->LSU 这个 StageConnect 的 flush，而是打一拍
-  * (`dmmuMemKillForStage`)。直接组合连接会形成
+  * (`DMMUMemKillForStage`)。直接组合连接会形成
   * `LSU.in.valid -> LSU.MemoryBusy -> EXU.MEMBusy -> EXU.FlushIF
   * -> DMMU.flush -> DMMU.memKill -> StageConnect.flush -> LSU.in.valid`
   * 的组合环；firtool 在生成 SystemVerilog 时会把它报成组合环错误。
@@ -26,10 +26,10 @@ class ysyx_26030103_VIPTDCacheElaborationTest extends AnyFlatSpec with Matchers 
     enabled = true,
     xlen = 64,
     levels = 3,
-    pteSizeBytes = 8,
+    PTESizeBytes = 8,
     pageTableSizeBytes = 4096,
-    pteFormat = "riscv64",
-    pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+    PTEFormat = "riscv64",
+    PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
     cacheMode = "vipt",
     cacheVIPTAliasSafe = true,
     cacheVIPTAliasScanMode = "parallel_n",

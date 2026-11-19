@@ -9,7 +9,7 @@ private[mem] trait LSUWrite {
   def writeBufferBody(): Unit = {
     // Idle 可直接驱动已经寄存的队首，避免“发现非空→切 Issue→下一拍才
     // 拉 VALID”的固定空拍。失败/非对齐/等待 PA 的队首会阻断所有年轻副作用。
-    val wbCanStart = !wbufEmpty && !wbHeadMisaligned && wbHeadReady &&
+    val wbCanStart = !WBufEmpty && !wbHeadMisaligned && wbHeadReady &&
       !io.PMPFault && !storeFaultReg && !memFaultReg
     val wbDrivingIssue = wbState === wbIssue || (wbState === wbIdle && wbCanStart)
     val wbHeadIsWide = wbHeadWide
@@ -17,7 +17,7 @@ private[mem] trait LSUWrite {
     val wbHeadTwoBeat = wbHeadIsWide && !busWideBit
     val wbBeat = RegInit(0.U(1.W))
     when(wbDrivingIssue) {
-      io.DataBus.AW.AWVALID := !wbAWDone
+      io.DataBus.AW.AWVALID := !WbAWDone
       io.DataBus.AW.AWADDR := wbHeadEffectiveAddress
       io.DataBus.AW.AWLEN := Mux(wbHeadTwoBeat, 1.U, 0.U)
       io.DataBus.AW.AWSIZE := Mux(wbHeadBusWide, 3.U, wbHeadSize)
@@ -40,7 +40,7 @@ private[mem] trait LSUWrite {
     switch(wbState) {
       is(wbIdle) {
         when(wbCanStart) {
-          when(wbAWfire) { wbAWDone := true.B }
+          when(wbAWfire) { WbAWDone := true.B }
           when(wbWfire) {
             when(wbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
               .otherwise { wbWDone := true.B }
@@ -51,18 +51,18 @@ private[mem] trait LSUWrite {
             wbState := wbIssue
           }
         }.otherwise {
-          wbAWDone := false.B
+          WbAWDone := false.B
           wbWDone := false.B
           wbBeat := 0.U
         }
       }
       is(wbIssue) {
-        when(wbAWfire) { wbAWDone := true.B }
+        when(wbAWfire) { WbAWDone := true.B }
         when(wbWfire) {
           when(wbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
             .otherwise { wbWDone := true.B }
         }
-        when((wbAWDone || wbAWfire) && (wbWDone || wbWFinishes)) {
+        when((WbAWDone || wbAWfire) && (wbWDone || wbWFinishes)) {
           wbState := wbWaitB
         }
       }
@@ -77,7 +77,7 @@ private[mem] trait LSUWrite {
           // 成功 B 后下一拍可直接驱动新队首，不插空拍。
           when(wbBMatch) {
             wbState := wbIdle
-            wbAWDone := false.B
+            WbAWDone := false.B
             wbWDone := false.B
           }
         }
@@ -96,7 +96,7 @@ private[mem] trait LSUWrite {
       wbHead := 0.U
       wbTail := 0.U
       wbState := wbIdle
-      wbAWDone := false.B
+      WbAWDone := false.B
       wbWDone := false.B
       wbBeat := 0.U
     }.otherwise {
@@ -113,7 +113,7 @@ private[mem] trait LSUWrite {
       storeFaultReg := false.B
       loadBeat := 0.U
       isStoreTransaction := stageInputBits.MemoryWrite
-      when(stageInputMisaligned || stageInputPMPFault) {
+      when(stageInputMisaligned || StageInputPMPFault) {
         // 非对齐/PMP 故障项只作为写缓冲屏障，不产生任何 AXI 请求，
         // 随后按 cause 4/6 或 5/7 精确提交。
         state := stateIdle
@@ -130,7 +130,7 @@ private[mem] trait LSUWrite {
           atomicReadLow := 0.U
           atomicReadBeat := 0.U
           atomicReadFaultReg := false.B
-          atomicAWDone := false.B
+          AtomicAWDone := false.B
           atomicWDone := false.B
           atomicWBeat := false.B
           state := stateAtomicQuiet

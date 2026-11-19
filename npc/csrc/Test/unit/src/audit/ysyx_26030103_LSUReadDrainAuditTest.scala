@@ -49,7 +49,7 @@ class ysyx_26030103_LSUReadDrainAuditTest
       dut.io.DataBus.R.RRESP.poke(0.U)
       dut.io.DataBus.R.RLAST.poke(false.B)
 
-      val addrWidth = dut.io.in.bits.ALUResult.getWidth
+      val AddressWidth = dut.io.in.bits.ALUResult.getWidth
       dut.io.in.bits.poke(0.U.asTypeOf(chiselTypeOf(dut.io.in.bits)))
       dut.io.in.bits.Retire.poke(true.B)
       dut.io.in.bits.RegisterWrite.poke(true.B)
@@ -57,10 +57,10 @@ class ysyx_26030103_LSUReadDrainAuditTest
       dut.io.in.bits.Rd.poke(5.U)
       dut.io.in.bits.MemoryValid.poke(true.B)
       dut.io.in.bits.MemoryWrite.poke(false.B)
-      dut.io.in.bits.ALUResult.poke(0x80000000L.U(addrWidth.W))
-      dut.io.in.bits.VAddress.poke(0x80000000L.U(addrWidth.W))
+      dut.io.in.bits.ALUResult.poke(0x80000000L.U(AddressWidth.W))
+      dut.io.in.bits.VAddress.poke(0x80000000L.U(AddressWidth.W))
       dut.io.in.bits.WidthSelect.poke(2.U(2.W))
-      dut.io.in.bits.pc.poke(0x80000000L.U(addrWidth.W))
+      dut.io.in.bits.PC.poke(0x80000000L.U(AddressWidth.W))
       dut.io.in.valid.poke(true.B)
 
       var cycles = 0

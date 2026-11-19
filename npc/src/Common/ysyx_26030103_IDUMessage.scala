@@ -10,8 +10,8 @@ class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   val Instruction = UInt(32.W)
   // 1=16 位压缩指令；IDU 已用展开后的 32 位形式完成译码。
   val IsCompressed = Bool()
-  val pc = UInt(XLEN.W)
-  // 顺序后继：16 位指令为 pc+2，32 位指令为 pc+4。
+  val PC = UInt(XLEN.W)
+  // 顺序后继：16 位指令为 PC+2，32 位指令为 PC+4。
   val snpc = UInt(XLEN.W)
 
   val ALUCtrl = UInt(CtrlWidth.W)
@@ -94,6 +94,6 @@ class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   val ExceptionCause = UInt(4.W)
   val AccessFaultResponse = UInt(2.W)
   // 分支预测信息透传到EXU
-  val pred_taken = Bool()
-  val pred_target = UInt(XLEN.W)
+  val PredTaken = Bool()
+  val PredTarget = UInt(XLEN.W)
 }

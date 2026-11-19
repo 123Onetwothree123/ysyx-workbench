@@ -1,13 +1,12 @@
 export module RAS;
 import std;
 import BranchRecord;
-// 返回地址栈(Return Address Stack): call压入pc+4, ret弹出
-// 循环缓冲, 满了覆盖最旧(深度溢出只影响超深嵌套), 空栈弹出返回空(此时无法预测ret)
+// call 压入 pc+4，ret 弹出；循环缓冲，满覆盖最旧，空栈返回 nullopt。
 export class RAS
 {
 private:
     std::vector<Addr> buf;
-    std::size_t top{0};   // 下一个写入位置
+    std::size_t top{0};
     std::size_t count{0};
 public:
     RAS() = default;
@@ -19,7 +18,7 @@ public:
         if (count < buf.size())
         {
             ++count;
-        } // 已满则覆盖最旧, count不变
+        }
     }
     std::optional<Addr> pop()
     {

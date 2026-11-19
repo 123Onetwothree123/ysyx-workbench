@@ -7,7 +7,6 @@ export class DCachesType
 private:
     std::vector<std::unique_ptr<DCache>> caches;
 
-
 public:
     explicit DCachesType(const DCacheConfig& config);
     ~DCachesType() = default;

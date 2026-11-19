@@ -6,8 +6,7 @@ import BPAlgorithmBase;
 import BPConfig;
 import BranchRecord;
 import BTB;
-// 方案B: jal单独使用一张小BTB(容量/相联度由Kconfig的JAL_BTB_*配置), 与分支表零干扰
-// 取指时两张表同时查: jal表命中即taken, 否则分支表命中按BTFN判方向
+// jal 独立小 BTB，取指时两表同时查询。
 export class BTFNSplitJal : public BPAlgorithmBase
 {
 private:

@@ -31,7 +31,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
 
   private def pokeLoad(
     dut: ysyx_26030103_LSUMMU,
-    pc:  Long
+    PC:  Long
   ): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
     dut.io.in.bits.MemoryValid.poke(true.B)
@@ -39,12 +39,12 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.ALUResult.poke(Va.U(AddressW.W))
     dut.io.in.bits.VAddress.poke(Va.U(AddressW.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
-    dut.io.in.bits.pc.poke(pc.U(AddressW.W))
+    dut.io.in.bits.PC.poke(PC.U(AddressW.W))
   }
 
   private def pokeStore(
     dut: ysyx_26030103_LSUMMU,
-    pc:  Long
+    PC:  Long
   ): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
     dut.io.in.bits.MemoryValid.poke(true.B)
@@ -53,7 +53,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.VAddress.poke(Va.U(AddressW.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
     dut.io.in.bits.StoreData.poke(0x11223344L.U(64.W))
-    dut.io.in.bits.pc.poke(pc.U(AddressW.W))
+    dut.io.in.bits.PC.poke(PC.U(AddressW.W))
   }
 
   private def resetDut(
@@ -72,20 +72,20 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
     dut.io.sum.poke(false.B)
     dut.io.mxr.poke(false.B)
     dut.io.flush.poke(false.B)
-    dut.io.pmpFault.poke(false.B)
+    dut.io.PMPFault.poke(false.B)
     dut.io.memActive.poke(false.B)
     dut.io.memTrap.poke(false.B)
-    dut.io.req.ready.poke(false.B)
-    dut.io.resp.valid.poke(false.B)
-    dut.io.resp.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
+    dut.io.request.ready.poke(false.B)
+    dut.io.response.valid.poke(false.B)
+    dut.io.response.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
   }
 
   private def startLoad(
     dut:   ysyx_26030103_LSUMMU,
     clock: Clock,
-    pc:    Long
+    PC:    Long
   ): Unit = {
-    pokeLoad(dut, pc)
+    pokeLoad(dut, PC)
     dut.io.in.valid.poke(true.B)
     waitUntil(clock, bool(dut.io.in.ready), "LSUMMU 未受理 load")
     clock.step()
@@ -95,9 +95,9 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
   private def startStore(
     dut:   ysyx_26030103_LSUMMU,
     clock: Clock,
-    pc:    Long
+    PC:    Long
   ): Unit = {
-    pokeStore(dut, pc)
+    pokeStore(dut, PC)
     dut.io.in.valid.poke(true.B)
     waitUntil(clock, bool(dut.io.in.ready), "LSUMMU 未受理 store")
     clock.step()
@@ -114,11 +114,11 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
     long(dut.io.out.bits.VAddress) should be(Va)
     bool(dut.io.memPhysicalAddressValid) should be(false)
     clock.step() // io.out.ready 恒为 true，LSU 接收
-    waitUntil(clock, bool(dut.io.req.valid), "MMU 翻译请求未发出")
-    long(dut.io.req.bits.vaddr) should be(Va)
-    dut.io.req.ready.poke(true.B)
+    waitUntil(clock, bool(dut.io.request.valid), "MMU 翻译请求未发出")
+    long(dut.io.request.bits.vaddr) should be(Va)
+    dut.io.request.ready.poke(true.B)
     clock.step()
-    dut.io.req.ready.poke(false.B)
+    dut.io.request.ready.poke(false.B)
   }
 
   private def pokeResponse(
@@ -126,12 +126,12 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
     fault: Boolean,
     paddr: Long
   ): Unit = {
-    dut.io.resp.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
-    dut.io.resp.bits.id.poke(1.U)
-    dut.io.resp.bits.paddr.poke(paddr.U(32.W))
-    dut.io.resp.bits.fault.poke(fault.B)
-    dut.io.resp.bits.cause.poke((if (fault) 13 else 0).U(32.W))
-    dut.io.resp.bits.tval.poke(Va.U(32.W))
+    dut.io.response.bits.poke(0.U.asTypeOf(new ysyx_26030103_MMUResponse))
+    dut.io.response.bits.ID.poke(1.U)
+    dut.io.response.bits.paddr.poke(paddr.U(32.W))
+    dut.io.response.bits.fault.poke(fault.B)
+    dut.io.response.bits.cause.poke((if (fault) 13 else 0).U(32.W))
+    dut.io.response.bits.tval.poke(Va.U(32.W))
   }
 
   private def respond(
@@ -141,30 +141,30 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
     paddr: Long = 0L
   ): Unit = {
     pokeResponse(dut, fault, paddr)
-    dut.io.resp.valid.poke(true.B)
+    dut.io.response.valid.poke(true.B)
     clock.step()
-    dut.io.resp.valid.poke(false.B)
+    dut.io.response.valid.poke(false.B)
   }
 
   "LSUMMU VIPT parallel" should "翻译故障杀死已转发 load 并提交精确 page fault" in {
     simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
-      startLoad(dut, clock, pc = 0x1000L)
+      startLoad(dut, clock, PC = 0x1000L)
       forwardAndRequest(dut, clock)
       // 模拟 load 已被 LSU 接收：memActive=true。
       dut.io.memActive.poke(true.B)
       pokeResponse(dut, fault = true, paddr = 0L)
-      dut.io.resp.valid.poke(true.B)
+      dut.io.response.valid.poke(true.B)
       // 故障响应被采样的同拍必须给出 memKill，撤销 LSU/DCache 等待请求。
       bool(dut.io.memKill) should be(true)
       clock.step()
-      dut.io.resp.valid.poke(false.B)
+      dut.io.response.valid.poke(false.B)
       // 下一拍提交一次精确 page fault。
       bool(dut.io.faultCommit) should be(true)
       long(dut.io.faultCause) should be(13)
       long(dut.io.faultTval) should be(Va)
-      long(dut.io.faultPC) should be(0x1000L)
+      long(dut.io.FaultPC) should be(0x1000L)
       bool(dut.io.out.valid) should be(false)
       bool(dut.io.memPhysicalAddressValid) should be(false)
       clock.step()
@@ -185,7 +185,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
-      startLoad(dut, clock, pc = 0x2000L)
+      startLoad(dut, clock, PC = 0x2000L)
       forwardAndRequest(dut, clock)
       dut.io.memActive.poke(true.B)
       respond(dut, clock, fault = false, paddr = Pa)
@@ -208,7 +208,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
-      startLoad(dut, clock, pc = 0x3000L)
+      startLoad(dut, clock, PC = 0x3000L)
       forwardAndRequest(dut, clock)
       dut.io.memActive.poke(true.B)
 
@@ -232,28 +232,28 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = false)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
-      startLoad(dut, clock, pc = 0x5000L)
-      waitUntil(clock, bool(dut.io.req.valid), "MMU 翻译请求未发出")
-      long(dut.io.req.bits.vaddr) should be(Va)
-      dut.io.req.ready.poke(true.B)
+      startLoad(dut, clock, PC = 0x5000L)
+      waitUntil(clock, bool(dut.io.request.valid), "MMU 翻译请求未发出")
+      long(dut.io.request.bits.vaddr) should be(Va)
+      dut.io.request.ready.poke(true.B)
       clock.step()
-      dut.io.req.ready.poke(false.B)
+      dut.io.request.ready.poke(false.B)
 
       // 翻译成功，但 PMP 在当前响应物理地址上拒绝访问。
       pokeResponse(dut, fault = false, paddr = Pa)
-      dut.io.pmpFault.poke(true.B)
-      dut.io.resp.valid.poke(true.B)
+      dut.io.PMPFault.poke(true.B)
+      dut.io.response.valid.poke(true.B)
       bool(dut.io.faultCommit) should be(false)
       bool(dut.io.out.valid) should be(false)
       clock.step()
-      dut.io.resp.valid.poke(false.B)
-      dut.io.pmpFault.poke(false.B)
+      dut.io.response.valid.poke(false.B)
+      dut.io.PMPFault.poke(false.B)
 
       // PIPT 下请求从未交给 LSU，只提交一次精确 load access fault。
       bool(dut.io.faultCommit) should be(true)
       long(dut.io.faultCause) should be(5)
       long(dut.io.faultTval) should be(Va)
-      long(dut.io.faultPC) should be(0x5000L)
+      long(dut.io.FaultPC) should be(0x5000L)
       bool(dut.io.out.valid) should be(false)
       bool(dut.io.busy) should be(true)
       clock.step()
@@ -268,21 +268,21 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
       bool(dut.io.busy) should be(false)
 
       // 同拍 page fault 与 PMP access fault 并存时，page fault 优先。
-      startLoad(dut, clock, pc = 0x5100L)
-      waitUntil(clock, bool(dut.io.req.valid), "第二笔翻译请求未发出")
-      dut.io.req.ready.poke(true.B)
+      startLoad(dut, clock, PC = 0x5100L)
+      waitUntil(clock, bool(dut.io.request.valid), "第二笔翻译请求未发出")
+      dut.io.request.ready.poke(true.B)
       clock.step()
-      dut.io.req.ready.poke(false.B)
+      dut.io.request.ready.poke(false.B)
       pokeResponse(dut, fault = true, paddr = 0L)
-      dut.io.pmpFault.poke(true.B)
-      dut.io.resp.valid.poke(true.B)
+      dut.io.PMPFault.poke(true.B)
+      dut.io.response.valid.poke(true.B)
       clock.step()
-      dut.io.resp.valid.poke(false.B)
-      dut.io.pmpFault.poke(false.B)
+      dut.io.response.valid.poke(false.B)
+      dut.io.PMPFault.poke(false.B)
       bool(dut.io.faultCommit) should be(true)
       long(dut.io.faultCause) should be(13)
       long(dut.io.faultTval) should be(Va)
-      long(dut.io.faultPC) should be(0x5100L)
+      long(dut.io.FaultPC) should be(0x5100L)
 
       dut.io.flush.poke(true.B)
       clock.step()
@@ -294,24 +294,24 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_LSUMMU(XLEN = 32, AddressWidth = 32, ParallelVIPT = true)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
-      startStore(dut, clock, pc = 0x6000L)
+      startStore(dut, clock, PC = 0x6000L)
       forwardAndRequest(dut, clock)
       dut.io.memActive.poke(true.B)
 
       // store 已登记到 LSU 写缓冲；翻译成功但 PMP 拒绝写。
       pokeResponse(dut, fault = false, paddr = Pa)
-      dut.io.pmpFault.poke(true.B)
-      dut.io.resp.valid.poke(true.B)
+      dut.io.PMPFault.poke(true.B)
+      dut.io.response.valid.poke(true.B)
       // 采样响应的同拍必须 kill，撤销已进入 LSU/DCache 的 store。
       bool(dut.io.memKill) should be(true)
       clock.step()
-      dut.io.resp.valid.poke(false.B)
-      dut.io.pmpFault.poke(false.B)
+      dut.io.response.valid.poke(false.B)
+      dut.io.PMPFault.poke(false.B)
 
       bool(dut.io.faultCommit) should be(true)
       long(dut.io.faultCause) should be(7)
       long(dut.io.faultTval) should be(Va)
-      long(dut.io.faultPC) should be(0x6000L)
+      long(dut.io.FaultPC) should be(0x6000L)
       bool(dut.io.out.valid) should be(false)
       bool(dut.io.memPhysicalAddressValid) should be(false)
       clock.step()
@@ -334,8 +334,8 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
       // satp.MODE=0：bypass 翻译，但 PMP 仍必须生效。
       dut.io.satp.poke(0.U(AddressW.W))
       dut.io.privilege.poke(1.U(2.W))
-      dut.io.pmpFault.poke(true.B)
-      pokeLoad(dut, pc = 0x2000L)
+      dut.io.PMPFault.poke(true.B)
+      pokeLoad(dut, PC = 0x2000L)
       dut.io.in.valid.poke(true.B)
       waitUntil(clock, bool(dut.io.in.ready), "LSUMMU 未受理 bypass load")
       clock.step()
@@ -343,7 +343,7 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
       waitUntil(clock, bool(dut.io.faultCommit), "未提交 bypass PMP fault")
       long(dut.io.faultCause) should be(5)
       long(dut.io.faultTval) should be(Va)
-      long(dut.io.faultPC) should be(0x2000L)
+      long(dut.io.FaultPC) should be(0x2000L)
       bool(dut.io.out.valid) should be(false)
       bool(dut.io.busy) should be(true)
       dut.io.flush.poke(true.B)

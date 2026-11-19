@@ -33,7 +33,7 @@ class ysyx_26030103_LSUVIPTTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.ALUResult.poke(Va.U(AddressW.W))
     dut.io.in.bits.VAddress.poke(Va.U(AddressW.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
-    dut.io.in.bits.pc.poke(0x1000.U(AddressW.W))
+    dut.io.in.bits.PC.poke(0x1000.U(AddressW.W))
   }
 
   private def resetDut(

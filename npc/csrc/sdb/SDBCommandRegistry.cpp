@@ -1,5 +1,7 @@
 module npc.sdb.SDBCommandRegistry;
 import npc.config;
+import npc.Output;
+import npc.SimulationContext;
 import npc.sdb.SDBCommandUsage;
 import npc.sdb.command.cCommand;
 import npc.sdb.command.helpCommand;
@@ -36,7 +38,7 @@ namespace
         }
         return Width;
     }
-    void SDBPrintUsageLine(const SDBCommand &Command, const SDBCommandUsage &Usage, std::size_t SyntaxWidth)
+    void SDBPrintUsageLine(const SDBCommand &Command, const SDBCommandUsage &Usage, std::size_t SyntaxWidth, Output &out)
     {
         auto Syntax{std::string{Command.name()}};
         if (!Usage.GetArguments().empty())
@@ -44,18 +46,19 @@ namespace
             Syntax.push_back(' ');
             Syntax += Usage.GetArguments();
         }
-        std::print("  {}", Syntax);
+        auto Line{std::format("  {}", Syntax)};
         if (Syntax.size() < SyntaxWidth)
         {
-            std::print("{}", std::string(SyntaxWidth - Syntax.size(), ' '));
+            Line += std::string(SyntaxWidth - Syntax.size(), ' ');
         }
-        std::println("  {}", Usage.GetDescription());
+        Line += std::format("  {}", Usage.GetDescription());
+        out.Info("{}", Line);
     }
-    void SDBPrintCommandUsage(const SDBCommand &Command, std::size_t SyntaxWidth)
+    void SDBPrintCommandUsage(const SDBCommand &Command, std::size_t SyntaxWidth, Output &out)
     {
         for (const auto &Usage : Command.usage())
         {
-            SDBPrintUsageLine(Command, Usage, SyntaxWidth);
+            SDBPrintUsageLine(Command, Usage, SyntaxWidth, out);
         }
     }
 }
@@ -75,7 +78,7 @@ SDBCommandResult SDBCommandRegistry::Execute(std::string_view line)
     const auto CommandIt{std::ranges::find_if(Commands, [Name](const std::unique_ptr<SDBCommand> &Command){return Command->name() == Name; })};
     if (CommandIt == Commands.end())
     {
-        std::println(std::cerr, "未知命令: {}", line);
+        Context.GetSimulation().Out().Error("未知命令: {}", line);
         return SDBCommandResult::Continue;
     }
     return (*CommandIt)->execute(Context, Args);
@@ -112,15 +115,17 @@ void SDBCommandRegistry::PrintHelp() const
     {
         SyntaxWidth = std::max(SyntaxWidth, SDBMaxUsageSyntaxWidth(*Command));
     }
-    std::println("可用命令：");
+    auto &out{Context.GetSimulation().Out()};
+    out.Info("可用命令：");
     for (const auto &Command : Commands)
     {
-        SDBPrintCommandUsage(*Command, SyntaxWidth);
+        SDBPrintCommandUsage(*Command, SyntaxWidth, out);
     }
 }
 void SDBCommandRegistry::PrintHelp(const SDBCommand &command) const
 {
-    SDBPrintCommandUsage(command, SDBMaxUsageSyntaxWidth(command));
+    SDBPrintCommandUsage(command, SDBMaxUsageSyntaxWidth(command),
+                         Context.GetSimulation().Out());
 }
 void SDBCommandRegistry::RegisterBuiltins()
 {

@@ -26,11 +26,11 @@ using DUT = Vysyx_26030103_DCacheSRAM;
 #include <verilated.h>
 
 static void defaults(DUT &dut) {
-  dut.io_req_valid = 0;
-  dut.io_req_bits_addr = 0;
-  dut.io_req_bits_WidthSelect = 2;
-  dut.io_req_bits_signed = 0;
-  dut.io_resp_ready = 1;
+  dut.io_request_valid = 0;
+  dut.io_request_bits_address = 0;
+  dut.io_request_bits_WidthSelect = 2;
+  dut.io_request_bits_signed = 0;
+  dut.io_response_ready = 1;
   dut.io_StoreValid = 0;
   dut.io_StoreResponse = 0;
   dut.io_StoreAddress = 0;
@@ -48,13 +48,13 @@ using Words = std::array<uint32_t, 4>;
 
 // 发起一次 miss；响应保持未消费（resp_ready=0），由调用方显式消费。
 static unsigned start_miss(DUT &dut, uint32_t address) {
-  dut.io_resp_ready = 0;
-  dut.io_req_valid = 1;
-  dut.io_req_bits_addr = address;
+  dut.io_response_ready = 0;
+  dut.io_request_valid = 1;
+  dut.io_request_bits_address = address;
   dut.eval();
-  check(dut.io_req_ready, "DCache did not accept the demand miss");
+  check(dut.io_request_ready, "DCache did not accept the demand miss");
   tick(dut);
-  dut.io_req_valid = 0;
+  dut.io_request_valid = 0;
 
   wait_until(dut, [&] { return dut.io_AXI_AR_ARVALID; },
              "DCache never issued the refill AR");
@@ -85,9 +85,9 @@ static void finish_refill(DUT &dut, const Words &words, unsigned from_beat) {
 
 static void drain_to_idle(DUT &dut) {
   for (int cycle = 0; cycle < 16; ++cycle) {
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     dut.eval();
-    if (dut.io_req_ready && !dut.io_resp_valid && !dut.io_axi_active) {
+    if (dut.io_request_ready && !dut.io_response_valid && !dut.io_AXIActive) {
       return;
     }
     tick(dut);
@@ -112,11 +112,11 @@ int main(int argc, char **argv) {
     unsigned beats = start_miss(dut, kLine0);
     check(beats == words0.size(), "unexpected line size");
     finish_refill(dut, words0, 0);
-    wait_until(dut, [&] { return dut.io_resp_valid; },
+    wait_until(dut, [&] { return dut.io_response_valid; },
                "L0 demand response never appeared");
-    check(dut.io_resp_bits_data == words0[0],
+    check(dut.io_response_bits_data == words0[0],
           "L0 demand response returned the wrong word");
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut);
     drain_to_idle(dut);
 
@@ -125,111 +125,111 @@ int main(int argc, char **argv) {
     check(beats == words1.size(), "unexpected line size");
     send_beat(dut, words1[0], false);
     dut.eval();
-    check(dut.io_resp_valid && dut.io_resp_bits_data == words1[0],
+    check(dut.io_response_valid && dut.io_response_bits_data == words1[0],
           "early-restart demand response is missing or wrong");
-    check(!dut.io_resp_bits_fault, "unexpected fault on the critical word");
+    check(!dut.io_response_bits_fault, "unexpected fault on the critical word");
 
     // demand 未消费：任何新请求都不得被受理（单响应槽）。
-    dut.io_req_bits_addr = kLine1; // 已返回的关键字
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = kLine1; // 已返回的关键字
+    dut.io_request_valid = 1;
     dut.eval();
-    check(!dut.io_req_ready,
+    check(!dut.io_request_ready,
           "DCache accepted a request while the demand response was pending");
 
     // --- 2) 消费 demand 响应 ---
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
 
     // 2a) 已返回的字（关键字）允许 hit-under-refill。
     //     非旁路模式会晚一拍受理：它必须等 demand 响应真正被取走（fire）
     //     才能释放响应槽；寄存器/旁路模式可在消费同拍受理。两者都合法，
     //     这里按 Decoupled 语义等待 ready。
-    dut.io_req_bits_addr = kLine1;
-    dut.io_req_valid = 1;
-    dut.io_resp_ready = 1; // demand 响应若仍在，先消费它
-    wait_until(dut, [&] { return dut.io_req_ready; },
+    dut.io_request_bits_address = kLine1;
+    dut.io_request_valid = 1;
+    dut.io_response_ready = 1; // demand 响应若仍在，先消费它
+    wait_until(dut, [&] { return dut.io_request_ready; },
                "returned word was not accepted as a hit-under-refill");
     check(dut.io_perf_hit && !dut.io_perf_miss,
           "returned word was not counted as a hit-under-refill");
     check(!dut.io_AXI_AR_ARVALID,
           "hit-under-refill issued an unexpected second AR");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
-    wait_until(dut, [&] { return dut.io_resp_valid; },
+    wait_until(dut, [&] { return dut.io_response_valid; },
                "hit-under-refill response never appeared");
-    check(dut.io_resp_bits_data == words1[0],
+    check(dut.io_response_bits_data == words1[0],
           "hit-under-refill returned the wrong word");
 
     // 2b) 未返回的字必须被拒绝。
-    dut.io_req_bits_addr = kLine1 + 4U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = kLine1 + 4U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(!dut.io_req_ready,
+    check(!dut.io_request_ready,
           "unreturned word was accepted during refill");
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
 
     // 2c) 其他 set 的完整命中在回填期间放行。
-    dut.io_req_bits_addr = kLine0;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = kLine0;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_hit,
+    check(dut.io_request_ready && dut.io_perf_hit,
           "independent full hit was blocked behind the refill");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
-    wait_until(dut, [&] { return dut.io_resp_valid; },
+    wait_until(dut, [&] { return dut.io_response_valid; },
                "full-hit-under-refill response never appeared");
-    check(dut.io_resp_bits_data == words0[0],
+    check(dut.io_response_bits_data == words0[0],
           "full-hit-under-refill returned the wrong word");
 
     // --- 3) 完成回填，L1 转为正常命中 ---
     finish_refill(dut, words1, 1);
     drain_to_idle(dut);
-    dut.io_req_bits_addr = kLine1 + 8U;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = kLine1 + 8U;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_hit,
+    check(dut.io_request_ready && dut.io_perf_hit,
           "L1 did not become a normal hit after the refill completed");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
-    wait_until(dut, [&] { return dut.io_resp_valid; },
+    wait_until(dut, [&] { return dut.io_response_valid; },
                "post-refill hit response never appeared");
-    check(dut.io_resp_bits_data == words1[2],
+    check(dut.io_response_bits_data == words1[2],
           "post-refill hit returned the wrong word");
     drain_to_idle(dut);
 
     // --- 4) flush 穿越回填：demand 仍收到响应，行不安装 ---
     constexpr uint32_t kLine2 = 0x80000080U;
     const Words words2 = {0x03030301U, 0x03030302U, 0x03030303U, 0x03030304U};
-    dut.io_resp_ready = 0;
+    dut.io_response_ready = 0;
     start_miss(dut, kLine2);
     send_beat(dut, words2[0], false);
     dut.eval();
-    check(dut.io_resp_valid, "flush case: demand response missing");
+    check(dut.io_response_valid, "flush case: demand response missing");
 
     dut.io_flush = 1;
     tick(dut);
     dut.io_flush = 0;
     dut.eval();
-    check(dut.io_resp_valid && dut.io_resp_bits_data == words2[0],
+    check(dut.io_response_valid && dut.io_response_bits_data == words2[0],
           "flush destroyed the accepted demand response");
 
     finish_refill(dut, words2, 1);
-    dut.io_resp_ready = 1;
+    dut.io_response_ready = 1;
     drain_to_idle(dut);
 
     // 行不得安装：再次访问必须重新发起回填（miss + AR）。
-    dut.io_req_bits_addr = kLine2;
-    dut.io_req_valid = 1;
+    dut.io_request_bits_address = kLine2;
+    dut.io_request_valid = 1;
     dut.eval();
-    check(dut.io_req_ready && dut.io_perf_miss && !dut.io_perf_hit,
+    check(dut.io_request_ready && dut.io_perf_miss && !dut.io_perf_hit,
           "flush-crossing refill installed a cache line");
     tick(dut);
-    dut.io_req_valid = 0;
+    dut.io_request_valid = 0;
     dut.eval();
     check(dut.io_AXI_AR_ARVALID,
           "flushed line was served without a fresh refill");

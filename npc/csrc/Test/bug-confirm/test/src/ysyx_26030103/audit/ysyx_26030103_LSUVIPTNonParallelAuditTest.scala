@@ -10,26 +10,26 @@ import _root_.ysyx_26030103.mem.ysyx_26030103_LSU
 /** Confirms the LSU/DCache VIPT contract break in the NON-parallel configuration.
   *
   * Source evidence:
-  *   - `npc/src/MEM/ysyx_26030103_LSU.scala:66-67`:
+  *   - `npc/source/MEM/ysyx_26030103_LSU.scala:66-67`:
   *       DataVipt = DCacheVipt && DCacheEnable
   *       DataViptParallel = DataVipt && ViptParallel
   *     and `:198` instantiates the DCache with `Vipt = DataVipt`.  Therefore
   *     DCacheVipt=true + ViptParallel=false still produces a VIPT DCache.
-  *   - `npc/src/MEM/ysyx_26030103_LSU.scala:844-849`:
-  *       req.bits.addr   := ActiveInstruction.ALUResult   (physical)
-  *       req.bits.vaddr  := ActiveInstruction.VAddr        (virtual)
-  *       req_paddr_valid := true
-  *       req_paddr_vaddr := ActiveInstruction.ALUResult    (physical!)
+  *   - `npc/source/MEM/ysyx_26030103_LSU.scala:844-849`:
+  *       request.bits.address   := ActiveInstruction.ALUResult   (physical)
+  *       request.bits.vaddr  := ActiveInstruction.VAddr        (virtual)
+  *       RequestPaddrValid := true
+  *       RequestPaddrVaddr := ActiveInstruction.ALUResult    (physical!)
   *     The non-parallel branch drives the PHYSICAL address into the port whose
   *     job is to carry the VIRTUAL tag of the physical address.
-  *   - `npc/src/Cache/DCache/ysyx_26030103_DCacheReg.scala:155-156,185`:
-  *       IncomingPaddrMatch = !Vipt || (req_paddr_valid && req_paddr_vaddr === req.bits.vaddr)
+  *   - `npc/source/Cache/DCache/ysyx_26030103_DCacheReg.scala:155-156,185`:
+  *       IncomingPaddrMatch = !Vipt || (RequestPaddrValid && RequestPaddrVaddr === request.bits.vaddr)
   *       ViptNeedWait       = Vipt && !IncomingPaddrMatch
   *     With VA=0x00001050 and PA=0x80002000 the comparison is always false, so
   *     the request goes down the wait path.
   *   - `DCacheReg.scala:589-595` still accepts the request while SIdle/ViptAcceptable,
-  *     `:687-691` latches WaitPaddr/WaitVaddrReg=req.bits.vaddr (0x1050), and
-  *     `:189-190` only resolves when `req_paddr_vaddr === WaitVaddrReg`.  The LSU
+  *     `:687-691` latches WaitPaddr/WaitVaddrReg=request.bits.vaddr (0x1050), and
+  *     `:189-190` only resolves when `RequestPaddrVaddr === WaitVaddrReg`.  The LSU
   *     keeps presenting 0x80002000, so ResolveVaddrMatch is never true: no AR,
   *     no response, LSU stays Busy forever.
   *
@@ -52,8 +52,8 @@ class ysyx_26030103_LSUVIPTNonParallelAuditTest extends AnyFlatSpec with Matcher
   private case class Observation(
       accepted: Boolean,
       inReadySeen: Boolean,
-      arSeen: Boolean,
-      arAddress: Long,
+      ARSeen: Boolean,
+      ARAddress: Long,
       arLen: Long,
       arSize: Long,
       outValid: Boolean,
@@ -123,7 +123,7 @@ class ysyx_26030103_LSUVIPTNonParallelAuditTest extends AnyFlatSpec with Matcher
     dut.io.in.bits.VAddress.poke(Va.U(AddressW.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
     dut.io.in.bits.LoadSigned.poke(false.B)
-    dut.io.in.bits.pc.poke(0x1000.U(AddressW.W))
+    dut.io.in.bits.PC.poke(0x1000.U(AddressW.W))
     dut.io.in.bits.Retire.poke(true.B)
     dut.io.in.bits.RegisterWrite.poke(true.B)
     dut.io.in.bits.Rd.poke(5.U)
@@ -169,18 +169,18 @@ class ysyx_26030103_LSUVIPTNonParallelAuditTest extends AnyFlatSpec with Matcher
 
       // Bounded observation window.
       var cycles = 0
-      var arSeen = false
-      var arAddress = -1L
+      var ARSeen = false
+      var ARAddress = -1L
       var arLen = -1L
       var arSize = -1L
       var outValid = false
       var loadData = BigInt(0)
       while (cycles < CycleBound) {
         if (bool(dut.io.in.ready)) { inReadySeen = true }
-        if (!arSeen && bool(dut.io.DataBus.AR.ARVALID) &&
+        if (!ARSeen && bool(dut.io.DataBus.AR.ARVALID) &&
             bool(dut.io.DataBus.AR.ARREADY)) {
-          arSeen = true
-          arAddress = long(dut.io.DataBus.AR.ARADDR)
+          ARSeen = true
+          ARAddress = long(dut.io.DataBus.AR.ARADDR)
           arLen = long(dut.io.DataBus.AR.ARLEN)
           arSize = long(dut.io.DataBus.AR.ARSIZE)
         }
@@ -196,8 +196,8 @@ class ysyx_26030103_LSUVIPTNonParallelAuditTest extends AnyFlatSpec with Matcher
         Observation(
           accepted = accepted,
           inReadySeen = inReadySeen,
-          arSeen = arSeen,
-          arAddress = arAddress,
+          ARSeen = ARSeen,
+          ARAddress = ARAddress,
           arLen = arLen,
           arSize = arSize,
           outValid = outValid,
@@ -211,11 +211,11 @@ class ysyx_26030103_LSUVIPTNonParallelAuditTest extends AnyFlatSpec with Matcher
   }
 
   private def describe(tag: String, obs: Observation): String = {
-    val addrText =
-      if (obs.arAddress < 0) "<none>" else f"0x${obs.arAddress}%08x"
+    val AddressText =
+      if (obs.ARAddress < 0) "<none>" else f"0x${obs.ARAddress}%08x"
     val loadText = "0x" + obs.loadData.toString(16)
     s"$tag: accepted=${obs.accepted}, inReadySeen=${obs.inReadySeen}, " +
-      s"busy=${obs.busyAtEnd}, arSeen=${obs.arSeen}, arAddr=$addrText, " +
+      s"busy=${obs.busyAtEnd}, ARSeen=${obs.ARSeen}, arAddr=$AddressText, " +
       s"arLen=${obs.arLen}, arSize=${obs.arSize}, outValid=${obs.outValid}, " +
       s"loadData=$loadText, observedCycles=${obs.cycles}, bound=$CycleBound, " +
       s"expected AR{ADDR=0x${Pa.toHexString}, LEN=$ExpectedArLen} and " +
@@ -225,20 +225,20 @@ class ysyx_26030103_LSUVIPTNonParallelAuditTest extends AnyFlatSpec with Matcher
   "LSU non-parallel VIPT (ViptParallel = false)" should
     "complete a VA/PA-mismatched word load instead of deadlocking" in {
       // Expected to FAIL on the current RTL: ViptNeedWait is entered because
-      // req_paddr_vaddr is the PA (0x80002000) while req.bits.vaddr is the VA
+      // RequestPaddrVaddr is the PA (0x80002000) while request.bits.vaddr is the VA
       // (0x00001050); resolution needs the side port to carry 0x00001050, but
-      // the non-parallel LSU hardwires req_paddr_vaddr to ALUResult (the PA).
+      // the non-parallel LSU hardwires RequestPaddrVaddr to ALUResult (the PA).
       val obs = runHarness(viptParallel = false)
       val clue = describe("non-parallel VIPT", obs)
       info(clue)
 
-      withClue(clue + "；非并行模式把 ALUResult(PA) 接到 req_paddr_vaddr，" +
+      withClue(clue + "；非并行模式把 ALUResult(PA) 接到 RequestPaddrVaddr，" +
         "而 DCache 需要的是该 PA 对应的 VA 标签，故请求永远等不到 resolve。" +
-        s"实际 arSeen=${obs.arSeen}，outValid=${obs.outValid}，" +
+        s"实际 ARSeen=${obs.ARSeen}，outValid=${obs.outValid}，" +
         s"loadData=0x${obs.loadData.toString(16)}。") {
         obs.accepted should be(true)
-        obs.arSeen should be(true)
-        obs.arAddress should be(Pa)
+        obs.ARSeen should be(true)
+        obs.ARAddress should be(Pa)
         obs.arLen should be(ExpectedArLen.toLong)
         obs.outValid should be(true)
         obs.loadData should be(BigInt(LoadWord))
@@ -257,8 +257,8 @@ class ysyx_26030103_LSUVIPTNonParallelAuditTest extends AnyFlatSpec with Matcher
       withClue(clue + "；对照组使用受支持的并行模式，PA 端口标签与 VA 匹配，" +
         "应当完成同一笔 load。") {
         obs.accepted should be(true)
-        obs.arSeen should be(true)
-        obs.arAddress should be(Pa)
+        obs.ARSeen should be(true)
+        obs.ARAddress should be(Pa)
         obs.arLen should be(ExpectedArLen.toLong)
         obs.outValid should be(true)
         obs.loadData should be(BigInt(LoadWord))

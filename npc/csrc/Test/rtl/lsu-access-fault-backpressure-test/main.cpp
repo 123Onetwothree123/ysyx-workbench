@@ -32,7 +32,7 @@ static void defaults(DUT &dut) {
   dut.io_in_bits_WidthSelect = 2;
   dut.io_in_bits_LoadSigned = 0;
   dut.io_in_bits_StoreData = 0;
-  dut.io_in_bits_pc = kLoadPC;
+  dut.io_in_bits_PC = kLoadPC;
 
   dut.io_out_ready = 0;
   dut.io_DataBus_AW_AWREADY = 0;

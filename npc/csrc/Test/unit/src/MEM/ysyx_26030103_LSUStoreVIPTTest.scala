@@ -44,7 +44,7 @@ class ysyx_26030103_LSUStoreVIPTTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.ALUResult.poke(vaddr.U(AddressW.W))
     dut.io.in.bits.VAddress.poke(vaddr.U(AddressW.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
-    dut.io.in.bits.pc.poke(0x1000.U(AddressW.W))
+    dut.io.in.bits.PC.poke(0x1000.U(AddressW.W))
   }
 
   private def pokeStore(
@@ -59,7 +59,7 @@ class ysyx_26030103_LSUStoreVIPTTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.VAddress.poke(vaddr.U(AddressW.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
     dut.io.in.bits.StoreData.poke(data.U(32.W))
-    dut.io.in.bits.pc.poke(0x2000.U(AddressW.W))
+    dut.io.in.bits.PC.poke(0x2000.U(AddressW.W))
   }
 
   private def acceptInput(dut: ysyx_26030103_LSU, clock: Clock): Unit = {

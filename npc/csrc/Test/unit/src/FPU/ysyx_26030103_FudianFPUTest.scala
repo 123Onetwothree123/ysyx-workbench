@@ -89,25 +89,25 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
       rs3: BigInt = 0,
       intWord: Boolean = false
   ): (BigInt, BigInt) = {
-    waitUntil(dut, dut.io.req.ready.peek().litToBoolean)
-    dut.io.req.bits.op.poke(op.U(ysyx_26030103_FPUOp.Width.W))
-    dut.io.req.bits.fmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
-    dut.io.req.bits.rm.poke(rm.U(ysyx_26030103_FPURm.Width.W))
-    dut.io.req.bits.intWord.poke(intWord.B)
-    dut.io.req.bits.rs1.poke(rs1.U(flen.W))
-    dut.io.req.bits.rs2.poke(rs2.U(flen.W))
-    dut.io.req.bits.rs3.poke(rs3.U(flen.W))
-    dut.io.req.valid.poke(true.B)
+    waitUntil(dut, dut.io.request.ready.peek().litToBoolean)
+    dut.io.request.bits.op.poke(op.U(ysyx_26030103_FPUOp.Width.W))
+    dut.io.request.bits.fmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
+    dut.io.request.bits.rm.poke(rm.U(ysyx_26030103_FPURm.Width.W))
+    dut.io.request.bits.intWord.poke(intWord.B)
+    dut.io.request.bits.rs1.poke(rs1.U(flen.W))
+    dut.io.request.bits.rs2.poke(rs2.U(flen.W))
+    dut.io.request.bits.rs3.poke(rs3.U(flen.W))
+    dut.io.request.valid.poke(true.B)
     dut.clock.step()
-    dut.io.req.valid.poke(false.B)
+    dut.io.request.valid.poke(false.B)
 
-    waitUntil(dut, dut.io.resp.valid.peek().litToBoolean)
-    val result = dut.io.resp.bits.result.peek().litValue
-    val fflags = dut.io.resp.bits.fflags.peek().litValue
+    waitUntil(dut, dut.io.response.valid.peek().litToBoolean)
+    val result = dut.io.response.bits.result.peek().litValue
+    val fflags = dut.io.response.bits.fflags.peek().litValue
 
-    dut.io.resp.ready.poke(true.B)
+    dut.io.response.ready.poke(true.B)
     dut.clock.step()
-    dut.io.resp.ready.poke(false.B)
+    dut.io.response.ready.poke(false.B)
     (result, fflags)
   }
 
@@ -116,8 +116,8 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
-      dut.io.req.valid.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       body(dut)
     }
 
@@ -126,8 +126,8 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
       dut.reset.poke(true.B)
       dut.clock.step(2)
       dut.reset.poke(false.B)
-      dut.io.req.valid.poke(false.B)
-      dut.io.resp.ready.poke(false.B)
+      dut.io.request.valid.poke(false.B)
+      dut.io.response.ready.poke(false.B)
       body(dut)
     }
 
@@ -367,37 +367,37 @@ class ysyx_26030103_FudianFPUTest extends AnyFlatSpec with Matchers {
       val four = box(f32(4.0f))
 
       withClue("FDIV 握手: ") {
-        waitUntil(dut, dut.io.req.ready.peek().litToBoolean)
-        dut.io.req.bits.op.poke(ysyx_26030103_FPUOp.FDiv)
-        dut.io.req.bits.fmt.poke(0.U(2.W))
-        dut.io.req.bits.rm.poke(0.U(3.W))
-        dut.io.req.bits.rs1.poke(ten.U(64.W))
-        dut.io.req.bits.rs2.poke(four.U(64.W))
-        dut.io.req.bits.rs3.poke(0.U(64.W))
-        dut.io.req.valid.poke(true.B)
+        waitUntil(dut, dut.io.request.ready.peek().litToBoolean)
+        dut.io.request.bits.op.poke(ysyx_26030103_FPUOp.FDiv)
+        dut.io.request.bits.fmt.poke(0.U(2.W))
+        dut.io.request.bits.rm.poke(0.U(3.W))
+        dut.io.request.bits.rs1.poke(ten.U(64.W))
+        dut.io.request.bits.rs2.poke(four.U(64.W))
+        dut.io.request.bits.rs3.poke(0.U(64.W))
+        dut.io.request.valid.poke(true.B)
         dut.clock.step()
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
 
         // 忙时不能接收新请求。
-        dut.io.req.ready.peek().litToBoolean should be(false)
+        dut.io.request.ready.peek().litToBoolean should be(false)
         val latency = waitUntil(
           dut,
-          dut.io.resp.valid.peek().litToBoolean,
+          dut.io.response.valid.peek().litToBoolean,
           700
         )
         latency should be > 1
-        dut.io.resp.bits.result.peek().litValue should be(box(f32(2.5f)))
-        dut.io.resp.bits.fflags.peek().litValue should be(BigInt(0))
+        dut.io.response.bits.result.peek().litValue should be(box(f32(2.5f)))
+        dut.io.response.bits.fflags.peek().litValue should be(BigInt(0))
 
         // 下游反压：valid/result 保持不变，直到 ready。
         dut.clock.step(4)
-        dut.io.resp.valid.peek().litToBoolean should be(true)
-        dut.io.resp.bits.result.peek().litValue should be(box(f32(2.5f)))
-        dut.io.resp.ready.poke(true.B)
+        dut.io.response.valid.peek().litToBoolean should be(true)
+        dut.io.response.bits.result.peek().litValue should be(box(f32(2.5f)))
+        dut.io.response.ready.poke(true.B)
         dut.clock.step()
-        dut.io.resp.ready.poke(false.B)
-        dut.io.resp.valid.peek().litToBoolean should be(false)
-        dut.io.req.ready.peek().litToBoolean should be(true)
+        dut.io.response.ready.poke(false.B)
+        dut.io.response.valid.peek().litToBoolean should be(false)
+        dut.io.request.ready.peek().litToBoolean should be(true)
       }
 
       withClue("S/D 除法与开方: ") {

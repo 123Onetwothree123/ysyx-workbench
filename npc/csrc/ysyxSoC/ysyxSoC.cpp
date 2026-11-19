@@ -1,6 +1,7 @@
 module;
 module npc.ysyxSoC;
 import npc.config;
+import npc.SimulationContext;
 static_assert(std::endian::native == std::endian::little, "NPC 仅支持小端主机");
 
 static std::uint32_t LoadU32(const std::vector<std::uint8_t> &Memory, std::uint32_t Aligned)
@@ -14,17 +15,17 @@ static std::uint32_t LoadU32(const std::vector<std::uint8_t> &Memory, std::uint3
     return result;
 }
 
-std::vector<std::uint8_t> mrom;
-std::vector<std::uint8_t> FlashMemory;
 extern "C" void flash_read(std::int32_t addr, std::int32_t *data)
 {
     std::uint32_t offset{static_cast<std::uint32_t>(addr)}; // 已经是偏移，不用减基址
     std::uint32_t aligned{offset & ~3u};
-    *data = static_cast<std::int32_t>(LoadU32(FlashMemory, aligned));
+    *data = static_cast<std::int32_t>(
+        LoadU32(SimulationContext::Active().Flash(), aligned));
 }
 extern "C" void mrom_read(std::int32_t addr, std::int32_t *data)
 {
-    std::uint32_t offset{static_cast<std::uint32_t>(addr) - static_cast<std::uint32_t>(npc::SocMBase)}; // 脑残编译器，这里auto会解读成ui32，他妈的那每次auto写了后，还得检查一遍，这和没写auto有什么区别，他妈的
+    std::uint32_t offset{static_cast<std::uint32_t>(addr) - static_cast<std::uint32_t>(npc::SocMBase)};
     std::uint32_t aligned{offset & ~3u};
-    *data = static_cast<std::int32_t>(LoadU32(mrom, aligned));
+    *data = static_cast<std::int32_t>(
+        LoadU32(SimulationContext::Active().Mrom(), aligned));
 }

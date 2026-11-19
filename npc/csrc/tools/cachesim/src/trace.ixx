@@ -13,11 +13,9 @@ public:
     [[nodiscard]] auto count() const -> std::size_t { return count_; }
 
 private:
-    std::FILE*  file_  = nullptr;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
     std::size_t count_ = 0;
-    bool   is_pipe_ = false;
-    int compressed_child_pid_ = -1;
 
     auto try_parse(const std::string& line) -> std::optional<Addr>;
-    void finish_compressed_input();
 };

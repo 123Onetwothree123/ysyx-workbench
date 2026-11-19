@@ -1,4 +1,6 @@
 module npc.sdb.command.historyCommand;
+import npc.SimulationContext;
+import npc.Output;
 import npc.readline;
 import npc.sdb.SDBCommandRegistry;
 import npc.sdb.SDBCommandUtils;
@@ -18,11 +20,11 @@ SDBCommandUsageList historyCommand::usage() const noexcept
     };
     return entries;
 }
-void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Registry)
+void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Registry, Output &out)
 {
     if (history_length == 0)
     {
-        std::println("没有历史记录");
+        out.Info("没有历史记录");
         return;
     }
     auto total{static_cast<std::size_t>(history_length)};
@@ -30,7 +32,7 @@ void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Re
     {
         n = total;
     }
-    std::println("命令历史（显示最近 {} 条，共 {} 条）：", n, total);
+    out.Info("命令历史（显示最近 {} 条，共 {} 条）：", n, total);
     auto start{history_length - static_cast<int>(n)};
     auto hist_list{history_list()};
     for (auto i{start}; i < history_length; i++)
@@ -42,17 +44,17 @@ void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Re
         auto cmd{Registry.FindCommand(CmdName)};
         if (cmd != nullptr)
         {
-            std::println("{:5}  {}", i + history_base, line);
+            out.Info("{:5}  {}", i + history_base, line);
         }
         else
         {
-            std::println("{:5}  {} [未知命令]", i + history_base, line);
+            out.Info("{:5}  {} [未知命令]", i + history_base, line);
         }
     }
 }
 SDBCommandResult historyCommand::execute(SDBCommandContext &context, std::string_view args)
 {
-    static_cast<void>(context);
+    auto &out{context.GetSimulation().Out()};
     auto n{std::size_t{0}};
     args = SDBTrimLeft(args);
     if (!args.empty())
@@ -62,11 +64,11 @@ SDBCommandResult historyCommand::execute(SDBCommandContext &context, std::string
         const auto trailing{SDBTrimLeft(std::string_view{result.ptr, args.data() + args.size()})};
         if (result.ec != std::errc() || num <= 0 || !trailing.empty())
         {
-            std::println("无效参数 '{}'。用法是 history [N]", args);
+            out.Error("无效参数 '{}'。用法是 history [N]", args);
             return SDBCommandResult::Continue;
         }
         n = static_cast<std::size_t>(num);
     }
-    PrintGNUHistory(n, Registry);
+    PrintGNUHistory(n, Registry, out);
     return SDBCommandResult::Continue;
 }

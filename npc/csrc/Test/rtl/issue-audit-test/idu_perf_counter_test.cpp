@@ -22,59 +22,59 @@ static constexpr uint32_t kUsesRs2_6 = 0x00600533U;
 static void defaults(DUT &dut) {
   dut.io_in_valid = 1;
   dut.io_in_bits_Instruction = kUsesRs1_5;
-  dut.io_in_bits_pc = 0x80000000U;
+  dut.io_in_bits_PC = 0x80000000U;
   dut.io_in_bits_ExceptionValid = 0;
   dut.io_in_bits_ExceptionCause = 0;
-  dut.io_in_bits_pred_taken = 0;
-  dut.io_in_bits_pred_target = 0x80000004U;
+  dut.io_in_bits_PredTaken = 0;
+  dut.io_in_bits_PredTarget = 0x80000004U;
   dut.io_out_ready = 1;
   dut.io_ReadDATA1 = 0x11111111U;
   dut.io_ReadDATA2 = 0x22222222U;
 
-  dut.io_ex_valid = 0;
-  dut.io_ex_rd = 0;
-  dut.io_ex_regWrite = 0;
-  dut.io_ex_memop = 0;
-  dut.io_ex_fwd_ready = 0;
-  dut.io_ex_fwd_data = 0;
-  dut.io_ex_mdu_hidden_writes = 0;
+  dut.io_ExValid = 0;
+  dut.io_ExRd = 0;
+  dut.io_ExRegWrite = 0;
+  dut.io_ExMemop = 0;
+  dut.io_ExForwardReady = 0;
+  dut.io_ExForwardData = 0;
+  dut.io_ExMDUHiddenWrites = 0;
 
-  dut.io_me_valid = 0;
-  dut.io_me_rd = 0;
-  dut.io_me_regWrite = 0;
-  dut.io_me_memop = 0;
-  dut.io_me_fwd_ready = 0;
-  dut.io_me_fwd_data = 0;
+  dut.io_MeValid = 0;
+  dut.io_MeRd = 0;
+  dut.io_MeRegWrite = 0;
+  dut.io_MeMemop = 0;
+  dut.io_MeForwardReady = 0;
+  dut.io_MeForwardData = 0;
 
-  dut.io_me2_valid = 0;
-  dut.io_me2_rd = 0;
-  dut.io_me2_regWrite = 0;
-  dut.io_me2_memop = 0;
-  dut.io_me2_fwd_ready = 0;
-  dut.io_me2_fwd_data = 0;
+  dut.io_Me2Valid = 0;
+  dut.io_Me2Rd = 0;
+  dut.io_Me2RegWrite = 0;
+  dut.io_Me2Memop = 0;
+  dut.io_Me2ForwardReady = 0;
+  dut.io_Me2ForwardData = 0;
 
-  dut.io_wb_valid = 0;
-  dut.io_wb_rd = 0;
-  dut.io_wb_regWrite = 0;
-  dut.io_wb_fwd_data = 0;
+  dut.io_WbValid = 0;
+  dut.io_WbRd = 0;
+  dut.io_WbRegWrite = 0;
+  dut.io_WbForwardData = 0;
 }
 
 static void clear_hazards(DUT &dut) {
-  dut.io_ex_valid = 0;
-  dut.io_ex_regWrite = 0;
-  dut.io_ex_memop = 0;
-  dut.io_ex_fwd_ready = 0;
-  dut.io_ex_mdu_hidden_writes = 0;
-  dut.io_me_valid = 0;
-  dut.io_me_regWrite = 0;
-  dut.io_me_memop = 0;
-  dut.io_me_fwd_ready = 0;
-  dut.io_me2_valid = 0;
-  dut.io_me2_regWrite = 0;
-  dut.io_me2_memop = 0;
-  dut.io_me2_fwd_ready = 0;
-  dut.io_wb_valid = 0;
-  dut.io_wb_regWrite = 0;
+  dut.io_ExValid = 0;
+  dut.io_ExRegWrite = 0;
+  dut.io_ExMemop = 0;
+  dut.io_ExForwardReady = 0;
+  dut.io_ExMDUHiddenWrites = 0;
+  dut.io_MeValid = 0;
+  dut.io_MeRegWrite = 0;
+  dut.io_MeMemop = 0;
+  dut.io_MeForwardReady = 0;
+  dut.io_Me2Valid = 0;
+  dut.io_Me2RegWrite = 0;
+  dut.io_Me2Memop = 0;
+  dut.io_Me2ForwardReady = 0;
+  dut.io_WbValid = 0;
+  dut.io_WbRegWrite = 0;
 }
 
 static bool no_stall_counters(DUT &dut) {
@@ -94,11 +94,11 @@ int main(int argc, char **argv) {
                     // 真实系统里 ALU 生产者的 fwd_ready 恒为 1，所以“非访存
                     // 且未就绪”只可能来自 MDU（队首结果未回）。
                     clear_hazards(dut);
-                    dut.io_ex_valid = 1;
-                    dut.io_ex_regWrite = 1;
-                    dut.io_ex_rd = 5;
-                    dut.io_ex_memop = 0;
-                    dut.io_ex_fwd_ready = 0;
+                    dut.io_ExValid = 1;
+                    dut.io_ExRegWrite = 1;
+                    dut.io_ExRd = 5;
+                    dut.io_ExMemop = 0;
+                    dut.io_ExForwardReady = 0;
                     dut.eval();
                     check(!dut.io_in_ready, "EX hazard did not stall the IDU");
                     check(dut.io_perf_stall_raw,
@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
                           "MDU-style EX stall was misclassified as load-use");
 
                     // 对照：同一条生产者变为就绪后必须零停顿。
-                    dut.io_ex_fwd_ready = 1;
+                    dut.io_ExForwardReady = 1;
                     dut.eval();
                     check(dut.io_in_ready,
                           "ready EX producer still stalled the IDU");
@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
 
                     // --- 2) 隐藏 MDU 写掩码单独造成停顿 ---
                     clear_hazards(dut);
-                    dut.io_ex_mdu_hidden_writes = 1U << 5;
+                    dut.io_ExMDUHiddenWrites = 1U << 5;
                     dut.eval();
                     check(!dut.io_in_ready,
                           "hidden MDU write did not stall its consumer");
@@ -134,13 +134,13 @@ int main(int argc, char **argv) {
                     // 真正的停顿原因；真正的阻塞来自隐藏 MDU 写掩码。修复后
                     // 该停顿应计入非 load-use 桶（raw_alu）。
                     clear_hazards(dut);
-                    dut.io_ex_mdu_hidden_writes = 1U << 5;
-                    dut.io_me_valid = 1;
-                    dut.io_me_regWrite = 1;
-                    dut.io_me_rd = 5;
-                    dut.io_me_memop = 1;
-                    dut.io_me_fwd_ready = 1;
-                    dut.io_me_fwd_data = 0x33333333U;
+                    dut.io_ExMDUHiddenWrites = 1U << 5;
+                    dut.io_MeValid = 1;
+                    dut.io_MeRegWrite = 1;
+                    dut.io_MeRd = 5;
+                    dut.io_MeMemop = 1;
+                    dut.io_MeForwardReady = 1;
+                    dut.io_MeForwardData = 0x33333333U;
                     dut.eval();
                     check(!dut.io_in_ready,
                           "hidden MDU write did not stall its consumer");
@@ -154,11 +154,11 @@ int main(int argc, char **argv) {
 
                     // --- 4) 真正的 load-use（对照，应计入 loaduse）---
                     clear_hazards(dut);
-                    dut.io_me2_valid = 1;
-                    dut.io_me2_regWrite = 1;
-                    dut.io_me2_rd = 5;
-                    dut.io_me2_memop = 1;
-                    dut.io_me2_fwd_ready = 0;
+                    dut.io_Me2Valid = 1;
+                    dut.io_Me2RegWrite = 1;
+                    dut.io_Me2Rd = 5;
+                    dut.io_Me2Memop = 1;
+                    dut.io_Me2ForwardReady = 0;
                     dut.eval();
                     check(!dut.io_in_ready, "load-use did not stall the IDU");
                     check(dut.io_perf_stall_raw_loaduse,

@@ -1,12 +1,15 @@
 module;
 #include <verilated.h>
 module npc.sdb.sdb;
+import npc.Output;
+import npc.DUT;
 import npc.readline;
 import npc.sdb.SDBCommandRegistry;
 import npc.sdb.SDBCommandResult;
 
 SDBExitReason SDB::MainLoop(DUT &dut, bool batch_mode)
 {
+    auto &out{dut.Context().Out()};
     SDBCommandRegistry Commands{dut};
     if (batch_mode)
     {
@@ -22,7 +25,7 @@ SDBExitReason SDB::MainLoop(DUT &dut, bool batch_mode)
         // $finish priority over an already-buffered `q` and over stdin EOF.
         if (Verilated::gotFinish())
         {
-            std::println(std::cerr, "Verilator已通过$finish请求结束仿真");
+            out.Error("Verilator已通过$finish请求结束仿真");
             return SDBExitReason::VerilatorFinish;
         }
 
@@ -40,12 +43,12 @@ SDBExitReason SDB::MainLoop(DUT &dut, bool batch_mode)
         const auto commandResult{Commands.Execute(cmd)};
         if (Verilated::gotFinish())
         {
-            std::println(std::cerr, "Verilator已通过$finish请求结束仿真");
+            out.Error("Verilator已通过$finish请求结束仿真");
             return SDBExitReason::VerilatorFinish;
         }
         if (commandResult == SDBCommandResult::Quit)
         {
-            std::println("退出");
+            out.Info("退出");
             return SDBExitReason::UserQuit;
         }
     }

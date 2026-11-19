@@ -20,12 +20,12 @@ import org.scalatest.matchers.should.Matchers
   *      Fudian 显式 `kill`，HardFloat 只置 `divAbandoned` 等自然结束。
   *
   * 源码证据：
-  *   - `npc/src/FPU/Fudian/ysyx_26030103_FudianFPUResponse.scala:130-148`：
+  *   - `npc/source/FPU/Fudian/ysyx_26030103_FudianFPUResponse.scala:130-148`：
   *     `sharedFFlags` 用 `tiny && nx` 近似 UF，并用 `activeFSNaN` 补 NV；
   *     `:169` 在 flush 且 busy 时断言 `dDiv.specialIO.kill`。
-  *   - `npc/src/FPU/HardFloat/ysyx_26030103_HardFloatFPUResponse.scala:88-91`：
-  *     flush 只清 `respValid` 并置 `divAbandoned := true`；
-  *     `:49-50` 的 `io.req.ready` 仍要求 `!divActive`，必须等
+  *   - `npc/source/FPU/HardFloat/ysyx_26030103_HardFloatFPUResponse.scala:88-91`：
+  *     flush 只清 `ResponseValid` 并置 `divAbandoned := true`；
+  *     `:49-50` 的 `io.request.ready` 仍要求 `!divActive`，必须等
   *     `DivSqrtRecFN_small` 自己跑完（`:69-77`）才恢复接收。
   */
 class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
@@ -96,7 +96,7 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
     cycles
   }
 
-  /** 通用请求/响应驱动：valid 一拍，等 resp.valid，读结果后 ready 一拍。 */
+  /** 通用请求/响应驱动：valid 一拍，等 response.valid，读结果后 ready 一拍。 */
   private def sendDut(
       dut: ysyx_26030103_FPU,
       flen: Int,
@@ -109,29 +109,29 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
   ): (BigInt, Long) = {
     val clue =
       s"op=$op fmt=$fmt rm=$rm a=0x${a.toString(16)} b=0x${b.toString(16)}"
-    waitUntil(dut, dut.io.req.ready.peek().litToBoolean, maxCycles,
-      s"$clue 发射前 req.ready")
+    waitUntil(dut, dut.io.request.ready.peek().litToBoolean, maxCycles,
+      s"$clue 发射前 request.ready")
 
-    dut.io.req.bits.op.poke(op.U(ysyx_26030103_FPUOp.Width.W))
-    dut.io.req.bits.fmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
-    dut.io.req.bits.srcFmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
-    dut.io.req.bits.rm.poke(rm.U(ysyx_26030103_FPURm.Width.W))
-    dut.io.req.bits.intWord.poke(true.B)
-    dut.io.req.bits.rs1.poke(a.U(flen.W))
-    dut.io.req.bits.rs2.poke(b.U(flen.W))
-    dut.io.req.bits.rs3.poke(0.U(flen.W))
-    dut.io.req.valid.poke(true.B)
+    dut.io.request.bits.op.poke(op.U(ysyx_26030103_FPUOp.Width.W))
+    dut.io.request.bits.fmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
+    dut.io.request.bits.SourceFmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
+    dut.io.request.bits.rm.poke(rm.U(ysyx_26030103_FPURm.Width.W))
+    dut.io.request.bits.intWord.poke(true.B)
+    dut.io.request.bits.rs1.poke(a.U(flen.W))
+    dut.io.request.bits.rs2.poke(b.U(flen.W))
+    dut.io.request.bits.rs3.poke(0.U(flen.W))
+    dut.io.request.valid.poke(true.B)
     dut.clock.step()
-    dut.io.req.valid.poke(false.B)
+    dut.io.request.valid.poke(false.B)
 
-    waitUntil(dut, dut.io.resp.valid.peek().litToBoolean, maxCycles,
-      s"$clue 等待 resp.valid")
-    val result = dut.io.resp.bits.result.peek().litValue
-    val fflags = dut.io.resp.bits.fflags.peek().litValue.toLong
+    waitUntil(dut, dut.io.response.valid.peek().litToBoolean, maxCycles,
+      s"$clue 等待 response.valid")
+    val result = dut.io.response.bits.result.peek().litValue
+    val fflags = dut.io.response.bits.fflags.peek().litValue.toLong
 
-    dut.io.resp.ready.poke(true.B)
+    dut.io.response.ready.poke(true.B)
     dut.clock.step()
-    dut.io.resp.ready.poke(false.B)
+    dut.io.response.ready.poke(false.B)
     (result, fflags)
   }
 
@@ -139,8 +139,8 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
     dut.reset.poke(true.B)
     dut.clock.step(3)
     dut.reset.poke(false.B)
-    dut.io.req.valid.poke(false.B)
-    dut.io.resp.ready.poke(false.B)
+    dut.io.request.valid.poke(false.B)
+    dut.io.response.ready.poke(false.B)
     dut.io.flush.poke(false.B)
   }
 
@@ -149,7 +149,7 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
   // ------------------------------------------------------------------
 
   private case class SVec(
-      idx: Int,
+      index: Int,
       name: String,
       op: Int,
       a: BigInt,
@@ -160,7 +160,7 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
   )
 
   private def svecs: Seq[SVec] = Seq(
-    // idx, 说明, op, a, b, 期望低 32 位, 期望 fflags, 是否 NaN（不比对 payload）
+    // index, 说明, op, a, b, 期望低 32 位, 期望 fflags, 是否 NaN（不比对 payload）
     SVec(1, "1/3", FDiv, BigInt(0x3f800000L), BigInt(0x40400000L),
       BigInt(0x3eaaaaabL), NX),
     SVec(2, "maxFinite/minSubnormal 溢出", FDiv,
@@ -212,7 +212,7 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
             sendDut(dut, 64, c.op, FMT_S, RNE, boxS(c.a), boxS(c.b))
 
           val clue =
-            s"case ${c.idx} (${c.name}): op=${c.op} fmt=S rm=RNE " +
+            s"case ${c.index} (${c.name}): op=${c.op} fmt=S rm=RNE " +
               s"a=0x${c.a.toString(16)} b=0x${c.b.toString(16)} " +
               s"gotResult=0x${got.toString(16)} gotFlags=$gotFlags " +
               s"expectedResult=0x${c.exp.toString(16)} " +
@@ -242,22 +242,22 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
   // ------------------------------------------------------------------
 
   private def issueDivD(dut: ysyx_26030103_FPU, a: BigInt, b: BigInt): Unit = {
-    waitUntil(dut, dut.io.req.ready.peek().litToBoolean, 6000,
-      s"FDIV.D a=0x${a.toString(16)} b=0x${b.toString(16)} 发射前 req.ready")
-    dut.io.req.bits.op.poke(FDiv.U(ysyx_26030103_FPUOp.Width.W))
-    dut.io.req.bits.fmt.poke(FMT_D.U(ysyx_26030103_FPUFmt.Width.W))
-    dut.io.req.bits.srcFmt.poke(FMT_D.U(ysyx_26030103_FPUFmt.Width.W))
-    dut.io.req.bits.rm.poke(RNE.U(ysyx_26030103_FPURm.Width.W))
-    dut.io.req.bits.intWord.poke(true.B)
-    dut.io.req.bits.rs1.poke(a.U(64.W))
-    dut.io.req.bits.rs2.poke(b.U(64.W))
-    dut.io.req.bits.rs3.poke(0.U(64.W))
-    dut.io.req.valid.poke(true.B)
+    waitUntil(dut, dut.io.request.ready.peek().litToBoolean, 6000,
+      s"FDIV.D a=0x${a.toString(16)} b=0x${b.toString(16)} 发射前 request.ready")
+    dut.io.request.bits.op.poke(FDiv.U(ysyx_26030103_FPUOp.Width.W))
+    dut.io.request.bits.fmt.poke(FMT_D.U(ysyx_26030103_FPUFmt.Width.W))
+    dut.io.request.bits.SourceFmt.poke(FMT_D.U(ysyx_26030103_FPUFmt.Width.W))
+    dut.io.request.bits.rm.poke(RNE.U(ysyx_26030103_FPURm.Width.W))
+    dut.io.request.bits.intWord.poke(true.B)
+    dut.io.request.bits.rs1.poke(a.U(64.W))
+    dut.io.request.bits.rs2.poke(b.U(64.W))
+    dut.io.request.bits.rs3.poke(0.U(64.W))
+    dut.io.request.valid.poke(true.B)
     dut.clock.step()
-    dut.io.req.valid.poke(false.B)
+    dut.io.request.valid.poke(false.B)
   }
 
-  /** 执行 TEST 2 的 a-d，返回 flush 后到 req.ready 恢复的拍数。 */
+  /** 执行 TEST 2 的 a-d，返回 flush 后到 request.ready 恢复的拍数。 */
   private def flushInFlightDivAndMeasure(
       dut: ysyx_26030103_FPU,
       label: String
@@ -269,9 +269,9 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
     issueDivD(dut, oneThirdA, oneThirdB)
 
     // b. 接受后必须立刻忙：不再接收新请求，也没有响应。
-    withClue(s"$label: 接受 1.0/3.0 后 req.ready/resp.valid 应立即为 false: ") {
-      dut.io.req.ready.peek().litToBoolean should be(false)
-      dut.io.resp.valid.peek().litToBoolean should be(false)
+    withClue(s"$label: 接受 1.0/3.0 后 request.ready/response.valid 应立即为 false: ") {
+      dut.io.request.ready.peek().litToBoolean should be(false)
+      dut.io.response.valid.peek().litToBoolean should be(false)
     }
 
     // c. 走几拍让 DIV 真正进入迭代，再打一拍 flush。
@@ -286,11 +286,11 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
     while (!readySeen && recoveryCycles < 4000L) {
       withClue(
         s"$label: flush 后第 $recoveryCycles 拍出现了在途 FDIV.D 的陈旧响应 " +
-          "(resp.valid=true)，说明 flush 没有杀死旧结果: "
+          "(response.valid=true)，说明 flush 没有杀死旧结果: "
       ) {
-        dut.io.resp.valid.peek().litToBoolean should be(false)
+        dut.io.response.valid.peek().litToBoolean should be(false)
       }
-      if (dut.io.req.ready.peek().litToBoolean) {
+      if (dut.io.request.ready.peek().litToBoolean) {
         readySeen = true
       } else {
         dut.clock.step()
@@ -298,7 +298,7 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
       }
     }
     withClue(
-      s"$label: flush 后 4000 拍内 req.ready 仍未恢复；" +
+      s"$label: flush 后 4000 拍内 request.ready 仍未恢复；" +
         s"recoveryCycles=$recoveryCycles"
     ) {
       readySeen should be(true)
@@ -347,11 +347,11 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
   // ------------------------------------------------------------------
 
   "Fudian flush 应立即释放 DIV 单元（性能契约，非架构正确性）" should
-    "在 <= 40 拍内让 req.ready 恢复" in {
+    "在 <= 40 拍内让 request.ready 恢复" in {
       simulate(new ysyx_26030103_FudianFPU(fudian64)) { dut =>
         initDut(dut)
         val recoveryCycles = flushInFlightDivAndMeasure(dut, "Fudian")
-        info(s"Fudian flush -> req.ready recoveryCycles=$recoveryCycles")
+        info(s"Fudian flush -> request.ready recoveryCycles=$recoveryCycles")
         withClue(
           s"Fudian: flush 后恢复拍数=$recoveryCycles，" +
             "期望 <= 40。flush 应立即释放 DIV 单元" +
@@ -371,12 +371,12 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
       simulate(new ysyx_26030103_HardFloatFPU(hardfloat64)) { dut =>
         initDut(dut)
         val recoveryCycles = flushInFlightDivAndMeasure(dut, "HardFloat")
-        info(s"HardFloat flush -> req.ready recoveryCycles=$recoveryCycles")
+        info(s"HardFloat flush -> request.ready recoveryCycles=$recoveryCycles")
         withClue(
           s"HardFloat: flush 后恢复拍数=$recoveryCycles，" +
             "期望 <= 200（DivSqrtRecFN_small 自然迭代长度）。" +
             "flush 只置 divAbandoned（HardFloatFPUResponse.scala:88-90），" +
-            "req.ready 仍要求 !divActive（:49-50）；结果不会被误写回，属实现差异。" +
+            "request.ready 仍要求 !divActive（:49-50）；结果不会被误写回，属实现差异。" +
             "对照：Fudian 在 :169 断言 specialIO.kill，恢复拍数为 0。"
         ) {
           recoveryCycles should be <= 200L

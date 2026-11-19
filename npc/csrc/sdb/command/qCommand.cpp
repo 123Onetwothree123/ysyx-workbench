@@ -1,4 +1,6 @@
 module npc.sdb.command.qCommand;
+import npc.SimulationContext;
+import npc.Output;
 
 std::string_view qCommand::name() const noexcept
 {
@@ -13,10 +15,10 @@ SDBCommandUsageList qCommand::usage() const noexcept
 }
 SDBCommandResult qCommand::execute(SDBCommandContext &context, std::string_view args)
 {
-    static_cast<void>(context);
+    auto &out{context.GetSimulation().Out()};
     if (!args.empty())
     {
-        std::println("用法：q");
+        out.Info("用法：q");
         return SDBCommandResult::Continue;
     }
     return SDBCommandResult::Quit;

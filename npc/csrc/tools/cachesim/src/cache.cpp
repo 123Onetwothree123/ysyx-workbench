@@ -9,11 +9,11 @@ CacheSim::CacheSim(const CacheConfig& cfg)
     index_bits_  = log2_ceil(num_sets_);
     ways_        = cfg.ways;
 
-    // 实际 cache: 单块连续内存 + mdspan 二维视图 (组 × 路)
+    // 实际 cache 为连续内存 + mdspan 二维视图。
     sets_flat_.resize(static_cast<std::size_t>(num_sets_) * ways_);
     sets_ = std::mdspan{sets_flat_.data(), num_sets_, ways_};
 
-    // 全相联对照 cache (1 set, num_blocks ways, 用于检测 capacity miss)
+    // 全相联对照 cache，用于检测 capacity miss。
     fa_ways_ = cfg.num_blocks;
     fa_blocks_.resize(fa_ways_);
 }
@@ -28,7 +28,6 @@ auto CacheSim::log2_ceil(unsigned n) -> unsigned
 
 auto CacheSim::find_victim(std::span<const Block> set) -> unsigned
 {
-    // 优先选无效块
     if (const auto it{std::ranges::find_if(set, [](const Block& b) { return !b.valid; })}; it != set.end())
         return static_cast<unsigned>(it - set.begin());
 
@@ -47,7 +46,6 @@ auto CacheSim::find_victim(std::span<const Block> set) -> unsigned
 
 auto CacheSim::fa_access(Addr tag) -> bool
 {
-    // 在全相联 cache 中查找
     for (auto& blk : fa_blocks_) {
         if (blk.valid && blk.tag == tag) {
             blk.access_time = tick_;
@@ -55,7 +53,7 @@ auto CacheSim::fa_access(Addr tag) -> bool
         }
     }
 
-    // 缺失: 找替换块并写入
+    // 缺失时找替换块并写入
     unsigned victim = 0;
     std::uint64_t oldest = fa_blocks_[0].access_time;
     for (unsigned i = 0; i < fa_ways_; ++i) {
@@ -88,25 +86,21 @@ auto CacheSim::access(Addr addr) -> AccessResult
 
     AccessResult result;
 
-    // 判断 compulsory miss
     bool first_seen = !seen_tags_.contains(tag);
     if (first_seen)
         seen_tags_.insert(tag);
 
-    // 判断 capacity miss (全相联对照 cache)
+    // 全相联对照 cache 用于判定 capacity miss。
     bool fa_hit = fa_access(tag);
 
-    // 查实际 cache
     const std::span<Block> set{sets_.data_handle() + static_cast<std::size_t>(index) * ways_, ways_};
     const auto hit_way{std::ranges::find_if(set, [tag](const Block& b) { return b.valid && b.tag == tag; })};
 
     if (hit_way != set.end()) {
-        // 命中
         hit_way->access_time = tick_;
         result.type = MissType::Hit;
         ++stats_.hits;
     } else {
-        // 缺失: 按 3C 模型分类
         if (first_seen) {
             result.type = MissType::Compulsory;
             ++stats_.miss_compulsory;
@@ -117,8 +111,6 @@ auto CacheSim::access(Addr addr) -> AccessResult
             result.type = MissType::Conflict;
             ++stats_.miss_conflict;
         }
-
-        // 替换
         unsigned victim = find_victim(set);
         set[victim].valid       = true;
         set[victim].tag         = tag;

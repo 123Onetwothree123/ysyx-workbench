@@ -58,23 +58,23 @@ class ysyx_26030103_CacheVIPTAliasTest extends AnyFlatSpec with Matchers {
       mem:   Memory,
       label: String
   ): Unit = {
-    waitUntil(clock, bool(io.axi.AR.ARVALID), s"$label ICache 没有 refill AR")
+    waitUntil(clock, bool(io.AXI.AR.ARVALID), s"$label ICache 没有 refill AR")
     withClue(s"$label ICache refill 地址错误") {
-      long(io.axi.AR.ARADDR) should be(line)
+      long(io.AXI.AR.ARADDR) should be(line)
     }
-    val beats = long(io.axi.AR.ARLEN).toInt + 1
-    io.axi.AR.ARREADY.poke(true.B)
+    val beats = long(io.AXI.AR.ARLEN).toInt + 1
+    io.AXI.AR.ARREADY.poke(true.B)
     clock.step()
-    io.axi.AR.ARREADY.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
     for (beat <- 0 until beats) {
-      io.axi.R.RDATA.poke(mem.read(line + beat * 4L).U(32.W))
-      io.axi.R.RRESP.poke(0.U(2.W))
-      io.axi.R.RLAST.poke((beat + 1 == beats).B)
-      io.axi.R.RVALID.poke(true.B)
+      io.AXI.R.RDATA.poke(mem.read(line + beat * 4L).U(32.W))
+      io.AXI.R.RRESP.poke(0.U(2.W))
+      io.AXI.R.RLAST.poke((beat + 1 == beats).B)
+      io.AXI.R.RVALID.poke(true.B)
       clock.step()
     }
-    io.axi.R.RVALID.poke(false.B)
-    io.axi.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
+    io.AXI.R.RLAST.poke(false.B)
   }
 
   private def icacheFetch(
@@ -83,14 +83,14 @@ class ysyx_26030103_CacheVIPTAliasTest extends AnyFlatSpec with Matchers {
       va:    Long,
       pa:    Long
   ): Unit = {
-    io.fetch_vaddr.poke(va.U(AddressW.W))
-    io.fetch_addr.poke(pa.U(AddressW.W))
-    io.fetch_paddr_vaddr.poke(va.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_valid.poke(true.B)
-    waitUntil(clock, bool(io.fetch_ready), s"ICache 未受理 VA=0x${va.toHexString}")
+    io.FetchVaddr.poke(va.U(AddressW.W))
+    io.FetchAddress.poke(pa.U(AddressW.W))
+    io.FetchPaddrVaddr.poke(va.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchValid.poke(true.B)
+    waitUntil(clock, bool(io.FetchReady), s"ICache 未受理 VA=0x${va.toHexString}")
     clock.step()
-    io.fetch_valid.poke(false.B)
+    io.FetchValid.poke(false.B)
   }
 
   private def icacheExpect(
@@ -99,13 +99,13 @@ class ysyx_26030103_CacheVIPTAliasTest extends AnyFlatSpec with Matchers {
       va:    Long,
       data:  Long
   ): Unit = {
-    waitUntil(clock, bool(io.resp_valid), s"ICache VA=0x${va.toHexString} 无响应")
-    long(io.resp_addr) should be(va)
-    long(io.resp_data) should be(data)
-    bool(io.resp_fault) should be(false)
-    io.resp_ready.poke(true.B)
+    waitUntil(clock, bool(io.ResponseValid), s"ICache VA=0x${va.toHexString} 无响应")
+    long(io.ResponseAddress) should be(va)
+    long(io.ResponseData) should be(data)
+    bool(io.ResponseFault) should be(false)
+    io.ResponseReady.poke(true.B)
     clock.step()
-    io.resp_ready.poke(false.B)
+    io.ResponseReady.poke(false.B)
   }
 
   private def icacheReset(
@@ -116,22 +116,22 @@ class ysyx_26030103_CacheVIPTAliasTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddressW.W))
-    io.fetch_vaddr.poke(0.U(AddressW.W))
-    io.fetch_paddr_valid.poke(false.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
-    io.fetch_valid.poke(false.B)
-    io.resp_ready.poke(false.B)
-    io.axi.AR.ARREADY.poke(false.B)
-    io.axi.R.RDATA.poke(0.U(32.W))
-    io.axi.R.RRESP.poke(0.U(2.W))
-    io.axi.R.RLAST.poke(false.B)
-    io.axi.R.RVALID.poke(false.B)
+    io.FetchAddress.poke(0.U(AddressW.W))
+    io.FetchVaddr.poke(0.U(AddressW.W))
+    io.FetchPaddrValid.poke(false.B)
+    io.FetchPaddrVaddr.poke(0.U(AddressW.W))
+    io.FetchValid.poke(false.B)
+    io.ResponseReady.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
+    io.AXI.R.RDATA.poke(0.U(32.W))
+    io.AXI.R.RRESP.poke(0.U(2.W))
+    io.AXI.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
     io.flush.poke(false.B)
     io.kill.poke(false.B)
-    io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U(AddressW.W))
-    io.snoop_addr_hi.poke(0.U(AddressW.W))
+    io.SnoopValid.poke(false.B)
+    io.SnoopAddress.poke(0.U(AddressW.W))
+    io.SnoopAddressHi.poke(0.U(AddressW.W))
   }
 
   private def runICache(
@@ -208,16 +208,16 @@ class ysyx_26030103_CacheVIPTAliasTest extends AnyFlatSpec with Matchers {
       va:    Long,
       pa:    Long
   ): Unit = {
-    io.req.bits.vaddr.poke(va.U(AddressW.W))
-    io.req.bits.addr.poke(pa.U(AddressW.W))
-    io.req.bits.WidthSelect.poke(2.U(2.W))
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_vaddr.poke(va.U(AddressW.W))
-    io.req_paddr_valid.poke(true.B)
-    io.req.valid.poke(true.B)
-    waitUntil(clock, bool(io.req.ready), s"DCache 未受理 VA=0x${va.toHexString}")
+    io.request.bits.vaddr.poke(va.U(AddressW.W))
+    io.request.bits.address.poke(pa.U(AddressW.W))
+    io.request.bits.WidthSelect.poke(2.U(2.W))
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrVaddr.poke(va.U(AddressW.W))
+    io.RequestPaddrValid.poke(true.B)
+    io.request.valid.poke(true.B)
+    waitUntil(clock, bool(io.request.ready), s"DCache 未受理 VA=0x${va.toHexString}")
     clock.step()
-    io.req.valid.poke(false.B)
+    io.request.valid.poke(false.B)
   }
 
   private def dcacheStore(
@@ -246,14 +246,14 @@ class ysyx_26030103_CacheVIPTAliasTest extends AnyFlatSpec with Matchers {
       data:  Long,
       label: String
   ): Unit = {
-    waitUntil(clock, bool(io.resp.valid), s"$label DCache 无响应")
+    waitUntil(clock, bool(io.response.valid), s"$label DCache 无响应")
     withClue(s"$label DCache 数据错误") {
-      long(io.resp.bits.data) should be(data)
+      long(io.response.bits.data) should be(data)
     }
-    bool(io.resp.bits.fault) should be(false)
-    io.resp.ready.poke(true.B)
+    bool(io.response.bits.fault) should be(false)
+    io.response.ready.poke(true.B)
     clock.step()
-    io.resp.ready.poke(false.B)
+    io.response.ready.poke(false.B)
   }
 
   private def dcacheReset(
@@ -264,15 +264,15 @@ class ysyx_26030103_CacheVIPTAliasTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.req.valid.poke(false.B)
-    io.req.bits.addr.poke(0.U(AddressW.W))
-    io.req.bits.vaddr.poke(0.U(AddressW.W))
-    io.req.bits.WidthSelect.poke(2.U(2.W))
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_valid.poke(false.B)
-    io.req_paddr_vaddr.poke(0.U(AddressW.W))
-    io.req_kill.poke(false.B)
-    io.resp.ready.poke(false.B)
+    io.request.valid.poke(false.B)
+    io.request.bits.address.poke(0.U(AddressW.W))
+    io.request.bits.vaddr.poke(0.U(AddressW.W))
+    io.request.bits.WidthSelect.poke(2.U(2.W))
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrValid.poke(false.B)
+    io.RequestPaddrVaddr.poke(0.U(AddressW.W))
+    io.RequestKill.poke(false.B)
+    io.response.ready.poke(false.B)
     io.StoreValid.poke(false.B)
     io.StoreResponse.poke(0.U(2.W))
     io.StoreAddress.poke(0.U(AddressW.W))
@@ -314,7 +314,7 @@ class ysyx_26030103_CacheVIPTAliasTest extends AnyFlatSpec with Matchers {
     // 3) store 命中 VaB 的副本，镜像与内存同时更新；VaB 应立即命中，
     // VaA 的旧副本则必须 miss 后取到新值。serial/parallel 的 refill 扫描
     // 可能仍在进行，先等 alias 维护完成再检查“命中”语义。
-    waitUntil(clock, bool(io.req.ready), "DCache alias 维护未完成")
+    waitUntil(clock, bool(io.request.ready), "DCache alias 维护未完成")
     dcacheStore(io, clock, VaB, PaLineA, 0x33334444L, mem)
     dcacheLoad(io, clock, VaB, PaLineA)
     dcacheExpect(io, clock, 0x33334444L, "DCache VaB store hit")

@@ -11,12 +11,13 @@ using DUT = Vysyx_26030103_EXU;
 namespace {
 
 constexpr std::uint16_t kMstatus = 0x300;
+constexpr std::uint16_t kMie = 0x304;
 
 void defaults(DUT &dut) {
   dut.io_in_valid = 0;
   dut.io_out_ready = 1;
   dut.io_in_bits_Instruction = 0x00000013U;
-  dut.io_in_bits_pc = 0x80000000U;
+  dut.io_in_bits_PC = 0x80000000U;
   dut.io_in_bits_snpc = 0x80000004U;
   dut.io_in_bits_ALUCtrl = 15;
   dut.io_in_bits_IsMDU = 0;
@@ -38,9 +39,9 @@ void defaults(DUT &dut) {
   dut.io_in_bits_WidthSelect = 0;
   dut.io_in_bits_LoadSigned = 0;
   dut.io_in_bits_StoreData = 0;
-  dut.io_in_bits_IsCsrrw = 0;
-  dut.io_in_bits_IsCsrrs = 0;
-  dut.io_in_bits_IsCsrrc = 0;
+  dut.io_in_bits_IsCSRrw = 0;
+  dut.io_in_bits_IsCSRrs = 0;
+  dut.io_in_bits_IsCSRrc = 0;
   dut.io_in_bits_IsEcall = 0;
   dut.io_in_bits_IsEbreak = 0;
   dut.io_in_bits_IsSimHalt = 0;
@@ -53,10 +54,10 @@ void defaults(DUT &dut) {
   dut.io_in_bits_ExceptionValid = 0;
   dut.io_in_bits_ExceptionCause = 0;
   dut.io_in_bits_AccessFaultResponse = 0;
-  dut.io_in_bits_pred_taken = 0;
-  dut.io_in_bits_pred_target = 0x80000004U;
+  dut.io_in_bits_PredTaken = 0;
+  dut.io_in_bits_PredTarget = 0x80000004U;
   dut.io_Interrupt = 0;
-  dut.io_IdleIrqPC = 0x80000000U;
+  dut.io_IdleIRQPC = 0x80000000U;
   dut.io_MEMBusy = 0;
   dut.io_PipelineBusy = 0;
   dut.io_MemTrapCommit = 0;
@@ -67,14 +68,14 @@ void defaults(DUT &dut) {
 void begin_instruction(DUT &dut, std::uint32_t pc) {
   defaults(dut);
   dut.io_in_valid = 1;
-  dut.io_in_bits_pc = pc;
+  dut.io_in_bits_PC = pc;
   dut.io_in_bits_snpc = pc + 4U;
-  dut.io_in_bits_pred_target = pc + 4U;
+  dut.io_in_bits_PredTarget = pc + 4U;
 }
 
 void csr_write(DUT &dut, std::uint16_t address, std::uint32_t value) {
   begin_instruction(dut, 0x80000000U);
-  dut.io_in_bits_IsCsrrw = 1;
+  dut.io_in_bits_IsCSRrw = 1;
   dut.io_in_bits_CSRAddress = address;
   dut.io_in_bits_Rs1 = 1;
   dut.io_in_bits_Rs1Data = value;
@@ -103,6 +104,7 @@ void alu_irq_waits_for_older_memory_control() {
   DUT dut;
   defaults(dut);
   reset(dut);
+  csr_write(dut, kMie, 1U << 11); // MEIE
   csr_write(dut, kMstatus, 1U << 3);
 
   begin_instruction(dut, 0x80000020U);
@@ -130,6 +132,7 @@ void irq_must_wait_for_older_memory() {
   DUT dut;
   defaults(dut);
   reset(dut);
+  csr_write(dut, kMie, 1U << 11); // MEIE
   csr_write(dut, kMstatus, 1U << 3); // MIE=1
 
   // Model an older instruction still resident in MEM, then present a younger
@@ -144,7 +147,7 @@ void irq_must_wait_for_older_memory() {
   check(!dut.io_TrapCommit, "TrapCommit bypassed the older memory instruction");
   check(!dut.io_in_ready, "younger MDU input was consumed before the older "
                           "memory instruction drained");
-  check(!dut.io_PerfMDUReq,
+  check(!dut.io_PerfMDURequest,
         "MDU request started even though the pending IRQ must wait for MEM");
 
   // The held input must make progress as soon as the older memory instruction
@@ -154,7 +157,7 @@ void irq_must_wait_for_older_memory() {
   dut.eval();
   check(dut.io_in_ready && dut.io_ExceptionTaken && dut.io_TrapCommit,
         "held MDU instruction did not accept the IRQ after MEM drained");
-  check(!dut.io_PerfMDUReq,
+  check(!dut.io_PerfMDURequest,
         "interrupted MDU instruction incorrectly launched after MEM drained");
   check(!dut.io_out_bits_RegisterWrite && !dut.io_out_bits_Retire,
         "IRQ-preempted MDU instruction leaked architectural side effects");
@@ -173,7 +176,7 @@ void pipelined_mul_must_accept_back_to_back_requests() {
                          std::uint8_t rd, std::uint8_t operation) {
     drive_mdu(dut, pc, lhs, rhs, rd, operation);
     dut.eval();
-    check(dut.io_in_ready && dut.io_PerfMDUReq,
+    check(dut.io_in_ready && dut.io_PerfMDURequest,
           "MUL_PIPELINE=2 rejected a consecutive MUL request");
     tick(dut);
   };
@@ -192,12 +195,12 @@ void pipelined_mul_must_accept_back_to_back_requests() {
         "ready MDU result under downstream backpressure was still counted as "
         "MDU computation wait");
   const std::uint32_t held_result = dut.io_out_bits_ALUResult;
-  const std::uint32_t held_pc = dut.io_out_bits_pc;
+  const std::uint32_t held_pc = dut.io_out_bits_PC;
   const std::uint8_t held_rd = dut.io_out_bits_Rd;
   for (int cycle = 0; cycle < 3; ++cycle) {
     dut.eval();
     check(dut.io_out_valid && dut.io_out_bits_ALUResult == held_result &&
-              dut.io_out_bits_pc == held_pc && dut.io_out_bits_Rd == held_rd,
+              dut.io_out_bits_PC == held_pc && dut.io_out_bits_Rd == held_rd,
           "pipelined MUL response changed under backpressure");
     tick(dut);
   }
@@ -219,14 +222,14 @@ void pipelined_mul_must_accept_back_to_back_requests() {
   // queues without inserting a throughput bubble.
   drive_mdu(dut, 0x8000010cU, 9, 9, 13, 0);
   dut.eval();
-  check(dut.io_out_valid && dut.io_in_ready && dut.io_PerfMDUReq,
+  check(dut.io_out_valid && dut.io_in_ready && dut.io_PerfMDURequest,
         "full MUL pipeline could not pop and push on the same cycle");
 
   std::array<Expected, 4> observed{};
   unsigned responses = 0;
   observed[responses++] = {
       static_cast<std::uint32_t>(dut.io_out_bits_ALUResult),
-      static_cast<std::uint32_t>(dut.io_out_bits_pc),
+      static_cast<std::uint32_t>(dut.io_out_bits_PC),
       static_cast<std::uint8_t>(dut.io_out_bits_Rd),
   };
   tick(dut);
@@ -238,7 +241,7 @@ void pipelined_mul_must_accept_back_to_back_requests() {
             "successful pipelined MUL lost retirement side effects");
       observed[responses++] = {
           static_cast<std::uint32_t>(dut.io_out_bits_ALUResult),
-          static_cast<std::uint32_t>(dut.io_out_bits_pc),
+          static_cast<std::uint32_t>(dut.io_out_bits_PC),
           static_cast<std::uint8_t>(dut.io_out_bits_Rd),
       };
     }
@@ -264,7 +267,7 @@ void mixed_mdu_requests_preserve_program_order() {
                          std::uint8_t rd, std::uint8_t operation) {
     drive_mdu(dut, pc, lhs, rhs, rd, operation);
     dut.eval();
-    check(dut.io_in_ready && dut.io_PerfMDUReq,
+    check(dut.io_in_ready && dut.io_PerfMDURequest,
           "mixed MDU owner FIFO rejected an available execution unit");
     tick(dut);
   };
@@ -346,7 +349,7 @@ void pending_mdu_perf_uses_queue_head_instruction() {
     // the queue-head metadata remains the active EXU instruction.
     drive_mdu(dut, 0x80000400U, 100, 7, 9, 5);
     dut.eval();
-    check(dut.io_in_ready && dut.io_PerfMDUReq,
+    check(dut.io_in_ready && dut.io_PerfMDURequest,
           "long-latency MDU request was not accepted");
     tick(dut);
 
@@ -362,7 +365,7 @@ void pending_mdu_perf_uses_queue_head_instruction() {
       dut.io_in_bits_MemoryValid = 1;
       break;
     case YoungerKind::Csr:
-      dut.io_in_bits_IsCsrrw = 1;
+      dut.io_in_bits_IsCSRrw = 1;
       dut.io_in_bits_CSRAddress = kMstatus;
       dut.io_in_bits_Rs1 = 1;
       break;

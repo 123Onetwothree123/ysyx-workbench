@@ -7,49 +7,49 @@
 using DUT = Vysyx_26030103_ICacheReg;
 
 static void defaults(DUT &dut) {
-  dut.io_fetch_addr = 0;
-  dut.io_fetch_valid = 0;
-  dut.io_resp_ready = 0;
-  dut.io_axi_AR_ARREADY = 0;
-  dut.io_axi_R_RDATA = 0;
-  dut.io_axi_R_RRESP = 0;
-  dut.io_axi_R_RLAST = 0;
-  dut.io_axi_R_RVALID = 0;
+  dut.io_FetchAddress = 0;
+  dut.io_FetchValid = 0;
+  dut.io_ResponseReady = 0;
+  dut.io_AXI_AR_ARREADY = 0;
+  dut.io_AXI_R_RDATA = 0;
+  dut.io_AXI_R_RRESP = 0;
+  dut.io_AXI_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
   dut.io_flush = 0;
   dut.io_kill = 0;
 }
 
 static void consume_local_fault(DUT &dut, std::uint32_t address) {
-  dut.io_fetch_addr = address;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 0;
+  dut.io_FetchAddress = address;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(dut.io_fetch_ready, "ICache did not accept an illegal fetch");
-  check(!dut.io_axi_AR_ARVALID,
+  check(dut.io_FetchReady, "ICache did not accept an illegal fetch");
+  check(!dut.io_AXI_AR_ARVALID,
         "ICache issued AXI before accepting an illegal fetch");
   tick(dut);
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
 
   for (int cycle = 0; cycle < 3; ++cycle) {
     dut.eval();
-    check(dut.io_resp_valid && dut.io_resp_fault,
+    check(dut.io_ResponseValid && dut.io_ResponseFault,
           "illegal fetch did not produce a local fault response");
-    check(dut.io_resp_addr == address,
+    check(dut.io_ResponseAddress == address,
           "illegal fetch response lost the faulting PC");
-    check(dut.io_resp_data == 0x00000013U,
+    check(dut.io_ResponseData == 0x00000013U,
           "illegal fetch did not substitute a NOP payload");
-    check(dut.io_access_fault_resp == 3,
+    check(dut.io_AccessFaultResponse == 3,
           "PMA rejection did not report DECERR to debug logic");
-    check(!dut.io_axi_AR_ARVALID,
+    check(!dut.io_AXI_AR_ARVALID,
           "illegal fetch touched AXI while response was backpressured");
     tick(dut);
   }
 
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(!dut.io_resp_valid,
+  check(!dut.io_ResponseValid,
         "illegal fetch response did not retire after its handshake");
 }
 
@@ -57,127 +57,127 @@ static void consume_local_fault(DUT &dut, std::uint32_t address) {
 static void executable_memory_uses_line_refill(DUT &dut,
                                                 std::uint32_t address,
                                                 std::uint32_t line_address) {
-  dut.io_fetch_addr = address;
-  dut.io_fetch_valid = 1;
+  dut.io_FetchAddress = address;
+  dut.io_FetchValid = 1;
   dut.eval();
-  check(dut.io_fetch_ready, "ICache did not accept an executable fetch");
+  check(dut.io_FetchReady, "ICache did not accept an executable fetch");
   tick(dut);
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
 
   wait_until(
-      dut, [&] { return bool(dut.io_axi_AR_ARVALID); },
+      dut, [&] { return bool(dut.io_AXI_AR_ARVALID); },
       "executable MROM fetch never issued an AXI refill", 8);
-  check(dut.io_axi_AR_ARADDR == line_address,
+  check(dut.io_AXI_AR_ARADDR == line_address,
         "cacheable fetch did not align its line refill");
-  check(dut.io_axi_AR_ARLEN == 3,
+  check(dut.io_AXI_AR_ARLEN == 3,
         "16-byte cache line did not request four AXI beats");
 }
 
 static void missing_final_rlast_faults_and_does_not_install(
     DUT &dut, std::uint32_t address, std::uint32_t line_address) {
-  dut.io_fetch_addr = address;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 1;
+  dut.io_FetchAddress = address;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 1;
   dut.eval();
-  check(dut.io_fetch_ready,
+  check(dut.io_FetchReady,
         "ICache did not accept the missing-RLAST test fetch");
   tick(dut);
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
 
-  wait_until(dut, [&] { return bool(dut.io_axi_AR_ARVALID); },
+  wait_until(dut, [&] { return bool(dut.io_AXI_AR_ARVALID); },
              "missing-RLAST test never issued a refill AR", 8);
-  check(dut.io_axi_AR_ARADDR == line_address && dut.io_axi_AR_ARLEN == 3,
+  check(dut.io_AXI_AR_ARADDR == line_address && dut.io_AXI_AR_ARLEN == 3,
         "missing-RLAST test did not issue the expected line refill");
-  dut.io_axi_AR_ARREADY = 1;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut);
-  dut.io_axi_AR_ARREADY = 0;
+  dut.io_AXI_AR_ARREADY = 0;
 
   for (std::uint32_t beat = 0; beat < 4; ++beat) {
-    dut.io_axi_R_RDATA = 0x11110000U + beat;
-    dut.io_axi_R_RRESP = 0;
-    dut.io_axi_R_RLAST = 0; // Deliberately omit RLAST on the expected final beat.
-    dut.io_axi_R_RVALID = 1;
+    dut.io_AXI_R_RDATA = 0x11110000U + beat;
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_AXI_R_RLAST = 0; // Deliberately omit RLAST on the expected final beat.
+    dut.io_AXI_R_RVALID = 1;
     tick(dut);
   }
-  dut.io_axi_R_RVALID = 0;
+  dut.io_AXI_R_RVALID = 0;
   dut.eval();
 
-  check(dut.io_resp_valid && dut.io_resp_fault,
+  check(dut.io_ResponseValid && dut.io_ResponseFault,
         "missing final RLAST did not become an instruction access fault");
-  check(dut.io_resp_data == 0x00000013U &&
-            dut.io_access_fault_resp == 2,
+  check(dut.io_ResponseData == 0x00000013U &&
+            dut.io_AccessFaultResponse == 2,
         "missing final RLAST did not return a stable protocol-fault payload");
-  check(!dut.io_fetch_ready,
+  check(!dut.io_FetchReady,
         "ICache left drain state before the late RLAST arrived");
 
   // Consume the fault response, then prove that an empty response slot alone
   // cannot release the refill while the malformed burst is still undrained.
   tick(dut);
-  check(!dut.io_fetch_ready,
+  check(!dut.io_FetchReady,
         "ICache accepted a new fetch before draining the late RLAST");
 
-  dut.io_axi_R_RDATA = 0xdeadbeefU;
-  dut.io_axi_R_RRESP = 0;
-  dut.io_axi_R_RLAST = 1;
-  dut.io_axi_R_RVALID = 1;
+  dut.io_AXI_R_RDATA = 0xdeadbeefU;
+  dut.io_AXI_R_RRESP = 0;
+  dut.io_AXI_R_RLAST = 1;
+  dut.io_AXI_R_RVALID = 1;
   tick(dut);
-  dut.io_axi_R_RVALID = 0;
-  dut.io_axi_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
+  dut.io_AXI_R_RLAST = 0;
   dut.eval();
-  check(dut.io_fetch_ready && !dut.io_perf_refill_resp,
+  check(dut.io_FetchReady && !dut.io_perf_refill_resp,
         "late RLAST did not return the ICache to idle");
 
   // The malformed line must remain invalid.  Re-accessing the same final word
   // must count as a miss and issue another AR rather than hit stale data.
-  dut.io_fetch_addr = address;
-  dut.io_fetch_valid = 1;
+  dut.io_FetchAddress = address;
+  dut.io_FetchValid = 1;
   dut.eval();
-  check(dut.io_fetch_ready && !dut.io_perf_hit && dut.io_perf_miss,
+  check(dut.io_FetchReady && !dut.io_perf_hit && dut.io_perf_miss,
         "line with missing final RLAST was incorrectly installed as a hit");
   tick(dut);
-  dut.io_fetch_valid = 0;
-  wait_until(dut, [&] { return bool(dut.io_axi_AR_ARVALID); },
+  dut.io_FetchValid = 0;
+  wait_until(dut, [&] { return bool(dut.io_AXI_AR_ARVALID); },
              "retry after missing final RLAST did not issue a fresh AR", 8);
-  check(dut.io_axi_AR_ARADDR == line_address && dut.io_axi_AR_ARLEN == 3,
+  check(dut.io_AXI_AR_ARADDR == line_address && dut.io_AXI_AR_ARLEN == 3,
         "retry after missing final RLAST issued the wrong refill");
 }
 
 static void fill_line(DUT &dut, std::uint32_t line_address,
                       std::uint32_t data_base) {
-  dut.io_fetch_addr = line_address;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 0;
+  dut.io_FetchAddress = line_address;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(dut.io_fetch_ready, "ICache did not accept line-fill setup fetch");
+  check(dut.io_FetchReady, "ICache did not accept line-fill setup fetch");
   tick(dut);
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
 
-  wait_until(dut, [&] { return bool(dut.io_axi_AR_ARVALID); },
+  wait_until(dut, [&] { return bool(dut.io_AXI_AR_ARVALID); },
              "line-fill setup never issued AR", 8);
-  check(dut.io_axi_AR_ARADDR == line_address && dut.io_axi_AR_ARLEN == 3,
+  check(dut.io_AXI_AR_ARADDR == line_address && dut.io_AXI_AR_ARLEN == 3,
         "line-fill setup issued the wrong burst");
-  dut.io_axi_AR_ARREADY = 1;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut);
-  dut.io_axi_AR_ARREADY = 0;
+  dut.io_AXI_AR_ARREADY = 0;
 
   for (std::uint32_t beat = 0; beat < 4; ++beat) {
-    dut.io_axi_R_RDATA = data_base + beat;
-    dut.io_axi_R_RRESP = 0;
-    dut.io_axi_R_RLAST = beat == 3;
-    dut.io_axi_R_RVALID = 1;
+    dut.io_AXI_R_RDATA = data_base + beat;
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_AXI_R_RLAST = beat == 3;
+    dut.io_AXI_R_RVALID = 1;
     tick(dut);
   }
-  dut.io_axi_R_RVALID = 0;
-  dut.io_axi_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
+  dut.io_AXI_R_RLAST = 0;
   dut.eval();
-  check(dut.io_resp_valid && !dut.io_resp_fault &&
-            dut.io_resp_data == data_base,
+  check(dut.io_ResponseValid && !dut.io_ResponseFault &&
+            dut.io_ResponseData == data_base,
         "line-fill setup returned the wrong demand word");
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(dut.io_fetch_ready && !dut.io_resp_valid,
+  check(dut.io_FetchReady && !dut.io_ResponseValid,
         "line-fill setup did not return ICache to idle");
 }
 
@@ -191,111 +191,111 @@ static void unaccepted_wrong_path_refill_is_cancelled(
   const std::uint32_t wrong_line = victim_line + kOneTag;
   fill_line(dut, victim_line, kVictimData);
 
-  dut.io_fetch_addr = wrong_line;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 1;
+  dut.io_FetchAddress = wrong_line;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 1;
   dut.eval();
-  check(dut.io_fetch_ready && dut.io_perf_miss,
+  check(dut.io_FetchReady && dut.io_perf_miss,
         "wrong-path conflict miss was not accepted");
   tick(dut); // request enters s1
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
   tick(dut); // queued miss enters rf_req
   dut.eval();
-  check(dut.io_axi_AR_ARVALID && !dut.io_axi_AR_ARREADY,
+  check(dut.io_AXI_AR_ARVALID && !dut.io_AXI_AR_ARREADY,
         "wrong-path conflict miss did not reach an unaccepted rf_req");
 
   dut.io_kill = 1;
   dut.eval();
-  check(!dut.io_axi_AR_ARVALID,
+  check(!dut.io_AXI_AR_ARVALID,
         "kill did not cancel an AR that had not handshaken");
   tick(dut);
   dut.io_kill = 0;
   dut.eval();
-  check(!dut.io_axi_AR_ARVALID && dut.io_fetch_ready && !dut.io_resp_valid,
+  check(!dut.io_AXI_AR_ARVALID && dut.io_FetchReady && !dut.io_ResponseValid,
         "cancelled refill did not return directly to idle");
 
-  dut.io_fetch_addr = victim_line;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 0;
+  dut.io_FetchAddress = victim_line;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(dut.io_fetch_ready && dut.io_perf_hit && !dut.io_perf_miss,
+  check(dut.io_FetchReady && dut.io_perf_hit && !dut.io_perf_miss,
         "cancelled wrong-path refill evicted the old victim line");
   tick(dut);
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
   dut.eval();
-  check(dut.io_resp_valid && dut.io_resp_data == kVictimData,
+  check(dut.io_ResponseValid && dut.io_ResponseData == kVictimData,
         "victim hit after refill cancellation returned wrong data");
-  check(!dut.io_axi_AR_ARVALID,
+  check(!dut.io_AXI_AR_ARVALID,
         "victim access after refill cancellation unexpectedly re-refilled");
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
 }
 
 static void accepted_refill_is_drained_after_kill(
     DUT &dut, std::uint32_t line_address) {
   constexpr std::uint32_t kDataBase = 0x61000000U;
-  dut.io_fetch_addr = line_address;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 1;
+  dut.io_FetchAddress = line_address;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 1;
   dut.eval();
-  check(dut.io_fetch_ready, "accepted-kill test fetch was not accepted");
+  check(dut.io_FetchReady, "accepted-kill test fetch was not accepted");
   tick(dut);
-  dut.io_fetch_valid = 0;
-  wait_until(dut, [&] { return bool(dut.io_axi_AR_ARVALID); },
+  dut.io_FetchValid = 0;
+  wait_until(dut, [&] { return bool(dut.io_AXI_AR_ARVALID); },
              "accepted-kill test never issued AR", 8);
-  dut.io_axi_AR_ARREADY = 1;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut); // AR handshake: transaction must now be drained
-  dut.io_axi_AR_ARREADY = 0;
+  dut.io_AXI_AR_ARREADY = 0;
 
   dut.io_kill = 1;
   dut.eval();
-  check(!dut.io_axi_AR_ARVALID,
+  check(!dut.io_AXI_AR_ARVALID,
         "kill after AR handshake did not leave the R transaction drainable");
   tick(dut);
   dut.io_kill = 0;
 
   // A different line must remain backpressured while the accepted burst is
   // outstanding.  In particular, kill must not falsely return the MSHR idle.
-  dut.io_fetch_addr = line_address + 0x40U;
-  dut.io_fetch_valid = 1;
+  dut.io_FetchAddress = line_address + 0x40U;
+  dut.io_FetchValid = 1;
   for (std::uint32_t beat = 0; beat < 3; ++beat) {
-    dut.io_axi_R_RDATA = kDataBase + beat;
-    dut.io_axi_R_RRESP = 0;
-    dut.io_axi_R_RLAST = 0;
-    dut.io_axi_R_RVALID = 1;
+    dut.io_AXI_R_RDATA = kDataBase + beat;
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_AXI_R_RLAST = 0;
+    dut.io_AXI_R_RVALID = 1;
     dut.eval();
-    check(!dut.io_fetch_ready,
+    check(!dut.io_FetchReady,
           "ICache stopped draining or accepted another line after kill");
     tick(dut);
   }
-  dut.io_fetch_valid = 0;
-  dut.io_axi_R_RDATA = kDataBase + 3;
-  dut.io_axi_R_RLAST = 1;
-  dut.io_axi_R_RVALID = 1;
+  dut.io_FetchValid = 0;
+  dut.io_AXI_R_RDATA = kDataBase + 3;
+  dut.io_AXI_R_RLAST = 1;
+  dut.io_AXI_R_RVALID = 1;
   tick(dut);
-  dut.io_axi_R_RVALID = 0;
-  dut.io_axi_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
+  dut.io_AXI_R_RLAST = 0;
   dut.eval();
-  check(dut.io_fetch_ready && !dut.io_resp_valid,
+  check(dut.io_FetchReady && !dut.io_ResponseValid,
         "killed demand did not disappear after accepted burst drained");
 
   // Once AR has handshaken the old victim was already invalidated.  The burst
   // must drain normally and may install its successfully returned line.
-  dut.io_fetch_addr = line_address + 8U;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 0;
+  dut.io_FetchAddress = line_address + 8U;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(dut.io_fetch_ready && dut.io_perf_hit && !dut.io_perf_miss,
+  check(dut.io_FetchReady && dut.io_perf_hit && !dut.io_perf_miss,
         "successfully drained accepted refill was not installed");
   tick(dut);
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
   dut.eval();
-  check(dut.io_resp_valid && dut.io_resp_data == kDataBase + 2,
+  check(dut.io_ResponseValid && dut.io_ResponseData == kDataBase + 2,
         "installed refill returned the wrong word after demand kill");
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
 }
 
 static void exposed_ar_holds_until_handshake(DUT &dut,
@@ -305,66 +305,66 @@ static void exposed_ar_holds_until_handshake(DUT &dut,
   const std::uint32_t wrong_line = line_address + kOneTag;
   fill_line(dut, line_address, kVictimData);
 
-  dut.io_fetch_addr = wrong_line;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 1;
+  dut.io_FetchAddress = wrong_line;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 1;
   dut.eval();
-  check(dut.io_fetch_ready, "AR-stability test fetch was not accepted");
+  check(dut.io_FetchReady, "AR-stability test fetch was not accepted");
   tick(dut);
-  dut.io_fetch_valid = 0;
-  wait_until(dut, [&] { return bool(dut.io_axi_AR_ARVALID); },
+  dut.io_FetchValid = 0;
+  wait_until(dut, [&] { return bool(dut.io_AXI_AR_ARVALID); },
              "AR-stability test never issued AR", 8);
-  const std::uint32_t held_addr = dut.io_axi_AR_ARADDR;
-  const std::uint8_t held_len = dut.io_axi_AR_ARLEN;
+  const std::uint32_t held_addr = dut.io_AXI_AR_ARADDR;
+  const std::uint8_t held_len = dut.io_AXI_AR_ARLEN;
 
   // Let VALID be sampled for one full stalled cycle.  From this point AXI
   // forbids withdrawing it even though no address handshake happened yet.
-  check(!dut.io_axi_AR_ARREADY, "AR-stability test unexpectedly saw READY");
+  check(!dut.io_AXI_AR_ARREADY, "AR-stability test unexpectedly saw READY");
   tick(dut);
   dut.io_kill = 1;
   dut.eval();
-  check(dut.io_axi_AR_ARVALID && dut.io_axi_AR_ARADDR == held_addr &&
-            dut.io_axi_AR_ARLEN == held_len,
+  check(dut.io_AXI_AR_ARVALID && dut.io_AXI_AR_ARADDR == held_addr &&
+            dut.io_AXI_AR_ARLEN == held_len,
         "kill withdrew or changed an already-exposed stalled AR");
   tick(dut); // sticky discard is recorded while VALID remains stalled
   dut.io_kill = 0;
   dut.eval();
-  check(dut.io_axi_AR_ARVALID && dut.io_axi_AR_ARADDR == held_addr &&
-            dut.io_axi_AR_ARLEN == held_len,
+  check(dut.io_AXI_AR_ARVALID && dut.io_AXI_AR_ARADDR == held_addr &&
+            dut.io_AXI_AR_ARLEN == held_len,
         "stalled AR payload was not stable after kill deasserted");
 
-  dut.io_axi_AR_ARREADY = 1;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut);
-  dut.io_axi_AR_ARREADY = 0;
+  dut.io_AXI_AR_ARREADY = 0;
   for (std::uint32_t beat = 0; beat < 4; ++beat) {
-    dut.io_axi_R_RDATA = 0x62000000U + beat;
-    dut.io_axi_R_RRESP = 0;
-    dut.io_axi_R_RLAST = beat == 3;
-    dut.io_axi_R_RVALID = 1;
+    dut.io_AXI_R_RDATA = 0x62000000U + beat;
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_AXI_R_RLAST = beat == 3;
+    dut.io_AXI_R_RVALID = 1;
     tick(dut);
   }
-  dut.io_axi_R_RVALID = 0;
-  dut.io_axi_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
+  dut.io_AXI_R_RLAST = 0;
   dut.eval();
-  check(dut.io_fetch_ready && !dut.io_resp_valid,
+  check(dut.io_FetchReady && !dut.io_ResponseValid,
         "previously exposed killed AR did not drain back to idle");
 
   // Although AXI forced the exposed request to complete, it was marked
   // discard before its handshake and therefore must not evict the victim.
-  dut.io_fetch_addr = line_address;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 0;
+  dut.io_FetchAddress = line_address;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(dut.io_fetch_ready && dut.io_perf_hit,
+  check(dut.io_FetchReady && dut.io_perf_hit,
         "discarded exposed wrong-path AR evicted the victim line");
   tick(dut);
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
   dut.eval();
-  check(dut.io_resp_valid && dut.io_resp_data == kVictimData,
+  check(dut.io_ResponseValid && dut.io_ResponseData == kVictimData,
         "victim after exposed-AR discard returned wrong data");
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
 }
 
 static void early_restart_accepts_only_arrived_words(
@@ -379,84 +379,84 @@ static void early_restart_accepts_only_arrived_words(
   // legal full hit-under-refill from an illegal second miss allocation.
   fill_line(dut, other_hit_line, kOtherHitData);
 
-  dut.io_fetch_addr = demand;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 0;
+  dut.io_FetchAddress = demand;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(dut.io_fetch_ready, "early-restart demand was not accepted");
+  check(dut.io_FetchReady, "early-restart demand was not accepted");
   tick(dut);
-  dut.io_fetch_valid = 0;
-  wait_until(dut, [&] { return bool(dut.io_axi_AR_ARVALID); },
+  dut.io_FetchValid = 0;
+  wait_until(dut, [&] { return bool(dut.io_AXI_AR_ARVALID); },
              "early-restart demand never issued AR", 8);
-  dut.io_axi_AR_ARREADY = 1;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut);
-  dut.io_axi_AR_ARREADY = 0;
+  dut.io_AXI_AR_ARREADY = 0;
 
   for (std::uint32_t beat = 0; beat < 2; ++beat) {
-    dut.io_axi_R_RDATA = kWords[beat];
-    dut.io_axi_R_RRESP = 0;
-    dut.io_axi_R_RLAST = 0;
-    dut.io_axi_R_RVALID = 1;
+    dut.io_AXI_R_RDATA = kWords[beat];
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_AXI_R_RLAST = 0;
+    dut.io_AXI_R_RVALID = 1;
     tick(dut);
   }
-  dut.io_axi_R_RVALID = 0;
+  dut.io_AXI_R_RVALID = 0;
   dut.eval();
-  check(dut.io_resp_valid && dut.io_resp_addr == demand &&
-            dut.io_resp_data == kWords[1],
+  check(dut.io_ResponseValid && dut.io_ResponseAddress == demand &&
+            dut.io_ResponseData == kWords[1],
         "keyword did not early-restart the original demand");
 
   // Beat 0 arrived before the keyword.  It may be accepted in the same cycle
   // that the original response retires, while the burst is still in flight.
-  dut.io_fetch_addr = line_address;
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 1;
+  dut.io_FetchAddress = line_address;
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 1;
   // A later R beat in this exact cycle used to overwrite resp_data_reg with
   // old s1_waits=true after the new partial hit had latched beat 0.
-  dut.io_axi_R_RDATA = kWords[2];
-  dut.io_axi_R_RRESP = 0;
-  dut.io_axi_R_RLAST = 0;
-  dut.io_axi_R_RVALID = 1;
+  dut.io_AXI_R_RDATA = kWords[2];
+  dut.io_AXI_R_RRESP = 0;
+  dut.io_AXI_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 1;
   dut.eval();
-  check(dut.io_fetch_ready && dut.io_perf_hit,
+  check(dut.io_FetchReady && dut.io_perf_hit,
         "already-arrived word was blocked until line tail");
   tick(dut);
-  dut.io_axi_R_RVALID = 0;
-  dut.io_fetch_valid = 0;
-  dut.io_resp_ready = 0;
+  dut.io_AXI_R_RVALID = 0;
+  dut.io_FetchValid = 0;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(dut.io_resp_valid && dut.io_resp_data == kWords[0],
+  check(dut.io_ResponseValid && dut.io_ResponseData == kWords[0],
         "partial-line hit returned the wrong arrived word");
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
 
   // A different uncached line is still a second miss and must remain
   // backpressured while the single MSHR is occupied.
-  dut.io_fetch_addr = line_address + 0x80U;
-  dut.io_fetch_valid = 1;
+  dut.io_FetchAddress = line_address + 0x80U;
+  dut.io_FetchValid = 1;
   for (int cycle = 0; cycle < 2; ++cycle) {
     dut.eval();
-    check(!dut.io_fetch_ready && !dut.io_resp_valid,
+    check(!dut.io_FetchReady && !dut.io_ResponseValid,
           "second line miss bypassed an occupied single MSHR");
     tick(dut);
   }
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
 
   // A complete hit at another index is independent of the MSHR and must not
   // wait for the tail beat of this refill.
-  dut.io_fetch_addr = other_hit_line;
-  dut.io_fetch_valid = 1;
+  dut.io_FetchAddress = other_hit_line;
+  dut.io_FetchValid = 1;
   dut.eval();
-  check(dut.io_fetch_ready && dut.io_perf_hit,
+  check(dut.io_FetchReady && dut.io_perf_hit,
         "full hit at another index was blocked by refill tail");
   tick(dut);
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
   dut.eval();
-  check(dut.io_resp_valid && dut.io_resp_data == kOtherHitData,
+  check(dut.io_ResponseValid && dut.io_ResponseData == kOtherHitData,
         "full hit-under-refill returned wrong data");
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
 
   // The original demand has retired (s1_waits=false).  A later, unrelated
   // redirect must not discard this background fill.
@@ -466,147 +466,148 @@ static void early_restart_accepts_only_arrived_words(
 
   // Beat 3 has not arrived.  Hold its request under backpressure and make sure
   // no stale/half-filled data becomes a response before the R handshake.
-  dut.io_fetch_addr = line_address + 12U;
-  dut.io_fetch_valid = 1;
+  dut.io_FetchAddress = line_address + 12U;
+  dut.io_FetchValid = 1;
   for (int cycle = 0; cycle < 2; ++cycle) {
     dut.eval();
-    check(!dut.io_fetch_ready && !dut.io_resp_valid,
+    check(!dut.io_FetchReady && !dut.io_ResponseValid,
           "unarrived word escaped partial-line backpressure");
     tick(dut);
   }
 
-  dut.io_axi_R_RDATA = kWords[3];
-  dut.io_axi_R_RRESP = 0;
-  dut.io_axi_R_RLAST = 1;
-  dut.io_axi_R_RVALID = 1;
+  dut.io_AXI_R_RDATA = kWords[3];
+  dut.io_AXI_R_RRESP = 0;
+  dut.io_AXI_R_RLAST = 1;
+  dut.io_AXI_R_RVALID = 1;
   tick(dut);
-  dut.io_axi_R_RVALID = 0;
-  dut.io_axi_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
+  dut.io_AXI_R_RLAST = 0;
   dut.eval();
-  check(dut.io_fetch_ready && dut.io_perf_hit,
+  check(dut.io_FetchReady && dut.io_perf_hit,
         "final word did not become fetchable after its R handshake");
   tick(dut); // held fetch is accepted after the line becomes complete
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
   dut.eval();
-  check(dut.io_resp_valid && dut.io_resp_data == kWords[3],
+  check(dut.io_ResponseValid && dut.io_ResponseData == kWords[3],
         "background refill was discarded by a later unrelated kill");
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
 }
 
 static void refill_error_revokes_partial_words(DUT &dut,
                                                std::uint32_t line_address) {
-  dut.io_fetch_addr = line_address; // keyword is beat 0
-  dut.io_fetch_valid = 1;
-  dut.io_resp_ready = 0;
+  dut.io_FetchAddress = line_address; // keyword is beat 0
+  dut.io_FetchValid = 1;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(dut.io_fetch_ready, "refill-error demand was not accepted");
+  check(dut.io_FetchReady, "refill-error demand was not accepted");
   tick(dut);
-  dut.io_fetch_valid = 0;
-  wait_until(dut, [&] { return bool(dut.io_axi_AR_ARVALID); },
+  dut.io_FetchValid = 0;
+  wait_until(dut, [&] { return bool(dut.io_AXI_AR_ARVALID); },
              "refill-error test never issued AR", 8);
-  dut.io_axi_AR_ARREADY = 1;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut);
-  dut.io_axi_AR_ARREADY = 0;
+  dut.io_AXI_AR_ARREADY = 0;
 
-  dut.io_axi_R_RDATA = 0x73000000U;
-  dut.io_axi_R_RRESP = 0;
-  dut.io_axi_R_RLAST = 0;
-  dut.io_axi_R_RVALID = 1;
+  dut.io_AXI_R_RDATA = 0x73000000U;
+  dut.io_AXI_R_RRESP = 0;
+  dut.io_AXI_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 1;
   tick(dut);
-  dut.io_axi_R_RVALID = 0;
+  dut.io_AXI_R_RVALID = 0;
   dut.eval();
-  check(dut.io_resp_valid && dut.io_resp_data == 0x73000000U,
+  check(dut.io_ResponseValid && dut.io_ResponseData == 0x73000000U,
         "successful keyword did not early-restart before later error");
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
 
   // Beat 0 is currently partial-valid.  A non-keyword error arriving in this
   // cycle must revoke that permission combinationally, before the sticky error
   // register is updated at the edge.
-  dut.io_fetch_addr = line_address;
-  dut.io_fetch_valid = 1;
-  dut.io_axi_R_RDATA = 0xdead0001U;
-  dut.io_axi_R_RRESP = 2;
-  dut.io_axi_R_RLAST = 0;
-  dut.io_axi_R_RVALID = 1;
+  dut.io_FetchAddress = line_address;
+  dut.io_FetchValid = 1;
+  dut.io_AXI_R_RDATA = 0xdead0001U;
+  dut.io_AXI_R_RRESP = 2;
+  dut.io_AXI_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 1;
   dut.eval();
-  check(!dut.io_fetch_ready && !dut.io_resp_valid,
+  check(!dut.io_FetchReady && !dut.io_ResponseValid,
         "partial word remained fetchable in the RRESP-error cycle");
   tick(dut);
-  dut.io_axi_R_RVALID = 0;
-  dut.io_axi_R_RRESP = 0;
+  dut.io_AXI_R_RVALID = 0;
+  dut.io_AXI_R_RRESP = 0;
   for (int cycle = 0; cycle < 2; ++cycle) {
     dut.eval();
-    check(!dut.io_fetch_ready && !dut.io_resp_valid,
+    check(!dut.io_FetchReady && !dut.io_ResponseValid,
           "sticky refill error did not revoke prior partial words");
     tick(dut);
   }
 
   for (std::uint32_t beat = 2; beat < 4; ++beat) {
-    dut.io_axi_R_RDATA = 0x73000000U + beat;
-    dut.io_axi_R_RRESP = 0;
-    dut.io_axi_R_RLAST = beat == 3;
-    dut.io_axi_R_RVALID = 1;
+    dut.io_AXI_R_RDATA = 0x73000000U + beat;
+    dut.io_AXI_R_RRESP = 0;
+    dut.io_AXI_R_RLAST = beat == 3;
+    dut.io_AXI_R_RVALID = 1;
     dut.eval();
-    check(!dut.io_fetch_ready,
+    check(!dut.io_FetchReady,
           "errored refill exposed a partial word before its tail drained");
     tick(dut);
   }
-  dut.io_axi_R_RVALID = 0;
-  dut.io_axi_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
+  dut.io_AXI_R_RLAST = 0;
   dut.eval();
-  check(dut.io_fetch_ready && dut.io_perf_miss && !dut.io_perf_hit,
+  check(dut.io_FetchReady && dut.io_perf_miss && !dut.io_perf_hit,
         "line containing a non-keyword RRESP error was installed");
   tick(dut); // held fetch starts a clean retry
-  dut.io_fetch_valid = 0;
-  wait_until(dut, [&] { return bool(dut.io_axi_AR_ARVALID); },
+  dut.io_FetchValid = 0;
+  wait_until(dut, [&] { return bool(dut.io_AXI_AR_ARVALID); },
              "errored line did not issue a clean retry", 8);
 }
 #else
 static void executable_memory_uses_single_beat(DUT &dut,
                                                std::uint32_t address,
                                                std::uint32_t response_data) {
-  dut.io_fetch_addr = address;
-  dut.io_fetch_valid = 1;
+  dut.io_FetchAddress = address;
+  dut.io_FetchValid = 1;
   dut.eval();
-  check(dut.io_fetch_ready, "cache-disabled ICache did not accept a fetch");
+  check(dut.io_FetchReady, "cache-disabled ICache did not accept a fetch");
   // 口径修正后，缓存禁用配置下 perf_hit/perf_miss/ARLEN 都是编译期常量
   // （非缓存取指不算 miss），firtool 会移除这些常量输出端口——缓存禁用时
   // 不存在"缺失"，因此这里不再观察 perf_miss。
   tick(dut);
-  dut.io_fetch_valid = 0;
+  dut.io_FetchValid = 0;
 
-  wait_until(dut, [&] { return bool(dut.io_axi_AR_ARVALID); },
+  wait_until(dut, [&] { return bool(dut.io_AXI_AR_ARVALID); },
              "cache-disabled fetch never issued an AXI read", 8);
-  check(dut.io_axi_AR_ARADDR == address,
+  check(dut.io_AXI_AR_ARADDR == address,
         "cache-disabled fetch aligned an address as if refilling a line");
-  dut.io_axi_AR_ARREADY = 1;
+  dut.io_AXI_AR_ARREADY = 1;
   tick(dut);
-  dut.io_axi_AR_ARREADY = 0;
-  dut.io_axi_R_RDATA = response_data;
-  dut.io_axi_R_RRESP = 0;
-  dut.io_axi_R_RLAST = 1;
-  dut.io_axi_R_RVALID = 1;
+  dut.io_AXI_AR_ARREADY = 0;
+  dut.io_AXI_R_RDATA = response_data;
+  dut.io_AXI_R_RRESP = 0;
+  dut.io_AXI_R_RLAST = 1;
+  dut.io_AXI_R_RVALID = 1;
   tick(dut);
-  dut.io_axi_R_RVALID = 0;
-  dut.io_axi_R_RLAST = 0;
+  dut.io_AXI_R_RVALID = 0;
+  dut.io_AXI_R_RLAST = 0;
   dut.eval();
 
-  check(dut.io_resp_valid && !dut.io_resp_fault,
+  check(dut.io_ResponseValid && !dut.io_ResponseFault,
         "cache-disabled AXI response did not complete the fetch");
-  check(dut.io_resp_addr == address && dut.io_resp_data == response_data,
+  check(dut.io_ResponseAddress == address &&
+            dut.io_ResponseData == response_data,
         "cache-disabled fetch returned the wrong address or data");
-  check(dut.io_access_fault_resp == 0,
+  check(dut.io_AccessFaultResponse == 0,
         "successful cache-disabled fetch retained a fault response code");
 
-  dut.io_resp_ready = 1;
+  dut.io_ResponseReady = 1;
   tick(dut);
-  dut.io_resp_ready = 0;
+  dut.io_ResponseReady = 0;
   dut.eval();
-  check(!dut.io_resp_valid,
+  check(!dut.io_ResponseValid,
         "cache-disabled response remained valid after its handshake");
 }
 #endif
@@ -642,7 +643,7 @@ int main(int argc, char **argv) {
         0x21000000U, // VGA/MMIO
         0x20000000U, // unmapped hole
 #ifdef TEST_NPC
-        0x80040000U // first byte beyond the direct NPC's 256 KiB RAM
+        0x84000000U // first byte beyond the direct NPC's 64 MiB RAM
 #elif defined(TEST_CHIPLINK)
         0x40000000U // ChipLink MMIO remains non-executable
 #else

@@ -1,4 +1,5 @@
 module npc.trace.iringbuf;
+import npc.Output;
 import npc.trace.disasm;
 iringbuf::iringbuf() noexcept = default;
 iringbuf::~iringbuf() noexcept = default;
@@ -20,24 +21,26 @@ std::size_t iringbuf::capacity() const
 }
 void iringbuf::push(std::uint64_t pc, std::uint32_t instruction, int len)
 {
+    // 指令长度只能 2/4 字节，越界会让 memcpy 越界读。
+    const int bounded_len{std::clamp(len, 0, 4)};
     buffer[head].SetPC(pc);
     buffer[head].SetInstruction(instruction);
-    buffer[head].SetLen(len);
+    buffer[head].SetLen(bounded_len);
     head = (head + 1) % IRINGBUF_SIZE;
     if (count < IRINGBUF_SIZE)
     {
         count++;
     }
 }
-void iringbuf::print(std::uint64_t ErrorPC) const
+void iringbuf::print(std::uint64_t ErrorPC, Output &out) const
 {
     if (empty())
     {
-        std::println("iringbuf是空的");
+        out.Info("iringbuf是空的");
         return;
     }
     const auto start{(head + IRINGBUF_SIZE - count) % IRINGBUF_SIZE};
-    std::println("打印iringbuf");
+    out.Info("打印iringbuf");
     for (std::size_t i{0}; i < count; i++)
     {
         const auto index{(start + i) % IRINGBUF_SIZE};
@@ -47,21 +50,22 @@ void iringbuf::print(std::uint64_t ErrorPC) const
         std::string_view marker{(entry.GetPC() == ErrorPC) ? marker_selected : marker_normal};
         std::array<std::uint8_t, 4> inst_bytes{};
         const auto instruction{entry.GetInstruction()};
-        const auto len{static_cast<std::size_t>(entry.GetLen())};
+        const auto len{static_cast<std::size_t>(
+            std::clamp(entry.GetLen(), 0, 4))};
         std::memcpy(inst_bytes.data(), &instruction, len);
-        std::span<std::uint8_t> bytes_span{inst_bytes.data(), static_cast<std::size_t>(entry.GetLen())};
+        std::span<std::uint8_t> bytes_span{inst_bytes.data(), len};
         std::array<char, 128> AssemblyBuffer{};
         disassemble(AssemblyBuffer.data(), static_cast<int>(AssemblyBuffer.size()), entry.GetPC(), bytes_span.data(), static_cast<int>(bytes_span.size()));
         std::string BytesString;
-        BytesString.reserve(static_cast<std::size_t>(entry.GetLen()) * 4);
-        for (int j{entry.GetLen() - 1}; j >= 0; --j)
+        BytesString.reserve(len * 4);
+        for (int j{static_cast<int>(len) - 1}; j >= 0; --j)
         {
             std::format_to(std::back_inserter(BytesString), " {:02x}", inst_bytes[j]);
         }
-        std::println("{:s} 0x{:016x}: {:<24s}{:s}",
-                     marker,
-                     entry.GetPC(),
-                     AssemblyBuffer.data(),
-                     BytesString);
+        out.Info("{:s} 0x{:016x}: {:<24s}{:s}",
+                 marker,
+                 entry.GetPC(),
+                 AssemblyBuffer.data(),
+                 BytesString);
     }
 }

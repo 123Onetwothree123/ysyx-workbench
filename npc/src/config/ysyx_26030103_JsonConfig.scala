@@ -7,7 +7,7 @@ import scala.collection.mutable
 /** NPC 构建期配置读取器。
   *
   * `npc_config_gen --typed-json` 生成嵌套 typed JSON，Kconfig 扁平 JSON 仍可
-  * 直接读取；typed getter 用点分路径（如 `cfg.int("isa.xlen", 32)`）。`flat`
+  * 直接读取；typed getter 用点分路径（如 `config.int("isa.xlen", 32)`）。`flat`
   * 优先用生成器内嵌的扁平视图，否则从 typed 树反向投影，供 `MMUProfile.fromEnv`
   * 等仍按扁平键读取的组件使用；旧 flat JSON 也能通过别名映射继续访问。
   */
@@ -282,16 +282,16 @@ object ysyx_26030103_JsonConfig {
             case _                     => Some("ISA_" + joined(tail))
           }
         case "fpu"       => Some("FPU_" + joined(tail))
-        case "mdu"       => Some(joined(tail))
+        case "MDU"       => Some(joined(tail))
         case "frontend"  => Some(joined(tail))
-        case "csr"       => Some("CSR_" + joined(tail))
+        case "CSR"       => Some("CSR_" + joined(tail))
         case "interrupt" =>
           tail.mkString(".") match {
             case "timer_path"      => Some("TIMER_PATH")
             case "s_timer_irq"     => Some("HAS_S_TIMER_IRQ")
             case "s_external_irq"  => Some("HAS_S_EXTERNAL_IRQ")
-            case value if value.startsWith("plic.") =>
-              Some("PLIC_" + joined(value.stripPrefix("plic.").split('.').toSeq))
+            case value if value.startsWith("PLIC.") =>
+              Some("PLIC_" + joined(value.stripPrefix("PLIC.").split('.').toSeq))
             case _ => Some("INTERRUPT_" + joined(tail))
           }
         case "debug" =>
@@ -348,14 +348,14 @@ object ysyx_26030103_JsonConfig {
             case "index_bits"      => Some("CACHE_INDEX_BITS")
             case "wbuf_depth"      => Some("WBUF_DEPTH")
             case "dma_coherence"   => Some("DMA_COHERENCE")
-            case value if value == "icache.enabled" => Some("ICACHE")
-            case value if value.startsWith("icache.") =>
+            case value if value == "ICache.enabled" => Some("ICACHE")
+            case value if value.startsWith("ICache.") =>
               Some("ICACHE_" +
-                upper(value.stripPrefix("icache.").replace('.', '_')))
-            case value if value == "dcache.enabled" => Some("DCACHE")
-            case value if value.startsWith("dcache.") =>
+                upper(value.stripPrefix("ICache.").replace('.', '_')))
+            case value if value == "DCache.enabled" => Some("DCACHE")
+            case value if value.startsWith("DCache.") =>
               Some("DCACHE_" +
-                upper(value.stripPrefix("dcache.").replace('.', '_')))
+                upper(value.stripPrefix("DCache.").replace('.', '_')))
             case _ => Some("CACHE_" + joined(tail))
           }
         case "mmu" =>

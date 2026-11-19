@@ -1,0 +1,3 @@
+[NPC config] hash=523b29c9eb7d5542
+现在指定了镜像文件
+文件加载了: /home/abc/ysyx-workbench/npc/csrc/Test/software/malloc-stress/build/malloc-stress-riscv64-npc.bin, size = 17792 bytes, padding = 0 bytes

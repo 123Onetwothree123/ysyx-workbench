@@ -1,22 +1,30 @@
+module;
+#include "common/TraceLineReader.hpp"
 module DTraceReader;
 import std;
 import AccessRecord;
-static bool IsComment(std::string_view line)
+
+struct DTraceReader::Impl
 {
-    return line.empty() || line[0] == '#' || line[0] == '/';
-}
+    common::LineReader reader;
+    explicit Impl(const std::string& path) : reader{path} {}
+};
+
 DTraceReader::DTraceReader(const std::string& path)
+    : impl{std::make_unique<Impl>(path)}
 {
-    file.open(path);
-    if (!file)
-    {
-        throw std::runtime_error(std::format("这个文件无法打开：{}\n", path));
-    }
 }
+
+DTraceReader::~DTraceReader() = default;
+
 std::optional<AccessRecord> DTraceReader::next()
 {
+    if (!impl)
+    {
+        return std::nullopt;
+    }
     std::string line{};
-    while (std::getline(file, line))
+    while (impl->reader.Next(line))
     {
         if (auto record{TryParse(line)})
         {
@@ -26,9 +34,10 @@ std::optional<AccessRecord> DTraceReader::next()
     }
     return std::nullopt;
 }
+
 std::optional<AccessRecord> DTraceReader::TryParse(std::string_view line)
 {
-    if (IsComment(line))
+    if (common::IsCommentLine(line))
     {
         return std::nullopt;
     }
@@ -70,6 +79,7 @@ std::optional<AccessRecord> DTraceReader::TryParse(std::string_view line)
     }
     return AccessRecord{addr, is_write};
 }
+
 std::size_t DTraceReader::GetCount() const
 {
     return count;

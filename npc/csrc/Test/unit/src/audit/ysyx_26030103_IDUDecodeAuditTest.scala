@@ -22,8 +22,8 @@ class ysyx_26030103_IDUDecodeAuditHarness(config: ysyx_26030103_NPCConfig)
     val scounteren = Input(UInt(32.W))
     val exceptionValid = Output(Bool())
     val exceptionCause = Output(UInt(4.W))
-    val isFP = Output(Bool())
-    val fpRm = Output(UInt(3.W))
+    val IsFP = Output(Bool())
+    val FPRm = Output(UInt(3.W))
     val isAtomic = Output(Bool())
     val isSret = Output(Bool())
     val isSfenceVma = Output(Bool())
@@ -33,12 +33,12 @@ class ysyx_26030103_IDUDecodeAuditHarness(config: ysyx_26030103_NPCConfig)
   idu.io.in.valid := true.B
   idu.io.in.bits.Instruction := io.instruction
   idu.io.in.bits.IsCompressed := io.isCompressed
-  idu.io.in.bits.pc := 0.U
+  idu.io.in.bits.PC := 0.U
   idu.io.in.bits.ExceptionValid := false.B
   idu.io.in.bits.ExceptionCause := 0.U
   idu.io.in.bits.AccessFaultResponse := 0.U
-  idu.io.in.bits.pred_taken := false.B
-  idu.io.in.bits.pred_target := 0.U
+  idu.io.in.bits.PredTaken := false.B
+  idu.io.in.bits.PredTarget := 0.U
   idu.io.out.ready := true.B
   idu.io.ReadDATA1 := 0.U
   idu.io.ReadDATA2 := 0.U
@@ -46,50 +46,50 @@ class ysyx_26030103_IDUDecodeAuditHarness(config: ysyx_26030103_NPCConfig)
   idu.io.ReadFPR2 := 0.U
   idu.io.ReadFPR3 := 0.U
   idu.io.Frm := io.frm
-  idu.io.ex_fp_valid := false.B
-  idu.io.ex_fp_rd := 0.U
-  idu.io.ex_fp_regWrite := false.B
-  idu.io.ex_fp_fwd_ready := false.B
-  idu.io.ex_fp_fwd_data := 0.U
-  idu.io.me_fp_valid := false.B
-  idu.io.me_fp_rd := 0.U
-  idu.io.me_fp_regWrite := false.B
-  idu.io.me_fp_fwd_ready := false.B
-  idu.io.me_fp_fwd_data := 0.U
-  idu.io.me2_fp_valid := false.B
-  idu.io.me2_fp_rd := 0.U
-  idu.io.me2_fp_regWrite := false.B
-  idu.io.me2_fp_fwd_ready := false.B
-  idu.io.me2_fp_fwd_data := 0.U
-  idu.io.wb_fp_valid := false.B
-  idu.io.wb_fp_rd := 0.U
-  idu.io.wb_fp_regWrite := false.B
-  idu.io.wb_fp_fwd_data := 0.U
-  idu.io.ex_valid := false.B
-  idu.io.ex_rd := 0.U
-  idu.io.ex_regWrite := false.B
-  idu.io.wb_valid := false.B
-  idu.io.wb_rd := 0.U
-  idu.io.wb_regWrite := false.B
-  idu.io.ex_memop := false.B
-  idu.io.ex_fwd_ready := false.B
-  idu.io.ex_fwd_data := 0.U
-  idu.io.ex_mdu_hidden_writes := 0.U
-  idu.io.wb_fwd_data := 0.U
-  idu.io.me_valid := false.B
-  idu.io.me_rd := 0.U
-  idu.io.me_regWrite := false.B
-  idu.io.me_memop := false.B
-  idu.io.me_fwd_ready := false.B
-  idu.io.me_fwd_data := 0.U
-  idu.io.me2_valid := false.B
-  idu.io.me2_rd := 0.U
-  idu.io.me2_regWrite := false.B
-  idu.io.me2_memop := false.B
-  idu.io.me2_fwd_ready := false.B
-  idu.io.me2_fwd_data := 0.U
-  idu.io.pipeline_mode := false.B
-  idu.io.mmu_stall := false.B
+  idu.io.ExFPValid := false.B
+  idu.io.ExFPRd := 0.U
+  idu.io.ExFPRegWrite := false.B
+  idu.io.ExFPForwardReady := false.B
+  idu.io.ExFPForwardData := 0.U
+  idu.io.MeFPValid := false.B
+  idu.io.MeFPRd := 0.U
+  idu.io.MeFPRegWrite := false.B
+  idu.io.MeFPForwardReady := false.B
+  idu.io.MeFPForwardData := 0.U
+  idu.io.Me2FPValid := false.B
+  idu.io.Me2FPRd := 0.U
+  idu.io.Me2FPRegWrite := false.B
+  idu.io.Me2FPForwardReady := false.B
+  idu.io.Me2FPForwardData := 0.U
+  idu.io.WbFPValid := false.B
+  idu.io.WbFPRd := 0.U
+  idu.io.WbFPRegWrite := false.B
+  idu.io.WbFPForwardData := 0.U
+  idu.io.ExValid := false.B
+  idu.io.ExRd := 0.U
+  idu.io.ExRegWrite := false.B
+  idu.io.WbValid := false.B
+  idu.io.WbRd := 0.U
+  idu.io.WbRegWrite := false.B
+  idu.io.ExMemop := false.B
+  idu.io.ExForwardReady := false.B
+  idu.io.ExForwardData := 0.U
+  idu.io.ExMDUHiddenWrites := 0.U
+  idu.io.WbForwardData := 0.U
+  idu.io.MeValid := false.B
+  idu.io.MeRd := 0.U
+  idu.io.MeRegWrite := false.B
+  idu.io.MeMemop := false.B
+  idu.io.MeForwardReady := false.B
+  idu.io.MeForwardData := 0.U
+  idu.io.Me2Valid := false.B
+  idu.io.Me2Rd := 0.U
+  idu.io.Me2RegWrite := false.B
+  idu.io.Me2Memop := false.B
+  idu.io.Me2ForwardReady := false.B
+  idu.io.Me2ForwardData := 0.U
+  idu.io.PipelineMode := false.B
+  idu.io.MMUStall := false.B
   idu.io.Privilege := io.privilege
   idu.io.Mstatus := io.mstatus
   idu.io.Mcounteren := io.mcounteren
@@ -97,8 +97,8 @@ class ysyx_26030103_IDUDecodeAuditHarness(config: ysyx_26030103_NPCConfig)
 
   io.exceptionValid := idu.io.out.bits.ExceptionValid
   io.exceptionCause := idu.io.out.bits.ExceptionCause
-  io.isFP := idu.io.out.bits.IsFP
-  io.fpRm := idu.io.out.bits.FPRm
+  io.IsFP := idu.io.out.bits.IsFP
+  io.FPRm := idu.io.out.bits.FPRm
   io.isAtomic := idu.io.out.bits.IsAtomic
   io.isSret := idu.io.out.bits.IsSret
   io.isSfenceVma := idu.io.out.bits.IsSfenceVma
@@ -115,7 +115,7 @@ class ysyx_26030103_IDUDecodeAuditTest
       xlen: Int = 64,
       useA: Boolean = true,
       useF: Boolean = true,
-      mmuEnabled: Boolean = false,
+      MMUEnabled: Boolean = false,
       hasS: Boolean = true,
       hasU: Boolean = true
   ): ysyx_26030103_NPCConfig =
@@ -130,15 +130,15 @@ class ysyx_26030103_IDUDecodeAuditTest
       FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
       FPULen = 64,
       MMU = ysyx_26030103_MMUProfile(
-        enabled = mmuEnabled,
+        enabled = MMUEnabled,
         xlen = xlen,
         hasS = hasS,
         hasU = hasU,
-        pteSizeBytes = if (xlen == 64) 8 else 4,
-        pteFormat = if (xlen == 64) "riscv64" else "riscv32",
-        pteConfig = ysyx_26030103_PTEConfig(
-          pteBits = if (xlen == 64) 64 else 32,
-          ppnHigh = if (xlen == 64) 53 else 21
+        PTESizeBytes = if (xlen == 64) 8 else 4,
+        PTEFormat = if (xlen == 64) "riscv64" else "riscv32",
+        PTEConfig = ysyx_26030103_PTEConfig(
+          PTEBits = if (xlen == 64) 64 else 32,
+          PPNHigh = if (xlen == 64) 53 else 21
         )
       )
     )
@@ -168,8 +168,8 @@ class ysyx_26030103_IDUDecodeAuditTest
     (BigInt(0x02) << 27) | (BigInt(rs2) << 20) | (BigInt(rs1) << 15) |
       (BigInt(funct3) << 12) | (BigInt(rd) << 7) | 0x2f
 
-  private def csrrs(rd: Int, csr: Int): BigInt =
-    (BigInt(csr) << 20) | (2 << 12) | (BigInt(rd) << 7) | 0x73
+  private def csrrs(rd: Int, CSR: Int): BigInt =
+    (BigInt(CSR) << 20) | (2 << 12) | (BigInt(rd) << 7) | 0x73
 
   private val Sret = BigInt(0x10200073L)
   private val SfenceVma = BigInt(0x12000073L)
@@ -245,7 +245,7 @@ class ysyx_26030103_IDUDecodeAuditTest
       setup(dut, mstatus = FsDirty, privilege = 3)
       dut.io.instruction.poke(faddS(0).U)
       bool(dut.io.exceptionValid) should be(false)
-      bool(dut.io.isFP) should be(true)
+      bool(dut.io.IsFP) should be(true)
     }
   }
 
@@ -268,15 +268,15 @@ class ysyx_26030103_IDUDecodeAuditTest
   it should "把 FS=Off 时的 fflags/frm/fcsr 访问判为非法指令" in {
     simulate(new ysyx_26030103_IDUDecodeAuditHarness(config())) { dut =>
       setup(dut, mstatus = 0, privilege = 3)
-      for (csr <- Seq(0x001, 0x002, 0x003)) {
-        dut.io.instruction.poke(csrrs(1, csr).U)
+      for (CSR <- Seq(0x001, 0x002, 0x003)) {
+        dut.io.instruction.poke(csrrs(1, CSR).U)
         bool(dut.io.exceptionValid) should be(true)
         big(dut.io.exceptionCause) should be(BigInt(2))
       }
 
       setup(dut, mstatus = FsDirty, privilege = 3)
-      for (csr <- Seq(0x001, 0x002, 0x003)) {
-        dut.io.instruction.poke(csrrs(1, csr).U)
+      for (CSR <- Seq(0x001, 0x002, 0x003)) {
+        dut.io.instruction.poke(csrrs(1, CSR).U)
         bool(dut.io.exceptionValid) should be(false)
       }
     }

@@ -18,25 +18,25 @@ class ysyx_26030103_AuditXbarPLICHarness extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new ysyx_26030103_AXI5IO(32, 32, 4))
     val sources = Input(UInt(32.W))
-    val irq = Output(Bool())
-    val plicAwValid = Output(Bool())
-    val plicArValid = Output(Bool())
+    val IRQ = Output(Bool())
+    val PLICAWValid = Output(Bool())
+    val PLICARValid = Output(Bool())
   })
 
   val xbar = Module(new ysyx_26030103_AXI5Xbar())
-  val plic = Module(new ysyx_26030103_PLIC(DataWidth = 32))
+  val PLIC = Module(new ysyx_26030103_PLIC(DataWidth = 32))
 
   xbar.io.in <> io.in
-  plic.sources := io.sources
-  io.irq := plic.external_irq
-  io.plicAwValid := xbar.io.PLIC.AW.AWVALID
-  io.plicArValid := xbar.io.PLIC.AR.ARVALID
+  PLIC.sources := io.sources
+  io.IRQ := PLIC.ExternalIRQ
+  io.PLICAWValid := xbar.io.PLIC.AW.AWVALID
+  io.PLICARValid := xbar.io.PLIC.AR.ARVALID
 
-  xbar.io.PLIC.AW <> plic.io.AW
-  xbar.io.PLIC.W <> plic.io.W
-  xbar.io.PLIC.B <> plic.io.B
-  xbar.io.PLIC.AR <> plic.io.AR
-  xbar.io.PLIC.R <> plic.io.R
+  xbar.io.PLIC.AW <> PLIC.io.AW
+  xbar.io.PLIC.W <> PLIC.io.W
+  xbar.io.PLIC.B <> PLIC.io.B
+  xbar.io.PLIC.AR <> PLIC.io.AR
+  xbar.io.PLIC.R <> PLIC.io.R
 
   private def quietDownstream(m: ysyx_26030103_AXI5IO): Unit = {
     m.AW.AWREADY := false.B
@@ -58,11 +58,11 @@ class ysyx_26030103_AuditXbarPLICHarness extends Module {
 class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
   private def bool(value: Bool): Boolean = value.peek().litValue == 1
 
-  private case class WriteResult(resp: Int, plicAwSeen: Boolean, cycles: Int)
-  private case class ReadBeat(resp: Int, data: BigInt, last: Boolean)
+  private case class WriteResult(response: Int, PLICAWSeen: Boolean, cycles: Int)
+  private case class ReadBeat(response: Int, data: BigInt, last: Boolean)
   private case class ReadResult(
       beats: Seq[ReadBeat],
-      plicArSeen: Boolean,
+      PLICARSeen: Boolean,
       cycles: Int
   )
 
@@ -101,23 +101,23 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
   private def writeBurst(
       dut: ysyx_26030103_AuditXbarPLICHarness,
       addr: BigInt,
-      len: Int,
+      length: Int,
       beats: Seq[BigInt]
   ): WriteResult = {
-    var plicAwSeen = false
-    var awSent = false
+    var PLICAWSeen = false
+    var AWSent = false
     var beatIndex = 0
-    var resp = -1
+    var response = -1
     var cycles = 0
     dut.io.in.B.BREADY.poke(true.B)
 
-    while (resp < 0 && cycles < 100) {
-      val awValid = !awSent
+    while (response < 0 && cycles < 100) {
+      val awValid = !AWSent
       val wValid = beatIndex < beats.length
       dut.io.in.AW.AWVALID.poke(awValid.B)
       dut.io.in.AW.AWADDR.poke(addr.U(32.W))
       dut.io.in.AW.AWID.poke(1.U(4.W))
-      dut.io.in.AW.AWLEN.poke(len.U(8.W))
+      dut.io.in.AW.AWLEN.poke(length.U(8.W))
       dut.io.in.AW.AWSIZE.poke(2.U(3.W))
       dut.io.in.AW.AWBURST.poke(1.U(2.W))
       dut.io.in.AW.AWPROT.poke(0.U(3.W))
@@ -132,15 +132,15 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
         (wValid && beatIndex == beats.length - 1).B
       )
 
-      if (bool(dut.io.plicAwValid)) { plicAwSeen = true }
+      if (bool(dut.io.PLICAWValid)) { PLICAWSeen = true }
       if (bool(dut.io.in.B.BVALID)) {
-        resp = dut.io.in.B.BRESP.peek().litValue.toInt
+        response = dut.io.in.B.BRESP.peek().litValue.toInt
       }
 
       val awReady = bool(dut.io.in.AW.AWREADY)
       val wReady = bool(dut.io.in.W.WREADY)
       dut.clock.step()
-      if (awValid && awReady) { awSent = true }
+      if (awValid && awReady) { AWSent = true }
       if (wValid && wReady) { beatIndex += 1 }
       cycles += 1
     }
@@ -148,33 +148,33 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
     dut.io.in.AW.AWVALID.poke(false.B)
     dut.io.in.W.WVALID.poke(false.B)
     dut.io.in.B.BREADY.poke(false.B)
-    WriteResult(resp, plicAwSeen, cycles)
+    WriteResult(response, PLICAWSeen, cycles)
   }
 
   private def readBurst(
       dut: ysyx_26030103_AuditXbarPLICHarness,
       addr: BigInt,
-      len: Int
+      length: Int
   ): ReadResult = {
-    var plicArSeen = false
-    var arSent = false
+    var PLICARSeen = false
+    var ARSent = false
     var cycles = 0
     val beats = scala.collection.mutable.ArrayBuffer.empty[ReadBeat]
     dut.io.in.R.RREADY.poke(true.B)
 
     while ((beats.isEmpty || !beats.last.last) && cycles < 100) {
-      val arValid = !arSent
+      val arValid = !ARSent
       dut.io.in.AR.ARVALID.poke(arValid.B)
       dut.io.in.AR.ARADDR.poke(addr.U(32.W))
       dut.io.in.AR.ARID.poke(1.U(4.W))
-      dut.io.in.AR.ARLEN.poke(len.U(8.W))
+      dut.io.in.AR.ARLEN.poke(length.U(8.W))
       dut.io.in.AR.ARSIZE.poke(2.U(3.W))
       dut.io.in.AR.ARBURST.poke(1.U(2.W))
       dut.io.in.AR.ARPROT.poke(0.U(3.W))
       dut.io.in.AR.ARCACHE.poke(0.U(4.W))
       dut.io.in.AR.ARQOS.poke(0.U(4.W))
 
-      if (bool(dut.io.plicArValid)) { plicArSeen = true }
+      if (bool(dut.io.PLICARValid)) { PLICARSeen = true }
       if (bool(dut.io.in.R.RVALID)) {
         beats += ReadBeat(
           dut.io.in.R.RRESP.peek().litValue.toInt,
@@ -185,13 +185,13 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
 
       val arReady = bool(dut.io.in.AR.ARREADY)
       dut.clock.step()
-      if (arValid && arReady) { arSent = true }
+      if (arValid && arReady) { ARSent = true }
       cycles += 1
     }
 
     dut.io.in.AR.ARVALID.poke(false.B)
     dut.io.in.R.RREADY.poke(false.B)
-    ReadResult(beats.toSeq, plicArSeen, cycles)
+    ReadResult(beats.toSeq, PLICARSeen, cycles)
   }
 
   "Xbar/PLIC" should "把 PLIC 多拍写本地判错并排空全部 W beat" in {
@@ -204,8 +204,8 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
         1,
         Seq(BigInt("11111111", 16), BigInt("22222222", 16))
       )
-      result.resp should be(3) // DECERR
-      result.plicAwSeen should be(false)
+      result.response should be(3) // DECERR
+      result.PLICAWSeen should be(false)
       result.cycles should be < 100
     }
   }
@@ -214,9 +214,9 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_AuditXbarPLICHarness()) { dut =>
       resetDut(dut)
       val result = readBurst(dut, BigInt("0c200004", 16), 1)
-      result.plicArSeen should be(false)
+      result.PLICARSeen should be(false)
       result.beats.length should be(2)
-      all(result.beats.map(_.resp)) should be(3)
+      all(result.beats.map(_.response)) should be(3)
       result.beats.map(_.last) should be(Seq(false, true))
     }
   }
@@ -230,8 +230,8 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
         0,
         Seq(BigInt(7))
       )
-      priority.resp should be(0)
-      priority.plicAwSeen should be(true)
+      priority.response should be(0)
+      priority.PLICAWSeen should be(true)
 
       val enable = writeBurst(
         dut,
@@ -239,7 +239,7 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
         0,
         Seq(BigInt(2))
       )
-      enable.resp should be(0)
+      enable.response should be(0)
 
       val threshold = writeBurst(
         dut,
@@ -247,16 +247,16 @@ class ysyx_26030103_PLICBurstAuditTest extends AnyFlatSpec with Matchers {
         0,
         Seq(BigInt(0))
       )
-      threshold.resp should be(0)
+      threshold.response should be(0)
 
       dut.io.sources.poke(2.U)
       dut.clock.step()
-      bool(dut.io.irq) should be(true)
+      bool(dut.io.IRQ) should be(true)
 
       val claim = readBurst(dut, BigInt("0c200004", 16), 0)
-      claim.plicArSeen should be(true)
+      claim.PLICARSeen should be(true)
       claim.beats.length should be(1)
-      claim.beats.head.resp should be(0)
+      claim.beats.head.response should be(0)
       claim.beats.head.data should be(BigInt(1))
       claim.beats.head.last should be(true)
     }

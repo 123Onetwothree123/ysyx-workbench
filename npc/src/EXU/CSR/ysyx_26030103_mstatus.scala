@@ -48,14 +48,14 @@ class ysyx_26030103_mstatus(
     val hasF: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
-    val clk = Input(Clock())
-    val rst = Input(Bool())
+    val clock = Input(Clock())
+    val reset = Input(Bool())
     val wen = Input(Bool())
     val wdata = Input(UInt(32.W))
     val rdata = Output(UInt(32.W))
   })
   import ysyx_26030103_mstatus._
-  val regMstatus = withClockAndReset(io.clk, io.rst) { RegInit(resetValue) }
+  val regMstatus = withClockAndReset(io.clock, io.reset) { RegInit(resetValue) }
   when(io.wen) {
     regMstatus := legalize(io.wdata, hasU, hasS, hasF)
   }

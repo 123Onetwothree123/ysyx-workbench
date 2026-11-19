@@ -13,7 +13,7 @@ private[mem] trait LSUStage {
           stageInputReady := true.B
           when(stageInputFire) {
             stageState := Mux(
-              stageInputMisaligned || stageInputPMPFault,
+              stageInputMisaligned || StageInputPMPFault,
               stageDone,
               stageWait
             )
@@ -36,7 +36,7 @@ private[mem] trait LSUStage {
           when(stageInputFire) {
             when(isMemOp) {
               stageState := Mux(
-                stageInputMisaligned || stageInputPMPFault,
+                stageInputMisaligned || StageInputPMPFault,
                 stageDone,
                 stageWait
               )

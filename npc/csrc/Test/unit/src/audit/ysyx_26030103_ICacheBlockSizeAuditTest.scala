@@ -96,22 +96,22 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddressW.W))
-    io.fetch_vaddr.poke(0.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
-    io.fetch_valid.poke(false.B)
-    io.resp_ready.poke(false.B)
-    io.axi.AR.ARREADY.poke(false.B)
-    io.axi.R.RDATA.poke(0.U(32.W))
-    io.axi.R.RRESP.poke(0.U(2.W))
-    io.axi.R.RLAST.poke(false.B)
-    io.axi.R.RVALID.poke(false.B)
+    io.FetchAddress.poke(0.U(AddressW.W))
+    io.FetchVaddr.poke(0.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchPaddrVaddr.poke(0.U(AddressW.W))
+    io.FetchValid.poke(false.B)
+    io.ResponseReady.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
+    io.AXI.R.RDATA.poke(0.U(32.W))
+    io.AXI.R.RRESP.poke(0.U(2.W))
+    io.AXI.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
     io.flush.poke(false.B)
     io.kill.poke(false.B)
-    io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U(AddressW.W))
-    io.snoop_addr_hi.poke(0.U(AddressW.W))
+    io.SnoopValid.poke(false.B)
+    io.SnoopAddress.poke(0.U(AddressW.W))
+    io.SnoopAddressHi.poke(0.U(AddressW.W))
   }
 
   private def issueFetch(
@@ -119,14 +119,14 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
       clock: Clock,
       addr:  Long
   ): Unit = {
-    io.fetch_addr.poke(addr.U(AddressW.W))
-    io.fetch_vaddr.poke(addr.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(addr.U(AddressW.W))
-    io.fetch_valid.poke(true.B)
-    waitUntil(clock, bool(io.fetch_ready), s"ICache 未受理取指 0x${addr.toHexString}")
+    io.FetchAddress.poke(addr.U(AddressW.W))
+    io.FetchVaddr.poke(addr.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchPaddrVaddr.poke(addr.U(AddressW.W))
+    io.FetchValid.poke(true.B)
+    waitUntil(clock, bool(io.FetchReady), s"ICache 未受理取指 0x${addr.toHexString}")
     clock.step()
-    io.fetch_valid.poke(false.B)
+    io.FetchValid.poke(false.B)
   }
 
   private def expectResponse(
@@ -135,12 +135,12 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
       data:  Long,
       label: String
   ): Unit = {
-    waitUntil(clock, bool(io.resp_valid), s"$label 没有取指响应")
-    withClue(s"$label 取指数据错误") { long(io.resp_data) should be(data) }
-    bool(io.resp_fault) should be(false)
-    io.resp_ready.poke(true.B)
+    waitUntil(clock, bool(io.ResponseValid), s"$label 没有取指响应")
+    withClue(s"$label 取指数据错误") { long(io.ResponseData) should be(data) }
+    bool(io.ResponseFault) should be(false)
+    io.ResponseReady.poke(true.B)
     clock.step()
-    io.resp_ready.poke(false.B)
+    io.ResponseReady.poke(false.B)
   }
 
   private def fetchMiss(
@@ -151,21 +151,21 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
       label: String
   ): Unit = {
     issueFetch(io, clock, addr)
-    waitUntil(clock, bool(io.axi.AR.ARVALID), s"$label 没有 refill AR")
-    withClue(s"$label AR 地址错误") { long(io.axi.AR.ARADDR) should be(addr) }
+    waitUntil(clock, bool(io.AXI.AR.ARVALID), s"$label 没有 refill AR")
+    withClue(s"$label AR 地址错误") { long(io.AXI.AR.ARADDR) should be(addr) }
     withClue(s"$label 4B line 必须是单拍 ARLEN=0") {
-      long(io.axi.AR.ARLEN) should be(0)
+      long(io.AXI.AR.ARLEN) should be(0)
     }
-    io.axi.AR.ARREADY.poke(true.B)
+    io.AXI.AR.ARREADY.poke(true.B)
     clock.step()
-    io.axi.AR.ARREADY.poke(false.B)
-    io.axi.R.RDATA.poke(mem.read(addr).U(32.W))
-    io.axi.R.RRESP.poke(0.U(2.W))
-    io.axi.R.RLAST.poke(true.B)
-    io.axi.R.RVALID.poke(true.B)
+    io.AXI.AR.ARREADY.poke(false.B)
+    io.AXI.R.RDATA.poke(mem.read(addr).U(32.W))
+    io.AXI.R.RRESP.poke(0.U(2.W))
+    io.AXI.R.RLAST.poke(true.B)
+    io.AXI.R.RVALID.poke(true.B)
     clock.step()
-    io.axi.R.RVALID.poke(false.B)
-    io.axi.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
+    io.AXI.R.RLAST.poke(false.B)
     expectResponse(io, clock, mem.read(addr), label)
   }
 
@@ -178,7 +178,7 @@ class ysyx_26030103_ICacheBlockSizeAuditTest
   ): Unit = {
     issueFetch(io, clock, addr)
     for (_ <- 0 until 3) {
-      bool(io.axi.AR.ARVALID) should be(false)
+      bool(io.AXI.AR.ARVALID) should be(false)
       clock.step()
     }
     expectResponse(io, clock, mem.read(addr), label)

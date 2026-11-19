@@ -14,9 +14,8 @@ export enum struct ReplPolicy
 
 export struct AccessOutcome
 {
-    bool hit{}; // 这次访问是否命中
-    // RTL DCache 是 write-through/no-write-allocate，不存在脏块写回。
-    // 保留字段以维持现有统计/CSV schema，值始终为 false。
+    bool hit{};
+    // write-through/no-write-allocate，writeback 恒为 false。
     bool writeback{};
 };
 
@@ -25,26 +24,25 @@ export class DCache
 private:
     struct entry
     {
-        bool valid{};         // 1代表有数据
-        Addr tag{};           // 数据块号 = 地址 >> offset_bits，宽度随 XLEN
-        std::uint64_t time{}; // FIFO记插入时间, LRU记最后访问时间
+        bool valid{};
+        Addr tag{};           // 块号 = 地址 >> offset_bits，宽度随 XLEN
+        std::uint64_t time{}; // FIFO 插入时间 / LRU 最后访问时间
     };
-    // 行=组数=2^index_bits，每行ways项，举个例子：num_blocks=16，ways=2就是8行×2项=16个entry
+    // 行=组数=2^index_bits，每行 ways 项。
     std::vector<entry> sets_flat;
-    std::mdspan<entry, std::dextents<std::size_t, 2>> sets; // (组数 × 相联度) 二维视图
-    std::size_t index_bits{};  // 组索引位数，2底数，也就是log2(组数)
-    std::size_t offset_bits{}; // 块内偏移位数，也就是log2(块大小)
+    std::mdspan<entry, std::dextents<std::size_t, 2>> sets;
+    std::size_t index_bits{};
+    std::size_t offset_bits{};
     std::size_t ways{};
     ReplPolicy policy{};
     std::string name;
-    std::uint64_t tick{}; // 逻辑时钟，给FIFO/LRU计时用
+    std::uint64_t tick{}; // FIFO/LRU 逻辑时钟
     std::mt19937 rng_{std::random_device{}()};
     void fill(entry& e, Addr tag);
 public:
     DCache(const DCacheConfig& config, ReplPolicy policy, std::string_view name);
     ~DCache() = default;
-    // 读 miss 会分配；写 miss 只经外部写通道落内存，不改变 cache tag。
-    // 写 hit 会更新 RTL 中的镜像数据，在 tag-only 模型中表现为一次命中。
+    // 读 miss 分配；写 miss 落内存不分配，写 hit 计为命中。
     AccessOutcome access(const AccessRecord& rec);
     [[nodiscard]] std::string_view GetName() const;
 };

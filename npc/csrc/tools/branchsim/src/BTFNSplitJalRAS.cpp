@@ -8,10 +8,7 @@ Prediction BTFNSplitJalRAS::predict(Addr pc) const
     {
         if (h->kind == BranchKind::Ret)
         {
-            // Ret/Coroutine表项保存静态immediate，目标与RTL一样为
-            // (RAS top + sign_extend(immediate)) & ~1；栈空则无法预测。
-            // immediate 是 32 位真实指令字段，RV64 下必须先符号扩展到 Addr，
-            // 否则负数偏移会被当成 +4GiB 附近的大正数。
+            // Ret 目标 = (RAS top + sign_extend(imm)) & ~1；栈空不预测。
             if (auto t{ras.top_addr()})
             {
                 const auto offset{static_cast<Addr>(static_cast<std::int32_t>(static_cast<std::uint32_t>(h->target)))};
@@ -19,7 +16,7 @@ Prediction BTFNSplitJalRAS::predict(Addr pc) const
             }
             return {false, false, 0};
         }
-        // Jal/Call表项: 命中即taken, 目标静态必正确
+        // Jal/Call 表项命中即 taken，目标静态正确。
         return {true, true, h->target};
     }
     auto hit{btb.lookup(pc)};
@@ -33,31 +30,30 @@ void BTFNSplitJalRAS::update(Addr pc, bool taken, Addr target,
     switch (kind)
     {
     case BranchKind::Branch:
-        // RTL的BTFN表只训练后向条件分支。
         if (target < pc)
             btb.update(pc, target, kind);
         break;
     case BranchKind::Jal:
         jal_btb.update(pc, target, kind);
         break;
-    case BranchKind::Call: // jal ra直接调用: 目标静态可BTB预测, 同时压RAS
+    case BranchKind::Call: // jal ra：目标可预测，同时压栈
         ras.push(pc + 4);
         jal_btb.update(pc, target, kind);
         break;
-    case BranchKind::JalrCall: // 普通间接call: 压RAS，并学习本次实际目标
+    case BranchKind::JalrCall: // 间接 call：压栈并学习实际目标
         ras.push(pc + 4);
         jal_btb.update(pc, target, BranchKind::Call);
         break;
-    case BranchKind::Ret: // 只弹RAS，Ret表项保存静态immediate
+    case BranchKind::Ret: // 只弹栈，表项存立即数
         ras.pop();
         jal_btb.update(pc, jalr_immediate, BranchKind::Ret);
         break;
-    case BranchKind::Coroutine: // x1/x5异名link hint：RTL为pop-then-push
+    case BranchKind::Coroutine: // x1/x5 异名 link：pop-then-push
         ras.pop();
         ras.push(pc + 4);
         jal_btb.update(pc, jalr_immediate, BranchKind::Ret);
         break;
-    case BranchKind::JalrOther: // 其他间接跳转: 不预测
+    case BranchKind::JalrOther:
         break;
     }
 }

@@ -16,6 +16,7 @@
 namespace {
 
 constexpr std::uint16_t kMstatus = 0x300;
+constexpr std::uint16_t kMie = 0x304;
 constexpr std::uint16_t kMtvec = 0x305;
 constexpr std::uint16_t kMepc = 0x341;
 constexpr std::uint16_t kMcause = 0x342;
@@ -96,7 +97,7 @@ public:
     dut_->io_out_ready = 1;
 
     dut_->io_in_bits_Instruction = 0x00000013U;
-    dut_->io_in_bits_pc = 0x80000000U;
+    dut_->io_in_bits_PC = 0x80000000U;
     dut_->io_in_bits_snpc = 0x80000004U;
     dut_->io_in_bits_ALUCtrl = 15;
     dut_->io_in_bits_IsMDU = 0;
@@ -118,9 +119,9 @@ public:
     dut_->io_in_bits_WidthSelect = 0;
     dut_->io_in_bits_LoadSigned = 0;
     dut_->io_in_bits_StoreData = 0;
-    dut_->io_in_bits_IsCsrrw = 0;
-    dut_->io_in_bits_IsCsrrs = 0;
-    dut_->io_in_bits_IsCsrrc = 0;
+    dut_->io_in_bits_IsCSRrw = 0;
+    dut_->io_in_bits_IsCSRrs = 0;
+    dut_->io_in_bits_IsCSRrc = 0;
     dut_->io_in_bits_IsEcall = 0;
     dut_->io_in_bits_IsEbreak = 0;
     dut_->io_in_bits_IsSimHalt = 0;
@@ -132,11 +133,11 @@ public:
     dut_->io_in_bits_Rs1Data = 0;
     dut_->io_in_bits_ExceptionValid = 0;
     dut_->io_in_bits_ExceptionCause = 0;
-    dut_->io_in_bits_pred_taken = 0;
-    dut_->io_in_bits_pred_target = 0x80000004U;
+    dut_->io_in_bits_PredTaken = 0;
+    dut_->io_in_bits_PredTarget = 0x80000004U;
 
     dut_->io_Interrupt = 0;
-    dut_->io_IdleIrqPC = 0x80000000U;
+    dut_->io_IdleIRQPC = 0x80000000U;
     dut_->io_MEMBusy = 0;
     dut_->io_PipelineBusy = 0;
     dut_->io_MemTrapCommit = 0;
@@ -147,9 +148,9 @@ public:
   void beginInstruction(std::uint32_t pc = 0x80000000U) {
     driveIdle();
     dut_->io_in_valid = 1;
-    dut_->io_in_bits_pc = pc;
+    dut_->io_in_bits_PC = pc;
     dut_->io_in_bits_snpc = pc + 4U;
-    dut_->io_in_bits_pred_target = pc + 4U;
+    dut_->io_in_bits_PredTarget = pc + 4U;
   }
 
   void requireFire(const std::string &label) {
@@ -174,9 +175,9 @@ public:
                           std::uint8_t source_field,
                           std::uint32_t source_data) {
     beginInstruction();
-    dut_->io_in_bits_IsCsrrw = is_csrrw;
-    dut_->io_in_bits_IsCsrrs = is_csrrs;
-    dut_->io_in_bits_IsCsrrc = is_csrrc;
+    dut_->io_in_bits_IsCSRrw = is_csrrw;
+    dut_->io_in_bits_IsCSRrs = is_csrrs;
+    dut_->io_in_bits_IsCSRrc = is_csrrc;
     dut_->io_in_bits_CSRAddress = address;
     dut_->io_in_bits_Rs1 = source_field;
     dut_->io_in_bits_Rs1Data = source_data;
@@ -223,6 +224,7 @@ void testIrqWaitsForOlderMemory() {
   ExuTestbench tb;
   tb.csrWrite(kMtvec, 0x00000100U);
   tb.csrWrite(kMstatus, 1U << 3);
+  tb.csrWrite(kMie, 1U << 11);
 
   tb.beginInstruction(0x80000040U);
   tb.dut().io_in_bits_RegisterWrite = 1;
@@ -263,14 +265,15 @@ void testIdlePipelineIrqUsesPreciseBoundaryPC() {
   ExuTestbench tb;
   tb.csrWrite(kMtvec, 0x00000100U);
   tb.csrWrite(kMstatus, 1U << 3);
+  tb.csrWrite(kMie, 1U << 11);
 
   constexpr std::uint32_t boundary_pc = 0x80001234U;
   tb.driveIdle();
-  tb.dut().io_IdleIrqPC = boundary_pc;
+  tb.dut().io_IdleIRQPC = boundary_pc;
   tb.dut().io_Interrupt = 1;
   // valid=0时bits无语义。故意留下互相冲突的CSR/MRET/异常控制，证明
   // 空流水IRQ不会采纳stale Decoupled payload。
-  tb.dut().io_in_bits_IsCsrrw = 1;
+  tb.dut().io_in_bits_IsCSRrw = 1;
   tb.dut().io_in_bits_IsMret = 1;
   tb.dut().io_in_bits_ExceptionValid = 1;
   tb.dut().io_in_bits_ExceptionCause = 2;
@@ -324,8 +327,9 @@ void testIdleIrqWaitsForOlderPipelineAndMemTrapWins() {
     ExuTestbench tb;
     tb.csrWrite(kMtvec, 0x00000100U);
     tb.csrWrite(kMstatus, 1U << 3);
+    tb.csrWrite(kMie, 1U << 11);
     tb.driveIdle();
-    tb.dut().io_IdleIrqPC = 0x80002000U;
+    tb.dut().io_IdleIRQPC = 0x80002000U;
     tb.dut().io_Interrupt = 1;
     tb.dut().io_PipelineBusy = 1;
 
@@ -347,8 +351,9 @@ void testIdleIrqWaitsForOlderPipelineAndMemTrapWins() {
     ExuTestbench tb;
     tb.csrWrite(kMtvec, 0x00000100U);
     tb.csrWrite(kMstatus, 1U << 3);
+    tb.csrWrite(kMie, 1U << 11);
     tb.driveIdle();
-    tb.dut().io_IdleIrqPC = 0x80003000U;
+    tb.dut().io_IdleIRQPC = 0x80003000U;
     tb.dut().io_Interrupt = 1;
     tb.dut().io_MemTrapCommit = 1;
     tb.dut().io_MemTrapCause = 5;
@@ -369,6 +374,7 @@ void testIrqPreemptsCurrentMemoryAfterDrain() {
     ExuTestbench tb;
     tb.csrWrite(kMtvec, 0x00000100U);
     tb.csrWrite(kMstatus, 1U << 3);
+    tb.csrWrite(kMie, 1U << 11);
 
     const std::uint32_t pc = is_store ? 0x80000068U : 0x80000060U;
     tb.beginInstruction(pc);
@@ -419,6 +425,7 @@ void testPendingMduWaitsForOlderMemory() {
   ExuTestbench tb;
   tb.csrWrite(kMtvec, 0x00000100U);
   tb.csrWrite(kMstatus, 1U << 3);
+  tb.csrWrite(kMie, 1U << 11);
 
   tb.beginInstruction(0x80000050U);
   tb.dut().io_in_bits_IsMDU = 1;
@@ -428,7 +435,7 @@ void testPendingMduWaitsForOlderMemory() {
   tb.dut().io_in_bits_RegisterWrite = 1;
   tb.dut().io_in_bits_Rd = 6;
   tb.eval();
-  CHECK(tb.dut().io_PerfMDUReq, "MUL request was not accepted by the MDU");
+  CHECK(tb.dut().io_PerfMulActive, "MUL request was not accepted by the MDU");
   CHECK(tb.dut().io_in_ready,
         "queued MUL request did not consume its EXU input");
   tb.tick();
@@ -444,7 +451,7 @@ void testPendingMduWaitsForOlderMemory() {
   }
   tb.eval();
 
-  CHECK(tb.dut().io_PerfMDUActive, "pending MUL was lost while MEM was busy");
+  CHECK(tb.dut().io_PerfMulActive, "pending MUL was lost while MEM was busy");
   CHECK(!tb.dut().io_in_ready,
         "completed MUL bypassed an older busy MEM stage");
   CHECK(!tb.dut().io_out_valid,
@@ -489,8 +496,8 @@ void testControlTransfersWaitForOlderMemory() {
     constexpr std::uint32_t pc = 0x80000100U;
     constexpr std::uint32_t target = 0x80000120U;
     tb.beginInstruction(pc);
-    tb.dut().io_in_bits_pred_taken = 1;
-    tb.dut().io_in_bits_pred_target = target;
+    tb.dut().io_in_bits_PredTaken = 1;
+    tb.dut().io_in_bits_PredTarget = target;
 
     if (kind == Kind::Branch) {
       constexpr std::uint32_t branch_target = pc - 0x20U;
@@ -499,7 +506,7 @@ void testControlTransfersWaitForOlderMemory() {
       tb.dut().io_in_bits_BranchA = 7;
       tb.dut().io_in_bits_BranchB = 7;
       tb.dut().io_in_bits_Immediate = branch_target - pc;
-      tb.dut().io_in_bits_pred_target = branch_target;
+      tb.dut().io_in_bits_PredTarget = branch_target;
     } else if (kind == Kind::Jal) {
       tb.dut().io_in_bits_IsJal = 1;
       tb.dut().io_in_bits_ALUCtrl = 0; // ADD
@@ -554,8 +561,8 @@ void testControlTransfersDoNotWaitForOlderNonMemory() {
     tb.beginInstruction(pc);
     tb.dut().io_PipelineBusy = 1;
     tb.dut().io_MEMBusy = 0;
-    tb.dut().io_in_bits_pred_taken = 1;
-    tb.dut().io_in_bits_pred_target = target;
+    tb.dut().io_in_bits_PredTaken = 1;
+    tb.dut().io_in_bits_PredTarget = target;
 
     if (kind == Kind::Branch) {
       constexpr std::uint32_t branch_target = pc - 0x20U;
@@ -564,7 +571,7 @@ void testControlTransfersDoNotWaitForOlderNonMemory() {
       tb.dut().io_in_bits_BranchA = 9;
       tb.dut().io_in_bits_BranchB = 9;
       tb.dut().io_in_bits_Immediate = branch_target - pc;
-      tb.dut().io_in_bits_pred_target = branch_target;
+      tb.dut().io_in_bits_PredTarget = branch_target;
     } else if (kind == Kind::Jal) {
       tb.dut().io_in_bits_IsJal = 1;
       tb.dut().io_in_bits_ALUCtrl = 0;
@@ -599,6 +606,7 @@ void testPreciseEffectsWaitForOlderPipelineInstruction() {
     ExuTestbench tb;
     tb.csrWrite(kMtvec, 0x00000100U);
     tb.csrWrite(kMstatus, 1U << 3);
+    tb.csrWrite(kMie, 1U << 11);
     tb.beginInstruction(0x800001c0U);
     tb.dut().io_Interrupt = 1;
     tb.dut().io_PipelineBusy = 1;
@@ -615,7 +623,7 @@ void testPreciseEffectsWaitForOlderPipelineInstruction() {
   {
     ExuTestbench tb;
     tb.beginInstruction(0x800001d0U);
-    tb.dut().io_in_bits_IsCsrrw = 1;
+    tb.dut().io_in_bits_IsCSRrw = 1;
     tb.dut().io_in_bits_CSRAddress = kMstatus;
     tb.dut().io_in_bits_Rs1 = 1;
     tb.dut().io_in_bits_Rs1Data = 1U << 3;
@@ -632,7 +640,7 @@ void testPreciseEffectsWaitForOlderPipelineInstruction() {
     tb.tick();
     tb.driveIdle();
     tb.eval();
-    CHECK_EQ(tb.csrRead(kMstatus), 0x00001808U,
+    CHECK_EQ(tb.csrRead(kMstatus), 0x00000008U,
              "delayed CSR write committed the wrong value");
   }
 
@@ -669,8 +677,8 @@ void testRasHintsForX1AndX5() {
     tb.dut().io_in_bits_ALU_A = pc;
     tb.dut().io_in_bits_ALU_B = target - pc;
     tb.dut().io_in_bits_Rd = rd;
-    tb.dut().io_in_bits_pred_taken = 1;
-    tb.dut().io_in_bits_pred_target = target;
+    tb.dut().io_in_bits_PredTaken = 1;
+    tb.dut().io_in_bits_PredTarget = target;
     tb.eval();
     CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
           label + " did not fire");
@@ -699,8 +707,8 @@ void testRasHintsForX1AndX5() {
     tb.dut().io_in_bits_Immediate = immediate;
     tb.dut().io_in_bits_Rd = rd;
     tb.dut().io_in_bits_Rs1 = rs1;
-    tb.dut().io_in_bits_pred_taken = 1;
-    tb.dut().io_in_bits_pred_target = target;
+    tb.dut().io_in_bits_PredTaken = 1;
+    tb.dut().io_in_bits_PredTarget = target;
     tb.eval();
     CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
           label + " did not fire");
@@ -842,8 +850,8 @@ void testNotTakenBranchDoesNotTrap() {
   tb.dut().io_in_bits_BranchA = 1;
   tb.dut().io_in_bits_BranchB = 2;
   tb.dut().io_in_bits_Immediate = 2; // Untaken target may be misaligned.
-  tb.dut().io_in_bits_pred_taken = 0;
-  tb.dut().io_in_bits_pred_target = 0x80000004U;
+  tb.dut().io_in_bits_PredTaken = 0;
+  tb.dut().io_in_bits_PredTarget = 0x80000004U;
   tb.eval();
 
   CHECK(tb.dut().io_in_ready && tb.dut().io_out_valid,
@@ -971,18 +979,17 @@ void testCsrReadModifyWriteOperations() {
 
 void testMstatusWarlAndTransitions() {
   ExuTestbench tb;
-  CHECK_EQ(tb.csrRead(kMstatus), 0x00001800U,
-           "M-only mstatus reset value");
+  CHECK_EQ(tb.csrRead(kMstatus), 0x00001800U, "mstatus reset value");
 
   tb.csrWrite(kMstatus, 0xffffffffU);
-  CHECK_EQ(tb.csrRead(kMstatus), 0x00001888U,
+  CHECK_EQ(tb.csrRead(kMstatus), 0x007e19aaU,
            "mstatus WPRI/WARL write mask");
   tb.csrWrite(kMstatus, 0x00000800U);
-  CHECK_EQ(tb.csrRead(kMstatus), 0x00001800U,
-           "M-only mstatus reserved MPP=01 WARL");
+  CHECK_EQ(tb.csrRead(kMstatus), 0x00000800U,
+           "mstatus MPP=01 (S) WARL");
   tb.csrWrite(kMstatus, 0x00001000U);
-  CHECK_EQ(tb.csrRead(kMstatus), 0x00001800U,
-           "M-only mstatus reserved MPP=10 WARL");
+  CHECK_EQ(tb.csrRead(kMstatus), 0x00000000U,
+           "mstatus MPP=10 (U) WARL");
 
   tb.csrWrite(kMtvec, 0x00000100U);
   tb.csrWrite(kMstatus, 1U << 3);
@@ -1001,13 +1008,13 @@ void testMstatusWarlAndTransitions() {
   tb.dut().io_in_bits_IsMret = 1;
   tb.eval();
   CHECK(tb.dut().io_ExceptionTaken, "MRET did not redirect");
-  CHECK_EQ(tb.dut().io_CSRStateMstatus, 0x00001888U,
+  CHECK_EQ(tb.dut().io_CSRStateMstatus, 0x00000088U,
            "MRET mstatus next-state snapshot");
   tb.tick();
   tb.driveIdle();
   tb.eval();
-  CHECK_EQ(tb.csrRead(kMstatus), 0x00001888U,
-           "M-only MRET mstatus state");
+  CHECK_EQ(tb.csrRead(kMstatus), 0x00000088U,
+           "MRET mstatus state");
 }
 
 void testMtvecWarlAndDirectMode() {
@@ -1019,6 +1026,7 @@ void testMtvecWarlAndDirectMode() {
            "mtvec reserved MODE must normalize to Direct");
 
   tb.csrWrite(kMstatus, 1U << 3);
+  tb.csrWrite(kMie, 1U << 11);
   tb.beginInstruction(irq_pc);
   tb.dut().io_Interrupt = 1;
   tb.eval();
@@ -1041,6 +1049,7 @@ void testMtvecVectoredMode() {
   CHECK_EQ(tb.csrRead(kMtvec), 0x00000201U, "mtvec Vectored readback");
 
   tb.csrWrite(kMstatus, 1U << 3);
+  tb.csrWrite(kMie, 1U << 11);
   tb.beginInstruction(irq_pc);
   tb.dut().io_Interrupt = 1;
   tb.eval();
@@ -1076,7 +1085,7 @@ void testSatpWriteFlushesYoungerFetches() {
   ExuTestbench tb;
   constexpr std::uint32_t pc = 0x80004000U;
   tb.beginInstruction(pc);
-  tb.dut().io_in_bits_IsCsrrw = 1;
+  tb.dut().io_in_bits_IsCSRrw = 1;
   tb.dut().io_in_bits_CSRAddress = kSatp;
   tb.dut().io_in_bits_Rs1 = 1;
   tb.dut().io_in_bits_Rs1Data = 0x80000000U;
@@ -1110,8 +1119,8 @@ void testFetchFaultTvalUsesFaultingFetchAddress() {
     tb.beginInstruction(pc);
     tb.dut().io_in_bits_ExceptionValid = 1;
     tb.dut().io_in_bits_ExceptionCause = cause;
-    tb.dut().io_in_bits_pred_taken = 0;
-    tb.dut().io_in_bits_pred_target = fault_va;
+    tb.dut().io_in_bits_PredTaken = 0;
+    tb.dut().io_in_bits_PredTarget = fault_va;
     tb.eval();
 
     CHECK(tb.dut().io_ExceptionTaken, "fetch fault did not enter the trap handler");

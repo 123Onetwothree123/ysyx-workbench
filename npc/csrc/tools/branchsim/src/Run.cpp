@@ -1,3 +1,5 @@
+module;
+#include "common/ThreadPool.hpp"
 module Run;
 import std;
 import BPAlgorithmsType;
@@ -5,7 +7,7 @@ import BPAlgorithmBase;
 import BranchRecord;
 import stats;
 
-// 按记录类型累计分桶(JalrCall/Coroutine/JalrOther合并为jalr桶)
+// 按记录类型累计，jalr 变体合并。
 static void Bump(std::size_t stats::* total, std::size_t stats::* correct,
                  stats& st, bool ok)
 {
@@ -21,8 +23,7 @@ auto RunOne(BPAlgorithmBase& algo,
     for (const auto& rec : trace)
     {
         auto pred{algo.predict(rec.GetPC())};
-        // 与硬件重定向判据一致: 实际下一PC == 预测下一PC 才算对
-        // 实际taken: 需预测taken且(目标可信时)目标一致; 实际not-taken: 需预测not-taken
+        // 预测下一 PC 与实际一致才算对；目标可信时校验目标。
         bool correct;
         if (!rec.GetTaken())
             correct = !pred.taken;
@@ -52,16 +53,10 @@ auto Run(const BPAlgorithmsType& algos,
     const auto N{algos.size()};
     std::vector<stats> results{N};
 
+    common::ParallelFor(N, [&](std::size_t i)
     {
-        std::vector<std::jthread> threads{};
-        for (std::size_t i{0}; i < N; ++i)
-        {
-            threads.emplace_back([&, i]
-            {
-                results[i] = RunOne(algos[i], trace);
-            });
-        }
-    }   // jthread 析构自动 join, 确保所有线程执行完毕
+        results[i] = RunOne(algos[i], trace);
+    });
 
     std::vector<std::pair<std::string_view, stats>> table{};
     for (std::size_t i{0}; i < N; ++i)

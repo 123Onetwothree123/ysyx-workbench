@@ -11,9 +11,9 @@ private[infra] trait AXI5WidthBridgeWrite {
     val wIdle :: wUpsize :: wErrDrain :: wResponse :: wDnBeat :: wDnSend :: wDnWaitB :: Nil =
       Enum(7)
     val wState = RegInit(wIdle)
-    val wID = RegInit(0.U(IDWidth.W))
+    val WID = RegInit(0.U(IDWidth.W))
     val wAddress = RegInit(0.U(UpstreamAddressWidth.W))
-    val wLen = RegInit(0.U(8.W))
+    val WLength = RegInit(0.U(8.W))
     val wSize = RegInit(2.U(3.W))
     val wBurst = RegInit(0.U(2.W))
     val wProt = RegInit(0.U(3.W))
@@ -24,21 +24,21 @@ private[infra] trait AXI5WidthBridgeWrite {
     val wBeat = RegInit(0.U(8.W))
     val wChunk = RegInit(0.U(2.W))
     val wResponseCode = RegInit(OKAY)
-    val wAwSent = RegInit(false.B)
+    val WAWSent = RegInit(false.B)
     val wWDone = RegInit(false.B)
     val wBeatValid = RegInit(false.B)
     val wBeatData = RegInit(0.U(UpstreamDataWidth.W))
     val wBeatStrobe = RegInit(0.U(upBytes.W))
     val wBeatLast = RegInit(false.B)
-    val wChunkAWSent = RegInit(false.B)
+    val WChunkAWSent = RegInit(false.B)
     val wChunkWSent = RegInit(false.B)
 
-    val wDnAWFire = io.out.AW.AWVALID && io.out.AW.AWREADY
+    val WDnAWFire = io.out.AW.AWVALID && io.out.AW.AWREADY
     val wDnBFire = io.out.B.BVALID && io.out.B.BREADY
     val wDnOutstanding = RegInit(0.U(2.W))
     val wUpWLastSeen = RegInit(false.B)
     val wUpBSeen = RegInit(false.B)
-    val wTxnIssuedAW = RegInit(false.B)
+    val WTxnIssuedAW = RegInit(false.B)
     val wDnWLastSeen = RegInit(false.B)
 
     val incomingWError = outOfRange(
@@ -60,23 +60,23 @@ private[infra] trait AXI5WidthBridgeWrite {
             io.in.AW.AWBURST =/= 3.U,
             "AXI5WidthBridge: reserved AWBURST encoding"
           )
-          wID := io.in.AW.AWID
+          WID := io.in.AW.AWID
           wAddress := io.in.AW.AWADDR
-          wLen := io.in.AW.AWLEN
+          WLength := io.in.AW.AWLEN
           wSize := io.in.AW.AWSIZE
           wBurst := io.in.AW.AWBURST
           wProt := io.in.AW.AWPROT
           wCache := io.in.AW.AWCACHE
           wQos := io.in.AW.AWQOS
-          wLock := inAWLock
+          wLock := InAWLock
           wError := incomingWError
           wBeat := 0.U
           wChunk := 0.U
           wResponseCode := OKAY
-          wAwSent := false.B
+          WAWSent := false.B
           wWDone := false.B
           wBeatValid := false.B
-          wChunkAWSent := false.B
+          WChunkAWSent := false.B
           wChunkWSent := false.B
           wState := Mux(
             incomingWError,
@@ -99,20 +99,20 @@ private[infra] trait AXI5WidthBridgeWrite {
       is(wUpsize) {
         // 32->64：一个上游 beat 对应一个下游 beat，AW/AR 的 burst 形状
         // 保持不变。数据按当前 beat 地址搬到 64 位总线的对应半区。
-        io.out.AW.AWVALID := !wAwSent
-        io.out.AW.AWID := wID
+        io.out.AW.AWVALID := !WAWSent
+        io.out.AW.AWID := WID
         io.out.AW.AWADDR := downAddress(wAddress)
-        io.out.AW.AWLEN := wLen
+        io.out.AW.AWLEN := WLength
         io.out.AW.AWSIZE := wSize
         io.out.AW.AWBURST := wBurst
         io.out.AW.AWPROT := wProt
         io.out.AW.AWCACHE := wCache
         io.out.AW.AWQOS := wQos
         when(io.out.AW.AWVALID && io.out.AW.AWREADY) {
-          wAwSent := true.B
+          WAWSent := true.B
         }
 
-        val beatAddress = beatAddressOf(wAddress, wBeat, wSize, wBurst, wLen)
+        val beatAddress = beatAddressOf(wAddress, wBeat, wSize, wBurst, WLength)
         val lane = upsizeLane(beatAddress)
         val sizeBytes = 1.U << wSize
         val partial = wBeat === 0.U || wBurst === 0.U
@@ -151,7 +151,7 @@ private[infra] trait AXI5WidthBridgeWrite {
           }
         }
 
-        when(wWDone && wAwSent) {
+        when(wWDone && WAWSent) {
           wState := wResponse
         }
       }
@@ -166,20 +166,20 @@ private[infra] trait AXI5WidthBridgeWrite {
           wBeatLast := io.in.W.WLAST
           wBeatValid := true.B
           wChunk := 0.U
-          wChunkAWSent := false.B
+          WChunkAWSent := false.B
           wChunkWSent := false.B
           wState := wDnSend
         }
       }
 
       is(wDnSend) {
-        val beatAddress = beatAddressOf(wAddress, wBeat, wSize, wBurst, wLen)
+        val beatAddress = beatAddressOf(wAddress, wBeat, wSize, wBurst, WLength)
         val byteBase = beatByteBase(beatAddress)
         val chunkAddress = chunkAddressOf(beatAddress, wChunk)
         val byteOffset = (chunkAddress - byteBase)(upLaneBits - 1, 0)
 
-        io.out.AW.AWVALID := !wChunkAWSent
-        io.out.AW.AWID := wID
+        io.out.AW.AWVALID := !WChunkAWSent
+        io.out.AW.AWID := WID
         io.out.AW.AWADDR := downAddress(chunkAddress)
         io.out.AW.AWLEN := 0.U
         io.out.AW.AWSIZE := downLaneBits.U(3.W)
@@ -195,25 +195,25 @@ private[infra] trait AXI5WidthBridgeWrite {
         // 上游 burst 的最后一拍只用于决定何时聚合出上游 B。
         io.out.W.WLAST := true.B
 
-        val awFire = io.out.AW.AWVALID && io.out.AW.AWREADY
+        val AWFire = io.out.AW.AWVALID && io.out.AW.AWREADY
         val wFire = io.out.W.WVALID && io.out.W.WREADY
-        when(awFire) { wChunkAWSent := true.B }
+        when(AWFire) { WChunkAWSent := true.B }
         when(wFire) { wChunkWSent := true.B }
-        when((wChunkAWSent || awFire) && (wChunkWSent || wFire)) {
-          wChunkAWSent := false.B
+        when((WChunkAWSent || AWFire) && (wChunkWSent || wFire)) {
+          WChunkAWSent := false.B
           wChunkWSent := false.B
           wState := wDnWaitB
         }
       }
 
       is(wDnWaitB) {
-        val beatAddress = beatAddressOf(wAddress, wBeat, wSize, wBurst, wLen)
+        val beatAddress = beatAddressOf(wAddress, wBeat, wSize, wBurst, WLength)
         val partial = wBeat === 0.U || wBurst === 0.U
         val lastChunk = beatChunkCount(beatAddress, wSize, partial) - 1.U
         io.out.B.BREADY := true.B
         when(io.out.B.BVALID) {
           assert(
-            io.out.B.BID === wID,
+            io.out.B.BID === WID,
             "AXI5WidthBridge: downstream write response ID mismatch"
           )
           when(io.out.B.BRESP =/= OKAY) {
@@ -240,7 +240,7 @@ private[infra] trait AXI5WidthBridgeWrite {
           // 64->32：wDnWaitB 已经逐块收齐所有下游 B，本地聚合成一个
           // 上游 B。越界事务没有下发 AW/W，也在这里返回 DECERR。
           io.in.B.BVALID := true.B
-          io.in.B.BID := wID
+          io.in.B.BID := WID
           io.in.B.BRESP := Mux(wError, DECERR, wResponseCode)
           when(io.in.B.BREADY) {
             wState := wIdle
@@ -251,7 +251,7 @@ private[infra] trait AXI5WidthBridgeWrite {
           // 越界事务没有下发 AW/W，必须本地生成 DECERR。
           when(wError) {
             io.in.B.BVALID := true.B
-            io.in.B.BID := wID
+            io.in.B.BID := WID
             io.in.B.BRESP := DECERR
             when(io.in.B.BREADY) {
               wState := wIdle
@@ -263,7 +263,7 @@ private[infra] trait AXI5WidthBridgeWrite {
             io.out.B.BREADY := io.in.B.BREADY
             when(io.out.B.BVALID) {
               assert(
-                io.out.B.BID === wID,
+                io.out.B.BID === WID,
                 "AXI5WidthBridge: downstream write response ID mismatch"
               )
             }
@@ -276,7 +276,7 @@ private[infra] trait AXI5WidthBridgeWrite {
             // 地址越界但数据同宽/变宽：没有下发任何下游 AW/W，本地
             // 返回 DECERR，不能等待一个不存在的下游 B。
             io.in.B.BVALID := true.B
-            io.in.B.BID := wID
+            io.in.B.BID := WID
             io.in.B.BRESP := DECERR
             when(io.in.B.BREADY) {
               wState := wIdle
@@ -291,7 +291,7 @@ private[infra] trait AXI5WidthBridgeWrite {
             io.out.B.BREADY := io.in.B.BREADY
             when(io.out.B.BVALID) {
               assert(
-                io.out.B.BID === wID,
+                io.out.B.BID === WID,
                 "AXI5WidthBridge: downstream write response ID mismatch"
               )
             }
@@ -307,10 +307,10 @@ private[infra] trait AXI5WidthBridgeWrite {
     when(wState === wIdle && io.in.AW.AWVALID && io.in.AW.AWREADY) {
       wUpWLastSeen := false.B
       wUpBSeen := false.B
-      wTxnIssuedAW := false.B
+      WTxnIssuedAW := false.B
       wDnWLastSeen := false.B
     }
-    when(wDnAWFire) { wTxnIssuedAW := true.B }
+    when(WDnAWFire) { WTxnIssuedAW := true.B }
     when(io.in.W.WVALID && io.in.W.WREADY && io.in.W.WLAST) {
       wUpWLastSeen := true.B
     }
@@ -322,9 +322,9 @@ private[infra] trait AXI5WidthBridgeWrite {
       // 上一笔外部写事务已经完成，锁存值不再属于任何在途事务。
       wLock := false.B
     }
-    when(wDnAWFire =/= wDnBFire) {
+    when(WDnAWFire =/= wDnBFire) {
       wDnOutstanding := Mux(
-        wDnAWFire,
+        WDnAWFire,
         wDnOutstanding + 1.U,
         wDnOutstanding - 1.U
       )
@@ -344,7 +344,7 @@ private[infra] trait AXI5WidthBridgeWrite {
     }
     when(io.out.B.BVALID) {
       assert(
-        io.out.B.BID === wID,
+        io.out.B.BID === WID,
         "AXI5WidthBridge: downstream write response ID mismatch"
       )
       assert(
@@ -359,7 +359,7 @@ private[infra] trait AXI5WidthBridgeWrite {
       )
       assert(!wUpBSeen, "AXI5WidthBridge: duplicate upstream B")
       assert(
-        io.in.B.BID === wID,
+        io.in.B.BID === WID,
         "AXI5WidthBridge: upstream write response ID mismatch"
       )
       assert(
@@ -368,24 +368,24 @@ private[infra] trait AXI5WidthBridgeWrite {
       )
       when(wError) {
         assert(
-          !wTxnIssuedAW,
+          !WTxnIssuedAW,
           "AXI5WidthBridge: local DECERR B after issuing downstream AW"
         )
       }
     }
     when(io.in.W.WVALID && io.in.W.WREADY && !wError) {
       assert(
-        wBeat <= wLen,
+        wBeat <= WLength,
         "AXI5WidthBridge: upstream W beat exceeds AWLEN"
       )
       assert(
-        io.in.W.WLAST === (wBeat === wLen),
+        io.in.W.WLAST === (wBeat === WLength),
         "AXI5WidthBridge: upstream WLAST does not match AWLEN"
       )
     }
 
     if (TrackExclusive) {
-      io.outAWLock.get := wLock
+      io.OutAWLock.get := wLock
     }
   }
 }

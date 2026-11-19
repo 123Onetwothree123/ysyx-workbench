@@ -4,13 +4,14 @@ import BranchRecord;
 export class BTraceReader
 {
 private:
-    std::ifstream file;
+    struct Impl;
+    std::unique_ptr<Impl> impl;
     std::size_t count{};
     std::optional<BranchRecord> TryParse(std::string_view line);
 
 public:
     BTraceReader() = default;
-    ~BTraceReader() = default;
+    ~BTraceReader();
     BTraceReader(const BTraceReader &) = delete;
     BTraceReader &operator=(const BTraceReader &) = delete;
     explicit BTraceReader(const std::string &path);

@@ -13,7 +13,7 @@ import org.scalatest.matchers.should.Matchers
   * 寄存器就必须拿到该 source，即使其优先级不高于 threshold。
   *
   * 当前实现把 `priority(i) > threshold` 同时放进了 claimCandidates，
-  * 导致 threshold=5、source 1 priority=3 时 external_irq 被正确屏蔽，
+  * 导致 threshold=5、source 1 priority=3 时 ExternalIRQ 被正确屏蔽，
   * 但 claim 也错误地返回 0。
   */
 class ysyx_26030103_PLICClaimThresholdRegressionTest
@@ -98,11 +98,11 @@ class ysyx_26030103_PLICClaimThresholdRegressionTest
         dut.clock.step(2)
 
         // threshold 高于 source 优先级：不应向 hart 发外部中断。
-        bool(dut.external_irq) should be(false)
+        bool(dut.ExternalIRQ) should be(false)
 
         // claim 不受 threshold 影响，规范要求仍返回已 enable 的 source 1。
         withClue(
-          "threshold=5 只应屏蔽 external_irq，不应让 claim 返回 0"
+          "threshold=5 只应屏蔽 ExternalIRQ，不应让 claim 返回 0"
         ) {
           read(dut, 0x0c200004L) should be(BigInt(1))
         }

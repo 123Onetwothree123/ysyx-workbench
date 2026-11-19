@@ -203,9 +203,9 @@ class ysyx_26030103_FPUFeatureTest extends AnyFlatSpec with Matchers {
         val (_, ma, ea) = decompose(a)
         val (_, mb, eb) = decompose(b)
         val k = 4 * precision + 20
-        val num = ma << k
-        val q = num / mb
-        val rem = num - q * mb
+        val number = ma << k
+        val q = number / mb
+        val rem = number - q * mb
         round(s, q, ea - eb - k, rm, stickyIn = rem != 0)
       }
     }
@@ -310,25 +310,25 @@ class ysyx_26030103_FPUFeatureTest extends AnyFlatSpec with Matchers {
       b: BigInt = 0,
       c: BigInt = 0
   ): (BigInt, Int) = {
-    waitUntil(dut, dut.io.req.ready.peek().litToBoolean)
-    dut.io.req.bits.op.poke(op.U(ysyx_26030103_FPUOp.Width.W))
-    dut.io.req.bits.fmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
-    dut.io.req.bits.srcFmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
-    dut.io.req.bits.rm.poke(rm.U(ysyx_26030103_FPURm.Width.W))
-    dut.io.req.bits.intWord.poke(true.B)
-    dut.io.req.bits.rs1.poke(a.U(flen.W))
-    dut.io.req.bits.rs2.poke(b.U(flen.W))
-    dut.io.req.bits.rs3.poke(c.U(flen.W))
-    dut.io.req.valid.poke(true.B)
+    waitUntil(dut, dut.io.request.ready.peek().litToBoolean)
+    dut.io.request.bits.op.poke(op.U(ysyx_26030103_FPUOp.Width.W))
+    dut.io.request.bits.fmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
+    dut.io.request.bits.SourceFmt.poke(fmt.U(ysyx_26030103_FPUFmt.Width.W))
+    dut.io.request.bits.rm.poke(rm.U(ysyx_26030103_FPURm.Width.W))
+    dut.io.request.bits.intWord.poke(true.B)
+    dut.io.request.bits.rs1.poke(a.U(flen.W))
+    dut.io.request.bits.rs2.poke(b.U(flen.W))
+    dut.io.request.bits.rs3.poke(c.U(flen.W))
+    dut.io.request.valid.poke(true.B)
     dut.clock.step()
-    dut.io.req.valid.poke(false.B)
+    dut.io.request.valid.poke(false.B)
 
-    waitUntil(dut, dut.io.resp.valid.peek().litToBoolean)
-    val result = dut.io.resp.bits.result.peek().litValue
-    val flags = dut.io.resp.bits.fflags.peek().litValue.toInt
-    dut.io.resp.ready.poke(true.B)
+    waitUntil(dut, dut.io.response.valid.peek().litToBoolean)
+    val result = dut.io.response.bits.result.peek().litValue
+    val flags = dut.io.response.bits.fflags.peek().litValue.toInt
+    dut.io.response.ready.poke(true.B)
     dut.clock.step()
-    dut.io.resp.ready.poke(false.B)
+    dut.io.response.ready.poke(false.B)
     (result, flags)
   }
 
@@ -336,8 +336,8 @@ class ysyx_26030103_FPUFeatureTest extends AnyFlatSpec with Matchers {
     dut.reset.poke(true.B)
     dut.clock.step(3)
     dut.reset.poke(false.B)
-    dut.io.req.valid.poke(false.B)
-    dut.io.resp.ready.poke(false.B)
+    dut.io.request.valid.poke(false.B)
+    dut.io.response.ready.poke(false.B)
     dut.io.flush.poke(false.B)
   }
 
@@ -555,43 +555,43 @@ class ysyx_26030103_FPUFeatureTest extends AnyFlatSpec with Matchers {
         initDut(dut)
 
         // 先发一笔普通加法，保持下游不 ready，验证 valid/数据稳定。
-        waitUntil(dut, dut.io.req.ready.peek().litToBoolean)
-        dut.io.req.bits.op.poke(FAdd.U)
-        dut.io.req.bits.fmt.poke(S.U)
-        dut.io.req.bits.srcFmt.poke(S.U)
-        dut.io.req.bits.rm.poke(RNE.U)
-        dut.io.req.bits.intWord.poke(true.B)
-        dut.io.req.bits.rs1.poke(boxS(BigInt(0x3fc00000L)).U(64.W))
-        dut.io.req.bits.rs2.poke(boxS(BigInt(0x40100000L)).U(64.W))
-        dut.io.req.bits.rs3.poke(0.U(64.W))
-        dut.io.req.valid.poke(true.B)
+        waitUntil(dut, dut.io.request.ready.peek().litToBoolean)
+        dut.io.request.bits.op.poke(FAdd.U)
+        dut.io.request.bits.fmt.poke(S.U)
+        dut.io.request.bits.SourceFmt.poke(S.U)
+        dut.io.request.bits.rm.poke(RNE.U)
+        dut.io.request.bits.intWord.poke(true.B)
+        dut.io.request.bits.rs1.poke(boxS(BigInt(0x3fc00000L)).U(64.W))
+        dut.io.request.bits.rs2.poke(boxS(BigInt(0x40100000L)).U(64.W))
+        dut.io.request.bits.rs3.poke(0.U(64.W))
+        dut.io.request.valid.poke(true.B)
         dut.clock.step()
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
 
-        waitUntil(dut, dut.io.resp.valid.peek().litToBoolean)
-        val stable = dut.io.resp.bits.result.peek().litValue
+        waitUntil(dut, dut.io.response.valid.peek().litToBoolean)
+        val stable = dut.io.response.bits.result.peek().litValue
         stable should be(boxS(BigInt(0x40700000L)))
         dut.clock.step(depth + 3)
-        dut.io.resp.valid.peek().litToBoolean should be(true)
-        dut.io.resp.bits.result.peek().litValue should be(stable)
-        dut.io.resp.ready.poke(true.B)
+        dut.io.response.valid.peek().litToBoolean should be(true)
+        dut.io.response.bits.result.peek().litValue should be(stable)
+        dut.io.response.ready.poke(true.B)
         dut.clock.step()
-        dut.io.resp.ready.poke(false.B)
-        dut.io.resp.valid.peek().litToBoolean should be(false)
+        dut.io.response.ready.poke(false.B)
+        dut.io.response.valid.peek().litToBoolean should be(false)
 
         // flush 清掉在途响应，随后仍能接受新请求。
-        waitUntil(dut, dut.io.req.ready.peek().litToBoolean)
-        dut.io.req.bits.op.poke(FMul.U)
-        dut.io.req.bits.rs1.poke(boxS(BigInt(0x40400000L)).U(64.W))
-        dut.io.req.bits.rs2.poke(boxS(BigInt(0x40000000L)).U(64.W))
-        dut.io.req.valid.poke(true.B)
+        waitUntil(dut, dut.io.request.ready.peek().litToBoolean)
+        dut.io.request.bits.op.poke(FMul.U)
+        dut.io.request.bits.rs1.poke(boxS(BigInt(0x40400000L)).U(64.W))
+        dut.io.request.bits.rs2.poke(boxS(BigInt(0x40000000L)).U(64.W))
+        dut.io.request.valid.poke(true.B)
         dut.clock.step()
-        dut.io.req.valid.poke(false.B)
+        dut.io.request.valid.poke(false.B)
         dut.io.flush.poke(true.B)
         dut.clock.step()
         dut.io.flush.poke(false.B)
         dut.clock.step(depth + 3)
-        dut.io.resp.valid.peek().litToBoolean should be(false)
+        dut.io.response.valid.peek().litToBoolean should be(false)
         // flush 后重新发一笔加法，确认流水级和状态机都能继续工作。
         val afterFlush = send(
           dut, 64, FAdd, S, RNE,
@@ -610,29 +610,29 @@ class ysyx_26030103_FPUFeatureTest extends AnyFlatSpec with Matchers {
 
   "FPU flush" should "丢弃在途 DIV 并在后续请求上恢复" in {
     def issueDivAndFlush(dut: ysyx_26030103_FPU, fmt: Int): Unit = {
-      waitUntil(dut, dut.io.req.ready.peek().litToBoolean)
-      dut.io.req.bits.op.poke(FDiv.U)
-      dut.io.req.bits.fmt.poke(fmt.U)
-      dut.io.req.bits.srcFmt.poke(fmt.U)
-      dut.io.req.bits.rm.poke(RNE.U)
-      dut.io.req.bits.intWord.poke(true.B)
-      dut.io.req.bits.rs1.poke(
+      waitUntil(dut, dut.io.request.ready.peek().litToBoolean)
+      dut.io.request.bits.op.poke(FDiv.U)
+      dut.io.request.bits.fmt.poke(fmt.U)
+      dut.io.request.bits.SourceFmt.poke(fmt.U)
+      dut.io.request.bits.rm.poke(RNE.U)
+      dut.io.request.bits.intWord.poke(true.B)
+      dut.io.request.bits.rs1.poke(
         (if (fmt == S) boxS(BigInt(0x3f800000L))
          else BigInt("3ff0000000000000", 16)).U(64.W))
-      dut.io.req.bits.rs2.poke(
+      dut.io.request.bits.rs2.poke(
         (if (fmt == S) boxS(BigInt(0x40400000L))
          else BigInt("4008000000000000", 16)).U(64.W))
-      dut.io.req.bits.rs3.poke(0.U(64.W))
-      dut.io.req.valid.poke(true.B)
+      dut.io.request.bits.rs3.poke(0.U(64.W))
+      dut.io.request.valid.poke(true.B)
       dut.clock.step()
-      dut.io.req.valid.poke(false.B)
-      dut.io.req.ready.peek().litToBoolean should be(false)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.ready.peek().litToBoolean should be(false)
       dut.clock.step(5)
       dut.io.flush.poke(true.B)
       dut.clock.step()
       dut.io.flush.poke(false.B)
       dut.clock.step(20)
-      dut.io.resp.valid.peek().litToBoolean should be(false)
+      dut.io.response.valid.peek().litToBoolean should be(false)
       val after = send(
         dut, 64, FAdd, S, RNE,
         boxS(BigInt(0x3fc00000L)), boxS(BigInt(0x40100000L)))

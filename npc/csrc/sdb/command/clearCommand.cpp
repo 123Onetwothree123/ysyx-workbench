@@ -1,4 +1,6 @@
 module npc.sdb.command.clearCommand;
+import npc.SimulationContext;
+import npc.Output;
 
 std::string_view clearCommand::name() const noexcept
 {
@@ -13,13 +15,12 @@ SDBCommandUsageList clearCommand::usage() const noexcept
 }
 SDBCommandResult clearCommand::execute(SDBCommandContext &context, std::string_view args)
 {
-    static_cast<void>(context);
+    auto &out{context.GetSimulation().Out()};
     if (!args.empty())
     {
-        std::println("用法：clear");
+        out.Info("用法：clear");
         return SDBCommandResult::Continue;
     }
-    std::print("\033[H\033[J");
-    std::cout.flush();
+    out.WriteRaw(OutputLevel::Info, "\033[H\033[J");
     return SDBCommandResult::Continue;
 }

@@ -19,7 +19,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32)
 
   "NPCConfig" should "拒绝 index+block 超出页内偏移的 VIPT ICache" in {
-    val badMMU = rv32Base.copy(
+    val BadMMU = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
@@ -31,7 +31,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
         ICacheEnable = true,
         ICacheBlockSizeLog2 = 6,
         ICacheIndexBits = 10,
-        MMU = badMMU
+        MMU = BadMMU
       )
     }
     error.getMessage should include("VIPT ICache 非法")
@@ -43,7 +43,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "拒绝 index+block 超出页内偏移的 VIPT DCache" in {
-    val badMMU = rv32Base.copy(
+    val BadMMU = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
@@ -56,7 +56,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
         DCacheEnable = true,
         DCacheBlockSizeLog2 = 5,
         DCacheIndexBits = 10,
-        MMU = badMMU
+        MMU = BadMMU
       )
     }
     error.getMessage should include("VIPT DCache 非法")
@@ -65,7 +65,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   }
 
   it should "接受 index+block 落在页内的 VIPT 组合" in {
-    val goodMMU = rv32Base.copy(
+    val GoodMMU = rv32Base.copy(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
@@ -79,7 +79,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       DCacheEnable = true,
       DCacheBlockSizeLog2 = 4,
       DCacheIndexBits = 8,
-      MMU = goodMMU
+      MMU = GoodMMU
     )
     config.MMU.pageBits should be(12)
     (config.ICacheIndexBits + config.ICacheBlockSizeLog2) should be <= 12
@@ -118,9 +118,9 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
       enabled = true,
       xlen = 64,
       levels = 3,
-      pteSizeBytes = 8,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+      PTESizeBytes = 8,
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
       cacheMode = "vipt",
       cacheVIPTAliasSafe = true
     )
@@ -159,7 +159,7 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
     error.getMessage should include("跨越虚拟页")
     error.getMessage should include("ICacheBlockSizeLog2(13)")
 
-    val dcacheError = intercept[IllegalArgumentException] {
+    val DCacheError = intercept[IllegalArgumentException] {
       ysyx_26030103_NPCConfig(
         XLEN = 32,
         AddressWidth = 32,
@@ -170,9 +170,9 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
         MMU = mmu
       )
     }
-    dcacheError.getMessage should include("跨越虚拟页")
-    dcacheError.getMessage should include("DCacheBlockSizeLog2(13)")
-    dcacheError.getMessage should include("MMU_CACHE_MODE=pipt")
+    DCacheError.getMessage should include("跨越虚拟页")
+    DCacheError.getMessage should include("DCacheBlockSizeLog2(13)")
+    DCacheError.getMessage should include("MMU_CACHE_MODE=pipt")
   }
 
   it should "PIPT 允许 cache line 大于页且不截断物理索引" in {
@@ -462,8 +462,8 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
   it should "拒绝深度为 0 的 TLB miss queue" in {
     val globalError = intercept[IllegalArgumentException] {
       ysyx_26030103_MMUProfile(
-        tlbEnabled = true,
-        tlbMissQueueMode = "global",
+        TLBEnabled = true,
+        TLBMissQueueMode = "global",
         globalMissQueueEntries = 0
       )
     }
@@ -471,9 +471,9 @@ class ysyx_26030103_CacheConfigTest extends AnyFlatSpec with Matchers {
 
     val followError = intercept[IllegalArgumentException] {
       ysyx_26030103_MMUProfile(
-        tlbEnabled = true,
-        tlbOrganization = "split",
-        tlbMissQueueMode = "follow_tlb",
+        TLBEnabled = true,
+        TLBOrganization = "split",
+        TLBMissQueueMode = "follow_tlb",
         itlbMissQueueEntries = 0
       )
     }

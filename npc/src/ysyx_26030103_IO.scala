@@ -11,7 +11,7 @@ class ysyx_26030103_IO(val SocXLEN: Int = 32) extends Bundle {
     s"顶层 IO 的 SocXLEN 只允许 32 或 64，收到 $SocXLEN"
   )
   val interrupt = Input(Bool())
-  val uart_irq = Input(Bool())
+  val UARTIRQ = Input(Bool())
   val trap = new ysyx_26030103_TrapIO
   val master = new ysyx_26030103_AXI5MasterIO(SocXLEN)
   val slave = new ysyx_26030103_AXI5SlaveIO(SocXLEN)

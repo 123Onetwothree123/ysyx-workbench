@@ -22,6 +22,7 @@
 namespace {
 
 constexpr uint16_t kMstatus = 0x300;
+constexpr uint16_t kMie = 0x304;
 constexpr uint16_t kMtvec = 0x305;
 constexpr uint32_t kMachineExternalInterrupt = 0x8000000bU;
 
@@ -61,7 +62,7 @@ public:
     dut_->io_in_valid = 0;
     dut_->io_out_ready = 1;
     dut_->io_in_bits_Instruction = 0x00000013U;
-    dut_->io_in_bits_pc = 0x80000000U;
+    dut_->io_in_bits_PC = 0x80000000U;
     dut_->io_in_bits_snpc = 0x80000004U;
     dut_->io_in_bits_ALUCtrl = 15;
     dut_->io_in_bits_IsMDU = 0;
@@ -83,9 +84,9 @@ public:
     dut_->io_in_bits_WidthSelect = 0;
     dut_->io_in_bits_LoadSigned = 0;
     dut_->io_in_bits_StoreData = 0;
-    dut_->io_in_bits_IsCsrrw = 0;
-    dut_->io_in_bits_IsCsrrs = 0;
-    dut_->io_in_bits_IsCsrrc = 0;
+    dut_->io_in_bits_IsCSRrw = 0;
+    dut_->io_in_bits_IsCSRrs = 0;
+    dut_->io_in_bits_IsCSRrc = 0;
     dut_->io_in_bits_IsEcall = 0;
     dut_->io_in_bits_IsEbreak = 0;
     dut_->io_in_bits_IsSimHalt = 0;
@@ -97,10 +98,10 @@ public:
     dut_->io_in_bits_Rs1Data = 0;
     dut_->io_in_bits_ExceptionValid = 0;
     dut_->io_in_bits_ExceptionCause = 0;
-    dut_->io_in_bits_pred_taken = 0;
-    dut_->io_in_bits_pred_target = 0x80000004U;
+    dut_->io_in_bits_PredTaken = 0;
+    dut_->io_in_bits_PredTarget = 0x80000004U;
     dut_->io_Interrupt = 0;
-    dut_->io_IdleIrqPC = 0x80000000U;
+    dut_->io_IdleIRQPC = 0x80000000U;
     dut_->io_MEMBusy = 0;
     dut_->io_PipelineBusy = 0;
     dut_->io_MemTrapCommit = 0;
@@ -111,9 +112,9 @@ public:
   void beginAdd(uint32_t pc = 0x80000040U) {
     driveIdle();
     dut_->io_in_valid = 1;
-    dut_->io_in_bits_pc = pc;
+    dut_->io_in_bits_PC = pc;
     dut_->io_in_bits_snpc = pc + 4U;
-    dut_->io_in_bits_pred_target = pc + 4U;
+    dut_->io_in_bits_PredTarget = pc + 4U;
     dut_->io_in_bits_ALUCtrl = 0; // ADD
     dut_->io_in_bits_ALU_A = 1;
     dut_->io_in_bits_ALU_B = 2;
@@ -124,7 +125,7 @@ public:
 
   void csrWrite(uint16_t address, uint32_t value) {
     beginAdd();
-    dut_->io_in_bits_IsCsrrw = 1;
+    dut_->io_in_bits_IsCSRrw = 1;
     dut_->io_in_bits_CSRAddress = address;
     dut_->io_in_bits_Rs1 = 1;
     dut_->io_in_bits_Rs1Data = value;
@@ -138,7 +139,7 @@ public:
 
   uint32_t csrRead(uint16_t address) {
     beginAdd();
-    dut_->io_in_bits_IsCsrrs = 1;
+    dut_->io_in_bits_IsCSRrs = 1;
     dut_->io_in_bits_CSRAddress = address;
     dut_->io_in_bits_WBSelect = 3;
     dut_->eval();
@@ -161,6 +162,7 @@ int main(int argc, char **argv) {
   return run_test("EXU interrupt pulse handling", [] {
     ExuTb tb;
     tb.csrWrite(kMtvec, 0x00000100U);
+    tb.csrWrite(kMie, 1U << 11); // MEIE
     tb.csrWrite(kMstatus, 1U << 3); // MIE=1
 
     // --- 1) 阻塞窗口内的一拍脉冲：锁存后必须在解除阻塞时提交 ---

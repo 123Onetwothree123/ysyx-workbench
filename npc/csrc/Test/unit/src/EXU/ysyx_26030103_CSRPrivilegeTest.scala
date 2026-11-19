@@ -6,9 +6,9 @@ import _root_.circt.stage.ChiselStage
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-/** 测试用的 CSR 顶层，把显式 clk/rst 连接到仿真器的隐式时钟复位。 */
+/** 测试用的 CSR 顶层，把显式 clock/reset 连接到仿真器的隐式时钟复位。 */
 class ysyx_26030103_CSRHarness(
-    // 本 harness 的 pc/satp/rdata 都是 32 位 RV32 接口；默认必须用 RV32
+    // 本 harness 的 PC/satp/rdata 都是 32 位 RV32 接口；默认必须用 RV32
     // profile，否则 64 位默认会让 misa/satp 语义与断言语义错位。
     profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile.fromEnv(
@@ -29,10 +29,10 @@ class ysyx_26030103_CSRHarness(
     val isMret = Input(Bool())
     val isSret = Input(Bool())
     val isSfenceVma = Input(Bool())
-    val csrAddress = Input(UInt(12.W))
+    val CSRAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
     val rs1Data = Input(UInt(32.W))
-    val pc = Input(UInt(32.W))
+    val PC = Input(UInt(32.W))
     val trapTval = Input(UInt(32.W))
     val interrupt = Input(Bool())
     val timerInterrupt = Input(Bool())
@@ -42,7 +42,7 @@ class ysyx_26030103_CSRHarness(
     val rdata = Output(UInt(32.W))
     val exceptionTaken = Output(Bool())
     val exceptionTarget = Output(UInt(32.W))
-    val flushTLB = Output(Bool())
+    val FlushTLB = Output(Bool())
     val privilege = Output(UInt(2.W))
     val satp = Output(UInt(32.W))
     val trapCommit = Output(Bool())
@@ -51,49 +51,49 @@ class ysyx_26030103_CSRHarness(
     val stateMepc = Output(UInt(32.W))
     val stateMcause = Output(UInt(32.W))
   })
-  val csr = Module(new ysyx_26030103_CSR(
+  val CSR = Module(new ysyx_26030103_CSR(
     profile, XLEN = 32, UseA = useA, UseC = useC, UseF = useF, UseD = useD))
-  csr.io.clk := clock
-  csr.io.rst := reset
-  csr.io.Enable := io.enable
-  csr.io.MinstretRetireCommit := io.retireCommit
-  csr.io.IsCSRrw := io.isCSRrw
-  csr.io.IsCSRrs := io.isCSRrs
-  csr.io.IsCSRrc := io.isCSRrc
-  csr.io.IsEcall := io.isEcall
-  csr.io.IsEbreak := io.isEbreak
-  csr.io.IsMret := io.isMret
-  csr.io.IsSret := io.isSret
-  csr.io.IsSfenceVma := io.isSfenceVma
-  csr.io.CSRAddress := io.csrAddress
-  csr.io.rs1 := io.rs1
-  csr.io.Rs1Data := io.rs1Data
-  csr.io.pc := io.pc
-  csr.io.TrapTval := io.trapTval
+  CSR.io.clock := clock
+  CSR.io.reset := reset
+  CSR.io.Enable := io.enable
+  CSR.io.MinstretRetireCommit := io.retireCommit
+  CSR.io.IsCSRrw := io.isCSRrw
+  CSR.io.IsCSRrs := io.isCSRrs
+  CSR.io.IsCSRrc := io.isCSRrc
+  CSR.io.IsEcall := io.isEcall
+  CSR.io.IsEbreak := io.isEbreak
+  CSR.io.IsMret := io.isMret
+  CSR.io.IsSret := io.isSret
+  CSR.io.IsSfenceVma := io.isSfenceVma
+  CSR.io.CSRAddress := io.CSRAddress
+  CSR.io.rs1 := io.rs1
+  CSR.io.Rs1Data := io.rs1Data
+  CSR.io.PC := io.PC
+  CSR.io.TrapTval := io.trapTval
   // 测试通过 trapTval 注入明确 tval（包括合法的 0）。
-  csr.io.TrapTvalValid := true.B
-  csr.io.Interrupt := io.interrupt
-  csr.io.TimerInterrupt := io.timerInterrupt
-  csr.io.Mtime := 0.U
-  csr.io.TrapValid := io.trapValid
-  csr.io.TrapCause := io.trapCause
-  csr.io.MemTrap := io.memTrap
+  CSR.io.TrapTvalValid := true.B
+  CSR.io.Interrupt := io.interrupt
+  CSR.io.TimerInterrupt := io.timerInterrupt
+  CSR.io.Mtime := 0.U
+  CSR.io.TrapValid := io.trapValid
+  CSR.io.TrapCause := io.trapCause
+  CSR.io.MemTrap := io.memTrap
   // 本测试不提交浮点状态；F/D 只用于检查 misa.F/D 常量。
-  csr.io.FPCommit := false.B
-  csr.io.FPFlags := 0.U
-  csr.io.FPStateDirtyCommit := false.B
-  csr.io.PMUEvents := 0.U
-  io.rdata := csr.io.CSR_rdata
-  io.exceptionTaken := csr.io.ExceptionTaken
-  io.exceptionTarget := csr.io.ExceptionTarget
-  io.flushTLB := csr.io.FlushTLB
-  io.privilege := csr.io.Privilege
-  io.satp := csr.io.Satp
-  io.trapCommit := csr.io.TrapCommit
-  io.committedCause := csr.io.CommittedCause
-  io.stateMstatus := csr.io.StateMstatus
-  io.stateMepc := csr.io.StateMepc
-  io.stateMcause := csr.io.StateMcause
+  CSR.io.FPCommit := false.B
+  CSR.io.FPFlags := 0.U
+  CSR.io.FPStateDirtyCommit := false.B
+  CSR.io.PMUEvents := 0.U
+  io.rdata := CSR.io.CSR_rdata
+  io.exceptionTaken := CSR.io.ExceptionTaken
+  io.exceptionTarget := CSR.io.ExceptionTarget
+  io.FlushTLB := CSR.io.FlushTLB
+  io.privilege := CSR.io.Privilege
+  io.satp := CSR.io.Satp
+  io.trapCommit := CSR.io.TrapCommit
+  io.committedCause := CSR.io.CommittedCause
+  io.stateMstatus := CSR.io.StateMstatus
+  io.stateMepc := CSR.io.StateMepc
+  io.stateMcause := CSR.io.StateMcause
 }
 
 class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
@@ -133,10 +133,10 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddress.poke(0.U)
+    dut.io.CSRAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
-    dut.io.pc.poke(0.U)
+    dut.io.PC.poke(0.U)
     dut.io.trapTval.poke(0.U)
     dut.io.interrupt.poke(false.B)
     dut.io.timerInterrupt.poke(false.B)
@@ -146,7 +146,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   private def write(dut: ysyx_26030103_CSRHarness, addr: Int, data: BigInt): Unit = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(32.W))
     dut.io.enable.poke(true.B)
@@ -157,7 +157,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   }
 
   private def read(dut: ysyx_26030103_CSRHarness, addr: Int): BigInt = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.enable.poke(false.B)
     dut.clock.step()
     dut.io.rdata.peek().litValue
@@ -171,7 +171,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       long(dut.io.satp) should be(satp.toLong)
       dut.io.isSfenceVma.poke(true.B)
       dut.io.enable.poke(true.B)
-      bool(dut.io.flushTLB) should be(true)
+      bool(dut.io.FlushTLB) should be(true)
       dut.clock.step()
     }
   }
@@ -195,7 +195,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       write(dut, MEDELEG, BigInt(1) << 13)
       write(dut, STVEC, 0x80002000L)
 
-      dut.io.pc.poke(0x80001234L)
+      dut.io.PC.poke(0x80001234L)
       dut.io.trapTval.poke(0xdeadbeefL)
       dut.io.trapCause.poke(13.U)
       dut.io.trapValid.poke(true.B)
@@ -216,12 +216,12 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
 
   it should "支持 mstatus/satp 字段 mask 配置" in {
     val profile = rv32Profile.copy(
-      csrMstatusReadMask = 0,
-      csrMstatusReadSet = 0x8,
-      csrMstatusWriteMask = 0,
-      csrSatpReadMask = 0x000000ff,
-      csrSatpReadSet = 0x100,
-      csrSatpWriteMask = 0x0000000f
+      CSRMstatusReadMask = 0,
+      CSRMstatusReadSet = 0x8,
+      CSRMstatusWriteMask = 0,
+      CSRSatpReadMask = 0x000000ff,
+      CSRSatpReadSet = 0x100,
+      CSRSatpWriteMask = 0x0000000f
     )
     simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
       setup(dut)
@@ -256,12 +256,12 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       "CSR_MSTATUS_SPP_READ" -> "one",
       "CSR_SATP_ASID_READ" -> "zero"
     ).get)
-    (p.csrMstatusReadMask & 0x8) should be(0)
-    (p.csrMstatusReadSet & 0x8) should be(0)
-    (p.csrMstatusWriteMask & 0x8) should be(0)
-    (p.csrMstatusReadMask & 0x100) should be(0x100)
-    (p.csrMstatusReadSet & 0x100) should be(0x100)
-    (p.csrSatpReadMask & BigInt("7fc00000", 16).toInt) should be(0)
+    (p.CSRMstatusReadMask & 0x8) should be(0)
+    (p.CSRMstatusReadSet & 0x8) should be(0)
+    (p.CSRMstatusWriteMask & 0x8) should be(0)
+    (p.CSRMstatusReadMask & 0x100) should be(0x100)
+    (p.CSRMstatusReadSet & 0x100) should be(0x100)
+    (p.CSRSatpReadMask & BigInt("7fc00000", 16).toInt) should be(0)
   }
 
   it should "实现 mvendorid/marchid/mimpid/mhartid 只读常量" in {
@@ -287,7 +287,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
 
   it should "identity CSR 不受 CSR_ENABLED 裁剪" in {
     val profile = rv32Profile.copy(
-      csrEnabled = Set(0x300)
+      CSREnabled = Set(0x300)
     )
     simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
       setup(dut)
@@ -339,7 +339,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
 
   it should "关闭的 CSR 读 0 且写忽略" in {
     simulate(new ysyx_26030103_CSRHarness(
-      rv32Profile.copy(csrEnabled = Set(0x300))
+      rv32Profile.copy(CSREnabled = Set(0x300))
     )) { dut =>
       setup(dut)
       write(dut, 0x180, BigInt("80080001", 16))
@@ -392,7 +392,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
 
   it should "CSR independent 视图使用独立 sstatus" in {
     simulate(new ysyx_26030103_CSRHarness(
-      rv32Profile.copy(csrViewMode = "independent")
+      rv32Profile.copy(CSRViewMode = "independent")
     )) { dut =>
       setup(dut)
       write(dut, 0x100, BigInt(2))
@@ -470,7 +470,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
 
   it should "HAS_U=n 时裁剪 U 级 CSR 地址" in {
     val withU = rv32Profile.copy(
-      csrEnabled = Set(0x100, 0x300, 0xc00)
+      CSREnabled = Set(0x100, 0x300, 0xc00)
     )
     val noU = withU.copy(hasU = false)
     withU.csrSupported(0xc00) should be(true)
@@ -511,7 +511,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       bool(dut.io.exceptionTaken) should be(false)
       dut.io.isSret.poke(false.B)
       dut.io.isSfenceVma.poke(true.B)
-      bool(dut.io.flushTLB) should be(false)
+      bool(dut.io.FlushTLB) should be(false)
       dut.io.isSfenceVma.poke(false.B)
       dut.io.enable.poke(false.B)
 
@@ -561,7 +561,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       long(dut.io.privilege) should be(0L)
 
       // U 模式 ecall 直接进入 M，cause=8，mtvec 是入口。
-      dut.io.pc.poke(0x80001004L)
+      dut.io.PC.poke(0x80001004L)
       dut.io.enable.poke(true.B)
       dut.io.isEcall.poke(true.B)
       bool(dut.io.trapCommit) should be(true)
@@ -612,8 +612,8 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
         7L -> 0x80007000L
       )
       for ((cause, tval) <- faults) {
-        val pc = 0x80004000L + (cause << 2)
-        dut.io.pc.poke(pc.U)
+        val PC = 0x80004000L + (cause << 2)
+        dut.io.PC.poke(PC.U)
         dut.io.trapTval.poke(tval.U)
         dut.io.trapCause.poke(cause.U)
         dut.io.trapValid.poke(true.B)
@@ -625,7 +625,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
         dut.io.trapValid.poke(false.B)
         dut.io.enable.poke(false.B)
         long(dut.io.privilege) should be(3L)
-        read(dut, MEPC) should be(pc)
+        read(dut, MEPC) should be(PC)
         read(dut, 0x342) should be(cause)
         read(dut, 0x343) should be(tval)
         ((read(dut, MSTATUS) >> 11) & 3) should be(0)
@@ -672,7 +672,7 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
       bool(dut.io.exceptionTaken) should be(false)
       dut.io.isSret.poke(false.B)
       dut.io.isSfenceVma.poke(true.B)
-      bool(dut.io.flushTLB) should be(false)
+      bool(dut.io.FlushTLB) should be(false)
       dut.io.isSfenceVma.poke(false.B)
       dut.io.enable.poke(false.B)
     }

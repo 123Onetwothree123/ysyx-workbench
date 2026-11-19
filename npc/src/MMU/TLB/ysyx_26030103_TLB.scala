@@ -7,14 +7,14 @@ import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
 class ysyx_26030103_TLBWrite(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
-    val pteWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth
+    val PTEWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth
 ) extends Bundle {
   require(XLEN == 32 || XLEN == 64, s"TLBWrite XLEN 非法: $XLEN")
-  require(pteWidth == 32 || pteWidth == 64, s"TLBWrite pteWidth 非法: $pteWidth")
+  require(PTEWidth == 32 || PTEWidth == 64, s"TLBWrite PTEWidth 非法: $PTEWidth")
   val valid = Bool()
   val vaddr = UInt(XLEN.W)
-  val asid = UInt(16.W)
-  val pte = UInt(pteWidth.W)
+  val ASID = UInt(16.W)
+  val PTE = UInt(PTEWidth.W)
   // fillLevel 使用统一 3 位编码，支持最多 8 级页表。
   val level = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
 }
@@ -26,7 +26,7 @@ class ysyx_26030103_TLBWrite(
 class ysyx_26030103_TLB(
     entries: Int = ysyx_26030103_KconfigDefaults.MMUItlbEntries,
     ways: Int = ysyx_26030103_KconfigDefaults.MMUItlbWays,
-    asidBits: Int = ysyx_26030103_KconfigDefaults.MMUTLBASIDBits,
+    ASIDBits: Int = ysyx_26030103_KconfigDefaults.MMUTLBASIDBits,
     globalEnable: Boolean = true,
     replacement: String = "rr",
     adMode: String = "fault",
@@ -42,13 +42,13 @@ class ysyx_26030103_TLB(
     XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     addressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     vaBits: Int = ysyx_26030103_KconfigDefaults.MMUVaBits,
-    pteWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth,
-    ptePPNLow: Int = ysyx_26030103_KconfigDefaults.MMUPTEPPNLow,
-    ptePPNHigh: Int = ysyx_26030103_KconfigDefaults.MMUPTEPPNHigh
+    PTEWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth,
+    PTEPPNLow: Int = ysyx_26030103_KconfigDefaults.MMUPTEPPNLow,
+    PTEPPNHigh: Int = ysyx_26030103_KconfigDefaults.MMUPTEPPNHigh
 ) extends Module {
   require(entries > 0 && ways > 0 && entries % ways == 0, "TLB entries 必须能被 ways 整除")
   require((entries & (entries - 1)) == 0, "TLB entries 必须是 2 的幂")
-  require(asidBits >= 0 && asidBits <= 16, "ASID 位数必须在 0..16")
+  require(ASIDBits >= 0 && ASIDBits <= 16, "ASID 位数必须在 0..16")
   require((ways & (ways - 1)) == 0, "TLB ways 必须是 2 的幂")
   require(Set("reg", "sram").contains(storage), "TLB storage 必须是 reg/sram")
   require(lookupPorts >= 1 && lookupPorts <= 2, "TLB lookupPorts 必须在 1..2")
@@ -59,8 +59,8 @@ class ysyx_26030103_TLB(
   require(addressWidth == 32 || addressWidth == 64,
     s"TLB addressWidth 非法: $addressWidth")
   require(vaBits > pageBits && vaBits <= XLEN, "TLB vaBits 非法")
-  require(pteWidth == 32 || pteWidth == 64, "TLB pteWidth 非法")
-  require(ptePPNLow >= 8 && ptePPNHigh < pteWidth && ptePPNLow <= ptePPNHigh,
+  require(PTEWidth == 32 || PTEWidth == 64, "TLB PTEWidth 非法")
+  require(PTEPPNLow >= 8 && PTEPPNHigh < PTEWidth && PTEPPNLow <= PTEPPNHigh,
     "TLB PTE PPN 位置非法")
   // 超级页的 shift/tag 由 pageBits/levels/indexBits 推导；非标准几何
   // 必须满足有效虚拟地址可完整划分，否则拒绝 elaboration 而不是静默错映射。
@@ -69,20 +69,20 @@ class ysyx_26030103_TLB(
 
   private val sets = entries / ways
   private val setBits = if (sets == 1) 0 else log2Ceil(sets)
-  private val asidWidth = asidBits.max(1)
-  private val vpnBits = vaBits - pageBits
+  private val ASIDWidth = ASIDBits.max(1)
+  private val VPNBits = vaBits - pageBits
   // PTE 中可用的 PPN 位数（Sv32=22，Sv39/Sv48=44），再受物理地址宽度约束。
-  private val ptePPNBits = ptePPNHigh - ptePPNLow + 1
-  private val ppnBits = math.min(ptePPNBits, addressWidth - pageBits)
-  require(ppnBits >= 1, "TLB 的 PPN 字段无法装入物理地址宽度")
+  private val PTEPPNBits = PTEPPNHigh - PTEPPNLow + 1
+  private val PPNBits = math.min(PTEPPNBits, addressWidth - pageBits)
+  require(PPNBits >= 1, "TLB 的 PPN 字段无法装入物理地址宽度")
   private val entryBits = log2Ceil(entries)
 
   class Entry extends Bundle {
     val valid = Bool()
-    val tag = UInt((vpnBits - setBits).W)
-    val asid = UInt(asidWidth.W)
+    val tag = UInt((VPNBits - setBits).W)
+    val ASID = UInt(ASIDWidth.W)
     val global = Bool()
-    val ppn = UInt(ppnBits.W)
+    val PPN = UInt(PPNBits.W)
     val r = Bool()
     val w = Bool()
     val x = Bool()
@@ -94,7 +94,7 @@ class ysyx_26030103_TLB(
 
   class Lookup extends Bundle {
     val vaddr = UInt(XLEN.W)
-    val asid = UInt(asidWidth.W)
+    val ASID = UInt(ASIDWidth.W)
     val privilege = UInt(2.W)
     val access = UInt(2.W)
     val sum = Bool()
@@ -108,7 +108,7 @@ class ysyx_26030103_TLB(
     val cause = UInt(32.W)
     val resultValid = Bool()
     val superpage = Bool()
-    val asidHit = Bool()
+    val ASIDHit = Bool()
   }
 
   val io = IO(new Bundle {
@@ -117,13 +117,13 @@ class ysyx_26030103_TLB(
     val result = Output(Vec(lookupPorts, new Result))
     val fillValid = Input(Bool())
     val fillVirtualAddress = Input(UInt(XLEN.W))
-    val fillASID = Input(UInt(16.W))
-    val fillPTE = Input(UInt(pteWidth.W))
+    val FillASID = Input(UInt(16.W))
+    val FillPTE = Input(UInt(PTEWidth.W))
     val fillLevel = Input(UInt(ysyx_26030103_MMUProfile.LevelBits.W))
     // 第 2..refillPorts 个写回端口；端口 0 保持上面的兼容接口。
     val fillExtra = if (refillPorts > 1)
       Some(Input(Vec(refillPorts - 1,
-        new ysyx_26030103_TLBWrite(XLEN, pteWidth)))) else None
+        new ysyx_26030103_TLBWrite(XLEN, PTEWidth)))) else None
     val flush = Input(Bool())
   })
 
@@ -140,7 +140,7 @@ class ysyx_26030103_TLB(
     val valid = Bool()
     val level = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
     val vaddr = UInt(XLEN.W)
-    val asid = UInt(asidWidth.W)
+    val ASID = UInt(ASIDWidth.W)
     val global = Bool()
     val paddrBase = UInt(addressWidth.W)
     val r = Bool(); val w = Bool(); val x = Bool()
@@ -168,8 +168,8 @@ class ysyx_26030103_TLB(
   val superRoundRobin = if (superEntryCount > 0)
     Some(RegInit(0.U(log2Ceil(superEntryCount.max(2)).W))) else None
   private val sramStorage = storage == "sram"
-  val pteMems =
-    if (sramStorage) Some((0 until ways).map(_ => SyncReadMem(sets, UInt(pteWidth.W))))
+  val PTEMems =
+    if (sramStorage) Some((0 until ways).map(_ => SyncReadMem(sets, UInt(PTEWidth.W))))
     else None
   // SRAM 读出一拍后才有效；每个查找端口分别记录上一拍地址。
   val lastLookupVirtualAddress =
@@ -230,43 +230,43 @@ class ysyx_26030103_TLB(
   }
 
   private def vpnOf(address: UInt): UInt = address(vaBits - 1, pageBits)
-  private def setOf(vpn: UInt): UInt =
-    if (setBits == 0) 0.U else vpn(setBits - 1, 0)
-  private def tagOf(vpn: UInt): UInt =
-    if (setBits == 0) vpn else vpn(vpnBits - 1, setBits)
+  private def setOf(VPN: UInt): UInt =
+    if (setBits == 0) 0.U else VPN(setBits - 1, 0)
+  private def tagOf(VPN: UInt): UInt =
+    if (setBits == 0) VPN else VPN(VPNBits - 1, setBits)
   private def entryIndex(set: UInt, way: UInt): UInt =
     if (entryBits == 0) 0.U else (set * ways.U + way)(entryBits - 1, 0)
-  private def ptePPNOf(pte: UInt): UInt =
-    pte(ptePPNLow + ptePPNBits - 1, ptePPNLow)
+  private def ptePPNOf(PTE: UInt): UInt =
+    PTE(PTEPPNLow + PTEPPNBits - 1, PTEPPNLow)
 
-  // 每个查找端口独立做 tag/asid/权限检查。refill 在本拍末尾写入寄存器，
+  // 每个查找端口独立做 tag/ASID/权限检查。refill 在本拍末尾写入寄存器，
   // 因而不影响本拍已经组合出来的旧表项结果。
   for (port <- 0 until lookupPorts) {
     val lookup = io.lookup(port)
-    val lookupVpn = vpnOf(lookup.vaddr)
-    val lookupSet = setOf(lookupVpn)
-    val lookupTag = tagOf(lookupVpn)
-    val sramPTEs = pteMems
+    val LookupVPN = vpnOf(lookup.vaddr)
+    val lookupSet = setOf(LookupVPN)
+    val lookupTag = tagOf(LookupVPN)
+    val sramPTEs = PTEMems
       .map(_.map(m => m.read(lookupSet)))
-      .getOrElse(Seq.fill(ways)(0.U(pteWidth.W)))
+      .getOrElse(Seq.fill(ways)(0.U(PTEWidth.W)))
     val lookupWays = (0 until ways).map { w =>
       val entry = entriesVec(entryIndex(lookupSet, w.U))
-      val asidMatch = if (asidBits == 0) true.B else entry.asid === lookup.asid
+      val ASIDMatch = if (ASIDBits == 0) true.B else entry.ASID === lookup.ASID
       val globalMatch = if (globalEnable) entry.global else false.B
-      entry.valid && entry.tag === lookupTag && (globalMatch || asidMatch)
+      entry.valid && entry.tag === lookupTag && (globalMatch || ASIDMatch)
     }
     val lookupHit = lookupWays.reduce(_ || _)
     val hitWay = Mux1H(lookupWays, (0 until ways).map(w => w.U(log2Ceil(ways.max(2)).W)))
     val selected = Mux1H(lookupWays, (0 until ways).map(w => entriesVec(entryIndex(lookupSet, w.U))))
-    val selectedPTE = Mux1H(lookupWays, sramPTEs)
+    val SelectedPTE = Mux1H(lookupWays, sramPTEs)
     val superHits = if (superEntryCount > 0) {
       (0 until superEntryCount).map { i =>
         val entry = superVec.get(i)
-        val asidMatch = if (asidBits == 0) true.B else entry.asid === lookup.asid
+        val ASIDMatch = if (ASIDBits == 0) true.B else entry.ASID === lookup.ASID
         val globalMatch = if (globalEnable) entry.global else false.B
         entry.valid && entry.level =/= 0.U &&
           superTagMatch(entry.level, entry.vaddr, lookup.vaddr) &&
-          (globalMatch || asidMatch)
+          (globalMatch || ASIDMatch)
       }
     } else Seq.empty
     val superHit = if (superEntryCount > 0) superHits.reduce(_ || _) else false.B
@@ -281,22 +281,22 @@ class ysyx_26030103_TLB(
       Mux1H(superHits, paddrs)
     } else 0.U(addressWidth.W)
     val selectedR = Mux(superHit, superSelected.r,
-      if (sramStorage) selectedPTE(1) else selected.r)
+      if (sramStorage) SelectedPTE(1) else selected.r)
     val selectedW = Mux(superHit, superSelected.w,
-      if (sramStorage) selectedPTE(2) else selected.w)
+      if (sramStorage) SelectedPTE(2) else selected.w)
     val selectedX = Mux(superHit, superSelected.x,
-      if (sramStorage) selectedPTE(3) else selected.x)
+      if (sramStorage) SelectedPTE(3) else selected.x)
     val selectedU =
       if (hasU)
         Mux(superHit, superSelected.u.get,
-          if (sramStorage) selectedPTE(4) else selected.u.get)
+          if (sramStorage) SelectedPTE(4) else selected.u.get)
       else false.B
     val selectedA = Mux(superHit, superSelected.a,
-      if (sramStorage) selectedPTE(6) else selected.a)
+      if (sramStorage) SelectedPTE(6) else selected.a)
     val selectedD = Mux(superHit, superSelected.d,
-      if (sramStorage) selectedPTE(7) else selected.d)
-    val selectedPPN = Mux(superHit, 0.U(ppnBits.W),
-      if (sramStorage) ptePPNOf(selectedPTE)(ppnBits - 1, 0) else selected.ppn)
+      if (sramStorage) SelectedPTE(7) else selected.d)
+    val SelectedPPN = Mux(superHit, 0.U(PPNBits.W),
+      if (sramStorage) ptePPNOf(SelectedPTE)(PPNBits - 1, 0) else selected.PPN)
 
     val isFetch = lookup.access === ysyx_26030103_AccessType.Fetch
     val isStore = lookup.access === ysyx_26030103_AccessType.Store
@@ -322,8 +322,8 @@ class ysyx_26030103_TLB(
       case _       => true.B
     }
     // R=0 且 W=1 是保留编码；TLB 中已有的表项也不能绕过该检查。
-    val reservedPTE = !selectedR && selectedW
-    val permissionOk = !reservedPTE && userOk && sumOk && accessOk && adOk
+    val ReservedPTE = !selectedR && selectedW
+    val permissionOk = !ReservedPTE && userOk && sumOk && accessOk && adOk
     val faultCause = Mux(isFetch, 12.U, Mux(isStore, 15.U, 13.U))
 
     when(lookupHit) {
@@ -349,14 +349,14 @@ class ysyx_26030103_TLB(
           (0 until superEntryCount).map(i => superVec.get(i).global))
       else false.B
     val selectedGlobal = Mux(superHit, superGlobal, normalGlobal)
-    val asidHit =
-      if (asidBits == 0) false.B
+    val ASIDHit =
+      if (ASIDBits == 0) false.B
       else effectiveHit && !selectedGlobal
     io.result(port).hit := effectiveHit
     io.result(port).fault := effectiveHit && !permissionOk
     io.result(port).superpage := effectiveHit && superHit
-    io.result(port).asidHit := asidHit
-    val basePhysicalAddress = (Cat(selectedPPN, lookup.vaddr(pageBits - 1, 0))).pad(addressWidth)
+    io.result(port).ASIDHit := ASIDHit
+    val basePhysicalAddress = (Cat(SelectedPPN, lookup.vaddr(pageBits - 1, 0))).pad(addressWidth)
     io.result(port).paddr := Mux(superHit, superPhysicalAddress, basePhysicalAddress)
     io.result(port).cause := faultCause
     lastLookupVirtualAddress(port) := lookup.vaddr
@@ -375,8 +375,8 @@ class ysyx_26030103_TLB(
       for (i <- 0 until entries) { ages(i) := 0.U }
     }
   }
-  def doFill(valid: Bool, fillVirtualAddressVal: UInt, fillASIDVal: UInt,
-      fillPTEVal: UInt, fillLevelVal: UInt): Unit = {
+  def doFill(valid: Bool, fillVirtualAddressVal: UInt, FillASIDVal: UInt,
+      FillPTEVal: UInt, fillLevelVal: UInt): Unit = {
     if (superEntryCount > 0) {
       // fillLevel 0 是基础页；1..levels-1 是超级页层级。TLB 只缓存
       // 配置范围内的层级，超出范围的填充请求被忽略（PTW 不会产生）。
@@ -393,17 +393,17 @@ class ysyx_26030103_TLB(
         entry.valid := true.B
         entry.level := fillLevelVal
         entry.vaddr := fillVirtualAddressVal
-        entry.asid := fillASIDVal
-        entry.global := (if (globalEnable) fillPTEVal(5) else false.B)
+        entry.ASID := FillASIDVal
+        entry.global := (if (globalEnable) FillPTEVal(5) else false.B)
         // 与 PTW 的 paddrOf 保持一致：PPN 以基础页为单位，左移 pageBits
         // 得到超级页物理基址，低 shift 位由访问地址提供。只保留能装入
-        // 物理地址宽度的低 ppnBits 位；PTW 已拒绝高位非零的 PTE。
-        entry.paddrBase := (ptePPNOf(fillPTEVal)(ppnBits - 1, 0) << pageBits)
+        // 物理地址宽度的低 PPNBits 位；PTW 已拒绝高位非零的 PTE。
+        entry.paddrBase := (ptePPNOf(FillPTEVal)(PPNBits - 1, 0) << pageBits)
           .pad(addressWidth)
-        entry.r := fillPTEVal(1); entry.w := fillPTEVal(2); entry.x := fillPTEVal(3)
+        entry.r := FillPTEVal(1); entry.w := FillPTEVal(2); entry.x := FillPTEVal(3)
         // HAS_U=n 时不保存 U 位，避免保留无用的 U 状态。
-        entry.u.foreach { u => u := fillPTEVal(4) }
-        entry.a := fillPTEVal(6); entry.d := fillPTEVal(7)
+        entry.u.foreach { u => u := FillPTEVal(4) }
+        entry.a := FillPTEVal(6); entry.d := FillPTEVal(7)
         superVec.get(victim) := entry
         superRoundRobin.get := Mux(
           superRoundRobin.get === (superEntryCount - 1).U,
@@ -413,33 +413,33 @@ class ysyx_26030103_TLB(
       }
     }
     when(!io.flush && valid && (!superpage.B || fillLevelVal === 0.U)) {
-      val fillVpn = vpnOf(fillVirtualAddressVal)
-      val fillSet = setOf(fillVpn)
+      val FillVPN = vpnOf(fillVirtualAddressVal)
+      val fillSet = setOf(FillVPN)
       val victimWay =
         if (replacement == "plru" && ways > 1) plruVictim(fillSet)
         else if (replacement == "lru") lruVictim(fillSet)
         else if (ways == 1) 0.U
         else roundRobin
       val index = entryIndex(fillSet, victimWay)
-      pteMems.foreach { mems =>
+      PTEMems.foreach { mems =>
         mems.zipWithIndex.foreach { case (m, w) =>
-          when(victimWay === w.U) { m.write(fillSet, fillPTEVal) }
+          when(victimWay === w.U) { m.write(fillSet, FillPTEVal) }
         }
       }
       val fillEntry = Wire(new Entry)
       fillEntry := 0.U.asTypeOf(new Entry)
       fillEntry.valid := true.B
-      fillEntry.tag := tagOf(fillVpn)
-      fillEntry.asid := fillASIDVal
-      fillEntry.global := (if (globalEnable) fillPTEVal(5) else false.B)
-      fillEntry.ppn := ptePPNOf(fillPTEVal)(ppnBits - 1, 0)
-      fillEntry.r := fillPTEVal(1)
-      fillEntry.w := fillPTEVal(2)
-      fillEntry.x := fillPTEVal(3)
+      fillEntry.tag := tagOf(FillVPN)
+      fillEntry.ASID := FillASIDVal
+      fillEntry.global := (if (globalEnable) FillPTEVal(5) else false.B)
+      fillEntry.PPN := ptePPNOf(FillPTEVal)(PPNBits - 1, 0)
+      fillEntry.r := FillPTEVal(1)
+      fillEntry.w := FillPTEVal(2)
+      fillEntry.x := FillPTEVal(3)
       // HAS_U=n 时不保存 U 位。
-      fillEntry.u.foreach { u => u := fillPTEVal(4) }
-      fillEntry.a := fillPTEVal(6)
-      fillEntry.d := fillPTEVal(7)
+      fillEntry.u.foreach { u => u := FillPTEVal(4) }
+      fillEntry.a := FillPTEVal(6)
+      fillEntry.d := FillPTEVal(7)
       entriesVec(index) := fillEntry
       plruUpdate(fillSet, victimWay)
       lruUpdate(fillSet, victimWay)
@@ -449,10 +449,10 @@ class ysyx_26030103_TLB(
     }
   }
 
-  doFill(io.fillValid, io.fillVirtualAddress, io.fillASID, io.fillPTE, io.fillLevel)
+  doFill(io.fillValid, io.fillVirtualAddress, io.FillASID, io.FillPTE, io.fillLevel)
   io.fillExtra.foreach { extra =>
     for (port <- extra) {
-      doFill(port.valid, port.vaddr, port.asid, port.pte, port.level)
+      doFill(port.valid, port.vaddr, port.ASID, port.PTE, port.level)
     }
   }
 

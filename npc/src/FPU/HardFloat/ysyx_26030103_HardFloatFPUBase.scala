@@ -45,7 +45,7 @@ abstract class ysyx_26030103_HardFloatFPUBase(
     if (FLEN == 64) Cat(Fill(FLEN - 32, value(31)), value(31, 0))
     else value(31, 0)
 
-  protected val request = io.req.bits
+  protected val request = io.request.bits
   protected val aRaw = request.rs1
   protected val bRaw = request.rs2
   protected val cRaw = request.rs3
@@ -57,7 +57,7 @@ abstract class ysyx_26030103_HardFloatFPUBase(
   protected val cD = dInput(cRaw)
   protected val fmtS = request.fmt === ysyx_26030103_FPUFmt.S
   protected val fmtD = request.fmt === ysyx_26030103_FPUFmt.D
-  protected val srcFmtD = request.srcFmt === ysyx_26030103_FPUFmt.D
+  protected val SourceFmtD = request.SourceFmt === ysyx_26030103_FPUFmt.D
   protected val intWord = request.intWord
   protected val rm = request.rm
   protected val op = request.op

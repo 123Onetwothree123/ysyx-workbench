@@ -1,13 +1,10 @@
 module;
-#include <unistd.h>
-#include <cstdio>
-
 module npc.log;
 import npc.config;
+import npc.Output;
 
-static std::ofstream log_file;
-
-std::expected<void, std::string> log_init() noexcept {
+std::expected<void, std::string> log_init(Output &out) noexcept
+{
     if constexpr (npc::HasLogToFile)
     {
         try
@@ -15,11 +12,10 @@ std::expected<void, std::string> log_init() noexcept {
             std::filesystem::create_directories(std::filesystem::path{npc::LogDir});
             auto now{std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::system_clock::now()}};
             auto filename{std::format("{}/{:%Y%m%d-%H%M%S}.log", npc::LogDir, now)};
-            log_file.open(filename, std::ios::out | std::ios::app);
-            if (!log_file.is_open())
+            auto result{out.OpenFile(filename)};
+            if (!result)
             {
-                return std::unexpected{
-                    std::format("无法打开日志文件 {}", filename)};
+                return result;
             }
         }
         catch (const std::exception &error)
@@ -31,10 +27,11 @@ std::expected<void, std::string> log_init() noexcept {
     return {};
 }
 
-void log_close() {
+void log_close(Output &out)
+{
     if constexpr (npc::HasLogToFile)
     {
-        if (log_file.is_open()) log_file.close();
+        out.CloseFile();
     }
 }
 
@@ -48,7 +45,7 @@ static std::string_view level_str(LogLevel level) {
     }
 }
 
-void log_write(LogLevel level, std::string_view msg, std::source_location loc) {
+void log_write(Output &out, LogLevel level, std::string_view msg, std::source_location loc) {
     std::string line;
     if constexpr (npc::HasLogTimestamp)
     {
@@ -61,9 +58,14 @@ void log_write(LogLevel level, std::string_view msg, std::source_location loc) {
         line += std::format("{}:{} ", loc.file_name(), loc.line());
     }
     line += msg;
-    std::println(std::cerr, "{}", line);
-    if constexpr (npc::HasLogToFile)
-    {
-        if (log_file.is_open()) log_file << line << std::endl;
-    }
+    static_cast<void>(loc);
+    const auto output_level{[&] {
+        switch (level) {
+        case LogLevel::Error: return OutputLevel::Error;
+        case LogLevel::Warn: return OutputLevel::Warn;
+        case LogLevel::Info: return OutputLevel::Info;
+        default: return OutputLevel::Debug;
+        }
+    }()};
+    out.Write(output_level, line);
 }

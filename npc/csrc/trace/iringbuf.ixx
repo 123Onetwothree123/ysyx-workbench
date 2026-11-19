@@ -1,6 +1,7 @@
 export module npc.trace.iringbuf;
 import std;
 import npc.config;
+import npc.Output;
 import npc.trace.RecordInstruction;
 
 export class iringbuf
@@ -19,5 +20,5 @@ public:
     [[nodiscard]] std::size_t size() const;
     [[nodiscard]] std::size_t capacity() const;
     void push(std::uint64_t pc, std::uint32_t instruction, int len);
-    void print(std::uint64_t ErrorPC) const;
+    void print(std::uint64_t ErrorPC, Output &out) const;
 };

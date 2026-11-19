@@ -1,5 +1,7 @@
 module;
 module npc.sdb.command.pCommand;
+import npc.SimulationContext;
+import npc.Output;
 import npc.config;
 import npc.sdb.SDBCommandUtils;
 import npc.expressions.expressions;
@@ -19,15 +21,16 @@ SDBCommandUsageList pCommand::usage() const noexcept
 }
 SDBCommandResult pCommand::execute(SDBCommandContext &context, std::string_view args)
 {
+    auto &out{context.GetSimulation().Out()};
     args = SDBTrimLeft(args); // 去掉前导空白
     if (args.empty())
     {
-        std::println("参数是空的");
+        out.Error("参数是空的");
         return SDBCommandResult::Continue;
     }
     if (!SDBValidateExpressionSyntax(args))
     {
-        std::println("表达式错误：括号不匹配");
+        out.Error("表达式错误：括号不匹配");
         return SDBCommandResult::Continue;
     }
     expressions expression;
@@ -38,14 +41,14 @@ SDBCommandResult pCommand::execute(SDBCommandContext &context, std::string_view 
         auto UnsignedValue{*result};
         // RV64 的表达式结果是 64 位，不能按 32 位有符号数解释。
         auto signedVal{static_cast<std::int64_t>(UnsignedValue)};
-        std::println("有符号（十进制）：{}", signedVal);
-        std::println("无符号（十进制）：{}", UnsignedValue);
-        std::println("十六进制：        0x{:0{}x}", UnsignedValue,
+        out.Info("有符号（十进制）：{}", signedVal);
+        out.Info("无符号（十进制）：{}", UnsignedValue);
+        out.Info("十六进制：        0x{:0{}x}", UnsignedValue,
                      npc::XHexDigits);
     }
     else
     {
-        std::println("表达式错误：{}", result.error());
+        out.Error("表达式错误：{}", result.error());
     }
     return SDBCommandResult::Continue;
 }

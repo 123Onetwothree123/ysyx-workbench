@@ -32,86 +32,86 @@ class ysyx_26030103(xlen: Int, idBits: Int) extends BlackBox {
     val io_interrupt = Input(Bool())
     // UART 中断进入 CPU 内部 PLIC source 10；与外部中断直连端口分离，
     // 避免 full-SoC 把 PLIC 路径伪装成一根 M/S 外部中断线。
-    val io_uart_irq = Input(Bool())
+    val io_UARTIRQ = Input(Bool())
     val io_master = AXI4Bundle(CPUAXI4BundleParameters(xlen, xlen, idBits))
     val io_slave = Flipped(AXI4Bundle(CPUAXI4BundleParameters(xlen, xlen, idBits)))
     // 加的接口，本来以为OSOC代码只要改一个学号就可以的，结果发现居然还得改，因为OSOC的文档讲了要把这个SOC作为顶层模块
     val io_trap_valid = Output(Bool())
-    val io_trap_pc = Output(UInt(32.W))
+    val io_trap_PC = Output(UInt(32.W))
     // sdb
-    val io_debug_gpr_raddr = Input(UInt(5.W))
-    val io_debug_gpr_rdata = Output(UInt(32.W))
-    val io_debug_gpr_wen = Output(Bool())
-    val io_debug_gpr_waddr = Output(UInt(5.W))
+    val io_debug_GPRRaddr = Input(UInt(5.W))
+    val io_debug_GPRRdata = Output(UInt(32.W))
+    val io_debug_GPRWen = Output(Bool())
+    val io_debug_GPRWaddr = Output(UInt(5.W))
     // 浮点 DiffTest 观测口：与 direct-NPC 顶层完全同名、同宽、同拍。
     // fpr 读口在时钟沿后回读物理寄存器；写口与 GPR 写口同沿，
     // fcsr 是 WBU 退休边界快照，fp_valid 表示本构建是否启用 F。
     // FLEN=32 时高 32 位固定为 0，低/高两半必须来自同一拍。
-    val io_debug_fpr_raddr = Input(UInt(5.W))
-    val io_debug_fpr_rdata = Output(UInt(32.W))
-    val io_debug_fpr_rdata_hi = Output(UInt(32.W))
-    val io_debug_fpr_wen = Output(Bool())
-    val io_debug_fpr_waddr = Output(UInt(5.W))
+    val io_debug_FPRRaddr = Input(UInt(5.W))
+    val io_debug_FPRRdata = Output(UInt(32.W))
+    val io_debug_FPRRdataHi = Output(UInt(32.W))
+    val io_debug_FPRWen = Output(Bool())
+    val io_debug_FPRWaddr = Output(UInt(5.W))
     val io_debug_fcsr = Output(UInt(32.W))
-    val io_debug_fp_valid = Output(Bool())
-    val io_debug_pc = Output(UInt(32.W))
-    val io_debug_next_pc = Output(UInt(32.W))
-    val io_debug_arch_pc = Output(UInt(32.W))
+    val io_debug_FPValid = Output(Bool())
+    val io_debug_PC = Output(UInt(32.W))
+    val io_debug_NextPC = Output(UInt(32.W))
+    val io_debug_ArchPC = Output(UInt(32.W))
     val io_debug_instructions = Output(UInt(32.W))
     // mtrace
-    val io_debug_mtrace_valid = Output(Bool())
-    val io_debug_mtrace_pc    = Output(UInt(32.W))
-    val io_debug_mtrace_wen   = Output(Bool())
-    val io_debug_mtrace_addr  = Output(UInt(32.W))
-    val io_debug_mtrace_wdata = Output(UInt(32.W))
-    val io_debug_mtrace_rdata = Output(UInt(32.W))
-    val io_debug_mtrace_width = Output(UInt(2.W))
+    val io_debug_MTraceValid = Output(Bool())
+    val io_debug_MTracePC    = Output(UInt(32.W))
+    val io_debug_MTraceWen   = Output(Bool())
+    val io_debug_MTraceAddress  = Output(UInt(32.W))
+    val io_debug_MTraceWdata = Output(UInt(32.W))
+    val io_debug_MTraceRdata = Output(UInt(32.W))
+    val io_debug_MTraceWidth = Output(UInt(2.W))
     // Access Fault
-    val io_debug_access_fault = Output(Bool())
-    val io_debug_access_fault_pc = Output(UInt(32.W))
-    val io_debug_access_fault_resp = Output(UInt(2.W))
+    val io_debug_AccessFault = Output(Bool())
+    val io_debug_AccessFaultPC = Output(UInt(32.W))
+    val io_debug_AccessFaultResponse = Output(UInt(2.W))
     val io_debug_commit = Output(Bool())
-    val io_debug_trap_valid = Output(Bool())
-    val io_debug_trap_pc = Output(UInt(32.W))
-    val io_debug_trap_target = Output(UInt(32.W))
-    val io_debug_trap_cause = Output(UInt(32.W))
+    val io_debug_TrapValid = Output(Bool())
+    val io_debug_TrapPC = Output(UInt(32.W))
+    val io_debug_TrapTarget = Output(UInt(32.W))
+    val io_debug_TrapCause = Output(UInt(32.W))
     // 本次 trap 写入 mtval/stval 的最终值。低/高半字与 trap_cause
     // 同一拍锁存；RV32 高半区由 NPC 顶层驱动为 0。
-    val io_debug_trap_tval = Output(UInt(32.W))
-    val io_debug_trap_tval_hi = Output(UInt(32.W))
-    val io_debug_csr_mstatus = Output(UInt(32.W))
-    val io_debug_csr_mtvec = Output(UInt(32.W))
-    val io_debug_csr_mepc = Output(UInt(32.W))
-    val io_debug_csr_mcause = Output(UInt(32.W))
-    val io_debug_trap_mstatus = Output(UInt(32.W))
-    val io_debug_trap_mtvec = Output(UInt(32.W))
-    val io_debug_trap_mepc = Output(UInt(32.W))
-    val io_debug_trap_mcause = Output(UInt(32.W))
+    val io_debug_TrapTval = Output(UInt(32.W))
+    val io_debug_TrapTvalHi = Output(UInt(32.W))
+    val io_debug_CSRMstatus = Output(UInt(32.W))
+    val io_debug_CSRMtvec = Output(UInt(32.W))
+    val io_debug_CSRMepc = Output(UInt(32.W))
+    val io_debug_CSRMcause = Output(UInt(32.W))
+    val io_debug_TrapMstatus = Output(UInt(32.W))
+    val io_debug_TrapMtvec = Output(UInt(32.W))
+    val io_debug_TrapMepc = Output(UInt(32.W))
+    val io_debug_TrapMcause = Output(UInt(32.W))
     // RV64 调试/trap 观测 ABI 的高 32 位视图。上面所有低 32 位端口
     // 的名称、宽度与语义保持历史定义，既有 32 位 C++/仿真连接不变；
     // 这里只做加法。RV32 构建中 NPC 把全部 `_hi` 驱动为 0。
     // 高/低两半必须与同一拍的事件对齐，不能在 SoC 内自行拼接或寄存。
-    val io_debug_gpr_rdata_hi = Output(UInt(32.W))
-    val io_debug_pc_hi = Output(UInt(32.W))
-    val io_debug_next_pc_hi = Output(UInt(32.W))
-    val io_debug_arch_pc_hi = Output(UInt(32.W))
-    val io_debug_mtrace_pc_hi = Output(UInt(32.W))
-    val io_debug_mtrace_addr_hi = Output(UInt(32.W))
-    val io_debug_mtrace_wdata_hi = Output(UInt(32.W))
-    val io_debug_mtrace_rdata_hi = Output(UInt(32.W))
-    val io_debug_access_fault_pc_hi = Output(UInt(32.W))
-    val io_debug_trap_pc_hi = Output(UInt(32.W))
-    val io_debug_trap_target_hi = Output(UInt(32.W))
-    val io_debug_csr_mstatus_hi = Output(UInt(32.W))
-    val io_debug_csr_mtvec_hi = Output(UInt(32.W))
-    val io_debug_csr_mepc_hi = Output(UInt(32.W))
-    val io_debug_csr_mcause_hi = Output(UInt(32.W))
-    val io_debug_trap_mstatus_hi = Output(UInt(32.W))
-    val io_debug_trap_mtvec_hi = Output(UInt(32.W))
-    val io_debug_trap_mepc_hi = Output(UInt(32.W))
-    val io_debug_trap_mcause_hi = Output(UInt(32.W))
-    // 仿真 custom halt 提交时的完整 PC；低 32 位仍由 io_trap_pc 提供。
-    val io_trap_pc_hi = Output(UInt(32.W))
+    val io_debug_GPRRdataHi = Output(UInt(32.W))
+    val io_debug_PCHi = Output(UInt(32.W))
+    val io_debug_NextPCHi = Output(UInt(32.W))
+    val io_debug_ArchPCHi = Output(UInt(32.W))
+    val io_debug_MTracePCHi = Output(UInt(32.W))
+    val io_debug_MTraceAddressHi = Output(UInt(32.W))
+    val io_debug_MTraceWdataHi = Output(UInt(32.W))
+    val io_debug_MTraceRdataHi = Output(UInt(32.W))
+    val io_debug_AccessFaultPCHi = Output(UInt(32.W))
+    val io_debug_TrapPCHi = Output(UInt(32.W))
+    val io_debug_TrapTargetHi = Output(UInt(32.W))
+    val io_debug_CSRMstatusHi = Output(UInt(32.W))
+    val io_debug_CSRMtvecHi = Output(UInt(32.W))
+    val io_debug_CSRMepcHi = Output(UInt(32.W))
+    val io_debug_CSRMcauseHi = Output(UInt(32.W))
+    val io_debug_TrapMstatusHi = Output(UInt(32.W))
+    val io_debug_TrapMtvecHi = Output(UInt(32.W))
+    val io_debug_TrapMepcHi = Output(UInt(32.W))
+    val io_debug_TrapMcauseHi = Output(UInt(32.W))
+    // 仿真 custom halt 提交时的完整 PC；低 32 位仍由 io_trap_PC 提供。
+    val io_trap_PCHi = Output(UInt(32.W))
     // 性能计数器
     val io_perf_ifu_fetch  = Output(Bool())
     val io_perf_exu_done   = Output(Bool())
@@ -263,7 +263,7 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
     cpu.io.clock := clock
     cpu.io.reset := reset
     cpu.io.io_interrupt := interrupt
-    cpu.io.io_uart_irq := uart_irq
+    cpu.io.io_UARTIRQ := uart_irq
     cpu.io.io_slave <> slave
     master <> cpu.io.io_master
 
@@ -271,7 +271,7 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
     val trap_valid = IO(Output(Bool()))
     val trap_pc = IO(Output(UInt(32.W)))
     trap_valid := cpu.io.io_trap_valid
-    trap_pc := cpu.io.io_trap_pc
+    trap_pc := cpu.io.io_trap_PC
     // sdb
     val debug_gpr_raddr = IO(Input(UInt(5.W)))
     val debug_gpr_rdata = IO(Output(UInt(32.W)))
@@ -281,10 +281,10 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
     val debug_next_pc = IO(Output(UInt(32.W)))
     val debug_arch_pc = IO(Output(UInt(32.W)))
 
-    cpu.io.io_debug_gpr_raddr := debug_gpr_raddr
-    debug_gpr_rdata := cpu.io.io_debug_gpr_rdata
-    debug_gpr_wen := cpu.io.io_debug_gpr_wen
-    debug_gpr_waddr := cpu.io.io_debug_gpr_waddr
+    cpu.io.io_debug_GPRRaddr := debug_gpr_raddr
+    debug_gpr_rdata := cpu.io.io_debug_GPRRdata
+    debug_gpr_wen := cpu.io.io_debug_GPRWen
+    debug_gpr_waddr := cpu.io.io_debug_GPRWaddr
     // 浮点观测口只做同拍直连，不在 SoC 层寄存或拆分低/高半字。
     val debug_fpr_raddr = IO(Input(UInt(5.W)))
     val debug_fpr_rdata = IO(Output(UInt(32.W)))
@@ -293,16 +293,16 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
     val debug_fpr_waddr = IO(Output(UInt(5.W)))
     val debug_fcsr = IO(Output(UInt(32.W)))
     val debug_fp_valid = IO(Output(Bool()))
-    cpu.io.io_debug_fpr_raddr := debug_fpr_raddr
-    debug_fpr_rdata := cpu.io.io_debug_fpr_rdata
-    debug_fpr_rdata_hi := cpu.io.io_debug_fpr_rdata_hi
-    debug_fpr_wen := cpu.io.io_debug_fpr_wen
-    debug_fpr_waddr := cpu.io.io_debug_fpr_waddr
+    cpu.io.io_debug_FPRRaddr := debug_fpr_raddr
+    debug_fpr_rdata := cpu.io.io_debug_FPRRdata
+    debug_fpr_rdata_hi := cpu.io.io_debug_FPRRdataHi
+    debug_fpr_wen := cpu.io.io_debug_FPRWen
+    debug_fpr_waddr := cpu.io.io_debug_FPRWaddr
     debug_fcsr := cpu.io.io_debug_fcsr
-    debug_fp_valid := cpu.io.io_debug_fp_valid
-    debug_pc := cpu.io.io_debug_pc
-    debug_next_pc := cpu.io.io_debug_next_pc
-    debug_arch_pc := cpu.io.io_debug_arch_pc
+    debug_fp_valid := cpu.io.io_debug_FPValid
+    debug_pc := cpu.io.io_debug_PC
+    debug_next_pc := cpu.io.io_debug_NextPC
+    debug_arch_pc := cpu.io.io_debug_ArchPC
     val debug_instructions = IO(Output(UInt(32.W)))
     debug_instructions := cpu.io.io_debug_instructions
     // mtrace
@@ -313,35 +313,35 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
     val debug_mtrace_wdata = IO(Output(UInt(32.W)))
     val debug_mtrace_rdata = IO(Output(UInt(32.W)))
     val debug_mtrace_width = IO(Output(UInt(2.W)))
-    debug_mtrace_valid := cpu.io.io_debug_mtrace_valid
-    debug_mtrace_pc    := cpu.io.io_debug_mtrace_pc
-    debug_mtrace_wen   := cpu.io.io_debug_mtrace_wen
-    debug_mtrace_addr  := cpu.io.io_debug_mtrace_addr
-    debug_mtrace_wdata := cpu.io.io_debug_mtrace_wdata
-    debug_mtrace_rdata := cpu.io.io_debug_mtrace_rdata
-    debug_mtrace_width := cpu.io.io_debug_mtrace_width
+    debug_mtrace_valid := cpu.io.io_debug_MTraceValid
+    debug_mtrace_pc    := cpu.io.io_debug_MTracePC
+    debug_mtrace_wen   := cpu.io.io_debug_MTraceWen
+    debug_mtrace_addr  := cpu.io.io_debug_MTraceAddress
+    debug_mtrace_wdata := cpu.io.io_debug_MTraceWdata
+    debug_mtrace_rdata := cpu.io.io_debug_MTraceRdata
+    debug_mtrace_width := cpu.io.io_debug_MTraceWidth
     // Access Fault
     val debug_access_fault = IO(Output(Bool()))
-    debug_access_fault := cpu.io.io_debug_access_fault
+    debug_access_fault := cpu.io.io_debug_AccessFault
     val debug_access_fault_pc = IO(Output(UInt(32.W)))
-    debug_access_fault_pc := cpu.io.io_debug_access_fault_pc
+    debug_access_fault_pc := cpu.io.io_debug_AccessFaultPC
     val debug_access_fault_resp = IO(Output(UInt(2.W)))
-    debug_access_fault_resp := cpu.io.io_debug_access_fault_resp
+    debug_access_fault_resp := cpu.io.io_debug_AccessFaultResponse
     val debug_commit = IO(Output(Bool()))
     debug_commit := cpu.io.io_debug_commit
     val debug_trap_valid = IO(Output(Bool()))
     val debug_trap_pc = IO(Output(UInt(32.W)))
     val debug_trap_target = IO(Output(UInt(32.W)))
     val debug_trap_cause = IO(Output(UInt(32.W)))
-    debug_trap_valid := cpu.io.io_debug_trap_valid
-    debug_trap_pc := cpu.io.io_debug_trap_pc
-    debug_trap_target := cpu.io.io_debug_trap_target
-    debug_trap_cause := cpu.io.io_debug_trap_cause
+    debug_trap_valid := cpu.io.io_debug_TrapValid
+    debug_trap_pc := cpu.io.io_debug_TrapPC
+    debug_trap_target := cpu.io.io_debug_TrapTarget
+    debug_trap_cause := cpu.io.io_debug_TrapCause
     // tval 与 cause 同拍直连，低/高半字不做 SoC 侧拼接。
     val debug_trap_tval = IO(Output(UInt(32.W)))
     val debug_trap_tval_hi = IO(Output(UInt(32.W)))
-    debug_trap_tval := cpu.io.io_debug_trap_tval
-    debug_trap_tval_hi := cpu.io.io_debug_trap_tval_hi
+    debug_trap_tval := cpu.io.io_debug_TrapTval
+    debug_trap_tval_hi := cpu.io.io_debug_TrapTvalHi
     val debug_csr_mstatus = IO(Output(UInt(32.W)))
     val debug_csr_mtvec = IO(Output(UInt(32.W)))
     val debug_csr_mepc = IO(Output(UInt(32.W)))
@@ -350,14 +350,14 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
     val debug_trap_mtvec = IO(Output(UInt(32.W)))
     val debug_trap_mepc = IO(Output(UInt(32.W)))
     val debug_trap_mcause = IO(Output(UInt(32.W)))
-    debug_csr_mstatus := cpu.io.io_debug_csr_mstatus
-    debug_csr_mtvec := cpu.io.io_debug_csr_mtvec
-    debug_csr_mepc := cpu.io.io_debug_csr_mepc
-    debug_csr_mcause := cpu.io.io_debug_csr_mcause
-    debug_trap_mstatus := cpu.io.io_debug_trap_mstatus
-    debug_trap_mtvec := cpu.io.io_debug_trap_mtvec
-    debug_trap_mepc := cpu.io.io_debug_trap_mepc
-    debug_trap_mcause := cpu.io.io_debug_trap_mcause
+    debug_csr_mstatus := cpu.io.io_debug_CSRMstatus
+    debug_csr_mtvec := cpu.io.io_debug_CSRMtvec
+    debug_csr_mepc := cpu.io.io_debug_CSRMepc
+    debug_csr_mcause := cpu.io.io_debug_CSRMcause
+    debug_trap_mstatus := cpu.io.io_debug_TrapMstatus
+    debug_trap_mtvec := cpu.io.io_debug_TrapMtvec
+    debug_trap_mepc := cpu.io.io_debug_TrapMepc
+    debug_trap_mcause := cpu.io.io_debug_TrapMcause
     // 64 位观测 ABI：高 32 位原样上送，不在这一层做任何截断/拼接。
     val debug_gpr_rdata_hi = IO(Output(UInt(32.W)))
     val debug_pc_hi = IO(Output(UInt(32.W)))
@@ -379,26 +379,26 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
     val debug_trap_mepc_hi = IO(Output(UInt(32.W)))
     val debug_trap_mcause_hi = IO(Output(UInt(32.W)))
     val trap_pc_hi = IO(Output(UInt(32.W)))
-    debug_gpr_rdata_hi := cpu.io.io_debug_gpr_rdata_hi
-    debug_pc_hi := cpu.io.io_debug_pc_hi
-    debug_next_pc_hi := cpu.io.io_debug_next_pc_hi
-    debug_arch_pc_hi := cpu.io.io_debug_arch_pc_hi
-    debug_mtrace_pc_hi := cpu.io.io_debug_mtrace_pc_hi
-    debug_mtrace_addr_hi := cpu.io.io_debug_mtrace_addr_hi
-    debug_mtrace_wdata_hi := cpu.io.io_debug_mtrace_wdata_hi
-    debug_mtrace_rdata_hi := cpu.io.io_debug_mtrace_rdata_hi
-    debug_access_fault_pc_hi := cpu.io.io_debug_access_fault_pc_hi
-    debug_trap_pc_hi := cpu.io.io_debug_trap_pc_hi
-    debug_trap_target_hi := cpu.io.io_debug_trap_target_hi
-    debug_csr_mstatus_hi := cpu.io.io_debug_csr_mstatus_hi
-    debug_csr_mtvec_hi := cpu.io.io_debug_csr_mtvec_hi
-    debug_csr_mepc_hi := cpu.io.io_debug_csr_mepc_hi
-    debug_csr_mcause_hi := cpu.io.io_debug_csr_mcause_hi
-    debug_trap_mstatus_hi := cpu.io.io_debug_trap_mstatus_hi
-    debug_trap_mtvec_hi := cpu.io.io_debug_trap_mtvec_hi
-    debug_trap_mepc_hi := cpu.io.io_debug_trap_mepc_hi
-    debug_trap_mcause_hi := cpu.io.io_debug_trap_mcause_hi
-    trap_pc_hi := cpu.io.io_trap_pc_hi
+    debug_gpr_rdata_hi := cpu.io.io_debug_GPRRdataHi
+    debug_pc_hi := cpu.io.io_debug_PCHi
+    debug_next_pc_hi := cpu.io.io_debug_NextPCHi
+    debug_arch_pc_hi := cpu.io.io_debug_ArchPCHi
+    debug_mtrace_pc_hi := cpu.io.io_debug_MTracePCHi
+    debug_mtrace_addr_hi := cpu.io.io_debug_MTraceAddressHi
+    debug_mtrace_wdata_hi := cpu.io.io_debug_MTraceWdataHi
+    debug_mtrace_rdata_hi := cpu.io.io_debug_MTraceRdataHi
+    debug_access_fault_pc_hi := cpu.io.io_debug_AccessFaultPCHi
+    debug_trap_pc_hi := cpu.io.io_debug_TrapPCHi
+    debug_trap_target_hi := cpu.io.io_debug_TrapTargetHi
+    debug_csr_mstatus_hi := cpu.io.io_debug_CSRMstatusHi
+    debug_csr_mtvec_hi := cpu.io.io_debug_CSRMtvecHi
+    debug_csr_mepc_hi := cpu.io.io_debug_CSRMepcHi
+    debug_csr_mcause_hi := cpu.io.io_debug_CSRMcauseHi
+    debug_trap_mstatus_hi := cpu.io.io_debug_TrapMstatusHi
+    debug_trap_mtvec_hi := cpu.io.io_debug_TrapMtvecHi
+    debug_trap_mepc_hi := cpu.io.io_debug_TrapMepcHi
+    debug_trap_mcause_hi := cpu.io.io_debug_TrapMcauseHi
+    trap_pc_hi := cpu.io.io_trap_PCHi
     // 性能计数器
     val perf_mem_waitslot = IO(Output(Bool()))
     perf_mem_waitslot := cpu.io.io_perf_mem_waitslot

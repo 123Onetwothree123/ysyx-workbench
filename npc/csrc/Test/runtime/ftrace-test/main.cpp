@@ -94,9 +94,9 @@ public:
 int main()
 {
     // --elf 必须真正打开并解析文件，而不是只记住路径。
-    const auto missingElf{InitializeFtrace(
+    const auto missingELF{InitializeFtrace(
         "/definitely/not/a/real/npc-ftrace-test.elf", false)};
-    check(!missingElf, "missing ELF must be rejected during initialization");
+    check(!missingELF, "missing ELF must be rejected during initialization");
 
     FixtureFiles fixtures;
     check(write_minimal_riscv_elf(fixtures.executable, ET_EXEC),
@@ -106,23 +106,23 @@ int main()
     check(write_minimal_riscv_elf(fixtures.dynamic, ET_DYN),
           "failed to create ET_DYN fixture");
     Ftrace elfTypeTrace;
-    const auto executableElf{elfTypeTrace.LoadElf(fixtures.executable)};
-    check(executableElf.has_value(),
+    const auto executableELF{elfTypeTrace.LoadELF(fixtures.executable)};
+    check(executableELF.has_value(),
           "Ftrace must accept a fixed-address RISC-V ET_EXEC file");
-    const auto relocatableElf{elfTypeTrace.LoadElf(fixtures.relocatable)};
-    check(!relocatableElf,
+    const auto relocatableELF{elfTypeTrace.LoadELF(fixtures.relocatable)};
+    check(!relocatableELF,
           "Ftrace must reject ET_REL because its symbols are section-relative");
-    if (!relocatableElf)
+    if (!relocatableELF)
     {
-        check(relocatableElf.error().contains("ET_EXEC"),
+        check(relocatableELF.error().contains("ET_EXEC"),
               "ET_REL rejection must explain the required executable type");
     }
-    const auto inspectionOnlyElf{
-        elfTypeTrace.LoadElf(fixtures.relocatable, false)};
-    check(inspectionOnlyElf.has_value(),
+    const auto inspectionOnlyELF{
+        elfTypeTrace.LoadELF(fixtures.relocatable, false)};
+    check(inspectionOnlyELF.has_value(),
           "inspection-only readelf use must retain ET_REL support");
-    const auto dynamicElf{elfTypeTrace.LoadElf(fixtures.dynamic)};
-    check(!dynamicElf,
+    const auto dynamicELF{elfTypeTrace.LoadELF(fixtures.dynamic)};
+    check(!dynamicELF,
           "Ftrace must reject ET_DYN without a runtime load bias");
 
     Ftrace trace;

@@ -48,14 +48,14 @@ private[mem] trait LSUPMP {
       reservationValid := false.B
     }
     io.Active := state =/= stateIdle
-    val pmpBase =
-      Mux(!wbufEmpty, wbHeadEffectiveAddress, addressOf(stageInputBits.ALUResult))
-    val pmpWidth = Mux(
-      !wbufEmpty,
+    val PMPBase =
+      Mux(!WBufEmpty, wbHeadEffectiveAddress, addressOf(stageInputBits.ALUResult))
+    val PMPWidth = Mux(
+      !WBufEmpty,
       Mux(wbHeadWide, 3.U, wbHeadSize),
       stageInputBits.WidthSelect
     )
-    val pmpLastOffset = MuxLookup(pmpWidth, 0.U(AddressWidth.W))(
+    val PMPLastOffset = MuxLookup(PMPWidth, 0.U(AddressWidth.W))(
       Seq(
         0.U -> 0.U(AddressWidth.W),
         1.U -> 1.U(AddressWidth.W),
@@ -63,12 +63,12 @@ private[mem] trait LSUPMP {
         3.U -> 7.U(AddressWidth.W)
       )
     )
-    io.PMPAddress := pmpBase
-    io.PMPLastAddress := pmpBase + pmpLastOffset
-    io.PMPWrite := Mux(!wbufEmpty, true.B, stageInputBits.MemoryWrite)
+    io.PMPAddress := PMPBase
+    io.PMPLastAddress := PMPBase + PMPLastOffset
+    io.PMPWrite := Mux(!WBufEmpty, true.B, stageInputBits.MemoryWrite)
     // AMO 同时检查读/写权限；LR 只读，SC/普通 store 只写。
     io.PMPRead := Mux(
-      !wbufEmpty,
+      !WBufEmpty,
       false.B,
       !stageInputBits.MemoryWrite ||
         (stageInputBits.IsAtomic &&
@@ -77,7 +77,7 @@ private[mem] trait LSUPMP {
     io.IsStore := isStoreTransaction
     io.StallReadAR := state === stateReadRequest
     io.StallReadR := state === stateReadResponse || state === stateReadDrain
-    io.StallWriteRequest := wbufFull && io.in.valid &&
+    io.StallWriteRequest := WBufFull && io.in.valid &&
       io.in.bits.MemoryValid && io.in.bits.MemoryWrite && !io.in.ready
     // 等 B 时仍可继续吸收连续 store；其它指令为保持精确异常顺序而等待。
     io.StallWriteB := wbState === wbWaitB
@@ -100,7 +100,7 @@ private[mem] trait LSUPMP {
         wbHead := 0.U
         wbTail := 0.U
         wbState := wbIdle
-        wbAWDone := false.B
+        WbAWDone := false.B
         wbWDone := false.B
         atomicActive := false.B
         atomicReadFaultReg := false.B

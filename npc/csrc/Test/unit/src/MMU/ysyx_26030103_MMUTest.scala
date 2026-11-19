@@ -21,11 +21,11 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32)
 
   "TLB" should "支持 1 项 1 路" in {
-    emit(new ysyx_26030103_TLB(entries = 1, ways = 1, asidBits = 0, globalEnable = false))
+    emit(new ysyx_26030103_TLB(entries = 1, ways = 1, ASIDBits = 0, globalEnable = false))
   }
 
   it should "支持组相联、ASID 和 Global" in {
-    emit(new ysyx_26030103_TLB(entries = 8, ways = 2, asidBits = 9, globalEnable = true))
+    emit(new ysyx_26030103_TLB(entries = 8, ways = 2, ASIDBits = 9, globalEnable = true))
   }
 
   it should "支持 A/D ignore 模式" in {
@@ -50,21 +50,21 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
       entries = 4, ways = 1, superpage = true,
       pageBits = 16, levels = 2, indexBits = 8,
       XLEN = 32, addressWidth = 32, vaBits = 32,
-      pteWidth = 32, ptePPNHigh = 31
+      PTEWidth = 32, PTEPPNHigh = 31
     ))
     // 1KiB 页 + 2 级 + 2048 项/级。
     emit(new ysyx_26030103_TLB(
       entries = 4, ways = 1, superpage = true,
       pageBits = 10, levels = 2, indexBits = 11,
       XLEN = 32, addressWidth = 32, vaBits = 32,
-      pteWidth = 32, ptePPNHigh = 31
+      PTEWidth = 32, PTEPPNHigh = 31
     ))
     // 4 级 + 32 项/级，覆盖多个超级页层级。
     emit(new ysyx_26030103_TLB(
       entries = 4, ways = 1, superpage = true,
       pageBits = 12, levels = 4, indexBits = 5,
       XLEN = 32, addressWidth = 32, vaBits = 32,
-      pteWidth = 32, ptePPNHigh = 31
+      PTEWidth = 32, PTEPPNHigh = 31
     ))
   }
 
@@ -83,19 +83,19 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     emit(new ysyx_26030103_MMU(rv32Profile))
     emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
-      tlbEnabled = true
+      TLBEnabled = true
     )))
     emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
-      tlbEnabled = false
+      TLBEnabled = false
     )))
   }
 
   it should "支持 unified TLB 几何" in {
     emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
-      tlbEnabled = true,
-      tlbOrganization = "unified",
+      TLBEnabled = true,
+      TLBOrganization = "unified",
       utlbEntries = 8,
       utlbWays = 2
     )))
@@ -108,7 +108,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
       MMU = rv32Profile.copy(
         enabled = true,
-        tlbEnabled = true,
+        TLBEnabled = true,
         hasU = false
       )
     )))
@@ -125,7 +125,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
       DCacheEnable = true,
       MMU = rv32Profile.copy(
         enabled = true,
-        tlbEnabled = true,
+        TLBEnabled = true,
         cacheMode = "vipt"
       )
     )))
@@ -138,8 +138,8 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
       MMU = rv32Profile.copy(
         enabled = false,
-        pmpEnabled = true,
-        pmpEntries = 16
+        PMPEnabled = true,
+        PMPEntries = 16
       )
     )))
   }
@@ -151,11 +151,11 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
       MMU = rv32Profile.copy(
         enabled = false,
-        tlbEnabled = false,
+        TLBEnabled = false,
         hasS = false,
         hasU = false,
-        pmpEnabled = true,
-        pmpEntries = 16
+        PMPEnabled = true,
+        PMPEntries = 16
       )
     )
     val chirrtl = ChiselStage.emitCHIRRTL(
@@ -176,11 +176,11 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
       MMU = rv32Profile.copy(
         enabled = false,
-        tlbEnabled = false,
+        TLBEnabled = false,
         hasS = false,
         hasU = true,
-        pmpEnabled = true,
-        pmpEntries = 16
+        PMPEnabled = true,
+        PMPEntries = 16
       )
     )
     val chirrtl = ChiselStage.emitCHIRRTL(
@@ -204,12 +204,12 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   it should "非标准 page/levels 的 TLB 超级页可 elaboration" in {
     val profile = rv32Profile.copy(
       enabled = true,
-      tlbEnabled = true,
+      TLBEnabled = true,
       pageSizeBytes = 65536,
       levels = 2,
       pageTableSizeBytes = 1024,
       superpage = true,
-      tlbSuperpage = true
+      TLBSuperpage = true
     )
     emit(new ysyx_26030103_MMU(profile))
     emit(new _root_.ysyx_26030103.ysyx_26030103(
@@ -221,12 +221,12 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
     val fourLevel = rv32Profile.copy(
       enabled = true,
-      tlbEnabled = true,
+      TLBEnabled = true,
       pageSizeBytes = 4096,
       levels = 4,
       pageTableSizeBytes = 128,
       superpage = true,
-      tlbSuperpage = true
+      TLBSuperpage = true
     )
     emit(new ysyx_26030103_MMU(fourLevel))
   }
@@ -234,22 +234,22 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   it should "支持 unified 双查找端口" in {
     emit(new ysyx_26030103_MMU(rv32Profile.copy(
       enabled = true,
-      tlbEnabled = true,
-      tlbOrganization = "unified",
+      TLBEnabled = true,
+      TLBOrganization = "unified",
       utlbEntries = 8,
       utlbWays = 2,
       utlbLookupPorts = 2,
       refillPorts = 2,
-      ptwOutstanding = 2
+      PTWOutstanding = 2
     )))
   }
 
   it should "支持 independent 与 pipelined 两种 PTW 结构" in {
     emit(new ysyx_26030103_MMU(rv32Profile.copy(
-      enabled = true, tlbEnabled = true, ptwArch = "independent", ptwOutstanding = 2
+      enabled = true, TLBEnabled = true, PTWArch = "independent", PTWOutstanding = 2
     )))
     emit(new ysyx_26030103_MMU(rv32Profile.copy(
-      enabled = true, tlbEnabled = true, ptwArch = "pipelined", ptwOutstanding = 2
+      enabled = true, TLBEnabled = true, PTWArch = "pipelined", PTWOutstanding = 2
     )))
   }
 
@@ -261,7 +261,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
       XLEN = 32, addressWidth = 32, vaBits = 32
     ))
     emit(new ysyx_26030103_PTWPipeline(
-      outstanding = 2, levels = 4, tableEntries = 32, pteSizeBytes = 8,
+      outstanding = 2, levels = 4, tableEntries = 32, PTESizeBytes = 8,
       XLEN = 32, addressWidth = 32, vaBits = 32
     ))
   }
@@ -272,7 +272,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
       cacheEnable = true, superpage = true
     ))
     emit(new ysyx_26030103_PTWPipeline(
-      outstanding = 4, busOutstanding = 1, pteSizeBytes = 8,
+      outstanding = 4, busOutstanding = 1, PTESizeBytes = 8,
       levels = 4, tableEntries = 32,
       XLEN = 32, addressWidth = 32, vaBits = 32
     ))
@@ -283,10 +283,10 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
     val pipelineProfile = rv32Profile.copy(
       enabled = true,
-      tlbEnabled = true,
-      ptwArch = "pipelined",
-      ptwOutstanding = 4,
-      ptwBusOutstanding = 4,
+      TLBEnabled = true,
+      PTWArch = "pipelined",
+      PTWOutstanding = 4,
+      PTWBusOutstanding = 4,
       adMode = "hardware"
     )
     emit(new ysyx_26030103_MMU(pipelineProfile))
@@ -298,8 +298,8 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     ))
 
     val independentProfile = pipelineProfile.copy(
-      ptwArch = "independent",
-      ptwBusOutstanding = 2
+      PTWArch = "independent",
+      PTWBusOutstanding = 2
     )
     emit(new ysyx_26030103_MMU(independentProfile))
     emit(new _root_.ysyx_26030103.ysyx_26030103(
@@ -312,36 +312,36 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
 
   it should "支持 follow_tlb/global miss queue 的不同队列组织" in {
     emit(new ysyx_26030103_MMU(rv32Profile.copy(
-      enabled = true, tlbEnabled = true, tlbOrganization = "split",
-      tlbMissQueueMode = "follow_tlb", itlbMissQueueEntries = 2,
-      dtlbMissQueueEntries = 3, ptwOutstanding = 2
+      enabled = true, TLBEnabled = true, TLBOrganization = "split",
+      TLBMissQueueMode = "follow_tlb", itlbMissQueueEntries = 2,
+      dtlbMissQueueEntries = 3, PTWOutstanding = 2
     )))
     emit(new ysyx_26030103_MMU(rv32Profile.copy(
-      enabled = true, tlbEnabled = true, tlbOrganization = "unified",
-      tlbMissQueueMode = "follow_tlb", utlbMissQueueEntries = 4,
-      utlbLookupPorts = 2, ptwOutstanding = 2
+      enabled = true, TLBEnabled = true, TLBOrganization = "unified",
+      TLBMissQueueMode = "follow_tlb", utlbMissQueueEntries = 4,
+      utlbLookupPorts = 2, PTWOutstanding = 2
     )))
     emit(new ysyx_26030103_MMU(rv32Profile.copy(
-      enabled = true, tlbEnabled = true, tlbMissQueueMode = "global",
-      globalMissQueueEntries = 4, ptwOutstanding = 2
+      enabled = true, TLBEnabled = true, TLBMissQueueMode = "global",
+      globalMissQueueEntries = 4, PTWOutstanding = 2
     )))
   }
 
   it should "8B PTE 打开 PTW cache 时可 elaboration" in {
     emit(new ysyx_26030103_PTW(
-      adMode = "fault", levels = 4, tableEntries = 32, pteSizeBytes = 8,
+      adMode = "fault", levels = 4, tableEntries = 32, PTESizeBytes = 8,
       cacheEnable = true, cacheEntries = 8, cacheWays = 2,
       XLEN = 32, addressWidth = 32, vaBits = 32
     ))
     emit(new ysyx_26030103_PTWPipeline(
-      outstanding = 2, levels = 4, tableEntries = 32, pteSizeBytes = 8,
+      outstanding = 2, levels = 4, tableEntries = 32, PTESizeBytes = 8,
       cacheEnable = true, cacheEntries = 8, cacheWays = 2,
       XLEN = 32, addressWidth = 32, vaBits = 32
     ))
     val eightByteProfile = rv32Profile.copy(
-      enabled = true, tlbEnabled = true, levels = 4,
-      pageTableSizeBytes = 256, pteSizeBytes = 8,
-      ptwCache = true, ptwCacheEntries = 8, ptwCacheWays = 2
+      enabled = true, TLBEnabled = true, levels = 4,
+      pageTableSizeBytes = 256, PTESizeBytes = 8,
+      PTWCache = true, PTWCacheEntries = 8, PTWCacheWays = 2
     )
     emit(new ysyx_26030103_MMU(eightByteProfile))
     // 顶层同样要验证 8B PTE + PTW cache 的完整接线。

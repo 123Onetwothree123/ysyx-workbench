@@ -278,6 +278,11 @@ file(GLOB CPP_SRCS ${SRC_DIR}/*.cpp)
 
 add_executable(dcachesim ${CPP_SRCS} ${MODULE_OBJS} ${STD_MODULE_OBJ})
 target_compile_options(dcachesim PRIVATE ${CXX_FLAGS})
+target_include_directories(dcachesim PRIVATE ${PRJ_DIR}/..)
+# main.cpp 在全局模块片段里 include 公共头，GCC 会告警
+if(NOT IS_CLANG)
+    target_compile_options(dcachesim PRIVATE -Wno-global-module)
+endif()
 
 # 让依赖模块的 .cpp 在模块对象之后编译
 foreach(CPP_FILE ${CPP_SRCS})

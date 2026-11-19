@@ -1,6 +1,6 @@
 #include <am.h>
 #include <klib.h>
-#include <limits.h>
+#include <climits>
 
 extern "C" {
 long long __divdi3(long long a, long long b);

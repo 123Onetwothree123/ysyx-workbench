@@ -17,10 +17,10 @@ public:
     Ftrace &operator=(Ftrace &&) = delete;      // 禁止移动赋值
     ~Ftrace();                                  // 释放ftrace内部资源
     // 这是对外接口，模块生命周期部分
-    [[nodiscard]] std::expected<void, std::string> LoadElf(
-        std::filesystem::path ElfFile,
+    [[nodiscard]] std::expected<void, std::string> LoadELF(
+        std::filesystem::path ELFFile,
         bool RequireExecutable = true); // 为Ftrace加载ELF；纯readelf用途可保留通用类型
-    void ClearElf();                                                                       // 清空ELF符号和已有ftrace状态
+    void ClearELF();                                                                       // 清空ELF符号和已有ftrace状态
     void Reset();                                                                          // 清空调用栈和历史事件，但保留已经加载的ELF符号
     // 这是对外接口，开关控制部分
     void Enable(bool ShouldEnable = true) noexcept;    // 开启或关闭ftrace，后续call/ret会按开关处理
@@ -38,22 +38,28 @@ public:
     [[nodiscard]] std::size_t FunctionCount() const noexcept;            // 获取ELF中已加载的函数符号数量
     [[nodiscard]] const FtraceFrame *TopFrame() const noexcept;          // 获取当前栈顶帧，若无则返回nullptr
     [[nodiscard]] std::span<const FtraceEvent> History() const noexcept; // 获取已记录的历史事件序列
-    [[nodiscard]] const Readelf *ElfReader() const noexcept;             // 获取当前ELF读取器，若无则返回nullptr
+    [[nodiscard]] const Readelf *ELFReader() const noexcept;             // 获取当前ELF读取器，若无则返回nullptr
     // 这是对外的接口，打印输出的部分
     void PrintCurrentStack() const; // 打印当前调用栈（从底到顶）
     void PrintHistory() const;      // 打印已记录的历史call和ret事件
     void PrintStatus() const;       // 打印ftrace当前开关、深度与历史配置摘要
+    // 由 SimulationContext 注入输出行；默认写 stdout，便于独立测试。
+    using OutputSink = void (*)(std::string_view);
+    void SetOutput(OutputSink Sink) noexcept;
 private:
     // 这是内部辅助接口，符号解析和输出的部分
     [[nodiscard]] std::string_view ResolveFunctionName(std::uint64_t Address) const noexcept; // 根据地址解析函数名，若找不到则返回空视图
     void PushEvent(FtraceEvent Event);                                                        // 记录并打印一次call或ret历史事件
     void PrintEventLine(const FtraceEvent &Event) const;                                      // 按当前深度打印一条call或ret事件
-    std::optional<Readelf> Elf{};                                                             // 当前已经加载的ELF读取器
+    std::optional<Readelf> ELF{};                                                             // 当前已经加载的ELF读取器
     bool Enabled{false};                                                                      // 看这个ftrace是否启用
     bool ShouldRecordHistory{true};                                                           // 是否记录完整历史事件
     std::vector<FtraceFrame> CallStack{};                                                     // 当前函数调用栈
     std::vector<FtraceEvent> EventHistory{};                                                  // 历史call和ret事件序列
+    OutputSink output_sink{nullptr};                                                          // 输出行回调，避免反向依赖 SimulationContext
 };
 
-export extern Ftrace GlobalFtrace;                                                                                               // 全局ftrace状态
-export [[nodiscard]] std::expected<void, std::string> InitializeFtrace(const std::filesystem::path &ElfFile, bool ShouldEnable); // 初始化全局ftrace并按参数设置开关
+export [[nodiscard]] std::expected<void, std::string> InitializeFtrace(
+    Ftrace &Trace,
+    const std::filesystem::path &ELFFile,
+    bool ShouldEnable); // 初始化指定 ftrace 并按参数设置开关

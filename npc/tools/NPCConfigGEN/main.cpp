@@ -14,7 +14,7 @@ int main(int argc, char **argv)
         std::string perfSynth;
         std::string pdk;
         std::string savable{"n"};
-        long long socXlen = -1;
+        long long SOCXlen = -1;
         std::vector<std::string> overrides;
         for (int index = 1; index < argc; ++index) {
             const std::string argument{argv[index]};
@@ -35,8 +35,8 @@ int main(int argc, char **argv)
                 scalaDefaults = next("--scala-defaults");
             else if (argument == "--get")
                 getKey = next("--get");
-            else if (argument == "--soc-xlen")
-                socXlen = std::stoll(next("--soc-xlen"));
+            else if (argument == "--SOC-xlen")
+                SOCXlen = std::stoll(next("--SOC-xlen"));
             else if (argument == "--perf-build-metadata")
                 perfBuildMetadata = next("--perf-build-metadata");
             else if (argument == "--perf-synth")
@@ -69,14 +69,14 @@ int main(int argc, char **argv)
             values[key] = value;
         }
         deriveEffectiveConfig(values);
-        if (socXlen < 0) {
-            socXlen = asInt(values, "SOC_XLEN_EFFECTIVE", 32);
+        if (SOCXlen < 0) {
+            SOCXlen = asInt(values, "SOC_XLEN_EFFECTIVE", 32);
         } else {
-            if (socXlen != 32 && socXlen != 64)
+            if (SOCXlen != 32 && SOCXlen != 64)
                 throw std::runtime_error("SOC_XLEN 只允许 32/64");
-            values["SOC_XLEN_EFFECTIVE"] = std::to_string(socXlen);
+            values["SOC_XLEN_EFFECTIVE"] = std::to_string(SOCXlen);
         }
-        if (socXlen != 32 && socXlen != 64)
+        if (SOCXlen != 32 && SOCXlen != 64)
             throw std::runtime_error("SOC_XLEN 只允许 32/64");
         const bool getMode = !getKey.empty();
         const auto digest = configDigest(values);
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
         }
         if (!typedJson.empty()) {
             writeIfChanged(
-                typedJson, renderTypedJson(values, digest, pdk, socXlen));
+                typedJson, renderTypedJson(values, digest, pdk, SOCXlen));
             if (!getMode) {
                 std::cout << "[npc-config] wrote typed config " << typedJson
                           << "\n";
@@ -113,11 +113,11 @@ int main(int argc, char **argv)
         if (output.empty())
             return 0;
         const auto content = renderModule(
-            values, socXlen, digest, perfBuildMetadata, perfSynth,
+            values, SOCXlen, digest, perfBuildMetadata, perfSynth,
             savable == "y", pdk, overrides);
         writeIfChanged(output, content);
         std::cout << "[npc-config] generated " << output << " (xlen="
-                  << asInt(values, "XLEN", 32) << ", soc_xlen=" << socXlen
+                  << asInt(values, "XLEN", 32) << ", soc_xlen=" << SOCXlen
                   << ")\n";
         return 0;
     } catch (const std::exception &error) {

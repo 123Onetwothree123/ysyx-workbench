@@ -16,12 +16,12 @@ class ysyx_26030103_MMUVIPTConfigAuditTest
     extends AnyFlatSpec with Matchers {
 
   "NPCConfig" should "拒绝无 MMU 但 MMU_CACHE_MODE=vipt 的配置" in {
-    val badMMU = ysyx_26030103_MMUProfile(
+    val BadMMU = ysyx_26030103_MMUProfile(
       enabled = false,
       cacheMode = "vipt"
     )
     val error = intercept[IllegalArgumentException] {
-      ysyx_26030103_NPCConfig(MMU = badMMU)
+      ysyx_26030103_NPCConfig(MMU = BadMMU)
     }
     error.getMessage should include("MMU_CACHE_MODE=vipt")
     error.getMessage should include("HAS_MMU")

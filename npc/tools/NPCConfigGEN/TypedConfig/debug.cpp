@@ -3,7 +3,7 @@ import std;
 namespace npc::configgen {
 void addCSR(TypedFields &root, const Config &values)
 {
-    TypedFields csr;
+    TypedFields CSR;
     for (const auto &[key, value] : values) {
         if (!key.starts_with("CSR_"))
             continue;
@@ -14,17 +14,17 @@ void addCSR(TypedFields &root, const Config &values)
                        });
         if (key == "CSR_ENABLED" || key.ends_with("_READ") ||
             key.ends_with("_WRITE") || key.ends_with("_MODE")) {
-            addField(csr, std::move(name),
+            addField(CSR, std::move(name),
                      TypedJson::string(flatString(values, key)));
         } else if (key.ends_with("_MASK") || key.ends_with("_SET")) {
-            addField(csr, std::move(name),
+            addField(CSR, std::move(name),
                      TypedJson::integer(flatInt(values, key, 0)));
         } else {
-            addField(csr, std::move(name),
+            addField(CSR, std::move(name),
                      TypedJson::boolean(flatBool(values, key)));
         }
     }
-    addField(root, "csr", TypedJson::object(std::move(csr)));
+    addField(root, "CSR", TypedJson::object(std::move(CSR)));
 }
 void addInterrupt(TypedFields &root, const Config &values)
 {
@@ -38,22 +38,22 @@ void addInterrupt(TypedFields &root, const Config &values)
     addField(interrupt, "s_external_irq",
              TypedJson::boolean(
                  flatBool(values, "HAS_S_EXTERNAL_IRQ", true)));
-    TypedFields plic;
-    addField(plic, "sources",
+    TypedFields PLIC;
+    addField(PLIC, "sources",
              TypedJson::integer(flatInt(values, "PLIC_SOURCES", 32)));
-    addField(plic, "priority_bits",
+    addField(PLIC, "priority_bits",
              TypedJson::integer(
                  flatInt(values, "PLIC_PRIORITY_BITS", 3)));
-    addField(plic, "max_priority",
+    addField(PLIC, "max_priority",
              TypedJson::integer(
                  flatInt(values, "PLIC_MAX_PRIORITY", 7)));
-    addField(plic, "base",
+    addField(PLIC, "base",
              TypedJson::integer(
                  flatInt(values, "PLIC_BASE", 0x0c000000LL)));
-    addField(plic, "size",
+    addField(PLIC, "size",
              TypedJson::integer(
                  flatInt(values, "PLIC_SIZE", 0x00300000LL)));
-    addField(interrupt, "plic", TypedJson::object(std::move(plic)));
+    addField(interrupt, "PLIC", TypedJson::object(std::move(PLIC)));
     addField(root, "interrupt", TypedJson::object(std::move(interrupt)));
 }
 void addDebug(TypedFields &root, const Config &values)

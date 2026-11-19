@@ -16,9 +16,9 @@ class ysyx_26030103_AXI5Xbar(
     private[infra] val ResponseQueueDepth: Int =
       ysyx_26030103_KconfigDefaults.AXIXbarResponseQueueDepth,
     private[infra] val CLINTBaseValue: BigInt =
-      BigInt(ysyx_26030103_PMAOptions.Default.clintBase),
+      BigInt(ysyx_26030103_PMAOptions.Default.CLINTBase),
     private[infra] val CLINTSizeBytes: BigInt =
-      BigInt(ysyx_26030103_PMAOptions.Default.clintSize)
+      BigInt(ysyx_26030103_PMAOptions.Default.CLINTSize)
 ) extends Module
     with AXI5XbarDecode
     with AXI5XbarWrite
@@ -43,8 +43,8 @@ class ysyx_26030103_AXI5Xbar(
     "CLINT 基地址超出地址宽度")
   require(CLINTSizeBytes > 0 && CLINTBaseValue + CLINTSizeBytes <= (BigInt(1) << AddressWidth),
     "CLINT 地址窗口超出地址宽度")
-  val clintBase = CLINTBaseValue.U(AddressWidth.W)
-  val clintEnd = (CLINTBaseValue + CLINTSizeBytes).U(AddressWidth.W)
+  val CLINTBase = CLINTBaseValue.U(AddressWidth.W)
+  val CLINTEnd = (CLINTBaseValue + CLINTSizeBytes).U(AddressWidth.W)
   require(PLICBaseValue >= 0 && PLICBaseValue < (BigInt(1) << AddressWidth),
     "PLIC 基地址超出地址宽度")
   require(PLICSizeBytes > 0 && PLICBaseValue + PLICSizeBytes <= (BigInt(1) << AddressWidth),
@@ -53,11 +53,11 @@ class ysyx_26030103_AXI5Xbar(
     "PLIC 基地址必须 4KiB 对齐")
   require(PLICSizeBytes % BigInt(4096) == BigInt(0),
     "PLIC 窗口大小必须为 4KiB 的整数倍")
-  val plicBase = PLICBaseValue.U(AddressWidth.W)
-  val plicEnd = (PLICBaseValue + PLICSizeBytes).U(AddressWidth.W)
+  val PLICBase = PLICBaseValue.U(AddressWidth.W)
+  val PLICEnd = (PLICBaseValue + PLICSizeBytes).U(AddressWidth.W)
   val targetSoCBus = 0.U(2.W)
-  val targetCLINT = 1.U(2.W)
-  val targetPLIC = 2.U(2.W)
+  val TargetCLINT = 1.U(2.W)
+  val TargetPLIC = 2.U(2.W)
   val targetInvalid = 3.U(2.W)
   io.PLIC.AR.ARVALID := false.B
   io.PLIC.AR.ARID := 0.U
@@ -103,13 +103,13 @@ class ysyx_26030103_AXI5Xbar(
   val readTargetReg = RegInit(
     VecInit(Seq.fill(readSlotCount)(targetInvalid))
   )
-  val arAddressReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(AddressWidth.W))))
-  val arLenReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(8.W))))
-  val arSizeReg = RegInit(VecInit(Seq.fill(readSlotCount)(2.U(3.W))))
-  val arBurstReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(2.W))))
-  val arProtReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(3.W))))
-  val arCacheReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(4.W))))
-  val arQosReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(4.W))))
+  val ARAddressReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(AddressWidth.W))))
+  val ARLengthReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(8.W))))
+  val ARSizeReg = RegInit(VecInit(Seq.fill(readSlotCount)(2.U(3.W))))
+  val ARBurstReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(2.W))))
+  val ARProtReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(3.W))))
+  val ARCacheReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(4.W))))
+  val ARQosReg = RegInit(VecInit(Seq.fill(readSlotCount)(0.U(4.W))))
   val readDECERRBeatReg = RegInit(
     VecInit(Seq.fill(readSlotCount)(0.U(8.W)))
   )
@@ -123,30 +123,30 @@ class ysyx_26030103_AXI5Xbar(
   // 不支持转发的写burst仍需吃完全部W beat，之后再返回DECERR。
   val stateWriteDrain = writeStates(5)
   val writeState = RegInit(stateWriteIdle)
-  val awValidReg = RegInit(false.B)
+  val AWValidReg = RegInit(false.B)
   val wValidReg = RegInit(false.B)
-  val awIDReg = RegInit(0.U(IDWidth.W))
-  val awAddressReg = RegInit(0.U(AddressWidth.W))
-  val awLenReg = RegInit(0.U(8.W))
-  val awSizeReg = RegInit(2.U(3.W))
-  val awBurstReg = RegInit(0.U(2.W))
-  val awProtReg = RegInit(0.U(3.W))
-  val awCacheReg = RegInit(0.U(4.W))
-  val awQosReg = RegInit(0.U(4.W))
+  val AWIDReg = RegInit(0.U(IDWidth.W))
+  val AWAddressReg = RegInit(0.U(AddressWidth.W))
+  val AWLengthReg = RegInit(0.U(8.W))
+  val AWSizeReg = RegInit(2.U(3.W))
+  val AWBurstReg = RegInit(0.U(2.W))
+  val AWProtReg = RegInit(0.U(3.W))
+  val AWCacheReg = RegInit(0.U(4.W))
+  val AWQosReg = RegInit(0.U(4.W))
   val wDataReg = RegInit(0.U(DataWidth.W))
   val wStrobeReg = RegInit(0.U((DataWidth / 8).W))
   val wLastReg = RegInit(false.B)
   // 写响应B通道回来时也没有地址，所以要记住写请求目标
   val writeTargetReg = RegInit(targetInvalid)
-  val downstreamAWDone = RegInit(false.B)
+  val DownstreamAWDone = RegInit(false.B)
   val downstreamWDone = RegInit(false.B)
   // 用 Wire 控制上游 ready，避免直接读自己驱动的输出端口。
-  val inAWReady = WireDefault(false.B)
+  val InAWReady = WireDefault(false.B)
   val inWReady = WireDefault(false.B)
-  val inARReady = WireDefault(false.B)
-  io.in.AW.AWREADY := inAWReady
+  val InARReady = WireDefault(false.B)
+  io.in.AW.AWREADY := InAWReady
   io.in.W.WREADY := inWReady
-  io.in.AR.ARREADY := inARReady
+  io.in.AR.ARREADY := InARReady
 
   // 默认值
   io.in.B.BID := 0.U
@@ -205,66 +205,66 @@ class ysyx_26030103_AXI5Xbar(
   io.CLINT.AR.ARCACHE := 0.U
   io.CLINT.AR.ARQOS := 0.U
   io.CLINT.R.RREADY := false.B
-  val inAWFire = io.in.AW.AWVALID && inAWReady
+  val InAWFire = io.in.AW.AWVALID && InAWReady
   val inWFire = io.in.W.WVALID && inWReady
-  val inARFire = io.in.AR.ARVALID && inARReady
+  val InARFire = io.in.AR.ARVALID && InARReady
 
   // 写通道
   writeBody()
 
   // 读通道：每个AXI ID独占一个槽位，直到其RLAST被上游消费。
-  val incomingReadID = io.in.AR.ARID
-  inARReady := readSlotState(incomingReadID) === readSlotFree
+  val IncomingReadID = io.in.AR.ARID
+  InARReady := readSlotState(IncomingReadID) === readSlotFree
 
   // SoCBus/CLINT/PLIC 各有独立AR通道，可同拍各发一项，共享目标每周期一项。
   // 这些仲裁信号同时被 readBody 与 responseBody 引用，声明留在主文件。
-  val socRequestMask = VecInit((0 until readSlotCount).map { id =>
-    readSlotState(id) === readSlotRequest &&
-    readTargetReg(id) === targetSoCBus
+  val SOCRequestMask = VecInit((0 until readSlotCount).map { ID =>
+    readSlotState(ID) === readSlotRequest &&
+    readTargetReg(ID) === targetSoCBus
   }).asUInt
-  val clintRequestMask = VecInit((0 until readSlotCount).map { id =>
-    readSlotState(id) === readSlotRequest &&
-    readTargetReg(id) === targetCLINT
+  val CLINTRequestMask = VecInit((0 until readSlotCount).map { ID =>
+    readSlotState(ID) === readSlotRequest &&
+    readTargetReg(ID) === TargetCLINT
   }).asUInt
-  val plicRequestMask = VecInit((0 until readSlotCount).map { id =>
-    readSlotState(id) === readSlotRequest &&
-    readTargetReg(id) === targetPLIC
+  val PLICRequestMask = VecInit((0 until readSlotCount).map { ID =>
+    readSlotState(ID) === readSlotRequest &&
+    readTargetReg(ID) === TargetPLIC
   }).asUInt
-  val socARHeld = RegInit(false.B)
-  val socARHeldID = RegInit(0.U(IDWidth.W))
-  val clintARHeld = RegInit(false.B)
-  val clintARHeldID = RegInit(0.U(IDWidth.W))
-  val plicARHeld = RegInit(false.B)
-  val plicARHeldID = RegInit(0.U(IDWidth.W))
-  val socRequestCandidateID = PriorityEncoder(socRequestMask)
-  val clintRequestCandidateID = PriorityEncoder(clintRequestMask)
-  val plicRequestCandidateID = PriorityEncoder(plicRequestMask)
-  val socRequestValid = socARHeld || socRequestMask.orR
-  val clintRequestValid = clintARHeld || clintRequestMask.orR
-  val plicRequestValid = plicARHeld || plicRequestMask.orR
-  val socRequestID =
-    Mux(socARHeld, socARHeldID, socRequestCandidateID)
-  val clintRequestID =
-    Mux(clintARHeld, clintARHeldID, clintRequestCandidateID)
-  val plicRequestID =
-    Mux(plicARHeld, plicARHeldID, plicRequestCandidateID)
-  val socRequestFire = socRequestValid && io.SoCBus.AR.ARREADY
-  val clintRequestFire = clintRequestValid && io.CLINT.AR.ARREADY
-  val plicRequestFire = plicRequestValid && io.PLIC.AR.ARREADY
+  val SOCARHeld = RegInit(false.B)
+  val SOCARHeldID = RegInit(0.U(IDWidth.W))
+  val CLINTARHeld = RegInit(false.B)
+  val CLINTARHeldID = RegInit(0.U(IDWidth.W))
+  val PLICARHeld = RegInit(false.B)
+  val PLICARHeldID = RegInit(0.U(IDWidth.W))
+  val SOCRequestCandidateID = PriorityEncoder(SOCRequestMask)
+  val CLINTRequestCandidateID = PriorityEncoder(CLINTRequestMask)
+  val PLICRequestCandidateID = PriorityEncoder(PLICRequestMask)
+  val SOCRequestValid = SOCARHeld || SOCRequestMask.orR
+  val CLINTRequestValid = CLINTARHeld || CLINTRequestMask.orR
+  val PLICRequestValid = PLICARHeld || PLICRequestMask.orR
+  val SOCRequestID =
+    Mux(SOCARHeld, SOCARHeldID, SOCRequestCandidateID)
+  val CLINTRequestID =
+    Mux(CLINTARHeld, CLINTARHeldID, CLINTRequestCandidateID)
+  val PLICRequestID =
+    Mux(PLICARHeld, PLICARHeldID, PLICRequestCandidateID)
+  val SOCRequestFire = SOCRequestValid && io.SoCBus.AR.ARREADY
+  val CLINTRequestFire = CLINTRequestValid && io.CLINT.AR.ARREADY
+  val PLICRequestFire = PLICRequestValid && io.PLIC.AR.ARREADY
 
   readBody()
 
   // 响应小FIFO（4拍）：仲裁同拍到达的响应，并在上游反压时保持RID/RDATA/
   // RRESP/RLAST稳定；单拍缓冲会让被反压的响应阻塞无关owner（队头阻塞）。
   private[infra] class RPayload extends Bundle {
-    val id = UInt(IDWidth.W)
+    val ID = UInt(IDWidth.W)
     val data = UInt(DataWidth.W)
     val response = UInt(2.W)
     val last = Bool()
   }
   private[infra] val rQueue =
     Module(new Queue(new RPayload, ResponseQueueDepth, pipe = true, flow = false))
-  io.in.R.RID := rQueue.io.deq.bits.id
+  io.in.R.RID := rQueue.io.deq.bits.ID
   io.in.R.RVALID := rQueue.io.deq.valid
   io.in.R.RDATA := rQueue.io.deq.bits.data
   io.in.R.RRESP := rQueue.io.deq.bits.response
@@ -272,7 +272,7 @@ class ysyx_26030103_AXI5Xbar(
   rQueue.io.deq.ready := io.in.R.RREADY
 
   rQueue.io.enq.valid := false.B
-  rQueue.io.enq.bits.id := 0.U
+  rQueue.io.enq.bits.ID := 0.U
   rQueue.io.enq.bits.data := 0.U
   rQueue.io.enq.bits.response := OKAY
   rQueue.io.enq.bits.last := false.B

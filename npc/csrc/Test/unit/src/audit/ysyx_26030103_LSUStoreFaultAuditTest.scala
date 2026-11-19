@@ -56,19 +56,19 @@ class ysyx_26030103_LSUStoreFaultAuditTest
       dut: ysyx_26030103_LSU,
       address: Long,
       data: BigInt,
-      pc: Long
+      PC: Long
   ): Unit = {
-    val addrWidth = dut.io.in.bits.ALUResult.getWidth
+    val AddressWidth = dut.io.in.bits.ALUResult.getWidth
     dut.io.in.bits.poke(0.U.asTypeOf(chiselTypeOf(dut.io.in.bits)))
     dut.io.in.bits.Retire.poke(true.B)
     dut.io.in.bits.RegisterWrite.poke(false.B)
     dut.io.in.bits.MemoryValid.poke(true.B)
     dut.io.in.bits.MemoryWrite.poke(true.B)
-    dut.io.in.bits.ALUResult.poke(address.U(addrWidth.W))
-    dut.io.in.bits.VAddress.poke(address.U(addrWidth.W))
+    dut.io.in.bits.ALUResult.poke(address.U(AddressWidth.W))
+    dut.io.in.bits.VAddress.poke(address.U(AddressWidth.W))
     dut.io.in.bits.WidthSelect.poke(2.U)
     dut.io.in.bits.StoreData.poke(data.U(64.W))
-    dut.io.in.bits.pc.poke(pc.U(addrWidth.W))
+    dut.io.in.bits.PC.poke(PC.U(AddressWidth.W))
     dut.io.in.valid.poke(true.B)
   }
 
@@ -109,17 +109,17 @@ class ysyx_26030103_LSUStoreFaultAuditTest
 
       dut.io.DataBus.AW.AWREADY.poke(true.B)
       dut.io.DataBus.W.WREADY.poke(true.B)
-      val awAddrs = mutable.ArrayBuffer.empty[Long]
+      val AWAddrs = mutable.ArrayBuffer.empty[Long]
       val wData = mutable.ArrayBuffer.empty[BigInt]
-      var sawFirstAw = false
-      var sawSecondAw = false
+      var SawFirstAW = false
+      var SawSecondAW = false
       cycles = 0
-      while (!(sawFirstAw && wData.nonEmpty) && cycles < 30) {
+      while (!(SawFirstAW && wData.nonEmpty) && cycles < 30) {
         if (bool(dut.io.DataBus.AW.AWVALID)) {
           val a = dut.io.DataBus.AW.AWADDR.peek().litValue.toLong
-          awAddrs += a
-          if (a == addr1) sawFirstAw = true
-          if (a == addr2) sawSecondAw = true
+          AWAddrs += a
+          if (a == addr1) SawFirstAW = true
+          if (a == addr2) SawSecondAW = true
         }
         if (bool(dut.io.DataBus.W.WVALID)) {
           wData += dut.io.DataBus.W.WDATA.peek().litValue
@@ -127,12 +127,12 @@ class ysyx_26030103_LSUStoreFaultAuditTest
         clock.step(); cycles += 1
       }
       withClue("第一条 store 未发出 AW/W: ") {
-        (sawFirstAw && wData.nonEmpty) should be(true)
+        (SawFirstAW && wData.nonEmpty) should be(true)
       }
       withClue(
         s"第一条 store 的 B 之前出现了第二条 store 的总线请求: " +
-          s"awAddrs=${awAddrs.map(a => f"0x$a%x").mkString(",")}: ") {
-        sawSecondAw should be(false)
+          s"AWAddrs=${AWAddrs.map(a => f"0x$a%x").mkString(",")}: ") {
+        SawSecondAW should be(false)
       }
 
       // 第一条 store 收到 SLVERR；此时第二条已经进入写缓冲，绝不能

@@ -1,11 +1,13 @@
 module;
 module npc.sdb.command.infoCommand;
+import npc.Output;
 import npc.config;
 import npc.DUT;
 import npc.unicode;
 import npc.sdb.NPCEvaluationContext;
 import npc.sdb.TablePrinter;
 import npc.sdb.command.WatchpointPool;
+import npc.SimulationContext;
 
 static constexpr std::string_view get_reg_abi_name(std::size_t idx) noexcept
 {
@@ -119,7 +121,7 @@ static const char *get_reg_row_color(std::string_view arch_name, std::string_vie
     }
     return ANSI::FG_WHITE;
 }
-static void PrintGPR(DUT &dut)
+static void PrintGPR(DUT &dut, Output &out)
 {
     struct RegRow
     {
@@ -184,7 +186,7 @@ static void PrintGPR(DUT &dut)
         }
     }
     std::vector col_widths{id_width, name_width, dec_width, hex_width, desc_width};
-    std::println("寄存器状态：");
+    out.Info("寄存器状态：");
     print_border(col_widths);
     std::print("{}|{}", ANSI::FG_BLUE, ANSI::NONE);
     print_cell_colored(std::format("{}编号{}", get_reg_header_color("编号"), ANSI::NONE), id_width, true);
@@ -236,9 +238,10 @@ SDBCommandUsageList infoCommand::usage() const noexcept
 }
 SDBCommandResult infoCommand::execute(SDBCommandContext &context, std::string_view args)
 {
+    auto &out{context.GetSimulation().Out()};
     if (args == "r")
     {
-        PrintGPR(context.GetDUT());
+        PrintGPR(context.GetDUT(), out);
         return SDBCommandResult::Continue;
     }
     if constexpr (npc::HasWatchpoint)
@@ -246,14 +249,14 @@ SDBCommandResult infoCommand::execute(SDBCommandContext &context, std::string_vi
         if (args == "w")
         {
             NPCEvaluationContext EvalContext{context.GetDUT()};
-            GetGlobalWatchpointPool().PrintAllWatchpoints(EvalContext);
+            context.GetSimulation().Watchpoints().PrintAllWatchpoints(EvalContext);
             return SDBCommandResult::Continue;
         }
-        std::println("用法：info r 或 info w");
+        out.Info("用法：info r 或 info w");
     }
     else
     {
-        std::println("用法：info r（监视点未启用）");
+        out.Info("用法：info r（监视点未启用）");
     }
     return SDBCommandResult::Continue;
 }

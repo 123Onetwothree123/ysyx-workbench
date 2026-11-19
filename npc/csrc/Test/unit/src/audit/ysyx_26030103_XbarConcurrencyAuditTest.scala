@@ -22,36 +22,36 @@ class ysyx_26030103_XbarConcurrencyAuditTest
   private def big(value: UInt): BigInt = value.peek().litValue
 
   private case class ReadRequest(
-      id: BigInt,
+      ID: BigInt,
       addr: Long,
-      len: Int,
+      length: Int,
       size: Int,
       beat: Int = 0
   )
-  private case class ReadBeat(id: BigInt, data: BigInt, resp: Int, last: Boolean)
+  private case class ReadBeat(ID: BigInt, data: BigInt, response: Int, last: Boolean)
 
   /** 每个下游目标一套单在途读 + 单写响应模型。 */
   private class Downstreams(dut: ysyx_26030103_AXI5Xbar) {
-    private val socReads = mutable.Queue.empty[ReadRequest]
-    private val clintReads = mutable.Queue.empty[ReadRequest]
-    private val plicReads = mutable.Queue.empty[ReadRequest]
-    private var socCurrent: Option[ReadRequest] = None
-    private var clintCurrent: Option[ReadRequest] = None
-    private var plicCurrent: Option[ReadRequest] = None
+    private val SOCReads = mutable.Queue.empty[ReadRequest]
+    private val CLINTReads = mutable.Queue.empty[ReadRequest]
+    private val PLICReads = mutable.Queue.empty[ReadRequest]
+    private var SOCCurrent: Option[ReadRequest] = None
+    private var CLINTCurrent: Option[ReadRequest] = None
+    private var PLICCurrent: Option[ReadRequest] = None
     private val upstreamBeats = mutable.ArrayBuffer.empty[ReadBeat]
 
-    private var aw: Option[(BigInt, Long, Int)] = None
-    var arHold = false
+    private var AW: Option[(BigInt, Long, Int)] = None
+    var ARHold = false
     private var wDone = false
     private var bValid = false
     private var bID = BigInt(0)
     private var bResponse = 0
-    var socArCount = 0
-    var clintArCount = 0
-    var plicArCount = 0
-    var awSeen = false
+    var SOCARCount = 0
+    var CLINTARCount = 0
+    var PLICARCount = 0
+    var AWSeen = false
     var bObserved = false
-    var bObservedID = BigInt(0)
+    var BObservedID = BigInt(0)
 
     private def dataOf(addr: Long, beat: Int): BigInt =
       BigInt(((addr >> 2) + beat.toLong * 0x01010101L) & 0xffffffffL)
@@ -59,37 +59,37 @@ class ysyx_26030103_XbarConcurrencyAuditTest
     private def currentOf(
         kind: Int
     ): Option[ReadRequest] = kind match {
-      case 0 => socCurrent
-      case 1 => clintCurrent
-      case _ => plicCurrent
+      case 0 => SOCCurrent
+      case 1 => CLINTCurrent
+      case _ => PLICCurrent
     }
-    private def setCurrent(kind: Int, req: Option[ReadRequest]): Unit =
+    private def setCurrent(kind: Int, request: Option[ReadRequest]): Unit =
       kind match {
-        case 0 => socCurrent = req
-        case 1 => clintCurrent = req
-        case _ => plicCurrent = req
+        case 0 => SOCCurrent = request
+        case 1 => CLINTCurrent = request
+        case _ => PLICCurrent = request
       }
     private def queueOf(kind: Int): mutable.Queue[ReadRequest] = kind match {
-      case 0 => socReads
-      case 1 => clintReads
-      case _ => plicReads
+      case 0 => SOCReads
+      case 1 => CLINTReads
+      case _ => PLICReads
     }
 
     private def driveRead(
         kind: Int,
         port: ysyx_26030103_AXI5IO
     ): Boolean = {
-      val cur = currentOf(kind)
-      port.AR.ARREADY.poke((cur.isEmpty && !arHold).B)
-      port.R.RVALID.poke(cur.isDefined.B)
-      cur.foreach { req =>
-        val addr = req.addr + req.beat.toLong * (1L << req.size)
-        port.R.RID.poke(req.id.U)
+      val current = currentOf(kind)
+      port.AR.ARREADY.poke((current.isEmpty && !ARHold).B)
+      port.R.RVALID.poke(current.isDefined.B)
+      current.foreach { request =>
+        val addr = request.addr + request.beat.toLong * (1L << request.size)
+        port.R.RID.poke(request.ID.U)
         port.R.RDATA.poke(dataOf(addr, 0).U(32.W))
         port.R.RRESP.poke(0.U)
-        port.R.RLAST.poke((req.beat == req.len).B)
+        port.R.RLAST.poke((request.beat == request.length).B)
       }
-      cur.isDefined && bool(port.R.RREADY)
+      current.isDefined && bool(port.R.RREADY)
     }
 
     private def sampleRead(
@@ -97,76 +97,76 @@ class ysyx_26030103_XbarConcurrencyAuditTest
         port: ysyx_26030103_AXI5IO
     ): Unit = {
       if (bool(port.AR.ARVALID) && bool(port.AR.ARREADY)) {
-        val req = ReadRequest(
+        val request = ReadRequest(
           big(port.AR.ARID),
           big(port.AR.ARADDR).toLong,
           big(port.AR.ARLEN).toInt,
           big(port.AR.ARSIZE).toInt
         )
-        queueOf(kind).enqueue(req)
+        queueOf(kind).enqueue(request)
         kind match {
-          case 0 => socArCount += 1
-          case 1 => clintArCount += 1
-          case _ => plicArCount += 1
+          case 0 => SOCARCount += 1
+          case 1 => CLINTARCount += 1
+          case _ => PLICARCount += 1
         }
       }
     }
 
     private def advanceRead(kind: Int): Unit = {
-      currentOf(kind).foreach { req =>
-        if (req.beat == req.len) setCurrent(kind, None)
-        else setCurrent(kind, Some(req.copy(beat = req.beat + 1)))
+      currentOf(kind).foreach { request =>
+        if (request.beat == request.length) setCurrent(kind, None)
+        else setCurrent(kind, Some(request.copy(beat = request.beat + 1)))
       }
     }
 
     def tick(): Unit = {
-      val soc = dut.io.SoCBus
-      val clint = dut.io.CLINT
-      val plic = dut.io.PLIC
+      val SOC = dut.io.SoCBus
+      val CLINT = dut.io.CLINT
+      val PLIC = dut.io.PLIC
       val in = dut.io.in
 
-      if (socCurrent.isEmpty && socReads.nonEmpty)
-        socCurrent = Some(socReads.dequeue())
-      if (clintCurrent.isEmpty && clintReads.nonEmpty)
-        clintCurrent = Some(clintReads.dequeue())
-      if (plicCurrent.isEmpty && plicReads.nonEmpty)
-        plicCurrent = Some(plicReads.dequeue())
+      if (SOCCurrent.isEmpty && SOCReads.nonEmpty)
+        SOCCurrent = Some(SOCReads.dequeue())
+      if (CLINTCurrent.isEmpty && CLINTReads.nonEmpty)
+        CLINTCurrent = Some(CLINTReads.dequeue())
+      if (PLICCurrent.isEmpty && PLICReads.nonEmpty)
+        PLICCurrent = Some(PLICReads.dequeue())
 
-      val socRFire = driveRead(0, soc)
-      val clintRFire = driveRead(1, clint)
-      val plicRFire = driveRead(2, plic)
+      val SOCRFire = driveRead(0, SOC)
+      val CLINTRFire = driveRead(1, CLINT)
+      val PLICRFire = driveRead(2, PLIC)
 
-      soc.AW.AWREADY.poke((aw.isEmpty && !bValid).B)
-      soc.W.WREADY.poke((!bValid).B)
-      soc.B.BVALID.poke(bValid.B)
-      soc.B.BID.poke(bID.U)
-      soc.B.BRESP.poke(bResponse.U)
-      clint.AW.AWREADY.poke(false.B)
-      clint.W.WREADY.poke(false.B)
-      clint.B.BVALID.poke(false.B)
-      clint.B.BID.poke(0.U)
-      clint.B.BRESP.poke(0.U)
-      plic.AW.AWREADY.poke(false.B)
-      plic.W.WREADY.poke(false.B)
-      plic.B.BVALID.poke(false.B)
-      plic.B.BID.poke(0.U)
-      plic.B.BRESP.poke(0.U)
+      SOC.AW.AWREADY.poke((AW.isEmpty && !bValid).B)
+      SOC.W.WREADY.poke((!bValid).B)
+      SOC.B.BVALID.poke(bValid.B)
+      SOC.B.BID.poke(bID.U)
+      SOC.B.BRESP.poke(bResponse.U)
+      CLINT.AW.AWREADY.poke(false.B)
+      CLINT.W.WREADY.poke(false.B)
+      CLINT.B.BVALID.poke(false.B)
+      CLINT.B.BID.poke(0.U)
+      CLINT.B.BRESP.poke(0.U)
+      PLIC.AW.AWREADY.poke(false.B)
+      PLIC.W.WREADY.poke(false.B)
+      PLIC.B.BVALID.poke(false.B)
+      PLIC.B.BID.poke(0.U)
+      PLIC.B.BRESP.poke(0.U)
 
-      sampleRead(0, soc)
-      sampleRead(1, clint)
-      sampleRead(2, plic)
+      sampleRead(0, SOC)
+      sampleRead(1, CLINT)
+      sampleRead(2, PLIC)
 
-      val awFire = bool(soc.AW.AWVALID) && bool(soc.AW.AWREADY)
-      val wFire = bool(soc.W.WVALID) && bool(soc.W.WREADY)
-      val wLast = wFire && bool(soc.W.WLAST)
-      val bFire = bValid && bool(soc.B.BREADY)
-      val awID = if (awFire) big(soc.AW.AWID) else BigInt(0)
-      val awAddress = if (awFire) big(soc.AW.AWADDR).toLong else 0L
-      val awLen = if (awFire) big(soc.AW.AWLEN).toInt else 0
+      val AWFire = bool(SOC.AW.AWVALID) && bool(SOC.AW.AWREADY)
+      val wFire = bool(SOC.W.WVALID) && bool(SOC.W.WREADY)
+      val wLast = wFire && bool(SOC.W.WLAST)
+      val bFire = bValid && bool(SOC.B.BREADY)
+      val awID = if (AWFire) big(SOC.AW.AWID) else BigInt(0)
+      val AWAddress = if (AWFire) big(SOC.AW.AWADDR).toLong else 0L
+      val awLen = if (AWFire) big(SOC.AW.AWLEN).toInt else 0
 
       if (bool(in.B.BVALID)) {
         bObserved = true
-        bObservedID = big(in.B.BID)
+        BObservedID = big(in.B.BID)
       }
       if (bool(in.R.RVALID) && bool(in.R.RREADY)) {
         upstreamBeats += ReadBeat(
@@ -179,19 +179,19 @@ class ysyx_26030103_XbarConcurrencyAuditTest
 
       dut.clock.step()
 
-      if (socRFire) advanceRead(0)
-      if (clintRFire) advanceRead(1)
-      if (plicRFire) advanceRead(2)
+      if (SOCRFire) advanceRead(0)
+      if (CLINTRFire) advanceRead(1)
+      if (PLICRFire) advanceRead(2)
       if (bFire) {
         bValid = false
-        aw = None
+        AW = None
         wDone = false
       }
-      if (awFire) { awSeen = true; aw = Some((awID, awAddress, awLen)) }
+      if (AWFire) { AWSeen = true; AW = Some((awID, AWAddress, awLen)) }
       if (wLast) wDone = true
-      if (aw.nonEmpty && wDone && !bValid) {
+      if (AW.nonEmpty && wDone && !bValid) {
         bValid = true
-        bID = aw.get._1
+        bID = AW.get._1
         bResponse = 0
       }
     }
@@ -232,41 +232,41 @@ class ysyx_26030103_XbarConcurrencyAuditTest
     in.AR.ARCACHE.poke(0.U)
     in.AR.ARQOS.poke(0.U)
     in.R.RREADY.poke(true.B)
-    val soc = dut.io.SoCBus
-    soc.AR.ARREADY.poke(false.B)
-    soc.R.RVALID.poke(false.B)
-    soc.R.RID.poke(0.U)
-    soc.R.RDATA.poke(0.U)
-    soc.R.RRESP.poke(0.U)
-    soc.R.RLAST.poke(false.B)
-    val clint = dut.io.CLINT
-    clint.AR.ARREADY.poke(false.B)
-    clint.R.RVALID.poke(false.B)
-    clint.R.RID.poke(0.U)
-    clint.R.RDATA.poke(0.U)
-    clint.R.RRESP.poke(0.U)
-    clint.R.RLAST.poke(false.B)
-    val plic = dut.io.PLIC
-    plic.AR.ARREADY.poke(false.B)
-    plic.R.RVALID.poke(false.B)
-    plic.R.RID.poke(0.U)
-    plic.R.RDATA.poke(0.U)
-    plic.R.RRESP.poke(0.U)
-    plic.R.RLAST.poke(false.B)
+    val SOC = dut.io.SoCBus
+    SOC.AR.ARREADY.poke(false.B)
+    SOC.R.RVALID.poke(false.B)
+    SOC.R.RID.poke(0.U)
+    SOC.R.RDATA.poke(0.U)
+    SOC.R.RRESP.poke(0.U)
+    SOC.R.RLAST.poke(false.B)
+    val CLINT = dut.io.CLINT
+    CLINT.AR.ARREADY.poke(false.B)
+    CLINT.R.RVALID.poke(false.B)
+    CLINT.R.RID.poke(0.U)
+    CLINT.R.RDATA.poke(0.U)
+    CLINT.R.RRESP.poke(0.U)
+    CLINT.R.RLAST.poke(false.B)
+    val PLIC = dut.io.PLIC
+    PLIC.AR.ARREADY.poke(false.B)
+    PLIC.R.RVALID.poke(false.B)
+    PLIC.R.RID.poke(0.U)
+    PLIC.R.RDATA.poke(0.U)
+    PLIC.R.RRESP.poke(0.U)
+    PLIC.R.RLAST.poke(false.B)
   }
 
   private def offerRead(
       dut: ysyx_26030103_AXI5Xbar,
-      id: Int,
+      ID: Int,
       addr: Long,
-      len: Int,
+      length: Int,
       size: Int,
       burst: Int = 1
   ): Unit = {
     val in = dut.io.in
     in.AR.ARADDR.poke(addr.U)
-    in.AR.ARID.poke(id.U)
-    in.AR.ARLEN.poke(len.U)
+    in.AR.ARID.poke(ID.U)
+    in.AR.ARLEN.poke(length.U)
     in.AR.ARSIZE.poke(size.U)
     in.AR.ARBURST.poke(burst.U)
     in.AR.ARVALID.poke(true.B)
@@ -314,7 +314,7 @@ class ysyx_26030103_XbarConcurrencyAuditTest
 
       // 先扣住下游 ARREADY，让两个请求都登记在读槽里，再释放以观察
       // Xbar 能否同时向 SoCBus/CLINT 发出两个独立 AR。
-      model.arHold = true
+      model.ARHold = true
       offerRead(dut, 0, 0x80000000L, 0, 2)
       waitArFire(dut, model)
       offerRead(dut, 1, 0x02004000L, 0, 2)
@@ -327,15 +327,15 @@ class ysyx_26030103_XbarConcurrencyAuditTest
         if (!both) model.tick()
       }
       withClue("SoCBus 与 CLINT 的 AR 不能同时在途: ") { both should be(true) }
-      model.arHold = false
+      model.ARHold = false
 
       val beats = waitBeats(dut, model, 2)
-      beats.map(_.id).toSet should be(Set(BigInt(0), BigInt(1)))
-      all(beats.map(_.resp)) should be(0)
+      beats.map(_.ID).toSet should be(Set(BigInt(0), BigInt(1)))
+      all(beats.map(_.response)) should be(0)
       all(beats.map(_.last)) should be(true)
-      val byID = beats.map(b => b.id -> b.data).toMap
-      byID(BigInt(0)) should be(BigInt(((0x80000000L >> 2) & 0xffffffffL)))
-      byID(BigInt(1)) should be(BigInt(((0x02004000L >> 2) & 0xffffffffL)))
+      val ByID = beats.map(b => b.ID -> b.data).toMap
+      ByID(BigInt(0)) should be(BigInt(((0x80000000L >> 2) & 0xffffffffL)))
+      ByID(BigInt(1)) should be(BigInt(((0x02004000L >> 2) & 0xffffffffL)))
     }
   }
 
@@ -344,27 +344,27 @@ class ysyx_26030103_XbarConcurrencyAuditTest
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       val model = new Downstreams(dut)
-      model.arHold = true
+      model.ARHold = true
 
       offerRead(dut, 2, 0x80000040L, 2, 2)
       waitArFire(dut, model)
       offerRead(dut, 3, 0x0200bff8L, 1, 2)
       waitArFire(dut, model)
       // 两个 AR 都在下游等待，放行后响应可任意交错。
-      model.arHold = false
+      model.ARHold = false
 
       val beats = waitBeats(dut, model, 5)
-      val socBeats = beats.filter(_.id == 2)
-      val clintBeats = beats.filter(_.id == 3)
-      socBeats.size should be(3)
-      clintBeats.size should be(2)
-      socBeats.map(_.last) should be(Seq(false, false, true))
-      clintBeats.map(_.last) should be(Seq(false, true))
-      socBeats.map(_.data) should be(
+      val SOCBeats = beats.filter(_.ID == 2)
+      val CLINTBeats = beats.filter(_.ID == 3)
+      SOCBeats.size should be(3)
+      CLINTBeats.size should be(2)
+      SOCBeats.map(_.last) should be(Seq(false, false, true))
+      CLINTBeats.map(_.last) should be(Seq(false, true))
+      SOCBeats.map(_.data) should be(
         Seq(0x80000040L, 0x80000044L, 0x80000048L)
           .map(a => BigInt(((a >> 2) & 0xffffffffL)))
       )
-      clintBeats.map(_.data) should be(
+      CLINTBeats.map(_.data) should be(
         Seq(0x0200bff8L, 0x0200bffcL)
           .map(a => BigInt(((a >> 2) & 0xffffffffL)))
       )
@@ -395,28 +395,28 @@ class ysyx_26030103_XbarConcurrencyAuditTest
 
       var cycles = 0
       var bSeen = false
-      var arSeen = false
+      var ARSeen = false
       var readBeatSeen = false
-      while (cycles < 150 && !(bSeen && arSeen && readBeatSeen)) {
+      while (cycles < 150 && !(bSeen && ARSeen && readBeatSeen)) {
         model.tick(); cycles += 1
         if (model.bObserved) {
           bSeen = true
-          model.bObservedID should be(BigInt(4))
+          model.BObservedID should be(BigInt(4))
         }
-        if (model.clintArCount > 0) arSeen = true
+        if (model.CLINTARCount > 0) ARSeen = true
         if (model.beats.nonEmpty) readBeatSeen = true
       }
-      val sockAw = model.awSeen
+      val SockAW = model.AWSeen
       in.AR.ARVALID.poke(false.B)
       in.AW.AWVALID.poke(false.B)
       in.W.WVALID.poke(false.B)
       in.B.BREADY.poke(false.B)
 
-      withClue(s"并发读写未完成: b=$bSeen aw=$sockAw ar=$arSeen r=$readBeatSeen: ") {
-        (bSeen && sockAw && arSeen && readBeatSeen) should be(true)
+      withClue(s"并发读写未完成: b=$bSeen AW=$SockAW ar=$ARSeen r=$readBeatSeen: ") {
+        (bSeen && SockAW && ARSeen && readBeatSeen) should be(true)
       }
       val beat = model.beats.head
-      beat.id should be(BigInt(5))
+      beat.ID should be(BigInt(5))
       beat.last should be(true)
     }
   }
@@ -430,12 +430,12 @@ class ysyx_26030103_XbarConcurrencyAuditTest
       offerRead(dut, 6, 0x50000000L, 0, 2)
       waitArFire(dut, model)
       val beats = waitBeats(dut, model, 1)
-      beats.head.id should be(BigInt(6))
-      beats.head.resp should be(3)
+      beats.head.ID should be(BigInt(6))
+      beats.head.response should be(3)
       beats.head.last should be(true)
-      model.socArCount should be(0)
-      model.clintArCount should be(0)
-      model.plicArCount should be(0)
+      model.SOCARCount should be(0)
+      model.CLINTARCount should be(0)
+      model.PLICARCount should be(0)
     }
   }
 }

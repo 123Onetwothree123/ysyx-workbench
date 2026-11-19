@@ -53,17 +53,17 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddressW.W))
-    io.fetch_vaddr.poke(0.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
-    io.fetch_valid.poke(false.B)
-    io.resp_ready.poke(false.B)
-    io.axi.AR.ARREADY.poke(false.B)
-    io.axi.R.RDATA.poke(0.U(32.W))
-    io.axi.R.RRESP.poke(0.U(2.W))
-    io.axi.R.RLAST.poke(false.B)
-    io.axi.R.RVALID.poke(false.B)
+    io.FetchAddress.poke(0.U(AddressW.W))
+    io.FetchVaddr.poke(0.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchPaddrVaddr.poke(0.U(AddressW.W))
+    io.FetchValid.poke(false.B)
+    io.ResponseReady.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
+    io.AXI.R.RDATA.poke(0.U(32.W))
+    io.AXI.R.RRESP.poke(0.U(2.W))
+    io.AXI.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
     io.flush.poke(false.B)
     io.kill.poke(false.B)
   }
@@ -74,14 +74,14 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       pa:    Long
   ): Unit = {
     // PIPT 下 VA 端口不再参与索引；故意给一个不相关的 VA，确认被忽略。
-    io.fetch_vaddr.poke(0x00000040L.U(AddressW.W))
-    io.fetch_addr.poke(pa.U(AddressW.W))
-    io.fetch_paddr_vaddr.poke(0x00000040L.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_valid.poke(true.B)
-    waitUntil(clock, bool(io.fetch_ready), s"ICache 未受理 PA=0x${pa.toHexString}")
+    io.FetchVaddr.poke(0x00000040L.U(AddressW.W))
+    io.FetchAddress.poke(pa.U(AddressW.W))
+    io.FetchPaddrVaddr.poke(0x00000040L.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchValid.poke(true.B)
+    waitUntil(clock, bool(io.FetchReady), s"ICache 未受理 PA=0x${pa.toHexString}")
     clock.step()
-    io.fetch_valid.poke(false.B)
+    io.FetchValid.poke(false.B)
   }
 
   private def icacheRefill(
@@ -89,22 +89,22 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       clock: Clock,
       mem:   Memory
   ): Unit = {
-    waitUntil(clock, bool(io.axi.AR.ARVALID), "ICache 没有 refill AR")
-    long(io.axi.AR.ARADDR) should be(PaLine)
-    val beats = long(io.axi.AR.ARLEN).toInt + 1
+    waitUntil(clock, bool(io.AXI.AR.ARVALID), "ICache 没有 refill AR")
+    long(io.AXI.AR.ARADDR) should be(PaLine)
+    val beats = long(io.AXI.AR.ARLEN).toInt + 1
     beats should be(1 << (BlockLog2 - 2)) // 128B = 32 个 word，PIPT 不能截断
-    io.axi.AR.ARREADY.poke(true.B)
+    io.AXI.AR.ARREADY.poke(true.B)
     clock.step()
-    io.axi.AR.ARREADY.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
     for (beat <- 0 until beats) {
-      io.axi.R.RDATA.poke(mem.read(PaLine + beat * 4L).U(32.W))
-      io.axi.R.RRESP.poke(0.U(2.W))
-      io.axi.R.RLAST.poke((beat + 1 == beats).B)
-      io.axi.R.RVALID.poke(true.B)
+      io.AXI.R.RDATA.poke(mem.read(PaLine + beat * 4L).U(32.W))
+      io.AXI.R.RRESP.poke(0.U(2.W))
+      io.AXI.R.RLAST.poke((beat + 1 == beats).B)
+      io.AXI.R.RVALID.poke(true.B)
       clock.step()
     }
-    io.axi.R.RVALID.poke(false.B)
-    io.axi.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
+    io.AXI.R.RLAST.poke(false.B)
   }
 
   private def icacheExpect(
@@ -113,12 +113,12 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       pa:    Long,
       data:  Long
   ): Unit = {
-    waitUntil(clock, bool(io.resp_valid), s"ICache PA=0x${pa.toHexString} 无响应")
-    long(io.resp_data) should be(data)
-    bool(io.resp_fault) should be(false)
-    io.resp_ready.poke(true.B)
+    waitUntil(clock, bool(io.ResponseValid), s"ICache PA=0x${pa.toHexString} 无响应")
+    long(io.ResponseData) should be(data)
+    bool(io.ResponseFault) should be(false)
+    io.ResponseReady.poke(true.B)
     clock.step()
-    io.resp_ready.poke(false.B)
+    io.ResponseReady.poke(false.B)
   }
 
   private def runICache(
@@ -137,26 +137,26 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
     // 同一 128B 行内另一个 word 必须命中，且不能再发 AR（PIPT 索引正确）。
     val fetchPa2 = PaLine + 4L
     icacheFetch(io, clock, fetchPa2)
-    bool(io.axi.AR.ARVALID) should be(false)
+    bool(io.AXI.AR.ARVALID) should be(false)
     icacheExpect(io, clock, fetchPa2, mem.read(fetchPa2))
 
     // 下一条 128B 行必须 miss 并按完整物理行地址回填。
     val fetchPa3 = PaLine + 128L
     icacheFetch(io, clock, fetchPa3)
-    waitUntil(clock, bool(io.axi.AR.ARVALID), "大行 PIPT ICache 第二行无 AR")
-    long(io.axi.AR.ARADDR) should be(fetchPa3 & ~127L)
-    io.axi.AR.ARREADY.poke(true.B)
+    waitUntil(clock, bool(io.AXI.AR.ARVALID), "大行 PIPT ICache 第二行无 AR")
+    long(io.AXI.AR.ARADDR) should be(fetchPa3 & ~127L)
+    io.AXI.AR.ARREADY.poke(true.B)
     clock.step()
-    io.axi.AR.ARREADY.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
     for (beat <- 0 until (1 << (BlockLog2 - 2))) {
-      io.axi.R.RDATA.poke(mem.read((fetchPa3 & ~127L) + beat * 4L).U(32.W))
-      io.axi.R.RRESP.poke(0.U(2.W))
-      io.axi.R.RLAST.poke((beat + 1 == (1 << (BlockLog2 - 2))).B)
-      io.axi.R.RVALID.poke(true.B)
+      io.AXI.R.RDATA.poke(mem.read((fetchPa3 & ~127L) + beat * 4L).U(32.W))
+      io.AXI.R.RRESP.poke(0.U(2.W))
+      io.AXI.R.RLAST.poke((beat + 1 == (1 << (BlockLog2 - 2))).B)
+      io.AXI.R.RVALID.poke(true.B)
       clock.step()
     }
-    io.axi.R.RVALID.poke(false.B)
-    io.axi.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
+    io.AXI.R.RLAST.poke(false.B)
     icacheExpect(io, clock, fetchPa3, mem.read(fetchPa3))
   }
 
@@ -170,15 +170,15 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.req.valid.poke(false.B)
-    io.req.bits.addr.poke(0.U(AddressW.W))
-    io.req.bits.vaddr.poke(0.U(AddressW.W))
-    io.req.bits.WidthSelect.poke(2.U(2.W))
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(0.U(AddressW.W))
-    io.req_kill.poke(false.B)
-    io.resp.ready.poke(false.B)
+    io.request.valid.poke(false.B)
+    io.request.bits.address.poke(0.U(AddressW.W))
+    io.request.bits.vaddr.poke(0.U(AddressW.W))
+    io.request.bits.WidthSelect.poke(2.U(2.W))
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrValid.poke(true.B)
+    io.RequestPaddrVaddr.poke(0.U(AddressW.W))
+    io.RequestKill.poke(false.B)
+    io.response.ready.poke(false.B)
     io.StoreValid.poke(false.B)
     io.StoreResponse.poke(0.U(2.W))
     io.StoreAddress.poke(0.U(AddressW.W))
@@ -199,16 +199,16 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       pa:    Long
   ): Unit = {
     // PIPT 忽略 vaddr；这里故意给常量 VA。
-    io.req.bits.vaddr.poke(0x00000040L.U(AddressW.W))
-    io.req.bits.addr.poke(pa.U(AddressW.W))
-    io.req.bits.WidthSelect.poke(2.U(2.W))
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_vaddr.poke(0x00000040L.U(AddressW.W))
-    io.req_paddr_valid.poke(true.B)
-    io.req.valid.poke(true.B)
-    waitUntil(clock, bool(io.req.ready), s"DCache 未受理 PA=0x${pa.toHexString}")
+    io.request.bits.vaddr.poke(0x00000040L.U(AddressW.W))
+    io.request.bits.address.poke(pa.U(AddressW.W))
+    io.request.bits.WidthSelect.poke(2.U(2.W))
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrVaddr.poke(0x00000040L.U(AddressW.W))
+    io.RequestPaddrValid.poke(true.B)
+    io.request.valid.poke(true.B)
+    waitUntil(clock, bool(io.request.ready), s"DCache 未受理 PA=0x${pa.toHexString}")
     clock.step()
-    io.req.valid.poke(false.B)
+    io.request.valid.poke(false.B)
   }
 
   private def dcacheStore(
@@ -235,12 +235,12 @@ class ysyx_26030103_CachePiptLargeLineTest extends AnyFlatSpec with Matchers {
       clock: Clock,
       data:  Long
   ): Unit = {
-    waitUntil(clock, bool(io.resp.valid), "DCache 无响应")
-    long(io.resp.bits.data) should be(data)
-    bool(io.resp.bits.fault) should be(false)
-    io.resp.ready.poke(true.B)
+    waitUntil(clock, bool(io.response.valid), "DCache 无响应")
+    long(io.response.bits.data) should be(data)
+    bool(io.response.bits.fault) should be(false)
+    io.response.ready.poke(true.B)
     clock.step()
-    io.resp.ready.poke(false.B)
+    io.response.ready.poke(false.B)
   }
 
   private def dcacheRefill(

@@ -86,7 +86,7 @@ NPC_CONFIG_OVERRIDE_ARGS = $(foreach item,$(filter CONFIG_%,$(MAKEOVERRIDES)),--
 # direct-NPC 顶层 rtl/riscv32e_npc_SimTop.sv 与 riscv32e_npc_AXIRAM
 # 的 AXI 固定为 32 位地址/数据。无论 .config 是 SOC_XLEN=64 还是
 # SOC_XLEN_FOLLOW_CPU=y，构建 direct-NPC 目标时都把生效 SoC 接口
-# 强制投影为 32；完整 SoC（SIM_TOP=soc）不应用这组覆盖。
+# 强制投影为 32；完整 SoC 用 Kconfig 的 SOC_XLEN 重新生成 ysyxSoCFull.v。
 NPC_DIRECT_SOC_XLEN := 32
 NPC_DIRECT_SOC_XLEN_OVERRIDE := \
 	--set 'CONFIG_SOC_XLEN_FOLLOW_CPU=n' \
@@ -120,7 +120,6 @@ VERILATOR_THREADS := $(shell if [ "$(SIM_THREADS)" -gt 1 ] 2>/dev/null; then ech
 
 test:
 	mill -i test
-
 
 # Kconfig 是唯一配置解析器：c_conf --syncconfig 直接生成
 # include/generated/npc_config.json。C++ 构建期小工具再把 JSON 投影成
@@ -634,7 +633,6 @@ rootfs-clean:
 # npc 独立仿真路径的复位 PC：0x80000000 + Kconfig 的 CACHE_PADDING。
 NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(or $(CONFIG_CACHE_PADDING),0))))
 
-
 # Keep the effective hardware knobs in one stable, human-readable record.
 # The hash of this exact string identifies configurations even when two builds
 # come from the same git commit.  Target selection is recorded separately:
@@ -648,7 +646,6 @@ verilog: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_TYPED_JSON)
 	env NPC_CONFIG_JSON='$(NPC_CONFIG_TYPED_JSON)' \
 		mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR)
 	ln -sf layers-ysyx_26030103-Verification.sv $(BUILD_DIR)/layers-riscv32e_npc_AXIRAM-Verification.sv
-
 
 help:
 	mill -i runMain ysyx_26030103_Elaborate --help
@@ -992,7 +989,7 @@ $(NVBOARD_AUTOBIND): $(call remove_quote,$(CONFIG_NVBOARD_NXDC))
 	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $< $@
 endif
 
-simtest: $(SIM_GUARD) $(NPC_CONFIG_MODULE) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
+simtest: $(SIM_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(YSYXSOC_FULL_V) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND)
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_WARN_FLAGS) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) \
 		--timescale "1ns/1ns" --no-timing \
@@ -1125,7 +1122,6 @@ pgo: $(SIM_GUARD) verilog
 	$(MAKE) PGO_CFLAGS='-fprofile-use -fprofile-correction' $(BIN)
 	@echo "PGO 完成，运行优化后的程序"
 	@$(BIN) $(file) $(if $(elf),--elf $(elf),) $(if $(diff),--diff $(diff),)
-
 
 PERF_DIR   = NPCSimResult
 

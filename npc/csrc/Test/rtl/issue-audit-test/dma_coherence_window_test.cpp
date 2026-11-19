@@ -163,7 +163,7 @@ int main(int argc, char **argv) {
     dut.io_slave_arburst = 1;
     dut.io_slave_arprot = 0;
     dut.io_slave_rready = 1;
-    dut.io_debug_gpr_raddr = 0;
+    dut.io_debug_GPRRaddr = 0;
 
     auto edge = [&] {
       dut.clock = 1;
@@ -207,8 +207,8 @@ int main(int argc, char **argv) {
       dut.eval();
 
       // ---- 观察 mtrace：统计对数据地址的 load ----
-      if (dut.io_debug_mtrace_valid && !dut.io_debug_mtrace_wen &&
-          dut.io_debug_mtrace_addr == kDataAddr) {
+      if (dut.io_debug_MTraceValid && !dut.io_debug_MTraceWen &&
+          dut.io_debug_MTraceAddress == kDataAddr) {
         data_loads++;
         if (data_loads == 1 && !dma_started) {
           // 诊断模式：DIAG_DMA_AFTER_ALL=1 时改到全部 load 之后再发 DMA
@@ -374,9 +374,9 @@ int main(int argc, char **argv) {
 
     if (!dut.io_trap_valid) {
       auto gpr0 = [&](int index) -> uint32_t {
-        dut.io_debug_gpr_raddr = static_cast<uint8_t>(index);
+        dut.io_debug_GPRRaddr = static_cast<uint8_t>(index);
         dut.eval();
-        return dut.io_debug_gpr_rdata;
+        return dut.io_debug_GPRRdata;
       };
       std::cerr << "DIAG timeout: x1=0x" << std::hex << gpr0(1) << " x2=0x"
                 << gpr0(2) << " x5=0x" << gpr0(5) << " x6=0x" << gpr0(6)
@@ -392,9 +392,9 @@ int main(int argc, char **argv) {
 
     // ---- 读回架构寄存器：x6/x7/x8 ----
     auto gpr = [&](int index) -> uint32_t {
-      dut.io_debug_gpr_raddr = static_cast<uint8_t>(index);
+      dut.io_debug_GPRRaddr = static_cast<uint8_t>(index);
       dut.eval();
-      return dut.io_debug_gpr_rdata;
+      return dut.io_debug_GPRRdata;
     };
     const uint32_t x6 = gpr(6);
     const uint32_t x7 = gpr(7);

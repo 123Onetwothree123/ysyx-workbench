@@ -6,29 +6,16 @@ import npc.difftest.report;
 import npc.NPCTrap;
 import npc.trace.disasm;
 import npc.DUT;
+import npc.Output;
+import npc.SimulationContext;
 import :detail;
 namespace npc::difftest::detail
 {
-    void *REFHandle{nullptr};
-    REFDifftestMemcpy REFMemcpy{nullptr};
-    REFDifftestRegcpy REFRegcpy{nullptr};
-    REFDifftestExec REFExec{nullptr};
-    REFDifftestRaiseIntr REFRaiseIntr{nullptr};
-    REFDifftestTrap REFTrap{nullptr};
-    REFDifftestStateSize REFStateSize{nullptr};
-    REFDifftestCSRStateSize REFCSRStateSize{nullptr};
-    REFDifftestCSRcpy REFCSRcpy{nullptr};
-    REFDifftestFPRegcpy REFFPRegcpy{nullptr};
-    REFDifftestSetPlatform REFSetPlatform{nullptr};
-    REFDifftestLastInstruction REFLastInstruction{nullptr};
-    REFDifftestGetCSR REFGetCSR{nullptr};
-    bool Enabled{false};
-    bool Failed{false};
-
-    bool FPCompareEnabled{false};
-    std::size_t SkipCount{0};
-
-    DifftestCSRState LastDUTCSR{};
+    DiffTestState &State()
+    {
+        static DiffTestState state;
+        return state;
+    }
 
     template <typename Top>
     npc::XWord DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
@@ -56,7 +43,7 @@ namespace npc::difftest::detail
     DifftestCPUState ReadReferenceState()
     {
         DifftestCPUState state;
-        REFRegcpy(&state, DifftestCPUState::GetDirectionToDUT());
+        State().ref.REFRegcpy(&state, DifftestCPUState::GetDirectionToDUT());
         return state;
     }
 
@@ -70,8 +57,7 @@ namespace npc::difftest::detail
     DifftestFPState ReadReferenceFPState()
     {
         DifftestFPState state;
-        REFFPRegcpy(&state, DifftestCPUState::GetDirectionToDUT());
-
+        State().ref.REFFPRegcpy(&state, DifftestCPUState::GetDirectionToDUT());
         state.NormalizeFromABI();
         return state;
     }
@@ -99,14 +85,13 @@ namespace npc::difftest::detail
     DifftestCSRState ReadReferenceCSR()
     {
         DifftestCSRState state{};
-        REFCSRcpy(&state, DifftestCPUState::GetDirectionToDUT());
+        State().ref.REFCSRcpy(&state, DifftestCPUState::GetDirectionToDUT());
         return state;
     }
 
     bool CheckCSR(const DifftestCSRState &reference,
                   const DifftestCSRState &dut)
     {
-
         return reference.mstatus == dut.mstatus &&
                reference.mtvec == dut.mtvec &&
                reference.mepc == dut.mepc &&
@@ -128,13 +113,11 @@ namespace npc::difftest::detail
             ReadMtracePC(dut) != ReadRetirePC(dut))
             return true;
         const auto width{static_cast<unsigned>(dut->debug_mtrace_width)};
-
         if (width > 3U)
             return false;
         const auto bytes{static_cast<npc::XWord>(1U << width)};
         const auto address{ReadMtraceAddr(dut)};
 #ifdef VRISCV32E_NPC
-
         return RangeContains(address, bytes,
                              static_cast<npc::XWord>(npc::MBase),
                              static_cast<npc::XWord>(npc::MSize));
@@ -235,16 +218,15 @@ namespace npc::difftest::detail
                             bool current,
                             std::string_view note)
     {
-        if (REFLastInstruction == nullptr)
+        if (State().ref.REFLastInstruction == nullptr)
         {
             report.RefInstructionNote =
                 "REF 缺少 difftest_get_last_instruction";
             return;
         }
-
         std::uint64_t pc{0};
         std::uint64_t instruction{0};
-        REFLastInstruction(&pc, &instruction);
+        State().ref.REFLastInstruction(&pc, &instruction);
         report.HasRefInstruction = true;
         report.RefInstructionIsCurrent = current;
         report.RefInstructionPC = pc;
@@ -263,7 +245,6 @@ namespace npc::difftest::detail
         report.TrapTvalAvailable = dut.HasTrapTvalDebugState();
         if (report.TrapTvalAvailable)
             report.TrapTval = ReadTrapTval(dut);
-
         if (const auto instruction{dut.ReadMemory(report.TrapEPC, 4)};
             instruction)
         {
@@ -275,17 +256,16 @@ namespace npc::difftest::detail
                 DisassembleWord(report.TrapInstructionPC,
                                 report.TrapInstruction);
         }
-
-        if (REFGetCSR != nullptr)
+        if (State().ref.REFGetCSR != nullptr)
         {
             std::uint64_t value{0};
-            if (REFGetCSR(0x343U, &value))
+            if (State().ref.REFGetCSR(0x343U, &value))
             {
                 report.HasRefMtval = true;
                 report.RefMtval = value;
             }
             value = 0;
-            if (REFGetCSR(0x143U, &value))
+            if (State().ref.REFGetCSR(0x143U, &value))
             {
                 report.HasRefStval = true;
                 report.RefStval = value;
@@ -301,7 +281,6 @@ namespace npc::difftest::detail
             return;
         dutCSR.HasMtval = true;
         dutCSR.Mtval = report.TrapTval;
-
         if (report.HasRefStval && report.RefStval == report.TrapTval)
         {
             refCSR.HasMtval = true;
@@ -364,7 +343,6 @@ namespace npc::difftest::detail
         if (trapEvent)
         {
             FillTrapReport(report, dut);
-
             report.DUTNextPC = report.TrapTarget;
         }
         else
@@ -379,9 +357,8 @@ namespace npc::difftest::detail
                         npc::XWord dutPC,
                         npc::difftest::DifftestReport report)
     {
-        Failed = true;
+        State().Failed = true;
         report.Event = std::string{event};
-
         if (!report.HasTrap && report.HasDUTInstruction)
             AppendMemoryDump(report, dut, "PC", report.DUTInstructionPC);
         if (report.DUTState)
@@ -395,12 +372,11 @@ namespace npc::difftest::detail
             if (tp != pc && tp != sp)
                 AppendMemoryDump(report, dut, "TP", tp);
         }
-
         const auto text{npc::difftest::FormatDifftestReport(report)};
-        std::cerr.write(text.data(), static_cast<std::streamsize>(text.size()));
+        auto &out{dut.Context().Out()};
+        out.WriteRaw(OutputLevel::Error, text);
         if (!text.empty() && text.back() != '\n')
-            std::cerr.put('\n');
-        std::cerr.flush();
+            out.WriteRaw(OutputLevel::Error, "\n");
         NPCTrap::Halt(dutPC, 1);
     }
 }

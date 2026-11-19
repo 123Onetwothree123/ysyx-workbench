@@ -9,7 +9,7 @@ import org.scalatest.matchers.should.Matchers
   *
   * 验证：
   *   1. 一笔 INCR burst 的 [start, end] 按 beat 数展开，跨行部分交给 Cache 自行按行大小展开； 2. 下游 B 到达后 CPU slave 的 BVALID 不会提前出现，必须等
-  *      dmaSnoopDone 才释放，保证“看到 DMA 完成”时失效已经发生； 3. FIXED burst 只覆盖单个 beat 的字节范围。
+  *      DMASnoopDone 才释放，保证“看到 DMA 完成”时失效已经发生； 3. FIXED burst 只覆盖单个 beat 的字节范围。
   */
 class ysyx_26030103_DMAHardwareSnoopArbiterTest extends AnyFlatSpec with Matchers {
   private def asBool(value: Bool): Boolean = value.peek().litValue == 1
@@ -69,30 +69,30 @@ class ysyx_26030103_DMAHardwareSnoopArbiterTest extends AnyFlatSpec with Matcher
     dut:   ysyx_26030103_AXI5Arbiter,
     clock: Clock,
     addr:  Long,
-    len:   Int,
+    length:   Int,
     size:  Int,
     burst: Int
   ): Unit = {
-    dut.io.dma.AW.AWVALID.poke(true.B)
-    dut.io.dma.AW.AWADDR.poke(addr.U)
-    dut.io.dma.AW.AWID.poke(2.U)
-    dut.io.dma.AW.AWLEN.poke(len.U)
-    dut.io.dma.AW.AWSIZE.poke(size.U)
-    dut.io.dma.AW.AWBURST.poke(burst.U)
-    waitUntil(clock, asBool(dut.io.dma.AW.AWREADY), "DMA AW 未握手")
+    dut.io.DMA.AW.AWVALID.poke(true.B)
+    dut.io.DMA.AW.AWADDR.poke(addr.U)
+    dut.io.DMA.AW.AWID.poke(2.U)
+    dut.io.DMA.AW.AWLEN.poke(length.U)
+    dut.io.DMA.AW.AWSIZE.poke(size.U)
+    dut.io.DMA.AW.AWBURST.poke(burst.U)
+    waitUntil(clock, asBool(dut.io.DMA.AW.AWREADY), "DMA AW 未握手")
     clock.step()
-    dut.io.dma.AW.AWVALID.poke(false.B)
+    dut.io.DMA.AW.AWVALID.poke(false.B)
 
-    dut.io.dma.W.WVALID.poke(true.B)
-    for (beat <- 0 to len) {
-      dut.io.dma.W.WDATA.poke((0x1000 + beat).U)
-      dut.io.dma.W.WSTRB.poke("hf".U)
-      dut.io.dma.W.WLAST.poke((beat == len).B)
-      waitUntil(clock, asBool(dut.io.dma.W.WREADY), s"DMA W beat $beat 未握手")
+    dut.io.DMA.W.WVALID.poke(true.B)
+    for (beat <- 0 to length) {
+      dut.io.DMA.W.WDATA.poke((0x1000 + beat).U)
+      dut.io.DMA.W.WSTRB.poke("hf".U)
+      dut.io.DMA.W.WLAST.poke((beat == length).B)
+      waitUntil(clock, asBool(dut.io.DMA.W.WREADY), s"DMA W beat $beat 未握手")
       clock.step()
     }
-    dut.io.dma.W.WVALID.poke(false.B)
-    dut.io.dma.W.WLAST.poke(false.B)
+    dut.io.DMA.W.WVALID.poke(false.B)
+    dut.io.DMA.W.WLAST.poke(false.B)
   }
 
   "AXI5Arbiter" should "B 保持到地址级 snoop 完成并输出 burst 字节范围" in {
@@ -107,15 +107,15 @@ class ysyx_26030103_DMAHardwareSnoopArbiterTest extends AnyFlatSpec with Matcher
       clock.step(2)
       dut.reset.poke(false.B)
       idleSlaveInputs(dut.io.ifu)
-      idleSlaveInputs(dut.io.lsu)
-      idleSlaveInputs(dut.io.dma)
+      idleSlaveInputs(dut.io.LSU)
+      idleSlaveInputs(dut.io.DMA)
       idleMasterInputs(dut.io.memory)
-      dut.io.dmaARLock.poke(false.B)
-      dut.io.dmaAWLock.poke(false.B)
-      dut.io.dmaSnoopDone.poke(false.B)
+      dut.io.DMAARLock.poke(false.B)
+      dut.io.DMAAWLock.poke(false.B)
+      dut.io.DMASnoopDone.poke(false.B)
 
       // 8 个 4B beat = 32B 范围，故意跨多个 cache line。
-      dmaWrite(dut, clock, 0xc0000000L, len = 7, size = 2, burst = 1)
+      dmaWrite(dut, clock, 0xc0000000L, length = 7, size = 2, burst = 1)
 
       // 下游 B 到达后，snoop 请求出现，CPU slave B 必须继续等待。
       dut.io.memory.B.BVALID.poke(true.B)
@@ -125,23 +125,23 @@ class ysyx_26030103_DMAHardwareSnoopArbiterTest extends AnyFlatSpec with Matcher
       clock.step()
       dut.io.memory.B.BVALID.poke(false.B)
 
-      waitUntil(clock, asBool(dut.io.dmaSnoopValid), "snoop 请求未出现")
-      asLong(dut.io.dmaSnoopStart) should be(0xc0000000L)
-      asLong(dut.io.dmaSnoopEnd) should be(0xc000001fL)
+      waitUntil(clock, asBool(dut.io.DMASnoopValid), "snoop 请求未出现")
+      asLong(dut.io.DMASnoopStart) should be(0xc0000000L)
+      asLong(dut.io.DMASnoopEnd) should be(0xc000001fL)
       for (_ <- 0 until 3) {
-        asBool(dut.io.dma.B.BVALID) should be(false)
+        asBool(dut.io.DMA.B.BVALID) should be(false)
         clock.step()
       }
 
       // Cache 完成失效后才释放 CPU slave B。
-      dut.io.dmaSnoopDone.poke(true.B)
+      dut.io.DMASnoopDone.poke(true.B)
       clock.step()
-      dut.io.dmaSnoopDone.poke(false.B)
-      asBool(dut.io.dma.B.BVALID) should be(true)
-      asBool(dut.io.dmaSnoopValid) should be(false)
-      waitUntil(clock, asBool(dut.io.dma.B.BREADY), "DMA B 未握手")
+      dut.io.DMASnoopDone.poke(false.B)
+      asBool(dut.io.DMA.B.BVALID) should be(true)
+      asBool(dut.io.DMASnoopValid) should be(false)
+      waitUntil(clock, asBool(dut.io.DMA.B.BREADY), "DMA B 未握手")
       clock.step()
-      asBool(dut.io.dma.B.BVALID) should be(false)
+      asBool(dut.io.DMA.B.BVALID) should be(false)
     }
   }
 
@@ -157,23 +157,23 @@ class ysyx_26030103_DMAHardwareSnoopArbiterTest extends AnyFlatSpec with Matcher
       clock.step(2)
       dut.reset.poke(false.B)
       idleSlaveInputs(dut.io.ifu)
-      idleSlaveInputs(dut.io.lsu)
-      idleSlaveInputs(dut.io.dma)
+      idleSlaveInputs(dut.io.LSU)
+      idleSlaveInputs(dut.io.DMA)
       idleMasterInputs(dut.io.memory)
-      dut.io.dmaARLock.poke(false.B)
-      dut.io.dmaAWLock.poke(false.B)
-      dut.io.dmaSnoopDone.poke(false.B)
+      dut.io.DMAARLock.poke(false.B)
+      dut.io.DMAAWLock.poke(false.B)
+      dut.io.DMASnoopDone.poke(false.B)
 
-      dmaWrite(dut, clock, 0xc0000100L, len = 3, size = 2, burst = 0)
+      dmaWrite(dut, clock, 0xc0000100L, length = 3, size = 2, burst = 0)
       dut.io.memory.B.BVALID.poke(true.B)
       dut.io.memory.B.BID.poke(2.U)
       dut.io.memory.B.BRESP.poke(0.U)
       waitUntil(clock, asBool(dut.io.memory.B.BREADY), "下游 B 未握手")
       clock.step()
       dut.io.memory.B.BVALID.poke(false.B)
-      waitUntil(clock, asBool(dut.io.dmaSnoopValid), "snoop 请求未出现")
-      asLong(dut.io.dmaSnoopStart) should be(0xc0000100L)
-      asLong(dut.io.dmaSnoopEnd) should be(0xc0000103L)
+      waitUntil(clock, asBool(dut.io.DMASnoopValid), "snoop 请求未出现")
+      asLong(dut.io.DMASnoopStart) should be(0xc0000100L)
+      asLong(dut.io.DMASnoopEnd) should be(0xc0000103L)
     }
   }
 }

@@ -1,6 +1,6 @@
 export module stats;
 import std;
-// 统计: 总计 + 按记录类型分开计(条件分支/jal/call/ret/jalr), 避免某类接近100%的命中率淹没其他类的差异
+// 按记录类型分桶统计，避免高命中类型掩盖差异。
 export struct stats
 {
     std::size_t total{};

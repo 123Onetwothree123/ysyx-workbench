@@ -18,21 +18,21 @@ import _root_.ysyx_26030103.mmu.ysyx_26030103_PTWPMPFilter
   */
 class ysyx_26030103_AXIQueueConfigTest extends AnyFlatSpec with Matchers {
   "MMUProfile" should "默认把 PTW PMP fault 队列深度设为 8" in {
-    ysyx_26030103_MMUProfile().ptwPMPFaultQueueDepth should be(8)
+    ysyx_26030103_MMUProfile().PTWPMPFaultQueueDepth should be(8)
   }
 
   it should "接受 1..16 的 PTW PMP fault 队列深度" in {
-    ysyx_26030103_MMUProfile(ptwPMPFaultQueueDepth = 1)
-      .ptwPMPFaultQueueDepth should be(1)
-    ysyx_26030103_MMUProfile(ptwPMPFaultQueueDepth = 16)
-      .ptwPMPFaultQueueDepth should be(16)
+    ysyx_26030103_MMUProfile(PTWPMPFaultQueueDepth = 1)
+      .PTWPMPFaultQueueDepth should be(1)
+    ysyx_26030103_MMUProfile(PTWPMPFaultQueueDepth = 16)
+      .PTWPMPFaultQueueDepth should be(16)
   }
 
   it should "拒绝 0/17 的 PTW PMP fault 队列深度" in {
     for (depth <- Seq(0, 17)) {
       withClue(s"ptwPmpFaultQueueDepth=$depth: ") {
         val error = intercept[IllegalArgumentException] {
-          ysyx_26030103_MMUProfile(ptwPMPFaultQueueDepth = depth)
+          ysyx_26030103_MMUProfile(PTWPMPFaultQueueDepth = depth)
         }
         error.getMessage should include("ptwPmpFaultQueueDepth")
         error.getMessage should include("1..16")

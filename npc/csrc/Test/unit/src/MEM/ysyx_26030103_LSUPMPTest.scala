@@ -51,7 +51,7 @@ class ysyx_26030103_LSUPMPTest extends AnyFlatSpec with Matchers {
       dut: ysyx_26030103_LSU,
       address: Long,
       write: Boolean,
-      pc: Long
+      PC: Long
   ): Unit = {
     dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
     dut.io.in.bits.Retire.poke(true.B)
@@ -61,7 +61,7 @@ class ysyx_26030103_LSUPMPTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.ALUResult.poke(address.U(32.W))
     dut.io.in.bits.VAddress.poke(address.U(32.W))
     dut.io.in.bits.WidthSelect.poke(2.U(2.W))
-    dut.io.in.bits.pc.poke(pc.U(32.W))
+    dut.io.in.bits.PC.poke(PC.U(32.W))
   }
 
   private def expectNoBus(dut: ysyx_26030103_LSU): Unit = {
@@ -74,8 +74,8 @@ class ysyx_26030103_LSUPMPTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_LSU()) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
-      val pc = 0x80000100L
-      pokeMem(dut, 0x80002000L, write = true, pc)
+      val PC = 0x80000100L
+      pokeMem(dut, 0x80002000L, write = true, PC)
       dut.io.PMPFault.poke(true.B)
       dut.io.in.valid.poke(true.B)
 
@@ -85,7 +85,7 @@ class ysyx_26030103_LSUPMPTest extends AnyFlatSpec with Matchers {
         if (bool(dut.io.MemTrapCommit)) {
           trapped = true
           long(dut.io.MemTrapCause) should be(7L)
-          long(dut.io.MemTrapPC) should be(pc)
+          long(dut.io.MemTrapPC) should be(PC)
           long(dut.io.MemTrapTval) should be(0x80002000L)
           bool(dut.io.out.bits.Retire) should be(false)
         }
@@ -100,8 +100,8 @@ class ysyx_26030103_LSUPMPTest extends AnyFlatSpec with Matchers {
     simulate(new ysyx_26030103_LSU()) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
-      val pc = 0x80000200L
-      pokeMem(dut, 0x80003000L, write = false, pc)
+      val PC = 0x80000200L
+      pokeMem(dut, 0x80003000L, write = false, PC)
       dut.io.PMPFault.poke(true.B)
       dut.io.in.valid.poke(true.B)
 
@@ -111,7 +111,7 @@ class ysyx_26030103_LSUPMPTest extends AnyFlatSpec with Matchers {
         if (bool(dut.io.MemTrapCommit)) {
           trapped = true
           long(dut.io.MemTrapCause) should be(5L)
-          long(dut.io.MemTrapPC) should be(pc)
+          long(dut.io.MemTrapPC) should be(PC)
           long(dut.io.MemTrapTval) should be(0x80003000L)
           bool(dut.io.out.bits.Retire) should be(false)
         }
@@ -130,16 +130,16 @@ class ysyx_26030103_LSUPMPTest extends AnyFlatSpec with Matchers {
       dut.io.PMPFault.poke(false.B)
       dut.io.in.valid.poke(true.B)
 
-      var sawAr = false
+      var SawAR = false
       for (_ <- 0 until 8) {
         if (bool(dut.io.DataBus.AR.ARVALID)) {
-          sawAr = true
+          SawAR = true
           long(dut.io.DataBus.AR.ARADDR) should be(0x80004000L)
         }
         // 不真正完成读事务，只确认 PMP 放行后 AR 仍会正常出现。
         clock.step()
       }
-      sawAr should be(true)
+      SawAR should be(true)
     }
   }
 }

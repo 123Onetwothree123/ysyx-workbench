@@ -73,6 +73,7 @@ NPC_IMPORT_HEADERS := $(shell grep -rhoP '(?<=import <)[^>]+' $(NPC_CSRC_DIR) --
 
 NPC_IXX_SRCS := \
   $(NPC_CONFIG_MODULE) \
+  $(NPC_CSRC_DIR)/io/Output.ixx \
   $(NPC_CSRC_DIR)/log/log.ixx \
   $(NPC_CSRC_DIR)/unicode.ixx \
   $(NPC_CSRC_DIR)/DicArchCounterStats.ixx \
@@ -86,7 +87,7 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/sdb/TablePrinter.ixx \
   $(NPC_CSRC_DIR)/sdb/SDBCommandUtils.ixx \
   $(NPC_CSRC_DIR)/trace/RecordInstruction.ixx \
-  $(NPC_CSRC_DIR)/trace/ElfFunctionSymbol.ixx \
+  $(NPC_CSRC_DIR)/trace/ELFFunctionSymbol.ixx \
   $(NPC_CSRC_DIR)/trace/FtraceEvent.ixx \
   $(NPC_CSRC_DIR)/trace/FtraceFrame.ixx \
   $(NPC_CSRC_DIR)/trace/ReadelfFunction.ixx \
@@ -100,12 +101,17 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/sdb/command/Watchpoint.ixx \
   $(NPC_CSRC_DIR)/SoCMemoryMap/SoCMemoryMap.ixx \
   $(NPC_CSRC_DIR)/trace/iringbuf.ixx \
+  $(NPC_CSRC_DIR)/elf/ELFFile.ixx \
+  $(NPC_CSRC_DIR)/elf/ELFNames.ixx \
+  $(NPC_CSRC_DIR)/elf/ELFQuery.ixx \
+  $(NPC_CSRC_DIR)/elf/ELFPrinter.ixx \
   $(NPC_CSRC_DIR)/trace/readelf.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/ASTNode.ixx \
-  $(NPC_CSRC_DIR)/ImageLoader.ixx \
-  $(NPC_CSRC_DIR)/DUT.ixx \
-  $(NPC_CSRC_DIR)/difftest/DifftestCPUState.ixx \
-  $(NPC_CSRC_DIR)/difftest/DifftestReport.ixx \
+  $(NPC_CSRC_DIR)/sim/VgaChecker.ixx \
+  $(NPC_CSRC_DIR)/sim/UartController.ixx \
+  $(NPC_CSRC_DIR)/sim/CheckpointController.ixx \
+  $(NPC_CSRC_DIR)/sim/DebugStateMirror.ixx \
+  $(NPC_CSRC_DIR)/sim/PerfCounterAccumulator.ixx \
   $(NPC_CSRC_DIR)/trace/itrace.ixx \
   $(NPC_CSRC_DIR)/trace/ftrace.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/NumberNode.ixx \
@@ -115,15 +121,20 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/tools/expressions/UnaryMinusNode.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/ParenthesizedNode.ixx \
   $(NPC_CSRC_DIR)/tools/expressions/lexer.ixx \
+  $(NPC_CSRC_DIR)/tools/expressions/parser.ixx \
+  $(NPC_CSRC_DIR)/tools/expressions/expressions.ixx \
+  $(NPC_CSRC_DIR)/sdb/command/WatchpointPool.ixx \
+  $(NPC_CSRC_DIR)/sim/SimulationContext.ixx \
+  $(NPC_CSRC_DIR)/ImageLoader.ixx \
+  $(NPC_CSRC_DIR)/DUT.ixx \
+  $(NPC_CSRC_DIR)/difftest/DifftestCPUState.ixx \
+  $(NPC_CSRC_DIR)/difftest/DifftestReport.ixx \
+  $(NPC_CSRC_DIR)/difftest/DifftestDetail.ixx \
+  $(NPC_CSRC_DIR)/difftest/difftest.ixx \
   $(NPC_CSRC_DIR)/sdb/SDBCommandContext.ixx \
   $(NPC_CSRC_DIR)/sdb/SDBCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/NPCEvaluationContext.ixx \
-  $(NPC_CSRC_DIR)/difftest/DifftestDetail.ixx \
-  $(NPC_CSRC_DIR)/difftest/difftest.ixx \
-  $(NPC_CSRC_DIR)/tools/expressions/parser.ixx \
-  $(NPC_CSRC_DIR)/tools/expressions/expressions.ixx \
   $(NPC_CSRC_DIR)/sdb/SDBCommandRegistry.ixx \
-  $(NPC_CSRC_DIR)/sdb/command/WatchpointPool.ixx \
   $(NPC_CSRC_DIR)/sdb/command/helpCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/historyCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/cCommand.ixx \

@@ -79,12 +79,12 @@ class ysyx_26030103_AXIWriteMuxIDAuditTest extends AnyFlatSpec with Matchers {
     dut.io.out.R.RLAST.poke(false.B)
   }
 
-  private def checkAwID(useA: Boolean, id: Int): Unit = {
+  private def checkAwID(useA: Boolean, ID: Int): Unit = {
     simulate(new ysyx_26030103_AXIWriteMux()) { dut =>
       setup(dut)
       if (useA) {
         dut.io.a.AW.AWVALID.poke(true.B)
-        dut.io.a.AW.AWID.poke(id.U(4.W))
+        dut.io.a.AW.AWID.poke(ID.U(4.W))
         dut.io.a.AW.AWADDR.poke(0x1000.U)
         dut.io.a.W.WVALID.poke(true.B)
         dut.io.a.W.WDATA.poke("hdeadbeef".U)
@@ -92,7 +92,7 @@ class ysyx_26030103_AXIWriteMuxIDAuditTest extends AnyFlatSpec with Matchers {
         dut.io.a.W.WLAST.poke(true.B)
       } else {
         dut.io.b.AW.AWVALID.poke(true.B)
-        dut.io.b.AW.AWID.poke(id.U(4.W))
+        dut.io.b.AW.AWID.poke(ID.U(4.W))
         dut.io.b.AW.AWADDR.poke(0x2000.U)
         dut.io.b.W.WVALID.poke(true.B)
         dut.io.b.W.WDATA.poke("hcafebabe".U)
@@ -108,15 +108,15 @@ class ysyx_26030103_AXIWriteMuxIDAuditTest extends AnyFlatSpec with Matchers {
         cycles += 1
       }
       bool(dut.io.out.AW.AWVALID) should be(true)
-      dut.io.out.AW.AWID.peek().litValue should be(BigInt(id))
+      dut.io.out.AW.AWID.peek().litValue should be(BigInt(ID))
     }
   }
 
   "AXIWriteMux" should "透传 A 源的 AWID" in {
-    checkAwID(useA = true, id = 5)
+    checkAwID(useA = true, ID = 5)
   }
 
   it should "透传 B 源的 AWID" in {
-    checkAwID(useA = false, id = 9)
+    checkAwID(useA = false, ID = 9)
   }
 }

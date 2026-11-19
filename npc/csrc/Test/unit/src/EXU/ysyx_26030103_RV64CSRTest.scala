@@ -21,10 +21,10 @@ class ysyx_26030103_RV64CSRHarness(
     val isMret = Input(Bool())
     val isSret = Input(Bool())
     val isSfenceVma = Input(Bool())
-    val csrAddress = Input(UInt(12.W))
+    val CSRAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
     val rs1Data = Input(UInt(64.W))
-    val pc = Input(UInt(64.W))
+    val PC = Input(UInt(64.W))
     val trapTval = Input(UInt(64.W))
     val trapValid = Input(Bool())
     val trapCause = Input(UInt(32.W))
@@ -33,49 +33,49 @@ class ysyx_26030103_RV64CSRHarness(
     val rdata = Output(UInt(64.W))
     val exceptionTaken = Output(Bool())
     val exceptionTarget = Output(UInt(64.W))
-    val flushTLB = Output(Bool())
+    val FlushTLB = Output(Bool())
     val privilege = Output(UInt(2.W))
     val satp = Output(UInt(64.W))
     val trapCommit = Output(Bool())
     val committedCause = Output(UInt(32.W))
   })
-  val csr = Module(new ysyx_26030103_CSR(profile, XLEN = 64))
-  csr.io.clk := clock
-  csr.io.rst := reset
-  csr.io.Enable := io.enable
-  csr.io.MinstretRetireCommit := io.retireCommit
-  csr.io.IsCSRrw := io.isCSRrw
-  csr.io.IsCSRrs := io.isCSRrs
-  csr.io.IsCSRrc := io.isCSRrc
-  csr.io.IsEcall := io.isEcall
-  csr.io.IsEbreak := io.isEbreak
-  csr.io.IsMret := io.isMret
-  csr.io.IsSret := io.isSret
-  csr.io.IsSfenceVma := io.isSfenceVma
-  csr.io.CSRAddress := io.csrAddress
-  csr.io.rs1 := io.rs1
-  csr.io.Rs1Data := io.rs1Data
-  csr.io.pc := io.pc
-  csr.io.TrapTval := io.trapTval
-  csr.io.TrapTvalValid := true.B
-  csr.io.Interrupt := io.interrupt
-  csr.io.TimerInterrupt := false.B
-  csr.io.TrapValid := io.trapValid
-  csr.io.TrapCause := io.trapCause
-  csr.io.MemTrap := io.memTrap
-  csr.io.Mtime := 0.U
-  csr.io.FPCommit := false.B
-  csr.io.FPFlags := 0.U
-  csr.io.FPStateDirtyCommit := false.B
-  csr.io.PMUEvents := 0.U
-  io.rdata := csr.io.CSR_rdata
-  io.exceptionTaken := csr.io.ExceptionTaken
-  io.exceptionTarget := csr.io.ExceptionTarget
-  io.flushTLB := csr.io.FlushTLB
-  io.privilege := csr.io.Privilege
-  io.satp := csr.io.Satp
-  io.trapCommit := csr.io.TrapCommit
-  io.committedCause := csr.io.CommittedCause
+  val CSR = Module(new ysyx_26030103_CSR(profile, XLEN = 64))
+  CSR.io.clock := clock
+  CSR.io.reset := reset
+  CSR.io.Enable := io.enable
+  CSR.io.MinstretRetireCommit := io.retireCommit
+  CSR.io.IsCSRrw := io.isCSRrw
+  CSR.io.IsCSRrs := io.isCSRrs
+  CSR.io.IsCSRrc := io.isCSRrc
+  CSR.io.IsEcall := io.isEcall
+  CSR.io.IsEbreak := io.isEbreak
+  CSR.io.IsMret := io.isMret
+  CSR.io.IsSret := io.isSret
+  CSR.io.IsSfenceVma := io.isSfenceVma
+  CSR.io.CSRAddress := io.CSRAddress
+  CSR.io.rs1 := io.rs1
+  CSR.io.Rs1Data := io.rs1Data
+  CSR.io.PC := io.PC
+  CSR.io.TrapTval := io.trapTval
+  CSR.io.TrapTvalValid := true.B
+  CSR.io.Interrupt := io.interrupt
+  CSR.io.TimerInterrupt := false.B
+  CSR.io.TrapValid := io.trapValid
+  CSR.io.TrapCause := io.trapCause
+  CSR.io.MemTrap := io.memTrap
+  CSR.io.Mtime := 0.U
+  CSR.io.FPCommit := false.B
+  CSR.io.FPFlags := 0.U
+  CSR.io.FPStateDirtyCommit := false.B
+  CSR.io.PMUEvents := 0.U
+  io.rdata := CSR.io.CSR_rdata
+  io.exceptionTaken := CSR.io.ExceptionTaken
+  io.exceptionTarget := CSR.io.ExceptionTarget
+  io.FlushTLB := CSR.io.FlushTLB
+  io.privilege := CSR.io.Privilege
+  io.satp := CSR.io.Satp
+  io.trapCommit := CSR.io.TrapCommit
+  io.committedCause := CSR.io.CommittedCause
 }
 
 class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
@@ -92,11 +92,11 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       enabled = true,
       xlen = 64,
       levels = 3,
-      pteSizeBytes = 8,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
-      tlbEnabled = true,
-      tlbASIDBits = 16
+      PTESizeBytes = 8,
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
+      TLBEnabled = true,
+      TLBASIDBits = 16
     )
 
   private def bool(v: Bool): Boolean = v.peek().litValue == 1
@@ -116,10 +116,10 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddress.poke(0.U)
+    dut.io.CSRAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
-    dut.io.pc.poke(0.U)
+    dut.io.PC.poke(0.U)
     dut.io.trapTval.poke(0.U)
     dut.io.trapValid.poke(false.B)
     dut.io.trapCause.poke(0.U)
@@ -128,7 +128,7 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
   }
 
   private def write(dut: ysyx_26030103_RV64CSRHarness, addr: Int, data: BigInt): Unit = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(64.W))
     dut.io.enable.poke(true.B)
@@ -139,7 +139,7 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
   }
 
   private def read(dut: ysyx_26030103_RV64CSRHarness, addr: Int): BigInt = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.enable.poke(false.B)
     dut.clock.step()
     big(dut.io.rdata)
@@ -159,7 +159,7 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       write(dut, SATP, (BigInt(8) << 60) | BigInt("80001", 16))
       dut.io.isSfenceVma.poke(true.B)
       dut.io.enable.poke(true.B)
-      bool(dut.io.flushTLB) should be(true)
+      bool(dut.io.FlushTLB) should be(true)
       dut.clock.step()
     }
   }
@@ -190,7 +190,7 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       write(dut, SEPC, BigInt("0000000080001234", 16))
       read(dut, SEPC) should be(BigInt("0000000080001234", 16))
 
-      dut.io.pc.poke(BigInt("0000000080001234", 16).U(64.W))
+      dut.io.PC.poke(BigInt("0000000080001234", 16).U(64.W))
       dut.io.trapTval.poke(BigInt("0000000080003000", 16).U(64.W))
       dut.io.trapCause.poke(13.U)
       dut.io.trapValid.poke(true.B)
@@ -209,9 +209,9 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
     val mPlusU = ysyx_26030103_MMUProfile(
       enabled = false,
       xlen = 64,
-      pteSizeBytes = 8,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+      PTESizeBytes = 8,
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
       hasS = false,
       hasU = true
     )
@@ -228,7 +228,7 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       big(dut.io.privilege) should be(BigInt(0))
       big(dut.io.exceptionTarget) should be(BigInt("0000000080001000", 16))
 
-      dut.io.pc.poke(BigInt("0000000080001008", 16).U(64.W))
+      dut.io.PC.poke(BigInt("0000000080001008", 16).U(64.W))
       dut.io.enable.poke(true.B)
       dut.io.isEcall.poke(true.B)
       bool(dut.io.trapCommit) should be(true)
@@ -263,7 +263,7 @@ class ysyx_26030103_RV64CSRTest extends AnyFlatSpec with Matchers {
       big(dut.io.privilege) should be(BigInt(1))
 
       write(dut, 0x100, BigInt(2)) // sstatus.SIE
-      dut.io.pc.poke(BigInt("0000000080001000", 16).U(64.W))
+      dut.io.PC.poke(BigInt("0000000080001000", 16).U(64.W))
       dut.io.enable.poke(true.B)
       dut.io.interrupt.poke(true.B)
       bool(dut.io.trapCommit) should be(true)

@@ -49,26 +49,26 @@ class ysyx_26030103_ICacheVIPTTest extends AnyFlatSpec with Matchers {
   ): Seq[Long] = {
     waitUntil(
       clock,
-      bool(io.axi.AR.ARVALID),
+      bool(io.AXI.AR.ARVALID),
       s"$label ICache 未发出 refill AR（期望行 0x${expectedLine.toHexString}）"
     )
     withClue("refill AR 地址错误") {
-      long(io.axi.AR.ARADDR) should be(expectedLine)
+      long(io.AXI.AR.ARADDR) should be(expectedLine)
     }
-    val beats = long(io.axi.AR.ARLEN).toInt + 1
+    val beats = long(io.AXI.AR.ARLEN).toInt + 1
     val words = (0 until beats).map(beat => wordOf(expectedLine, beat))
-    io.axi.AR.ARREADY.poke(true.B)
+    io.AXI.AR.ARREADY.poke(true.B)
     clock.step()
-    io.axi.AR.ARREADY.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
     for (beat <- 0 until beats) {
-      io.axi.R.RDATA.poke(words(beat).U(32.W))
-      io.axi.R.RRESP.poke(0.U(2.W))
-      io.axi.R.RLAST.poke((beat + 1 == beats).B)
-      io.axi.R.RVALID.poke(true.B)
+      io.AXI.R.RDATA.poke(words(beat).U(32.W))
+      io.AXI.R.RRESP.poke(0.U(2.W))
+      io.AXI.R.RLAST.poke((beat + 1 == beats).B)
+      io.AXI.R.RVALID.poke(true.B)
       clock.step()
     }
-    io.axi.R.RVALID.poke(false.B)
-    io.axi.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
+    io.AXI.R.RLAST.poke(false.B)
     words
   }
 
@@ -76,9 +76,9 @@ class ysyx_26030103_ICacheVIPTTest extends AnyFlatSpec with Matchers {
       io: ysyx_26030103_ICacheInterface,
       clock: Clock
   ): Unit = {
-    io.resp_ready.poke(true.B)
+    io.ResponseReady.poke(true.B)
     clock.step()
-    io.resp_ready.poke(false.B)
+    io.ResponseReady.poke(false.B)
   }
 
   private def expectResponse(
@@ -87,12 +87,12 @@ class ysyx_26030103_ICacheVIPTTest extends AnyFlatSpec with Matchers {
       vaddr: Long,
       data: Long
   ): Unit = {
-    waitUntil(clock, bool(io.resp_valid), s"VA=0x${vaddr.toHexString} 没有响应")
+    waitUntil(clock, bool(io.ResponseValid), s"VA=0x${vaddr.toHexString} 没有响应")
     withClue("响应 PC 不是受理时的 VA") {
-      long(io.resp_addr) should be(vaddr)
+      long(io.ResponseAddress) should be(vaddr)
     }
-    withClue("响应数据错误") { long(io.resp_data) should be(data) }
-    bool(io.resp_fault) should be(false)
+    withClue("响应数据错误") { long(io.ResponseData) should be(data) }
+    bool(io.ResponseFault) should be(false)
     consumeResponse(io, clock)
   }
 
@@ -104,14 +104,14 @@ class ysyx_26030103_ICacheVIPTTest extends AnyFlatSpec with Matchers {
       paddrValid: Boolean,
       paddrVirtualAddress: Long
   ): Unit = {
-    io.fetch_vaddr.poke(vaddr.U(AddressW.W))
-    io.fetch_addr.poke(paddr.U(AddressW.W))
-    io.fetch_paddr_vaddr.poke(paddrVirtualAddress.U(AddressW.W))
-    io.fetch_paddr_valid.poke(paddrValid.B)
-    io.fetch_valid.poke(true.B)
-    waitUntil(clock, bool(io.fetch_ready), "ICache 未受理取指")
+    io.FetchVaddr.poke(vaddr.U(AddressW.W))
+    io.FetchAddress.poke(paddr.U(AddressW.W))
+    io.FetchPaddrVaddr.poke(paddrVirtualAddress.U(AddressW.W))
+    io.FetchPaddrValid.poke(paddrValid.B)
+    io.FetchValid.poke(true.B)
+    waitUntil(clock, bool(io.FetchReady), "ICache 未受理取指")
     clock.step()
-    io.fetch_valid.poke(false.B)
+    io.FetchValid.poke(false.B)
   }
 
   private def resetDut(
@@ -122,22 +122,22 @@ class ysyx_26030103_ICacheVIPTTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.fetch_addr.poke(0.U(AddressW.W))
-    io.fetch_vaddr.poke(0.U(AddressW.W))
-    io.fetch_paddr_valid.poke(false.B)
-    io.fetch_paddr_vaddr.poke(0.U(AddressW.W))
-    io.fetch_valid.poke(false.B)
-    io.resp_ready.poke(false.B)
-    io.axi.AR.ARREADY.poke(false.B)
-    io.axi.R.RDATA.poke(0.U(32.W))
-    io.axi.R.RRESP.poke(0.U(2.W))
-    io.axi.R.RLAST.poke(false.B)
-    io.axi.R.RVALID.poke(false.B)
+    io.FetchAddress.poke(0.U(AddressW.W))
+    io.FetchVaddr.poke(0.U(AddressW.W))
+    io.FetchPaddrValid.poke(false.B)
+    io.FetchPaddrVaddr.poke(0.U(AddressW.W))
+    io.FetchValid.poke(false.B)
+    io.ResponseReady.poke(false.B)
+    io.AXI.AR.ARREADY.poke(false.B)
+    io.AXI.R.RDATA.poke(0.U(32.W))
+    io.AXI.R.RRESP.poke(0.U(2.W))
+    io.AXI.R.RLAST.poke(false.B)
+    io.AXI.R.RVALID.poke(false.B)
     io.flush.poke(false.B)
     io.kill.poke(false.B)
-    io.snoop_valid.poke(false.B)
-    io.snoop_addr.poke(0.U(AddressW.W))
-    io.snoop_addr_hi.poke(0.U(AddressW.W))
+    io.SnoopValid.poke(false.B)
+    io.SnoopAddress.poke(0.U(AddressW.W))
+    io.SnoopAddressHi.poke(0.U(AddressW.W))
   }
 
   private def runVIPT(
@@ -150,34 +150,34 @@ class ysyx_26030103_ICacheVIPTTest extends AnyFlatSpec with Matchers {
     // --- 1) PA 未到：先受理 VA，仍不能用 VA 发 AR ---
     enterFetch(io, clock, VaA, 0L, paddrValid = false, paddrVirtualAddress = VaA)
     // 模拟 IFU 已经推进到下一 PC；ICache 应继续持有受理时的 VA_A。
-    io.fetch_vaddr.poke(VaB.U(AddressW.W))
-    io.fetch_valid.poke(true.B)
+    io.FetchVaddr.poke(VaB.U(AddressW.W))
+    io.FetchValid.poke(true.B)
     clock.step(3)
-    bool(io.fetch_xlate_pending) should be(true)
-    long(io.fetch_xlate_vaddr) should be(VaA)
-    bool(io.axi.AR.ARVALID) should be(false)
+    bool(io.FetchXlatePending) should be(true)
+    long(io.FetchXlateVaddr) should be(VaA)
+    bool(io.AXI.AR.ARVALID) should be(false)
     // 本测试随后显式发下一笔请求，先撤销 IFU 的持续 FetchValid，避免
     // 响应消费同拍自动受理下一笔。
-    io.fetch_valid.poke(false.B)
+    io.FetchValid.poke(false.B)
 
     // PA_A 带正确 VA 标签到达，按 VA index=1、PA tag 安装。
-    io.fetch_addr.poke(PaA.U(AddressW.W))
-    io.fetch_paddr_vaddr.poke(VaA.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
+    io.FetchAddress.poke(PaA.U(AddressW.W))
+    io.FetchPaddrVaddr.poke(VaA.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
     val lineA = refillLine(io, clock, PaA, "lineA")
     expectResponse(io, clock, VaA, lineA(0))
 
     // --- 2) 非恒等映射：VA_B 的 index 与 VA_A 相同，PA 相同 => 命中。
     // 若错误地用 PA 选 index，会访问组 0 而 miss。
-    io.fetch_vaddr.poke(VaB.U(AddressW.W))
-    io.fetch_addr.poke(PaA.U(AddressW.W))
-    io.fetch_paddr_vaddr.poke(VaB.U(AddressW.W))
-    io.fetch_paddr_valid.poke(true.B)
-    io.fetch_valid.poke(true.B)
-    waitUntil(clock, bool(io.fetch_ready), "VA_B 未被受理")
+    io.FetchVaddr.poke(VaB.U(AddressW.W))
+    io.FetchAddress.poke(PaA.U(AddressW.W))
+    io.FetchPaddrVaddr.poke(VaB.U(AddressW.W))
+    io.FetchPaddrValid.poke(true.B)
+    io.FetchValid.poke(true.B)
+    waitUntil(clock, bool(io.FetchReady), "VA_B 未被受理")
     clock.step()
-    io.fetch_valid.poke(false.B)
-    bool(io.axi.AR.ARVALID) should be(false)
+    io.FetchValid.poke(false.B)
+    bool(io.AXI.AR.ARVALID) should be(false)
     expectResponse(io, clock, VaB, lineA(0))
 
     // --- 3) VA 不变、PA tag 改变 => 必须 miss 并 refill 到新 PA ---
@@ -187,23 +187,23 @@ class ysyx_26030103_ICacheVIPTTest extends AnyFlatSpec with Matchers {
 
     // 同一 PA_B 换一个 VA_B（同 index）仍应命中。
     enterFetch(io, clock, VaB, PaB, paddrValid = true, paddrVirtualAddress = VaB)
-    bool(io.axi.AR.ARVALID) should be(false)
+    bool(io.AXI.AR.ARVALID) should be(false)
     expectResponse(io, clock, VaB, lineB(0))
 
     // --- 4) 旧 PA 标签不能用于新 VA ---
     // 先受理 VA_C 且不提供 PA，随后把仍挂在 PA_A 上的旧标签摆到端口上。
     enterFetch(io, clock, VaC, 0L, paddrValid = false, paddrVirtualAddress = VaC)
-    io.fetch_addr.poke(PaA.U(AddressW.W))
-    io.fetch_paddr_vaddr.poke(VaA.U(AddressW.W)) // 旧标签
-    io.fetch_paddr_valid.poke(true.B)
+    io.FetchAddress.poke(PaA.U(AddressW.W))
+    io.FetchPaddrVaddr.poke(VaA.U(AddressW.W)) // 旧标签
+    io.FetchPaddrValid.poke(true.B)
     clock.step(3)
-    bool(io.fetch_xlate_pending) should be(true)
-    long(io.fetch_xlate_vaddr) should be(VaC)
-    bool(io.axi.AR.ARVALID) should be(false)
+    bool(io.FetchXlatePending) should be(true)
+    long(io.FetchXlateVaddr) should be(VaC)
+    bool(io.AXI.AR.ARVALID) should be(false)
 
     // 正确标签到达后才允许 refill；响应仍属于 VA_C。
-    io.fetch_addr.poke(PaC.U(AddressW.W))
-    io.fetch_paddr_vaddr.poke(VaC.U(AddressW.W))
+    io.FetchAddress.poke(PaC.U(AddressW.W))
+    io.FetchPaddrVaddr.poke(VaC.U(AddressW.W))
     val lineC = refillLine(io, clock, PaC, "lineC")
     expectResponse(io, clock, VaC, lineC(0))
 
@@ -213,8 +213,8 @@ class ysyx_26030103_ICacheVIPTTest extends AnyFlatSpec with Matchers {
     clock.step()
     io.kill.poke(false.B)
     clock.step(3)
-    bool(io.resp_valid) should be(false)
-    bool(io.axi.AR.ARVALID) should be(false)
+    bool(io.ResponseValid) should be(false)
+    bool(io.AXI.AR.ARVALID) should be(false)
     // kill 后新请求仍能正常命中/响应。
     enterFetch(io, clock, VaB, PaC, paddrValid = true, paddrVirtualAddress = VaB)
     expectResponse(io, clock, VaB, lineC(0))

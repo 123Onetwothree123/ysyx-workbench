@@ -45,14 +45,14 @@ class ysyx_26030103_DCacheDMASnoopTest extends AnyFlatSpec with Matchers {
     scanMode:  String = "all_sets",
     indexBits: Int = IndexBits
   ): ysyx_26030103_DCacheBase = {
-    val addrW  = if (xlen == 64) 64 else 32
+    val AddressW  = if (xlen == 64) 64 else 32
     val params = Seq(
       "reg"  -> (() =>
         new ysyx_26030103_DCacheReg(
           Enable = true,
           BlockSizeLog2 = blockLog2,
           IndexBits = indexBits,
-          AddressWidth = addrW,
+          AddressWidth = AddressW,
           DataWidth = xlen,
           BusDataWidth = 32,
           VIPT = vipt,
@@ -70,7 +70,7 @@ class ysyx_26030103_DCacheDMASnoopTest extends AnyFlatSpec with Matchers {
           Enable = true,
           BlockSizeLog2 = blockLog2,
           IndexBits = indexBits,
-          AddressWidth = addrW,
+          AddressWidth = AddressW,
           DataWidth = xlen,
           BusDataWidth = 32,
           VIPT = vipt,
@@ -95,15 +95,15 @@ class ysyx_26030103_DCacheDMASnoopTest extends AnyFlatSpec with Matchers {
     reset.poke(true.B)
     clock.step(2)
     reset.poke(false.B)
-    io.req.valid.poke(false.B)
-    io.req.bits.addr.poke(0.U)
-    io.req.bits.vaddr.poke(0.U)
-    io.req.bits.WidthSelect.poke(2.U)
-    io.req.bits.signed.poke(false.B)
-    io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(0.U)
-    io.req_kill.poke(false.B)
-    io.resp.ready.poke(false.B)
+    io.request.valid.poke(false.B)
+    io.request.bits.address.poke(0.U)
+    io.request.bits.vaddr.poke(0.U)
+    io.request.bits.WidthSelect.poke(2.U)
+    io.request.bits.signed.poke(false.B)
+    io.RequestPaddrValid.poke(true.B)
+    io.RequestPaddrVaddr.poke(0.U)
+    io.RequestKill.poke(false.B)
+    io.response.ready.poke(false.B)
     io.StoreValid.poke(false.B)
     io.StoreResponse.poke(0.U)
     io.StoreAddress.poke(0.U)
@@ -116,9 +116,9 @@ class ysyx_26030103_DCacheDMASnoopTest extends AnyFlatSpec with Matchers {
     io.AXI.R.RRESP.poke(0.U)
     io.AXI.R.RLAST.poke(false.B)
     io.flush.poke(false.B)
-    io.dma_snoop_valid.poke(false.B)
-    io.dma_snoop_start.poke(0.U)
-    io.dma_snoop_end.poke(0.U)
+    io.DMASnoopValid.poke(false.B)
+    io.DMASnoopStart.poke(0.U)
+    io.DMASnoopEnd.poke(0.U)
   }
 
   private def issueLoadAt(
@@ -127,15 +127,15 @@ class ysyx_26030103_DCacheDMASnoopTest extends AnyFlatSpec with Matchers {
     addr:  Long,
     vaddr: Long
   ): Unit = {
-    io.req.bits.addr.poke(addr.U)
-    io.req.bits.vaddr.poke(vaddr.U)
-    io.req.bits.WidthSelect.poke(2.U)
-    io.req_paddr_valid.poke(true.B)
-    io.req_paddr_vaddr.poke(vaddr.U)
-    io.req.valid.poke(true.B)
-    waitUntil(clock, bool(io.req.ready), s"DCache 未受理 0x${addr.toHexString}")
+    io.request.bits.address.poke(addr.U)
+    io.request.bits.vaddr.poke(vaddr.U)
+    io.request.bits.WidthSelect.poke(2.U)
+    io.RequestPaddrValid.poke(true.B)
+    io.RequestPaddrVaddr.poke(vaddr.U)
+    io.request.valid.poke(true.B)
+    waitUntil(clock, bool(io.request.ready), s"DCache 未受理 0x${addr.toHexString}")
     clock.step()
-    io.req.valid.poke(false.B)
+    io.request.valid.poke(false.B)
   }
 
   private def issueLoad(
@@ -194,12 +194,12 @@ class ysyx_26030103_DCacheDMASnoopTest extends AnyFlatSpec with Matchers {
     data:  Long,
     label: String
   ): Unit = {
-    waitUntil(clock, bool(io.resp.valid), s"$label 没有响应")
-    withClue(s"$label 数据错误") { long(io.resp.bits.data) should be(data) }
-    bool(io.resp.bits.fault) should be(false)
-    io.resp.ready.poke(true.B)
+    waitUntil(clock, bool(io.response.valid), s"$label 没有响应")
+    withClue(s"$label 数据错误") { long(io.response.bits.data) should be(data) }
+    bool(io.response.bits.fault) should be(false)
+    io.response.ready.poke(true.B)
     clock.step()
-    io.resp.ready.poke(false.B)
+    io.response.ready.poke(false.B)
   }
 
   private def expectHit(
@@ -232,12 +232,12 @@ class ysyx_26030103_DCacheDMASnoopTest extends AnyFlatSpec with Matchers {
     lo:    Long,
     hi:    Long
   ): Unit = {
-    io.dma_snoop_start.poke(lo.U)
-    io.dma_snoop_end.poke(hi.U)
-    io.dma_snoop_valid.poke(true.B)
-    waitUntil(clock, bool(io.dma_snoop_ready), "DMA snoop 未 ready")
+    io.DMASnoopStart.poke(lo.U)
+    io.DMASnoopEnd.poke(hi.U)
+    io.DMASnoopValid.poke(true.B)
+    waitUntil(clock, bool(io.DMASnoopReady), "DMA snoop 未 ready")
     clock.step()
-    io.dma_snoop_valid.poke(false.B)
+    io.DMASnoopValid.poke(false.B)
   }
 
   private def runHitInvalidate(kind: String, xlen: Int): Unit = {
@@ -299,18 +299,18 @@ class ysyx_26030103_DCacheDMASnoopTest extends AnyFlatSpec with Matchers {
       // 第一拍是关键词：旧数据可能已经形成响应，必须被随后的 snoop 撤回。
       feedBeat(io, clock, 0xaaaa0000L, beats == 1)
 
-      io.dma_snoop_start.poke(LineA.U)
-      io.dma_snoop_end.poke((LineA + 3L).U)
-      io.dma_snoop_valid.poke(true.B)
+      io.DMASnoopStart.poke(LineA.U)
+      io.DMASnoopEnd.poke((LineA + 3L).U)
+      io.DMASnoopValid.poke(true.B)
       // 在途 refill 未排空前不能放行 DMA B。
-      bool(io.dma_snoop_ready) should be(false)
+      bool(io.DMASnoopReady) should be(false)
       for (beat <- 1 until beats) {
         feedBeat(io, clock, 0xdead0000L + beat.toLong, beat + 1 == beats)
       }
       // 排空后自动重取；此时才允许 DMA B 完成。
-      waitUntil(clock, bool(io.dma_snoop_ready), "in-flight snoop 未完成")
+      waitUntil(clock, bool(io.DMASnoopReady), "in-flight snoop 未完成")
       clock.step()
-      io.dma_snoop_valid.poke(false.B)
+      io.DMASnoopValid.poke(false.B)
 
       val replayBeats = acceptAr(io, clock)
       replayBeats should be(beats)

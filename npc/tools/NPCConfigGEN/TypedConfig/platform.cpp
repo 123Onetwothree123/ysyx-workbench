@@ -2,7 +2,7 @@ module npc.configgen;
 import std;
 namespace npc::configgen {
 void addPlatform(TypedFields &root, const Config &values,
-                 long long addressWidth, long long socXlen)
+                 long long addressWidth, long long SOCXlen)
 {
     TypedFields platform;
     addField(platform, "ram_size",
@@ -51,14 +51,14 @@ void addPlatform(TypedFields &root, const Config &values,
     addField(platform, "chip_link",
              TypedJson::boolean(flatBool(values, "CHIPLINK")));
     addField(platform, "address_width", TypedJson::integer(addressWidth));
-    addField(platform, "soc_xlen", TypedJson::integer(socXlen));
+    addField(platform, "soc_xlen", TypedJson::integer(SOCXlen));
     addField(root, "platform", TypedJson::object(std::move(platform)));
 }
 void addPma(TypedFields &root, const Config &values)
 {
-    TypedFields pma;
+    TypedFields PMA;
     const auto add = [&](const char *name, const char *key, long long fallback) {
-        addField(pma, name,
+        addField(PMA, name,
                  TypedJson::integer(flatInt(values, key, fallback)));
     };
     add("soc_reset_addr", "PMA_SOC_RESET_ADDR", 0x30000000LL);
@@ -86,19 +86,19 @@ void addPma(TypedFields &root, const Config &values)
     add("chiplink_mmio_size", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
     add("chiplink_mem_base", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
     add("chiplink_mem_size", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
-    addField(root, "pma", TypedJson::object(std::move(pma)));
+    addField(root, "PMA", TypedJson::object(std::move(PMA)));
 }
 void addSoc(TypedFields &root, const Config &values, long long xlen,
-            long long socXlen)
+            long long SOCXlen)
 {
-    TypedFields soc;
-    addField(soc, "cpu_xlen", TypedJson::integer(xlen));
-    addField(soc, "soc_xlen", TypedJson::integer(socXlen));
-    addField(soc, "soc_xlen_follow_cpu",
+    TypedFields SOC;
+    addField(SOC, "cpu_xlen", TypedJson::integer(xlen));
+    addField(SOC, "soc_xlen", TypedJson::integer(SOCXlen));
+    addField(SOC, "soc_xlen_follow_cpu",
              TypedJson::boolean(flatBool(values, "SOC_XLEN_FOLLOW_CPU")));
-    addField(soc, "chiplink",
+    addField(SOC, "chiplink",
              TypedJson::boolean(flatBool(values, "CHIPLINK")));
-    addField(soc, "sdram_use_axi",
+    addField(SOC, "sdram_use_axi",
              TypedJson::boolean(flatBool(values, "SDRAM_USE_AXI", true)));
     const bool internalFollow =
         flatBool(values, "INTERNAL_BUS_WIDTH_FOLLOW_CPU", true);
@@ -106,10 +106,10 @@ void addSoc(TypedFields &root, const Config &values, long long xlen,
         internalFollow ? xlen
                        : flatInt(values, "INTERNAL_BUS_WIDTH",
                                  xlen == 64 ? 64 : 32);
-    addField(soc, "internal_bus_width_follow_cpu",
+    addField(SOC, "internal_bus_width_follow_cpu",
              TypedJson::boolean(internalFollow));
-    addField(soc, "internal_xlen", TypedJson::integer(internalWidth));
-    addField(soc, "internal_id_bits", TypedJson::integer(4));
+    addField(SOC, "internal_xlen", TypedJson::integer(internalWidth));
+    addField(SOC, "internal_id_bits", TypedJson::integer(4));
     const long long synthFreq = flatInt(values, "SYNTH_FREQ", 450);
     TypedFields apb;
     addField(apb, "cpu_freq_mhz", TypedJson::integer(synthFreq));
@@ -117,15 +117,15 @@ void addSoc(TypedFields &root, const Config &values, long long xlen,
              TypedJson::integer(flatInt(values, "APB_DEVICE_FREQ", 100)));
     addField(apb, "delay_scale",
              TypedJson::integer(flatInt(values, "APB_DELAY_SCALE", 64)));
-    addField(soc, "apb", TypedJson::object(std::move(apb)));
-    TypedFields axi;
-    addField(axi, "cpu_freq_mhz", TypedJson::integer(synthFreq));
-    addField(axi, "device_freq_mhz",
+    addField(SOC, "apb", TypedJson::object(std::move(apb)));
+    TypedFields AXI;
+    addField(AXI, "cpu_freq_mhz", TypedJson::integer(synthFreq));
+    addField(AXI, "device_freq_mhz",
              TypedJson::integer(flatInt(values, "AXI_DEVICE_FREQ", 100)));
-    addField(axi, "delay_scale",
+    addField(AXI, "delay_scale",
              TypedJson::integer(flatInt(values, "AXI_DELAY_SCALE", 64)));
-    addField(soc, "axi", TypedJson::object(std::move(axi)));
-    addField(root, "soc", TypedJson::object(std::move(soc)));
+    addField(SOC, "AXI", TypedJson::object(std::move(AXI)));
+    addField(root, "SOC", TypedJson::object(std::move(SOC)));
 }
 void addBoot(TypedFields &root, const Config &values)
 {

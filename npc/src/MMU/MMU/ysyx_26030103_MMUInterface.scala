@@ -20,7 +20,7 @@ class ysyx_26030103_MMURequest(
   require(XLEN == 32 || XLEN == 64, s"MMURequest XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"MMURequest AddressWidth 非法: $AddressWidth")
-  val id = UInt(4.W)
+  val ID = UInt(4.W)
   val vaddr = UInt(XLEN.W)
   val access = UInt(2.W)
   val privilege = UInt(2.W)
@@ -36,7 +36,7 @@ class ysyx_26030103_MMUResponse(
   require(XLEN == 32 || XLEN == 64, s"MMUResponse XLEN 非法: $XLEN")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"MMUResponse AddressWidth 非法: $AddressWidth")
-  val id = UInt(4.W)
+  val ID = UInt(4.W)
   val paddr = UInt(AddressWidth.W)
   val fault = Bool()
   val cause = UInt(32.W)
@@ -45,29 +45,29 @@ class ysyx_26030103_MMUResponse(
 
 /** PTW 的物理页表访问总线。
   *
-  * id 用于标识一笔在途事务：PTW pipeline 可以同时发出多笔页表读，总线
-  * 响应允许乱序返回，由 id 匹配回各自 B 级槽位。单笔 walker 固定使用 0。
+  * ID 用于标识一笔在途事务：PTW pipeline 可以同时发出多笔页表读，总线
+  * 响应允许乱序返回，由 ID 匹配回各自 B 级槽位。单笔 walker 固定使用 0。
   * 总线数据仍为 32 位：8B PTE 由低/高两个 32 位字组成，A/D 写回也只
   * 修改包含标志位的低字；地址宽度跟随 AddressWidth（RV64 为 64 位）。
   */
 class ysyx_26030103_PTEBusRequest(val AddressWidth: Int = 32) extends Bundle {
   require(AddressWidth == 32 || AddressWidth == 64,
     s"PTEBusRequest AddressWidth 非法: $AddressWidth")
-  val id = UInt(4.W)
-  val addr = UInt(AddressWidth.W)
+  val ID = UInt(4.W)
+  val address = UInt(AddressWidth.W)
   val write = Bool()
   val data = UInt(32.W)
   val strb = UInt(4.W)
 }
 
 class ysyx_26030103_PTEBusResponse extends Bundle {
-  // 与请求相同的 id；响应方必须原样带回。
-  val id = UInt(4.W)
+  // 与请求相同的 ID；响应方必须原样带回。
+  val ID = UInt(4.W)
   val data = UInt(32.W)
   val fault = Bool()
 }
 
 class ysyx_26030103_PTEBusIO(val AddressWidth: Int = 32) extends Bundle {
-  val req = Decoupled(new ysyx_26030103_PTEBusRequest(AddressWidth))
-  val resp = Flipped(Decoupled(new ysyx_26030103_PTEBusResponse))
+  val request = Decoupled(new ysyx_26030103_PTEBusRequest(AddressWidth))
+  val response = Flipped(Decoupled(new ysyx_26030103_PTEBusResponse))
 }

@@ -95,7 +95,7 @@ class ysyx_26030103_SocXLENElaborationTest extends AnyFlatSpec with Matchers {
     // 调试/trap 仍是 32 位观测 ABI；高 32 位只能走 NPC 的 `_hi` 端口。
     Seq(
       "trap_pc",
-      "trap_pc_hi",
+      "TrapPCHi",
       "debug_gpr_rdata",
       "debug_gpr_rdata_hi",
       "debug_pc",
@@ -131,7 +131,7 @@ class ysyx_26030103_SocXLENElaborationTest extends AnyFlatSpec with Matchers {
           )
         )
       )
-      chirrtl should include("socSlaveBridge")
+      chirrtl should include("SOCSlaveBridge")
     }
   }
 
@@ -143,7 +143,7 @@ class ysyx_26030103_SocXLENElaborationTest extends AnyFlatSpec with Matchers {
     val chirrtl = ChiselStage.emitCHIRRTL(new ysyx_26030103(cpu64soc32))
     // 顶层 SoC 边界仍是 32 位地址/数据，桥负责 64->32 地址检查。
     checkPorts(chirrtl, 32)
-    chirrtl should include("socMasterBridge")
+    chirrtl should include("SOCMasterBridge")
   }
 
   "NPC top" should "在 CPU32/64 x SoC32/64 四种组合下 elaboration 一致的端口宽度" in {

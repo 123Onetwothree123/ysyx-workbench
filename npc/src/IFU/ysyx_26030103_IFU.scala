@@ -19,7 +19,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 // FetchAddr 是实际发给 ICache 的字对齐地址；FetchPC 是架构 PC（指令起点），
 // 供 BTB/PMP/MMU 故障报告使用。未启用 C 时两者相同。
 class ysyx_26030103_IFU(
-    resetAddress: Long = ysyx_26030103_PMAOptions.Default.socResetAddress,
+    resetAddress: Long = ysyx_26030103_PMAOptions.Default.SOCResetAddress,
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val UseC: Boolean = false
 ) extends Module {
@@ -57,24 +57,24 @@ class ysyx_26030103_IFU(
   })
 
   if (!UseC) {
-    val pcModule = Module(new ysyx_26030103_PC(resetAddress, XLEN))
-    val nextPCModule = Module(new ysyx_26030103_NextPC(XLEN))
-    val snpc = pcModule.io.ysyx_26030103_PC + 4.U(XLEN.W)
+    val PCModule = Module(new ysyx_26030103_PC(resetAddress, XLEN))
+    val NextPCModule = Module(new ysyx_26030103_NextPC(XLEN))
+    val snpc = PCModule.io.ysyx_26030103_PC + 4.U(XLEN.W)
 
     val redirect = io.Redirect || io.ExceptionTaken
     io.FetchValid := !redirect
-    io.FetchAddress := pcModule.io.ysyx_26030103_PC
-    io.FetchPC := pcModule.io.ysyx_26030103_PC
+    io.FetchAddress := PCModule.io.ysyx_26030103_PC
+    io.FetchPC := PCModule.io.ysyx_26030103_PC
 
-    nextPCModule.io.SNPC := snpc
-    nextPCModule.io.Redirect := io.Redirect
-    nextPCModule.io.RedirectTarget := io.RedirectTarget
-    nextPCModule.io.ExceptionTaken := io.ExceptionTaken
-    nextPCModule.io.ExceptionTarget := io.ExceptionTarget
-    nextPCModule.io.PredHit := io.PredHit && !redirect
-    nextPCModule.io.PredTarget := io.PredTarget
-    pcModule.io.ysyx_26030103_NextPC := nextPCModule.io.ysyx_26030103_NextPC
-    pcModule.io.PCEnable := redirect || (io.FetchValid && io.FetchReady)
+    NextPCModule.io.SNPC := snpc
+    NextPCModule.io.Redirect := io.Redirect
+    NextPCModule.io.RedirectTarget := io.RedirectTarget
+    NextPCModule.io.ExceptionTaken := io.ExceptionTaken
+    NextPCModule.io.ExceptionTarget := io.ExceptionTarget
+    NextPCModule.io.PredHit := io.PredHit && !redirect
+    NextPCModule.io.PredTarget := io.PredTarget
+    PCModule.io.ysyx_26030103_NextPC := NextPCModule.io.ysyx_26030103_NextPC
+    PCModule.io.PCEnable := redirect || (io.FetchValid && io.FetchReady)
 
     io.StallIdle := !io.FetchValid
     io.ResponseReady := false.B
@@ -85,7 +85,7 @@ class ysyx_26030103_IFU(
     val sIdle :: sWait :: Nil = Enum(2)
     val state = RegInit(sIdle)
     // 架构 PC：始终指向当前指令的起点，按 2 字节对齐。
-    val pcReg = RegInit(resetAddress.U(XLEN.W))
+    val PCReg = RegInit(resetAddress.U(XLEN.W))
     // 当前取指是否是跨字 32 位指令的第二个字。
     val secondWord = RegInit(false.B)
     // 跨字指令已经取到的低 16 位。
@@ -101,28 +101,28 @@ class ysyx_26030103_IFU(
     val redirect = io.Redirect || io.ExceptionTaken
     val redirectTarget =
       Mux(io.ExceptionTaken, io.ExceptionTarget, io.RedirectTarget)
-    val wordAlignedPC = Cat(pcReg(XLEN - 1, 2), "b00".U(2.W))
+    val WordAlignedPC = Cat(PCReg(XLEN - 1, 2), "b00".U(2.W))
     // 跨字指令的第二个字固定是当前字的下一个 4 字节字。
-    val fetchAddress = Mux(secondWord, wordAlignedPC + 4.U, wordAlignedPC)
+    val fetchAddress = Mux(secondWord, WordAlignedPC + 4.U, WordAlignedPC)
 
     io.FetchAddress := fetchAddress
-    io.FetchPC := pcReg
+    io.FetchPC := PCReg
     io.FetchValid := state === sIdle && !redirect && !faultHeld
     io.StallIdle := !io.FetchValid
 
     // 当前响应中属于本指令的半字：正常情况下 PC[1]=1 时取高半字；
     // 第二个字按字对齐取低半字。
-    val halfSelected = Mux(secondWord, 0.U(1.W), pcReg(1))
+    val halfSelected = Mux(secondWord, 0.U(1.W), PCReg(1))
     val halfword = Mux(halfSelected === 0.U, io.ResponseData(15, 0), io.ResponseData(31, 16))
     val is32 = halfword(1, 0) === "b11".U(2.W)
 
     val responseIsSecond = secondWord
-    val responseIsFirstHalf = !secondWord && is32 && pcReg(1)
-    val responseIsComplete32 = !secondWord && is32 && !pcReg(1)
+    val responseIsFirstHalf = !secondWord && is32 && PCReg(1)
+    val responseIsComplete32 = !secondWord && is32 && !PCReg(1)
 
     val emitInstr = WireDefault(false.B)
     val emitFault = WireDefault(false.B)
-    val nextPC = WireDefault(pcReg)
+    val NextPC = WireDefault(PCReg)
     val outInstruction = WireDefault(0.U(32.W))
     val outIsCompressed = WireDefault(false.B)
     val outException = WireDefault(false.B)
@@ -133,8 +133,8 @@ class ysyx_26030103_IFU(
 
     when(state === sWait && io.ResponseValid) {
       when(io.ResponseExceptionValid) {
-        // 取指访问错误优先于半字拼装。pc 仍指向指令起点用于 sepc/mepc；
-        // 实际故障取指地址（可能是跨字第二个字）由 pred_target 带给 EXU
+        // 取指访问错误优先于半字拼装。PC 仍指向指令起点用于 sepc/mepc；
+        // 实际故障取指地址（可能是跨字第二个字）由 PredTarget 带给 EXU
         // 写入 stval/mtval。
         emitFault := true.B
         outException := true.B
@@ -147,7 +147,7 @@ class ysyx_26030103_IFU(
         emitInstr := true.B
         outInstruction := Cat(io.ResponseData(15, 0), firstHalf)
         outIsCompressed := false.B
-        nextPC := Mux(savedPredTaken, savedPredTarget, pcReg + 4.U)
+        NextPC := Mux(savedPredTaken, savedPredTarget, PCReg + 4.U)
         outPredTaken := savedPredTaken
         outPredTarget := savedPredTarget
       }.elsewhen(responseIsFirstHalf) {
@@ -156,7 +156,7 @@ class ysyx_26030103_IFU(
         emitInstr := true.B
         outInstruction := io.ResponseData
         outIsCompressed := false.B
-        nextPC := Mux(savedPredTaken, savedPredTarget, pcReg + 4.U)
+        NextPC := Mux(savedPredTaken, savedPredTarget, PCReg + 4.U)
         outPredTaken := savedPredTaken
         outPredTarget := savedPredTarget
       }.otherwise {
@@ -164,7 +164,7 @@ class ysyx_26030103_IFU(
         emitInstr := true.B
         outInstruction := Cat(0.U(16.W), halfword)
         outIsCompressed := true.B
-        nextPC := Mux(savedPredTaken, savedPredTarget, pcReg + 2.U)
+        NextPC := Mux(savedPredTaken, savedPredTarget, PCReg + 2.U)
         outPredTaken := savedPredTaken
         outPredTarget := savedPredTarget
       }
@@ -173,15 +173,15 @@ class ysyx_26030103_IFU(
     io.Out.valid := emitInstr || emitFault
     io.Out.bits.Instruction := outInstruction
     io.Out.bits.IsCompressed := outIsCompressed && !outException
-    io.Out.bits.pc := pcReg
+    io.Out.bits.PC := PCReg
     io.Out.bits.ExceptionValid := outException
     io.Out.bits.ExceptionCause := Mux(outException, outCause, 0.U(4.W))
     io.Out.bits.AccessFaultResponse := outAccessFaultResponse
-    io.Out.bits.pred_taken := outPredTaken && !outException
-    // 异常指令不消费预测目标；这里复用 pred_target 把实际发生故障的取指
+    io.Out.bits.PredTaken := outPredTaken && !outException
+    // 异常指令不消费预测目标；这里复用 PredTarget 把实际发生故障的取指
     // 地址送到 EXU 作为 stval/mtval。32 位指令跨字时第二个字（如 ...1000）
-    // 才故障，而 Out.bits.pc/sepc 仍保持指令起点（...ffe）。
-    io.Out.bits.pred_target := Mux(outException, fetchAddress, outPredTarget)
+    // 才故障，而 Out.bits.PC/sepc 仍保持指令起点（...ffe）。
+    io.Out.bits.PredTarget := Mux(outException, fetchAddress, outPredTarget)
 
     // 第一个半字只是内部中间结果，可以直接消费；产生输出或故障的响应
     // 必须等下游握手，避免在反压时丢指令。
@@ -191,12 +191,12 @@ class ysyx_26030103_IFU(
 
     when(redirect) {
       // 重定向/异常优先：清掉未完成的半字和预测快照，从新目标重新开始。
-      pcReg := redirectTarget
+      PCReg := redirectTarget
       state := sIdle
       secondWord := false.B
       faultHeld := false.B
     }.elsewhen(io.Out.fire && emitInstr) {
-      pcReg := nextPC
+      PCReg := NextPC
       state := sIdle
       secondWord := false.B
     }.elsewhen(io.Out.fire && emitFault) {

@@ -4,22 +4,22 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
 
-class ysyx_26030103_NutShellMultiplier(val len: Int = 64) extends Module {
-  require(len >= 2, "NutShell multiplier width 非法")
+class ysyx_26030103_NutShellMultiplier(val length: Int = 64) extends Module {
+  require(length >= 2, "NutShell multiplier width 非法")
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(Vec(2, UInt(len.W))))
-    val out = Decoupled(UInt((2 * len).W))
+    val in = Flipped(Decoupled(Vec(2, UInt(length.W))))
+    val out = Decoupled(UInt((2 * length).W))
     val flush = Input(Bool())
   })
   private val valid = RegInit(VecInit(Seq.fill(4)(false.B)))
-  private val a0 = Reg(UInt(len.W))
-  private val b0 = Reg(UInt(len.W))
-  private val a1 = Reg(UInt(len.W))
-  private val b1 = Reg(UInt(len.W))
-  private val a2 = Reg(UInt(len.W))
-  private val b2 = Reg(UInt(len.W))
-  private val a3 = Reg(UInt(len.W))
-  private val b3 = Reg(UInt(len.W))
+  private val a0 = Reg(UInt(length.W))
+  private val b0 = Reg(UInt(length.W))
+  private val a1 = Reg(UInt(length.W))
+  private val b1 = Reg(UInt(length.W))
+  private val a2 = Reg(UInt(length.W))
+  private val b2 = Reg(UInt(length.W))
+  private val a3 = Reg(UInt(length.W))
+  private val b3 = Reg(UInt(length.W))
   private val busy = RegInit(false.B)
 
   a0 := io.in.bits(0)

@@ -27,10 +27,10 @@ class ysyx_26030103_CSRAuditHarness(
     val isMret = Input(Bool())
     val isSret = Input(Bool())
     val isSfenceVma = Input(Bool())
-    val csrAddress = Input(UInt(12.W))
+    val CSRAddress = Input(UInt(12.W))
     val rs1 = Input(UInt(5.W))
     val rs1Data = Input(UInt(64.W))
-    val pc = Input(UInt(64.W))
+    val PC = Input(UInt(64.W))
     val trapTval = Input(UInt(64.W))
     val trapTvalValid = Input(Bool())
     val trapValid = Input(Bool())
@@ -46,42 +46,42 @@ class ysyx_26030103_CSRAuditHarness(
     val privilege = Output(UInt(2.W))
     val stateMstatus = Output(UInt(64.W))
   })
-  val csr = Module(new ysyx_26030103_CSR(
+  val CSR = Module(new ysyx_26030103_CSR(
     profile, XLEN = 64, UseF = true, UseD = true, UseM = useM))
-  csr.io.clk := clock
-  csr.io.rst := reset
-  csr.io.Enable := io.enable
-  csr.io.MinstretRetireCommit := io.retireCommit
-  csr.io.IsCSRrw := io.isCSRrw
-  csr.io.IsCSRrs := io.isCSRrs
-  csr.io.IsCSRrc := io.isCSRrc
-  csr.io.IsEcall := io.isEcall
-  csr.io.IsEbreak := io.isEbreak
-  csr.io.IsMret := io.isMret
-  csr.io.IsSret := io.isSret
-  csr.io.IsSfenceVma := io.isSfenceVma
-  csr.io.CSRAddress := io.csrAddress
-  csr.io.rs1 := io.rs1
-  csr.io.Rs1Data := io.rs1Data
-  csr.io.pc := io.pc
-  csr.io.TrapTval := io.trapTval
-  csr.io.TrapTvalValid := io.trapTvalValid
-  csr.io.TrapValid := io.trapValid
-  csr.io.TrapCause := io.trapCause
-  csr.io.MemTrap := io.memTrap
-  csr.io.Interrupt := io.interrupt
-  csr.io.TimerInterrupt := io.timerInterrupt
-  csr.io.Mtime := io.mtime
-  csr.io.FPCommit := false.B
-  csr.io.FPFlags := 0.U
-  csr.io.FPStateDirtyCommit := false.B
-  csr.io.PMUEvents := 0.U
-  io.rdata := csr.io.CSR_rdata
-  io.stateTval := csr.io.StateTval
-  io.trapCommit := csr.io.TrapCommit
-  io.committedCause := csr.io.CommittedCause
-  io.privilege := csr.io.Privilege
-  io.stateMstatus := csr.io.StateMstatus
+  CSR.io.clock := clock
+  CSR.io.reset := reset
+  CSR.io.Enable := io.enable
+  CSR.io.MinstretRetireCommit := io.retireCommit
+  CSR.io.IsCSRrw := io.isCSRrw
+  CSR.io.IsCSRrs := io.isCSRrs
+  CSR.io.IsCSRrc := io.isCSRrc
+  CSR.io.IsEcall := io.isEcall
+  CSR.io.IsEbreak := io.isEbreak
+  CSR.io.IsMret := io.isMret
+  CSR.io.IsSret := io.isSret
+  CSR.io.IsSfenceVma := io.isSfenceVma
+  CSR.io.CSRAddress := io.CSRAddress
+  CSR.io.rs1 := io.rs1
+  CSR.io.Rs1Data := io.rs1Data
+  CSR.io.PC := io.PC
+  CSR.io.TrapTval := io.trapTval
+  CSR.io.TrapTvalValid := io.trapTvalValid
+  CSR.io.TrapValid := io.trapValid
+  CSR.io.TrapCause := io.trapCause
+  CSR.io.MemTrap := io.memTrap
+  CSR.io.Interrupt := io.interrupt
+  CSR.io.TimerInterrupt := io.timerInterrupt
+  CSR.io.Mtime := io.mtime
+  CSR.io.FPCommit := false.B
+  CSR.io.FPFlags := 0.U
+  CSR.io.FPStateDirtyCommit := false.B
+  CSR.io.PMUEvents := 0.U
+  io.rdata := CSR.io.CSR_rdata
+  io.stateTval := CSR.io.StateTval
+  io.trapCommit := CSR.io.TrapCommit
+  io.committedCause := CSR.io.CommittedCause
+  io.privilege := CSR.io.Privilege
+  io.stateMstatus := CSR.io.StateMstatus
 }
 
 class ysyx_26030103_CSRFunctionalAuditTest
@@ -105,10 +105,10 @@ class ysyx_26030103_CSRFunctionalAuditTest
       xlen = 64,
       pageSizeBytes = 4096,
       levels = 3,
-      pteSizeBytes = 8,
+      PTESizeBytes = 8,
       pageTableSizeBytes = 4096,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -127,10 +127,10 @@ class ysyx_26030103_CSRFunctionalAuditTest
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddress.poke(0.U)
+    dut.io.CSRAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
-    dut.io.pc.poke(0.U)
+    dut.io.PC.poke(0.U)
     dut.io.trapTval.poke(0.U)
     dut.io.trapTvalValid.poke(false.B)
     dut.io.trapValid.poke(false.B)
@@ -146,7 +146,7 @@ class ysyx_26030103_CSRFunctionalAuditTest
       dut: ysyx_26030103_CSRAuditHarness,
       address: Int
   ): BigInt = {
-    dut.io.csrAddress.poke(address.U)
+    dut.io.CSRAddress.poke(address.U)
     dut.io.enable.poke(false.B)
     dut.io.rdata.peek().litValue
   }
@@ -169,7 +169,7 @@ class ysyx_26030103_CSRFunctionalAuditTest
       address: Int,
       data: BigInt
   ): Unit = {
-    dut.io.csrAddress.poke(address.U)
+    dut.io.CSRAddress.poke(address.U)
     dut.io.rs1.poke(1.U)
     dut.io.rs1Data.poke(data.U(64.W))
     dut.io.enable.poke(true.B)
@@ -224,8 +224,8 @@ class ysyx_26030103_CSRFunctionalAuditTest
   it should "在 ecall 时把 mtval 写成 0，而不是故障 PC" in {
     simulate(new ysyx_26030103_CSRAuditHarness(profile)) { dut =>
       setup(dut)
-      val pc = BigInt("0000000080001234", 16)
-      dut.io.pc.poke(pc.U(64.W))
+      val PC = BigInt("0000000080001234", 16)
+      dut.io.PC.poke(PC.U(64.W))
       dut.io.trapTvalValid.poke(false.B)
       dut.io.enable.poke(true.B)
       dut.io.isEcall.poke(true.B)
@@ -234,22 +234,22 @@ class ysyx_26030103_CSRFunctionalAuditTest
       dut.clock.step()
       dut.io.enable.poke(false.B)
       dut.io.isEcall.poke(false.B)
-      // RISC-V 对 ecall 要求 mtval=0；当前实现会回退到 io.pc。
+      // RISC-V 对 ecall 要求 mtval=0；当前实现会回退到 io.PC。
       peekCSR(dut, MTVAL) should be(BigInt(0))
       // 对照：mepc 仍应精确记录 ecall 指令的 PC。
-      peekCSR(dut, MEPC) should be(pc)
+      peekCSR(dut, MEPC) should be(PC)
     }
   }
 
   it should "不因纯中断提交自增 minstret" in {
-    val irqProfile = profile.copy(hasSExternalIRQ = false)
-    simulate(new ysyx_26030103_CSRAuditHarness(irqProfile)) { dut =>
+    val IRQProfile = profile.copy(HasSExternalIRQ = false)
+    simulate(new ysyx_26030103_CSRAuditHarness(IRQProfile)) { dut =>
       setup(dut)
       writeCSR(dut, MSTATUS, BigInt(0x8))
       writeCSR(dut, 0x304, BigInt(0x800))
       writeCSR(dut, MTVEC, BigInt("0000000080002000", 16))
       val before = peekCSR(dut, MINSTRET)
-      dut.io.pc.poke(BigInt("0000000080001000", 16).U(64.W))
+      dut.io.PC.poke(BigInt("0000000080001000", 16).U(64.W))
       dut.io.enable.poke(true.B)
       dut.io.interrupt.poke(true.B)
       dut.io.trapCommit.peek().litToBoolean should be(true)
@@ -274,16 +274,16 @@ class ysyx_26030103_CSRFunctionalAuditTest
   it should "在中断提交时把 mtval 写成 0" in {
     // 默认 profile 的外部中断走 S 级；这里裁剪 hasSExternalIrq，让
     // io.interrupt 直接作为 M 级外部中断，在 M 模式验证中断 tval。
-    val irqProfile = profile.copy(hasSExternalIRQ = false)
-    simulate(new ysyx_26030103_CSRAuditHarness(irqProfile)) { dut =>
+    val IRQProfile = profile.copy(HasSExternalIRQ = false)
+    simulate(new ysyx_26030103_CSRAuditHarness(IRQProfile)) { dut =>
       setup(dut)
       writeCSR(dut, MSTATUS, BigInt(0x8)) // mstatus.MIE
       writeCSR(dut, 0x304, BigInt(0x800)) // mie.MEIE
       writeCSR(dut, MTVEC, BigInt("0000000080002000", 16))
       // 预置非零 mtval，确保下面的 0 来自 trap 写入而不是复位值。
       writeCSR(dut, MTVAL, BigInt("deadbeef", 16))
-      val pc = BigInt("0000000080001000", 16)
-      dut.io.pc.poke(pc.U(64.W))
+      val PC = BigInt("0000000080001000", 16)
+      dut.io.PC.poke(PC.U(64.W))
       dut.io.enable.poke(true.B)
       dut.io.interrupt.poke(true.B)
       dut.io.trapCommit.peek().litToBoolean should be(true)
@@ -295,7 +295,7 @@ class ysyx_26030103_CSRFunctionalAuditTest
       dut.io.interrupt.poke(false.B)
       // 中断没有 tval，mtval 必须为 0；mepc 仍记录被打断的 PC。
       peekCSR(dut, MTVAL) should be(BigInt(0))
-      peekCSR(dut, MEPC) should be(pc)
+      peekCSR(dut, MEPC) should be(PC)
     }
   }
 }

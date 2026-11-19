@@ -15,29 +15,29 @@ import _root_.ysyx_26030103.mmu._
 
 private[ysyx_26030103] trait PipelineConnect { this: ysyx_26030103 =>
   def connectPipeline(): Unit = {
-    idu.io.ex_valid := exu.io.HazardValid
-    idu.io.ex_rd := exu.io.HazardRd
-    idu.io.ex_regWrite := exu.io.HazardRegWrite
-    idu.io.ex_fwd_ready := exu.io.ForwardReady
-    idu.io.ex_fwd_data := exu.io.ForwardData
-    idu.io.ex_mdu_hidden_writes := exu.io.HazardMDUHiddenWrites
-    idu.io.wb_fwd_data := wbu.io.wdata
-    idu.io.wb_valid := wbu.io.in.valid
-    idu.io.wb_rd := wbu.io.in.bits.Rd
-    idu.io.wb_regWrite := wbu.io.in.bits.RegisterWrite
-    idu.io.pipeline_mode := true.B
+    idu.io.ExValid := exu.io.HazardValid
+    idu.io.ExRd := exu.io.HazardRd
+    idu.io.ExRegWrite := exu.io.HazardRegWrite
+    idu.io.ExForwardReady := exu.io.ForwardReady
+    idu.io.ExForwardData := exu.io.ForwardData
+    idu.io.ExMDUHiddenWrites := exu.io.HazardMDUHiddenWrites
+    idu.io.WbForwardData := wbu.io.wdata
+    idu.io.WbValid := wbu.io.in.valid
+    idu.io.WbRd := wbu.io.in.bits.Rd
+    idu.io.WbRegWrite := wbu.io.in.bits.RegisterWrite
+    idu.io.PipelineMode := true.B
     idu.io.Privilege := exu.io.CSRPrivilege
     idu.io.Mstatus := exu.io.CSRCurrentMstatus
     idu.io.Mcounteren := exu.io.Mcounteren
     idu.io.Scounteren := exu.io.Scounteren
 
     // 手动连线了
-    idu.io.ReadDATA1 := gpr.io.ReadDATA1
-    idu.io.ReadDATA2 := gpr.io.ReadDATA2
-    gpr.io.Read1SELECT := idu.io.Read1SELECT
-    gpr.io.Read2SELECT := idu.io.Read2SELECT
+    idu.io.ReadDATA1 := GPR.io.ReadDATA1
+    idu.io.ReadDATA2 := GPR.io.ReadDATA2
+    GPR.io.Read1SELECT := idu.io.Read1SELECT
+    GPR.io.Read2SELECT := idu.io.Read2SELECT
     // 浮点寄存器堆：三个组合读口 + WBU 单写口；另有 DiffTest 专用只读口。
-    fprOpt match {
+    FPROpt match {
       case Some(fpr) =>
         fpr.io.raddr1 := idu.io.Read1FSELECT
         fpr.io.raddr2 := idu.io.Read2FSELECT
@@ -50,58 +50,58 @@ private[ysyx_26030103] trait PipelineConnect { this: ysyx_26030103 =>
         fpr.io.wdata := wbu.io.FPWriteData
         // 调试口固定按 FLEN 读物理寄存器。FLEN=32 时再零扩展到 64 位，
         // 与 NEMU ABI 的固定 64 位槽位对齐；高 32 位不会带出 NaN-box。
-        fpr.io.DebugRaddr := io.debug.fpr_raddr
-        val debugFPR = fpr.io.DebugReadData.pad(64)
-        io.debug.fpr_rdata := debugFPR(31, 0)
-        io.debug.fpr_rdata_hi := DebugView.highWord(debugFPR, XLEN)
+        fpr.io.DebugRaddr := io.debug.FPRRaddr
+        val DebugFPR = fpr.io.DebugReadData.pad(64)
+        io.debug.FPRRdata := DebugFPR(31, 0)
+        io.debug.FPRRdataHi := DebugView.highWord(DebugFPR, XLEN)
       case None =>
         idu.io.ReadFPR1 := 0.U
         idu.io.ReadFPR2 := 0.U
         idu.io.ReadFPR3 := 0.U
-        io.debug.fpr_rdata := 0.U
-        io.debug.fpr_rdata_hi := 0.U
+        io.debug.FPRRdata := 0.U
+        io.debug.FPRRdataHi := 0.U
     }
-    io.debug.fp_valid := config.UseF.B
+    io.debug.FPValid := config.UseF.B
     idu.io.Frm := exu.io.CSRFrm
 
     // LSU(MEM级)给IDU做冒险检测和转发
-    idu.io.me_valid := lsu.io.HazardValid
-    idu.io.me_rd := lsu.io.HazardRd
-    idu.io.me_regWrite := lsu.io.HazardRegWrite
-    idu.io.me_memop := lsu.io.HazardMemOp
-    idu.io.me_fwd_ready := lsu.io.ForwardReady
-    idu.io.me_fwd_data := lsu.io.ForwardData
+    idu.io.MeValid := LSU.io.HazardValid
+    idu.io.MeRd := LSU.io.HazardRd
+    idu.io.MeRegWrite := LSU.io.HazardRegWrite
+    idu.io.MeMemop := LSU.io.HazardMemOp
+    idu.io.MeForwardReady := LSU.io.ForwardReady
+    idu.io.MeForwardData := LSU.io.ForwardData
     // LSU等待槽(EX/MEM流水寄存器)也给IDU做冒险检测和转发
-    idu.io.me2_valid := lsu.io.Hazard2Valid
-    idu.io.me2_rd := lsu.io.Hazard2Rd
-    idu.io.me2_regWrite := lsu.io.Hazard2RegWrite
-    idu.io.me2_memop := lsu.io.Hazard2MemOp
-    idu.io.me2_fwd_ready := lsu.io.Hazard2ForwardReady
-    idu.io.me2_fwd_data := lsu.io.Hazard2ForwardData
+    idu.io.Me2Valid := LSU.io.Hazard2Valid
+    idu.io.Me2Rd := LSU.io.Hazard2Rd
+    idu.io.Me2RegWrite := LSU.io.Hazard2RegWrite
+    idu.io.Me2Memop := LSU.io.Hazard2MemOp
+    idu.io.Me2ForwardReady := LSU.io.Hazard2ForwardReady
+    idu.io.Me2ForwardData := LSU.io.Hazard2ForwardData
     // 浮点转发/冒险端口。
-    idu.io.ex_fp_valid := exu.io.HazardFPValid
-    idu.io.ex_fp_rd := exu.io.HazardFPRd
-    idu.io.ex_fp_regWrite := exu.io.HazardFPRegWrite
-    idu.io.ex_fp_fwd_ready := exu.io.ForwardFPReady
-    idu.io.ex_fp_fwd_data := exu.io.ForwardFPData
-    idu.io.me_fp_valid := lsu.io.HazardValid
-    idu.io.me_fp_rd := lsu.io.HazardFPRd
-    idu.io.me_fp_regWrite := lsu.io.HazardFPRegWrite
-    idu.io.me_fp_fwd_ready := lsu.io.ForwardFPReady
-    idu.io.me_fp_fwd_data := lsu.io.ForwardFPData
-    idu.io.me2_fp_valid := lsu.io.Hazard2Valid
-    idu.io.me2_fp_rd := lsu.io.Hazard2FPRd
-    idu.io.me2_fp_regWrite := lsu.io.Hazard2FPRegWrite
-    idu.io.me2_fp_fwd_ready := lsu.io.Hazard2ForwardFPReady
-    idu.io.me2_fp_fwd_data := lsu.io.Hazard2ForwardFPData
-    idu.io.wb_fp_valid := wbu.io.in.valid
-    idu.io.wb_fp_rd := wbu.io.in.bits.Rd
-    idu.io.wb_fp_regWrite := wbu.io.in.bits.FPRegisterWrite
-    idu.io.wb_fp_fwd_data := wbu.io.FPWriteData
+    idu.io.ExFPValid := exu.io.HazardFPValid
+    idu.io.ExFPRd := exu.io.HazardFPRd
+    idu.io.ExFPRegWrite := exu.io.HazardFPRegWrite
+    idu.io.ExFPForwardReady := exu.io.ForwardFPReady
+    idu.io.ExFPForwardData := exu.io.ForwardFPData
+    idu.io.MeFPValid := LSU.io.HazardValid
+    idu.io.MeFPRd := LSU.io.HazardFPRd
+    idu.io.MeFPRegWrite := LSU.io.HazardFPRegWrite
+    idu.io.MeFPForwardReady := LSU.io.ForwardFPReady
+    idu.io.MeFPForwardData := LSU.io.ForwardFPData
+    idu.io.Me2FPValid := LSU.io.Hazard2Valid
+    idu.io.Me2FPRd := LSU.io.Hazard2FPRd
+    idu.io.Me2FPRegWrite := LSU.io.Hazard2FPRegWrite
+    idu.io.Me2FPForwardReady := LSU.io.Hazard2ForwardFPReady
+    idu.io.Me2FPForwardData := LSU.io.Hazard2ForwardFPData
+    idu.io.WbFPValid := wbu.io.in.valid
+    idu.io.WbFPRd := wbu.io.in.bits.Rd
+    idu.io.WbFPRegWrite := wbu.io.in.bits.FPRegisterWrite
+    idu.io.WbFPForwardData := wbu.io.FPWriteData
 
-    gpr.io.WriteSELECT := wbu.io.WriteSELECT
-    gpr.io.WriteEN := wbu.io.WriteEN
-    gpr.io.wdata := wbu.io.wdata
+    GPR.io.WriteSELECT := wbu.io.WriteSELECT
+    GPR.io.WriteEN := wbu.io.WriteEN
+    GPR.io.wdata := wbu.io.wdata
     // FP 指令在 WBU 真正退休时才置 FS=Dirty（故障 load/store 不置）。
     exu.io.FPStateDirtyCommit := wbu.io.FPCommit
     // minstret 按 WBU 真实退休计数：load/store 只有在 MEM 完成后才退休，
@@ -112,10 +112,10 @@ private[ysyx_26030103] trait PipelineConnect { this: ysyx_26030103 =>
     exu.io.MinstretRetireCommit := wbu.io.in.fire && wbu.io.in.bits.Retire &&
       !wbu.io.in.bits.WritesMinstret
     // 临时新加的处理中断的
-    exu.io.Interrupt := io.interrupt || plic.external_irq
-    exu.io.TimerInterrupt := clint.io.timer_irq
-    exu.io.Mtime := clint.io.mtime
+    exu.io.Interrupt := io.interrupt || PLIC.ExternalIRQ
+    exu.io.TimerInterrupt := CLINT.io.TimerIRQ
+    exu.io.Mtime := CLINT.io.mtime
 
-    idu.io.ex_memop := exu.io.HazardMemOp
+    idu.io.ExMemop := exu.io.HazardMemOp
   }
 }

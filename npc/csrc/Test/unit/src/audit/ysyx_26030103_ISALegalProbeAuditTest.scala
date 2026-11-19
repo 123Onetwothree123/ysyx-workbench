@@ -19,10 +19,10 @@ class ysyx_26030103_ISALegalProbeAuditTest
       xlen = 64,
       pageSizeBytes = 4096,
       levels = 3,
-      pteSizeBytes = 8,
+      PTESizeBytes = 8,
       pageTableSizeBytes = 4096,
-      pteFormat = "riscv64",
-      pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+      PTEFormat = "riscv64",
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
       hasS = true,
       hasU = true
     )
@@ -41,10 +41,10 @@ class ysyx_26030103_ISALegalProbeAuditTest
     dut.io.isMret.poke(false.B)
     dut.io.isSret.poke(false.B)
     dut.io.isSfenceVma.poke(false.B)
-    dut.io.csrAddress.poke(0.U)
+    dut.io.CSRAddress.poke(0.U)
     dut.io.rs1.poke(0.U)
     dut.io.rs1Data.poke(0.U)
-    dut.io.pc.poke(0.U)
+    dut.io.PC.poke(0.U)
     dut.io.trapTval.poke(0.U)
     dut.io.trapTvalValid.poke(false.B)
     dut.io.trapValid.poke(false.B)
@@ -59,7 +59,7 @@ class ysyx_26030103_ISALegalProbeAuditTest
       dut: ysyx_26030103_CSRAuditHarness,
       addr: Int
   ): BigInt = {
-    dut.io.csrAddress.poke(addr.U)
+    dut.io.CSRAddress.poke(addr.U)
     dut.io.enable.poke(false.B)
     dut.io.rdata.peek().litValue
   }
@@ -81,13 +81,13 @@ class ysyx_26030103_ISALegalProbeAuditTest
         xlen = 64,
         pageSizeBytes = 4096,
         levels = 3,
-        pteSizeBytes = 8,
+        PTESizeBytes = 8,
         pageTableSizeBytes = 4096,
-        pteFormat = "riscv64",
-        pteConfig = ysyx_26030103_PTEConfig(pteBits = 64, ppnHigh = 53),
+        PTEFormat = "riscv64",
+        PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53),
         hasS = hasS,
         hasU = hasU,
-        csrEnabled = Set(
+        CSREnabled = Set(
           0x300, 0x301, 0xb00, 0xb02, 0xb80, 0xb82,
           0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82
         )

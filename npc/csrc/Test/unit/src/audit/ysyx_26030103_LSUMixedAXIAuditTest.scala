@@ -38,7 +38,7 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
       data: BigInt,
       retire: Boolean,
       load: Boolean,
-      pc: BigInt
+      PC: BigInt
   )
 
   /** 单读槽 + 单写事务的 AXI 内存从设备。 */
@@ -48,17 +48,17 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
 
     private case class ReadTxn(
         base: Long,
-        len: Int,
+        length: Int,
         size: Int,
         burst: Int,
-        id: BigInt
+        ID: BigInt
     )
     private case class WriteTxn(
         base: Long,
-        len: Int,
+        length: Int,
         size: Int,
         burst: Int,
-        id: BigInt
+        ID: BigInt
     )
 
     private var readTxn: Option[ReadTxn] = None
@@ -73,11 +73,11 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
     private var readResponseError: Option[(Long, Int, Int)] = None
 
     val outputs = mutable.ArrayBuffer.empty[OutEvent]
-    var arCount = 0
-    var awCount = 0
+    var ARCount = 0
+    var AWCount = 0
 
-    def setReadError(addr: Long, beat: Int, resp: Int): Unit =
-      readResponseError = Some((addr & ~3L, beat, resp))
+    def setReadError(addr: Long, beat: Int, response: Int): Unit =
+      readResponseError = Some((addr & ~3L, beat, response))
     def clearReadError(): Unit = readResponseError = None
 
     private def wordAt(addr: Long): BigInt = {
@@ -116,7 +116,7 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
 
     private def maybeScheduleB(): Unit = {
       writeTxn.foreach { txn =>
-        val expected = txn.len + 1
+        val expected = txn.length + 1
         val gotLast = wBeats.nonEmpty && wBeats.last._3
         if (!bPending && (wBeats.size >= expected || gotLast)) {
           bPending = true
@@ -139,9 +139,9 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
       bus.AW.AWREADY.poke(awReady.B)
       bus.W.WREADY.poke(wReady.B)
       bus.B.BVALID.poke(bValid.B)
-      bus.B.BID.poke(writeTxn.map(_.id.U).getOrElse(0.U))
+      bus.B.BID.poke(writeTxn.map(_.ID.U).getOrElse(0.U))
       bus.B.BRESP.poke(bResponse.U)
-      bus.R.RID.poke(readTxn.map(_.id.U).getOrElse(0.U))
+      bus.R.RID.poke(readTxn.map(_.ID.U).getOrElse(0.U))
 
       var rData = BigInt(0)
       var rResponse = 0
@@ -152,35 +152,35 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
                       else 0L)
         val aligned = addr & ~3L
         rData = wordAt(aligned)
-        rLast = readBeat == txn.len
-        readResponseError.foreach { case (errAddress, errBeat, resp) =>
-          if (aligned == errAddress && readBeat == errBeat) rResponse = resp
+        rLast = readBeat == txn.length
+        readResponseError.foreach { case (errAddress, errBeat, response) =>
+          if (aligned == errAddress && readBeat == errBeat) rResponse = response
         }
-        bus.R.RID.poke(txn.id.U)
+        bus.R.RID.poke(txn.ID.U)
         bus.R.RDATA.poke(rData.U(32.W))
         bus.R.RRESP.poke(rResponse.U)
         bus.R.RLAST.poke(rLast.B)
       }
 
-      val arFire = arReady && bool(bus.AR.ARVALID)
+      val ARFire = arReady && bool(bus.AR.ARVALID)
       val rFire = rValid && bool(bus.R.RREADY)
-      val awFire = awReady && bool(bus.AW.AWVALID)
+      val AWFire = awReady && bool(bus.AW.AWVALID)
       val wFire = wReady && bool(bus.W.WVALID)
       val bFire = bValid && bool(bus.B.BREADY)
       // 与生产顶层一致：原子写完成事件同拍清空 DCache，供随后 load 看到
       // 新值；非原子事务 AtomicCommit 恒低，不影响其它用例。
       dut.io.DCacheFlush.poke(bool(dut.io.AtomicCommit).B)
 
-      val arAddress = if (arFire) bus.AR.ARADDR.peek().litValue.toLong else 0L
-      val arLen = if (arFire) bus.AR.ARLEN.peek().litValue.toInt else 0
-      val arSize = if (arFire) bus.AR.ARSIZE.peek().litValue.toInt else 0
-      val arBurst = if (arFire) bus.AR.ARBURST.peek().litValue.toInt else 0
-      val arID = if (arFire) bus.AR.ARID.peek().litValue else BigInt(0)
-      val awAddress = if (awFire) bus.AW.AWADDR.peek().litValue.toLong else 0L
-      val awLen = if (awFire) bus.AW.AWLEN.peek().litValue.toInt else 0
-      val awSize = if (awFire) bus.AW.AWSIZE.peek().litValue.toInt else 0
-      val awBurst = if (awFire) bus.AW.AWBURST.peek().litValue.toInt else 0
-      val awID = if (awFire) bus.AW.AWID.peek().litValue else BigInt(0)
+      val ARAddress = if (ARFire) bus.AR.ARADDR.peek().litValue.toLong else 0L
+      val arLen = if (ARFire) bus.AR.ARLEN.peek().litValue.toInt else 0
+      val arSize = if (ARFire) bus.AR.ARSIZE.peek().litValue.toInt else 0
+      val arBurst = if (ARFire) bus.AR.ARBURST.peek().litValue.toInt else 0
+      val arID = if (ARFire) bus.AR.ARID.peek().litValue else BigInt(0)
+      val AWAddress = if (AWFire) bus.AW.AWADDR.peek().litValue.toLong else 0L
+      val awLen = if (AWFire) bus.AW.AWLEN.peek().litValue.toInt else 0
+      val awSize = if (AWFire) bus.AW.AWSIZE.peek().litValue.toInt else 0
+      val awBurst = if (AWFire) bus.AW.AWBURST.peek().litValue.toInt else 0
+      val awID = if (AWFire) bus.AW.AWID.peek().litValue else BigInt(0)
       val wData = if (wFire) bus.W.WDATA.peek().litValue else BigInt(0)
       val wStrobe = if (wFire) bus.W.WSTRB.peek().litValue.toInt else 0
       val wLast = if (wFire) bool(bus.W.WLAST) else false
@@ -192,29 +192,29 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
           big(dut.io.out.bits.LoadData),
           bool(dut.io.out.bits.Retire),
           bool(dut.io.out.bits.MemoryValid) && !bool(dut.io.out.bits.MemoryWrite),
-          big(dut.io.out.bits.pc)
+          big(dut.io.out.bits.PC)
         )
       }
 
       dut.clock.step()
 
-      if (arFire) {
-        arCount += 1
-        readTxn = Some(ReadTxn(arAddress, arLen, arSize, arBurst, arID))
+      if (ARFire) {
+        ARCount += 1
+        readTxn = Some(ReadTxn(ARAddress, arLen, arSize, arBurst, arID))
         readDelay = readLatency
         readBeat = 0
       }
       if (rValid && rFire) {
         readTxn.foreach { txn =>
-          if (readBeat == txn.len) readTxn = None
+          if (readBeat == txn.length) readTxn = None
           else readBeat += 1
         }
       }
       if (readTxn.nonEmpty && readDelay > 0) readDelay -= 1
 
-      if (awFire) {
-        awCount += 1
-        writeTxn = Some(WriteTxn(awAddress, awLen, awSize, awBurst, awID))
+      if (AWFire) {
+        AWCount += 1
+        writeTxn = Some(WriteTxn(AWAddress, awLen, awSize, awBurst, awID))
         appliedBeats = 0
         for (i <- 0 until wBeats.size) applyBeat(i)
       }
@@ -259,8 +259,8 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
     dut.io.PMPFault.poke(false.B)
   }
 
-  private def pokeOp(dut: ysyx_26030103_LSU, op: MemOp, pc: Long): Unit = {
-    val addrWidth = dut.io.in.bits.ALUResult.getWidth
+  private def pokeOp(dut: ysyx_26030103_LSU, op: MemOp, PC: Long): Unit = {
+    val AddressWidth = dut.io.in.bits.ALUResult.getWidth
     dut.io.in.bits.poke(0.U.asTypeOf(chiselTypeOf(dut.io.in.bits)))
     dut.io.in.bits.Retire.poke(true.B)
     dut.io.in.bits.RegisterWrite.poke((!op.write || op.atomicOp.isDefined).B)
@@ -270,12 +270,12 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
     dut.io.in.bits.MemoryWrite.poke(op.write.B)
     dut.io.in.bits.IsAtomic.poke(op.atomicOp.isDefined.B)
     dut.io.in.bits.AtomicOp.poke(op.atomicOp.getOrElse(BigInt(0)).U(5.W))
-    dut.io.in.bits.ALUResult.poke(op.addr.U(addrWidth.W))
-    dut.io.in.bits.VAddress.poke(op.addr.U(addrWidth.W))
+    dut.io.in.bits.ALUResult.poke(op.addr.U(AddressWidth.W))
+    dut.io.in.bits.VAddress.poke(op.addr.U(AddressWidth.W))
     dut.io.in.bits.WidthSelect.poke(op.width.U(2.W))
     dut.io.in.bits.LoadSigned.poke(op.signed.B)
     dut.io.in.bits.StoreData.poke(op.data.U(64.W))
-    dut.io.in.bits.pc.poke(pc.U(addrWidth.W))
+    dut.io.in.bits.PC.poke(PC.U(AddressWidth.W))
     dut.io.in.valid.poke(true.B)
   }
 
@@ -284,10 +284,10 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
       dut: ysyx_26030103_LSU,
       model: AXIMemory,
       op: MemOp,
-      pc: Long,
+      PC: Long,
       limit: Int = 200
   ): Unit = {
-    pokeOp(dut, op, pc)
+    pokeOp(dut, op, PC)
     var cycles = 0
     while (!bool(dut.io.in.ready) && cycles < limit) {
       model.tick(); cycles += 1
@@ -349,7 +349,7 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
       count: Int,
       includeWide: Boolean,
       storage: ysyx_26030103_CacheStorage = ysyx_26030103_CacheStorage.Reg,
-      dcacheEnable: Boolean = true,
+      DCacheEnable: Boolean = true,
       blockLog2: Int = 4,
       indexBits: Int = 2
   ): Unit = {
@@ -358,7 +358,7 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
         BusDataWidth = 32,
         XLEN = xlen,
         AddressWidth = xlen,
-        DCacheEnable = dcacheEnable,
+        DCacheEnable = DCacheEnable,
         DCacheStorage = storage,
         DCacheBlockSizeLog2 = blockLog2,
         DCacheIndexBits = indexBits
@@ -371,7 +371,7 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
 
       // 初始化两个 PMA 区域，供 cacheable/non-cacheable 访存使用。
       val cacheAddressBase = 0x80000000L
-      val mmioAddressBase = 0x10000000L
+      val MMIOAddressBase = 0x10000000L
       for (i <- 0 until 4096) {
         model.writeWord(
           cacheAddressBase + i.toLong * 4,
@@ -380,19 +380,19 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
       }
       for (i <- 0 until 128) {
         model.writeWord(
-          mmioAddressBase + i.toLong * 4,
+          MMIOAddressBase + i.toLong * 4,
           BigInt((i.toLong * 0x85ebca6bL + 0x0badf00dL) & 0xffffffffL)
         )
       }
 
       def pickOp(): MemOp = {
-        val mmio = rng.nextInt(5) == 0
+        val MMIO = rng.nextInt(5) == 0
         val write = rng.nextBoolean()
         val width =
           if (includeWide && rng.nextInt(6) == 0) 3
           else rng.nextInt(3)
-        val base = if (mmio) mmioAddressBase else cacheAddressBase
-        val span = if (mmio) 0x100L else 0x2000L
+        val base = if (MMIO) MMIOAddressBase else cacheAddressBase
+        val span = if (MMIO) 0x100L else 0x2000L
         val widthBytes = 1 << width
         val alignMask = (widthBytes - 1).toLong
         var addr = base + ((rng.nextInt(span.toInt).toLong) & ~alignMask)
@@ -402,11 +402,11 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
         MemOp(addr, write, width, data, signed)
       }
 
-      var pc = 0x80000000L
+      var PC = 0x80000000L
       for (i <- 0 until count) {
         val op = pickOp()
         val before = model.outputs.size
-        issue(dut, model, op, pc)
+        issue(dut, model, op, PC)
         val outs = waitOutputs(dut, model, 1)
         val ev = outs.head
         withClue(
@@ -426,7 +426,7 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
           }
         }
         model.outputs.remove(before, model.outputs.size - before)
-        pc += 4
+        PC += 4
         // 每 16 笔强制制造一次背靠背：不等待上一条 store 的 B 就发下一条
         // store。这里用随机序列本身已经会因为 store 写缓冲而覆盖。
       }
@@ -479,7 +479,7 @@ class ysyx_26030103_LSUMixedAXIAuditTest extends AnyFlatSpec with Matchers {
   it should
     "RV64 无 DCache 的随机 load/store（含 8B 直读）与 golden 一致" in {
     runRandom(xlen = 64, seed = 0x5150abcd, count = 60,
-      includeWide = true, dcacheEnable = false)
+      includeWide = true, DCacheEnable = false)
   }
 
   it should "连续 store 在 B 延迟下保持顺序，随后 load 读到最新值" in {

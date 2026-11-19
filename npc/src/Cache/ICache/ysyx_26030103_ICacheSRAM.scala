@@ -39,7 +39,7 @@ class ysyx_26030103_ICacheSRAM(
   ysyx_26030103_VIPTAliasScan.requireMode(VIPTAliasScanMode, "ICacheSRAM")
   // valid/tag 留在公共 core；data 用同步读 SRAM：第N拍给地址和读使能，
   // 第N+1拍数据有效。禁用模式下 SRAM 不会被访问。
-  private lazy val dataMem = SyncReadMem(numBlocks * wordsPerBlock, UInt(32.W))
+  private lazy val dataMem = SyncReadMem(NumberBlocks * wordsPerBlock, UInt(32.W))
   // SRAM 数据晚一拍：命中响应的第一拍直接旁路 SRAM 输出，同时锁存到
   // resp_data_reg，之后被下游反压时用锁存值保证响应数据稳定。
   private lazy val responseDataHeld = RegInit(false.B)
@@ -68,7 +68,7 @@ class ysyx_26030103_ICacheSRAM(
     earlyReadPending := VIPT.B && !incomingPhysicalAddressMatch
   override protected def storageOnRefillBeat(keywordBeat: Bool): Unit = {
     when(stage1Waits && refillCacheable && keywordBeat) {
-      responseDataReg := beatWordOf(io.axi.R.RDATA, refillOffset)
+      responseDataReg := beatWordOf(io.AXI.R.RDATA, refillOffset)
     }
   }
   override protected def storageOnKill(): Unit = earlyReadPending := false.B
@@ -95,19 +95,19 @@ class ysyx_26030103_ICacheSRAM(
     // 即使 PA 尚未到达也要先锁存，等 tag 判定通过后直接使用。
     val earlyDataArrives =
       VIPT.B && stage1Valid && earlyReadPending && !responseDataHeld
-    val respDataArrives = stage1Valid && stage1Hit && !responseDataHeld
-    val dataArrives = earlyDataArrives || respDataArrives
-    val respDataFire = responding && io.resp_ready
-    val respDataSelected = if (Bypass) {
-      Mux(stage1Hit, Mux(respDataArrives, sramReadData, responseDataReg), responseDataReg)
+    val ResponseDataArrives = stage1Valid && stage1Hit && !responseDataHeld
+    val dataArrives = earlyDataArrives || ResponseDataArrives
+    val ResponseDataFire = responding && io.ResponseReady
+    val ResponseDataSelected = if (Bypass) {
+      Mux(stage1Hit, Mux(ResponseDataArrives, sramReadData, responseDataReg), responseDataReg)
     } else {
       responseDataReg
     }
-    io.resp_data := Mux(accessFaultReg, "h00000013".U, respDataSelected)
+    io.ResponseData := Mux(accessFaultReg, "h00000013".U, ResponseDataSelected)
     when(dataArrives) {
       responseDataReg := sramReadData
     }
-    when(!stage1Valid || respDataFire) {
+    when(!stage1Valid || ResponseDataFire) {
       responseDataHeld := false.B
       // 同拍受理新请求时不要清掉它刚设置的提前读标志。
       when(!accept) { earlyReadPending := false.B }

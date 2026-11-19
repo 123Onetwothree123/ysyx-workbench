@@ -42,17 +42,17 @@ class ysyx_26030103_RocketMultiplierRequest(val dataBits: Int = 64, val tagBits:
 class ysyx_26030103_RocketMultiplierResponse(val dataBits: Int = 64, val tagBits: Int = 5)
     extends Bundle {
   val data = UInt(dataBits.W)
-  val full_data = UInt((2 * dataBits).W)
+  val FullData = UInt((2 * dataBits).W)
   val tag = UInt(tagBits.W)
 }
 
 class ysyx_26030103_RocketMultiplierIO(val dataBits: Int = 64, val tagBits: Int = 5)
     extends Bundle {
-  val req = Flipped(Decoupled(new ysyx_26030103_RocketMultiplierRequest(dataBits, tagBits)))
+  val request = Flipped(Decoupled(new ysyx_26030103_RocketMultiplierRequest(dataBits, tagBits)))
   val kill = Input(Bool())
-  val resp = Decoupled(new ysyx_26030103_RocketMultiplierResponse(dataBits, tagBits))
-  val div_iterations = Output(UInt(16.W))
-  val div_early_out = Output(Bool())
+  val response = Decoupled(new ysyx_26030103_RocketMultiplierResponse(dataBits, tagBits))
+  val DivIterations = Output(UInt(16.W))
+  val DivEarlyOut = Output(Bool())
 }
 
 class ysyx_26030103_RocketMulDiv(
@@ -74,7 +74,7 @@ class ysyx_26030103_RocketMulDiv(
 
   private val sReady :: sNegInputs :: sMul :: sDiv :: _ :: sNegOutput :: sDoneMul :: sDoneDiv :: Nil = Enum(8)
   private val state = RegInit(sReady)
-  private val request = Reg(chiselTypeOf(io.req.bits))
+  private val requestRegister = Reg(chiselTypeOf(io.request.bits))
   private val count = Reg(UInt(log2Ceil(
     math.max(w / divUnroll + 1, mulw / mulUnroll)
   ).W))
@@ -84,14 +84,14 @@ class ysyx_26030103_RocketMulDiv(
   private val divisor = Reg(UInt((w + 1).W))
   private val remainder = Reg(UInt((2 * mulw + 2).W))
 
-  private val fn = io.req.bits.fn
+  private val fn = io.request.bits.fn
   private val cmdMul = (fn === FN_MUL || fn === FN_MULH || fn === FN_MULHU || fn === FN_MULHSU)
   private val cmdHi = (fn === FN_MULH || fn === FN_MULHU || fn === FN_MULHSU || fn === FN_REM || fn === FN_REMU)
   private val lhsSigned = (fn === FN_MULH || fn === FN_MULHSU || fn === FN_DIV || fn === FN_REM)
   private val rhsSigned = (fn === FN_MULH || fn === FN_DIV || fn === FN_REM)
 
-  private def halfWidth(request: ysyx_26030103_RocketMultiplierRequest): Bool =
-    (w > 32).B && request.dw === DW_32
+  private def halfWidth(requestRegister: ysyx_26030103_RocketMultiplierRequest): Bool =
+    (w > 32).B && requestRegister.dw === DW_32
 
   private def sext(x: UInt, halfW: Bool, signed: Bool): (UInt, Bool) = {
     val sign = signed && Mux(halfW, x(w / 2 - 1), x(w - 1))
@@ -99,8 +99,8 @@ class ysyx_26030103_RocketMulDiv(
     (Cat(hi, x(w / 2 - 1, 0)), sign)
   }
 
-  private val (lhsIn, lhsSign) = sext(io.req.bits.in1, halfWidth(io.req.bits), lhsSigned)
-  private val (rhsIn, rhsSign) = sext(io.req.bits.in2, halfWidth(io.req.bits), rhsSigned)
+  private val (lhsIn, lhsSign) = sext(io.request.bits.in1, halfWidth(io.request.bits), lhsSigned)
+  private val (rhsIn, rhsSign) = sext(io.request.bits.in2, halfWidth(io.request.bits), rhsSigned)
   private val subtractor = remainder(2 * w, w) - divisor
   private val result = Mux(resHi, remainder(2 * w, w + 1), remainder(w - 1, 0))
   private val negatedRemainder = -result
@@ -173,33 +173,33 @@ class ysyx_26030103_RocketMulDiv(
     }
     when(divby0 && !isHi) { negOut := false.B }
   }
-  when(io.resp.fire || io.kill) {
+  when(io.response.fire || io.kill) {
     state := sReady
   }
-  when(io.req.fire) {
+  when(io.request.fire) {
     state := Mux(cmdMul, sMul, Mux(lhsSign || rhsSign, sNegInputs, sDiv))
     isHi := cmdHi
     resHi := false.B
     count := (if (fastMulW) {
-      Mux(cmdMul && halfWidth(io.req.bits), (w / mulUnroll / 2).U, 0.U)
+      Mux(cmdMul && halfWidth(io.request.bits), (w / mulUnroll / 2).U, 0.U)
     } else {
       0.U
     })
     negOut := Mux(cmdHi, lhsSign, lhsSign =/= rhsSign)
     divisor := Cat(rhsSign, rhsIn)
     remainder := lhsIn
-    request := io.req.bits
+    requestRegister := io.request.bits
   }
   private val outMul = (state & (sDoneMul ^ sDoneDiv)) === (sDoneMul & ~sDoneDiv)
-  private val loOut = Mux(fastMulW.B && halfWidth(request) && outMul,
+  private val loOut = Mux(fastMulW.B && halfWidth(requestRegister) && outMul,
     result(w - 1, w / 2), result(w / 2 - 1, 0))
-  private val hiOut = Mux(halfWidth(request), Fill(w / 2, loOut(w / 2 - 1)), result(w - 1, w / 2))
-  io.resp.bits.tag := request.tag
-  io.resp.bits.data := Cat(hiOut, loOut)
-  io.resp.bits.full_data := Cat(remainder(2 * w, w + 1), remainder(w - 1, 0))
-  io.resp.valid := state === sDoneMul || state === sDoneDiv
-  io.req.ready := state === sReady
-  io.div_iterations := (count * divUnroll.U).pad(16)
-  io.div_early_out := state === sDoneDiv &&
+  private val hiOut = Mux(halfWidth(requestRegister), Fill(w / 2, loOut(w / 2 - 1)), result(w - 1, w / 2))
+  io.response.bits.tag := requestRegister.tag
+  io.response.bits.data := Cat(hiOut, loOut)
+  io.response.bits.FullData := Cat(remainder(2 * w, w + 1), remainder(w - 1, 0))
+  io.response.valid := state === sDoneMul || state === sDoneDiv
+  io.request.ready := state === sReady
+  io.DivIterations := (count * divUnroll.U).pad(16)
+  io.DivEarlyOut := state === sDoneDiv &&
     count < (w / divUnroll + 1).U
 }
