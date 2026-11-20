@@ -28,11 +28,30 @@ config TEST_NAME
 	  只跑名字包含该子串的测试，空表示不过滤。
 	  这里填英文测试名片段，例如 PLIC、printf。
 
-config TEST_ARCH
-	string "目标架构 ARCH"
+menu "目标平台"
+
+choice
+	prompt "ARCH"
+	default TEST_ARCH_FOLLOW
+	help
+	  跟随模式下由 xlen.mk 按 CONFIG_XLEN 推导，和当前 NPC 配置一致。
+	  自定义时填 abstract-machine/scripts/<ARCH>.mk 的文件名。
+
+config TEST_ARCH_FOLLOW
+	bool "跟随 NPC 配置 (CONFIG_XLEN)"
+config TEST_ARCH_CUSTOM
+	bool "自定义"
+endchoice
+
+config TEST_ARCH_CUSTOM_VALUE
+	string "自定义 ARCH"
+	depends on TEST_ARCH_CUSTOM
 	default ""
 	help
-	  传给测试的 ARCH；空则使用环境变量 ARCH。
+	  必须对应 abstract-machine/scripts/ 下的某个 .mk，例如 riscv64gc-npc。
+	  运行时会按该目录校验，拼错会直接报错。
+
+endmenu
 
 config TEST_TIMEOUT_SCALE
 	int "超时倍数 timeout scale"
@@ -42,8 +61,9 @@ config TEST_TIMEOUT_SCALE
 	  所有测试超时时间乘以该倍数。
 
 config TEST_RETRY
-	int "失败重试次数 retry"
-	range 0 10
-	default 0
+	int "失败重试次数 retry (-1 = 沿用注册表)"
+	range -1 10
+	default -1
 	help
-	  失败后重试次数；命令行 --retry 会覆盖。
+	  失败后重试次数，-1 表示不覆盖注册表里的 retry。
+	  命令行 --retry 会覆盖这里。

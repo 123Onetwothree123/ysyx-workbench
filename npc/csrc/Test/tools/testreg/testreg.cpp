@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
 #include <signal.h>
@@ -194,8 +195,9 @@ struct Selection {
     std::string tag;
     std::string name;
     std::string arch;
+    bool archCustom{false};
     int timeoutScale{1};
-    int retry{0};
+    int retry{-1};
 };
 
 std::string TrimQuotes(std::string s) {
@@ -207,23 +209,61 @@ Selection LoadSelection(const fs::path &path) {
     Selection sel;
     std::ifstream in(path);
     if (!in) return sel;
+    std::string custom;
+    bool customEnabled = false;
     std::string line;
     while (std::getline(in, line)) {
         if (line.rfind("CONFIG_TEST_", 0) != 0) continue;
         auto eq = line.find('=');
         if (eq == std::string::npos) continue;
-        std::string key = line.substr(0, eq);
-        std::string val = TrimQuotes(line.substr(eq + 1));
+        const std::string key = line.substr(0, eq);
+        const std::string val = TrimQuotes(line.substr(eq + 1));
         if (key == "CONFIG_TEST_TIER_FUNCTIONAL" && val == "y") sel.tier = "functional";
         else if (key == "CONFIG_TEST_TIER_PERFORMANCE" && val == "y") sel.tier = "performance";
         else if (key == "CONFIG_TEST_TIER_ALL" && val == "y") sel.tier = "all";
         else if (key == "CONFIG_TEST_TAG") sel.tag = val;
         else if (key == "CONFIG_TEST_NAME") sel.name = val;
-        else if (key == "CONFIG_TEST_ARCH") sel.arch = val;
         else if (key == "CONFIG_TEST_TIMEOUT_SCALE") sel.timeoutScale = std::max(1, std::atoi(val.c_str()));
-        else if (key == "CONFIG_TEST_RETRY") sel.retry = std::max(0, std::atoi(val.c_str()));
+        else if (key == "CONFIG_TEST_RETRY") sel.retry = std::max(-1, std::atoi(val.c_str()));
+        else if (key == "CONFIG_TEST_ARCH_CUSTOM_VALUE") custom = val;
+        else if (key == "CONFIG_TEST_ARCH_CUSTOM") customEnabled = (val == "y");
     }
+    sel.archCustom = customEnabled;
+    if (customEnabled) sel.arch = custom;
     return sel;
+}
+
+std::string ShellQuote(const std::string &s) {
+    std::string out = "'";
+    for (char c : s) {
+        if (c == '\'') out += "'\\''";
+        else out += c;
+    }
+    out += "'";
+    return out;
+}
+
+// 读取 xlen.mk 的 XLEN_AM_ARCH，保证和测试 Makefile 用同一份映射。
+std::optional<std::string> FollowArch(const fs::path &testDir) {
+    const fs::path xlen = testDir / "xlen.mk";
+    if (!fs::exists(xlen)) return std::nullopt;
+    const std::string cmd =
+        "env -u MAKEFLAGS -u MFLAGS -u MAKELEVEL make -s --no-print-directory -f " +
+        ShellQuote(xlen.string()) + " xlen-show 2>/dev/null";
+    std::FILE *pipe = ::popen(cmd.c_str(), "r");
+    if (!pipe) return std::nullopt;
+    std::optional<std::string> arch;
+    char buf[512];
+    while (std::fgets(buf, sizeof buf, pipe)) {
+        std::string_view line{buf};
+        constexpr std::string_view key = "XLEN_AM_ARCH=";
+        if (!line.starts_with(key)) continue;
+        line.remove_prefix(key.size());
+        while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.remove_suffix(1);
+        if (!line.empty()) arch = std::string{line};
+    }
+    ::pclose(pipe);
+    return arch;
 }
 
 std::vector<TestCase> Scan(const fs::path &root) {
@@ -343,10 +383,36 @@ Result RunOnce(const TestCase &t, const std::string &arch, const fs::path &logDi
     return Result::Fail;
 }
 
+// 和 abstract-machine/Makefile 一样，ARCH 的合法取值就是 scripts/*.mk 的文件名。
+std::vector<std::string> AvailableArchs(const fs::path &testDir) {
+    fs::path scripts;
+    if (const char *am = std::getenv("AM_HOME"); am && *am) scripts = fs::path{am} / "scripts";
+    else scripts = testDir / ".." / ".." / ".." / "abstract-machine" / "scripts";
+    std::vector<std::string> out;
+    std::error_code ec;
+    for (const auto &e : fs::directory_iterator(scripts, ec)) {
+        if (ec) break;
+        if (e.path().extension() != ".mk") continue;
+        out.push_back(e.path().stem().string());
+    }
+    std::ranges::sort(out);
+    return out;
+}
+
+std::string JoinArchs(const std::vector<std::string> &archs) {
+    std::string out;
+    for (const auto &a : archs) {
+        if (!out.empty()) out += ", ";
+        out += a;
+    }
+    return out;
+}
+
 std::string Usage() {
     return "用法:\n"
-           "  testreg list [--tier functional|performance] [--tag T] [--name S] [--json]\n"
-           "  testreg run  [--tier functional|performance|all] [--tag T] [--name S] [--arch A] [--retry N]\n"
+           "  testreg list   [--tier functional|performance] [--tag T] [--name S] [--json]\n"
+           "  testreg run    [--tier functional|performance|all] [--tag T] [--name S] [--arch A] [--retry N]\n"
+           "  testreg config 打印当前生效的选择\n"
            "  testreg menu\n"
            "  testreg clean\n"
            "环境变量 ARCH 可作为 --arch 的默认值。\n";
@@ -389,6 +455,9 @@ int main(int argc, char **argv) {
         else if (a == "-h" || a == "--help") { std::print("{}", Usage()); return 0; }
         else { std::println(std::cerr, "未知参数: {}", a); return 2; }
     }
+    if (arch.empty() && !sel.archCustom && (cmd == "list" || cmd == "run" || cmd == "config")) {
+        if (auto followed = FollowArch(testDir)) arch = *followed;
+    }
     const auto tests = Scan(testDir);
     if (jobs != 1) std::println(std::cerr, "警告：当前只实现串行执行，忽略 --jobs {}", jobs);
 
@@ -413,11 +482,40 @@ int main(int argc, char **argv) {
         }
         return 0;
     }
+    if (cmd == "config") {
+        const auto archs = AvailableArchs(testDir);
+        const bool archValid = arch.empty() ||
+            std::find(archs.begin(), archs.end(), arch) != archs.end();
+        std::size_t selected = 0;
+        for (const auto &t : tests) {
+            if (Match(t, tier, tag, nameFilter, arch, allTiers)) ++selected;
+        }
+        std::println("tier     {}", tier);
+        if (arch.empty() && sel.archCustom) {
+            std::println("arch     (自定义为空)");
+        } else {
+            std::println("arch     {}{}", arch.empty() ? "(未设置)" : arch,
+                         archValid ? "" : "  <- abstract-machine 中没有该 ARCH");
+        }
+        std::println("tag      {}", tag.empty() ? "(不过滤)" : tag);
+        std::println("name     {}", nameFilter.empty() ? "(不过滤)" : nameFilter);
+        std::println("timeout  x{}", timeoutScale);
+        std::println("retry    {}", retryOverride);
+        std::println("tests    {}", selected);
+        if (sel.archCustom && arch.empty()) {
+            std::println(std::cerr, "自定义 ARCH 为空，请在 menuconfig 中填写");
+            return 2;
+        }
+        if (!archValid) {
+            std::println(std::cerr, "可用 ARCH: {}", JoinArchs(archs));
+            return 2;
+        }
+        return 0;
+    }
     if (cmd == "menu") {
         const fs::path kconfig = testDir / "Kconfig";
         const fs::path cfg = testDir / ".config";
-        const fs::path npcRoot = testDir / ".." / "..";
-        const fs::path mconf = npcRoot / "tools" / "build" / "c_mconf";
+        const fs::path mconf = testDir / ".." / ".." / "tools" / "build" / "c_mconf";
         if (!fs::exists(mconf)) {
             std::println(std::cerr, "找不到 {}，请先在 npc 下构建 Kconfig 工具", mconf.string());
             return 2;
@@ -425,13 +523,29 @@ int main(int argc, char **argv) {
         ::setenv("KCONFIG_CONFIG", cfg.c_str(), 1);
         ::setenv("TERM", "xterm", 1);
         ::setenv("LC_ALL", "C.utf8", 1);
-        std::vector<std::string> args{mconf.string(), kconfig.string()};
-        std::vector<char *> argv2;
-        for (auto &a : args) argv2.push_back(a.data());
-        argv2.push_back(nullptr);
-        ::execv(argv2[0], argv2.data());
-        std::println(std::cerr, "menuconfig 启动失败");
-        return 2;
+        pid_t pid = ::fork();
+        if (pid < 0) { std::println(std::cerr, "menuconfig 启动失败"); return 2; }
+        if (pid == 0) {
+            std::vector<std::string> args{mconf.string(), kconfig.string()};
+            std::vector<char *> argv2;
+            for (auto &a : args) argv2.push_back(a.data());
+            argv2.push_back(nullptr);
+            ::execv(argv2[0], argv2.data());
+            _exit(127);
+        }
+        int status = 0;
+        ::waitpid(pid, &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            std::println(std::cerr, "menuconfig 退出码 {}", WEXITSTATUS(status));
+            return 2;
+        }
+        // 保存后回显一次，避免下一次 run 用到意料之外的组合。
+        const Selection saved = LoadSelection(cfg);
+        std::println("tier     {}", saved.tier.empty() ? "functional" : saved.tier);
+        std::println("arch     {}", saved.arch.empty() ? "(跟随 NPC 配置)" : saved.arch);
+        std::println("tag      {}", saved.tag.empty() ? "(不过滤)" : saved.tag);
+        std::println("name     {}", saved.name.empty() ? "(不过滤)" : saved.name);
+        return 0;
     }
     if (cmd == "clean") {
         const fs::path logDir = testDir / "build" / "test-logs";
@@ -445,6 +559,18 @@ int main(int argc, char **argv) {
         return 2;
     }
 
+    if (sel.archCustom && arch.empty()) {
+        std::println(std::cerr, "自定义 ARCH 为空，请在 menuconfig 中填写");
+        return 2;
+    }
+    if (!arch.empty()) {
+        const auto archs = AvailableArchs(testDir);
+        if (!archs.empty() && std::find(archs.begin(), archs.end(), arch) == archs.end()) {
+            std::println(std::cerr, "ARCH={} 不在 abstract-machine 的脚本中", arch);
+            std::println(std::cerr, "可用 ARCH: {}", JoinArchs(archs));
+            return 2;
+        }
+    }
     if (arch.empty()) {
         for (const auto &t : tests) {
             if (!Match(t, tier, tag, nameFilter, arch, allTiers)) continue;

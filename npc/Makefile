@@ -121,6 +121,14 @@ VERILATOR_THREADS := $(shell if [ "$(SIM_THREADS)" -gt 1 ] 2>/dev/null; then ech
 test:
 	mill -i test
 
+# csrc/Test 的注册表测试入口，转发到 csrc/Test/Makefile。
+# 与上面的 `test`（Scala 单测）和 `run`（跑一份镜像）互不冲突。
+TEST_DIR := $(NPC_HOME)/csrc/Test
+
+.PHONY: test-menuconfig test-list test-config test-run test-clean
+test-menuconfig test-list test-config test-run test-clean:
+	@$(MAKE) -C $(TEST_DIR) $(patsubst test-%,%,$@)
+
 # Kconfig 是唯一配置解析器：c_conf --syncconfig 直接生成
 # include/generated/npc_config.json。C++ 构建期小工具再把 JSON 投影成
 # 编译期模块 npc.config；运行时不解析 JSON，因为 XLen/数组大小/if

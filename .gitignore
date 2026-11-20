@@ -55,3 +55,4 @@ npc/checkpoints/
 !/rt-thread/**
 !/am-kernels/**
 !/fceux-am/**
+!/riscv-arch-test-4.1.0/**

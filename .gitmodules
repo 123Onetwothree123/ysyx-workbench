@@ -4,3 +4,6 @@
 [submodule "ics2025"]
 	path = ics2025
 	url = git@github.com:123Onetwothree123/ics2025.git
+[submodule "riscv-arch-test-4.1.0"]
+	path = riscv-arch-test-4.1.0
+	url = https://github.com/riscv/riscv-arch-test.git
